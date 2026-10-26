@@ -3609,6 +3609,15 @@ __name(schemaBehind060, "schemaBehind060");
 // A plain string error: /costs/* is read by ctFetch (modules/costs.js), which
 // shows `data.error` as the message — an object there would read
 // «[object Object]».
+// The same guard for F3 (final review 26/10, W-7): this Worker reads 072b's v_rt_vehicle_windows (DKV preview and
+// commit, for today's trips too) and 073's ct_v_rt_partner_cost / ct_cost_lines.partner_id. Deployed before them,
+// PostgREST answers PGRST205 / 42P01 (no relation) or PGRST204 / 42703 (no column): said by name, never «Costs request
+// failed». Recognised by the code AND an F3 name, so an unrelated error keeps today's path.
+function schemaBehindF3(e) {
+  const msg = `${String((e && e.message) || "")} ${JSON.stringify((e && e.pg) || {})}`;
+  return /PGRST205|PGRST204|"42P01"|"42703"/.test(msg) && /v_rt_vehicle_windows|rt_vehicle_segments|ct_v_rt_partner_cost|partner_id/.test(msg);
+}
+__name(schemaBehindF3, "schemaBehindF3");
 function schemaBehind060Response(origin, env) {
   return jsonError("Η βάση δεν έχει ακόμη το migration 060 (τοπικές παραδόσεις) — ο Worker μπήκε πριν από το SQL· ενημέρωσε τον Δημήτρη (060_missing)", 503, origin, env);
 }
@@ -4095,6 +4104,31 @@ async function ctDbPatch(env, table, filter, patch) {
   const rows = await res.json();
   return rows[0] || null;
 }
+// Q6-1 (owner 26/10, money): «a cycle with two PARTNER segments costs the SUM of the segments' partner rates; a
+// partner's invoice replaces ONLY that partner's own rate» (073 ct_v_rt_partner_cost). A partner_rate line may name
+// its partner (ct_cost_lines.partner_id, 073); on a v5 cycle the name must be one of the partners of its live PARTNER
+// segments, and with two or more of them a line must name one - written here, at the moment the line is written
+// (principle 6). The view still counts a line that names nobody (money is never dropped), and replaces no rate with
+// it. Today's round trips (model 1) and lines of any other category take today's path.
+async function ctPartnerLineCheck(env, line) {
+  if (line.partner_id != null) {
+    if (!Number.isSafeInteger(line.partner_id) || line.partner_id <= 0) return { status: 400, message: "partner_id: ο συνεργάτης θέλει ακέραιο id" };
+    if (line.category !== "partner_rate") return { status: 400, message: "partner_id μόνο σε γραμμή «Κόμιστρο συνεργάτη» (partner_rate)" };
+  }
+  if (line.category !== "partner_rate" || line.rt_id == null) return null;
+  const rt = (await dbSelectRaw(env, "ct_round_trips", new URLSearchParams({ select: "id,model", id: `eq.${line.rt_id}` }))).rows[0];
+  if (!rt || rt.model !== 2) return null;
+  const segs = (await dbSelectRaw(env, "rt_vehicle_segments", new URLSearchParams({ select: "partner_id", rt_id: `eq.${rt.id}`, trip_type: "eq.PARTNER", deleted_at: "is.null" }))).rows;
+  const partners = [...new Set(segs.map((g) => g.partner_id))];
+  if (line.partner_id != null && !partners.includes(line.partner_id)) {
+    return { status: 409, message: "Ο συνεργάτης της γραμμής δεν εκτελεί τμήμα αυτού του κύκλου — διάλεξε τον σωστό συνεργάτη ή κύκλο" };
+  }
+  if (line.partner_id == null && partners.length > 1) {
+    return { status: 409, message: "Ο κύκλος έχει δύο ή περισσότερους συνεργάτες — διάλεξε ποιανού είναι το τιμολόγιο (κάθε τιμολόγιο αντικαθιστά μόνο το δικό του κόμιστρο)" };
+  }
+  return null;
+}
+__name(ctPartnerLineCheck, "ctPartnerLineCheck");
 function ctPick(body, fields) {
   const row = {};
   for (const f of fields) {
@@ -4544,7 +4578,7 @@ async function handleCosts(request, url, origin, env) {
       if (!CT_CATEGORIES.includes(body.category)) {
         return jsonError("Unknown category", 400, origin, env);
       }
-      const row = ctPick(body, ["rt_id", "category", "toll_country", "net", "vat", "line_date", "plate_raw", "truck_id", "trailer_id", "km_reading", "liters", "station", "note", "fuel_source", "pay_source"]);
+      const row = ctPick(body, ["rt_id", "category", "toll_country", "net", "vat", "line_date", "plate_raw", "truck_id", "trailer_id", "km_reading", "liters", "station", "note", "fuel_source", "pay_source", "partner_id"]);
       if (typeof row.net !== "number" && typeof row.vat !== "number") {
         return jsonError("net or vat amount required", 400, origin, env);
       }
@@ -4569,6 +4603,10 @@ async function handleCosts(request, url, origin, env) {
         // didn't send one explicitly; the accountant can still override it.
         const rt = await dbSelectRaw(env, "ct_round_trips", new URLSearchParams({ select: "trailer_id", id: `eq.${row.rt_id}` }));
         if (rt.rows.length && rt.rows[0].trailer_id) row.trailer_id = rt.rows[0].trailer_id;
+      }
+      {
+        const bad = await ctPartnerLineCheck(env, row);
+        if (bad) return jsonError(bad.message, bad.status, origin, env);
       }
       row.alloc_status = row.rt_id ? "allocated" : "unallocated";
       row.created_by = caller.sub;
@@ -4641,7 +4679,7 @@ async function handleCosts(request, url, origin, env) {
     if (resource === "lines" && method === "PATCH" && recId) {
       const body = await request.json().catch(() => null);
       if (!body || !String(body.reason || "").trim()) return jsonError("reason required", 400, origin, env);
-      const patch = ctPick(body, ["rt_id", "category", "toll_country", "net", "vat", "line_date", "truck_id", "trailer_id", "km_reading", "liters", "station", "note", "fuel_source", "pay_source"]);
+      const patch = ctPick(body, ["rt_id", "category", "toll_country", "net", "vat", "line_date", "truck_id", "trailer_id", "km_reading", "liters", "station", "note", "fuel_source", "pay_source", "partner_id"]);
       if (!Object.keys(patch).length) return jsonError("Nothing to update", 400, origin, env);
       if (patch.category && !CT_CATEGORIES.includes(patch.category)) return jsonError("Unknown category", 400, origin, env);
       if ("pay_source" in patch && !patch.pay_source) return jsonError("pay_source required (DKV/CASH/REVOLUT/CREDIT)", 400, origin, env);
@@ -4682,6 +4720,13 @@ async function handleCosts(request, url, origin, env) {
           const rt = await dbSelectRaw(env, "ct_round_trips", new URLSearchParams({ select: "trailer_id", id: `eq.${effRtId}` }));
           if (rt.rows.length && rt.rows[0].trailer_id) patch.trailer_id = rt.rows[0].trailer_id;
         }
+      }
+      {
+        // Q6-1: the EFFECTIVE line (a PATCH that moves the line to another cycle, or changes its category, is
+        // checked as the line it leaves behind)
+        const eff = { ...before.rows[0], ...patch };
+        const bad = await ctPartnerLineCheck(env, eff);
+        if (bad) return jsonError(bad.message, bad.status, origin, env);
       }
       if ("rt_id" in patch) patch.alloc_status = patch.rt_id ? "allocated" : "unallocated";
       const updated = await ctDbPatch(env, "ct_cost_lines", `id=eq.${encodeURIComponent(recId)}`, patch);
@@ -5420,11 +5465,14 @@ async function handleCosts(request, url, origin, env) {
         // refused. Today's round trips (model 1), and a v5 cycle with no OWNED segment, keep the one-truck rule.
         const v5Ids = rtRows.filter((r) => r.model === 2).map((r) => r.id);
         const segTrucks = new Map();
+        const segRowsById = new Map();
         if (v5Ids.length) {
-          const segRows = (await dbSelectRaw(env, "v_rt_vehicle_windows", new URLSearchParams({ select: "id,truck_id", id: `in.(${v5Ids.join(",")})` }))).rows;
+          const segRows = (await dbSelectRaw(env, "v_rt_vehicle_windows", new URLSearchParams({ select: "id,truck_id,date_start,date_end", id: `in.(${v5Ids.join(",")})` }))).rows;
           for (const w of segRows) {
             if (!segTrucks.has(w.id)) segTrucks.set(w.id, new Set());
             segTrucks.get(w.id).add(w.truck_id);
+            if (!segRowsById.has(w.id)) segRowsById.set(w.id, []);
+            segRowsById.get(w.id).push(w);
           }
         }
         for (let i = 0; i < rows.length; i++) {
@@ -5436,6 +5484,16 @@ async function handleCosts(request, url, origin, env) {
           const cycleTrucks = rt.model === 2 ? segTrucks.get(rt.id) : null;
           if (cycleTrucks ? r.truck_id != null && !cycleTrucks.has(r.truck_id) : r.truck_id != null && rt.truck_id != null && rt.truck_id !== r.truck_id) {
             return jsonError(`line ${i + 1}: round trip ${r.rt_id} belongs to another truck`, 409, origin, env);
+          }
+          // final review 26/10 (W-9): on a v5 cycle the truck is the cycle's only on its OWN segment's days (DKV-2
+          // alpha: exact days, no +-1) - truck 10's fuel of the day before the handover 9 -> 10 is not this cycle's.
+          // A DKV fee line («Τέλη DKV», category dkv) is spread over the statement's period and filed under the first
+          // segment's truck (Q7-1): its date is the statement's, so it is not held to a segment's days.
+          if (cycleTrucks && r.truck_id != null && r.category !== "dkv" && r.line_date) {
+            const day = String(r.line_date).slice(0, 10);
+            const onIt = (segRowsById.get(rt.id) || []).some((w) => w.truck_id === r.truck_id && w.date_start
+              && day >= w.date_start && day <= (w.date_end || w.date_start));
+            if (!onIt) return jsonError(`line ${i + 1}: round trip ${r.rt_id}: truck ${r.truck_id} has no segment of it on ${day}`, 409, origin, env);
           }
         }
       }
@@ -5586,6 +5644,9 @@ async function handleCosts(request, url, origin, env) {
     return jsonError("Not found", 404, origin, env);
   } catch (e) {
     console.error(`COSTS ${method} ${url.pathname}`, e.message);
+    if (schemaBehindF3(e)) {
+      return jsonError("Η βάση δεν έχει ακόμη την 072b / 073 (τμήματα οχήματος, κόστος συνεργατών) — ο Worker μπήκε πριν από το SQL· σειρά: 072b → 073 → Worker· ενημέρωσε τον Δημήτρη (f3_missing)", 503, origin, env);
+    }
     return jsonError("Costs request failed", 500, origin, env);
   }
 }
@@ -6355,15 +6416,34 @@ function plCan(role, resource, method) {
 }
 var PL_FIELDS = ["movement_date", "counterparty_type", "client_id", "partner_id", "location_id", "event_type", "taken", "given", "order_stop_id", "cons_load_id", "order_id", "sheet_url", "sheet_source", "reversal_of", "reason", "notes"];
 // 073 / D-9: a row of the national plan (pl_movements.piece_leg_id) has ONE writer per field. The plan
-// (plan_h_pallet_sync) owns who, where, when and taken (the piece's pallets: corrected in the plan, never here, or
-// the next change of the leg would put the plan's number back); the user owns these, before the confirmation.
-var PL_PLAN_USER_FIELDS = ["given", "sheet_url", "sheet_source", "notes"];
-var PL_PLAN_OWNED_TEXT = "Η κίνηση ανήκει στον προγραμματισμό εθνικών: πελάτης, τόπος, ημέρα και παλέτες αλλάζουν από το σκέλος";
+// (plan_h_pallet_sync) owns who, where, when and the LOADED side (corrected in the plan, never here, or the next
+// change of the leg would put the plan's number back); the user owns the EXCHANGE side, the sheet and the notes.
+// Q9-1 (coordinator 26/10), the same rule as plan_h_pallet_sync: LOADING - taken is the plan's (the pallets loaded),
+// given the user's (what we gave back there); DELIVERY - given is the plan's (the pallets delivered), taken the
+// user's («δεν τις πήραμε πίσω»: today's plvDoFix corrects taken, and the balance is sum(given - taken), 003).
+var PL_PLAN_USER_SIDE = { LOADING: "given", DELIVERY: "taken" };
+function plPlanUserFields(m) {
+  const side = PL_PLAN_USER_SIDE[m.event_type];
+  return (side ? [side] : []).concat(["sheet_url", "sheet_source", "notes"]);
+}
+var PL_PLAN_OWNED_TEXT = "Η κίνηση ανήκει στον προγραμματισμό εθνικών: πελάτης, τόπος, ημέρα και οι παλέτες που φορτώθηκαν/παραδόθηκαν αλλάζουν από το σκέλος";
 // The plan-owned fields a request would CHANGE on a plan row. Sending a field with the value the row already has
-// is no change (today's ledger sends the whole row back: taken on confirm, the full copy on a fix), so it is not
-// refused; a different value is refused, never dropped in silence behind a 200 (principle 1).
+// is no change (today's ledger sends the whole row back: taken and given on confirm, the full copy on a fix), so it
+// is not refused (Q9-2); a different value is refused, never dropped in silence behind a 200 (principle 1).
 function plPlanOwnedChanges(m, row, ignore = []) {
-  return Object.keys(row).filter((k) => !PL_PLAN_USER_FIELDS.includes(k) && !ignore.includes(k) && row[k] !== m[k]);
+  const own = plPlanUserFields(m);
+  return Object.keys(row).filter((k) => !own.includes(k) && !ignore.includes(k) && row[k] !== m[k]);
+}
+// The base's one-writer indexes, said in Greek wherever pl_movements is written (POST, PATCH, a reversal's
+// replacement): pl_mov_stop_once (073, one live LOADING / DELIVERY per international stop) and pl_mov_leg_once (071,
+// one live row per event of a national leg). Any other error keeps its own path.
+function plUniqueText(e) {
+  const pg = (e && e.pg) || {};
+  if (pg.code !== "23505" && !/"23505"/.test(String((e && e.message) || ""))) return null;
+  const t = `${pg.message || ""} ${pg.details || ""} ${(e && e.message) || ""}`;
+  if (/pl_mov_stop_once/.test(t)) return "Υπάρχει ήδη κίνηση παλετών αυτού του είδους σε αυτή τη στάση — άνοιξέ την από το Ισοζύγιο";
+  if (/pl_mov_leg_once/.test(t)) return "Ο προγραμματισμός εθνικών έχει ήδη κίνηση αυτού του είδους για το σκέλος — άνοιξέ την από το Ισοζύγιο";
+  return null;
 }
 function plValidate(row) {
   if (!row.movement_date) return "movement_date required";
@@ -6562,9 +6642,8 @@ async function handlePallets(request, url, origin, env) {
       } catch (e) {
         // 073 / D-9: one live LOADING / DELIVERY row per international stop - the second of two feeders writing at
         // the same moment (GET-then-POST) is refused by the base; said in Greek, the row that is there stays.
-        if (e.pg && e.pg.code === "23505" && /pl_mov_stop_once/.test(`${e.pg.message || ""} ${e.pg.details || ""}`)) {
-          return jsonError("Υπάρχει ήδη κίνηση παλετών αυτού του είδους σε αυτή τη στάση — άνοιξέ την από το Ισοζύγιο", 409, origin, env);
-        }
+        const dup = plUniqueText(e);
+        if (dup) return jsonError(dup, 409, origin, env);
         throw e;
       }
       await audit(env, { actor: caller.sub, role: caller.role, action: "create", table: "pl_movements", recordId: String(created.id), after: created });
@@ -6588,7 +6667,8 @@ async function handlePallets(request, url, origin, env) {
         const changed = plPlanOwnedChanges(before.rows[0], patch);
         if (changed.length) return jsonError(`${PL_PLAN_OWNED_TEXT} (${changed.join(", ")})`, 409, origin, env);
         // equal values are not written back: the plan may have moved them since this row was read
-        for (const k of Object.keys(patch)) if (!PL_PLAN_USER_FIELDS.includes(k)) delete patch[k];
+        const own = plPlanUserFields(before.rows[0]);
+        for (const k of Object.keys(patch)) if (!own.includes(k)) delete patch[k];
       }
       if (!Object.keys(patch).length) return jsonError("Nothing to update", 400, origin, env);
       const merged = { ...before.rows[0], ...patch };
@@ -6597,7 +6677,15 @@ async function handlePallets(request, url, origin, env) {
       if (merged.event_type === "ADJUSTMENT" && caller.role !== "owner") {
         return jsonError("ADJUSTMENT is owner-only", 403, origin, env);
       }
-      const updated = await ctDbPatch(env, "pl_movements", `id=eq.${encodeURIComponent(recId)}`, patch);
+      let updated;
+      try {
+        updated = await ctDbPatch(env, "pl_movements", `id=eq.${encodeURIComponent(recId)}`, patch);
+      } catch (e) {
+        // a PATCH that moves a row onto a stop / event that already has its live row (final review 26/10, W-5)
+        const dup = plUniqueText(e);
+        if (dup) return jsonError(dup, 409, origin, env);
+        throw e;
+      }
       await audit(env, { actor: caller.sub, role: caller.role, action: "update", table: "pl_movements", recordId: String(recId), before: before.rows[0], after: updated });
       return jsonOk({ record: updated }, origin, env);
     }
@@ -6671,6 +6759,13 @@ async function handlePallets(request, url, origin, env) {
       if (m.event_type === "ADJUSTMENT" && caller.role !== "owner") {
         return jsonError("ADJUSTMENT is owner-only", 403, origin, env);
       }
+      // 073 / D-9 (final review 26/10, W-3): a row of the national plan is reversed only WITH its correct row. Alone,
+      // the leg is left without its row and the next change of the leg writes it again from the plan - the reversal
+      // undone in silence. The same reason DELETE refuses it: the row leaves only with its leg.
+      const hasReplacement = !!(body.replacement && typeof body.replacement === "object");
+      if (m.piece_leg_id != null && !hasReplacement) {
+        return jsonError("Η κίνηση ανήκει στον προγραμματισμό εθνικών: αντιλογίζεται μόνο μαζί με τη σωστή της εγγραφή (διόρθωση) — μόνη της θα την ξανάγραφε ο προγραμματισμός", 409, origin, env);
+      }
       let replacementRow = null;
       if (body.replacement && typeof body.replacement === "object") {
         replacementRow = ctPick(body.replacement, PL_FIELDS);
@@ -6682,14 +6777,15 @@ async function handlePallets(request, url, origin, env) {
         replacementRow.reversal_of = m.id;
         replacementRow.created_by = caller.sub;
         // 073 / D-9: the replacement of a row of the national plan stays the leg's row (one writer per leg): it
-        // keeps the leg, the event, the client, the place, the day and taken of the row it replaces; only given,
-        // the sheet and the notes come from the body. A replacement without piece_leg_id would be a second row
-        // next to the one the plan writes again at the next change of the leg (the client's balance doubles).
-        // A body that would change a plan-owned field is refused BEFORE the row is reversed (nothing written).
+        // keeps the leg, the event, the client, the place, the day and the plan's side of the row it replaces; only
+        // the user's side (Q9-1: LOADING given, DELIVERY taken), the sheet and the notes come from the body. A
+        // replacement without piece_leg_id would be a second row next to the one the plan writes again at the next
+        // change of the leg (the client's balance doubles). A body that would change a plan-owned field is refused
+        // BEFORE the row is reversed (nothing written).
         if (m.piece_leg_id != null) {
           const changed = plPlanOwnedChanges(m, sent, ["reversal_of"]);
           if (changed.length) return jsonError(`${PL_PLAN_OWNED_TEXT} (${changed.join(", ")})`, 409, origin, env);
-          const own = ctPick(body.replacement, PL_PLAN_USER_FIELDS);
+          const own = ctPick(body.replacement, plPlanUserFields(m));
           replacementRow = { movement_date: m.movement_date, counterparty_type: m.counterparty_type, client_id: m.client_id,
             partner_id: m.partner_id, location_id: m.location_id, event_type: m.event_type, taken: m.taken, given: m.given,
             ...own, reversal_of: m.id, created_by: caller.sub, piece_leg_id: m.piece_leg_id };
@@ -6706,7 +6802,18 @@ async function handlePallets(request, url, origin, env) {
       });
       let replacement = null;
       if (replacementRow) {
-        replacement = await dbInsert(env, "pl_movements", replacementRow);
+        try {
+          replacement = await dbInsert(env, "pl_movements", replacementRow);
+        } catch (e) {
+          // Two writes, not one transaction: between them the national plan may write the leg's row again (its
+          // feeder sees the leg without a live row), or a feeder the stop's - the base refuses the replacement
+          // (pl_mov_leg_once / pl_mov_stop_once). The reversal stands and says so, with the row to correct; never a
+          // raw 500 that hides a half-done fix (final review 26/10, W-4).
+          const dup = plUniqueText(e);
+          if (!dup) throw e;
+          await audit(env, { actor: caller.sub, role: caller.role, action: "reverse", table: "pl_movements", recordId: String(recId), before: m, after: { ...updated, replacement_id: null, replacement_refused: dup } });
+          return jsonError(`Ο αντιλογισμός έγινε, η διόρθωση όχι: ${dup}. Διόρθωσε την εκκρεμή κίνηση που υπάρχει.`, 409, origin, env);
+        }
       }
       await audit(env, { actor: caller.sub, role: caller.role, action: "reverse", table: "pl_movements", recordId: String(recId), before: m, after: { ...updated, replacement_id: replacement ? replacement.id : null } });
       return jsonOk({ record: updated, replacement }, origin, env);

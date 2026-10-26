@@ -151,6 +151,11 @@ function sameAsSqlBranch(t, { file, sql }, sqlBranch) {
     t.diagnostic(`copy: ${rel} = ${ref} (md5 ${md5(sql)})`);
     return;
   }
+  // A copy still in drafts/ is a migration nobody ran yet: its SQL branch is the only source that can say the copy is
+  // right, so a clone that cannot reach it FAILS (final review 26/10, W-10: the 073 copy skipped in silence in a
+  // clean clone, where feat/national-v5-f3 was not on origin). git fetch origin <branch>, or push the SQL branch with
+  // this one. An executed migration (out of drafts/) is on main: a skip there only says the branch was deleted.
+  if (rel.includes('/drafts/')) assert.fail(`no ref holds ${rel} (${sqlBranch}, origin/${sqlBranch}, origin/main): fetch or push the SQL branch - an unreviewable copy is never a pass`);
   t.skip(`no ref holds ${rel} (${sqlBranch} merged and deleted, or not fetched): the copy is not compared`);
 }
 test('the 072 copy is byte-identical to the SQL branch file', (t) => sameAsSqlBranch(t, f072(), 'feat/national-v5-f2'));

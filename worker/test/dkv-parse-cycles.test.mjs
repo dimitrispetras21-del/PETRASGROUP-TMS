@@ -86,6 +86,7 @@ beforeEach(() => {
     if (method === 'GET' && ['ct_import_rules', 'ct_cost_docs', 'ct_plate_aliases'].includes(table)) return json([]);
     if (method === 'GET' && table === 'trucks') return json(TRUCKS || [{ id: 7, license_plate: 'XX1234' }, { id: 9, license_plate: 'XX5678' }]);
     if (method === 'GET' && table === 'v_rt_vehicle_windows') {
+      if (VIEW === 'missing') return json({ code: 'PGRST205', message: "Could not find the table 'public.v_rt_vehicle_windows' in the schema cache" }, 404);
       const inSet = (col) => (u.searchParams.get(col) || '').replace(/^in\.\(|\)$/g, '').split(',');
       const cols = (u.searchParams.get('select') || '').split(',');
       const pick = (r) => Object.fromEntries(cols.map((c) => [c, r[c]]));
@@ -218,4 +219,27 @@ test('commit: today\'s round trips keep the one-truck rule and read no segments'
   const ok = await commit([fuelLine(7, 5)]);
   assert.equal(ok.status, 201, ok.text);
   assert.equal(calls.filter((c) => c.table === 'v_rt_vehicle_windows').length, 0);
+});
+
+test('commit (final review 26/10, W-9): a truck of the cycle is the cycle\'s only on its own segment\'s days; a DKV fee is not held to them', async () => {
+  // truck 13 drives cycle 23 from 02/09 to 03/09 (its segment): its fuel of 01/09 is not cycle 23's
+  const r = await commit([{ ...fuelLine(13, 23), service_date: '2026-09-01' }]);
+  assert.equal(r.status, 409, r.text);
+  assert.match(r.json.error, /round trip 23: truck 13 has no segment of it on 2026-09-01/);
+  assert.equal(calls.filter((c) => c.method === 'POST' && c.table === 'ct_cost_lines').length, 0);
+  calls = [];
+  const ok = await commit([{ ...fuelLine(13, 23), service_date: '2026-09-03' }]);
+  assert.equal(ok.status, 201, ok.text);
+  calls = [];
+  // truck 12's segment is 02/09 only: a fee line filed under it (Q7-1) dated by the statement passes
+  const fee = await commit([{ ...fuelLine(12, 23), category: 'dkv', service_date: '2026-09-30' }]);
+  assert.equal(fee.status, 201, fee.text);
+});
+
+test('deploy order (W-7): a Worker that meets no v_rt_vehicle_windows (072b not run) says so by name, never «Costs request failed»', async () => {
+  VIEW = 'missing';
+  const r = await parse('9999999_20260930_DE_E-INVOICE_1.pdf');
+  assert.equal(r.status, 503, r.text);
+  assert.match(r.json.error, /072b \/ 073/);
+  assert.match(r.json.error, /f3_missing/);
 });

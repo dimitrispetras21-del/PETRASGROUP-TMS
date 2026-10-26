@@ -19,10 +19,15 @@
 //            `rpc: "plan_seg_change"`): 0 before that deploy, 1 after it, and
 //            1 needs --plan 1. Never a default: a forgotten flag is a usage
 //            error, not an «OK» (handover plan H-18).
-//   --f3     optional (national v5 F3): expected presence of the F3 marker
-//            "v_rt_cycle" - the end of a v5 cycle read by GET /costs/rt (073 /
-//            E21). 0 = before the F3 deploy, 1 = the F3 bundle / live after it
-//            (at least one: later phases may read the view again); 1 needs
+//   --f3     optional (national v5 F3): expected presence of the F3 markers,
+//            ONE PER FEATURE (CLAUDE.md, three rules of one source, rule 3;
+//            final review 26/10, W-8): "v_rt_cycle" (E21, the end of a v5
+//            cycle read by GET /costs/rt), review_cycles (E10, DKV lines
+//            matched to v5 cycles), pl_mov_stop_once (E11, the pallet rows of
+//            the plan and the one-writer index) and ctPartnerLineCheck (Q6-1,
+//            a partner invoice line names its partner). 0 = before the F3
+//            deploy (none of them), 1 = the F3 bundle / live after it (each at
+//            least once: later phases may use them again); 1 needs
 //            --handover 1 (F3 is built on it, one chain). Without it: as before.
 // Prints one line per marker and exits 1 on the first STOP condition — no
 // partial «OK» (αρχή 1).
@@ -96,8 +101,11 @@ if (plan === 1) {
 }
 const f3 = f3Flag === undefined ? null : Number(f3Arg);
 if (f3 !== null) {
-  // a view name, not a declaration: at least one after F3 (never 0), none before it
-  rows.push(['"v_rt_cycle" (F3, E21)', count('"v_rt_cycle"'), (n) => (f3 === 1 ? n >= 1 : n === 0)]);
+  // names, not declarations: at least one each after F3 (never 0), none before it
+  for (const [name, mark] of [['"v_rt_cycle" (F3, E21)', '"v_rt_cycle"'], ['review_cycles (F3, E10)', 'review_cycles'],
+    ['pl_mov_stop_once (F3, E11)', 'pl_mov_stop_once'], ['ctPartnerLineCheck (F3, Q6-1)', 'ctPartnerLineCheck']]) {
+    rows.push([name, count(mark), (n) => (f3 === 1 ? n >= 1 : n === 0)]);
+  }
 }
 let ok = true;
 for (const [name, n, good] of rows) {

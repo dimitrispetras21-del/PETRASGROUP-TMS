@@ -1,9 +1,10 @@
 // 073 / E11 (spec 5, D-9): the pallet rows of the national plan (pl_movements.piece_leg_id) have ONE writer - the
 // base's plan_h_pallet_sync. Through /pallets/*: GET names their national order (the ledger shows «εθνική #…», F4,
-// never «Χειροκίνητη»); PATCH changes only given and the sheet (taken is the plan's); DELETE is refused (the plan
-// withdraws its own rows); a reversal's replacement stays the leg's row. And the base's new pl_mov_stop_once (one
-// live row per international stop and event) answers 409 in Greek instead of a bare 500. Rows without piece_leg_id
-// behave exactly as before.
+// never «Χειροκίνητη»); PATCH changes only the user's side and the sheet (Q9-1, coordinator 26/10: LOADING given,
+// DELIVERY taken - the plan owns the loaded side); DELETE is refused, and so is a reversal without its replacement
+// (the plan withdraws its own rows and would write a lone reversed one again); a reversal's replacement stays the
+// leg's row. The base's one-writer indexes (pl_mov_stop_once, pl_mov_leg_once) answer 409 in Greek, never a bare
+// 500 - on POST, on PATCH and on a reversal's replacement. Rows without piece_leg_id behave exactly as before.
 // Task 9 deviation (principle 1): a request that would CHANGE a plan-owned field is refused, never dropped behind a
 // 200 - on PATCH and on the replacement of a reversal alike; a plan-owned field sent with the value the row already
 // has (today's ledger sends taken on confirm and the whole row on a fix) is no change and is not written back.
@@ -47,14 +48,16 @@ const ROWS = [
   { id: 1, code: 'PM-1', status: 'pending', event_type: 'LOADING', counterparty_type: 'CLIENT', client_id: 5, movement_date: '2026-10-14', taken: 10, given: 0, piece_leg_id: 70 },
   { id: 2, code: 'PM-2', status: 'pending', event_type: 'DELIVERY', counterparty_type: 'CLIENT', client_id: 5, movement_date: '2026-10-14', taken: 33, given: 33, order_id: 9, order_stop_id: 4, piece_leg_id: null },
   { id: 3, code: 'PM-3', status: 'confirmed', event_type: 'DELIVERY', counterparty_type: 'CLIENT', client_id: 5, location_id: 6, movement_date: '2026-10-14', taken: 10, given: 10, piece_leg_id: 70 },
+  { id: 4, code: 'PM-4', status: 'pending', event_type: 'DELIVERY', counterparty_type: 'CLIENT', client_id: 5, location_id: 6, movement_date: '2026-10-14', taken: 10, given: 10, piece_leg_id: 71 },
+  { id: 5, code: 'PM-5', status: 'confirmed', event_type: 'DELIVERY', counterparty_type: 'CLIENT', client_id: 5, movement_date: '2026-10-14', taken: 33, given: 33, order_id: 9, order_stop_id: 4, piece_leg_id: null },
 ];
 const json = (rows, status = 200) => new Response(JSON.stringify(rows), { status, headers: { 'content-type': 'application/json' } });
-let calls; let legsFail; let insertError; let legsRows;
+let calls; let legsFail; let insertError; let patchError; let legsRows;
 const realConsole = { log: console.log, error: console.error, warn: console.warn };
 beforeEach(() => {
   console.log = console.error = console.warn = () => {};
-  calls = []; legsFail = false; insertError = null;
-  legsRows = [{ id: 70, shipment_pieces: { shipments: { nat_order_id: 501 } } }];
+  calls = []; legsFail = false; insertError = null; patchError = null;
+  legsRows = [{ id: 70, shipment_pieces: { shipments: { nat_order_id: 501 } } }, { id: 71, shipment_pieces: { shipments: { nat_order_id: 501 } } }];
   globalThis.fetch = async (url, init = {}) => {
     const u = new URL(url);
     const method = init.method || 'GET';
@@ -68,7 +71,10 @@ beforeEach(() => {
       if (legsFail) return json({ message: 'boom' }, 500);
       return json(legsRows);
     }
-    if (table === 'pl_movements' && method === 'PATCH') return json([{ ...ROWS[0], ...JSON.parse(init.body) }]);
+    if (table === 'pl_movements' && method === 'PATCH') {
+      if (patchError) return json(patchError, 409);
+      return json([{ ...ROWS[0], ...JSON.parse(init.body) }]);
+    }
     if (table === 'pl_movements' && method === 'POST') {
       if (insertError) return json(insertError, 409);
       return json([{ id: 3, ...JSON.parse(init.body) }], 201);
@@ -91,7 +97,7 @@ test('GET: a row of the plan names its national order; a manual row is as before
   assert.equal(by[1].nat_order_id, 501);
   assert.equal('nat_order_id' in by[2], false);
   const legs = calls.find((c) => c.table === 'piece_legs');
-  assert.equal(legs.params.get('id'), 'in.(70)', 'one read for the page');
+  assert.equal(legs.params.get('id'), 'in.(70,71)', 'one read for the page');
 });
 
 test('GET: the lookup fails - the list loads and says it does not know', async () => {
@@ -117,7 +123,7 @@ test('GET: a leg missing from the answer, or a leg without a national order - un
   }
 });
 
-test('PATCH: on a row of the plan only given and the sheet change', async () => {
+test('PATCH: on a LOADING of the plan only given and the sheet change (Q9-1: taken is the loaded side, the plan\'s)', async () => {
   const ok = await call('warehouse', '/pallets/movements/1', 'PATCH', { given: 8, sheet_source: 'MANUAL' });
   assert.equal(ok.status, 200, ok.text);
   // taken is the plan's (the piece's pallets): corrected in the plan, or the next change of the leg would undo it
@@ -144,6 +150,32 @@ test('PATCH: today\'s confirm sends taken back unchanged - accepted, and only th
   assert.equal(calls.filter((c) => c.method === 'PATCH').length, 0);
 });
 
+test('PATCH (Q9-1): on a DELIVERY of the plan the user corrects taken («δεν τις πήραμε πίσω»); given is the plan\'s', async () => {
+  const ok = await call('warehouse', '/pallets/movements/4', 'PATCH', { taken: 7, given: 10, sheet_source: 'MANUAL' });
+  assert.equal(ok.status, 200, ok.text);
+  const w = calls.filter((c) => c.method === 'PATCH' && c.table === 'pl_movements');
+  assert.deepEqual(w[0].body, { taken: 7, sheet_source: 'MANUAL' }, 'given equal to the row (Q9-2): accepted, never written back');
+  calls = [];
+  const bad = await call('warehouse', '/pallets/movements/4', 'PATCH', { given: 8 });
+  assert.equal(bad.status, 409, bad.text);
+  assert.match(bad.text, /προγραμματισμό εθνικών.*\(given\)/);
+  assert.equal(calls.filter((c) => c.method === 'PATCH').length, 0, 'nothing written');
+});
+
+test('PATCH: a write the base refuses as a second live row is a 409 in Greek (W-5), other refusals as before', async () => {
+  patchError = { code: '23505', message: 'duplicate key value violates unique constraint "pl_mov_stop_once"' };
+  const r = await call('owner', '/pallets/movements/2', 'PATCH', { order_stop_rec: 'recS2' });
+  assert.equal(r.status, 409, r.text);
+  assert.match(r.text, /Υπάρχει ήδη κίνηση παλετών/);
+  patchError = { code: '23505', message: 'duplicate key value violates unique constraint "pl_mov_leg_once"' };
+  const leg = await call('warehouse', '/pallets/movements/4', 'PATCH', { taken: 7 });
+  assert.equal(leg.status, 409, leg.text);
+  assert.match(leg.text, /για το σκέλος/);
+  patchError = { code: '23514', message: 'new row violates check constraint "x"' };
+  const other = await call('owner', '/pallets/movements/2', 'PATCH', { movement_date: '2026-10-15' });
+  assert.equal(other.status, 500, 'any other refusal: as before');
+});
+
 test('DELETE: a row of the plan is refused; a manual pending row is deleted as before', async () => {
   const r = await call('owner', '/pallets/movements/1', 'DELETE');
   assert.equal(r.status, 409, r.text);
@@ -152,23 +184,25 @@ test('DELETE: a row of the plan is refused; a manual pending row is deleted as b
   assert.equal(m.status, 200, m.text);
 });
 
-test('reverse: the replacement of a row of the plan stays the leg\'s row (only given, sheet, notes from the body)', async () => {
+test('reverse: today\'s fix dialog on a DELIVERY of the plan works - the replacement stays the leg\'s row, its taken is the user\'s (Q9-1)', async () => {
   const r = await call('accountant', '/pallets/movements/3/reverse', 'POST',
-    // the shape of today's ledger fix (plvDoFix): the whole row copied back, plan-owned values unchanged
-    { reason: 'TEST', replacement: { given: 8, client_rec: 'recC', movement_date: '2026-10-14', event_type: 'DELIVERY', taken: 10,
-      counterparty_type: 'CLIENT', partner_id: null, order_stop_id: null, order_id: null } });
+    // exactly the body of today's ledger fix (modules/pallet_ledger.js plvDoFix): the real taken, the row's given,
+    // the rest copied back; plan-owned values unchanged
+    { reason: 'Διόρθωση ανταλλαγής παράδοσης', replacement: { movement_date: '2026-10-14', counterparty_type: 'CLIENT',
+      client_id: 5, partner_id: null, location_id: 6, event_type: 'DELIVERY', taken: 7, given: 10,
+      order_stop_id: null, order_id: null, notes: 'Lidl' } });
   assert.equal(r.status, 200, r.text);
   const ins = calls.find((c) => c.method === 'POST' && c.table === 'pl_movements');
   const { partner_id: _p, ...got } = ins.body;   // null on a real row, absent in this mock: not the point here
   assert.deepEqual(got, { movement_date: '2026-10-14', counterparty_type: 'CLIENT', client_id: 5, location_id: 6,
-    event_type: 'DELIVERY', taken: 10, given: 8, reversal_of: 3, created_by: 'tester', piece_leg_id: 70 });
+    event_type: 'DELIVERY', taken: 7, given: 10, notes: 'Lidl', reversal_of: 3, created_by: 'tester', piece_leg_id: 70 });
   const patchIdx = calls.findIndex((c) => c.method === 'PATCH'), insIdx = calls.findIndex((c) => c.method === 'POST' && c.table === 'pl_movements');
   assert.ok(patchIdx >= 0 && patchIdx < insIdx, 'the old row is reversed first (pl_mov_leg_once counts live rows only)');
 });
 
 test('reverse: a replacement that would change a plan-owned field is refused before anything is written', async () => {
-  for (const replacement of [{ given: 8, taken: 7 }, { given: 8, client_rec: 'recX' }, { movement_date: '2026-10-20' },
-    { event_type: 'LOADING' }, { location_rec: 'recY' }]) {
+  for (const replacement of [{ given: 8, taken: 7 }, { taken: 7, client_rec: 'recX' }, { movement_date: '2026-10-20' },
+    { event_type: 'LOADING' }, { location_rec: 'recY' }, { given: 9 }]) {
     calls = [];
     const r = await call('accountant', '/pallets/movements/3/reverse', 'POST', { reason: 'TEST', replacement });
     assert.equal(r.status, 409, JSON.stringify(replacement));
@@ -176,15 +210,21 @@ test('reverse: a replacement that would change a plan-owned field is refused bef
     assert.equal(calls.filter((c) => c.method !== 'GET').length, 0, `nothing written: ${JSON.stringify(replacement)}`);
   }
   calls = [];
+  // W-3: a row of the plan reversed alone would be written again by the plan at the next change of its leg
   const plain = await call('accountant', '/pallets/movements/3/reverse', 'POST', { reason: 'TEST' });
-  assert.equal(plain.status, 200, 'a reversal without a replacement: as before');
+  assert.equal(plain.status, 409, plain.text);
+  assert.match(plain.text, /μόνο μαζί με τη σωστή της εγγραφή/);
+  assert.equal(calls.filter((c) => c.method !== 'GET').length, 0, 'nothing written');
+  calls = [];
+  const manual = await call('accountant', '/pallets/movements/5/reverse', 'POST', { reason: 'TEST' });
+  assert.equal(manual.status, 200, 'a manual row reversed without a replacement: as before');
   calls = [];
   // a body with only the user's fields: what it does not send is the row's, never a default 0
-  const own = await call('accountant', '/pallets/movements/3/reverse', 'POST', { reason: 'TEST', replacement: { given: 8, notes: 'n' } });
+  const own = await call('accountant', '/pallets/movements/3/reverse', 'POST', { reason: 'TEST', replacement: { taken: 8, notes: 'n' } });
   assert.equal(own.status, 200, own.text);
   const ins = calls.find((c) => c.method === 'POST' && c.table === 'pl_movements');
-  assert.equal(ins.body.taken, 10);
-  assert.equal(ins.body.given, 8);
+  assert.equal(ins.body.taken, 8);
+  assert.equal(ins.body.given, 10);
   assert.equal(ins.body.notes, 'n');
   assert.equal(ins.body.piece_leg_id, 70);
 });
@@ -197,5 +237,18 @@ test('POST: the second live row of a stop and event is a 409 in Greek, other ref
   assert.match(r.text, /Υπάρχει ήδη κίνηση παλετών/);
   insertError = { code: '23505', message: 'duplicate key value violates unique constraint "pl_movements_code_key"' };
   const other = await call('dispatcher', '/pallets/movements', 'POST', body);
+  assert.equal(other.status, 500, 'any other refusal: as before');
+});
+
+test('reverse: the plan wrote the leg\'s row between the two writes - the reversal stands and says so, never a raw 500 (W-4)', async () => {
+  insertError = { code: '23505', message: 'duplicate key value violates unique constraint "pl_mov_leg_once"', details: 'Key (piece_leg_id, event_type)=(70, DELIVERY) already exists.' };
+  const r = await call('accountant', '/pallets/movements/3/reverse', 'POST', { reason: 'TEST', replacement: { taken: 7 } });
+  assert.equal(r.status, 409, r.text);
+  assert.match(r.text, /Ο αντιλογισμός έγινε, η διόρθωση όχι/);
+  assert.match(r.text, /για το σκέλος/);
+  const a = calls.find((c) => c.table === 'audit_log');
+  assert.ok(a && JSON.stringify(a.body).includes('replacement_refused'), 'the half-done fix is in the audit trail');
+  insertError = { code: '23514', message: 'new row violates check constraint "x"' };
+  const other = await call('accountant', '/pallets/movements/3/reverse', 'POST', { reason: 'TEST', replacement: { taken: 7 } });
   assert.equal(other.status, 500, 'any other refusal: as before');
 });

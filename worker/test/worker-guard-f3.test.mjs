@@ -33,13 +33,29 @@ test('the F3 source passes with --f3 1 and fails with --f3 0, naming the marker'
   assert.match(r.out, /STOP {2}"v_rt_cycle" \(F3, E21\) = 1/);
 });
 
-test('a script without the F3 code: --f3 0 passes, --f3 1 stops', () => {
+// one marker per F3 feature (final review 26/10, W-8): E21, E10, E11, Q6-1
+const MARKS = [['"v_rt_cycle"', /"v_rt_cycle" \(F3, E21\)/], ['review_cycles', /review_cycles \(F3, E10\)/],
+  ['pl_mov_stop_once', /pl_mov_stop_once \(F3, E11\)/], ['ctPartnerLineCheck', /ctPartnerLineCheck \(F3, Q6-1\)/]];
+const without = (text, mark) => text.split(mark).join(mark.replace(/[a-z]/, 'X'));
+
+test('a script without the F3 code: --f3 0 passes, --f3 1 stops on every marker', () => {
   const f = path.join(dir, 'f2-only.js');
-  writeFileSync(f, src.split('"v_rt_cycle"').join('"v_rt_cycle_gone"'));
+  writeFileSync(f, MARKS.reduce((t, [m]) => without(t, m), src));
   assert.equal(run(f, ...base, '--f3', '0').code, 0);
   const r = run(f, ...base, '--f3', '1');
   assert.equal(r.code, 1, r.out);
-  assert.match(r.out, /STOP {2}"v_rt_cycle" \(F3, E21\) = 0/);
+  for (const [, re] of MARKS) assert.match(r.out, new RegExp(`STOP {2}${re.source} = 0`));
+});
+
+test('each F3 feature has its own marker: one missing is a STOP that names it', () => {
+  for (const [m, re] of MARKS) {
+    const f = path.join(dir, `one-gone-${MARKS.findIndex((x) => x[0] === m)}.js`);
+    writeFileSync(f, without(src, m));
+    const r = run(f, ...base, '--f3', '1');
+    assert.equal(r.code, 1, `${m}: ${r.out}`);
+    assert.match(r.out, new RegExp(`STOP {2}${re.source} = 0`));
+    assert.equal((r.out.match(/^STOP /gm) || []).length, 1, `${m}: only its own marker stops`);
+  }
 });
 
 test('bad --f3 usage → exit 2; without --f3 the answer is unchanged', () => {

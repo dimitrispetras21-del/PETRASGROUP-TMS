@@ -396,6 +396,17 @@ const STATION_ZONE = {
   FR: 'Europe/Paris', BE: 'Europe/Brussels', NL: 'Europe/Amsterdam', LU: 'Europe/Luxembourg', DK: 'Europe/Copenhagen',
   ES: 'Europe/Madrid',
 };
+// The line's clock (final review 26/10, W-6): the document's country (line.country, from the file name), else the
+// toll's country (toll_country - normalised lines carry it, and an E-SUMMARY has no country in its name). The FIRST
+// value given decides: a country that is given but unknown (or not in the parser's upper case) is a review, never
+// replaced by another guess. Greece is EL in the EU's own codes (VAT numbers, DKV entities): the same clock as GR.
+const COUNTRY_ALIAS = { EL: 'GR' };
+export function lineZone(line) {
+  const raw = [line.country, line.toll_country].find((c) => typeof c === 'string' && c !== '');
+  if (raw == null) return null;
+  const iso = Object.prototype.hasOwnProperty.call(COUNTRY_ALIAS, raw) ? COUNTRY_ALIAS[raw] : raw;
+  return Object.prototype.hasOwnProperty.call(STATION_ZONE, iso) ? STATION_ZONE[iso] : null;
+}
 const ZONE_CLOCKS = new Map();
 // instant (ms) -> 'YYYY-MM-DD HH:MM' on the zone's wall clock; formatToParts, so no locale's layout is relied on
 function zoneStamp(ms, zone) {
@@ -456,7 +467,7 @@ function matchCycles(line, candidates) {
     const ids = uniqueIds(candidates);
     return ids.length === 1 && candidates.some((rt) => rt.model === 2 && inCycleDays(line, rt)) ? sure(ids[0]) : review(candidates);
   }
-  const zone = Object.prototype.hasOwnProperty.call(STATION_ZONE, line.country) ? STATION_ZONE[line.country] : null;
+  const zone = lineZone(line);
   if (stamp == null || zone == null) return review(candidates);
   // With the hour: the trips of today's model and the v5 rows whose window holds it. An hour outside every v5
   // window (the truck between two cycles: Wednesday 06:00 end, 14:00 start, fuel at 10:00) is not guessed either.

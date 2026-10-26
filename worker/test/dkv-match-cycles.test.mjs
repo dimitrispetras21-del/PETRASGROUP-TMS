@@ -120,6 +120,18 @@ test('DKV-1 beta: a country missing from the map is a review, never a silent Ath
   assert.deepEqual(matchRoundTrip(fuel(null, '2026-10-14', 'EX'), [B], []), sure(22));
 });
 
+test('DKV-1 beta (final review 26/10, W-6): EL is Greece; a line without a document country reads its toll country', () => {
+  // EL = the EU's own code for Greece (VAT numbers, DKV entities): the Athens clock, as GR
+  assert.deepEqual(matchRoundTrip(fuel('05:30', '2026-10-14', 'EL'), [A, B], []), sure(21));
+  // no country in the file name (E-SUMMARY): the toll's country decides, the same clock as on the document
+  assert.deepEqual(matchRoundTrip({ ...fuel('13:30'), country: null, toll_country: 'DE' }, [A, B], []), sure(22));
+  assert.deepEqual(matchRoundTrip({ ...fuel('13:30'), country: '', toll_country: 'GR' }, [A, B], []), review([21, 22]));
+  // the FIRST country given decides: an unknown document country is never replaced by the toll's (no second guess)
+  assert.deepEqual(matchRoundTrip({ ...fuel('05:59'), country: 'EX', toll_country: 'GR' }, [A, B], []), review([21, 22]));
+  // neither given: a review, as before
+  assert.deepEqual(matchRoundTrip({ ...fuel('05:59'), country: null, toll_country: null }, [A, B], []), review([21, 22]));
+});
+
 // ---- DKV-2 alpha + the cycle's exact days ----
 test('DKV-2: a v5 cycle has exact days - a line on the day before or after it is a review with the cycle, not sure', () => {
   assert.deepEqual(matchRoundTrip(fuel(null, '2026-10-13'), [B], []), review([22]));   // inside today's +-1 only
