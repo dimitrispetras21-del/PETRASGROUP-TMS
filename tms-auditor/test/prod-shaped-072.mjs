@@ -82,6 +82,36 @@ export async function assertFnAcl(db, live) {
     if (got !== [...to].sort().join(',')) throw new Error(`prodShaped072: ${sig} EXECUTE to {${got}}, production {${to.join(',')}}`);
   }
 }
+// Row security as production holds it (pg_class.relrowsecurity + pg_policies, 26/10 ~23:40), for every table of this
+// copy that the fixtures leave with RLS off: production has RLS ON on all of them, with the auditor's read-only
+// monitor_read policy on these, and NO policy on the others (only service_role, which bypasses RLS, reads them).
+// Why it matters: ct_settings is read INSIDE ct_setting() as the caller, so with RLS on and no policy the runner sees
+// 0 rows there although it holds SELECT (the review of PR #105 found it; this copy had RLS off and could not).
+const RLS_MONITOR_READ = ['app_errors', 'audit_log', 'consolidated_loads', 'ct_cost_docs', 'ct_cost_lines', 'ct_round_trips',
+  'ct_rt_legs', 'dl_entries', 'drivers', 'facade_unknown_fields', 'groupage_lines', 'local_moves', 'locations',
+  'national_loads', 'national_orders', 'order_stops', 'orders', 'pl_movements', 'ramp', 'stock_lots', 'trailers', 'trucks'];
+const RLS_NO_POLICY = ['clients', 'ct_settings', 'maint_history', 'partner_assignments', 'partners', 'users'];
+// A table the stubs copy does not create (ct_settings comes only with live-073.sql) is skipped here, and read back
+// as missing only where it must exist.
+const rlsSql = () => [...RLS_MONITOR_READ, ...RLS_NO_POLICY].map((t) => `DO $p$ BEGIN IF to_regclass('public.${t}') IS NOT NULL THEN
+    ALTER TABLE public.${t} ENABLE ROW LEVEL SECURITY;${RLS_MONITOR_READ.includes(t) ? `
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = '${t}' AND policyname = 'monitor_read') THEN
+      CREATE POLICY monitor_read ON public.${t} FOR SELECT TO tms_check_runner, tms_reader USING (true);
+    END IF;` : ''}
+  END IF; END $p$;`).join('\n');
+async function assertRls(db, live) {
+  const { rows } = await db.query(`SELECT c.relname, c.relrowsecurity AS rls, (SELECT string_agg(p.policyname || ':' || p.cmd || ':'
+      || array_to_string(p.roles, '+') || ':' || p.qual, ',' ORDER BY p.policyname) FROM pg_policies p
+      WHERE p.schemaname = 'public' AND p.tablename = c.relname) AS pol
+    FROM pg_class c WHERE c.relnamespace = 'public'::regnamespace AND c.relname = ANY($1)`, [[...RLS_MONITOR_READ, ...RLS_NO_POLICY]]);
+  const by = new Map(rows.map((r) => [r.relname, r]));
+  for (const t of [...RLS_MONITOR_READ, ...RLS_NO_POLICY]) {
+    const want = RLS_MONITOR_READ.includes(t) ? 'monitor_read:SELECT:tms_check_runner+tms_reader:true' : null;
+    const r = by.get(t);
+    if (!r && !(live && t === 'ct_settings')) continue;
+    if (!r || r.rls !== true || (r.pol ?? null) !== want) throw new Error(`prodShaped072: ${t} row security ${JSON.stringify(r)}, production RLS on + ${want}`);
+  }
+}
 export const TRG = `SELECT count(*)::int AS n FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
   JOIN pg_namespace ns ON ns.oid = c.relnamespace WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public'`;
 
@@ -108,5 +138,7 @@ export async function prodShaped072(with072 = true, { money = 'stubs', with072b 
   if (with072b) await db.exec(fs.readFileSync(migrationFile('072b_plan_vehicle_segments.sql'), 'utf8'));
   await db.exec(fnAcl(money === 'live'));   // a missing signature fails here, loudly
   await assertFnAcl(db, money === 'live');
+  await db.exec(rlsSql());
+  await assertRls(db, money === 'live');
   return db;
 }

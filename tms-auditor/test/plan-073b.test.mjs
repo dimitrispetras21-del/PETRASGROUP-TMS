@@ -179,7 +179,7 @@ test('073b on the production-shaped copy', async (t) => {
     await db.exec('BEGIN');
     try {
       await db.exec(`GRANT EXECUTE ON FUNCTION ${RUNNER_FN} TO tms_check_runner`);
-      assert.match(await errorOf(db, read('073b_plan_monitoring.sql')) ?? '', /the runner already executes stock_vs_charge - stop, re-measure/);
+      assert.match(await errorOf(db, read('073b_plan_monitoring.sql')) ?? '', /the runner already executes stock_vs_charge \(a grant, PUBLIC or a membership\) - stop, re-measure/);
     } finally { await db.exec('ROLLBACK'); }
   });
 
@@ -205,6 +205,10 @@ test('073b on the production-shaped copy', async (t) => {
     assert.strictEqual(await n(db, 'SELECT count(*) AS n FROM monitoring.checks WHERE id = ANY($1)', [IDS]), IDS.length);
     assert.strictEqual(await canExec(db, 'tms_check_runner'), true, 'the runner computes X (B-79 / B-80)');
     assert.strictEqual(await canExec(db, 'tms_reader'), false, 'never tms_reader (D-15)');
+    // ct_settings has RLS on (production): the GRANT alone would give the runner 0 rows; its policy gives it X
+    await db.exec('SET ROLE tms_check_runner');
+    try { assert.ok(await n(db, `SELECT count(*) AS n FROM ct_settings WHERE key IN ('x_import', 'x_export', 'full_truck_pallets')`) === 3); }
+    finally { await db.exec('RESET ROLE'); }
     assert.deepStrictEqual((await db.query('SELECT id FROM monitoring.checks WHERE id = ANY($1) AND NOT enabled ORDER BY id', [IDS])).rows.map((r) => r.id), DISABLED);
     assert.match((await db.query(`SELECT disabled_reason AS r FROM monitoring.checks WHERE id = 'B-80'`)).rows[0].r, /owner 24\/10, M-5/);
     const v = await values(db);
@@ -256,6 +260,9 @@ test('073b on the production-shaped copy', async (t) => {
       await db.exec(`CREATE OR REPLACE VIEW public.ct_v_v5_revenue AS ${bad}`);
       const v = await values(db, ['B-79']);
       assert.strictEqual(v['B-79'], 1, 'the VS of the scenario (two leaves, 6 + 4): each leaf takes the whole X');
+      // without the runner's policy on ct_settings (RLS on, production) X reads NULL and the broken rule stays silent
+      await db.exec('DROP POLICY monitor_read ON public.ct_settings');
+      assert.strictEqual((await values(db, ['B-79']))['B-79'], 0, 'B-79 blind without the ct_settings policy');
     } finally { await db.exec('ROLLBACK'); }
     assert.strictEqual((await values(db, ['B-79']))['B-79'], 0);
   });
@@ -287,6 +294,7 @@ test('073b on the production-shaped copy', async (t) => {
     assert.strictEqual(await n(db, `SELECT count(*) AS n FROM pg_policies WHERE tablename = 'rt_vehicle_segments' AND policyname = 'monitor_read'`), 1);
     assert.strictEqual((await db.query(`SELECT has_table_privilege('tms_check_runner', 'public.ct_settings', 'SELECT') AS b`)).rows[0].b, false);
     assert.strictEqual(await canExec(db, 'tms_check_runner'), false, 'stock_vs_charge back to service_role only (057)');
+    assert.strictEqual(await n(db, `SELECT count(*) AS n FROM pg_policies WHERE tablename = 'ct_settings'`), 0, 'ct_settings without a policy again');
     assert.strictEqual(await canExec(db, 'service_role'), true);
     // 073b's proof says "0 today": with the scenario's v5 rows in place it refuses, by name - never a silent seed
     assert.match(await errorOf(db, read('073b_plan_monitoring.sql')) ?? '', /073b proof: B-\d+ gives \d+ today, expected 0 before day L/);

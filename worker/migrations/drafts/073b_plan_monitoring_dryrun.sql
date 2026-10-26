@@ -25,8 +25,11 @@ BEGIN
   IF has_table_privilege('tms_check_runner', 'public.ct_settings', 'SELECT') THEN
     RAISE EXCEPTION '073b: the runner already reads ct_settings - stop, re-measure';
   END IF;
+  IF EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'ct_settings') THEN
+    RAISE EXCEPTION '073b: a policy already exists on ct_settings - stop, re-measure';
+  END IF;
   IF has_function_privilege('tms_check_runner', 'public.stock_vs_charge(numeric, numeric)', 'EXECUTE') THEN
-    RAISE EXCEPTION '073b: the runner already executes stock_vs_charge - stop, re-measure';
+    RAISE EXCEPTION '073b: the runner already executes stock_vs_charge (a grant, PUBLIC or a membership) - stop, re-measure';
   END IF;
   SELECT count(*) INTO v_trg0 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
     JOIN pg_namespace ns ON ns.oid = c.relnamespace WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public';
@@ -45,6 +48,10 @@ BEGIN
   --     fail with "permission denied for table ct_settings" as soon as one v5 row exists (measured on PGlite).
   --     The auditor's runner only (it already reads money: stock_v_lot_money, 057); never tms_reader.
   GRANT SELECT ON public.ct_settings TO tms_check_runner;
+  --     ct_settings has RLS on in production with no policy (measured 26/10; only service_role, which bypasses RLS,
+  --     read it): the GRANT alone gives the runner 0 rows, ct_setting() answers NULL, X is NULL and B-79 stays green
+  --     however the shares break (the harness with production's RLS proves it). A read policy for the runner only.
+  CREATE POLICY monitor_read ON public.ct_settings FOR SELECT TO tms_check_runner USING (true);
   --     And the EXECUTE on stock_vs_charge: 057 gave it to service_role only, and the right to call a function is
   --     checked when the query starts, even with 0 rows, so the 073b dry run of 26/10 stopped at B-79 with "permission denied
   --     for function stock_vs_charge". Runner only, as above (ct_setting is already PUBLIC in production).
@@ -481,6 +488,12 @@ BEGIN
   IF NOT has_table_privilege('tms_check_runner', 'public.ct_settings', 'SELECT')
      OR has_table_privilege('tms_reader', 'public.ct_settings', 'SELECT') THEN
     RAISE EXCEPTION '073b proof: ct_settings is not readable by the runner only';
+  END IF;
+  IF (SELECT count(*) FROM pg_policies WHERE schemaname = 'public' AND tablename = 'ct_settings') <> 1
+     OR NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'ct_settings'
+                      AND policyname = 'monitor_read' AND cmd = 'SELECT' AND roles::text[] = ARRAY['tms_check_runner']
+                      AND qual = 'true' AND with_check IS NULL) THEN
+    RAISE EXCEPTION '073b proof: ct_settings has not exactly the runner''s read policy';
   END IF;
   IF NOT has_function_privilege('tms_check_runner', 'public.stock_vs_charge(numeric, numeric)', 'EXECUTE')
      OR has_function_privilege('tms_reader', 'public.stock_vs_charge(numeric, numeric)', 'EXECUTE') THEN

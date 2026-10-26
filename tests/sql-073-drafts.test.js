@@ -155,9 +155,12 @@ test('073b is the generated one, ASCII, one DO block each, and holds exactly the
   assert.strictEqual((strip(main).match(/\bGRANT\b/g) || []).length, 2, 'two GRANTs only');
   const rb = read('073b_plan_monitoring_rollback.sql');
   assert.match(rb, /REVOKE SELECT ON public\.ct_settings FROM tms_check_runner;/);
+  assert.match(rb, /DROP POLICY IF EXISTS monitor_read ON public\.ct_settings;/);
   assert.match(rb, /REVOKE EXECUTE ON FUNCTION public\.stock_vs_charge\(numeric, numeric\) FROM tms_check_runner;/);
   assert.strictEqual((main.match(/CREATE POLICY monitor_read ON public\.[a-z_]+ FOR SELECT TO tms_check_runner, tms_reader USING \(true\);/g) || []).length, 5);
-  assert.strictEqual((strip(main).match(/CREATE POLICY/g) || []).length, 5);
+  // ct_settings: RLS on in production, so the runner's GRANT needs its own read policy (runner only, D-15)
+  assert.match(main, /CREATE POLICY monitor_read ON public\.ct_settings FOR SELECT TO tms_check_runner USING \(true\);/);
+  assert.strictEqual((strip(main).match(/CREATE POLICY/g) || []).length, 6);
   assert.ok(!/tms_reader;/.test(main.replace(/TO tms_check_runner, tms_reader USING/g, '')), 'no grant to tms_reader');
 });
 
