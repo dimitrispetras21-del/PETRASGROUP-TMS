@@ -81,7 +81,7 @@ beforeEach(() => {
     const u = new URL(url);
     const method = init.method || 'GET';
     const table = u.pathname.replace(/^\/rest\/v1\//, '');
-    calls.push({ method, table, params: u.searchParams });
+    calls.push({ method, table, params: u.searchParams, body: init.body });
     if (method === 'GET' && table === 'ct_cost_docs' && u.searchParams.get('id') === 'eq.1') return json([DOC]);
     if (method === 'GET' && ['ct_import_rules', 'ct_cost_docs', 'ct_plate_aliases'].includes(table)) return json([]);
     if (method === 'GET' && table === 'trucks') return json(TRUCKS || [{ id: 7, license_plate: 'XX1234' }, { id: 9, license_plate: 'XX5678' }]);
@@ -234,6 +234,20 @@ test('commit (final review 26/10, W-9): a truck of the cycle is the cycle\'s onl
   // truck 12's segment is 02/09 only: a fee line filed under it (Q7-1) dated by the statement passes
   const fee = await commit([{ ...fuelLine(12, 23), category: 'dkv', service_date: '2026-09-30' }]);
   assert.equal(fee.status, 201, fee.text);
+});
+
+test('commit (final round 2, finding 1): one statement with tolls of BOTH trucks of a handover in one country gives one line per truck, each on its own segment\'s day', async () => {
+  // cycle 23: truck 12 drives 02/09, truck 13 drives 02/09-03/09. Same DKV document, same country (DE). One group for
+  // both kept truck 12 with the date 03/09 (truck 13's), and W-9 refused the whole statement.
+  const toll = (seq, truck_id, plate, day, gross) => ({ doc_no: 'D1', seq, plate, truck_id, rt_id: 23, category: 'tolls',
+    country: 'DE', toll_country: 'DE', net: gross, vat: 0, gross, currency: 'EUR', service_date: day, match: 'sure' });
+  DOC.total_gross = 30;
+  const r = await commit([toll(1, 12, 'XX0012', '2026-09-02', 10), toll(2, 13, 'XX0013', '2026-09-03', 20)]);
+  assert.equal(r.status, 201, r.text);
+  const ins = calls.find((c) => c.method === 'POST' && c.table === 'ct_cost_lines');
+  assert.ok(ins, 'the lines were inserted');
+  const sent = JSON.parse(ins.body);
+  assert.deepEqual(sent.map((x) => [x.truck_id, x.line_date, x.net]).sort(), [[12, '2026-09-02', 10], [13, '2026-09-03', 20]]);
 });
 
 test('deploy order (W-7): a Worker that meets no v_rt_vehicle_windows (072b not run) says so by name, never «Costs request failed»', async () => {

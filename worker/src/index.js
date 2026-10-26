@@ -4110,6 +4110,11 @@ async function ctDbPatch(env, table, filter, patch) {
 // segments, and with two or more of them a line must name one - written here, at the moment the line is written
 // (principle 6). The view still counts a line that names nobody (money is never dropped), and replaces no rate with
 // it. Today's round trips (model 1) and lines of any other category take today's path.
+// Final round 2 (26/10, finding 2): a line that names nobody on a cycle with exactly ONE partner is stamped with that
+// partner ({ partner_id } back to the caller, written with the line). Left unnamed, the view read it as that partner's
+// only while the cycle had one: a later handover to a second partner turned it into an unmatched row - counted on top
+// of the first partner's rate (300 + 280 + 200 instead of 480) - and nothing said so. Refusals come back as
+// { status, message }; null = nothing to do.
 async function ctPartnerLineCheck(env, line) {
   if (line.partner_id != null) {
     if (!Number.isSafeInteger(line.partner_id) || line.partner_id <= 0) return { status: 400, message: "partner_id: ο συνεργάτης θέλει ακέραιο id" };
@@ -4126,6 +4131,7 @@ async function ctPartnerLineCheck(env, line) {
   if (line.partner_id == null && partners.length > 1) {
     return { status: 409, message: "Ο κύκλος έχει δύο ή περισσότερους συνεργάτες — διάλεξε ποιανού είναι το τιμολόγιο (κάθε τιμολόγιο αντικαθιστά μόνο το δικό του κόμιστρο)" };
   }
+  if (line.partner_id == null && partners.length === 1) return { partner_id: partners[0] };
   return null;
 }
 __name(ctPartnerLineCheck, "ctPartnerLineCheck");
@@ -4605,8 +4611,9 @@ async function handleCosts(request, url, origin, env) {
         if (rt.rows.length && rt.rows[0].trailer_id) row.trailer_id = rt.rows[0].trailer_id;
       }
       {
-        const bad = await ctPartnerLineCheck(env, row);
-        if (bad) return jsonError(bad.message, bad.status, origin, env);
+        const chk = await ctPartnerLineCheck(env, row);
+        if (chk && chk.status) return jsonError(chk.message, chk.status, origin, env);
+        if (chk && chk.partner_id != null) row.partner_id = chk.partner_id;
       }
       row.alloc_status = row.rt_id ? "allocated" : "unallocated";
       row.created_by = caller.sub;
@@ -4725,8 +4732,9 @@ async function handleCosts(request, url, origin, env) {
         // Q6-1: the EFFECTIVE line (a PATCH that moves the line to another cycle, or changes its category, is
         // checked as the line it leaves behind)
         const eff = { ...before.rows[0], ...patch };
-        const bad = await ctPartnerLineCheck(env, eff);
-        if (bad) return jsonError(bad.message, bad.status, origin, env);
+        const chk = await ctPartnerLineCheck(env, eff);
+        if (chk && chk.status) return jsonError(chk.message, chk.status, origin, env);
+        if (chk && chk.partner_id != null) patch.partner_id = chk.partner_id;
       }
       if ("rt_id" in patch) patch.alloc_status = patch.rt_id ? "allocated" : "unallocated";
       const updated = await ctDbPatch(env, "ct_cost_lines", `id=eq.${encodeURIComponent(recId)}`, patch);

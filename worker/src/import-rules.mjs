@@ -826,7 +826,7 @@ function isoDayDiff(a, b) {
 
 /**
  * aggregateLines(lines, { statementDocNo, rts })
- *   - tolls with an rt_id: key = doc_no|rt_id|country → one line
+ *   - tolls with an rt_id: key = doc_no|rt_id|country|truck → one line
  *   - fee children (category 'dkv', rt_id set): key = rt_id → one «Τέλη DKV» line per RT
  *   - everything else (fuel family, unallocated tolls, ferries, fines, other) passes through
  * Returns { lines, stats:{ toll_groups, toll_members, fee_groups, fee_members } }.
@@ -867,7 +867,14 @@ export function aggregateLines(lines, opts = {}) {
     const members = Array.isArray(line.details) && line.details.length ? line.details : [memberOf(line)];
     if (AGG_TOLL_CATEGORIES.has(line.category) && line.rt_id != null) {
       const cc = line.toll_country || line.country || '';
-      const key = `${line.doc_no || ''}|${line.rt_id}|${cc}`;
+      // final round 2 (26/10, finding 1): the truck is part of the group. A v5 cycle can hand over from one OWNED truck
+      // to another, and both can pay tolls in the same country: one group for both kept the FIRST member's truck and
+      // the LAST member's date, so the commit's W-9 check (a truck counts only on its own segment's days) refused the
+      // whole statement. Today's round trips have one truck, so their groups - and their AGG import_keys, which
+      // already carry the first member's plate - are unchanged. Each truck's group keeps its own plate in that key; if
+      // two groups ever shared one, findDuplicateImportKeys would stop the commit.
+      const veh = line.truck_id != null ? `t${line.truck_id}` : `p${line.plate || ''}`;
+      const key = `${line.doc_no || ''}|${line.rt_id}|${cc}|${veh}`;
       if (!tollGroups.has(key)) { tollGroups.set(key, { first: line, members: [] }); order.push(['toll', key]); }
       tollGroups.get(key).members.push(...members);
       continue;

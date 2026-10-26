@@ -88,12 +88,15 @@ test('POST: a two-partner cycle - a line that names nobody, or a partner who dri
   assert.equal(inserted().length, 0, 'nothing written');
 });
 
-test('POST: one partner - a line without a name is that partner\'s (today\'s single invoice); today\'s trips read no segment', async () => {
+test('POST: one partner - a line without a name is that partner\'s, and is STORED with it (final round 2, finding 2); today\'s trips read no segment', async () => {
   const one = await call('POST', '/costs/lines', line({ rt_id: 41 }));
   assert.equal(one.status, 201, one.text);
+  // stamped at the write: a later handover to a second partner cannot turn it into an unmatched row
+  assert.equal(inserted()[0].body.partner_id, 7);
   calls = [];
   const v1 = await call('POST', '/costs/lines', line({ rt_id: 5 }));
   assert.equal(v1.status, 201, v1.text);
+  assert.equal(inserted()[0].body.partner_id, undefined, 'today\'s model: nothing stamped');
   assert.equal(calls.filter((c) => c.table === 'rt_vehicle_segments').length, 0);
   calls = [];
   const fuel = await call('POST', '/costs/lines', line({ rt_id: 40, category: 'fuel' }));
@@ -117,6 +120,13 @@ test('PATCH: the EFFECTIVE line is checked - moved to a two-partner cycle withou
   calls = [];
   const named = await call('PATCH', '/costs/lines/900', { rt_id: 40, partner_id: 7, reason: 'TEST' });
   assert.equal(named.status, 200, named.text);
+  const w = calls.find((c) => c.method === 'PATCH' && c.table === 'ct_cost_lines');
+  assert.equal(w.body.partner_id, 7);
+});
+
+test('PATCH (final round 2, finding 2): an unnamed line of a one-partner cycle is stamped with that partner on any edit', async () => {
+  const r = await call('PATCH', '/costs/lines/900', { note: 'TEST', reason: 'TEST' });
+  assert.equal(r.status, 200, r.text);
   const w = calls.find((c) => c.method === 'PATCH' && c.table === 'ct_cost_lines');
   assert.equal(w.body.partner_id, 7);
 });
