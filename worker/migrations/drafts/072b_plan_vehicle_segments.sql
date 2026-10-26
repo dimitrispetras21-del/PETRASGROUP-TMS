@@ -1401,6 +1401,13 @@ begin
   if v_first and (v_set ? 'at' or v_set ? 'place_note' or v_set ? 'reason' or v_set ? 'reason_note') then
     perform plan_h_raise('seg_first', r.code);
   end if;
+  -- code review xhigh 26/10: a later segment's point and reason are refused as plan_seg_change refuses them
+  -- (bad_input), not left to the CHECKs (seg_place_text / seg_change_pair): one rule, one refusal shape. The
+  -- reason's VALUE stays the CHECK's (seg_reason_list, one list), as in plan_seg_change.
+  if (v_set ? 'place_note' and coalesce(v_set->>'place_note', '') !~ '[^[:space:]]')
+     or (v_set ? 'reason' and coalesce(v_set->>'reason', '') = '') then
+    perform plan_h_raise('bad_input', 'place_note and reason');
+  end if;
   -- the vehicle after the correction: a present key wins, even null; a type change clears the other type's fields
   -- unless the body sets them (decision 12, the same rule as plan_rt_update)
   v_type := coalesce(v_set->>'trip_type', g.trip_type);
@@ -1525,10 +1532,15 @@ begin
   -- (the same ok, "replayed"), never a false "gone". Someone else's removal stays seg_gone (look again first).
   if g.id is not null and g.deleted_at is not null and g.deleted_by = p_actor and not v_dry
      and g.deleted_reason like w_rm || ' %' then
+    -- code review xhigh 26/10: the replay names the costs notice the first call wrote (same transaction as the
+    -- removal: its created_at is the segment's deleted_at), so a lost answer pressed again still links its notice
     return plan_h_ok('plan_seg_remove', jsonb_build_object('rt_id', v_rt, 'segment_id', g.id,
              'prev_segment_id', (select o.id from rt_vehicle_segments o where o.rt_id = v_rt and o.deleted_at is null
                                     and o.from_at < g.from_at and o.to_at >= g.to_at order by o.from_at desc limit 1)),
-             '[]'::jsonb, '[]'::jsonb) || jsonb_build_object('replayed', true);
+             '[]'::jsonb,
+             (select coalesce(jsonb_agg(q.id order by q.id), '[]'::jsonb) from plan_notices q
+               where q.rt_id = v_rt and q.kind = 'costs_without_rt' and q.created_by = p_actor
+                 and q.created_at = g.deleted_at)) || jsonb_build_object('replayed', true);
   end if;
   if g.id is null or g.deleted_at is not null then perform plan_h_raise('seg_gone', coalesce(v_seg::text, 'null')); end if;
   if r.status = 'cancelled' then perform plan_h_raise('rt_cancelled', r.code); end if;
