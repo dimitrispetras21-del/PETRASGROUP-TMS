@@ -156,7 +156,7 @@ ${proof}
     SET LOCAL ROLE tms_check_runner;
     EXECUTE v_sql INTO v_v;
     v_a := '{}';
-    IF v_ids IS NOT NULL THEN EXECUTE v_ids INTO v_a; END IF;
+    IF v_ids IS NOT NULL THEN EXECUTE v_ids INTO STRICT v_a; END IF;   -- STRICT: one row, or an error that says so
     RESET ROLE;
     IF v_v IS DISTINCT FROM 0 THEN RAISE EXCEPTION '073b proof: % gives % today, expected 0 before day L', v_g.id, v_v; END IF;
     IF v_a IS NULL THEN RAISE EXCEPTION '073b proof: % ids returned NULL', v_g.id; END IF;
@@ -181,8 +181,7 @@ ${proof}
   --    per-pallet share of each X; a missing right would raise here, by its own name)
   SET LOCAL ROLE tms_check_runner;
   SELECT count(DISTINCT key) FILTER (WHERE value IS NOT NULL) INTO v_k FROM public.ct_settings WHERE key IN (${list(X_KEYS)});
-  v_v := NULL;
-  IF v_k = ${X_KEYS.length} THEN v_v := ${xSum}; END IF;   -- used, not compared: the call itself is the proof
+  IF v_k = ${X_KEYS.length} THEN PERFORM ${xSum}; END IF;
   RESET ROLE;
   IF v_k <> ${X_KEYS.length} THEN
     RAISE EXCEPTION '073b proof: the runner reads % of the ${X_KEYS.length} X keys with a value (0 = RLS without its policy)', v_k;
