@@ -1247,6 +1247,7 @@ declare
   v_veh jsonb; v_type text; v_truck bigint; v_trailer bigint; v_driver bigint; v_partner bigint; v_rate numeric;
   v_same boolean; v_new bigint; v_old jsonb; v_ans jsonb; v_warn jsonb := '[]'::jsonb; v_res jsonb; v_seg0 jsonb;
   v_hint text; v_msg text; v_det text; v_cname text; v_state text; v_code text;
+  v_prev_rate numeric; v_list jsonb := '[]'::jsonb; v_conf jsonb;
 begin
   -- "Vehicle handover" on the cycle's card (spec 5): from a time inside the cycle, at a point (a note), for a
   -- reason, another vehicle - ours or a partner's - takes over. The segment holding that time is cut in two; the
@@ -1254,7 +1255,7 @@ begin
   -- time (planned, a breakdown, recorded afterwards): the base does not compare with now().
   perform plan_h_ctx(p_actor, p_role);
   perform plan_h_keys(p, array['rt_id', 'at', 'place_note', 'reason', 'reason_note', 'vehicle', 'same_driver',
-                               'request_id', 'dry_run'], 'p');
+                               'request_id', 'dry_run', 'prev_partner_rate', 'confirm_token'], 'p');
   if p ? 'dry_run' and jsonb_typeof(p->'dry_run') <> 'boolean' then perform plan_h_raise('bad_input', 'dry_run'); end if;
   if p ? 'same_driver' and jsonb_typeof(p->'same_driver') <> 'boolean' then perform plan_h_raise('bad_input', 'same_driver'); end if;
   if jsonb_typeof(p->'vehicle') is distinct from 'object' then perform plan_h_raise('bad_input', 'vehicle'); end if;
@@ -1283,6 +1284,7 @@ begin
     v_driver := (v_veh->>'driver_id')::bigint;
     v_partner := (v_veh->>'partner_id')::bigint;
     v_rate := (v_veh->>'partner_rate')::numeric;
+    v_prev_rate := (p->>'prev_partner_rate')::numeric;
   -- invalid_parameter_value: a time with an unknown zone ('... Mars/Base') is 22023, which 072's exception blocks
   -- map to bad_input too (B2b, 26/10: it was a raw 22023)
   exception when invalid_text_representation or numeric_value_out_of_range or invalid_datetime_format
@@ -1323,13 +1325,37 @@ begin
      is not distinct from (g.trip_type, g.truck_id, g.trailer_id, g.driver_id, g.partner_id, g.partner_rate) then
     perform plan_h_raise('seg_same', r.code);
   end if;
+  -- owner 26/10 (money): a cycle with two partner segments costs the SUM of their rates, so a handover from one
+  -- partner to a NEW partner may lower the previous partner's rate in the same act ("perhaps the first one's price
+  -- must come down"). The form prefills it with its current value; a changed rate is a line of the act's list
+  -- ("rate <partner>: 300 -> 250") under one token (the ONE two-step mechanism, plan_h_confirm). The rate is for
+  -- every role that writes (decision 41): not an amount, never stripped. Same checks as a segment's own rate.
+  -- mut:prevrate-begin
+  if p ? 'prev_partner_rate' then
+    if g.trip_type <> 'PARTNER' or v_type is distinct from 'PARTNER' or v_prev_rate is null then
+      perform plan_h_raise('bad_input', 'prev_partner_rate');
+    end if;
+    perform plan_h_seg_vehicle_ok('PARTNER', null, null, null, g.partner_id, v_prev_rate);
+    if v_prev_rate is distinct from g.partner_rate then
+      v_list := jsonb_build_array(jsonb_build_object('kind', 'partner_rate', 'rt_id', v_rt, 'segment_id', g.id,
+                  'partner_id', g.partner_id, 'partner', (select x.company_name from partners x where x.id = g.partner_id),
+                  'rate_from', g.partner_rate, 'rate_to', v_prev_rate));
+    end if;
+  end if;
+  -- mut:prevrate-end
+  v_conf := plan_h_confirm('plan_seg_change', v_rt::text || '>' || g.id::text, v_list, p, p_role);
   -- the executing segment of each stop before the cut (review R2, DB finding 4: the stops from the handover on
   -- change hands, and the answer and the preview say which)
   v_seg0 := plan_h_seg_stops(v_rt);
 
   begin
     v_old := to_jsonb(g);
-    update rt_vehicle_segments set to_at = v_at, updated_at = now() where id = g.id;
+    -- the previous partner's new rate rides in the same update (owner 26/10, money), so one history row says both
+    update rt_vehicle_segments set to_at = v_at,
+           -- mut:prevwrite-begin
+           partner_rate = case when jsonb_array_length(v_list) > 0 then v_prev_rate else partner_rate end,
+           -- mut:prevwrite-end
+           updated_at = now() where id = g.id;
     perform plan_h_audit(p_actor, p_role, 'update', 'rt_vehicle_segments', g.id::text, v_old,
                          (select to_jsonb(s) from rt_vehicle_segments s where s.id = g.id));
     insert into rt_vehicle_segments (rt_id, from_at, to_at, trip_type, truck_id, trailer_id, driver_id, partner_id,
@@ -1361,7 +1387,9 @@ begin
     get stacked diagnostics v_hint = pg_exception_hint, v_msg = message_text, v_det = pg_exception_detail,
                             v_cname = constraint_name, v_state = returned_sqlstate;
     if v_hint = 'plan_dry_run' then
-      return jsonb_build_object('ok', true, 'op', 'plan_seg_change', 'dry_run', true, 'preview', v_det::jsonb);
+      -- with a changed previous rate: the list and the token beside the preview (plan_seg_remove's shape)
+      return jsonb_build_object('ok', true, 'op', 'plan_seg_change', 'dry_run', true, 'preview', v_det::jsonb)
+        || case when coalesce((v_conf->>'needs_confirm')::boolean, false) then v_conf - 'ok' - 'op' - 'dry_run' else '{}'::jsonb end;
     end if;
     if v_dry and (v_hint like 'plan:%' or coalesce(v_cname, '') <> '') then
       -- the preview SHOWS the rule the handover would break (pattern plan_rt_update, Figma H7); nothing was kept
@@ -1386,10 +1414,11 @@ declare
   v_type text; v_truck bigint; v_trailer bigint; v_driver bigint; v_partner bigint; v_rate numeric;
   v_old jsonb; v_res jsonb; v_ids bigint[] := '{}'; v_seg0 jsonb; v_warn jsonb := '[]'::jsonb;
   v_hint text; v_msg text; v_det text; v_cname text; v_state text; v_code text;
+  v_prev_rate numeric; v_list jsonb := '[]'::jsonb; v_conf jsonb;
 begin
   -- "Correction" of one segment (spec 5): its time, point, reason or vehicle, under the same rules as a handover.
   perform plan_h_ctx(p_actor, p_role);
-  perform plan_h_keys(p, array['segment_id', 'set', 'dry_run'], 'p');
+  perform plan_h_keys(p, array['segment_id', 'set', 'dry_run', 'prev_partner_rate', 'confirm_token'], 'p');
   if jsonb_typeof(v_set) <> 'object' then perform plan_h_raise('bad_input', 'set'); end if;
   perform plan_h_keys(v_set, array['at', 'place_note', 'reason', 'reason_note', 'trip_type', 'truck_id', 'trailer_id',
                                    'driver_id', 'partner_id', 'partner_rate'], 'set');
@@ -1408,6 +1437,7 @@ begin
     v_driver := (v_set->>'driver_id')::bigint;
     v_partner := (v_set->>'partner_id')::bigint;
     v_rate := (v_set->>'partner_rate')::numeric;
+    v_prev_rate := (p->>'prev_partner_rate')::numeric;
   -- invalid_parameter_value: an unknown time zone (22023), as plan_seg_change (B2b, 26/10)
   exception when invalid_text_representation or numeric_value_out_of_range or invalid_datetime_format
                  or datetime_field_overflow or invalid_parameter_value then
@@ -1473,13 +1503,33 @@ begin
     -- the handover stays strictly inside the cycle and between its neighbours (no segment of zero length)
     if pv.id is null or not (v_at > pv.from_at and v_at < g.to_at) then perform plan_h_raise('seg_time', r.code); end if;
   end if;
+  -- owner 26/10 (money), as plan_seg_change: a correction to a NEW partner may lower the PREVIOUS partner segment's
+  -- rate in the same act, as a line of its list under one token. The first segment has no previous one.
+  if p ? 'prev_partner_rate' then
+    if pv.id is null then
+      select * into pv from rt_vehicle_segments
+       where rt_id = v_rt and deleted_at is null and to_at = g.from_at for no key update;
+    end if;
+    if v_first or pv.id is null or pv.trip_type <> 'PARTNER' or v_type is distinct from 'PARTNER' or v_prev_rate is null then
+      perform plan_h_raise('bad_input', 'prev_partner_rate');
+    end if;
+    perform plan_h_seg_vehicle_ok('PARTNER', null, null, null, pv.partner_id, v_prev_rate);
+    if v_prev_rate is distinct from pv.partner_rate then
+      v_list := jsonb_build_array(jsonb_build_object('kind', 'partner_rate', 'rt_id', v_rt, 'segment_id', pv.id,
+                  'partner_id', pv.partner_id, 'partner', (select x.company_name from partners x where x.id = pv.partner_id),
+                  'rate_from', pv.partner_rate, 'rate_to', v_prev_rate));
+    end if;
+  end if;
+  v_conf := plan_h_confirm('plan_seg_fix', g.id::text, v_list, p, p_role);
   -- the executing segment of each stop before the correction (a moved handover time moves stops between segments)
   v_seg0 := plan_h_seg_stops(v_rt);
 
   begin
-    if v_set ? 'at' and v_at <> g.from_at then
+    if (v_set ? 'at' and v_at <> g.from_at) or jsonb_array_length(v_list) > 0 then
       v_old := to_jsonb(pv);
-      update rt_vehicle_segments set to_at = v_at, updated_at = now() where id = pv.id;
+      update rt_vehicle_segments set to_at = case when v_set ? 'at' then v_at else to_at end,
+             partner_rate = case when jsonb_array_length(v_list) > 0 then v_prev_rate else partner_rate end,
+             updated_at = now() where id = pv.id;
       perform plan_h_audit(p_actor, p_role, 'update', 'rt_vehicle_segments', pv.id::text, v_old,
                            (select to_jsonb(s) from rt_vehicle_segments s where s.id = pv.id));
       v_ids := v_ids || pv.id;
@@ -1513,7 +1563,8 @@ begin
     get stacked diagnostics v_hint = pg_exception_hint, v_msg = message_text, v_det = pg_exception_detail,
                             v_cname = constraint_name, v_state = returned_sqlstate;
     if v_hint = 'plan_dry_run' then
-      return jsonb_build_object('ok', true, 'op', 'plan_seg_fix', 'dry_run', true, 'preview', v_det::jsonb);
+      return jsonb_build_object('ok', true, 'op', 'plan_seg_fix', 'dry_run', true, 'preview', v_det::jsonb)
+        || case when coalesce((v_conf->>'needs_confirm')::boolean, false) then v_conf - 'ok' - 'op' - 'dry_run' else '{}'::jsonb end;
     end if;
     if v_dry and (v_hint like 'plan:%' or coalesce(v_cname, '') <> '') then
       v_code := case when v_hint like 'plan:%' then substr(v_hint, 6) else v_cname end;

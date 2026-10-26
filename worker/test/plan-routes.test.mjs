@@ -413,6 +413,29 @@ test('072b one step: the dry run list with seg_vehicle reaches a role without mo
   }
 });
 
+// owner 26/10 (money): a handover to a NEW partner may lower the previous partner's rate in the same act - a line
+// of the act's list (partner_rate: not an amount, decision 41, for every role that writes) under one token: the dry run
+// reaches a role without money as sent, the execution without the token is 428, and the rate + token ride in p
+test('072b previous partner rate: the partner_rate line reaches every role; need_token → 428; prev_partner_rate and the token in p', async () => {
+  const list = [{ kind: 'partner_rate', rt_id: 5, segment_id: 11, partner_id: 7, partner: 'Συνεργάτης 1', rate_from: 300, rate_to: 250 }];
+  on('POST', 'rpc/plan_seg_change', (u, b) => (b.p.dry_run
+    ? json({ ok: true, op: 'plan_seg_change', dry_run: true, needs_confirm: true, confirm_token: 't', consequences: list,
+             preview: { segments: [], warnings: [], conflict: null } })
+    : planReject('need_token', 'plan_seg_change')));
+  const body = { at: '2026-10-27T10:00:00+02:00', place_note: 'Λάρισα', reason: 'planned_truck', prev_partner_rate: 250,
+                 vehicle: { trip_type: 'PARTNER', partner_id: 8, partner_rate: 200 } };
+  for (const role of ['dispatcher', 'management', 'warehouse']) {
+    const r = await call(role, 'POST', '/plan/rt/5/handover', { ...body, dry_run: true });
+    assert.equal(r.status, 200, `${role}: ${r.text}`);
+    assert.deepEqual(r.json.consequences, list, role);
+  }
+  calls.length = 0;
+  const r = await callOpen('warehouse', 'POST', '/plan/rt/5/handover', { ...body, request_id: 'x' });
+  assert.equal(r.status, 428, r.text);
+  assert.equal(r.json.error.code, 'need_token');
+  assert.deepEqual(rpcCalls().map((c) => c.body), [{ p: { ...body, request_id: 'x', rt_id: 5 }, p_actor: 'tester', p_role: 'warehouse' }]);
+});
+
 test('23P01 at the RPC\'s COMMIT (071b EXCLUDE) → 422 truck_busy / driver_busy', async () => {
   for (const [name, code] of [['rt_v2_truck_once', 'truck_busy'], ['rt_v2_driver_once', 'driver_busy']]) {
     routes.length = 0;

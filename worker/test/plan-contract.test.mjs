@@ -16,10 +16,10 @@
 // The copy is also compared with the SQL branch's file through git (final
 // review 25/10, finding 4): a review fix there without a recopy fails HERE.
 // The same for 072b on deploy/worker-plan-handover: a copy of
-// feat/national-v5-handover-one-step's file (owner 26/10, one step; #96 merged the first one), re-synced with ONE command
-//   git checkout feat/national-v5-handover-one-step -- worker/migrations/drafts/072b_plan_vehicle_segments.sql
+// feat/national-v5-handover-prev-rate's file (owner 26/10: one step, #100, then the previous partner's rate on top; #96 merged the first one), re-synced with ONE command
+//   git checkout feat/national-v5-handover-prev-rate -- worker/migrations/drafts/072b_plan_vehicle_segments.sql
 // and, so this branch never mixes a new 072b with older generated files and tests (code review xhigh 26/10), the set:
-//   git checkout feat/national-v5-handover-one-step -- 'worker/migrations/drafts/072b_*' worker/migrations/drafts/tools/build-072b.mjs tests/sql-072b-drafts.test.js tms-auditor/test/plan-072b.test.mjs
+//   git checkout feat/national-v5-handover-prev-rate -- 'worker/migrations/drafts/072b_*' worker/migrations/drafts/tools/build-072b.mjs tests/sql-072b-drafts.test.js tms-auditor/test/plan-072b.test.mjs
 //
 // 072's own refusals are parsed from `plan_h_raise('<code>'` (a literal code
 // as the first argument — the convention of the SQL plan, Task A1) and from
@@ -58,7 +58,7 @@ const f071b = () => readOne(['071b_plan_one_vehicle.sql'], 'it is live since 22/
 const f072 = () => readOne(['drafts/072_plan_functions.sql', '072_plan_functions.sql'],
   'copy it from the SQL branch: git checkout feat/national-v5-f2 -- worker/migrations/drafts/072_plan_functions.sql');
 const f072b = () => readOne(['drafts/072b_plan_vehicle_segments.sql', '072b_plan_vehicle_segments.sql'],
-  'copy it from the SQL branch: git checkout feat/national-v5-handover-one-step -- worker/migrations/drafts/072b_plan_vehicle_segments.sql');
+  'copy it from the SQL branch: git checkout feat/national-v5-handover-prev-rate -- worker/migrations/drafts/072b_plan_vehicle_segments.sql');
 const uniq = (re, text) => [...new Set([...text.matchAll(re)].map((m) => m[1]))].sort();
 const greek = /[α-ωΑ-Ωά-ώ]/;
 
@@ -141,7 +141,7 @@ function sameAsSqlBranch(t, { file, sql }, sqlBranch) {
 }
 test('the 072 copy is byte-identical to the SQL branch file', (t) => sameAsSqlBranch(t, f072(), 'feat/national-v5-f2'));
 // 072b: the same rule, its own SQL branch (vehicle handover plan, Task B4)
-test('the 072b copy is byte-identical to the SQL branch file', (t) => sameAsSqlBranch(t, f072b(), 'feat/national-v5-handover-one-step'));
+test('the 072b copy is byte-identical to the SQL branch file', (t) => sameAsSqlBranch(t, f072b(), 'feat/national-v5-handover-prev-rate'));
 
 test('the parsed codes are exactly the plans\' 26 + 31 + 15 — none missing, none extra, none retired', () => {
   assert.deepEqual(codes071(f071().sql), CODES_071, '071 codes');
