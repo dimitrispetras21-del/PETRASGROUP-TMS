@@ -5087,11 +5087,16 @@ async function handleCosts(request, url, origin, env) {
       const normalized = applyRules(split.lines, { trucks, plateAliases, rules });
 
       // (d) match each line to a round trip (spec §4 score).
+      // 073 / E10 + handover P3-3: the rows come from v_rt_vehicle_windows (072b), not ct_round_trips - today's
+      // round trips (model 1) exactly as the old select, plus one row per OWNED segment of a v5 cycle with that
+      // segment's truck, days and window (start_at/end_at), so a v5 line is matched by its hour (import-rules.mjs
+      // matchCycles). The view exists from 072b on; this Worker is deployed only after 073, which needs 072b - a
+      // missing view is a 500 on the preview (loud), never a silent fallback to the whole-cycle truck.
       const truckIds = [...new Set(normalized.map((l) => l.truck_id).filter((v) => v != null))];
       let rts = [];
       if (truckIds.length) {
-        const rtParams = new URLSearchParams({ select: "id,truck_id,status,date_start,date_end", truck_id: `in.(${truckIds.join(",")})`, status: "neq.cancelled" });
-        rts = (await dbSelectRaw(env, "ct_round_trips", rtParams)).rows;
+        const rtParams = new URLSearchParams({ select: "id,truck_id,status,date_start,date_end,model,start_at,end_at", truck_id: `in.(${truckIds.join(",")})`, status: "neq.cancelled" });
+        rts = (await dbSelectRaw(env, "v_rt_vehicle_windows", rtParams)).rows;
       }
       let lines = normalized.map((l) => ({ ...l, ...matchRoundTrip(l, rts, rules), import_key: buildImportKey(l) }));
 
@@ -5244,7 +5249,10 @@ async function handleCosts(request, url, origin, env) {
             general_fee: lines.filter((l) => l.none_reason === "general_fee").length,
             no_plate: lines.filter((l) => l.none_reason === "no_plate").length,
             unknown_plate: lines.filter((l) => l.none_reason === "unknown_plate").length,
-            no_rt_on_date: lines.filter((l) => l.none_reason === "no_rt_on_date").length
+            no_rt_on_date: lines.filter((l) => l.none_reason === "no_rt_on_date").length,
+            // 073 / E10: lines that may belong to more than one v5 cycle (or whose hour cannot be placed) - left to
+            // the accountant with their candidates, counted so they are never only part of lines_none
+            review_cycles: lines.filter((l) => l.none_reason === "review_cycles").length
           }
         }
       }, origin, env);
@@ -5370,15 +5378,29 @@ async function handleCosts(request, url, origin, env) {
       // only catches a non-existent RT, not one of another vehicle (finding 8).
       const rtIds = [...new Set(rows.map((r) => r.rt_id).filter((v) => v != null))];
       if (rtIds.length) {
-        const rtRows = (await dbSelectRaw(env, "ct_round_trips", new URLSearchParams({ select: "id,truck_id,status", id: `in.(${rtIds.join(",")})` }))).rows;
+        const rtRows = (await dbSelectRaw(env, "ct_round_trips", new URLSearchParams({ select: "id,truck_id,status,model", id: `in.(${rtIds.join(",")})` }))).rows;
         const byId = new Map(rtRows.map((r) => [r.id, r]));
+        // 073 / E10 + handover P3-3: ct_round_trips.truck_id of a v5 cycle is the copy of its FIRST segment, while the
+        // preview matches the second truck's fuel after a handover to the same cycle (its segment's window). A v5
+        // cycle's trucks are therefore its OWNED segments' (v_rt_vehicle_windows); a line of any other truck is still
+        // refused. Today's round trips (model 1), and a v5 cycle with no OWNED segment, keep the one-truck rule.
+        const v5Ids = rtRows.filter((r) => r.model === 2).map((r) => r.id);
+        const segTrucks = new Map();
+        if (v5Ids.length) {
+          const segRows = (await dbSelectRaw(env, "v_rt_vehicle_windows", new URLSearchParams({ select: "id,truck_id", id: `in.(${v5Ids.join(",")})` }))).rows;
+          for (const w of segRows) {
+            if (!segTrucks.has(w.id)) segTrucks.set(w.id, new Set());
+            segTrucks.get(w.id).add(w.truck_id);
+          }
+        }
         for (let i = 0; i < rows.length; i++) {
           const r = rows[i];
           if (r.rt_id == null) continue;
           const rt = byId.get(r.rt_id);
           if (!rt) return jsonError(`line ${i + 1}: round trip ${r.rt_id} does not exist`, 409, origin, env);
           if (rt.status === "cancelled") return jsonError(`line ${i + 1}: round trip ${r.rt_id} is cancelled`, 409, origin, env);
-          if (r.truck_id != null && rt.truck_id != null && rt.truck_id !== r.truck_id) {
+          const cycleTrucks = rt.model === 2 ? segTrucks.get(rt.id) : null;
+          if (cycleTrucks ? r.truck_id != null && !cycleTrucks.has(r.truck_id) : r.truck_id != null && rt.truck_id != null && rt.truck_id !== r.truck_id) {
             return jsonError(`line ${i + 1}: round trip ${r.rt_id} belongs to another truck`, 409, origin, env);
           }
         }
