@@ -334,11 +334,12 @@ function _qbandHTML(m, known) {
   return `<div class="wi4-q wn5-q">${search}<div class="wi4-q-hd"><span>ΕΠΟΜΕΝΑ · ${q.length}</span><span class="wi4-q-n">${_esc(_qSub(q, m.today))}</span></div>`
     + `<div class="wn5-qcards">${shown.map((it) => _qcardHTML(it, m)).join('')}</div>${more}</div>`;
 }
-// «2 VS σήμερα · 1 Παρ» (Figma 2011:7745): how many of the queue fall on each day; «VS» once, on the first.
+// «2 VS από Δευ · 1 Παρ» (Figma 2011:7745): how many of the queue fall on each day; «VS» once, on the first.
 function _qSub(q, today) {
   const by = new Map();
   for (const it of q) by.set(it.day, (by.get(it.day) || 0) + 1);
-  return [...by.entries()].map(([d, n], i) => `${n}${i ? '' : ' VS'} ${d && d === today ? 'σήμερα' : _dow(d)}`).join(' · ');
+  // «από» on the first day (Figma 2011:7745 «2 VS από Δευ · 1 Παρ»), never before «σήμερα».
+  return [...by.entries()].map(([d, n], i) => `${n}${i ? '' : ' VS'} ${d && d === today ? 'σήμερα' : (i ? '' : 'από ') + _dow(d)}`).join(' · ');
 }
 // «VS-118 → Rentis +2» (Figma 2011:7745): the first destination and how many more, so the 28px card is never cut
 // mid-name; the whole line stays in title. The board of 072 names a hub VS's clients, not its places (Ε-26), so the
@@ -461,11 +462,16 @@ function _anodHTML(r, m, ok) {
   // plain grey text (Figma H1 / 7745). The words are WN5L's; the screen only picks the look by the vehicle.
   if (s.gap) {
     const par = r.tiles.length > 0 && r.tiles.every((t) => t.type === 'par');
-    return `<div class="wn5-aspan"><span class="${par ? 'wn5-gaptxt' : 'wn5-gapbox'}">${_esc(s.gap.text)}</span></div>`;
+    // Figma H1: in the dashed slot «Κενό γύρισμα» reads darker than what follows it (look only: WN5L's text is split
+    // at its first « · », nothing is added or dropped).
+    const cut = par ? -1 : s.gap.text.indexOf(' · ');
+    // One inner run: the slot is a flex box, and a bare « · …» beside the span would be its own item and lose its space.
+    const txt = cut > 0 ? `<span><span class="wn5-gaph">${_esc(s.gap.text.slice(0, cut))}</span>${_esc(s.gap.text.slice(cut))}</span>` : _esc(s.gap.text);
+    return `<div class="wn5-aspan"><span class="${par ? 'wn5-gaptxt' : 'wn5-gapbox'}">${txt}</span></div>`;
   }
   const n = s.from.length;
   const hd = _dc(ok && s.headDim);
-  const end = r.end ? `<span class="wn5-end${_dc(ok && r.end.dim)}"><span class="wi4-l1">Βέροια · τέλος κύκλου</span><span class="wi4-l2">ως ${_esc(_dow(L().athensDay(r.end.by)))} ${_esc(L().athensTime(r.end.by))}</span></span>` : '';
+  const end = r.end ? `<span class="wn5-end${_dc(ok && r.end.dim)}"><span class="wi4-l1">Βέροια<span class="wn5-endx"> · τέλος κύκλου</span></span><span class="wi4-l2">ως ${_esc(_dow(L().athensDay(r.end.by)))} ${_esc(L().athensTime(r.end.by))}</span></span>` : '';
   return `<div class="wn5-ad"><span class="wi4-dc ${_chipCls(s.day, m.today)}${hd}">${_esc(_dl(s.day))}</span><span class="wn5-dc2${hd}">${n} ${n === 1 ? 'φορτίο' : 'φορτία'}</span></div>`
     + `<div class="wn5-afl">${_ptsHTML(s.from, ok)}</div>`
     + `<div class="wn5-ato">${_ptsHTML(s.to, ok)}${end}</div>`

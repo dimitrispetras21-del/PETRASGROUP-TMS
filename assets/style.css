@@ -9057,8 +9057,10 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5 .wn5-kd, .wn5 .wn5-ad { display:flex; flex-direction:column; align-items:flex-start; gap:2px; }
 /* Day chips of the rows (Figma H1 2120:7738): a ΚΑΘΟΔΟΣ day that has come (today or before) is the blue outlined
    chip — it fades with its head when the base dims it — unless its whole row is executed (Figma 7745 row 1, plain);
-   a day still to come and every ΑΝΟΔΟΣ day are plain text. The classes stay WI4's (past/today/next: wn5-dim test). */
+   a ΚΑΘΟΔΟΣ day still to come is plain text; every ΑΝΟΔΟΣ day is the light grey chip (H1 «Τρί 13/10», «Πέμ 15/10»).
+   The classes stay WI4's (past/today/next: wn5-dim test). */
 .wn5 :is(.wn5-kd, .wn5-ad) .wi4-dc { background:none; border-color:transparent; color:var(--wi4-grey-1); }
+.wn5 .wn5-ad .wi4-dc { background:var(--wi4-chip); }
 .wn5 .wn5-row:not(.wn5-dim) .wn5-kd .wi4-dc:is(.past, .today) { border-color:var(--wi4-blue); color:var(--wi4-blue-ink); background:var(--surface-card); }
 .wn5-dc2 { font-size:10px; color:var(--wi4-grey-2); white-space:nowrap; }
 /* ΦΟΡΤΩΣΗ: «Βέροια» and, under it, its loading window — on every row that loads there (owner 25/10). */
@@ -9072,7 +9074,9 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5 :is(.wn5-pts, .wn5-end) :is(.wi4-l1, .wi4-l2) { white-space:normal; overflow:visible; text-overflow:clip; overflow-wrap:break-word; }
 /* 164px: two stops + the 34px «+N» fit the 386px of a point column at 1920 (Figma: stops 178px apart, gap included). */
 .wn5 .wn5-pt { flex:0 1 164px; }
-.wn5-city { font-weight:400; color:var(--wi4-grey-2); }
+/* Figma H1: the place after the client is smaller than the name (10.5 against 12) — grey-2, not lighter: grey-3 is
+   never information (2.6:1). The same for «· τέλος κύκλου» after «Βέροια» in ΠΡΟΣ. */
+.wn5-city, .wn5-endx { font-size:10.5px; font-weight:400; color:var(--wi4-grey-2); }
 /* «client · place» breaks between the two, never inside a name when the name fits a line by itself. */
 .wn5 .wn5-who, .wn5 .wn5-pt .wi4-l1 > .wn5-city { display:inline-block; max-width:100%; }
 /* «+N» (Figma H1): a 22px chip, its figure centred, in the middle of the stop. */
@@ -9082,6 +9086,7 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-none { color:var(--wi4-grey-3); }
 .wn5-gapbox { display:flex; align-items:center; min-height:24px; padding:2px 10px; box-sizing:border-box; border:1px dashed var(--wi4-slot);
   border-radius:5px; font-size:11.5px; color:var(--wi4-grey-2); }
+.wn5-gaph { font-weight:500; color:var(--wi4-grey-1); }
 /* «Μόνο κάθοδος · συνεργάτης»: a fact, not a slot to fill — plain grey text (Figma H1 / 7745). */
 .wn5-gaptxt { font-size:11.5px; color:var(--wi4-grey-2); }
 /* «→» between ΦΟΡΤΩΣΗ and ΠΑΡΑΔΟΣΗ, and before ΠΡΟΣ (Figma H1): drawn in the 18px gutter, outside the DOM text. */
@@ -9157,9 +9162,9 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
    at the end; an answer that stopped it sits in the line as a small strip. */
 .wn5-notes { display:flex; flex-wrap:wrap; align-items:center; gap:4px 8px; margin:0 0 8px; padding:7px 12px; border:1px solid var(--wn5-note-line);
   border-radius:6px; background:var(--wn5-note-bg); font-size:12px; line-height:1.4; color:var(--wi4-grey-1); }
-.wn5-notes-h { font-weight:600; color:var(--wn5-note-ink); }
+.wn5-notes-h { font-weight:500; letter-spacing:.6px; color:var(--wn5-note-ink); }
 .wn5-notes-l { flex:1 1 auto; min-width:0; }
-.wn5-note:first-child { color:var(--wi4-ink); }
+.wn5-note:first-child { color:var(--wi4-grey-1); }
 .wn5-note ~ .wn5-note { color:var(--wi4-grey-2); }
 .wn5-note-by { color:var(--wi4-grey-2); }
 .wn5-notes > .wn5-strip { margin:0; padding:2px 8px; }

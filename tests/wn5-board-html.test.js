@@ -86,7 +86,7 @@ test('F4α-T5: one-segment cycle has no label and no slanted edge', () => {
 test('F4α-T5: «Χωρίς κάθοδο», «Κενό γύρισμα», «Μόνο κάθοδος · συνεργάτης», partner tile «—», «ως Δευ 22:00», ↳ τοπικός, the hub[] miss line', () => {
   const by = new Map(rows(html()).map((r) => [keyOf(r), r]));
   assert.ok(/Χωρίς κάθοδο/.test(by.get('rt:106')), 'rt:106');
-  assert.ok(/Κενό γύρισμα · ελεύθερο από Τρί 11:00 · Athens Test/.test(by.get('rt:103')), 'rt:103');
+  assert.ok(/<span class="wn5-gaph">Κενό γύρισμα<\/span> · ελεύθερο από Τρί 11:00 · Athens Test/.test(by.get('rt:103')), 'rt:103');
   assert.ok(/Μόνο κάθοδος · συνεργάτης/.test(by.get('rt:104')), 'rt:104');
   // F0 7745 / H1: a one-segment partner cycle shows the partner and its plate (the 072 board has none → «—»), never the rate (Ε-36)
   const p104 = cell(by.get('rt:104'), 'wn5-asg');
@@ -94,7 +94,7 @@ test('F4α-T5: «Χωρίς κάθοδο», «Κενό γύρισμα», «Μό�
   // live 072: VS-T118 is in hub[] without its destination / windows (Ε-26): «—» on the points and a visible line
   assert.ok(/class="wn5-sub wn5-miss" data-qi="wait:4101"/.test(by.get('wait:4101')) && /δεν ήρθαν με τον πίνακα/.test(by.get('wait:4101')), 'wait:4101 miss line');
   assert.ok(!/null/.test(by.get('wait:4101')), 'wait:4101 prints no «null»');
-  assert.ok(/Βέροια · τέλος κύκλου<\/span><span class="wi4-l2">ως Δευ 22:00/.test(by.get('rt:101')), 'rt:101 end');
+  assert.ok(/Βέροια<span class="wn5-endx"> · τέλος κύκλου<\/span><\/span><span class="wi4-l2">ως Δευ 22:00/.test(by.get('rt:101')), 'rt:101 end');
   assert.ok(/↳ <b>Φόρτωση με τοπικό<\/b> · Driver Test 11 · Δευ 12\/10 11:00–12:00 · για Oinofyta Test \(στάση 2\)/.test(by.get('rt:103')), 'rt:103 local');
   assert.ok(/class="wi4-box un" data-act="assign"/.test(by.get('wait:4101')) && /wi4-r-red/.test(by.get('wait:4101')), 'wait:4101 ΠΡΟΣ ΑΝΑΘΕΣΗ');
 });
