@@ -191,6 +191,10 @@ DECLARE
     , 'ok'               -- 137 the same by Delete (dispatcher): ONE costs notice, and it is in the answer
     , 'ok'               -- 138 the plan_rt_update of 132 while the VS day moves: the answer holds the cut's notice AND the VS day's
     , 'ok'               -- 139 Move (dispatcher) of K and a VS first piece onto R2, cutting R1's handover: the put's VS notice AND the cut's
+    -- fix round 3 (26/10): the same rule in the list the user confirms - a cycle the act cancels shows its cost lines
+    -- once (072's row per pay source over every line), never again as the removed truck's row
+    , 'ok'               -- 140 the Delete of 137 with a DKV line on BOTH trucks: ONE costs row (rt, DKV), count 2, no amount (dispatcher)
+    , 'ok'               -- 141 the same by Move (owner): ONE costs row (rt, DKV), count 2, amount 24.80
     -- @want (one line per case: "    , '<ok|plan:code|con:name|state:XXXXX>'  -- <k> <what>")
   ]::text[];
   verdict text; got text; hint text; msg text; cname text; st text;
@@ -1656,6 +1660,42 @@ BEGIN
                         THEN 'ok the put''s VS notice and the cut''s costs notice are in the answer'
                         ELSE 'FAIL notice ids ' || coalesce(r::text, 'null') || ' ' || coalesce(r2::text, 'null')
                              || ' written ' || ((SELECT count(*) FROM plan_notices) - n0) END;
+      ELSIF k IN (140, 141) THEN
+        -- 136 / 137's setup with a second DKV line, of truck 2 (the TELIKO, which stays): R1 empties, so 072 lists it
+        -- rt_cancelled with ONE costs row per pay source over EVERY line of R1 (2 lines, 24.80). The cut's own row for
+        -- the removed truck (1 line, 12.40) is the same lines again: the list showed "1" and "2" for one cycle and one
+        -- pay source, and owner / accountant read truck 1's amount twice
+        PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', pk)),
+                  'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b))),
+                  'test:072b', 'owner');
+        r := plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', t0830,
+               'place_note', 'Lamia', 'reason', 'vehicle_breakdown', 'vehicle', veh2), 'test:072b', 'owner');
+        g1 := (r->'ids'->>'cut_segment_id')::bigint;
+        INSERT INTO ct_cost_lines (rt_id, category, net, vat, line_date, truck_id, alloc_status, created_by, pay_source)
+        VALUES (rt1, 'tolls', 10, 2.4, d, trk1, 'allocated', 'test:072b', 'DKV'),
+               (rt1, 'tolls', 10, 2.4, e, trk2, 'allocated', 'test:072b', 'DKV');
+        IF k = 140 THEN
+          r := plan_delete(jsonb_build_object('nat_order_id', nk, 'dry_run', true), 'test:072b', 'dispatcher');
+          r2 := plan_delete(jsonb_build_object('nat_order_id', nk, 'reason', 'TEST 072b', 'confirm_token', r->>'confirm_token'),
+                  'test:072b', 'dispatcher');
+        ELSE
+          j2 := jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(pk)), 'target', jsonb_build_object('wait', true));
+          r := plan_move_pieces(j2 || jsonb_build_object('dry_run', true), 'test:072b', 'owner');
+          r2 := plan_move_pieces(j2 || jsonb_build_object('confirm_token', r->>'confirm_token'), 'test:072b', 'owner');
+        END IF;
+        SET CONSTRAINTS ALL IMMEDIATE;
+        verdict := CASE WHEN r->'consequences' @> jsonb_build_array(jsonb_build_object('kind', 'rt_cancelled', 'rt_id', rt1),
+                               jsonb_build_object('kind', 'seg_removed', 'segment_id', g1))
+                          AND (SELECT count(*) FROM jsonb_array_elements(r->'consequences') c WHERE c->>'kind' = 'costs') = 1
+                          AND (SELECT c->>'rt_id' = rt1::text AND c->>'pay_source' = 'DKV' AND (c->>'count')::int = 2
+                                      AND CASE WHEN k = 141 THEN (c->>'amount')::numeric = 24.80 ELSE NOT (c ? 'amount') END
+                                 FROM jsonb_array_elements(r->'consequences') c WHERE c->>'kind' = 'costs')
+                          AND (r2->>'ok')::boolean
+                          AND (SELECT status = 'cancelled' FROM ct_round_trips WHERE id = rt1)
+                          AND (SELECT deleted_at IS NOT NULL FROM rt_vehicle_segments WHERE id = g1)
+                        THEN 'ok one costs row for the cycle and its pay source, over both lines'
+                        ELSE 'FAIL costs rows ' || coalesce(r::text, 'null') || ' ' || coalesce(r2::text, 'null') END;
       -- @case (each task adds its "ELSIF k = <n> THEN" branches above this line)
       END IF;
       SET CONSTRAINTS ALL IMMEDIATE;

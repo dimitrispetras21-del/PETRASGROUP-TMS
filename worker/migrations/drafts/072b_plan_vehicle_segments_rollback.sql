@@ -158,8 +158,16 @@ $h$;
             from (select distinct e from jsonb_array_elements(v) e) x);
 $h$;
   h_drop_b CONSTANT text := $h$  -- 072b: a cycle that stays but narrows past a handover lists it (seg_removed) with what leaves with it
-  -- (owner question 7 = b); Move and Delete remove it after the token (plan_h_seg_cut)
-  v := v || plan_h_seg_cut_legs(p_legs, p_keep_rt);
+  -- (owner question 7 = b); Move and Delete remove it after the token (plan_h_seg_cut). Fix round 3 (26/10): ONE
+  -- costs row per fact, as plan_h_seg_cut's costs notice. A cycle this list names rt_cancelled already carries 072's
+  -- costs row per pay source over EVERY line of it (the removed truck's too): the cut's row for that truck is the
+  -- same lines again, and DISTINCT merges it only when that truck has all the lines ("1" beside "2" for one cycle and
+  -- one pay source, owner and accountant read its amount twice). Its seg_removed and payroll_amount lines stay
+  -- (payroll rows are byte-identical to 072's, so DISTINCT merges them); the token still covers every cost line
+  v := v || (select coalesce(jsonb_agg(c), '[]'::jsonb) from jsonb_array_elements(plan_h_seg_cut_legs(p_legs, p_keep_rt)) c
+              where not (c->>'kind' = 'costs'
+                         and exists (select 1 from jsonb_array_elements(v) i
+                                      where i->>'kind' = 'rt_cancelled' and i->>'rt_id' = c->>'rt_id')));
   return (select coalesce(jsonb_agg(e order by e->>'kind', e::text), '[]'::jsonb)
             from (select distinct e from jsonb_array_elements(v) e) x);
 $h$;
@@ -258,7 +266,7 @@ BEGIN
       (12, 'public.plan_local_loading(jsonb,text,text)', h_ll_a, h_ll_b,
        '26ba9a989ed0d8ec36799086f36bfb2e', 'f40c4a548ec192af781ef8e62d3227a5'),
       (13, 'public.plan_h_drop_consequences(bigint[],bigint,bigint[])', h_drop_a, h_drop_b,
-       'f5641bb97562310cbbc57d71e9894c26', 'ce5de5793080e0c5be1e886defcb0b0e'),
+       'f5641bb97562310cbbc57d71e9894c26', '80b789fcdfc3fb6dad2b1d2f8b83b487'),
       (14, 'public.plan_move_pieces(jsonb,text,text)', h_mv_sweep_a, h_mv_b,
        'c053d6aa934e21f4c8411c7974a81a8e', 'ae275e73f32e0c5eb1069e87f20e0239'),
       (15, 'public.plan_delete(jsonb,text,text)', h_sweep_a, h_del_b,
