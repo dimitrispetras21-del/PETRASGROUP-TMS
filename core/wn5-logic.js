@@ -127,10 +127,12 @@ function _side(name, list, hubId) {
   const vIdx = name === 'KATHODOS' && hubIdx.length ? hubIdx[0] : -1;
   const eIdx = name === 'ANODOS' && hubIdx.length ? hubIdx[hubIdx.length - 1] : -1;
   const from = [], to = [];
+  let vBefore = 0;   // loadings the cycle makes BEFORE its Veroia loading (list is in seq order): drawn first (Figma H1 row 5)
   list.forEach((s, i) => {
     if (i === vIdx || i === eIdx) return;
     const loads = _legs(s, 'load'), unloads = _legs(s, 'unload');
     const isFrom = loads.length && !unloads.length ? true : unloads.length ? false : name === 'ANODOS';
+    if (isFrom && vIdx >= 0 && i < vIdx) vBefore++;
     (isFrom ? from : to).push(_point(s, isFrom ? _sum(loads) : _sum(unloads)));
   });
   from.forEach((p, i) => { p.n = i + 1; });
@@ -141,7 +143,7 @@ function _side(name, list, hubId) {
   return {
     side: {
       side: name, day: dayStop.stop_day || null, toDay: name === 'KATHODOS' && to.length ? to[to.length - 1].day : null,
-      veroia: v ? { stopId: v.stop_id, from: athensTime(v.planned_from), to: athensTime(v.planned_to) } : null,
+      veroia: v ? { stopId: v.stop_id, from: athensTime(v.planned_from), to: athensTime(v.planned_to) } : null, vBefore,
       headDim: dayStop.dim === true, from, to, pallets, over: pallets > CAP ? r1(pallets - CAP) : 0,
       sideDim: list[0].side_dim === true, gap: null,
     },
@@ -155,7 +157,7 @@ function _gapSide(c, kath) {
     const last = kath.to[kath.to.length - 1];
     text = `Κενό γύρισμα · ελεύθερο από ${_dow(last.day)} ${last.to} · ${last.name}`;
   }
-  return { side: 'ANODOS', day: null, toDay: null, veroia: null, headDim: false, from: [], to: [], pallets: 0, over: 0, sideDim: false, gap: { text } };
+  return { side: 'ANODOS', day: null, toDay: null, veroia: null, vBefore: 0, headDim: false, from: [], to: [], pallets: 0, over: 0, sideDim: false, gap: { text } };
 }
 function _tile(s, no, multi) {
   const type = s.has_vehicle !== true ? 'un' : s.trip_type === 'PARTNER' ? 'par' : 'own';
@@ -274,7 +276,7 @@ function _waitRow(list, hubId) {
   const origin = [...byFrom.values()].map((g, i) => ({ stopId: null, n: i + 1, name: '—', city: null, clients: [], from: athensTime(g[0].load_from), to: athensTime(g[0].load_to),
     pallets: _sum(g), dim: false, late: false, segmentId: null, segLabel: null, day: _loadDay(g[0]) }));
   const side = { side: anodos ? 'ANODOS' : 'KATHODOS', day: loadDay, toDay: anodos || !pts.length ? null : pts[pts.length - 1].day,
-    veroia: !anodos && hubWs.length ? { stopId: null, from: athensTime(hubWs[0].load_from), to: athensTime(hubWs[0].load_to) } : null,
+    veroia: !anodos && hubWs.length ? { stopId: null, from: athensTime(hubWs[0].load_from), to: athensTime(hubWs[0].load_to) } : null, vBefore: 0,
     headDim: false, from: anodos ? pts : origin, to: anodos ? [] : pts, pallets, over: pallets > CAP ? r1(pallets - CAP) : 0, sideDim: false, gap: null };
   const refs = [...new Set(ws.map((w) => w.reference).filter(Boolean))];
   const clients = [...new Set(ws.map((w) => w.client).filter(Boolean))];
@@ -352,7 +354,7 @@ function model(board, opts) {
   return {
     week, today, hubId, days, queue,
     hub: { day: today && today >= week && today <= last ? today : week, split, stock, pallets: { split: _sum(split), stock: _sum(stock) }, empty: !split.length && !stock.length },
-    notices: board.notices.map((n) => ({ id: n.id, kind: n.kind, message: n.message, order_id: n.order_id, nat_order_id: n.nat_order_id, rt_id: n.rt_id, created_at: n.created_at })),
+    notices: board.notices.map((n) => ({ id: n.id, kind: n.kind, message: n.message, order_id: n.order_id, nat_order_id: n.nat_order_id, rt_id: n.rt_id, created_at: n.created_at, created_by: n.created_by || null })),
     errors,
   };
 }

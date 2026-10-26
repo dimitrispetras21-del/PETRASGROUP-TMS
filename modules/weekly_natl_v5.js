@@ -32,8 +32,14 @@ const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ID_RE = /^[1-9]\d{0,14}$/;
 const MONTH_GEN = Object.freeze(['Ιανουαρίου', 'Φεβρουαρίου', 'Μαρτίου', 'Απριλίου', 'Μαΐου', 'Ιουνίου', 'Ιουλίου',
   'Αυγούστου', 'Σεπτεμβρίου', 'Οκτωβρίου', 'Νοεμβρίου', 'Δεκεμβρίου']);
-// Two stops per point column at 1920 (Figma 2011:7745: two ~178px stops), the rest behind «+N».
-const VISIBLE_POINTS = 2;
+// Two stops per point column at 1920 (Figma 2011:7745: two ~178px stops), the rest behind «+N». At ≤1600 (1440 with
+// the sidebar) a point column is ~240px: two stops side by side wrapped every name and doubled the row height, so it
+// shows ONE whole stop + «+N» (fidelity T5 r1). Decided at paint (the same query as the wn5 CSS block); a resize
+// across 1600 repaints once (_install), so a hidden stop never hides behind a CSS rule the rigs cannot see.
+const NARROW_MQ = '(max-width:1600px)';
+function _visPts() {
+  try { return typeof window.matchMedia === 'function' && window.matchMedia(NARROW_MQ).matches ? 1 : 2; } catch (_) { return 2; }
+}
 // Inline SVG with currentColor: core/icons.js has no plane, and a colour literal here would break the ratchet.
 const PLANE = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>';
 const CHEV = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
@@ -243,10 +249,12 @@ function _rootHTML() {
 }
 function _barHTML() {
   const w = Number(window.WNATL && window.WNATL.week);
-  const upd = _state === 'loading' ? 'Διαβάζει…' : _okAt ? 'Ενημερώθηκε ' + _hhmm(_okAt) : '—';
+  // «Ενημερώθηκε» is a word that gives way at ≤1600 (as on the Weekly International); the time stays. The time, not
+  // «μόλις τώρα» (Figma): no timer refreshes the words, and «μόλις τώρα» would still say so an hour later.
+  const upd = _state === 'loading' ? _esc('Διαβάζει…') : _okAt ? `<span class="wn5-upd-w">Ενημερώθηκε </span>${_hhmm(_okAt)}` : '—';
   return '<div class="wi4-bar wn5-bar"><div class="wi4-bar-l"><span class="wi4-title">Εβδομαδιαίο Εθνικών</span>'
     + `<span class="wi4-range" title="${_esc(_rangeText(_sat))}">${_esc(_rangeText(_sat))}</span>`
-    + `<button type="button" class="wn5-upd" data-act="reload" title="Ανανέωση" onclick="WN5.reload('user')">↻ ${_esc(upd)}</button></div>`
+    + `<button type="button" class="wn5-upd" data-act="reload" title="Ανανέωση" onclick="WN5.reload('user')">↻ ${upd}</button></div>`
     + `<nav class="wi4-tabs" aria-label="Εβδομάδες">${_tabsHTML(w)}</nav>`
     // Figma 7745 / H1 right group: «Προβολή ▾» · «Σάρωση» · «+ Νέα παραγγελία». «Προβολή ▾» and «Σάρωση» wait for
     // Φ4β (Ε-42, Ε-38): the scan creates an order of the OLD model, which this board never shows (principle 1).
@@ -284,7 +292,7 @@ function _errHTML() {
   const last = _okAt ? ` · Τελευταία πλήρης ${_hhmm(_okAt)}` : '';
   return `<div class="wn5-strip" data-kind="${_esc(_lastErr.kind || 'failed')}" role="alert"><b>ΣΦΑΛΜΑ</b><span>${_esc(_lastErr.message)}</span>`
     + `<span class="wn5-strip-sub">${_board ? 'Ό,τι ήρθε πριν μένει στην οθόνη' : 'Η εβδομάδα δεν διαβάστηκε — δεν σημαίνει ότι είναι άδεια'}${last}</span>`
-    + '<button type="button" class="wi4-btn sm" data-act="reload" onclick="WN5.reload(\'user\')">Ανανέωση ↻</button></div>';
+    + '<button type="button" class="wi4-link wn5-strip-act" data-act="reload" onclick="WN5.reload(\'user\')">Ανανέωση ↻</button></div>';
 }
 // A part of the board WN5L could not place (a stop with an unknown side, two hubs): said on screen and logged once
 // per distinct line — never dropped in silence (principle 1).
@@ -319,19 +327,28 @@ function _qbandHTML(m, known) {
   const shown = _qAll ? q : q.slice(0, 3);
   const more = q.length > 3 ? `<button type="button" class="wi4-link wi4-q-all" onclick="WN5._qMore()">${_qAll ? 'Λιγότερα ▴' : `Όλα ${q.length} ▾`}</button>` : '';
   return `<div class="wi4-q wn5-q">${search}<div class="wi4-q-hd"><span>ΕΠΟΜΕΝΑ · ${q.length}</span><span class="wi4-q-n">${_esc(_qSub(q, m.today))}</span></div>`
-    + `<div class="wn5-qcards">${shown.map((it) => _qcardHTML(it, m.today)).join('')}</div>${more}</div>`;
+    + `<div class="wn5-qcards">${shown.map((it) => _qcardHTML(it, m)).join('')}</div>${more}</div>`;
 }
-// «2 VS σήμερα · 1 Παρ»: how many of the queue fall on each day.
+// «2 VS σήμερα · 1 Παρ» (Figma 2011:7745): how many of the queue fall on each day; «VS» once, on the first.
 function _qSub(q, today) {
   const by = new Map();
   for (const it of q) by.set(it.day, (by.get(it.day) || 0) + 1);
-  return [...by.entries()].map(([d, n]) => `${n} VS ${d && d === today ? 'σήμερα' : _dow(d)}`).join(' · ');
+  return [...by.entries()].map(([d, n], i) => `${n}${i ? '' : ' VS'} ${d && d === today ? 'σήμερα' : _dow(d)}`).join(' · ');
 }
-function _qcardHTML(it, today) {
+// «VS-118 → Rentis +2» (Figma 2011:7745): the first destination and how many more, so the 28px card is never cut
+// mid-name; the whole line stays in title. The board of 072 names a hub VS's clients, not its places (Ε-26), so the
+// client stands where Figma has the place, and the reason stands where Figma has «φτάνει 14:00» (no arrival on the
+// board) — never an invented place or hour.
+function _qcardHTML(it, m) {
+  const today = m.today;
   const why = it.reason === 'late' ? 'καθυστερεί' : 'χωρίς φορτηγό';
+  let row = null;
+  for (const d of m.days) for (const r of d.rows) if (!row && r.kind === 'unassigned' && r.pieceIds[0] === it.pieceId) row = r;
+  const cl = row ? row.clients : [];
+  const short = `${it.code || '—'} → ${cl[0] || '—'}${cl.length > 1 ? ` +${cl.length - 1}` : ''}`;
   return `<div class="wi4-qcard wi4-r-red wn5-qcard" data-piece="${_id(it.pieceId)}">`
     + `<span class="wi4-dc ${_chipCls(it.day, today)}">${_esc(_dl(it.day))}</span>`
-    + `<span class="wi4-qcard-t"><span class="wi4-l1" title="${_esc(it.title)}">${_esc(it.title)}</span><span class="wi4-l2">${_esc(_pal(it.pallets))} · ${why}</span></span>`
+    + `<span class="wi4-qcard-t"><span class="wi4-l1" title="${_esc(it.title)}">${_esc(short)}</span><span class="wi4-l2">${_esc(_pal(it.pallets))} · ${why}</span></span>`
     + '<button type="button" class="wi4-btn sm" data-act="assign">Ανάθεση</button></div>';
 }
 function _qMore() {
@@ -356,13 +373,17 @@ function _dayHTML(d, m, known, no) {
   const empty = known && d.empty;
   const fold = known && !empty;
   const closed = fold && _closedDays.has(d.date);
+  // Δ12 πλακ. 2: while the week is read, today's day shows two grey bars — shape only, no number, no row (the rigs and
+  // snapshot() count .wn5-row; a bar is never one).
+  const skel = !known && _state === 'loading' && today;
   const [name, date] = d.head.split(' ');
   const tail = (today ? '<span class="wi4-today"> · σήμερα</span>' : '')
     + (!known ? `<span class="wn5-dayx"> · ${_state === 'loading' ? '…' : '—'}</span>` : empty ? '<span class="wn5-dayx"> · καμία φόρτωση</span>' : '');
   const head = `<div class="wi4-dayh wn5-dayh"${fold ? ` role="button" tabindex="0" aria-expanded="${!closed}" onclick="WN5._dayTog('${d.date}')"` : ''}>`
-    + (fold ? `<span class="wi4-chev">${CHEV}</span>` : '<span class="wi4-dayh-sp"></span>')
+    + (fold || skel ? `<span class="wi4-chev">${CHEV}</span>` : '<span class="wi4-dayh-sp"></span>')
     + `<span class="wi4-dayn">${_esc(name)} <span class="wi4-dayd">${_esc(date)}</span></span>${tail}</div>`;
-  const body = fold ? `<div class="wi4-day-body">${d.rows.map((r) => _rowHTML(r, m, no)).join('')}</div>` : '';
+  const body = fold ? `<div class="wi4-day-body">${d.rows.map((r) => _rowHTML(r, m, no)).join('')}</div>`
+    : skel ? `<div class="wi4-day-body wn5-skel-b" aria-hidden="true">${'<div class="wn5-skel"><span></span><span></span><span></span><span></span><span></span><span></span></div>'.repeat(2)}</div>` : '';
   return `<section class="wi4-day wn5-day${today ? ' today' : ''}${empty ? ' empty' : ''}${closed ? ' closed' : ''}" data-date="${d.date}">${head}${body}</section>`;
 }
 // Days are folded only by the user's click (owner 12/10), and stay as the user left them until the week changes.
@@ -414,15 +435,23 @@ function _kathHTML(r, m, ok) {
   // The head of the side (its day, «Βέροια», the Veroia window) dims with the day of its loading stop.
   const hd = _dc(ok && s.headDim);
   const toDay = s.toDay && s.toDay !== s.day ? `<span class="wn5-dc2${hd}">→ ${_esc(_dl(s.toDay))}</span>` : '';
-  return `<div class="wn5-kd"><span class="wi4-dc ${_chipCls(s.day, m.today)}${hd}">${_esc(_dl(s.day))}</span>${toDay}</div>`
-    + `<div class="wn5-fl">${s.veroia ? `<span class="wn5-vh${hd}">Βέροια</span><span class="wn5-vtime${hd}">${_win(s.veroia.from, s.veroia.to)}</span>` : ''}${_ptsHTML(s.from, ok)}</div>`
+  // A VS waiting for a vehicle names its reference under the day (Figma H1 «Δευ 12/10 / VS-118», «VS-121 αργό»):
+  // the queue card and the row then read as the same load.
+  const ref = r.kind === 'unassigned' && r.vs && r.refs.length ? `<span class="wn5-dc2">${_esc(r.refs[0])}${r.late ? ' αργό' : ''}</span>` : '';
+  return `<div class="wn5-kd"><span class="wi4-dc ${_chipCls(s.day, m.today)}${hd}">${_esc(_dl(s.day))}</span>${toDay}${ref}</div>`
+    + `<div class="wn5-fl">${_flHTML(s, ok, hd)}</div>`
     + `<div class="wn5-kto">${_ptsHTML(s.to, ok)}</div>`
     + `<div class="wn5-kpal">${_palHTML(s)}</div>`;
 }
 function _anodHTML(r, m, ok) {
   const s = r.anod;
   if (!s) return '<div class="wn5-aspan"><span class="wn5-none">—</span></div>';
-  if (s.gap) return `<div class="wn5-aspan"><span class="wn5-gapbox">${_esc(s.gap.text)}</span></div>`;
+  // «Κενό γύρισμα» is a free return to fill (a dashed slot); a partner cycle's «Μόνο κάθοδος · συνεργάτης» is a fact,
+  // plain grey text (Figma H1 / 7745). The words are WN5L's; the screen only picks the look by the vehicle.
+  if (s.gap) {
+    const par = r.tiles.length > 0 && r.tiles.every((t) => t.type === 'par');
+    return `<div class="wn5-aspan"><span class="${par ? 'wn5-gaptxt' : 'wn5-gapbox'}">${_esc(s.gap.text)}</span></div>`;
+  }
   const n = s.from.length;
   const hd = _dc(ok && s.headDim);
   const end = r.end ? `<span class="wn5-end${_dc(ok && r.end.dim)}"><span class="wi4-l1">Βέροια · τέλος κύκλου</span><span class="wi4-l2">ως ${_esc(_dow(L().athensDay(r.end.by)))} ${_esc(L().athensTime(r.end.by))}</span></span>` : '';
@@ -431,20 +460,41 @@ function _anodHTML(r, m, ok) {
     + `<div class="wn5-ato">${_ptsHTML(s.to, ok)}${end}</div>`
     + `<div class="wn5-apal">${_palHTML(s)}</div>`;
 }
-function _ptsHTML(pts, ok) {
-  if (!pts.length) return '';
-  const one = pts.length === 1;
-  const rest = pts.slice(VISIBLE_POINTS);
-  const more = rest.length
-    ? `<span class="wi4-more" title="${_esc(rest.map((p) => `${p.n}. ${p.name} · ${p.from && p.to ? p.from + '–' + p.to : '—'} · ${_pal(p.pallets)}`).join('\n'))}"><b>+${rest.length}</b></span>`
-    : '';
-  return `<span class="wi4-pts wn5-pts">${pts.slice(0, VISIBLE_POINTS).map((p) => _ptHTML(p, one, ok)).join('')}${more}</span>`;
+// ΦΟΡΤΩΣΗ of ΚΑΘΟΔΟΣ: «Βέροια» and its window stay together (owner 25/10); a loading the cycle makes BEFORE Veroia
+// (WN5L vBefore, by the base's stop order) comes first, numbered with Veroia among the cell's loadings (Figma H1
+// row 5 «1 Thessaloniki»); the ones after it follow. Veroia itself carries no number box: its word is its mark.
+// This narrow cell names the place only, as Figma does: the clients of the side are in ΠΑΡΑΔΟΣΗ.
+function _flHTML(s, ok, hd) {
+  if (!s.veroia) return _ptsHTML(s.from, ok, null, true);
+  const vh = `<span class="wn5-vh${hd}">Βέροια</span><span class="wn5-vtime${hd}">${_win(s.veroia.from, s.veroia.to)}</span>`;
+  const k = Math.min(s.vBefore || 0, s.from.length);
+  return _ptsHTML(s.from.slice(0, k), ok, 1, true) + vh + _ptsHTML(s.from.slice(k), ok, k + 2, true);
 }
+// start (a number) = number the points from it, boxes always shown (a cell that also has «Βέροια»); else WN5L's n and
+// no box on a lone point (wi4 rule 6). placeOnly: the place without its client (ΦΟΡΤΩΣΗ of ΚΑΘΟΔΟΣ).
+function _ptsHTML(pts, ok, start, placeOnly) {
+  if (!pts.length) return '';
+  const num = start == null ? (p) => (pts.length === 1 ? null : p.n) : (p, i) => start + i;
+  const vis = _visPts();
+  const rest = pts.slice(vis);
+  const more = rest.length
+    ? `<span class="wi4-more" title="${_esc(rest.map((p, i) => `${num(p, vis + i) || p.n}. ${_ptName(p)} · ${p.from && p.to ? p.from + '–' + p.to : '—'} · ${_pal(p.pallets)}`).join('\n'))}"><b>+${rest.length}</b></span>`
+    : '';
+  return `<span class="wi4-pts wn5-pts">${pts.slice(0, vis).map((p, i) => _ptHTML(p, num(p, i), ok, placeOnly)).join('')}${more}</span>`;
+}
+// Who, then where (Figma H1 «Omega Market · Rentis»): the client in bold, the place in grey. A waiting load's point
+// IS its client (the board names no place for it, Ε-26): drawn once, never «ΠΕΛΑΤΗΣ Β · ΠΕΛΑΤΗΣ Β».
+function _ptWho(p) {
+  const cl = Array.isArray(p.clients) ? p.clients : [];
+  return cl.length && !(cl.length === 1 && cl[0] === p.name) ? cl.join(', ') : null;
+}
+function _ptName(p) { const who = _ptWho(p); return who ? `${who} · ${p.name}` : p.name; }
 // Each point with its own day: a delivery of Tuesday stays bold until Tuesday ends, even if its hour passed.
-function _ptHTML(p, one, ok) {
+function _ptHTML(p, n, ok, placeOnly) {
+  const who = placeOnly ? null : _ptWho(p);
   return `<span class="wi4-pt wn5-pt${p.late ? ' wn5-late' : ''}${_dc(ok && p.dim && !p.late)}" data-stop="${_id(p.stopId)}">`
-    + (one ? '' : `<span class="wi4-pt-n">${p.n}</span>`)
-    + `<span class="wi4-l1">${_esc(p.name)}${p.city ? `<span class="wn5-city"> · ${_esc(p.city)}</span>` : ''}</span>`
+    + (n == null ? '' : `<span class="wi4-pt-n">${n}</span>`)
+    + `<span class="wi4-l1">${who ? `${_esc(who)}<span class="wn5-city"> · ${_esc(p.name)}</span>` : _esc(p.name)}</span>`
     + `<span class="wi4-l2${p.late ? ' wi4-t-amb' : ''}">${_win(p.from, p.to)} · ${_esc(_pal(p.pallets))}</span></span>`;
 }
 function _palHTML(s) {
@@ -510,9 +560,13 @@ function rowMenu(ev, rtId) {
       if (pb) pb.focus();
     }
   });
-  const a = ev && ev.currentTarget && ev.currentTarget.getBoundingClientRect ? ev.currentTarget.getBoundingClientRect() : { left: 120, bottom: 120 };
-  el.style.left = Math.max(8, Math.min(a.left, window.innerWidth - el.offsetWidth - 8)) + 'px';
-  el.style.top = Math.max(8, Math.min(a.bottom + 4, window.innerHeight - el.offsetHeight - 8)) + 'px';
+  // Figma 2011:8858: the menu opens to the right of the ✈, its top on the row's top.
+  const btn = ev && ev.currentTarget && ev.currentTarget.getBoundingClientRect ? ev.currentTarget : null;
+  const a = btn ? btn.getBoundingClientRect() : { right: 120, top: 120 };
+  const rowEl = btn && btn.closest ? btn.closest('.wn5-row') : null;
+  const top = rowEl ? rowEl.getBoundingClientRect().top : a.top;
+  el.style.left = Math.max(8, Math.min(a.right + 4, window.innerWidth - el.offsetWidth - 8)) + 'px';
+  el.style.top = Math.max(8, Math.min(top, window.innerHeight - el.offsetHeight - 8)) + 'px';
   const first = el.querySelector('[role="menuitem"]');
   if (first) first.focus();
 }
@@ -600,6 +654,11 @@ function _install() {
     _closeMenu();
   }, true);
   document.addEventListener('keydown', _onKey, true);
+  // One stop or two per point column (_visPts) is chosen at paint: crossing 1600px repaints from the board on hand.
+  try {
+    const mq = typeof window.matchMedia === 'function' ? window.matchMedia(NARROW_MQ) : null;
+    if (mq && typeof mq.addEventListener === 'function') mq.addEventListener('change', () => { if (active() && _board && document.querySelector('#content .wn5')) paint(); });
+  } catch (_) { /* the layout stays as painted: wrapped, never cut */ }
 }
 function _onKey(e) {
   if (!active() || !document.querySelector('#content .wn5')) return;
@@ -700,9 +759,17 @@ function _noticesHTML(m) {
   if (!m || !m.notices.length) return '';
   const off = _noteBusy || !!_closed;
   return `<div id="wn5-notices" class="wn5-notes" role="status"><b class="wn5-notes-h">ΕΙΔΟΠΟΙΗΣΕΙΣ · ${m.notices.length}</b>`
-    + `<span class="wn5-notes-l">${m.notices.map((x) => `<span class="wn5-note" data-id="${_id(x.id)}"> · ${_esc(x.message)}</span>`).join('')}</span>`
+    + `<span class="wn5-notes-l">${m.notices.map((x) => `<span class="wn5-note" data-id="${_id(x.id)}"> · ${_esc(x.message)}</span>${_noteBy(x)}`).join('')}</span>`
     + (_noteErr ? `<span class="wn5-strip" data-kind="${_esc(_noteErr.kind || 'failed')}" role="alert">${_esc(_noteErr.message)}</span>` : '')
     + `<button type="button" id="wn5-note-read" class="wi4-link"${off ? ' disabled' : ''}${_closed ? ` title="${_esc(_closed.message)}"` : ''} onclick="WN5._noteRead()">Σημείωσα ✓</button></div>`;
+}
+// «(Π.Κ. 08:12)» after each text (Figma 2011:7745): who wrote it and when, from the notice row itself (created_by,
+// created_at). Beside the text, never inside it: the text stays the DB's, as it is.
+function _noteBy(x) {
+  const who = x.created_by ? (typeof userDisplayName === 'function' ? userDisplayName(x.created_by) : x.created_by) : '';
+  const at = x.created_at ? L().athensTime(x.created_at) : '';
+  const t = [who, at].filter(Boolean).join(' ');
+  return t ? `<span class="wn5-note-by"> (${_esc(t)})</span>` : '';
 }
 function _paintNotices() {
   const el = document.getElementById('wn5-notices');

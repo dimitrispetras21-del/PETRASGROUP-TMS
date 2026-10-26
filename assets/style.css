@@ -8980,12 +8980,13 @@ body.wi4-on #wi-popover .wi-pop-save:hover { background:var(--navy-light); }
   --wn5-err-line:  #fecaca;   /* refusal / error strip border (Δ12) */
   --wn5-info-bg:   #eff6ff;   /* «preview» strip: writes closed until day L (H7 πλακ. 4) */
   --wn5-info-line: #bfdbfe;
+  --wn5-ctl-hover: #98a2b3;   /* ✈ border on hover — the Weekly International's value (its rule is .wi4-c-idx only) */
 }
 /* The same page frame as v4 (body.wi4-on .content), while the v5 board is on screen. */
 body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; background:var(--surface-page); }
 .wn5 .wn5-lc { text-transform:none; letter-spacing:0; }
 .wn5-bar { margin-bottom:8px; }
-.wn5 .wn5-upd { margin-left:10px; border:0; background:none; padding:0; font:inherit; font-size:12px; color:var(--wi4-grey-2); cursor:pointer; white-space:nowrap; }
+.wn5 .wn5-upd { flex:none; margin-left:10px; border:0; background:none; padding:0; font:inherit; font-size:12px; color:var(--wi4-grey-2); cursor:pointer; white-space:nowrap; }
 .wn5 .wn5-upd:hover { color:var(--wi4-ink); }
 /* Result strips (Δ12): refusal/error red, warning amber, «preview» blue. The text is the Worker's message. */
 .wn5-strip { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin:0 0 8px; padding:6px 12px; border:1px solid var(--wn5-err-line);
@@ -8997,8 +8998,20 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-strip:is([data-kind="closed"], [data-kind="preview"]) > b { color:var(--wi4-blue-ink); }
 .wn5-strip-sub { color:var(--wi4-grey-2); }
 .wn5-strip > .wi4-btn { margin-left:auto; }
+/* Δ12: «ΣΦΑΛΜΑ · …» — the label, a dot, the message; the way on is the strip's red link at the end. The dot is drawn,
+   not written, so the strip's text stays the label and the Worker's message. */
+.wn5-strip > b::after { content:' ·'; font-weight:400; }
+.wn5-strip > .wn5-strip-act { margin-left:auto; color:var(--wi4-red); font-weight:500; }
 .wn5 .wn5-q .wi4-q-hd > span:first-child { white-space:nowrap; }
 .wn5-dayx { font-weight:400; letter-spacing:0; color:var(--wi4-grey-2); }
+/* Figma H1: «ΔΕΥΤΕΡΑ» bold and spaced, the date lighter; on today's empty line «· σήμερα · καμία φόρτωση» reads dark. */
+.wn5 .wn5-dayh .wi4-dayd { font-weight:500; letter-spacing:0; }
+.wn5 .wn5-day.today .wn5-dayx { font-weight:700; color:var(--text); }
+/* Δ12 πλακ. 2: the loading bars under today (shape only). */
+.wn5-skel { display:flex; align-items:center; gap:24px; height:36px; padding:0 20px; box-sizing:border-box; border-top:1px solid var(--wi4-line); }
+.wn5-skel:first-child { border-top:0; }
+.wn5-skel > span { height:8px; border-radius:4px; background:var(--wi4-line-3); flex:0 0 40px; }
+.wn5-skel > span:nth-child(3) { flex-basis:150px; } .wn5-skel > span:nth-child(4) { flex-basis:240px; } .wn5-skel > span:nth-child(6) { flex:1 1 auto; }
 /* Board grid (Figma H1 2120:7738 at 1920: one 1803px row from x=88). Twelve tracks:
    # · gap · ΚΑΘΟΔΟΣ day · ΦΟΡΤΩΣΗ · ΠΑΡΑΔΟΣΗ · ΠΑΛ. · ΑΝΑΘΕΣΗ · gap · ΑΝΟΔΟΣ day · ΦΟΡΤΩΣΗ · ΠΡΟΣ · ΠΑΛ.
    ΑΝΑΘΕΣΗ is 266px and no Veroia-time column exists (owner 25/10: +16px taken from the ΑΝΟΔΟΣ points), so ΑΝΟΔΟΣ
@@ -9029,8 +9042,13 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-row > .wn5-asg { padding:0; display:flex; gap:4px; }
 .wn5 .wn5-asg .wi4-box { flex:1 1 0; max-width:none; }
 .wn5 .wn5-c-idx { align-self:stretch; display:flex; align-items:center; gap:2px; padding:0 6px 0 12px; font-size:13px; font-weight:600; color:var(--wi4-grey-1); }
-.wn5-row > .wn5-c-idx { background:var(--wi4-chip); }
-.wn5 .wi4-day.today .wn5-row > .wn5-c-idx { background:var(--wi4-today-hover); }
+.wn5 :is(.wn5-row, .wn5-sub) > .wn5-c-idx { background:var(--wi4-chip); }
+.wn5 .wi4-day.today :is(.wn5-row, .wn5-sub) > .wn5-c-idx { background:var(--wi4-today-hover); }
+/* The ✈ as on the Weekly International (Nick 15/10): a white 26px button with a border on the number band. The wi4 rule
+   is scoped to .wi4-c-idx, which v5 does not use. */
+.wn5 .wn5-c-idx .wi4-plane { margin-left:auto; width:26px; height:26px; background:var(--surface-card); border:1px solid var(--wi4-ctl); border-radius:6px;
+  color:var(--wi4-grey-1); box-shadow:0 1px 1px rgba(16,24,40,.06); }
+.wn5 .wn5-c-idx .wi4-plane:hover { border-color:var(--wn5-ctl-hover); background:var(--surface-card); color:var(--wi4-ink); }
 .wn5 .wn5-kd, .wn5 .wn5-ad { display:flex; flex-direction:column; align-items:flex-start; gap:2px; }
 .wn5-dc2 { font-size:10px; color:var(--wi4-grey-2); white-space:nowrap; }
 /* ΦΟΡΤΩΣΗ: «Βέροια» and, under it, its loading window — on every row that loads there (owner 25/10). */
@@ -9050,18 +9068,28 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-none { color:var(--wi4-grey-3); }
 .wn5-gapbox { display:flex; align-items:center; min-height:24px; padding:2px 10px; box-sizing:border-box; border:1px dashed var(--wi4-slot);
   border-radius:5px; font-size:11.5px; color:var(--wi4-grey-2); }
+/* «Μόνο κάθοδος · συνεργάτης»: a fact, not a slot to fill — plain grey text (Figma H1 / 7745). */
+.wn5-gaptxt { font-size:11.5px; color:var(--wi4-grey-2); }
+/* «→» between ΦΟΡΤΩΣΗ and ΠΑΡΑΔΟΣΗ, and before ΠΡΟΣ (Figma H1): drawn in the 18px gutter, outside the DOM text. */
+.wn5-row > :is(.wn5-kto, .wn5-ato):not(:empty) { position:relative; }
+.wn5-row > :is(.wn5-kto, .wn5-ato):not(:empty)::before { content:'→'; position:absolute; left:-6px; top:50%; transform:translateY(-50%);
+  font-size:11px; line-height:1; color:var(--wi4-grey-3); }
 .wn5-end { display:flex; flex-direction:column; }
 /* «↳ Φόρτωση με τοπικό» (Figma row 3): a 28px sub-row, text from the ΚΑΘΟΔΟΣ day column to the end. */
 .wn5-sub { min-height:28px; border-top:1px solid var(--wi4-line); }
-.wn5-sub > .wn5-c-idx { background:var(--wi4-today-hover); }
 .wn5-sub-t { grid-column:3 / -1; font-size:11.5px; color:var(--wi4-grey-1); }
 .wn5-sub-t b { font-weight:600; color:var(--wi4-grey-1); }
 .wn5-qcards { display:flex; gap:8px; flex:1 1 auto; min-width:0; }
 /* Narrower than the Figma 1920 frame (1440 with the sidebar open): the fixed tracks give way so the point columns keep
    one whole stop + «+N» (ΑΝΑΘΕΣΗ stays 266px, owner 25/10); the long column notes go, the column names stay. */
 @media (max-width:1600px) {
-  .wn5-cols, .wn5-row, .wn5-sub { grid-template-columns:48px 6px 70px 120px minmax(0,1fr) 50px 266px 16px 70px minmax(0,1fr) 120px 50px; }
+  .wn5-cols, .wn5-row, .wn5-sub { grid-template-columns:48px 6px 70px 120px minmax(0,1fr) 50px 266px 16px 70px minmax(0,1fr) 156px 50px; }
   .wn5-h-sub { display:none; }
+  /* 48px band: the number and the 26px ✈ fit with 8px in front */
+  .wn5 .wn5-c-idx { padding:0 4px 0 8px; }
+  /* the range of the week is whole (it is the page's subject); the «Ενημερώθηκε» time gives way first */
+  .wn5 .wi4-range { flex:none; }
+  .wn5 .wn5-upd-w { display:none; }
 }
 /* ✈ menu (Figma 2011:8858): 300px, white, the board's line colour; it lives on <body>, outside .wn5. */
 .wn5-menu { position:fixed; z-index:var(--z-top); width:300px; padding:6px 0; background:var(--surface-card); border:1px solid var(--wi4-line-2);
@@ -9101,7 +9129,9 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
   border-radius:6px; background:var(--wn5-note-bg); font-size:12px; line-height:1.4; color:var(--wi4-grey-1); }
 .wn5-notes-h { font-weight:600; color:var(--wn5-note-ink); }
 .wn5-notes-l { flex:1 1 auto; min-width:0; }
-.wn5-note + .wn5-note { color:var(--wi4-grey-2); }
+.wn5-note:first-child { color:var(--wi4-ink); }
+.wn5-note ~ .wn5-note { color:var(--wi4-grey-2); }
+.wn5-note-by { color:var(--wi4-grey-2); }
 .wn5-notes > .wn5-strip { margin:0; padding:2px 8px; }
 .wn5-notes > #wn5-note-read { margin-left:auto; }
 .wn5-notes > #wn5-note-read:disabled { color:var(--wi4-grey-2); cursor:default; text-decoration:none; }
