@@ -223,6 +223,18 @@ function _paint() {
   _logShape(_m);
   _buildIndex(_m);
   _applySearch(false);
+  _fitUpd();
+}
+// Figma H1 «↻ Ενημερώθηκε …»: the word shows whenever it fits and goes first when it does not — before the bar's
+// overflow cuts the time. Measured, not a breakpoint: the range («26 Σεπτεμβρίου – 2 Οκτωβρίου») and the sidebar
+// (open or folded) change the room at the same window width.
+function _fitUpd() {
+  try {
+    const bl = document.querySelector('#content .wn5 .wn5-bar .wi4-bar-l');
+    if (!bl) return;
+    bl.classList.remove('wn5-upd-short');
+    if (bl.scrollWidth > bl.clientWidth + 1) bl.classList.add('wn5-upd-short');
+  } catch (_) { /* the word stays; the bar clips as before */ }
 }
 function _today() { return typeof localToday === 'function' ? localToday() : ''; }
 // The day words come from ONE place (core/wi4-logic.js dayLabel): «Τρί 13/10» / «Τρί».
@@ -249,7 +261,7 @@ function _rootHTML() {
 }
 function _barHTML() {
   const w = Number(window.WNATL && window.WNATL.week);
-  // «Ενημερώθηκε» is a word that gives way at ≤1600 (as on the Weekly International); the time stays. The time, not
+  // «Ενημερώθηκε» is a word that gives way when the bar has no room for it (_fitUpd); the time stays. The time, not
   // «μόλις τώρα» (Figma): no timer refreshes the words, and «μόλις τώρα» would still say so an hour later.
   const upd = _state === 'loading' ? _esc('Διαβάζει…') : _okAt ? `<span class="wn5-upd-w">Ενημερώθηκε </span>${_hhmm(_okAt)}` : '—';
   return '<div class="wi4-bar wn5-bar"><div class="wi4-bar-l"><span class="wi4-title">Εβδομαδιαίο Εθνικών</span>'
@@ -665,6 +677,8 @@ function _install() {
   if (content && typeof MutationObserver === 'function') {
     new MutationObserver(() => { if (!content.querySelector('.wn5')) _cleanup(); }).observe(content, { childList: true });
   }
+  // The window or the sidebar changed #content's width: «Ενημερώθηκε» is measured again (_fitUpd).
+  if (content && typeof ResizeObserver === 'function') new ResizeObserver(() => { if (active()) _fitUpd(); }).observe(content);
   // A click outside the open ✈ menu closes it (capture: before any other handler acts on the click).
   document.addEventListener('click', (e) => {
     if (!document.getElementById('wn5-menu')) return;
@@ -776,7 +790,7 @@ function _searchKey(ev) {
 function _noticesHTML(m) {
   if (!m || !m.notices.length) return '';
   const off = _noteBusy || !!_closed;
-  return `<div id="wn5-notices" class="wn5-notes" role="status"><b class="wn5-notes-h">ΕΙΔΟΠΟΙΗΣΕΙΣ · ${m.notices.length}</b>`
+  return `<div id="wn5-notices" class="wn5-notes" role="status"><b class="wn5-notes-h">ΕΙΔΟΠΟΙΗΣΕΙΣ<span class="wn5-notes-n"> · ${m.notices.length}</span></b>`
     + `<span class="wn5-notes-l">${m.notices.map((x) => `<span class="wn5-note" data-id="${_id(x.id)}"> · ${_esc(x.message)}</span>${_noteBy(x)}`).join('')}</span>`
     + (_noteErr ? `<span class="wn5-strip" data-kind="${_esc(_noteErr.kind || 'failed')}" role="alert">${_esc(_noteErr.message)}</span>` : '')
     + `<button type="button" id="wn5-note-read" class="wi4-link"${off ? ' disabled' : ''}${_closed ? ` title="${_esc(_closed.message)}"` : ''} onclick="WN5._noteRead()">Σημείωσα ✓</button></div>`;

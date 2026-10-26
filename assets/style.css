@@ -8989,6 +8989,10 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-bar { margin-bottom:8px; }
 .wn5 .wn5-upd { flex:none; margin-left:10px; border:0; background:none; padding:0; font:inherit; font-size:12px; color:var(--wi4-grey-2); cursor:pointer; white-space:nowrap; }
 .wn5 .wn5-upd:hover { color:var(--wi4-ink); }
+/* The range of the week is whole (it is the page's subject); the word «Ενημερώθηκε» gives way first, when the bar has
+   no room for it (measured at paint and on resize: _fitUpd), and the time stays. */
+.wn5 .wi4-range { flex:none; }
+.wn5 .wn5-upd-short .wn5-upd-w { display:none; }
 /* Result strips (Δ12): refusal/error red, warning amber, «preview» blue. The text is the Worker's message. */
 .wn5-strip { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin:0 0 8px; padding:6px 12px; border:1px solid var(--wn5-err-line);
   border-radius:6px; background:var(--wi4-red-bg); color:var(--wi4-red-ink); font-size:12px; line-height:1.4; }
@@ -9008,6 +9012,8 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 /* Figma H1: «ΔΕΥΤΕΡΑ» bold and spaced, the date lighter; on today's empty line «· σήμερα · καμία φόρτωση» reads dark. */
 .wn5 .wn5-dayh .wi4-dayd { font-weight:500; letter-spacing:0; }
 .wn5 .wn5-day.today .wn5-dayx { font-weight:700; color:var(--text); }
+/* «· σήμερα · καμία φόρτωση» reads as one phrase (H1): the header's 8px flex gap shrinks to a space between the two. */
+.wn5 .wn5-dayh > .wi4-today + .wn5-dayx { margin-left:-4px; }
 /* Δ12 πλακ. 2: the loading bars under today (shape only). */
 .wn5-skel { display:flex; align-items:center; gap:24px; height:36px; padding:0 20px; box-sizing:border-box; border-top:1px solid var(--wi4-line); }
 .wn5-skel:first-child { border-top:0; }
@@ -9022,8 +9028,9 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
    ΑΝΑΘΕΣΗ is 266px and no Veroia-time column exists (owner 25/10: +16px taken from the ΑΝΟΔΟΣ points), so ΑΝΟΔΟΣ
    starts 266 + 16 = 282px after ΑΝΑΘΕΣΗ. The two point columns share what is left (403.5px each at 1920 = two
    ~178px stops + «+N»; 165px at 1440 = one stop + «+N»). Cells shrink, never overlap, and wrap names (no cut). */
+.wn5 { --wn5-kpal-w:86px; --wn5-apal-w:77px; }
 .wn5-cols, .wn5-row, .wn5-sub {
-  display:grid; grid-template-columns:64px 8px 78px 169px minmax(0,1fr) 86px 266px 16px 78px minmax(0,1fr) 154px 77px; align-items:center; }
+  display:grid; grid-template-columns:64px 8px 78px 169px minmax(0,1fr) var(--wn5-kpal-w) 266px 16px 78px minmax(0,1fr) 154px var(--wn5-apal-w); align-items:center; }
 .wn5 .wn5-c-idx { grid-column:1; }
 .wn5 :is(.wn5-c-kd, .wn5-kd) { grid-column:3; }
 .wn5 :is(.wn5-c-kfl, .wn5-fl) { grid-column:4; }
@@ -9041,11 +9048,14 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-cols > span { min-width:0; padding:0 9px; box-sizing:border-box; }
 .wn5-cols > .wn5-h-asg { padding-left:9px; }
 .wn5-h-sub { font-weight:400; letter-spacing:0; }
-.wn5-row { position:relative; min-height:36px; padding:4px 0; box-sizing:border-box; border-top:1px solid var(--wi4-line); }
+/* 36px as the Figma rows (H1 2120:7738): the rule and 1px above, the 32px day + REF cell, 2px below. */
+.wn5-row { position:relative; min-height:36px; padding:1px 0 2px; box-sizing:border-box; border-top:1px solid var(--wi4-line); }
 .wn5 .wi4-day-body > :first-child { border-top:0; }
 .wn5-row > div, .wn5-sub > span { min-width:0; padding:0 9px; box-sizing:border-box; }
 .wn5-row > .wn5-asg { padding:0; display:flex; gap:4px; }
 .wn5 .wn5-asg .wi4-box { flex:1 1 0; max-width:none; }
+/* «ΠΡΟΣ ΑΝΑΘΕΣΗ» in the button's red ink, SemiBold (H1 / 7745): its inner .wi4-l1 (ink, 500) would paint it navy. */
+.wn5 .wi4-box.un > .wi4-l1 { color:inherit; font-weight:inherit; }
 .wn5 .wn5-c-idx { align-self:stretch; display:flex; align-items:center; gap:2px; padding:0 6px 0 12px; font-size:13px; font-weight:600; color:var(--wi4-grey-1); }
 .wn5 :is(.wn5-row, .wn5-sub) > .wn5-c-idx { background:var(--wi4-chip); }
 .wn5 .wi4-day.today :is(.wn5-row, .wn5-sub) > .wn5-c-idx { background:var(--wi4-today-hover); }
@@ -9062,11 +9072,11 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5 :is(.wn5-kd, .wn5-ad) .wi4-dc { background:none; border-color:transparent; color:var(--wi4-grey-1); }
 .wn5 .wn5-ad .wi4-dc { background:var(--wi4-chip); }
 .wn5 .wn5-row:not(.wn5-dim) .wn5-kd .wi4-dc:is(.past, .today) { border-color:var(--wi4-blue); color:var(--wi4-blue-ink); background:var(--surface-card); }
-.wn5-dc2 { font-size:10px; color:var(--wi4-grey-2); white-space:nowrap; }
+.wn5-dc2 { font-size:10px; line-height:12px; color:var(--wi4-grey-2); white-space:nowrap; }
 /* ΦΟΡΤΩΣΗ: «Βέροια» and, under it, its loading window — on every row that loads there (owner 25/10). */
 .wn5 .wn5-fl { display:flex; flex-direction:column; gap:2px; }
-.wn5-vh { display:block; font-size:12px; font-weight:500; color:var(--wi4-ink); }
-.wn5-vtime { display:block; font-size:10.5px; color:var(--wi4-grey-2); }
+.wn5-vh { display:block; font-size:12px; line-height:15px; font-weight:500; color:var(--wi4-ink); }
+.wn5-vtime { display:block; font-size:10.5px; line-height:13px; color:var(--wi4-grey-2); }
 /* At 1920 two stops fit side by side; narrower (1440: 147px) they wrap to a second line instead of spilling. */
 .wn5 .wn5-pts { flex-wrap:wrap; row-gap:4px; }
 /* Stops and the end of the cycle WRAP (DESIGN.md #6: a place is never cut). The wi4 block cuts .wi4-l1/.wi4-l2 with a visible «…»
@@ -9074,6 +9084,9 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5 :is(.wn5-pts, .wn5-end) :is(.wi4-l1, .wi4-l2) { white-space:normal; overflow:visible; text-overflow:clip; overflow-wrap:break-word; }
 /* 164px: two stops + the 34px «+N» fit the 386px of a point column at 1920 (Figma: stops 178px apart, gap included). */
 .wn5 .wn5-pt { flex:0 1 164px; }
+/* A point with no number (a waiting VS, a single stop): its name starts at x0, flush with the numbers above — in the
+   wi4 grid the empty number column still kept its 4px gap. */
+.wn5 .wn5-pt > .wi4-l1:first-child { grid-column:1 / -1; }
 /* Figma H1: the place after the client is smaller than the name (10.5 against 12) — grey-2, not lighter: grey-3 is
    never information (2.6:1). The same for «· τέλος κύκλου» after «Βέροια» in ΠΡΟΣ. */
 .wn5-city, .wn5-endx { font-size:10.5px; font-weight:400; color:var(--wi4-grey-2); }
@@ -9087,6 +9100,9 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-gapbox { display:flex; align-items:center; min-height:24px; padding:2px 10px; box-sizing:border-box; border:1px dashed var(--wi4-slot);
   border-radius:5px; font-size:11.5px; color:var(--wi4-grey-2); }
 .wn5-gaph { font-weight:500; color:var(--wi4-grey-1); }
+/* The span wrappers cover ΠΑΛ. too (plan 3/7, 9/13); the dashed box ends where ΠΑΛ. begins, which keeps only its «+». */
+.wn5 .wn5-kspan > .wn5-gapbox { margin-right:var(--wn5-kpal-w); }
+.wn5 .wn5-aspan > .wn5-gapbox { margin-right:var(--wn5-apal-w); }
 /* «Μόνο κάθοδος · συνεργάτης»: a fact, not a slot to fill — plain grey text (Figma H1 / 7745). */
 .wn5-gaptxt { font-size:11.5px; color:var(--wi4-grey-2); }
 /* «→» between ΦΟΡΤΩΣΗ and ΠΑΡΑΔΟΣΗ, and before ΠΡΟΣ (Figma H1): drawn in the 18px gutter, outside the DOM text. */
@@ -9097,10 +9113,10 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 /* «↳ Φόρτωση με τοπικό» (Figma row 3): a 28px sub-row, text from the ΚΑΘΟΔΟΣ day column to the end. */
 .wn5-sub { min-height:28px; border-top:1px solid var(--wi4-line); }
 .wn5-sub-t { grid-column:3 / -1; font-size:11px; color:var(--wi4-grey-2); }
-.wn5-sub-t b { font-weight:600; color:var(--wi4-grey-1); }
+.wn5-sub-t b { font-weight:500; color:inherit; }
 /* The «destination did not come» line of a waiting VS (plan T5, Ε-26) belongs to its row: no rule between them, the
    red rail runs on through it (Figma H1: one continuous bar over the waiting VS rows), 22px, small grey text. */
-.wn5 .wn5-row + .wn5-miss { min-height:22px; border-top:0; margin-top:-4px; }
+.wn5 .wn5-row + .wn5-miss { min-height:22px; border-top:0; margin-top:-2px; }
 .wn5 .wn5-row.wi4-r-red + .wn5-miss { position:relative; }
 .wn5 .wn5-row.wi4-r-red + .wn5-miss::before { content:''; position:absolute; left:0; top:0; bottom:0; border-left:3px solid var(--wi4-red); }
 .wn5-qcards { display:flex; gap:8px; flex:1 1 auto; min-width:0; }
@@ -9115,24 +9131,23 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 /* Narrower than the Figma 1920 frame (1440 with the sidebar open): the fixed tracks give way so the point columns keep
    one whole stop + «+N» (ΑΝΑΘΕΣΗ stays 266px, owner 25/10); the long column notes go, the column names stay. */
 @media (max-width:1600px) {
-  .wn5-cols, .wn5-row, .wn5-sub { grid-template-columns:48px 6px 70px 120px minmax(0,1fr) 50px 266px 16px 70px minmax(0,1fr) 156px 50px; }
+  .wn5 { --wn5-kpal-w:50px; --wn5-apal-w:50px; }
+  .wn5-cols, .wn5-row, .wn5-sub { grid-template-columns:48px 6px 70px 120px minmax(0,1fr) var(--wn5-kpal-w) 266px 16px 70px minmax(0,1fr) 156px var(--wn5-apal-w); }
   .wn5-h-long { display:none; }
   /* one stop per point column here (_visPts): it takes the column */
   .wn5 .wn5-pts { flex-wrap:nowrap; }
   .wn5 .wn5-pt { flex:1 1 auto; }
   /* 48px band: the number and the 26px ✈ fit with 8px in front */
   .wn5 .wn5-c-idx { padding:0 4px 0 8px; }
-  /* the range of the week is whole (it is the page's subject); the «Ενημερώθηκε» time gives way first */
-  .wn5 .wi4-range { flex:none; }
-  .wn5 .wn5-upd-w { display:none; }
 }
 /* ✈ menu (Figma 2011:8858): 300px, white, the board's line colour; it lives on <body>, outside .wn5. */
 .wn5-menu { position:fixed; z-index:var(--z-top); width:300px; padding:6px 0; background:var(--surface-card); border:1px solid var(--wi4-line-2);
   border-radius:8px; box-shadow:var(--shadow-lift); font-family:'DM Sans',sans-serif; font-size:12.5px; color:var(--wi4-ink); }
-.wn5-m-hd { display:flex; flex-direction:column; gap:2px; padding:6px 12px 8px; border-bottom:1px solid var(--wi4-line); }
+.wn5-m-hd { display:flex; flex-direction:column; gap:2px; margin:0 12px; padding:6px 0 8px; border-bottom:1px solid var(--wi4-line); }
 .wn5-m-i { display:flex; justify-content:space-between; align-items:baseline; gap:8px; width:100%; padding:7px 12px; border:0; background:none;
   text-align:left; font:inherit; color:inherit; cursor:pointer; }
 .wn5-m-i:hover, .wn5-m-i:focus { background:var(--wi4-sel); outline:none; }
+.wn5-m-i > .wi4-l1 { font-weight:400; }
 .wn5-m-i.danger > .wi4-l1 { color:var(--wi4-red); }
 .wn5-m-sep { height:1px; margin:4px 0; background:var(--wi4-line); }
 .wn5-m-n { margin-left:auto; font-weight:600; color:var(--wi4-grey-1); }
@@ -9162,7 +9177,8 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
    at the end; an answer that stopped it sits in the line as a small strip. */
 .wn5-notes { display:flex; flex-wrap:wrap; align-items:center; gap:4px 8px; margin:0 0 8px; padding:7px 12px; border:1px solid var(--wn5-note-line);
   border-radius:6px; background:var(--wn5-note-bg); font-size:12px; line-height:1.4; color:var(--wi4-grey-1); }
-.wn5-notes-h { font-weight:500; letter-spacing:.6px; color:var(--wn5-note-ink); }
+.wn5-notes-h { font-weight:500; letter-spacing:1.5px; color:var(--wn5-note-ink); }
+.wn5-notes-n { font-size:10.5px; letter-spacing:0; }
 .wn5-notes-l { flex:1 1 auto; min-width:0; }
 .wn5-note:first-child { color:var(--wi4-grey-1); }
 .wn5-note ~ .wn5-note { color:var(--wi4-grey-2); }
