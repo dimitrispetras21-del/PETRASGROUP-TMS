@@ -1,0 +1,16 @@
+-- id: B-87
+-- title: Εθνικός κύκλος δικού μας φορτηγού χωρίς km (φθορά 0)
+-- flows: F-36
+-- severity: P3
+-- schedule: daily
+-- red: > 0
+-- baseline:
+-- queue: yes
+-- entity: ct_round_trips
+-- impact: Το spec 5 Ε8: στο model 2 τα km δεν μετριούνται, άρα η φθορά του κύκλου είναι 0 στο P&L. Η λίστα λέει πόσο μεγάλο είναι το κενό (M-7, owner 24/10: η φθορά μένει εκτός για αρχή).
+-- next: Ενημέρωση owner (καμία ενέργεια στο TMS ως να υπάρξει πηγή km).
+-- exceptions: Μόνο κύκλοι που τελείωσαν (v_rt_cycle.ended), OWNED, total_km NULL.
+-- tolerance: 
+-- source: DRAFT 073b (plan F3, spec 8) · PGlite 26/10 (072 + 072b + 073): 0 on the production copy, red in the scenario of plan-073b.test.mjs
+-- enabled: yes
+SELECT count(*) FROM v_rt_cycle c JOIN ct_round_trips r ON r.id = c.rt_id WHERE c.ended AND c.trip_type = 'OWNED' AND r.total_km IS NULL;

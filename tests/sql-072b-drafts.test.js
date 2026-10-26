@@ -15,7 +15,8 @@
 //     CHECK of 072b; the eight reasons are the spec's; Greek only as base64 that decodes;
 //   - the order 072 -> 072b -> 073 is guarded both ways (073 present = stop, here and in the rollback);
 //   - the hook diff the code review reads (build-072b.mjs --hooks, review R2 DB finding 7) covers the twenty hooks;
-//   - the auditor checks B-91..B-93 sit OUTSIDE the catalog until 073b (tms-auditor/checks-072b/, review R4 finding 1).
+//   - the auditor checks B-91..B-93 are in the catalog since 073b (tms-auditor/checks/; checks-072b/ before, review R4
+//     finding 1; handover P3-6).
 // The rules themselves are proven on PGlite (tms-auditor/test/plan-072b.test.mjs).
 'use strict';
 const { test } = require('node:test');
@@ -158,15 +159,14 @@ test('the hook diff (--hooks, read by the code review of Task B4): twenty hooks,
   assert.strictEqual((out.match(/^=== hook \d+ /gm) || []).length, 20);
 });
 
-// Review R4 (finding 1): B-91..B-93 enter the catalog only with 073b (its seed, fixture and grants know
-// rt_vehicle_segments). In tms-auditor/checks/ now, every seeded tms-auditor test and the catalog test would go red.
-test('the auditor checks of 072b are not in the catalog yet (tms-auditor/checks-072b/ until 073b)', () => {
+// Review R4 (finding 1): B-91..B-93 entered the catalog only with 073b (its seed, fixture and grants know
+// rt_vehicle_segments; handover P3-6, F3 Task 6). Before it they sat in tms-auditor/checks-072b/, which 073b removed.
+test('the auditor checks of 072b are in the catalog since 073b (tms-auditor/checks/, checks-072b/ gone)', () => {
   const cat = path.join(ROOT, 'tms-auditor/checks');
-  // after Task B1 the catalog is always there: a missing folder is a failure, never a silent pass (principle 1)
+  // the catalog is always there: a missing folder is a failure, never a silent pass (principle 1)
   assert.ok(fs.existsSync(cat), 'tms-auditor/checks/ exists');
-  for (const id of ['B-91', 'B-92', 'B-93']) assert.ok(!fs.existsSync(path.join(cat, `${id}.sql`)), `${id} is in tms-auditor/checks/ before 073b`);
-  const own = path.join(ROOT, 'tms-auditor/checks-072b');
-  assert.deepStrictEqual(fs.existsSync(own) && fs.readdirSync(own).sort(), ['B-91.sql', 'B-92.sql', 'B-93.sql'], 'tms-auditor/checks-072b/ holds B-91..B-93');
+  for (const id of ['B-91', 'B-92', 'B-93']) assert.ok(fs.existsSync(path.join(cat, `${id}.sql`)), `${id} is in tms-auditor/checks/ (073b)`);
+  assert.ok(!fs.existsSync(path.join(ROOT, 'tms-auditor/checks-072b')), 'tms-auditor/checks-072b/ is gone: one copy of each check (principle 3)');
 });
 
 // Owner 26/10 («να γίνεται σε ένα βήμα»): plan_rt_update that narrows past a handover AND changes the vehicle is ONE

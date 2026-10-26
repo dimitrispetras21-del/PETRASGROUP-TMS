@@ -1,0 +1,16 @@
+-- id: B-86
+-- title: Ειδοποίηση εθνικών/διεθνών αδιάβαστη > 24 ώρες
+-- flows: F-23,F-14
+-- severity: P2
+-- schedule: hourly
+-- red: > 0
+-- baseline:
+-- queue: no
+-- entity: plan_notices
+-- impact: Η αλλαγή που έκανε το ένα γραφείο στη δουλειά του άλλου (ημέρα ή τόπος VS, έξοδα χωρίς δρομολόγιο) δεν διαβάστηκε: ο άλλος δουλεύει με παλιά εικόνα.
+-- next: Το γραφείο του to_desk: λωρίδα ειδοποιήσεων του board → «διαβάστηκε».
+-- exceptions: spec 7: «που μετρά ο ελεγκτής όσο μένει αδιάβαστο πάνω από 24 ώρες».
+-- tolerance: 24 ώρες
+-- source: DRAFT 073b (plan F3, spec 8) · PGlite 26/10 (072 + 072b + 073): 0 on the production copy, red in the scenario of plan-073b.test.mjs
+-- enabled: yes
+SELECT count(*) FROM plan_notices WHERE read_at IS NULL AND created_at < now() - interval '24 hours';
