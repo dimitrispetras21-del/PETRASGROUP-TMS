@@ -212,6 +212,17 @@ DECLARE
     , 'ok'               -- 154 the start side, the TELIKO a partner (rate 300), the form sets rate 450: the seg_vehicle line names type, partner, rate, trailer; the copy follows
     , 'ok'               -- 155 the end side + the vehicle the ARCHIKO already has: the removal alone, NO seg_vehicle line
     , 'ok'               -- 156 the start side + the driver who leaves with the removed handover, set back: his line with an amount is listed and goes, as in two steps (owner question 3)
+    -- owner 26/10 (money): a handover / correction to a NEW partner may lower the PREVIOUS partner segment's rate in the same act
+    , 'ok'               -- 157 handover partner 1 (300) -> partner 2, previous rate 250 (warehouse): ONE line "rate partner 1: 300 -> 250", token, both written
+    , 'plan:need_token'  -- 158 the same without the token
+    , 'plan:stale_confirm' -- 159 the token of 250 sent with 240
+    , 'plan:bad_input'   -- 160 a previous rate when the segment before is OUR truck
+    , 'ok'               -- 161 the previous rate equal to today's: no line, no token needed
+    , 'plan:bad_input'   -- 162 a previous rate NaN
+    , 'ok'               -- 163 a correction of the later partner segment with a previous rate (dispatcher): the same line, token, both written
+    , 'ok'               -- 164 157 pressed again with the same request: replayed, the same answer, written once
+    , 'plan:bad_input'   -- 165 a previous rate when the NEW vehicle is our truck (code review xhigh 26/10)
+    , 'plan:bad_input'   -- 166 a correction of the FIRST segment with a previous rate: there is none
     -- @want (one line per case: "    , '<ok|plan:code|con:name|state:XXXXX>'  -- <k> <what>")
   ]::text[];
   verdict text; got text; hint text; msg text; cname text; st text;
@@ -1882,6 +1893,82 @@ BEGIN
                             AND (SELECT truck_id = trk2 AND driver_id = drv1 FROM rt_vehicle_segments WHERE id = g2)
                             AND (SELECT count(*) FROM dl_entries WHERE rt_id = rt1 AND needs_review) = 0
                           THEN 'ok the driver set back: his listed line goes, as in two steps' ELSE 'FAIL driver back ' || r::text || ' ' || coalesce(r2::text, 'null') END;
+        END IF;
+      ELSIF k IN (165, 166) THEN
+        r := plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', t1430, 'place_note', 'Lamia',
+               'reason', 'vehicle_breakdown', 'vehicle', jsonb_build_object('trip_type', 'PARTNER', 'partner_id', pa, 'partner_rate', 300)),
+               'test:072b', 'owner');
+        g1 := (r->'ids'->>'cut_segment_id')::bigint;
+        IF k = 165 THEN
+          PERFORM plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', e1000, 'place_note', 'Larisa',
+                    'reason', 'planned_truck', 'vehicle', veh2, 'prev_partner_rate', 250), 'test:072b', 'owner');
+        ELSE
+          PERFORM plan_seg_fix(jsonb_build_object('segment_id', g1, 'set', jsonb_build_object('truck_id', trk3), 'prev_partner_rate', 250),
+                    'test:072b', 'owner');
+        END IF;
+      ELSIF k BETWEEN 157 AND 164 THEN
+        -- [A 2104 ... 14:30][P1 partner 1, rate 300]; the next handover (D+1 10:00) goes to partner 2 at 200, and the
+        -- form lowers partner 1's rate (owner 26/10: the cycle costs the sum of the partner rates)
+        IF k <> 160 THEN
+          r := plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', t1430, 'place_note', 'Lamia',
+                 'reason', 'vehicle_breakdown', 'vehicle', jsonb_build_object('trip_type', 'PARTNER', 'partner_id', pa, 'partner_rate', 300)),
+                 'test:072b', 'owner');
+          g1 := (r->'ids'->>'segment_id')::bigint;
+        END IF;
+        j2 := jsonb_build_object('rt_id', rt1, 'at', CASE WHEN k = 160 THEN t1430 ELSE e1000 END, 'place_note', 'Larisa',
+                'reason', 'planned_truck', 'vehicle', jsonb_build_object('trip_type', 'PARTNER', 'partner_id', pa2, 'partner_rate', 200),
+                'prev_partner_rate', CASE k WHEN 161 THEN to_jsonb(300) WHEN 162 THEN to_jsonb('NaN'::text) ELSE to_jsonb(250) END);
+        IF k = 163 THEN
+          PERFORM plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', e1000, 'place_note', 'Larisa',
+                    'reason', 'planned_truck', 'vehicle', jsonb_build_object('trip_type', 'PARTNER', 'partner_id', pa2, 'partner_rate', 200)),
+                    'test:072b', 'owner');
+          SELECT id INTO g2 FROM rt_vehicle_segments WHERE rt_id = rt1 AND deleted_at IS NULL AND from_at = e1000;
+          j2 := jsonb_build_object('segment_id', g2, 'set', jsonb_build_object('partner_rate', 180), 'prev_partner_rate', 250);
+          r := plan_seg_fix(j2 || jsonb_build_object('dry_run', true), 'test:072b', 'dispatcher');
+          r2 := plan_seg_fix(j2 || jsonb_build_object('confirm_token', r->>'confirm_token'), 'test:072b', 'dispatcher');
+          SET CONSTRAINTS ALL IMMEDIATE;
+          verdict := CASE WHEN (r->>'needs_confirm')::boolean AND r->'preview'->'conflict' = 'null'::jsonb
+                            AND r->'consequences' = jsonb_build_array(jsonb_build_object('kind', 'partner_rate', 'rt_id', rt1, 'segment_id', g1,
+                                  'partner_id', pa, 'partner', 'TEST 072b partner 1', 'rate_from', 300, 'rate_to', 250))
+                            AND (r2->>'ok')::boolean
+                            AND (SELECT partner_rate = 250 FROM rt_vehicle_segments WHERE id = g1)
+                            AND (SELECT partner_rate = 180 AND partner_id = pa2 FROM rt_vehicle_segments WHERE id = g2)
+                          THEN 'ok correction + previous rate in one act' ELSE 'FAIL fix prev rate ' || r::text || ' ' || coalesce(r2::text, 'null') END;
+        ELSIF k IN (158, 160, 162) THEN
+          PERFORM plan_seg_change(j2 || jsonb_build_object('request_id', gen_random_uuid()), 'test:072b', 'warehouse');
+        ELSIF k = 159 THEN
+          r := plan_seg_change(j2 || jsonb_build_object('dry_run', true), 'test:072b', 'warehouse');
+          PERFORM plan_seg_change(jsonb_set(j2, '{prev_partner_rate}', to_jsonb(240))
+                    || jsonb_build_object('request_id', gen_random_uuid(), 'confirm_token', r->>'confirm_token'), 'test:072b', 'warehouse');
+        ELSIF k = 161 THEN
+          r := plan_seg_change(j2 || jsonb_build_object('dry_run', true), 'test:072b', 'warehouse');
+          r2 := plan_seg_change(j2 || jsonb_build_object('request_id', gen_random_uuid()), 'test:072b', 'warehouse');
+          verdict := CASE WHEN NOT coalesce((r->>'needs_confirm')::boolean, false) AND (r2->>'ok')::boolean
+                            AND (SELECT partner_rate = 300 FROM rt_vehicle_segments WHERE id = g1)
+                          THEN 'ok the same rate: no list, no token' ELSE 'FAIL same rate ' || r::text END;
+        ELSE
+          r := plan_seg_change(j2 || jsonb_build_object('dry_run', true), 'test:072b', 'warehouse');
+          j1 := j2 || jsonb_build_object('request_id', gen_random_uuid(), 'confirm_token', r->>'confirm_token');
+          r2 := plan_seg_change(j1, 'test:072b', 'warehouse');
+          IF k = 164 THEN
+            j0 := plan_seg_change(j1, 'test:072b', 'warehouse');
+            verdict := CASE WHEN (j0->>'replayed')::boolean AND j0->'ids' = r2->'ids'
+                              AND (SELECT count(*) FROM rt_vehicle_segments WHERE rt_id = rt1 AND deleted_at IS NULL) = 3
+                            THEN 'ok replayed, written once' ELSE 'FAIL replay ' || coalesce(j0::text, 'null') END;
+          ELSE
+            SET CONSTRAINTS ALL IMMEDIATE;
+            verdict := CASE WHEN (r->>'needs_confirm')::boolean AND r->'preview'->'conflict' = 'null'::jsonb
+                              AND r->'consequences' = jsonb_build_array(jsonb_build_object('kind', 'partner_rate', 'rt_id', rt1, 'segment_id', g1,
+                                    'partner_id', pa, 'partner', 'TEST 072b partner 1', 'rate_from', 300, 'rate_to', 250))
+                              AND (r2->>'ok')::boolean
+                              AND (SELECT partner_rate = 250 AND to_at = e1000 FROM rt_vehicle_segments WHERE id = g1)
+                              AND (SELECT partner_id = pa2 AND partner_rate = 200 FROM rt_vehicle_segments WHERE id = (r2->'ids'->>'segment_id')::bigint)
+                              AND (SELECT count(*) FROM audit_log WHERE table_name = 'rt_vehicle_segments' AND record_id = g1::text
+                                     AND action = 'update' AND role = 'warehouse' AND (after_data->>'partner_rate')::numeric = 250
+                                     AND (after_data->>'to_at')::timestamptz = e1000) = 1
+                            THEN 'ok one line, one token, the previous rate and the handover in one act'
+                            ELSE 'FAIL prev rate ' || r::text || ' ' || coalesce(r2::text, 'null') END;
+          END IF;
         END IF;
       -- @case (each task adds its "ELSIF k = <n> THEN" branches above this line)
       END IF;
