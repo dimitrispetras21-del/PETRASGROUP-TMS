@@ -221,6 +221,8 @@ DECLARE
     , 'plan:bad_input'   -- 162 a previous rate NaN
     , 'ok'               -- 163 a correction of the later partner segment with a previous rate (dispatcher): the same line, token, both written
     , 'ok'               -- 164 157 pressed again with the same request: replayed, the same answer, written once
+    , 'plan:bad_input'   -- 165 a previous rate when the NEW vehicle is our truck (code review xhigh 26/10)
+    , 'plan:bad_input'   -- 166 a correction of the FIRST segment with a previous rate: there is none
     -- @want (one line per case: "    , '<ok|plan:code|con:name|state:XXXXX>'  -- <k> <what>")
   ]::text[];
   verdict text; got text; hint text; msg text; cname text; st text;
@@ -1891,6 +1893,18 @@ BEGIN
                             AND (SELECT truck_id = trk2 AND driver_id = drv1 FROM rt_vehicle_segments WHERE id = g2)
                             AND (SELECT count(*) FROM dl_entries WHERE rt_id = rt1 AND needs_review) = 0
                           THEN 'ok the driver set back: his listed line goes, as in two steps' ELSE 'FAIL driver back ' || r::text || ' ' || coalesce(r2::text, 'null') END;
+        END IF;
+      ELSIF k IN (165, 166) THEN
+        r := plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', t1430, 'place_note', 'Lamia',
+               'reason', 'vehicle_breakdown', 'vehicle', jsonb_build_object('trip_type', 'PARTNER', 'partner_id', pa, 'partner_rate', 300)),
+               'test:072b', 'owner');
+        g1 := (r->'ids'->>'cut_segment_id')::bigint;
+        IF k = 165 THEN
+          PERFORM plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', e1000, 'place_note', 'Larisa',
+                    'reason', 'planned_truck', 'vehicle', veh2, 'prev_partner_rate', 250), 'test:072b', 'owner');
+        ELSE
+          PERFORM plan_seg_fix(jsonb_build_object('segment_id', g1, 'set', jsonb_build_object('truck_id', trk3), 'prev_partner_rate', 250),
+                    'test:072b', 'owner');
         END IF;
       ELSIF k BETWEEN 157 AND 164 THEN
         -- [A 2104 ... 14:30][P1 partner 1, rate 300]; the next handover (D+1 10:00) goes to partner 2 at 200, and the
