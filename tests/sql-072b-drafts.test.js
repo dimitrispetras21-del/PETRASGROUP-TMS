@@ -1,5 +1,5 @@
 // tests/sql-072b-drafts.test.js - run: node --test tests/sql-072b-drafts.test.js
-// (Task B1 copies it from docs/national-v5/handover/tests/ to tests/.)
+// (Task B1 moved it here from docs/national-v5/handover/tests/, git mv.)
 // The 072b drafts (national v5 vehicle handover) at build time, plain node, no database (principle 6):
 //   - the six files and the builder are there; ASCII only; the writing files are ONE DO block; verify and
 //     fingerprint write nothing; the dry run and the rollback are regenerated, never hand-edited;
@@ -138,9 +138,9 @@ test('every plan: code of 072b has a case; every con: of the rules test is a CHE
   const table = /CREATE TABLE public\.rt_vehicle_segments \(([\s\S]*?)\n  \);/.exec(src);
   assert.ok(table && !/\blabel\b/.test(strip(table[1])), 'no label column on rt_vehicle_segments');
   // R-16: the two codes 067 uses for the same events are in 067's delay CHECK too (one fault, one code)
-  const f067 = [path.join(DIR, '..', '067_stop_delay_reason.sql'), path.join(ROOT, '..', '..', '..', 'worker/migrations/067_stop_delay_reason.sql')]
-    .find((f) => fs.existsSync(f));
-  assert.ok(f067, '067_stop_delay_reason.sql not found (it is live since 24/10: worker/migrations/)');
+  // code review xhigh 26/10: one place only (the old fallback reached above the checkout, from docs/ before B1)
+  const f067 = path.join(DIR, '..', '067_stop_delay_reason.sql');
+  assert.ok(fs.existsSync(f067), '067_stop_delay_reason.sql not found (it is live since 24/10: worker/migrations/)');
   for (const c of ['vehicle_breakdown', 'driver_hours']) assert.ok(fs.readFileSync(f067, 'utf8').includes(`'${c}'`), `067 has ${c}`);
   const n = (tst.match(/^\s+, '(?:ok|plan:[a-z_]+|con:[a-z_]+|state:\w+)'\s+-- \d+ /gm) || []).length;
   assert.ok(n >= 60, `${n} cases`);
@@ -162,10 +162,11 @@ test('the hook diff (--hooks, read by the code review of Task B4): eighteen hook
 // rt_vehicle_segments). In tms-auditor/checks/ now, every seeded tms-auditor test and the catalog test would go red.
 test('the auditor checks of 072b are not in the catalog yet (tms-auditor/checks-072b/ until 073b)', () => {
   const cat = path.join(ROOT, 'tms-auditor/checks');
-  if (!fs.existsSync(cat)) return;   // the docs/ layout before Task B1
+  // after Task B1 the catalog is always there: a missing folder is a failure, never a silent pass (principle 1)
+  assert.ok(fs.existsSync(cat), 'tms-auditor/checks/ exists');
   for (const id of ['B-91', 'B-92', 'B-93']) assert.ok(!fs.existsSync(path.join(cat, `${id}.sql`)), `${id} is in tms-auditor/checks/ before 073b`);
   const own = path.join(ROOT, 'tms-auditor/checks-072b');
-  if (fs.existsSync(own)) assert.deepStrictEqual(fs.readdirSync(own).sort(), ['B-91.sql', 'B-92.sql', 'B-93.sql']);
+  assert.deepStrictEqual(fs.existsSync(own) && fs.readdirSync(own).sort(), ['B-91.sql', 'B-92.sql', 'B-93.sql'], 'tms-auditor/checks-072b/ holds B-91..B-93');
 });
 
 test('Greek only as base64 that decodes to Greek; the notice template takes three %s', () => {

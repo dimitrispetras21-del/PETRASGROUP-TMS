@@ -197,6 +197,10 @@ DECLARE
     , 'ok'               -- 141 the same by Move (owner): ONE costs row (rt, DKV), count 2, amount 24.80
     , 'plan:seg_copy'    -- 142 a direct UPDATE of the cycle's driver on model=2 is refused at COMMIT (principle 4)
     , 'plan:seg_copy'    -- 143 the same on a cycle whose payroll line has an amount: refused, the line stays
+    -- code review xhigh (26/10)
+    , 'ok'               -- 144 the removal of 39 pressed again by the same person: replayed, the SAME notice_ids
+    , 'plan:bad_input'   -- 145 correction of a later segment's point to blanks (was a raw 23514 seg_place_text)
+    , 'plan:bad_input'   -- 146 correction of a later segment's reason to null (was a raw 23514 seg_change_pair)
     -- @want (one line per case: "    , '<ok|plan:code|con:name|state:XXXXX>'  -- <k> <what>")
   ]::text[];
   verdict text; got text; hint text; msg text; cname text; st text;
@@ -1706,6 +1710,25 @@ BEGIN
         -- driver swap behind payroll_locked)
         IF k = 143 THEN UPDATE dl_entries SET trip_value = 100 WHERE rt_id = rt1 AND deleted_at IS NULL; END IF;
         UPDATE ct_round_trips SET driver_id = drv3 WHERE id = rt1;
+      ELSIF k = 144 THEN
+        r := plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', t1430, 'place_note', 'Lamia',
+               'reason', 'vehicle_breakdown', 'vehicle', veh2), 'test:072b', 'owner');
+        g2 := (r->'ids'->>'segment_id')::bigint;
+        INSERT INTO ct_cost_lines (rt_id, category, net, vat, line_date, truck_id, alloc_status, created_by, pay_source)
+        VALUES (rt1, 'tolls', 10, 2.4, e, trk2, 'allocated', 'test:072b', 'DKV');
+        r := plan_seg_remove(jsonb_build_object('segment_id', g2, 'dry_run', true), 'test:072b', 'owner');
+        r := plan_seg_remove(jsonb_build_object('segment_id', g2, 'confirm_token', r->>'confirm_token'), 'test:072b', 'owner');
+        r2 := plan_seg_remove(jsonb_build_object('segment_id', g2, 'confirm_token', 'whatever'), 'test:072b', 'owner');
+        verdict := CASE WHEN (r2->>'replayed')::boolean AND r2->'ids' = r->'ids'
+                          AND jsonb_array_length(r->'notice_ids') = 1 AND r2->'notice_ids' = r->'notice_ids'
+                        THEN 'ok the replay names the first call''s notice'
+                        ELSE 'FAIL replay ' || coalesce(r::text, 'null') || ' ' || coalesce(r2::text, 'null') END;
+      ELSIF k IN (145, 146) THEN
+        r := plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', t1430, 'place_note', 'Lamia',
+               'reason', 'vehicle_breakdown', 'vehicle', veh2), 'test:072b', 'owner');
+        PERFORM plan_seg_fix(jsonb_build_object('segment_id', (r->'ids'->>'segment_id')::bigint,
+                  'set', CASE WHEN k = 145 THEN '{"place_note": "   "}'::jsonb ELSE '{"reason": null}'::jsonb END),
+                'test:072b', 'dispatcher');
       -- @case (each task adds its "ELSIF k = <n> THEN" branches above this line)
       END IF;
       SET CONSTRAINTS ALL IMMEDIATE;

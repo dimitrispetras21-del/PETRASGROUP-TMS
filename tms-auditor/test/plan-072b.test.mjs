@@ -3,7 +3,7 @@
 // Production shape = the same as plan-072.test.mjs (the 22/9 columns + live-071.sql + live-072.sql, 071 and 071b as
 // executed 22/10) + 072 as executed 26/10 (worker/migrations/), then 072b. Never edit a fixture by hand.
 // What it proves: the guards hold the texts 072b was written against; the dry run keeps nothing; 072b applies with
-// +4 triggers and B-54 following; the verify row; born closed for the API roles; the 143 rules; F2's 237 rules, 071's
+// +4 triggers and B-54 following; the verify row; born closed for the API roles; the 146 rules; F2's 237 rules, 071's
 // 56 and 071b's 8 still pass ON TOP of 072b (the EXCLUDE moved, the 18 hooks changed nothing F2 decided); the three
 // auditor checks go the PRODUCTION path (review R4, finding 1): each passes the repo lint (lintSql) and the in-DB
 // guard (monitoring.check_sql_guard), is seeded as 073b will seed it and run by monitoring.run_checks as
@@ -21,32 +21,18 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { freshDb, onlyChecks } from './helpers.mjs';
+import { onlyChecks } from './helpers.mjs';
+import { prodShaped072, TRG } from './prod-shaped-072.mjs';
 import { DRAFTS } from '../lib/db.mjs';
 import { parseCheck, seedSql } from '../checks/load.mjs';
-import { btree_gist } from '@electric-sql/pglite/contrib/btree_gist';
-import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const read = (f) => fs.readFileSync(path.join(DRAFTS, f), 'utf8');          // 072b: drafts until executed
 const readDone = (f) => fs.readFileSync(path.join(DRAFTS, '..', f), 'utf8'); // 071 / 071b executed 22/10, 072 26/10
-const fixture = (f) => fs.readFileSync(path.join(HERE, 'fixtures', f), 'utf8');
 // B-91..B-93: tms-auditor/checks-072b/ after Task B1, OUT of the catalog until 073b (review R4, finding 1);
 // HANDOVER_CHECKS=docs/national-v5/handover/checks before it
 const CHECKS = process.env.HANDOVER_CHECKS || path.join(HERE, '..', 'checks-072b');
 
-const STUBS = `
-CREATE OR REPLACE VIEW public.ct_v_rt_revenue AS SELECT id AS rt_id, 0::numeric AS revenue, 0::numeric AS revenue_intl,
-  0::numeric AS revenue_natl FROM public.ct_round_trips;
-CREATE OR REPLACE VIEW public.ct_v_rt_costs AS SELECT id AS rt_id, 0::numeric AS lines_net, 0::numeric AS vat, 0::numeric AS wear,
-  0::numeric AS dl_trip_value, 0::numeric AS dl_expenses, 0::numeric AS driver_pay_pending, 0::bigint AS driver_pay_missing,
-  0::numeric AS partner_planned, 0::numeric AS partner_invoiced FROM public.ct_round_trips;
-CREATE OR REPLACE VIEW public.ct_v_rt_pnl AS SELECT id, 0::numeric AS cost_gross, 0::numeric AS profit_worst,
-  0::numeric AS profit_ex_vat FROM public.ct_round_trips WHERE status <> 'cancelled';
-CREATE OR REPLACE VIEW public.dl_v_rt_route AS SELECT id AS rt_id, ''::text AS route_text FROM public.ct_round_trips;
-`;
-const TRG = `SELECT count(*)::int AS n FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
-  JOIN pg_namespace ns ON ns.oid = c.relnamespace WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public'`;
 const PLAN_FNS = `SELECT count(*)::int AS n FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname LIKE 'plan\\_%'`;
 const EXCL = `SELECT conrelid::regclass::text || ':' || pg_get_constraintdef(oid) AS d FROM pg_constraint
   WHERE conname IN ('rt_v2_truck_once', 'rt_v2_driver_once') ORDER BY conname`;
@@ -56,25 +42,6 @@ const HOOKED = ['public.plan_h_busy(text,bigint,timestamptz,timestamptz,bigint)'
   'public.plan_h_drop_consequences(bigint[],bigint,bigint[])', 'public.plan_move_pieces(jsonb,text,text)',
   'public.plan_delete(jsonb,text,text)'];
 
-async function prodShaped072(with072 = true) {
-  const db = await freshDb({ extensions: { btree_gist, pgcrypto } });
-  await db.exec(`DO $r$ BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN CREATE ROLE anon NOLOGIN; END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN CREATE ROLE service_role NOLOGIN; END IF;
-  END $r$;`);
-  await db.exec(fixture('live-071.sql'));
-  await db.exec(fixture('live-072.sql'));
-  await db.exec(STUBS);
-  await db.exec(`CREATE SCHEMA IF NOT EXISTS extensions`);
-  await db.exec(`CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions`);
-  await db.exec(`INSERT INTO public.locations (legacy_id, name) VALUES ('recJucKOhC1zh4IP3', 'CROSS-DOCK')`);
-  await db.exec(`UPDATE monitoring.checks SET red_value = (${TRG}), baseline = NULL WHERE id = 'B-54'`);
-  await db.exec(readDone('071_plan_schema.sql'));
-  await db.exec(readDone('071b_plan_one_vehicle.sql'));
-  if (with072) await db.exec(readDone('072_plan_functions.sql'));
-  return db;
-}
 async function errorOf(db, sql) { try { await db.exec(sql); return null; } catch (e) { return String(e.message); } }
 const count = async (db, sql) => Number((await db.query(sql)).rows[0].n);
 const md5Of = async (db, sig) => (await db.query('SELECT md5(prosrc) AS m FROM pg_proc WHERE oid = to_regprocedure($1)', [sig])).rows[0]?.m;
@@ -192,12 +159,12 @@ test('072b on a production-shaped PGlite copy', async (t) => {
     } finally { await db.exec('RESET ROLE'); }
   });
 
-  await t.test('072b rules test: 143 OK, 0 FAIL, nothing kept', async () => {
+  await t.test('072b rules test: 146 OK, 0 FAIL, nothing kept', async () => {
     const msg = await errorOf(db, read('072b_plan_vehicle_segments_test.sql'));
     const m = rules('072b').exec(msg ?? '');
     assert.ok(m, msg);
     assert.equal(Number(m[2]), 0, msg);
-    assert.equal(Number(m[1]), 143);
+    assert.equal(Number(m[1]), 146);
     assert.equal(await count(db, `SELECT count(*)::int AS n FROM rt_vehicle_segments`), 0, 'the test keeps nothing');
   });
 
