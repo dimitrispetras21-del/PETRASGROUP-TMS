@@ -169,6 +169,41 @@ test('the auditor checks of 072b are not in the catalog yet (tms-auditor/checks-
   assert.deepStrictEqual(fs.existsSync(own) && fs.readdirSync(own).sort(), ['B-91.sql', 'B-92.sql', 'B-93.sql'], 'tms-auditor/checks-072b/ holds B-91..B-93');
 });
 
+// Owner 26/10 («να γίνεται σε ένα βήμα»): plan_rt_update that narrows past a handover AND changes the vehicle is ONE
+// act - one list (seg_vehicle beside seg_removed), one token, the cut before the vehicle write - and seg_many is the
+// answer only when two or more segments stay. Pinned here at build time (the rules themselves: cases 147-153 on PGlite);
+// the F4 plan checks this test and the DECISION_LOG entry «στένεμα + νέο όχημα σε ένα βήμα» before it builds on it.
+test('one step: narrow past a handover + a new vehicle = one list with seg_vehicle, one token, cut before the vehicle', () => {
+  const src = read(SRC);
+  const hook = (name) => {
+    const m = new RegExp(`  ${name} CONSTANT text := \\$h\\$([\\s\\S]*?)\\$h\\$;`).exec(src);
+    assert.ok(m, `${name} is in 072b`);
+    return m[1];
+  };
+  // hook 6: the listed handovers go first, then the vehicle lands on the one segment left
+  const upd = hook('h_upd_b');
+  assert.ok(upd.indexOf("plan_h_seg_cut(v_cut, 'plan_rt_update'") < upd.indexOf('plan_h_seg_set_only('), 'the cut runs before the vehicle write');
+  // hook 5: the vehicle change is a line of the same list, under the same token
+  const bef = hook('h_upd_bef_b');
+  assert.ok(bef.indexOf("'kind', 'seg_vehicle'") > -1 && bef.indexOf("'kind', 'seg_vehicle'") < bef.indexOf('plan_h_confirm('), 'seg_vehicle joins the list before the token');
+  // hook 19: the list and the ONE segment left are read right after the lock, before 072 judges the vehicle
+  const lock = hook('h_upd_lock_b');
+  assert.match(lock, /v_cut := plan_h_seg_rt_cut\(/);
+  assert.match(lock, /having count\(\*\) = 1;/);
+  // the rules test: the combined body (stops + set, dry run then the token) is accepted for every role, and seg_many is
+  // left only to a cycle where two or more segments stay (case 43: vehicle only; case 151: the dry run, no token)
+  const tst = read('072b_plan_vehicle_segments_test.sql');
+  const want = (k) => (new RegExp(`^\\s+, '([^']+)'\\s+-- ${k} `, 'm').exec(tst) || [])[1];
+  for (const k of [147, 148, 153]) assert.equal(want(k), 'ok', `case ${k}: the combined act succeeds`);
+  assert.equal(want(149), 'plan:need_token');
+  assert.equal(want(150), 'plan:stale_confirm');
+  const many = [...tst.matchAll(/^\s+, 'plan:seg_many'\s+-- (\d+) /gm)].map((m) => Number(m[1]));
+  assert.deepStrictEqual(many, [43], 'seg_many is wanted only for a vehicle change that leaves two segments (case 43)');
+  assert.match(tst, /r->'preview'->'conflict'->>'code' = 'seg_many' AND NOT \(r \? 'confirm_token'\)/, 'case 151: seg_many in the dry run, no token');
+  assert.match(tst, /'set', CASE WHEN k = 152 THEN jsonb_build_object\('driver_id', drv3\) ELSE jsonb_build_object\('truck_id', trk3\) END\)/,
+    'case 147: the body carries stops AND set');
+});
+
 test('Greek only as base64 that decodes to Greek; the notice template takes three %s', () => {
   const src = read(SRC);
   const b64 = [...src.matchAll(/'([A-Za-z0-9+/]{40,}={0,2})'/g)].map((m) => Buffer.from(m[1], 'base64').toString('utf8'));
