@@ -36,3 +36,4 @@ tools/ledger-import/work/
 # Python bytecode from scripts/ and tools/ (19 .py files): never tracked
 __pycache__/
 *.pyc
+tms-auditor/test/.md5map-072b.json

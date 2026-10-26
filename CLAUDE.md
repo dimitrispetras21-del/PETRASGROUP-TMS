@@ -157,6 +157,9 @@ cd worker && CLOUDFLARE_API_TOKEN=$CF_API_TOKEN npx wrangler deploy
      αντικαθιστά ο έλεγχος «ανοιχτό» του εργαλείου (`--plan 2`, Φ5), στο ίδιο deploy· ως τότε, αν λείπει: ΣΤΑΜΑΤΑ.
    Μία εντολή για όλα, πριν και μετά: `node worker/tools/worker-guard.mjs <bundle ή λήψη CF> --plan 1`
    (ξετυλίγει το multipart· `GUARD OK (15 markers, plan=1)`).
+   Με `--plan 1` ΣΤΑΜΑΤΑ και αν βρει `PLAN_WRITES_OPEN = true` οπουδήποτε στο bundle (ως την ημέρα L).
+   Μετά από επείγουσα επαναφορά `wrangler rollback b00d59f3-332d-4e7c-9590-2de97cc235f6` (χωρίς `/plan/*`):
+   `--plan 0`, και το αναμενόμενο είναι `GUARD OK (13 markers, plan=0)`.
    Αν λείπει έστω ένα σημάδι λειτουργίας που ήταν ζωντανή: **ΣΤΑΜΑΤΑ**, όπως
    με τα τρία.
 

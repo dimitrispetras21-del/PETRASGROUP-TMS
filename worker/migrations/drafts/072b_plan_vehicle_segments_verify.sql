@@ -5,9 +5,10 @@
 --   changed_live = 0 ; public_acts = 3 ; open_to_api = 0 ; open_relations = 0 ; rls_off = 0 ;
 --   auditor_policy = 1 ; other_policies = 0 ; new_triggers = 4 ; b54_matches = true ; segments = 0 ; v5_cycles = 0 ;
 --   seg_problems = 0 ; overlaps = 0 ; cancel_copy_drift = 0
--- hooks_in_place counts the 10 hooked functions at their FINAL text (plan_rt_update carries 6 hooks, chained; the
--- three of owner question 7 = b: plan_h_drop_consequences and plan_delete one each, plan_move_pieces two - the second
--- for a side moved within its own cycle, review R5).
+-- hooks_in_place counts the 10 hooked functions at their FINAL text (plan_rt_update carries 7 hooks, chained; the
+-- three of owner question 7 = b: plan_h_drop_consequences one, plan_delete two, plan_move_pieces two - the second
+-- for a side moved within its own cycle, review R5; plan_rt_update's 7th and plan_delete's 2nd put the notices of a
+-- removed handover in the act's answer, fix round 1 26/10).
 -- After L: segments and v5_cycles grow (every v5 cycle has >= 1 segment); seg_problems, overlaps and
 -- cancel_copy_drift stay 0 for ever (the base refuses them at COMMIT - these are independent counts that read the
 -- cycle's status, not the copy rt_cancelled the EXCLUDE filters on). auditor_policy = the
@@ -27,14 +28,14 @@ SELECT
   (SELECT count(*) FROM (VALUES
       ('public.plan_h_busy(text,bigint,timestamptz,timestamptz,bigint)', '99d86d5c59c88264b4825b5410c09a59'),
       ('public.plan_h_finish()', '59d88ec85661d3ef2ac957aecd0e0fcd'),
-      ('public.plan_rt_update(jsonb,text,text)', 'cb791820d156677263083e6d97aef6f5'),
-      ('public.plan_rt_clear(jsonb,text,text)', 'ecead9245b3e4dc90d31a357f2d8c4ef'),
-      ('public.plan_board(date,text)', '93ebc7aa9dd6b4a1eee1f9b916738807'),
+      ('public.plan_rt_update(jsonb,text,text)', 'e918ef7cb61693c941a4e755e7e5f94f'),
+      ('public.plan_rt_clear(jsonb,text,text)', '07452fbac4ac9fe8c4dddd0d35b256f3'),
+      ('public.plan_board(date,text)', '2e030bfc158de8a26d5814f618d1f5ac'),
       ('public.plan_vs_state(bigint[])', '99175b659207c5019f1599ed389f1895'),
-      ('public.plan_local_loading(jsonb,text,text)', '6c56db094458841598db079ad7844515'),
-      ('public.plan_h_drop_consequences(bigint[],bigint,bigint[])', 'ce5de5793080e0c5be1e886defcb0b0e'),
-      ('public.plan_move_pieces(jsonb,text,text)', '856da644f07ea356c2ecb5dd909fcc8d'),
-      ('public.plan_delete(jsonb,text,text)', '7b5c7a31f19d1d38ef1fc115cc3701ec')) v(sig, m)
+      ('public.plan_local_loading(jsonb,text,text)', 'f40c4a548ec192af781ef8e62d3227a5'),
+      ('public.plan_h_drop_consequences(bigint[],bigint,bigint[])', '80b789fcdfc3fb6dad2b1d2f8b83b487'),
+      ('public.plan_move_pieces(jsonb,text,text)', '97984f7500dead965ddcba0d2c3360ab'),
+      ('public.plan_delete(jsonb,text,text)', 'abda0d8b5d0bf32766e4ecb46367420c')) v(sig, m)
     WHERE (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure(v.sig)) = v.m) AS hooks_in_place,
   (SELECT count(*) FROM (VALUES
       ('public.dl_sync_from_rt()', '331cea3a8987b74a9b0add698df9b158'),
@@ -73,7 +74,7 @@ SELECT
       ('public.plan_h_v1_warn(bigint,date,date,bigint)', 'a99553e279628b5795990c08bcb01db6'),
       ('public.plan_h_rt_cancel_if_empty(bigint,text,text,text)', '2f3cdfe09caa8c548e5a30e0f06c84fa'),
       ('public.plan_h_rt_consequences(bigint)', 'cddea3a5fb20a563283a16db3b50f133'),
-      ('public.plan_rt_create(jsonb,text,text)', '8a6f19ff9d3c400eb2a31722226332fa')
+      ('public.plan_rt_create(jsonb,text,text)', '37c04d5803944fdeaf9d0534a0b83506')
     ) v(sig, m)
     WHERE (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure(v.sig)) IS DISTINCT FROM v.m) AS changed_live,
   (SELECT count(*) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace

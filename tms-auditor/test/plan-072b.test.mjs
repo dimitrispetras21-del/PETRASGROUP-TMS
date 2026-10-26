@@ -1,17 +1,18 @@
 // 072b (national v5 vehicle handover: segments) on a production-shaped PGlite copy, at build time (principle 6).
 // Lives in tms-auditor/test/ (Task B1 moves it there from docs/national-v5/handover/tests/, git mv).
 // Production shape = the same as plan-072.test.mjs (the 22/9 columns + live-071.sql + live-072.sql, 071 and 071b as
-// executed 22/10) + 072 from drafts/ (or worker/migrations/ after F2's K3), then 072b. Never edit a fixture by hand.
+// executed 22/10) + 072 as executed 26/10 (worker/migrations/), then 072b. Never edit a fixture by hand.
 // What it proves: the guards hold the texts 072b was written against; the dry run keeps nothing; 072b applies with
-// +4 triggers and B-54 following; the verify row; born closed for the API roles; the 120 rules; F2's 203 rules, 071's
-// 56 and 071b's 8 still pass ON TOP of 072b (the EXCLUDE moved, the 16 hooks changed nothing F2 decided); the three
+// +4 triggers and B-54 following; the verify row; born closed for the API roles; the 146 rules; F2's 237 rules, 071's
+// 56 and 071b's 8 still pass ON TOP of 072b (the EXCLUDE moved, the 18 hooks changed nothing F2 decided); the three
 // auditor checks go the PRODUCTION path (review R4, finding 1): each passes the repo lint (lintSql) and the in-DB
 // guard (monitoring.check_sql_guard), is seeded as 073b will seed it and run by monitoring.run_checks as
 // tms_check_runner through 072b's own policy (no policy made by the test, review R1 finding 4): green on the copy,
 // red on a forced violation - also when the copy rt_cancelled drifts and blinds the EXCLUDE (review R2, DB finding
 // 3); a lag() put back into B-91 is refused by both guards (a mutation); 071b's verify finds the EXCLUDE on the
-// segments (review R2, spec E2); the rollback refuses (a v5 row, 073 present), then undoes the 16 hooks in reverse
-// and returns every hooked function and both EXCLUDE byte for byte; fourteen mutations that each make one case fail.
+// segments (review R2, spec E2); the rollback refuses (a v5 row, 073 present), then undoes the 18 hooks in reverse
+// and returns every hooked function and both EXCLUDE byte for byte; fifteen mutations that each make one case fail,
+// and two on the live hooked functions (a hook's own text is pinned by its md5, so it cannot be mutated in the source).
 // The checks live in tms-auditor/checks-072b/ until 073b moves them into the catalog (plan: the handover to F3, P3-6): in checks/ they
 // would enter the 047b seed and the catalog tests before the fixture and the grants know rt_vehicle_segments.
 // Limits (as plan-072): money views are STUBS; the capture holds only the functions of its f/trg lists.
@@ -20,32 +21,18 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { freshDb, onlyChecks } from './helpers.mjs';
+import { onlyChecks } from './helpers.mjs';
+import { prodShaped072, TRG } from './prod-shaped-072.mjs';
 import { DRAFTS } from '../lib/db.mjs';
 import { parseCheck, seedSql } from '../checks/load.mjs';
-import { btree_gist } from '@electric-sql/pglite/contrib/btree_gist';
-import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const read = (f) => fs.readFileSync(path.join(DRAFTS, f), 'utf8');          // 072 and 072b: drafts until executed
-const readDone = (f) => fs.readFileSync(path.join(DRAFTS, '..', f), 'utf8'); // 071 / 071b: executed 22/10
-const fixture = (f) => fs.readFileSync(path.join(HERE, 'fixtures', f), 'utf8');
+const read = (f) => fs.readFileSync(path.join(DRAFTS, f), 'utf8');          // 072b: drafts until executed
+const readDone = (f) => fs.readFileSync(path.join(DRAFTS, '..', f), 'utf8'); // 071 / 071b executed 22/10, 072 26/10
 // B-91..B-93: tms-auditor/checks-072b/ after Task B1, OUT of the catalog until 073b (review R4, finding 1);
 // HANDOVER_CHECKS=docs/national-v5/handover/checks before it
 const CHECKS = process.env.HANDOVER_CHECKS || path.join(HERE, '..', 'checks-072b');
 
-const STUBS = `
-CREATE OR REPLACE VIEW public.ct_v_rt_revenue AS SELECT id AS rt_id, 0::numeric AS revenue, 0::numeric AS revenue_intl,
-  0::numeric AS revenue_natl FROM public.ct_round_trips;
-CREATE OR REPLACE VIEW public.ct_v_rt_costs AS SELECT id AS rt_id, 0::numeric AS lines_net, 0::numeric AS vat, 0::numeric AS wear,
-  0::numeric AS dl_trip_value, 0::numeric AS dl_expenses, 0::numeric AS driver_pay_pending, 0::bigint AS driver_pay_missing,
-  0::numeric AS partner_planned, 0::numeric AS partner_invoiced FROM public.ct_round_trips;
-CREATE OR REPLACE VIEW public.ct_v_rt_pnl AS SELECT id, 0::numeric AS cost_gross, 0::numeric AS profit_worst,
-  0::numeric AS profit_ex_vat FROM public.ct_round_trips WHERE status <> 'cancelled';
-CREATE OR REPLACE VIEW public.dl_v_rt_route AS SELECT id AS rt_id, ''::text AS route_text FROM public.ct_round_trips;
-`;
-const TRG = `SELECT count(*)::int AS n FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
-  JOIN pg_namespace ns ON ns.oid = c.relnamespace WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public'`;
 const PLAN_FNS = `SELECT count(*)::int AS n FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname LIKE 'plan\\_%'`;
 const EXCL = `SELECT conrelid::regclass::text || ':' || pg_get_constraintdef(oid) AS d FROM pg_constraint
   WHERE conname IN ('rt_v2_truck_once', 'rt_v2_driver_once') ORDER BY conname`;
@@ -55,25 +42,6 @@ const HOOKED = ['public.plan_h_busy(text,bigint,timestamptz,timestamptz,bigint)'
   'public.plan_h_drop_consequences(bigint[],bigint,bigint[])', 'public.plan_move_pieces(jsonb,text,text)',
   'public.plan_delete(jsonb,text,text)'];
 
-async function prodShaped072(with072 = true) {
-  const db = await freshDb({ extensions: { btree_gist, pgcrypto } });
-  await db.exec(`DO $r$ BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN CREATE ROLE anon NOLOGIN; END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN CREATE ROLE service_role NOLOGIN; END IF;
-  END $r$;`);
-  await db.exec(fixture('live-071.sql'));
-  await db.exec(fixture('live-072.sql'));
-  await db.exec(STUBS);
-  await db.exec(`CREATE SCHEMA IF NOT EXISTS extensions`);
-  await db.exec(`CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions`);
-  await db.exec(`INSERT INTO public.locations (legacy_id, name) VALUES ('recJucKOhC1zh4IP3', 'CROSS-DOCK')`);
-  await db.exec(`UPDATE monitoring.checks SET red_value = (${TRG}), baseline = NULL WHERE id = 'B-54'`);
-  await db.exec(readDone('071_plan_schema.sql'));
-  await db.exec(readDone('071b_plan_one_vehicle.sql'));
-  if (with072) await db.exec(read('072_plan_functions.sql'));
-  return db;
-}
 async function errorOf(db, sql) { try { await db.exec(sql); return null; } catch (e) { return String(e.message); } }
 const count = async (db, sql) => Number((await db.query(sql)).rows[0].n);
 const md5Of = async (db, sig) => (await db.query('SELECT md5(prosrc) AS m FROM pg_proc WHERE oid = to_regprocedure($1)', [sig])).rows[0]?.m;
@@ -165,7 +133,7 @@ test('072b on a production-shaped PGlite copy', async (t) => {
     for (const k of ['exclude_on_cycles', 'changed_live', 'open_to_api', 'open_relations', 'rls_off', 'other_policies', 'segments',
       'v5_cycles', 'seg_problems', 'overlaps', 'cancel_copy_drift']) assert.equal(Number(r[k]), 0, k);
     // 072's own verify after 072b, as the plan writes it (Interfaces): changed_live 0, 19 executable plan_*, 79 plan_*
-    const v = (await db.query(read('072_plan_functions_verify.sql'))).rows[0];
+    const v = (await db.query(readDone('072_plan_functions_verify.sql'))).rows[0];
     assert.equal(v.applied, '072 in place');
     assert.equal(Number(v.changed_live), 0);
     assert.equal(Number(v.service_role_execute), 19);
@@ -183,6 +151,11 @@ test('072b on a production-shaped PGlite copy', async (t) => {
       await assert.rejects(db.query(`SELECT public.plan_h_seg_json(1)`), /permission denied/);
       await assert.rejects(db.query(`SELECT public.plan_seg_problem(1)`), /permission denied/);
       await assert.rejects(db.query(`INSERT INTO public.rt_vehicle_segments (rt_id, from_at, to_at, trip_type, created_by) VALUES (1, now(), now(), 'OWNED', 'x')`), /permission denied/);
+      // coordinator 26/10 (review of the live F2 Worker): a direct write to the FIRST segment would be copied onto the
+      // cycle by plan_seg_copy without plan_seg_fix's payroll_locked. No API role can make it: service_role (the
+      // Worker's key) holds SELECT only, so the vehicle of a v5 cycle changes through the three acts or not at all
+      await assert.rejects(db.query(`UPDATE public.rt_vehicle_segments SET driver_id = 1`), /permission denied/);
+      await assert.rejects(db.query(`DELETE FROM public.rt_vehicle_segments`), /permission denied/);
     } finally { await db.exec('RESET ROLE'); }
     await db.exec('SET ROLE anon');
     try {
@@ -191,17 +164,17 @@ test('072b on a production-shaped PGlite copy', async (t) => {
     } finally { await db.exec('RESET ROLE'); }
   });
 
-  await t.test('072b rules test: 120 OK, 0 FAIL, nothing kept', async () => {
+  await t.test('072b rules test: 146 OK, 0 FAIL, nothing kept', async () => {
     const msg = await errorOf(db, read('072b_plan_vehicle_segments_test.sql'));
     const m = rules('072b').exec(msg ?? '');
     assert.ok(m, msg);
     assert.equal(Number(m[2]), 0, msg);
-    assert.equal(Number(m[1]), 120);
+    assert.equal(Number(m[1]), 146);
     assert.equal(await count(db, `SELECT count(*)::int AS n FROM rt_vehicle_segments`), 0, 'the test keeps nothing');
   });
 
-  await t.test('F2 still holds ON TOP of 072b: 072 rules 203, 071 rules 56, 071b rules 8', async () => {
-    for (const [file, name, n, own] of [['072_plan_functions_test.sql', '072', 203, read], ['071_plan_schema_test.sql', '071', 56, readDone],
+  await t.test('F2 still holds ON TOP of 072b: 072 rules 237, 071 rules 56, 071b rules 8', async () => {
+    for (const [file, name, n, own] of [['072_plan_functions_test.sql', '072', 237, readDone], ['071_plan_schema_test.sql', '071', 56, readDone],
       ['071b_plan_one_vehicle_test.sql', '071b', 8, readDone]]) {
       const msg = await errorOf(db, own(file));
       const m = rules(name).exec(msg ?? '');
@@ -266,7 +239,7 @@ test('072b on a production-shaped PGlite copy', async (t) => {
     for (const id of Object.keys(q)) assert.equal(await asRunner(db, q[id]), 0, `${id} green again`);
   });
 
-  await t.test('072b rollback: refuses with a v5 row and with 073; then the 16 hooks out in reverse, both EXCLUDE back; 072b again', async () => {
+  await t.test('072b rollback: refuses with a v5 row and with 073; then the 18 hooks out in reverse, both EXCLUDE back; 072b again', async () => {
     const rb = read('072b_plan_vehicle_segments_rollback.sql');
     await db.exec(`INSERT INTO plan_notices (to_desk, kind, message, created_by) VALUES ('natl', 'test_notice', 'TEST 072b', 'test:072b')`);
     assert.match(await errorOf(db, rb) ?? '', /1 v5 row\(s\) or segment\(s\) exist/);
@@ -281,8 +254,8 @@ test('072b on a production-shaped PGlite copy', async (t) => {
     assert.equal(await count(db, TRG), triggers);
     assert.equal(await count(db, `SELECT red_value AS n FROM monitoring.checks WHERE id = 'B-54'`), triggers);
     assert.equal(await count(db, `SELECT count(*)::int AS n FROM pg_class WHERE relname = 'rt_vehicle_segments'`), 0);
-    const m = rules('072').exec(await errorOf(db, read('072_plan_functions_test.sql')) ?? '');
-    assert.deepEqual([Number(m[1]), Number(m[2])], [203, 0], 'F2 rules after the rollback');
+    const m = rules('072').exec(await errorOf(db, readDone('072_plan_functions_test.sql')) ?? '');
+    assert.deepEqual([Number(m[1]), Number(m[2])], [237, 0], 'F2 rules after the rollback');
     assert.equal(await errorOf(db, src), null, 'reversible: 072b applies again');
     assert.equal((await db.query(read('072b_plan_vehicle_segments_verify.sql'))).rows[0].applied, '072b in place');
   });
@@ -345,6 +318,10 @@ for (const [name, from, to, want] of [
   // is not listed, and the net refuses it
   ['the target that is also a source is read only at its end', /return plan_h_seg_cut_list\(p_keep, v_s, v_e\);/,
    "return plan_h_seg_cut_list(p_keep, '-infinity', v_e);", /120 FAIL want ok got plan:seg_outside/],
+  // fix round 2 (26/10): the cut of a cycle the same act cancels writes its costs notice again - the desk reads the
+  // same DKV line twice (the cancellation's notice already counts it)
+  ['the cut tells the desk again about a cycle the act cancels', /-- mut:cancelnote-begin[\s\S]*?-- mut:cancelnote-end/, 'true',
+   /136 FAIL want ok got FAIL notices/],
 ]) {
   test(`072b mutation: ${name}`, async () => {
     const db = await prodShaped072();
@@ -352,6 +329,27 @@ for (const [name, from, to, want] of [
     const mutant = src.replace(from, to);
     assert.notStrictEqual(mutant, src, 'the mutation markers are in 072b');
     assert.equal(await errorOf(db, mutant), null);
+    const msg = await errorOf(db, read('072b_plan_vehicle_segments_test.sql'));
+    assert.match(msg ?? '', want, msg);
+  });
+}
+
+// Fix round 2 (26/10): hooks 14 and 17 carry 072's OWN notice ids (the put's VS notice in a Move, the VS day's in
+// plan_rt_update's step 6) beside the cut's. No case read them until 138 / 139: a broken hook that dropped them
+// passed all 135 + 237 rules. A hook's text is pinned by its md5 (072b refuses a changed hook), so these break the LIVE
+// function after 072b, as a hand edit would, and exactly that case must fail.
+for (const [name, sig, from, to, want] of [
+  ['a Move drops the put\'s own notice ids (hook 14)', 'public.plan_move_pieces(jsonb,text,text)',
+   "coalesce(v_put->'notice_ids', '[]'::jsonb)", "'[]'::jsonb", /139 FAIL want ok got FAIL notice ids/],
+  ['plan_rt_update drops the VS day\'s notice ids (hook 17)', 'public.plan_rt_update(jsonb,text,text)',
+   'v_notices := v_notices || plan_h_vs_follow(', 'perform plan_h_vs_follow(', /138 FAIL want ok got FAIL notice ids/],
+]) {
+  test(`072b live mutation: ${name}`, async () => {
+    const db = await prodShaped072();
+    assert.equal(await errorOf(db, read('072b_plan_vehicle_segments.sql')), null);
+    const def = (await db.query('SELECT pg_get_functiondef(to_regprocedure($1)) AS d', [sig])).rows[0].d;
+    assert.equal(def.split(from).length, 2, `the hooked text is in ${sig} exactly once`);
+    assert.equal(await errorOf(db, def.split(from).join(to)), null);
     const msg = await errorOf(db, read('072b_plan_vehicle_segments_test.sql'));
     assert.match(msg ?? '', want, msg);
   });
