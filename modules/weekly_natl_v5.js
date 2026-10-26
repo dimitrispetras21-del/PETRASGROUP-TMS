@@ -232,9 +232,12 @@ function _fitUpd() {
   try {
     const bl = document.querySelector('#content .wn5 .wn5-bar .wi4-bar-l');
     if (!bl) return;
+    // Measured with the range whole (.wn5-fit): outside the measure the range may shrink, which would hide the need.
+    bl.classList.add('wn5-fit');
     bl.classList.remove('wn5-upd-short');
     if (bl.scrollWidth > bl.clientWidth + 1) bl.classList.add('wn5-upd-short');
-  } catch (_) { /* the word stays; the bar clips as before */ }
+    bl.classList.remove('wn5-fit');
+  } catch (_) { /* the word stays; the range gives way by its ellipsis */ }
 }
 function _today() { return typeof localToday === 'function' ? localToday() : ''; }
 // The day words come from ONE place (core/wi4-logic.js dayLabel): «Τρί 13/10» / «Τρί».

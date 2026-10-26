@@ -335,8 +335,23 @@ SCN.paint = async (browser, origin) => {
     return { out, rows: document.querySelectorAll('#content .wn5 .wn5-row').length };
   });
   ok(scn, '1440: 12 rows, no stop / tile spills out of its column', spill.rows === 12 && !spill.out.length, spill);
-  ok(scn, '1440: no page errors', !narrow.S.pageErrors.length, narrow.S.pageErrors);
   await shot(narrow.page, 'paint-1440');
+  // The reload time is how the user sees how stale the board is: at 1440 a week whose range crosses months (W40,
+  // «26 Σεπτεμβρίου – 2 Οκτωβρίου») gives way in the range (ellipsis, full text in its title), never in «↻ hh:mm».
+  await narrow.page.keyboard.press('ArrowLeft');
+  await narrow.page.keyboard.press('ArrowLeft');
+  await until(narrow.page, () => { const r = document.querySelector('#content .wn5'); return !!r && r.dataset.week === '2026-09-26' && r.dataset.state !== 'loading'; });
+  const bar = await narrow.page.evaluate(() => {
+    const bl = document.querySelector('#content .wn5 .wn5-bar .wi4-bar-l');
+    const up = bl && bl.querySelector('.wn5-upd');
+    const rg = bl && bl.querySelector('.wi4-range');
+    if (!up) return null;
+    return { barR: Math.round(bl.getBoundingClientRect().right), updR: Math.round(up.getBoundingClientRect().right), upd: up.textContent, range: rg && rg.getAttribute('title') };
+  });
+  ok(scn, '1440, W40: «↻ hh:mm» ends inside the bar (the long range gives way, not the time)',
+    !!bar && /26 Σεπτεμβρίου/.test(bar.range || '') && bar.updR <= bar.barR + 1 && /↻ (?:Ενημερώθηκε )?\d{2}:\d{2}/.test(bar.upd), bar);
+  ok(scn, '1440: no page errors', !narrow.S.pageErrors.length, narrow.S.pageErrors);
+  await shot(narrow.page, 'paint-1440-w40');
   await narrow.page.context().close();
   // Ε-27/Ε-44: a week with no VS leg and no PlanIds.hub() (live: GET /plan/lookups is 404) cannot place Veroia —
   // the board says so in a strip, never Veroia as an ordinary stop in silence.

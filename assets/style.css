@@ -8989,9 +8989,10 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-bar { margin-bottom:8px; }
 .wn5 .wn5-upd { flex:none; margin-left:10px; border:0; background:none; padding:0; font:inherit; font-size:12px; color:var(--wi4-grey-2); cursor:pointer; white-space:nowrap; }
 .wn5 .wn5-upd:hover { color:var(--wi4-ink); }
-/* The range of the week is whole (it is the page's subject); the word «Ενημερώθηκε» gives way first, when the bar has
-   no room for it (measured at paint and on resize: _fitUpd), and the time stays. */
-.wn5 .wi4-range { flex:none; }
+/* The word «Ενημερώθηκε» gives way first, when the bar has no room for it (measured at paint and on resize, with the
+   range whole: _fitUpd sets .wn5-fit for the measure only); then the range shrinks (ellipsis, full text in its title,
+   the .wi4 rule), never the time «↻ hh:mm», which is how the user sees how stale the board is (W40 at 1440). */
+.wn5 .wn5-fit .wi4-range { flex:none; }
 .wn5 .wn5-upd-short .wn5-upd-w { display:none; }
 /* Result strips (Δ12): refusal/error red, warning amber, «preview» blue. The text is the Worker's message. */
 .wn5-strip { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin:0 0 8px; padding:6px 12px; border:1px solid var(--wn5-err-line);

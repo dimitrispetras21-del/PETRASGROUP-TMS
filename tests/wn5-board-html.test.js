@@ -98,3 +98,16 @@ test('F4α-T5: «Χωρίς κάθοδο», «Κενό γύρισμα», «Μό�
   assert.ok(/↳ <b>Φόρτωση με τοπικό<\/b> · Driver Test 11 · Δευ 12\/10 11:00–12:00 · για Oinofyta Test \(στάση 2\)/.test(by.get('rt:103')), 'rt:103 local');
   assert.ok(/class="wi4-box un" data-act="assign"/.test(by.get('wait:4101')) && /wi4-r-red/.test(by.get('wait:4101')), 'wait:4101 ΠΡΟΣ ΑΝΑΘΕΣΗ');
 });
+
+test('F4α-T5: a loading before Veroia comes first in ΦΟΡΤΩΣΗ, numbered «1», then «Βέροια» (WN5L Side.vBefore, Figma H1 row 5)', () => {
+  const c = load();
+  const m = c.WN5L.model(FIX, { today: '2026-10-13' });
+  const all = m.days.flatMap((d) => d.rows);
+  const r105 = all.find((r) => r.key === 'rt:105');
+  assert.ok(r105 && r105.kath, 'rt:105 has no ΚΑΘΟΔΟΣ side');
+  assert.strictEqual(r105.kath.vBefore, 1, 'rt:105 loads at Thessaloniki Test before Veroia (stop seq order)');
+  // gap and waiting sides make no loading before the hub: 0, never undefined
+  for (const r of all) for (const s of [r.kath, r.anod]) if (s && (s.gap || r.key.startsWith('wait:'))) assert.strictEqual(s.vBefore, 0, `${r.key} ${s.side}: vBefore ${s.vBefore}`);
+  const fl = cell(rows(c.WN5._html(m)).find((x) => keyOf(x) === 'rt:105'), 'wn5-fl');
+  assert.ok(/<span class="wi4-pt-n">1<\/span><span class="wi4-l1">Thessaloniki Test<\/span>[\s\S]*<span class="wn5-vh[^"]*">Βέροια<\/span>/.test(fl), `rt:105 ΦΟΡΤΩΣΗ: ${fl}`);
+});
