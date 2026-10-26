@@ -59,6 +59,8 @@ let _qAll = false;       // «Όλα N ▾» of the ΕΠΟΜΕΝΑ band
 let _qRaw = '';          // the search text, memory only; cleared when the week changes (Ε-25)
 let _sIdx = 0;           // the match Enter is on («1/2»)
 const _qi = new Map();   // row key → search text of the last paint (fhSearchBlob: the fields of a row kept apart)
+let _noteBusy = false;   // «Σημείωσα ✓» in flight: one press at a time
+let _noteErr = null;     // the answer that stopped the last «Σημείωσα ✓» (shown in the strip until the week changes)
 let _installed = false, _bannerShown = false, _warned = false;
 const _closedDays = new Set();   // days the USER folded; the board never folds a day itself (owner 12/10)
 const _errLogged = new Set();    // shape lines already logged (one row per distinct line per session)
@@ -113,7 +115,7 @@ function _week(n) {
   window.WNATL.week = v;
   window.renderWeeklyNatl();
 }
-function _onWeekChange() { _closedDays.clear(); _qAll = false; _qRaw = ''; _sIdx = 0; }
+function _onWeekChange() { _closedDays.clear(); _qAll = false; _qRaw = ''; _sIdx = 0; _noteErr = null; }
 
 // ═══ Load ═══
 async function render() {
@@ -301,6 +303,7 @@ function _boardHTML(m, known) {
   const no = { n: 0 };
   const cycles = m.days.flatMap((d) => d.rows).filter((r) => r.kind === 'cycle');
   return _qbandHTML(m, known)
+    + (known ? _noticesHTML(m) : '')
     + (known && typeof WN5Hub !== 'undefined' && typeof WN5Hub.shelfHTML === 'function' ? WN5Hub.shelfHTML(m) : '')
     + _colsHTML(cycles, known)
     + `<div id="wn5-rows">${m.days.map((d) => _dayHTML(d, m, known, no)).join('')}</div>`;
@@ -685,6 +688,48 @@ function _searchKey(ev) {
   }
 }
 
+// ═══ Notices strip (Figma 2011:7745 «ΕΙΔΟΠΟΙΗΣΕΙΣ») ═══
+// The text of a notice is the DB's (072 plan_h_notice writes it in Greek, decision 25): shown as it is, the screen
+// writes no text per kind (principle 3). «Σημείωσα ✓» marks every notice on screen read — one POST per notice, body
+// {}, sent once per press (planFetch never re-sends), stopping at the first «no». Until day L the Worker answers 409
+// writes_closed: its message is shown, the notices stay, and the button stays off for the session (Ε-6).
+function _noticesHTML(m) {
+  if (!m || !m.notices.length) return '';
+  const off = _noteBusy || !!_closed;
+  return `<div id="wn5-notices" class="wn5-notes" role="status"><b class="wn5-notes-h">ΕΙΔΟΠΟΙΗΣΕΙΣ · ${m.notices.length}</b>`
+    + `<span class="wn5-notes-l">${m.notices.map((x) => `<span class="wn5-note" data-id="${_id(x.id)}"> · ${_esc(x.message)}</span>`).join('')}</span>`
+    + (_noteErr ? `<span class="wn5-strip" data-kind="${_esc(_noteErr.kind || 'failed')}" role="alert">${_esc(_noteErr.message)}</span>` : '')
+    + `<button type="button" id="wn5-note-read" class="wi4-link"${off ? ' disabled' : ''}${_closed ? ` title="${_esc(_closed.message)}"` : ''} onclick="WN5._noteRead()">Σημείωσα ✓</button></div>`;
+}
+function _paintNotices() {
+  const el = document.getElementById('wn5-notices');
+  if (el && _m) el.outerHTML = _noticesHTML(_m);
+}
+async function _noteRead() {
+  if (_noteBusy || _closed || !active() || !_m) return;
+  const ids = _m.notices.map((x) => x.id).filter((id) => ID_RE.test(String(id)));
+  if (!ids.length) return;
+  _noteBusy = true;
+  _noteErr = null;
+  _paintNotices();
+  let again = false;
+  for (const id of ids) {
+    try {
+      await planFetch('POST', `/plan/notices/${id}/read`, { body: {} });
+      again = true;
+    } catch (e) {
+      if (e && e._sessionGone) { _noteBusy = false; return; }
+      _noteErr = e;
+      if (e && e.kind === 'closed') markClosed(e);
+      // notice_gone: someone else marked it first — the board is read again, so the strip says what is left
+      if (e && e.code === 'notice_gone') again = true;
+      break;
+    }
+  }
+  _noteBusy = false;
+  if (again) await reload('notices'); else _paintNotices();
+}
+
 // ═══ Exports ═══
 const WN5 = {
   _broken: false,
@@ -701,6 +746,7 @@ const WN5 = {
   search,
   searchFocus,
   _searchKey,
+  _noteRead,
   MENU_ITEMS: [{ id: 'plates', order: 70, label: 'Αντιγραφή πινακίδων', run: (rtId) => copyPlatesOf(rtId) }],
   // The board HTML of a model, for tests/wn5-board-html.test.js (pure: model in, string out).
   _html: (m) => _boardHTML(m, true),

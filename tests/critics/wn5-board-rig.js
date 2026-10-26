@@ -428,6 +428,66 @@ SCN.search = async (browser, origin) => {
   await page.context().close();
 };
 
+// Notices strip: the DB's text as it is; «Σημείωσα ✓» = one POST per notice, body {}, never twice; writes closed until
+// day L (409) → the Worker's message, the notices stay, the button off; 422 notice_gone → its message + a re-read.
+SCN.notices = async (browser, origin) => {
+  const scn = 'notices';
+  const strip = (page) => page.evaluate(() => {
+    const n = document.getElementById('wn5-notices');
+    return n ? { notes: [...n.querySelectorAll('.wn5-note[data-id]')].map((e) => [e.getAttribute('data-id'), e.textContent.trim()]),
+      head: (n.querySelector('.wn5-notes-h') || { textContent: '' }).textContent.trim(),
+      err: [...n.querySelectorAll('.wn5-strip')].map((e) => [e.getAttribute('data-kind'), e.textContent.trim()]),
+      off: !!(document.getElementById('wn5-note-read') || {}).disabled } : null;
+  });
+  const reads = (S) => S.plan.filter((x) => x.m === 'POST' && /^\/plan\/notices\/\d+\/read$/.test(x.path));
+  const press = (page) => page.evaluate(() => { const b = document.getElementById('wn5-note-read'); if (b) b.click(); return !!b; });
+  // A: the texts as they came; «Σημείωσα ✓» marks both, then the board comes back without them.
+  const okAnswer = (e, S) => { const id = Number(e.path.split('/')[3]); S.board.notices = S.board.notices.filter((n) => n.id !== id);
+    return [200, { ok: true, op: 'plan_notice_read', dry_run: false, already: false, read_at: '2026-10-13T09:30:00+03:00', read_by: 'demo_dispatcher', ids: { notice_id: id }, warnings: [], notice_ids: [] }]; };
+  const a = await openBoard(browser, origin, { board: fixture(), plan: { 'POST /plan/notices/:id/read': okAnswer } });
+  const s0 = await strip(a.page);
+  ok(scn, '«ΕΙΔΟΠΟΙΗΣΕΙΣ · 2» and each text = the board message as it is (sentinel)', !!s0 && s0.head === 'ΕΙΔΟΠΟΙΗΣΕΙΣ · 2'
+    && JSON.stringify(s0.notes) === JSON.stringify([['9002', '· rig sentinel notice 9002'], ['9001', '· rig sentinel notice 9001']]), s0);
+  const before = boardReads(a.S).length;
+  await press(a.page);
+  const gone = await until(a.page, () => !document.getElementById('wn5-notices') && document.querySelector('#content .wn5').dataset.state === 'ok');
+  ok(scn, '«Σημείωσα ✓» → one POST per notice, body {}, nothing else', JSON.stringify(reads(a.S).map((x) => [x.path, x.raw])) === JSON.stringify([['/plan/notices/9002/read', '{}'], ['/plan/notices/9001/read', '{}']]), reads(a.S).map((x) => [x.path, x.raw]));
+  ok(scn, '200 → the board is read again and the strip is gone', gone && boardReads(a.S).length === before + 1, { gone, reads: boardReads(a.S).length - before });
+  ok(scn, 'no page errors (A)', !a.S.pageErrors.length, a.S.pageErrors);
+  await shot(a.page, 'notices-read');
+  await a.page.context().close();
+  // B: writes closed until day L (the default answer of the fake = production until L).
+  const one = fixture(); one.notices = one.notices.slice(0, 1);
+  const b = await openBoard(browser, origin, { board: one });
+  await press(b.page);
+  await until(b.page, () => !!document.querySelector('#wn5-notices .wn5-strip'));
+  const s1 = await strip(b.page);
+  ok(scn, '409 writes_closed → one POST, the Worker message in the strip, the notice stays', reads(b.S).length === 1 && !!s1
+    && JSON.stringify(s1.err) === JSON.stringify([['closed', 'rig sentinel writes_closed']]) && s1.notes.length === 1, { posts: reads(b.S).length, s1 });
+  ok(scn, 'after writes_closed the button is off and WN5 knows writes are closed', !!s1 && s1.off && (await b.page.evaluate(() => WN5.snapshot().writesClosed)), s1);
+  await press(b.page);
+  await b.page.waitForTimeout(500);
+  ok(scn, 'a second press sends nothing', reads(b.S).length === 1, reads(b.S).length);
+  await shot(b.page, 'notices-closed');
+  await b.page.context().close();
+  // C: notice_gone (someone else got there first) → its message, a re-read, what is left stays.
+  const goneAnswer = (e, S) => { const id = Number(e.path.split('/')[3]); S.board.notices = S.board.notices.filter((n) => n.id !== id); return planErr(422, 'PLAN_RULE', 'notice_gone'); };
+  const c = await openBoard(browser, origin, { board: fixture(), plan: { 'POST /plan/notices/:id/read': goneAnswer } });
+  const cb = boardReads(c.S).length;
+  await press(c.page);
+  await until(c.page, () => !!document.querySelector('#wn5-notices .wn5-strip'));
+  const s2 = await strip(c.page);
+  ok(scn, '422 notice_gone → one POST, its message, the board re-read, the other notice still there', reads(c.S).length === 1 && boardReads(c.S).length === cb + 1 && !!s2
+    && JSON.stringify(s2.err) === JSON.stringify([['refusal', 'rig sentinel notice_gone']]) && JSON.stringify(s2.notes.map((x) => x[0])) === '["9001"]', { posts: reads(c.S).length, s2 });
+  await c.page.context().close();
+  // D: no notices → no strip at all.
+  const none = fixture(); none.notices = [];
+  const d = await openBoard(browser, origin, { board: none });
+  ok(scn, 'notices: [] → no #wn5-notices', !(await d.page.$('#wn5-notices')) && !!(await d.page.$('#content .wn5[data-state="ok"]')));
+  ok(scn, 'no page errors (B–D)', !b.S.pageErrors.length && !c.S.pageErrors.length && !d.S.pageErrors.length, [b.S.pageErrors, c.S.pageErrors, d.S.pageErrors]);
+  await d.page.context().close();
+};
+
 // ── scenarios end (each Task adds its own above this line) ──
 
 // ── fixture check (T4): plain node, no browser ──
