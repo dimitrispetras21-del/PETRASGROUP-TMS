@@ -34,6 +34,7 @@ export const FILES = ['073b_plan_monitoring.sql', '073b_plan_monitoring_dryrun.s
 // has_function_privilege over every function the 17 checks reach through their views: ct_setting is granted to
 // PUBLIC, order_pallets and stock_natl_delivered to the runner by 057; stock_vs_charge to service_role only).
 export const RUNNER_FN = 'public.stock_vs_charge(numeric, numeric)';
+const RUNNER_FN_NAME = RUNNER_FN.replace(/^public\.|\(.*$/g, '');   // the messages name the function the SQL guards
 const md5 = (s) => crypto.createHash('md5').update(s, 'utf8').digest('hex');
 const b64 = (s) => Buffer.from(s, 'utf8').toString('base64');
 const txt = (s) => (s == null ? 'NULL' : /^[\x20-\x7e\n]*$/.test(s) && !s.includes('$m$') ? `$m$${s}$m$`
@@ -88,7 +89,7 @@ BEGIN
     RAISE EXCEPTION '073b: the runner already reads ct_settings - stop, re-measure';
   END IF;
   IF has_function_privilege('tms_check_runner', '${RUNNER_FN}', 'EXECUTE') THEN
-    RAISE EXCEPTION '073b: the runner already executes stock_vs_charge - stop, re-measure';
+    RAISE EXCEPTION '073b: the runner already executes ${RUNNER_FN_NAME} - stop, re-measure';
   END IF;
   SELECT count(*) INTO v_trg0 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
     JOIN pg_namespace ns ON ns.oid = c.relnamespace WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public';
@@ -140,7 +141,7 @@ ${proof}
   END IF;
   IF NOT has_function_privilege('tms_check_runner', '${RUNNER_FN}', 'EXECUTE')
      OR has_function_privilege('tms_reader', '${RUNNER_FN}', 'EXECUTE') THEN
-    RAISE EXCEPTION '073b proof: stock_vs_charge is not executable by the runner only';
+    RAISE EXCEPTION '073b proof: ${RUNNER_FN_NAME} is not executable by the runner only';
   END IF;
   IF (SELECT count(*) FROM pg_policies WHERE schemaname = 'public' AND tablename IN (${list(V5)})) <> ${V5.length}
      OR (SELECT count(*) FROM pg_policies WHERE schemaname = 'public' AND policyname = 'monitor_read' AND cmd = 'SELECT'
@@ -217,7 +218,7 @@ ${V5.map((t) => `  DROP POLICY IF EXISTS monitor_read ON public.${t};`).join('\n
     RAISE EXCEPTION '073b rollback proof: the runner still reads ct_settings';
   END IF;
   IF has_function_privilege('tms_check_runner', '${RUNNER_FN}', 'EXECUTE') THEN
-    RAISE EXCEPTION '073b rollback proof: the runner still executes stock_vs_charge';
+    RAISE EXCEPTION '073b rollback proof: the runner still executes ${RUNNER_FN_NAME}';
   END IF;
   RAISE NOTICE '073b ROLLBACK OK';
 END $do$;

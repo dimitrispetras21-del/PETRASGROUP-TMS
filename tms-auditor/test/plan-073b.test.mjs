@@ -174,7 +174,7 @@ test('073b on the production-shaped copy', async (t) => {
   });
 
   await t.test('production\'s function rights: the runner cannot execute stock_vs_charge, and 073b without its GRANT fails as the production dry run did', async () => {
-    // the harness holds production's ACLs (prod-shaped-072.mjs, LIVE_FN_ACL): no EXECUTE to PUBLIC, so the runner
+    // the harness holds production's ACLs (prod-shaped-072.mjs, FN_ACL): no EXECUTE to PUBLIC, so the runner
     // is refused exactly as on 26/10 - the mutation that would have caught it before the owner ran it
     assert.strictEqual(await canExec(db, 'tms_check_runner'), false);
     assert.strictEqual(await canExec(db, 'tms_reader'), false);
