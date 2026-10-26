@@ -347,6 +347,36 @@ SCN.paint = async (browser, origin) => {
   ok(scn, 'a week whose Veroia is not identified shows the WN5L.HUB_UNKNOWN strip', !!hlText && hlText.includes('Η Βέροια δεν αναγνωρίστηκε'), hlText);
   await hl.page.context().close();
 };
+// Figma 2035:7735 «εκτελεσμένα σβηστά ανά ημέρα», now = Tue 13/10 09:30: what the base flags is at 40%, nothing else.
+SCN.dim = async (browser, origin) => {
+  const scn = 'dim';
+  const { page, S } = await openBoard(browser, origin, { board: fixture() });
+  const st = await page.evaluate(() => {
+    const op = (el) => (el ? Number(getComputedStyle(el).opacity) : null);
+    const row = (k) => document.querySelector(`#content .wn5 .wn5-row[data-key="${k}"]`);
+    const r = (k) => row(k) || document.createElement('div');
+    const dimIn = (el) => (el ? el.querySelectorAll('.wn5-dim').length + (el.classList.contains('wn5-dim') ? 1 : 0) : -1);
+    return {
+      r101: { cls: r('rt:101').classList.contains('wn5-dim'), op: op(row('rt:101')) },
+      heads: ['rt:102', 'rt:103', 'rt:104'].map((k) => ({ k, row: r(k).classList.contains('wn5-dim'),
+        chip: op(r(k).querySelector('.wn5-kd .wi4-dc')), vh: op(r(k).querySelector('.wn5-vh')), vt: op(r(k).querySelector('.wn5-vtime')),
+        tue: [...r(k).querySelectorAll('.wn5-kto .wn5-pt')].map(op) })),
+      work: ['wait:4101', 'wait:4103', 'rt:108'].map((k) => ({ k, n: dimIn(row(k)) })),
+      late: op(document.querySelector('#content .wn5 .wn5-pt[data-stop="1303"]')),
+      future: dimIn(row('rt:105')) + dimIn(row('rt:106')) + dimIn(row('rt:107')),
+    };
+  });
+  ok(scn, 'row 1 (RT-T101, Σάβ → Δευ, ended Δευ 22:00) dimmed whole, computed opacity 0.4', st.r101.cls && Math.abs(st.r101.op - 0.4) < 0.01, st.r101);
+  ok(scn, 'rows 2–4: only the Monday head (chip, «Βέροια», its window) at 0.4, the row itself not', st.heads.every((h) => !h.row
+    && [h.chip, h.vh, h.vt].every((o) => o !== null && Math.abs(o - 0.4) < 0.01)), st.heads);
+  ok(scn, 'rows 2–4: the Tuesday deliveries stay bold (opacity 1)', st.heads.every((h) => h.tue.length > 0 && h.tue.every((o) => o === 1)), st.heads.map((h) => [h.k, h.tue]));
+  ok(scn, 'ΠΡΟΣ ΑΝΑΘΕΣΗ (VS-T118, VS-T121) and the cycle without a vehicle never dim', st.work.every((w) => w.n === 0), st.work);
+  ok(scn, 'the late stop (RT-T104 Larisa) stays bold', st.late === 1, st.late);
+  ok(scn, 'nothing of Wednesday–Friday is dimmed', st.future === 0, st.future);
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await shot(page, 'dim');
+  await page.context().close();
+};
 // ── scenarios end (each Task adds its own above this line) ──
 
 // ── fixture check (T4): plain node, no browser ──

@@ -366,60 +366,71 @@ function _dayTog(date) {
 }
 
 // ═══ Rows ═══
-// A window the board did not send (hub[] of 072, Ε-26) is «—», never «null–null» and never a guess.
+// Executed = 40% by DAY (owner 21–22/10, Figma 2035:7735 / rule 2036:7735): the class follows ONLY the base's flags
+// (WN5L copies v_rt_stop_state.dim / side_dim / cycle_dim) — the screen never compares a date. On top of the base's
+// own rule (never without a vehicle, never when late) the screen keeps the owner's «ποτέ σβηστό ό,τι θέλει δουλειά»
+// as a guard: a load waiting for a vehicle, a cycle without one, and a late stop are never dimmed, even if a flag
+// said so (a corrupt answer must not hide work).
+function _dimOk(r) { return r.kind === 'cycle' && r.rail !== 'red'; }
+const _dc = (on) => (on ? ' wn5-dim' : '');
+// A window the board did not send (hub[] of 072, Ε-26) is «—», never «null–null» and never a guess (as T5).
 const _win = (f, t) => (f && t ? `${_esc(f)}–${_esc(t)}` : '—');
-// «ΠΡΟΣ ΑΝΑΘΕΣΗ» whose destination / windows the 072 board does not send (hub[], Ε-26): said under the row, never
-// hidden and never guessed (principle 1); the assignment window says the same and keeps «Ένωση» closed (T12).
+// The «ΠΡΟΣ ΑΝΑΘΕΣΗ» line of a missing destination (as T5): a row that needs work, so it never dims.
 function _missHTML(r) {
   return `<div class="wn5-sub wn5-miss" data-qi="${_esc(r.key)}" data-key="miss:${_esc(r.key)}"><span class="wn5-c-idx"></span><span class="wn5-sub-t">${_esc(r.miss)}</span></div>`;
 }
 function _rowHTML(r, m, no) {
   const n = r.kind === 'cycle' ? ++no.n : null;
+  const ok = _dimOk(r);
   const rail = r.rail === 'red' ? ' wi4-r-red' : r.late ? ' wi4-r-amb' : '';
   const ids = r.rtId != null ? ` data-rt="${_id(r.rtId)}"` : ` data-piece="${_id(r.pieceIds[0])}"`;
-  let h = `<div class="wn5-row${rail}" data-key="${_esc(r.key)}" data-qi="${_esc(r.key)}"${ids}>`
+  let h = `<div class="wn5-row${rail}${_dc(ok && r.rowDim)}" data-key="${_esc(r.key)}" data-qi="${_esc(r.key)}"${ids}>`
     + `<div class="wn5-c-idx"><span class="wi4-no">${n == null ? '' : n}</span>`
     + (r.rtId != null ? `<button type="button" class="wi4-plane" title="Ενέργειες σειράς" aria-haspopup="menu" onclick="WN5.rowMenu(event, ${_id(r.rtId)})">${PLANE}</button>` : '')
     + '</div>'
-    + _kathHTML(r, m)
+    + _kathHTML(r, m, ok)
     + `<div class="wn5-asg">${r.tiles.map((t) => _boxHTML(t)).join('')}</div>`
-    + _anodHTML(r, m)
+    + _anodHTML(r, m, ok)
     + '</div>';
-  for (const lm of r.local) h += _localHTML(r, lm);
+  for (const lm of r.local) h += _localHTML(r, lm, ok);
   if (r.miss) h += _missHTML(r);
   return h;
 }
-function _kathHTML(r, m) {
+function _kathHTML(r, m, ok) {
   const s = r.kath;
   if (!s) return r.kind === 'cycle' ? '<div class="wn5-kspan"><span class="wn5-gapbox">Χωρίς κάθοδο</span></div>' : '<div class="wn5-kspan"><span class="wn5-none">—</span></div>';
-  const toDay = s.toDay && s.toDay !== s.day ? `<span class="wn5-dc2">→ ${_esc(_dl(s.toDay))}</span>` : '';
-  return `<div class="wn5-kd"><span class="wi4-dc ${_chipCls(s.day, m.today)}">${_esc(_dl(s.day))}</span>${toDay}</div>`
-    + `<div class="wn5-fl">${s.veroia ? `<span class="wn5-vh">Βέροια</span><span class="wn5-vtime">${_win(s.veroia.from, s.veroia.to)}</span>` : ''}${_ptsHTML(s.from)}</div>`
-    + `<div class="wn5-kto">${_ptsHTML(s.to)}</div>`
+  // The head of the side (its day, «Βέροια», the Veroia window) dims with the day of its loading stop.
+  const hd = _dc(ok && s.headDim);
+  const toDay = s.toDay && s.toDay !== s.day ? `<span class="wn5-dc2${hd}">→ ${_esc(_dl(s.toDay))}</span>` : '';
+  return `<div class="wn5-kd"><span class="wi4-dc ${_chipCls(s.day, m.today)}${hd}">${_esc(_dl(s.day))}</span>${toDay}</div>`
+    + `<div class="wn5-fl">${s.veroia ? `<span class="wn5-vh${hd}">Βέροια</span><span class="wn5-vtime${hd}">${_win(s.veroia.from, s.veroia.to)}</span>` : ''}${_ptsHTML(s.from, ok)}</div>`
+    + `<div class="wn5-kto">${_ptsHTML(s.to, ok)}</div>`
     + `<div class="wn5-kpal">${_palHTML(s)}</div>`;
 }
-function _anodHTML(r, m) {
+function _anodHTML(r, m, ok) {
   const s = r.anod;
   if (!s) return '<div class="wn5-aspan"><span class="wn5-none">—</span></div>';
   if (s.gap) return `<div class="wn5-aspan"><span class="wn5-gapbox">${_esc(s.gap.text)}</span></div>`;
   const n = s.from.length;
-  const end = r.end ? `<span class="wn5-end"><span class="wi4-l1">Βέροια · τέλος κύκλου</span><span class="wi4-l2">ως ${_esc(_dow(L().athensDay(r.end.by)))} ${_esc(L().athensTime(r.end.by))}</span></span>` : '';
-  return `<div class="wn5-ad"><span class="wi4-dc ${_chipCls(s.day, m.today)}">${_esc(_dl(s.day))}</span><span class="wn5-dc2">${n} ${n === 1 ? 'φορτίο' : 'φορτία'}</span></div>`
-    + `<div class="wn5-afl">${_ptsHTML(s.from)}</div>`
-    + `<div class="wn5-ato">${_ptsHTML(s.to)}${end}</div>`
+  const hd = _dc(ok && s.headDim);
+  const end = r.end ? `<span class="wn5-end${_dc(ok && r.end.dim)}"><span class="wi4-l1">Βέροια · τέλος κύκλου</span><span class="wi4-l2">ως ${_esc(_dow(L().athensDay(r.end.by)))} ${_esc(L().athensTime(r.end.by))}</span></span>` : '';
+  return `<div class="wn5-ad"><span class="wi4-dc ${_chipCls(s.day, m.today)}${hd}">${_esc(_dl(s.day))}</span><span class="wn5-dc2${hd}">${n} ${n === 1 ? 'φορτίο' : 'φορτία'}</span></div>`
+    + `<div class="wn5-afl">${_ptsHTML(s.from, ok)}</div>`
+    + `<div class="wn5-ato">${_ptsHTML(s.to, ok)}${end}</div>`
     + `<div class="wn5-apal">${_palHTML(s)}</div>`;
 }
-function _ptsHTML(pts) {
+function _ptsHTML(pts, ok) {
   if (!pts.length) return '';
   const one = pts.length === 1;
   const rest = pts.slice(VISIBLE_POINTS);
   const more = rest.length
     ? `<span class="wi4-more" title="${_esc(rest.map((p) => `${p.n}. ${p.name} · ${p.from && p.to ? p.from + '–' + p.to : '—'} · ${_pal(p.pallets)}`).join('\n'))}"><b>+${rest.length}</b></span>`
     : '';
-  return `<span class="wi4-pts wn5-pts">${pts.slice(0, VISIBLE_POINTS).map((p) => _ptHTML(p, one)).join('')}${more}</span>`;
+  return `<span class="wi4-pts wn5-pts">${pts.slice(0, VISIBLE_POINTS).map((p) => _ptHTML(p, one, ok)).join('')}${more}</span>`;
 }
-function _ptHTML(p, one) {
-  return `<span class="wi4-pt wn5-pt${p.late ? ' wn5-late' : ''}" data-stop="${_id(p.stopId)}">`
+// Each point with its own day: a delivery of Tuesday stays bold until Tuesday ends, even if its hour passed.
+function _ptHTML(p, one, ok) {
+  return `<span class="wi4-pt wn5-pt${p.late ? ' wn5-late' : ''}${_dc(ok && p.dim && !p.late)}" data-stop="${_id(p.stopId)}">`
     + (one ? '' : `<span class="wi4-pt-n">${p.n}</span>`)
     + `<span class="wi4-l1">${_esc(p.name)}${p.city ? `<span class="wn5-city"> · ${_esc(p.city)}</span>` : ''}</span>`
     + `<span class="wi4-l2${p.late ? ' wi4-t-amb' : ''}">${_win(p.from, p.to)} · ${_esc(_pal(p.pallets))}</span></span>`;
@@ -434,10 +445,11 @@ function _boxHTML(t) {
   return `<span class="wi4-box ${t.type}"><span class="wi4-l1${t.type === 'own' ? ' wi4-plate' : ''}" title="${_esc(t.line1)}">${_esc(t.line1)}</span>`
     + `<span class="wi4-l2${t.missing ? ' wn5-missing' : ''}" title="${_esc(t.line2)}">${_esc(t.line2)}</span></span>`;
 }
-// «↳ Φόρτωση με τοπικό» under its row (Figma 2011:7745 row 3): who, when, for which stop.
-function _localHTML(r, lm) {
+// «↳ Φόρτωση με τοπικό» under its row (Figma 2011:7745 row 3): who, when, for which stop. It dims with the stop it
+// serves (the base's flag of that stop): the board carries no flag of its own for a local move.
+function _localHTML(r, lm, ok) {
   const time = [lm.time_from, lm.time_to].filter(Boolean).map((t) => String(t).slice(0, 5)).join('–');
-  return `<div class="wn5-sub" data-qi="${_esc(r.key)}" data-key="local:${_id(lm.local_move_id)}" data-stop="${_id(lm.stopId)}">`
+  return `<div class="wn5-sub${_dc(ok && lm.dim)}" data-qi="${_esc(r.key)}" data-key="local:${_id(lm.local_move_id)}" data-stop="${_id(lm.stopId)}">`
     + '<span class="wn5-c-idx"></span>'
     + `<span class="wn5-sub-t">↳ <b>Φόρτωση με τοπικό</b> · ${_esc(lm.driver || 'χωρίς οδηγό')} · ${_esc(_dl(lm.move_date))}${time ? ' ' + _esc(time) : ''}`
     + `${lm.stopName ? ` · για ${_esc(lm.stopName)}${lm.stopN ? ` (στάση ${lm.stopN})` : ''}` : ''}</span></div>`;
