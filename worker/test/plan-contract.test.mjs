@@ -18,6 +18,8 @@
 // The same for 072b on deploy/worker-plan-handover: a copy of
 // feat/national-v5-handover-one-step's file (owner 26/10, one step; #96 merged the first one), re-synced with ONE command
 //   git checkout feat/national-v5-handover-one-step -- worker/migrations/drafts/072b_plan_vehicle_segments.sql
+// and, so this branch never mixes a new 072b with older generated files and tests (code review xhigh 26/10), the set:
+//   git checkout feat/national-v5-handover-one-step -- 'worker/migrations/drafts/072b_*' worker/migrations/drafts/tools/build-072b.mjs tests/sql-072b-drafts.test.js tms-auditor/test/plan-072b.test.mjs
 //
 // 072's own refusals are parsed from `plan_h_raise('<code>'` (a literal code
 // as the first argument — the convention of the SQL plan, Task A1) and from
