@@ -68,3 +68,48 @@ export const DRAFT_057 = {
   },
   columns: { orders: [['stock_lot_id', 'int8']], national_orders: [['stock_lot_id', 'int8']] },
 };
+// SYNTHETIC from 071 (executed 22/10, after the 22/9 snapshot), DRAFT 072b and DRAFT 073: the v5 tables, the 071
+// columns, the vehicle segments of 072b and the views the F3 checks (B-78..B-93) read. Views become TABLES here, like
+// DRAFT_057. Names/types from the 071, 072b and 073 texts; model stays nullable (the live NOT NULL DEFAULT 1 would
+// refuse the inserts of tests that predate it). Written to schema-v5.sql, loaded by createDb unless { v5: false }
+// (the 071/072/072b/073 harnesses apply 071 themselves). After the next snapshot of information_schema: move them into
+// TABLES and delete this block (principle 8).
+export const V5_073 = {
+  tables: {
+    shipments: [['id', 'int8!'], ['order_id', 'int8'], ['nat_order_id', 'int8'], ['order_stop_id', 'int8'], ['origin_location_id', 'int8'],
+      ['dest_location_id', 'int8'], ['pallets', 'numeric'], ['load_from', 'timestamptz'], ['load_to', 'timestamptz'], ['deliver_from', 'timestamptz'],
+      ['deliver_to', 'timestamptz'], ['created_at', 'timestamptz!'], ['created_by', 'text!'], ['deleted_at', 'timestamptz'], ['deleted_reason', 'text'], ['deleted_by', 'text']],
+    shipment_pieces: [['id', 'int8!'], ['shipment_id', 'int8!'], ['parent_piece_id', 'int8'], ['pallets', 'numeric!'], ['leave_by', 'date'], ['split_at', 'timestamptz'],
+      ['split_by', 'text'], ['created_at', 'timestamptz!'], ['created_by', 'text!'], ['deleted_at', 'timestamptz'], ['deleted_reason', 'text'], ['deleted_by', 'text']],
+    rt_stops: [['id', 'int8!'], ['rt_id', 'int8!'], ['seq', 'int4'], ['location_id', 'int8!'], ['side', 'text!'], ['planned_from', 'timestamptz'], ['planned_to', 'timestamptz'],
+      ['created_at', 'timestamptz!'], ['created_by', 'text!'], ['deleted_at', 'timestamptz'], ['deleted_reason', 'text'], ['deleted_by', 'text']],
+    piece_legs: [['id', 'int8!'], ['piece_id', 'int8!'], ['leg_no', 'int4'], ['rt_id', 'int8!'], ['pickup_stop_id', 'int8!'], ['drop_stop_id', 'int8!'],
+      ['created_at', 'timestamptz!'], ['created_by', 'text!'], ['deleted_at', 'timestamptz'], ['deleted_reason', 'text'], ['deleted_by', 'text']],
+    plan_notices: [['id', 'int8!'], ['to_desk', 'text!'], ['kind', 'text!'], ['message', 'text!'], ['order_id', 'int8'], ['nat_order_id', 'int8'], ['rt_id', 'int8'],
+      ['created_at', 'timestamptz!'], ['created_by', 'text!'], ['read_at', 'timestamptz'], ['read_by', 'text']],
+    // 072b (DRAFT): the vehicle segments B-91..B-93 read (handover P3-6: 073b moves those checks into the catalog)
+    rt_vehicle_segments: [['id', 'int8!'], ['rt_id', 'int8!'], ['from_at', 'timestamptz!'], ['to_at', 'timestamptz!'], ['trip_type', 'text!'], ['truck_id', 'int8'],
+      ['trailer_id', 'int8'], ['driver_id', 'int8'], ['partner_id', 'int8'], ['partner_rate', 'numeric'], ['place_note', 'text'], ['reason', 'text'], ['reason_note', 'text'],
+      ['rt_cancelled', 'bool!'], ['created_at', 'timestamptz!'], ['created_by', 'text!'], ['updated_at', 'timestamptz!'], ['deleted_at', 'timestamptz'], ['deleted_reason', 'text'], ['deleted_by', 'text']],
+    v_shipments: [['shipment_id', 'int8'], ['kind', 'text'], ['order_id', 'int8'], ['nat_order_id', 'int8'], ['order_stop_id', 'int8'], ['client_id', 'int8'],
+      ['reference', 'text'], ['origin_location_id', 'int8'], ['dest_location_id', 'int8'], ['nat_from_location_id', 'int8'], ['nat_to_location_id', 'int8'],
+      ['pallets', 'numeric'], ['nat_ready_day', 'date'], ['nat_due_day', 'date'], ['load_from', 'timestamptz'], ['load_to', 'timestamptz'],
+      ['deliver_from', 'timestamptz'], ['deliver_to', 'timestamptz'], ['temperature_c', 'numeric'], ['pallet_exchange', 'bool'], ['live', 'bool'],
+      ['created_at', 'timestamptz'], ['created_by', 'text'], ['deleted_at', 'timestamptz']],
+    v_piece_state: [['piece_id', 'int8'], ['shipment_id', 'int8'], ['kind', 'text'], ['order_id', 'int8'], ['nat_order_id', 'int8'], ['order_stop_id', 'int8'],
+      ['parent_piece_id', 'int8'], ['pallets', 'numeric'], ['leave_by', 'date'], ['position_location_id', 'int8'], ['last_drop_stop_id', 'int8'], ['at_hub', 'bool'],
+      ['waiting', 'bool'], ['end_stop_id', 'int8'], ['national_end_at', 'timestamptz'], ['end_day', 'date'], ['nat_ready_day', 'date'], ['nat_due_day', 'date'],
+      ['executed', 'bool'], ['late', 'bool'], ['overdue', 'bool'], ['is_stock', 'bool']],
+    v_rt_cycle: [['rt_id', 'int8'], ['code', 'text'], ['status', 'text'], ['trip_type', 'text'], ['truck_id', 'int8'], ['trailer_id', 'int8'], ['driver_id', 'int8'],
+      ['partner_id', 'int8'], ['start_at', 'timestamptz'], ['end_at', 'timestamptz'], ['date_start', 'date'], ['date_end', 'date'], ['n_stops', 'int8'],
+      ['n_legs', 'int8'], ['ended', 'bool']],
+    ct_v_v5_revenue: [['kind', 'text'], ['order_id', 'int8'], ['nat_order_id', 'int8'], ['piece_id', 'int8'], ['leg_id', 'int8'], ['rt_id', 'int8'],
+      ['pallets', 'numeric'], ['total', 'numeric'], ['amount', 'numeric']],
+    // 073 (Q6-1, owner 26/10): the partner cost of a v5 cycle per partner of its segments, read by B-83
+    ct_v_rt_partner_cost: [['rt_id', 'int8'], ['partner_id', 'int8'], ['planned', 'numeric'], ['invoiced', 'numeric'], ['cost', 'numeric'],
+      ['unmatched', 'bool'], ['rate_missing', 'bool']],
+  },
+  columns: { ct_round_trips: [['model', 'int2'], ['start_at', 'timestamptz'], ['end_at', 'timestamptz'], ['partner_rate', 'numeric']],
+             pl_movements: [['piece_leg_id', 'int8']],
+             ct_cost_lines: [['partner_id', 'int8']] },
+};
