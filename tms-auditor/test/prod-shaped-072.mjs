@@ -29,6 +29,18 @@ CREATE OR REPLACE VIEW public.ct_v_rt_pnl AS SELECT id, 0::numeric AS cost_gross
   0::numeric AS profit_ex_vat FROM public.ct_round_trips WHERE status <> 'cancelled';
 CREATE OR REPLACE VIEW public.dl_v_rt_route AS SELECT id AS rt_id, ''::text AS route_text FROM public.ct_round_trips;
 `;
+// The EXECUTE rights of the functions live-073.sql creates, as production holds them (SELECT on pg_proc.proacl,
+// 26/10). live-073.sql captures the views' grants but not these, so its functions kept PostgreSQL's default
+// (EXECUTE to PUBLIC) and the 073b dry run passed here while production refused it: "permission denied for function
+// stock_vs_charge" as tms_check_runner (a view checks the functions it calls as its CALLER). ct_setting(text) keeps
+// the default: production grants it to PUBLIC too.
+export const LIVE_FN_ACL = `
+REVOKE ALL ON FUNCTION public.stock_vs_charge(numeric, numeric), public.order_pallets(public.orders),
+  public.stock_natl_delivered(text, date) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.stock_vs_charge(numeric, numeric) TO service_role;
+GRANT EXECUTE ON FUNCTION public.order_pallets(public.orders), public.stock_natl_delivered(text, date)
+  TO service_role, tms_check_runner, tms_reader;
+`;
 export const TRG = `SELECT count(*)::int AS n FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
   JOIN pg_namespace ns ON ns.oid = c.relnamespace WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public'`;
 
@@ -43,7 +55,7 @@ export async function prodShaped072(with072 = true, { money = 'stubs', with072b 
   END $r$;`);
   await db.exec(fixture('live-071.sql'));
   await db.exec(fixture('live-072.sql'));
-  await db.exec(money === 'live' ? fixture('live-073.sql') : STUBS);
+  await db.exec(money === 'live' ? fixture('live-073.sql') + LIVE_FN_ACL : STUBS);
   await db.exec(`CREATE SCHEMA IF NOT EXISTS extensions`);
   await db.exec(`CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions`);
   await db.exec(`INSERT INTO public.locations (legacy_id, name) VALUES ('recJucKOhC1zh4IP3', 'CROSS-DOCK')`);

@@ -5,7 +5,8 @@
 // puts them into production carries their text byte for byte (Greek as base64) and proves it with md5.
 // What 073b does, in ONE DO block: the read policy monitor_read on the five v5 tables of 071 (without it the
 // auditor's roles read 0 rows from them and every v5 check is green for ever - RLS on, no policy, 071), SELECT on
-// ct_settings for the check runner only (D-15: the functions inside ct_v_v5_revenue run as the caller), the 13
+// ct_settings and EXECUTE on stock_vs_charge for the check runner only (D-15: the functions inside ct_v_v5_revenue
+// run as the caller; the EXECUTE was missed until the production dry run of 26/10 refused B-79), the 13
 // checks of spec 8 that do not need day L (B-78..B-90, owner answers M-4 beta / M-5 delta / M-6 alpha), B-94 (final
 // round 2, 26/10: a partner invoice that no partner of its cycle owns - Q6-1's unmatched row, counted and never
 // replacing a rate, so nothing else would say it), and the 3 checks of 072b (B-91..B-93, handover P3-6: they waited
@@ -29,6 +30,10 @@ export const HANDOVER_IDS = ['B-91', 'B-92', 'B-93'];
 export const IDS = [...F3_IDS, ...HANDOVER_IDS];
 export const V5 = ['shipments', 'shipment_pieces', 'rt_stops', 'piece_legs', 'plan_notices'];
 export const FILES = ['073b_plan_monitoring.sql', '073b_plan_monitoring_dryrun.sql', '073b_plan_monitoring_rollback.sql'];
+// The one function under ct_v_v5_revenue the runner cannot execute in production (measured 26/10 with
+// has_function_privilege over every function the 17 checks reach through their views: ct_setting is granted to
+// PUBLIC, order_pallets and stock_natl_delivered to the runner by 057; stock_vs_charge to service_role only).
+export const RUNNER_FN = 'public.stock_vs_charge(numeric, numeric)';
 const md5 = (s) => crypto.createHash('md5').update(s, 'utf8').digest('hex');
 const b64 = (s) => Buffer.from(s, 'utf8').toString('base64');
 const txt = (s) => (s == null ? 'NULL' : /^[\x20-\x7e\n]*$/.test(s) && !s.includes('$m$') ? `$m$${s}$m$`
@@ -59,7 +64,7 @@ export function build() {
     c.is_queue, txt(c.impact), txt(c.next_step), txt(c.exceptions), txt(c.tolerance), c.enabled, txt(c.disabled_reason)].join(',\n     ')})`);
   const proof = mine.map((c) => `      ('${c.id}', '${md5(c.sql)}', '${md5(c.ids_sql || '')}', ${c.enabled})`).join(',\n');
   const nOn = mine.filter((c) => c.enabled).length;
-  const done = `073b OK: ${IDS.length} checks (${F3_IDS.length} of F3 + ${HANDOVER_IDS.length} of 072b, ${nOn} enabled), ${V5.length} read policies, X readable by the runner, every check 0 today`;
+  const done = `073b OK: ${IDS.length} checks (${F3_IDS.length} of F3 + ${HANDOVER_IDS.length} of 072b, ${nOn} enabled), ${V5.length} read policies, X readable and computable by the runner, every check 0 today`;
   const body = `DECLARE
   v_k int; v_trg0 int; v_g record; v_v numeric; v_sql text;
 BEGIN
@@ -82,6 +87,9 @@ BEGIN
   IF has_table_privilege('tms_check_runner', 'public.ct_settings', 'SELECT') THEN
     RAISE EXCEPTION '073b: the runner already reads ct_settings - stop, re-measure';
   END IF;
+  IF has_function_privilege('tms_check_runner', '${RUNNER_FN}', 'EXECUTE') THEN
+    RAISE EXCEPTION '073b: the runner already executes stock_vs_charge - stop, re-measure';
+  END IF;
   SELECT count(*) INTO v_trg0 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
     JOIN pg_namespace ns ON ns.oid = c.relnamespace WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public';
 
@@ -95,6 +103,10 @@ ${V5.map((t) => `  CREATE POLICY monitor_read ON public.${t} FOR SELECT TO tms_c
   --     fail with "permission denied for table ct_settings" as soon as one v5 row exists (measured on PGlite).
   --     The auditor's runner only (it already reads money: stock_v_lot_money, 057); never tms_reader.
   GRANT SELECT ON public.ct_settings TO tms_check_runner;
+  --     And the EXECUTE on stock_vs_charge: 057 gave it to service_role only, and the right to call a function is
+  --     checked when the query starts, even with 0 rows, so the 073b dry run of 26/10 stopped at B-79 with "permission denied
+  --     for function stock_vs_charge". Runner only, as above (ct_setting is already PUBLIC in production).
+  GRANT EXECUTE ON FUNCTION ${RUNNER_FN} TO tms_check_runner;
 
   -- 2. THE ${IDS.length} CHECKS (text = tms-auditor/checks/<id>.sql, generated; md5-proven below)
   INSERT INTO monitoring.checks (id, title, flows, sql_text, ids_sql, entity_table, red_op, red_value, baseline, severity,
@@ -125,6 +137,10 @@ ${proof}
   IF NOT has_table_privilege('tms_check_runner', 'public.ct_settings', 'SELECT')
      OR has_table_privilege('tms_reader', 'public.ct_settings', 'SELECT') THEN
     RAISE EXCEPTION '073b proof: ct_settings is not readable by the runner only';
+  END IF;
+  IF NOT has_function_privilege('tms_check_runner', '${RUNNER_FN}', 'EXECUTE')
+     OR has_function_privilege('tms_reader', '${RUNNER_FN}', 'EXECUTE') THEN
+    RAISE EXCEPTION '073b proof: stock_vs_charge is not executable by the runner only';
   END IF;
   IF (SELECT count(*) FROM pg_policies WHERE schemaname = 'public' AND tablename IN (${list(V5)})) <> ${V5.length}
      OR (SELECT count(*) FROM pg_policies WHERE schemaname = 'public' AND policyname = 'monitor_read' AND cmd = 'SELECT'
@@ -167,9 +183,10 @@ $dry$;
           OR incident_key IN (${list(IDS.flatMap((id) => [`MECH:check:${id}`, `MECH:stale:${id}`]))}))`;
   const rollback = `-- 073b ROLLBACK - GENERATED by worker/migrations/drafts/tools/build-073b.mjs. DO NOT EDIT BY HAND.
 -- The ${IDS.length} checks out of the catalog (with their results, their open incidents closed), the ${V5.length} read policies off,
--- ct_settings back from the runner.
--- After it the auditor reads 0 rows from the v5 tables again (071's design) and no ct_settings; 072b's own policy on
--- rt_vehicle_segments stays. Only with an explicit yes, after 15:00; BEFORE 073's rollback. ASCII. ONE DO block.
+-- ct_settings and stock_vs_charge back from the runner.
+-- After it the auditor reads 0 rows from the v5 tables again (071's design), reads no ct_settings and cannot execute
+-- stock_vs_charge (057's grants); 072b's own policy on rt_vehicle_segments stays. Only with an explicit yes, after
+-- 15:00; BEFORE 073's rollback. ASCII. ONE DO block.
 -- EXPECTED: NOTICE "073b ROLLBACK OK".
 DO $do$
 BEGIN
@@ -186,6 +203,7 @@ BEGIN
   DELETE FROM monitoring.checks WHERE id IN (${list(IDS)});
 ${V5.map((t) => `  DROP POLICY IF EXISTS monitor_read ON public.${t};`).join('\n')}
   REVOKE SELECT ON public.ct_settings FROM tms_check_runner;
+  REVOKE EXECUTE ON FUNCTION ${RUNNER_FN} FROM tms_check_runner;
   IF EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename IN (${list(V5)})) THEN
     RAISE EXCEPTION '073b rollback proof: a policy is left on a v5 table';
   END IF;
@@ -197,6 +215,9 @@ ${V5.map((t) => `  DROP POLICY IF EXISTS monitor_read ON public.${t};`).join('\n
   END IF;
   IF has_table_privilege('tms_check_runner', 'public.ct_settings', 'SELECT') THEN
     RAISE EXCEPTION '073b rollback proof: the runner still reads ct_settings';
+  END IF;
+  IF has_function_privilege('tms_check_runner', '${RUNNER_FN}', 'EXECUTE') THEN
+    RAISE EXCEPTION '073b rollback proof: the runner still executes stock_vs_charge';
   END IF;
   RAISE NOTICE '073b ROLLBACK OK';
 END $do$;

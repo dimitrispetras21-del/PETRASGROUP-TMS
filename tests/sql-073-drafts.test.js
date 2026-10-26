@@ -148,7 +148,12 @@ test('073b is the generated one, ASCII, one DO block each, and holds exactly the
   // born closed: X for the runner only, the policies read-only for the two auditor roles, nothing for tms_reader
   const main = read('073b_plan_monitoring.sql');
   assert.match(main, /GRANT SELECT ON public\.ct_settings TO tms_check_runner;/);
-  assert.strictEqual((strip(main).match(/\bGRANT\b/g) || []).length, 1, 'one GRANT only');
+  // the 073b dry run of 26/10 refused B-79 in production: stock_vs_charge (inside ct_v_v5_revenue) runs as the runner
+  assert.match(main, /GRANT EXECUTE ON FUNCTION public\.stock_vs_charge\(numeric, numeric\) TO tms_check_runner;/);
+  assert.strictEqual((strip(main).match(/\bGRANT\b/g) || []).length, 2, 'two GRANTs only');
+  const rb = read('073b_plan_monitoring_rollback.sql');
+  assert.match(rb, /REVOKE SELECT ON public\.ct_settings FROM tms_check_runner;/);
+  assert.match(rb, /REVOKE EXECUTE ON FUNCTION public\.stock_vs_charge\(numeric, numeric\) FROM tms_check_runner;/);
   assert.strictEqual((main.match(/CREATE POLICY monitor_read ON public\.[a-z_]+ FOR SELECT TO tms_check_runner, tms_reader USING \(true\);/g) || []).length, 5);
   assert.strictEqual((strip(main).match(/CREATE POLICY/g) || []).length, 5);
   assert.ok(!/tms_reader;/.test(main.replace(/TO tms_check_runner, tms_reader USING/g, '')), 'no grant to tms_reader');

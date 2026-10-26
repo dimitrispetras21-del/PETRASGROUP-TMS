@@ -13,7 +13,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { prodShaped072 } from './prod-shaped-072.mjs';
 import { DRAFTS, migrationFile } from '../lib/db.mjs';
-import { IDS, F3_IDS, V5 } from '../../worker/migrations/drafts/tools/build-073b.mjs';
+import { IDS, F3_IDS, V5, RUNNER_FN } from '../../worker/migrations/drafts/tools/build-073b.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const read = (f) => fs.readFileSync(migrationFile(f), 'utf8');                  // 072b / 073 / 073b: drafts/ until executed, then one up
@@ -31,6 +31,7 @@ async function prodShaped() {
 }
 async function errorOf(db, sql) { try { await db.exec(sql); return null; } catch (e) { return String(e.message); } }
 const n = async (db, sql, p) => Number((await db.query(sql, p)).rows[0].n);
+const canExec = async (db, role) => (await db.query(`SELECT has_function_privilege($1, $2, 'EXECUTE') AS b`, [role, RUNNER_FN])).rows[0].b;
 async function values(db, ids = IDS) {   // each check as the auditor's role, as run_checks does (the disabled one too)
   const out = {};
   for (const id of ids) {
@@ -154,7 +155,7 @@ END $s$;`;
 test('073b on the production-shaped copy', async (t) => {
   const db = await prodShaped();
 
-  await t.test('the guards: 073b refuses before 073, and without 072b\'s policy on the segments', async () => {
+  await t.test('the guards: 073b refuses before 073, without 072b\'s policy on the segments, and when the runner already executes stock_vs_charge', async () => {
     await db.exec('BEGIN');
     try {
       await db.exec('DROP POLICY monitor_read ON public.rt_vehicle_segments');
@@ -165,15 +166,35 @@ test('073b on the production-shaped copy', async (t) => {
       await db.exec(`ALTER FUNCTION public.plan_h_pallet_sync(bigint[],text,text) RENAME TO plan_h_pallet_sync_x`);
       assert.match(await errorOf(db, read('073b_plan_monitoring.sql')) ?? '', /073 must be applied first/);
     } finally { await db.exec('ROLLBACK'); }
+    await db.exec('BEGIN');
+    try {
+      await db.exec(`GRANT EXECUTE ON FUNCTION ${RUNNER_FN} TO tms_check_runner`);
+      assert.match(await errorOf(db, read('073b_plan_monitoring.sql')) ?? '', /the runner already executes stock_vs_charge - stop, re-measure/);
+    } finally { await db.exec('ROLLBACK'); }
+  });
+
+  await t.test('production\'s function rights: the runner cannot execute stock_vs_charge, and 073b without its GRANT fails as the production dry run did', async () => {
+    // the harness holds production's ACLs (prod-shaped-072.mjs, LIVE_FN_ACL): no EXECUTE to PUBLIC, so the runner
+    // is refused exactly as on 26/10 - the mutation that would have caught it before the owner ran it
+    assert.strictEqual(await canExec(db, 'tms_check_runner'), false);
+    assert.strictEqual(await canExec(db, 'tms_reader'), false);
+    assert.strictEqual(await canExec(db, 'service_role'), true);
+    const grant = `GRANT EXECUTE ON FUNCTION ${RUNNER_FN} TO tms_check_runner;`;
+    const without = read('073b_plan_monitoring_dryrun.sql').replace(grant, '');
+    assert.notStrictEqual(without, read('073b_plan_monitoring_dryrun.sql'), 'the GRANT is where the mutation goes');
+    assert.match(await errorOf(db, without) ?? '', /permission denied for function stock_vs_charge/);
   });
 
   await t.test('dry run keeps nothing; 073b applies; every check it seeds is 0 today, B-80 seeded disabled', async () => {
     assert.match(await errorOf(db, read('073b_plan_monitoring_dryrun.sql')) ?? '', /DRY RUN 073b finished - EVERYTHING UNDONE/);
+    assert.strictEqual(await canExec(db, 'tms_check_runner'), false, 'the dry run keeps no EXECUTE');
     assert.strictEqual(await n(db, `SELECT count(*) AS n FROM pg_policies WHERE policyname = 'monitor_read' AND tablename = ANY($1)`, [V5]), 0);
     assert.strictEqual(await n(db, 'SELECT count(*) AS n FROM monitoring.checks WHERE id = ANY($1)', [IDS]), 0);
     assert.strictEqual((await db.query(`SELECT has_table_privilege('tms_check_runner', 'public.ct_settings', 'SELECT') AS b`)).rows[0].b, false);
     assert.strictEqual(await errorOf(db, read('073b_plan_monitoring.sql')), null);
     assert.strictEqual(await n(db, 'SELECT count(*) AS n FROM monitoring.checks WHERE id = ANY($1)', [IDS]), IDS.length);
+    assert.strictEqual(await canExec(db, 'tms_check_runner'), true, 'the runner computes X (B-79 / B-80)');
+    assert.strictEqual(await canExec(db, 'tms_reader'), false, 'never tms_reader (D-15)');
     assert.deepStrictEqual((await db.query('SELECT id FROM monitoring.checks WHERE id = ANY($1) AND NOT enabled ORDER BY id', [IDS])).rows.map((r) => r.id), DISABLED);
     assert.match((await db.query(`SELECT disabled_reason AS r FROM monitoring.checks WHERE id = 'B-80'`)).rows[0].r, /owner 24\/10, M-5/);
     const v = await values(db);
@@ -241,7 +262,7 @@ test('073b on the production-shaped copy', async (t) => {
     } finally { await db.exec('ROLLBACK'); }
   });
 
-  await t.test('the rollback takes out the 17 checks, the 5 policies and the grant, closes their open incidents; 072b\'s policy stays; with v5 rows 073b refuses by name', async () => {
+  await t.test('the rollback takes out the 17 checks, the 5 policies and the two grants, closes their open incidents; 072b\'s policy stays; with v5 rows 073b refuses by name', async () => {
     // incidents has no FK to checks (047): a removed check's open incident would stay red in the report for ever
     const open = `SELECT count(*) AS n FROM monitoring.incidents WHERE state IN ('new','confirmed','recurred')
                    AND (check_id = ANY($1) OR incident_key = ANY($2))`;
@@ -255,6 +276,8 @@ test('073b on the production-shaped copy', async (t) => {
     assert.strictEqual(await n(db, `SELECT count(*) AS n FROM pg_policies WHERE schemaname = 'public' AND tablename = ANY($1)`, [V5]), 0);
     assert.strictEqual(await n(db, `SELECT count(*) AS n FROM pg_policies WHERE tablename = 'rt_vehicle_segments' AND policyname = 'monitor_read'`), 1);
     assert.strictEqual((await db.query(`SELECT has_table_privilege('tms_check_runner', 'public.ct_settings', 'SELECT') AS b`)).rows[0].b, false);
+    assert.strictEqual(await canExec(db, 'tms_check_runner'), false, 'stock_vs_charge back to service_role only (057)');
+    assert.strictEqual(await canExec(db, 'service_role'), true);
     // 073b's proof says "0 today": with the scenario's v5 rows in place it refuses, by name - never a silent seed
     assert.match(await errorOf(db, read('073b_plan_monitoring.sql')) ?? '', /073b proof: B-\d+ gives \d+ today, expected 0 before day L/);
   });

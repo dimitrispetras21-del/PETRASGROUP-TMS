@@ -8,7 +8,7 @@
 -- After it: 071_plan_schema_verify.sql shows policies = 5 (expected from 073b on; it was 0 by design of 071), and
 -- 072b's verify still shows auditor_policy = 1 (rt_vehicle_segments keeps its own policy, untouched here).
 -- REVERSE: 073b_plan_monitoring_rollback.sql (before 073's rollback: 073's refuses while B-78..B-90, B-94 exist).
--- EXPECTED: NOTICE "073b OK: 17 checks (14 of F3 + 3 of 072b, 16 enabled), 5 read policies, X readable by the runner, every check 0 today".
+-- EXPECTED: NOTICE "073b OK: 17 checks (14 of F3 + 3 of 072b, 16 enabled), 5 read policies, X readable and computable by the runner, every check 0 today".
 
 DO $do$
 DECLARE
@@ -33,6 +33,9 @@ BEGIN
   IF has_table_privilege('tms_check_runner', 'public.ct_settings', 'SELECT') THEN
     RAISE EXCEPTION '073b: the runner already reads ct_settings - stop, re-measure';
   END IF;
+  IF has_function_privilege('tms_check_runner', 'public.stock_vs_charge(numeric, numeric)', 'EXECUTE') THEN
+    RAISE EXCEPTION '073b: the runner already executes stock_vs_charge - stop, re-measure';
+  END IF;
   SELECT count(*) INTO v_trg0 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
     JOIN pg_namespace ns ON ns.oid = c.relnamespace WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public';
 
@@ -50,6 +53,10 @@ BEGIN
   --     fail with "permission denied for table ct_settings" as soon as one v5 row exists (measured on PGlite).
   --     The auditor's runner only (it already reads money: stock_v_lot_money, 057); never tms_reader.
   GRANT SELECT ON public.ct_settings TO tms_check_runner;
+  --     And the EXECUTE on stock_vs_charge: 057 gave it to service_role only, and the right to call a function is
+  --     checked when the query starts, even with 0 rows, so the 073b dry run of 26/10 stopped at B-79 with "permission denied
+  --     for function stock_vs_charge". Runner only, as above (ct_setting is already PUBLIC in production).
+  GRANT EXECUTE ON FUNCTION public.stock_vs_charge(numeric, numeric) TO tms_check_runner;
 
   -- 2. THE 17 CHECKS (text = tms-auditor/checks/<id>.sql, generated; md5-proven below)
   INSERT INTO monitoring.checks (id, title, flows, sql_text, ids_sql, entity_table, red_op, red_value, baseline, severity,
@@ -475,6 +482,10 @@ BEGIN
      OR has_table_privilege('tms_reader', 'public.ct_settings', 'SELECT') THEN
     RAISE EXCEPTION '073b proof: ct_settings is not readable by the runner only';
   END IF;
+  IF NOT has_function_privilege('tms_check_runner', 'public.stock_vs_charge(numeric, numeric)', 'EXECUTE')
+     OR has_function_privilege('tms_reader', 'public.stock_vs_charge(numeric, numeric)', 'EXECUTE') THEN
+    RAISE EXCEPTION '073b proof: stock_vs_charge is not executable by the runner only';
+  END IF;
   IF (SELECT count(*) FROM pg_policies WHERE schemaname = 'public' AND tablename IN ('shipments', 'shipment_pieces', 'rt_stops', 'piece_legs', 'plan_notices')) <> 5
      OR (SELECT count(*) FROM pg_policies WHERE schemaname = 'public' AND policyname = 'monitor_read' AND cmd = 'SELECT'
            AND tablename IN ('shipments', 'shipment_pieces', 'rt_stops', 'piece_legs', 'plan_notices') AND roles::text[] @> ARRAY['tms_check_runner', 'tms_reader']
@@ -485,5 +496,5 @@ BEGIN
        WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public') <> v_trg0 THEN
     RAISE EXCEPTION '073b proof: a trigger appeared';
   END IF;
-  RAISE NOTICE '073b OK: 17 checks (14 of F3 + 3 of 072b, 16 enabled), 5 read policies, X readable by the runner, every check 0 today';
+  RAISE NOTICE '073b OK: 17 checks (14 of F3 + 3 of 072b, 16 enabled), 5 read policies, X readable and computable by the runner, every check 0 today';
 END $do$;
