@@ -393,6 +393,15 @@ const _AUDIT_TABLE = {
   ct_round_trips:           'Δρομολόγια P&L',
   ct_cost_lines:            'Γραμμές κόστους',
   stock_lots:               'Παρτίδες αποθέματος',   // AT-01 (stock lots Φ1)
+  // National v5 (F4α T9): the tables of 071 the plan_* functions write; their audit rows are the DB's own.
+  shipments:                'Αποστολές εθνικών',
+  shipment_pieces:          'Κομμάτια αποστολών',
+  piece_legs:               'Σκέλη κομματιών',
+  rt_stops:                 'Στάσεις κύκλων',
+  plan_notices:             'Ειδοποιήσεις εθνικών',
+  // F2 decision 44: the ONE record of a creation's request_id (072 plan_h_remember). Not a business table: its row
+  // says which act the request was, never the raw JSON of its answer (F2 note 4).
+  plan_request:             'Κωδικός αιτήματος',
 };
 function _auditTableLabel(t) {
   if (!t) return '—';
@@ -408,6 +417,9 @@ const _AUDIT_LABEL_KEYS = ['code', 'reference', 'name', 'stop_label', 'plate', '
 function _auditRecordLabel(e) {
   const snap = e._after || e._before;
   if (!snap) return '';
+  // A plan_request snapshot is {op, request_id, body_md5, answer}: the act names it (plan_orders_create); the uuid is
+  // already the record id beside it. None of its other keys is a business handle.
+  if (e.table_name === 'plan_request') return typeof snap.op === 'string' ? snap.op : '';
   for (const k of _AUDIT_LABEL_KEYS) {
     const v = snap[k];
     if (v !== null && v !== undefined && String(v).trim() !== '') return String(v);
