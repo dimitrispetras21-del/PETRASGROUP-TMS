@@ -151,6 +151,11 @@ test('072b on a production-shaped PGlite copy', async (t) => {
       await assert.rejects(db.query(`SELECT public.plan_h_seg_json(1)`), /permission denied/);
       await assert.rejects(db.query(`SELECT public.plan_seg_problem(1)`), /permission denied/);
       await assert.rejects(db.query(`INSERT INTO public.rt_vehicle_segments (rt_id, from_at, to_at, trip_type, created_by) VALUES (1, now(), now(), 'OWNED', 'x')`), /permission denied/);
+      // coordinator 26/10 (review of the live F2 Worker): a direct write to the FIRST segment would be copied onto the
+      // cycle by plan_seg_copy without plan_seg_fix's payroll_locked. No API role can make it: service_role (the
+      // Worker's key) holds SELECT only, so the vehicle of a v5 cycle changes through the three acts or not at all
+      await assert.rejects(db.query(`UPDATE public.rt_vehicle_segments SET driver_id = 1`), /permission denied/);
+      await assert.rejects(db.query(`DELETE FROM public.rt_vehicle_segments`), /permission denied/);
     } finally { await db.exec('RESET ROLE'); }
     await db.exec('SET ROLE anon');
     try {
