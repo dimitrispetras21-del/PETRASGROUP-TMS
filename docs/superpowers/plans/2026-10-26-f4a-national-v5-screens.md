@@ -22,7 +22,7 @@
 - Με το διακόπτη κλειστό: το παλιό Εβδομαδιαίο Εθνικών byte-προς-byte ίδιο, και τα νέα αρχεία δεν κάνουν τίποτα στη φόρτωση (κανένας listener, timer, observer, fetch).
 - Καμία εγγραφή στην παραγωγή από κανέναν agent: Supabase **μόνο SELECT**· καμία δοκιμαστική πράξη `/plan/*` εκτός από dry runs· 0 γραμμές στους νέους πίνακες στο τέλος.
 - **Πρώτα τα εθνικά (owner 26/10):** υλοποιείται μόνο το National v5. Κανένα αρχείο του Weekly Διεθνών δεν αλλάζει (S-161, T29)· τα διεθνή της Φ4β (πάνελ, «ακολουθεί» H8, S-109, S-159, αλλαγή οχήματος σε `model=1`) περιμένουν να αποδειχθούν τα εθνικά στην παραγωγή.
-- Το `worker/` και το `worker/migrations/` **δεν αλλάζουν** στη Φ4α (ανάγνωση μόνο). Ό,τι χρειάζεται νέο Worker πάει ως αίτημα στην αλυσίδα του Worker (Ε-2, Ε-11) και η Φ4α γράφεται πάνω σε stub.
+- Το `worker/` και το `worker/migrations/` **δεν αλλάζουν** στη Φ4α (ανάγνωση μόνο). Ό,τι χρειάζεται νέο Worker πάει ως αίτημα στην αλυσίδα του Worker (Ε-2, Ε-26, Ε-34, Ε-41) και η Φ4α γράφεται πάνω σε stub.
 
 **`/plan/*` και `planFetch` (F2 σημειώσεις, απόφαση 44)**
 - Το `core/plan-api.js` (`planFetch`) είναι ο **μόνος** client του `/plan/*`· κανένα άλλο αρχείο δεν καλεί `fetch` προς `/plan/`.
@@ -139,7 +139,7 @@ SELECT
 | `modules/wn5_veroia.js` | `WN5Hub` | γραμμή και πάνελ Βέροιας, «Σπάσε…», απόθεμα | T19 |
 | `modules/wn5_forms.js` | `WN5Form` | φόρμα εθνικής v5 (κανονικό/groupage/σύντομη του «+»), φόρμα σκέλους, VS ημέρα/προορισμός | T20–T22 |
 | `modules/wn5_sheet.js` | `WN5Sheet` | φύλλο οδηγού A4 + κείμενο WhatsApp ανά κύκλο | T23, T27 |
-| `modules/wn5_handover.js` | `WN5Hand` | καρτέλα κύκλου H6, Αλλαγή/Διόρθωση/Αφαίρεση H2–H4, ιστορικό (gated 072b) | T25–T26 |
+| `modules/wn5_handover.js` | `WN5Hand` | καρτέλα κύκλου H6 (χωρίς ιστορικό, Ε-11 «γ»), Αλλαγή/Διόρθωση/Αφαίρεση H2–H4 (gated 072b) | T25–T26 |
 | `tests/fixtures/wn5-week.json` | — | συνθετική εβδομάδα στο σχήμα του `plan_board` (072), με όλες τις περιπτώσεις του F0 | T4 |
 | `tests/critics/wn5-board-rig.js` | — | rig board και πράξεων με stub `/plan/*` | T3 και κάθε Task οθόνης |
 | `tests/critics/wn5-form-rig.js` | — | rig φορμών (εθνική, σκέλος, VS, request_id) | T20–T22 |
@@ -349,7 +349,7 @@ WN5Act.deleteOrder(natOrderId, ctx?)   // T18 (ctx: strip host, card texts)
 ### `modules/wn5_veroia.js` (T19) — `WN5Hub.shelfHTML(model)`, `WN5Hub.open()`, `WN5Hub.close()`, `WN5Hub.split(pieceId)`
 ### `modules/wn5_forms.js` (T20–T22) — `WN5Form.openOrder(prefill)` (`prefill = { side, day, rtId?, veroia?:{from,to}, preset?: 'empties' }`), `WN5Form.openLeg(rtId, side)`, `WN5Form.vsDay(orderId, day)`, `WN5Form.vsPlace(orderStopId, locationId)`
 ### `modules/wn5_sheet.js` (T23, T27) — `WN5Sheet.print(rtId, part, segmentId?)` (`part = 'KATHODOS'|'ANODOS'|'ALL'`), `WN5Sheet.whatsapp(rtId, part) -> string`, καθαρά `WN5Sheet.lines(cycle, places, part, segmentId?) -> Line[]`, `WN5Sheet.text(lines, meta) -> string`, `WN5Sheet.html(lines, meta, cssVars) -> string`
-### `modules/wn5_handover.js` (T25–T26, gated 072b) — `WN5Hand.cycleCard(rtId)`, `WN5Hand.change(rtId)`, `WN5Hand.fix(segmentId)`, `WN5Hand.remove(segmentId)`, καθαρό `WN5Hand.historyGroups(auditRows) -> Group[]` (κλειδί: ίδιος `actor` + ίδιο `created_at`)
+### `modules/wn5_handover.js` (T25–T26, gated 072b) — `WN5Hand.cycleCard(rtId)`, `WN5Hand.change(rtId)`, `WN5Hand.fix(segmentId)`, `WN5Hand.remove(segmentId)` (καμία ανάγνωση ιστορικού: Ε-11 «γ», owner 26/10)
 
 ### Προσθήκες των writers (δεσμευτικές, ίδια ορθογραφία σε κάθε Task)
 
@@ -13419,10 +13419,10 @@ EOF
 
 **Interfaces:**
 - Consumes: `PlanApi.slot`, `WN5Lab.REASON` (T24), `PlanIds` (T12)
-- Produces: `WN5Hand.cycleCard(rtId)` (ΤΜΗΜΑΤΑ, «Φύλλα οδηγών (n)», «Καθαρισμός ανάθεσης», ιστορικό Ε-11)· `WN5Hand.change(rtId)` → `POST /plan/rt/:id/handover` `{at, place_note, reason, reason_note?, vehicle{…}, same_driver?}` + dry run (προεπισκόπηση τμημάτων) + `requestId` μόνο στην εκτέλεση· `WN5Hand.fix(segmentId)` → `PATCH /plan/segments/:id` `{set, dry_run?}` (χωρίς `request_id`)· `WN5Hand.historyGroups(rows)`
+- Produces: `WN5Hand.cycleCard(rtId)` (ΤΜΗΜΑΤΑ, «Φύλλα οδηγών (n)», «Καθαρισμός ανάθεσης»· **χωρίς** ιστορικό, Ε-11 «γ»)· `WN5Hand.change(rtId)` → `POST /plan/rt/:id/handover` `{at, place_note, reason, reason_note?, vehicle{…}, same_driver?}` + dry run (προεπισκόπηση τμημάτων) + `requestId` μόνο στην εκτέλεση· `WN5Hand.fix(segmentId)` → `PATCH /plan/segments/:id` `{set, dry_run?}` (χωρίς `request_id`)
 
 **Tests:**
-- `wn5-handover.test.js`: `F4α-T25: historyGroups groups one change (create+update) and one removal (delete+update+delete) by actor+created_at; the cut segment's update is not a separate row`· `F4α-T25: «Άλλο» without note → save disabled (seg_other_note never reaches the Worker)`· `F4α-T25: request_id on the change execution only, never on its dry run`· `F4α-T25: HISTORY_PENDING stays true only while the Worker has no GET /plan/rt/:id/history (Ε-11)` (και, όταν υπάρξει η διαδρομή, `PLAN_PERMS['rt-history']` GET = ακριβώς owner, management, dispatcher)
+- `wn5-handover.test.js`: `F4α-T25: the cycle card has no change history and reads no /audit (Ε-11 «γ», owner 26/10)`· `F4α-T25: «Άλλο» without note → save disabled (seg_other_note never reaches the Worker)`· `F4α-T25: request_id on the change execution only, never on its dry run`
 - `wn5-plan-api-worker.test.mjs`: drift των νέων διαδρομών προς τα `PLAN_ROUTES` της 072b (todo ως να υπάρχει)
 - rig: `change` προεπισκόπηση από dry run, λωρίδα «preview» πριν το L (H7 πλακ. 4)· `h7`: `truck_busy`, `driver_busy`, `payroll_locked`, `seg_outside`, `seg_many`, `writes_closed` με το μήνυμα του Worker· 404 `no_route` πριν από τη 072b → λωρίδα «client» που λέει ότι η λειτουργία δεν έχει ανέβει· στο main ✗.
 
@@ -13430,14 +13430,14 @@ EOF
 
 **Gate: 072b live.** Γράφεται και τρέχει σε stub· το merge περιμένει τη 072b ζωντανή (SQL + Worker με τις 3 διαδρομές).
 
-**Τι κάνει αυτός ο Task:** το `modules/wn5_handover.js` (global `WN5Hand`): η **καρτέλα κύκλου** H6 (`2129:7735`: ΤΜΗΜΑΤΑ με «Διόρθωση», «Αλλαγή οχήματος», «Φύλλα οδηγών (n)», «Καθαρισμός ανάθεσης», ΙΣΤΟΡΙΚΟ ΑΛΛΑΓΩΝ), η φόρμα **Αλλαγή οχήματος** H2/H3 (`2122:7735`, `2123:7735`) → `POST /plan/rt/:id/handover`, η **Διόρθωση** τμήματος → `PATCH /plan/segments/:id`, και τα σφάλματα H7 (`2130:7735`) με το κείμενο του Worker. Μαζί: το `core/plan-api.js` μαθαίνει τις 3 διαδρομές της 072b (`DRY_ROUTES`) και τη 4η δημιουργία με `request_id` (`REQUEST_ROUTES`).
+**Τι κάνει αυτός ο Task:** το `modules/wn5_handover.js` (global `WN5Hand`): η **καρτέλα κύκλου** H6 (`2129:7735`: ΤΜΗΜΑΤΑ με «Διόρθωση», «Αλλαγή οχήματος», «Φύλλα οδηγών (n)», «Καθαρισμός ανάθεσης»· **χωρίς** ΙΣΤΟΡΙΚΟ ΑΛΛΑΓΩΝ, Ε-11 «γ»), η φόρμα **Αλλαγή οχήματος** H2/H3 (`2122:7735`, `2123:7735`) → `POST /plan/rt/:id/handover`, η **Διόρθωση** τμήματος → `PATCH /plan/segments/:id`, και τα σφάλματα H7 (`2130:7735`) με το κείμενο του Worker. Μαζί: το `core/plan-api.js` μαθαίνει τις 3 διαδρομές της 072b (`DRY_ROUTES`) και τη 4η δημιουργία με `request_id` (`REQUEST_ROUTES`).
 
 **Αποφάσεις του Task:**
 - Η «Αλλαγή» πρώτα τρέχει **dry run** (προεπισκόπηση τμημάτων, `warnings`, `conflict`) όποτε η φόρμα γίνεται έγκυρη (μία ανάγνωση ανά σταθερή κατάσταση, 400 ms μετά την τελευταία αλλαγή)· η «Αλλαγή οχήματος» ενεργοποιείται μόνο όταν η προεπισκόπηση είναι για **το ίδιο** σώμα και δεν έχει `conflict`. Το `request_id` μπαίνει **μόνο** στην εκτέλεση (072b: «required except dry run»), ένα ανά ανοιχτή φόρμα.
 - «Πού *» υποχρεωτικό **πάντα**: η 072b `plan_seg_change` αρνείται χωρίς `place_note` (`bad_input`) — το Figma H2 το δείχνει υποχρεωτικό μόνο με «Άλλο»· η οθόνη ακολουθεί τη βάση και το λέει στο PR (Doubts). Η σημείωση του λόγου (`reason_note`) είναι υποχρεωτική μόνο με «Άλλο» (`seg_other_note`).
 - «ίδιος οδηγός» = `same_driver: true` **χωρίς** `driver_id` (072b: `same_driver` με `driver_id` = `bad_input`).
 - Στις λίστες (καρτέλα, προεπισκόπηση, H7) το σήμα τμήματος είναι **ίσια** γραμμή 3px (R-55)· η πλάγια πλευρά μόνο στα πλακίδια του board (T24).
-- Ιστορικό (Ε-11, owner 26/10 «α»): το βλέπουν **μόνο** owner, management και dispatcher· σε warehouse και accountant η ενότητα **δεν υπάρχει** (καμία ανάγνωση). **Ποτέ ποσό:** τα κλειδιά χρημάτων μιας γραμμής (`partner_rate` κ.λπ.) γράφονται «άλλαξε», χωρίς τιμή. Η ανάγνωση για τους τρεις είναι το `GET /plan/rt/:id/history`, **αίτημα στην αλυσίδα του Worker** (Ε-11: οι γραμμές `audit_log` των `rt_vehicle_segments` του κύκλου, `{entries:[…]}` με το σχήμα του `/audit`, χωρίς κλειδιά χρημάτων, resource `rt-history` στο `PLAN_PERMS` με GET μόνο για τους τρεις)· ως τότε (`HISTORY_PENDING`, drift test πάνω στο `worker/src/index.js`) ο dispatcher βλέπει ορατή γραμμή «θα φαίνεται μόλις…» και owner/management διαβάζουν `GET /audit?table=rt_vehicle_segments`, **μία ανάγνωση ανά ζωντανό τμήμα** (`&record_id=<segment_id>`) και μία για τις διαγραφές (`&action=delete`, τμήματα που δεν είναι πια στο board): το `/audit` δίνει τις 200 νεότερες γραμμές όλου του πίνακα, άρα μία ανάγνωση του πίνακα θα έχανε τις γραμμές ενός παλιότερου κύκλου και θα έλεγε ψέματα «καμία αλλαγή». Ανάγνωση γεμάτη (`count = 200`) → «Ενδέχεται να λείπουν παλαιότερες αλλαγές — όλο το ιστορικό στο Audit Trail», ποτέ «καμία αλλαγή»· 401 → `tmsSessionExpired`, όπως κάθε ανάγνωση· άλλος ρόλος → 403 → γραμμή που λέει ποιος το βλέπει, ποτέ «κανένα ιστορικό». Ομαδοποίηση: ίδιος `actor` + ίδιο `created_at` = μία πράξη· το `update` του τμήματος που κόπηκε ανήκει στην «Αλλαγή», δεν είναι δική του γραμμή.
+- **Ιστορικό: καταργήθηκε (owner 26/10, Ε-11 «γ»).** Η καρτέλα κύκλου **δεν** δείχνει ιστορικό αλλαγών σε κανέναν ρόλο και δεν διαβάζει `/audit`· το ιστορικό μένει όπου είναι σήμερα, στο Audit Trail (owner και management). Το μπλοκ «ΙΣΤΟΡΙΚΟ ΑΛΛΑΓΩΝ» του Figma H6 (`2129:7735`) δεν χτίζεται, και το R-63 (ομαδοποίηση ιστορικού) δεν αφορά πια τη Φ4. Καμία ανάγνωση ιστορικού στο `/plan/*`, κανένα αίτημα στον Worker.
 - Πριν τη 072b οι διαδρομές απαντούν 404 `no_route`: λωρίδα `client` με το μήνυμα του Worker + «Η αλλαγή οχήματος δεν έχει ανέβει ακόμη (072b)».
 
 - [ ] **Step 0: Η εξάρτηση είναι ζωντανή**
@@ -13454,9 +13454,8 @@ Expected: `3`. Αλλιώς ΣΤΑΜΑΤΑ.
 
 ```js
 // node --test tests/wn5-handover.test.js
-// National v5 F4α-T25 (gated 072b): modules/wn5_handover.js — the cycle card's history, the change form's rules.
-// Why: one act writes several audit rows (a change = update of the cut segment + create; a removal = delete +
-// update of the previous + payroll deletes) and the card must show ONE line per act (R-63, HPLAN §Παράδοση στη Φ4);
+// National v5 F4α-T25 (gated 072b): modules/wn5_handover.js — the cycle card and the change form's rules.
+// Why: the card has NO change history (Ε-11 «γ», owner 26/10: it stays in the Audit Trail), so R-63 is dropped here;
 // «Άλλο» without its note would only reach the Worker to be refused (seg_other_note); and the change's request_id
 // belongs to the execution only (072b: required except on a dry run).
 // The REAL module runs in a vm; on plain main: ENOENT … modules/wn5_handover.js.
@@ -13497,45 +13496,18 @@ test('F4α-T25: wn5_handover.js adds exactly WN5Hand and acts zero times at load
   assert.deepStrictEqual(J(r.acts), []);
 });
 
-test('F4α-T25: HISTORY_PENDING stays true only while the Worker has no GET /plan/rt/:id/history (Ε-11)', () => {
-  const W = fs.readFileSync(path.join(ROOT, 'worker/src/index.js'), 'utf8');
-  const has = W.includes('\\/history$/');
-  assert.strictEqual(/const HISTORY_PENDING = true;/.test(SRC), !has, has
-    ? 'the Worker serves /plan/rt/:id/history now: set HISTORY_PENDING = false (the dispatcher reads it too)'
-    : 'HISTORY_PENDING must stay true while the Worker has no history read');
-  assert.ok(/const HIST_ROLES = Object\.freeze\(\['owner', 'management', 'dispatcher'\]\);/.test(SRC), 'Ε-11: exactly the three roles');
-  if (has) {
-    // principle 3: once the route exists, the roles the card shows it to = the roles PLAN_PERMS lets read it
-    // (resource 'rt-history', the name the Worker request Ε-11 gives the route)
-    const m = /var PLAN_PERMS = (\{[\s\S]*?\n\});/.exec(W);
-    assert.ok(m, 'PLAN_PERMS not found in worker/src/index.js');
-    const perms = vm.runInNewContext('(' + m[1] + ')');
-    const readers = Object.keys(perms).filter((r) => (perms[r]['rt-history'] || []).includes('GET')).sort();
-    assert.deepStrictEqual(readers, ['dispatcher', 'management', 'owner'], 'PLAN_PERMS rt-history GET must be exactly owner, management, dispatcher (Ε-11)');
-  }
-  assert.ok(/MONEY_KEY\.test\(k\) \? `\$\{k\}: άλλαξε`/.test(grab('_history')), 'a money key of a history row never shows its value');
-});
-
 test('F4α-T25: app.html loads wn5_handover.js once, right after wn5_sheet.js, with ?v=', () => {
   const html = fs.readFileSync(path.join(ROOT, 'app.html'), 'utf8');
   assert.strictEqual((html.match(/<script src="modules\/wn5_handover\.js\?v=\d+"><\/script>/g) || []).length, 1);
   assert.ok(/modules\/wn5_sheet\.js\?v=\d+"><\/script>\s*<script src="modules\/wn5_handover\.js\?v=\d+"/.test(html));
 });
 
-test('F4α-T25: historyGroups — one change (update + create) and one removal (delete + update + payroll delete) = two lines', () => {
-  const S = 'rt_vehicle_segments';
-  const rows = [
-    { actor: 'demo_dispatcher', role: 'dispatcher', created_at: '2026-10-13T12:02:00Z', table_name: S, action: 'update', record_id: '701', before_data: { to_at: '2026-10-15T22:00:00+03:00', truck_id: 11, driver_id: 31 }, after_data: { to_at: '2026-10-13T14:30:00+03:00' } },
-    { actor: 'demo_dispatcher', role: 'dispatcher', created_at: '2026-10-13T12:02:00Z', table_name: S, action: 'create', record_id: '702', before_data: null, after_data: { rt_id: 101, from_at: '2026-10-13T14:30:00+03:00', truck_id: 12, driver_id: 32, place_note: 'Λαμία', reason: 'vehicle_breakdown' } },
-    { actor: 'demo_owner', role: 'owner', created_at: '2026-10-19T07:00:00Z', table_name: S, action: 'delete', record_id: '702', before_data: { rt_id: 101, truck_id: 12 }, after_data: null },
-    { actor: 'demo_owner', role: 'owner', created_at: '2026-10-19T07:00:00Z', table_name: S, action: 'update', record_id: '701', before_data: { to_at: '2026-10-13T14:30:00+03:00' }, after_data: { to_at: '2026-10-15T22:00:00+03:00' } },
-    { actor: 'demo_owner', role: 'owner', created_at: '2026-10-19T07:00:00Z', table_name: 'dl_entries', action: 'delete', record_id: '9', before_data: {}, after_data: null },
-    { actor: 'demo_dispatcher', role: 'dispatcher', created_at: '2026-10-13T13:20:00Z', table_name: S, action: 'update', record_id: '701', before_data: { trailer_id: null }, after_data: { trailer_id: 21 } },
-  ];
-  const g = J(H.historyGroups(rows));
-  assert.deepStrictEqual(g.map((x) => [x.kind, x.segmentId, x.actor]), [['remove', 702, 'demo_owner'], ['fix', 701, 'demo_dispatcher'], ['change', 702, 'demo_dispatcher']]);
-  assert.strictEqual(g[2].rows, 2, 'the cut segment\'s update is part of the change, not a line of its own');
-  assert.deepStrictEqual(g[2].before, { to_at: '2026-10-15T22:00:00+03:00', truck_id: 11, driver_id: 31 });
+test('F4α-T25: the cycle card has no change history and reads no /audit (Ε-11 «γ», owner 26/10)', () => {
+  // The owner chose «γ»: history stays in the Audit Trail (owner and management). A card that rebuilt it would be a
+  // second place for the same fact (principle 3) and would put audit rows in front of roles that do not read them.
+  const code = SRC.replace(/^\s*\/\/.*$/gm, '');   // the header comment names the decision; only code counts
+  assert.ok(!/ΙΣΤΟΡΙΚΟ|data-hist|\/audit|historyGroups/.test(code), 'the card must not build or read a change history');
+  assert.deepStrictEqual(Object.keys(load().H).filter((k) => /hist/i.test(k)), []);
 });
 
 test('F4α-T25: «Άλλο» without a note → a form line, no body is built for the Worker (seg_other_note)', () => {
@@ -13621,9 +13593,10 @@ Create `modules/wn5_handover.js`:
 //   - every refusal is error.message (H7 texts are the Worker's, principle 3); writes_closed → the preview strip
 //     and a disabled save, the dry run stays open (H7 tile 4, Ε-6);
 //   - in lists the segment mark is a straight line (R-55): the slant lives on the board tiles only;
-//   - history (H6) = audit_log rows of rt_vehicle_segments, one line per act (same actor + same created_at);
-//   - no role guard on buttons (owner 10/10): every button is there, the Worker answers 403 where PLAN_PERMS says
-//     so; the ONE role rule here is the history section (Ε-11, owner 26/10): owner, management, dispatcher only;
+//   - NO change history in the cycle card, for any role (Ε-11 «γ», owner 26/10): it stays where it is today, in the
+//     Audit Trail (owner and management, /audit). So the H6 «ΙΣΤΟΡΙΚΟ ΑΛΛΑΓΩΝ» block is not built, and nothing here
+//     reads /audit;
+//   - no role guard (owner 10/10): every button is there, the Worker answers 403 where PLAN_PERMS says so;
 //   - nothing at load: listeners and the preview timer exist only while a dialog is open.
 (function () {
   'use strict';
@@ -13639,34 +13612,8 @@ Create `modules/wn5_handover.js`:
   const _when = (iso) => { const p = _parts(iso); return p ? `${_dow(p.day)} ${p.hm}` : '—'; };
   const _whenD = (iso) => { const p = _parts(iso); return p ? `${typeof WI4 !== 'undefined' ? WI4.dayLabel(p.day) : p.day} ${p.hm}` : '—'; };
   const _num = (v) => { const s = String(v == null ? '' : v).trim().replace(',', '.'); if (!s) return null; const n = Number(s); return Number.isFinite(n) ? n : NaN; };
-  const _reason = (code) => (typeof WN5Lab !== 'undefined' && WN5Lab.reasonLine ? WN5Lab.reasonLine(code).text : String(code || '—'));
 
   // ── pure part (tests/wn5-handover.test.js) ─────────────────────────────────────────────────────────────────
-  // One act writes several rows in ONE transaction (plan_h_audit stamps now(), the same for all): group them by
-  // actor + created_at. A change = the cut segment's update + the new segment's create (one line, «Αλλαγή»);
-  // a removal = delete + the previous segment's update (+ payroll deletes in another table); an update alone =
-  // «Διόρθωση». Rows of other tables only join a group, they never make one.
-  function historyGroups(rows) {
-    const by = new Map();
-    for (const r of rows || []) {
-      const k = String(r.actor || '') + '|' + String(r.created_at || '');
-      if (!by.has(k)) by.set(k, { at: r.created_at, actor: r.actor || '', role: r.role || '', rows: [] });
-      by.get(k).rows.push(r);
-    }
-    const out = [];
-    for (const g of by.values()) {
-      const seg = g.rows.filter((r) => r.table_name === 'rt_vehicle_segments');
-      if (!seg.length) continue;
-      const created = seg.find((r) => r.action === 'create');
-      const deleted = seg.find((r) => r.action === 'delete');
-      const kind = created ? 'change' : deleted ? 'remove' : 'fix';
-      const main = created || deleted || seg[0];
-      const cut = kind === 'change' ? seg.find((r) => r.action === 'update') : null;
-      out.push({ at: g.at, actor: g.actor, role: g.role, kind, segmentId: Number(main.record_id),
-        before: kind === 'change' ? (cut ? cut.before_data : null) : main.before_data, after: main.after_data, rows: seg.length });
-    }
-    return out.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
-  }
   function _changeProblems(st) {
     const out = [];
     if (!st.at) out.push('Πότε *: ημέρα και ώρα');
@@ -13748,7 +13695,6 @@ Create `modules/wn5_handover.js`:
   const _lines = (d, ls) => { d.el.querySelector('[data-err]').innerHTML = ls.map((l) => `<div>${_esc(l)}</div>`).join(''); };
   async function _board() { try { return await WN5.findAfterReuse((b) => b); } catch (e) { _log(e, 'WN5Hand board'); return null; } }
   const _list = (kind) => { try { return PlanIds.list(kind).filter((x) => x.active !== false); } catch (_) { return []; } };
-  const _label = (kind, id) => { if (id == null) return null; const x = _list(kind).find((y) => y.id === id); return x ? x.label : '#' + id; };
   const _opts = (kind, cur, empty) => (empty ? `<option value="">${empty}</option>` : '<option value=""></option>')
     + _list(kind).map((x) => `<option value="${x.id}"${x.id === cur ? ' selected' : ''}>${_esc(x.label)}</option>`).join('');
   function _vehicle(g) {
@@ -13780,8 +13726,7 @@ Create `modules/wn5_handover.js`:
       `<div class="wn5h-acts"><button type="button" class="wi4-btn pri" data-act="change">Αλλαγή οχήματος</button>`
       + `<button type="button" class="wi4-btn" data-act="sheets">Φύλλα οδηγών (${sheets})</button>`
       + `<button type="button" class="wi4-btn wn5h-danger" data-act="clear">Καθαρισμός ανάθεσης</button></div><div class="wn5h-sheets" data-sheets hidden></div>`
-      + `<div class="wn5f-sec">ΤΜΗΜΑΤΑ</div>${segs.map((g, i) => _segRowHTML(g, c, true, i === 0)).join('')}`
-      + `<div class="wn5f-sec" data-histh>ΙΣΤΟΡΙΚΟ ΑΛΛΑΓΩΝ</div><div class="wn5h-hist" data-hist>…</div>`, '', null);
+      + `<div class="wn5f-sec">ΤΜΗΜΑΤΑ</div>${segs.map((g, i) => _segRowHTML(g, c, true, i === 0)).join('')}`, '', null);
     d.rtId = rtId;
     d.cycle = c;
     d.el.addEventListener('click', (ev) => {
@@ -13802,92 +13747,8 @@ Create `modules/wn5_handover.js`:
       }
       if (a === 'sheet') WN5Sheet.print(rtId, 'ALL', segs.length > 1 ? Number(t.dataset.seg) : undefined);
     });
-    _history(d, c);
     return true;
   }
-  // Ε-11 (owner 26/10, «α»): the change history is for owner, management and dispatcher only; warehouse and
-  // accountant do not get the section at all (no read either). It never shows an amount: money keys of a row
-  // (partner_rate and the like) are named as «άλλαξε», never with their value. The read meant for all three roles is
-  // GET /plan/rt/:id/history (a Worker-chain request, Ε-11: this cycle's rt_vehicle_segments audit rows, money keys
-  // stripped, PLAN_PERMS GET for the three roles). Until the Worker has it (HISTORY_PENDING, held to
-  // worker/src/index.js by tests/wn5-handover.test.js) owner and management read /audit as below, and the dispatcher
-  // gets a visible line, never «καμία αλλαγή».
-  const HIST_ROLES = Object.freeze(['owner', 'management', 'dispatcher']);
-  const HISTORY_PENDING = true;
-  const MONEY_KEY = /rate|amount|price|cost/i;
-  // /audit returns the NEWEST rows of the whole table (worker/src/index.js handleAuditGet, MAX_LIMIT 200): one read
-  // of the table would lose an older cycle's rows once the table passes 200 and then say «καμία αλλαγή» — false.
-  // So: one read per live segment of this cycle (record_id = its id: complete for the segments the board shows,
-  // and the «update» rows of a cut or extended segment are theirs), plus one read of the table for the rows of a
-  // REMOVED segment (no longer on the board). A read that comes back full (count = limit) may be missing older rows:
-  // the card says so and never claims «καμία αλλαγή». 401 goes to the session flow like every other read.
-  const AUDIT_LIMIT = 200;
-  async function _auditRead(q) {
-    if (typeof tmsSessionGone === 'function' && tmsSessionGone()) return { gone: true };
-    let jwt = null;
-    try { jwt = localStorage.getItem('tms_jwt'); } catch (_) { jwt = null; }
-    if (!jwt) { tmsSessionExpired('WN5Hand history', null); return { gone: true }; }
-    let res;
-    try { res = await _fetchWithTimeout(`${PROXY_URL}/audit?table=rt_vehicle_segments&limit=${AUDIT_LIMIT}${q}`, { headers: { Authorization: 'Bearer ' + jwt } }, 30000); }
-    catch (e) { _log(e, 'WN5Hand history'); return { fail: true }; }
-    if (res.status === 401) { tmsSessionExpired('WN5Hand history', null); return { gone: true }; }
-    if (res.status === 403) return { forbidden: true };
-    if (!res.ok) { _log(new Error('audit ' + res.status), 'WN5Hand history'); return { fail: true }; }
-    let data = null;
-    try { data = await res.json(); } catch (e) { _log(e, 'WN5Hand history json'); return { fail: true }; }
-    const rows = (data && Array.isArray(data.entries)) ? data.entries : null;
-    if (!rows) { _log(new Error('audit: no entries list'), 'WN5Hand history'); return { fail: true }; }
-    return { rows, full: rows.length >= AUDIT_LIMIT };
-  }
-  async function _history(d, c) {
-    const box = d.el.querySelector('[data-hist]');
-    const role = (typeof user !== 'undefined' && user && user.role) || '';
-    if (!HIST_ROLES.includes(role)) { d.el.querySelectorAll('[data-histh], [data-hist]').forEach((x) => x.remove()); return; }
-    if (HISTORY_PENDING && role === 'dispatcher') {
-      box.textContent = 'Το ιστορικό αλλαγών θα φαίνεται εδώ μόλις ο Worker αποκτήσει την ανάγνωσή του (Ε-11) — δεν σημαίνει ότι δεν υπάρχουν αλλαγές.';
-      return;
-    }
-    const segIds = (c.segments || []).map((g) => g.segment_id).filter((x) => x != null);
-    let reads;
-    if (HISTORY_PENDING) {
-      reads = await Promise.all([...segIds.map((id) => _auditRead('&record_id=' + encodeURIComponent(String(id)))), _auditRead('&action=delete')]);
-    } else {
-      // the Worker's own read (Ε-11): one call, already this cycle's rows, already without money values
-      try {
-        const a = await planFetch('GET', `/plan/rt/${c.rt_id}/history`);
-        const rows = a && Array.isArray(a.entries) ? a.entries : null;
-        if (!rows) { _log(new Error('history: no entries list'), 'WN5Hand history'); reads = [{ fail: true }]; } else reads = [{ rows, full: false }];
-      } catch (e) {
-        if (e && e._sessionGone) return;
-        reads = [{ fail: true }];   // planFetch already logged what is not a designed answer
-      }
-    }
-    if (reads.some((r) => r.gone)) return;
-    // the three roles are the ones allowed: a 403 here is a fault, said and logged, not a role line
-    if (reads.some((r) => r.forbidden)) { _log(new Error('history 403 for ' + role), 'WN5Hand history'); box.textContent = 'Το ιστορικό δεν διαβάστηκε (δικαίωμα) — ενημέρωσε τον Δημήτρη.'; return; }
-    if (reads.some((r) => r.fail)) { box.textContent = 'Το ιστορικό δεν διαβάστηκε — δεν σημαίνει ότι δεν υπάρχουν αλλαγές.'; return; }
-    const seen = new Set();
-    const all = [];
-    // the same row comes back from two reads (a live segment's delete): once by its audit id, else by its content
-    for (const r of reads) for (const x of r.rows) { const k = x.id != null ? 'id:' + x.id : JSON.stringify(x); if (!seen.has(k)) { seen.add(k); all.push(x); } }
-    const mine = all.filter((r) => [r.after_data, r.before_data].some((x) => x && Number(x.rt_id) === c.rt_id)
-      || segIds.some((id) => String(id) === String(r.record_id)));
-    const full = reads.some((r) => r.full);
-    const groups = historyGroups(mine);
-    d.el.querySelector('[data-histh]').textContent = `ΙΣΤΟΡΙΚΟ ΑΛΛΑΓΩΝ · ${groups.length}${full ? '+' : ''}`;
-    const more = full ? '<p class="wn5-none" data-hist-more>Ενδέχεται να λείπουν παλαιότερες αλλαγές — όλο το ιστορικό στο Audit Trail.</p>' : '';
-    if (!groups.length) { box.innerHTML = full ? more : 'Καμία αλλαγή οχήματος σε αυτόν τον κύκλο.'; return; }
-    const veh = (x) => (x ? [_label('truck', x.truck_id), _label('driver', x.driver_id)].filter(Boolean).join(' · ') || (x.partner_id ? _label('partner', x.partner_id) : '—') : '—');
-    box.innerHTML = `<div class="wn5h-hrow wn5h-hhead"><span>ΓΡΑΦΤΗΚΕ · ΠΟΙΟΣ</span><span>ΠΡΑΞΗ</span><span>ΟΧΗΜΑ</span><span>ΣΗΜΕΙΟ · ΩΡΑ</span><span>ΛΟΓΟΣ</span></div>`
-      + groups.map((g) => {
-        const a = g.after || {}, b = g.before || {};
-        const vehicle = g.kind === 'change' ? `${veh(b)} → ${veh(a)}` : g.kind === 'remove' ? veh(b) : Object.keys(a).filter((k) => !/_at$|_by$/.test(k) || k === 'from_at').map((k) => (MONEY_KEY.test(k) ? `${k}: άλλαξε` : `${k}: ${b[k] == null ? 'κενή' : b[k]} → ${a[k] == null ? 'κενή' : a[k]}`)).join(' · ');
-        const point = g.kind === 'change' ? `${a.place_note || '—'} · ${_when(a.from_at)}` : '—';
-        return `<div class="wn5h-hrow" data-kind="${g.kind}"><span>${_whenD(g.at)} · ${_esc(g.actor)}</span><span>${ACT_GR[g.kind]}</span>`
-          + `<span>${_esc(vehicle)}</span><span>${_esc(point)}</span><span>${_esc(g.kind === 'change' ? _reason(a.reason) : '—')}</span></div>`;
-      }).join('') + more;
-  }
-
   // ── H2 / H3 change ─────────────────────────────────────────────────────────────────────────────────────────
   function _reasonOptions(cur) {
     const R = WN5Lab.REASON;
@@ -14100,7 +13961,7 @@ Create `modules/wn5_handover.js`:
     return true;
   }
 
-  window.WN5Hand = Object.freeze({ cycleCard, change, fix, historyGroups, _changeBody, _changeProblems, _fixSet });
+  window.WN5Hand = Object.freeze({ cycleCard, change, fix, _changeBody, _changeProblems, _fixSet });
 })();
 ```
 
@@ -14125,19 +13986,10 @@ Create `modules/wn5_handover.js`:
 .wn5h-seg[data-label="final"] .wn5h-lab { color:var(--wn5-seg-final-ink); }
 .wn5h-veh { display:flex; flex-direction:column; } .wn5h-veh span, .wn5h-stops { color:var(--wi4-grey-2); font-size:11.5px; }
 .wn5h-btns, .wn5h-sheets { display:flex; gap:6px; }
-.wn5h-hrow { display:grid; grid-template-columns:170px 120px minmax(0, 1.4fr) 150px 140px; gap:8px; padding:4px 0; border-bottom:1px solid var(--wi4-line); }
-.wn5h-hhead { font-size:10.5px; color:var(--wi4-grey-2); }
 .wn5h-same { flex-direction:row; align-items:center; gap:6px; }
 ```
-(β) `tests/critics/wn5-rig-kit.js`: στο `page.route` του host, **αμέσως πριν** από τη γραμμή `    S.facade.push({ m, path: u.pathname });` πρόσθεσε:
-```js
-    // /audit (the cycle card's history, T25): owner/management read it; the default here is the Worker's 403.
-    if (u.pathname === '/audit') {
-      const [st, ans] = opts.audit ? await opts.audit(u, S) : [403, { error: 'Forbidden' }];
-      S.facade.push({ m, path: u.pathname, q: Object.fromEntries(u.searchParams) });
-      return route.fulfill({ status: st, contentType: 'application/json', headers: cors, body: JSON.stringify(ans) });
-    }
-```
+(β) Το `tests/critics/wn5-rig-kit.js` **δεν** αλλάζει: η καρτέλα κύκλου δεν διαβάζει `/audit` (Ε-11 «γ»), και κάθε κλήση facade γράφεται ήδη στο `S.facade` από το kit.
+
 (γ) Εκδόσεις + κέλυφος:
 ```bash
 TS=$(date +%s)
@@ -14179,11 +14031,8 @@ const CH = { day: '2026-10-13', hm: '03:00', place: 'Λαμία', reason: 'vehic
 const posts = (S) => K.planOf(S, 'POST', '/plan/rt/101/handover');
 
 async function scnCard({ browser, origin, ok, scn }) {
-  const audit = () => [200, { entries: [
-    { actor: 'demo_dispatcher', role: 'dispatcher', created_at: '2026-10-13T00:05:00Z', table_name: 'rt_vehicle_segments', action: 'update', record_id: '701', before_data: { rt_id: 101, truck_id: 11, driver_id: 31 }, after_data: { rt_id: 101 } },
-    { actor: 'demo_dispatcher', role: 'dispatcher', created_at: '2026-10-13T00:05:00Z', table_name: 'rt_vehicle_segments', action: 'create', record_id: '702', before_data: null, after_data: { rt_id: 101, from_at: '2026-10-13T03:00:00+03:00', truck_id: 12, driver_id: 32, place_note: 'Λαμία', reason: 'vehicle_breakdown' } }], count: 2 }];
-  for (const role of ['dispatcher', 'owner']) {
-    const { page, S } = await K.openApp(browser, origin, { board: handWeek(false), role, audit: role === 'owner' ? audit : undefined });
+  for (const role of ['owner', 'management', 'dispatcher', 'accountant', 'warehouse']) {
+    const { page, S } = await K.openApp(browser, origin, { board: handWeek(false), role });
     if (!(await guard(page, ok, scn, 'WN5Hand'))) return;
     await page.evaluate(() => WN5Hand.cycleCard(101));
     await page.waitForSelector('.wi4-dlg[data-wn5="cycle"]', { timeout: 6000 }).catch(() => {});
@@ -14194,43 +14043,12 @@ async function scnCard({ browser, origin, ok, scn }) {
     ok(scn, `${role}: a straight line in the list, no slant (R-55)`, rows.every((r) => r[1] === 'none'), rows.map((r) => r[1]));
     ok(scn, `${role}: «Φύλλα οδηγών (2)» and «Καθαρισμός ανάθεσης» are there (no role guard)`, (await K.text(page, '.wi4-dlg[data-wn5="cycle"] .wn5h-acts')).includes('Φύλλα οδηγών (2)') && (await K.text(page, '.wi4-dlg[data-wn5="cycle"] .wn5h-acts')).includes('Καθαρισμός ανάθεσης'));
     await page.waitForTimeout(800);
-    const hist = await K.text(page, '.wi4-dlg[data-wn5="cycle"] [data-hist]');
-    if (role === 'dispatcher') ok(scn, 'dispatcher: the history waits for the Worker read (Ε-11) — a visible line, no /audit read, never «καμία αλλαγή»', /μόλις ο Worker/.test(hist) && !/Καμία αλλαγή/.test(hist) && !S.facade.some((x) => x.path === '/audit'), hist);
-    else ok(scn, 'owner: ONE history line for the change (update + create grouped), «Λαμία», «Βλάβη φορτηγού»', (await K.count(page, '.wi4-dlg[data-wn5="cycle"] .wn5h-hrow[data-kind]')) === 1 && hist.includes('Λαμία') && hist.includes('Βλάβη φορτηγού'), hist);
+    // Ε-11 «γ» (owner 26/10): no change history in the card for any role, and no /audit read behind it
+    const card = await K.text(page, '.wi4-dlg[data-wn5="cycle"]');
+    ok(scn, `${role}: no «ΙΣΤΟΡΙΚΟ ΑΛΛΑΓΩΝ» in the card and no /audit read (Ε-11 «γ»)`, !/ΙΣΤΟΡΙΚΟ/.test(card) && !S.facade.some((x) => x.path === '/audit'), card);
     await page.click('.wi4-dlg[data-wn5="cycle"] [data-act="change"]');
     await page.waitForSelector(HDLG, { timeout: 6000 }).catch(() => {});
     ok(scn, `${role}: «Αλλαγή οχήματος» opens the change form`, await K.count(page, HDLG) === 1);
-    await page.context().close();
-  }
-  for (const role of ['warehouse', 'accountant']) { // Ε-11: no history section and no read for these two roles
-    const { page, S } = await K.openApp(browser, origin, { board: handWeek(false), role });
-    await page.evaluate(() => WN5Hand.cycleCard(101));
-    await page.waitForSelector('.wi4-dlg[data-wn5="cycle"]', { timeout: 6000 }).catch(() => {});
-    await page.waitForTimeout(600);
-    ok(scn, `${role}: the cycle card has no «ΙΣΤΟΡΙΚΟ ΑΛΛΑΓΩΝ» and reads no history (Ε-11)`,
-      (await K.count(page, '.wi4-dlg[data-wn5="cycle"] [data-hist], .wi4-dlg[data-wn5="cycle"] [data-histh]')) === 0 && !S.facade.some((x) => x.path === '/audit'));
-    await page.context().close();
-  }
-  { // Ε-11: never an amount — a fix that changed the partner rate says «άλλαξε», not the value
-    const money = () => [200, { entries: [{ id: 1, actor: 'demo_owner', role: 'owner', created_at: '2026-10-13T08:00:00Z', table_name: 'rt_vehicle_segments', action: 'update',
-      record_id: '701', before_data: { rt_id: 101, partner_rate: 31415 }, after_data: { rt_id: 101, partner_rate: 27182 } }], count: 1 }];
-    const { page } = await K.openApp(browser, origin, { board: handWeek(false), role: 'owner', audit: money });
-    await page.evaluate(() => WN5Hand.cycleCard(101));
-    await page.waitForTimeout(1000);
-    const hist = await K.text(page, '.wi4-dlg[data-wn5="cycle"] [data-hist]');
-    ok(scn, 'owner: a partner_rate fix reads «partner_rate: άλλαξε», never its values (Ε-11)', /partner_rate: άλλαξε/.test(hist) && !/31415|27182/.test(hist), hist);
-    await page.context().close();
-  }
-  { // /audit gives the newest 200 rows of the whole table: a full read may miss this cycle's older rows — said, never «καμία αλλαγή»
-    const full = () => [200, { entries: Array.from({ length: 200 }, (_, i) => ({ id: 9000 + i, actor: 'demo_owner', role: 'owner', created_at: '2026-10-01T00:00:00Z',
-      table_name: 'rt_vehicle_segments', action: 'update', record_id: '999', before_data: { rt_id: 999 }, after_data: { rt_id: 999 } })), count: 200 }];
-    const { page, S } = await K.openApp(browser, origin, { board: handWeek(false), role: 'owner', audit: full });
-    await page.evaluate(() => WN5Hand.cycleCard(101));
-    await page.waitForTimeout(1200);
-    const hist = await K.text(page, '.wi4-dlg[data-wn5="cycle"] [data-hist]');
-    const reads = S.facade.filter((x) => x.path === '/audit').map((x) => x.q || {});   // the kit logs /audit with its query (T25 (β))
-    ok(scn, 'owner: a full /audit read says «Ενδέχεται να λείπουν παλαιότερες αλλαγές», never «Καμία αλλαγή»; one read per segment + one for deletes',
-      /Ενδέχεται να λείπουν/.test(hist) && !/Καμία αλλαγή/.test(hist) && reads.filter((q) => q.record_id === '701' || q.record_id === '702').length === 2 && reads.some((q) => q.action === 'delete'), { hist, reads });
     await page.context().close();
   }
 }
@@ -14324,7 +14142,7 @@ Mutation: στο `_changeSave` το `requestId: d.slot.id` → `requestId: crypt
 
 - [ ] **Step 8: Έλεγχος ως τον πίνακα**
 
-1. **Endpoint:** `POST /plan/rt/:id/handover` (dry run + εκτέλεση με `request_id`)· `PATCH /plan/segments/:id` (dry run + εκτέλεση)· ανάγνωση `GET /audit?table=rt_vehicle_segments`.
+1. **Endpoint:** `POST /plan/rt/:id/handover` (dry run + εκτέλεση με `request_id`)· `PATCH /plan/segments/:id` (dry run + εκτέλεση)· καμία ανάγνωση ιστορικού (Ε-11 «γ»).
 2. **RPC / πίνακες:** `plan_seg_change` → `rt_vehicle_segments` (update του τμήματος που κόβεται + create του νέου, δύο γραμμές `audit_log`, μία `plan_request`)· `plan_seg_fix` → `rt_vehicle_segments` (update, και του προηγούμενου όταν αλλάζει η ώρα).
 3. **Τι γράφτηκε:** στην παραγωγή τίποτα (409 ως το L)· SELECT:
    ```sql
@@ -14333,19 +14151,19 @@ Mutation: στο `_changeSave` το `requestId: d.slot.id` → `requestId: crypt
    ```
    Expected `0 · 0`. Η εγγραφή αποδεικνύεται στο stub ως το L (σενάρια `change`, `fix`, `h7`: τα σώματα ακριβώς).
 4. **Αποτυχία:** H7 ανά κωδικό με το μήνυμα του Worker, φόρμα ανοιχτή, ίδιο `request_id`· 409 → κλειδωμένη αποθήκευση, ανοιχτό dry run· 404 → «δεν έχει ανέβει ακόμη (072b)»· `preview.conflict` → κόκκινη γραμμή, αποθήκευση κλειστή.
-5. **Δικαίωμα:** `handover` και `segment` σε όλους τους 5 ρόλους (072b Worker)· ιστορικό μόνο owner/management (`AUDIT_READERS`).
+5. **Δικαίωμα:** `handover` και `segment` σε όλους τους 5 ρόλους (072b Worker)· το ιστορικό μένει στο Audit Trail (owner/management), όχι στην καρτέλα (Ε-11 «γ»).
 
 - [ ] **Step 9: Commit**
 
 ```bash
 git add modules/wn5_handover.js core/plan-api.js assets/style.css app.html sw.js tests/wn5-handover.test.js tests/wn5-plan-api-worker.test.mjs \
-  tests/sw-app-shell.test.js tests/critics/wn5-rig-kit.js tests/critics/wn5-handover-rig.js
+  tests/sw-app-shell.test.js tests/critics/wn5-handover-rig.js
 git commit -m "$(cat <<'EOF'
-F4α-T25 (gated 072b): cycle card H6, vehicle change H2/H3, segment fix, H7 refusals
+F4α-T25 (gated 072b): cycle card H6 (no change history, owner Ε-11 «γ»), vehicle change H2/H3, segment fix, H7 refusals
 
 Change = dry run (preview of the segments) then the execution with one request_id per
-open form; fix = only the changed keys, no request_id; history grouped by actor +
-created_at. planFetch learns the three 072b routes (drift-tested vs PLAN_ROUTES + SQL).
+open form; fix = only the changed keys, no request_id; the card has no change
+history (it stays in the Audit Trail). planFetch learns the three 072b routes (drift-tested vs PLAN_ROUTES + SQL).
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 EOF
@@ -14504,7 +14322,7 @@ Expected: `✖ F4α-T26: seg_removed / …` (`unknown: true`), `✖ … needs_co
 
 - [ ] **Step 5: `modules/wn5_handover.js` — αφαίρεση και καθαρισμός με τμήματα**
 
-(α) Με Edit, πριν από τη γραμμή εξαγωγής `  window.WN5Hand = Object.freeze({ cycleCard, change, fix, historyGroups, _changeBody, _changeProblems, _fixSet });` πρόσθεσε, και άλλαξε την εξαγωγή:
+(α) Με Edit, πριν από τη γραμμή εξαγωγής `  window.WN5Hand = Object.freeze({ cycleCard, change, fix, _changeBody, _changeProblems, _fixSet });` πρόσθεσε, και άλλαξε την εξαγωγή:
 ```js
   // ── H4 removal ─────────────────────────────────────────────────────────────────────────────────────────────
   // POST /plan/segments/:id/remove: owner + dispatcher (PLAN_PERMS of 072b; the button is there for everyone and
@@ -14544,7 +14362,7 @@ Expected: `✖ F4α-T26: seg_removed / …` (`unknown: true`), `✖ … needs_co
       + `<div class="wn5h-acts"><button type="button" class="wi4-btn" data-act="clear-no">Άκυρο</button><button type="button" class="wi4-btn wn5h-danger" data-act="clear-go">Συνέχεια</button></div></div>`;
   }
 
-  window.WN5Hand = Object.freeze({ cycleCard, change, fix, remove, historyGroups, _changeBody, _changeProblems, _fixSet });
+  window.WN5Hand = Object.freeze({ cycleCard, change, fix, remove, _changeBody, _changeProblems, _fixSet });
 ```
 (β) Στη `cycleCard` του T25, με Edit, η γραμμή
 `      if (a === 'clear') { _close(); WN5Act.clear(rtId); return; }`
@@ -15526,7 +15344,7 @@ gh pr create --base main --head feat/national-v5-f4a --title "Εθνικά v5 Φ
 | S-148 | token του `plan_rt_update` | T26 |
 | S-149 | προειδοποιήσεις `seg_stop_*` | T26 |
 | S-150 | φύλλο ανά τμήμα H5 | T27 |
-| S-151 | ιστορικό H6 | T25 (Ε-11) |
+| S-151 | ιστορικό H6 | **καταργήθηκε (owner 26/10, Ε-11 «γ»)**: το ιστορικό μένει στο Audit Trail· T25 το καρφώνει με test |
 | S-152 | σφάλματα H7 | T25 |
 | S-153 | κωδικοί 072b | T25, T26 (κείμενα του Worker) |
 | S-154 | χάρτης λόγων H-19 | T24 |
@@ -15563,10 +15381,10 @@ gh pr create --base main --head feat/national-v5-f4a --title "Εθνικά v5 Φ
 ## Ερωτήσεις προς τον owner (απαντήθηκαν 26/10)
 
 **Απαντήσεις 26/10** (`docs/DECISION_LOG.md`, «Εθνικά v5 Φ4α: απαντήσεις Ε-1..Ε-44»):
-- **Ε-11:** owner «α». Ιστορικό καρτέλας κύκλου μόνο για owner, management, dispatcher, ποτέ ποσά (T25).
-- **Ε-18:** ανοιχτή· ο owner ρωτά την Αλεξία, η επιβεβαίωση στο DECISION_LOG πριν από το merge της υλοποίησης.
+- **Ε-11:** owner «γ» (διόρθωσε το αρχικό «α»). Η καρτέλα κύκλου δεν δείχνει ιστορικό σε κανέναν ρόλο· το ιστορικό μένει στο Audit Trail (owner, management). Κανένα αίτημα στον Worker γι' αυτό (T25, S-151).
+- **Ε-18:** κλειστή. Η Αλεξία επιβεβαίωσε τις αποφάσεις 33 και 10 (26/10, μέσω owner).
 - **Όλες οι άλλες (Ε-1..Ε-10, Ε-12..Ε-17, Ε-19..Ε-44):** εγκρίθηκε η Πρόταση, από τον συντονιστή κατ' εντολή του owner (οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν). Ε-1: το όνομα pilot το δίνει ο owner αργότερα.
-- **Αιτήματα στην αλυσίδα του Worker που εμποδίζουν την ημέρα L, όχι τη Φ4α:** Ε-2 / Ε-27 / Ε-44 (`GET /plan/lookups` ή `is_hub`), Ε-11 (`GET /plan/rt/:id/history`), Ε-26 (κλειδιά του `hub[]`), Ε-34 (ό,τι λείπει από τα `legs[]` και τους οδηγούς), Ε-41 / Ε-43 (`hub[].for_split`).
+- **Αιτήματα στην αλυσίδα του Worker που εμποδίζουν την ημέρα L, όχι τη Φ4α:** Ε-2 / Ε-27 / Ε-44 (`GET /plan/lookups` ή `is_hub`), Ε-26 (κλειδιά του `hub[]`), Ε-34 (ό,τι λείπει από τα `legs[]` και τους οδηγούς), Ε-41 / Ε-43 (`hub[].for_split`).
 - **Δύο αποφάσεις owner 26/10 που ακολουθεί το πλάνο:** (1) **πρώτα τα εθνικά:** υλοποιείται μόνο το National v5· τα διεθνή (πάνελ, αλλαγή οχήματος σε `model=1`, H8, S-109, S-159) περιμένουν να αποδειχθούν τα εθνικά στην παραγωγή (Global Constraints)· (2) **072b, ένα βήμα:** `plan_rt_update` που στενεύει πέρα από αλλαγή οχήματος **και** αλλάζει όχημα = μία λίστα, ένα token (T26).
 
 Το κείμενο κάθε ερώτησης μένει όπως γράφτηκε, με την απάντηση στο τέλος.
@@ -15581,14 +15399,14 @@ gh pr create --base main --head feat/national-v5-f4a --title "Εθνικά v5 Φ
 8. **Ε-8 · Κείμενο Δ5 «Βλάβη: «Μεταφορά σε…»»:** μετά την αλλαγή οχήματος η βλάβη είναι «Αλλαγή οχήματος». **Πρόταση:** μένει ως να ζήσει η 072b, μετά «Βλάβη: «Αλλαγή οχήματος» στην καρτέλα κύκλου». **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
 9. **Ε-9 · Καρτέλα για παραγγελία άλλης εβδομάδας** (από ειδοποίηση): η καρτέλα διαβάζει το board μιας εβδομάδας. **Πρόταση:** μόνο από τη φορτωμένη εβδομάδα· αλλιώς γραμμή «σε άλλη εβδομάδα», χωρίς καρτέλα. **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
 10. **Ε-10 · «Διαγραμμένες · ίχνος» (`2011:10613`):** δεν υπάρχει διαδρομή που να διαβάζει διαγραμμένες v5. **Πρόταση:** Φ4β, μαζί με μια ανάγνωση στον Worker· η Φ4α κάνει μόνο τη διαγραφή. **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
-11. **Ε-11 · Ιστορικό αλλαγών κύκλου (H6) για όλους τους ρόλους:** σήμερα το `audit_log` διαβάζεται μόνο από owner/management (`/audit`). **Πρόταση:** μία ανάγνωση ιστορικού στο `/plan/*` στην αλυσίδα της 072b· ως τότε η καρτέλα δείχνει ιστορικό μόνο όπου επιτρέπει το `/audit` και το λέει. **→ Απάντηση owner 26/10: «α».** Το ιστορικό αλλαγών της καρτέλας κύκλου (όχημα, αλλαγή οχήματος, ώρες· ποιος, πότε, λόγος· **ποτέ ποσά**) το βλέπουν μόνο owner, management και dispatcher· warehouse και accountant δεν το βλέπουν στην καρτέλα. Θέλει ανάγνωση στο `/plan/*` (`GET /plan/rt/:id/history`): **αίτημα στην αλυσίδα του Worker· εμποδίζει την ημέρα L, όχι τη Φ4α.** Υλοποίηση: T25 (`HIST_ROLES`, `HISTORY_PENDING`, `MONEY_KEY`).
+11. **Ε-11 · Ιστορικό αλλαγών κύκλου (H6) για όλους τους ρόλους:** σήμερα το `audit_log` διαβάζεται μόνο από owner/management (`/audit`). **Πρόταση:** μία ανάγνωση ιστορικού στο `/plan/*` στην αλυσίδα της 072b· ως τότε η καρτέλα δείχνει ιστορικό μόνο όπου επιτρέπει το `/audit` και το λέει. **→ Απάντηση owner 26/10: «γ» (διόρθωσε το αρχικό «α»).** Η καρτέλα κύκλου **δεν** δείχνει ιστορικό αλλαγών σε κανέναν ρόλο. Το ιστορικό μένει όπου είναι σήμερα: owner και management, μέσω του Audit Trail (`/audit`). Καμία νέα ανάγνωση στο `/plan/*`, κανένα αίτημα στον Worker. T25: το μπλοκ ιστορικού του H6 καταργήθηκε (test που το καρφώνει).
 12. **Ε-12 · «Επιστροφή παλετών» στο φύλλο οδηγού:** τα σκέλη του board δεν φέρνουν PE. **Πρόταση:** «—» ως να το φέρει η 073 (T28). **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
 13. **Ε-13 · Κόμιστρο πάνω στο πλακίδιο συνεργάτη** («300 €», H3): ο κριτής 1 πρότεινε να φύγει. **Πρόταση:** μένει (απόφαση 41, όψη dispatcher με κόμιστρο). **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
 14. **Ε-14 · Σκούρο κείμενο ετικέτας τμήματος** (`#475569`, `#92400E`, `#0369A1`, frame `2140:7735` «για απόφαση owner»): **Πρόταση:** το σκούρο, όπως ήδη στα H1–H7 της έγκρισης 25/10. **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
 15. **Ε-15 · Ρίζα `class="wi4 wn5"`:** κληρονομεί όλη την εμφάνιση του Weekly Διεθνών (μία πηγή), αλλά μια αλλαγή εκεί αλλάζει και το Εθνικών. **Πρόταση:** ναι, κληρονομεί· ό,τι είναι μόνο εθνικό στο μπλοκ `wn5`. **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
 16. **Ε-16 · Παλιά σημεία εισόδου φόρμας εθνικής** (κατάλογος παραγγελιών, `orders_natl.js`): **Πρόταση:** μένουν στην παλιά φόρμα στη Φ4α· αλλάζουν στη Φ4β/ημέρα L. **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
 17. **Ε-17 · Μετρητής x/33 με κιβώτια IFCO:** **Πρόταση:** άθροισμα παλετών φόρτωσης της πλευράς, χωρίς κανόνα για κιβώτια (όπως το `over_33` της βάσης). **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
-18. **Ε-18 · Επιβεβαίωση της Αλεξίας για την απόφαση 33** (γραμμή τοπικού `needs_review`, `local_payroll` στις λίστες), «πριν από τη Φ4»: **Πρόταση:** η υλοποίηση προχωρά όπως η απόφαση· η επιβεβαίωση γράφεται στο DECISION_LOG πριν το merge. **→ 26/10: μένει ανοιχτή.** Ο owner ρωτά την Αλεξία· η επιβεβαίωση γράφεται στο `docs/DECISION_LOG.md` πριν από το merge της υλοποίησης Φ4 (η Πρόταση).
+18. **Ε-18 · Επιβεβαίωση της Αλεξίας για την απόφαση 33** (γραμμή τοπικού `needs_review`, `local_payroll` στις λίστες), «πριν από τη Φ4»: **Πρόταση:** η υλοποίηση προχωρά όπως η απόφαση· η επιβεβαίωση γράφεται στο DECISION_LOG πριν το merge. **→ 26/10: ΚΛΕΙΣΤΗ.** Η Αλεξία (accountant) επιβεβαίωσε μέσω του owner και τα δύο, «1. ναι 2. ναι»: (1) απόφαση 33: η ημερήσια γραμμή ΤΟΠΙΚΟ με ποσό δεν σβήνεται ούτε κλειδώνει όταν αλλάζουν οι φορτώσεις της ημέρας της· πηγαίνει σε έλεγχο λογιστηρίου (`needs_review`, όπως σήμερα), και όποιος κάνει την αλλαγή βλέπει στη λίστα συνεπειών ότι επηρεάζεται γραμμή μισθοδοσίας, χωρίς το ποσό (ποσά μόνο owner/accountant)· (2) απόφαση 10: πουθενά ένδειξη «πληρωμένη»· η γραμμή γράφει «γραμμή μισθοδοσίας με ποσό (Οκτώβριος)», κατά μήνα. Το πλάνο το κάνει ήδη (T11 `WN5Lab`, λίστες T14/T18/T26).
 19. **Ε-19 · Ζεύγη αποστολών στη φόρμα groupage** («3 παραγγελίες → 4 αποστολές»): **Πρόταση:** N φορτώσεις × 1 παράδοση ή 1 φόρτωση × N παραδόσεις γίνονται ζεύγη αυτόματα· N×M δεν επιτρέπεται («ένα ζεύγος ανά γραμμή»). **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
 20. **Ε-20 · Ειδοποιήσεις v5 και στο καμπανάκι:** **Πρόταση:** όχι στη Φ4α (μόνο λωρίδα στο board). **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
 21. **Ε-21 · Άγνωστη επίπτωση σε λίστα επιβεβαίωσης:** **Πρόταση:** γραμμή «άλλη επίπτωση · <κωδικός>», το «Επιβεβαίωση» μένει ενεργό, μία καταγραφή σφάλματος. **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
