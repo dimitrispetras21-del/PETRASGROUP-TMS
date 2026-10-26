@@ -42,7 +42,7 @@ const TRG = `SELECT count(*)::int AS n FROM pg_trigger t JOIN pg_class c ON c.oi
   JOIN pg_namespace ns ON ns.oid = c.relnamespace WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public'`;
 
 async function prodShaped() {
-  const db = await freshDb(btreeGist ? { extensions: { btree_gist: btreeGist } } : {});
+  const db = await freshDb({ v5: false, ...(btreeGist ? { extensions: { btree_gist: btreeGist } } : {}) });   // 071 itself, not the stand-ins
   await db.exec(`DO $r$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN CREATE ROLE anon NOLOGIN; END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;

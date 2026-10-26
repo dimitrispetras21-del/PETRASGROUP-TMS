@@ -68,7 +68,7 @@ const V5_ROWS = `SELECT ((SELECT count(*) FROM shipments) + (SELECT count(*) FRO
   + (SELECT count(*) FROM ct_round_trips WHERE model = 2))::int AS n`;
 
 async function prodShaped() {
-  const db = await freshDb({ extensions: { btree_gist, pgcrypto } });
+  const db = await freshDb({ v5: false, extensions: { btree_gist, pgcrypto } });   // 071 itself, not the stand-ins
   await db.exec(`DO $r$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN CREATE ROLE anon NOLOGIN; END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;
