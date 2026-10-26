@@ -7,7 +7,7 @@
 //   - Offline banner via postMessage to all clients
 // ═══════════════════════════════════════════════════════════
 
-const SW_VERSION = '1792832211';
+const SW_VERSION = '1793047353';
 
 // Το vendor/leaflet/* ΔΕΝ μπαίνει στο APP_SHELL επίτηδες: το pre-cache στο
 // install θα κατέβαζε 228 KB σε κάθε χρήστη, ακυρώνοντας το lazy loading της
@@ -23,6 +23,8 @@ const APP_SHELL = [
   '/PETRASGROUP-TMS/assets/style.css',
   // Core
   '/PETRASGROUP-TMS/core/api.js',
+  // National v5 (F4α): app.html loads it on every page; a wrong path here fails the whole install.
+  '/PETRASGROUP-TMS/core/plan-api.js',
   '/PETRASGROUP-TMS/core/auth.js',
   '/PETRASGROUP-TMS/core/router.js',
   '/PETRASGROUP-TMS/core/utils.js',
