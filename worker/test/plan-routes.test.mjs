@@ -392,6 +392,27 @@ test('072b: PATCH /plan/rt/:id need_token → 428, stale_confirm → 422; the to
   assert.equal(calls.length, 0);
 });
 
+// owner 26/10 («σε ένα βήμα»): a stop change that removes a handover AND sets a vehicle answers ONE list in its dry run,
+// with a seg_vehicle line (the segment left and the vehicle it gets, the partner rate for every role - decision 41):
+// it reaches every role as sent, never the amount_leak tripwire; the body (stops + set) reaches p as sent
+test('072b one step: the dry run list with seg_vehicle reaches a role without money; stops and set ride in p together', async () => {
+  const list = [{ kind: 'seg_removed', rt_id: 5, code: 'RT-1290', segment_id: 12, at: '2026-10-27T08:00:00Z', at_athens: '27/10 10:00',
+                  place_note: 'Λαμία', reason: 'vehicle_breakdown' },
+                { kind: 'seg_vehicle', rt_id: 5, segment_id: 11, trip_type: 'PARTNER', truck_id: null, trailer_id: null, driver_id: null,
+                  partner_id: 7, partner_rate: 450 }];
+  on('POST', 'rpc/plan_rt_update', () => json({ ok: true, op: 'plan_rt_update', dry_run: true, needs_confirm: true, confirm_token: 't',
+    consequences: list, preview: { before: {}, after: {}, conflict: null } }));
+  const body = { stops: [{ stop_id: 3, planned_from: '2026-10-27T14:05:00+02:00', planned_to: '2026-10-27T14:20:00+02:00' }],
+                 set: { trip_type: 'PARTNER', partner_id: 7, partner_rate: 450 }, dry_run: true };
+  for (const role of ['dispatcher', 'management', 'warehouse']) {
+    calls.length = 0;
+    const r = await call(role, 'PATCH', '/plan/rt/5', body);
+    assert.equal(r.status, 200, `${role}: ${r.text}`);
+    assert.deepEqual(r.json.consequences, list, role);
+    assert.deepEqual(rpcCalls().map((c) => c.body), [{ p: { ...body, rt_id: 5 }, p_actor: 'tester', p_role: role }], role);
+  }
+});
+
 test('23P01 at the RPC\'s COMMIT (071b EXCLUDE) → 422 truck_busy / driver_busy', async () => {
   for (const [name, code] of [['rt_v2_truck_once', 'truck_busy'], ['rt_v2_driver_once', 'driver_busy']]) {
     routes.length = 0;

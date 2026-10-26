@@ -29,7 +29,7 @@
 --     lists "the handover <point> <time> will be removed" (seg_removed) in its consequence list and removes it after
 --     the token, for every role that may do the act (plan_h_seg_cut*; ONE removal path with plan_seg_remove:
 --     plan_h_seg_drop). seg_outside stays as the net, for a narrowing that bypassed the list;
---   * 18 hooks in 10 functions of 072 (plan_h_busy, plan_h_finish, plan_rt_update x7, plan_rt_clear, plan_board,
+--   * 20 hooks in 10 functions of 072 (plan_h_busy, plan_h_finish, plan_rt_update x9, plan_rt_clear, plan_board,
 --     plan_vs_state, plan_local_loading, plan_h_drop_consequences, plan_move_pieces x2, plan_delete x2), from their LIVE
 --     text, md5 before and after, reversible byte for byte (pattern 071 section 9). NOTHING else of 072 changes;
 --     none of 072's guarded 22 changes.
@@ -49,7 +49,7 @@ DECLARE
   x_truck CONSTANT text := 'EXCLUDE USING gist (truck_id WITH =, tstzrange(start_at, end_at, ''[)''::text) WITH &&) WHERE (((model = 2) AND (trip_type = ''OWNED''::text) AND (truck_id IS NOT NULL) AND (status <> ''cancelled''::text))) DEFERRABLE INITIALLY DEFERRED';
   x_driver CONSTANT text := 'EXCLUDE USING gist (driver_id WITH =, tstzrange(start_at, end_at, ''[)''::text) WITH &&) WHERE (((model = 2) AND (trip_type = ''OWNED''::text) AND (driver_id IS NOT NULL) AND (status <> ''cancelled''::text))) DEFERRABLE INITIALLY DEFERRED';
 
-  -- ===== the 18 hooks in 10 functions of 072: (text before -> 072b text), each exactly once in its function =====
+  -- ===== the 20 hooks in 10 functions of 072: (text before -> 072b text), each exactly once in its function =====
   h_busy_a CONSTANT text := $h$  select r.code into v_code from ct_round_trips r
    where r.model = 2 and r.trip_type = 'OWNED' and r.status <> 'cancelled' and r.id is distinct from p_except
      and ((p_kind = 'truck' and r.truck_id = p_id) or (p_kind = 'driver' and r.driver_id = p_id))
@@ -93,7 +93,12 @@ $h$;
       v_warn := v_warn || plan_h_v1_warn(r2.truck_id, r2.date_start, r2.date_end, v_rt);
     end if;
 $h$;
-  h_upd_b CONSTANT text := $h$      -- 072b: the vehicle is the segments' (one source). A cycle with ONE segment: that segment, the copy
+  h_upd_b CONSTANT text := $h$      -- 072b, owner 26/10 ("in one step, it is easier for the user"): the handovers the list named go FIRST,
+      -- so a change that narrows past a handover AND sets a vehicle lands on the one segment that is left; seg_many
+      -- only when two or more stay. Cut once: the line after this block then finds nothing left to do.
+      v_notices := v_notices || plan_h_seg_cut(v_cut, 'plan_rt_update', p_actor, p_role);
+      v_cut := null;
+      -- 072b: the vehicle is the segments' (one source). A cycle with ONE segment: that segment, the copy
       -- trigger writes the cycle and 011 follows as before. A cycle with a handover: seg_many, corrected per segment.
       perform plan_h_seg_set_only(v_rt, v_type, v_truck, v_trailer, v_driver, v_partner, v_rate, p_actor, p_role);
       perform plan_h_audit(p_actor, p_role, 'update', 'ct_round_trips', v_rt::text, v_old,
@@ -118,6 +123,7 @@ $h$;
   h_upd_decl_b CONSTANT text := $h$  v_stop_ids bigint[] := '{}'; v_warn jsonb := '[]'::jsonb; v_notices bigint[] := '{}'; x record;
   v_seg0 jsonb;  -- 072b: stop -> segment before the change
   v_cut jsonb; v_conf jsonb;  -- 072b: the handovers this change removes (owner question 7 = b) and their token
+  v_keep bigint;  -- 072b: the ONE segment such a removal leaves, where a vehicle change of the same call lands
 $h$;
   -- owner question 7 = (b), 25/10: plan_rt_update takes the token of a change that removes a handover (072's
   -- unknown-key rule stays: any other key is refused)
@@ -132,8 +138,16 @@ $h$;
   v_seg0 := plan_h_seg_stops(v_rt);  -- 072b: the executing segment of each stop, before the stops move
   -- 072b: owner question 7 = (b), 25/10: a change that leaves a handover outside the new window lists it
   -- (seg_removed, with what leaves with it) and removes it after the token, for every role that may make the change.
-  -- Read BEFORE any write (the window of steps 1-2, 071's rule), so the dry run and the execution hold one token.
-  v_cut := plan_h_seg_rt_cut(v_rt, v_sid, v_sfrom, v_sto, v_side, v_delta);
+  -- Read BEFORE any write (the window of steps 1-2, 071's rule; v_cut is read right after the lock, hook 19), so the
+  -- dry run and the execution hold one token. Owner 26/10 ("in one step"): a vehicle change of the SAME call is a
+  -- line of the same list (seg_vehicle: the segment it lands on and the vehicle it gets), under the same token.
+  if jsonb_array_length(v_cut) > 0 and v_keep is not null
+     and (v_type, v_truck, v_trailer, v_driver, v_partner, v_rate)
+         is distinct from (r.trip_type, r.truck_id, r.trailer_id, r.driver_id, r.partner_id, r.partner_rate) then
+    v_cut := v_cut || jsonb_build_array(jsonb_build_object('kind', 'seg_vehicle', 'rt_id', v_rt, 'segment_id', v_keep,
+               'trip_type', v_type, 'truck_id', v_truck, 'trailer_id', v_trailer, 'driver_id', v_driver,
+               'partner_id', v_partner, 'partner_rate', v_rate));
+  end if;
   v_conf := plan_h_confirm('plan_rt_update', v_rt::text || '>' || coalesce(p->'stops', 'null'::jsonb)::text || '>'
                            || coalesce(p->'shift', 'null'::jsonb)::text, v_cut, p, p_role);
 $h$;
@@ -244,6 +258,38 @@ $h$;
 $h$;
   h_del_ret_b CONSTANT text := $h$                    -- 072b: and the costs notices of the cycles that stay but lost a handover (plan_h_seg_cut)
                     where q.created_at = now() and q.created_by = p_actor and q.rt_id = any(v_rts)));
+$h$;
+  -- owner 26/10 ("in one step"): plan_rt_update that narrows past a handover AND sets a vehicle. The list is read
+  -- right after the lock, BEFORE 072 derives and checks the new vehicle against the cycle's copy r (the ARCHIKO):
+  -- when the removal leaves ONE segment, that segment is the one the change lands on, so r carries ITS vehicle from
+  -- here on - 072's own rules (a present key wins, a type change clears, vehicle_clear_use_clear, no_vehicle, the
+  -- payroll lock) then judge the segment that will really change, with no second copy of them.
+  h_upd_lock_a CONSTANT text := $h$  if r.status = 'cancelled' then perform plan_h_raise('rt_cancelled', r.code); end if;
+$h$;
+  h_upd_lock_b CONSTANT text := $h$  if r.status = 'cancelled' then perform plan_h_raise('rt_cancelled', r.code); end if;
+  -- 072b: the handovers this change removes (owner question 7 = b), and the one segment they leave (owner 26/10)
+  v_cut := plan_h_seg_rt_cut(v_rt, v_sid, v_sfrom, v_sto, v_side, v_delta);
+  select min(g.id) into v_keep from rt_vehicle_segments g
+   where g.rt_id = v_rt and g.deleted_at is null
+     and not (g.id = any (array(select (c->>'segment_id')::bigint from jsonb_array_elements(v_cut) c
+                                 where c->>'kind' = 'seg_removed')))
+  having count(*) = 1;
+  if v_keep is not null then
+    select g.trip_type, g.truck_id, g.trailer_id, g.driver_id, g.partner_id, g.partner_rate
+      into r.trip_type, r.truck_id, r.trailer_id, r.driver_id, r.partner_id, r.partner_rate
+      from rt_vehicle_segments g where g.id = v_keep;
+  end if;
+$h$;
+  -- K-13 (072): a driver change with amounts on the cycle's payroll = payroll_locked. A line the list already removes
+  -- (its driver leaves with a removed handover, deleted after the token by plan_h_seg_drop) locks nothing (owner 26/10)
+  h_upd_k13_a CONSTANT text := $h$                   and (e.trip_value is not null or e.advance is not null or e.expenses is not null)) then
+    perform plan_h_raise('payroll_locked', r.code);
+$h$;
+  h_upd_k13_b CONSTANT text := $h$                   and (e.trip_value is not null or e.advance is not null or e.expenses is not null)
+                   -- 072b: a line this change's list removes locks nothing (owner 26/10, one step)
+                   and not (e.id::text in (select c->>'dl_entry_id' from jsonb_array_elements(v_cut) c
+                                            where c->>'kind' = 'payroll_amount'))) then
+    perform plan_h_raise('payroll_locked', r.code);
 $h$;
 BEGIN
   PERFORM set_config('lock_timeout', '5s', true);
@@ -1140,8 +1186,8 @@ begin
 end
 $f$;
 
-  -- ===== PART 6: THE 18 HOOKS IN 10 FUNCTIONS OF 072 (the live text + one replacement each; generated, proved
-  -- reversible). Applied in order k; a function with several hooks (plan_rt_update: 7, plan_move_pieces: 2, plan_delete: 2) chains them - the "before"
+  -- ===== PART 6: THE 20 HOOKS IN 10 FUNCTIONS OF 072 (the live text + one replacement each; generated, proved
+  -- reversible). Applied in order k; a function with several hooks (plan_rt_update: 9, plan_move_pieces: 2, plan_delete: 2) chains them - the "before"
   -- of each is the "after" of the one before it - and the rollback undoes them in reverse order (k desc). =====
   FOR v_fn IN SELECT * FROM (VALUES
       (1, 'public.plan_h_busy(text,bigint,timestamptz,timestamptz,bigint)', h_busy_a, h_busy_b,
@@ -1149,17 +1195,17 @@ $f$;
       (2, 'public.plan_h_finish()', h_fin_a, h_fin_b,
        'c398052b091723cdd9f7ae47516f8aa2', '59d88ec85661d3ef2ac957aecd0e0fcd'),
       (3, 'public.plan_rt_update(jsonb,text,text)', h_upd_decl_a, h_upd_decl_b,
-       '0cce9dd2a29dd9ea35ac633f6338fca1', '77e5bd7c11153bb3eda260b844b6eccf'),
+       '0cce9dd2a29dd9ea35ac633f6338fca1', '855e6188c7b7d81ef20efdfd8921b2f8'),
       (4, 'public.plan_rt_update(jsonb,text,text)', h_upd_keys_a, h_upd_keys_b,
-       '77e5bd7c11153bb3eda260b844b6eccf', 'ee540138e1e2291febacba46a392b73e'),
+       '855e6188c7b7d81ef20efdfd8921b2f8', '929c8de4a5c4e4dbbc1fc6ca29b788c9'),
       (5, 'public.plan_rt_update(jsonb,text,text)', h_upd_bef_a, h_upd_bef_b,
-       'ee540138e1e2291febacba46a392b73e', '1f7b330728422745d3fb76530be6c3f7'),
+       '929c8de4a5c4e4dbbc1fc6ca29b788c9', '8b25e8499deb5517bb5f471aadd2dca3'),
       (6, 'public.plan_rt_update(jsonb,text,text)', h_upd_a, h_upd_b,
-       '1f7b330728422745d3fb76530be6c3f7', 'ff9402599177a394a551cb1777fce77a'),
+       '8b25e8499deb5517bb5f471aadd2dca3', '09fcb64337a989d3a4d40c6f181b14c2'),
       (7, 'public.plan_rt_update(jsonb,text,text)', h_upd_next_a, h_upd_next_b,
-       'ff9402599177a394a551cb1777fce77a', '69888bb1b861da64c245cf9b948e6d34'),
+       '09fcb64337a989d3a4d40c6f181b14c2', '6bc9d4c9a95782307f61237d0dd012b6'),
       (8, 'public.plan_rt_update(jsonb,text,text)', h_upd_dry_a, h_upd_dry_b,
-       '69888bb1b861da64c245cf9b948e6d34', '3730560301b311e8eb721bb596c30879'),
+       '6bc9d4c9a95782307f61237d0dd012b6', '67c16675c7e1d4bb161cbe2ad4538b1c'),
       (9, 'public.plan_rt_clear(jsonb,text,text)', h_clr_a, h_clr_b,
        'f33127a05d3df00f850e78eb40bab4aa', '07452fbac4ac9fe8c4dddd0d35b256f3'),
       (10, 'public.plan_board(date,text)', h_brd_a, h_brd_b,
@@ -1177,9 +1223,13 @@ $f$;
       (16, 'public.plan_move_pieces(jsonb,text,text)', h_mv_list_a, h_mv_list_b,
        'ae275e73f32e0c5eb1069e87f20e0239', '97984f7500dead965ddcba0d2c3360ab'),
       (17, 'public.plan_rt_update(jsonb,text,text)', h_upd_vs_a, h_upd_vs_b,
-       '3730560301b311e8eb721bb596c30879', 'e918ef7cb61693c941a4e755e7e5f94f'),
+       '67c16675c7e1d4bb161cbe2ad4538b1c', 'f6a529f94df045e1f3689f0df95a2d7c'),
       (18, 'public.plan_delete(jsonb,text,text)', h_del_ret_a, h_del_ret_b,
-       '5aed6ae2fd3bf8f41f85744951beeee8', 'abda0d8b5d0bf32766e4ecb46367420c')
+       '5aed6ae2fd3bf8f41f85744951beeee8', 'abda0d8b5d0bf32766e4ecb46367420c'),
+      (19, 'public.plan_rt_update(jsonb,text,text)', h_upd_lock_a, h_upd_lock_b,
+       'f6a529f94df045e1f3689f0df95a2d7c', '2f5e62feffd8c9f6bb5e10945a9dd556'),
+      (20, 'public.plan_rt_update(jsonb,text,text)', h_upd_k13_a, h_upd_k13_b,
+       '2f5e62feffd8c9f6bb5e10945a9dd556', 'e427e7a24ef6e88d83555c98d4bc7622')
     ) v(k, sig, a, b, m0, m1) ORDER BY k LOOP
     v_oid := to_regprocedure(v_fn.sig);
     SELECT prosrc, proacl::text, prosecdef, provolatile, prolang, proconfig
@@ -1630,7 +1680,7 @@ $f$;
   CREATE POLICY monitor_read ON public.rt_vehicle_segments FOR SELECT TO tms_check_runner, tms_reader USING (true);
 
   -- ===== PART 9: PROOFS =====
-  IF v_n <> 18 THEN RAISE EXCEPTION '072b proof: % hooks applied (expected 18)', v_n; END IF;
+  IF v_n <> 20 THEN RAISE EXCEPTION '072b proof: % hooks applied (expected 20)', v_n; END IF;
   -- the functions 072b relies on and did NOT change are still the texts of PART 0 (the hooked 10 are proved above)
   FOR v_g IN SELECT * FROM (VALUES
       ('public.dl_sync_from_rt()', '331cea3a8987b74a9b0add698df9b158'),
@@ -1724,7 +1774,7 @@ $f$;
   IF v_k <> 1 THEN RAISE EXCEPTION '072b: B-54 not updated (% rows)', v_k; END IF;
 
   PERFORM pg_notify('pgrst', 'reload schema');
-  RAISE NOTICE '072b OK: segments table, 2 EXCLUDE moved, 2 views, 18 hooks in 10 functions of 072, 3 acts, auditor policy; triggers % -> %, B-54 = %',
+  RAISE NOTICE '072b OK: segments table, 2 EXCLUDE moved, 2 views, 20 hooks in 10 functions of 072, 3 acts, auditor policy; triggers % -> %, B-54 = %',
     v_trg0, v_trg1, v_trg1;
 END $do$;
 
