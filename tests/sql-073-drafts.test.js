@@ -1,0 +1,119 @@
+// tests/sql-073-drafts.test.js - run: node --test tests/sql-073-drafts.test.js
+// The 073 drafts (national v5 money, route, pallets, F3) at build time, plain node, no database (principle 6):
+//   - the six files and the dry-run builder are there; ASCII only (clipboard has mangled Greek before);
+//   - the writing files are ONE DO block; verify and fingerprint write nothing; the dry run is regenerated;
+//   - the live views and functions 073 replaces are guarded by md5 BEFORE, and their new texts proved AFTER, with
+//     the same lists in 073, verify and rollback (one list per fact, principle 3);
+//   - 073 adds no table, column or trigger (B-54 stays); every new object is born closed;
+//   - every view that has security_invoker today is rewritten WITH it (CREATE OR REPLACE VIEW drops it otherwise:
+//     measured on PGlite 17, 23/10);
+//   - every plan: code 073 raises has a case in the rules test; every consequence kind it adds is in the registry;
+//   - the cross-cutting input rule (coordinator 25/10): NaN / +-Infinity pallets and an infinite day are refused by
+//     name (bad_input) before the pallet feeder writes;
+//   - D-9 NARROW (owner 25/10): the one index 073 adds is unique only for LOADING / DELIVERY;
+//   - the money choices M-1..M-3 are marked with the owner's answer (M-1 gamma, M-2 alpha, M-3 beta, 24/10), so a
+//     review finds them.
+// The rules are proven by 073_plan_money_test.sql on PGlite (tms-auditor/test/plan-073.test.mjs).
+'use strict';
+const { test } = require('node:test');
+const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
+const { execFileSync } = require('node:child_process');
+
+const ROOT = path.join(__dirname, '..');
+const DIR = path.join(ROOT, 'worker/migrations/drafts');   // until the owner runs 073 (then: worker/migrations)
+const read = (f) => fs.readFileSync(path.join(DIR, f), 'utf8');
+const strip = (s) => s.replace(/--[^\n]*/g, '');
+const DO_FILES = ['073_plan_money.sql', '073_plan_money_dryrun.sql', '073_plan_money_test.sql', '073_plan_money_rollback.sql'];
+const READ_ONLY = ['073_plan_money_verify.sql', '073_plan_money_fingerprint.sql'];
+// The registry of consequence kinds the board (F4) knows: F2's eight + 073's one.
+const KINDS = ['invoiced', 'costs', 'payroll_amount', 'local_loading', 'local_payroll', 'rt_cancelled', 'executed_leg',
+  'later_leg', 'pallets_confirmed'];
+
+test('073: every file is there and ASCII only', () => {
+  for (const f of [...DO_FILES, ...READ_ONLY, 'tools/build-073-dryrun.mjs']) {
+    assert.ok(fs.existsSync(path.join(DIR, f)), f);
+    const bad = read(f).split('\n').map((l, i) => [i + 1, l]).filter(([, l]) => /[^\x00-\x7f]/.test(l));
+    assert.deepStrictEqual(bad, [], `${f}: non-ASCII lines`);
+  }
+});
+
+test('073: one DO block per writing file; verify and fingerprint only read', () => {
+  for (const f of DO_FILES) assert.strictEqual((strip(read(f)).match(/^DO \$/gm) || []).length, 1, f);
+  for (const f of READ_ONLY) {
+    const s = strip(read(f));
+    assert.ok(!/\b(insert|update|delete|create|alter|drop|grant|revoke|truncate)\b/i.test(s.replace(/updated_at|deleted_at|created_at/g, '')), f);
+  }
+});
+
+test('073: the dry run is the generated one', () => {
+  execFileSync(process.execPath, [path.join(DIR, 'tools/build-073-dryrun.mjs'), '--check']);
+});
+
+test('073: one md5 list per fact - guards, proofs, verify and rollback agree', () => {
+  const src = read('073_plan_money.sql');
+  const part0 = src.slice(src.indexOf('===== PART 0'), src.indexOf('===== PART 1'));
+  const part5 = src.slice(src.indexOf('===== PART 5'));
+  const pairs = (s) => [...s.matchAll(/\('(public\.[a-z0-9_]+(?:\([^)]*\))?)',\s*'([0-9a-f]{32})'\)/g)].map((m) => `${m[1]}=${m[2]}`);
+  const before = pairs(part0);
+  const hooks = [...src.matchAll(/\('(public\.[a-z_]+\([^)]*\))',\n\s+E'[\s\S]*?,\n\s+E'[\s\S]*?,\n\s+'([0-9a-f]{32})'\)/g)].map((m) => `${m[1]}=${m[2]}`);
+  const after = pairs(part5).concat(hooks);
+  assert.strictEqual(before.length, 22, 'PART 0 guards 12 views + 10 functions');
+  assert.strictEqual(hooks.length, 5, 'five hooks in 072');
+  const verify = pairs(read('073_plan_money_verify.sql'));
+  assert.deepStrictEqual(verify.sort(), after.sort(), 'verify checks exactly the texts 073 proves');
+  const rb = read('073_plan_money_rollback.sql');
+  for (const p of before.filter((x) => /ct_v_rt_|dl_v_rt_route|stock_v_pieces/.test(x) && !/stock_v_rt_amounts|wear/.test(x))) {
+    assert.ok(rb.includes(`'${p.split('=')[0]}', '${p.split('=')[1]}'`), `rollback proves ${p}`);
+  }
+  for (const h of hooks) assert.ok(rb.includes(h.split('=')[1]), `rollback reads the 073 text of ${h}`);
+});
+
+test('073: no table, no column, no trigger; born closed; security_invoker kept', () => {
+  const s = strip(read('073_plan_money.sql'));
+  assert.ok(!/create\s+(table|trigger)|alter\s+table|add\s+column|create\s+constraint\s+trigger/i.test(s));
+  assert.match(s, /REVOKE ALL ON FUNCTION public\.plan_h_pallet_sync\(bigint\[\],text,text\) FROM PUBLIC, anon, authenticated, service_role;/);
+  assert.match(s, /REVOKE ALL ON public\.ct_v_v5_revenue FROM PUBLIC, anon, authenticated, service_role, tms_reader;/);
+  assert.match(s, /GRANT SELECT ON public\.ct_v_v5_revenue TO service_role, tms_check_runner;/);
+  for (const v of ['dl_v_rt_route', 'ct_v_rt_pallet_gate']) {
+    assert.match(s, new RegExp(`CREATE OR REPLACE VIEW public\\.${v} WITH \\(security_invoker = true\\) AS`), v);
+    assert.match(strip(read('073_plan_money_rollback.sql')), new RegExp(`CREATE OR REPLACE VIEW public\\.${v} WITH \\(security_invoker = true\\) AS`), `rollback ${v}`);
+  }
+  // one list: exactly these two are invoker, in 073 and in its rollback (a third would need the same proof)
+  const invoker = (x) => [...x.matchAll(/VIEW public\.([a-z0-9_]+) WITH \(security_invoker = true\)/g)].map((m) => m[1]).sort();
+  assert.deepStrictEqual(invoker(s), ['ct_v_rt_pallet_gate', 'dl_v_rt_route']);
+  assert.deepStrictEqual(invoker(strip(read('073_plan_money_rollback.sql'))), ['ct_v_rt_pallet_gate', 'dl_v_rt_route']);
+  // D-9 NARROW (owner 25/10): the only index, unique for the two events the feeders write, reversed rows not counted
+  assert.deepStrictEqual([...s.matchAll(/CREATE\s+(?:UNIQUE\s+)?INDEX\s+([a-z0-9_]+)/gi)].map((m) => m[1]), ['pl_mov_stop_once']);
+  assert.match(s, /CREATE UNIQUE INDEX pl_mov_stop_once ON public\.pl_movements \(order_stop_id, event_type\)\s+WHERE order_stop_id IS NOT NULL AND status <> 'reversed' AND event_type IN \('LOADING', 'DELIVERY'\);/);
+  // the helper runs as its caller (072 PART 5: every plan_h_* is invoker)
+  const fn = s.slice(s.indexOf('CREATE FUNCTION public.plan_h_pallet_sync'), s.indexOf('$f$;', s.indexOf('CREATE FUNCTION public.plan_h_pallet_sync')));
+  assert.ok(!/security\s+definer/i.test(fn) && /SET search_path = public/.test(fn));
+});
+
+test('073: every code has a case, every consequence kind is registered, the money choices are marked', () => {
+  const src = read('073_plan_money.sql');
+  const codes = [...new Set([...src.matchAll(/plan_h_raise\('([a-z_]+)'/g)].map((m) => m[1]))];
+  // bad_input is 072's code (plan_h_raise is shared), raised here by the cross-cutting input rule
+  assert.deepStrictEqual(codes.sort(), ['bad_input', 'pallet_fraction']);
+  const t = read('073_plan_money_test.sql');
+  // a case either expects the code (want) or checks it in its verdict (cases 35-36: the rows stay unchanged too)
+  for (const c of codes) assert.match(t, new RegExp(`, 'plan:${c}'|LIKE 'plan:${c} `), c);
+  // the input rule itself: NaN and +-Infinity fail abs(x) < 'Infinity'; an endless day fails isfinite
+  assert.match(strip(src), /not \(abs\(w\.pallets\) < 'Infinity'::numeric\) then\s+perform plan_h_raise\('bad_input'/);
+  assert.match(strip(src), /not \(isfinite\(w\.pick_day\) and isfinite\(w\.drop_day\)\) then\s+perform plan_h_raise\('bad_input'/);
+  const kinds = [...src.matchAll(/'kind'', ''([a-z_]+)''/g)].map((m) => m[1]);
+  assert.ok(kinds.length > 0, 'no consequence kind found: the pattern no longer matches the source');
+  for (const k of kinds) assert.ok(KINDS.includes(k), `consequence kind ${k} not in the registry`);
+  for (const m of ['[M-1 WHICH CYCLE] (gamma, owner 24/10)', '[M-2 THE INTERNATIONAL\'S X] (alpha, owner 24/10)',
+    '[M-3 ROUNDING] (beta, owner 24/10)']) assert.ok(src.includes(m), m);
+  assert.ok((t.match(/^ {4}, '(ok|plan:[a-z_]+|con:[a-z_]+)'/gm) || []).length >= 36, 'the 36 cases of Task 3');
+});
+
+test('073: no mirror and no write outside the plan', () => {
+  const s = strip(read('073_plan_money.sql')).toLowerCase();
+  assert.ok(!/update\s+national_orders/.test(s), 'national_orders is never written (spec 2.1)');
+  assert.ok(!/update\s+ct_round_trips/.test(s));
+  assert.ok(!/delete\s+from\s+pl_movements/.test(s), 'a pallet row is withdrawn (reversed), never deleted (D-7)');
+});

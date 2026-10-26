@@ -3124,6 +3124,15 @@ test('073: no mirror and no write outside the plan', () => {
 Run: `node --test tests/sql-073-drafts.test.js 2>&1 | grep -E '^ℹ (tests|pass|fail)'`
 Expected: `ℹ tests 7`, `ℹ pass 7`, `ℹ fail 0`. Δοκιμή ότι δαγκώνει: άλλαξε ένα md5 μόνο στο verify → αποτυγχάνει το «one md5 list per fact»· σβήσε το `WITH (security_invoker = true)` του `dl_v_rt_route` → αποτυγχάνει το «born closed; security_invoker kept». Επανέφερε.
 
+> **Υλοποίηση Task 5 (26/10/2026, κλάδος `feat/national-v5-f3`).** Το test του Step 1 κατά γράμμα, με τις εξής αλλαγές (7 έλεγχοι, όπως γράφει):
+> 1. Κωδικοί: η 073 σηκώνει `bad_input` και `pallet_fraction` (ο κανόνας μη πεπερασμένων τιμών του Task 2). Η περίπτωση του `bad_input` (35–36) τον ελέγχει στο verdict (`LIKE 'plan:bad_input …'`, μαζί με τις αμετάβλητες γραμμές), όχι ως `want`· το test δέχεται και τα δύο.
+> 2. Ο κανόνας εισόδου (συντονιστής 25/10): `abs(w.pallets) < 'Infinity'` (πιάνει NaN και ±Infinity) και `isfinite` στις δύο ημέρες, πριν από κάθε εγγραφή.
+> 3. D-9 ΣΤΕΝΗ (owner 25/10): ο μόνος δείκτης της 073 είναι το `pl_mov_stop_once`, UNIQUE μόνο για `LOADING`/`DELIVERY`, χωρίς τις αντιλογισμένες.
+> 4. `security_invoker`: ακριβώς οι δύο όψεις, ίδια λίστα στην 073 και στο rollback.
+> 5. Οι επιλογές 💶 με την απάντηση του owner δίπλα στη σήμανση: `[M-1 WHICH CYCLE] (gamma, owner 24/10)`, `[M-2 THE INTERNATIONAL'S X] (alpha, …)`, `[M-3 ROUNDING] (beta, …)`. Περιπτώσεις ≥ 36 (Task 3), και τουλάχιστον ένα είδος συνέπειας βρέθηκε (αλλιώς το μοτίβο έπαψε να ταιριάζει και ο έλεγχος θα περνούσε στα κενά).
+>
+> Αποτέλεσμα: 7/7· 8 μεταλλάξεις, όλες πιάνονται (verify md5, `security_invoker`, D-9, `isfinite`, απάντηση M-1, περίπτωση `bad_input`, μη ASCII, md5 άγκιστρου στο rollback).
+
 - [ ] **Step 3: Commit**
 
 ```bash
@@ -4001,6 +4010,7 @@ test('073b is the generated one, ASCII, and holds exactly the 13 check files', (
   assert.ok(!/tms_reader;/.test(read('073b_plan_monitoring.sql').replace(/TO tms_check_runner, tms_reader USING/g, '')), 'no grant to tms_reader');
 });
 ```
+> **Από τον έλεγχο του Task 4 (ήσσον 2):** το rollback της 073 αρνείται όσο υπάρχουν οι B-78..B-90, με λίστα γραμμένη με το χέρι. Πρόσθεσε στο ίδιο test ότι η λίστα του `073_plan_money_rollback.sql` = τα `IDS` του `build-073b.mjs`, ώστε μια αλλαγή αριθμών στο 073b να μη σταματήσει σιωπηλά να φρουρεί.
 Run: `node --test tests/sql-073-drafts.test.js 2>&1 | grep -E '^ℹ (tests|pass|fail)'` → `ℹ tests 8`, `ℹ pass 8`.
 
 - [ ] **Step 7: Commit**
