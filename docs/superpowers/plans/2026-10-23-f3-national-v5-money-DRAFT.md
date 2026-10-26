@@ -4955,13 +4955,13 @@ gh pr create --base main --head deploy/worker-plan --title "Worker Φ3 (αλυσ
 
 | # | Αρχείο | Αναμενόμενο |
 |---|---|---|
-| 1 | `073b_plan_monitoring_dryrun.sql` | NOTICE `073b OK: 17 checks (14 of F3 + 3 of 072b, 16 enabled), 5 read policies, X readable by the runner, every check 0 today` και το σκόπιμο ERROR `DRY RUN 073b finished - EVERYTHING UNDONE, nothing kept.` |
+| 1 | `073b_plan_monitoring_dryrun.sql` | NOTICE `073b OK: 17 checks (14 of F3 + 3 of 072b, 16 enabled), 5 read policies, X readable and computable by the runner, every check 0 today` και το σκόπιμο ERROR `DRY RUN 073b finished - EVERYTHING UNDONE, nothing kept.` |
 | 2 | `073b_plan_monitoring.sql` | NOTICE `073b OK …`, κανένα σφάλμα |
 | 3 | SELECT | `SELECT id, severity, enabled FROM monitoring.checks WHERE id BETWEEN 'B-78' AND 'B-90' ORDER BY id;` → 13 γραμμές, `enabled` true |
 | 4 | `071_plan_schema_verify.sql` | όπως μετά την 071 με **`policies = 5`** (αναμενόμενο από το 073b, K-15) |
 | 5 | επόμενος γύρος ελεγκτή | οι 13 έλεγχοι `green` (0), καμία `error` στο `monitoring.results` |
 
-**Rollback:** `073b_plan_monitoring_rollback.sql` (σβήνει τους 13 ελέγχους με τα αποτελέσματά τους, τις 5 πολιτικές, το grant).
+**Rollback:** `073b_plan_monitoring_rollback.sql` (σβήνει τους 17 ελέγχους με τα αποτελέσματά τους, τις 5 πολιτικές και τα δύο grants του runner: SELECT στο `ct_settings`, EXECUTE στο `stock_vs_charge`, PR #105).
 
 ### Task 14: Deploy του Worker της Φ3 (χωριστό «ναι», μετά τις 15:00, μετά την 073)
 

@@ -59,8 +59,20 @@ const FN_ACL = [
   ['public.order_pallets(public.orders)', ['service_role', 'tms_check_runner', 'tms_reader'], 'only73'],
   ['public.stock_vs_charge(numeric, numeric)', ['service_role'], 'only73'],
 ];
-const fnAcl = (live) => FN_ACL.filter(([, , only]) => live || only !== 'only73').map(([sig, to]) =>
-  `REVOKE ALL ON FUNCTION ${sig} FROM PUBLIC, anon, authenticated;` + (to.length ? `\nGRANT EXECUTE ON FUNCTION ${sig} TO ${to.join(', ')};` : '')).join('\n');
+// Every grantee is revoked first, so the list is the WHOLE ACL here too (a grant left by a fixture or a migration
+// would make this copy more permissive than production); applied after the last migration, then read back.
+const ACL_ROLES = ['anon', 'authenticated', 'service_role', 'tms_check_runner', 'tms_reader'];
+const fnAclOf = (live) => FN_ACL.filter(([, , only]) => live || only !== 'only73');
+const fnAcl = (live) => fnAclOf(live).map(([sig, to]) =>
+  `REVOKE ALL ON FUNCTION ${sig} FROM PUBLIC, ${ACL_ROLES.join(', ')};` + (to.length ? `\nGRANT EXECUTE ON FUNCTION ${sig} TO ${to.join(', ')};` : '')).join('\n');
+async function assertFnAcl(db, live) {
+  for (const [sig, to] of fnAclOf(live)) {
+    for (const role of ['public', ...ACL_ROLES]) {
+      const got = (await db.query(`SELECT has_function_privilege($1, $2, 'EXECUTE') AS b`, [role, sig])).rows[0].b;
+      if (got !== to.includes(role)) throw new Error(`prodShaped072: ${sig} EXECUTE for ${role} is ${got}, production ${to.includes(role)}`);
+    }
+  }
+}
 export const TRG = `SELECT count(*)::int AS n FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
   JOIN pg_namespace ns ON ns.oid = c.relnamespace WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public'`;
 
@@ -76,7 +88,6 @@ export async function prodShaped072(with072 = true, { money = 'stubs', with072b 
   await db.exec(fixture('live-071.sql'));
   await db.exec(fixture('live-072.sql'));
   await db.exec(money === 'live' ? fixture('live-073.sql') : STUBS);
-  await db.exec(fnAcl(money === 'live'));   // a missing signature fails here, loudly
   await db.exec(`CREATE SCHEMA IF NOT EXISTS extensions`);
   await db.exec(`CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions`);
   await db.exec(`INSERT INTO public.locations (legacy_id, name) VALUES ('recJucKOhC1zh4IP3', 'CROSS-DOCK')`);
@@ -86,5 +97,7 @@ export async function prodShaped072(with072 = true, { money = 'stubs', with072b 
   if (with072) await db.exec(readDone('072_plan_functions.sql'));
   // 072b: a draft until the owner runs it; then it leaves drafts/ and this line reads it from worker/migrations/
   if (with072b) await db.exec(fs.readFileSync(migrationFile('072b_plan_vehicle_segments.sql'), 'utf8'));
+  await db.exec(fnAcl(money === 'live'));   // a missing signature fails here, loudly
+  await assertFnAcl(db, money === 'live');
   return db;
 }

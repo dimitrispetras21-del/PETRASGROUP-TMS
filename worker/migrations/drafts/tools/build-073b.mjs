@@ -121,8 +121,8 @@ ${rows.join(',\n')};
 
   -- 3. PROOFS: the text and the on/off are the file's; each check (the disabled B-80 too) passes the same guard as
   --    monitoring.run_checks, runs as the auditor's role and says 0 today (no v5 row before day L). Its ids_sql runs
-  --    too, as run_checks runs it (same role, same transaction): a right missing only on the ids path would
-  --    otherwise pass here and fail the first red run (review high, 26/10)
+  --    too, under the same role as in run_checks: a right missing only on the ids path would otherwise pass here
+  --    and fail the first red run (review high, 26/10). NULL ids is an error, as in 057b's proof
   FOR v_g IN SELECT * FROM (VALUES
 ${proof}
     ) p(id, m_sql, m_ids, on_) LOOP
@@ -139,6 +139,7 @@ ${proof}
     IF v_ids IS NOT NULL THEN EXECUTE v_ids INTO v_a; END IF;
     RESET ROLE;
     IF v_v IS DISTINCT FROM 0 THEN RAISE EXCEPTION '073b proof: % gives % today, expected 0 before day L', v_g.id, v_v; END IF;
+    IF v_a IS NULL THEN RAISE EXCEPTION '073b proof: % ids returned NULL', v_g.id; END IF;
     IF cardinality(v_a) IS DISTINCT FROM 0 THEN RAISE EXCEPTION '073b proof: % names % today, expected none', v_g.id, v_a; END IF;
   END LOOP;
   IF (SELECT count(*) FROM monitoring.checks WHERE id IN (${list(IDS)}) AND enabled) <> ${nOn} THEN
