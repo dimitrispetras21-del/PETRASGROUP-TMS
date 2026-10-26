@@ -88,6 +88,7 @@ const call = async (role, method, p, body) => send(method, p, { auth: `Bearer ${
 
 let calls;
 const realConsole = { log: console.log, error: console.error, warn: console.warn };
+const realFetch = globalThis.fetch;
 beforeEach(() => {
   console.log = console.error = console.warn = () => {};
   calls = [];
@@ -96,7 +97,8 @@ beforeEach(() => {
     throw new Error(`unmocked fetch: ${init.method || 'GET'} ${url}`);
   };
 });
-afterEach(() => { Object.assign(console, realConsole); });
+// the real fetch back after each test (review of PR #90, finding 14)
+afterEach(() => { Object.assign(console, realConsole); globalThis.fetch = realFetch; });
 
 // One concrete request per (resource, method) — valid query strings, so a 403
 // can only come from PLAN_PERMS.

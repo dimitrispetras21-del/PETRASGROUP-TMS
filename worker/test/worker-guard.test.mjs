@@ -2,9 +2,9 @@
 // Worker deploy (CLAUDE.md «Ο WORKER»). Pinned against the deploy source and
 // against a CF-API-shaped multipart copy of it, so the tool that says «OK» on
 // deploy night is the one tested here (αρχή 6).
-import { test } from 'node:test';
+import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -15,6 +15,8 @@ const TOOL = path.join(here, '..', 'tools', 'worker-guard.mjs');
 const SRC = path.join(here, '..', 'src', 'index.js');
 const src = readFileSync(SRC, 'utf8');
 const dir = mkdtempSync(path.join(tmpdir(), 'worker-guard-'));
+// removed when the file ends (review of PR #90, finding 14): one directory per run used to stay in the temp dir
+after(() => rmSync(dir, { recursive: true, force: true }));
 // handover: the vehicle handover marker (072b routes); this source carries them, so 1 unless a test says otherwise
 const run = (file, plan, handover = 1) => {
   const args = plan === undefined ? [TOOL, file] : [TOOL, file, '--plan', String(plan), '--handover', String(handover)];

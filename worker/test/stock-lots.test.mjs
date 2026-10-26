@@ -37,6 +37,8 @@ function liftFn(re, name) {
 const stockRuleError = new Function(
   liftVar('STOCK_CHECK_TEXT') + liftVar('RELAY_RULE_TEXT') + liftVar('RELAY_CHECK_TEXT') +
   liftVar('PLAN_RULE_TEXT') + liftVar('PLAN_CHECK_TEXT') +
+  // read by the 23505 / 23P01 branches (review of PR #90, finding 10)
+  liftVar('PLAN_CONSTRAINT_CODE') +
   liftFn(/function stockRuleError\(e\) \{[\s\S]*?\n\}\n/, 'stockRuleError') + '\nreturn stockRuleError;'
 )();
 const { PERMISSIONS, can } = new Function(

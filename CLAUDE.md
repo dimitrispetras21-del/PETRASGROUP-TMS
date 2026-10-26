@@ -155,8 +155,10 @@ cd worker && CLOUDFLARE_API_TOKEN=$CF_API_TOKEN npx wrangler deploy
    - εθνικά v5, `/plan/*` (Φ2, 072 + Worker 39842d18, ζωντανό 26/10): `var PLAN_PERMS = {`. Ως την
      ημέρα L και `var PLAN_WRITES_OPEN = false;`: το μόνο σημάδι που **αλλάζει** σκόπιμα. Την ημέρα L το
      αντικαθιστά ο έλεγχος «ανοιχτό» του εργαλείου (`--plan 2`, Φ5), στο ίδιο deploy· ως τότε, αν λείπει: ΣΤΑΜΑΤΑ.
-   Μία εντολή για όλα, πριν και μετά: `node worker/tools/worker-guard.mjs <bundle ή λήψη CF> --plan 1`
-   (ξετυλίγει το multipart· `GUARD OK (15 markers, plan=1)`).
+   Μία εντολή για όλα, πριν και μετά: `node worker/tools/worker-guard.mjs <bundle ή λήψη CF> --plan 1 --handover 0|1`
+   (ξετυλίγει το multipart· `--handover 0` πριν από το deploy της αλλαγής οχήματος, 072b, `--handover 1` μετά:
+   `GUARD OK (16 markers, plan=1, handover=1)`). Χωρίς `--handover`, ή με όρισμα που δεν ξέρει, το εργαλείο
+   σταματά με exit 2, ποτέ «OK» (πλάνο αλλαγής οχήματος H-18).
    Αν λείπει έστω ένα σημάδι λειτουργίας που ήταν ζωντανή: **ΣΤΑΜΑΤΑ**, όπως
    με τα τρία.
 

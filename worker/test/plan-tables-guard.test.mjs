@@ -24,16 +24,31 @@ function liftVar(name) {
 const TABLES = new Function(liftVar('TABLES') + '\nreturn TABLES;')();
 const PLAN_PERMS = new Function(liftVar('PLAN_PERMS') + '\nreturn PLAN_PERMS;')();
 // + 072b: the segments table and its two views (vehicle handover) - reached only through /plan/*, never the facade
-const V5_TABLES = ['shipments', 'shipment_pieces', 'rt_stops', 'piece_legs', 'plan_notices', 'plan_config',
+const V5_TABLES = ['shipments', 'shipment_pieces', 'rt_stops', 'piece_legs', 'plan_notices', 'plan_config', 'local_moves',
   'rt_vehicle_segments', 'v_rt_segments', 'v_rt_vehicle_windows'];
+// Tables that hold v5 rows beside older ones (review of PR #90, finding 2): reachable through the facade for
+// their older rows only, so each must carry a planOwned guard that tells its v5 rows apart.
+const SHARED = { local_moves: 'v5 nat_loading rows beside the 060 local / relay rows of Weekly National' };
 
-test('no v5 table is reachable through the facade (TABLES pg / readView)', () => {
+test('no v5 table is reachable through the facade (TABLES pg / readView); a shared one only with its planOwned guard', () => {
   for (const [id, cfg] of Object.entries(TABLES)) {
+    if (Object.prototype.hasOwnProperty.call(SHARED, cfg.pg)) {
+      assert.equal(typeof cfg.planOwned, 'function', `${id} (${cfg.pg}: ${SHARED[cfg.pg]}) has no planOwned guard`);
+      continue;
+    }
     assert.ok(!V5_TABLES.includes(cfg.pg), `${id} maps a v5 table: ${cfg.pg}`);
     assert.ok(!V5_TABLES.includes(cfg.readView), `${id} reads a v5 table: ${cfg.readView}`);
     for (const l of Object.values(cfg.links || {})) assert.ok(!V5_TABLES.includes(l.table), `${id} links a v5 table: ${l.table}`);
   }
-  for (const t of V5_TABLES) assert.ok(!Object.prototype.hasOwnProperty.call(TABLES, t), `TABLES key ${t}`);
+  for (const t of V5_TABLES) if (!SHARED[t]) assert.ok(!Object.prototype.hasOwnProperty.call(TABLES, t), `TABLES key ${t}`);
+  // the guard tells the v5 rows apart by both marks of 071 (move_kind ⟺ rt_stop_id, CHECK local_moves_nat_loading)
+  const g = TABLES.local_moves.planOwned;
+  assert.equal(g({ move_kind: 'nat_loading', rt_stop_id: 3 }), true);
+  assert.equal(g({ move_kind: 'nat_loading', rt_stop_id: null }), true);
+  assert.equal(g({ move_kind: 'local', rt_stop_id: 3 }), true);
+  for (const k of ['local', 'relay_delivery', 'relay_loading']) assert.equal(g({ move_kind: k, rt_stop_id: null }), false, k);
+  assert.ok(!Object.values(TABLES.local_moves.fields).includes('rt_stop_id'), 'rt_stop_id is no facade field');
+  assert.ok(!Object.values(TABLES.local_moves.links || {}).some((l) => l.column === 'rt_stop_id'), 'nor a facade link');
 });
 
 test('PLAN_PERMS: five roles, no wildcard, only GET/POST/PATCH', () => {
@@ -84,7 +99,11 @@ test('one DB-rule mapper still: no planRuleError / planRuleResponse beside stock
   assert.equal((src.match(/^function \w+RuleResponse\(/gm) || []).length, 1);
 });
 
-test('"Via Hub" is a writable ORDER STOPS label for via_hub — once, nowhere else', () => {
+test('"Via Hub" is an ORDER STOPS label for via_hub — once, nowhere else — born closed until the /plan/* switch opens (finding 8)', () => {
   assert.equal(TABLES.tblaeY5QOHAS1gyE8.fields['Via Hub'], 'via_hub');
   assert.equal(count('"Via Hub": "via_hub"'), 1);
+  assert.deepEqual(TABLES.tblaeY5QOHAS1gyE8.closedUntilPlan, ['Via Hub']);
+  // the ONE switch, read at request time (TABLES is built before `var PLAN_WRITES_OPEN` is assigned)
+  assert.match(src, /function refuseReadOnly\(cfg, fieldsList, origin, env\) \{\n {2}if \(cfg\.closedUntilPlan && !PLAN_WRITES_OPEN\) \{/);
+  for (const [id, cfg] of Object.entries(TABLES)) if (cfg.closedUntilPlan) assert.equal(id, 'tblaeY5QOHAS1gyE8', `${id} closedUntilPlan`);
 });

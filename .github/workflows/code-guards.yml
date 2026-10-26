@@ -9,8 +9,9 @@
 #
 # Keep it dependency-free. The value here is that it CANNOT be blocked by a
 # missing secret, an expired token, or a backend being down: a checkout is all
-# it needs. Anything requiring credentials belongs in its own workflow, so its
-# failures never mask these.
+# it needs (plan-no-resend adds Node itself, nothing from npm). Anything
+# requiring credentials belongs in its own workflow, so its failures never
+# mask these.
 #
 # Runtime is a couple of seconds; there is no reason for it not to run on
 # every PR.
@@ -40,3 +41,22 @@ jobs:
       # and core/utils.js safeFetch().
       - name: Check fail-open data fetches
         run: bash tests/check-fail-open.sh
+
+  plan-no-resend:
+    name: /plan/* writes are never sent twice
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # Two-sided pin (review of PR #90, findings 1 and 8): the Worker answers a
+      # /plan/* write whose outcome is unknown with a status core/api.js
+      # _atRetry never sends again (plan-routes reads core/api.js), the real
+      # _atRetry is run against it (one fetch), and no client _atRetry call may
+      # send a /plan/* request at all. A later change to _atRetry or to the
+      # Worker's statuses would otherwise reopen it without a word. Node only,
+      # no npm install: both files use node:test and the source as it is.
+      - name: Run the /plan/* no-resend pins
+        run: node --test tests/api-plan-no-resend.test.mjs worker/test/plan-routes.test.mjs
