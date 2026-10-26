@@ -7,14 +7,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DRAFTS } from '../lib/db.mjs';
+import { migrationFile } from '../lib/db.mjs';
 import { prodShaped072 } from './prod-shaped-072.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // the SAME database the harness proves 072b on (prod-shaped-072.mjs)
 const db = await prodShaped072();
 
-const FILE = path.join(DRAFTS, '072b_plan_vehicle_segments.sql');
+const FILE = migrationFile('072b_plan_vehicle_segments.sql');
 let src = fs.readFileSync(FILE, 'utf8');
 const orig = src;
 
