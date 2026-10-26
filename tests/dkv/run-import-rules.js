@@ -688,6 +688,11 @@ async function main() {
     const rsMerged = merged.lines.find((l) => l.import_key === rs501.import_key);
     assertEqual(rsMerged.details.length, 5, 'aggregate: an unallocated toll assigned to RT501 joins the RT501×RS group at commit');
 
+    // final round 2 (26/10, finding 1): a handover cycle with tolls of two trucks in one country = one group per truck,
+    // each with its own truck, its own last date and its own plate in the key (today's single-truck groups unchanged)
+    const hand = aggregateLines([toll(1, '2026-09-11', 5, 501, 'RS'), toll(2, '2026-09-12', 6, 501, 'RS', { plate: 'XX5678', truck_id: 12 })], { statementDocNo: 'E-2026-09', rts });
+    assertDeepEqual(hand.lines.map((l) => [l.truck_id, l.service_date, l.import_key]), [[11, '2026-09-11', '26/1/015|AGG|XX1234|501|tolls|RS'], [12, '2026-09-12', '26/1/015|AGG|XX5678|501|tolls|RS']], 'aggregate: two trucks of one cycle and country = two toll lines, one per truck');
+
     // ── w11 θέμα 0: findManualTwins ──────────────────────────────────────
     const imp = [
       { import_key: 'k1', rt_id: 501, truck_id: 11, category: 'fuel', service_date: '2026-09-12', quantity: 100, unit: 'LTR', net_eur: 192.78, vat_eur: 38.55, gross_eur: 231.33 },

@@ -46,6 +46,8 @@ const parts = [
   fn('dbInsert'), fn('dbInsertMany'), fn('dbUpdate'),
   fn('handleFacadeCreate'), fn('facadeBatchCreate'), fn('handleFacadeUpdate'), fn('handleFacadeBatchUpdate'),
   fn('schemaBehind060'), fn('schemaBehind060Response'), fn('localLineCancelFacts'), fn('handleCosts'),
+  // F3 (final review 26/10): handleCosts' catch names a database behind 072b / 073; the partner line check of Q6-1
+  fn('schemaBehindF3'), fn('ctPartnerLineCheck'),
 ];
 
 // Stubs for everything outside the lifted code. `state` lets each test choose

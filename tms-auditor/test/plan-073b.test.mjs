@@ -39,7 +39,12 @@ async function values(db, ids = IDS) {   // each check as the auditor's role, as
     await db.exec('SET ROLE tms_check_runner');
     try {
       out[id] = Number(Object.values((await db.query(sql)).rows[0])[0]);
-      if (idsSql) await db.query(idsSql);   // run_checks runs it as the same role: a right missing there fails here
+      if (idsSql) {   // run_checks runs it as the same role: a right missing there fails here
+        const ids = Object.values((await db.query(idsSql)).rows[0])[0];
+        // NULL ids would reach raise_incident's NOT NULL entity_ids and abort the whole run on the first red day
+        if (!Array.isArray(ids)) throw new Error(`${id}: ids_sql returned ${JSON.stringify(ids)}, not a list`);
+        if (out[id] > 0 && ids.length === 0) throw new Error(`${id}: value ${out[id]} but no ids`);
+      }
     } finally { await db.exec('RESET ROLE'); }
   }
   return out;

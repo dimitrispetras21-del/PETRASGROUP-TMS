@@ -17,7 +17,7 @@ import { migrationFile, DRAFTS, MIGRATIONS } from '../lib/db.mjs';
 import { IDS as IDS_073B } from '../../worker/migrations/drafts/tools/build-073b.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const read = (f) => fs.readFileSync(migrationFile(f), 'utf8');                  // 073: drafts/ until executed, then one up
+const read = (f) => fs.readFileSync(migrationFile(f), 'utf8');                  // 073: executed 26/10, out of drafts/
 const fixture = (f) => fs.readFileSync(path.join(HERE, 'fixtures', f), 'utf8');
 
 const V5_ROWS = `SELECT (SELECT count(*) FROM shipments) + (SELECT count(*) FROM shipment_pieces) + (SELECT count(*) FROM rt_stops)

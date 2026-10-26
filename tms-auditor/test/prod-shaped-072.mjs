@@ -31,8 +31,8 @@ CREATE OR REPLACE VIEW public.dl_v_rt_route AS SELECT id AS rt_id, ''::text AS r
 `;
 // EXECUTE rights as production holds them, for every function of live-071/072/073.sql that production has taken
 // from PUBLIC (SELECT on pg_proc.proacl, 26/10 ~23:15: each list below is the WHOLE ACL minus the owner postgres -
-// no anon, no authenticated; the other functions of the fixtures are EXECUTE to PUBLIC in production too). The captures carry the views' grants but not these, so every
-// function here kept PostgreSQL's default (EXECUTE to PUBLIC): the 073b dry run passed on this copy while production
+// no anon, no authenticated; the other functions of the fixtures are EXECUTE to PUBLIC in production too). The
+// captures carry the views' grants but not these, so every function here kept PostgreSQL's default (EXECUTE to PUBLIC): the 073b dry run passed on this copy while production
 // refused it with "permission denied for function stock_vs_charge" as tms_check_runner (a view checks the functions
 // it calls as its CALLER). Hand-kept until the capture query emits function ACLs too; re-measure with
 //   SELECT oid::regprocedure, proacl FROM pg_proc WHERE pronamespace = 'public'::regnamespace
@@ -59,18 +59,25 @@ const FN_ACL = [
   ['public.order_pallets(public.orders)', ['service_role', 'tms_check_runner', 'tms_reader'], 'only73'],
   ['public.stock_vs_charge(numeric, numeric)', ['service_role'], 'only73'],
 ];
-// Every grantee is revoked first, so the list is the WHOLE ACL here too (a grant left by a fixture or a migration
-// would make this copy more permissive than production); applied after the last migration, then read back.
-const ACL_ROLES = ['anon', 'authenticated', 'service_role', 'tms_check_runner', 'tms_reader'];
+// Every grantee the function has here is revoked first (read from its ACL, whatever role a fixture or a migration
+// granted), so the list is the WHOLE ACL on this copy too; applied after the last migration, then read back in one
+// query: the grantees other than the owner must be exactly the measured list.
 const fnAclOf = (live) => FN_ACL.filter(([, , only]) => live || only !== 'only73');
-const fnAcl = (live) => fnAclOf(live).map(([sig, to]) =>
-  `REVOKE ALL ON FUNCTION ${sig} FROM PUBLIC, ${ACL_ROLES.join(', ')};` + (to.length ? `\nGRANT EXECUTE ON FUNCTION ${sig} TO ${to.join(', ')};` : '')).join('\n');
+const fnAcl = (live) => fnAclOf(live).map(([sig, to]) => `DO $a$ DECLARE g text; BEGIN
+  FOR g IN SELECT DISTINCT a.grantee::regrole::text FROM pg_proc p, aclexplode(p.proacl) a
+            WHERE p.oid = '${sig}'::regprocedure AND a.grantee <> 0 AND a.grantee <> p.proowner LOOP
+    EXECUTE format('REVOKE ALL ON FUNCTION ${sig} FROM %s', g);
+  END LOOP;
+  REVOKE ALL ON FUNCTION ${sig} FROM PUBLIC;
+END $a$;` + (to.length ? `\nGRANT EXECUTE ON FUNCTION ${sig} TO ${to.join(', ')};` : '')).join('\n');
 async function assertFnAcl(db, live) {
-  for (const [sig, to] of fnAclOf(live)) {
-    for (const role of ['public', ...ACL_ROLES]) {
-      const got = (await db.query(`SELECT has_function_privilege($1, $2, 'EXECUTE') AS b`, [role, sig])).rows[0].b;
-      if (got !== to.includes(role)) throw new Error(`prodShaped072: ${sig} EXECUTE for ${role} is ${got}, production ${to.includes(role)}`);
-    }
+  const want = fnAclOf(live);
+  const { rows } = await db.query(`SELECT f.sig, (SELECT array_agg(DISTINCT CASE WHEN a.grantee = 0 THEN 'public' ELSE a.grantee::regrole::text END)
+      FROM pg_proc p, aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+     WHERE p.oid = f.sig::regprocedure AND a.grantee <> p.proowner) AS got FROM unnest($1::text[]) f(sig)`, [want.map(([sig]) => sig)]);
+  for (const [i, [sig, to]] of want.entries()) {
+    const got = [...(rows[i].got || [])].sort().join(',');
+    if (got !== [...to].sort().join(',')) throw new Error(`prodShaped072: ${sig} EXECUTE to {${got}}, production {${to.join(',')}}`);
   }
 }
 export const TRG = `SELECT count(*)::int AS n FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
@@ -95,7 +102,7 @@ export async function prodShaped072(with072 = true, { money = 'stubs', with072b 
   await db.exec(readDone('071_plan_schema.sql'));
   await db.exec(readDone('071b_plan_one_vehicle.sql'));
   if (with072) await db.exec(readDone('072_plan_functions.sql'));
-  // 072b: a draft until the owner runs it; then it leaves drafts/ and this line reads it from worker/migrations/
+  // 072b: executed 26/10, out of drafts/ (migrationFile reads it from where it is)
   if (with072b) await db.exec(fs.readFileSync(migrationFile('072b_plan_vehicle_segments.sql'), 'utf8'));
   await db.exec(fnAcl(money === 'live'));   // a missing signature fails here, loudly
   await assertFnAcl(db, money === 'live');

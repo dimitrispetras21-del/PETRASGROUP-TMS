@@ -12,9 +12,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-// The folder that holds the 073 files. After the owner runs them they leave drafts/ (CLAUDE.md rule 5): then
-// this becomes path.resolve(HERE, '../..') and nothing else changes.
-export const DIR = path.resolve(HERE, '..');
+// The folder that holds the 073 files. 073 was executed 26/10 and left drafts/ (CLAUDE.md rule 5): the source and
+// the generated dry run are one up.
+export const DIR = path.resolve(HERE, '..', '..');
 const OPEN = '\nDO $do$\n';
 const CLOSE = '\nEND $do$;\n';
 

@@ -25,8 +25,10 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..');
-const DIR = path.join(ROOT, 'worker/migrations/drafts');   // until the owner runs 073 (then: worker/migrations)
-const read = (f) => fs.readFileSync(path.join(DIR, f), 'utf8');
+const DIR = path.join(ROOT, 'worker/migrations/drafts');   // the builders and 073b (not executed)
+// 073 executed 26/10: its files left drafts/ (CLAUDE.md rule 5); 073b's stay until the owner runs it
+const file = (f) => path.join(/^073_/.test(f) ? path.join(ROOT, 'worker/migrations') : DIR, f);
+const read = (f) => fs.readFileSync(file(f), 'utf8');
 const strip = (s) => s.replace(/--[^\n]*/g, '');
 const DO_FILES = ['073_plan_money.sql', '073_plan_money_dryrun.sql', '073_plan_money_test.sql', '073_plan_money_rollback.sql'];
 const READ_ONLY = ['073_plan_money_verify.sql', '073_plan_money_fingerprint.sql'];
@@ -36,7 +38,7 @@ const KINDS = ['invoiced', 'costs', 'payroll_amount', 'local_loading', 'local_pa
 
 test('073: every file is there and ASCII only', () => {
   for (const f of [...DO_FILES, ...READ_ONLY, 'tools/build-073-dryrun.mjs']) {
-    assert.ok(fs.existsSync(path.join(DIR, f)), f);
+    assert.ok(fs.existsSync(file(f)), f);
     const bad = read(f).split('\n').map((l, i) => [i + 1, l]).filter(([, l]) => /[^\x00-\x7f]/.test(l));
     assert.deepStrictEqual(bad, [], `${f}: non-ASCII lines`);
   }
