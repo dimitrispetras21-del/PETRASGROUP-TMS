@@ -9096,6 +9096,8 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 /* «+N» (Figma H1): a 22px chip, its figure centred, in the middle of the stop. */
 .wn5 .wn5-pts .wi4-more { flex:0 0 24px; width:24px; height:22px; display:grid; place-items:center; }
 .wn5 .wn5-late .wi4-l2 { color:var(--wi4-amber); }
+/* More late stops than slots: the «+N» that holds one is amber too (a late stop is never hidden in grey). */
+.wn5 .wn5-pts .wi4-more.wn5-late b { color:var(--wi4-amber); }
 .wn5 .wn5-missing { color:var(--wi4-amber-ink); }
 .wn5-none { color:var(--wi4-grey-3); }
 .wn5-gapbox { display:flex; align-items:center; min-height:24px; padding:2px 10px; box-sizing:border-box; border:1px dashed var(--wi4-slot);

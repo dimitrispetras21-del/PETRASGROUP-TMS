@@ -15,12 +15,14 @@ const FIX = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/wn5-week.j
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const cyc = (b, id) => b.cycles.find((c) => c.rt_id === id);
 const stop = (b, rt, id) => cyc(b, rt).stops.find((s) => s.stop_id === id);
-function html(board) {
+function html(board, narrow) {
   const store = new Map();
   const ctx = { console: { log() {}, warn() {}, error() {} }, location: { search: '', href: 'https://x/app.html' }, history: { state: null, replaceState() {} },
     localStorage: { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) },
     document: { querySelector: () => null, querySelectorAll: () => [], getElementById: () => null } };
   ctx.window = ctx;
+  // ≤1600px: one stop per point column (WN5 _visPts reads window.matchMedia)
+  if (narrow) ctx.matchMedia = () => ({ matches: true });
   vm.createContext(ctx);
   for (const f of ['core/wi4-logic.js', 'core/wn5-logic.js', 'modules/weekly_natl_v5.js']) vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), ctx, { filename: f });
   assert.ok(ctx.WN5 && typeof ctx.WN5._html === 'function', 'renderer _html not found in modules/weekly_natl_v5.js (WN5._html)');
@@ -55,4 +57,16 @@ test('F4α-T6: unassigned / late / VS without truck never get .wn5-dim even with
   assert.ok(!/wn5-dim" data-stop="1303"/.test(by.get('rt:104')), 'the late stop dimmed');
   assert.ok(!/wn5-dim/.test(by.get('rt:108')), 'a cycle without a vehicle dimmed');
   for (const k of ['wait:4101', 'wait:4103', 'wait:4104', 'wait:4105']) assert.ok(!/wn5-dim/.test(by.get(k)), k + ' dimmed');
+});
+
+test('F4α-T6: at ≤1600 (one slot) a late stop is drawn, never folded into a grey «+N» (rule 2036:7735)', () => {
+  const kto = cell(byKey(html(FIX, true)).get('rt:104'), 'wn5-kto');
+  assert.match(kto, /class="wi4-pt wn5-pt wn5-late" data-stop="1303"/, 'the late stop of RT-T104 is not drawn at ≤1600');
+  assert.ok(!/data-stop="1302"/.test(kto), 'one slot at ≤1600: the on-time stop goes behind «+N»');
+  assert.match(kto, /<span class="wi4-more" title="1\. [^"]*"><b>\+1<\/b>/, 'the folded stop keeps its own number 1 in the «+N» title');
+  // more late stops than slots: the chip that holds one carries the amber
+  const b = clone(FIX);
+  stop(b, 104, 1302).has_late = true;
+  const kto2 = cell(byKey(html(b, true)).get('rt:104'), 'wn5-kto');
+  assert.match(kto2, /<span class="wi4-more wn5-late" title=/, 'a hidden late stop leaves the «+N» grey');
 });

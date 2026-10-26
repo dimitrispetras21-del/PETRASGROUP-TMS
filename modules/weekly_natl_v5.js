@@ -508,11 +508,18 @@ function _ptsHTML(pts, ok, start, placeOnly) {
   if (!pts.length) return '';
   const num = start == null ? (p) => (pts.length === 1 ? null : p.n) : (p, i) => start + i;
   const vis = _visPts();
-  const rest = pts.slice(vis);
+  // «Ποτέ σβηστό ό,τι θέλει δουλειά» (rule 2036:7735): a late stop is never folded into «+N» while a slot holds an
+  // on-time one — at ≤1600 (one slot) RT-T104's late 2nd stop would otherwise vanish into a grey «+1». The late ones
+  // take the slots first; the shown and the folded keep the base's order and their own numbers.
+  const idx = pts.map((p, i) => i);
+  const shown = new Set([...idx.filter((i) => pts[i].late), ...idx.filter((i) => !pts[i].late)].slice(0, vis));
+  const rest = idx.filter((i) => !shown.has(i));
+  // More late stops than slots: the chip itself carries the amber, so a hidden late stop is still seen.
+  const restLate = rest.some((i) => pts[i].late);
   const more = rest.length
-    ? `<span class="wi4-more" title="${_esc(rest.map((p, i) => `${num(p, vis + i) || p.n}. ${_ptName(p)} · ${p.from && p.to ? p.from + '–' + p.to : '—'} · ${_pal(p.pallets)}`).join('\n'))}"><b>+${rest.length}</b></span>`
+    ? `<span class="wi4-more${restLate ? ' wn5-late' : ''}" title="${_esc(rest.map((i) => `${num(pts[i], i) || pts[i].n}. ${_ptName(pts[i])} · ${pts[i].from && pts[i].to ? pts[i].from + '–' + pts[i].to : '—'} · ${_pal(pts[i].pallets)}`).join('\n'))}"><b>+${rest.length}</b></span>`
     : '';
-  return `<span class="wi4-pts wn5-pts">${pts.slice(0, vis).map((p, i) => _ptHTML(p, num(p, i), ok, placeOnly)).join('')}${more}</span>`;
+  return `<span class="wi4-pts wn5-pts">${idx.filter((i) => shown.has(i)).map((i) => _ptHTML(pts[i], num(pts[i], i), ok, placeOnly)).join('')}${more}</span>`;
 }
 // Who, then where (Figma H1 «Omega Market · Rentis»): the client in bold, the place in grey. Two runs that break
 // between them, the «·» staying on the first line («ΠΕΛΑΤΗΣ Δ ·» / «Aspropyrgos»), never inside a name that fits. A waiting load's point

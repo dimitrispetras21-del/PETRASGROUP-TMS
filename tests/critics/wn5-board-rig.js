@@ -391,6 +391,17 @@ SCN.dim = async (browser, origin) => {
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
   await shot(page, 'dim');
   await page.context().close();
+  // 1440: one stop per point column; the late stop takes the slot, it is never folded into a grey «+1» (rule 2036:7735).
+  const nw = await openBoard(browser, origin, { board: fixture(), viewport: { width: 1440, height: 900 } });
+  const late = await nw.page.evaluate(() => {
+    const el = document.querySelector('#content .wn5 .wn5-pt[data-stop="1303"]');
+    const t = el && el.querySelector('.wi4-l2');
+    return el ? { op: Number(getComputedStyle(el).opacity), amber: getComputedStyle(t).color, plain: getComputedStyle(el.querySelector('.wi4-l1')).color } : null;
+  });
+  ok(scn, '1440: the late stop (RT-T104 Larisa) is drawn, bold, its window amber', !!late && late.op === 1 && late.amber !== late.plain, late);
+  ok(scn, '1440: no page errors', !nw.S.pageErrors.length, nw.S.pageErrors);
+  await shot(nw.page, 'dim-1440');
+  await nw.page.context().close();
 };
 // Figma 2036:7752: «/» focuses, matches raised, the rest at .35, nothing hidden; Δ12 πλακ. 6: no match said in words, the table hidden until «Καθάρισμα».
 SCN.search = async (browser, origin) => {
