@@ -3416,6 +3416,8 @@ const PLAN_RULE_TEXT = {
   stale_confirm: "Κάτι άλλαξε από τότε που είδες τη λίστα — δες τη ξανά και επιβεβαίωσε",
   need_token: "Η πράξη θέλει επιβεβαίωση — δες πρώτα τη λίστα συνεπειών",
   vs_not_bridge: "Η παραγγελία ή η στάση δεν περνά από τη Βέροια (VS)",
+  // 073 - the pallet feeder (plan_h_pallet_sync, D-10): the ledger counts whole pallets
+  pallet_fraction: "Η ανταλλαγή παλετών μετρά ακέραιες παλέτες — διόρθωσε τις παλέτες ή βγάλε την ανταλλαγή",
   // 072b — vehicle handover at a point (segments ΑΡΧΙΚΟ / ΕΝΔΙΑΜΕΣΟ / ΤΕΛΙΚΟ; spec
   // 2026-10-23-national-v5-vehicle-handover-design.md). Without these a refusal
   // would reach the screen as raw English (review R1 of the plan, finding 1).
@@ -3607,6 +3609,15 @@ __name(schemaBehind060, "schemaBehind060");
 // A plain string error: /costs/* is read by ctFetch (modules/costs.js), which
 // shows `data.error` as the message — an object there would read
 // «[object Object]».
+// The same guard for F3 (final review 26/10, W-7): this Worker reads 072b's v_rt_vehicle_windows (DKV preview and
+// commit, for today's trips too) and 073's ct_v_rt_partner_cost / ct_cost_lines.partner_id. Deployed before them,
+// PostgREST answers PGRST205 / 42P01 (no relation) or PGRST204 / 42703 (no column): said by name, never «Costs request
+// failed». Recognised by the code AND an F3 name, so an unrelated error keeps today's path.
+function schemaBehindF3(e) {
+  const msg = `${String((e && e.message) || "")} ${JSON.stringify((e && e.pg) || {})}`;
+  return /PGRST205|PGRST204|"42P01"|"42703"/.test(msg) && /v_rt_vehicle_windows|rt_vehicle_segments|ct_v_rt_partner_cost|partner_id/.test(msg);
+}
+__name(schemaBehindF3, "schemaBehindF3");
 function schemaBehind060Response(origin, env) {
   return jsonError("Η βάση δεν έχει ακόμη το migration 060 (τοπικές παραδόσεις) — ο Worker μπήκε πριν από το SQL· ενημέρωσε τον Δημήτρη (060_missing)", 503, origin, env);
 }
@@ -4093,6 +4104,57 @@ async function ctDbPatch(env, table, filter, patch) {
   const rows = await res.json();
   return rows[0] || null;
 }
+// Q6-1 (owner 26/10, money): «a cycle with two PARTNER segments costs the SUM of the segments' partner rates; a
+// partner's invoice replaces ONLY that partner's own rate» (073 ct_v_rt_partner_cost). A partner_rate line may name
+// its partner (ct_cost_lines.partner_id, 073); on a v5 cycle the name must be one of the partners of its live PARTNER
+// segments, and with two or more of them a line must name one - written here, at the moment the line is written
+// (principle 6). The view still counts a line that names nobody (money is never dropped), and replaces no rate with
+// it. Today's round trips (model 1) and lines of any other category take today's path.
+// Final round 2 (26/10, finding 2): a line that names nobody on a cycle with exactly ONE partner is stamped with that
+// partner ({ partner_id } back to the caller, written with the line). Left unnamed, the view read it as that partner's
+// only while the cycle had one: a later handover to a second partner turned it into an unmatched row - counted on top
+// of the first partner's rate (300 + 280 + 200 instead of 480) - and nothing said so. Refusals come back as
+// { status, message }; { partner_id } = write this value (null clears it); null = nothing to do.
+// Final round 3 (26/10, review finding 1): the name already ON the row (opts.stored - the PATCH body sent none) is
+// derived, not sticky. No screen sends partner_id, so a stored name that no longer fits made every later edit 400/409
+// (recategorise, move to another cycle, even a note after the segment's partner was corrected 7 -> 9) and the only
+// way out was SQL. A stored name is kept while it is still one of the cycle's partners (a valid name is never asked
+// for again: no screen can give it); otherwise it is derived again - the single partner of a one-partner cycle, null
+// off partner_rate or (on a move, opts.moved) off a v5 cycle, the same 409 «pick one» on a cycle with two or more.
+// A v5 cycle with no PARTNER segment keeps it: the line is unmatched either way and B-94 names the cycle.
+// Limit (final round 4, review r3 finding 1): this treats EVERY stored name as a Worker stamp - true only while no
+// screen sends partner_id. It cannot tell a stamp from a name a person gave, nor a partner corrected 7 -> 9 from a
+// partner 7 who was removed but still invoices (a cancellation fee): either way the next edit makes the invoice the
+// remaining partner's, which replaces that partner's rate and understates the cost with B-94 green. So B-94's next
+// asks whose the invoice is first (a removed partner's goes to «Λοιπά», never saved as a rate), and plan D-17 makes
+// F4's partner picker mark a given name as given - never derived again here - and let partner_id through the
+// doc_id lock of PATCH, before the plan writes open (the guard counts that switch's literal, so it is not named here).
+async function ctPartnerLineCheck(env, line, opts = {}) {
+  const stored = !!opts.stored && line.partner_id != null;
+  if (stored && line.category !== "partner_rate") return { partner_id: null };
+  if (line.partner_id != null && !stored) {
+    if (!Number.isSafeInteger(line.partner_id) || line.partner_id <= 0) return { status: 400, message: "partner_id: ο συνεργάτης θέλει ακέραιο id" };
+    if (line.category !== "partner_rate") return { status: 400, message: "partner_id μόνο σε γραμμή «Κόμιστρο συνεργάτη» (partner_rate)" };
+  }
+  if (line.category !== "partner_rate" || line.rt_id == null) return stored && opts.moved ? { partner_id: null } : null;
+  const rt = (await dbSelectRaw(env, "ct_round_trips", new URLSearchParams({ select: "id,model", id: `eq.${line.rt_id}` }))).rows[0];
+  if (!rt || rt.model !== 2) return stored && opts.moved ? { partner_id: null } : null;
+  const segs = (await dbSelectRaw(env, "rt_vehicle_segments", new URLSearchParams({ select: "partner_id", rt_id: `eq.${rt.id}`, trip_type: "eq.PARTNER", deleted_at: "is.null" }))).rows;
+  const partners = [...new Set(segs.map((g) => g.partner_id))];
+  if (stored) {
+    if (partners.includes(line.partner_id) || partners.length === 0) return null;
+    line = { ...line, partner_id: null };
+  }
+  if (line.partner_id != null && !partners.includes(line.partner_id)) {
+    return { status: 409, message: "Ο συνεργάτης της γραμμής δεν εκτελεί τμήμα αυτού του κύκλου — διάλεξε τον σωστό συνεργάτη ή κύκλο" };
+  }
+  if (line.partner_id == null && partners.length > 1) {
+    return { status: 409, message: "Ο κύκλος έχει δύο ή περισσότερους συνεργάτες — διάλεξε ποιανού είναι το τιμολόγιο (κάθε τιμολόγιο αντικαθιστά μόνο το δικό του κόμιστρο)" };
+  }
+  if (line.partner_id == null && partners.length === 1) return { partner_id: partners[0] };
+  return null;
+}
+__name(ctPartnerLineCheck, "ctPartnerLineCheck");
 function ctPick(body, fields) {
   const row = {};
   for (const f of fields) {
@@ -4424,6 +4486,27 @@ async function handleCosts(request, url, origin, env) {
           r.route_text = rr ? rr.route_text : null;
           r.route_legs = rr ? rr.route_legs : null;
         }
+        // 073 / E21 (spec 2.3): ONE end of a cycle - the Athens day of its last stop has passed - read from
+        // v_rt_cycle.ended for a v5 cycle (model 2: its status is planned or cancelled for ever, 071 rt_v2_status).
+        // [D-13] a field of its own, never a made-up status. A failed read says so (ended: null + ended_unknown),
+        // it never reads as "still running". Today's trips (model 1) are returned exactly as before.
+        const v2Ids = rows.filter((r) => r.model === 2).map((r) => r.id);
+        if (v2Ids.length) {
+          try {
+            const { rows: cyc } = await dbSelectRaw(env, "v_rt_cycle", new URLSearchParams({ select: "rt_id,ended", rt_id: `in.(${v2Ids.join(",")})` }));
+            // Only a boolean is an answer: ended is NULL in the view when end_at is NULL (rt_v2_window lets a NULL
+            // through), and a cycle missing from the answer is not known either - both are said, never read as false.
+            const endedBy = new Map(cyc.filter((c) => typeof c.ended === "boolean").map((c) => [c.rt_id, c.ended]));
+            for (const r of rows) {
+              if (r.model !== 2) continue;
+              if (endedBy.has(r.id)) r.ended = endedBy.get(r.id);
+              else { r.ended = null; r.ended_unknown = true; }
+            }
+          } catch (e) {
+            console.error("COSTS rt ended lookup failed", e.message);
+            for (const r of rows) if (r.model === 2) { r.ended = null; r.ended_unknown = true; }
+          }
+        }
         // ledger_entry (owner 13/9, fuel-collection-program spec §2.Β task):
         // «Έξοδα Μ = έξοδα Μισθοδοσίας, ένα σημείο» — the weekly/vehicle
         // expenses sheet reads the trip's dl_entries.expenses instead of
@@ -4521,7 +4604,7 @@ async function handleCosts(request, url, origin, env) {
       if (!CT_CATEGORIES.includes(body.category)) {
         return jsonError("Unknown category", 400, origin, env);
       }
-      const row = ctPick(body, ["rt_id", "category", "toll_country", "net", "vat", "line_date", "plate_raw", "truck_id", "trailer_id", "km_reading", "liters", "station", "note", "fuel_source", "pay_source"]);
+      const row = ctPick(body, ["rt_id", "category", "toll_country", "net", "vat", "line_date", "plate_raw", "truck_id", "trailer_id", "km_reading", "liters", "station", "note", "fuel_source", "pay_source", "partner_id"]);
       if (typeof row.net !== "number" && typeof row.vat !== "number") {
         return jsonError("net or vat amount required", 400, origin, env);
       }
@@ -4546,6 +4629,11 @@ async function handleCosts(request, url, origin, env) {
         // didn't send one explicitly; the accountant can still override it.
         const rt = await dbSelectRaw(env, "ct_round_trips", new URLSearchParams({ select: "trailer_id", id: `eq.${row.rt_id}` }));
         if (rt.rows.length && rt.rows[0].trailer_id) row.trailer_id = rt.rows[0].trailer_id;
+      }
+      {
+        const chk = await ctPartnerLineCheck(env, row);
+        if (chk && chk.status) return jsonError(chk.message, chk.status, origin, env);
+        if (chk && chk.partner_id != null) row.partner_id = chk.partner_id;
       }
       row.alloc_status = row.rt_id ? "allocated" : "unallocated";
       row.created_by = caller.sub;
@@ -4618,7 +4706,7 @@ async function handleCosts(request, url, origin, env) {
     if (resource === "lines" && method === "PATCH" && recId) {
       const body = await request.json().catch(() => null);
       if (!body || !String(body.reason || "").trim()) return jsonError("reason required", 400, origin, env);
-      const patch = ctPick(body, ["rt_id", "category", "toll_country", "net", "vat", "line_date", "truck_id", "trailer_id", "km_reading", "liters", "station", "note", "fuel_source", "pay_source"]);
+      const patch = ctPick(body, ["rt_id", "category", "toll_country", "net", "vat", "line_date", "truck_id", "trailer_id", "km_reading", "liters", "station", "note", "fuel_source", "pay_source", "partner_id"]);
       if (!Object.keys(patch).length) return jsonError("Nothing to update", 400, origin, env);
       if (patch.category && !CT_CATEGORIES.includes(patch.category)) return jsonError("Unknown category", 400, origin, env);
       if ("pay_source" in patch && !patch.pay_source) return jsonError("pay_source required (DKV/CASH/REVOLUT/CREDIT)", 400, origin, env);
@@ -4659,6 +4747,18 @@ async function handleCosts(request, url, origin, env) {
           const rt = await dbSelectRaw(env, "ct_round_trips", new URLSearchParams({ select: "trailer_id", id: `eq.${effRtId}` }));
           if (rt.rows.length && rt.rows[0].trailer_id) patch.trailer_id = rt.rows[0].trailer_id;
         }
+      }
+      {
+        // Q6-1: the EFFECTIVE line (a PATCH that moves the line to another cycle, or changes its category, is
+        // checked as the line it leaves behind). Round 3: a partner_id the body does not send is the stored one,
+        // derived again when it no longer fits (ctPartnerLineCheck). «moved» compares VALUES: the edit screen
+        // (exSaveEdit) always sends category, unchanged on most edits.
+        const prev = before.rows[0];
+        const eff = { ...prev, ...patch };
+        const moved = ("rt_id" in patch && patch.rt_id !== prev.rt_id) || ("category" in patch && patch.category !== prev.category);
+        const chk = await ctPartnerLineCheck(env, eff, { stored: !("partner_id" in patch), moved });
+        if (chk && chk.status) return jsonError(chk.message, chk.status, origin, env);
+        if (chk && "partner_id" in chk && chk.partner_id !== (prev.partner_id ?? null)) patch.partner_id = chk.partner_id;
       }
       if ("rt_id" in patch) patch.alloc_status = patch.rt_id ? "allocated" : "unallocated";
       const updated = await ctDbPatch(env, "ct_cost_lines", `id=eq.${encodeURIComponent(recId)}`, patch);
@@ -5087,11 +5187,16 @@ async function handleCosts(request, url, origin, env) {
       const normalized = applyRules(split.lines, { trucks, plateAliases, rules });
 
       // (d) match each line to a round trip (spec §4 score).
+      // 073 / E10 + handover P3-3: the rows come from v_rt_vehicle_windows (072b), not ct_round_trips - today's
+      // round trips (model 1) exactly as the old select, plus one row per OWNED segment of a v5 cycle with that
+      // segment's truck, days and window (start_at/end_at), so a v5 line is matched by its hour (import-rules.mjs
+      // matchCycles). The view exists from 072b on; this Worker is deployed only after 073, which needs 072b - a
+      // missing view is a 500 on the preview (loud), never a silent fallback to the whole-cycle truck.
       const truckIds = [...new Set(normalized.map((l) => l.truck_id).filter((v) => v != null))];
       let rts = [];
       if (truckIds.length) {
-        const rtParams = new URLSearchParams({ select: "id,truck_id,status,date_start,date_end", truck_id: `in.(${truckIds.join(",")})`, status: "neq.cancelled" });
-        rts = (await dbSelectRaw(env, "ct_round_trips", rtParams)).rows;
+        const rtParams = new URLSearchParams({ select: "id,truck_id,status,date_start,date_end,model,start_at,end_at", truck_id: `in.(${truckIds.join(",")})`, status: "neq.cancelled" });
+        rts = (await dbSelectRaw(env, "v_rt_vehicle_windows", rtParams)).rows;
       }
       let lines = normalized.map((l) => ({ ...l, ...matchRoundTrip(l, rts, rules), import_key: buildImportKey(l) }));
 
@@ -5126,7 +5231,18 @@ async function handleCosts(request, url, origin, env) {
       // «Τέλη DKV» per RT. The commit re-runs the same function on what the
       // accountant sends, so a toll she assigns in the preview joins its group.
       const summaryDocNoEarly = (parsed.docs.find((d) => d.doc_type === "summary") || {}).doc_no || null;
-      const aggregation = aggregateLines(lines, { statementDocNo: summaryDocNoEarly, rts, trucks });
+      // Q7-1 (review r2): a fee spread onto a v5 cycle is filed under the cycle's FIRST OWNED segment
+      // (aggregateLines). `rts` holds only the rows of the trucks with lines in this statement, so after a handover
+      // 9 -> 10 with only truck 10 on the statement the first segment would be missing, and the money would follow
+      // whichever trucks happened to have lines that month. Every OWNED row of those cycles is read by id instead.
+      const feeCycleIds = [...new Set(lines.filter((l) => l.category === "dkv" && l.rt_id != null).map((l) => l.rt_id))]
+        .filter((id) => rts.some((r) => r.id === id && r.model === 2));
+      let rtsForFees = rts;
+      if (feeCycleIds.length) {
+        const cycleRows = (await dbSelectRaw(env, "v_rt_vehicle_windows", new URLSearchParams({ select: "id,truck_id,status,date_start,date_end,model,start_at,end_at", id: `in.(${feeCycleIds.join(",")})`, status: "neq.cancelled" }))).rows;
+        rtsForFees = rts.filter((r) => !feeCycleIds.includes(r.id)).concat(cycleRows);
+      }
+      const aggregation = aggregateLines(lines, { statementDocNo: summaryDocNoEarly, rts: rtsForFees, trucks });
       lines = aggregation.lines;
 
       // w11 θέμα 0 (owner 21/9): manual lines the statement repeats — the
@@ -5244,7 +5360,10 @@ async function handleCosts(request, url, origin, env) {
             general_fee: lines.filter((l) => l.none_reason === "general_fee").length,
             no_plate: lines.filter((l) => l.none_reason === "no_plate").length,
             unknown_plate: lines.filter((l) => l.none_reason === "unknown_plate").length,
-            no_rt_on_date: lines.filter((l) => l.none_reason === "no_rt_on_date").length
+            no_rt_on_date: lines.filter((l) => l.none_reason === "no_rt_on_date").length,
+            // 073 / E10: lines that may belong to more than one v5 cycle (or whose hour cannot be placed) - left to
+            // the accountant with their candidates, counted so they are never only part of lines_none
+            review_cycles: lines.filter((l) => l.none_reason === "review_cycles").length
           }
         }
       }, origin, env);
@@ -5370,16 +5489,43 @@ async function handleCosts(request, url, origin, env) {
       // only catches a non-existent RT, not one of another vehicle (finding 8).
       const rtIds = [...new Set(rows.map((r) => r.rt_id).filter((v) => v != null))];
       if (rtIds.length) {
-        const rtRows = (await dbSelectRaw(env, "ct_round_trips", new URLSearchParams({ select: "id,truck_id,status", id: `in.(${rtIds.join(",")})` }))).rows;
+        const rtRows = (await dbSelectRaw(env, "ct_round_trips", new URLSearchParams({ select: "id,truck_id,status,model", id: `in.(${rtIds.join(",")})` }))).rows;
         const byId = new Map(rtRows.map((r) => [r.id, r]));
+        // 073 / E10 + handover P3-3: ct_round_trips.truck_id of a v5 cycle is the copy of its FIRST segment, while the
+        // preview matches the second truck's fuel after a handover to the same cycle (its segment's window). A v5
+        // cycle's trucks are therefore its OWNED segments' (v_rt_vehicle_windows); a line of any other truck is still
+        // refused. Today's round trips (model 1), and a v5 cycle with no OWNED segment, keep the one-truck rule.
+        const v5Ids = rtRows.filter((r) => r.model === 2).map((r) => r.id);
+        const segTrucks = new Map();
+        const segRowsById = new Map();
+        if (v5Ids.length) {
+          const segRows = (await dbSelectRaw(env, "v_rt_vehicle_windows", new URLSearchParams({ select: "id,truck_id,date_start,date_end", id: `in.(${v5Ids.join(",")})` }))).rows;
+          for (const w of segRows) {
+            if (!segTrucks.has(w.id)) segTrucks.set(w.id, new Set());
+            segTrucks.get(w.id).add(w.truck_id);
+            if (!segRowsById.has(w.id)) segRowsById.set(w.id, []);
+            segRowsById.get(w.id).push(w);
+          }
+        }
         for (let i = 0; i < rows.length; i++) {
           const r = rows[i];
           if (r.rt_id == null) continue;
           const rt = byId.get(r.rt_id);
           if (!rt) return jsonError(`line ${i + 1}: round trip ${r.rt_id} does not exist`, 409, origin, env);
           if (rt.status === "cancelled") return jsonError(`line ${i + 1}: round trip ${r.rt_id} is cancelled`, 409, origin, env);
-          if (r.truck_id != null && rt.truck_id != null && rt.truck_id !== r.truck_id) {
+          const cycleTrucks = rt.model === 2 ? segTrucks.get(rt.id) : null;
+          if (cycleTrucks ? r.truck_id != null && !cycleTrucks.has(r.truck_id) : r.truck_id != null && rt.truck_id != null && rt.truck_id !== r.truck_id) {
             return jsonError(`line ${i + 1}: round trip ${r.rt_id} belongs to another truck`, 409, origin, env);
+          }
+          // final review 26/10 (W-9): on a v5 cycle the truck is the cycle's only on its OWN segment's days (DKV-2
+          // alpha: exact days, no +-1) - truck 10's fuel of the day before the handover 9 -> 10 is not this cycle's.
+          // A DKV fee line («Τέλη DKV», category dkv) is spread over the statement's period and filed under the first
+          // segment's truck (Q7-1): its date is the statement's, so it is not held to a segment's days.
+          if (cycleTrucks && r.truck_id != null && r.category !== "dkv" && r.line_date) {
+            const day = String(r.line_date).slice(0, 10);
+            const onIt = (segRowsById.get(rt.id) || []).some((w) => w.truck_id === r.truck_id && w.date_start
+              && day >= w.date_start && day <= (w.date_end || w.date_start));
+            if (!onIt) return jsonError(`line ${i + 1}: round trip ${r.rt_id}: truck ${r.truck_id} has no segment of it on ${day}`, 409, origin, env);
           }
         }
       }
@@ -5530,6 +5676,9 @@ async function handleCosts(request, url, origin, env) {
     return jsonError("Not found", 404, origin, env);
   } catch (e) {
     console.error(`COSTS ${method} ${url.pathname}`, e.message);
+    if (schemaBehindF3(e)) {
+      return jsonError("Η βάση δεν έχει ακόμη την 072b / 073 (τμήματα οχήματος, κόστος συνεργατών) — ο Worker μπήκε πριν από το SQL· σειρά: 072b → 073 → Worker· ενημέρωσε τον Δημήτρη (f3_missing)", 503, origin, env);
+    }
     return jsonError("Costs request failed", 500, origin, env);
   }
 }
@@ -6298,6 +6447,36 @@ function plCan(role, resource, method) {
   return !!(r && r[resource] && r[resource].includes(method));
 }
 var PL_FIELDS = ["movement_date", "counterparty_type", "client_id", "partner_id", "location_id", "event_type", "taken", "given", "order_stop_id", "cons_load_id", "order_id", "sheet_url", "sheet_source", "reversal_of", "reason", "notes"];
+// 073 / D-9: a row of the national plan (pl_movements.piece_leg_id) has ONE writer per field. The plan
+// (plan_h_pallet_sync) owns who, where, when and the LOADED side (corrected in the plan, never here, or the next
+// change of the leg would put the plan's number back); the user owns the EXCHANGE side, the sheet and the notes.
+// Q9-1 (coordinator 26/10), the same rule as plan_h_pallet_sync: LOADING - taken is the plan's (the pallets loaded),
+// given the user's (what we gave back there); DELIVERY - given is the plan's (the pallets delivered), taken the
+// user's («δεν τις πήραμε πίσω»: today's plvDoFix corrects taken, and the balance is sum(given - taken), 003).
+var PL_PLAN_USER_SIDE = { LOADING: "given", DELIVERY: "taken" };
+function plPlanUserFields(m) {
+  const side = PL_PLAN_USER_SIDE[m.event_type];
+  return (side ? [side] : []).concat(["sheet_url", "sheet_source", "notes"]);
+}
+var PL_PLAN_OWNED_TEXT = "Η κίνηση ανήκει στον προγραμματισμό εθνικών: πελάτης, τόπος, ημέρα και οι παλέτες που φορτώθηκαν/παραδόθηκαν αλλάζουν από το σκέλος";
+// The plan-owned fields a request would CHANGE on a plan row. Sending a field with the value the row already has
+// is no change (today's ledger sends the whole row back: taken and given on confirm, the full copy on a fix), so it
+// is not refused (Q9-2); a different value is refused, never dropped in silence behind a 200 (principle 1).
+function plPlanOwnedChanges(m, row, ignore = []) {
+  const own = plPlanUserFields(m);
+  return Object.keys(row).filter((k) => !own.includes(k) && !ignore.includes(k) && row[k] !== m[k]);
+}
+// The base's one-writer indexes, said in Greek wherever pl_movements is written (POST, PATCH, a reversal's
+// replacement): pl_mov_stop_once (073, one live LOADING / DELIVERY per international stop) and pl_mov_leg_once (071,
+// one live row per event of a national leg). Any other error keeps its own path.
+function plUniqueText(e) {
+  const pg = (e && e.pg) || {};
+  if (pg.code !== "23505" && !/"23505"/.test(String((e && e.message) || ""))) return null;
+  const t = `${pg.message || ""} ${pg.details || ""} ${(e && e.message) || ""}`;
+  if (/pl_mov_stop_once/.test(t)) return "Υπάρχει ήδη κίνηση παλετών αυτού του είδους σε αυτή τη στάση — άνοιξέ την από το Ισοζύγιο";
+  if (/pl_mov_leg_once/.test(t)) return "Ο προγραμματισμός εθνικών έχει ήδη κίνηση αυτού του είδους για το σκέλος — άνοιξέ την από το Ισοζύγιο";
+  return null;
+}
 function plValidate(row) {
   if (!row.movement_date) return "movement_date required";
   if (!PL_EVENT_TYPES.includes(row.event_type)) return "Unknown event_type";
@@ -6435,6 +6614,27 @@ async function handlePallets(request, url, origin, env) {
         } catch (e) { return jsonOk({ records: [] }, origin, env); }
       }
       const { rows } = await dbSelectRaw(env, "pl_movements", params);
+      // 073 / E11 (spec 5): a row the national plan wrote (piece_leg_id) belongs to no international order - the
+      // ledger would call it «Χειροκίνητη». One read for the page gives its national order (the screen writes
+      // «εθνική #…», F4). A failed read, a leg missing from the answer or a leg without a national order is said
+      // (nat_order_unknown), never shown as a manual entry.
+      const legIds = [...new Set(rows.map((r) => r.piece_leg_id).filter((x) => x != null))];
+      if (legIds.length) {
+        try {
+          const { rows: legs } = await dbSelectRaw(env, "piece_legs", new URLSearchParams({
+            select: "id,shipment_pieces(shipments(nat_order_id))", id: `in.(${legIds.join(",")})` }));
+          const natBy = new Map(legs.map((l) => [l.id, l.shipment_pieces?.shipments?.nat_order_id ?? null]));
+          for (const r of rows) {
+            if (r.piece_leg_id == null) continue;
+            const nat = natBy.get(r.piece_leg_id);
+            if (nat != null) r.nat_order_id = nat;
+            else { r.nat_order_id = null; r.nat_order_unknown = true; }
+          }
+        } catch (e) {
+          console.error("PALLETS nat_order lookup failed", e.message);
+          for (const r of rows) if (r.piece_leg_id != null) { r.nat_order_id = null; r.nat_order_unknown = true; }
+        }
+      }
       return jsonOk({ records: rows }, origin, env);
     }
     // ---- POST /pallets/movements (χειροκίνητη κίνηση ή feeder Φ2) ----
@@ -6468,7 +6668,16 @@ async function handlePallets(request, url, origin, env) {
         row.confirmed_by = caller.sub;
         row.confirmed_at = new Date().toISOString();
       }
-      const created = await dbInsert(env, "pl_movements", row);
+      let created;
+      try {
+        created = await dbInsert(env, "pl_movements", row);
+      } catch (e) {
+        // 073 / D-9: one live LOADING / DELIVERY row per international stop - the second of two feeders writing at
+        // the same moment (GET-then-POST) is refused by the base; said in Greek, the row that is there stays.
+        const dup = plUniqueText(e);
+        if (dup) return jsonError(dup, 409, origin, env);
+        throw e;
+      }
       await audit(env, { actor: caller.sub, role: caller.role, action: "create", table: "pl_movements", recordId: String(created.id), after: created });
       return jsonOk({ record: created }, origin, env, 201);
     }
@@ -6486,6 +6695,13 @@ async function handlePallets(request, url, origin, env) {
       // επανασύνδεση σε άλλη στάση) δίνει κενό ctPick — θα απορριπτόταν λάθος.
       try { Object.assign(patch, await plResolveRefs(env, body)); }
       catch (e) { return jsonError(e.message, 400, origin, env); }
+      if (before.rows[0].piece_leg_id != null) {
+        const changed = plPlanOwnedChanges(before.rows[0], patch);
+        if (changed.length) return jsonError(`${PL_PLAN_OWNED_TEXT} (${changed.join(", ")})`, 409, origin, env);
+        // equal values are not written back: the plan may have moved them since this row was read
+        const own = plPlanUserFields(before.rows[0]);
+        for (const k of Object.keys(patch)) if (!own.includes(k)) delete patch[k];
+      }
       if (!Object.keys(patch).length) return jsonError("Nothing to update", 400, origin, env);
       const merged = { ...before.rows[0], ...patch };
       const err = plValidate(merged);
@@ -6493,7 +6709,15 @@ async function handlePallets(request, url, origin, env) {
       if (merged.event_type === "ADJUSTMENT" && caller.role !== "owner") {
         return jsonError("ADJUSTMENT is owner-only", 403, origin, env);
       }
-      const updated = await ctDbPatch(env, "pl_movements", `id=eq.${encodeURIComponent(recId)}`, patch);
+      let updated;
+      try {
+        updated = await ctDbPatch(env, "pl_movements", `id=eq.${encodeURIComponent(recId)}`, patch);
+      } catch (e) {
+        // a PATCH that moves a row onto a stop / event that already has its live row (final review 26/10, W-5)
+        const dup = plUniqueText(e);
+        if (dup) return jsonError(dup, 409, origin, env);
+        throw e;
+      }
       await audit(env, { actor: caller.sub, role: caller.role, action: "update", table: "pl_movements", recordId: String(recId), before: before.rows[0], after: updated });
       return jsonOk({ record: updated }, origin, env);
     }
@@ -6503,6 +6727,11 @@ async function handlePallets(request, url, origin, env) {
       if (!before.rows.length) return jsonError("Not found", 404, origin, env);
       if (before.rows[0].status !== "pending") {
         return jsonError("Confirmed movements are never deleted — use reverse", 409, origin, env);
+      }
+      // 073 / D-9: the plan withdraws its own rows (status reversed, never deleted); a delete here would leave the
+      // leg without its row and the next change of the leg would write it again.
+      if (before.rows[0].piece_leg_id != null) {
+        return jsonError("Η κίνηση ανήκει στον προγραμματισμό εθνικών: φεύγει μόνο με το σκέλος της", 409, origin, env);
       }
       const res = await fetch(`${env.SUPABASE_URL}/rest/v1/pl_movements?id=eq.${encodeURIComponent(recId)}`, {
         method: "DELETE",
@@ -6562,15 +6791,37 @@ async function handlePallets(request, url, origin, env) {
       if (m.event_type === "ADJUSTMENT" && caller.role !== "owner") {
         return jsonError("ADJUSTMENT is owner-only", 403, origin, env);
       }
+      // 073 / D-9 (final review 26/10, W-3): a row of the national plan is reversed only WITH its correct row. Alone,
+      // the leg is left without its row and the next change of the leg writes it again from the plan - the reversal
+      // undone in silence. The same reason DELETE refuses it: the row leaves only with its leg.
+      const hasReplacement = !!(body.replacement && typeof body.replacement === "object");
+      if (m.piece_leg_id != null && !hasReplacement) {
+        return jsonError("Η κίνηση ανήκει στον προγραμματισμό εθνικών: αντιλογίζεται μόνο μαζί με τη σωστή της εγγραφή (διόρθωση) — μόνη της θα την ξανάγραφε ο προγραμματισμός", 409, origin, env);
+      }
       let replacementRow = null;
       if (body.replacement && typeof body.replacement === "object") {
         replacementRow = ctPick(body.replacement, PL_FIELDS);
         try { Object.assign(replacementRow, await plResolveRefs(env, body.replacement)); }
         catch (e) { return jsonError(e.message, 400, origin, env); }
+        const sent = { ...replacementRow };   // what the body asked for, before the defaults below
         replacementRow.taken = replacementRow.taken ?? 0;
         replacementRow.given = replacementRow.given ?? 0;
         replacementRow.reversal_of = m.id;
         replacementRow.created_by = caller.sub;
+        // 073 / D-9: the replacement of a row of the national plan stays the leg's row (one writer per leg): it
+        // keeps the leg, the event, the client, the place, the day and the plan's side of the row it replaces; only
+        // the user's side (Q9-1: LOADING given, DELIVERY taken), the sheet and the notes come from the body. A
+        // replacement without piece_leg_id would be a second row next to the one the plan writes again at the next
+        // change of the leg (the client's balance doubles). A body that would change a plan-owned field is refused
+        // BEFORE the row is reversed (nothing written).
+        if (m.piece_leg_id != null) {
+          const changed = plPlanOwnedChanges(m, sent, ["reversal_of"]);
+          if (changed.length) return jsonError(`${PL_PLAN_OWNED_TEXT} (${changed.join(", ")})`, 409, origin, env);
+          const own = ctPick(body.replacement, plPlanUserFields(m));
+          replacementRow = { movement_date: m.movement_date, counterparty_type: m.counterparty_type, client_id: m.client_id,
+            partner_id: m.partner_id, location_id: m.location_id, event_type: m.event_type, taken: m.taken, given: m.given,
+            ...own, reversal_of: m.id, created_by: caller.sub, piece_leg_id: m.piece_leg_id };
+        }
         const err = plValidate(replacementRow);
         if (err) return jsonError(`replacement: ${err}`, 400, origin, env);
         if (replacementRow.event_type === "ADJUSTMENT" && caller.role !== "owner") {
@@ -6583,7 +6834,18 @@ async function handlePallets(request, url, origin, env) {
       });
       let replacement = null;
       if (replacementRow) {
-        replacement = await dbInsert(env, "pl_movements", replacementRow);
+        try {
+          replacement = await dbInsert(env, "pl_movements", replacementRow);
+        } catch (e) {
+          // Two writes, not one transaction: between them the national plan may write the leg's row again (its
+          // feeder sees the leg without a live row), or a feeder the stop's - the base refuses the replacement
+          // (pl_mov_leg_once / pl_mov_stop_once). The reversal stands and says so, with the row to correct; never a
+          // raw 500 that hides a half-done fix (final review 26/10, W-4).
+          const dup = plUniqueText(e);
+          if (!dup) throw e;
+          await audit(env, { actor: caller.sub, role: caller.role, action: "reverse", table: "pl_movements", recordId: String(recId), before: m, after: { ...updated, replacement_id: null, replacement_refused: dup } });
+          return jsonError(`Ο αντιλογισμός έγινε, η διόρθωση όχι: ${dup}. Διόρθωσε την εκκρεμή κίνηση που υπάρχει.`, 409, origin, env);
+        }
       }
       await audit(env, { actor: caller.sub, role: caller.role, action: "reverse", table: "pl_movements", recordId: String(recId), before: m, after: { ...updated, replacement_id: replacement ? replacement.id : null } });
       return jsonOk({ record: updated, replacement }, origin, env);
