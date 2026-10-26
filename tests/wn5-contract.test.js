@@ -15,6 +15,7 @@ const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
 const V5 = [
   { file: 'core/plan-api.js', globals: ['PlanApi', 'PlanError', 'planFetch'], after: 'core/api.js' },
   { file: 'modules/weekly_natl_v5.js', globals: ['WN5'], after: 'modules/orders_natl.js' },
+  { file: 'core/wn5-logic.js', globals: ['WN5L'], after: 'core/wi4-presence.js' },
 ];
 
 function loadV5() {

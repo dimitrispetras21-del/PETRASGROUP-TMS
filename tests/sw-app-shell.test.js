@@ -45,7 +45,7 @@ test('the four Weekly International v4 files are pre-cached (§a.1)', () => {
 // National v5 F4α (plan 2026-10-26): every new file of the v5 board, added by the Task that creates it — a file
 // that app.html loads but the shell lacks would be fetched live and missing offline; a path that 404s would
 // fail the whole install (above).
-const V5_FILES = ['core/plan-api.js', 'modules/weekly_natl_v5.js'];
+const V5_FILES = ['core/plan-api.js', 'modules/weekly_natl_v5.js', 'core/wn5-logic.js'];
 test('the National v5 files are pre-cached (F4α)', () => {
   const list = appShell();
   for (const f of V5_FILES) assert.ok(list.includes(PREFIX + f), `${f} missing from APP_SHELL`);
