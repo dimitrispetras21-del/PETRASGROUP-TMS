@@ -47,3 +47,29 @@ test('F4α-T3: weekly_natl.js has exactly one v5 line, first statement of render
   assert.ok(fn.indexOf(SEAM) < fn.indexOf('_wnLoadAll()'), 'the seam must come before _wnLoadAll');
   assert.strictEqual(src.split('\n').filter((l) => /\bWN5\b/.test(l)).length, 1, 'only ONE line of weekly_natl.js may name WN5');
 });
+
+// F4α T10 — the readers of the old board's state under v5.
+test('F4α-T10: under WN5.active() ai-chat context for weekly_natl does not read WNATL.rows', () => {
+  const fn = grab(read('core/ai-chat.js'), '_aicPageContext', 'core/ai-chat.js');
+  let touched = 0;
+  const ctx = { currentPage: 'weekly_natl', WN5: { active: () => true }, WNATL: { week: 42, get rows() { touched++; return []; } } };
+  const out = vm.runInNewContext(fn + '\n_aicPageContext()', ctx);
+  assert.strictEqual(touched, 0, 'WNATL.rows was read under v5 (the chat would describe rows that are not on screen)');
+  assert.match(out, /νέα προβολή v5/);
+  ctx.WN5 = { active: () => false };
+  vm.runInNewContext(fn + '\n_aicPageContext()', ctx);
+  assert.ok(touched > 0, 'with v5 off the old summary must still read WNATL.rows');
+});
+
+test('F4α-T10: weekly_natl_v5.js never calls reportPageMetrics', () => {
+  const src = read('modules/weekly_natl_v5.js').replace(/\/\/[^\n]*/g, '');
+  assert.ok(!/reportPageMetrics\s*\(/.test(src), 'modules/weekly_natl_v5.js reports page metrics under the old board\'s key');
+});
+
+test('F4α-T10: the old entry points of the national form stay as they are (Ε-16)', () => {
+  // The v5 form is reached only from the v5 board in F4α; the catalog and the old orders page keep the old form.
+  for (const f of ['modules/orders_catalog.js', 'modules/orders_natl.js']) {
+    assert.ok(!/\bWN5(Form)?\b/.test(read(f)), `${f} names WN5 / WN5Form: an old entry point was rerouted in F4α`);
+  }
+  assert.ok(/openNatlCreate/.test(read('modules/orders_catalog.js')), 'orders_catalog.js no longer opens the old national form');
+});

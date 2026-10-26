@@ -118,6 +118,9 @@ function _week(n) {
 function _onWeekChange() { _closedDays.clear(); _qAll = false; _qRaw = ''; _sIdx = 0; _noteErr = null; }
 
 // ═══ Load ═══
+// No reportPageMetrics under v5 (F4α T10): the metrics audit (modules/metrics_audit.js) compares the OLD board's
+// numbers (weekNumberDefault, kathodos / anodos …) under the page key weekly_natl; a v5 report under the same key
+// would be a different count with the same name. Until Φ4β defines v5 metrics the audit says «δεν άνοιξε» — honest.
 async function render() {
   const seq = ++_seq;
   let week;
