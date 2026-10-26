@@ -3416,6 +3416,8 @@ const PLAN_RULE_TEXT = {
   stale_confirm: "Κάτι άλλαξε από τότε που είδες τη λίστα — δες τη ξανά και επιβεβαίωσε",
   need_token: "Η πράξη θέλει επιβεβαίωση — δες πρώτα τη λίστα συνεπειών",
   vs_not_bridge: "Η παραγγελία ή η στάση δεν περνά από τη Βέροια (VS)",
+  // 073 - the pallet feeder (plan_h_pallet_sync, D-10): the ledger counts whole pallets
+  pallet_fraction: "Η ανταλλαγή παλετών μετρά ακέραιες παλέτες — διόρθωσε τις παλέτες ή βγάλε την ανταλλαγή",
   // 072b — vehicle handover at a point (segments ΑΡΧΙΚΟ / ΕΝΔΙΑΜΕΣΟ / ΤΕΛΙΚΟ; spec
   // 2026-10-23-national-v5-vehicle-handover-design.md). Without these a refusal
   // would reach the screen as raw English (review R1 of the plan, finding 1).
@@ -6352,6 +6354,17 @@ function plCan(role, resource, method) {
   return !!(r && r[resource] && r[resource].includes(method));
 }
 var PL_FIELDS = ["movement_date", "counterparty_type", "client_id", "partner_id", "location_id", "event_type", "taken", "given", "order_stop_id", "cons_load_id", "order_id", "sheet_url", "sheet_source", "reversal_of", "reason", "notes"];
+// 073 / D-9: a row of the national plan (pl_movements.piece_leg_id) has ONE writer per field. The plan
+// (plan_h_pallet_sync) owns who, where, when and taken (the piece's pallets: corrected in the plan, never here, or
+// the next change of the leg would put the plan's number back); the user owns these, before the confirmation.
+var PL_PLAN_USER_FIELDS = ["given", "sheet_url", "sheet_source", "notes"];
+var PL_PLAN_OWNED_TEXT = "Η κίνηση ανήκει στον προγραμματισμό εθνικών: πελάτης, τόπος, ημέρα και παλέτες αλλάζουν από το σκέλος";
+// The plan-owned fields a request would CHANGE on a plan row. Sending a field with the value the row already has
+// is no change (today's ledger sends the whole row back: taken on confirm, the full copy on a fix), so it is not
+// refused; a different value is refused, never dropped in silence behind a 200 (principle 1).
+function plPlanOwnedChanges(m, row, ignore = []) {
+  return Object.keys(row).filter((k) => !PL_PLAN_USER_FIELDS.includes(k) && !ignore.includes(k) && row[k] !== m[k]);
+}
 function plValidate(row) {
   if (!row.movement_date) return "movement_date required";
   if (!PL_EVENT_TYPES.includes(row.event_type)) return "Unknown event_type";
@@ -6489,6 +6502,27 @@ async function handlePallets(request, url, origin, env) {
         } catch (e) { return jsonOk({ records: [] }, origin, env); }
       }
       const { rows } = await dbSelectRaw(env, "pl_movements", params);
+      // 073 / E11 (spec 5): a row the national plan wrote (piece_leg_id) belongs to no international order - the
+      // ledger would call it «Χειροκίνητη». One read for the page gives its national order (the screen writes
+      // «εθνική #…», F4). A failed read, a leg missing from the answer or a leg without a national order is said
+      // (nat_order_unknown), never shown as a manual entry.
+      const legIds = [...new Set(rows.map((r) => r.piece_leg_id).filter((x) => x != null))];
+      if (legIds.length) {
+        try {
+          const { rows: legs } = await dbSelectRaw(env, "piece_legs", new URLSearchParams({
+            select: "id,shipment_pieces(shipments(nat_order_id))", id: `in.(${legIds.join(",")})` }));
+          const natBy = new Map(legs.map((l) => [l.id, l.shipment_pieces?.shipments?.nat_order_id ?? null]));
+          for (const r of rows) {
+            if (r.piece_leg_id == null) continue;
+            const nat = natBy.get(r.piece_leg_id);
+            if (nat != null) r.nat_order_id = nat;
+            else { r.nat_order_id = null; r.nat_order_unknown = true; }
+          }
+        } catch (e) {
+          console.error("PALLETS nat_order lookup failed", e.message);
+          for (const r of rows) if (r.piece_leg_id != null) { r.nat_order_id = null; r.nat_order_unknown = true; }
+        }
+      }
       return jsonOk({ records: rows }, origin, env);
     }
     // ---- POST /pallets/movements (χειροκίνητη κίνηση ή feeder Φ2) ----
@@ -6522,7 +6556,17 @@ async function handlePallets(request, url, origin, env) {
         row.confirmed_by = caller.sub;
         row.confirmed_at = new Date().toISOString();
       }
-      const created = await dbInsert(env, "pl_movements", row);
+      let created;
+      try {
+        created = await dbInsert(env, "pl_movements", row);
+      } catch (e) {
+        // 073 / D-9: one live LOADING / DELIVERY row per international stop - the second of two feeders writing at
+        // the same moment (GET-then-POST) is refused by the base; said in Greek, the row that is there stays.
+        if (e.pg && e.pg.code === "23505" && /pl_mov_stop_once/.test(`${e.pg.message || ""} ${e.pg.details || ""}`)) {
+          return jsonError("Υπάρχει ήδη κίνηση παλετών αυτού του είδους σε αυτή τη στάση — άνοιξέ την από το Ισοζύγιο", 409, origin, env);
+        }
+        throw e;
+      }
       await audit(env, { actor: caller.sub, role: caller.role, action: "create", table: "pl_movements", recordId: String(created.id), after: created });
       return jsonOk({ record: created }, origin, env, 201);
     }
@@ -6540,6 +6584,12 @@ async function handlePallets(request, url, origin, env) {
       // επανασύνδεση σε άλλη στάση) δίνει κενό ctPick — θα απορριπτόταν λάθος.
       try { Object.assign(patch, await plResolveRefs(env, body)); }
       catch (e) { return jsonError(e.message, 400, origin, env); }
+      if (before.rows[0].piece_leg_id != null) {
+        const changed = plPlanOwnedChanges(before.rows[0], patch);
+        if (changed.length) return jsonError(`${PL_PLAN_OWNED_TEXT} (${changed.join(", ")})`, 409, origin, env);
+        // equal values are not written back: the plan may have moved them since this row was read
+        for (const k of Object.keys(patch)) if (!PL_PLAN_USER_FIELDS.includes(k)) delete patch[k];
+      }
       if (!Object.keys(patch).length) return jsonError("Nothing to update", 400, origin, env);
       const merged = { ...before.rows[0], ...patch };
       const err = plValidate(merged);
@@ -6557,6 +6607,11 @@ async function handlePallets(request, url, origin, env) {
       if (!before.rows.length) return jsonError("Not found", 404, origin, env);
       if (before.rows[0].status !== "pending") {
         return jsonError("Confirmed movements are never deleted — use reverse", 409, origin, env);
+      }
+      // 073 / D-9: the plan withdraws its own rows (status reversed, never deleted); a delete here would leave the
+      // leg without its row and the next change of the leg would write it again.
+      if (before.rows[0].piece_leg_id != null) {
+        return jsonError("Η κίνηση ανήκει στον προγραμματισμό εθνικών: φεύγει μόνο με το σκέλος της", 409, origin, env);
       }
       const res = await fetch(`${env.SUPABASE_URL}/rest/v1/pl_movements?id=eq.${encodeURIComponent(recId)}`, {
         method: "DELETE",
@@ -6621,10 +6676,24 @@ async function handlePallets(request, url, origin, env) {
         replacementRow = ctPick(body.replacement, PL_FIELDS);
         try { Object.assign(replacementRow, await plResolveRefs(env, body.replacement)); }
         catch (e) { return jsonError(e.message, 400, origin, env); }
+        const sent = { ...replacementRow };   // what the body asked for, before the defaults below
         replacementRow.taken = replacementRow.taken ?? 0;
         replacementRow.given = replacementRow.given ?? 0;
         replacementRow.reversal_of = m.id;
         replacementRow.created_by = caller.sub;
+        // 073 / D-9: the replacement of a row of the national plan stays the leg's row (one writer per leg): it
+        // keeps the leg, the event, the client, the place, the day and taken of the row it replaces; only given,
+        // the sheet and the notes come from the body. A replacement without piece_leg_id would be a second row
+        // next to the one the plan writes again at the next change of the leg (the client's balance doubles).
+        // A body that would change a plan-owned field is refused BEFORE the row is reversed (nothing written).
+        if (m.piece_leg_id != null) {
+          const changed = plPlanOwnedChanges(m, sent, ["reversal_of"]);
+          if (changed.length) return jsonError(`${PL_PLAN_OWNED_TEXT} (${changed.join(", ")})`, 409, origin, env);
+          const own = ctPick(body.replacement, PL_PLAN_USER_FIELDS);
+          replacementRow = { movement_date: m.movement_date, counterparty_type: m.counterparty_type, client_id: m.client_id,
+            partner_id: m.partner_id, location_id: m.location_id, event_type: m.event_type, taken: m.taken, given: m.given,
+            ...own, reversal_of: m.id, created_by: caller.sub, piece_leg_id: m.piece_leg_id };
+        }
         const err = plValidate(replacementRow);
         if (err) return jsonError(`replacement: ${err}`, 400, origin, env);
         if (replacementRow.event_type === "ADJUSTMENT" && caller.role !== "owner") {

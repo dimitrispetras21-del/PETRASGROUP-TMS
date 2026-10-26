@@ -18,6 +18,8 @@
 // The same for 072b on deploy/worker-plan-handover: a copy of
 // feat/national-v5-handover's file, re-synced with ONE command
 //   git checkout feat/national-v5-handover -- worker/migrations/drafts/072b_plan_vehicle_segments.sql
+// And 073 (national v5 F3, money) on deploy/worker-plan-f3: a copy of feat/national-v5-f3's file
+//   git checkout feat/national-v5-f3 -- worker/migrations/drafts/073_plan_money.sql
 //
 // 072's own refusals are parsed from `plan_h_raise('<code>'` (a literal code
 // as the first argument — the convention of the SQL plan, Task A1) and from
@@ -57,6 +59,8 @@ const f072 = () => readOne(['drafts/072_plan_functions.sql', '072_plan_functions
   'copy it from the SQL branch: git checkout feat/national-v5-f2 -- worker/migrations/drafts/072_plan_functions.sql');
 const f072b = () => readOne(['drafts/072b_plan_vehicle_segments.sql', '072b_plan_vehicle_segments.sql'],
   'copy it from the SQL branch: git checkout feat/national-v5-handover -- worker/migrations/drafts/072b_plan_vehicle_segments.sql');
+const f073 = () => readOne(['drafts/073_plan_money.sql', '073_plan_money.sql'],
+  'copy it from the SQL branch: git checkout feat/national-v5-f3 -- worker/migrations/drafts/073_plan_money.sql');
 const uniq = (re, text) => [...new Set([...text.matchAll(re)].map((m) => m[1]))].sort();
 const greek = /[α-ωΑ-Ωά-ώ]/;
 
@@ -75,6 +79,9 @@ const CODES_072 = ['bad_input', 'driver_busy', 'group_empty', 'local_cancel_no_i
 // plan_chk_seg) and its direct raises, minus the 071 / 072 codes it reuses (truck_busy, rt_gone, need_token, ...).
 const CODES_072B = ['seg_cancel', 'seg_copy', 'seg_cover', 'seg_first', 'seg_gone', 'seg_locked', 'seg_many', 'seg_no_vehicle',
   'seg_none', 'seg_not_v2', 'seg_outside', 'seg_reason', 'seg_same', 'seg_time', 'seg_unassigned'];
+// 073 (F3): the pallet feeder's one refusal (plan_h_pallet_sync, D-10). 073 also raises 072's bad_input (a
+// non-finite number), so its codes are compared minus the 071 / 072 / 072b ones, as 072b's are.
+const CODES_073 = ['pallet_fraction'];
 // Retired by the spec §7 — must appear nowhere (plan Interfaces).
 const RETIRED = ['hub_endpoint', 'piece_planned', 'bridge_moved', 'bridge_split', 'legacy_nl', 'frozen',
   'restore_expired', 'restore_conflict', 'partner_rate_on_owned', 'window_order'];
@@ -113,8 +120,15 @@ function codes072b(sql) {
     .filter((c) => !CODES_071.includes(c) && !CODES_072.includes(c)).sort();
 }
 
-test('071, 071b, 072, 072b found and fingerprinted', (t) => {
-  for (const { file, sql } of [f071(), f071b(), f072(), f072b()]) {
+function codes073(sql) {
+  return uniq(/plan_h_raise\(\s*'([a-z_0-9]+)'/g, sql)
+    .concat(uniq(/HINT = 'plan:([a-z_0-9]+)'/gi, sql))
+    .filter((c, i, a) => a.indexOf(c) === i)
+    .filter((c) => !CODES_071.includes(c) && !CODES_072.includes(c) && !CODES_072B.includes(c)).sort();
+}
+
+test('071, 071b, 072, 072b, 073 found and fingerprinted', (t) => {
+  for (const { file, sql } of [f071(), f071b(), f072(), f072b(), f073()]) {
     t.diagnostic(`checked: ${path.relative(path.join(here, '..', '..'), file)} md5 ${createHash('md5').update(sql).digest('hex')}`);
   }
   assert.ok(f072().sql.includes('plan_h_raise('), '072 raises through plan_h_raise');
@@ -140,19 +154,22 @@ function sameAsSqlBranch(t, { file, sql }, sqlBranch) {
 test('the 072 copy is byte-identical to the SQL branch file', (t) => sameAsSqlBranch(t, f072(), 'feat/national-v5-f2'));
 // 072b: the same rule, its own SQL branch (vehicle handover plan, Task B4)
 test('the 072b copy is byte-identical to the SQL branch file', (t) => sameAsSqlBranch(t, f072b(), 'feat/national-v5-handover'));
+// 073: the same rule, the F3 SQL branch
+test('the 073 copy is byte-identical to the SQL branch file', (t) => sameAsSqlBranch(t, f073(), 'feat/national-v5-f3'));
 
-test('the parsed codes are exactly the plans\' 26 + 31 + 15 — none missing, none extra, none retired', () => {
+test('the parsed codes are exactly the plans\' 26 + 31 + 15 + 1 — none missing, none extra, none retired', () => {
   assert.deepEqual(codes071(f071().sql), CODES_071, '071 codes');
   assert.deepEqual(codes072(f072().sql), CODES_072, '072 codes');
   assert.deepEqual(codes072b(f072b().sql), CODES_072B, '072b codes');
-  for (const sql of [f071().sql, f071b().sql, f072().sql, f072b().sql]) {
+  assert.deepEqual(codes073(f073().sql), CODES_073, '073 codes');
+  for (const sql of [f071().sql, f071b().sql, f072().sql, f072b().sql, f073().sql]) {
     for (const r of RETIRED) assert.ok(!new RegExp(`'(?:plan:)?${r}[:']`).test(sql), `retired code «${r}» appears in SQL`);
   }
   for (const r of RETIRED) assert.ok(!Object.prototype.hasOwnProperty.call(W.PLAN_RULE_TEXT, r), `retired code «${r}» has a Worker text`);
 });
 
-test('every plan: code has its own Greek text, the DB detail in brackets; every Worker code key is raised by 071/072/072b', () => {
-  const all = [...CODES_071, ...CODES_072, ...CODES_072B];
+test('every plan: code has its own Greek text, the DB detail in brackets; every Worker code key is raised by 071/072/072b/073', () => {
+  const all = [...CODES_071, ...CODES_072, ...CODES_072B, ...CODES_073];
   for (const code of all) {
     assert.ok(Object.prototype.hasOwnProperty.call(W.PLAN_RULE_TEXT, code), `«${code}» has no Greek text in PLAN_RULE_TEXT`);
     const r = W.stockRuleError({ pg: { code: '23514', hint: 'plan:' + code, message: `plan rule broken: ${code}:RT-1280` } });
@@ -162,7 +179,17 @@ test('every plan: code has its own Greek text, the DB detail in brackets; every 
     assert.match(r.message, greek, `${code} text is Greek`);
   }
   const dead = Object.keys(W.PLAN_RULE_TEXT).filter((k) => !all.includes(k));
-  assert.deepEqual(dead, [], 'Worker plan: keys that 071/072/072b never raise (dead code, αρχή 8)');
+  assert.deepEqual(dead, [], 'Worker plan: keys that 071/072/072b/073 never raise (dead code, αρχή 8)');
+});
+
+// 073 / D-9 (narrow): the Worker's POST /pallets/movements answers 409 in Greek by the NAME of 073's UNIQUE index;
+// a rename on either side would turn the double row back into a bare 500 - caught here, at build time (αρχή 6).
+test('073 creates pl_mov_stop_once on (order_stop_id, event_type) for LOADING / DELIVERY only, and the Worker names it', () => {
+  const m = /CREATE UNIQUE INDEX (pl_mov_stop_once) ON public\.pl_movements \(order_stop_id, event_type\)\s+WHERE ([^;]*);/.exec(f073().sql);
+  assert.ok(m, 'pl_mov_stop_once not found in 073');
+  assert.match(m[2], /event_type IN \('LOADING', 'DELIVERY'\)/, 'D-9 narrow (owner 25/10)');
+  assert.match(m[2], /status <> 'reversed'/, 'reversed rows do not count');
+  assert.equal(src.split('/pl_mov_stop_once/.test(').length - 1, 1, 'the Worker maps the index by its name, once');
 });
 
 test('every 071 CHECK and UNIQUE is mapped to Greek or classified; every PLAN_CHECK_TEXT key exists', () => {
