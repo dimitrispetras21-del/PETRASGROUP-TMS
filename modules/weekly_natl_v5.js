@@ -883,7 +883,11 @@ const WN5 = {
   searchFocus,
   _searchKey,
   _noteRead,
-  MENU_ITEMS: [{ id: 'plates', order: 70, label: 'Αντιγραφή πινακίδων', run: (rtId) => copyPlatesOf(rtId) }],
+  MENU_ITEMS: [
+    // T12: the same Δ1 window as the red box and ΕΠΟΜΕΝΑ; on a cycle it changes the vehicle (PATCH /plan/rt/:id)
+    { id: 'assign', order: 20, label: 'Ανάθεση / αλλαγή φορτηγού ή συνεργάτη', run: (rtId) => WN5Act.assign(null, { entry: 'menu', rtId }) },
+    { id: 'plates', order: 70, label: 'Αντιγραφή πινακίδων', run: (rtId) => copyPlatesOf(rtId) },
+  ],
   // The board HTML of a model, for tests/wn5-board-html.test.js (pure: model in, string out).
   _html: (m) => _boardHTML(m, true),
   _menuItems,

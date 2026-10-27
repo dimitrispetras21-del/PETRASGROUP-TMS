@@ -672,6 +672,209 @@ SCN.strips = async (browser, origin) => {
   await c.page.context().close();
 };
 
+// ═══ Batch B (T12–T19): one synthetic week for the action scenarios ═════════════════════════════════
+// The plan_board shape of 072 (worker/migrations/072_plan_functions.sql:2365) with ids of their own, so the action
+// checks do not depend on the case list of tests/fixtures/wn5-week.json. Keys marked E26 are NOT in the live 072
+// hub[] (plan Ε-26): the screen uses them only when present; one scenario of T19 drops them on purpose. As on the
+// live 072, VS-T118 (no national truck yet) is in hub[], so WN5L draws it as a «ΠΡΟΣ ΑΝΑΘΕΣΗ» row + ΕΠΟΜΕΝΑ card;
+// VS-T125 carries for_split (plan Ε-41, not in 072 either: «sent with ✈ Σπάσιμο»), so it is the «ΓΙΑ ΜΟΙΡΑΣΜΑ» item.
+const B_WEEK = '2026-10-10';
+const bT = (day, hm) => `${day}T${hm}:00+03:00`;
+const B_LOC = { 1: 'ΒΕΡΟΙΑ TEST', 2: 'RENTIS TEST', 3: 'ASPROPYRGOS TEST', 4: 'ATHENS TEST', 5: 'THESSALONIKI TEST', 6: 'LARISA TEST' };
+function bLeg(leg_id, piece_id, act, pallets, o) {
+  return Object.assign({ leg_id, piece_id, act, pallets, kind: 'national', order_id: null, nat_order_id: 3000 + piece_id % 1000, reference: 'N-T' + piece_id,
+    client_id: 41, client: 'ΠΕΛΑΤΗΣ Α', temperature_c: 2 }, o || {});
+}
+function bStop(stop_id, side, loc, day, from, to, legs, extra) {
+  return Object.assign({ stop_id, seq: 0, side, location_id: loc, location: B_LOC[loc], planned_from: bT(day, from), planned_to: bT(day, to), stop_day: day,
+    executed: false, has_vehicle: true, has_late: false, dim: false, side_dim: false, cycle_dim: false, local_loading: null, legs }, extra || {});
+}
+function bCycle(rt_id, o, stops) {
+  stops.forEach((s, i) => { s.seq = i + 1; });
+  return Object.assign({ rt_id, code: 'RT-T' + rt_id, trip_type: 'OWNED', truck_id: null, truck: null, trailer_id: null, trailer: null, driver_id: null, driver: null,
+    partner_id: null, partner: null, start_at: stops[0].planned_from, end_at: stops[stops.length - 1].planned_to, date_start: stops[0].stop_day,
+    date_end: stops[stops.length - 1].stop_day, ended: false, stops, partner_rate: null }, o);
+}
+const e26 = (loc, day, from, to) => ({ nat_to_location_id: loc, deliver_from: bT(day, from), deliver_to: bT(day, to),
+  load_from: bT('2026-10-12', '14:00'), load_to: bT('2026-10-12', '17:00') });
+function bHub(piece_id, o) {
+  return Object.assign({ piece_id, shipment_id: piece_id + 100, kind: 'vs_import', order_id: null, nat_order_id: null, order_stop_id: null, pallets: 0, is_stock: false,
+    leave_by: null, overdue: false, nat_ready_day: '2026-10-12', nat_due_day: '2026-10-13', inbound_rt_id: null, client_id: 42, client: 'ΠΕΛΑΤΗΣ Β',
+    reference: 'VS-T118', temperature_c: 2 }, o);
+}
+function bBoard() {
+  const SAT = '2026-10-10', SUN = '2026-10-11', MON = '2026-10-12', TUE = '2026-10-13';
+  const vs = { kind: 'vs_import', order_id: 2201, nat_order_id: null, reference: 'VS-T201', client: 'ΠΕΛΑΤΗΣ Δ', client_id: 44 };
+  const n111 = { nat_order_id: 3111, reference: 'N-T111', client: 'ΠΕΛΑΤΗΣ Ε', client_id: 45 };
+  return {
+    week: B_WEEK,
+    cycles: [
+      bCycle(201, { truck_id: 12, truck: 'TST-2106', trailer_id: 21, trailer: 'TRL-5101', driver_id: 32, driver: 'Driver Test 02' }, [
+        bStop(2001, 'KATHODOS', 1, MON, '16:00', '18:00', [bLeg(6001, 5101, 'load', 12, vs), bLeg(6002, 5102, 'load', 15, vs)]),
+        bStop(2002, 'KATHODOS', 2, TUE, '06:00', '08:00', [bLeg(6001, 5101, 'unload', 12, vs)]),
+        bStop(2003, 'KATHODOS', 3, TUE, '07:00', '09:00', [bLeg(6002, 5102, 'unload', 15, vs)]) ]),
+      bCycle(202, { trip_type: 'PARTNER', partner_id: 51, partner: 'Partner Test 01', partner_rate: null }, [
+        bStop(2011, 'KATHODOS', 1, MON, '19:00', '20:00', [bLeg(6011, 5111, 'load', 23, n111)]),
+        bStop(2012, 'KATHODOS', 4, TUE, '08:00', '10:00', [bLeg(6011, 5111, 'unload', 23, n111)]) ]),
+      bCycle(203, { truck_id: 11, truck: 'TST-2104', trailer_id: 22, trailer: 'TRL-5102', driver_id: 31, driver: 'Driver Test 01' }, [
+        bStop(2021, 'KATHODOS', 1, SAT, '15:00', '17:00', [bLeg(6021, 5121, 'load', 10)], { executed: true, dim: true }),
+        bStop(2022, 'KATHODOS', 2, SUN, '06:00', '08:00', [bLeg(6021, 5121, 'unload', 10)], { executed: true, dim: true }),
+        bStop(2023, 'ANODOS', 3, MON, '12:00', '14:00', [bLeg(6023, 5123, 'load', 8)]),
+        bStop(2024, 'ANODOS', 1, MON, '20:00', '22:00', [bLeg(6023, 5123, 'unload', 8)]) ]),
+      bCycle(204, { truck_id: 13, truck: 'TST-2103', trailer_id: 23, trailer: 'TRL-5103', driver_id: 33, driver: 'Driver Test 03' }, [
+        bStop(2033, 'KATHODOS', 5, MON, '11:00', '12:00', [bLeg(6032, 5132, 'load', 10)]),
+        bStop(2031, 'KATHODOS', 1, MON, '18:00', '19:00', [bLeg(6031, 5131, 'load', 6)]),
+        bStop(2032, 'KATHODOS', 6, TUE, '05:00', '07:00', [bLeg(6031, 5131, 'unload', 6)]),
+        bStop(2034, 'KATHODOS', 4, TUE, '10:00', '12:00', [bLeg(6032, 5132, 'unload', 10)]),
+        bStop(2035, 'ANODOS', 3, TUE, '12:00', '14:00', [bLeg(6035, 5135, 'load', 9)]),
+        bStop(2036, 'ANODOS', 1, TUE, '20:00', '22:00', [bLeg(6035, 5135, 'unload', 9)]) ]),
+    ],
+    waiting: [
+      { piece_id: 4201, shipment_id: 4211, kind: 'national', order_id: null, nat_order_id: 3201, order_stop_id: null, pallets: 6, leave_by: null,
+        position_location_id: 5, nat_from_location_id: 5, nat_to_location_id: 4, nat_ready_day: MON, nat_due_day: TUE, overdue: false, is_stock: false,
+        client_id: 46, client: 'ΠΕΛΑΤΗΣ ΣΤ', reference: 'N-T201', temperature_c: 4, pallet_exchange: false,
+        load_from: bT(MON, '11:00'), load_to: bT(MON, '12:00'), deliver_from: bT(TUE, '08:00'), deliver_to: bT(TUE, '10:00'), price: 310 },
+      { piece_id: 4202, shipment_id: 4212, kind: 'national', order_id: null, nat_order_id: 3202, order_stop_id: null, pallets: 8, leave_by: null,
+        position_location_id: 3, nat_from_location_id: 3, nat_to_location_id: 1, nat_ready_day: MON, nat_due_day: MON, overdue: false, is_stock: false,
+        client_id: 47, client: 'ΠΕΛΑΤΗΣ Ζ', reference: 'N-T202', temperature_c: 4, pallet_exchange: false,
+        load_from: bT(MON, '12:00'), load_to: bT(MON, '15:00'), deliver_from: bT(MON, '20:00'), deliver_to: bT(MON, '22:00'), price: 280 },
+    ],
+    hub: [
+      bHub(4101, Object.assign({ order_id: 2101, order_stop_id: 6101, pallets: 9 }, e26(2, TUE, '06:00', '08:00'))),
+      bHub(4102, Object.assign({ order_id: 2101, order_stop_id: 6102, pallets: 12 }, e26(3, TUE, '07:00', '09:00'))),
+      bHub(4103, Object.assign({ order_id: 2101, order_stop_id: 6103, pallets: 6 }, e26(4, TUE, '09:00', '10:00'))),
+      bHub(4401, Object.assign({ order_id: 2125, order_stop_id: 6125, pallets: 33, reference: 'VS-T125', client: 'ΠΕΛΑΤΗΣ Η', client_id: 47, for_split: true }, e26(3, TUE, '07:00', '09:00'))),
+      bHub(4301, Object.assign({ kind: 'national', nat_order_id: 3101, pallets: 13, is_stock: true, leave_by: MON, reference: 'N-T013', client: 'ΠΕΛΑΤΗΣ Γ', client_id: 43, temperature_c: 4 }, e26(4, TUE, '08:00', '10:00'))),
+      bHub(4302, Object.assign({ kind: 'national', nat_order_id: 3102, pallets: 4, is_stock: true, leave_by: SUN, overdue: true, reference: 'N-T014', client: 'ΠΕΛΑΤΗΣ Θ', client_id: 48, temperature_c: 4 }, e26(6, '2026-10-15', '09:00', '11:00'))),
+    ],
+    notices: [],
+  };
+}
+const B_LOOKUPS = {
+  locations: Object.keys(B_LOC).map((k) => ({ id: Number(k), legacy_id: 'recLOC' + k, name: B_LOC[k], address: 'Test street ' + k, city: 'Test city ' + k, phone: null, is_hub: k === '1' })),
+  clients: [41, 42, 43, 44, 45, 46, 47, 48].map((id) => ({ id, legacy_id: 'recCLI' + id, company_name: 'ΠΕΛΑΤΗΣ ' + id })),
+  trucks: [[11, 'TST-2104'], [12, 'TST-2106'], [13, 'TST-2103'], [14, 'TST-2108'], [15, 'TST-2107']].map(([id, p]) => ({ id, legacy_id: 'recTRK' + id, license_plate: p, active: true })),
+  trailers: [21, 22, 23, 24, 25].map((id) => ({ id, legacy_id: 'recTRL' + id, license_plate: 'TRL-51' + String(id - 20).padStart(2, '0'), active: true })),
+  drivers: [31, 32, 33, 34, 35].map((id) => ({ id, legacy_id: 'recDRV' + id, full_name: 'Driver Test 0' + (id - 30), active: true })),
+  partners: [[51, 'Partner Test 01'], [52, 'Partner Test 02']].map(([id, n]) => ({ id, legacy_id: 'recPRT' + id, company_name: n, active: true })),
+};
+const bPlan = (extra) => Object.assign({ 'GET /plan/lookups': () => [200, clone(B_LOOKUPS)] }, extra || {});
+async function bOpen(browser, origin, opts) {
+  opts = opts || {};
+  const o = await openBoard(browser, origin, Object.assign({}, opts, { board: opts.board || bBoard(), plan: bPlan(opts.plan) }));
+  await o.page.waitForSelector('#content > .wi4.wn5[data-state="ok"]', { timeout: 8000 }).catch(() => {});
+  return o;
+}
+const bHas = (page, sel) => page.$(sel).then((h) => !!h, () => false);
+async function bClick(page, sel) { const h = await page.$(sel).catch(() => null); if (!h) return false; await h.click(); await page.waitForTimeout(200); return true; }
+const bText = (page, sel) => page.$eval(sel, (e) => e.innerText).catch(() => '');
+const bOff = (page, sel) => page.$eval(sel, (b) => b.disabled).catch(() => null);   // true / false / null (absent)
+// a <select> behind fhSelectSearch: set it as the page would and say so to its listeners
+const bPick = (page, sel, value) => page.$eval(sel, (s, v) => { s.value = v; s.dispatchEvent(new Event('change', { bubbles: true })); }, value).then(() => true, () => false);
+const bCalls = (S, m, p) => S.plan.filter((x) => x.m === m && (p instanceof RegExp ? p.test(x.path) : x.path === p));
+const bDlg = (kind) => `.wi4-dlg[role="dialog"][data-wn5="${kind}"]`;
+const bEv = (page) => page.evaluate(() => (window.__ev || []).map((e) => e.k + ': ' + JSON.stringify(e.a))).catch(() => []);
+async function bMenu(page, rtId, item) {
+  if (!(await bClick(page, `.wn5-row[data-rt="${rtId}"] .wi4-plane`))) return false;
+  // a child of a «›» line (Figma 2011:8858 submenus): open its line first, as a user does
+  const parent = await page.$eval(`#wn5-menu [data-item="${item}"]`, (b) => { const s = b.closest('[data-sub]'); return s ? s.getAttribute('data-sub') : null; }).catch(() => null);
+  if (parent && !(await bClick(page, `#wn5-menu[role="menu"] [data-item="${parent}"]`))) return false;
+  return bClick(page, `#wn5-menu[role="menu"] [data-item="${item}"]`);
+}
+const B_QVS = ['4101', '4102', '4103'].map((p) => `.wn5-qcard[data-piece="${p}"] [data-act="assign"]`).join(', ');
+const OK_PUT = (extra) => [200, Object.assign({ ok: true, op: 'plan_put_group', dry_run: false, ids: { rt_id: 201, stop_ids: [], leg_ids: [], piece_ids: [] }, warnings: [], notice_ids: [] }, extra || {})];
+
+// T12 — the assignment window Δ1 (Figma 2051:7735): one window, four entries, the body = the window's state.
+async function scnAssign(browser, origin) {
+  const scn = 'assign';
+  const D = bDlg('assign');
+  { // A · ΕΠΟΜΕΝΑ «Ανάθεση» → groups, capacity, rate field, «Ένωση» (writes closed: the preview)
+    const { page, S } = await bOpen(browser, origin);
+    ok(scn, 'the batch-B board painted', await bHas(page, '#content > .wi4.wn5[data-state="ok"]'), S.pageErrors);
+    ok(scn, 'ΕΠΟΜΕΝΑ «Ανάθεση» opens .wi4-dlg[data-wn5=assign]', (await bClick(page, B_QVS)) && await bHas(page, D));
+    const txt = await bText(page, D);
+    ok(scn, 'groups «ΚΥΚΛΟΙ ΤΗΣ ΔΕΥΤΕΡΑΣ 12/10», «ΕΛΕΥΘΕΡΑ ΦΟΡΤΗΓΑ», «ΣΥΝΕΡΓΑΤΗΣ»', /ΚΥΚΛΟΙ ΤΗΣ ΔΕΥΤΕΡΑΣ 12\/10/.test(txt) && txt.includes('ΕΛΕΥΘΕΡΑ ΦΟΡΤΗΓΑ') && txt.includes('ΣΥΝΕΡΓΑΤΗΣ'), txt.slice(0, 400));
+    ok(scn, '«Όλο το VS-T118 μαζί · σπάσιμο μόνο στον Πίνακα Βέροιας»', txt.includes('Όλο το VS-T118 μαζί · σπάσιμο μόνο στον Πίνακα Βέροιας'), txt.slice(0, 300));
+    ok(scn, 'over capacity is a warning, «Ένωση» stays enabled («→ 54/33 · υπέρβαση 21»)', txt.includes('→ 54/33 · υπέρβαση 21') && (await bOff(page, `${D} [data-act="save"][data-cand="rt:201"]`)) === false, txt.slice(0, 500));
+    ok(scn, 'the rate field is there for the dispatcher (decision 41), «κόμιστρο λείπει» on the partner cycle', (await bHas(page, `${D} input[data-rate]`)) && txt.includes('κόμιστρο λείπει'));
+    ok(scn, 'a cycle still on the road is listed dimmed, without a button («στο δρόμο»)', txt.includes('στο δρόμο') && !(await bHas(page, `${D} [data-cand="rt:203"]`)));
+    await bClick(page, `${D} [data-act="save"][data-cand="rt:201"]`);
+    const legs = bCalls(S, 'POST', '/plan/legs');
+    ok(scn, '«Ένωση» → exactly one POST /plan/legs with group, target.rt_id and side KATHODOS', legs.length === 1
+      && JSON.stringify(legs[0].body.group) === '{"order_id":2101}' && JSON.stringify(legs[0].body.target) === '{"rt_id":201,"side":"KATHODOS"}', legs.map((x) => x.raw));
+    const stops = (legs[0] && legs[0].body.stops) || null;
+    ok(scn, 'stops: the cycle\'s own by stop_id, a new place with its window; no seq, no request_id, no stop twice', legs.length === 1
+      && JSON.stringify(stops) === JSON.stringify([{ ref: 's2001', stop_id: 2001 }, { ref: 's2002', stop_id: 2002 }, { ref: 's2003', stop_id: 2003 },
+        { ref: 'n4', location_id: 4, side: 'KATHODOS', planned_from: '2026-10-13T09:00:00+03:00', planned_to: '2026-10-13T10:00:00+03:00' }])
+      && !/"seq"|request_id/.test(legs[0].raw), stops);
+    ok(scn, '409 writes_closed → preview strip with the Worker text, window open, saving locked (Ε-6)',
+      (await bText(page, `${D} .wn5-strip[data-kind="preview"]`)).includes('rig sentinel writes_closed') && (await bOff(page, `${D} [data-act="save"][data-cand="rt:201"]`)) === true);
+    await page.context().close();
+  }
+  { // B · busy, then 200 with a warning and a notice: same bytes twice, reload, strip, toast
+    let n = 0;
+    const { page, S } = await bOpen(browser, origin, { plan: { 'POST /plan/legs': () => (++n === 1 ? planErr(409, 'PLAN_RULE', 'busy_retry')
+      : OK_PUT({ warnings: [{ code: 'over_33', rt_id: 201, side: 'KATHODOS', pallets: 54 }], notice_ids: [9101] })) } });
+    await bClick(page, B_QVS);
+    await bClick(page, `${D} [data-act="save"][data-cand="rt:201"]`);
+    ok(scn, 'busy_retry → busy strip with the Worker text, the button enabled again (the user presses)',
+      (await bText(page, `${D} .wn5-strip[data-kind="busy"]`)).includes('rig sentinel busy_retry') && (await bOff(page, `${D} [data-act="save"][data-cand="rt:201"]`)) === false);
+    const boards0 = bCalls(S, 'GET', '/plan/board').length;
+    await bClick(page, `${D} [data-act="save"][data-cand="rt:201"]`);
+    await page.waitForTimeout(400);
+    const legs = bCalls(S, 'POST', '/plan/legs');
+    ok(scn, 'two presses send the same bytes (the body is the window\'s state)', legs.length === 2 && legs[0].raw === legs[1].raw, legs.map((x) => x.raw));
+    ok(scn, '200 → the window closes and the board is read again', !(await bHas(page, D)) && bCalls(S, 'GET', '/plan/board').length === boards0 + 1);
+    ok(scn, 'warnings → «Υπέρβαση 21π στο TST-2106 — αποθηκεύτηκε» on the board strip (Δ12 tile 7)', (await bText(page, '#content .wn5-acthost .wn5-strip[data-kind="warning"]')).includes('Υπέρβαση 21π στο TST-2106 — αποθηκεύτηκε'));
+    const ev = await bEv(page);
+    ok(scn, 'notice_ids → the success says «ενημερώθηκε και ο υπεύθυνος διεθνών» (Ε-3)', ev.some((e) => e.startsWith('toast') && e.includes('ενημερώθηκε και ο υπεύθυνος διεθνών')), ev);
+    await page.context().close();
+  }
+  { // C · new truck (the Veroia window is the user's, Ε-5), its refusal, a partner without a rate
+    const { page, S } = await bOpen(browser, origin, { plan: { 'POST /plan/legs': (e) => (e.body && e.body.target && e.body.target.new_rt && e.body.target.new_rt.trip_type === 'OWNED'
+      ? planErr(422, 'PLAN_RULE', 'truck_busy') : planErr(409, 'WRITES_CLOSED', 'writes_closed')) } });
+    await bClick(page, B_QVS);
+    await bClick(page, `${D} [data-act="pick"][data-cand="truck:14"]`);
+    ok(scn, 'a free truck needs the Veroia window: «Ανάθεση» disabled until it is typed (no default)', (await bOff(page, `${D} [data-act="save"][data-cand="truck:14"]`)) === true);
+    // quiet on a tree without the window (plain main): a missing field is the ✗ of the checks below, never a 30 s abort
+    await page.fill(`${D} input[data-hub="from"]`, '16:00', { timeout: 2000 }).catch(() => {});
+    await page.fill(`${D} input[data-hub="to"]`, '18:00', { timeout: 2000 }).catch(() => {});
+    await bClick(page, `${D} [data-act="save"][data-cand="truck:14"]`);
+    const p = bCalls(S, 'POST', '/plan/legs')[0];
+    ok(scn, 'new truck → new_rt OWNED {truck 14, no trailer, no driver}, every stop new, Veroia with the typed hours', !!p
+      && JSON.stringify(p.body.target) === '{"new_rt":{"trip_type":"OWNED","truck_id":14,"trailer_id":null,"driver_id":null},"side":"KATHODOS"}'
+      && JSON.stringify(p.body.stops[0]) === '{"ref":"n1","location_id":1,"side":"KATHODOS","planned_from":"2026-10-12T16:00:00+03:00","planned_to":"2026-10-12T18:00:00+03:00"}'
+      && p.body.stops.length === 4 && p.body.stops.every((s) => !('stop_id' in s)), p && p.raw);
+    ok(scn, '422 truck_busy → refusal strip with the Worker text, the window stays', (await bText(page, `${D} .wn5-strip[data-kind="refusal"]`)).includes('rig sentinel truck_busy') && await bHas(page, D));
+    await bPick(page, `${D} select[data-partner]`, '52');
+    await bClick(page, `${D} [data-act="save"][data-cand="partner"]`);
+    const q = bCalls(S, 'POST', '/plan/legs')[1];
+    ok(scn, 'partner with an empty rate → new_rt PARTNER partner_rate:null («κόμιστρο λείπει», S-44)', !!q && JSON.stringify(q.body.target.new_rt) === '{"trip_type":"PARTNER","partner_id":52,"partner_rate":null}', q && q.raw);
+    await page.context().close();
+  }
+  { // D · warehouse: the red box and ✈ open the same window; ✈ changes the vehicle with PATCH /plan/rt
+    const { page, S } = await bOpen(browser, origin, { role: 'warehouse' });
+    ok(scn, 'the red «ΠΡΟΣ ΑΝΑΘΕΣΗ» box of a waiting order opens the same window', (await bClick(page, '.wn5-row[data-piece] [data-act="assign"]')) && await bHas(page, D));
+    await bClick(page, `${D} [data-act="cancel"]`);
+    ok(scn, 'warehouse: ✈ «Ανάθεση / αλλαγή φορτηγού ή συνεργάτη» opens it too (no role gate)', (await bMenu(page, 201, 'assign')) && await bHas(page, D));
+    await bClick(page, `${D} [data-act="pick"][data-cand="truck:14"]`);
+    await bClick(page, `${D} [data-act="save"][data-cand="truck:14"]`);
+    const p = bCalls(S, 'PATCH', '/plan/rt/201');
+    ok(scn, 'vehicle change → one PATCH /plan/rt/201 {set:{trip_type:OWNED, truck_id:14}}, no key it would empty', p.length === 1 && p[0].raw === '{"set":{"trip_type":"OWNED","truck_id":14}}', p.map((x) => x.raw));
+    await page.context().close();
+  }
+  { // E · /plan/lookups not deployed (Ε-2): said, catalogue acts off, «Ένωση» still on
+    const { page } = await bOpen(browser, origin, { plan: { 'GET /plan/lookups': () => planErr(404, 'NOT_FOUND', 'no_route') } });
+    await bClick(page, B_QVS);
+    const txt = await bText(page, D);
+    ok(scn, 'lookups 404 → «Οι κατάλογοι δεν είναι διαθέσιμοι ακόμη», new truck/partner off, «Ένωση» on', txt.includes('Οι κατάλογοι δεν είναι διαθέσιμοι ακόμη')
+      && (await bOff(page, `${D} [data-act="pick"][data-cand="truck:14"]`)) !== false && (await bOff(page, `${D} [data-act="save"][data-cand="partner"]`)) === true
+      && (await bOff(page, `${D} [data-act="save"][data-cand="rt:201"]`)) === false, txt.slice(0, 300));
+    await page.context().close();
+  }
+}
+SCN['assign'] = scnAssign;
+
 // ── scenarios end (each Task adds its own above this line) ──
 
 // ── fixture check (T4): plain node, no browser ──

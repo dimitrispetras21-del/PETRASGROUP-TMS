@@ -363,6 +363,406 @@
   Object.assign(KIT, { esc: _esc, log: _log, copy: _copy, state: _state, dlg: _dlg, close: _close, place: _place,
     lock: _lock, btns: _btns, gate: _gate, send: _send, afterSave: _afterSave, boardHost: _boardHost, closedErr: _closedErr });
 
+  // ═══ T12 · Athens time, the board snapshot, the stops of an assignment ═══
+  // Display and request times are Europe/Athens wall times (the board sends ISO with offset; days are Athens days,
+  // computed by the server). A request time is built from a day + a typed HH:MM with the offset of THAT day, never
+  // from the clock (rule 4).
+  const _TZ = 'Europe/Athens';
+  let _fmt = null;
+  function _parts(iso) {
+    if (!iso) return null;
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return null;
+    if (!_fmt) _fmt = new Intl.DateTimeFormat('en-GB', { timeZone: _TZ, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+    const p = {};
+    for (const x of _fmt.formatToParts(d)) p[x.type] = x.value;
+    return { ymd: p.year + '-' + p.month + '-' + p.day, hm: (p.hour === '24' ? '00' : p.hour) + ':' + p.minute };
+  }
+  const _hm = (iso) => { const p = _parts(iso); return p ? p.hm : '—'; };
+  const _ymdOf = (iso) => { const p = _parts(iso); return p ? p.ymd : null; };
+  const DOW = ['Κυρ', 'Δευ', 'Τρί', 'Τετ', 'Πέμ', 'Παρ', 'Σάβ'];
+  // typed in capitals (never text-transform: the tonos stays in some browsers)
+  const DOW_GEN = ['ΤΗΣ ΚΥΡΙΑΚΗΣ', 'ΤΗΣ ΔΕΥΤΕΡΑΣ', 'ΤΗΣ ΤΡΙΤΗΣ', 'ΤΗΣ ΤΕΤΑΡΤΗΣ', 'ΤΗΣ ΠΕΜΠΤΗΣ', 'ΤΗΣ ΠΑΡΑΣΚΕΥΗΣ', 'ΤΟΥ ΣΑΒΒΑΤΟΥ'];
+  const _dow = (ymd) => { const [y, m, d] = ymd.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)).getUTCDay(); };
+  const _dm = (ymd) => (ymd ? ymd.slice(8, 10) + '/' + ymd.slice(5, 7) : '—');
+  const _dayShort = (ymd) => (ymd ? DOW[_dow(ymd)] + ' ' + _dm(ymd) : '—');
+  const _addDays = (ymd, n) => { const [y, m, d] = ymd.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };
+  // the Athens offset of a wall time on a day ('+03:00' in summer, '+02:00' in winter)
+  function _offset(ymd, hm) {
+    const [y, m, d] = ymd.split('-').map(Number);
+    const [h, mi] = hm.split(':').map(Number);
+    const guess = Date.UTC(y, m - 1, d, h, mi);
+    const p = _parts(new Date(guess).toISOString());
+    const [py, pm, pd] = p.ymd.split('-').map(Number);
+    const [ph, pmi] = p.hm.split(':').map(Number);
+    const off = Math.round((Date.UTC(py, pm - 1, pd, ph, pmi) - guess) / 60000);
+    const a = Math.abs(off);
+    return (off >= 0 ? '+' : '-') + String(Math.floor(a / 60)).padStart(2, '0') + ':' + String(a % 60).padStart(2, '0');
+  }
+  const _iso = (ymd, hm) => ymd + 'T' + hm + ':00' + _offset(ymd, hm);
+  // a window that ends at or before it starts ends the next day (a 22:00–06:00 arrival)
+  const _win = (ymd, from, to) => [_iso(ymd, from), _iso(to <= from ? _addDays(ymd, 1) : ymd, to)];
+  // «0730», «7:30» → «07:30»; anything else → '' (the same reading as wi4_actions _hhmm)
+  function _hhmm(v) {
+    let s = String(v || '').trim();
+    if (/^\d{4}$/.test(s)) s = s.slice(0, 2) + ':' + s.slice(2);
+    else if (/^\d:\d{2}$/.test(s)) s = '0' + s;
+    return /^([01]\d|2[0-3]):[0-5]\d$/.test(s) ? s : '';
+  }
+  const _t = (x) => (typeof x === 'string' && /^\d{2}:\d{2}$/.test(x) ? x : _hm(x));      // model times: HH:MM or ISO
+  const _pal = (n) => String(Math.round(Number(n) * 10) / 10).replace('.', ',');
+  const _sum = (a) => a.reduce((s, x) => s + (typeof x === 'number' && isFinite(x) ? x : 0), 0);
+  const _clientErr = (code, message) => ({ kind: 'client', code, message });
+  const _id = (v) => { const n = Number(v); return Number.isSafeInteger(n) && n > 0 ? n : null; };
+  const _norm = (s) => (typeof fhSearchNorm === 'function' ? fhSearchNorm(s) : String(s || '').toLowerCase());
+
+  const _cycles = () => { const b = _state().board; return b && Array.isArray(b.cycles) ? b.cycles : []; };
+  const _cycle = (rtId) => _cycles().find((c) => c.rt_id === rtId) || null;
+  function _allItems() {
+    const b = _state().board || {};
+    return [...(b.waiting || []).map((x) => Object.assign({ at_hub: false }, x)), ...(b.hub || []).map((x) => Object.assign({ at_hub: true }, x))];
+  }
+  const _item = (pieceId) => _allItems().find((x) => x.piece_id === pieceId) || null;
+  // a group goes whole: plan_put_group takes every waiting piece of the order, the ones at the hub too (072:860)
+  const _groupItems = (g) => _allItems().filter((x) => (g.order_id != null ? x.order_id === g.order_id : x.nat_order_id === g.nat_order_id));
+  function _row(rtId) {
+    const m = _state().model;
+    for (const d of (m && m.days) || []) for (const r of d.rows || []) if (r.rtId === rtId) return r;
+    return null;
+  }
+  function _dayRows(ymd) {
+    const m = _state().model;
+    const d = m && (m.days || []).find((x) => x.date === ymd);
+    return d ? (d.rows || []).filter((r) => r.kind === 'cycle' && r.rtId != null) : [];
+  }
+  // the hub's location id: the Veroia stop the model names, else the catalogue (PlanIds.hub)
+  function _hubId() {
+    const m = _state().model;
+    for (const d of (m && m.days) || []) for (const r of d.rows || []) for (const sd of [r.kath, r.anod]) {
+      if (sd && sd.veroia && sd.veroia.stopId != null) {
+        const c = _cycle(r.rtId);
+        const s = c && (c.stops || []).find((x) => x.stop_id === sd.veroia.stopId);
+        if (s) return s.location_id;
+      }
+    }
+    return typeof PlanIds !== 'undefined' ? PlanIds.hub() : null;
+  }
+  const _sideFor = (it) => (it.kind === 'vs_export' || (it.nat_to_location_id != null && it.nat_to_location_id === _hubId()) ? 'ANODOS' : 'KATHODOS');
+  // what a piece needs on the target side (plan_h_put): a stop at its position (pickup) and at its national end
+  // (drop, or Veroia with to_hub). null place = the board did not send it (hub[] of 072, Ε-26).
+  function _needs(it, toHub, hub) {
+    const pick = it.at_hub ? hub : (it.position_location_id == null ? null : it.position_location_id);
+    const drop = toHub ? hub : (it.nat_to_location_id == null ? null : it.nat_to_location_id);
+    return [
+      { loc: pick, from: it.load_from || null, to: it.load_to || null, hub: pick != null && pick === hub },
+      { loc: drop, from: it.deliver_from || null, to: it.deliver_to || null, hub: drop != null && drop === hub },
+    ];
+  }
+  // One stop per place per side (decision 6): a live stop of the target on that side is named by stop_id; any other
+  // place becomes a new stop with its pieces' window (the earliest start, the latest end of the pieces there); a NEW
+  // Veroia stop takes the window the user typed (Ε-5: the base invents no hour, and neither does the screen).
+  // Never seq (decision 5), never one stop_id twice. missing: 'place' | 'window' | 'hub'.
+  function _stopsFor(needs, cyc, side, hubWin) {
+    const out = [], seen = new Map(), miss = new Set();
+    for (const n of needs) {
+      if (n.loc == null) { miss.add('place'); continue; }
+      const prev = seen.get(n.loc);
+      if (prev) {
+        if (prev.location_id != null && !n.hub && n.from && n.to) {
+          if (new Date(n.from) < new Date(prev.planned_from)) prev.planned_from = n.from;
+          if (new Date(n.to) > new Date(prev.planned_to)) prev.planned_to = n.to;
+        }
+        continue;
+      }
+      const ex = cyc && (cyc.stops || []).find((s) => s.side === side && s.location_id === n.loc);
+      let st;
+      if (ex) st = { ref: 's' + ex.stop_id, stop_id: ex.stop_id };
+      else if (n.hub) { if (!hubWin) { miss.add('hub'); continue; } st = { ref: 'n' + n.loc, location_id: n.loc, side, planned_from: hubWin[0], planned_to: hubWin[1] }; }
+      else if (!n.from || !n.to) { miss.add('window'); continue; }
+      else st = { ref: 'n' + n.loc, location_id: n.loc, side, planned_from: n.from, planned_to: n.to };
+      seen.set(n.loc, st);
+      out.push(st);
+    }
+    return { stops: out, missing: [...miss] };
+  }
+  function _cycText(c, r) {
+    const t = r && r.tiles && r.tiles[0];
+    const par = c.trip_type === 'PARTNER';
+    return { cls: par ? 'par' : (c.truck_id != null ? 'own' : 'un'),
+      l1: t && t.line1 ? t.line1 : (par ? (c.partner || '—') : ([c.truck, c.trailer].filter(Boolean).join(' · ') || 'ΠΡΟΣ ΑΝΑΘΕΣΗ')),
+      l2: t && t.line2 ? t.line2 : (par ? '' : (c.driver || '')) };
+  }
+  const _boxHTML = (x) => '<div class="wi4-box ' + x.cls + '"><span class="wi4-l1">' + _esc(x.l1) + '</span>' + (x.l2 ? '<span class="wi4-l2">' + _esc(x.l2) + '</span>' : '') + '</div>';
+  const _sideOfRow = (r, side) => (r ? (side === 'ANODOS' ? r.anod : r.kath) : null);
+  const _sidePal = (r, side) => { const sd = _sideOfRow(r, side); return sd && typeof sd.pallets === 'number' ? sd.pallets : 0; };
+  const _veroiaOf = (r, side) => { const sd = _sideOfRow(r, side); return sd && sd.veroia ? _t(sd.veroia.from) + '–' + _t(sd.veroia.to) : null; };
+  // over capacity is a warning, never a refusal (Δ1, Ε-17: the sum of the side's loadings, like 072 over_33)
+  const _capHTML = (n, tail) => '<span class="wn5-cap' + (n > 33 ? ' over' : '') + '">→ ' + _pal(n) + '/33' + (n > 33 ? ' · υπέρβαση ' + _pal(n - 33) : '') + (tail || '') + '</span>';
+  const _optsHTML = (list, cur) => list.filter((x) => x.active).map((x) => '<option value="' + x.id + '"' + (x.id === cur ? ' selected' : '') + '>' + _esc(x.label) + '</option>').join('');
+  // trucks with no cycle over that day; a cycle that ENDS that day frees its truck from its end time (display only:
+  // the DB refuses a real overlap with truck_busy)
+  function _freeTrucks(day, exceptTruck) {
+    const busy = new Map();
+    for (const c of _cycles()) {
+      if (c.trip_type !== 'OWNED' || c.truck_id == null || !(c.date_start <= day && day <= c.date_end)) continue;
+      const v = _ymdOf(c.end_at) === day ? _hm(c.end_at) : 'busy';
+      const p = busy.get(c.truck_id);
+      busy.set(c.truck_id, p === 'busy' || v === 'busy' ? 'busy' : (!p || v > p ? v : p));
+    }
+    const all = typeof PlanIds !== 'undefined' ? PlanIds.list('truck') : [];
+    return all.filter((t) => t.active && t.id !== exceptTruck && busy.get(t.id) !== 'busy').map((t) => Object.assign({ from: busy.get(t.id) || null }, t));
+  }
+  function _rate(txt) {
+    const s = String(txt == null ? '' : txt).trim().replace(',', '.');
+    if (!s) return { ok: true, v: null };                 // empty = «κόμιστρο λείπει», never 0 (S-44)
+    const n = Number(s);
+    return Number.isFinite(n) && n >= 0 ? { ok: true, v: Math.round(n * 100) / 100 } : { ok: false, v: null };
+  }
+  Object.assign(KIT, { parts: _parts, hm: _hm, ymdOf: _ymdOf, dm: _dm, dayShort: _dayShort, addDays: _addDays, iso: _iso, win: _win, hhmm: _hhmm,
+    t: _t, pal: _pal, sum: _sum, clientErr: _clientErr, id: _id, norm: _norm, cycles: _cycles, cycle: _cycle, item: _item, groupItems: _groupItems,
+    row: _row, dayRows: _dayRows, hubId: _hubId, sideFor: _sideFor, needs: _needs, stopsFor: _stopsFor, cycText: _cycText, boxHTML: _boxHTML,
+    sidePal: _sidePal, veroiaOf: _veroiaOf, capHTML: _capHTML, optsHTML: _optsHTML, freeTrucks: _freeTrucks, rate: _rate, DOW_GEN, dow: _dow });
+
+  // ═══ T12 · the assignment window Δ1 (Figma 2051:7735): one window for four entries ═══
+  // The request of one candidate, from the window's state only. cand: 'rt:<id>' | 'truck:<id>' | 'partner'.
+  function _assignReq(st, cand) {
+    const parts = String(cand || '').split(':');
+    const kind = parts[0], id = _id(parts[1]);
+    if (st.mode === 'vehicle') {
+      // only what the user chose: a key sent as null would EMPTY it (vehicle_clear_use_clear, 072:1680)
+      if (kind === 'truck' && id) {
+        const set = { trip_type: 'OWNED', truck_id: id };
+        if (st.trailer) set.trailer_id = st.trailer;
+        if (st.driver) set.driver_id = st.driver;
+        return { method: 'PATCH', path: '/plan/rt/' + st.rtId, body: { set } };
+      }
+      if (kind === 'partner' && st.partner) {
+        const r = _rate(st.rateTxt);
+        return r.ok ? { method: 'PATCH', path: '/plan/rt/' + st.rtId, body: { set: { trip_type: 'PARTNER', partner_id: st.partner, partner_rate: r.v } } } : null;
+      }
+      return null;
+    }
+    let target, cyc = null;
+    if (kind === 'rt' && id && st.cyc[id]) { cyc = st.cyc[id]; target = { rt_id: id, side: st.side }; }
+    else if (kind === 'truck' && id) target = { new_rt: { trip_type: 'OWNED', truck_id: id, trailer_id: st.trailer || null, driver_id: st.driver || null }, side: st.side };
+    else if (kind === 'partner' && st.partner) {
+      const r = _rate(st.rateTxt);
+      if (!r.ok) return null;
+      target = { new_rt: { trip_type: 'PARTNER', partner_id: st.partner, partner_rate: r.v }, side: st.side };
+    } else return null;
+    const f = _hhmm(st.hubFrom), t = _hhmm(st.hubTo);
+    const r = _stopsFor(st.needs, cyc, st.side, f && t ? _win(st.day, f, t) : null);
+    if (r.missing.length) return { missing: r.missing };
+    return { method: 'POST', path: '/plan/legs', body: st.group ? { group: st.group, target, stops: r.stops } : { pieces: st.pieces, target, stops: r.stops } };
+  }
+
+  function _assignHTML(st) {
+    const vehicle = st.mode === 'vehicle';
+    let h = '<div class="wn5-dlg-meta">' + _esc(st.meta) + '</div>';
+    if (!vehicle && st.group) h += '<div class="wn5-grey">Όλο το ' + _esc(st.ref) + ' μαζί · σπάσιμο μόνο στον Πίνακα Βέροιας</div>';
+    if (vehicle) h += '<div class="wn5-grey">Ένωση με άλλο κύκλο: «Μεταφορά σε…» από τη φόρμα σκέλους (όλη η πλευρά).</div>';
+    h += '<div class="wn5-tools"><span class="wn5-seg" role="group">'
+      + '<button type="button" data-act="seg" data-v="free" class="' + (st.filter === 'free' ? 'on' : '') + '">Μόνο ελεύθερα</button>'
+      + '<button type="button" data-act="seg" data-v="all" class="' + (st.filter === 'all' ? 'on' : '') + '">Όλα</button></span>'
+      + '<input type="search" class="wn5-dq" data-q placeholder="Αναζήτηση φορτηγού, οδηγού ή συνεργάτη" value="' + _esc(st.q) + '"></div>';
+    if (!st.ids.ok) h += '<div class="wn5-miss" data-ids-miss>Οι κατάλογοι δεν είναι διαθέσιμοι ακόμη: νέο φορτηγό και συνεργάτης ανοίγουν όταν έρθουν.</div>';
+    if (!vehicle && _stopsFor(st.needs, null, st.side, ['probe', 'probe']).missing.length) {
+      h += '<div class="wn5-miss" data-place-miss>Η ανάθεση θέλει τον προορισμό και το παράθυρο κάθε παράδοσης· για παραδόσεις από τη Βέροια δεν έρχονται ακόμη από τη βάση.</div>';
+    }
+    if (!vehicle && st.needs.some((n) => n.hub)) {
+      h += '<div class="wn5-hubwin"><span>' + (st.side === 'ANODOS' ? 'Άφιξη Βέροιας *' : 'Παράθυρο φόρτωσης Βέροιας *') + '</span>'
+        + '<input class="wn5-hm" data-hub="from" inputmode="numeric" placeholder="ΗΗ:ΛΛ" value="' + _esc(st.hubFrom) + '"> – '
+        + '<input class="wn5-hm" data-hub="to" inputmode="numeric" placeholder="ΗΗ:ΛΛ" value="' + _esc(st.hubTo) + '">'
+        + '<small>μόνο όταν γίνεται νέα στάση Βέροιας</small></div>';
+    }
+    if (!vehicle) {
+      h += '<div class="wn5-grp-h" data-grp="rt">ΚΥΚΛΟΙ ' + DOW_GEN[_dow(st.day)] + ' ' + _dm(st.day) + ' · ένωση · ' + st.rows.length + '</div>';
+      for (const r of st.rows) {
+        const c = st.cyc[r.rtId];
+        const tx = _cycText(c, r.row);
+        let rate = '';
+        if (c.trip_type === 'PARTNER') {
+          rate = c.partner_rate == null
+            ? ' <span class="wn5-flag-red">κόμιστρο λείπει</span> <input class="wn5-rate" data-rate-rt="' + c.rt_id + '" inputmode="decimal" placeholder="—" aria-label="Κόμιστρο €"> € <button type="button" class="wi4-btn sm" data-act="rate" data-rt="' + c.rt_id + '">Κράτα</button>'
+            : ' <span class="wn5-cand-m">κόμιστρο ' + _esc(_pal(c.partner_rate)) + ' €</span>';
+        }
+        h += '<div class="wn5-cand" data-line="rt" data-s="' + _esc(_norm([tx.l1, tx.l2, c.code].join(' '))) + '">' + _boxHTML(tx)
+          + '<span class="wn5-cand-m"><b>' + _esc(r.veroia ? 'Βέροια ' + r.veroia : 'χωρίς στάση Βέροιας') + '</b><span>' + _esc(_pal(r.pallets)) + 'π σήμερα</span></span>'
+          + '<span>' + _capHTML(r.pallets + st.pallets) + rate + '</span>'
+          + '<button type="button" class="wi4-btn sm" data-act="save" data-cand="rt:' + c.rt_id + '">Ένωση</button></div>';
+      }
+      for (const c of st.road) {
+        h += '<div class="wn5-cand wn5-na" data-line="road">' + _boxHTML(_cycText(c, null))
+          + '<span class="wn5-cand-m"><b>' + _esc(_dayShort(c.date_start) + ' · στο δρόμο · Βέροια ως ' + _dayShort(_ymdOf(c.end_at)) + ' ' + _hm(c.end_at)) + '</b></span><span></span><span></span></div>';
+      }
+    }
+    h += '<div class="wn5-grp-h" data-grp="free">ΕΛΕΥΘΕΡΑ ΦΟΡΤΗΓΑ · ' + (vehicle ? 'άλλο όχημα' : 'νέος κύκλος') + ' · ' + st.free.length + '</div>';
+    for (const t of st.free) {
+      const key = 'truck:' + t.id;
+      h += '<div class="wn5-cand" data-line="free" data-s="' + _esc(_norm(t.label)) + '"><div class="wi4-box own"><span class="wi4-l1">' + _esc(t.label) + '</span></div>'
+        + '<span class="wn5-cand-m"><b>' + _esc(t.from ? 'ελεύθερο από ' + t.from : 'ελεύθερο') + '</b></span>'
+        + '<span>' + (vehicle ? '' : _capHTML(st.pallets, ' · νέος κύκλος')) + '</span>'
+        + '<button type="button" class="wi4-btn sm" data-act="pick" data-cand="' + key + '"' + (st.ids.ok ? '' : ' disabled') + '>Ανάθεση</button></div>';
+      if (st.pick === key) {
+        h += '<div class="wn5-more" data-more="' + key + '">'
+          + '<label class="wn5-field"><span>Ρυμούλκα</span><select data-trailer data-fh-search><option value="">—</option>' + _optsHTML(st.trailers, st.trailer) + '</select></label>'
+          + '<label class="wn5-field"><span>Οδηγός</span><select data-driver data-fh-search><option value="">—</option>' + _optsHTML(st.drivers, st.driver) + '</select></label>'
+          + '<button type="button" class="wi4-btn sm pri" data-act="save" data-cand="' + key + '">Ανάθεση</button></div>';
+      }
+    }
+    h += '<div class="wn5-grp-h" data-grp="partner">ΣΥΝΕΡΓΑΤΗΣ</div>'
+      + '<div class="wn5-cand" data-line="partner" data-s="' + _esc(_norm(st.partners.map((p) => p.label).join(' '))) + '">'
+      + '<label class="wn5-field"><span>Συνεργάτης</span><select data-partner data-fh-search' + (st.ids.ok ? '' : ' disabled') + '><option value="">—</option>' + _optsHTML(st.partners, st.partner) + '</select></label>'
+      + '<span class="wn5-cand-m"><span>κόμιστρο · κενό = «κόμιστρο λείπει»</span></span>'
+      + '<span><input class="wn5-rate" data-rate inputmode="decimal" placeholder="—" value="' + _esc(st.rateTxt) + '" aria-label="Κόμιστρο €"> €</span>'
+      + '<button type="button" class="wi4-btn sm" data-act="save" data-cand="partner">Ανάθεση</button></div>';
+    return h;
+  }
+
+  WN5Act.assign = async function assign(src, ctx) {
+    ctx = Object.assign({ entry: 'row' }, ctx || {});
+    const vehicle = !src || (!src.group && !src.pieces);
+    const st = { mode: vehicle ? 'vehicle' : 'legs', rtId: _id(ctx.rtId), side: ctx.side === 'ANODOS' ? 'ANODOS' : 'KATHODOS', day: ctx.day || null,
+      group: null, pieces: null, items: [], needs: [], pallets: 0, cyc: {}, rows: [], road: [], free: [], trailers: [], drivers: [], partners: [],
+      ids: { ok: false }, pick: null, trailer: null, driver: null, partner: null, rateTxt: '', hubFrom: '', hubTo: '', filter: 'all', q: '', meta: '', ref: '', skipRt: null, from: null };
+    let title;
+    // the snapshot: every value a body can carry is copied now (rule 4)
+    if (vehicle) {
+      const c = _cycle(st.rtId);
+      if (!c) { WN5Act.strip(_boardHost(), _clientErr('rt_missing', 'Ο κύκλος δεν είναι στο board που φορτώθηκε — ανανέωσε')); return null; }
+      st.cyc[c.rt_id] = _copy(c);
+      const r = _row(c.rt_id);
+      st.day = st.day || (r && r.dayKey) || c.date_start;
+      const now = _cycText(c, r);
+      title = 'Ανάθεση · ' + (c.code || 'κύκλος');
+      st.meta = _dayShort(st.day) + ' · τώρα: ' + now.l1 + (now.l2 ? ' · ' + now.l2 : '');
+    } else {
+      const list = src.group ? _groupItems(src.group) : (src.pieces || []).map((p) => _item(p.piece_id)).filter(Boolean);
+      if (!list.length) { WN5Act.strip(_boardHost(), _clientErr('piece_missing', 'Η παράδοση δεν είναι πια στο board — ανανέωσε')); return null; }
+      st.items = _copy(list);
+      st.group = src.group ? _copy(src.group) : null;
+      st.pieces = src.pieces ? _copy(src.pieces) : null;
+      const take = new Map((src.pieces || []).map((p) => [p.piece_id, p]));
+      const hub = _hubId();
+      st.needs = st.items.flatMap((it) => _needs(it, !!(take.get(it.piece_id) || {}).to_hub, hub));
+      st.pallets = _sum(st.items.map((it) => { const p = take.get(it.piece_id); return p && typeof p.take_pallets === 'number' ? p.take_pallets : it.pallets; }));
+      st.day = st.day || st.items[0].nat_ready_day || null;
+      if (!ctx.side) st.side = _sideFor(st.items[0]);
+      st.ref = st.items[0].reference || '—';
+      const vs = st.items[0].kind === 'vs_import' && st.items[0].load_from ? ' · φτάνει ' + _hm(st.items[0].load_from) : '';
+      title = 'Ανάθεση · ' + st.ref + ' · ' + (st.items[0].client || '—');
+      st.meta = _dayShort(st.day) + ' · ' + st.items.length + (st.items.length === 1 ? ' παράδοση' : ' παραδόσεις') + ' · ' + _pal(st.pallets) + 'π' + vs;
+    }
+    if (!st.day) { WN5Act.strip(_boardHost(), _clientErr('day_missing', 'Η ημέρα της ανάθεσης δεν είναι γνωστή — ανανέωσε')); return null; }
+    await _loadCands(st);
+    return _picker(st, 'assign', title);
+  };
+
+  // The candidates of a window, snapshotted: the day's cycles (minus st.skipRt, the source of a move), the cycles
+  // still on the road that day (shown, not offered), the catalogue lists (Ε-2). Shared by Δ1 and «Μεταφορά σε…»
+  // (Δ1 note: «Ίδια λίστα στη «Μεταφορά σε…» της φόρμας σκέλους»).
+  async function _loadCands(st) {
+    const vehicle = st.mode === 'vehicle';
+    if (!vehicle) {
+      const ids = new Set();
+      for (const r of _dayRows(st.day)) {
+        const c = _cycle(r.rtId);
+        if (!c || c.rt_id === st.skipRt) continue;
+        ids.add(c.rt_id);
+        st.cyc[c.rt_id] = _copy(c);
+        st.rows.push({ rtId: c.rt_id, row: _copy(r), pallets: _sidePal(r, st.side), veroia: _veroiaOf(r, st.side) });
+      }
+      st.road = _copy(_cycles().filter((c) => !ids.has(c.rt_id) && c.rt_id !== st.skipRt && c.date_start < st.day && st.day <= c.date_end));
+    }
+    st.ids = typeof PlanIds !== 'undefined' ? await PlanIds.load() : { ok: false };
+    if (st.ids.ok) {
+      const own = vehicle ? st.cyc[st.rtId].truck_id : null;
+      st.free = _freeTrucks(st.day, own);
+      st.trailers = PlanIds.list('trailer'); st.drivers = PlanIds.list('driver'); st.partners = PlanIds.list('partner');
+    }
+  }
+  // One press of a candidate. T14 adds the move branch (two steps) here.
+  function _pickSave(d, st, cand) {
+    const req = _assignReq(st, cand);
+    if (req && !req.missing) _send(d, req, st.mode === 'vehicle' ? 'Άλλαξε το όχημα' : 'Ανατέθηκε', { intl: true });
+  }
+  function _picker(st, kind, title) {
+    const d = _dlg(kind, title, { wide: true });
+    d.ft.innerHTML = '<button type="button" class="wi4-btn" data-act="cancel">Άκυρο</button>';
+    const filter = () => {
+      const q = st.q ? _norm(st.q) : '';
+      for (const ln of d.body.querySelectorAll('.wn5-cand[data-line]')) {
+        const off = (st.filter === 'free' && (ln.dataset.line === 'rt' || ln.dataset.line === 'road')) || (q && !String(ln.dataset.s || '').includes(q));
+        ln.hidden = !!off;
+      }
+    };
+    d.refresh = () => {
+      for (const b of d.dlg.querySelectorAll(SAVES)) {
+        const req = _assignReq(st, b.dataset.cand);
+        const needsIds = !/^(rt:|wait$)/.test(b.dataset.cand || '');   // the board gives these ids; new vehicles need the catalogue
+        b.disabled = d.locked || d.busy || !req || !!req.missing || (needsIds && !st.ids.ok);
+      }
+    };
+    const draw = () => {
+      d.body.innerHTML = _assignHTML(st);
+      if (typeof fhSelectSearchIn === 'function') fhSelectSearchIn(d.body);
+      filter();
+      d.refresh();
+    };
+    d.dlg.addEventListener('click', (ev) => {
+      const b = ev.target.closest('[data-act]');
+      if (!b || b.disabled || !_live()) return;
+      const a = b.dataset.act;
+      if (a === 'cancel') { if (!d.busy) _close(d); }
+      else if (a === 'seg') { st.filter = b.dataset.v === 'free' ? 'free' : 'all'; for (const x of d.dlg.querySelectorAll('.wn5-seg button')) x.classList.toggle('on', x.dataset.v === st.filter); filter(); }
+      else if (a === 'pick') { st.pick = st.pick === b.dataset.cand ? null : b.dataset.cand; st.trailer = null; st.driver = null; draw(); }
+      else if (a === 'save') _pickSave(d, st, b.dataset.cand);
+      else if (a === 'rate') {
+        // a partner cycle's rate is its own act (one RPC), never piggy-backed on «Ένωση»
+        const rt = _id(b.dataset.rt);
+        const inp = rt && d.dlg.querySelector('[data-rate-rt="' + rt + '"]');
+        const r = _rate(inp && inp.value);
+        if (rt && r.ok && r.v !== null) _send(d, { method: 'PATCH', path: '/plan/rt/' + rt, body: { set: { partner_rate: r.v } } }, 'Γράφτηκε το κόμιστρο');
+      }
+    });
+    d.dlg.addEventListener('input', (ev) => {
+      const el = ev.target;
+      if (el.matches('[data-q]')) { st.q = el.value; filter(); }
+      else if (el.matches('[data-hub]')) { if (el.dataset.hub === 'from') st.hubFrom = el.value; else st.hubTo = el.value; d.refresh(); }
+      else if (el.matches('[data-rate]')) { st.rateTxt = el.value; d.refresh(); }
+    });
+    d.dlg.addEventListener('change', (ev) => {
+      const el = ev.target;
+      if (el.matches('[data-trailer]')) st.trailer = _id(el.value);
+      else if (el.matches('[data-driver]')) st.driver = _id(el.value);
+      else if (el.matches('[data-partner]')) st.partner = _id(el.value);
+      else return;
+      d.refresh();
+    });
+    draw();
+    _gate(d);
+    return d;
+  }
+
+  // red «ΠΡΟΣ ΑΝΑΘΕΣΗ» of a waiting order (the row) or of a cycle without vehicle, and «Ανάθεση» of ΕΠΟΜΕΝΑ;
+  // the ids are read at click time (rule of v4: never a DOM index)
+  ACTS.assign = (el) => {
+    const card = el.closest('.wn5-qcard[data-piece]');
+    const row = el.closest('.wn5-row');
+    const pid = _id(card ? card.dataset.piece : row && row.dataset.piece);
+    if (pid) {
+      const it = _item(pid);
+      if (!it) { WN5Act.strip(_boardHost(), _clientErr('piece_missing', 'Η παράδοση δεν είναι πια στο board — ανανέωσε')); return; }
+      const group = it.order_id != null ? { order_id: it.order_id } : (it.nat_order_id != null ? { nat_order_id: it.nat_order_id } : null);
+      const dayEl = row && row.closest('.wn5-day[data-date]');
+      WN5Act.assign(group ? { group } : { pieces: [{ piece_id: pid }] },
+        { day: it.nat_ready_day || (dayEl && dayEl.dataset.date) || null, side: _sideFor(it), entry: card ? 'queue' : 'row' });
+      return;
+    }
+    const rt = _id(row && row.dataset.rt);
+    if (rt) WN5Act.assign(null, { entry: 'row', rtId: rt });
+  };
+
   // ═══ the actions of T12–T18 go above this line ═══
 
   WN5Act._kit = KIT;

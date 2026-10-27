@@ -391,6 +391,7 @@ WN5Act.deleteOrder(natOrderId, ctx?)   // T18 (ctx: strip host, card texts)
 - `WN5Act._ui = { ask, fail, done }` (ραφή για το vm test) και `WN5Act._kit` (εσωτερικά: dialog, send, κατασκευή στάσεων, ώρες· τα μοιράζεται το `modules/wn5_veroia.js`).
 - `WN5Act.move(from, ctx)` με `ctx.direct = 'wait'` (T14: το ✈ «Σπάσιμο παραγγελιών → Βέροια» πάει κατευθείαν στα δύο βήματα)· `WN5Act.local(rtStopId, rtId?)` (T17)· `WN5Act.cycleOrders(rtId)` και `WN5Act.cycleOrderCount(rtId)` (T18, ✈ «Άνοιγμα παραγγελιών» και ο αριθμός της)· `WN5Act.deleteOrder(natOrderId, ctx?)` (T18)· `WN5Act.rtSaveBody(dryBody, dryAnswer) -> object | null` (T26: ο ένας κανόνας του σώματος εκτέλεσης του Δ4 μετά από dry run της 072b).
 - `tests/wn5-actions-worker.test.mjs` (T12, επεκτείνεται από T14/T15/T17/T18/T19): οι πράξεις του board μέσω του πραγματικού Worker στο harness του T1.
+- T12 (εκτέλεση): το πεδίο αναζήτησης μέσα σε παράθυρο ανάθεσης/μεταφοράς είναι `input.wn5-dq[data-q]`, **όχι** `.wn5-q` (το `.wn5-q` είναι η ζώνη ΕΠΟΜΕΝΑ του board· ένας κανόνας CSS `.wn5-q` θα την άλλαζε)· οι κανόνες CSS του Δ1 που έχουν όνομα του board (`.wn5-miss`) μένουν κάτω από `.wn5-dlg`. Ο T14 γράφει `class="wn5-dq"` όπου το πλάνο του λέει `class="wn5-q"`.
 
 **`modules/wn5_veroia.js` (T19)** — `WN5Hub._truck(pieceId)` (ο χειριστής του «Σε φορτηγό ▾», ραφή με κάτω παύλα).
 
