@@ -500,7 +500,13 @@
       const ex = cyc && (cyc.stops || []).find((s) => s.side === side && s.location_id === n.loc);
       let st;
       if (ex) st = { ref: 's' + ex.stop_id, stop_id: ex.stop_id };
-      else if (n.hub) { if (!hubWin) { miss.add('hub'); continue; } st = { ref: 'n' + n.loc, location_id: n.loc, side, planned_from: hubWin[0], planned_to: hubWin[1] }; }
+      else if (n.hub) {
+        // a moved piece brings its Veroia window from the source stop (072:1208-1215: places and windows of the
+        // source); only a load that never had one waits for the typed window
+        const w = hubWin || (n.own && n.from && n.to ? [n.from, n.to] : null);
+        if (!w) { miss.add('hub'); continue; }
+        st = { ref: 'n' + n.loc, location_id: n.loc, side, planned_from: w[0], planned_to: w[1] };
+      }
       else if (!n.from || !n.to) { miss.add('window'); continue; }
       else st = { ref: 'n' + n.loc, location_id: n.loc, side, planned_from: n.from, planned_to: n.to };
       seen.set(n.loc, st);
@@ -607,7 +613,9 @@
     if (!vehicle && _stopsFor(st.needs, null, st.side, ['probe', 'probe']).missing.length) {
       h += '<div class="wn5-miss" data-place-miss>Η ανάθεση θέλει τον προορισμό και το παράθυρο κάθε παράδοσης· για παραδόσεις από τη Βέροια δεν έρχονται ακόμη από τη βάση.</div>';
     }
-    if (!vehicle && st.needs.some((n) => n.hub)) {
+    // a move carries the source's Veroia window (_stopsFor), so the field shows only when a Veroia stop would have no
+    // window: an asterisk over a field nothing waits for claims a requirement that does not exist (Figma 2011:9294)
+    if (!vehicle && st.needs.some((n) => n.hub && !(n.own && n.from && n.to))) {
       h += '<div class="wn5-hubwin"><span>' + (st.side === 'ANODOS' ? 'Άφιξη Βέροιας *' : 'Παράθυρο φόρτωσης Βέροιας *') + '</span>'
         + '<input class="wn5-hm" data-hub="from" inputmode="numeric" placeholder="ΗΗ:ΛΛ" value="' + _esc(st.hubFrom) + '"> – '
         + '<input class="wn5-hm" data-hub="to" inputmode="numeric" placeholder="ΗΗ:ΛΛ" value="' + _esc(st.hubTo) + '">'
@@ -621,7 +629,7 @@
         let rate = '';
         if (c.trip_type === 'PARTNER') {
           rate = c.partner_rate == null
-            ? ' <span class="wn5-flag-red">κόμιστρο λείπει</span> <span class="wn5-nw"><input class="wn5-rate" data-rate-rt="' + c.rt_id + '" inputmode="decimal" placeholder="—" aria-label="Κόμιστρο €">&nbsp;€</span> <button type="button" class="wi4-btn sm" data-act="rate" data-rt="' + c.rt_id + '">Κράτα</button>'
+            ? ' <span class="wn5-flag-red">κόμιστρο λείπει</span> <span class="wn5-nw"><input class="wn5-rate" data-rate-rt="' + c.rt_id + '" inputmode="decimal" placeholder="—" aria-label="Κόμιστρο €">&nbsp;€</span> <button type="button" class="wi4-btn sm" data-act="rate" data-rt="' + c.rt_id + '" hidden>Κράτα</button>'
             : ' <span class="wn5-cand-m">κόμιστρο ' + _esc(_pal(c.partner_rate)) + ' €</span>';
         }
         // a partner cycle keeps the board's own fact on its second line («Μόνο κάθοδος · συνεργάτης», the model's gap
@@ -665,13 +673,18 @@
       + '<span>' + (vehicle ? '' : _capHTML(st.pallets, ' · δρομολόγιο συνεργάτη') + ' ') + '<span class="wn5-nw"><input class="wn5-rate" data-rate inputmode="decimal" placeholder="—" value="' + _esc(st.rateTxt) + '" aria-label="Κόμιστρο €">&nbsp;€</span></span>'
       + '<button type="button" class="wi4-btn sm" data-act="save" data-cand="partner">Ανάθεση</button></div>';
     if (st.mode === 'move') {
-      h += '<div class="wn5-grp-h" data-grp="wait">ΑΛΛΟ</div><div class="wn5-cand" data-line="wait"><span></span>'
-        // Figma 2011:9294 «Πίσω στη Βέροια» / «… σπάσιμο μόνο εκεί». Its «απόθεμα Βέροιας» is left out: the base
-        // makes stock only of a split's remainder (071 v_piece_state.is_stock), and the line must not claim it (R-66).
+      h += '<div class="wn5-grp-h" data-grp="wait">ΑΛΛΟ</div><div class="wn5-cand" data-line="wait">'
+        // Figma 2011:9294 «Πίσω στη Βέροια» / «… σπάσιμο μόνο εκεί», a choice like the others: its title at the list's
+        // left edge (no box), the moved pallets at the right. Its «απόθεμα Βέροιας» is left out: the base makes stock
+        // only of a split's remainder (071 v_piece_state.is_stock), and the line must not claim it (R-66).
         // «Πίσω στην αναμονή» (a load picked up elsewhere) is not in Figma: R-66.
-        + '<span class="wn5-cand-m"><b>' + (st.allHub ? 'Πίσω στη Βέροια' : 'Πίσω στην αναμονή') + '</b>'
-        + '<span>' + (st.allHub ? 'σπάσιμο μόνο εκεί' : 'γυρίζουν ΠΡΟΣ ΑΝΑΘΕΣΗ') + '</span></span><span></span>'
+        + '<span class="wn5-alt"><b>' + (st.allHub ? 'Πίσω στη Βέροια' : 'Πίσω στην αναμονή') + '</b>'
+        + '<span>' + (st.allHub ? 'σπάσιμο μόνο εκεί' : 'γυρίζουν ΠΡΟΣ ΑΝΑΘΕΣΗ') + '</span></span>'
+        + '<span><span class="wn5-alt-p">' + _pal(st.pallets) + 'π</span></span>'
         + '<button type="button" class="wi4-btn sm" data-act="save" data-cand="wait">Μεταφορά</button></div>';
+      // the source vehicle after the move (Figma 2011:9294 «ΚΖΗ 2108 · 33 → 24/33»), from its board row; a source
+      // with no row on the loaded board has no line, never a guessed load
+      if (st.src) h += '<div class="wn5-srcafter" data-src-after>' + _esc(st.src.label) + ' · ' + _pal(st.src.before) + ' → ' + _pal(st.src.before - st.pallets) + '/33</div>';
     }
     return h;
   }
@@ -816,6 +829,12 @@
       if (el.matches('[data-q]')) { st.q = el.value; filter(); }
       else if (el.matches('[data-hub]')) { if (el.dataset.hub === 'from') st.hubFrom = el.value; else st.hubTo = el.value; d.refresh(); }
       else if (el.matches('[data-rate]')) { st.rateTxt = el.value; d.refresh(); }
+      else if (el.matches('[data-rate-rt]')) {
+        // «Κράτα» only once there is a rate to keep: an empty press did nothing, and the hidden button keeps the partner
+        // line on one 40px row as Figma Δ1 2051:7735 (field + € + the line's button)
+        const r = _rate(el.value), kb = d.dlg.querySelector('[data-act="rate"][data-rt="' + el.dataset.rateRt + '"]');
+        if (kb) kb.hidden = !(r.ok && r.v !== null);
+      }
     });
     d.dlg.addEventListener('change', (ev) => {
       const el = ev.target;
@@ -1123,9 +1142,10 @@
         if (l.act === 'unload') drop = s;
       }
       if (!pick || !drop) continue;
-      needs.push({ loc: pick.location_id, from: pick.planned_from, to: pick.planned_to, hub: pick.location_id === hub },
-                 { loc: drop.location_id, from: drop.planned_from, to: drop.planned_to, hub: drop.location_id === hub });
-      items.push({ piece_id: pid, side: pick.side, pallets: leg.pallets, client: leg.client, reference: leg.reference, pickHub: pick.location_id === hub });
+      needs.push({ loc: pick.location_id, from: pick.planned_from, to: pick.planned_to, hub: pick.location_id === hub, own: true },
+                 { loc: drop.location_id, from: drop.planned_from, to: drop.planned_to, hub: drop.location_id === hub, own: true });
+      items.push({ piece_id: pid, side: pick.side, pallets: leg.pallets, client: leg.client, reference: leg.reference, pickHub: pick.location_id === hub,
+        dropLoc: drop.location_id, dropName: drop.location_id === hub ? 'Βέροια' : (drop.location || null), dropFrom: drop.planned_from || null });
     }
     return { needs, items };
   }
@@ -1159,14 +1179,26 @@
     const side = from.side || (mp.items[0] && mp.items[0].side) || 'KATHODOS';
     const r = _row(src.rt_id);
     const sd = _sideOfRow(r, side);
-    const what = Array.isArray(from.piece_ids)
-      ? ([...new Set(mp.items.map((x) => x.client || x.reference))].join(', ') || '—')
-      : 'όλη η ' + (side === 'ANODOS' ? 'ΑΝΟΔΟΣ' : 'ΚΑΘΟΔΟΣ') + ' του ' + (src.code || 'κύκλου');
+    // Figma 2013:7751/7752: «Μεταφορά σε… · Phi Deli · 9π» over «VS-118 · ΚΑΘΟΔΟΣ · παράδοση Τρί 13/10» — where it
+    // goes and how much, then which load, which side, which delivery day. Never the client (the Δ1 rule of T12).
+    const sideW = side === 'ANODOS' ? 'ΑΝΟΔΟΣ' : 'ΚΑΘΟΔΟΣ';
+    const whole = !Array.isArray(from.piece_ids);
+    const pal = _sum(mp.items.map((x) => x.pallets));
+    const drops = [...new Set(mp.items.map((x) => x.dropLoc))];
+    const place = mp.items[0] ? (mp.items[0].dropName || _placeName(mp.items[0].dropLoc)) : '—';
+    const refs = [...new Set(mp.items.map((x) => x.reference).filter(Boolean))].join(', ') || '—';
+    const firstDrop = mp.items.map((x) => x.dropFrom).filter(Boolean).sort((a, b) => new Date(a) - new Date(b))[0];
+    const head = whole ? 'όλη η ' + sideW + ' · ' + _pal(pal) + 'π' : place + (drops.length > 1 ? ' +' + (drops.length - 1) : '') + ' · ' + _pal(pal) + 'π';
+    const meta = [whole ? (src.code || 'κύκλος') : refs, sideW, whole ? mp.items.length + (mp.items.length === 1 ? ' παράδοση' : ' παραδόσεις') : null,
+      firstDrop ? 'παράδοση ' + _dayShort(_ymdOf(firstDrop)) : null].filter(Boolean).join(' · ');
+    const what = whole ? 'όλη η ' + sideW + ' του ' + (src.code || 'κύκλου') : refs + ' · ' + place;
+    const tx0 = _cycText(src, r);
+    const srcAfter = r ? { label: src.trip_type === 'PARTNER' ? tx0.l1 : (src.truck || tx0.l1), before: _sidePal(r, side) } : null;
     const st = { mode: 'move', from: _copy(from), side, day: ctx.day || (sd && sd.day) || (r && r.dayKey) || src.date_start, skipRt: src.rt_id,
       rtId: null, group: null, pieces: null, items: _copy(mp.items), needs: _copy(mp.needs), pallets: _sum(mp.items.map((x) => x.pallets)),
       allHub: mp.items.length > 0 && mp.items.every((x) => x.pickHub), cyc: {}, rows: [], road: [], free: [], trailers: [], drivers: [], partners: [],
       ids: { ok: false }, pick: null, trailer: null, driver: null, partner: null, rateTxt: '', hubFrom: '', hubTo: '', filter: 'all', q: '', ref: '',
-      what, meta: what + ' · ' + _dayShort(ctx.day || (sd && sd.day) || src.date_start) + ' · ' + _pal(_sum(mp.items.map((x) => x.pallets))) + 'π' };
+      what, meta, src: srcAfter };
     if (ctx.direct === 'wait') {
       // ✈ «Σπάσιμο παραγγελιών → Βέροια»: no list of candidates, straight to the two steps — ONLY when every
       // delivery loads at Veroia. target {wait:true} sends a piece back to where it stands (072:1162): for a load
@@ -1190,7 +1222,7 @@
       return out;
     }
     await _loadCands(st);
-    return _picker(st, 'move', 'Μεταφορά σε…');
+    return _picker(st, 'move', 'Μεταφορά σε… · ' + head);
   };
 
   // ═══ the actions of T12–T18 go above this line ═══

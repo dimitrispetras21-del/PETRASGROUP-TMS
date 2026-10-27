@@ -809,7 +809,7 @@ async function scnAssign(browser, origin) {
       const r = (e) => e.getBoundingClientRect(), dr = r(dlg), bl = parseFloat(getComputedStyle(dlg).borderLeftWidth) || 0;
       const rows = [...dlg.querySelectorAll('.wn5-cand')].map((row) => {
         const rr = r(row), third = row.children[2], btn = row.querySelector(':scope > .wi4-btn');
-        const tr = r(third), kids = [...third.children].map(r);
+        const tr = r(third), kids = [...third.children].map(r).filter((k) => k.width || k.height);   // a display:none child (the hidden «Κράτα», T14 r1) paints nothing
         const lines = {};
         for (const k of kids) { const key = Math.round(k.top + k.height / 2); const near = Object.keys(lines).find((x) => Math.abs(x - key) < 8); lines[near || key] = Math.max(lines[near || key] || 0, k.right); }
         return { line: row.dataset.line, l: Math.round(rr.left - dr.left - bl), w: Math.round(rr.width), box: Math.round(r(row.children[0]).left - rr.left),
@@ -1241,6 +1241,44 @@ async function scnMove(browser, origin) {
     const ev = await bEv(page);
     ok(scn, 'a saved ✈ «Σπάσιμο» says «… ως ΠΡΟΣ ΑΝΑΘΕΣΗ» when the Veroia board does not list them, never «για μοίρασμα»',
       bCalls(S, 'POST', '/plan/move').length === 2 && ev.some((x) => x.startsWith('toast') && x.includes('γύρισαν στη Βέροια ως ΠΡΟΣ ΑΝΑΘΕΣΗ')) && !ev.some((x) => x.includes('για μοίρασμα')), ev);
+    await page.context().close();
+  }
+  { // G · fidelity r1 (Figma Move list 2011:9294 / 2013:7751-7777, Δ1 2051:7735): header names place + pallets, then
+    //     reference · side · delivery day, never the client; «ΑΛΛΟ» is a choice like the others; the source after the
+    //     move closes the list; no Veroia-window field a move does not wait for; the partner cycle line on one 40px row
+    const { page, S } = await bOpen(browser, origin, { plan: { 'POST /plan/move': (e) => (e.body && e.body.dry_run === true ? dry('tokG', [RTC]) : planErr(409, 'WRITES_CLOSED', 'writes_closed')) } });
+    await openMove(page);
+    const v = await page.$eval(D, (dlg) => {
+      const r = (e) => e.getBoundingClientRect(), cs = (e) => getComputedStyle(e);
+      const alt = dlg.querySelector('[data-line="wait"]'), at = alt && alt.querySelector('b'), sub = at && at.nextElementSibling;
+      const box = dlg.querySelector('[data-line="rt"] .wi4-box'), pal = alt && alt.querySelector('.wn5-alt-p'), btn = alt && alt.querySelector('[data-cand="wait"]');
+      const par = dlg.querySelector('[data-line="rt"] [data-rate-rt]'), parLine = par && par.closest('.wn5-cand'), keep = parLine && parLine.querySelector('[data-act="rate"]');
+      return { title: dlg.querySelector('.wi4-dlg-t').innerText, meta: (dlg.querySelector('.wn5-dlg-meta') || {}).innerText || '',
+        alt: at && sub && box ? { x: Math.round(r(at).left), boxX: Math.round(r(box).left), t: [cs(at).fontSize, cs(at).color].join('|'), ink: cs(dlg.querySelector('.wi4-dlg-t')).color,
+          sub: cs(sub).fontSize, h: Math.round(r(alt).height), pal: pal ? pal.innerText : '', palGap: pal && btn ? Math.round(r(btn).left - r(pal).right) : null } : null,
+        after: (dlg.querySelector('[data-src-after]') || {}).innerText || '', hubwin: !!dlg.querySelector('.wn5-hubwin'),
+        par: parLine ? { h: Math.round(r(parLine).height), keepShown: !!keep && r(keep).width > 0, fs: cs(par).fontSize } : null };
+    }).catch((e) => ({ err: String(e) }));
+    ok(scn, 'fidelity r1: header «Μεταφορά σε… · RENTIS TEST · 12π» · «VS-T201 · ΚΑΘΟΔΟΣ · παράδοση Τρί 13/10», no client (Figma 2013:7751/7752)',
+      v.title === 'Μεταφορά σε… · RENTIS TEST · 12π' && v.meta.includes('VS-T201 · ΚΑΘΟΔΟΣ · παράδοση Τρί 13/10') && !/ΠΕΛΑΤΗΣ/.test(v.title + v.meta), v);
+    ok(scn, 'fidelity r1: «Πίσω στη Βέροια» at the list\'s left edge (the boxes\' x), 13px ink over 11px, «12π» right against its button, one 40px line (2013:7773-7775)',
+      !!v.alt && v.alt.x === v.alt.boxX && v.alt.t === '13px|' + v.alt.ink && v.alt.sub === '11px' && v.alt.h === 40 && v.alt.pal === '12π' && v.alt.palGap >= 4 && v.alt.palGap <= 12, v.alt);
+    ok(scn, 'fidelity r1: the source after the move closes the list «TST-2106 · 27 → 15/33» (2013:7777)', v.after === 'TST-2106 · 27 → 15/33', v.after);
+    ok(scn, 'fidelity r1: partner cycle line 40px with field + € + its button, «Κράτα» hidden while the field is empty, field 11.5px (Δ1 2051:7735)',
+      !!v.par && v.par.h === 40 && v.par.keepShown === false && v.par.fs === '11.5px', v.par);
+    await page.fill(`${D} [data-rate-rt]`, '350');
+    ok(scn, 'fidelity r1: a typed rate brings «Κράτα» back (the rate stays its own act)', await page.$eval(`${D} [data-act="rate"]`, (b) => b.getBoundingClientRect().width > 0).catch(() => false));
+    // no Veroia-window field: the moved piece's new Veroia stop takes the source stop's window (072:1208-1215)
+    await bClick(page, `${D} [data-act="pick"][data-cand="truck:14"]`);
+    const off = await bOff(page, `${D} .wn5-more [data-act="save"]`);
+    if (off === false) await bClick(page, `${D} .wn5-more [data-act="save"]`);   // a disabled button is a ✗ below, not a 30 s wait
+    const c = bCalls(S, 'POST', '/plan/move');
+    const s0 = c[0] && c[0].body.stops && c[0].body.stops[0];
+    ok(scn, 'fidelity r1: no «Παράθυρο φόρτωσης Βέροιας *» in a move; a free truck sends the source Veroia window 16:00–18:00 of Δευ 12/10',
+      v.hubwin === false && off === false && c.length === 1 && !!s0 && s0.planned_from === '2026-10-12T16:00:00+03:00' && s0.planned_to === '2026-10-12T18:00:00+03:00' && !('stop_id' in s0), { hubwin: v.hubwin, off, raw: c.map((x) => x.raw) });
+    ok(scn, 'fidelity r1: the two-step title names the load and its place, never the client («Μεταφορά · VS-T201 · RENTIS TEST»)',
+      (await bText(page, `${D} .wi4-dlg-t`)) === 'Μεταφορά · VS-T201 · RENTIS TEST');
+    await shot(page, 'move-g-twostep');
     await page.context().close();
   }
 }
