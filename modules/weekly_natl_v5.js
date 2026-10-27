@@ -466,7 +466,7 @@ function _rowHTML(r, m, no) {
 }
 function _kathHTML(r, m, ok) {
   const s = r.kath;
-  if (!s) return r.kind === 'cycle' ? '<div class="wn5-kspan"><span class="wn5-gapbox">Χωρίς κάθοδο</span></div>' : '<div class="wn5-kspan"><span class="wn5-none">—</span></div>';
+  if (!s) return r.kind === 'cycle' ? `<div class="wn5-kspan"><span class="wn5-gapbox">Χωρίς κάθοδο${_plusHTML(r, 'KATHODOS')}</span></div>` : '<div class="wn5-kspan"><span class="wn5-none">—</span></div>';
   // The head of the side (its day, «Βέροια», the Veroia window) dims with the day of its loading stop.
   const hd = _dc(ok && s.headDim);
   const toDay = s.toDay && s.toDay !== s.day ? `<span class="wn5-dc2${hd}">→ ${_esc(_dl(s.toDay))}</span>` : '';
@@ -476,7 +476,7 @@ function _kathHTML(r, m, ok) {
   return `<div class="wn5-kd"><span class="wi4-dc ${_chipCls(s.day, m.today)}${hd}">${_esc(_dl(s.day))}</span>${toDay}${ref}</div>`
     + `<div class="wn5-fl">${_flHTML(s, ok, hd)}</div>`
     + `<div class="wn5-kto">${_ptsHTML(s.to, ok)}</div>`
-    + `<div class="wn5-kpal">${_palHTML(s)}</div>`;
+    + `<div class="wn5-kpal">${_palHTML(s)}${_plusHTML(r, 'KATHODOS')}</div>`;
 }
 function _anodHTML(r, m, ok) {
   const s = r.anod;
@@ -490,7 +490,8 @@ function _anodHTML(r, m, ok) {
     const cut = par ? -1 : s.gap.text.indexOf(' · ');
     // One inner run: the slot is a flex box, and a bare « · …» beside the span would be its own item and lose its space.
     const txt = cut > 0 ? `<span><span class="wn5-gaph">${_esc(s.gap.text.slice(0, cut))}</span>${_esc(s.gap.text.slice(cut))}</span>` : _esc(s.gap.text);
-    return `<div class="wn5-aspan"><span class="${par ? 'wn5-gaptxt' : 'wn5-gapbox'}">${txt}</span></div>`;
+    // a partner's «Μόνο κάθοδος» is a fact, not a slot: no «+» there
+    return `<div class="wn5-aspan"><span class="${par ? 'wn5-gaptxt' : 'wn5-gapbox'}">${txt}${par ? '' : _plusHTML(r, 'ANODOS')}</span></div>`;
   }
   const n = s.from.length;
   const hd = _dc(ok && s.headDim);
@@ -498,7 +499,7 @@ function _anodHTML(r, m, ok) {
   return `<div class="wn5-ad"><span class="wi4-dc ${_chipCls(s.day, m.today)}${hd}">${_esc(_dl(s.day))}</span><span class="wn5-dc2${hd}">${n} ${n === 1 ? 'φορτίο' : 'φορτία'}</span></div>`
     + `<div class="wn5-afl">${_ptsHTML(s.from, ok)}</div>`
     + `<div class="wn5-ato">${_ptsHTML(s.to, ok)}${end}</div>`
-    + `<div class="wn5-apal">${_palHTML(s)}</div>`;
+    + `<div class="wn5-apal">${_palHTML(s)}${_plusHTML(r, 'ANODOS')}</div>`;
 }
 // ΦΟΡΤΩΣΗ of ΚΑΘΟΔΟΣ: «Βέροια» and its window stay together (owner 25/10); a loading the cycle makes BEFORE Veroia
 // (WN5L vBefore, by the base's stop order) comes first, numbered with Veroia among the cell's loadings (Figma H1
@@ -544,6 +545,12 @@ function _ptHTML(p, n, ok, placeOnly) {
     + (n == null ? '' : `<span class="wi4-pt-n">${n}</span>`)
     + `<span class="wi4-l1">${who ? `<span class="wn5-who">${_esc(who)}<span class="wn5-city">&nbsp;·</span></span> <span class="wn5-city">${_esc(p.name)}</span>` : _esc(p.name)}</span>`
     + `<span class="wi4-l2${p.late ? ' wi4-t-amb' : ''}">${_win(p.from, p.to)} · ${_esc(_pal(p.pallets))}</span></span>`;
+}
+// T13: «+» on hover of the side (Figma 2011:10022); data-side is the API's ASCII side, the label is Greek. Only on a
+// cycle row (an unassigned row has no cycle to add to), also on an empty side so a first load can go in.
+function _plusHTML(r, side) {
+  if (r.kind !== 'cycle' || r.rtId == null) return '';
+  return `<button type="button" class="wn5-plus" data-act="plus" data-side="${side === 'ANODOS' ? 'ANODOS' : 'KATHODOS'}" aria-label="Πρόσθεσε στην ${side === 'ANODOS' ? 'ΑΝΟΔΟ' : 'ΚΑΘΟΔΟ'}" title="Πρόσθεσε">+</button>`;
 }
 function _palHTML(s) {
   return `<span class="wi4-pal${s.over ? ' over' : ''}"${s.over ? ` title="υπέρβαση ${_esc(_pal(s.over))}"` : ''}>${_esc(String(s.pallets).replace('.', ','))}</span>`;

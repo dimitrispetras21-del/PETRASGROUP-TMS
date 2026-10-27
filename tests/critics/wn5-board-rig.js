@@ -974,6 +974,70 @@ async function scnAssign(browser, origin) {
 }
 SCN['assign'] = scnAssign;
 
+// T13 — «+» on a side (Figma 2011:10022): from waiting, whole loads, «πόσες» only for Veroia stock, no truck choice.
+async function scnPlus(browser, origin) {
+  const scn = 'plus';
+  const D = bDlg('plus');
+  const K201 = '.wn5-row[data-rt="201"] [data-act="plus"][data-side="KATHODOS"]';
+  { // A · KATHODOS of RT-T201: the groups, the line texts, the body of a whole VS piece (writes closed)
+    const { page, S } = await bOpen(browser, origin);
+    ok(scn, 'the «+» of a KATHODOS opens .wi4-dlg[data-wn5=plus] as a popover', (await bClick(page, K201)) && await bHas(page, `.wn5-pop-back ${D}`));
+    const txt = await bText(page, D);
+    ok(scn, 'header «Πρόσθεσε στην ΚΑΘΟΔΟ» · TST-2106 · Δευ 12/10 · φόρτωση 16:00–18:00 · 27/33', txt.includes('Πρόσθεσε στην ΚΑΘΟΔΟ') && txt.includes('TST-2106 · Δευ 12/10 · φόρτωση 16:00–18:00 · 27/33'), txt.slice(0, 300));
+    ok(scn, 'segmented «Νέα παραγγελία | Από αναμονή», «Από αναμονή» on', (await bText(page, `${D} .wn5-seg button.on`)) === 'Από αναμονή' && txt.includes('Νέα παραγγελία'));
+    ok(scn, 'groups per VS, ΕΘΝ, «ΑΠΟΘΕΜΑ ΒΕΡΟΙΑΣ», «ΑΙΤΗΜΑΤΑ ΑΝΟΔΟΥ»', txt.includes('VS-T118 · ΠΕΛΑΤΗΣ Β') && txt.includes('VS-T125 · ΠΕΛΑΤΗΣ Η')
+      && txt.includes('ΕΘΝ · ΠΕΛΑΤΗΣ ΣΤ') && txt.includes('ΑΠΟΘΕΜΑ ΒΕΡΟΙΑΣ') && txt.includes('ΑΙΤΗΜΑΤΑ ΑΝΟΔΟΥ'), txt.slice(0, 800));
+    const l4101 = await bText(page, `${D} .wn5-pline[data-piece="4101"]`);
+    ok(scn, 'a line says «→ 36/33 · υπέρβαση 3» and «μπαίνει kη»', l4101.includes('→ 36/33 · υπέρβαση 3') && /μπαίνει \d+η/.test(l4101), l4101);
+    ok(scn, '«πόσες» only on stock lines (2), never on an arriving load', (await page.$$(`${D} [data-take]`)).length === 2 && !(await bHas(page, `${D} .wn5-pline[data-piece="4101"] [data-take]`)));
+    ok(scn, 'ΑΙΤΗΜΑΤΑ ΑΝΟΔΟΥ in the KATHODOS «+» have no «Πρόσθεσε»', (await bHas(page, `${D} .wn5-pline[data-piece="4202"]`)) && !(await bHas(page, `${D} .wn5-pline[data-piece="4202"] [data-act="save"]`)));
+    ok(scn, 'no truck to choose (S-68): no select, no candidate in the popover', !(await bHas(page, `${D} select`)) && !(await bHas(page, `${D} [data-cand]`)));
+    await bClick(page, `${D} .wn5-pline[data-piece="4101"] [data-act="save"]`);
+    const p = bCalls(S, 'POST', '/plan/legs');
+    ok(scn, '«Πρόσθεσε» → one POST /plan/legs {pieces:[{piece_id:4101}]} onto RT-T201 KATHODOS, no take_pallets', p.length === 1
+      && p[0].raw === '{"pieces":[{"piece_id":4101}],"target":{"rt_id":201,"side":"KATHODOS"},"stops":[{"ref":"s2001","stop_id":2001},{"ref":"s2002","stop_id":2002}]}', p.map((x) => x.raw));
+    ok(scn, '409 writes_closed → the preview strip in the popover', (await bText(page, `${D} .wn5-strip[data-kind="preview"]`)).includes('rig sentinel writes_closed'));
+    await page.context().close();
+  }
+  { // B · stock: «πόσες» goes as take_pallets, an impossible number disables, not_stock is the Worker's words
+    const { page, S } = await bOpen(browser, origin, { plan: { 'POST /plan/legs': () => planErr(422, 'PLAN_RULE', 'not_stock') } });
+    await bClick(page, K201);
+    await page.fill(`${D} [data-take="4301"]`, '20', { timeout: 2000 }).catch(() => {});
+    ok(scn, '«πόσες» above the stock (20 of 13) → «Πρόσθεσε» disabled', (await bOff(page, `${D} .wn5-pline[data-piece="4301"] [data-act="save"]`)) === true);
+    await page.fill(`${D} [data-take="4301"]`, '4', { timeout: 2000 }).catch(() => {});
+    await bClick(page, `${D} .wn5-pline[data-piece="4301"] [data-act="save"]`);
+    const p = bCalls(S, 'POST', '/plan/legs')[0];
+    ok(scn, 'stock → take_pallets 4, the Veroia stop by id, the delivery as a new stop with its window', !!p
+      && p.raw === '{"pieces":[{"piece_id":4301,"take_pallets":4}],"target":{"rt_id":201,"side":"KATHODOS"},"stops":[{"ref":"s2001","stop_id":2001},{"ref":"n4","location_id":4,"side":"KATHODOS","planned_from":"2026-10-13T08:00:00+03:00","planned_to":"2026-10-13T10:00:00+03:00"}]}', p && p.raw);
+    ok(scn, '422 not_stock → refusal strip with the Worker text, the popover stays', (await bText(page, `${D} .wn5-strip[data-kind="refusal"]`)).includes('rig sentinel not_stock') && await bHas(page, D));
+    await page.fill(`${D} [data-q]`, 'ΠΕΛΑΤΗΣ ΣΤ', { timeout: 2000 }).catch(() => {});
+    const vis = await page.$$eval(`${D} .wn5-pline`, (ls) => ls.filter((l) => !l.hidden).map((l) => l.dataset.piece)).catch(() => []);
+    ok(scn, 'search with fhSearchNorm: «ΠΕΛΑΤΗΣ ΣΤ» leaves the one line of that client', vis.length === 1 && vis[0] === '4201', vis);
+    await page.context().close();
+  }
+  { // C · ANODOS of RT-T204: the requests, both stops of the side by id
+    const { page, S } = await bOpen(browser, origin);
+    await bClick(page, '.wn5-row[data-rt="204"] [data-act="plus"][data-side="ANODOS"]');
+    const txt = await bText(page, D);
+    ok(scn, 'the ANODOS «+» says «Πρόσθεσε στην ΑΝΟΔΟ» and offers «ΑΙΤΗΜΑΤΑ ΑΝΟΔΟΥ»', txt.includes('Πρόσθεσε στην ΑΝΟΔΟ') && (await bHas(page, `${D} .wn5-pline[data-piece="4202"] [data-act="save"]`)), txt.slice(0, 400));
+    await bClick(page, `${D} .wn5-pline[data-piece="4202"] [data-act="save"]`);
+    const p = bCalls(S, 'POST', '/plan/legs')[0];
+    ok(scn, 'request → pieces 4202 onto RT-T204 ANODOS, pickup and Veroia arrival by stop_id', !!p
+      && p.raw === '{"pieces":[{"piece_id":4202}],"target":{"rt_id":204,"side":"ANODOS"},"stops":[{"ref":"s2035","stop_id":2035},{"ref":"s2036","stop_id":2036}]}', p && p.raw);
+    await page.context().close();
+  }
+  { // D · «Νέα παραγγελία»: the short form (T20) when it exists, else a line that says it is not there yet
+    const { page } = await bOpen(browser, origin);
+    await bClick(page, K201);
+    await bClick(page, `${D} .wn5-seg button[data-v="new"]`);
+    const form = await bHas(page, bDlg('order'));
+    const line = (await bText(page, D)).includes('Η σύντομη φόρμα ανοίγει με τη φόρμα εθνικής v5');
+    ok(scn, '«Νέα παραγγελία» opens the order form (T20) or says it is not there yet — never a dead button', form || line);
+    await page.context().close();
+  }
+}
+SCN['plus'] = scnPlus;
+
 // ── scenarios end (each Task adds its own above this line) ──
 
 // ── fixture check (T4): plain node, no browser ──
