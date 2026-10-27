@@ -803,6 +803,36 @@ async function scnAssign(browser, origin) {
     ok(scn, 'cycle plates as .wi4-plate; the partner cycle says «Μόνο κάθοδος · συνεργάτης»; the road box «κύκλος 1», «Βέροια ως Δευ 22:00»',
       (await bHas(page, `${D} [data-line="rt"] .wi4-l1.wi4-plate`)) && await bHas(page, `${D} [data-line="free"] .wi4-l1.wi4-plate`)
       && txt.includes('Μόνο κάθοδος · συνεργάτης') && txt.includes('Βέροια ως Δευ 22:00') && /Driver Test 01 · κύκλος 1/.test(await bText(page, `${D} [data-line="road"]`)), txt.slice(0, 700));
+    // fidelity round 2 (Figma Δ1 2051:7735): rows edge to edge (pl 24 / pr 12), chips right against the button even
+    // when they wrap, the over chip flat amber, the filter a borderless tray; «Μόνο ελεύθερα» hides an emptied group
+    const geo = await page.$eval(D, (dlg) => {
+      const r = (e) => e.getBoundingClientRect(), dr = r(dlg), bl = parseFloat(getComputedStyle(dlg).borderLeftWidth) || 0;
+      const rows = [...dlg.querySelectorAll('.wn5-cand')].map((row) => {
+        const rr = r(row), third = row.children[2], btn = row.querySelector(':scope > .wi4-btn');
+        const tr = r(third), kids = [...third.children].map(r);
+        const lines = {};
+        for (const k of kids) { const key = Math.round(k.top + k.height / 2); const near = Object.keys(lines).find((x) => Math.abs(x - key) < 8); lines[near || key] = Math.max(lines[near || key] || 0, k.right); }
+        return { line: row.dataset.line, l: Math.round(rr.left - dr.left - bl), w: Math.round(rr.width), box: Math.round(r(row.children[0]).left - rr.left),
+          gapBtn: btn && kids.length ? Math.round(r(btn).left - tr.right) : null, ends: Object.values(lines).map((x) => Math.round(tr.right - x)), h: Math.round(rr.height) };
+      });
+      return { inner: Math.round(dr.width - 2 * bl), rows };
+    }).catch((e) => ({ err: String(e) }));
+    ok(scn, 'every candidate row runs edge to edge (full window width), its box 24px in', !!geo.rows && geo.rows.length > 0
+      && geo.rows.every((x) => x.l === 0 && x.w === geo.inner && x.box === 24), geo);
+    ok(scn, 'chips sit right against the button: every line of the third column ends at its right edge, 8px before the button',
+      !!geo.rows && geo.rows.filter((x) => x.gapBtn !== null).length >= 4 && geo.rows.every((x) => x.gapBtn === null || (x.gapBtn === 8 && x.ends.every((e) => Math.abs(e) <= 1))), geo.rows);
+    const chip = await page.$eval(`${D} .wn5-cap.over`, (e) => { const s = getComputedStyle(e); return [s.borderTopColor, s.fontSize, s.fontWeight].join('|'); }).catch(() => '');
+    const blue = await page.$eval(`${D} .wn5-cap:not(.over)`, (e) => { const s = getComputedStyle(e); return [s.borderTopColor, s.fontSize, s.fontWeight].join('|'); }).catch(() => '');
+    ok(scn, 'over-capacity chip flat (no border), 10.5px/500; blue chips keep their 1px edge', chip === 'rgba(0, 0, 0, 0)|10.5px|500' && /^rgb\(186, 230, 253\)\|10\.5px\|500$/.test(blue), { chip, blue });
+    const seg = await page.$eval(`${D} .wn5-seg`, (e) => { const s = getComputedStyle(e), o = e.querySelector('.on'), so = o && getComputedStyle(o);
+      return [s.borderTopWidth, s.paddingTop, s.borderTopLeftRadius, o && Math.round(o.getBoundingClientRect().height), so && so.borderTopLeftRadius].join('|'); }).catch(() => '');
+    ok(scn, 'filter «Μόνο ελεύθερα | Όλα»: borderless tray, padding 3, radius 9; chosen tab 28px, radius 6', seg === '0px|3px|9px|28|6px', seg);
+    await bClick(page, `${D} .wn5-seg [data-v="free"]`);
+    const hidRt = await page.$eval(`${D} [data-grp="rt"]`, (e) => e.offsetParent === null).catch(() => null);
+    const shownFree = await page.$eval(`${D} [data-grp="free"]`, (e) => e.offsetParent !== null).catch(() => null);
+    await bClick(page, `${D} .wn5-seg [data-v="all"]`);
+    const backRt = await page.$eval(`${D} [data-grp="rt"]`, (e) => e.offsetParent !== null).catch(() => null);
+    ok(scn, '«Μόνο ελεύθερα» hides the emptied «ΚΥΚΛΟΙ …» header (free trucks keep theirs); «Όλα» brings it back', hidRt === true && shownFree === true && backRt === true, { hidRt, shownFree, backRt });
     ok(scn, '«ΣΥΝΕΡΓΑΤΗΣ · 2» and the partner line carries its capacity «→ 27/33 · δρομολόγιο συνεργάτη»', (await bText(page, `${D} [data-grp="partner"]`)) === 'ΣΥΝΕΡΓΑΤΗΣ · 2'
       && (await bText(page, `${D} [data-line="partner"]`)).includes('→ 27/33 · δρομολόγιο συνεργάτη'));
     ok(scn, 'over capacity is a warning, «Ένωση» stays enabled («→ 54/33 · υπέρβαση 21»)', txt.includes('→ 54/33 · υπέρβαση 21') && (await bOff(page, `${D} [data-act="save"][data-cand="rt:201"]`)) === false, txt.slice(0, 500));

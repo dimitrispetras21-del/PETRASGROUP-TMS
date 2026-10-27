@@ -731,6 +731,13 @@
         const off = (st.filter === 'free' && (ln.dataset.line === 'rt' || ln.dataset.line === 'road')) || (q && !String(ln.dataset.s || '').includes(q));
         ln.hidden = !!off;
       }
+      // a group whose every line is filtered out loses its header too: «ΚΥΚΛΟΙ … · 3» over nothing reads as a list
+      // that failed to paint. A group that has no lines at all keeps its header (its count, or the line that says why).
+      for (const gh of d.body.querySelectorAll('.wn5-grp-h')) {
+        const lines = [];
+        for (let n = gh.nextElementSibling; n && !n.matches('.wn5-grp-h'); n = n.nextElementSibling) if (n.matches('.wn5-cand[data-line]')) lines.push(n);
+        gh.hidden = lines.length > 0 && lines.every((n) => n.hidden);
+      }
     };
     d.refresh = () => {
       for (const b of d.dlg.querySelectorAll(SAVES)) {
