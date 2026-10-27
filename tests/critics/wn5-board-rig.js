@@ -1037,8 +1037,26 @@ async function scnPlus(browser, origin) {
   }
   { // E · fidelity r2 at 1440×900 (Figma 2011:10305 / 10319 / 10445): opens under its row, whole placeholder, band copy
     const { page } = await bOpen(browser, origin, { viewport: { width: 1440, height: 900 } });
+    // fidelity r3 (Figma 2011:10140/10217/10299): every «+» of a side at one x, inside its row, count or no count
+    const px = await page.evaluate(() => ['KATHODOS', 'ANODOS'].map((side) => [...document.querySelectorAll(`.wn5-row [data-act="plus"][data-side="${side}"]`)].map((b) => {
+      const r = b.getBoundingClientRect(), row = b.closest('.wn5-row').getBoundingClientRect();
+      return { rt: b.closest('.wn5-row').dataset.rt, x: Math.round(r.left), inRow: r.right <= row.right - 4 };
+    }))).catch(() => null);
+    ok(scn, 'board: every «+» of a side at one x (gap and partner sides too), never past the row edge', !!px && px.every((l) => l.length >= 3
+      && l.every((e) => e.x === l[0].x && e.inRow)) && px[1].some((e) => e.rt === '201') && px[1].some((e) => e.rt === '203'), px);
     await bClick(page, K201);
     await shot(page, 'plus-kathodos-1440');
+    const st = await page.evaluate((dSel) => {
+      const d = document.querySelector(dSel); if (!d) return null;
+      const cs = (e) => e && getComputedStyle(e), band = d.querySelector('.wn5-pnote'), take = d.querySelector('[data-take]'), leave = d.querySelector('.wn5-leave');
+      return { band: band && [Math.round(band.getBoundingClientRect().height), cs(band).fontSize, cs(band).paddingTop, cs(band).borderTopStyle].join('|'),
+        leave: leave && cs(leave).fontWeight, take: take && [cs(take).borderTopWidth, cs(take).color, Math.round(take.getBoundingClientRect().width)].join('|'),
+        caps: [...d.querySelectorAll('.wn5-cap')].map((c) => Math.round(c.getBoundingClientRect().height)),
+        // Chrome floors a border to whole device pixels: the 1.5px edge computes 1px at DPR 1 (this rig), 1.5px on Retina
+        edge: devicePixelRatio >= 2 ? '1.5px' : '1px' };
+    }, D).catch(() => null);
+    ok(scn, 'popover r3: band 30px · 11px · no padding/rule; leave-by 600; «πόσες» 1.5px edge, ink value, 23 wide; chips 20px', !!st
+      && st.band === '30|11px|0px|none' && st.leave === '600' && st.take === `${st.edge}|rgb(11, 25, 41)|23` && st.caps.length > 0 && st.caps.every((h) => h === 20), st);
     const g = await page.evaluate(([dSel, kSel]) => {
       const d = document.querySelector(dSel), row = document.querySelector(kSel) && document.querySelector(kSel).closest('.wn5-row');
       const q = d && d.querySelector('[data-q]');
