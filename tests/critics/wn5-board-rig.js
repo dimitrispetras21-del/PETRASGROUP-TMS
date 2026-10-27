@@ -1797,6 +1797,102 @@ async function scnDelete(browser, origin) {
 }
 SCN['delete'] = scnDelete;
 
+// T19 — the Veroia board (Figma 2011:8744, Δ11 2069:8356): one line closed, ≤ 1/3 open, the only place a delivery splits.
+async function scnVeroia(browser, origin) {
+  const scn = 'veroia';
+  const D = bDlg('split');
+  const P = '/plan/pieces/split';
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  const PANEL = '#wn5-hub-panel';
+  { // A · line, panel, stock, the split window, request_reused (re-read before «αποθηκεύτηκε»)
+    const { page, S } = await bOpen(browser, origin, { plan: { ['POST ' + P]: (e, St) => {
+      const b = bBoard(); b.hub = b.hub.filter((h) => h.piece_id !== 4401); St.board = b;      // the FIRST press was saved
+      return planErr(422, 'PLAN_RULE', 'request_reused');
+    } } });
+    await page.evaluate(() => { const f = WN5.findAfterReuse; WN5.findAfterReuse = function () { window.__ev.push({ k: 'find', a: [] }); return f.apply(this, arguments); }; }).catch(() => {});
+    const line = await bText(page, '#wn5-hub');
+    ok(scn, 'closed = one line #wn5-hub «ΒΕΡΟΙΑ · … για μοίρασμα · … απόθεμα …», no panel', line.includes('ΒΕΡΟΙΑ') && line.includes('για μοίρασμα') && line.includes('απόθεμα') && !(await bHas(page, PANEL)), line);
+    await bClick(page, '#wn5-hub [data-hub="open"]');
+    const box = await page.$eval(PANEL, (e) => e.getBoundingClientRect().height).catch(() => null);
+    ok(scn, 'open → #wn5-hub-panel at most 1/3 of the window', box !== null && box <= 1080 / 3 + 2, box);
+    const txt = await bText(page, PANEL);
+    ok(scn, 'VS-T118 (hub[], no truck ever: live 072) is a «ΠΡΟΣ ΑΝΑΘΕΣΗ» row, never an item of the open panel', (await bHas(page, PANEL))
+      && !(await bHas(page, `${PANEL} [data-piece="4101"]`)) && await bHas(page, '.wn5-row[data-key="wait:4101"]') && await bHas(page, `${PANEL} [data-piece="4401"]`));
+    ok(scn, 'sections «ΓΙΑ ΜΟΙΡΑΣΜΑ», «ΑΠΟΘΕΜΑ», «ΦΟΡΤΗΓΑ ΔΕΥ 12/10 · χωρητικότητα» with «27/33»', txt.includes('ΓΙΑ ΜΟΙΡΑΣΜΑ') && txt.includes('ΑΠΟΘΕΜΑ')
+      && txt.includes('ΦΟΡΤΗΓΑ ΔΕΥ 12/10 · χωρητικότητα') && txt.includes('27/33'), txt.slice(0, 600));
+    const late = await page.$eval(`${PANEL} [data-piece="4302"]`, (e) => ({ t: e.innerText, red: !!e.querySelector('.wn5-late'), dim: !!e.closest('.wn5-dim') || e.classList.contains('wn5-dim'), op: getComputedStyle(e).opacity })).catch(() => null);
+    ok(scn, 'stock past its «φεύγει ως» is red «καθυστέρηση», never dimmed', !!late && late.red && /καθυστέρηση/.test(late.t) && !late.dim && late.op === '1', late);
+    await bClick(page, `${PANEL} [data-piece="4401"] [data-hub="split"]`);
+    const head = await bText(page, D);
+    ok(scn, 'the «Σπάσε…» window: «Σπάσε · ΠΕΛΑΤΗΣ Η · 33π», «Σπάσε» off until the parts add up', head.includes('Σπάσε · ΠΕΛΑΤΗΣ Η · 33π') && (await bOff(page, `${D} [data-act="save"]`)) === true, head.slice(0, 300));
+    await bPick(page, `${D} select[data-part-target][data-i="0"]`, 'rt:201');
+    await page.fill(`${D} input[data-part-pal][data-i="0"]`, '20').catch(() => {});
+    await page.fill(`${D} input[data-part-pal][data-i="1"]`, '10').catch(() => {});
+    ok(scn, 'a sum that is not 33 («20 + 10 = 30») keeps «Σπάσε» off', (await bText(page, `${D} .wn5-sum`)).includes('20 + 10 = 30') && (await bOff(page, `${D} [data-act="save"]`)) === true);
+    await page.fill(`${D} input[data-part-pal][data-i="1"]`, '13').catch(() => {});
+    ok(scn, '«20 + 13 = 33 ✓» turns «Σπάσε» on', (await bText(page, `${D} .wn5-sum`)).includes('20 + 13 = 33 ✓') && (await bOff(page, `${D} [data-act="save"]`)) === false);
+    await bClick(page, `${D} [data-act="save"]`);
+    await page.waitForTimeout(500);
+    const c = bCalls(S, 'POST', P);
+    const noId = c[0] ? (() => { const o = Object.assign({}, c[0].body); delete o.request_id; return JSON.stringify(o); })() : '';
+    ok(scn, 'one POST {piece_id, parts:[{20, target RT-T201, stops}, {13}]} + a uuid v4 request_id', c.length === 1 && UUID.test(c[0].body.request_id || '')
+      && noId === '{"piece_id":4401,"parts":[{"pallets":20,"target":{"rt_id":201,"side":"KATHODOS"},"stops":[{"ref":"s2001","stop_id":2001},{"ref":"s2003","stop_id":2003}]},{"pallets":13}]}', c.map((x) => x.raw));
+    const ev = await bEv(page);
+    const iFind = ev.findIndex((e) => e.startsWith('find'));
+    const iOk = ev.findIndex((e) => e.startsWith('toast') && e.includes('Αποθηκεύτηκε'));
+    const after = S.plan.findIndex((x) => x.m === 'GET' && x.path === '/plan/board' && S.plan.indexOf(c[0]) < S.plan.indexOf(x));
+    ok(scn, 'request_reused → the board is read again BEFORE «Αποθηκεύτηκε», and the panel is open again', iFind >= 0 && iOk > iFind && after > 0 && await bHas(page, PANEL), ev);
+    await page.context().close();
+  }
+  { // B · «Σε φορτηγό ▾» = the Δ1 window with the piece (S-115)
+    const { page, S } = await bOpen(browser, origin);
+    await bClick(page, '#wn5-hub [data-hub="open"]');
+    await bClick(page, `${PANEL} [data-piece="4301"] [data-hub="truck"]`);
+    await bClick(page, `${bDlg('assign')} [data-act="save"][data-cand="rt:201"]`);
+    const p = bCalls(S, 'POST', '/plan/legs');
+    ok(scn, '«Σε φορτηγό ▾» → the Δ1 window; «Ένωση» → POST /plan/legs {pieces:[{piece_id:4301}]} onto RT-T201', p.length === 1
+      && p[0].raw === '{"pieces":[{"piece_id":4301}],"target":{"rt_id":201,"side":"KATHODOS"},"stops":[{"ref":"s2001","stop_id":2001},{"ref":"n4","location_id":4,"side":"KATHODOS","planned_from":"2026-10-13T08:00:00+03:00","planned_to":"2026-10-13T10:00:00+03:00"}]}', p.map((x) => x.raw));
+    await page.context().close();
+  }
+  { // C · the live 072 hub[] (no Ε-26 keys): the destination is missing, said, and nothing is sent
+    const b = bBoard();
+    for (const h of b.hub) for (const k of ['nat_to_location_id', 'deliver_from', 'deliver_to', 'load_from', 'load_to']) delete h[k];
+    const { page, S } = await bOpen(browser, origin, { board: b });
+    await bClick(page, '#wn5-hub [data-hub="open"]');
+    await bClick(page, `${PANEL} [data-piece="4301"] [data-hub="truck"]`);
+    ok(scn, 'without the hub destination (072 today, Ε-26): the window says so and «Ένωση» stays off', (await bHas(page, `${bDlg('assign')} [data-place-miss]`))
+      && (await bOff(page, `${bDlg('assign')} [data-act="save"][data-cand="rt:201"]`)) === true && bCalls(S, 'POST', '/plan/legs').length === 0);
+    await page.context().close();
+  }
+  { // D · an empty Veroia board is hidden
+    const b = bBoard(); b.hub = [];
+    const { page } = await bOpen(browser, origin, { board: b });
+    ok(scn, 'an empty Veroia board is hidden (no #wn5-hub)', (await bHas(page, '#content > .wi4.wn5[data-state="ok"]')) && !(await bHas(page, '#wn5-hub')));
+    await page.context().close();
+  }
+  { // E · request_reused that the re-read board does NOT show (another week, a form edited after plan_unknown): the
+    //     Worker's strip, «Σπάσε» locked until the window closes, and a second press sends nothing (T11 _send: the
+    //     same request_id would be refused again — a dead end, never a loop)
+    const { page, S } = await bOpen(browser, origin, { plan: { ['POST ' + P]: () => planErr(422, 'PLAN_RULE', 'request_reused') } });
+    await bClick(page, '#wn5-hub [data-hub="open"]');
+    await bClick(page, `${PANEL} [data-piece="4401"] [data-hub="split"]`);
+    await bPick(page, `${D} select[data-part-target][data-i="0"]`, 'rt:201');
+    await page.fill(`${D} input[data-part-pal][data-i="0"]`, '20').catch(() => {});
+    await page.fill(`${D} input[data-part-pal][data-i="1"]`, '13').catch(() => {});
+    await bClick(page, `${D} [data-act="save"]`);
+    await page.waitForTimeout(500);
+    // the second press by script, so a locked button cannot make the rig wait: a disabled <button> fires no click
+    await page.$eval(`${D} [data-act="save"]`, (b) => b.click()).catch(() => {});
+    await page.waitForTimeout(300);
+    const strip = await bText(page, `${D} .wn5-strip[data-kind="reused"]`);
+    ok(scn, 'request_reused not on the board → the Worker strip, «Σπάσε» locked, and a second press sends nothing', bCalls(S, 'POST', P).length === 1
+      && strip.includes('rig sentinel request_reused') && (await bOff(page, `${D} [data-act="save"]`)) === true, { posts: bCalls(S, 'POST', P).length, strip });
+    await page.context().close();
+  }
+}
+SCN['veroia'] = scnVeroia;
+
+
 // ── scenarios end (each Task adds its own above this line) ──
 
 // ── fixture check (T4): plain node, no browser ──

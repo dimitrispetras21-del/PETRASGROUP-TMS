@@ -97,3 +97,11 @@ test('F4α-T18: POST /plan/delete — accountant 403 before any RPC; the dispatc
   assert.strictEqual(yes.seen[0].fn, 'plan_delete');
   assert.deepStrictEqual(yes.seen[0].args.p, { nat_order_id: 3111, dry_run: true });
 });
+
+test('F4α-T19: POST /plan/pieces/split → plan_split_piece with the request_id in p (the DB replays by it)', async () => {
+  const body = { piece_id: 4401, parts: [{ pallets: 20, target: { rt_id: 201, side: 'KATHODOS' }, stops: [{ ref: 's2001', stop_id: 2001 }, { ref: 's2003', stop_id: 2003 }] }, { pallets: 13 }],
+    request_id: 'aaaaaaaa-0000-4000-8000-000000000019' };
+  const r = await send({}, 'POST', '/plan/pieces/split', body);
+  assert.strictEqual(r.seen[0].fn, 'plan_split_piece');
+  assert.deepStrictEqual(r.seen[0].args.p, body);
+});
