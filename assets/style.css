@@ -9887,7 +9887,7 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5h-chip.par .wn5h-pl { font:600 12px/16px 'DM Sans',sans-serif; color:var(--wi4-partner-ink); }
 .wn5h-chip.par .wn5h-dr { color:var(--wi4-partner-sub); }
 .wn5h-win { flex:none; width:180px; font-size:12px; font-weight:500; color:var(--wi4-ink); white-space:nowrap; }
-.wn5h-stops { flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11.5px; color:var(--wi4-grey-2); }
+.wn5h-stops { flex:0 1 auto; min-width:0; font-size:11.5px; line-height:15px; color:var(--wi4-grey-2); }   /* long lists wrap (2173:7765), never cut */
 .wn5h-stops > b { font-weight:500; color:var(--wi4-ink); }
 .wn5h-sp { flex:1 1 0; min-width:0; }
 .wn5h-btns { flex:none; display:flex; gap:10px; }
@@ -9905,6 +9905,7 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5h-hx { display:flex; align-items:center; gap:6px; height:20px; padding:3px 0 3px 105px; box-sizing:border-box; white-space:nowrap; }
 .wn5h-hx > b { font-size:11px; font-weight:600; color:var(--wi4-ink); }
 .wn5h-hx > span { font-size:10.5px; font-weight:600; color:var(--wi4-grey-1); }
+.wn5h-pay { font-size:11.5px; color:var(--wi4-grey-2); }   /* 2122:7832 */
 /* H2 fields 2122:7745 / 2122:7774: label Regular 12 grey-1, control 34 high, value 12.5 */
 .wn5h .form-input { font-size:12.5px; }
 .wn5h .form-input:focus { padding:0 9.5px; border:1.5px solid var(--accent); outline:none; }
@@ -9912,6 +9913,11 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5h .wn5f-f.bad .form-input { padding:0 9.5px; border:1.5px solid var(--wn5-field-err); }
 .wn5h-mono .form-input { font-family:'DM Mono',ui-monospace,SFMono-Regular,Menlo,monospace; font-weight:500; }
 .wn5h-ferr { font-size:11px; color:var(--wi4-badge-ink); }
+/* the «Άλλο» line on one line (2122:7868): the note field is the row's narrow 4th one, so the line keeps its own width
+   and runs left under «Λόγος» from the field's right edge instead of wrapping in 104px */
+.wn5h-note .wn5h-ferr { align-self:flex-end; width:max-content; white-space:nowrap; }
+.wn5h-hint { font-size:11px; color:var(--wi4-grey-2); white-space:nowrap; }   /* «ελεύθερο ως …» 2122:7781 */
+.wn5h-hint:empty { display:none; }
 .wn5h-ferr:empty { display:none; }
 .wn5h-row1, .wn5h-vrow { display:flex; align-items:flex-start; gap:12px; }
 .wn5h-vrow[hidden] { display:none; }

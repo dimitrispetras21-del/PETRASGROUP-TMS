@@ -341,7 +341,91 @@ async function scnH7({ browser, origin, ok, scn }) {
   await page.context().close();
 }
 
-const SCN = { tiles: scnTiles, card: scnCard, change: scnChange, fix: scnFix, h7: scnH7 };
+// T25 fidelity round: the preview never outlives its body, the payroll foot, «ίδιος οδηγός» shows the driver who
+// keeps driving, «ελεύθερο ως …» from the week's cycles, stops wrap instead of an ellipsis, the «Άλλο» line on one
+// line, and «Βέροια» from the board's own hub rule when the catalogue has no hub (the rig lookups have no is_hub).
+async function scnFid({ browser, origin, ok, scn }) {
+  const cd = await K.openApp(browser, origin, { board: handWeek(false) });
+  if (!(await guard(cd.page, ok, scn, 'WN5Hand'))) return;
+  await cd.page.evaluate(() => WN5Hand.cycleCard(101));
+  await cd.page.waitForSelector('.wi4-dlg[data-wn5="cycle"]', { timeout: 6000 }).catch(() => {});
+  const cs = await cd.page.evaluate(() => [...document.querySelectorAll('.wi4-dlg[data-wn5="cycle"] .wn5h-stops')].map((e) => ({ t: e.textContent, ws: getComputedStyle(e).whiteSpace,
+    cut: e.scrollWidth > e.clientWidth + 1 || e.scrollHeight > e.clientHeight + 1, h: Math.round(e.getBoundingClientRect().height) })));
+  ok(scn, 'card: the hub stop reads «Βέροια» (no catalogue hub → the board\'s VS legs), never «ΒΕΡΟΙΑ TEST · Veria»',
+    cs.length === 2 && cs[0].t === 'Βέροια' && /· Βέροια$/.test(cs[1].t) && !cs.some((x) => /ΒΕΡΟΙΑ TEST|Veria/.test(x.t)), cs);
+  ok(scn, 'card: the stops wrap, nothing is cut (no nowrap, no overflow)', cs.every((x) => x.ws !== 'nowrap' && !x.cut), cs);
+  ok(scn, 'card: no page or console errors', !cd.S.pageErrors.length && !appConsole(cd.S).length, cd.S.pageErrors.concat(appConsole(cd.S)));
+  await cd.page.context().close();
+
+  const { page, S } = await K.openApp(browser, origin, { board: oneSegWeek(), plan: { 'POST /plan/rt/101/handover': (e) => (e.body.dry_run === true ? dryOk(e.body) : K.planErr(409, 'WRITES_CLOSED', 'writes_closed')) } });
+  await page.evaluate(() => WN5Hand.change(101));
+  await page.waitForSelector(HDLG, { timeout: 6000 }).catch(() => {});
+  const prevText = () => K.text(page, `${HDLG} [data-preview]`);
+  const hint = (k) => page.evaluate((s) => { const h = document.querySelector(s); return h ? [h.textContent, h.offsetParent !== null] : null; }, `${HDLG} [data-hint="${k}"]`);
+  await page.evaluate(() => { const el = document.getElementById('wn5h-day'); el.value = '2026-10-13'; el.dispatchEvent(new Event('change', { bubbles: true })); const h = document.getElementById('wn5h-hm'); h.value = '03:00'; h.dispatchEvent(new Event('change', { bubbles: true })); });
+  ok(scn, 'no hint before a vehicle is picked', JSON.stringify(await hint('truck')) === '["",false]' && JSON.stringify(await hint('driver')) === '["",false]', [await hint('truck'), await hint('driver')]);
+  await fillChange(page, CH);
+  await page.waitForTimeout(1200);
+  ok(scn, 'hints from the week: «ελεύθερο ως Τρί 22:00» / «ελεύθερος ως Τρί 22:00» (RT-T102 uses them only from Τετ 10:00)',
+    JSON.stringify(await hint('truck')) === '["ελεύθερο ως Τρί 22:00",true]' && JSON.stringify(await hint('driver')) === '["ελεύθερος ως Τρί 22:00",true]', [await hint('truck'), await hint('driver')]);
+  const p1 = await prevText();
+  ok(scn, 'preview foot «Μισθοδοσία: 2 γραμμές (Driver Test 01, Driver Test 02)»', p1.includes('Μισθοδοσία: 2 γραμμές (Driver Test 01, Driver Test 02)'), p1);
+  ok(scn, 'preview ⇄ line names the reason of this body', p1.includes('Λαμία · Τρί 03:00 · Βλάβη φορτηγού'), p1);
+  const ps = await page.evaluate((d) => [...document.querySelectorAll(`${d} [data-preview] .wn5h-stops`)].map((e) => e.scrollWidth > e.clientWidth + 1 || e.scrollHeight > e.clientHeight + 1), HDLG);
+  ok(scn, 'preview stops are not cut', ps.length === 2 && ps.every((c) => !c), ps);
+  await page.evaluate(() => { const r = document.getElementById('wn5h-reason'); r.value = 'other'; r.dispatchEvent(new Event('change', { bubbles: true })); });
+  await page.waitForTimeout(300);
+  ok(scn, '«Άλλο» without a note: the old preview is gone (no «Βλάβη φορτηγού» left on screen), the save off',
+    !(await prevText()) && await page.evaluate((d) => document.querySelector(`${d} [data-act="save"]`).disabled, HDLG), await prevText());
+  const fe = await page.evaluate((d) => { const e = document.querySelector(`${d} [data-note] [data-ferr]`), b = document.querySelector(`${d} .wn5f-body`).getBoundingClientRect(), r = e.getBoundingClientRect();
+    return { h: Math.round(r.height), inside: r.left >= b.left && r.right <= b.right + 0.5, lh: parseFloat(getComputedStyle(e).lineHeight) || 0 }; }, HDLG);
+  ok(scn, 'the «Άλλο» line is ONE line and stays inside the form body', fe.h > 0 && fe.h <= 16 && fe.inside, fe);
+  await page.evaluate(() => { const r = document.getElementById('wn5h-reason'); r.value = 'vehicle_breakdown'; r.dispatchEvent(new Event('change', { bubbles: true })); });
+  await page.waitForTimeout(1200);
+  ok(scn, 'the same body again → a preview again', /Μετά την αλλαγή · 2 τμήματα/.test(await prevText()));
+  await page.click(`${HDLG} [data-vmode="partner"]`);
+  await page.waitForTimeout(300);
+  ok(scn, '«Συνεργάτης» with nothing picked: the own-vehicle preview is gone', !(await prevText()), await prevText());
+  await page.click(`${HDLG} [data-vmode="own"]`);
+  await page.waitForTimeout(300);
+  // «ίδιος οδηγός»: driver 32 picked; ON → the disabled control shows the current driver (31), no driver hint; OFF → 32
+  const drv = () => page.evaluate((d) => { const s = document.querySelector(`${d} #wn5h-driver`), q = document.querySelector(`${d} #wn5h-driver__q`);
+    return { v: s.value, dis: s.disabled, shown: q ? q.value : s.options[s.selectedIndex] && s.options[s.selectedIndex].textContent, qdis: q ? q.disabled : null }; }, HDLG);
+  await page.click(`${HDLG} #wn5h-same`);
+  await page.waitForTimeout(300);
+  const on = await drv();
+  ok(scn, '«ίδιος οδηγός» ON: the disabled driver control shows «Driver Test 01», as the switch label', on.v === '31' && on.dis && on.shown === 'Driver Test 01'
+    && (await K.text(page, `${HDLG} .wn5h-same`)).includes('Driver Test 01') && JSON.stringify(await hint('driver')) === '["",false]', [on, await hint('driver')]);
+  await page.waitForTimeout(1000);
+  const sameDry = posts(S).filter((x) => x.body.dry_run === true).pop();
+  ok(scn, '«ίδιος οδηγός» ON: the dry run sends same_driver and no driver_id', !!sameDry && sameDry.body.same_driver === true && !('driver_id' in sameDry.body.vehicle), sameDry && sameDry.body);
+  await page.click(`${HDLG} #wn5h-same`);
+  await page.waitForTimeout(300);
+  const off = await drv();
+  ok(scn, '«ίδιος οδηγός» OFF: the pick «Driver Test 02» comes back, enabled', off.v === '32' && !off.dis && off.shown === 'Driver Test 02', off);
+  ok(scn, 'fidelity: no page or console errors', !S.pageErrors.length && !appConsole(S).length, S.pageErrors.concat(appConsole(S)));
+  await page.context().close();
+
+  // RT-T102 moved to Τρί 20:00 with the same truck and driver: «ελεύθερο ως Τρί 20:00»; at Τρί 21:00 it is in use → no
+  // hint (the dry run's truck_busy speaks, not a guess here).
+  const bw = oneSegWeek();
+  Object.assign(bw.cycles[1], { start_at: '2026-10-13T20:00:00+03:00' });
+  Object.assign(bw.cycles[1].segments[0], { from_at: '2026-10-13T20:00:00+03:00' });
+  const pw = await K.openApp(browser, origin, { board: bw, plan: { 'POST /plan/rt/101/handover': (e) => dryOk(e.body) } });
+  await pw.page.evaluate(() => WN5Hand.change(101));
+  await pw.page.waitForSelector(HDLG, { timeout: 6000 }).catch(() => {});
+  await fillChange(pw.page, CH);
+  await pw.page.waitForTimeout(300);
+  const h1 = await pw.page.evaluate((d) => document.querySelector(`${d} [data-hint="truck"]`).textContent, HDLG);
+  await fillChange(pw.page, Object.assign({}, CH, { hm: '21:00' }));
+  await pw.page.waitForTimeout(300);
+  const h2 = await pw.page.evaluate((d) => [document.querySelector(`${d} [data-hint="truck"]`).textContent, document.querySelector(`${d} [data-hint="driver"]`).textContent], HDLG);
+  ok(scn, 'next use in the week: «ελεύθερο ως Τρί 20:00»; in use at the change time → no hint', h1 === 'ελεύθερο ως Τρί 20:00' && h2.join('|') === '|', [h1, h2]);
+  ok(scn, 'hints: no page or console errors', !pw.S.pageErrors.length && !appConsole(pw.S).length, pw.S.pageErrors.concat(appConsole(pw.S)));
+  await pw.page.context().close();
+}
+
+const SCN = { tiles: scnTiles, card: scnCard, change: scnChange, fix: scnFix, h7: scnH7, fid: scnFid };
 module.exports = { seg, handWeek, ROW, HAND, guard, appConsole, SCN };
 if (require.main === module) {
   K.run({ scenarios: SCN, globals: ['WN5L', 'WN5Lab', 'WN5Hand'], go: 'the vehicle handover screens hold on the 072b stub' })

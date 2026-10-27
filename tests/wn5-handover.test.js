@@ -14,7 +14,7 @@ const ROOT = process.env.TMS_ROOT ? path.resolve(process.env.TMS_ROOT) : path.jo
 const FILE = 'modules/wn5_handover.js';
 const SRC = fs.readFileSync(path.join(ROOT, FILE), 'utf8');
 const J = (x) => JSON.parse(JSON.stringify(x));
-function load() {
+function load(extra) {
   const acts = [];
   const rec = (w) => () => { acts.push(w); return 0; };
   const win = { addEventListener: rec('window.addEventListener') };
@@ -22,6 +22,7 @@ function load() {
     setTimeout: rec('setTimeout'), setInterval: rec('setInterval'), fetch: rec('fetch'), addEventListener: rec('addEventListener'),
     document: { createElement: rec('document.createElement'), addEventListener: rec('document.addEventListener'), body: { appendChild: rec('body.appendChild') } },
     WN5Lab: { REASON: { other: { text: 'Άλλο', group: 'other', noteRequired: true }, vehicle_breakdown: { text: 'Βλάβη φορτηγού', group: 'unplanned' } } } };
+  Object.assign(ctx, extra);
   vm.createContext(ctx);
   vm.runInContext(SRC, ctx, { filename: FILE });
   return { acts, added: Object.keys(win).filter((k) => k !== 'addEventListener'), H: win.WN5Hand };
@@ -76,4 +77,37 @@ test('F4α-T25: request_id on the change execution only, never on its dry run', 
   const pre = grab('_preview'), save = grab('_changeSave');
   assert.ok(/planFetch\('POST',[^)]*\{\s*body,\s*dry:\s*true\s*\}/.test(pre) && !/requestId/.test(pre), 'the dry run');
   assert.ok(/requestId:\s*d\.slot\.id/.test(save) && !/dry:\s*true/.test(save), 'the execution');
+});
+
+// T25 fidelity: the preview's payroll foot follows R-41 (073 live): one line per driver of the cycle, the same driver
+// twice is one line, a partner has none. Figma 2122:7832 «Μισθοδοσία: 2 γραμμές (Γιώργος, Νίκος)».
+test('F4α-T25: the preview payroll foot — one line per driver, same driver once, partners none (R-41)', () => {
+  const o = (id, name) => ({ trip_type: 'OWNED', driver_id: id, driver: name });
+  assert.strictEqual(H._payrollLine([o(31, 'Γιώργος'), o(32, 'Νίκος')]), 'Μισθοδοσία: 2 γραμμές (Γιώργος, Νίκος)');
+  assert.strictEqual(H._payrollLine([o(31, 'Γιώργος'), o(31, 'Γιώργος')]), 'Μισθοδοσία: 1 γραμμή (Γιώργος)');
+  assert.strictEqual(H._payrollLine([o(31, 'Γιώργος'), { trip_type: 'PARTNER', partner_id: 51, driver_id: null }]), 'Μισθοδοσία: 1 γραμμή (Γιώργος)');
+  assert.strictEqual(H._payrollLine([{ trip_type: 'PARTNER', partner_id: 51 }]), '');
+});
+
+// T25 fidelity: «ελεύθερο ως …» is read from the board's week (the lookups carry no availability): the next use of the
+// vehicle in ANOTHER cycle after the change time, capped at this cycle's end; in use at that time → null (the dry
+// run's truck_busy says it). Real WN5L, so a 072 cycle without segments counts with its own window.
+test('F4α-T25: free-until from the week — next use in another cycle, capped at the cycle end, null when in use', () => {
+  const L = require(path.join(ROOT, 'core/wn5-logic.js'));
+  const H2 = load({ WN5L: L }).H;
+  const end = '2026-10-13T22:00:00+03:00';
+  const board = { cycles: [
+    { rt_id: 101, truck_id: 11, driver_id: 31, start_at: '2026-10-12T16:00:00+03:00', end_at: end, stops: [] },
+    { rt_id: 102, truck_id: 12, driver_id: 32, start_at: '2026-10-13T20:00:00+03:00', end_at: '2026-10-14T22:00:00+03:00', stops: [] },
+    { rt_id: 103, truck_id: 13, driver_id: 33, start_at: '2026-10-12T10:00:00+03:00', end_at: '2026-10-14T10:00:00+03:00',
+      segments: [{ segment_id: 1, truck_id: 13, driver_id: 33, from_at: '2026-10-12T10:00:00+03:00', to_at: '2026-10-13T01:00:00+03:00' },
+        { segment_id: 2, truck_id: 14, driver_id: 34, from_at: '2026-10-13T01:00:00+03:00', to_at: '2026-10-14T10:00:00+03:00' }] }] };
+  const at = '2026-10-13T03:00:00+03:00';
+  assert.strictEqual(H2._freeUntil(board, 101, 'truck_id', 12, at, end), '2026-10-13T20:00:00+03:00', 'next use before the end');
+  assert.strictEqual(H2._freeUntil(board, 101, 'truck_id', 13, at, end), end, 'its segment ended before the change: free to the end');
+  assert.strictEqual(H2._freeUntil(board, 101, 'driver_id', 34, at, end), null, 'in use at the change time');
+  assert.strictEqual(H2._freeUntil(board, 101, 'truck_id', 11, at, end), end, 'this cycle never counts against itself');
+  assert.strictEqual(H2._freeUntil(board, 101, 'truck_id', null, at, end), null, 'nothing picked');
+  assert.strictEqual(H2._freeUntil(board, 101, 'truck_id', 12, null, end), null, 'no time yet');
+  assert.strictEqual(H2._freeUntil(board, 101, 'truck_id', 12, '2026-10-13T21:00:00+03:00', end), null, 'RT-102 holds it at 21:00');
 });

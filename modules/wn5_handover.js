@@ -88,6 +88,48 @@
     }
     return set;
   }
+  // The preview's foot (Figma 2122:7832): one payroll line per driver of the cycle, the same driver twice is one line
+  // (R-41, 073 live). Display only: the lines themselves are the base's; partners have none.
+  function _payrollLine(segs) {
+    const seen = new Set(), names = [];
+    for (const g of segs || []) {
+      if (g.trip_type === 'PARTNER') continue;
+      const k = g.driver_id != null ? 'id:' + g.driver_id : g.driver ? 'name:' + g.driver : null;
+      if (!k || seen.has(k)) continue;
+      seen.add(k);
+      names.push(g.driver || '#' + g.driver_id);
+    }
+    return names.length ? `Μισθοδοσία: ${names.length} ${names.length === 1 ? 'γραμμή' : 'γραμμές'} (${names.join(', ')})` : '';
+  }
+  // «ελεύθερο ως …» under the picked truck / driver (Figma 2122:7781, 2122:7795): what the board's week knows of that
+  // vehicle after the change time — the start of its next use in another cycle, capped at this cycle's end (the new
+  // segment runs to it). The lookups carry no availability; the week's cycles do. null = no time yet, or already in use
+  // at that time: then the dry run's truck_busy / driver_busy says it, in the Worker's words, not a guess here.
+  function _freeUntil(board, rtId, key, id, at, endAt) {
+    if (!Number.isSafeInteger(id) || !at || !endAt) return null;
+    const t = Date.parse(at);
+    let until = Date.parse(endAt), iso = endAt;
+    if (!(t < until)) return null;
+    for (const c of (board && board.cycles) || []) {
+      if (c.rt_id === rtId) continue;
+      let segs;
+      try { segs = WN5L.segmentsOf(c).segments; } catch (_) { continue; }   // a bad shape is the board's own line
+      for (const g of segs) {
+        if (g[key] !== id) continue;
+        const fromIso = g.from_at || c.start_at, a = Date.parse(fromIso), b = Date.parse(g.to_at || c.end_at);
+        if (a <= t && t < b) return null;
+        if (a > t && a < until) { until = a; iso = fromIso; }
+      }
+    }
+    return iso;
+  }
+  // The hub as the board names it: the catalogue's id (PlanIds.hub) when loaded, else the one WN5L reads from the
+  // week's VS legs — the same rule as weekly_natl_v5.js + WN5L.model, so the card and the board never disagree on
+  // «Βέροια» (fidelity T25: PlanIds.hub() alone is null until GET /plan/lookups exists).
+  function _hubOf(board) {
+    try { const h = PlanIds.hub(); if (h != null) return h; } catch (_) { /* no catalogue: the board decides */ }
+    try { return WN5L.hubFromBoard(board); } catch (_) { return null; }
+  }
 
   // ── dialogs (the .wn5f shell of the order / leg forms: 60px head, 64px foot) ──────────────────────────────
   let _d = null;
@@ -167,8 +209,7 @@
   const _line2 = (g) => (g.trip_type === 'PARTNER' ? (g.partner_rate == null ? 'κόμιστρο λείπει' : String(g.partner_rate).replace('.', ',') + ' €') : (g.driver || '—'));
   // Stops of a segment: the name in Medium ink, « · city» in grey (Figma 2129:7761); the city once per run of the
   // same city, never when the name already says it; the hub reads «Βέροια» as on the board.
-  function _stopsHTML(g, cycle) {
-    const hub = (() => { try { return PlanIds.hub(); } catch (_) { return null; } })();
+  function _stopsHTML(g, cycle, hub) {
     let prev = null;
     const parts = (g.stop_ids || []).map((id) => (cycle.stops || []).find((s) => s.stop_id === id)).filter(Boolean).map((s) => {
       if (hub !== null && s.location_id === hub) { prev = null; return '<b>Βέροια</b>'; }
@@ -180,12 +221,12 @@
     });
     return parts.length ? parts.join('<span> · </span>') : '<span>—</span>';
   }
-  function _segRowHTML(g, cycle, withButtons, first) {
+  function _segRowHTML(g, cycle, withButtons, first, hub) {
     const par = g.trip_type === 'PARTNER';
     return `<div class="wn5h-seg" data-seg="${g.segment_id}" data-label="${g.label || ''}"><span class="wn5h-line"></span>`
       + `<b class="wn5h-lab">${SEG_GR[g.label] || ''}</b>`
       + `<span class="wn5h-vc"><span class="wn5h-chip${par ? ' par' : ''}"><b class="wn5h-pl">${_esc(_plate(g))}</b><span class="wn5h-dr">${_esc(_line2(g))}</span></span></span>`
-      + `<span class="wn5h-win">${_when(g.from_at)} → ${_when(g.to_at)}</span><span class="wn5h-stops">${_stopsHTML(g, cycle)}</span><span class="wn5h-sp"></span>`
+      + `<span class="wn5h-win">${_when(g.from_at)} → ${_when(g.to_at)}</span><span class="wn5h-stops">${_stopsHTML(g, cycle, hub)}</span><span class="wn5h-sp"></span>`
       + (withButtons ? `<span class="wn5h-btns"><button type="button" class="wn5h-link" data-act="fix" data-seg="${g.segment_id}">Διόρθωση</button>`
         + (first ? '' : `<button type="button" class="wn5h-link wn5h-rm" data-act="remove" data-seg="${g.segment_id}">Αφαίρεση</button>`) + '</span>' : '')
       + '</div>';
@@ -200,12 +241,13 @@
     const segs = WN5L.segmentsOf(c).segments;
     const pallets = (c.stops || []).reduce((a, s) => a + (s.legs || []).filter((l) => l.act === 'load').reduce((b, l) => b + (Number(l.pallets) || 0), 0), 0);
     const sheets = segs.length;
+    const hub = _hubOf(board);
     const d = _open('cycle', `Κύκλος ${_esc(c.code || 'RT-' + rtId)}`,
       `· ${_whenD(c.start_at)} → ${_whenD(c.end_at)} · ${segs.length} ${segs.length === 1 ? 'τμήμα' : 'τμήματα'} · ${String(pallets).replace('.', ',')}π`,
       `<div class="wn5h-acts"><button type="button" class="wi4-btn wn5h-pri" data-act="change">Αλλαγή οχήματος</button>`
       + `<button type="button" class="wi4-btn wn5h-out" data-act="sheets">${SEND_ICON}Φύλλα οδηγών (${sheets})</button>`
       + `<button type="button" class="wi4-btn wn5h-out wn5h-danger" data-act="clear">Καθαρισμός ανάθεσης</button></div><div class="wn5h-sheets" data-sheets hidden></div>`
-      + `<div class="wn5f-sec">ΤΜΗΜΑΤΑ</div>${segs.map((g, i) => _segRowHTML(g, c, true, i === 0)).join('')}`, '', null);
+      + `<div class="wn5f-sec">ΤΜΗΜΑΤΑ</div>${segs.map((g, i) => _segRowHTML(g, c, true, i === 0, hub)).join('')}`, '', null);
     d.rtId = rtId;
     d.cycle = c;
     d.el.addEventListener('click', (ev) => {
@@ -258,23 +300,31 @@
   }
   // Figma 2122:7800: «Μετά την αλλαγή · n τμήματα», borderless white rows on the grey block, a ⇄ line between two
   // segments «<place> · <day hh:mm> · <reason>» (the next segment's start).
-  function _previewHTML(prev, cycle) {
+  function _previewHTML(prev, cycle, hub) {
     const segs = prev.segments || [];
+    const pay = _payrollLine(segs);
     return `<div class="wn5h-prev"><div class="wn5h-prev-h"><b>Μετά την αλλαγή · ${segs.length} ${segs.length === 1 ? 'τμήμα' : 'τμήματα'}</b><span>φορτία και στάσεις δεν αλλάζουν</span></div>`
       + segs.map((g, i) => (i ? `<div class="wn5h-hx"><b>⇄</b><span>${_esc([g.place_note, _when(g.from_at), _reasonText(g.reason)].filter(Boolean).join(' · '))}</span></div>` : '')
-        + _segRowHTML(g, cycle, false, false)).join('') + '</div>';
+        + _segRowHTML(g, cycle, false, false, hub)).join('') + (pay ? `<div class="wn5h-pay">${_esc(pay)}</div>` : '') + '</div>';
+  }
+  // The preview describes ONE body: once the form no longer says that body (invalid, another reason, another mode)
+  // its rows go too, or the screen would show a change nobody is asking for (fidelity T25).
+  function _dropPreview(d) {
+    d.prev = null;
+    const p = d.el.querySelector('[data-preview]');
+    if (p && p.firstChild) p.innerHTML = '';
   }
   function _setSave(d, on) { const b = d.el.querySelector('[data-act="save"]'); if (b) b.disabled = !on; }
   function _changeRefresh(d) {
     d.el.querySelectorAll('[data-own]').forEach((x) => { x.hidden = !d.own; });
     d.el.querySelectorAll('[data-par]').forEach((x) => { x.hidden = d.own; });
-    const drv = d.el.querySelector('#wn5h-driver');
-    if (drv) drv.disabled = !!(d.el.querySelector('#wn5h-same') || {}).checked;
+    _sameDriver(d);
     _dayText(d);
     const st = _readChange(d);
+    _hints(d, st);
     const probs = _changeProblems(st);
     const key = probs.length ? null : JSON.stringify(_changeBody(st));
-    if (!d.prev || d.prev.key !== key) d.prev = null;   // any change after the dry run drops its preview
+    if (!d.prev || d.prev.key !== key) _dropPreview(d);   // any change after the dry run drops its preview
     _otherNote(d, probs.includes(OTHER_NOTE));
     // the «required» lines stay quiet (the save is off); the «Άλλο» line sits under its field; the rest say themselves
     _lines(d, probs.filter((l) => l !== OTHER_NOTE && !/^(Πότε|Πού|Λόγος|Φορτηγό|Οδηγός|Συνεργάτης) \*/.test(l)).concat(_kept(d, key)));
@@ -286,6 +336,40 @@
     if (from) from.textContent = st.at ? `ΝΕΟ ΟΧΗΜΑ · ΑΠΟ ${_upper(_when(st.at))}` : 'ΝΕΟ ΟΧΗΜΑ';
     if (d.locked) d.el.querySelectorAll('.wn5f-ft [data-act="cancel"]').forEach((b) => { b.textContent = 'Κλείσιμο'; });   // H7 tile 4
   }
+  // «ίδιος οδηγός» ON: the disabled driver control shows the driver who keeps driving (Figma 2143:7768), not the
+  // last pick; OFF gives the pick back. The body never sends driver_id with same_driver (072b), so this is display.
+  function _sameDriver(d) {
+    const drv = d.el.querySelector('#wn5h-driver');
+    if (!drv) return;
+    const on = !!(d.el.querySelector('#wn5h-same') || {}).checked;
+    if (on !== !!d.sameOn) {
+      d.sameOn = on;
+      const id = d.now && d.now.driver_id;
+      if (on) {
+        d.drvBack = drv.value;
+        if (Number.isSafeInteger(id) && ![...drv.options].some((o) => o.value === String(id))) {
+          const o = document.createElement('option');
+          o.value = String(id);
+          o.textContent = d.now.driver || '#' + id;
+          o.dataset.same = '1';
+          drv.appendChild(o);
+        }
+        drv.value = Number.isSafeInteger(id) ? String(id) : '';
+      } else {
+        drv.value = d.drvBack || '';
+        drv.querySelectorAll('option[data-same]').forEach((o) => o.remove());
+      }
+    }
+    drv.disabled = on;
+  }
+  function _hints(d, st) {
+    const set = (k, txt) => { const h = d.el.querySelector(`[data-hint="${k}"]`); if (h) h.textContent = txt; };
+    const end = d.cycle && d.cycle.end_at;
+    const tr = d.own && st.at ? _freeUntil(d.board, d.rtId, 'truck_id', st.truck_id, st.at, end) : null;
+    const dr = d.own && st.at && !st.same_driver ? _freeUntil(d.board, d.rtId, 'driver_id', st.driver_id, st.at, end) : null;
+    set('truck', tr ? 'ελεύθερο ως ' + _when(tr) : '');
+    set('driver', dr ? 'ελεύθερος ως ' + _when(dr) : '');
+  }
   async function _preview(d, key) {
     if (_d !== d) return;
     const body = JSON.parse(key);
@@ -294,7 +378,7 @@
       if (_d !== d || JSON.stringify(_changeBody(_readChange(d))) !== key) return;   // the form moved on: this preview is stale
       const p = ans.preview || {};
       d.prev = { key, conflict: p.conflict || null };
-      d.el.querySelector('[data-preview]').innerHTML = p.segments ? _previewHTML(p, d.cycle) : '';
+      d.el.querySelector('[data-preview]').innerHTML = p.segments ? _previewHTML(p, d.cycle, d.hub) : '';
       if (Array.isArray(p.warnings) && p.warnings.length) WN5Act.strip(_strip(d), p.warnings); else if (!d.locked) WN5Act.strip(_strip(d), null);
     } catch (e) {
       if (_d !== d) return;
@@ -352,9 +436,9 @@
   function _vehFields(own, sel) {
     // Figma 2122:7774: Φορτηγό * 170 · Ρυμούλκα 130 · Οδηγός * 180 (plates in DM Mono); partner 150 + rate 96
     return own
-      ? `<label class="wn5f-f wn5h-truck wn5h-mono"><span>Φορτηγό *</span><select class="form-input" id="wn5h-truck" data-fh-search>${_opts('truck', sel.truck_id, '', sel.truck)}</select></label>`
+      ? `<label class="wn5f-f wn5h-truck wn5h-mono"><span>Φορτηγό *</span><select class="form-input" id="wn5h-truck" data-fh-search>${_opts('truck', sel.truck_id, '', sel.truck)}</select><span class="wn5h-hint" data-hint="truck"></span></label>`
         + `<label class="wn5f-f wn5h-trailer wn5h-mono"><span>Ρυμούλκα</span><select class="form-input" id="wn5h-trailer" data-fh-search>${_opts('trailer', sel.trailer_id, '—', sel.trailer)}</select></label>`
-        + `<label class="wn5f-f wn5h-driver"><span>Οδηγός *</span><select class="form-input" id="wn5h-driver" data-fh-search>${_opts('driver', sel.driver_id, '', sel.driver)}</select></label>`
+        + `<label class="wn5f-f wn5h-driver"><span>Οδηγός *</span><select class="form-input" id="wn5h-driver" data-fh-search>${_opts('driver', sel.driver_id, '', sel.driver)}</select><span class="wn5h-hint" data-hint="driver"></span></label>`
       : `<label class="wn5f-f wn5h-partner"><span>Συνεργάτης *</span><select class="form-input" id="wn5h-partner" data-fh-search>${_opts('partner', sel.partner_id, '', sel.partner)}</select></label>`
         + `<label class="wn5f-f wn5h-rate"><span>Κόμιστρο €</span><input class="form-input" id="wn5h-rate" inputmode="decimal" value="${sel.partner_rate == null ? '' : _esc(sel.partner_rate)}"></label>`;
   }
@@ -378,6 +462,9 @@
       html, '', 'Αλλαγή οχήματος');
     d.rtId = rtId;
     d.cycle = c;
+    d.board = board;
+    d.now = now;
+    d.hub = _hubOf(board);
     d.own = true;
     d.slot = PlanApi.slot();   // ONE id for the execution of this open form, never on its dry runs
     if (typeof fhSelectSearchIn === 'function') fhSelectSearchIn(d.el);   // the vehicle-dropdown rule (13/10)
@@ -418,6 +505,7 @@
       + `<div data-strip></div><div data-preview></div>`;
     const d = _open('fix', `Διόρθωση τμήματος ${SEG_GR[g.label] || ''} · ${_esc(c.code || 'RT-' + c.rt_id)}`, `· ${_when(g.from_at)} → ${_when(g.to_at)}`, html, '', 'Αποθήκευση');
     d.cycle = c;
+    d.hub = _hubOf(board);
     if (typeof fhSelectSearchIn === 'function') fhSelectSearchIn(d.el);
     if (!ids.ok) { WN5Act.strip(_strip(d), ids.err); d.locked = true; }   // as change(): no catalogue, no save
     const read = () => {
@@ -443,7 +531,7 @@
       if (rf) rf.classList.toggle('bad', probs.includes(RATE_BAD));
       const set = probs.length ? {} : _fixSet(g, st);
       const key = Object.keys(set).length ? JSON.stringify({ set }) : null;
-      if (!d.prev || d.prev.key !== key) d.prev = null;
+      if (!d.prev || d.prev.key !== key) _dropPreview(d);
       _otherNote(d, probs.includes(OTHER_NOTE));
       _lines(d, probs.filter((l) => l !== OTHER_NOTE && !/^(Πότε|Πού|Λόγος) \*/.test(l)).concat(_kept(d, key)));
       _setSave(d, !!key && !!d.prev && !d.prev.conflict && !d.locked && !d.busy && !d.done);
@@ -454,7 +542,7 @@
           const ans = await planFetch('PATCH', `/plan/segments/${segmentId}`, { body: JSON.parse(key), dry: true });
           if (_d !== d) return;
           d.prev = { key, conflict: (ans.preview && ans.preview.conflict) || null };
-          d.el.querySelector('[data-preview]').innerHTML = ans.preview && ans.preview.segments ? _previewHTML(ans.preview, c) : '';
+          d.el.querySelector('[data-preview]').innerHTML = ans.preview && ans.preview.segments ? _previewHTML(ans.preview, c, d.hub) : '';
         } catch (e) { if (_d !== d) return; d.failedKey = key; _failure(d, e, key); }
         refresh();
       }, 400);
@@ -480,5 +568,5 @@
     return true;
   }
 
-  window.WN5Hand = Object.freeze({ cycleCard, change, fix, _changeBody, _changeProblems, _fixSet });
+  window.WN5Hand = Object.freeze({ cycleCard, change, fix, _changeBody, _changeProblems, _fixSet, _payrollLine, _freeUntil });
 })();
