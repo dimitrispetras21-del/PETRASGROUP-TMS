@@ -105,7 +105,7 @@ async function openBoard(browser, origin, opts = {}) {
       const entry = { m, path: u.pathname, q: Object.fromEntries(u.searchParams), raw, body, headers: req.headers() };
       S.plan.push(entry);
       const fn = S.routes[routeKey(m, u.pathname)] || defaultPlan;
-      const [status, out] = fn(entry, S);
+      const [status, out] = await fn(entry, S);   // a stub may answer late (T16 fix r1: a preview in flight)
       entry.status = status;
       return json(route, out, status);
     }
@@ -1461,45 +1461,80 @@ async function scnDate(browser, origin) {
     const c2 = bCalls(S, 'PATCH', P);
     ok(scn, '«Αποθήκευση» sends the dry-run body without dry_run (no confirm_token in 072)', c2.length === 2 && c2[1].raw === '{"shift":{"side":"KATHODOS","delta":"1 days"}}', c2.map((x) => x.raw));
     ok(scn, '409 writes_closed → the preview strip in the panel', (await bText(page, `${D} .wn5-strip[data-kind="preview"]`)).includes('rig sentinel writes_closed'));
+    ok(scn, 'no page errors (A)', !S.pageErrors.length, S.pageErrors);
     await page.context().close();
   }
-  { // B · a conflict in the preview (200): the Worker's words, no save
-    const { page } = await bOpen(browser, origin, { plan: { [K]: () => PV({ after: null, conflict: { code: 'truck_busy', sqlstate: 'P0001', detail: 'RT-T205', message: 'rig sentinel conflict truck_busy' } }) } });
+  // 072 sends next_rt:null with EVERY conflict (072:1820-1824); truck_busy / driver_busy name the other cycle in
+  // detail (plan_h_busy 072:1434-1450). The stubs below are that shape, never next_rt next to a conflict.
+  const CF = (code, detail) => PV({ after: null, next_rt: null, conflict: { code, sqlstate: '23514', detail, message: 'rig sentinel conflict ' + code } });
+  const cfRead = (page) => page.$eval(D, (dlg) => {
+    const li = dlg.querySelector('.wn5-res li[data-row="next"], .wn5-res li[data-row="conflict"]');
+    const n = li && li.querySelector('.wn5-res-n');
+    const s = li ? [...li.querySelectorAll('.wn5-res-s')] : [];
+    const b = dlg.querySelector('.wi4-dlg-ft [data-act="next"]');
+    return { row: li ? li.dataset.row : null, name: n ? n.innerText : null, red: s[0] && s[0].classList.contains('wn5-conflict') ? s[0].innerText : '',
+      redColor: s[0] ? getComputedStyle(s[0]).color : '', hint: s[1] ? s[1].innerText : null, box: !!dlg.querySelector('.wn5-res > .wn5-conflict, .wn5-datep-r > .wn5-conflict'),
+      btn: b && b.offsetParent !== null ? b.innerText : null, btnFirst: b === dlg.querySelector('.wi4-dlg-ft').firstElementChild,
+      save: (dlg.querySelector('[data-act="save"]') || {}).disabled };
+  }).catch((e) => ({ err: String(e) }));
+  { // B · truck_busy naming a cycle that is not on the loaded board: its code, neutral, no way out, no save
+    const { page, S } = await bOpen(browser, origin, { plan: { [K]: () => CF('truck_busy', 'RT-T205') } });
     await bClick(page, CHIP);
     await bClick(page, `${D} [data-day="2026-10-13"]`);
     await page.waitForTimeout(300);
-    ok(scn, 'preview.conflict → red line with conflict.message, «Αποθήκευση» disabled', (await bText(page, `${D} .wn5-conflict`)).includes('rig sentinel conflict truck_busy')
-      && (await bOff(page, `${D} [data-act="save"]`)) === true);
+    const x = await cfRead(page);
+    ok(scn, 'truck_busy RT-T205 (not on the board) → «Κύκλος · RT-T205» over the red Worker line, no hint, no «Ανάθεση…», «Αποθήκευση» disabled',
+      x.row === 'conflict' && x.name === 'Κύκλος · RT-T205' && x.red === 'rig sentinel conflict truck_busy · δεν αποθηκεύεται' && x.hint === null && x.btn === null && x.save === true, x);
+    ok(scn, 'no page errors (B)', !S.pageErrors.length, S.pageErrors);
     await page.context().close();
   }
-  { // B2 · a conflict with a next cycle on the board: its red sub-line + the hint, and «Ανάθεση …» opens its assignment
-    const { page } = await bOpen(browser, origin, { plan: { [K]: () => PV({ after: null, next_rt: { code: 'RT-T203', start_at: '2026-10-14T08:00:00+03:00' },
-      conflict: { code: 'truck_busy', sqlstate: 'P0001', detail: 'RT-T203', message: 'rig sentinel conflict truck_busy' } }) } });
+  { // B2 · truck_busy naming the NEXT cycle of the truck (on the board, starts after): «Επόμενος κύκλος», the hint, «Ανάθεση 2/2…»
+    const board = bBoard();
+    board.cycles.push(bCycle(206, { truck_id: 13, truck: 'TST-2103', trailer_id: 23, trailer: 'TRL-5103', driver_id: 33, driver: 'Driver Test 03' }, [
+      bStop(2061, 'KATHODOS', 1, '2026-10-14', '16:00', '18:00', [bLeg(6061, 5161, 'load', 10)]),
+      bStop(2062, 'KATHODOS', 4, '2026-10-15', '06:00', '08:00', [bLeg(6061, 5161, 'unload', 10)])]));
+    const { page, S } = await bOpen(browser, origin, { board, plan: { [K]: () => CF('truck_busy', 'RT-T206') } });
     await bClick(page, CHIP);
-    await bClick(page, `${D} [data-day="2026-10-13"]`);
+    await bClick(page, `${D} [data-day="2026-10-14"]`);
     await page.waitForTimeout(300);
-    const nx = await page.$eval(D, (dlg) => {
-      const li = dlg.querySelector('.wn5-res li[data-row="next"]');
-      const s = li ? [...li.querySelectorAll('.wn5-res-s')] : [];
-      const b = dlg.querySelector('.wi4-dlg-ft [data-act="next"]');
-      return { name: li ? li.querySelector('.wn5-res-n').innerText : '', red: s[0] && s[0].classList.contains('wn5-conflict') ? s[0].innerText : '',
-        redColor: s[0] ? getComputedStyle(s[0]).color : '', hint: s[1] ? s[1].innerText : '', box: !!dlg.querySelector('.wn5-res > .wn5-conflict, .wn5-datep-r > .wn5-conflict'),
-        btn: b && b.offsetParent !== null ? b.innerText : null, btnFirst: b === dlg.querySelector('.wi4-dlg-ft').firstElementChild };
-    }).catch((e) => ({ err: String(e) }));
-    ok(scn, 'conflict = the red sub-line of «Επόμενος κύκλος · TST-2104», the grey hint under it, no separate red box',
-      nx.name === 'Επόμενος κύκλος · TST-2104' && nx.red === 'rig sentinel conflict truck_busy · δεν αποθηκεύεται' && nx.redColor === 'rgb(185, 28, 28)'
-      && nx.hint === 'Άλλη ημέρα ή ανάθεση του επόμενου κύκλου σε άλλο φορτηγό.' && !nx.box, nx);
-    ok(scn, '«Ανάθεση επόμενου κύκλου…» left of «Άκυρο» (Figma 2082:7735)', nx.btn === 'Ανάθεση επόμενου κύκλου…' && nx.btnFirst, nx);
+    const nx = await cfRead(page);
+    ok(scn, 'conflict = the red sub-line of «Επόμενος κύκλος · TST-2103 · 2/2» (from conflict.detail), the grey hint under it, no separate red box',
+      nx.row === 'next' && nx.name === 'Επόμενος κύκλος · TST-2103 · 2/2' && nx.red === 'rig sentinel conflict truck_busy · δεν αποθηκεύεται' && nx.redColor === 'rgb(185, 28, 28)'
+      && nx.hint === 'Άλλη ημέρα ή ανάθεση του 2/2 σε άλλο φορτηγό.' && !nx.box && nx.save === true, nx);
+    ok(scn, '«Ανάθεση 2/2…» left of «Άκυρο» (Figma 2082:7735)', nx.btn === 'Ανάθεση 2/2…' && nx.btnFirst, nx);
     await shot(page, 'date-B2-conflict');
     await bClick(page, `${D} .wi4-dlg-ft [data-act="next"]`);
     await page.waitForTimeout(300);
-    ok(scn, '«Ανάθεση …» closes the date panel and opens the assignment of RT-T203', !(await bHas(page, D)) && (await bText(page, bDlg('assign'))).includes('RT-T203'));
+    ok(scn, '«Ανάθεση 2/2…» closes the date panel and opens the assignment of RT-T206', !(await bHas(page, D)) && (await bText(page, bDlg('assign'))).includes('RT-T206'));
+    ok(scn, 'no page errors (B2)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // B3 · driver_busy naming an EARLIER cycle (RT-T203 starts Sat 10/10): named neutrally, no «Επόμενος», no hint, no button
+    const { page, S } = await bOpen(browser, origin, { plan: { [K]: () => CF('driver_busy', 'RT-T203') } });
+    await bClick(page, CHIP);
+    await bClick(page, `${D} [data-day="2026-10-13"]`);
+    await page.waitForTimeout(300);
+    const x = await cfRead(page);
+    ok(scn, 'driver_busy RT-T203 (earlier) → «Κύκλος · TST-2104» over the red line; no «Επόμενος», no hint, no «Ανάθεση…»',
+      x.row === 'conflict' && x.name === 'Κύκλος · TST-2104' && x.red === 'rig sentinel conflict driver_busy · δεν αποθηκεύεται' && x.hint === null && x.btn === null, x);
+    ok(scn, 'no page errors (B3)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // B4 · any other code (a window rule with a detail): the Worker's words alone, no name, no hint, no button
+    const { page, S } = await bOpen(browser, origin, { plan: { [K]: () => CF('window_order', '2031') } });
+    await bClick(page, CHIP);
+    await bClick(page, `${D} [data-day="2026-10-13"]`);
+    await page.waitForTimeout(300);
+    const x = await cfRead(page);
+    ok(scn, 'window_order → only «rig sentinel conflict window_order · δεν αποθηκεύεται»: no name row, no hint, no button, «Αποθήκευση» disabled',
+      x.row === 'conflict' && x.name === null && x.red === 'rig sentinel conflict window_order · δεν αποθηκεύεται' && x.hint === null && x.btn === null && x.save === true, x);
+    ok(scn, 'no page errors (B4)', !S.pageErrors.length, S.pageErrors);
     await page.context().close();
   }
   { // E · own cycle without ANODOS, with a local loading (RT-T201): «↳ Φόρτωση με τοπικό» under its stop, «Κενό γύρισμα»
     const board = bBoard();
     board.cycles[0].stops[2].local_loading = { local_move_id: 7101, driver: 'Driver Test 05', move_date: '2026-10-12', time_from: '11:00:00', time_to: '12:00:00' };
-    const { page } = await bOpen(browser, origin, { board, plan: { [K]: () => PV() } });
+    const { page, S } = await bOpen(browser, origin, { board, plan: { [K]: () => PV() } });
     await bClick(page, '.wn5-row[data-rt="201"] [data-act="date"][data-side="KATHODOS"]');
     await bClick(page, `${D} [data-day="2026-10-13"]`);
     await page.waitForTimeout(300);
@@ -1514,32 +1549,73 @@ async function scnDate(browser, origin) {
     ok(scn, '«Κενό γύρισμα · ASPROPYRGOS TEST» / «ελεύθερο από Τρί 13/10 09:00 → Τετ 14/10 09:00»; no ANODOS row',
       !!e.gap && e.gap[0] === 'Κενό γύρισμα · ASPROPYRGOS TEST' && e.gap[1] === 'ελεύθερο από Τρί 13/10 09:00 → Τετ 14/10 09:00' && !e.anod, e);
     await shot(page, 'date-E-201-local');
+    ok(scn, 'no page errors (E)', !S.pageErrors.length, S.pageErrors);
     await page.context().close();
   }
-  { // C · window + «Μετακίνηση και της ΑΝΟΔΟΥ»: ONE body (explicit stops + one shift)
+  // wait until the n-th dry run is answered and drawn (the result column no longer reads «Διαβάζει…»)
+  const dryDone = async (page, S, n) => {
+    for (let i = 0; i < 60 && bCalls(S, 'PATCH', P).length < n; i++) await page.waitForTimeout(50);
+    await until(page, (sel) => { const r = document.querySelector(sel + ' .wn5-datep-r'); return !!r && !r.innerText.includes('Διαβάζει'); }, D, 3000);
+  };
+  { // C · window + «Μετακίνηση και της ΑΝΟΔΟΥ»: ONE body (explicit stops + one shift); each step after its dry run
     const { page, S } = await bOpen(browser, origin, { plan: { [K]: () => PV() } });
     await bClick(page, CHIP);
     await bClick(page, `${D} [data-day="2026-10-13"]`);
+    await dryDone(page, S, 1);
     await page.check(`${D} input[data-anod]`).catch(() => {});
+    await dryDone(page, S, 2);
     await page.fill(`${D} input[data-win="from"]`, '18:30').catch(() => {}); await page.press(`${D} input[data-win="from"]`, 'Tab').catch(() => {});
+    await dryDone(page, S, 3);
     await page.fill(`${D} input[data-win="to"]`, '19:30').catch(() => {}); await page.press(`${D} input[data-win="to"]`, 'Tab').catch(() => {});
-    await page.waitForTimeout(300);
+    await dryDone(page, S, 4);
     const c = bCalls(S, 'PATCH', P);
     const last = c[c.length - 1];
-    ok(scn, 'window + ANODOS → one body: the Veroia stop on its old day, the ANODOS stops +1 day, one shift of the KATHODOS', !!last && bodyOf(last) === JSON.stringify({
+    ok(scn, 'window + ANODOS → one body: the Veroia stop on its old day, the ANODOS stops +1 day, one shift of the KATHODOS', c.length === 4 && !!last && bodyOf(last) === JSON.stringify({
       stops: [{ stop_id: 2031, planned_from: '2026-10-12T18:30:00+03:00', planned_to: '2026-10-12T19:30:00+03:00' },
               { stop_id: 2035, planned_from: '2026-10-14T12:00:00+03:00', planned_to: '2026-10-14T14:00:00+03:00' },
               { stop_id: 2036, planned_from: '2026-10-14T20:00:00+03:00', planned_to: '2026-10-14T22:00:00+03:00' }],
-      shift: { side: 'KATHODOS', delta: '1 days' } }), last && last.raw);
+      shift: { side: 'KATHODOS', delta: '1 days' } }), c.map((x) => x.raw));
+    ok(scn, 'no page errors (C)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // C2 · typing an hour while a dry run is in flight (stub answers after 500ms): the field, its focus and the
+    // keystrokes survive the answer; the checkbox stays the same element; then ONE dry run with the typed window
+    const late = (ms, v) => new Promise((res) => setTimeout(() => res(v), ms));
+    const { page, S } = await bOpen(browser, origin, { plan: { [K]: () => late(500, PV()) } });
+    await bClick(page, CHIP);
+    await page.$eval(`${D} input[data-win="from"]`, (e) => { e.__rig = 1; }).catch(() => {});
+    await bClick(page, `${D} [data-day="2026-10-13"]`);      // dry run 1 in flight (bClick waits 200ms)
+    await page.click(`${D} input[data-win="from"]`, { clickCount: 3 }).catch(() => {});
+    await page.keyboard.type('18:3', { delay: 120 });          // ~360ms: the answer lands mid-typing
+    await page.waitForTimeout(250);
+    await page.keyboard.type('0');
+    const mid = await page.$eval(`${D} input[data-win="from"]`, (e) => ({ same: e.__rig === 1, focus: document.activeElement === e, v: e.value })).catch((x) => ({ err: String(x) }));
+    const drawn = await page.$eval(`${D} .wn5-datep-r`, (r) => !r.innerText.includes('Διαβάζει') && r.innerText.includes('ΑΠΟΤΕΛΕΣΜΑ')).catch(() => false);
+    ok(scn, 'a preview answer while typing: the same «from» input, still focused, value «18:30» (the answer was drawn meanwhile)', mid.same && mid.focus && mid.v === '18:30' && drawn, mid);
+    await page.$eval(`${D} input[data-anod]`, (e) => { e.__rig = 1; }).catch(() => {});
+    await page.keyboard.press('Tab');
+    await dryDone(page, S, 2);
+    await page.check(`${D} input[data-anod]`).catch(() => {});
+    await page.waitForTimeout(100);
+    const kept = await page.$eval(`${D} input[data-anod]`, (e) => ({ same: e.__rig === 1, on: e.checked })).catch((x) => ({ err: String(x) }));
+    await dryDone(page, S, 3);
+    const after = await page.$eval(`${D} input[data-anod]`, (e) => ({ same: e.__rig === 1, on: e.checked })).catch((x) => ({ err: String(x) }));
+    ok(scn, 'the ΑΝΟΔΟΣ checkbox is one element across previews and keeps its tick', kept.same && kept.on && after.same && after.on, [kept, after]);
+    const c = bCalls(S, 'PATCH', P);
+    ok(scn, 'the dry runs: day, then the typed window 18:30–19:00, then + ΑΝΟΔΟΣ (3 in all, the typed hour in the last two)',
+      c.length === 3 && !c[0].raw.includes('stops') && c[1].raw.includes('"planned_from":"2026-10-12T18:30:00+03:00"') && c[2].raw.includes('"stop_id":2035')
+      && c[2].raw.includes('"planned_from":"2026-10-12T18:30:00+03:00"'), c.map((x) => x.raw));
+    ok(scn, 'no page errors (C2)', !S.pageErrors.length, S.pageErrors);
     await page.context().close();
   }
   { // D · a shape refusal in the dry run is a 422: the Worker's words
-    const { page } = await bOpen(browser, origin, { plan: { [K]: () => planErr(422, 'PLAN_RULE', 'vehicle_clear_use_clear') } });
+    const { page, S } = await bOpen(browser, origin, { plan: { [K]: () => planErr(422, 'PLAN_RULE', 'vehicle_clear_use_clear') } });
     await bClick(page, CHIP);
     await bClick(page, `${D} [data-day="2026-10-13"]`);
     await page.waitForTimeout(300);
     ok(scn, 'a 422 in the dry run → refusal strip with the Worker text, «Αποθήκευση» disabled', (await bText(page, `${D} .wn5-strip[data-kind="refusal"]`)).includes('rig sentinel vehicle_clear_use_clear')
       && (await bOff(page, `${D} [data-act="save"]`)) === true);
+    ok(scn, 'no page errors (D)', !S.pageErrors.length, S.pageErrors);
     await page.context().close();
   }
 }

@@ -1329,15 +1329,28 @@
   // one result row (Figma 2053:7939-7950): the name, under it «old day → » and the new value in blue
   const _resLi = (name, old, now, attr) => '<li' + (attr || '') + '><div class="wn5-res-n">' + name + '</div><div class="wn5-res-s">' + _esc(old)
     + (now == null ? '' : ' → <b>' + _esc(now) + '</b>') + '</div></li>';
-  // the next cycle as the board knows it (plates · n/m, its rt for «Ανάθεση n/m…»); else only the Worker's code
-  function _nextOf(pv) {
-    const code = pv && pv.next_rt && pv.next_rt.code;
+  // a cycle of the loaded board by its RT code (plates · n/m, its rt for «Ανάθεση n/m…»); null when not on it
+  function _cycleByCode(code) {
     const c = code ? _cycles().find((x) => x.code === code) : null;
     if (!c) return null;
     const r = _row(c.rt_id);
     // «2/2» only when the truck has more than one cycle (Figma 2053:8076); a lone cycle is named by its plates
     const no = r && r.cycleNo && r.cycleNo.m > 1 ? r.cycleNo.n + '/' + r.cycleNo.m : null;
-    return { rtId: c.rt_id, no, label: [_cycText(c, r).l1.split(' · ')[0], no].filter(Boolean).join(' · ') };
+    return { rtId: c.rt_id, no, start: c.start_at, label: [_cycText(c, r).l1.split(' · ')[0], no].filter(Boolean).join(' · ') };
+  }
+  // What a conflict can honestly name. 072 sends next_rt:null with EVERY conflict (072:1820-1824), so the row is
+  // never built on next_rt. Only truck_busy / driver_busy carry the other cycle, its RT code in conflict.detail
+  // (plan_h_busy, 072:1434-1450; the Worker keeps detail). It is «Επόμενος κύκλος», with the way out and
+  // «Ανάθεση…», only when it starts after this cycle; an earlier one is named neutrally. Any other code (a window,
+  // a constraint name, a busy code without detail): the Worker's words alone, nothing guessed (principle 8).
+  const BUSY_WHO = { truck_busy: 'φορτηγό', driver_busy: 'οδηγό' };
+  function _conflictOf(st, cf) {
+    if (!cf || !Object.prototype.hasOwnProperty.call(BUSY_WHO, cf.code) || cf.detail == null || !String(cf.detail).trim()) return null;
+    const code = String(cf.detail).trim();
+    const o = _cycleByCode(code);
+    const self = _cycle(st.rtId);
+    const next = !!(o && o.start && self && self.start_at) && new Date(o.start) > new Date(self.start_at);
+    return { label: o ? o.label : code, next, rtId: next ? o.rtId : null, no: o ? o.no : null, who: BUSY_WHO[cf.code] };
   }
   function _dateResHTML(st) {
     const body = _dateBody(st);
@@ -1394,20 +1407,24 @@
       else h += '<li data-row="anod"' + (over ? ' class="wn5-res-warn"' : '') + '><div class="wn5-res-n">' + name + '</div><div class="wn5-res-s">'
         + _esc(d0 + (over ? ' · πριν τελειώσει η ΚΑΘΟΔΟΣ (' + _dayHm(kathEnd) + ')' : ' · δεν αλλάζει')) + '</div></li>';
       const last = st.anodStops[st.anodStops.length - 1];
-      h += '<li class="wn5-res-chk"><label class="wn5-anod"><input type="checkbox" data-anod' + (st.alsoAnod ? ' checked' : '') + '> Μετακίνηση και της ΑΝΟΔΟΥ ' + sgn + '</label>'
-        + '<div class="wn5-res-s">' + _esc('→ ' + _dayShort(_ymdOf(_shiftIso(a0, delta))) + ' · τέλος κύκλου ως ' + _dayShort(_ymdOf(_shiftIso(last.planned_to, delta))) + ' ' + _hm(last.planned_to)) + '</div></li>';
+      // a placeholder: the panel puts its ONE checkbox here (stable, never re-created while a preview arrives)
+      h += '<li class="wn5-res-chk" data-chk data-lab="' + _esc('Μετακίνηση και της ΑΝΟΔΟΥ ' + sgn) + '" data-sub="'
+        + _esc('→ ' + _dayShort(_ymdOf(_shiftIso(a0, delta))) + ' · τέλος κύκλου ως ' + _dayShort(_ymdOf(_shiftIso(last.planned_to, delta))) + ' ' + _hm(last.planned_to)) + '"></li>';
     }
     const pv = st.preview;
     if (pv) {
-      // the next cycle of this vehicle (preview.next_rt); a conflict is its red line and never saves (Figma 2053:8076-8078)
-      const nx = _nextOf(pv);
-      const label = nx ? nx.label : (pv.next_rt ? pv.next_rt.code || '—' : null);
       if (pv.conflict) {
-        h += '<li data-row="next"><div class="wn5-res-n">' + _esc('Επόμενος κύκλος' + (label ? ' · ' + label : '')) + '</div>'
-          + '<div class="wn5-res-s wn5-conflict">' + _esc(pv.conflict.message || '(' + (pv.conflict.code || 'σύγκρουση') + ')') + ' · δεν αποθηκεύεται</div>'
-          + '<div class="wn5-res-s">' + _esc('Άλλη ημέρα ή ανάθεση ' + (nx && nx.no ? 'του ' + nx.no : 'του επόμενου κύκλου') + ' σε άλλο φορτηγό.') + '</div></li>';
+        // a conflict is a red line and never saves (Figma 2053:8076-8078); its name only from conflict.detail
+        const cx = _conflictOf(st, pv.conflict);
+        const red = '<div class="wn5-res-s wn5-conflict">' + _esc(pv.conflict.message || '(' + (pv.conflict.code || 'σύγκρουση') + ')') + ' · δεν αποθηκεύεται</div>';
+        if (!cx) h += '<li data-row="conflict">' + red + '</li>';
+        else if (!cx.next) h += '<li data-row="conflict"><div class="wn5-res-n">' + _esc('Κύκλος · ' + cx.label) + '</div>' + red + '</li>';
+        else h += '<li data-row="next"><div class="wn5-res-n">' + _esc('Επόμενος κύκλος · ' + cx.label) + '</div>' + red
+          + '<div class="wn5-res-s">' + _esc('Άλλη ημέρα ή ανάθεση ' + (cx.no ? 'του ' + cx.no : 'του επόμενου κύκλου') + ' σε άλλο ' + cx.who + '.') + '</div></li>';
       } else if (pv.next_rt) {
-        h += _resLi(_esc('Επόμενος κύκλος · ' + label), _dayShort(_ymdOf(pv.next_rt.start_at)) + ' ' + _hm(pv.next_rt.start_at), null, ' data-row="next"');
+        // without a conflict 072 sends the next cycle of the truck or driver (072:1796-1801)
+        const nx = _cycleByCode(pv.next_rt.code);
+        h += _resLi(_esc('Επόμενος κύκλος · ' + (nx ? nx.label : pv.next_rt.code || '—')), _dayShort(_ymdOf(pv.next_rt.start_at)) + ' ' + _hm(pv.next_rt.start_at), null, ' data-row="next"');
       } else h += '<li data-row="next"><div class="wn5-res-n">Επόμενος κύκλος · κανένας</div></li>';
     }
     h += '</ul>';
@@ -1459,23 +1476,50 @@
       const body = _dateBody(st);
       if (b) b.disabled = d.locked || d.busy || !body || st.okFor !== JSON.stringify(body);
     };
+    // The skeleton is built ONCE. A preview answer redraws only the result column: the window inputs are never
+    // re-created (someone typing an hour while a dry run is in flight keeps the field and the keystrokes; a
+    // removed focused input fired blur → change → a nested redraw inside innerHTML = NotFoundError, review r1),
+    // and the ΑΝΟΔΟΣ checkbox is one element moved into its row, never rebuilt. The calendar redraws on a click only.
+    d.body.innerHTML = '<div class="wn5-datep"><div><div data-cal></div>' + (vStop ? '<div class="wn5-hubwin"><span>' + (side === 'KATHODOS' ? 'Παράθυρο' : 'Άφιξη Βέροιας') + '</span>'
+      + '<input class="wn5-hm" data-win="from" value="' + _esc(st.from) + '"> – <input class="wn5-hm" data-win="to" value="' + _esc(st.to) + '"></div>' : '')
+      + '</div><div class="wn5-datep-r"></div></div>';
+    const calEl = d.body.querySelector('[data-cal]'), resEl = d.body.querySelector('.wn5-datep-r');
+    const chk = document.createElement('li');
+    chk.className = 'wn5-res-chk';
+    chk.innerHTML = '<label class="wn5-anod"><input type="checkbox" data-anod><span></span></label><div class="wn5-res-s"></div>';
+    const drawCal = () => {
+      const f = document.activeElement, day = f && calEl.contains(f) ? f.dataset.day : null;
+      calEl.innerHTML = _calHTML(st);
+      const again = day && calEl.querySelector('[data-day="' + day + '"]');
+      if (again) again.focus();
+    };
+    let drawing = false, redo = false;
     const draw = () => {
-      let left = _calHTML(st);
-      if (vStop) {
-        left += '<div class="wn5-hubwin"><span>' + (side === 'KATHODOS' ? 'Παράθυρο' : 'Άφιξη Βέροιας') + '</span>'
-          + '<input class="wn5-hm" data-win="from" value="' + _esc(st.from) + '"> – <input class="wn5-hm" data-win="to" value="' + _esc(st.to) + '"></div>';
-      }
-      d.body.innerHTML = '<div class="wn5-datep"><div>' + left + '</div><div class="wn5-datep-r">' + _dateResHTML(st) + '</div></div>';
-      const nx = st.preview && st.preview.conflict ? _nextOf(st.preview) : null;
-      const nb = d.ft.querySelector('[data-act="next"]');
-      nb.style.display = nx ? '' : 'none';
-      nb.textContent = nx ? 'Ανάθεση ' + (nx.no || 'επόμενου κύκλου') + '…' : '';
-      nb.dataset.rt = nx ? nx.rtId : '';
-      if (st.err) WN5Act.strip(d.msg, st.err);
-      else if (_closed) WN5Act.strip(d.msg, _closed);
-      else WN5Act.strip(d.msg, null);
-      d.refresh();
-      _place(d);
+      if (drawing) { redo = true; return; }     // never a redraw inside a redraw
+      drawing = true;
+      try {
+        const hadFocus = document.activeElement === chk.querySelector('input');
+        resEl.innerHTML = _dateResHTML(st);
+        const ph = resEl.querySelector('li[data-chk]');
+        if (ph) {
+          chk.querySelector('span').textContent = ph.dataset.lab;
+          chk.querySelector('.wn5-res-s').textContent = ph.dataset.sub;
+          chk.querySelector('input').checked = st.alsoAnod;
+          ph.replaceWith(chk);
+          if (hadFocus) chk.querySelector('input').focus();
+        }
+        const cx = st.preview && st.preview.conflict ? _conflictOf(st, st.preview.conflict) : null;
+        const nb = d.ft.querySelector('[data-act="next"]');
+        nb.style.display = cx && cx.next ? '' : 'none';
+        nb.textContent = cx && cx.next ? 'Ανάθεση ' + (cx.no || 'επόμενου κύκλου') + '…' : '';
+        nb.dataset.rt = cx && cx.next ? cx.rtId : '';
+        if (st.err) WN5Act.strip(d.msg, st.err);
+        else if (_closed) WN5Act.strip(d.msg, _closed);
+        else WN5Act.strip(d.msg, null);
+        d.refresh();
+        _place(d);
+      } finally { drawing = false; }
+      if (redo) { redo = false; draw(); }
     };
     // one dry run per change; an answer that is no longer for the panel's state is dropped (seq)
     const run = async () => {
@@ -1505,8 +1549,8 @@
       const a = b.dataset.act;
       if (a === 'cancel') { if (!d.busy) _close(d); }
       else if (a === 'next') { if (!d.busy && b.dataset.rt) WN5Act.assign(null, { entry: 'row', rtId: _id(b.dataset.rt) }); }
-      else if (a === 'mon') { const v = new Date(Date.UTC(st.view[0], st.view[1] + Number(b.dataset.d), 1)); st.view = [v.getUTCFullYear(), v.getUTCMonth()]; draw(); }
-      else if (a === 'day') { st.sel = b.dataset.day === st.cur ? null : b.dataset.day; run(); }
+      else if (a === 'mon') { const v = new Date(Date.UTC(st.view[0], st.view[1] + Number(b.dataset.d), 1)); st.view = [v.getUTCFullYear(), v.getUTCMonth()]; drawCal(); _place(d); }
+      else if (a === 'day') { st.sel = b.dataset.day === st.cur ? null : b.dataset.day; drawCal(); run(); }
       else if (a === 'save') {
         const body = _dateBody(st);
         if (body && st.okFor === JSON.stringify(body)) _send(d, { method: 'PATCH', path: '/plan/rt/' + st.rtId, body }, 'Άλλαξε η ημερομηνία', { intl: true });
@@ -1519,6 +1563,7 @@
       if (ev.target.matches('[data-win]')) run();
       else if (ev.target.matches('[data-anod]')) { st.alsoAnod = ev.target.checked; run(); }
     });
+    drawCal();
     draw();
     _gate(d);
     return d;
