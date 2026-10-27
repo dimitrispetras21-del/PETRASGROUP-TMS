@@ -1694,13 +1694,17 @@
   const _sideWord = (side) => (side === 'ANODOS' ? 'ΑΝΟΔΟΣ' : 'ΚΑΘΟΔΟΣ');
   function _cardHTML(no, f) {
     const any = f.items[0] || (f.legs[0] && f.legs[0].l) || {};
-    const ref = any.reference || ('#' + no);
+    // «#N-2244» (Figma 2011:10506 / 10583): the '#' before the reference too, not only before the bare id
+    const ref = '#' + (any.reference || no);
     const price = f.items.find((x) => typeof x.price === 'number');
     const pe = f.items.find((x) => typeof x.pallet_exchange === 'boolean');
     const pal = _sum(f.items.map((x) => x.pallets)) + _sum(f.legs.filter((x) => x.l.act === 'load').map((x) => x.l.pallets));
     const assigned = f.legs.length > 0;
     const side = assigned ? f.legs[0].s.side : (f.items[0] ? _sideFor(f.items[0]) : 'KATHODOS');
     const row = (k, v) => '<div class="wn5-kv"><span>' + _esc(k) + '</span><b>' + _esc(v) + '</b></div>';
+    // a long value wraps between its « · » parts, never inside one (fidelity T18: «10:00–» / «12:00» split the window)
+    const rowP = (k, parts) => '<div class="wn5-kv"><span>' + _esc(k) + '</span><b>'
+      + parts.map((p) => '<span class="wn5-np">' + _esc(p) + '</span>').join(' · ') + '</b></div>';
     // the Figma card is a navy head with the chips under the title, then one ruled section per heading
     const sec = (head, rows) => '<section class="wn5-sec"><div class="wn5-sec-h">' + head + '</div>' + rows + '</section>';
     const chips = '<div class="wn5-chips"><span class="wn5-chip">ΕΘΝΙΚΗ</span><span class="wn5-chip">' + _sideWord(side) + '</span>'
@@ -1711,12 +1715,13 @@
       + row('Παλέτες', pal ? _pal(pal) : '—') + row('Θερμοκρασία', _temp(any.temperature_c)) + row('PE', pe ? (pe.pallet_exchange ? 'Ναι' : 'Όχι') : '—'));
     // Figma 2011:10548: a delivery names its client after the place, a loading does not
     const stopLine = (s, l) => [s.location || '—', l.act === 'unload' ? (l.client || '—') : null, _dayShort(_ymdOf(s.planned_from)), _hm(s.planned_from) + '–' + _hm(s.planned_to), _pal(l.pallets) + 'π']
-      .filter((x) => x != null).join(' · ');
+      .filter((x) => x != null);
+    const when = (a, b) => (a ? [_dayShort(_ymdOf(a)), _hm(a) + '–' + _hm(b)] : ['—']);
     let st = '';
-    for (const x of f.legs) st += row(x.l.act === 'load' ? 'Φόρτωση' : 'Παράδοση', stopLine(x.s, x.l));
+    for (const x of f.legs) st += rowP(x.l.act === 'load' ? 'Φόρτωση' : 'Παράδοση', stopLine(x.s, x.l));
     for (const it of f.items) {
-      st += row('Φόρτωση', [_placeName(it.at_hub ? _hubId() : it.position_location_id), it.load_from ? _dayShort(_ymdOf(it.load_from)) + ' · ' + _hm(it.load_from) + '–' + _hm(it.load_to) : '—', _pal(it.pallets) + 'π'].join(' · '))
-        + row('Παράδοση', [_placeName(it.nat_to_location_id), it.client || '—', it.deliver_from ? _dayShort(_ymdOf(it.deliver_from)) + ' · ' + _hm(it.deliver_from) + '–' + _hm(it.deliver_to) : '—', _pal(it.pallets) + 'π'].join(' · '));
+      st += rowP('Φόρτωση', [_placeName(it.at_hub ? _hubId() : it.position_location_id), ...when(it.load_from, it.load_to), _pal(it.pallets) + 'π'])
+        + rowP('Παράδοση', [_placeName(it.nat_to_location_id), it.client || '—', ...when(it.deliver_from, it.deliver_to), _pal(it.pallets) + 'π']);
     }
     h += sec('ΣΤΑΣΕΙΣ', st);
     let cy = '';
@@ -1724,13 +1729,19 @@
     for (const x of f.legs) {
       if (seen.has(x.c.rt_id)) continue;
       seen.add(x.c.rt_id);
-      const r = _row(x.c.rt_id), tx = _cycText(x.c, r);
+      const r = _row(x.c.rt_id), t0 = r && r.tiles && r.tiles[0];
       const sd = _sideOfRow(r, x.s.side);
       const vs = sd && sd.veroia && sd.veroia.stopId != null ? (x.c.stops || []).find((s) => s.stop_id === sd.veroia.stopId) : null;
       const v = _veroiaOf(r, x.s.side);
       // «Βέροια Δευ 12/10 16:00–18:00» (2011:10560): the Veroia stop's own day, no « · » between day and window
-      // a tile's empty line is «—» (a partner has no driver): one «—» between two « · » would say nothing
-      cy += row('Φορτηγό', [tx.l1, tx.l2, x.c.code || '—'].filter((t) => t && t !== '—').join(' · ') || '—')
+      // Figma 2011:10556 «ΚΖΗ 2108 · Dimou A. · νέος κύκλος»: truck · driver · the cycle word — no trailer, no RT code.
+      // A handover cycle (072b, several tiles) names its first segment as the board's first tile does (truck, driver).
+      const veh = x.c.trip_type === 'PARTNER' ? [x.c.partner]
+        : x.c.truck_id == null ? ['ΠΡΟΣ ΑΝΑΘΕΣΗ']
+          : r && r.tiles && r.tiles.length > 1 && t0 ? [t0.line1, t0.line2] : [x.c.truck, x.c.driver || 'χωρίς οδηγό'];
+      const cn = r && r.cycleNo ? 'κύκλος ' + (r.cycleNo.m > 1 ? r.cycleNo.n + '/' + r.cycleNo.m : r.cycleNo.n) : null;
+      const vp = veh.concat(cn).filter((t) => t && t !== '—');
+      cy += rowP('Φορτηγό', vp.length ? vp : ['—'])
         + row('Σκέλος', _sideWord(x.s.side) + (v ? ' · Βέροια ' + (vs ? _dayShort(_ymdOf(vs.planned_from)) + ' ' : '') + v : ''));
     }
     if (!seen.size) cy += row('Φορτηγό', 'ΠΡΟΣ ΑΝΑΘΕΣΗ');
@@ -1740,8 +1751,9 @@
     return { html: h, chips, ref, client: any.client || '—', pal };
   }
   // «Τι θα γίνει» rows the screen adds from the board it holds (Figma 2011:10585–10600): each vehicle's x/33 after the
-  // order leaves, and each stop left with no leg (plan_h_stops_sweep drops it). The base's own list follows them.
-  function _deleteWhat(f, ctx) {
+  // order leaves, each stop left with no leg (plan_h_stops_sweep drops it), and each cycle that stays. The base's own
+  // list follows them.
+  function _deleteWhat(f, ctx, list) {
     const out = ['σβήνεται 1 παραγγελία · ' + (ctx.client || '—') + (ctx.pal ? ' · ' + _pal(ctx.pal) + 'π' : '')];
     const sides = new Map();
     for (const x of f.legs) {
@@ -1761,6 +1773,17 @@
       stops.add(x.s.stop_id);
       out.push('η στάση ' + (x.s.location || '—') + ' · ' + _wd(_ymdOf(x.s.planned_from)) + ' ' + _hm(x.s.planned_from) + '–' + _hm(x.s.planned_to)
         + ' φεύγει από την ' + (x.s.side === 'ANODOS' ? 'άνοδο' : 'κάθοδο'));
+    }
+    // Figma 2011:10597: a cycle that keeps other legs stays with its payroll line. 072 lists rt_cancelled (with the
+    // payroll) only for a cycle the order empties; the row is said only when the board agrees (another leg of another
+    // order on the cycle) AND the base sent no rt_cancelled for it — never a «μένει» the base would contradict.
+    const gone = new Set((list || []).filter((c) => c && c.kind === 'rt_cancelled').map((c) => Number(c.rt_id)));
+    const cyc = [...new Map(f.legs.map((x) => [x.c.rt_id, x.c])).values()];
+    const stay = cyc.filter((c) => !gone.has(Number(c.rt_id))
+      && (c.stops || []).some((s) => (s.legs || []).some((l) => l.nat_order_id !== ctx.no)));
+    for (const c of stay) {
+      const name = cyc.length > 1 ? ' ' + (c.code || '—') : '';
+      out.push((c.trip_type === 'PARTNER' ? '' : 'η μισθοδοσία δεν αλλάζει · ') + 'ο κύκλος' + name + ' μένει');
     }
     return out;
   }
@@ -1802,7 +1825,7 @@
       intro: ['Η διαγραφή είναι οριστική: δεν υπάρχει επαναφορά. Αν έγινε λάθος, καταχωρείται νέα παραγγελία· το ίχνος μένει στο Audit Trail.'],
       // 072 lists «invoiced» whenever national_orders.invoiced is true (plan_delete), so its absence from the list is
       // the base saying «not invoiced» (Figma 2011:10600)
-      what: (list) => _deleteWhat(f, Object.assign({ no }, ctx)).concat(list.some((c) => c && c.kind === 'invoiced') ? [] : ['δεν είχε τιμολογηθεί · τίποτα στο ERP']),
+      what: (list) => _deleteWhat(f, Object.assign({ no }, ctx), list).concat(list.some((c) => c && c.kind === 'invoiced') ? [] : ['δεν είχε τιμολογηθεί · τίποτα στο ERP']),
       // the reason is checked at execution only and is not part of the token (072:1951-1966)
       field: { key: 'reason', label: 'Λόγος διαγραφής *' },
     });

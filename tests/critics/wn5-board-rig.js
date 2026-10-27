@@ -1713,6 +1713,11 @@ async function scnDelete(browser, origin) {
     const card = await bText(page, C);
     ok(scn, '✈ «Άνοιγμα παραγγελιών» of a one-order cycle opens the card: ΣΤΟΙΧΕΙΑ, ΣΤΑΣΕΙΣ, ΚΥΚΛΟΣ, ΤΙΜΟΛΟΓΗΣΗ',
       ['ΣΤΟΙΧΕΙΑ', 'ΣΤΑΣΕΙΣ', 'ΚΥΚΛΟΣ', 'ΤΙΜΟΛΟΓΗΣΗ', 'N-T111', 'ΠΕΛΑΤΗΣ Ε'].every((w) => card.includes(w)), card.slice(0, 500));
+    // fidelity T18 (Figma 2011:10506 / 10556): «#N-…» with the '#', and «Φορτηγό» without the RT code
+    const kv = (k) => page.$$eval(`${C} .wn5-kv`, (rs, key) => { const r = rs.find((e) => e.firstElementChild.innerText === key); return r ? r.lastElementChild.innerText : null; }, k).catch(() => null);
+    ok(scn, 'fidelity: card title «#N-T111 · ΠΕΛΑΤΗΣ Ε»', (await bText(page, `${C} .wi4-dlg-t`)) === '#N-T111 · ΠΕΛΑΤΗΣ Ε', await bText(page, `${C} .wi4-dlg-t`));
+    const fpar = await kv('Φορτηγό');
+    ok(scn, 'fidelity: partner «Φορτηγό» = «Partner Test 01», no RT code', fpar === 'Partner Test 01', fpar);
     ok(scn, 'delete lives only in the card: none on any stop of the board', (await bHas(page, `${C} [data-act="delete"]`))
       && (await page.$$('#content .wn5-pt [data-act="delete"], #content .wn5-pt .wn5-x')).length === 0);
     await bClick(page, `${C} [data-act="delete"]`);
@@ -1721,6 +1726,8 @@ async function scnDelete(browser, origin) {
     const txt = await bText(page, D);
     ok(scn, 'the list: «τιμολογήθηκε: το ERP κάνει το πιστωτικό», no invoice number, no «Επαναφορά»',
       txt.includes('τιμολογήθηκε: το ERP κάνει το πιστωτικό') && !/τιμολογήθηκε \(/.test(txt) && !txt.includes('Επαναφορά'), txt.slice(0, 500));
+    ok(scn, 'fidelity: title «Διαγραφή παραγγελίας #N-T111;»; the one-order cycle empties — no «ο κύκλος μένει»',
+      (await bText(page, `${D} .wi4-dlg-t`)) === 'Διαγραφή παραγγελίας #N-T111;' && !txt.includes('ο κύκλος μένει'), txt.slice(0, 500));
     ok(scn, 'an empty reason keeps «Διαγραφή» disabled (bad_input never reaches the Worker)', (await bOff(page, `${D} [data-act="confirm"]`)) === true);
     await page.fill(`${D} textarea[data-field]`, 'rig λόγος').catch(() => {});
     await bClick(page, `${D} [data-act="confirm"]`);
@@ -1757,6 +1764,35 @@ async function scnDelete(browser, origin) {
     const ev = await bEv(page);
     ok(scn, 'an order not on the loaded board → «σε άλλη εβδομάδα», no card (Ε-9)', ev.some((e) => e.startsWith('toast') && e.includes('σε άλλη εβδομάδα')) && !(await bHas(page, C)), ev);
     await page.context().close();
+  }
+  { // F · fidelity T18: N-T5132 leaves RT-T204, which keeps N-T5131 / N-T5135 (Figma 2011:10548 / 10556 / 10597)
+    const consq = (list) => [200, { ok: true, op: 'plan_delete', dry_run: true, needs_confirm: true, confirm_token: 'tokF', consequences: list }];
+    let list = [];
+    const { page } = await bOpen(browser, origin, { plan: { ['POST ' + P]: () => consq(list) } });
+    await page.setViewportSize({ width: 1440, height: 900 }).catch(() => {});
+    await page.evaluate(() => { WN5Act.orderCard(3132); }).catch(() => {});
+    await page.waitForTimeout(200);
+    const kv = (k) => page.$$eval(`${C} .wn5-kv`, (rs, key) => rs.filter((e) => e.firstElementChild.innerText === key).map((r) => r.lastElementChild.innerText), k).catch(() => []);
+    const fo = await kv('Φορτηγό');
+    ok(scn, 'fidelity: owned «Φορτηγό» = «TST-2103 · Driver Test 03 · κύκλος 1» (no trailer, no RT code)', fo.length === 1 && fo[0] === 'TST-2103 · Driver Test 03 · κύκλος 1', fo);
+    // every « · » part of a stop line on one line: the window «hh:mm–hh:mm» never splits at the dash
+    const parts = await page.$$eval(`${C} .wn5-kv .wn5-np`, (ps) => ps.map((p) => ({ t: p.innerText, n: p.getClientRects().length, ws: getComputedStyle(p).whiteSpace }))).catch(() => []);
+    const win = parts.filter((p) => /^\d\d:\d\d–\d\d:\d\d$/.test(p.t));
+    ok(scn, 'fidelity: ΣΤΑΣΕΙΣ wrap only between « · » parts — each window one box, nowrap', win.length >= 2 && win.every((p) => p.n === 1 && p.ws === 'nowrap'), parts);
+    await bClick(page, `${C} [data-act="delete"]`);
+    const t1 = await bText(page, D);
+    ok(scn, 'fidelity: RT-T204 keeps other legs and the base sent no rt_cancelled → «η μισθοδοσία δεν αλλάζει · ο κύκλος μένει»',
+      t1.includes('η μισθοδοσία δεν αλλάζει · ο κύκλος μένει') && (await bText(page, `${D} .wi4-dlg-t`)) === 'Διαγραφή παραγγελίας #N-T5132;', t1.slice(0, 600));
+    await page.context().close();
+    // the base says the cycle goes (rt_cancelled): the screen never contradicts it with «μένει»
+    list = [{ kind: 'rt_cancelled', rt_id: 204, code: 'RT-T204' }];
+    const o2 = await bOpen(browser, origin, { plan: { ['POST ' + P]: () => consq(list) } });
+    await o2.page.evaluate(() => { WN5Act.orderCard(3132); }).catch(() => {});
+    await o2.page.waitForTimeout(200);
+    await bClick(o2.page, `${C} [data-act="delete"]`);
+    const t2 = await bText(o2.page, D);
+    ok(scn, 'fidelity: with rt_cancelled for RT-T204 → «θα σβηστεί», no «ο κύκλος μένει»', t2.includes('RT-T204 θα σβηστεί') && !t2.includes('ο κύκλος μένει'), t2.slice(0, 600));
+    await o2.page.context().close();
   }
 }
 SCN['delete'] = scnDelete;
