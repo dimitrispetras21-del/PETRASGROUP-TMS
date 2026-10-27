@@ -453,7 +453,7 @@ async function scnRemove({ browser, origin, ok, scn }) {
   ok(scn, 'H4 title «Αφαίρεση αλλαγής · RT-T101 · Λαμία Τρί 03:00;»', h4.t === 'Αφαίρεση αλλαγής · RT-T101 · Λαμία Τρί 03:00;', h4.t);
   ok(scn, 'H4 «Τι θα γίνει»: segment out, previous vehicle again to the end, payroll, DKV without notice, loads stay',
     JSON.stringify(h4.what) === JSON.stringify(['ΤΕΛΙΚΟ (TST-2108 · Driver Test 02) → αφαιρείται', 'TST-2104 · Driver Test 01 → ξανά ως Τρί 22:00',
-      'η μισθοδοσία του οδηγού (Driver Test 02) σβήνεται', 'DKV: οι 2 γραμμές μένουν χωρίς δρομολόγιο', 'φορτία και στάσεις δεν αλλάζουν']), h4.what);
+      'η μισθοδοσία του Driver Test 02 σβήνεται', 'DKV: οι 2 γραμμές μένουν χωρίς δρομολόγιο', 'φορτία και στάσεις δεν αλλάζουν']), h4.what);
   ok(scn, 'the token note last in the body, and the red «Αφαίρεση»', h4.tok === 'Αν αλλάξει κάτι στο μεταξύ, η λίστα ξαναβγαίνει.' && h4.verb === 'Αφαίρεση', h4);
   await page.click(`${RDLG} [data-act="confirm"]`).catch(() => {});
   await page.waitForTimeout(1200);
@@ -478,7 +478,8 @@ async function scnRemove({ browser, origin, ok, scn }) {
     preview: { segments: null, warnings: [], conflict: { code: 'truck_busy', sqlstate: '23P01', detail: '', message: 'rig sentinel truck_busy' } } }] } });
   await p2.page.evaluate(() => WN5Hand.remove(702));
   await p2.page.waitForTimeout(1000);
-  ok(scn, 'preview.conflict → the refusal line, no list, no confirm, one request only', /rig sentinel truck_busy/.test(await K.text(p2.page, RDLG))
+  ok(scn, 'preview.conflict → the H7 strip «ΔΕΝ ΑΠΟΘΗΚΕΥΤΗΚΕ · message», no list, no confirm, one request only',
+    /^ΔΕΝ ΑΠΟΘΗΚΕΥΤΗΚΕ\s*rig sentinel truck_busy/.test(await K.text(p2.page, `${RDLG} [data-strip] .wn5-strip[data-kind="refusal"]`))
     && await K.count(p2.page, '.wn5-cons li') === 0 && await K.count(p2.page, '[data-act="confirm"]') === 0 && K.planOf(p2.S, 'POST', '/plan/segments/702/remove').length === 1);
   ok(scn, 'conflict: no page or console errors', !p2.S.pageErrors.length && !appConsole(p2.S).length, p2.S.pageErrors.concat(appConsole(p2.S)));
   await p2.page.context().close();

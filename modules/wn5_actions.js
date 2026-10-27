@@ -1475,7 +1475,8 @@
       h += '<ul class="wn5-cons">' + (Array.isArray(da.consequences) ? da.consequences : []).map((c) => {
         const l = WN5Lab.consequenceLine(c);
         if (l.unknown && !_unkCons.has(c && c.kind)) { _unkCons.add(c && c.kind); _log(new Error('wn5: unknown consequence ' + (c && c.kind)), 'WN5Act datePanel'); }
-        return '<li data-kind="' + _esc(c && c.kind) + '"' + (l.unknown ? ' data-unknown="1"' : '') + '>' + _esc(l.text) + '</li>';
+        // the handover's date and hour never part (T26 fidelity): «13/10 03:00» stays on one line
+        return '<li data-kind="' + _esc(c && c.kind) + '"' + (l.unknown ? ' data-unknown="1"' : '') + '><span>' + _esc(l.text).replace(/\d{1,2}\/\d{1,2} \d{1,2}:\d{2}/g, (m) => '<span class="wn5-nw">' + m + '</span>') + '</span></li>';
       }).join('') + '</ul>';
     }
     if (pv) {

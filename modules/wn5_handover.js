@@ -572,12 +572,13 @@
   // No request_id: a second press by the same user is the base's replayed:true (H-15), the same success.
   const _who = (g) => (g.trip_type === 'PARTNER' ? (g.partner || 'Συνεργάτης') : [g.truck, g.driver].filter(Boolean).join(' · ') || 'χωρίς όχημα');
   // «Τι θα γίνει» of H4 (Figma 2125:7749-7768), built from the board the screen holds: the segment goes, the previous
-  // vehicle runs again to the removed segment's end, then what the base listed. The payroll row names the driver in
-  // the nominative (Figma «του Νίκου»: the board has no genitive form of a name).
+  // vehicle runs again to the removed segment's end, then what the base listed. The payroll row is Figma's «η μισθοδοσία
+  // του <οδηγού> σβήνεται» with the name as the base holds it: every driver name is in Latin script (82/82, 28/10), which
+  // Greek does not decline («του Nikos …»); a made-up Greek genitive could misname him.
   function _removeWhat(g, prev, list) {
     const rows = [`${SEG_GR[g.label] || 'Τμήμα'} (${_who(g)}) → αφαιρείται`];
     if (prev) rows.push(`${_who(prev)} → ξανά ως ${_when(g.to_at)}`);
-    if (list.some((x) => x && x.kind === 'payroll_amount')) rows.push(`η μισθοδοσία του οδηγού${g.driver ? ' (' + g.driver + ')' : ''} σβήνεται`);
+    if (list.some((x) => x && x.kind === 'payroll_amount')) rows.push(`η μισθοδοσία του ${g.driver || 'οδηγού'} σβήνεται`);
     const costs = (WN5Act._kit && typeof WN5Act._kit.costRows === 'function') ? WN5Act._kit.costRows(list, false) : [];
     return rows.concat(costs, ['φορτία και στάσεις δεν αλλάζουν']);
   }
@@ -598,7 +599,8 @@
     const conflict = dry && dry.preview && dry.preview.conflict;
     if (conflict) {
       const d = _open('remove', _esc(title), '', '<div class="wn5f-note">Η αφαίρεση δεν γίνεται: το προηγούμενο όχημα δεν είναι ελεύθερο ως το τέλος του τμήματος.</div>', '', null);
-      _lines(d, [conflict.message || conflict.code]);
+      // the H7 strip like every other refusal of the handover (2130:7735): «ΔΕΝ ΑΠΟΘΗΚΕΥΤΗΚΕ · <the Worker's message>»
+      WN5Act.strip(_strip(d), { kind: 'refusal', code: conflict.code, message: conflict.message });
       return null;
     }
     const prev = i > 0 ? segs[i - 1] : null;

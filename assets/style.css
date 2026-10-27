@@ -9475,6 +9475,13 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-anod input { margin:0; }
 .wn5-res-s.wn5-conflict { color:var(--wi4-red); }   /* wraps: the Worker's words are never cut */
 .wn5-datep-r p { font-size:11px; line-height:15px; }
+/* T26 fidelity: the Δ4 lists under ΑΠΟΤΕΛΕΣΜΑ (seg_removed, warnings) in the v5 list style, «•» + 8px, no disc indent
+   (as .wn5-ask, T11 round 2); a handover's date and hour never part */
+.wn5-datep-r .wn5-cons { display:flex; flex-direction:column; gap:4px; padding-left:0; list-style:none; }
+.wn5-datep-r .wn5-cons li { display:flex; gap:8px; margin:0; }
+.wn5-datep-r .wn5-cons li > span { min-width:0; }
+.wn5-datep-r .wn5-cons li::before { content:'•'; flex:none; }
+.wn5-datep-r .wn5-nw { white-space:nowrap; }
 .wn5-intl { color:var(--wi4-amber-ink); }
 /* ── T17: «Φόρτωση με τοπικό» ──
    ✈ line (Figma 2046:7735): every menu line 30px, 0 12px, gap 10, centred; the right-hand text 11px Regular grey-3
