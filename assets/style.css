@@ -9725,8 +9725,10 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5f-acts { display:flex; justify-content:flex-end; align-items:center; gap:8px; }
 .wn5f-leg .wn5f-sum { gap:4px; padding:10px 14px; }
 .wn5f-leg .wn5f-sum-h { font-size:12.5px; }
-.wn5f-leg .wn5f-seq { gap:4px; }
-.wn5f-leg .wn5f-seq li { grid-template-columns:14px 130px 230px 160px auto; }
+/* one grid shared by every row (subgrid): the ref column is 160 (Figma 2011:9574) but grows to the longest ref, so
+   a stop with 3+ references (the Veroia load of a groupage leg) stays on one line and the columns stay aligned */
+.wn5f-leg .wn5f-seq { display:grid; grid-template-columns:14px 130px 230px minmax(160px, max-content) auto; gap:4px 8px; }
+.wn5f-leg .wn5f-seq li { grid-column:1 / -1; grid-template-columns:subgrid; }
 .wn5-row [data-leg] { cursor:pointer; }
 /* the clicked side while its leg form is open (2011:9305): one box over the side's cells; multiply keeps the text */
 .wn5-legsel { position:absolute; top:0; bottom:0; box-sizing:border-box; border:2px solid var(--wi4-blue); border-radius:4px; background:var(--wi4-sel); mix-blend-mode:multiply; pointer-events:none; }

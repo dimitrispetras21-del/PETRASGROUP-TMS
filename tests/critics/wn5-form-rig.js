@@ -308,6 +308,9 @@ async function scnLeg({ browser, origin, ok, scn }) {
   ok(scn, '«Μεταφορά σε…» on each VS delivery row', await K.count(page, `${LEG} [data-vs="2101"] [data-act="move"]`) === 1);
   ok(scn, '«Άνοιγμα καρτέλας ›» instead of a delete', await K.count(page, `${LEG} [data-act="card"]`) === 2 && !/Διαγραφή/.test(await K.text(page, `${LEG} .wn5f-body`)));
   ok(scn, '«ΣΕΙΡΑ ΣΤΑΣΕΩΝ ΚΑΤΑ ΩΡΑ» lists the 3 stops of the side', await K.count(page, `${LEG} .wn5f-seq li`) === 3);
+  // fidelity (Figma 2011:9574): each stop on one line, h 22, also the Veroia load that carries 3 references
+  const seqH = await page.evaluate((d) => [...document.querySelectorAll(`${d} .wn5f-seq li`)].map((li) => Math.round(li.getBoundingClientRect().height)), LEG);
+  ok(scn, 'every stop of the order of stops is on one line (h 22)', seqH.length === 3 && seqH.every((h) => h <= 23), seqH);
   ok(scn, 'no mixed-temperature line before a save (no threshold on screen)', !/Μεικτές/.test(await K.text(page, LEG)));
   const disabled = () => page.evaluate((d) => document.querySelector(`${d} [data-act="save"]`).disabled, LEG);
   ok(scn, 'nothing changed → «Αποθήκευση» disabled', await disabled());
