@@ -2073,8 +2073,8 @@ function _mreqPrintBtn(recId, withLabel) {
 // than none. No prices anywhere.
 // Thodoris 27/10 (via owner): two sheets, not one. mode 'wo' prints only the
 // open work orders, 'docs' only the documents; the rules below are unchanged.
-const _MREQ_LEGAL_DOCS = ['KTEO', 'Insurance', 'ΤΑΧΟΓΡΑΦΟΣ'];
-const _MREQ_LIST_TITLE = { wo: 'Εντολές εργασίας', docs: 'Λήξεις εγγράφων' };   // expired = the vehicle may not leave
+const _MREQ_LEGAL_DOCS = ['KTEO', 'Insurance', 'ΤΑΧΟΓΡΑΦΟΣ'];   // expired = the vehicle may not leave
+const _MREQ_LIST_TITLE = { wo: 'Εντολές εργασίας', docs: 'Λήξεις εγγράφων' };
 const _mreqFold = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
 const _mreqDM = s => { const p = toLocalDate(s).split('-'); return p.length === 3 ? p[2] + '/' + p[1] : '—'; };
 function _mreqShift(ymd, days) { const d = new Date(ymd + 'T00:00:00'); d.setDate(d.getDate() + days); return toLocalDate(d); }
@@ -2141,9 +2141,9 @@ function _mreqListModel(trips, mode) {
   // 3. Rank = the worst item: expired KTEO/insurance/tacho 1 · SOS 2 · other
   // expired document 3 · Άμεσα 4 · due 5 · normal 6.
   for (const v of vs) {
-    // Work orders first (SOS, then Άμεσα), then ONE line with all the
-    // vehicle's documents, the ones that stop it first (ΚΤΕΟ / insurance /
-    // tacho), then the most overdue — as approved in Figma.
+    // Work orders: SOS, then Άμεσα. Documents: ONE line per vehicle, the ones
+    // that stop it first (ΚΤΕΟ / insurance / tacho), then the most overdue —
+    // as approved in Figma. A sheet holds one kind only (mode).
     const docs = v.items.filter(it => it.doc).sort((a, b) => a.t - b.t || a.days - b.days);
     const wos = v.items.filter(it => !it.doc).sort((a, b) => a.t - b.t || a.date.localeCompare(b.date));
     v.docs = docs;
@@ -2213,10 +2213,13 @@ async function _mreqPrintList(btn, mode) {
   if (_mreqListBusy) return;
   _mreqListBusy = true;
   const lbl = btn && btn.querySelector('.mreq-list-lbl'), was = lbl ? lbl.textContent : '';
-  if (lbl) lbl.textContent = 'Ετοιμάζεται…'; if (btn) btn.disabled = true;
+  // Both list buttons share the busy flag: disable both, or a click on the
+  // other one would be swallowed without a sign.
+  const all = document.querySelectorAll('[id^="mreq-list-prt-"]');
+  if (lbl) lbl.textContent = 'Ετοιμάζεται…'; all.forEach(b => { b.disabled = true; });
   try { _mreqListPrintHtml(await _mreqListBuild(mode)); }
   catch (e) { toast('Η λίστα δεν τυπώθηκε: ' + (e.message || 'σφάλμα'), 'error'); if (typeof logError === 'function') logError(e, 'maint_req: print list'); }
-  finally { _mreqListBusy = false; if (lbl) lbl.textContent = was; if (btn) btn.disabled = false; }
+  finally { _mreqListBusy = false; if (lbl) lbl.textContent = was; all.forEach(b => { b.disabled = false; }); }
 }
 function _mreqListPrintHtml(m) {
   const E = s => escapeHtml(String(s ?? ''));
