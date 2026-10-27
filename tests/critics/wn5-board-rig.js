@@ -1681,6 +1681,12 @@ async function scnLocal(browser, origin) {
       { local_move_id: 7002, driver_id: 34, driver: 'Driver Test 04', move_date: '2026-10-12', time_from: '11:00', time_to: '12:00' };
     const { page, S } = await bOpen(browser, origin, { board, plan: { ['POST ' + P]: () => [200, { ok: true, op: 'plan_local_loading', dry_run: false, already: true,
       ids: { local_move_id: 7002 }, warnings: [{ code: 'local_payroll_review', dl_entry_id: 9, local_move_id: 7002 }], notice_ids: [] }] } });
+    // fidelity T17 (Figma 2011:8305): on the pickup 2033 the ↳ line names what is loaded → Βέροια and the delivery
+    // it is for (leg 6032 unloads at 2034 = delivery 2), never the pickup's own place after «για»
+    const sub = (await bText(page, '.wn5-sub[data-key="local:7002"] .wn5-sub-t')).replace(/\s+/g, ' ').trim();
+    ok(scn, '↳ «… · ΠΕΛΑΤΗΣ Α, THESSALONIKI TEST → Βέροια · 10π · για ΠΕΛΑΤΗΣ Α (στάση 2)»',
+      sub.startsWith('↳ Φόρτωση με τοπικό · Driver Test 04 · Δευ 12/10 11:00–12:00 · ΠΕΛΑΤΗΣ Α, THESSALONIKI TEST → Βέροια · 10π · για ΠΕΛΑΤΗΣ Α (στάση 2)')
+      && !sub.includes('για THESSALONIKI TEST'), sub);
     await bClick(page, '[data-act="local-cancel"][data-lm="7002"]');
     await bClick(page, `${D} [data-act="confirm"]`);
     await page.waitForTimeout(400);

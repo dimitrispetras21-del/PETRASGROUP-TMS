@@ -111,3 +111,17 @@ test('F4α-T5: a loading before Veroia comes first in ΦΟΡΤΩΣΗ, numbered �
   const fl = cell(rows(c.WN5._html(m)).find((x) => keyOf(x) === 'rt:105'), 'wn5-fl');
   assert.ok(/<span class="wi4-pt-n">1<\/span><span class="wi4-l1">Thessaloniki Test<\/span>[\s\S]*<span class="wn5-vh[^"]*">Βέροια<\/span>/.test(fl), `rt:105 ΦΟΡΤΩΣΗ: ${fl}`);
 });
+
+test('F4α-T17 fidelity: a local loading on a pickup names what is loaded → Βέροια and the delivery it is for (Figma 2011:8305)', () => {
+  const board = JSON.parse(JSON.stringify(FIX));
+  const c105 = board.cycles.find((c) => c.rt_id === 105);
+  // RT 105: Thessaloniki Test loads leg 5017 (ΠΕΛΑΤΗΣ Δ, 6π), unloaded at Aspropyrgos Test = delivery 2 of the row
+  c105.stops.find((s) => s.stop_id === 1401).local_loading = { local_move_id: 7009, driver_id: 35, driver: 'Driver Test 11',
+    move_date: '2026-10-12', time_from: '11:00:00', time_to: '12:00:00' };
+  const by = new Map(rows(html(board)).map((r) => [keyOf(r), r]));
+  const r = by.get('rt:105');
+  assert.ok(/↳ <b>Φόρτωση με τοπικό<\/b> · Driver Test 11 · Δευ 12\/10 11:00–12:00 · ΠΕΛΑΤΗΣ Δ, Thessaloniki Test → Βέροια · 6π · για ΠΕΛΑΤΗΣ Δ \(στάση 2\)/.test(r), 'rt:105 local: ' + r);
+  assert.ok(!/για Thessaloniki Test/.test(r), 'the pickup place is named after «για»');
+  // a delivery stop (rt:103, the fixture's own) keeps the T5 line
+  assert.ok(/· για Oinofyta Test \(στάση 2\)/.test(by.get('rt:103')), 'rt:103 local');
+});

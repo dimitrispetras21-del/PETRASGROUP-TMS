@@ -578,7 +578,12 @@ function _localHTML(r, lm, ok) {
   return `<div class="wn5-sub${_dc(ok && lm.dim)}" data-qi="${_esc(r.key)}" data-key="local:${_id(lm.local_move_id)}" data-stop="${_id(lm.stopId)}">`
     + '<span class="wn5-c-idx"></span>'
     + `<span class="wn5-sub-t">↳ <b>Φόρτωση με τοπικό</b> · ${_esc(lm.driver || 'χωρίς οδηγό')} · ${_esc(_dl(lm.move_date))}${time ? ' ' + _esc(time) : ''}`
-    + `${lm.stopName ? ` · για ${_esc(lm.stopName)}${lm.stopN ? ` (στάση ${lm.stopN})` : ''}` : ''}`
+    + (lm.pickup
+      // a pickup (Figma 2011:8305): what is loaded there → Βέροια, then the delivery it is for (none named when the
+      // leg unloads at Veroia or off this cycle — never the pickup's own place after «για»)
+      ? ` · ${_esc(lm.pickup.who ? `${lm.pickup.who}, ${lm.pickup.place}` : lm.pickup.place)} → Βέροια · ${_esc(_pal(lm.pickup.pallets))}`
+        + (lm.forStops && lm.forStops.length ? ` · για ${lm.forStops.map((f) => `${_esc(f.name)}${f.n ? ` (στάση ${f.n})` : ''}`).join(', ')}` : '')
+      : `${lm.stopName ? ` · για ${_esc(lm.stopName)}${lm.stopN ? ` (στάση ${lm.stopN})` : ''}` : ''}`)
     // T17: the cancel of THIS loading (no request_id); the id is the board's local_move_id
     + `<button type="button" class="wi4-link wn5-sub-x" data-act="local-cancel" data-lm="${_id(lm.local_move_id)}">Ακύρωση</button></span></div>`;
 }

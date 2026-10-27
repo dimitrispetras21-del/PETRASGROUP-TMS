@@ -204,9 +204,28 @@ function _cycleRow(c, hubId, nums, errors) {
   const pts = [...(kath ? kath.from.concat(kath.to) : []), ...anod.from, ...anod.to];
   const local = stops.filter((s) => s.local_loading).map((s) => {
     const p = pts.find((x) => x.stopId === s.stop_id);
+    // T17 attaches a local loading to a pickup outside Veroia (Figma 2011:8305): the line names what is picked up
+    // there («<client>, <place> → Βέροια · 10π») and the delivery it is FOR — the stop where the same leg unloads,
+    // with that leg's client and the stop's number on the board. Printing the pickup's own place after «για» would
+    // say the goods are for the pickup. A stop with no load legs (a delivery) keeps the T5 «για <place> (στάση n)».
+    const loads = hubId != null && Number(s.location_id) === hubId ? [] : _legs(s, 'load');
+    const pickup = loads.length ? { who: [...new Set(loads.map((l) => l.client).filter(Boolean))].join(', ') || null,
+      place: s.location || '—', pallets: _sum(loads) } : null;
+    const forStops = [];
+    for (const l of loads) {
+      const t = stops.find((x) => x !== s && (x.legs || []).some((u) => u.act === 'unload' && u.leg_id === l.leg_id));
+      const tp = t ? pts.find((x) => x.stopId === t.stop_id) : null;
+      if (!tp) continue;   // unloaded at Veroia or off this cycle: no delivery of this cycle to name
+      const unl = t.legs.find((u) => u.act === 'unload' && u.leg_id === l.leg_id);
+      const name = (unl && unl.client) || tp.name;
+      let f = forStops.find((x) => x.stopId === t.stop_id);
+      if (!f) forStops.push(f = { stopId: t.stop_id, names: [], n: tp.n });
+      if (!f.names.includes(name)) f.names.push(name);
+    }
     return { stopId: s.stop_id, local_move_id: s.local_loading.local_move_id, driver: s.local_loading.driver || null,
       move_date: s.local_loading.move_date || null, time_from: s.local_loading.time_from || null, time_to: s.local_loading.time_to || null,
-      dim: s.dim === true, stopName: s.location || null, stopN: p ? p.n : null };
+      dim: s.dim === true, stopName: s.location || null, stopN: p ? p.n : null,
+      pickup, forStops: forStops.map((f) => ({ stopId: f.stopId, name: f.names.join(', '), n: f.n })) };
   });
   const legs = stops.flatMap((s) => s.legs || []);
   const clients = [...new Set(legs.map((l) => l.client).filter(Boolean))];
