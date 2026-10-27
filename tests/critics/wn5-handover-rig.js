@@ -82,9 +82,21 @@ async function scnTiles({ browser, origin, ok, scn }) {
     const row = document.querySelector(r);
     const asg = row.querySelector('.wn5-asg').getBoundingClientRect();
     const tiles = [...row.querySelectorAll('.wn5-tile')].map((t) => t.getBoundingClientRect());
+    // Each text line of a tile whose right side slants (ΑΡΧΙΚΟ, ΕΝΔΙΑΜΕΣΟ) must end before the cut at the line's own
+    // bottom (fidelity 2123:8287): otherwise clip-path cuts a long driver / plate mid-glyph instead of the ellipsis.
+    const cut = [...row.querySelectorAll('.wn5-tile:is([data-label="initial"], [data-label="intermediate"])')].flatMap((t) => {
+      const b = t.getBoundingClientRect();
+      const s = parseFloat(getComputedStyle(t).getPropertyValue('--s'));
+      return [...t.querySelectorAll('.wn5-tl-l, .wn5-tl-p, .wn5-tl-d')].map((e) => {
+        const r = e.getBoundingClientRect();
+        return { label: t.dataset.label, cls: e.className, right: Math.round(r.right - b.left), cutAt: Math.round(b.width - s * (r.bottom - b.top) / b.height), ellipsis: getComputedStyle(e).textOverflow };
+      });
+    });
     return { n: tiles.length, fit: tiles.every((t) => t.left >= asg.left - 1 && t.right <= asg.right + 1), w: tiles.map((t) => Math.round(t.width)), h: row.getBoundingClientRect().height,
-      partner: row.querySelector('.wn5-tile.par') ? row.querySelector('.wn5-tile.par').textContent : '' };
+      partner: row.querySelector('.wn5-tile.par') ? row.querySelector('.wn5-tile.par').textContent : '', cut };
   }, ROW(101));
+  ok(scn, '3 segments: every line of ΑΡΧΙΚΟ / ΕΝΔΙΑΜΕΣΟ ends before its slanted cut, plate and driver with an ellipsis',
+    t3.cut.length === 6 && t3.cut.every((c) => c.right <= c.cutAt && (/wn5-tl-l/.test(c.cls) || c.ellipsis === 'ellipsis')), t3.cut);
   ok(scn, '3 segments: 3 tiles fit in 266px (93 / 99 / 92)', t3.n === 3 && t3.fit && t3.w.join() === '93,99,92', t3);
   ok(scn, '3 segments: the row is at least 48px', t3.h >= 48, t3.h);
   ok(scn, 'a partner ΤΕΛΙΚΟ shows its rate «300 €» (Ε-13, decision 41)', /ΤΕΛΙΚΟ/.test(t3.partner) && /300 €/.test(t3.partner), t3.partner);
