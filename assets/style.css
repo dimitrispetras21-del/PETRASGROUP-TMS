@@ -9233,6 +9233,8 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-dlg.wn5-wide { width:800px; }
 .wn5-pop-back { background:transparent; display:block; }
 .wn5-pop-back > .wn5-dlg { position:fixed; }
+/* a popover taller than the room under its row scrolls inside (_place); its header stays in view */
+.wn5-pop-back > .wn5-dlg > .wi4-dlg-hd { position:sticky; top:0; z-index:1; background:var(--surface-card); }
 .wn5-dlg-msg { margin-top:8px; }
 .wn5-dlg-msg:empty { display:none; }
 .wn5-dlg-msg > .wn5-strip { margin:0; }
@@ -9324,6 +9326,9 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-wide > .wn5-dlg-b { margin-top:0; gap:0; }
 .wn5-wide .wn5-grey { padding-left:14px; }   /* text at x 15 as the title (Figma 14 + the 1px edge) */
 .wn5-wide .wn5-dq { display:block; width:287px; margin:6px 0 6px -4px; padding:0 9px; font-size:12px; }
+/* Chrome keeps room for the hidden «×» of an empty type=search (~14px) and the 266px placeholder of the «+»
+   (Figma 2011:10319) clipped; the «×» is dropped only while the field is empty, so a typed query can still be cleared */
+.wn5-wide .wn5-dq:placeholder-shown::-webkit-search-cancel-button { display:none; }
 .wn5-wide .wn5-dlg-b > :is(.wn5-hubwin, .wn5-miss) { margin:0 0 6px -4px; }   /* left edge with the field (x 12) */
 .wn5-wide .wn5-grp-h { margin:0 0 0 -4px; padding:9px 0 3px; line-height:14px; }
 .wn5-wide .wn5-cand { min-height:40px; }

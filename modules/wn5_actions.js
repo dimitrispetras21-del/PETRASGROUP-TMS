@@ -163,17 +163,35 @@
     if (x) x.addEventListener('click', () => { if (!d.busy) _close(d); });
     // A popover that grows after it was placed (a refusal strip, a redraw) is placed again, so its foot never ends
     // below the window (T13: the 422 strip pushed a fixed popover 34px past a 900px viewport)
-    if (d.anchor && typeof ResizeObserver === 'function') { d.ro = new ResizeObserver(() => { if (!d.closed) _place(d); }); d.ro.observe(dlg); }
+    // It watches the content (strip + body), not the popover: _place sets the popover's own max-height, and watching
+    // that would feed its own change back into the observer.
+    if (d.anchor && typeof ResizeObserver === 'function') { d.ro = new ResizeObserver(() => { if (!d.closed) _place(d); }); d.ro.observe(d.msg); d.ro.observe(d.body); }
     _cur = d;
     return d;
   }
   // A popover sits under its anchor and inside the window; called after the content is in.
+  // Taller than the room under the row, it keeps its top under the row and scrolls inside (.wn5-dlg overflow-y),
+  // never moves up over the row and the «+» that opened it (Figma 2011:10305; T13 fidelity r2: 579px under RT 201
+  // at 1440×900 was pushed to top 313). Only when the room under the row is short (< 240) and the room above is
+  // larger does it open above the row instead, again without covering it.
+  const POP_MIN = 240;
   function _place(d) {
     if (!d.anchor || !d.anchor.getBoundingClientRect) return;
     const r = d.anchor.getBoundingClientRect();
-    const w = d.dlg.offsetWidth, h = d.dlg.offsetHeight;
+    // vertically the board row that holds the anchor (the «+» is 8px shorter than its row), so the row stays seen
+    const row = d.anchor.closest ? d.anchor.closest('.wn5-row') : null;
+    const v = row ? row.getBoundingClientRect() : r;
+    d.dlg.style.maxHeight = '';
+    const w = d.dlg.offsetWidth, h = d.dlg.offsetHeight, vh = window.innerHeight;
+    const below = vh - v.bottom - 12, above = v.top - 12;
     d.dlg.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + 'px';
-    d.dlg.style.top = Math.max(8, Math.min(r.bottom + 4, window.innerHeight - h - 8)) + 'px';
+    if (h <= below || below >= POP_MIN || below >= above) {
+      d.dlg.style.top = (v.bottom + 4) + 'px';
+      if (h > below) d.dlg.style.maxHeight = Math.max(below, 0) + 'px';
+    } else {
+      d.dlg.style.top = Math.max(8, v.top - 4 - h) + 'px';
+      if (h > above) d.dlg.style.maxHeight = Math.max(above, 0) + 'px';
+    }
   }
   const SAVES = '[data-act="save"],[data-act="confirm"]';
   function _btns(d, sending) {
@@ -994,7 +1012,13 @@
             + '<span>πελάτης, σημείο, ποσότητα</span></span><span></span><button type="button" class="wi4-btn sm" data-act="preset">Άνοιγμα</button></div>';
         }
         // the closing grey band of the ΚΑΘΟΔΟΣ frame (2011:10444); the ΑΝΟΔΟΣ frame has none (it has no stock)
-        if (!anod) h += '<p class="wn5-grey wn5-pnote">Προειδοποίηση, όχι άρνηση. Ποσότητα («πόσες») μόνο για απόθεμα που είναι ήδη στη Βέροια: το υπόλοιπο μένει απόθεμα. Φορτίο που φτάνει μπαίνει ολόκληρο· για σπάσιμο → Πίνακας Βέροιας «Σπάσε…».</p>';
+        // Approved copy of 2011:10445; «(π.χ. …)» names the first arriving VS of this list (none → left out, never invented).
+        // The T21 sentence («Αλλαγές ή αφαίρεση: κλικ στο σκέλος → φόρμα σκέλους.») joins with the leg form.
+        if (!anod) {
+          const vsEx = st.groups.find((g) => g.items.some((it) => it.kind === 'vs_import' && it.reference));
+          const eg = vsEx ? ' (π.χ. ' + vsEx.items.find((it) => it.kind === 'vs_import' && it.reference).reference + ')' : '';
+          h += '<p class="wn5-grey wn5-pnote">Προειδοποίηση, όχι άρνηση. Ποσότητα («πόσες») μόνο για απόθεμα που είναι ήδη στη Βέροια (owner 21/10): το υπόλοιπο μένει απόθεμα. Φορτίο που φτάνει' + _esc(eg) + ' μπαίνει ολόκληρο· για σπάσιμο → Πίνακας Βέροιας «Σπάσε…».</p>';
+        }
       }
       d.body.innerHTML = h;
       filter();

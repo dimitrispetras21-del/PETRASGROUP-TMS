@@ -1035,6 +1035,38 @@ async function scnPlus(browser, origin) {
     ok(scn, '«Νέα παραγγελία» opens the order form (T20) or says it is not there yet — never a dead button', form || line);
     await page.context().close();
   }
+  { // E · fidelity r2 at 1440×900 (Figma 2011:10305 / 10319 / 10445): opens under its row, whole placeholder, band copy
+    const { page } = await bOpen(browser, origin, { viewport: { width: 1440, height: 900 } });
+    await bClick(page, K201);
+    await shot(page, 'plus-kathodos-1440');
+    const g = await page.evaluate(([dSel, kSel]) => {
+      const d = document.querySelector(dSel), row = document.querySelector(kSel) && document.querySelector(kSel).closest('.wn5-row');
+      const q = d && d.querySelector('[data-q]');
+      if (!d || !row || !q) return null;
+      const dr = d.getBoundingClientRect(), rr = row.getBoundingClientRect(), hd = d.querySelector('.wi4-dlg-hd').getBoundingClientRect();
+      const cs = getComputedStyle(q);
+      return { top: dr.top, bottom: dr.bottom, rowBottom: rr.bottom, scrolls: d.scrollHeight > d.clientHeight, hdTop: hd.top, vh: innerHeight,
+        room: q.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight),
+        band: (d.querySelector('.wn5-pnote') || {}).textContent || '' };
+    }, [D, K201]).catch(() => null);
+    ok(scn, 'the tall KATHODOS popover opens under RT-T201 (never over the row), inside the window, its body scrolls', !!g
+      && g.top >= g.rowBottom && g.top <= g.rowBottom + 8 && g.bottom <= g.vh && g.scrolls, g);
+    await page.$eval(D, (d) => { d.scrollTop = 200; }).catch(() => {});
+    const hdTop = await page.$eval(`${D} .wi4-dlg-hd`, (h) => h.getBoundingClientRect().top).catch(() => null);
+    ok(scn, 'scrolled, the header (title · segmented) stays at the top of the popover', !!g && hdTop != null && Math.abs(hdTop - g.top) <= 2, { hdTop, top: g && g.top });
+    // The «×» of an empty type=search lives in Chrome's closed UA shadow (getComputedStyle cannot see it): the proof
+    // is the pixels — the empty field drawn as is, then with the «×» room forced back; same pixels = room still kept.
+    const qSel = `${D} [data-q]`;
+    await page.$eval(D, (d) => { d.scrollTop = 0; }).catch(() => {});
+    const free = await page.locator(qSel).screenshot().catch(() => null);
+    await page.addStyleTag({ content: '.wn5-dlg .wn5-dq::-webkit-search-cancel-button { display:block !important; }' }).catch(() => {});
+    const kept = await page.locator(qSel).screenshot().catch(() => null);
+    ok(scn, 'the search field leaves the 266px of the Figma placeholder (no hidden «×» room while empty)', !!g && g.room >= 266
+      && !!free && !!kept && !free.equals(kept), g && { room: g.room, pixelsDiffer: !!free && !!kept && !free.equals(kept) });
+    ok(scn, 'the closing band carries «(owner 21/10)» and «(π.χ. VS-T118)», the first arriving VS of the list', !!g
+      && g.band.includes('στη Βέροια (owner 21/10):') && g.band.includes('Φορτίο που φτάνει (π.χ. VS-T118) μπαίνει ολόκληρο'), g && g.band);
+    await page.context().close();
+  }
 }
 SCN['plus'] = scnPlus;
 
