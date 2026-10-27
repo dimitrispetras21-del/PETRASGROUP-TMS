@@ -441,6 +441,10 @@ SCN.search = async (browser, origin) => {
   ok(scn, 'the executed row 1 is raised to full strength; a faded row is at .35', !!st && st.r101 === 1 && Math.abs(st.other - 0.35) < 0.01, st && { r101: st.r101, other: st.other });
   ok(scn, 'day heads, ΕΠΟΜΕΝΑ, notices and the Veroia line do not fade', !!st && st.still === 0, st && st.still);
   ok(scn, 'the counter says «1/2»', !!st && st.n === '1/2', st && st.n);
+  // fidelity T7 r1 (Figma 2036:7902/7903): «1/2» sits in the same key-cap chip as «/»; a plain text field, so the
+  // browser draws no native «×» of its own beside it (the Weekly International's field is type="text" too).
+  const fld = await page.evaluate(() => ({ chip: !!document.querySelector('#wn5-search-n > .wi4-key'), type: (document.getElementById('wn5-search') || {}).type }));
+  ok(scn, 'fidelity: «1/2» in the key-cap chip, the field is type="text" (no native ×)', fld.chip && fld.type === 'text', fld);
   await page.keyboard.press('Enter');
   ok(scn, 'Enter → «2/2»', (await page.evaluate(() => (document.getElementById('wn5-search-n') || { textContent: '' }).textContent.trim())) === '2/2');
   await page.keyboard.press('Escape');
@@ -453,9 +457,26 @@ SCN.search = async (browser, origin) => {
     inDom: document.querySelectorAll('#content .wn5 .wn5-row').length }));
   ok(scn, 'no match: «ΑΝΑΖΗΤΗΣΗ · Κανένα αποτέλεσμα για «pelagoss» στη W42 Καθάρισμα ×»', none.t === 'ΑΝΑΖΗΤΗΣΗ · Κανένα αποτέλεσμα για «pelagoss» στη W42 Καθάρισμα ×', none.t);
   ok(scn, 'no match: the table hides until «Καθάρισμα ×» (Δ12 tile 6, Ε-29) — the 12 rows are still in the page', none.shown === 0 && none.inDom === 12, none);
+  // fidelity T7 r1 (Δ12 2069:10269/10411): the words are a strip of their own under the band — full width, bordered,
+  // the label in the strip-label blue, letter-spaced, «Καθάρισμα ×» at its end; the field keeps its «/» key cap; the
+  // column heads go with the table.
+  const strip = await page.evaluate(() => {
+    const s = document.getElementById('wn5-snone'), r = document.querySelector('#content .wn5'), b = s && s.querySelector('b'), btn = s && s.querySelector('button');
+    if (!s || !r || !b || !btn) return null;
+    const cs = getComputedStyle(s), bs = getComputedStyle(b), sr = s.getBoundingClientRect(), q = r.querySelector('.wn5-q').getBoundingClientRect();
+    const cols = r.querySelector('.wn5-cols');
+    return { inBand: !!s.closest('.wn5-q'), w: Math.round(sr.width), qw: Math.round(q.width), below: sr.top >= q.bottom - 1,
+      border: cs.borderTopStyle !== 'none' && parseFloat(cs.borderTopWidth) > 0, label: bs.color, ink: cs.color, ls: parseFloat(bs.letterSpacing) || 0,
+      endGap: Math.round(sr.right - btn.getBoundingClientRect().right), cap: (document.querySelector('#wn5-search-n > .wi4-key') || { textContent: '' }).textContent,
+      cols: !cols || !cols.getClientRects().length };
+  });
+  ok(scn, 'fidelity: no match is a full-width bordered strip of its own under the band, «Καθάρισμα ×» at its end', !!strip && !strip.inBand && strip.below && strip.border && Math.abs(strip.w - strip.qw) <= 2 && strip.endGap <= 16, strip);
+  ok(scn, 'fidelity: «ΑΝΑΖΗΤΗΣΗ» in the strip-label blue, letter-spaced', !!strip && strip.label !== strip.ink && strip.ls >= 1, strip && { label: strip.label, ink: strip.ink, ls: strip.ls });
+  ok(scn, 'fidelity: with no match the field keeps its «/» key cap; the column heads hide with the table', !!strip && strip.cap === '/' && strip.cols, strip && { cap: strip.cap, cols: strip.cols });
   await page.evaluate(() => { const b = document.querySelector('#wn5-snone button'); if (b) b.click(); });
   ok(scn, '«Καθάρισμα ×» clears and the 12 rows are back', await page.evaluate(() => (document.getElementById('wn5-search') || {}).value === '' && !document.querySelector('#content .wn5 .wi4-dim')
-    && [...document.querySelectorAll('#content .wn5 .wn5-row')].filter((e) => e.getClientRects().length).length === 12));
+    && [...document.querySelectorAll('#content .wn5 .wn5-row')].filter((e) => e.getClientRects().length).length === 12
+    && !!document.querySelector('#content .wn5 .wn5-cols') && document.querySelector('#content .wn5 .wn5-cols').getClientRects().length > 0));
   await page.evaluate(() => { const i = document.getElementById('wn5-search'); if (i) { i.focus(); } });
   await page.keyboard.type('τστ');
   await page.evaluate(() => document.activeElement && document.activeElement.blur && document.activeElement.blur());

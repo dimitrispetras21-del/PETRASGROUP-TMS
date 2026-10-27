@@ -329,6 +329,8 @@ function _boardHTML(m, known) {
   const no = { n: 0 };
   const cycles = m.days.flatMap((d) => d.rows).filter((r) => r.kind === 'cycle');
   return _qbandHTML(m, known)
+    // Δ12 2069:10269 (fidelity T7 r1): the no-match words are a strip of their own under the band, not text inside it.
+    + '<div id="wn5-snone" class="wn5-snone" role="status" hidden></div>'
     + (known ? _noticesHTML(m) : '')
     + (known && typeof WN5Hub !== 'undefined' && typeof WN5Hub.shelfHTML === 'function' ? WN5Hub.shelfHTML(m) : '')
     // Δ12 (empty / loading / error frames): no column heads over a board with no row — they head nothing.
@@ -725,10 +727,9 @@ function _cleanup() {
 // carry no data-qi and never fade; a «↳» sub-row carries its row's key and goes with it.
 const SEARCH_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>';
 function _searchHTML(known) {
-  return `<label class="wi4-search wn5-search">${SEARCH_ICON}<input id="wn5-search" type="search" placeholder="Αναζήτηση" autocomplete="off" aria-label="Αναζήτηση στον πίνακα"`
+  return `<label class="wi4-search wn5-search">${SEARCH_ICON}<input id="wn5-search" type="text" placeholder="Αναζήτηση" autocomplete="off" aria-label="Αναζήτηση στον πίνακα"`
     + `${known ? '' : ' disabled'} value="${_esc(_qRaw)}" oninput="WN5.search(this.value)" onkeydown="WN5._searchKey(event)">`
-    + '<span id="wn5-search-n" class="wi4-search-n"><span class="wi4-key">/</span></span></label>'
-    + '<span id="wn5-snone" class="wn5-snone" role="status" hidden></span>';
+    + '<span id="wn5-search-n" class="wi4-search-n"><span class="wi4-key">/</span></span></label>';
 }
 function _buildIndex(m) {
   _qi.clear();
@@ -748,18 +749,22 @@ function _applySearch(scroll) {
   });
   if (_sIdx >= hits.length) _sIdx = 0;
   const n = document.getElementById('wn5-search-n');
-  // no query → the «/» key cap; no match → «—» (never «0/0», Δ12 πλακ. 1), the words go to the line below
-  if (n) n.innerHTML = !nq ? '<span class="wi4-key">/</span>' : hits.length ? `${_sIdx + 1}/${hits.length}` : '—';
+  // Figma 2036:7902: «1/2» in the same key cap as «/». No match keeps the «/» cap (Δ12 2069:10409, never «0/0» and
+  // never «—», which Δ12 keeps for an unknown count); the strip below says it in words.
+  if (n) n.innerHTML = `<span class="wi4-key">${hits.length ? `${_sIdx + 1}/${hits.length}` : '/'}</span>`;
   const none = document.getElementById('wn5-snone');
   const empty = !!nq && !hits.length;
   // Δ12 tile 6 (approved 22/10, Ε-29): with no match the table hides until «Καθάρισμα ×»; the line says why. A
   // query with matches never hides anything (faded at .35 only).
   const rowsEl = document.getElementById('wn5-rows');
   if (rowsEl) rowsEl.hidden = empty;
+  // the column heads go with the table (2069:10269: nothing under the strip)
+  const cols = root.querySelector('.wn5-cols');
+  if (cols) cols.hidden = empty;
   if (none) {
     none.hidden = !empty;
     none.innerHTML = empty
-      ? `<b>ΑΝΑΖΗΤΗΣΗ</b> · Κανένα αποτέλεσμα για «${_esc(_qRaw)}» στη W${_esc(String(window.WNATL && window.WNATL.week))} <button type="button" class="wi4-link" onclick="WN5.search('')">Καθάρισμα ×</button>`
+      ? `<b>ΑΝΑΖΗΤΗΣΗ</b><span class="wn5-snone-t"> · Κανένα αποτέλεσμα για «${_esc(_qRaw)}» στη W${_esc(String(window.WNATL && window.WNATL.week))}</span> <button type="button" class="wi4-link" onclick="WN5.search('')">Καθάρισμα ×</button>`
       : '';
   }
   if (scroll && hits[_sIdx]) hits[_sIdx].scrollIntoView({ block: 'center' });
