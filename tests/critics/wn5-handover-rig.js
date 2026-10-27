@@ -124,9 +124,148 @@ async function scnTiles({ browser, origin, ok, scn }) {
   await pz.page.context().close();
 }
 
-const SCN = { tiles: scnTiles };
+// T25 — the cycle card, the change (dry run → execution), the fix, the H7 refusals.
+function oneSegWeek() {
+  const b = K.week();
+  for (const c of b.cycles) c.segments = [seg(c.rt_id * 10, null, c.start_at, c.end_at, { truck_id: c.truck_id, truck: c.truck, trailer_id: c.trailer_id, trailer: c.trailer,
+    driver_id: c.driver_id, driver: c.driver, stop_ids: c.stops.map((s) => s.stop_id) })];
+  return b;
+}
+const HDLG = '.wi4-dlg[role="dialog"][data-wn5="handover"]';
+const dryOk = (b) => [200, { ok: true, op: 'plan_seg_change', dry_run: true, preview: { segments: [
+  seg(1010, 'initial', '2026-10-12T16:00:00+03:00', b.at, { stop_ids: [1001] }),
+  seg(1011, 'final', b.at, '2026-10-13T22:00:00+03:00', { truck_id: 12, truck: 'TST-2108', trailer_id: 22, trailer: 'TRL-5104', driver_id: 32, driver: 'Driver Test 02', place_note: b.place_note, reason: b.reason, stop_ids: [1002, 1003, 1004, 1005] })],
+  warnings: [], conflict: null } }];
+async function fillChange(page, o) {
+  await page.evaluate((o) => {
+    const s = (id, v) => { const el = document.getElementById(id); el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })); };
+    s('wn5h-day', o.day); s('wn5h-hm', o.hm); s('wn5h-place', o.place); s('wn5h-reason', o.reason);
+    if (o.note != null) s('wn5h-note', o.note);
+    s('wn5h-truck', String(o.truck)); if (o.trailer) s('wn5h-trailer', String(o.trailer)); s('wn5h-driver', String(o.driver));
+  }, o);
+}
+const CH = { day: '2026-10-13', hm: '03:00', place: 'Λαμία', reason: 'vehicle_breakdown', truck: 12, trailer: 22, driver: 32 };
+const posts = (S) => K.planOf(S, 'POST', '/plan/rt/101/handover');
+
+async function scnCard({ browser, origin, ok, scn }) {
+  const errs = [];
+  for (const role of ['owner', 'management', 'dispatcher', 'accountant', 'warehouse']) {
+    const { page, S } = await K.openApp(browser, origin, { board: handWeek(false), role });
+    if (!(await guard(page, ok, scn, 'WN5Hand'))) return;
+    await page.evaluate(() => WN5Hand.cycleCard(101));
+    await page.waitForSelector('.wi4-dlg[data-wn5="cycle"]', { timeout: 6000 }).catch(() => {});
+    const t = await K.text(page, '.wi4-dlg[data-wn5="cycle"] .wi4-dlg-hd');
+    ok(scn, `${role}: «Κύκλος RT-T101 · … · 2 τμήματα»`, t.includes('Κύκλος RT-T101') && t.includes('2 τμήματα'), t);
+    const rows = await page.evaluate(() => [...document.querySelectorAll('.wi4-dlg[data-wn5="cycle"] .wn5h-seg')].map((r) => [r.dataset.label, getComputedStyle(r).clipPath, r.querySelectorAll('[data-act="fix"]').length, r.querySelectorAll('[data-act="remove"]').length]));
+    ok(scn, `${role}: ΤΜΗΜΑΤΑ = ΑΡΧΙΚΟ + ΤΕΛΙΚΟ, «Διόρθωση» on both, «Αφαίρεση» on all but the first`, JSON.stringify(rows.map((r) => [r[0], r[2], r[3]])) === JSON.stringify([['initial', 1, 0], ['final', 1, 1]]), rows);
+    ok(scn, `${role}: a straight line in the list, no slant (R-55)`, rows.every((r) => r[1] === 'none'), rows.map((r) => r[1]));
+    ok(scn, `${role}: «Φύλλα οδηγών (2)» and «Καθαρισμός ανάθεσης» are there (no role guard)`, (await K.text(page, '.wi4-dlg[data-wn5="cycle"] .wn5h-acts')).includes('Φύλλα οδηγών (2)') && (await K.text(page, '.wi4-dlg[data-wn5="cycle"] .wn5h-acts')).includes('Καθαρισμός ανάθεσης'));
+    await page.waitForTimeout(800);
+    // Ε-11 «γ» (owner 26/10): no change history in the card for any role, and no /audit read behind it
+    const card = await K.text(page, '.wi4-dlg[data-wn5="cycle"]');
+    ok(scn, `${role}: no «ΙΣΤΟΡΙΚΟ ΑΛΛΑΓΩΝ» in the card and no /audit read (Ε-11 «γ»)`, !/ΙΣΤΟΡΙΚΟ/.test(card) && !S.facade.some((x) => x.path === '/audit'), card);
+    await page.click('.wi4-dlg[data-wn5="cycle"] [data-act="change"]');
+    await page.waitForSelector(HDLG, { timeout: 6000 }).catch(() => {});
+    ok(scn, `${role}: «Αλλαγή οχήματος» opens the change form`, await K.count(page, HDLG) === 1);
+    errs.push(...S.pageErrors, ...appConsole(S));
+    await page.context().close();
+  }
+  ok(scn, 'no page or console errors (5 roles)', !errs.length, errs);
+}
+
+async function scnChange({ browser, origin, ok, scn }) {
+  const { page, S } = await K.openApp(browser, origin, { board: oneSegWeek(), plan: { 'POST /plan/rt/101/handover': (e) => (e.body.dry_run === true ? dryOk(e.body) : K.planErr(409, 'WRITES_CLOSED', 'writes_closed')) } });
+  if (!(await guard(page, ok, scn, 'WN5Hand'))) return;
+  await page.evaluate(() => WN5Hand.change(101));
+  await page.waitForSelector(HDLG, { timeout: 6000 }).catch(() => {});
+  ok(scn, 'the reasons list: ΑΠΡΟΒΛΕΠΤΟ / ΠΡΟΓΡΑΜΜΑΤΙΣΜΕΝΟ / Άλλο (H2)', await page.evaluate(() => [...document.querySelectorAll('#wn5h-reason optgroup')].map((g) => g.label).join() === 'ΑΠΡΟΒΛΕΠΤΟ,ΠΡΟΓΡΑΜΜΑΤΙΣΜΕΝΟ' && !!document.querySelector('#wn5h-reason option[value="other"]')));
+  await fillChange(page, Object.assign({}, CH, { reason: 'other', note: '' }));
+  await page.waitForTimeout(900);
+  // the line sits under the note field, which turns red (Figma 2122:7868), not in the form's line box
+  ok(scn, '«Άλλο» without its note: the line under the note field, no dry run sent, save disabled', /Με «Άλλο» η σημείωση είναι υποχρεωτική/.test(await K.text(page, `${HDLG} [data-note] [data-ferr]`))
+    && await page.evaluate((d) => document.querySelector(`${d} [data-note]`).classList.contains('bad'), HDLG) && posts(S).length === 0
+    && await page.evaluate((d) => document.querySelector(`${d} [data-act="save"]`).disabled, HDLG));
+  await fillChange(page, CH);
+  await page.waitForTimeout(1200);
+  const dry = posts(S).filter((x) => x.body.dry_run === true);
+  ok(scn, 'a valid form runs ONE dry run, without request_id', dry.length === 1 && !('request_id' in dry[0].body), posts(S).map((x) => x.body));
+  ok(scn, 'the dry body = the form state', dry[0] && JSON.stringify(dry[0].body) === JSON.stringify({ at: '2026-10-13T03:00:00+03:00', place_note: 'Λαμία', reason: 'vehicle_breakdown', vehicle: { trip_type: 'OWNED', truck_id: 12, trailer_id: 22, driver_id: 32 }, dry_run: true }), dry[0] && dry[0].body);
+  ok(scn, 'preview «Μετά την αλλαγή · 2 τμήματα» before any save', /Μετά την αλλαγή · 2 τμήματα/.test(await K.text(page, `${HDLG} [data-preview]`)));
+  await page.click(`${HDLG} [data-act="save"]`);
+  await page.waitForTimeout(1000);
+  const ex = posts(S).filter((x) => x.body.dry_run !== true);
+  ok(scn, 'the execution = the same body + a uuid request_id, no dry_run', ex.length === 1 && K.UUID4.test(ex[0].body.request_id || '') && JSON.stringify(Object.assign({}, ex[0].body, { request_id: undefined })) === JSON.stringify(Object.assign({}, dry[0].body, { dry_run: undefined })), ex.map((x) => x.body));
+  ok(scn, 'before day L: 409 → the preview strip with the Worker text, the save disabled (H7 tile 4)', /rig sentinel writes_closed/.test(await K.text(page, `${HDLG} [data-strip]`))
+    && await page.evaluate((d) => document.querySelector(`${d} [data-act="save"]`).disabled, HDLG));
+  await page.evaluate(() => { const el = document.getElementById('wn5h-place'); el.value = 'Λαμία κέντρο'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+  await page.waitForTimeout(1000);
+  ok(scn, 'the dry run stays open after 409 (a change in the form → a new preview)', posts(S).filter((x) => x.body.dry_run === true).length === 2);
+  ok(scn, 'closed: the cancel button reads «Κλείσιμο» (H7 tile 4)', (await K.text(page, `${HDLG} .wn5f-ft [data-act="cancel"]`)) === 'Κλείσιμο');
+  ok(scn, 'no page or console errors', !S.pageErrors.length && !appConsole(S).length, S.pageErrors.concat(appConsole(S)));
+  await page.context().close();
+  // 404 before 072b is live
+  const p2 = await K.openApp(browser, origin, { board: oneSegWeek(), plan: { 'POST /plan/rt/101/handover': () => K.planErr(404, 'NOT_FOUND', 'no_route') } });
+  await p2.page.evaluate(() => WN5Hand.change(101));
+  await p2.page.waitForSelector(HDLG, { timeout: 6000 }).catch(() => {});
+  await fillChange(p2.page, CH);
+  await p2.page.waitForTimeout(1200);
+  ok(scn, '404 no_route → the Worker message + «δεν έχει ανέβει ακόμη (072b)»', /rig sentinel no_route/.test(await K.text(p2.page, `${HDLG} [data-strip]`)) && /072b/.test(await K.text(p2.page, `${HDLG} [data-err]`)));
+  // A 404 is logged once by planFetch (Global Constraints: every 400/404 → app_errors; 072b is live, so a 404 now is a
+  // real fault, not a designed answer): exactly that one line, nothing else.
+  const c404 = appConsole(p2.S);
+  ok(scn, '404: one planFetch log line for the 404, no other page or console error', !p2.S.pageErrors.length && c404.length === 1
+    && /^\[TMS ERROR\] planFetch POST \/plan\/rt\/:id\/handover: PlanError: rig sentinel no_route/.test(c404[0]), p2.S.pageErrors.concat(c404));
+  await p2.page.context().close();
+}
+
+async function scnFix({ browser, origin, ok, scn }) {
+  const { page, S } = await K.openApp(browser, origin, { board: handWeek(false), plan: { 'PATCH /plan/segments/702': (e) => (e.body.dry_run === true
+    ? [200, { ok: true, op: 'plan_seg_fix', dry_run: true, preview: { segments: handWeek(false).cycles[0].segments, warnings: [], conflict: null } }]
+    : K.planErr(409, 'WRITES_CLOSED', 'writes_closed')) } });
+  if (!(await guard(page, ok, scn, 'WN5Hand'))) return;
+  await page.evaluate(() => WN5Hand.fix(702));
+  await page.waitForSelector('.wi4-dlg[data-wn5="fix"]', { timeout: 6000 }).catch(() => {});
+  await page.fill('.wi4-dlg[data-wn5="fix"] #wn5h-place', 'Λαμία κέντρο');
+  await page.waitForTimeout(1200);
+  const all = K.planOf(S, 'PATCH', '/plan/segments/702');
+  ok(scn, 'only the changed key: {set:{place_note}} + dry_run', all.length === 1 && JSON.stringify(all[0].body) === JSON.stringify({ set: { place_note: 'Λαμία κέντρο' }, dry_run: true }), all.map((x) => x.body));
+  await page.click('.wi4-dlg[data-wn5="fix"] [data-act="save"]');
+  await page.waitForTimeout(1000);
+  const ex = K.planOf(S, 'PATCH', '/plan/segments/702').filter((x) => x.body.dry_run !== true);
+  ok(scn, 'the fix execution carries no request_id (a fix creates nothing)', ex.length === 1 && !('request_id' in ex[0].body), ex.map((x) => x.body));
+  ok(scn, 'no page or console errors', !S.pageErrors.length && !appConsole(S).length, S.pageErrors.concat(appConsole(S)));
+  await page.context().close();
+}
+
+async function scnH7({ browser, origin, ok, scn }) {
+  const codes = ['truck_busy', 'driver_busy', 'payroll_locked', 'seg_outside', 'seg_many'];
+  let n = 0;
+  const { page, S } = await K.openApp(browser, origin, { board: oneSegWeek(), plan: { 'POST /plan/rt/101/handover': (e) => (e.body.dry_run === true ? dryOk(e.body) : K.planErr(422, 'PLAN_RULE', codes[n++])) } });
+  if (!(await guard(page, ok, scn, 'WN5Hand'))) return;
+  await page.evaluate(() => WN5Hand.change(101));
+  await page.waitForSelector(HDLG, { timeout: 6000 }).catch(() => {});
+  await fillChange(page, CH);
+  await page.waitForTimeout(1200);
+  for (const c of codes) {
+    await page.click(`${HDLG} [data-act="save"]`).catch(() => {});
+    await page.waitForTimeout(700);
+    ok(scn, `${c} → the Worker message as is, the form stays open with what was typed`, (await K.text(page, `${HDLG} [data-strip]`)).includes('rig sentinel ' + c) && await K.count(page, HDLG) === 1
+      && (await page.evaluate(() => document.getElementById('wn5h-place').value)) === 'Λαμία');
+    // H7 2130:7745 / 2130:7809: the refused field turns red (truck for truck_busy, driver for payroll_locked)
+    if (c === 'truck_busy' || c === 'payroll_locked') {
+      const f = c === 'truck_busy' ? '.wn5h-truck' : '.wn5h-driver';
+      ok(scn, `${c} → the ${f.slice(6)} field has the red border`, await page.evaluate((s) => { const el = document.querySelector(s); return !!el && el.classList.contains('bad'); }, `${HDLG} ${f}`));
+    }
+  }
+  const ex = posts(S).filter((x) => x.body.dry_run !== true);
+  ok(scn, 'every press after a refusal carries the SAME request_id', ex.length === 5 && new Set(ex.map((x) => x.body.request_id)).size === 1, ex.map((x) => x.body.request_id));
+  ok(scn, 'no page or console errors', !S.pageErrors.length && !appConsole(S).length, S.pageErrors.concat(appConsole(S)));
+  await page.context().close();
+}
+
+const SCN = { tiles: scnTiles, card: scnCard, change: scnChange, fix: scnFix, h7: scnH7 };
 module.exports = { seg, handWeek, ROW, HAND, guard, appConsole, SCN };
 if (require.main === module) {
-  K.run({ scenarios: SCN, globals: ['WN5L', 'WN5Lab'], go: 'the vehicle handover screens hold on the 072b stub' })
+  K.run({ scenarios: SCN, globals: ['WN5L', 'WN5Lab', 'WN5Hand'], go: 'the vehicle handover screens hold on the 072b stub' })
     .catch((e) => { console.error(e); process.exit(1); });
 }

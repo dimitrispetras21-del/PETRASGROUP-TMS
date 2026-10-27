@@ -85,27 +85,27 @@ function planRoutes() {
     migration: (/migration: "(\w+)"/.exec(l) || [])[1] || null,
   }));
 }
-// The 072 functions whose top-level key list (plan_h_keys(p, …, 'p')) holds request_id: the creations.
-function requestRpcs() {
-  return SQL.split('CREATE FUNCTION public.').slice(1).map((chunk) => {
+// The functions whose top-level key list (plan_h_keys(p, …, 'p')) holds request_id: the creations. One chunk per
+// CREATE FUNCTION, so a key list is never read across into the next function.
+function requestRpcs(sql) {
+  return sql.split('CREATE FUNCTION public.').slice(1).map((chunk) => {
     const name = /^(\w+)/.exec(chunk)[1];
     const k = /perform plan_h_keys\(p, array\[([^\]]*)\], 'p'\)/.exec(chunk);
     return k && /'request_id'/.test(k[1]) ? name : null;
   }).filter(Boolean).sort();
 }
 
-test('F4α-T1: DRY_ROUTES equals the PLAN_ROUTES rows with dryRun:true; REQUEST_ROUTES equals the 072 plan_h_keys lists that contain request_id', () => {
+// F4α-T1, widened by T25 (072b): the same drift rule over 072 AND the executed 072b. DRY_ROUTES = the PLAN_ROUTES
+// rows with dryRun:true; REQUEST_ROUTES = the routes whose RPC accepts request_id in its plan_h_keys list.
+test('F4α-T25: DRY_ROUTES / REQUEST_ROUTES = PLAN_ROUTES dryRun rows / the request_id RPCs of 072 + 072b', (t) => {
+  const F072B = path.join(ROOT, 'worker/migrations/072b_plan_vehicle_segments.sql');
+  if (!fs.existsSync(F072B) || !/resource: "handover"/.test(SRC)) { t.todo('072b not in tree (SQL or Worker routes)'); return; }
   const s = planSandbox(() => { throw new Error('no fetch here'); });
   const client = JSON.parse(s.run('JSON.stringify({ dry: PlanApi.DRY_ROUTES, req: PlanApi.REQUEST_ROUTES })'));
   const routes = planRoutes();
-  assert.ok(routes.length >= 15, `PLAN_ROUTES parser read ${routes.length} rows`);
-  // The three 072b rows are T25's (it widens DRY_ROUTES / REQUEST_ROUTES and this test with them); every other
-  // dryRun row must be in the client, so a new 072 route still fails here.
-  const r072b = routes.filter((r) => r.dry && r.migration === '072b').map((r) => `${r.method} ${r.path}`).sort();
-  assert.deepStrictEqual(r072b, ['PATCH /plan/segments/:id', 'POST /plan/rt/:id/handover', 'POST /plan/segments/:id/remove'],
-    'the 072b dryRun rows changed — T25 must learn them');
-  assert.deepStrictEqual([...client.dry].sort(), routes.filter((r) => r.dry && r.migration !== '072b').map((r) => `${r.method} ${r.path}`).sort());
-  const rpcs = requestRpcs();
-  assert.deepStrictEqual(rpcs, ['plan_local_loading', 'plan_orders_create', 'plan_split_piece'], '072 has a creation the client does not know');
+  assert.ok(routes.length >= 18, `PLAN_ROUTES parser read ${routes.length} rows`);
+  assert.deepStrictEqual([...client.dry].sort(), routes.filter((r) => r.dry).map((r) => `${r.method} ${r.path}`).sort());
+  const rpcs = requestRpcs(SQL + '\n' + fs.readFileSync(F072B, 'utf8'));
+  assert.deepStrictEqual(rpcs, ['plan_local_loading', 'plan_orders_create', 'plan_seg_change', 'plan_split_piece'], '072 / 072b has a creation the client does not know');
   assert.deepStrictEqual([...client.req].sort(), rpcs.map((fn) => { const r = routes.find((x) => x.rpc === fn); assert.ok(r, fn + ' has no route'); return `${r.method} ${r.path}`; }).sort());
 });

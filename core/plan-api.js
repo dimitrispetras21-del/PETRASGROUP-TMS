@@ -43,9 +43,13 @@ const KIND = Object.freeze({
 // The Worker said «no» on purpose: shown to the user, never counted as an app error (the auditor's B-34 reads app_errors).
 const DESIGNED = Object.freeze([KIND.REFUSAL, KIND.STALE, KIND.REUSED, KIND.NEED_TOKEN, KIND.CLOSED, KIND.BUSY, KIND.FORBIDDEN]);
 // PLAN_ROUTES rows with dryRun:true (worker/src/index.js) — held equal by tests/wn5-plan-api-worker.test.mjs.
-const DRY_ROUTES = Object.freeze(['POST /plan/move', 'PATCH /plan/rt/:id', 'POST /plan/rt/:id/clear', 'POST /plan/delete']);
-// The 072 RPCs whose key list holds request_id — held equal by the same test.
-const REQUEST_ROUTES = Object.freeze(['POST /plan/orders', 'POST /plan/pieces/split', 'POST /plan/local-loading']);
+// 072b (vehicle handover, live since 26/10, Worker 2ca70af1): its three routes take {"dry_run": true} and pass the
+// closed switch with it; the change CREATES a segment, so its execution carries a request_id (decision 44) — the dry
+// run never does. Held to PLAN_ROUTES and to the SQL by tests/wn5-plan-api-worker.test.mjs.
+const DRY_ROUTES = Object.freeze(['POST /plan/move', 'PATCH /plan/rt/:id', 'POST /plan/rt/:id/clear', 'POST /plan/delete',
+  'POST /plan/rt/:id/handover', 'PATCH /plan/segments/:id', 'POST /plan/segments/:id/remove']);
+// The 072 / 072b RPCs whose key list holds request_id — held equal by the same test.
+const REQUEST_ROUTES = Object.freeze(['POST /plan/orders', 'POST /plan/pieces/split', 'POST /plan/local-loading', 'POST /plan/rt/:id/handover']);
 // 072 plan_h_replay accepts a uuid in either case; crypto.randomUUID() gives lower case v4.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

@@ -9837,6 +9837,108 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5 .wn5-hand > .wn5-hand-i { font-weight:600; }
 .wn5 .wn5-hand > .wn5-hand-s { font-weight:400; }
 .wn5 .wn5-hand > .wn5-hand-gap { width:18px; }
+/* T25 (072b) — the cycle card H6 2129:7735, the change H2 2122:7735, the fix and the H7 refusals 2130:7735, on the
+   .wn5f shell of the order / leg forms. In lists the segment mark is a STRAIGHT 3px line (R-55); the slant is for the
+   board tiles only. Widths are Figma's: card 940 (rows 896), modal 860 (preview rows 788). */
+:root {
+  --wn5-field-err:   #dc2626;   /* the refused / missing field's 1.5px border (H2 2122:7868, H7 2130:7745) */
+  --wn5h-card-shadow: 0 8px 12px rgba(15,23,41,.12);   /* H6 card 2129:7736 */
+  --wn5h-dlg-shadow:  0 12px 32px rgba(15,23,41,.18);  /* H2 modal 2122:7738 */
+}
+.wn5f.wn5h-cycle { width:940px; box-shadow:var(--wn5h-card-shadow); }
+.wn5f.wn5h-handover, .wn5f.wn5h-fix { width:860px; box-shadow:var(--wn5h-dlg-shadow); }
+.wn5f.wn5h-cycle .wn5f-body { gap:12px; padding:16px 22px 20px; }
+.wn5f.wn5h-handover .wn5f-body, .wn5f.wn5h-fix .wn5f-body { gap:14px; padding:18px 22px; }
+.wn5h .wn5f-sec { letter-spacing:.6px; }
+.wn5h .wn5f-body > [data-strip]:empty, .wn5h [data-preview]:empty { display:none; }
+.wn5h .wn5f-body > [data-strip] > .wn5-strip { margin:0; }
+/* H7 strips: the head without tracking; the «preview» strip in the info blues (2130:7768, 2130:7834) */
+.wn5h .wn5-strip > b { letter-spacing:0; }
+.wn5h .wn5-strip:is([data-kind="closed"], [data-kind="preview"]) { border-color:var(--wi4-info-line); background:var(--wi4-info-bg); }
+.wn5h .wn5-strip:is([data-kind="closed"], [data-kind="preview"]) > b { color:var(--wi4-info-ink); }
+/* H6 actions 2129:7743: primary in the accent, the two outline buttons Medium 12.5 */
+.wn5h-acts { display:flex; align-items:flex-start; gap:8px; }
+.wn5h-acts > .wi4-btn { height:32px; padding:0 12px; border-radius:6px; font-size:12.5px; }
+.wn5h-acts > .wi4-btn.wn5h-pri { border-color:var(--accent); background:var(--accent); font-weight:600; color:var(--surface-card); }
+.wn5h-acts > .wi4-btn.wn5h-pri:hover { border-color:var(--accent-hover); background:var(--accent-hover); }
+.wn5h-acts > .wi4-btn.wn5h-out { font-weight:500; color:var(--wi4-grey-1); }
+.wn5h-acts > .wi4-btn.wn5h-danger { border-color:var(--wi4-red); color:var(--wi4-red); }
+.wn5h-sheets { display:flex; flex-wrap:wrap; gap:6px; }
+.wn5h-sheets[hidden] { display:none; }
+/* Segment rows: line 3 · label 74 · vehicle chip 200 · window 180 (H6) / 190 (preview) · stops · spacer · actions */
+.wn5h-seg { display:flex; align-items:center; gap:10px; min-height:50px; padding:6px 14px 6px 0; box-sizing:border-box;
+  border:1px solid var(--wi4-line-2); border-radius:6px; background:var(--surface-card); overflow:hidden; }
+.wn5h-line { flex:none; align-self:stretch; width:3px; background:var(--wn5-seg-initial); }
+.wn5h-seg[data-label="intermediate"] .wn5h-line { background:var(--wn5-seg-intermediate); }
+.wn5h-seg[data-label="final"] .wn5h-line { background:var(--wn5-seg-final); }
+.wn5h-seg[data-label=""] .wn5h-line { background:var(--wi4-line-2); }
+.wn5h-lab { flex:none; width:74px; font-size:10px; font-weight:700; letter-spacing:.3px; }
+.wn5h-seg[data-label="initial"] .wn5h-lab { color:var(--wn5-seg-initial-ink); }
+.wn5h-seg[data-label="intermediate"] .wn5h-lab { color:var(--wn5-seg-intermediate-ink); }
+.wn5h-seg[data-label="final"] .wn5h-lab { color:var(--wn5-seg-final-ink); }
+.wn5h-vc { flex:none; width:200px; display:flex; min-width:0; }
+.wn5h-chip { display:flex; flex-direction:column; min-width:0; max-width:100%; padding:3px 8px; box-sizing:border-box; border-radius:5px; background:var(--wi4-own); }
+.wn5h-pl { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:500 12px/16px 'DM Mono',ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--wi4-ink); }
+.wn5h-dr { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; line-height:14px; color:var(--wi4-grey-2); }
+.wn5h-chip.par { background:var(--wi4-partner); }
+.wn5h-chip.par .wn5h-pl { font:600 12px/16px 'DM Sans',sans-serif; color:var(--wi4-partner-ink); }
+.wn5h-chip.par .wn5h-dr { color:var(--wi4-partner-sub); }
+.wn5h-win { flex:none; width:180px; font-size:12px; font-weight:500; color:var(--wi4-ink); white-space:nowrap; }
+.wn5h-stops { flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11.5px; color:var(--wi4-grey-2); }
+.wn5h-stops > b { font-weight:500; color:var(--wi4-ink); }
+.wn5h-sp { flex:1 1 0; min-width:0; }
+.wn5h-btns { flex:none; display:flex; gap:10px; }
+.wn5h-link { padding:0; border:0; background:none; font:500 12px 'DM Sans',sans-serif; color:var(--accent); cursor:pointer; }
+.wn5h-link.wn5h-rm { color:var(--wi4-badge-ink); }
+.wn5h-link:hover { text-decoration:underline; }
+/* H2 preview 2122:7800: borderless white rows on the grey block, a ⇄ line between two segments (pl 105) */
+.wn5h-prev { display:flex; flex-direction:column; gap:6px; padding:10px 14px 12px; border-radius:8px; background:var(--wi4-own); }
+.wn5h-prev-h { display:flex; align-items:baseline; gap:8px; }
+.wn5h-prev-h > b { font-size:12.5px; font-weight:700; color:var(--wi4-ink); }
+.wn5h-prev-h > span { margin-left:auto; font-size:11.5px; color:var(--wi4-grey-2); }
+.wn5h-prev .wn5h-seg { min-height:48px; padding:6px 10px 6px 0; border:0; }
+.wn5h-prev .wn5h-lab { letter-spacing:.6px; }
+.wn5h-prev .wn5h-win { width:190px; }
+.wn5h-hx { display:flex; align-items:center; gap:6px; height:20px; padding:3px 0 3px 105px; box-sizing:border-box; white-space:nowrap; }
+.wn5h-hx > b { font-size:11px; font-weight:600; color:var(--wi4-ink); }
+.wn5h-hx > span { font-size:10.5px; font-weight:600; color:var(--wi4-grey-1); }
+/* H2 fields 2122:7745 / 2122:7774: label Regular 12 grey-1, control 34 high, value 12.5 */
+.wn5h .form-input { font-size:12.5px; }
+.wn5h .form-input:focus { padding:0 9.5px; border:1.5px solid var(--accent); outline:none; }
+.wn5h .form-input:disabled { background-color:var(--wi4-chip); color:var(--wi4-grey-2); }
+.wn5h .wn5f-f.bad .form-input { padding:0 9.5px; border:1.5px solid var(--wn5-field-err); }
+.wn5h-mono .form-input { font-family:'DM Mono',ui-monospace,SFMono-Regular,Menlo,monospace; font-weight:500; }
+.wn5h-ferr { font-size:11px; color:var(--wi4-badge-ink); }
+.wn5h-ferr:empty { display:none; }
+.wn5h-row1, .wn5h-vrow { display:flex; align-items:flex-start; gap:12px; }
+.wn5h-vrow[hidden] { display:none; }
+.wn5h-vrow > .wn5f-f, .wn5h-row1 > .wn5f-f:not(.wn5h-note) { flex:none; }
+.wn5h-when { width:196px; }
+.wn5h-wwin { display:flex; gap:6px; }
+.wn5h-wwin > .wn5f-day { flex:none; width:118px; }
+.wn5h-wwin > .wn5h-hm { flex:none; width:72px; }
+.wn5h-place { width:250px; }
+.wn5h-reason { width:230px; }
+.wn5h-note { flex:1 1 0; }
+.wn5h-truck { width:170px; }
+.wn5h-trailer { width:130px; }
+.wn5h-driver { width:180px; }
+.wn5h-prow { gap:10px; }
+.wn5h-partner { width:150px; }
+.wn5h-rate { width:96px; }
+/* «Δικό μας | Συνεργάτης» 2122:7769: the compact segmented control (192 × 38) */
+.wn5h-tog { display:inline-flex; align-self:flex-start; align-items:center; gap:2px; padding:3px; border:1px solid var(--wi4-line-2); border-radius:8px; background:var(--wi4-chip); }
+.wn5h-tog > button { padding:6px 14px; border:0; border-radius:6px; background:none; font:500 12.5px/16px 'DM Sans',sans-serif; color:var(--wi4-grey-2); cursor:pointer; }
+.wn5h-tog > button.on { border:1px solid var(--wi4-ctl); background:var(--surface-card); font-weight:600; color:var(--wi4-ink); }
+/* «ίδιος οδηγός» 2122:7797: a 32 × 18 switch, knob r7 at 9 (off) / 23 (on) */
+.wn5h-same { display:flex; align-items:center; gap:8px; height:18px; font-size:12.5px; color:var(--wi4-grey-1); white-space:nowrap; cursor:pointer; }
+.wn5h-sw { flex:none; position:relative; width:32px; height:18px; margin:0; border-radius:9px; background:var(--wi4-ctl); appearance:none; -webkit-appearance:none; cursor:pointer; }
+.wn5h-sw::after { content:''; position:absolute; top:2px; left:2px; width:14px; height:14px; border-radius:50%; background:var(--surface-card); }
+.wn5h-sw:checked { background:var(--accent); }
+.wn5h-sw:checked::after { left:16px; }
+.wn5h-sw:disabled { opacity:.5; cursor:default; }
+/* H7 tile 4: the disabled primary is the line grey (2130:7837) */
+.wn5h .wn5f-ft .wi4-btn.pri:disabled { border-color:var(--wi4-line-2); background:var(--wi4-line-2); color:var(--wi4-grey-3); }
 /* the ✈ submenu shell of Figma 2011:9184 (200 × 104): padding 6 0, the popover shadow, 1px clear of the menu's edge;
    «›» 11px grey-3; the open line and the hovered item in Medium. The print submenu sits with its 2nd item on its line. */
 .wn5-menu .wn5-m-sub { left:calc(100% + 2px); padding:6px 0; box-shadow:var(--wn5-pop-shadow); }

@@ -122,7 +122,9 @@ test('F4α-T1: requestId only on REQUEST_ROUTES (else client_request_route, zero
   assert.strictEqual(JSON.parse(s.plan()[0].body).dry_run, true);
   assert.strictEqual(JSON.parse(s.plan()[1].body).request_id, RID);
   assert.deepStrictEqual(JSON.parse(s.run('JSON.stringify(PlanApi.DRY_ROUTES)')),
-    ['POST /plan/move', 'PATCH /plan/rt/:id', 'POST /plan/rt/:id/clear', 'POST /plan/delete']);
+    ['POST /plan/move', 'PATCH /plan/rt/:id', 'POST /plan/rt/:id/clear', 'POST /plan/delete',
+      // T25: the three 072b routes (live 26/10); their drift to PLAN_ROUTES is held by tests/wn5-plan-api-worker.test.mjs
+      'POST /plan/rt/:id/handover', 'PATCH /plan/segments/:id', 'POST /plan/segments/:id/remove']);
   assert.strictEqual(s.run("PlanApi.routeOf('patch', '/plan/rt/123?x=1')"), 'PATCH /plan/rt/:id');
 });
 
