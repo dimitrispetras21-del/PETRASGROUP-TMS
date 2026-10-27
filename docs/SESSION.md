@@ -28,6 +28,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 - dimitris · `feat/wo-print-list` · Εντολές Εργασίας «Εκτύπωση λίστας» (Figma approved 24/10, read-only, maintenance.js only); after merge: live check of the button → print dialog (`docs/sessions/2026-10-24-dimitris-wo-print-list.md`)
 - dimitris · `docs/order-route-cases` · Order route cases: explanatory Figma (page 2257:7735, owner 26/10) — 20 intl cases with data (393 orders, 0 unclassified), 8 without data, 8 national (80 loads); list `docs/order-route/CASES.md`; waits for owner approval + 3 questions; next: RT diagrams, then the Weekly side panel (`docs/sessions/2026-10-26-dimitris-order-route-cases.md`)
 - dimitris · `feat/orders-week-v4` (PR #43) · Orders › «Εβδομάδα» v4, one row = one RT; after merge: live check (totals vs SELECT, 0 console errors)
+- dimitris · `docs/pallets-alexia-requests` · Alexia's pallet requests (20/10): diagnosis + proposal, read-only (#385 delivery never written, no search by driver/week, dead column `order_stops.pallets_exchanged`); waits for 4 owner answers, then Figma for the form field (`docs/sessions/2026-10-27-dimitris-alexia-pallets.md`)
 - vd-nick · `vd/session-rules-v2` (PR #40) · session rules v2: parallel work, per-session files
 - vd-nick · (not started, PR planned this week) · import the Valuedriven backend, tests and CI into this repo
 
