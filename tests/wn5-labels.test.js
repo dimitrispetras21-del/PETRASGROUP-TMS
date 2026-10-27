@@ -75,3 +75,10 @@ test('F4α-T11: the labels file builds no date of its own (no Date.now / new Dat
   const src = fs.readFileSync(path.join(ROOT, 'core', 'wn5-labels.js'), 'utf8');
   assert.ok(!/Date\.now\(|new Date\(\s*\)/.test(src), 'a label must not depend on the clock');
 });
+
+test('F4α-T11: the two-step list puts «Μισθοδοσία» before a payroll line (Figma Δ5 2053:8079, H4 2125:7738); CATEGORY only names CONSEQUENCE kinds', () => {
+  assert.ok(Object.isFrozen(L.CATEGORY));
+  assert.strictEqual(L.CATEGORY.payroll_amount, 'Μισθοδοσία');
+  assert.strictEqual(L.CATEGORY.local_payroll, 'Μισθοδοσία');
+  for (const k of Object.keys(L.CATEGORY)) assert.ok(Object.prototype.hasOwnProperty.call(L.CONSEQUENCE, k), 'CATEGORY names a kind 072 does not build: ' + k);
+});

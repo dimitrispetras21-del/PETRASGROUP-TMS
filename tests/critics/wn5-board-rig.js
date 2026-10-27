@@ -561,6 +561,95 @@ SCN.notices = async (browser, origin) => {
   await d.page.context().close();
 };
 
+// T11 fidelity round 1: the result strips as Δ12 (2069:9518 / 2104:145961 / 2078:7787 / 2069:10146) and the two-step
+// dialog as Δ5 (2053:8080) / H4 (2125:7738). Every check was ✗ on fcc3fe19 (the T11 tip before this round).
+SCN.strips = async (browser, origin) => {
+  const scn = 'strips';
+  // A: a stale answer on the board host (the dry run itself answers 422 stale_confirm): «ΔΕΝ ΑΠΟΘΗΚΕΥΤΗΚΕ», the
+  // Worker's message, «Ανανέωση ↻» at the strip's end; a press re-reads the board once and the strip goes with the old root.
+  const a = await openBoard(browser, origin, { board: fixture(), viewport: { width: 1440, height: 900 },
+    plan: { 'POST /plan/rt/:id/clear': () => planErr(422, 'PLAN_RULE', 'stale_confirm') } });
+  if (!(await a.page.evaluate(() => typeof WN5Act !== 'undefined' && !!WN5Act._kit))) { ok(scn, 'WN5Act is on the page', false); await a.page.context().close(); return; }
+  await a.page.evaluate(() => { WN5Act.twoStep({ method: 'POST', path: '/plan/rt/1201/clear', body: {}, kind: 'clear', title: 't', verb: 'v' }); });
+  await until(a.page, () => !!document.querySelector('.wn5-acthost .wn5-strip'));
+  const st = await a.page.evaluate(() => {
+    const x = document.querySelector('.wn5-acthost .wn5-strip'); if (!x) return null;
+    const b = x.querySelector('.wn5-strip-act'); const r = x.getBoundingClientRect(); const br = b && b.getBoundingClientRect();
+    return { kind: x.dataset.kind, head: x.querySelector('.wn5-strip-h').textContent, msg: x.querySelector('.wn5-strip-t').textContent,
+      act: b && b.textContent, reload: !!(b && b.getAttribute('data-act') === 'reload'), atEnd: !!br && Math.abs(r.right - 13 - br.right) < 2,
+      actW: b && getComputedStyle(b).fontWeight };
+  });
+  ok(scn, 'stale on the board: «ΔΕΝ ΑΠΟΘΗΚΕΥΤΗΚΕ» (every 422 of Δ12), the Worker message as it came', !!st && st.kind === 'stale' && st.head === 'ΔΕΝ ΑΠΟΘΗΚΕΥΤΗΚΕ' && st.msg === 'rig sentinel stale_confirm', st);
+  ok(scn, 'stale: «Ανανέωση ↻» at the strip\'s right end, Medium (2069:9518)', !!st && st.act === 'Ανανέωση ↻' && st.reload && st.atEnd && st.actW === '500', st);
+  const r0 = boardReads(a.S).length;
+  const pressed = await a.page.evaluate(() => { const x = document.querySelector('.wn5-acthost .wn5-strip-act'); if (x) x.click(); return !!x; });
+  const gone = pressed && await until(a.page, () => !document.querySelector('.wn5-acthost .wn5-strip') && document.querySelector('#content .wn5').dataset.state === 'ok');
+  ok(scn, '«Ανανέωση ↻» re-reads the board once, the strip goes', gone && boardReads(a.S).length === r0 + 1, { pressed, gone, reads: boardReads(a.S).length - r0 });
+  // B: the strip's type and the ways on, drawn by WN5Act.strip on a host of the board
+  const sb = await a.page.evaluate(() => {
+    const host = WN5Act._kit.boardHost();
+    const mk = (kind, code, message) => Object.assign(new Error(message), { kind, code, message });
+    const put = (x) => { const d = document.createElement('div'); host.appendChild(d); return WN5Act.strip(d, x); };
+    const g = (el, ...k) => { const c = getComputedStyle(el); return Object.fromEntries(k.map((x) => [x, c[x]])); };
+    const ref = put(mk('refusal', 'truck_overlap', 'rig sentinel truck_overlap'));
+    const ask = put(mk('refusal', 'rt_gone', 'rig sentinel rt_gone · ανανέωσε'));
+    const unk = put(mk('unknown', 'plan_unknown', 'rig sentinel plan_unknown'));
+    const w1 = put([{ code: 'over_33', rt_id: 1, side: 'KATHODOS', pallets: 54, saved_on: 'TST-2106' }]);
+    const w2 = put([{ code: 'over_33', rt_id: 1, side: 'KATHODOS', pallets: 54, saved_on: 'TST-2106' }, { code: 'mixed_temp', side: 'KATHODOS', delta_c: 4 }]);
+    const ua = unk.querySelector('.wn5-strip-act'); const ur = unk.getBoundingClientRect(); const uar = ua && ua.getBoundingClientRect();
+    return { box: Object.assign(g(ref, 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'columnGap'), { h: ref.getBoundingClientRect().height }),
+      head: g(ref.querySelector('.wn5-strip-h'), 'fontFamily', 'fontWeight', 'fontSize', 'letterSpacing'),
+      msg: g(ref.querySelector('.wn5-strip-t'), 'fontWeight', 'fontSize', 'color'), dot: getComputedStyle(ref.querySelector('.wn5-strip-t'), '::before').content,
+      headAfter: getComputedStyle(ref.querySelector('.wn5-strip-h'), '::after').content,
+      refAct: !!ref.querySelector('.wn5-strip-act'), askAct: !!ask.querySelector('.wn5-strip-act[data-act="reload"]'),
+      unk: ua && { text: ua.textContent, w: getComputedStyle(ua).fontWeight, c: getComputedStyle(ua).color, head: getComputedStyle(unk.querySelector('.wn5-strip-h')).color, atEnd: Math.abs(ur.right - 13 - uar.right) < 2 },
+      w1: { ul: !!w1.querySelector('ul'), t: (w1.querySelector('.wn5-strip-t') || { textContent: null }).textContent, h: w1.getBoundingClientRect().height },
+      w2: w2.querySelectorAll('ul > li').length };
+  });
+  ok(scn, 'strip box as Δ12: 34px, padding 8/12/8/10, 8px between label and message', sb.box.h === 34 && sb.box.paddingTop === '8px' && sb.box.paddingRight === '12px'
+    && sb.box.paddingBottom === '8px' && sb.box.paddingLeft === '10px' && sb.box.columnGap === '8px', sb.box);
+  ok(scn, 'label Syne SemiBold 12.5px, tracking .8px', /Syne/.test(sb.head.fontFamily) && sb.head.fontWeight === '600' && sb.head.fontSize === '12.5px' && sb.head.letterSpacing === '0.8px', sb.head);
+  ok(scn, 'message DM Sans Medium 12px grey-1 (#344054) also on a refusal, «· » before it, none after the label', sb.msg.fontWeight === '500' && sb.msg.fontSize === '12px'
+    && sb.msg.color === 'rgb(52, 64, 84)' && /·/.test(sb.dot) && !/·/.test(sb.headAfter), sb);
+  ok(scn, '«Ανανέωση ↻» only where the base asks for a re-read (stale, «ανανέωσε»), never on a plain refusal', !sb.refAct && sb.askAct, { ref: sb.refAct, ask: sb.askAct });
+  ok(scn, '«Έλεγχος στο board» at the end, Medium, in the strip\'s own colour', !!sb.unk && sb.unk.text === 'Έλεγχος στο board' && sb.unk.w === '500' && sb.unk.c === sb.unk.head && sb.unk.atEnd, sb.unk);
+  ok(scn, 'one warning is one 34px line «ΠΡΟΕΙΔΟΠΟΙΗΣΗ · …» (2104:145961); two are a list', !sb.w1.ul && sb.w1.t === 'Υπέρβαση 21π στο TST-2106 — αποθηκεύτηκε' && sb.w1.h === 34 && sb.w2 === 2, sb);
+  ok(scn, 'no page errors (A–B)', !a.S.pageErrors.length, a.S.pageErrors);
+  await shot(a.page, 'strips');
+  await a.page.context().close();
+  // C: the two-step dialog (owner: amounts present)
+  const dry = (e) => e.body && e.body.dry_run ? [200, { ok: true, op: 'plan_rt_clear', dry_run: true, needs_confirm: true, confirm_token: 'tok-1',
+    consequences: [{ kind: 'costs', rt_id: 1201, count: 2, pay_source: 'DKV', amount: 186.4 }, { kind: 'payroll_amount', rt_id: 1201, month: '2026-10', amount: 120 },
+      { kind: 'rt_cancelled', rt_id: 1201, code: 'RT-T104' }], warnings: [] }] : planErr(409, 'WRITES_CLOSED', 'writes_closed');
+  const c = await openBoard(browser, origin, { board: fixture(), viewport: { width: 1440, height: 900 }, role: 'owner', plan: { 'POST /plan/rt/:id/clear': dry } });
+  c.page.evaluate(() => { WN5Act.twoStep({ method: 'POST', path: '/plan/rt/1201/clear', body: {}, kind: 'clear', title: 'Καθαρισμός · rig;', verb: 'Καθαρισμός', danger: true, intro: ['rig intro'] }); });
+  await until(c.page, () => !!document.querySelector('.wn5-dlg[data-wn5="clear"] .wn5-cons'));
+  const dl = await c.page.evaluate(() => {
+    const d = document.querySelector('.wn5-dlg'); const g = (sel, ...k) => { const e = d.querySelector(sel); if (!e) return null; const c = getComputedStyle(e); return Object.fromEntries(k.map((x) => [x, c[x]])); };
+    const lis = [...d.querySelectorAll('.wn5-cons li')]; const r = d.getBoundingClientRect(); const s = getComputedStyle(d);
+    return { w: r.width, rad: s.borderRadius, pad: s.padding, shadow: s.boxShadow, x: !!d.querySelector('.wi4-dlg-x'),
+      title: g('.wi4-dlg-t', 'fontFamily', 'fontWeight', 'fontSize', 'color'), intro: g('.wn5-dlg-b > p', 'fontSize', 'color'), ch: g('.wn5-cons-h', 'fontWeight', 'fontSize', 'color'),
+      li: g('.wn5-cons li', 'fontSize', 'color', 'listStyleType'), bullet: lis[0] && getComputedStyle(lis[0], '::before').content,
+      pitch: lis.length > 1 ? lis[1].getBoundingClientRect().top - lis[0].getBoundingClientRect().top : null,
+      texts: lis.map((x) => x.textContent), ft: g('.wi4-dlg-ft', 'columnGap'),
+      cancel: g('[data-act="cancel"]', 'height', 'fontSize', 'fontWeight', 'paddingLeft', 'borderTopColor'), confirm: g('[data-act="confirm"]', 'height', 'fontSize', 'fontWeight', 'paddingLeft') };
+  });
+  ok(scn, 'Δ5 frame: 600 wide, radius 12, padding 18/22, shadow 0 8 24 rgba(10,26,41,.16), no «×»', dl.w === 600 && dl.rad === '12px' && dl.pad === '18px 22px'
+    && dl.shadow === 'rgba(10, 26, 41, 0.16) 0px 8px 24px 0px' && !dl.x, dl);
+  ok(scn, 'title Syne Bold 18px ink; intro 12.5px grey; headings SemiBold 12px grey', !!dl.title && /Syne/.test(dl.title.fontFamily) && dl.title.fontWeight === '700' && dl.title.fontSize === '18px'
+    && dl.title.color === 'rgb(11, 25, 41)' && dl.intro.fontSize === '12.5px' && dl.intro.color === 'rgb(91, 107, 127)'
+    && dl.ch.fontWeight === '600' && dl.ch.fontSize === '12px' && dl.ch.color === 'rgb(91, 107, 127)', dl);
+  ok(scn, 'rows 13px grey-1, a «•» glyph (no CSS disc), 29px pitch', !!dl.li && dl.li.fontSize === '13px' && dl.li.color === 'rgb(52, 64, 84)' && dl.li.listStyleType === 'none'
+    && /•/.test(dl.bullet) && dl.pitch === 29, dl);
+  ok(scn, 'the payroll row starts «Μισθοδοσία · γραμμή μισθοδοσίας με ποσό (Οκτώβριος)» (Δ5 / H4)', dl.texts.some((t) => t.startsWith('Μισθοδοσία · γραμμή μισθοδοσίας με ποσό (Οκτώβριος)')), dl.texts);
+  ok(scn, 'buttons 36px 13px, «Άκυρο» Medium padding 14 #d0d5dd border, the verb SemiBold padding 16, gap 10', !!dl.cancel && dl.cancel.height === '36px' && dl.cancel.fontSize === '13px'
+    && dl.cancel.fontWeight === '500' && dl.cancel.paddingLeft === '14px' && dl.cancel.borderTopColor === 'rgb(208, 213, 221)'
+    && dl.confirm.height === '36px' && dl.confirm.fontWeight === '600' && dl.confirm.paddingLeft === '16px' && dl.ft.columnGap === '10px', dl);
+  ok(scn, 'no page errors (C)', !c.S.pageErrors.length, c.S.pageErrors);
+  await shot(c.page, 'strips-dialog');
+  await c.page.context().close();
+};
+
 // ── scenarios end (each Task adds its own above this line) ──
 
 // ── fixture check (T4): plain node, no browser ──

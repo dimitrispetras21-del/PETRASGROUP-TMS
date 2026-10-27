@@ -8982,6 +8982,7 @@ body.wi4-on #wi-popover .wi-pop-save:hover { background:var(--navy-light); }
   --wn5-info-bg:   #eff6ff;   /* «preview» strip: writes closed until day L (H7 πλακ. 4) */
   --wn5-info-line: #bfdbfe;
   --wn5-ctl-hover: #98a2b3;   /* ✈ border on hover — the Weekly International's value (its rule is .wi4-c-idx only) */
+  --wn5-dlg-shadow: 0 8px 24px rgba(10,26,41,.16);   /* the two-step dialog (Figma Δ5 2053:8080) */
 }
 /* The same page frame as v4 (body.wi4-on .content), while the v5 board is on screen. */
 body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; background:var(--surface-page); }
@@ -8994,19 +8995,22 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
    the .wi4 rule), never the time «↻ hh:mm», which is how the user sees how stale the board is (W40 at 1440). */
 .wn5 .wn5-fit .wi4-range { flex:none; }
 .wn5 .wn5-upd-short .wn5-upd-w { display:none; }
-/* Result strips (Δ12): refusal/error red, warning amber, «preview» blue. The text is the Worker's message. */
-.wn5-strip { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin:0 0 8px; padding:6px 12px; border:1px solid var(--wn5-err-line);
-  border-radius:6px; background:var(--wi4-red-bg); color:var(--wi4-red-ink); font-size:12px; line-height:1.4; }
-.wn5-strip > b { font-weight:600; color:var(--wi4-red); }
+/* Result strips (Δ12): refusal/error red, warning amber, «preview» blue. The text is the Worker's message.
+   Δ12 2069:9518 / 2104:145961 / 2078:7787 / 2069:10146: 34px, padding 8/12/8/10, the label set like the day names
+   (Syne SemiBold 12.5px, tracking .8px) in the kind's colour, the message DM Sans Medium 12px grey-1 on every kind. */
+.wn5-strip { display:flex; flex-wrap:wrap; align-items:center; gap:4px 8px; min-height:34px; box-sizing:border-box; margin:0 0 8px;
+  padding:8px 12px 8px 10px; border:1px solid var(--wn5-err-line); border-radius:6px; background:var(--wi4-red-bg); color:var(--wi4-grey-1);
+  font-size:12px; font-weight:500; line-height:16px; }
+.wn5-strip > b { font:600 12.5px/16px 'Syne',sans-serif; letter-spacing:.8px; color:var(--wi4-red); }
 .wn5-strip[data-kind="warning"] { border-color:var(--wn5-note-line); background:var(--wn5-note-bg); color:var(--wi4-grey-1); }
 .wn5-strip[data-kind="warning"] > b { color:var(--wn5-note-ink); }
 .wn5-strip:is([data-kind="closed"], [data-kind="preview"]) { border-color:var(--wn5-info-line); background:var(--wn5-info-bg); color:var(--wi4-grey-1); }
 .wn5-strip:is([data-kind="closed"], [data-kind="preview"]) > b { color:var(--wi4-blue-ink); }
-.wn5-strip-sub { color:var(--wi4-grey-2); }
+.wn5-strip-sub { font-weight:400; color:var(--wi4-grey-2); }
 .wn5-strip > .wi4-btn { margin-left:auto; }
-/* Δ12: «ΣΦΑΛΜΑ · …» — the label, a dot, the message; the way on is the strip's red link at the end. The dot is drawn,
-   not written, so the strip's text stays the label and the Worker's message. */
-.wn5-strip > b::after { content:' ·'; font-weight:400; }
+/* Δ12: «ΣΦΑΛΜΑ · …» — the label, the 8px gap, then «· message»; the way on is the strip's link at its end, in the
+   strip's own colour. The dot is drawn, not written, so the strip's text stays the label and the Worker's message. */
+.wn5-strip > b + span::before { content:'· '; }
 .wn5-strip > .wn5-strip-act { margin-left:auto; color:var(--wi4-red); font-weight:500; }
 .wn5 .wn5-q .wi4-q-hd > span:first-child { white-space:nowrap; }
 .wn5-dayx { font-weight:400; letter-spacing:0; color:var(--wi4-grey-2); }
@@ -9197,7 +9201,7 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-note:first-child { color:var(--wi4-grey-1); }
 .wn5-note ~ .wn5-note { color:var(--wi4-grey-2); }
 .wn5-note-by { color:var(--wi4-grey-2); }
-.wn5-notes > .wn5-strip { margin:0; padding:2px 8px; }
+.wn5-notes > .wn5-strip { min-height:0; margin:0; padding:2px 8px; }
 .wn5-notes > #wn5-note-read { margin-left:auto; }
 .wn5-notes > #wn5-note-read:disabled { color:var(--wi4-grey-2); cursor:default; text-decoration:none; }
 /* ── National v5 actions (modules/wn5_actions.js, F4α T11): result strips and dialogs. Only tokens (one value, one
@@ -9210,6 +9214,8 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-strip ul { flex-basis:100%; margin:2px 0 0; padding-left:16px; }
 .wn5-strip:is([data-kind="unknown"], [data-kind="slow"], [data-kind="offline"], [data-kind="reused"]) { border-color:var(--wn5-note-line); background:var(--wn5-note-bg); color:var(--wi4-grey-1); }
 .wn5-strip:is([data-kind="unknown"], [data-kind="slow"], [data-kind="offline"], [data-kind="reused"]) > b { color:var(--wn5-note-ink); }
+.wn5-strip:is([data-kind="unknown"], [data-kind="slow"], [data-kind="offline"], [data-kind="reused"], [data-kind="warning"]) > .wn5-strip-act { color:var(--wn5-note-ink); }
+.wn5-strip:is([data-kind="closed"], [data-kind="preview"]) > .wn5-strip-act { color:var(--wi4-blue-ink); }
 .wn5-dlg { width:520px; max-height:calc(100vh - 48px); overflow-y:auto; }
 .wn5-dlg.wn5-wide { width:800px; }
 .wn5-pop-back { background:transparent; display:block; }
@@ -9228,6 +9234,23 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-field textarea, .wn5-field input, .wn5-field select { font:inherit; padding:5px 8px; border:1px solid var(--wi4-ctl); border-radius:6px; background:var(--surface-card); color:var(--wi4-ink); }
 .wn5-dlg .wi4-btn.wn5-danger { background:var(--wi4-red); border-color:var(--wi4-red); color:var(--surface-card); }
 .wn5-dlg .wi4-btn.pri:disabled, .wn5-dlg .wi4-btn.wn5-danger:disabled { opacity:.5; cursor:default; }
+/* The two-step dialog as Figma Δ5 2053:8080 (and H4 2125:7738): 600 wide, radius 12, padding 18/22, one 12px rhythm
+   between title, strip, intro, headings and rows; Syne Bold 18 title and no «×» (Άκυρο and the verb are the exits);
+   intro and headings grey, rows grey-1 with a «•» and 8px; buttons 36px, gap 10. */
+.wn5-dlg.wn5-ask { width:600px; display:flex; flex-direction:column; gap:12px; padding:18px 22px; border-radius:12px; box-shadow:var(--wn5-dlg-shadow); }
+.wn5-ask .wi4-dlg-t { font:700 18px 'Syne',sans-serif; color:var(--wi4-ink); }
+.wn5-ask .wn5-dlg-msg, .wn5-ask .wn5-dlg-b { margin-top:0; }
+.wn5-ask .wn5-dlg-b { gap:12px; }
+.wn5-ask .wn5-dlg-b > p { font-size:12.5px; color:var(--wi4-grey-2); }
+.wn5-ask .wn5-cons-h { margin-top:0; font-size:12px; font-weight:600; color:var(--wi4-grey-2); }
+.wn5-ask .wn5-cons { display:flex; flex-direction:column; gap:12px; padding-left:0; list-style:none; }
+.wn5-ask .wn5-cons li { display:flex; gap:8px; margin:0; font-size:13px; line-height:17px; color:var(--wi4-grey-1); }
+.wn5-ask .wn5-cons li::before { content:'•'; flex:none; }
+.wn5-ask .wn5-cons li[data-unknown] { color:var(--wi4-amber-ink); }
+.wn5-ask .wi4-dlg-ft { margin-top:0; gap:10px; }
+.wn5-ask .wi4-dlg-ft .wi4-btn { height:36px; font-size:13px; }
+.wn5-ask .wi4-dlg-ft [data-act="cancel"] { padding:0 14px; font-weight:500; border-color:var(--wi4-ctl); }
+.wn5-ask .wi4-dlg-ft [data-act="confirm"] { padding:0 16px; font-weight:600; }
 /* ── wn5 end ── */
 
 /* ═══ Παραγγελίες › Εβδομάδα v4 (.ow4) — modules/orders_week_view.js ═════════

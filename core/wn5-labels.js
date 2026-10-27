@@ -74,6 +74,10 @@
     invoiced: (c) => (has(c, 'invoice_number') ? 'τιμολογήθηκε (' + c.invoice_number + '): ' : 'τιμολογήθηκε: ') + 'το ERP κάνει το πιστωτικό',
   });
 
+  // The category word the two-step list puts before a line (Figma Δ5 2053:8079 and H4 2125:7738: «Μισθοδοσία · …»).
+  // Only the kinds a frame draws with one; costs keeps its own words (see the T11 test that pins «2 γραμμές DKV»).
+  const CATEGORY = Object.freeze({ payroll_amount: 'Μισθοδοσία', local_payroll: 'Μισθοδοσία' });
+
   // An unknown code is shown, never dropped (principle 1, Ε-21); the caller logs it once.
   function warningLine(w) {
     const f = w && Object.prototype.hasOwnProperty.call(WARNING, w.code) ? WARNING[w.code] : null;
@@ -84,7 +88,7 @@
     return f ? { text: f(c), unknown: false } : { text: 'άλλη επίπτωση · ' + String((c && c.kind) || '—'), unknown: true };
   }
 
-  const WN5Lab = Object.freeze({ WARNING, CONSEQUENCE, warningLine, consequenceLine });
+  const WN5Lab = Object.freeze({ WARNING, CONSEQUENCE, CATEGORY, warningLine, consequenceLine });
   if (typeof module !== 'undefined' && module.exports) module.exports = WN5Lab;
   else root.WN5Lab = WN5Lab;
 })(typeof window !== 'undefined' ? window : this);

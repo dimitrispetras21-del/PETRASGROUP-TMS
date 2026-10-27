@@ -30,8 +30,10 @@
 
   // ═══ Result strips (Ε-7): one per host, the Worker's message as it is ═══
   // The heading is the screen's own word for the KIND of answer; the text is error.message.
+  // stale is «ΔΕΝ ΑΠΟΘΗΚΕΥΤΗΚΕ» like every 422 of Δ12 (2069:9518, the code table): the Worker's message already says
+  // «Κάτι άλλαξε…», a heading with the same words read it twice.
   const STRIP_HEAD = Object.freeze({
-    refusal: 'ΔΕΝ ΑΠΟΘΗΚΕΥΤΗΚΕ', stale: 'ΚΑΤΙ ΑΛΛΑΞΕ', reused: 'ΕΙΧΕ ΗΔΗ ΑΠΟΘΗΚΕΥΤΕΙ', need_token: 'ΧΡΕΙΑΖΕΤΑΙ ΕΠΙΒΕΒΑΙΩΣΗ',
+    refusal: 'ΔΕΝ ΑΠΟΘΗΚΕΥΤΗΚΕ', stale: 'ΔΕΝ ΑΠΟΘΗΚΕΥΤΗΚΕ', reused: 'ΕΙΧΕ ΗΔΗ ΑΠΟΘΗΚΕΥΤΕΙ', need_token: 'ΧΡΕΙΑΖΕΤΑΙ ΕΠΙΒΕΒΑΙΩΣΗ',
     preview: 'ΠΡΟΕΠΙΣΚΟΠΗΣΗ', busy: 'ΔΕΝ ΑΠΟΘΗΚΕΥΤΗΚΕ', unknown: 'ΜΠΟΡΕΙ ΝΑ ΑΠΟΘΗΚΕΥΤΗΚΕ', leak: 'ΣΦΑΛΜΑ',
     slow: 'ΑΡΓΗ ΑΠΑΝΤΗΣΗ', schema: 'ΣΦΑΛΜΑ', failed: 'ΣΦΑΛΜΑ', forbidden: 'ΔΕΝ ΑΠΟΘΗΚΕΥΤΗΚΕ', client: 'ΣΦΑΛΜΑ',
     offline: 'ΧΩΡΙΣ ΣΥΝΔΕΣΗ', warning: 'ΠΡΟΕΙΔΟΠΟΙΗΣΗ',
@@ -39,6 +41,18 @@
   let _closed = null;                   // the first 409 writes_closed of the session (Ε-6)
   const _closedErr = () => _closed;
   const _unkWarn = new Set();
+  // The way on sits at the strip's end, Medium, in the strip's own colour (Δ12 .wn5-strip-act).
+  function _act(el, text, fn) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'wi4-link wn5-strip-act'; b.textContent = text;
+    b.addEventListener('click', fn);
+    el.appendChild(b);
+    return b;
+  }
+  // «Ανανέωση ↻» (Δ12 2069:9518, 2069:10146): when the base says the screen is behind — a stale_confirm, or a refusal
+  // whose message (the Worker's own words, PLAN_RULE_TEXT) asks for «ανανέωσε». Read from the message, not from a
+  // list of codes here: a second list of the Worker's codes would drift (principle 3).
+  const _wantsReread = (x, kind) => kind === 'stale' || /ανανέωσε/i.test(String(x.message || ''));
 
   WN5Act.strip = function strip(hostEl, x) {
     if (!hostEl) return null;
@@ -53,13 +67,19 @@
     const t = document.createElement('span'); t.className = 'wn5-strip-t';
     if (Array.isArray(x)) {
       kind = 'warning';
-      const ul = document.createElement('ul');
-      for (const w of x) {
+      const lines = x.map((w) => {
         const l = WN5Lab.warningLine(w);
         if (l.unknown && !_unkWarn.has(w && w.code)) { _unkWarn.add(w && w.code); _log(new Error('wn5: unknown warning ' + (w && w.code)), 'WN5Act warning'); }
-        const li = document.createElement('li'); li.textContent = l.text; ul.appendChild(li);
+        return l.text;
+      });
+      el.dataset.kind = kind; h.textContent = STRIP_HEAD.warning;
+      // one warning is one line, «ΠΡΟΕΙΔΟΠΟΙΗΣΗ · …» (Δ12 2104:145961); only several make a list
+      if (lines.length === 1) { t.textContent = lines[0]; el.append(h, t); }
+      else {
+        const ul = document.createElement('ul');
+        for (const text of lines) { const li = document.createElement('li'); li.textContent = text; ul.appendChild(li); }
+        el.append(h, ul);
       }
-      el.dataset.kind = kind; h.textContent = STRIP_HEAD.warning; el.append(h, ul);
     } else {
       kind = x.kind === K().CLOSED ? 'preview' : (STRIP_HEAD[x.kind] ? x.kind : 'client');
       if (x.kind === K().CLOSED) {
@@ -73,10 +93,10 @@
       el.append(h, t);
       if (kind === 'unknown' && typeof WN5 !== 'undefined') {
         // «μπορεί να αποθηκεύτηκε» (Ε-7): the user checks the board, then presses the same button again (same request_id)
-        const b = document.createElement('button');
-        b.type = 'button'; b.className = 'wi4-link'; b.textContent = 'Έλεγχος στο board';
-        b.addEventListener('click', () => { WN5.reload('check'); });
-        el.appendChild(b);
+        _act(el, 'Έλεγχος στο board', () => { WN5.reload('check'); });
+      } else if (typeof WN5 !== 'undefined' && _wantsReread(x, kind)) {
+        // a re-read by hand, one per press (never automatic); an open dialog stays as it is
+        _act(el, 'Ανανέωση ↻', () => { WN5.reload('user'); }).setAttribute('data-act', 'reload');
       }
     }
     hostEl.insertBefore(el, hostEl.firstChild);
@@ -106,20 +126,22 @@
     if (_cur === d) _cur = null;
     if (d.onClose) { try { d.onClose(); } catch (e) { _log(e, 'WN5Act dialog close'); } }
   }
-  // opts: { wide, anchor (a popover placed under it), onClose }
+  // opts: { wide, anchor (a popover placed under it), ask (the two-step frame of Δ5: no «×», Άκυρο and the verb are
+  // its only buttons — Esc and a click outside still close it), onClose }
   function _dlg(kind, title, opts) {
     opts = opts || {};
     WN5Act.closeAll();
     const back = document.createElement('div');
     back.className = 'wi4-dlg-back wn5-dlg-back' + (opts.anchor ? ' wn5-pop-back' : '');
     const dlg = document.createElement('div');
-    dlg.className = 'wi4-dlg wn5-dlg' + (opts.wide ? ' wn5-wide' : '');
+    dlg.className = 'wi4-dlg wn5-dlg' + (opts.wide ? ' wn5-wide' : '') + (opts.ask ? ' wn5-ask' : '');
     dlg.setAttribute('role', 'dialog');
     dlg.setAttribute('aria-modal', 'true');
     dlg.setAttribute('aria-label', title);
     dlg.setAttribute('data-wn5', kind);
     dlg.tabIndex = -1;
-    dlg.innerHTML = '<div class="wi4-dlg-hd"><span class="wi4-dlg-t"></span><button type="button" class="wi4-link wi4-dlg-x" aria-label="Κλείσιμο">×</button></div>'
+    dlg.innerHTML = '<div class="wi4-dlg-hd"><span class="wi4-dlg-t"></span>'
+      + (opts.ask ? '' : '<button type="button" class="wi4-link wi4-dlg-x" aria-label="Κλείσιμο">×</button>') + '</div>'
       + '<div class="wn5-dlg-msg" role="status"></div><div class="wn5-dlg-b"></div><div class="wi4-dlg-ft"></div>';
     dlg.querySelector('.wi4-dlg-t').textContent = title;
     back.appendChild(dlg);
@@ -131,7 +153,8 @@
     d.onKey = (ev) => { if (ev.key === 'Escape' && !d.busy) { ev.preventDefault(); ev.stopPropagation(); _close(d); } };
     window.addEventListener('keydown', d.onKey, true);
     back.addEventListener('mousedown', (ev) => { if (ev.target === back && !d.busy) _close(d); });
-    dlg.querySelector('.wi4-dlg-x').addEventListener('click', () => { if (!d.busy) _close(d); });
+    const x = dlg.querySelector('.wi4-dlg-x');
+    if (x) x.addEventListener('click', () => { if (!d.busy) _close(d); });
     _cur = d;
     return d;
   }
@@ -221,7 +244,9 @@
     const li = (c) => {
       const l = WN5Lab.consequenceLine(c);
       if (l.unknown && !_unkCons.has(c && c.kind)) { _unkCons.add(c && c.kind); _log(new Error('wn5: unknown consequence ' + (c && c.kind)), 'WN5Act consequence'); }
-      return '<li data-kind="' + _esc(c && c.kind) + '"' + (l.unknown ? ' data-unknown="1"' : '') + '>' + _esc(l.text) + '</li>';
+      // the category word before the line, as Δ5 / H4 draw it («Μισθοδοσία · γραμμή μισθοδοσίας …»)
+      const cat = c && Object.prototype.hasOwnProperty.call(WN5Lab.CATEGORY, c.kind) ? WN5Lab.CATEGORY[c.kind] + ' · ' : '';
+      return '<li data-kind="' + _esc(c && c.kind) + '"' + (l.unknown ? ' data-unknown="1"' : '') + '>' + _esc(cat + l.text) + '</li>';
     };
     const docs = list.filter((c) => DOC_KINDS.includes(c && c.kind));
     const acts = list.filter((c) => !DOC_KINDS.includes(c && c.kind));
@@ -236,7 +261,7 @@
   function _askDialog(dry, s) {
     return new Promise((resolve) => {
       if (!_ask || _ask.s !== s || _ask.d.closed) {
-        const d = _dlg(s.kind, s.title, { onClose: () => { if (_ask && _ask.d === d) { const r = _ask.resolve; _ask = null; if (r) r(null); } } });
+        const d = _dlg(s.kind, s.title, { ask: true, onClose: () => { if (_ask && _ask.d === d) { const r = _ask.resolve; _ask = null; if (r) r(null); } } });
         _ask = { s, d, resolve: null, field: '' };
         d.ft.innerHTML = '<button type="button" class="wi4-btn" data-act="cancel">Άκυρο</button>'
           + '<button type="button" class="wi4-btn pri' + (s.danger ? ' wn5-danger' : '') + '" data-act="confirm">' + _esc(s.verb) + '</button>';
