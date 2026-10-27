@@ -157,8 +157,13 @@ function _plvRows() {
   else rows = PLV.movements.filter(m => m.status !== 'reversed');
   if (PLV.from) rows = rows.filter(m => m.movement_date >= PLV.from);
   if (PLV.to)   rows = rows.filter(m => m.movement_date <= PLV.to);
-  const q = fhSearchNorm(PLV.q.trim());
-  if (q) rows = rows.filter(m => _plvSearchText(m).includes(q));
+  const raw = PLV.q.trim();
+  // «#385» is one order, exactly: a substring would also bring #3850 once it
+  // exists. A bare «385» stays a substring like every other query (dates, plates).
+  const no = /^#\d+$/.test(raw) ? parseInt(raw.slice(1), 10) : null;
+  const q = fhSearchNorm(raw);
+  if (no != null) rows = rows.filter(m => m.order_id === no);
+  else if (q) rows = rows.filter(m => _plvSearchText(m).includes(q));
   return rows;
 }
 
@@ -172,13 +177,20 @@ function _plvRows() {
 // movement's own date, since a delivery can fall a week after the loading.
 // The Weekly boards' one search rule (fhSearchBlob, Pantelis 21/10): drivers are
 // stored in Latin, so «Δεληγιαννίδης» must find «Deligiannidis».
+// Built once per movement object: a reload (renderPalletLedger, a confirm)
+// brings new objects, so the cache cannot outlive the data it was made from.
+const _plvBlobs = new WeakMap();
 function _plvSearchText(m) {
+  const hit = _plvBlobs.get(m);
+  if (hit != null) return hit;
   const x = _plvRowExtras(m);
   const gr = _plvFmtDate(m.movement_date);
   const mw = typeof TmsWeek !== 'undefined' ? TmsWeek.numOf(m.movement_date) : null;
-  return fhSearchBlob([_plvNo(m), m.code, _plvName(m), _plvLoc(m), m.notes || '', x.ref, x.carrier, x.driver,
+  const blob = fhSearchBlob([_plvNo(m), m.code, _plvName(m), _plvLoc(m), m.notes || '', x.ref, x.carrier, x.driver,
     x.week ? 'w' + x.week : '', mw ? 'w' + mw : '',
     m.movement_date || '', gr, gr.replace(/\/20(\d\d)$/, '/$1')]);
+  _plvBlobs.set(m, blob);
+  return blob;
 }
 
 // Σύνολο γραμμών του τρέχοντος tab ΧΩΡΙΣ φίλτρα q/ημερομηνιών — ο παρονομαστής
@@ -479,7 +491,7 @@ function _plvDraw() {
           `<button class="${PLV.groupBy === v ? 'on' : ''}" onclick="plvGroupBy('${v}')">${l}</button>`).join('')}
       </div>
       <span class="plv-count" title="Οι κινήσεις έρχονται ταξινομημένες από τον διακομιστή (movement_date φθίνουσα)· οι ομάδες κατά την πιο πρόσφατη κίνησή τους">Νεότερο πρώτα</span>
-      ${PLV.enrichFail ? '<span style="color:var(--warn)" title="Η ανάγνωση των παραγγελιών απέτυχε — οι στήλες Reference/Μεταφορικό είναι προσωρινά κενές. Οι κινήσεις εμφανίζονται κανονικά.">⚠ στοιχεία παραγγελιών μη διαθέσιμα</span>' : ''}`;
+      ${PLV.enrichFail ? '<span style="color:var(--warn)" title="Η ανάγνωση των παραγγελιών απέτυχε — οι στήλες Reference/Μεταφορικό είναι προσωρινά κενές. Οι κινήσεις εμφανίζονται κανονικά· η στήλη Αρ. και η αναζήτηση με #αρ. δουλεύουν.">⚠ στοιχεία παραγγελιών μη διαθέσιμα — η αναζήτηση με οδηγό, εβδομάδα παραγγελίας ή reference δεν βρίσκει τίποτα</span>' : ''}`;
   const actions = `<button class="plv-link" onclick="plvExportCSV()">Εξαγωγή CSV</button>
       ${(typeof can!=='function'||can('costs')==='full')?'<button class="btn-new-order" onclick="plvNewMovement()">+ Νέα κίνηση</button>':''}`;
   // Δύο διατάξεις κεφαλής (Figma): με κάρτες οφειλών (Εκκρεμείς/Χωρίς πλήρη
@@ -545,10 +557,10 @@ function _plvMovementRow(m, grouped) {
   const x = _plvRowExtras(m);
   const clip = m.sheet_url
     ? `<a href="#" class="plv-clip" title="Προβολή δελτίου" onclick="plvViewSheet('${escapeHtml(String(m.sheet_url).replace(/'/g, ''))}');return false">${typeof icon === 'function' ? icon('file_check', 14) : 'δελτίο'}</a>` : '';
-  // Αρ. ΠΡΩΤΗ (owner 27/10) και Reference δεύτερη (owner 16/9, w8 P1 — ήταν 8η): η
-  // λογίστρια ταυτοποιεί την κίνηση από την παραγγελία. Ο κωδικός PM- μένει, τελευταίος
-  // πριν την Κατάσταση (είναι πεδίο του συμβολαίου pallets.json). Το εικονίδιο
-  // δελτίου κάθεται δίπλα στο pill — δική του στήλη 4% έμενε σχεδόν πάντα κενή.
+  // Order number first (owner 27/10), Reference second (owner 16/9, w8 P1 — it was 8th):
+  // the accountant identifies a movement by its order. The PM- code stays, last before
+  // Status (it is a field of the pallets.json contract). The sheet icon sits beside the
+  // pill — a 4% column of its own was nearly always empty.
   const loc = escapeHtml(_plvLoc(m));
   return `
       <tr class="plv-row" title="Λεπτομέρειες κίνησης ${escapeHtml(m.code)}" onclick="if(!event.target.closest('a'))plvOpenPanel(${m.id})">
