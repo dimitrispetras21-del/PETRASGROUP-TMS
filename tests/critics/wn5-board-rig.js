@@ -1393,6 +1393,81 @@ async function scnClear(browser, origin) {
 }
 SCN['clear'] = scnClear;
 
+// T16 — the date panel Δ4 (Figma 2053:7837): a dry run per change, the same body on save, a conflict = no save.
+async function scnDate(browser, origin) {
+  const scn = 'date';
+  const D = bDlg('date');
+  const P = '/plan/rt/204';
+  const K = 'PATCH /plan/rt/:id';   // the stub's route key (routeKey: digits → :id); bCalls checks the literal path
+  const CHIP = '.wn5-row[data-rt="204"] [data-act="date"][data-side="KATHODOS"]';
+  const PV = (o) => [200, { ok: true, op: 'plan_rt_update', dry_run: true, preview: Object.assign({
+    before: { start_at: '2026-10-12T11:00:00+03:00', end_at: '2026-10-13T22:00:00+03:00', date_start: '2026-10-12', date_end: '2026-10-13' },
+    after: { start_at: '2026-10-13T11:00:00+03:00', end_at: '2026-10-14T22:00:00+03:00', date_start: '2026-10-13', date_end: '2026-10-14' },
+    next_rt: null, conflict: null, vs_day: [], warnings: [] }, o || {}) }];
+  const bodyOf = (x) => { const o = Object.assign({}, x.body); delete o.dry_run; return JSON.stringify(o); };
+  { // A · a day: one dry run, the result, the international, the warning; save = the same body (closed)
+    const { page, S } = await bOpen(browser, origin, { plan: { [K]: (e) => (e.body && e.body.dry_run === true
+      ? PV({ vs_day: [{ order_id: 2101, from: '2026-10-12', to: '2026-10-13' }], warnings: [{ code: 'local_payroll_review', dl_entry_id: 8, local_move_id: 7001 }] })
+      : planErr(409, 'WRITES_CLOSED', 'writes_closed')) } });
+    await bClick(page, CHIP);
+    const head = await bText(page, D);
+    ok(scn, 'the day chip opens .wi4-dlg[data-wn5=date]: «Ημερομηνία φόρτωσης Βέροιας», «ΚΑΘΟΔΟΣ · TST-2103», «Οκτώβριος 2026»',
+      head.includes('Ημερομηνία φόρτωσης Βέροιας') && head.includes('ΚΑΘΟΔΟΣ · TST-2103') && head.includes('Οκτώβριος 2026'), head.slice(0, 300));
+    ok(scn, 'nothing changed → no dry run, «Αποθήκευση» disabled', bCalls(S, 'PATCH', P).length === 0 && (await bOff(page, `${D} [data-act="save"]`)) === true);
+    await bClick(page, `${D} [data-day="2026-10-13"]`);
+    await page.waitForTimeout(300);
+    const c = bCalls(S, 'PATCH', P);
+    ok(scn, 'a day → ONE dry run PATCH /plan/rt/204 {shift:{side:KATHODOS, delta:"1 days"}, dry_run:true}', c.length === 1 && c[0].body.dry_run === true
+      && bodyOf(c[0]) === '{"shift":{"side":"KATHODOS","delta":"1 days"}}', c.map((x) => x.raw));
+    const res = await bText(page, D);
+    ok(scn, '«ΑΠΟΤΕΛΕΣΜΑ · +1 ΗΜΕΡΑ», «Φόρτωση Βέροιας» Δευ 12/10 → Τρί 13/10 · 18:00–19:00, «Επόμενος κύκλος · κανένας»',
+      res.includes('ΑΠΟΤΕΛΕΣΜΑ · +1 ΗΜΕΡΑ') && /Φόρτωση Βέροιας\s+Δευ 12\/10 → Τρί 13\/10 · 18:00–19:00/.test(res) && res.includes('Επόμενος κύκλος · κανένας'), res.slice(0, 600));
+    ok(scn, 'preview.vs_day → «ενημερώνει τη διεθνή #2101 · 12/10 → 13/10»; preview.warnings → the label line',
+      res.includes('ενημερώνει τη διεθνή #2101 · 12/10 → 13/10') && res.includes('Η γραμμή μισθοδοσίας του τοπικού οδηγού με ποσό πάει για έλεγχο στο λογιστήριο'));
+    await bClick(page, `${D} [data-act="save"]`);
+    const c2 = bCalls(S, 'PATCH', P);
+    ok(scn, '«Αποθήκευση» sends the dry-run body without dry_run (no confirm_token in 072)', c2.length === 2 && c2[1].raw === '{"shift":{"side":"KATHODOS","delta":"1 days"}}', c2.map((x) => x.raw));
+    ok(scn, '409 writes_closed → the preview strip in the panel', (await bText(page, `${D} .wn5-strip[data-kind="preview"]`)).includes('rig sentinel writes_closed'));
+    await page.context().close();
+  }
+  { // B · a conflict in the preview (200): the Worker's words, no save
+    const { page } = await bOpen(browser, origin, { plan: { [K]: () => PV({ after: null, conflict: { code: 'truck_busy', sqlstate: 'P0001', detail: 'RT-T205', message: 'rig sentinel conflict truck_busy' } }) } });
+    await bClick(page, CHIP);
+    await bClick(page, `${D} [data-day="2026-10-13"]`);
+    await page.waitForTimeout(300);
+    ok(scn, 'preview.conflict → red line with conflict.message, «Αποθήκευση» disabled', (await bText(page, `${D} .wn5-conflict`)).includes('rig sentinel conflict truck_busy')
+      && (await bOff(page, `${D} [data-act="save"]`)) === true);
+    await page.context().close();
+  }
+  { // C · window + «Μετακίνηση και της ΑΝΟΔΟΥ»: ONE body (explicit stops + one shift)
+    const { page, S } = await bOpen(browser, origin, { plan: { [K]: () => PV() } });
+    await bClick(page, CHIP);
+    await bClick(page, `${D} [data-day="2026-10-13"]`);
+    await page.check(`${D} input[data-anod]`).catch(() => {});
+    await page.fill(`${D} input[data-win="from"]`, '18:30').catch(() => {}); await page.press(`${D} input[data-win="from"]`, 'Tab').catch(() => {});
+    await page.fill(`${D} input[data-win="to"]`, '19:30').catch(() => {}); await page.press(`${D} input[data-win="to"]`, 'Tab').catch(() => {});
+    await page.waitForTimeout(300);
+    const c = bCalls(S, 'PATCH', P);
+    const last = c[c.length - 1];
+    ok(scn, 'window + ANODOS → one body: the Veroia stop on its old day, the ANODOS stops +1 day, one shift of the KATHODOS', !!last && bodyOf(last) === JSON.stringify({
+      stops: [{ stop_id: 2031, planned_from: '2026-10-12T18:30:00+03:00', planned_to: '2026-10-12T19:30:00+03:00' },
+              { stop_id: 2035, planned_from: '2026-10-14T12:00:00+03:00', planned_to: '2026-10-14T14:00:00+03:00' },
+              { stop_id: 2036, planned_from: '2026-10-14T20:00:00+03:00', planned_to: '2026-10-14T22:00:00+03:00' }],
+      shift: { side: 'KATHODOS', delta: '1 days' } }), last && last.raw);
+    await page.context().close();
+  }
+  { // D · a shape refusal in the dry run is a 422: the Worker's words
+    const { page } = await bOpen(browser, origin, { plan: { [K]: () => planErr(422, 'PLAN_RULE', 'vehicle_clear_use_clear') } });
+    await bClick(page, CHIP);
+    await bClick(page, `${D} [data-day="2026-10-13"]`);
+    await page.waitForTimeout(300);
+    ok(scn, 'a 422 in the dry run → refusal strip with the Worker text, «Αποθήκευση» disabled', (await bText(page, `${D} .wn5-strip[data-kind="refusal"]`)).includes('rig sentinel vehicle_clear_use_clear')
+      && (await bOff(page, `${D} [data-act="save"]`)) === true);
+    await page.context().close();
+  }
+}
+SCN['date'] = scnDate;
+
 // ── scenarios end (each Task adds its own above this line) ──
 
 // ── fixture check (T4): plain node, no browser ──

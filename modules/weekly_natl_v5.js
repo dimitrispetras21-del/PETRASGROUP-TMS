@@ -475,7 +475,7 @@ function _kathHTML(r, m, ok) {
   // A VS waiting for a vehicle names its reference under the day (Figma H1 «Δευ 12/10 / VS-118», «VS-121 αργό»):
   // the queue card and the row then read as the same load.
   const ref = r.kind === 'unassigned' && r.vs && r.refs.length ? `<span class="wn5-dc2">${_esc(r.refs[0])}${r.late ? ' αργό' : ''}</span>` : '';
-  return `<div class="wn5-kd"><span class="wi4-dc ${_chipCls(s.day, m.today)}${hd}">${_esc(_dl(s.day))}</span>${toDay}${ref}</div>`
+  return `<div class="wn5-kd">${_chipHTML(r, 'KATHODOS', `wi4-dc ${_chipCls(s.day, m.today)}${hd}`, _dl(s.day))}${toDay}${ref}</div>`
     + `<div class="wn5-fl">${_flHTML(s, ok, hd)}</div>`
     + `<div class="wn5-kto">${_ptsHTML(s.to, ok)}</div>`
     + `<div class="wn5-kpal">${_palHTML(s)}${_plusHTML(r, 'KATHODOS')}</div>`;
@@ -499,7 +499,7 @@ function _anodHTML(r, m, ok) {
   const n = s.from.length;
   const hd = _dc(ok && s.headDim);
   const end = r.end ? `<span class="wn5-end${_dc(ok && r.end.dim)}"><span class="wi4-l1">Βέροια<span class="wn5-endx"> · τέλος κύκλου</span></span><span class="wi4-l2">ως ${_esc(_dow(L().athensDay(r.end.by)))} ${_esc(L().athensTime(r.end.by))}</span></span>` : '';
-  return `<div class="wn5-ad"><span class="wi4-dc ${_chipCls(s.day, m.today)}${hd}">${_esc(_dl(s.day))}</span><span class="wn5-dc2${hd}">${n} ${n === 1 ? 'φορτίο' : 'φορτία'}</span></div>`
+  return `<div class="wn5-ad">${_chipHTML(r, 'ANODOS', `wi4-dc ${_chipCls(s.day, m.today)}${hd}`, _dl(s.day))}<span class="wn5-dc2${hd}">${n} ${n === 1 ? 'φορτίο' : 'φορτία'}</span></div>`
     + `<div class="wn5-afl">${_ptsHTML(s.from, ok)}</div>`
     + `<div class="wn5-ato">${_ptsHTML(s.to, ok)}${end}</div>`
     + `<div class="wn5-apal">${_palHTML(s)}${_plusHTML(r, 'ANODOS')}</div>`;
@@ -551,6 +551,12 @@ function _ptHTML(p, n, ok, placeOnly) {
 }
 // T13: «+» on hover of the side (Figma 2011:10022); data-side is the API's ASCII side, the label is Greek. Only on a
 // cycle row (an unassigned row has no cycle to add to), also on an empty side so a first load can go in.
+// The day chip of a side. On a cycle row it is a button: T16, it opens the date panel Δ4 of its side
+// (Figma 2011:8858 / 2053:7837). The classes stay those of T5/T6 (dim, «σήμερα»); other rows keep a plain chip.
+function _chipHTML(r, side, cls, label) {
+  if (r.kind !== 'cycle' || r.rtId == null) return `<span class="${cls}">${_esc(label)}</span>`;
+  return `<button type="button" class="${cls}" data-act="date" data-side="${side === 'ANODOS' ? 'ANODOS' : 'KATHODOS'}" title="Αλλαγή ημερομηνίας">${_esc(label)}</button>`;
+}
 function _plusHTML(r, side) {
   if (r.kind !== 'cycle' || r.rtId == null) return '';
   return `<button type="button" class="wn5-plus" data-act="plus" data-side="${side === 'ANODOS' ? 'ANODOS' : 'KATHODOS'}" aria-label="Πρόσθεσε στην ${side === 'ANODOS' ? 'ΑΝΟΔΟ' : 'ΚΑΘΟΔΟ'}" title="Πρόσθεσε">+</button>`;
