@@ -170,6 +170,9 @@ function snapshot() {
   return { state: _state, week: _sat, rows: document.querySelectorAll('#content .wn5 .wn5-row').length,
     writesClosed: !!_closed, lastErr: _lastErr ? String(_lastErr.message) : null };
 }
+// The last board JSON and the model painted from it, for wn5_actions.js / wn5_veroia.js: the ids an action
+// needs (location_id, stop_id) live only in the JSON. Read-only by contract: a dialog snapshots what it shows.
+function state() { return { board: _board, model: _m }; }
 function markClosed(err) { _closed = { message: err && err.message ? String(err.message) : '' }; }
 function _fallback() {
   try { if (typeof window.renderWeeklyNatl === 'function') return window.renderWeeklyNatl(); }
@@ -218,6 +221,9 @@ function _paint() {
   _m = _board ? lg.model(_board, hubId != null ? { today: _today(), hubId } : { today: _today() }) : null;
   _closeMenu();
   content.innerHTML = _rootHTML();
+  // the one listener of the board's actions lives on this root and dies with it at the next paint
+  if (typeof WN5Act !== 'undefined') WN5Act.bind(document.querySelector('#content > .wn5'));
+  _noteStrip();
   document.body.classList.add('wn5-on');
   _install();
   _logShape(_m);
@@ -715,6 +721,7 @@ function _onKey(e) {
   }
 }
 function _cleanup() {
+  try { if (typeof WN5Act !== 'undefined') WN5Act.closeAll(); } catch (_) {}   // no dialog survives the page it belongs to
   try { document.body.classList.remove('wn5-on'); } catch (_) {}
   // Every body-level overlay of v5 carries data-wn5-overlay: one rule removes them all when the board leaves.
   try { document.querySelectorAll('body > [data-wn5-overlay]').forEach((el) => el.remove()); } catch (_) {}
@@ -807,7 +814,6 @@ function _noticesHTML(m) {
   const off = _noteBusy || !!_closed;
   return `<div id="wn5-notices" class="wn5-notes" role="status"><b class="wn5-notes-h">ΕΙΔΟΠΟΙΗΣΕΙΣ<span class="wn5-notes-n"> · ${m.notices.length}</span></b>`
     + `<span class="wn5-notes-l">${m.notices.map((x) => `<span class="wn5-note" data-id="${_id(x.id)}"> · ${_esc(x.message)}</span>${_noteBy(x)}`).join('')}</span>`
-    + (_noteErr ? `<span class="wn5-strip" data-kind="${_esc(_noteErr.kind || 'failed')}" role="alert">${_esc(_noteErr.message)}</span>` : '')
     + `<button type="button" id="wn5-note-read" class="wi4-link"${off ? ' disabled' : ''}${_closed ? ` title="${_esc(_closed.message)}"` : ''} onclick="WN5._noteRead()">Σημείωσα ✓</button></div>`;
 }
 // «(Π.Κ. 08:12)» after each text (Figma 2011:7745): who wrote it and when, from the notice row itself (created_by,
@@ -821,6 +827,18 @@ function _noteBy(x) {
 function _paintNotices() {
   const el = document.getElementById('wn5-notices');
   if (el && _m) el.outerHTML = _noticesHTML(_m);
+  _noteStrip();
+}
+// One strip mechanism for every /plan answer (T11): the answer that stopped «Σημείωσα ✓» goes through
+// WN5Act.strip (the 409 writes_closed of the button is the Ε-6 preview, a 422 a refusal, the Worker's words as they
+// are). Drawn again after every paint of the strip — the answer stays until the week changes — in its T8 place,
+// just before the button.
+function _noteStrip() {
+  const host = document.getElementById('wn5-notices');
+  if (!host || !_noteErr || typeof WN5Act === 'undefined') return;
+  const el = WN5Act.strip(host, _noteErr);
+  const btn = document.getElementById('wn5-note-read');
+  if (el && btn && btn.parentNode === host) host.insertBefore(el, btn);
 }
 async function _noteRead() {
   if (_noteBusy || _closed || !active() || !_m) return;
@@ -856,6 +874,7 @@ const WN5 = {
   reload,
   findAfterReuse,
   snapshot,
+  state,
   markClosed,
   weekParam,
   rowMenu,

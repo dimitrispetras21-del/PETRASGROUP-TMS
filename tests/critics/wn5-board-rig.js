@@ -505,7 +505,8 @@ SCN.notices = async (browser, origin) => {
     const n = document.getElementById('wn5-notices');
     return n ? { notes: [...n.querySelectorAll('.wn5-note[data-id]')].map((e) => [e.getAttribute('data-id'), e.textContent.trim()]),
       head: (n.querySelector('.wn5-notes-h') || { textContent: '' }).textContent.trim(),
-      err: [...n.querySelectorAll('.wn5-strip')].map((e) => [e.getAttribute('data-kind'), e.textContent.trim()]),
+      // T11: the strip is WN5Act.strip's (a heading word + .wn5-strip-t); the text checked is the Worker's message
+      err: [...n.querySelectorAll('.wn5-strip')].map((e) => [e.getAttribute('data-kind'), (e.querySelector('.wn5-strip-t') || e).textContent.trim()]),
       off: !!(document.getElementById('wn5-note-read') || {}).disabled } : null;
   });
   const reads = (S) => S.plan.filter((x) => x.m === 'POST' && /^\/plan\/notices\/\d+\/read$/.test(x.path));
@@ -532,7 +533,10 @@ SCN.notices = async (browser, origin) => {
   await until(b.page, () => !!document.querySelector('#wn5-notices .wn5-strip'));
   const s1 = await strip(b.page);
   ok(scn, '409 writes_closed → one POST, the Worker message in the strip, the notice stays', reads(b.S).length === 1 && !!s1
-    && JSON.stringify(s1.err) === JSON.stringify([['closed', 'rig sentinel writes_closed']]) && s1.notes.length === 1, { posts: reads(b.S).length, s1 });
+    && JSON.stringify(s1.err) === JSON.stringify([['preview', 'rig sentinel writes_closed']]) && s1.notes.length === 1, { posts: reads(b.S).length, s1 });
+  const place = await b.page.evaluate(() => { const x = document.querySelector('#wn5-notices > .wn5-strip');
+    return x ? { head: (x.querySelector('.wn5-strip-h') || { textContent: '' }).textContent, next: x.nextElementSibling && x.nextElementSibling.id } : null; });
+  ok(scn, 'the 409 is the Ε-6 preview strip of WN5Act.strip («ΠΡΟΕΠΙΣΚΟΠΗΣΗ»), in its T8 place just before «Σημείωσα ✓»', !!place && place.head === 'ΠΡΟΕΠΙΣΚΟΠΗΣΗ' && place.next === 'wn5-note-read', place);
   ok(scn, 'after writes_closed the button is off and WN5 knows writes are closed', !!s1 && s1.off && (await b.page.evaluate(() => WN5.snapshot().writesClosed)), s1);
   await press(b.page);
   await b.page.waitForTimeout(500);

@@ -16,6 +16,8 @@ const V5 = [
   { file: 'core/plan-api.js', globals: ['PlanApi', 'PlanError', 'planFetch'], after: 'core/api.js' },
   { file: 'modules/weekly_natl_v5.js', globals: ['WN5'], after: 'modules/orders_natl.js' },
   { file: 'core/wn5-logic.js', globals: ['WN5L'], after: 'core/wi4-presence.js' },
+  { file: 'core/wn5-labels.js', globals: ['WN5Lab'], after: 'core/wn5-logic.js' },
+  { file: 'modules/wn5_actions.js', globals: ['WN5Act'], after: 'modules/weekly_natl_v5.js' },
 ];
 
 function loadV5() {
