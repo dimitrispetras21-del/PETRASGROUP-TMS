@@ -9178,12 +9178,14 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5 .wn5-search { flex:none; }
 /* Δ12 2069:10269/10411: a white bordered strip of its own under the band, like the ΒΕΡΟΙΑ / W43 strips — the label in
    the strip-label blue, letter-spaced caps; «Καθάρισμα ×» at its end. */
-.wn5-snone { display:flex; align-items:center; min-height:34px; margin:0 0 8px; padding:0 12px; box-sizing:border-box;
-  border:1px solid var(--wi4-line-2); border-radius:6px; background:var(--surface-card); font-size:12px; color:var(--wi4-grey-1); }
-.wn5-snone > b { flex:none; font-weight:500; letter-spacing:1.5px; color:var(--wi4-blue-ink); }
-/* a flex item drops its leading space: the gap after the label is drawn (4px), the text keeps « · » */
-.wn5-snone-t { flex:1 1 auto; min-width:0; margin-left:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.wn5-snone > .wi4-link { flex:none; margin-left:auto; padding-left:10px; }
+.wn5-snone { display:flex; align-items:center; gap:8px; min-height:34px; margin:0 0 8px; padding:8px 12px 8px 10px; box-sizing:border-box;
+  border:1px solid var(--wi4-line-2); border-radius:6px; background:var(--surface-card); font-size:12px; font-weight:500; color:var(--wi4-grey-1); }
+/* the label is set like the day names (.wi4-dayn): Syne SemiBold 12.5px, tracking .8px (Δ12 2069:10414) */
+.wn5-snone > b { flex:none; font:600 12.5px 'Syne',sans-serif; letter-spacing:.8px; color:var(--wi4-blue-ink); }
+/* a flex item drops its leading space: the 8px gap after the label is drawn, the text keeps « · » */
+.wn5-snone-t { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* Medium, not the shared .wi4-link 600 (2069:10418) */
+.wn5-snone > .wi4-link { flex:none; margin-left:auto; font-weight:500; }
 .wn5-snone[hidden], .wn5 .wn5-cols[hidden] { display:none; }
 /* Notices (Figma 2011:7745): one amber line, «ΕΙΔΟΠΟΙΗΣΕΙΣ · n», the DB's texts (the second one paler), «Σημείωσα ✓»
    at the end; an answer that stopped it sits in the line as a small strip. */

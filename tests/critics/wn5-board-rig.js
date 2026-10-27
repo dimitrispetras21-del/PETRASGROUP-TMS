@@ -467,11 +467,19 @@ SCN.search = async (browser, origin) => {
     const cols = r.querySelector('.wn5-cols');
     return { inBand: !!s.closest('.wn5-q'), w: Math.round(sr.width), qw: Math.round(q.width), below: sr.top >= q.bottom - 1,
       border: cs.borderTopStyle !== 'none' && parseFloat(cs.borderTopWidth) > 0, label: bs.color, ink: cs.color, ls: parseFloat(bs.letterSpacing) || 0,
+      fam: bs.fontFamily, fw: bs.fontWeight, fs: parseFloat(bs.fontSize), tw: getComputedStyle(s.querySelector('.wn5-snone-t')).fontWeight, bw: getComputedStyle(btn).fontWeight,
+      gap: Math.round(s.querySelector('.wn5-snone-t').getBoundingClientRect().left - b.getBoundingClientRect().right), pl: Math.round(b.getBoundingClientRect().left - sr.left),
       endGap: Math.round(sr.right - btn.getBoundingClientRect().right), cap: (document.querySelector('#wn5-search-n > .wi4-key') || { textContent: '' }).textContent,
       cols: !cols || !cols.getClientRects().length };
   });
   ok(scn, 'fidelity: no match is a full-width bordered strip of its own under the band, «Καθάρισμα ×» at its end', !!strip && !strip.inBand && strip.below && strip.border && Math.abs(strip.w - strip.qw) <= 2 && strip.endGap <= 16, strip);
-  ok(scn, 'fidelity: «ΑΝΑΖΗΤΗΣΗ» in the strip-label blue, letter-spaced', !!strip && strip.label !== strip.ink && strip.ls >= 1, strip && { label: strip.label, ink: strip.ink, ls: strip.ls });
+  // fidelity T7 r2 (2069:10411/10414/10415/10418): the label is set like the day names — Syne 600 12.5px, tracking .8px
+  // (round 1 measured «letter-spaced» as ≥1px, which the frame does not say); the message and «Καθάρισμα ×» are DM Sans
+  // Medium (500, not the shared .wi4-link 600); the strip starts its label 10px in (1px border + 10px) with an 8px gap.
+  ok(scn, 'fidelity: «ΑΝΑΖΗΤΗΣΗ» in the strip-label blue, Syne 600 12.5px, tracking .8px', !!strip && strip.label !== strip.ink && /Syne/.test(strip.fam)
+    && strip.fw === '600' && Math.abs(strip.fs - 12.5) < 0.01 && Math.abs(strip.ls - 0.8) < 0.01, strip && { label: strip.label, ink: strip.ink, fam: strip.fam, fw: strip.fw, fs: strip.fs, ls: strip.ls });
+  ok(scn, 'fidelity: message and «Καθάρισμα ×» Medium (500); label 10px in, 8px gap', !!strip && strip.tw === '500' && strip.bw === '500' && strip.pl === 11 && strip.gap === 8,
+    strip && { tw: strip.tw, bw: strip.bw, pl: strip.pl, gap: strip.gap });
   ok(scn, 'fidelity: with no match the field keeps its «/» key cap; the column heads hide with the table', !!strip && strip.cap === '/' && strip.cols, strip && { cap: strip.cap, cols: strip.cols });
   await page.evaluate(() => { const b = document.querySelector('#wn5-snone button'); if (b) b.click(); });
   ok(scn, '«Καθάρισμα ×» clears and the 12 rows are back', await page.evaluate(() => (document.getElementById('wn5-search') || {}).value === '' && !document.querySelector('#content .wn5 .wi4-dim')
