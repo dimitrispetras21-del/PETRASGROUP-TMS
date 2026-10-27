@@ -82,3 +82,15 @@ test('F4α-T11: the two-step list puts «Μισθοδοσία» before a payroll
   assert.strictEqual(L.CATEGORY.local_payroll, 'Μισθοδοσία');
   for (const k of Object.keys(L.CATEGORY)) assert.ok(Object.prototype.hasOwnProperty.call(L.CONSEQUENCE, k), 'CATEGORY names a kind 072 does not build: ' + k);
 });
+
+test('F4α-T11: «Ανανέωση ↻» still has messages to follow — PLAN_RULE_TEXT entries ask «ανανέωσε», and wn5_actions reads that same word', () => {
+  // _wantsReread reads the Worker's own words instead of a second list of codes (principle 3); if the Worker rewords
+  // its messages the button would vanish without notice — this breaks the build instead (principle 6).
+  const W = fs.readFileSync(path.join(ROOT, 'worker', 'src', 'index.js'), 'utf8');
+  const block = (W.match(/^const PLAN_RULE_TEXT = \{[\s\S]*?^\};/m) || [''])[0];
+  assert.ok(block, 'PLAN_RULE_TEXT not found in worker/src/index.js');
+  const asking = (block.match(/ανανέωσε/g) || []).length;
+  assert.ok(asking >= 1, 'no PLAN_RULE_TEXT message asks «ανανέωσε» any more: «Ανανέωση ↻» would never show');
+  const A = fs.readFileSync(path.join(ROOT, 'modules', 'wn5_actions.js'), 'utf8');
+  assert.ok(/_wantsReread = [^\n]*\/ανανέωσε\/i/.test(A), 'wn5_actions no longer reads «ανανέωσε» from the message');
+});

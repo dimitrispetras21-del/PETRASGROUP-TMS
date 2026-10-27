@@ -372,6 +372,8 @@ WN5Act.deleteOrder(natOrderId, ctx?)   // T18 (ctx: strip host, card texts)
 
 **`core/wn5-labels.js` (T24)** — `WN5Lab.reasonLine(code) -> { text, unknown }` δίπλα στο `REASON`.
 
+**`core/wn5-labels.js` (T11 fidelity)** — `WN5Lab.CATEGORY` (παγωμένο `{ payroll_amount, local_payroll }` → `'Μισθοδοσία'`, Figma Δ5 2053:8079, H4 2125:7738): η λίστα δύο βημάτων τυπώνει τη γραμμή ως «<κατηγορία> · <γραμμή>»· το κείμενο του `consequenceLine()` **δεν** αλλάζει. Καρφωμένο από το test «the two-step list puts «Μισθοδοσία» before a payroll line» (`tests/wn5-labels.test.js`). Εσωτερικά του `modules/wn5_actions.js` / `assets/style.css` που θα δουν τα επόμενα Tasks: `_dlg(…, { ask: true })` → `.wn5-dlg.wn5-ask` (το πλαίσιο δύο βημάτων Δ5/H4, **χωρίς** «×»)· `.wn5-strip-act` (ο δρόμος στο τέλος της λωρίδας· με `data-act="reload"` = «Ανανέωση ↻», σε `stale` και σε κάθε μήνυμα του Worker που ζητά «ανανέωσε», Δ12 2069:9518· drift test προς το `PLAN_RULE_TEXT` στο `tests/wn5-labels.test.js`)· `.wn5-ico-re` (το «↻» ως εικονίδιο, το σύμβολο μένει κείμενο του κουμπιού).
+
 **`core/plan-ids.js` (T12)** — `PlanIds.hub() -> number | null`· η εσωτερική σημαία `LOOKUPS_PENDING` (το 404 `no_route` του `GET /plan/lookups` περνά ως `opts.designed` στο `planFetch` μόνο όσο ο Worker δεν έχει τη διαδρομή· drift test προς το `worker/src/index.js`)· ο stub `GET /plan/lookups` φέρνει `locations[].is_hub`, και τα `trailers[]` έχουν το σχήμα των `trucks[]` (`{ id, legacy_id, license_plate, active }`).
 
 **`modules/weekly_natl_v5.js` (T3, T5–T8, T11)**
