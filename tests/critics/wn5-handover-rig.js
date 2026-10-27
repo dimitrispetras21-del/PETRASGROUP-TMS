@@ -67,6 +67,11 @@ async function scnTiles({ browser, origin, ok, scn }) {
   const hand = await K.text(page, HAND(101));
   ok(scn, '↳ «⇄ Λαμία · Τρί 03:00 · Βλάβη φορτηγού»', hand.includes('⇄ Λαμία · Τρί 03:00') && hand.includes('Βλάβη φορτηγού'), hand);
   ok(scn, '⇄ in place of the arrow of the KATHODOS, and only there', await K.count(page, `${ROW(101)} .wn5-kto .wn5-hand-x`) === 1 && await K.count(page, `${ROW(101)} .wn5-hand-x`) === 1);
+  // «In place of» is the → gone, not only the ⇄ present: the arrow is a ::before of the same cell (review T24 r1).
+  const arrow = await page.evaluate((rs) => rs.map((sel) => { const el = document.querySelector(sel); return el ? getComputedStyle(el, '::before').content : 'no cell'; }),
+    [`${ROW(101)} .wn5-kto`, `${ROW(101)} .wn5-ato`, `${ROW(102)} .wn5-ato`]);
+  ok(scn, 'no → under the ⇄ (RT-T101 ΚΑΘΟΔΟΣ ::before none); the → stays where no ⇄ (RT-T101 ΑΝΟΔΟΣ, RT-T102)',
+    arrow[0] === 'none' && arrow[1] === '"→"' && arrow[2] === '"→"', arrow);
   const one = await page.evaluate((r) => { const row = document.querySelector(r); return { tiles: row ? row.querySelectorAll('.wn5-tile').length : -1, box: row ? row.querySelectorAll('.wn5-asg .wi4-box').length : -1,
     labels: row ? row.querySelectorAll('[data-seg-label]').length : -1, hand: row ? row.querySelectorAll('.wn5-hand-x').length : -1 }; }, ROW(102));
   ok(scn, 'a one-segment cycle is exactly today: one box, no tile, no label, no ⇄, no ↳ (R-59)', one.tiles === 0 && one.box === 1 && one.labels === 0 && one.hand === 0 && await K.count(page, HAND(102)) === 0, one);
@@ -88,7 +93,23 @@ async function scnTiles({ browser, origin, ok, scn }) {
     && hand3.indexOf('⇄ Λαμία · Τρί 03:00') >= 0 && hand3.indexOf('⇄ Λαμία · Τρί 03:00') < hand3.indexOf('⇄ Θήβα · λάστιχο · Τρί 05:30'), hand3);
   ok(scn, 'no page errors', !S.pageErrors.length && !p3.S.pageErrors.length, S.pageErrors.concat(p3.S.pageErrors));
   ok(scn, 'no console errors', !appConsole(S).length && !appConsole(p3.S).length, appConsole(S).concat(appConsole(p3.S)));
+  const writes = S.plan.concat(p3.S.plan).filter((x) => x.m !== 'GET');
+  ok(scn, 'read only: no /plan write', !writes.length, writes.map((x) => x.m + ' ' + x.path));
   await p3.page.context().close();
+
+  // A reason code the map does not know (principle 1): said on the ↳ row, and logged once — not a blank, not a log row
+  // per repaint. Its own page, because its one console error is the expected log line.
+  const bz = handWeek(false);
+  bz.cycles[0].segments[1].reason = 'zzz';
+  const pz = await K.openApp(browser, origin, { board: bz });
+  const handZ = await K.text(pz.page, HAND(101));
+  const rowsZ = await pz.page.evaluate(() => { try { return JSON.parse(localStorage.getItem('tms_errors') || '[]'); } catch (_) { return []; } });
+  const zz = rowsZ.filter((x) => /unknown handover reason zzz/.test(x.msg || ''));
+  ok(scn, 'unknown reason: ↳ says «άλλος λόγος · zzz»', handZ.includes('άλλος λόγος · zzz'), handZ);
+  ok(scn, 'unknown reason: one logError row (count 1)', zz.length === 1 && (zz[0].count || 1) === 1, rowsZ.map((x) => x.msg + ' ×' + x.count));
+  const otherZ = appConsole(pz.S).filter((m) => !/unknown handover reason zzz/.test(m));
+  ok(scn, 'unknown reason: no other console or page error', !otherZ.length && !pz.S.pageErrors.length, otherZ.concat(pz.S.pageErrors));
+  await pz.page.context().close();
 }
 
 const SCN = { tiles: scnTiles };

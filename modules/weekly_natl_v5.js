@@ -610,9 +610,14 @@ function _tilesHTML(r) {
   return `<div class="wn5-tiles n${r.tiles.length}">${r.tiles.map(tile).join('')}</div>`;
 }
 // A reason the map does not know is said («άλλος λόγος · <code>») and logged (principle 1), never a silent blank.
+// Logged once per code per page load: every repaint calls this, and a log row per repaint would bury the one signal.
+const _segReasonLogged = new Set();
 function _segReason(code) {
   const lr = WN5Lab.reasonLine(code);
-  if (lr.unknown) _logErr(new Error('wn5: unknown handover reason ' + code), 'WN5 tiles');
+  if (lr.unknown && !_segReasonLogged.has(String(code))) {
+    _segReasonLogged.add(String(code));
+    _logErr(new Error('wn5: unknown handover reason ' + code), 'WN5 tiles');
+  }
   return lr.text;
 }
 // ⇄ in place of the → of the side where the next segment starts (Figma 2138:7745): one per side, even for two changes

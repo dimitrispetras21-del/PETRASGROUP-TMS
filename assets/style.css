@@ -9819,8 +9819,9 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5 :is(.wn5-pt, .wn5-vtime, .wn5-end)[data-seg-label="intermediate"]::after { background:var(--wn5-seg-intermediate); }
 .wn5 :is(.wn5-pt, .wn5-vtime, .wn5-end)[data-seg-label="final"]::after { background:var(--wn5-seg-final); }
 /* ⇄ in place of the → (Figma 2138:7745): a 16×16 box, SemiBold 11 ink, centred where the arrow was (6 + 16 + 7 = the
-   arrow's 29px, nothing after it moves). */
-.wn5-row > .wn5-hx::before { content:none; }
+   arrow's 29px, nothing after it moves). The selector repeats the arrow rule's own (:is + :not(:empty), 0,3,1) and adds
+   .wn5-hx, so it outranks it: a plain `.wn5-row > .wn5-hx` (0,2,1) lost and the → stayed drawn under the ⇄. */
+.wn5-row > :is(.wn5-kto, .wn5-ato):not(:empty).wn5-hx::before { content:none; }
 .wn5-hand-x { position:absolute; left:-8px; top:50%; transform:translateY(-50%); width:16px; height:16px; display:grid; place-items:center;
   border-radius:3px; font-size:11px; font-weight:600; line-height:1; color:var(--wi4-ink); cursor:pointer; }
 /* ↳ row (Figma 2138:7747 / 2139:7737): 28px, the 64px chip with «↳» Regular 12 grey-2, texts from x 86 (64 + 5 + 12
