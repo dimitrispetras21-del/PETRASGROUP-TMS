@@ -1804,6 +1804,7 @@ async function scnVeroia(browser, origin) {
   const P = '/plan/pieces/split';
   const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
   const PANEL = '#wn5-hub-panel';
+  const pe = [];                                   // page errors of every context A–F, checked once at the end
   { // A · line, panel, stock, the split window, request_reused (re-read before «αποθηκεύτηκε»)
     const { page, S } = await bOpen(browser, origin, { plan: { ['POST ' + P]: (e, St) => {
       const b = bBoard(); b.hub = b.hub.filter((h) => h.piece_id !== 4401); St.board = b;      // the FIRST press was saved
@@ -1844,6 +1845,7 @@ async function scnVeroia(browser, origin) {
     const iOk = ev.findIndex((e) => e.startsWith('toast') && e.includes('Αποθηκεύτηκε'));
     const after = S.plan.findIndex((x) => x.m === 'GET' && x.path === '/plan/board' && S.plan.indexOf(c[0]) < S.plan.indexOf(x));
     ok(scn, 'request_reused → the board is read again BEFORE «Αποθηκεύτηκε», and the panel is open again', iFind >= 0 && iOk > iFind && after > 0 && await bHas(page, PANEL), ev);
+    pe.push(...S.pageErrors);
     await page.context().close();
   }
   { // B · «Σε φορτηγό ▾» = the Δ1 window with the piece (S-115)
@@ -1854,22 +1856,45 @@ async function scnVeroia(browser, origin) {
     const p = bCalls(S, 'POST', '/plan/legs');
     ok(scn, '«Σε φορτηγό ▾» → the Δ1 window; «Ένωση» → POST /plan/legs {pieces:[{piece_id:4301}]} onto RT-T201', p.length === 1
       && p[0].raw === '{"pieces":[{"piece_id":4301}],"target":{"rt_id":201,"side":"KATHODOS"},"stops":[{"ref":"s2001","stop_id":2001},{"ref":"n4","location_id":4,"side":"KATHODOS","planned_from":"2026-10-13T08:00:00+03:00","planned_to":"2026-10-13T10:00:00+03:00"}]}', p.map((x) => x.raw));
+    pe.push(...S.pageErrors);
     await page.context().close();
   }
   { // C · the live 072 hub[] (no Ε-26 keys): the destination is missing, said, and nothing is sent
     const b = bBoard();
     for (const h of b.hub) for (const k of ['nat_to_location_id', 'deliver_from', 'deliver_to', 'load_from', 'load_to']) delete h[k];
+    const LONG = 'ΑΓΡΟΤΙΚΟΣ ΣΥΝΕΤΑΙΡΙΣΜΟΣ ΒΕΡΟΙΑΣ ΚΑΙ ΠΕΡΙΧΩΡΩΝ';   // DESIGN.md #6: a company name is never cut
+    b.hub.find((h) => h.piece_id === 4401).client = LONG;
     const { page, S } = await bOpen(browser, origin, { board: b });
+    // the closed line: no «…»; each name either whole inside the line or wrapped out of sight, never cut (1920 and 1100)
+    const cut = async () => page.$eval('#wn5-hub .wn5-hub-names', (c) => {
+      const r = c.getBoundingClientRect();
+      const bad = [...c.children].filter((s) => { const q = s.getBoundingClientRect(); const inLine = q.top < r.bottom - 1; return inLine && (q.right > r.right + 0.5 || q.left < r.left - 0.5); }).map((s) => s.innerText);
+      return { to: getComputedStyle(c).textOverflow, bad, n: c.children.length };
+    }).catch((e) => ({ err: String(e) }));
+    const c1920 = await cut();
+    await page.setViewportSize({ width: 1100, height: 900 }).catch(() => {});
+    await page.waitForTimeout(400);                 // the board repaints on resize
+    const c1100 = await cut();
+    await page.setViewportSize({ width: 1920, height: 1080 }).catch(() => {});
+    await page.waitForTimeout(400);
+    ok(scn, 'closed line: client names never cut — no ellipsis, each name whole or out of sight (1920, 1100)',
+      [c1920, c1100].every((c) => c.n >= 1 && c.to !== 'ellipsis' && Array.isArray(c.bad) && !c.bad.length), { c1920, c1100 });
     await bClick(page, '#wn5-hub [data-hub="open"]');
+    const nm = await page.$eval(`${PANEL} [data-piece="4401"] .wn5-hub-c1 > b`, (e) => ({ t: e.innerText, sw: e.scrollWidth, cw: e.clientWidth, to: getComputedStyle(e).textOverflow })).catch(() => null);
+    ok(scn, 'open panel: a long client name is shown whole (wraps, no ellipsis, nothing hidden)', !!nm && nm.t.replace(/\s+/g, ' ') === LONG && nm.to !== 'ellipsis' && nm.sw <= nm.cw + 0.5, nm);
+    const place = await bText(page, `${PANEL} [data-piece="4301"] .wn5-hub-c1 > span`);
+    ok(scn, 'without nat_to_location_id (072 today, Ε-26) the place line says «—», as «παρ. —»', place === '—', place);
     await bClick(page, `${PANEL} [data-piece="4301"] [data-hub="truck"]`);
     ok(scn, 'without the hub destination (072 today, Ε-26): the window says so and «Ένωση» stays off', (await bHas(page, `${bDlg('assign')} [data-place-miss]`))
       && (await bOff(page, `${bDlg('assign')} [data-act="save"][data-cand="rt:201"]`)) === true && bCalls(S, 'POST', '/plan/legs').length === 0);
+    pe.push(...S.pageErrors);
     await page.context().close();
   }
   { // D · an empty Veroia board is hidden
     const b = bBoard(); b.hub = [];
-    const { page } = await bOpen(browser, origin, { board: b });
+    const { page, S } = await bOpen(browser, origin, { board: b });
     ok(scn, 'an empty Veroia board is hidden (no #wn5-hub)', (await bHas(page, '#content > .wi4.wn5[data-state="ok"]')) && !(await bHas(page, '#wn5-hub')));
+    pe.push(...S.pageErrors);
     await page.context().close();
   }
   { // E · request_reused that the re-read board does NOT show (another week, a form edited after plan_unknown): the
@@ -1889,6 +1914,7 @@ async function scnVeroia(browser, origin) {
     const strip = await bText(page, `${D} .wn5-strip[data-kind="reused"]`);
     ok(scn, 'request_reused not on the board → the Worker strip, «Σπάσε» locked, and a second press sends nothing', bCalls(S, 'POST', P).length === 1
       && strip.includes('rig sentinel request_reused') && (await bOff(page, `${D} [data-act="save"]`)) === true, { posts: bCalls(S, 'POST', P).length, strip });
+    pe.push(...S.pageErrors);
     await page.context().close();
   }
   { // F · rule 3 / decision 44: the window's ONE request_id on every press until a confirmed 200 — 500 plan_unknown,
@@ -1909,9 +1935,12 @@ async function scnVeroia(browser, origin) {
     ok(scn, '500 plan_unknown then a second press → two POSTs with the SAME uuid v4 request_id and the same bytes', c.length === 2
       && unk.includes('rig sentinel plan_unknown') && UUID.test(c[0].body.request_id || '') && c[0].body.request_id === c[1].body.request_id && c[0].raw === c[1].raw,
       { unk, raw: c.map((x) => x.raw) });
+    pe.push(...S.pageErrors);
     await page.context().close();
   }
+  ok(scn, 'no page errors (A–F)', !pe.length, pe);
 }
+
 SCN['veroia'] = scnVeroia;
 
 

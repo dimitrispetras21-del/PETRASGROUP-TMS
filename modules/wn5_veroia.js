@@ -57,11 +57,12 @@
       return c ? { rtId: r.rtId, c, r, pal: k.sidePal(r, 'KATHODOS'), win: k.veroiaOf(r, 'KATHODOS') } : null;
     }).filter(Boolean);
   }
-  // the delivery place, by name, only when the board sent it (Ε-26) and the catalogue has it; else nothing
+  // the delivery place, by name, only when the board sent it (Ε-26) and the catalogue has it; else «—» (rule 6), as the
+  // window column's «παρ. —»: an empty line would read as a place nobody needs
   function _placeOf(raw) {
-    if (raw.nat_to_location_id == null || typeof PlanIds === 'undefined') return '';
+    if (raw.nat_to_location_id == null || typeof PlanIds === 'undefined') return '—';
     const p = PlanIds.place(raw.nat_to_location_id);
-    return p && p.name ? p.name : '';
+    return p && p.name ? p.name : '—';
   }
   function _itemHTML(h, isStock, day) {
     const k = K();
@@ -92,10 +93,11 @@
     const dayTxt = day ? k.dayShort(day) : '—';
     if (!_open) {
       // the closed line names what waits to be split (Figma 2011:7934), not the stock
-      const names = split.slice(0, 3).map((h) => (h.client || '—') + ' ' + k.pal(h.pallets) + 'π').join(' · ');
+      // each name its own span: CSS hides a name that does not fit whole, never cuts it (DESIGN.md #6)
+      const names = split.slice(0, 3).map((h) => '<span>· ' + k.esc((h.client || '—') + ' ' + k.pal(h.pallets) + 'π') + '</span>').join('');
       return '<div id="wn5-hub" class="wn5-hub"><button type="button" class="wn5-hub-t" data-hub="open" onclick="WN5Hub.open()">' + CHEV + '<span class="wn5-hub-n">ΒΕΡΟΙΑ</span></button>'
         + '<span class="wn5-hub-s">· ' + k.esc(dayTxt + (sum ? ' · ' + sum : '')) + '</span>'
-        + (names ? '<span class="wn5-hub-names">· ' + k.esc(names) + '</span>' : '')
+        + (names ? '<span class="wn5-hub-names">' + names + '</span>' : '')
         + '<span class="wn5-hub-sp"></span>'
         + '<button type="button" class="wi4-link wn5-hub-o" data-hub="open" onclick="WN5Hub.open()">Άνοιγμα ▸</button></div>';
     }
