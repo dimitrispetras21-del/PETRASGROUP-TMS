@@ -411,7 +411,7 @@ const _PLV_STYLE = `<style>
   .plv-strip{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0 0;padding:8px 12px;background:var(--surface-sunken);border-radius:var(--radius);font-size:var(--text-xs);color:var(--text-mid)}
   /* Πίνακας 15px, γραμμή 46px, κενά 14px (w8 P6, Figma 659:1011). Τα κελιά
      κειμένου ΤΥΛΙΓΟΥΝ (καμία κομμένη λέξη)· nowrap μόνο σε κωδικό/ημερομηνία/
-     ποσότητες/κατάσταση· ellipsis ΜΟΝΟ στο Σημείο (.plv-ell, at most 300px). */
+     ποσότητες/κατάσταση· ellipsis ΜΟΝΟ στο Σημείο (.plv-ell). */
   .plv-tbl{width:100%;border-collapse:collapse;font-size:var(--text-md)}
   .plv-tbl th{padding:10px 14px;text-align:left;font-size:var(--text-sm);font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-mid);background:var(--surface-sunken);white-space:nowrap}
   .plv-tbl td{padding:6px 14px;height:46px;box-sizing:border-box;border-top:1px solid var(--border);white-space:normal;vertical-align:middle}
