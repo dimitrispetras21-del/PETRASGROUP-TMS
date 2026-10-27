@@ -203,6 +203,26 @@ async function scnChange({ browser, origin, ok, scn }) {
   ok(scn, 'closed: the cancel button reads «Κλείσιμο» (H7 tile 4)', (await K.text(page, `${HDLG} .wn5f-ft [data-act="cancel"]`)) === 'Κλείσιμο');
   ok(scn, 'no page or console errors', !S.pageErrors.length && !appConsole(S).length, S.pageErrors.concat(appConsole(S)));
   await page.context().close();
+  // The preview reports a conflict (Step 8.4): the Worker's line stays, the save stays closed, and a refresh that
+  // changes nothing keeps the line (_kept) without a second dry run (review T25 r1: no check held `!d.prev.conflict`).
+  const pc = await K.openApp(browser, origin, { board: oneSegWeek(), plan: { 'POST /plan/rt/101/handover': (e) => {
+    if (e.body.dry_run !== true) return K.planErr(409, 'WRITES_CLOSED', 'writes_closed');
+    const r = dryOk(e.body);
+    r[1].preview.conflict = { code: 'truck_busy', message: 'rig sentinel conflict truck_busy' };
+    return r;
+  } } });
+  await pc.page.evaluate(() => WN5Hand.change(101));
+  await pc.page.waitForSelector(HDLG, { timeout: 6000 }).catch(() => {});
+  await fillChange(pc.page, CH);
+  await pc.page.waitForTimeout(1200);
+  const saveOff = () => pc.page.evaluate((d) => { const b = document.querySelector(`${d} [data-act="save"]`); return !!b && b.disabled; }, HDLG);
+  ok(scn, 'preview.conflict → the Worker message in the line box, the save disabled', /rig sentinel conflict truck_busy/.test(await K.text(pc.page, `${HDLG} [data-err]`)) && await saveOff());
+  await pc.page.evaluate(() => { document.getElementById('wn5h-place').dispatchEvent(new Event('input', { bubbles: true })); });
+  await pc.page.waitForTimeout(900);
+  ok(scn, 'conflict: after a no-op input the line is still there, the save still disabled, ONE dry run in all',
+    /rig sentinel conflict truck_busy/.test(await K.text(pc.page, `${HDLG} [data-err]`)) && await saveOff() && posts(pc.S).length === 1, posts(pc.S).map((x) => x.body));
+  ok(scn, 'conflict: no page or console errors', !pc.S.pageErrors.length && !appConsole(pc.S).length, pc.S.pageErrors.concat(appConsole(pc.S)));
+  await pc.page.context().close();
   // 404 before 072b is live
   const p2 = await K.openApp(browser, origin, { board: oneSegWeek(), plan: { 'POST /plan/rt/101/handover': () => K.planErr(404, 'NOT_FOUND', 'no_route') } });
   await p2.page.evaluate(() => WN5Hand.change(101));
@@ -235,6 +255,64 @@ async function scnFix({ browser, origin, ok, scn }) {
   ok(scn, 'the fix execution carries no request_id (a fix creates nothing)', ex.length === 1 && !('request_id' in ex[0].body), ex.map((x) => x.body));
   ok(scn, 'no page or console errors', !S.pageErrors.length && !appConsole(S).length, S.pageErrors.concat(appConsole(S)));
   await page.context().close();
+
+  // A rate that is not a number (review T25 r1): NaN would be sent as partner_rate:null and wipe the rate. Both the
+  // ΤΕΛΙΚΟ partner 703 and a partner ΑΡΧΙΚΟ (the first segment skips the other rules); then 350 as the control.
+  const bp = handWeek(true);
+  Object.assign(bp.cycles[0].segments[0], { trip_type: 'PARTNER', truck_id: null, truck: null, trailer_id: null, trailer: null, driver_id: null, driver: null, partner_id: 51, partner: 'Partner Test 01', partner_rate: 280 });
+  const pr = await K.openApp(browser, origin, { board: bp, plan: { 'PATCH /plan/segments/703': (e) => (e.body.dry_run === true
+    ? [200, { ok: true, op: 'plan_seg_fix', dry_run: true, preview: { segments: bp.cycles[0].segments, warnings: [], conflict: null } }] : K.planErr(409, 'WRITES_CLOSED', 'writes_closed')) } });
+  const FX = '.wi4-dlg[data-wn5="fix"]';
+  for (const sid of [703, 701]) {
+    await pr.page.evaluate((x) => WN5Hand.fix(x), sid);
+    await pr.page.waitForSelector(FX, { timeout: 6000 }).catch(() => {});
+    await pr.page.fill(`${FX} #wn5h-rate`, 'abc');
+    await pr.page.waitForTimeout(1000);
+    ok(scn, `fix ${sid}: rate «abc» → «Κόμιστρο €: αριθμός 0 ή πάνω», the rate field red, no PATCH, the save disabled`,
+      /Κόμιστρο €: αριθμός 0 ή πάνω/.test(await K.text(pr.page, `${FX} [data-err]`)) && await pr.page.evaluate((f) => document.querySelector(`${f} .wn5h-rate`).classList.contains('bad')
+        && document.querySelector(`${f} [data-act="save"]`).disabled, FX) && K.planOf(pr.S, 'PATCH', '/plan/segments/' + sid).length === 0, K.planOf(pr.S, 'PATCH', /segments/).map((x) => x.body));
+  }
+  await pr.page.evaluate((x) => WN5Hand.fix(x), 703);
+  await pr.page.waitForSelector(FX, { timeout: 6000 }).catch(() => {});
+  await pr.page.fill(`${FX} #wn5h-rate`, '350');
+  await pr.page.waitForTimeout(1200);
+  const r3 = K.planOf(pr.S, 'PATCH', '/plan/segments/703');
+  ok(scn, 'control: rate «350» → ONE dry run {set:{partner_rate:350}}, no line', r3.length === 1 && JSON.stringify(r3[0].body) === JSON.stringify({ set: { partner_rate: 350 }, dry_run: true })
+    && !(await K.text(pr.page, `${FX} [data-err]`)), r3.map((x) => x.body));
+  ok(scn, 'rate: no page or console errors', !pr.S.pageErrors.length && !appConsole(pr.S).length, pr.S.pageErrors.concat(appConsole(pr.S)));
+  await pr.page.context().close();
+
+  // The segment's own vehicle is not in the lookups (inactive, id 99): still offered and selected, so a place-only fix
+  // does not send trailer_id:null (review T25 r1).
+  const bm = handWeek(false);
+  Object.assign(bm.cycles[0].segments[1], { trailer_id: 99, trailer: 'TRL-9999' });
+  const pm = await K.openApp(browser, origin, { board: bm, plan: { 'PATCH /plan/segments/702': (e) => (e.body.dry_run === true
+    ? [200, { ok: true, op: 'plan_seg_fix', dry_run: true, preview: { segments: bm.cycles[0].segments, warnings: [], conflict: null } }] : K.planErr(409, 'WRITES_CLOSED', 'writes_closed')) } });
+  await pm.page.evaluate(() => WN5Hand.fix(702));
+  await pm.page.waitForSelector(FX, { timeout: 6000 }).catch(() => {});
+  const trl = await pm.page.evaluate((f) => { const s = document.querySelector(`${f} #wn5h-trailer`); return s ? [s.value, s.options[s.selectedIndex].textContent] : null; }, FX);
+  ok(scn, 'a trailer missing from the lookups is still the selected value, under its board label', !!trl && trl[0] === '99' && trl[1] === 'TRL-9999', trl);
+  await pm.page.fill(`${FX} #wn5h-place`, 'Λαμία κέντρο');
+  await pm.page.waitForTimeout(1200);
+  const rm = K.planOf(pm.S, 'PATCH', '/plan/segments/702');
+  ok(scn, 'a place-only fix sends {set:{place_note}} alone, no trailer_id:null', rm.length === 1 && JSON.stringify(rm[0].body) === JSON.stringify({ set: { place_note: 'Λαμία κέντρο' }, dry_run: true }), rm.map((x) => x.body));
+  ok(scn, 'missing vehicle: no page or console errors', !pm.S.pageErrors.length && !appConsole(pm.S).length, pm.S.pageErrors.concat(appConsole(pm.S)));
+  await pm.page.context().close();
+
+  // The lookups did not load: the fix is locked like the change (strip + save off), and the segment's own vehicles
+  // stay its own, so the dry run still carries only what was typed.
+  const pl = await K.openApp(browser, origin, { board: handWeek(false), plan: { 'GET /plan/lookups': () => K.planErr(404, 'NOT_FOUND', 'no_route'), 'PATCH /plan/segments/702': (e) => (e.body.dry_run === true
+    ? [200, { ok: true, op: 'plan_seg_fix', dry_run: true, preview: { segments: handWeek(false).cycles[0].segments, warnings: [], conflict: null } }] : K.planErr(409, 'WRITES_CLOSED', 'writes_closed')) } });
+  await pl.page.evaluate(() => WN5Hand.fix(702));
+  await pl.page.waitForSelector(FX, { timeout: 6000 }).catch(() => {});
+  await pl.page.fill(`${FX} #wn5h-place`, 'Λαμία κέντρο');
+  await pl.page.waitForTimeout(1200);
+  const rl = K.planOf(pl.S, 'PATCH', '/plan/segments/702');
+  ok(scn, 'no lookups: the strip says it, the save stays disabled, the dry run = {set:{place_note}} only',
+    /rig sentinel no_route/.test(await K.text(pl.page, `${FX} [data-strip]`)) && await pl.page.evaluate((f) => document.querySelector(`${f} [data-act="save"]`).disabled, FX)
+      && rl.length === 1 && JSON.stringify(rl[0].body) === JSON.stringify({ set: { place_note: 'Λαμία κέντρο' }, dry_run: true }), rl.map((x) => x.body));
+  ok(scn, 'no lookups: no page or console errors', !pl.S.pageErrors.length && !appConsole(pl.S).length, pl.S.pageErrors.concat(appConsole(pl.S)));
+  await pl.page.context().close();
 }
 
 async function scnH7({ browser, origin, ok, scn }) {

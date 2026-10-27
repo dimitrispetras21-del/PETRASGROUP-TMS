@@ -22,6 +22,8 @@
   const HM = /^([01]\d|2[0-3]):[0-5]\d$/;
   const SEG_GR = Object.freeze({ initial: 'ΑΡΧΙΚΟ', intermediate: 'ΕΝΔΙΑΜΕΣΟ', final: 'ΤΕΛΙΚΟ' });
   const OTHER_NOTE = 'Με «Άλλο» η σημείωση είναι υποχρεωτική';
+  const RATE_BAD = 'Κόμιστρο €: αριθμός 0 ή πάνω';
+  const _rateBad = (r) => r !== null && r !== undefined && !(Number.isFinite(r) && r >= 0);
   // H7 (2130:7745, 2130:7809): the refused field gets the red border. Codes only, the text stays the Worker's.
   const FIELD_OF = Object.freeze({ truck_busy: 'wn5h-truck', driver_busy: 'wn5h-driver', payroll_locked: 'wn5h-driver', seg_time: 'wn5h-day' });
   // the board ✈ glyph (Figma icon/send 2147:7735), drawn in the button's own colour
@@ -54,7 +56,7 @@
       if (!st.same_driver && !Number.isSafeInteger(st.driver_id)) out.push('Οδηγός *: διάλεξε οδηγό');
     } else {
       if (!Number.isSafeInteger(st.partner_id)) out.push('Συνεργάτης *: διάλεξε συνεργάτη');
-      if (st.partner_rate !== null && st.partner_rate !== undefined && !(Number.isFinite(st.partner_rate) && st.partner_rate >= 0)) out.push('Κόμιστρο €: αριθμός 0 ή πάνω');
+      if (_rateBad(st.partner_rate)) out.push(RATE_BAD);
     }
     return out;
   }
@@ -151,8 +153,16 @@
   const _unmark = (d) => d.el.querySelectorAll('.wn5f-f.bad:not([data-note])').forEach((f) => f.classList.remove('bad'));
   async function _board() { try { return await WN5.findAfterReuse((b) => b); } catch (e) { _log(e, 'WN5Hand board'); return null; } }
   const _list = (kind) => { try { return PlanIds.list(kind).filter((x) => x.active !== false); } catch (_) { return []; } };
-  const _opts = (kind, cur, empty) => (empty ? `<option value="">${empty}</option>` : '<option value=""></option>')
-    + _list(kind).map((x) => `<option value="${x.id}"${x.id === cur ? ' selected' : ''}>${_esc(x.label)}</option>`).join('');
+  // The fix form opens on the segment's own vehicle: when that id is not in the active list (an inactive vehicle, or
+  // the catalogue did not load) it is still offered, selected, under the board's own label. Otherwise the select
+  // reads '' and _fixSet would send the key as null — a place-only fix silently unassigning the trailer (review T25).
+  const _opts = (kind, cur, empty, curLabel) => {
+    const rows = _list(kind);
+    const keep = Number.isSafeInteger(cur) && !rows.some((x) => x.id === cur)
+      ? `<option value="${cur}" selected>${_esc(curLabel || '#' + cur)}</option>` : '';
+    return (empty ? `<option value="">${empty}</option>` : '<option value=""></option>') + keep
+      + rows.map((x) => `<option value="${x.id}"${x.id === cur ? ' selected' : ''}>${_esc(x.label)}</option>`).join('');
+  };
   const _plate = (g) => (g.trip_type === 'PARTNER' ? (g.partner || 'Συνεργάτης') : [g.truck, g.trailer].filter(Boolean).join(' · ') || 'χωρίς φορτηγό');
   const _line2 = (g) => (g.trip_type === 'PARTNER' ? (g.partner_rate == null ? 'κόμιστρο λείπει' : String(g.partner_rate).replace('.', ',') + ' €') : (g.driver || '—'));
   // Stops of a segment: the name in Medium ink, « · city» in grey (Figma 2129:7761); the city once per run of the
@@ -342,10 +352,10 @@
   function _vehFields(own, sel) {
     // Figma 2122:7774: Φορτηγό * 170 · Ρυμούλκα 130 · Οδηγός * 180 (plates in DM Mono); partner 150 + rate 96
     return own
-      ? `<label class="wn5f-f wn5h-truck wn5h-mono"><span>Φορτηγό *</span><select class="form-input" id="wn5h-truck" data-fh-search>${_opts('truck', sel.truck_id)}</select></label>`
-        + `<label class="wn5f-f wn5h-trailer wn5h-mono"><span>Ρυμούλκα</span><select class="form-input" id="wn5h-trailer" data-fh-search>${_opts('trailer', sel.trailer_id, '—')}</select></label>`
-        + `<label class="wn5f-f wn5h-driver"><span>Οδηγός *</span><select class="form-input" id="wn5h-driver" data-fh-search>${_opts('driver', sel.driver_id)}</select></label>`
-      : `<label class="wn5f-f wn5h-partner"><span>Συνεργάτης *</span><select class="form-input" id="wn5h-partner" data-fh-search>${_opts('partner', sel.partner_id)}</select></label>`
+      ? `<label class="wn5f-f wn5h-truck wn5h-mono"><span>Φορτηγό *</span><select class="form-input" id="wn5h-truck" data-fh-search>${_opts('truck', sel.truck_id, '', sel.truck)}</select></label>`
+        + `<label class="wn5f-f wn5h-trailer wn5h-mono"><span>Ρυμούλκα</span><select class="form-input" id="wn5h-trailer" data-fh-search>${_opts('trailer', sel.trailer_id, '—', sel.trailer)}</select></label>`
+        + `<label class="wn5f-f wn5h-driver"><span>Οδηγός *</span><select class="form-input" id="wn5h-driver" data-fh-search>${_opts('driver', sel.driver_id, '', sel.driver)}</select></label>`
+      : `<label class="wn5f-f wn5h-partner"><span>Συνεργάτης *</span><select class="form-input" id="wn5h-partner" data-fh-search>${_opts('partner', sel.partner_id, '', sel.partner)}</select></label>`
         + `<label class="wn5f-f wn5h-rate"><span>Κόμιστρο €</span><input class="form-input" id="wn5h-rate" inputmode="decimal" value="${sel.partner_rate == null ? '' : _esc(sel.partner_rate)}"></label>`;
   }
   async function change(rtId) {
@@ -399,7 +409,7 @@
     let c = null, g = null, i = -1;
     for (const x of (board && board.cycles) || []) { const s = WN5L.segmentsOf(x).segments; const k = s.findIndex((y) => y.segment_id === segmentId); if (k >= 0) { c = x; g = s[k]; i = k; break; } }
     if (!g) { if (typeof toast === 'function') toast('Το τμήμα δεν βρέθηκε στην εβδομάδα που φαίνεται — ανανέωσε', 'warn'); return false; }
-    await PlanIds.load();
+    const ids = await PlanIds.load();
     const first = i === 0;
     const p = _parts(g.from_at) || { day: '', hm: '' };
     // the first segment starts with the cycle: no time, point or reason of its own (Figma 2130:7809)
@@ -409,6 +419,7 @@
     const d = _open('fix', `Διόρθωση τμήματος ${SEG_GR[g.label] || ''} · ${_esc(c.code || 'RT-' + c.rt_id)}`, `· ${_when(g.from_at)} → ${_when(g.to_at)}`, html, '', 'Αποθήκευση');
     d.cycle = c;
     if (typeof fhSelectSearchIn === 'function') fhSelectSearchIn(d.el);
+    if (!ids.ok) { WN5Act.strip(_strip(d), ids.err); d.locked = true; }   // as change(): no catalogue, no save
     const read = () => {
       const v = (id) => (d.el.querySelector('#' + id) || {}).value;
       const st = {};
@@ -425,6 +436,11 @@
       _dayText(d);
       const st = read();
       const probs = first ? [] : _changeProblems(Object.assign({ own: true, truck_id: 0, driver_id: 0 }, st)).filter((l) => !/^(Φορτηγό|Οδηγός|Συνεργάτης)/.test(l));
+      // own:true above skips the rate rule, and the first segment skips every rule: «abc» would be NaN, which
+      // _fixSet counts as a change and JSON sends as null — one press wiping the partner's rate (review T25)
+      if (_rateBad(st.partner_rate)) probs.push(RATE_BAD);
+      const rf = d.el.querySelector('.wn5h-rate');
+      if (rf) rf.classList.toggle('bad', probs.includes(RATE_BAD));
       const set = probs.length ? {} : _fixSet(g, st);
       const key = Object.keys(set).length ? JSON.stringify({ set }) : null;
       if (!d.prev || d.prev.key !== key) d.prev = null;
