@@ -1891,6 +1891,26 @@ async function scnVeroia(browser, origin) {
       && strip.includes('rig sentinel request_reused') && (await bOff(page, `${D} [data-act="save"]`)) === true, { posts: bCalls(S, 'POST', P).length, strip });
     await page.context().close();
   }
+  { // F · rule 3 / decision 44: the window's ONE request_id on every press until a confirmed 200 — 500 plan_unknown,
+    //     then a second press (answered 409 writes_closed) carries the same id; a new PlanApi.slot() per press goes red here
+    let n = 0;
+    const { page, S } = await bOpen(browser, origin, { plan: { ['POST ' + P]: () => (++n === 1 ? planErr(500, 'SERVER', 'plan_unknown') : planErr(409, 'WRITES_CLOSED', 'writes_closed')) } });
+    await bClick(page, '#wn5-hub [data-hub="open"]');
+    await bClick(page, `${PANEL} [data-piece="4401"] [data-hub="split"]`);
+    await bPick(page, `${D} select[data-part-target][data-i="0"]`, 'rt:201');
+    await page.fill(`${D} input[data-part-pal][data-i="0"]`, '20').catch(() => {});
+    await page.fill(`${D} input[data-part-pal][data-i="1"]`, '13').catch(() => {});
+    await bClick(page, `${D} [data-act="save"]`);
+    await page.waitForTimeout(3500);                // longer than _atRetry's 1 s + 2 s: a resend would show here
+    const unk = await bText(page, `${D} .wn5-strip[data-kind="unknown"]`);
+    await bClick(page, `${D} [data-act="save"]`);
+    await page.waitForTimeout(400);
+    const c = bCalls(S, 'POST', P);
+    ok(scn, '500 plan_unknown then a second press → two POSTs with the SAME uuid v4 request_id and the same bytes', c.length === 2
+      && unk.includes('rig sentinel plan_unknown') && UUID.test(c[0].body.request_id || '') && c[0].body.request_id === c[1].body.request_id && c[0].raw === c[1].raw,
+      { unk, raw: c.map((x) => x.raw) });
+    await page.context().close();
+  }
 }
 SCN['veroia'] = scnVeroia;
 

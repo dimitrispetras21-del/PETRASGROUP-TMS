@@ -67,7 +67,8 @@
     const k = K();
     const raw = k.item(h.pieceId) || {};
     const pid = k.id(h.pieceId);
-    if (!pid) return '';
+    // WN5L's shape check rejects a bad id before paint; if one still slips through, the dropped row is logged (principle 1)
+    if (!pid) { k.log(new Error('wn5: hub item without a valid piece id ' + JSON.stringify(h.pieceId)), 'WN5Hub item'); return ''; }
     // «παρ. Τρί 07:00–09:00»; without the window (072 hub[], Ε-26) «παρ. —», never a guess
     const win = 'παρ. ' + (raw.deliver_from ? _wd(k.ymdOf(raw.deliver_from)) + ' ' + k.hm(raw.deliver_from) + '–' + k.hm(raw.deliver_to) : '—');
     const sub = isStock
