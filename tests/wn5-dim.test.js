@@ -29,7 +29,7 @@ function html(board, narrow) {
   return ctx.WN5._html(ctx.WN5L.model(board, { today: '2026-10-13' }));
 }
 const byKey = (h) => new Map(h.split('<div class="wn5-row').slice(1).map((s) => '<div class="wn5-row' + s).map((r) => [(/data-key="([^"]+)"/.exec(r) || [])[1], r]));
-const cell = (chunk, cls) => { const m = new RegExp(`<div class="${cls}">([\\s\\S]*?)</div>`).exec(chunk || ''); return m ? m[1] : ''; };
+const cell = (chunk, cls) => { const m = new RegExp(`<div class="${cls}"(?: [^>]*)?>([\\s\\S]*?)</div>`).exec(chunk || ''); return m ? m[1] : ''; };
 
 test('F4α-T6: dim class follows the server flags only (stop with past day and dim:false stays bold)', () => {
   const by = byKey(html(FIX));

@@ -476,9 +476,9 @@ function _kathHTML(r, m, ok) {
   // the queue card and the row then read as the same load.
   const ref = r.kind === 'unassigned' && r.vs && r.refs.length ? `<span class="wn5-dc2">${_esc(r.refs[0])}${r.late ? ' αργό' : ''}</span>` : '';
   return `<div class="wn5-kd">${_chipHTML(r, 'KATHODOS', `wi4-dc ${_chipCls(s.day, m.today)}${hd}`, _dl(s.day))}${toDay}${ref}</div>`
-    + `<div class="wn5-fl">${_flHTML(s, ok, hd)}</div>`
-    + `<div class="wn5-kto">${_ptsHTML(s.to, ok)}</div>`
-    + `<div class="wn5-kpal">${_palHTML(s)}${_plusHTML(r, 'KATHODOS')}</div>`;
+    + `<div class="wn5-fl"${_legAttr(r, 'KATHODOS')}>${_flHTML(s, ok, hd)}</div>`
+    + `<div class="wn5-kto"${_legAttr(r, 'KATHODOS')}>${_ptsHTML(s.to, ok)}</div>`
+    + `<div class="wn5-kpal"${_legAttr(r, 'KATHODOS')}>${_palHTML(s)}${_plusHTML(r, 'KATHODOS')}</div>`;
 }
 function _anodHTML(r, m, ok) {
   const s = r.anod;
@@ -500,9 +500,9 @@ function _anodHTML(r, m, ok) {
   const hd = _dc(ok && s.headDim);
   const end = r.end ? `<span class="wn5-end${_dc(ok && r.end.dim)}"><span class="wi4-l1">Βέροια<span class="wn5-endx"> · τέλος κύκλου</span></span><span class="wi4-l2">ως ${_esc(_dow(L().athensDay(r.end.by)))} ${_esc(L().athensTime(r.end.by))}</span></span>` : '';
   return `<div class="wn5-ad">${_chipHTML(r, 'ANODOS', `wi4-dc ${_chipCls(s.day, m.today)}${hd}`, _dl(s.day))}<span class="wn5-dc2${hd}">${n} ${n === 1 ? 'φορτίο' : 'φορτία'}</span></div>`
-    + `<div class="wn5-afl">${_ptsHTML(s.from, ok)}</div>`
-    + `<div class="wn5-ato">${_ptsHTML(s.to, ok)}${end}</div>`
-    + `<div class="wn5-apal">${_palHTML(s)}${_plusHTML(r, 'ANODOS')}</div>`;
+    + `<div class="wn5-afl"${_legAttr(r, 'ANODOS')}>${_ptsHTML(s.from, ok)}</div>`
+    + `<div class="wn5-ato"${_legAttr(r, 'ANODOS')}>${_ptsHTML(s.to, ok)}${end}</div>`
+    + `<div class="wn5-apal"${_legAttr(r, 'ANODOS')}>${_palHTML(s)}${_plusHTML(r, 'ANODOS')}</div>`;
 }
 // ΦΟΡΤΩΣΗ of ΚΑΘΟΔΟΣ: «Βέροια» and its window stay together (owner 25/10); a loading the cycle makes BEFORE Veroia
 // (WN5L vBefore, by the base's stop order) comes first, numbered with Veroia among the cell's loadings (Figma H1
@@ -554,6 +554,22 @@ function _ptHTML(p, n, ok, placeOnly) {
 function _chipHTML(r, side, cls, label) {
   if (r.kind !== 'cycle' || r.rtId == null) return `<span class="${cls}">${_esc(label)}</span>`;
   return `<button type="button" class="${cls}" data-act="date" data-side="${side === 'ANODOS' ? 'ANODOS' : 'KATHODOS'}" title="Αλλαγή ημερομηνίας">${_esc(label)}</button>`;
+}
+// T21: a click on a side of a cycle opens its leg form (Figma 2011:9294, Δ7 2069:7746). One attribute for both sides,
+// on the side's place and pallet cells; not on the day cell, whose chip is the Δ4 button. Only on a cycle row (the
+// ΠΡΟΣ ΑΝΑΘΕΣΗ rows keep data-act="assign") and never on an empty side («Χωρίς κάθοδο», «Κενό γύρισμα»: no leg).
+function _legAttr(r, side) {
+  if (r.kind !== 'cycle' || r.rtId == null) return '';
+  const sd = side === 'ANODOS' ? 'ANODOS' : 'KATHODOS';
+  return ` data-leg="${sd}" onclick="WN5._leg(event, ${_id(r.rtId)}, '${sd}')"`;
+}
+// A click on a control inside the side (the «+», a later print button) is that control's own: ignored here, so the
+// controls need no stopPropagation and a «+» never opens the leg form too.
+function _leg(ev, rtId, side) {
+  const t = ev && ev.target;
+  if (t && t.closest && t.closest('button, a, input, select, [data-act]')) return;
+  if (!active() || !ID_RE.test(String(rtId)) || typeof WN5Form === 'undefined' || typeof WN5Form.openLeg !== 'function') return;
+  Promise.resolve(WN5Form.openLeg(Number(rtId), side === 'ANODOS' ? 'ANODOS' : 'KATHODOS')).catch((e) => _logErr(e, 'weekly natl v5: leg form'));
 }
 // T13: «+» on hover of the side (Figma 2011:10022); data-side is the API's ASCII side, the label is Greek. Only on a
 // cycle row (an unassigned row has no cycle to add to), also on an empty side so a first load can go in.
@@ -906,6 +922,7 @@ const WN5 = {
   searchFocus,
   _searchKey,
   _noteRead,
+  _leg,
   MENU_ITEMS: [
     // T18: the orders of the cycle with their number (Figma 2011:8858 «Άνοιγμα παραγγελιών 4»); delete lives in the
     // order card only (owner 19/10)

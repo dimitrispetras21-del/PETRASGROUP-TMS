@@ -28,7 +28,7 @@ const html = (board = FIX) => { const c = load(); return c.WN5._html(c.WN5L.mode
 // One chunk per row: from `<div class="wn5-row` to the next row (or the end of the day body).
 const rows = (h) => h.split('<div class="wn5-row').slice(1).map((s) => '<div class="wn5-row' + s);
 const keyOf = (chunk) => (/data-key="([^"]+)"/.exec(chunk) || [])[1];
-const cell = (chunk, cls) => { const m = new RegExp(`<div class="${cls}">([\\s\\S]*?)</div>`).exec(chunk); return m ? m[1] : null; };
+const cell = (chunk, cls) => { const m = new RegExp(`<div class="${cls}"(?: [^>]*)?>([\\s\\S]*?)</div>`).exec(chunk); return m ? m[1] : null; };
 
 test('F4α-T5: no hh:mm inside any .wn5-asg', () => {
   const all = rows(html());

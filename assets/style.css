@@ -8989,6 +8989,7 @@ body.wi4-on #wi-popover .wi-pop-save:hover { background:var(--navy-light); }
   --wn5-chip-ok-bg: #dcfce7;   /* «ΑΝΑΤΕΘΗΚΕ» (2011:10514); text --ok, 5.0:1 */
   --wn5-leave-ink: #c25c0d;   /* Veroia board stock «φεύγει ως …» (Figma 2011:8748, 2069:8408); 4.6:1 on white */
   --wn5-mode-on:   #eff8ff;   /* the chosen «ΤΥΠΟΣ ΚΑΤΑΧΩΡΗΣΗΣ» card of the order form (Figma 2011:9666) */
+  --wn5-lock-bg:   var(--bg-row-alt);   /* the locked VS block of the leg form (Figma 2011:9432, #f8fafc) */
 }
 /* The same page frame as v4 (body.wi4-on .content), while the v5 board is on screen. */
 body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; background:var(--surface-page); }
@@ -9700,6 +9701,35 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5f-ft .wi4-btn[hidden] { display:none; }   /* «Αποθήκευση» leaves once saved (.wi4-btn's inline-flex beats [hidden]) */
 .wn5f-ships-h, .wn5f-ship { display:grid; grid-template-columns:minmax(0, 1fr) 130px 90px 90px 130px 90px 90px 70px; gap:6px; align-items:center; }
 .wn5f-ships-h { font-size:11px; color:var(--wi4-grey-2); grid-template-columns:minmax(0, 1fr) 310px 310px 70px; }
+/* the leg form (T21, Figma 2011:9406 / Δ7 2069:7858) */
+.wn5f-lhead { grid-template-columns:150px 120px 130px 190px; align-items:center; }
+.wn5f-lhead[data-side="ANODOS"] { grid-template-columns:150px 120px 170px 190px; }
+.wn5f-ord.wn5f-lock { border-color:var(--wi4-line-2); background:var(--wn5-lock-bg); }
+.wn5f-lock > .wn5f-ord-h { display:flex; align-items:center; gap:8px; min-height:20px; font-size:12px; color:var(--wi4-grey-2); }
+.wn5f-lock > .wn5f-ord-h > b { font-size:13px; font-weight:600; color:var(--wi4-grey-1); white-space:nowrap; }
+.wn5f-lock-i { flex:none; color:var(--wi4-grey-2); }
+.wn5f-badge { margin-left:auto; flex:none; height:20px; padding:0 7px; display:inline-flex; align-items:center; box-sizing:border-box; border-radius:4px; background:var(--wi4-chip); font-size:11px; font-weight:500; color:var(--wi4-grey-1); white-space:nowrap; }
+.wn5f-leg .wn5f-th.ro { grid-template-columns:240px 100px 150px 70px; }
+.wn5f-leg .wn5f-row.ro { grid-template-columns:240px 100px 159px 70px minmax(0, 1fr) auto; justify-content:stretch; }
+.wn5f-c { display:block; min-width:0; height:34px; padding:0 10px; box-sizing:border-box; border:1px solid var(--wi4-ctl); border-radius:6px; background:var(--surface-card);
+  font-size:13px; line-height:32px; color:var(--wi4-ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.wn5f-c.vro { border-color:var(--wi4-line-2); background:var(--wi4-chip); color:var(--wi4-grey-2); }
+.wn5f-c.nro { background:var(--wi4-chip); color:var(--wi4-grey-1); }
+.wn5f-c.until { border-width:2px; line-height:30px; }
+.wn5f-cwin { display:flex; align-items:center; gap:4px; }
+.wn5f-cwin > .wn5f-c { flex:none; width:71px; }
+.wn5f-lf { display:grid; grid-template-columns:minmax(0, 1fr) 128px 100px max-content; gap:12px; align-items:end; }
+.wn5f-lnk { flex:none; padding:4px 7px; border:1px solid transparent; border-radius:6px; background:none; font-size:12px; font-weight:500; color:var(--accent); white-space:nowrap; cursor:pointer; }
+.wn5f-lnk:hover, .wn5f-lnk:focus-visible { border-color:var(--accent); background:var(--wi4-av-t0-bg); outline:none; }
+.wn5f-card { flex:none; height:26px; padding:0 9px; border:none; border-radius:5px; background:var(--surface-card); font-size:12px; font-weight:600; color:var(--accent); white-space:nowrap; cursor:pointer; }
+.wn5f-acts { display:flex; justify-content:flex-end; align-items:center; gap:8px; }
+.wn5f-leg .wn5f-sum { gap:4px; padding:10px 14px; }
+.wn5f-leg .wn5f-sum-h { font-size:12.5px; }
+.wn5f-leg .wn5f-seq { gap:4px; }
+.wn5f-leg .wn5f-seq li { grid-template-columns:14px 130px 230px 160px auto; }
+.wn5-row [data-leg] { cursor:pointer; }
+/* the clicked side while its leg form is open (2011:9305): one box over the side's cells; multiply keeps the text */
+.wn5-legsel { position:absolute; top:0; bottom:0; box-sizing:border-box; border:2px solid var(--wi4-blue); border-radius:4px; background:var(--wi4-sel); mix-blend-mode:multiply; pointer-events:none; }
 /* ═══ Παραγγελίες › Εβδομάδα v4 (.ow4) — modules/orders_week_view.js ═════════
    Figma 1514:8013: 1518:8013 (1440), 1518:9099 (1920), states 1519:8013.
    One row = one RT, mirrored like Weekly v4: RT | ΕΞΑΓΩΓΗ ‖ ΑΝΑΘΕΣΗ ‖ ΕΙΣΑΓΩΓΗ.

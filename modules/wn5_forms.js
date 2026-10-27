@@ -283,6 +283,7 @@
   function _close(f) {
     if (!f) return;
     if (f.slot) { f.slot.close(); f.slot = null; }   // the id dies with the form: the next open mints a new one
+    if (f.onClose) { try { f.onClose(f); } catch (e) { _log(e, 'WN5Form close'); } }   // the leg form's board mark (T21)
     window.removeEventListener('keydown', f.onKey, true);
     if (f.back && f.back.parentNode) f.back.parentNode.removeChild(f.back);
     if (_f === f) _f = null;
@@ -751,5 +752,234 @@
     return true;
   }
 
-  window.WN5Form = Object.freeze({ openOrder, _body, _check, _patchBody, _findOrders, _iso, _parts });
+  // ── the leg form (T21): Figma 2011:9294, Δ7 2069:7746 ──────────────────────────────────────────────────────
+  // A VS is the international's (price, invoicing, its pallets and windows change there: decision 21, vs_locked);
+  // a national order is edited here, ONE order per «Αποθήκευση» (Ε-4: one save = one RPC = one transaction);
+  // moving goes through «Μεταφορά σε…» (WN5Act.move, its own dry run and list), never a delete; the stop times
+  // change from the day panel (Δ4, WN5Act.datePanel), never from this save.
+  // The hub as the board names it (WN5Act's model: the Veroia stop of a painted side), else the catalogue: PlanIds
+  // runs on its stub until GET /plan/lookups exists, and a null hub only shows «Βέροια» by its name.
+  function _hubId() {
+    try { const k = typeof WN5Act !== 'undefined' && WN5Act._kit; const h = k && typeof k.hubId === 'function' ? k.hubId() : null; if (h != null) return h; } catch (_) { /* fall through */ }
+    try { return PlanIds.id('location', _hubRec()); } catch (_) { return null; }
+  }
+  const _hm = (iso) => (_parts(iso) || {}).hm || '—';
+  // Pure: the cycle of the board (072 plan_board shape) → what the form shows. hubId = the hub's numeric id or null.
+  function _legModel(cyc, side, hubId) {
+    const all = (cyc.stops || []).slice().sort((a, b) => a.seq - b.seq);
+    const stops = all.filter((s) => s.side === side);
+    const isHub = (s) => hubId != null && s.location_id === hubId;
+    const blocks = new Map();
+    const pieces = new Set();
+    let total = 0;
+    for (const s of stops) for (const l of s.legs || []) {
+      pieces.add(l.piece_id);
+      const vs = l.kind === 'vs_import' || l.kind === 'vs_export';
+      const key = vs ? 'vs:' + l.order_id : 'n:' + l.nat_order_id;
+      let b = blocks.get(key);
+      if (!b) {
+        b = { key, vs, order_id: l.order_id, nat_order_id: l.nat_order_id, reference: l.reference || '', client: l.client || '', client_id: l.client_id,
+          temps: [], loads: [], drops: [], pallets: 0, pieces: [], price: l.price === undefined ? null : l.price,
+          pallet_exchange: typeof l.pallet_exchange === 'boolean' ? l.pallet_exchange : null };
+        blocks.set(key, b);
+      }
+      if (l.temperature_c != null && !b.temps.includes(l.temperature_c)) b.temps.push(l.temperature_c);
+      if (!b.pieces.includes(l.piece_id)) b.pieces.push(l.piece_id);
+      const row = { stop_id: s.stop_id, location: s.location, location_id: s.location_id, day: s.stop_day, from: s.planned_from, to: s.planned_to,
+        pallets: l.pallets, piece_id: l.piece_id, hub: isHub(s), order_stop_id: l.order_stop_id === undefined ? null : l.order_stop_id };
+      if (l.act === 'load') { b.loads.push(row); b.pallets += l.pallets; total += l.pallets; } else b.drops.push(row);
+    }
+    const hubStop = stops.find(isHub) || null;
+    const end = side === 'ANODOS' ? (stops.filter(isHub).pop() || null) : null;
+    const others = all.filter((s) => s.side !== side);
+    const vehicle = cyc.trip_type === 'PARTNER' ? (cyc.partner || 'Συνεργάτης') : (cyc.truck || 'χωρίς φορτηγό');
+    const first = side === 'KATHODOS' ? (hubStop || stops[0]) : stops[0];
+    const bl = [...blocks.values()];
+    const loaded = bl.filter((b) => b.pallets > 0);
+    const seq = stops.slice().sort((a, b) => Date.parse(a.planned_from) - Date.parse(b.planned_from)).map((s) => {
+      const legs = s.legs || [];
+      const isEnd = !!end && s.stop_id === end.stop_id;
+      return { stop_id: s.stop_id, when: isEnd ? `ως ${_dow(s.stop_day)} ${_hm(s.planned_to)}` : `${_dow(s.stop_day)} ${_hm(s.planned_from)}–${_hm(s.planned_to)}`,
+        place: isHub(s) ? (isEnd ? 'Βέροια · τέλος κύκλου' : 'Βέροια') : s.location,
+        what: [...new Set(legs.map((l) => l.reference).filter(Boolean))].join(' · ') + (isEnd ? ' · άφιξη' : legs.some((l) => l.act === 'load') ? ' · φόρτωση' : ' · παράδοση'),
+        pallets: legs.reduce((a, l) => a + (l.act === (isEnd || !legs.some((x) => x.act === 'load') ? 'unload' : 'load') ? l.pallets : 0), 0) };
+    });
+    // every piece of the whole cycle, both sides: one left = moving it ends the cycle (Figma Δ7 2069:8081)
+    const cyclePieces = new Set();
+    for (const s of all) for (const l of s.legs || []) cyclePieces.add(l.piece_id);
+    return {
+      side, stops, blocks: bl, shipments: pieces.size, total, hubStop, end, vehicle, seq, lastLoad: cyclePieces.size === 1,
+      plates: cyc.trip_type === 'PARTNER' ? (cyc.partner || '—') : [cyc.truck, cyc.trailer].filter(Boolean).join(' · ') || '—',
+      day: first ? first.stop_day : null,
+      cap: (loaded.length > 1 ? loaded.map((b) => _pal(b.pallets)).join(' + ') + ' = ' : '') + `${_pal(total)}/33`,
+      head: side === 'KATHODOS'
+        ? [['Κατεύθυνση', 'ΚΑΘΟΔΟΣ'], ['Φόρτωση Βέροιας', hubStop ? _dlab(hubStop.stop_day) : '—'],
+           ['Παράθυρο Βέροιας', hubStop ? `${_hm(hubStop.planned_from)}–${_hm(hubStop.planned_to)}` : '—']]
+        : [['Κατεύθυνση', 'ΑΝΟΔΟΣ'], ['Κάθοδος', others.length ? 'ΚΑΘΟΔΟΣ ' + _dlab(others[0].stop_day) : 'Χωρίς κάθοδο'],
+           ['Άφιξη Βέροιας', end ? `${_dlab((_parts(end.planned_to) || {}).day)} · ${_hm(end.planned_to)}` : '—']],
+    };
+  }
+  const _tempTxt = (ts) => (ts.length ? ts.slice().sort((a, b) => a - b).map((t) => (t > 0 ? '+' : '') + t).join(' / ') + ' °C' : '—');
+  // lucide «lock» at 13px (Figma 2011:9434); the colour is the block's grey-2, set in CSS
+  const LOCK = '<svg class="wn5f-lock-i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+  const _lth = (win) => `<div class="wn5f-th ro"><span>Τοποθεσία</span><span>Ημέρα</span><span>${win}</span><span>Παλέτες</span></div>`;
+  // A point of a leg is read-only here (pallets and windows change with «Μεταφορά σε…» or the day panel Δ4), drawn in
+  // Figma's boxes (2011:9452 / 9520): a VS's place and pallets in the locked grey cell, the rest white.
+  function _roRowHTML(r, vs) {
+    const ro = vs ? 'wn5f-c vro' : 'wn5f-c';
+    return `<div class="wn5f-row ro" data-piece="${r.piece_id}"><span class="${ro}">${_esc(r.hub ? 'Βέροια' : r.location)}</span>`
+      + `<span class="wn5f-c">${_esc(_dlab(r.day))}</span>`
+      + `<span class="wn5f-cwin"><span class="wn5f-c">${_hm(r.from)}</span><span class="wn5f-dash">–</span><span class="wn5f-c">${_hm(r.to)}</span></span>`
+      + `<span class="${ro}">${_pal(r.pallets)}</span><span></span>`
+      + (vs ? `<button type="button" class="wn5f-lnk" data-act="move" data-piece="${r.piece_id}">Μεταφορά σε…</button>` : '<span></span>') + '</div>';
+  }
+  function _vsBlockHTML(f, b) {
+    const rows = f.m.side === 'KATHODOS' ? b.drops.filter((r) => !r.hub) : b.loads.filter((r) => !r.hub);
+    return `<div class="wn5f-ord wn5f-lock" data-vs="${b.order_id}">`
+      + `<div class="wn5f-ord-h">${LOCK}<b>${_esc(b.reference || 'VS')} · ${_esc(b.client)}</b><span class="wn5f-vs-s">· από διεθνή παραγγελία · ${_tempTxt(b.temps)}</span>`
+      + `<span class="wn5f-badge">ημέρα · προορισμός · παράθυρο κλειδωμένο</span></div>`
+      + `<div class="wn5f-sec">${f.m.side === 'KATHODOS' ? 'ΠΑΡΑΔΟΣΕΙΣ' : 'ΦΟΡΤΩΣΕΙΣ'}</div>` + _lth('Παράθυρο από – έως *')
+      + rows.map((r) => _roRowHTML(r, true)).join('')
+      + `<div class="wn5f-note">${_pal(b.pallets || rows.reduce((a, r) => a + r.pallets, 0))}π · τιμή και τιμολόγηση στη διεθνή παραγγελία · δεν διαγράφεται από εδώ · ημέρα και προορισμός: όποιος μάθει πρώτος — γράφεται και στη διεθνή, ο διεθνών ειδοποιείται</div></div>`;
+  }
+  function _natBlockHTML(f, b) {
+    const id = b.nat_order_id;
+    const anodosEnd = f.m.side === 'ANODOS' ? b.drops.filter((r) => r.hub) : [];
+    const drops = f.m.side === 'ANODOS' ? b.drops.filter((r) => !r.hub) : b.drops;
+    return `<div class="wn5f-ord" data-nat="${id}">`
+      + `<div class="wn5f-lf"><div class="wn5f-f"><span>Πελάτης *</span><span class="wn5f-ro">${_esc(b.client || '—')}</span></div>`
+      + `<label class="wn5f-f"><span>Τιμή € (χωρίς ΦΠΑ) *</span><input class="form-input" data-f="price" inputmode="decimal" value="${b.price == null ? '' : _esc(b.price)}" placeholder="${b.price == null ? 'χωρίς αλλαγή' : ''}"></label>`
+      + `<label class="wn5f-f"><span>Θερμοκρασία °C</span><input class="form-input" data-f="temp" inputmode="decimal" value="${b.temps.length === 1 ? (b.temps[0] > 0 ? '+' : '') + _esc(b.temps[0]) : ''}"></label>`
+      + `<div class="wn5f-f"><span>PE</span>${_peHTML(b.pallet_exchange)}</div></div>`
+      + `<div class="wn5f-grid3"><label class="wn5f-f"><span>Αναφορά</span><input class="form-input" data-f="ref" value="${_esc(b.reference)}"></label>`
+      + `<label class="wn5f-f"><span>Είδος</span><input class="form-input" data-f="goods"></label><label class="wn5f-f"><span>Σημειώσεις</span><input class="form-input" data-f="notes"></label></div>`
+      + (b.price == null ? '<div class="wn5f-note">Η τιμή δεν έρχεται με το board για παραγγελία σε κύκλο — γράψε τιμή μόνο για να την αλλάξεις.</div>' : '')
+      + `<div class="wn5f-sec">ΣΗΜΕΙΑ ΦΟΡΤΩΣΗΣ</div>` + _lth('Παράθυρο από – έως *') + b.loads.map((r) => _roRowHTML(r, false)).join('')
+      + (drops.length ? `<div class="wn5f-sec">ΣΗΜΕΙΑ ΠΑΡΑΔΟΣΗΣ</div>` + _lth('Παράθυρο από – έως *') + drops.map((r) => _roRowHTML(r, false)).join('') : '')
+      // ΑΝΟΔΟΣ → Βέροια (Δ7 2069:8004): one «ως» deadline in a 2px box; it changes from the day panel (Ε-4)
+      + (anodosEnd.length ? `<div class="wn5f-sec">ΠΡΟΟΡΙΣΜΟΣ</div>` + _lth('Άφιξη ως *')
+        + anodosEnd.map((r) => `<div class="wn5f-row ro"><span class="wn5f-c nro">Βέροια</span><span class="wn5f-c">${_esc(_dlab(r.day))}</span>`
+          + `<span class="wn5f-cwin"><span class="wn5f-c until">${_hm(r.to)}</span></span><span class="wn5f-c nro">${_pal(r.pallets)}</span><span></span>`
+          + `<button type="button" class="wn5f-lnk" data-act="time">Αλλαγή ώρας ›</button></div>`).join('') : '')
+      + `<div class="wn5f-acts"><button type="button" class="wn5f-lnk" data-act="move-order" data-nat="${id}">Μεταφορά σε… (όλη η παραγγελία)</button>`
+      + `<button type="button" class="wn5f-card" data-act="card" data-nat="${id}">Άνοιγμα καρτέλας ›</button></div>`
+      + `<div class="wn5f-note">#${_esc(b.reference || id)} · ${_pal(b.pallets)}π${b.price == null ? '' : ` · ${_esc(_pal(b.price))} €`} · τιμολογείται χωριστά · η διαγραφή γίνεται από την καρτέλα: λίστα παραστατικών + επιβεβαίωση, χωρίς επαναφορά</div></div>`;
+  }
+  function _legHTML(f) {
+    const m = f.m;
+    return `<div class="wn5f-head wn5f-lhead" data-side="${m.side}">` + m.head.concat([['Φορτηγό', m.plates]]).map(([k, v]) => `<div class="wn5f-f"><span>${k}</span><span class="wn5f-ro">${_esc(v)}</span></div>`).join('') + `</div>`
+      + m.blocks.map((b) => (b.vs ? _vsBlockHTML(f, b) : _natBlockHTML(f, b))).join('')
+      // the summary's right side is the total only (Figma 2011:9569); the per-order sum is the header badge's
+      + `<div class="wn5f-sum"><div class="wn5f-sum-h"><b>${m.shipments} ${m.shipments === 1 ? 'αποστολή' : 'αποστολές'} · ${m.shipments === 1 ? 'σκέλος ' + SIDE_GR[m.side] : 'ίδιο σκέλος'} · ${_esc(m.vehicle)}</b><b>${_pal(m.total)}/33</b></div>`
+      + `<div class="wn5f-sec">ΣΕΙΡΑ ΣΤΑΣΕΩΝ ΚΑΤΑ ΩΡΑ</div><ol class="wn5f-seq">`
+      + m.seq.map((x, i) => `<li><span class="wn5f-seq-n">${i + 1}</span><span class="wn5f-seq-w">${_esc(x.when)}</span><span class="wn5f-seq-p">${_esc(x.place)}</span><span class="wn5f-seq-c">${_esc(x.what)}</span><span class="wn5f-seq-q">${_pal(x.pallets)}π</span></li>`).join('')
+      + `</ol><div class="wn5f-note">${m.lastLoad
+        ? 'Τελευταίο φορτίο → ο κύκλος σβήνεται· με κόστη ή γεμάτη μισθοδοσία πρώτα η λίστα, κενή σβήνεται σιωπηλά.'
+        : 'Σε άλλο φορτηγό: «Μεταφορά σε…» — VS ανά παράδοση, εθνική όλη η παραγγελία· η ίδια παραγγελία μετακινείται, δεν σβήνεται, δεν ξαναγράφεται.'}</div></div>`;
+  }
+  function _legState(f, id) {
+    const el = f.el.querySelector(`[data-nat="${id}"]`);
+    const v = (k) => el.querySelector(`[data-f="${k}"]`).value;
+    const peh = el.querySelector('[data-peh]').dataset.peh;
+    return { price: _num(v('price')), temperature_c: _num(v('temp')), reference: v('ref').trim(), goods: v('goods').trim(), notes: v('notes').trim(),
+      pallet_exchange: peh === 'yes' ? true : peh === 'no' ? false : null, ships: [] };
+  }
+  function _legChanged(f) {
+    return Object.keys(f.orig).map(Number).filter((id) => {
+      const b = _patchBody(f.orig[id], _legState(f, id));
+      return !!(b.set || b.shipments);
+    });
+  }
+  function _legRefresh(f) {
+    const ch = _legChanged(f);
+    f.blocked = ch.length !== 1;
+    // a typed value that is not a number is dropped by _patchBody: say it, so a dead «Αποθήκευση» is never silent
+    const bad = [];
+    for (const id of Object.keys(f.orig)) {
+      const st = _legState(f, id);
+      if (st.price !== null && !(Number.isFinite(st.price) && st.price > 0)) bad.push(`#${f.orig[id].reference || id} · Τιμή € (χωρίς ΦΠΑ) *: αριθμός πάνω από 0`);
+      if (Number.isNaN(st.temperature_c)) bad.push(`#${f.orig[id].reference || id} · Θερμοκρασία °C: αριθμός`);
+    }
+    if (bad.length) f.blocked = true;
+    _lines(f, (ch.length > 1 ? [`Άλλαξαν ${ch.length} παραγγελίες — μία «Αποθήκευση» στέλνει μία: κράτησε τις αλλαγές της μίας, αποθήκευσε, μετά την επόμενη`] : []).concat(bad));
+  }
+  async function _saveLeg(f) {
+    if (f.busy || f.done || f.locked || f.blocked) return;
+    const ch = _legChanged(f);
+    if (ch.length !== 1) return;
+    const id = ch[0];
+    const st = _legState(f, id);
+    if (st.price !== null && !(Number.isFinite(st.price) && st.price > 0)) { _lines(f, ['Τιμή € (χωρίς ΦΠΑ) *: αριθμός πάνω από 0']); return; }
+    if (Number.isNaN(st.temperature_c)) { _lines(f, ['Θερμοκρασία °C: αριθμός']); return; }
+    const body = _patchBody(f.orig[id], st);
+    f.busy = true;
+    _setSave(f);
+    try {
+      const ans = await planFetch('PATCH', '/plan/orders/' + id, { body });
+      _done(f, ans, null);
+      f.el.querySelector('[data-done]').textContent = `Αποθηκεύτηκε · #${f.orig[id].reference || id}`;
+    } catch (e) { await _failed(f, e, null); }
+    finally { f.busy = false; _setSave(f); }
+  }
+  // Before «Μεταφορά σε…», «Άνοιγμα καρτέλας ›» or «Αλλαγή ώρας ›» the leg form closes: the board changes after
+  // them and an open form would show the old picture.
+  function _legAct(f, a, t) {
+    const rt = f.rtId;
+    const anchor = () => document.querySelector(`#content .wn5-row[data-rt="${rt}"]`) || document.querySelector('#content .wn5');
+    if (a === 'move') { _close(f); WN5Act.move({ piece_ids: [Number(t.dataset.piece)], rt_id: rt }, { side: f.side, entry: 'leg' }); return; }
+    if (a === 'move-order') {
+      // a national order moves whole (Figma 9294): every piece of it on this cycle, both sides
+      const id = Number(t.dataset.nat);
+      const ids = [];
+      for (const s of f.cyc.stops || []) for (const l of s.legs || []) if (l.nat_order_id === id && !ids.includes(l.piece_id)) ids.push(l.piece_id);
+      _close(f);
+      WN5Act.move({ piece_ids: ids, rt_id: rt }, { side: f.side, entry: 'leg' });
+      return;
+    }
+    if (a === 'card') { _close(f); WN5Act.orderCard(Number(t.dataset.nat)); return; }
+    if (a === 'time') { _close(f); WN5Act.datePanel(rt, 'ANODOS', anchor()); }
+  }
+  // The clicked side stays marked on the board while its form is open (Figma 2011:9305 / 2069:8150: the side's cells
+  // as one box). The side is four grid cells, so the mark is one box laid over them, measured once; it dies with
+  // the form, or with the row when the board repaints.
+  const LEG_CELLS = { KATHODOS: '.wn5-kd, .wn5-fl, .wn5-kto, .wn5-kpal', ANODOS: '.wn5-ad, .wn5-afl, .wn5-ato, .wn5-apal' };
+  function _legMark(f, on) {
+    if (f.mark && f.mark.parentNode) f.mark.parentNode.removeChild(f.mark);
+    f.mark = null;
+    const row = on ? document.querySelector(`#content .wn5-row[data-rt="${f.rtId}"]`) : null;
+    const cells = row ? [...row.children].filter((c) => c.matches(LEG_CELLS[f.side])) : [];
+    if (!cells.length) return;
+    const rb = row.getBoundingClientRect(), a = cells[0].getBoundingClientRect(), b = cells[cells.length - 1].getBoundingClientRect();
+    const el = document.createElement('span');
+    el.className = 'wn5-legsel';
+    el.setAttribute('aria-hidden', 'true');
+    el.style.left = (a.left - rb.left) + 'px';
+    el.style.width = (b.right - a.left) + 'px';
+    row.appendChild(el);
+    f.mark = el;
+  }
+  async function openLeg(rtId, side) {
+    const board = await _board();
+    const cyc = board && (board.cycles || []).find((c) => c.rt_id === rtId);
+    if (!cyc || (side !== 'KATHODOS' && side !== 'ANODOS')) {
+      if (typeof toast === 'function') toast('Ο κύκλος δεν βρέθηκε στην εβδομάδα που φαίνεται — ανανέωσε', 'warn');
+      return false;
+    }
+    const ids = await PlanIds.load();
+    const m = _legModel(cyc, side, _hubId());
+    const f = { kind: 'leg', rtId, side, cyc, m, busy: false, done: false, locked: false, blocked: true, orig: {},
+      onSave: _saveLeg, onRefresh: _legRefresh, onAct: _legAct, onClose: (x) => _legMark(x, false) };
+    for (const b of m.blocks) if (!b.vs) f.orig[b.nat_order_id] = { nat_order_id: b.nat_order_id, price: b.price, reference: b.reference,
+      temperature_c: b.temps.length === 1 ? b.temps[0] : null, pallet_exchange: b.pallet_exchange, goods: '', notes: '', ships: [] };
+    _open(f, `Σκέλος · ${SIDE_GR[side]} ${_esc(m.vehicle)} · ${_esc(m.day ? _dlab(m.day) : '—')}`,
+      `· ${m.shipments} ${m.shipments === 1 ? 'αποστολή' : 'αποστολές'}`, _legHTML(f), 'Μία «Αποθήκευση» = μία συναλλαγή.');
+    f.el.querySelector('[data-cap]').textContent = m.cap;
+    _legMark(f, true);
+    if (!ids.ok) WN5Act.strip(_strip(f), ids.err);
+    if (_closedNow()) { WN5Act.strip(_strip(f), _closedNow()); f.locked = true; }
+    _refresh(f);
+    return true;
+  }
+
+  window.WN5Form = Object.freeze({ openOrder, openLeg, _body, _check, _patchBody, _findOrders, _iso, _parts, _legModel });
 })();

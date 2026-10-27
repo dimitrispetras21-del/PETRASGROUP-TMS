@@ -2,7 +2,7 @@
 // fake /plan/* (S.plan: method, path, body, count, order) and by what the page shows; never by a toast. Synthetic
 // week of tests/critics/wn5-rig-kit.js. The default answer of every non-dry write is 409 writes_closed, as deployed
 // until day L; scenarios script their own answers with sentinel messages.
-// Usage: node tests/critics/wn5-form-rig.js [order groupage unknown reused replayed edit …]
+// Usage: node tests/critics/wn5-form-rig.js [order groupage unknown reused replayed edit leg leg-anodos …]
 //        WN5_TREE=<git archive origin/main> node tests/critics/wn5-form-rig.js   (plain-main proof: NO-GO, exit 1)
 // Exit: 0 green · 1 a check failed · 2 unknown scenario.
 'use strict';
@@ -274,8 +274,92 @@ async function scnEdit({ browser, origin, ok, scn }) {
   await closeClean(page, S, ok, scn);
 }
 
+// T21 — the leg form. A second national order on the KATHODOS of RT-T101, so «two blocks changed» can be tried.
+function legWeek() {
+  const b = K.week();
+  const ND = { nat_order_id: 3004, reference: 'N-T004', client_id: 43, client: 'ΠΕΛΑΤΗΣ Γ', temperature_c: 4 };
+  b.cycles[0].stops[0].legs.push(K.leg(5004, 4005, 'load', 4, ND));
+  b.cycles[0].stops[2].legs.push(K.leg(5004, 4005, 'unload', 4, ND));
+  return b;
+}
+const LEG = '.wi4-dlg[role="dialog"][data-wn5="leg"]';
+async function openLegBy(page, rt, side) {
+  // the owner's rule (Figma 2011:7737 #3): a click on the leg opens the form — try the real click first
+  const sel = `#content .wn5-row[data-rt="${rt}"] [data-leg="${side}"]`;
+  const clicked = await page.click(sel, { timeout: 3000 }).then(() => true, () => false);
+  await page.waitForSelector(LEG, { timeout: 6000 }).catch(() => {});
+  return clicked;
+}
+async function scnLeg({ browser, origin, ok, scn }) {
+  let patchN = 0;
+  const plan = { 'PATCH /plan/orders/3001': () => (++patchN === 1
+    ? [200, { ok: true, op: 'plan_order_update', dry_run: false, ids: { nat_order_id: 3001, shipment_ids: [] }, warnings: [{ code: 'mixed_temp', rt_id: 101, side: 'KATHODOS', delta_c: 2 }], notice_ids: [] }]
+    : K.planErr(422, 'PLAN_RULE', 'vs_locked')) };
+  const { page, S } = await K.openApp(browser, origin, { board: legWeek(), plan });
+  if (!(await guard(page, ok, scn))) return;
+  ok(scn, 'a click on the KATHODOS leg of RT-T101 opens the leg form', await openLegBy(page, 101, 'KATHODOS') && await K.count(page, LEG) === 1);
+  const t = await K.text(page, `${LEG} .wi4-dlg-hd`);
+  ok(scn, 'title «Σκέλος · ΚΑΘΟΔΟΣ TST-2104 · Δευ 12/10 · 3 αποστολές»', t.includes('Σκέλος · ΚΑΘΟΔΟΣ TST-2104 · Δευ 12/10') && t.includes('· 3 αποστολές'), t);
+  ok(scn, 'capacity badge «21 + 6 + 4 = 31/33»', t.includes('21 + 6 + 4 = 31/33'), t);
+  // fidelity (Figma 2011:9305): the clicked side stays marked on the board while its form is open, never after
+  ok(scn, 'the clicked side is marked on the board (one .wn5-legsel)', await K.count(page, '#content .wn5-row[data-rt="101"] .wn5-legsel') === 1);
+  const vs = await K.text(page, `${LEG} [data-vs="2101"]`);
+  ok(scn, 'the VS block is locked: «τιμή και τιμολόγηση στη διεθνή παραγγελία», no price field', vs.includes('τιμή και τιμολόγηση στη διεθνή παραγγελία') && await K.count(page, `${LEG} [data-vs="2101"] [data-f="price"]`) === 0, vs.slice(0, 200));
+  ok(scn, '«Μεταφορά σε…» on each VS delivery row', await K.count(page, `${LEG} [data-vs="2101"] [data-act="move"]`) === 1);
+  ok(scn, '«Άνοιγμα καρτέλας ›» instead of a delete', await K.count(page, `${LEG} [data-act="card"]`) === 2 && !/Διαγραφή/.test(await K.text(page, `${LEG} .wn5f-body`)));
+  ok(scn, '«ΣΕΙΡΑ ΣΤΑΣΕΩΝ ΚΑΤΑ ΩΡΑ» lists the 3 stops of the side', await K.count(page, `${LEG} .wn5f-seq li`) === 3);
+  ok(scn, 'no mixed-temperature line before a save (no threshold on screen)', !/Μεικτές/.test(await K.text(page, LEG)));
+  const disabled = () => page.evaluate((d) => document.querySelector(`${d} [data-act="save"]`).disabled, LEG);
+  ok(scn, 'nothing changed → «Αποθήκευση» disabled', await disabled());
+  await page.fill(`${LEG} [data-nat="3001"] [data-f="price"]`, '310');
+  await page.fill(`${LEG} [data-nat="3004"] [data-f="price"]`, '200');
+  ok(scn, 'two orders changed → disabled, with the line that says why', await disabled() && /μία «Αποθήκευση» στέλνει μία/.test(await K.text(page, `${LEG} [data-err]`)));
+  await page.fill(`${LEG} [data-nat="3004"] [data-f="price"]`, '');
+  ok(scn, 'one order changed → enabled', !(await disabled()));
+  await page.click(`${LEG} [data-act="save"]`);
+  await page.waitForTimeout(1500);
+  const p = K.planOf(S, 'PATCH', /^\/plan\/orders\/\d+$/);
+  ok(scn, 'one save = ONE PATCH /plan/orders/3001 {set:{price:310}}', p.length === 1 && p[0].path === '/plan/orders/3001' && JSON.stringify(p[0].body) === JSON.stringify({ set: { price: 310 } }), p.map((x) => [x.path, x.body]));
+  ok(scn, 'mixed_temp from the answer → warning line after the save', await K.count(page, `${LEG} .wn5-strip[data-kind="warning"]`) >= 1);
+  ok(scn, 'the VS never sends PATCH /plan/orders', !S.plan.some((x) => x.m === 'PATCH' && x.path === '/plan/orders/2101'));
+  // a refusal keeps the form open with the Worker's text
+  await page.click(`${LEG} .wn5f-ft [data-act="cancel"]`);
+  ok(scn, 'closing the form removes the mark', await K.count(page, '#content .wn5-legsel') === 0);
+  await openLegBy(page, 101, 'KATHODOS');
+  await page.fill(`${LEG} [data-nat="3001"] [data-f="price"]`, '315');
+  await page.click(`${LEG} [data-act="save"]`);
+  await page.waitForTimeout(1000);
+  ok(scn, '422 vs_locked → the Worker message, form open', /rig sentinel vs_locked/.test(await K.text(page, `${LEG} [data-strip]`)) && await K.count(page, LEG) === 1);
+  await page.click(`${LEG} [data-vs="2101"] [data-act="move"]`);
+  await page.waitForSelector('.wi4-dlg[data-wn5="move"]', { timeout: 6000 }).catch(() => {});
+  ok(scn, '«Μεταφορά σε…» closes the leg form and opens the move window', await K.count(page, LEG) === 0 && await K.count(page, '.wi4-dlg[data-wn5="move"]') === 1);
+  await closeClean(page, S, ok, scn);
+}
+async function scnLegAnodos({ browser, origin, ok, scn }) {
+  const { page, S } = await K.openApp(browser, origin);
+  if (!(await guard(page, ok, scn))) return;
+  // the side's «+» is its own control (T13): a click on it never opens the leg form too
+  await page.click('#content .wn5-row[data-rt="102"] .wn5-plus[data-side="ANODOS"]', { timeout: 3000 }).catch(() => {});
+  await page.waitForTimeout(500);
+  ok(scn, 'a click on the side\'s «+» does not open the leg form', await K.count(page, LEG) === 0 && await K.count(page, '[data-wn5-overlay], .wi4-dlg, .wn5-pop') >= 1);
+  await page.keyboard.press('Escape');
+  await openLegBy(page, 102, 'ANODOS');
+  ok(scn, 'the ANODOS leg form of RT-T102 opened', await K.count(page, LEG) === 1);
+  const h = await K.text(page, `${LEG} .wn5f-head`);
+  ok(scn, 'header «Κάθοδος» «Χωρίς κάθοδο»', h.includes('Κάθοδος') && h.includes('Χωρίς κάθοδο'), h);
+  ok(scn, 'header «Άφιξη Βέροιας» «Τετ 14/10 · 22:00»', h.includes('Άφιξη Βέροιας') && h.includes('Τετ 14/10 · 22:00'), h);
+  const b = await K.text(page, `${LEG} [data-nat="3003"]`);
+  ok(scn, '«ΠΡΟΟΡΙΣΜΟΣ» with «Άφιξη ως *»', b.includes('ΠΡΟΟΡΙΣΜΟΣ') && b.includes('Άφιξη ως *'), b.slice(0, 300));
+  const seq = await K.text(page, `${LEG} .wn5f-seq`);
+  ok(scn, 'the order of stops ends «ως Τετ 22:00 · Βέροια · τέλος κύκλου»', seq.includes('ως Τετ 22:00') && seq.includes('Βέροια · τέλος κύκλου'), seq);
+  await page.click(`${LEG} [data-act="time"]`);
+  await page.waitForSelector('[data-wn5="date"]', { timeout: 6000 }).catch(() => {});
+  ok(scn, '«Αλλαγή ώρας ›» opens the day panel (Δ4), not a save of this form', await K.count(page, '[data-wn5="date"]') === 1 && !S.plan.some((x) => x.m === 'PATCH' && /^\/plan\/orders\//.test(x.path)));
+  await closeClean(page, S, ok, scn);
+}
+
 K.run({
-  scenarios: { order: scnOrder, groupage: scnGroupage, unknown: scnUnknown, reused: scnReused, replayed: scnReplayed, edit: scnEdit },
+  scenarios: { order: scnOrder, groupage: scnGroupage, unknown: scnUnknown, reused: scnReused, replayed: scnReplayed, edit: scnEdit, leg: scnLeg, 'leg-anodos': scnLegAnodos },
   globals: ['WN5Form'],
   go: 'the v5 order forms send one body per press, from the form only, with one request_id per open form',
 }).catch((e) => { console.error(e); process.exit(1); });
