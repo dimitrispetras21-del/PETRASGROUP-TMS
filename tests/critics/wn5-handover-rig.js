@@ -574,7 +574,40 @@ async function scnClearSeg({ browser, origin, ok, scn }) {
   await p2.page.context().close();
 }
 
-const SCN = { tiles: scnTiles, card: scnCard, change: scnChange, fix: scnFix, h7: scnH7, fid: scnFid, remove: scnRemove, 'rt-token': scnRtToken, 'clear-seg': scnClearSeg };
+// T27 — «Φύλλα οδηγών (2)» → the ΤΕΛΙΚΟ's sheet: only its stops, the handover row, the WhatsApp «⇄ παραλαβή από …».
+async function scnSheetSeg({ browser, origin, ok, scn }) {
+  const { page, S } = await K.openApp(browser, origin, { board: handWeek(false), clipboard: true });
+  if (!(await guard(page, ok, scn, 'WN5Hand'))) return;
+  // the print window is a new page: the kit's page.route does not reach it — nothing leaves the machine from it either
+  await page.context().route((u) => !u.href.startsWith(origin) && !u.href.includes(K.HOST) && !u.href.startsWith('about:'), (route) => route.abort());
+  const popErr = [];
+  page.context().on('page', (p) => { p.on('pageerror', (e) => popErr.push(String(e).slice(0, 300))); p.on('console', (m) => { if (m.type() === 'error' && !/^Failed to load resource/.test(m.text())) popErr.push(m.text().slice(0, 300)); }); });
+  await page.evaluate(() => WN5Hand.cycleCard(101));
+  await page.waitForSelector('.wi4-dlg[data-wn5="cycle"]', { timeout: 6000 }).catch(() => {});
+  await page.click('.wi4-dlg[data-wn5="cycle"] [data-act="sheets"]');
+  const [pop] = await Promise.all([page.waitForEvent('popup', { timeout: 8000 }).catch(() => null), page.click('.wi4-dlg[data-wn5="cycle"] [data-act="sheet"][data-seg="702"]')]);
+  ok(scn, 'the ΤΕΛΙΚΟ sheet opened', !!pop);
+  if (pop) {
+    await pop.waitForLoadState().catch(() => {});
+    await pop.waitForSelector('.s-hand', { state: 'attached', timeout: 5000 }).catch(() => {});   // written by document.write after open
+    const a4 = await pop.evaluate(() => ({ stops: document.querySelectorAll('.s-stop').length, hand: [...document.querySelectorAll('.s-hand')].map((x) => x.dataset.dir), text: document.body.innerText,
+      line: (() => { const e = document.querySelector('.s-segl'); return e ? [e.dataset.label, e.getBoundingClientRect().height, getComputedStyle(e).backgroundColor] : null; })() }));
+    ok(scn, 'only the 4 stops of its stop_ids + one «in» handover row', a4.stops === 4 && a4.hand.join() === 'in', a4);
+    ok(scn, 'band «ΤΜΗΜΑ ΤΕΛΙΚΟ», «ΣΗΜΕΙΟ ΑΛΛΑΓΗΣ Λαμία · …»', /ΤΜΗΜΑ\s*ΤΕΛΙΚΟ/.test(a4.text) && /ΣΗΜΕΙΟ ΑΛΛΑΓΗΣ\s*Λαμία/.test(a4.text), a4.text.slice(0, 400));
+    // Figma H5 2128:8231: a 3px line in the segment's colour under the band (ΤΕΛΙΚΟ = --wn5-seg-final = --accent)
+    ok(scn, 'fidelity: the ΤΕΛΙΚΟ segment line 3px rgb(2, 132, 199)', !!a4.line && a4.line[0] === 'final' && a4.line[1] === 3 && a4.line[2] === 'rgb(2, 132, 199)', a4.line);
+    await pop.close();
+  }
+  await page.waitForTimeout(400);
+  const clip = await page.evaluate(() => navigator.clipboard.readText()).catch(() => '');
+  ok(scn, 'WhatsApp starts «⇄ παραλαβή από TST-2104 · Λαμία Τρί 03:00»', clip.startsWith('⇄ παραλαβή από TST-2104 · Λαμία Τρί 03:00'), clip.slice(0, 120));
+  ok(scn, 'read only', !S.plan.some((x) => x.m !== 'GET'), S.plan.filter((x) => x.m !== 'GET').map((x) => x.m + ' ' + x.path));
+  const con = S.pageErrors.concat(appConsole(S), popErr);
+  ok(scn, 'no page or console errors (board + print window)', !con.length, con);
+  await page.context().close();
+}
+
+const SCN = { tiles: scnTiles, card: scnCard, change: scnChange, fix: scnFix, h7: scnH7, fid: scnFid, remove: scnRemove, 'rt-token': scnRtToken, 'clear-seg': scnClearSeg, 'sheet-seg': scnSheetSeg };
 module.exports = { seg, handWeek, ROW, HAND, guard, appConsole, SCN };
 if (require.main === module) {
   K.run({ scenarios: SCN, globals: ['WN5L', 'WN5Lab', 'WN5Hand'], go: 'the vehicle handover screens hold on the 072b stub' })

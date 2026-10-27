@@ -8,9 +8,11 @@
 (function () {
   'use strict';
   const SIDE_GR = Object.freeze({ KATHODOS: 'ΚΑΘΟΔΟΣ', ANODOS: 'ΑΝΟΔΟΣ' });
+  const SEG_GR = Object.freeze({ initial: 'ΑΡΧΙΚΟ', intermediate: 'ΕΝΔΙΑΜΕΣΟ', final: 'ΤΕΛΙΚΟ' });
   // The print window loads no style.css: these tokens' values travel with it, so the A4 keeps one colour source.
   // The greys are the Weekly's (Figma 2011:10999 draws #344054 / #5b6b7f / #98a2b3, not --text-mid).
-  const TOKENS = ['--surface-dark', '--surface-card', '--accent', '--accent-text', '--text-dim', '--border', '--wi4-grey-1', '--wi4-grey-2', '--wi4-grey-3'];
+  const TOKENS = ['--surface-dark', '--surface-card', '--accent', '--accent-text', '--text-dim', '--border', '--wi4-grey-1', '--wi4-grey-2', '--wi4-grey-3',
+    '--wn5-seg-initial', '--wn5-seg-intermediate', '--wn5-seg-final'];   // H5 2128:7981: the segment line under the band
   // The print shell (core/utils.js _printWeekShell) loads DM Sans 400/500 only: the A4's 600/700 and the plates'
   // DM Mono come from here, the app's own families (app.html), or the browser would fake the bold and drop the mono.
   const FONTS = 'https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@500&display=swap';
@@ -52,20 +54,65 @@
       refs: _dash([...new Set(use.map((l) => l.reference).filter(Boolean))].join(' · ')),
     };
   }
-  // part: 'KATHODOS' | 'ANODOS' | 'ALL'. places: { byId: {<location_id>: {name, address, city, phone}}, hubId }.
-  function lines(cycle, places, part) {
-    const P = { byId: (places && places.byId) || {}, hubId: places && places.hubId != null ? places.hubId : null };
-    const partner = cycle.trip_type === 'PARTNER';
+  // 072b (T27, H5): the plan of ONE segment's sheet — its stops are those of its stop_ids (H-9: the segment of a
+  // stop's arrival executes it), and a handover line where the load is taken over (in) or handed over (out), with
+  // what is on board at that moment: loads minus deliveries of the stops of the segments before (stop_ids only).
+  function _segPlan(cycle, segmentId, P) {
+    if (segmentId === undefined || segmentId === null) return null;
+    const segs = (cycle.segments || []).slice();
+    const i = segs.findIndex((g) => g.segment_id === segmentId);
+    // never a sheet with the wrong stops: an unknown segment fails loudly (print() logs and says it)
+    if (i < 0) throw new Error(`segment ${segmentId} is not a segment of cycle ${cycle.rt_id}`);
+    const bySeq = (cycle.stops || []).slice().sort((a, b) => a.seq - b.seq);
+    const onBoard = (upto) => {
+      const ids = new Set(segs.slice(0, upto + 1).flatMap((g) => g.stop_ids || []));
+      const pieces = new Map();
+      for (const s of bySeq) if (ids.has(s.stop_id)) for (const l of s.legs || []) { if (l.act === 'load') pieces.set(l.piece_id, l); else pieces.delete(l.piece_id); }
+      const legs = [...pieces.values()];
+      return { pallets: legs.reduce((a, l) => a + (Number(l.pallets) || 0), 0),
+        temp: _temp([...new Set(legs.map((l) => l.temperature_c).filter((t) => t !== null && t !== undefined))], true),
+        refs: _dash([...new Set(legs.map((l) => l.reference).filter(Boolean))].join(' · ')) };
+    };
+    const sideOf = (ids, last) => {
+      const st = bySeq.filter((s) => ids.includes(s.stop_id));
+      const s = last ? st[st.length - 1] : st[0];
+      return s ? s.side : null;
+    };
+    const who = (g) => ({ vehicle: g.trip_type === 'PARTNER' ? _dash(g.partner) : _dash(g.truck), driver: g.trip_type === 'PARTNER' ? _dash(g.partner) : _dash(g.driver),
+      phone: _dash(P.drivers && g.driver_id != null && P.drivers[g.driver_id] ? P.drivers[g.driver_id].phone : null) });
+    const hand = (dir, change, other, upto, side) => {
+      const p = _parts(change.from_at) || {};
+      const b = onBoard(upto);
+      return { t: 'hand', dir, side, reason: typeof WN5Lab !== 'undefined' ? WN5Lab.reasonLine(change.reason).text : _dash(change.reason),
+        place: _dash(change.place_note), when: `${_dow(p.day)} ${p.hm || '—'}`, hm: p.hm || '—', other: who(other), pallets: b.pallets, temp: b.temp, refs: b.refs };
+    };
+    const seg = segs[i];
+    const hands = [];
+    if (i > 0) hands.push(hand('in', seg, segs[i - 1], i - 1, sideOf(seg.stop_ids || [], false) || 'KATHODOS'));
+    if (i < segs.length - 1) hands.push(hand('out', segs[i + 1], segs[i + 1], i, sideOf(seg.stop_ids || [], true) || 'KATHODOS'));
+    const changes = hands.map((h) => `${h.place} · ${_dlab((_parts((h.dir === 'in' ? seg : segs[i + 1]).from_at) || {}).day)} · ${h.hm}`);
+    return { seg, stopIds: new Set(seg.stop_ids || []), hands, changeText: changes.join(' → ') };
+  }
+  // part: 'KATHODOS' | 'ANODOS' | 'ALL'. places: { byId: {<location_id>: {name, address, city, phone}}, hubId,
+  // drivers?: {<driver_id>: {phone}} }. segmentId (072b): the sheet of one segment (T27); without it = the cycle.
+  function lines(cycle, places, part, segmentId) {
+    const P = { byId: (places && places.byId) || {}, hubId: places && places.hubId != null ? places.hubId : null, drivers: (places && places.drivers) || null };
+    const SG = _segPlan(cycle, segmentId, P);
+    const veh = SG ? SG.seg : cycle;
+    const partner = veh.trip_type === 'PARTNER';
     const kStops = _partStops(cycle, 'KATHODOS');
     const vStop = kStops.find((s) => P.hubId != null && s.location_id === P.hubId && (s.legs || []).some((l) => l.act === 'load'));
-    const out = [{ t: 'head', partner: partner ? _dash(cycle.partner) : null, driver: partner ? null : _dash(cycle.driver),
-      truck: partner ? null : _dash(cycle.truck), trailer: partner ? null : _dash(cycle.trailer),
-      veroia: vStop ? `${_dlab(vStop.stop_day)} · ${_hm(vStop.planned_from)}–${_hm(vStop.planned_to)}` : '—' }];
+    // the segment keys only on a segment sheet: without one the head is T23's, key for key (R-59)
+    const out = [Object.assign({ t: 'head', partner: partner ? _dash(veh.partner) : null, driver: partner ? null : _dash(veh.driver),
+      truck: partner ? null : _dash(veh.truck), trailer: partner ? null : _dash(veh.trailer),
+      veroia: vStop ? `${_dlab(vStop.stop_day)} · ${_hm(vStop.planned_from)}–${_hm(vStop.planned_to)}` : '—' },
+    SG ? { segment: SEG_GR[SG.seg.label] || '—', segLabel: SG.seg.label || null, change: SG.changeText || '—' } : {})];
     let n = 0;
     let firstPallets = null;
     for (const side of part === 'ALL' ? ['KATHODOS', 'ANODOS'] : [part]) {
-      const stops = _partStops(cycle, side);
-      if (!stops.length) continue;
+      const stops = _partStops(cycle, side).filter((s) => !SG || SG.stopIds.has(s.stop_id));
+      const hands = SG ? SG.hands.filter((h) => h.side === side) : [];
+      if (!stops.length && !hands.length) continue;
       const ls = stops.map((s) => _stopLine(s, side, P, ++n));
       // the heading names what the driver does at the stops that are not Veroia (Figma: «3 παραδόσεις», «3 φορτώσεις»)
       const own = ls.filter((l) => !l.hub);
@@ -73,14 +120,19 @@
       const noun = own.length && own.every((l) => l.act === 'ΦΟΡΤΩΣΗ') ? (count === 1 ? 'φόρτωση' : 'φορτώσεις')
         : own.length && own.every((l) => l.act === 'ΠΑΡΑΔΟΣΗ') ? (count === 1 ? 'παράδοση' : 'παραδόσεις') : (count === 1 ? 'στάση' : 'στάσεις');
       const sum = (load) => stops.reduce((a, s) => a + (s.legs || []).filter((l) => (l.act === 'load') === load).reduce((b, l) => b + (Number(l.pallets) || 0), 0), 0);
-      const pallets = sum(true) || sum(false);   // what is loaded on this side, or what is delivered when nothing is
+      // what is loaded on this side, or what is delivered when nothing is; a segment that loads nothing here counts
+      // what it took over (H5: ΤΕΛΙΚΟ «ΚΑΘΟΔΟΣ · 1 παράδοση · 18 παλέτες», checklist «(18)»)
+      const pallets = sum(true) || sum(false) || hands.reduce((a, h) => Math.max(a, h.pallets), 0);
       if (firstPallets === null) firstPallets = pallets;
-      out.push({ t: 'side', side, title: SIDE_GR[side], count, noun, pallets, fromHub: !!ls[0].hub && ls[0].act === 'ΦΟΡΤΩΣΗ' });
-      out.push(...ls);
+      out.push({ t: 'side', side, title: SIDE_GR[side], count, noun, pallets, fromHub: !!ls[0] && ls[0].hub && ls[0].act === 'ΦΟΡΤΩΣΗ' });
+      out.push(...hands.filter((h) => h.dir === 'in'), ...ls, ...hands.filter((h) => h.dir === 'out'));
     }
     out.push({ t: 'check', pallets: firstPallets || 0 });
     return out;
   }
+  // T27: a segment's section can hold no stop of its own but Veroia's (ΑΡΧΙΚΟ = the hub loading) or none at all
+  // (a middle segment, only its handovers): never «0 στάσεις», the count is said only when there is one
+  const _what = (l) => (l.count ? `${l.count} ${l.noun}` : '');
   const _street = (s) => String(s.address === '—' ? '' : s.address).split(',')[0].trim();
   // The WhatsApp text, line by line as Figma 2011:10998 («*» = bold in WhatsApp).
   function text(ls, meta) {
@@ -88,9 +140,13 @@
     const h = ls.find((l) => l.t === 'head') || {};
     const out = [h.partner ? `*${h.partner}*` : `*${[h.truck, h.trailer, h.driver].filter((x) => x && x !== '—').join(' · ')}*`,
       [m.week, m.cycleNo ? 'κύκλος ' + m.cycleNo : ''].filter(Boolean).join(' · ')];
+    // H5 2146:7738: the handover lines go first — where, from whom (or to whom), his phone when the catalogue has it
+    out.unshift(...ls.filter((l) => l.t === 'hand').flatMap((x) => [
+      `⇄ ${x.dir === 'in' ? 'παραλαβή από' : 'παράδοση στο'} ${x.other.vehicle} · ${x.place} ${x.when}`,
+      `${x.dir === 'in' ? 'παραδίδει ο' : 'παραλαμβάνει ο'} ${x.other.driver}${x.other.phone === '—' ? '' : ' · Τηλ. ' + x.other.phone}`]));
     for (const l of ls) {
       if (l.t === 'side') {
-        out.push('', `*${l.title}* · ${l.fromHub ? 'φόρτωση Βέροια' : `${l.count} ${l.noun}`} · ${_pal(l.pallets)}π`);
+        out.push('', [`*${l.title}*`, l.fromHub ? 'φόρτωση Βέροια' : _what(l), `${_pal(l.pallets)}π`].filter(Boolean).join(' · '));
       } else if (l.t === 'stop') {
         const tel = l.phone === '—' ? '' : ` · Τηλ. ${l.phone}`;
         if (l.hub) {
@@ -121,15 +177,24 @@
     const h = ls.find((l) => l.t === 'head') || {};
     const chk = ls.find((l) => l.t === 'check') || { pallets: 0 };
     const band = (h.partner ? [['ΣΥΝΕΡΓΑΤΗΣ', h.partner]] : [['ΟΔΗΓΟΣ', h.driver], ['ΦΟΡΤΗΓΟ', h.truck, 1], ['ΡΥΜΟΥΛΚΑ', h.trailer, 1]])
-      .concat([['ΚΥΚΛΟΣ', _dash(m.cycleNo)], ['ΦΟΡΤΩΣΗ ΒΕΡΟΙΑ', h.veroia]]);
+      .concat(h.segment ? [['ΤΜΗΜΑ', h.segment], ['ΣΗΜΕΙΟ ΑΛΛΑΓΗΣ', h.change]] : [['ΚΥΚΛΟΣ', _dash(m.cycleNo)], ['ΦΟΡΤΩΣΗ ΒΕΡΟΙΑ', h.veroia]]);
     const COLS = '<colgroup><col style="width:30px"><col></colgroup>';
     let body = '';
     let open = false;
     for (const l of ls) {
       if (l.t === 'side') {
         if (open) body += '</tbody></table>';
-        body += `<table class="s-t">${COLS}<tbody><tr><td colspan="2"><div class="s-sec"><span>${_esc(l.title)} · ${l.count} ${_esc(l.noun)} · ${_pal(l.pallets)} παλέτες</span><i></i></div></td></tr>`;
+        body += `<table class="s-t">${COLS}<tbody><tr><td colspan="2"><div class="s-sec"><span>${[_esc(l.title), l.count ? _what(l) : l.fromHub ? 'φόρτωση Βέροια' : '', `${_pal(l.pallets)} παλέτες`].filter(Boolean).join(' · ')}</span><i></i></div></td></tr>`;
         open = true;
+      } else if (l.t === 'hand') {
+        // H5 2128:7793/8017: the stop row's shape (circle · card, the 2 columns of COLS), an outlined ⇄ circle and
+        // badge, the reason in the orders' slot, no number, no pallet return; never a row of extra cells (S4 15/9)
+        const vb = l.dir === 'in' ? 'παραλαβή από' : 'παράδοση στο';
+        body += `<tr class="s-hand" data-side="${l.side}" data-dir="${l.dir}"><td><span class="s-n s-hn">⇄</span></td><td><div class="s-card">`
+          + `<div class="s-bdg"><span class="s-act s-ho">ΑΛΛΑΓΗ ΟΧΗΜΑΤΟΣ</span><span class="s-cnt">${_esc(l.reason)}</span></div>`
+          + `<div class="s-name">${vb} ${_esc(l.other.vehicle)} · ${_esc(l.place)} ${_esc(l.hm)}</div>`
+          + `<div class="s-adr">${l.dir === 'in' ? 'παραδίδει ο' : 'παραλαμβάνει ο'} ${_esc(l.other.driver)}  ·  Τηλ. <b>${_esc(l.other.phone)}</b></div>`
+          + `<div class="s-meta">${_pair('Ώρα', l.when)}${_pair('Παλέτες', _pal(l.pallets))}${_pair('Θερμ.', l.temp, 's-temp')}${_pair('Αναφορά', l.refs)}</div></div></td></tr>`;
       } else if (l.t === 'stop') {
         const ld = l.act === 'ΦΟΡΤΩΣΗ' ? ' s-ld' : '';
         const nOrd = l.hub && l.act === 'ΦΟΡΤΩΣΗ' && l.orders ? `<span class="s-cnt">${l.orders} ${l.orders === 1 ? 'παραγγελία' : 'παραγγελίες'}</span>` : '';
@@ -164,7 +229,9 @@
       .s-band span{font-size:7.5px;font-weight:600;letter-spacing:1px;color:var(--text-dim)}
       .s-band b{font-size:12px;font-weight:700;color:var(--surface-card)}.s-band b.s-pl{font-family:'DM Mono',monospace;font-weight:500}
       .s-t{width:100%;table-layout:fixed;border-collapse:collapse}
-      .s-t td{padding:0;vertical-align:top}.s-t tr.s-stop td{padding-top:10px}
+      .s-t td{padding:0;vertical-align:top}.s-t tr.s-stop td,.s-t tr.s-hand td{padding-top:10px}
+      .s-segl{height:3px;background:var(--wn5-seg-initial)}.s-segl[data-label="intermediate"]{background:var(--wn5-seg-intermediate)}
+      .s-segl[data-label="final"]{background:var(--wn5-seg-final)}
       .s-sec{display:flex;align-items:center;gap:8px;padding:6px 0 2px;font-size:9px;font-weight:700;letter-spacing:1px;white-space:nowrap}
       .s-sec i{flex:1;height:1px;background:var(--border)}
       .s-n{display:flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:10px;background:var(--accent);font-size:10px;font-weight:700;color:var(--surface-card)}
@@ -172,6 +239,8 @@
       .s-bdg{display:flex;align-items:center;gap:6px}
       .s-act{display:inline-flex;align-items:center;height:16px;padding:0 6px;border-radius:3px;background:var(--accent);font-size:8px;font-weight:700;letter-spacing:.5px;color:var(--surface-card)}
       .s-n.s-ld,.s-act.s-ld{background:var(--surface-dark)}
+      .s-n.s-hn{background:var(--surface-card);border:1.5px solid var(--surface-dark);color:var(--surface-dark)}
+      .s-act.s-ho{background:var(--surface-card);border:1px solid var(--surface-dark);color:var(--surface-dark)}
       .s-cnt{font-size:8.5px;color:var(--wi4-grey-2)}
       .s-name{font-size:12px;font-weight:700}
       .s-adr{font-size:9px;line-height:11px;white-space:pre;color:var(--wi4-grey-2)}.s-adr b{font-weight:700;color:var(--surface-dark)}
@@ -189,6 +258,7 @@
       + `<div class="s-mt"><span class="s-kick">ΦΥΛΛΟ ΟΔΗΓΟΥ · ΕΘΝΙΚΟ</span><b>${_esc([m.week, m.cycleNo ? 'Κύκλος ' + m.cycleNo : ''].filter(Boolean).join(' · ') || '—')}</b><span class="s-iss">Έκδοση ${_esc(m.issued || '—')}</span></div></div>`
       + '<div class="s-rule"></div>'
       + `<div class="s-band">${band.map(([k, v, pl]) => `<div><span>${k}</span><b${pl ? ' class="s-pl"' : ''}>${_esc(_dash(v))}</b></div>`).join('')}</div>`
+      + (h.segment ? `<div class="s-segl" data-label="${_esc(h.segLabel || '')}"></div>` : '')
       + body
       + `<div class="s-chk"><b>ΠΡΙΝ ΤΗΝ ΑΝΑΧΩΡΗΣΗ</b><span>☐ Θερμογράφος σε λειτουργία</span><span>☐ Ρυμούλκα καθαρή / προψυγμένη</span>`
       + `<span>☐ Παλέτες μετρημένες (${_pal(chk.pallets)})</span><span>☐ CMR υπογεγραμμένα</span></div>`
@@ -251,13 +321,13 @@
   }
   // Called from inline onclick and menu lines, which do not await it: it never rejects. A failure is logged and said
   // (principle 1), never an unhandled rejection that leaves the click doing nothing.
-  async function print(rtId, part) {
+  async function print(rtId, part, segmentId) {
     const p = part === 'KATHODOS' || part === 'ANODOS' ? part : 'ALL';
     try {
       const ctx = await _ctx(rtId);
       if (!ctx) return false;
-      const ls = lines(ctx.cycle, ctx.places, p);
-      _last = { rtId, part: p, lines: ls, meta: ctx.meta };
+      const ls = lines(ctx.cycle, ctx.places, p, segmentId);
+      _last = { rtId, part: p, segmentId, lines: ls, meta: ctx.meta };   // whatsapp(rtId, part) answers for the last sheet built
       if (typeof _printWeekShell === 'function') _printWeekShell(`Φύλλο οδηγού · ${ctx.cycle.code || 'RT-' + rtId}`, html(ls, ctx.meta, _tokens()));
       await _copy(text(ls, ctx.meta));
       return true;

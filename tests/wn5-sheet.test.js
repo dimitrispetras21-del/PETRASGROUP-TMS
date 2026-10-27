@@ -30,6 +30,8 @@ function load(withDeps) {
     ctx.WI4 = win.WI4;
     vm.runInContext(fs.readFileSync(path.join(ROOT, 'modules/wn5_forms.js'), 'utf8'), ctx, { filename: 'modules/wn5_forms.js' });
     ctx.WN5Form = win.WN5Form;
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'core/wn5-labels.js'), 'utf8'), ctx, { filename: 'core/wn5-labels.js' });
+    ctx.WN5Lab = win.WN5Lab;
   }
   const before = Object.keys(win);
   vm.runInContext(SRC, ctx, { filename: FILE });
@@ -127,4 +129,45 @@ test('F4α-T23: a VS stop carries the reference of the international (legs[].ref
 
 test('F4α-T23: the module has no hex colour (the A4 takes the tokens\' values)', () => {
   assert.ok(!/#[0-9a-fA-F]{3,8}\b/.test(SRC.replace(/\/\/[^\n]*/g, '')), 'hex in modules/wn5_sheet.js');
+});
+
+// ── F4α-T27 (072b): one sheet per segment (H5) ───────────────────────────────────────────────────────────────
+function segCyc() {
+  const c = JSON.parse(JSON.stringify(CYC));
+  // stop 1002's window lies BEFORE the handover time, yet it is in the ΤΕΛΙΚΟ's stop_ids: it belongs there (H-9)
+  c.stops[1].planned_from = '2026-10-13T01:00:00+03:00'; c.stops[1].planned_to = '2026-10-13T02:00:00+03:00';
+  const base = { trip_type: 'OWNED', trailer_id: null, trailer: null, partner_id: null, partner: null, partner_rate: null, reason_note: null, has_vehicle: true };
+  c.segments = [
+    Object.assign({}, base, { segment_id: 701, label: 'initial', from_at: '2026-10-12T16:00:00+03:00', to_at: '2026-10-13T03:00:00+03:00', truck_id: 11, truck: 'TST-2104', trailer: 'TRL-5102', driver_id: 31, driver: 'Driver Test 01', place_note: null, reason: null, stop_ids: [1001] }),
+    Object.assign({}, base, { segment_id: 702, label: 'final', from_at: '2026-10-13T03:00:00+03:00', to_at: '2026-10-13T22:00:00+03:00', truck_id: 12, truck: 'TST-2108', trailer: 'TRL-5104', driver_id: 32, driver: 'Driver Test 02', place_note: 'Λαμία', reason: 'vehicle_breakdown', stop_ids: [1002, 1003, 1004, 1005] })];
+  return c;
+}
+test('F4α-T27: the ΑΡΧΙΚΟ sheet has no stop after the change, the ΤΕΛΙΚΟ none before; the change line on both', () => {
+  const a = J(S.lines(segCyc(), PL, 'ALL', 701)), f = J(S.lines(segCyc(), PL, 'ALL', 702));
+  assert.deepStrictEqual(a.filter((l) => l.t === 'stop').map((l) => l.stop_id), [1001]);
+  assert.deepStrictEqual(f.filter((l) => l.t === 'stop').map((l) => l.stop_id), [1002, 1003, 1004, 1005]);
+  const ha = a.filter((l) => l.t === 'hand'), hf = f.filter((l) => l.t === 'hand');
+  assert.deepStrictEqual(ha.map((h) => [h.dir, h.other.vehicle, h.other.driver, h.place, h.pallets]), [['out', 'TST-2108', 'Driver Test 02', 'Λαμία', 27]]);
+  assert.deepStrictEqual(hf.map((h) => [h.dir, h.other.vehicle, h.other.driver, h.place, h.pallets]), [['in', 'TST-2104', 'Driver Test 01', 'Λαμία', 27]]);
+  assert.strictEqual(a[0].segment, 'ΑΡΧΙΚΟ');
+  assert.strictEqual(f[0].truck, 'TST-2108', 'the head names the segment\'s vehicle, not the cycle\'s');
+});
+test('F4α-T27: a stop belongs to the segment whose stop_ids hold it, never by its time on screen', () => {
+  const a = J(S.lines(segCyc(), PL, 'KATHODOS', 701));
+  assert.ok(!a.some((l) => l.t === 'stop' && l.stop_id === 1002), 'stop 1002 (window before the change, in the ΤΕΛΙΚΟ stop_ids) on the ΑΡΧΙΚΟ sheet');
+});
+test('F4α-T27: WhatsApp of the ΤΕΛΙΚΟ starts with where and from whom; the A4 band says ΤΜΗΜΑ / ΣΗΜΕΙΟ ΑΛΛΑΓΗΣ', () => {
+  const ls = S.lines(segCyc(), PL, 'ALL', 702);
+  const t = S.text(ls, META).split('\n');
+  assert.strictEqual(t[0], '⇄ παραλαβή από TST-2104 · Λαμία Τρί 03:00');
+  assert.strictEqual(t[1], 'παραδίδει ο Driver Test 01');
+  assert.strictEqual(t[2], '*TST-2108 · TRL-5104 · Driver Test 02*');
+  const a4 = S.html(ls, META, '');
+  assert.ok(a4.includes('ΤΜΗΜΑ') && a4.includes('ΤΕΛΙΚΟ') && a4.includes('ΣΗΜΕΙΟ ΑΛΛΑΓΗΣ') && !a4.includes('ΦΟΡΤΩΣΗ ΒΕΡΟΙΑ'));
+  assert.ok(/ΑΛΛΑΓΗ ΟΧΗΜΑΤΟΣ/.test(a4) && a4.includes('Βλάβη φορτηγού') && a4.includes('παραλαβή από TST-2104 · Λαμία 03:00'));
+  const tables = a4.split('<table').slice(1);
+  for (const tb of tables) for (const m of tb.matchAll(/colspan="(\d+)"/g)) assert.strictEqual(Number(m[1]), (tb.split('</colgroup>')[0].match(/<col\b/g) || []).length);
+});
+test('F4α-T27: without a segment the sheet is exactly T23\'s (R-59)', () => {
+  assert.strictEqual(JSON.stringify(S.lines(segCyc(), PL, 'ALL')), JSON.stringify(S.lines(Object.assign(segCyc(), { segments: undefined }), PL, 'ALL')));
 });
