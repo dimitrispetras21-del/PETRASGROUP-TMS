@@ -8984,6 +8984,9 @@ body.wi4-on #wi-popover .wi-pop-save:hover { background:var(--navy-light); }
   --wn5-ctl-hover: #98a2b3;   /* ✈ border on hover — the Weekly International's value (its rule is .wi4-c-idx only) */
   --wn5-dlg-shadow: 0 8px 24px rgba(10,26,41,.16);   /* the two-step dialog (Figma Δ5 2053:8080) */
   --wn5-pop-shadow: 0 8px 12px rgba(10,26,41,.16);   /* the Δ4 shell (Figma 2011:9195), reused by the local-loading window */
+  --wn5-card-shadow: 0 4px 16px rgba(10,26,41,.10);  /* the order card (Figma 2011:10503) */
+  --wn5-chip-navy:  #1e3350;   /* a chip on the card's navy head (2011:10510); its text is --wi4-info-line */
+  --wn5-chip-ok-bg: #dcfce7;   /* «ΑΝΑΤΕΘΗΚΕ» (2011:10514); text --ok, 5.0:1 */
 }
 /* The same page frame as v4 (body.wi4-on .content), while the v5 board is on screen. */
 body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; background:var(--surface-page); }
@@ -9476,6 +9479,41 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-dlg[data-wn5="local"] .wi4-dlg-x { display:none; }   /* the shell has no «×»: Άκυρο is the exit (Esc and a click outside too) */
 .wn5-dlg[data-wn5="local"] .wi4-dlg-ft .wi4-btn { height:26px; padding:0 10px; border-radius:5px; font-size:11.5px; font-weight:600; }
 .wn5-dlg[data-wn5="local"] .wi4-dlg-ft .wi4-btn:not(.pri) { color:var(--wi4-grey-1); }
+/* ── T18: the order card (Figma 2011:10503) ──
+   520 wide, no radius, a navy head (20/22/18, gap 8) with the Syne 20 title, «×» and the chips; one section per heading
+   (18/22/14, gap 4, ruled under), heading 11 SemiBold grey-2 tracked 1, rows 30px with a 150px key column (13 grey-2)
+   and a Regular 13 ink value; footer 16/22/20, «Επεξεργασία» left, the delete button red-outlined right (34px). */
+.wn5-dlg.wn5-ocard { padding:0; border:0; border-radius:0; box-shadow:var(--wn5-card-shadow); }
+.wn5-ocard > .wi4-dlg-hd { flex-wrap:wrap; row-gap:8px; padding:20px 22px 18px; background:var(--wi4-ink); }
+.wn5-ocard .wi4-dlg-t { flex:1; min-width:0; font:700 20px/24px 'Syne',sans-serif; color:var(--surface-card); }
+.wn5-ocard .wi4-dlg-x { font-size:16px; color:var(--wi4-grey-3); }
+.wn5-ocard .wn5-dlg-msg { margin:12px 22px 0; }
+.wn5-ocard .wn5-dlg-b { margin:0; gap:0; }
+.wn5-chips { flex-basis:100%; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.wn5-chip { display:inline-flex; align-items:center; height:20px; padding:0 8px; border-radius:10px; font-size:10.5px; font-weight:700; letter-spacing:.5px;
+  background:var(--wn5-chip-navy); color:var(--wi4-info-line); }
+.wn5-chip.ok { background:var(--wn5-chip-ok-bg); color:var(--ok); }
+.wn5-chip.un { background:var(--wi4-red-bg); color:var(--wi4-red-ink); }   /* not drawn: the board's «ΠΡΟΣ ΑΝΑΘΕΣΗ» colours */
+.wn5-sec { display:flex; flex-direction:column; gap:4px; padding:18px 22px 14px; border-bottom:1px solid var(--wi4-line-2); }
+.wn5-sec-h { margin-bottom:4px; font-size:11px; line-height:14px; font-weight:600; letter-spacing:1px; color:var(--wi4-grey-2); }
+/* 30px a line; a long value wraps instead of being cut (DESIGN.md #6) */
+.wn5-kv { display:grid; grid-template-columns:150px minmax(0,1fr); align-items:center; column-gap:12px; min-height:30px; font-size:13px; line-height:17px; }
+.wn5-kv > span { color:var(--wi4-grey-2); }
+.wn5-kv > b { font-weight:400; color:var(--wi4-ink); }
+.wn5-ocard > .wi4-dlg-ft { margin-top:0; padding:16px 22px 20px; gap:10px; }
+.wn5-ocard > .wi4-dlg-ft .wi4-btn { height:34px; padding:0 14px; font-size:13px; }
+.wn5-ocard > .wi4-dlg-ft [data-act="edit"] { margin-right:auto; font-weight:500; }
+.wi4-btn.wn5-danger-o { border-color:var(--wi4-red); color:var(--wi4-red); }
+/* ✈ «Άνοιγμα παραγγελιών 4» (2011:9159): the number 11 Regular grey-3, like every right-hand text of the menu */
+.wn5-m-n { font-size:11px; line-height:14px; font-weight:400; color:var(--wi4-grey-3); }
+/* «Διαγραφή παραγγελίας …;» (2011:10580): 480 wide, the 3px red bar on top, a 10px rhythm, the final-ness note in a grey box
+   under the list (the «Λόγος διαγραφής *» field the frame lacks follows it, 072 asks for it), 24px from the last item to the buttons */
+.wn5-dlg.wn5-ask[data-wn5="delete"] { width:480px; gap:10px; padding:18px 22px; box-shadow:inset 0 3px 0 var(--wi4-red), var(--wn5-dlg-shadow); }
+.wn5-ask[data-wn5="delete"] .wn5-dlg-b { gap:10px; }
+.wn5-ask[data-wn5="delete"] .wn5-cons { gap:10px; }
+.wn5-ask[data-wn5="delete"] .wn5-dlg-b > p { order:1; padding:8px 10px; border-radius:6px; background:var(--wi4-chip); font-size:12px; line-height:16px; color:var(--wi4-grey-1); }
+.wn5-ask[data-wn5="delete"] .wn5-dlg-b > .wn5-field { order:2; }
+.wn5-ask[data-wn5="delete"] .wi4-dlg-ft { margin-top:14px; }
 /* ── wn5 end ── */
 
 /* ═══ Παραγγελίες › Εβδομάδα v4 (.ow4) — modules/orders_week_view.js ═════════

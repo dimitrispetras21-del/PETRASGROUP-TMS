@@ -87,3 +87,13 @@ test('F4α-T17: POST /plan/local-loading keeps the request_id in p (decision 44:
   const c = await send({}, 'POST', '/plan/local-loading', { local_move_id: 7002, cancel: true });
   assert.deepStrictEqual(c.seen[0].args.p, { local_move_id: 7002, cancel: true });
 });
+
+test('F4α-T18: POST /plan/delete — accountant 403 before any RPC; the dispatcher dry run reaches plan_delete without a reason', async () => {
+  const no = await send({ role: 'accountant', writesOpen: false }, 'POST', '/plan/delete', { nat_order_id: 3111, dry_run: true });
+  assert.strictEqual(no.status, 403);
+  assert.strictEqual(no.seen.length, 0);
+  const yes = await send({ writesOpen: false, answer: { ok: true, op: 'plan_delete', dry_run: true, needs_confirm: true, confirm_token: 't', consequences: [{ kind: 'invoiced', nat_order_id: 3111 }] } },
+    'POST', '/plan/delete', { nat_order_id: 3111, dry_run: true });
+  assert.strictEqual(yes.seen[0].fn, 'plan_delete');
+  assert.deepStrictEqual(yes.seen[0].args.p, { nat_order_id: 3111, dry_run: true });
+});

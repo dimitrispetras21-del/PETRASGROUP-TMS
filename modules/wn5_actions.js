@@ -1682,6 +1682,173 @@
   };
   ACTS['local-cancel'] = (el) => WN5Act.localCancel(_id(el.dataset.lm));
 
+  // ═══ T18 · order card and «Διαγραφή παραγγελίας» (Figma 2011:10496), from the loaded board only (Ε-9) ═══
+  // Everything the board knows of one national order: its waiting pieces and its legs on the week's cycles.
+  function _orderFacts(natOrderId) {
+    const items = _allItems().filter((x) => x.nat_order_id === natOrderId);
+    const legs = [];
+    for (const c of _cycles()) for (const s of c.stops || []) for (const l of s.legs || []) if (l.nat_order_id === natOrderId) legs.push({ c, s, l });
+    return { items, legs };
+  }
+  const _temp = (t) => (typeof t === 'number' && isFinite(t) ? (t > 0 ? '+' : '') + String(t).replace('.', ',') + ' °C' : '—');
+  const _sideWord = (side) => (side === 'ANODOS' ? 'ΑΝΟΔΟΣ' : 'ΚΑΘΟΔΟΣ');
+  function _cardHTML(no, f) {
+    const any = f.items[0] || (f.legs[0] && f.legs[0].l) || {};
+    const ref = any.reference || ('#' + no);
+    const price = f.items.find((x) => typeof x.price === 'number');
+    const pe = f.items.find((x) => typeof x.pallet_exchange === 'boolean');
+    const pal = _sum(f.items.map((x) => x.pallets)) + _sum(f.legs.filter((x) => x.l.act === 'load').map((x) => x.l.pallets));
+    const assigned = f.legs.length > 0;
+    const side = assigned ? f.legs[0].s.side : (f.items[0] ? _sideFor(f.items[0]) : 'KATHODOS');
+    const row = (k, v) => '<div class="wn5-kv"><span>' + _esc(k) + '</span><b>' + _esc(v) + '</b></div>';
+    // the Figma card is a navy head with the chips under the title, then one ruled section per heading
+    const sec = (head, rows) => '<section class="wn5-sec"><div class="wn5-sec-h">' + head + '</div>' + rows + '</section>';
+    const chips = '<div class="wn5-chips"><span class="wn5-chip">ΕΘΝΙΚΗ</span><span class="wn5-chip">' + _sideWord(side) + '</span>'
+      + '<span class="wn5-chip ' + (assigned ? 'ok' : 'un') + '">' + (assigned ? 'ΑΝΑΤΕΘΗΚΕ' : 'ΠΡΟΣ ΑΝΑΘΕΣΗ') + '</span></div>';
+    let h = sec('ΣΤΟΙΧΕΙΑ', row('Πελάτης', any.client || '—')
+      // the price comes with the waiting pieces only (072:2445); an assigned order shows «—», never a guess
+      + row('Τιμή', price ? _pal(price.price) + ' € (χωρίς ΦΠΑ) · τιμολογείται χωριστά' : '—')
+      + row('Παλέτες', pal ? _pal(pal) : '—') + row('Θερμοκρασία', _temp(any.temperature_c)) + row('PE', pe ? (pe.pallet_exchange ? 'Ναι' : 'Όχι') : '—'));
+    // Figma 2011:10548: a delivery names its client after the place, a loading does not
+    const stopLine = (s, l) => [s.location || '—', l.act === 'unload' ? (l.client || '—') : null, _dayShort(_ymdOf(s.planned_from)), _hm(s.planned_from) + '–' + _hm(s.planned_to), _pal(l.pallets) + 'π']
+      .filter((x) => x != null).join(' · ');
+    let st = '';
+    for (const x of f.legs) st += row(x.l.act === 'load' ? 'Φόρτωση' : 'Παράδοση', stopLine(x.s, x.l));
+    for (const it of f.items) {
+      st += row('Φόρτωση', [_placeName(it.at_hub ? _hubId() : it.position_location_id), it.load_from ? _dayShort(_ymdOf(it.load_from)) + ' · ' + _hm(it.load_from) + '–' + _hm(it.load_to) : '—', _pal(it.pallets) + 'π'].join(' · '))
+        + row('Παράδοση', [_placeName(it.nat_to_location_id), it.client || '—', it.deliver_from ? _dayShort(_ymdOf(it.deliver_from)) + ' · ' + _hm(it.deliver_from) + '–' + _hm(it.deliver_to) : '—', _pal(it.pallets) + 'π'].join(' · '));
+    }
+    h += sec('ΣΤΑΣΕΙΣ', st);
+    let cy = '';
+    const seen = new Set();
+    for (const x of f.legs) {
+      if (seen.has(x.c.rt_id)) continue;
+      seen.add(x.c.rt_id);
+      const r = _row(x.c.rt_id), tx = _cycText(x.c, r);
+      const sd = _sideOfRow(r, x.s.side);
+      const vs = sd && sd.veroia && sd.veroia.stopId != null ? (x.c.stops || []).find((s) => s.stop_id === sd.veroia.stopId) : null;
+      const v = _veroiaOf(r, x.s.side);
+      // «Βέροια Δευ 12/10 16:00–18:00» (2011:10560): the Veroia stop's own day, no « · » between day and window
+      // a tile's empty line is «—» (a partner has no driver): one «—» between two « · » would say nothing
+      cy += row('Φορτηγό', [tx.l1, tx.l2, x.c.code || '—'].filter((t) => t && t !== '—').join(' · ') || '—')
+        + row('Σκέλος', _sideWord(x.s.side) + (v ? ' · Βέροια ' + (vs ? _dayShort(_ymdOf(vs.planned_from)) + ' ' : '') + v : ''));
+    }
+    if (!seen.size) cy += row('Φορτηγό', 'ΠΡΟΣ ΑΝΑΘΕΣΗ');
+    h += sec('ΚΥΚΛΟΣ', cy);
+    // «invoiced» is not on the board: the delete list (dry run) says it when it is true
+    h += sec('ΤΙΜΟΛΟΓΗΣΗ', row('Τιμολογήθηκε', '—'));
+    return { html: h, chips, ref, client: any.client || '—', pal };
+  }
+  // «Τι θα γίνει» rows the screen adds from the board it holds (Figma 2011:10585–10600): each vehicle's x/33 after the
+  // order leaves, and each stop left with no leg (plan_h_stops_sweep drops it). The base's own list follows them.
+  function _deleteWhat(f, ctx) {
+    const out = ['σβήνεται 1 παραγγελία · ' + (ctx.client || '—') + (ctx.pal ? ' · ' + _pal(ctx.pal) + 'π' : '')];
+    const sides = new Map();
+    for (const x of f.legs) {
+      if (x.l.act !== 'load') continue;
+      const k = x.c.rt_id + '|' + x.s.side;
+      const p = sides.get(k) || { c: x.c, side: x.s.side, n: 0 };
+      p.n += Number(x.l.pallets) || 0;
+      sides.set(k, p);
+    }
+    for (const p of sides.values()) {
+      const before = _sidePal(_row(p.c.rt_id), p.side);
+      out.push((p.c.truck || p.c.partner || p.c.code || '—') + ' πάει ' + _pal(before) + ' → ' + _pal(Math.max(0, before - p.n)) + '/33');
+    }
+    const stops = new Set();
+    for (const x of f.legs) {
+      if (stops.has(x.s.stop_id) || !(x.s.legs || []).every((l) => l.nat_order_id === ctx.no)) continue;
+      stops.add(x.s.stop_id);
+      out.push('η στάση ' + (x.s.location || '—') + ' · ' + _wd(_ymdOf(x.s.planned_from)) + ' ' + _hm(x.s.planned_from) + '–' + _hm(x.s.planned_to)
+        + ' φεύγει από την ' + (x.s.side === 'ANODOS' ? 'άνοδο' : 'κάθοδο'));
+    }
+    return out;
+  }
+
+  WN5Act.orderCard = function orderCard(natOrderId) {
+    const no = _id(natOrderId);
+    const f = no ? _orderFacts(no) : { items: [], legs: [] };
+    if (!f.items.length && !f.legs.length) {
+      if (typeof toast === 'function') toast('Η παραγγελία #' + (no || '—') + ' είναι σε άλλη εβδομάδα — άνοιξε εκείνη την εβδομάδα', 'info');
+      return null;
+    }
+    const card = _cardHTML(no, f);
+    // 520 wide as the Figma card (2011:10503), the .wn5-dlg default — not the 800 «wide» shell
+    const d = _dlg('card', card.ref + ' · ' + card.client);
+    d.dlg.classList.add('wn5-ocard');
+    d.dlg.querySelector('.wi4-dlg-hd').insertAdjacentHTML('beforeend', card.chips);
+    d.body.innerHTML = card.html;
+    // «Επεξεργασία» opens the v5 national form (T20); delete is here and nowhere else (owner 19/10)
+    d.ft.innerHTML = '<button type="button" class="wi4-btn" data-act="edit" disabled title="Ανοίγει με τη φόρμα εθνικής v5">Επεξεργασία</button>'
+      + '<button type="button" class="wi4-btn wn5-danger-o" data-act="delete">Διαγραφή παραγγελίας</button>';
+    d.dlg.addEventListener('click', (ev) => {
+      const b = ev.target.closest('[data-act]');
+      if (!b || b.disabled || !_live()) return;
+      if (b.dataset.act === 'delete') WN5Act.deleteOrder(no, { host: d.msg, ref: card.ref, client: card.client, pal: card.pal });
+    });
+    _gate(d);
+    return d;
+  };
+
+  WN5Act.deleteOrder = async function deleteOrder(natOrderId, ctx) {
+    ctx = ctx || {};
+    const no = _id(natOrderId);
+    if (!no) return null;
+    const f = _orderFacts(no);
+    const out = await WN5Act.twoStep({
+      method: 'POST', path: '/plan/delete', body: { nat_order_id: no }, kind: 'delete', danger: true, verb: 'Διαγραφή', host: ctx.host,
+      title: 'Διαγραφή παραγγελίας ' + (ctx.ref || '#' + no) + ';',
+      // owner 21/10: «δεν έγινε», final, no restore (S-80)
+      intro: ['Η διαγραφή είναι οριστική: δεν υπάρχει επαναφορά. Αν έγινε λάθος, καταχωρείται νέα παραγγελία· το ίχνος μένει στο Audit Trail.'],
+      // 072 lists «invoiced» whenever national_orders.invoiced is true (plan_delete), so its absence from the list is
+      // the base saying «not invoiced» (Figma 2011:10600)
+      what: (list) => _deleteWhat(f, Object.assign({ no }, ctx)).concat(list.some((c) => c && c.kind === 'invoiced') ? [] : ['δεν είχε τιμολογηθεί · τίποτα στο ERP']),
+      // the reason is checked at execution only and is not part of the token (072:1951-1966)
+      field: { key: 'reason', label: 'Λόγος διαγραφής *' },
+    });
+    if (out) await _afterSave(out, 'Διαγράφηκε η παραγγελία ' + (ctx.ref || '#' + no), {});
+    return out;
+  };
+
+  // The distinct orders of a cycle on the loaded board: national orders and the international orders of its VS.
+  function _cycleOrderMaps(c) {
+    const nat = new Map(), vs = new Map();
+    for (const s of (c && c.stops) || []) for (const l of s.legs || []) {
+      if (l.nat_order_id != null) nat.set(l.nat_order_id, l);
+      else if (l.order_id != null) vs.set(l.order_id, l);
+    }
+    return { nat, vs };
+  }
+  // the number beside ✈ «Άνοιγμα παραγγελιών»; null (no number) when the cycle is not on the board
+  WN5Act.cycleOrderCount = function cycleOrderCount(rtId) {
+    const c = _cycle(_id(rtId));
+    if (!c) return null;
+    const { nat, vs } = _cycleOrderMaps(c);
+    return nat.size + vs.size;
+  };
+  // ✈ «Άνοιγμα παραγγελιών»: one national order = its card; else the list (a VS is the international's order)
+  WN5Act.cycleOrders = function cycleOrders(rtId) {
+    const c = _cycle(_id(rtId));
+    if (!c) { WN5Act.strip(_boardHost(), _clientErr('rt_missing', 'Ο κύκλος δεν είναι στο board που φορτώθηκε — ανανέωσε')); return null; }
+    const { nat, vs } = _cycleOrderMaps(c);
+    if (nat.size === 1 && !vs.size) return WN5Act.orderCard([...nat.keys()][0]);
+    const d = _dlg('card', 'Παραγγελίες · ' + (c.code || 'κύκλος'));
+    let h = '';
+    for (const [no, l] of nat) h += '<div class="wn5-cand" data-line="nat"><span class="wn5-cand-m"><b>' + _esc(l.reference || '#' + no) + '</b><span>' + _esc(l.client || '—') + '</span></span><span>εθνική</span><span></span>'
+      + '<button type="button" class="wi4-btn sm" data-act="card" data-no="' + no + '">Καρτέλα</button></div>';
+    for (const [, l] of vs) h += '<div class="wn5-cand" data-line="vs"><span class="wn5-cand-m"><b>' + _esc(l.reference || 'VS') + '</b><span>' + _esc(l.client || '—') + '</span></span>'
+      + '<span>διεθνής παραγγελία · αλλάζει από το Weekly Διεθνών</span><span></span><span></span></div>';
+    d.body.innerHTML = h || '<p class="wn5-none">Ο κύκλος δεν έχει παραγγελίες.</p>';
+    d.ft.innerHTML = '<button type="button" class="wi4-btn" data-act="cancel">Κλείσιμο</button>';
+    d.dlg.addEventListener('click', (ev) => {
+      const b = ev.target.closest('[data-act]');
+      if (!b || !_live()) return;
+      if (b.dataset.act === 'cancel') _close(d);
+      else if (b.dataset.act === 'card') WN5Act.orderCard(_id(b.dataset.no));
+    });
+    return d;
+  };
+
   // ═══ the actions of T12–T18 go above this line ═══
 
   WN5Act._kit = KIT;

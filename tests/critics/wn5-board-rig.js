@@ -1700,6 +1700,67 @@ async function scnLocal(browser, origin) {
 }
 SCN['local'] = scnLocal;
 
+// T18 — order card and «Διαγραφή παραγγελίας» (Figma 2011:10496): only in the card, a reason, the list, no restore.
+async function scnDelete(browser, origin) {
+  const scn = 'delete';
+  const C = bDlg('card'), D = bDlg('delete');
+  const P = '/plan/delete';
+  const dry = [200, { ok: true, op: 'plan_delete', dry_run: true, needs_confirm: true, confirm_token: 'tokD', consequences: [{ kind: 'invoiced', nat_order_id: 3111 }] }];
+  const noDry = (x) => { const o = Object.assign({}, x.body); delete o.dry_run; return JSON.stringify(o); };
+  { // A · dispatcher: the card, the list without invoice number, the reason, the execution (closed)
+    const { page, S } = await bOpen(browser, origin, { plan: { ['POST ' + P]: (e) => (e.body && e.body.dry_run === true ? dry : planErr(409, 'WRITES_CLOSED', 'writes_closed')) } });
+    await bMenu(page, 202, 'orders');
+    const card = await bText(page, C);
+    ok(scn, '✈ «Άνοιγμα παραγγελιών» of a one-order cycle opens the card: ΣΤΟΙΧΕΙΑ, ΣΤΑΣΕΙΣ, ΚΥΚΛΟΣ, ΤΙΜΟΛΟΓΗΣΗ',
+      ['ΣΤΟΙΧΕΙΑ', 'ΣΤΑΣΕΙΣ', 'ΚΥΚΛΟΣ', 'ΤΙΜΟΛΟΓΗΣΗ', 'N-T111', 'ΠΕΛΑΤΗΣ Ε'].every((w) => card.includes(w)), card.slice(0, 500));
+    ok(scn, 'delete lives only in the card: none on any stop of the board', (await bHas(page, `${C} [data-act="delete"]`))
+      && (await page.$$('#content .wn5-pt [data-act="delete"], #content .wn5-pt .wn5-x')).length === 0);
+    await bClick(page, `${C} [data-act="delete"]`);
+    const c = bCalls(S, 'POST', P);
+    ok(scn, 'the dry run is {nat_order_id:3111} + dry_run:true — no reason yet', c.length === 1 && c[0].body.dry_run === true && noDry(c[0]) === '{"nat_order_id":3111}', c.map((x) => x.raw));
+    const txt = await bText(page, D);
+    ok(scn, 'the list: «τιμολογήθηκε: το ERP κάνει το πιστωτικό», no invoice number, no «Επαναφορά»',
+      txt.includes('τιμολογήθηκε: το ERP κάνει το πιστωτικό') && !/τιμολογήθηκε \(/.test(txt) && !txt.includes('Επαναφορά'), txt.slice(0, 500));
+    ok(scn, 'an empty reason keeps «Διαγραφή» disabled (bad_input never reaches the Worker)', (await bOff(page, `${D} [data-act="confirm"]`)) === true);
+    await page.fill(`${D} textarea[data-field]`, 'rig λόγος').catch(() => {});
+    await bClick(page, `${D} [data-act="confirm"]`);
+    const c2 = bCalls(S, 'POST', P);
+    ok(scn, '«Διαγραφή» → {nat_order_id, reason, confirm_token}', c2.length === 2 && c2[1].raw === '{"nat_order_id":3111,"reason":"rig λόγος","confirm_token":"tokD"}', c2.map((x) => x.raw));
+    ok(scn, '409 writes_closed → the preview strip in the list', (await bText(page, `${D} .wn5-strip[data-kind="preview"]`)).includes('rig sentinel writes_closed'));
+    await page.context().close();
+  }
+  { // B · accountant presses it: the Worker's 403 in the card
+    const { page } = await bOpen(browser, origin, { role: 'accountant', plan: { ['POST ' + P]: () => planErr(403, 'FORBIDDEN', 'forbidden') } });
+    await bMenu(page, 202, 'orders');
+    await bClick(page, `${C} [data-act="delete"]`);
+    ok(scn, 'accountant: «Διαγραφή παραγγελίας» is there, the 403 strip in the card says the Worker text', (await bText(page, `${C} .wn5-strip[data-kind="forbidden"]`)).includes('rig sentinel forbidden'));
+    await page.context().close();
+  }
+  { // C · not a v5 order: the Worker's words
+    const { page } = await bOpen(browser, origin, { plan: { ['POST ' + P]: () => planErr(422, 'PLAN_RULE', 'order_not_v5') } });
+    await bMenu(page, 202, 'orders');
+    await bClick(page, `${C} [data-act="delete"]`);
+    ok(scn, 'order_not_v5 → refusal strip with the Worker text', (await bText(page, `${C} .wn5-strip[data-kind="refusal"]`)).includes('rig sentinel order_not_v5'));
+    await page.context().close();
+  }
+  { // D · a VS on the cycle is the international's order: listed, no card, no delete
+    const { page } = await bOpen(browser, origin);
+    await bMenu(page, 201, 'orders');
+    const txt = await bText(page, C);
+    ok(scn, 'a VS of the cycle is listed as the international order, without card or delete', txt.includes('VS-T201') && txt.includes('διεθνής παραγγελία') && !(await bHas(page, `${C} [data-act="delete"]`)), txt.slice(0, 300));
+    await page.context().close();
+  }
+  { // E · Ε-9: an order outside the loaded week is a line, not a card
+    const { page } = await bOpen(browser, origin);
+    await page.evaluate(() => { WN5Act.orderCard(999999); }).catch(() => {});
+    await page.waitForTimeout(200);
+    const ev = await bEv(page);
+    ok(scn, 'an order not on the loaded board → «σε άλλη εβδομάδα», no card (Ε-9)', ev.some((e) => e.startsWith('toast') && e.includes('σε άλλη εβδομάδα')) && !(await bHas(page, C)), ev);
+    await page.context().close();
+  }
+}
+SCN['delete'] = scnDelete;
+
 // ── scenarios end (each Task adds its own above this line) ──
 
 // ── fixture check (T4): plain node, no browser ──
