@@ -1083,6 +1083,67 @@ async function scnPlus(browser, origin) {
       && !!free && !!kept && !free.equals(kept), g && { room: g.room, pixelsDiffer: !!free && !!kept && !free.equals(kept) });
     ok(scn, 'the closing band carries «(owner 21/10)» and «(π.χ. VS-T118)», the first arriving VS of the list', !!g
       && g.band.includes('στη Βέροια (owner 21/10):') && g.band.includes('Φορτίο που φτάνει (π.χ. VS-T118) μπαίνει ολόκληρο'), g && g.band);
+    // fidelity T13 r4 (Figma 2011:10310-10314): the segmented at the base 12.5px (236px control at 1440 with DM Sans)
+    const seg = await page.$eval(`${D} .wn5-seg button`, (b) => getComputedStyle(b).fontSize).catch(() => null);
+    ok(scn, 'popover r4: the segmented buttons are 12.5px, as the base rule (Figma 2011:10310)', seg === '12.5px', seg);
+    // fidelity T13 r4 (2011:10435-10443): the read-only request greys place, window and «για την ΑΝΟΔΟ» (grey-3), not the line
+    const ro = await page.$eval(`${D} .wn5-pline.wn5-na`, (l) => {
+      const c = (e) => e && getComputedStyle(e).color;
+      return { op: getComputedStyle(l).opacity, place: c(l.querySelector('.wn5-pl-who b')), when: c(l.querySelector('.wn5-pl-when b')),
+        city: c(l.querySelector('[data-city]')), ro: c(l.querySelector('.wn5-pl-ro')) };
+    }).catch(() => null);
+    ok(scn, 'popover r4: read-only line opacity 1, place/window/«για την ΑΝΟΔΟ» grey-3, city grey-2', !!ro && ro.op === '1'
+      && ro.place === 'rgb(152, 162, 179)' && ro.when === ro.place && ro.ro === ro.place && ro.city === 'rgb(91, 107, 127)', ro);
+    // fidelity T13 r4 (2011:10373/10390): a group shows its count only from two lines up
+    const heads = await page.$$eval(`${D} .wn5-grp-h`, (hs) => hs.map((h) => h.innerText.replace(/\s+/g, ' ').trim())).catch(() => []);
+    const hd = (p) => heads.find((h) => h.startsWith(p)) || '';
+    ok(scn, 'popover r4: count only from 2 lines (VS-T118 · 3, stock · 2; VS-T125, ΕΘΝ and the one request without «· 1»)',
+      / · 3 · 27π$/.test(hd('VS-T118')) && / · 2 · 17π$/.test(hd('ΑΠΟΘΕΜΑ')) && !/ · 1 · /.test(hd('VS-T125')) && hd('ΕΘΝ · ΠΕΛΑΤΗΣ ΣΤ').endsWith('ΠΕΛΑΤΗΣ ΣΤ · 6π')
+      && !/ · 1 · /.test(hd('ΑΙΤΗΜΑΤΑ ΑΝΟΔΟΥ')) && hd('ΑΙΤΗΜΑΤΑ ΑΝΟΔΟΥ').includes('μόνο από'), heads);
+    ok(scn, 'popover r4: a VS that is not overdue has no «αργό VS» chip; a national picked up at its own place has no «φτάνει»',
+      !(await bHas(page, `${D} .wn5-grp-c`)) && !hd('ΕΘΝ').includes('φτάνει'), heads);
+    await page.context().close();
+  }
+  { // F · fidelity T13 r4: an overdue VS → grey «αργό VS» chip in its head (the base's flag, no time — Ε-35); a national
+    // whose pickup is Veroia → «· φτάνει hh:mm» (its load_from is then its time at Veroia, as a VS's)
+    const board = bBoard();
+    const h4401 = board.hub.find((h) => h.piece_id === 4401);
+    Object.assign(h4401, { overdue: true, nat_due_day: '2026-10-12' });   // 071 v_piece_state: nat_due_day < today
+    Object.assign(board.waiting.find((w) => w.piece_id === 4201), { position_location_id: 1, nat_from_location_id: 1 });
+    const { page } = await bOpen(browser, origin, { board, viewport: { width: 1440, height: 900 } });
+    await bClick(page, K201);
+    await shot(page, 'plus-kathodos-overdue-1440');
+    const heads = await page.$$eval(`${D} .wn5-grp-h`, (hs) => hs.map((h) => h.innerText.replace(/\s+/g, ' ').trim())).catch(() => []);
+    const chip = await page.$eval(`${D} .wn5-grp-c`, (c) => ({ t: c.textContent, bg: getComputedStyle(c).backgroundColor, head: c.closest('.wn5-grp-h').innerText }))
+      .catch(() => null);
+    ok(scn, 'overdue VS-T125: the «αργό VS» chip (chip grey) between its head and «· φτάνει 14:00 · 33π», only there', !!chip && chip.t === 'αργό VS'
+      && chip.bg === 'rgb(241, 245, 249)' && /^VS-T125 · ΠΕΛΑΤΗΣ Η\s*αργό VS\s*· φτάνει 14:00 · 33π$/.test(chip.head.replace(/\s+/g, ' ').trim())
+      && (await page.$$(`${D} .wn5-grp-c`)).length === 1, { chip, heads });
+    ok(scn, 'a national picked up at Veroia: «ΕΘΝ · ΠΕΛΑΤΗΣ ΣΤ · φτάνει 11:00 · 6π»', heads.includes('ΕΘΝ · ΠΕΛΑΤΗΣ ΣΤ · φτάνει 11:00 · 6π'), heads);
+    await page.context().close();
+  }
+  { // G · fidelity T13 r4, board at 1440: ΦΟΡΤΩΣΗ of RT-T204 «THESSALONIKI TEST» wraps at a word boundary, never mid-word
+    const { page } = await bOpen(browser, origin, { viewport: { width: 1440, height: 900 } });
+    const w = await page.evaluate(() => {
+      const cell = document.querySelector('.wn5-row[data-rt="204"] .wn5-fl');
+      if (!cell) return null;
+      const out = [];
+      for (const l1 of cell.querySelectorAll('.wi4-l1')) {
+        const tw = document.createTreeWalker(l1, NodeFilter.SHOW_TEXT);
+        for (let n = tw.nextNode(); n; n = tw.nextNode()) {
+          for (const m of n.data.matchAll(/\S+/g)) {
+            const r = document.createRange(); r.setStart(n, m.index); r.setEnd(n, m.index + m[0].length);
+            const lines = new Set([...r.getClientRects()].map((x) => Math.round(x.top)));
+            out.push({ word: m[0], lines: lines.size });
+          }
+        }
+      }
+      const c = cell.getBoundingClientRect();
+      const spill = [...cell.querySelectorAll('.wn5-pt')].some((p) => p.getBoundingClientRect().right > c.right + 0.5);
+      return { words: out, spill };
+    }).catch(() => null);
+    ok(scn, 'board 1440: RT-T204 ΦΟΡΤΩΣΗ «THESSALONIKI TEST» — no word on two lines, nothing past the cell', !!w && w.words.some((x) => x.word === 'THESSALONIKI')
+      && w.words.every((x) => x.lines === 1) && !w.spill, w);
     await page.context().close();
   }
 }

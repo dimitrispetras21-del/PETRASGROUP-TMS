@@ -921,6 +921,7 @@
       + '<span class="wn5-pcap">' + (it._ro ? '' : '<span class="wn5-pchips">' + _plusChips(st, it) + '</span>' + take) + miss + '</span>'
       + (it._ro ? '<span class="wn5-pl-ro">για την ΑΝΟΔΟ</span>' : '<button type="button" class="wi4-btn sm" data-act="save" data-piece="' + it.piece_id + '">Πρόσθεσε</button>') + '</div>';
   }
+  const _cnt = (items) => (items.length > 1 ? ' · ' + items.length : '');
   function _plusGroups(st) {
     const all = _copy(_allItems());
     const anodIt = all.filter((it) => !it.is_stock && _sideFor(it) === 'ANODOS');
@@ -932,21 +933,28 @@
         for (const it of kath.filter((x) => key(x) != null)) { const k = key(it); if (!m.has(k)) m.set(k, []); m.get(k).push(it); }
         for (const items of m.values()) {
           const vs = items[0].kind === 'vs_import';
-          const arr = vs && items[0].load_from ? ' · φτάνει ' + _hm(items[0].load_from) : '';
-          groups.push({ head: head(items[0]), sub: arr + ' · ' + items.length + ' · ' + _pal(_sum(items.map((x) => x.pallets))) + 'π', items });
+          // «φτάνει» = the time the load is at Veroia: a VS's load_from, and a national's only when its pickup IS Veroia
+          // (at the hub or positioned there). A national picked up at its own place has load_from = that pickup window,
+          // not an arrival, so it gets no «φτάνει» (Ε-35: no ETA the board does not carry).
+          const atV = vs || items[0].at_hub || (items[0].position_location_id != null && items[0].position_location_id === st.hub);
+          const arr = atV && items[0].load_from ? ' · φτάνει ' + _hm(items[0].load_from) : '';
+          // the grey «αργό VS» chip = the base's overdue of a waiting VS (Ε-35: the flag only, no time — plan_board
+          // carries none); the count only from two lines up (Figma 2011:10373 «· φτάνει 18:00 · 3π»)
+          const chip = vs && items.some((x) => x.overdue === true) ? 'αργό VS' : null;
+          groups.push({ head: head(items[0]), chip, sub: arr + _cnt(items) + ' · ' + _pal(_sum(items.map((x) => x.pallets))) + 'π', items });
         }
       };
       by((x) => (x.kind === 'vs_import' ? 'o' + x.order_id : null), (x) => (x.reference || 'VS') + ' · ' + (x.client || '—'));
       by((x) => (x.kind === 'national' ? 'n' + x.nat_order_id : null), (x) => 'ΕΘΝ · ' + (x.client || '—'));
       const stock = all.filter((it) => it.is_stock && it.at_hub);
-      if (stock.length) groups.push({ head: 'ΑΠΟΘΕΜΑ ΒΕΡΟΙΑΣ', sub: ' · ' + stock.length + ' · ' + _pal(_sum(stock.map((x) => x.pallets))) + 'π', items: stock });
-      if (anodIt.length) groups.push({ head: 'ΑΙΤΗΜΑΤΑ ΑΝΟΔΟΥ', sub: ' · ' + anodIt.length + ' · μόνο από το «+» της ΑΝΟΔΟΥ', items: anodIt.map((x) => Object.assign(x, { _ro: true })) });
+      if (stock.length) groups.push({ head: 'ΑΠΟΘΕΜΑ ΒΕΡΟΙΑΣ', sub: _cnt(stock) + ' · ' + _pal(_sum(stock.map((x) => x.pallets))) + 'π', items: stock });
+      if (anodIt.length) groups.push({ head: 'ΑΙΤΗΜΑΤΑ ΑΝΟΔΟΥ', sub: _cnt(anodIt) + ' · μόνο από το «+» της ΑΝΟΔΟΥ', items: anodIt.map((x) => Object.assign(x, { _ro: true })) });
     } else if (anodIt.length) {
       // Figma 2011:10446 «ΑΙΤΗΜΑΤΑ ΑΝΟΔΟΥ · ΔΙΕΘΝΩΝ · στη Βέροια ως Τετ 08:00»: «ΔΙΕΘΝΩΝ» only when every request is an
       // international's (order_id), the deadline is the earliest end of their windows at Veroia; never invented.
       const intl = anodIt.every((x) => x.order_id != null) ? ' · ΔΙΕΘΝΩΝ' : '';
       const by = anodIt.map((x) => x.deliver_to).filter((x) => x && !isNaN(new Date(x).getTime())).sort((a, b) => new Date(a) - new Date(b))[0];
-      groups.push({ head: 'ΑΙΤΗΜΑΤΑ ΑΝΟΔΟΥ' + intl, sub: by ? ' · στη Βέροια ως ' + _wd(_ymdOf(by)) + ' ' + _hm(by) : ' · ' + anodIt.length, items: anodIt });
+      groups.push({ head: 'ΑΙΤΗΜΑΤΑ ΑΝΟΔΟΥ' + intl, sub: by ? ' · στη Βέροια ως ' + _wd(_ymdOf(by)) + ' ' + _hm(by) : _cnt(anodIt), items: anodIt });
     }
     return groups;
   }
@@ -1004,7 +1012,7 @@
             + '<input class="wn5-hm" data-hub="from" placeholder="ΗΗ:ΛΛ" value="' + _esc(st.hubFrom) + '"> – <input class="wn5-hm" data-hub="to" placeholder="ΗΗ:ΛΛ" value="' + _esc(st.hubTo) + '"></div>';
         }
         if (!st.groups.length) h += '<p class="wn5-none">Καμία παράδοση σε αναμονή για αυτό το σκέλος.</p>';
-        for (const g of st.groups) h += '<div class="wn5-grp-h">' + _esc(g.head) + '<span class="wn5-grp-s">' + _esc(g.sub) + '</span></div>' + g.items.map((it) => _plusLineHTML(st, it)).join('');
+        for (const g of st.groups) h += '<div class="wn5-grp-h">' + _esc(g.head) + (g.chip ? '<span class="wn5-grp-c">' + _esc(g.chip) + '</span>' : '') + '<span class="wn5-grp-s">' + _esc(g.sub) + '</span></div>' + g.items.map((it) => _plusLineHTML(st, it)).join('');
         // Figma 2011:10022 (ΑΝΟΔΟΣ): «ΠΡΟΡΥΘΜΙΣΗ · Άδειες παλέτες · εθνική 1 € · Άνοιγμα» — the T20 form prefilled (Ε-39).
         // Drawn only once the form exists, so no dead line before T20.
         if (anod && typeof WN5Form !== 'undefined' && typeof WN5Form.openOrder === 'function') {

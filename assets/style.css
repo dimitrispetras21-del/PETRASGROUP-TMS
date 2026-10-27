@@ -9090,6 +9090,14 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 /* Stops and the end of the cycle WRAP (DESIGN.md #6: a place is never cut). The wi4 block cuts .wi4-l1/.wi4-l2 with a visible «…»
    (its one truncation rule); here that rule stays only on the 28px vehicle tile and the queue cards, whose full text is in title. */
 .wn5 :is(.wn5-pts, .wn5-end) :is(.wi4-l1, .wi4-l2) { white-space:normal; overflow:visible; text-overflow:clip; overflow-wrap:break-word; }
+/* ΦΟΡΤΩΣΗ (120px at 1440): the number and the place flow inline, so a place that does not fit beside its number
+   goes whole to the next line instead of breaking mid-word («THESSALONI/KI», DESIGN.md #6 forbids the «…» on a place).
+   The break after the number comes from the l1's leading space; break-word stays only for a word wider than the cell. */
+.wn5 .wn5-fl .wn5-pt { display:block; }
+.wn5 .wn5-fl .wn5-pt > .wi4-pt-n { display:inline-block; vertical-align:top; }
+.wn5 .wn5-fl .wn5-pt > .wi4-pt-n + .wi4-l1 { display:inline; }
+.wn5 .wn5-fl .wn5-pt > .wi4-pt-n + .wi4-l1::before { content:' '; }
+.wn5 .wn5-fl .wn5-pt > .wi4-l2 { display:block; }
 /* 164px: two stops + the 34px «+N» fit the 386px of a point column at 1920 (Figma: stops 178px apart, gap included). */
 .wn5 .wn5-pt { flex:0 1 164px; }
 /* A point with no number (a waiting VS, a single stop): its name starts at x0, flush with the numbers above — in the
@@ -9349,12 +9357,11 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5 .wn5-aspan.wn5-gspan { grid-column:9 / 12; }
 .wn5 .wn5-gspan > .wn5-gapbox { margin-right:0; }
 /* The popover (2011:10306 ΚΑΘΟΔΟΣ 800, 10447 ΑΝΟΔΟΣ 620): the 8px-radius frame with the deeper shadow, a 44px header
-   (title · meta · the 12px segmented at the right), no «×», no footer; the ΚΑΘΟΔΟΣ ends on its grey note band. */
+   (title · meta · the segmented at the right, 12.5px as the base rule: 236px, Figma 2011:10310), no «×», no footer; the ΚΑΘΟΔΟΣ ends on its grey note band. */
 .wn5-dlg.wn5-plusdlg { padding-bottom:0; border-color:var(--wi4-line-2); border-radius:8px; box-shadow:var(--wn5-dlg-shadow); }
 .wn5-dlg.wn5-plusdlg.wn5-plus-a { width:620px; padding-bottom:8px; }
 .wn5-plusdlg > .wi4-dlg-ft:empty { display:none; }
 .wn5-plusdlg .wi4-dlg-hd > .wn5-seg { flex:none; }
-.wn5-plusdlg .wn5-seg button { font-size:12px; }
 .wn5-plusdlg .wn5-dlg-msg { margin-top:0; margin-bottom:6px; }
 /* a line = the Δ1 row (40px, pl 24 / pr 12, edge to edge, its rule only): place (150) · window over pallets · chips
    pushed right against «Πρόσθεσε» (8px gaps) · the button. The window column is as wide as its text, never wrapped
@@ -9363,7 +9370,7 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-pline { display:grid; grid-template-columns:150px max-content minmax(0,1fr) auto; align-items:center; gap:8px; min-height:40px; margin:0 -16px;
   padding:3px 12px 3px 24px; box-sizing:border-box; border-bottom:1px solid var(--wi4-line); }
 .wn5-pline[hidden] { display:none; }
-.wn5-pline.wn5-na { opacity:.5; }
+.wn5-pline.wn5-na :is(.wn5-pl-who b, .wn5-pl-when b), .wn5-pline.wn5-na .wn5-pl-ro { color:var(--wi4-grey-3); }   /* read-only: place, window and «για την ΑΝΟΔΟ» greyed, city/pallets as usual (2011:10435-10443), no opacity on the line */
 .wn5-pline .wn5-pl-who b { font-size:12px; font-weight:500; color:var(--wi4-ink); }
 .wn5-pline .wn5-pl-when { white-space:nowrap; }
 .wn5-pline .wn5-pl-when b { color:var(--wi4-grey-1); }
@@ -9379,6 +9386,8 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
    8px for the value, and the default is the line's whole count (13, 20 …), which an input would clip to one digit. */
 .wn5-take .wn5-hm { width:23px; height:22px; padding:0 1px; text-align:center; font-size:11.5px; font-weight:600; color:var(--wi4-ink); border:1.5px solid var(--wi4-blue); border-radius:4px; }
 .wn5-grp-s { font-weight:400; letter-spacing:0; }
+/* «αργό VS» (Figma 2011:10372): the chip grey tile, 6px after the head, Medium grey-1 */
+.wn5-grp-h > .wn5-grp-c { display:inline-block; margin-left:6px; padding:0 6px; border-radius:4px; background:var(--wi4-chip); font-size:11px; line-height:18px; font-weight:500; color:var(--wi4-grey-1); }
 .wn5-leave { color:var(--wi4-amber); font-weight:600; }
 .wn5-late { color:var(--wi4-red); font-weight:600; }
 /* Figma 2011:10444/10445: two 15px lines of 11px grey-2 on the chip grey, px 14, no vertical padding, no rule (30px) */
