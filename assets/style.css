@@ -9330,17 +9330,49 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-wide .wn5-cand .wi4-btn.sm { height:22px; }
 /* ── T13: «+» of a side and its popover (Figma 2011:10022). The «+» shows on hover/focus (opacity, so it stays
    clickable for keyboard and rigs); «πόσες» only on stock lines. ── */
-.wn5-plus { width:18px; height:18px; margin-left:4px; padding:0; border:1px solid var(--wi4-info-line); border-radius:4px; background:var(--wi4-info-bg);
+.wn5-plus { flex:none; width:18px; height:18px; margin-left:4px; padding:0; border:1px solid var(--wi4-info-line); border-radius:4px; background:var(--wi4-info-bg);
   color:var(--wi4-info-ink); font:600 12px/1 'DM Sans',sans-serif; cursor:pointer; opacity:0; }
 .wn5-row:hover .wn5-plus, .wn5-plus:focus-visible { opacity:1; }
-.wn5-pline { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) 44px minmax(0,1.4fr) auto; align-items:center; gap:8px; min-height:34px; padding:3px 0; border-bottom:1px solid var(--wi4-line); }
+/* «27 [+]» on one line (Figma 2011:10089/10140): at 1440 ΠΑΛ. is 50px, and its 9px right padding wrapped the «+» under
+   the number; the «+» may use that padding. A side with no stops («Κενό γύρισμα», «Χωρίς κάθοδο», a partner's «Μόνο
+   κάθοδος») keeps its «+» in ΠΑΛ. too, outside the dashed box, where a two-digit count would end (9 + 16 + 4). */
+.wn5-row > :is(.wn5-kpal, .wn5-apal) { display:flex; align-items:center; padding-right:0; white-space:nowrap; }
+.wn5-row > .wn5-gpal { padding-left:29px; }
+.wn5 .wn5-kspan.wn5-gspan { grid-column:3 / 6; }
+.wn5 .wn5-aspan.wn5-gspan { grid-column:9 / 12; }
+.wn5 .wn5-gspan > .wn5-gapbox { margin-right:0; }
+/* The popover (2011:10306 ΚΑΘΟΔΟΣ 800, 10447 ΑΝΟΔΟΣ 620): the 8px-radius frame with the deeper shadow, a 44px header
+   (title · meta · the 12px segmented at the right), no «×», no footer; the ΚΑΘΟΔΟΣ ends on its grey note band. */
+.wn5-dlg.wn5-plusdlg { padding-bottom:0; border-color:var(--wi4-line-2); border-radius:8px; box-shadow:var(--wn5-dlg-shadow); }
+.wn5-dlg.wn5-plusdlg.wn5-plus-a { width:620px; padding-bottom:8px; }
+.wn5-plusdlg > .wi4-dlg-ft:empty { display:none; }
+.wn5-plusdlg .wi4-dlg-hd > .wn5-seg { flex:none; }
+.wn5-plusdlg .wn5-seg button { font-size:12px; }
+.wn5-plusdlg .wn5-dlg-msg { margin-top:0; margin-bottom:6px; }
+/* a line = the Δ1 row (40px, pl 24 / pr 12, edge to edge, its rule only): place (150) · window over pallets · chips
+   pushed right against «Πρόσθεσε» (8px gaps) · the button. The window column is as wide as its text, never wrapped
+   (the frame's 130 holds «Τρί 06:00–08:00»; an overdue «έπρεπε να φύγει …» would break into three lines in 130, and
+   the 620px ΑΝΟΔΟΣ needs the room for «φόρτωση Δευ, άλλη ημέρα» + «→ 17/33» on one line). */
+.wn5-pline { display:grid; grid-template-columns:150px max-content minmax(0,1fr) auto; align-items:center; gap:8px; min-height:40px; margin:0 -16px;
+  padding:3px 12px 3px 24px; box-sizing:border-box; border-bottom:1px solid var(--wi4-line); }
 .wn5-pline[hidden] { display:none; }
 .wn5-pline.wn5-na { opacity:.5; }
-.wn5-pcap { display:flex; flex-wrap:wrap; align-items:center; gap:4px; }
-.wn5-take { display:inline-flex; align-items:center; gap:4px; font-size:11.5px; color:var(--wi4-grey-1); }
+.wn5-pline .wn5-pl-who b { font-size:12px; font-weight:500; color:var(--wi4-ink); }
+.wn5-pline .wn5-pl-when { white-space:nowrap; }
+.wn5-pline .wn5-pl-when b { color:var(--wi4-grey-1); }
+.wn5-pline .wn5-miss { font-size:10.5px; font-weight:500; }
+.wn5-pl-ref::before { content:' · '; }
+.wn5-pl-who [data-city]:empty + .wn5-pl-ref::before { content:''; }
+.wn5-pcap { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:4px 8px; }
+.wn5-pchips { display:inline-flex; flex-wrap:wrap; justify-content:flex-end; gap:4px 8px; }
+.wn5-pline .wi4-btn.sm { height:22px; border-radius:4px; }
+.wn5-pl-ro { font-size:10.5px; color:var(--wi4-grey-2); text-align:right; }
+.wn5-take { display:inline-flex; align-items:center; gap:4px; font-size:10.5px; color:var(--wi4-grey-2); }
+.wn5-take .wn5-hm { width:24px; height:22px; padding:0 2px; text-align:center; font-size:11.5px; font-weight:600; border-color:var(--wi4-blue); border-radius:4px; }
 .wn5-grp-s { font-weight:400; letter-spacing:0; }
-.wn5-leave { color:var(--wi4-amber); }
+.wn5-leave { color:var(--wi4-amber); font-weight:500; }
 .wn5-late { color:var(--wi4-red); font-weight:600; }
+.wn5-dlg .wn5-grey.wn5-pnote { margin:0 -16px; padding:6px 16px 6px 14px; border-bottom:0; border-radius:0 0 8px 8px; font-size:10.5px; line-height:15px; }
 /* ── wn5 end ── */
 
 /* ═══ Παραγγελίες › Εβδομάδα v4 (.ow4) — modules/orders_week_view.js ═════════

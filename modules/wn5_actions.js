@@ -128,10 +128,12 @@
     window.removeEventListener('keydown', d.onKey, true);
     if (d.back.parentNode) d.back.parentNode.removeChild(d.back);
     if (_cur === d) _cur = null;
+    if (d.ro) d.ro.disconnect();
     if (d.onClose) { try { d.onClose(); } catch (e) { _log(e, 'WN5Act dialog close'); } }
   }
   // opts: { wide, anchor (a popover placed under it), ask (the two-step frame of Δ5: no «×», Άκυρο and the verb are
-  // its only buttons — Esc and a click outside still close it), onClose }
+  // its only buttons — Esc and a click outside still close it), pop (a popover with no «×»: Esc, a click outside),
+  // onClose }
   function _dlg(kind, title, opts) {
     opts = opts || {};
     WN5Act.closeAll();
@@ -145,7 +147,7 @@
     dlg.setAttribute('data-wn5', kind);
     dlg.tabIndex = -1;
     dlg.innerHTML = '<div class="wi4-dlg-hd"><span class="wi4-dlg-t"></span>'
-      + (opts.ask ? '' : '<button type="button" class="wi4-link wi4-dlg-x" aria-label="Κλείσιμο">×</button>') + '</div>'
+      + (opts.ask || opts.pop ? '' : '<button type="button" class="wi4-link wi4-dlg-x" aria-label="Κλείσιμο">×</button>') + '</div>'
       + '<div class="wn5-dlg-msg" role="status"></div><div class="wn5-dlg-b"></div><div class="wi4-dlg-ft"></div>';
     dlg.querySelector('.wi4-dlg-t').textContent = title;
     back.appendChild(dlg);
@@ -159,6 +161,9 @@
     back.addEventListener('mousedown', (ev) => { if (ev.target === back && !d.busy) _close(d); });
     const x = dlg.querySelector('.wi4-dlg-x');
     if (x) x.addEventListener('click', () => { if (!d.busy) _close(d); });
+    // A popover that grows after it was placed (a refusal strip, a redraw) is placed again, so its foot never ends
+    // below the window (T13: the 422 strip pushed a fixed popover 34px past a 900px viewport)
+    if (d.anchor && typeof ResizeObserver === 'function') { d.ro = new ResizeObserver(() => { if (!d.closed) _place(d); }); d.ro.observe(dlg); }
     _cur = d;
     return d;
   }
@@ -814,8 +819,15 @@
     const p = typeof PlanIds !== 'undefined' ? PlanIds.place(loc) : null;
     return p && p.name ? p.name : '—';
   }
-  // «φεύγει ως Δευ 12/10 22:00»: the day is the base's leave_by (decision 18); «22:00» is the screen's word (S-113)
-  const _leaveBy = (it) => (it.leave_by ? (it.overdue ? 'έπρεπε να φύγει ' : 'φεύγει ως ') + _dayShort(it.leave_by) + ' 22:00' + (it.overdue ? ' · καθυστέρηση' : '') : '');
+  // the city under the place (Figma 2011:10306): the catalogue's only (the board carries none); '' until it is read
+  function _placeCity(loc) {
+    try { const p = loc != null && typeof PlanIds !== 'undefined' ? PlanIds.place(loc) : null; return p && p.city ? p.city : ''; } catch (e) { return ''; }
+  }
+  const _wd = (ymd) => (ymd ? DOW[_dow(ymd)] : '—');
+  // «φεύγει ως 22:00» / «φεύγει ως Τετ 22:00»: the day is the base's leave_by (decision 18), named only when it is not
+  // the side's own day (Figma 2011:10350/10426); «22:00» is the screen's word (S-113). Overdue = «έπρεπε να φύγει …» in
+  // red (.wn5-late), which already says it is late: no « · καθυστέρηση» tail to break the 40px line.
+  const _leaveBy = (it, day) => (it.leave_by ? (it.overdue ? 'έπρεπε να φύγει ' : 'φεύγει ως ') + (it.leave_by === day ? '' : _wd(it.leave_by) + ' ') + '22:00' : '');
   function _takeOf(st, it) {
     // one decimal at most, more than 0, not above the stock (072:742-750 refuse the rest; the button stays off)
     const s = String(st.take[it.piece_id] == null ? it.pallets : st.take[it.piece_id]).trim().replace(',', '.');
@@ -835,26 +847,61 @@
     }
     return { method: 'POST', path: '/plan/legs', body: { pieces: [piece], target: { rt_id: st.rtId, side: st.side }, stops: r.stops } };
   }
+  const _plusWin = (st, it) => (st.side === 'ANODOS' ? [it.load_from, it.load_to] : [it.deliver_from, it.deliver_to]);
+  // What the line does to the side, as chips pushed against «Πρόσθεσε» (Figma 2011:10306): warnings first (amber), then
+  // x/33. Without overflow the rank rides in the x/33 chip («→ 33/33 · μπαίνει 3η»); over 33 it is its own chip. A load
+  // for another day than the side's stops says so INSTEAD of a rank, which would rank it among another day's stops
+  // (2011:10426); a VS that reaches Veroia at or after the side's loading window starts says when (2011:10382).
+  function _plusChips(st, it) {
+    const anod = st.side === 'ANODOS';
+    const win = _plusWin(st, it);
+    const n = st.pallets + (it.is_stock ? (_takeOf(st, it) || 0) : it.pallets);
+    const warn = [];
+    const day = _ymdOf(win[0]);
+    const other = !!day && st.sideDays.length > 0 && !st.sideDays.includes(day);
+    if (other) warn.push((anod ? 'φόρτωση ' : 'παράδοση ') + _wd(day) + ', άλλη ημέρα');
+    let late = false;
+    if (!anod && !it.is_stock && it.kind === 'vs_import' && it.load_from && st.hubWin && new Date(it.load_from) >= new Date(st.hubWin[0])) {
+      late = true;
+      warn.push('φτάνει ' + _hm(it.load_from) + ' · φόρτωση ' + _hm(st.hubWin[0]) + '–' + _hm(st.hubWin[1]));
+    }
+    let k = null;
+    try {
+      if (!other && typeof WN5L !== 'undefined' && win[0]) { const x = WN5L.stopRank(st.sideStops, win[0]); if (Number.isFinite(x) && x > 0) k = x; }
+    } catch (e) { _log(e, 'WN5Act plus stopRank'); }
+    let h = warn.map((w) => '<span class="wn5-cap over">' + _esc(w) + '</span>').join('');
+    if (n > 33) h += _capHTML(n) + (k ? '<span class="wn5-cap">μπαίνει ' + k + 'η</span>' : '');
+    else h += _capHTML(n, k ? (late ? ' · ' : ' · μπαίνει ') + k + 'η' : '');
+    return h;
+  }
+  // what a missing stop needs: the Veroia window is the user's field above the list (missing 'hub'); a place or a
+  // window that the board does not carry is the base's (Ε-26)
+  function _missText(st, miss) {
+    const own = miss.includes('hub') ? (st.side === 'ANODOS' ? 'συμπλήρωσε την άφιξη Βέροιας' : 'συμπλήρωσε το παράθυρο φόρτωσης Βέροιας') : '';
+    const base = miss.some((m) => m !== 'hub') ? 'λείπει ο προορισμός ή το παράθυρο από τη βάση' : '';
+    return [base, own].filter(Boolean).join(' · ');
+  }
   function _plusLineHTML(st, it) {
     const anod = st.side === 'ANODOS';
-    const win = anod ? [it.load_from, it.load_to] : [it.deliver_from, it.deliver_to];
-    const when = win[0] ? _dayShort(_ymdOf(win[0])) + ' ' + _hm(win[0]) + '–' + _hm(win[1]) : '—';
-    const add = it.is_stock ? (_takeOf(st, it) || 0) : it.pallets;
-    let rank = '';
-    try {
-      if (!it._ro && typeof WN5L !== 'undefined' && win[0]) { const k = WN5L.stopRank(st.sideStops, win[0]); if (Number.isFinite(k) && k > 0) rank = '<span class="wn5-cap">μπαίνει ' + k + 'η</span>'; }
-    } catch (e) { _log(e, 'WN5Act plus stopRank'); }
+    const win = _plusWin(st, it);
+    const when = win[0] ? _wd(_ymdOf(win[0])) + ' ' + _hm(win[0]) + '–' + _hm(win[1]) : '—';
+    const loc = anod ? it.position_location_id : it.nat_to_location_id;
+    const place = _placeName(loc), city = _placeCity(loc);
     const req = _plusReq(st, it);
-    const miss = req && req.missing ? '<span class="wn5-miss">λείπει ο προορισμός ή το παράθυρο από τη βάση</span>' : '';
-    const leave = it.is_stock ? '<span class="' + (it.overdue ? 'wn5-late' : 'wn5-leave') + '">' + _esc(_pal(it.pallets) + 'π · ' + _leaveBy(it)) + '</span>' : '';
+    const miss = req && req.missing ? '<span class="wn5-miss">' + _esc(_missText(st, req.missing)) + '</span>' : '';
+    const pal = it.is_stock
+      ? '<span class="' + (it.overdue ? 'wn5-late' : 'wn5-leave') + '">' + _esc(_pal(it.pallets) + 'π · ' + _leaveBy(it, st.day)) + '</span>'
+      : '<span>' + _esc(_pal(it.pallets)) + 'π</span>';
     const take = it.is_stock && !it._ro ? '<label class="wn5-take">πόσες <input class="wn5-hm" data-take="' + it.piece_id + '" inputmode="decimal" value="' + _esc(st.take[it.piece_id] == null ? it.pallets : st.take[it.piece_id]) + '"> από ' + _esc(_pal(it.pallets)) + '</label>' : '';
-    const s = _norm([it.client, it.reference, _placeName(anod ? it.position_location_id : it.nat_to_location_id)].join(' '));
-    return '<div class="wn5-pline' + (it._ro ? ' wn5-na' : '') + '" data-piece="' + it.piece_id + '" data-s="' + _esc(s) + '">'
-      + '<span class="wn5-cand-m"><b>' + _esc(it.client || '—') + '</b><span>' + _esc(_placeName(anod ? it.position_location_id : it.nat_to_location_id)) + '</span></span>'
-      + '<span class="wn5-cand-m"><span>' + _esc(when) + '</span>' + leave + '</span>'
-      + '<span>' + _esc(_pal(it.pallets)) + 'π</span>'
-      + '<span class="wn5-pcap">' + (it._ro ? '<span class="wn5-cand-m">για την ΑΝΟΔΟ</span>' : _capHTML(st.pallets + add) + ' ' + rank) + take + miss + '</span>'
-      + (it._ro ? '<span></span>' : '<button type="button" class="wi4-btn sm" data-act="save" data-piece="' + it.piece_id + '">Πρόσθεσε</button>') + '</div>';
+    const s = _norm([it.client, it.reference, place, city].join(' '));
+    // col 1 = the place, as the frame (the group header names the client); the client and the reference stay in the
+    // line's title and in its search text. ΑΝΟΔΟΣ adds its reference under the place (2011:10446 «Aspropyrgos · VS-140»).
+    return '<div class="wn5-pline' + (it._ro ? ' wn5-na' : '') + '" data-piece="' + it.piece_id + '" data-s="' + _esc(s) + '" title="' + _esc([it.client, it.reference].filter(Boolean).join(' · ')) + '">'
+      + '<span class="wn5-cand-m wn5-pl-who"><b>' + _esc(place) + '</b><span><span data-city="' + _esc(loc == null ? '' : loc) + '">' + _esc(city) + '</span>'
+      + (anod && it.reference ? '<span class="wn5-pl-ref">' + _esc(it.reference) + '</span>' : '') + '</span></span>'
+      + '<span class="wn5-cand-m wn5-pl-when"><b>' + _esc(when) + '</b>' + pal + '</span>'
+      + '<span class="wn5-pcap">' + (it._ro ? '' : '<span class="wn5-pchips">' + _plusChips(st, it) + '</span>' + take) + miss + '</span>'
+      + (it._ro ? '<span class="wn5-pl-ro">για την ΑΝΟΔΟ</span>' : '<button type="button" class="wi4-btn sm" data-act="save" data-piece="' + it.piece_id + '">Πρόσθεσε</button>') + '</div>';
   }
   function _plusGroups(st) {
     const all = _copy(_allItems());
@@ -877,7 +924,11 @@
       if (stock.length) groups.push({ head: 'ΑΠΟΘΕΜΑ ΒΕΡΟΙΑΣ', sub: ' · ' + stock.length + ' · ' + _pal(_sum(stock.map((x) => x.pallets))) + 'π', items: stock });
       if (anodIt.length) groups.push({ head: 'ΑΙΤΗΜΑΤΑ ΑΝΟΔΟΥ', sub: ' · ' + anodIt.length + ' · μόνο από το «+» της ΑΝΟΔΟΥ', items: anodIt.map((x) => Object.assign(x, { _ro: true })) });
     } else if (anodIt.length) {
-      groups.push({ head: 'ΑΙΤΗΜΑΤΑ ΑΝΟΔΟΥ', sub: ' · ' + anodIt.length, items: anodIt });
+      // Figma 2011:10446 «ΑΙΤΗΜΑΤΑ ΑΝΟΔΟΥ · ΔΙΕΘΝΩΝ · στη Βέροια ως Τετ 08:00»: «ΔΙΕΘΝΩΝ» only when every request is an
+      // international's (order_id), the deadline is the earliest end of their windows at Veroia; never invented.
+      const intl = anodIt.every((x) => x.order_id != null) ? ' · ΔΙΕΘΝΩΝ' : '';
+      const by = anodIt.map((x) => x.deliver_to).filter((x) => x && !isNaN(new Date(x).getTime())).sort((a, b) => new Date(a) - new Date(b))[0];
+      groups.push({ head: 'ΑΙΤΗΜΑΤΑ ΑΝΟΔΟΥ' + intl, sub: by ? ' · στη Βέροια ως ' + _wd(_ymdOf(by)) + ' ' + _hm(by) : ' · ' + anodIt.length, items: anodIt });
     }
     return groups;
   }
@@ -890,16 +941,26 @@
     const sd = _sideOfRow(r, side);
     const hub = _hubId();
     // the snapshot (rule 4): the cycle, the side's capacity, the waiting pieces as they are now
+    const sideStops = _copy((c.stops || []).filter((s) => s.side === side && s.location_id !== hub));
+    const hubStop = (c.stops || []).find((s) => s.side === side && s.location_id === hub) || null;
     const st = { rtId: c.rt_id, side, cyc: _copy(c), hub, day: (sd && sd.day) || (r && r.dayKey) || c.date_start,
       pallets: _sidePal(r, side), veroia: _veroiaOf(r, side), take: {}, hubFrom: '', hubTo: '', q: '', mode: 'wait', groups: [],
-      sideStops: _copy((c.stops || []).filter((s) => s.side === side && s.location_id !== hub)) };
+      sideStops, sideDays: [...new Set(sideStops.map((s) => s.stop_day || _ymdOf(s.planned_from)).filter(Boolean))],
+      hubWin: hubStop && hubStop.planned_from && hubStop.planned_to ? [hubStop.planned_from, hubStop.planned_to] : null };
     st.groups = _plusGroups(st);
-    st.hubStop = (c.stops || []).some((s) => s.side === side && s.location_id === hub);
+    st.hubStop = !!hubStop;
     const box = _cycText(c, r);
-    const title = side === 'ANODOS' ? 'Πρόσθεσε στην ΑΝΟΔΟ' : 'Πρόσθεσε στην ΚΑΘΟΔΟ';
+    const anod = side === 'ANODOS';
+    const title = anod ? 'Πρόσθεσε στην ΑΝΟΔΟ' : 'Πρόσθεσε στην ΚΑΘΟΔΟ';
     const meta = [box.l1.split(' · ')[0], _dayShort(st.day), st.veroia ? 'φόρτωση ' + st.veroia : null, _pal(st.pallets) + '/33'].filter(Boolean).join(' · ');
-    const d = _dlg('plus', title, { anchor: anchorEl, wide: true });
-    d.ft.innerHTML = '<button type="button" class="wi4-btn" data-act="cancel">Άκυρο</button>';
+    // A popover (Figma 2011:10306/10447): no «×» and no footer — Esc, a click outside or another «+» close it. The
+    // header holds title · meta and «Νέα παραγγελία | Από αναμονή», like Δ1 (T12): a redraw of the body keeps them.
+    const d = _dlg('plus', title, { anchor: anchorEl, wide: true, pop: true });
+    d.dlg.classList.add('wn5-plusdlg');
+    if (anod) d.dlg.classList.add('wn5-plus-a');
+    d.dlg.querySelector('.wi4-dlg-t').insertAdjacentHTML('afterend', '<span class="wn5-dlg-meta">· ' + _esc(meta) + '</span>'
+      + '<span class="wn5-seg" role="group"><button type="button" data-act="seg" data-v="new">Νέα παραγγελία</button>'
+      + '<button type="button" data-act="seg" data-v="wait" class="on">Από αναμονή</button></span>');
     const filter = () => {
       const q = st.q ? _norm(st.q) : '';
       for (const ln of d.body.querySelectorAll('.wn5-pline')) ln.hidden = !!q && !String(ln.dataset.s || '').includes(q);
@@ -913,26 +974,27 @@
       }
     };
     const draw = () => {
-      let h = '<div class="wn5-dlg-meta">' + _esc(meta) + '</div>'
-        + '<span class="wn5-seg" role="group"><button type="button" data-act="seg" data-v="new" class="' + (st.mode === 'new' ? 'on' : '') + '">Νέα παραγγελία</button>'
-        + '<button type="button" data-act="seg" data-v="wait" class="' + (st.mode === 'wait' ? 'on' : '') + '">Από αναμονή</button></span>';
+      for (const x of d.dlg.querySelectorAll('.wi4-dlg-hd .wn5-seg button')) x.classList.toggle('on', x.dataset.v === st.mode);
+      let h = '';
       if (st.mode === 'new') {
         h += '<p class="wn5-miss">Η σύντομη φόρμα ανοίγει με τη φόρμα εθνικής v5.</p>';
       } else {
-        h += '<input type="search" class="wn5-dq" data-q placeholder="Αναζήτηση στην αναμονή (πελάτης, σημείο, VS)" value="' + _esc(st.q) + '">';
+        // Figma 2011:10446: the ΑΝΟΔΟΣ popover has no search (its list is the requests of one side's day)
+        if (!anod) h += '<input type="search" class="wn5-dq" data-q placeholder="Αναζήτηση στην αναμονή (πελάτης, σημείο, VS)" value="' + _esc(st.q) + '">';
         if (!st.hubStop && st.groups.some((g) => g.items.some((it) => !it._ro && _needs(it, false, hub).some((n) => n.hub)))) {
-          h += '<div class="wn5-hubwin"><span>' + (side === 'ANODOS' ? 'Άφιξη Βέροιας *' : 'Παράθυρο φόρτωσης Βέροιας *') + '</span>'
+          h += '<div class="wn5-hubwin"><span>' + (anod ? 'Άφιξη Βέροιας *' : 'Παράθυρο φόρτωσης Βέροιας *') + '</span>'
             + '<input class="wn5-hm" data-hub="from" placeholder="ΗΗ:ΛΛ" value="' + _esc(st.hubFrom) + '"> – <input class="wn5-hm" data-hub="to" placeholder="ΗΗ:ΛΛ" value="' + _esc(st.hubTo) + '"></div>';
         }
         if (!st.groups.length) h += '<p class="wn5-none">Καμία παράδοση σε αναμονή για αυτό το σκέλος.</p>';
         for (const g of st.groups) h += '<div class="wn5-grp-h">' + _esc(g.head) + '<span class="wn5-grp-s">' + _esc(g.sub) + '</span></div>' + g.items.map((it) => _plusLineHTML(st, it)).join('');
         // Figma 2011:10022 (ΑΝΟΔΟΣ): «ΠΡΟΡΥΘΜΙΣΗ · Άδειες παλέτες · εθνική 1 € · Άνοιγμα» — the T20 form prefilled (Ε-39).
         // Drawn only once the form exists, so no dead line before T20.
-        if (side === 'ANODOS' && typeof WN5Form !== 'undefined' && typeof WN5Form.openOrder === 'function') {
+        if (anod && typeof WN5Form !== 'undefined' && typeof WN5Form.openOrder === 'function') {
           h += '<div class="wn5-grp-h">ΠΡΟΡΥΘΜΙΣΗ</div><div class="wn5-cand" data-line="preset"><span></span><span class="wn5-cand-m"><b>Άδειες παλέτες · εθνική 1 €</b>'
             + '<span>πελάτης, σημείο, ποσότητα</span></span><span></span><button type="button" class="wi4-btn sm" data-act="preset">Άνοιγμα</button></div>';
         }
-        h += '<p class="wn5-none">Προειδοποίηση, όχι άρνηση. Ποσότητα («πόσες») μόνο για απόθεμα που είναι ήδη στη Βέροια· φορτίο που φτάνει μπαίνει ολόκληρο, για σπάσιμο → Πίνακας Βέροιας «Σπάσε…».</p>';
+        // the closing grey band of the ΚΑΘΟΔΟΣ frame (2011:10444); the ΑΝΟΔΟΣ frame has none (it has no stock)
+        if (!anod) h += '<p class="wn5-grey wn5-pnote">Προειδοποίηση, όχι άρνηση. Ποσότητα («πόσες») μόνο για απόθεμα που είναι ήδη στη Βέροια: το υπόλοιπο μένει απόθεμα. Φορτίο που φτάνει μπαίνει ολόκληρο· για σπάσιμο → Πίνακας Βέροιας «Σπάσε…».</p>';
       }
       d.body.innerHTML = h;
       filter();
@@ -943,8 +1005,7 @@
       const b = ev.target.closest('[data-act]');
       if (!b || b.disabled || !_live()) return;
       const a = b.dataset.act;
-      if (a === 'cancel') { if (!d.busy) _close(d); }
-      else if (a === 'seg') {
+      if (a === 'seg') {
         st.mode = b.dataset.v === 'new' ? 'new' : 'wait';
         if (st.mode === 'new' && typeof WN5Form !== 'undefined' && typeof WN5Form.openOrder === 'function') {
           _close(d);
@@ -964,16 +1025,35 @@
     d.dlg.addEventListener('input', (ev) => {
       const el = ev.target;
       if (el.matches('[data-q]')) { st.q = el.value; filter(); return; }
-      if (el.matches('[data-hub]')) { if (el.dataset.hub === 'from') st.hubFrom = el.value; else st.hubTo = el.value; }
-      else if (el.matches('[data-take]')) {
+      if (el.matches('[data-hub]')) {
+        if (el.dataset.hub === 'from') st.hubFrom = el.value; else st.hubTo = el.value;
+        // the «λείπει …» of each line follows the field (it said «συμπλήρωσε …» a moment ago)
+        for (const ln of d.body.querySelectorAll('.wn5-pline[data-piece]')) {
+          const it = byId(_id(ln.dataset.piece)), m = ln.querySelector('.wn5-miss'), req = it && _plusReq(st, it);
+          if (m && !(req && req.missing)) m.remove();
+          else if (m) m.textContent = _missText(st, req.missing);
+        }
+      } else if (el.matches('[data-take]')) {
         const pid = _id(el.dataset.take); st.take[pid] = el.value;
-        const it = byId(pid), cap = el.closest('.wn5-pline').querySelector('.wn5-cap');
-        if (it && cap) cap.outerHTML = _capHTML(st.pallets + (_takeOf(st, it) || 0));
+        const it = byId(pid), chips = el.closest('.wn5-pline').querySelector('.wn5-pchips');
+        if (it && chips) chips.innerHTML = _plusChips(st, it);
       } else return;
       d.refresh();
     });
     draw();
     _gate(d);
+    // the city under each place comes from the catalogue (Ε-2): filled in place when it is read, never a redraw (a
+    // typed «πόσες» or search stays as it is); without the catalogue the line keeps the place alone
+    if (typeof PlanIds !== 'undefined') {
+      PlanIds.load().then((res) => {
+        if (!res || !res.ok || d.closed) return;
+        for (const x of d.body.querySelectorAll('[data-city]')) { const loc = _id(x.dataset.city); if (loc) x.textContent = _placeCity(loc); }
+        for (const ln of d.body.querySelectorAll('.wn5-pline[data-piece]')) {
+          const it = byId(_id(ln.dataset.piece));
+          if (it) { const loc = st.side === 'ANODOS' ? it.position_location_id : it.nat_to_location_id; ln.dataset.s = _norm([it.client, it.reference, _placeName(loc), _placeCity(loc)].join(' ')); }
+        }
+      }, (e) => _log(e, 'WN5Act plus PlanIds'));
+    }
     return d;
   };
   ACTS.plus = (el) => { const row = el.closest('.wn5-row[data-rt]'); WN5Act.plus(_id(row && row.dataset.rt), el.dataset.side, el); };

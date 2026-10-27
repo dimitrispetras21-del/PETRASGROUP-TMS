@@ -466,7 +466,9 @@ function _rowHTML(r, m, no) {
 }
 function _kathHTML(r, m, ok) {
   const s = r.kath;
-  if (!s) return r.kind === 'cycle' ? `<div class="wn5-kspan"><span class="wn5-gapbox">Χωρίς κάθοδο${_plusHTML(r, 'KATHODOS')}</span></div>` : '<div class="wn5-kspan"><span class="wn5-none">—</span></div>';
+  // «Χωρίς κάθοδο»: the dashed slot ends where ΠΑΛ. begins, and the «+» stays in the side's ΠΑΛ. cell, outside the box,
+  // where every row has it (Figma 2011:10217)
+  if (!s) return r.kind === 'cycle' ? `<div class="wn5-kspan wn5-gspan"><span class="wn5-gapbox">Χωρίς κάθοδο</span></div><div class="wn5-kpal wn5-gpal">${_plusHTML(r, 'KATHODOS')}</div>` : '<div class="wn5-kspan"><span class="wn5-none">—</span></div>';
   // The head of the side (its day, «Βέροια», the Veroia window) dims with the day of its loading stop.
   const hd = _dc(ok && s.headDim);
   const toDay = s.toDay && s.toDay !== s.day ? `<span class="wn5-dc2${hd}">→ ${_esc(_dl(s.toDay))}</span>` : '';
@@ -490,8 +492,9 @@ function _anodHTML(r, m, ok) {
     const cut = par ? -1 : s.gap.text.indexOf(' · ');
     // One inner run: the slot is a flex box, and a bare « · …» beside the span would be its own item and lose its space.
     const txt = cut > 0 ? `<span><span class="wn5-gaph">${_esc(s.gap.text.slice(0, cut))}</span>${_esc(s.gap.text.slice(cut))}</span>` : _esc(s.gap.text);
-    // a partner's «Μόνο κάθοδος» is a fact, not a slot: no «+» there
-    return `<div class="wn5-aspan"><span class="${par ? 'wn5-gaptxt' : 'wn5-gapbox'}">${txt}${par ? '' : _plusHTML(r, 'ANODOS')}</span></div>`;
+    // a partner's «Μόνο κάθοδος» is a fact, not a slot (plain text), yet its ΑΝΟΔΟΣ still has the side's «+» in ΠΑΛ., as
+    // every side of a cycle row (Figma 2011:10299 row 4); the «+» sits outside the dashed box (2011:10217)
+    return `<div class="wn5-aspan wn5-gspan"><span class="${par ? 'wn5-gaptxt' : 'wn5-gapbox'}">${txt}</span></div><div class="wn5-apal wn5-gpal">${_plusHTML(r, 'ANODOS')}</div>`;
   }
   const n = s.from.length;
   const hd = _dc(ok && s.headDim);
