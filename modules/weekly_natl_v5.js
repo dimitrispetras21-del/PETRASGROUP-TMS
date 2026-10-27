@@ -478,7 +478,7 @@ function _kathHTML(r, m, ok) {
   return `<div class="wn5-kd">${_chipHTML(r, 'KATHODOS', `wi4-dc ${_chipCls(s.day, m.today)}${hd}`, _dl(s.day))}${toDay}${ref}</div>`
     + `<div class="wn5-fl"${_legAttr(r, 'KATHODOS')}>${_flHTML(s, ok, hd)}</div>`
     + `<div class="wn5-kto"${_legAttr(r, 'KATHODOS')}>${_ptsHTML(s.to, ok)}</div>`
-    + `<div class="wn5-kpal"${_legAttr(r, 'KATHODOS')}>${_palHTML(s)}${_plusHTML(r, 'KATHODOS')}</div>`;
+    + `<div class="wn5-kpal"${_legAttr(r, 'KATHODOS')}>${_palHTML(s)}${_plusHTML(r, 'KATHODOS')}${_prtHTML(r, 'KATHODOS')}</div>`;
 }
 function _anodHTML(r, m, ok) {
   const s = r.anod;
@@ -499,7 +499,7 @@ function _anodHTML(r, m, ok) {
   const n = s.from.length;
   const hd = _dc(ok && s.headDim);
   const end = r.end ? `<span class="wn5-end${_dc(ok && r.end.dim)}"><span class="wi4-l1">Βέροια<span class="wn5-endx"> · τέλος κύκλου</span></span><span class="wi4-l2">ως ${_esc(_dow(L().athensDay(r.end.by)))} ${_esc(L().athensTime(r.end.by))}</span></span>` : '';
-  return `<div class="wn5-ad">${_chipHTML(r, 'ANODOS', `wi4-dc ${_chipCls(s.day, m.today)}${hd}`, _dl(s.day))}<span class="wn5-dc2${hd}">${n} ${n === 1 ? 'φορτίο' : 'φορτία'}</span></div>`
+  return `<div class="wn5-ad">${_prtHTML(r, 'ANODOS')}${_chipHTML(r, 'ANODOS', `wi4-dc ${_chipCls(s.day, m.today)}${hd}`, _dl(s.day))}<span class="wn5-dc2${hd}">${n} ${n === 1 ? 'φορτίο' : 'φορτία'}</span></div>`
     + `<div class="wn5-afl"${_legAttr(r, 'ANODOS')}>${_ptsHTML(s.from, ok)}</div>`
     + `<div class="wn5-ato"${_legAttr(r, 'ANODOS')}>${_ptsHTML(s.to, ok)}${end}</div>`
     + `<div class="wn5-apal"${_legAttr(r, 'ANODOS')}>${_palHTML(s)}${_plusHTML(r, 'ANODOS')}</div>`;
@@ -576,6 +576,15 @@ function _leg(ev, rtId, side) {
 function _plusHTML(r, side) {
   if (r.kind !== 'cycle' || r.rtId == null) return '';
   return `<button type="button" class="wn5-plus" data-act="plus" data-side="${side === 'ANODOS' ? 'ANODOS' : 'KATHODOS'}" aria-label="Πρόσθεσε στην ${side === 'ANODOS' ? 'ΑΝΟΔΟ' : 'ΚΑΘΟΔΟ'}" title="Πρόσθεσε">+</button>`;
+}
+// T23: the printer on hover of a side with stops (Figma 2011:9284 ΚΑΘΟΔΟΣ / 2011:9288 ΑΝΟΔΟΣ): the driver sheet of that
+// side + its WhatsApp text. In the gap beside the side (CSS), so it moves nothing; never on an empty side (no stop to
+// print) nor on an unassigned row (no cycle). icon() is absent in the node tests of _html: the button stays, empty.
+function _prtHTML(r, side) {
+  if (r.kind !== 'cycle' || r.rtId == null) return '';
+  const sd = side === 'ANODOS' ? 'ANODOS' : 'KATHODOS';
+  const svg = typeof icon === 'function' ? icon('printer', 12, '', 2) : '';
+  return `<button type="button" class="wn5-prt" data-act="sheet" data-side="${sd}" title="Φύλλο οδηγού · ${sd === 'KATHODOS' ? 'Κάθοδος' : 'Άνοδος'}" aria-label="Φύλλο οδηγού" onclick="event.stopPropagation();WN5Sheet.print(${_id(r.rtId)}, '${sd}')">${svg}</button>`;
 }
 function _palHTML(s) {
   return `<span class="wi4-pal${s.over ? ' over' : ''}"${s.over ? ` title="υπέρβαση ${_esc(_pal(s.over))}"` : ''}>${_esc(String(s.pallets).replace('.', ','))}</span>`;
@@ -937,6 +946,12 @@ const WN5 = {
     { id: 'local', order: 40, label: 'Φόρτωση με τοπικό', sub: 'οδηγός · ημέρα · στάση ›', run: (rtId) => WN5Act.local(null, rtId) },
     // T14: the KATHODOS deliveries go back to Veroia for splitting (S-69, Figma 2011:8858 note)
     { id: 'split-hub', order: 50, label: 'Σπάσιμο παραγγελιών', sub: '→ Βέροια', run: (rtId) => WN5Act.move({ rt_id: rtId, side: 'KATHODOS' }, { direct: 'wait' }) },
+    // T23: one click = the A4 to print + the same as a WhatsApp text in the clipboard (Figma 2011:10998).
+    // ONE «Εκτύπωση / WhatsApp ›» line with the submenu of Figma 2011:8858: «Κάθοδος · Άνοδος · Όλο το δρομολόγιο».
+    { id: 'sheet', order: 60, label: 'Εκτύπωση / WhatsApp', children: [
+      { id: 'sheet-k', label: 'Κάθοδος', run: (rtId) => WN5Sheet.print(rtId, 'KATHODOS') },
+      { id: 'sheet-a', label: 'Άνοδος', run: (rtId) => WN5Sheet.print(rtId, 'ANODOS') },
+      { id: 'sheet-all', label: 'Όλο το δρομολόγιο', run: (rtId) => WN5Sheet.print(rtId, 'ALL') }] },
     { id: 'plates', order: 70, label: 'Αντιγραφή πινακίδων', run: (rtId) => copyPlatesOf(rtId) },
     // T15: last and red (Figma 2011:8858); owner + dispatcher on the Worker, but visible to all (Δ12 tile 8)
     { id: 'clear', order: 90, label: 'Καθαρισμός ανάθεσης', sub: 'κάθοδος + άνοδος', danger: true, run: (rtId) => WN5Act.clear(rtId) },

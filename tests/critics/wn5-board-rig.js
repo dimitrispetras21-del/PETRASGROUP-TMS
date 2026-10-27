@@ -1966,6 +1966,54 @@ async function scnVeroia(browser, origin) {
 SCN['veroia'] = scnVeroia;
 
 
+// T23 — ✈ «Εκτύπωση / WhatsApp › Κάθοδος»: the A4 of the KATHODOS only, the WhatsApp text in the clipboard.
+// Uses the batch-C kit for its synthetic week and its /plan/* stub (tests/critics/wn5-rig-kit.js).
+const KC = require('./wn5-rig-kit.js');
+async function scnSheet(browser, origin) {
+  const scn = 'sheet';
+  const { page, S } = await KC.openApp(browser, origin, { clipboard: true });
+  // the print window is a new page: the kit's page.route does not reach it — nothing leaves the machine from it either
+  await page.context().route((u) => !u.href.startsWith(origin) && !u.href.includes(KC.HOST) && !u.href.startsWith('about:'), (route) => route.abort());
+  const popErr = [];
+  page.context().on('page', (p) => { p.on('pageerror', (e) => popErr.push(String(e).slice(0, 300))); p.on('console', (m) => { if (m.type() === 'error' && !/^Failed to load resource/.test(m.text())) popErr.push(m.text().slice(0, 300)); }); });
+  if (!ok(scn, 'WN5Sheet present', await KC.has(page, 'WN5Sheet'))) { await page.context().close(); return; }
+  // T23 adds the last ✈ line: from here the menu is the whole approved list of Figma 2011:8858, in its order, one
+  // line per item («›» lines with their submenus, the same label never twice)
+  const labels = await page.evaluate(() => (WN5._menuItems ? WN5._menuItems(101) : []).map((x) => x.label + (x.children.length ? ' › ' + x.children.join(' · ') : ''))).catch(() => []);
+  ok(scn, '✈ labels = Figma 2011:8858, in order', JSON.stringify(labels) === JSON.stringify(['Άνοιγμα παραγγελιών', 'Ανάθεση / αλλαγή φορτηγού ή συνεργάτη',
+    'Νέα παραγγελία σε αυτό το σκέλος › Κάθοδος · Άνοδος', 'Φόρτωση με τοπικό', 'Σπάσιμο παραγγελιών', 'Εκτύπωση / WhatsApp › Κάθοδος · Άνοδος · Όλο το δρομολόγιο',
+    'Αντιγραφή πινακίδων', 'Καθαρισμός ανάθεσης']), labels);
+  await page.click('#content .wn5-row[data-rt="101"] .wi4-plane').catch(() => {});
+  const nOrders = await page.$eval('#wn5-menu [data-item="orders"] .wn5-m-n', (e) => e.textContent).catch(() => null);
+  ok(scn, '«Άνοιγμα παραγγελιών» carries the number of the cycle\'s orders', nOrders !== null && /^\d+$/.test(nOrders), nOrders);
+  await page.click('#wn5-menu [data-item="sheet"]').catch(() => {});
+  const item = await page.$eval('#wn5-menu [data-sub="sheet"]', (e) => !e.hidden && !!e.querySelector('[data-item="sheet-k"]')).catch(() => false);
+  ok(scn, '✈ «Εκτύπωση / WhatsApp ›» opens its submenu with «Κάθοδος»', item === true);
+  const [pop] = await Promise.all([
+    page.waitForEvent('popup', { timeout: 8000 }).catch(() => null),
+    item ? page.click('#wn5-menu [data-item="sheet-k"]') : page.evaluate(() => WN5Sheet.print(101, 'KATHODOS')),
+  ]);
+  ok(scn, 'a print window opened', !!pop);
+  if (pop) {
+    await pop.waitForLoadState().catch(() => {});
+    await pop.waitForSelector('.s-stop', { state: 'attached', timeout: 5000 }).catch(() => {});   // written by document.write after open
+    const a4 = await pop.evaluate(() => ({ sides: [...document.querySelectorAll('.s-stop')].map((x) => x.dataset.side), body: document.body.innerText }));
+    ok(scn, 'the A4 holds the KATHODOS stops only', a4.sides.length === 3 && a4.sides.every((s) => s === 'KATHODOS'), a4.sides);
+    ok(scn, 'Veroia only as «Αποθήκη Βέροιας», no price', a4.body.includes('Αποθήκη Βέροιας') && !a4.body.includes('ΒΕΡΟΙΑ TEST') && !/€/.test(a4.body));
+    await pop.close();
+  }
+  await page.waitForTimeout(500);
+  const clip = await page.evaluate(() => navigator.clipboard.readText()).catch(() => '');
+  ok(scn, 'the WhatsApp text is in the clipboard, KATHODOS only', clip.startsWith('*TST-2104 · TRL-5102 · Driver Test 01*') && clip.includes('*ΚΑΘΟΔΟΣ*') && !clip.includes('*ΑΝΟΔΟΣ*'), clip.slice(0, 200));
+  ok(scn, 'read only: no /plan write', !S.plan.some((x) => x.m !== 'GET'), S.plan.filter((x) => x.m !== 'GET').map((x) => x.m + ' ' + x.path));
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  // the A4 window and the board page: no console error (aborted external fonts aside, «Failed to load resource»)
+  const con = S.console.filter((m) => !/^Failed to load resource/.test(m)).concat(popErr);
+  ok(scn, 'no console errors (board + print window)', !con.length, con);
+  await page.context().close();
+}
+SCN['sheet'] = scnSheet;
+
 // ── scenarios end (each Task adds its own above this line) ──
 
 // ── fixture check (T4): plain node, no browser ──
