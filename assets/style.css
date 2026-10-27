@@ -9268,10 +9268,13 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
    board class has the same name (.wn5-miss is the board's Ε-26 line; the search field is .wn5-dq, since .wn5-q is
    the ΕΠΟΜΕΝΑ band). ── */
 .wn5-dlg-meta { color:var(--wi4-grey-2); }
+/* header row (Figma Δ1): title · meta inline (it takes the free width, so the filter and × sit at the right) */
+.wn5-dlg .wi4-dlg-hd > .wn5-dlg-meta { flex:1; min-width:0; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* the band runs edge to edge under the header (the dialog's 16px padding), grey with a rule above and below */
 .wn5-grey { padding:6px 10px; border-radius:6px; background:var(--wi4-chip); color:var(--wi4-grey-1); }
+.wn5-dlg .wn5-grey { margin:0 -16px; padding:7px 16px; border-radius:0; border-top:1px solid var(--wi4-line); border-bottom:1px solid var(--wi4-line); font-size:12px; }
 .wn5-dlg .wn5-miss { color:var(--wi4-amber-ink); }
-.wn5-tools { display:flex; align-items:center; gap:10px; }
-.wn5-dlg .wn5-dq { flex:1; min-width:0; height:28px; padding:0 8px; border:1px solid var(--wi4-ctl); border-radius:6px; font:inherit; }
+.wn5-dlg .wn5-dq { width:290px; max-width:100%; height:28px; padding:0 8px; border:1px solid var(--wi4-ctl); border-radius:6px; font:inherit; }
 .wn5-seg { display:inline-flex; border:1px solid var(--wi4-ctl); border-radius:6px; background:var(--wi4-tabs-bg); }
 .wn5-seg button { border:none; background:none; padding:4px 10px; font-size:12px; cursor:pointer; border-radius:5px; }
 .wn5-seg button.on { background:var(--surface-card); box-shadow:inset 0 0 0 1px var(--wi4-slot); font-weight:600; }
@@ -9279,7 +9282,8 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-hubwin small { color:var(--wi4-grey-2); }
 .wn5-hm { width:64px; height:26px; padding:0 6px; border:1px solid var(--wi4-ctl); border-radius:5px; font:inherit; }
 .wn5-grp-h { font-size:10.5px; font-weight:600; letter-spacing:.42px; color:var(--wi4-grey-2); margin-top:6px; }
-.wn5-cand { display:grid; grid-template-columns:176px minmax(0,1fr) auto auto; align-items:center; gap:8px; min-height:36px; padding:3px 0; border-bottom:1px solid var(--wi4-line); }
+.wn5-grp-h > span { font-weight:400; letter-spacing:0; }
+.wn5-cand { display:grid; grid-template-columns:176px minmax(200px,1fr) auto auto; align-items:center; gap:8px; min-height:36px; padding:3px 0; border-bottom:1px solid var(--wi4-line); }
 .wn5-cand[hidden] { display:none; }
 .wn5-cand.wn5-na { opacity:.5; }
 .wn5-cand-m { display:flex; flex-direction:column; font-size:11.5px; color:var(--wi4-grey-2); }
@@ -9288,6 +9292,7 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-cap.over { background:var(--wi4-amber-bg); border-color:var(--wi4-amber-line); color:var(--wi4-amber); }
 .wn5-flag-red { font-size:11px; padding:2px 6px; border-radius:4px; background:var(--wi4-red-bg); color:var(--wi4-red); }
 .wn5-rate { width:66px; height:22px; padding:0 6px; border:1px solid var(--wi4-blue); border-radius:4px; font:inherit; }
+.wn5-dlg .wn5-nw { white-space:nowrap; }   /* the rate field and its «€» never part */
 .wn5-more { display:flex; flex-wrap:wrap; gap:8px; align-items:flex-end; padding:6px 0 8px 184px; }
 /* ── wn5 end ── */
 

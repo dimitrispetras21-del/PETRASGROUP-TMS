@@ -492,7 +492,8 @@
       l1: t && t.line1 ? t.line1 : (par ? (c.partner || '—') : ([c.truck, c.trailer].filter(Boolean).join(' · ') || 'ΠΡΟΣ ΑΝΑΘΕΣΗ')),
       l2: t && t.line2 ? t.line2 : (par ? '' : (c.driver || '')) };
   }
-  const _boxHTML = (x) => '<div class="wi4-box ' + x.cls + '"><span class="wi4-l1">' + _esc(x.l1) + '</span>' + (x.l2 ? '<span class="wi4-l2">' + _esc(x.l2) + '</span>' : '') + '</div>';
+  // an own vehicle's plates in DM Mono like the board's ΑΝΑΘΕΣΗ cell (.wi4-plate, Figma Δ1), never the body font
+  const _boxHTML = (x) => '<div class="wi4-box ' + x.cls + '"><span class="wi4-l1' + (x.cls === 'own' ? ' wi4-plate' : '') + '">' + _esc(x.l1) + '</span>' + (x.l2 ? '<span class="wi4-l2">' + _esc(x.l2) + '</span>' : '') + '</div>';
   const _sideOfRow = (r, side) => (r ? (side === 'ANODOS' ? r.anod : r.kath) : null);
   const _sidePal = (r, side) => { const sd = _sideOfRow(r, side); return sd && typeof sd.pallets === 'number' ? sd.pallets : 0; };
   const _veroiaOf = (r, side) => { const sd = _sideOfRow(r, side); return sd && sd.veroia ? _t(sd.veroia.from) + '–' + _t(sd.veroia.to) : null; };
@@ -510,7 +511,17 @@
       busy.set(c.truck_id, p === 'busy' || v === 'busy' ? 'busy' : (!p || v > p ? v : p));
     }
     const all = typeof PlanIds !== 'undefined' ? PlanIds.list('truck') : [];
-    return all.filter((t) => t.active && t.id !== exceptTruck && busy.get(t.id) !== 'busy').map((t) => Object.assign({ from: busy.get(t.id) || null }, t));
+    return all.filter((t) => t.active && t.id !== exceptTruck && busy.get(t.id) !== 'busy').map((t) => Object.assign({ from: busy.get(t.id) || null, next: _nextCycle(t.id, day) }, t));
+  }
+  // the truck's next cycle after that day on the loaded board (Δ1 «επόμενο: ΑΝΟΔΟΣ Τετ 14/10»): its first stop's side
+  // and its start day. The board holds one week, so null means «not on this board», and the line is left out —
+  // never «no next cycle».
+  function _nextCycle(truckId, day) {
+    const c = _cycles().filter((x) => x.trip_type === 'OWNED' && x.truck_id === truckId && x.date_start > day)
+      .sort((a, b) => String(a.date_start).localeCompare(String(b.date_start)))[0];
+    const s0 = c && (c.stops || []).slice().sort((a, b) => a.seq - b.seq)[0];
+    const side = s0 ? ({ ANODOS: 'ΑΝΟΔΟΣ', KATHODOS: 'ΚΑΘΟΔΟΣ' })[s0.side] || null : null;
+    return c ? { side, day: c.date_start } : null;
   }
   function _rate(txt) {
     const s = String(txt == null ? '' : txt).trim().replace(',', '.');
@@ -556,15 +567,16 @@
     return { method: 'POST', path: '/plan/legs', body: st.group ? { group: st.group, target, stops: r.stops } : { pieces: st.pieces, target, stops: r.stops } };
   }
 
+  // a group header: the caps label, then a lighter suffix (Figma Δ1: «ΚΥΚΛΟΙ ΤΗΣ ΔΕΥΤΕΡΑΣ 12/10 · ένωση · 4»)
+  const _grpHTML = (grp, label, tail) => '<div class="wn5-grp-h" data-grp="' + grp + '">' + _esc(label) + (tail ? '<span>' + _esc(tail) + '</span>' : '') + '</div>';
   function _assignHTML(st) {
     const vehicle = st.mode === 'vehicle';
-    let h = '<div class="wn5-dlg-meta">' + _esc(st.meta) + '</div>';
-    if (!vehicle && st.group) h += '<div class="wn5-grey">Όλο το ' + _esc(st.ref) + ' μαζί · σπάσιμο μόνο στον Πίνακα Βέροιας</div>';
+    let h = '';
+    // «Όλο το … μαζί» only where a split exists: a VS whose several deliveries stand at Veroia (Figma Δ1 VS-118 ×3);
+    // the Veroia board is the one place that splits them. A one-delivery national has nothing to split.
+    if (!vehicle && st.group && st.items.length > 1 && st.items.every((it) => it.at_hub)) h += '<div class="wn5-grey">Όλο το ' + _esc(st.ref) + ' μαζί · σπάσιμο μόνο στον Πίνακα Βέροιας</div>';
     if (vehicle) h += '<div class="wn5-grey">Ένωση με άλλο κύκλο: «Μεταφορά σε…» από τη φόρμα σκέλους (όλη η πλευρά).</div>';
-    h += '<div class="wn5-tools"><span class="wn5-seg" role="group">'
-      + '<button type="button" data-act="seg" data-v="free" class="' + (st.filter === 'free' ? 'on' : '') + '">Μόνο ελεύθερα</button>'
-      + '<button type="button" data-act="seg" data-v="all" class="' + (st.filter === 'all' ? 'on' : '') + '">Όλα</button></span>'
-      + '<input type="search" class="wn5-dq" data-q placeholder="Αναζήτηση φορτηγού, οδηγού ή συνεργάτη" value="' + _esc(st.q) + '"></div>';
+    h += '<input type="search" class="wn5-dq" data-q placeholder="Αναζήτηση φορτηγού, οδηγού ή συνεργάτη" value="' + _esc(st.q) + '">';
     if (!st.ids.ok) h += '<div class="wn5-miss" data-ids-miss>Οι κατάλογοι δεν είναι διαθέσιμοι ακόμη: νέο φορτηγό και συνεργάτης ανοίγουν όταν έρθουν.</div>';
     if (!vehicle && _stopsFor(st.needs, null, st.side, ['probe', 'probe']).missing.length) {
       h += '<div class="wn5-miss" data-place-miss>Η ανάθεση θέλει τον προορισμό και το παράθυρο κάθε παράδοσης· για παραδόσεις από τη Βέροια δεν έρχονται ακόμη από τη βάση.</div>';
@@ -576,31 +588,41 @@
         + '<small>μόνο όταν γίνεται νέα στάση Βέροιας</small></div>';
     }
     if (!vehicle) {
-      h += '<div class="wn5-grp-h" data-grp="rt">ΚΥΚΛΟΙ ' + DOW_GEN[_dow(st.day)] + ' ' + _dm(st.day) + ' · ένωση · ' + st.rows.length + '</div>';
+      h += _grpHTML('rt', 'ΚΥΚΛΟΙ ' + DOW_GEN[_dow(st.day)] + ' ' + _dm(st.day), ' · ένωση · ' + st.rows.length);
       for (const r of st.rows) {
         const c = st.cyc[r.rtId];
         const tx = _cycText(c, r.row);
         let rate = '';
         if (c.trip_type === 'PARTNER') {
           rate = c.partner_rate == null
-            ? ' <span class="wn5-flag-red">κόμιστρο λείπει</span> <input class="wn5-rate" data-rate-rt="' + c.rt_id + '" inputmode="decimal" placeholder="—" aria-label="Κόμιστρο €"> € <button type="button" class="wi4-btn sm" data-act="rate" data-rt="' + c.rt_id + '">Κράτα</button>'
+            ? ' <span class="wn5-flag-red">κόμιστρο λείπει</span> <span class="wn5-nw"><input class="wn5-rate" data-rate-rt="' + c.rt_id + '" inputmode="decimal" placeholder="—" aria-label="Κόμιστρο €">&nbsp;€</span> <button type="button" class="wi4-btn sm" data-act="rate" data-rt="' + c.rt_id + '">Κράτα</button>'
             : ' <span class="wn5-cand-m">κόμιστρο ' + _esc(_pal(c.partner_rate)) + ' €</span>';
         }
+        // a partner cycle keeps the board's own fact on its second line («Μόνο κάθοδος · συνεργάτης», the model's gap
+        // side), with the Veroia window and the pallets on the first (Figma Δ1 Pelagos row)
+        const gap = c.trip_type === 'PARTNER' && r.row && r.row.anod && r.row.anod.gap ? r.row.anod.gap.text : null;
+        const where = r.veroia ? 'Βέροια ' + r.veroia : 'χωρίς στάση Βέροιας';
+        const l1 = gap ? where + ' · ' + _pal(r.pallets) + 'π σήμερα' : where;
+        const l2 = gap || _pal(r.pallets) + 'π σήμερα';
         h += '<div class="wn5-cand" data-line="rt" data-s="' + _esc(_norm([tx.l1, tx.l2, c.code].join(' '))) + '">' + _boxHTML(tx)
-          + '<span class="wn5-cand-m"><b>' + _esc(r.veroia ? 'Βέροια ' + r.veroia : 'χωρίς στάση Βέροιας') + '</b><span>' + _esc(_pal(r.pallets)) + 'π σήμερα</span></span>'
+          + '<span class="wn5-cand-m"><b>' + _esc(l1) + '</b><span>' + _esc(l2) + '</span></span>'
           + '<span>' + _capHTML(r.pallets + st.pallets) + rate + '</span>'
           + '<button type="button" class="wi4-btn sm" data-act="save" data-cand="rt:' + c.rt_id + '">Ένωση</button></div>';
       }
       for (const c of st.road) {
-        h += '<div class="wn5-cand wn5-na" data-line="road">' + _boxHTML(_cycText(c, null))
-          + '<span class="wn5-cand-m"><b>' + _esc(_dayShort(c.date_start) + ' · στο δρόμο · Βέροια ως ' + _dayShort(_ymdOf(c.end_at)) + ' ' + _hm(c.end_at)) + '</b></span><span></span><span></span></div>';
+        // the box as on the board (its row's tile: «κύκλος n/m»); «ως Δευ 22:00» names the day, the date is in the row
+        h += '<div class="wn5-cand wn5-na" data-line="road">' + _boxHTML(_cycText(c, _row(c.rt_id)))
+          + '<span class="wn5-cand-m"><b>' + _esc(_dayShort(c.date_start) + ' · στο δρόμο · Βέροια ως ' + DOW[_dow(_ymdOf(c.end_at))] + ' ' + _hm(c.end_at)) + '</b></span><span></span><span></span></div>';
       }
     }
-    h += '<div class="wn5-grp-h" data-grp="free">ΕΛΕΥΘΕΡΑ ΦΟΡΤΗΓΑ · ' + (vehicle ? 'άλλο όχημα' : 'νέος κύκλος') + ' · ' + st.free.length + '</div>';
+    // without the catalogue the list's size is unknown, never 0 (principle 1): the header has no count then, and the
+    // line above says why
+    h += _grpHTML('free', 'ΕΛΕΥΘΕΡΑ ΦΟΡΤΗΓΑ', ' · ' + (vehicle ? 'άλλο όχημα' : 'νέος κύκλος') + (st.ids.ok ? ' · ' + st.free.length : ''));
     for (const t of st.free) {
       const key = 'truck:' + t.id;
-      h += '<div class="wn5-cand" data-line="free" data-s="' + _esc(_norm(t.label)) + '"><div class="wi4-box own"><span class="wi4-l1">' + _esc(t.label) + '</span></div>'
-        + '<span class="wn5-cand-m"><b>' + _esc(t.from ? 'ελεύθερο από ' + t.from : 'ελεύθερο') + '</b></span>'
+      const next = t.next ? 'επόμενο: ' + (t.next.side ? t.next.side + ' ' : '') + _dayShort(t.next.day) : '';
+      h += '<div class="wn5-cand" data-line="free" data-s="' + _esc(_norm(t.label)) + '"><div class="wi4-box own"><span class="wi4-l1 wi4-plate">' + _esc(t.label) + '</span></div>'
+        + '<span class="wn5-cand-m"><b>' + _esc(t.from ? 'ελεύθερο από ' + t.from : 'ελεύθερο') + '</b>' + (next ? '<span>' + _esc(next) + '</span>' : '') + '</span>'
         + '<span>' + (vehicle ? '' : _capHTML(st.pallets, ' · νέος κύκλος')) + '</span>'
         + '<button type="button" class="wi4-btn sm" data-act="pick" data-cand="' + key + '"' + (st.ids.ok ? '' : ' disabled') + '>Ανάθεση</button></div>';
       if (st.pick === key) {
@@ -610,11 +632,11 @@
           + '<button type="button" class="wi4-btn sm pri" data-act="save" data-cand="' + key + '">Ανάθεση</button></div>';
       }
     }
-    h += '<div class="wn5-grp-h" data-grp="partner">ΣΥΝΕΡΓΑΤΗΣ</div>'
+    h += _grpHTML('partner', 'ΣΥΝΕΡΓΑΤΗΣ', st.ids.ok ? ' · ' + st.partners.filter((p) => p.active).length : '')
       + '<div class="wn5-cand" data-line="partner" data-s="' + _esc(_norm(st.partners.map((p) => p.label).join(' '))) + '">'
       + '<label class="wn5-field"><span>Συνεργάτης</span><select data-partner data-fh-search' + (st.ids.ok ? '' : ' disabled') + '><option value="">—</option>' + _optsHTML(st.partners, st.partner) + '</select></label>'
       + '<span class="wn5-cand-m"><span>κόμιστρο · κενό = «κόμιστρο λείπει»</span></span>'
-      + '<span><input class="wn5-rate" data-rate inputmode="decimal" placeholder="—" value="' + _esc(st.rateTxt) + '" aria-label="Κόμιστρο €"> €</span>'
+      + '<span>' + (vehicle ? '' : _capHTML(st.pallets, ' · δρομολόγιο συνεργάτη') + ' ') + '<span class="wn5-nw"><input class="wn5-rate" data-rate inputmode="decimal" placeholder="—" value="' + _esc(st.rateTxt) + '" aria-label="Κόμιστρο €">&nbsp;€</span></span>'
       + '<button type="button" class="wi4-btn sm" data-act="save" data-cand="partner">Ανάθεση</button></div>';
     return h;
   }
@@ -650,11 +672,18 @@
       if (!ctx.side) st.side = _sideFor(st.items[0]);
       st.ref = st.items[0].reference || '—';
       const vs = st.items[0].kind === 'vs_import' && st.items[0].load_from ? ' · φτάνει ' + _hm(st.items[0].load_from) : '';
-      title = 'Ανάθεση · ' + st.ref + ' · ' + (st.items[0].client || '—');
       st.meta = _dayShort(st.day) + ' · ' + st.items.length + (st.items.length === 1 ? ' παράδοση' : ' παραδόσεις') + ' · ' + _pal(st.pallets) + 'π' + vs;
     }
     if (!st.day) { WN5Act.strip(_boardHost(), _clientErr('day_missing', 'Η ημέρα της ανάθεσης δεν είναι γνωστή — ανανέωσε')); return null; }
     await _loadCands(st);
+    if (!vehicle) {
+      // «Ανάθεση · VS-118 → Rentis +2» (Figma Δ1): the first delivery's place, then how many other deliveries. Named
+      // after the catalogue loads (the board has ids, not names, for waiting loads); a place the board did not send
+      // (072 hub[], Ε-26) or a catalogue that did not come reads «—», never the client in its place.
+      const drop = st.needs[1] || {};
+      const pl = drop.loc == null ? null : drop.hub ? { name: 'Βέροια' } : (typeof PlanIds !== 'undefined' ? PlanIds.place(drop.loc) : null);
+      title = 'Ανάθεση · ' + st.ref + ' → ' + ((pl && pl.name) || '—') + (st.items.length > 1 ? ' +' + (st.items.length - 1) : '');
+    }
     return _picker(st, 'assign', title);
   };
 
@@ -689,6 +718,13 @@
   function _picker(st, kind, title) {
     const d = _dlg(kind, title, { wide: true });
     d.ft.innerHTML = '<button type="button" class="wi4-btn" data-act="cancel">Άκυρο</button>';
+    // Figma Δ1 header: the meta inline after the title in grey, «Μόνο ελεύθερα | Όλα» at the top right. In the header,
+    // not the body, so a redraw of the body keeps the filter where it is.
+    const hd = d.dlg.querySelector('.wi4-dlg-hd');
+    hd.querySelector('.wi4-dlg-t').insertAdjacentHTML('afterend', '<span class="wn5-dlg-meta">· ' + _esc(st.meta) + '</span>'
+      + '<span class="wn5-seg" role="group">'
+      + '<button type="button" data-act="seg" data-v="free" class="' + (st.filter === 'free' ? 'on' : '') + '">Μόνο ελεύθερα</button>'
+      + '<button type="button" data-act="seg" data-v="all" class="' + (st.filter === 'all' ? 'on' : '') + '">Όλα</button></span>');
     const filter = () => {
       const q = st.q ? _norm(st.q) : '';
       for (const ln of d.body.querySelectorAll('.wn5-cand[data-line]')) {

@@ -795,6 +795,16 @@ async function scnAssign(browser, origin) {
     const txt = await bText(page, D);
     ok(scn, 'groups «ΚΥΚΛΟΙ ΤΗΣ ΔΕΥΤΕΡΑΣ 12/10», «ΕΛΕΥΘΕΡΑ ΦΟΡΤΗΓΑ», «ΣΥΝΕΡΓΑΤΗΣ»', /ΚΥΚΛΟΙ ΤΗΣ ΔΕΥΤΕΡΑΣ 12\/10/.test(txt) && txt.includes('ΕΛΕΥΘΕΡΑ ΦΟΡΤΗΓΑ') && txt.includes('ΣΥΝΕΡΓΑΤΗΣ'), txt.slice(0, 400));
     ok(scn, '«Όλο το VS-T118 μαζί · σπάσιμο μόνο στον Πίνακα Βέροιας»', txt.includes('Όλο το VS-T118 μαζί · σπάσιμο μόνο στον Πίνακα Βέροιας'), txt.slice(0, 300));
+    // fidelity round 1 (Figma Δ1 2051:7735): title «ref → first place +N», meta and filter in the header, plates in mono
+    await shot(page, 'assign-queue');
+    const t1 = await bText(page, `${D} .wi4-dlg-t`), m1 = await bText(page, `${D} .wi4-dlg-hd .wn5-dlg-meta`);
+    ok(scn, 'title «Ανάθεση · VS-T118 → RENTIS TEST +2», meta inline, «Μόνο ελεύθερα | Όλα» in the header', t1 === 'Ανάθεση · VS-T118 → RENTIS TEST +2'
+      && m1 === '· Δευ 12/10 · 3 παραδόσεις · 27π · φτάνει 14:00' && await bHas(page, `${D} .wi4-dlg-hd .wn5-seg [data-v="free"]`), { t1, m1 });
+    ok(scn, 'cycle plates as .wi4-plate; the partner cycle says «Μόνο κάθοδος · συνεργάτης»; the road box «κύκλος 1», «Βέροια ως Δευ 22:00»',
+      (await bHas(page, `${D} [data-line="rt"] .wi4-l1.wi4-plate`)) && await bHas(page, `${D} [data-line="free"] .wi4-l1.wi4-plate`)
+      && txt.includes('Μόνο κάθοδος · συνεργάτης') && txt.includes('Βέροια ως Δευ 22:00') && /Driver Test 01 · κύκλος 1/.test(await bText(page, `${D} [data-line="road"]`)), txt.slice(0, 700));
+    ok(scn, '«ΣΥΝΕΡΓΑΤΗΣ · 2» and the partner line carries its capacity «→ 27/33 · δρομολόγιο συνεργάτη»', (await bText(page, `${D} [data-grp="partner"]`)) === 'ΣΥΝΕΡΓΑΤΗΣ · 2'
+      && (await bText(page, `${D} [data-line="partner"]`)).includes('→ 27/33 · δρομολόγιο συνεργάτη'));
     ok(scn, 'over capacity is a warning, «Ένωση» stays enabled («→ 54/33 · υπέρβαση 21»)', txt.includes('→ 54/33 · υπέρβαση 21') && (await bOff(page, `${D} [data-act="save"][data-cand="rt:201"]`)) === false, txt.slice(0, 500));
     ok(scn, 'the rate field is there for the dispatcher (decision 41), «κόμιστρο λείπει» on the partner cycle', (await bHas(page, `${D} input[data-rate]`)) && txt.includes('κόμιστρο λείπει'));
     ok(scn, 'a cycle still on the road is listed dimmed, without a button («στο δρόμο»)', txt.includes('στο δρόμο') && !(await bHas(page, `${D} [data-cand="rt:203"]`)));
@@ -855,6 +865,9 @@ async function scnAssign(browser, origin) {
   { // D · warehouse: the red box and ✈ open the same window; ✈ changes the vehicle with PATCH /plan/rt
     const { page, S } = await bOpen(browser, origin, { role: 'warehouse' });
     ok(scn, 'the red «ΠΡΟΣ ΑΝΑΘΕΣΗ» box of a waiting order opens the same window', (await bClick(page, '.wn5-row[data-piece] [data-act="assign"]')) && await bHas(page, D));
+    await shot(page, 'assign-national');
+    const tD = await bText(page, `${D} .wi4-dlg-t`), xD = await bText(page, D);
+    ok(scn, 'a one-delivery national: «Ανάθεση · N-T201 → ATHENS TEST», no «Όλο το … μαζί» band (nothing to split)', tD === 'Ανάθεση · N-T201 → ATHENS TEST' && !xD.includes('Όλο το'), { tD });
     await bClick(page, `${D} [data-act="cancel"]`);
     ok(scn, 'warehouse: ✈ «Ανάθεση / αλλαγή φορτηγού ή συνεργάτη» opens it too (no role gate)', (await bMenu(page, 201, 'assign')) && await bHas(page, D));
     await bClick(page, `${D} [data-act="pick"][data-cand="truck:14"]`);
@@ -870,6 +883,9 @@ async function scnAssign(browser, origin) {
     ok(scn, 'lookups 404 → «Οι κατάλογοι δεν είναι διαθέσιμοι ακόμη», new truck/partner off, «Ένωση» on', txt.includes('Οι κατάλογοι δεν είναι διαθέσιμοι ακόμη')
       && (await bOff(page, `${D} [data-act="pick"][data-cand="truck:14"]`)) !== false && (await bOff(page, `${D} [data-act="save"][data-cand="partner"]`)) === true
       && (await bOff(page, `${D} [data-act="save"][data-cand="rt:201"]`)) === false, txt.slice(0, 300));
+    await shot(page, 'assign-nolookups');
+    const fh = await bText(page, `${D} [data-grp="free"]`);
+    ok(scn, 'lookups 404 → «ΕΛΕΥΘΕΡΑ ΦΟΡΤΗΓΑ · νέος κύκλος» with no count (unknown, never 0)', fh === 'ΕΛΕΥΘΕΡΑ ΦΟΡΤΗΓΑ · νέος κύκλος' && (await bText(page, `${D} [data-grp="partner"]`)) === 'ΣΥΝΕΡΓΑΤΗΣ', fh);
     await page.context().close();
   }
 }
