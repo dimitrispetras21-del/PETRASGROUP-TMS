@@ -604,7 +604,16 @@ SCN.strips = async (browser, origin) => {
       refAct: !!ref.querySelector('.wn5-strip-act'), askAct: !!ask.querySelector('.wn5-strip-act[data-act="reload"]'),
       unk: ua && { text: ua.textContent, w: getComputedStyle(ua).fontWeight, c: getComputedStyle(ua).color, head: getComputedStyle(unk.querySelector('.wn5-strip-h')).color, atEnd: Math.abs(ur.right - 13 - uar.right) < 2 },
       w1: { ul: !!w1.querySelector('ul'), t: (w1.querySelector('.wn5-strip-t') || { textContent: null }).textContent, h: w1.getBoundingClientRect().height },
-      w2: w2.querySelectorAll('ul > li').length };
+      w2: w2.querySelectorAll('ul > li').length,
+      // T11 fidelity round 2: the «↻» drawn as an icon the height of the text; several warnings with the dialog's «•»
+      ico: (() => { const i = ask.querySelector('.wn5-strip-act .wn5-ico-re'); if (!i) return null; const c = getComputedStyle(i); const r = i.getBoundingClientRect();
+        const b = ask.querySelector('.wn5-strip-act'); const br = b.getBoundingClientRect(); const up = document.querySelector('#content .wn5 .wn5-upd'); const ui = up && up.querySelector('.wn5-ico-re');
+        const mid = (e) => { const q = e.getBoundingClientRect(); return (q.top + q.bottom) / 2; };
+        return { w: r.width, h: r.height, fs: c.fontSize, mask: c.maskImage || c.webkitMaskImage, hidden: i.getAttribute('aria-hidden'), bg: c.backgroundColor, color: getComputedStyle(b).color,
+          linkH: br.height, mid: Math.abs(mid(i) - mid(b)), stripH: ask.getBoundingClientRect().height,
+          bar: ui && { h: up.getBoundingClientRect().height, lh: parseFloat(getComputedStyle(up).lineHeight) || null, mid: Math.abs(mid(ui) - mid(up)) } }; })(),
+      list: (() => { const ul = w2.querySelector('ul'); const li = ul && ul.querySelector('li'); if (!li) return null;
+        return { ls: getComputedStyle(ul).listStyleType, pl: getComputedStyle(ul).paddingLeft, gap: getComputedStyle(li).columnGap, bullet: getComputedStyle(li, '::before').content }; })() };
   });
   ok(scn, 'strip box as Δ12: 34px, padding 8/12/8/10, 8px between label and message', sb.box.h === 34 && sb.box.paddingTop === '8px' && sb.box.paddingRight === '12px'
     && sb.box.paddingBottom === '8px' && sb.box.paddingLeft === '10px' && sb.box.columnGap === '8px', sb.box);
@@ -614,6 +623,11 @@ SCN.strips = async (browser, origin) => {
   ok(scn, '«Ανανέωση ↻» only where the base asks for a re-read (stale, «ανανέωσε»), never on a plain refusal', !sb.refAct && sb.askAct, { ref: sb.refAct, ask: sb.askAct });
   ok(scn, '«Έλεγχος στο board» at the end, Medium, in the strip\'s own colour', !!sb.unk && sb.unk.text === 'Έλεγχος στο board' && sb.unk.w === '500' && sb.unk.c === sb.unk.head && sb.unk.atEnd, sb.unk);
   ok(scn, 'one warning is one 34px line «ΠΡΟΕΙΔΟΠΟΙΗΣΗ · …» (2104:145961); two are a list', !sb.w1.ul && sb.w1.t === 'Υπέρβαση 21π στο TST-2106 — αποθηκεύτηκε' && sb.w1.h === 34 && sb.w2 === 2, sb);
+  ok(scn, '«↻» is a 12px round-arrow icon in the link colour (a mask, the glyph sized 0, aria-hidden), not the text glyph (Δ12)', !!sb.ico && sb.ico.w === 12 && sb.ico.h === 12
+    && sb.ico.fs === '0px' && /svg/.test(sb.ico.mask || '') && sb.ico.hidden === 'true' && sb.ico.bg === sb.ico.color, sb.ico);
+  ok(scn, 'the icon sits on the word\'s line: the link one 16px line, the strip still 34, the icon centred on it (±1.5); the bar\'s «↻ hh:mm» too',
+    !!sb.ico && sb.ico.linkH === 16 && sb.ico.stripH === 34 && sb.ico.mid <= 1.5 && !!sb.ico.bar && sb.ico.bar.mid <= 1.5 && sb.ico.bar.h <= 18, sb.ico);
+  ok(scn, 'several warnings: the dialog\'s «•» with 8px, no browser disc, no 16px indent', !!sb.list && sb.list.ls === 'none' && sb.list.pl === '0px' && sb.list.gap === '8px' && /•/.test(sb.list.bullet), sb.list);
   ok(scn, 'no page errors (A–B)', !a.S.pageErrors.length, a.S.pageErrors);
   await shot(a.page, 'strips');
   await a.page.context().close();
@@ -632,6 +646,12 @@ SCN.strips = async (browser, origin) => {
       li: g('.wn5-cons li', 'fontSize', 'color', 'listStyleType'), bullet: lis[0] && getComputedStyle(lis[0], '::before').content,
       pitch: lis.length > 1 ? lis[1].getBoundingClientRect().top - lis[0].getBoundingClientRect().top : null,
       texts: lis.map((x) => x.textContent), ft: g('.wi4-dlg-ft', 'columnGap'),
+      // vertical rhythm against the frame's metadata (2053:8080), measured from the dialog's top edge
+      v: (() => { const top = (e) => e.getBoundingClientRect().top - r.top; const bot = (e) => e.getBoundingClientRect().bottom - r.top;
+        const t = d.querySelector('.wi4-dlg-t'), p = d.querySelector('.wn5-dlg-b > p'), h = d.querySelector('.wn5-cons-h'), b = d.querySelector('[data-act="confirm"]');
+        const h1 = h.nextElementSibling.querySelector('li'), last = lis[lis.length - 1];
+        return { title: top(t), titleH: bot(t) - top(t), introGap: top(p) - bot(t), introH: bot(p) - top(p), headH: bot(h) - top(h),
+          headRow: top(h1) - bot(h), rowBtn: top(b) - bot(last), btnEnd: r.height - bot(b) }; })(),
       cancel: g('[data-act="cancel"]', 'height', 'fontSize', 'fontWeight', 'paddingLeft', 'borderTopColor'), confirm: g('[data-act="confirm"]', 'height', 'fontSize', 'fontWeight', 'paddingLeft') };
   });
   ok(scn, 'Δ5 frame: 600 wide, radius 12, padding 18/22, shadow 0 8 24 rgba(10,26,41,.16), no «×»', dl.w === 600 && dl.rad === '12px' && dl.pad === '18px 22px'
@@ -641,6 +661,8 @@ SCN.strips = async (browser, origin) => {
     && dl.ch.fontWeight === '600' && dl.ch.fontSize === '12px' && dl.ch.color === 'rgb(91, 107, 127)', dl);
   ok(scn, 'rows 13px grey-1, a «•» glyph (no CSS disc), 29px pitch', !!dl.li && dl.li.fontSize === '13px' && dl.li.color === 'rgb(52, 64, 84)' && dl.li.listStyleType === 'none'
     && /•/.test(dl.bullet) && dl.pitch === 29, dl);
+  ok(scn, 'rhythm as 2053:8080: title at 19 (22 tall), 12 to the intro, intro and headings 16 tall, heading→row 12, last row→buttons 20, 19 under the buttons',
+    dl.v.title === 19 && dl.v.titleH === 22 && dl.v.introGap === 12 && dl.v.introH === 16 && dl.v.headH === 16 && dl.v.headRow === 12 && dl.v.rowBtn === 20 && dl.v.btnEnd === 19, dl.v);
   ok(scn, 'the payroll row starts «Μισθοδοσία · γραμμή μισθοδοσίας με ποσό (Οκτώβριος)» (Δ5 / H4)', dl.texts.some((t) => t.startsWith('Μισθοδοσία · γραμμή μισθοδοσίας με ποσό (Οκτώβριος)')), dl.texts);
   ok(scn, 'buttons 36px 13px, «Άκυρο» Medium padding 14 #d0d5dd border, the verb SemiBold padding 16, gap 10', !!dl.cancel && dl.cancel.height === '36px' && dl.cancel.fontSize === '13px'
     && dl.cancel.fontWeight === '500' && dl.cancel.paddingLeft === '14px' && dl.cancel.borderTopColor === 'rgb(208, 213, 221)'

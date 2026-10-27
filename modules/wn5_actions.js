@@ -96,7 +96,11 @@
         _act(el, 'Έλεγχος στο board', () => { WN5.reload('check'); });
       } else if (typeof WN5 !== 'undefined' && _wantsReread(x, kind)) {
         // a re-read by hand, one per press (never automatic); an open dialog stays as it is
-        _act(el, 'Ανανέωση ↻', () => { WN5.reload('user'); }).setAttribute('data-act', 'reload');
+        const re = _act(el, 'Ανανέωση ', () => { WN5.reload('user'); });
+        re.setAttribute('data-act', 'reload');
+        // the «↻» is drawn as an icon (.wn5-ico-re); the glyph stays the button's text
+        const ico = document.createElement('span'); ico.className = 'wn5-ico-re'; ico.setAttribute('aria-hidden', 'true'); ico.textContent = '↻';
+        re.appendChild(ico);
       }
     }
     hostEl.insertBefore(el, hostEl.firstChild);

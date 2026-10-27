@@ -9211,7 +9211,17 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-acthost { margin:0 0 8px; display:flex; flex-direction:column; gap:6px; }
 .wn5-acthost:empty { display:none; }
 .wn5-acthost > .wn5-strip { margin:0; }
-.wn5-strip ul { flex-basis:100%; margin:2px 0 0; padding-left:16px; }
+.wn5-strip ul { flex-basis:100%; display:flex; flex-direction:column; gap:2px; margin:2px 0 0; padding-left:0; list-style:none; }
+/* several warnings: the same «•» and 8px as the two-step dialog's rows (one mechanism, one bullet; no frame draws it) */
+.wn5-strip li { display:flex; gap:8px; }
+.wn5-strip li::before { content:'•'; flex:none; }
+/* «↻» drawn as a round arrow the height of the text (Δ12 2069:8579): the glyph stays in the DOM as the text, sized 0,
+   because in the fallback fonts U+21BB reads as a small «υ». The mask is the rotate-cw arrow, painted in currentColor.
+   overflow:hidden puts the box's baseline at its bottom edge; without it the empty 0px line box is the baseline and
+   the icon hangs 12px under the word, making the link (and the bar's «↻ hh:mm») a line taller. */
+.wn5-ico-re { display:inline-block; width:12px; height:12px; font-size:0; overflow:hidden; vertical-align:-1px; background:currentColor;
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='23 4 23 10 17 10'/%3E%3Cpath d='M20.49 15a9 9 0 1 1-2.12-9.36L23 10'/%3E%3C/svg%3E") center/contain no-repeat;
+  mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='23 4 23 10 17 10'/%3E%3Cpath d='M20.49 15a9 9 0 1 1-2.12-9.36L23 10'/%3E%3C/svg%3E") center/contain no-repeat; }
 .wn5-strip:is([data-kind="unknown"], [data-kind="slow"], [data-kind="offline"], [data-kind="reused"]) { border-color:var(--wn5-note-line); background:var(--wn5-note-bg); color:var(--wi4-grey-1); }
 .wn5-strip:is([data-kind="unknown"], [data-kind="slow"], [data-kind="offline"], [data-kind="reused"]) > b { color:var(--wn5-note-ink); }
 .wn5-strip:is([data-kind="unknown"], [data-kind="slow"], [data-kind="offline"], [data-kind="reused"], [data-kind="warning"]) > .wn5-strip-act { color:var(--wn5-note-ink); }
@@ -9236,18 +9246,20 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-dlg .wi4-btn.pri:disabled, .wn5-dlg .wi4-btn.wn5-danger:disabled { opacity:.5; cursor:default; }
 /* The two-step dialog as Figma Δ5 2053:8080 (and H4 2125:7738): 600 wide, radius 12, padding 18/22, one 12px rhythm
    between title, strip, intro, headings and rows; Syne Bold 18 title and no «×» (Άκυρο and the verb are the exits);
-   intro and headings grey, rows grey-1 with a «•» and 8px; buttons 36px, gap 10. */
+   intro and headings grey, rows grey-1 with a «•» and 8px; buttons 36px, gap 10. Line boxes as the frame's metadata:
+   title 22, intro and headings 16, rows 17; the last row to the buttons is 20 (the frame's 8 under the rows + 12 above
+   the buttons), so the footer adds 8 to the 12px gap. */
 .wn5-dlg.wn5-ask { width:600px; display:flex; flex-direction:column; gap:12px; padding:18px 22px; border-radius:12px; box-shadow:var(--wn5-dlg-shadow); }
-.wn5-ask .wi4-dlg-t { font:700 18px 'Syne',sans-serif; color:var(--wi4-ink); }
+.wn5-ask .wi4-dlg-t { font:700 18px/22px 'Syne',sans-serif; color:var(--wi4-ink); }
 .wn5-ask .wn5-dlg-msg, .wn5-ask .wn5-dlg-b { margin-top:0; }
 .wn5-ask .wn5-dlg-b { gap:12px; }
-.wn5-ask .wn5-dlg-b > p { font-size:12.5px; color:var(--wi4-grey-2); }
-.wn5-ask .wn5-cons-h { margin-top:0; font-size:12px; font-weight:600; color:var(--wi4-grey-2); }
+.wn5-ask .wn5-dlg-b > p { font-size:12.5px; line-height:16px; color:var(--wi4-grey-2); }
+.wn5-ask .wn5-cons-h { margin-top:0; font-size:12px; font-weight:600; line-height:16px; color:var(--wi4-grey-2); }
 .wn5-ask .wn5-cons { display:flex; flex-direction:column; gap:12px; padding-left:0; list-style:none; }
 .wn5-ask .wn5-cons li { display:flex; gap:8px; margin:0; font-size:13px; line-height:17px; color:var(--wi4-grey-1); }
 .wn5-ask .wn5-cons li::before { content:'•'; flex:none; }
 .wn5-ask .wn5-cons li[data-unknown] { color:var(--wi4-amber-ink); }
-.wn5-ask .wi4-dlg-ft { margin-top:0; gap:10px; }
+.wn5-ask .wi4-dlg-ft { margin-top:8px; gap:10px; }
 .wn5-ask .wi4-dlg-ft .wi4-btn { height:36px; font-size:13px; }
 .wn5-ask .wi4-dlg-ft [data-act="cancel"] { padding:0 14px; font-weight:500; border-color:var(--wi4-ctl); }
 .wn5-ask .wi4-dlg-ft [data-act="confirm"] { padding:0 16px; font-weight:600; }
