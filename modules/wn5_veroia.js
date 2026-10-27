@@ -112,7 +112,12 @@
     for (const t of trucks) {
       const free = 33 - t.pal;
       // over 33 is a warning, never a refusal (Ε-17): the overflow in amber instead of the free places
-      right += '<div class="wn5-hub-tr" data-line="cap">' + k.boxHTML(k.cycText(t.c, t.r)) + '<span class="wn5-hub-chip">' + k.esc(t.win || 'όλη μέρα') + '</span>'
+      // the box names the vehicle and its driver only (Figma 2011:8786): the board tile's «· κύκλος n» is not repeated
+      // here. A one-segment own tile's driver is the cycle's (WN5L builds that segment from the cycle); a multi-segment
+      // tile already carries no «κύκλος» (Σ5) and keeps its own line.
+      const tx = k.cycText(t.c, t.r);
+      if (tx.cls === 'own' && !(t.r && t.r.tiles && t.r.tiles.length > 1)) tx.l2 = t.c.driver || 'χωρίς οδηγό';
+      right += '<div class="wn5-hub-tr" data-line="cap">' + k.boxHTML(tx) + '<span class="wn5-hub-chip">' + k.esc(t.win || 'όλη μέρα') + '</span>'
         + '<span class="wn5-hub-sp"></span><span class="wn5-hub-x33' + (free < 0 ? ' over' : '') + '">' + k.esc(k.pal(t.pal)) + '/33</span>'
         + '<span class="wn5-hub-free' + (free < 0 ? ' over' : '') + '">· ' + (free >= 0 ? k.esc(k.pal(free)) + ' ελεύθερες' : 'υπέρβαση ' + k.esc(k.pal(-free))) + '</span></div>';
     }

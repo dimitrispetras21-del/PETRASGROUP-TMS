@@ -1820,6 +1820,8 @@ async function scnVeroia(browser, origin) {
       && !(await bHas(page, `${PANEL} [data-piece="4101"]`)) && await bHas(page, '.wn5-row[data-key="wait:4101"]') && await bHas(page, `${PANEL} [data-piece="4401"]`));
     ok(scn, 'sections «ΓΙΑ ΜΟΙΡΑΣΜΑ», «ΑΠΟΘΕΜΑ», «ΦΟΡΤΗΓΑ ΔΕΥ 12/10 · χωρητικότητα» with «27/33»', txt.includes('ΓΙΑ ΜΟΙΡΑΣΜΑ') && txt.includes('ΑΠΟΘΕΜΑ')
       && txt.includes('ΦΟΡΤΗΓΑ ΔΕΥ 12/10 · χωρητικότητα') && txt.includes('27/33'), txt.slice(0, 600));
+    const capL2 = await page.$$eval(`${PANEL} [data-line="cap"] .wi4-l2`, (es) => es.map((e) => e.innerText)).catch(() => []);
+    ok(scn, 'fidelity: the capacity box line 2 is the driver only (Figma 2011:8786), never «· κύκλος n»', capL2.includes('Driver Test 02') && capL2.every((t) => !t.includes('κύκλος')), capL2);
     const late = await page.$eval(`${PANEL} [data-piece="4302"]`, (e) => ({ t: e.innerText, red: !!e.querySelector('.wn5-late'), dim: !!e.closest('.wn5-dim') || e.classList.contains('wn5-dim'), op: getComputedStyle(e).opacity })).catch(() => null);
     ok(scn, 'stock past its «φεύγει ως» is red «καθυστέρηση», never dimmed', !!late && late.red && /καθυστέρηση/.test(late.t) && !late.dim && late.op === '1', late);
     await bClick(page, `${PANEL} [data-piece="4401"] [data-hub="split"]`);
