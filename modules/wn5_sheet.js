@@ -235,8 +235,9 @@
     for (const s of cycle.stops || []) { const p = PlanIds.place(s.location_id); if (p) byId[s.location_id] = p; }
     const nums = WN5L.cycleNumbers(board.cycles || []);
     const cn = nums && typeof nums.get === 'function' ? nums.get(rtId) : null;
+    // the board's rule (owner 22/10): one cycle of the truck in the week is «κύκλος 1», never «1/1» — paper = screen
     const wk = TmsWeek.numOf(new Date(board.week + 'T12:00:00'));
-    return { cycle, places: { byId, hubId }, meta: { week: wk ? 'W' + wk : '', cycleNo: cn ? `${cn.n}/${cn.m}` : '', issued: _issued() } };
+    return { cycle, places: { byId, hubId }, meta: { week: wk ? 'W' + wk : '', cycleNo: cn ? (cn.m > 1 ? `${cn.n}/${cn.m}` : '1') : '', issued: _issued() } };
   }
   async function _copy(txt) {
     try {

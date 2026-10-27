@@ -9040,7 +9040,10 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
    ΑΝΑΘΕΣΗ is 266px and no Veroia-time column exists (owner 25/10: +16px taken from the ΑΝΟΔΟΣ points), so ΑΝΟΔΟΣ
    starts 266 + 16 = 282px after ΑΝΑΘΕΣΗ. The two point columns share what is left (403.5px each at 1920 = two
    ~178px stops + «+N»; 165px at 1440 = one stop + «+N»). Cells shrink, never overlap, and wrap names (no cut). */
-.wn5 { --wn5-kpal-w:86px; --wn5-apal-w:77px; }
+.wn5 { --wn5-kpal-w:86px; --wn5-apal-w:77px;
+  /* T23 fidelity (Figma 2011:9284): the ΚΑΘΟΔΟΣ printer sits between the side's «+» and ΑΝΑΘΕΣΗ, 14px clear of the
+     «+» and 2px before the tile (14 + 12 + 2 = the 12px pad + this). With the old 12px pad it touched both. */
+  --wn5-kprt-gap:16px; }
 .wn5-cols, .wn5-row, .wn5-sub {
   display:grid; grid-template-columns:64px 8px 78px 169px minmax(0,1fr) var(--wn5-kpal-w) 266px 16px 78px minmax(0,1fr) 154px var(--wn5-apal-w); align-items:center; }
 .wn5 .wn5-c-idx { grid-column:1; }
@@ -9159,7 +9162,7 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 /* Narrower than the Figma 1920 frame (1440 with the sidebar open): the fixed tracks give way so the point columns keep
    one whole stop + «+N» (ΑΝΑΘΕΣΗ stays 266px, owner 25/10); the long column notes go, the column names stay. */
 @media (max-width:1600px) {
-  .wn5 { --wn5-kpal-w:50px; --wn5-apal-w:50px; }
+  .wn5 { --wn5-kpal-w:calc(50px + var(--wn5-kprt-gap)); --wn5-apal-w:50px; }
   .wn5-cols, .wn5-row, .wn5-sub { grid-template-columns:48px 6px 70px 120px minmax(0,1fr) var(--wn5-kpal-w) 266px 16px 70px minmax(0,1fr) 156px var(--wn5-apal-w); }
   .wn5-h-long { display:none; }
   /* one stop per point column here (_visPts): it takes the column */
@@ -9365,6 +9368,8 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
    same x, outside the dashed box. A row with no «+» (unassigned) keeps the «+» room so its count stays in the column. */
 .wn5-row > :is(.wn5-kpal, .wn5-apal) { display:flex; align-items:center; justify-content:flex-end; padding:0 12px 0 0; white-space:nowrap; }
 .wn5-row > :is(.wn5-kpal, .wn5-apal):not(:has(.wn5-plus)) { padding-right:34px; }   /* 12 + the «+» 18 + its 4 */
+.wn5-row > .wn5-kpal { padding-right:calc(12px + var(--wn5-kprt-gap)); }   /* room for the ΚΑΘΟΔΟΣ printer (T23) */
+.wn5-row > .wn5-kpal:not(:has(.wn5-plus)) { padding-right:calc(34px + var(--wn5-kprt-gap)); }
 .wn5 .wn5-kspan.wn5-gspan { grid-column:3 / 6; }
 .wn5 .wn5-aspan.wn5-gspan { grid-column:9 / 12; }
 .wn5 .wn5-gspan > .wn5-gapbox { margin-right:0; }
@@ -9739,7 +9744,7 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-row > :is(.wn5-kpal, .wn5-ad) { position:relative; }
 .wn5-prt { position:absolute; top:50%; display:flex; width:12px; height:12px; margin-top:-6px; padding:0; border:0; background:none;
   color:var(--wi4-icon); cursor:pointer; opacity:0; }
-.wn5-kpal > .wn5-prt { right:0; }
+.wn5-kpal > .wn5-prt { right:2px; }
 .wn5-ad > .wn5-prt { left:-14px; }
 .wn5-row:hover .wn5-prt, .wn5-prt:focus-visible { opacity:1; }
 .wn5-prt:hover { color:var(--wi4-ink); }

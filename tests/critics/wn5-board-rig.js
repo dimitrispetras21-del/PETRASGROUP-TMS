@@ -1983,6 +1983,19 @@ async function scnSheet(browser, origin) {
   ok(scn, '✈ labels = Figma 2011:8858, in order', JSON.stringify(labels) === JSON.stringify(['Άνοιγμα παραγγελιών', 'Ανάθεση / αλλαγή φορτηγού ή συνεργάτη',
     'Νέα παραγγελία σε αυτό το σκέλος › Κάθοδος · Άνοδος', 'Φόρτωση με τοπικό', 'Σπάσιμο παραγγελιών', 'Εκτύπωση / WhatsApp › Κάθοδος · Άνοδος · Όλο το δρομολόγιο',
     'Αντιγραφή πινακίδων', 'Καθαρισμός ανάθεσης']), labels);
+  // fidelity T23 (Figma 2011:9284): the ΚΑΘΟΔΟΣ printer stands clear of the «+» (a write control) and of the ΑΝΑΘΕΣΗ
+  // tile — 14px / 2px in Figma; it touched both (0 / 0) at 1440 and 1920. Geometry only: opacity does not move it.
+  for (const vw of [1920, 1440]) {
+    await page.setViewportSize({ width: vw, height: vw === 1920 ? 1080 : 900 });
+    const g = await page.evaluate(() => {
+      const row = document.querySelector('#content .wn5-row[data-rt="101"]');
+      const r = (sel) => { const e = row && row.querySelector(sel); return e ? e.getBoundingClientRect() : null; };
+      const plus = r('.wn5-kpal > .wn5-plus'), prt = r('.wn5-kpal > .wn5-prt'), tile = r('.wn5-asg .wi4-box');
+      return plus && prt && tile ? { fromPlus: Math.round(prt.left - plus.right), toTile: Math.round(tile.left - prt.right) } : null;
+    }).catch(() => null);
+    ok(scn, `fidelity @${vw}: ΚΑΘΟΔΟΣ printer ≥12px clear of the «+», ≥2px before ΑΝΑΘΕΣΗ`, !!g && g.fromPlus >= 12 && g.toTile >= 2, g);
+  }
+  await page.setViewportSize({ width: 1920, height: 1080 });
   await page.click('#content .wn5-row[data-rt="101"] .wi4-plane').catch(() => {});
   const nOrders = await page.$eval('#wn5-menu [data-item="orders"] .wn5-m-n', (e) => e.textContent).catch(() => null);
   ok(scn, '«Άνοιγμα παραγγελιών» carries the number of the cycle\'s orders', nOrders !== null && /^\d+$/.test(nOrders), nOrders);
@@ -2000,10 +2013,13 @@ async function scnSheet(browser, origin) {
     const a4 = await pop.evaluate(() => ({ sides: [...document.querySelectorAll('.s-stop')].map((x) => x.dataset.side), body: document.body.innerText }));
     ok(scn, 'the A4 holds the KATHODOS stops only', a4.sides.length === 3 && a4.sides.every((s) => s === 'KATHODOS'), a4.sides);
     ok(scn, 'Veroia only as «Αποθήκη Βέροιας», no price', a4.body.includes('Αποθήκη Βέροιας') && !a4.body.includes('ΒΕΡΟΙΑ TEST') && !/€/.test(a4.body));
+    // fidelity T23: TST-2104 has one cycle in the week → «Κύκλος 1» as on the board tile and the ✈ head, never «1/1»
+    ok(scn, 'fidelity: the A4 says «Κύκλος 1» for a one-cycle truck, never «1/1»', /· Κύκλος 1\b/.test(a4.body) && !a4.body.includes('1/1'), a4.body.slice(0, 300));
     await pop.close();
   }
   await page.waitForTimeout(500);
   const clip = await page.evaluate(() => navigator.clipboard.readText()).catch(() => '');
+  ok(scn, 'fidelity: WhatsApp line 2 «W.. · κύκλος 1» for a one-cycle truck (board rule, owner 22/10)', /^W\d+ · κύκλος 1$/.test(clip.split('\n')[1] || ''), clip.split('\n')[1]);
   ok(scn, 'the WhatsApp text is in the clipboard, KATHODOS only', clip.startsWith('*TST-2104 · TRL-5102 · Driver Test 01*') && clip.includes('*ΚΑΘΟΔΟΣ*') && !clip.includes('*ΑΝΟΔΟΣ*'), clip.slice(0, 200));
   ok(scn, 'read only: no /plan write', !S.plan.some((x) => x.m !== 'GET'), S.plan.filter((x) => x.m !== 'GET').map((x) => x.m + ' ' + x.path));
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
