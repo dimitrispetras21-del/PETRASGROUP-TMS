@@ -848,6 +848,29 @@ async function scnAssign(browser, origin) {
       !!v3.rows && v3.rows.length >= 4 && v3.rows.filter((x) => x.h !== 40).length <= 1 && v3.pitch.every((p, i) => p === v3.rows[i].h), v3.rows && { rows: v3.rows, pitch: v3.pitch });
     ok(scn, 'fidelity r3: search field 287×28 at 12px and its whole placeholder fits; row buttons 22px tall',
       v3.q === '287|28|12px' && v3.fits === true && !!v3.btn && v3.btn.length >= 4 && v3.btn.every((h) => h === 22), v3);
+    // fidelity run 2 r1 (Figma Δ1 2051:7735): fields edged in the board line #E2E8F0 with grey-3 hints (#98A2B3, as
+    // .wi4-search); group suffix 6px after the label (flex gap, 2051:7752); filter tabs 12.5px, 500 / chosen 600;
+    // the Veroia-window label as the field labels (12px grey-1); band text at x 15 like the title (14 + the edge)
+    const v4 = await page.$eval(D, (dlg) => {
+      const cs = (e) => getComputedStyle(e), r = (e) => e.getBoundingClientRect();
+      const fields = [...dlg.querySelectorAll('.wn5-dq, .wn5-hm')].map((e) => [cs(e).borderTopColor, getComputedStyle(e, '::placeholder').color].join('|'));
+      const gh = dlg.querySelector('[data-grp="rt"]'), sp = gh && gh.querySelector('span'), rg = document.createRange();
+      if (gh) rg.selectNodeContents(gh.firstChild);
+      // label end → the suffix's first glyph «·» (the suffix's leading space is part of the gap, as the critic measured)
+      const lr = gh ? rg.getBoundingClientRect().right : 0, tn = sp && sp.firstChild, i0 = tn ? tn.data.search(/\S/) : -1;
+      if (i0 >= 0) { rg.setStart(tn, i0); rg.setEnd(tn, i0 + 1); }
+      const gap = i0 >= 0 ? Math.round(rg.getBoundingClientRect().left - lr) : null;
+      const tabs = [...dlg.querySelectorAll('.wn5-seg button')].map((b) => [b.classList.contains('on') ? 'on' : 'off', cs(b).fontSize, cs(b).fontWeight].join('|'));
+      const hw = dlg.querySelector('.wn5-hubwin > span'), band = dlg.querySelector('.wn5-grey');
+      const bl = parseFloat(cs(dlg).borderLeftWidth) || 0;
+      if (band) rg.selectNodeContents(band);
+      return { fields, gap, tabs, hub: hw && [cs(hw).fontSize, cs(hw).color].join('|'), bandX: band && Math.round(rg.getBoundingClientRect().left - r(dlg).left), bl };
+    }).catch((e) => ({ err: String(e) }));
+    ok(scn, 'fidelity run2: search and ΗΗ:ΛΛ fields edged #E2E8F0, placeholder #98A2B3 (grey-3)', !!v4.fields && v4.fields.length === 3
+      && v4.fields.every((f) => f === 'rgb(226, 232, 240)|rgb(152, 162, 179)'), v4.fields);
+    ok(scn, 'fidelity run2: group suffix 6px after the label; filter tabs 12.5px, 500 / chosen 600', v4.gap === 6
+      && JSON.stringify((v4.tabs || []).slice().sort()) === JSON.stringify(['off|12.5px|500', 'on|12.5px|600']), { gap: v4.gap, tabs: v4.tabs });
+    ok(scn, 'fidelity run2: «Παράθυρο φόρτωσης Βέροιας *» 12px grey-1 as the field labels; band text at x 15', v4.hub === '12px|rgb(52, 64, 84)' && v4.bandX === 15, v4);
     await bClick(page, `${D} .wn5-seg [data-v="free"]`);
     const hidRt = await page.$eval(`${D} [data-grp="rt"]`, (e) => e.offsetParent === null).catch(() => null);
     const shownFree = await page.$eval(`${D} [data-grp="free"]`, (e) => e.offsetParent !== null).catch(() => null);
@@ -920,6 +943,15 @@ async function scnAssign(browser, origin) {
     const tD = await bText(page, `${D} .wi4-dlg-t`), xD = await bText(page, D);
     ok(scn, 'a one-delivery national: «Ανάθεση · N-T201 → ATHENS TEST», no «Όλο το … μαζί» band (nothing to split)', tD === 'Ανάθεση · N-T201 → ATHENS TEST' && !xD.includes('Όλο το'), { tD });
     await bClick(page, `${D} [data-act="cancel"]`);
+    // fidelity run 2 r1 (Figma 2011:9152/9153/9161): ✈ head line 1 SemiBold 600 12px navy, line 2 11px; items 12.5px Regular
+    const mst = (await bClick(page, '.wn5-row[data-rt="201"] .wi4-plane')) && await page.evaluate(() => {
+      const m = document.getElementById('wn5-menu'); if (!m) return null;
+      const f = (e) => e && [getComputedStyle(e).fontSize, getComputedStyle(e).fontWeight, getComputedStyle(e).color].join('|');
+      return { l1: f(m.querySelector('.wn5-m-hd > .wi4-l1')), l2: f(m.querySelector('.wn5-m-hd > .wi4-l2')), item: f(m.querySelector('.wn5-m-i[data-item="assign"] > .wi4-l1')) };
+    }).catch(() => null);
+    await page.keyboard.press('Escape');
+    ok(scn, 'fidelity run2: ✈ head 600 12px navy / 11px grey-2; item label 12.5px Regular navy', !!mst && mst.l1 === '12px|600|rgb(11, 25, 41)'
+      && mst.l2 === '11px|400|rgb(91, 107, 127)' && mst.item === '12.5px|400|rgb(11, 25, 41)', mst);
     ok(scn, 'warehouse: ✈ «Ανάθεση / αλλαγή φορτηγού ή συνεργάτη» opens it too (no role gate)', (await bMenu(page, 201, 'assign')) && await bHas(page, D));
     await bClick(page, `${D} [data-act="pick"][data-cand="truck:14"]`);
     await bClick(page, `${D} [data-act="save"][data-cand="truck:14"]`);

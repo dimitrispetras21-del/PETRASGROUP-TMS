@@ -9157,7 +9157,10 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-m-i { display:flex; justify-content:space-between; align-items:baseline; gap:8px; width:100%; padding:7px 12px; border:0; background:none;
   text-align:left; font:inherit; color:inherit; cursor:pointer; }
 .wn5-m-i:hover, .wn5-m-i:focus { background:var(--wi4-sel); outline:none; }
-.wn5-m-i > .wi4-l1 { font-weight:400; }
+.wn5-m-i > .wi4-l1 { font-weight:400; font-size:12.5px; }   /* Figma 2011:9161: 12.5 Regular, the .wi4-l1 12px would win */
+/* head (Figma 2011:9152/9153): line 1 SemiBold 600 12px navy, line 2 11px Regular grey-2 */
+.wn5-m-hd > .wi4-l1 { font-weight:600; }
+.wn5-m-hd > .wi4-l2 { font-size:11px; line-height:14px; }
 .wn5-m-i.danger > .wi4-l1 { color:var(--wi4-red); }
 .wn5-m-sep { height:1px; margin:4px 0; background:var(--wi4-line); }
 .wn5-m-n { margin-left:auto; font-weight:600; color:var(--wi4-grey-1); }
@@ -9274,16 +9277,24 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-grey { padding:6px 10px; border-radius:6px; background:var(--wi4-chip); color:var(--wi4-grey-1); }
 .wn5-dlg .wn5-grey { margin:0 -16px; padding:6px 16px; border-radius:0; border-top:1px solid var(--wi4-line); border-bottom:1px solid var(--wi4-line); font-size:11px; line-height:16px; color:var(--wi4-grey-2); }   /* 30px, Δ1 */
 .wn5-dlg .wn5-miss { color:var(--wi4-amber-ink); }
-.wn5-dlg .wn5-dq { width:290px; max-width:100%; height:28px; padding:0 8px; border:1px solid var(--wi4-ctl); border-radius:6px; font:inherit; }
+.wn5-dlg .wn5-dq { width:290px; max-width:100%; height:28px; padding:0 8px; border:1px solid var(--wi4-line-2); border-radius:6px; font:inherit; }
+/* Figma 2051:7749/7750: the search field and the ΗΗ:ΛΛ inputs are edged in the board line and hint in grey-3,
+   as .wi4-search (Chrome's default placeholder grey is darker and reads as typed text) */
+.wn5-dlg .wn5-dq::placeholder, .wn5-hm::placeholder { color:var(--wi4-grey-3); }
 /* Δ1 segmented filter: a borderless tray (padding 3, radius 9), the chosen half a white 28px tab with a slot border */
 .wn5-seg { display:inline-flex; padding:3px; border-radius:9px; background:var(--wi4-tabs-bg); }
-.wn5-seg button { height:28px; box-sizing:border-box; border:1px solid transparent; background:none; padding:0 12px; font:inherit; font-size:12px; color:var(--wi4-grey-1); cursor:pointer; border-radius:6px; }
+.wn5-seg button { height:28px; box-sizing:border-box; border:1px solid transparent; background:none; padding:0 12px; font:inherit; font-size:12.5px; font-weight:500; color:var(--wi4-grey-1); cursor:pointer; border-radius:6px; }   /* Figma 2051:7743/7745 */
 .wn5-seg button.on { background:var(--surface-card); border-color:var(--wi4-slot); color:var(--wi4-ink); font-weight:600; }
 .wn5-hubwin { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
 .wn5-hubwin small { color:var(--wi4-grey-2); }
-.wn5-hm { width:64px; height:26px; padding:0 6px; border:1px solid var(--wi4-ctl); border-radius:5px; font:inherit; }
+/* the frame is silent on this line (Ε-5): its label follows the dialog's field labels (.wn5-field 12px grey-1) */
+.wn5-hubwin > span { font-size:12px; color:var(--wi4-grey-1); }
+.wn5-hm { width:64px; height:26px; padding:0 6px; border:1px solid var(--wi4-line-2); border-radius:5px; font:inherit; }
 .wn5-grp-h { font-size:10.5px; font-weight:600; letter-spacing:.42px; color:var(--wi4-grey-2); margin-top:6px; }
-.wn5-grp-h > span { font-weight:400; letter-spacing:0; }
+/* Figma 2051:7752 puts the suffix 6px after the label (a flex gap). Not flex here: innerText would split the header
+   into two lines and the text «ΣΥΝΕΡΓΑΤΗΣ · 2» is what the screen and its rig read; the suffix's own leading space
+   is ~3px, so 3px more makes the 6. */
+.wn5-grp-h > span { font-weight:400; letter-spacing:0; margin-left:3px; }
 /* A candidate row runs edge to edge (the dialog's 16px padding undone), pl 24 / pr 12, so its rule spans the whole
    window and the box sits 8px in from the group header (Δ1). The middle column is as wide as its text, the chips take
    the rest and sit right against the button; when they cannot fit on one line they wrap, still right-aligned. */
@@ -9311,6 +9322,7 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-wide > .wi4-dlg-hd { height:44px; margin:0 -4px 0 -2px; }
 .wn5-wide .wi4-dlg-hd > .wi4-dlg-t { font:600 13px/17px 'DM Sans',sans-serif; }
 .wn5-wide > .wn5-dlg-b { margin-top:0; gap:0; }
+.wn5-wide .wn5-grey { padding-left:14px; }   /* text at x 15 as the title (Figma 14 + the 1px edge) */
 .wn5-wide .wn5-dq { display:block; width:287px; margin:6px 0 6px -4px; padding:0 9px; font-size:12px; }
 .wn5-wide .wn5-dlg-b > :is(.wn5-hubwin, .wn5-miss) { margin:0 0 6px -4px; }   /* left edge with the field (x 12) */
 .wn5-wide .wn5-grp-h { margin:0 0 0 -4px; padding:9px 0 3px; line-height:14px; }
