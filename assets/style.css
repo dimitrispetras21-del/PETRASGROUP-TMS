@@ -9098,6 +9098,9 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5 .wn5-fl .wn5-pt > .wi4-pt-n + .wi4-l1 { display:inline; }
 .wn5 .wn5-fl .wn5-pt > .wi4-pt-n + .wi4-l1::before { content:' '; }
 .wn5 .wn5-fl .wn5-pt > .wi4-l2 { display:block; }
+/* ...and the points may use the cell's right 9px gutter: at 1440 the 102px content is 2px short of «1 THESSALONIKI»
+   (14 + 3 + 87), which left the number alone on its line; the next column keeps its own 9px, so text never touches. */
+.wn5 .wn5-fl .wn5-pts { margin-right:-9px; }
 /* 164px: two stops + the 34px «+N» fit the 386px of a point column at 1920 (Figma: stops 178px apart, gap included). */
 .wn5 .wn5-pt { flex:0 1 164px; }
 /* A point with no number (a waiting VS, a single stop): its name starts at x0, flush with the numbers above — in the
@@ -9398,11 +9401,17 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
    columns, at the list's left edge, 13px ink over an 11px grey subline, the moved pallets at the right (Figma
    2013:7773-7775); the source vehicle after the move closes the list (2013:7777). ── */
 .wn5-cand[data-line="wait"] > .wn5-alt { grid-column:1 / 3; display:flex; flex-direction:column; }
-.wn5-alt b { font-size:13px; line-height:17px; font-weight:500; color:var(--wi4-ink); }
+.wn5-alt b { font-size:12.5px; line-height:17px; font-weight:500; color:var(--wi4-ink); }
 .wn5-alt > span { font-size:11px; line-height:15px; color:var(--wi4-grey-2); }
 .wn5-cand[data-line="wait"] > :nth-child(2) { justify-self:end; }
-.wn5-alt-p { font-size:12px; color:var(--wi4-ink); }
-.wn5-dlg .wn5-srcafter { margin:0 -16px; padding:8px 12px 8px 24px; font-size:11px; line-height:15px; color:var(--wi4-grey-1); }
+.wn5-alt-p { font-size:12px; font-weight:600; color:var(--wi4-grey-2); }   /* 2013:7775 */
+.wn5-dlg .wn5-srcafter { margin:0 -16px; padding:8px 12px 8px 24px; font-size:11px; line-height:15px; font-weight:500; color:var(--wi4-grey-2); }   /* 2013:7777 */
+/* Figma 2013:7751/7752: a move's header is two rows — the title (with the filter and × at its right), then the meta
+   on its own row, 11px grey-2, wrapping instead of «…»: inline, a whole side's «RT · ΚΑΘΟΔΟΣ · k παραδόσεις · παράδοση
+   Τρί 13/10» was cut before its date at 1440 (319px of text in 303px). */
+.wn5-wide[data-wn5="move"] > .wi4-dlg-hd { flex-wrap:wrap; height:auto; padding:10px 0; row-gap:0; }
+.wn5-wide[data-wn5="move"] .wi4-dlg-hd > .wi4-dlg-t { flex:1 1 0; min-width:0; }
+.wn5-dlg[data-wn5="move"] .wi4-dlg-hd > .wn5-dlg-meta { order:1; flex:0 0 100%; font-size:11px; line-height:15px; white-space:normal; overflow:visible; }
 /* ── wn5 end ── */
 
 /* ═══ Παραγγελίες › Εβδομάδα v4 (.ow4) — modules/orders_week_view.js ═════════

@@ -1140,10 +1140,19 @@ async function scnPlus(browser, origin) {
       }
       const c = cell.getBoundingClientRect();
       const spill = [...cell.querySelectorAll('.wn5-pt')].some((p) => p.getBoundingClientRect().right > c.right + 0.5);
-      return { words: out, spill };
+      // the stop number sits on the line of the place's first word (T14 fidelity r2: «1» stood alone on its own line)
+      const n = cell.querySelector('.wi4-pt-n'), l1 = n && n.nextElementSibling;
+      let numLine = null;
+      if (l1) {
+        const tn = [...l1.childNodes].find((x) => x.nodeType === 3 && x.data.trim());
+        const m = tn && /\S+/.exec(tn.data);
+        if (m) { const r = document.createRange(); r.setStart(tn, m.index); r.setEnd(tn, m.index + m[0].length); numLine = Math.abs(r.getClientRects()[0].top - n.getBoundingClientRect().top) < 4; }
+      }
+      return { words: out, spill, numLine };
     }).catch(() => null);
     ok(scn, 'board 1440: RT-T204 ΦΟΡΤΩΣΗ «THESSALONIKI TEST» — no word on two lines, nothing past the cell', !!w && w.words.some((x) => x.word === 'THESSALONIKI')
       && w.words.every((x) => x.lines === 1) && !w.spill, w);
+    ok(scn, 'board 1440: RT-T204 ΦΟΡΤΩΣΗ — the stop number «1» on the line of «THESSALONIKI», not alone above it', !!w && w.numLine === true, w);
     await page.context().close();
   }
 }
@@ -1255,15 +1264,20 @@ async function scnMove(browser, origin) {
       const par = dlg.querySelector('[data-line="rt"] [data-rate-rt]'), parLine = par && par.closest('.wn5-cand'), keep = parLine && parLine.querySelector('[data-act="rate"]');
       return { title: dlg.querySelector('.wi4-dlg-t').innerText, meta: (dlg.querySelector('.wn5-dlg-meta') || {}).innerText || '',
         alt: at && sub && box ? { x: Math.round(r(at).left), boxX: Math.round(r(box).left), t: [cs(at).fontSize, cs(at).color].join('|'), ink: cs(dlg.querySelector('.wi4-dlg-t')).color,
-          sub: cs(sub).fontSize, h: Math.round(r(alt).height), pal: pal ? pal.innerText : '', palGap: pal && btn ? Math.round(r(btn).left - r(pal).right) : null } : null,
+          sub: cs(sub).fontSize, h: Math.round(r(alt).height), pal: pal ? pal.innerText : '', palGap: pal && btn ? Math.round(r(btn).left - r(pal).right) : null,
+          palSt: pal ? [cs(pal).fontSize, cs(pal).fontWeight, cs(pal).color].join('|') : '' } : null,
         after: (dlg.querySelector('[data-src-after]') || {}).innerText || '', hubwin: !!dlg.querySelector('.wn5-hubwin'),
+        afterSt: (() => { const a = dlg.querySelector('[data-src-after]'); return a ? [cs(a).fontSize, cs(a).fontWeight, cs(a).color].join('|') : ''; })(),
+        grey2: (() => { const g = dlg.querySelector('.wn5-alt > span'); return g ? cs(g).color : ''; })(),
         par: parLine ? { h: Math.round(r(parLine).height), keepShown: !!keep && r(keep).width > 0, fs: cs(par).fontSize } : null };
     }).catch((e) => ({ err: String(e) }));
     ok(scn, 'fidelity r1: header «Μεταφορά σε… · RENTIS TEST · 12π» · «VS-T201 · ΚΑΘΟΔΟΣ · παράδοση Τρί 13/10», no client (Figma 2013:7751/7752)',
       v.title === 'Μεταφορά σε… · RENTIS TEST · 12π' && v.meta.includes('VS-T201 · ΚΑΘΟΔΟΣ · παράδοση Τρί 13/10') && !/ΠΕΛΑΤΗΣ/.test(v.title + v.meta), v);
-    ok(scn, 'fidelity r1: «Πίσω στη Βέροια» at the list\'s left edge (the boxes\' x), 13px ink over 11px, «12π» right against its button, one 40px line (2013:7773-7775)',
-      !!v.alt && v.alt.x === v.alt.boxX && v.alt.t === '13px|' + v.alt.ink && v.alt.sub === '11px' && v.alt.h === 40 && v.alt.pal === '12π' && v.alt.palGap >= 4 && v.alt.palGap <= 12, v.alt);
+    ok(scn, 'fidelity r1/r2: «Πίσω στη Βέροια» at the list\'s left edge (the boxes\' x), 12.5px ink over 11px, «12π» right against its button, one 40px line (2013:7773-7775)',
+      !!v.alt && v.alt.x === v.alt.boxX && v.alt.t === '12.5px|' + v.alt.ink && v.alt.sub === '11px' && v.alt.h === 40 && v.alt.pal === '12π' && v.alt.palGap >= 4 && v.alt.palGap <= 12, v.alt);
     ok(scn, 'fidelity r1: the source after the move closes the list «TST-2106 · 27 → 15/33» (2013:7777)', v.after === 'TST-2106 · 27 → 15/33', v.after);
+    ok(scn, 'fidelity r2: «12π» SemiBold 12px grey-2 (2013:7775); «TST-2106 · 27 → 15/33» Medium 11px grey-2 (2013:7777)',
+      !!v.alt && !!v.grey2 && v.alt.palSt === '12px|600|' + v.grey2 && v.afterSt === '11px|500|' + v.grey2, { pal: v.alt && v.alt.palSt, after: v.afterSt, grey2: v.grey2 });
     ok(scn, 'fidelity r1: partner cycle line 40px with field + € + its button, «Κράτα» hidden while the field is empty, field 11.5px (Δ1 2051:7735)',
       !!v.par && v.par.h === 40 && v.par.keepShown === false && v.par.fs === '11.5px', v.par);
     await page.fill(`${D} [data-rate-rt]`, '350');
@@ -1279,6 +1293,21 @@ async function scnMove(browser, origin) {
     ok(scn, 'fidelity r1: the two-step title names the load and its place, never the client («Μεταφορά · VS-T201 · RENTIS TEST»)',
       (await bText(page, `${D} .wi4-dlg-t`)) === 'Μεταφορά · VS-T201 · RENTIS TEST');
     await shot(page, 'move-g-twostep');
+    await page.context().close();
+  }
+  { // H · fidelity r2 at 1440 (Figma 2013:7751/7752): a whole side's meta is its own row under the title, 11px grey-2,
+    //     never cut — inline it lost «13/10» (319px of text in 303px)
+    const { page } = await bOpen(browser, origin, { viewport: { width: 1440, height: 900 } });
+    await page.evaluate(() => { WN5Act.move({ rt_id: 204, side: 'KATHODOS' }, {}); }).then(() => page.waitForTimeout(300), () => {});
+    const h = await page.$eval(D, (dlg) => {
+      const t = dlg.querySelector('.wi4-dlg-t'), m = dlg.querySelector('.wi4-dlg-hd > .wn5-dlg-meta'), seg = dlg.querySelector('.wi4-dlg-hd > .wn5-seg');
+      const r = (e) => e.getBoundingClientRect(), cs = getComputedStyle(m);
+      return { meta: m.innerText, cut: m.scrollWidth > m.clientWidth, below: r(m).top >= r(t).bottom - 0.5, left: Math.round(r(m).left) === Math.round(r(t).left),
+        segRow: !!seg && r(seg).bottom <= r(m).top + 0.5, st: [cs.fontSize, cs.color].join('|') };
+    }).catch((e) => ({ err: String(e) }));
+    ok(scn, 'fidelity r2: whole side meta «RT-T204 · ΚΑΘΟΔΟΣ · 2 παραδόσεις · παράδοση Τρί 13/10» on its own row under the title, not cut, 11px',
+      h.meta === 'RT-T204 · ΚΑΘΟΔΟΣ · 2 παραδόσεις · παράδοση Τρί 13/10' && !h.cut && h.below && h.left && h.segRow && /^11px\|/.test(h.st || ''), h);
+    await shot(page, 'move-h-side-1440');
     await page.context().close();
   }
 }

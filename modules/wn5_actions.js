@@ -777,7 +777,8 @@
     // Figma Δ1 header: the meta inline after the title in grey, «Μόνο ελεύθερα | Όλα» at the top right. In the header,
     // not the body, so a redraw of the body keeps the filter where it is.
     const hd = d.dlg.querySelector('.wi4-dlg-hd');
-    hd.querySelector('.wi4-dlg-t').insertAdjacentHTML('afterend', '<span class="wn5-dlg-meta">· ' + _esc(st.meta) + '</span>'
+    // A move's meta is its own row under the title (Figma 2013:7752), so it opens without the inline «· » separator
+    hd.querySelector('.wi4-dlg-t').insertAdjacentHTML('afterend', '<span class="wn5-dlg-meta">' + (kind === 'move' ? '' : '· ') + _esc(st.meta) + '</span>'
       + '<span class="wn5-seg" role="group">'
       + '<button type="button" data-act="seg" data-v="free" class="' + (st.filter === 'free' ? 'on' : '') + '">Μόνο ελεύθερα</button>'
       + '<button type="button" data-act="seg" data-v="all" class="' + (st.filter === 'all' ? 'on' : '') + '">Όλα</button></span>');
