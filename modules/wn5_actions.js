@@ -1570,6 +1570,118 @@
   };
   ACTS.date = (el) => { const row = el.closest('.wn5-row[data-rt]'); WN5Act.datePanel(_id(row && row.dataset.rt), el.dataset.side, el); };
 
+  // ═══ T17 · «Φόρτωση με τοπικό» (decision 44): request_id on the creation, never on the cancel ═══
+  // the stops a local driver can load: the cycle's ΚΑΘΟΔΟΣ pickups outside Veroia (Veroia is loaded by the cycle's
+  // truck). The ΑΝΟΔΟΣ pickups are the truck's own work in the south (Figma 2011:7745 row 3: «… → Βέροια · για
+  // <delivery>»); 072 takes any stop, so this is the screen's offer only — owner question in the T17 ledger.
+  function _localStops(c, hub) {
+    return (c.stops || []).filter((s) => s.side === 'KATHODOS' && s.location_id !== hub && (s.legs || []).some((l) => l.act === 'load'));
+  }
+  function _localBody(st) {
+    const body = { rt_stop_id: st.stop, driver_id: st.driver, truck_id: st.truck };
+    if (st.trailer) body.trailer_id = st.trailer;
+    const f = _hhmm(st.from), t = _hhmm(st.to);
+    if (f) body.time_from = f;
+    if (t) body.time_to = t;
+    if (String(st.notes || '').trim()) body.notes = String(st.notes).trim();
+    return body;
+  }
+  WN5Act.local = async function local(rtStopId, rtId) {
+    const sid = _id(rtStopId);
+    let c = rtId ? _cycle(_id(rtId)) : null;
+    if (!c && sid) c = _cycles().find((x) => (x.stops || []).some((s) => s.stop_id === sid)) || null;
+    if (!c) { WN5Act.strip(_boardHost(), _clientErr('rt_missing', 'Ο κύκλος δεν είναι στο board που φορτώθηκε — ανανέωσε')); return null; }
+    const stops = _copy(_localStops(c, _hubId()));
+    const st = { rtId: c.rt_id, stop: stops.some((s) => s.stop_id === sid) ? sid : null, driver: null, truck: null, trailer: null,
+      from: '', to: '', notes: '', ids: { ok: false },
+      // one id per open creation window (decision 44): kept in this closure only, minted now, renewed after a 200
+      slot: PlanApi.slot() };
+    st.ids = typeof PlanIds !== 'undefined' ? await PlanIds.load() : { ok: false };
+    const lists = st.ids.ok ? { d: PlanIds.list('driver'), t: PlanIds.list('truck'), r: PlanIds.list('trailer') } : { d: [], t: [], r: [] };
+    const d = _dlg('local', 'Φόρτωση με τοπικό · ' + (c.code || 'κύκλος'), { onClose: () => st.slot.close() });
+    d.ft.innerHTML = '<button type="button" class="wi4-btn" data-act="cancel">Άκυρο</button><button type="button" class="wi4-btn pri" data-act="save">Αποθήκευση</button>';
+    const stopLabel = (s) => _dayShort(_ymdOf(s.planned_from)) + ' · ' + _hm(s.planned_from) + '–' + _hm(s.planned_to) + ' · ' + (s.location || '—')
+      + ' · ' + [...new Set((s.legs || []).filter((l) => l.act === 'load').map((l) => l.client))].join(', ');
+    d.body.innerHTML = (st.ids.ok ? '' : '<div class="wn5-miss" data-ids-miss>Οι κατάλογοι δεν είναι διαθέσιμοι ακόμη: οδηγός και φορτηγό διαλέγονται όταν έρθουν.</div>')
+      + '<label class="wn5-field"><span>Στάση *</span><select data-stop><option value="">—</option>'
+      + stops.map((s) => '<option value="' + s.stop_id + '"' + (s.stop_id === st.stop ? ' selected' : '') + '>' + _esc(stopLabel(s)) + '</option>').join('') + '</select></label>'
+      + (stops.length ? '' : '<p class="wn5-none">Ο κύκλος δεν φορτώνει έξω από τη Βέροια.</p>')
+      + '<label class="wn5-field"><span>Οδηγός *</span><select data-driver data-fh-search><option value="">—</option>' + _optsHTML(lists.d, null) + '</select></label>'
+      + '<label class="wn5-field"><span>Φορτηγό *</span><select data-truck data-fh-search><option value="">—</option>' + _optsHTML(lists.t, null) + '</select></label>'
+      + '<label class="wn5-field"><span>Ρυμούλκα</span><select data-trailer data-fh-search><option value="">—</option>' + _optsHTML(lists.r, null) + '</select></label>'
+      + '<div class="wn5-hubwin"><span>Ώρα</span><input class="wn5-hm" data-time="from" placeholder="ΗΗ:ΛΛ"> – <input class="wn5-hm" data-time="to" placeholder="ΗΗ:ΛΛ"></div>'
+      + '<label class="wn5-field"><span>Σημειώσεις</span><textarea data-notes rows="2"></textarea></label>'
+      + '<p class="wn5-none">Η ημέρα της φόρτωσης είναι η ημέρα της στάσης· η σειρά του κύκλου δεν αλλάζει, φαίνεται η ↳ υποσημείωση.</p>';
+    if (typeof fhSelectSearchIn === 'function') fhSelectSearchIn(d.body);
+    d.refresh = () => {
+      const b = d.dlg.querySelector('[data-act="save"]');
+      // a typed time that is not HH:MM keeps the button off: it would be stored as text (072 time_from is free text)
+      const badTime = (st.from && !_hhmm(st.from)) || (st.to && !_hhmm(st.to));
+      if (b) b.disabled = d.locked || d.busy || !st.ids.ok || !st.stop || !st.driver || !st.truck || !!badTime;
+    };
+    d.dlg.addEventListener('change', (ev) => {
+      const el = ev.target;
+      if (el.matches('[data-stop]')) st.stop = _id(el.value);
+      else if (el.matches('[data-driver]')) st.driver = _id(el.value);
+      else if (el.matches('[data-truck]')) st.truck = _id(el.value);
+      else if (el.matches('[data-trailer]')) st.trailer = _id(el.value);
+      else return;
+      d.refresh();
+    });
+    d.dlg.addEventListener('input', (ev) => {
+      const el = ev.target;
+      if (el.matches('[data-time]')) { if (el.dataset.time === 'from') st.from = el.value; else st.to = el.value; }
+      else if (el.matches('[data-notes]')) st.notes = el.value;
+      else return;
+      d.refresh();
+    });
+    d.dlg.addEventListener('click', (ev) => {
+      const b = ev.target.closest('[data-act]');
+      if (!b || b.disabled || !_live()) return;
+      if (b.dataset.act === 'cancel') { if (!d.busy) _close(d); return; }
+      if (b.dataset.act !== 'save') return;
+      const body = _localBody(st);
+      const stopId = body.rt_stop_id, driverId = body.driver_id;
+      _send(d, { method: 'POST', path: '/plan/local-loading', body, requestId: st.slot.id }, 'Γράφτηκε η φόρτωση με τοπικό', {
+        slot: st.slot,
+        // request_reused = the first press was saved: the board must show this loading before «αποθηκεύτηκε»
+        onReused: (b2) => {
+          for (const cy of (b2 && b2.cycles) || []) for (const s of cy.stops || []) {
+            if (s.stop_id === stopId && s.local_loading && s.local_loading.driver_id === driverId) return s.local_loading;
+          }
+          return null;
+        },
+      });
+    });
+    d.refresh();
+    _gate(d);
+    return d;
+  };
+
+  WN5Act.localCancel = function localCancel(localMoveId) {
+    const id = _id(localMoveId);
+    let hit = null;
+    for (const c of _cycles()) for (const s of c.stops || []) if (s.local_loading && s.local_loading.local_move_id === id) hit = { c, s };
+    if (!hit) { WN5Act.strip(_boardHost(), _clientErr('local_missing', 'Η φόρτωση με τοπικό δεν είναι πια στο board — ανανέωσε')); return null; }
+    const ll = hit.s.local_loading;
+    const d = _dlg('local', 'Ακύρωση φόρτωσης με τοπικό');
+    d.body.innerHTML = '<p>' + _esc([ll.driver || '—', _dayShort(ll.move_date), [ll.time_from, ll.time_to].filter(Boolean).join('–'), hit.s.location || '—', hit.c.code || ''].filter(Boolean).join(' · ')) + '</p>'
+      + '<p class="wn5-none">Η φόρτωση ακυρώνεται· η στάση και οι παραδόσεις του κύκλου μένουν.</p>';
+    d.ft.innerHTML = '<button type="button" class="wi4-btn" data-act="cancel">Άκυρο</button><button type="button" class="wi4-btn pri wn5-danger" data-act="confirm">Ακύρωση φόρτωσης</button>';
+    d.dlg.addEventListener('click', (ev) => {
+      const b = ev.target.closest('[data-act]');
+      if (!b || b.disabled || !_live()) return;
+      if (b.dataset.act === 'cancel') { if (!d.busy) _close(d); return; }
+      if (b.dataset.act !== 'confirm') return;
+      // no request_id on a cancel (072:2229); a second cancel answers already:true
+      _send(d, { method: 'POST', path: '/plan/local-loading', body: { local_move_id: id, cancel: true } },
+        (out) => (out.already ? 'Η φόρτωση με τοπικό ήταν ήδη ακυρωμένη' : 'Ακυρώθηκε η φόρτωση με τοπικό'));
+    });
+    _gate(d);
+    return d;
+  };
+  ACTS['local-cancel'] = (el) => WN5Act.localCancel(_id(el.dataset.lm));
+
   // ═══ the actions of T12–T18 go above this line ═══
 
   WN5Act._kit = KIT;

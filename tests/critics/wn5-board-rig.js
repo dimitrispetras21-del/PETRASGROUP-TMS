@@ -1621,6 +1621,79 @@ async function scnDate(browser, origin) {
 }
 SCN['date'] = scnDate;
 
+// T17 — «Φόρτωση με τοπικό» (decision 44): request_id on the creation only, the same id on every press until a 200.
+async function scnLocal(browser, origin) {
+  const scn = 'local';
+  const D = bDlg('local');
+  const P = '/plan/local-loading';
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  const noId = (x) => { const o = Object.assign({}, x.body); delete o.request_id; return JSON.stringify(o); };
+  const fillForm = async (page) => {
+    await bPick(page, `${D} select[data-stop]`, '2033');
+    await bPick(page, `${D} select[data-driver]`, '34');
+    await bPick(page, `${D} select[data-truck]`, '15');
+    await page.fill(`${D} input[data-time="from"]`, '11:00', { timeout: 1500 }).catch(() => {});   // short: absent on main, never the watchdog
+    await page.fill(`${D} input[data-time="to"]`, '12:00', { timeout: 1500 }).catch(() => {});   // short: absent on main, never the watchdog
+  };
+  { // A · plan_unknown then replayed: one POST per press, the same request_id, success with the first ids
+    let n = 0;
+    const { page, S } = await bOpen(browser, origin, { plan: { ['POST ' + P]: () => (++n === 1 ? planErr(500, 'SERVER', 'plan_unknown')
+      : [200, { ok: true, op: 'plan_local_loading', dry_run: false, already: false, replayed: true, ids: { local_move_id: 7001, rt_id: 204 }, warnings: [], notice_ids: [] }]) } });
+    await bMenu(page, 204, 'local');
+    const opts = await page.$$eval(`${D} select[data-stop] option`, (os) => os.map((o) => o.value).filter(Boolean)).catch(() => []);
+    ok(scn, 'the ✈ item opens .wi4-dlg[data-wn5=local]; the stops offered = the cycle\'s loads outside Veroia (Thessaloniki)', JSON.stringify(opts) === '["2033"]', opts);
+    ok(scn, '«Αποθήκευση» disabled until stop, driver and truck are chosen', (await bOff(page, `${D} [data-act="save"]`)) === true);
+    await fillForm(page);
+    await bClick(page, `${D} [data-act="save"]`);
+    await page.waitForTimeout(3500);                // longer than _atRetry's 1 s + 2 s: a resend would show here
+    const c = bCalls(S, 'POST', P);
+    ok(scn, 'one POST {rt_stop_id, driver_id, truck_id, time_from, time_to} + a uuid v4 request_id', c.length === 1
+      && noId(c[0]) === '{"rt_stop_id":2033,"driver_id":34,"truck_id":15,"time_from":"11:00","time_to":"12:00"}' && UUID.test(c[0].body.request_id || ''), c.map((x) => x.raw));
+    ok(scn, '500 plan_unknown → exactly one POST, the «ΜΠΟΡΕΙ ΝΑ ΑΠΟΘΗΚΕΥΤΗΚΕ» strip with the Worker text, the window stays', c.length === 1
+      && (await bText(page, `${D} .wn5-strip[data-kind="unknown"]`)).includes('rig sentinel plan_unknown'));
+    const kept = await page.evaluate(() => JSON.stringify(sessionStorage) + JSON.stringify(localStorage) + JSON.stringify(history.state)).catch(() => '');
+    ok(scn, 'the request_id lives in memory only (not in sessionStorage / localStorage / history.state)', !!c[0] && !kept.includes(c[0].body.request_id));
+    await bClick(page, `${D} [data-act="save"]`);
+    await page.waitForTimeout(400);
+    const c2 = bCalls(S, 'POST', P);
+    ok(scn, 'the second press carries the SAME request_id and the same bytes', c2.length === 2 && c2[0].raw === c2[1].raw, c2.map((x) => x.raw));
+    const ev = await bEv(page);
+    ok(scn, '200 replayed:true → success, no third POST, the window closes', c2.length === 2 && !(await bHas(page, D)) && ev.some((e) => e.startsWith('toast') && e.includes('Γράφτηκε η φόρτωση με τοπικό')), ev);
+    await page.context().close();
+  }
+  { // B · a refusal is the Worker's words; closing the window drops the id, the next window has a new one
+    const { page, S } = await bOpen(browser, origin, { plan: { ['POST ' + P]: () => planErr(422, 'PLAN_RULE', 'driver_busy') } });
+    await bMenu(page, 204, 'local');
+    await fillForm(page);
+    await bClick(page, `${D} [data-act="save"]`);
+    ok(scn, '422 driver_busy → refusal strip with the Worker text', (await bText(page, `${D} .wn5-strip[data-kind="refusal"]`)).includes('rig sentinel driver_busy'));
+    await bClick(page, `${D} [data-act="cancel"]`);
+    await bMenu(page, 204, 'local');
+    await fillForm(page);
+    await bClick(page, `${D} [data-act="save"]`);
+    const c = bCalls(S, 'POST', P);
+    ok(scn, 'closing the window drops the request_id: the next window sends a new one', c.length === 2 && c[0].body.request_id && c[1].body.request_id && c[0].body.request_id !== c[1].body.request_id, c.map((x) => x.body && x.body.request_id));
+    await page.context().close();
+  }
+  { // C · cancel from the ↳ line: no request_id; already:true and the payroll warning are said
+    const board = bBoard();
+    board.cycles.find((x) => x.rt_id === 204).stops.find((s) => s.stop_id === 2033).local_loading =
+      { local_move_id: 7002, driver_id: 34, driver: 'Driver Test 04', move_date: '2026-10-12', time_from: '11:00', time_to: '12:00' };
+    const { page, S } = await bOpen(browser, origin, { board, plan: { ['POST ' + P]: () => [200, { ok: true, op: 'plan_local_loading', dry_run: false, already: true,
+      ids: { local_move_id: 7002 }, warnings: [{ code: 'local_payroll_review', dl_entry_id: 9, local_move_id: 7002 }], notice_ids: [] }] } });
+    await bClick(page, '[data-act="local-cancel"][data-lm="7002"]');
+    await bClick(page, `${D} [data-act="confirm"]`);
+    await page.waitForTimeout(400);
+    const c = bCalls(S, 'POST', P);
+    ok(scn, 'the ↳ «Ακύρωση» → {local_move_id:7002, cancel:true}, no request_id', c.length === 1 && c[0].raw === '{"local_move_id":7002,"cancel":true}', c.map((x) => x.raw));
+    const ev = await bEv(page);
+    ok(scn, 'already:true → «ήταν ήδη ακυρωμένη»; the local payroll warning on the board', ev.some((e) => e.startsWith('toast') && e.includes('ήταν ήδη ακυρωμένη'))
+      && (await bText(page, '#content .wn5-acthost .wn5-strip[data-kind="warning"]')).includes('τοπικού οδηγού'), ev);
+    await page.context().close();
+  }
+}
+SCN['local'] = scnLocal;
+
 // ── scenarios end (each Task adds its own above this line) ──
 
 // ── fixture check (T4): plain node, no browser ──

@@ -78,3 +78,12 @@ test('F4α-T15: dispatcher dry run → plan_rt_clear with rt_id merged from the 
   assert.strictEqual(r.seen[0].fn, 'plan_rt_clear');
   assert.deepStrictEqual(r.seen[0].args.p, { dry_run: true, rt_id: 201 });
 });
+
+test('F4α-T17: POST /plan/local-loading keeps the request_id in p (decision 44: the DB replays by it), a cancel has none', async () => {
+  const create = { rt_stop_id: 2033, driver_id: 34, truck_id: 15, request_id: 'aaaaaaaa-0000-4000-8000-000000000017' };
+  const r = await send({}, 'POST', '/plan/local-loading', create);
+  assert.strictEqual(r.seen[0].fn, 'plan_local_loading');
+  assert.deepStrictEqual(r.seen[0].args.p, create);
+  const c = await send({}, 'POST', '/plan/local-loading', { local_move_id: 7002, cancel: true });
+  assert.deepStrictEqual(c.seen[0].args.p, { local_move_id: 7002, cancel: true });
+});

@@ -8983,6 +8983,7 @@ body.wi4-on #wi-popover .wi-pop-save:hover { background:var(--navy-light); }
   --wn5-info-line: #bfdbfe;
   --wn5-ctl-hover: #98a2b3;   /* ✈ border on hover — the Weekly International's value (its rule is .wi4-c-idx only) */
   --wn5-dlg-shadow: 0 8px 24px rgba(10,26,41,.16);   /* the two-step dialog (Figma Δ5 2053:8080) */
+  --wn5-pop-shadow: 0 8px 12px rgba(10,26,41,.16);   /* the Δ4 shell (Figma 2011:9195), reused by the local-loading window */
 }
 /* The same page frame as v4 (body.wi4-on .content), while the v5 board is on screen. */
 body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; background:var(--surface-page); }
@@ -9454,6 +9455,27 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-res-s.wn5-conflict { color:var(--wi4-red); }   /* wraps: the Worker's words are never cut */
 .wn5-datep-r p { font-size:11px; line-height:15px; }
 .wn5-intl { color:var(--wi4-amber-ink); }
+/* ── T17: «Φόρτωση με τοπικό» ──
+   ✈ line (Figma 2046:7735): every menu line 30px, 0 12px, gap 10, centred; the right-hand text 11px Regular grey-3
+   (2046:7738, also «→ Βέροια» 2011:9167 and «κάθοδος + άνοδος» 2011:9180); hover = sel fill + Medium label (2011:9171). */
+.wn5-m-i { min-height:30px; padding:0 12px; gap:10px; align-items:center; box-sizing:border-box; }
+.wn5-m-i:hover > .wi4-l1, .wn5-m-i[aria-expanded="true"] > .wi4-l1 { font-weight:500; }   /* not :focus: the first line is focused on open and stays Regular (2011:9161) */
+.wn5-m-i > .wi4-l2 { flex:none; margin-left:auto; font-size:11px; line-height:14px; font-weight:400; color:var(--wi4-grey-3); white-space:nowrap; }
+/* ↳ sub-row text (2011:8302–8305): 10.5px grey-1, «Φόρτωση με τοπικό» SemiBold. Only the local line: .wn5-miss shares .wn5-sub-t. */
+.wn5 .wn5-sub[data-key^="local:"] > .wn5-sub-t { font-size:10.5px; line-height:14px; color:var(--wi4-grey-1); }
+.wn5 .wn5-sub[data-key^="local:"] > .wn5-sub-t b { font-weight:600; }
+/* «Ακύρωση» on the ↳ line: no frame draws it — the wn5 link precedent (.wn5-snone > .wi4-link, Medium), the row's 10.5px, its 5px gap */
+.wn5 .wn5-sub-x { margin-left:5px; font-size:10.5px; font-weight:500; }
+/* the window has no frame: the time row of the sibling Δ4 shell (2011:9265) — label 11.5 grey-2, inputs 64×28 ctl r5 px8 12.5 ink, «–» 12 grey-2 */
+.wn5-dlg[data-wn5="local"] .wn5-hubwin { gap:6px; font-size:12px; color:var(--wi4-grey-2); }
+.wn5-dlg[data-wn5="local"] .wn5-hubwin > span { font-size:11.5px; color:var(--wi4-grey-2); }
+.wn5-dlg[data-wn5="local"] .wn5-hm { height:28px; padding:0 8px; border-color:var(--wi4-ctl); font-size:12.5px; color:var(--wi4-ink); box-sizing:border-box; }
+.wn5-dlg[data-wn5="local"] .wn5-dlg-b { display:flex; flex-direction:column; gap:8px; }
+.wn5-dlg[data-wn5="local"] { padding:12px; box-shadow:var(--wn5-pop-shadow); }
+.wn5-dlg[data-wn5="local"] .wi4-dlg-t { font:600 12.5px/16px 'DM Sans',sans-serif; color:var(--wi4-ink); }
+.wn5-dlg[data-wn5="local"] .wi4-dlg-x { display:none; }   /* the shell has no «×»: Άκυρο is the exit (Esc and a click outside too) */
+.wn5-dlg[data-wn5="local"] .wi4-dlg-ft .wi4-btn { height:26px; padding:0 10px; border-radius:5px; font-size:11.5px; font-weight:600; }
+.wn5-dlg[data-wn5="local"] .wi4-dlg-ft .wi4-btn:not(.pri) { color:var(--wi4-grey-1); }
 /* ── wn5 end ── */
 
 /* ═══ Παραγγελίες › Εβδομάδα v4 (.ow4) — modules/orders_week_view.js ═════════
