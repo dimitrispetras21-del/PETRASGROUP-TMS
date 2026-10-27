@@ -1316,38 +1316,106 @@
     for (let i = 0; i < lead; i++) h += '<span></span>';
     for (let dd = 1; dd <= days; dd++) {
       const ymd = y + '-' + String(m + 1).padStart(2, '0') + '-' + String(dd).padStart(2, '0');
-      const cls = (ymd === (st.sel || st.cur) ? ' sel' : '') + (ymd === st.today ? ' today' : '');
+      // Figma 2053:7881: once another day is chosen, the cycle's own day keeps a dashed ring (what it was)
+      const cls = (ymd === (st.sel || st.cur) ? ' sel' : '') + (st.sel && ymd === st.cur ? ' orig' : '') + (ymd === st.today ? ' today' : '');
       h += '<button type="button" class="wn5-cal-d' + cls + '" data-act="day" data-day="' + ymd + '">' + dd + '</button>';
     }
+    // the last week runs to Sunday with the next month's first days, greyed and not a choice (Figma «1» after 31)
+    const tail = (7 - ((lead + days) % 7)) % 7;
+    for (let dd = 1; dd <= tail; dd++) h += '<span class="wn5-cal-d out" aria-hidden="true">' + dd + '</span>';
     return h + '</div></div>';
+  }
+  const _dayHm = (iso) => DOW[_dow(_ymdOf(iso))] + ' ' + _hm(iso);                // «Τετ 12:00»
+  // one result row (Figma 2053:7939-7950): the name, under it «old day → » and the new value in blue
+  const _resLi = (name, old, now, attr) => '<li' + (attr || '') + '><div class="wn5-res-n">' + name + '</div><div class="wn5-res-s">' + _esc(old)
+    + (now == null ? '' : ' → <b>' + _esc(now) + '</b>') + '</div></li>';
+  // the next cycle as the board knows it (plates · n/m, its rt for «Ανάθεση n/m…»); else only the Worker's code
+  function _nextOf(pv) {
+    const code = pv && pv.next_rt && pv.next_rt.code;
+    const c = code ? _cycles().find((x) => x.code === code) : null;
+    if (!c) return null;
+    const r = _row(c.rt_id);
+    // «2/2» only when the truck has more than one cycle (Figma 2053:8076); a lone cycle is named by its plates
+    const no = r && r.cycleNo && r.cycleNo.m > 1 ? r.cycleNo.n + '/' + r.cycleNo.m : null;
+    return { rtId: c.rt_id, no, label: [_cycText(c, r).l1.split(' · ')[0], no].filter(Boolean).join(' · ') };
   }
   function _dateResHTML(st) {
     const body = _dateBody(st);
     if (!body) return '<p class="wn5-none">Διάλεξε ημέρα ή άλλαξε το παράθυρο.</p>';
     const delta = st.sel ? _dayDiff(st.cur, st.sel) : 0;
     const n = Math.abs(delta);
-    let h = '<div class="wn5-cons-h">ΑΠΟΤΕΛΕΣΜΑ' + (delta ? ' · ' + (delta > 0 ? '+' : '−') + n + (n === 1 ? ' ΗΜΕΡΑ' : ' ΗΜΕΡΕΣ') : '') + '</div><ul class="wn5-res">';
+    const sgn = (delta > 0 ? '+' : '−') + n;
+    let h = '<div class="wn5-cons-h">ΑΠΟΤΕΛΕΣΜΑ' + (delta ? ' · ' + sgn + (n === 1 ? ' ΗΜΕΡΑ' : ' ΗΜΕΡΕΣ') : '') + '</div><ul class="wn5-res">';
     const f = _hhmm(st.from), t = _hhmm(st.to);
-    let k = 0;
+    let k = 0, kathEnd = null;
+    const after = new Map();
     for (const s of st.sideStops) {
       const isV = !!st.vStop && s.stop_id === st.vStop.stop_id;
       let a = s.planned_from, b = s.planned_to;
       if (isV && f && t) { const w = _win(st.vDay, f, t); a = w[0]; b = w[1]; }
       if (delta) { a = _shiftIso(a, delta); b = _shiftIso(b, delta); }
+      after.set(s.stop_id, [a, b]);
+      if (!kathEnd || new Date(b) > new Date(kathEnd)) kathEnd = b;
+      const place = [((s.legs || [])[0] || {}).client, s.location].filter(Boolean).join(' · ');
+      // numbered = the side's own work as the board numbers it (KATHODOS its deliveries, ANODOS its loadings);
+      // a loading on the way (THESSALONIKI) is named, never counted as a delivery
+      const no = st.num ? st.num.get(s.stop_id) : (isV ? null : ++k);
+      const loads = (s.legs || []).some((l) => l.act === 'load'), unloads = (s.legs || []).some((l) => l.act === 'unload');
       const name = isV ? (st.side === 'KATHODOS' ? 'Φόρτωση Βέροιας' : 'Βέροια · τέλος κύκλου')
-        : (++k) + '  ' + [((s.legs || [])[0] || {}).client, s.location].filter(Boolean).join(' · ');
-      h += '<li><span>' + _esc(name) + '</span><span>' + _esc(_dayShort(_ymdOf(s.planned_from)) + ' → ' + _dayShort(_ymdOf(a)) + ' · ' + _hm(a) + '–' + _hm(b)) + '</span></li>';
+        : no != null ? no + '  ' + place
+        : (loads && !unloads ? 'Φόρτωση · ' : 'Παράδοση · ') + place;
+      h += _resLi(_esc(name), _dayShort(_ymdOf(s.planned_from)), _dayShort(_ymdOf(a)) + ' · ' + _hm(a) + '–' + _hm(b), ' data-stop="' + _esc(s.stop_id) + '"');
+      // «↳ Φόρτωση με τοπικό» under the stop it serves (Figma 2069:8573). 072 moves its day to the stop's new
+      // Athens day (plan_rt_update step 3, local_loading_day): «δεν αλλάζει» only when that day is its own day.
+      const ll = s.local_loading;
+      if (ll) {
+        const time = [ll.time_from, ll.time_to].filter(Boolean).map((x) => String(x).slice(0, 5)).join('–');
+        const newDay = _ymdOf(a);
+        const old = (ll.move_date ? _dayShort(ll.move_date) : '—') + (time ? ' ' + time : '');
+        h += '<li class="wn5-res-loc" data-local="' + _esc(ll.local_move_id) + '"><div class="wn5-res-n">↳ Φόρτωση με τοπικό · <b>' + _esc(ll.driver || 'χωρίς οδηγό') + '</b></div>'
+          + '<div class="wn5-res-s">' + _esc(old) + (ll.move_date && newDay && newDay !== ll.move_date ? ' → <b>' + _esc(_dayShort(newDay)) + '</b>' : ' · δεν αλλάζει') + '</div></li>';
+      }
     }
-    h += '</ul>';
-    if (st.alsoAnod && delta) h += '<p>ΑΝΟΔΟΣ · ' + st.anodStops.length + ' στάσεις · ' + (delta > 0 ? '+' : '−') + n + (n === 1 ? ' ημέρα' : ' ημέρες') + ' μαζί</p>';
+    // own cycle without ANODOS: the empty return after the last delivery moves with it (Figma 2053:7951; board T5)
+    if (st.gapStop && after.has(st.gapStop.stop_id)) {
+      const g = st.gapStop, nb = after.get(g.stop_id)[1];
+      const was = 'ελεύθερο από ' + _dayShort(_ymdOf(g.planned_to)) + ' ' + _hm(g.planned_to);
+      h += _resLi(_esc('Κενό γύρισμα · ' + (g.location || '—')), was, nb === g.planned_to ? null : _dayShort(_ymdOf(nb)) + ' ' + _hm(nb), ' data-row="gap"');
+    }
+    // the ANODOS of this cycle (Figma 2053:8070-8075): stays put unless ticked; amber when the KATHODOS now ends after it starts
+    if (delta && st.anodStops.length) {
+      const lo = st.anodLoads.length ? st.anodLoads : st.anodStops;
+      const a0 = lo.reduce((x, s) => (new Date(s.planned_from) < new Date(x) ? s.planned_from : x), lo[0].planned_from);
+      const b0 = lo.reduce((x, s) => (new Date(s.planned_to) > new Date(x) ? s.planned_to : x), lo[0].planned_to);
+      const d0 = _dayShort(_ymdOf(a0));
+      const name = _esc('ΑΝΟΔΟΣ · ' + lo.length + (lo.length === 1 ? ' φορτίο' : ' φορτία') + ' · ' + _hm(a0) + '–' + _hm(b0));
+      const over = !st.alsoAnod && kathEnd && new Date(kathEnd) > new Date(a0);
+      if (st.alsoAnod) h += _resLi(name, d0, _dayShort(_ymdOf(_shiftIso(a0, delta))), ' data-row="anod"');
+      else h += '<li data-row="anod"' + (over ? ' class="wn5-res-warn"' : '') + '><div class="wn5-res-n">' + name + '</div><div class="wn5-res-s">'
+        + _esc(d0 + (over ? ' · πριν τελειώσει η ΚΑΘΟΔΟΣ (' + _dayHm(kathEnd) + ')' : ' · δεν αλλάζει')) + '</div></li>';
+      const last = st.anodStops[st.anodStops.length - 1];
+      h += '<li class="wn5-res-chk"><label class="wn5-anod"><input type="checkbox" data-anod' + (st.alsoAnod ? ' checked' : '') + '> Μετακίνηση και της ΑΝΟΔΟΥ ' + sgn + '</label>'
+        + '<div class="wn5-res-s">' + _esc('→ ' + _dayShort(_ymdOf(_shiftIso(a0, delta))) + ' · τέλος κύκλου ως ' + _dayShort(_ymdOf(_shiftIso(last.planned_to, delta))) + ' ' + _hm(last.planned_to)) + '</div></li>';
+    }
     const pv = st.preview;
     if (pv) {
-      if (pv.conflict) h += '<div class="wn5-conflict">' + _esc(pv.conflict.message || '(' + (pv.conflict.code || 'σύγκρουση') + ')') + ' · δεν αποθηκεύεται</div>';
-      h += '<p>Επόμενος κύκλος · ' + (pv.next_rt ? _esc((pv.next_rt.code || '—') + ' · ' + _dayShort(_ymdOf(pv.next_rt.start_at)) + ' ' + _hm(pv.next_rt.start_at)) : 'κανένας') + '</p>';
+      // the next cycle of this vehicle (preview.next_rt); a conflict is its red line and never saves (Figma 2053:8076-8078)
+      const nx = _nextOf(pv);
+      const label = nx ? nx.label : (pv.next_rt ? pv.next_rt.code || '—' : null);
+      if (pv.conflict) {
+        h += '<li data-row="next"><div class="wn5-res-n">' + _esc('Επόμενος κύκλος' + (label ? ' · ' + label : '')) + '</div>'
+          + '<div class="wn5-res-s wn5-conflict">' + _esc(pv.conflict.message || '(' + (pv.conflict.code || 'σύγκρουση') + ')') + ' · δεν αποθηκεύεται</div>'
+          + '<div class="wn5-res-s">' + _esc('Άλλη ημέρα ή ανάθεση ' + (nx && nx.no ? 'του ' + nx.no : 'του επόμενου κύκλου') + ' σε άλλο φορτηγό.') + '</div></li>';
+      } else if (pv.next_rt) {
+        h += _resLi(_esc('Επόμενος κύκλος · ' + label), _dayShort(_ymdOf(pv.next_rt.start_at)) + ' ' + _hm(pv.next_rt.start_at), null, ' data-row="next"');
+      } else h += '<li data-row="next"><div class="wn5-res-n">Επόμενος κύκλος · κανένας</div></li>';
+    }
+    h += '</ul>';
+    if (pv) {
       for (const v of pv.vs_day || []) h += '<p class="wn5-intl">' + _esc('ενημερώνει τη διεθνή #' + v.order_id + ' · ' + _dm(String(v.from || '').slice(0, 10)) + ' → ' + _dm(String(v.to || '').slice(0, 10))) + '</p>';
       if ((pv.warnings || []).length) h += '<ul class="wn5-cons">' + pv.warnings.map((w) => '<li data-kind="' + _esc(w && w.code) + '">' + _esc(WN5Lab.warningLine(w).text) + '</li>').join('') + '</ul>';
     } else if (!st.err) h += '<p class="wn5-none">Διαβάζει την προεπισκόπηση…</p>';
-    return h + '<p class="wn5-none">Οι ώρες μένουν ίδιες· τα παράθυρα ξαναελέγχονται.</p>';
+    return h + '<p class="wn5-none wn5-res-end">Οι ώρες μένουν ίδιες· τα παράθυρα ξαναελέγχονται.</p>';
   }
 
   WN5Act.datePanel = function datePanel(rtId, side, anchorEl) {
@@ -1370,28 +1438,39 @@
     const r = _row(c.rt_id);
     const box = _cycText(c, r);
     const no = r && r.cycleNo ? ' · κύκλος ' + (r.cycleNo.m > 1 ? r.cycleNo.n + '/' + r.cycleNo.m : r.cycleNo.n) : '';
-    const nDel = sideStops.filter((s) => s.location_id !== hub).length;
+    // the side's own work as the board numbers it (KATHODOS: deliveries, ANODOS: loadings); no row → the old count
+    const sd = _sideOfRow(r, side);
+    const own = sd ? (side === 'KATHODOS' ? sd.to : sd.from) : null;
+    st.num = own ? new Map(own.map((p) => [p.stopId, p.n])) : null;
+    st.anodLoads = r && r.anod ? st.anodStops.filter((s) => (r.anod.from || []).some((p) => p.stopId === s.stop_id)) : [];
+    // «Κενό γύρισμα»: an own cycle with no ANODOS frees the truck after its last delivery (the board's T5 line)
+    const lastTo = side === 'KATHODOS' && c.trip_type !== 'PARTNER' && !st.anodStops.length && sd && sd.to.length ? sd.to[sd.to.length - 1] : null;
+    st.gapStop = lastTo ? sideStops.find((s) => s.stop_id === lastTo.stopId) || null : null;
+    const nDel = own ? own.length : sideStops.filter((s) => s.location_id !== hub).length;
     const head = (side === 'KATHODOS' ? 'ΚΑΘΟΔΟΣ' : 'ΑΝΟΔΟΣ') + ' · ' + box.l1.split(' · ')[0] + no + ' · ' + nDel + (nDel === 1 ? (side === 'KATHODOS' ? ' παράδοση' : ' φόρτωση') : (side === 'KATHODOS' ? ' παραδόσεις' : ' φορτώσεις'));
-    const d = _dlg('date', side === 'KATHODOS' ? 'Ημερομηνία φόρτωσης Βέροιας' : 'Ημερομηνία ΑΝΟΔΟΥ', { anchor: anchorEl, wide: true });
-    d.ft.innerHTML = '<button type="button" class="wi4-btn" data-act="cancel">Άκυρο</button><button type="button" class="wi4-btn pri" data-act="save">Αποθήκευση</button>';
+    const d = _dlg('date', side === 'KATHODOS' ? 'Ημερομηνία φόρτωσης Βέροιας' : 'Ημερομηνία ΑΝΟΔΟΥ', { anchor: anchorEl });
+    // the meta under the title, across the dialog (Figma 2053:7840)
+    d.dlg.querySelector('.wi4-dlg-t').insertAdjacentHTML('afterend', '<span class="wn5-dlg-meta">' + _esc(head) + '</span>');
+    // «Ανάθεση n/m…» (Figma 2082:7735): only for a conflict whose next cycle is on the loaded board
+    d.ft.innerHTML = '<button type="button" class="wi4-btn" data-act="next" style="display:none"></button>'
+      + '<button type="button" class="wi4-btn" data-act="cancel">Άκυρο</button><button type="button" class="wi4-btn pri" data-act="save">Αποθήκευση</button>';
     d.refresh = () => {
       const b = d.dlg.querySelector('[data-act="save"]');
       const body = _dateBody(st);
       if (b) b.disabled = d.locked || d.busy || !body || st.okFor !== JSON.stringify(body);
     };
     const draw = () => {
-      const delta = st.sel ? _dayDiff(st.cur, st.sel) : 0;
-      let left = '<div class="wn5-dlg-meta">' + _esc(head) + '</div>' + _calHTML(st);
+      let left = _calHTML(st);
       if (vStop) {
         left += '<div class="wn5-hubwin"><span>' + (side === 'KATHODOS' ? 'Παράθυρο' : 'Άφιξη Βέροιας') + '</span>'
           + '<input class="wn5-hm" data-win="from" value="' + _esc(st.from) + '"> – <input class="wn5-hm" data-win="to" value="' + _esc(st.to) + '"></div>';
       }
-      if (st.anodStops.length) {
-        left += '<label class="wn5-anod"><input type="checkbox" data-anod' + (st.alsoAnod ? ' checked' : '') + '> Μετακίνηση και της ΑΝΟΔΟΥ'
-          + (delta ? ' ' + (delta > 0 ? '+' : '−') + Math.abs(delta) : '') + '</label>';
-      }
-      left += '<p class="wn5-none">Αλλάζει τη μέρα και μετακινεί μαζί όλες τις στάσεις του σκέλους (+1 ημέρα → όλες +1).</p>';
-      d.body.innerHTML = '<div class="wn5-datep"><div>' + left + '</div><div>' + _dateResHTML(st) + '</div></div>';
+      d.body.innerHTML = '<div class="wn5-datep"><div>' + left + '</div><div class="wn5-datep-r">' + _dateResHTML(st) + '</div></div>';
+      const nx = st.preview && st.preview.conflict ? _nextOf(st.preview) : null;
+      const nb = d.ft.querySelector('[data-act="next"]');
+      nb.style.display = nx ? '' : 'none';
+      nb.textContent = nx ? 'Ανάθεση ' + (nx.no || 'επόμενου κύκλου') + '…' : '';
+      nb.dataset.rt = nx ? nx.rtId : '';
       if (st.err) WN5Act.strip(d.msg, st.err);
       else if (_closed) WN5Act.strip(d.msg, _closed);
       else WN5Act.strip(d.msg, null);
@@ -1425,6 +1504,7 @@
       if (!b || b.disabled || !_live()) return;
       const a = b.dataset.act;
       if (a === 'cancel') { if (!d.busy) _close(d); }
+      else if (a === 'next') { if (!d.busy && b.dataset.rt) WN5Act.assign(null, { entry: 'row', rtId: _id(b.dataset.rt) }); }
       else if (a === 'mon') { const v = new Date(Date.UTC(st.view[0], st.view[1] + Number(b.dataset.d), 1)); st.view = [v.getUTCFullYear(), v.getUTCMonth()]; draw(); }
       else if (a === 'day') { st.sel = b.dataset.day === st.cur ? null : b.dataset.day; run(); }
       else if (a === 'save') {

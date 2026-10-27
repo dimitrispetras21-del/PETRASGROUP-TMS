@@ -1422,6 +1422,39 @@ async function scnDate(browser, origin) {
     const res = await bText(page, D);
     ok(scn, '«ΑΠΟΤΕΛΕΣΜΑ · +1 ΗΜΕΡΑ», «Φόρτωση Βέροιας» Δευ 12/10 → Τρί 13/10 · 18:00–19:00, «Επόμενος κύκλος · κανένας»',
       res.includes('ΑΠΟΤΕΛΕΣΜΑ · +1 ΗΜΕΡΑ') && /Φόρτωση Βέροιας\s+Δευ 12\/10 → Τρί 13\/10 · 18:00–19:00/.test(res) && res.includes('Επόμενος κύκλος · κανένας'), res.slice(0, 600));
+    // fidelity r1 (Figma 2053:7838): two-line rows, only deliveries numbered, the ANODOS in the result, the calendar
+    const fa = await page.$eval(D, (dlg) => {
+      const li = (sel) => dlg.querySelector('.wn5-res li' + sel);
+      const two = (e) => (e ? [e.querySelector('.wn5-res-n'), e.querySelector('.wn5-res-s')].map((x) => (x ? x.innerText.replace(/\s+/g, ' ').trim() : null)) : null);
+      const v = li('[data-stop="2031"]'); const vb = v && v.querySelector('.wn5-res-s b');
+      const cs = (e) => (e ? getComputedStyle(e) : {});
+      const meta = dlg.querySelector('.wi4-dlg-hd > .wn5-dlg-meta');
+      const x = dlg.querySelector('.wi4-dlg-x');
+      const cell = dlg.querySelector('.wn5-cal-d[data-day="2026-10-13"]').getBoundingClientRect();
+      return { v: two(v), vbColor: cs(vb).color, vbW: cs(vb).fontWeight, nSize: cs(v && v.querySelector('.wn5-res-n')).fontSize, sSize: cs(v && v.querySelector('.wn5-res-s')).fontSize,
+        thess: two(li('[data-stop="2033"]')), d1: two(li('[data-stop="2032"]')), d2: two(li('[data-stop="2034"]')),
+        anod: two(li('[data-row="anod"]')), anodWarn: !!dlg.querySelector('.wn5-res li[data-row="anod"].wn5-res-warn'),
+        chk: !!dlg.querySelector('.wn5-datep-r input[data-anod]'), chkLeft: !!dlg.querySelector('.wn5-datep > div:first-child input[data-anod]'),
+        chkSub: (dlg.querySelector('.wn5-res-chk .wn5-res-s') || {}).innerText || '',
+        meta: meta ? meta.innerText : '', metaH: meta ? meta.getBoundingClientRect().height : 0, metaSize: cs(meta).fontSize,
+        noX: !x || x.offsetParent === null, prose: [...dlg.querySelectorAll('.wn5-datep > div:first-child p')].length, w: dlg.getBoundingClientRect().width,
+        orig: dlg.querySelector('.wn5-cal-d[data-day="2026-10-12"]').classList.contains('orig'), sel: dlg.querySelector('.wn5-cal-d[data-day="2026-10-13"]').classList.contains('sel'),
+        out: [...dlg.querySelectorAll('.wn5-cal-d.out')].map((e) => e.textContent), cell: [Math.round(cell.width), Math.round(cell.height)],
+        rule: cs(dlg.querySelector('.wn5-datep-r')).borderLeftStyle, hd: cs(dlg.querySelector('.wn5-datep-r .wn5-cons-h')).fontSize };
+    }).catch((e) => ({ err: String(e) }));
+    ok(scn, 'Δ4 rows: name over «Δευ 12/10 → » + the new value in blue SemiBold (11.5 / 11px)', !!fa.v && fa.v[0] === 'Φόρτωση Βέροιας' && fa.v[1] === 'Δευ 12/10 → Τρί 13/10 · 18:00–19:00'
+      && fa.vbColor === 'rgb(2, 132, 199)' && Number(fa.vbW) >= 600 && fa.nSize === '11.5px' && fa.sSize === '11px', fa);
+    ok(scn, 'only deliveries numbered: «ΚΑΘΟΔΟΣ · TST-2103 · κύκλος 1 · 2 παραδόσεις»; THESSALONIKI is «Φόρτωση · …», LARISA 1, ATHENS 2',
+      /ΚΑΘΟΔΟΣ · TST-2103 · κύκλος 1 · 2 παραδόσεις$/.test(fa.meta) && !!fa.thess && fa.thess[0] === 'Φόρτωση · ΠΕΛΑΤΗΣ Α · THESSALONIKI TEST'
+      && !!fa.d1 && /^1 ΠΕΛΑΤΗΣ Α · LARISA TEST$/.test(fa.d1[0]) && !!fa.d2 && /^2 ΠΕΛΑΤΗΣ Α · ATHENS TEST$/.test(fa.d2[0]), fa);
+    ok(scn, 'the ANODOS in the result: «ΑΝΟΔΟΣ · 1 φορτίο · 12:00–14:00» over amber «Τρί 13/10 · πριν τελειώσει η ΚΑΘΟΔΟΣ (Τετ 12:00)», the box under it',
+      !!fa.anod && fa.anod[0] === 'ΑΝΟΔΟΣ · 1 φορτίο · 12:00–14:00' && fa.anod[1] === 'Τρί 13/10 · πριν τελειώσει η ΚΑΘΟΔΟΣ (Τετ 12:00)' && fa.anodWarn
+      && fa.chk && !fa.chkLeft && fa.chkSub.trim() === '→ Τετ 14/10 · τέλος κύκλου ως Τετ 14/10 22:00', fa);
+    ok(scn, 'Δ4 shell: 568 wide, no «×», meta one 11px line under the title, no prose under the calendar, a rule left of the result, its header 10px',
+      Math.round(fa.w) === 568 && fa.noX && fa.metaSize === '11px' && fa.metaH > 0 && fa.metaH <= 16 && fa.prose === 0 && fa.rule === 'solid' && fa.hd === '10px', fa);
+    ok(scn, 'calendar: the chosen day filled, the cycle\'s own day a dashed ring, a greyed «1» after 31, cells 30×26',
+      fa.orig && fa.sel && fa.out.join(',') === '1' && fa.cell.join('×') === '30×26', fa);
+    await shot(page, 'date-A-day13');
     ok(scn, 'preview.vs_day → «ενημερώνει τη διεθνή #2101 · 12/10 → 13/10»; preview.warnings → the label line',
       res.includes('ενημερώνει τη διεθνή #2101 · 12/10 → 13/10') && res.includes('Η γραμμή μισθοδοσίας του τοπικού οδηγού με ποσό πάει για έλεγχο στο λογιστήριο'));
     await bClick(page, `${D} [data-act="save"]`);
@@ -1437,6 +1470,50 @@ async function scnDate(browser, origin) {
     await page.waitForTimeout(300);
     ok(scn, 'preview.conflict → red line with conflict.message, «Αποθήκευση» disabled', (await bText(page, `${D} .wn5-conflict`)).includes('rig sentinel conflict truck_busy')
       && (await bOff(page, `${D} [data-act="save"]`)) === true);
+    await page.context().close();
+  }
+  { // B2 · a conflict with a next cycle on the board: its red sub-line + the hint, and «Ανάθεση …» opens its assignment
+    const { page } = await bOpen(browser, origin, { plan: { [K]: () => PV({ after: null, next_rt: { code: 'RT-T203', start_at: '2026-10-14T08:00:00+03:00' },
+      conflict: { code: 'truck_busy', sqlstate: 'P0001', detail: 'RT-T203', message: 'rig sentinel conflict truck_busy' } }) } });
+    await bClick(page, CHIP);
+    await bClick(page, `${D} [data-day="2026-10-13"]`);
+    await page.waitForTimeout(300);
+    const nx = await page.$eval(D, (dlg) => {
+      const li = dlg.querySelector('.wn5-res li[data-row="next"]');
+      const s = li ? [...li.querySelectorAll('.wn5-res-s')] : [];
+      const b = dlg.querySelector('.wi4-dlg-ft [data-act="next"]');
+      return { name: li ? li.querySelector('.wn5-res-n').innerText : '', red: s[0] && s[0].classList.contains('wn5-conflict') ? s[0].innerText : '',
+        redColor: s[0] ? getComputedStyle(s[0]).color : '', hint: s[1] ? s[1].innerText : '', box: !!dlg.querySelector('.wn5-res > .wn5-conflict, .wn5-datep-r > .wn5-conflict'),
+        btn: b && b.offsetParent !== null ? b.innerText : null, btnFirst: b === dlg.querySelector('.wi4-dlg-ft').firstElementChild };
+    }).catch((e) => ({ err: String(e) }));
+    ok(scn, 'conflict = the red sub-line of «Επόμενος κύκλος · TST-2104», the grey hint under it, no separate red box',
+      nx.name === 'Επόμενος κύκλος · TST-2104' && nx.red === 'rig sentinel conflict truck_busy · δεν αποθηκεύεται' && nx.redColor === 'rgb(185, 28, 28)'
+      && nx.hint === 'Άλλη ημέρα ή ανάθεση του επόμενου κύκλου σε άλλο φορτηγό.' && !nx.box, nx);
+    ok(scn, '«Ανάθεση επόμενου κύκλου…» left of «Άκυρο» (Figma 2082:7735)', nx.btn === 'Ανάθεση επόμενου κύκλου…' && nx.btnFirst, nx);
+    await shot(page, 'date-B2-conflict');
+    await bClick(page, `${D} .wi4-dlg-ft [data-act="next"]`);
+    await page.waitForTimeout(300);
+    ok(scn, '«Ανάθεση …» closes the date panel and opens the assignment of RT-T203', !(await bHas(page, D)) && (await bText(page, bDlg('assign'))).includes('RT-T203'));
+    await page.context().close();
+  }
+  { // E · own cycle without ANODOS, with a local loading (RT-T201): «↳ Φόρτωση με τοπικό» under its stop, «Κενό γύρισμα»
+    const board = bBoard();
+    board.cycles[0].stops[2].local_loading = { local_move_id: 7101, driver: 'Driver Test 05', move_date: '2026-10-12', time_from: '11:00:00', time_to: '12:00:00' };
+    const { page } = await bOpen(browser, origin, { board, plan: { [K]: () => PV() } });
+    await bClick(page, '.wn5-row[data-rt="201"] [data-act="date"][data-side="KATHODOS"]');
+    await bClick(page, `${D} [data-day="2026-10-13"]`);
+    await page.waitForTimeout(300);
+    const e = await page.$eval(D, (dlg) => {
+      const two = (el) => (el ? [...el.children].map((x) => x.innerText.replace(/\s+/g, ' ').trim()) : null);
+      const loc = dlg.querySelector('.wn5-res li[data-local="7101"]');
+      return { loc: two(loc), prev: loc && loc.previousElementSibling ? loc.previousElementSibling.dataset.stop : null,
+        locPad: loc ? getComputedStyle(loc).paddingLeft : '', gap: two(dlg.querySelector('.wn5-res li[data-row="gap"]')), anod: !!dlg.querySelector('.wn5-res li[data-row="anod"]') };
+    }).catch((x) => ({ err: String(x) }));
+    ok(scn, '«↳ Φόρτωση με τοπικό · Driver Test 05» under stop 2003, indented 14px; 072 moves its day with the stop → «Δευ 12/10 11:00–12:00 → Τετ 14/10»',
+      !!e.loc && e.loc[0] === '↳ Φόρτωση με τοπικό · Driver Test 05' && e.loc[1] === 'Δευ 12/10 11:00–12:00 → Τετ 14/10' && e.prev === '2003' && e.locPad === '14px', e);
+    ok(scn, '«Κενό γύρισμα · ASPROPYRGOS TEST» / «ελεύθερο από Τρί 13/10 09:00 → Τετ 14/10 09:00»; no ANODOS row',
+      !!e.gap && e.gap[0] === 'Κενό γύρισμα · ASPROPYRGOS TEST' && e.gap[1] === 'ελεύθερο από Τρί 13/10 09:00 → Τετ 14/10 09:00' && !e.anod, e);
+    await shot(page, 'date-E-201-local');
     await page.context().close();
   }
   { // C · window + «Μετακίνηση και της ΑΝΟΔΟΥ»: ONE body (explicit stops + one shift)

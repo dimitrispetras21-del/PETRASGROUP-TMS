@@ -9412,21 +9412,47 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-wide[data-wn5="move"] > .wi4-dlg-hd { flex-wrap:wrap; height:auto; padding:10px 0; row-gap:0; }
 .wn5-wide[data-wn5="move"] .wi4-dlg-hd > .wi4-dlg-t { flex:1 1 0; min-width:0; }
 .wn5-dlg[data-wn5="move"] .wi4-dlg-hd > .wn5-dlg-meta { order:1; flex:0 0 100%; font-size:11px; line-height:15px; white-space:normal; overflow:visible; }
-/* ── T16: the date panel Δ4 (Figma 2053:7837): calendar left, result right; a conflict is red and says
-   «δεν αποθηκεύεται». Today = dashed ring, the chosen day = filled (Figma). ── */
+/* ── T16: the date panel Δ4 (Figma 2053:7837/7838/7960): 568 wide, no «×» (Άκυρο is the exit), the meta under the
+   title across the dialog (11px grey, one line); calendar 222 (cells 30×26 r5, 11.5px) left, the result right of a
+   rule (padding 14): each row a name (11.5 Medium ink) over «old → » and the new value in blue SemiBold (11px).
+   The chosen day is filled; the cycle's own day keeps a dashed ring once another is chosen. A conflict is the red
+   line of «Επόμενος κύκλος» and never saves. ── */
 .wn5 button.wi4-dc[data-act="date"] { cursor:pointer; }
-.wn5-datep { display:grid; grid-template-columns:270px minmax(0,1fr); gap:16px; }
-.wn5-cal-h { display:flex; align-items:center; justify-content:space-between; font-weight:600; margin:6px 0; }
-.wn5-cal-g { display:grid; grid-template-columns:repeat(7, 1fr); gap:2px; text-align:center; }
-.wn5-cal-w { font-size:10.5px; color:var(--wi4-grey-2); }
-.wn5-cal-d { height:28px; border:1px solid transparent; border-radius:6px; background:none; cursor:pointer; font:inherit; }
+.wn5-dlg[data-wn5="date"] { width:568px; }
+.wn5-dlg[data-wn5="date"] .wi4-dlg-x { display:none; }
+.wn5-dlg[data-wn5="date"] > .wi4-dlg-hd { flex-wrap:wrap; justify-content:flex-start; row-gap:2px; }
+.wn5-dlg[data-wn5="date"] .wi4-dlg-hd > .wn5-dlg-meta { order:1; flex:0 0 100%; font-size:11px; line-height:15px; }
+.wn5-datep { display:grid; grid-template-columns:222px minmax(0,1fr); gap:16px; }
+.wn5-datep-r { border-left:1px solid var(--border); padding-left:14px; display:flex; flex-direction:column; gap:6px; font-size:11px; line-height:15px; }
+.wn5-cal { width:222px; }
+.wn5-cal-h { display:flex; align-items:center; justify-content:space-between; font-size:12.5px; font-weight:500; margin:0 0 6px; }
+.wn5-cal-h .wi4-link { color:var(--wi4-grey-2); }
+.wn5-cal-g { display:grid; grid-template-columns:repeat(7, 30px); gap:2px; row-gap:2px; text-align:center; }
+.wn5-cal-w { font-size:10.5px; line-height:20px; color:var(--wi4-grey-2); }
+.wn5-cal-d { width:30px; height:26px; padding:0; border:1px solid transparent; border-radius:5px; background:none; cursor:pointer; font:inherit; font-size:11.5px; line-height:24px; color:var(--wi4-ink); }
 .wn5-cal-d:hover { background:var(--wi4-hover); }
-.wn5-cal-d.today { border:1px dashed var(--accent); }
-.wn5-cal-d.sel { background:var(--wi4-blue); color:var(--surface-card); }
-.wn5-anod { display:flex; align-items:center; gap:6px; font-size:12px; }
-.wn5-res { margin:0; padding:0; list-style:none; }
-.wn5-res li { display:flex; justify-content:space-between; gap:12px; padding:3px 0; border-bottom:1px solid var(--wi4-line); }
-.wn5-conflict { padding:6px 10px; border-radius:6px; background:var(--wi4-red-bg); border:1px solid var(--wi4-red-line); color:var(--wi4-red); font-weight:600; }
+.wn5-cal-d.today { font-weight:600; }
+.wn5-cal-d.orig { border:1px dashed var(--accent); color:var(--accent); }
+.wn5-cal-d.sel { background:var(--wi4-blue); border-color:var(--wi4-blue); color:var(--surface-card); font-weight:600; }
+.wn5-cal-d.out { color:var(--wi4-grey-3); cursor:default; }
+.wn5-cal-d.out:hover { background:none; }
+.wn5-dlg[data-wn5="date"] .wn5-hubwin { margin-top:10px; }
+.wn5-datep-r .wn5-cons-h { margin:0; font-size:10px; line-height:14px; font-weight:600; letter-spacing:.6px; color:var(--wi4-grey-2); }
+.wn5-res { margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:4px; }
+.wn5-res li { display:block; }
+.wn5-res-n { font-size:11.5px; line-height:16px; font-weight:500; color:var(--wi4-ink); }
+.wn5-res-s { font-size:11px; line-height:15px; color:var(--wi4-grey-2); }
+.wn5-res-s b { font-weight:600; color:var(--accent); }
+.wn5-res li.wn5-res-loc { padding-left:14px; }
+.wn5-res-loc .wn5-res-n, .wn5-res-loc .wn5-res-s { font-size:10.5px; line-height:14px; }
+.wn5-res-loc .wn5-res-n { font-weight:400; color:var(--wi4-grey-1); }
+.wn5-res-loc .wn5-res-n b { font-weight:600; }
+.wn5-res-warn .wn5-res-s { color:var(--wi4-amber); }
+.wn5-res-chk .wn5-res-s { font-size:10.5px; padding-left:20px; }
+.wn5-anod { display:flex; align-items:center; gap:6px; font-size:11.5px; line-height:16px; color:var(--wi4-ink); }
+.wn5-anod input { margin:0; }
+.wn5-res-s.wn5-conflict { color:var(--wi4-red); }   /* wraps: the Worker's words are never cut */
+.wn5-datep-r p { font-size:11px; line-height:15px; }
 .wn5-intl { color:var(--wi4-amber-ink); }
 /* ── wn5 end ── */
 
