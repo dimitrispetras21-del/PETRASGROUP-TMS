@@ -277,10 +277,15 @@
     };
     const docs = list.filter((c) => DOC_KINDS.includes(c && c.kind));
     const acts = list.filter((c) => !DOC_KINDS.includes(c && c.kind));
+    // s.what: rows the screen adds to «Τι θα γίνει» from the board it holds, before the base's own (Δ5 2053:8081 —
+    // plan_rt_clear sends only the documents, the cycle and its loads are on the board). No data-kind: they are
+    // not consequences of the base.
+    const what = typeof s.what === 'function' ? (s.what(list) || []) : [];
     let h = (s.intro || []).map((p) => '<p>' + _esc(p) + '</p>').join('');
     if (docs.length) h += '<div class="wn5-cons-h">Παραστατικά που υπάρχουν</div><ul class="wn5-cons">' + docs.map(li).join('') + '</ul>';
-    if (acts.length) h += '<div class="wn5-cons-h">Τι θα γίνει</div><ul class="wn5-cons">' + acts.map(li).join('') + '</ul>';
-    if (!list.length) h += '<p class="wn5-none">Καμία επίπτωση: δεν αλλάζει τίποτα άλλο.</p>';
+    if (acts.length || what.length) h += '<div class="wn5-cons-h">Τι θα γίνει</div><ul class="wn5-cons">'
+      + what.map((t) => '<li data-row="what">' + _esc(t) + '</li>').join('') + acts.map(li).join('') + '</ul>';
+    if (!list.length && !what.length) h += '<p class="wn5-none">Καμία επίπτωση: δεν αλλάζει τίποτα άλλο.</p>';
     if (s.field) h += '<label class="wn5-field"><span>' + _esc(s.field.label) + '</span><textarea data-field rows="2">' + _esc(fieldVal || '') + '</textarea></label>';
     return h;
   }
@@ -1227,6 +1232,39 @@
   };
 
   // ═══ T15 · «Καθαρισμός ανάθεσης» (Δ5 2053:8079): two steps on POST /plan/rt/:id/clear ═══
+  // «Τι θα γίνει» of Δ5 (2053:8081), what plan_rt_clear does (decision 12, 072:1837-1896): the vehicle leaves the
+  // WHOLE cycle — truck and driver only, never the trailer, and the cycle number once (the truck's other cycles
+  // stay); the deliveries of the ΚΑΘΟΔΟΣ and the loadings of the ΑΝΟΔΟΣ stay together as ΠΡΟΣ ΑΝΑΘΕΣΗ; a payroll
+  // line with an amount is deleted; cost lines stay without a cycle and the desk gets a costs_without_rt notice.
+  function _clearWhat(c, r, list) {
+    const who = c.trip_type === 'PARTNER' ? [c.partner].filter(Boolean) : [c.truck, c.driver].filter(Boolean);
+    const no = r && r.cycleNo;
+    let from = 'από όλο τον κύκλο (κάθοδος + άνοδος)';
+    if (no && no.m > 1) {
+      const rest = [];
+      for (let k = 1; k <= no.m; k++) if (k !== no.n) rest.push(k + '/' + no.m);
+      from = 'από τον κύκλο ' + no.n + '/' + no.m + '· ' + (rest.length === 1 ? 'ο ' + rest[0] + ' μένει' : 'οι ' + rest.join(', ') + ' μένουν');
+    }
+    const rows = [(who.length ? who.join(' · ') : 'η ανάθεση') + (who.length > 1 ? ' βγαίνουν ' : ' βγαίνει ') + from];
+    const days = (pts) => {
+      const d = [...new Set(pts.map((p) => p.day).filter(Boolean))].sort();
+      return d.length ? ' (' + _dayShort(d[0]) + (d.length > 1 ? '–' + _dayShort(d[d.length - 1]) : '') + ')' : '';
+    };
+    const del = (r && r.kath && r.kath.to) || [], load = (r && r.anod && r.anod.from) || [];
+    const parts = [];
+    if (del.length) parts.push(del.length + (del.length === 1 ? ' παράδοση' : ' παραδόσεις') + days(del));
+    if (load.length) parts.push(load.length + (load.length === 1 ? ' φόρτωση' : ' φορτώσεις') + ' ΑΝΟΔΟΥ' + days(load));
+    rows.push(parts.length ? parts.join(' + ') + (del.length + load.length > 1 ? ' → μαζί ΠΡΟΣ ΑΝΑΘΕΣΗ' : ' → ΠΡΟΣ ΑΝΑΘΕΣΗ')
+      : 'οι στάσεις του κύκλου → ΠΡΟΣ ΑΝΑΘΕΣΗ');
+    if (list.some((x) => x && x.kind === 'payroll_amount')) rows.push('η μισθοδοσία του κύκλου σβήνεται');
+    for (const x of list) {
+      if (!x || x.kind !== 'costs') continue;
+      const n = typeof x.count === 'number' ? x.count : null;
+      rows.push((x.pay_source || 'Έξοδα') + ': ' + (n === 1 ? 'η 1 γραμμή μένει' : 'οι ' + (n === null ? '' : n + ' ') + 'γραμμές μένουν')
+        + ' χωρίς δρομολόγιο → ειδοποίηση');
+    }
+    return rows;
+  }
   WN5Act.clear = async function clear(rtId) {
     const c = _cycle(_id(rtId));
     if (!c) { WN5Act.strip(_boardHost(), _clientErr('rt_missing', 'Ο κύκλος δεν είναι στο board που φορτώθηκε — ανανέωσε')); return null; }
@@ -1236,10 +1274,9 @@
     const out = await WN5Act.twoStep({
       method: 'POST', path: '/plan/rt/' + c.rt_id + '/clear', body: {}, kind: 'clear', danger: true, verb: 'Καθαρισμός',
       title: 'Καθαρισμός ανάθεσης · ' + box.l1.split(' · ')[0] + no + ';',
-      // Δ5's own words (Ε-8: stays until 072b turns a breakdown into «Αλλαγή οχήματος»), and what clearing is
-      // (decision 12): the vehicle leaves the WHOLE cycle, the deliveries stay together
-      intro: ['Λάθος ανάθεση: ό,τι καθαρίζεται, δεν έγινε. Βλάβη: «Μεταφορά σε…» στη φόρμα σκέλους.',
-        [box.l1, box.l2].filter(Boolean).join(' · ') + ' βγαίνουν από όλο τον κύκλο (κάθοδος + άνοδος)· οι παραδόσεις μένουν μαζί ως «ΠΡΟΣ ΑΝΑΘΕΣΗ».'],
+      // Δ5's own words (Ε-8: stays until 072b turns a breakdown into «Αλλαγή οχήματος»)
+      intro: ['Λάθος ανάθεση: ό,τι καθαρίζεται, δεν έγινε. Βλάβη: «Μεταφορά σε…» στη φόρμα σκέλους.'],
+      what: (list) => _clearWhat(c, r, list),
     });
     // a costs_without_rt notice goes to the national desk: it shows in the notices strip after the re-read
     if (out) await _afterSave(out, 'Καθαρίστηκε η ανάθεση', {});

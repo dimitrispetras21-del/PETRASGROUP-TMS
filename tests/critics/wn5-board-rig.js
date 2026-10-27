@@ -1346,6 +1346,15 @@ async function scnClear(browser, origin) {
       txt.includes('Καθαρισμός ανάθεσης') && txt.includes('Λάθος ανάθεση: ό,τι καθαρίζεται, δεν έγινε. Βλάβη: «Μεταφορά σε…» στη φόρμα σκέλους.')
       && txt.includes('Παραστατικά που υπάρχουν') && txt.includes('2 γραμμές DKV') && txt.includes('γραμμή μισθοδοσίας με ποσό (Οκτώβριος)'), txt.slice(0, 600));
     ok(scn, 'dispatcher: no amount anywhere in the dialog', !txt.includes('€'));
+    // fidelity r1 (Δ5 2053:8081): «Τι θα γίνει» under the documents, four rows; truck · driver only, the cycle once
+    const what = await page.$$eval(`${D} .wn5-cons li[data-row="what"]`, (ls) => ls.map((l) => l.innerText)).catch(() => []);
+    ok(scn, '«Τι θα γίνει» rows: truck · driver leave the whole cycle, 2 deliveries → ΠΡΟΣ ΑΝΑΘΕΣΗ, payroll deleted, DKV notice',
+      JSON.stringify(what) === JSON.stringify(['TST-2106 · Driver Test 02 βγαίνουν από όλο τον κύκλο (κάθοδος + άνοδος)',
+        '2 παραδόσεις (Τρί 13/10) → μαζί ΠΡΟΣ ΑΝΑΘΕΣΗ', 'η μισθοδοσία του κύκλου σβήνεται', 'DKV: οι 2 γραμμές μένουν χωρίς δρομολόγιο → ειδοποίηση']), what);
+    const iD = txt.indexOf('Λάθος ανάθεση'), iP = txt.indexOf('Παραστατικά που υπάρχουν'), iW = txt.indexOf('Τι θα γίνει');
+    ok(scn, 'order as Δ5: the Δ5 line, then «Παραστατικά που υπάρχουν», then «Τι θα γίνει»; no trailer, no «κύκλος 1» in the body',
+      iD >= 0 && iD < iP && iP < iW && !txt.includes('TRL-5101') && txt.split('\n').slice(1).every((l) => !l.includes('κύκλος 1')), txt.slice(0, 600));
+    await shot(page, 'clear-b-dispatcher');
     ok(scn, 'the confirm button is the red «Καθαρισμός»', (await bText(page, `${D} [data-act="confirm"].wn5-danger`)) === 'Καθαρισμός');
     await bClick(page, `${D} [data-act="confirm"]`);
     const c = bCalls(S, 'POST', P);
@@ -1354,11 +1363,23 @@ async function scnClear(browser, origin) {
     await page.context().close();
   }
   { // C · owner: the amounts the DB kept for the role are shown
-    const { page } = await bOpen(browser, origin, { role: 'owner', plan: { [K]: (e) => (e.body && e.body.dry_run === true
+    // fidelity r1: TST-2106 has a second cycle (205) and RT-T201 an ΑΝΟΔΟΣ loading, so the rows read «1/2· ο 2/2 μένει»
+    const b2 = bBoard(); const i201 = b2.cycles.findIndex((x) => x.rt_id === 201); const c201 = b2.cycles[i201];
+    const own12 = { truck_id: 12, truck: 'TST-2106', trailer_id: 21, trailer: 'TRL-5101', driver_id: 32, driver: 'Driver Test 02' };
+    b2.cycles[i201] = bCycle(201, own12, c201.stops.concat([bStop(2004, 'ANODOS', 3, '2026-10-13', '12:00', '14:00', [bLeg(6004, 5104, 'load', 8)]),
+      bStop(2005, 'ANODOS', 1, '2026-10-13', '20:00', '22:00', [bLeg(6004, 5104, 'unload', 8)])]));
+    b2.cycles.push(bCycle(205, own12, [bStop(2051, 'KATHODOS', 1, '2026-10-14', '16:00', '18:00', [bLeg(6051, 5151, 'load', 10)]),
+      bStop(2052, 'KATHODOS', 2, '2026-10-15', '06:00', '08:00', [bLeg(6051, 5151, 'unload', 10)])]));
+    const { page } = await bOpen(browser, origin, { role: 'owner', board: b2, plan: { [K]: (e) => (e.body && e.body.dry_run === true
       ? dry('tokC2', [Object.assign({ amount: 186.4 }, DKV), Object.assign({ amount: 120, advance: null, expenses: null }, PAY)]) : planErr(409, 'WRITES_CLOSED', 'writes_closed')) } });
     await bMenu(page, 201, 'clear');
     const txt = await bText(page, D);
     ok(scn, 'owner: «2 γραμμές DKV · 186,40 €» and «ποσό 120,00 €»', txt.includes('2 γραμμές DKV · 186,40 €') && txt.includes('ποσό 120,00 €'), txt.slice(0, 500));
+    const what = await page.$$eval(`${D} .wn5-cons li[data-row="what"]`, (ls) => ls.map((l) => l.innerText)).catch(() => []);
+    ok(scn, 'owner, 2 cycles of TST-2106: title «κύκλος 1/2;», «… βγαίνουν από τον κύκλο 1/2· ο 2/2 μένει», «2 παραδόσεις (Τρί 13/10) + 1 φόρτωση ΑΝΟΔΟΥ (Τρί 13/10)»',
+      txt.includes('Καθαρισμός ανάθεσης · TST-2106 · κύκλος 1/2;') && what[0] === 'TST-2106 · Driver Test 02 βγαίνουν από τον κύκλο 1/2· ο 2/2 μένει'
+      && what[1] === '2 παραδόσεις (Τρί 13/10) + 1 φόρτωση ΑΝΟΔΟΥ (Τρί 13/10) → μαζί ΠΡΟΣ ΑΝΑΘΕΣΗ', what);
+    await shot(page, 'clear-c-owner');
     await page.context().close();
   }
   { // D · management: the button is there, the Worker says no (Δ12 tile 8)
