@@ -255,6 +255,7 @@
       // plan_unknown): the SAME slot id would answer request_reused on every press — a dead end. The Worker's strip
       // says where to look; the save stays locked until the window closes (a new window = a new request_id).
       if (e && (e.kind === K().CLOSED || e.kind === K().REUSED)) _lock(d); else _btns(d, false);
+      if (opts.onFail) { try { opts.onFail(e); } catch (e2) { _log(e2, 'WN5Act send onFail'); } }
       return null;
     }
     if (opts.slot) opts.slot.confirm();      // a new request_id only after a confirmed 200 (replayed included)
@@ -265,6 +266,9 @@
 
   // ═══ Two steps: dry run → list → confirm (S-82) ═══
   const DOC_KINDS = Object.freeze(['payroll_amount', 'costs', 'local_payroll', 'invoiced']);   // «Παραστατικά που υπάρχουν» (Δ5)
+  // The grey box at the end of a token list (Figma H4 2125:7771, H6 2147:7768): the list is a promise only while
+  // nothing changes (stale_confirm). Δ5 draws none, so a caller asks for it with spec.note = true.
+  const TOKEN_NOTE = 'Αν αλλάξει κάτι στο μεταξύ, η λίστα ξαναβγαίνει.';
   const _unkCons = new Set();
   function _consHTML(dry, s, fieldVal) {
     const list = Array.isArray(dry && dry.consequences) ? dry.consequences : [];
@@ -286,6 +290,7 @@
     if (acts.length || what.length) h += '<div class="wn5-cons-h">Τι θα γίνει</div><ul class="wn5-cons">'
       + what.map((t) => '<li data-row="what">' + _esc(t) + '</li>').join('') + acts.map(li).join('') + '</ul>';
     if (!list.length && !what.length) h += '<p class="wn5-none">Καμία επίπτωση: δεν αλλάζει τίποτα άλλο.</p>';
+    if (s.note === true) h += '<p class="wn5-tok">' + _esc(TOKEN_NOTE) + '</p>';
     if (s.field) h += '<label class="wn5-field"><span>' + _esc(s.field.label) + '</span><textarea data-field rows="2">' + _esc(fieldVal || '') + '</textarea></label>';
     return h;
   }
@@ -344,7 +349,9 @@
     for (;;) {
       const list = Array.isArray(dry.consequences) ? dry.consequences : [];
       let extra = {};
-      if (opened || s.field || dry.needs_confirm === true || list.length > 0) {
+      // s.ask: the dialog opens even when the base sends no list, because the screen has rows of its own to say
+      // first (H6 2147:7746: «σβήνονται και τα n τμήματα» — plan_rt_clear lists no segment)
+      if (opened || s.field || s.ask || dry.needs_confirm === true || list.length > 0) {
         opened = true;
         const ans = await ui.ask(dry, s);
         if (!ans) return null;
@@ -1266,25 +1273,49 @@
     rows.push(parts.length ? parts.join(' + ') + (del.length + load.length > 1 ? ' → μαζί ΠΡΟΣ ΑΝΑΘΕΣΗ' : ' → ΠΡΟΣ ΑΝΑΘΕΣΗ')
       : 'οι στάσεις του κύκλου → ΠΡΟΣ ΑΝΑΘΕΣΗ');
     if (list.some((x) => x && x.kind === 'payroll_amount')) rows.push('η μισθοδοσία του κύκλου σβήνεται');
+    return rows.concat(_costRows(list, true));
+  }
+  // «DKV: οι 2 γραμμές μένουν χωρίς δρομολόγιο» per costs item; « → ειδοποίηση» where the act raises the notice
+  // (Δ5 / H6 clear: Φ2 decision 13). H4 removal draws it without: whether a removal raises one is Φ3's (DKV-3).
+  function _costRows(list, notice) {
+    const rows = [];
     for (const x of list) {
       if (!x || x.kind !== 'costs') continue;
       const n = typeof x.count === 'number' ? x.count : null;
       rows.push((x.pay_source || 'Έξοδα') + ': ' + (n === 1 ? 'η 1 γραμμή μένει' : 'οι ' + (n === null ? '' : n + ' ') + 'γραμμές μένουν')
-        + ' χωρίς δρομολόγιο → ειδοποίηση');
+        + ' χωρίς δρομολόγιο' + (notice ? ' → ειδοποίηση' : ''));
     }
     return rows;
   }
-  WN5Act.clear = async function clear(rtId) {
+  KIT.costRows = _costRows;
+  // H6 «Καθαρισμός ανάθεσης» on a cycle with segments (Figma 2147:7746, decision 12): every segment goes and the cycle
+  // keeps ONE segment without assignment; loads and stops stay. names = the segment labels as the card shows them.
+  function _clearSegWhat(names, list) {
+    const rows = ['σβήνονται και τα ' + names.length + ' τμήματα (' + names.join(', ') + ')', 'ο κύκλος μένει με ένα τμήμα χωρίς ανάθεση'];
+    const pay = list.filter((x) => x && x.kind === 'payroll_amount').length;
+    if (pay > 1) rows.push('οι ' + pay + ' γραμμές μισθοδοσίας σβήνονται');
+    else if (pay === 1) rows.push('η μισθοδοσία του κύκλου σβήνεται');
+    return rows.concat(_costRows(list, true), ['φορτία και στάσεις δεν αλλάζουν']);
+  }
+  // opts.segs (the cycle card, T26): the labels of a cycle's segments. With two or more, the H6 dialog: the RT code in
+  // the title (several vehicles), no Δ5 line, the segment rows, the token note, and the list always shown before the
+  // clear — even with no document, the segments that go are said before anything is written.
+  WN5Act.clear = async function clear(rtId, opts) {
     const c = _cycle(_id(rtId));
     if (!c) { WN5Act.strip(_boardHost(), _clientErr('rt_missing', 'Ο κύκλος δεν είναι στο board που φορτώθηκε — ανανέωσε')); return null; }
+    const segs = opts && Array.isArray(opts.segs) && opts.segs.length > 1 ? opts.segs.slice() : null;
     const r = _row(c.rt_id);
     const box = _cycText(c, r);
     const no = r && r.cycleNo ? ' · κύκλος ' + (r.cycleNo.m > 1 ? r.cycleNo.n + '/' + r.cycleNo.m : r.cycleNo.n) : '';
-    const out = await WN5Act.twoStep({
+    const out = await WN5Act.twoStep(segs ? {
+      method: 'POST', path: '/plan/rt/' + c.rt_id + '/clear', body: {}, kind: 'clear', danger: true, verb: 'Καθαρισμός',
+      title: 'Καθαρισμός ανάθεσης · ' + (c.code || 'RT-' + c.rt_id) + ';', ask: true, note: true,
+      what: (list) => _clearSegWhat(segs, list),
+    } : {
       method: 'POST', path: '/plan/rt/' + c.rt_id + '/clear', body: {}, kind: 'clear', danger: true, verb: 'Καθαρισμός',
       title: 'Καθαρισμός ανάθεσης · ' + box.l1.split(' · ')[0] + no + ';',
-      // Δ5's own words (Ε-8: stays until 072b turns a breakdown into «Αλλαγή οχήματος»)
-      intro: ['Λάθος ανάθεση: ό,τι καθαρίζεται, δεν έγινε. Βλάβη: «Μεταφορά σε…» στη φόρμα σκέλους.'],
+      // Δ5's own words (Ε-8): after 072b a breakdown is a vehicle change of the cycle card (decision 36)
+      intro: ['Λάθος ανάθεση: ό,τι καθαρίζεται, δεν έγινε. Βλάβη: «Αλλαγή οχήματος» στην καρτέλα κύκλου.'],
       what: (list) => _clearWhat(c, r, list),
     });
     // a costs_without_rt notice goes to the national desk: it shows in the notices strip after the re-read
@@ -1437,6 +1468,16 @@
       } else h += '<li data-row="next"><div class="wn5-res-n">Επόμενος κύκλος · κανένας</div></li>';
     }
     h += '</ul>';
+    // 072b (👤7 = β): a change that removes a vehicle handover names it here, under ΑΠΟΤΕΛΕΣΜΑ, with the base's list;
+    // the save then carries that list's token (rtSaveBody). Drawn from the dry-run answer only: an edit drops it.
+    const da = st.dryAnswer;
+    if (da && da.needs_confirm === true) {
+      h += '<ul class="wn5-cons">' + (Array.isArray(da.consequences) ? da.consequences : []).map((c) => {
+        const l = WN5Lab.consequenceLine(c);
+        if (l.unknown && !_unkCons.has(c && c.kind)) { _unkCons.add(c && c.kind); _log(new Error('wn5: unknown consequence ' + (c && c.kind)), 'WN5Act datePanel'); }
+        return '<li data-kind="' + _esc(c && c.kind) + '"' + (l.unknown ? ' data-unknown="1"' : '') + '>' + _esc(l.text) + '</li>';
+      }).join('') + '</ul>';
+    }
     if (pv) {
       for (const v of pv.vs_day || []) h += '<p class="wn5-intl">' + _esc('ενημερώνει τη διεθνή #' + v.order_id + ' · ' + _dm(String(v.from || '').slice(0, 10)) + ' → ' + _dm(String(v.to || '').slice(0, 10))) + '</p>';
       if ((pv.warnings || []).length) h += '<ul class="wn5-cons">' + pv.warnings.map((w) => '<li data-kind="' + _esc(w && w.code) + '">' + _esc(WN5Lab.warningLine(w).text) + '</li>').join('') + '</ul>';
@@ -1459,7 +1500,10 @@
       from0: vStop ? _hm(vStop.planned_from) : '', to0: vStop ? _hm(vStop.planned_to) : '', from: '', to: '', alsoAnod: false,
       anodStops: side === 'KATHODOS' ? _copy((c.stops || []).filter((s) => s.side === 'ANODOS')) : [],
       // display only (the «σήμερα» ring of the calendar); never part of a body
-      today: typeof localToday === 'function' ? localToday() : null, preview: null, err: null, okFor: null, seq: 0 };
+      today: typeof localToday === 'function' ? localToday() : null, preview: null, err: null, okFor: null, seq: 0,
+      // the body of the last dry run and its answer (072b: needs_confirm / confirm_token / consequences); any edit
+      // after it drops the answer, so a token never outlives the change it was given for
+      dryBody: null, dryAnswer: null };
     st.from = st.from0; st.to = st.to0;
     const r = _row(c.rt_id);
     const box = _cycText(c, r);
@@ -1483,7 +1527,9 @@
     d.refresh = () => {
       const b = d.dlg.querySelector('[data-act="save"]');
       const body = _dateBody(st);
-      if (b) b.disabled = d.locked || d.busy || !body || st.okFor !== JSON.stringify(body);
+      if (!b) return;
+      b.disabled = d.locked || d.busy || !body || st.okFor !== JSON.stringify(body) || !rtSaveBody(st.dryBody, st.dryAnswer);
+      b.textContent = st.dryAnswer && st.dryAnswer.needs_confirm === true ? 'Αποθήκευση · επιβεβαίωση' : 'Αποθήκευση';
     };
     // The skeleton is built ONCE. A preview answer redraws only the result column: the window inputs are never
     // re-created (someone typing an hour while a dry run is in flight keeps the field and the keystrokes; a
@@ -1530,10 +1576,11 @@
       } finally { drawing = false; }
       if (redo) { redo = false; draw(); }
     };
-    // one dry run per change; an answer that is no longer for the panel's state is dropped (seq)
-    const run = async () => {
+    // one dry run per change; an answer that is no longer for the panel's state is dropped (seq). keep = a refusal
+    // of the save that stays on the strip over the new dry run (428 need_token / 422 stale_confirm: the new list)
+    const run = async (keep) => {
       const body = _dateBody(st);
-      st.preview = null; st.err = null; st.okFor = null;
+      st.preview = null; st.err = keep || null; st.okFor = null; st.dryBody = null; st.dryAnswer = null;
       if (!body) { draw(); return; }
       const my = ++st.seq;
       const key = JSON.stringify(body);
@@ -1545,7 +1592,10 @@
         if (!st.preview) {
           st.err = _clientErr('bad_answer', 'Η προεπισκόπηση ήρθε χωρίς αποτέλεσμα — ενημέρωσε τον Δημήτρη');
           _log(new Error('wn5: rt dry run without preview'), 'WN5Act datePanel');
-        } else if (!st.preview.conflict) st.okFor = key;     // a conflict never saves (Figma Δ4 β)
+        } else {
+          st.dryBody = body; st.dryAnswer = out;
+          if (!st.preview.conflict) st.okFor = key;     // a conflict never saves (Figma Δ4 β)
+        }
       } catch (e) {
         if (my !== st.seq || d.closed) return;
         st.err = e;
@@ -1562,11 +1612,16 @@
       else if (a === 'day') { st.sel = b.dataset.day === st.cur ? null : b.dataset.day; drawCal(); run(); }
       else if (a === 'save') {
         const body = _dateBody(st);
-        if (body && st.okFor === JSON.stringify(body)) _send(d, { method: 'PATCH', path: '/plan/rt/' + st.rtId, body }, 'Άλλαξε η ημερομηνία', { intl: true });
+        const sb = rtSaveBody(st.dryBody, st.dryAnswer);
+        // the list changed (422 stale_confirm) or was never seen (428): a new dry run shows the new list and token,
+        // the same rule as twoStep; the user presses again
+        const onFail = (e) => { if (e && (e.kind === K().NEED_TOKEN || e.kind === K().STALE)) run(e); };
+        if (body && sb && st.okFor === JSON.stringify(body)) _send(d, { method: 'PATCH', path: '/plan/rt/' + st.rtId, body: sb }, 'Άλλαξε η ημερομηνία', { intl: true, onFail });
       }
     });
     d.dlg.addEventListener('input', (ev) => {
-      if (ev.target.matches('[data-win]')) { if (ev.target.dataset.win === 'from') st.from = ev.target.value; else st.to = ev.target.value; st.okFor = null; d.refresh(); }
+      // an edit after the dry run: its token dies with it (072b), the save waits for the next dry run
+      if (ev.target.matches('[data-win]')) { if (ev.target.dataset.win === 'from') st.from = ev.target.value; else st.to = ev.target.value; st.okFor = null; if (st.dryAnswer) { st.dryAnswer = null; draw(); } else d.refresh(); }
     });
     d.dlg.addEventListener('change', (ev) => {
       if (ev.target.matches('[data-win]')) run();
@@ -1886,6 +1941,23 @@
   };
 
   // ═══ the actions of T12–T18 go above this line ═══
+
+  // 072b (👤7 = β): the Δ4 dry run of PATCH /plan/rt/:id carries needs_confirm / confirm_token / consequences ONLY
+  // when the change would remove a vehicle handover; the execution sends that token back. A dry run with
+  // preview.conflict brings no list and no token, and that never means «nothing is removed» (072b plan
+  // §Παράδοση στη Φ4 (ii)): no save until a new dry run without the conflict. ONE rule, used by the Δ4 panel.
+  function rtSaveBody(dryBody, dryAnswer) {
+    if (!dryBody || !dryAnswer || dryAnswer.dry_run !== true) return null;
+    if (dryAnswer.preview && dryAnswer.preview.conflict) return null;
+    const body = Object.assign({}, dryBody);
+    delete body.dry_run;
+    if (dryAnswer.needs_confirm === true) {
+      if (!dryAnswer.confirm_token) return null;
+      body.confirm_token = dryAnswer.confirm_token;
+    }
+    return body;
+  }
+  WN5Act.rtSaveBody = rtSaveBody;
 
   WN5Act._kit = KIT;
   window.WN5Act = WN5Act;

@@ -425,7 +425,155 @@ async function scnFid({ browser, origin, ok, scn }) {
   await pw.page.context().close();
 }
 
-const SCN = { tiles: scnTiles, card: scnCard, change: scnChange, fix: scnFix, h7: scnH7, fid: scnFid };
+// T26 — removal (conflict first, then the shared two-step), the plan_rt_update token, clear with segments.
+const RDLG = '.wi4-dlg[data-wn5="remove"]';
+const toasts = (page) => page.evaluate(() => (window.__ev || []).filter((x) => x.k === 'toast').map((x) => x.a[0]));
+async function scnRemove({ browser, origin, ok, scn }) {
+  let n = 0;
+  const plan = {
+    'POST /plan/segments/702/remove': (e) => (e.body.dry_run === true
+      ? [200, { ok: true, op: 'plan_seg_remove', dry_run: true, needs_confirm: true, confirm_token: 'tok-702',
+        consequences: [{ kind: 'payroll_amount', rt_id: 101, dl_entry_id: 9, driver_id: 32, month: '2026-10' }, { kind: 'costs', rt_id: 101, pay_source: 'DKV', count: 2 }],
+        preview: { segments: [seg(701, null, '2026-10-12T16:00:00+03:00', '2026-10-13T22:00:00+03:00', { stop_ids: [1001, 1002, 1003, 1004, 1005] })], warnings: [], conflict: null } }]
+      : [200, { ok: true, op: 'plan_seg_remove', dry_run: false, ids: { rt_id: 101, segment_id: 702, prev_segment_id: 701 }, warnings: [], notice_ids: [], replayed: ++n > 1 }]),
+    'POST /plan/segments/701/remove': () => K.planErr(422, 'PLAN_RULE', 'seg_first'),
+  };
+  const { page, S } = await K.openApp(browser, origin, { board: handWeek(false), role: 'dispatcher', plan });
+  if (!(await guard(page, ok, scn, 'WN5Hand'))) return;
+  await page.evaluate(() => WN5Hand.cycleCard(101));
+  await page.waitForSelector('.wi4-dlg[data-wn5="cycle"]', { timeout: 6000 }).catch(() => {});
+  await page.click('.wi4-dlg[data-wn5="cycle"] [data-act="remove"][data-seg="702"]');
+  await page.waitForSelector(`${RDLG} .wn5-cons li`, { timeout: 6000 }).catch(() => {});
+  const cons = await page.evaluate((D) => [...document.querySelectorAll(`${D} .wn5-cons li[data-kind]`)].map((x) => [x.dataset.kind, x.textContent]), RDLG);
+  ok(scn, 'the H4 list: payroll line without an amount for the dispatcher, the DKV line', cons.length === 2 && cons.some((c) => c[0] === 'payroll_amount') && cons.every((c) => !/€|\d+,\d\d/.test(c[1])), cons);
+  const h4 = await page.evaluate((D) => ({ t: (document.querySelector(`${D} .wi4-dlg-t`) || {}).textContent || '',
+    what: [...document.querySelectorAll(`${D} .wn5-cons li[data-row="what"]`)].map((x) => x.textContent),
+    tok: (document.querySelector(`${D} .wn5-dlg-b > p.wn5-tok:last-child`) || {}).textContent || '',
+    verb: (document.querySelector(`${D} [data-act="confirm"].wn5-danger`) || {}).textContent || '' }), RDLG);
+  ok(scn, 'H4 title «Αφαίρεση αλλαγής · RT-T101 · Λαμία Τρί 03:00;»', h4.t === 'Αφαίρεση αλλαγής · RT-T101 · Λαμία Τρί 03:00;', h4.t);
+  ok(scn, 'H4 «Τι θα γίνει»: segment out, previous vehicle again to the end, payroll, DKV without notice, loads stay',
+    JSON.stringify(h4.what) === JSON.stringify(['ΤΕΛΙΚΟ (TST-2108 · Driver Test 02) → αφαιρείται', 'TST-2104 · Driver Test 01 → ξανά ως Τρί 22:00',
+      'η μισθοδοσία του οδηγού (Driver Test 02) σβήνεται', 'DKV: οι 2 γραμμές μένουν χωρίς δρομολόγιο', 'φορτία και στάσεις δεν αλλάζουν']), h4.what);
+  ok(scn, 'the token note last in the body, and the red «Αφαίρεση»', h4.tok === 'Αν αλλάξει κάτι στο μεταξύ, η λίστα ξαναβγαίνει.' && h4.verb === 'Αφαίρεση', h4);
+  await page.click(`${RDLG} [data-act="confirm"]`).catch(() => {});
+  await page.waitForTimeout(1200);
+  const all = K.planOf(S, 'POST', '/plan/segments/702/remove');
+  const ex = all.filter((x) => x.body.dry_run !== true);
+  ok(scn, 'conflict check + the two-step\'s dry run, then ONE execution with the token, no request_id', all.length === 3 && ex.length === 1 && ex[0].body.confirm_token === 'tok-702' && !('request_id' in ex[0].body), all.map((x) => x.body));
+  // a second press of the same removal: the base answers replayed:true — the same success, no error
+  await page.evaluate(() => { WN5Hand.remove(702); });   // not awaited: it resolves only after the confirm
+  await page.waitForSelector(`${RDLG} [data-act="confirm"]`, { timeout: 6000 }).catch(() => {});
+  await page.click(`${RDLG} [data-act="confirm"]`).catch(() => {});
+  await page.waitForTimeout(1200);
+  const ts = await toasts(page);
+  ok(scn, 'replayed:true = the same success (two success toasts, the second says the first press was saved)',
+    ts.filter((x) => /Η αλλαγή οχήματος αφαιρέθηκε/.test(x)).length === 2 && /είχε ήδη αποθηκευτεί/.test(ts[ts.length - 1] || ''), ts);
+  await page.evaluate(() => WN5Hand.remove(701));
+  await page.waitForTimeout(1000);
+  ok(scn, 'removing the ΑΡΧΙΚΟ → seg_first, the Worker message', /rig sentinel seg_first/.test(await K.text(page, RDLG)));
+  ok(scn, 'no page or console errors', !S.pageErrors.length && !appConsole(S).length, S.pageErrors.concat(appConsole(S)));
+  await page.context().close();
+  // a preview conflict refuses before any list
+  const p2 = await K.openApp(browser, origin, { board: handWeek(false), plan: { 'POST /plan/segments/702/remove': () => [200, { ok: true, op: 'plan_seg_remove', dry_run: true,
+    preview: { segments: null, warnings: [], conflict: { code: 'truck_busy', sqlstate: '23P01', detail: '', message: 'rig sentinel truck_busy' } } }] } });
+  await p2.page.evaluate(() => WN5Hand.remove(702));
+  await p2.page.waitForTimeout(1000);
+  ok(scn, 'preview.conflict → the refusal line, no list, no confirm, one request only', /rig sentinel truck_busy/.test(await K.text(p2.page, RDLG))
+    && await K.count(p2.page, '.wn5-cons li') === 0 && await K.count(p2.page, '[data-act="confirm"]') === 0 && K.planOf(p2.S, 'POST', '/plan/segments/702/remove').length === 1);
+  ok(scn, 'conflict: no page or console errors', !p2.S.pageErrors.length && !appConsole(p2.S).length, p2.S.pageErrors.concat(appConsole(p2.S)));
+  await p2.page.context().close();
+}
+async function scnRtToken({ browser, origin, ok, scn }) {
+  let tok = 0, exn = 0;
+  const plan = { 'PATCH /plan/rt/101': (e) => (e.body.dry_run === true
+    ? [200, { ok: true, op: 'plan_rt_update', dry_run: true, needs_confirm: true, confirm_token: 'tok-rt-' + (++tok),
+      consequences: [{ kind: 'seg_removed', rt_id: 101, code: 'RT-T101', segment_id: 702, at: '2026-10-13T00:00:00Z', at_athens: '13/10 03:00', place_note: 'Λαμία', reason: 'vehicle_breakdown' }],
+      preview: { before: {}, after: {}, next_rt: null, conflict: null, vs_day: [], warnings: [] } }]
+    // the first execution meets a changed list (422 stale_confirm), the next one the closed writes (as until day L)
+    : (++exn === 1 ? K.planErr(422, 'PLAN_RULE', 'stale_confirm') : K.planErr(409, 'WRITES_CLOSED', 'writes_closed'))) };
+  const { page, S } = await K.openApp(browser, origin, { board: handWeek(false), plan });
+  if (!(await guard(page, ok, scn, 'WN5Act'))) return;
+  const D = '.wi4-dlg[data-wn5="date"]';
+  await page.evaluate(() => WN5Act.datePanel(101, 'KATHODOS', document.querySelector('#content .wn5-row[data-rt="101"]')));
+  await page.waitForSelector(D, { timeout: 6000 }).catch(() => {});
+  const setDay = async (d) => { await page.click(`${D} [data-act="day"][data-day="${d}"]`).catch(() => {}); await page.waitForTimeout(1200); };
+  const save = () => page.evaluate((D) => { const b = document.querySelector(`${D} [data-act="save"]`); return b ? { dis: b.disabled, t: b.textContent } : null; }, D);
+  await setDay('2026-10-13');
+  ok(scn, 'the dry run lists «θα αφαιρεθεί η αλλαγή οχήματος Λαμία 13/10 03:00»', /θα αφαιρεθεί η αλλαγή οχήματος Λαμία 13\/10 03:00/.test(await K.text(page, D)) && await K.count(page, `${D} .wn5-cons li[data-kind="seg_removed"]`) === 1);
+  const s1 = await save();
+  ok(scn, 'the save says «Αποθήκευση · επιβεβαίωση» and is on', !!s1 && !s1.dis && s1.t === 'Αποθήκευση · επιβεβαίωση', s1);
+  // an edit of the window after the dry run (no dry run yet for it): the token dies, the list goes, the save is off
+  await page.evaluate((D) => { const i = document.querySelector(`${D} [data-win="from"]`); if (i) { i.value = '15:00'; i.dispatchEvent(new Event('input', { bubbles: true })); } }, D);
+  const s2 = await save();
+  ok(scn, 'an edit after the dry run: no list, the save off until the next dry run', !!s2 && s2.dis && await K.count(page, `${D} .wn5-cons li[data-kind="seg_removed"]`) === 0, s2);
+  await page.evaluate((D) => { const i = document.querySelector(`${D} [data-win="from"]`); if (i) { i.value = '16:00'; i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new Event('change', { bubbles: true })); } }, D);
+  await page.waitForTimeout(1200);
+  await setDay('2026-10-14');   // another edit: the old token must die
+  await page.click(`${D} [data-act="save"]`).catch(() => {});
+  await page.waitForTimeout(1500);
+  let pat = K.planOf(S, 'PATCH', '/plan/rt/101');
+  let ex = pat.filter((x) => x.body.dry_run !== true);
+  ok(scn, 'after an edit the save runs on a NEW dry run: the execution carries the latest token', pat.filter((x) => x.body.dry_run === true).length >= 3 && ex.length === 1 && ex[0].body.confirm_token === 'tok-rt-3' && !('dry_run' in ex[0].body), pat.map((x) => x.body));
+  // 422 stale_confirm → a new dry run by itself, the new list, the strip says why; the next press sends the new token
+  ok(scn, 'stale_confirm → a new dry run (tok-rt-4), the strip stays, the save is on again', tok === 4 && await K.count(page, `${D} .wn5-strip`) === 1 && !(await save()).dis, { tok, strip: await K.text(page, `${D} .wn5-strip`) });
+  await page.click(`${D} [data-act="save"]`).catch(() => {});
+  await page.waitForTimeout(1200);
+  pat = K.planOf(S, 'PATCH', '/plan/rt/101');
+  ex = pat.filter((x) => x.body.dry_run !== true);
+  ok(scn, 'the second execution carries the new token tok-rt-4; 409 → the preview strip', ex.length === 2 && ex[1].body.confirm_token === 'tok-rt-4' && /ΠΡΟΕΠΙΣΚΟΠΗΣΗ/.test(await K.text(page, `${D} .wn5-strip`)), ex.map((x) => x.body));
+  ok(scn, 'no page or console errors', !S.pageErrors.length && !appConsole(S).length, S.pageErrors.concat(appConsole(S)));
+  await page.context().close();
+}
+async function scnClearSeg({ browser, origin, ok, scn }) {
+  const PAY = (d) => ({ kind: 'payroll_amount', rt_id: 101, dl_entry_id: d, driver_id: d, month: '2026-10' });
+  const plan = { 'POST /plan/rt/101/clear': (e) => (e.body.dry_run === true
+    ? [200, { ok: true, op: 'plan_rt_clear', dry_run: true, needs_confirm: true, confirm_token: 'tok-clr', consequences: [PAY(31), PAY(32), { kind: 'costs', rt_id: 101, pay_source: 'DKV', count: 2 }] }]
+    : K.planErr(409, 'WRITES_CLOSED', 'writes_closed')) };
+  const { page, S } = await K.openApp(browser, origin, { board: handWeek(false), role: 'dispatcher', plan });
+  if (!(await guard(page, ok, scn, 'WN5Hand'))) return;
+  const D = '.wi4-dlg[data-wn5="clear"]';
+  await page.evaluate(() => WN5Hand.cycleCard(101));
+  await page.waitForSelector('.wi4-dlg[data-wn5="cycle"]', { timeout: 6000 }).catch(() => {});
+  await page.click('.wi4-dlg[data-wn5="cycle"] [data-act="clear"]');
+  await page.waitForSelector(`${D} [data-act="confirm"]`, { timeout: 6000 }).catch(() => {});
+  const g = await page.evaluate((D) => ({ t: (document.querySelector(`${D} .wi4-dlg-t`) || {}).textContent || '', body: (document.querySelector(`${D} .wn5-dlg-b`) || {}).textContent || '',
+    what: [...document.querySelectorAll(`${D} .wn5-cons li[data-row="what"]`)].map((x) => x.textContent), tok: !!document.querySelector(`${D} p.wn5-tok`),
+    card: !!document.querySelector('.wi4-dlg[data-wn5="cycle"]') }), D);
+  ok(scn, 'H6: the card gives way to the shared clear dialog «Καθαρισμός ανάθεσης · RT-T101;»', !g.card && g.t === 'Καθαρισμός ανάθεσης · RT-T101;', g.t);
+  ok(scn, '«σβήνονται και τα 2 τμήματα (ΑΡΧΙΚΟ, ΤΕΛΙΚΟ)», «ο κύκλος μένει με ένα τμήμα χωρίς ανάθεση», 2 payroll lines, DKV notice, loads stay',
+    JSON.stringify(g.what) === JSON.stringify(['σβήνονται και τα 2 τμήματα (ΑΡΧΙΚΟ, ΤΕΛΙΚΟ)', 'ο κύκλος μένει με ένα τμήμα χωρίς ανάθεση', 'οι 2 γραμμές μισθοδοσίας σβήνονται',
+      'DKV: οι 2 γραμμές μένουν χωρίς δρομολόγιο → ειδοποίηση', 'φορτία και στάσεις δεν αλλάζουν']), g.what);
+  ok(scn, 'no Δ5 line in H6, the token note at the end', !g.body.includes('Λάθος ανάθεση') && g.tok, g.body.slice(0, 300));
+  const before = K.planOf(S, 'POST', '/plan/rt/101/clear');
+  ok(scn, 'nothing written before «Καθαρισμός»: only its dry run', before.length === 1 && before[0].body.dry_run === true, before.map((x) => x.body));
+  await page.click(`${D} [data-act="confirm"]`);
+  await page.waitForTimeout(1200);
+  const all = K.planOf(S, 'POST', '/plan/rt/101/clear');
+  ok(scn, '«Καθαρισμός» → the execution with the token', all.length === 2 && all[1].body.confirm_token === 'tok-clr' && all[1].body.dry_run !== true, all.map((x) => x.body));
+  ok(scn, 'no page or console errors', !S.pageErrors.length && !appConsole(S).length, S.pageErrors.concat(appConsole(S)));
+  await page.context().close();
+  // no document on the cycle: the H6 list still shows before anything is written (the segments that go are said)
+  const p2 = await K.openApp(browser, origin, { board: handWeek(false) });
+  await p2.page.evaluate(() => WN5Hand.cycleCard(101));
+  await p2.page.waitForSelector('.wi4-dlg[data-wn5="cycle"]', { timeout: 6000 }).catch(() => {});
+  await p2.page.click('.wi4-dlg[data-wn5="cycle"] [data-act="clear"]');
+  await p2.page.waitForSelector(`${D} [data-act="confirm"]`, { timeout: 6000 }).catch(() => {});
+  const w2 = await K.text(p2.page, D);
+  ok(scn, 'an empty base list: the H6 dialog still opens, only the dry run sent', w2.includes('σβήνονται και τα 2 τμήματα (ΑΡΧΙΚΟ, ΤΕΛΙΚΟ)')
+    && K.planOf(p2.S, 'POST', '/plan/rt/101/clear').length === 1, w2.slice(0, 300));
+  // a one-segment cycle stays exactly today: the Δ5 clear (no H6 rows)
+  await p2.page.evaluate(() => WN5Act.closeAll());
+  await p2.page.evaluate(() => WN5Hand.cycleCard(102));
+  await p2.page.waitForSelector('.wi4-dlg[data-wn5="cycle"]', { timeout: 6000 }).catch(() => {});
+  await p2.page.click('.wi4-dlg[data-wn5="cycle"] [data-act="clear"]');
+  await p2.page.waitForTimeout(1200);
+  const one = K.planOf(p2.S, 'POST', '/plan/rt/102/clear');
+  ok(scn, 'one segment = today: an empty list clears at once (dry run, then the execution), no H6 dialog', one.length === 2 && one[0].body.dry_run === true && await K.count(p2.page, D) === 0, one.map((x) => x.body));
+  ok(scn, 'p2: no page or console errors', !p2.S.pageErrors.length && !appConsole(p2.S).length, p2.S.pageErrors.concat(appConsole(p2.S)));
+  await p2.page.context().close();
+}
+
+const SCN = { tiles: scnTiles, card: scnCard, change: scnChange, fix: scnFix, h7: scnH7, fid: scnFid, remove: scnRemove, 'rt-token': scnRtToken, 'clear-seg': scnClearSeg };
 module.exports = { seg, handWeek, ROW, HAND, guard, appConsole, SCN };
 if (require.main === module) {
   K.run({ scenarios: SCN, globals: ['WN5L', 'WN5Lab', 'WN5Hand'], go: 'the vehicle handover screens hold on the 072b stub' })

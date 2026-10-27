@@ -56,6 +56,10 @@
     v1_same_truck: (w) => 'Το ίδιο φορτηγό έχει τις ίδιες ημέρες και δρομολόγιο του παλιού Εβδομαδιαίου (' + (w.rt_code || '—') + ')',
     local_payroll_review: () => 'Η γραμμή μισθοδοσίας του τοπικού οδηγού με ποσό πάει για έλεγχο στο λογιστήριο',
     vs_day_differs: (w) => 'Η ημέρα του VS διαφέρει από την πρώτη ημέρα του στη Βέροια (' + day(w.first_hub_day) + ')',
+    // 072b: a stop that the new vehicle now executes (the driver sheet and the payroll days follow it)
+    seg_stop_moved: (w) => `η στάση #${w.stop_id} περνά στο όχημα του άλλου τμήματος (#${w.from_segment_id} → #${w.to_segment_id})`,
+    // 072b H-24: the handover time falls inside the stop's window — it stays with the segment of its arrival (H-9)
+    seg_stop_straddles: (w) => `η ώρα της αλλαγής πέφτει μέσα στο παράθυρο της στάσης #${w.stop_id}: μένει στο τμήμα της άφιξης`,
   });
 
   const CONSEQUENCE = Object.freeze({
@@ -72,6 +76,14 @@
     rt_cancelled: (c) => 'το δρομολόγιο ' + (c.code || '—') + ' θα σβηστεί',
     // invoice_number is a money key: a dispatcher's item never has it (S-87)
     invoiced: (c) => (has(c, 'invoice_number') ? 'τιμολογήθηκε (' + c.invoice_number + '): ' : 'τιμολογήθηκε: ') + 'το ERP κάνει το πιστωτικό',
+    // 072b (👤7 = β): Move, Delete and plan_rt_update that narrow a cycle past a handover remove it after the token
+    seg_removed: (c) => `θα αφαιρεθεί η αλλαγή οχήματος ${c.place_note || '—'} ${c.at_athens || ''}`.trim(),
+    // 072b «one step» (owner 26/10): the same plan_rt_update also changes the vehicle of the ONE segment that stays.
+    // The item carries ids only (no plate / name), so the line says what happens, not which vehicle.
+    seg_vehicle: (c) => 'το τμήμα που μένει παίρνει το νέο ' + (c.trip_type === 'PARTNER' ? 'συνεργάτη' : 'όχημα'),
+    // 072b prev_partner_rate: the previous segment's partner rate changes with the handover (decision 41: the rate is
+    // shown to every role that writes it, so it is not a stripped amount)
+    partner_rate: (c) => 'κόμιστρο ' + (c.partner || 'συνεργάτη') + ': ' + (eur(c.rate_from) || '—') + ' → ' + (eur(c.rate_to) || '—'),
   });
 
   // The category word the two-step list puts before a line (Figma Δ5 2053:8079 and H4 2125:7738: «Μισθοδοσία · …»).

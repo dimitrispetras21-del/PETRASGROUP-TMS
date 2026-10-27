@@ -14,20 +14,26 @@ const path = require('path');
 
 const ROOT = process.env.TMS_ROOT ? path.resolve(process.env.TMS_ROOT) : path.join(__dirname, '..');
 const L = require(path.join(ROOT, 'core', 'wn5-labels.js'));
-const SQL = fs.readFileSync(path.join(ROOT, 'worker', 'migrations', '072_plan_functions.sql'), 'utf8');
+// 072b (T26): the warning codes and consequence kinds are those of 072 + 072b — the screen labels both.
+const SQL_072B_FILE = ['worker/migrations/072b_plan_vehicle_segments.sql', 'worker/migrations/drafts/072b_plan_vehicle_segments.sql']
+  .map((f) => path.join(ROOT, f)).find((f) => fs.existsSync(f));
+const SQL = [path.join(ROOT, 'worker', 'migrations', '072_plan_functions.sql'), SQL_072B_FILE].filter(Boolean).map((f) => fs.readFileSync(f, 'utf8')).join('\n');
 // Literal codes only: `'code', 'over_33'` is a warning; `'code', c.code` (a cycle code) is not.
 const literals = (re) => [...new Set([...SQL.matchAll(re)].map((m) => m[1]))].sort();
+// The 072b additions, present only when 072b is in the tree.
+const B_WARN = SQL_072B_FILE ? ['seg_stop_moved', 'seg_stop_straddles'] : [];
+const B_KIND = SQL_072B_FILE ? ['partner_rate', 'seg_removed', 'seg_vehicle'] : [];
 
-test('F4α-T11: WARNING keys = the warning codes raised in 072 (over_33, mixed_temp, v1_same_truck, local_payroll_review, vs_day_differs)', () => {
+test('F4α-T11: WARNING keys = the warning codes raised in 072 + 072b (over_33, mixed_temp, v1_same_truck, local_payroll_review, vs_day_differs; seg_stop_moved, seg_stop_straddles)', () => {
   const codes = literals(/jsonb_build_object\(\s*'code',\s*'([a-z0-9_]+)'/g);
-  assert.deepStrictEqual(codes, ['local_payroll_review', 'mixed_temp', 'over_33', 'v1_same_truck', 'vs_day_differs'], 'the 072 warning set changed: label the new code here');
+  assert.deepStrictEqual(codes, ['local_payroll_review', 'mixed_temp', 'over_33', 'v1_same_truck', 'vs_day_differs', ...B_WARN].sort(), 'the 072/072b warning set changed: label the new code here');
   assert.deepStrictEqual(Object.keys(L.WARNING).sort(), codes);
   assert.ok(Object.isFrozen(L.WARNING));
 });
 
-test('F4α-T11: CONSEQUENCE keys = the consequence kinds built in 072', () => {
+test('F4α-T11: CONSEQUENCE keys = the consequence kinds built in 072 + 072b', () => {
   const kinds = literals(/jsonb_build_object\(\s*'kind',\s*'([a-z_]+)'/g);
-  assert.deepStrictEqual(kinds, ['costs', 'executed_leg', 'invoiced', 'later_leg', 'local_loading', 'local_payroll', 'payroll_amount', 'rt_cancelled']);
+  assert.deepStrictEqual(kinds, ['costs', 'executed_leg', 'invoiced', 'later_leg', 'local_loading', 'local_payroll', 'payroll_amount', 'rt_cancelled', ...B_KIND].sort());
   assert.deepStrictEqual(Object.keys(L.CONSEQUENCE).sort(), kinds);
   assert.ok(Object.isFrozen(L.CONSEQUENCE));
 });
@@ -66,7 +72,8 @@ test('F4α-T11: no line says «πληρωμένη» (S-85)', () => {
 });
 
 test('F4α-T11: unknown kind / code → {unknown:true}, never dropped (S-52, Ε-21)', () => {
-  assert.deepStrictEqual(L.consequenceLine({ kind: 'seg_removed', rt_id: 1 }), { text: 'άλλη επίπτωση · seg_removed', unknown: true });
+  // (seg_removed was the example here until 072b gave it a line, T26)
+  assert.deepStrictEqual(L.consequenceLine({ kind: 'zz_new_kind', rt_id: 1 }), { text: 'άλλη επίπτωση · zz_new_kind', unknown: true });
   assert.deepStrictEqual(L.warningLine({ code: 'zz_new' }), { text: 'προειδοποίηση · zz_new', unknown: true });
   assert.deepStrictEqual(L.consequenceLine(null), { text: 'άλλη επίπτωση · —', unknown: true });
 });
@@ -148,4 +155,18 @@ test('F4α-T24: label text on the own (#EEF2F6) and partner (#DDEFE3) tiles ≥ 
       assert.ok(r >= 4.5, `${ink} on ${bg}: ${r.toFixed(2)}:1`);
     }
   }
+});
+
+// ── F4α-T26 (072b): the new consequence and warnings of 072b have their screen lines ─────────────────────────
+test('F4α-T26: seg_removed / seg_stop_moved / seg_stop_straddles labelled; drift vs 072b', (t) => {
+  const r = WN5Lab.consequenceLine({ kind: 'seg_removed', rt_id: 101, code: 'RT-T101', segment_id: 702, at: '2026-10-13T00:00:00Z', at_athens: '13/10 03:00', place_note: 'Λαμία', reason: 'vehicle_breakdown' });
+  assert.deepStrictEqual(r, { text: 'θα αφαιρεθεί η αλλαγή οχήματος Λαμία 13/10 03:00', unknown: false });
+  assert.strictEqual(WN5Lab.warningLine({ code: 'seg_stop_moved', stop_id: 1002, from_segment_id: 701, to_segment_id: 702 }).unknown, false);
+  assert.strictEqual(WN5Lab.warningLine({ code: 'seg_stop_straddles', stop_id: 1002, segment_id: 702 }).unknown, false);
+  if (!SQL_072B) { t.todo('072b not in tree'); return; }
+  const sql = require('fs').readFileSync(SQL_072B, 'utf8');
+  const warns = [...new Set([...sql.matchAll(/'code', '(seg_[a-z_]+)'/g)].map((m) => m[1]))];
+  const kinds = [...new Set([...sql.matchAll(/'kind', '([a-z_]+)'/g)].map((m) => m[1]))];
+  assert.deepStrictEqual(warns.sort(), ['seg_stop_moved', 'seg_stop_straddles']);
+  for (const k of kinds) assert.ok(Object.prototype.hasOwnProperty.call(WN5Lab.CONSEQUENCE, k), `072b consequence ${k} has no screen line`);
 });

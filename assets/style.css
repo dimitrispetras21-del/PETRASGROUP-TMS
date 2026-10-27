@@ -9285,6 +9285,9 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-ask .wn5-cons li { display:flex; gap:8px; margin:0; font-size:13px; line-height:17px; color:var(--wi4-grey-1); }
 .wn5-ask .wn5-cons li::before { content:'•'; flex:none; }
 .wn5-ask .wn5-cons li[data-unknown] { color:var(--wi4-amber-ink); }
+/* T26: the token note at the end of a token list (Figma H4 2125:7771, H6 2147:7768): grey box, radius 6, 10/12,
+   Regular 12/16 in grey-2, the full body width */
+.wn5-ask .wn5-dlg-b > p.wn5-tok { margin:0; padding:10px 12px; border-radius:6px; background:var(--wi4-chip); font-size:12px; font-weight:400; line-height:16px; color:var(--wi4-grey-2); }
 .wn5-ask .wi4-dlg-ft { margin-top:8px; gap:10px; }
 .wn5-ask .wi4-dlg-ft .wi4-btn { height:36px; font-size:13px; }
 .wn5-ask .wi4-dlg-ft [data-act="cancel"] { padding:0 14px; font-weight:500; border-color:var(--wi4-ctl); }

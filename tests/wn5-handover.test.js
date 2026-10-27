@@ -111,3 +111,37 @@ test('F4α-T25: free-until from the week — next use in another cycle, capped a
   assert.strictEqual(H2._freeUntil(board, 101, 'truck_id', 12, null, end), null, 'no time yet');
   assert.strictEqual(H2._freeUntil(board, 101, 'truck_id', 12, '2026-10-13T21:00:00+03:00', end), null, 'RT-102 holds it at 21:00');
 });
+
+// ── F4α-T26: the Δ4 execution body after a 072b dry run (WN5Act.rtSaveBody, modules/wn5_actions.js) ─────────
+function loadActs() {
+  const win = {};
+  const ctx = { console: { log() {}, warn() {}, error() {} }, window: win, Intl, Date, Math, JSON, Object, Array, String, Number, Map, Set, Promise, Error, RegExp, Symbol,
+    setTimeout() { return 0; }, addEventListener() {}, document: { addEventListener() {}, createElement() { return {}; }, body: { appendChild() {} } } };
+  vm.createContext(ctx);
+  vm.runInContext(fs.readFileSync(path.join(ROOT, 'modules/wn5_actions.js'), 'utf8'), ctx, { filename: 'modules/wn5_actions.js' });
+  return win.WN5Act;
+}
+test('F4α-T26: an rt dry run with needs_confirm → the execution sends the token back, without dry_run', () => {
+  const A = loadActs();
+  const dryBody = { shift: { side: 'KATHODOS', delta: '1 day' }, dry_run: true };
+  const ans = { ok: true, op: 'plan_rt_update', dry_run: true, needs_confirm: true, confirm_token: 'tok-1', consequences: [{ kind: 'seg_removed' }], preview: { conflict: null } };
+  assert.deepStrictEqual(J(A.rtSaveBody(dryBody, ans)), { shift: { side: 'KATHODOS', delta: '1 day' }, confirm_token: 'tok-1' });
+  assert.deepStrictEqual(J(A.rtSaveBody(dryBody, Object.assign({}, ans, { needs_confirm: false, confirm_token: undefined, consequences: [] }))), { shift: { side: 'KATHODOS', delta: '1 day' } });
+});
+test('F4α-T26: narrowing past a handover AND changing the vehicle is ONE act — one body, one token (owner 26/10)', () => {
+  // 072b (owner 26/10): plan_rt_update that narrows the cycle past a handover and changes its vehicle answers ONE
+  // consequences list and ONE token. The screen never splits it into two PATCHes: the execution body is the dry-run
+  // body (set + stops/shift together) plus that one token.
+  const A = loadActs();
+  const dryBody = { set: { trip_type: 'OWNED', truck_id: 14 }, stops: [{ stop_id: 1005, planned_from: '2026-10-13T08:00:00+03:00', planned_to: '2026-10-13T09:00:00+03:00' }], dry_run: true };
+  const ans = { ok: true, op: 'plan_rt_update', dry_run: true, needs_confirm: true, confirm_token: 'tok-2', consequences: [{ kind: 'seg_removed' }], preview: { conflict: null } };
+  const body = J(A.rtSaveBody(dryBody, ans));
+  assert.deepStrictEqual(body, { set: { trip_type: 'OWNED', truck_id: 14 }, stops: dryBody.stops, confirm_token: 'tok-2' });
+});
+test('F4α-T26: conflict without needs_confirm → no save, and no inferred «nothing removed»', () => {
+  const A = loadActs();
+  const ans = { ok: true, op: 'plan_rt_update', dry_run: true, preview: { conflict: { code: 'truck_busy', message: 'x' } } };
+  assert.strictEqual(A.rtSaveBody({ stops: [], dry_run: true }, ans), null);
+  assert.strictEqual(A.rtSaveBody({ stops: [], dry_run: true }, Object.assign({}, ans, { preview: { conflict: null }, needs_confirm: true })), null, 'needs_confirm without a token');
+  assert.strictEqual(A.rtSaveBody({ stops: [] }, null), null, 'no dry run = no save');
+});

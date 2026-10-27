@@ -1365,7 +1365,7 @@ async function scnClear(browser, origin) {
     await bMenu(page, 201, 'clear');
     const txt = await bText(page, D);
     ok(scn, 'a list → the Δ5 dialog: «Καθαρισμός ανάθεσης», the Δ5 text, «Παραστατικά που υπάρχουν» with the DKV and payroll lines',
-      txt.includes('Καθαρισμός ανάθεσης') && txt.includes('Λάθος ανάθεση: ό,τι καθαρίζεται, δεν έγινε. Βλάβη: «Μεταφορά σε…» στη φόρμα σκέλους.')
+      txt.includes('Καθαρισμός ανάθεσης') && txt.includes('Λάθος ανάθεση: ό,τι καθαρίζεται, δεν έγινε. Βλάβη: «Αλλαγή οχήματος» στην καρτέλα κύκλου.')
       && txt.includes('Παραστατικά που υπάρχουν') && txt.includes('2 γραμμές DKV') && txt.includes('γραμμή μισθοδοσίας με ποσό (Οκτώβριος)'), txt.slice(0, 600));
     ok(scn, 'dispatcher: no amount anywhere in the dialog', !txt.includes('€'));
     // fidelity r1 (Δ5 2053:8081): «Τι θα γίνει» under the documents, four rows; truck · driver only, the cycle once

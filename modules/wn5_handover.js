@@ -1,6 +1,6 @@
 // National v5 F4α — the vehicle handover screens (gated 072b). Figma KO7l2AfucR3HJEDIg1Yptr section 2120:7735:
-// H6 cycle card 2129:7735, H2 change 2122:7735, H3 2123:7735, H7 errors 2130:7735 (H4 removal = T26). One global:
-// WN5Hand.
+// H6 cycle card 2129:7735, H2 change 2122:7735, H3 2123:7735, H7 errors 2130:7735, H4 removal 2125:7735 and the
+// clear of a cycle with segments 2147:7746 (T26). One global: WN5Hand.
 // Rules (handover spec §4-§7, 072b plan §Interfaces, decision 44):
 //   - change = POST /plan/rt/:id/handover: a dry run first (the preview of the segments, warnings, conflict), then
 //     the execution with ONE request_id per open form (PlanApi.slot) — never on the dry run (required except on it);
@@ -257,13 +257,10 @@
       if (a === 'cancel') return _close();
       if (a === 'change') { _close(); change(rtId); return; }
       if (a === 'fix') { _close(); fix(Number(t.dataset.seg)); return; }
-      if (a === 'remove') {
-        // H4 removal arrives with T26 (same gated PR); until then the button says so instead of doing nothing
-        if (typeof window.WN5Hand.remove === 'function') { _close(); window.WN5Hand.remove(Number(t.dataset.seg)); }
-        else if (typeof toast === 'function') toast('Η αφαίρεση τμήματος δεν είναι ακόμη διαθέσιμη', 'warn');
-        return;
-      }
-      if (a === 'clear') { _close(); WN5Act.clear(rtId); return; }
+      if (a === 'remove') { _close(); remove(Number(t.dataset.seg)); return; }
+      // one segment: exactly today (✈ → the Δ5 clear); two or more: the same shared clear as the H6 dialog, which
+      // names the segments that go before anything is written (Figma 2147:7746, decision 12)
+      if (a === 'clear') { _close(); WN5Act.clear(rtId, segs.length > 1 ? { segs: segs.map((g) => SEG_GR[g.label] || '—') } : undefined); return; }
       if (a === 'sheets') {
         // one sheet per segment (H5, T27): every driver sees only his own stops
         const box = d.el.querySelector('[data-sheets]');
@@ -568,5 +565,51 @@
     return true;
   }
 
-  window.WN5Hand = Object.freeze({ cycleCard, change, fix, _changeBody, _changeProblems, _fixSet, _payrollLine, _freeUntil });
+  // ── H4 removal ─────────────────────────────────────────────────────────────────────────────────────────────
+  // POST /plan/segments/:id/remove: owner + dispatcher (PLAN_PERMS of 072b; the button is there for everyone and
+  // the Worker's 403 speaks). The preview's conflict (the previous vehicle is busy again) refuses BEFORE any list,
+  // so it is read with one dry run of our own; only then the shared two-step (list, token, 428, stale_confirm).
+  // No request_id: a second press by the same user is the base's replayed:true (H-15), the same success.
+  const _who = (g) => (g.trip_type === 'PARTNER' ? (g.partner || 'Συνεργάτης') : [g.truck, g.driver].filter(Boolean).join(' · ') || 'χωρίς όχημα');
+  // «Τι θα γίνει» of H4 (Figma 2125:7749-7768), built from the board the screen holds: the segment goes, the previous
+  // vehicle runs again to the removed segment's end, then what the base listed. The payroll row names the driver in
+  // the nominative (Figma «του Νίκου»: the board has no genitive form of a name).
+  function _removeWhat(g, prev, list) {
+    const rows = [`${SEG_GR[g.label] || 'Τμήμα'} (${_who(g)}) → αφαιρείται`];
+    if (prev) rows.push(`${_who(prev)} → ξανά ως ${_when(g.to_at)}`);
+    if (list.some((x) => x && x.kind === 'payroll_amount')) rows.push(`η μισθοδοσία του οδηγού${g.driver ? ' (' + g.driver + ')' : ''} σβήνεται`);
+    const costs = (WN5Act._kit && typeof WN5Act._kit.costRows === 'function') ? WN5Act._kit.costRows(list, false) : [];
+    return rows.concat(costs, ['φορτία και στάσεις δεν αλλάζουν']);
+  }
+  async function remove(segmentId) {
+    const board = await _board();
+    let c = null, g = null, i = -1, segs = [];
+    for (const x of (board && board.cycles) || []) { const s = WN5L.segmentsOf(x).segments; const k = s.findIndex((y) => y.segment_id === segmentId); if (k >= 0) { c = x; g = s[k]; i = k; segs = s; break; } }
+    if (!g) { if (typeof toast === 'function') toast('Το τμήμα δεν βρέθηκε στην εβδομάδα που φαίνεται — ανανέωσε', 'warn'); return null; }
+    const path = `/plan/segments/${segmentId}/remove`;
+    const title = `Αφαίρεση αλλαγής · ${c.code || 'RT-' + c.rt_id} · ${g.place_note || '—'} ${_when(g.from_at)};`;
+    let dry;
+    try { dry = await planFetch('POST', path, { body: {}, dry: true }); }
+    catch (e) {
+      const d = _open('remove', _esc(title), '', '', '', null);
+      _failure(d, e);
+      return null;
+    }
+    const conflict = dry && dry.preview && dry.preview.conflict;
+    if (conflict) {
+      const d = _open('remove', _esc(title), '', '<div class="wn5f-note">Η αφαίρεση δεν γίνεται: το προηγούμενο όχημα δεν είναι ελεύθερο ως το τέλος του τμήματος.</div>', '', null);
+      _lines(d, [conflict.message || conflict.code]);
+      return null;
+    }
+    const prev = i > 0 ? segs[i - 1] : null;
+    const ans = await WN5Act.twoStep({ method: 'POST', path, body: {}, kind: 'remove', title, verb: 'Αφαίρεση', danger: true, note: true,
+      what: (list) => _removeWhat(g, prev, list) });
+    if (ans) {
+      if (typeof toast === 'function') toast(`Η αλλαγή οχήματος αφαιρέθηκε · ${c.code || 'RT-' + c.rt_id}${ans.replayed ? ' · το πρώτο πάτημα είχε ήδη αποθηκευτεί' : ''}`, 'success');
+      WN5.reload('segment-removed');
+    }
+    return ans;
+  }
+
+  window.WN5Hand = Object.freeze({ cycleCard, change, fix, remove, _changeBody, _changeProblems, _fixSet, _payrollLine, _freeUntil });
 })();
