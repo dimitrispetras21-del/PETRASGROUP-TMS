@@ -833,13 +833,32 @@
       + `<span class="${ro}">${_pal(r.pallets)}</span><span></span>`
       + (vs ? `<button type="button" class="wn5f-lnk" data-act="move" data-piece="${r.piece_id}">Μεταφορά σε…</button>` : '<span></span>') + '</div>';
   }
+  // The VS block: locked for price, pallets and windows (decision 21); its day and — for an import — its
+  // destination after Veroia are the national desk's too, «όποιος μάθει πρώτος» (S-104, S-107), each with its
+  // own button: ONE POST per change, never inside the form's «Αποθήκευση» (Ε-4).
+  // The 072 board carries no order_stop_id on cycle legs (only on waiting[]/hub[]): while it is missing the
+  // destination button stays off and a line says why (principle 1); once the Worker adds it to legs[] the button
+  // turns on with no code change. The day needs only order_id, which the legs carry.
   function _vsBlockHTML(f, b) {
-    const rows = f.m.side === 'KATHODOS' ? b.drops.filter((r) => !r.hub) : b.loads.filter((r) => !r.hub);
+    const imp = f.m.side === 'KATHODOS';
+    const rows = imp ? b.drops.filter((r) => !r.hub) : b.loads.filter((r) => !r.hub);
+    const hubDay = f.m.hubStop ? f.m.hubStop.stop_day : (f.m.end ? f.m.end.stop_day : '');
+    const noStop = imp && rows.some((r) => r.order_stop_id == null);
     return `<div class="wn5f-ord wn5f-lock" data-vs="${b.order_id}">`
       + `<div class="wn5f-ord-h">${LOCK}<b>${_esc(b.reference || 'VS')} · ${_esc(b.client)}</b><span class="wn5f-vs-s">· από διεθνή παραγγελία · ${_tempTxt(b.temps)}</span>`
       + `<span class="wn5f-badge">ημέρα · προορισμός · παράθυρο κλειδωμένο</span></div>`
-      + `<div class="wn5f-sec">${f.m.side === 'KATHODOS' ? 'ΠΑΡΑΔΟΣΕΙΣ' : 'ΦΟΡΤΩΣΕΙΣ'}</div>` + _lth('Παράθυρο από – έως *')
-      + rows.map((r) => _roRowHTML(r, true)).join('')
+      + `<div class="wn5f-vsday"><label class="wn5f-f"><span>Ημέρα</span><input class="form-input" type="date" data-f="vsday" value="${_esc(hubDay || '')}"></label>`
+      + `<button type="button" class="wi4-btn sm" data-act="vs-day" data-order="${b.order_id}">Ορισμός ημέρας</button><span class="wn5f-ok" data-vsok></span></div>`
+      + `<div class="wn5f-sec">${imp ? 'ΠΑΡΑΔΟΣΕΙΣ' : 'ΦΟΡΤΩΣΕΙΣ'}</div>` + _lth('Παράθυρο από – έως *')
+      + rows.map((r) => {
+        if (!imp) return _roRowHTML(r, true);
+        // the destination changes only for an import: plan_vs_set_place is «the destination after Veroia» (072:2064)
+        const pid = 'wn5v' + (++f.seq);
+        const off = r.order_stop_id == null;
+        return _roRowHTML(r, true) + `<div class="wn5f-vsplace"><span class="wn5f-sub">Προορισμός μετά τη Βέροια</span>${fhLocSelect(pid, '', 'WN5Form._locDropNoHub')}`
+          + `<button type="button" class="wi4-btn sm" data-act="vs-place" data-pid="${pid}" data-osid="${off ? '' : r.order_stop_id}"${off ? ' disabled' : ''}>Αλλαγή προορισμού</button></div>`;
+      }).join('')
+      + (noStop ? '<div class="wn5f-note">Ο προορισμός αλλάζει εδώ όταν το board φέρνει τη στάση της διεθνούς — ως τότε από τη διεθνή παραγγελία.</div>' : '')
       + `<div class="wn5f-note">${_pal(b.pallets || rows.reduce((a, r) => a + r.pallets, 0))}π · τιμή και τιμολόγηση στη διεθνή παραγγελία · δεν διαγράφεται από εδώ · ημέρα και προορισμός: όποιος μάθει πρώτος — γράφεται και στη διεθνή, ο διεθνών ειδοποιείται</div></div>`;
   }
   function _natBlockHTML(f, b) {
@@ -937,7 +956,25 @@
       return;
     }
     if (a === 'card') { _close(f); WN5Act.orderCard(Number(t.dataset.nat)); return; }
-    if (a === 'time') { _close(f); WN5Act.datePanel(rt, 'ANODOS', anchor()); }
+    if (a === 'time') { _close(f); WN5Act.datePanel(rt, 'ANODOS', anchor()); return; }
+    if (a === 'vs-day') {
+      const box = t.closest('[data-vs]');
+      vsDay(Number(t.dataset.order), box.querySelector('[data-f="vsday"]').value);
+      return;
+    }
+    if (a === 'vs-place') {
+      const rec = (document.getElementById('lv_' + t.dataset.pid) || {}).value || '';
+      if (!rec) {
+        // an empty list is not «pick one»: say that the places did not load (principle 1)
+        _lines(f, [typeof _fhLocationsArr !== 'undefined' && _fhLocationsArr.length ? 'Προορισμός: διάλεξε τοποθεσία από τη λίστα'
+          : 'Οι τοποθεσίες δεν φορτώθηκαν — κλείσε και άνοιξε ξανά τη φόρμα']);
+        return;
+      }
+      let loc;
+      try { loc = PlanIds.id('location', rec); }
+      catch (e) { WN5Act.strip(_strip(f), e); return; }
+      vsPlace(Number(t.dataset.osid), loc);
+    }
   }
   // The clicked side stays marked on the board while its form is open (Figma 2011:9305 / 2069:8150: the side's cells
   // as one box). The side is four grid cells, so the mark is one box laid over them, measured once; it dies with
@@ -967,7 +1004,11 @@
     }
     const ids = await PlanIds.load();
     const m = _legModel(cyc, side, _hubId());
-    const f = { kind: 'leg', rtId, side, cyc, m, busy: false, done: false, locked: false, blocked: true, orig: {},
+    // the VS destination picker (T22) reads the places list; only the order form loaded it before
+    if (side === 'KATHODOS' && m.blocks.some((b) => b.vs)) {
+      try { await fhLoadLocations(); } catch (e) { _log(e, 'WN5Form.openLeg locations'); }
+    }
+    const f = { kind: 'leg', rtId, side, cyc, m, seq: 0, busy: false, done: false, locked: false, blocked: true, orig: {},
       onSave: _saveLeg, onRefresh: _legRefresh, onAct: _legAct, onClose: (x) => _legMark(x, false) };
     for (const b of m.blocks) if (!b.vs) f.orig[b.nat_order_id] = { nat_order_id: b.nat_order_id, price: b.price, reference: b.reference,
       temperature_c: b.temps.length === 1 ? b.temps[0] : null, pallet_exchange: b.pallet_exchange, goods: '', notes: '', ships: [] };
@@ -981,5 +1022,63 @@
     return true;
   }
 
-  window.WN5Form = Object.freeze({ openOrder, openLeg, _body, _check, _patchBody, _findOrders, _iso, _parts, _legModel });
+  // ── VS day / destination (T22) ─────────────────────────────────────────────────────────────────────────────
+  // The places list without the hub: Veroia is never a VS destination after Veroia (072 plan_vs_set_place).
+  // Same filter rule as fhLocDrop (form-helpers.js: _fhNorm over the label), only the hub left out.
+  function _locDropNoHub(id, q) {
+    const hub = _hubRec();
+    const nq = typeof _fhNorm === 'function' ? _fhNorm(String(q || '').trim()) : String(q || '').trim().toLowerCase();
+    const pool = _fhLocationsArr.filter((o) => o.id !== hub && (!nq || (o._n || (o._n = _fhNorm(o.label))).includes(nq))).slice(0, 25);
+    fhShowDrop('ls_' + id + '_d', id, pool);
+  }
+  // The outcome line of a VS change, from the answer: a notice means the international desk was told; none means
+  // the base changed nothing there (072:2045 «the same day again … tells nobody»). The screen says it, never guesses.
+  function _vsOk(f, ans, withNotice, without, sel) {
+    const line = f.el.querySelector(sel);
+    if (line) line.textContent = Array.isArray(ans.notice_ids) && ans.notice_ids.length ? withNotice : without;
+    if (Array.isArray(ans.warnings) && ans.warnings.length) WN5Act.strip(_strip(f), ans.warnings);
+    else _strip(f).innerHTML = '';
+    _lines(f, []);
+  }
+  async function _vsSend(path, body, withNotice, without, where, sel) {
+    const f = _f && _f.kind === 'leg' ? _f : null;
+    if (f) { if (f.busy) return null; f.busy = true; _setSave(f); }
+    try {
+      const ans = await planFetch('POST', path, { body });
+      if (f) _vsOk(f, ans, withNotice, without, sel);
+      WN5.reload(where);
+      return ans;
+    } catch (e) {
+      if (f) await _failed(f, e, null);
+      else {
+        // vsDay / vsPlace are public: called with no leg form open, the answer still reaches the user — the board's
+        // strip with the Worker's words (principle 1). A PlanError was already logged by planFetch when it is not a
+        // designed refusal (a 422/409 is never an app error); only a fault of this screen's own code is logged here.
+        const host = WN5Act._kit && typeof WN5Act._kit.boardHost === 'function' ? WN5Act._kit.boardHost() : null;
+        if (host) WN5Act.strip(host, e);
+        if (!(typeof PlanError === 'function' && e instanceof PlanError)) _log(e, 'WN5Form.' + where);
+      }
+      return null;
+    } finally {
+      if (f) { f.busy = false; _setSave(f); }
+    }
+  }
+  function vsDay(orderId, day) {
+    if (!Number.isSafeInteger(orderId) || !DAY.test(String(day || ''))) {
+      if (_f && _f.kind === 'leg') _lines(_f, ['Ημέρα: διάλεξε ημέρα']);
+      return Promise.resolve(null);
+    }
+    return _vsSend('/plan/vs/day', { order_id: orderId, day }, 'Η ημέρα γράφτηκε και στη διεθνή, ο διεθνών ειδοποιήθηκε',
+      'Ίδια ημέρα — η διεθνής δεν άλλαξε, καμία ειδοποίηση', 'vs-day', `[data-vs="${orderId}"] [data-vsok]`);
+  }
+  function vsPlace(orderStopId, locationId) {
+    const f = _f && _f.kind === 'leg' ? _f : null;
+    if (!Number.isSafeInteger(orderStopId) || !Number.isSafeInteger(locationId)) { if (f) _lines(f, ['Προορισμός: διάλεξε τοποθεσία από τη λίστα']); return Promise.resolve(null); }
+    // the hub pasted in from elsewhere: refused here, nothing sent (072 plan_vs_set_place: «location_id (not the hub)»)
+    if (locationId === _hubId()) { if (f) _lines(f, ['Η Βέροια δεν είναι προορισμός VS — διάλεξε τον τόπο παράδοσης μετά τη Βέροια']); return Promise.resolve(null); }
+    return _vsSend('/plan/vs/place', { order_stop_id: orderStopId, location_id: locationId }, 'Ο προορισμός γράφτηκε και στη διεθνή, ο διεθνών ειδοποιήθηκε',
+      'Ίδιος προορισμός — η διεθνής δεν άλλαξε', 'vs-place', `[data-vs]:has([data-osid="${orderStopId}"]) [data-vsok]`);
+  }
+
+  window.WN5Form = Object.freeze({ openOrder, openLeg, vsDay, vsPlace, _locDropNoHub, _body, _check, _patchBody, _findOrders, _iso, _parts, _legModel });
 })();

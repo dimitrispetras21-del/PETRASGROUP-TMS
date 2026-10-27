@@ -361,8 +361,63 @@ async function scnLegAnodos({ browser, origin, ok, scn }) {
   await closeClean(page, S, ok, scn);
 }
 
+// T22 — VS day and destination from the leg form: one POST per change, never inside the form's save.
+function vsWeek(withStop) {
+  const b = K.week();
+  if (withStop) for (const s of b.cycles[0].stops) for (const l of s.legs) if (l.order_id === 2101) l.order_stop_id = 6101;   // as if the Worker chain added the key (Ε-2)
+  return b;
+}
+async function scnVs({ browser, origin, ok, scn }) {
+  let dayN = 0;
+  const plan = {
+    'POST /plan/vs/day': () => (++dayN === 1
+      ? [200, { ok: true, op: 'plan_vs_set_day', dry_run: false, ids: { order_id: 2101 }, warnings: [{ code: 'vs_day_differs', first_hub_day: '2026-10-12' }], notice_ids: [9101] }]
+      : K.planErr(422, 'PLAN_RULE', 'vs_not_bridge')),
+    'POST /plan/vs/place': () => [200, { ok: true, op: 'plan_vs_set_place', dry_run: false, ids: { order_stop_id: 6101, leg_ids: [], stop_ids: [] }, warnings: [], notice_ids: [9102] }],
+  };
+  const { page, S } = await K.openApp(browser, origin, { board: vsWeek(true), plan });
+  if (!(await guard(page, ok, scn))) return;
+  await page.evaluate(() => WN5Form.openLeg(101, 'KATHODOS'));
+  await page.waitForSelector(LEG, { timeout: 6000 }).catch(() => {});
+  const V = `${LEG} [data-vs="2101"]`;
+  ok(scn, 'the VS block has «Ημέρα» with the Veroia day (Δευ 12/10)', (await page.evaluate((v) => (document.querySelector(`${v} [data-f="vsday"]`) || {}).value, V)) === '2026-10-12');
+  const writes0 = S.plan.filter((x) => x.m !== 'GET').length;
+  await page.fill(`${V} [data-f="vsday"]`, '2026-10-14');
+  await page.click(`${V} [data-act="vs-day"]`);
+  await page.waitForTimeout(1200);
+  const days = K.planOf(S, 'POST', '/plan/vs/day');
+  ok(scn, 'one change = ONE POST /plan/vs/day {order_id:2101, day:"2026-10-14"}', days.length === 1 && JSON.stringify(days[0].body) === JSON.stringify({ order_id: 2101, day: '2026-10-14' }), days.map((x) => x.body));
+  ok(scn, 'after 200 with notice_ids: «γράφτηκε και στη διεθνή, ο διεθνών ειδοποιήθηκε»', /γράφτηκε και στη διεθνή, ο διεθνών ειδοποιήθηκε/.test(await K.text(page, `${V} [data-vsok]`)));
+  ok(scn, 'vs_day_differs → a warning line', await K.count(page, `${LEG} .wn5-strip[data-kind="warning"]`) >= 1);
+  await page.click(`${V} [data-act="vs-day"]`);
+  await page.waitForTimeout(1000);
+  ok(scn, '422 vs_not_bridge → the Worker message, form open', /rig sentinel vs_not_bridge/.test(await K.text(page, `${LEG} [data-strip]`)) && await K.count(page, LEG) === 1);
+  const pid = await page.evaluate((v) => { const b = document.querySelector(`${v} [data-act="vs-place"]`); return b && b.dataset.pid; }, V);
+  const offered = await page.evaluate((id) => { WN5Form._locDropNoHub(id, ''); const d = document.getElementById('ls_' + id + '_d'); return d ? d.textContent : ''; }, pid);
+  ok(scn, 'the destination picker never offers Veroia', offered.includes('LARISA TEST') && !offered.includes('ΒΕΡΟΙΑ TEST'), offered.slice(0, 200));
+  await page.evaluate((id) => fhPickLinked(id, 'recWn5LocLar', 'LARISA TEST'), pid);
+  await page.click(`${V} [data-act="vs-place"]`);
+  await page.waitForTimeout(1200);
+  const places = K.planOf(S, 'POST', '/plan/vs/place');
+  ok(scn, 'one change = ONE POST /plan/vs/place {order_stop_id:6101, location_id:4}', places.length === 1 && JSON.stringify(places[0].body) === JSON.stringify({ order_stop_id: 6101, location_id: 4 }), places.map((x) => x.body));
+  await page.evaluate((id) => fhPickLinked(id, 'recJucKOhC1zh4IP3', 'ΒΕΡΟΙΑ TEST'), pid);
+  await page.click(`${V} [data-act="vs-place"]`);
+  await page.waitForTimeout(600);
+  ok(scn, 'Veroia pasted as destination → refused on screen, nothing sent', K.planOf(S, 'POST', '/plan/vs/place').length === 1 && /Η Βέροια δεν είναι προορισμός VS/.test(await K.text(page, `${LEG} [data-err]`)));
+  ok(scn, 'no PATCH /plan/orders during the VS changes (not the form\'s save)', !S.plan.some((x) => x.m === 'PATCH'));
+  ok(scn, 'exactly the 3 VS writes reached /plan', S.plan.filter((x) => x.m !== 'GET').length - writes0 === 3, S.plan.filter((x) => x.m !== 'GET').map((x) => x.m + ' ' + x.path));
+  await closeClean(page, S, ok, scn);
+  // 072 board: no order_stop_id on legs → the destination button is off and says why
+  const p2 = await K.openApp(browser, origin, { board: vsWeek(false) });
+  await p2.page.evaluate(() => WN5Form.openLeg(101, 'KATHODOS'));
+  await p2.page.waitForSelector(LEG, { timeout: 6000 }).catch(() => {});
+  ok(scn, 'without order_stop_id «Αλλαγή προορισμού» is disabled, with the reason', await p2.page.evaluate((v) => { const b = document.querySelector(`${v} [data-act="vs-place"]`); return !!b && b.disabled; }, V)
+    && /όταν το board φέρνει τη στάση της διεθνούς/.test(await K.text(p2.page, V)));
+  await closeClean(p2.page, p2.S, ok, scn);
+}
+
 K.run({
-  scenarios: { order: scnOrder, groupage: scnGroupage, unknown: scnUnknown, reused: scnReused, replayed: scnReplayed, edit: scnEdit, leg: scnLeg, 'leg-anodos': scnLegAnodos },
+  scenarios: { order: scnOrder, groupage: scnGroupage, unknown: scnUnknown, reused: scnReused, replayed: scnReplayed, edit: scnEdit, leg: scnLeg, 'leg-anodos': scnLegAnodos, vs: scnVs },
   globals: ['WN5Form'],
   go: 'the v5 order forms send one body per press, from the form only, with one request_id per open form',
 }).catch((e) => { console.error(e); process.exit(1); });
