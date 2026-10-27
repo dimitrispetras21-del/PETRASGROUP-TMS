@@ -8,6 +8,7 @@
 - Το πάνελ **παράγεται από τα δεδομένα** με τους κανόνες K0–K10 του `docs/order-route/ROUTE-GRAMMAR.md`. Τίποτα δεν
   σχεδιάζεται με το χέρι.
 - Ό,τι παραβιάζει κανόνα φαίνεται κόκκινο, χωρίς να το ρωτήσεις.
+- Από την πρώτη έκδοση έχει **τέσσερις καρτέλες: Διαδρομή · Φορτίο · Έγγραφα · Ιστορικό** (owner 28/10).
 
 **Architecture:** Τρία καθαρά στρώματα και ένας λεπτός οικοδεσπότης. Τα στρώματα 1–3 είναι pure JS και ελέγχονται
 με `node --test`.
@@ -24,10 +25,10 @@
    Ο οικοδεσπότης `modules/route_panel.js` (`window.RoutePanel`) ζωγραφίζει το μοντέλο και ανοίγει από το
    `modules/weekly_natl_v5.js`.
 
-**Ξηρή δοκιμή του πλάνου (28/10):** ο κώδικας και τα tests των T1–T4, όπως είναι γραμμένα εδώ, έτρεξαν σε scratchpad
-πάνω σε φρέσκια εξαγωγή της βάσης (404 παραγγελίες, 86 εθνικά φορτία, 213 RT): **22 / 22 pass**, ισοτιμία JS ↔ SQL
+**Ξηρή δοκιμή του πλάνου (28/10):** ο κώδικας και τα tests των T1–T4 και T9–T11, όπως είναι γραμμένα εδώ, έτρεξαν σε
+scratchpad πάνω σε φρέσκια εξαγωγή της βάσης (404 παραγγελίες, 86 εθνικά φορτία, 213 RT): **29 / 29 pass**, ισοτιμία JS ↔ SQL
 σε 703 / 703 εγγραφές, και οι αποδείξεις μετάλλαξης του T1 (K2 γονέα σπασίματος → αποτυγχάνει στη #269) και του T2
-(K10 → αποτυγχάνει) πιάνουν. Τα tests συγκρίνουν αντικείμενα του vm ως απλό JSON (`eq`), γιατί διαφορετικό realm
+(K10 → αποτυγχάνει) πιάνουν, όπως και οι τρεις των καρτελών του T13 Step 3. Τα tests συγκρίνουν αντικείμενα του vm ως απλό JSON (`eq`), γιατί διαφορετικό realm
 σπάει το `deepStrictEqual`. Τίποτα από αυτά δεν μπήκε στο repo· μπαίνει στην υλοποίηση, μετά το F4α.
 
 **Tech Stack:** Vanilla JS (IIFE, `window.*`), CSS στο `assets/style.css`, `node --test` με vm sandbox (υπάρχον
@@ -38,6 +39,8 @@
 - **Μόνο Εθνικών πρώτα** (owner 26/10, `docs/order-route/PANEL.md`). Οι λέξεις του: «ξεκινάμε υλοποίηση μόνο στο
   Εθνικών για αρχή· αφού δούμε ότι δουλεύει σωστά, μετά πάμε Διεθνών». Το πάνελ του Εβδομαδιαίου Διεθνών είναι
   **χωριστό πλάνο** (Φάση Β, §8). Δεν μπαίνει εδώ.
+- **Τέσσερις καρτέλες από την πρώτη έκδοση** (owner 28/10). Οι λέξεις του: «Και οι τέσσερις καρτέλες του Figma από
+  την πρώτη έκδοση». Frames `2283:10009`–`2283:10200`, με τις εθνικές τους παραλλαγές F5–F7 (§3).
 - **Καμία υλοποίηση πριν από το merge του F4α** (owner 27/10). Λέξεις: «η υλοποίηση μετά το merge του F4α». Οι
   εργασίες με γραμμές ⇄ περιμένουν **επιπλέον** το merge των T24/T25 του F4α (branch `feat/national-v5-f4a-handover`,
   πλάνο F4α γρ. 62 και 488).
@@ -54,7 +57,7 @@
 - **Διαδικασία owner 27/10, σε κάθε εργασία:**
   - **Τιμές Figma πριν από τον κώδικα:** οι ακριβείς τιμές του κόμβου Figma γράφονται στο brief της εργασίας.
   - **Το πολύ ένας γύρος πιστότητας.** Αποκλίσεις ≤ 2px μπαίνουν στη λίστα `docs/route-panel/DEFERRED.md` για ένα
-    πέρασμα σε όλο το frame στο τέλος (T9).
+    πέρασμα σε όλο το frame στο τέλος (T12).
   - **Οι έλεγχοι ορθότητας μένουν όλοι:**
     - suite (`node --test tests/*.test.js tests/*.test.mjs tests/critics/*.test.js 2>&1 | grep -E '^ℹ (tests|pass|fail)'`)·
     - rig με 0 page errors·
@@ -89,7 +92,7 @@
 - **Πρότυπο συρταριού:** `.mnt-drawer` (`assets/style.css`, ενότητα «record drawer», 480px, `max-width:95vw`) και
   `modules/maintenance.js:418` (`_mntCloseDrawer`).
 
-## 2 · Πηγές δεδομένων (καμία αλλαγή Worker ή SQL στη Φάση Α)
+## 2 · Πηγές δεδομένων (μία νέα ανάγνωση: το Ιστορικό)
 
 | Τι | Από πού | Υπάρχει; |
 |---|---|---|
@@ -99,17 +102,53 @@
 | Χώρα τόπου (N2) | facade LOCATIONS (`tblxu8DRfTQOFRCzS`, πεδίο `Country` στον χάρτη του Worker, `worker/src/index.js:939`) | ναι |
 | Διεθνές σκέλος μιας VS (φόρτωση εξωτερικού → κόμβος) | facade ORDERS + ORDER STOPS (μόνο ανάγνωση) | ναι |
 | Διεθνές RT του ίδιου φορτηγού ή οδηγού τις ίδιες ημέρες (Γ1 / Γ4) | `GET /costs/rt?truck_id=&from=&to=&overlap=1` και `?driver_id=` (`worker/src/index.js:4425`) | ναι |
+| **Φορτίο:** παλέτες, θερμοκρασία | board `legs[].pallets`, `legs[].temperature_c` | ναι |
+| **Φορτίο:** ανταλλαγή παλετών | facade ORDERS `"Pallet Exchange"` (`worker/src/index.js:1384`) · NATIONAL ORDERS `"Pallet Exchange"` (`:1663`) · `board.waiting[].pallet_exchange` | ναι |
+| **Φορτίο:** χωρητικότητα 33, πιο φορτωμένη πλευρά | `WN5L.CAP`, `WN5L.capacity()` (F4α `core/wn5-logic.js:22,100`) | ναι (F4α) |
+| **Έγγραφα** | `OrderDocs.listDocs(orderId)` → `GET /docs/list?order=` · `OrderDocs.fetchFileBlob(id)` → `GET /docs/file/<id>` (`core/order-docs.js:213,222`) | ναι, **μόνο για διεθνείς** παραγγελίες (FK `order_documents.order_id → orders`) |
+| **Ιστορικό** | `audit_log` μέσω της **νέας** `GET /plan/history` (W-2) πάνω στη **νέα** `plan_history(...)` (M-1). Το υπάρχον `GET /audit` το διαβάζουν μόνο owner / management | **όχι**: M-1 + W-2 |
 
-**Εξαρτήσεις Worker και SQL** (αλυσίδα Worker, **όχι** front end· καμία δεν χρειάζεται για τη Φάση Α):
+**Εξαρτήσεις Worker και SQL** (αλυσίδα Worker και διαδικασία βάσης, **όχι** front end):
+- **M-1 (απαιτείται για το Ιστορικό):** συνάρτηση `plan_history(p_rt bigint, p_order_ids bigint[], p_nat_order_ids
+  bigint[], p_names boolean, p_limit int) RETURNS jsonb`, `STABLE SECURITY DEFINER SET search_path = public`, μόνο
+  ανάγνωση. Παίρνει τον αριθμό της επόμενης ελεύθερης migration (μετά τη 074).
+  - **Διαβάζει** `audit_log (id, actor, role, action, table_name, record_id, before_data, after_data, created_at)` για
+    τα κλειδιά του κύκλου και των παραγγελιών του:
+    - `ct_round_trips` (το `p_rt`)·
+    - `rt_stops`, `piece_legs`, `rt_vehicle_segments` (`WHERE rt_id = p_rt`)·
+    - `shipments`, `shipment_pieces` (`order_id = ANY(p_order_ids)` / `nat_order_id = ANY(p_nat_order_ids)`)·
+    - `local_moves` (`rt_stop_id` στις στάσεις του)·
+    - `orders`, `order_stops`, `national_orders`, `national_loads` (`source_order_id`).
+  - **Και τα δύο σχήματα κλειδιού:** οι γραμμές του Worker έχουν `record_id` = legacy id, οι γραμμές trigger και
+    `plan_h_audit` έχουν `id::text`. Ίδιος κανόνας με το `expectAttribution`, `worker/src/index.js:3720`.
+  - **Επιστρέφει** `{entries:[{at, table, record_id, action, actor_kind, actor|null, role, changed, order_ref}],
+    since, v5_rows, truncated}`:
+    - το `changed` είναι **μόνο τα ονόματα** των κλειδιών όπου `before_data` και `after_data` διαφέρουν, όταν και τα
+      δύο είναι jsonb αντικείμενα, αλλιώς `null`. **Ποτέ τιμές:** ο dispatcher δεν βλέπει P&L (κλειδωμένη απόφαση
+      23/8), και τα before / after κρατούν τιμές και κόμιστρα·
+    - `actor` μόνο όταν `p_names`· `limit ≤ 200`.
+  - **Γεννιέται κλειστό:** `REVOKE EXECUTE` από PUBLIC, anon, authenticated· `GRANT` μόνο στον service_role.
+  - **Διαδικασία:** dry run, εκτέλεση μετά τις 15:00, ρητό «ναι» του owner, verify, test σε γραμμές δοκιμής που δεν
+    κρατιούνται.
+- **W-2 (απαιτείται για το Ιστορικό):** route `GET /plan/history?rt_id=|order_id=|nat_order_id=` στο `PLAN_ROUTES`, που
+  καλεί το M-1.
+  - `p_names = AUDIT_READERS.includes(role)`: ονόματα μόνο σε owner / management, όπως σήμερα το `/audit` και η
+    παρουσία (`worker/src/index.js:7181`). Οι άλλοι ρόλοι βλέπουν ρόλο και είδος, όχι όνομα.
+  - **Ποιοι ρόλοι διαβάζουν:** αλλάζει τι βλέπει ένας ρόλος, άρα **ερώτηση owner πριν** (§9 ερώτηση 3).
+  - Αλυσίδα `deploy/worker-plan*`, από την ζωντανή πηγή, μετά τις 15:00. Νέο σημάδι φρουρού `rpc: "plan_history"`
+    στη λίστα του CLAUDE.md.
 - **W-1 (προαιρετικό):** `GET /plan/route?rt_id=|order_id=`, η διαδρομή ενός κύκλου ή μιας παραγγελίας χωρίς όλη την
   εβδομάδα. Σήμερα κανένα route δεν τη δίνει (`/plan/board` = όλη η εβδομάδα). Χρειάζεται μόνο αν το T3 μετρήσει ότι
   το δεύτερο board είναι αργό. Αν χρειαστεί, πάει στην αλυσίδα `deploy/worker-plan*` με δικό της πλάνο.
 - **S-1 (Φάση Β):** εξαγωγή εισόδου γραμματικής για τα διεθνή. Καλύπτεται από το SELECT του T1, χωρίς αλλαγή βάσης.
 
 **Πριν από την ημέρα L:**
+- Το Ιστορικό, με M-1 + W-2 ζωντανά, δείχνει τις γραμμές των **παραγγελιών** (υπάρχουν: 4.585 `orders`, 4.165
+  `order_stops`, 358 `national_loads`, 30 `national_orders`), και ρητά «Κύκλοι v5: 0 αλλαγές — γράφονται από την ημέρα
+  L». Ποτέ κενό (T11).
 - Οι πίνακες v5 έχουν 0 γραμμές, άρα στην παραγωγή το πάνελ δεν έχει τι να δείξει. Η απόδειξη πριν από το L είναι:
   rig με συνθετικά δεδομένα, και SELECT που δείχνει 0 κύκλους.
-- Η απόδειξη με πραγματικά δεδομένα γίνεται την πρώτη εβδομάδα μετά το L (T10, βήμα 9).
+- Η απόδειξη με πραγματικά δεδομένα γίνεται την πρώτη εβδομάδα μετά το L (T13, βήμα 9).
 
 ## 3 · Frames Figma (αρχείο `KO7l2AfucR3HJEDIg1Yptr`)
 
@@ -134,6 +173,13 @@
   Λείπει: τα RT10 / RT16 είναι δίπλα-δίπλα, αλλά όχι ευθυγραμμισμένα.
 - **F4** — Φύλλο καταστάσεων σφάλματος του §4 για τα εθνικά: «χωρίς ανάθεση», «καθυστέρηση», «χώρα;», «διεθνές RT
   ίδιο φορτηγό», «διεθνές RT ίδιος οδηγός». Μερικώς υπάρχει στο `2284:8348`.
+- **F5** — Καρτέλα **Φορτίο** του εθνικού πάνελ. Αφετηρία το `2283:10077`, αλλά ανά ΚΑΘΟΔΟ / ΑΝΟΔΟ και ανά
+  παραγγελία (VS ή εθνική), με το μπλοκ ΦΟΡΤΗΓΟ 33 και το «δεν γράφτηκε» για θερμοκρασία και ανταλλαγή.
+- **F6** — Καρτέλα **Έγγραφα** που δείχνει μόνο ό,τι κρατά η βάση. Αφετηρία το `2283:10126`, χωρίς «CMR» και «Εντολή
+  πελάτη», γιατί δεν υπάρχει στήλη είδους. Περιλαμβάνει «ίδιο αρχείο» (sha256), «0 αρχεία σε παραδομένη» κόκκινο, και
+  «Οι εθνικές παραγγελίες δεν κρατούν έγγραφα στο TMS».
+- **F7** — Καρτέλα **Ιστορικό**, με τις πέντε καταστάσεις του T11 (απέτυχε, 0 γραμμές, πριν από το L, κομμένο στις
+  200, πεδίο που δεν καταγράφεται). Και το «ποιος» χωρίς όνομα για τους ρόλους εκτός owner / management.
 
 ## 4 · Σφάλματα δεδομένων → κανόνας → κόκκινο στο πάνελ → test
 
@@ -146,6 +192,10 @@
 | #519 γονέας και σκέλος σε RT (E7) | K7 | Φάση Β (διεθνές) | `tests/route-grammar.test.js` ισοτιμία: η #519 έχει `E7` |
 | #259 κατεύθυνση σκέλους ≠ παραγγελίας (E9) | K7 | Φάση Β (διεθνές) | ίδιο, η #259 έχει `E9` |
 | Όλα τα σημάδια των 691 εγγραφών | K0–K10 | — | ισοτιμία JS ↔ `route-grammar-formulas.csv` (T1) |
+| Πάνω από 33 παλέτες σε μία πλευρά | όριο 33 (`WN5L.CAP`, Ε-17) | Φορτίο: κόκκινο στο μπλοκ ΦΟΡΤΗΓΟ | `tests/route-panel-tabs.test.js` (T9) |
+| Θερμοκρασία ή ανταλλαγή που δεν γράφτηκε | K5 (ιδιότητα που λείπει) | Φορτίο: «δεν γράφτηκε», ποτέ «Όχι» ή 0 | ίδιο, «missing» (T9) |
+| Παραδομένη παραγγελία χωρίς έγγραφο | — | Έγγραφα: κόκκινο «Κανένα έγγραφο σε παραδομένη» | ίδιο (T10) |
+| Ανάγνωση ιστορικού που απέτυχε · 0 γραμμές · πριν από το L | αρχή 1 | Ιστορικό: ρητό κείμενο ανά κατάσταση, ποτέ κενό | ίδιο (T11) |
 
 ## 5 · Αρχεία
 
@@ -157,7 +207,9 @@
 | `modules/route_panel.js` | DOM: συρτάρι 480, δίπλα-δίπλα, κλείσιμο | νέο | όχι |
 | `docs/order-route/route-grammar-input.sql` | SELECT εξαγωγής εισόδου για το test ισοτιμίας | νέο | όχι |
 | `tests/fixtures/route-grammar-input.json` | η είσοδος (μόνο ids και booleans) | νέο | όχι |
-| `tests/route-grammar.test.js` · `tests/route-panel-model.test.js` · `tests/route-panel-data.test.js` · `tests/route-panel-html.test.js` | unit tests | νέα | όχι |
+| `core/route-panel-tabs.js` | οι καρτέλες Φορτίο / Έγγραφα / Ιστορικό (καθαρό) | νέο | όχι |
+| `tests/route-grammar.test.js` · `tests/route-panel-model.test.js` · `tests/route-panel-data.test.js` · `tests/route-panel-html.test.js` · `tests/route-panel-tabs.test.js` | unit tests | νέα | όχι |
+| M-1 `worker/migrations/<επόμενο>_plan_history*.sql` · W-2 `worker/src/index.js` (`PLAN_ROUTES`) | ανάγνωση ιστορικού | νέα / αλλαγή | **όχι F4α: αλυσίδα Worker και διαδικασία βάσης**, δικό τους PR |
 | `tests/critics/route-panel-rig.js` | rig στον πραγματικό browser με ψεύτικο `/plan/*` (μοτίβο wn5-board-rig) | νέο | όχι (διαβάζει το `tests/fixtures/wn5-week.json` του F4α) |
 | `docs/route-panel/BRIEF-T*.md` · `docs/route-panel/DEFERRED.md` | τιμές Figma ανά εργασία · λίστα ≤ 2px | νέα | όχι |
 | `modules/weekly_natl_v5.js` | ένας delegated click listener + κλήση `RoutePanel` | αλλαγή | **ναι** |
@@ -168,7 +220,7 @@
 | `core/wn5-logic.js` · `core/wn5-labels.js` | **μόνο ανάγνωση**: `WN5L.handoversOf`, `WN5L.stopSegments`, `WN5Lab.reasonLine` (T24) | καμία αλλαγή | ναι (T24) |
 
 **Κοινά αρχεία με το F4α:** `modules/weekly_natl_v5.js`, `assets/style.css`, `app.html`, `sw.js`, `config.js`. Κάθε
-εργασία που τα αγγίζει (T4, T5, T6, T7, T9) τρέχει **μόνο μετά το merge του F4α**. Το T6 (⇄) τρέχει μετά το merge
+εργασία που τα αγγίζει (T4, T5, T6, T7, T9, T10, T11, T12) τρέχει **μόνο μετά το merge του F4α**. Το T6 (⇄) τρέχει μετά το merge
 των T24/T25. Τα T1–T3 και T8-μοντέλο δεν αγγίζουν κοινό αρχείο, αλλά δεν γίνεται merge πριν από το F4α (owner 27/10).
 
 ---
@@ -186,10 +238,16 @@ Expected: το merge commit του `feat/national-v5-f4a-screens`. Αν δεν �
 
 - [ ] **Step 2: εγκρίσεις Figma**
 
-Για κάθε εργασία που ξεκινά, ο αντίστοιχος κόμβος F1–F4 του §3 πρέπει να έχει «ναι» του owner, γραμμένο στο
+Για κάθε εργασία που ξεκινά, ο αντίστοιχος κόμβος F1–F7 του §3 πρέπει να έχει «ναι» του owner, γραμμένο στο
 `docs/DECISION_LOG.md`. Αλλιώς η εργασία περιμένει.
 
-- [ ] **Step 3: νέο branch από φρέσκο `main`**
+- [ ] **Step 3: M-1 + W-2 για το Ιστορικό**
+
+Η πρώτη έκδοση έχει τέσσερις καρτέλες (owner 28/10), άρα το PR υλοποίησης περιμένει το M-1 εκτελεσμένο και το W-2
+deployed. Έλεγχος: `curl -s -o /dev/null -w '%{http_code}' $PROXY_URL/plan/history?rt_id=1` → `401` (υπάρχει) και όχι
+`404`. Οι T1–T10 μπορούν να προχωρούν στο μεταξύ. Το T11 περιμένει.
+
+- [ ] **Step 4: νέο branch από φρέσκο `main`**
 
 ```bash
 git fetch origin && git switch -c feat/route-panel origin/main
@@ -1003,7 +1061,317 @@ function _rpClick(e) {
 - [ ] **Step 4: ένας γύρος πιστότητας.**
 - [ ] **Step 5: Commit.**
 
-### Task 9: Πέρασμα των αποκλίσεων ≤ 2px
+### Task 9: Καρτέλες + «Φορτίο» — μετά το merge του F4α
+
+**Γιατί:** owner 28/10: «Και οι τέσσερις καρτέλες του Figma από την πρώτη έκδοση».
+
+**Brief:** οι τιμές του εγκεκριμένου **F5** (Φορτίο εθνικού πάνελ) και της καρτέλας του Διεθνών `2283:10077`. Το
+frame του Διεθνών δείχνει, ανά παραγγελία:
+- παλέτες (σύνολο και ανά παράδοση)·
+- θερμοκρασία («δεν γράφτηκε» όταν λείπει)·
+- ανταλλαγή παλετών·
+- ένα μπλοκ ΦΟΡΤΗΓΟ: χωρητικότητα 33 και το πιο φορτωμένο σκέλος.
+
+**Πηγές:** καμία νέα ανάγνωση.
+- **Παλέτες και θερμοκρασία:** board `legs[].pallets`, `legs[].temperature_c`.
+- **Ανταλλαγή παλετών:** facade ORDERS `"Pallet Exchange"` (`worker/src/index.js:1384`) για VS, και NATIONAL ORDERS
+  `"Pallet Exchange"` (`:1663`) για εθνικές. Το `board.waiting[].pallet_exchange` ισχύει για όσα είναι σε αναμονή.
+  Πριν από τον κώδικα επιβεβαίωσε στον χάρτη `TABLES` ότι το πεδίο υπάρχει **για κάθε πίνακα** (παγίδα facade 1).
+- **Χωρητικότητα:** `WN5L.CAP` (33) και `WN5L.capacity(sideStops)` του F4α (`core/wn5-logic.js:22,100`). Δεν γράφεται
+  δεύτερο 33 (αρχή 3).
+
+**Files:**
+- Create: `core/route-panel-tabs.js` (`window.RPT`, καθαρό)
+- Modify: `core/route-panel-data.js` (`RPD.forLoad`)
+- Modify: `modules/route_panel.js` (μπάρα καρτελών, καρτέλα Φορτίο)
+- Modify: `assets/style.css`
+- Test: `tests/route-panel-tabs.test.js`
+
+**Interfaces:**
+- Produces: `RPT.load(cycle, ctx) → {orders:Array<{ref, side:'ΚΑΘΟΔΟΣ'|'ΑΝΟΔΟΣ', pallets:number,
+  perStop:Array<{name, pallets}>, temp:{text, missing:boolean}, pe:{text, missing:boolean}}>,
+  truck:{cap:number, sides:Array<{title, pallets, over}>}}`, όπου `ctx.pe:(orderRef)→true|false|null` και
+  `ctx.capacity`, `ctx.cap` είναι τα `WN5L.capacity` / `WN5L.CAP`.
+- Produces: `RoutePanel` γνωρίζει `tab ∈ {'route','load','docs','history'}`. Η μπάρα δείχνει «Έγγραφα · N» με το
+  πλήθος από το T10.
+
+- [ ] **Step 1: tests (αποτυγχάνουν)**
+
+```js
+// tests/route-panel-tabs.test.js — synthetic only
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert');
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+const ROOT = path.join(__dirname, '..');
+const sb = { window: {}, console };
+vm.createContext(sb);
+vm.runInContext(fs.readFileSync(path.join(ROOT, 'core/route-panel-tabs.js'), 'utf8'), sb);
+const RPT = sb.window.RPT;
+// vm objects come from another realm: compare them as plain JSON, never by prototype
+const eq = (a, b, msg) => assert.deepStrictEqual(JSON.parse(JSON.stringify(a)), b, msg);
+const cyc = { stops: [
+  { stop_id: 1, seq: 1, side: 'KATHODOS', location: 'Βέροια', legs: [{ act: 'load', pallets: 20, order_id: 554, temperature_c: 4 }, { act: 'load', pallets: 13, nat_order_id: 13, temperature_c: null }] },
+  { stop_id: 2, seq: 2, side: 'KATHODOS', location: 'Τόπος Α', legs: [{ act: 'unload', pallets: 12, order_id: 554 }] },
+  { stop_id: 3, seq: 3, side: 'KATHODOS', location: 'Τόπος Β', legs: [{ act: 'unload', pallets: 8, order_id: 554 }, { act: 'unload', pallets: 13, nat_order_id: 13 }] }] };
+const ctx = { pe: (ref) => (ref === '#554' ? true : null), cap: 33,
+  capacity: (stops) => { const p = stops.reduce((a, s) => a + s.legs.filter((l) => l.act === 'load').reduce((x, l) => x + l.pallets, 0), 0); return { pallets: p, over: p > 33 ? p - 33 : 0 }; } };
+test('one block per order, pallets and per-delivery split from the legs', () => {
+  const m = RPT.load(cyc, ctx);
+  eq(m.orders.map((o) => [o.ref, o.pallets]), [['#554', 20], ['Εθν. 13', 13]]);
+  eq(m.orders[0].perStop, [{ name: 'Τόπος Α', pallets: 12 }, { name: 'Τόπος Β', pallets: 8 }]);
+});
+test('a missing value is said, never shown as «Όχι» or 0 (facade trap 2)', () => {
+  const m = RPT.load(cyc, ctx);
+  eq(m.orders[1].temp, { text: 'δεν γράφτηκε', missing: true });
+  eq(m.orders[1].pe, { text: 'δεν γράφτηκε', missing: true });
+  eq(m.orders[0].pe, { text: 'Ναι', missing: false });
+});
+test('truck: capacity from WN5L, over 33 shown per side', () => {
+  const m = RPT.load(cyc, ctx);
+  eq(m.truck, { cap: 33, sides: [{ title: 'ΚΑΘΟΔΟΣ', pallets: 33, over: 0 }] });
+});
+```
+
+Run: `node --test tests/route-panel-tabs.test.js` — Expected: FAIL (`RPT` undefined).
+
+- [ ] **Step 2: κώδικας**
+
+```js
+// core/route-panel-tabs.js — the three tabs beside «Διαδρομή» (owner 28/10: all four from the first version).
+// Pure: the host passes the board cycle and what RPD read; nothing here fetches.
+(function () {
+  'use strict';
+  const SIDES = [['KATHODOS', 'ΚΑΘΟΔΟΣ'], ['ANODOS', 'ΑΝΟΔΟΣ']];
+  const refOf = (l) => (l.order_id != null ? '#' + l.order_id : 'Εθν. ' + l.nat_order_id);
+  // absent ≠ «no» (facade trap 2): a value nobody wrote is said as such
+  const said = (v, fmt) => (v == null ? { text: 'δεν γράφτηκε', missing: true } : { text: fmt(v), missing: false });
+  function load(cycle, ctx) {
+    const by = new Map();
+    for (const s of (cycle.stops || []).slice().sort((a, b) => a.seq - b.seq)) {
+      const side = (SIDES.find(([k]) => k === s.side) || [null, s.side])[1];
+      for (const l of s.legs || []) {
+        const ref = refOf(l);
+        if (!by.has(ref)) by.set(ref, { ref, side, pallets: 0, perStop: [], temps: [] });
+        const o = by.get(ref);
+        if (l.act === 'load') { o.pallets += Number(l.pallets) || 0; o.temps.push(l.temperature_c); }
+        else o.perStop.push({ name: s.location, pallets: Number(l.pallets) || 0 });
+      }
+    }
+    const orders = [...by.values()].map((o) => {
+      const t = o.temps.find((x) => x != null);
+      return { ref: o.ref, side: o.side, pallets: o.pallets, perStop: o.perStop,
+        temp: said(t === undefined ? null : t, (v) => v + '°'), pe: said(ctx.pe(o.ref), (v) => (v ? 'Ναι' : 'Όχι')) };
+    });
+    const sides = SIDES.map(([k, title]) => ({ title, stops: (cycle.stops || []).filter((s) => s.side === k) }))
+      .filter((x) => x.stops.length)
+      .map((x) => { const c = ctx.capacity(x.stops); return { title: x.title, pallets: c.pallets, over: c.over }; });
+    return { orders, truck: { cap: ctx.cap, sides } };
+  }
+  window.RPT = Object.freeze({ load });
+})();
+```
+
+- [ ] **Step 3: `RPD.forLoad`.**
+  - Διαβάζει το `Pallet Exchange` των παραγγελιών του κύκλου με **ένα** `atGetAll` ανά πίνακα (ORDERS, NATIONAL
+    ORDERS), φίλτρο `OR(RECORD_ID()=…)` κατά το μοτίβο του `core/api.js`.
+  - Επιστρέφει `ctx.pe`, με `null` όταν το πεδίο λείπει από την απάντηση.
+  - Test με ψεύτικο `atGetAll`: παραγγελία χωρίς το πεδίο → `null`, ποτέ `false`.
+- [ ] **Step 4: μπάρα καρτελών.**
+  - Τέσσερις καρτέλες σε σειρά: «Διαδρομή · Φορτίο · Έγγραφα · N · Ιστορικό».
+  - Εναλλαγή χωρίς νέο fetch για όσα έχουν ήδη φορτωθεί.
+  - Η καρτέλα θυμάται τη θέση της μόνο όσο το πάνελ μένει ανοιχτό (καμία αποθήκευση).
+  - HTML test: 4 καρτέλες, `aria-selected` σε μία.
+- [ ] **Step 5: rig** — σενάριο `tab-load`: κύκλος 33 + 1 παλέτα → κόκκινο «πάνω από 33». Μία παραγγελία χωρίς
+  θερμοκρασία → «δεν γράφτηκε».
+- [ ] **Step 6: ένας γύρος πιστότητας** απέναντι στο F5.
+- [ ] **Step 7: Commit.**
+
+### Task 10: Καρτέλα «Έγγραφα»
+
+**Brief:** οι τιμές του εγκεκριμένου **F6** και της καρτέλας του Διεθνών `2283:10126`.
+
+**Πηγή:** η υπάρχουσα `OrderDocs.listDocs(orderId)` (`core/order-docs.js:213`, `GET /docs/list?order=`), μόνο
+ανάγνωση. Αν πατηθεί αρχείο, το άνοιγμα γίνεται με την υπάρχουσα `OrderDocs.fetchFileBlob(id)` (`GET /docs/file/<id>`).
+
+**Δύο όρια από τα δεδομένα** (μετρήθηκαν 28/10). Το frame του Διεθνών δείχνει πράγματα που η βάση δεν κρατά, γι'
+αυτό το F6 πρέπει να δείχνει μόνο ό,τι υπάρχει:
+- **Το `order_documents` δεν έχει είδος εγγράφου.** Στήλες: `id, legacy_id, order_id, sha256, filename, mime, size,
+  r2_key, source (scan/upload), uploaded_by, created_at, deleted_at`. Άρα το «Κανένα CMR» και το «Εντολή πελάτη» δεν
+  βγαίνουν από τα δεδομένα.
+  - **Βγαίνει:** πλήθος, όνομα και τύπος αρχείου, σάρωση ή ανέβασμα, ποιος και πότε.
+  - **Βγαίνει επίσης:** «ίδιο αρχείο, ανέβηκε δεύτερη φορά», από το ίδιο `sha256`.
+  - **Βγαίνει:** «0 αρχεία σε παραδομένη παραγγελία», κόκκινο.
+- **Οι εθνικές παραγγελίες δεν μπορούν να έχουν έγγραφο.** Το `order_documents.order_id` δείχνει μόνο σε `orders`
+  (FK, `core/order-docs.js:16-19`, «GAP»). Σε εθνική, η καρτέλα λέει ρητά «Οι εθνικές παραγγελίες δεν κρατούν
+  έγγραφα στο TMS», ποτέ «0 αρχεία». Για VS δείχνει τα έγγραφα της διεθνούς.
+
+**Files:**
+- Modify: `core/route-panel-tabs.js` (`RPT.docs`)
+- Modify: `core/route-panel-data.js` (`RPD.forDocs`)
+- Modify: `modules/route_panel.js`
+- Test: `tests/route-panel-tabs.test.js`
+
+**Interfaces:**
+- Produces: `RPT.docs(groups) → {count:number, sections:Array<{ref, rows:Array<{file, mime, how, when, dup:boolean}>,
+  note:{tone, text}|null}>}`, όπου
+  `groups = Array<{ref, kind:'intl'|'national', delivered:boolean, docs:Array<{id, filename, mime, source, uploaded_by, created_at, sha256}>}>`.
+
+- [ ] **Step 1: tests (αποτυγχάνουν)**
+
+```js
+test('docs: same sha256 twice is «ίδιο αρχείο», a delivered order with none is red, a national one is said', () => {
+  const m = RPT.docs([
+    { ref: '#554', kind: 'intl', delivered: false, docs: [
+      { id: 1, filename: 'a.pdf', mime: 'application/pdf', source: 'scan', uploaded_by: 'u', created_at: '2026-10-16T11:53:00Z', sha256: 'x' },
+      { id: 2, filename: 'a.pdf', mime: 'application/pdf', source: 'upload', uploaded_by: 'u', created_at: '2026-10-23T06:00:00Z', sha256: 'x' }] },
+    { ref: '#558', kind: 'intl', delivered: true, docs: [] },
+    { ref: 'Εθν. 13', kind: 'national', delivered: false, docs: [] }]);
+  assert.strictEqual(m.count, 2);
+  eq(m.sections[0].rows.map((r) => r.dup), [false, true]);
+  eq(m.sections[1].note, { tone: 'red', text: 'Κανένα έγγραφο σε παραδομένη παραγγελία.' });
+  eq(m.sections[2].note, { tone: 'info', text: 'Οι εθνικές παραγγελίες δεν κρατούν έγγραφα στο TMS.' });
+});
+```
+
+- [ ] **Step 2: κώδικας** (στο ίδιο IIFE, ίδιο μοτίβο με το `load`):
+
+```js
+  function docs(groups) {
+    let count = 0;
+    const sections = groups.map((g) => {
+      if (g.kind === 'national') return { ref: g.ref, rows: [], note: { tone: 'info', text: 'Οι εθνικές παραγγελίες δεν κρατούν έγγραφα στο TMS.' } };
+      const seen = new Set();
+      const rows = g.docs.slice().sort((a, b) => String(a.created_at).localeCompare(String(b.created_at))).map((d) => {
+        const dup = seen.has(d.sha256);
+        seen.add(d.sha256);
+        return { file: d.filename, mime: d.mime, how: d.source === 'scan' ? 'σάρωση' : 'ανέβασμα', when: d.created_at, dup };
+      });
+      count += rows.length;
+      const note = g.delivered && !rows.length ? { tone: 'red', text: 'Κανένα έγγραφο σε παραδομένη παραγγελία.' } : null;
+      return { ref: g.ref, rows, note };
+    });
+    return { count, sections };
+  }
+```
+
+  και `window.RPT = Object.freeze({ load, docs, history })`, όπου το `history` έρχεται στο T11.
+- [ ] **Step 3: `RPD.forDocs`.**
+  - Ένα `OrderDocs.listDocs` ανά διεθνή παραγγελία του κύκλου (VS).
+  - Αποτυχία → η καρτέλα λέει «Τα έγγραφα δεν φορτώθηκαν — δεν σημαίνει ότι δεν υπάρχουν» (λόγια του
+    `modules/audit_trail.js` για το ίδιο είδος αποτυχίας), και καλεί `logError`.
+  - Test με ψεύτικο `listDocs` που πετά σφάλμα.
+  - Το «παραδομένη» υπολογίζεται από το board (`executed` της τελευταίας στάσης παράδοσης της παραγγελίας, spec
+    §2.3). Ποτέ από γραμμένο status.
+- [ ] **Step 4: rig** — `tab-docs`: διπλό sha256, παραδομένη χωρίς αρχείο, εθνική.
+- [ ] **Step 5: ένας γύρος πιστότητας** απέναντι στο F6.
+- [ ] **Step 6: Commit.**
+
+### Task 11: Καρτέλα «Ιστορικό» — μετά το deploy των M-1 + W-2
+
+**Brief:** οι τιμές του εγκεκριμένου **F7** και της καρτέλας του Διεθνών `2283:10200`. Το frame δείχνει:
+- μία γραμμή ανά αλλαγή: ημέρα και ώρα · παραγγελία · τι έγινε · ποιος («dispatcher · όνομα», «σύστημα»)·
+- την υποσημείωση «Για τις παραγγελίες δεν καταγράφεται ποιο πεδίο άλλαξε».
+
+**Πηγή: νέα ανάγνωση**, γιατί η υπάρχουσα δεν αρκεί (μετρήθηκε 28/10):
+- Το `GET /audit` (`worker/src/index.js:198`) διαβάζεται **μόνο** από owner και management (`AUDIT_READERS`, `:195`).
+  Ο dispatcher, ο κύριος χρήστης του Εβδομαδιαίου, παίρνει 403.
+- Το `/audit` φιλτράρει **ένα** `record_id` / `table` τη φορά. Ένας κύκλος έχει γραμμές σε 6+ πίνακες: RT, στάσεις,
+  σκέλη, τμήματα, αποστολές, τοπικές φορτώσεις, και τις παραγγελίες του.
+- Το `audit_log` (`id, actor, role, action, table_name, record_id, before_data, after_data, created_at`· indexes
+  `(table_name, created_at DESC)`, `(record_id)`) έχει **0 γραμμές** για τους πίνακες v5 σήμερα. Έχει 4.585 για
+  `orders`, 4.165 για `order_stops`, 1.502 για `ct_round_trips`, 358 για `national_loads` και 30 για
+  `national_orders`.
+- Το `plan_h_audit` (072) γράφει **μία γραμμή ανά αλλαγμένη εγγραφή, με actor τον άνθρωπο**, ποτέ `trigger:`.
+
+Γι' αυτό χρειάζονται δύο νέα στοιχεία (§2, M-1 και W-2), που **δεν** είναι front end. Η πρώτη έκδοση με τέσσερις
+καρτέλες βγαίνει μόνο όταν και τα δύο είναι ζωντανά (T0 Step 4).
+
+**Τι δείχνει η καρτέλα σε κάθε κατάσταση.** Ποτέ «άδειο αλλά εντάξει» (αρχή 1):
+
+| Κατάσταση | Κείμενο |
+|---|---|
+| ανάγνωση απέτυχε / `/plan/history` λείπει (404) | «Το ιστορικό δεν φορτώθηκε — δεν σημαίνει ότι δεν υπάρχουν ενέργειες.» + `logError` |
+| 0 γραμμές | «Καμία καταγεγραμμένη αλλαγή για αυτόν τον κύκλο από <ημέρα της πρώτης γραμμής του audit_log>.» |
+| πριν από την ημέρα L (0 γραμμές v5) | Οι γραμμές των **παραγγελιών** του (διεθνής, VS NL, στάσεις), που υπάρχουν, και μία ρητή γραμμή «Κύκλοι v5: 0 αλλαγές — γράφονται από την ημέρα L.» |
+| κομμένο στις 200 | «Δείχνονται οι 200 νεότερες· το πλήρες ιστορικό στο Ιστορικό Αλλαγών.» (μόνο για owner / management, που έχουν το `/audit`) |
+| γραμμή χωρίς διαφορά πεδίων | «αλλαγή · το πεδίο δεν καταγράφεται» (η υποσημείωση του Figma, ανά γραμμή) |
+
+**Files:**
+- Modify: `core/route-panel-tabs.js` (`RPT.history`)
+- Modify: `core/route-panel-data.js` (`RPD.forHistory` → `planFetch('GET','/plan/history?rt_id=…')`)
+- Modify: `modules/route_panel.js`
+- Test: `tests/route-panel-tabs.test.js`
+
+**Interfaces:**
+- Consumes (W-2): `GET /plan/history?rt_id=<id>` ή `?order_id=<id>` ή `?nat_order_id=<id>` →
+  `{entries:Array<{at, table, record_id, action, actor_kind:'person'|'system'|'trigger', actor:string|null, role,
+  changed:string[]|null, order_ref:string|null}>, since:string, v5_rows:number, truncated:boolean}`.
+- Produces: `RPT.history(answer) → {rows:Array<{when, ref, text, who}>, notes:Array<{tone, text}>}`.
+
+- [ ] **Step 1: tests (αποτυγχάνουν)**
+
+```js
+test('history: never empty-but-fine', () => {
+  const none = RPT.history({ entries: [], since: '2026-07-28', v5_rows: 0, truncated: false });
+  assert.strictEqual(none.rows.length, 0);
+  assert.ok(none.notes.some((n) => /Καμία καταγεγραμμένη αλλαγή/.test(n.text)));
+  assert.ok(none.notes.some((n) => /Κύκλοι v5: 0 αλλαγές/.test(n.text)));
+});
+test('history: who is a name only when the Worker sent one, else the role', () => {
+  const m = RPT.history({ since: '2026-07-28', v5_rows: 3, truncated: false, entries: [
+    { at: '2026-10-23T10:31:00Z', table: 'piece_legs', record_id: '9', action: 'create', actor_kind: 'person', actor: null, role: 'dispatcher', changed: null, order_ref: '#554' },
+    { at: '2026-10-22T06:43:00Z', table: 'ct_round_trips', record_id: '7', action: 'update', actor_kind: 'trigger', actor: null, role: 'system', changed: ['status'], order_ref: null }] });
+  eq(m.rows.map((r) => r.who), ['dispatcher', 'σύστημα']);
+  assert.match(m.rows[0].text, /ανάθεση/);
+});
+test('history: a change whose fields are not recorded says so', () => {
+  const m = RPT.history({ since: '2026-07-28', v5_rows: 1, truncated: false, entries: [
+    { at: '2026-10-20T08:00:00Z', table: 'orders', record_id: 'rec1', action: 'update', actor_kind: 'person', actor: 'x', role: 'dispatcher', changed: null, order_ref: '#558' }] });
+  assert.match(m.rows[0].text, /το πεδίο δεν καταγράφεται/);
+});
+```
+
+- [ ] **Step 2: κώδικας** (στο ίδιο IIFE του `core/route-panel-tabs.js`):
+
+```js
+  // (table, action) → words. The full list comes from the p_table / p_action values the plan_* functions pass to
+  // plan_h_audit (BRIEF-T11); an unknown pair still says what changed, never an empty line.
+  const SAY = {
+    'ct_round_trips/create': 'γεννήθηκε το RT στην ανάθεση', 'ct_round_trips/update': 'άλλαξε το RT',
+    'piece_legs/create': 'ανάθεση σε στάση', 'piece_legs/delete': 'βγήκε από τη στάση',
+    'rt_vehicle_segments/create': 'αλλαγή οχήματος', 'rt_stops/update': 'άλλαξε η στάση',
+  };
+  const WHO = { person: (e) => e.actor ? e.role + ' · ' + e.actor : e.role, system: () => 'σύστημα', trigger: () => 'σύστημα' };
+  function history(a) {
+    const rows = (a.entries || []).map((e) => {
+      const base = SAY[e.table + '/' + e.action] || 'αλλαγή · ' + e.table;
+      const text = e.action === 'update' && !e.changed ? base + ' · το πεδίο δεν καταγράφεται' : base;
+      return { when: e.at, ref: e.order_ref || '', text, who: (WHO[e.actor_kind] || WHO.person)(e) };
+    });
+    const notes = [];
+    if (!rows.length) notes.push({ tone: 'info', text: 'Καμία καταγεγραμμένη αλλαγή για αυτόν τον κύκλο από ' + a.since + '.' });
+    if (a.v5_rows === 0) notes.push({ tone: 'info', text: 'Κύκλοι v5: 0 αλλαγές — γράφονται από την ημέρα L.' });
+    if (a.truncated) notes.push({ tone: 'info', text: 'Δείχνονται οι 200 νεότερες.' });
+    return { rows, notes };
+  }
+```
+
+  - Το `RPT.history` με έναν πίνακα φράσεων `(table, action) → κείμενο`: π.χ. `piece_legs/create` → «ανάθεση σε
+    στάση», `rt_vehicle_segments/create` → «αλλαγή οχήματος», `ct_round_trips/create` → «γεννήθηκε το RT στην
+    ανάθεση».
+  - Ο πλήρης πίνακας γράφεται στο BRIEF-T11 από τις τιμές `p_table` / `p_action` που περνούν οι `plan_*` στο
+    `plan_h_audit` (072 / 072b / 073: `grep -n "plan_h_audit(" worker/migrations/07*.sql`). Άγνωστος συνδυασμός →
+    «αλλαγή · <table>». Ποτέ κενό κείμενο.
+- [ ] **Step 3: `RPD.forHistory`** + test: 404 → σφάλμα προς τον καλούντα (η καρτέλα λέει «δεν φορτώθηκε»), ποτέ
+  `entries: []`.
+- [ ] **Step 4: rig** — `tab-history`, `tab-history-404`, `tab-history-pre-L`.
+- [ ] **Step 5: ένας γύρος πιστότητας** απέναντι στο F7.
+- [ ] **Step 6: Commit.**
+
+### Task 12: Πέρασμα των αποκλίσεων ≤ 2px
 
 **Files:** όσα λέει το `docs/route-panel/DEFERRED.md`.
 
@@ -1011,12 +1379,14 @@ function _rpClick(e) {
 - [ ] **Step 2:** ξανά rig όλων των σεναρίων, 0 page errors.
 - [ ] **Step 3: Commit.**
 
-### Task 10: Έλεγχοι πριν από το PR υλοποίησης
+### Task 13: Έλεγχοι πριν από το PR υλοποίησης
 
 - [ ] **Step 1: Suite** — `node --test tests/*.test.js tests/*.test.mjs tests/critics/*.test.js 2>&1 | grep -E '^ℹ (tests|pass|fail)'` → όλα pass (ή τα skip που υπάρχουν σήμερα), καμία αποτυχία.
 - [ ] **Step 2: Rig** — `node tests/critics/route-panel-rig.js` → όλα ✓, 0 page errors, 0 εγγραφές στο ψεύτικο
   backend.
-- [ ] **Step 3: Αποδείξεις μετάλλαξης** — η λίστα του T1 Step 5 και του T2 Step 4 ξανά, στο τελικό tip.
+- [ ] **Step 3: Αποδείξεις μετάλλαξης** — η λίστα του T1 Step 5 και του T2 Step 4 ξανά, στο τελικό tip. Και: σβήσε
+  τον κλάδο `v == null` του `said` (T9) → FAIL «missing»· σβήσε τον κλάδο `kind === 'national'` (T10) → FAIL·
+  σβήσε τη σημείωση «Καμία καταγεγραμμένη αλλαγή» (T11) → FAIL.
 - [ ] **Step 4: SELECT παραγωγής** (μόνο SELECT, ο αριθμός γραμμών είναι η απόδειξη):
 
 ```sql
@@ -1029,13 +1399,25 @@ SELECT (SELECT count(*) FROM ct_round_trips WHERE model=2 AND status<>'cancelled
 
   Πριν από το L το αναμενόμενο είναι 0 / 0 / 0 / 0. Μετά το L, τα νούμερα αυτά = τα κόκκινα του πάνελ στην ίδια
   εβδομάδα, που μετριούνται στο rig πάνω στην πραγματική απάντηση `/plan/board`.
+
+```sql
+-- the Ιστορικό tab of one order equals what audit_log holds for it (pick one VS order id :o)
+SELECT table_name, count(*) FROM audit_log
+ WHERE (table_name = 'orders' AND record_id IN (SELECT id::text FROM orders WHERE id = :o UNION SELECT legacy_id FROM orders WHERE id = :o))
+    OR (table_name = 'order_stops' AND record_id IN (SELECT id::text FROM order_stops WHERE order_id = :o UNION SELECT legacy_id FROM order_stops WHERE order_id = :o))
+    OR (table_name = 'national_loads' AND record_id IN (SELECT id::text FROM national_loads WHERE source_order_id = :o UNION SELECT legacy_id FROM national_loads WHERE source_order_id = :o))
+ GROUP BY 1;
+```
+
+  Το άθροισμα (ως 200) = οι γραμμές της καρτέλας για την ίδια παραγγελία.
 - [ ] **Step 5: Ελεγκτής** (agent `elegktis`): «φτάνει το πάνελ μέχρι τον πίνακα;». Τα πέντε του CLAUDE.md:
   endpoint · πίνακας / στήλες · τι γράφτηκε (τίποτα) · αποτυχία (δυνατή) · δικαίωμα (GET για όλους τους ρόλους στο
   `PLAN_PERMS`).
 - [ ] **Step 6: `/code-review high`** στο τελικό tip. Το επίπεδο και τα ευρήματα γράφονται στο σώμα του PR.
 - [ ] **Step 7: Bump** — `?v=` των 4 νέων και των αλλαγμένων αρχείων + `SW_VERSION`, ίδια τιμή. Ξανά το test
   `tests/sw-app-shell*.test.js`.
-- [ ] **Step 8: PR** — `gh pr create`, με σειρά merge: μετά το F4α και (για το T6) μετά τα T24/T25. Το flag μένει
+- [ ] **Step 8: PR** — `gh pr create`, με σειρά merge: μετά το F4α, (για το T6) μετά τα T24/T25, και (για το T11)
+  μετά το M-1 εκτελεσμένο και το W-2 deployed. Το flag μένει
   `false`. Το άνοιγμα στον pilot γίνεται μόνο με «ναι» του owner.
 - [ ] **Step 9 (μετά το L):** πρώτη εβδομάδα με πραγματικά δεδομένα. Ξανά το SELECT του Step 4, και σύγκριση με τα
   κόκκινα του πάνελ σε 3 κύκλους. Καταγραφή στο `docs/sessions/`.
@@ -1046,11 +1428,12 @@ SELECT (SELECT count(*) FROM ct_round_trips WHERE model=2 AND status<>'cancelled
 
 - **Κάλυψη:**
   - Κανόνες owner: 1 → T4/T5 · 2 → T2 · 3 → T2 · 4 → T2 · 5 → T6 · 6 → T2 · 7 → T7 · 8 → T2/T4.
-  - Σφάλματα του §4 → T1/T2/T3/T7/T8.
-  - Διαδικασία 27/10 → κάθε εργασία (brief, ένας γύρος, DEFERRED) + T10.
+  - Σφάλματα του §4 → T1/T2/T3/T7/T8/T9/T10/T11.
+  - Τέσσερις καρτέλες (owner 28/10): Διαδρομή → T2/T4 · Φορτίο → T9 · Έγγραφα → T10 · Ιστορικό → T11 (+ M-1 / W-2).
+  - Διαδικασία 27/10 → κάθε εργασία (brief, ένας γύρος, DEFERRED) + T13.
   - Κοινά αρχεία F4α → §5.
-  - Worker / SQL → §2 (καμία εξάρτηση στη Φάση Α· W-1 προαιρετικό).
-- **Ονόματα:** `RG.order / nationalLoad / rt / overlapDays`, `RPM.cycle / order`, `RPD.forCycle / forOrder`,
+  - Worker / SQL → §2: M-1 + W-2 απαιτούνται για το Ιστορικό · W-1 προαιρετικό.
+- **Ονόματα:** `RG.order / nationalLoad / rt / overlapDays`, `RPM.cycle / order`, `RPT.load / docs / history`, `RPD.forCycle / forOrder / forLoad / forDocs / forHistory`,
   `RoutePanel.openCycle / openOrder / close / html / isOpen`. Χρησιμοποιούνται ίδια σε όλες τις εργασίες.
 - **Τρία σημεία κλείνουν με βήμα πριν από τον κώδικα, όχι με TODO:**
   - το όνομα του πεδίου id του τόπου στο facade (T3 Step 0, παγίδα facade 1)·
@@ -1066,14 +1449,19 @@ SELECT (SELECT count(*) FROM ct_round_trips WHERE model=2 AND status<>'cancelled
   - την εμφάνιση των E5 / E7 / E9 / E11.
 
   Τα σημάδια αυτά **ήδη** ελέγχονται στο T1 (ισοτιμία).
-- **Καρτέλες Φορτίο / Έγγραφα / Ιστορικό** (ερώτηση owner 1).
-- **Καμία ενέργεια εγγραφής.** Καμία αλλαγή Worker ή βάσης.
+- **Καμία ενέργεια εγγραφής.** Οι μόνες αλλαγές Worker και βάσης είναι οι αναγνώσεις M-1 / W-2, με δικό τους PR στην
+  αλυσίδα Worker.
+- **Δεν προσθέτει έγγραφα σε εθνικές παραγγελίες**, γιατί θέλει αλλαγή σχήματος (`order_documents.nat_order_id`). Η
+  καρτέλα το λέει ρητά (T10).
 
 ## 9 · Ερωτήσεις owner (μία τη φορά, πρόταση πρώτη)
 
-1. **Καρτέλες στην πρώτη έκδοση:** μόνο «Διαδρομή» (πρόταση: λιγότερος κώδικας, και το Ιστορικό θέλει ανάγνωση
-   `audit_log` που δεν υπάρχει στο v5) ή και οι τέσσερις του Figma `2283:10009`–`2283:10200`;
+1. ~~Καρτέλες στην πρώτη έκδοση~~. **Απάντηση owner 28/10:** «Και οι τέσσερις καρτέλες του Figma από την πρώτη έκδοση»
+   → T9–T11, F5–F7, M-1 / W-2.
 2. **Κουμπί footer χωρίς ενέργεια στο Εθνικών** (π.χ. «Καθυστέρηση…» αν δεν υπάρχει εκεί): απενεργοποιημένο στη θέση
    του με εξήγηση (πρόταση: η σειρά μένει σταθερή, κανόνας 8) ή κρυφό;
-3. **Δύο πάνελ δίπλα-δίπλα στα 1440:** ο πίνακας στενεύει στα 480 (πρόταση: σπάνιο, 3 στα 74 πραγματικά), ή το
+3. **Ιστορικό για όλους τους ρόλους:** οι dispatchers βλέπουν τις γραμμές με ρόλο αλλά χωρίς όνομα συναδέλφου, και
+   ονόματα μόνο owner / management (πρόταση: ίδιος κανόνας με το `/audit` και την παρουσία σήμερα). Ή η καρτέλα μόνο
+   για owner / management; Αλλάζει τι βλέπει ένας ρόλος, άρα θέλει «ναι» πριν από το W-2.
+4. **Δύο πάνελ δίπλα-δίπλα στα 1440:** ο πίνακας στενεύει στα 480 (πρόταση: σπάνιο, 3 στα 74 πραγματικά), ή το
    δεύτερο πάνελ ανοίγει πάνω από τον πίνακα; Απαντιέται μέσα από το F3.
