@@ -56,3 +56,12 @@ test('F4α-T12: writes closed (production until L): POST /plan/legs → 409 writ
   assert.strictEqual(r.json.error.code, 'writes_closed');
   assert.strictEqual(r.seen.length, 0);
 });
+
+test('F4α-T14: writes closed, a move dry run passes the switch → ONE plan_move_pieces with dry_run true (Δ6 preview before day L)', async () => {
+  const body = { from: { piece_ids: [5101], rt_id: 201 }, target: { wait: true }, dry_run: true };
+  const r = await send({ writesOpen: false, answer: { ok: true, op: 'plan_move_pieces', dry_run: true, needs_confirm: false, confirm_token: 't', consequences: [] } }, 'POST', '/plan/move', body);
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual(r.seen.length, 1);
+  assert.strictEqual(r.seen[0].fn, 'plan_move_pieces');
+  assert.deepStrictEqual(r.seen[0].args.p, body);
+});

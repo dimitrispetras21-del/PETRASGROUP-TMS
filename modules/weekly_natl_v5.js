@@ -896,6 +896,8 @@ const WN5 = {
   MENU_ITEMS: [
     // T12: the same Δ1 window as the red box and ΕΠΟΜΕΝΑ; on a cycle it changes the vehicle (PATCH /plan/rt/:id)
     { id: 'assign', order: 20, label: 'Ανάθεση / αλλαγή φορτηγού ή συνεργάτη', run: (rtId) => WN5Act.assign(null, { entry: 'menu', rtId }) },
+    // T14: the KATHODOS deliveries go back to Veroia for splitting (S-69, Figma 2011:8858 note)
+    { id: 'split-hub', order: 50, label: 'Σπάσιμο παραγγελιών', sub: '→ Βέροια', run: (rtId) => WN5Act.move({ rt_id: rtId, side: 'KATHODOS' }, { direct: 'wait' }) },
     { id: 'plates', order: 70, label: 'Αντιγραφή πινακίδων', run: (rtId) => copyPlatesOf(rtId) },
   ],
   // The board HTML of a model, for tests/wn5-board-html.test.js (pure: model in, string out).

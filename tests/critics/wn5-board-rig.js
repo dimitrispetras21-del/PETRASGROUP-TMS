@@ -1149,6 +1149,103 @@ async function scnPlus(browser, origin) {
 }
 SCN['plus'] = scnPlus;
 
+// T14 — «Μεταφορά σε…» (Δ6): the Δ1 list, then the two steps of S-82 (dry run → list → the same body + token).
+async function scnMove(browser, origin) {
+  const scn = 'move';
+  const D = bDlg('move');
+  const RTC = { kind: 'rt_cancelled', rt_id: 201, code: 'RT-T201' };
+  const PAY = { kind: 'payroll_amount', rt_id: 201, dl_entry_id: 7, driver_id: 32, month: '2026-10' };
+  const dry = (tok, cons) => [200, { ok: true, op: 'plan_move_pieces', dry_run: true, needs_confirm: cons.length > 0, confirm_token: tok, consequences: cons }];
+  const BODY = { from: { piece_ids: [5101], rt_id: 201 }, target: { rt_id: 204, side: 'KATHODOS' },
+    stops: [{ ref: 's2031', stop_id: 2031 }, { ref: 'n2', location_id: 2, side: 'KATHODOS', planned_from: '2026-10-13T06:00:00+03:00', planned_to: '2026-10-13T08:00:00+03:00' }] };
+  const strip = (b) => { const o = Object.assign({}, b); delete o.dry_run; delete o.confirm_token; return JSON.stringify(o); };
+  // the leg form (T21) is not there yet: the rig calls the entry point the form will call (no return value: a dialog is not serialisable)
+  const openMove = (page) => page.evaluate(() => { WN5Act.move({ piece_ids: [5101], rt_id: 201 }, {}); }).then(() => page.waitForTimeout(300), () => {});
+  { // A · the list, the dry run, the consequence list without amounts, the execution with the token (closed)
+    const { page, S } = await bOpen(browser, origin, { plan: { 'POST /plan/move': (e) => (e.body && e.body.dry_run === true ? dry('tokM1', [RTC, PAY]) : planErr(409, 'WRITES_CLOSED', 'writes_closed')) } });
+    await openMove(page);
+    const txt = await bText(page, D);
+    ok(scn, '«Μεταφορά σε…» = the Δ1 list: the day\'s cycles without the source, free trucks, partner, «Πίσω στη Βέροια» (Figma 9294)',
+      /ΚΥΚΛΟΙ ΤΗΣ ΔΕΥΤΕΡΑΣ 12\/10/.test(txt) && txt.includes('ΕΛΕΥΘΕΡΑ ΦΟΡΤΗΓΑ') && txt.includes('ΣΥΝΕΡΓΑΤΗΣ') && txt.includes('Πίσω στη Βέροια')
+      && !(await bHas(page, `${D} [data-cand="rt:201"]`)), txt.slice(0, 500));
+    await bClick(page, `${D} [data-act="save"][data-cand="rt:204"]`);
+    const c = bCalls(S, 'POST', '/plan/move');
+    ok(scn, 'the dry run: {from, target RT-T204 KATHODOS, stops from the source\'s places} + dry_run:true', c.length === 1 && c[0].body.dry_run === true && strip(c[0].body) === JSON.stringify(BODY), c.map((x) => x.raw));
+    // T11 draws two lists (Δ5: «Παραστατικά που υπάρχουν» = payroll, «Τι θα γίνει» = the cancelled cycle): read both
+    const list = await page.$$eval(`${D} .wn5-cons`, (els) => els.map((e) => e.innerText).join('\n')).catch(() => '');
+    ok(scn, 'the list says «το δρομολόγιο RT-T201 θα σβηστεί» and «γραμμή μισθοδοσίας με ποσό (Οκτώβριος)», no amount for the dispatcher',
+      list.includes('το δρομολόγιο RT-T201 θα σβηστεί') && list.includes('γραμμή μισθοδοσίας με ποσό (Οκτώβριος)') && !(await bText(page, D)).includes('€'), list);
+    await bClick(page, `${D} [data-act="confirm"]`);
+    const c2 = bCalls(S, 'POST', '/plan/move');
+    ok(scn, '«Μεταφορά» sends the same body + confirm_token, without dry_run', c2.length === 2 && !('dry_run' in c2[1].body) && c2[1].body.confirm_token === 'tokM1' && strip(c2[1].body) === strip(c2[0].body), c2.map((x) => x.raw));
+    ok(scn, '409 writes_closed at execution → the preview strip in the list (the dry run went through)', (await bText(page, `${D} .wn5-strip[data-kind="preview"]`)).includes('rig sentinel writes_closed'));
+    await page.context().close();
+  }
+  { // B · stale_confirm → a new dry run, a new list, the new token; then 200 → board re-read
+    let n = 0;
+    const { page, S } = await bOpen(browser, origin, { plan: { 'POST /plan/move': (e) => {
+      if (e.body && e.body.dry_run === true) return ++n === 1 ? dry('tokM1', [RTC]) : dry('tokM2', [RTC, { kind: 'executed_leg', leg_id: 6001, rt_id: 201, stop_day: '2026-10-12' }]);
+      return e.body.confirm_token === 'tokM1' ? planErr(422, 'PLAN_RULE', 'stale_confirm') : [200, { ok: true, op: 'plan_move_pieces', dry_run: false, ids: { rt_id: 204 }, warnings: [], notice_ids: [] }];
+    } } });
+    await openMove(page);
+    await bClick(page, `${D} [data-act="save"][data-cand="rt:204"]`);
+    await bClick(page, `${D} [data-act="confirm"]`);
+    await page.waitForTimeout(300);
+    const newList = await bText(page, `${D} .wn5-cons`);
+    const boards0 = bCalls(S, 'GET', '/plan/board').length;
+    await bClick(page, `${D} [data-act="confirm"]`);
+    await page.waitForTimeout(400);
+    const c = bCalls(S, 'POST', '/plan/move');
+    ok(scn, 'stale_confirm → a new dry run and the NEW list («διόρθωση: … έχει ήδη γίνει»), sent with the new token',
+      c.length === 4 && c[2].body.dry_run === true && c[3].body.confirm_token === 'tokM2' && newList.includes('διόρθωση: η παράδοση της 12/10 έχει ήδη γίνει'), c.map((x) => x.raw));
+    ok(scn, '200 → the list closes and the board is read again', !(await bHas(page, D)) && bCalls(S, 'GET', '/plan/board').length === boards0 + 1);
+    await page.context().close();
+  }
+  { // C · piece_split comes before any list: a refusal strip, no token, no list
+    const { page, S } = await bOpen(browser, origin, { plan: { 'POST /plan/move': () => planErr(422, 'PLAN_RULE', 'piece_split') } });
+    await openMove(page);
+    await bClick(page, `${D} [data-act="save"][data-cand="rt:204"]`);
+    ok(scn, 'piece_split → refusal strip in the «Μεταφορά σε…» window, no confirmation list', (await bText(page, `${D} .wn5-strip[data-kind="refusal"]`)).includes('rig sentinel piece_split')
+      && !(await bHas(page, `${D} .wn5-cons`)) && bCalls(S, 'POST', '/plan/move').length === 1);
+    await page.context().close();
+  }
+  { // D · owner: the amounts the DB left in the list are shown
+    const { page } = await bOpen(browser, origin, { role: 'owner', plan: { 'POST /plan/move': (e) => (e.body && e.body.dry_run === true
+      ? dry('tokO', [RTC, Object.assign({ amount: 120, advance: null, expenses: null }, PAY)]) : planErr(409, 'WRITES_CLOSED', 'writes_closed')) } });
+    await openMove(page);
+    await bClick(page, `${D} [data-act="save"][data-cand="rt:204"]`);
+    ok(scn, 'owner: the amount that came in the list is shown («ποσό 120,00 €»)', (await bText(page, `${D} .wn5-cons`)).includes('ποσό 120,00 €'));
+    await page.context().close();
+  }
+  { // E · ✈ «Σπάσιμο παραγγελιών → Βέροια»: the whole KATHODOS back to Veroia; an empty list runs at once
+    const { page, S } = await bOpen(browser, origin, { plan: { 'POST /plan/move': (e) => (e.body && e.body.dry_run === true ? dry('tokE', []) : planErr(409, 'WRITES_CLOSED', 'writes_closed')) } });
+    await bMenu(page, 201, 'split-hub');
+    await page.waitForTimeout(300);
+    const c = bCalls(S, 'POST', '/plan/move');
+    ok(scn, '✈ «Σπάσιμο παραγγελιών → Βέροια» → dry run {from:{rt_id:201, side:KATHODOS}, target:{wait:true}}, no stops', c.length >= 1 && c[0].body.dry_run === true
+      && strip(c[0].body) === '{"from":{"rt_id":201,"side":"KATHODOS"},"target":{"wait":true}}', c.map((x) => x.raw));
+    ok(scn, 'an empty list runs at once (no dialog); writes closed → the preview strip on the board', c.length === 2 && !(await bHas(page, D))
+      && (await bText(page, '#content .wn5-acthost .wn5-strip[data-kind="preview"]')).includes('rig sentinel writes_closed'));
+    await page.context().close();
+  }
+  { // F · ✈ «Σπάσιμο» where the ΚΑΘΟΔΟΣ also loads at Thessaloniki (RT-T204): a visible refusal, nothing sent;
+    //     and on RT-T201 a saved move says where the re-read board shows the pieces (072: no for_split → ΠΡΟΣ ΑΝΑΘΕΣΗ)
+    const { page, S } = await bOpen(browser, origin, { plan: { 'POST /plan/move': (e) => (e.body && e.body.dry_run === true ? dry('tokF', [])
+      : [200, { ok: true, op: 'plan_move_pieces', dry_run: false, ids: { rt_id: 201 }, warnings: [], notice_ids: [] }]) } });
+    await bMenu(page, 204, 'split-hub');
+    await page.waitForTimeout(300);
+    ok(scn, '✈ «Σπάσιμο» on a ΚΑΘΟΔΟΣ not all loading at Veroia (RT-T204) → a client strip on the board, no POST /plan/move',
+      bCalls(S, 'POST', '/plan/move').length === 0 && (await bText(page, '#content .wn5-acthost .wn5-strip[data-kind="client"]')).includes('φορτώνουν στη Βέροια'));
+    await bMenu(page, 201, 'split-hub');
+    await page.waitForTimeout(500);
+    const ev = await bEv(page);
+    ok(scn, 'a saved ✈ «Σπάσιμο» says «… ως ΠΡΟΣ ΑΝΑΘΕΣΗ» when the Veroia board does not list them, never «για μοίρασμα»',
+      bCalls(S, 'POST', '/plan/move').length === 2 && ev.some((x) => x.startsWith('toast') && x.includes('γύρισαν στη Βέροια ως ΠΡΟΣ ΑΝΑΘΕΣΗ')) && !ev.some((x) => x.includes('για μοίρασμα')), ev);
+    await page.context().close();
+  }
+}
+SCN['move'] = scnMove;
+
 // ── scenarios end (each Task adds its own above this line) ──
 
 // ── fixture check (T4): plain node, no browser ──

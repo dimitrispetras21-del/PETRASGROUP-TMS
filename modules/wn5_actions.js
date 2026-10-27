@@ -562,6 +562,8 @@
   function _assignReq(st, cand) {
     const parts = String(cand || '').split(':');
     const kind = parts[0], id = _id(parts[1]);
+    // T14: «Πίσω στην αναμονή» / «Πίσω στη Βέροια» — wait takes no stops (072:1162)
+    if (st.mode === 'move' && kind === 'wait') return { method: 'POST', path: '/plan/move', body: { from: st.from, target: { wait: true } } };
     if (st.mode === 'vehicle') {
       // only what the user chose: a key sent as null would EMPTY it (vehicle_clear_use_clear, 072:1680)
       if (kind === 'truck' && id) {
@@ -587,6 +589,7 @@
     const f = _hhmm(st.hubFrom), t = _hhmm(st.hubTo);
     const r = _stopsFor(st.needs, cyc, st.side, f && t ? _win(st.day, f, t) : null);
     if (r.missing.length) return { missing: r.missing };
+    if (st.mode === 'move') return { method: 'POST', path: '/plan/move', body: { from: st.from, target, stops: r.stops } };
     return { method: 'POST', path: '/plan/legs', body: st.group ? { group: st.group, target, stops: r.stops } : { pieces: st.pieces, target, stops: r.stops } };
   }
 
@@ -630,7 +633,7 @@
         h += '<div class="wn5-cand" data-line="rt" data-s="' + _esc(_norm([tx.l1, tx.l2, c.code].join(' '))) + '">' + _boxHTML(tx)
           + '<span class="wn5-cand-m"><b>' + _esc(l1) + '</b><span>' + _esc(l2) + '</span></span>'
           + '<span>' + _capHTML(r.pallets + st.pallets) + rate + '</span>'
-          + '<button type="button" class="wi4-btn sm" data-act="save" data-cand="rt:' + c.rt_id + '">Ένωση</button></div>';
+          + '<button type="button" class="wi4-btn sm" data-act="save" data-cand="rt:' + c.rt_id + '">' + (st.mode === 'move' ? 'Μεταφορά' : 'Ένωση') + '</button></div>';
       }
       for (const c of st.road) {
         // the box as on the board (its row's tile: «κύκλος n/m»); «ως Δευ 22:00» names the day, the date is in the row
@@ -661,6 +664,15 @@
       + '<span class="wn5-cand-m"><span>κόμιστρο · κενό = «κόμιστρο λείπει»</span></span>'
       + '<span>' + (vehicle ? '' : _capHTML(st.pallets, ' · δρομολόγιο συνεργάτη') + ' ') + '<span class="wn5-nw"><input class="wn5-rate" data-rate inputmode="decimal" placeholder="—" value="' + _esc(st.rateTxt) + '" aria-label="Κόμιστρο €">&nbsp;€</span></span>'
       + '<button type="button" class="wi4-btn sm" data-act="save" data-cand="partner">Ανάθεση</button></div>';
+    if (st.mode === 'move') {
+      h += '<div class="wn5-grp-h" data-grp="wait">ΑΛΛΟ</div><div class="wn5-cand" data-line="wait"><span></span>'
+        // Figma 2011:9294 «Πίσω στη Βέροια» / «… σπάσιμο μόνο εκεί». Its «απόθεμα Βέροιας» is left out: the base
+        // makes stock only of a split's remainder (071 v_piece_state.is_stock), and the line must not claim it (R-66).
+        // «Πίσω στην αναμονή» (a load picked up elsewhere) is not in Figma: R-66.
+        + '<span class="wn5-cand-m"><b>' + (st.allHub ? 'Πίσω στη Βέροια' : 'Πίσω στην αναμονή') + '</b>'
+        + '<span>' + (st.allHub ? 'σπάσιμο μόνο εκεί' : 'γυρίζουν ΠΡΟΣ ΑΝΑΘΕΣΗ') + '</span></span><span></span>'
+        + '<button type="button" class="wi4-btn sm" data-act="save" data-cand="wait">Μεταφορά</button></div>';
+    }
     return h;
   }
 
@@ -733,10 +745,18 @@
       st.trailers = PlanIds.list('trailer'); st.drivers = PlanIds.list('driver'); st.partners = PlanIds.list('partner');
     }
   }
-  // One press of a candidate. T14 adds the move branch (two steps) here.
+  // One press of a candidate: an assignment is one send; a move goes through the two steps (T14).
   function _pickSave(d, st, cand) {
     const req = _assignReq(st, cand);
-    if (req && !req.missing) _send(d, req, st.mode === 'vehicle' ? 'Άλλαξε το όχημα' : 'Ανατέθηκε', { intl: true });
+    if (!req || req.missing) return;
+    if (st.mode !== 'move') { _send(d, req, st.mode === 'vehicle' ? 'Άλλαξε το όχημα' : 'Ανατέθηκε', { intl: true }); return; }
+    // a move drops legs: the two steps of S-82; a refusal before the list lands in this window (host)
+    d.busy = true; _btns(d, true);
+    WN5Act.twoStep({ method: req.method, path: req.path, body: req.body, kind: 'move', title: 'Μεταφορά · ' + st.what, verb: 'Μεταφορά', host: d.msg })
+      .then(async (out) => {
+        if (!d.closed) { d.busy = false; _btns(d, false); }
+        if (out) { _close(d); await _afterSave(out, 'Μεταφέρθηκε', { intl: true }); }
+      });
   }
   function _picker(st, kind, title) {
     const d = _dlg(kind, title, { wide: true });
@@ -1089,6 +1109,89 @@
     return d;
   };
   ACTS.plus = (el) => { const row = el.closest('.wn5-row[data-rt]'); WN5Act.plus(_id(row && row.dataset.rt), el.dataset.side, el); };
+
+  // ═══ T14 · «Μεταφορά σε…» (Δ6): the Δ1 list in mode 'move', then the two steps ═══
+  // What a moved piece needs on its new side, read from the SOURCE cycle (072:1208-1215: where its first moved leg
+  // picks up, where it ends): its load stop and its unload stop there, with their windows.
+  function _moveParts(src, pieceIds, hub) {
+    const needs = [], items = [];
+    for (const pid of pieceIds) {
+      let pick = null, drop = null, leg = null;
+      for (const s of src.stops || []) for (const l of s.legs || []) {
+        if (l.piece_id !== pid) continue;
+        if (l.act === 'load' && !pick) { pick = s; leg = l; }
+        if (l.act === 'unload') drop = s;
+      }
+      if (!pick || !drop) continue;
+      needs.push({ loc: pick.location_id, from: pick.planned_from, to: pick.planned_to, hub: pick.location_id === hub },
+                 { loc: drop.location_id, from: drop.planned_from, to: drop.planned_to, hub: drop.location_id === hub });
+      items.push({ piece_id: pid, side: pick.side, pallets: leg.pallets, client: leg.client, reference: leg.reference, pickHub: pick.location_id === hub });
+    }
+    return { needs, items };
+  }
+
+  // Where the board shows the pieces after ✈ «Σπάσιμο»: «για μοίρασμα» only when the Veroia board lists them
+  // (072 has no mark for «sent to be split» yet, Ε-41: a piece without a prior drop comes back as «ΠΡΟΣ ΑΝΑΘΕΣΗ»).
+  function _whereBack(pieceIds) {
+    const m = _state().model;
+    const ids = new Set(pieceIds);
+    return ((m && m.hub && m.hub.split) || []).some((h) => ids.has(h.pieceId))
+      ? 'Οι παραδόσεις γύρισαν στη Βέροια για μοίρασμα'
+      : 'Οι παραδόσεις γύρισαν στη Βέροια ως ΠΡΟΣ ΑΝΑΘΕΣΗ';
+  }
+
+  WN5Act.move = async function move(from, ctx) {
+    ctx = ctx || {};
+    const src = _cycle(_id(from && from.rt_id));
+    if (!src) { WN5Act.strip(ctx.host || _boardHost(), _clientErr('rt_missing', 'Ο κύκλος δεν είναι στο board που φορτώθηκε — ανανέωσε')); return null; }
+    const hub = _hubId();
+    let pieceIds;
+    if (Array.isArray(from.piece_ids)) pieceIds = from.piece_ids.map(_id).filter(Boolean);
+    else {
+      // a whole side: its loads whose delivery is not done (an executed leg stays, 072:1098)
+      const side = from.side === 'ANODOS' ? 'ANODOS' : 'KATHODOS';
+      const done = new Set((src.stops || []).filter((s) => s.executed).map((s) => s.stop_id));
+      const dropOf = new Map();
+      for (const s of src.stops || []) for (const l of s.legs || []) if (l.act === 'unload') dropOf.set(l.piece_id, s.stop_id);
+      pieceIds = [...new Set((src.stops || []).filter((s) => s.side === side).flatMap((s) => (s.legs || []).filter((l) => l.act === 'load' && !done.has(dropOf.get(l.piece_id))).map((l) => l.piece_id)))];
+    }
+    const mp = _moveParts(src, pieceIds, hub);
+    const side = from.side || (mp.items[0] && mp.items[0].side) || 'KATHODOS';
+    const r = _row(src.rt_id);
+    const sd = _sideOfRow(r, side);
+    const what = Array.isArray(from.piece_ids)
+      ? ([...new Set(mp.items.map((x) => x.client || x.reference))].join(', ') || '—')
+      : 'όλη η ' + (side === 'ANODOS' ? 'ΑΝΟΔΟΣ' : 'ΚΑΘΟΔΟΣ') + ' του ' + (src.code || 'κύκλου');
+    const st = { mode: 'move', from: _copy(from), side, day: ctx.day || (sd && sd.day) || (r && r.dayKey) || src.date_start, skipRt: src.rt_id,
+      rtId: null, group: null, pieces: null, items: _copy(mp.items), needs: _copy(mp.needs), pallets: _sum(mp.items.map((x) => x.pallets)),
+      allHub: mp.items.length > 0 && mp.items.every((x) => x.pickHub), cyc: {}, rows: [], road: [], free: [], trailers: [], drivers: [], partners: [],
+      ids: { ok: false }, pick: null, trailer: null, driver: null, partner: null, rateTxt: '', hubFrom: '', hubTo: '', filter: 'all', q: '', ref: '',
+      what, meta: what + ' · ' + _dayShort(ctx.day || (sd && sd.day) || src.date_start) + ' · ' + _pal(_sum(mp.items.map((x) => x.pallets))) + 'π' };
+    if (ctx.direct === 'wait') {
+      // ✈ «Σπάσιμο παραγγελιών → Βέροια»: no list of candidates, straight to the two steps — ONLY when every
+      // delivery loads at Veroia. target {wait:true} sends a piece back to where it stands (072:1162): for a load
+      // picked up elsewhere that is not Veroia, and a line saying «στη Βέροια» would lie (principles 1, 2). So: a
+      // visible refusal on the board, and nothing is sent.
+      // No undelivered load on the ΚΑΘΟΔΟΣ (all delivered, or none): «φορτώνει και αλλού» would be untrue — its own line.
+      if (!mp.items.length) {
+        WN5Act.strip(ctx.host || _boardHost(), _clientErr('nothing_to_split', 'Δεν υπάρχουν παραδόσεις της ΚΑΘΟΔΟΥ για σπάσιμο στο ' + (src.code || 'κύκλο')));
+        return null;
+      }
+      if (!st.allHub) {
+        WN5Act.strip(ctx.host || _boardHost(), _clientErr('not_all_hub', 'Το «Σπάσιμο παραγγελιών → Βέροια» θέλει όλες τις παραδόσεις της ΚΑΘΟΔΟΥ να φορτώνουν στη Βέροια· ' + (src.code || 'ο κύκλος') + ' φορτώνει και αλλού — άνοιξε το σκέλος και «Μεταφορά σε…»'));
+        return null;
+      }
+      // the body of the «ΑΛΛΟ» line itself (one builder for both ways to the same act, principle 3)
+      const req = _assignReq(st, 'wait');
+      const out = await WN5Act.twoStep({ method: req.method, path: req.path, body: req.body, kind: 'move',
+        title: 'Σπάσιμο παραγγελιών → Βέροια · ' + (src.code || ''), verb: 'Μεταφορά', host: ctx.host });
+      // the words follow the re-read board (_afterSave reloads first), never the promise of the menu line
+      if (out) await _afterSave(out, () => _whereBack(pieceIds), { intl: true });
+      return out;
+    }
+    await _loadCands(st);
+    return _picker(st, 'move', 'Μεταφορά σε…');
+  };
 
   // ═══ the actions of T12–T18 go above this line ═══
 
