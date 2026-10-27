@@ -827,6 +827,27 @@ async function scnAssign(browser, origin) {
     const seg = await page.$eval(`${D} .wn5-seg`, (e) => { const s = getComputedStyle(e), o = e.querySelector('.on'), so = o && getComputedStyle(o);
       return [s.borderTopWidth, s.paddingTop, s.borderTopLeftRadius, o && Math.round(o.getBoundingClientRect().height), so && so.borderTopLeftRadius].join('|'); }).catch(() => '');
     ok(scn, 'filter «Μόνο ελεύθερα | Όλα»: borderless tray, padding 3, radius 9; chosen tab 28px, radius 6', seg === '0px|3px|9px|28|6px', seg);
+    // fidelity round 3 (Figma Δ1 2051:7735 metadata): header 44 (title DM Sans 600 13px), band right under it, rows of
+    // 40 that touch, the 287×28 search field holds its whole placeholder at 12px, row buttons 22px
+    const v3 = await page.$eval(D, (dlg) => {
+      const r = (e) => e.getBoundingClientRect(), top = r(dlg).top + (parseFloat(getComputedStyle(dlg).borderTopWidth) || 0);
+      const hd = dlg.querySelector('.wi4-dlg-hd'), t = dlg.querySelector('.wi4-dlg-t'), ts = getComputedStyle(t), band = dlg.querySelector('.wn5-grey');
+      const q = dlg.querySelector('.wn5-dq'), qs = getComputedStyle(q), cv = document.createElement('canvas').getContext('2d');
+      cv.font = qs.fontWeight + ' ' + qs.fontSize + ' ' + qs.fontFamily;
+      // Chrome lays a type=search field's hidden «×» (14px) beside the text even when empty, so it is not room
+      const room = q.clientWidth - parseFloat(qs.paddingLeft) - parseFloat(qs.paddingRight) - (q.type === 'search' ? 14 : 0);
+      const rows = [...dlg.querySelectorAll('[data-line="rt"], [data-line="road"]')].filter((x) => !x.hidden).map((x) => ({ top: Math.round(r(x).top), h: Math.round(r(x).height) }));
+      const pitch = rows.slice(1).map((x, i) => x.top - rows[i].top);
+      return { hd: Math.round(r(hd).height), hdTop: Math.round(r(hd).top - top), band: band && Math.round(r(band).top - top), title: [ts.fontFamily.split(',')[0].replace(/["']/g, ''), ts.fontWeight, ts.fontSize].join('|'),
+        q: [Math.round(r(q).width), Math.round(r(q).height), qs.fontSize].join('|'), text: Math.ceil(cv.measureText(q.placeholder).width), fits: Math.ceil(cv.measureText(q.placeholder).width) <= room, room,
+        rows, pitch, btn: [...dlg.querySelectorAll('.wn5-cand > .wi4-btn.sm')].map((b) => Math.round(r(b).height)) };
+    }).catch((e) => ({ err: String(e) }));
+    ok(scn, 'fidelity r3: header 44px from the top edge, the band starts right under it, title DM Sans 600 13px',
+      v3.hd === 44 && v3.hdTop === 0 && v3.band === 44 && v3.title === 'DM Sans|600|13px', v3);
+    ok(scn, 'fidelity r3: one-line cycle rows are 40px and touch (pitch 40, no gap); the partner row wrapping «Κράτα» is the only taller one',
+      !!v3.rows && v3.rows.length >= 4 && v3.rows.filter((x) => x.h !== 40).length <= 1 && v3.pitch.every((p, i) => p === v3.rows[i].h), v3.rows && { rows: v3.rows, pitch: v3.pitch });
+    ok(scn, 'fidelity r3: search field 287×28 at 12px and its whole placeholder fits; row buttons 22px tall',
+      v3.q === '287|28|12px' && v3.fits === true && !!v3.btn && v3.btn.length >= 4 && v3.btn.every((h) => h === 22), v3);
     await bClick(page, `${D} .wn5-seg [data-v="free"]`);
     const hidRt = await page.$eval(`${D} [data-grp="rt"]`, (e) => e.offsetParent === null).catch(() => null);
     const shownFree = await page.$eval(`${D} [data-grp="free"]`, (e) => e.offsetParent !== null).catch(() => null);

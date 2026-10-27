@@ -9301,6 +9301,21 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-rate { width:66px; height:22px; padding:0 6px; border:1px solid var(--wi4-blue); border-radius:4px; font:inherit; }
 .wn5-dlg .wn5-nw { white-space:nowrap; }   /* the rate field and its «€» never part */
 .wn5-more { display:flex; flex-wrap:wrap; gap:8px; align-items:flex-end; padding:6px 0 8px 192px; }   /* under the middle column: 24 + 176 + 8 − 16 */
+/* Δ1 vertical rhythm (Figma 2051:7735 metadata): a 44px header (pl 14 / pr 12, the 34px filter tray at y 5, title DM Sans
+   SemiBold 13), then blocks that touch — band 30, search 40 (a 287×28 field at x 12, 12px text, so the whole placeholder
+   fits), group header 26 (text at y 9, 14 tall), rows 40 with only their rule between them. The body's 8px flex gap would
+   add 8 between every row (46px pitch), so the window stacks its blocks with their own spacing instead. Scoped to the
+   wide picker: the 520px dialogs and the two-step dialog keep their rhythm. Buttons 22px as the frame (SemiBold 11 kept:
+   2051:7768 is SemiBold). */
+.wn5-dlg.wn5-wide { padding-top:0; }
+.wn5-wide > .wi4-dlg-hd { height:44px; margin:0 -4px 0 -2px; }
+.wn5-wide .wi4-dlg-hd > .wi4-dlg-t { font:600 13px/17px 'DM Sans',sans-serif; }
+.wn5-wide > .wn5-dlg-b { margin-top:0; gap:0; }
+.wn5-wide .wn5-dq { display:block; width:287px; margin:6px 0 6px -4px; padding:0 9px; font-size:12px; }
+.wn5-wide .wn5-dlg-b > :is(.wn5-hubwin, .wn5-miss) { margin:0 0 6px -4px; }   /* left edge with the field (x 12) */
+.wn5-wide .wn5-grp-h { margin:0 0 0 -4px; padding:9px 0 3px; line-height:14px; }
+.wn5-wide .wn5-cand { min-height:40px; }
+.wn5-wide .wn5-cand .wi4-btn.sm { height:22px; }
 /* ── wn5 end ── */
 
 /* ═══ Παραγγελίες › Εβδομάδα v4 (.ow4) — modules/orders_week_view.js ═════════
