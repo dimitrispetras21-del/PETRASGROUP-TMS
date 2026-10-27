@@ -390,6 +390,10 @@ const _PLV_STYLE = `<style>
   .plv-search input{width:min(560px,36vw);padding:6px 24px 6px 10px;font-size:var(--text-body);border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-card);color:var(--text);font-family:inherit}
   .plv-x{position:absolute;right:8px;cursor:pointer;color:var(--text-dim);font-size:var(--text-base);line-height:1}
   .plv-count,.plv-date,.plv-seg{font-size:var(--text-xs);color:var(--text-mid);white-space:nowrap}
+  /* Owner 27/10: the search box sat where the right-aligned filter row left room, so it
+     moved with the page width and the count («1 από 271» / «45 από 271»). On its own row it
+     now starts at the page edge; the count keeps one width so nothing after it shifts. */
+  #plvCount{display:inline-block;min-width:10ch}
   .plv-date input{padding:4px;font-size:var(--text-xs);border:1px solid var(--border);border-radius:var(--radius);font-family:inherit;color:var(--text)}
   .plv-seg{display:flex;gap:4px;align-items:center}
   .plv-seg button{padding:4px 8px;border-radius:var(--radius-full);border:1px solid var(--border);background:var(--surface-card);color:var(--text-mid);font-size:var(--text-xs);cursor:pointer;font-family:inherit}
@@ -407,12 +411,12 @@ const _PLV_STYLE = `<style>
   .plv-strip{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0 0;padding:8px 12px;background:var(--surface-sunken);border-radius:var(--radius);font-size:var(--text-xs);color:var(--text-mid)}
   /* Πίνακας 15px, γραμμή 46px, κενά 14px (w8 P6, Figma 659:1011). Τα κελιά
      κειμένου ΤΥΛΙΓΟΥΝ (καμία κομμένη λέξη)· nowrap μόνο σε κωδικό/ημερομηνία/
-     ποσότητες/κατάσταση· ellipsis ΜΟΝΟ στο Σημείο πάνω από 300px (.plv-ell). */
+     ποσότητες/κατάσταση· ellipsis ΜΟΝΟ στο Σημείο (.plv-ell, at most 300px). */
   .plv-tbl{width:100%;border-collapse:collapse;font-size:var(--text-md)}
   .plv-tbl th{padding:10px 14px;text-align:left;font-size:var(--text-sm);font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-mid);background:var(--surface-sunken);white-space:nowrap}
   .plv-tbl td{padding:6px 14px;height:46px;box-sizing:border-box;border-top:1px solid var(--border);white-space:normal;vertical-align:middle}
   .plv-tbl td.plv-code,.plv-tbl td.plv-date,.plv-tbl td.plv-num,.plv-tbl td.plv-st{white-space:nowrap}
-  .plv-ell{display:block;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} /* σε span: το max-width δεν πιάνει σε td */
+  .plv-ell{display:block;max-width:min(300px,16vw);overflow:hidden;text-overflow:ellipsis;white-space:nowrap} /* on a span: max-width does not hold on a td. 16vw since the «Αρ.» column (27/10): at 1440 the flat table was 65px wider than the page */
   .plv-tbl tr.plv-row{cursor:pointer}.plv-tbl tr.plv-row:hover td{background:var(--surface-sunken)}
   .plv-ref{font-weight:500;white-space:nowrap} /* αναγνωριστικό: δεν διπλώνει ποτέ */
   .plv-no{font-weight:700}
@@ -501,7 +505,7 @@ function _plvDraw() {
        ${_plvOverview()}
        <div class="plv-top">${_plvTabsHtml()}<div class="plv-right">${filters}</div></div>`
     : `<div class="plv-top"><h1 class="plv-h1">Ισοζύγιο Παλετών</h1>${_plvTabsHtml()}<div class="plv-right">${actions}</div></div>
-       ${isBalanceTab ? _plvBalanceStrip(PLV.tab) : `<div class="plv-top" style="margin-top:8px"><div class="plv-right">${filters}</div></div>`}`;
+       ${isBalanceTab ? _plvBalanceStrip(PLV.tab) : `<div class="plv-top" style="margin-top:8px">${filters}</div>`}`;
   c.innerHTML = `${_PLV_STYLE}
   <div class="plv-page">
     ${head}
