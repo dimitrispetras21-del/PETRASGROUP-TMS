@@ -1030,9 +1030,13 @@ async function scnPlus(browser, origin) {
     const { page } = await bOpen(browser, origin);
     await bClick(page, K201);
     await bClick(page, `${D} .wn5-seg button[data-v="new"]`);
-    const form = await bHas(page, bDlg('order'));
+    // T20: the form opens async (places, catalogues, a fresh board). This stub serves no facade masters, so the form's
+    // own refusal «Οι τοποθεσίες δεν φορτώθηκαν» (orders_natl.js:806-822 rule) is its answer here; the open form with
+    // its body is proven by tests/critics/wn5-form-rig.js «order» (the kit serves places).
+    const handed = await until(page, (dlg) => !!document.querySelector(dlg)
+      || (window.__ev || []).some((e) => e.k === 'toast' && /τοποθεσίες δεν φορτώθηκαν/.test(String(e.a[0]))), bDlg('order'));
     const line = (await bText(page, D)).includes('Η σύντομη φόρμα ανοίγει με τη φόρμα εθνικής v5');
-    ok(scn, '«Νέα παραγγελία» opens the order form (T20) or says it is not there yet — never a dead button', form || line);
+    ok(scn, '«Νέα παραγγελία» opens the order form (T20) or says it is not there yet — never a dead button', handed || line, await bEv(page));
     await page.context().close();
   }
   { // E · fidelity r2 at 1440×900 (Figma 2011:10305 / 10319 / 10445): opens under its row, whole placeholder, band copy

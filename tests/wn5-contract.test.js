@@ -19,6 +19,7 @@ const V5 = [
   { file: 'core/wn5-labels.js', globals: ['WN5Lab'], after: 'core/wn5-logic.js' },
   { file: 'modules/wn5_actions.js', globals: ['WN5Act'], after: 'modules/weekly_natl_v5.js' },
   { file: 'modules/wn5_veroia.js', globals: ['WN5Hub'], after: 'modules/wn5_actions.js' },
+  { file: 'modules/wn5_forms.js', globals: ['WN5Form'], after: 'modules/wn5_veroia.js' },
   { file: 'core/plan-ids.js', globals: ['PlanIds'], after: 'core/wn5-labels.js' },
 ];
 

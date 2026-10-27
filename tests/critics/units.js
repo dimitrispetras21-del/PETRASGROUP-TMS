@@ -74,5 +74,5 @@ module.exports = [
   // every colour and «…» in the wn5 block of assets/style.css (unit 'styles'). routes EMPTY on purpose: behind
   // FEATURES.WN_V5 = 'off' the route 'weekly_natl' still paints the old board, which unit 'weekly_natl' drives; a
   // second live critic there would test v1 twice and call it v5. Each Task that creates a v5 browser file adds it here.
-  { unit: 'weekly_natl_v5', tier: 3, routes: [],          files: ['modules/weekly_natl_v5.js', 'core/wn5-logic.js', 'modules/wn5_actions.js', 'core/wn5-labels.js', 'core/plan-ids.js', 'modules/wn5_veroia.js'] },
+  { unit: 'weekly_natl_v5', tier: 3, routes: [],          files: ['modules/weekly_natl_v5.js', 'core/wn5-logic.js', 'modules/wn5_actions.js', 'core/wn5-labels.js', 'core/plan-ids.js', 'modules/wn5_veroia.js', 'modules/wn5_forms.js'] },
 ];

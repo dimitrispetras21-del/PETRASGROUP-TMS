@@ -1802,12 +1802,16 @@
     d.dlg.querySelector('.wi4-dlg-hd').insertAdjacentHTML('beforeend', card.chips);
     d.body.innerHTML = card.html;
     // «Επεξεργασία» opens the v5 national form (T20); delete is here and nowhere else (owner 19/10)
-    d.ft.innerHTML = '<button type="button" class="wi4-btn" data-act="edit" disabled title="Ανοίγει με τη φόρμα εθνικής v5">Επεξεργασία</button>'
+    d.ft.innerHTML = '<button type="button" class="wi4-btn" data-act="edit">Επεξεργασία</button>'
       + '<button type="button" class="wi4-btn wn5-danger-o" data-act="delete">Διαγραφή παραγγελίας</button>';
     d.dlg.addEventListener('click', (ev) => {
       const b = ev.target.closest('[data-act]');
       if (!b || b.disabled || !_live()) return;
       if (b.dataset.act === 'delete') WN5Act.deleteOrder(no, { host: d.msg, ref: card.ref, client: card.client, pal: card.pal });
+      else if (b.dataset.act === 'edit') {
+        _close(d);   // the card's own close (its listeners go with it) before the form takes the screen
+        WN5Form.openOrder({ natOrderId: no });   // T20: edit = PATCH /plan/orders/:id, only what changed
+      }
     });
     _gate(d);
     return d;

@@ -912,6 +912,10 @@ const WN5 = {
     { id: 'orders', order: 10, label: 'Άνοιγμα παραγγελιών', count: (rtId) => WN5Act.cycleOrderCount(rtId), run: (rtId) => WN5Act.cycleOrders(rtId) },
     // T12: the same Δ1 window as the red box and ΕΠΟΜΕΝΑ; on a cycle it changes the vehicle (PATCH /plan/rt/:id)
     { id: 'assign', order: 20, label: 'Ανάθεση / αλλαγή φορτηγού ή συνεργάτη', run: (rtId) => WN5Act.assign(null, { entry: 'menu', rtId }) },
+    // T20: the same short form as the «+» of a leg (S-45): target = this cycle's side, day/Veroia from the cycle
+    { id: 'new-order', order: 30, label: 'Νέα παραγγελία σε αυτό το σκέλος', children: [
+      { id: 'new-order-k', label: 'Κάθοδος', run: (rtId) => WN5Form.openOrder({ side: 'KATHODOS', rtId }) },
+      { id: 'new-order-a', label: 'Άνοδος', run: (rtId) => WN5Form.openOrder({ side: 'ANODOS', rtId }) }] },
     // T17: the stop is chosen inside the window (its day is the stop's day, 072:2283)
     { id: 'local', order: 40, label: 'Φόρτωση με τοπικό', sub: 'οδηγός · ημέρα · στάση ›', run: (rtId) => WN5Act.local(null, rtId) },
     // T14: the KATHODOS deliveries go back to Veroia for splitting (S-69, Figma 2011:8858 note)

@@ -1,0 +1,264 @@
+// Rig — National v5 F4α forms (T20 order form; T21 leg form; T22 VS day/destination). Judged by what reached the
+// fake /plan/* (S.plan: method, path, body, count, order) and by what the page shows; never by a toast. Synthetic
+// week of tests/critics/wn5-rig-kit.js. The default answer of every non-dry write is 409 writes_closed, as deployed
+// until day L; scenarios script their own answers with sentinel messages.
+// Usage: node tests/critics/wn5-form-rig.js [order groupage unknown reused replayed edit …]
+//        WN5_TREE=<git archive origin/main> node tests/critics/wn5-form-rig.js   (plain-main proof: NO-GO, exit 1)
+// Exit: 0 green · 1 a check failed · 2 unknown scenario.
+'use strict';
+const K = require('./wn5-rig-kit.js');
+
+const DLG = '.wi4-dlg[role="dialog"][data-wn5="order"]';
+const C41 = { rec: 'recWn5Cli41', label: 'ΠΕΛΑΤΗΣ Α' }, C42 = { rec: 'recWn5Cli42', label: 'ΠΕΛΑΤΗΣ Β' }, C43 = { rec: 'recWn5Cli43', label: 'ΠΕΛΑΤΗΣ Γ' };
+const HUB = { rec: 'recJucKOhC1zh4IP3', label: 'ΒΕΡΟΙΑ TEST' }, ATH = { rec: 'recWn5LocAth', label: 'ATHENS TEST' },
+  ASP = { rec: 'recWn5LocAsp', label: 'ASPROPYRGOS TEST' }, LAR = { rec: 'recWn5LocLar', label: 'LARISA TEST' }, THE = { rec: 'recWn5LocThe', label: 'THESSALONIKI TEST' };
+const r = (loc, day, from, to, pal) => Object.assign({}, loc, { day, from, to, pal });
+const ORDER_A = { client: C41, price: 310, temp: 4, pe: false, loads: [r(ASP, '2026-10-14', '11:00', '12:00', 6)], drops: [r(ATH, '2026-10-15', '08:00', '10:00', 6)] };
+
+// Fills order block i of the open form through the REAL pickers (fhPickLinked) and inputs.
+async function fillOrder(page, i, o) {
+  await page.evaluate(([i, o, dlg]) => {
+    const box = document.querySelector(dlg);
+    let blocks = box.querySelectorAll('.wn5f-ord');
+    while (blocks.length <= i) { box.querySelector('[data-act="add-order"]').click(); blocks = box.querySelectorAll('.wn5f-ord'); }
+    const b = blocks[i];
+    const set = (el, v) => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); };
+    fhPickLinked(b.querySelector('[data-cpick]').dataset.cpick, o.client.rec, o.client.label);
+    set(b.querySelector('[data-f="price"]'), String(o.price));
+    if (o.temp != null) set(b.querySelector('[data-f="temp"]'), String(o.temp));
+    b.querySelector(`[data-pe="${o.pe ? 'yes' : 'no'}"]`).click();
+    for (const k of ['load', 'drop']) {
+      const want = o[k + 's'];
+      const rows = () => b.querySelectorAll(`.wn5f-rows[data-k="${k}"] .wn5f-row`);
+      while (rows().length < want.length) b.querySelector(`[data-act="add-row"][data-k="${k}"]`).click();
+      rows().forEach((row, j) => {
+        const x = want[j];
+        fhPickLinked(row.dataset.pid, x.rec, x.label);
+        set(row.querySelector('[data-f="day"]'), x.day);
+        if (x.from) set(row.querySelector('[data-f="from"]'), x.from);
+        set(row.querySelector('[data-f="to"]'), x.to);
+        set(row.querySelector('[data-f="pal"]'), String(x.pal));
+      });
+    }
+  }, [i, o, DLG]);
+}
+async function openForm(page, prefill) {
+  await page.evaluate((p) => WN5Form.openOrder(p), prefill || {});
+  await page.waitForSelector(DLG, { timeout: 8000 }).catch(() => {});
+}
+const save = (page, dlg) => page.click(`${dlg || DLG} [data-act="save"]`);
+async function guard(page, ok, scn) {
+  if (ok(scn, 'WN5Form present', await K.has(page, 'WN5Form'))) return true;
+  await page.context().close();
+  return false;
+}
+// Chrome logs every aborted external request (fonts, CDNs: the kit aborts what would leave the machine) and every
+// scripted 4xx/5xx answer of the fake /plan/* as «Failed to load resource»: network lines, not an error of the page.
+// So is the one logError line per scripted 5xx («[TMS ERROR] planFetch … rig sentinel …»: every 5xx is logged once
+// by design, counted in the «unknown» scenario). Every other console error fails the scenario.
+const appConsole = (S) => S.console.filter((m) => !/^Failed to load resource/.test(m) && !/^\[TMS ERROR\] planFetch [A-Z]+ \/plan\/[^:]*: PlanError: rig sentinel /.test(m));
+async function closeClean(page, S, ok, scn) {
+  ok(scn, 'no page errors, no console errors', !S.pageErrors.length && !appConsole(S).length, S.pageErrors.concat(appConsole(S)));
+  await page.context().close();
+}
+const noStore = (page, id) => page.evaluate((x) => !(JSON.stringify(sessionStorage) + JSON.stringify(localStorage) + JSON.stringify(history.state) + location.href).includes(x), id);
+
+async function scnOrder({ browser, origin, ok, scn }) {
+  const { page, S } = await K.openApp(browser, origin);
+  if (!(await guard(page, ok, scn))) return;
+  await openForm(page, {});
+  ok(scn, 'the order form opened (.wi4-dlg[role=dialog][data-wn5=order])', await K.count(page, DLG) === 1);
+  const txt = await K.text(page, DLG);
+  ok(scn, 'label «Τιμή € (χωρίς ΦΠΑ) *»', txt.includes('Τιμή € (χωρίς ΦΠΑ) *'), txt.slice(0, 200));
+  ok(scn, 'windows «Παράθυρο από – έως *»', txt.includes('Παράθυρο από – έως *'));
+  ok(scn, 'truck optional: «Φορτηγό (προαιρετικό)» with «— ΠΡΟΣ ΑΝΑΘΕΣΗ»', txt.includes('Φορτηγό (προαιρετικό)') && txt.includes('ΠΡΟΣ ΑΝΑΘΕΣΗ'));
+  await page.keyboard.press('ArrowRight');   // role=dialog: the week must not move under the open form
+  ok(scn, '← → do not change the week while the form is open', await K.count(page, DLG) === 1 && (await page.evaluate(() => WN5.snapshot().week)) === '2026-10-10');
+  await fillOrder(page, 0, ORDER_A);
+  await save(page);
+  await page.waitForTimeout(3500);   // > the 1 s + 2 s of _atRetry: a resend would show here
+  const posts = K.planOf(S, 'POST', '/plan/orders');
+  ok(scn, 'one press → exactly one POST /plan/orders', posts.length === 1, posts.length);
+  const b = (posts[0] && posts[0].body) || {};
+  const rid = b.request_id;
+  const rest = Object.assign({}, b); delete rest.request_id;
+  ok(scn, 'request_id is a uuid v4', K.UUID4.test(rid || ''), rid);
+  ok(scn, 'body = form state, exact keys, numbers as numbers, Athens offset', JSON.stringify(rest) === JSON.stringify({ orders: [{ client_id: 41, price: 310, pallet_exchange: false, temperature_c: 4,
+    shipments: [{ origin_location_id: 3, dest_location_id: 2, pallets: 6, load_from: '2026-10-14T11:00:00+03:00', load_to: '2026-10-14T12:00:00+03:00',
+      deliver_from: '2026-10-15T08:00:00+03:00', deliver_to: '2026-10-15T10:00:00+03:00' }] }] }), rest);
+  ok(scn, 'no truck → no target, no stops (ΠΡΟΣ ΑΝΑΘΕΣΗ)', !('target' in b) && !('stops' in b));
+  ok(scn, 'only Authorization + Content-Type sent', posts[0] && !Object.keys(posts[0].headers).some((h) => /^x-tms/i.test(h)), posts[0] && posts[0].headers);
+  ok(scn, '409 writes_closed → the strip shows the Worker message as is', /rig sentinel writes_closed/.test(await K.text(page, `${DLG} [data-strip]`)), await K.text(page, `${DLG} [data-strip]`));
+  ok(scn, 'after 409 the save is disabled (Ε-6)', await page.evaluate((d) => document.querySelector(`${d} [data-act="save"]`).disabled, DLG));
+  ok(scn, 'the request_id lives in memory only', rid ? await noStore(page, rid) : false);
+  await page.context().close();
+
+  // the «+» of a row: same form, target = the row's side, stops = existing stop by id + one new place
+  const p2 = await K.openApp(browser, origin);
+  await p2.page.evaluate(() => WN5Act.plus(101, 'KATHODOS', document.querySelector('#content .wn5-row[data-rt="101"]') || document.querySelector('#content .wn5')));
+  await p2.page.click('.wi4-dlg[data-wn5="plus"] >> text=Νέα παραγγελία').catch(() => {});
+  await p2.page.waitForSelector(DLG, { timeout: 8000 }).catch(() => {});
+  ok(scn, '«+» → «Νέα παραγγελία» opens the same form, the «+» window is gone', await K.count(p2.page, DLG) === 1 && await K.count(p2.page, '.wi4-dlg[data-wn5="plus"]') === 0);
+  const tg = await p2.page.evaluate((d) => { const s = document.querySelector(`${d} #wn5f-tgt`); return s ? { v: s.value, dis: s.disabled } : null; }, DLG);
+  ok(scn, 'the cycle and side come prefilled and locked', tg && tg.v === '101' && tg.dis, tg);
+  await fillOrder(p2.page, 0, { client: C42, price: 120, temp: 2, pe: true, loads: [r(HUB, '2026-10-12', '16:00', '18:00', 4)], drops: [r(LAR, '2026-10-13', '10:00', '12:00', 4)] });
+  await save(p2.page);
+  await p2.page.waitForTimeout(1500);
+  const b2 = (K.planOf(p2.S, 'POST', '/plan/orders')[0] || {}).body || {};
+  ok(scn, '«+» body: target {rt_id:101, side:KATHODOS}', JSON.stringify(b2.target) === JSON.stringify({ rt_id: 101, side: 'KATHODOS' }), b2.target);
+  ok(scn, '«+» body: Veroia by its stop_id, Larisa as one new stop', JSON.stringify(b2.stops) === JSON.stringify([{ ref: 's1', stop_id: 1001 },
+    { ref: 's2', location_id: 4, side: 'KATHODOS', planned_from: '2026-10-13T10:00:00+03:00', planned_to: '2026-10-13T12:00:00+03:00' }]), b2.stops);
+  await p2.page.context().close();
+
+  // «+ Άδειες παλέτες · 1 €» (Figma 9624; the ΠΡΟΡΥΘΜΙΣΗ of 10022, Ε-39): a prefill only — nothing is sent by it
+  const p3 = await K.openApp(browser, origin);
+  await p3.page.evaluate(() => WN5Form.openOrder({ side: 'ANODOS', preset: 'empties' }));
+  await p3.page.waitForSelector(DLG, { timeout: 8000 }).catch(() => {});
+  const pre = await p3.page.evaluate((d) => {
+    const b = [...document.querySelectorAll(`${d} .wn5f-ord`)].pop();
+    if (!b) return null;
+    const drop = b.querySelector('.wn5f-rows[data-k="drop"] .wn5f-row');
+    return { goods: b.querySelector('[data-f="goods"]').value, price: b.querySelector('[data-f="price"]').value,
+      drop: drop ? (document.getElementById('lv_' + drop.dataset.pid) || {}).value : null, btn: !!document.querySelector(`${d} [data-act="add-empties"]`) };
+  }, DLG);
+  ok(scn, '«Άδειες παλέτες · 1 €»: goods + price 1 prefilled, Veroia the delivery point on ΑΝΟΔΟΣ, the button is in the form, nothing sent',
+    !!pre && pre.goods === 'Άδειες παλέτες' && pre.price === '1' && pre.drop === HUB.rec && pre.btn && !K.planOf(p3.S, 'POST', '/plan/orders').length, pre);
+  await p3.page.context().close();
+
+  // ✈ «Νέα παραγγελία σε αυτό το σκέλος ›» → «Κάθοδος» (S-45, Figma 2011:8858): the same short form as the «+»
+  const p4 = await K.openApp(browser, origin);
+  await p4.page.evaluate(() => WN5.rowMenu(null, 101));
+  await p4.page.click('#wn5-menu [data-item="new-order"]', { timeout: 2000 }).catch(() => {});
+  await p4.page.click('#wn5-menu [data-item="new-order-k"]', { timeout: 2000 }).catch(() => {});
+  await p4.page.waitForSelector(DLG, { timeout: 8000 }).catch(() => {});
+  const mk = await p4.page.evaluate((d) => { const t = document.querySelector(`${d} #wn5f-tgt`), r = document.querySelector(`${d} #wn5f-dir`);
+    return t && r ? { tgt: t.value, tdis: t.disabled, dir: r.value, ddis: r.disabled } : null; }, DLG);
+  ok(scn, '✈ new-order-k opens the short form', !!mk && mk.tgt === '101' && mk.tdis && mk.dir === 'KATHODOS' && mk.ddis && await K.count(p4.page, '#wn5-menu') === 0, mk);
+  ok(scn, 'no page errors', ![S, p2.S, p3.S, p4.S].some((x) => x.pageErrors.length), S.pageErrors.concat(p2.S.pageErrors, p3.S.pageErrors, p4.S.pageErrors));
+  ok(scn, 'no console errors', ![S, p2.S, p3.S, p4.S].some((x) => appConsole(x).length), [S, p2.S, p3.S, p4.S].flatMap(appConsole));
+  await p4.page.context().close();
+}
+
+async function scnGroupage({ browser, origin, ok, scn }) {
+  const { page, S } = await K.openApp(browser, origin);
+  if (!(await guard(page, ok, scn))) return;
+  await openForm(page, {});
+  await page.click(`${DLG} [data-mode="groupage"]`);
+  await fillOrder(page, 0, { client: C41, price: 640, temp: 2, pe: true, loads: [r(THE, '2026-10-12', '08:00', '10:00', 6), r(ASP, '2026-10-12', '10:30', '12:00', 4)], drops: [r(ATH, '2026-10-13', '06:00', '08:00', 10)] });
+  await fillOrder(page, 1, { client: C42, price: 420, temp: 4, pe: false, loads: [r(HUB, '2026-10-12', '16:00', '18:00', 12)], drops: [r(ASP, '2026-10-13', '07:00', '09:00', 12)] });
+  await fillOrder(page, 2, { client: C43, price: 380, temp: 2, pe: true, loads: [r(HUB, '2026-10-12', '16:00', '18:00', 8)], drops: [r(ATH, '2026-10-13', '09:00', '11:00', 8)] });
+  const label = await K.text(page, `${DLG} [data-act="save"]`);
+  ok(scn, 'title «Νέο groupage εθνικής»', (await K.text(page, `${DLG} .wi4-dlg-t`)) === 'Νέο groupage εθνικής');
+  ok(scn, 'button «Αποθήκευση · 3 παραγγελίες»', label === 'Αποθήκευση · 3 παραγγελίες', label);
+  const sum = await K.text(page, `${DLG} [data-sum]`);
+  ok(scn, 'summary «3 παραγγελίες → 4 αποστολές»', sum.includes('3 παραγγελίες → 4 αποστολές'), sum.slice(0, 300));
+  ok(scn, 'no mixed-temperature line before the save (Ε-3: only from the answer)', !/Μεικτές/.test(await K.text(page, DLG)));
+  await save(page);
+  await page.waitForTimeout(1500);
+  const posts = K.planOf(S, 'POST', '/plan/orders');
+  ok(scn, '3 orders = ONE POST /plan/orders', posts.length === 1, posts.length);
+  const b = (posts[0] && posts[0].body) || {};
+  ok(scn, 'body.orders has 3 orders, the first with 2 shipments', Array.isArray(b.orders) && b.orders.length === 3 && b.orders[0].shipments.length === 2, b.orders && b.orders.map((o) => o.shipments.length));
+  await closeClean(page, S, ok, scn);
+}
+
+async function scnUnknown({ browser, origin, ok, scn }) {
+  const { page, S } = await K.openApp(browser, origin, { plan: { 'POST /plan/orders': () => K.planErr(500, 'SERVER', 'plan_unknown') } });
+  if (!(await guard(page, ok, scn))) return;
+  await openForm(page, {});
+  await fillOrder(page, 0, ORDER_A);
+  await save(page);
+  await page.waitForTimeout(3500);
+  let posts = K.planOf(S, 'POST', '/plan/orders');
+  ok(scn, '500 plan_unknown → exactly one POST (no automatic resend)', posts.length === 1, posts.length);
+  ok(scn, 'the strip «μπορεί να αποθηκεύτηκε» is the Worker message as is', /rig sentinel plan_unknown/.test(await K.text(page, `${DLG} [data-strip]`)));
+  ok(scn, '«Έλεγχος στο board» is offered', await K.count(page, `${DLG} [data-act="check-board"]`) === 1);
+  await save(page);
+  await page.waitForTimeout(800);
+  posts = K.planOf(S, 'POST', '/plan/orders');
+  ok(scn, 'second press carries the SAME request_id', posts.length === 2 && posts[0].body.request_id === posts[1].body.request_id, posts.map((x) => x.body && x.body.request_id));
+  ok(scn, 'second press carries the SAME bytes', posts.length === 2 && posts[0].raw === posts[1].raw);
+  await page.click(`${DLG} .wn5f-ft [data-act="cancel"]`);
+  await openForm(page, {});
+  await fillOrder(page, 0, ORDER_A);
+  await save(page);
+  await page.waitForTimeout(800);
+  posts = K.planOf(S, 'POST', '/plan/orders');
+  ok(scn, 'after closing the form the next open mints a new request_id', posts.length === 3 && posts[2].body.request_id !== posts[0].body.request_id, posts.map((x) => x.body && x.body.request_id));
+  ok(scn, 'no request_id in sessionStorage / history / URL', await noStore(page, posts[0].body.request_id));
+  const logged = await page.evaluate(() => (window.__ev || []).filter((x) => x.k === 'logError' && /planFetch POST \/plan\/orders/.test(String(x.a[1]))).length);
+  ok(scn, 'each 500 plan_unknown is logged exactly once (3 POSTs → 3 logError)', logged === posts.length, { logged, posts: posts.length });
+  await closeClean(page, S, ok, scn);
+}
+
+async function scnReused({ browser, origin, ok, scn }) {
+  let held = false;
+  const plan = {
+    // the FIRST press was saved: the stub writes the order into the board, then answers request_reused (no ids)
+    'POST /plan/orders': (e, S) => {
+      S.board.waiting.push({ piece_id: 4901, shipment_id: 5901, kind: 'national', order_id: null, nat_order_id: 3901, order_stop_id: null, pallets: 6, leave_by: null,
+        position_location_id: 3, nat_from_location_id: 3, nat_to_location_id: 2, nat_ready_day: '2026-10-14', nat_due_day: '2026-10-15', overdue: false, is_stock: false,
+        client_id: 41, client: 'ΠΕΛΑΤΗΣ Α', reference: null, temperature_c: 4, pallet_exchange: false, load_from: e.body.orders[0].shipments[0].load_from,
+        load_to: e.body.orders[0].shipments[0].load_to, deliver_from: e.body.orders[0].shipments[0].deliver_from, deliver_to: e.body.orders[0].shipments[0].deliver_to, price: 310 });
+      held = true;
+      return K.planErr(422, 'PLAN_RULE', 'request_reused');
+    },
+    // the re-read after the refusal is held 1 s: «αποθηκεύτηκε» must wait for it
+    'GET /plan/board': async (e, S) => { if (held) await K.sleep(1000); return [200, S.board]; },
+  };
+  const { page, S } = await K.openApp(browser, origin, { plan });
+  if (!(await guard(page, ok, scn))) return;
+  await openForm(page, {});
+  await fillOrder(page, 0, ORDER_A);
+  const n0 = K.planOf(S, 'GET', '/plan/board').length;
+  await save(page);
+  await page.waitForTimeout(400);
+  ok(scn, 'while the board re-read is in flight, nothing says «αποθηκεύτηκε»', !(await page.evaluate((d) => { const x = document.querySelector(`${d} [data-done]`); return x && !x.hidden; }, DLG)));
+  await page.waitForFunction((d) => { const x = document.querySelector(`${d} [data-done]`); return x && !x.hidden; }, DLG, { timeout: 8000 }).catch(() => {});
+  const gets = K.planOf(S, 'GET', '/plan/board');
+  const post = K.planOf(S, 'POST', '/plan/orders')[0];
+  ok(scn, '422 request_reused → GET /plan/board after the POST', gets.length > n0 && post && gets[gets.length - 1].at > post.at, gets.map((x) => x.at));
+  const done = await K.text(page, `${DLG} [data-done]`);
+  ok(scn, '«Αποθηκεύτηκε» names the order found on the board (#3901)', /Αποθηκεύτηκε/.test(done) && done.includes('#3901'), done);
+  ok(scn, 'no second POST', K.planOf(S, 'POST', '/plan/orders').length === 1);
+  await closeClean(page, S, ok, scn);
+}
+
+async function scnReplayed({ browser, origin, ok, scn }) {
+  const plan = { 'POST /plan/orders': () => [200, { ok: true, op: 'plan_orders_create', dry_run: false, replayed: true,
+    ids: { nat_order_ids: [3902], shipment_ids: [5902], piece_ids: [4902], rt_id: null, stop_ids: [], leg_ids: [] },
+    warnings: [{ code: 'mixed_temp', rt_id: 101, side: 'KATHODOS', delta_c: 2 }], notice_ids: [] }] };
+  const { page, S } = await K.openApp(browser, origin, { plan });
+  if (!(await guard(page, ok, scn))) return;
+  await openForm(page, {});
+  await fillOrder(page, 0, ORDER_A);
+  await save(page);
+  await page.waitForFunction((d) => { const x = document.querySelector(`${d} [data-done]`); return x && !x.hidden; }, DLG, { timeout: 8000 }).catch(() => {});
+  const done = await K.text(page, `${DLG} [data-done]`);
+  ok(scn, '200 replayed:true → «Αποθηκεύτηκε» with the first ids', done.includes('#3902') && /πρώτο πάτημα/.test(done), done);
+  ok(scn, 'mixed_temp from the answer → a warning line after the save (Ε-3)', await K.count(page, `${DLG} .wn5-strip[data-kind="warning"]`) >= 1);
+  ok(scn, 'the save button is gone (nothing to resend)', await page.evaluate((d) => document.querySelector(`${d} [data-act="save"]`).hidden, DLG));
+  ok(scn, 'one POST, then a board re-read', K.planOf(S, 'POST', '/plan/orders').length === 1);
+  await closeClean(page, S, ok, scn);
+}
+
+async function scnEdit({ browser, origin, ok, scn }) {
+  const plan = { 'PATCH /plan/orders/3101': () => [200, { ok: true, op: 'plan_order_update', dry_run: false, ids: { nat_order_id: 3101, shipment_ids: [] }, warnings: [], notice_ids: [] }] };
+  const { page, S } = await K.openApp(browser, origin, { plan });
+  if (!(await guard(page, ok, scn))) return;
+  await openForm(page, { natOrderId: 3101 });
+  ok(scn, 'edit opens on the waiting order with its price', (await page.evaluate((d) => document.querySelector(`${d} [data-f="price"]`).value, DLG)) === '310');
+  await page.fill(`${DLG} [data-f="price"]`, '330');
+  await save(page);
+  await page.waitForTimeout(1000);
+  const p = K.planOf(S, 'PATCH', '/plan/orders/3101');
+  ok(scn, 'one PATCH /plan/orders/3101 with only {set:{price:330}}', p.length === 1 && JSON.stringify(p[0].body) === JSON.stringify({ set: { price: 330 } }), p.map((x) => x.body));
+  ok(scn, 'an edit carries no request_id (only the 3 creations do)', p[0] && !('request_id' in p[0].body));
+  await closeClean(page, S, ok, scn);
+}
+
+K.run({
+  scenarios: { order: scnOrder, groupage: scnGroupage, unknown: scnUnknown, reused: scnReused, replayed: scnReplayed, edit: scnEdit },
+  globals: ['WN5Form'],
+  go: 'the v5 order forms send one body per press, from the form only, with one request_id per open form',
+}).catch((e) => { console.error(e); process.exit(1); });

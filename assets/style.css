@@ -8988,6 +8988,7 @@ body.wi4-on #wi-popover .wi-pop-save:hover { background:var(--navy-light); }
   --wn5-chip-navy:  #1e3350;   /* a chip on the card's navy head (2011:10510); its text is --wi4-info-line */
   --wn5-chip-ok-bg: #dcfce7;   /* «ΑΝΑΤΕΘΗΚΕ» (2011:10514); text --ok, 5.0:1 */
   --wn5-leave-ink: #c25c0d;   /* Veroia board stock «φεύγει ως …» (Figma 2011:8748, 2069:8408); 4.6:1 on white */
+  --wn5-mode-on:   #eff8ff;   /* the chosen «ΤΥΠΟΣ ΚΑΤΑΧΩΡΗΣΗΣ» card of the order form (Figma 2011:9666) */
 }
 /* The same page frame as v4 (body.wi4-on .content), while the v5 board is on screen. */
 body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; background:var(--surface-page); }
@@ -9590,6 +9591,99 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-dlg[data-wn5="split"] .wi4-dlg-ft .wi4-btn { height:24px; padding:0 9px; border-radius:4px; font-size:11.5px; font-weight:600; }
 .wn5-dlg[data-wn5="split"] .wi4-dlg-ft .wi4-btn:not(.pri) { color:var(--wi4-grey-1); }
 @media print { .wn5-hub { display:none; } }
+/* ── wn5 forms (T20–T22): order form 2011:9624 (1000 wide), leg form 2011:9294 / Δ7 2069:7858 (860 wide).
+   Body-level dialogs on the wi4 shell (.wi4-dlg-back / .wi4-dlg / .wi4-dlg-ft); tokens only, no hex. Upper-case
+   Greek headings are typed upper case in the module (tonos), never text-transform.
+   Figma 9625: radius 12, no border, no shadow; a 60px header and a 64px footer edge to edge with their own 22px
+   sides and 1px dividers; the body scrolls between them (16/22 padding, 14 gap; the leg form 12). */
+/* line-height 1.302 = Figma «normal» for DM Sans (16px rows under 12px labels, 2011:9634); Chrome «normal» is shorter */
+.wn5f { width:1000px; max-height:calc(100vh - 32px); display:flex; flex-direction:column; padding:0; border:none; border-radius:12px; box-shadow:none; overflow:hidden; line-height:1.302; }
+.wn5f button.wn5f-x, .wn5f .wn5f-hd > .wi4-dlg-x { border:none; background:none; }
+.wn5f.wn5f-leg { width:860px; }
+.wn5f > .wn5f-hd { flex:none; height:60px; padding:0 22px; gap:10px; justify-content:flex-start; box-sizing:border-box; border-bottom:1px solid var(--wi4-line-2); }
+.wn5f-hd > .wi4-dlg-t { font:700 18px 'Syne',sans-serif; color:var(--wi4-ink); white-space:nowrap; }
+.wn5f-sub { margin-right:auto; font-size:12.5px; color:var(--wi4-grey-2); }
+.wn5f-cap { height:24px; padding:0 8px; display:inline-flex; align-items:center; box-sizing:border-box; border:1px solid var(--wi4-info-line); border-radius:5px;
+  background:var(--wi4-info-bg); font-size:12px; font-weight:600; color:var(--wi4-info-ink); white-space:nowrap; }
+.wn5f-cap:empty { display:none; }
+.wn5f-hd > .wi4-dlg-x { padding:0; font-size:16px; color:var(--wi4-grey-3); }
+.wn5f-body { flex:1 1 auto; min-height:0; overflow:auto; display:flex; flex-direction:column; gap:14px; padding:16px 22px; }
+.wn5f.wn5f-leg .wn5f-body { gap:12px; }
+.wn5f > .wn5f-msg, .wn5f > .wn5f-done { margin:0 22px 10px; }
+.wn5f > [data-strip] { padding:0 22px; }
+/* fields: a 12px label over a 34px control (2011:9634) */
+.wn5f-f { display:flex; flex-direction:column; gap:5px; min-width:0; font-size:12px; color:var(--wi4-grey-1); }
+.wn5f-f > span:first-child { white-space:nowrap; }
+.wn5f .form-input { height:34px; padding:0 10px; box-sizing:border-box; border:1px solid var(--wi4-ctl); border-radius:6px; background:var(--surface-card); font-size:13px; color:var(--wi4-ink); }
+/* the window column hugs its label (179 in Figma 2011:9645) over the 159 of its two fields, so «Φορτηγό» gets 361 */
+.wn5f-head { display:grid; grid-template-columns:230px 150px max-content minmax(0, 1fr); gap:12px; align-items:end; }
+.wn5f-grid4 { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:12px; align-items:end; }
+.wn5f-grid3 { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:12px; }
+.wn5f-ro { height:34px; display:flex; align-items:center; padding:0 10px; box-sizing:border-box; border:1px solid var(--wi4-ctl); border-radius:6px; background:var(--wi4-chip); font-size:13px; color:var(--wi4-grey-1); }
+.wn5f-win { display:flex; align-items:center; gap:4px; }
+.wn5f-from { display:inline-flex; align-items:center; gap:4px; }
+.wn5f-from[hidden] { display:none; }
+.wn5f-win .wn5f-hm { flex:none; width:71px; }
+.wn5f-dash { font-size:13px; color:var(--wi4-grey-2); }
+.wn5f-sec { font:600 10.5px 'DM Sans',sans-serif; letter-spacing:1.2px; color:var(--wi4-grey-3); }
+/* «ΤΥΠΟΣ ΚΑΤΑΧΩΡΗΣΗΣ» (2011:9660): two cards with a radio dot; on = the mode fill and a 1.5px accent border */
+.wn5f-modes { display:grid; grid-template-columns:1fr 1fr; gap:12px; align-items:center; }
+.wn5f-mode { display:flex; flex-direction:column; align-items:flex-start; gap:3px; padding:10px 14px; border:1px solid var(--wi4-ctl); border-radius:8px; background:var(--surface-card); text-align:left; cursor:pointer; }
+.wn5f-mode.on { padding:9.5px 13.5px; border:1.5px solid var(--accent); background:var(--wn5-mode-on); }
+.wn5f-mode-t { display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; color:var(--wi4-ink); }
+.wn5f-radio { flex:none; width:13px; height:13px; box-sizing:border-box; border:1.5px solid var(--wi4-ctl); border-radius:50%; }
+.wn5f-mode.on .wn5f-radio { border-color:var(--accent); background:var(--accent); }
+.wn5f-mode-s { font-size:11.5px; color:var(--wi4-grey-2); }
+.wn5f-mode.on .wn5f-mode-s { max-width:400px; }
+/* an order block (2011:9671): no head line; the fields row ends with the block «×»; «Παραγγελία n» is the foot chip */
+.wn5f-ords { display:flex; flex-direction:column; gap:14px; }
+.wn5f-ord { display:flex; flex-direction:column; gap:9px; padding:14px; border:1px solid var(--wi4-ctl); border-radius:10px; background:var(--surface-card); }
+.wn5f-fields { display:grid; grid-template-columns:minmax(0, 1fr) 130px 120px auto auto; gap:12px; align-items:end; }
+.wn5f-x { padding:0; font-size:15px; line-height:20px; color:var(--wi4-grey-3); cursor:pointer; }
+.wn5f-ox { height:34px; font-size:16px; }
+.wn5f-rows { display:flex; flex-direction:column; gap:9px; }
+.wn5f-th, .wn5f-row { display:grid; gap:8px; align-items:center; justify-content:start; }
+.wn5f-th { grid-template-columns:280px 112px 150px 76px; font-size:11px; color:var(--wi4-grey-2); }
+.wn5f-row { grid-template-columns:280px 112px 159px 76px auto; }
+/* ΑΝΟΔΟΣ → Βέροια (Δ7 2069:8004): one «ως» time, its deadline drawn with a 2px border, the head says «Άφιξη ως *» */
+.wn5f-row.until .wn5f-from { display:none; }
+.wn5f-row.until [data-f="to"] { border-width:2px; }
+.wn5f-row.ro { grid-template-columns:minmax(0, 1fr) 120px 140px 70px 130px; }
+.wn5f-add { align-self:flex-start; height:26px; padding:0 9px; box-sizing:border-box; border:1px solid var(--wi4-ctl); border-radius:5px; background:var(--surface-card); font-size:12px; color:var(--wi4-grey-1); cursor:pointer; }
+.wn5f-adds { display:flex; gap:10px; }
+.wn5f-adds > .wn5f-add[hidden] { display:none; }
+.wn5f-ord-ft { display:flex; align-items:center; gap:6px; }
+.wn5f-chip { flex:none; height:20px; padding:0 7px; display:inline-flex; align-items:center; box-sizing:border-box; border-radius:4px; background:var(--wi4-chip); font-size:11px; font-weight:600; color:var(--wi4-grey-1); white-space:nowrap; }
+.wn5f-ord-sum, .wn5f-note { font-size:11.5px; color:var(--wi4-grey-2); }
+/* PE · ανταλλαγή παλετών (2011:9687): a 34px two-part toggle */
+.wn5f-tog { display:inline-flex; height:34px; box-sizing:border-box; border:1px solid var(--wi4-ctl); border-radius:6px; overflow:hidden; width:max-content; }
+.wn5f-tog button { height:100%; padding:0 12px; border:none; background:var(--surface-card); font-size:12.5px; font-weight:500; color:var(--wi4-grey-1); cursor:pointer; }
+.wn5f-tog button.on { background:var(--accent); color:var(--surface-card); }
+/* the summary (2011:9933) and the stop sequence (2011:9940): a navy number badge, 130/70/230/160 cells */
+.wn5f-sum { display:flex; flex-direction:column; gap:6px; padding:12px 14px; border-radius:8px; background:var(--wi4-own); }
+.wn5f-sum-h { display:flex; justify-content:space-between; gap:8px; font-size:13px; font-weight:700; color:var(--wi4-ink); }
+.wn5f-sum-h > b { font-weight:700; }
+.wn5f-sum-c { font-size:12px; color:var(--wi4-grey-1); white-space:pre-wrap; }
+.wn5f-seq { margin:0; padding:0; list-style:none; display:flex; flex-direction:column; }
+.wn5f-seq li { display:grid; grid-template-columns:14px 130px 70px 230px 160px auto; gap:8px; align-items:center; min-height:22px; font-size:11.5px; }
+.wn5f-seq-n { width:14px; height:14px; display:inline-flex; align-items:center; justify-content:center; border-radius:3px; background:var(--wi4-ink); font-size:10.5px; font-weight:600; line-height:1; color:var(--surface-card); }
+.wn5f-seq-w, .wn5f-seq-q { font-weight:500; color:var(--wi4-grey-1); }
+.wn5f-seq-a, .wn5f-seq-c { color:var(--wi4-grey-2); }
+.wn5f-seq-p { color:var(--wi4-ink); }
+.wn5f-sum-n { font-size:11px; color:var(--wi4-grey-3); }
+.wn5f-msg:empty { display:none; }
+.wn5f-msg { padding:6px 10px; border-radius:6px; background:var(--wi4-red-bg); font-size:12px; color:var(--wi4-red); }
+.wn5f-done { padding:6px 10px; border-radius:6px; background:var(--wi4-partner); font-weight:600; color:var(--wi4-partner-ink); }
+/* the footer (2011:10013): note, then «Άκυρο» and the accent «Αποθήκευση», both 36px */
+.wn5f > .wn5f-ft { flex:none; height:64px; margin:0; padding:0 22px; gap:10px; align-items:center; box-sizing:border-box; border-top:1px solid var(--wi4-line-2); }
+.wn5f-ft-note { margin-right:auto; font-size:11.5px; color:var(--wi4-grey-2); }
+.wn5f-ft .wi4-btn { height:36px; border-radius:6px; font-size:13px; }
+.wn5f-ft .wi4-btn:not(.pri) { padding:0 14px; font-weight:500; color:var(--wi4-grey-1); }
+.wn5f-ft .wi4-btn.pri { padding:0 16px; font-weight:600; border-color:var(--accent); background:var(--accent); color:var(--surface-card); }
+.wn5f-ft .wi4-btn.pri:hover { border-color:var(--accent-hover); background:var(--accent-hover); }
+.wn5f-ft .wi4-btn.pri:disabled { border-color:var(--wi4-ctl); background:var(--wi4-chip); color:var(--wi4-grey-3); }
+.wn5f-ships-h, .wn5f-ship { display:grid; grid-template-columns:minmax(0, 1fr) 130px 90px 90px 130px 90px 90px 70px; gap:6px; align-items:center; }
+.wn5f-ships-h { font-size:11px; color:var(--wi4-grey-2); grid-template-columns:minmax(0, 1fr) 310px 310px 70px; }
 /* ═══ Παραγγελίες › Εβδομάδα v4 (.ow4) — modules/orders_week_view.js ═════════
    Figma 1514:8013: 1518:8013 (1440), 1518:9099 (1920), states 1519:8013.
    One row = one RT, mirrored like Weekly v4: RT | ΕΞΑΓΩΓΗ ‖ ΑΝΑΘΕΣΗ ‖ ΕΙΣΑΓΩΓΗ.
