@@ -9403,6 +9403,13 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-late { color:var(--wi4-red); font-weight:600; }
 /* Figma 2011:10444/10445: two 15px lines of 11px grey-2 on the chip grey, px 14, no vertical padding, no rule (30px) */
 .wn5-dlg .wn5-grey.wn5-pnote { margin:0 -16px; padding:0 14px; border-top:0; border-bottom:0; border-radius:0 0 8px 8px; font-size:11px; line-height:15px; }
+/* Figma 2011:10315/10316: the hint under the ΚΑΘΟΔΟΣ header — the 30px chip-grey band, 11px grey-2, px 14, no rule */
+.wn5-dlg .wn5-grey.wn5-phint { display:flex; align-items:center; height:30px; box-sizing:border-box; padding:0 14px; border-top:0; border-bottom:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* Figma 2011:10488: the ΠΡΟΡΥΘΜΙΣΗ row is one line from the 24px inset — label Medium 12 ink, sub 10.5 grey-2 8px after
+   it, «Άνοιγμα» at the right end (40px row, pr 12) */
+.wn5-cand.wn5-preset { grid-template-columns:minmax(0, 1fr) auto; }
+.wn5-preset-m { display:flex; align-items:baseline; gap:8px; min-width:0; white-space:nowrap; font-size:10.5px; color:var(--wi4-grey-2); }
+.wn5-preset-m b { font-size:12px; font-weight:500; color:var(--wi4-ink); }
 /* ── T14: «Μεταφορά σε…» reuses the Δ1 lines. The «ΑΛΛΟ» line has no box: its title takes the box and middle
    columns, at the list's left edge, 13px ink over an 11px grey subline, the moved pallets at the right (Figma
    2013:7773-7775); the source vehicle after the move closes the list (2013:7777). ── */
@@ -9649,6 +9656,14 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5f-row.until .wn5f-from { display:none; }
 .wn5f-row.until [data-f="to"] { border-width:2px; }
 .wn5f-row.ro { grid-template-columns:minmax(0, 1fr) 120px 140px 70px 130px; }
+/* a day field (2011:9641/9704): the native date input under a label with the weekday; the input's own text shows only
+   while it is edited, so the label and the native «dd/mm/yyyy» never overlap */
+.wn5f-day { position:relative; display:block; min-width:0; }
+.wn5f-day > .form-input { display:block; width:100%; }
+.wn5f-day > .form-input:not(:focus) { color:transparent; }
+.wn5f-day > .wn5f-dayt { position:absolute; top:0; bottom:0; left:11px; display:flex; align-items:center; pointer-events:none; white-space:nowrap; font-size:13px; color:var(--wi4-ink); }
+.wn5f-day:not(.has) > .wn5f-dayt { color:var(--wi4-grey-3); }
+.wn5f-day > .form-input:focus + .wn5f-dayt { display:none; }
 .wn5f-add { align-self:flex-start; height:26px; padding:0 9px; box-sizing:border-box; border:1px solid var(--wi4-ctl); border-radius:5px; background:var(--surface-card); font-size:12px; color:var(--wi4-grey-1); cursor:pointer; }
 .wn5f-adds { display:flex; gap:10px; }
 .wn5f-adds > .wn5f-add[hidden] { display:none; }
@@ -9682,6 +9697,7 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5f-ft .wi4-btn.pri { padding:0 16px; font-weight:600; border-color:var(--accent); background:var(--accent); color:var(--surface-card); }
 .wn5f-ft .wi4-btn.pri:hover { border-color:var(--accent-hover); background:var(--accent-hover); }
 .wn5f-ft .wi4-btn.pri:disabled { border-color:var(--wi4-ctl); background:var(--wi4-chip); color:var(--wi4-grey-3); }
+.wn5f-ft .wi4-btn[hidden] { display:none; }   /* «Αποθήκευση» leaves once saved (.wi4-btn's inline-flex beats [hidden]) */
 .wn5f-ships-h, .wn5f-ship { display:grid; grid-template-columns:minmax(0, 1fr) 130px 90px 90px 130px 90px 90px 70px; gap:6px; align-items:center; }
 .wn5f-ships-h { font-size:11px; color:var(--wi4-grey-2); grid-template-columns:minmax(0, 1fr) 310px 310px 70px; }
 /* ═══ Παραγγελίες › Εβδομάδα v4 (.ow4) — modules/orders_week_view.js ═════════

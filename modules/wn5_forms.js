@@ -296,7 +296,18 @@
     const b = f.el.querySelector('[data-act="save"]');
     if (b) b.disabled = !!(f.busy || f.done || f.locked || f.noIds || f.blocked);
   }
-  function _refresh(f) { if (f.onRefresh) f.onRefresh(f); _setSave(f); }
+  // Figma 2011:9641/9704 show the weekday («Δευ 12/10/2026» in the head, «Δευ 12/10» in a row), which a native date
+  // input cannot. The input stays (its value is the ISO day the body reads; picker and keyboard stay native) and a
+  // label drawn over it shows the board's day format while it is not being edited. Empty, the label is a short hint:
+  // Chrome's own «dd/mm/yyyy» is cut beside the calendar icon in the 112px row cell.
+  function _dayText(f) {
+    f.el.querySelectorAll('.wn5f-day').forEach((w) => {
+      const v = w.querySelector('input').value, t = w.querySelector('.wn5f-dayt'), has = DAY.test(v);
+      w.classList.toggle('has', has);
+      t.textContent = has ? _dlab(v) + (w.hasAttribute('data-y') ? '/' + v.slice(0, 4) : '') : (w.hasAttribute('data-y') ? 'ηη/μμ/εεεε' : 'ηη/μμ');
+    });
+  }
+  function _refresh(f) { if (f.onRefresh) f.onRefresh(f); _dayText(f); _setSave(f); }
   function _onClick(f, ev) {
     const t = ev.target.closest('[data-act],[data-mode],[data-pe]');
     if (!t || !f.el.contains(t)) return;
@@ -339,7 +350,7 @@
     const pid = 'wn5l' + (++f.seq);
     return `<div class="wn5f-row" data-k="${k}" data-pid="${pid}">`
       + `<div class="wn5f-loc">${fhLocSelect(pid, '', 'fhLocDrop')}</div>`
-      + `<input class="form-input" type="date" data-f="day" value="${_esc(f.dayDefault || '')}">`
+      + `<span class="wn5f-day"><input class="form-input" type="date" data-f="day" value="${_esc(f.dayDefault || '')}" aria-label="Ημέρα"><span class="wn5f-dayt" aria-hidden="true"></span></span>`
       + `<span class="wn5f-win"><span class="wn5f-from"><input ${HM_INPUT} data-f="from" aria-label="από"><span class="wn5f-dash">–</span></span>`
       + `<input ${HM_INPUT} data-f="to" aria-label="έως"></span>`
       + `<input class="form-input" data-f="pal" inputmode="decimal" aria-label="Παλέτες">`
@@ -371,7 +382,7 @@
     return `<div class="wn5f-head">`
       + `<label class="wn5f-f"><span>Κατεύθυνση *</span><select class="form-input" id="wn5f-dir">`
       + `<option value="KATHODOS">${DIR_GR.KATHODOS}</option><option value="ANODOS">${DIR_GR.ANODOS}</option></select></label>`
-      + `<label class="wn5f-f"><span data-vdayl>Ημ. φόρτωσης Βέροιας *</span><input class="form-input" type="date" id="wn5f-vday"></label>`
+      + `<label class="wn5f-f"><span data-vdayl>Ημ. φόρτωσης Βέροιας *</span><span class="wn5f-day" data-y><input class="form-input" type="date" id="wn5f-vday"><span class="wn5f-dayt" aria-hidden="true"></span></span></label>`
       + `<label class="wn5f-f"><span data-vwinl>Παράθυρο φόρτωσης Βέροιας *</span><span class="wn5f-win"><span class="wn5f-from" data-vfromw><input ${HM_INPUT} id="wn5f-vfrom" aria-label="από"><span class="wn5f-dash">–</span></span><input ${HM_INPUT} id="wn5f-vto" aria-label="έως"></span></label>`
       + `<label class="wn5f-f"><span>Φορτηγό (προαιρετικό)</span><select class="form-input" id="wn5f-tgt">${opts}</select></label></div>`
       + `<div class="wn5f-sec">ΤΥΠΟΣ ΚΑΤΑΧΩΡΗΣΗΣ</div><div class="wn5f-modes">`

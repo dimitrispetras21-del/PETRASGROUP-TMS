@@ -12,6 +12,9 @@ const DLG = '.wi4-dlg[role="dialog"][data-wn5="order"]';
 const C41 = { rec: 'recWn5Cli41', label: 'ΠΕΛΑΤΗΣ Α' }, C42 = { rec: 'recWn5Cli42', label: 'ΠΕΛΑΤΗΣ Β' }, C43 = { rec: 'recWn5Cli43', label: 'ΠΕΛΑΤΗΣ Γ' };
 const HUB = { rec: 'recJucKOhC1zh4IP3', label: 'ΒΕΡΟΙΑ TEST' }, ATH = { rec: 'recWn5LocAth', label: 'ATHENS TEST' },
   ASP = { rec: 'recWn5LocAsp', label: 'ASPROPYRGOS TEST' }, LAR = { rec: 'recWn5LocLar', label: 'LARISA TEST' }, THE = { rec: 'recWn5LocThe', label: 'THESSALONIKI TEST' };
+// the board's day format (WI4.dayLabel: «Δευ 12/10», no zero pad), recomputed here so the rig does not trust the page
+const WI4dl = (d) => { const t = new Date(Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10)));
+  return ['Κυρ', 'Δευ', 'Τρί', 'Τετ', 'Πέμ', 'Παρ', 'Σάβ'][t.getUTCDay()] + ' ' + t.getUTCDate() + '/' + (t.getUTCMonth() + 1); };
 const r = (loc, day, from, to, pal) => Object.assign({}, loc, { day, from, to, pal });
 const ORDER_A = { client: C41, price: 310, temp: 4, pe: false, loads: [r(ASP, '2026-10-14', '11:00', '12:00', 6)], drops: [r(ATH, '2026-10-15', '08:00', '10:00', 6)] };
 
@@ -72,9 +75,17 @@ async function scnOrder({ browser, origin, ok, scn }) {
   ok(scn, 'label «Τιμή € (χωρίς ΦΠΑ) *»', txt.includes('Τιμή € (χωρίς ΦΠΑ) *'), txt.slice(0, 200));
   ok(scn, 'windows «Παράθυρο από – έως *»', txt.includes('Παράθυρο από – έως *'));
   ok(scn, 'truck optional: «Φορτηγό (προαιρετικό)» with «— ΠΡΟΣ ΑΝΑΘΕΣΗ»', txt.includes('Φορτηγό (προαιρετικό)') && txt.includes('ΠΡΟΣ ΑΝΑΘΕΣΗ'));
+  // fidelity T20 (Figma 2011:9641/9704): an empty day reads as a whole hint, never Chrome's cut «dd/mm/yy»
+  const dayE = await page.evaluate((d) => [...document.querySelectorAll(`${d} .wn5f-day`)].map((w) => w.querySelector('.wn5f-dayt').textContent), DLG);
+  ok(scn, 'empty day fields: «ηη/μμ/εεεε» in the head, «ηη/μμ» in each row', dayE.length >= 3 && dayE[0] === 'ηη/μμ/εεεε' && dayE.slice(1).every((x) => x === 'ηη/μμ'), dayE);
   await page.keyboard.press('ArrowRight');   // role=dialog: the week must not move under the open form
   ok(scn, '← → do not change the week while the form is open', await K.count(page, DLG) === 1 && (await page.evaluate(() => WN5.snapshot().week)) === '2026-10-10');
   await fillOrder(page, 0, ORDER_A);
+  // the weekday the frame shows in a row («Τετ 14/10», no year); the native text hidden while not edited
+  const dayF = await page.evaluate((d) => [...document.querySelectorAll(`${d} .wn5f-row .wn5f-day`)].map((w) => ({ t: w.querySelector('.wn5f-dayt').textContent,
+    vis: getComputedStyle(w.querySelector('.wn5f-dayt')).display !== 'none', ink: getComputedStyle(w.querySelector('input')).color })), DLG);
+  ok(scn, 'filled day fields show the weekday: «Τετ 14/10» / «Πέμ 15/10», the native text hidden', dayF.length === 2
+    && dayF[0].t === 'Τετ 14/10' && dayF[1].t === 'Πέμ 15/10' && dayF.every((x) => x.vis && x.ink === 'rgba(0, 0, 0, 0)'), dayF);
   await save(page);
   await page.waitForTimeout(3500);   // > the 1 s + 2 s of _atRetry: a resend would show here
   const posts = K.planOf(S, 'POST', '/plan/orders');
@@ -101,6 +112,10 @@ async function scnOrder({ browser, origin, ok, scn }) {
   ok(scn, '«+» → «Νέα παραγγελία» opens the same form, the «+» window is gone', await K.count(p2.page, DLG) === 1 && await K.count(p2.page, '.wi4-dlg[data-wn5="plus"]') === 0);
   const tg = await p2.page.evaluate((d) => { const s = document.querySelector(`${d} #wn5f-tgt`); return s ? { v: s.value, dis: s.disabled } : null; }, DLG);
   ok(scn, 'the cycle and side come prefilled and locked', tg && tg.v === '101' && tg.dis, tg);
+  // fidelity T20 (Figma 2011:9641): the prefilled Veroia day in the head reads «Δευ 12/10/2026» (weekday + year)
+  const hd = await p2.page.evaluate((d) => { const w = document.querySelector(`${d} .wn5f-head .wn5f-day`); return w && { v: w.querySelector('input').value, t: w.querySelector('.wn5f-dayt').textContent }; }, DLG);
+  ok(scn, 'the head day shows the weekday and the year of its value', !!hd && /^\d{4}-\d\d-\d\d$/.test(hd.v)
+    && hd.t === WI4dl(hd.v) + '/' + hd.v.slice(0, 4) && /^(Κυρ|Δευ|Τρί|Τετ|Πέμ|Παρ|Σάβ) /.test(hd.t), hd);
   await fillOrder(p2.page, 0, { client: C42, price: 120, temp: 2, pe: true, loads: [r(HUB, '2026-10-12', '16:00', '18:00', 4)], drops: [r(LAR, '2026-10-13', '10:00', '12:00', 4)] });
   await save(p2.page);
   await p2.page.waitForTimeout(1500);
@@ -237,7 +252,9 @@ async function scnReplayed({ browser, origin, ok, scn }) {
   const done = await K.text(page, `${DLG} [data-done]`);
   ok(scn, '200 replayed:true → «Αποθηκεύτηκε» with the first ids', done.includes('#3902') && /πρώτο πάτημα/.test(done), done);
   ok(scn, 'mixed_temp from the answer → a warning line after the save (Ε-3)', await K.count(page, `${DLG} .wn5-strip[data-kind="warning"]`) >= 1);
-  ok(scn, 'the save button is gone (nothing to resend)', await page.evaluate((d) => document.querySelector(`${d} [data-act="save"]`).hidden, DLG));
+  // fidelity T20: the attribute alone passed while .wi4-btn's inline-flex kept a dead button drawn — the screen decides
+  ok(scn, 'the save button is gone (nothing to resend): hidden and not drawn', await page.evaluate((d) => { const x = document.querySelector(`${d} [data-act="save"]`);
+    return x.hidden && getComputedStyle(x).display === 'none' && x.getBoundingClientRect().width === 0; }, DLG));
   ok(scn, 'one POST, then a board re-read', K.planOf(S, 'POST', '/plan/orders').length === 1);
   await closeClean(page, S, ok, scn);
 }

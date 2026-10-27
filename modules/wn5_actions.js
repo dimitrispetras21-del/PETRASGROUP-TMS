@@ -1050,6 +1050,13 @@
       if (st.mode === 'new') {
         h += '<p class="wn5-miss">Η σύντομη φόρμα ανοίγει με τη φόρμα εθνικής v5.</p>';
       } else {
+        // Figma 2011:10315/10316 (ΚΑΘΟΔΟΣ only; the ΑΝΟΔΟΣ frame 10446 has no hint): what «Νέα παραγγελία» pre-fills.
+        // Drawn only once the form exists, as the ΠΡΟΡΥΘΜΙΣΗ; an unassigned cycle has no truck to name, so it is left out.
+        if (!anod && typeof WN5Form !== 'undefined' && typeof WN5Form.openOrder === 'function') {
+          const truck = box.cls === 'un' ? null : box.l1.split(' · ')[0];
+          h += '<div class="wn5-grey wn5-phint">«Νέα παραγγελία» ανοίγει τη σύντομη φόρμα με ' + _esc(_dayShort(st.day)) + ', ΚΑΘΟΔΟ'
+            + (truck ? ' και ' + _esc(truck) : '') + ' έτοιμα· Τιμή € (χωρίς ΦΠΑ) υποχρεωτική.</div>';
+        }
         // Figma 2011:10446: the ΑΝΟΔΟΣ popover has no search (its list is the requests of one side's day)
         if (!anod) h += '<input type="search" class="wn5-dq" data-q placeholder="Αναζήτηση στην αναμονή (πελάτης, σημείο, VS)" value="' + _esc(st.q) + '">';
         if (!st.hubStop && st.groups.some((g) => g.items.some((it) => !it._ro && _needs(it, false, hub).some((n) => n.hub)))) {
@@ -1061,8 +1068,10 @@
         // Figma 2011:10022 (ΑΝΟΔΟΣ): «ΠΡΟΡΥΘΜΙΣΗ · Άδειες παλέτες · εθνική 1 € · Άνοιγμα» — the T20 form prefilled (Ε-39).
         // Drawn only once the form exists, so no dead line before T20.
         if (anod && typeof WN5Form !== 'undefined' && typeof WN5Form.openOrder === 'function') {
-          h += '<div class="wn5-grp-h">ΠΡΟΡΥΘΜΙΣΗ</div><div class="wn5-cand" data-line="preset"><span></span><span class="wn5-cand-m"><b>Άδειες παλέτες · εθνική 1 €</b>'
-            + '<span>πελάτης, σημείο, ποσότητα</span></span><span></span><button type="button" class="wi4-btn sm" data-act="preset">Άνοιγμα</button></div>';
+          // one line from the row's 24px inset (2011:10488): label · sub, then «Άνοιγμα» at the right — not the Δ1
+          // candidate grid, whose empty 176px box column pushed the text 200px in and stacked it
+          h += '<div class="wn5-grp-h">ΠΡΟΡΥΘΜΙΣΗ</div><div class="wn5-cand wn5-preset" data-line="preset"><span class="wn5-preset-m"><b>Άδειες παλέτες · εθνική 1 €</b>'
+            + '<span>πελάτης, σημείο, ποσότητα</span></span><button type="button" class="wi4-btn sm" data-act="preset">Άνοιγμα</button></div>';
         }
         // the closing grey band of the ΚΑΘΟΔΟΣ frame (2011:10444); the ΑΝΟΔΟΣ frame has none (it has no stock)
         // Approved copy of 2011:10445; «(π.χ. …)» names the first arriving VS of this list (none → left out, never invented).

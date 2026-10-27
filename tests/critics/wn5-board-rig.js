@@ -1020,6 +1020,16 @@ async function scnPlus(browser, origin) {
     await bClick(page, '.wn5-row[data-rt="204"] [data-act="plus"][data-side="ANODOS"]');
     const txt = await bText(page, D);
     ok(scn, 'the ANODOS «+» says «Πρόσθεσε στην ΑΝΟΔΟ» and offers «ΑΙΤΗΜΑΤΑ ΑΝΟΔΟΥ»', txt.includes('Πρόσθεσε στην ΑΝΟΔΟ') && (await bHas(page, `${D} .wn5-pline[data-piece="4202"] [data-act="save"]`)), txt.slice(0, 400));
+    // fidelity T20 (Figma 2011:10488): ΠΡΟΡΥΘΜΙΣΗ is one line from the 24px inset — label 500 12px ink, sub 10.5px grey-2
+    // on the same line, «Άνοιγμα» at the right end; no hint band on ΑΝΟΔΟΣ (2011:10446 has none)
+    const pr = await page.$eval(D, (d) => {
+      const r = d.querySelector('[data-line="preset"]'); if (!r) return null;
+      const b = r.querySelector('b'), s = r.querySelector('b + span'), btn = r.querySelector('[data-act="preset"]'), cs = (e) => getComputedStyle(e), q = (e) => e.getBoundingClientRect();
+      return { bx: Math.round(q(b).left - q(r).left), b: [cs(b).fontSize, cs(b).fontWeight, cs(b).color].join('|'), s: [cs(s).fontSize, cs(s).color].join('|'),
+        line: Math.abs(q(b).top - q(s).top) < 6 && q(s).left > q(b).right, end: Math.round(q(r).right - q(btn).right), hint: !!d.querySelector('.wn5-phint') };
+    }).catch(() => null);
+    ok(scn, 'ANODOS ΠΡΟΡΥΘΜΙΣΗ: one line at x 24, label 12px 500 ink, sub 10.5px grey-2, «Άνοιγμα» 12px from the end, no hint band', !!pr
+      && pr.bx === 24 && pr.b === '12px|500|rgb(11, 25, 41)' && pr.s === '10.5px|rgb(91, 107, 127)' && pr.line && pr.end === 12 && !pr.hint, pr);
     await bClick(page, `${D} .wn5-pline[data-piece="4202"] [data-act="save"]`);
     const p = bCalls(S, 'POST', '/plan/legs')[0];
     ok(scn, 'request → pieces 4202 onto RT-T204 ANODOS, pickup and Veroia arrival by stop_id', !!p
@@ -1087,6 +1097,14 @@ async function scnPlus(browser, origin) {
       && !!free && !!kept && !free.equals(kept), g && { room: g.room, pixelsDiffer: !!free && !!kept && !free.equals(kept) });
     ok(scn, 'the closing band carries «(owner 21/10)» and «(π.χ. VS-T118)», the first arriving VS of the list', !!g
       && g.band.includes('στη Βέροια (owner 21/10):') && g.band.includes('Φορτίο που φτάνει (π.χ. VS-T118) μπαίνει ολόκληρο'), g && g.band);
+    // fidelity T20 (Figma 2011:10315/10316): under the ΚΑΘΟΔΟΣ header, the 30px grey hint of what the short form pre-fills
+    const hint = await page.$eval(D, (d) => { const h = d.querySelector('.wn5-phint'), hd = d.querySelector('.wi4-dlg-hd'); if (!h) return null;
+      const cs = getComputedStyle(h);
+      return { t: h.textContent, h: Math.round(h.getBoundingClientRect().height), under: Math.round(h.getBoundingClientRect().top - hd.getBoundingClientRect().bottom),
+        st: [cs.fontSize, cs.color, cs.backgroundColor].join('|') }; }).catch(() => null);
+    ok(scn, 'KATHODOS hint band: «… με Δευ 12/10, ΚΑΘΟΔΟ και TST-2106 έτοιμα· Τιμή € (χωρίς ΦΠΑ) υποχρεωτική.», 30px, 11px grey-2 on chip grey, under the header', !!hint
+      && hint.t === '«Νέα παραγγελία» ανοίγει τη σύντομη φόρμα με Δευ 12/10, ΚΑΘΟΔΟ και TST-2106 έτοιμα· Τιμή € (χωρίς ΦΠΑ) υποχρεωτική.'
+      && hint.h === 30 && hint.under === 0 && hint.st === '11px|rgb(91, 107, 127)|rgb(241, 245, 249)', hint);
     // fidelity T13 r4 (Figma 2011:10310-10314): the segmented at the base 12.5px (236px control at 1440 with DM Sans)
     const seg = await page.$eval(`${D} .wn5-seg button`, (b) => getComputedStyle(b).fontSize).catch(() => null);
     ok(scn, 'popover r4: the segmented buttons are 12.5px, as the base rule (Figma 2011:10310)', seg === '12.5px', seg);
