@@ -1313,6 +1313,65 @@ async function scnMove(browser, origin) {
 }
 SCN['move'] = scnMove;
 
+// T15 — «Καθαρισμός ανάθεσης» (Δ5 2053:8079): empty list = at once; a list = the dialog; no hidden button.
+async function scnClear(browser, origin) {
+  const scn = 'clear';
+  const D = bDlg('clear');
+  const P = '/plan/rt/201/clear';
+  const K = 'POST /plan/rt/:id/clear';   // the stub's route key (routeKey: digits → :id)
+  const dry = (tok, cons) => [200, { ok: true, op: 'plan_rt_clear', dry_run: true, needs_confirm: cons.length > 0, confirm_token: tok, consequences: cons }];
+  const PAY = { kind: 'payroll_amount', rt_id: 201, dl_entry_id: 7, driver_id: 32, month: '2026-10' };
+  const DKV = { kind: 'costs', rt_id: 201, pay_source: 'DKV', count: 2 };
+  const cleared = () => { const b = bBoard(); const c = b.cycles.find((x) => x.rt_id === 201);
+    Object.assign(c, { truck_id: null, truck: null, trailer_id: null, trailer: null, driver_id: null, driver: null });
+    c.stops.forEach((s) => { s.has_vehicle = false; }); return b; };
+  { // A · empty list: at once, then the row is «ΠΡΟΣ ΑΝΑΘΕΣΗ» after the re-read
+    const { page, S } = await bOpen(browser, origin, { plan: { [K]: (e, St) => {
+      if (e.body && e.body.dry_run === true) return dry('tokC0', []);
+      St.board = cleared();
+      return [200, { ok: true, op: 'plan_rt_clear', dry_run: false, ids: { rt_id: 201 }, warnings: [], notice_ids: [] }];
+    } } });
+    await bMenu(page, 201, 'clear');
+    await page.waitForTimeout(400);
+    const c = bCalls(S, 'POST', P);
+    ok(scn, 'empty list → at once, no dialog: {dry_run:true}, then {confirm_token}', c.length === 2 && c[0].raw === '{"dry_run":true}' && c[1].raw === '{"confirm_token":"tokC0"}' && !(await bHas(page, D)), c.map((x) => x.raw));
+    ok(scn, 'after the 200 the board is read again and RT-T201 shows «ΠΡΟΣ ΑΝΑΘΕΣΗ»', await bHas(page, '.wn5-row[data-rt="201"] .wi4-box.un'));
+    await page.context().close();
+  }
+  { // B · a list (dispatcher): the Δ5 dialog without amounts, the red button, the execution with the token (closed)
+    const { page, S } = await bOpen(browser, origin, { plan: { [K]: (e) => (e.body && e.body.dry_run === true ? dry('tokC1', [DKV, PAY]) : planErr(409, 'WRITES_CLOSED', 'writes_closed')) } });
+    await bMenu(page, 201, 'clear');
+    const txt = await bText(page, D);
+    ok(scn, 'a list → the Δ5 dialog: «Καθαρισμός ανάθεσης», the Δ5 text, «Παραστατικά που υπάρχουν» with the DKV and payroll lines',
+      txt.includes('Καθαρισμός ανάθεσης') && txt.includes('Λάθος ανάθεση: ό,τι καθαρίζεται, δεν έγινε. Βλάβη: «Μεταφορά σε…» στη φόρμα σκέλους.')
+      && txt.includes('Παραστατικά που υπάρχουν') && txt.includes('2 γραμμές DKV') && txt.includes('γραμμή μισθοδοσίας με ποσό (Οκτώβριος)'), txt.slice(0, 600));
+    ok(scn, 'dispatcher: no amount anywhere in the dialog', !txt.includes('€'));
+    ok(scn, 'the confirm button is the red «Καθαρισμός»', (await bText(page, `${D} [data-act="confirm"].wn5-danger`)) === 'Καθαρισμός');
+    await bClick(page, `${D} [data-act="confirm"]`);
+    const c = bCalls(S, 'POST', P);
+    ok(scn, '«Καθαρισμός» → {confirm_token} only; 409 → the preview strip in the dialog', c.length === 2 && c[1].raw === '{"confirm_token":"tokC1"}'
+      && (await bText(page, `${D} .wn5-strip[data-kind="preview"]`)).includes('rig sentinel writes_closed'), c.map((x) => x.raw));
+    await page.context().close();
+  }
+  { // C · owner: the amounts the DB kept for the role are shown
+    const { page } = await bOpen(browser, origin, { role: 'owner', plan: { [K]: (e) => (e.body && e.body.dry_run === true
+      ? dry('tokC2', [Object.assign({ amount: 186.4 }, DKV), Object.assign({ amount: 120, advance: null, expenses: null }, PAY)]) : planErr(409, 'WRITES_CLOSED', 'writes_closed')) } });
+    await bMenu(page, 201, 'clear');
+    const txt = await bText(page, D);
+    ok(scn, 'owner: «2 γραμμές DKV · 186,40 €» and «ποσό 120,00 €»', txt.includes('2 γραμμές DKV · 186,40 €') && txt.includes('ποσό 120,00 €'), txt.slice(0, 500));
+    await page.context().close();
+  }
+  { // D · management: the button is there, the Worker says no (Δ12 tile 8)
+    const { page, S } = await bOpen(browser, origin, { role: 'management', plan: { [K]: () => planErr(403, 'FORBIDDEN', 'forbidden') } });
+    ok(scn, 'management sees «Καθαρισμός ανάθεσης» in ✈ and can press it (no role gate)', await bMenu(page, 201, 'clear'));
+    await page.waitForTimeout(300);
+    ok(scn, '403 → the forbidden strip on the board with the Worker text; nothing else sent', (await bText(page, '#content .wn5-acthost .wn5-strip[data-kind="forbidden"]')).includes('rig sentinel forbidden')
+      && bCalls(S, 'POST', P).length === 1);
+    await page.context().close();
+  }
+}
+SCN['clear'] = scnClear;
+
 // ── scenarios end (each Task adds its own above this line) ──
 
 // ── fixture check (T4): plain node, no browser ──

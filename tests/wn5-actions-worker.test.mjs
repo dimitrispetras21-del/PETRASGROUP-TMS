@@ -65,3 +65,16 @@ test('F4α-T14: writes closed, a move dry run passes the switch → ONE plan_mov
   assert.strictEqual(r.seen[0].fn, 'plan_move_pieces');
   assert.deepStrictEqual(r.seen[0].args.p, body);
 });
+
+test('F4α-T15: POST /plan/rt/201/clear — management 403 before any RPC (rt-clear = owner + dispatcher, dry run too)', async () => {
+  const r = await send({ role: 'management', writesOpen: false }, 'POST', '/plan/rt/201/clear', { dry_run: true });
+  assert.strictEqual(r.status, 403);
+  assert.strictEqual(r.json.error.code, 'forbidden');
+  assert.strictEqual(r.seen.length, 0);
+});
+
+test('F4α-T15: dispatcher dry run → plan_rt_clear with rt_id merged from the path', async () => {
+  const r = await send({ writesOpen: false, answer: { ok: true, op: 'plan_rt_clear', dry_run: true, needs_confirm: false, confirm_token: 't', consequences: [] } }, 'POST', '/plan/rt/201/clear', { dry_run: true });
+  assert.strictEqual(r.seen[0].fn, 'plan_rt_clear');
+  assert.deepStrictEqual(r.seen[0].args.p, { dry_run: true, rt_id: 201 });
+});

@@ -1226,6 +1226,26 @@
     return _picker(st, 'move', 'Μεταφορά σε… · ' + head);
   };
 
+  // ═══ T15 · «Καθαρισμός ανάθεσης» (Δ5 2053:8079): two steps on POST /plan/rt/:id/clear ═══
+  WN5Act.clear = async function clear(rtId) {
+    const c = _cycle(_id(rtId));
+    if (!c) { WN5Act.strip(_boardHost(), _clientErr('rt_missing', 'Ο κύκλος δεν είναι στο board που φορτώθηκε — ανανέωσε')); return null; }
+    const r = _row(c.rt_id);
+    const box = _cycText(c, r);
+    const no = r && r.cycleNo ? ' · κύκλος ' + (r.cycleNo.m > 1 ? r.cycleNo.n + '/' + r.cycleNo.m : r.cycleNo.n) : '';
+    const out = await WN5Act.twoStep({
+      method: 'POST', path: '/plan/rt/' + c.rt_id + '/clear', body: {}, kind: 'clear', danger: true, verb: 'Καθαρισμός',
+      title: 'Καθαρισμός ανάθεσης · ' + box.l1.split(' · ')[0] + no + ';',
+      // Δ5's own words (Ε-8: stays until 072b turns a breakdown into «Αλλαγή οχήματος»), and what clearing is
+      // (decision 12): the vehicle leaves the WHOLE cycle, the deliveries stay together
+      intro: ['Λάθος ανάθεση: ό,τι καθαρίζεται, δεν έγινε. Βλάβη: «Μεταφορά σε…» στη φόρμα σκέλους.',
+        [box.l1, box.l2].filter(Boolean).join(' · ') + ' βγαίνουν από όλο τον κύκλο (κάθοδος + άνοδος)· οι παραδόσεις μένουν μαζί ως «ΠΡΟΣ ΑΝΑΘΕΣΗ».'],
+    });
+    // a costs_without_rt notice goes to the national desk: it shows in the notices strip after the re-read
+    if (out) await _afterSave(out, 'Καθαρίστηκε η ανάθεση', {});
+    return out;
+  };
+
   // ═══ the actions of T12–T18 go above this line ═══
 
   WN5Act._kit = KIT;

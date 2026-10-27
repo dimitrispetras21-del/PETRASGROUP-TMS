@@ -899,6 +899,8 @@ const WN5 = {
     // T14: the KATHODOS deliveries go back to Veroia for splitting (S-69, Figma 2011:8858 note)
     { id: 'split-hub', order: 50, label: 'Σπάσιμο παραγγελιών', sub: '→ Βέροια', run: (rtId) => WN5Act.move({ rt_id: rtId, side: 'KATHODOS' }, { direct: 'wait' }) },
     { id: 'plates', order: 70, label: 'Αντιγραφή πινακίδων', run: (rtId) => copyPlatesOf(rtId) },
+    // T15: last and red (Figma 2011:8858); owner + dispatcher on the Worker, but visible to all (Δ12 tile 8)
+    { id: 'clear', order: 90, label: 'Καθαρισμός ανάθεσης', sub: 'κάθοδος + άνοδος', danger: true, run: (rtId) => WN5Act.clear(rtId) },
   ],
   // The board HTML of a model, for tests/wn5-board-html.test.js (pure: model in, string out).
   _html: (m) => _boardHTML(m, true),
