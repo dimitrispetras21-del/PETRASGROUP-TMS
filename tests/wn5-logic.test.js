@@ -280,3 +280,44 @@ test('F4α-T4: fixture keys = jsonb_build_object keys of plan_board in 072; no m
   assert.ok(!/"(amount|advance|expenses|invoice_number)"/.test(FIX_TEXT), 'a money key in the dispatcher fixture');
   assert.deepStrictEqual(M().errors, [], 'the fixture draws without a shape error');
 });
+
+// ── F4α-T24 (072b): a stop takes its segment ONLY from segments[].stop_ids (H-9) ─────────────────────────────
+const WN5L_T24 = require(path.join(ROOT, 'core', 'wn5-logic.js'));
+function segCycle() {
+  const st = (stop_id, seq, side, from, to) => ({ stop_id, seq, side, location_id: stop_id, location: 'LOC ' + stop_id, planned_from: from, planned_to: to,
+    stop_day: from.slice(0, 10), executed: false, has_vehicle: true, has_late: false, dim: false, side_dim: false, cycle_dim: false, local_loading: null, legs: [] });
+  return { rt_id: 7, code: 'RT-T7', trip_type: 'OWNED', truck_id: 1, truck: 'TST-1', trailer_id: null, trailer: null, driver_id: 1, driver: 'Driver Test 01',
+    partner_id: null, partner: null, partner_rate: null, start_at: '2026-10-12T06:00:00+03:00', end_at: '2026-10-15T22:00:00+03:00',
+    date_start: '2026-10-12', date_end: '2026-10-15', ended: false,
+    stops: [st(1, 1, 'KATHODOS', '2026-10-12T06:00:00+03:00', '2026-10-12T08:00:00+03:00'),
+            st(2, 2, 'KATHODOS', '2026-10-13T18:00:00+03:00', '2026-10-13T20:00:00+03:00'),
+            st(3, 3, 'ANODOS', '2026-10-15T10:00:00+03:00', '2026-10-15T12:00:00+03:00')],
+    segments: [
+      { segment_id: 70, label: 'initial', from_at: '2026-10-12T06:00:00+03:00', to_at: '2026-10-13T14:30:00+03:00', trip_type: 'OWNED', truck_id: 1, truck: 'TST-1', trailer_id: null, trailer: null,
+        driver_id: 1, driver: 'Driver Test 01', partner_id: null, partner: null, partner_rate: null, place_note: null, reason: null, reason_note: null, has_vehicle: true, stop_ids: [1] },
+      // stop 3 lies inside this segment's TIME window but in no stop_ids: it must get no segment
+      { segment_id: 71, label: 'final', from_at: '2026-10-13T14:30:00+03:00', to_at: '2026-10-15T22:00:00+03:00', trip_type: 'OWNED', truck_id: 2, truck: 'TST-2', trailer_id: null, trailer: null,
+        driver_id: 2, driver: 'Driver Test 02', partner_id: null, partner: null, partner_rate: null, place_note: 'Λαμία', reason: 'vehicle_breakdown', reason_note: null, has_vehicle: true, stop_ids: [2] }] };
+}
+test('F4α-T24: a stop is coloured only from segments[].stop_ids (a stop in no stop_ids gets no segment)', () => {
+  const m = WN5L_T24.stopSegments(segCycle());
+  assert.deepStrictEqual(m.get(1), { segmentId: 70, label: 'initial' });
+  assert.deepStrictEqual(m.get(2), { segmentId: 71, label: 'final' });
+  assert.strictEqual(m.get(3), undefined);
+  const one = segCycle(); one.segments = [Object.assign({}, one.segments[0], { label: null, stop_ids: [1, 2, 3] })];
+  assert.strictEqual(WN5L_T24.stopSegments(one).size, 0, 'one segment = exactly today: no label (R-59)');
+});
+test('F4α-T24: the handover sits between the last stop of the segment before and the first stop after', () => {
+  assert.deepStrictEqual(WN5L_T24.handoversOf(segCycle()), [{ at: '2026-10-13T14:30:00+03:00', place_note: 'Λαμία', reason: 'vehicle_breakdown', segmentId: 71, label: 'final', beforeStopId: 1, afterStopId: 2 }]);
+  const no = segCycle(); delete no.segments;
+  assert.deepStrictEqual(WN5L_T24.handoversOf(no), []);
+});
+test('F4α-T24: the board model carries segLabel per point and the handovers per row', () => {
+  const mdl = WN5L_T24.model({ week: '2026-10-10', cycles: [segCycle()], waiting: [], hub: [], notices: [] }, { today: '2026-10-13' });
+  const row = mdl.days.flatMap((d) => d.rows).find((r) => r.rtId === 7);
+  const pts = [row.kath, row.anod].filter(Boolean).flatMap((s) => s.from.concat(s.to));
+  const lab = Object.fromEntries(pts.map((p) => [p.stopId, p.segLabel]));
+  assert.deepStrictEqual([lab[1], lab[2], lab[3]], ['initial', 'final', null]);
+  assert.strictEqual(row.handovers.length, 1);
+  assert.strictEqual(row.tiles.length, 2);
+});

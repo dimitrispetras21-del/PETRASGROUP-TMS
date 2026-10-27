@@ -202,6 +202,13 @@ function _cycleRow(c, hubId, nums, errors) {
   const seg = segmentsOf(c);
   const tiles = seg.segments.map((s) => _tile(s, no, seg.source === 'segments' && seg.segments.length > 1));
   const pts = [...(kath ? kath.from.concat(kath.to) : []), ...anod.from, ...anod.to];
+  // H-9 (072b): each point's segment from stop_ids alone; the Veroia loading head and the cycle end are stops too
+  // (Figma H1 2120:8921 draws the segment line under «Βέροια · τέλος κύκλου» as well).
+  const segs = stopSegments(c);
+  const segOf = (id) => (segs.has(id) ? segs.get(id) : null);
+  for (const p of pts) { const g = segOf(p.stopId); p.segmentId = g ? g.segmentId : null; p.segLabel = g ? g.label : null; }
+  // Only when the stop has a segment: a one-segment cycle keeps exactly today's veroia / end objects (R-59).
+  if (kath && kath.veroia && segOf(kath.veroia.stopId)) kath.veroia.segLabel = segOf(kath.veroia.stopId).label;
   const local = stops.filter((s) => s.local_loading).map((s) => {
     const p = pts.find((x) => x.stopId === s.stop_id);
     // T17 attaches a local loading to a pickup outside Veroia (Figma 2011:8305): the line names what is picked up
@@ -235,8 +242,9 @@ function _cycleRow(c, hubId, nums, errors) {
   return {
     key: 'rt:' + c.rt_id, rtId: c.rt_id, kind: 'cycle', dayKey: kath ? kath.day : anod.day, miss: null,
     kath, anod, tiles, segSource: seg.source, cycleNo: no,
-    end: A && A.endStop ? { place: 'Βέροια', by: A.endStop.planned_to, stopId: A.endStop.stop_id, dim: A.endStop.dim === true } : null,
-    local, handovers: [],
+    end: A && A.endStop ? { place: 'Βέροια', by: A.endStop.planned_to, stopId: A.endStop.stop_id, dim: A.endStop.dim === true,
+      ...(segOf(A.endStop.stop_id) ? { segLabel: segOf(A.endStop.stop_id).label } : {}) } : null,
+    local, handovers: handoversOf(c),
     late: stops.some((s) => s.has_late === true),
     rail: tiles.some((t) => t.type === 'un') ? 'red' : null,
     rowDim: stops.length > 0 && stops[0].cycle_dim === true,
@@ -378,6 +386,35 @@ function model(board, opts) {
   };
 }
 
-const WN5L = freeze({ model, segmentsOf, searchParts, cycleNumbers, capacity, stopRank, hubFromBoard, athensDay, athensTime, CAP, HUB_UNKNOWN, ShapeError });
+// H-9 (072b): a stop's segment is the one whose stop_ids hold it (plan_h_seg_of_stop, the segment of its
+// arrival) — never a time computation of the screen. One segment = no label at all (R-59: exactly today).
+function stopSegments(cycle) {
+  const out = new Map();
+  const { source, segments } = segmentsOf(cycle);
+  if (source !== 'segments' || segments.length < 2) return out;
+  for (const g of segments) for (const id of g.stop_ids || []) out.set(id, { segmentId: g.segment_id, label: g.label || null });
+  return out;
+}
+// The handover points of a cycle: for every segment after the first, the last stop executed before it and the
+// first one after it (a middle segment with no stop of its own takes the next segment that has one, H3).
+function handoversOf(cycle) {
+  const { source, segments } = segmentsOf(cycle);
+  if (source !== 'segments' || segments.length < 2) return [];
+  const seq = new Map((cycle.stops || []).map((s) => [s.stop_id, s.seq]));
+  const last = (ids) => ids.reduce((a, b) => (a === null || seq.get(b) > seq.get(a) ? b : a), null);
+  const first = (ids) => ids.reduce((a, b) => (a === null || seq.get(b) < seq.get(a) ? b : a), null);
+  const out = [];
+  for (let i = 1; i < segments.length; i++) {
+    let before = null;
+    for (let j = i - 1; j >= 0 && before === null; j--) before = last(segments[j].stop_ids || []);
+    let after = null;
+    for (let j = i; j < segments.length && after === null; j++) after = first(segments[j].stop_ids || []);
+    const g = segments[i];
+    out.push({ at: g.from_at, place_note: g.place_note, reason: g.reason, segmentId: g.segment_id, label: g.label || null, beforeStopId: before, afterStopId: after });
+  }
+  return out;
+}
+
+const WN5L = freeze({ model, segmentsOf, stopSegments, handoversOf, searchParts, cycleNumbers, capacity, stopRank, hubFromBoard, athensDay, athensTime, CAP, HUB_UNKNOWN, ShapeError });
 if (typeof module !== 'undefined') module.exports = WN5L; else window.WN5L = WN5L;
 })();

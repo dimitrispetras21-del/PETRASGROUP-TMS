@@ -88,7 +88,28 @@
     return f ? { text: f(c), unknown: false } : { text: 'άλλη επίπτωση · ' + String((c && c.kind) || '—'), unknown: true };
   }
 
-  const WN5Lab = Object.freeze({ WARNING, CONSEQUENCE, CATEGORY, warningLine, consequenceLine });
+  // H-19 / R-18 (072b): the eight reasons of a vehicle handover, the CHECK seg_reason_list of 072b. The screen's
+  // ONLY copy of them, drift-tested against the SQL (tests/wn5-labels.test.js). «Βλάβη φορτηγού» here and
+  // «Βλάβη οχήματος» in the Daily (067, OPS_DELAY) are two approved texts for the same code (HPLAN:121): keep both.
+  // group = the two headings of the H2 list (ΑΠΡΟΒΛΕΠΤΟ / ΠΡΟΓΡΑΜΜΑΤΙΣΜΕΝΟ) and «Άλλο», whose note is mandatory
+  // (CHECK seg_other_note).
+  const REASON = Object.freeze({
+    vehicle_breakdown: Object.freeze({ text: 'Βλάβη φορτηγού', group: 'unplanned' }),
+    reefer_breakdown: Object.freeze({ text: 'Βλάβη ψυγείου', group: 'unplanned' }),
+    accident: Object.freeze({ text: 'Ατύχημα', group: 'unplanned' }),
+    driver_hours: Object.freeze({ text: 'Ώρες οδηγού (ταχογράφος)', group: 'unplanned' }),
+    driver_unavailable: Object.freeze({ text: 'Κώλυμα οδηγού (ασθένεια κ.λπ.)', group: 'unplanned' }),
+    planned_driver: Object.freeze({ text: 'Προγραμματισμένη αλλαγή οδηγού', group: 'planned' }),
+    planned_truck: Object.freeze({ text: 'Προγραμματισμένη αλλαγή φορτηγού', group: 'planned' }),
+    other: Object.freeze({ text: 'Άλλο', group: 'other', noteRequired: true }),
+  });
+  // An unknown code is said, never dropped (principle 1); the caller logs it once.
+  function reasonLine(code) {
+    const r = Object.prototype.hasOwnProperty.call(REASON, code) ? REASON[code] : null;
+    return r ? { text: r.text, unknown: false } : { text: 'άλλος λόγος · ' + String(code), unknown: true };
+  }
+
+  const WN5Lab = Object.freeze({ WARNING, CONSEQUENCE, CATEGORY, REASON, warningLine, consequenceLine, reasonLine });
   if (typeof module !== 'undefined' && module.exports) module.exports = WN5Lab;
   else root.WN5Lab = WN5Lab;
 })(typeof window !== 'undefined' ? window : this);

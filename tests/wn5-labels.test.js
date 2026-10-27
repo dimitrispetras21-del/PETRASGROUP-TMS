@@ -94,3 +94,58 @@ test('F4α-T11: «Ανανέωση ↻» still has messages to follow — PLAN_R
   const A = fs.readFileSync(path.join(ROOT, 'modules', 'wn5_actions.js'), 'utf8');
   assert.ok(/_wantsReread = [^\n]*\/ανανέωσε\/i/.test(A), 'wn5_actions no longer reads «ανανέωσε» from the message');
 });
+
+// ── F4α-T24 (072b): the reasons of a vehicle handover (H-19, R-18) ───────────────────────────────────────────
+// The SQL of 072b is the one list (CHECK seg_reason_list); WN5Lab.REASON is the screen's only copy, pinned here.
+const WN5Lab = L;
+const SQL_072B = ['worker/migrations/072b_plan_vehicle_segments.sql', 'worker/migrations/drafts/072b_plan_vehicle_segments.sql']
+  .map((f) => path.join(ROOT, f)).find((f) => fs.existsSync(f));
+
+test('F4α-T24: REASON keys = CHECK seg_reason_list of 072b, 8 codes', (t) => {
+  if (!SQL_072B) { t.todo('072b not in tree: no worker/migrations/[drafts/]072b_plan_vehicle_segments.sql'); return; }
+  const sql = fs.readFileSync(SQL_072B, 'utf8');
+  const m = /CONSTRAINT seg_reason_list CHECK \(reason IS NULL OR reason IN \(([\s\S]*?)\)\)/.exec(sql);
+  assert.ok(m, 'seg_reason_list not found in ' + SQL_072B);
+  const codes = [...m[1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]).sort();
+  assert.strictEqual(codes.length, 8);
+  assert.deepStrictEqual(Object.keys(WN5Lab.REASON).sort(), codes);
+});
+
+test('F4α-T24: «Βλάβη φορτηγού» here and «Βλάβη οχήματος» in 067 (daily_ops OPS_DELAY) both stay — one code, two approved texts', () => {
+  assert.strictEqual(WN5Lab.REASON.vehicle_breakdown.text, 'Βλάβη φορτηγού');
+  const ops = fs.readFileSync(path.join(ROOT, 'modules', 'daily_ops.js'), 'utf8');
+  assert.ok(/code:'vehicle_breakdown',\s*resp:'us',\s*label:'Βλάβη οχήματος'/.test(ops), 'the 067 text changed: never unify them (HPLAN:121)');
+});
+
+test('F4α-T24: «Άλλο» needs its note; every reason has a group of the H2 list', () => {
+  assert.strictEqual(WN5Lab.REASON.other.noteRequired, true);
+  for (const [k, v] of Object.entries(WN5Lab.REASON)) assert.ok(['unplanned', 'planned', 'other'].includes(v.group), k);
+  assert.deepStrictEqual(WN5Lab.reasonLine('nope'), { text: 'άλλος λόγος · nope', unknown: true });
+});
+
+// WCAG 2.x relative luminance / contrast of two hex colours (no dependency).
+function wcag(a, b) {
+  const lum = (h) => { const c = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+  const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p);
+  return (x + 0.05) / (y + 0.05);
+}
+// A token's value as style.css defines it first, following var(--x) to the end.
+function token(css, name, depth = 0) {
+  // a definition (name: #hex | var(--x);), never a mention in a comment
+  const m = new RegExp(name + '\\s*:\\s*(#[0-9a-fA-F]{3,8}|var\\(--[\\w-]+\\))\\s*;').exec(css);
+  if (!m || depth > 8) return null;
+  const v = m[1].trim();
+  const r = /^var\((--[\w-]+)\)$/.exec(v);
+  return r ? token(css, r[1], depth + 1) : v.toLowerCase();
+}
+test('F4α-T24: label text on the own (#EEF2F6) and partner (#DDEFE3) tiles ≥ 4.5:1 for the three segment inks', () => {
+  const css = fs.readFileSync(path.join(ROOT, 'assets', 'style.css'), 'utf8');
+  for (const ink of ['--wn5-seg-initial-ink', '--wn5-seg-intermediate-ink', '--wn5-seg-final-ink']) {
+    const v = token(css, ink);
+    assert.ok(/^#[0-9a-f]{6}$/.test(v || ''), `${ink} = ${v}`);
+    for (const bg of ['--wi4-own', '--wi4-partner']) {
+      const r = wcag(v, token(css, bg));
+      assert.ok(r >= 4.5, `${ink} on ${bg}: ${r.toFixed(2)}:1`);
+    }
+  }
+});

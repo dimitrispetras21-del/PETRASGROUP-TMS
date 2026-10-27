@@ -457,9 +457,10 @@ function _rowHTML(r, m, no) {
     + (r.rtId != null ? `<button type="button" class="wi4-plane" title="Ενέργειες σειράς" aria-haspopup="menu" onclick="WN5.rowMenu(event, ${_id(r.rtId)})">${PLANE}</button>` : '')
     + '</div>'
     + _kathHTML(r, m, ok)
-    + `<div class="wn5-asg">${r.tiles.map((t) => _boxHTML(t)).join('')}</div>`
+    + `<div class="wn5-asg">${r.segSource === 'segments' && r.tiles.length > 1 ? _tilesHTML(r) : r.tiles.map((t) => _boxHTML(t)).join('')}</div>`
     + _anodHTML(r, m, ok)
     + '</div>';
+  h += _handRowHTML(r, ok);
   for (const lm of r.local) h += _localHTML(r, lm, ok);
   if (r.miss) h += _missHTML(r);
   return h;
@@ -477,7 +478,7 @@ function _kathHTML(r, m, ok) {
   const ref = r.kind === 'unassigned' && r.vs && r.refs.length ? `<span class="wn5-dc2">${_esc(r.refs[0])}${r.late ? ' αργό' : ''}</span>` : '';
   return `<div class="wn5-kd">${_chipHTML(r, 'KATHODOS', `wi4-dc ${_chipCls(s.day, m.today)}${hd}`, _dl(s.day))}${toDay}${ref}</div>`
     + `<div class="wn5-fl"${_legAttr(r, 'KATHODOS')}>${_flHTML(s, ok, hd)}</div>`
-    + `<div class="wn5-kto"${_legAttr(r, 'KATHODOS')}>${_ptsHTML(s.to, ok)}</div>`
+    + `<div class="wn5-kto${_hx(r, s, null)}"${_legAttr(r, 'KATHODOS')}>${_hxHTML(r, s, null)}${_ptsHTML(s.to, ok)}</div>`
     + `<div class="wn5-kpal"${_legAttr(r, 'KATHODOS')}>${_palHTML(s)}${_plusHTML(r, 'KATHODOS')}${_prtHTML(r, 'KATHODOS')}</div>`;
 }
 function _anodHTML(r, m, ok) {
@@ -498,10 +499,10 @@ function _anodHTML(r, m, ok) {
   }
   const n = s.from.length;
   const hd = _dc(ok && s.headDim);
-  const end = r.end ? `<span class="wn5-end${_dc(ok && r.end.dim)}"><span class="wi4-l1">Βέροια<span class="wn5-endx"> · τέλος κύκλου</span></span><span class="wi4-l2">ως ${_esc(_dow(L().athensDay(r.end.by)))} ${_esc(L().athensTime(r.end.by))}</span></span>` : '';
+  const end = r.end ? `<span class="wn5-end${_dc(ok && r.end.dim)}"${_segAttr(r.end.segLabel)}><span class="wi4-l1">Βέροια<span class="wn5-endx"> · τέλος κύκλου</span></span><span class="wi4-l2">ως ${_esc(_dow(L().athensDay(r.end.by)))} ${_esc(L().athensTime(r.end.by))}</span></span>` : '';
   return `<div class="wn5-ad">${_prtHTML(r, 'ANODOS')}${_chipHTML(r, 'ANODOS', `wi4-dc ${_chipCls(s.day, m.today)}${hd}`, _dl(s.day))}<span class="wn5-dc2${hd}">${n} ${n === 1 ? 'φορτίο' : 'φορτία'}</span></div>`
     + `<div class="wn5-afl"${_legAttr(r, 'ANODOS')}>${_ptsHTML(s.from, ok)}</div>`
-    + `<div class="wn5-ato"${_legAttr(r, 'ANODOS')}>${_ptsHTML(s.to, ok)}${end}</div>`
+    + `<div class="wn5-ato${_hx(r, s, r.end)}"${_legAttr(r, 'ANODOS')}>${_hxHTML(r, s, r.end)}${_ptsHTML(s.to, ok)}${end}</div>`
     + `<div class="wn5-apal"${_legAttr(r, 'ANODOS')}>${_palHTML(s)}${_plusHTML(r, 'ANODOS')}</div>`;
 }
 // ΦΟΡΤΩΣΗ of ΚΑΘΟΔΟΣ: «Βέροια» and its window stay together (owner 25/10); a loading the cycle makes BEFORE Veroia
@@ -510,7 +511,7 @@ function _anodHTML(r, m, ok) {
 // This narrow cell names the place only, as Figma does: the clients of the side are in ΠΑΡΑΔΟΣΗ.
 function _flHTML(s, ok, hd) {
   if (!s.veroia) return _ptsHTML(s.from, ok, null, true);
-  const vh = `<span class="wn5-vh${hd}">Βέροια</span><span class="wn5-vtime${hd}">${_win(s.veroia.from, s.veroia.to)}</span>`;
+  const vh = `<span class="wn5-vh${hd}">Βέροια</span><span class="wn5-vtime${hd}"${_segAttr(s.veroia.segLabel)}>${_win(s.veroia.from, s.veroia.to)}</span>`;
   const k = Math.min(s.vBefore || 0, s.from.length);
   return _ptsHTML(s.from.slice(0, k), ok, 1, true) + vh + _ptsHTML(s.from.slice(k), ok, k + 2, true);
 }
@@ -544,7 +545,7 @@ function _ptName(p) { const who = _ptWho(p); return who ? `${who} · ${p.name}` 
 // Each point with its own day: a delivery of Tuesday stays bold until Tuesday ends, even if its hour passed.
 function _ptHTML(p, n, ok, placeOnly) {
   const who = placeOnly ? null : _ptWho(p);
-  return `<span class="wi4-pt wn5-pt${p.late ? ' wn5-late' : ''}${_dc(ok && p.dim && !p.late)}" data-stop="${_id(p.stopId)}">`
+  return `<span class="wi4-pt wn5-pt${p.late ? ' wn5-late' : ''}${_dc(ok && p.dim && !p.late)}" data-stop="${_id(p.stopId)}"${_segAttr(p.segLabel)}>`
     + (n == null ? '' : `<span class="wi4-pt-n">${n}</span>`)
     + `<span class="wi4-l1">${who ? `<span class="wn5-who">${_esc(who)}<span class="wn5-city">&nbsp;·</span></span> <span class="wn5-city">${_esc(p.name)}</span>` : _esc(p.name)}</span>`
     + `<span class="wi4-l2${p.late ? ' wi4-t-amb' : ''}">${_win(p.from, p.to)} · ${_esc(_pal(p.pallets))}</span></span>`;
@@ -588,6 +589,55 @@ function _prtHTML(r, side) {
 }
 function _palHTML(s) {
   return `<span class="wi4-pal${s.over ? ' over' : ''}"${s.over ? ` title="υπέρβαση ${_esc(_pal(s.over))}"` : ''}>${_esc(String(s.pallets).replace('.', ','))}</span>`;
+}
+// 072b tiles (Figma H1 2120:7738, H3 2123:7735, Ε5 2140:7810): one tile per segment, side by side, no «/». The
+// ΑΡΧΙΚΟ keeps a straight 3px line at the column's edge; every next tile has a slanted left side in its colour (CSS).
+// The words are WN5L's tiles (one source with the model, T4 _tile: plate + driver, or partner + rate / «κόμιστρο
+// λείπει», Ε-13 / decision 41). No time, no trailer, no «κύκλος n/m» on a tile — the ↳ row, the card and the sheet
+// say those. A click on a tile opens the cycle card (H6, T25); until that file exists the click does nothing.
+const SEG_GR = Object.freeze({ initial: 'ΑΡΧΙΚΟ', intermediate: 'ΕΝΔΙΑΜΕΣΟ', final: 'ΤΕΛΙΚΟ' });
+const SEG_LABELS = Object.keys(SEG_GR);
+const _segAttr = (l) => (SEG_LABELS.includes(l) ? ` data-seg-label="${l}"` : '');
+function _tilesHTML(r) {
+  const tile = (t) => {
+    const lab = SEG_LABELS.includes(t.label) ? t.label : '';
+    const gr = SEG_GR[lab] || '';
+    return `<button type="button" class="wn5-tile ${t.type}" data-seg="${_id(t.segmentId)}" data-label="${lab}" title="${_esc([gr, t.line1, t.line2].filter(Boolean).join(' · '))}"`
+      + ` onclick="event.stopPropagation();if(window.WN5Hand)WN5Hand.cycleCard(${_id(r.rtId)})"><span class="wn5-tl-bg" aria-hidden="true"></span>`
+      + `<span class="wn5-tl-1"><span class="wn5-tl-l">${gr}</span><span class="wn5-tl-p">${_esc(t.line1)}</span></span>`
+      + `<span class="wn5-tl-d${t.missing ? ' wn5-missing' : ''}">${_esc(t.line2)}</span></button>`;
+  };
+  return `<div class="wn5-tiles n${r.tiles.length}">${r.tiles.map(tile).join('')}</div>`;
+}
+// A reason the map does not know is said («άλλος λόγος · <code>») and logged (principle 1), never a silent blank.
+function _segReason(code) {
+  const lr = WN5Lab.reasonLine(code);
+  if (lr.unknown) _logErr(new Error('wn5: unknown handover reason ' + code), 'WN5 tiles');
+  return lr.text;
+}
+// ⇄ in place of the → of the side where the next segment starts (Figma 2138:7745): one per side, even for two changes
+// (H3 2139:7735). Only on a side whose arrow is drawn (its ΠΑΡΑΔΟΣΗ / ΠΡΟΣ cell has something).
+function _hxOn(r, s, end) {
+  if (!r.handovers || !r.handovers.length || !s) return false;
+  if (!s.to.length && !end) return false;
+  const ids = [...s.from, ...s.to].map((p) => p.stopId).concat(s.veroia ? [s.veroia.stopId] : [], end ? [end.stopId] : []);
+  return r.handovers.some((x) => ids.includes(x.afterStopId));
+}
+const _hx = (r, s, end) => (_hxOn(r, s, end) ? ' wn5-hx' : '');
+function _hxHTML(r, s, end) {
+  if (!_hxOn(r, s, end)) return '';
+  return `<span class="wn5-hand-x" title="Αλλαγή οχήματος" onclick="event.stopPropagation();if(window.WN5Hand)WN5Hand.cycleCard(${_id(r.rtId)})">⇄</span>`;
+}
+// ↳ «⇄ <point> · <day time> · <reason>» under the cycle (Figma H1 2138:7747; two changes = two entries by time, H3
+// 2139:7737). The point is the dispatcher's own place_note, the time the segment's start: both the base's.
+function _handRowHTML(r, ok) {
+  if (!r.handovers || !r.handovers.length) return '';
+  const items = r.handovers.slice().sort((a, b) => Date.parse(a.at) - Date.parse(b.at)).map((x) => {
+    const when = x.at ? `${_dow(L().athensDay(x.at))} ${L().athensTime(x.at)}` : '—';
+    return `<span class="wn5-hand-i">⇄ ${_esc(x.place_note || '—')} · ${_esc(when)}</span><span class="wn5-hand-s">·</span><span class="wn5-hand-i">${_esc(_segReason(x.reason))}</span>`;
+  }).join('<span class="wn5-hand-gap"></span>');
+  return `<div class="wn5-sub wn5-hand${_dc(ok && r.rowDim)}" data-qi="${_esc(r.key)}" data-key="hand:${_id(r.rtId)}" data-rt="${_id(r.rtId)}">`
+    + `<span class="wn5-c-idx"><span class="wn5-hand-ar">↳</span></span><span class="wn5-hand-sp"></span>${items}</div>`;
 }
 function _boxHTML(t) {
   // «ΠΡΟΣ ΑΝΑΘΕΣΗ» opens the assignment window (wired by the actions file, Task T12).

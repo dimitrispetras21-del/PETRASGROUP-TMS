@@ -9748,6 +9748,90 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-ad > .wn5-prt { left:-14px; }
 .wn5-row:hover .wn5-prt, .wn5-prt:focus-visible { opacity:1; }
 .wn5-prt:hover { color:var(--wi4-ink); }
+/* 072b segment tiles (Figma H1 2120:7738, H3 2123:7735, Ε5 2140:7810; colours 2140:7735). The line / slanted side keeps
+   the approved hex; the label text is the dark ink (Ε-14), measured ≥ 4.5:1 on own and partner tiles (node test). */
+:root {
+  --wn5-seg-initial:          #64748b;
+  --wn5-seg-intermediate:     #d97706;
+  --wn5-seg-final:            var(--accent);
+  --wn5-seg-initial-ink:      var(--text-mid);
+  --wn5-seg-intermediate-ink: var(--warn);
+  --wn5-seg-final-ink:        var(--accent-text);
+}
+/* Two segments: 135 + 135 with a 4px overlap = the 266px column, 28px high, the row stays 36 (H1 2120:8904); the slant
+   is 8px over 28 (16°). Three (or more): 93 / 99 / 92 with 9px overlaps, 44px high (row 48), slant 13px over 44 (H3
+   2123:7847). The overlap is the slant less the 4px gap measured along the cut. */
+.wn5-tiles { display:flex; align-items:center; width:266px; min-width:0; }
+.wn5-tile { --s:8px; position:relative; flex:1 1 0; min-width:0; height:28px; display:flex; flex-direction:column; justify-content:center;
+  padding:0 4px 0 15px; box-sizing:border-box; border:0; background:none; text-align:left; cursor:pointer; overflow:hidden; isolation:isolate;
+  font-family:'DM Sans',sans-serif; clip-path:polygon(var(--s) 0, 100% 0, 100% 100%, 0 100%); }
+.wn5-tiles.n2 .wn5-tile { flex:none; width:135px; }
+.wn5-tiles.n2 .wn5-tile + .wn5-tile { margin-left:-4px; }
+.wn5-tiles:not(.n2) .wn5-tile { --s:13px; height:44px; padding:0 3px 0 20px; }
+.wn5-tiles:not(.n2) .wn5-tile + .wn5-tile { margin-left:-9px; }
+.wn5-tiles.n3 .wn5-tile { flex:none; }
+.wn5-tiles:not(.n2) .wn5-tile[data-label="initial"] { padding-left:9px; }
+.wn5-tiles.n3 .wn5-tile[data-label="initial"] { width:93px; }
+.wn5-tiles.n3 .wn5-tile[data-label="intermediate"] { width:99px; }
+.wn5-tiles.n3 .wn5-tile[data-label="final"] { width:92px; padding-left:21px; }
+/* The body: own #EEF2F6, partner #DDEFE3 with its 1px #BFDCC9 stroke following the cut (a 1px inset layer, since a CSS
+   border is cut away by the clip), unassigned the red fill. ΑΡΧΙΚΟ: straight left, slanted right, its body 5px in
+   (3px line + 2px). ΕΝΔΙΑΜΕΣΟ: slanted both sides. ΤΕΛΙΚΟ: slanted left, radius 5 right. */
+.wn5-tl-bg { position:absolute; inset:0; z-index:-2; background:var(--wi4-own); }
+.wn5-tile.par .wn5-tl-bg { background:var(--wi4-partner-line); }
+/* the inset layer's cut sits 1px in from the tile's, measured across the 16° slant (≈ ±0.3px on a 28/44px box) */
+.wn5-tile.par .wn5-tl-bg::after { content:''; position:absolute; inset:1px; background:var(--wi4-partner); }
+.wn5-tile.un .wn5-tl-bg { background:var(--wi4-red-bg); }
+.wn5-tile[data-label="initial"] { padding-left:9px; padding-right:var(--s); clip-path:polygon(0 0, 100% 0, calc(100% - var(--s)) 100%, 0 100%); }
+.wn5-tile[data-label="initial"] .wn5-tl-bg { left:5px; }
+.wn5-tile[data-label="initial"].par .wn5-tl-bg::after { clip-path:polygon(0 0, calc(100% - .3px) 0, calc(100% - var(--s) + .3px) 100%, 0 100%); }
+.wn5-tile[data-label="intermediate"] { padding-right:var(--s); clip-path:polygon(var(--s) 0, 100% 0, calc(100% - var(--s)) 100%, 0 100%); }
+.wn5-tile[data-label="intermediate"].par .wn5-tl-bg::after { clip-path:polygon(calc(var(--s) - .3px) 0, calc(100% - .3px) 0, calc(100% - var(--s) + .3px) 100%, .3px 100%); }
+.wn5-tile[data-label="final"] .wn5-tl-bg { border-radius:0 5px 5px 0; }
+.wn5-tile[data-label="final"].par .wn5-tl-bg::after { border-radius:0 4px 4px 0; clip-path:polygon(calc(var(--s) - .3px) 0, 100% 0, 100% 100%, .3px 100%); }
+/* The coloured edge: a 3px line at the column's own edge for ΑΡΧΙΚΟ (inside the 266, Figma 2120:8906), a 3px-wide
+   parallelogram along the cut for the next ones (8,0 11,0 3,28 0,28 · 13,0 16,0 3,44 0,44). */
+.wn5-tile[data-label]::before { content:''; position:absolute; top:0; bottom:0; left:0; z-index:-1; }
+.wn5-tile[data-label=""]::before { content:none; }
+.wn5-tile[data-label="initial"]::before { width:3px; background:var(--wn5-seg-initial); }
+.wn5-tile:is([data-label="intermediate"], [data-label="final"])::before { width:calc(var(--s) + 3px); clip-path:polygon(var(--s) 0, calc(var(--s) + 3px) 0, 3px 100%, 0 100%); }
+.wn5-tile[data-label="intermediate"]::before { background:var(--wn5-seg-intermediate); }
+.wn5-tile[data-label="final"]::before { background:var(--wn5-seg-final); }
+/* Two segments: label + plate on one baseline (gap 4), the driver / rate under it. Three: three stacked lines. */
+.wn5-tl-1 { display:flex; align-items:baseline; gap:4px; min-width:0; }
+.wn5-tiles:not(.n2) .wn5-tl-1 { flex-direction:column; align-items:flex-start; gap:0; }
+.wn5-tl-l { flex:none; font-size:10px; line-height:13px; font-weight:700; letter-spacing:.3px; white-space:nowrap; }
+.wn5-tile[data-label="initial"] .wn5-tl-l { color:var(--wn5-seg-initial-ink); }
+.wn5-tile[data-label="intermediate"] .wn5-tl-l { color:var(--wn5-seg-intermediate-ink); }
+.wn5-tile[data-label="final"] .wn5-tl-l { color:var(--wn5-seg-final-ink); }
+.wn5-tl-p { min-width:0; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:500 12px/15px 'DM Mono',ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--wi4-ink); }
+.wn5-tile.par .wn5-tl-p { font:600 12px/15px 'DM Sans',sans-serif; color:var(--wi4-partner-ink); }
+.wn5-tile.un .wn5-tl-p { font:600 12px/15px 'DM Sans',sans-serif; color:var(--wi4-red-ink); }
+.wn5-tl-d { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; line-height:13px; font-weight:400; color:var(--wi4-grey-2); }
+.wn5-tile.par .wn5-tl-d { color:var(--wi4-partner-sub); }
+.wn5-tile .wn5-tl-d.wn5-missing { color:var(--wi4-amber-ink); }
+.wn5-tiles:not(.n2) .wn5-tl-p { line-height:16px; }
+.wn5-tiles:not(.n2) .wn5-tl-d { line-height:14px; }
+/* Segment line under each stop, the Veroia window and the cycle end (Figma 2120:8900 / 8921): 24×2, 3px below, only
+   from stop_ids (H-9). */
+.wn5 :is(.wn5-pt, .wn5-vtime, .wn5-end)[data-seg-label]::after { content:''; display:block; grid-column:1 / -1; width:24px; height:2px; margin-top:3px;
+  border-radius:1px; background:var(--wn5-seg-initial); }
+.wn5 :is(.wn5-pt, .wn5-vtime, .wn5-end)[data-seg-label="intermediate"]::after { background:var(--wn5-seg-intermediate); }
+.wn5 :is(.wn5-pt, .wn5-vtime, .wn5-end)[data-seg-label="final"]::after { background:var(--wn5-seg-final); }
+/* ⇄ in place of the → (Figma 2138:7745): a 16×16 box, SemiBold 11 ink, centred where the arrow was (6 + 16 + 7 = the
+   arrow's 29px, nothing after it moves). */
+.wn5-row > .wn5-hx::before { content:none; }
+.wn5-hand-x { position:absolute; left:-8px; top:50%; transform:translateY(-50%); width:16px; height:16px; display:grid; place-items:center;
+  border-radius:3px; font-size:11px; font-weight:600; line-height:1; color:var(--wi4-ink); cursor:pointer; }
+/* ↳ row (Figma 2138:7747 / 2139:7737): 28px, the 64px chip with «↳» Regular 12 grey-2, texts from x 86 (64 + 5 + 12
+   + 5) SemiBold 10.5 grey-1 with a Regular «·», 5px apart; 28px between two entries (5 + 18 + 5). */
+.wn5 .wn5-sub.wn5-hand { display:flex; align-items:center; gap:5px; }
+.wn5 .wn5-hand > .wn5-c-idx { flex:none; width:64px; box-sizing:border-box; padding:0 8px 0 12px; font-size:12px; font-weight:400; color:var(--wi4-grey-2); }
+.wn5 .wn5-hand > span:not(.wn5-c-idx) { padding:0; flex:none; white-space:nowrap; font-size:10.5px; color:var(--wi4-grey-1); }
+.wn5 .wn5-hand > .wn5-hand-sp { width:12px; }
+.wn5 .wn5-hand > .wn5-hand-i { font-weight:600; }
+.wn5 .wn5-hand > .wn5-hand-s { font-weight:400; }
+.wn5 .wn5-hand > .wn5-hand-gap { width:18px; }
 /* the ✈ submenu shell of Figma 2011:9184 (200 × 104): padding 6 0, the popover shadow, 1px clear of the menu's edge;
    «›» 11px grey-3; the open line and the hovered item in Medium. The print submenu sits with its 2nd item on its line. */
 .wn5-menu .wn5-m-sub { left:calc(100% + 2px); padding:6px 0; box-shadow:var(--wn5-pop-shadow); }
