@@ -60,3 +60,21 @@ jobs:
       # no npm install: both files use node:test and the source as it is.
       - name: Run the /plan/* no-resend pins
         run: node --test tests/api-plan-no-resend.test.mjs worker/test/plan-routes.test.mjs
+
+  f5-tests:
+    name: National v5 F5 tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # The F5 (day L) tests of the front end, one line per file as each stream's
+      # PR lands; stream (e) of the F5 plan owns this list (plan §10). Why here:
+      # the review of PR #117 found tests/plan-config.test.mjs ran on no machine
+      # but the author's, so a later change to core/plan-config.js could read a
+      # failed GET /plan/config as 'before' again without a red check. Node only,
+      # no npm install, like plan-no-resend above.
+      - name: Run the F5 tests
+        run: node --test tests/plan-config.test.mjs
