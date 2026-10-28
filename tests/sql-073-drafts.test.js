@@ -25,9 +25,9 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..');
-const DIR = path.join(ROOT, 'worker/migrations/drafts');   // the builders and 073b (not executed)
-// 073 executed 26/10: its files left drafts/ (CLAUDE.md rule 5); 073b's stay until the owner runs it
-const file = (f) => path.join(/^073_/.test(f) ? path.join(ROOT, 'worker/migrations') : DIR, f);
+const DIR = path.join(ROOT, 'worker/migrations/drafts');   // the builders
+// 073 executed 26/10 and 073b 28/10: their files left drafts/ (CLAUDE.md rule 5)
+const file = (f) => path.join(/^073b?_/.test(f) ? path.join(ROOT, 'worker/migrations') : DIR, f);
 const read = (f) => fs.readFileSync(file(f), 'utf8');
 const strip = (s) => s.replace(/--[^\n]*/g, '');
 const DO_FILES = ['073_plan_money.sql', '073_plan_money_dryrun.sql', '073_plan_money_test.sql', '073_plan_money_rollback.sql'];
