@@ -22,3 +22,6 @@ BEGIN
     (SELECT pg_get_constraintdef(c.oid) FROM pg_constraint c WHERE c.conrelid = 'public.audit_log'::regclass AND c.conname = 'audit_log_action_check');
 END
 $r$;
+-- the SET above lasts for the whole editor tab, so it is reset here; after an ERROR (the dry run always ends in
+-- one) the editor stops before this line: run RESET statement_timeout; by hand or close the tab.
+RESET statement_timeout;

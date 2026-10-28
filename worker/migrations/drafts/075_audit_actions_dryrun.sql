@@ -52,3 +52,6 @@ BEGIN
   RAISE EXCEPTION 'DRY RUN 075 finished - EVERYTHING UNDONE, nothing kept';
 END
 $m$;
+-- the SET above lasts for the whole editor tab, so it is reset here; after an ERROR (the dry run always ends in
+-- one) the editor stops before this line: run RESET statement_timeout; by hand or close the tab.
+RESET statement_timeout;

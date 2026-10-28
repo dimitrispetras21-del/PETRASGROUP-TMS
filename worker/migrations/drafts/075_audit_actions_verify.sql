@@ -14,3 +14,5 @@ FROM public.app_errors WHERE page = 'worker:audit' AND created_at >= now() - int
 GROUP BY 1 ORDER BY 1;
 -- 4. no proof row left (EXPECTED 0)
 SELECT count(*) AS proof_rows FROM public.audit_log WHERE actor = '075-proof';
+-- the SET above lasts for the whole editor tab, so it is reset here; after an ERROR the editor stops before this line: run RESET statement_timeout; by hand or close the tab.
+RESET statement_timeout;

@@ -60,3 +60,6 @@ BEGIN
   RAISE NOTICE '075 OK | rows % | accepted % of 8 | unknown refused | %', v_rows, v_ok, v_def;
 END
 $m$;
+-- the SET above lasts for the whole editor tab, so it is reset here; after an ERROR (the dry run always ends in
+-- one) the editor stops before this line: run RESET statement_timeout; by hand or close the tab.
+RESET statement_timeout;
