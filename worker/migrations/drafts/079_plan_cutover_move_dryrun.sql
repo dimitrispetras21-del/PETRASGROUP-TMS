@@ -7,11 +7,12 @@
 -- WHEN: after 15:00, with the owner's yes, BEFORE 079_plan_cutover_move.sql. Same 5 s lock timeout.
 -- EXPECTED (the red ERROR is deliberate): a NOTICE "079 OK: ..." and then
 --   ERROR: P0001: DRY RUN 079 finished - EVERYTHING UNDONE, nothing kept. The block ran to its end  ||  079 ran:
---   cutover 2026-10-24, bridges <n> on <m> VS (by hub day <MM-DD:k ...>), NL unlinked <u>, NL to re-record <k> [<ids>],
---   via_hub <v>, legs <unchanged>, triggers <B-54>, B-54 <B-54>
---   Measured 28/10 16:10 (SELECT): bridges 19 on 9 VS (10-25:2 10-26:3 10-28:2 10-30:2), NL unlinked 8, NL to
---   re-record 2, via_hub 26 (7 + 19), legs 5, triggers 56. Other numbers = the week changed since: compare, then
---   decide. An ERROR from one of 079's guards or proofs: do NOT run 079, copy the message to the coordinator.
+--   cutover 2026-10-24, bridges <n> on <m> VS (by hub day <MM-DD:k ...>), NL unlinked <u> (their stops <s>, ramp
+--   lines <r>, local moves <l> off with them), NL to re-record <k> [<ids>], via_hub <v>, legs <unchanged>,
+--   triggers <B-54>, B-54 <B-54>
+--   Measured 28/10 16:10 (SELECT): bridges 19 on 9 VS (10-25:2 10-26:3 10-28:2 10-30:2), NL unlinked 8 (stops 21,
+--   ramp lines 4, local moves 0), NL to re-record 2 [136,159], via_hub 26 (7 + 19), legs 5, triggers 56. Other numbers
+--   = the week changed since: compare, then decide. An ERROR from one of 079's guards or proofs: do NOT run 079, copy the message to the coordinator.
 
 DO $dry$
 DECLARE
@@ -24,7 +25,7 @@ DECLARE
   c_new CONSTANT date := DATE '2026-10-24';
   v_today date; v_trg0 int; v_trg1 int; v_k int; v_g record; x record;
   v_legs0 bigint; v_stops0 bigint; v_via0 bigint; v_via1 bigint; v_vs int := 0; v_had_nl int := 0;
-  v_sh int; v_nl int; v_nlveh text; v_days text;
+  v_sh int; v_nl int; v_nlveh text; v_days text; v_opened timestamptz; v_nls bigint[]; v_cas_stops int; v_cas_ramp int; v_cas_lm int;
 BEGIN
   PERFORM set_config('lock_timeout', '5s', true);
   v_today := (now() AT TIME ZONE 'Europe/Athens')::date;
@@ -106,6 +107,14 @@ BEGIN
   SELECT count(*) INTO v_legs0 FROM public.piece_legs;
   SELECT count(*) INTO v_stops0 FROM public.rt_stops;
   SELECT count(*) INTO v_via0 FROM public.order_stops WHERE via_hub;
+  SELECT opened_at INTO v_opened FROM public.plan_config WHERE id = 1;
+  -- what the soft delete of the week's NL will take with it (principle 1: declared, never silent)
+  SELECT coalesce(array_agg(nl.id ORDER BY nl.id), '{}') INTO v_nls FROM public.national_loads nl JOIN public.orders o ON o.id = nl.source_order_id
+   WHERE o.veroia_switch AND o.deleted_at IS NULL AND o.status IS DISTINCT FROM 'Cancelled'
+     AND o.cross_dock_date >= c_new AND o.cross_dock_date < c_old AND nl.source_type = 'Direct' AND nl.deleted_at IS NULL;
+  SELECT count(*) INTO v_cas_stops FROM public.order_stops WHERE national_load_id = ANY (v_nls) AND deleted_at IS NULL;
+  SELECT count(*) INTO v_cas_ramp FROM public.ramp WHERE national_load_id = ANY (v_nls) AND deleted_at IS NULL;
+  SELECT count(*) INTO v_cas_lm FROM public.local_moves WHERE parent_nat_load_id = ANY (v_nls) AND deleted_at IS NULL;
 
   -- ===== PART 1: DAY L =====
   ALTER TABLE public.plan_config DROP CONSTRAINT plan_config_future;
@@ -164,6 +173,13 @@ BEGIN
     RAISE EXCEPTION '079 proof: bridges %, via_hub % -> % - expected one piece and one via_hub more per bridge', v_sh, v_via0, v_via1;
   END IF;
   IF v_nl <> v_had_nl THEN RAISE EXCEPTION '079 proof: % NL unlinked for % VS of the week that had one', v_nl, v_had_nl; END IF;
+  -- the NL unlinked are exactly the week's (Cancelled aside), and what their soft delete cascaded is gone with them
+  IF (SELECT coalesce(array_agg(row_id ORDER BY row_id), '{}') FROM public.plan_cutover_log WHERE kind = 'nl_unlinked' AND reason = '079 backfill') <> v_nls
+     OR EXISTS (SELECT 1 FROM public.order_stops WHERE national_load_id = ANY (v_nls) AND deleted_at IS NULL)
+     OR EXISTS (SELECT 1 FROM public.ramp WHERE national_load_id = ANY (v_nls) AND deleted_at IS NULL)
+     OR EXISTS (SELECT 1 FROM public.local_moves WHERE parent_nat_load_id = ANY (v_nls) AND deleted_at IS NULL) THEN
+    RAISE EXCEPTION '079 proof: the NL unlinked are not the week''s %, or a stop / ramp line / local move of theirs is still live', v_nls;
+  END IF;
   -- B-78's rule: no order lives in both models
   IF EXISTS (SELECT 1 FROM public.orders o WHERE o.deleted_at IS NULL
               AND EXISTS (SELECT 1 FROM public.shipments s WHERE s.order_id = o.id AND s.deleted_at IS NULL)
@@ -180,7 +196,7 @@ BEGIN
   END IF;
   IF (SELECT cutover_day FROM public.plan_config WHERE id = 1) <> c_new OR plan_cutover_day() <> c_new
      OR (plan_config_read()->>'cutover_day')::date <> c_new
-     OR (SELECT opened_at FROM public.plan_config WHERE id = 1) >= now() THEN
+     OR (SELECT opened_at FROM public.plan_config WHERE id = 1) IS DISTINCT FROM v_opened THEN
     RAISE EXCEPTION '079 proof: day L does not read % everywhere, or opened_at changed', c_new;
   END IF;
   SELECT count(*) INTO v_trg1 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
@@ -188,12 +204,12 @@ BEGIN
   IF v_trg1 <> v_trg0 OR NOT EXISTS (SELECT 1 FROM monitoring.checks WHERE id = 'B-54' AND red_value = v_trg1) THEN
     RAISE EXCEPTION '079 proof: triggers % -> % (expected unchanged), or B-54 no longer matches', v_trg0, v_trg1;
   END IF;
-  RAISE NOTICE '079 OK: cutover % -> %, bridges % on % VS (by hub day %), NL unlinked %, NL to re-record % [%], via_hub % -> %, legs % (unchanged), triggers % (unchanged), B-54 %',
-    c_old, c_new, v_sh, v_vs, v_days, v_nl, CASE WHEN v_nlveh = '-' THEN 0 ELSE cardinality(string_to_array(v_nlveh, ',')) END, v_nlveh,
-    v_via0, v_via1, v_legs0, v_trg1, v_trg1;
+  RAISE NOTICE '079 OK: cutover % -> %, bridges % on % VS (by hub day %), NL unlinked % (with their own stops %, ramp lines %, local moves %), NL to re-record % [%], via_hub % -> %, legs % (unchanged), triggers % (unchanged), B-54 %',
+    c_old, c_new, v_sh, v_vs, v_days, v_nl, v_cas_stops, v_cas_ramp, v_cas_lm,
+    CASE WHEN v_nlveh = '-' THEN 0 ELSE cardinality(string_to_array(v_nlveh, ',')) END, v_nlveh, v_via0, v_via1, v_legs0, v_trg1, v_trg1;
 END;
   -- ===== what it did =====
-  res := format('079 ran: cutover %s, bridges %s on %s VS (by hub day %s), NL unlinked %s, NL to re-record %s [%s], via_hub %s, legs %s, triggers %s, B-54 %s',
+  res := format('079 ran: cutover %s, bridges %s on %s VS (by hub day %s), NL unlinked %s (their stops %s, ramp lines %s, local moves %s off with them), NL to re-record %s [%s], via_hub %s, legs %s, triggers %s, B-54 %s',
     public.plan_cutover_day(),
     (SELECT count(*) FROM public.shipments WHERE created_by = '079 backfill' AND deleted_at IS NULL),
     (SELECT count(DISTINCT order_id) FROM public.shipments WHERE created_by = '079 backfill' AND deleted_at IS NULL),
@@ -201,6 +217,10 @@ END;
        count(DISTINCT o.id) AS n FROM public.orders o WHERE EXISTS (SELECT 1 FROM public.shipments s WHERE s.order_id = o.id
        AND s.created_by = '079 backfill' AND s.deleted_at IS NULL) GROUP BY 1) q),
     (SELECT count(*) FROM public.plan_cutover_log WHERE kind = 'nl_unlinked' AND reason = '079 backfill'),
+    (SELECT count(*) FROM public.order_stops x JOIN public.plan_cutover_log l ON l.row_id = x.national_load_id
+       WHERE l.kind = 'nl_unlinked' AND l.reason = '079 backfill' AND x.deleted_at = l.at), (SELECT count(*) FROM public.ramp x JOIN public.plan_cutover_log l ON l.row_id = x.national_load_id
+       WHERE l.kind = 'nl_unlinked' AND l.reason = '079 backfill' AND x.deleted_at = l.at), (SELECT count(*) FROM public.local_moves x JOIN public.plan_cutover_log l ON l.row_id = x.parent_nat_load_id
+       WHERE l.kind = 'nl_unlinked' AND l.reason = '079 backfill' AND x.deleted_at = l.at),
     (SELECT count(*) FROM public.plan_cutover_log WHERE kind = 'nl_unlinked' AND reason = '079 backfill' AND before_data->>'status' IS DISTINCT FROM 'Cancelled'
        AND (before_data->>'truck_id' IS NOT NULL OR before_data->>'partner_id' IS NOT NULL
        OR before_data->>'status' IS DISTINCT FROM 'Pending')),

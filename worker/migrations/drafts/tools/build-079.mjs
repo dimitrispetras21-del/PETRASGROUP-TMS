@@ -19,6 +19,9 @@ const TRIGGERS = `(SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid = 
 const VEH = `kind = 'nl_unlinked' AND reason = '079 backfill' AND before_data->>'status' IS DISTINCT FROM 'Cancelled'
        AND (before_data->>'truck_id' IS NOT NULL OR before_data->>'partner_id' IS NOT NULL
        OR before_data->>'status' IS DISTINCT FROM 'Pending')`;
+// the rows the soft delete of an unlinked NL cascaded (national_loads_soft_delete_cascade: the same deleted_at)
+const CASCADE = (t, col) => `(SELECT count(*) FROM public.${t} x JOIN public.plan_cutover_log l ON l.row_id = x.${col}
+       WHERE l.kind = 'nl_unlinked' AND l.reason = '079 backfill' AND x.deleted_at = l.at)`;
 export const PAIRS = [
   {
     source: '079_plan_cutover_move.sql', target: '079_plan_cutover_move_dryrun.sql', name: 'DRY RUN 079',
@@ -31,12 +34,13 @@ export const PAIRS = [
 -- WHEN: after 15:00, with the owner's yes, BEFORE 079_plan_cutover_move.sql. Same 5 s lock timeout.
 -- EXPECTED (the red ERROR is deliberate): a NOTICE "079 OK: ..." and then
 --   ERROR: P0001: DRY RUN 079 finished - EVERYTHING UNDONE, nothing kept. The block ran to its end  ||  079 ran:
---   cutover 2026-10-24, bridges <n> on <m> VS (by hub day <MM-DD:k ...>), NL unlinked <u>, NL to re-record <k> [<ids>],
---   via_hub <v>, legs <unchanged>, triggers <B-54>, B-54 <B-54>
---   Measured 28/10 16:10 (SELECT): bridges 19 on 9 VS (10-25:2 10-26:3 10-28:2 10-30:2), NL unlinked 8, NL to
---   re-record 2, via_hub 26 (7 + 19), legs 5, triggers 56. Other numbers = the week changed since: compare, then
---   decide. An ERROR from one of 079's guards or proofs: do NOT run 079, copy the message to the coordinator.`,
-    epilogue: `  res := format('079 ran: cutover %s, bridges %s on %s VS (by hub day %s), NL unlinked %s, NL to re-record %s [%s], via_hub %s, legs %s, triggers %s, B-54 %s',
+--   cutover 2026-10-24, bridges <n> on <m> VS (by hub day <MM-DD:k ...>), NL unlinked <u> (their stops <s>, ramp
+--   lines <r>, local moves <l> off with them), NL to re-record <k> [<ids>], via_hub <v>, legs <unchanged>,
+--   triggers <B-54>, B-54 <B-54>
+--   Measured 28/10 16:10 (SELECT): bridges 19 on 9 VS (10-25:2 10-26:3 10-28:2 10-30:2), NL unlinked 8 (stops 21,
+--   ramp lines 4, local moves 0), NL to re-record 2 [136,159], via_hub 26 (7 + 19), legs 5, triggers 56. Other numbers
+--   = the week changed since: compare, then decide. An ERROR from one of 079's guards or proofs: do NOT run 079, copy the message to the coordinator.`,
+    epilogue: `  res := format('079 ran: cutover %s, bridges %s on %s VS (by hub day %s), NL unlinked %s (their stops %s, ramp lines %s, local moves %s off with them), NL to re-record %s [%s], via_hub %s, legs %s, triggers %s, B-54 %s',
     public.plan_cutover_day(),
     (SELECT count(*) FROM public.shipments WHERE created_by = '079 backfill' AND deleted_at IS NULL),
     (SELECT count(DISTINCT order_id) FROM public.shipments WHERE created_by = '079 backfill' AND deleted_at IS NULL),
@@ -44,6 +48,7 @@ export const PAIRS = [
        count(DISTINCT o.id) AS n FROM public.orders o WHERE EXISTS (SELECT 1 FROM public.shipments s WHERE s.order_id = o.id
        AND s.created_by = '079 backfill' AND s.deleted_at IS NULL) GROUP BY 1) q),
     (SELECT count(*) FROM public.plan_cutover_log WHERE kind = 'nl_unlinked' AND reason = '079 backfill'),
+    ${CASCADE('order_stops', 'national_load_id')}, ${CASCADE('ramp', 'national_load_id')}, ${CASCADE('local_moves', 'parent_nat_load_id')},
     (SELECT count(*) FROM public.plan_cutover_log WHERE ${VEH}),
     (SELECT coalesce(string_agg(row_id::text, ',' ORDER BY row_id), '-') FROM public.plan_cutover_log WHERE ${VEH}),
     (SELECT count(*) FROM public.order_stops WHERE via_hub), (SELECT count(*) FROM public.piece_legs),

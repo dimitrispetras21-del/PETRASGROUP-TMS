@@ -67,7 +67,7 @@ BEGIN
     UPDATE public.shipments SET deleted_at = coalesce(deleted_at, now()), deleted_reason = '074 rollback',
            deleted_by = coalesce(deleted_by, '079 rollback') WHERE id = x.id;
     INSERT INTO public.audit_log (actor, role, action, table_name, record_id, before_data, after_data, created_at)
-    VALUES ('079 rollback', 'system', 'delete', 'shipments', x.id::text, x.old,
+    VALUES ('079 rollback', 'system', CASE WHEN x.old->>'deleted_at' IS NULL THEN 'delete' ELSE 'update' END, 'shipments', x.id::text, x.old,
             (SELECT to_jsonb(q) FROM public.shipments q WHERE q.id = x.id), now());
     v_sh := v_sh + 1;
   END LOOP;
@@ -78,6 +78,11 @@ BEGIN
   FOR x IN SELECT * FROM public.plan_cutover_log
             WHERE kind = 'nl_unlinked' AND at >= v_t79 AND (before_data->>'order_id')::bigint = ANY (v_orders) ORDER BY id DESC LOOP
     UPDATE public.national_loads SET deleted_at = NULL WHERE id = x.row_id AND deleted_at = x.at;
+    GET DIAGNOSTICS v_k = ROW_COUNT;
+    -- the log row is the only trace of the unlink: it goes only with the NL it brought back (principle 1)
+    IF v_k <> 1 THEN
+      RAISE EXCEPTION '079 rollback: national load % is not as 079 left it (deleted_at % expected) - stop, re-measure', x.row_id, x.at;
+    END IF;
     UPDATE public.order_stops SET deleted_at = NULL WHERE national_load_id = x.row_id AND deleted_at = x.at;
     UPDATE public.ramp SET deleted_at = NULL WHERE national_load_id = x.row_id AND deleted_at = x.at;
     UPDATE public.local_moves SET deleted_at = NULL WHERE parent_nat_load_id = x.row_id AND deleted_at = x.at;

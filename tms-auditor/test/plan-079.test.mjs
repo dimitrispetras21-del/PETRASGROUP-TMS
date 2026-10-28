@@ -31,7 +31,7 @@ const VERIFY = '079_plan_cutover_move_verify.sql';
 const HELPERS = `
 CREATE FUNCTION t79_vs(p_ref text, p_dir text, p_hub date, p_pallets numeric[], p_nl text, p_status text DEFAULT 'Pending') RETURNS bigint
 LANGUAGE plpgsql AS $t$
-declare o bigint; i int; hub bigint; lx bigint; lg bigint; tot numeric := 0;
+declare o bigint; i int; hub bigint; lx bigint; lg bigint; nl bigint; tot numeric := 0;
 begin
   select id into hub from locations where is_hub;
   select coalesce(sum(x), 0) into tot from unnest(p_pallets) x;
@@ -43,7 +43,11 @@ begin
   if p_nl is not null then   -- the Direct national load the old model wrote before day L (the freeze bypassed, as then)
     set local session_replication_role = replica;
     insert into national_loads (legacy_id, source_type, source_order_id, status, loading_datetime, delivery_datetime)
-    values ('rec79N' || p_ref, 'Direct', o, p_nl, p_hub, p_hub + 1);
+    values ('rec79N' || p_ref, 'Direct', o, p_nl, p_hub, p_hub + 1) returning id into nl;
+    -- its own stop and ramp line, as production's NL have (the soft delete cascades to both)
+    insert into order_stops (legacy_id, stop_type, stop_number, datetime, national_load_id, pallets)
+    values ('rec79L' || p_ref, 'Loading', 1, p_hub, nl, tot);
+    insert into ramp (legacy_id, plan_date, type, status, national_load_id) values ('rec79R' || p_ref, p_hub, 'Loading', 'Planned', nl);
     set local session_replication_role = origin;
   end if;
   insert into order_stops (legacy_id, stop_type, stop_number, datetime, order_id, location_id, pallets)
@@ -80,6 +84,8 @@ const STATE = `SELECT (SELECT cutover_day::text FROM plan_config) AS l, (SELECT 
   (SELECT string_agg(conname, ',' ORDER BY conname) FROM pg_constraint WHERE conrelid = 'public.plan_config'::regclass AND contype = 'c') AS checks,
   (SELECT count(*) FROM shipments WHERE deleted_at IS NULL)::int AS bridges, (SELECT count(*) FROM order_stops WHERE via_hub)::int AS via,
   (SELECT count(*) FROM national_loads WHERE deleted_at IS NULL)::int AS nl, (SELECT count(*) FROM plan_cutover_log)::int AS log,
+  (SELECT count(*) FROM order_stops WHERE order_id IS NULL AND deleted_at IS NULL)::int AS nl_stops,
+  (SELECT count(*) FROM ramp WHERE deleted_at IS NULL)::int AS ramp,
   (SELECT count(*) FROM plan_notices)::int AS notices, (SELECT count(*) FROM audit_log)::int AS audit`;
 const inV5 = (db, r) => one(db, `SELECT plan_h_vs_in_v5(id) AS v FROM orders WHERE reference = $1`, [ref(r)]).then((x) => x.v);
 const bridgesOf = (db, r) => n(db, `SELECT count(*) FROM shipments s JOIN orders o ON o.id = s.order_id WHERE o.reference = $1 AND s.deleted_at IS NULL`, [ref(r)]);
@@ -150,7 +156,8 @@ test('079 on the production-shaped copy', async (t) => {
   await t.test('the dry run runs to its end with production\'s numbers and keeps nothing', async () => {
     const msg = await errorOf(db, read(DRY));
     assert.match(msg ?? '', new RegExp('DRY RUN 079 finished - EVERYTHING UNDONE, nothing kept\\. The block ran to its end  \\|\\|  079 ran: '
-      + `cutover 2026-10-24, bridges 19 on 9 VS \\(by hub day 10-25:2 10-26:3 10-28:2 10-30:2\\), NL unlinked 8, NL to re-record 2 \\[\\d+,\\d+\\], `
+      + `cutover 2026-10-24, bridges 19 on 9 VS \\(by hub day 10-25:2 10-26:3 10-28:2 10-30:2\\), NL unlinked 8 `
+      + `\\(their stops 8, ramp lines 8, local moves 0 off with them\\), NL to re-record 2 \\[\\d+,\\d+\\], `
       + `via_hub ${before.via + 19}, legs ${legs0}, triggers ${trg0}, B-54 ${trg0}`), msg);
     assert.deepStrictEqual(await one(db, STATE), before, 'nothing kept');
   });
@@ -168,6 +175,8 @@ test('079 on the production-shaped copy', async (t) => {
     assert.strictEqual(after.nl, before.nl - 8);
     assert.strictEqual(after.log, before.log + 8);
     assert.strictEqual(after.notices, before.notices + 2);
+    assert.strictEqual(after.nl_stops, before.nl_stops - 8, 'the NL\'s own stops went with them');
+    assert.strictEqual(after.ramp, before.ramp - 8, 'their ramp lines too');
     for (const [r, , , p, nl] of WEEK) {
       assert.strictEqual(await inV5(db, r), true, `${r} in v5`);
       assert.strictEqual(await bridgesOf(db, r), p.length, `${r} one bridge per national-side stop`);
@@ -233,7 +242,15 @@ test('079 on the production-shaped copy', async (t) => {
       /079 rollback: after the point of no return/);
   });
 
+  await t.test('the rollback refuses an NL that changed since 079 (its log row is the only trace)', async () => {
+    assert.match(await inTx(db, `UPDATE national_loads SET deleted_at = deleted_at + interval '1 second' WHERE legacy_id = 'rec79NA2'`, read(RB)) ?? '',
+      /079 rollback: national load \d+ is not as 079 left it/);
+  });
+
   await t.test('rollback: dry run keeps nothing; then L 31/10, the week out of v5 with its NL back, the controls untouched; 079 again', async () => {
+    // a bridge 079 brought and the trigger retired since (its stop lost its pallets): the cut must forget it too
+    await db.exec(`UPDATE order_stops SET pallets = 0 WHERE legacy_id = 'rec79SA33'`);
+    assert.strictEqual(await bridgesOf(db, 'A3'), 2);
     const at79 = await one(db, STATE);
     const msg = await errorOf(db, read(RB_DRY));
     assert.match(msg ?? '', /DRY RUN 079 ROLLBACK finished - EVERYTHING UNDONE.*rollback ran: day L 2026-10-31, live bridges \d+, via_hub \d+, live NL of the week 10, triggers \d+/, msg);
@@ -248,6 +265,12 @@ test('079 on the production-shaped copy', async (t) => {
     assert.strictEqual(back.via, before.via);
     assert.strictEqual(back.nl, before.nl + 1, 'the 8 NL back, plus N1\'s (written after 079)');
     assert.strictEqual(back.log, before.log, '079\'s log rows go');
+    assert.strictEqual(back.nl_stops, before.nl_stops + 1, 'their own stops back (N1\'s too)');
+    assert.strictEqual(back.ramp, before.ramp + 1, 'their ramp lines back (N1\'s too)');
+    assert.strictEqual(await n(db, `SELECT count(*) FROM shipments s JOIN orders o ON o.id = s.order_id WHERE o.reference = 'T79-A3'
+      AND s.deleted_reason IS DISTINCT FROM '074 rollback'`), 0, 'A3\'s retired bridge relabelled');
+    assert.strictEqual(await n(db, `SELECT count(*) FROM audit_log WHERE actor = '079 rollback' AND table_name = 'shipments' AND action = 'update'`), 1,
+      'the relabel of an already retired bridge is an update, not a second delete');
     for (const [r] of [...WEEK, ['N1']]) {
       assert.strictEqual(await inV5(db, r), false, `${r} out of v5`);
       assert.strictEqual(await bridgesOf(db, r), 0, `${r} no live bridge`);
@@ -262,10 +285,12 @@ test('079 on the production-shaped copy', async (t) => {
     assert.strictEqual(await n(db, await checkSql(db, 'B-95')), 0);
     assert.match(await errorOf(db, read(RB)) ?? '', /079 rollback: day L is not 2026-10-24/);
 
-    // 079 again: the same move, N1 now among the week (its first bridge is gone with the reason the cut ignores)
+    // 079 again: the same move, N1 now among the week (its first bridge is gone with the reason the cut ignores),
+    // A3's third stop without pallets
     const r = (await db.exec(src)).at(-1).rows[0];
     assert.strictEqual(r.result, '079 OK');
-    assert.strictEqual(Number(r.bridges_079), 20);
+    assert.strictEqual(Number(r.bridges_079), 19);
+    assert.strictEqual(await n(db, `SELECT count(*) FROM plan_cutover_log WHERE reason = '079 backfill'`), 9);
     assert.strictEqual(await n(db, GAP), 0);
     assert.strictEqual(await n(db, B78), 0);
   });
