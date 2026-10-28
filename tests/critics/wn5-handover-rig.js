@@ -481,6 +481,10 @@ async function scnRemove({ browser, origin, ok, scn }) {
   ok(scn, 'preview.conflict → the H7 strip «ΔΕΝ ΑΠΟΘΗΚΕΥΤΗΚΕ · message», no list, no confirm, one request only',
     /^ΔΕΝ ΑΠΟΘΗΚΕΥΤΗΚΕ\s*rig sentinel truck_busy/.test(await K.text(p2.page, `${RDLG} [data-strip] .wn5-strip[data-kind="refusal"]`))
     && await K.count(p2.page, '.wn5-cons li') === 0 && await K.count(p2.page, '[data-act="confirm"]') === 0 && K.planOf(p2.S, 'POST', '/plan/segments/702/remove').length === 1);
+  // the refusal shell's one exit (refuse(): «Κλείσιμο» where H4 has Άκυρο) — without its listener only Esc closed it
+  await p2.page.click(`${RDLG} .wn5f-ft [data-act="cancel"]`).catch(() => {});
+  await p2.page.waitForTimeout(300);
+  ok(scn, 'conflict: «Κλείσιμο» closes the refusal shell', await K.count(p2.page, RDLG) === 0);
   ok(scn, 'conflict: no page or console errors', !p2.S.pageErrors.length && !appConsole(p2.S).length, p2.S.pageErrors.concat(appConsole(p2.S)));
   await p2.page.context().close();
 }
