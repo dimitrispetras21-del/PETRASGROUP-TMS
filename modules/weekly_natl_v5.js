@@ -576,7 +576,7 @@ function _rowHTML(r, m, no) {
       // a national order waiting for a vehicle (waiting[] or hub[]): the same order card as a cycle's «Άνοιγμα
       // παραγγελιών» (Επεξεργασία, Διαγραφή) — without it an order could not be fixed or deleted before it was on a
       // truck (live F6, 28/10). A VS is the international's order: it changes in the Weekly International.
-      : r.kind === 'unassigned' && r.group && _id(r.group.nat_order_id) ? `<button type="button" class="wi4-plane" title="Καρτέλα παραγγελίας" data-act="ocard" onclick="WN5._orderCard(event, ${_id(r.group.nat_order_id)})">${PLANE}</button>` : '')
+      : r.kind === 'unassigned' && r.group ? orderCardBtn(r.group.nat_order_id) : '')
     + '</div>'
     + _kathHTML(r, m, ok)
     + `<div class="wn5-asg">${r.segSource === 'segments' && r.tiles.length > 1 ? _tilesHTML(r) : r.tiles.map((t) => _boxHTML(t, r)).join('')}${_cpyHTML(r)}</div>`
@@ -739,6 +739,12 @@ function _cpyHTML(r) {
   return `<button type="button" class="wn5-cpy" title="Αντιγραφή πινακίδων: ${_esc(pl)}" aria-label="Αντιγραφή πινακίδων ${_esc(pl)}" onclick="WN5._cpy(event, ${_id(r.rtId)})">${COPY}</button>`;
 }
 // ✈ of a waiting national order (live F6, 28/10): its card, the one T18 built for a cycle's orders.
+// One button for the ΠΡΟΣ ΑΝΑΘΕΣΗ row and the Veroia panel (live F23, 28/10: an order sent back to Veroia had no way
+// to its card), so the two cannot drift apart. '' without a national order id: a VS is the international's order.
+function orderCardBtn(natOrderId) {
+  const id = _id(natOrderId);
+  return id ? `<button type="button" class="wi4-plane" title="Καρτέλα παραγγελίας" data-act="ocard" onclick="WN5._orderCard(event, ${id})">${PLANE}</button>` : '';
+}
 function _orderCard(ev, natOrderId) {
   try { if (ev && ev.stopPropagation) ev.stopPropagation(); } catch (_) {}
   if (!active() || !ID_RE.test(String(natOrderId)) || typeof WN5Act === 'undefined') return;
@@ -1330,6 +1336,7 @@ const WN5 = {
   _leg,
   _cpy,
   _orderCard,
+  orderCardBtn,
   MENU_ITEMS: [
     // T18: the orders of the cycle with their number (Figma 2011:8858 «Άνοιγμα παραγγελιών 4»); delete lives in the
     // order card only (owner 19/10)

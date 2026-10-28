@@ -611,7 +611,14 @@
   // legs of a cycle have neither. Missing values are «not known», never zero (trap 2).
   function _editSource(board, id) {
     if (!board) return null;
-    const w = (board.waiting || []).filter((x) => x.nat_order_id === id);
+    // live F23 (28/10): an order sent back to Veroia is in hub[], not waiting[]; without it «Επεξεργασία» said «άλλη
+    // εβδομάδα» and its dates could not be fixed. hub[] has no origin, price, PE or side (072 / 074a): the route names
+    // Veroia, where the piece stands and loads (v_hub_bucket = at_hub, as the card's «Φόρτωση», by the card's own hub
+    // rule); the rest stays «not known» and is never sent (_patchBody skips null).
+    const kit = typeof WN5Act !== 'undefined' ? WN5Act._kit : null;
+    const hubId = kit && typeof kit.hubId === 'function' ? kit.hubId() : (typeof PlanIds !== 'undefined' ? PlanIds.hub() : null);
+    const w = (board.waiting || []).filter((x) => x.nat_order_id === id)
+      .concat((board.hub || []).filter((x) => x.nat_order_id === id).map((x) => Object.assign({}, x, { nat_from_location_id: hubId })));
     const legs = [];
     for (const c of board.cycles || []) for (const s of c.stops || []) for (const l of s.legs || []) if (l.nat_order_id === id) legs.push(l);
     if (!w.length && !legs.length) return null;
@@ -653,7 +660,7 @@
       + (e.direction ? '' : '<option value="" selected>— δεν έχει δηλωθεί</option>')
       + ['KATHODOS', 'ANODOS'].map((k) => `<option value="${k}"${e.direction === k ? ' selected' : ''}>${DIR_GR[k]}</option>`).join('')
       + `</select></label>`
-      + (e.price == null ? '<div class="wn5f-note">Η τιμή δεν έρχεται με το board για παραγγελία σε κύκλο — γράψε τιμή μόνο για να την αλλάξεις.</div>' : '')
+      + (e.price == null ? '<div class="wn5f-note">Η τιμή δεν έρχεται με το board για παραγγελία σε κύκλο ή στη Βέροια — γράψε τιμή μόνο για να την αλλάξεις.</div>' : '')
       + `<div class="wn5f-grid3"><label class="wn5f-f"><span>Αναφορά</span><input class="form-input" data-f="ref" value="${_esc(e.reference)}"></label>`
       + `<label class="wn5f-f"><span>Είδος</span><input class="form-input" data-f="goods"></label><label class="wn5f-f"><span>Σημειώσεις</span><input class="form-input" data-f="notes"></label></div>`
       + `<div class="wn5f-sec">ΑΠΟΣΤΟΛΕΣ</div><div class="wn5f-ships-h"><span>Διαδρομή</span><span>Φόρτωση από – έως</span><span>Παράδοση από – έως</span><span>Παλέτες</span></div>${ships}`
