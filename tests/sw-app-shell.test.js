@@ -50,3 +50,16 @@ test('the National v5 files are pre-cached (F4α)', () => {
   const list = appShell();
   for (const f of V5_FILES) assert.ok(list.includes(PREFIX + f), `${f} missing from APP_SHELL`);
 });
+
+// National v5 F5 (plan 2026-10-28 §10): stream (e) adds each new served file of F5 here with its app.html loader.
+const F5_FILES = ['core/plan-config.js'];
+test('the National v5 F5 files are pre-cached; app.html loads core/plan-config.js after core/plan-api.js and before every module', () => {
+  const list = appShell();
+  for (const f of F5_FILES) assert.ok(list.includes(PREFIX + f), `${f} missing from APP_SHELL`);
+  const html = fs.readFileSync(path.join(ROOT, 'app.html'), 'utf8');
+  const order = [...html.matchAll(/<script src="([^"?]+)\?v=\d+"><\/script>/g)].map((m) => m[1]);
+  // after its planFetch, and before any screen that calls it (coordinator 28/10: d1–d4 and c read PlanConfig)
+  const at = order.indexOf('core/plan-config.js'), firstModule = order.findIndex((f) => f.startsWith('modules/'));
+  assert.ok(at > order.indexOf('core/plan-api.js') && order.indexOf('core/plan-api.js') >= 0, 'core/plan-config.js must load after core/plan-api.js');
+  assert.ok(firstModule > at, 'core/plan-config.js must load before the first modules/ script: ' + order[firstModule]);
+});
