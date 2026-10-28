@@ -2039,8 +2039,9 @@ async function scnVeroia(browser, origin) {
     const box = await page.$eval(PANEL, (e) => e.getBoundingClientRect().height).catch(() => null);
     ok(scn, 'open → #wn5-hub-panel at most 1/3 of the window', box !== null && box <= 1080 / 3 + 2, box);
     const txt = await bText(page, PANEL);
-    ok(scn, 'VS-T118 (hub[], no truck ever: live 072) is a «ΠΡΟΣ ΑΝΑΘΕΣΗ» row, never an item of the open panel', (await bHas(page, PANEL))
-      && !(await bHas(page, `${PANEL} [data-piece="4101"]`)) && await bHas(page, '.wn5-row[data-key="wait:4101"]') && await bHas(page, `${PANEL} [data-piece="4401"]`));
+    // B1 (owner 28/10): a VS import at Veroia with no truck is a «ΠΡΟΣ ΑΝΑΘΕΣΗ» row AND an item of the panel («ΓΙΑ ΜΟΙΡΑΣΜΑ»)
+    ok(scn, 'VS-T118 (hub[], no truck ever) is a «ΠΡΟΣ ΑΝΑΘΕΣΗ» row AND an item of the open panel (B1)', (await bHas(page, PANEL))
+      && await bHas(page, `${PANEL} [data-piece="4101"]`) && await bHas(page, '.wn5-row[data-key="wait:4101"]') && await bHas(page, `${PANEL} [data-piece="4401"]`));
     ok(scn, 'sections «ΓΙΑ ΜΟΙΡΑΣΜΑ», «ΑΠΟΘΕΜΑ», «ΦΟΡΤΗΓΑ ΔΕΥ 12/10 · χωρητικότητα» with «27/33»', txt.includes('ΓΙΑ ΜΟΙΡΑΣΜΑ') && txt.includes('ΑΠΟΘΕΜΑ')
       && txt.includes('ΦΟΡΤΗΓΑ ΔΕΥ 12/10 · χωρητικότητα') && txt.includes('27/33'), txt.slice(0, 600));
     const capL2 = await page.$$eval(`${PANEL} [data-line="cap"] .wi4-l2`, (es) => es.map((e) => e.innerText)).catch(() => []);
