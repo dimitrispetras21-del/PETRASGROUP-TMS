@@ -88,12 +88,13 @@ afterEach(() => { Object.assign(console, realConsole); });
 
 const rtCall = () => calls.find((c) => c.table === 'ct_round_trips');
 
-test('driver_id filters the trips in the database, limit stays 200', async () => {
+test('driver_id filters the trips in the database, limit 999 + one probe row (E18, F5)', async () => {
   const r = await call('owner', '/costs/rt?driver_id=7');
   assert.equal(r.status, 200, r.text);
   assert.deepEqual(r.json.records.map((x) => x.id), [1, 3]);
   assert.equal(rtCall().params.get('driver_id'), 'eq.7');
-  assert.equal(rtCall().params.get('limit'), '200');
+  assert.equal(rtCall().params.get('limit'), '1000');
+  assert.equal(r.json.truncated, false);
 });
 
 test('trailer_id filters the trips in the database', async () => {

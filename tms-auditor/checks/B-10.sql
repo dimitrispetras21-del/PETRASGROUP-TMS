@@ -9,8 +9,8 @@
 -- entity: 
 -- impact: 
 -- next: 
--- exceptions: 
+-- exceptions: Μόνο οι γύροι του σημερινού μοντέλου (model = 1, 074b, Ε17): ένας κύκλος v5 που άδειασε με παραστατικά μένει planned σκόπιμα (Q-4) και τον μετρά ο B-82.
 -- tolerance: 
 -- source: 02b Β-10 · 22/9 = 6
 -- enabled: yes
-SELECT count(*) FROM ct_round_trips WHERE status='planned' AND date_end < current_date-14;
+SELECT count(*) FROM ct_round_trips WHERE status='planned' AND date_end < current_date-14 AND model = 1;
