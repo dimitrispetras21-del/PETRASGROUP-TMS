@@ -9334,6 +9334,10 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 .wn5-grey { padding:6px 10px; border-radius:6px; background:var(--wi4-chip); color:var(--wi4-grey-1); }
 .wn5-dlg .wn5-grey { margin:0 -16px; padding:6px 16px; border-radius:0; border-top:1px solid var(--wi4-line); border-bottom:1px solid var(--wi4-line); font-size:11px; line-height:16px; color:var(--wi4-grey-2); }   /* 30px, Δ1 */
 .wn5-dlg .wn5-miss { color:var(--wi4-amber-ink); }
+/* owner 28/10: why a save is off, in red beside it — never a silent grey button (wn5_actions.js _why) */
+.wn5-dlg .wn5-why { color:var(--wi4-red); font-weight:500; }
+.wn5-dlg .wn5-cand + .wn5-why { margin:0 -16px; padding:2px 12px 4px 24px; font-size:12px; text-align:right; }
+.wn5-dlg .wn5-more > .wn5-why, .wn5-dlg .wi4-dlg-ft > .wn5-why { align-self:center; font-size:12px; text-align:right; }
 .wn5-dlg .wn5-dq { width:290px; max-width:100%; height:28px; padding:0 8px; border:1px solid var(--wi4-line-2); border-radius:6px; font:inherit; }
 /* Figma 2051:7749/7750: the search field and the ΗΗ:ΛΛ inputs are edged in the board line and hint in grey-3,
    as .wi4-search (Chrome's default placeholder grey is darker and reads as typed text) */
@@ -9399,6 +9403,10 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 .wn5-plus { flex:none; display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; margin-left:4px; padding:0;
   border:1px solid var(--wi4-ctl); border-radius:4px; background:var(--surface-card); color:var(--accent-text); cursor:pointer; opacity:0; }
 .wn5-plus > svg { flex:none; display:block; }
+/* Figma audit B-8: the «+» is always there (Figma), lighter until the row is hovered; a touch screen has no hover, so
+   there it is at full strength */
+.wn5-plus { opacity:.45; }
+@media (hover:none) { .wn5-plus { opacity:1; } }
 .wn5-row:hover .wn5-plus, .wn5-plus:focus-visible { opacity:1; }
 .wn5-row:hover .wn5-plus { border-color:var(--wi4-blue); background:var(--wi4-info-bg); }
 /* «27 [+]» on one line (Figma 2011:10089/10140/10217/10299): every «+» of a side sits at one x, 12px in from the
@@ -9561,6 +9569,8 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
    (18/22/14, gap 4, ruled under), heading 11 SemiBold grey-2 tracked 1 and 12px over its first row (2011:10518), rows 30px with a 150px key column (13 grey-2)
    and a Regular 13 ink value; footer 16/22/20, «Επεξεργασία» left, the delete button red-outlined right (34px). */
 .wn5-dlg.wn5-ocard { padding:0; border:0; border-radius:0; box-shadow:var(--wn5-card-shadow); }
+/* Figma audit B-25: the order card title stops at two lines; the whole of it is the title attribute */
+.wn5-ocard .wi4-dlg-t { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; }
 .wn5-ocard > .wi4-dlg-hd { flex-wrap:wrap; row-gap:8px; padding:20px 22px 18px; background:var(--wi4-ink); }
 .wn5-ocard .wi4-dlg-t { flex:1; min-width:0; font:700 20px/24px 'Syne',sans-serif; color:var(--surface-card); }
 .wn5-ocard .wi4-dlg-x { font-size:16px; font-weight:400; color:var(--wi4-grey-3); }   /* 2011:10508 DM Sans Regular (.wi4-link gives 600) */
@@ -9661,7 +9671,13 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5-hub .wn5-leave { color:var(--wn5-leave-ink); font-weight:400; }
 .wn5-hub .wn5-late { color:var(--wi4-red); font-weight:400; }
 .wn5-hub-p { flex:none; font-size:12.5px; font-weight:600; color:var(--wi4-ink); }
-.wn5-hub-a { flex:none; display:flex; gap:6px; }
+.wn5-hub-a { flex:none; display:flex; align-items:center; gap:6px; }
+/* the ✈ of a national order on the panel (live F23): the row's bordered button, at the 24px of «Σπάσε…» beside it */
+.wn5 .wn5-hub-a .wi4-plane { width:24px; height:24px; background:var(--surface-card); border:1px solid var(--wi4-ctl); border-radius:4px; color:var(--wi4-grey-1); box-shadow:0 1px 1px rgba(16,24,40,.06); }
+/* Figma audit B-6 (H1 2120:7872): «+ Νέα παραγγελία» 135 × 32, text at x 14 — the v5 bar only (the shared
+   .wi4-bar rule's 12px gives 130; the Weekly International keeps its own) */
+.wn5 .wi4-bar .btn-new-order, body.wn5-on .topbar .wn5-top .wi4-bar .btn-new-order { min-width:135px; padding:0 14px; }   /* over the topbar's button min-width:0 */
+.wn5 .wn5-hub-a .wi4-plane:hover { border-color:var(--wn5-ctl-hover); background:var(--surface-card); color:var(--wi4-ink); }
 .wn5-hub .wn5-hub-b { height:24px; padding:0 9px; border-radius:4px; font-size:11.5px; font-weight:600; color:var(--wi4-grey-1); }
 .wn5-hub .wn5-split-b { background:var(--wi4-info-bg); border-color:var(--wi4-blue); color:var(--wi4-blue-ink); }
 .wn5-hub-tr { display:flex; align-items:center; gap:10px; height:40px; padding:0 12px; box-sizing:border-box; border-bottom:1px solid var(--wi4-line); white-space:nowrap; }
