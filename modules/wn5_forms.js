@@ -1043,8 +1043,7 @@
         const leg = ff.p.leg;
         _close(ff);
         Promise.resolve(ff.reloaded).then(() => {
-          const anchor = document.querySelector(`#content .wn5-row[data-rt="${leg.rtId}"] .wn5-plus[data-side="${leg.side}"]`) || document.querySelector(`#content .wn5-row[data-rt="${leg.rtId}"]`);
-          WN5Act.plus(leg.rtId, leg.side, anchor);
+          WN5Act.plus(leg.rtId, leg.side, _plusAnchor(leg.rtId, leg.side));
         }).catch((e) => _log(e, 'WN5Form to-leg'));
         return;
       }
@@ -1278,7 +1277,10 @@
     return `<div class="wn5f-head wn5f-lhead" data-side="${m.side}">` + m.head.concat([['Φορτηγό', m.plates]]).map(([k, v]) => `<div class="wn5f-f"><span>${k}</span><span class="wn5f-ro">${_esc(v)}</span></div>`).join('') + `</div>`
       + m.blocks.map((b) => (b.vs ? _vsBlockHTML(f, b) : _natBlockHTML(f, b))).join('')
       // A-7: a new order on this leg — the create form with this cycle and side set, as the «+» → «Νέα παραγγελία»
-      + '<div class="wn5f-adds"><button type="button" class="wn5f-add" data-act="leg-add-order">+ παραγγελία</button></div>'
+      + '<div class="wn5f-adds"><button type="button" class="wn5f-add" data-act="leg-add-order">+ παραγγελία</button>'
+      // F35 (owner 28/10): an order already waiting ΠΡΟΣ ΑΝΑΘΕΣΗ onto this leg — the «+» of this side, «Από αναμονή»
+      // (WN5Act.plus, the one list of waiting loads), never a second list here
+      + '<button type="button" class="wn5f-add" data-act="leg-add-wait">+ από αναμονή</button></div>'
       // the summary's right side is the total only (Figma 2011:9569); the per-order sum is the header badge's
       + `<div class="wn5f-sum"><div class="wn5f-sum-h"><b>${m.shipments} ${m.shipments === 1 ? 'αποστολή' : 'αποστολές'} · ${m.shipments === 1 ? 'σκέλος ' + SIDE_GR[m.side] : 'ίδιο σκέλος'} · ${_esc(m.vehicle)}</b><b>${_pal(m.total)}/33</b></div>`
       + `<div class="wn5f-sec">ΣΕΙΡΑ ΣΤΑΣΕΩΝ ΚΑΤΑ ΩΡΑ</div><ol class="wn5f-seq">`
@@ -1338,7 +1340,9 @@
   // them and an open form would show the old picture.
   // The exits added with F29 / A-7 (a stop's time, + σημείο, + παραγγελία) close it too: a price or a note typed and not
   // saved is said, never lost in silence (code review)
-  const LEG_KEEP = ['stop-time', 'add-point', 'leg-add-order'];
+  const LEG_KEEP = ['stop-time', 'add-point', 'leg-add-order', 'leg-add-wait'];
+  // the «+» of a cycle's side on the board, where its popover opens (else the row)
+  const _plusAnchor = (rt, side) => document.querySelector(`#content .wn5-row[data-rt="${rt}"] .wn5-plus[data-side="${side}"]`) || document.querySelector(`#content .wn5-row[data-rt="${rt}"]`);
   function _legDirty(f) {
     return Object.keys(f.orig).some((id) => {
       const st = _legState(f, id), b = _patchBody(f.orig[id], st);
@@ -1367,6 +1371,7 @@
       return;
     }
     if (a === 'leg-add-order') { _close(f); openOrder({ side: f.side, day: f.m.day || '', rtId: rt }); return; }
+    if (a === 'leg-add-wait') { _close(f); WN5Act.plus(rt, f.side, _plusAnchor(rt, f.side)); return; }
     if (a === 'time') { _close(f); WN5Act.datePanel(rt, 'ANODOS', anchor()); return; }
     if (a === 'stop-time') { _close(f); WN5Act.datePanel(rt, f.side, anchor(), { stopId: Number(t.dataset.stop) }); return; }
     if (a === 'vs-day') {

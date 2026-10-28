@@ -1056,7 +1056,8 @@ async function scnAssign(browser, origin) {
       && (await bText(page, `${D} [data-line="partner"]`)).includes('→ 27/33 · δρομολόγιο συνεργάτη'));
     ok(scn, 'over capacity is a warning, «Ένωση» stays enabled («→ 54/33 · υπέρβαση 21»)', txt.includes('→ 54/33 · υπέρβαση 21') && (await bOff(page, `${D} [data-act="save"][data-cand="rt:201"]`)) === false, txt.slice(0, 500));
     ok(scn, 'the rate field is there for the dispatcher (decision 41), «κόμιστρο λείπει» on the partner cycle', (await bHas(page, `${D} input[data-rate]`)) && txt.includes('κόμιστρο λείπει'));
-    ok(scn, 'a cycle still on the road is listed dimmed, without a button («στο δρόμο»)', txt.includes('στο δρόμο') && !(await bHas(page, `${D} [data-cand="rt:203"]`)));
+    // F34 (owner 28/10): a cycle still on the road that day is joinable, as «+» joins it (was: dimmed, no button)
+    ok(scn, 'a cycle still on the road is listed «στο δρόμο» WITH its «Ένωση» (F34)', txt.includes('στο δρόμο') && await bHas(page, `${D} [data-line="road"] [data-cand="rt:203"]`));
     await bClick(page, `${D} [data-act="save"][data-cand="rt:201"]`);
     const legs = bCalls(S, 'POST', '/plan/legs');
     ok(scn, '«Ένωση» → exactly one POST /plan/legs with group, target.rt_id and side KATHODOS', legs.length === 1
@@ -3180,6 +3181,143 @@ SCN.f27 = async (browser, origin) => {
     ok(scn, 'national at Veroia: Δ1 on the panel\'s day «Σάβ 10/10», never its supplier\'s Παρ 9/10', /^· Σάβ 10\/10/.test(meta.trim()), meta);
     ok(scn, 'no page errors (10)', !S.pageErrors.length, S.pageErrors);
     await page.context().close();
+  }
+};
+// F33–F35 (owner 28/10, real-user test: one round trip per truck, as the weekly Excel). Live repro: national #92
+// (Volos → Veroia, loading and due Thu 29/10) into RT-1303 (IAZ7245: ΚΑΘΟΔΟΣ Wed 14:00, Thu 00:00) — «+» put the Veroia
+// arrival on the cycle's Wed and the base refused it «… χρονική σειρά (305)»; Δ1 on Thu listed RT-1303 grey «στο
+// δρόμο» with no «Ένωση»; the leg form's «+ παραγγελία» opened only a NEW order. Here: RT-T301 (TST-2108) runs ΚΑΘΟΔΟΣ
+// Tue 13/10 14:00 → Wed 14/10 (whole day); N-T392 goes LARISA TEST → Veroia, loading and due Wed 14/10 «ως 23:59»;
+// N-T393 the same on Tue 13/10, so its ΑΝΟΔΟΣ would start before the ΚΑΘΟΔΟΣ ends. Judged by the POST body.
+function f33Board() {
+  const b = bBoard();
+  const TUE = '2026-10-13', WED = '2026-10-14';
+  const n = (o) => Object.assign({ shipment_id: o.piece_id + 100, kind: 'national', order_id: null, order_stop_id: null, leave_by: null, overdue: false, is_stock: false,
+    position_location_id: 6, nat_from_location_id: 6, nat_to_location_id: 1, client_id: 48, client: 'ΠΕΛΑΤΗΣ Θ', temperature_c: 4, pallet_exchange: false, price: 200 }, o);
+  b.cycles.push(bCycle(301, { truck_id: 14, truck: 'TST-2108', trailer_id: 24, trailer: 'TRL-5104', driver_id: 34, driver: 'Driver Test 04' }, [
+    bStop(3011, 'KATHODOS', 1, TUE, '14:00', '23:59', [bLeg(6301, 5301, 'load', 10)]),
+    bStop(3012, 'KATHODOS', 4, WED, '00:00', '23:59', [bLeg(6301, 5301, 'unload', 10)]) ]));
+  b.waiting.push(n({ piece_id: 4392, nat_order_id: 3392, pallets: 8, reference: 'N-T392', nat_ready_day: WED, nat_due_day: WED,
+    load_from: bT(WED, '00:00'), load_to: bT(WED, '23:59'), deliver_from: bT(WED, '23:59'), deliver_to: bT(WED, '23:59') }));
+  b.waiting.push(n({ piece_id: 4393, nat_order_id: 3393, pallets: 5, reference: 'N-T393', nat_ready_day: TUE, nat_due_day: TUE,
+    load_from: bT(TUE, '00:00'), load_to: bT(TUE, '23:59'), deliver_from: bT(TUE, '23:59'), deliver_to: bT(TUE, '23:59') }));
+  // code review of #171: a VS export picked up Fri 16/10 (the week's last day) reaches Veroia Sat 17/10, outside the
+  // loaded week — no cycle of that day is on the board
+  b.waiting.push({ piece_id: 4394, shipment_id: 4494, kind: 'vs_export', order_id: 2394, nat_order_id: null, order_stop_id: 6394, pallets: 6, leave_by: null,
+    overdue: false, is_stock: false, position_location_id: 3, nat_from_location_id: 3, nat_to_location_id: 1, client_id: 44, client: 'ΠΕΛΑΤΗΣ Δ',
+    reference: 'VS-T394', temperature_c: 2, pallet_exchange: false, load_from: null, load_to: null, deliver_from: null, deliver_to: null,
+    nat_ready_day: '2026-10-16', nat_due_day: '2026-10-17' });
+  return b;
+}
+SCN.f33 = async (browser, origin) => {
+  const scn = 'f33';
+  const D = bDlg('assign'), P = bDlg('plus');
+  const legs = (S) => bCalls(S, 'POST', '/plan/legs');
+  const stopsOf = (S) => { const x = legs(S).pop(); return x && x.body ? x.body.stops || null : null; };
+  const at = (stops, loc) => (stops || []).find((s) => s.location_id === loc) || null;
+  const refuse = { 'POST /plan/legs': () => [422, { error: { type: 'PLAN_RULE', code: 'stop_order', message: 'rig sentinel stop_order (301)' } }] };
+  { // 1 · F33: «+» ΑΝΟΔΟΣ of RT-T301 (starts Tue) takes N-T392: the Veroia arrival on ITS day Wed 14/10, never the cycle's Tue
+    const { page, S } = await bOpen(browser, origin, { board: f33Board() });
+    await page.evaluate(() => WN5Act.plus(301, 'ANODOS', document.querySelector('#content .wn5 .wn5-row[data-rt="301"]')));
+    await page.waitForTimeout(400);
+    await page.fill(`${P} input[data-hub="from"]`, '08:00').catch(() => {});
+    await page.fill(`${P} input[data-hub="to"]`, '10:00').catch(() => {});
+    await page.waitForTimeout(200);
+    await bClick(page, `${P} [data-act="save"][data-piece="4392"]`);
+    await page.waitForTimeout(400);
+    const st = stopsOf(S), h = at(st, 1), ld = at(st, 6);
+    ok(scn, '«+» national to Veroia: ONE press, POST /plan/legs, Veroia 08:00–10:00 on Wed 14/10 (its due day) — main: Tue 13/10, the cycle\'s',
+      legs(S).length === 1 && !!h && h.side === 'ANODOS' && h.planned_from === '2026-10-14T08:00:00+03:00' && h.planned_to === '2026-10-14T10:00:00+03:00', st);
+    ok(scn, '… its loading LARISA TEST on Wed 14/10, after every ΚΑΘΟΔΟΣ stop (the order the base keeps)', !!ld && ld.planned_from === '2026-10-14T00:00:00+03:00', st);
+    ok(scn, 'no page errors (1)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // 2 · F33: the base's stop_order «(301)» is said as which stop and what to do, from the request the screen sent
+    const { page, S } = await bOpen(browser, origin, { board: f33Board(), plan: refuse });
+    await page.evaluate(() => WN5Act.plus(301, 'ANODOS', document.querySelector('#content .wn5 .wn5-row[data-rt="301"]')));
+    await page.waitForTimeout(400);
+    await page.fill(`${P} input[data-hub="from"]`, '08:00').catch(() => {});
+    await page.fill(`${P} input[data-hub="to"]`, '10:00').catch(() => {});
+    await page.waitForTimeout(200);
+    await bClick(page, `${P} [data-act="save"][data-piece="4393"]`);
+    await page.waitForTimeout(500);
+    const t = await bText(page, `${P} .wn5-strip`);
+    ok(scn, 'stop_order: «Η στάση «LARISA TEST Τρί 13/10 όλη η ημέρα» (ΑΝΟΔΟΣ, νέα) … πριν από τη «ATHENS TEST Τετ 14/10 όλη η ημέρα» (ΚΑΘΟΔΟΣ) στο RT-T301» — main: the sentinel «(301)»',
+      t.includes('«LARISA TEST Τρί 13/10 όλη η ημέρα» (ΑΝΟΔΟΣ, νέα)') && t.includes('«ATHENS TEST Τετ 14/10 όλη η ημέρα» (ΚΑΘΟΔΟΣ) στο RT-T301') && !t.includes('(301)'), t);
+    ok(scn, '… and what to do: «Βάλε την … από Τετ 14/10 00:00 και μετά, ή διάλεξε άλλον κύκλο.»', /Βάλε την «LARISA TEST Τρί 13\/10 όλη η ημέρα» από Τετ 14\/10 00:00 και μετά, ή διάλεξε άλλον κύκλο\./.test(t), t);
+    // a refusal reaching a strip without the request (e.g. an order form's save) still names the cycle, never the bare id
+    const t2 = await page.evaluate(() => { const h = document.createElement('div'); document.body.appendChild(h);
+      WN5Act.strip(h, { kind: 'refusal', code: 'stop_order', message: 'rig sentinel stop_order (301)' }); return h.innerText; });
+    ok(scn, 'stop_order without the request: «Οι στάσεις του RT-T301 δεν θα ήταν σε χρονική σειρά … ΑΝΟΔΟΥ … ΚΑΘΟΔΟΥ»',
+      /Οι στάσεις του RT-T301 δεν θα ήταν σε χρονική σειρά: μια στάση της ΑΝΟΔΟΥ θα ήταν πριν από στάση της ΚΑΘΟΔΟΥ/.test(t2) && !t2.includes('(301)'), t2);
+    ok(scn, 'no page errors (2)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // 3 · F34: Δ1 from N-T392's ΠΡΟΣ ΑΝΑΘΕΣΗ row (Wed 14/10): RT-T301, on the road since Tue and ending Wed, is joinable
+    const { page, S } = await bOpen(browser, origin, { board: f33Board() });
+    await bClick(page, '#content .wn5 .wn5-row[data-piece="4392"] .wi4-box.un');
+    await page.waitForTimeout(500);
+    const line = await bText(page, `${D} [data-line="road"]:has([data-cand="rt:301"])`);
+    ok(scn, 'Δ1 Wed: RT-T301 «Τρί 13/10 · στο δρόμο · Βέροια ως Τετ 23:59» WITH «Ένωση» — main: grey, no button',
+      /Τρί 13\/10 · στο δρόμο · Βέροια ως Τετ 23:59/.test(line) && /Ένωση/.test(line) && (await bOff(page, `${D} [data-cand="rt:301"]`)) === false, line);
+    ok(scn, 'the road line carries the side\'s pallets and the capacity after joining («→ 8/33»)', /χωρίς στάση Βέροιας · 0π/.test(line) && line.includes('→ 8/33'), line);
+    // the day's cycles and the road ones share one header count: every line it offers
+    const grp = await bText(page, `${D} [data-grp="rt"]`), offered = await page.$$eval(`${D} [data-cand^="rt:"]`, (xs) => xs.length).catch(() => -1);
+    ok(scn, '«ΚΥΚΛΟΙ ΤΗΣ ΤΕΤΑΡΤΗΣ 14/10 · ένωση · n» counts every cycle it offers, the road ones too', grp === 'ΚΥΚΛΟΙ ΤΗΣ ΤΕΤΑΡΤΗΣ 14/10 · ένωση · ' + offered, { grp, offered });
+    await bClick(page, `${D} [data-act="save"][data-cand="rt:301"]`);
+    await page.waitForTimeout(400);
+    const x = legs(S).pop(), h = at(x && x.body.stops, 1);
+    ok(scn, '«Ένωση» → POST /plan/legs into rt 301 ΑΝΟΔΟΣ, Veroia on Wed 14/10 (the order\'s «ως 23:59»)', !!x && JSON.stringify(x.body.target) === '{"rt_id":301,"side":"ANODOS"}'
+      && !!h && h.planned_from === '2026-10-14T23:59:00+03:00', x && x.body);
+    ok(scn, 'no page errors (3)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // 4 · F35: the leg form's «+ από αναμονή» opens THIS side's «+», «Από αναμονή», and one press puts a waiting load on it
+    const { page, S } = await bOpen(browser, origin, { board: f33Board() });
+    await page.evaluate(() => WN5Form.openLeg(301, 'KATHODOS'));
+    await page.waitForSelector('.wi4-dlg[data-wn5="leg"]', { timeout: 6000 }).catch(() => {});
+    ok(scn, 'leg form: «+ από αναμονή» beside «+ παραγγελία» — main: absent', await bHas(page, '.wi4-dlg[data-wn5="leg"] [data-act="leg-add-wait"]'));
+    await bClick(page, '.wi4-dlg[data-wn5="leg"] [data-act="leg-add-wait"]');
+    await page.waitForTimeout(400);
+    const t = await bText(page, `${P} .wi4-dlg-t`), on = await bText(page, `${P} .wn5-seg .on`);
+    ok(scn, '… the leg form closes, «Πρόσθεσε στην ΚΑΘΟΔΟ» of RT-T301 opens on «Από αναμονή»', !(await bHas(page, '.wi4-dlg[data-wn5="leg"]')) && t === 'Πρόσθεσε στην ΚΑΘΟΔΟ' && on === 'Από αναμονή', { t, on });
+    await bClick(page, `${P} [data-act="save"][data-piece="4201"]`);
+    await page.waitForTimeout(400);
+    const x = legs(S).pop();
+    ok(scn, '«Πρόσθεσε» → POST /plan/legs of piece 4201 into rt 301 ΚΑΘΟΔΟΣ', !!x && JSON.stringify(x.body.target) === '{"rt_id":301,"side":"KATHODOS"}'
+      && JSON.stringify(x.body.pieces) === '[{"piece_id":4201}]', x && x.body);
+    ok(scn, 'no page errors (4)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // 5 · code review of #171: VS-T394 reaches Veroia Sat 17/10, outside the loaded week: no truck is called free
+    const { page, S } = await bOpen(browser, origin, { board: f33Board() });
+    await bClick(page, '#content .wn5 .wn5-row[data-piece="4394"] .wi4-box.un');
+    await page.waitForTimeout(500);
+    const free = await page.$$eval(`${D} [data-line="free"] .wn5-cand-m b`, (xs) => xs.map((x) => x.textContent)).catch(() => []);
+    ok(scn, 'every new truck says «διαθεσιμότητα Σάβ 17/10 άγνωστη εκτός εβδομάδας», none «ελεύθερο» — main: «ελεύθερο»',
+      free.length > 0 && free.every((x) => x === 'διαθεσιμότητα Σάβ 17/10 άγνωστη εκτός εβδομάδας'), free);
+    ok(scn, 'no page errors (5)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // 6 · code review of #171: the Veroia-day chip is its own (.wn5-hubday), never the capacity's .wn5-cap.over
+    const { page, S } = await bOpen(browser, origin, { board: f27Board() });
+    await bClick(page, '#content .wn5 .wn5-row[data-piece="4511"] .wi4-box.un');
+    await page.waitForTimeout(500);
+    const c = await page.evaluate((d) => { const l = document.querySelector(`${d} .wn5-cand[data-line="rt"]:has([data-cand="rt:211"])`);
+      if (!l) return null; const hd = l.querySelector('.wn5-hubday');
+      return { hub: hd && hd.textContent, overV: [...l.querySelectorAll('.wn5-cap.over')].some((x) => /Βέροια/.test(x.textContent)),
+        look: hd && [getComputedStyle(hd).backgroundColor, getComputedStyle(hd).borderTopStyle].join('|') }; }, D);
+    ok(scn, 'Δ1: «Βέροια Τρί, όχι Τετ/Πέμ» in .wn5-hubday (white, edged), no Veroia text in .wn5-cap.over — main: .wn5-cap.over',
+      !!c && c.hub === 'Βέροια Τρί, όχι Τετ/Πέμ' && !c.overV && c.look === 'rgb(255, 255, 255)|solid', c);
+    await page.context().close();
+    const b2 = await bOpen(browser, origin, { board: f27Board() });
+    await b2.page.evaluate(() => WN5Act.plus(201, 'ANODOS', document.querySelector('#content .wn5 .wn5-row[data-rt="201"]')));
+    await b2.page.waitForTimeout(400);
+    const pc = await b2.page.evaluate((p) => { const l = document.querySelector(`${p} .wn5-pline[data-piece="4501"]`);
+      return l && { hub: (l.querySelector('.wn5-hubday') || {}).textContent || null, overV: [...l.querySelectorAll('.wn5-cap.over')].some((x) => /Βέροια/.test(x.textContent)) }; }, P);
+    ok(scn, '«+»: «Βέροια Τετ, άλλη ημέρα» in .wn5-hubday as well', !!pc && pc.hub === 'Βέροια Τετ, άλλη ημέρα' && !pc.overV, pc);
+    ok(scn, 'no page errors (6)', !S.pageErrors.length && !b2.S.pageErrors.length, S.pageErrors.concat(b2.S.pageErrors));
+    await b2.page.context().close();
   }
 };
 // ── main ──
