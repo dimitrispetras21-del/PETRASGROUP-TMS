@@ -17,7 +17,7 @@ import { IDS, F3_IDS, V5, RUNNER_FN, X_KEYS } from '../../worker/migrations/draf
 import { loadChecks } from '../checks/load.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const read = (f) => fs.readFileSync(migrationFile(f), 'utf8');                  // 072b / 073 / 073b: drafts/ until executed, then one up
+const read = (f) => fs.readFileSync(migrationFile(f), 'utf8');                  // 072b / 073 / 073b: all executed, out of drafts/
 const readDone = (f) => fs.readFileSync(path.join(DRAFTS, '..', f), 'utf8');    // 071: executed 22/10
 const fixture = (f) => fs.readFileSync(path.join(HERE, 'fixtures', f), 'utf8');
 const DISABLED = ['B-80'];   // M-5 delta (owner 24/10): a tautology until day L
