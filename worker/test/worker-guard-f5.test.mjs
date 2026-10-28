@@ -1,5 +1,6 @@
 // worker/tools/worker-guard.mjs --f5 and --plan 2 (national v5 F5, plan W8). One marker per F5 feature:
-// rpc: "plan_config_read" (W1), rpc: "plan_lookups" (W2), rpc: "plan_nat_state" (E3/E5), var LEGACY_CLOSED_AFTER_L
+// rpc: "plan_config_read" (W1), rpc: "plan_lookups" (W2), rpc: "plan_nat_state" (E3/E5), rpc: "plan_activity" (E12/E13),
+// var LEGACY_CLOSED_AFTER_L
 // (E16), truncated:  (E18), "order_delete_preview" (E19). --f5 0 before deploy 1 (the live ffd5531f source has none),
 // --f5 1 from deploy 1 on. --plan 2 = deploy 2 (day L): the one line `var PLAN_WRITES_OPEN = true;` and nothing of
 // the closed switch, only with the whole chain (--handover 1 --f3 1 --f5 1). Checked on the source, on a double
@@ -30,20 +31,21 @@ const D1 = ['--plan', '1', ...CHAIN, '--f5', '1'];
 const D2 = ['--plan', '2', ...CHAIN, '--f5', '1'];
 const OPEN = (text) => text.replace('var PLAN_WRITES_OPEN = false;', 'var PLAN_WRITES_OPEN = true;');
 const MARKS = [['rpc: "plan_config_read"', /rpc: "plan_config_read" \(F5, W1\)/], ['rpc: "plan_lookups"', /rpc: "plan_lookups" \(F5, W2\)/],
-  ['rpc: "plan_nat_state"', /rpc: "plan_nat_state" \(F5, E3\/E5\)/], ['var LEGACY_CLOSED_AFTER_L', /var LEGACY_CLOSED_AFTER_L \(F5, E16\)/],
+  ['rpc: "plan_nat_state"', /rpc: "plan_nat_state" \(F5, E3\/E5\)/], ['rpc: "plan_activity"', /rpc: "plan_activity" \(F5, E12\/E13\)/],
+  ['var LEGACY_CLOSED_AFTER_L', /var LEGACY_CLOSED_AFTER_L \(F5, E16\)/],
   ['truncated: ', /truncated: {2}\(F5, E18\)/], ['"order_delete_preview"', /"order_delete_preview" \(F5, E19\)/]];
 const without = (text, mark) => text.split(mark).join(mark.replace(/[a-z]/, 'X'));
 
-test('the deploy-1 source: --plan 1 … --f5 1 → GUARD OK (26 markers); --f5 0 stops on every F5 marker', () => {
+test('the deploy-1 source: --plan 1 … --f5 1 → GUARD OK (27 markers); --f5 0 stops on every F5 marker', () => {
   let r = run(SRC, ...D1);
   assert.equal(r.code, 0, r.out);
-  assert.match(r.out, /GUARD OK \(26 markers, plan=1, handover=1, f3=1, f5=1\)/);
+  assert.match(r.out, /GUARD OK \(27 markers, plan=1, handover=1, f3=1, f5=1\)/);
   r = run(SRC, '--plan', '1', ...CHAIN, '--f5', '0');
   assert.equal(r.code, 1, r.out);
   for (const [, re] of MARKS) assert.match(r.out, new RegExp(`STOP {2}${re.source} = [1-9]`));
 });
 
-test('the live Worker before deploy 1 (source f1e97f07 = ffd5531f): --f5 0 OK, --f5 1 stops on all six', (t) => {
+test('the live Worker before deploy 1 (source f1e97f07 = ffd5531f): --f5 0 OK, --f5 1 stops on all seven', (t) => {
   let live;
   try {
     live = execFileSync('git', ['show', 'f1e97f07:worker/src/index.js'], { cwd: here, encoding: 'utf8', maxBuffer: 64 << 20, stdio: ['ignore', 'pipe', 'ignore'] });
@@ -52,7 +54,7 @@ test('the live Worker before deploy 1 (source f1e97f07 = ffd5531f): --f5 0 OK, -
   assert.equal(run(f, '--plan', '1', ...CHAIN, '--f5', '0').code, 0, 'the live script has none of the F5 markers');
   const r = run(f, ...D1);
   assert.equal(r.code, 1, r.out);
-  assert.equal((r.out.match(/^STOP /gm) || []).length, 6, r.out);
+  assert.equal((r.out.match(/^STOP /gm) || []).length, 7, r.out);
 });
 
 test('each F5 feature has its own marker: one missing is a STOP that names it alone', () => {
@@ -73,7 +75,7 @@ test('--plan 2 (deploy 2): the open bundle passes, the closed one stops; --plan 
   const open = write('open.js', OPEN(src));
   let r = run(open, ...D2);
   assert.equal(r.code, 0, r.out);
-  assert.match(r.out, /GUARD OK \(26 markers, plan=2, handover=1, f3=1, f5=1\)/);
+  assert.match(r.out, /GUARD OK \(27 markers, plan=2, handover=1, f3=1, f5=1\)/);
   r = run(SRC, ...D2);
   assert.equal(r.code, 1, r.out);
   assert.match(r.out, /STOP {2}var PLAN_WRITES_OPEN = true; = 0/);
@@ -125,10 +127,10 @@ test('a double esbuild bundle (what wrangler deploys) and its CF multipart downl
     const out = await bundle(text, name);
     let r = run(write(`bundle-${name}`, out), ...args);
     assert.equal(r.code, 0, `${name}: ${r.out}`);
-    assert.match(r.out, new RegExp(`GUARD OK \\(26 markers, plan=${plan}, handover=1, f3=1, f5=1\\)`));
+    assert.match(r.out, new RegExp(`GUARD OK \\(27 markers, plan=${plan}, handover=1, f3=1, f5=1\\)`));
     const b = `${Math.random().toString(16).slice(2)}f5`;
     r = run(write(`multipart-${name}.txt`, `--${b}\r\nContent-Disposition: form-data; name="index.js"; filename="index.js"\r\nContent-Type: application/javascript+module\r\n\r\n${out}\r\n--${b}--\r\n`), ...args);
     assert.equal(r.code, 0, `${name} multipart: ${r.out}`);
-    assert.match(r.out, new RegExp(`GUARD OK \\(26 markers, plan=${plan}`));
+    assert.match(r.out, new RegExp(`GUARD OK \\(27 markers, plan=${plan}`));
   }
 });

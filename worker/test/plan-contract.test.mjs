@@ -317,11 +317,11 @@ test('every PLAN_ROUTES rpc exists in 072 / 072b with the argument names the Wor
     'every public plan_* routed once; plan_rt_create internal (decision 3)');
 });
 
-// F5 (074a): the three reads routed under /plan/* and the preview DELETE ORDERS asks for first (E19) - each one
+// F5 (074a): the four reads routed under /plan/* and the preview DELETE ORDERS asks for first (E19) - each one
 // created by 074a with exactly the argument names the Worker sends, and EXECUTE for the service role only (born
 // closed: the Worker is its one caller). Read from the copy, so a rename in a1's file fails here, not on day L.
-const READS_074A = { plan_config_read: [], plan_lookups: ['p_role'], plan_nat_state: ['p_nat_order_ids'] };
-test('074a creates the Worker\'s three /plan/* reads and order_delete_preview with the argument names it sends', () => {
+const READS_074A = { plan_config_read: [], plan_lookups: ['p_role'], plan_nat_state: ['p_nat_order_ids'], plan_activity: ['p_kind', 'p_id'] };
+test('074a creates the Worker\'s four /plan/* reads and order_delete_preview with the argument names it sends', () => {
   const sql = f074a().sql;
   const sigs = Object.fromEntries([...sql.matchAll(/CREATE (?:OR REPLACE )?FUNCTION public\.([a-z_]+)\(([^)]*)\)/g)]
     .map((m) => [m[1], m[2].split(',').map((a) => a.trim().split(/\s+/)[0]).filter(Boolean)]));
