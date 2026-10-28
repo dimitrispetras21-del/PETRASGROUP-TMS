@@ -50,3 +50,13 @@ test('the National v5 files are pre-cached (F4α)', () => {
   const list = appShell();
   for (const f of V5_FILES) assert.ok(list.includes(PREFIX + f), `${f} missing from APP_SHELL`);
 });
+
+// National v5 F5 (plan 2026-10-28 §10): stream (e) adds each new served file of F5 here with its app.html loader.
+const F5_FILES = ['core/plan-config.js'];
+test('the National v5 F5 files are pre-cached and loaded by app.html right after core/plan-api.js', () => {
+  const list = appShell();
+  for (const f of F5_FILES) assert.ok(list.includes(PREFIX + f), `${f} missing from APP_SHELL`);
+  const html = fs.readFileSync(path.join(ROOT, 'app.html'), 'utf8');
+  const order = [...html.matchAll(/<script src="([^"?]+)\?v=\d+"><\/script>/g)].map((m) => m[1]);
+  assert.strictEqual(order[order.indexOf('core/plan-api.js') + 1], 'core/plan-config.js', 'core/plan-config.js must load right after core/plan-api.js (its planFetch)');
+});
