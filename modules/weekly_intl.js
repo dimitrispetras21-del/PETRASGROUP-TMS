@@ -5253,7 +5253,7 @@ async function _wiRejoinLegs(rowId){
   const errors=[];
   for(const lr of legs){
     const oid=lr.orderIds?.[0]||lr.orderId;
-    try{ await atDelete(TABLES.ORDERS,oid); }
+    try{ await atWithDeleteConfirm(tok=>atDelete(TABLES.ORDERS,oid,{confirmToken:tok})); }   // F5 Ε19: a 428 is confirmed, never a silent fail
     catch(e){ errors.push(oid+': '+(e&&e.message||e)); }
   }
   if(errors.length){

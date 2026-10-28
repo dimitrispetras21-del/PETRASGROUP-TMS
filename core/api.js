@@ -463,6 +463,18 @@ async function _atRetry(fn, retries = 3, opts) {
         await new Promise(r => setTimeout(r, wait));
         continue;
       }
+      // 428 (F5 Ε19, Worker deploy 1): DELETE of an order whose delete has consequences answers
+      // {error:{type, code:'need_token', message}, preview:{consequences, confirm_token}}. Nothing was deleted;
+      // the same request gets the same answer, so it never feeds the retry loop (it used to be resent twice and
+      // then fall out as a plain non-ok). A designed answer, not an app error: no log, no toast — the caller
+      // shows the consequences and resends with ?confirm_token= (atWithDeleteConfirm below).
+      if (res.status === 428) {
+        const d428 = await res.json().catch(() => ({}));
+        const e428 = new Error(_atErrMsg(d428.error, 'Η διαγραφή θέλει επιβεβαίωση'));
+        e428._noRetry = true; e428._needToken = true; e428._req = reqId;
+        e428.preview = d428 && typeof d428.preview === 'object' ? d428.preview : null;
+        throw e428;
+      }
       if (res.status === 400 || res.status === 422) {
         const errData = await res.json().catch(() => ({}));
         const rawMsg = _atErrMsg(errData.error, `Validation error (${res.status})`);
@@ -886,13 +898,15 @@ async function atCreate(tableId, fields, opts) {
  * @param {string} recId - Record ID to delete
  * @returns {Promise<{id:string, deleted:boolean}>} Deletion confirmation
  */
-async function atDelete(tableId, recId) {
+async function atDelete(tableId, recId, opts) {
   _auditLog('DELETE', tableId, recId, null);
+  // opts.confirmToken: the token of a 428 preview (F5 Ε19), sent back as the user confirmed it
+  const q = opts && opts.confirmToken ? '?confirm_token=' + encodeURIComponent(opts.confirmToken) : '';
   if (!_isOnline()) {
-    _queueOffline('DELETE', _apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), null, recId);
+    _queueOffline('DELETE', _apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}${q}`), null, recId);
     return { id: recId, deleted: true, _offline: true };
   }
-  const res = await _enqueue(() => _atRetry((_r) => _fetchWithTimeout(_apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), {
+  const res = await _enqueue(() => _atRetry((_r) => _fetchWithTimeout(_apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}${q}`), {
     method: 'DELETE',
     headers: _apiHeaders('DELETE', _r)
   })));
@@ -1361,7 +1375,7 @@ async function undoLastAction() {
  * @param {string} recordId - Record ID to delete
  * @returns {Promise<{id:string, deleted:boolean}>} Deletion confirmation
  */
-async function atSoftDelete(tableId, recordId) {
+async function atSoftDelete(tableId, recordId, opts) {
   // Read the record first (the trash keeps its fields), DELETE second, and only
   // after the delete succeeded write the Κάδος entry and the «Restore» undo.
   // Until 4/10 both were written before atDelete: a REFUSED delete (403, or a
@@ -1371,7 +1385,7 @@ async function atSoftDelete(tableId, recordId) {
   // order, made routine by migration 057's designed refusals).
   let recLabel = '', rec = null, readErr = null;
   try { rec = await atGetOne(tableId, recordId); } catch(e) { readErr = e; }
-  const result = await atDelete(tableId, recordId);   // throws on refusal → no trash, no undo
+  const result = await atDelete(tableId, recordId, opts);   // throws on refusal → no trash, no undo
   try {
     if (readErr) throw readErr;
     recLabel = rec.fields?.['Name'] || rec.fields?.['Order Number'] || rec.fields?.['Full Name'] || rec.fields?.['License Plate'] || recordId;
@@ -1402,6 +1416,28 @@ async function atSoftDelete(tableId, recordId) {
 // delete, so the two can never disagree.
 function _atNoRestore(fields) {
   return typeof OrdersStock !== 'undefined' && !!fields && (OrdersStock.isPiece(fields) || OrdersStock.isLot(fields));
+}
+
+// F5 Ε19 (Worker deploy 1): an order delete with consequences answers 428 with a preview. run(token) does the
+// delete — first without a token; on 428 the user reads the consequences in words and, only on «yes», run(token)
+// sends it back. A changed list since the preview = 422 stale_confirm, shown by _atRetry as any designed «no».
+// «No» throws {_noRetry, _cancelled}: nothing was deleted, and the caller says so.
+function _atPreviewText(p) {
+  const list = Array.isArray(p && p.consequences) ? p.consequences : [];
+  const line = (c) => (c && typeof c === 'object') ? String(c.text || c.label || c.message || JSON.stringify(c)) : String(c);
+  return 'Η διαγραφή έχει συνέπειες:\n\n' + (list.length ? list.map((c) => '• ' + line(c)).join('\n') : '• (ο διακομιστής δεν έδωσε λίστα)')
+    + '\n\nΝα γίνει η διαγραφή;';
+}
+async function atWithDeleteConfirm(run) {
+  try { return await run(undefined); }
+  catch (e) {
+    if (!e || !e._needToken || !(e.preview && e.preview.confirm_token)) throw e;
+    if (!confirm(_atPreviewText(e.preview))) {
+      const c = new Error('Η διαγραφή ακυρώθηκε — δεν άλλαξε τίποτα'); c._noRetry = true; c._cancelled = true;
+      throw c;
+    }
+    return run(e.preview.confirm_token);
+  }
 }
 
 /**

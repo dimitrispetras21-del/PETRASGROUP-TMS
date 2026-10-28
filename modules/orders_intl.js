@@ -3651,8 +3651,9 @@ async function deleteIntlOrder(recId, opts) {
     // lookups below still resolve the legacy id (resolveLegacyToIds does not
     // filter deleted rows), so the cascade is unchanged.
     try {
-      if (typeof atSoftDelete === 'function') await atSoftDelete(TABLES.ORDERS, recId);
-      else await atDelete(TABLES.ORDERS, recId);
+      // F5 Ε19: a delete with consequences (428) is shown and confirmed first (core/api.js atWithDeleteConfirm)
+      await atWithDeleteConfirm((tok) => (typeof atSoftDelete === 'function'
+        ? atSoftDelete(TABLES.ORDERS, recId, { confirmToken: tok }) : atDelete(TABLES.ORDERS, recId, { confirmToken: tok })));
     } catch(e) {
       const m = String(e && e.message || e);
       // DL-03 + AU-07 (impact map 4/10): a refusal the Worker DESIGNED — a 422

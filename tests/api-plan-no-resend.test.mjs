@@ -57,12 +57,21 @@ for (const [label, body] of [['plan_unknown', UNKNOWN], ['amount_leak', LEAK]]) 
   });
 }
 
-test('why not a 5xx, a 409, a 404 or a 428: the legacy _atRetry sends those three times by itself', async () => {
-  for (const status of [500, 502, 503, 409, 404, 428]) {
+test('why not a 5xx, a 409 or a 404: the legacy _atRetry sends those three times by itself', async () => {
+  for (const status of [500, 502, 503, 409, 404]) {
     const s = sandbox(json(status, { error: { type: 'SERVER', code: 'x', message: 'x' } }));
     await s.run(SEND);
     assert.strictEqual(planCalls(s), 3, `${status}: sent three times`);
   }
+});
+
+// F5 FE-1 / Ε19 (28/10): a 428 is the facade's order-delete preview (Worker deploy 1) — the same request gets the
+// same answer, so _atRetry no longer resends it (tests/api-delete-confirm.test.mjs). /plan/* still never goes
+// through _atRetry: its 428 is planFetch's NEED_TOKEN.
+test('a 428: the legacy _atRetry sends it once (F5 Ε19)', async () => {
+  const s = sandbox(json(428, { error: { type: 'PLAN_RULE', code: 'need_token', message: 'x' } }));
+  await s.run(SEND);
+  assert.strictEqual(planCalls(s), 1);
 });
 
 // Review r2, finding 1: the Worker can only choose the status of an answer it SENDS. When that answer is lost —
