@@ -181,7 +181,10 @@
       parts: [{ t: '', rt: null, pal: '', stops: null }, { t: 'stay', rt: null, pal: '', stops: null }],
       slot: PlanApi.slot() };
     // a popover over the panel, under its «Σπάσε…» (Figma 2011:8744: drawn floating over the board), no «×»
-    const d = k.dlg('split', 'Σπάσε · ' + (it.client || '—') + ' · ' + k.pal(it.pallets) + 'π', { pop: true, anchor: anchor && anchor.getBoundingClientRect ? anchor : null, onClose: () => st.slot.close() });
+    // Figma 2011:8822: the popover ends at the row's buttons and opens to their left, over the lists it splits, so the
+    // ΦΟΡΤΗΓΑ capacity column beside them stays in view (whole-frame r4: opened rightwards it covered «27/33 · 6 ελεύθερες»)
+    const a = anchor && anchor.getBoundingClientRect ? anchor : null;
+    const d = k.dlg('split', 'Σπάσε · ' + (it.client || '—') + ' · ' + k.pal(it.pallets) + 'π', { pop: true, anchor: a, end: a && a.closest ? a.closest('.wn5-hub-a') : null, onClose: () => st.slot.close() });
     d.ft.innerHTML = '<button type="button" class="wi4-btn" data-act="cancel">Άκυρο</button><button type="button" class="wi4-btn pri" data-act="save">Σπάσε</button>';
     const sumHTML = () => {
       const ns = st.parts.map((p) => _valid(p.pal));

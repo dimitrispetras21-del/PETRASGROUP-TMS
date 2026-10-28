@@ -95,7 +95,8 @@ test('F4α-T5: «Χωρίς κάθοδο», «Κενό γύρισμα», «Μό�
   assert.ok(/class="wn5-sub wn5-miss" data-qi="wait:4101"/.test(by.get('wait:4101')) && /δεν ήρθαν με τον πίνακα/.test(by.get('wait:4101')), 'wait:4101 miss line');
   assert.ok(!/null/.test(by.get('wait:4101')), 'wait:4101 prints no «null»');
   assert.ok(/Βέροια<span class="wn5-endx"> · τέλος κύκλου<\/span><\/span><span class="wi4-l2">ως Δευ 22:00/.test(by.get('rt:101')), 'rt:101 end');
-  assert.ok(/↳ <b>Φόρτωση με τοπικό<\/b> · Driver Test 11 · Δευ 12\/10 11:00–12:00 · για Oinofyta Test \(στάση 2\)/.test(by.get('rt:103')), 'rt:103 local');
+  // whole-frame r4: «↳» in the index column (as the ⇄ sub-row's .wn5-hand-ar), the text from the ΚΑΘΟΔΟΣ chip column
+  assert.ok(/<span class="wn5-c-idx"><span class="wn5-hand-ar">↳<\/span><\/span> <span class="wn5-sub-t"><b>Φόρτωση με τοπικό<\/b> · Driver Test 11 · Δευ 12\/10 11:00–12:00 · για Oinofyta Test \(στάση 2\)/.test(by.get('rt:103')), 'rt:103 local');
   assert.ok(/class="wi4-box un" data-act="assign"/.test(by.get('wait:4101')) && /wi4-r-red/.test(by.get('wait:4101')), 'wait:4101 ΠΡΟΣ ΑΝΑΘΕΣΗ');
 });
 
@@ -120,7 +121,7 @@ test('F4α-T17 fidelity: a local loading on a pickup names what is loaded → Β
     move_date: '2026-10-12', time_from: '11:00:00', time_to: '12:00:00' };
   const by = new Map(rows(html(board)).map((r) => [keyOf(r), r]));
   const r = by.get('rt:105');
-  assert.ok(/↳ <b>Φόρτωση με τοπικό<\/b> · Driver Test 11 · Δευ 12\/10 11:00–12:00 · ΠΕΛΑΤΗΣ Δ, Thessaloniki Test → Βέροια · 6π · για ΠΕΛΑΤΗΣ Δ \(στάση 2\)/.test(r), 'rt:105 local: ' + r);
+  assert.ok(/<span class="wn5-hand-ar">↳<\/span><\/span> <span class="wn5-sub-t"><b>Φόρτωση με τοπικό<\/b> · Driver Test 11 · Δευ 12\/10 11:00–12:00 · ΠΕΛΑΤΗΣ Δ, Thessaloniki Test → Βέροια · 6π · για ΠΕΛΑΤΗΣ Δ \(στάση 2\)/.test(r), 'rt:105 local: ' + r);
   assert.ok(!/για Thessaloniki Test/.test(r), 'the pickup place is named after «για»');
   // a delivery stop (rt:103, the fixture's own) keeps the T5 line
   assert.ok(/· για Oinofyta Test \(στάση 2\)/.test(by.get('rt:103')), 'rt:103 local');

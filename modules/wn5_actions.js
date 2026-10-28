@@ -131,7 +131,8 @@
     if (d.ro) d.ro.disconnect();
     if (d.onClose) { try { d.onClose(); } catch (e) { _log(e, 'WN5Act dialog close'); } }
   }
-  // opts: { wide, anchor (a popover placed under it), ask (the two-step frame of Δ5: no «×», Άκυρο and the verb are
+  // opts: { wide, anchor (a popover placed under it), end (an element: the popover's right edge on its right edge, so
+  // it opens to the left of it), ask (the two-step frame of Δ5: no «×», Άκυρο and the verb are
   // its only buttons — Esc and a click outside still close it), pop (a popover with no «×»: Esc, a click outside),
   // onClose }
   function _dlg(kind, title, opts) {
@@ -153,7 +154,7 @@
     back.appendChild(dlg);
     document.body.appendChild(back);
     const d = { kind, back, dlg, msg: dlg.querySelector('.wn5-dlg-msg'), body: dlg.querySelector('.wn5-dlg-b'),
-      ft: dlg.querySelector('.wi4-dlg-ft'), anchor: opts.anchor || null, busy: false, locked: false, closed: false,
+      ft: dlg.querySelector('.wi4-dlg-ft'), anchor: opts.anchor || null, end: opts.end || null, busy: false, locked: false, closed: false,
       onClose: opts.onClose || null, refresh: null };
     // Esc and a click outside close it, never in the middle of a send (its answer must land somewhere)
     d.onKey = (ev) => { if (ev.key === 'Escape' && !d.busy) { ev.preventDefault(); ev.stopPropagation(); _close(d); } };
@@ -184,7 +185,8 @@
     d.dlg.style.maxHeight = '';
     const w = d.dlg.offsetWidth, h = d.dlg.offsetHeight, vh = window.innerHeight;
     const below = vh - v.bottom - 12, above = v.top - 12;
-    d.dlg.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + 'px';
+    const x = d.end && d.end.getBoundingClientRect ? d.end.getBoundingClientRect().right - w : r.left;
+    d.dlg.style.left = Math.max(8, Math.min(x, window.innerWidth - w - 8)) + 'px';
     if (h <= below || below >= POP_MIN || below >= above) {
       d.dlg.style.top = (v.bottom + 4) + 'px';
       if (h > below) d.dlg.style.maxHeight = Math.max(below, 0) + 'px';

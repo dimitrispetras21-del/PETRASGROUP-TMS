@@ -126,6 +126,7 @@ function defaultPlan(e, S) {
   return planErr(409, 'WRITES_CLOSED', 'writes_closed');   // as deployed until day L
 }
 // opts: role · flag ('on') · board · lookups · plan {'<M> <exact path>': async (entry, S) => [status, body]} · viewport · clipboard
+// · sidebar ('open': the app's default 228px sidebar; else collapsed)
 async function openApp(browser, origin, opts = {}) {
   const ctx = await browser.newContext({ baseURL: origin + '/', viewport: opts.viewport || { width: 1920, height: 1080 },
     serviceWorkers: 'block', timezoneId: 'Europe/Athens', locale: 'el-GR' });
@@ -138,6 +139,7 @@ async function openApp(browser, origin, opts = {}) {
   page.on('console', (m) => { if (m.type() === 'error') S.console.push(m.text().slice(0, 300)); });
   page.on('dialog', (d) => d.accept());
   await page.addInitScript(initScript, opts.role || 'dispatcher');
+  if (opts.sidebar === 'open') await page.addInitScript(() => localStorage.setItem('tms_sidebar_collapsed', 'false'));
   await page.route((u) => !u.href.startsWith(origin) && !u.href.includes(HOST), (route) => route.abort());
   await page.route((u) => u.href.startsWith(origin) && new URL(u.href).pathname === '/config.js', async (route) => {
     const r = await route.fetch();

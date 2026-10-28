@@ -607,7 +607,36 @@ async function scnSheetSeg({ browser, origin, ok, scn }) {
   await page.context().close();
 }
 
-const SCN = { tiles: scnTiles, card: scnCard, change: scnChange, fix: scnFix, h7: scnH7, fid: scnFid, remove: scnRemove, 'rt-token': scnRtToken, 'clear-seg': scnClearSeg, 'sheet-seg': scnSheetSeg };
+// Whole-frame r4 (critic r4, 28/10): H3 at 1440×900 with the app sidebar open (router default, #content ≈1212) and
+// closed — every stop line and the cycle's end is ONE line (plan T5 ≤1600: one whole stop on its two lines plus «+N»),
+// a cut line keeps its whole text in a title. The measured row heights are printed (report).
+async function scnNarrow({ browser, origin, ok, scn }) {
+  const pe = [];
+  for (const three of [false, true]) {
+    for (const sb of ['open', 'collapsed']) {
+      const { page, S } = await K.openApp(browser, origin, { board: handWeek(three), viewport: { width: 1440, height: 900 }, sidebar: sb });
+      await page.waitForTimeout(300);   // the sidebar's 0.22 s transition
+      const m = await page.evaluate(() => {
+        const norm = (t) => String(t || '').replace(/\s+/g, ' ').trim();
+        const lines = (el) => { const r = document.createRange(); r.selectNodeContents(el); const tops = [];
+          for (const x of r.getClientRects()) if (x.width > 0.5 && x.height >= 1 && !tops.some((t) => Math.abs(t - x.top) < 4)) tops.push(x.top); return tops.length; };
+        const els = [...document.querySelectorAll('#content .wn5 .wn5-row :is(.wn5-pt > .wi4-l1, .wn5-pt > .wi4-l2, .wn5-end > .wi4-l1, .wn5-end > .wi4-l2, .wn5-gapbox)')];
+        return { content: Math.round(document.getElementById('content').getBoundingClientRect().width),
+          wrapped: els.filter((e) => lines(e) > 1).map((e) => ({ row: e.closest('.wn5-row').dataset.key, t: norm(e.textContent), lines: lines(e) })),
+          untitled: els.filter((e) => e.scrollWidth > e.clientWidth + 1).filter((e) => { const t = e.closest('[title]'); return !t || !norm(t.title).includes(norm(e.textContent)); }).map((e) => norm(e.textContent)),
+          rows: Object.fromEntries([...document.querySelectorAll('#content .wn5 .wn5-row')].map((r) => [r.dataset.key, Math.round(r.getBoundingClientRect().height)])) };
+      }).catch((e) => ({ err: String(e), wrapped: [{}], untitled: [], rows: {} }));
+      const tag = `${three ? 3 : 2} segments, 1440 sidebar ${sb}`;
+      console.log(`  · r4 H3 ${tag}: #content ${m.content}px, rows ${JSON.stringify(m.rows)}`);
+      ok(scn, `${tag}: every stop line and cycle end is one line (plan T5 ≤1600)`, !m.err && !m.wrapped.length && Object.keys(m.rows).length > 0, m.err || m.wrapped);
+      ok(scn, `${tag}: every cut line has its whole text in a title`, !m.err && !m.untitled.length, m.untitled);
+      pe.push(...S.pageErrors, ...appConsole(S));
+      await page.context().close();
+    }
+  }
+  ok(scn, 'no page or console errors', !pe.length, pe);
+}
+const SCN = { tiles: scnTiles, card: scnCard, change: scnChange, fix: scnFix, h7: scnH7, fid: scnFid, remove: scnRemove, 'rt-token': scnRtToken, 'clear-seg': scnClearSeg, 'sheet-seg': scnSheetSeg, narrow: scnNarrow };
 module.exports = { seg, handWeek, ROW, HAND, guard, appConsole, SCN };
 if (require.main === module) {
   K.run({ scenarios: SCN, globals: ['WN5L', 'WN5Lab', 'WN5Hand'], go: 'the vehicle handover screens hold on the 072b stub' })

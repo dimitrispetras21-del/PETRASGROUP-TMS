@@ -510,14 +510,17 @@ function _anodHTML(r, m, ok) {
     // at its first « · », nothing is added or dropped).
     const cut = par ? -1 : s.gap.text.indexOf(' · ');
     // One inner run: the slot is a flex box, and a bare « · …» beside the span would be its own item and lose its space.
-    const txt = cut > 0 ? `<span><span class="wn5-gaph">${_esc(s.gap.text.slice(0, cut))}</span>${_esc(s.gap.text.slice(cut))}</span>` : _esc(s.gap.text);
+    // One line with a visible «…» at ≤1600 (.wi4-ell, whole-frame r4: the 38px two-line slot grew the row); the whole
+    // text stays in title.
+    const ell = `class="wi4-ell" title="${_esc(s.gap.text)}"`;
+    const txt = cut > 0 ? `<span ${ell}><span class="wn5-gaph">${_esc(s.gap.text.slice(0, cut))}</span>${_esc(s.gap.text.slice(cut))}</span>` : par ? _esc(s.gap.text) : `<span ${ell}>${_esc(s.gap.text)}</span>`;
     // a partner's «Μόνο κάθοδος» is a fact, not a slot (plain text), yet its ΑΝΟΔΟΣ still has the side's «+» in ΠΑΛ., as
     // every side of a cycle row (Figma 2011:10299 row 4); the «+» sits outside the dashed box (2011:10217)
     return `<div class="wn5-aspan wn5-gspan"><span class="${par ? 'wn5-gaptxt' : 'wn5-gapbox'}">${txt}</span></div><div class="wn5-apal wn5-gpal">${_plusHTML(r, 'ANODOS')}</div>`;
   }
   const n = s.from.length;
   const hd = _dc(ok && s.headDim);
-  const end = r.end ? `<span class="wn5-end${_dc(ok && r.end.dim)}"${_segAttr(r.end.segLabel)}><span class="wi4-l1">Βέροια<span class="wn5-endx"> · τέλος κύκλου</span></span><span class="wi4-l2">ως ${_esc(_dow(L().athensDay(r.end.by)))} ${_esc(L().athensTime(r.end.by))}</span></span>` : '';
+  const end = r.end ? `<span class="wn5-end${_dc(ok && r.end.dim)}"${_segAttr(r.end.segLabel)} title="${_esc(`Βέροια · τέλος κύκλου · ως ${_dow(L().athensDay(r.end.by))} ${L().athensTime(r.end.by)}`)}"><span class="wi4-l1">Βέροια<span class="wn5-endx"> · τέλος κύκλου</span></span><span class="wi4-l2">ως ${_esc(_dow(L().athensDay(r.end.by)))} ${_esc(L().athensTime(r.end.by))}</span></span>` : '';
   return `<div class="wn5-ad">${_prtHTML(r, 'ANODOS')}${_chipHTML(r, 'ANODOS', `wi4-dc ${_chipCls(s.day, m.today)}${hd}`, _dl(s.day))}<span class="wn5-dc2${hd}">${n} ${n === 1 ? 'φορτίο' : 'φορτία'}</span></div>`
     + `<div class="wn5-afl"${_legAttr(r, 'ANODOS')}>${_ptsHTML(s.from, ok)}</div>`
     + `<div class="wn5-ato${_hx(r, s, r.end)}"${_legAttr(r, 'ANODOS')}>${_hxHTML(r, s, r.end)}${_ptsHTML(s.to, ok)}${end}</div>`
@@ -563,7 +566,10 @@ function _ptName(p) { const who = _ptWho(p); return who ? `${who} · ${p.name}` 
 // Each point with its own day: a delivery of Tuesday stays bold until Tuesday ends, even if its hour passed.
 function _ptHTML(p, n, ok, placeOnly) {
   const who = placeOnly ? null : _ptWho(p);
-  return `<span class="wi4-pt wn5-pt${p.late ? ' wn5-late' : ''}${_dc(ok && p.dim && !p.late)}" data-stop="${_id(p.stopId)}"${_segAttr(p.segLabel)}>`
+  // ≤1600 each line of a stop is cut with a visible «…» (whole-frame r4, plan T5 «one whole stop on its two lines
+  // plus +N»): the whole stop stays readable in the point's title.
+  const full = `${placeOnly ? p.name : _ptName(p)} · ${p.from && p.to ? p.from + '–' + p.to : '—'} · ${_pal(p.pallets)}`;
+  return `<span class="wi4-pt wn5-pt${p.late ? ' wn5-late' : ''}${_dc(ok && p.dim && !p.late)}" data-stop="${_id(p.stopId)}"${_segAttr(p.segLabel)} title="${_esc(full)}">`
     + (n == null ? '' : `<span class="wi4-pt-n">${n}</span>`)
     + `<span class="wi4-l1">${who ? `<span class="wn5-who">${_esc(who)}<span class="wn5-city">&nbsp;·</span></span> <span class="wn5-city">${_esc(p.name)}</span>` : _esc(p.name)}</span>`
     + `<span class="wi4-l2${p.late ? ' wi4-t-amb' : ''}">${_win(p.from, p.to)} · ${_esc(_pal(p.pallets))}</span></span>`;
@@ -701,8 +707,10 @@ function _boxHTML(t) {
 function _localHTML(r, lm, ok) {
   const time = [lm.time_from, lm.time_to].filter(Boolean).map((t) => String(t).slice(0, 5)).join('–');
   return `<div class="wn5-sub${_dc(ok && lm.dim)}" data-qi="${_esc(r.key)}" data-key="local:${_id(lm.local_move_id)}" data-stop="${_id(lm.stopId)}">`
-    + '<span class="wn5-c-idx"></span>'
-    + `<span class="wn5-sub-t">↳ <b>Φόρτωση με τοπικό</b> · ${_esc(lm.driver || 'χωρίς οδηγό')} · ${_esc(_dl(lm.move_date))}${time ? ' ' + _esc(time) : ''}`
+    // «↳» in the 48px index column, as the ⇄ sub-row's (.wn5-hand-ar, Figma 2011:7745 / H1): the text then starts at the
+    // ΚΑΘΟΔΟΣ chip column. The space between the two cells is no grid item; it keeps «↳ Φόρτωση» in the row's text.
+    + '<span class="wn5-c-idx"><span class="wn5-hand-ar">↳</span></span> '
+    + `<span class="wn5-sub-t"><b>Φόρτωση με τοπικό</b> · ${_esc(lm.driver || 'χωρίς οδηγό')} · ${_esc(_dl(lm.move_date))}${time ? ' ' + _esc(time) : ''}`
     + (lm.pickup
       // a pickup (Figma 2011:8305): what is loaded there → Βέροια, then the delivery it is for (none named when the
       // leg unloads at Veroia or off this cycle — never the pickup's own place after «για»)

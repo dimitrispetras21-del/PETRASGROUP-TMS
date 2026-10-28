@@ -76,6 +76,7 @@ function defaultPlan(e, S) {
 const routeKey = (m, p) => `${m} ${p.replace(/\/\d+(?=\/|$)/g, '/:id')}`;
 
 // opts: role · flag ('on' | 'pilot' | 'off') · board · plan { 'POST /plan/x/:id/y': (entry, S) => [status, body] } · viewport
+// · sidebar ('open': the app's default 228px sidebar, as router.js opens it for a new user; else collapsed)
 async function openBoard(browser, origin, opts = {}) {
   const ctx = await browser.newContext({ baseURL: origin + '/', viewport: opts.viewport || { width: 1920, height: 1080 },
     serviceWorkers: 'block', timezoneId: 'Europe/Athens', locale: 'el-GR' });
@@ -85,6 +86,7 @@ async function openBoard(browser, origin, opts = {}) {
   page.on('pageerror', (e) => S.pageErrors.push(String(e).slice(0, 300)));
   page.on('dialog', (d) => d.accept());
   await page.addInitScript(initScript, opts.role || 'dispatcher');
+  if (opts.sidebar === 'open') await page.addInitScript(() => localStorage.setItem('tms_sidebar_collapsed', 'false'));
   await page.route((u) => !u.href.startsWith(origin) && !u.href.includes(HOST), (route) => route.abort());
   await page.route((u) => u.href.startsWith(origin) && new URL(u.href).pathname === '/config.js', async (route) => {
     const r = await route.fetch(); let body = await r.text();
@@ -1843,7 +1845,8 @@ async function scnLocal(browser, origin) {
       ids: { local_move_id: 7002 }, warnings: [{ code: 'local_payroll_review', dl_entry_id: 9, local_move_id: 7002 }], notice_ids: [] }] } });
     // fidelity T17 (Figma 2011:8305): on the pickup 2033 the ↳ line names what is loaded → Βέροια and the delivery
     // it is for (leg 6032 unloads at 2034 = delivery 2), never the pickup's own place after «για»
-    const sub = (await bText(page, '.wn5-sub[data-key="local:7002"] .wn5-sub-t')).replace(/\s+/g, ' ').trim();
+    // the whole sub-row: since whole-frame r4 its «↳» is in the index column, before .wn5-sub-t
+    const sub = (await bText(page, '.wn5-sub[data-key="local:7002"]')).replace(/\s+/g, ' ').trim();
     ok(scn, '↳ «… · ΠΕΛΑΤΗΣ Α, THESSALONIKI TEST → Βέροια · 10π · για ΠΕΛΑΤΗΣ Α (στάση 2)»',
       sub.startsWith('↳ Φόρτωση με τοπικό · Driver Test 04 · Δευ 12/10 11:00–12:00 · ΠΕΛΑΤΗΣ Α, THESSALONIKI TEST → Βέροια · 10π · για ΠΕΛΑΤΗΣ Α (στάση 2)')
       && !sub.includes('για THESSALONIKI TEST'), sub);
@@ -2168,6 +2171,108 @@ async function scnSheet(browser, origin) {
 }
 SCN['sheet'] = scnSheet;
 
+// Whole-frame r4 (critic r4, 28/10) — 1440×900 with the app sidebar OPEN (router default, #content ≈1212px; the plan's
+// ≤1600 grid names «1440 with the sidebar open» as a target) and closed. Plan T5 ≤1600: one whole stop on its two
+// lines plus «+N», rows 36px as H1 — so every stop line, the cycle's end and the «Κενό γύρισμα» slot is ONE line, cut
+// with a visible «…», the whole text in title. Also: «Thessaloniki Test» in ΦΟΡΤΩΣΗ on one line (2011:7745 row 5), the
+// «↳ Φόρτωση με τοπικό» arrow in the index column (as the ⇄ sub-row), the «Σπάσε…» popover opening to the left of its
+// row's buttons so the ΦΟΡΤΗΓΑ capacity column stays seen (2011:8822). Measured row heights are printed (report).
+const R4_LINES = `#content .wn5 .wn5-row :is(.wn5-pt > .wi4-l1, .wn5-pt > .wi4-l2, .wn5-end > .wi4-l1, .wn5-end > .wi4-l2, .wn5-gapbox)`;
+function r4Measure(sel) {
+  const lines = (el) => {
+    const r = document.createRange(); r.selectNodeContents(el);
+    const tops = [];
+    for (const x of r.getClientRects()) { if (x.width < 0.5 || x.height < 1) continue; if (!tops.some((t) => Math.abs(t - x.top) < 4)) tops.push(x.top); }
+    return tops.length;
+  };
+  const norm = (t) => String(t || '').replace(/\s+/g, ' ').trim();
+  const out = { content: Math.round((document.getElementById('content') || document.body).getBoundingClientRect().width), wrapped: [], untitled: [], rows: {} };
+  for (const el of document.querySelectorAll(sel)) {
+    const n = lines(el), row = el.closest('.wn5-row');
+    if (n > 1) out.wrapped.push({ row: row && row.dataset.key, cls: el.className, t: norm(el.textContent), lines: n, h: Math.round(el.getBoundingClientRect().height) });
+    // a cut line (its own box, or the slot's inner run) says its whole text in a title on it or around it
+    for (const c of [el, ...el.querySelectorAll(':scope > .wi4-ell')]) {
+      if (c.scrollWidth > c.clientWidth + 1) { const t = c.closest('[title]'); if (!t || !norm(t.title).includes(norm(c.textContent))) out.untitled.push({ row: row && row.dataset.key, t: norm(c.textContent), title: t ? t.title : null }); }
+    }
+  }
+  for (const r of document.querySelectorAll('#content .wn5 .wn5-row')) {
+    const fl = r.querySelector('.wn5-fl');
+    out.rows[r.dataset.key] = { h: Math.round(r.getBoundingClientRect().height), fl: fl ? fl.querySelectorAll('.wn5-pt, .wn5-vh').length : 0,
+      tiles: r.querySelectorAll('.wn5-asg .wn5-tile').length, kdLines: r.querySelectorAll('.wn5-kd > *').length };
+  }
+  out.gaps = [...document.querySelectorAll('#content .wn5 .wn5-row .wn5-gapbox')].map((g) => `${g.closest('.wn5-row').dataset.key} ${Math.round(g.getBoundingClientRect().height)}`);
+  return out;
+}
+SCN.narrow = async (browser, origin) => {
+  const scn = 'narrow';
+  const pe = [];
+  const plainRows = (m) => Object.entries(m.rows).filter(([k, r]) => k.startsWith('rt:') && r.fl <= 1 && r.tiles <= 2);
+  for (const sb of ['open', 'collapsed']) {
+    // 1 · board (the synthetic week) and the action board (bBoard, the Veroia week)
+    for (const [name, open] of [['board', () => openBoard(browser, origin, { board: fixture(), viewport: { width: 1440, height: 900 }, sidebar: sb })],
+      ['Veroia board', () => bOpen(browser, origin, { viewport: { width: 1440, height: 900 }, sidebar: sb })]]) {
+      const { page, S } = await open();
+      await page.waitForTimeout(300);   // the sidebar's 0.22 s transition
+      const m = await page.evaluate(r4Measure, R4_LINES).catch((e) => ({ err: String(e), wrapped: [{}], untitled: [], rows: {} }));
+      console.log(`  · r4 ${name} 1440 sidebar ${sb}: #content ${m.content}px, rows ${JSON.stringify(Object.fromEntries(Object.entries(m.rows).map(([k, r]) => [k, r.h])))}, slots ${JSON.stringify(m.gaps)}`);
+      ok(scn, `${name} 1440 sidebar ${sb}: every stop line, cycle end and «Κενό γύρισμα» slot is one line (plan T5 ≤1600)`, !m.err && !m.wrapped.length && Object.keys(m.rows).length > 0, m.err || m.wrapped);
+      ok(scn, `${name} 1440 sidebar ${sb}: every cut line has its whole text in a title`, !m.err && !m.untitled.length, m.untitled);
+      const tall = plainRows(m).filter(([, r]) => r.h > 37);
+      ok(scn, `${name} 1440 sidebar ${sb}: a cycle row with one loading in ΦΟΡΤΩΣΗ is 36px (±1, H1)`, plainRows(m).length > 0 && !tall.length, tall);
+      // 2 · the outside loading's client on one line beside its number (2011:7745 row 5): RT-T105 «Thessaloniki Test» on
+      // the board, RT-T204 «THESSALONIKI TEST» on the Veroia board; Βέροια and its window stay stacked under it (T5 3830)
+      {
+        const [rt, want] = name === 'board' ? [105, 'Thessaloniki Test'] : [204, 'THESSALONIKI TEST'];
+        const t = await page.evaluate((id) => {
+          const row = document.querySelector(`#content .wn5-row[data-rt="${id}"]`), l1 = row && row.querySelector('.wn5-fl .wn5-pt .wi4-l1');
+          if (!l1) return null;
+          const r = document.createRange(); r.selectNodeContents(l1);
+          const tops = [];
+          for (const x of r.getClientRects()) if (x.width > 0.5 && !tops.some((y) => Math.abs(y - x.top) < 4)) tops.push(x.top);
+          const p = l1.closest('.wn5-pt');
+          return { t: l1.textContent, lines: tops.length, cut: l1.scrollWidth > l1.clientWidth + 1, title: p ? p.title : null, vh: !!row.querySelector('.wn5-fl .wn5-vh + .wn5-vtime'), h: Math.round(row.getBoundingClientRect().height) };
+        }, rt);
+        console.log(`  · r4 RT-T${rt} row (${name}, sidebar ${sb}): ${t && t.h}px`);
+        ok(scn, `${name} 1440 sidebar ${sb}: RT-T${rt} ΦΟΡΤΩΣΗ «${want}» on one line (cut → title), Βέροια and its window still under it`,
+          !!t && t.t === want && t.lines === 1 && (!t.cut || (t.title || '').startsWith(want + ' · ')) && t.vh, t);
+      }
+      if (name === 'board') {
+        // 4 · the local loading sub-row of RT-T103: «↳» in the index column, the text at the ΚΑΘΟΔΟΣ chip column
+        const l = await page.evaluate(() => {
+          const sub = document.querySelector('#content .wn5-sub[data-key^="local:"]'), row = sub && sub.previousElementSibling;
+          const chip = row && row.querySelector('.wn5-kd .wi4-dc'), b = sub && sub.querySelector('.wn5-sub-t > b');
+          if (!sub || !chip || !b) return null;
+          const ar = sub.querySelector(':scope > .wn5-c-idx > .wn5-hand-ar');
+          const t = sub.querySelector('.wn5-sub-t');
+          return { ar: ar ? ar.textContent : null, inText: /↳/.test(t.textContent), text: Math.round(b.getBoundingClientRect().left * 10) / 10, chip: Math.round(chip.getBoundingClientRect().left * 10) / 10,
+            arX: ar ? Math.round(ar.getBoundingClientRect().left - sub.getBoundingClientRect().left) : null };
+        });
+        ok(scn, `board 1440 sidebar ${sb}: «↳ Φόρτωση με τοπικό» — the ↳ in the index column (.wn5-hand-ar), the text at the ΚΑΘΟΔΟΣ chip column (±1)`,
+          !!l && l.ar === '↳' && !l.inText && Math.abs(l.text - l.chip) <= 1, l);
+      }
+      if (name === 'Veroia board') {
+        // 3 · «Σπάσε…» on ΠΕΛΑΤΗΣ Η: the popover ends at the row's buttons and opens leftwards; ΦΟΡΤΗΓΑ stays seen
+        await bClick(page, '#wn5-hub [data-hub="open"]');
+        await bClick(page, '#wn5-hub-panel [data-piece="4401"] [data-hub="split"]');
+        await page.waitForTimeout(200);
+        const p = await page.evaluate(() => {
+          const d = document.querySelector('.wi4-dlg[data-wn5="split"]'), r = document.querySelector('#wn5-hub-panel .wn5-hub-r');
+          const a = document.querySelector('#wn5-hub-panel [data-piece="4401"] .wn5-hub-a'), b = document.querySelector('#wn5-hub-panel [data-piece="4401"] [data-hub="split"]');
+          if (!d || !r || !a || !b) return null;
+          const g = d.getBoundingClientRect(), x = (e) => Math.round(e.getBoundingClientRect().left * 10) / 10;
+          return { l: Math.round(g.left * 10) / 10, r: Math.round(g.right * 10) / 10, w: Math.round(g.width), top: Math.round(g.top), trucksL: x(r), btnL: x(b),
+            btnsR: Math.round(a.getBoundingClientRect().right * 10) / 10, btnB: Math.round(b.getBoundingClientRect().bottom), vw: innerWidth };
+        });
+        ok(scn, `Veroia board 1440 sidebar ${sb}: the «Σπάσε…» popover ends at the row's buttons (±1) and opens to their left, its right ≤ the ΦΟΡΤΗΓΑ column's left, inside the window`,
+          !!p && Math.abs(p.r - p.btnsR) <= 1 && p.l < p.btnL && p.r <= p.trucksL && p.l >= 8 && p.r <= p.vw - 8 && p.top >= p.btnB, p);
+        await page.keyboard.press('Escape');
+      }
+      pe.push(...S.pageErrors);
+      await page.context().close();
+    }
+  }
+  ok(scn, 'no page errors', !pe.length, pe);
+};
 // ── scenarios end (each Task adds its own above this line) ──
 
 // ── fixture check (T4): plain node, no browser ──
