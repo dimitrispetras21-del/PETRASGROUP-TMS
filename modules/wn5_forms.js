@@ -680,8 +680,7 @@
         .concat(Number.isFinite(o.price) && o.price > 0 ? [`${_pal(o.price)} €`] : o.price === null ? ['τιμή λείπει'] : []).join(' · '));
       // a stop carries the pallets its shipments will have (_pairs), not its raw row: the one row of a 1×1 / N×1 / 1×N
       // side carries them all (code review xhigh r3: an N×1 delivery left empty is NOT «;» when every load is known),
-      // a row of the N side its own shipment's
-      // (a row of the N side IS its shipment: _pairs takes its own pallets)
+      // a row of the N side its own shipment's (_pairs takes that row's own pallets)
       const palOf = (r, single) => (prs && single ? _palAgg(sp) : _palAgg([r.pallets]));
       for (const [act, rows, single] of [['φόρτωση', o.loads, nl === 1], ['παράδοση', o.drops, nd === 1]]) for (const r of rows)
         if (DAY.test(r.day) && HM.test(r.to)) seq.push(Object.assign({ k: r.day + 'T' + (r.from || r.to), when: r.until ? `ως ${_dow(r.day)} ${r.to}` : r.allDay ? `${_dow(r.day)} όλη η ημέρα` : `${_dow(r.day)} ${r.from}–${r.to}`, act, place: r.hub ? 'Βέροια' : r.label, clients: [o.client || '—'] }, palOf(r, single)));
@@ -708,7 +707,7 @@
       `<div class="wn5f-sum-h"><b>${n} ${n === 1 ? 'παραγγελία θα δημιουργηθεί' : 'παραγγελίες θα δημιουργηθούν'} · ${SIDE_GR[dir]}${DAY.test(day) ? ' · ' + _esc(_dlab(day)) : ''} · ${_esc(where)}</b><b>${_palU(total, totalUnk)}/33 παλέτες</b></div>`
       + (n > 1 ? `<div class="wn5f-sum-c">${_esc(cli.concat(['κάθε παραγγελία τιμολογείται χωριστά']).join('   ·   '))}</div>` : '')
       + `<div class="wn5f-sec">ΣΕΙΡΑ ΣΤΑΣΕΩΝ ΚΑΤΑ ΩΡΑ</div><ol class="wn5f-seq">`
-      + lines.map((x, i) => `<li><span class="wn5f-seq-n">${i + 1}</span><span class="wn5f-seq-w">${_esc(x.when)}</span><span class="wn5f-seq-a">${x.act}</span><span class="wn5f-seq-p">${_esc(x.place || '—')}</span><span class="wn5f-seq-c">${_esc(who(x))}</span><span class="wn5f-seq-q">${Number.isNaN(x.pal) ? '—' : x.pal === null || x.unk ? _palU(x.pal, x.unk || 1) + 'π' : Number.isFinite(x.pal) ? _pal(x.pal) + 'π' : '—'}</span></li>`).join('')
+      + lines.map((x, i) => `<li><span class="wn5f-seq-n">${i + 1}</span><span class="wn5f-seq-w">${_esc(x.when)}</span><span class="wn5f-seq-a">${x.act}</span><span class="wn5f-seq-p">${_esc(x.place || '—')}</span><span class="wn5f-seq-c">${_esc(who(x))}</span><span class="wn5f-seq-q">${Number.isNaN(x.pal) ? '—' : _palU(x.pal, x.unk) + 'π'}</span></li>`).join('')
       + `</ol><div class="wn5f-note wn5f-sum-n">Θα γραφτούν σε μία συναλλαγή: ${n} ${n === 1 ? 'παραγγελία' : 'παραγγελίες'} → ${ships} ${ships === 1 ? 'αποστολή' : 'αποστολές'} → στάσεις στην ${SIDE_ACC[dir]}${DAY.test(day) ? ' ' + _esc(_dlab(day)) : ''} (${_esc(where)}). Χωρίς βήμα ένωσης.</div>`;
     f.el.querySelector('[data-act="add-order"]').hidden = f.mode !== 'groupage';
     f.el.querySelectorAll('[data-act="del-order"]').forEach((b) => { b.hidden = f.mode !== 'groupage' || n < 2; });
@@ -864,8 +863,9 @@
     // F1 (owner 28/10): a whole-day window shows as empty fields, as the create form writes it («κενό: όλη η ημέρα»)
     const lAll = WN5L.allDay(s.load_from, s.load_to), dAll = WN5L.allDay(s.deliver_from, s.deliver_to);
     const where = hubWait ? '<small class="wn5f-shipc"> · στη Βέροια</small>'
-      : s.rt_codes.length ? `<small class="wn5f-shipc"> · σε κύκλο ${_esc(s.rt_codes.join(', '))}</small>`
-      : twoDays ? '<small class="wn5f-shipc"> · παράθυρο σε δύο ημέρες: αλλάζει από το Εβδομαδιαίο</small>' : '';
+      : (s.rt_codes.length ? `<small class="wn5f-shipc"> · σε κύκλο ${_esc(s.rt_codes.join(', '))}</small>` : '')
+      // a riding point over two days is locked too: the reason is said beside the cycle (code review high, F30 merge)
+      + (twoDays ? '<small class="wn5f-shipc"> · παράθυρο σε δύο ημέρες: αλλάζει από το Εβδομαδιαίο</small>' : '');
     const from = hubWait && _hubId() != null ? _hubId() : s.origin;
     // × on every point that waits (a two-day one too: 077 removes it), never on the last one (077 refuses shipments:last: the delete of the order is
     // «Διαγραφή παραγγελίας», with its own list)
@@ -968,13 +968,17 @@
     const win = (s, w, stored) => {
       // pallets stored as unknown (NULL, F4) and left empty is no change: never a refusal of a save the user did not ask
       const unknownKept = s.pallets === null && stored && stored.pallets === null;
-      if (!unknownKept && !(Number.isFinite(s.pallets) && s.pallets > 0 && _dec1(s.pallets))) out.push(w + 'παλέτες: αριθμός πάνω από 0, ένα δεκαδικό το πολύ');
+      if (!unknownKept && !(Number.isFinite(s.pallets) && s.pallets > 0 && _dec1(s.pallets))) {
+        out.push(w + 'παλέτες: αριθμός πάνω από 0, ένα δεκαδικό το πολύ' + (stored && stored.pallets === null ? ', ή κενό (άγνωστες)' : ''));
+      }
       if (s.palOnly) return;   // its windows are the cycle's: never read, never sent
       if (!s.load_from || !s.load_to || !s.deliver_from || !s.deliver_to) out.push(w + 'ημέρα, και παράθυρο: ΗΗ:ΛΛ και στα δύο άκρα, ή κανένα (όλη η ημέρα)');
       else if (Date.parse(s.load_from) > Date.parse(s.load_to) || Date.parse(s.deliver_from) > Date.parse(s.deliver_to)) out.push(w + 'το «έως» πρέπει να είναι μετά το «από»');
       else if (Date.parse(s.load_from) > Date.parse(s.deliver_to)) out.push(w + 'η παράδοση πριν από τη φόρτωση');
     };
-    st.ships.forEach((s) => win(s, '', f.edit.ships.find((x) => x.shipment_id === s.shipment_id)));
+    // an existing point is named by its route, so a line says WHICH row (code review high)
+    st.ships.forEach((s) => { const o = f.edit.ships.find((x) => x.shipment_id === s.shipment_id);
+      win(s, o && f.edit.ships.length > 1 ? `${_placeName(o.origin)} → ${_placeName(o.dest)}: ` : '', o); });
     st.news.forEach((s, i) => {
       const w = `νέο σημείο ${i + 1}: `;
       if (!s.origin_rec) out.push(w + 'διάλεξε τοποθεσία φόρτωσης από τη λίστα');
@@ -1238,11 +1242,13 @@
     const seq = stops.slice().sort((a, b) => Date.parse(a.planned_from) - Date.parse(b.planned_from)).map((s) => {
       const legs = s.legs || [];
       const isEnd = !!end && s.stop_id === end.stop_id;
+      // the act that counts at this stop: the delivery at the end or where nothing loads, else the loading
+      const want = isEnd || !legs.some((x) => x.act === 'load') ? 'unload' : 'load';
+      const counted = legs.filter((l) => l.act === want);
       return { stop_id: s.stop_id, when: isEnd ? `ως ${_dow(s.stop_day)} ${_hm(s.planned_to)}` : `${_dow(s.stop_day)} ${_hmw(s.planned_from, s.planned_to)}`,
         place: isHub(s) ? (isEnd ? 'Βέροια · τέλος κύκλου' : 'Βέροια') : s.location,
         what: [...new Set(legs.map((l) => l.reference).filter(Boolean))].join(' · ') + (isEnd ? ' · άφιξη' : legs.some((l) => l.act === 'load') ? ' · φόρτωση' : ' · παράδοση'),
-        pallets: legs.reduce((a, l) => a + (l.act === (isEnd || !legs.some((x) => x.act === 'load') ? 'unload' : 'load') && l.pallets != null ? l.pallets : 0), 0),
-        unk: legs.filter((l) => l.act === (isEnd || !legs.some((x) => x.act === 'load') ? 'unload' : 'load') && l.pallets == null).length };
+        pallets: counted.reduce((a, l) => a + (l.pallets != null ? l.pallets : 0), 0), unk: counted.filter((l) => l.pallets == null).length };
     });
     // every piece of the whole cycle, both sides: one left = moving it ends the cycle (Figma Δ7 2069:8081)
     const cyclePieces = new Set();

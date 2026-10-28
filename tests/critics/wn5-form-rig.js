@@ -256,14 +256,14 @@ async function scnNoPP({ browser, origin, ok, scn }) {
   ok(scn, 'the point riding RT-T101 with unknown pallets: edited in place (F30), pallets open, «άγνωστες»',
     !!ed && !!ed.ride && !ed.ride.ro && ed.ride.palOn && ed.ride.ph === 'άγνωστες', ed && ed.ride);
   ok(scn, 'the waiting point with unknown pallets: editable, pallets «άγνωστες»', !!ed && !!ed.wait && !ed.wait.ro && ed.wait.palOn && !ed.wait.winOff && ed.wait.ph === 'άγνωστες', ed && ed.wait);
-  await p2.page.fill(`${DLG} [data-ship="5202"] [data-f="pal"]`, '10').catch(() => {});
-  await p2.page.fill(`${DLG} [data-ship="5304"] [data-f="pal"]`, '4').catch(() => {});
+  await p2.page.fill(`${DLG} [data-ship="5202"] [data-f="pal"]`, '10')   // throws (and names it) if the field is locked;
+  await p2.page.fill(`${DLG} [data-ship="5304"] [data-f="pal"]`, '4')   // throws (and names it) if the field is locked;
   const lk = (id) => p2.page.evaluate(([d, i]) => { const r = document.querySelector(`${d} [data-ship="${i}"]`);
     const g = (k) => { const x = r.querySelector(`[data-f="${k}"]`); return x ? !x.disabled : null; };
     return { pal: g('pal'), lfrom: g('lfrom'), dfrom: g('dfrom'), rm: r.hasAttribute('data-rm') }; }, [DLG, id]);
   const x = (id) => p2.page.click(`${DLG} [data-ship="${id}"] [data-act="del-ship"]`);
   const two0 = await lk(5305);
-  await p2.page.fill(`${DLG} [data-ship="5305"] [data-f="pal"]`, '3').catch(() => {});
+  await p2.page.fill(`${DLG} [data-ship="5305"] [data-f="pal"]`, '3')   // throws (and names it) if the field is locked;
   await x(5305); const two1 = await lk(5305); await x(5305); const two2 = await lk(5305);
   await x(5306); await x(5306); const hub2 = await lk(5306);
   ok(scn, 'two-day point of unknown pallets: pallets open, windows locked; × closes them all; ↺ gives back exactly that',
