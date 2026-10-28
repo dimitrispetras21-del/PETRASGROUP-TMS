@@ -84,7 +84,8 @@ const OrdersCatalog = (() => {
   // τιμή» shows (owner 29/9). National orders take their vehicle from their
   // national load; a missing load is «εκτός» with the «Στείλε →» repair.
   function _assign(r) {
-    const canSend = typeof can === 'function' && can('orders') === 'full';
+    // After L the repair would INSERT a national load, which 074 freezes (F5 Task F).
+    const canSend = typeof can === 'function' && can('orders') === 'full' && !S.afterL;
     return OrdersCommon.assignOf(r.rec, r.type === 'natl'
       ? { load: S.loads.get(r.id) || null, missingLoad: S.noLoad.has(r.id), canSend } : {});
   }
@@ -368,6 +369,7 @@ const OrdersCatalog = (() => {
     if (ri.status === 'rejected' && rn.status === 'rejected') throw ri.reason;
     S.noLoad = natl.noLoad || new Set();
     S.loads = natl.loads || new Map();
+    S.afterL = !!natl.afterL;
     S.legParents = intl.legParents || null;
     // Dashboard KPI click («Νέα παραγγελία»/«χωρίς ανάθεση» tiles) hands over
     // a one-shot filter, as it did to the old international list.
@@ -460,7 +462,7 @@ const OrdersCatalog = (() => {
       }
       const intl = ri.value, natl = rn.value;
       S.period = 'all'; S.widenedFrom = from;
-      S.noLoad = natl.noLoad || new Set(); S.loads = natl.loads || new Map(); S.legParents = intl.legParents || null;
+      S.noLoad = natl.noLoad || new Set(); S.loads = natl.loads || new Map(); S.legParents = intl.legParents || null; S.afterL = !!natl.afterL;
       // The new rows replace the period's, so their loaders' warnings replace
       // the period's too (a failed national-loads read must still say that the
       // vehicle column cannot be trusted), and names are pending as in render().

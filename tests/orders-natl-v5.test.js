@@ -39,7 +39,7 @@ test('before L: no request, no record touched (flag off = today)', async () => {
   const recs = [n('recA', 11), n('recB', 12)];
   const before = JSON.stringify(recs);
   const r = await OrdersCommon.natV5Attach(recs);
-  assert.deepStrictEqual(r, { ran: false, failed: false });
+  assert.deepStrictEqual(r, { ran: false, failed: false, state: 'before' });
   assert.strictEqual(calls.length, 0);
   assert.strictEqual(JSON.stringify(recs), before);
   assert.ok(recs.every(x => !('_v5' in x)));
@@ -49,7 +49,7 @@ test('after L: one read by Order No; "missing" stays the old model, a state is a
   answer = id => (id === '12' ? st({ carriers: [OWN] }) : 'missing');
   const recs = [n('recA', 11), n('recB', 12), n('recC', null)];
   const r = await OrdersCommon.natV5Attach(recs);
-  assert.deepStrictEqual(r, { ran: true, failed: false });
+  assert.deepStrictEqual(r, { ran: true, failed: false, state: 'after' });
   assert.strictEqual(calls.length, 1);
   assert.strictEqual(calls[0].m, 'GET');
   assert.strictEqual(calls[0].path, '/plan/nat-state?nat_order_ids=11,12');   // no id → not asked
@@ -68,7 +68,7 @@ test('a failed read marks every record unknown and says so; never «old model»'
   answer = planErr('net_failed', 'failed');
   const recs = [n('recA', 11), n('recB', 12)];
   const r = await OrdersCommon.natV5Attach(recs);
-  assert.deepStrictEqual(r, { ran: true, failed: true });
+  assert.deepStrictEqual(r, { ran: true, failed: true, state: 'after' });
   assert.ok(recs.every(x => x._v5 === 'err'));
   assert.deepStrictEqual(logged, []);   // planFetch logs its own errors: no second row
 });
@@ -86,7 +86,7 @@ test('before Worker deploy 1 (404 no_route): today\'s path, nothing marked, aske
   answer = planErr('no_route', 'client');
   const recs = [n('recA', 11)];
   const r = await OrdersCommon.natV5Attach(recs);
-  assert.deepStrictEqual(r, { ran: false, failed: false });
+  assert.deepStrictEqual(r, { ran: false, failed: false, state: 'after' });
   assert.ok(!('_v5' in recs[0]));
   assert.deepStrictEqual(calls[0].opts, { designed: ['no_route'] });
 });

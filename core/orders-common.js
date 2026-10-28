@@ -342,12 +342,14 @@ const OrdersCommon = {
   // requested and no record is touched — today's path, not a copy of it.
   // Sets rec._v5 = its state (v5 orders) | 'err' (the read failed: on every
   // record, since any may be v5); leaves it unset otherwise.
-  // → { ran, failed }: on failed the caller shows NAT_V5_WARN.
+  // → { ran, failed, state }: on failed the caller shows NAT_V5_WARN; state =
+  // PlanConfig's ('before' | 'after' | 'unknown') for the entry points of Task F.
   NAT_V5_WARN: 'Η κατάσταση των εθνικών v5 δεν διαβάστηκε — η ΑΝΑΘΕΣΗ των εθνικών χωρίς φορτίο δείχνει «—» και το «παραδόθηκε» τους ακολουθεί την ημερομηνία παράδοσης. Δεν σημαίνει ότι δεν έχουν όχημα· ξαναδοκίμασε με Ανανέωση.',
   async natV5Attach(natlRecs) {
     const recs = natlRecs || [];
     recs.forEach(r => { delete r._v5; });
-    if (!recs.length || await OrdersCommon._planState() === 'before') return { ran: false, failed: false };
+    const state = await OrdersCommon._planState();
+    if (!recs.length || state === 'before') return { ran: false, failed: false, state };
     // 'Order No' = national_orders.id (view 054): the id /plan/* speaks.
     const byNo = new Map();
     recs.forEach(r => {
@@ -356,7 +358,7 @@ const OrdersCommon = {
       if (!byNo.has(n)) byNo.set(n, []);
       byNo.get(n).push(r);
     });
-    if (!byNo.size) return { ran: false, failed: false };
+    if (!byNo.size) return { ran: false, failed: false, state };
     try {
       for (const part of OrdersList.chunk([...byNo.keys()], 500)) {
         const st = await planFetch('GET', '/plan/nat-state?nat_order_ids=' + part.join(','), { designed: ['no_route'] });
@@ -368,14 +370,14 @@ const OrdersCommon = {
           byNo.get(n).forEach(r => { r._v5 = s; });
         }
       }
-      return { ran: true, failed: false };
+      return { ran: true, failed: false, state };
     } catch (e) {
       // Before Worker deploy 1 the route does not exist, so no v5 order can
       // either (writes open only with deploy 2): today's path, not a failure.
-      if (e && e.code === 'no_route') { recs.forEach(r => { delete r._v5; }); return { ran: false, failed: false }; }
+      if (e && e.code === 'no_route') { recs.forEach(r => { delete r._v5; }); return { ran: false, failed: false, state }; }
       if (!(e && e.name === 'PlanError') && typeof logError === 'function') logError(e, 'OrdersCommon.natV5Attach');
       recs.forEach(r => { r._v5 = 'err'; });
-      return { ran: true, failed: true };
+      return { ran: true, failed: true, state };
     }
   },
   // 'before' | 'after' | 'unknown' from core/plan-config.js (stream c). Its
