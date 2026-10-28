@@ -16,3 +16,13 @@
   - (b)/(a1) must ship `/plan/activity` in deploy 1; without it the readers say «δεν διαβάστηκαν» after L.
   - (e) bumps `?v=` / `SW_VERSION` after merge.
   - Live check after deploy 1: `/plan/activity` answers empty and the cards are unchanged.
+
+## Follow-up 28/10 (branch `fix/f5-d3-checks`, after #128 merged)
+- **Two stale checks fixed (stream (e) found them):**
+  - the unit test compared with `origin/main`, which is the file itself after the merge; it now uses the pinned `5f55a943`, as d2 does;
+  - the rig set `window.PlanConfig`, which the real `core/plan-config.js` (loaded since #126) overwrote; it now answers `GET /plan/config` and adds section G (`/plan/config` fails → `unknown` → v5 still read).
+- **Proof:**
+  - unit 24/24; NO-GO on `5f55a943`: 13 ✗;
+  - rig 52/52 on the branch and 52/52 on the LIVE Pages front end; NO-GO on `5f55a943`: 19 ✗;
+  - the executed 074a `plan_activity` has the same shape as the readers.
+- **Not provable from here:** that the live Worker serves `/plan/activity` (`/plan/*` answers 401 before routing, even for an unknown path), and real-data counts. Both need the owner's session.
