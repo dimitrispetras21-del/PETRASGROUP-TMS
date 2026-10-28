@@ -17,6 +17,8 @@
   // Ε-2: until Worker deploy 1 (c0ccdf77, live 28/10/2026 with 074a) GET /plan/lookups did not exist and its 404
   // no_route was the KNOWN gap, not logged. The route is live now, so a 404 is a logged bug again (principle 1).
   // tests/wn5-plan-ids.test.mjs holds this flag to the Worker source: false exactly while the route is in it.
+  // An emergency `wrangler rollback` to a Worker before c0ccdf77 (2ca70af1, 39842d18) = this flag true again, with a
+  // bump; otherwise every catalogue opening writes an app_errors row (B-34) for a route that is known to be missing.
   const LOOKUPS_PENDING = false;
 
   // A local refusal in the shape of planFetch's errors (kind 'client'), so every screen shows it the same way.
