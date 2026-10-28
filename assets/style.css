@@ -9022,7 +9022,11 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5 .wn5-q .wi4-q-hd > span:first-child { white-space:nowrap; }
 .wn5-dayx { font-weight:400; letter-spacing:0; color:var(--wi4-grey-2); }
 /* Figma H1: «ΔΕΥΤΕΡΑ» bold and spaced, the date lighter; on today's empty line «· σήμερα · καμία φόρτωση» reads dark. */
-.wn5 .wn5-dayh .wi4-dayd { font-weight:500; letter-spacing:0; }
+.wn5 .wn5-dayh .wi4-dayd { font-weight:600; letter-spacing:0; }
+/* H1 2120:8110/8111 (approved 25/10, over 7745): the date is DM Sans SemiBold 8px after «ΔΕΥΤΕΡΑ», tracking .8 on the
+   name only. The date stays inside .wi4-dayn (one text run, so innerText keeps «ΔΕΥΤΕΡΑ 12/10»): the space between them
+   is ~3.7px in Syne + its .8 tracking, and 4px of margin makes the 8. */
+.wn5 .wn5-dayh .wi4-dayd { margin-left:4px; }
 .wn5 .wn5-day.today .wn5-dayx { font-weight:700; color:var(--text); }
 /* «· σήμερα · καμία φόρτωση» reads as one phrase (H1): the header's 8px flex gap shrinks to a space between the two. */
 .wn5 .wn5-dayh > .wi4-today + .wn5-dayx { margin-left:-4px; }
@@ -9173,17 +9177,22 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 }
 /* ✈ menu (Figma 2011:8858): 300px, white, the board's line colour; it lives on <body>, outside .wn5. */
 .wn5-menu { position:fixed; z-index:var(--z-top); width:300px; padding:6px 0; background:var(--surface-card); border:1px solid var(--wi4-line-2);
-  border-radius:8px; box-shadow:var(--shadow-lift); font-family:'DM Sans',sans-serif; font-size:12.5px; color:var(--wi4-ink); }
-.wn5-m-hd { display:flex; flex-direction:column; gap:2px; margin:0 12px; padding:6px 0 8px; border-bottom:1px solid var(--wi4-line); }
+  border-radius:8px; box-shadow:var(--wn5-pop-shadow); font-family:'DM Sans',sans-serif; font-size:12.5px; color:var(--wi4-ink); }
+/* 2011:9150: drop-shadow 0 8 12 rgba(10,26,41,.16) = --wn5-pop-shadow (the Δ4 shell's, already on the submenu below) */
+.wn5-m-hd { display:flex; flex-direction:column; gap:2px; margin:0 12px; padding:6px 0 8px; border-bottom:1px solid var(--wi4-line-2); }
 .wn5-m-i { display:flex; justify-content:space-between; align-items:baseline; gap:8px; width:100%; padding:7px 12px; border:0; background:none;
   text-align:left; font:inherit; color:inherit; cursor:pointer; }
-.wn5-m-i:hover, .wn5-m-i:focus { background:var(--wi4-sel); outline:none; }
+/* 2011:9156/9171: no fill at rest, only the hovered (or open) line. The first line takes the focus when the menu opens;
+   after a mouse click that focus is not :focus-visible, so it no longer paints a second blue line beside the hovered
+   one; from the keyboard it is, so the line the arrows reach still shows. */
+.wn5-m-i:hover, .wn5-m-i:focus-visible { background:var(--wi4-sel); outline:none; }
+.wn5-m-i:focus { outline:none; }
 .wn5-m-i > .wi4-l1 { font-weight:400; font-size:12.5px; }   /* Figma 2011:9161: 12.5 Regular, the .wi4-l1 12px would win */
 /* head (Figma 2011:9152/9153): line 1 SemiBold 600 12px navy, line 2 11px Regular grey-2 */
 .wn5-m-hd > .wi4-l1 { font-weight:600; }
 .wn5-m-hd > .wi4-l2 { font-size:11px; line-height:14px; }
 .wn5-m-i.danger > .wi4-l1 { color:var(--wi4-red); }
-.wn5-m-sep { height:1px; margin:4px 0; background:var(--wi4-line); }
+.wn5-m-sep { height:1px; margin:4px 12px; background:var(--wi4-line-2); }   /* 2011:9178: #e2e8f0, inset like the head rule (274 ≈ 276) */
 .wn5-m-n { margin-left:auto; font-weight:600; color:var(--wi4-grey-1); }
 .wn5-m-ar { margin-left:auto; color:var(--wi4-grey-1); }
 .wn5-m-i > .wi4-l2 + .wn5-m-ar, .wn5-m-i > .wi4-l2 + .wn5-m-n { margin-left:6px; }
@@ -9406,8 +9415,8 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
    8px for the value, and the default is the line's whole count (13, 20 …), which an input would clip to one digit. */
 .wn5-take .wn5-hm { width:23px; height:22px; padding:0 1px; text-align:center; font-size:11.5px; font-weight:600; color:var(--wi4-ink); border:1.5px solid var(--wi4-blue); border-radius:4px; }
 .wn5-grp-s { font-weight:400; letter-spacing:0; }
-/* «αργό VS» (Figma 2011:10372): the chip grey tile, 6px after the head, Medium grey-1 */
-.wn5-grp-h > .wn5-grp-c { display:inline-block; margin-left:6px; padding:0 6px; border-radius:4px; background:var(--wi4-chip); font-size:11px; line-height:18px; font-weight:500; color:var(--wi4-grey-1); }
+/* «αργό VS» (Figma 2011:10371/10372): the chip grey tile, px 5, 6px after the head, Medium 10.5 grey-1 */
+.wn5-grp-h > .wn5-grp-c { display:inline-block; margin-left:6px; padding:0 5px; border-radius:4px; background:var(--wi4-chip); font-size:10.5px; line-height:18px; font-weight:500; color:var(--wi4-grey-1); }
 .wn5-leave { color:var(--wi4-amber); font-weight:600; }
 .wn5-late { color:var(--wi4-red); font-weight:600; }
 /* Figma 2011:10444/10445: two 15px lines of 11px grey-2 on the chip grey, px 14, no vertical padding, no rule (30px) */
@@ -9433,6 +9442,9 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
    Τρί 13/10» was cut before its date at 1440 (319px of text in 303px). */
 .wn5-wide[data-wn5="move"] > .wi4-dlg-hd { flex-wrap:wrap; height:auto; padding:10px 0; row-gap:0; }
 .wn5-wide[data-wn5="move"] .wi4-dlg-hd > .wi4-dlg-t { flex:1 1 0; min-width:0; }
+/* 2013:7751/7752: the meta 2px under the title. The 34px filter shares the title's row; centred there the title stood
+   8.5px above the meta. At the row's foot it reads as one block with the meta, and the filter stays above the meta row. */
+.wn5-wide[data-wn5="move"] .wi4-dlg-hd > .wi4-dlg-t { align-self:flex-end; margin-bottom:2px; }
 .wn5-dlg[data-wn5="move"] .wi4-dlg-hd > .wn5-dlg-meta { order:1; flex:0 0 100%; font-size:11px; line-height:15px; white-space:normal; overflow:visible; }
 /* ── T16: the date panel Δ4 (Figma 2053:7837/7838/7960): 568 wide, no «×» (Άκυρο is the exit), the meta under the
    title across the dialog (11px grey, one line); calendar 222 (cells 30×26 r5, 11.5px) left, the result right of a
@@ -9847,6 +9859,17 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5 .wn5-hand > .wn5-hand-i { font-weight:600; }
 .wn5 .wn5-hand > .wn5-hand-s { font-weight:400; }
 .wn5 .wn5-hand > .wn5-hand-gap { width:18px; }
+/* ≤1600 the index column is 48px with padding 0 4 0 8 (the grid above): the ↳ chip is that column too, so it lines up
+   with the row number over it and the first text stays 22px after it (5 + 12 + 5), as 86 = 64 + 22 at 1920 (2138:7747). */
+@media (max-width:1600px) {
+  .wn5 .wn5-hand > .wn5-c-idx { width:48px; padding:0 4px 0 8px; }
+}
+/* Row height with tiles (H1 2120:8794: 36; H3 2123:7788: 48). A stop with its segment line is 35px (16 + 14 + 5) and
+   Figma centres it in the 35px under the rule, with no padding: two segments keep the 36 row. Three keep the 1 / 2
+   padding round the 44px tiles (1 + 1 + 44 + 2 = 48). The first row of a day has no rule (wi4 block); with tiles it
+   keeps a clear 1px so the row is the same height wherever it falls (else 47). */
+.wn5-row:has(> .wn5-asg > .wn5-tiles.n2) { padding-top:0; padding-bottom:0; }
+.wn5 .wi4-day-body > .wn5-row:first-child:has(> .wn5-asg > .wn5-tiles) { border-top:1px solid transparent; }
 /* T25 (072b) — the cycle card H6 2129:7735, the change H2 2122:7735, the fix and the H7 refusals 2130:7735, on the
    .wn5f shell of the order / leg forms. In lists the segment mark is a STRAIGHT 3px line (R-55); the slant is for the
    board tiles only. Widths are Figma's: card 940 (rows 896), modal 860 (preview rows 788). */
