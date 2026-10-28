@@ -137,7 +137,11 @@ function _aicPageContext() {
       lines.push(`  ${imp.length} imports, ${unmatched} exports χωρίς matched import (empty return risk)`);
     }
 
-    if (page === 'weekly_natl' && typeof WNATL !== 'undefined' && WNATL.rows) {
+    // National v5 (F4α, FEATURES.WN_V5): under the new board WNATL.rows is the OLD board's state, not what is on
+    // screen — describing it would tell the user about rows they do not see. No v5 summary yet (Φ4β): say so.
+    if (page === 'weekly_natl' && typeof WN5 !== 'undefined' && WN5.active()) {
+      lines.push('Weekly National (νέα προβολή v5): δεν υπάρχει ακόμη σύνοψη για τη συνομιλία — δες τον πίνακα στην οθόνη.');
+    } else if (page === 'weekly_natl' && typeof WNATL !== 'undefined' && WNATL.rows) {
       const ns = WNATL.rows.filter(r => r.type === 'northsouth');
       const sn = WNATL.rows.filter(r => r.type === 'southnorth');
       const unassNS = ns.filter(r => !r.saved).length;
@@ -574,6 +578,17 @@ async function _aicExecTool(name, input) {
       case 'update_record': {
         const tKey = _TABLE_MAP[input.table];
         if (!tKey || !TABLES[tKey]) return { error: 'Unknown table: ' + input.table };
+        // F5 Ε16: the old national tables after day L (or when that is unknown) are not written from here.
+        // Without core/plan-config.js (before the bump that loads it) nothing changes: the Worker (Ε16) refuses
+        // after L anyway; this is only so the user reads a reason instead of «Record updated».
+        if (typeof PlanConfig !== 'undefined' && PlanConfig.isLegacyTable(TABLES[tKey])) {
+          const pc = await PlanConfig.load({ fresh: true });
+          if (pc.state !== 'before') {
+            const msg = PlanConfig.LEGACY_TEXT[pc.state];
+            if (typeof showErrorToast === 'function') showErrorToast(msg, 'warn', 8000);
+            return { error: msg };
+          }
+        }
         await atPatch(TABLES[tKey], input.record_id, input.fields);
         toast('Record updated', 'success');
         return { success: true };
