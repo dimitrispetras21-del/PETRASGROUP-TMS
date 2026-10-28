@@ -884,6 +884,8 @@ function _natlLockForm(recId, allow) {
 async function _natlSubmitLegacy(recId, allow) {
   const btn = document.getElementById('natlBtnSubmit');
   if (btn) { btn.textContent = 'Αποθήκευση…'; btn.disabled = true; }
+  // Only what changed: an untouched empty Notes must not turn NULL into '' (a change nobody made, in the audit).
+  const was = ((NATL_ORDERS.data || []).find(r => r.id === recId) || { fields: {} }).fields;
   const fields = {};
   for (const [id, label] of Object.entries(allow)) {
     const el = document.getElementById(id); if (!el) continue;
@@ -891,9 +893,10 @@ async function _natlSubmitLegacy(recId, allow) {
     if (label === 'Price') {
       const n = v === '' ? null : parseFloat(v);
       if (n !== null && !(Number.isFinite(n) && n > 0)) { toast('Η τιμή πρέπει να είναι αριθμός πάνω από 0', 'danger'); if (btn) { btn.textContent = 'Αποθήκευση'; btn.disabled = false; } return; }
-      fields.Price = n;
-    } else fields[label] = v;
+      if (n !== (OrdersCommon.price(was))) fields.Price = n;
+    } else if (v !== String(was[label] == null ? '' : was[label]).trim()) fields[label] = v;
   }
+  if (!Object.keys(fields).length) { _natlLegacyLock = null; closeModal(); toast('Καμία αλλαγή — δεν γράφτηκε τίποτα', 'info'); return; }
   try {
     await atPatch(TABLES.NAT_ORDERS, recId, fields);
     invalidateCache(TABLES.NAT_ORDERS);

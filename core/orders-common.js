@@ -375,7 +375,9 @@ const OrdersCommon = {
       // Before Worker deploy 1 the route does not exist, so no v5 order can
       // either (writes open only with deploy 2): today's path, not a failure.
       if (e && e.code === 'no_route') { recs.forEach(r => { delete r._v5; }); return { ran: false, failed: false, state }; }
-      if (!(e && e.name === 'PlanError') && typeof logError === 'function') logError(e, 'OrdersCommon.natV5Attach');
+      // planFetch logs its own errors; a lost session (_sessionGone, core/api.js) is never logged again after
+      // the first 401 — only a fault of this reader (a broken answer) is.
+      if (!(e && (e.name === 'PlanError' || e._sessionGone)) && typeof logError === 'function') logError(e, 'OrdersCommon.natV5Attach');
       recs.forEach(r => { r._v5 = 'err'; });
       return { ran: true, failed: true, state };
     }

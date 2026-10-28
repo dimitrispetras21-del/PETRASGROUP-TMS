@@ -34,7 +34,7 @@ const nat = (id, no, ref, del, extra) => ({ id, fields: Object.assign({ 'Order N
   'Pickup Location 1': ['recLocA'], 'Delivery Location 1': ['recLocB'], 'Loading DateTime': LOAD_DAY, 'Delivery DateTime': del }, extra || {}) });
 // V5A: v5, own truck, NOT executed, delivery date future · V5B: v5, no vehicle, NOT executed, date past
 // V5C: v5, partner, executed, date past · OLDA: old, load with truck, date past · OLDB: old, no load, date future
-const NAT = [nat('recV5A', 9001, 'SYN-V5A', FUTURE), nat('recV5B', 9002, 'SYN-V5B', PAST), nat('recV5C', 9003, 'SYN-V5C', PAST),
+const NAT = [nat('recV5A', 9001, 'SYN-V5A', FUTURE), nat('recV5B', 9002, 'SYN-V5B', PAST, { Price: '' }), nat('recV5C', 9003, 'SYN-V5C', PAST),
   nat('recOLDA', 9004, 'SYN-OLDA', PAST, { Direction: 'North→South' }), nat('recOLDB', 9005, 'SYN-OLDB', FUTURE, { Direction: 'North→South' })];
 const NL = [{ id: 'recNL1', fields: { 'Source National Order': ['recOLDA'], Truck: ['recTr1'], Direction: 'North→South', 'Source Type': 'National' } }];
 const car = (o) => Object.assign({ truck: null, trailer: null, driver: null, partner: null, code: 'RT-9', side: 'KATHODOS', day: TODAY }, o);
@@ -51,7 +51,7 @@ const json = (route, body, status = 200) => route.fulfill({ status, contentType:
 async function newPage(browser, role, sc) {
   const ctx = await browser.newContext({ baseURL: BASE_URL, viewport: { width: 1440, height: 960 } });
   const page = await ctx.newPage();
-  const errors = [], log = { natState: [], patches: [] };
+  const errors = [], log = { natState: [], patches: [], nlPosts: 0, natDeletes: 0 };
   page.on('pageerror', e => errors.push('pageerror: ' + e));
   page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
   page.on('dialog', d => { errors.push('native dialog: ' + d.message()); d.dismiss(); });
@@ -65,9 +65,11 @@ async function newPage(browser, role, sc) {
   page.route(`**/${T.NAT_ORDERS}**`, route => {
     const req = route.request();
     if (req.method() === 'PATCH') { log.patches.push({ url: req.url(), body: req.postDataJSON() }); return json(route, { id: 'recOLDA', fields: {} }); }
+    if (req.method() === 'DELETE') { log.natDeletes++; return json(route, { deleted: true }); }
     return json(route, { records: NAT });
   });
   page.route(`**/${T.NAT_LOADS}**`, route => {
+    if (route.request().method() !== 'GET') { log.nlPosts++; return json(route, { id: 'recNEW', fields: {} }); }
     const u = decodeURIComponent(route.request().url());
     return json(route, { records: NL.filter(l => u.includes('"' + l.fields['Source National Order'][0] + '"')) });
   });
@@ -134,6 +136,11 @@ async function after(browser) {
   const v5Rows = await page.$$eval('.ow4-nat', rs => rs.filter(r => /ΣΥΝ-5001|Synthetic Partner/.test(r.textContent)).map(r => r.textContent));
   assert(v5Rows.length >= 2 && v5Rows.every(t => !/εκτός φορτίου/.test(t)), 'after/week: no v5 row says «εκτός φορτίου»');
   assert(page._errors.length === 0, 'after: 0 console/page errors ' + JSON.stringify(page._errors));
+  // «Χωρίς τιμή» (V5B is the one unpriced order): its ΑΝΑΘΕΣΗ from the invoicing set's v5 state, never «εκτός».
+  await page.evaluate(() => OrdersHub.setView('noprice'));
+  await page.waitForTimeout(1500);
+  const np = await page.locator('#content').innerText();
+  assert(/Ε-9002/.test(np) && /προς ανάθεση/.test(np) && !/εκτός/.test(np), 'after/noprice: the unpriced v5 order reads «προς ανάθεση», not «εκτός»');
   // Task F: «Νέα εθνική» goes to the board
   await page.evaluate(() => openNatlCreate());
   await page.waitForTimeout(800);
@@ -168,8 +175,15 @@ async function dispatcherEdit(browser) {
   await page.click('#natlBtnSubmit');
   await page.waitForTimeout(800);
   const p = page._log.patches;
-  assert(p.length === 1 && JSON.stringify(Object.keys((p[0].body || {}).fields || {}).sort()) === JSON.stringify(['Notes', 'Price']) && p[0].body.fields.Price === 777,
-    'dispatcher: ONE PATCH of national_orders with Price + Notes only ' + JSON.stringify(p));
+  // Only what changed: Price. The untouched empty Notes is not sent (NULL must not become '').
+  assert(p.length === 1 && JSON.stringify(Object.keys((p[0].body || {}).fields || {})) === JSON.stringify(['Price']) && p[0].body.fields.Price === 777,
+    'dispatcher: ONE PATCH of national_orders with the changed Price only ' + JSON.stringify(p));
+  // Delete and «Στείλε →» refuse after L, with nothing sent.
+  const before = page._log.patches.length;
+  const del = await page.evaluate(() => deleteNatlOrder('recOLDB'));
+  await page.evaluate(() => _natlSendToWeekly('recOLDB'));
+  await page.waitForTimeout(400);
+  assert(del === false && page._log.patches.length === before && page._log.nlPosts === 0 && page._log.natDeletes === 0, 'dispatcher: delete and «Στείλε →» refuse after L, nothing written');
   assert(page._errors.length === 0, 'dispatcher: 0 console/page errors ' + JSON.stringify(page._errors));
   await page.context().close();
 }
