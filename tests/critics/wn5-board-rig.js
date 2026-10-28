@@ -2850,6 +2850,43 @@ SCN.why = async (browser, origin) => {
     await o.page.context().close();
   }
 };
+// Figma audit 28/10 (PR #154), group 1 part B — Δ1 and the order card (wn5_actions.js), stacked on the Δ1 quick fix:
+// B-18 Δ1 of a VS: the grey band «Όλο το … μαζί · σπάσιμο μόνο στον Πίνακα Βέροιας» (Figma 2051:7746) · B-21 Δ1 draws
+// no group with no line · B-25 the order card title stops at 2 lines, the whole of it in title. Each NO-GO on main.
+SCN['figma-g1b'] = async (browser, origin) => {
+  const scn = 'figma-g1b';
+  const b = live45();
+  const LONG = 'ΠΕΛΑΤΗΣ ΕΘ ΜΕ ΠΟΛΥ ΜΑΚΡΥ ΟΝΟΜΑ ΕΤΑΙΡΕΙΑΣ ΠΕΡΙΟΡΙΣΜΕΝΗΣ ΕΥΘΥΝΗΣ ΚΑΙ ΑΚΟΜΗ ΜΑΚΡΥΤΕΡΟ ΕΜΠΟΡΙΚΟ ΣΗΜΑ ΤΕΣΤ';
+  b.waiting.push({ piece_id: 61, shipment_id: 61, kind: 'national', nat_order_id: 61, order_id: null, client_id: 49, client: LONG, reference: null, pallets: 5,
+    nat_from_location_id: 6, nat_to_location_id: 2, position_location_id: 6, nat_ready_day: '2026-10-12', nat_due_day: '2026-10-12', overdue: false, is_stock: false,
+    leave_by: null, pallet_exchange: false, temperature_c: null, price: 1, direction: null, load_from: '2026-10-12T08:00:00+03:00', load_to: '2026-10-12T10:00:00+03:00',
+    deliver_from: '2026-10-12T14:00:00+03:00', deliver_to: '2026-10-12T16:00:00+03:00' });
+  const { page, S } = await openBoard(browser, origin, { board: b });
+  await page.waitForSelector('#content > .wi4.wn5[data-state="ok"]', { timeout: 8000 }).catch(() => {});
+  // Δ1 of VS 607 (one piece, an export: no cycle that day, no free truck in the catalogue)
+  await page.click('#content .wn5 .wn5-row[data-piece="19"] .wi4-box.un').catch(() => {});
+  await page.waitForTimeout(700);
+  const d1 = await page.evaluate(() => { const d = document.querySelector('.wi4-dlg'); if (!d) return null; const g = d.querySelector('.wn5-grey'); return { grey: g ? g.textContent : null, grps: [...d.querySelectorAll('.wn5-grp-h[data-grp]')].map((x) => x.dataset.grp + ':' + x.textContent) }; });
+  ok(scn, 'B-18 · Δ1 of a one-piece VS: the grey band «Όλο το #607 μαζί · σπάσιμο μόνο στον Πίνακα Βέροιας»', !!d1 && d1.grey === 'Όλο το #607 μαζί · σπάσιμο μόνο στον Πίνακα Βέροιας', d1);
+  ok(scn, 'B-21 · Δ1 draws no group with 0 lines (no «ΚΥΚΛΟΙ … · 0», no «ΕΛΕΥΘΕΡΑ ΦΟΡΤΗΓΑ · … · 0»); ΣΥΝΕΡΓΑΤΗΣ stays (its picker)',
+    !!d1 && !d1.grps.some((g) => /^(rt|free):/.test(g)) && d1.grps.some((g) => /^partner:/.test(g)), d1 && d1.grps);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
+  // a national of one piece: no band (nothing to split)
+  await page.click('#content .wn5 .wn5-row[data-piece="61"] .wi4-box.un').catch(() => {});
+  await page.waitForTimeout(700);
+  const g61 = await page.evaluate(() => { const d = document.querySelector('.wi4-dlg'); return d ? [...d.querySelectorAll('.wn5-grey')].map((x) => x.textContent) : null; });
+  ok(scn, 'B-18 · Δ1 of a one-piece national: no «Όλο το … μαζί» (nothing to split)', !!g61 && !g61.some((t) => /^Όλο το /.test(t)), g61);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
+  await page.click('#content .wn5 .wn5-row[data-piece="61"] .wi4-plane[data-act="ocard"]').catch(() => {});
+  await page.waitForTimeout(500);
+  const ct = await page.evaluate(() => { const t = document.querySelector('.wi4-dlg.wn5-ocard .wi4-dlg-t'); if (!t) return null; const lh = parseFloat(getComputedStyle(t).lineHeight); return { lines: Math.round(t.getBoundingClientRect().height / lh), title: t.title, text: t.textContent }; });
+  ok(scn, 'B-25 · order card title of a 90-character client: at most 2 lines, the whole «#61 · …» in title', !!ct && ct.lines <= 2 && ct.title === '#61 · ' + LONG, ct);
+  ok(scn, 'nothing written: only reads on /plan/*', S.plan.every((x) => x.m === 'GET'), S.plan.map((x) => x.m + ' ' + x.path));
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await page.context().close();
+};
 // ── main ──
 (async () => {
   if (argv.includes('--check-fixture')) process.exit(checkFixture() ? 0 : 1);
