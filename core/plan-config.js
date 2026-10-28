@@ -8,15 +8,19 @@
 //   - 'unknown' = no answer, a refusal, or a body the client cannot read. NEVER silently 'before' (principle 1):
 //                 the caller shows it and decides; the failure is logged once, here or by planFetch.
 // No screen computes the cut from a date (principle 3): the date is returned for display only.
-// Only a definite answer is kept for the session; a failure is not, so the next call reads again (a user's act —
-// never a retry inside load()). 'after' is final. A write path asks with {fresh:true}: a 'before' read at 14:00
-// may be stale after 074 runs at 15:00, and one GET per save of a VS order costs nothing.
+// Only a definite answer is kept; a failure is not, so the next call reads again (a user's act — never a retry
+// inside load()). 'after' is final. 'before' is kept BEFORE_TTL_MS only: a tab opened at 14:00 must not go on
+// reading the old model after 074 runs at 15:30 and soft-deletes the NLs it would show. A write path asks with
+// {fresh:true} (one GET per save of a VS order); a fresh read that fails forgets the old 'before' too.
+// Callers guard with typeof PlanConfig: app.html loads this file only from stream (e)'s bump on (F5 plan §10).
 // Nothing at load: the first call to load() is the first fetch. UMD like core/plan-ids.js.
 (function (root) {
   'use strict';
   const STATE = Object.freeze({ BEFORE: 'before', AFTER: 'after', UNKNOWN: 'unknown' });
-  const DAY = /^\d{4}-\d{2}-\d{2}$/;
+  const DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
+  const BEFORE_TTL_MS = 5 * 60 * 1000;
   let _known = null;
+  let _knownAt = 0;
   let _inflight = null;
 
   function _result(state, cutoverDay, writesOpen, err) {
@@ -31,16 +35,25 @@
     try { if (typeof logError === 'function') logError(e, 'PlanConfig.load'); } catch (_) { /* reporting never cascades */ }
   }
 
+  // a real calendar day: '2026-13-45' matches the pattern but is no day, and must not read as 'after'
+  function _isDay(s) {
+    const m = typeof s === 'string' && DAY.exec(s);
+    if (!m) return false;
+    const t = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+    return t.getUTCFullYear() === +m[1] && t.getUTCMonth() === +m[2] - 1 && t.getUTCDate() === +m[3];
+  }
+  function _keep(r) { _known = r; _knownAt = Date.now(); return r; }
   function _read(d) {
     const day = d && typeof d === 'object' ? d.cutover_day : undefined;
-    const okDay = day === null || (typeof day === 'string' && DAY.test(day));
+    const okDay = day === null || _isDay(day);
     if (!okDay || typeof d.writes_open !== 'boolean') return null;
     return day === null ? _result(STATE.BEFORE, null, d.writes_open) : _result(STATE.AFTER, day, d.writes_open);
   }
 
   function load(opts) {
     const fresh = !!(opts && opts.fresh);
-    if (_known && (!fresh || _known.state === STATE.AFTER)) return Promise.resolve(_known);
+    if (_known && (_known.state === STATE.AFTER || (!fresh && Date.now() - _knownAt < BEFORE_TTL_MS))) return Promise.resolve(_known);
+    _known = null;
     if (_inflight) return _inflight;
     _inflight = (async () => {
       try {
@@ -56,12 +69,10 @@
           _log(e);
           return _result(STATE.UNKNOWN, null, false, e);
         }
-        _known = r;
-        return r;
+        return _keep(r);
       } catch (e) {
         if (e && e.status === 404 && e.code === 'no_route') {
-          _known = _result(STATE.BEFORE, null, false);
-          return _known;
+          return _keep(_result(STATE.BEFORE, null, false));
         }
         // planFetch logs what is not a designed answer; a designed one (a 403: every role has GET /plan/config,
         // so a refusal is a PLAN_PERMS bug) it does not, so it is logged here.
@@ -73,10 +84,7 @@
     })();
     return _inflight;
   }
-  // The last definite answer, or null if none yet — for code that cannot wait. Never a guess.
-  function peek() { return _known; }
-
-  const PlanConfig = Object.freeze({ STATE, load, peek });
+  const PlanConfig = Object.freeze({ STATE, load });
   if (typeof module !== 'undefined' && module.exports) module.exports = PlanConfig;
   else root.PlanConfig = PlanConfig;
 })(typeof window !== 'undefined' ? window : this);
