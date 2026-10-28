@@ -12,9 +12,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-// 074a is a draft until the owner runs it; then it leaves drafts/ (CLAUDE.md rule 5): the source and the generated
-// files move one up together and DIR follows them
-export const DIR = path.resolve(HERE, '..');
+// 074a was executed 28/10 and left drafts/ (CLAUDE.md rule 5): the source and the generated files are one up; this
+// tool stays in drafts/tools/ and writes there
+export const DIR = path.resolve(HERE, '..', '..');
 export const SOURCE = '074a_plan_reads.sql';
 export const DRYRUN = '074a_plan_reads_dryrun.sql';
 export const ROLLBACK = '074a_plan_reads_rollback.sql';
