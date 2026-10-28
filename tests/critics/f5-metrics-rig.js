@@ -199,7 +199,8 @@ async function main() {
         const b = await open(browser, borigin, { page: 'metrics_audit', user: OWNER, config: 'before' });
         const theirs = mask(await contentHtml(b.page));
         ok(n, 'flag off: #content identical to the base tree (load stamp masked)', mine === theirs, firstDiff(mine, theirs));
-        ok(n, 'flag off: same facade requests as the base tree', JSON.stringify(S.facade) === JSON.stringify(b.S.facade), { mine: natOrdersReq(S), base: natOrdersReq(b.S) });
+        const bag = (xs) => JSON.stringify(xs.map((x) => JSON.stringify(x)).sort());
+        ok(n, 'flag off: same facade requests as the base tree (as a multiset)', bag(S.facade) === bag(b.S.facade), { mine: natOrdersReq(S), base: natOrdersReq(b.S) });
       }
     });
     await sc('trail-before', async (n) => {
@@ -231,11 +232,17 @@ async function main() {
       const c = await card(page, 'ΣΥΝΕΠΕΙΑ ΕΘΝΙΚΩΝ');
       ok(n, 'NAT_ORDERS 500 → «—» «δεν διαβάστηκε»', c && c.val === '—' && /δεν διαβάστηκε/.test(c.target), c);
     });
-    await sc('perf-noroute', async (n) => {
+    await sc('perf-noroute-unknown', async (n) => {
+      const { page } = await open(browser, origin, { page: 'performance', user: SOTIRIS, config: 'unknown', natState: 'noroute' });
+      const c = await card(page, 'ΣΥΝΕΠΕΙΑ ΕΘΝΙΚΩΝ');
+      // L not known + no route: a Worker before deploy 1, so no v5 order can exist → the old sample, said so (v5 0)
+      ok(n, 'L unknown + nat-state 404 no_route → old sample, «v5 0», not a failure', c && /^100%/.test(c.val) && /v5 0 · παλιό 1/.test(c.target), c);
+    });
+    await sc('perf-noroute-after', async (n) => {
       const { page } = await open(browser, origin, { page: 'performance', user: SOTIRIS, config: 'after', natState: 'noroute' });
       const c = await card(page, 'ΣΥΝΕΠΕΙΑ ΕΘΝΙΚΩΝ');
-      // before Worker deploy 1: no v5 order can exist → the old sample alone, said so (v5 0)
-      ok(n, 'nat-state 404 no_route → old sample, «v5 0», not a failure', c && /^100%/.test(c.val) && /v5 0 · παλιό 1/.test(c.target), c);
+      // after L the same 404 hides every v5 order (Worker rolled back / deploy without the read): a failure
+      ok(n, 'after L + nat-state 404 no_route → «—» «δεν διαβάστηκε», never «v5 0»', c && c.val === '—' && /δεν διαβάστηκε/.test(c.target), c);
     });
     await sc('perf-unknown', async (n) => {
       const { page } = await open(browser, origin, { page: 'performance', user: SOTIRIS, config: 'unknown' });
@@ -268,6 +275,8 @@ async function main() {
       ok(n, 'Ανεξόφλητο = «—», never €150 without the v5 share', r && r[2] === '—', r);
       const o = await row(page, 'natl.v5_orders');
       ok(n, 'Εθνικές v5 = «—», never 0', o && o[2] === '—', o);
+      const c = await row(page, 'natl.cutover');
+      ok(n, 'the transition state (read from /plan/config) stays visible', c && /μετά τη μετάβαση · ημέρα L 2026-10-31/.test(c[2]), c);
     });
     await sc('audit-unknown', async (n) => {
       const { page } = await open(browser, origin, { page: 'metrics_audit', user: OWNER, config: 'unknown' });

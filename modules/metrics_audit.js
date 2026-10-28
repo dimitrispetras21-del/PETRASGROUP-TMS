@@ -319,10 +319,10 @@ async function renderMetricsAudit() {
     // ('Order No') and the date the 30-day invoiced window needs. NatV5Kpi
     // lives in modules/performance.js (loaded first); without it the state is
     // unknown, never silently «before».
-    const _pc = (typeof NatV5Kpi !== 'undefined') ? await NatV5Kpi.state() : { state: 'unknown', cutoverDay: null };
-    const _natV5On = _pc.state !== 'before';
-    const _natOrderFields = ['Status','Invoiced','Price','Truck','Partner','Loading DateTime'];
-    if (_natV5On) _natOrderFields.push('Order No', 'Delivery DateTime');
+    // The state is read alongside the other reads; only NAT_ORDERS waits for it.
+    const _pcP = (typeof NatV5Kpi !== 'undefined') ? NatV5Kpi.state() : Promise.resolve({ state: 'unknown', cutoverDay: null });
+    const _natOrderFields = pc => ['Status','Invoiced','Price','Truck','Partner','Loading DateTime']
+      .concat(pc.state !== 'before' ? ['Order No', 'Delivery DateTime'] : []);
     const [orders, natOrders, natLoads, trucks, trailers, drivers, partners,
            locations, clients, ramp, maintReq, plSup, plPart] = await Promise.all([
       safeFetch(() => atGetAll(TABLES.ORDERS, { fields: [
@@ -336,7 +336,7 @@ async function renderMetricsAudit() {
         // false. Before the stock Worker an unknown READ label is dropped (200).
         'Stock Lot','Own Stock Lot','Group ID'
       ]}, true), 'metrics audit: ORDERS'),
-      safeFetch(() => atGetAll(TABLES.NAT_ORDERS, { fields: _natOrderFields }, true), 'metrics audit: NAT_ORDERS'),
+      _pcP.then(pc => safeFetch(() => atGetAll(TABLES.NAT_ORDERS, { fields: _natOrderFields(pc) }, true), 'metrics audit: NAT_ORDERS')),
       safeFetch(() => atGetAll(TABLES.NAT_LOADS, { fields: ['Status','Truck','Partner','Loading DateTime','Direction'] }, true), 'metrics audit: NAT_LOADS'),
       safeFetch(() => atGetAll(TABLES.TRUCKS, { fields: ['License Plate','Active','KTEO Expiry','KEK Expiry','Insurance Expiry'] }, true), 'metrics audit: TRUCKS'),
       safeFetch(() => atGetAll(TABLES.TRAILERS, { fields: ['License Plate', ...TRAILER_EXPIRY_NAMES] }, true), 'metrics audit: TRAILERS'),
@@ -351,6 +351,8 @@ async function renderMetricsAudit() {
     ]);
 
     const sources = { orders, natOrders, natLoads, trucks, trailers, drivers, partners, locations, clients, ramp, maintReq, plSup, plPart };
+    const _pc = await _pcP;
+    const _natV5On = _pc.state !== 'before';
     // natV5 = { state, cutoverDay, ran, failed, byNo }. Before L: state 'before',
     // nothing read. A failed NAT_ORDERS read is a failed v5 read too (no ids).
     const _natOrdersFailed = typeof didFail === 'function' && didFail(natOrders);
@@ -391,8 +393,11 @@ function _runAllMetrics(d) {
   const period30 = { daysBack: 30 };
   const results = [];
 
-  const add = (category, key, label, value, note, diag) => {
-    results.push({ category, key, label, value, note, diag: diag || [] });
+  // keep (F5 Ε15): a row read from a source other than its category's — it
+  // stays shown when the category's source failed. Only set when true, so
+  // today's rows (and the JSON export) are unchanged.
+  const add = (category, key, label, value, note, diag, keep) => {
+    results.push(Object.assign({ category, key, label, value, note, diag: diag || [] }, keep ? { keep: true } : {}));
   };
   // A percentage with no denominator is unknown, not 0% (DESIGN.md #3): "0%
   // on time" out of zero deliveries would read as a perfect failure.
@@ -466,22 +471,21 @@ function _runAllMetrics(d) {
   // F5 Ε15: a v5 national order has no Status (spec 2.1: no mirror), so the
   // Status rules of core/metrics.js never see it. From L its share is added
   // here with the base's «delivered» (every piece's delivery stop executed) and
-  // the order's own Invoiced. A record that does carry a Status is already in
-  // the core figure and is not added twice.
+  // the order's own Invoiced. A record the core rule already counts (outstanding:
+  // Status 'Delivered'; invoiced: Status 'Invoiced') is not added twice.
   const nv = d.natV5 && d.natV5.state !== 'before' ? d.natV5 : null;
-  const v5Nat = nv ? NatV5Kpi.v5Of(d.natOrders, nv)
-    .filter(x => !['Delivered', 'Invoiced'].includes(x.rec.fields['Status'])) : [];
+  const v5Nat = nv ? NatV5Kpi.v5Of(d.natOrders, nv) : [];
   const v5Price = xs => xs.reduce((s, x) => s + (parseFloat(x.rec.fields['Price']) || 0), 0);
   const v5Note = (xs, sum) => (nv ? ` · εκ των οποίων εθνικές v5: ${eur(sum)} (${xs.length})` : '');
 
   // ════ FINANCIAL ══════════════════════════════════
   try {
-    const v5Out = v5Nat.filter(x => x.s.executed && !x.rec.fields['Invoiced']);
+    const v5Out = v5Nat.filter(x => x.s.executed && !x.rec.fields['Invoiced'] && x.rec.fields['Status'] !== 'Delivered');
     const out = metrics.outstandingBalance(d.orders, d.natOrders) + v5Price(v5Out);
     add('fin', 'fin.outstanding_balance', 'Ανεξόφλητο υπόλοιπο', eur(out),
       'Παραδόθηκαν, δεν τιμολογήθηκαν' + v5Note(v5Out, v5Price(v5Out)), out === 0 ? ['⚠ Μηδέν — έλεγξε το πεδίο Invoiced και τις τιμές Status'] : []);
 
-    const v5Inv = v5Nat.filter(x => x.rec.fields['Invoiced']);
+    const v5Inv = v5Nat.filter(x => x.rec.fields['Invoiced'] && x.rec.fields['Status'] !== 'Invoiced');
     const revInv = metrics.revenueInvoiced(d.orders, d.natOrders) + v5Price(v5Inv);
     add('fin', 'fin.revenue_invoiced', 'Έσοδα (τιμολογημένα σύνολο)', eur(revInv), 'Συνολικά' + v5Note(v5Inv, v5Price(v5Inv)));
 
@@ -587,7 +591,7 @@ function _runAllMetrics(d) {
         ? `μετά τη μετάβαση${nv.cutoverDay ? ' · ημέρα L ' + escapeHtml(nv.cutoverDay) : ''}`
         : 'άγνωστη';
       add('natl', 'natl.cutover', 'Μετάβαση εθνικών (ημέρα L)', st, 'από τη βάση (GET /plan/config), ποτέ από ημερομηνία',
-        nv.state === 'after' ? [] : ['⚠ Η κατάσταση μετάβασης δεν διαβάστηκε· οι εθνικές v5 διαβάστηκαν κανονικά από τη βάση']);
+        nv.state === 'after' ? [] : ['⚠ Η κατάσταση μετάβασης δεν διαβάστηκε'], true);
       const all = NatV5Kpi.v5Of(d.natOrders, nv);
       add('natl', 'natl.v5_orders', 'Εθνικές v5', all.length, 'με αποστολές στο νέο μοντέλο');
       add('natl', 'natl.v5_executed', 'Εθνικές v5 που παραδόθηκαν', all.filter(x => x.s.executed).length,
@@ -827,16 +831,18 @@ function _auditDraw() {
         <tbody>
           ${items.map(r => {
             const isErr = String(r.value).startsWith('ΣΦΑΛΜΑ');
+            // A «keep» row (the transition state) was not read from the failed source.
+            const masked = catFailed.length > 0 && !r.keep;
             const hasWarn = (r.diag||[]).length > 0 || isErr || catFailed.length > 0;
             // A metric whose source did not load is displayed as "—" with an
             // explanation, never as the 0 the computation produced from an
             // empty array. That substitution is the whole point of this page's
             // conversion: on the accuracy-checking screen, a wrong number is
             // worse than a missing one.
-            const value = catFailed.length
+            const value = masked
               ? '<span class="ma-warnt" title="Δεν φορτώθηκαν τα δεδομένα πηγής">—</span>'
               : `<span class="ma-num${isErr ? ' ma-bad' : ''}">${r.value}</span>`;
-            const note = catFailed.length
+            const note = masked
               ? `<span class="ma-warnt">Μη διαθέσιμη: δεν φορτώθηκαν τα δεδομένα πηγής</span>`
               : `${r.note || ''}${r.diag && r.diag.length ? '<br><span class="ma-warnt">'+r.diag.join(' · ')+'</span>' : ''}`;
             return `<tr class="${hasWarn ? 'ma-row-warn' : ''}">

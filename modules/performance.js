@@ -15,9 +15,10 @@
 //   state(): PlanConfig, or 'unknown' when core/plan-config.js is not loaded —
 //            never silently 'before' (principle 1).
 //   read():  'before' → no request at all (today's path, not a copy of it).
-//            Otherwise one GET per 500 national order ids. 404 no_route = the
-//            Worker has no v5 reads yet (before deploy 1), so no v5 order can
-//            exist either: nothing to add, not a failure (as core/plan-ids.js).
+//            Otherwise one GET per 500 national order ids. 404 no_route with L
+//            not known to have happened = the Worker has no v5 reads yet (before
+//            deploy 1), so no v5 order can exist: nothing to add, not a failure
+//            (as core/plan-ids.js). After L the same 404 is a failure.
 // Later: one client with OrdersCommon.natV5Attach (stream d1) once both merge.
 const NatV5Kpi = {
   CHUNK: 500,
@@ -59,7 +60,11 @@ const NatV5Kpi = {
         }
       }
     } catch (e) {
-      if (e && e.code === 'no_route') { out.byNo.clear(); out.ran = false; return out; }
+      // Benign only while L may not have happened: once the base says 'after', a
+      // Worker without the read (rolled back, or deploy 1 without it) hides every
+      // v5 order, so it is a failure, logged here (a designed answer planFetch does not log).
+      if (e && e.code === 'no_route' && st.state !== 'after') { out.byNo.clear(); out.ran = false; return out; }
+      if (e && e.code === 'no_route' && typeof logError === 'function') logError(e, 'NatV5Kpi.read: no /plan/nat-state after L');
       // planFetch logs its own failures (PlanError); anything else is logged here.
       if (!(e && e.name === 'PlanError') && typeof logError === 'function') logError(e, 'NatV5Kpi.read');
       out.byNo.clear();
@@ -194,8 +199,8 @@ async function _perfLoad() {
   // F5 Ε15: before L the page sends exactly today's requests (the NAT_ORDERS read
   // below is not made at all); from L, or when L is unknown, it also reads the
   // national orders whose v5 state the national KPIs need.
-  const _pc = await NatV5Kpi.state();
-  const _natV5On = _pc.state !== 'before';
+  // The state is read alongside the facade reads; only NAT_ORDERS waits for it.
+  const _pcP = NatV5Kpi.state();
   const [orders, natLoads, trucks, maint, natOrders] = await Promise.all([
     atGetAll(TABLES.ORDERS, {
       // Note: 'Loading Points' / 'Delivery Points' removed — they don't exist as
@@ -215,8 +220,12 @@ async function _perfLoad() {
     }, true), 'performance: national loads'),
     preloadReferenceData().then(() => getRefTrucks()),
     safeFetch(() => atGetAll(TABLES.MAINT_REQ, { fields: ['Status','Priority','Date Reported'] }, true), 'performance: maintenance requests'),
-    _natV5On ? safeFetch(() => atGetAll(TABLES.NAT_ORDERS, { fields: ['Order No'] }, true), 'performance: national orders') : Promise.resolve(null),
+    _pcP.then(pc => pc.state !== 'before'
+      ? safeFetch(() => atGetAll(TABLES.NAT_ORDERS, { fields: ['Order No'] }, true), 'performance: national orders')
+      : null),
   ]);
+  const _pc = await _pcP;
+  const _natV5On = _pc.state !== 'before';
   // A failed NAT_ORDERS read is a failed v5 read: no id, no state, so the
   // national KPIs say «not read», never a sample without the v5 orders.
   PERF.natV5 = (_natV5On && didFail(natOrders))

@@ -72,13 +72,21 @@ test('more than 500 ids: one GET per 500', async () => {
   same(calls.map((c) => c.p.split('=')[1].split(',').length), [500, 500, 201]);
 });
 
-test('404 no_route (before Worker deploy 1): no v5 order, not a failure, not logged', async () => {
+test('404 no_route with L not known to have happened (before deploy 1): no v5 order, not a failure, not logged', async () => {
   const e = Object.assign(new Error('no_route'), { name: 'PlanError', code: 'no_route', status: 404 });
-  const { K, logged } = load({ answer: e });
+  const { K, logged } = load({ state: 'unknown', answer: e });
   const r = await K.read([rec(1)]);
   assert.strictEqual(r.failed, false);
   assert.strictEqual(r.byNo.size, 0);
   assert.deepStrictEqual(logged, []);
+});
+
+test('404 no_route after L: a failure, logged (a Worker without the read hides every v5 order)', async () => {
+  const e = Object.assign(new Error('no_route'), { name: 'PlanError', code: 'no_route', status: 404 });
+  const { K, logged } = load({ state: 'after', answer: e });
+  const r = await K.read([rec(1)]);
+  assert.strictEqual(r.failed, true);
+  same(logged, ['NatV5Kpi.read: no /plan/nat-state after L']);
 });
 
 test('a refusal or a contract fault fails loudly, never «old model»', async () => {
