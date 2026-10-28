@@ -9567,6 +9567,8 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
    (18/22/14, gap 4, ruled under), heading 11 SemiBold grey-2 tracked 1 and 12px over its first row (2011:10518), rows 30px with a 150px key column (13 grey-2)
    and a Regular 13 ink value; footer 16/22/20, «Επεξεργασία» left, the delete button red-outlined right (34px). */
 .wn5-dlg.wn5-ocard { padding:0; border:0; border-radius:0; box-shadow:var(--wn5-card-shadow); }
+/* Figma audit B-25: the order card title stops at two lines; the whole of it is the title attribute */
+.wn5-ocard .wi4-dlg-t { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; }
 .wn5-ocard > .wi4-dlg-hd { flex-wrap:wrap; row-gap:8px; padding:20px 22px 18px; background:var(--wi4-ink); }
 .wn5-ocard .wi4-dlg-t { flex:1; min-width:0; font:700 20px/24px 'Syne',sans-serif; color:var(--surface-card); }
 .wn5-ocard .wi4-dlg-x { font-size:16px; font-weight:400; color:var(--wi4-grey-3); }   /* 2011:10508 DM Sans Regular (.wi4-link gives 600) */

@@ -674,9 +674,11 @@
   function _assignHTML(st) {
     const vehicle = st.mode === 'vehicle';
     let h = '';
-    // «Όλο το … μαζί» only where a split exists: a VS whose several deliveries stand at Veroia (Figma Δ1 VS-118 ×3);
-    // the Veroia board is the one place that splits them. A one-delivery national has nothing to split.
-    if (!vehicle && st.group && st.items.length > 1 && st.items.every((it) => it.at_hub)) h += '<div class="wn5-grey">Όλο το ' + _esc(st.ref) + ' μαζί · σπάσιμο μόνο στον Πίνακα Βέροιας</div>';
+    // «Όλο το … μαζί»: every VS (Figma Δ1 2051:7746, audit B-18 — the band said nothing for a one-piece VS or an export,
+    // and the user did not learn why a VS does not split here), and a national whose several pieces stand at Veroia.
+    // The Veroia board is the one place that splits; a one-delivery national has nothing to split.
+    const vsSrc = !!(st.group && st.group.order_id != null);
+    if (!vehicle && st.group && (vsSrc || (st.items.length > 1 && st.items.every((it) => it.at_hub)))) h += '<div class="wn5-grey">Όλο το ' + _esc(st.ref) + ' μαζί · σπάσιμο μόνο στον Πίνακα Βέροιας</div>';
     if (vehicle) h += '<div class="wn5-grey">Ένωση με άλλο κύκλο: «Μεταφορά σε…» από τη φόρμα σκέλους (όλη η πλευρά).</div>';
     h += '<input type="search" class="wn5-dq" data-q placeholder="Αναζήτηση φορτηγού, οδηγού ή συνεργάτη" value="' + _esc(st.q) + '">';
     if (!st.ids.ok) h += '<div class="wn5-miss" data-ids-miss>Οι κατάλογοι δεν είναι διαθέσιμοι ακόμη: νέο φορτηγό και συνεργάτης ανοίγουν όταν έρθουν.</div>';
@@ -704,7 +706,8 @@
         + '<small>μόνο όταν γίνεται νέα στάση Βέροιας</small></div>';
     }
     if (!vehicle) {
-      h += _grpHTML('rt', 'ΚΥΚΛΟΙ ' + DOW_GEN[_dow(st.day)] + ' ' + _dm(st.day), ' · ένωση · ' + st.rows.length);
+      // a group with no line is not drawn (Figma Δ1 shows only groups with content, audit B-21): «· 0» heads nothing
+      if (st.rows.length || st.road.length) h += _grpHTML('rt', 'ΚΥΚΛΟΙ ' + DOW_GEN[_dow(st.day)] + ' ' + _dm(st.day), ' · ένωση · ' + st.rows.length);
       for (const r of st.rows) {
         const c = st.cyc[r.rtId];
         const tx = _cycText(c, r.row);
@@ -733,7 +736,8 @@
     }
     // without the catalogue the list's size is unknown, never 0 (principle 1): the header has no count then, and the
     // line above says why
-    h += _grpHTML('free', 'ΕΛΕΥΘΕΡΑ ΦΟΡΤΗΓΑ', ' · ' + (vehicle ? 'άλλο όχημα' : 'νέος κύκλος') + (st.ids.ok ? ' · ' + st.free.length : ''));
+    // B-21: hidden only when the catalogue says 0 — without it the count is unknown and the header stays (line above)
+    if (st.free.length || !st.ids.ok) h += _grpHTML('free', 'ΕΛΕΥΘΕΡΑ ΦΟΡΤΗΓΑ', ' · ' + (vehicle ? 'άλλο όχημα' : 'νέος κύκλος') + (st.ids.ok ? ' · ' + st.free.length : ''));
     for (const t of st.free) {
       const key = 'truck:' + t.id;
       const next = t.next ? 'επόμενο: ' + (t.next.side ? t.next.side + ' ' : '') + _dayShort(t.next.day) : '';
@@ -1983,6 +1987,8 @@
     // 520 wide as the Figma card (2011:10503), the .wn5-dlg default — not the 800 «wide» shell
     const d = _dlg('card', card.ref + ' · ' + card.client);
     d.dlg.classList.add('wn5-ocard');
+    // Figma audit B-25: a long client name stops at two lines (CSS), the whole title stays readable on hover
+    d.dlg.querySelector('.wi4-dlg-t').title = card.ref + ' · ' + card.client;
     d.dlg.querySelector('.wi4-dlg-hd').insertAdjacentHTML('beforeend', card.chips);
     d.body.innerHTML = card.html;
     // «Επεξεργασία» opens the v5 national form (T20); delete is here and nowhere else (owner 19/10)
