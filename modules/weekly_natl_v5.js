@@ -230,6 +230,7 @@ function _paint() {
   _buildIndex(_m);
   _applySearch(false);
   _fitUpd();
+  _fitAfterFonts();
 }
 // Figma H1 «↻ Ενημερώθηκε …»: the word shows whenever it fits and goes first when it does not — before the bar's
 // overflow cuts the time. Measured, not a breakpoint: the range («26 Σεπτεμβρίου – 2 Οκτωβρίου») and the sidebar
@@ -244,6 +245,12 @@ function _fitUpd() {
     if (bl.scrollWidth > bl.clientWidth + 1) bl.classList.add('wn5-upd-short');
     bl.classList.remove('wn5-fit');
   } catch (_) { /* the word stays; the range gives way by its ellipsis */ }
+}
+// The measure at paint ran with whatever font was there: the web fonts (and their Greek subsets, fetched only when
+// Greek text appears) swap in later and widen the bar's words without changing #content's size, so the
+// ResizeObserver never fires and the range got the ellipsis while «Ενημερώθηκε» stayed. Measured again when they land.
+function _fitAfterFonts() {
+  try { if (document.fonts && document.fonts.status !== 'loaded') document.fonts.ready.then(() => { if (active()) _fitUpd(); }); } catch (_) {}
 }
 function _today() { return typeof localToday === 'function' ? localToday() : ''; }
 // The day words come from ONE place (core/wi4-logic.js dayLabel): «Τρί 13/10» / «Τρί».
@@ -800,6 +807,8 @@ function _install() {
   }
   // The window or the sidebar changed #content's width: «Ενημερώθηκε» is measured again (_fitUpd).
   if (content && typeof ResizeObserver === 'function') new ResizeObserver(() => { if (active()) _fitUpd(); }).observe(content);
+  // ...and when a web font lands after the paint (the swap widens the words, not #content: _fitAfterFonts).
+  try { if (document.fonts && typeof document.fonts.addEventListener === 'function') document.fonts.addEventListener('loadingdone', () => { if (active() && document.querySelector('#content .wn5')) _fitUpd(); }); } catch (_) {}
   // A click outside the open ✈ menu closes it (capture: before any other handler acts on the click).
   document.addEventListener('click', (e) => {
     if (!document.getElementById('wn5-menu')) return;

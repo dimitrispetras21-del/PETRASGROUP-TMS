@@ -8998,6 +8998,8 @@ body.wi4-on #wi-popover .wi-pop-save:hover { background:var(--navy-light); }
 body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; background:var(--surface-page); }
 .wn5 .wn5-lc { text-transform:none; letter-spacing:0; }
 .wn5-bar { margin-bottom:8px; }
+/* H1 2120:7827: «Εβδομαδιαίο Εθνικών» Syne SemiBold 17px, no tracking — the shared .wi4-title is 700 / -.1px */
+.wn5 .wi4-title { font-weight:600; letter-spacing:0; }
 .wn5 .wn5-upd { flex:none; margin-left:10px; border:0; background:none; padding:0; font:inherit; font-size:12px; color:var(--wi4-grey-2); cursor:pointer; white-space:nowrap; }
 .wn5 .wn5-upd:hover { color:var(--wi4-ink); }
 /* The word «Ενημερώθηκε» gives way first, when the bar has no room for it (measured at paint and on resize, with the
@@ -9101,7 +9103,8 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 /* ΦΟΡΤΩΣΗ: «Βέροια» and, under it, its loading window — on every row that loads there (owner 25/10). */
 .wn5 .wn5-fl { display:flex; flex-direction:column; gap:2px; }
 .wn5-vh { display:block; font-size:12px; line-height:15px; font-weight:500; color:var(--wi4-ink); }
-.wn5-vtime { display:block; font-size:10.5px; line-height:13px; color:var(--wi4-grey-2); }
+/* H1 2120:8134/8150/8817: every stop's time line, Veroia's window included, is DM Sans Medium 10.5px grey-1 */
+.wn5-vtime { display:block; font-size:10.5px; line-height:13px; font-weight:500; color:var(--wi4-grey-1); }
 /* At 1920 two stops fit side by side; narrower (1440: 147px) they wrap to a second line instead of spilling. */
 .wn5 .wn5-pts { flex-wrap:wrap; row-gap:4px; }
 /* Stops and the end of the cycle WRAP (DESIGN.md #6: a place is never cut). The wi4 block cuts .wi4-l1/.wi4-l2 with a visible «…»
@@ -9130,6 +9133,7 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5 .wn5-who, .wn5 .wn5-pt .wi4-l1 > .wn5-city { display:inline-block; max-width:100%; }
 /* «+N» (Figma H1): a 22px chip, its figure centred, in the middle of the stop. */
 .wn5 .wn5-pts .wi4-more { flex:0 0 24px; width:24px; height:22px; display:grid; place-items:center; }
+.wn5 .wn5-pt > .wi4-l2 { font-weight:500; color:var(--wi4-grey-1); }   /* before the late rule: a late window stays amber */
 .wn5 .wn5-late .wi4-l2 { color:var(--wi4-amber); }
 /* More late stops than slots: the «+N» that holds one is amber too (a late stop is never hidden in grey). */
 .wn5 .wn5-pts .wi4-more.wn5-late b { color:var(--wi4-amber); }
@@ -9182,7 +9186,8 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-menu { position:fixed; z-index:var(--z-top); width:300px; padding:6px 0; background:var(--surface-card); border:1px solid var(--wi4-line-2);
   border-radius:8px; box-shadow:var(--wn5-pop-shadow); font-family:'DM Sans',sans-serif; font-size:12.5px; color:var(--wi4-ink); }
 /* 2011:9150: drop-shadow 0 8 12 rgba(10,26,41,.16) = --wn5-pop-shadow (the Δ4 shell's, already on the submenu below) */
-.wn5-m-hd { display:flex; flex-direction:column; gap:2px; margin:0 12px; padding:6px 0 8px; border-bottom:1px solid var(--wi4-line-2); }
+/* 2011:9151/9154: the head is 40 (pt 4, lines 16 + 14, pb 6), then a 9px rule row (4 · rule · 4): first item at 56 */
+.wn5-m-hd { display:flex; flex-direction:column; gap:0; margin:0 12px 4px; padding:4px 0 10px; border-bottom:1px solid var(--wi4-line-2); }
 .wn5-m-i { display:flex; justify-content:space-between; align-items:baseline; gap:8px; width:100%; padding:7px 12px; border:0; background:none;
   text-align:left; font:inherit; color:inherit; cursor:pointer; }
 /* 2011:9156/9171: no fill at rest, only the hovered (or open) line. The first line takes the focus when the menu opens;
@@ -9192,7 +9197,7 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-m-i:focus { outline:none; }
 .wn5-m-i > .wi4-l1 { font-weight:400; font-size:12.5px; }   /* Figma 2011:9161: 12.5 Regular, the .wi4-l1 12px would win */
 /* head (Figma 2011:9152/9153): line 1 SemiBold 600 12px navy, line 2 11px Regular grey-2 */
-.wn5-m-hd > .wi4-l1 { font-weight:600; }
+.wn5-m-hd > .wi4-l1 { font-weight:600; line-height:16px; }
 .wn5-m-hd > .wi4-l2 { font-size:11px; line-height:14px; }
 .wn5-m-i.danger > .wi4-l1 { color:var(--wi4-red); }
 .wn5-m-sep { height:1px; margin:4px 12px; background:var(--wi4-line-2); }   /* 2011:9178: #e2e8f0, inset like the head rule (274 ≈ 276) */
@@ -9229,16 +9234,16 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-snone[hidden], .wn5 .wn5-cols[hidden] { display:none; }
 /* Notices (Figma 2011:7745): one amber line, «ΕΙΔΟΠΟΙΗΣΕΙΣ · n», the DB's texts (the second one paler), «Σημείωσα ✓»
    at the end; an answer that stopped it sits in the line as a small strip. */
-.wn5-notes { display:flex; flex-wrap:wrap; align-items:center; gap:4px 8px; margin:0 0 8px; padding:7px 12px; border:1px solid var(--wn5-note-line);
-  border-radius:6px; background:var(--wn5-note-bg); font-size:12px; line-height:1.4; color:var(--wi4-grey-1); }
-.wn5-notes-h { font-weight:500; letter-spacing:1.5px; color:var(--wn5-note-ink); }
-.wn5-notes-n { font-size:10.5px; letter-spacing:0; }
+.wn5-notes { display:flex; flex-wrap:wrap; align-items:center; gap:4px 8px; min-height:34px; box-sizing:border-box; margin:0 0 8px; padding:7px 12px 7px 10px;
+  border:1px solid var(--wn5-note-line); border-radius:6px; background:var(--wn5-note-bg); font-size:12px; line-height:normal; color:var(--wi4-grey-1); }
+/* 2049:7797: «ΕΙΔΟΠΟΙΗΣΕΙΣ · 2» is one run, set like the day names (Syne SemiBold 12.5px, tracking .8px) */
+.wn5-notes-h { font:600 12.5px 'Syne',sans-serif; letter-spacing:.8px; color:var(--wn5-note-ink); }
 .wn5-notes-l { flex:1 1 auto; min-width:0; }
-.wn5-note:first-child { color:var(--wi4-grey-1); }
-.wn5-note ~ .wn5-note { color:var(--wi4-grey-2); }
-.wn5-note-by { color:var(--wi4-grey-2); }
+/* 2049:7798/7799: the newest notice Medium 12px grey-1, the others Regular 11.5px grey-2 — its «(Π.Κ. 08:12)» in the same run */
+.wn5-note, .wn5-note-by { font-size:11.5px; color:var(--wi4-grey-2); }
+.wn5-note:first-child, .wn5-note:first-child + .wn5-note-by { font-size:12px; font-weight:500; color:var(--wi4-grey-1); }
 .wn5-notes > .wn5-strip { min-height:0; margin:0; padding:2px 8px; }
-.wn5-notes > #wn5-note-read { margin-left:auto; }
+.wn5-notes > #wn5-note-read { margin-left:auto; font-weight:500; }   /* 2049:7801: Medium, not the shared .wi4-link 600 */
 .wn5-notes > #wn5-note-read:disabled { color:var(--wi4-grey-2); cursor:default; text-decoration:none; }
 /* ── National v5 actions (modules/wn5_actions.js, F4α T11): result strips and dialogs. Only tokens (one value, one
    source); no ellipsis and no silent nowrap cut (critics static ratchet). The strip itself is the rule above (Δ12
@@ -9619,7 +9624,9 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-dlg[data-wn5="split"] .wn5-dlg-b { gap:6px; font-size:12px; }
 .wn5-dlg[data-wn5="split"] .wn5-split-i { font-size:11.5px; color:var(--wi4-grey-2); }
 .wn5-part { display:flex; flex-wrap:wrap; align-items:center; gap:4px 8px; min-height:34px; }   /* a long badge (over 33, the stay note) wraps under the row, never cut by the 501px popover */
-.wn5-part select { flex:none; width:160px; height:28px; padding:0; border:none; background:none; font:inherit; font-size:12px; color:var(--wi4-ink); cursor:pointer; }
+/* 2011:8827: the destination reads as plain text (no box); it stays a select, with the fhSelect ▾ every v5 select has */
+.wn5-part select { flex:none; width:160px; height:28px; padding:0 20px 0 0; border:none; appearance:none; -webkit-appearance:none;
+  background:var(--wn5-sel-chev) no-repeat right 4px center; font:inherit; font-size:12px; color:var(--wi4-ink); cursor:pointer; }
 .wn5-dlg .wn5-part-p { flex:none; width:56px; height:28px; padding:0 8px; box-sizing:border-box; border:1px solid var(--wi4-ctl); border-radius:5px; font-size:12.5px; color:var(--wi4-ink); }
 .wn5-dlg .wn5-part-p:focus { outline:none; border:1.5px solid var(--wi4-blue); font-weight:600; }
 .wn5-part-u { font-size:11.5px; color:var(--wi4-grey-2); }

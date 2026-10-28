@@ -335,6 +335,29 @@ SCN.paint = async (browser, origin) => {
     return { out, rows: document.querySelectorAll('#content .wn5 .wn5-row').length };
   });
   ok(scn, '1440: 12 rows, no stop / tile spills out of its column', spill.rows === 12 && !spill.out.length, spill);
+  // whole-frame r1 (2120:7826): a web font that lands after the paint widens the bar's words without resizing #content;
+  // the bar is measured again then, so «Ενημερώθηκε» gives way and the range stays whole. The swap is played here by
+  // moving the title's right margin (room for all, then half a word too little), each time with the FontFaceSet's own
+  // «loadingdone»; independent of how the rig's fallback font fits at paint.
+  const fit = await narrow.page.evaluate(() => {
+    const bl = document.querySelector('#content .wn5 .wn5-bar .wi4-bar-l');
+    const t = bl && bl.querySelector('.wi4-title'), rg = bl && bl.querySelector('.wi4-range'), w = bl && bl.querySelector('.wn5-upd-w');
+    if (!t || !rg || !w || !document.fonts) return null;
+    const was = bl.classList.contains('wn5-upd-short');
+    bl.classList.remove('wn5-upd-short');
+    bl.classList.add('wn5-fit');
+    const over = bl.scrollWidth - bl.clientWidth, ww = w.getBoundingClientRect().width;
+    bl.classList.remove('wn5-fit');
+    const swap = (px) => { t.style.marginRight = px; document.fonts.dispatchEvent(new Event('loadingdone')); return bl.classList.contains('wn5-upd-short'); };
+    const r = { over, ww: Math.round(ww) };
+    r.roomy = swap(-(over + 4) + 'px');                     // everything fits: the word shows
+    r.short = swap(-(over - Math.ceil(ww / 2)) + 'px');     // half a word too little: the word goes
+    r.cut = rg.scrollWidth > rg.clientWidth + 1;
+    r.back = swap('') === was;                              // the paint's own state again
+    return r;
+  });
+  ok(scn, '1440: a font landing after the paint re-fits the bar — «Ενημερώθηκε» gives way, the range stays whole, and comes back when room returns',
+    !!fit && fit.roomy === false && fit.short && !fit.cut && fit.back, fit);
   await shot(narrow.page, 'paint-1440');
   // The reload time is how the user sees how stale the board is: at 1440 a week whose range crosses months (W40,
   // «26 Σεπτεμβρίου – 2 Οκτωβρίου») gives way in the range (ellipsis, full text in its title), never in «↻ hh:mm».
