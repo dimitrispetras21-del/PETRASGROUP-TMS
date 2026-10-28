@@ -26,10 +26,13 @@ function forms() {
   vm.createContext(ctx);
   vm.runInContext(src('core/wi4-logic.js'), ctx, { filename: 'core/wi4-logic.js' });
   ctx.WI4 = win.WI4;
+  vm.runInContext(src('core/wn5-logic.js'), ctx, { filename: 'core/wn5-logic.js' });
+  ctx.WN5L = win.WN5L;
   vm.runInContext(src('modules/wn5_forms.js'), ctx, { filename: 'modules/wn5_forms.js' });
   return { ctx, win, F: win.WN5Form };
 }
 const { win: FW, F } = forms();
+const L5 = FW.WN5L;
 
 const row = (location_id, day, from, to, pallets, extra) => Object.assign({ location_id, day, from, to, pallets }, extra || {});
 const order = (o) => Object.assign({ client_id: 41, price: 310, temperature_c: 4, pallet_exchange: false, reference: '', goods: '', notes: '',
@@ -44,8 +47,8 @@ test('F1: an empty window is the whole day of its point; one end alone is never 
   // one end only stays as typed: _check names it
   assert.deepStrictEqual(J(F._rowWin(false, '08:00', '')), { from: '08:00', to: '', allDay: false });
   assert.deepStrictEqual(J(F._rowWin(false, '', '10:00')), { from: '', to: '10:00', allDay: false });
-  // an arrival «ως» at Veroia (ANODOS): empty = by the end of its day
-  assert.deepStrictEqual(J(F._rowWin(true, '', '')), { from: '23:59', to: '23:59', allDay: true });
+  // an arrival «ως» at Veroia (ANODOS): empty = by the end of its day — a deadline, read «ως … 23:59», never «όλη η ημέρα»
+  assert.deepStrictEqual(J(F._rowWin(true, '', '')), { from: '23:59', to: '23:59', allDay: false });
   assert.deepStrictEqual(J(F._rowWin(true, '', '22:00')), { from: '22:00', to: '22:00', allDay: false });
 });
 
@@ -63,9 +66,22 @@ test('F1: the whole-day order passes _check and the body carries 00:00–23:59 a
   assert.strictEqual(s.deliver_from, '2026-10-26T00:00:00+02:00');
 });
 
-test('F1: one end only is refused by name — «ΗΗ:ΛΛ και στα δύο άκρα, ή κανένα (όλη η ημέρα)»', () => {
+test('F1: one end only is refused by name — «ΗΗ:ΛΛ και στα δύο άκρα, ή κανένα (όλη η ημέρα)»; an arrival row has its own words', () => {
   const lines = J(F._check(state({ orders: [order({ loads: [row(3, '2026-10-14', '08:00', '', 6)] })] })));
   assert.ok(lines.some((l) => l.includes('φόρτωση 1: παράθυρο: ΗΗ:ΛΛ και στα δύο άκρα, ή κανένα (όλη η ημέρα)')), lines.join(' / '));
+  const u = J(F._check(state({ side: 'ANODOS', orders: [order({ drops: [row(2, '2026-10-15', '25:00', '25:00', 6, { until: true })] })] })));
+  assert.ok(u.some((l) => l.includes('παράδοση 1: άφιξη ως: ΗΗ:ΛΛ, ή κενό (ως 23:59)')), u.join(' / '));
+});
+
+test('F1 (code review): a whole-day row never widens the hours another order agreed at the same place', () => {
+  const st = state({ target: { rt_id: 101, side: 'KATHODOS' }, orders: [
+    order({ loads: [row(3, '2026-10-14', '08:00', '10:00', 6)], drops: [row(2, '2026-10-15', '00:00', '23:59', 6, { allDay: true })] }),
+    order({ client_id: 42, loads: [row(3, '2026-10-14', '00:00', '23:59', 4, { allDay: true })], drops: [row(2, '2026-10-15', '00:00', '23:59', 4, { allDay: true })] })] });
+  const b = J(F._body(st));
+  assert.deepStrictEqual(b.stops[0], { ref: 's1', location_id: 3, side: 'KATHODOS', planned_from: '2026-10-14T08:00:00+03:00', planned_to: '2026-10-14T10:00:00+03:00' });
+  assert.deepStrictEqual(b.stops[1], { ref: 's2', location_id: 2, side: 'KATHODOS', planned_from: '2026-10-15T00:00:00+03:00', planned_to: '2026-10-15T23:59:00+03:00' });
+  // the shipments keep their own whole day
+  assert.strictEqual(b.orders[1].shipments[0].load_from, '2026-10-14T00:00:00+03:00');
 });
 
 test('F1: a stop the form creates on a cycle from a whole-day point spans 00:00–23:59 (071 rt_stops_win: to > from)', () => {
@@ -75,9 +91,26 @@ test('F1: a stop the form creates on a cycle from a whole-day point spans 00:00�
     { ref: 's2', location_id: 2, side: 'KATHODOS', planned_from: '2026-10-15T00:00:00+03:00', planned_to: '2026-10-15T23:59:00+03:00' }]);
 });
 
-test('F1: the forms name a whole-day window «όλη η ημέρα», never «00:00–23:59»', () => {
-  assert.strictEqual(F._win('2026-10-14T00:00:00+03:00', '2026-10-14T23:59:00+03:00'), 'Τετ 14/10 όλη η ημέρα');
-  assert.strictEqual(F._win('2026-10-14T08:00:00+03:00', '2026-10-14T10:00:00+03:00'), 'Τετ 14/10 08:00–10:00');
+test('F1: ONE reader rule, WN5L.allDay — same Athens day, 00:00 to 23:59; two days are never «όλη η ημέρα»', () => {
+  assert.strictEqual(typeof L5.allDay, 'function', 'WN5L.allDay missing');
+  assert.strictEqual(L5.allDay('2026-10-14T00:00:00+03:00', '2026-10-14T23:59:00+03:00'), true);
+  assert.strictEqual(L5.allDay('2026-10-13T21:00:00Z', '2026-10-14T20:59:00Z'), true, 'UTC ends of the same Athens day');
+  assert.strictEqual(L5.allDay('2026-10-14T00:00:00+03:00', '2026-10-15T23:59:00+03:00'), false);
+  assert.strictEqual(L5.allDay('2026-10-14T08:00:00+03:00', '2026-10-14T10:00:00+03:00'), false);
+  assert.strictEqual(L5.allDay(null, null), false);
+  assert.deepStrictEqual(J(L5.DAY_WIN), { from: '00:00', to: '23:59' });
+});
+
+test('F1: the leg form names a whole-day stop «όλη η ημέρα» (stop sequence, Veroia head)', () => {
+  const st = (id, seq, loc, f, t, legs) => ({ stop_id: id, seq, side: 'KATHODOS', location_id: loc, location: 'LOC ' + loc, planned_from: f, planned_to: t, stop_day: f.slice(0, 10), legs });
+  const leg = (act) => ({ leg_id: 1, piece_id: 11, act, pallets: 6, kind: 'national', order_id: null, nat_order_id: 7, reference: 'N-T7', client: 'ΠΕΛΑΤΗΣ Α', temperature_c: 2 });
+  const board = { week: '2026-10-10', waiting: [], hub: [], notices: [], cycles: [{ rt_id: 101, code: 'RT-T', trip_type: 'OWNED', truck: 'TST', stops: [
+    st(1, 1, 1, '2026-10-14T00:00:00+03:00', '2026-10-14T23:59:00+03:00', [leg('load')]),
+    st(2, 2, 2, '2026-10-15T08:00:00+03:00', '2026-10-15T10:00:00+03:00', [leg('unload')])] }] };
+  const m = J(F._legModel(board.cycles[0], 'KATHODOS', 1));
+  assert.strictEqual(m.seq[0].when, 'Τετ όλη η ημέρα');
+  assert.strictEqual(m.seq[1].when, 'Πέμ 08:00–10:00');
+  assert.deepStrictEqual(m.head[2], ['Παράθυρο Βέροιας', 'όλη η ημέρα']);
 });
 
 test('F1: the create form\'s window headers have no «*» and say what an empty window is', () => {
@@ -119,6 +152,7 @@ test('F1: the driver sheet reads «όλη η ημέρα» for a whole-day stop',
     document: { addEventListener() {}, createElement() {}, querySelector() {}, body: { appendChild() {} } } };
   vm.createContext(ctx);
   vm.runInContext(src('core/wi4-logic.js'), ctx); ctx.WI4 = win.WI4;
+  vm.runInContext(src('core/wn5-logic.js'), ctx); ctx.WN5L = win.WN5L;
   vm.runInContext(src('modules/wn5_forms.js'), ctx); ctx.WN5Form = win.WN5Form;
   vm.runInContext(src('core/wn5-labels.js'), ctx); ctx.WN5Lab = win.WN5Lab;
   vm.runInContext(src('modules/wn5_sheet.js'), ctx);

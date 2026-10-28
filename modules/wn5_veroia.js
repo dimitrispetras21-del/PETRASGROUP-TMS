@@ -71,7 +71,7 @@
     // WN5L's shape check rejects a bad id before paint; if one still slips through, the dropped row is logged (principle 1)
     if (!pid) { k.log(new Error('wn5: hub item without a valid piece id ' + JSON.stringify(h.pieceId)), 'WN5Hub item'); return ''; }
     // «παρ. Τρί 07:00–09:00»; without the window (072 hub[], Ε-26) «παρ. —», never a guess
-    const win = 'παρ. ' + (raw.deliver_from ? _wd(k.ymdOf(raw.deliver_from)) + ' ' + k.hm(raw.deliver_from) + '–' + k.hm(raw.deliver_to) : '—');
+    const win = 'παρ. ' + (raw.deliver_from ? _wd(k.ymdOf(raw.deliver_from)) + ' ' + k.hmw(raw.deliver_from, raw.deliver_to) : '—');
     const sub = isStock
       ? '<span class="' + (h.overdue ? 'wn5-late' : 'wn5-leave') + '">' + k.esc(_stockLine(h, raw, day)) + '</span>'
       : '<span>' + k.esc((raw.reference || '—') + (raw.for_split === true ? ' · από ✈ «Σπάσιμο»' : '')) + '</span>';

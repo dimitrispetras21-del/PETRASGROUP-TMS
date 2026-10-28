@@ -174,6 +174,14 @@ async function scnNoWin({ browser, origin, ok, scn }) {
   await page.evaluate((d) => { const x = document.querySelector(`${d} .wn5f-rows[data-k="load"] [data-f="from"]`); x.value = ''; x.dispatchEvent(new Event('input', { bubbles: true })); }, DLG);
   const sum = await K.text(page, `${DLG} [data-sum]`);
   ok(scn, 'the summary names both points «όλη η ημέρα», never 00:00–23:59', sum.includes('Τετ όλη η ημέρα') && sum.includes('Πέμ όλη η ημέρα') && !sum.includes('00:00–23:59'), sum.slice(0, 400));
+  // half of the head's Veroia window is named at the head, nothing sent (code review 28/10)
+  const headFrom = (v) => page.evaluate(([d, x]) => { const i = document.querySelector(`${d} #wn5f-vfrom`); i.value = x; i.dispatchEvent(new Event('input', { bubbles: true })); }, [DLG, v]);
+  await headFrom('06:00');
+  await save(page);
+  await page.waitForTimeout(500);
+  const eh = await K.text(page, `${DLG} [data-err]`);
+  ok(scn, 'head «από» alone → «Παράθυρο φόρτωσης Βέροιας: ΗΗ:ΛΛ και στα δύο άκρα, ή κανένα», nothing sent', eh.includes('Παράθυρο φόρτωσης Βέροιας: ΗΗ:ΛΛ και στα δύο άκρα, ή κανένα') && !K.planOf(S, 'POST', '/plan/orders').length, eh);
+  await headFrom('');
   await save(page);
   await page.waitForTimeout(1500);
   const posts = K.planOf(S, 'POST', '/plan/orders');

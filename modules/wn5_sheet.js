@@ -22,9 +22,9 @@
   const _dlab = (day) => (typeof WI4 !== 'undefined' && WI4.dayLabel ? WI4.dayLabel(day) : String(day || ''));
   const _dow = (day) => _dlab(day).split(' ')[0];
   const _hm = (iso) => (_parts(iso) || {}).hm || '—';
-  // F1 (owner 28/10): a stop entered without a window is its whole day, 00:00–23:59; the driver reads «όλη η ημέρα»,
-  // never an hour nobody agreed
-  const _hmWin = (a, b) => (_hm(a) === '00:00' && _hm(b) === '23:59' ? 'όλη η ημέρα' : `${_hm(a)}–${_hm(b)}`);
+  // F1 (owner 28/10): a stop entered without a window is its whole day; the driver reads «όλη η ημέρα», never an hour
+  // nobody agreed. The rule is WN5L.allDay (one rule, core/wn5-logic.js); without it the hours are printed as they are.
+  const _hmWin = (a, b) => (typeof WN5L !== 'undefined' && WN5L.allDay(a, b) ? 'όλη η ημέρα' : `${_hm(a)}–${_hm(b)}`);
   const _pal = (n) => String(Math.round((Number(n) || 0) * 10) / 10).replace('.', ',');
   const _temp = (ts, sp) => (ts.length ? ts.slice().sort((a, b) => a - b).map((t) => (t > 0 ? '+' : '') + t).join(sp ? ' / ' : '/') + (sp ? ' °C' : '°C') : '—');
   const _dash = (v) => (v == null || String(v).trim() === '' ? '—' : String(v));

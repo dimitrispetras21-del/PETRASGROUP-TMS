@@ -420,6 +420,10 @@
     return { ymd: p.year + '-' + p.month + '-' + p.day, hm: (p.hour === '24' ? '00' : p.hour) + ':' + p.minute };
   }
   const _hm = (iso) => { const p = _parts(iso); return p ? p.hm : '—'; };
+  // F1 (owner 28/10): a window of the whole Athens day (00:00–23:59, the forms' and Δ1's default for a point entered
+  // without one) reads «όλη η ημέρα», never an hour someone agreed — ONE rule, WN5L.allDay (core/wn5-logic.js)
+  const _allDay = (a, b) => typeof WN5L !== 'undefined' && typeof WN5L.allDay === 'function' && WN5L.allDay(a, b);
+  const _hmw = (a, b) => (_allDay(a, b) ? 'όλη η ημέρα' : _hm(a) + '–' + _hm(b));
   const _ymdOf = (iso) => { const p = _parts(iso); return p ? p.ymd : null; };
   const DOW = ['Κυρ', 'Δευ', 'Τρί', 'Τετ', 'Πέμ', 'Παρ', 'Σάβ'];
   // typed in capitals (never text-transform: the tonos stays in some browsers)
@@ -562,7 +566,8 @@
   const _boxHTML = (x) => '<div class="wi4-box ' + x.cls + '"><span class="wi4-l1' + (x.cls === 'own' ? ' wi4-plate' : '') + '">' + _esc(x.l1) + '</span>' + (x.l2 ? '<span class="wi4-l2">' + _esc(x.l2) + '</span>' : '') + '</div>';
   const _sideOfRow = (r, side) => (r ? (side === 'ANODOS' ? r.anod : r.kath) : null);
   const _sidePal = (r, side) => { const sd = _sideOfRow(r, side); return sd && typeof sd.pallets === 'number' ? sd.pallets : 0; };
-  const _veroiaOf = (r, side) => { const sd = _sideOfRow(r, side); return sd && sd.veroia ? _t(sd.veroia.from) + '–' + _t(sd.veroia.to) : null; };
+  // F1: a Veroia window of the whole day (WN5L model: allDay) reads «όλη η ημέρα», never 00:00–23:59
+  const _veroiaOf = (r, side) => { const sd = _sideOfRow(r, side); return sd && sd.veroia ? (sd.veroia.allDay ? 'όλη η ημέρα' : _t(sd.veroia.from) + '–' + _t(sd.veroia.to)) : null; };
   // over capacity is a warning, never a refusal (Δ1, Ε-17: the sum of the side's loadings, like 072 over_33)
   const _capHTML = (n, tail) => '<span class="wn5-cap' + (n > 33 ? ' over' : '') + '">→ ' + _pal(n) + '/33' + (n > 33 ? ' · υπέρβαση ' + _pal(n - 33) : '') + (tail || '') + '</span>';
   const _optsHTML = (list, cur) => list.filter((x) => x.active).map((x) => '<option value="' + x.id + '"' + (x.id === cur ? ' selected' : '') + '>' + _esc(x.label) + '</option>').join('');
@@ -595,7 +600,7 @@
     const n = Number(s);
     return Number.isFinite(n) && n >= 0 ? { ok: true, v: Math.round(n * 100) / 100 } : { ok: false, v: null };
   }
-  Object.assign(KIT, { parts: _parts, hm: _hm, ymdOf: _ymdOf, dm: _dm, dayShort: _dayShort, addDays: _addDays, iso: _iso, win: _win, hhmm: _hhmm,
+  Object.assign(KIT, { parts: _parts, hm: _hm, hmw: _hmw, ymdOf: _ymdOf, dm: _dm, dayShort: _dayShort, addDays: _addDays, iso: _iso, win: _win, hhmm: _hhmm,
     t: _t, pal: _pal, sum: _sum, clientErr: _clientErr, id: _id, norm: _norm, cycles: _cycles, cycle: _cycle, item: _item, groupItems: _groupItems,
     row: _row, dayRows: _dayRows, hubId: _hubId, sideFor: _sideFor, needs: _needs, stopsFor: _stopsFor, dayWin: _dayWin, cycText: _cycText, boxHTML: _boxHTML,
     sidePal: _sidePal, veroiaOf: _veroiaOf, capHTML: _capHTML, optsHTML: _optsHTML, freeTrucks: _freeTrucks, rate: _rate, DOW_GEN, dow: _dow });
@@ -1028,7 +1033,9 @@
     const other = !!day && st.sideDays.length > 0 && !st.sideDays.includes(day);
     if (other) warn.push((anod ? 'φόρτωση ' : 'παράδοση ') + _wd(day) + ', άλλη ημέρα');
     let late = false;
-    if (!anod && !it.is_stock && it.kind === 'vs_import' && it.load_from && st.hubWin && new Date(it.load_from) >= new Date(st.hubWin[0])) {
+    // F1 (code review 28/10): a Veroia loading of the whole day (no hour given) has no start a VS could miss
+    if (!anod && !it.is_stock && it.kind === 'vs_import' && it.load_from && st.hubWin && !_allDay(st.hubWin[0], st.hubWin[1])
+        && new Date(it.load_from) >= new Date(st.hubWin[0])) {
       late = true;
       warn.push('φτάνει ' + _hm(it.load_from) + ' · φόρτωση ' + _hm(st.hubWin[0]) + '–' + _hm(st.hubWin[1]));
     }
@@ -1053,7 +1060,7 @@
     const win = _plusWin(st, it);
     // B1: a piece with no window of its own goes in on its day, whole day — said here, never a silent hour
     const wday = st.side === 'ANODOS' ? it.nat_ready_day : (it.nat_due_day || it.nat_ready_day);
-    const when = win[0] ? _wd(_ymdOf(win[0])) + ' ' + _hm(win[0]) + '–' + _hm(win[1]) : wday ? _wd(wday) + ' όλη η ημέρα' : '—';
+    const when = win[0] ? _wd(_ymdOf(win[0])) + ' ' + _hmw(win[0], win[1]) : wday ? _wd(wday) + ' όλη η ημέρα' : '—';
     const loc = anod ? it.position_location_id : it.nat_to_location_id;
     const place = _placeName(loc), city = _placeCity(loc);
     const why = it._ro ? null : _plusWhy(st, it);
@@ -1533,7 +1540,7 @@
       const name = isV ? (st.side === 'KATHODOS' ? 'Φόρτωση Βέροιας' : 'Βέροια · τέλος κύκλου')
         : no != null ? no + '  ' + place
         : (loads && !unloads ? 'Φόρτωση · ' : 'Παράδοση · ') + place;
-      h += _resLi(_esc(name), _dayShort(_ymdOf(s.planned_from)), _dayShort(_ymdOf(a)) + ' · ' + _hm(a) + '–' + _hm(b), ' data-stop="' + _esc(s.stop_id) + '"');
+      h += _resLi(_esc(name), _dayShort(_ymdOf(s.planned_from)), _dayShort(_ymdOf(a)) + ' · ' + _hmw(a, b), ' data-stop="' + _esc(s.stop_id) + '"');
       // «↳ Φόρτωση με τοπικό» under the stop it serves (Figma 2069:8573). 072 moves its day to the stop's new
       // Athens day (plan_rt_update step 3, local_loading_day): «δεν αλλάζει» only when that day is its own day.
       const ll = s.local_loading;
@@ -1557,7 +1564,7 @@
       const a0 = lo.reduce((x, s) => (new Date(s.planned_from) < new Date(x) ? s.planned_from : x), lo[0].planned_from);
       const b0 = lo.reduce((x, s) => (new Date(s.planned_to) > new Date(x) ? s.planned_to : x), lo[0].planned_to);
       const d0 = _dayShort(_ymdOf(a0));
-      const name = _esc('ΑΝΟΔΟΣ · ' + lo.length + (lo.length === 1 ? ' φορτίο' : ' φορτία') + ' · ' + _hm(a0) + '–' + _hm(b0));
+      const name = _esc('ΑΝΟΔΟΣ · ' + lo.length + (lo.length === 1 ? ' φορτίο' : ' φορτία') + ' · ' + _hmw(a0, b0));
       const over = !st.alsoAnod && kathEnd && new Date(kathEnd) > new Date(a0);
       if (st.alsoAnod) h += _resLi(name, d0, _dayShort(_ymdOf(_shiftIso(a0, delta))), ' data-row="anod"');
       else h += '<li data-row="anod"' + (over ? ' class="wn5-res-warn"' : '') + '><div class="wn5-res-n">' + name + '</div><div class="wn5-res-s">'
@@ -1782,7 +1789,7 @@
     const lists = st.ids.ok ? { d: PlanIds.list('driver'), t: PlanIds.list('truck'), r: PlanIds.list('trailer') } : { d: [], t: [], r: [] };
     const d = _dlg('local', 'Φόρτωση με τοπικό · ' + (c.code || 'κύκλος'), { onClose: () => st.slot.close() });
     d.ft.innerHTML = '<button type="button" class="wi4-btn" data-act="cancel">Άκυρο</button><button type="button" class="wi4-btn pri" data-act="save">Αποθήκευση</button>';
-    const stopLabel = (s) => _dayShort(_ymdOf(s.planned_from)) + ' · ' + _hm(s.planned_from) + '–' + _hm(s.planned_to) + ' · ' + (s.location || '—')
+    const stopLabel = (s) => _dayShort(_ymdOf(s.planned_from)) + ' · ' + _hmw(s.planned_from, s.planned_to) + ' · ' + (s.location || '—')
       + ' · ' + [...new Set((s.legs || []).filter((l) => l.act === 'load').map((l) => l.client))].join(', ');
     d.body.innerHTML = (st.ids.ok ? '' : '<div class="wn5-miss" data-ids-miss>Οι κατάλογοι δεν είναι διαθέσιμοι ακόμη: οδηγός και φορτηγό διαλέγονται όταν έρθουν.</div>')
       + '<label class="wn5-field"><span>Στάση *</span><select data-stop><option value="">—</option>'
@@ -1903,8 +1910,8 @@
       + row('Παλέτες', pal ? _pal(pal) : '—') + row('Θερμοκρασία', _temp(any.temperature_c)) + row('PE', pe ? (pe.pallet_exchange ? 'Ναι' : 'Όχι') : '—'));
     // one national order has one client, already in «Πελάτης»: a stop line names the place, the day and the window,
     // never the client again (live F12, 28/10 — it read as a second place under the first)
-    const stopLine = (s, l) => [s.location || '—', _dayShort(_ymdOf(s.planned_from)), _hm(s.planned_from) + '–' + _hm(s.planned_to), _pal(l.pallets) + 'π'];
-    const when = (a, b) => (a ? [_dayShort(_ymdOf(a)), _hm(a) + '–' + _hm(b)] : ['—']);
+    const stopLine = (s, l) => [s.location || '—', _dayShort(_ymdOf(s.planned_from)), _hmw(s.planned_from, s.planned_to), _pal(l.pallets) + 'π'];
+    const when = (a, b) => (a ? [_dayShort(_ymdOf(a)), _hmw(a, b)] : ['—']);
     let st = '';
     for (const x of f.legs) st += rowP(x.l.act === 'load' ? 'Φόρτωση' : 'Παράδοση', stopLine(x.s, x.l));
     for (const it of f.items) {
@@ -1959,7 +1966,7 @@
     for (const x of f.legs) {
       if (stops.has(x.s.stop_id) || !(x.s.legs || []).every((l) => l.nat_order_id === ctx.no)) continue;
       stops.add(x.s.stop_id);
-      out.push('η στάση ' + (x.s.location || '—') + ' · ' + _wd(_ymdOf(x.s.planned_from)) + ' ' + _hm(x.s.planned_from) + '–' + _hm(x.s.planned_to)
+      out.push('η στάση ' + (x.s.location || '—') + ' · ' + _wd(_ymdOf(x.s.planned_from)) + ' ' + _hmw(x.s.planned_from, x.s.planned_to)
         + ' φεύγει από την ' + (x.s.side === 'ANODOS' ? 'άνοδο' : 'κάθοδο'));
     }
     // Figma 2011:10597: a cycle that keeps other legs stays with its payroll line. 072 lists rt_cancelled (with the

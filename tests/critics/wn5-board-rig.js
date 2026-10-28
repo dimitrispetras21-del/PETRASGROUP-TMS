@@ -2952,6 +2952,35 @@ SCN['figma-g1b'] = async (browser, origin) => {
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
   await page.context().close();
 };
+// F1 (owner 28/10): a window left empty is the whole day of its point (00:00–23:59, the forms' and Δ1's default). The
+// «+» of a cycle whose Veroia loading is the whole day: no VS «φτάνει … · φόρτωση 00:00–23:59» (a whole day has no
+// start to miss), the head and the stop labels read «όλη η ημέρα»; a timed window still warns. NO-GO on main.
+SCN['f1-allday'] = async (browser, origin) => {
+  const scn = 'f1-allday';
+  const D = bDlg('plus');
+  const K201 = '.wn5-row[data-rt="201"] [data-act="plus"][data-side="KATHODOS"]';
+  const board = (from, to) => { const b = bBoard(); const st = b.cycles[0].stops[0];
+    st.planned_from = bT('2026-10-12', from); st.planned_to = bT('2026-10-12', to); return b; };
+  { // the Veroia loading of RT-T201 is the whole day; VS-T101 (4101) arrives Mon 14:00
+    const { page, S } = await bOpen(browser, origin, { board: board('00:00', '23:59') });
+    ok(scn, 'the «+» of RT-T201 ΚΑΘΟΔΟΣ opens', (await bClick(page, K201)) && await bHas(page, `.wn5-pop-back ${D}`));
+    const txt = await bText(page, D);
+    ok(scn, 'head «… · Δευ 12/10 · φόρτωση όλη η ημέρα · 27/33», never 00:00–23:59', txt.includes('TST-2106 · Δευ 12/10 · φόρτωση όλη η ημέρα · 27/33') && !txt.includes('00:00–23:59'), txt.slice(0, 300));
+    const l = await bText(page, `${D} .wn5-pline[data-piece="4101"]`);
+    ok(scn, 'no «φτάνει 14:00 · φόρτωση …» on VS-T101: a whole day has no start to miss', !!l && !l.includes('φτάνει'), l);
+    ok(scn, 'nothing written', S.plan.every((x) => x.m === 'GET'), S.plan.map((x) => x.m + ' ' + x.path));
+    ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // control: a timed window that starts after the arrival is late (the check can see a real warning)
+    const { page, S } = await bOpen(browser, origin, { board: board('13:00', '18:00') });
+    await bClick(page, K201);
+    const l = await bText(page, `${D} .wn5-pline[data-piece="4101"]`);
+    ok(scn, 'control: Veroia 13:00–18:00, arrival 14:00 → «φτάνει 14:00 · φόρτωση 13:00–18:00»', l.includes('φτάνει 14:00 · φόρτωση 13:00–18:00'), l);
+    ok(scn, 'control: no page errors', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+};
 // ── main ──
 (async () => {
   if (argv.includes('--check-fixture')) process.exit(checkFixture() ? 0 : 1);

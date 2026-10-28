@@ -566,10 +566,10 @@ function _dayTog(date) {
 function _dimOk(r) { return r.kind === 'cycle' && r.rail !== 'red'; }
 const _dc = (on) => (on ? ' wn5-dim' : '');
 // A window the board did not send (hub[] of 072, Ε-26) is «—», never «null–null» and never a guess (as T5).
-// F1 (owner 28/10): a point entered without a window is stored as its whole day, 00:00–23:59 (the form's default);
-// the board names it «όλη η ημέρα», so it never reads as an hour someone agreed.
-const _winTxt = (f, t) => (f && t ? (f === '00:00' && t === '23:59' ? 'όλη η ημέρα' : `${f}–${t}`) : '—');
-const _win = (f, t) => _esc(_winTxt(f, t));
+// F1 (owner 28/10): a point entered without a window is its whole day; the model says so (allDay, WN5L.allDay: one
+// rule) and the board names it «όλη η ημέρα», never an hour someone agreed.
+const _winTxt = (f, t, all) => (f && t ? (all ? 'όλη η ημέρα' : `${f}–${t}`) : '—');
+const _win = (f, t, all) => _esc(_winTxt(f, t, all));
 function _rowHTML(r, m, no) {
   const n = r.kind === 'cycle' ? ++no.n : null;
   const ok = _dimOk(r);
@@ -645,7 +645,7 @@ function _anodHTML(r, m, ok) {
 // Like every point (owner 28/10): place + city; the clients are in the order card and the titles.
 function _flHTML(s, ok, hd) {
   if (!s.veroia) return _ptsHTML(s.from, ok, null);
-  const vh = `<span class="wn5-vh${hd}">Βέροια</span><span class="wn5-vtime${hd}"${_segAttr(s.veroia.segLabel)}>${_win(s.veroia.from, s.veroia.to)}</span>`;
+  const vh = `<span class="wn5-vh${hd}">Βέροια</span><span class="wn5-vtime${hd}"${_segAttr(s.veroia.segLabel)}>${_win(s.veroia.from, s.veroia.to, s.veroia.allDay)}</span>`;
   const k = Math.min(s.vBefore || 0, s.from.length);
   return _ptsHTML(s.from.slice(0, k), ok, 1) + vh + _ptsHTML(s.from.slice(k), ok, k + 2);
 }
@@ -699,7 +699,7 @@ const _hubBy = (p) => (p.to && (p.toDay || p.day) ? `${_dow(p.toDay || p.day)} $
 function _ptFull(p) {
   if (p.hub) return `Βέροια · τέλος κύκλου · ως ${_hubBy(p)} · ${_pal(p.pallets)}`;   // the same words in title and «+N»
   const city = _ptCity(p), who = _ptWho(p);
-  return `${p.name}${city ? ', ' + city : ''} · ${_winTxt(p.from, p.to)} · ${_pal(p.pallets)}${_tempTxt(p) ? ' · ' + _tempTxt(p) : ''}${who ? ' · ' + who : ''}`;
+  return `${p.name}${city ? ', ' + city : ''} · ${_winTxt(p.from, p.to, p.allDay)} · ${_pal(p.pallets)}${_tempTxt(p) ? ' · ' + _tempTxt(p) : ''}${who ? ' · ' + who : ''}`;
 }
 function _ptHTML(p, n, ok) {
   // Figma audit B-12 (H1): a load waiting for its ΑΝΟΔΟΣ that ends at Veroia reads as a cycle's end (r.end): «Βέροια
@@ -715,7 +715,7 @@ function _ptHTML(p, n, ok) {
   return `<span class="wi4-pt wn5-pt${p.late ? ' wn5-late' : ''}${_dc(ok && p.dim && !p.late)}" data-stop="${_id(p.stopId)}"${_segAttr(p.segLabel)} title="${_esc(full)}">`
     + (n == null ? '' : `<span class="wi4-pt-n">${n}</span>`)
     + `<span class="wi4-l1">${_esc(p.name)}</span>`
-    + `<span class="wi4-l2${p.late ? ' wi4-t-amb' : ''}">${city ? `<span class="wn5-pcity">${_esc(city)}</span> · ` : ''}${_win(p.from, p.to)} · ${_esc(_pal(p.pallets))}${_tempTxt(p) ? `<span class="wn5-temp"> · ${_esc(_tempTxt(p))}</span>` : ''}</span></span>`;
+    + `<span class="wi4-l2${p.late ? ' wi4-t-amb' : ''}">${city ? `<span class="wn5-pcity">${_esc(city)}</span> · ` : ''}${_win(p.from, p.to, p.allDay)} · ${_esc(_pal(p.pallets))}${_tempTxt(p) ? `<span class="wn5-temp"> · ${_esc(_tempTxt(p))}</span>` : ''}</span></span>`;
 }
 // The day chip of a side. On a cycle row it is a button: T16, it opens the date panel Δ4 of its side
 // (Figma 2011:8858 / 2053:7837). The classes stay those of T5/T6 (dim, «σήμερα»); other rows keep a plain chip.
@@ -991,7 +991,7 @@ function _menuTitle(row) {
 function _menuSub(row) {
   const s = row.kath || row.anod;
   if (!s || !s.day) return '';
-  return _dl(s.day) + (row.kath && row.kath.veroia ? ` · Βέροια ${_winTxt(row.kath.veroia.from, row.kath.veroia.to)}` : '');
+  return _dl(s.day) + (row.kath && row.kath.veroia ? ` · Βέροια ${_winTxt(row.kath.veroia.from, row.kath.veroia.to, row.kath.veroia.allDay)}` : '');
 }
 function _closeMenu() { const m = document.getElementById('wn5-menu'); if (m) m.remove(); }
 // Ε-22: only the cycle's truck and trailer — nothing of the hub, nothing of a VS (Veroia is never shown to a

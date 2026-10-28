@@ -24,9 +24,10 @@
   const HM = /^([01]\d|2[0-3]):[0-5]\d$/;
   // F1 (owner 28/10): a point's window is optional. Left empty, it is the whole of the point's day, 00:00–23:59 — the
   // value the Δ1 quick fix gives a window-less stop (#160) — because shipments_win / rt_stops_win (071) hold a window
-  // on every national point and the base invents no hour. Never a silent hour: every reader names it «όλη η ημέρα».
-  const DAY_WIN = Object.freeze({ from: '00:00', to: '23:59' });
-  const _allDay = (from, to) => from === DAY_WIN.from && to === DAY_WIN.to;
+  // on every national point and the base invents no hour. Never a silent hour: every reader names it «όλη η ημέρα»
+  // through ONE rule, WN5L.allDay / WN5L.DAY_WIN (core/wn5-logic.js, loaded before this file).
+  const _dayWin = () => WN5L.DAY_WIN;
+  const _allDay = (from, to) => from === _dayWin().from && to === _dayWin().to;
   const SIDE_GR = Object.freeze({ KATHODOS: 'ΚΑΘΟΔΟΣ', ANODOS: 'ΑΝΟΔΟΣ' });
   const DIR_GR = Object.freeze({ KATHODOS: 'ΚΑΘΟΔΟΣ (Βορράς → Νότος)', ANODOS: 'ΑΝΟΔΟΣ (Νότος → Βορράς)' });
   // «στάσεις στην ΚΑΘΟΔΟ» (Figma 2011:10012): the closing line needs the accusative, not the nominative of SIDE_GR
@@ -79,7 +80,6 @@
   function _win(fromIso, toIso) {
     const a = _parts(fromIso), b = _parts(toIso);
     if (!a || !b) return '—';
-    if (a.day === b.day && _allDay(a.hm, b.hm)) return `${_dlab(a.day)} όλη η ημέρα`;
     return a.day === b.day ? `${_dlab(a.day)} ${a.hm}–${b.hm}` : `${_dlab(a.day)} ${a.hm} – ${_dlab(b.day)} ${b.hm}`;
   }
   // A time typed in a 71px text field (Figma 2011:9645 «16:00»): the native <input type=time> follows the browser's
@@ -96,13 +96,17 @@
   // F1: the window headers lose their «*» and say what an empty window means
   const WIN_HEAD = 'Παράθυρο από – έως · κενό: όλη η ημέρα';
   const UNTIL_HEAD = 'Άφιξη ως · κενό: όλη η ημέρα';
-  // A row's window as sent (F1): both ends empty = the whole day (an arrival «ως» row: by 23:59); one end only is NOT
-  // guessed — it stays as typed and _check names it. allDay says the default was used or typed, for the readers.
+  // A row's window as sent (F1): both ends empty = the whole day; one end only is NOT guessed — it stays as typed and
+  // _check names it. An arrival «ως» row (one time, Veroia on ΑΝΟΔΟΣ) empty = by the end of its day, 23:59, and it
+  // reads «ως … 23:59» as the board shows that stop (never «όλη η ημέρα»: it is a deadline, not a window).
+  // allDay: the whole day was used or typed, for the summary.
   function _rowWin(until, from, to) {
-    if (until) return to === '' ? { from: DAY_WIN.to, to: DAY_WIN.to, allDay: true } : { from: to, to, allDay: false };
-    if (from === '' && to === '') return { from: DAY_WIN.from, to: DAY_WIN.to, allDay: true };
+    if (until) return { from: to === '' ? _dayWin().to : to, to: to === '' ? _dayWin().to : to, allDay: false };
+    if (from === '' && to === '') return { from: _dayWin().from, to: _dayWin().to, allDay: true };
     return { from, to, allDay: _allDay(from, to) };
   }
+  // «Τρί όλη η ημέρα» / «Τρί 06:00–08:00» of two ISO ends (the leg form's readers): the one rule of WN5L
+  const _hmw = (a, b) => (WN5L.allDay(a, b) ? 'όλη η ημέρα' : `${_hm(a)}–${_hm(b)}`);
   function _num(v) {
     const s = String(v == null ? '' : v).trim().replace(',', '.');
     if (!s) return null;
@@ -127,11 +131,15 @@
   function _stops(st) {
     const side = st.target.side;
     const byLoc = new Map();
-    for (const o of st.orders) for (const r of o.loads.concat(o.drops)) {
+    // F1 (code review 28/10): a row left without a window (the whole day) asks nothing of the stop, so it never widens
+    // the hours another order agreed at the same place: the timed rows make the window, the whole-day rows only when
+    // a place has nothing else.
+    const rows = st.orders.flatMap((o) => o.loads.concat(o.drops));
+    for (const r of rows.filter((x) => !x.allDay).concat(rows.filter((x) => x.allDay))) {
       const f = _iso(r.day, r.from), t = _iso(r.day, r.to);
       const e = byLoc.get(r.location_id);
-      if (!e) byLoc.set(r.location_id, { from: f, to: t });
-      else {
+      if (!e) byLoc.set(r.location_id, { from: f, to: t, allDay: !!r.allDay });
+      else if (!r.allDay || e.allDay) {
         if (Date.parse(f) < Date.parse(e.from)) e.from = f;
         if (Date.parse(t) > Date.parse(e.to)) e.to = t;
       }
@@ -188,7 +196,9 @@
         const w = `${n}${k} ${j + 1}: `;
         if (!Number.isSafeInteger(r.location_id)) out.push(w + 'διάλεξε τοποθεσία από τη λίστα');
         if (!DAY.test(String(r.day || ''))) out.push(w + 'γράψε ημέρα');
-        if (!HM.test(String(r.from || '')) || !HM.test(String(r.to || ''))) out.push(w + 'παράθυρο: ΗΗ:ΛΛ και στα δύο άκρα, ή κανένα (όλη η ημέρα)');
+        if (!HM.test(String(r.from || '')) || !HM.test(String(r.to || ''))) {
+          out.push(w + (r.until ? 'άφιξη ως: ΗΗ:ΛΛ, ή κενό (ως 23:59)' : 'παράθυρο: ΗΗ:ΛΛ και στα δύο άκρα, ή κανένα (όλη η ημέρα)'));
+        }
         else if (!r.until && r.from >= r.to) out.push(w + 'το «έως» πρέπει να είναι μετά το «από»');
         if (!(Number.isFinite(r.pallets) && r.pallets > 0 && _dec1(r.pallets))) out.push(w + 'παλέτες: αριθμός πάνω από 0, ένα δεκαδικό το πολύ');
       });
@@ -475,12 +485,20 @@
     const st = { side: dir, target: null, cycleStops: [], orders: [] };
     if (tgt) { st.target = { rt_id: Number(tgt), side: dir }; st.cycleStops = f.cycleStops[tgt] || []; }
     for (const o of _raw(f)) {
-      const row = (r) => ({ location_id: r.rec ? PlanIds.id('location', r.rec) : null, day: r.day, from: r.from, to: r.to, pallets: r.pallets, until: r.until });
+      const row = (r) => ({ location_id: r.rec ? PlanIds.id('location', r.rec) : null, day: r.day, from: r.from, to: r.to, pallets: r.pallets, until: r.until, allDay: r.allDay });
       st.orders.push({ client_id: o.rec ? PlanIds.id('client', o.rec) : null, price: o.price, temperature_c: o.temperature_c,
         pallet_exchange: o.pe === 'yes' ? true : o.pe === 'no' ? false : null, reference: o.reference, goods: o.goods, notes: o.notes,
         loads: o.loads.map(row), drops: o.drops.map(row) });
     }
     return st;
+  }
+  // The head's Veroia window (ΚΑΘΟΔΟΣ: από – έως; ΑΝΟΔΟΣ: «Άφιξη ως» only): empty or whole, never half (F1).
+  function _headWinCheck(f) {
+    const dir = f.el.querySelector('#wn5f-dir').value;
+    const vf = _hmNorm(f.el.querySelector('#wn5f-vfrom').value), vt = _hmNorm(f.el.querySelector('#wn5f-vto').value);
+    if (dir === 'ANODOS') return vt === '' || HM.test(vt) ? [] : ['Άφιξη Βέροιας ως: ΗΗ:ΛΛ, ή κενό'];
+    if (vf === '' && vt === '') return [];
+    return HM.test(vf) && HM.test(vt) ? [] : ['Παράθυρο φόρτωσης Βέροιας: ΗΗ:ΛΛ και στα δύο άκρα, ή κανένα'];
   }
   function _orderRefresh(f) {
     const dir = f.el.querySelector('#wn5f-dir').value;
@@ -490,13 +508,14 @@
     const raw = _raw(f);
     // the header's Veroia day/window fills an empty Veroia row: one value typed once (Figma 9624)
     const vday = f.el.querySelector('#wn5f-vday').value, vf = _hmNorm(f.el.querySelector('#wn5f-vfrom').value), vt = _hmNorm(f.el.querySelector('#wn5f-vto').value);
+    const whole = _headWinCheck(f).length === 0;   // F1: half a head window never reaches the rows
     f.el.querySelectorAll('.wn5f-row').forEach((r) => {
       const rec = (document.getElementById('lv_' + r.dataset.pid) || {}).value || '';
       if (rec && rec === _hubRec()) {
         const d = r.querySelector('[data-f="day"]'), a = r.querySelector('[data-f="from"]'), b = r.querySelector('[data-f="to"]');
         if (!d.value && vday) d.value = vday;
-        if (!a.value && vf) a.value = vf;
-        if (!b.value && vt) b.value = vt;
+        if (whole && !a.value && vf) a.value = vf;
+        if (whole && !b.value && vt) b.value = vt;
       }
     });
     // a drop section whose rows are all Veroia arrivals heads its window «Άφιξη ως *» (Figma Δ7 2069:7995)
@@ -521,7 +540,7 @@
       cli.push([o.client || '—'].concat(nl > 1 ? [`${nl} φορτώσεις`] : []).concat([`${_pal(lp)}π`])
         .concat(Number.isFinite(o.price) && o.price > 0 ? [`${_pal(o.price)} €`] : []).join(' · '));
       for (const [act, rows] of [['φόρτωση', o.loads], ['παράδοση', o.drops]]) for (const r of rows)
-        if (DAY.test(r.day) && HM.test(r.to)) seq.push({ k: r.day + 'T' + (r.from || r.to), when: r.allDay ? `${_dow(r.day)} όλη η ημέρα` : r.until ? `ως ${_dow(r.day)} ${r.to}` : `${_dow(r.day)} ${r.from}–${r.to}`, act, place: r.hub ? 'Βέροια' : r.label, clients: [o.client || '—'], pal: r.pallets });
+        if (DAY.test(r.day) && HM.test(r.to)) seq.push({ k: r.day + 'T' + (r.from || r.to), when: r.until ? `ως ${_dow(r.day)} ${r.to}` : r.allDay ? `${_dow(r.day)} όλη η ημέρα` : `${_dow(r.day)} ${r.from}–${r.to}`, act, place: r.hub ? 'Βέροια' : r.label, clients: [o.client || '—'], pal: r.pallets });
     });
     seq.sort((a, b) => (a.k < b.k ? -1 : a.k > b.k ? 1 : 0));
     // Figma 2011:9940: orders at the same place in the same window are ONE stop line («Zeta, Kappa · 20π»)
@@ -556,7 +575,9 @@
     let st, body;
     try { st = _readState(f); }
     catch (e) { if (typeof PlanError !== 'undefined' && e instanceof PlanError) WN5Act.strip(_strip(f), e); else _lines(f, [String(e && e.message || e)]); return; }
-    const probs = _check(st);
+    // F1 (code review 28/10): the head's Veroia window fills the empty Veroia rows only when it is whole; half of it is
+    // named HERE, at the field the user typed, never as a row error the user did not cause
+    const probs = _headWinCheck(f).concat(_check(st));
     _lines(f, probs);
     if (probs.length) return;
     try { body = _body(st); } catch (e) { _lines(f, [e.text || String(e.message || e)]); return; }
@@ -851,7 +872,7 @@
     const seq = stops.slice().sort((a, b) => Date.parse(a.planned_from) - Date.parse(b.planned_from)).map((s) => {
       const legs = s.legs || [];
       const isEnd = !!end && s.stop_id === end.stop_id;
-      return { stop_id: s.stop_id, when: isEnd ? `ως ${_dow(s.stop_day)} ${_hm(s.planned_to)}` : `${_dow(s.stop_day)} ${_hm(s.planned_from)}–${_hm(s.planned_to)}`,
+      return { stop_id: s.stop_id, when: isEnd ? `ως ${_dow(s.stop_day)} ${_hm(s.planned_to)}` : `${_dow(s.stop_day)} ${_hmw(s.planned_from, s.planned_to)}`,
         place: isHub(s) ? (isEnd ? 'Βέροια · τέλος κύκλου' : 'Βέροια') : s.location,
         what: [...new Set(legs.map((l) => l.reference).filter(Boolean))].join(' · ') + (isEnd ? ' · άφιξη' : legs.some((l) => l.act === 'load') ? ' · φόρτωση' : ' · παράδοση'),
         pallets: legs.reduce((a, l) => a + (l.act === (isEnd || !legs.some((x) => x.act === 'load') ? 'unload' : 'load') ? l.pallets : 0), 0) };
@@ -866,7 +887,7 @@
       cap: (loaded.length > 1 ? loaded.map((b) => _pal(b.pallets)).join(' + ') + ' = ' : '') + `${_pal(total)}/33`,
       head: side === 'KATHODOS'
         ? [['Κατεύθυνση', 'ΚΑΘΟΔΟΣ'], ['Φόρτωση Βέροιας', hubStop ? _dlab(hubStop.stop_day) : '—'],
-           ['Παράθυρο Βέροιας', hubStop ? `${_hm(hubStop.planned_from)}–${_hm(hubStop.planned_to)}` : '—']]
+           ['Παράθυρο Βέροιας', hubStop ? _hmw(hubStop.planned_from, hubStop.planned_to) : '—']]
         : [['Κατεύθυνση', 'ΑΝΟΔΟΣ'], ['Κάθοδος', others.length ? 'ΚΑΘΟΔΟΣ ' + _dlab(others[0].stop_day) : 'Χωρίς κάθοδο'],
            ['Άφιξη Βέροιας', end ? `${_dlab((_parts(end.planned_to) || {}).day)} · ${_hm(end.planned_to)}` : '—']],
     };
@@ -881,7 +902,8 @@
     const ro = vs ? 'wn5f-c vro' : 'wn5f-c';
     return `<div class="wn5f-row ro" data-piece="${r.piece_id}"><span class="${ro}">${_esc(r.hub ? 'Βέροια' : r.location)}</span>`
       + `<span class="wn5f-c">${_esc(_dlab(r.day))}</span>`
-      + `<span class="wn5f-cwin"><span class="wn5f-c">${_hm(r.from)}</span><span class="wn5f-dash">–</span><span class="wn5f-c">${_hm(r.to)}</span></span>`
+      + (WN5L.allDay(r.from, r.to) ? '<span class="wn5f-cwin"><span class="wn5f-c">όλη η ημέρα</span></span>'
+        : `<span class="wn5f-cwin"><span class="wn5f-c">${_hm(r.from)}</span><span class="wn5f-dash">–</span><span class="wn5f-c">${_hm(r.to)}</span></span>`)
       + `<span class="${ro}">${_pal(r.pallets)}</span><span></span>`
       + (vs ? `<button type="button" class="wn5f-lnk" data-act="move" data-piece="${r.piece_id}">Μεταφορά σε…</button>` : '<span></span>') + '</div>';
   }
@@ -1132,5 +1154,5 @@
       'Ίδιος προορισμός — η διεθνής δεν άλλαξε', 'vs-place', `[data-vs]:has([data-osid="${orderStopId}"]) [data-vsok]`);
   }
 
-  window.WN5Form = Object.freeze({ openOrder, openLeg, vsDay, vsPlace, _locDropNoHub, _body, _check, _patchBody, _findOrders, _iso, _parts, _legModel, _rowWin, _win });
+  window.WN5Form = Object.freeze({ openOrder, openLeg, vsDay, vsPlace, _locDropNoHub, _body, _check, _patchBody, _findOrders, _iso, _parts, _legModel, _rowWin });
 })();

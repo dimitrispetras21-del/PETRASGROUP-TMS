@@ -35,6 +35,15 @@ const _sum = (items) => r1(items.reduce((n, x) => n + Number(x.pallets || 0), 0)
 const _ms = (iso) => { const t = new Date(iso).getTime(); return Number.isNaN(t) ? Infinity : t; };
 function athensDay(iso) { if (!iso) return null; const d = new Date(iso); return Number.isNaN(d.getTime()) ? null : ATH_DAY.format(d); }
 function athensTime(iso) { if (!iso) return null; const d = new Date(iso); return Number.isNaN(d.getTime()) ? null : ATH_TIME.format(d); }
+// F1 (owner 28/10): a point entered without a window is stored as its whole Athens day, 00:00–23:59 (the order form's
+// default, as the Δ1 default of #160): the schema keeps a window on every national point and the base invents no hour.
+// ONE reader rule for every screen (principle 3): the same Athens day, 00:00 to 23:59 = «όλη η ημέρα», never an hour
+// someone agreed. A window over two days is never «όλη η ημέρα».
+const DAY_WIN = freeze({ from: '00:00', to: '23:59' });
+function allDay(fromIso, toIso) {
+  const a = athensDay(fromIso);
+  return !!a && a === athensDay(toIso) && athensTime(fromIso) === DAY_WIN.from && athensTime(toIso) === DAY_WIN.to;
+}
 function _addDays(day, n) { const [y, m, d] = day.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); }
 function _dowOf(day) { const [y, m, d] = day.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)).getUTCDay(); }
 // The board's day words come from ONE place, WI4.dayLabel (core/wi4-logic.js): «Τρί 13/10».
@@ -122,7 +131,7 @@ function _point(s, pallets, legs) {
   // locId: the screen names the place's city from the catalogue (owner 28/10: place + city, as the Weekly International)
   return { stopId: s.stop_id, n: 0, name: s.location || '—', city: null, locId: s.location_id == null ? null : Number(s.location_id),
     clients: [...new Set((s.legs || []).map((l) => l.client).filter(Boolean))], temps: _temps(legs),
-    from: athensTime(s.planned_from), to: athensTime(s.planned_to), pallets,
+    from: athensTime(s.planned_from), to: athensTime(s.planned_to), allDay: allDay(s.planned_from, s.planned_to), pallets,
     dim: s.dim === true, late: s.has_late === true, segmentId: null, segLabel: null, day: s.stop_day || athensDay(s.planned_to) };
 }
 // One side of a cycle. KATHODOS: the hub stop is the Veroia loading (its window shows under «Βέροια», on the side,
@@ -149,7 +158,7 @@ function _side(name, list, hubId) {
   return {
     side: {
       side: name, day: dayStop.stop_day || null, toDay: name === 'KATHODOS' && to.length ? to[to.length - 1].day : null,
-      veroia: v ? { stopId: v.stop_id, from: athensTime(v.planned_from), to: athensTime(v.planned_to) } : null, vBefore,
+      veroia: v ? { stopId: v.stop_id, from: athensTime(v.planned_from), to: athensTime(v.planned_to), allDay: allDay(v.planned_from, v.planned_to) } : null, vBefore,
       headDim: dayStop.dim === true, from, to, pallets, over: pallets > CAP ? r1(pallets - CAP) : 0,
       sideDim: list[0].side_dim === true, gap: null,
     },
@@ -307,7 +316,8 @@ function _waitRow(list, hubId, errors, nameOf) {
   const pts = ws.map((w, i) => ({ stopId: null, n: i + 1, name: nameOf(anodos ? w.nat_from_location_id : w.nat_to_location_id), city: null,
     locId: _idOrNull(anodos ? w.nat_from_location_id : w.nat_to_location_id),
     clients: w.client ? [w.client] : [], temps: _temps([w]),
-    from: athensTime(anodos ? w.load_from : w.deliver_from), to: athensTime(anodos ? w.load_to : w.deliver_to), pallets: r1(w.pallets),
+    from: athensTime(anodos ? w.load_from : w.deliver_from), to: athensTime(anodos ? w.load_to : w.deliver_to),
+    allDay: anodos ? allDay(w.load_from, w.load_to) : allDay(w.deliver_from, w.deliver_to), pallets: r1(w.pallets),
     dim: false, late: w.overdue === true, segmentId: null, segLabel: null, day: athensDay(anodos ? w.load_from : w.deliver_from) }));
   const pallets = _sum(ws);
   const loadDay = ws.map(_loadDay).filter(Boolean).sort()[0] || null;
@@ -319,7 +329,7 @@ function _waitRow(list, hubId, errors, nameOf) {
     byFrom.get(k).push(w);
   }
   const origin = [...byFrom.values()].map((g, i) => ({ stopId: null, n: i + 1, name: nameOf(g[0].nat_from_location_id), city: null, locId: _idOrNull(g[0].nat_from_location_id), clients: [], temps: _temps(g),
-    from: athensTime(g[0].load_from), to: athensTime(g[0].load_to),
+    from: athensTime(g[0].load_from), to: athensTime(g[0].load_to), allDay: allDay(g[0].load_from, g[0].load_to),
     pallets: _sum(g), dim: false, late: false, segmentId: null, segLabel: null, day: _loadDay(g[0]) }));
   // ΠΡΟΣ of an ΑΝΟΔΟΣ: where the loads go (nat_to), one point per place — «Βέροια» for the hub (a vs_export), never
   // an empty cell for a destination the board knows.
@@ -332,11 +342,11 @@ function _waitRow(list, hubId, errors, nameOf) {
   // hub: the ΑΝΟΔΟΣ ends at Veroia (the screen draws it as a cycle's end, Figma audit B-12) and due is the base's day
   // for it (the earliest nat_due_day of the group), never an hour
   const dest = [...byTo.values()].map((g, i) => ({ stopId: null, n: i + 1, name: nameOf(g[0].nat_to_location_id), city: null, locId: _idOrNull(g[0].nat_to_location_id), clients: [], temps: [],
-    from: athensTime(g[0].deliver_from), to: athensTime(g[0].deliver_to), pallets: _sum(g), dim: false, late: false, segmentId: null, segLabel: null,
+    from: athensTime(g[0].deliver_from), to: athensTime(g[0].deliver_to), allDay: allDay(g[0].deliver_from, g[0].deliver_to), pallets: _sum(g), dim: false, late: false, segmentId: null, segLabel: null,
     day: athensDay(g[0].deliver_from), toDay: athensDay(g[0].deliver_to), hub: hubId != null && Number(g[0].nat_to_location_id) === hubId,
     due: g.map((w) => w.nat_due_day).filter((d) => DAY_RE.test(String(d || ''))).sort()[0] || null }));
   const side = { side: anodos ? 'ANODOS' : 'KATHODOS', day: loadDay, toDay: anodos || !pts.length ? null : pts[pts.length - 1].day,
-    veroia: !anodos && hubWs.length ? { stopId: null, from: athensTime(hubWs[0].load_from), to: athensTime(hubWs[0].load_to) } : null, vBefore: 0,
+    veroia: !anodos && hubWs.length ? { stopId: null, from: athensTime(hubWs[0].load_from), to: athensTime(hubWs[0].load_to), allDay: allDay(hubWs[0].load_from, hubWs[0].load_to) } : null, vBefore: 0,
     headDim: false, from: anodos ? pts : origin, to: anodos ? dest : pts, pallets, over: pallets > CAP ? r1(pallets - CAP) : 0, sideDim: false, gap: null };
   const refs = [...new Set(ws.map((w) => w.reference).filter(Boolean))];
   const clients = [...new Set(ws.map((w) => w.client).filter(Boolean))];
@@ -468,6 +478,6 @@ function handoversOf(cycle) {
   return out;
 }
 
-const WN5L = freeze({ model, waitSide, segmentsOf, stopSegments, handoversOf, searchParts, cycleNumbers, capacity, stopRank, hubFromBoard, athensDay, athensTime, CAP, HUB_UNKNOWN, ShapeError });
+const WN5L = freeze({ model, waitSide, segmentsOf, stopSegments, handoversOf, searchParts, cycleNumbers, capacity, stopRank, hubFromBoard, athensDay, athensTime, allDay, DAY_WIN, CAP, HUB_UNKNOWN, ShapeError });
 if (typeof module !== 'undefined') module.exports = WN5L; else window.WN5L = WN5L;
 })();
