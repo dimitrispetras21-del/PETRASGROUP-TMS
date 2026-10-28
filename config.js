@@ -398,7 +398,7 @@ const PERMS = {
 // deploy that sets PLAN_WRITES_OPEN = true in the Worker (decision Ε-24) — before that every v5 write answers 409.
 // 'on' from day L, 28/10/2026 (F5 FE-2, merged at Runbook R-8 after Worker deploy 2 opened the writes): every user.
 // The planned owner-only pilot (Q-9) was skipped by the owner when the cutover moved to 28/10 (PR #122 closed).
-// Rollback = 'pilot' (WN_V5_USERS keeps the owner: v5 for him alone, as with WI_V2 a ?wn5=1 browser too) or 'off',
+// Rollback = 'pilot' (WN_V5_USERS keeps the owner: v5 for the owner alone, and as with WI_V2 a ?wn5=1 browser) or 'off',
 // + config.js ?v= and SW_VERSION; 'off' overrides every opt-in.
 const FEATURES = { ORDER_SPLIT: true, GROUP_TILES: true, STOCK_LOTS: true, WI_V2: 'on', WI_PRESENCE: false, WN_V5: 'on' };
 // Pilot usernames for FEATURES.WI_V2 === 'pilot' (PLAN §2.1). Empty = nobody.

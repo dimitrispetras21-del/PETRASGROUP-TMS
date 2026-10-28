@@ -31,6 +31,7 @@ const CASES = [
   { name: 'Q-10 dispatcher + «Παλιά προβολή», L = 17/10 (next week)', role: 'dispatcher', username: 'demo_dispatcher', optIn: '0', cfg: '2026-10-17' },
   { name: 'Q-10 dispatcher, L = 3/10 (a past week)', role: 'dispatcher', username: 'demo_dispatcher', optIn: null, cfg: '2026-10-03' },
   { name: 'Q-10 dispatcher, before L (cutover_day null)', role: 'dispatcher', username: 'demo_dispatcher', optIn: null, cfg: null },
+  { name: 'Q-10 dispatcher, L = 17/10 (this week is before L)', role: 'dispatcher', username: 'demo_dispatcher', optIn: null, cfg: '2026-10-17' },
   { name: 'Q-10 dispatcher, GET /plan/config fails (503)', role: 'dispatcher', username: 'demo_dispatcher', optIn: null, cfg: 'ERR' },
 ];
 const RIG_SAT = '2026-10-10';
@@ -117,7 +118,8 @@ async function one(browser, origin, c) {
   // the v5 bar may sit in the app's top bar (outside #content), so the whole document is searched
   const bar = await page.evaluate(() => ({ btn: [...document.querySelectorAll('button[onclick*="WN5._switch"]')].some((b) => b.textContent.trim() === 'Παλιά προβολή'),
     closed: ((document.querySelector('[data-old-view="closed"]') || {}).textContent || '').trim(),
-    unknown: ((document.querySelector('[data-old-view="unknown"]') || {}).textContent || '').trim() }));
+    unknown: ((document.querySelector('[data-old-view="unknown"]') || {}).textContent || '').trim(),
+    before: ((document.querySelector('[data-old-view="before"]') || {}).textContent || '').trim() }));
   const flag = await page.evaluate(() => ({ flag: typeof FEATURES !== 'undefined' ? FEATURES.WN_V5 : undefined,
     users: typeof WN_V5_USERS !== 'undefined' ? WN_V5_USERS : undefined })).catch(() => ({}));
   await ctx.close();
@@ -149,6 +151,9 @@ async function one(browser, origin, c) {
         ok(c.name, 'read-only at load: no /plan/* request other than GET', r.S.plan.every((x) => x.startsWith('GET ')), r.S.plan);
         ok(c.name, `«Παλιά προβολή» ${wantBtn(c) ? 'offered' : 'not offered (week ≥ L)'}`, r.bar.btn === wantBtn(c), r.bar);
         ok(c.name, c.cfg === 'ERR' ? 'says the day was not read' : 'no «δεν διαβάστηκε» line', (r.bar.unknown === 'Η ημέρα μετάβασης δεν διαβάστηκε') === (c.cfg === 'ERR'), r.bar);
+        // a week before L (074 ran, L later than this week): the bar says where its national work is
+        const preL = typeof c.cfg === 'string' && c.cfg !== 'ERR' && RIG_SAT < c.cfg;
+        ok(c.name, preL ? 'says the week is before L: «… στην παλιά προβολή»' : 'no «πριν από» line', preL ? r.bar.before === `Εβδομάδα πριν από ${Number(c.cfg.slice(8))}/${Number(c.cfg.slice(5, 7))}: τα εθνικά της είναι στην παλιά προβολή` : r.bar.before === '', r.bar);
         if (c.optIn === '0' && afterL(c)) ok(c.name, 'says why: «… μόνο για εβδομάδες πριν από 10/10»', r.bar.closed === 'Η παλιά προβολή υπάρχει μόνο για εβδομάδες πριν από 10/10', r.bar);
       } else {
         // Q-10: a stored old-view choice under an open flag asks the base for day L — that one read, nothing else

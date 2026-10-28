@@ -343,6 +343,9 @@ function _barHTML() {
     + (_afterL(_sat)
       ? (_ls('tms_wn5') === '0' ? `<span class="wi4-range" data-old-view="closed">Η παλιά προβολή υπάρχει μόνο για εβδομάδες πριν από ${_esc(_dm(_cfg.cutoverDay))}</span>` : '')
       : (_cfg && _cfg.state === 'unknown' ? '<span class="wi4-range" data-old-view="unknown">Η ημέρα μετάβασης δεν διαβάστηκε</span>' : '')
+        // a week before L lives in the old model: an (almost) empty v5 week must not read as «nothing planned»
+        + (_cfg && _cfg.state === 'after' && _cfg.cutoverDay && typeof _sat === 'string' && _sat < _cfg.cutoverDay
+          ? `<span class="wi4-range" data-old-view="before">Εβδομάδα πριν από ${_esc(_dm(_cfg.cutoverDay))}: τα εθνικά της είναι στην παλιά προβολή</span>` : '')
         + '<button type="button" class="wi4-btn sm" title="Το παλιό Εβδομαδιαίο Εθνικών" onclick="WN5._switch(\'0\')">Παλιά προβολή</button>')
     + '</div></div>';
 }
