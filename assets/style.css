@@ -9332,6 +9332,10 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 .wn5-grey { padding:6px 10px; border-radius:6px; background:var(--wi4-chip); color:var(--wi4-grey-1); }
 .wn5-dlg .wn5-grey { margin:0 -16px; padding:6px 16px; border-radius:0; border-top:1px solid var(--wi4-line); border-bottom:1px solid var(--wi4-line); font-size:11px; line-height:16px; color:var(--wi4-grey-2); }   /* 30px, Δ1 */
 .wn5-dlg .wn5-miss { color:var(--wi4-amber-ink); }
+/* owner 28/10: why a save is off, in red beside it — never a silent grey button (wn5_actions.js _why) */
+.wn5-dlg .wn5-why { color:var(--wi4-red); font-weight:500; }
+.wn5-dlg .wn5-cand + .wn5-why { margin:0 -16px; padding:2px 12px 4px 24px; font-size:12px; text-align:right; }
+.wn5-dlg .wn5-more > .wn5-why, .wn5-dlg .wi4-dlg-ft > .wn5-why { align-self:center; font-size:12px; text-align:right; }
 .wn5-dlg .wn5-dq { width:290px; max-width:100%; height:28px; padding:0 8px; border:1px solid var(--wi4-line-2); border-radius:6px; font:inherit; }
 /* Figma 2051:7749/7750: the search field and the ΗΗ:ΛΛ inputs are edged in the board line and hint in grey-3,
    as .wi4-search (Chrome's default placeholder grey is darker and reads as typed text) */

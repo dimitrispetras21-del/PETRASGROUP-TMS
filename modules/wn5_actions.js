@@ -308,7 +308,9 @@
           + '<button type="button" class="wi4-btn pri' + (s.danger ? ' wn5-danger' : '') + '" data-act="confirm">' + _esc(s.verb) + '</button>';
         d.refresh = () => {
           const c = d.dlg.querySelector('[data-act="confirm"]');
-          if (c) c.disabled = d.locked || d.busy || (!!s.field && !(_ask && _ask.field.trim()));
+          const empty = !!s.field && !(_ask && _ask.field.trim());
+          if (c) c.disabled = d.locked || d.busy || empty;
+          _why(d.ft.querySelector('[data-act="cancel"]'), 'beforebegin', empty ? 'Λείπει: ' + s.field.label.replace(/\s*\*$/, '').toLowerCase() : null);
         };
         d.dlg.addEventListener('click', (ev) => {
           const b = ev.target.closest('[data-act]');
@@ -514,11 +516,12 @@
   // One stop per place per side (decision 6): a live stop of the target on that side is named by stop_id; any other
   // place becomes a new stop with its pieces' window (the earliest start, the latest end of the pieces there); a NEW
   // Veroia stop takes the window the user typed (Ε-5: the base invents no hour, and neither does the screen).
-  // Never seq (decision 5), never one stop_id twice. missing: 'place' | 'window' | 'hub'.
+  // Never seq (decision 5), never one stop_id twice. missing: 'place' | 'window' | 'hub'; lack: the needs behind them,
+  // so a disabled save can name the stop it waits for (owner 28/10).
   function _stopsFor(needs, cyc, side, hubWin, winOf) {
-    const out = [], seen = new Map(), miss = new Set();
+    const out = [], seen = new Map(), miss = new Set(), lack = [];
     for (const n of needs) {
-      if (n.loc == null) { miss.add('place'); continue; }
+      if (n.loc == null) { miss.add('place'); lack.push(n); continue; }
       const prev = seen.get(n.loc);
       if (prev) {
         if (prev.location_id != null && !n.hub && n.from && n.to) {
@@ -534,19 +537,19 @@
         // a moved piece brings its Veroia window from the source stop (072:1208-1215: places and windows of the
         // source); only a load that never had one waits for the typed window
         const w = hubWin || (n.own && n.from && n.to ? [n.from, n.to] : null);
-        if (!w) { miss.add('hub'); continue; }
+        if (!w) { miss.add('hub'); lack.push(n); continue; }
         st = { ref: 'n' + n.loc, location_id: n.loc, side, planned_from: w[0], planned_to: w[1] };
       }
       else if (!n.from || !n.to) {
         const w = typeof winOf === 'function' ? winOf(n) : null;
-        if (!w) { miss.add('window'); continue; }
+        if (!w) { miss.add('window'); lack.push(n); continue; }
         st = { ref: 'n' + n.loc, location_id: n.loc, side, planned_from: w[0], planned_to: w[1] };
       }
       else st = { ref: 'n' + n.loc, location_id: n.loc, side, planned_from: n.from, planned_to: n.to };
       seen.set(n.loc, st);
       out.push(st);
     }
-    return { stops: out, missing: [...miss] };
+    return { stops: out, missing: [...miss], lack };
   }
   function _cycText(c, r) {
     const t = r && r.tiles && r.tiles[0];
@@ -628,9 +631,42 @@
     } else return null;
     const f = _hhmm(st.hubFrom), t = _hhmm(st.hubTo);
     const r = _stopsFor(st.needs, cyc, st.side, f && t ? _win(st.day, f, t) : null, (n) => _dayWin(n, st.win));
-    if (r.missing.length) return { missing: r.missing };
+    if (r.missing.length) return { missing: r.missing, lack: r.lack };
     if (st.mode === 'move') return { method: 'POST', path: '/plan/move', body: { from: st.from, target, stops: r.stops } };
     return { method: 'POST', path: '/plan/legs', body: st.group ? { group: st.group, target, stops: r.stops } : { pieces: st.pieces, target, stops: r.stops } };
+  }
+  // The Veroia window field is asked only when a Veroia stop would have no window: a move carries the source's
+  // (_stopsFor), so an asterisk over a field nothing waits for claims a requirement that does not exist (Figma 2011:9294)
+  const _hubAsked = (st) => st.mode !== 'vehicle' && st.needs.some((n) => n.hub && !(n.own && n.from && n.to));
+  // Owner 28/10: a save that is off says why, in red, beside it — a grey button alone read as «it does not click»
+  // (Δ1 of a VS bridge, 28/10). The reason is the data's only; an off button while sending (busy) or after a closed
+  // answer (locked) has its own strip. where: 'afterend' of a row / a button, 'beforebegin' of a footer's first button.
+  function _why(anchor, where, text) {
+    if (!anchor) return null;
+    const sib = where === 'beforebegin' ? anchor.previousElementSibling : anchor.nextElementSibling;
+    let w = sib && sib.classList.contains('wn5-why') ? sib : null;
+    if (!text) { if (w) w.remove(); return null; }
+    if (!w) { w = document.createElement(where === 'beforebegin' ? 'span' : 'div'); w.className = 'wn5-why'; anchor.insertAdjacentElement(where, w); }
+    if (w.textContent !== text) w.textContent = text;
+    return w;
+  }
+  // one missing stop in words: «παράθυρο παράδοσης <place>», «άφιξη Βέροιας», …
+  function _lackText(st, n) {
+    const act = n.role === 'load' ? 'φόρτωσης' : 'παράδοσης';
+    if (n.hub) return st.side === 'ANODOS' ? 'άφιξη Βέροιας' : 'παράθυρο φόρτωσης Βέροιας';
+    if (n.loc == null) return 'προορισμός ' + act + ' (δεν ήρθε από τη βάση)';
+    return n.day ? 'παράθυρο ' + act + ' ' + _placeName(n.loc) : 'ημέρα ' + act + ' ' + _placeName(n.loc) + ' (δεν ήρθε από τη βάση)';
+  }
+  // the board gives the ids of a cycle («rt:») and of «wait»; a new vehicle or a partner needs the catalogue
+  const _needsIds = (cand) => !/^(rt:|wait$)/.test(cand || '');
+  const _missWords = (st, req) => 'Λείπει: ' + [...new Set((req.lack || []).map((n) => _lackText(st, n)))].join(', ');
+  function _assignWhy(st, cand, req) {
+    const kind = String(cand || '').split(':')[0];
+    if (_needsIds(cand) && !st.ids.ok) return 'Λείπουν οι κατάλογοι: δεν φορτώθηκαν, κλείσε και ξανάνοιξε';
+    if (kind === 'partner' && !st.partner) return 'Λείπει: συνεργάτης';
+    if (kind === 'partner' && !_rate(st.rateTxt).ok) return 'Κόμιστρο: μόνο αριθμός (π.χ. 350 ή 350,50)';
+    if (req && req.missing) return _missWords(st, req);
+    return req ? null : 'Δεν στέλνεται: ανανέωσε τον πίνακα';
   }
 
   // a group header: the caps label, then a lighter suffix (Figma Δ1: «ΚΥΚΛΟΙ ΤΗΣ ΔΕΥΤΕΡΑΣ 12/10 · ένωση · 4»)
@@ -660,10 +696,9 @@
           + '<small>όλη η ημέρα, αν δεν ξέρεις ώρα</small></div>';
       }
     }
-    // a move carries the source's Veroia window (_stopsFor), so the field shows only when a Veroia stop would have no
-    // window: an asterisk over a field nothing waits for claims a requirement that does not exist (Figma 2011:9294)
-    if (!vehicle && st.needs.some((n) => n.hub && !(n.own && n.from && n.to))) {
-      h += '<div class="wn5-hubwin"><span>' + (st.side === 'ANODOS' ? 'Άφιξη Βέροιας *' : 'Παράθυρο φόρτωσης Βέροιας *') + '</span>'
+    // the field's hours are put on st.day (_assignReq), so it names that day, as the stop fields above name theirs
+    if (_hubAsked(st)) {
+      h += '<div class="wn5-hubwin"><span>' + (st.side === 'ANODOS' ? 'Άφιξη Βέροιας' : 'Παράθυρο φόρτωσης Βέροιας') + ' · ' + _esc(_dayShort(st.day)) + ' *</span>'
         + '<input class="wn5-hm" data-hub="from" inputmode="numeric" placeholder="ΗΗ:ΛΛ" value="' + _esc(st.hubFrom) + '"> – '
         + '<input class="wn5-hm" data-hub="to" inputmode="numeric" placeholder="ΗΗ:ΛΛ" value="' + _esc(st.hubTo) + '">'
         + '<small>μόνο όταν γίνεται νέα στάση Βέροιας</small></div>';
@@ -828,6 +863,10 @@
       });
   }
   function _picker(st, kind, title) {
+    // Owner 28/10: an empty required Veroia window opens as its whole day, 00:00–23:59, still editable — as the stop
+    // windows (DAY_WIN). Into st.hubFrom/To, the field's own state: the request carries what the field shows. Not when
+    // a moved piece brings its own Veroia window: a typed window wins over it in _stopsFor, a default must not.
+    if (_hubAsked(st) && !st.hubFrom && !st.hubTo && !st.needs.some((n) => n.hub && n.own && n.from && n.to)) { st.hubFrom = DAY_WIN.from; st.hubTo = DAY_WIN.to; }
     const d = _dlg(kind, title, { wide: true });
     d.ft.innerHTML = '<button type="button" class="wi4-btn" data-act="cancel">Άκυρο</button>';
     // Figma Δ1 header: the meta inline after the title in grey, «Μόνο ελεύθερα | Όλα» at the top right. In the header,
@@ -851,12 +890,17 @@
         for (let n = gh.nextElementSibling; n && !n.matches('.wn5-grp-h'); n = n.nextElementSibling) if (n.matches('.wn5-cand[data-line]')) lines.push(n);
         gh.hidden = lines.length > 0 && lines.every((n) => n.hidden);
       }
+      // a row's red «Λείπει: …» goes and comes with its row
+      for (const w of d.body.querySelectorAll('.wn5-cand + .wn5-why')) w.hidden = w.previousElementSibling.hidden;
     };
     d.refresh = () => {
       for (const b of d.dlg.querySelectorAll(SAVES)) {
         const req = _assignReq(st, b.dataset.cand);
-        const needsIds = !/^(rt:|wait$)/.test(b.dataset.cand || '');   // the board gives these ids; new vehicles need the catalogue
-        b.disabled = d.locked || d.busy || !req || !!req.missing || (needsIds && !st.ids.ok);
+        b.disabled = d.locked || d.busy || !req || !!req.missing || (_needsIds(b.dataset.cand) && !st.ids.ok);
+        // beside the button: inside «Ρυμούλκα / Οδηγός / Ανάθεση» after it, else under its row
+        const row = b.closest('.wn5-more') ? null : b.closest('.wn5-cand');
+        const w = _why(row || b, 'afterend', _assignWhy(st, b.dataset.cand, req));
+        if (w && row) w.hidden = row.hidden;
       }
     };
     const draw = () => {
@@ -957,7 +1001,7 @@
     if (it._ro) return null;
     const f = _hhmm(st.hubFrom), t = _hhmm(st.hubTo);
     const r = _stopsFor(_needs(it, false, st.hub), st.cyc, st.side, f && t ? _win(st.day, f, t) : null, (n) => _dayWin(n));
-    if (r.missing.length) return { missing: r.missing };
+    if (r.missing.length) return { missing: r.missing, lack: r.lack };
     const piece = { piece_id: it.piece_id };
     if (it.is_stock) {
       const n = _takeOf(st, it);
@@ -993,12 +1037,12 @@
     else h += _capHTML(n, k ? (late ? ' · ' : ' · μπαίνει ') + k + 'η' : '');
     return h;
   }
-  // what a missing stop needs: the Veroia window is the user's field above the list (missing 'hub'); a place or a
-  // window that the board does not carry is the base's (Ε-26)
-  function _missText(st, miss) {
-    const own = miss.includes('hub') ? (st.side === 'ANODOS' ? 'συμπλήρωσε την άφιξη Βέροιας' : 'συμπλήρωσε το παράθυρο φόρτωσης Βέροιας') : '';
-    const base = miss.some((m) => m !== 'hub') ? 'λείπει ο προορισμός ή το παράθυρο από τη βάση' : '';
-    return [base, own].filter(Boolean).join(' · ');
+  // why a line's «Πρόσθεσε» is off (owner 28/10, red beside it): the Veroia window is the user's field above the list;
+  // a place or a day the board does not carry is the base's (Ε-26); a stock «πόσες» out of range
+  function _plusWhy(st, it, req) {
+    if (req === undefined) req = _plusReq(st, it);
+    if (!req) return 'Λείπει: πόσες, από 0,1 ως ' + _pal(it.pallets) + ' (ένα δεκαδικό)';
+    return req.missing ? _missWords(st, req) : null;
   }
   function _plusLineHTML(st, it) {
     const anod = st.side === 'ANODOS';
@@ -1008,8 +1052,8 @@
     const when = win[0] ? _wd(_ymdOf(win[0])) + ' ' + _hm(win[0]) + '–' + _hm(win[1]) : wday ? _wd(wday) + ' όλη η ημέρα' : '—';
     const loc = anod ? it.position_location_id : it.nat_to_location_id;
     const place = _placeName(loc), city = _placeCity(loc);
-    const req = _plusReq(st, it);
-    const miss = req && req.missing ? '<span class="wn5-miss">' + _esc(_missText(st, req.missing)) + '</span>' : '';
+    const why = it._ro ? null : _plusWhy(st, it);
+    const miss = why ? '<span class="wn5-miss wn5-why">' + _esc(why) + '</span>' : '';
     const pal = it.is_stock
       ? '<span class="' + (it.overdue ? 'wn5-late' : 'wn5-leave') + '">' + _esc(_pal(it.pallets) + 'π · ' + _leaveBy(it, st.day)) + '</span>'
       : '<span>' + _esc(_pal(it.pallets)) + 'π</span>';
@@ -1100,6 +1144,14 @@
         const it = byId(_id(b.dataset.piece));
         const req = it && _plusReq(st, it);
         b.disabled = d.locked || d.busy || !req || !!req.missing;
+        const cap = b.closest('.wn5-pline') && b.closest('.wn5-pline').querySelector('.wn5-pcap');
+        const text = it ? _plusWhy(st, it, req) : 'Δεν στέλνεται: ανανέωσε τον πίνακα';
+        let m = cap && cap.querySelector('.wn5-why');
+        if (!text) { if (m) m.remove(); }
+        else if (cap) {
+          if (!m) { m = document.createElement('span'); m.className = 'wn5-miss wn5-why'; cap.appendChild(m); }
+          m.textContent = text;
+        }
       }
     };
     const draw = () => {
@@ -1170,13 +1222,8 @@
       const el = ev.target;
       if (el.matches('[data-q]')) { st.q = el.value; filter(); return; }
       if (el.matches('[data-hub]')) {
+        // each line's red «Λείπει: …» follows the field in d.refresh below
         if (el.dataset.hub === 'from') st.hubFrom = el.value; else st.hubTo = el.value;
-        // the «λείπει …» of each line follows the field (it said «συμπλήρωσε …» a moment ago)
-        for (const ln of d.body.querySelectorAll('.wn5-pline[data-piece]')) {
-          const it = byId(_id(ln.dataset.piece)), m = ln.querySelector('.wn5-miss'), req = it && _plusReq(st, it);
-          if (m && !(req && req.missing)) m.remove();
-          else if (m) m.textContent = _missText(st, req.missing);
-        }
       } else if (el.matches('[data-take]')) {
         const pid = _id(el.dataset.take); st.take[pid] = el.value;
         const it = byId(pid), chips = el.closest('.wn5-pline').querySelector('.wn5-pchips');
@@ -1397,6 +1444,20 @@
     if (delta) body.shift = { side: st.side, delta: delta + ' days' };
     return Object.keys(body).length ? body : null;
   }
+  // a Veroia window edited into something that is not ΗΗ:ΛΛ: _dateBody leaves it out, so with a new day the save would
+  // send the shift alone and drop the typed hour unseen (principle 1) — the save stays off and says so
+  const _dateBadWin = (st) => !!st.vStop && (st.from !== st.from0 || st.to !== st.to0) && (!_hhmm(st.from) || !_hhmm(st.to));
+  // why «Αποθήκευση» of the date panel is off (owner 28/10): nothing changed, an hour that is not ΗΗ:ΛΛ, the dry run
+  // still out, refused (its strip) or a conflict (its line on the right)
+  function _dateWhy(st, body) {
+    if (_dateBadWin(st)) return 'Λείπει: παράθυρο σε μορφή ΗΗ:ΛΛ';
+    if (body && st.okFor === JSON.stringify(body) && rtSaveBody(st.dryBody, st.dryAnswer)) return null;
+    if (!body) return 'Λείπει: άλλη ημέρα ή νέο παράθυρο';
+    if (st.err) return 'Δεν αποθηκεύεται: δες το μήνυμα πάνω';
+    if (st.preview && st.preview.conflict) return 'Δεν αποθηκεύεται: σύγκρουση, δες δεξιά';
+    if (st.dryAnswer && !rtSaveBody(st.dryBody, st.dryAnswer)) return 'Δεν αποθηκεύεται: η προεπισκόπηση ήρθε χωρίς επιβεβαίωση';
+    return 'Περιμένει την προεπισκόπηση…';
+  }
   function _calHTML(st) {
     const y = st.view[0], m = st.view[1];
     const lead = (new Date(Date.UTC(y, m, 1)).getUTCDay() + 6) % 7;        // Monday first
@@ -1580,7 +1641,8 @@
       const b = d.dlg.querySelector('[data-act="save"]');
       const body = _dateBody(st);
       if (!b) return;
-      b.disabled = d.locked || d.busy || !body || st.okFor !== JSON.stringify(body) || !rtSaveBody(st.dryBody, st.dryAnswer);
+      b.disabled = d.locked || d.busy || !body || st.okFor !== JSON.stringify(body) || !rtSaveBody(st.dryBody, st.dryAnswer) || _dateBadWin(st);
+      _why(d.ft.querySelector('[data-act="cancel"]'), 'beforebegin', _dateWhy(st, body));
       b.textContent = st.dryAnswer && st.dryAnswer.needs_confirm === true ? 'Αποθήκευση · επιβεβαίωση' : 'Αποθήκευση';
     };
     // The skeleton is built ONCE. A preview answer redraws only the result column: the window inputs are never
@@ -1734,6 +1796,9 @@
       // a typed time that is not HH:MM keeps the button off: it would be stored as text (072 time_from is free text)
       const badTime = (st.from && !_hhmm(st.from)) || (st.to && !_hhmm(st.to));
       if (b) b.disabled = d.locked || d.busy || !st.ids.ok || !st.stop || !st.driver || !st.truck || !!badTime;
+      const lack = st.ids.ok ? [!st.stop && 'στάση', !st.driver && 'οδηγός', !st.truck && 'φορτηγό'].filter(Boolean) : [];
+      _why(d.ft.querySelector('[data-act="cancel"]'), 'beforebegin', !st.ids.ok ? 'Λείπουν οι κατάλογοι: δεν φορτώθηκαν, κλείσε και ξανάνοιξε'
+        : lack.length ? 'Λείπει: ' + lack.join(', ') : badTime ? 'Ώρα: σε μορφή ΗΗ:ΛΛ' : null);
     };
     d.dlg.addEventListener('change', (ev) => {
       const el = ev.target;
