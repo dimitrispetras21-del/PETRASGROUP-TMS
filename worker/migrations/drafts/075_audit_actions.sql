@@ -10,7 +10,7 @@
 -- EXPECTED: NOTICE "075 OK | ..." and COMMIT.
 DO $m$
 DECLARE
-  v_def text; v_rows bigint; v_bad bigint; v_ok int := 0;
+  v_def text; v_set text[]; v_rows bigint; v_bad bigint; v_ok int := 0;
   v_new text[] := ARRAY['create','update','delete','cascade_delete','confirm','reverse','invoice_override','upload'];
   v_a text;
 BEGIN
@@ -19,8 +19,10 @@ BEGIN
   SELECT pg_get_constraintdef(c.oid) INTO v_def FROM pg_constraint c
     WHERE c.conrelid = 'public.audit_log'::regclass AND c.conname = 'audit_log_action_check';
   IF v_def IS NULL THEN RAISE EXCEPTION '075: audit_log_action_check not found - stop, re-measure'; END IF;
-  IF v_def LIKE '%confirm%' THEN RAISE EXCEPTION '075: already applied (%) - stop', v_def; END IF;
-  IF v_def NOT LIKE '%create%' OR v_def NOT LIKE '%update%' OR v_def NOT LIKE '%delete%' OR v_def NOT LIKE '%cascade_delete%' THEN
+  -- the exact list, whatever its order: the four measured actions and nothing else
+  SELECT array_agg(m[1] ORDER BY m[1]) INTO v_set FROM regexp_matches(v_def, '''([a-z_]+)''::text', 'g') AS m;
+  IF v_set @> ARRAY['confirm'] THEN RAISE EXCEPTION '075: already applied (%) - stop', v_def; END IF;
+  IF v_def NOT LIKE 'CHECK ((action = ANY (ARRAY[%' OR v_set IS DISTINCT FROM ARRAY['cascade_delete','create','delete','update'] THEN
     RAISE EXCEPTION '075: unexpected definition % - stop, re-measure', v_def;
   END IF;
   SELECT count(*), count(*) FILTER (WHERE NOT (action = ANY (v_new))) INTO v_rows, v_bad FROM public.audit_log;

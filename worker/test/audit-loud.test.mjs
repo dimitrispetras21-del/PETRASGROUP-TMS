@@ -8,7 +8,8 @@ import { call, json, pgError, on, calls, reset, restore } from './fixtures/f5-ha
 
 beforeEach(reset);
 afterEach(restore);
-const CHECK_REFUSED = { code: '23514', message: 'new row for relation "audit_log" violates check constraint "audit_log_action_check"' };
+const CHECK_REFUSED = { code: '23514', message: 'new row for relation "audit_log" violates check constraint "audit_log_action_check"',
+  details: 'Failing row contains (99, tester, owner, invoice_override, orders, recO1, null, {"reason": "paper lost"}).' };
 const appErrors = () => calls.filter((c) => c.method === 'POST' && c.table === 'app_errors');
 
 test('a refused audit row (invoice_override) → one app_errors row naming it; the override still answers 200', async () => {
@@ -18,9 +19,10 @@ test('a refused audit row (invoice_override) → one app_errors row naming it; t
   assert.equal(r.status, 200, r.text);
   assert.equal(appErrors().length, 1);
   const row = appErrors()[0].body;
-  assert.match(row.message, /^AUDIT WRITE FAILED: 1 row\(s\), invoice_override orders recO1: .*audit_log_action_check/);
+  assert.match(row.message, /^AUDIT WRITE FAILED: 1 row\(s\), invoice_override orders recO1 by owner: 23514 .*audit_log_action_check/);
   assert.equal(row.page, 'worker:audit');
-  assert.equal(row.actor, 'tester');
+  assert.equal(row.actor, null, 'never the username');
+  assert.doesNotMatch(row.message, /tester|Failing row/);
 });
 
 test('an audit row that lands writes no app_errors row', async () => {

@@ -372,11 +372,12 @@ function _auditFmtVal(v, field) {
   return s;
 }
 
-// The Worker's nine audit() verbs (grep 'action: "' on deployed src/index.js).
+// The Worker's eight audit() verbs (grep 'action: "' on deployed src/index.js).
 // Counted in audit_log 3/9/2026: create 2.027 · update 1.254 · delete 88 ·
-// cascade_delete 30 — the other five routes exist but have never written a
-// row. They stay listed because the day one fires it must read as a word, not
-// as raw English. 'login' was REMOVED: the Worker has no such call and never
+// cascade_delete 30. confirm, reverse, invoice_override and upload had no row
+// because audit_log_action_check refused them (measured 28/10); 075 accepts
+// them, rows from then on, none recovered before it. They stay listed so they
+// read as a word, not as raw English. 'login' was REMOVED: the Worker has no such call and never
 // had one, so the entry described an event that cannot happen (principle 8).
 // Anything else still shows raw, so a tenth verb is visible, not swallowed.
 const _AUDIT_ACTION = {

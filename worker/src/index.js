@@ -303,14 +303,17 @@ __name(dbSelectManyByLegacy, "dbSelectManyByLegacy");
 // An audit row that did not land is said where someone reads it (owner 28/10, Υ2): one app_errors row, which the
 // auditor's 24-hour count already reads, never only console.error (A41: 140 of 215 confirmations and every
 // invoice_override were lost in silence, refused by audit_log_action_check). The user's own action still succeeds:
-// the write it records already happened.
+// the write it records already happened. The row names the action, the role and the database's own error (code and
+// message), never the username or the refused row: PostgREST's «Failing row contains (…)» would copy both into
+// app_errors.
 async function auditFailed(env, entries, e) {
   const first = entries[0] || {};
   console.error("AUDIT WRITE FAILED", first.action, first.table, entries.length, e.message);
+  const why = e.pg ? `${e.pg.code || ""} ${e.pg.message || ""}`.trim() : String(e.message || "").split(":")[0];
   try {
     await dbInsert(env, "app_errors", {
-      actor: first.actor || null,
-      message: clampStr(`AUDIT WRITE FAILED: ${entries.length} row(s), ${first.action} ${first.table} ${first.recordId || ""}: ${e.message}`, CLAMPS.message),
+      actor: null,
+      message: clampStr(`AUDIT WRITE FAILED: ${entries.length} row(s), ${first.action} ${first.table} ${first.recordId || ""} by ${first.role || "?"}: ${why}`, CLAMPS.message),
       page: "worker:audit"
     });
   } catch (e2) {
