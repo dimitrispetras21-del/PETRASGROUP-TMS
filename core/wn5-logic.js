@@ -285,21 +285,7 @@ const HUB_UNKNOWN = 'Η Βέροια δεν αναγνωρίστηκε σε αυ
 function _loadDay(w) {
   const d = athensDay(w.load_from) || w.nat_ready_day || null;
   if (d || !DAY_RE.test(String(w.nat_due_day || ''))) return d;
-  const h = w.kind === 'vs_import' ? vsHubDay(w) : null;
-  return h ? h.day : w.nat_due_day;
-}
-// A VS's Veroia day = its cross_dock_date, which 071 v_shipments maps to nat_ready_day of an import and nat_due_day of
-// an export. Empty: the owner's rule (23/8: import = Delivery Date − 1, export = Loading Date + 1), est = true so the
-// screen names it «εκτίμηση». ONE rule for the board (_loadDay) and the assignment windows (wn5_actions _needs, F27);
-// null for a national or stock (their nat_ready_day is a supplier's / a parent's day, no Veroia day) or no day at all.
-function vsHubDay(w) {
-  const imp = w && w.kind === 'vs_import';
-  if (!w || w.is_stock || (!imp && w.kind !== 'vs_export')) return null;
-  // the cross-dock day, else the day of a known window at Veroia (Ε-26: an import's arrival, an export's delivery there)
-  const d = (imp ? w.nat_ready_day : w.nat_due_day) || athensDay(imp ? w.load_from : w.deliver_from);
-  if (DAY_RE.test(String(d || ''))) return { day: d, est: false };
-  const b = imp ? w.nat_due_day : w.nat_ready_day;
-  return DAY_RE.test(String(b || '')) ? { day: _addDays(b, imp ? -1 : 1), est: true } : null;
+  return w.kind === 'vs_import' ? _addDays(w.nat_due_day, -1) : w.nat_due_day;
 }
 // The side a waiting piece goes on — ONE rule for the board's row and the assignment window (wn5_actions _sideFor):
 // standing at the hub = ΚΑΘΟΔΟΣ; towards the hub (a vs_export, or nat_to = hub) = ΑΝΟΔΟΣ; neither end the hub = the
@@ -492,6 +478,6 @@ function handoversOf(cycle) {
   return out;
 }
 
-const WN5L = freeze({ model, waitSide, vsHubDay, segmentsOf, stopSegments, handoversOf, searchParts, cycleNumbers, capacity, stopRank, hubFromBoard, athensDay, athensTime, allDay, DAY_WIN, CAP, HUB_UNKNOWN, ShapeError });
+const WN5L = freeze({ model, waitSide, segmentsOf, stopSegments, handoversOf, searchParts, cycleNumbers, capacity, stopRank, hubFromBoard, athensDay, athensTime, allDay, DAY_WIN, CAP, HUB_UNKNOWN, ShapeError });
 if (typeof module !== 'undefined') module.exports = WN5L; else window.WN5L = WN5L;
 })();

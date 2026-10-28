@@ -3068,6 +3068,8 @@ SCN.f27 = async (browser, origin) => {
     await page.waitForTimeout(400);
     const line = await bText(page, `${P} .wn5-pline[data-piece="4501"]`);
     ok(scn, '«+» line of VS-T501 names its Veroia day: «Τρί όλη η ημέρα · Βέροια Τετ»', /Τρί όλη η ημέρα · Βέροια Τετ/.test(line), line);
+    // code review r5: RT-T201's ΑΝΟΔΟΣ has no stops yet; the cycle runs Mon–Tue, so a Veroia stop on Wed is said
+    ok(scn, '«+» on an empty side: «Βέροια Τετ, άλλη ημέρα» (the cycle runs Mon–Tue)', /Βέροια Τετ, άλλη ημέρα/.test(line), line);
     await page.fill(`${P} input[data-hub="from"]`, '08:00').catch(() => {});
     await page.fill(`${P} input[data-hub="to"]`, '10:00').catch(() => {});
     await page.waitForTimeout(200);

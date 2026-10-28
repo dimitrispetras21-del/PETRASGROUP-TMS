@@ -370,20 +370,3 @@ test('075: waitSide — the hub ends first, then the order\'s own direction, els
   assert.strictEqual(L.waitSide({ kind: 'vs_export', nat_to_location_id: 1 }, 1), 'ANODOS');
   assert.strictEqual(L.waitSide({ kind: 'vs_import', at_hub: true, nat_to_location_id: 3 }, 1), 'KATHODOS');
 });
-
-test('F27: vsHubDay — a VS\'s Veroia day is its cross_dock_date (import nat_ready_day, export nat_due_day); empty = the owner\'s rule, named an estimate; none for a national or stock', () => {
-  assert.strictEqual(typeof L.vsHubDay, 'function', 'WN5L.vsHubDay missing (plain main: Δ1 wrote the Veroia window on the dialog\'s day)');
-  const J = (x) => JSON.parse(JSON.stringify(x));
-  // VS 617 shape: export picked up Thu 29/10, cross-dock Fri 30/10 → Fri, never the pickup day
-  assert.deepStrictEqual(J(L.vsHubDay({ kind: 'vs_export', nat_ready_day: '2026-10-29', nat_due_day: '2026-10-30' })), { day: '2026-10-30', est: false });
-  assert.deepStrictEqual(J(L.vsHubDay({ kind: 'vs_import', nat_ready_day: '2026-10-25', nat_due_day: '2026-10-26' })), { day: '2026-10-25', est: false });
-  // empty cross_dock_date (CLAUDE.md 23/8): export = loading + 1, import = delivery − 1
-  assert.deepStrictEqual(J(L.vsHubDay({ kind: 'vs_export', nat_ready_day: '2026-10-29', nat_due_day: null })), { day: '2026-10-30', est: true });
-  assert.deepStrictEqual(J(L.vsHubDay({ kind: 'vs_import', nat_ready_day: null, nat_due_day: '2026-10-26' })), { day: '2026-10-25', est: true });
-  assert.strictEqual(L.vsHubDay({ kind: 'national', nat_ready_day: '2026-10-12', nat_due_day: '2026-10-13' }), null, 'a national\'s nat_ready_day is its supplier\'s day');
-  assert.strictEqual(L.vsHubDay({ kind: 'vs_import', is_stock: true, nat_ready_day: '2026-10-12', nat_due_day: '2026-10-13' }), null, 'stock carries its parent\'s day');
-  assert.strictEqual(L.vsHubDay({ kind: 'vs_export', nat_ready_day: null, nat_due_day: null }), null);
-  // a known window at Veroia (Ε-26) is a fact, before any estimate: an import's arrival, an export's delivery there
-  assert.deepStrictEqual(J(L.vsHubDay({ kind: 'vs_import', nat_ready_day: null, nat_due_day: '2026-10-16', load_from: '2026-10-14T18:00:00+03:00' })), { day: '2026-10-14', est: false });
-  assert.deepStrictEqual(J(L.vsHubDay({ kind: 'vs_export', nat_ready_day: '2026-10-13', nat_due_day: null, deliver_from: '2026-10-15T06:00:00+03:00' })), { day: '2026-10-15', est: false });
-});
