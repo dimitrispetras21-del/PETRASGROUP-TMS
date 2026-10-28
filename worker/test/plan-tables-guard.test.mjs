@@ -24,8 +24,9 @@ function liftVar(name) {
 const TABLES = new Function(liftVar('TABLES') + '\nreturn TABLES;')();
 const PLAN_PERMS = new Function(liftVar('PLAN_PERMS') + '\nreturn PLAN_PERMS;')();
 // + 072b: the segments table and its two views (vehicle handover) - reached only through /plan/*, never the facade
+// + F5: the day-L trace of 074 (plan_config is already listed)
 const V5_TABLES = ['shipments', 'shipment_pieces', 'rt_stops', 'piece_legs', 'plan_notices', 'plan_config', 'local_moves',
-  'rt_vehicle_segments', 'v_rt_segments', 'v_rt_vehicle_windows'];
+  'rt_vehicle_segments', 'v_rt_segments', 'v_rt_vehicle_windows', 'plan_cutover_log'];
 // Tables that hold v5 rows beside older ones (review of PR #90, finding 2): reachable through the facade for
 // their older rows only, so each must carry a planOwned guard that tells its v5 rows apart.
 const SHARED = { local_moves: 'v5 nat_loading rows beside the 060 local / relay rows of Weekly National' };
@@ -88,9 +89,11 @@ test('deploy guard markers: the older ones and var PLAN_PERMS = { exactly once; 
   assert.equal(count('rpc: "plan_seg_change"'), 1, 'handover route marker');
 });
 
-test('writes closed until day L, in the deployed source (decision 22); one switch, no env override', () => {
-  assert.equal(count('var PLAN_WRITES_OPEN = false;'), 1);
-  assert.equal(count('PLAN_WRITES_OPEN = true'), 0);
+// Closed until day L (decision 22); F5 deploy 2 flips this one line (plan W7). Which value is right for a bundle is the
+// deploy guard's question (--plan 1 closed / --plan 2 open); here: one declaration, no second assignment anywhere, no env.
+test('one writes switch in the deployed source, false or true, nothing else names a value; no env override', () => {
+  assert.equal((src.match(/^var PLAN_WRITES_OPEN = (?:true|false);$/gm) || []).length, 1);
+  assert.equal(count('PLAN_WRITES_OPEN = '), 1, 'no second assignment, no comment naming a value (the guard counts them)');
   assert.ok(!/env\.PLAN_WRITES/.test(src), 'no environment switch beside the constant');
 });
 
@@ -99,11 +102,12 @@ test('one DB-rule mapper still: no planRuleError / planRuleResponse beside stock
   assert.equal((src.match(/^function \w+RuleResponse\(/gm) || []).length, 1);
 });
 
-test('"Via Hub" is an ORDER STOPS label for via_hub — once, nowhere else — born closed until the /plan/* switch opens (finding 8)', () => {
+test('"Via Hub" is an ORDER STOPS label for via_hub — once, nowhere else — closed to every facade write, before and after day L (finding 8; F5 Q-6)', () => {
   assert.equal(TABLES.tblaeY5QOHAS1gyE8.fields['Via Hub'], 'via_hub');
   assert.equal(count('"Via Hub": "via_hub"'), 1);
-  assert.deepEqual(TABLES.tblaeY5QOHAS1gyE8.closedUntilPlan, ['Via Hub']);
-  // the ONE switch, read at request time (TABLES is built before `var PLAN_WRITES_OPEN` is assigned)
-  assert.match(src, /function refuseReadOnly\(cfg, fieldsList, origin, env\) \{\n {2}if \(cfg\.closedUntilPlan && !PLAN_WRITES_OPEN\) \{/);
-  for (const [id, cfg] of Object.entries(TABLES)) if (cfg.closedUntilPlan) assert.equal(id, 'tblaeY5QOHAS1gyE8', `${id} closedUntilPlan`);
+  assert.deepEqual(TABLES.tblaeY5QOHAS1gyE8.dbOnly, ['Via Hub']);
+  // only the DB writes it (074 plan_bridge_sync): the refusal does NOT read the /plan/* switch
+  assert.match(src, /function refuseReadOnly\(cfg, fieldsList, origin, env\) \{\n {2}if \(cfg\.dbOnly\) \{/);
+  for (const [id, cfg] of Object.entries(TABLES)) if (cfg.dbOnly) assert.equal(id, 'tblaeY5QOHAS1gyE8', `${id} dbOnly`);
+  assert.equal(count('closedUntilPlan'), 0, 'the old name would say it opens on day L');
 });
