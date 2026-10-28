@@ -14,7 +14,7 @@ const PLV = { movements: [], lookups: null, balances: { clients: null, partners:
   // Redesign 27/8: ομαδοποίηση (client|location|none), κατάσταση διπλώματος ανά
   // ομάδα (κρατιέται όσο ο χρήστης μένει στη σελίδα), cache παραγγελιών ανά
   // pg id για τις πλούσιες γραμμές, και σημαία αποτυχίας εμπλουτισμού.
-  groupBy: 'client', open: {}, orderById: null, enrichFail: false };
+  groupBy: 'client', open: {}, orderById: null, enrichFail: false, cut: null };
 
 // Write gate (13/9, Thodoris go-live audit): the pallet ledger had no role check;
 // management sees it (orders:view) but PL_PERMS keeps it read-only for that
@@ -27,6 +27,28 @@ function _plvBlockReadOnly(){
   return true;
 }
 
+// A list the Worker cut is said on screen, never shown as complete (principle 1). The Worker reads every row in
+// pages and answers truncated + cap; the balances come from the views and are never cut. Until that Worker is live
+// the old one stops at 300 rows and does not say it, so 300 rows without «truncated» is read as cut: drop that
+// branch once every answer carries «truncated».
+function _plvCut(res) {
+  const n = (res.records || []).length;
+  if (res.truncated === undefined) return n >= 300 ? { n, cap: 300, cut: true } : null;
+  if (res.truncated) return { n, cap: res.cap, cut: true };
+  return res.cap && n >= res.cap * 0.9 ? { n, cap: res.cap, cut: false } : null;
+}
+function _plvCutText(cut, inCard) {
+  if (!cut) return '';
+  return !cut.cut
+    ? `⚠ ${cut.n} κινήσεις, κοντά στο όριο των ${cut.cap} της λίστας: ζήτησε αύξηση`
+    : inCard
+      ? `⚠ εμφανίζονται οι ${cut.n} νεότερες κινήσεις: το τρεχούμενο δεν ξεκινά από την αρχή (το υπόλοιπο είναι σωστό)`
+      : `⚠ εμφανίζονται οι ${cut.n} νεότερες κινήσεις: οι παλαιότερες λείπουν από τη λίστα (όχι από τα υπόλοιπα)`;
+}
+function _plvCutNote(cut, inCard) {
+  return cut ? `<span style="color:var(--warn)">${_plvCutText(cut, inCard)}</span>` : '';
+}
+
 async function renderPalletLedger() {
   const c = document.getElementById('content');
   c.style.padding = ''; c.style.overflow = '';
@@ -37,6 +59,7 @@ async function renderPalletLedger() {
       PLV.lookups ? Promise.resolve(PLV.lookups) : plFetch('/pallets/lookups')
     ]);
     PLV.movements = mv.records || [];
+    PLV.cut = _plvCut(mv);
     PLV.lookups = lk;
     const [bc, bp] = await Promise.all([
       plFetch('/pallets/balances?type=clients'),
@@ -252,6 +275,8 @@ function plvExportCSV() {
     body = rows.map(m => [_plvNo(m), _plvRowExtras(m).ref, m.code, m.movement_date, PLV_EVENT_GR[m.event_type] || m.event_type,
       _plvName(m), _plvLoc(m), m.taken, m.given, m.given - m.taken, m.status, m.notes || ''].map(esc).join(','));
     fname = 'paletes-' + new Date().toISOString().slice(0, 10) + '.csv';
+    // the file leaves the screen and its ⚠: a cut list says so inside the file too (principle 1)
+    if (PLV.cut && PLV.cut.cut) body.push(esc(_plvCutText(PLV.cut, false)));
   }
   // BOM: χωρίς αυτό το Excel δείχνει τα ελληνικά ως μουτζούρες
   const blob = new Blob(['﻿' + [head.map(esc).join(','), ...body].join('\n')], { type: 'text/csv;charset=utf-8' });
@@ -495,6 +520,7 @@ function _plvDraw() {
           `<button class="${PLV.groupBy === v ? 'on' : ''}" onclick="plvGroupBy('${v}')">${l}</button>`).join('')}
       </div>
       <span class="plv-count" title="Οι κινήσεις έρχονται ταξινομημένες από τον διακομιστή (movement_date φθίνουσα)· οι ομάδες κατά την πιο πρόσφατη κίνησή τους">Νεότερο πρώτα</span>
+      ${_plvCutNote(PLV.cut, false)}
       ${PLV.enrichFail ? '<span style="color:var(--warn)" title="Η ανάγνωση των παραγγελιών απέτυχε — οι στήλες Reference/Μεταφορικό είναι προσωρινά κενές. Οι κινήσεις εμφανίζονται κανονικά· η στήλη Αρ. και η αναζήτηση με #αρ. δουλεύουν.">⚠ στοιχεία παραγγελιών μη διαθέσιμα — η αναζήτηση με οδηγό, εβδομάδα παραγγελίας ή reference δεν βρίσκει τίποτα</span>' : ''}`;
   const actions = `<button class="plv-link" onclick="plvExportCSV()">Εξαγωγή CSV</button>
       ${(typeof can!=='function'||can('costs')==='full')?'<button class="btn-new-order" onclick="plvNewMovement()">+ Νέα κίνηση</button>':''}`;
@@ -856,7 +882,7 @@ async function plvDrill(kind, id) {
     });
     const pendCnt = moves.filter(m => m.status === 'pending').length;
     const name = bal ? bal[nameKey] : (moves.length ? _plvName(moves[0]) : '#' + id);
-    PLV._stmt = { kind, id, name, rows };
+    PLV._stmt = { kind, id, name, rows, cut: _plvCut(hist) };
     const locRows = (locs.records || []).filter(l => l.balance !== 0);
     const balCls = bal && bal.balance > 0 ? 'plv-in' : bal && bal.balance < 0 ? 'plv-out' : '';
     c.innerHTML = `${_PLV_STYLE}
@@ -869,6 +895,7 @@ async function plvDrill(kind, id) {
       <div class="plv-strip">
         <span>Υπόλοιπο <b class="${balCls}">${bal ? (bal.balance > 0 ? '+' : '') + bal.balance : '0'} παλ.</b></span>
         <span class="plv-dim">·</span><span>${pendCnt} εκκρεμείς (εκτός τρεχούμενου)</span>
+        ${_plvCutNote(PLV._stmt.cut, true)}
         ${PLV.enrichFail ? '<span style="color:var(--warn)" title="Η ανάγνωση των παραγγελιών απέτυχε — η στήλη Reference είναι προσωρινά κενή.">⚠ στοιχεία παραγγελιών μη διαθέσιμα</span>' : ''}
       </div>
       ${locRows.length ? `<div class="plv-card-l" style="margin:16px 0 4px">ΑΝΑ ΣΗΜΕΙΟ</div>
@@ -911,6 +938,7 @@ function plvStmtCSV() {
   const body = s.rows.map(({ m, run }) => [_plvNo(m), _plvRowExtras(m).ref, m.movement_date, m.code,
     PLV_EVENT_GR[m.event_type] || m.event_type, _plvLoc(m), m.taken, m.given,
     m.status, run == null ? '' : run].map(esc).join(','));
+  if (s.cut && s.cut.cut) body.push(esc(_plvCutText(s.cut, true)));
   const blob = new Blob(['﻿' + [head.map(esc).join(','), ...body].join('\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -1068,6 +1096,7 @@ async function plvDoConfirm(id) {
       // ισοζύγια ξαναφορτώνονται μία φορά, στο τέλος της ουράς.
       const mv = await plFetch('/pallets/movements');
       PLV.movements = mv.records || [];
+      PLV.cut = _plvCut(mv);
       plvWizAdvance(id);
     } else {
       plvCloseModal(); await renderPalletLedger();
