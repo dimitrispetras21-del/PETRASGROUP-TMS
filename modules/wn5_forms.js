@@ -376,6 +376,24 @@
     const box = f.el.querySelector('[data-err]');
     box.innerHTML = lines.map((l) => `<div>${_esc(l)}</div>`).join('');
   }
+  // F26 (live 28/10): a save that cannot go says why beside its button, in red, while the form is being filled — the
+  // lines under the form came only after a press, below the fold of a long form. Screen words for its own fields.
+  function _why(f, text) {
+    const ft = f.el.querySelector('.wn5f-ft');
+    let m = ft.querySelector('[data-why]');
+    if (!text) { if (m) m.remove(); return; }
+    if (!m) { m = document.createElement('span'); m.className = 'wn5f-why'; m.setAttribute('data-why', ''); ft.querySelector('[data-act="cancel"]').before(m); }
+    m.textContent = text;
+  }
+  // «Λείπει: τόπος παράδοσης» — what the rows still lack, from the rows as typed (a name typed but not picked from the
+  // list has no place: an order cannot be saved without its destination, 072 plan_orders_create dest_location_id)
+  function _lackText(o) {
+    const out = [];
+    if (o.cid !== undefined && !o.rec) out.push('πελάτης');
+    if (o.loads.some((r) => !r.rec)) out.push('τόπος φόρτωσης');
+    if (o.drops.some((r) => !r.rec)) out.push('τόπος παράδοσης');
+    return out;
+  }
   function _setSave(f) {
     const b = f.el.querySelector('[data-act="save"]');
     if (b) b.disabled = !!(f.busy || f.done || f.locked || f.noIds || f.blocked);
@@ -658,6 +676,8 @@
     f.el.querySelectorAll('[data-act="del-order"]').forEach((b) => { b.hidden = f.mode !== 'groupage' || n < 2; });
     const save = f.el.querySelector('[data-act="save"]');
     if (!f.done) save.textContent = n > 1 ? `Αποθήκευση · ${n} παραγγελίες` : 'Αποθήκευση';
+    const lack = [...new Set(raw.flatMap(_lackText))];
+    _why(f, !f.done && lack.length ? 'Λείπει: ' + lack.join(', ') : null);
   }
 
   async function _saveOrder(f) {
@@ -731,7 +751,9 @@
     else if (!found) _strip(f).innerHTML = '';
     f.el.querySelector('[data-act="save"]').hidden = true;
     f.el.querySelectorAll('.wn5f-ft [data-act="cancel"]').forEach((b) => { b.textContent = 'Κλείσιμο'; });
-    if (ans) WN5.reload('order-saved');
+    _why(f, null);
+    // A-7: the leg form's «Στο RT-… ›» waits for this read, so its list shows the point just added
+    if (ans) f.reloaded = WN5.reload('order-saved');
   }
 
   // ── edit (from the order card «Επεξεργασία», T18) ─────────────────────────────────────────────────────────
@@ -758,9 +780,34 @@
   }
   const _placeName = (id) => { const p = typeof PlanIds !== 'undefined' ? PlanIds.place(id) : null; return p ? p.name : '#' + id; };
   const _editDay = (k, v, ro) => _dayHTML(`data-f="${k}"`, v, ro, false);
+  // F30 (owner 28/10): the truck's stops of a riding point, from the board as loaded (WN5.state, read-only, no fetch):
+  // the loading at the point's origin and the delivery at its destination, by the order's legs. Empty when the order's
+  // cycle is not on the loaded week — then nothing is named, never guessed.
+  function _rideStops(natOrderId, s) {
+    const w = typeof WN5 !== 'undefined' && typeof WN5.state === 'function' ? WN5.state() : null;
+    const out = [];
+    for (const c of (w && w.board && w.board.cycles) || []) for (const x of c.stops || []) for (const l of x.legs || []) {
+      if (l.nat_order_id !== natOrderId) continue;
+      const k = l.act === 'load' && x.location_id === s.origin ? 'load' : l.act === 'unload' && x.location_id === s.dest ? 'drop' : null;
+      if (k && !out.some((o) => o.stop_id === x.stop_id)) out.push({ k, rt_id: c.rt_id, code: c.code || 'RT-' + c.rt_id, side: x.side, stop_id: x.stop_id, from: x.planned_from, to: x.planned_to });
+    }
+    return out.sort((a, b) => (a.k === b.k ? 0 : a.k === 'load' ? -1 : 1));
+  }
+  // «Φορτηγό RT-1293 · φόρτωση Δευ 26/10 όλη η ημέρα [Αλλαγή ώρας στάσης ›] · παράδοση …»: what the truck does there, and
+  // the way to move it (F29, the day panel of that one stop). The order's own window changes in the row above.
+  function _rideHTML(e, s) {
+    const st = _rideStops(e.nat_order_id, s);
+    if (!st.length) return '';
+    return `<div class="wn5f-shipstop" data-shipstop="${s.shipment_id}">` + st.map((x) => `<span>${_esc(x.code)} · ${x.k === 'load' ? 'φόρτωση' : 'παράδοση'} `
+      + `${_esc(_dlab((_parts(x.from) || {}).day))} ${_esc(_hmw(x.from, x.to))}</span><button type="button" class="wn5f-lnk" data-act="stop-time" data-rt="${x.rt_id}" data-side="${x.side}" data-stop="${x.stop_id}">Αλλαγή ώρας στάσης ›</button>`).join('')
+      + '</div>';
+  }
   function _shipHTML(e, s) {
     const t = (iso) => _parts(iso) || { day: '', hm: '' };
-    // a point that rides (a live leg, the same rule 077 refuses by) or a VS bridge changes from the board, not here
+    // F30 (owner 28/10): a riding point keeps its leg and cycle and its pallets, day and window change HERE, in place
+    // (072 plan_order_update takes them: shipments + plan_h_resize on the riding piece, audit before/after). Only its
+    // places stay as they are (077 piece_busy) and its ×: a riding point leaves only by «Μεταφορά σε…». A VS bridge
+    // is the international's (decision 21, vs_locked).
     const lf = t(s.load_from), lt = t(s.load_to), df = t(s.deliver_from), dt = t(s.deliver_to);
     // a window over midnight cannot be held by one day field per side: read back it would land on the first day and a
     // save would shorten it without a word (code review 28/10). Shown, never sent; the board changes it.
@@ -768,7 +815,7 @@
     // live F23 (28/10): a point whose pieces stand at Veroia, planned no further (077 waits + at_hub), keeps its dates
     // and pallets editable as a waiting row; the route then starts at Veroia, where it stands
     const hubWait = s.at_hub && s.waits;
-    const lock = (s.rides && !hubWait) || s.vs_locked || twoDays;
+    const lock = s.vs_locked || twoDays;
     const ro = lock ? ' disabled' : '';
     // at Veroia the loading already happened: its side stays as loaded, the delivery and the pallets stay editable
     const lro = lock || hubWait ? ' disabled' : '';
@@ -787,7 +834,8 @@
       // 12-hour in el-GR and cut in its cell (_hmNorm note)
       + `${_editDay('lday', lf.day, lro)}<input ${HM_INPUT} data-f="lfrom" value="${lAll ? '' : lf.hm}"${lro}><input ${HM_INPUT} data-f="lto" value="${lAll ? '' : lt.hm}"${lro}>`
       + `${_editDay('dday', df.day, ro)}<input ${HM_INPUT} data-f="dfrom" value="${dAll ? '' : df.hm}"${ro}><input ${HM_INPUT} data-f="dto" value="${dAll ? '' : dt.hm}"${ro}>`
-      + `<input class="form-input" data-f="pal" inputmode="decimal" value="${s.pallets == null ? '' : _esc(s.pallets)}"${ro}>${x}</div>`;
+      + `<input class="form-input" data-f="pal" inputmode="decimal" value="${s.pallets == null ? '' : _esc(s.pallets)}"${ro}>${x}</div>`
+      + (s.rides && !hubWait && !s.vs_locked ? _rideHTML(e, s) : '');
   }
   // F21 (live test 28/10, #84 needs a 2nd delivery): a new point of the order. Both ends are picked from the places
   // list; the end the order already has (its one loading place for a new delivery, its one delivery place for a new
@@ -835,7 +883,8 @@
       + `<button type="button" class="wn5f-add" data-act="add-ship" data-k="load">+ σημείο φόρτωσης</button></div>`
       // owner 28/10: a new point is not put on the order's cycle by itself — one board move puts it on a truck
       + '<div class="wn5f-note">Παράθυρο κενό: όλη η ημέρα. Νέο σημείο: μένει ΠΡΟΣ ΑΝΑΘΕΣΗ — βάλ\' το σε φορτηγό από το Εβδομαδιαίο.</div>'
-      + (e.riding ? '<div class="wn5f-note">Φορτίο σε κύκλο: παλέτες και παράθυρα αλλάζουν με «Μεταφορά σε…» ή από την ημέρα του σκέλους.</div>' : '');
+      // F30: what a save does to a riding point, said before it is pressed (principle 1)
+      + (e.riding ? '<div class="wn5f-note" data-ridenote>Σημείο σε κύκλο: παλέτες, ημέρα και παράθυρο αλλάζουν εδώ και μένει στο ίδιο φορτηγό. Η ώρα της στάσης του φορτηγού δεν αλλάζει μαζί: «Αλλαγή ώρας στάσης ›».</div>' : '');
   }
   function _readEdit(f) {
     const v = (sel) => { const x = f.el.querySelector(sel); return x ? x.value : ''; };
@@ -853,7 +902,7 @@
       price: _num(v('[data-f="price"]')), temperature_c: _num(v('[data-f="temp"]')), reference: v('[data-f="ref"]').trim(),
       goods: v('[data-f="goods"]').trim(), notes: v('[data-f="notes"]').trim(), pallet_exchange: peh === 'yes' ? true : peh === 'no' ? false : null,
       direction: f.edit.riding ? null : (v('[data-f="dir"]') || null),
-      // a point that rides is shown, never sent: its pallets and windows change from the board (072 keeps that rule)
+      // F30: a riding point is sent like a waiting one (its pallets, day, window); a VS or two-day point is shown only
       ships: [...f.el.querySelectorAll('[data-ship]:not([data-ro]):not([data-rm])')].map((r) => Object.assign({ shipment_id: Number(r.dataset.ship) }, win(r))),
       removed: [...f.el.querySelectorAll('[data-ship][data-rm]')].map((r) => Number(r.dataset.ship)),
       // the picked places as rec ids; _saveEdit turns them into numbers (PlanIds, Ε-2)
@@ -889,6 +938,24 @@
     }
     return out;
   }
+  // F26 in the edit form: a new point without its places says so beside «Αποθήκευση», as the create form does
+  function _editRefresh(f) {
+    if (f.done) return;
+    const rec = (pid) => (document.getElementById('lv_' + pid) || {}).value || '';
+    const lack = [];
+    for (const r of f.el.querySelectorAll('[data-newship]')) {
+      if (!rec(r.dataset.po)) lack.push('τόπος φόρτωσης');
+      if (!rec(r.dataset.pd)) lack.push('τόπος παράδοσης');
+    }
+    _why(f, lack.length ? 'Λείπει: ' + [...new Set(lack)].join(', ') : null);
+  }
+  // anything typed that a save would send (a new point counts, its places are not numbers yet)
+  function _editDirty(f) {
+    const st = _readEdit(f);
+    if (st.news.length || st.removed.length) return true;
+    const b = _patchBody(f.edit, st);
+    return !!(b.set || b.shipments);
+  }
   async function _saveEdit(f) {
     if (f.busy || f.done || f.locked) return;
     const st = _readEdit(f);
@@ -913,9 +980,18 @@
       const ans = await planFetch('PATCH', '/plan/orders/' + f.edit.nat_order_id, { body, requestId: f.slot.id });
       f.slot.confirm();
       _done(f, ans, null);
+      // F30: a riding point whose day or window changed keeps its truck's stop as it was — said, with the way to move it
+      const moved = (body.shipments || []).filter((x) => x.shipment_id != null && !x.remove && ['load_from', 'load_to', 'deliver_from', 'deliver_to'].some((k) => k in x)
+        && (f.edit.ships.find((o) => o.shipment_id === x.shipment_id) || {}).rides);
+      if (moved.length) f.el.querySelector('[data-done]').textContent += ' · η ώρα της στάσης του φορτηγού δεν άλλαξε: «Αλλαγή ώρας στάσης ›» στο σημείο';
       const added = (ans && ans.ids && ans.ids.new_shipment_ids) || [];
       if (added.length) {
         f.el.querySelector('[data-done]').textContent += ` · ${added.length === 1 ? 'νέο σημείο' : added.length + ' νέα σημεία'} ΠΡΟΣ ΑΝΑΘΕΣΗ: βάλ' ${added.length === 1 ? 'το' : 'τα'} σε φορτηγό από το Εβδομαδιαίο`;
+        // A-7: opened from a leg («+ σημείο» of the leg form): the way back to that leg, one press away
+        const leg = f.p.leg;
+        if (leg && Number.isSafeInteger(leg.rtId)) {
+          f.el.querySelector('[data-done]').insertAdjacentHTML('beforeend', ` <button type="button" class="wn5f-lnk" data-act="to-leg">Στο ${_esc(leg.code || 'RT-' + leg.rtId)} · ${SIDE_GR[leg.side] || ''} ›</button>`);
+        }
       }
     } catch (e) { await _failed(f, e, null); }
     finally { f.busy = false; _setSave(f); }
@@ -933,10 +1009,30 @@
     }
     const f = { kind: 'order', p, seq: 0, busy: false, done: false, locked: false, edit };
     f.onSave = _saveEdit;
-    f.onRefresh = null;
+    f.onRefresh = _editRefresh;
     f.slot = PlanApi.slot();   // ONE id for this open form (decision 44): a new point is a creation
     _open(f, 'Επεξεργασία παραγγελίας #' + _esc(p.natOrderId), '· ' + _esc(edit.client || ''), _editHTML(f), 'Μία «Αποθήκευση» = μία συναλλαγή.');
     f.onAct = (ff, a, t) => {
+      if (a === 'to-leg') {
+        // A-7: the new point waits (owner 28/10); one board move puts it on the leg it was added from — the «+» of that
+        // side, its waiting list read after this save (f.reloaded), where «Πρόσθεσε» is one press
+        const leg = ff.p.leg;
+        _close(ff);
+        Promise.resolve(ff.reloaded).then(() => {
+          const anchor = document.querySelector(`#content .wn5-row[data-rt="${leg.rtId}"] .wn5-plus[data-side="${leg.side}"]`) || document.querySelector(`#content .wn5-row[data-rt="${leg.rtId}"]`);
+          WN5Act.plus(leg.rtId, leg.side, anchor);
+        }).catch((e) => _log(e, 'WN5Form to-leg'));
+        return;
+      }
+      if (a === 'stop-time') {
+        // F30 → F29: the truck's stop moves in its own panel (dry run, list), one act per save (Ε-4). Changes typed here
+        // and not saved would be lost with the form: said, never dropped in silence (principle 1)
+        if (!ff.done && _editDirty(ff)) { _lines(ff, ['Αποθήκευσε πρώτα τις αλλαγές της παραγγελίας (ή «Άκυρο»), μετά άλλαξε την ώρα της στάσης']); return; }
+        const anchor = document.querySelector(`#content .wn5-row[data-rt="${t.dataset.rt}"]`) || document.querySelector('#content .wn5');
+        _close(ff);
+        WN5Act.datePanel(Number(t.dataset.rt), t.dataset.side, anchor, { stopId: Number(t.dataset.stop) });
+        return;
+      }
       if (ff.done || ff.locked) return;   // saved or closed: no row the form could no longer send
       if (a === 'add-ship') { _addShip(ff, t.dataset.k); return _refresh(ff); }
       if (a !== 'del-ship') return;
@@ -953,6 +1049,8 @@
     };
     if (!ids.ok) WN5Act.strip(_strip(f), ids.err);
     if (_closedNow()) { WN5Act.strip(_strip(f), _closedNow()); f.locked = true; }
+    // A-7: «+ σημείο φόρτωσης / παράδοσης» of the leg form opens here with its new row ready
+    if (!f.locked && (p.addShip === 'load' || p.addShip === 'drop')) _addShip(f, p.addShip);
     _refresh(f);
     return true;
   }
@@ -1017,7 +1115,7 @@
   // A VS is the international's (price, invoicing, its pallets and windows change there: decision 21, vs_locked);
   // a national order is edited here, ONE order per «Αποθήκευση» (Ε-4: one save = one RPC = one transaction);
   // moving goes through «Μεταφορά σε…» (WN5Act.move, its own dry run and list), never a delete; the stop times
-  // change from the day panel (Δ4, WN5Act.datePanel), never from this save.
+  // change from the day panel (Δ4, WN5Act.datePanel: the whole side, or one stop from «Αλλαγή ώρας ›»), never from this save.
   // The hub as the board names it (WN5Act's model: the Veroia stop of a painted side), else the catalogue: PlanIds
   // runs on its stub until GET /plan/lookups exists, and a null hub only shows «Βέροια» by its name.
   function _hubId() {
@@ -1084,7 +1182,8 @@
   // lucide «lock» at 13px (Figma 2011:9434); the colour is the block's grey-2, set in CSS
   const LOCK = '<svg class="wn5f-lock-i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
   const _lth = (win) => `<div class="wn5f-th ro"><span>Τοποθεσία</span><span>Ημέρα</span><span>${win}</span><span>Παλέτες</span></div>`;
-  // A point of a leg is read-only here (pallets and windows change with «Μεταφορά σε…» or the day panel Δ4), drawn in
+  // A point of a leg is read-only here — its pallets, day and window change in its order's edit form (F30), its truck's
+  // stop from «Αλλαγή ώρας ›» (F29), its truck with «Μεταφορά σε…» — drawn in
   // Figma's boxes (2011:9452 / 9520): a VS's place and pallets in the locked grey cell, the rest white.
   function _roRowHTML(r, vs) {
     const ro = vs ? 'wn5f-c vro' : 'wn5f-c';
@@ -1143,6 +1242,10 @@
           + `<span class="wn5f-cwin"><span class="wn5f-c until">${_hm(r.to)}</span></span><span class="wn5f-c nro">${_pal(r.pallets)}</span><span></span>`
           + `<button type="button" class="wn5f-lnk" data-act="time">Αλλαγή ώρας ›</button></div>`).join('') : '')
       + `<div class="wn5f-acts"><button type="button" class="wn5f-lnk" data-act="move-order" data-nat="${id}">Μεταφορά σε… (όλη η παραγγελία)</button>`
+      // A-7 (Figma audit 28/10): a point of THIS order, in its edit form (077: the new point waits, owner 28/10, and the
+      // form then offers the way back to this leg)
+      + `<button type="button" class="wn5f-lnk" data-act="add-point" data-k="load" data-nat="${id}">+ σημείο φόρτωσης</button>`
+      + `<button type="button" class="wn5f-lnk" data-act="add-point" data-k="drop" data-nat="${id}">+ σημείο παράδοσης</button>`
       + `<button type="button" class="wn5f-card" data-act="card" data-nat="${id}">Άνοιγμα καρτέλας ›</button></div>`
       + `<div class="wn5f-note">#${_esc(b.reference || id)} · ${_pal(b.pallets)}π${b.price == null ? '' : ` · ${_esc(_pal(b.price))} €`} · τιμολογείται χωριστά · η διαγραφή γίνεται από την καρτέλα: λίστα παραστατικών + επιβεβαίωση, χωρίς επαναφορά</div></div>`;
   }
@@ -1150,10 +1253,15 @@
     const m = f.m;
     return `<div class="wn5f-head wn5f-lhead" data-side="${m.side}">` + m.head.concat([['Φορτηγό', m.plates]]).map(([k, v]) => `<div class="wn5f-f"><span>${k}</span><span class="wn5f-ro">${_esc(v)}</span></div>`).join('') + `</div>`
       + m.blocks.map((b) => (b.vs ? _vsBlockHTML(f, b) : _natBlockHTML(f, b))).join('')
+      // A-7: a new order on this leg — the create form with this cycle and side set, as the «+» → «Νέα παραγγελία»
+      + '<div class="wn5f-adds"><button type="button" class="wn5f-add" data-act="leg-add-order">+ παραγγελία</button></div>'
       // the summary's right side is the total only (Figma 2011:9569); the per-order sum is the header badge's
       + `<div class="wn5f-sum"><div class="wn5f-sum-h"><b>${m.shipments} ${m.shipments === 1 ? 'αποστολή' : 'αποστολές'} · ${m.shipments === 1 ? 'σκέλος ' + SIDE_GR[m.side] : 'ίδιο σκέλος'} · ${_esc(m.vehicle)}</b><b>${_pal(m.total)}/33</b></div>`
       + `<div class="wn5f-sec">ΣΕΙΡΑ ΣΤΑΣΕΩΝ ΚΑΤΑ ΩΡΑ</div><ol class="wn5f-seq">`
-      + m.seq.map((x, i) => `<li><span class="wn5f-seq-n">${i + 1}</span><span class="wn5f-seq-w">${_esc(x.when)}</span><span class="wn5f-seq-p">${_esc(x.place)}</span><span class="wn5f-seq-c">${_esc(x.what)}</span><span class="wn5f-seq-q">${_pal(x.pallets)}π</span></li>`).join('')
+      // F29 (live 28/10): every stop's own day and window, from here — the day panel for that one stop (Δ4, its dry run
+      // and list), never inside this form's «Αποθήκευση» (Ε-4: one save = one act)
+      + m.seq.map((x, i) => `<li data-stop="${x.stop_id}"><span class="wn5f-seq-n">${i + 1}</span><span class="wn5f-seq-w">${_esc(x.when)}</span><span class="wn5f-seq-p">${_esc(x.place)}</span><span class="wn5f-seq-c">${_esc(x.what)}</span><span class="wn5f-seq-q">${_pal(x.pallets)}π</span>`
+        + `<button type="button" class="wn5f-lnk" data-act="stop-time" data-stop="${x.stop_id}">Αλλαγή ώρας ›</button></li>`).join('')
       + `</ol><div class="wn5f-note">${m.lastLoad
         ? 'Τελευταίο φορτίο → ο κύκλος σβήνεται· με κόστη ή γεμάτη μισθοδοσία πρώτα η λίστα, κενή σβήνεται σιωπηλά.'
         : 'Σε άλλο φορτηγό: «Μεταφορά σε…» — VS ανά παράδοση, εθνική όλη η παραγγελία· η ίδια παραγγελία μετακινείται, δεν σβήνεται, δεν ξαναγράφεται.'}</div></div>`;
@@ -1218,7 +1326,15 @@
       return;
     }
     if (a === 'card') { _close(f); WN5Act.orderCard(Number(t.dataset.nat)); return; }
+    if (a === 'add-point') {
+      const nat = Number(t.dataset.nat);
+      _close(f);
+      openOrder({ natOrderId: nat, addShip: t.dataset.k, leg: { rtId: rt, side: f.side, code: f.cyc.code || null } });
+      return;
+    }
+    if (a === 'leg-add-order') { _close(f); openOrder({ side: f.side, day: f.m.day || '', rtId: rt }); return; }
     if (a === 'time') { _close(f); WN5Act.datePanel(rt, 'ANODOS', anchor()); return; }
+    if (a === 'stop-time') { _close(f); WN5Act.datePanel(rt, f.side, anchor(), { stopId: Number(t.dataset.stop) }); return; }
     if (a === 'vs-day') {
       const box = t.closest('[data-vs]');
       vsDay(Number(t.dataset.order), box.querySelector('[data-f="vsday"]').value);

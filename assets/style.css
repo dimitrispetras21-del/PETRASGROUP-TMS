@@ -9821,6 +9821,10 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5f-msg:empty { display:none; }
 .wn5f-msg { padding:6px 10px; border-radius:6px; background:var(--wi4-red-bg); font-size:12px; color:var(--wi4-red); }
 .wn5f-done { padding:6px 10px; border-radius:6px; background:var(--wi4-partner); font-weight:600; color:var(--wi4-partner-ink); }
+/* A-7: «Στο RT-… ›» inside the saved line, back to the leg the point was added from */
+.wn5f-done .wn5f-lnk { padding:0 6px; line-height:18px; }
+/* F26: what a save still lacks, in red beside its button (as Δ1's «Λείπει: …») */
+.wn5f-ft .wn5f-why { font-size:12px; font-weight:500; color:var(--wi4-red); text-align:right; }
 /* the footer (2011:10013): note, then «Άκυρο» and the accent «Αποθήκευση», both 36px */
 .wn5f > .wn5f-ft { flex:none; height:64px; margin:0; padding:0 22px; gap:10px; align-items:center; box-sizing:border-box; border-top:1px solid var(--wi4-line-2); }
 .wn5f-ft-note { margin-right:auto; font-size:11.5px; color:var(--wi4-grey-2); }
@@ -9841,6 +9845,9 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5f-shipc { font-size:11px; color:var(--wi4-grey-2); }
 .wn5f-ship[data-rm] > span:first-child { text-decoration:line-through; color:var(--wi4-grey-3); }
 .wn5f-ship[data-rm] .form-input { opacity:.5; }
+/* F30: under a riding point, what its truck does there and «Αλλαγή ώρας στάσης ›» (the day panel of that stop) */
+.wn5f-shipstop { display:flex; flex-wrap:wrap; align-items:center; gap:2px 6px; margin-top:-3px; font-size:11px; color:var(--wi4-grey-2); }
+.wn5f-shipstop .wn5f-lnk { padding:0 6px; font-size:11px; line-height:18px; }
 .wn5f-ends { display:flex; align-items:center; gap:4px; min-width:0; }
 .wn5f-ends > .wn5f-loc { flex:1 1 0; min-width:0; }
 .wn5f-arr { flex:none; color:var(--wi4-grey-2); }
@@ -9870,8 +9877,10 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5f-leg .wn5f-sum-h { font-size:12.5px; }
 /* one grid shared by every row (subgrid): the ref column is 160 (Figma 2011:9574) but grows to the longest ref, so
    a stop with 3+ references (the Veroia load of a groupage leg) stays on one line and the columns stay aligned */
-.wn5f-leg .wn5f-seq { display:grid; grid-template-columns:14px 130px 230px minmax(160px, max-content) auto; gap:4px 8px; }
+.wn5f-leg .wn5f-seq { display:grid; grid-template-columns:14px 130px 230px minmax(160px, max-content) auto auto; gap:4px 8px; }
 .wn5f-leg .wn5f-seq li { grid-column:1 / -1; grid-template-columns:subgrid; }
+/* F29: «Αλλαγή ώρας ›» at the end of each stop line, inside the line's 22px */
+.wn5f-leg .wn5f-seq .wn5f-lnk { padding:0 6px; font-size:11.5px; line-height:18px; }
 .wn5-row [data-leg] { cursor:pointer; }
 .wn5f-vsday { display:flex; align-items:flex-end; gap:8px; }
 .wn5f-vsplace { display:grid; grid-template-columns:180px minmax(0, 1fr) 150px; gap:8px; align-items:center; padding-left:12px; }

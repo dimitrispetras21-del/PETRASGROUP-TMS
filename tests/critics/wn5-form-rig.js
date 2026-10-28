@@ -2,7 +2,7 @@
 // fake /plan/* (S.plan: method, path, body, count, order) and by what the page shows; never by a toast. Synthetic
 // week of tests/critics/wn5-rig-kit.js. The default answer of every non-dry write is 409 writes_closed, as deployed
 // until day L; scenarios script their own answers with sentinel messages.
-// Usage: node tests/critics/wn5-form-rig.js [order nowin groupage unknown reused replayed edit edit-ride edit-add edit-remove edit-read-fail edit-twoday veroia-edit day-type leg leg-anodos …]
+// Usage: node tests/critics/wn5-form-rig.js [order nowin groupage unknown reused replayed edit edit-ride edit-add edit-remove edit-read-fail edit-twoday veroia-edit day-type leg leg-anodos stop-time miss leg-add …]
 //        WN5_TREE=<git archive origin/main> node tests/critics/wn5-form-rig.js   (plain-main proof: NO-GO, exit 1)
 // Exit: 0 green · 1 a check failed · 2 unknown scenario.
 'use strict';
@@ -359,22 +359,51 @@ async function scnEdit({ browser, origin, ok, scn }) {
   ok(scn, 'the request_id is in memory only', !!p[0] && await noStore(page, p[0].body.request_id));
   await closeClean(page, S, ok, scn);
 }
+// F30 (owner 28/10): an order ON a cycle — its riding point keeps its leg and cycle, and its pallets, day and window
+// change here, in place (072 plan_order_update takes them). Before F30 the point was shown read-only and the only way
+// was «Πίσω στην αναμονή» → edit → assign again (a new cycle, new RT ids). The truck's stops are named under the point,
+// with «Αλλαγή ώρας στάσης ›» (F29): the stop does not follow by itself and the form says so.
 async function scnEditRide({ browser, origin, ok, scn }) {
   const { page, S } = await K.openApp(browser, origin, { plan: { 'PATCH /plan/orders/3001': UPD_OK(3001) } });
   if (!(await guard(page, ok, scn))) return;
   await openForm(page, { natOrderId: 3001 });
   ok(scn, 'an order ON a cycle opens with its price and notes (not on the board: F13)', await fval(page, '[data-f="price"]') === '420' && await fval(page, '[data-f="notes"]') === 'κλήση πριν');
   const row = await page.evaluate((d) => { const r = document.querySelector(`${d} [data-ship="5202"]`);
-    return r && { ro: r.hasAttribute('data-ro'), dis: [...r.querySelectorAll('input')].every((x) => x.disabled), txt: r.textContent, x: !!r.querySelector('[data-act="del-ship"]') }; }, DLG);
-  ok(scn, 'the riding point: shown, every field disabled, «σε κύκλο RT-T101», no ×', !!row && row.ro && row.dis && /σε κύκλο RT-T101/.test(row.txt) && !row.x, row);
+    return r && { ro: r.hasAttribute('data-ro'), live: ['lday', 'lfrom', 'lto', 'dday', 'dfrom', 'dto', 'pal'].map((k) => !r.querySelector(`[data-f="${k}"]`).disabled),
+      txt: r.textContent, x: !!r.querySelector('[data-act="del-ship"]') }; }, DLG);
+  ok(scn, 'the riding point: every day, window and pallets field live, «σε κύκλο RT-T101», no × (it leaves only by «Μεταφορά σε…»)',
+    !!row && !row.ro && row.live.every(Boolean) && /σε κύκλο RT-T101/.test(row.txt) && !row.x, row);
+  const stop = await page.evaluate((d) => { const x = document.querySelector(`${d} [data-shipstop="5202"]`);
+    return x && { t: x.textContent.replace(/\s+/g, ' '), b: [...x.querySelectorAll('[data-act="stop-time"]')].map((b) => b.dataset.stop + ':' + b.dataset.side) }; }, DLG);
+  ok(scn, 'under it the truck\'s stops: «RT-T101 · φόρτωση Δευ 12/10 16:00–18:00» and «RT-T101 · παράδοση Τρί 13/10 07:00–09:00», each with «Αλλαγή ώρας στάσης ›»',
+    !!stop && stop.t.includes('RT-T101 · φόρτωση Δευ 12/10 16:00–18:00') && stop.t.includes('RT-T101 · παράδοση Τρί 13/10 07:00–09:00')
+    && JSON.stringify(stop.b) === JSON.stringify(['1001:KATHODOS', '1003:KATHODOS']), stop);
+  ok(scn, 'the form says before the save that the truck\'s stop does not move with the order', /Η ώρα της στάσης του φορτηγού δεν αλλάζει μαζί/.test(await K.text(page, `${DLG} [data-ridenote]`)));
   ok(scn, 'Κατεύθυνση disabled on a cycle (the cycle\'s side holds)', await page.evaluate((d) => document.querySelector(`${d} [data-f="dir"]`).disabled, DLG));
+  // the owner's waiting fixes (#17, #84 …): 1 pallet → 30, and a delivery one day later, in ONE save; notes emptied on purpose
+  await page.fill(`${DLG} [data-ship="5202"] [data-f="pal"]`, '30');
+  await typeDay(page, `${DLG} [data-ship="5202"] .wn5f-day:has([data-f="dday"])`, '14/10');
   await page.fill(`${DLG} [data-f="notes"]`, '');
+  // changes not saved + «Αλλαγή ώρας στάσης ›» = they would be lost: refused with the reason, the form stays
+  await page.click(`${DLG} [data-shipstop="5202"] [data-act="stop-time"][data-stop="1003"]`);
+  ok(scn, 'unsaved changes + «Αλλαγή ώρας στάσης ›» → the line says save first, no panel, the form stays', await K.count(page, DLG) === 1
+    && await K.count(page, '.wi4-dlg[data-wn5="date"]') === 0 && /Αποθήκευσε πρώτα/.test(await K.text(page, `${DLG} [data-err]`)));
   await save(page);
   await page.waitForTimeout(1000);
   const p = K.planOf(S, 'PATCH', '/plan/orders/3001');
-  const sent = p[0] ? Object.assign({}, p[0].body) : null;
-  if (sent) delete sent.request_id;
-  ok(scn, 'notes emptied on purpose → {set:{notes:null}}, nothing else (the riding point is never sent)', p.length === 1 && JSON.stringify(sent) === JSON.stringify({ set: { notes: null } }), p.map((x) => x.body));
+  const b = p[0] ? Object.assign({}, p[0].body) : {};
+  delete b.request_id;
+  const sh = b.shipments && b.shipments[0];
+  ok(scn, 'one PATCH /plan/orders/3001: {set:{notes:null}} + the riding point 5202 with pallets 30 and its delivery on 14/10 07:00–09:00, nothing else',
+    p.length === 1 && JSON.stringify(b.set) === JSON.stringify({ notes: null }) && b.shipments.length === 1 && !!sh && sh.shipment_id === 5202 && sh.pallets === 30
+    && Object.keys(sh).sort().join() === 'deliver_from,deliver_to,pallets,shipment_id'
+    && Date.parse(sh.deliver_from) === Date.parse('2026-10-14T07:00:00+03:00') && Date.parse(sh.deliver_to) === Date.parse('2026-10-14T09:00:00+03:00'), p.map((x) => x.body));
+  const done = await K.text(page, `${DLG} [data-done]`);
+  ok(scn, 'saved: the line says the truck\'s stop did not change and where to change it', /Αποθηκεύτηκε/.test(done) && /η ώρα της στάσης του φορτηγού δεν άλλαξε/.test(done), done);
+  await page.click(`${DLG} [data-shipstop="5202"] [data-act="stop-time"][data-stop="1003"]`);
+  await page.waitForSelector('.wi4-dlg[data-wn5="date"]', { timeout: 6000 }).catch(() => {});
+  ok(scn, 'after the save «Αλλαγή ώρας στάσης ›» closes the form and opens the day panel of THAT stop (1003)', await K.count(page, DLG) === 0
+    && await page.evaluate(() => { const x = document.querySelector('.wi4-dlg[data-wn5="date"]'); return x ? x.dataset.stop : null; }) === '1003');
   await closeClean(page, S, ok, scn);
 }
 async function scnEditAdd({ browser, origin, ok, scn }) {
@@ -668,6 +697,123 @@ async function scnLegAnodos({ browser, origin, ok, scn }) {
   await closeClean(page, S, ok, scn);
 }
 
+// F29 (live 28/10): the stop times of a cycle outside Veroia could not be changed from any screen — the leg form showed
+// them read-only, Δ4 moved only the Veroia stop or the whole side, while 072 plan_rt_update takes stops[]. Now every
+// stop line of the leg form opens the day panel of THAT stop: its own dry run, its day and window as stops[] alone.
+async function scnStopTime({ browser, origin, ok, scn }) {
+  const PV = { ok: true, op: 'plan_rt_update', dry_run: true, needs_confirm: false, preview: {
+    before: { start_at: '2026-10-12T16:00:00+03:00', end_at: '2026-10-13T22:00:00+03:00', date_start: '2026-10-12', date_end: '2026-10-13' },
+    after: { start_at: '2026-10-12T16:00:00+03:00', end_at: '2026-10-13T22:00:00+03:00', date_start: '2026-10-12', date_end: '2026-10-13' },
+    next_rt: null, conflict: null, vs_day: [], warnings: [] } };
+  const plan = { 'PATCH /plan/rt/101': (e) => (e.body && e.body.dry_run === true ? [200, PV]
+    : [200, { ok: true, op: 'plan_rt_update', dry_run: false, ids: { rt_id: 101, stop_ids: [1003] }, warnings: [], notice_ids: [] }]) };
+  const { page, S } = await K.openApp(browser, origin, { board: legWeek(), plan });
+  if (!(await guard(page, ok, scn))) return;
+  await openLegBy(page, 101, 'KATHODOS');
+  ok(scn, 'every stop line of «ΣΕΙΡΑ ΣΤΑΣΕΩΝ» has its «Αλλαγή ώρας ›» (3 stops)', await K.count(page, `${LEG} .wn5f-seq li [data-act="stop-time"]`) === 3);
+  const seqH = await page.evaluate((d) => [...document.querySelectorAll(`${d} .wn5f-seq li`)].map((li) => Math.round(li.getBoundingClientRect().height)), LEG);
+  ok(scn, 'each stop line stays one line (h ≤ 23) with its button', seqH.length === 3 && seqH.every((h) => h <= 23), seqH);
+  await page.click(`${LEG} .wn5f-seq li[data-stop="1003"] [data-act="stop-time"]`).catch(() => {});
+  const D = '.wi4-dlg[data-wn5="date"]';
+  await page.waitForSelector(D, { timeout: 6000 }).catch(() => {});
+  const head = await page.evaluate((d) => { const x = document.querySelector(d); return x && { t: x.querySelector('.wi4-dlg-t').textContent, stop: x.dataset.stop,
+    from: (x.querySelector('[data-win="from"]') || {}).value, to: (x.querySelector('[data-win="to"]') || {}).value }; }, D);
+  ok(scn, 'the leg form closes and the panel of stop 1003 opens: «Ώρα στάσης · ASPROPYRGOS TEST», its window 07:00–09:00', await K.count(page, LEG) === 0
+    && !!head && head.t === 'Ώρα στάσης · ASPROPYRGOS TEST' && head.stop === '1003' && head.from === '07:00' && head.to === '09:00', head);
+  ok(scn, 'nothing changed → no request', K.planOf(S, 'PATCH', '/plan/rt/101').length === 0);
+  await page.fill(`${D} [data-win="from"]`, '10:00');
+  await page.fill(`${D} [data-win="to"]`, '12:00');
+  await page.keyboard.press('Tab');
+  await page.waitForTimeout(500);
+  const strip = (x) => { const o = Object.assign({}, x.body); delete o.dry_run; return JSON.stringify(o); };
+  const want1 = JSON.stringify({ stops: [{ stop_id: 1003, planned_from: '2026-10-13T10:00:00+03:00', planned_to: '2026-10-13T12:00:00+03:00' }] });
+  let c = K.planOf(S, 'PATCH', '/plan/rt/101');
+  ok(scn, 'a new window → a dry run PATCH /plan/rt/101 with stops[] of THAT stop only (no shift, no other stop)', c.length >= 1 && c[c.length - 1].body.dry_run === true && strip(c[c.length - 1]) === want1, c.map((x) => x.raw));
+  const res = await K.text(page, `${D} .wn5-datep-r`);
+  ok(scn, 'the result names that stop only: «Τρί 13/10 → Τρί 13/10 · 10:00–12:00» and «Αλλάζει μόνο αυτή η στάση»',
+    res.includes('Τρί 13/10 → Τρί 13/10 · 10:00–12:00') && res.includes('Αλλάζει μόνο αυτή η στάση') && (res.match(/→/g) || []).length === 1, res.slice(0, 400));
+  await page.click(`${D} [data-day="2026-10-14"]`);
+  await page.waitForTimeout(500);
+  c = K.planOf(S, 'PATCH', '/plan/rt/101');
+  const want2 = JSON.stringify({ stops: [{ stop_id: 1003, planned_from: '2026-10-14T10:00:00+03:00', planned_to: '2026-10-14T12:00:00+03:00' }] });
+  ok(scn, 'another day → the same stop on 14/10 10:00–12:00, still one stop, no shift', strip(c[c.length - 1]) === want2 && c[c.length - 1].body.dry_run === true, c.map((x) => x.raw));
+  await page.click(`${D} [data-act="save"]`);
+  await page.waitForTimeout(1000);
+  const real = K.planOf(S, 'PATCH', '/plan/rt/101').filter((x) => !(x.body && x.body.dry_run === true));
+  ok(scn, '«Αποθήκευση» → ONE PATCH /plan/rt/101 with the body of the last dry run', real.length === 1 && real[0].raw === want2, real.map((x) => x.raw));
+  await closeClean(page, S, ok, scn);
+}
+
+// F26 (live 28/10): an order without a delivery place does not save, and the form did not say why clearly (the lines
+// came after a press, under a long form). A red «Λείπει: τόπος παράδοσης» stands beside «Αποθήκευση» while it lacks.
+async function scnMiss({ browser, origin, ok, scn }) {
+  const { page, S } = await K.openApp(browser, origin);
+  if (!(await guard(page, ok, scn))) return;
+  await openForm(page, {});
+  await fillOrder(page, 0, ORDER_A);
+  // the destination typed as a name but not picked from the list (an unknown place): no place id
+  await page.evaluate((d) => { const r = document.querySelector(`${d} .wn5f-rows[data-k="drop"] .wn5f-row`);
+    document.getElementById('lv_' + r.dataset.pid).value = ''; const t = document.getElementById('ls_' + r.dataset.pid); t.value = 'ΑΓΝΩΣΤΟΣ ΠΡΟΟΡΙΣΜΟΣ';
+    t.dispatchEvent(new Event('input', { bubbles: true })); }, DLG);
+  const why = () => page.evaluate((d) => { const x = document.querySelector(`${d} .wn5f-ft [data-why]`);
+    return x ? { t: x.textContent, c: getComputedStyle(x).color, vis: x.getBoundingClientRect().width > 0 } : null; }, DLG);
+  const w1 = await why();
+  ok(scn, 'before any press: a red «Λείπει: τόπος παράδοσης» beside «Αποθήκευση»', !!w1 && w1.t === 'Λείπει: τόπος παράδοσης' && w1.vis && w1.c === 'rgb(185, 28, 28)', w1);
+  await save(page);
+  await page.waitForTimeout(400);
+  ok(scn, 'a press sends nothing', K.planOf(S, 'POST', '/plan/orders').length === 0);
+  await page.evaluate((d) => { const r = document.querySelector(`${d} .wn5f-rows[data-k="drop"] .wn5f-row`); fhPickLinked(r.dataset.pid, 'recWn5LocAth', 'ATHENS TEST'); }, DLG);
+  await page.click(`${DLG} [data-f="price"]`);   // a blur refreshes (fhPickLinked fires no input)
+  ok(scn, 'the place picked → the line goes', (await why()) === null);
+  await page.context().close();
+  // the edit form: a new point without its delivery place says the same
+  const p2 = await K.openApp(browser, origin);
+  await openForm(p2.page, { natOrderId: 3101 });
+  await p2.page.click(`${DLG} [data-act="add-ship"][data-k="drop"]`);
+  const w2 = await p2.page.evaluate((d) => { const x = document.querySelector(`${d} .wn5f-ft [data-why]`); return x ? x.textContent : null; }, DLG);
+  ok(scn, 'edit form, «+ σημείο παράδοσης» not filled → «Λείπει: τόπος παράδοσης»', w2 === 'Λείπει: τόπος παράδοσης', w2);
+  await closeClean(p2.page, p2.S, ok, scn);
+}
+
+// A-7 (Figma audit 28/10): «+ σημείο φόρτωσης / παράδοσης» and «+ παραγγελία» inside the leg form (read-only by plan
+// T21). A point goes through the order's edit form (077: it waits, owner 28/10) and the saved line leads back to this
+// leg's «+», where «Πρόσθεσε» is one press; «+ παραγγελία» is the create form on this cycle and side.
+async function scnLegAdd({ browser, origin, ok, scn }) {
+  const plan = { 'PATCH /plan/orders/3001': UPD_OK(3001, { new_shipment_ids: [5301], new_piece_ids: [4301] }) };
+  const { page, S } = await K.openApp(browser, origin, { board: legWeek(), plan });
+  if (!(await guard(page, ok, scn))) return;
+  await openLegBy(page, 101, 'KATHODOS');
+  ok(scn, 'each national block has «+ σημείο φόρτωσης» and «+ σημείο παράδοσης», the VS none', await K.count(page, `${LEG} [data-nat="3001"] [data-act="add-point"]`) === 2
+    && await K.count(page, `${LEG} [data-nat="3004"] [data-act="add-point"]`) === 2 && await K.count(page, `${LEG} [data-vs] [data-act="add-point"]`) === 0);
+  ok(scn, 'the leg has «+ παραγγελία»', await K.count(page, `${LEG} [data-act="leg-add-order"]`) === 1);
+  await page.click(`${LEG} [data-nat="3001"] [data-act="add-point"][data-k="drop"]`);
+  await page.waitForSelector(DLG, { timeout: 8000 }).catch(() => {});
+  ok(scn, '«+ σημείο παράδοσης» → the leg form closes, #3001 opens to edit (GET /plan/orders/3001) with ONE new delivery row', await K.count(page, LEG) === 0
+    && K.planOf(S, 'GET', '/plan/orders/3001').length === 1 && await K.count(page, `${DLG} [data-newship][data-k="drop"]`) === 1);
+  await page.evaluate((d) => { const r = document.querySelector(`${d} [data-newship]`); fhPickLinked(r.dataset.pd, 'recWn5LocAth', 'ATHENS TEST');
+    const x = r.querySelector('[data-f="pal"]'); x.value = '2'; x.dispatchEvent(new Event('input', { bubbles: true })); }, DLG);
+  await save(page);
+  await page.waitForTimeout(1000);
+  const p = K.planOf(S, 'PATCH', '/plan/orders/3001');
+  ok(scn, 'one PATCH: exactly one new point (no shipment_id), 2 pallets', p.length === 1 && p[0].body.shipments.length === 1 && !('shipment_id' in p[0].body.shipments[0])
+    && p[0].body.shipments[0].pallets === 2, p.map((x) => x.body));
+  const done = await K.text(page, `${DLG} [data-done]`);
+  ok(scn, 'saved: «ΠΡΟΣ ΑΝΑΘΕΣΗ» and the way back «Στο RT-T101 · ΚΑΘΟΔΟΣ ›»', /ΠΡΟΣ ΑΝΑΘΕΣΗ/.test(done) && done.includes('Στο RT-T101 · ΚΑΘΟΔΟΣ ›'), done);
+  await page.click(`${DLG} [data-act="to-leg"]`);
+  await page.waitForSelector('.wi4-dlg[data-wn5="plus"]', { timeout: 6000 }).catch(() => {});
+  ok(scn, '«Στο RT-T101 ›» → the form closes and the «+» of RT-T101 ΚΑΘΟΔΟΣ opens (its waiting list: one press «Πρόσθεσε»)', await K.count(page, DLG) === 0
+    && await K.count(page, '.wi4-dlg[data-wn5="plus"]') === 1 && /Πρόσθεσε στην ΚΑΘΟΔΟ/.test(await K.text(page, '.wi4-dlg[data-wn5="plus"] .wi4-dlg-t')));
+  ok(scn, 'no other write than the one PATCH (the board move is the user\'s next press)', S.plan.filter((x) => x.m !== 'GET').length === 1, S.plan.filter((x) => x.m !== 'GET').map((x) => x.m + ' ' + x.path));
+  await page.keyboard.press('Escape');
+  await openLegBy(page, 101, 'KATHODOS');
+  await page.click(`${LEG} [data-act="leg-add-order"]`);
+  await page.waitForSelector(DLG, { timeout: 8000 }).catch(() => {});
+  const tg = await page.evaluate((d) => { const s = document.querySelector(`${d} #wn5f-tgt`), r = document.querySelector(`${d} #wn5f-dir`);
+    return s && { v: s.value, dis: s.disabled, dir: r.value, ddis: r.disabled, t: document.querySelector(`${d} .wi4-dlg-t`).textContent }; }, DLG);
+  ok(scn, '«+ παραγγελία» → the create form on RT-T101 ΚΑΘΟΔΟΣ, cycle and side set and locked', !!tg && tg.v === '101' && tg.dis && tg.dir === 'KATHODOS' && tg.ddis && /Νέα παραγγελία/.test(tg.t), tg);
+  await closeClean(page, S, ok, scn);
+}
+
 // T22 — VS day and destination from the leg form: one POST per change, never inside the form's save.
 function vsWeek(withStop) {
   const b = K.week();
@@ -724,7 +870,7 @@ async function scnVs({ browser, origin, ok, scn }) {
 }
 
 K.run({
-  scenarios: { order: scnOrder, nowin: scnNoWin, groupage: scnGroupage, unknown: scnUnknown, reused: scnReused, replayed: scnReplayed, edit: scnEdit, 'edit-ride': scnEditRide, 'edit-add': scnEditAdd, 'edit-remove': scnEditRemove, 'edit-read-fail': scnEditReadFail, 'edit-twoday': scnEditTwoDay, 'veroia-edit': scnVeroiaEdit, 'day-type': scnDayType, leg: scnLeg, 'leg-anodos': scnLegAnodos, vs: scnVs },
+  scenarios: { order: scnOrder, nowin: scnNoWin, groupage: scnGroupage, unknown: scnUnknown, reused: scnReused, replayed: scnReplayed, edit: scnEdit, 'edit-ride': scnEditRide, 'edit-add': scnEditAdd, 'edit-remove': scnEditRemove, 'edit-read-fail': scnEditReadFail, 'edit-twoday': scnEditTwoDay, 'veroia-edit': scnVeroiaEdit, 'day-type': scnDayType, leg: scnLeg, 'leg-anodos': scnLegAnodos, 'stop-time': scnStopTime, miss: scnMiss, 'leg-add': scnLegAdd, vs: scnVs },
   globals: ['WN5Form'],
   go: 'the v5 order forms send one body per press, from the form only, with one request_id per open form',
 }).catch((e) => { console.error(e); process.exit(1); });
