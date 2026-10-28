@@ -44,7 +44,7 @@ async function stopsLoad(orderId, parentField) {
 /**
  * Save ORDER_STOPS for an order (create/update/delete as needed).
  * @param {string} orderId - Parent order record ID
- * @param {Array} stopsArr - [{stopNumber, stopType, locationId, pallets, dateTime, clientId?, temp?, ref?, goods?, notes?}]
+ * @param {Array} stopsArr - [{recordId?, stopNumber, stopType, locationId, pallets, dateTime, clientId?, temp?, ref?, goods?, notes?}]
  * @param {string} parentField - 'Parent Order' or 'Parent Nat Order'
  * @returns {Promise<Array>} Created/updated record IDs
  */
@@ -53,24 +53,37 @@ async function stopsSave(orderId, stopsArr, parentField) {
 
   // Fetch existing stops for this order
   const existing = await stopsLoad(orderId, parentField);
-  const existingMap = new Map(); // key: "Loading_1" → record
+  // A stop is the SAME stop by its record id, never by its place in the list (F5 plan, Task F). Matching by
+  // (type, number) alone renumbered the survivors when a middle row was removed: stop #3 took the record of the
+  // deleted #2 and its own record was deleted — and the v5 bridge (one shipment per order_stop_id, 074) would
+  // follow the wrong record. (type, number) stays the fallback only for a stop the form sends without an id
+  // (a new row, or a caller that rebuilds the list), and only among the records no id claimed.
+  const byId = new Map(existing.map(r => [r.id, r]));
+  const matchedIds = new Set();
+  for (const s of stopsArr) {
+    if (s.recordId && byId.has(s.recordId) && !matchedIds.has(s.recordId)) matchedIds.add(s.recordId);
+  }
+  const existingMap = new Map(); // key: "Loading_1" → record not claimed by an id
   existing.forEach(r => {
+    if (matchedIds.has(r.id)) return;
     const key = `${r.fields[F.STOP_TYPE]}_${r.fields[F.STOP_NUMBER]}`;
     existingMap.set(key, r);
   });
 
   const toCreate = [];
   const toUpdate = [];
-  const matchedIds = new Set();
+  const claimed = new Set();
 
   for (const s of stopsArr) {
     const key = `${s.stopType}_${s.stopNumber}`;
     const fields = _stopObjToFields(s, orderId, parentField);
 
-    const existRec = existingMap.get(key);
+    let existRec = null;
+    if (s.recordId && matchedIds.has(s.recordId) && !claimed.has(s.recordId)) existRec = byId.get(s.recordId);
+    else if (existingMap.has(key) && !claimed.has(existingMap.get(key).id)) existRec = existingMap.get(key);
     if (existRec) {
+      claimed.add(existRec.id);
       // Update existing
-      matchedIds.add(existRec.id);
       toUpdate.push({ id: existRec.id, fields });
     } else {
       // Create new
@@ -79,7 +92,7 @@ async function stopsSave(orderId, stopsArr, parentField) {
   }
 
   // Delete stops that are no longer in the form
-  const toDelete = existing.filter(r => !matchedIds.has(r.id));
+  const toDelete = existing.filter(r => !claimed.has(r.id));
 
   const results = [];
 
@@ -92,9 +105,16 @@ async function stopsSave(orderId, stopsArr, parentField) {
     results.push(...toUpdate.map(r => r.id));
   }
   if (toDelete.length) {
-    await Promise.all(toDelete.map(r => atDelete(TABLES.ORDER_STOPS, r.id).catch(e => {
-      console.error('Stop delete error:', e);
-    })));
+    // A stop that failed to delete is still live (its pallets, its day, a v5 shipment on it): the caller must
+    // say ✗, never a green «saved» (principle 1). Every delete is tried first; the first failure is thrown,
+    // as core/api.js made it (its _noRetry / status), with the ids that are still live.
+    const res = await Promise.allSettled(toDelete.map(r => atDelete(TABLES.ORDER_STOPS, r.id)));
+    const failed = res.filter(r => r.status === 'rejected');
+    if (failed.length) {
+      const e = failed[0].reason instanceof Error ? failed[0].reason : new Error(String(failed[0].reason));
+      e.stopsNotDeleted = toDelete.filter((_, i) => res[i].status === 'rejected').map(r => r.id);
+      throw e;
+    }
   }
 
   return results;

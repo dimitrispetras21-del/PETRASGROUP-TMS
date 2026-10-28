@@ -75,6 +75,16 @@ const OrderQuickEdit = (() => {
     if ('Price' in fields && fields.Price !== null && !(fields.Price >= 0)) { err.textContent = 'Η τιμή δεν είναι αριθμός'; return; }
     if (!Object.keys(fields).length) { closeModal(); return; }
     btn.disabled = true; btn.textContent = 'Αποθήκευση…'; err.textContent = '';
+    // F5 Ε16 / Q-10: on a national order after day L the accountant keeps the price only (Invoiced and the
+    // invoice number are not in this form); the Worker refuses the rest, so it is said here first.
+    if (typeof PlanConfig !== 'undefined' && PlanConfig.isLegacyTable(S.table) && Object.keys(fields).some(k => k !== 'Price')) {
+      const pc = await PlanConfig.load({ fresh: true });
+      if (pc.state !== 'before') {
+        btn.disabled = false; btn.textContent = 'Αποθήκευση';
+        err.textContent = PlanConfig.LEGACY_TEXT[pc.state] + ' (εδώ μόνο η τιμή)';
+        return;
+      }
+    }
     try {
       await atPatch(S.table, S.rec.id, fields);
     } catch (e) {
