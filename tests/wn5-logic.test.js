@@ -173,23 +173,23 @@ test('F4α-T4: hub split = unloaded at Veroia by a cycle (inbound_rt_id) or for_
 
 test('F4α-T4: the hub id from base facts; a week with no VS on a truck still says «Βέροια» on hub[] rows, cycles take opts.hubId', () => {
   assert.strictEqual(M().hubId, 1);
-  const b = fix();
+  const b = withE26();   // the 074a shape (FE-2): only the hub line may be in errors, compared exactly
   for (const c of b.cycles) for (const s of c.stops) s.legs = s.legs.filter((l) => !String(l.kind).startsWith('vs_'));
   const m = M(b);
   assert.strictEqual(m.hubId, null, 'no VS leg, no vs_export waiting: nothing on the 072 board names the hub (Ε-27)');
   assert.ok(rowOf(m, 'wait:4101').kath.veroia, 'a hub[] row is at Veroia by the base rule (071 at_hub), whatever the id');
   assert.strictEqual(rowOf(m, 'rt:102').kath.veroia, null, 'without an id a cycle cannot name its Veroia stop');
   // ... and the board SAYS so (principle 1, Ε-44): the Veroia times are missing and Veroia reads as an ordinary stop
-  assert.deepStrictEqual(m.errors.filter((e) => !/ήρθε χωρίς/.test(e)), [L.HUB_UNKNOWN], 'a week whose hub is not identified carries one visible line');
+  assert.deepStrictEqual(m.errors, [L.HUB_UNKNOWN], 'a week whose hub is not identified carries one visible line');
   assert.ok(/Βέροια δεν αναγνωρίστηκε/.test(L.HUB_UNKNOWN), L.HUB_UNKNOWN);
   const mh = L.model(b, { today: TODAY, hubId: 1 });
   assert.deepStrictEqual(rowOf(mh, 'rt:102').kath.veroia, { stopId: 1101, from: '16:00', to: '18:00' }, 'opts.hubId (PlanIds.hub) names it');
-  assert.deepStrictEqual(mh.errors.filter((e) => !/ήρθε χωρίς/.test(e)), [], 'with opts.hubId the line goes');
-  const be = fix(); be.cycles = [];
-  assert.deepStrictEqual([M(be).hubId, M(be).errors.filter((e) => !/ήρθε χωρίς/.test(e))], [null, [L.HUB_UNKNOWN]],
+  assert.deepStrictEqual(mh.errors, [], 'with opts.hubId the line goes');
+  const be = withE26(); be.cycles = [];
+  assert.deepStrictEqual([M(be).hubId, M(be).errors], [null, [L.HUB_UNKNOWN]],
     'no cycle but a waiting national: its side needs the hub, so the line stays');
-  const bn = fix(); bn.cycles = []; bn.waiting = bn.waiting.filter((w) => w.kind !== 'national');
-  assert.deepStrictEqual([M(bn).hubId, M(bn).errors.filter((e) => !/ήρθε χωρίς/.test(e))], [null, []], 'no cycle and no waiting national: nothing to place, no line');
+  const bn = withE26(); bn.cycles = []; bn.waiting = bn.waiting.filter((w) => w.kind !== 'national');
+  assert.deepStrictEqual([M(bn).hubId, M(bn).errors], [null, []], 'no cycle and no waiting national: nothing to place, no line');
 });
 
 test('F4α-T4: WN5L.CAP = the over_33 threshold of 072', () => {

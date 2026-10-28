@@ -108,7 +108,8 @@ function _decide() {
 // the base's cutover_day; a week from L on is v5 for everyone the flag opens it to. The day comes from the base
 // (core/plan-config.js), never from a date in this file (principle 3). Until PlanConfig answers 'after' — 'before',
 // 'unknown', a Worker without the route, the file not loaded — the choice holds as today: the old board is a READ
-// path, its writes are refused below the screen, and an unknown day never traps a user in one view.
+// path, its writes are refused below the screen, and an unknown day never traps a user in one view. An 'unknown'
+// answer is said on the v5 bar («Η ημέρα μετάβασης δεν διαβάστηκε»), never silent (principle 1).
 let _cfg = null, _cfgAt = 0, _cfgBusy = false;
 const CFG_RETRY_MS = 60 * 1000;   // a non-final answer is asked again at most once a minute (PlanConfig caches 'after')
 function _dm(day) { return Number(day.slice(8)) + '/' + Number(day.slice(5, 7)); }   // '2026-10-31' → «31/10»
@@ -119,9 +120,14 @@ function _cfgKick() {
   PlanConfig.load().then((r) => {
     const was = _cfg && _cfg.state;
     _cfg = r; _cfgAt = Date.now();
-    // the answer can change which board this week gets: paint again, once, only if it did and the page is still ours
-    if (r && r.state === 'after' && was !== 'after' && typeof currentPage !== 'undefined' && currentPage === 'weekly_natl'
-      && typeof window.renderWeeklyNatl === 'function') window.renderWeeklyNatl();
+    // Paint again only when the answer changes what THIS week shows: it became 'after' and the week is ≥ L (a stored
+    // old view gives way to v5, the bar loses its button), or it became 'unknown' on the v5 board (the bar says so).
+    // A week before L keeps what it painted: no second load of the old board.
+    let sat = null;
+    try { sat = weekParam(window.WNATL.week); } catch (_) { /* no week: nothing to repaint */ }
+    const now = r && r.state;
+    if (now !== was && sat && ((now === 'after' && _afterL(sat)) || (now === 'unknown' && _sat === sat && _decide() === 'v5'))
+      && typeof currentPage !== 'undefined' && currentPage === 'weekly_natl' && typeof window.renderWeeklyNatl === 'function') window.renderWeeklyNatl();
   }, () => { _cfgAt = Date.now(); }).finally(() => { _cfgBusy = false; });   // load() never rejects; belt and braces
 }
 // The old-view choice is set aside for a week ≥ L: v5 is what the flag would show without the choice.
@@ -336,7 +342,8 @@ function _barHTML() {
     // Q-10: the old view only for a week before day L; from L on it is not offered, and a stored choice says why
     + (_afterL(_sat)
       ? (_ls('tms_wn5') === '0' ? `<span class="wi4-range" data-old-view="closed">Η παλιά προβολή υπάρχει μόνο για εβδομάδες πριν από ${_esc(_dm(_cfg.cutoverDay))}</span>` : '')
-      : '<button type="button" class="wi4-btn sm" title="Το παλιό Εβδομαδιαίο Εθνικών" onclick="WN5._switch(\'0\')">Παλιά προβολή</button>')
+      : (_cfg && _cfg.state === 'unknown' ? '<span class="wi4-range" data-old-view="unknown">Η ημέρα μετάβασης δεν διαβάστηκε</span>' : '')
+        + '<button type="button" class="wi4-btn sm" title="Το παλιό Εβδομαδιαίο Εθνικών" onclick="WN5._switch(\'0\')">Παλιά προβολή</button>')
     + '</div></div>';
 }
 function _tabsHTML(w) {
@@ -498,10 +505,6 @@ function _dimOk(r) { return r.kind === 'cycle' && r.rail !== 'red'; }
 const _dc = (on) => (on ? ' wn5-dim' : '');
 // A window the board did not send (hub[] of 072, Ε-26) is «—», never «null–null» and never a guess (as T5).
 const _win = (f, t) => (f && t ? `${_esc(f)}–${_esc(t)}` : '—');
-// The «ΠΡΟΣ ΑΝΑΘΕΣΗ» line of a missing destination (as T5): a row that needs work, so it never dims.
-function _missHTML(r) {
-  return `<div class="wn5-sub wn5-miss" data-qi="${_esc(r.key)}" data-key="miss:${_esc(r.key)}"><span class="wn5-c-idx"></span><span class="wn5-sub-t">${_esc(r.miss)}</span></div>`;
-}
 function _rowHTML(r, m, no) {
   const n = r.kind === 'cycle' ? ++no.n : null;
   const ok = _dimOk(r);
@@ -517,7 +520,6 @@ function _rowHTML(r, m, no) {
     + '</div>';
   h += _handRowHTML(r, ok);
   for (const lm of r.local) h += _localHTML(r, lm, ok);
-  if (r.miss) h += _missHTML(r);
   return h;
 }
 function _kathHTML(r, m, ok) {

@@ -31,6 +31,7 @@ const CASES = [
   { name: 'Q-10 dispatcher + «Παλιά προβολή», L = 17/10 (next week)', role: 'dispatcher', username: 'demo_dispatcher', optIn: '0', cfg: '2026-10-17' },
   { name: 'Q-10 dispatcher, L = 3/10 (a past week)', role: 'dispatcher', username: 'demo_dispatcher', optIn: null, cfg: '2026-10-03' },
   { name: 'Q-10 dispatcher, before L (cutover_day null)', role: 'dispatcher', username: 'demo_dispatcher', optIn: null, cfg: null },
+  { name: 'Q-10 dispatcher, GET /plan/config fails (503)', role: 'dispatcher', username: 'demo_dispatcher', optIn: null, cfg: 'ERR' },
 ];
 const RIG_SAT = '2026-10-10';
 // The rule of the plan, written out here (not WI4.v2Decide: the rig must not judge the app by the app's own code).
@@ -86,7 +87,10 @@ async function one(browser, origin, c) {
       if (u.pathname === '/plan/board') ans = board;
       else if (u.pathname === '/plan/lookups') ans = kit.LOOKUPS;
       else if (u.pathname === '/plan/notices') ans = { desk: 'natl', unread: [], recent: [] };
-      else if (u.pathname === '/plan/config' && m === 'GET' && 'cfg' in c) ans = { cutover_day: c.cfg, opened_at: null, writes_open: false };
+      else if (u.pathname === '/plan/config' && m === 'GET' && c.cfg === 'ERR') {
+        S.stubbed.add(req.url());
+        return route.fulfill({ status: 503, contentType: 'application/json', headers: cors, body: JSON.stringify({ error: { type: 'UNAVAILABLE', code: 'db_unavailable', message: 'rig sentinel db_unavailable' } }) });
+      } else if (u.pathname === '/plan/config' && m === 'GET' && 'cfg' in c) ans = { cutover_day: c.cfg, opened_at: null, writes_open: false };
       else {
         // An unknown read is a route the Worker does not have yet (404 no_route, as before deploy 1 — e.g. GET
         // /plan/config of FE-1); a write is closed until day L (409). Both are planned answers, listed apart.
@@ -112,7 +116,8 @@ async function one(browser, origin, c) {
   got = await page.evaluate(() => (document.querySelector('#content .wn5') ? 'v5' : document.querySelector('#content .wn4') ? 'old' : 'none'));
   // the v5 bar may sit in the app's top bar (outside #content), so the whole document is searched
   const bar = await page.evaluate(() => ({ btn: [...document.querySelectorAll('button[onclick*="WN5._switch"]')].some((b) => b.textContent.trim() === 'Παλιά προβολή'),
-    closed: ((document.querySelector('[data-old-view="closed"]') || {}).textContent || '').trim() }));
+    closed: ((document.querySelector('[data-old-view="closed"]') || {}).textContent || '').trim(),
+    unknown: ((document.querySelector('[data-old-view="unknown"]') || {}).textContent || '').trim() }));
   const flag = await page.evaluate(() => ({ flag: typeof FEATURES !== 'undefined' ? FEATURES.WN_V5 : undefined,
     users: typeof WN_V5_USERS !== 'undefined' ? WN_V5_USERS : undefined })).catch(() => ({}));
   await ctx.close();
@@ -143,6 +148,7 @@ async function one(browser, origin, c) {
         ok(c.name, 'reads GET /plan/board', r.S.plan.includes('GET /plan/board'), r.S.plan);
         ok(c.name, 'read-only at load: no /plan/* request other than GET', r.S.plan.every((x) => x.startsWith('GET ')), r.S.plan);
         ok(c.name, `«Παλιά προβολή» ${wantBtn(c) ? 'offered' : 'not offered (week ≥ L)'}`, r.bar.btn === wantBtn(c), r.bar);
+        ok(c.name, c.cfg === 'ERR' ? 'says the day was not read' : 'no «δεν διαβάστηκε» line', (r.bar.unknown === 'Η ημέρα μετάβασης δεν διαβάστηκε') === (c.cfg === 'ERR'), r.bar);
         if (c.optIn === '0' && afterL(c)) ok(c.name, 'says why: «… μόνο για εβδομάδες πριν από 10/10»', r.bar.closed === 'Η παλιά προβολή υπάρχει μόνο για εβδομάδες πριν από 10/10', r.bar);
       } else {
         // Q-10: a stored old-view choice under an open flag asks the base for day L — that one read, nothing else
