@@ -2519,6 +2519,38 @@ SCN.live45 = async (browser, origin) => {
   ok(scn, '1 · after a failure: a write\'s reload does not ask the catalogue again, the user\'s ↻ does', l0 === 1 && l1 === 1 && l2 === 2, { l0, l1, l2 });
   await f.page.context().close();
 };
+// Live F6 (28/10, real-user test): a national order waiting for a vehicle had no way to its card (edit / delete) — only
+// a cycle's ✈ «Άνοιγμα παραγγελιών» opened it. And 075's waiting[].direction: a national whose ends are both outside
+// the hub goes on its own direction's side, on the board AND in the assignment window (one rule, WN5L.waitSide).
+SCN['live-f6'] = async (browser, origin) => {
+  const scn = 'live-f6';
+  const b = live45();
+  const nat = (o) => Object.assign({ kind: 'national', order_id: null, overdue: false, is_stock: false, leave_by: null, pallet_exchange: false, temperature_c: null,
+    load_from: null, load_to: null, deliver_from: null, deliver_to: null, nat_ready_day: '2026-10-12', nat_due_day: '2026-10-12', price: null }, o);
+  b.waiting.push(nat({ piece_id: 31, shipment_id: 31, nat_order_id: 17, client_id: 45, client: 'ΠΕΛΑΤΗΣ ΕΘ 17', pallets: 10, nat_from_location_id: 6, nat_to_location_id: 2, position_location_id: 6 }));
+  b.waiting.push(nat({ piece_id: 32, shipment_id: 32, nat_order_id: 18, client_id: 46, client: 'ΠΕΛΑΤΗΣ ΕΘ 18', pallets: 12, nat_from_location_id: 5, nat_to_location_id: 3, position_location_id: 5, direction: 'ANODOS' }));
+  const { page, S } = await openBoard(browser, origin, { board: b });
+  await page.waitForSelector('#content > .wi4.wn5[data-state="ok"]', { timeout: 8000 }).catch(() => {});
+  const r = await page.evaluate(() => {
+    const row = (p) => document.querySelector(`#content .wn5 .wn5-row[data-piece="${p}"]`);
+    const plane = (p) => !!(row(p) && row(p).querySelector('.wn5-c-idx .wi4-plane[data-act="ocard"]'));
+    return { n17: plane(31), n18: plane(32), vs: plane(20) || plane(15),
+      d18: row(32) ? { kpts: row(32).querySelectorAll('.wn5-kto .wn5-pt, .wn5-fl .wn5-pt').length, apts: row(32).querySelectorAll('.wn5-afl .wn5-pt').length } : null,
+      d17: row(31) ? { kpts: row(31).querySelectorAll('.wn5-kto .wn5-pt').length, apts: row(31).querySelectorAll('.wn5-afl .wn5-pt').length } : null,
+      side18: typeof WN5Act !== 'undefined' && WN5Act._kit && WN5Act._kit.sideFor ? WN5Act._kit.sideFor((WN5.state().board.waiting || []).find((x) => x.piece_id === 32)) : null };
+  });
+  ok(scn, 'F6 · a waiting national order (#17, #18) has the ✈ of its card; a VS row has none (the Weekly International owns it)', r.n17 && r.n18 && !r.vs, r);
+  await page.click('#content .wn5 .wn5-row[data-piece="31"] .wi4-plane[data-act="ocard"]').catch(() => {});
+  await page.waitForTimeout(500);
+  const card = await page.evaluate(() => { const d = document.querySelector('.wi4-dlg.wn5-ocard'); return d ? { t: d.querySelector('.wi4-dlg-hd').textContent.replace(/\s+/g, ' '), edit: !!d.querySelector('[data-act="edit"]'), del: !!d.querySelector('[data-act="delete"]') } : null; });
+  ok(scn, 'F6 · ✈ opens the order card of #17 with «Επεξεργασία» and «Διαγραφή παραγγελίας»', !!card && /ΠΕΛΑΤΗΣ ΕΘ 17/.test(card.t) && card.edit && card.del, card);
+  ok(scn, '075 · #18 (Thessaloniki → Aspropyrgos, direction ANODOS) sits on ΑΝΟΔΟΣ; #17 (no direction) on ΚΑΘΟΔΟΣ as before',
+    !!r.d18 && r.d18.apts >= 1 && r.d18.kpts === 0 && !!r.d17 && r.d17.kpts >= 1 && r.d17.apts === 0, { d17: r.d17, d18: r.d18 });
+  ok(scn, '075 · the assignment window takes the same side (WN5Act._kit.sideFor = ANODOS for #18)', r.side18 === 'ANODOS', r.side18);
+  ok(scn, 'nothing written: only the board read on /plan/*', S.plan.every((x) => x.m === 'GET'), S.plan.map((x) => x.m + ' ' + x.path));
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await page.context().close();
+};
 // ── main ──
 (async () => {
   if (argv.includes('--check-fixture')) process.exit(checkFixture() ? 0 : 1);

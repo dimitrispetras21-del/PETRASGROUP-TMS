@@ -484,7 +484,8 @@
     }
     return typeof PlanIds !== 'undefined' ? PlanIds.hub() : null;
   }
-  const _sideFor = (it) => (it.kind === 'vs_export' || (it.nat_to_location_id != null && it.nat_to_location_id === _hubId()) ? 'ANODOS' : 'KATHODOS');
+  // the board's own rule (WN5L.waitSide: the hub ends, then 075's direction), so the window never assigns the other side
+  const _sideFor = (it) => WN5L.waitSide(it, _hubId());
   // what a piece needs on the target side (plan_h_put): a stop at its position (pickup) and at its national end
   // (drop, or Veroia with to_hub). null place = the board did not send it (hub[] of 072, Ε-26).
   function _needs(it, toHub, hub) {

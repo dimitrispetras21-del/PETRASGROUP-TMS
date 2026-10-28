@@ -357,3 +357,14 @@ test('live 28/10: waiting rows name their places from opts.place; an unknown id 
   assert.deepStrictEqual(bare.days.flatMap((d) => d.rows).find((r) => r.pieceIds.includes(16)).kath.to.map((p) => p.name), ['—']);
   assert.deepStrictEqual(bare.errors, [], 'no catalogue: the screen says it in its own strip, not as a shape line per id');
 });
+
+test('075: waitSide — the hub ends first, then the order\'s own direction, else ΚΑΘΟΔΟΣ (one rule for the board and Δ1)', () => {
+  assert.strictEqual(L.waitSide({ kind: 'national', nat_from_location_id: 5, nat_to_location_id: 6, direction: 'ANODOS' }, 1), 'ANODOS');
+  assert.strictEqual(L.waitSide({ kind: 'national', nat_from_location_id: 5, nat_to_location_id: 6, direction: 'KATHODOS' }, 1), 'KATHODOS');
+  assert.strictEqual(L.waitSide({ kind: 'national', nat_from_location_id: 5, nat_to_location_id: 6 }, 1), 'KATHODOS', 'no key (before 075) = as before');
+  assert.strictEqual(L.waitSide({ kind: 'national', nat_from_location_id: 5, nat_to_location_id: 6, direction: null }, 1), 'KATHODOS');
+  assert.strictEqual(L.waitSide({ kind: 'national', nat_from_location_id: 5, nat_to_location_id: 1, direction: 'KATHODOS' }, 1), 'ANODOS', 'towards the hub wins over a direction');
+  assert.strictEqual(L.waitSide({ kind: 'national', nat_from_location_id: 1, nat_to_location_id: 6, direction: 'ANODOS' }, 1), 'KATHODOS', 'from the hub wins over a direction');
+  assert.strictEqual(L.waitSide({ kind: 'vs_export', nat_to_location_id: 1 }, 1), 'ANODOS');
+  assert.strictEqual(L.waitSide({ kind: 'vs_import', at_hub: true, nat_to_location_id: 3 }, 1), 'KATHODOS');
+});
