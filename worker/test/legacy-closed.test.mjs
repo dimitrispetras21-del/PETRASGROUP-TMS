@@ -1,11 +1,11 @@
 // F5 E16 (spec §5; owner 28/10, Q-10; plan W4) — the facade closes the old national model on day L, against the
 // real Worker in Node, 5 roles × {NL, GL, CL, national_orders, local_moves} × {POST, PATCH, DELETE}:
-//   - deploy 1 (PLAN_WRITES_OPEN false): exactly today's answer — RBAC alone decides, no 409 anywhere;
+//   - deploy 1 (PLAN_WRITES_OPEN false): exactly today's answer — RBAC alone decides, no legacy_closed anywhere;
 //   - deploy 2 (day L): the Q-10 table — NL/GL/CL: POST nobody, PATCH/DELETE owner only; national_orders: POST and
 //     DELETE nobody, PATCH per label (owner all, accountant the invoicing three + Price, dispatcher Price /
 //     Reference / Notes); local_moves: a POST of kind «local» (or no kind = the DB default) closed, relay open;
-//   - every refusal is 409 {error:{type:"LEGACY_CLOSED", code:"legacy_closed", message}} with ZERO DB calls, and
-//     RBAC still speaks first (403 where it refused before).
+//   - every refusal is 422 {error:{type:"LEGACY_CLOSED", code:"legacy_closed", message}} with ZERO DB calls (422, the
+//     facade's final refusal: core/api.js _atRetry resends a 409 twice more), and RBAC still speaks first (403).
 // Plus F5 W3: a facade write that loses a lock (40P01 / 40001 / 55P03) is a 503 busy_retry, nothing kept.
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
@@ -77,7 +77,7 @@ test('deploy 1 (switch closed): every cell answers as today — RBAC alone, neve
   assert.ok(reached > 20, `allowed cells exercised: ${reached}`);
 });
 
-test('deploy 2 (day L): the Q-10 table, cell by cell — 409 legacy_closed before any DB call, RBAC still first', async () => {
+test('deploy 2 (day L): the Q-10 table, cell by cell — 422 legacy_closed before any DB call, RBAC still first', async () => {
   let refused = 0;
   for (const [name, t] of Object.entries(T)) {
     for (const method of ['POST', 'PATCH', 'DELETE']) {
@@ -92,7 +92,7 @@ test('deploy 2 (day L): the Q-10 table, cell by cell — 409 legacy_closed befor
           assert.ok(r.status < 300, cell);
           assert.ok(writes().length >= 1, `${cell}: the write reached the DB`);
         } else {
-          assert.equal(r.status, 409, cell);
+          assert.equal(r.status, 422, cell);
           assert.deepEqual({ type: r.json.error.type, code: r.json.error.code }, LEGACY_REFUSED, cell);
           assert.match(r.json.error.message, /[α-ωΑ-Ω]/, `${cell}: Greek text`);
           assert.equal(calls.length, 0, `${cell}: no DB call`);
@@ -123,7 +123,7 @@ test('day L, national_orders PATCH per label: the accountant\'s invoicing three 
     if (ok) {
       assert.ok(r.status < 300, cell);
     } else {
-      assert.equal(r.status, 409, cell);
+      assert.equal(r.status, 422, cell);
       assert.equal(r.json.error.code, 'legacy_closed', cell);
       for (const l of Object.keys(fields).filter((x) => !KEEP[role].includes(x))) assert.ok(r.json.error.message.includes(`«${l}»`), `${cell}: names ${l}`);
       assert.equal(calls.length, 0, cell);
@@ -132,7 +132,7 @@ test('day L, national_orders PATCH per label: the accountant\'s invoicing three 
   // a batch PATCH with one record outside the labels writes none
   reset(); dbAnswersEverything();
   const r = await callOpen('dispatcher', 'PATCH', `${BASE}/${NO.id}`, { records: [{ id: 'recA', fields: { Price: 1 } }, { id: 'recB', fields: { Status: 'Pending' } }] });
-  assert.equal(r.status, 409, r.text);
+  assert.equal(r.status, 422, r.text);
   assert.equal(calls.length, 0);
 });
 
@@ -143,7 +143,7 @@ test('day L, local_moves POST: kind «local» or no kind (the DB default) closed
     reset(); dbAnswersEverything();
     const r = await callOpen('dispatcher', 'POST', `${BASE}/local_moves`, { fields });
     if (closed) {
-      assert.equal(r.status, 409, `${JSON.stringify(fields)}: ${r.text}`);
+      assert.equal(r.status, 422, `${JSON.stringify(fields)}: ${r.text}`);
       assert.equal(r.json.error.code, 'legacy_closed');
       assert.equal(calls.length, 0);
     } else {
@@ -152,20 +152,29 @@ test('day L, local_moves POST: kind «local» or no kind (the DB default) closed
   }
   reset(); dbAnswersEverything();
   const r = await callOpen('dispatcher', 'POST', `${BASE}/local_moves`, { records: [{ fields: { Description: 'a', 'Move Kind': 'relay_delivery' } }, { fields: { Description: 'b' } }] });
-  assert.equal(r.status, 409, r.text);
+  assert.equal(r.status, 422, r.text);
   assert.equal(calls.length, 0, 'a batch with one local move writes none');
 });
 
 test('day L, NL batch POST and batch PATCH by a dispatcher: refused whole, nothing written; the owner\'s batch PATCH passes', async () => {
   dbAnswersEverything();
   let r = await callOpen('dispatcher', 'POST', `${BASE}/${T.NL.id}`, { records: [{ fields: { Status: 'Pending' } }] });
-  assert.equal(r.status, 409, r.text);
+  assert.equal(r.status, 422, r.text);
   assert.equal(calls.length, 0);
   r = await callOpen('dispatcher', 'PATCH', `${BASE}/${T.NL.id}`, { records: [{ id: 'recA', fields: { Status: 'Assigned' } }] });
-  assert.equal(r.status, 409, r.text);
+  assert.equal(r.status, 422, r.text);
   assert.equal(calls.length, 0);
   r = await callOpen('owner', 'PATCH', `${BASE}/${T.NL.id}`, { records: [{ id: 'recA', fields: { Status: 'Assigned' } }] });
   assert.ok(r.status < 300, r.text);
+});
+
+test('a JSON body that is not an object (null, array, number) → 400 before anything, never a crash', async () => {
+  for (const raw of ['null', '[]', '7']) {
+    calls.length = 0;
+    const r = await callOpen('owner', 'POST', `${BASE}/${T.NL.id}`, raw);
+    assert.equal(r.status, 400, `${raw}: ${r.text}`);
+    assert.equal(calls.length, 0, raw);
+  }
 });
 
 test('the facade answers a lost lock (40P01 / 40001 / 55P03) with 503 busy_retry «nothing written», on every single-statement write', async () => {

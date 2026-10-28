@@ -40,7 +40,7 @@ const parts = [
   lift(/const PLAN_CHECK_TEXT = \{[\s\S]*?\n\};\n/, 'PLAN_CHECK_TEXT'),
   // read by the 23505 / 23P01 branches (review of PR #90, finding 10)
   lift(/const PLAN_CONSTRAINT_CODE = \{[\s\S]*?\n\};\n/, 'PLAN_CONSTRAINT_CODE'),
-  fn('stockRuleError'), fn('stockRuleResponse'), fn('facadeBusy'),
+  fn('stockRuleError'), fn('stockRuleResponse'), lift(/var BUSY_SQLSTATE = [^\n]*\n/, 'BUSY_SQLSTATE'), fn('facadeBusy'),
   // the facade's v5 guards (findings 2 and 8): the one switch as the source holds it, and the LOCAL MOVES guard;
   // F5 (E16): the legacy model closed after day L, read only with the switch open
   lift(/var PLAN_WRITES_OPEN = [^\n]*\n/, 'PLAN_WRITES_OPEN'), fn('planOwnedRefusal'),

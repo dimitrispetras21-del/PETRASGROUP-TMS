@@ -2832,6 +2832,8 @@ async function handleFacadeCreate(request, tableId, origin, env, ctx) {
   } catch {
     return jsonError("Invalid request", 400, origin, env);
   }
+  // a JSON `null` / array / number would throw below (CF 1101 without CORS): the same 400 as a body that is not JSON
+  if (!body || typeof body !== "object" || Array.isArray(body)) return jsonError("Invalid request", 400, origin, env);
   const closed = legacyClosedRefusal(cfg.pg, caller.role, "POST", Array.isArray(body.records) ? body.records.map((e) => e?.fields) : [body.fields], origin, env);
   if (closed) return closed;
   if (Array.isArray(body.records)) {
@@ -3454,7 +3456,7 @@ const PLAN_RULE_TEXT = {
   // 074 — day L (F5, plan W3): the INSERT freeze of the old national model, the guard on the day itself, and a
   // bridge that could not re-cut its pieces after a change of the international order
   legacy_frozen: "Το παλιό μοντέλο εθνικών έκλεισε την ημέρα μετάβασης· νέα εθνικά μόνο από το Εβδομαδιαίο Εθνικών",
-  bad_cutover_day: "Η ημέρα μετάβασης είναι Σάββατο στο μέλλον — ενημέρωσε τον Δημήτρη",
+  bad_cutover_day: "Η ημέρα μετάβασης πρέπει να είναι Σάββατο στο μέλλον — ενημέρωσε τον Δημήτρη",
   bridge_recut: "Η αλλαγή της διεθνούς δεν περνά στα φορτία του Εβδομαδιαίου Εθνικών (τα κομμάτια δεν ξανακόβονται) — δες τη στάση στο Εβδομαδιαίο Εθνικών και ξαναδοκίμασε"
 };
 const PLAN_CHECK_TEXT = {
@@ -3616,9 +3618,11 @@ __name(stockRuleResponse, "stockRuleResponse");
 // of /plan/* — never «Failed to update record» (a 500 that reads as broken). Any facade table: the SQLSTATE says
 // «rolled back» whatever the table. Only where the request is ONE statement (a batch PATCH whose earlier rows
 // landed keeps its 500).
+// ONE list for both layers (handlePlan's busy_retry reads it too): deadlock, serialization, lock_timeout
+var BUSY_SQLSTATE = /^(40P01|40001|55P03)$/;
 function facadeBusy(e, origin, env) {
   const pg = e && e.pg && typeof e.pg === "object" ? e.pg : null;
-  if (!pg || !/^(40P01|40001|55P03)$/.test(String(pg.code || ""))) return null;
+  if (!pg || !BUSY_SQLSTATE.test(String(pg.code || ""))) return null;
   return jsonOk({ error: { type: "SERVER", code: "busy_retry", message: "Ταυτόχρονη αλλαγή από άλλον χρήστη — τίποτα δεν γράφτηκε· δοκίμασε ξανά" } }, origin, env, 503);
 }
 __name(facadeBusy, "facadeBusy");
@@ -4556,15 +4560,17 @@ async function handleCosts(request, url, origin, env) {
       const { rows } = await dbSelectRaw(env, "ct_round_trips", params);
       const truncated = rows.length > RT_MAX;
       if (truncated) rows.length = RT_MAX;
-      // the lookups below read by in.(<RT ids>): 200 ids per request keeps the URL short (999 ids ≈ 6 KB)
+      // the lookups below read by in.(<RT ids>): 200 ids per request keeps the URL short (999 ids ≈ 6 KB); the
+      // chunks run together, and their rows come back in chunk order (dl_entries' «lowest id wins» holds per RT)
       const selectIn = async (table, base, ids) => {
-        const out = [];
-        for (let i = 0; i < ids.length; i += 200) {
+        const chunks = [];
+        for (let i = 0; i < ids.length; i += 200) chunks.push(ids.slice(i, i + 200));
+        const answers = await Promise.all(chunks.map((c) => {
           const p = new URLSearchParams(base);
-          p.set("rt_id", `in.(${ids.slice(i, i + 200).join(",")})`);
-          out.push(...(await dbSelectRaw(env, table, p)).rows);
-        }
-        return out;
+          p.set("rt_id", `in.(${c.join(",")})`);
+          return dbSelectRaw(env, table, p);
+        }));
+        return answers.flatMap((a) => a.rows);
       };
       // Route detail (leg blocks) lives in dl_v_rt_route, built for the driver
       // ledger (migration 012) — reused here instead of re-deriving it, so the
@@ -5823,7 +5829,10 @@ var PLAN_WRITES_OPEN = false;
 // E16 (spec §5; owner 28/10, Q-10): from day L the old national model (NL / GL / CL and the Weekly National
 // «local» moves) is history, and a national order is created, planned and deleted only through /plan/*. The DB
 // freezes INSERT (074, plan:legacy_frozen); the UPDATE / soft delete of history is cut HERE, per role, before any
-// DB call — a stale screen (an old service worker) hears 409 legacy_closed instead of writing around plan_*.
+// DB call — a stale screen (an old service worker) hears 422 legacy_closed instead of writing around plan_*.
+// 422, not the plan's 409 (code review xhigh 28/10): core/api.js _atRetry resends a 409 twice more (1s+2s) and toasts
+// a generic failure, while a 422 is the facade's final refusal (stock / relay / plan rules) and its Greek text is
+// what the user reads at once.
 // Read ONLY while PLAN_WRITES_OPEN holds: before day L the legacy boards are the live ones and keep every write
 // they have today (spec: switched on earlier, it breaks the old board). One switch, deploy 2 (Q-8).
 // Per table and method: the roles that keep the write ([] = nobody). national_orders PATCH is per label: role →
@@ -5842,7 +5851,7 @@ var LEGACY_CLOSED_AFTER_L = {
   },
   local_moves: { closedKind: "local" }
 };
-// fieldsList: the `fields` of each record of the request ([] for a DELETE). Returns the 409 or null.
+// fieldsList: the `fields` of each record of the request ([] for a DELETE). Returns the 422 or null.
 function legacyClosedRefusal(table, role, method, fieldsList, origin, env) {
   if (!PLAN_WRITES_OPEN || !Object.prototype.hasOwnProperty.call(LEGACY_CLOSED_AFTER_L, table)) return null;
   const rule = LEGACY_CLOSED_AFTER_L[table];
@@ -5882,7 +5891,7 @@ function legacyClosedRefusal(table, role, method, fieldsList, origin, env) {
     }
   }
   if (message === null) return null;
-  return jsonOk({ error: { type: "LEGACY_CLOSED", code: "legacy_closed", message } }, origin, env, 409);
+  return jsonOk({ error: { type: "LEGACY_CLOSED", code: "legacy_closed", message } }, origin, env, 422);
 }
 __name(legacyClosedRefusal, "legacyClosedRefusal");
 // One row per route: method + path → resource (PLAN_PERMS) + RPC. `dryRun`
@@ -5937,21 +5946,22 @@ function planBoardArgs(url, caller) {
   return { args: { p_week: week, p_role: caller.role } };
 }
 __name(planBoardArgs, "planBoardArgs");
-function planVsStateArgs(url) {
-  const raw = (url.searchParams.get("order_ids") || "").split(",").map((s) => s.trim()).filter(Boolean);
+// One rule for a list of ids in the query string (072's plan_vs_state and 074a's plan_nat_state both refuse more
+// than 500): 1 to 500 positive integers of at most 15 digits (safe in JSON), deduplicated.
+function planIdsArgs(url, key, argName) {
+  const raw = (url.searchParams.get(key) || "").split(",").map((s) => s.trim()).filter(Boolean);
   if (!raw.length || raw.length > 500 || raw.some((s) => !/^[1-9]\d{0,14}$/.test(s))) {
-    return { error: "order_ids: 1 έως 500 θετικοί ακέραιοι, χωρισμένοι με κόμμα", code: "bad_order_ids" };
+    return { error: `${key}: 1 έως 500 θετικοί ακέραιοι, χωρισμένοι με κόμμα`, code: `bad_${key}` };
   }
-  return { args: { p_order_ids: [...new Set(raw.map(Number))] } };
+  return { args: { [argName]: [...new Set(raw.map(Number))] } };
+}
+__name(planIdsArgs, "planIdsArgs");
+function planVsStateArgs(url) {
+  return planIdsArgs(url, "order_ids", "p_order_ids");
 }
 __name(planVsStateArgs, "planVsStateArgs");
-// the same rule as order_ids above (072's plan_vs_state and 074a's plan_nat_state both refuse more than 500)
 function planNatStateArgs(url) {
-  const raw = (url.searchParams.get("nat_order_ids") || "").split(",").map((s) => s.trim()).filter(Boolean);
-  if (!raw.length || raw.length > 500 || raw.some((s) => !/^[1-9]\d{0,14}$/.test(s))) {
-    return { error: "nat_order_ids: 1 έως 500 θετικοί ακέραιοι, χωρισμένοι με κόμμα", code: "bad_nat_order_ids" };
-  }
-  return { args: { p_nat_order_ids: [...new Set(raw.map(Number))] } };
+  return planIdsArgs(url, "nat_order_ids", "p_nat_order_ids");
 }
 __name(planNatStateArgs, "planNatStateArgs");
 function planNoticesArgs(url, caller) {
@@ -6219,7 +6229,7 @@ async function handlePlan(request, url, origin, env) {
     // (tests/api-plan-no-resend.test.mjs pins both; r2 findings 1 and 6).
     // Type SERVER, as `slow`, never PLAN_RULE (finding 13): it is transient, and PLAN_RULE is the family of
     // the business refusals a client must treat as final.
-    if (pg && /^(40P01|40001|55P03)$/.test(String(pg.code || ""))) {
+    if (pg && BUSY_SQLSTATE.test(String(pg.code || ""))) {
       console.error(`PLAN ${name}: ${pg.code} (concurrent change)`);
       // a read writes nothing, so its text never speaks of writing (polish review 2 M2)
       return planError(409, "SERVER", "busy_retry", `Ταυτόχρονη αλλαγή από άλλον χρήστη — ${route.read ? `η πράξη ${name} δεν ολοκληρώθηκε` : "τίποτα δεν γράφτηκε"}· ξαναδοκίμασε`, origin, env);
