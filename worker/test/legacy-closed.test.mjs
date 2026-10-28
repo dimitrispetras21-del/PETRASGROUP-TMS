@@ -243,6 +243,7 @@ test('day L, stops of a legacy national order: PATCH / DELETE / batch by anyone 
   on('GET', 'order_stops', () => pgError(500, { message: 'boom' }));
   const r = await callOpen('dispatcher', 'DELETE', `${BASE}/${STOPS.id}/recS1`);
   assert.equal(r.status, 503, r.text);
+  assert.equal(r.json.error.code, 'row_unread');
   assert.equal(writes().length, 0);
 });
 
@@ -295,6 +296,18 @@ test('day L, /costs/rt: a legacy NL put on (POST legs nat_load_id) or taken off 
   let r = await callOpen('dispatcher', 'DELETE', '/costs/rt/5/legs?nat_load_id=77');
   assert.equal(r.status, 422, r.text);
   assert.equal(calls.length, 0);
+  // both ids: the leg removed is the ORDER's (legFilter prefers order_id), so it is not refused - and the DELETE sent
+  // filters by order_id only, never by the NL (pinned: a swap of that preference would open the NL path)
+  reset();
+  on('GET', 'ct_round_trips', () => json([{ id: 5, status: 'planned', model: 1 }]));
+  on('GET', 'ct_rt_legs', () => json([{ id: 1, rt_id: 5, order_id: 9 }]));
+  on('DELETE', 'ct_rt_legs', () => new Response(null, { status: 204 }));
+  r = await callOpen('dispatcher', 'DELETE', '/costs/rt/5/legs?order_id=9&nat_load_id=77');
+  assert.notEqual(r.json?.error?.code, 'legacy_closed', r.text);
+  const del = calls.find((c) => c.method === 'DELETE');
+  assert.ok(del, r.text);
+  assert.equal(del.params.get('order_id'), 'eq.9');
+  assert.equal(del.params.get('nat_load_id'), null);
   // an order leg is not legacy national: the request goes on to the DB (whatever it answers here)
   for (const [send, role, method, p, body] of [[callOpen, 'dispatcher', 'DELETE', '/costs/rt/5/legs?order_id=9', undefined],
     [callOpen, 'owner', 'DELETE', '/costs/rt/5/legs?nat_load_id=77', undefined], [call, 'dispatcher', 'DELETE', '/costs/rt/5/legs?nat_load_id=77', undefined],

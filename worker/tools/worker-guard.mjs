@@ -32,8 +32,9 @@
 //            ONE PER FEATURE: rpc: "plan_config_read" (W1), rpc: "plan_lookups"
 //            (W2), rpc: "plan_nat_state" (E3/E5, stream d1), rpc: "plan_activity"
 //            (E12/E13, stream d3) - each route row
-//            exactly once -, var LEGACY_CLOSED_AFTER_L (E16, the declaration
-//            once), truncated:  (E18, GET /costs/rt) and "order_delete_preview"
+//            exactly once -, var LEGACY_CLOSED_AFTER_L (E16) and var
+//            LEGACY_ROWS_AFTER_L (E16 by row, owner 28/10) - each declaration
+//            once -, truncated:  (E18, GET /costs/rt) and "order_delete_preview"
 //            (E19) - at least once. 0 = before deploy 1 (none), 1 = deploy 1 and
 //            after; 1 needs --f3 1. Without it: as before.
 // Prints one line per marker and exits 1 on the first STOP condition — no
@@ -129,7 +130,8 @@ if (f5 !== null) {
   for (const [name, mark, once] of [['rpc: "plan_config_read" (F5, W1)', 'rpc: "plan_config_read"', true],
     ['rpc: "plan_lookups" (F5, W2)', 'rpc: "plan_lookups"', true], ['rpc: "plan_nat_state" (F5, E3/E5)', 'rpc: "plan_nat_state"', true],
     ['rpc: "plan_activity" (F5, E12/E13)', 'rpc: "plan_activity"', true],
-    ['var LEGACY_CLOSED_AFTER_L (F5, E16)', 'var LEGACY_CLOSED_AFTER_L', true], ['truncated:  (F5, E18)', 'truncated: ', false],
+    ['var LEGACY_CLOSED_AFTER_L (F5, E16)', 'var LEGACY_CLOSED_AFTER_L', true],
+    ['var LEGACY_ROWS_AFTER_L (F5, E16 rows, owner 28/10)', 'var LEGACY_ROWS_AFTER_L', true], ['truncated:  (F5, E18)', 'truncated: ', false],
     ['"order_delete_preview" (F5, E19)', '"order_delete_preview"', false]]) {
     rows.push([name, count(mark), (n) => (f5 === 1 ? (once ? n === 1 : n >= 1) : n === 0)]);
   }
