@@ -12,6 +12,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
+- dimitris · `feat/national-v5-079-move-l` (PR #155) · Εθνικά v5: η ημέρα L 31/10 → 24/10. Η 079 ΕΚΤΕΛΕΣΤΗΚΕ 28/10 ~17:20 (19 γέφυρες σε 9 VS, 8 NL, via_hub 27, verify πράσινο, το CHECK `plan_config_future` έγινε δάπεδο) και τα αρχεία βγήκαν από το `drafts/`· μένει το merge (`docs/sessions/2026-10-28-dimitris-079-move-l.md`)
 - dimitris · `fix/wn5-points-place-city` · Εθνικά v5: board points as the Weekly International (place bold, city under, client off the row; owner 28/10); PR pending (`docs/sessions/2026-10-28-dimitris-wn5-points-place-city.md`)
 - dimitris · `fix/wn5-vs-bridge-assign` · Εθνικά v5 B1: VS bridges can be assigned (a window per window-less stop, whole day by default); VS bridges also on the Veroia shelf (split / truck); PR pending (`docs/sessions/2026-10-28-dimitris-wn5-vs-bridge-assign.md`)
 - dimitris · `docs/wn4-plan-rev6` · Weekly National v4 plan (WP-A, one Veroia day, live since 12/10 morning)
