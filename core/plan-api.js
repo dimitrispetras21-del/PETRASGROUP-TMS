@@ -9,7 +9,7 @@
 //     drop up to three times), never _enqueue, never the offline queue (it replays writes from localStorage later).
 //     A 500 plan_unknown may have been SAVED: only the user, after looking at the board, presses again — with the
 //     SAME request_id, so the DB answers the first result (replayed) instead of writing again.
-//   - request_id only on the routes whose RPC takes it (three creations); dry_run only on the four with a dry run.
+//   - request_id only on the routes whose RPC takes it (the creations and the order edit, 077); dry_run only on the routes with a dry run.
 //     Anywhere else the DB refuses the key as bad_input, so the client refuses it first, without sending.
 //   - The caller owns the request_id through PlanApi.slot(), in memory only: sessionStorage and history.state are
 //     copied by «Διπλότυπη καρτέλα», and two tabs with one id would be one creation reported twice.
@@ -48,8 +48,10 @@ const DESIGNED = Object.freeze([KIND.REFUSAL, KIND.STALE, KIND.REUSED, KIND.NEED
 // run never does. Held to PLAN_ROUTES and to the SQL by tests/wn5-plan-api-worker.test.mjs.
 const DRY_ROUTES = Object.freeze(['POST /plan/move', 'PATCH /plan/rt/:id', 'POST /plan/rt/:id/clear', 'POST /plan/delete',
   'POST /plan/rt/:id/handover', 'PATCH /plan/segments/:id', 'POST /plan/segments/:id/remove']);
-// The 072 / 072b RPCs whose key list holds request_id — held equal by the same test.
-const REQUEST_ROUTES = Object.freeze(['POST /plan/orders', 'POST /plan/pieces/split', 'POST /plan/local-loading', 'POST /plan/rt/:id/handover']);
+// The 072 / 072b / 077 RPCs whose key list holds request_id — held equal by the same test. 077 (F21): the edit of an
+// order takes one too, required when it adds or removes a point (a creation / a removal replays on a second press).
+const REQUEST_ROUTES = Object.freeze(['POST /plan/orders', 'POST /plan/pieces/split', 'POST /plan/local-loading', 'POST /plan/rt/:id/handover',
+  'PATCH /plan/orders/:id']);
 // 072 plan_h_replay accepts a uuid in either case; crypto.randomUUID() gives lower case v4.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
