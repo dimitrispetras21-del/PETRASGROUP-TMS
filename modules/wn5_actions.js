@@ -1444,11 +1444,11 @@
     if (delta) body.shift = { side: st.side, delta: delta + ' days' };
     return Object.keys(body).length ? body : null;
   }
-  // why «Αποθήκευση» of the date panel is off (owner 28/10): nothing changed, an hour that is not ΗΗ:ΛΛ, the dry run
-  // still out, refused (its strip) or a conflict (its line on the right)
   // a Veroia window edited into something that is not ΗΗ:ΛΛ: _dateBody leaves it out, so with a new day the save would
   // send the shift alone and drop the typed hour unseen (principle 1) — the save stays off and says so
   const _dateBadWin = (st) => !!st.vStop && (st.from !== st.from0 || st.to !== st.to0) && (!_hhmm(st.from) || !_hhmm(st.to));
+  // why «Αποθήκευση» of the date panel is off (owner 28/10): nothing changed, an hour that is not ΗΗ:ΛΛ, the dry run
+  // still out, refused (its strip) or a conflict (its line on the right)
   function _dateWhy(st, body) {
     if (_dateBadWin(st)) return 'Λείπει: παράθυρο σε μορφή ΗΗ:ΛΛ';
     if (body && st.okFor === JSON.stringify(body) && rtSaveBody(st.dryBody, st.dryAnswer)) return null;
