@@ -10,8 +10,9 @@ import { fileURLToPath } from 'node:url';
 import { buildDryRun } from './build-073-dryrun.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-// drafts/ until the owner runs them (CLAUDE.md rule 5); the builder stays here
-export const DIR = path.resolve(HERE, '..');
+// The folder that holds the 075 files. 075 was executed 28/10 and left drafts/ (CLAUDE.md rule 5): the source and the
+// generated files are one up, the builder stays here.
+export const DIR = path.resolve(HERE, '..', '..');
 export const SOURCE = '075_plan_order_side.sql';
 const md5Of = (sig) => `(SELECT md5(prosrc) FROM pg_proc WHERE oid = '${sig}'::regprocedure)`;
 const SIGS = ['public.plan_orders_create(jsonb,text,text)', 'public.plan_order_update(jsonb,text,text)', 'public.plan_board(date,text)'];
