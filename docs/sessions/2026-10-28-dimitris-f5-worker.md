@@ -1,0 +1,26 @@
+# 2026-10-28 · dimitris · F5 stream (b): Worker deploy 1 and deploy 2
+
+- **Τι άλλαξε:** κλάδος `deploy/worker-plan-f5` πάνω στη ζωντανή πηγή `f1e97f07` (Worker `ffd5531f`), PR #121 (draft).
+  - Νέες αναγνώσεις: `GET /plan/config`, `GET /plan/lookups`, `GET /plan/nat-state` (για τον d1).
+  - Ε16 (`LEGACY_CLOSED_AFTER_L`, Q-10): ενεργό μόνο όταν ο διακόπτης είναι ανοιχτός.
+  - Ε18: `/costs/rt` ως 999 γραμμές, με `truncated`.
+  - Ε19: `DELETE ORDERS` ζητά πρώτα το `order_delete_preview` (428 / 422 `stale_confirm`).
+  - Facade `busy_retry` 503.
+  - «Via Hub»: κλειστό πάντα (`dbOnly`).
+  - Φρουρός: `--f5` και `--plan 2`, 26 σημάδια.
+- **Αποφασίστηκε** (από τον κώδικα και το review· η επιβεβαίωση ζητήθηκε μέσω του συντονιστή):
+  - `legacy_closed` = **422**, όχι 409, γιατί το `_atRetry` ξαναστέλνει το 409 τρεις φορές.
+  - Όριο 999 και όχι 1000, λόγω του `db-max-rows` (1000).
+  - Τα tests δουλεύουν με όποια τιμή έχει ο διακόπτης στην πηγή, ώστε το deploy 2 να μείνει μία γραμμή πηγής.
+- **Code review xhigh, γύρος 1:** 14 ευρήματα, 5 διορθώθηκαν. Τα υπόλοιπα πήγαν στον συντονιστή:
+  - (c) `core/api.js`: 428/token στο `atDelete`·
+  - (d2) PATCH Status σε NAT_ORDERS·
+  - owner: «Invoice Date»· τρία μονοπάτια ιστορικού έξω από το Ε16.
+- **Τι μένει:**
+  - αντίγραφο της 074a από το (a1), με την `plan_nat_state`· μετά, xhigh στο τελικό tip και PR έτοιμο ως την Πέμ 12:00·
+  - deploy 1 από τον owner την Πέμ μετά τις 15:00, μετά την 074a, με το script φάσεων εκτός repo· μετά, λίστα φρουρού στο CLAUDE.md και record στον ίδιο κλάδο·
+  - deploy 2: ένα commit (`var PLAN_WRITES_OPEN = true;`), μαζί με το αντίγραφο της 074 και τη λίστα φρουρού `--plan 2`, έγκριση ως την Παρ 12:00.
+- **Αν σπάσει:**
+  - φρουρός πριν και μετά από κάθε deploy (exit 1 = επαναφορά)·
+  - το `GET /plan/config` λέει ποιος Worker απαντά (`writes_open`)·
+  - η 074a που λείπει απαντά 503 με το όνομά της, ποτέ σιωπηλά.

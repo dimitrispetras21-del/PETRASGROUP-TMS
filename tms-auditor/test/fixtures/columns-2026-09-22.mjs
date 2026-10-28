@@ -105,11 +105,15 @@ export const V5_073 = {
       ['n_legs', 'int8'], ['ended', 'bool']],
     ct_v_v5_revenue: [['kind', 'text'], ['order_id', 'int8'], ['nat_order_id', 'int8'], ['piece_id', 'int8'], ['leg_id', 'int8'], ['rt_id', 'int8'],
       ['pallets', 'numeric'], ['total', 'numeric'], ['amount', 'numeric']],
+    // 074a / 074 (F5 day L): the one row of day L, read by B-95..B-98 (074b)
+    plan_config: [['id', 'int2!'], ['cutover_day', 'date!'], ['opened_at', 'timestamptz!'], ['opened_by', 'text!']],
     // 073 (Q6-1, owner 26/10): the partner cost of a v5 cycle per partner of its segments, read by B-83
     ct_v_rt_partner_cost: [['rt_id', 'int8'], ['partner_id', 'int8'], ['planned', 'numeric'], ['invoiced', 'numeric'], ['cost', 'numeric'],
       ['unmatched', 'bool'], ['rate_missing', 'bool']],
   },
   columns: { ct_round_trips: [['model', 'int2'], ['start_at', 'timestamptz'], ['end_at', 'timestamptz'], ['partner_rate', 'numeric']],
              pl_movements: [['piece_leg_id', 'int8']],
-             ct_cost_lines: [['partner_id', 'int8']] },
+             ct_cost_lines: [['partner_id', 'int8']],
+             // 071 (executed): the hub per stop, written by 074's bridge and read by B-95 / B-99 (074b)
+             order_stops: [['via_hub', 'bool!']] },
 };

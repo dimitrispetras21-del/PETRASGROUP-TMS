@@ -84,7 +84,60 @@
     })();
     return _inflight;
   }
-  const PlanConfig = Object.freeze({ STATE, load });
+  // The v5 side of VS orders, keyed by the order's rec id: Map rec → the /plan/vs-state entry
+  // ({carriers, all_executed, all_planned, first_hub_day, n_pieces}) or 'missing' (the base answered: no bridge).
+  // Read by the Weekly Διεθνών (Ε1/Ε20) and the VS stage of the order form (Ε2) — one reader, not two.
+  // /plan/* takes the base's numeric ids. The one map rec → id open to every role is GET /pallets/gate
+  // (pl_v_order_gate: every order with stops, 79/79 live VS on 28/10), the one core/rt-feed.js _rtPg uses.
+  // A rec the map does not hold is an ERROR, never 'missing' (principle 1): 'missing' is the base's word only.
+  // Throws on any failure; the caller shows «απέτυχε», never «χωρίς εθνικό», and logs it once (planFetch
+  // already logged its own failures; the rest are logged by the caller, never twice here).
+  const GATE_MAX = 300, VS_MAX = 500;
+  async function vsState(orderRecs) {
+    const recs = [...new Set((orderRecs || []).filter(Boolean))];
+    const out = new Map();
+    if (!recs.length) return out;
+    if (typeof plFetch !== 'function' || typeof planFetch !== 'function') throw _err('vs_no_client', 'Η εφαρμογή φορτώθηκε χωρίς τα core/pallet-feed.js / core/plan-api.js — ενημέρωσε τον Δημήτρη');
+    const pgOf = new Map();
+    for (let i = 0; i < recs.length; i += GATE_MAX) {
+      const part = recs.slice(i, i + GATE_MAX);
+      const g = await plFetch('/pallets/gate?order_recs=' + encodeURIComponent(part.join(',')));
+      for (const r of (g && g.records) || []) if (r && r.order_rec && Number.isSafeInteger(r.order_id)) pgOf.set(r.order_rec, r.order_id);
+    }
+    const lost = recs.filter((r) => !pgOf.has(r));
+    if (lost.length) {
+      const e = _err('vs_unmapped', 'Δεν βρέθηκε ο αριθμός βάσης για ' + lost.length + ' παραγγελία(ες) VS — η εθνική πλευρά δεν διαβάστηκε');
+      e.data = { recs: lost };
+      throw e;
+    }
+    for (let i = 0; i < recs.length; i += VS_MAX) {
+      const part = recs.slice(i, i + VS_MAX);
+      const d = await planFetch('GET', '/plan/vs-state?order_ids=' + part.map((r) => pgOf.get(r)).join(','));
+      for (const r of part) {
+        const v = d ? d[String(pgOf.get(r))] : undefined;
+        if (v === 'missing' || (v && typeof v === 'object' && Array.isArray(v.carriers))) out.set(r, v);
+        else {
+          throw _err('vs_shape', 'Η εθνική πλευρά VS ήρθε σε άγνωστη μορφή — ενημέρωσε τον Δημήτρη');
+        }
+      }
+    }
+    return out;
+  }
+
+  // The old national model's facade tables (Ε16): from day L the base freezes new rows in them and the Worker
+  // narrows who may change one (Q-10). The side doors of the app (AI chat update_record, the accountant's quick
+  // edit, the Κάδος restore) refuse them in the screen too, so the user reads a reason, not a green toast.
+  // Read lazily: config.js defines TABLES before any call, but not necessarily before this file.
+  function isLegacyTable(tableId) {
+    if (typeof TABLES === 'undefined' || !tableId) return false;
+    return [TABLES.NAT_ORDERS, TABLES.NAT_LOADS, TABLES.GL_LINES, TABLES.CONS_LOADS].includes(tableId);
+  }
+  const LEGACY_TEXT = Object.freeze({
+    after: 'Μετά τη μετάβαση εθνικών (v5) αυτό αλλάζει μόνο από το Εβδομαδιαίο Εθνικών',
+    unknown: 'Δεν διαβάστηκε αν έγινε η μετάβαση εθνικών (v5) — η αλλαγή δεν στάλθηκε· δοκίμασε ξανά',
+  });
+
+  const PlanConfig = Object.freeze({ STATE, load, vsState, isLegacyTable, LEGACY_TEXT });
   if (typeof module !== 'undefined' && module.exports) module.exports = PlanConfig;
   else root.PlanConfig = PlanConfig;
 })(typeof window !== 'undefined' ? window : this);

@@ -12,11 +12,14 @@ import path from 'node:path';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const TOOL = path.join(here, '..', 'tools', 'worker-guard.mjs');
-const SRC = path.join(here, '..', 'src', 'index.js');
-const src = readFileSync(SRC, 'utf8');
+// the deploy-1 state of the source (writes closed), whichever value this branch holds: the day-L commit (F5 deploy 2)
+// carries the open switch, and the checks below are about the closed bundle (--plan 2 has its own test, -f5)
+const src = readFileSync(path.join(here, '..', 'src', 'index.js'), 'utf8').replace('\nvar PLAN_WRITES_OPEN = true;\n', '\nvar PLAN_WRITES_OPEN = false;\n');
 const plan = src.includes('var PLAN_PERMS = {') ? '1' : '0';                 // on deploy/worker-plan-f3: 1
 const handover = src.includes('rpc: "plan_seg_change"') ? '1' : '0';         // on deploy/worker-plan-f3: 1
 const dir = mkdtempSync(path.join(tmpdir(), 'worker-guard-f3-'));
+const SRC = path.join(dir, 'index.js');
+writeFileSync(SRC, src);
 const run = (file, ...args) => {
   const r = spawnSync(process.execPath, [TOOL, file, ...args], { encoding: 'utf8' });
   return { code: r.status, out: r.stdout + r.stderr };

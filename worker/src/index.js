@@ -1764,11 +1764,12 @@ var TABLES = {
       // 072's rollback does not count it as a v5 row.
       "Via Hub": "via_hub"
     },
-    // Born closed (review of PR #90, finding 8; αρχή 5): «Via Hub» is read by every path, but a write naming
-    // it is refused (400, named, no DB call) while PLAN_WRITES_OPEN is false — a stray true set before day L
-    // would survive 074 and count as «through Veroia» in v5. No screen writes it today (grep 26/10: none).
-    // It opens by itself with the ONE switch of /plan/* (refuseReadOnly reads PLAN_WRITES_OPEN at request time).
-    closedUntilPlan: ["Via Hub"],
+    // Born closed (review of PR #90, finding 8; αρχή 5), and closed for good since F5 (owner 28/10, Q-6): «Via
+    // Hub» is read by every path, but only the DB writes it (074 plan_bridge_sync: true on the national side of
+    // a VS in v5, false elsewhere). A facade write naming it is refused (400 db_only, named, no DB call) before
+    // AND after day L — the /plan/* switch does not open it. It becomes an input only with the per-stop box of
+    // the International panel (F4b), in its own change. No screen writes it today (grep 26/10: none).
+    dbOnly: ["Via Hub"],
     // Labels the base computes. Mapped in `fields` so every read path (select,
     // filter, sort, the PATCH answer the screen reads back) carries them with
     // no extra request; `fields` is also the write allow-list, so a write
@@ -2694,14 +2695,14 @@ __name(authorizeWrite, "authorizeWrite");
 // is refused as a whole, before any database call, naming the label — the
 // caller fixes its request instead of reading «saved» over a half-applied one.
 function refuseReadOnly(cfg, fieldsList, origin, env) {
-  if (cfg.closedUntilPlan && !PLAN_WRITES_OPEN) {
+  if (cfg.dbOnly) {
     const shut = [];
     for (const f of fieldsList) {
       if (!f || typeof f !== "object") continue;
-      for (const label of cfg.closedUntilPlan) if (Object.prototype.hasOwnProperty.call(f, label) && !shut.includes(label)) shut.push(label);
+      for (const label of cfg.dbOnly) if (Object.prototype.hasOwnProperty.call(f, label) && !shut.includes(label)) shut.push(label);
     }
     if (shut.length) {
-      return jsonError(`${shut.map((l) => `«${l}»`).join(", ")}: γράφεται από την ημέρα της μετάβασης στο Εβδομαδιαίο Εθνικών — ως τότε μόνο ανάγνωση`, 400, origin, env);
+      return jsonOk({ error: { type: "BAD_REQUEST", code: "db_only", message: `${shut.map((l) => `«${l}»`).join(", ")}: το γράφει μόνο η βάση (γέφυρα VS του Εβδομαδιαίου Εθνικών) — δεν αλλάζει από οθόνη` } }, origin, env, 400);
     }
   }
   if (!cfg.readOnly) return null;
@@ -2831,6 +2832,10 @@ async function handleFacadeCreate(request, tableId, origin, env, ctx) {
   } catch {
     return jsonError("Invalid request", 400, origin, env);
   }
+  // a JSON `null` / array / number would throw below (CF 1101 without CORS): the same 400 as a body that is not JSON
+  if (!body || typeof body !== "object" || Array.isArray(body)) return jsonError("Invalid request", 400, origin, env);
+  const closed = legacyClosedRefusal(cfg.pg, caller.role, "POST", Array.isArray(body.records) ? body.records.map((e) => e?.fields) : [body.fields], origin, env);
+  if (closed) return closed;
   if (Array.isArray(body.records)) {
     return facadeBatchCreate(body.records, cfg, caller, origin, env, ctx);
   }
@@ -2857,6 +2862,8 @@ async function handleFacadeCreate(request, tableId, origin, env, ctx) {
     console.error(`POST facade ${cfg.name}`, e.message);
     const rule = stockRuleError(e);
     if (rule) return stockRuleResponse(rule, origin, env);
+    const busy = facadeBusy(e, origin, env);
+    if (busy) return busy;
     return jsonError("Failed to create record: " + String(e.message || "").slice(0, 220), 500, origin, env);
   }
   await audit(env, {
@@ -3011,6 +3018,8 @@ async function facadeBatchCreate(entries, cfg, caller, origin, env, ctx) {
     // One insert = one transaction: a refused row means NO row landed.
     const rule = stockRuleError(e);
     if (rule) return stockRuleResponse(rule, origin, env);
+    const busy = facadeBusy(e, origin, env);
+    if (busy) return busy;
     return jsonError("Failed to create record: " + String(e.message || "").slice(0, 220), 500, origin, env);
   }
   await auditMany(env, createdRows.map((created) => ({
@@ -3090,6 +3099,8 @@ async function handleFacadeBatchUpdate(request, tableId, origin, env, ctx) {
   for (const entry of body.records) {
     if (!entry?.id) return jsonError("Each batch record needs an id", 400, origin, env);
   }
+  const closed = legacyClosedRefusal(cfg.pg, caller.role, "PATCH", body.records.map((e) => e.fields), origin, env);
+  if (closed) return closed;
   // 14/9: batch-level link resolution, one «before» read, one audit insert and
   // one shaping pass — per row this handler spent ~10 subrequests, so 5 stops
   // already touched Cloudflare's 50-subrequest ceiling and the rows after it
@@ -3125,6 +3136,8 @@ async function handleFacadeBatchUpdate(request, tableId, origin, env, ctx) {
     const owned = planOwnedRefusal(cfg, beforeFailed ? void 0 : beforeBy.get(recId) || null, origin, env);
     if (owned) return owned;
   }
+  const rowClosed = legacyRowRefusal(cfg.pg, caller.role, patches.map(({ recId }) => (beforeFailed ? void 0 : beforeBy.get(recId) || null)), origin, env);
+  if (rowClosed) return rowClosed;
   const updatedRows = [];
   const auditEntries = [];
   for (const { recId, patch } of patches) {
@@ -3138,6 +3151,9 @@ async function handleFacadeBatchUpdate(request, tableId, origin, env, ctx) {
       await auditMany(env, auditEntries);
       const rule = stockRuleError(e);
       if (rule) return stockRuleResponse(rule, origin, env);
+      // only while no earlier row of the batch landed: then nothing was kept
+      const busy = auditEntries.length ? null : facadeBusy(e, origin, env);
+      if (busy) return busy;
       return jsonError("Failed to update record: " + String(e.message || "").slice(0, 220), 500, origin, env);
     }
     if (!updated) {
@@ -3438,7 +3454,12 @@ const PLAN_RULE_TEXT = {
   seg_many: "Το δρομολόγιο έχει αλλαγή οχήματος — άλλαξε το όχημα στο συγκεκριμένο τμήμα (ΑΡΧΙΚΟ, ΕΝΔΙΑΜΕΣΟ ή ΤΕΛΙΚΟ)",
   seg_gone: "Η αλλαγή οχήματος δεν υπάρχει πια — ανανέωσε τη σελίδα",
   seg_same: "Το νέο όχημα είναι το ίδιο με αυτό που ήδη εκτελεί — διάλεξε άλλο",
-  seg_no_vehicle: "Η αλλαγή οχήματος θέλει φορτηγό ή συνεργάτη"
+  seg_no_vehicle: "Η αλλαγή οχήματος θέλει φορτηγό ή συνεργάτη",
+  // 074 — day L (F5, plan W3): the INSERT freeze of the old national model, the guard on the day itself, and a
+  // bridge that could not re-cut its pieces after a change of the international order
+  legacy_frozen: "Το παλιό μοντέλο εθνικών έκλεισε την ημέρα μετάβασης· νέα εθνικά μόνο από το Εβδομαδιαίο Εθνικών",
+  bad_cutover_day: "Η ημέρα μετάβασης πρέπει να είναι Σάββατο στο μέλλον — ενημέρωσε τον Δημήτρη",
+  bridge_recut: "Η αλλαγή της διεθνούς δεν περνά στα φορτία του Εβδομαδιαίου Εθνικών (τα κομμάτια δεν ξανακόβονται) — δες τη στάση στο Εβδομαδιαίο Εθνικών και ξαναδοκίμασε"
 };
 const PLAN_CHECK_TEXT = {
   // 071 CHECKs on ct_round_trips (+ partner_needs_partner, live before 071:
@@ -3593,6 +3614,20 @@ function stockRuleResponse(rule, origin, env) {
   return jsonOk({ error: { type: rule.type || "STOCK_RULE", code: rule.code, message: rule.message } }, origin, env, 422);
 }
 __name(stockRuleResponse, "stockRuleResponse");
+// F5 (plan W3): from day L the bridge triggers of 074 lock v5 rows inside a facade write on orders /
+// order_stops, so a write can lose a lock to /plan/* (deadlock 40P01, serialization 40001, lock_timeout 55P03).
+// The statement rolled back: nothing was kept, the same request can pass a moment later. 503 busy_retry, the code
+// of /plan/* — never «Failed to update record» (a 500 that reads as broken). Any facade table: the SQLSTATE says
+// «rolled back» whatever the table. Only where the request is ONE statement (a batch PATCH whose earlier rows
+// landed keeps its 500).
+// ONE list for both layers (handlePlan's busy_retry reads it too): deadlock, serialization, lock_timeout
+var BUSY_SQLSTATE = /^(40P01|40001|55P03)$/;
+function facadeBusy(e, origin, env) {
+  const pg = e && e.pg && typeof e.pg === "object" ? e.pg : null;
+  if (!pg || !BUSY_SQLSTATE.test(String(pg.code || ""))) return null;
+  return jsonOk({ error: { type: "SERVER", code: "busy_retry", message: "Ταυτόχρονη αλλαγή από άλλον χρήστη — τίποτα δεν γράφτηκε· δοκίμασε ξανά" } }, origin, env, 503);
+}
+__name(facadeBusy, "facadeBusy");
 // DEPLOY ORDER GUARD (060 → Worker → screens, coordinator D10 4/10/2026).
 // This Worker names 060's columns (dl_v_entries.local_move_id in the payroll
 // month read). Deployed before 060 — or left live after a 060 rollback — that
@@ -3800,6 +3835,8 @@ async function handleFacadeUpdate(request, tableId, recId, origin, env, ctx) {
   } catch {
     return jsonError("Invalid request", 400, origin, env);
   }
+  const closed = legacyClosedRefusal(cfg.pg, caller.role, "PATCH", [body && body.fields], origin, env);
+  if (closed) return closed;
   // `_expect` is validated before anything else happens: a bad one is a 400
   // with no side effect, never a write that silently skipped the check.
   let expect = null;
@@ -3827,6 +3864,8 @@ async function handleFacadeUpdate(request, tableId, recId, origin, env, ctx) {
   const before = await readRowBefore(env, cfg.pg, recId);
   const owned = planOwnedRefusal(cfg, before, origin, env);
   if (owned) return owned;
+  const rowClosed = legacyRowRefusal(cfg.pg, caller.role, [before], origin, env);
+  if (rowClosed) return rowClosed;
   if (before === void 0 && invoiceNeedsBefore(cfg.pg, patch)) {
     return jsonError("Η τιμολόγηση δεν επαληθεύτηκε (η παραγγελία δεν διαβάστηκε) — ξαναδοκίμασε", 503, origin, env);
   }
@@ -3898,6 +3937,8 @@ async function handleFacadeUpdate(request, tableId, recId, origin, env, ctx) {
     console.error(`PATCH facade ${cfg.name}`, e.message);
     const rule = stockRuleError(e);
     if (rule) return stockRuleResponse(rule, origin, env);
+    const busy = facadeBusy(e, origin, env);
+    if (busy) return busy;
     return jsonError("Failed to update record", 500, origin, env);
   }
   if (!updated && cas) {
@@ -3972,10 +4013,16 @@ __name(authorizeScopedDelete, "authorizeScopedDelete");
 async function handleFacadeDelete(request, tableId, recId, origin, env) {
   const { res, caller, cfg } = await authorizeScopedDelete(request, tableId, recId, origin, env);
   if (res) return res;
-  // read only for a table with v5 rows (finding 2): every other DELETE keeps its one request
-  if (cfg.planOwned) {
-    const owned = planOwnedRefusal(cfg, await readRowBefore(env, cfg.pg, recId), origin, env);
+  const closed = legacyClosedRefusal(cfg.pg, caller.role, "DELETE", [], origin, env);
+  if (closed) return closed;
+  // read only for a table with v5 rows (finding 2), or a legacy row rule that applies (F5): every other DELETE keeps
+  // its one request
+  if (cfg.planOwned || legacyRowsApply(cfg.pg, caller.role)) {
+    const before = await readRowBefore(env, cfg.pg, recId);
+    const owned = planOwnedRefusal(cfg, before, origin, env);
     if (owned) return owned;
+    const rowClosed = legacyRowRefusal(cfg.pg, caller.role, [before], origin, env);
+    if (rowClosed) return rowClosed;
   }
   let deleted;
   try {
@@ -3987,6 +4034,8 @@ async function handleFacadeDelete(request, tableId, recId, origin, env) {
     // e.g. unmarking a lot that already has pieces (stock_guard_lots).
     const rule = stockRuleError(e);
     if (rule) return stockRuleResponse(rule, origin, env);
+    const busy = facadeBusy(e, origin, env);
+    if (busy) return busy;
     return jsonError("Failed to delete record", 500, origin, env);
   }
   if (!deleted) {
@@ -4012,6 +4061,46 @@ async function handleOrderCascadeDelete(request, tableId, recId, origin, env) {
   if (!can(caller.role, cfg.pg, "PATCH")) {
     return jsonError("Forbidden", 403, origin, env);
   }
+  // E19 (spec §5, plan W6): deleting an international VS empties what its bridges hold in v5 (pieces on cycles,
+  // a cycle with payroll). The DB lists it first (074a order_delete_preview, the list shape of 072's
+  // plan_h_confirm); a non-empty list needs the token the user saw: none → 428 with the list, another → 422
+  // stale_confirm, nothing deleted. An empty list goes on as today: 0 bridges before day L, so this changes no
+  // delete until then. delete_order_cascade itself is unchanged. Two transactions: a leg put on the order in the
+  // milliseconds between them is not in the list (accepted; the cascade's own audit row names every step).
+  // A missing preview is a 503, never a delete without it (αρχή 5): after day L it would empty cycles unasked.
+  const sentToken = new URL(request.url).searchParams.get("confirm_token");
+  let preview;
+  try {
+    preview = await dbRpc(env, "order_delete_preview", { p_order_legacy_id: recId, p_role: caller.role });
+  } catch (e) {
+    console.error(`cascade-delete ORDERS ${recId}: preview`, e.message);
+    const pg = e && e.pg && typeof e.pg === "object" ? e.pg : null;
+    if (pg && (pg.code === "PGRST202" || (pg.code === "42883" && /\border_delete_preview\b/.test(String(pg.message || ""))))) {
+      return jsonOk({ error: { type: "SCHEMA_BEHIND", code: "schema_behind", message: "Η βάση δεν έχει ακόμη το migration 074a (λίστα συνεπειών διαγραφής) — η παραγγελία δεν σβήστηκε· ενημέρωσε τον Δημήτρη" } }, origin, env, 503);
+    }
+    const busy = facadeBusy(e, origin, env);
+    if (busy) return busy;
+    return jsonError("Failed to delete order: the list of consequences could not be read — nothing was deleted", 500, origin, env);
+  }
+  const consequences = preview && typeof preview === "object" && Array.isArray(preview.consequences) ? preview.consequences : null;
+  if (consequences === null) {
+    console.error(`cascade-delete ORDERS ${recId}: preview answered`, String(JSON.stringify(preview)).slice(0, 200));
+    return jsonError("Failed to delete order: the list of consequences could not be read — nothing was deleted", 500, origin, env);
+  }
+  if (consequences.length) {
+    // the DB cuts amounts by p_role; the same tripwire as /plan/* (PLAN_MONEY_KEYS): never forwarded to another role
+    if (!PLAN_MONEY_ROLES.includes(caller.role) && planHasAmount(consequences)) {
+      console.error(`cascade-delete ORDERS ${recId}: the preview answered an amount to role ${caller.role}`);
+      return jsonError("Failed to delete order: the list of consequences carried amounts for this role — nothing was deleted", 500, origin, env);
+    }
+    const shown = { consequences, confirm_token: preview.confirm_token ?? null };
+    if (sentToken === null) {
+      return jsonOk({ error: { type: "PLAN_RULE", code: "need_token", message: PLAN_RULE_TEXT.need_token }, preview: shown }, origin, env, 428);
+    }
+    if (typeof preview.confirm_token !== "string" || sentToken !== preview.confirm_token) {
+      return jsonOk({ error: { type: "PLAN_RULE", code: "stale_confirm", message: PLAN_RULE_TEXT.stale_confirm }, preview: shown }, origin, env, 422);
+    }
+  }
   let summary;
   try {
     summary = await dbRpc(env, "delete_order_cascade", { p_order_legacy_id: recId });
@@ -4022,6 +4111,8 @@ async function handleOrderCascadeDelete(request, tableId, recId, origin, env) {
     // cascade step too — nothing was touched.
     const rule = stockRuleError(e);
     if (rule) return stockRuleResponse(rule, origin, env);
+    const busy = facadeBusy(e, origin, env);
+    if (busy) return busy;
     return jsonError("Failed to delete order", 500, origin, env);
   }
   if (!summary || summary.order_found === false) {
@@ -4309,6 +4400,12 @@ async function handleCosts(request, url, origin, env) {
       if (!v.ok) return jsonError(v.error, v.status, origin, env);
       const orderIds = v.legs.filter((l) => l.order_id !== void 0).map((l) => l.order_id);
       const natIds = v.legs.filter((l) => l.nat_load_id !== void 0).map((l) => l.nat_load_id);
+      // F5 E16 (owner 28/10, after code review): putting a legacy NL on a round trip changes NL history - owner only
+      // from day L, the same rule and answer as a facade PATCH of national_loads, before any DB call
+      if (natIds.length) {
+        const closed = legacyClosedRefusal("national_loads", caller.role, "PATCH", [], origin, env);
+        if (closed) return closed;
+      }
       let existing = [];
       if (orderIds.length || natIds.length) {
         const parts = [];
@@ -4403,6 +4500,11 @@ async function handleCosts(request, url, origin, env) {
       const orderIdQ = url.searchParams.get("order_id");
       const natLoadIdQ = url.searchParams.get("nat_load_id");
       if (!orderIdQ && !natLoadIdQ) return jsonError("order_id or nat_load_id required", 400, origin, env);
+      // F5 E16 (owner 28/10): taking a legacy NL off a round trip, the same owner-only rule, before any DB call
+      if (!orderIdQ) {
+        const closed = legacyClosedRefusal("national_loads", caller.role, "PATCH", [], origin, env);
+        if (closed) return closed;
+      }
       const rtBefore = await dbSelectRaw(env, "ct_round_trips", new URLSearchParams({ id: `eq.${recId}`, select: "*" }));
       if (!rtBefore.rows.length) return jsonError("Not found", 404, origin, env);
       const rem = canRemoveLeg(rtBefore.rows[0]);
@@ -4425,10 +4527,16 @@ async function handleCosts(request, url, origin, env) {
     // ---- GET /costs/rt  (λίστα ΧΩΡΙΣ αποτελέσματα PnL) ----
     if (resource === "rt" && method === "GET") {
       const q = url.searchParams;
+      // E18 (spec §5, plan W5 — the additive half, 28/10): up to 999 trips, and the answer SAYS when it was cut
+      // (truncated), where 200 (500 with overlap) used to drop the older weeks in silence. 999, not the spec's 1000,
+      // for the same reason as /costs/lines: one probe row past the page proves «more», and PostgREST's
+      // db-max-rows is 1000 (measured 4/10), so a 1000 page would ask 1001, get 1000 and never see it was cut.
+      // from/to stay optional until all seven callers send them (their own PR after day L).
+      const RT_MAX = 999;
       const params = new URLSearchParams();
       params.set("select", "*,ct_rt_legs(id,direction,order_id,nat_load_id,seq)");
       params.set("order", "date_start.desc");
-      params.set("limit", "200");
+      params.set("limit", String(RT_MAX + 1));
       // w11 θέμα 4 (owner 21/9): the DKV import needs every trip that RUNS in
       // the period, not only those that started in it — a trip that began 8+
       // days before the statement and was still on the road was missing from
@@ -4438,7 +4546,6 @@ async function handleCosts(request, url, origin, env) {
         if (!q.get("from") || !q.get("to")) return jsonError("overlap=1 needs from and to", 400, origin, env);
         params.append("date_start", `lte.${q.get("to")}`);
         params.set("or", `(date_end.gte.${q.get("from")},date_end.is.null)`);
-        params.set("limit", "500");
       } else {
         if (q.get("from")) params.append("date_start", `gte.${q.get("from")}`);
         if (q.get("to")) params.append("date_start", `lte.${q.get("to")}`);
@@ -4465,21 +4572,32 @@ async function handleCosts(request, url, origin, env) {
         if (!/^\d{1,9}(,\d{1,9}){0,49}$/.test(orderIdsQ)) return jsonError("Μη έγκυρο order_ids", 400, origin, env);
         const legRows = await dbSelectRaw(env, "ct_rt_legs", new URLSearchParams({ select: "rt_id", order_id: `in.(${orderIdsQ})` }));
         const rtIds = [...new Set(legRows.rows.map((l) => l.rt_id).filter((x) => x != null))];
-        if (!rtIds.length) return jsonOk({ records: [] }, origin, env);
+        if (!rtIds.length) return jsonOk({ records: [], truncated: false }, origin, env);
         params.append("id", `in.(${rtIds.join(",")})`);
       }
       if (q.get("status")) params.append("status", `eq.${q.get("status")}`);
       const { rows } = await dbSelectRaw(env, "ct_round_trips", params);
+      const truncated = rows.length > RT_MAX;
+      if (truncated) rows.length = RT_MAX;
+      // the lookups below read by in.(<RT ids>): 200 ids per request keeps the URL short (999 ids ≈ 6 KB); the
+      // chunks run together, and their rows come back in chunk order (dl_entries' «lowest id wins» holds per RT)
+      const selectIn = async (table, base, ids) => {
+        const chunks = [];
+        for (let i = 0; i < ids.length; i += 200) chunks.push(ids.slice(i, i + 200));
+        const answers = await Promise.all(chunks.map((c) => {
+          const p = new URLSearchParams(base);
+          p.set("rt_id", `in.(${c.join(",")})`);
+          return dbSelectRaw(env, table, p);
+        }));
+        return answers.flatMap((a) => a.rows);
+      };
       // Route detail (leg blocks) lives in dl_v_rt_route, built for the driver
       // ledger (migration 012) — reused here instead of re-deriving it, so the
       // driver card and the ledger never disagree on what a leg shows (αρχή 3).
       if (rows.length) {
         const ids = [...new Set(rows.map((r) => r.id))];
-        const routeParams = new URLSearchParams();
-        routeParams.set("select", "rt_id,route_text,route_legs");
-        routeParams.set("rt_id", `in.(${ids.join(",")})`);
         const routeByRt = /* @__PURE__ */ new Map();
-        const { rows: routeRows } = await dbSelectRaw(env, "dl_v_rt_route", routeParams);
+        const routeRows = await selectIn("dl_v_rt_route", { select: "rt_id,route_text,route_legs" }, ids);
         for (const rr of routeRows) routeByRt.set(rr.rt_id, rr);
         for (const r of rows) {
           const rr = routeByRt.get(r.id);
@@ -4493,7 +4611,7 @@ async function handleCosts(request, url, origin, env) {
         const v2Ids = rows.filter((r) => r.model === 2).map((r) => r.id);
         if (v2Ids.length) {
           try {
-            const { rows: cyc } = await dbSelectRaw(env, "v_rt_cycle", new URLSearchParams({ select: "rt_id,ended", rt_id: `in.(${v2Ids.join(",")})` }));
+            const cyc = await selectIn("v_rt_cycle", { select: "rt_id,ended" }, v2Ids);
             // Only a boolean is an answer: ended is NULL in the view when end_at is NULL (rt_v2_window lets a NULL
             // through), and a cycle missing from the answer is not known either - both are said, never read as false.
             const endedBy = new Map(cyc.filter((c) => typeof c.ended === "boolean").map((c) => [c.rt_id, c.ended]));
@@ -4518,13 +4636,12 @@ async function handleCosts(request, url, origin, env) {
         // σημαίνει καμία») — several rows for one rt_id is handled, not assumed
         // impossible: the lowest id wins and `ambiguous:true` is added.
         try {
-          const { rows: entryRows } = await dbSelectRaw(env, "dl_entries", new URLSearchParams({
+          const entryRows = await selectIn("dl_entries", {
             select: "id,rt_id,expenses",
-            rt_id: `in.(${ids.join(",")})`,
             entry_type: "eq.trip",
             deleted_at: "is.null",
             order: "id.asc"
-          }));
+          }, ids);
           const byRt = /* @__PURE__ */ new Map();
           for (const e of entryRows) {
             const existing = byRt.get(e.rt_id);
@@ -4539,7 +4656,7 @@ async function handleCosts(request, url, origin, env) {
           for (const r of rows) r.ledger_entry = null;
         }
       }
-      return jsonOk({ records: rows }, origin, env);
+      return jsonOk({ records: rows, truncated: truncated }, origin, env);
     }
     // ---- PATCH /costs/rt/:id  (κλείσιμο/διόρθωση — fallback του data event) ----
     if (resource === "rt" && method === "PATCH" && recId) {
@@ -5708,11 +5825,16 @@ var PLAN_PERMS = {
   // role (handover plan H-17). No money here: the DB
   // cuts payroll/DKV amounts by role (decision 9), the tripwire below refuses
   // to forward one; price and partner rate are for every role (decision 41).
-  owner: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "rt-clear": ["POST"], delete: ["POST"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"], "segment-remove": ["POST"] },
-  dispatcher: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "rt-clear": ["POST"], delete: ["POST"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"], "segment-remove": ["POST"] },
-  management: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"] },
-  accountant: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"] },
-  warehouse: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"] }
+  // config, lookups, nat-state and activity (F5, plan W1/W2; streams d1 E3/E5,
+  // d3 E12/E13): reads every screen needs to know day L, to fill its pickers
+  // (E-2), to show a v5 national order's carriers and «delivered», and the v5
+  // cycles of a partner / driver / vehicle or the stops at a place - every
+  // role, read only (the only money in them is the partner rate, decision 41).
+  owner: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], activity: ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "rt-clear": ["POST"], delete: ["POST"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"], "segment-remove": ["POST"] },
+  dispatcher: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], activity: ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "rt-clear": ["POST"], delete: ["POST"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"], "segment-remove": ["POST"] },
+  management: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], activity: ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"] },
+  accountant: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], activity: ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"] },
+  warehouse: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], activity: ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"] }
 };
 function planCan(role, resource, method) {
   const r = PLAN_PERMS[role];
@@ -5725,6 +5847,109 @@ __name(planCan, "planCan");
 // true in the SAME deploy that turns WN_V5 on — nowhere else (no env var:
 // one switch, in the source that is deployed, αρχή 3).
 var PLAN_WRITES_OPEN = false;
+// E16 (spec §5; owner 28/10, Q-10): from day L the old national model (NL / GL / CL and the Weekly National
+// «local» moves) is history, and a national order is created, planned and deleted only through /plan/*. The DB
+// freezes INSERT (074, plan:legacy_frozen); the UPDATE / soft delete of history is cut HERE, per role, before any
+// DB call — a stale screen (an old service worker) hears 422 legacy_closed instead of writing around plan_*.
+// 422, not the plan's 409 (code review xhigh 28/10): core/api.js _atRetry resends a 409 twice more (1s+2s) and toasts
+// a generic failure, while a 422 is the facade's final refusal (stock / relay / plan rules) and its Greek text is
+// what the user reads at once.
+// Read ONLY while PLAN_WRITES_OPEN holds: before day L the legacy boards are the live ones and keep every write
+// they have today (spec: switched on earlier, it breaks the old board). One switch, deploy 2 (Q-8).
+// Per table and method: the roles that keep the write ([] = nobody). national_orders PATCH is per label: role →
+// the labels it may still write ("*" = every label; the accountant's three are the ones the invoicing screen
+// writes together, with the price; the dispatcher's are spec §3). local_moves: only a POST of kind «local» (the
+// DB default) is closed; relay_* (060) and nat_loading (071, /plan/*) are not legacy. Owner only for 14 days
+// (Q-10): the read-only step after that is F7, never a silent expiry here. Deploy guard marker (--f5).
+var LEGACY_CLOSED_AFTER_L = {
+  national_loads: { POST: [], PATCH: ["owner"], DELETE: ["owner"] },
+  groupage_lines: { POST: [], PATCH: ["owner"], DELETE: ["owner"] },
+  consolidated_loads: { POST: [], PATCH: ["owner"], DELETE: ["owner"] },
+  national_orders: {
+    POST: [],
+    PATCH: { owner: "*", accountant: ["Invoiced", "Invoice Number", "Invoice Date", "Price"], dispatcher: ["Price", "Reference", "Notes"] },
+    DELETE: []
+  },
+  local_moves: { closedKind: "local" },
+  // owner 28/10 (after code review): the stops of a legacy national order are history too - a stop is tied to one
+  // (POST, or a PATCH that sets the link) by the owner only; the stops already tied are LEGACY_ROWS_AFTER_L
+  order_stops: { closedLink: "Parent Nat Order" }
+};
+// fieldsList: the `fields` of each record of the request ([] for a DELETE). Returns the 422 or null.
+function legacyClosedRefusal(table, role, method, fieldsList, origin, env) {
+  if (!PLAN_WRITES_OPEN || !Object.prototype.hasOwnProperty.call(LEGACY_CLOSED_AFTER_L, table)) return null;
+  const rule = LEGACY_CLOSED_AFTER_L[table];
+  let message = null;
+  if (rule.closedLink) {
+    const linked = (f) => {
+      const v = f && typeof f === "object" ? f[rule.closedLink] : void 0;
+      return Array.isArray(v) ? v.length > 0 : v !== void 0 && v !== null && v !== "";
+    };
+    if (role !== "owner" && (method === "POST" || method === "PATCH") && fieldsList.some(linked)) {
+      message = "Οι στάσεις των παλιών εθνικών (πριν από την ημέρα μετάβασης) αλλάζει μόνο ο Δημήτρης";
+    }
+  } else if (rule.closedKind) {
+    // a missing or null kind is the DB default, «local»
+    const kindOf = (f) => (f && typeof f === "object" && f["Move Kind"] !== void 0 && f["Move Kind"] !== null ? f["Move Kind"] : "local");
+    if (method === "POST" && fieldsList.some((f) => kindOf(f) === rule.closedKind)) {
+      message = "Οι τοπικές κινήσεις του παλιού Εβδομαδιαίου Εθνικών έκλεισαν την ημέρα μετάβασης — η τοπική φόρτωση γράφεται από το Εβδομαδιαίο Εθνικών";
+    }
+  } else {
+    const allowed = rule[method];
+    if (Array.isArray(allowed)) {
+      if (!allowed.includes(role)) {
+        message = method === "POST"
+          ? (table === "national_orders"
+            ? "Οι εθνικές παραγγελίες δημιουργούνται μόνο από το Εβδομαδιαίο Εθνικών"
+            : "Το παλιό μοντέλο εθνικών έκλεισε την ημέρα μετάβασης· νέα εθνικά μόνο από το Εβδομαδιαίο Εθνικών")
+          : (table === "national_orders"
+            ? "Οι εθνικές παραγγελίες σβήνονται μόνο από το Εβδομαδιαίο Εθνικών"
+            : "Τα παλιά εθνικά (πριν από την ημέρα μετάβασης) αλλάζει μόνο ο Δημήτρης");
+      }
+    } else if (allowed && typeof allowed === "object") {
+      const labels = Object.prototype.hasOwnProperty.call(allowed, role) ? allowed[role] : null;
+      if (labels === null) {
+        message = "Ο ρόλος σου δεν αλλάζει εθνικές παραγγελίες από εδώ — οι αλλαγές γίνονται από το Εβδομαδιαίο Εθνικών";
+      } else if (labels !== "*") {
+        const extra = [];
+        for (const f of fieldsList) {
+          if (!f || typeof f !== "object") continue;
+          for (const k of Object.keys(f)) if (!labels.includes(k) && !extra.includes(k)) extra.push(k);
+        }
+        if (extra.length) {
+          message = `Στις εθνικές παραγγελίες ο ρόλος σου αλλάζει από εδώ μόνο ${labels.map((l) => `«${l}»`).join(", ")} — τα ${extra.map((l) => `«${l}»`).join(", ")} από το Εβδομαδιαίο Εθνικών`;
+        }
+      }
+    }
+  }
+  if (message === null) return null;
+  return jsonOk({ error: { type: "LEGACY_CLOSED", code: "legacy_closed", message } }, origin, env, 422);
+}
+__name(legacyClosedRefusal, "legacyClosedRefusal");
+// The same rule decided on the ROW (owner 28/10, after code review; Q-10 owner only for 14 days): PATCH / DELETE of
+// a stop of a legacy national order, or of a Weekly National «local» move, by any role but the owner. Read with
+// PLAN_WRITES_OPEN like the table rules. The row is the one read before the write; a row that could not be read is
+// refused (503 row_unread, nothing written), never let through unchecked (αρχή 1). Deploy guard marker (--f5): the
+// declaration below, its own feature (owner 28/10), not only a part of LEGACY_CLOSED_AFTER_L.
+var LEGACY_ROWS_AFTER_L = {
+  order_stops: { is: (row) => row.national_order_id != null, message: "Οι στάσεις των παλιών εθνικών (πριν από την ημέρα μετάβασης) αλλάζει μόνο ο Δημήτρης" },
+  local_moves: { is: (row) => row.move_kind === "local", message: "Τις τοπικές κινήσεις του παλιού Εβδομαδιαίου Εθνικών αλλάζει μόνο ο Δημήτρης" }
+};
+function legacyRowsApply(table, role) {
+  return PLAN_WRITES_OPEN && role !== "owner" && Object.prototype.hasOwnProperty.call(LEGACY_ROWS_AFTER_L, table);
+}
+__name(legacyRowsApply, "legacyRowsApply");
+// rows: the rows read before the write (null = not found, undefined = the read failed). Returns the answer or null.
+function legacyRowRefusal(table, role, rows, origin, env) {
+  if (!legacyRowsApply(table, role)) return null;
+  if (rows.some((r) => r === void 0)) {
+    return jsonOk({ error: { type: "SERVER", code: "row_unread", message: "Η εγγραφή δεν επαληθεύτηκε (δεν διαβάστηκε) — τίποτα δεν γράφτηκε· ξαναδοκίμασε" } }, origin, env, 503);
+  }
+  const rule = LEGACY_ROWS_AFTER_L[table];
+  if (!rows.some((r) => r && rule.is(r))) return null;
+  return jsonOk({ error: { type: "LEGACY_CLOSED", code: "legacy_closed", message: rule.message } }, origin, env, 422);
+}
+__name(legacyRowRefusal, "legacyRowRefusal");
 // One row per route: method + path → resource (PLAN_PERMS) + RPC. `dryRun`
 // marks the seven RPCs that take {"dry_run": true} and write nothing then
 // (072's four, 072b's three);
@@ -5739,6 +5964,17 @@ var PLAN_ROUTES = [
   { method: "GET", re: /^\/plan\/board$/, resource: "board", rpc: "plan_board", read: planBoardArgs },
   { method: "GET", re: /^\/plan\/vs-state$/, resource: "vs-state", rpc: "plan_vs_state", read: planVsStateArgs },
   { method: "GET", re: /^\/plan\/notices$/, resource: "notices", rpc: "plan_notices_list", read: planNoticesArgs },
+  // 074a (F5, plan W1/W2) — day L read from the ONE row of plan_config (null until 074 writes it), with this
+  // Worker's own switch beside it (`answer`), and the board's pickers (E-2). Both rows are deploy guard markers
+  // (worker-guard --f5).
+  { method: "GET", re: /^\/plan\/config$/, resource: "config", rpc: "plan_config_read", read: planConfigArgs, answer: planConfigAnswer, migration: "074a" },
+  { method: "GET", re: /^\/plan\/lookups$/, resource: "lookups", rpc: "plan_lookups", read: planLookupsArgs, migration: "074a" },
+  // the carriers and «delivered» (spec §2.3) of v5 national orders, for the Orders page (E3/E5, stream d1); "missing"
+  // = an order of the old model. Deploy guard marker (--f5).
+  { method: "GET", re: /^\/plan\/nat-state$/, resource: "nat-state", rpc: "plan_nat_state", read: planNatStateArgs, migration: "074a" },
+  // the v5 cycles of one partner / driver / truck / trailer, or the v5 stops at one place, for the cards (E12/E13,
+  // stream d3); "all" for the place filter only. Deploy guard marker (--f5).
+  { method: "GET", re: /^\/plan\/activity$/, resource: "activity", rpc: "plan_activity", read: planActivityArgs, migration: "074a" },
   { method: "POST", re: /^\/plan\/notices\/(\d+)\/read$/, resource: "notices-read", rpc: "plan_notice_read", idKey: "notice_id" },
   { method: "POST", re: /^\/plan\/orders$/, resource: "orders", rpc: "plan_orders_create" },
   { method: "PATCH", re: /^\/plan\/orders\/(\d+)$/, resource: "orders", rpc: "plan_order_update", idKey: "nat_order_id" },
@@ -5769,20 +6005,63 @@ function planBoardArgs(url, caller) {
   return { args: { p_week: week, p_role: caller.role } };
 }
 __name(planBoardArgs, "planBoardArgs");
-function planVsStateArgs(url) {
-  const raw = (url.searchParams.get("order_ids") || "").split(",").map((s) => s.trim()).filter(Boolean);
+// One rule for a list of ids in the query string (072's plan_vs_state and 074a's plan_nat_state both refuse more
+// than 500): 1 to 500 positive integers of at most 15 digits (safe in JSON), deduplicated.
+function planIdsArgs(url, key, argName) {
+  const raw = (url.searchParams.get(key) || "").split(",").map((s) => s.trim()).filter(Boolean);
   if (!raw.length || raw.length > 500 || raw.some((s) => !/^[1-9]\d{0,14}$/.test(s))) {
-    return { error: "order_ids: 1 έως 500 θετικοί ακέραιοι, χωρισμένοι με κόμμα", code: "bad_order_ids" };
+    return { error: `${key}: 1 έως 500 θετικοί ακέραιοι, χωρισμένοι με κόμμα`, code: `bad_${key}` };
   }
-  return { args: { p_order_ids: [...new Set(raw.map(Number))] } };
+  return { args: { [argName]: [...new Set(raw.map(Number))] } };
+}
+__name(planIdsArgs, "planIdsArgs");
+function planVsStateArgs(url) {
+  return planIdsArgs(url, "order_ids", "p_order_ids");
 }
 __name(planVsStateArgs, "planVsStateArgs");
+function planNatStateArgs(url) {
+  return planIdsArgs(url, "nat_order_ids", "p_nat_order_ids");
+}
+__name(planNatStateArgs, "planNatStateArgs");
+// Exactly one of the five keys, a positive id of at most 9 digits, or «all» for the one list that has it (the place
+// filter; the partner strip was dropped by d3, 28/10); anything else is a 400 before any DB call. p_id is TEXT in 074a (the id as
+// written, or 'all'): sent as checked here, never re-parsed.
+var PLAN_ACTIVITY_KINDS = { partner_id: "partner", driver_id: "driver", truck_id: "truck", trailer_id: "trailer", location_id: "location" };
+function planActivityArgs(url) {
+  const bad = { error: "Ένα από partner_id, driver_id, truck_id, trailer_id, location_id: θετικός ακέραιος, ή all για location_id", code: "bad_activity_query" };
+  const keys = [...url.searchParams.keys()];
+  if (keys.length !== 1 || !Object.prototype.hasOwnProperty.call(PLAN_ACTIVITY_KINDS, keys[0])) return bad;
+  const kind = PLAN_ACTIVITY_KINDS[keys[0]];
+  const v = url.searchParams.get(keys[0]);
+  if (v === "all" ? kind !== "location" : !/^[1-9]\d{0,8}$/.test(v)) return bad;
+  return { args: { p_kind: kind, p_id: v } };
+}
+__name(planActivityArgs, "planActivityArgs");
 function planNoticesArgs(url, caller) {
   const desk = url.searchParams.get("desk") || "";
   if (desk !== "intl" && desk !== "natl") return { error: "desk: intl ή natl", code: "bad_desk" };
   return { args: { p_desk: desk, p_role: caller.role } };
 }
 __name(planNoticesArgs, "planNoticesArgs");
+function planConfigArgs() {
+  return { args: {} };
+}
+__name(planConfigArgs, "planConfigArgs");
+function planLookupsArgs(url, caller) {
+  return { args: { p_role: caller.role } };
+}
+__name(planLookupsArgs, "planLookupsArgs");
+// GET /plan/config: FE-1 changes behaviour only when this says day L has come, so an answer it cannot read is
+// a loud 500 (plan_failed), never a {cutover_day: null} that would read as «not yet» (αρχή 1). writes_open is the
+// switch of THIS deployed Worker, not a DB value: deploy 2 flips it, and the screen sees which Worker answers.
+function planConfigAnswer(out) {
+  const day = out && typeof out === "object" && !Array.isArray(out) ? out.cutover_day : void 0;
+  if (day !== null && !(typeof day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(day))) {
+    throw new Error(`plan_config_read answered ${String(JSON.stringify(out)).slice(0, 120)}`);
+  }
+  return { cutover_day: day, opened_at: day === null ? null : out.opened_at ?? null, writes_open: PLAN_WRITES_OPEN };
+}
+__name(planConfigAnswer, "planConfigAnswer");
 // ONE error shape for every non-2xx of /plan/* (decision 23): the F4 client
 // (core/plan-api.js) reads error.code to react and toasts error.message.
 function planError(status, type, code, message, origin, env) {
@@ -5976,7 +6255,8 @@ async function handlePlan(request, url, origin, env) {
       args = { p: body, p_actor: caller.sub, p_role: caller.role };
       maybeWritten = !dry;
     }
-    const out = await dbRpc(env, fn, args);
+    let out = await dbRpc(env, fn, args);
+    if (route.answer) out = route.answer(out);
     if (!PLAN_MONEY_ROLES.includes(caller.role) && planHasAmount(out)) {
       console.error(`PLAN ${name}: the DB answered an amount to role ${caller.role} — not forwarded`);
       // a write answered: its COMMIT is done, so the text says it was kept and must not be pressed again (K1 review r1),
@@ -6022,7 +6302,7 @@ async function handlePlan(request, url, origin, env) {
     // (tests/api-plan-no-resend.test.mjs pins both; r2 findings 1 and 6).
     // Type SERVER, as `slow`, never PLAN_RULE (finding 13): it is transient, and PLAN_RULE is the family of
     // the business refusals a client must treat as final.
-    if (pg && /^(40P01|40001|55P03)$/.test(String(pg.code || ""))) {
+    if (pg && BUSY_SQLSTATE.test(String(pg.code || ""))) {
       console.error(`PLAN ${name}: ${pg.code} (concurrent change)`);
       // a read writes nothing, so its text never speaks of writing (polish review 2 M2)
       return planError(409, "SERVER", "busy_retry", `Ταυτόχρονη αλλαγή από άλλον χρήστη — ${route.read ? `η πράξη ${name} δεν ολοκληρώθηκε` : "τίποτα δεν γράφτηκε"}· ξαναδοκίμασε`, origin, env);
