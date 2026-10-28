@@ -102,11 +102,44 @@ function _decide() {
   // The same three-state rule as Weekly International (core/wi4-logic.js v2Decide): 'off' wins over every opt-in.
   return lg.v2Decide({ flag: raw, pilot: _pilot(), user: _user(), optIn: _ls('tms_wn5') }) === 'v4' ? 'v5' : 'old';
 }
+// ═══ Day L (F5 FE-2, owner Q-10): «Παλιά προβολή» only for weeks before L ═══
+// The old board is history from day L: the base refuses its INSERTs (plan:legacy_frozen) and the Worker its edits
+// except the owner's. So a «Παλιά προβολή» choice (tms_wn5 = '0') holds only for a week whose Saturday is before
+// the base's cutover_day; a week from L on is v5 for everyone the flag opens it to. The day comes from the base
+// (core/plan-config.js), never from a date in this file (principle 3). Until PlanConfig answers 'after' — 'before',
+// 'unknown', a Worker without the route, the file not loaded — the choice holds as today: the old board is a READ
+// path, its writes are refused below the screen, and an unknown day never traps a user in one view.
+let _cfg = null, _cfgAt = 0, _cfgBusy = false;
+const CFG_RETRY_MS = 60 * 1000;   // a non-final answer is asked again at most once a minute (PlanConfig caches 'after')
+function _dm(day) { return Number(day.slice(8)) + '/' + Number(day.slice(5, 7)); }   // '2026-10-31' → «31/10»
+function _afterL(sat) { return !!_cfg && _cfg.state === 'after' && !!_cfg.cutoverDay && typeof sat === 'string' && sat >= _cfg.cutoverDay; }
+function _cfgKick() {
+  if (_cfgBusy || typeof PlanConfig === 'undefined' || (_cfg && _cfg.state === 'after') || Date.now() - _cfgAt < CFG_RETRY_MS) return;
+  _cfgBusy = true;
+  PlanConfig.load().then((r) => {
+    const was = _cfg && _cfg.state;
+    _cfg = r; _cfgAt = Date.now();
+    // the answer can change which board this week gets: paint again, once, only if it did and the page is still ours
+    if (r && r.state === 'after' && was !== 'after' && typeof currentPage !== 'undefined' && currentPage === 'weekly_natl'
+      && typeof window.renderWeeklyNatl === 'function') window.renderWeeklyNatl();
+  }, () => { _cfgAt = Date.now(); }).finally(() => { _cfgBusy = false; });   // load() never rejects; belt and braces
+}
+// The old-view choice is set aside for a week ≥ L: v5 is what the flag would show without the choice.
+function _oldViewBlocked() {
+  if (_ls('tms_wn5') !== '0') return false;
+  const lg = typeof WI4 !== 'undefined' ? WI4 : null;
+  if (!lg || lg.v2Decide({ flag: _flagRaw(), pilot: _pilot(), user: _user(), optIn: null }) !== 'v4') return false;
+  _cfgKick();
+  let sat = null;
+  try { sat = weekParam(window.WNATL.week); } catch (_) { return false; }
+  return _afterL(sat);
+}
 function active() {
   try {
     if (WN5._broken === true) return false;
     if (typeof currentPage === 'undefined' || currentPage !== 'weekly_natl') return false;
-    return _decide() === 'v5';
+    if (_decide() === 'v5') { _cfgKick(); return true; }
+    return _oldViewBlocked();
   } catch (_) { return false; }
 }
 function _switch(v) {
@@ -300,7 +333,11 @@ function _barHTML() {
     + '<div class="wi4-bar-r">'
     + (typeof WN5Form !== 'undefined' && typeof OrdersCommon !== 'undefined' && OrdersCommon.newOrderButton
       ? OrdersCommon.newOrderButton('WN5Form.openOrder({})', '+ Νέα παραγγελία', 'Νέα εθνική παραγγελία v5 — χωρίς έξοδο από το εβδομαδιαίο') : '')
-    + '<button type="button" class="wi4-btn sm" title="Το παλιό Εβδομαδιαίο Εθνικών" onclick="WN5._switch(\'0\')">Παλιά προβολή</button></div></div>';
+    // Q-10: the old view only for a week before day L; from L on it is not offered, and a stored choice says why
+    + (_afterL(_sat)
+      ? (_ls('tms_wn5') === '0' ? `<span class="wi4-range" data-old-view="closed">Η παλιά προβολή υπάρχει μόνο για εβδομάδες πριν από ${_esc(_dm(_cfg.cutoverDay))}</span>` : '')
+      : '<button type="button" class="wi4-btn sm" title="Το παλιό Εβδομαδιαίο Εθνικών" onclick="WN5._switch(\'0\')">Παλιά προβολή</button>')
+    + '</div></div>';
 }
 function _tabsHTML(w) {
   if (!Number.isInteger(w)) return '';
