@@ -48,7 +48,7 @@
   - `xhigh`: 074a / 074 / 074b και Worker·
   - `high`: FE-1·
   - `medium`: FE-2.
-- **Αρχεία που ΔΕΝ αγγίζει κανείς ως το merge του PR `prev_partner_rate`** (άλλο session, 28/10): `modules/weekly_natl_v5.js`, `modules/wn5_*.js`, `app.html`, `sw.js`. Το FE-1 ξεκινά από φρέσκο `origin/main` μετά από εκείνο το merge (κανόνας 8).
+- **Το PR `prev_partner_rate` (#115)** άγγιζε τα `modules/weekly_natl_v5.js`, `modules/wn5_*.js`, `app.html`, `sw.js` και μπήκε στο `main` 28/10. Το FE-1 ξεκινά από φρέσκο `origin/main` και ελέγχει το «Now» για άλλο κάτοχο των ίδιων αρχείων (κανόνας 8).
 - **Δημόσιο repo:** ποτέ ονόματα πελατών, μυστικά ή ευρήματα ασφαλείας. Στα tests και στα docs μόνο ids.
 - **Ερωτήσεις owner:** μία τη φορά, με πρόταση (§4). Το πλάνο ακολουθεί την πρόταση. Αν ο owner την αλλάξει, αλλάζει πρώτα το αντίστοιχο Task και μετά γράφεται κώδικας.
 
@@ -144,7 +144,7 @@
 | # | Πύλη | Κάτοχος | Σήμερα (28/10) |
 |---|---|---|---|
 | P-1 | Φ4α merged (PR #113) | owner | ✅ 28/10 |
-| P-2 | PR `prev_partner_rate` (H2, μόνο front) merged | άλλο session → owner | σε εξέλιξη |
+| P-2 | PR `prev_partner_rate` (H2, μόνο front) merged | άλλο session → owner | ✅ 28/10 (PR #115) |
 | P-3 | `074a` εκτελεσμένη: board με Ε-26 / Ε-27 / Ε-34 / Ε-41 και `plan_lookups()` | Task A | — |
 | P-4 | Worker deploy 1: `/plan/config`, `/plan/lookups`, Ε18, Ε19, Ε16 κλειστό | Task W | — |
 | P-5 | FE-1 merged (αδρανές), `LOOKUPS_PENDING = false` | Task F | — |
