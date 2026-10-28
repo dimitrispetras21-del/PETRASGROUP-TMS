@@ -13,8 +13,8 @@
 //  5. No role gate (owner 10/10, Δ12 tile 8 «η οθόνη δεν κρύβει κουμπιά»): every role sees every button; the
 //     Worker's 403 speaks in the strip.
 //  6. Colours only through classes of assets/style.css (critics unit weekly_natl_v5: hex 0).
-//  7. Until day L the Worker answers every non-dry write 409 writes_closed (PLAN_WRITES_OPEN = false). The first
-//     such answer becomes a «ΠΡΟΕΠΙΣΚΟΠΗΣΗ» strip and locks every save button for the session (Ε-6); dry runs
+//  7. Writes are open since day L (Worker PLAN_WRITES_OPEN = true, 28/10). A 409 writes_closed (a Worker rolled back
+//     to before L) still becomes a «ΠΡΟΕΠΙΣΚΟΠΗΣΗ» strip and locks every save button for the session (Ε-6); dry runs
 //     and reads stay open.
 (function () {
   'use strict';
@@ -655,6 +655,7 @@
     if (w.textContent !== text) w.textContent = text;
     return w;
   }
+  KIT.why = _why;   // the national order forms' «Λείπει: …» (wn5_forms.js, F26): one footer reason, not two
   // one missing stop in words: «παράθυρο παράδοσης <place>», «άφιξη Βέροιας», …
   function _lackText(st, n) {
     const act = n.role === 'load' ? 'φόρτωσης' : 'παράδοσης';
@@ -1440,6 +1441,14 @@
   // the same wall time N days later in Athens (display and explicit stops; the base shifts by an interval)
   const _shiftIso = (iso, n) => { const p = _parts(iso); return p ? _iso(_addDays(p.ymd, n), p.hm) : iso; };
   function _dateBody(st) {
+    if (st.one) {
+      // F29 (live 28/10): ONE stop of the cycle, any place — its own day and window as stops[] alone (plan_rt_update
+      // 072:1714-1723, step 1), no shift: nothing else of the side moves. The window's hours go on the chosen day.
+      const f1 = _hhmm(st.from), t1 = _hhmm(st.to), day = st.sel || st.cur;
+      if (!f1 || !t1 || (day === st.cur && f1 === st.from0 && t1 === st.to0)) return null;
+      const w = _win(day, f1, t1);
+      return { stops: [{ stop_id: st.vStop.stop_id, planned_from: w[0], planned_to: w[1] }] };
+    }
     const delta = st.sel ? _dayDiff(st.cur, st.sel) : 0;
     const f = _hhmm(st.from), t = _hhmm(st.to);
     const stops = [];
@@ -1527,9 +1536,10 @@
     const after = new Map();
     for (const s of st.sideStops) {
       const isV = !!st.vStop && s.stop_id === st.vStop.stop_id;
+      if (st.one && !isV) continue;   // F29: the one stop's line only, the others do not move
       let a = s.planned_from, b = s.planned_to;
-      if (isV && f && t) { const w = _win(st.vDay, f, t); a = w[0]; b = w[1]; }
-      if (delta) { a = _shiftIso(a, delta); b = _shiftIso(b, delta); }
+      if (isV && f && t) { const w = _win(st.one ? (st.sel || st.vDay) : st.vDay, f, t); a = w[0]; b = w[1]; }
+      if (delta && !st.one) { a = _shiftIso(a, delta); b = _shiftIso(b, delta); }
       after.set(s.stop_id, [a, b]);
       if (!kathEnd || new Date(b) > new Date(kathEnd)) kathEnd = b;
       const place = [((s.legs || [])[0] || {}).client, s.location].filter(Boolean).join(' · ');
@@ -1537,7 +1547,7 @@
       // a loading on the way (THESSALONIKI) is named, never counted as a delivery
       const no = st.num ? st.num.get(s.stop_id) : (isV ? null : ++k);
       const loads = (s.legs || []).some((l) => l.act === 'load'), unloads = (s.legs || []).some((l) => l.act === 'unload');
-      const name = isV ? (st.side === 'KATHODOS' ? 'Φόρτωση Βέροιας' : 'Βέροια · τέλος κύκλου')
+      const name = isV && !st.one ? (st.side === 'KATHODOS' ? 'Φόρτωση Βέροιας' : 'Βέροια · τέλος κύκλου')
         : no != null ? no + '  ' + place
         : (loads && !unloads ? 'Φόρτωση · ' : 'Παράδοση · ') + place;
       h += _resLi(_esc(name), _dayShort(_ymdOf(s.planned_from)), _dayShort(_ymdOf(a)) + ' · ' + _hmw(a, b), ' data-stop="' + _esc(s.stop_id) + '"');
@@ -1559,7 +1569,8 @@
       h += _resLi(_esc('Κενό γύρισμα · ' + (g.location || '—')), was, nb === g.planned_to ? null : _dayShort(_ymdOf(nb)) + ' ' + _hm(nb), ' data-row="gap"');
     }
     // the ANODOS of this cycle (Figma 2053:8070-8075): stays put unless ticked; amber when the KATHODOS now ends after it starts
-    if (delta && st.anodStops.length) {
+    // (one stop: the ANODOS never moves with it — its stops stay known, so «Κενό γύρισμα» reads the cycle as it is)
+    if (delta && st.anodStops.length && !st.one) {
       const lo = st.anodLoads.length ? st.anodLoads : st.anodStops;
       const a0 = lo.reduce((x, s) => (new Date(s.planned_from) < new Date(x) ? s.planned_from : x), lo[0].planned_from);
       const b0 = lo.reduce((x, s) => (new Date(s.planned_to) > new Date(x) ? s.planned_to : x), lo[0].planned_to);
@@ -1606,20 +1617,26 @@
       for (const v of pv.vs_day || []) h += '<p class="wn5-intl">' + _esc('ενημερώνει τη διεθνή #' + v.order_id + ' · ' + _dm(String(v.from || '').slice(0, 10)) + ' → ' + _dm(String(v.to || '').slice(0, 10))) + '</p>';
       if ((pv.warnings || []).length) h += '<ul class="wn5-cons">' + pv.warnings.map((w) => '<li data-kind="' + _esc(w && w.code) + '">' + _esc(WN5Lab.warningLine(w).text) + '</li>').join('') + '</ul>';
     } else if (!st.err) h += '<p class="wn5-none">Διαβάζει την προεπισκόπηση…</p>';
-    return h + '<p class="wn5-none wn5-res-end">Οι ώρες μένουν ίδιες· τα παράθυρα ξαναελέγχονται.</p>';
+    return h + '<p class="wn5-none wn5-res-end">' + (st.one ? 'Αλλάζει μόνο αυτή η στάση· οι άλλες στάσεις μένουν ως έχουν.' : 'Οι ώρες μένουν ίδιες· τα παράθυρα ξαναελέγχονται.') + '</p>';
   }
 
-  WN5Act.datePanel = function datePanel(rtId, side, anchorEl) {
+  // opts.stopId (F29, live 28/10): the panel for ONE stop of the side — its day and window — from the leg form; the
+  // stop times of a cycle outside Veroia could not be changed from any screen while the base took stops[] (072).
+  WN5Act.datePanel = function datePanel(rtId, side, anchorEl, opts) {
     const c = _cycle(_id(rtId));
     if (!c) { WN5Act.strip(_boardHost(), _clientErr('rt_missing', 'Ο κύκλος δεν είναι στο board που φορτώθηκε — ανανέωσε')); return null; }
     side = side === 'ANODOS' ? 'ANODOS' : 'KATHODOS';
     const hub = _hubId();
     const sideStops = _copy((c.stops || []).filter((s) => s.side === side));
     if (!sideStops.length) { WN5Act.strip(_boardHost(), _clientErr('side_empty', 'Αυτή η πλευρά δεν έχει στάσεις: το «+» βάζει πρώτο φορτίο')); return null; }
-    const vStop = sideStops.find((s) => s.location_id === hub) || null;
-    const ref = side === 'KATHODOS' && vStop ? vStop : sideStops[0];
+    const oneId = opts && opts.stopId != null ? _id(opts.stopId) : null;
+    const one = oneId ? sideStops.find((s) => s.stop_id === oneId) || null : null;
+    if (opts && opts.stopId != null && !one) { WN5Act.strip(_boardHost(), _clientErr('stop_missing', 'Η στάση δεν είναι πια στο board που φορτώθηκε — ανανέωσε')); return null; }
+    // in the one-stop panel that stop takes the Veroia stop's place: its window fields, its day on the calendar
+    const vStop = one || sideStops.find((s) => s.location_id === hub) || null;
+    const ref = one || (side === 'KATHODOS' && vStop ? vStop : sideStops[0]);
     const cur = _ymdOf(ref.planned_from);
-    const st = { rtId: c.rt_id, side, sideStops, vStop, vDay: vStop ? _ymdOf(vStop.planned_from) : null, cur, sel: null,
+    const st = { rtId: c.rt_id, side, one: !!one, sideStops, vStop, vDay: vStop ? _ymdOf(vStop.planned_from) : null, cur, sel: null,
       view: [Number(cur.slice(0, 4)), Number(cur.slice(5, 7)) - 1],
       from0: vStop ? _hm(vStop.planned_from) : '', to0: vStop ? _hm(vStop.planned_to) : '', from: '', to: '', alsoAnod: false,
       anodStops: side === 'KATHODOS' ? _copy((c.stops || []).filter((s) => s.side === 'ANODOS')) : [],
@@ -1642,7 +1659,9 @@
     st.gapStop = lastTo ? sideStops.find((s) => s.stop_id === lastTo.stopId) || null : null;
     const nDel = own ? own.length : sideStops.filter((s) => s.location_id !== hub).length;
     const head = (side === 'KATHODOS' ? 'ΚΑΘΟΔΟΣ' : 'ΑΝΟΔΟΣ') + ' · ' + box.l1.split(' · ')[0] + no + ' · ' + nDel + (nDel === 1 ? (side === 'KATHODOS' ? ' παράδοση' : ' φόρτωση') : (side === 'KATHODOS' ? ' παραδόσεις' : ' φορτώσεις'));
-    const d = _dlg('date', side === 'KATHODOS' ? 'Ημερομηνία φόρτωσης Βέροιας' : 'Ημερομηνία ΑΝΟΔΟΥ', { anchor: anchorEl });
+    const d = _dlg('date', one ? 'Ώρα στάσης · ' + (one.location_id === hub ? 'Βέροια' : one.location || '—')
+      : side === 'KATHODOS' ? 'Ημερομηνία φόρτωσης Βέροιας' : 'Ημερομηνία ΑΝΟΔΟΥ', { anchor: anchorEl });
+    if (one) d.dlg.dataset.stop = String(one.stop_id);
     // the meta under the title, across the dialog (Figma 2053:7840)
     d.dlg.querySelector('.wi4-dlg-t').insertAdjacentHTML('afterend', '<span class="wn5-dlg-meta">' + _esc(head) + '</span>');
     // «Ανάθεση n/m…» (Figma 2082:7735): only for a conflict whose next cycle is on the loaded board
@@ -1660,7 +1679,7 @@
     // re-created (someone typing an hour while a dry run is in flight keeps the field and the keystrokes; a
     // removed focused input fired blur → change → a nested redraw inside innerHTML = NotFoundError, review r1),
     // and the ΑΝΟΔΟΣ checkbox is one element moved into its row, never rebuilt. The calendar redraws on a click only.
-    d.body.innerHTML = '<div class="wn5-datep"><div><div data-cal></div>' + (vStop ? '<div class="wn5-hubwin"><span>' + (side === 'KATHODOS' ? 'Παράθυρο' : 'Άφιξη Βέροιας') + '</span>'
+    d.body.innerHTML = '<div class="wn5-datep"><div><div data-cal></div>' + (vStop ? '<div class="wn5-hubwin"><span>' + (side === 'KATHODOS' || one ? 'Παράθυρο' : 'Άφιξη Βέροιας') + '</span>'
       + '<input class="wn5-hm" data-win="from" value="' + _esc(st.from) + '"> – <input class="wn5-hm" data-win="to" value="' + _esc(st.to) + '"></div>' : '')
       + '</div><div class="wn5-datep-r"></div></div>';
     const calEl = d.body.querySelector('[data-cal]'), resEl = d.body.querySelector('.wn5-datep-r');

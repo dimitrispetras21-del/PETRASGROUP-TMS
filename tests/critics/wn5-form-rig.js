@@ -2,7 +2,7 @@
 // fake /plan/* (S.plan: method, path, body, count, order) and by what the page shows; never by a toast. Synthetic
 // week of tests/critics/wn5-rig-kit.js. The default answer of every non-dry write is 409 writes_closed, as deployed
 // until day L; scenarios script their own answers with sentinel messages.
-// Usage: node tests/critics/wn5-form-rig.js [order nowin groupage unknown reused replayed edit edit-ride edit-add edit-remove edit-read-fail edit-twoday veroia-edit leg leg-anodos …]
+// Usage: node tests/critics/wn5-form-rig.js [order nowin groupage unknown reused replayed edit edit-ride edit-add edit-remove edit-read-fail edit-twoday veroia-edit day-type leg leg-anodos stop-time miss leg-add …]
 //        WN5_TREE=<git archive origin/main> node tests/critics/wn5-form-rig.js   (plain-main proof: NO-GO, exit 1)
 // Exit: 0 green · 1 a check failed · 2 unknown scenario.
 'use strict';
@@ -77,16 +77,17 @@ async function scnOrder({ browser, origin, ok, scn }) {
   ok(scn, 'windows «Παράθυρο από – έως · κενό: όλη η ημέρα»', txt.includes('Παράθυρο από – έως · κενό: όλη η ημέρα') && !txt.includes('Παράθυρο από – έως *'));
   ok(scn, 'truck optional: «Φορτηγό (προαιρετικό)» with «— ΠΡΟΣ ΑΝΑΘΕΣΗ»', txt.includes('Φορτηγό (προαιρετικό)') && txt.includes('ΠΡΟΣ ΑΝΑΘΕΣΗ'));
   // fidelity T20 (Figma 2011:9641/9704): an empty day reads as a whole hint, never Chrome's cut «dd/mm/yy»
-  const dayE = await page.evaluate((d) => [...document.querySelectorAll(`${d} .wn5f-day`)].map((w) => w.querySelector('.wn5f-dayt').textContent), DLG);
+  // live fix 28/10: the day is typed text (.wn5f-dayx); empty, its placeholder is the hint
+  const dayE = await page.evaluate((d) => [...document.querySelectorAll(`${d} .wn5f-day`)].map((w) => { const x = w.querySelector('.wn5f-dayx'); return x && !x.value ? x.placeholder : x && x.value; }), DLG);
   ok(scn, 'empty day fields: «ηη/μμ/εεεε» in the head, «ηη/μμ» in each row', dayE.length >= 3 && dayE[0] === 'ηη/μμ/εεεε' && dayE.slice(1).every((x) => x === 'ηη/μμ'), dayE);
   await page.keyboard.press('ArrowRight');   // role=dialog: the week must not move under the open form
   ok(scn, '← → do not change the week while the form is open', await K.count(page, DLG) === 1 && (await page.evaluate(() => WN5.snapshot().week)) === '2026-10-10');
   await fillOrder(page, 0, ORDER_A);
   // the weekday the frame shows in a row («Τετ 14/10», no year); the native text hidden while not edited
-  const dayF = await page.evaluate((d) => [...document.querySelectorAll(`${d} .wn5f-row .wn5f-day`)].map((w) => ({ t: w.querySelector('.wn5f-dayt').textContent,
-    vis: getComputedStyle(w.querySelector('.wn5f-dayt')).display !== 'none', ink: getComputedStyle(w.querySelector('input')).color })), DLG);
-  ok(scn, 'filled day fields show the weekday: «Τετ 14/10» / «Πέμ 15/10», the native text hidden', dayF.length === 2
-    && dayF[0].t === 'Τετ 14/10' && dayF[1].t === 'Πέμ 15/10' && dayF.every((x) => x.vis && x.ink === 'rgba(0, 0, 0, 0)'), dayF);
+  const dayF = await page.evaluate((d) => [...document.querySelectorAll(`${d} .wn5f-row .wn5f-day`)].map((w) => ({ t: (w.querySelector('.wn5f-dayx') || {}).value,
+    nat: getComputedStyle(w.querySelector('.wn5f-dayp')).opacity })), DLG);
+  ok(scn, 'filled day fields show the weekday: «Τετ 14/10» / «Πέμ 15/10», the native date input not drawn', dayF.length === 2
+    && dayF[0].t === 'Τετ 14/10' && dayF[1].t === 'Πέμ 15/10' && dayF.every((x) => x.nat === '0'), dayF);
   await save(page);
   await page.waitForTimeout(3500);   // > the 1 s + 2 s of _atRetry: a resend would show here
   const posts = K.planOf(S, 'POST', '/plan/orders');
@@ -115,7 +116,7 @@ async function scnOrder({ browser, origin, ok, scn }) {
   const tg = await p2.page.evaluate((d) => { const s = document.querySelector(`${d} #wn5f-tgt`); return s ? { v: s.value, dis: s.disabled } : null; }, DLG);
   ok(scn, 'the cycle and side come prefilled and locked', tg && tg.v === '101' && tg.dis, tg);
   // fidelity T20 (Figma 2011:9641): the prefilled Veroia day in the head reads «Δευ 12/10/2026» (weekday + year)
-  const hd = await p2.page.evaluate((d) => { const w = document.querySelector(`${d} .wn5f-head .wn5f-day`); return w && { v: w.querySelector('input').value, t: w.querySelector('.wn5f-dayt').textContent }; }, DLG);
+  const hd = await p2.page.evaluate((d) => { const w = document.querySelector(`${d} .wn5f-head .wn5f-day`); return w && { v: w.querySelector('.wn5f-dayp').value, t: w.querySelector('.wn5f-dayx').value }; }, DLG);
   ok(scn, 'the head day shows the weekday and the year of its value', !!hd && /^\d{4}-\d\d-\d\d$/.test(hd.v)
     && hd.t === WI4dl(hd.v) + '/' + hd.v.slice(0, 4) && /^(Κυρ|Δευ|Τρί|Τετ|Πέμ|Παρ|Σάβ) /.test(hd.t), hd);
   await fillOrder(p2.page, 0, { client: C42, price: 120, temp: 2, pe: true, loads: [r(HUB, '2026-10-12', '16:00', '18:00', 4)], drops: [r(LAR, '2026-10-13', '10:00', '12:00', 4)] });
@@ -333,13 +334,14 @@ async function scnEdit({ browser, origin, ok, scn }) {
     const r = document.querySelector(`${d} .wn5f-ship`);
     if (!r) return null;
     const w = (el) => (el ? Math.round(el.getBoundingClientRect().width) : null);
-    const day = (k) => { const i = r.querySelector(`[data-f="${k}"]`), t = i && i.parentElement.querySelector('.wn5f-dayt');
-      if (!i || !t) return null; const a = i.getBoundingClientRect(), b = t.getBoundingClientRect();
-      return { w: Math.round(a.width), t: t.textContent, room: Math.round(a.right - b.right) }; };
+    // live fix 28/10: the day is typed text with the calendar button at its right end; the label must fit (no scroll)
+    const day = (k) => { const i = r.querySelector(`[data-f="${k}"]`), w = i && i.closest('.wn5f-day'), t = w && w.querySelector('.wn5f-dayx');
+      if (!t) return null;
+      return { w: Math.round(w.getBoundingClientRect().width), t: t.value, room: t.scrollWidth <= t.clientWidth ? 24 : 0, cal: !!w.querySelector('.wn5f-dayc') }; };
     return { l: day('lday'), d: day('dday'), pal: w(r.querySelector('[data-f="pal"]')) };
   }, DLG);
-  ok(scn, 'ΑΠΟΣΤΟΛΕΣ: day fields 100 with the label whole («Τετ 14/10» clear of the picker by ≥ 24px), pallets 70 (2069:7984 / 7992)',
-    !!ship && [ship.l, ship.d].every((x) => x && x.w === 100 && /^\S+ \d{1,2}\/\d{1,2}$/.test(x.t) && x.room >= 24) && ship.pal === 70, ship);
+  ok(scn, 'ΑΠΟΣΤΟΛΕΣ: day fields 100 with the label whole («Τετ 14/10», no scroll) and a calendar button, pallets 70 (2069:7984 / 7992)',
+    !!ship && [ship.l, ship.d].every((x) => x && x.w === 100 && /^\S+ \d{1,2}\/\d{1,2}$/.test(x.t) && x.room >= 24 && x.cal) && ship.pal === 70, ship);
   ok(scn, 'one point only: no × (the last point is never removed here)', await K.count(page, `${DLG} [data-ship] [data-act="del-ship"]`) === 0);
   // open + save with no change = 0 requests (the DB-level proof: plan-077.test.mjs U1, 0 rows written)
   await save(page);
@@ -357,22 +359,51 @@ async function scnEdit({ browser, origin, ok, scn }) {
   ok(scn, 'the request_id is in memory only', !!p[0] && await noStore(page, p[0].body.request_id));
   await closeClean(page, S, ok, scn);
 }
+// F30 (owner 28/10): an order ON a cycle — its riding point keeps its leg and cycle, and its pallets, day and window
+// change here, in place (072 plan_order_update takes them). Before F30 the point was shown read-only and the only way
+// was «Πίσω στην αναμονή» → edit → assign again (a new cycle, new RT ids). The truck's stops are named under the point,
+// with «Αλλαγή ώρας στάσης ›» (F29): the stop does not follow by itself and the form says so.
 async function scnEditRide({ browser, origin, ok, scn }) {
   const { page, S } = await K.openApp(browser, origin, { plan: { 'PATCH /plan/orders/3001': UPD_OK(3001) } });
   if (!(await guard(page, ok, scn))) return;
   await openForm(page, { natOrderId: 3001 });
   ok(scn, 'an order ON a cycle opens with its price and notes (not on the board: F13)', await fval(page, '[data-f="price"]') === '420' && await fval(page, '[data-f="notes"]') === 'κλήση πριν');
   const row = await page.evaluate((d) => { const r = document.querySelector(`${d} [data-ship="5202"]`);
-    return r && { ro: r.hasAttribute('data-ro'), dis: [...r.querySelectorAll('input')].every((x) => x.disabled), txt: r.textContent, x: !!r.querySelector('[data-act="del-ship"]') }; }, DLG);
-  ok(scn, 'the riding point: shown, every field disabled, «σε κύκλο RT-T101», no ×', !!row && row.ro && row.dis && /σε κύκλο RT-T101/.test(row.txt) && !row.x, row);
+    return r && { ro: r.hasAttribute('data-ro'), live: ['lday', 'lfrom', 'lto', 'dday', 'dfrom', 'dto', 'pal'].map((k) => !r.querySelector(`[data-f="${k}"]`).disabled),
+      txt: r.textContent, x: !!r.querySelector('[data-act="del-ship"]') }; }, DLG);
+  ok(scn, 'the riding point: every day, window and pallets field live, «σε κύκλο RT-T101», no × (it leaves only by «Μεταφορά σε…»)',
+    !!row && !row.ro && row.live.every(Boolean) && /σε κύκλο RT-T101/.test(row.txt) && !row.x, row);
+  const stop = await page.evaluate((d) => { const x = document.querySelector(`${d} [data-shipstop="5202"]`);
+    return x && { t: x.textContent.replace(/\s+/g, ' '), b: [...x.querySelectorAll('[data-act="stop-time"]')].map((b) => b.dataset.stop + ':' + b.dataset.side) }; }, DLG);
+  ok(scn, 'under it the truck\'s stops: «RT-T101 · φόρτωση Δευ 12/10 16:00–18:00» and «RT-T101 · παράδοση Τρί 13/10 07:00–09:00», each with «Αλλαγή ώρας στάσης ›»',
+    !!stop && stop.t.includes('RT-T101 · φόρτωση Δευ 12/10 16:00–18:00') && stop.t.includes('RT-T101 · παράδοση Τρί 13/10 07:00–09:00')
+    && JSON.stringify(stop.b) === JSON.stringify(['1001:KATHODOS', '1003:KATHODOS']), stop);
+  ok(scn, 'the form says before the save that the truck\'s stop does not move with the order', /Η ώρα της στάσης του φορτηγού δεν αλλάζει μαζί/.test(await K.text(page, `${DLG} [data-ridenote]`)));
   ok(scn, 'Κατεύθυνση disabled on a cycle (the cycle\'s side holds)', await page.evaluate((d) => document.querySelector(`${d} [data-f="dir"]`).disabled, DLG));
+  // the owner's waiting fixes (#17, #84 …): 1 pallet → 30, and a delivery one day later, in ONE save; notes emptied on purpose
+  await page.fill(`${DLG} [data-ship="5202"] [data-f="pal"]`, '30');
+  await typeDay(page, `${DLG} [data-ship="5202"] .wn5f-day:has([data-f="dday"])`, '14/10');
   await page.fill(`${DLG} [data-f="notes"]`, '');
+  // changes not saved + «Αλλαγή ώρας στάσης ›» = they would be lost: refused with the reason, the form stays
+  await page.click(`${DLG} [data-shipstop="5202"] [data-act="stop-time"][data-stop="1003"]`);
+  ok(scn, 'unsaved changes + «Αλλαγή ώρας στάσης ›» → the line says save first, no panel, the form stays', await K.count(page, DLG) === 1
+    && await K.count(page, '.wi4-dlg[data-wn5="date"]') === 0 && /Αποθήκευσε πρώτα/.test(await K.text(page, `${DLG} [data-err]`)));
   await save(page);
   await page.waitForTimeout(1000);
   const p = K.planOf(S, 'PATCH', '/plan/orders/3001');
-  const sent = p[0] ? Object.assign({}, p[0].body) : null;
-  if (sent) delete sent.request_id;
-  ok(scn, 'notes emptied on purpose → {set:{notes:null}}, nothing else (the riding point is never sent)', p.length === 1 && JSON.stringify(sent) === JSON.stringify({ set: { notes: null } }), p.map((x) => x.body));
+  const b = p[0] ? Object.assign({}, p[0].body) : {};
+  delete b.request_id;
+  const sh = b.shipments && b.shipments[0];
+  ok(scn, 'one PATCH /plan/orders/3001: {set:{notes:null}} + the riding point 5202 with pallets 30 and its delivery on 14/10 07:00–09:00, nothing else',
+    p.length === 1 && JSON.stringify(b.set) === JSON.stringify({ notes: null }) && b.shipments.length === 1 && !!sh && sh.shipment_id === 5202 && sh.pallets === 30
+    && Object.keys(sh).sort().join() === 'deliver_from,deliver_to,pallets,shipment_id'
+    && Date.parse(sh.deliver_from) === Date.parse('2026-10-14T07:00:00+03:00') && Date.parse(sh.deliver_to) === Date.parse('2026-10-14T09:00:00+03:00'), p.map((x) => x.body));
+  const done = await K.text(page, `${DLG} [data-done]`);
+  ok(scn, 'saved: the line says the truck\'s stop did not change and where to change it', /Αποθηκεύτηκε/.test(done) && /η ώρα της στάσης του φορτηγού δεν άλλαξε/.test(done), done);
+  await page.click(`${DLG} [data-shipstop="5202"] [data-act="stop-time"][data-stop="1003"]`);
+  await page.waitForSelector('.wi4-dlg[data-wn5="date"]', { timeout: 6000 }).catch(() => {});
+  ok(scn, 'after the save «Αλλαγή ώρας στάσης ›» closes the form and opens the day panel of THAT stop (1003)', await K.count(page, DLG) === 0
+    && await page.evaluate(() => { const x = document.querySelector('.wi4-dlg[data-wn5="date"]'); return x ? x.dataset.stop : null; }) === '1003');
   await closeClean(page, S, ok, scn);
 }
 async function scnEditAdd({ browser, origin, ok, scn }) {
@@ -523,6 +554,68 @@ async function scnVeroiaEdit({ browser, origin, ok, scn }) {
   await closeClean(page, S, ok, scn);
 }
 
+// Live 28/10: «typing in the date fields of the edit form does not change the value, only the picker works». The user
+// clicks the day where it shows («Πέμ 15/10») and types: the day must be what was typed, the field must say it, the save
+// must send it. Driven through the wrapper (.wn5f-day) and the real keyboard, so the same presses run on main (NO-GO).
+async function typeDay(page, sel, keys) {
+  const w = await page.$(sel);
+  if (!w) return false;
+  const b = await w.boundingBox();
+  await page.mouse.click(b.x + b.width * 0.4, b.y + b.height / 2);
+  await page.keyboard.type(keys);
+  await page.keyboard.press('Tab');
+  return true;
+}
+async function scnDayType({ browser, origin, ok, scn }) {
+  const { page, S } = await K.openApp(browser, origin, { plan: { 'PATCH /plan/orders/3101': UPD_OK(3101) } });
+  if (!(await guard(page, ok, scn))) return;
+  await openForm(page, { natOrderId: 3101 });
+  const W = `${DLG} [data-ship="5201"] .wn5f-day:has([data-f="dday"])`;
+  const shown = () => page.evaluate((s) => { const w = document.querySelector(s); if (!w) return null;
+    const x = w.querySelector('.wn5f-dayx'); return { v: w.querySelector('[data-f="dday"]').value, t: x ? x.value : w.textContent, red: !!x && x.classList.contains('bad') }; }, W);
+  await typeDay(page, W, '17/10');
+  const a = await shown();
+  ok(scn, 'a click on the shown day + «17/10» typed → the day is 2026-10-17 and the field reads «Σάβ 17/10»', !!a && a.v === '2026-10-17' && a.t === 'Σάβ 17/10', a);
+  for (const [keys, want] of [['18/10/2026', '2026-10-18'], ['1910', '2026-10-19'], ['20.10.26', '2026-10-20']]) {
+    await typeDay(page, W, keys);
+    const g = await shown();
+    ok(scn, `«${keys}» typed → ${want}`, !!g && g.v === want, g);
+  }
+  // a text that is no day: kept as typed, in red, the day empty — the save names it and sends nothing (principle 1)
+  await typeDay(page, W, '32/10');
+  const bad = await shown();
+  ok(scn, '«32/10» stays as typed, in red, and the day is empty', !!bad && bad.t === '32/10' && bad.red && bad.v === '', bad);
+  await save(page);
+  await page.waitForTimeout(400);
+  ok(scn, '… then «Αποθήκευση» names the day and sends nothing', K.planOf(S, 'PATCH', '/plan/orders/3101').length === 0
+    && /ημέρα/.test(await K.text(page, `${DLG} [data-err]`)), await K.text(page, `${DLG} [data-err]`));
+  await typeDay(page, W, '17/10');
+  await save(page);
+  await page.waitForTimeout(1000);
+  const p = K.planOf(S, 'PATCH', '/plan/orders/3101');
+  const sh = p[0] && p[0].body.shipments && p[0].body.shipments[0];
+  ok(scn, 'one PATCH: the typed delivery day 17/10 with its hours kept, 08:00–10:00 Athens', p.length === 1 && !!sh && sh.shipment_id === 5201
+    && Date.parse(sh.deliver_from) === Date.parse('2026-10-17T08:00:00+03:00') && Date.parse(sh.deliver_to) === Date.parse('2026-10-17T10:00:00+03:00'), p.map((x) => x.body));
+  await page.context().close();
+
+  // the create form's row day and its head day (with the year) take typing the same way
+  const p2 = await K.openApp(browser, origin);
+  await openForm(p2.page, {});
+  await typeDay(p2.page, `${DLG} .wn5f-rows[data-k="drop"] .wn5f-row .wn5f-day`, '21/10');
+  await typeDay(p2.page, `${DLG} .wn5f-head .wn5f-day`, '22/10/2026');
+  const c = await p2.page.evaluate((d) => ({ row: document.querySelector(`${d} .wn5f-rows[data-k="drop"] [data-f="day"]`).value, head: document.querySelector(`${d} #wn5f-vday`).value,
+    headT: (document.querySelector(`${d} .wn5f-head .wn5f-dayx`) || {}).value }), DLG);
+  ok(scn, 'create form: row «21/10» → 2026-10-21, head «22/10/2026» → 2026-10-22 reading «Πέμ 22/10/2026»', c.row === '2026-10-21' && c.head === '2026-10-22' && c.headT === 'Πέμ 22/10/2026', c);
+  // code review: a Veroia row's day typed wrong is never filled over by the head's Veroia day (it stays red)
+  await p2.page.evaluate((d) => { const r = document.querySelector(`${d} .wn5f-rows[data-k="load"] .wn5f-row`); fhPickLinked(r.dataset.pid, 'recJucKOhC1zh4IP3', 'ΒΕΡΟΙΑ TEST'); }, DLG);
+  await typeDay(p2.page, `${DLG} .wn5f-rows[data-k="load"] .wn5f-row .wn5f-day`, '31/11');
+  const vr = await p2.page.evaluate((d) => { const w = document.querySelector(`${d} .wn5f-rows[data-k="load"] .wn5f-row .wn5f-day`);
+    return { v: w.querySelector('[data-f="day"]').value, t: w.querySelector('.wn5f-dayx').value, red: w.querySelector('.wn5f-dayx').classList.contains('bad') }; }, DLG);
+  ok(scn, 'a Veroia row: «31/11» stays red and empty — the head\'s day (22/10) does not fill over it', vr.v === '' && vr.t === '31/11' && vr.red, vr);
+  ok(scn, 'every day field has its calendar button (the picker stays)', await p2.page.evaluate((d) => [...document.querySelectorAll(`${d} .wn5f-day`)].every((w) => !!w.querySelector('.wn5f-dayc[data-act="day-pick"]')), DLG));
+  await closeClean(p2.page, p2.S, ok, scn);
+}
+
 // T21 — the leg form. A second national order on the KATHODOS of RT-T101, so «two blocks changed» can be tried.
 function legWeek() {
   const b = K.week();
@@ -610,6 +703,138 @@ async function scnLegAnodos({ browser, origin, ok, scn }) {
   await closeClean(page, S, ok, scn);
 }
 
+// F29 (live 28/10): the stop times of a cycle outside Veroia could not be changed from any screen — the leg form showed
+// them read-only, Δ4 moved only the Veroia stop or the whole side, while 072 plan_rt_update takes stops[]. Now every
+// stop line of the leg form opens the day panel of THAT stop: its own dry run, its day and window as stops[] alone.
+async function scnStopTime({ browser, origin, ok, scn }) {
+  const PV = { ok: true, op: 'plan_rt_update', dry_run: true, needs_confirm: false, preview: {
+    before: { start_at: '2026-10-12T16:00:00+03:00', end_at: '2026-10-13T22:00:00+03:00', date_start: '2026-10-12', date_end: '2026-10-13' },
+    after: { start_at: '2026-10-12T16:00:00+03:00', end_at: '2026-10-13T22:00:00+03:00', date_start: '2026-10-12', date_end: '2026-10-13' },
+    next_rt: null, conflict: null, vs_day: [], warnings: [] } };
+  const plan = { 'PATCH /plan/rt/101': (e) => (e.body && e.body.dry_run === true ? [200, PV]
+    : [200, { ok: true, op: 'plan_rt_update', dry_run: false, ids: { rt_id: 101, stop_ids: [1003] }, warnings: [], notice_ids: [] }]) };
+  const { page, S } = await K.openApp(browser, origin, { board: legWeek(), plan });
+  if (!(await guard(page, ok, scn))) return;
+  await openLegBy(page, 101, 'KATHODOS');
+  ok(scn, 'every stop line of «ΣΕΙΡΑ ΣΤΑΣΕΩΝ» has its «Αλλαγή ώρας ›» (3 stops)', await K.count(page, `${LEG} .wn5f-seq li [data-act="stop-time"]`) === 3);
+  const seqH = await page.evaluate((d) => [...document.querySelectorAll(`${d} .wn5f-seq li`)].map((li) => Math.round(li.getBoundingClientRect().height)), LEG);
+  ok(scn, 'each stop line stays one line (h ≤ 23) with its button', seqH.length === 3 && seqH.every((h) => h <= 23), seqH);
+  await page.click(`${LEG} .wn5f-seq li[data-stop="1003"] [data-act="stop-time"]`).catch(() => {});
+  const D = '.wi4-dlg[data-wn5="date"]';
+  await page.waitForSelector(D, { timeout: 6000 }).catch(() => {});
+  const head = await page.evaluate((d) => { const x = document.querySelector(d); return x && { t: x.querySelector('.wi4-dlg-t').textContent, stop: x.dataset.stop,
+    from: (x.querySelector('[data-win="from"]') || {}).value, to: (x.querySelector('[data-win="to"]') || {}).value }; }, D);
+  ok(scn, 'the leg form closes and the panel of stop 1003 opens: «Ώρα στάσης · ASPROPYRGOS TEST», its window 07:00–09:00', await K.count(page, LEG) === 0
+    && !!head && head.t === 'Ώρα στάσης · ASPROPYRGOS TEST' && head.stop === '1003' && head.from === '07:00' && head.to === '09:00', head);
+  ok(scn, 'nothing changed → no request', K.planOf(S, 'PATCH', '/plan/rt/101').length === 0);
+  await page.fill(`${D} [data-win="from"]`, '10:00');
+  await page.fill(`${D} [data-win="to"]`, '12:00');
+  await page.keyboard.press('Tab');
+  await page.waitForTimeout(500);
+  const strip = (x) => { const o = Object.assign({}, x.body); delete o.dry_run; return JSON.stringify(o); };
+  const want1 = JSON.stringify({ stops: [{ stop_id: 1003, planned_from: '2026-10-13T10:00:00+03:00', planned_to: '2026-10-13T12:00:00+03:00' }] });
+  let c = K.planOf(S, 'PATCH', '/plan/rt/101');
+  ok(scn, 'a new window → a dry run PATCH /plan/rt/101 with stops[] of THAT stop only (no shift, no other stop)', c.length >= 1 && c[c.length - 1].body.dry_run === true && strip(c[c.length - 1]) === want1, c.map((x) => x.raw));
+  const res = await K.text(page, `${D} .wn5-datep-r`);
+  ok(scn, 'the result names that stop only: «Τρί 13/10 → Τρί 13/10 · 10:00–12:00» and «Αλλάζει μόνο αυτή η στάση»',
+    res.includes('Τρί 13/10 → Τρί 13/10 · 10:00–12:00') && res.includes('Αλλάζει μόνο αυτή η στάση') && (res.match(/→/g) || []).length === 1, res.slice(0, 400));
+  await page.click(`${D} [data-day="2026-10-14"]`);
+  await page.waitForTimeout(500);
+  c = K.planOf(S, 'PATCH', '/plan/rt/101');
+  const want2 = JSON.stringify({ stops: [{ stop_id: 1003, planned_from: '2026-10-14T10:00:00+03:00', planned_to: '2026-10-14T12:00:00+03:00' }] });
+  ok(scn, 'another day → the same stop on 14/10 10:00–12:00, still one stop, no shift', strip(c[c.length - 1]) === want2 && c[c.length - 1].body.dry_run === true, c.map((x) => x.raw));
+  await page.click(`${D} [data-act="save"]`);
+  await page.waitForTimeout(1000);
+  const real = K.planOf(S, 'PATCH', '/plan/rt/101').filter((x) => !(x.body && x.body.dry_run === true));
+  ok(scn, '«Αποθήκευση» → ONE PATCH /plan/rt/101 with the body of the last dry run', real.length === 1 && real[0].raw === want2, real.map((x) => x.raw));
+  await closeClean(page, S, ok, scn);
+}
+
+// F26 (live 28/10): an order without a delivery place does not save, and the form did not say why clearly (the lines
+// came after a press, under a long form). A red «Λείπει: τόπος παράδοσης» stands beside «Αποθήκευση» while it lacks.
+async function scnMiss({ browser, origin, ok, scn }) {
+  const { page, S } = await K.openApp(browser, origin);
+  if (!(await guard(page, ok, scn))) return;
+  await openForm(page, {});
+  await fillOrder(page, 0, ORDER_A);
+  // the destination typed as a name but not picked from the list (an unknown place): no place id
+  await page.evaluate((d) => { const r = document.querySelector(`${d} .wn5f-rows[data-k="drop"] .wn5f-row`);
+    document.getElementById('lv_' + r.dataset.pid).value = ''; const t = document.getElementById('ls_' + r.dataset.pid); t.value = 'ΑΓΝΩΣΤΟΣ ΠΡΟΟΡΙΣΜΟΣ';
+    t.dispatchEvent(new Event('input', { bubbles: true })); }, DLG);
+  const why = () => page.evaluate((d) => { const x = document.querySelector(`${d} .wn5f-ft .wn5-why`);
+    return x ? { t: x.textContent, c: getComputedStyle(x).color, vis: x.getBoundingClientRect().width > 0 } : null; }, DLG);
+  const w1 = await why();
+  ok(scn, 'before any press: a red «Λείπει: τόπος παράδοσης» beside «Αποθήκευση»', !!w1 && w1.t === 'Λείπει: τόπος παράδοσης' && w1.vis && w1.c === 'rgb(185, 28, 28)', w1);
+  await save(page);
+  await page.waitForTimeout(400);
+  ok(scn, 'a press sends nothing', K.planOf(S, 'POST', '/plan/orders').length === 0);
+  await page.evaluate((d) => { const r = document.querySelector(`${d} .wn5f-rows[data-k="drop"] .wn5f-row`); fhPickLinked(r.dataset.pid, 'recWn5LocAth', 'ATHENS TEST'); }, DLG);
+  await page.click(`${DLG} [data-f="price"]`);   // a blur refreshes (fhPickLinked fires no input)
+  ok(scn, 'the place picked → the line goes', (await why()) === null);
+  await page.context().close();
+  // the edit form: a new point without its delivery place says the same
+  const p2 = await K.openApp(browser, origin);
+  await openForm(p2.page, { natOrderId: 3101 });
+  await p2.page.click(`${DLG} [data-act="add-ship"][data-k="drop"]`);
+  const w2 = await p2.page.evaluate((d) => { const x = document.querySelector(`${d} .wn5f-ft .wn5-why`); return x ? x.textContent : null; }, DLG);
+  ok(scn, 'edit form, «+ σημείο παράδοσης» not filled → «Λείπει: τόπος παράδοσης»', w2 === 'Λείπει: τόπος παράδοσης', w2);
+  await closeClean(p2.page, p2.S, ok, scn);
+}
+
+// A-7 (Figma audit 28/10): «+ σημείο φόρτωσης / παράδοσης» and «+ παραγγελία» inside the leg form (read-only by plan
+// T21). A point goes through the order's edit form (077: it waits, owner 28/10) and the saved line leads back to this
+// leg's «+», where «Πρόσθεσε» is one press; «+ παραγγελία» is the create form on this cycle and side.
+async function scnLegAdd({ browser, origin, ok, scn }) {
+  const plan = { 'PATCH /plan/orders/3001': UPD_OK(3001, { new_shipment_ids: [5301], new_piece_ids: [4301] }) };
+  const { page, S } = await K.openApp(browser, origin, { board: legWeek(), plan });
+  if (!(await guard(page, ok, scn))) return;
+  await openLegBy(page, 101, 'KATHODOS');
+  ok(scn, 'each national block has «+ σημείο φόρτωσης» and «+ σημείο παράδοσης», the VS none', await K.count(page, `${LEG} [data-nat="3001"] [data-act="add-point"]`) === 2
+    && await K.count(page, `${LEG} [data-nat="3004"] [data-act="add-point"]`) === 2 && await K.count(page, `${LEG} [data-vs] [data-act="add-point"]`) === 0);
+  ok(scn, 'the leg has «+ παραγγελία»', await K.count(page, `${LEG} [data-act="leg-add-order"]`) === 1);
+  // code review: a price typed in the leg form and not saved is not lost by these exits
+  await page.fill(`${LEG} [data-nat="3001"] [data-f="price"]`, '999');
+  await page.click(`${LEG} [data-nat="3001"] [data-act="add-point"][data-k="drop"]`);
+  ok(scn, 'a price typed and not saved + «+ σημείο» → the line says save first, the leg form stays, nothing opened', await K.count(page, LEG) === 1 && await K.count(page, DLG) === 0
+    && /Αποθήκευσε πρώτα/.test(await K.text(page, `${LEG} [data-err]`)));
+  await page.fill(`${LEG} [data-nat="3001"] [data-f="price"]`, '');
+  // code review: the row A-7 opens with is not «a change» — the riding point's stop time still opens at once
+  await page.click(`${LEG} [data-nat="3001"] [data-act="add-point"][data-k="drop"]`);
+  await page.waitForSelector(DLG, { timeout: 8000 }).catch(() => {});
+  await page.click(`${DLG} [data-shipstop="5202"] [data-act="stop-time"][data-stop="1003"]`).catch(() => {});
+  await page.waitForSelector('.wi4-dlg[data-wn5="date"]', { timeout: 6000 }).catch(() => {});
+  ok(scn, 'the edit form opened by «+ σημείο» with its untouched row: «Αλλαγή ώρας στάσης ›» opens the panel, no «save first»',
+    await K.count(page, '.wi4-dlg[data-wn5="date"]') === 1 && await K.count(page, DLG) === 0);
+  await page.keyboard.press('Escape');
+  await openLegBy(page, 101, 'KATHODOS');
+  await page.click(`${LEG} [data-nat="3001"] [data-act="add-point"][data-k="drop"]`);
+  await page.waitForSelector(DLG, { timeout: 8000 }).catch(() => {});
+  ok(scn, '«+ σημείο παράδοσης» → the leg form closes, #3001 opens to edit (GET /plan/orders/3001) with ONE new delivery row', await K.count(page, LEG) === 0
+    && K.planOf(S, 'GET', '/plan/orders/3001').length === 2 && await K.count(page, `${DLG} [data-newship][data-k="drop"]`) === 1);
+  await page.evaluate((d) => { const r = document.querySelector(`${d} [data-newship]`); fhPickLinked(r.dataset.pd, 'recWn5LocAth', 'ATHENS TEST');
+    const x = r.querySelector('[data-f="pal"]'); x.value = '2'; x.dispatchEvent(new Event('input', { bubbles: true })); }, DLG);
+  await save(page);
+  await page.waitForTimeout(1000);
+  const p = K.planOf(S, 'PATCH', '/plan/orders/3001');
+  ok(scn, 'one PATCH: exactly one new point (no shipment_id), 2 pallets', p.length === 1 && p[0].body.shipments.length === 1 && !('shipment_id' in p[0].body.shipments[0])
+    && p[0].body.shipments[0].pallets === 2, p.map((x) => x.body));
+  const done = await K.text(page, `${DLG} [data-done]`);
+  ok(scn, 'saved: «ΠΡΟΣ ΑΝΑΘΕΣΗ» and the way back «Στο RT-T101 · ΚΑΘΟΔΟΣ ›»', /ΠΡΟΣ ΑΝΑΘΕΣΗ/.test(done) && done.includes('Στο RT-T101 · ΚΑΘΟΔΟΣ ›'), done);
+  await page.click(`${DLG} [data-act="to-leg"]`);
+  await page.waitForSelector('.wi4-dlg[data-wn5="plus"]', { timeout: 6000 }).catch(() => {});
+  ok(scn, '«Στο RT-T101 ›» → the form closes and the «+» of RT-T101 ΚΑΘΟΔΟΣ opens (its waiting list: one press «Πρόσθεσε»)', await K.count(page, DLG) === 0
+    && await K.count(page, '.wi4-dlg[data-wn5="plus"]') === 1 && /Πρόσθεσε στην ΚΑΘΟΔΟ/.test(await K.text(page, '.wi4-dlg[data-wn5="plus"] .wi4-dlg-t')));
+  ok(scn, 'no other write than the one PATCH (the board move is the user\'s next press)', S.plan.filter((x) => x.m !== 'GET').length === 1, S.plan.filter((x) => x.m !== 'GET').map((x) => x.m + ' ' + x.path));
+  await page.keyboard.press('Escape');
+  await openLegBy(page, 101, 'KATHODOS');
+  await page.click(`${LEG} [data-act="leg-add-order"]`);
+  await page.waitForSelector(DLG, { timeout: 8000 }).catch(() => {});
+  const tg = await page.evaluate((d) => { const s = document.querySelector(`${d} #wn5f-tgt`), r = document.querySelector(`${d} #wn5f-dir`);
+    return s && { v: s.value, dis: s.disabled, dir: r.value, ddis: r.disabled, t: document.querySelector(`${d} .wi4-dlg-t`).textContent }; }, DLG);
+  ok(scn, '«+ παραγγελία» → the create form on RT-T101 ΚΑΘΟΔΟΣ, cycle and side set and locked', !!tg && tg.v === '101' && tg.dis && tg.dir === 'KATHODOS' && tg.ddis && /Νέα παραγγελία/.test(tg.t), tg);
+  await closeClean(page, S, ok, scn);
+}
+
 // T22 — VS day and destination from the leg form: one POST per change, never inside the form's save.
 function vsWeek(withStop) {
   const b = K.week();
@@ -666,7 +891,7 @@ async function scnVs({ browser, origin, ok, scn }) {
 }
 
 K.run({
-  scenarios: { order: scnOrder, nowin: scnNoWin, groupage: scnGroupage, unknown: scnUnknown, reused: scnReused, replayed: scnReplayed, edit: scnEdit, 'edit-ride': scnEditRide, 'edit-add': scnEditAdd, 'edit-remove': scnEditRemove, 'edit-read-fail': scnEditReadFail, 'edit-twoday': scnEditTwoDay, 'veroia-edit': scnVeroiaEdit, leg: scnLeg, 'leg-anodos': scnLegAnodos, vs: scnVs },
+  scenarios: { order: scnOrder, nowin: scnNoWin, groupage: scnGroupage, unknown: scnUnknown, reused: scnReused, replayed: scnReplayed, edit: scnEdit, 'edit-ride': scnEditRide, 'edit-add': scnEditAdd, 'edit-remove': scnEditRemove, 'edit-read-fail': scnEditReadFail, 'edit-twoday': scnEditTwoDay, 'veroia-edit': scnVeroiaEdit, 'day-type': scnDayType, leg: scnLeg, 'leg-anodos': scnLegAnodos, 'stop-time': scnStopTime, miss: scnMiss, 'leg-add': scnLegAdd, vs: scnVs },
   globals: ['WN5Form'],
   go: 'the v5 order forms send one body per press, from the form only, with one request_id per open form',
 }).catch((e) => { console.error(e); process.exit(1); });
