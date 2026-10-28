@@ -256,3 +256,29 @@ test('Ε13 move filter: v5 read fails → the filter is cleared and said, never 
   const out = await SCREENS.moveIdx(s);
   assert.match(out, /^null\|Δεν φορτώθηκε ο δείκτης/);
 });
+
+// ── Review fixes (code review high, 28/10) ─────────────────────────────────
+test('a record newer than the session catalogue (ids_missing) → «ανανέωσε τη σελίδα», not a retry that cannot help; logged once', async () => {
+  const lk = JSON.parse(JSON.stringify(LOOKUPS)); lk.locations = lk.locations.filter(x => x.legacy_id !== 'recLoc1');
+  const s = sandbox({ files: NEW_L(), planConfig: 'after', plan: Object.assign({}, PLAN_ALL, { '/plan/lookups': lk }) });
+  const h = await SCREENS.locCard(s);
+  assert.match(h, /νεότερη από τον κατάλογο της σελίδας — ανανέωσε τη σελίδα/);
+  assert.strictEqual(s.logged.filter(x => /_locOpenCard v5/.test(x)).length, 1);
+});
+test('driver card: the segments read fails → the «Με ποια φορτηγά» bars say it too', async () => {
+  const s = sandbox({ files: NEW_E(), planConfig: 'after', plan: FAIL('/plan/activity?driver_id=') });
+  await SCREENS.driverCard(s);
+  assert.match(s.html('ec_recDr7_agg'), /ecard-fail v5-warn/);
+});
+test('move filter: a v5 place missing from the catalogue → the filter is cleared and said, never silently skipped', async () => {
+  const p = Object.assign({}, PLAN_ALL, { '/plan/activity?location_id=all': { sides: [{ location_id: 99, kathodos: 1, anodos: 0 }] } });
+  const s = sandbox({ files: NEW_L(), planConfig: 'after', plan: p });
+  assert.match(await SCREENS.moveIdx(s), /^null\|Δεν φορτώθηκε ο δείκτης/);
+});
+test('a broken PlanConfig (throws) = unknown: today\'s half still renders', async () => {
+  const s = sandbox({ files: NEW_E(), planConfig: 'after', plan: PLAN_ALL });
+  await s.run(`PlanConfig = { load: async () => { throw new Error('boom'); } }`);
+  const h = await SCREENS.driverCard(s);
+  assert.match(h, /title="RT-801"/);
+  assert.match(h, /title="RT-903"/);
+});

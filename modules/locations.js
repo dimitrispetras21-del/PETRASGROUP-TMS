@@ -915,6 +915,7 @@ async function _locOpenCard(id) {
   panel.classList.add('open');
   LOCC.openId = id; LOCC.stops = null; LOCC.failed = false; LOCC.pgByRec = {}; LOCC.v5 = []; LOCC.v5Warn = '';
   panel.innerHTML = _locCardHtml(rec, '<div class="locc-empty">Φόρτωση ιστορικού…</div>');
+  const gateP = _v5Gate();   // beside today's reads, not after them (PlanConfig: one read per session)
   try {
     const stops = await atGetAll(TABLES.ORDER_STOPS, {
       filterByFormula: `FIND("${id}", ARRAYJOIN({Location}, ","))>0`
@@ -940,7 +941,7 @@ async function _locOpenCard(id) {
     if (typeof logError === 'function') logError(e, '_locOpenCard history');
   }
   if (!LOCC.failed) {
-    const v5 = await _locLoadV5(id);
+    const v5 = await _locLoadV5(id, await gateP);
     if (LOCC.openId !== id) return;   // another card opened meanwhile: its own call owns LOCC
     LOCC.v5 = v5.rows; LOCC.v5Warn = v5.warn;
   }
@@ -952,9 +953,8 @@ async function _locOpenCard(id) {
 // _v5* live in core/entity.js (one gate, one id catalogue for every master-data screen). PlanConfig 'before' = no
 // call: the card is today's. A failed read keeps today's history and says the rest is missing — never «Καμία
 // κίνηση». Places are matched by the catalogue id (PlanIds), never by name (Latin-only names, 9/8).
-async function _locLoadV5(recId) {
+async function _locLoadV5(recId, gate) {
   const out = { rows: [], warn: '' };
-  const gate = await _v5Gate();
   if (!gate) return out;
   try {
     const ids = await _v5Ids(gate);
@@ -992,7 +992,7 @@ async function _locLoadV5(recId) {
     if (d.truncated) out.warn = '⚠ Εθνικά v5: η ανάγνωση έφτασε το όριο — το ιστορικό είναι ελλιπές.';
   } catch (e) {
     out.rows = [];
-    out.warn = _v5FailText(gate);
+    out.warn = _v5FailText(gate, e);
     _v5Log(e, '_locOpenCard v5');
   }
   return out;
@@ -1066,7 +1066,8 @@ async function _locMoveIdxV5(idx) {
     const locBy = _v5ById(ids, 'location');
     for (const r of d.sides || []) {
       const rec = locBy.get(r.location_id);
-      if (!rec) continue;
+      // a place newer than the session's catalogue: the index would silently miss it
+      if (!rec) throw new Error('plan/activity: location ' + r.location_id + ' not in the catalogue — reload the page');
       if (!idx.has(rec.legacy_id)) idx.set(rec.legacy_id, new Set());
       if (r.kathodos > 0) idx.get(rec.legacy_id).add('ΚΑΘΟΔΟΣ');
       if (r.anodos > 0) idx.get(rec.legacy_id).add('ΑΝΟΔΟΣ');

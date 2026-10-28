@@ -1271,10 +1271,17 @@ async function _enrichWorkshopsV2(entityKey, workshops) {
 // PlanConfig 'before' = no v5 call at all: the screen is today's. 'unknown' (or no PlanConfig: app.html loads it
 // only from stream (e)'s bump) reads anyway — before L the reads answer empty, so the picture is today's; a
 // failure is said on screen, never a silent 0 (principle 1).
+// Never rejects: PlanConfig.load() answers 'unknown' on any failure, and a throw here (a broken PlanConfig) is
+// 'unknown' too — run beside today's reads, the gate must never take today's half down with it.
 async function _v5Gate() {
   if (typeof PlanConfig === 'undefined') return { state: 'unknown' };
-  const r = await PlanConfig.load();
-  return r.state === 'before' ? null : { state: r.state };
+  try {
+    const r = await PlanConfig.load();
+    return r && r.state === 'before' ? null : { state: (r && r.state) || 'unknown' };
+  } catch (e) {
+    if (typeof logError === 'function') logError(e, 'v5 gate: PlanConfig.load');
+    return { state: 'unknown' };
+  }
 }
 // A 404 no_route before L is the known gap (Worker before deploy 1, like PlanConfig and PlanIds): undefined,
 // not logged. After L a missing route is a fault and throws like any other.
@@ -1307,11 +1314,16 @@ function _v5ById(ids, kind) {
 // planFetch logs every answer that is not a designed one; the rest (a 403 on a read every role holds, a missing
 // catalogue row, a local fault) is logged here, once.
 function _v5Log(e, where) {
-  const logged = !!e && e.name === 'PlanError' && !/^ids_/.test(String(e.code || ''))
+  const logged = !!e && e.name === 'PlanError' && !/^ids_(missing|kind)$/.test(String(e.code || ''))
     && !(typeof PlanApi !== 'undefined' && PlanApi.isDesigned(e));
   if (!logged && typeof logError === 'function') logError(e, where);
 }
-function _v5FailText(gate) {
+// PlanIds keeps its catalogue for the whole session (core/plan-ids.js): a record created after it loaded is not
+// in it (ids_missing), and a retry reads the same catalogue — only a reload helps, so that is what is said.
+function _v5FailText(gate, e) {
+  if (e && e.code === 'ids_missing') {
+    return '⚠ Τα εθνικά v5 δεν διαβάστηκαν: η εγγραφή είναι νεότερη από τον κατάλογο της σελίδας — ανανέωσε τη σελίδα.';
+  }
   return '⚠ Τα εθνικά v5 δεν διαβάστηκαν — η εικόνα είναι ελλιπής.'
     + (gate && gate.state === 'unknown' ? ' Κατάσταση μετάβασης άγνωστη.' : '') + ' Ξαναδοκίμασε.';
 }
@@ -2419,7 +2431,8 @@ async function _loadEntityCardRT(entityKey, rec) {
     // base passed 200. The browser filter stays: a Worker deployed before
     // driver_id/trailer_id ignores them, and the card is then as before.
     const rtQ = isTrailer ? 'trailer_id=' : isDriver ? 'driver_id=' : 'truck_id=';
-    const res = await ctFetch('/costs/rt?' + rtQ + encodeURIComponent(pgId));
+    // the gate (PlanConfig, one read per session) runs beside /costs/rt, not after it
+    const [res, gate] = await Promise.all([ctFetch('/costs/rt?' + rtQ + encodeURIComponent(pgId)), _v5Gate()]);
     el = body();
     if (!el) return;
     let recsAll = res.records || [];
@@ -2429,7 +2442,6 @@ async function _loadEntityCardRT(entityKey, rec) {
     // FIRST segment's copy — a driver or vehicle that joined by a handover would miss the cycle. Its segments are
     // read from /plan/activity and the missing cycles join the list. A failed read keeps today's list and says so.
     let v5Warn = '';
-    const gate = await _v5Gate();
     if (gate) {
       try {
         const d = await _v5Activity(gate, isTrailer ? 'trailer_id' : isDriver ? 'driver_id' : 'truck_id', pgId);
@@ -2451,7 +2463,7 @@ async function _loadEntityCardRT(entityKey, rec) {
           if (d.truncated) v5Warn = '⚠ Εθνικά v5: η ανάγνωση έφτασε το όριο — η λίστα είναι ελλιπής.';
         }
       } catch (e) {
-        v5Warn = _v5FailText(gate);
+        v5Warn = _v5FailText(gate, e);
         _v5Log(e, 'entity card: v5 segments');
       }
     }
@@ -2503,6 +2515,8 @@ async function _loadEntityCardRT(entityKey, rec) {
               <span class="ecard-agg-bar"><span style="width:${Math.round(n / max * 100)}%"></span></span>
             </div>`).join('')
           : `<div class="ecard-empty">Καμία καταγεγραμμένη διαδρομή.</div>`;
+        // the bars are built from the same list: if its v5 half is missing, so may be a truck here
+        if (v5Warn) aggEl.insertAdjacentHTML('beforeend', `<div class="ecard-fail v5-warn" role="alert">${_ecEsc(v5Warn)}</div>`);
       }
     }
   } catch (e) {
@@ -2638,7 +2652,7 @@ async function _loadEntityCardActivity(entityKey, rec) {
             if (d.truncated) v5Warn = '⚠ Εθνικά v5: η ανάγνωση έφτασε το όριο — τα σύνολα είναι ελλιπή.';
           }
         } catch (e) {
-          v5Warn = _v5FailText(gate);
+          v5Warn = _v5FailText(gate, e);
           _v5Log(e, 'partner card: v5');
         }
       }
