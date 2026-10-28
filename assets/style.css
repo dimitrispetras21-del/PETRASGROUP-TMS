@@ -8990,6 +8990,9 @@ body.wi4-on #wi-popover .wi-pop-save:hover { background:var(--navy-light); }
   --wn5-leave-ink: #c25c0d;   /* Veroia board stock «φεύγει ως …» (Figma 2011:8748, 2069:8408); 4.6:1 on white */
   --wn5-mode-on:   #eff8ff;   /* the chosen «ΤΥΠΟΣ ΚΑΤΑΧΩΡΗΣΗΣ» card of the order form (Figma 2011:9666) */
   --wn5-lock-bg:   var(--bg-row-alt);   /* the locked VS block of the leg form (Figma 2011:9432, #f8fafc) */
+  /* the select «▾» (Figma 2011:9635, 2122:7765): the very image fhSelectSearch draws on the searchable selects
+     (core/form-helpers.js, .fh-cb-input), so a native select and a searchable one in the same form look the same */
+  --wn5-sel-chev: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%2364748B' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 /* The same page frame as v4 (body.wi4-on .content), while the v5 board is on screen. */
 body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; background:var(--surface-page); }
@@ -9277,6 +9280,8 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-none { color:var(--wi4-grey-2); }
 .wn5-field { display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--wi4-grey-1); }
 .wn5-field textarea, .wn5-field input, .wn5-field select { font:inherit; padding:5px 8px; border:1px solid var(--wi4-ctl); border-radius:6px; background:var(--surface-card); color:var(--wi4-ink); }
+/* A native select (the local loading's «Στάση *», T17) sits among searchable ones: the same ▾, not Chrome's own arrows */
+.wn5-field select { appearance:none; -webkit-appearance:none; height:28px; box-sizing:border-box; padding-right:28px; background-image:var(--wn5-sel-chev); background-repeat:no-repeat; background-position:right 10px center; }
 .wn5-dlg .wi4-btn.wn5-danger { background:var(--wi4-red); border-color:var(--wi4-red); color:var(--surface-card); }
 .wn5-dlg .wi4-btn.pri:disabled, .wn5-dlg .wi4-btn.wn5-danger:disabled { opacity:.5; cursor:default; }
 /* The two-step dialog as Figma Δ5 2053:8080 (and H4 2125:7738): 600 wide, radius 12, padding 18/22, one 12px rhythm
@@ -9511,7 +9516,9 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-dlg[data-wn5="local"] .wn5-hubwin { gap:6px; font-size:12px; color:var(--wi4-grey-2); }
 .wn5-dlg[data-wn5="local"] .wn5-hubwin > span { font-size:11.5px; color:var(--wi4-grey-2); }
 .wn5-dlg[data-wn5="local"] .wn5-hm { height:28px; padding:0 8px; border-color:var(--wi4-ctl); font-size:12.5px; color:var(--wi4-ink); box-sizing:border-box; }
-.wn5-dlg[data-wn5="local"] .wn5-dlg-b { display:flex; flex-direction:column; gap:8px; }
+.wn5-dlg[data-wn5="local"] .wn5-dlg-b { display:flex; flex-direction:column; gap:8px; font-size:12px; }
+/* the Δ4 shell's type scale (2011:9195): fields and lines 12px, the closing note 11px grey (2013:7797), never the 13px of the wide dialogs */
+.wn5-dlg[data-wn5="local"] .wn5-dlg-b > p.wn5-none { font-size:11px; line-height:15px; }
 .wn5-dlg[data-wn5="local"] { padding:12px; box-shadow:var(--wn5-pop-shadow); }
 .wn5-dlg[data-wn5="local"] .wi4-dlg-t { font:600 12.5px/16px 'DM Sans',sans-serif; color:var(--wi4-ink); }
 .wn5-dlg[data-wn5="local"] .wi4-dlg-x { display:none; }   /* the shell has no «×»: Άκυρο is the exit (Esc and a click outside too) */
@@ -9651,6 +9658,14 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5f-f { display:flex; flex-direction:column; gap:5px; min-width:0; font-size:12px; color:var(--wi4-grey-1); }
 .wn5f-f > span:first-child { white-space:nowrap; }
 .wn5f .form-input { height:34px; padding:0 10px; box-sizing:border-box; border:1px solid var(--wi4-ctl); border-radius:6px; background:var(--surface-card); font-size:13px; color:var(--wi4-ink); }
+/* A select ends with the «▾» the vehicle selects already draw (fhSelectSearch), never Chrome's black arrows
+   (2011:9635/9653, 2122:7765); the form's own shorthand above would otherwise drop the image. */
+.wn5f select.form-input { appearance:none; -webkit-appearance:none; padding-right:28px; background-image:var(--wn5-sel-chev); background-repeat:no-repeat; background-position:right 10px center; }
+/* A locked field (the «+» short form's side and cycle, a leg on the road) is the read-only field of Δ7 2069:7870:
+   chip fill, grey-1 text, no ▾, no 0.7 fade (Chrome's own disabled select). The .wn5f rule above outranks the
+   global .form-input:disabled, so without this a locked field looked editable. */
+.wn5f .form-input:disabled { opacity:1; background-color:var(--wi4-chip); color:var(--wi4-grey-1); cursor:default; }
+.wn5f select.form-input:disabled { background-image:none; }
 /* the window column hugs its label (179 in Figma 2011:9645) over the 159 of its two fields, so «Φορτηγό» gets 361 */
 .wn5f-head { display:grid; grid-template-columns:230px 150px max-content minmax(0, 1fr); gap:12px; align-items:end; }
 .wn5f-grid4 { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:12px; align-items:end; }
@@ -9693,6 +9708,7 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5f-day > .wn5f-dayt { position:absolute; top:0; bottom:0; left:11px; display:flex; align-items:center; pointer-events:none; white-space:nowrap; font-size:13px; color:var(--wi4-ink); }
 .wn5f-day:not(.has) > .wn5f-dayt { color:var(--wi4-grey-3); }
 .wn5f-day > .form-input:focus + .wn5f-dayt { display:none; }
+.wn5f-day > .form-input:disabled + .wn5f-dayt { color:var(--wi4-grey-1); }
 .wn5f-add { align-self:flex-start; height:26px; padding:0 9px; box-sizing:border-box; border:1px solid var(--wi4-ctl); border-radius:5px; background:var(--surface-card); font-size:12px; color:var(--wi4-grey-1); cursor:pointer; }
 .wn5f-adds { display:flex; gap:10px; }
 .wn5f-adds > .wn5f-add[hidden] { display:none; }
@@ -9727,8 +9743,10 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5f-ft .wi4-btn.pri:hover { border-color:var(--accent-hover); background:var(--accent-hover); }
 .wn5f-ft .wi4-btn.pri:disabled { border-color:var(--wi4-ctl); background:var(--wi4-chip); color:var(--wi4-grey-3); }
 .wn5f-ft .wi4-btn[hidden] { display:none; }   /* «Αποθήκευση» leaves once saved (.wi4-btn's inline-flex beats [hidden]) */
-.wn5f-ships-h, .wn5f-ship { display:grid; grid-template-columns:minmax(0, 1fr) 130px 90px 90px 130px 90px 90px 70px; gap:6px; align-items:center; }
-.wn5f-ships-h { font-size:11px; color:var(--wi4-grey-2); grid-template-columns:minmax(0, 1fr) 310px 310px 70px; }
+/* the edit form's ΑΠΟΣΤΟΛΕΣ row: the create form's own fields (2011:9704) — a day field 112 with its weekday label and
+   two 71px ΗΗ:ΛΛ fields per side, pallets 76; never the native time input (12-hour in el-GR, a clock icon, 90px) */
+.wn5f-ships-h, .wn5f-ship { display:grid; grid-template-columns:minmax(0, 1fr) 112px 71px 71px 112px 71px 71px 76px; gap:6px; align-items:center; }
+.wn5f-ships-h { font-size:11px; color:var(--wi4-grey-2); grid-template-columns:minmax(0, 1fr) 266px 266px 76px; }
 /* the leg form (T21, Figma 2011:9406 / Δ7 2069:7858) */
 .wn5f-lhead { grid-template-columns:150px 120px 130px 190px; align-items:center; }
 .wn5f-lhead[data-side="ANODOS"] { grid-template-columns:150px 120px 170px 190px; }
@@ -9948,6 +9966,14 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5h .form-input:focus { padding:0 9.5px; border:1.5px solid var(--accent); outline:none; }
 .wn5h .form-input:disabled { background-color:var(--wi4-chip); color:var(--wi4-grey-2); }
 .wn5h .wn5f-f.bad .form-input { padding:0 9.5px; border:1.5px solid var(--wn5-field-err); }
+.wn5h select.form-input:focus, .wn5h .wn5f-f.bad select.form-input { padding-right:27.5px; }   /* the ▾ keeps its room on the 1.5px edge */
+/* «Πότε *» 2122:7753: the day ends with the select «▾», not Chrome's calendar glyph. The glyph stays in place, see-through,
+   under the ▾, so a click on the ▾ still opens the native calendar (and the keyboard keeps Alt+↓). */
+.wn5h .wn5f-day > .form-input { background-image:var(--wn5-sel-chev); background-repeat:no-repeat; background-position:right 10px center; }
+.wn5h .wn5f-day > .form-input::-webkit-calendar-picker-indicator { opacity:0; cursor:pointer; }
+/* «ίδιος οδηγός» on (2143:7768): the driver is read-only, no ▾. fhSelectSearch sets the ▾ inline (image, repeat,
+   position) so no class can drop the image; its size is not inline. */
+.wn5h .fh-cb-input:disabled { background-size:0 0; cursor:default; }
 .wn5h-mono .form-input { font-family:'DM Mono',ui-monospace,SFMono-Regular,Menlo,monospace; font-weight:500; }
 .wn5h-ferr { font-size:11px; color:var(--wi4-badge-ink); }
 /* the «Άλλο» line on one line (2122:7868): the note field is the row's narrow 4th one, so the line keeps its own width
@@ -9985,12 +10011,16 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5h-sw:disabled { opacity:.5; cursor:default; }
 /* H7 tile 4: the disabled primary is the line grey (2130:7837) */
 .wn5h .wn5f-ft .wi4-btn.pri:disabled { border-color:var(--wi4-line-2); background:var(--wi4-line-2); color:var(--wi4-grey-3); }
+/* …and its «Κλείσιμο» has the primary's 16px (2130:7837, 89 wide); «Άκυρο» keeps the 14px of H2 2122:7836 */
+.wn5h .wn5f-ft .wi4-btn.wn5h-close { padding:0 16px; }
 /* the ✈ submenu shell of Figma 2011:9184 (200 × 104): padding 6 0, the popover shadow, 1px clear of the menu's edge;
    «›» 11px grey-3; the open line and the hovered item in Medium. The print submenu sits with its 2nd item on its line. */
 .wn5-menu .wn5-m-sub { left:calc(100% + 2px); padding:6px 0; box-shadow:var(--wn5-pop-shadow); }
 .wn5-menu .wn5-m-sub[data-sub="sheet"] { margin-top:-36px; }
 .wn5-menu .wn5-m-ar { font-size:11px; color:var(--wi4-grey-3); }
-.wn5-menu .wn5-m-i[aria-expanded="true"] > .wi4-l1, .wn5-menu .wn5-m-sub > .wn5-m-i:is(:hover, :focus) > .wi4-l1 { font-weight:500; }
+/* :focus-visible, not :focus: the submenu focuses its first item when it opens, and with the mouse on another item that
+   gave two Medium lines at once (2011:9185: only the hovered item); the keyboard still sees where it is */
+.wn5-menu .wn5-m-i[aria-expanded="true"] > .wi4-l1, .wn5-menu .wn5-m-sub > .wn5-m-i:is(:hover, :focus-visible) > .wi4-l1 { font-weight:500; }
 /* the clicked side while its leg form is open (2011:9305): one box over the side's cells; multiply keeps the text */
 .wn5-legsel { position:absolute; top:0; bottom:0; box-sizing:border-box; border:2px solid var(--wi4-blue); border-radius:4px; background:var(--wi4-sel); mix-blend-mode:multiply; pointer-events:none; }
 /* ═══ Παραγγελίες › Εβδομάδα v4 (.ow4) — modules/orders_week_view.js ═════════

@@ -331,7 +331,7 @@
     if (key && (!d.prev || d.prev.key !== key) && key !== d.failedKey) d.timer = setTimeout(() => _preview(d, key), 400);
     const from = d.el.querySelector('[data-from]');
     if (from) from.textContent = st.at ? `ΝΕΟ ΟΧΗΜΑ · ΑΠΟ ${_upper(_when(st.at))}` : 'ΝΕΟ ΟΧΗΜΑ';
-    if (d.locked) d.el.querySelectorAll('.wn5f-ft [data-act="cancel"]').forEach((b) => { b.textContent = 'Κλείσιμο'; });   // H7 tile 4
+    if (d.locked) d.el.querySelectorAll('.wn5f-ft [data-act="cancel"]').forEach((b) => { b.textContent = 'Κλείσιμο'; b.classList.add('wn5h-close'); });   // H7 tile 4
   }
   // «ίδιος οδηγός» ON: the disabled driver control shows the driver who keeps driving (Figma 2143:7768), not the
   // last pick; OFF gives the pick back. The body never sends driver_id with same_driver (072b), so this is display.
@@ -427,7 +427,7 @@
     if (Array.isArray(warnings) && warnings.length) WN5Act.strip(_strip(d), warnings); else WN5Act.strip(_strip(d), null);
     const s = d.el.querySelector('[data-act="save"]');
     if (s) s.hidden = true;
-    d.el.querySelectorAll('.wn5f-ft [data-act="cancel"]').forEach((b) => { b.textContent = 'Κλείσιμο'; });
+    d.el.querySelectorAll('.wn5f-ft [data-act="cancel"]').forEach((b) => { b.textContent = 'Κλείσιμο'; b.classList.add('wn5h-close'); });
     WN5.reload('handover');
   }
   function _vehFields(own, sel) {
@@ -532,7 +532,7 @@
       _otherNote(d, probs.includes(OTHER_NOTE));
       _lines(d, probs.filter((l) => l !== OTHER_NOTE && !/^(Πότε|Πού|Λόγος) \*/.test(l)).concat(_kept(d, key)));
       _setSave(d, !!key && !!d.prev && !d.prev.conflict && !d.locked && !d.busy && !d.done);
-      if (d.locked) d.el.querySelectorAll('.wn5f-ft [data-act="cancel"]').forEach((b) => { b.textContent = 'Κλείσιμο'; });
+      if (d.locked) d.el.querySelectorAll('.wn5f-ft [data-act="cancel"]').forEach((b) => { b.textContent = 'Κλείσιμο'; b.classList.add('wn5h-close'); });
       if (d.timer) clearTimeout(d.timer);
       if (key && !d.prev && key !== d.failedKey) d.timer = setTimeout(async () => {
         try {

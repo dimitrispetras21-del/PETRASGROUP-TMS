@@ -624,6 +624,7 @@
     };
   }
   const _placeName = (id) => { const p = typeof PlanIds !== 'undefined' ? PlanIds.place(id) : null; return p ? p.name : '#' + id; };
+  const _editDay = (k, v, ro) => `<span class="wn5f-day"><input class="form-input" type="date" data-f="${k}" value="${v}"${ro}><span class="wn5f-dayt" aria-hidden="true"></span></span>`;
   function _editHTML(f) {
     const e = f.edit;
     const t = (iso) => _parts(iso) || { day: '', hm: '' };
@@ -631,8 +632,10 @@
     const ships = e.ships.map((s) => {
       const lf = t(s.load_from), lt = t(s.load_to), df = t(s.deliver_from), dt = t(s.deliver_to);
       return `<div class="wn5f-ship" data-ship="${s.shipment_id}"><span>${_esc(_placeName(s.origin))} → ${_esc(_placeName(s.dest))}</span>`
-        + `<input class="form-input" type="date" data-f="lday" value="${lf.day}"${ro}><input class="form-input" type="time" data-f="lfrom" value="${lf.hm}"${ro}><input class="form-input" type="time" data-f="lto" value="${lt.hm}"${ro}>`
-        + `<input class="form-input" type="date" data-f="dday" value="${df.day}"${ro}><input class="form-input" type="time" data-f="dfrom" value="${df.hm}"${ro}><input class="form-input" type="time" data-f="dto" value="${dt.hm}"${ro}>`
+        // the create form's fields (2011:9704): a day with its weekday label, ΗΗ:ΛΛ text — the native time input is
+        // 12-hour in el-GR and cut in its cell (_hmNorm note)
+        + `${_editDay('lday', lf.day, ro)}<input ${HM_INPUT} data-f="lfrom" value="${lf.hm}"${ro}><input ${HM_INPUT} data-f="lto" value="${lt.hm}"${ro}>`
+        + `${_editDay('dday', df.day, ro)}<input ${HM_INPUT} data-f="dfrom" value="${df.hm}"${ro}><input ${HM_INPUT} data-f="dto" value="${dt.hm}"${ro}>`
         + `<input class="form-input" data-f="pal" inputmode="decimal" value="${_esc(s.pallets)}"${ro}></div>`;
     }).join('');
     return `<div class="wn5f-grid4">`
@@ -654,8 +657,9 @@
       goods: v('[data-f="goods"]').trim(), notes: v('[data-f="notes"]').trim(), pallet_exchange: peh === 'yes' ? true : peh === 'no' ? false : null,
       ships: f.edit.riding ? [] : [...f.el.querySelectorAll('[data-ship]')].map((r) => {
         const g = (k) => r.querySelector(`[data-f="${k}"]`).value;
-        return { shipment_id: Number(r.dataset.ship), pallets: _num(g('pal')), load_from: _iso(g('lday'), g('lfrom')), load_to: _iso(g('lday'), g('lto')),
-          deliver_from: _iso(g('dday'), g('dfrom')), deliver_to: _iso(g('dday'), g('dto')) };
+        const t = (k) => _hmNorm(g(k));
+        return { shipment_id: Number(r.dataset.ship), pallets: _num(g('pal')), load_from: _iso(g('lday'), t('lfrom')), load_to: _iso(g('lday'), t('lto')),
+          deliver_from: _iso(g('dday'), t('dfrom')), deliver_to: _iso(g('dday'), t('dto')) };
       }),
     };
   }

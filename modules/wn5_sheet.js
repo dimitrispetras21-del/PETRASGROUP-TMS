@@ -187,7 +187,8 @@
     const chk = ls.find((l) => l.t === 'check') || { pallets: 0 };
     const band = (h.partner ? [['ΣΥΝΕΡΓΑΤΗΣ', h.partner]] : [['ΟΔΗΓΟΣ', h.driver], ['ΦΟΡΤΗΓΟ', h.truck, 1], ['ΡΥΜΟΥΛΚΑ', h.trailer, 1]])
       .concat(h.segment ? [['ΤΜΗΜΑ', h.segment], ['ΣΗΜΕΙΟ ΑΛΛΑΓΗΣ', h.change]] : [['ΚΥΚΛΟΣ', _dash(m.cycleNo)], ['ΦΟΡΤΩΣΗ ΒΕΡΟΙΑ', h.veroia]]);
-    const COLS = '<colgroup><col style="width:30px"><col></colgroup>';
+    // circle 20 + 8 to the card (H5 2128:7767, approved 25/10 over the 10 of 2011:11030): one column for every row
+    const COLS = '<colgroup><col style="width:28px"><col></colgroup>';
     let body = '';
     let open = false;
     for (const l of ls) {
@@ -222,8 +223,10 @@
     return `<link rel="stylesheet" href="${FONTS}" media="none" onload="this.media='all'"><style>:root{${cssVars || ''}}
       body{padding:0 !important;margin:0}
       @media print{@page{size:A4;margin:0}}
+      /* the whole A4 (2011:10999, 1123 high): the signature box ends 32px over the page edge. 297mm still prints ONE
+         page (Chrome PDF of this window, 28/10); a page that could not take it would also spill 296mm. */
       .s,.s *{box-sizing:border-box;color:inherit;font-family:inherit}
-      .s{width:794px;min-height:296mm;margin:0 auto;padding:36px 40px 32px;display:flex;flex-direction:column;gap:10px;
+      .s{width:794px;min-height:297mm;margin:0 auto;padding:36px 40px 32px;display:flex;flex-direction:column;gap:10px;
         background:var(--surface-card);color:var(--surface-dark);font-family:'DM Sans',sans-serif;line-height:normal}
       .s-hd{display:flex;align-items:flex-start;justify-content:space-between}
       .s-brand{display:flex;flex-direction:column;gap:2px;white-space:nowrap}
