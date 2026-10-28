@@ -179,3 +179,11 @@ test('an unknown stop or order answers the same shape: empty, truncated false, c
   const r = await get('?order_stop_rec=recNOPE');
   assert.deepEqual(r.json, { records: [], truncated: false, cap: 9990 });
 });
+
+test('a movement deleted below the window while pages are read: the rest arrive, and it is not called a cut', async () => {
+  table = mk(2500);
+  onPage = (n) => { if (n === 2) table = table.filter((m) => m.id !== 1); };
+  const r = await get();
+  assert.equal(r.json.records.length, 2499);
+  assert.equal(r.json.truncated, false, 'fewer rows than the count, but nothing missing');
+});
