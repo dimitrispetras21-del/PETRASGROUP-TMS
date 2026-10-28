@@ -514,7 +514,9 @@ async function _atRetry(fn, retries = 3, opts) {
         // refused by a 071 rule) and LOCAL_RELAY_RULE (060). Same kind of «no», same prefix; every other 422 stays
         // «_atRetry 422» and is still counted.
         const _ruleType = res.status === 422 && errData.error && typeof errData.error === 'object' ? errData.error.type : null;
-        const _rule = _ruleType === 'STOCK_RULE' || _ruleType === 'PLAN_RULE' || _ruleType === 'LOCAL_RELAY_RULE'
+        // F5 (Worker deploy 2): LEGACY_CLOSED (422 legacy_closed, Ε16/Q-10) — the old national model after day L, a
+        // designed «no» like the others.
+        const _rule = _ruleType === 'STOCK_RULE' || _ruleType === 'PLAN_RULE' || _ruleType === 'LOCAL_RELAY_RULE' || _ruleType === 'LEGACY_CLOSED'
           ? String(errData.error.code || 'rule') : null;
         if (typeof logError === 'function') logError(_lv, _rule ? '_atRetry 422 rule' : `_atRetry ${res.status}`);
         if (typeof showErrorToast === 'function') showErrorToast(mapped, 'error');
@@ -903,6 +905,15 @@ async function atDelete(tableId, recId, opts) {
   // opts.confirmToken: the token of a 428 preview (F5 Ε19), sent back as the user confirmed it
   const q = opts && opts.confirmToken ? '?confirm_token=' + encodeURIComponent(opts.confirmToken) : '';
   if (!_isOnline()) {
+    // F5 Ε19: an ORDER delete may need the base's consequences first (428 + a token only the live answer gives).
+    // Queued without a token it would be replayed later, refused, and the user — told «deleted» — would learn
+    // it minutes after. So an order delete is never queued: it waits for the network, said now.
+    if (typeof TABLES !== 'undefined' && tableId === TABLES.ORDERS && !q) {
+      const eOff = new Error('Η διαγραφή παραγγελίας θέλει σύνδεση — δεν έγινε τίποτα· δοκίμασε ξανά όταν επανέλθει το δίκτυο');
+      eOff._noRetry = true; eOff._kind = 'offline';
+      if (typeof showErrorToast === 'function') showErrorToast(eOff.message, 'warn', 8000);
+      throw eOff;
+    }
     _queueOffline('DELETE', _apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}${q}`), null, recId);
     return { id: recId, deleted: true, _offline: true };
   }

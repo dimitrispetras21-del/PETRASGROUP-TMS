@@ -78,3 +78,21 @@ test('F5-FE1 Ε19: a delete without consequences (200) asks nothing; a changed l
   assert.strictEqual(r.ok, false); assert.match(r.m, /rig: changed/);
   assert.deepStrictEqual(dels(s), ['recO1', 'recO1?confirm_token=tok-1'], 'never a third DELETE');
 });
+
+test('F5-FE1 Ε19: offline, an ORDER delete is never queued without a token (refused now, in words); another table still queues', async () => {
+  const s = sandbox([], true);
+  s.run("navigator.onLine = false; globalThis.TABLES = Object.assign(globalThis.TABLES || {}, { ORDERS: 'tblORD', TRUCKS: 'tblTRK' })");
+  const r = JSON.parse(await s.run("atDelete(TABLES.ORDERS, 'recO1').then(() => '{\"ok\":true}', (e) => JSON.stringify({ ok: false, nr: !!e._noRetry, m: e.message }))"));
+  assert.strictEqual(r.ok, false); assert.strictEqual(r.nr, true); assert.match(r.m, /θέλει σύνδεση/);
+  assert.strictEqual(JSON.parse(s.run("JSON.stringify(JSON.parse(localStorage.getItem('tms_offline_queue') || '[]').length)")), 0, 'nothing queued');
+  const t = JSON.parse(await s.run("atDelete(TABLES.TRUCKS, 'recT1').then((x) => JSON.stringify(x))"));
+  assert.strictEqual(t._offline, true, 'other tables: queued as before');
+});
+
+test('F5 deploy 2: 422 LEGACY_CLOSED is a designed «no» (logged under «_atRetry 422 rule», never resent)', async () => {
+  const s = sandbox([json(422, { error: { type: 'LEGACY_CLOSED', code: 'legacy_closed', message: 'rig: closed after L' } })], true);
+  const r = JSON.parse(await s.run("atDelete('tblNL', 'recN1').then(() => '{}', (e) => JSON.stringify({ m: e.message, rule: e._rule }))"));
+  assert.deepStrictEqual(r, { m: 'rig: closed after L', rule: 'legacy_closed' });
+  assert.strictEqual(dels(s).length, 1);
+  assert.ok(s.errs().some((x) => /_atRetry 422 rule/.test(JSON.stringify(x))), JSON.stringify(s.errs()));
+});

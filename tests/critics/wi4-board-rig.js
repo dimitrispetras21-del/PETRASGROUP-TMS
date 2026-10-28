@@ -361,7 +361,16 @@ async function openBoard(browser, origin, opts = {}) {
         if (body && Array.isArray(body.records)) return json(route, { records: body.records.map(x => make(x && x.fields)) });
         return json(route, make(body && body.fields));
       }
-      if (m === 'DELETE') { S.log.push({ k: 'delete', tid, id: rid }); return json(route, { deleted: true, id: rid }); }
+      if (m === 'DELETE') {
+        // F5 Ε19 (Worker deploy 1): an ORDER delete with consequences answers 428 until it carries the token
+        const tok = u.searchParams.get('confirm_token');
+        if (S.plan.del428 && tid === T.ORDERS && tok !== 'tok-rig') {
+          S.log.push({ k: 'delete', tid, id: rid, status: 428, tok });
+          return json(route, { error: { type: 'PLAN_RULE', code: tok ? 'stale_confirm' : 'need_token', message: 'rig: η διαγραφή έχει συνέπειες' },
+            preview: { consequences: ['Αποσύρει 2 κομμάτια εθνικής πλευράς', { text: 'Σβήνει 4 στάσεις' }], confirm_token: 'tok-rig' } }, tok ? 422 : 428);
+        }
+        S.log.push({ k: 'delete', tid, id: rid, tok }); return json(route, { deleted: true, id: rid });
+      }
       return json(route, {});
     } finally { S.inflight--; }
   });
@@ -4245,6 +4254,24 @@ async function scnVsForm(browser, origin) {
   }
 }
 
+// F5 FE-1 / Ε19: deleting a VS order whose delete has consequences (Worker deploy 1 → 428 + preview). Judged on
+// the DELETEs that reached the fake Worker: one without a token (428, never resent), then — after the user read the
+// consequences in words — one with ?confirm_token=. Dialogs are accepted (the user's «yes»).
+async function scnDel428(browser, origin) {
+  const scn = 'del428';
+  const { page, S } = await openBoard(browser, origin, { vs: true, mutate: vsWorld, plan: { del428: true } });
+  const asked = []; page.on('dialog', d => asked.push(d.message()));
+  const l0 = S.log.length;
+  await page.evaluate(id => { window.__p = deleteIntlOrder(id); }, VS.O);
+  await page.evaluate(() => Promise.resolve(window.__p).catch(() => {}));
+  await settle(page, S, 1500);
+  const dl = S.log.slice(l0).filter(x => x.k === 'delete' && x.tid === T.ORDERS && x.id === VS.O).map(x => [x.status || 200, x.tok || null]);
+  ok(scn, 'one DELETE without a token (428), then ONE with ?confirm_token=tok-rig — never resent', JSON.stringify(dl) === JSON.stringify([[428, null], [200, 'tok-rig']]), dl);
+  ok(scn, 'the consequences were shown in words before the second DELETE', asked.some(t => /Αποσύρει 2 κομμάτια εθνικής πλευράς/.test(t) && /Σβήνει 4 στάσεις/.test(t)), asked);
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await page.context().close();
+}
+
 async function scnVs(browser, origin) {
   let scn = 'vs.assign';
   const { page, S } = await openBoard(browser, origin, { vs: true, mutate: vsWorld });
@@ -4395,7 +4422,7 @@ async function scnVs(browser, origin) {
       date: scnDate, keys: scnKeys, search: scnSearch, savefail: scnSaveFail, presence: scnPresence, conflict: scnConflict, fallback: scnFallback, styles: scnStyles,
       twins: scnTwins, queue: scnQueue, unread: scnUnread,
       print: scnPrint, shift: scnShift, late: scnLate, offline: scnOffline, quiet: scnQuiet, natmissing: scnNatMissing, done: scnDone, w1440: scnW1440, parity: scnParity,
-      vs: scnVs, v5: scnV5, v5err: scnV5Err, vsform: scnVsForm };
+      vs: scnVs, v5: scnV5, v5err: scnV5Err, vsform: scnVsForm, del428: scnDel428 };
     // A watchdog per scenario: one missing locator or one write that never
     // settles fails THAT scenario, closes its pages, and the run goes on.
     const WATCHDOG_MS = 360000;
