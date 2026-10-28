@@ -32,6 +32,8 @@ const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ID_RE = /^[1-9]\d{0,14}$/;
 const MONTH_GEN = Object.freeze(['Ιανουαρίου', 'Φεβρουαρίου', 'Μαρτίου', 'Απριλίου', 'Μαΐου', 'Ιουνίου', 'Ιουλίου',
   'Αυγούστου', 'Σεπτεμβρίου', 'Οκτωβρίου', 'Νοεμβρίου', 'Δεκεμβρίου']);
+// The short month of a range that has no room for the long one (whole-frame r2, 2120:7829): «26 Σεπ – 2 Οκτ».
+const MONTH_SHORT = Object.freeze(['Ιαν', 'Φεβ', 'Μαρ', 'Απρ', 'Μαΐ', 'Ιουν', 'Ιουλ', 'Αυγ', 'Σεπ', 'Οκτ', 'Νοε', 'Δεκ']);
 // Two stops per point column at 1920 (Figma 2011:7745: two ~178px stops), the rest behind «+N». At ≤1600 (1440 with
 // the sidebar) a point column is ~240px: two stops side by side wrapped every name and doubled the row height, so it
 // shows ONE whole stop + «+N» (fidelity T5 r1). Decided at paint (the same query as the wn5 CSS block); a resize
@@ -41,6 +43,8 @@ function _visPts() {
   try { return typeof window.matchMedia === 'function' && window.matchMedia(NARROW_MQ).matches ? 1 : 2; } catch (_) { return 2; }
 }
 // Inline SVG with currentColor: core/icons.js has no plane, and a colour literal here would break the ratchet.
+// Figma 2011:9279 «αντιγραφή πινακίδων»: the 13px copy glyph (two squares), stroke 1.08 at that size.
+const COPY = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="13" height="13" x="9" y="9" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
 const PLANE = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>';
 const CHEV = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
 
@@ -241,8 +245,11 @@ function _fitUpd() {
     if (!bl) return;
     // Measured with the range whole (.wn5-fit): outside the measure the range may shrink, which would hide the need.
     bl.classList.add('wn5-fit');
-    bl.classList.remove('wn5-upd-short');
+    bl.classList.remove('wn5-upd-short', 'wn5-rg-short');
     if (bl.scrollWidth > bl.clientWidth + 1) bl.classList.add('wn5-upd-short');
+    // whole-frame r2 (2120:7829): the range is drawn whole. A range across two months that still has no room once the
+    // word has gone takes the short months («26 Σεπ – 2 Οκτ»); the long form stays in its title.
+    if (bl.scrollWidth > bl.clientWidth + 1) bl.classList.add('wn5-rg-short');
     bl.classList.remove('wn5-fit');
   } catch (_) { /* the word stays; the range gives way by its ellipsis */ }
 }
@@ -281,7 +288,7 @@ function _barHTML() {
   // «μόλις τώρα» (Figma): no timer refreshes the words, and «μόλις τώρα» would still say so an hour later.
   const upd = _state === 'loading' ? _esc('Διαβάζει…') : _okAt ? `<span class="wn5-upd-w">Ενημερώθηκε </span>${_hhmm(_okAt)}` : '—';
   return '<div class="wi4-bar wn5-bar"><div class="wi4-bar-l"><span class="wi4-title">Εβδομαδιαίο Εθνικών</span>'
-    + `<span class="wi4-range" title="${_esc(_rangeText(_sat))}">${_esc(_rangeText(_sat))}</span>`
+    + `<span class="wi4-range" title="${_esc(_rangeText(_sat))}"><span class="wn5-rg-l">${_esc(_rangeText(_sat))}</span><span class="wn5-rg-s">${_esc(_rangeText(_sat, true))}</span></span>`
     + `<button type="button" class="wn5-upd" data-act="reload" title="Ανανέωση" onclick="WN5.reload('user')"><span class="wn5-ico-re" aria-hidden="true">↻</span> ${upd}</button></div>`
     + `<nav class="wi4-tabs" aria-label="Εβδομάδες">${_tabsHTML(w)}</nav>`
     // Figma 7745 / H1 right group: «Προβολή ▾» · «Σάρωση» · «+ Νέα παραγγελία». «Προβολή ▾» and «Σάρωση» wait for
@@ -304,14 +311,15 @@ function _tabsHTML(w) {
   if (cur && cur !== w) h += `<button type="button" class="wi4-tab" onclick="WN5._week(${cur})">Σήμερα</button>`;
   return h;
 }
-// «10–16 Οκτωβρίου», or «26 Σεπτεμβρίου – 2 Οκτωβρίου» across a month.
-function _rangeText(sat) {
+// «10–16 Οκτωβρίου», or «26 Σεπτεμβρίου – 2 Οκτωβρίου» across a month; short: «10–16 Οκτ», «26 Σεπ – 2 Οκτ».
+function _rangeText(sat, short) {
   if (!DAY_RE.test(String(sat || ''))) return '';
   const [y, m, d] = sat.split('-').map(Number);
   const a = new Date(Date.UTC(y, m - 1, d)), b = new Date(Date.UTC(y, m - 1, d + 6));
+  const M = short ? MONTH_SHORT : MONTH_GEN;
   return a.getUTCMonth() === b.getUTCMonth()
-    ? `${a.getUTCDate()}–${b.getUTCDate()} ${MONTH_GEN[b.getUTCMonth()]}`
-    : `${a.getUTCDate()} ${MONTH_GEN[a.getUTCMonth()]} – ${b.getUTCDate()} ${MONTH_GEN[b.getUTCMonth()]}`;
+    ? `${a.getUTCDate()}–${b.getUTCDate()} ${M[b.getUTCMonth()]}`
+    : `${a.getUTCDate()} ${M[a.getUTCMonth()]} – ${b.getUTCDate()} ${M[b.getUTCMonth()]}`;
 }
 function _hhmm(d) { return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; }
 // Δ12 πλακ. 3: the Worker's message as it came, what it does NOT mean, and the one way on — a press, never a timer.
@@ -464,7 +472,7 @@ function _rowHTML(r, m, no) {
     + (r.rtId != null ? `<button type="button" class="wi4-plane" title="Ενέργειες σειράς" aria-haspopup="menu" onclick="WN5.rowMenu(event, ${_id(r.rtId)})">${PLANE}</button>` : '')
     + '</div>'
     + _kathHTML(r, m, ok)
-    + `<div class="wn5-asg">${r.segSource === 'segments' && r.tiles.length > 1 ? _tilesHTML(r) : r.tiles.map((t) => _boxHTML(t)).join('')}</div>`
+    + `<div class="wn5-asg">${r.segSource === 'segments' && r.tiles.length > 1 ? _tilesHTML(r) : r.tiles.map((t) => _boxHTML(t)).join('')}${_cpyHTML(r)}</div>`
     + _anodHTML(r, m, ok)
     + '</div>';
   h += _handRowHTML(r, ok);
@@ -584,6 +592,33 @@ function _leg(ev, rtId, side) {
 function _plusHTML(r, side) {
   if (r.kind !== 'cycle' || r.rtId == null) return '';
   return `<button type="button" class="wn5-plus" data-act="plus" data-side="${side === 'ANODOS' ? 'ANODOS' : 'KATHODOS'}" aria-label="Πρόσθεσε στην ${side === 'ANODOS' ? 'ΑΝΟΔΟ' : 'ΚΑΘΟΔΟ'}" title="Πρόσθεσε">+</button>`;
+}
+// whole-frame r2 (Figma 2011:9279 / 9282): copy the plates from the assignment box on row hover — the Weekly
+// International .wi4-cpy shortcut, beside the ✈ line it repeats. The same copyPlatesOf (Ε-22: the cycle's truck and
+// trailer only, the clipboard only, nothing written). No button where there is nothing to copy (a partner's cycle,
+// a cycle without a vehicle): never a control that only says «no plates».
+function _cpyHTML(r) {
+  if (r.kind !== 'cycle' || r.rtId == null) return '';
+  const pl = _platesOf(r.rtId);
+  if (!pl) return '';
+  return `<button type="button" class="wn5-cpy" title="Αντιγραφή πινακίδων: ${_esc(pl)}" aria-label="Αντιγραφή πινακίδων ${_esc(pl)}" onclick="WN5._cpy(event, ${_id(r.rtId)})">${COPY}</button>`;
+}
+// «Αντιγράφηκε» over the glyph (2011:9282) only when the clipboard took the text: a refusal is copyPlates' own box.
+function _cpy(ev, rtId) {
+  try { if (ev && ev.stopPropagation) ev.stopPropagation(); } catch (_) {}
+  const b = ev && ev.currentTarget;
+  if (!active() || !ID_RE.test(String(rtId))) return;
+  Promise.resolve(copyPlatesOf(rtId)).then((ok) => {
+    if (ok !== true || !b || !b.isConnected) return;
+    const old = b.querySelector('.wn5-cpy-tip');
+    if (old) old.remove();
+    const tip = document.createElement('span');
+    tip.className = 'wn5-cpy-tip';
+    tip.setAttribute('role', 'status');
+    tip.textContent = 'Αντιγράφηκε';
+    b.appendChild(tip);
+    setTimeout(() => tip.remove(), 1500);
+  }).catch((e) => _logErr(e, 'weekly natl v5: copy plates'));
 }
 // T23: the printer on hover of a side with stops (Figma 2011:9284 ΚΑΘΟΔΟΣ / 2011:9288 ΑΝΟΔΟΣ): the driver sheet of that
 // side + its WhatsApp text. In the gap beside the side (CSS), so it moves nothing; never on an empty side (no stop to
@@ -790,9 +825,12 @@ function _menuSub(row) {
 function _closeMenu() { const m = document.getElementById('wn5-menu'); if (m) m.remove(); }
 // Ε-22: only the cycle's truck and trailer — nothing of the hub, nothing of a VS (Veroia is never shown to a
 // client). A partner's cycle has no plates on the board: copyPlates says so instead of copying nothing.
-function copyPlatesOf(rtId) {
+function _platesOf(rtId) {
   const c = _cycleOf(rtId);
-  const text = c && typeof platesText === 'function' ? platesText(c.truck, c.trailer, null) : '';
+  return c && typeof platesText === 'function' ? platesText(c.truck, c.trailer, null) : '';
+}
+function copyPlatesOf(rtId) {
+  const text = _platesOf(rtId);
   return typeof copyPlates === 'function' ? copyPlates(text) : false;
 }
 
@@ -996,6 +1034,7 @@ const WN5 = {
   _searchKey,
   _noteRead,
   _leg,
+  _cpy,
   MENU_ITEMS: [
     // T18: the orders of the cycle with their number (Figma 2011:8858 «Άνοιγμα παραγγελιών 4»); delete lives in the
     // order card only (owner 19/10)

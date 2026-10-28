@@ -9003,10 +9003,13 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5 .wn5-upd { flex:none; margin-left:10px; border:0; background:none; padding:0; font:inherit; font-size:12px; color:var(--wi4-grey-2); cursor:pointer; white-space:nowrap; }
 .wn5 .wn5-upd:hover { color:var(--wi4-ink); }
 /* The word «Ενημερώθηκε» gives way first, when the bar has no room for it (measured at paint and on resize, with the
-   range whole: _fitUpd sets .wn5-fit for the measure only); then the range shrinks (ellipsis, full text in its title,
-   the .wi4 rule), never the time «↻ hh:mm», which is how the user sees how stale the board is (W40 at 1440). */
+   range whole: _fitUpd sets .wn5-fit for the measure only); then the range takes its short months (whole-frame r2,
+   2120:7829: «26 Σεπ – 2 Οκτ», the long form in its title), never cut; never the time «↻ hh:mm», which is how the
+   user sees how stale the board is (W40 at 1440). The .wi4 ellipsis stays only as the last resort of a narrower bar. */
 .wn5 .wn5-fit .wi4-range { flex:none; }
 .wn5 .wn5-upd-short .wn5-upd-w { display:none; }
+.wn5 .wn5-rg-s, .wn5 .wn5-rg-short .wn5-rg-l { display:none; }
+.wn5 .wn5-rg-short .wn5-rg-s { display:inline; }
 /* Result strips (Δ12): refusal/error red, warning amber, «preview» blue. The text is the Worker's message.
    Δ12 2069:9518 / 2104:145961 / 2078:7787 / 2069:10146: 34px, padding 8/12/8/10, the label set like the day names
    (Syne SemiBold 12.5px, tracking .8px) in the kind's colour, the message DM Sans Medium 12px grey-1 on every kind. */
@@ -9127,8 +9130,10 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
    wi4 grid the empty number column still kept its 4px gap. */
 .wn5 .wn5-pt > .wi4-l1:first-child { grid-column:1 / -1; }
 /* Figma H1: the place after the client is smaller than the name (10.5 against 12) — grey-2, not lighter: grey-3 is
-   never information (2.6:1). The same for «· τέλος κύκλου» after «Βέροια» in ΠΡΟΣ. */
+   never information (2.6:1). The same for «· τέλος κύκλου» after «Βέροια» in ΠΡΟΣ, Medium there (2120:8885), as its
+   «ως Πέμ 22:00» line (2120:8886). */
 .wn5-city, .wn5-endx { font-size:10.5px; font-weight:400; color:var(--wi4-grey-2); }
+.wn5-endx, .wn5 .wn5-end .wi4-l2 { font-weight:500; }
 /* «client · place» breaks between the two, never inside a name when the name fits a line by itself. */
 .wn5 .wn5-who, .wn5 .wn5-pt .wi4-l1 > .wn5-city { display:inline-block; max-width:100%; }
 /* «+N» (Figma H1): a 22px chip, its figure centred, in the middle of the stop. */
@@ -9140,7 +9145,7 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5 .wn5-missing { color:var(--wi4-amber-ink); }
 .wn5-none { color:var(--wi4-grey-3); }
 .wn5-gapbox { display:flex; align-items:center; min-height:24px; padding:2px 10px; box-sizing:border-box; border:1px dashed var(--wi4-slot);
-  border-radius:5px; font-size:11.5px; color:var(--wi4-grey-2); }
+  border-radius:5px; font-size:12px; color:var(--wi4-grey-2); }   /* 12px: 2120:8287 / 2011:9038 */
 .wn5-gaph { font-weight:500; color:var(--wi4-grey-1); }
 /* The span wrappers cover ΠΑΛ. too (plan 3/7, 9/13); the dashed box ends where ΠΑΛ. begins, which keeps only its «+». */
 .wn5 .wn5-kspan > .wn5-gapbox { margin-right:var(--wn5-kpal-w); }
@@ -9750,10 +9755,11 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5f-ft .wi4-btn.pri:hover { border-color:var(--accent-hover); background:var(--accent-hover); }
 .wn5f-ft .wi4-btn.pri:disabled { border-color:var(--wi4-ctl); background:var(--wi4-chip); color:var(--wi4-grey-3); }
 .wn5f-ft .wi4-btn[hidden] { display:none; }   /* «Αποθήκευση» leaves once saved (.wi4-btn's inline-flex beats [hidden]) */
-/* the edit form's ΑΠΟΣΤΟΛΕΣ row: the create form's own fields (2011:9704) — a day field 112 with its weekday label and
-   two 71px ΗΗ:ΛΛ fields per side, pallets 76; never the native time input (12-hour in el-GR, a clock icon, 90px) */
-.wn5f-ships-h, .wn5f-ship { display:grid; grid-template-columns:minmax(0, 1fr) 112px 71px 71px 112px 71px 71px 76px; gap:6px; align-items:center; }
-.wn5f-ships-h { font-size:11px; color:var(--wi4-grey-2); grid-template-columns:minmax(0, 1fr) 266px 266px 76px; }
+/* the edit form's ΑΠΟΣΤΟΛΕΣ row: the create form's own fields — a day field 100 with its weekday label (2069:7984 /
+   8007) and two 71px ΗΗ:ΛΛ fields per side, pallets 70 (2069:7992); never the native time input (12-hour in el-GR, a
+   clock icon, 90px) */
+.wn5f-ships-h, .wn5f-ship { display:grid; grid-template-columns:minmax(0, 1fr) 100px 71px 71px 100px 71px 71px 70px; gap:6px; align-items:center; }
+.wn5f-ships-h { font-size:11px; color:var(--wi4-grey-2); grid-template-columns:minmax(0, 1fr) 254px 254px 70px; }
 /* the leg form (T21, Figma 2011:9406 / Δ7 2069:7858) */
 .wn5f-lhead { grid-template-columns:150px 120px 130px 190px; align-items:center; }
 .wn5f-lhead[data-side="ANODOS"] { grid-template-columns:150px 120px 170px 190px; }
@@ -9796,6 +9802,16 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-ad > .wn5-prt { left:-14px; }
 .wn5-row:hover .wn5-prt, .wn5-prt:focus-visible { opacity:1; }
 .wn5-prt:hover { color:var(--wi4-ink); }
+/* whole-frame r2: the plates copy (Figma 2011:9279): a bare 13px glyph in the accent ink, inside the box's top-right
+   corner (6px in, 3px down on the 28px box), on row hover — opacity like the printer. «Αντιγράφηκε» (2011:9282): a
+   20px navy label 6px above it, DM Sans 11px white, padding 3/8, radius 4, 26px left of the glyph. */
+.wn5-row > .wn5-asg { position:relative; }
+.wn5-cpy { position:absolute; right:6px; top:50%; margin-top:-11px; display:flex; width:13px; height:13px; padding:0; border:0; background:none;
+  color:var(--accent-hover); cursor:pointer; opacity:0; }
+.wn5-row:hover .wn5-cpy, .wn5-cpy:focus-visible, .wn5-cpy:has(> .wn5-cpy-tip) { opacity:1; }
+.wn5-cpy:hover { color:var(--wi4-ink); }
+.wn5-cpy-tip { position:absolute; left:-26px; bottom:calc(100% + 6px); z-index:5; height:20px; padding:0 8px; display:flex; align-items:center;
+  box-sizing:border-box; border-radius:4px; background:var(--wi4-ink); font-size:11px; font-weight:400; color:var(--surface-card); white-space:nowrap; pointer-events:none; }
 /* 072b segment tiles (Figma H1 2120:7738, H3 2123:7735, Ε5 2140:7810; colours 2140:7735). The line / slanted side keeps
    the approved hex; the label text is the dark ink (Ε-14), measured ≥ 4.5:1 on own and partner tiles (node test). */
 :root {

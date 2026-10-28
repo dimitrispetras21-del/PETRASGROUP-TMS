@@ -315,6 +315,34 @@ SCN.paint = async (browser, origin) => {
   await page.evaluate(() => { const i = document.querySelector('#wn5-menu [data-item="plates"]'); if (i) i.click(); });
   const copied = (await page.evaluate(() => window.__ev || [])).filter((e) => e.k === 'copy').map((e) => e.a[0]);
   ok(scn, '«Αντιγραφή πινακίδων» copies the cycle truck and trailer only', copied.length === 1 && copied[0] === 'TST-2106 / TRL-5101', copied);
+  // whole-frame r2 (Figma 2011:9279 / 9282): the same copy on row hover, a 13px glyph inside the box's top-right corner
+  // (6 in, 3 down); «Αντιγράφηκε» over it once the clipboard took the text (copyPlates answers true here). No glyph on
+  // the partner cycle RT-T104 (no plates to copy).
+  await page.keyboard.press('Escape');
+  await page.hover('#content .wn5 .wn5-row[data-rt="102"] .wn5-c-idx').catch(() => {});
+  const cpyAt = await page.evaluate(() => {
+    const row = document.querySelector('#content .wn5 .wn5-row[data-rt="102"]');
+    const b = row && row.querySelector('.wn5-asg > .wn5-cpy'), box = row && row.querySelector('.wn5-asg .wi4-box');
+    if (!b || !box) return null;
+    const g = b.getBoundingClientRect(), x = box.getBoundingClientRect();
+    return { op: getComputedStyle(b).opacity, w: Math.round(g.width), h: Math.round(g.height), inR: Math.round(x.right - g.right), inT: Math.round(g.top - x.top),
+      partner: !!document.querySelector('#content .wn5 .wn5-row[data-rt="104"] .wn5-cpy') };
+  });
+  await page.evaluate(() => { const w = window.copyPlates; window.copyPlates = function () { w.apply(this, arguments); return true; }; });
+  await page.evaluate(() => { const b = document.querySelector('#content .wn5 .wn5-row[data-rt="102"] .wn5-cpy'); if (b) b.click(); });
+  const tip = await until(page, () => { const t = document.querySelector('#content .wn5 .wn5-row[data-rt="102"] .wn5-cpy-tip'); return !!t && t.textContent === 'Αντιγράφηκε'; }, null, 3000);
+  const copied2 = (await page.evaluate(() => window.__ev || [])).filter((e) => e.k === 'copy').map((e) => e.a[0]);
+  ok(scn, 'row hover: the plates glyph in ΑΝΑΘΕΣΗ (13px, 6 in / 3 down in the box), a click copies «TST-2106 / TRL-5101» and says «Αντιγράφηκε»; none on the partner cycle',
+    !!cpyAt && cpyAt.op === '1' && cpyAt.w === 13 && cpyAt.h === 13 && Math.abs(cpyAt.inR - 6) <= 1 && Math.abs(cpyAt.inT - 3) <= 1 && !cpyAt.partner
+    && copied2.length === 2 && copied2[1] === 'TST-2106 / TRL-5101' && tip, { cpyAt, copied: copied2, tip });
+  // whole-frame r2: «· τέλος κύκλου» and «ως … 22:00» DM Sans Medium 10.5 grey-2 (2120:8885 / 8886); the dashed
+  // «Κενό γύρισμα» / «Χωρίς κάθοδο» text 12px (2120:8287 / 2011:9038).
+  const ty = await page.evaluate(() => {
+    const cs = (sel) => { const e = document.querySelector('#content .wn5 ' + sel); if (!e) return null; const c = getComputedStyle(e); return [c.fontWeight, c.fontSize, c.color].join(' '); };
+    return { endx: cs('.wn5-endx'), by: cs('.wn5-end .wi4-l2'), gap: [...document.querySelectorAll('#content .wn5 .wn5-gapbox')].map((e) => getComputedStyle(e).fontSize) };
+  });
+  ok(scn, 'ΠΡΟΣ «· τέλος κύκλου» / «ως …» 500 10.5px grey-2; the dashed gap boxes 12px', ty.endx === '500 10.5px rgb(91, 107, 127)' && ty.by === '500 10.5px rgb(91, 107, 127)'
+    && ty.gap.length >= 2 && ty.gap.every((f) => f === '12px'), ty);
   ok(scn, 'nothing was sent to /plan/* but the board read', S.plan.every((x) => x.m === 'GET' && x.path === '/plan/board'), S.plan.map((x) => x.m + ' ' + x.path));
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
   await shot(page, 'paint-1920');
@@ -360,17 +388,24 @@ SCN.paint = async (browser, origin) => {
     !!fit && fit.roomy === false && fit.short && !fit.cut && fit.back, fit);
   await shot(narrow.page, 'paint-1440');
   // The reload time is how the user sees how stale the board is: at 1440 a week whose range crosses months (W40,
-  // «26 Σεπτεμβρίου – 2 Οκτωβρίου») gives way in the range (ellipsis, full text in its title), never in «↻ hh:mm».
+  // «26 Σεπτεμβρίου – 2 Οκτωβρίου») gives way in the range, never in «↻ hh:mm» — and the range itself is drawn whole
+  // (whole-frame r2, 2120:7829): the short months when the long form has no room, the long form in its title.
   await narrow.page.keyboard.press('ArrowLeft');
   await narrow.page.keyboard.press('ArrowLeft');
   await until(narrow.page, () => { const r = document.querySelector('#content .wn5'); return !!r && r.dataset.week === '2026-09-26' && r.dataset.state !== 'loading'; });
+  // measured once the fonts have landed and their loadingdone re-fit has run (a frame later), as the user sees it
+  await narrow.page.evaluate(() => (document.fonts ? document.fonts.ready : null)).catch(() => {});
+  await narrow.page.evaluate(() => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)))).catch(() => {});
   const bar = await narrow.page.evaluate(() => {
     const bl = document.querySelector('#content .wn5 .wn5-bar .wi4-bar-l');
     const up = bl && bl.querySelector('.wn5-upd');
     const rg = bl && bl.querySelector('.wi4-range');
     if (!up) return null;
-    return { barR: Math.round(bl.getBoundingClientRect().right), updR: Math.round(up.getBoundingClientRect().right), upd: up.textContent, range: rg && rg.getAttribute('title') };
+    return { barR: Math.round(bl.getBoundingClientRect().right), updR: Math.round(up.getBoundingClientRect().right), upd: up.textContent, range: rg && rg.getAttribute('title'),
+      sw: rg && rg.scrollWidth, cw: rg && rg.clientWidth, shown: rg && rg.innerText };
   });
+  ok(scn, '1440, W40: the range is drawn whole (scrollWidth ≤ clientWidth), «26 Σεπτεμβρίου – 2 Οκτωβρίου» or «26 Σεπ – 2 Οκτ»',
+    !!bar && bar.sw <= bar.cw && /^26 Σεπ(?:τεμβρίου)? – 2 Οκτ(?:ωβρίου)?$/.test((bar.shown || '').trim()), bar);
   ok(scn, '1440, W40: «↻ hh:mm» ends inside the bar (the long range gives way, not the time)',
     !!bar && /26 Σεπτεμβρίου/.test(bar.range || '') && bar.updR <= bar.barR + 1 && /↻ (?:Ενημερώθηκε )?\d{2}:\d{2}/.test(bar.upd), bar);
   ok(scn, '1440: no page errors', !narrow.S.pageErrors.length, narrow.S.pageErrors);

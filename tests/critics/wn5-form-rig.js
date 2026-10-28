@@ -265,6 +265,19 @@ async function scnEdit({ browser, origin, ok, scn }) {
   if (!(await guard(page, ok, scn))) return;
   await openForm(page, { natOrderId: 3101 });
   ok(scn, 'edit opens on the waiting order with its price', (await page.evaluate((d) => document.querySelector(`${d} [data-f="price"]`).value, DLG)) === '310');
+  // whole-frame r2 (Figma 2069:7984 / 8007 / 7992): the ΑΠΟΣΤΟΛΕΣ day fields 100 wide with their weekday label whole
+  // inside (clear of the picker glyph at the right end), pallets 70.
+  const ship = await page.evaluate((d) => {
+    const r = document.querySelector(`${d} .wn5f-ship`);
+    if (!r) return null;
+    const w = (el) => (el ? Math.round(el.getBoundingClientRect().width) : null);
+    const day = (k) => { const i = r.querySelector(`[data-f="${k}"]`), t = i && i.parentElement.querySelector('.wn5f-dayt');
+      if (!i || !t) return null; const a = i.getBoundingClientRect(), b = t.getBoundingClientRect();
+      return { w: Math.round(a.width), t: t.textContent, room: Math.round(a.right - b.right) }; };
+    return { l: day('lday'), d: day('dday'), pal: w(r.querySelector('[data-f="pal"]')) };
+  }, DLG);
+  ok(scn, 'ΑΠΟΣΤΟΛΕΣ: day fields 100 with the label whole («Τετ 14/10» clear of the picker by ≥ 24px), pallets 70 (2069:7984 / 7992)',
+    !!ship && [ship.l, ship.d].every((x) => x && x.w === 100 && /^\S+ \d{1,2}\/\d{1,2}$/.test(x.t) && x.room >= 24) && ship.pal === 70, ship);
   await page.fill(`${DLG} [data-f="price"]`, '330');
   await save(page);
   await page.waitForTimeout(1000);
