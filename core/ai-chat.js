@@ -137,7 +137,11 @@ function _aicPageContext() {
       lines.push(`  ${imp.length} imports, ${unmatched} exports χωρίς matched import (empty return risk)`);
     }
 
-    if (page === 'weekly_natl' && typeof WNATL !== 'undefined' && WNATL.rows) {
+    // National v5 (F4α, FEATURES.WN_V5): under the new board WNATL.rows is the OLD board's state, not what is on
+    // screen — describing it would tell the user about rows they do not see. No v5 summary yet (Φ4β): say so.
+    if (page === 'weekly_natl' && typeof WN5 !== 'undefined' && WN5.active()) {
+      lines.push('Weekly National (νέα προβολή v5): δεν υπάρχει ακόμη σύνοψη για τη συνομιλία — δες τον πίνακα στην οθόνη.');
+    } else if (page === 'weekly_natl' && typeof WNATL !== 'undefined' && WNATL.rows) {
       const ns = WNATL.rows.filter(r => r.type === 'northsouth');
       const sn = WNATL.rows.filter(r => r.type === 'southnorth');
       const unassNS = ns.filter(r => !r.saved).length;

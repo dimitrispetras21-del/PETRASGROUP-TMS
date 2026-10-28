@@ -10,8 +10,8 @@ import { DRAFTS, draftGrants, OWN_GRANTS } from '../lib/db.mjs';
 import { freshDb, all } from './helpers.mjs';
 
 const HERE = path.dirname(new URL(import.meta.url).pathname);
-// 050 and 047 are EXECUTED and never edited for new objects: 057 (stock lots), 071 (v5 tables and views), DRAFT 072b
-// (vehicle segments, read by B-91..B-93) and DRAFT 073 (ct_v_v5_revenue) grant their own tables/views. Their grants
+// 050 and 047 are EXECUTED and never edited for new objects: 057 (stock lots), 071 (v5 tables and views), 072b
+// (vehicle segments, read by B-91..B-93) and 073 (ct_v_v5_revenue; both executed 26/10) grant their own tables/views. Their grants
 // count in the two grant tests below, parsed by the same function that applies them to the local database.
 const grantedOwn = (role) => new Set(OWN_GRANTS.flatMap((f) => draftGrants(f)).filter((g) => g.roles.includes(role)).flatMap((g) => g.rels));
 // The deliberate holes: tms_reader gets no money view («tms_reader: no money», 057 §7 and 073). stock_v_lot_money is
