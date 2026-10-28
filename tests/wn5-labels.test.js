@@ -34,7 +34,10 @@ test('F4α-T11: WARNING keys = the warning codes raised in 072 + 072b (over_33, 
 test('F4α-T11: CONSEQUENCE keys = the consequence kinds built in 072 + 072b', () => {
   const kinds = literals(/jsonb_build_object\(\s*'kind',\s*'([a-z_]+)'/g);
   assert.deepStrictEqual(kinds, ['costs', 'executed_leg', 'invoiced', 'later_leg', 'local_loading', 'local_payroll', 'payroll_amount', 'rt_cancelled', ...B_KIND].sort());
-  assert.deepStrictEqual(Object.keys(L.CONSEQUENCE).sort(), kinds);
+  // T28: 073 (live) adds its own kinds; they are built inside E'...' bodies, where every quote is doubled
+  const f073 = ['073_plan_money.sql', 'drafts/073_plan_money.sql'].map((f) => path.join(ROOT, 'worker', 'migrations', f)).find((f) => fs.existsSync(f));
+  const k073 = f073 ? [...fs.readFileSync(f073, 'utf8').matchAll(/'{1,2}kind'{1,2}, '{1,2}([a-z_]+)'/g)].map((m) => m[1]) : [];
+  assert.deepStrictEqual(Object.keys(L.CONSEQUENCE).sort(), [...new Set([...kinds, ...k073])].sort());
   assert.ok(Object.isFrozen(L.CONSEQUENCE));
 });
 
@@ -169,4 +172,25 @@ test('F4α-T26: seg_removed / seg_stop_moved / seg_stop_straddles labelled; drif
   const kinds = [...new Set([...sql.matchAll(/'kind', '([a-z_]+)'/g)].map((m) => m[1]))];
   assert.deepStrictEqual(warns.sort(), ['seg_stop_moved', 'seg_stop_straddles']);
   for (const k of kinds) assert.ok(Object.prototype.hasOwnProperty.call(WN5Lab.CONSEQUENCE, k), `072b consequence ${k} has no screen line`);
+});
+
+// ── F4α-T28 (073): pallets confirmed at a moved leg, payroll per driver ──────────────────────────────────────
+const SQL_073 = ['worker/migrations/073_plan_money.sql', 'worker/migrations/drafts/073_plan_money.sql']
+  .map((f) => path.join(ROOT, f)).find((f) => fs.existsSync(f));
+test('F4α-T28: CONSEQUENCE covers pallets_confirmed (counts, never amounts); drift vs 073', (t) => {
+  const r = WN5Lab.consequenceLine({ kind: 'pallets_confirmed', leg_id: 5, pl_movement_id: 77, event_type: 'DELIVERY', taken: 12, given: 12 });
+  assert.deepStrictEqual(r, { text: 'επιβεβαιωμένη γραμμή παλετών · παράδοση · πήραμε 12 · δώσαμε 12 — αντιλογίζεται μετά την επιβεβαίωση', unknown: false });
+  assert.ok(WN5Lab.consequenceLine({ kind: 'pallets_confirmed', event_type: 'X', taken: 1, given: 0 }).text.includes('X'), 'an unknown event type is said');
+  if (!SQL_073) { t.todo('073 not in tree: no worker/migrations/[drafts/]073_plan_money.sql'); return; }
+  const sql = fs.readFileSync(SQL_073, 'utf8');
+  // 073 builds its consequences inside E'...' function bodies, where every quote is doubled (''kind'', ''x''):
+  // a single-quote-only pattern finds nothing there and the drift check would pass on an empty list.
+  const kinds = [...new Set([...sql.matchAll(/'{1,2}kind'{1,2}, '{1,2}([a-z_]+)'/g)].map((m) => m[1]))];
+  assert.ok(kinds.includes('pallets_confirmed'), 'the drift pattern reads 073\'s consequence kinds');
+  for (const k of kinds) assert.ok(Object.prototype.hasOwnProperty.call(WN5Lab.CONSEQUENCE, k), `073 consequence ${k} has no screen line`);
+});
+test('F4α-T28: a payroll line names the driver\'s segment when 073 sends segment_text, and only then', () => {
+  const base = { kind: 'payroll_amount', rt_id: 101, dl_entry_id: 9, driver_id: 31, month: '2026-10' };
+  assert.ok(WN5Lab.consequenceLine(Object.assign({ segment_text: 'RT-T101 · ΑΡΧΙΚΟ ως Λαμία' }, base)).text.includes('RT-T101 · ΑΡΧΙΚΟ ως Λαμία'));
+  assert.ok(!WN5Lab.consequenceLine(base).text.includes('ΑΡΧΙΚΟ'));
 });

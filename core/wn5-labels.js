@@ -63,7 +63,9 @@
   });
 
   const CONSEQUENCE = Object.freeze({
-    payroll_amount: (c) => 'γραμμή μισθοδοσίας με ποσό (' + month(c.month) + ')' + amounts(c),
+    // 073: one payroll line per driver of the cycle; when the item carries the driver's segment (segment_text,
+    // «RT-… · ΑΡΧΙΚΟ ως <σημείο>») the line names it, without the key it stays byte-identical to T11's.
+    payroll_amount: (c) => 'γραμμή μισθοδοσίας με ποσό (' + (c.segment_text ? c.segment_text + ' · ' : '') + month(c.month) + ')' + amounts(c),
     costs: (c) => {
       const n = num(c.count);
       const head = (n === null ? '—' : String(n)) + ' ' + (n === 1 ? 'γραμμή' : 'γραμμές') + ' ' + (c.pay_source || 'εξόδων');
@@ -84,6 +86,10 @@
     // 072b prev_partner_rate: the previous segment's partner rate changes with the handover (decision 41: the rate is
     // shown to every role that writes it, so it is not a stripped amount)
     partner_rate: (c) => 'κόμιστρο ' + (c.partner || 'συνεργάτη') + ': ' + (eur(c.rate_from) || '—') + ' → ' + (eur(c.rate_to) || '—'),
+    // 073 (F3 decision 8): a confirmed pallet line on a leg that leaves — counted, never money: every role sees it;
+    // it is reversed after the token and a new pending line is written for the new movement.
+    pallets_confirmed: (c) => `επιβεβαιωμένη γραμμή παλετών · ${c.event_type === 'LOADING' ? 'φόρτωση' : c.event_type === 'DELIVERY' ? 'παράδοση' : String(c.event_type)}`
+      + ` · πήραμε ${c.taken} · δώσαμε ${c.given} — αντιλογίζεται μετά την επιβεβαίωση`,
   });
 
   // The category word the two-step list puts before a line (Figma Δ5 2053:8079 and H4 2125:7738: «Μισθοδοσία · …»).

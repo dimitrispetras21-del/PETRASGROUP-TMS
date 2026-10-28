@@ -171,3 +171,20 @@ test('F4α-T27: WhatsApp of the ΤΕΛΙΚΟ starts with where and from whom; th
 test('F4α-T27: without a segment the sheet is exactly T23\'s (R-59)', () => {
   assert.strictEqual(JSON.stringify(S.lines(segCyc(), PL, 'ALL')), JSON.stringify(S.lines(Object.assign(segCyc(), { segments: undefined }), PL, 'ALL')));
 });
+
+// ── F4α-T28 (073): the pallet return per stop (Ε-12) ─────────────────────────────────────────────────────────
+test('F4α-T28: PE column shows «παίρνεις n / δίνεις n» from legs[].pallet_exchange, «—» when absent', (t) => {
+  const c = JSON.parse(JSON.stringify(CYC));
+  c.stops[1].legs[0].pallet_exchange = true;    // delivery of 21 with exchange → the driver takes 21 empties back
+  c.stops[3].legs[0].pallet_exchange = true;    // loading of 20 with exchange → he gives 20
+  c.stops[2].legs[0].pallet_exchange = false;
+  c.stops[0].legs[0].pallet_exchange = true;    // the Veroia loading: our own warehouse, never a return there
+  const ls = J(S.lines(c, PL, 'ALL')).filter((l) => l.t === 'stop');
+  const pe = Object.fromEntries(ls.map((l) => [l.stop_id, l.pe]));
+  assert.deepStrictEqual([pe[1001], pe[1002], pe[1003], pe[1004], pe[1005]], ['—', 'παίρνεις 21', '—', 'δίνεις 20', '—']);
+  assert.ok(S.text(S.lines(c, PL, 'ALL'), META).includes('· παίρνεις 21π'));
+  const plain = J(S.lines(CYC, PL, 'ALL')).filter((l) => l.t === 'stop');
+  assert.ok(plain.every((l) => l.pe === '—'), 'no key → «—», never «χωρίς ανταλλαγή»');
+  const f = ['worker/migrations/073_plan_money.sql', 'worker/migrations/drafts/073_plan_money.sql'].map((x) => path.join(ROOT, x)).find((x) => fs.existsSync(x));
+  if (!f || !/'legs'[\s\S]{0,4000}'pallet_exchange'/.test(fs.readFileSync(f, 'utf8'))) { t.todo('the board brings no legs[].pallet_exchange yet (Ε-12): the column stays «—»'); return; }
+});

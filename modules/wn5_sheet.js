@@ -30,6 +30,15 @@
   function _partStops(cycle, side) {
     return (cycle.stops || []).filter((s) => s.side === side).sort((a, b) => a.seq - b.seq);
   }
+  // Ε-12 (T28, F3): the pallet return per stop, from legs[].pallet_exchange when the board brings it. At a delivery
+  // the driver takes the empties back («παίρνεις n»), at a loading he gives them («δίνεις n»). An absent key is
+  // «not known» = «—», never «no exchange» (trap 2: absence is not a value).
+  function _pe(legs, loading) {
+    const known = legs.filter((l) => typeof l.pallet_exchange === 'boolean');
+    if (!known.length) return '—';
+    const n = known.filter((l) => l.pallet_exchange).reduce((a, l) => a + (Number(l.pallets) || 0), 0);
+    return n ? `${loading ? 'δίνεις' : 'παίρνεις'} ${_pal(n)}` : '—';
+  }
   function _stopLine(s, side, P, n) {
     const legs = s.legs || [];
     const loads = legs.filter((l) => l.act === 'load');
@@ -50,7 +59,7 @@
       // Figma 2011:11036 «3 παραγγελίες» after the badge of the Veroia loading: the distinct orders loaded there
       orders: new Set(use.map((l) => (l.order_id != null ? 'i' + l.order_id : l.nat_order_id != null ? 'n' + l.nat_order_id : null)).filter(Boolean)).size,
       temp: _temp(temps, true), tempWa: _temp(temps, false),
-      pe: '—',   // Ε-12: the board carries no pallet return per stop yet (T28, F3)
+      pe: hub ? '—' : _pe(use, loads.length > 0),   // Veroia is our own warehouse: no return there
       refs: _dash([...new Set(use.map((l) => l.reference).filter(Boolean))].join(' · ')),
     };
   }
