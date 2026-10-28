@@ -15,7 +15,7 @@
   - `'unknown'` → διαβάζει και δείχνει λωρίδα.
   - Αποτυχία → κόκκινη λωρίδα + `logError`, και οι υπόλοιπες γραμμές μένουν.
 - **Δοκιμές:**
-  - `tests/daily-ramp-v5.test.js`: 16/16· στο `origin/main` 13 κόκκινα.
+  - `tests/daily-ramp-v5.test.js`: 20/20· στο 5f55a943 κόκκινα όλα τα tests v5. Μετά το review high: το όχημα είναι της στάσης (072b segments).
   - `tests/critics/daily-ramp-v5-rig.js`: GO, 0 σφάλματα κονσόλας εφαρμογής· στο `origin/main` NO-GO, 16 κόκκινα.
 - **Μένει:**
   - bump από το (e), που πρέπει να φορτώνει και το `core/plan-config.js`·

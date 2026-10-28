@@ -186,7 +186,10 @@ function _rampVehicleAt(c) {
   const byStop = new Map();
   for (const g of segs) for (const id of g.stop_ids || []) byStop.set(id, g);
   return stopId => {
-    const g = byStop.get(stopId) || segs[0];
+    // one segment = the whole cycle; with several, a stop in none of them is a board this screen cannot read:
+    // «—» and logged, never the first segment's truck by guess
+    const g = segs.length === 1 ? segs[0] : byStop.get(stopId);
+    if (!g) { _rampV5Log(new Error(`κύκλος ${c.rt_id}: η στάση ${stopId} δεν ανήκει σε τμήμα οχήματος`), 'daily_ramp v5: segments'); return { vehicle: '', driver: '' }; }
     return { vehicle: g.trip_type === 'PARTNER' ? g.partner : g.truck, driver: g.driver };
   };
 }
@@ -203,13 +206,14 @@ function _rampV5Rows(board, day, hubId) {
     // every leg appears at its pickup AND its drop stop: the far end of a hub line is the leg's other stop
     const at = new Map();
     for (const s of stops) for (const l of s.legs || []) { if (!at.has(l.leg_id)) at.set(l.leg_id, []); at.get(l.leg_id).push(s); }
-    const vehicleAt = _rampVehicleAt(c);
+    let vehicleAt = null;      // read only for a cycle that has a hub stop on this day
     for (const s of stops) {
       if (!isHub(s.location_id) || d10(s.stop_day) !== day) continue;
       for (const act of ['unload', 'load']) {
         const legs = (s.legs || []).filter(l => l.act === act);
         if (!legs.length) continue;
         const far = [...new Set(legs.flatMap(l => (at.get(l.leg_id) || []).filter(o => o !== s).map(o => o.location)).filter(Boolean))];
+        vehicleAt = vehicleAt || _rampVehicleAt(c);
         rows.push(_rampV5Rec(`stop:${s.stop_id}:${act}`, Object.assign({ day, act, items: legs, time: s.planned_from, far, executed: s.executed === true }, vehicleAt(s.stop_id))));
       }
     }

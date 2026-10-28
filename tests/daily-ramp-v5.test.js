@@ -285,6 +285,21 @@ test('after L, 072b segments in a shape the board cannot read: red strip, logged
   assert.ok(S.logged.some(l => l.startsWith('daily_ramp v5: board shape')));
 });
 
+test('after L, 072b: a hub stop in no segment shows «—» and is logged, never the first truck by guess; a bad cycle on another day does not redden the ramp', async () => {
+  const b = board();
+  b.cycles[0].segments = [
+    { segment_id: 1, trip_type: 'OWNED', truck: 'ΑΒΓ-1001', driver: 'Οδηγός Α', partner: null, has_vehicle: true, stop_ids: [10, 11, 12] },
+    { segment_id: 2, trip_type: 'OWNED', truck: 'ΔΕΖ-2002', driver: 'Οδηγός Β', partner: null, has_vehicle: true, stop_ids: [13] },
+  ];
+  b.cycles[1].segments = [];          // malformed, but its hub stop is on 3/11, not on D
+  const { ctx, S } = load({ board: b });
+  await ctx.renderDailyRamp();
+  const inb = section(S.content.innerHTML, 'inbound');
+  assert.ok(!S.content.innerHTML.includes('Οι εθνικές κινήσεις v5 δεν διαβάστηκαν'));
+  assert.ok(inb.includes('Πελάτης Χ') && !inb.includes('ΑΒΓ-1001') && !inb.includes('ΔΕΖ-2002'), inb);
+  assert.ok(S.logged.some(l => l.startsWith('daily_ramp v5: segments')));
+});
+
 test('a cleared date input: no /plan/board?week=null, no strip', async () => {
   const { ctx, S } = load();
   ctx.localToday = () => '';
