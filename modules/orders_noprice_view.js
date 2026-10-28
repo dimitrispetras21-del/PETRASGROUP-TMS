@@ -287,6 +287,8 @@ const OrdersNoPrice = (() => {
   // row says «—» (unknown), never «προς ανάθεση» or «εκτός».
   function _assign(r) {
     if (r._type !== 'natl') return OrdersCommon.assignOf(r);
+    // F5 Ε3: a v5 order's vehicle is its cycle's (OrdersData set, natV5Attach), not a load's.
+    if (r._v5 && typeof r._v5 === 'object') return OrdersCommon.assignOf(r);
     const loads = V && V.set && V.set.natLoads;
     if (!loads) return { key: 'unknown', text: '', html: '<span class="oc-adim">—</span>' };
     return OrdersCommon.assignOf(r, { load: loads.get(r.id) || null, missingLoad: !r.fields['National Groupage'] && !loads.has(r.id) });
@@ -340,6 +342,7 @@ const OrdersNoPrice = (() => {
 
     const banners = [];
     if (V.set.natLoadsFailed) banners.push('Τα εθνικά φορτία δεν φορτώθηκαν — η ΑΝΑΘΕΣΗ των εθνικών δείχνει «—». Δεν σημαίνει ότι είναι χωρίς ανάθεση· ξαναδοκίμασε.');
+    if (V.set.v5Failed) banners.push(OrdersCommon.NAT_V5_WARN);
     if (V.set.natlFailed) banners.push('Οι εθνικές παραγγελίες δεν φορτώθηκαν — η λίστα δείχνει μόνο διεθνείς. Δεν σημαίνει ότι οι εθνικές έχουν τιμή· ξαναδοκίμασε.');
     const notes = [];
     if (V.clientFailed) notes.push('τα στοιχεία πελατών (ΑΦΜ, όροι) δεν φορτώθηκαν');
