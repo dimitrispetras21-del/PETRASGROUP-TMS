@@ -6863,6 +6863,8 @@ async function handlePallets(request, url, origin, env) {
     // ---- GET /pallets/movements?status=&counterparty_type=&client_id=&partner_id=&event_type=&from=&to=&order_stop_id=&cons_load_id= ----
     if (resource === "movements" && method === "GET" && !recId) {
       const q = url.searchParams;
+      const PL_MOV_PAGE = 999, PL_MOV_MAX = PL_MOV_PAGE * 10; // the paged read below; every answer says cap
+
       const params = new URLSearchParams();
       // Embedded τα ονόματα αντί για σκέτο "*": το UI τα έλυνε μέσω
       // /pallets/lookups, που η PostgREST κόβει στα 1000 (db-max-rows) ενώ οι
@@ -6885,13 +6887,13 @@ async function handlePallets(request, url, origin, env) {
         try {
           const r = await plResolveRefs(env, { order_stop_rec: q.get("order_stop_rec") });
           params.append("order_stop_id", `eq.${r.order_stop_id}`);
-        } catch (e) { return jsonOk({ records: [] }, origin, env); }
+        } catch (e) { return jsonOk({ records: [], truncated: false, cap: PL_MOV_MAX }, origin, env); }
       }
       if (q.get("order_rec")) {
         try {
           const r = await plResolveRefs(env, { order_rec: q.get("order_rec") });
           params.append("order_id", `eq.${r.order_id}`);
-        } catch (e) { return jsonOk({ records: [] }, origin, env); }
+        } catch (e) { return jsonOk({ records: [], truncated: false, cap: PL_MOV_MAX }, origin, env); }
       }
       // Every matching row, in pages (Alexia's requests, owner 28/10). It was one read of «limit 300»: at 291 movements
       // and ~8 new a day the ledger would have dropped the oldest rows in silence, and the page, the client card and
@@ -6901,7 +6903,6 @@ async function handlePallets(request, url, origin, env) {
       //   never ends the read early in silence (principle 1).
       // - Keyset, not offset: the next page starts after the last (movement_date, id) read, so a movement written
       //   or deleted while the pages are read never repeats or skips another one. movement_date is NOT NULL (003).
-      const PL_MOV_PAGE = 999, PL_MOV_MAX = PL_MOV_PAGE * 10;
       const rows = [];
       let total = null;
       for (let last = null; rows.length < PL_MOV_MAX; last = rows[rows.length - 1]) {
@@ -6919,8 +6920,9 @@ async function handlePallets(request, url, origin, env) {
         // include a row written below the window while the pages were read
         if (!got.length || (got.length < asked && rows.length >= total)) break;
       }
-      // a row deleted during the read can leave rows < total once: said as cut, never the other way round
-      const truncated = rows.length < total;
+      // Cut only at the cap: below it the read runs until a page comes back empty, so fewer rows than the count can
+      // only mean rows deleted while the pages were read, and a «missing» warning would be false.
+      const truncated = rows.length >= PL_MOV_MAX && rows.length < total;
       // 073 / E11 (spec 5): a row the national plan wrote (piece_leg_id) belongs to no international order - the
       // ledger would call it «Χειροκίνητη». One read for the page gives its national order (the screen writes
       // «εθνική #…», F4). A failed read, a leg missing from the answer or a leg without a national order is said

@@ -131,6 +131,7 @@ test('a movement deleted above the window while pages are read: none skipped', a
   const r = await get();
   const ids = new Set(r.json.records.map((m) => m.id));
   for (let id = 1; id < 2500; id++) assert.ok(ids.has(id), 'skipped ' + id);
+  assert.equal(r.json.truncated, false, 'a deleted row is not a cut');
 });
 
 test('no exact count in the answer: a loud error, never a guessed «complete»', async () => {
@@ -171,4 +172,10 @@ test('national rows: legs read in chunks of 200, every row named', async () => {
   const r = await get();
   assert.deepEqual(legCalls, [200, 200, 50]);
   assert.ok(r.json.records.every((m) => m.nat_order_id != null && !m.nat_order_unknown));
+});
+
+test('an unknown stop or order answers the same shape: empty, truncated false, cap', async () => {
+  globalThis.fetch = async () => new Response('[]');
+  const r = await get('?order_stop_rec=recNOPE');
+  assert.deepEqual(r.json, { records: [], truncated: false, cap: 9990 });
 });
