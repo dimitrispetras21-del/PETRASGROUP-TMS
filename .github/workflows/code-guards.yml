@@ -9,7 +9,7 @@
 #
 # Keep it dependency-free. The value here is that it CANNOT be blocked by a
 # missing secret, an expired token, or a backend being down: a checkout is all
-# it needs (plan-no-resend adds Node itself, nothing from npm). Anything
+# it needs (plan-no-resend and f5-tests add Node itself, nothing from npm). Anything
 # requiring credentials belongs in its own workflow, so its failures never
 # mask these.
 #
