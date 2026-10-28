@@ -200,3 +200,38 @@ test('F13: open + save with no change sends no field; one change sends only that
   assert.deepStrictEqual(J(F._patchBody(orig, { ...same, notes: 'changed' })), { set: { notes: 'changed' } });
   assert.deepStrictEqual(J(F._patchBody(orig, { ...same, ships: [{ ...ship, pallets: 8 }] })), { shipments: [{ shipment_id: 7, pallets: 8 }] });
 });
+
+// F13 / F21 (077, live test 28/10): the edit form's origin is the order's own read (GET /plan/orders/:id). full = the
+// form showed the real values, so emptying a text or the temperature clears it on purpose; the price, PE and the side
+// are never «emptied». A removed point is {shipment_id, remove:true}; a new one carries every field.
+test('077: _editFromRead keeps every value (nulls as «empty», never as zero) and marks the riding points', () => {
+  const e = F._editFromRead({ ok: true, op: 'plan_order_read',
+    order: { nat_order_id: 84, client: 'C', price: 100, reference: null, goods: 'G', notes: null, temperature_c: null, pallet_exchange: false, direction: 'KATHODOS', pallets: 6 },
+    shipments: [{ shipment_id: 9, origin_location_id: 1, dest_location_id: 2, pallets: 6, load_from: 'a', load_to: 'b', deliver_from: 'c', deliver_to: 'd', vs_locked: false, rides: true, rt_codes: ['RT-1287'] }] });
+  assert.deepStrictEqual(J(e), { full: true, nat_order_id: 84, client: 'C', price: 100, temperature_c: null, pallet_exchange: false, reference: '', goods: 'G', notes: '',
+    direction: 'KATHODOS', riding: true, ships: [{ shipment_id: 9, origin: 1, dest: 2, pallets: 6, load_from: 'a', load_to: 'b', deliver_from: 'c', deliver_to: 'd', rides: true, vs_locked: false, rt_codes: ['RT-1287'] }] });
+  for (const bad of [null, {}, { order: {} }, { order: { nat_order_id: 1 }, shipments: [] }]) assert.strictEqual(F._editFromRead(bad), null, JSON.stringify(bad));
+});
+
+test('077: with the order\'s own values (full) an emptied field is null on purpose; the price, PE and side never', () => {
+  const orig = { full: true, price: 310, reference: 'R1', goods: 'G', notes: 'a note', temperature_c: 4, pallet_exchange: true, direction: 'ANODOS', ships: [] };
+  const same = { price: 310, reference: 'R1', goods: 'G', notes: 'a note', temperature_c: 4, pallet_exchange: true, direction: 'ANODOS', ships: [], removed: [], news: [] };
+  assert.deepStrictEqual(J(F._patchBody(orig, same)), {});
+  assert.deepStrictEqual(J(F._patchBody(orig, { ...same, notes: '', reference: '', temperature_c: null })), { set: { reference: null, notes: null, temperature_c: null } });
+  assert.deepStrictEqual(J(F._patchBody(orig, { ...same, price: null, pallet_exchange: null, direction: null })), {}, 'never «emptied»');
+  assert.deepStrictEqual(J(F._patchBody({ ...orig, notes: '' }, { ...same, notes: '' })), {}, 'already empty: nothing to clear');
+  assert.deepStrictEqual(J(F._patchBody({ ...orig, notes: 'a note ' }, same)), {}, 'a trailing space in the base is not a change');
+  // the board-sourced origin of the leg form (no full): an empty field is still «not shown», never sent
+  const { full, ...board } = orig;
+  assert.deepStrictEqual(J(F._patchBody(board, { ...same, notes: '' })), {});
+});
+
+test('077: a removed point and a new point - exactly those items, the others absent', () => {
+  const orig = { full: true, price: 1, ships: [{ shipment_id: 5, pallets: 6, load_from: '2026-10-30T06:00:00+02:00', load_to: '2026-10-30T08:00:00+02:00', deliver_from: '2026-10-30T12:00:00+02:00', deliver_to: '2026-10-30T14:00:00+02:00' }] };
+  const nw = { origin_location_id: 2524, dest_location_id: 2525, pallets: 1, load_from: F._iso('2026-10-30', '00:00'), load_to: F._iso('2026-10-30', '23:59'),
+    deliver_from: F._iso('2026-10-30', '00:00'), deliver_to: F._iso('2026-10-30', '23:59'), k: 'drop', origin_rec: 'recA', dest_rec: 'recB' };
+  assert.deepStrictEqual(J(F._patchBody(orig, { price: 1, ships: [], removed: [], news: [nw] })), { shipments: [{ origin_location_id: 2524, dest_location_id: 2525, pallets: 1,
+    load_from: '2026-10-30T00:00:00+02:00', load_to: '2026-10-30T23:59:00+02:00', deliver_from: '2026-10-30T00:00:00+02:00', deliver_to: '2026-10-30T23:59:00+02:00' }] },
+    'the new point: every field, never the screen\'s own keys (k, recs)');
+  assert.deepStrictEqual(J(F._patchBody(orig, { price: 1, ships: [], removed: [5], news: [] })), { shipments: [{ shipment_id: 5, remove: true }] });
+});
