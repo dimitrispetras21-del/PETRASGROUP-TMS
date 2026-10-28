@@ -712,12 +712,34 @@ async function renderWeeklyIntl(){
     // trap 2: unread ≠ «σκέλος χωρίς μεταφορέα»), so the state rides next to
     // the map. v1 never reads it, and the extra paints below run only while v4
     // is active: an extra v1 paint would close an open popover.
+    // natBySrc (F5 Ε1/Ε20): the ONE map the tiles read — {carrier, done, src:'nl'|'v5'} per VS order. Day L
+    // is the base's word (PlanConfig), never a date here: 'before' reads NATIONAL LOADS only, exactly as before
+    // 074; otherwise /plan/vs-state first and NATIONAL LOADS only for the orders the base answers «missing»
+    // (no bridge: hub day < L). A failure of either read → nlState 'err' («απέτυχε»), never «χωρίς εθνικό».
     const nlMap = {};
+    const natMap = {};
     WINTL.data.nlBySrc = nlMap;
+    WINTL.data.natBySrc = natMap;
     WINTL.data.nlState = 'loading';
     (async () => {
-      const vsIds = ([...expOrders, ...impOrders]).filter(r => r.fields && r.fields['Veroia Switch']).map(r => r.id);
+      let vsIds = ([...expOrders, ...impOrders]).filter(r => r.fields && r.fields['Veroia Switch']).map(r => r.id);
       if (!vsIds.length) { WINTL.data.nlState = 'ok'; return; }
+      const pc = typeof PlanConfig !== 'undefined' ? await PlanConfig.load() : { state: 'unknown' };
+      if (WINTL.data.nlBySrc !== nlMap) return;
+      if (pc.state !== 'before') {
+        let v5;
+        try { v5 = await PlanConfig.vsState(vsIds); }
+        catch (e) {
+          // planFetch logged its own failures (a PlanError of a /plan route); the gate's and the map's are logged here
+          if (typeof logError === 'function' && !(typeof PlanError === 'function' && e instanceof PlanError && !/^vs_/.test(e.code || ''))) logError(e, 'weekly intl: /plan/vs-state');
+          if (WINTL.data.nlBySrc === nlMap) { WINTL.data.nlState = 'err'; if(_wiV2Active()) WIV2._lateLanded(); }
+          return;
+        }
+        if (WINTL.data.nlBySrc !== nlMap) return;
+        v5.forEach((v, oid) => { if (v !== 'missing') natMap[oid] = _wiNatFromV5(v); });
+        vsIds = vsIds.filter(id => v5.get(id) === 'missing');
+        if (!vsIds.length) { WINTL.data.nlState = 'ok'; if(_wiV2Active()) WIV2._lateLanded(); else _wiPaint(); return; }
+      }
       const parts = vsIds.map(id => `FIND("${id}",ARRAYJOIN({Source Order},","))>0`);
       const f = parts.length === 1 ? parts[0] : `OR(${parts.join(',')})`;
       const nl = await safeFetch(() => atGetAll(TABLES.NAT_LOADS, { filterByFormula: f,
@@ -730,10 +752,10 @@ async function renderWeeklyIntl(){
       // #content and closed the popover a dispatcher was typing in, review
       // 11/10). v1 keeps today's paint, only with carriers to show.
       if (didFail(nl)) { WINTL.data.nlState = 'err'; if(_wiV2Active()) WIV2._lateLanded(); return; }
-      nl.forEach(r => { const src = (r.fields['Source Order'] || [])[0]; if (src) nlMap[src] = r; });
+      nl.forEach(r => { const src = (r.fields['Source Order'] || [])[0]; if (src) { nlMap[src] = r; natMap[src] = _wiNatFromNl(r); } });
       WINTL.data.nlState = 'ok';
       if(_wiV2Active()) WIV2._lateLanded();
-      else if (Object.keys(nlMap).length) _wiPaint();
+      else if (Object.keys(natMap).length) _wiPaint();
     })().catch(e => {
       console.warn('[weekly intl] national carriers:', e);
       // A throw after the read must not leave v4 on «φορτώνει» for ever.
@@ -2275,19 +2297,34 @@ window.addEventListener('resize',()=>{ clearTimeout(_wi2BalTimer); _wi2BalTimer=
 // partner (name · plates), dashed «ΠΡΟΣ ΑΝΑΘΕΣΗ» when nothing is assigned yet.
 // Full text lives in title; the tile truncates honestly.
 function _wi2Carrier(oid){
-  const nl=WINTL.data.nlBySrc&&WINTL.data.nlBySrc[oid]; const d=WINTL.data;
+  const n=WINTL.data.natBySrc&&WINTL.data.natBySrc[oid]; const c=n&&n.carrier;
   const un=`<div class="wi2-carrier un" title="Εθνικό σκέλος χωρίς μεταφορέα — ανατίθεται στο Weekly National">ΠΡΟΣ ΑΝΑΘΕΣΗ</div>`;
-  if(!nl) return un;
+  if(!c) return un;
+  if(c.kind==='par') return `<div class="wi2-carrier par" title="Εθνικός μεταφορέας — συνεργάτης: ${escapeHtml(c.text)}">${escapeHtml(c.text)}</div>`;
+  return `<div class="wi2-carrier own" title="Εθνικός μεταφορέας — ιδιόκτητο: ${escapeHtml(c.text)}">${escapeHtml(c.text)}</div>`;
+}
+// One entry of WINTL.data.natBySrc from a NATIONAL LOADS row (before day L, or a VS without a bridge): partner
+// first, then truck — the reading the v1 tile and v4 _carrierOf both had. Delivered/Invoiced = the leg is done.
+// carrier is a getter: the labels resolve when the tile is drawn, so the partners self-heal (a refresh of
+// PARTNERS + repaint, renderWeeklyIntl) still turns a «—» into the name — as when the tiles read the NL row.
+function _wiNatFromNl(nl){
   const f=nl.fields||{}; const pid=(f['Partner']||[])[0], tid=(f['Truck']||[])[0], did=(f['Driver']||[])[0];
-  if(pid||f['Is Partner Trip']){
-    const t=[d.partners.find(x=>x.id===pid)?.label||'—', f['Partner Truck Plates']||''].filter(Boolean).join(' · ');
-    return `<div class="wi2-carrier par" title="Εθνικός μεταφορέας — συνεργάτης: ${escapeHtml(t)}">${escapeHtml(t)}</div>`;
-  }
-  if(tid){
-    const t=[d.trucks.find(x=>x.id===tid)?.label||'—', did?(d.drivers.find(x=>x.id===did)?.label||''):''].filter(Boolean).join(' · ');
-    return `<div class="wi2-carrier own" title="Εθνικός μεταφορέας — ιδιόκτητο: ${escapeHtml(t)}">${escapeHtml(t)}</div>`;
-  }
-  return un;
+  return {
+    get carrier(){
+      const d=WINTL.data;
+      if(pid||f['Is Partner Trip']) return {kind:'par', text:[(d.partners.find(x=>x.id===pid)||{}).label||'—', f['Partner Truck Plates']||''].filter(Boolean).join(' · ')};
+      if(tid) return {kind:'own', text:[(d.trucks.find(x=>x.id===tid)||{}).label||'—', did?((d.drivers.find(x=>x.id===did)||{}).label||''):''].filter(Boolean).join(' · ')};
+      return null;
+    },
+    done:['Delivered','Invoiced'].includes(f['Status']), src:'nl'};
+}
+// One entry from /plan/vs-state (a VS with a v5 bridge). The base names each carrier (072 plan_vs_state: kind
+// owned / partner / none, text plates · driver or the partner). 'none' = a trip without a vehicle = not
+// assigned. Several cycles → one tile, texts joined. Done = all_executed, never a Status (F5 plan, Task F).
+function _wiNatFromV5(v){
+  const cs=(v.carriers||[]).filter(c=>c&&(c.kind==='owned'||c.kind==='partner'));
+  const carrier=cs.length?{kind:cs[0].kind==='partner'?'par':'own', text:cs.map(c=>c.text||'—').join(' + ')}:null;
+  return {carrier, done:v.all_executed===true, src:'v5'};
 }
 // Clickable date chip → calendar → PATCH (existing _wk3PickDate, all dates stay editable — owner 10/8)
 function _wi2Date(oid,field,iso,txt,cls,title){
@@ -5216,7 +5253,7 @@ async function _wiRejoinLegs(rowId){
   const errors=[];
   for(const lr of legs){
     const oid=lr.orderIds?.[0]||lr.orderId;
-    try{ await atDelete(TABLES.ORDERS,oid); }
+    try{ await atWithDeleteConfirm(tok=>atDelete(TABLES.ORDERS,oid,{confirmToken:tok})); }   // F5 Ε19: a 428 is confirmed, never a silent fail
     catch(e){ errors.push(oid+': '+(e&&e.message||e)); }
   }
   if(errors.length){

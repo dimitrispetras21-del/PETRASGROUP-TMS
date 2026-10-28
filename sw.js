@@ -7,7 +7,7 @@
 //   - Offline banner via postMessage to all clients
 // ═══════════════════════════════════════════════════════════
 
-const SW_VERSION = '1793130816';
+const SW_VERSION = '1793185358';
 
 // Το vendor/leaflet/* ΔΕΝ μπαίνει στο APP_SHELL επίτηδες: το pre-cache στο
 // install θα κατέβαζε 228 KB σε κάθε χρήστη, ακυρώνοντας το lazy loading της
@@ -23,6 +23,10 @@ const APP_SHELL = [
   '/PETRASGROUP-TMS/assets/style.css',
   // Core
   '/PETRASGROUP-TMS/core/api.js',
+  // National v5 (F4α): app.html loads it on every page; a wrong path here fails the whole install.
+  '/PETRASGROUP-TMS/core/plan-api.js',
+  // National v5 F5 (FE-1): PlanConfig, loaded on every page right after plan-api.js.
+  '/PETRASGROUP-TMS/core/plan-config.js',
   '/PETRASGROUP-TMS/core/auth.js',
   '/PETRASGROUP-TMS/core/router.js',
   '/PETRASGROUP-TMS/core/utils.js',
@@ -42,6 +46,9 @@ const APP_SHELL = [
   // update, so tests/sw-app-shell.test.js checks every entry exists on disk.
   '/PETRASGROUP-TMS/core/wi4-logic.js',
   '/PETRASGROUP-TMS/core/wi4-presence.js',
+  '/PETRASGROUP-TMS/core/wn5-logic.js',
+  '/PETRASGROUP-TMS/core/wn5-labels.js',
+  '/PETRASGROUP-TMS/core/plan-ids.js',
   '/PETRASGROUP-TMS/core/ai-chat.js',
   // Modules
   '/PETRASGROUP-TMS/modules/dashboard.js',
@@ -49,6 +56,12 @@ const APP_SHELL = [
   '/PETRASGROUP-TMS/modules/weekly_intl_v2.js',
   '/PETRASGROUP-TMS/modules/wi4_actions.js',
   '/PETRASGROUP-TMS/modules/weekly_natl.js',
+  '/PETRASGROUP-TMS/modules/weekly_natl_v5.js',
+  '/PETRASGROUP-TMS/modules/wn5_actions.js',
+  '/PETRASGROUP-TMS/modules/wn5_veroia.js',
+  '/PETRASGROUP-TMS/modules/wn5_forms.js',
+  '/PETRASGROUP-TMS/modules/wn5_sheet.js',
+  '/PETRASGROUP-TMS/modules/wn5_handover.js',
   '/PETRASGROUP-TMS/modules/daily_ramp.js',
   '/PETRASGROUP-TMS/modules/daily_ops.js',
   '/PETRASGROUP-TMS/modules/orders_intl.js',

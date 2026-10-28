@@ -25,9 +25,9 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..');
-const DIR = path.join(ROOT, 'worker/migrations/drafts');   // the builders and 073b (not executed)
-// 073 executed 26/10: its files left drafts/ (CLAUDE.md rule 5); 073b's stay until the owner runs it
-const file = (f) => path.join(/^073_/.test(f) ? path.join(ROOT, 'worker/migrations') : DIR, f);
+const DIR = path.join(ROOT, 'worker/migrations/drafts');   // the builders
+// 073 executed 26/10 and 073b 28/10: their files left drafts/ (CLAUDE.md rule 5)
+const file = (f) => path.join(/^073b?_/.test(f) ? path.join(ROOT, 'worker/migrations') : DIR, f);
 const read = (f) => fs.readFileSync(file(f), 'utf8');
 const strip = (s) => s.replace(/--[^\n]*/g, '');
 const DO_FILES = ['073_plan_money.sql', '073_plan_money_dryrun.sql', '073_plan_money_test.sql', '073_plan_money_rollback.sql'];
@@ -130,7 +130,7 @@ test('073: no mirror and no write outside the plan', () => {
 // 073b (F3 Task 6): generated from the check files, so this only proves it is the generated one and holds what the
 // plan says. Its ids come from the builder (one list; never typed twice here, principle 3).
 const B073 = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e',
-  `import(${JSON.stringify(path.join(DIR, 'tools/build-073b.mjs'))}).then((m) => console.log(JSON.stringify({ f3: m.F3_IDS, all: m.IDS, files: m.FILES })))`],
+  `import(${JSON.stringify(path.join(DIR, 'tools/build-073b.mjs'))}).then((m) => console.log(JSON.stringify({ f3: m.F3_IDS, all: m.IDS, files: m.FILES, fn: m.RUNNER_FN })))`],
   { encoding: 'utf8' }));
 test('073b is the generated one, ASCII, one DO block each, and holds exactly the check files of F3 and 072b', () => {
   execFileSync(process.execPath, [path.join(DIR, 'tools/build-073b.mjs'), '--check']);
@@ -150,9 +150,18 @@ test('073b is the generated one, ASCII, one DO block each, and holds exactly the
   // born closed: X for the runner only, the policies read-only for the two auditor roles, nothing for tms_reader
   const main = read('073b_plan_monitoring.sql');
   assert.match(main, /GRANT SELECT ON public\.ct_settings TO tms_check_runner;/);
-  assert.strictEqual((strip(main).match(/\bGRANT\b/g) || []).length, 1, 'one GRANT only');
+  // the 073b dry run of 26/10 refused B-79 in production: stock_vs_charge (inside ct_v_v5_revenue) runs as the runner
+  const fnRe = B073.fn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  assert.match(main, new RegExp(`GRANT EXECUTE ON FUNCTION ${fnRe} TO tms_check_runner;`));
+  assert.strictEqual((strip(main).match(/\bGRANT\b/g) || []).length, 2, 'two GRANTs only');
+  const rb = read('073b_plan_monitoring_rollback.sql');
+  assert.match(rb, /REVOKE SELECT ON public\.ct_settings FROM tms_check_runner;/);
+  assert.match(rb, /DROP POLICY IF EXISTS monitor_read ON public\.ct_settings;/);
+  assert.match(rb, new RegExp(`REVOKE EXECUTE ON FUNCTION ${fnRe} FROM tms_check_runner;`));
   assert.strictEqual((main.match(/CREATE POLICY monitor_read ON public\.[a-z_]+ FOR SELECT TO tms_check_runner, tms_reader USING \(true\);/g) || []).length, 5);
-  assert.strictEqual((strip(main).match(/CREATE POLICY/g) || []).length, 5);
+  // ct_settings: RLS on in production, so the runner's GRANT needs its own read policy (runner only, D-15)
+  assert.match(main, /CREATE POLICY monitor_read ON public\.ct_settings FOR SELECT TO tms_check_runner USING \(true\);/);
+  assert.strictEqual((strip(main).match(/CREATE POLICY/g) || []).length, 6);
   assert.ok(!/tms_reader;/.test(main.replace(/TO tms_check_runner, tms_reader USING/g, '')), 'no grant to tms_reader');
 });
 

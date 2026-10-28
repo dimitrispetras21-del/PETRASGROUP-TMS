@@ -139,6 +139,11 @@ function _wnCutToWeek(wStart) {
 /* ── ENTRY POINT ──────────────────────────────────────────────────── */
 let _wnLoadId = 0; // prevents stale renders from rapid week switching
 async function renderWeeklyNatl() {
+  // National v5 (F4α, FEATURES.WN_V5 — off until day L): the new board owns its load (GET /plan/board), so it takes
+  // over BEFORE _wnLoadAll; with the switch off this is false and nothing below runs differently (identity rig).
+  // The id still moves: an old-board load already in flight (opened before a switch to v5) must see itself stale
+  // and not paint over the v5 board when it resolves.
+  if (typeof WN5 !== 'undefined' && WN5.active()) { ++_wnLoadId; return WN5.render(); }
   const loadId = ++_wnLoadId;
   const content = document.getElementById('content');
   content.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;gap:8px;padding:32px;color:var(--text-dim)">
