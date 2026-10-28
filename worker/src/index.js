@@ -174,13 +174,14 @@ async function dbSelect(env, table, opts = {}) {
   return res.json();
 }
 __name(dbSelect, "dbSelect");
-async function dbSelectRaw(env, table, params) {
+async function dbSelectRaw(env, table, params, extraHeaders) {
   const url = `${env.SUPABASE_URL}/rest/v1/${table}?${params.toString()}`;
   const res = await fetch(url, {
     headers: {
       apikey: env.SUPABASE_SERVICE_KEY,
       Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
-      Accept: "application/json"
+      Accept: "application/json",
+      ...extraHeaders
     }
   });
   if (!res.ok) {
@@ -6894,23 +6895,32 @@ async function handlePallets(request, url, origin, env) {
       }
       // Every matching row, in pages (Alexia's requests, owner 28/10). It was one read of «limit 300»: at 291 movements
       // and ~8 new a day the ledger would have dropped the oldest rows in silence, and the page, the client card and
-      // the confirm wizard all read this list unfiltered. PL_MOV_PAGE is 999 + 1 probe row = PostgREST db-max-rows
-      // (1000, same as /costs/lines); asking 1000 would get 1000 and never see a cut. Past PL_MOV_MAX the answer says
-      // so (truncated, cap) and the screen shows it, never a quiet cut (principle 1). id.desc is the tie-breaker, so a
-      // page boundary inside one movement_date neither repeats nor skips a row.
-      const PL_MOV_PAGE = 999, PL_MOV_MAX = 9990;
+      // the confirm wizard all read this list unfiltered.
+      // - The first page asks the exact count, and the answer is cut only when it holds fewer rows than that count
+      //   (truncated, cap): a page shorter than asked (PostgREST db-max-rows, 1000 today, or any lower value later)
+      //   never ends the read early in silence (principle 1).
+      // - Keyset, not offset: the next page starts after the last (movement_date, id) read, so a movement written
+      //   or deleted while the pages are read never repeats or skips another one. movement_date is NOT NULL (003).
+      const PL_MOV_PAGE = 999, PL_MOV_MAX = PL_MOV_PAGE * 10;
       const rows = [];
-      let truncated = false;
-      for (let offset = 0; ; offset += PL_MOV_PAGE) {
+      let total = null;
+      for (let last = null; rows.length < PL_MOV_MAX; last = rows[rows.length - 1]) {
         const page = new URLSearchParams(params);
-        page.set("limit", String(PL_MOV_PAGE + 1));
-        if (offset) page.set("offset", String(offset));
-        const { rows: got } = await dbSelectRaw(env, "pl_movements", page);
-        const more = got.length > PL_MOV_PAGE;
-        rows.push(...(more ? got.slice(0, PL_MOV_PAGE) : got));
-        if (!more) break;
-        if (rows.length >= PL_MOV_MAX) { truncated = true; break; }
+        const asked = Math.min(PL_MOV_PAGE, PL_MOV_MAX - rows.length);
+        page.set("limit", String(asked));
+        if (last) page.append("or", `(movement_date.lt.${last.movement_date},and(movement_date.eq.${last.movement_date},id.lt.${last.id}))`);
+        const { rows: got, contentRange } = await dbSelectRaw(env, "pl_movements", page, last ? undefined : { Prefer: "count=exact" });
+        if (!last) {
+          total = Number(String(contentRange || "").split("/")[1]);
+          if (!Number.isSafeInteger(total)) throw new Error(`pl_movements: no exact count in «${contentRange}»`);
+        }
+        rows.push(...got);
+        // the end is a short page AND the count reached; a short page alone may be db-max-rows, the count alone may
+        // include a row written below the window while the pages were read
+        if (!got.length || (got.length < asked && rows.length >= total)) break;
       }
+      // a row deleted during the read can leave rows < total once: said as cut, never the other way round
+      const truncated = rows.length < total;
       // 073 / E11 (spec 5): a row the national plan wrote (piece_leg_id) belongs to no international order - the
       // ledger would call it «Χειροκίνητη». One read for the page gives its national order (the screen writes
       // «εθνική #…», F4). A failed read, a leg missing from the answer or a leg without a national order is said

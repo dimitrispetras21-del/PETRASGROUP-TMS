@@ -37,14 +37,16 @@ function _plvCut(res) {
   if (res.truncated) return { n, cap: res.cap, cut: true };
   return res.cap && n >= res.cap * 0.9 ? { n, cap: res.cap, cut: false } : null;
 }
-function _plvCutNote(cut, inCard) {
+function _plvCutText(cut, inCard) {
   if (!cut) return '';
-  const msg = !cut.cut
+  return !cut.cut
     ? `⚠ ${cut.n} κινήσεις, κοντά στο όριο των ${cut.cap} της λίστας: ζήτησε αύξηση`
     : inCard
       ? `⚠ εμφανίζονται οι ${cut.n} νεότερες κινήσεις: το τρεχούμενο δεν ξεκινά από την αρχή (το υπόλοιπο είναι σωστό)`
       : `⚠ εμφανίζονται οι ${cut.n} νεότερες κινήσεις: οι παλαιότερες λείπουν από τη λίστα (όχι από τα υπόλοιπα)`;
-  return `<span style="color:var(--warn)">${msg}</span>`;
+}
+function _plvCutNote(cut, inCard) {
+  return cut ? `<span style="color:var(--warn)">${_plvCutText(cut, inCard)}</span>` : '';
 }
 
 async function renderPalletLedger() {
@@ -273,6 +275,8 @@ function plvExportCSV() {
     body = rows.map(m => [_plvNo(m), _plvRowExtras(m).ref, m.code, m.movement_date, PLV_EVENT_GR[m.event_type] || m.event_type,
       _plvName(m), _plvLoc(m), m.taken, m.given, m.given - m.taken, m.status, m.notes || ''].map(esc).join(','));
     fname = 'paletes-' + new Date().toISOString().slice(0, 10) + '.csv';
+    // the file leaves the screen and its ⚠: a cut list says so inside the file too (principle 1)
+    if (PLV.cut && PLV.cut.cut) body.push(esc(_plvCutText(PLV.cut, false)));
   }
   // BOM: χωρίς αυτό το Excel δείχνει τα ελληνικά ως μουτζούρες
   const blob = new Blob(['﻿' + [head.map(esc).join(','), ...body].join('\n')], { type: 'text/csv;charset=utf-8' });
@@ -878,7 +882,7 @@ async function plvDrill(kind, id) {
     });
     const pendCnt = moves.filter(m => m.status === 'pending').length;
     const name = bal ? bal[nameKey] : (moves.length ? _plvName(moves[0]) : '#' + id);
-    PLV._stmt = { kind, id, name, rows };
+    PLV._stmt = { kind, id, name, rows, cut: _plvCut(hist) };
     const locRows = (locs.records || []).filter(l => l.balance !== 0);
     const balCls = bal && bal.balance > 0 ? 'plv-in' : bal && bal.balance < 0 ? 'plv-out' : '';
     c.innerHTML = `${_PLV_STYLE}
@@ -891,7 +895,7 @@ async function plvDrill(kind, id) {
       <div class="plv-strip">
         <span>Υπόλοιπο <b class="${balCls}">${bal ? (bal.balance > 0 ? '+' : '') + bal.balance : '0'} παλ.</b></span>
         <span class="plv-dim">·</span><span>${pendCnt} εκκρεμείς (εκτός τρεχούμενου)</span>
-        ${_plvCutNote(_plvCut(hist), true)}
+        ${_plvCutNote(PLV._stmt.cut, true)}
         ${PLV.enrichFail ? '<span style="color:var(--warn)" title="Η ανάγνωση των παραγγελιών απέτυχε — η στήλη Reference είναι προσωρινά κενή.">⚠ στοιχεία παραγγελιών μη διαθέσιμα</span>' : ''}
       </div>
       ${locRows.length ? `<div class="plv-card-l" style="margin:16px 0 4px">ΑΝΑ ΣΗΜΕΙΟ</div>
@@ -934,6 +938,7 @@ function plvStmtCSV() {
   const body = s.rows.map(({ m, run }) => [_plvNo(m), _plvRowExtras(m).ref, m.movement_date, m.code,
     PLV_EVENT_GR[m.event_type] || m.event_type, _plvLoc(m), m.taken, m.given,
     m.status, run == null ? '' : run].map(esc).join(','));
+  if (s.cut && s.cut.cut) body.push(esc(_plvCutText(s.cut, true)));
   const blob = new Blob(['﻿' + [head.map(esc).join(','), ...body].join('\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);

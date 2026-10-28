@@ -10,7 +10,8 @@ const vm = require('vm');
 const ctx = { console, document: { getElementById: () => null }, window: {} };
 vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'modules/pallet_ledger.js'), 'utf8')
-  + '\nthis._plvCut = _plvCut; this._plvCutNote = _plvCutNote;', ctx);
+  + '\nthis._plvCut = _plvCut; this._plvCutNote = _plvCutNote; this._plvCutText = _plvCutText; this.PLV = PLV;'
+  + ' this.plvExportCSV = plvExportCSV; this.plvStmtCSV = plvStmtCSV;', ctx);
 const rows = (n) => Array.from({ length: n }, (_, i) => ({ id: i }));
 
 test('paged Worker: whole list is not cut, no note', () => {
@@ -36,4 +37,24 @@ test('old Worker (no «truncated»): 300 rows read as cut, fewer not', () => {
   assert.strictEqual(ctx._plvCut({ records: rows(300) }).cut, true);
   assert.strictEqual(ctx._plvCut({ records: rows(299) }), null);
   assert.strictEqual(ctx._plvCut({}), null);
+});
+
+test('a cut list says so inside the exported CSV too (list and card)', () => {
+  const files = [];
+  Object.assign(ctx, { csvSafeCell: (v) => v, toast() {}, _plvRowExtras: () => ({ ref: '' }), _plvName: () => 'A', _plvLoc: () => 'B',
+    PLV_EVENT_GR: {}, Blob: class { constructor(parts) { files.push(parts.join('')); } },
+    URL: { createObjectURL: () => 'blob:x', revokeObjectURL() {} } });
+  ctx.document = { getElementById: () => null, createElement: () => ({ click() {} }) };
+  ctx.fhSearchNorm = (v) => String(v || '').toLowerCase();
+  ctx.PLV.tab = 'all'; ctx.PLV.q = ''; ctx.PLV.from = ''; ctx.PLV.to = '';
+  ctx.PLV.movements = [{ id: 1, order_id: 7, code: 'PM-1', movement_date: '2026-10-01', status: 'confirmed', event_type: 'LOADING', taken: 1, given: 0 }];
+  ctx.PLV.cut = { n: 300, cap: 300, cut: true };
+  ctx.plvExportCSV();
+  assert.match(files.pop(), /\n"⚠ εμφανίζονται οι 300 νεότερες κινήσεις: οι παλαιότερες λείπουν/);
+  ctx.PLV.cut = null;
+  ctx.plvExportCSV();
+  assert.doesNotMatch(files.pop(), /⚠/);
+  ctx.PLV._stmt = { name: 'A', rows: [{ m: ctx.PLV.movements[0], run: 1 }], cut: { n: 300, cap: 300, cut: true } };
+  ctx.plvStmtCSV();
+  assert.match(files.pop(), /\n"⚠ εμφανίζονται οι 300 νεότερες κινήσεις: το τρεχούμενο δεν ξεκινά/);
 });

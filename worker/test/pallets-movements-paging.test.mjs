@@ -1,7 +1,7 @@
 // GET /pallets/movements returns every matching row (owner 28/10, Alexia's requests). It used to be one read of
 // «limit 300»: at 291 movements and ~8 a day the oldest rows would have left the ledger in silence. Now it reads
-// pages of 999 + 1 probe row (PostgREST db-max-rows is 1000), and past 9 990 rows it says truncated, never a quiet
-// cut. The fake PostgREST below honours limit/offset and caps every answer at 1000 rows, like the real one.
+// keyset pages of 999 with the exact count on the first, and past 9 990 rows it says truncated, never a quiet cut.
+// The fake PostgREST below honours limit, the keyset «or», Prefer: count=exact (Content-Range) and db-max-rows.
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -31,14 +31,17 @@ async function get(q = '') {
   return { status: res.status, json: await res.json() };
 }
 
-const MAX_ROWS = 1000; // PostgREST db-max-rows
-let table; let calls; let legCalls;
+let MAX_ROWS; // PostgREST db-max-rows
+let table; let calls; let legCalls; let onPage;
 const realFetch = globalThis.fetch;
 const realConsole = { error: console.error };
+// order movement_date.desc,id.desc; keyset «or=(movement_date.lt.D,and(movement_date.eq.D,id.lt.I))»
+const before = (r, d, i) => r.movement_date < d || (r.movement_date === d && r.id < i);
+const sorted = () => table.slice().sort((a, b) => (a.movement_date === b.movement_date ? b.id - a.id : (a.movement_date < b.movement_date ? 1 : -1)));
 beforeEach(() => {
   console.error = () => {};
-  calls = []; legCalls = [];
-  globalThis.fetch = async (url) => {
+  calls = []; legCalls = []; onPage = null; MAX_ROWS = 1000;
+  globalThis.fetch = async (url, init = {}) => {
     const u = new URL(url);
     const name = u.pathname.replace(/^\/rest\/v1\//, '');
     if (name === 'piece_legs') {
@@ -47,17 +50,30 @@ beforeEach(() => {
       return new Response(JSON.stringify(ids.map((id) => ({ id, shipment_pieces: { shipments: { nat_order_id: 900 + (id % 7) } } }))));
     }
     assert.equal(name, 'pl_movements');
-    calls.push(Object.fromEntries(u.searchParams));
-    const off = Number(u.searchParams.get('offset') || 0);
-    const lim = Math.min(Number(u.searchParams.get('limit') || MAX_ROWS), MAX_ROWS);
-    let rows = table;
-    const cid = u.searchParams.get('client_id');
+    const sp = u.searchParams;
+    calls.push({ ...Object.fromEntries(sp), prefer: (init.headers || {}).Prefer });
+    if (onPage) onPage(calls.length);
+    let rows = sorted();
+    const cid = sp.get('client_id');
     if (cid) rows = rows.filter((r) => `eq.${r.client_id}` === cid);
-    return new Response(JSON.stringify(rows.slice(off, off + lim)));
+    const all = rows.length;
+    const or = sp.get('or');
+    if (or) {
+      const m = or.match(/^\(movement_date\.lt\.([\d-]+),and\(movement_date\.eq\.([\d-]+),id\.lt\.(\d+)\)\)$/);
+      assert.ok(m && m[1] === m[2], 'keyset or: ' + or);
+      rows = rows.filter((r) => before(r, m[1], Number(m[3])));
+    }
+    assert.equal(sp.get('offset'), null, 'no offset paging');
+    const out = rows.slice(0, Math.min(Number(sp.get('limit')), MAX_ROWS));
+    const headers = { 'content-type': 'application/json' };
+    if ((init.headers || {}).Prefer === 'count=exact') headers['content-range'] = out.length ? `0-${out.length - 1}/${all}` : `*/${all}`;
+    return new Response(JSON.stringify(out), { headers });
   };
 });
 afterEach(() => { globalThis.fetch = realFetch; console.error = realConsole.error; });
-const mk = (n, extra = () => ({})) => Array.from({ length: n }, (_, i) => ({ id: n - i, client_id: 1 + (i % 3), movement_date: '2026-10-01', ...extra(i) }));
+// ids descending, ten dates, so pages split inside one movement_date (the keyset tie-break)
+const mk = (n, extra = () => ({})) => Array.from({ length: n }, (_, i) => ({ id: n - i, client_id: 1 + (i % 3),
+  movement_date: `2026-10-${String(20 - Math.floor(i * 10 / n)).padStart(2, '0')}`, ...extra(i) }));
 
 test('291 rows today: one read, all of them, truncated false, cap said', async () => {
   table = mk(291);
@@ -67,7 +83,8 @@ test('291 rows today: one read, all of them, truncated false, cap said', async (
   assert.equal(r.json.truncated, false);
   assert.equal(r.json.cap, 9990);
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].limit, '1000');
+  assert.equal(calls[0].limit, '999');
+  assert.equal(calls[0].prefer, 'count=exact');
   assert.equal(calls[0].order, 'movement_date.desc,id.desc');
 });
 
@@ -76,17 +93,52 @@ test('past 300 and past one PostgREST page: every row, each once, in order', asy
   const r = await get();
   assert.equal(r.json.records.length, 2500);
   assert.equal(new Set(r.json.records.map((m) => m.id)).size, 2500);
-  assert.deepEqual(r.json.records.map((m) => m.id), table.map((m) => m.id));
+  assert.deepEqual(r.json.records.map((m) => m.id), sorted().map((m) => m.id));
   assert.equal(r.json.truncated, false);
-  assert.deepEqual(calls.map((c) => c.offset), [undefined, '999', '1998']);
+  assert.equal(calls.length, 3);
+  assert.deepEqual(calls.map((c) => c.prefer), ['count=exact', undefined, undefined]);
 });
 
-test('exactly one full page (999): no second read, not truncated', async () => {
+test('exactly one full page (999): every row, not truncated', async () => {
   table = mk(999);
   const r = await get();
   assert.equal(r.json.records.length, 999);
   assert.equal(r.json.truncated, false);
-  assert.equal(calls.length, 1);
+  assert.ok(calls.length <= 2);
+});
+
+test('db-max-rows lowered to 500: still every row, never a quiet cut at 500', async () => {
+  MAX_ROWS = 500;
+  table = mk(2500);
+  const r = await get();
+  assert.equal(r.json.records.length, 2500);
+  assert.equal(new Set(r.json.records.map((m) => m.id)).size, 2500);
+  assert.equal(r.json.truncated, false);
+});
+
+test('a movement written above the window while pages are read: no row twice, none skipped', async () => {
+  table = mk(2500);
+  onPage = (n) => { if (n === 2) table.push({ id: 99999, client_id: 1, movement_date: '2026-10-25' }); };
+  const r = await get();
+  const ids = r.json.records.map((m) => m.id);
+  assert.equal(new Set(ids).size, ids.length, 'no duplicates');
+  for (let id = 1; id <= 2500; id++) assert.ok(ids.includes(id), 'missing ' + id);
+});
+
+test('a movement deleted above the window while pages are read: none skipped', async () => {
+  table = mk(2500);
+  onPage = (n) => { if (n === 2) table = table.filter((m) => m.id !== 2500); };
+  const r = await get();
+  const ids = new Set(r.json.records.map((m) => m.id));
+  for (let id = 1; id < 2500; id++) assert.ok(ids.has(id), 'skipped ' + id);
+});
+
+test('no exact count in the answer: a loud error, never a guessed «complete»', async () => {
+  table = mk(10);
+  const real = globalThis.fetch;
+  globalThis.fetch = async (u, init) => { const res = await real(u, init); return new Response(await res.text()); };
+  const r = await get();
+  assert.ok(r.status >= 500, 'status ' + r.status);
 });
 
 test('exactly at the cap (9 990): all rows, not truncated', async () => {
@@ -102,12 +154,14 @@ test('past the cap: 9 990 rows and truncated true, never a quiet cut', async () 
   assert.equal(r.json.records.length, 9990);
   assert.equal(r.json.truncated, true);
   assert.equal(calls.length, 10);
+  assert.deepEqual(r.json.records.map((m) => m.id), sorted().slice(0, 9990).map((m) => m.id));
 });
 
 test('filters ride on every page (client card)', async () => {
   table = mk(3000);
   const r = await get('?client_id=2');
   assert.equal(r.json.records.length, 1000);
+  assert.equal(r.json.truncated, false);
   assert.ok(r.json.records.every((m) => m.client_id === 2));
   assert.ok(calls.every((c) => c.client_id === 'eq.2'));
 });
