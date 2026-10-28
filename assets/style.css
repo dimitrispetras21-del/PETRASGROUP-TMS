@@ -9111,22 +9111,21 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 .wn5-vtime { display:block; font-size:10.5px; line-height:13px; font-weight:500; color:var(--wi4-grey-1); }
 /* At 1920 two stops fit side by side; narrower (1440: 147px) they wrap to a second line instead of spilling. */
 .wn5 .wn5-pts { flex-wrap:wrap; row-gap:4px; }
-/* Above 1600 stops, the end of the cycle and the «Κενό γύρισμα» slot WRAP (DESIGN.md #6: a place is never cut).
-   At ≤1600 (1440, also with the 228px sidebar open: #content 1212) they keep the wi4 block's one truncation rule
-   (.wi4-l1/.wi4-l2/.wi4-ell: one line, a visible «…», the whole stop in the point's title): plan T5 «one whole stop on
-   its two lines plus +N», rows stay 36px as H1 (whole-frame r4: wrapped places made 46–59px rows, «Thessaloniki / Test»
-   an 80px row). Owner question in the PR: DESIGN.md #6 against the 36px row at 1440. */
-@media (min-width:1601px) {
-  .wn5 :is(.wn5-pts, .wn5-end) :is(.wi4-l1, .wi4-l2), .wn5 .wn5-gapbox > .wi4-ell { white-space:normal; overflow:visible; text-overflow:clip; overflow-wrap:break-word; }
-  /* ΦΟΡΤΩΣΗ: the number and the place flow inline, so a place that does not fit beside its number goes whole to the
-     next line instead of breaking mid-word («THESSALONI/KI»). The break after the number comes from the l1's leading
-     space; break-word stays only for a word wider than the cell. At ≤1600 the wi4 grid (number · place) holds. */
-  .wn5 .wn5-fl .wn5-pt { display:block; }
-  .wn5 .wn5-fl .wn5-pt > .wi4-pt-n { display:inline-block; vertical-align:top; }
-  .wn5 .wn5-fl .wn5-pt > .wi4-pt-n + .wi4-l1 { display:inline; }
-  .wn5 .wn5-fl .wn5-pt > .wi4-pt-n + .wi4-l1::before { content:' '; }
-  .wn5 .wn5-fl .wn5-pt > .wi4-l2 { display:block; }
-}
+/* Stops, the end of the cycle and the «Κενό γύρισμα» slot WRAP at every width (DESIGN.md #6: a company or place name is
+   never cut; plan T5: «No text-overflow anywhere», at 1440 stops wrap to a second line). The wi4 block cuts
+   .wi4-l1/.wi4-l2/.wi4-ell with a visible «…» (its one truncation rule); here that rule stays only on the 28px vehicle
+   tile and the queue cards, whose full text is in title. Whole-frame fix round 1: r4 had gated this to min-width 1601 for
+   36px rows at 1440, which cut names; the 36px row against DESIGN.md #6 is an owner question, nothing is cut meanwhile.
+   The points' title attributes (whole stop) stay as extras. */
+.wn5 :is(.wn5-pts, .wn5-end) :is(.wi4-l1, .wi4-l2), .wn5 .wn5-gapbox > .wi4-ell { white-space:normal; overflow:visible; text-overflow:clip; overflow-wrap:break-word; }
+/* ΦΟΡΤΩΣΗ (120px at 1440): the number and the place flow inline, so a place that does not fit beside its number
+   goes whole to the next line instead of breaking mid-word («THESSALONI/KI», DESIGN.md #6 forbids the «…» on a place).
+   The break after the number comes from the l1's leading space; break-word stays only for a word wider than the cell. */
+.wn5 .wn5-fl .wn5-pt { display:block; }
+.wn5 .wn5-fl .wn5-pt > .wi4-pt-n { display:inline-block; vertical-align:top; }
+.wn5 .wn5-fl .wn5-pt > .wi4-pt-n + .wi4-l1 { display:inline; }
+.wn5 .wn5-fl .wn5-pt > .wi4-pt-n + .wi4-l1::before { content:' '; }
+.wn5 .wn5-fl .wn5-pt > .wi4-l2 { display:block; }
 /* ...and the points may use the cell's right 9px gutter: at 1440 the 102px content is 2px short of «1 THESSALONIKI»
    (14 + 3 + 87), which left the number alone on its line; the next column keeps its own 9px, so text never touches. */
 .wn5 .wn5-fl .wn5-pts { margin-right:-9px; }
@@ -9140,9 +9139,8 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
    «ως Πέμ 22:00» line (2120:8886). */
 .wn5-city, .wn5-endx { font-size:10.5px; font-weight:400; color:var(--wi4-grey-2); }
 .wn5-endx, .wn5 .wn5-end .wi4-l2 { font-weight:500; }
-/* «client · place» breaks between the two, never inside a name when the name fits a line by itself (above 1600; at
-   ≤1600 they stay inline, so the «…» cuts the place, not the whole of an inline block). */
-@media (min-width:1601px) { .wn5 .wn5-who, .wn5 .wn5-pt .wi4-l1 > .wn5-city { display:inline-block; max-width:100%; } }
+/* «client · place» breaks between the two, never inside a name when the name fits a line by itself. */
+.wn5 .wn5-who, .wn5 .wn5-pt .wi4-l1 > .wn5-city { display:inline-block; max-width:100%; }
 /* «+N» (Figma H1): a 22px chip, its figure centred, in the middle of the stop. */
 .wn5 .wn5-pts .wi4-more { flex:0 0 24px; width:24px; height:22px; display:grid; place-items:center; }
 .wn5 .wn5-pt > .wi4-l2 { font-weight:500; color:var(--wi4-grey-1); }   /* before the late rule: a late window stays amber */

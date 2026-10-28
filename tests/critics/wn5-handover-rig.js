@@ -607,9 +607,9 @@ async function scnSheetSeg({ browser, origin, ok, scn }) {
   await page.context().close();
 }
 
-// Whole-frame r4 (critic r4, 28/10): H3 at 1440×900 with the app sidebar open (router default, #content ≈1212) and
-// closed — every stop line and the cycle's end is ONE line (plan T5 ≤1600: one whole stop on its two lines plus «+N»),
-// a cut line keeps its whole text in a title. The measured row heights are printed (report).
+// Whole-frame r4 (critic r4, 28/10), fix round 1: H3 at 1440×900 with the app sidebar open (router default, #content
+// ≈1212) and closed — no stop line or cycle end is cut: no «…», a name fits or wraps (DESIGN.md #6, plan T5 «No
+// text-overflow anywhere»). The measured row heights and wrapped lines are printed (report for the owner).
 async function scnNarrow({ browser, origin, ok, scn }) {
   const pe = [];
   for (const three of [false, true]) {
@@ -623,13 +623,14 @@ async function scnNarrow({ browser, origin, ok, scn }) {
         const els = [...document.querySelectorAll('#content .wn5 .wn5-row :is(.wn5-pt > .wi4-l1, .wn5-pt > .wi4-l2, .wn5-end > .wi4-l1, .wn5-end > .wi4-l2, .wn5-gapbox)')];
         return { content: Math.round(document.getElementById('content').getBoundingClientRect().width),
           wrapped: els.filter((e) => lines(e) > 1).map((e) => ({ row: e.closest('.wn5-row').dataset.key, t: norm(e.textContent), lines: lines(e) })),
-          untitled: els.filter((e) => e.scrollWidth > e.clientWidth + 1).filter((e) => { const t = e.closest('[title]'); return !t || !norm(t.title).includes(norm(e.textContent)); }).map((e) => norm(e.textContent)),
+          cut: els.flatMap((e) => [e, ...e.querySelectorAll(':scope > .wi4-ell')]).filter((c) => { const cs = getComputedStyle(c); return cs.textOverflow === 'ellipsis' || (cs.overflowX !== 'visible' && c.scrollWidth > c.clientWidth + 1); }).map((c) => norm(c.textContent)),
+          untitled: [...document.querySelectorAll('#content .wn5 .wn5-row .wn5-pt')].filter((p) => { const l1 = p.querySelector(':scope > .wi4-l1'); return l1 && !norm(p.title).startsWith(norm(l1.textContent)); }).map((p) => norm(p.textContent)),
           rows: Object.fromEntries([...document.querySelectorAll('#content .wn5 .wn5-row')].map((r) => [r.dataset.key, Math.round(r.getBoundingClientRect().height)])) };
-      }).catch((e) => ({ err: String(e), wrapped: [{}], untitled: [], rows: {} }));
+      }).catch((e) => ({ err: String(e), wrapped: [], cut: [{}], untitled: [], rows: {} }));
       const tag = `${three ? 3 : 2} segments, 1440 sidebar ${sb}`;
-      console.log(`  · r4 H3 ${tag}: #content ${m.content}px, rows ${JSON.stringify(m.rows)}`);
-      ok(scn, `${tag}: every stop line and cycle end is one line (plan T5 ≤1600)`, !m.err && !m.wrapped.length && Object.keys(m.rows).length > 0, m.err || m.wrapped);
-      ok(scn, `${tag}: every cut line has its whole text in a title`, !m.err && !m.untitled.length, m.untitled);
+      console.log(`  · H3 ${tag}: #content ${m.content}px, rows ${JSON.stringify(m.rows)}, wrapped lines ${(m.wrapped || []).length}`);
+      ok(scn, `${tag}: no stop line or cycle end is cut — no «…», a name fits or wraps (DESIGN.md #6, plan T5)`, !m.err && !m.cut.length && Object.keys(m.rows).length > 0, m.err || m.cut);
+      ok(scn, `${tag}: every point keeps its whole stop in title (extra)`, !m.err && !m.untitled.length, m.untitled);
       pe.push(...S.pageErrors, ...appConsole(S));
       await page.context().close();
     }

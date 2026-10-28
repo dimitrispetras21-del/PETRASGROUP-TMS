@@ -482,6 +482,26 @@ SCN.topbar = async (browser, origin) => {
   await page.waitForTimeout(300);
   const d = await read();
   ok(scn, 'leaving the board (dashboard): the app\'s top bar is restored', again && !d.inTop && !d.on && d.titleShown && d.logoutShown && !d.menu && d.chipRole === null, Object.assign({ again }, d));
+  // whole-frame fix round 1: Weekly International v4 → v5. WIV2's page-leave observer runs its _umenuUnmount AFTER v5's
+  // first paint mounted the v5 menu and strips the chip's button attributes; v5 must put them back (keyboard way out).
+  await page.evaluate(() => { if (typeof navigate === 'function') navigate('weekly_intl'); });
+  const wi = await until(page, () => !!document.querySelector('#wi4-top') || !!document.querySelector('#content .wi4'));
+  await page.evaluate(() => { if (typeof navigate === 'function') navigate('weekly_natl'); });
+  const v5 = await until(page, () => { const r = document.querySelector('#content .wn5'); return !!document.querySelector('#wn5-top > .wn5-bar') && r && r.dataset.state !== 'loading'; });
+  await page.waitForTimeout(300);
+  const e = await page.evaluate(() => {
+    const chip = document.querySelector('.topbar .user-chip');
+    return chip ? { role: chip.getAttribute('role'), tabindex: chip.getAttribute('tabindex'), popup: chip.getAttribute('aria-haspopup'),
+      expanded: chip.getAttribute('aria-expanded'), title: chip.getAttribute('title'), menu: !!chip.querySelector('.wn5-umenu'), wiMenu: !!chip.querySelector('.wi4-umenu:not(.wn5-umenu)') } : null;
+  });
+  ok(scn, 'Weekly International → v5: the chip is the v5 menu\'s button again (role button, tabindex 0, aria-haspopup, aria-expanded false, title), no WI menu',
+    wi && v5 && !!e && e.role === 'button' && e.tabindex === '0' && e.popup === 'true' && e.expanded === 'false' && !!e.title && e.menu && !e.wiMenu, Object.assign({ wi, v5 }, e));
+  await page.evaluate(() => { const c = document.querySelector('.topbar .user-chip'); if (c) c.focus(); });
+  await page.keyboard.press('Enter');
+  const kb = await page.evaluate(() => { const m = document.querySelector('.topbar .user-chip .wn5-umenu'), a = document.activeElement;
+    return m ? { open: !m.hidden, focus: a ? a.textContent.trim() : null } : null; });
+  ok(scn, 'Weekly International → v5: Enter on the focused avatar opens the menu, «Αποσύνδεση» focused', !!kb && kb.open && kb.focus === 'Αποσύνδεση', kb);
+  await page.keyboard.press('Escape');
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
   await page.context().close();
 };
@@ -2171,10 +2191,11 @@ async function scnSheet(browser, origin) {
 }
 SCN['sheet'] = scnSheet;
 
-// Whole-frame r4 (critic r4, 28/10) — 1440×900 with the app sidebar OPEN (router default, #content ≈1212px; the plan's
-// ≤1600 grid names «1440 with the sidebar open» as a target) and closed. Plan T5 ≤1600: one whole stop on its two
-// lines plus «+N», rows 36px as H1 — so every stop line, the cycle's end and the «Κενό γύρισμα» slot is ONE line, cut
-// with a visible «…», the whole text in title. Also: «Thessaloniki Test» in ΦΟΡΤΩΣΗ on one line (2011:7745 row 5), the
+// Whole-frame r4 (critic r4, 28/10), fix round 1 — 1440×900 with the app sidebar OPEN (router default, #content ≈1212px;
+// the plan's ≤1600 grid names «1440 with the sidebar open» as a target) and closed. DESIGN.md #6 and plan T5 («No
+// text-overflow anywhere: names are never cut»; at 1440 stops wrap to a second line): no stop line, cycle end or
+// «Κενό γύρισμα» slot is cut — no «…», a name either fits or wraps (r4 had cut them at ≤1600 for 36px rows; that
+// trade-off is the owner's). The points keep the whole stop in title (r4 extra). Also: «Thessaloniki Test» in ΦΟΡΤΩΣΗ on one line (2011:7745 row 5), the
 // «↳ Φόρτωση με τοπικό» arrow in the index column (as the ⇄ sub-row), the «Σπάσε…» popover opening to the left of its
 // row's buttons so the ΦΟΡΤΗΓΑ capacity column stays seen (2011:8822). Measured row heights are printed (report).
 const R4_LINES = `#content .wn5 .wn5-row :is(.wn5-pt > .wi4-l1, .wn5-pt > .wi4-l2, .wn5-end > .wi4-l1, .wn5-end > .wi4-l2, .wn5-gapbox)`;
@@ -2186,14 +2207,21 @@ function r4Measure(sel) {
     return tops.length;
   };
   const norm = (t) => String(t || '').replace(/\s+/g, ' ').trim();
-  const out = { content: Math.round((document.getElementById('content') || document.body).getBoundingClientRect().width), wrapped: [], untitled: [], rows: {} };
+  const out = { content: Math.round((document.getElementById('content') || document.body).getBoundingClientRect().width), wrapped: [], cut: [], untitled: [], rows: {} };
   for (const el of document.querySelectorAll(sel)) {
     const n = lines(el), row = el.closest('.wn5-row');
-    if (n > 1) out.wrapped.push({ row: row && row.dataset.key, cls: el.className, t: norm(el.textContent), lines: n, h: Math.round(el.getBoundingClientRect().height) });
-    // a cut line (its own box, or the slot's inner run) says its whole text in a title on it or around it
+    if (n > 1) out.wrapped.push({ row: row && row.dataset.key, t: norm(el.textContent), lines: n });   // report only: wrapping is allowed
+    // never cut (the line's own box, or the slot's inner run): no «…» rule on it, and nothing hidden past its edge
     for (const c of [el, ...el.querySelectorAll(':scope > .wi4-ell')]) {
-      if (c.scrollWidth > c.clientWidth + 1) { const t = c.closest('[title]'); if (!t || !norm(t.title).includes(norm(c.textContent))) out.untitled.push({ row: row && row.dataset.key, t: norm(c.textContent), title: t ? t.title : null }); }
+      const cs = getComputedStyle(c);
+      if (cs.textOverflow === 'ellipsis' || (cs.overflowX !== 'visible' && c.scrollWidth > c.clientWidth + 1))
+        out.cut.push({ row: row && row.dataset.key, t: norm(c.textContent), to: cs.textOverflow, ws: cs.whiteSpace, sw: c.scrollWidth, cw: c.clientWidth });
     }
+  }
+  // the r4 extra: each point's title holds its whole first line (who · place)
+  for (const p of document.querySelectorAll('#content .wn5 .wn5-row .wn5-pt')) {
+    const l1 = p.querySelector(':scope > .wi4-l1');
+    if (l1 && !norm(p.title).startsWith(norm(l1.textContent))) out.untitled.push({ t: norm(l1.textContent), title: p.title || null });
   }
   for (const r of document.querySelectorAll('#content .wn5 .wn5-row')) {
     const fl = r.querySelector('.wn5-fl');
@@ -2213,12 +2241,11 @@ SCN.narrow = async (browser, origin) => {
       ['Veroia board', () => bOpen(browser, origin, { viewport: { width: 1440, height: 900 }, sidebar: sb })]]) {
       const { page, S } = await open();
       await page.waitForTimeout(300);   // the sidebar's 0.22 s transition
-      const m = await page.evaluate(r4Measure, R4_LINES).catch((e) => ({ err: String(e), wrapped: [{}], untitled: [], rows: {} }));
-      console.log(`  · r4 ${name} 1440 sidebar ${sb}: #content ${m.content}px, rows ${JSON.stringify(Object.fromEntries(Object.entries(m.rows).map(([k, r]) => [k, r.h])))}, slots ${JSON.stringify(m.gaps)}`);
-      ok(scn, `${name} 1440 sidebar ${sb}: every stop line, cycle end and «Κενό γύρισμα» slot is one line (plan T5 ≤1600)`, !m.err && !m.wrapped.length && Object.keys(m.rows).length > 0, m.err || m.wrapped);
-      ok(scn, `${name} 1440 sidebar ${sb}: every cut line has its whole text in a title`, !m.err && !m.untitled.length, m.untitled);
-      const tall = plainRows(m).filter(([, r]) => r.h > 37);
-      ok(scn, `${name} 1440 sidebar ${sb}: a cycle row with one loading in ΦΟΡΤΩΣΗ is 36px (±1, H1)`, plainRows(m).length > 0 && !tall.length, tall);
+      const m = await page.evaluate(r4Measure, R4_LINES).catch((e) => ({ err: String(e), cut: [{}], untitled: [], wrapped: [], rows: {} }));
+      // row heights and wrapped lines are the report for the owner's 36px-row-vs-DESIGN.md-#6 question, not a check
+      console.log(`  · ${name} 1440 sidebar ${sb}: #content ${m.content}px, rows ${JSON.stringify(Object.fromEntries(Object.entries(m.rows).map(([k, r]) => [k, r.h])))}, slots ${JSON.stringify(m.gaps)}, wrapped lines ${(m.wrapped || []).length}, plain rows >37px ${plainRows(m).filter(([, r]) => r.h > 37).length}/${plainRows(m).length}`);
+      ok(scn, `${name} 1440 sidebar ${sb}: no stop line, cycle end or «Κενό γύρισμα» slot is cut — no «…», a name fits or wraps (DESIGN.md #6, plan T5)`, !m.err && !m.cut.length && Object.keys(m.rows).length > 0, m.err || m.cut);
+      ok(scn, `${name} 1440 sidebar ${sb}: every point keeps its whole stop in title (extra)`, !m.err && !m.untitled.length, m.untitled);
       // 2 · the outside loading's client on one line beside its number (2011:7745 row 5): RT-T105 «Thessaloniki Test» on
       // the board, RT-T204 «THESSALONIKI TEST» on the Veroia board; Βέροια and its window stay stacked under it (T5 3830)
       {
@@ -2230,11 +2257,12 @@ SCN.narrow = async (browser, origin) => {
           const tops = [];
           for (const x of r.getClientRects()) if (x.width > 0.5 && !tops.some((y) => Math.abs(y - x.top) < 4)) tops.push(x.top);
           const p = l1.closest('.wn5-pt');
-          return { t: l1.textContent, lines: tops.length, cut: l1.scrollWidth > l1.clientWidth + 1, title: p ? p.title : null, vh: !!row.querySelector('.wn5-fl .wn5-vh + .wn5-vtime'), h: Math.round(row.getBoundingClientRect().height) };
+          const cs = getComputedStyle(l1);
+          return { t: l1.textContent, lines: tops.length, cut: cs.textOverflow === 'ellipsis' || (cs.overflowX !== 'visible' && l1.scrollWidth > l1.clientWidth + 1), title: p ? p.title : null, vh: !!row.querySelector('.wn5-fl .wn5-vh + .wn5-vtime'), h: Math.round(row.getBoundingClientRect().height) };
         }, rt);
-        console.log(`  · r4 RT-T${rt} row (${name}, sidebar ${sb}): ${t && t.h}px`);
-        ok(scn, `${name} 1440 sidebar ${sb}: RT-T${rt} ΦΟΡΤΩΣΗ «${want}» on one line (cut → title), Βέροια and its window still under it`,
-          !!t && t.t === want && t.lines === 1 && (!t.cut || (t.title || '').startsWith(want + ' · ')) && t.vh, t);
+        console.log(`  · RT-T${rt} row (${name}, sidebar ${sb}): ${t && t.h}px, ΦΟΡΤΩΣΗ place on ${t && t.lines} line(s)`);
+        ok(scn, `${name} 1440 sidebar ${sb}: RT-T${rt} ΦΟΡΤΩΣΗ «${want}» whole — never cut, on one line or wrapped between words; Βέροια and its window still under it`,
+          !!t && t.t === want && !t.cut && t.lines >= 1 && t.lines <= 2 && t.vh, t);
       }
       if (name === 'board') {
         // 4 · the local loading sub-row of RT-T103: «↳» in the index column, the text at the ΚΑΘΟΔΟΣ chip column

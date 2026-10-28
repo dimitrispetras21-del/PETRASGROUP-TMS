@@ -510,8 +510,8 @@ function _anodHTML(r, m, ok) {
     // at its first « · », nothing is added or dropped).
     const cut = par ? -1 : s.gap.text.indexOf(' · ');
     // One inner run: the slot is a flex box, and a bare « · …» beside the span would be its own item and lose its space.
-    // One line with a visible «…» at ≤1600 (.wi4-ell, whole-frame r4: the 38px two-line slot grew the row); the whole
-    // text stays in title.
+    // The inner run is a .wi4-ell that the wn5 block lets WRAP at every width (DESIGN.md #6, whole-frame fix round 1:
+    // r4 cut it at ≤1600); the whole text is also in title.
     const ell = `class="wi4-ell" title="${_esc(s.gap.text)}"`;
     const txt = cut > 0 ? `<span ${ell}><span class="wn5-gaph">${_esc(s.gap.text.slice(0, cut))}</span>${_esc(s.gap.text.slice(cut))}</span>` : par ? _esc(s.gap.text) : `<span ${ell}>${_esc(s.gap.text)}</span>`;
     // a partner's «Μόνο κάθοδος» is a fact, not a slot (plain text), yet its ΑΝΟΔΟΣ still has the side's «+» in ΠΑΛ., as
@@ -566,8 +566,8 @@ function _ptName(p) { const who = _ptWho(p); return who ? `${who} · ${p.name}` 
 // Each point with its own day: a delivery of Tuesday stays bold until Tuesday ends, even if its hour passed.
 function _ptHTML(p, n, ok, placeOnly) {
   const who = placeOnly ? null : _ptWho(p);
-  // ≤1600 each line of a stop is cut with a visible «…» (whole-frame r4, plan T5 «one whole stop on its two lines
-  // plus +N»): the whole stop stays readable in the point's title.
+  // The whole stop in the point's title (whole-frame r4). Its lines are never cut — they wrap (DESIGN.md #6, plan T5;
+  // whole-frame fix round 1) — the title is a convenience on hover, not where a name has to be read.
   const full = `${placeOnly ? p.name : _ptName(p)} · ${p.from && p.to ? p.from + '–' + p.to : '—'} · ${_pal(p.pallets)}`;
   return `<span class="wi4-pt wn5-pt${p.late ? ' wn5-late' : ''}${_dc(ok && p.dim && !p.late)}" data-stop="${_id(p.stopId)}"${_segAttr(p.segLabel)} title="${_esc(full)}">`
     + (n == null ? '' : `<span class="wi4-pt-n">${n}</span>`)
@@ -978,9 +978,24 @@ function _umenuOut(ev) {
   const chip = _umenu.parentElement;
   if (ev.relatedTarget && chip && !chip.contains(ev.relatedTarget)) _umenuClose();
 }
+// The chip's button attributes, set on every mount AND once more after the current task: leaving the Weekly
+// International for v5, WIV2's page-leave MutationObserver runs its _umenuUnmount in the microtasks AFTER v5's paint
+// mounted this menu and strips them unconditionally — and a cached week paints only once, so a later paint cannot be
+// relied on. Without this the chip stayed unfocusable and «Αποσύνδεση» mouse-only (whole-frame fix round 1).
+function _umenuReapply() { if (_umenu && _umenu.isConnected && _umenu.parentElement) _umenuChip(_umenu.parentElement); }
+function _umenuChip(chip) {
+  const name = (document.getElementById('userName') || {}).textContent || '';
+  chip.setAttribute('role', 'button');
+  chip.setAttribute('tabindex', '0');
+  chip.setAttribute('aria-haspopup', 'true');
+  chip.setAttribute('aria-expanded', String(!!_umenu && !_umenu.hidden));
+  chip.title = name ? name + ' — Αποσύνδεση' : 'Αποσύνδεση';
+}
 function _umenuMount() {
   const chip = document.querySelector('.topbar .user-chip');
-  if (!chip || _umenu) return;
+  if (!chip) return;
+  setTimeout(_umenuReapply, 0);   // after the observers of this task (WIV2's page-leave) have run
+  if (_umenu) { _umenuReapply(); return; }
   const name = (document.getElementById('userName') || {}).textContent || '';
   const role = (document.getElementById('roleBadge') || {}).textContent || '';
   const m = document.createElement('div');
@@ -990,15 +1005,11 @@ function _umenuMount() {
   m.innerHTML = `<div class="wi4-umenu-h">${_esc(name)}${role ? ` <span>· ${_esc(role)}</span>` : ''}</div>`
     + '<button type="button" role="menuitem" onclick="logout()">Αποσύνδεση</button>';
   chip.appendChild(m);
-  chip.setAttribute('role', 'button');
-  chip.setAttribute('tabindex', '0');
-  chip.setAttribute('aria-haspopup', 'true');
-  chip.setAttribute('aria-expanded', 'false');
-  chip.title = name ? name + ' — Αποσύνδεση' : 'Αποσύνδεση';
   chip.addEventListener('click', _umenuTog);
   chip.addEventListener('keydown', _umenuKey);
   chip.addEventListener('focusout', _umenuOut);
   _umenu = m;
+  _umenuChip(chip);
 }
 function _umenuUnmount() {
   if (!_umenu) return;
