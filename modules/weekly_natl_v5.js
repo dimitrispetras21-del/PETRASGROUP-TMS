@@ -690,7 +690,11 @@ function _ptCity(p) {
 // not on the row (a long company name filled four lines and the place got lost; the national dispatcher plans by
 // place): it is in the order card and in this title.
 // The whole stop in one line, place first as on the row, the client last: the point's title and the «+N» list.
+// B-12: the deadline of an ΑΝΟΔΟΣ ending at Veroia — the window's END (its own day: a window can cross midnight), else
+// the base's due day; never an hour the base did not give
+const _hubBy = (p) => (p.to && (p.toDay || p.day) ? `${_dow(p.toDay || p.day)} ${p.to}` : p.due ? _dl(p.due) : '—');
 function _ptFull(p) {
+  if (p.hub) return `Βέροια · τέλος κύκλου · ως ${_hubBy(p)} · ${_pal(p.pallets)}`;   // the same words in title and «+N»
   const city = _ptCity(p), who = _ptWho(p);
   return `${p.name}${city ? ', ' + city : ''} · ${p.from && p.to ? p.from + '–' + p.to : '—'} · ${_pal(p.pallets)}${_tempTxt(p) ? ' · ' + _tempTxt(p) : ''}${who ? ' · ' + who : ''}`;
 }
@@ -699,8 +703,8 @@ function _ptHTML(p, n, ok) {
   // · τέλος κύκλου», then its deadline; no city «Veroia» under «Βέροια». The deadline is the window's end when the
   // board has one, else the base's due DAY (nat_due_day) — no hour is invented for it.
   if (p.hub) {
-    const by = p.to && p.day ? `${_dow(p.day)} ${p.to}` : p.due ? _dl(p.due) : '—';
-    return `<span class="wi4-pt wn5-pt wn5-end${p.late ? ' wn5-late' : ''}" data-stop="${_id(p.stopId)}" title="${_esc(`Βέροια · τέλος κύκλου · ως ${by} · ${_pal(p.pallets)}`)}">`
+    const by = _hubBy(p);
+    return `<span class="wi4-pt wn5-pt wn5-end${p.late ? ' wn5-late' : ''}" data-stop="${_id(p.stopId)}" title="${_esc(_ptFull(p))}">`
       + `<span class="wi4-l1">Βέροια<span class="wn5-endx"> · τέλος κύκλου</span></span><span class="wi4-l2">ως ${_esc(by)}</span></span>`;
   }
   const city = _ptCity(p);

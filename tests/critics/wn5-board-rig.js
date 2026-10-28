@@ -2765,8 +2765,13 @@ SCN['figma-g1'] = async (browser, origin) => {
     nat_from_location_id: 6, nat_to_location_id: 2, position_location_id: 6, nat_ready_day: '2026-10-12', nat_due_day: '2026-10-12', overdue: false, is_stock: false,
     leave_by: null, pallet_exchange: false, temperature_c: null, price: 1, direction: null, load_from: '2026-10-12T08:00:00+03:00', load_to: '2026-10-12T10:00:00+03:00',
     deliver_from: '2026-10-12T14:00:00+03:00', deliver_to: '2026-10-12T16:00:00+03:00' });
+  // export 616 (pieces 20, 21) has a delivery window at Veroia that crosses midnight: its deadline is the window's end
+  for (const w of b.waiting) if (w.order_id === 616) Object.assign(w, { deliver_from: '2026-10-11T22:00:00+03:00', deliver_to: '2026-10-12T02:00:00+03:00' });
   const { page, S } = await openBoard(browser, origin, { board: b, lookups: lk });
   await page.waitForSelector('#content > .wi4.wn5[data-state="ok"]', { timeout: 8000 }).catch(() => {});
+  const to20 = await page.evaluate(() => { const c = document.querySelector('#content .wn5 .wn5-row[data-piece="20"] .wn5-ato .wn5-end'); return c ? { t: c.textContent.replace(/\s+/g, ' ').trim(), title: c.title } : null; });
+  ok(scn, 'B-12 · with a window (Κυρ 22:00 → Δευ 02:00) the deadline is its end «ως Δευ 02:00», in the row and its title',
+    !!to20 && /ως Δευ 02:00$/.test(to20.t) && /^Βέροια · τέλος κύκλου · ως Δευ 02:00 · /.test(to20.title), to20);
   const nb = await page.evaluate(() => { const x = [...document.querySelectorAll('.btn-new-order')].find((e) => e.offsetParent && /Νέα παραγγελία/.test(e.textContent)); if (!x) return null; const r = x.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; });
   ok(scn, 'B-6 · «+ Νέα παραγγελία» 135 × 32 (Figma H1 2120:7872)', !!nb && nb[0] === 135 && nb[1] === 32, nb);
   await page.click('#content .wn5 .wn5-q .wi4-q-all', { timeout: 2000 }).catch(() => {});
