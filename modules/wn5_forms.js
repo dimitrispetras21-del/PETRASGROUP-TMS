@@ -93,6 +93,44 @@
     return HM.test(out) ? out : t;
   }
   const HM_INPUT = 'class="form-input wn5f-hm" type="text" inputmode="numeric" maxlength="5" placeholder="ΗΗ:ΛΛ" autocomplete="off"';
+  // A day typed in a day field (live 28/10: «typing in the date fields does not change the value, only the picker
+  // works»). The native date input sat under the weekday label in 100px: a click landed on a segment the user could not
+  // see, «29» went into the year (0029) and the label still read «15/10». The field is now text, read here:
+  // «29/10», «29/10/2026», «29.10.26», «2910», «29102026», «2026-10-29». A day without a year takes the year that puts it
+  // nearest to ref (the field's own day, else today), so «02/01» typed on a 30/12 is the next January. A year that is
+  // typed must be within a year of ref (code review: «29/10/20» was 2020, six years back, without a word). Anything else
+  // is null: the form names it, never a guessed day (principle 1). Pure: no clock, ref is given.
+  function _dayParse(text, ref) {
+    const s = String(text == null ? '' : text).trim();
+    if (!s) return '';
+    let m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s), d, mo, y = null;
+    if (m) { y = +m[1]; mo = +m[2]; d = +m[3]; }
+    else {
+      m = /^(\d{1,2})[/.\- ](\d{1,2})(?:[/.\- ](\d{2}|\d{4}))?$/.exec(s) || /^(\d{2})(\d{2})(\d{2}|\d{4})?$/.exec(s);
+      if (!m) return null;
+      d = +m[1]; mo = +m[2];
+      if (m[3]) y = m[3].length === 2 ? 2000 + +m[3] : +m[3];
+    }
+    const at = (yy) => { const t = new Date(Date.UTC(yy, mo - 1, d)); return t.getUTCFullYear() === yy && t.getUTCMonth() === mo - 1 && t.getUTCDate() === d ? t.getTime() : null; };
+    const out = (ms) => (ms == null ? null : new Date(ms).toISOString().slice(0, 10));
+    const hasRef = DAY.test(String(ref || ''));
+    const ry = hasRef ? +ref.slice(0, 4) : null;
+    if (y !== null) return y >= 2000 && y <= 2099 && (ry === null || Math.abs(y - ry) <= 1) ? out(at(y)) : null;
+    if (!hasRef) return null;
+    const r = Date.UTC(ry, +ref.slice(5, 7) - 1, +ref.slice(8, 10));
+    let best = null;
+    for (const yy of [ry - 1, ry, ry + 1]) { const ms = at(yy); if (ms !== null && (best === null || Math.abs(ms - r) < Math.abs(best - r))) best = ms; }
+    return out(best);
+  }
+  // lucide «calendar» at 14px: the picker of a day field, the native one, opened on purpose
+  const CAL = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>';
+  // One day field: the typed text (.wn5f-dayx), the native date input that holds the ISO day every reader reads (its
+  // data-f / id stay there) and opens only from the calendar button, never under a click on the text.
+  function _dayHTML(attrs, v, ro, year) {
+    return `<span class="wn5f-day"${year ? ' data-y' : ''}><input class="form-input wn5f-dayx" type="text" inputmode="numeric" maxlength="10" autocomplete="off" placeholder="${year ? 'ηη/μμ/εεεε' : 'ηη/μμ'}" aria-label="Ημέρα"${ro || ''}>`
+      + `<input class="wn5f-dayp" type="date" ${attrs} value="${_esc(v || '')}" tabindex="-1" aria-hidden="true"${ro || ''}>`
+      + `<button type="button" class="wn5f-dayc" data-act="day-pick" tabindex="-1" aria-label="Ημερολόγιο"${ro || ''}>${CAL}</button></span>`;
+  }
   // F1: the window headers lose their «*» and say what an empty window means
   const WIN_HEAD = 'Παράθυρο από – έως · κενό: όλη η ημέρα';
   const UNTIL_HEAD = 'Άφιξη ως · κενό: όλη η ημέρα';
@@ -243,14 +281,22 @@
     }
     return out;
   }
-  // PATCH /plan/orders/:id: only what changed (plan_order_update 072:1329 set + shipments). Times compare as
-  // instants: the board writes UTC, the form writes the Athens offset.
+  // PATCH /plan/orders/:id: only what changed (plan_order_update 072:1329 set + shipments, 077 new / removed points).
+  // Times compare as instants: the board writes UTC, the form writes the Athens offset. An empty field is «not shown»
+  // (never sent) unless orig.full: then the form showed the order's own value (077 read, F13) and emptying a text or
+  // the temperature clears it on purpose (null). The price is required (no_price), PE and the side are choices.
+  const _CLEARABLE = ['reference', 'goods', 'notes', 'temperature_c'];
+  const _min = (iso) => Math.floor(Date.parse(iso) / 60000);
   function _patchBody(orig, st) {
     const set = {};
     for (const k of ['price', 'reference', 'goods', 'notes', 'temperature_c', 'pallet_exchange', 'direction']) {
-      const v = st[k];
-      if (v === undefined || v === null || v === '' || (typeof v === 'number' && !Number.isFinite(v))) continue;
-      if (v !== orig[k]) set[k] = v;
+      const v = st[k], o = typeof orig[k] === 'string' ? orig[k].trim() : orig[k];
+      if (typeof v === 'number' && !Number.isFinite(v)) continue;
+      if (v === undefined || v === null || v === '') {
+        if (orig.full && _CLEARABLE.includes(k) && o !== undefined && o !== null && o !== '') set[k] = null;
+        continue;
+      }
+      if (v !== o) set[k] = v;
     }
     const shipments = [];
     for (const s of st.ships || []) {
@@ -258,8 +304,15 @@
       if (!o) continue;
       const ch = {};
       if (Number.isFinite(s.pallets) && Math.round(s.pallets * 10) !== Math.round(o.pallets * 10)) ch.pallets = s.pallets;
-      for (const k of ['load_from', 'load_to', 'deliver_from', 'deliver_to']) if (s[k] && Date.parse(s[k]) !== Date.parse(o[k])) ch[k] = s[k];
+      // to the minute: the form holds ΗΗ:ΛΛ, so a stored end with seconds (23:59:59) is never «changed» by reading it back
+      for (const k of ['load_from', 'load_to', 'deliver_from', 'deliver_to']) if (s[k] && _min(s[k]) !== _min(o[k])) ch[k] = s[k];
       if (Object.keys(ch).length) shipments.push(Object.assign({ shipment_id: s.shipment_id }, ch));
+    }
+    for (const id of st.removed || []) shipments.push({ shipment_id: id, remove: true });
+    // a new point: every field, as at creation (077 refuses a missing one by name)
+    for (const s of st.news || []) {
+      shipments.push({ origin_location_id: s.origin_location_id, dest_location_id: s.dest_location_id, pallets: s.pallets,
+        load_from: s.load_from, load_to: s.load_to, deliver_from: s.deliver_from, deliver_to: s.deliver_to });
     }
     const body = {};
     if (Object.keys(set).length) body.set = set;
@@ -298,8 +351,14 @@
     f.onKey = (ev) => { if (ev.key === 'Escape' && !f.busy) { ev.preventDefault(); ev.stopPropagation(); _close(f); } };
     window.addEventListener('keydown', f.onKey, true);
     box.addEventListener('click', (ev) => _onClick(f, ev));
-    box.addEventListener('input', () => _refresh(f));
-    box.addEventListener('change', () => _refresh(f));
+    box.addEventListener('input', (ev) => { _dayInput(ev.target); _refresh(f); });
+    box.addEventListener('change', (ev) => { _dayInput(ev.target); _refresh(f); });
+    box.addEventListener('focusin', (ev) => { if (ev.target.classList && ev.target.classList.contains('wn5f-dayx')) _dayEdit(ev.target); });
+    // the click that FOCUSES a day keeps the whole day selected (its mouseup would drop the selection for a caret): the
+    // keys replace the day, never append to it. Marked at that mousedown only, so a later click (or a Tab focus) is
+    // left to the browser.
+    box.addEventListener('mousedown', (ev) => { const x = ev.target; if (x && x.classList && x.classList.contains('wn5f-dayx') && document.activeElement !== x) x._selOnce = true; });
+    box.addEventListener('mouseup', (ev) => { const x = ev.target; if (x && x._selOnce) { x._selOnce = false; ev.preventDefault(); } });
     // a place or client picked from the list (fhPickLinked on mousedown) fires no input: the field's blur refreshes
     box.addEventListener('focusout', (ev) => {
       const t = ev.target;
@@ -322,20 +381,65 @@
     const box = f.el.querySelector('[data-err]');
     box.innerHTML = lines.map((l) => `<div>${_esc(l)}</div>`).join('');
   }
+  // F26 (live 28/10): a save that cannot go says why beside its button, in red, while the form is being filled — the
+  // lines under the form came only after a press, below the fold of a long form. Screen words for its own fields, in
+  // the board's one footer reason (WN5Act's «Λείπει: …» of Δ1 / Δ4, owner 28/10).
+  function _why(f, text) {
+    const k = typeof WN5Act !== 'undefined' && WN5Act._kit && typeof WN5Act._kit.why === 'function' ? WN5Act._kit.why : null;
+    if (k) k(f.el.querySelector('.wn5f-ft [data-act="cancel"]'), 'beforebegin', text || null);
+  }
+  // «Λείπει: τόπος παράδοσης» — what the rows still lack, from the rows as typed (a name typed but not picked from the
+  // list has no place: an order cannot be saved without its destination, 072 plan_orders_create dest_location_id)
+  function _lackText(o) {
+    const out = [];
+    if (o.cid !== undefined && !o.rec) out.push('πελάτης');
+    if (o.loads.some((r) => !r.rec)) out.push('τόπος φόρτωσης');
+    if (o.drops.some((r) => !r.rec)) out.push('τόπος παράδοσης');
+    return out;
+  }
   function _setSave(f) {
     const b = f.el.querySelector('[data-act="save"]');
     if (b) b.disabled = !!(f.busy || f.done || f.locked || f.noIds || f.blocked);
   }
-  // Figma 2011:9641/9704 show the weekday («Δευ 12/10/2026» in the head, «Δευ 12/10» in a row), which a native date
-  // input cannot. The input stays (its value is the ISO day the body reads; picker and keyboard stay native) and a
-  // label drawn over it shows the board's day format while it is not being edited. Empty, the label is a short hint:
-  // Chrome's own «dd/mm/yyyy» is cut beside the calendar icon in the 112px row cell.
+  // Figma 2011:9641/9704 show the weekday («Δευ 12/10/2026» in the head, «Δευ 12/10» in a row). While a day field is
+  // not being typed in, its text IS that label of the ISO day the body reads (.wn5f-dayp); empty, the placeholder is a
+  // short hint. A text that is not a day stays as typed, in red, and its day is empty: the save names it.
   function _dayText(f) {
     f.el.querySelectorAll('.wn5f-day').forEach((w) => {
-      const v = w.querySelector('input').value, t = w.querySelector('.wn5f-dayt'), has = DAY.test(v);
+      const x = w.querySelector('.wn5f-dayx'), p = w.querySelector('.wn5f-dayp'), c = w.querySelector('.wn5f-dayc');
+      if (!x || !p) return;
+      const v = p.value, has = DAY.test(v);
       w.classList.toggle('has', has);
-      t.textContent = has ? _dlab(v) + (w.hasAttribute('data-y') ? '/' + v.slice(0, 4) : '') : (w.hasAttribute('data-y') ? 'ηη/μμ/εεεε' : 'ηη/μμ');
+      // a disabled day (a read-only point, a point marked for removal) is disabled whole: text and calendar
+      x.disabled = p.disabled;
+      if (c) c.disabled = p.disabled;
+      if (document.activeElement === x) return;   // never rewritten under the keys
+      const bad = !has && !!x.dataset.raw;
+      x.classList.toggle('bad', bad);
+      x.value = has ? _dlab(v) + (w.hasAttribute('data-y') ? '/' + v.slice(0, 4) : '') : bad ? x.dataset.raw : '';
     });
+  }
+  // focus on a day's text: «dd/mm/yyyy» of its day (or the text left invalid), all selected so the keys replace it.
+  // ref = the day it had (else today, display only): the year of a «dd/mm» typed next (_dayParse).
+  function _dayEdit(x) {
+    const p = x.parentElement.querySelector('.wn5f-dayp');
+    if (!p) return;
+    const v = p.value;
+    x.dataset.ref = DAY.test(v) ? v : (typeof localToday === 'function' ? localToday() : '');
+    x.value = DAY.test(v) ? `${v.slice(8, 10)}/${v.slice(5, 7)}/${v.slice(0, 4)}` : (x.dataset.raw || '');
+    x.select();
+  }
+  // every key in a day's text sets its ISO day; the picker (or a script) setting the ISO day clears a typed error
+  function _dayInput(t) {
+    const w = t && t.closest ? t.closest('.wn5f-day') : null;
+    if (!w) return;
+    const x = w.querySelector('.wn5f-dayx'), p = w.querySelector('.wn5f-dayp');
+    if (!x || !p) return;
+    if (t === p) { delete x.dataset.raw; return; }
+    if (t !== x) return;
+    const d = _dayParse(x.value, x.dataset.ref);
+    if (d === null) { p.value = ''; x.dataset.raw = x.value; }
+    else { p.value = d; delete x.dataset.raw; }
   }
   function _refresh(f) { if (f.onRefresh) f.onRefresh(f); _dayText(f); _setSave(f); }
   function _onClick(f, ev) {
@@ -349,6 +453,12 @@
     }
     if (t.dataset.mode) return _setMode(f, t.dataset.mode);
     const a = t.dataset.act;
+    if (a === 'day-pick') {
+      // the native picker of the day, opened on purpose (showPicker: Chrome 99+, Safari 16+, Firefox 101+)
+      const p = t.closest('.wn5f-day').querySelector('.wn5f-dayp');
+      if (p && !p.disabled) { try { p.showPicker(); } catch (e) { _log(e, 'WN5Form day picker'); } }
+      return;
+    }
     if (a === 'cancel') { if (!f.busy) _close(f); return; }
     if (a === 'save') { if (!t.disabled) f.onSave(f); return; }
     if (a === 'add-order') { _addOrder(f); return _refresh(f); }
@@ -380,7 +490,7 @@
     const pid = 'wn5l' + (++f.seq);
     return `<div class="wn5f-row" data-k="${k}" data-pid="${pid}">`
       + `<div class="wn5f-loc">${fhLocSelect(pid, '', 'fhLocDrop')}</div>`
-      + `<span class="wn5f-day"><input class="form-input" type="date" data-f="day" value="${_esc(f.dayDefault || '')}" aria-label="Ημέρα"><span class="wn5f-dayt" aria-hidden="true"></span></span>`
+      + _dayHTML('data-f="day"', f.dayDefault, '', false)
       + `<span class="wn5f-win"><span class="wn5f-from"><input ${HM_INPUT} data-f="from" aria-label="από"><span class="wn5f-dash">–</span></span>`
       + `<input ${HM_INPUT} data-f="to" aria-label="έως"></span>`
       + `<input class="form-input" data-f="pal" inputmode="decimal" aria-label="Παλέτες">`
@@ -412,7 +522,7 @@
     return `<div class="wn5f-head">`
       + `<label class="wn5f-f"><span>Κατεύθυνση *</span><select class="form-input" id="wn5f-dir">`
       + `<option value="KATHODOS">${DIR_GR.KATHODOS}</option><option value="ANODOS">${DIR_GR.ANODOS}</option></select></label>`
-      + `<label class="wn5f-f"><span data-vdayl>Ημ. φόρτωσης Βέροιας *</span><span class="wn5f-day" data-y><input class="form-input" type="date" id="wn5f-vday"><span class="wn5f-dayt" aria-hidden="true"></span></span></label>`
+      + `<label class="wn5f-f"><span data-vdayl>Ημ. φόρτωσης Βέροιας *</span>${_dayHTML('id="wn5f-vday"', '', '', true)}</label>`
       + `<label class="wn5f-f"><span data-vwinl>Παράθυρο φόρτωσης Βέροιας</span><span class="wn5f-win"><span class="wn5f-from" data-vfromw><input ${HM_INPUT} id="wn5f-vfrom" aria-label="από"><span class="wn5f-dash">–</span></span><input ${HM_INPUT} id="wn5f-vto" aria-label="έως"></span></label>`
       + `<label class="wn5f-f"><span>Φορτηγό (προαιρετικό)</span><select class="form-input" id="wn5f-tgt">${opts}</select></label></div>`
       + `<div class="wn5f-sec">ΤΥΠΟΣ ΚΑΤΑΧΩΡΗΣΗΣ</div><div class="wn5f-modes">`
@@ -513,7 +623,9 @@
       const rec = (document.getElementById('lv_' + r.dataset.pid) || {}).value || '';
       if (rec && rec === _hubRec()) {
         const d = r.querySelector('[data-f="day"]'), a = r.querySelector('[data-f="from"]'), b = r.querySelector('[data-f="to"]');
-        if (!d.value && vday) d.value = vday;
+        // a day typed wrong stays wrong, in red (_dayInput): the head never fills it over the user's keys
+        const typed = d.parentElement && d.parentElement.querySelector('.wn5f-dayx');
+        if (!d.value && vday && !(typed && typed.dataset.raw)) d.value = vday;
         if (whole && !a.value && vf) a.value = vf;
         if (whole && !b.value && vt) b.value = vt;
       }
@@ -568,6 +680,8 @@
     f.el.querySelectorAll('[data-act="del-order"]').forEach((b) => { b.hidden = f.mode !== 'groupage' || n < 2; });
     const save = f.el.querySelector('[data-act="save"]');
     if (!f.done) save.textContent = n > 1 ? `Αποθήκευση · ${n} παραγγελίες` : 'Αποθήκευση';
+    const lack = [...new Set(raw.flatMap(_lackText))];
+    _why(f, !f.done && lack.length ? 'Λείπει: ' + lack.join(', ') : null);
   }
 
   async function _saveOrder(f) {
@@ -611,7 +725,8 @@
       f.locked = true;   // the Worker's text says where to look; a resend would be refused again
       return;
     }
-    if (e.kind === K.UNKNOWN && f.kind === 'order') {
+    // the board check finds a CREATED order (_findOrders); an edit replays by its request_id instead (077)
+    if (e.kind === K.UNKNOWN && f.kind === 'order' && !f.edit) {
       f.lastBody = body;
       // WN5Act.strip's own «Έλεγχος στο board» only re-reads; the form's one also looks for THIS order (_findOrders)
       const s = _strip(f).querySelector('.wn5-strip') || _strip(f);
@@ -640,119 +755,328 @@
     else if (!found) _strip(f).innerHTML = '';
     f.el.querySelector('[data-act="save"]').hidden = true;
     f.el.querySelectorAll('.wn5f-ft [data-act="cancel"]').forEach((b) => { b.textContent = 'Κλείσιμο'; });
-    if (ans) WN5.reload('order-saved');
+    _why(f, null);
+    // A-7: the leg form's «Στο RT-… ›» waits for this read, so its list shows the point just added
+    if (ans) f.reloaded = WN5.reload('order-saved');
   }
 
   // ── edit (from the order card «Επεξεργασία», T18) ─────────────────────────────────────────────────────────
-  // What the 072 board carries of an order: waiting/hub pieces have the shipment, its windows and the price;
-  // legs of a cycle have neither. Missing values are «not known», never zero (trap 2).
-  function _editSource(board, id) {
-    if (!board) return null;
-    // live F23 (28/10): an order sent back to Veroia is in hub[], not waiting[]; without it «Επεξεργασία» said «άλλη
-    // εβδομάδα» and its dates could not be fixed. hub[] has no origin, price, PE or side (072 / 074a): the route names
-    // Veroia, where the piece stands and loads (v_hub_bucket = at_hub, as the card's «Φόρτωση», by the card's own hub
-    // rule); the rest stays «not known» and is never sent (_patchBody skips null).
-    const kit = typeof WN5Act !== 'undefined' ? WN5Act._kit : null;
-    const hubId = kit && typeof kit.hubId === 'function' ? kit.hubId() : (typeof PlanIds !== 'undefined' ? PlanIds.hub() : null);
-    const w = (board.waiting || []).filter((x) => x.nat_order_id === id)
-      .concat((board.hub || []).filter((x) => x.nat_order_id === id).map((x) => Object.assign({}, x, { nat_from_location_id: hubId })));
-    const legs = [];
-    for (const c of board.cycles || []) for (const s of c.stops || []) for (const l of s.legs || []) if (l.nat_order_id === id) legs.push(l);
-    if (!w.length && !legs.length) return null;
-    const any = w[0] || legs[0];
+  // F13 (live test 28/10): the form opens on what GET /plan/orders/:id answers (077 plan_order_read): every field and
+  // every live point of the order, wherever its pieces are. The board carries them only for waiting pieces, so an order
+  // on a cycle opened with empty notes, price and points, and a save could not tell «empty» from «not shown».
+  // full: true = these are the order's own values, so a field emptied here is cleared on purpose (_patchBody).
+  function _editFromRead(ans) {
+    const o = ans && ans.order;
+    if (!o || o.nat_order_id == null || !Array.isArray(ans.shipments) || !ans.shipments.length) return null;
+    const ships = ans.shipments.map((s) => ({ shipment_id: s.shipment_id, origin: s.origin_location_id, dest: s.dest_location_id,
+      pallets: s.pallets == null ? null : Number(s.pallets), load_from: s.load_from, load_to: s.load_to, deliver_from: s.deliver_from, deliver_to: s.deliver_to,
+      rides: s.rides === true, vs_locked: s.vs_locked === true, waits: s.waits === true, at_hub: s.at_hub === true,
+      rt_codes: Array.isArray(s.rt_codes) ? s.rt_codes : [] }));
     return {
-      nat_order_id: id, client: any.client || '', reference: any.reference || '',
-      price: w[0] && w[0].price !== undefined ? w[0].price : null,
-      temperature_c: any.temperature_c === undefined ? null : any.temperature_c,
-      pallet_exchange: w[0] && typeof w[0].pallet_exchange === 'boolean' ? w[0].pallet_exchange : null,
-      goods: '', notes: '', riding: legs.length > 0,
-      // 075: the side the board reads for a waiting order (null = never stated, the hub rule draws it)
-      direction: w[0] && (w[0].direction === 'KATHODOS' || w[0].direction === 'ANODOS') ? w[0].direction : null,
-      // hub[] does not carry the side at all: «not sent», never «never stated» (F23 code review)
-      dirUnsent: !!w[0] && !('direction' in w[0]),
-      ships: _shipRows(w),
+      full: true, nat_order_id: o.nat_order_id, client: o.client || '',
+      price: o.price == null ? null : Number(o.price), temperature_c: o.temperature_c == null ? null : Number(o.temperature_c),
+      pallet_exchange: typeof o.pallet_exchange === 'boolean' ? o.pallet_exchange : null,
+      reference: o.reference || '', goods: o.goods || '', notes: o.notes || '',
+      direction: o.direction === 'KATHODOS' || o.direction === 'ANODOS' ? o.direction : null,
+      // the side is the cycle's while a point rides onward; one waiting at Veroia (F23) has nothing planned yet
+      riding: ships.some((s) => s.rides && !(s.at_hub && s.waits)), ships,
     };
   }
-  // One row per shipment: the board lists PIECES, and after «Σπάσε…» two parts of one shipment can both wait at Veroia.
-  // A row per piece sent the second part's pallets as the shipment's own (plan_order_update pallets = the shipment's),
-  // unasked (F23 code review). The windows are the shipment's, the same on every piece; the pallets add up.
-  function _shipRows(w) {
-    const by = new Map();
-    for (const x of w) {
-      const s = by.get(x.shipment_id);
-      if (s) { s.pallets = Math.round(((Number(s.pallets) || 0) + (Number(x.pallets) || 0)) * 10) / 10; continue; }
-      by.set(x.shipment_id, { shipment_id: x.shipment_id, origin: x.nat_from_location_id, dest: x.nat_to_location_id, pallets: x.pallets,
-        load_from: x.load_from, load_to: x.load_to, deliver_from: x.deliver_from, deliver_to: x.deliver_to });
-    }
-    return [...by.values()];
-  }
   const _placeName = (id) => { const p = typeof PlanIds !== 'undefined' ? PlanIds.place(id) : null; return p ? p.name : '#' + id; };
-  const _editDay = (k, v, ro) => `<span class="wn5f-day"><input class="form-input" type="date" data-f="${k}" value="${v}"${ro}><span class="wn5f-dayt" aria-hidden="true"></span></span>`;
+  const _editDay = (k, v, ro) => _dayHTML(`data-f="${k}"`, v, ro, false);
+  // F30 (owner 28/10): the truck's stops of a riding point, from the board as loaded (WN5.state, read-only, no fetch):
+  // the loading at the point's origin and the delivery at its destination, by the order's legs. Empty when the order's
+  // cycle is not on the loaded week — then nothing is named, never guessed.
+  function _rideStops(natOrderId, s) {
+    const w = typeof WN5 !== 'undefined' && typeof WN5.state === 'function' ? WN5.state() : null;
+    const out = [];
+    for (const c of (w && w.board && w.board.cycles) || []) for (const x of c.stops || []) for (const l of x.legs || []) {
+      if (l.nat_order_id !== natOrderId) continue;
+      const k = l.act === 'load' && x.location_id === s.origin ? 'load' : l.act === 'unload' && x.location_id === s.dest ? 'drop' : null;
+      if (k && !out.some((o) => o.stop_id === x.stop_id)) out.push({ k, rt_id: c.rt_id, code: c.code || 'RT-' + c.rt_id, side: x.side, stop_id: x.stop_id, from: x.planned_from, to: x.planned_to });
+    }
+    return out.sort((a, b) => (a.k === b.k ? 0 : a.k === 'load' ? -1 : 1));
+  }
+  // «Φορτηγό RT-1293 · φόρτωση Δευ 26/10 όλη η ημέρα [Αλλαγή ώρας στάσης ›] · παράδοση …»: what the truck does there, and
+  // the way to move it (F29, the day panel of that one stop). The order's own window changes in the row above.
+  function _rideHTML(e, s) {
+    const st = _rideStops(e.nat_order_id, s);
+    if (!st.length) return '';
+    return `<div class="wn5f-shipstop" data-shipstop="${s.shipment_id}">` + st.map((x) => `<span>${_esc(x.code)} · ${x.k === 'load' ? 'φόρτωση' : 'παράδοση'} `
+      + `${_esc(_dlab((_parts(x.from) || {}).day))} ${_esc(_hmw(x.from, x.to))}</span><button type="button" class="wn5f-lnk" data-act="stop-time" data-rt="${x.rt_id}" data-side="${x.side}" data-stop="${x.stop_id}">Αλλαγή ώρας στάσης ›</button>`).join('')
+      + '</div>';
+  }
+  function _shipHTML(e, s) {
+    const t = (iso) => _parts(iso) || { day: '', hm: '' };
+    // F30 (owner 28/10): a riding point keeps its leg and cycle and its pallets, day and window change HERE, in place
+    // (072 plan_order_update takes them: shipments + plan_h_resize on the riding piece, audit before/after). Only its
+    // places stay as they are (077 piece_busy) and its ×: a riding point leaves only by «Μεταφορά σε…». A VS bridge
+    // is the international's (decision 21, vs_locked).
+    const lf = t(s.load_from), lt = t(s.load_to), df = t(s.deliver_from), dt = t(s.deliver_to);
+    // a window over midnight cannot be held by one day field per side: read back it would land on the first day and a
+    // save would shorten it without a word (code review 28/10). Shown, never sent; the board changes it.
+    const twoDays = lf.day !== lt.day || df.day !== dt.day;
+    // live F23 (28/10): a point whose pieces stand at Veroia, planned no further (077 waits + at_hub), keeps its dates
+    // and pallets editable as a waiting row; the route then starts at Veroia, where it stands
+    const hubWait = s.at_hub && s.waits;
+    const lock = s.vs_locked || twoDays;
+    const ro = lock ? ' disabled' : '';
+    // at Veroia the loading already happened: its side stays as loaded, the delivery and the pallets stay editable
+    const lro = lock || hubWait ? ' disabled' : '';
+    // F1 (owner 28/10): a whole-day window shows as empty fields, as the create form writes it («κενό: όλη η ημέρα»)
+    const lAll = WN5L.allDay(s.load_from, s.load_to), dAll = WN5L.allDay(s.deliver_from, s.deliver_to);
+    const where = hubWait ? '<small class="wn5f-shipc"> · στη Βέροια</small>'
+      : s.rt_codes.length ? `<small class="wn5f-shipc"> · σε κύκλο ${_esc(s.rt_codes.join(', '))}</small>`
+      : twoDays ? '<small class="wn5f-shipc"> · παράθυρο σε δύο ημέρες: αλλάζει από το Εβδομαδιαίο</small>' : '';
+    const from = hubWait && _hubId() != null ? _hubId() : s.origin;
+    // × on every point that waits (a two-day one too: 077 removes it), never on the last one (077 refuses shipments:last: the delete of the order is
+    // «Διαγραφή παραγγελίας», with its own list)
+    const x = !(s.rides || s.vs_locked) && e.ships.length > 1
+      ? `<button type="button" class="wn5f-x" data-act="del-ship" aria-label="Αφαίρεση σημείου">×</button>` : '<span></span>';
+    return `<div class="wn5f-ship" data-ship="${s.shipment_id}"${lock ? ' data-ro' : ''}><span>${_esc(_placeName(from))} → ${_esc(_placeName(s.dest))}${where}</span>`
+      // the create form's fields (2011:9704): a day with its weekday label, ΗΗ:ΛΛ text — the native time input is
+      // 12-hour in el-GR and cut in its cell (_hmNorm note)
+      + `${_editDay('lday', lf.day, lro)}<input ${HM_INPUT} data-f="lfrom" value="${lAll ? '' : lf.hm}"${lro}><input ${HM_INPUT} data-f="lto" value="${lAll ? '' : lt.hm}"${lro}>`
+      + `${_editDay('dday', df.day, ro)}<input ${HM_INPUT} data-f="dfrom" value="${dAll ? '' : df.hm}"${ro}><input ${HM_INPUT} data-f="dto" value="${dAll ? '' : dt.hm}"${ro}>`
+      + `<input class="form-input" data-f="pal" inputmode="decimal" value="${s.pallets == null ? '' : _esc(s.pallets)}"${ro}>${x}</div>`
+      + (s.rides && !hubWait && !s.vs_locked ? _rideHTML(e, s) : '');
+  }
+  // F21 (live test 28/10, #84 needs a 2nd delivery): a new point of the order. Both ends are picked from the places
+  // list; the end the order already has (its one loading place for a new delivery, its one delivery place for a new
+  // loading) is pre-picked and stays changeable. The window fields start empty = the whole day (F1's one rule, _rowWin /
+  // WN5L.DAY_WIN, 00:00–23:59: never an invented hour; the user types one if the client gave one).
+  function _newShipHTML(f, k) {
+    const po = 'wn5n' + (++f.seq), pd = 'wn5n' + (++f.seq);
+    const first = f.edit.ships[0] || {};
+    const ld = (_parts(first.load_from) || {}).day || '', dd = (_parts(first.deliver_from) || {}).day || '';
+    return `<div class="wn5f-ship wn5f-new" data-newship data-k="${k}" data-po="${po}" data-pd="${pd}" data-ld="${ld}" data-dd="${dd}">`
+      + `<span class="wn5f-ends"><span class="wn5f-loc">${fhLocSelect(po, '', 'fhLocDrop')}</span><span class="wn5f-arr">→</span>`
+      + `<span class="wn5f-loc">${fhLocSelect(pd, '', 'fhLocDrop')}</span></span>`
+      + `${_editDay('lday', ld, '')}<input ${HM_INPUT} data-f="lfrom"><input ${HM_INPUT} data-f="lto">`
+      + `${_editDay('dday', dd, '')}<input ${HM_INPUT} data-f="dfrom"><input ${HM_INPUT} data-f="dto">`
+      + `<input class="form-input" data-f="pal" inputmode="decimal" aria-label="Παλέτες">`
+      + `<button type="button" class="wn5f-x" data-act="del-ship" aria-label="Αφαίρεση νέου σημείου">×</button></div>`;
+  }
+  function _addShip(f, k) {
+    f.el.querySelector('[data-ships]').insertAdjacentHTML('beforeend', _newShipHTML(f, k));
+    const row = [...f.el.querySelectorAll('[data-newship]')].pop();
+    const one = (key) => { const v = [...new Set(f.edit.ships.map((s) => s[key]))]; return v.length === 1 ? v[0] : null; };
+    const id = k === 'drop' ? one('origin') : one('dest');
+    const p = id == null || typeof PlanIds === 'undefined' ? null : PlanIds.place(id);
+    if (p && p.legacy_id && typeof fhPickLinked === 'function') fhPickLinked(k === 'drop' ? row.dataset.po : row.dataset.pd, p.legacy_id, p.name);
+  }
   function _editHTML(f) {
     const e = f.edit;
-    const t = (iso) => _parts(iso) || { day: '', hm: '' };
-    const ro = e.riding ? ' disabled' : '';
-    const ships = e.ships.map((s) => {
-      const lf = t(s.load_from), lt = t(s.load_to), df = t(s.deliver_from), dt = t(s.deliver_to);
-      return `<div class="wn5f-ship" data-ship="${s.shipment_id}"><span>${_esc(_placeName(s.origin))} → ${_esc(_placeName(s.dest))}</span>`
-        // the create form's fields (2011:9704): a day with its weekday label, ΗΗ:ΛΛ text — the native time input is
-        // 12-hour in el-GR and cut in its cell (_hmNorm note)
-        + `${_editDay('lday', lf.day, ro)}<input ${HM_INPUT} data-f="lfrom" value="${lf.hm}"${ro}><input ${HM_INPUT} data-f="lto" value="${lt.hm}"${ro}>`
-        + `${_editDay('dday', df.day, ro)}<input ${HM_INPUT} data-f="dfrom" value="${df.hm}"${ro}><input ${HM_INPUT} data-f="dto" value="${dt.hm}"${ro}>`
-        + `<input class="form-input" data-f="pal" inputmode="decimal" value="${_esc(s.pallets)}"${ro}></div>`;
-    }).join('');
+    const dro = e.riding ? ' disabled' : '';
     return `<div class="wn5f-grid4">`
       + `<div class="wn5f-f"><span>Πελάτης</span><span class="wn5f-ro">${_esc(e.client || '—')}</span></div>`
-      + `<label class="wn5f-f"><span>Τιμή € (χωρίς ΦΠΑ) *</span><input class="form-input" data-f="price" inputmode="decimal" value="${e.price == null ? '' : _esc(e.price)}" placeholder="${e.price == null ? 'χωρίς αλλαγή' : ''}"></label>`
+      + `<label class="wn5f-f"><span>Τιμή € (χωρίς ΦΠΑ) *</span><input class="form-input" data-f="price" inputmode="decimal" value="${e.price == null ? '' : _esc(e.price)}"></label>`
       + `<label class="wn5f-f"><span>Θερμοκρασία °C</span><input class="form-input" data-f="temp" inputmode="decimal" value="${e.temperature_c == null ? '' : _esc(e.temperature_c)}"></label>`
       + `<div class="wn5f-f"><span>PE · ανταλλαγή παλετών</span>${_peHTML(e.pallet_exchange)}</div></div>`
       // 075: the side is corrected here (the repair of #17); on a cycle the cycle's side holds, so it stays as it is
-      + `<label class="wn5f-f"><span>Κατεύθυνση</span><select class="form-input" data-f="dir"${ro}>`
-      + (e.direction ? '' : `<option value="" selected>${e.dirUnsent ? '— δεν ήρθε με το board · χωρίς αλλαγή' : '— δεν έχει δηλωθεί'}</option>`)
+      + `<label class="wn5f-f"><span>Κατεύθυνση</span><select class="form-input" data-f="dir"${dro}>`
+      + (e.direction ? '' : '<option value="" selected>— δεν έχει δηλωθεί</option>')
       + ['KATHODOS', 'ANODOS'].map((k) => `<option value="${k}"${e.direction === k ? ' selected' : ''}>${DIR_GR[k]}</option>`).join('')
       + `</select></label>`
-      + (e.price == null ? '<div class="wn5f-note">Η τιμή δεν έρχεται με το board για παραγγελία σε κύκλο ή στη Βέροια — γράψε τιμή μόνο για να την αλλάξεις.</div>' : '')
       + `<div class="wn5f-grid3"><label class="wn5f-f"><span>Αναφορά</span><input class="form-input" data-f="ref" value="${_esc(e.reference)}"></label>`
-      + `<label class="wn5f-f"><span>Είδος</span><input class="form-input" data-f="goods"></label><label class="wn5f-f"><span>Σημειώσεις</span><input class="form-input" data-f="notes"></label></div>`
-      + `<div class="wn5f-sec">ΑΠΟΣΤΟΛΕΣ</div><div class="wn5f-ships-h"><span>Διαδρομή</span><span>Φόρτωση από – έως</span><span>Παράδοση από – έως</span><span>Παλέτες</span></div>${ships}`
-      + (e.riding ? '<div class="wn5f-note">Φορτίο σε κύκλο: παλέτες και παράθυρα αλλάζουν με «Μεταφορά σε…» ή από την ημέρα του σκέλους.</div>' : '');
+      + `<label class="wn5f-f"><span>Είδος</span><input class="form-input" data-f="goods" value="${_esc(e.goods)}"></label>`
+      + `<label class="wn5f-f"><span>Σημειώσεις</span><input class="form-input" data-f="notes" value="${_esc(e.notes)}"></label></div>`
+      + `<div class="wn5f-sec">ΑΠΟΣΤΟΛΕΣ</div><div class="wn5f-ships-h"><span>Διαδρομή</span><span>Φόρτωση από – έως</span><span>Παράδοση από – έως</span><span>Παλέτες</span><span></span></div>`
+      + `<div class="wn5f-ships" data-ships>${e.ships.map((s) => _shipHTML(e, s)).join('')}</div>`
+      + `<div class="wn5f-adds"><button type="button" class="wn5f-add" data-act="add-ship" data-k="drop">+ σημείο παράδοσης</button>`
+      + `<button type="button" class="wn5f-add" data-act="add-ship" data-k="load">+ σημείο φόρτωσης</button></div>`
+      // owner 28/10: a new point is not put on the order's cycle by itself — one board move puts it on a truck
+      + '<div class="wn5f-note">Παράθυρο κενό: όλη η ημέρα. Νέο σημείο: μένει ΠΡΟΣ ΑΝΑΘΕΣΗ — βάλ\' το σε φορτηγό από το Εβδομαδιαίο.</div>'
+      // F30: what a save does to a riding point, said before it is pressed (principle 1)
+      + (e.riding ? '<div class="wn5f-note" data-ridenote>Σημείο σε κύκλο: παλέτες, ημέρα και παράθυρο αλλάζουν εδώ και μένει στο ίδιο φορτηγό. Η ώρα της στάσης του φορτηγού δεν αλλάζει μαζί: «Αλλαγή ώρας στάσης ›».</div>' : '');
   }
   function _readEdit(f) {
     const v = (sel) => { const x = f.el.querySelector(sel); return x ? x.value : ''; };
     const peh = f.el.querySelector('[data-peh]').dataset.peh;
+    const win = (r) => {
+      const g = (k) => r.querySelector(`[data-f="${k}"]`).value;
+      const t = (k) => _hmNorm(g(k));
+      // F1: both ends empty = the whole day (the create form's _rowWin); one end only stays as typed and is named
+      const lw = _rowWin(false, t('lfrom'), t('lto')), dw = _rowWin(false, t('dfrom'), t('dto'));
+      return { pallets: _num(g('pal')), load_from: _iso(g('lday'), lw.from), load_to: _iso(g('lday'), lw.to),
+        deliver_from: _iso(g('dday'), dw.from), deliver_to: _iso(g('dday'), dw.to) };
+    };
+    const rec = (pid) => (document.getElementById('lv_' + pid) || {}).value || '';
     return {
       price: _num(v('[data-f="price"]')), temperature_c: _num(v('[data-f="temp"]')), reference: v('[data-f="ref"]').trim(),
       goods: v('[data-f="goods"]').trim(), notes: v('[data-f="notes"]').trim(), pallet_exchange: peh === 'yes' ? true : peh === 'no' ? false : null,
       direction: f.edit.riding ? null : (v('[data-f="dir"]') || null),
-      ships: f.edit.riding ? [] : [...f.el.querySelectorAll('[data-ship]')].map((r) => {
-        const g = (k) => r.querySelector(`[data-f="${k}"]`).value;
-        const t = (k) => _hmNorm(g(k));
-        return { shipment_id: Number(r.dataset.ship), pallets: _num(g('pal')), load_from: _iso(g('lday'), t('lfrom')), load_to: _iso(g('lday'), t('lto')),
-          deliver_from: _iso(g('dday'), t('dfrom')), deliver_to: _iso(g('dday'), t('dto')) };
-      }),
+      // F30: a riding point is sent like a waiting one (its pallets, day, window); a VS or two-day point is shown only
+      ships: [...f.el.querySelectorAll('[data-ship]:not([data-ro]):not([data-rm])')].map((r) => Object.assign({ shipment_id: Number(r.dataset.ship) }, win(r))),
+      removed: [...f.el.querySelectorAll('[data-ship][data-rm]')].map((r) => Number(r.dataset.ship)),
+      // the picked places as rec ids; _saveEdit turns them into numbers (PlanIds, Ε-2)
+      news: [...f.el.querySelectorAll('[data-newship]')].map((r) => Object.assign({ k: r.dataset.k, origin_rec: rec(r.dataset.po), dest_rec: rec(r.dataset.pd) }, win(r))),
     };
+  }
+  // The form's own lines for the points it adds or removes (screen words, never a Worker text)
+  function _checkEdit(f, st) {
+    const out = [];
+    // an emptied price is refused (072 no_price); an order stored without one (owner 28/10 F4, 080 when it lands) is
+    // not blocked by it: the line names only what the user changed
+    if (st.price === null) { if (f.edit.price !== null) out.push('Τιμή € (χωρίς ΦΠΑ) *: γράψε την τιμή'); }
+    else if (!(Number.isFinite(st.price) && st.price > 0)) out.push('Τιμή € (χωρίς ΦΠΑ) *: αριθμός πάνω από 0');
+    if (Number.isNaN(st.temperature_c)) out.push('Θερμοκρασία °C: αριθμός');
+    const win = (s, w, stored) => {
+      // pallets stored as unknown (NULL, F4) and left empty is no change: never a refusal of a save the user did not ask
+      const unknownKept = s.pallets === null && stored && stored.pallets === null;
+      if (!unknownKept && !(Number.isFinite(s.pallets) && s.pallets > 0 && _dec1(s.pallets))) out.push(w + 'παλέτες: αριθμός πάνω από 0, ένα δεκαδικό το πολύ');
+      if (!s.load_from || !s.load_to || !s.deliver_from || !s.deliver_to) out.push(w + 'ημέρα, και παράθυρο: ΗΗ:ΛΛ και στα δύο άκρα, ή κανένα (όλη η ημέρα)');
+      else if (Date.parse(s.load_from) > Date.parse(s.load_to) || Date.parse(s.deliver_from) > Date.parse(s.deliver_to)) out.push(w + 'το «έως» πρέπει να είναι μετά το «από»');
+      else if (Date.parse(s.load_from) > Date.parse(s.deliver_to)) out.push(w + 'η παράδοση πριν από τη φόρτωση');
+    };
+    st.ships.forEach((s) => win(s, '', f.edit.ships.find((x) => x.shipment_id === s.shipment_id)));
+    st.news.forEach((s, i) => {
+      const w = `νέο σημείο ${i + 1}: `;
+      if (!s.origin_rec) out.push(w + 'διάλεξε τοποθεσία φόρτωσης από τη λίστα');
+      if (!s.dest_rec) out.push(w + 'διάλεξε τοποθεσία παράδοσης από τη λίστα');
+      if (s.origin_rec && s.origin_rec === s.dest_rec) out.push(w + 'ίδια τοποθεσία φόρτωσης και παράδοσης');
+      win(s, w);
+    });
+    if (st.removed.length && st.removed.length >= f.edit.ships.length && !st.news.length) {
+      out.push('Η παραγγελία κρατά τουλάχιστον ένα σημείο — για να τη σβήσεις: «Διαγραφή παραγγελίας»');
+    }
+    return out;
+  }
+  // F26 in the edit form: a new point without its places says so beside «Αποθήκευση», as the create form does
+  function _editRefresh(f) {
+    if (f.done) return;
+    const rec = (pid) => (document.getElementById('lv_' + pid) || {}).value || '';
+    const lack = [];
+    for (const r of f.el.querySelectorAll('[data-newship]')) {
+      if (!rec(r.dataset.po)) lack.push('τόπος φόρτωσης');
+      if (!rec(r.dataset.pd)) lack.push('τόπος παράδοσης');
+    }
+    _why(f, lack.length ? 'Λείπει: ' + [...new Set(lack)].join(', ') : null);
+  }
+  // A new row the user has touched: a time or pallets typed, a day moved off its pre-filled day, or its own end picked
+  // (the other end comes pre-picked by _addShip). The row «+ σημείο» of the leg form opens with (A-7) is not a change.
+  function _newTouched(r) {
+    if (!r) return false;
+    const v = (k) => (r.querySelector(`[data-f="${k}"]`) || {}).value || '';
+    const own = r.dataset.k === 'drop' ? r.dataset.pd : r.dataset.po;
+    return ['lfrom', 'lto', 'dfrom', 'dto', 'pal'].some((k) => v(k) !== '') || v('lday') !== (r.dataset.ld || '') || v('dday') !== (r.dataset.dd || '')
+      || !!(r.querySelector('.wn5f-dayx.bad')) || !!((document.getElementById('lv_' + own) || {}).value);
+  }
+  // Anything typed that a close would lose (code review): what a save would send, a row removed or added, and also
+  // what is typed but cannot be sent yet (a day in red, a price that is no number, half a window) — never «not dirty»
+  // because the save would refuse it.
+  function _editDirty(f) {
+    const st = _readEdit(f);
+    const rows = [...f.el.querySelectorAll('[data-newship]')];
+    st.news = st.news.filter((n, i) => _newTouched(rows[i]));
+    if (st.news.length || st.removed.length || f.el.querySelector('[data-ship] .wn5f-dayx.bad')) return true;
+    if (_checkEdit(f, st).length) return true;
+    const b = _patchBody(f.edit, st);
+    return !!(b.set || b.shipments);
   }
   async function _saveEdit(f) {
     if (f.busy || f.done || f.locked) return;
     const st = _readEdit(f);
-    const probs = [];
-    if (st.price !== null && !(Number.isFinite(st.price) && st.price > 0)) probs.push('Τιμή € (χωρίς ΦΠΑ) *: αριθμός πάνω από 0');
-    if (Number.isNaN(st.temperature_c)) probs.push('Θερμοκρασία °C: αριθμός');
-    for (const s of st.ships) {
-      if (!(Number.isFinite(s.pallets) && s.pallets > 0 && _dec1(s.pallets))) probs.push('παλέτες: αριθμός πάνω από 0, ένα δεκαδικό το πολύ');
-      if (!s.load_from || !s.load_to || !s.deliver_from || !s.deliver_to) probs.push('παράθυρο από – έως σε κάθε αποστολή');
+    const probs = _checkEdit(f, st);
+    let body = null;
+    if (!probs.length) {
+      try {
+        st.news = st.news.map((s) => Object.assign({}, s, { origin_location_id: PlanIds.id('location', s.origin_rec), dest_location_id: PlanIds.id('location', s.dest_rec) }));
+      } catch (e) {
+        if (typeof PlanError !== 'undefined' && e instanceof PlanError) { _lines(f, []); WN5Act.strip(_strip(f), e); return; }
+        throw e;
+      }
+      body = _patchBody(f.edit, st);
+      if (!body.set && !body.shipments) probs.push('Τίποτα δεν άλλαξε');
     }
-    const body = probs.length ? null : _patchBody(f.edit, st);
-    if (body && !body.set && !body.shipments) probs.push('Τίποτα δεν άλλαξε');
     _lines(f, probs);
     if (probs.length) return;
     f.busy = true;
     _setSave(f);
     try {
-      const ans = await planFetch('PATCH', '/plan/orders/' + f.edit.nat_order_id, { body });
+      // one request_id per open form (decision 44): a new point or a removal replays on a second press (077)
+      const ans = await planFetch('PATCH', '/plan/orders/' + f.edit.nat_order_id, { body, requestId: f.slot.id });
+      f.slot.confirm();
       _done(f, ans, null);
+      // F30: a riding point whose day or window changed keeps its truck's stop as it was — said, with the way to move it:
+      // the button under the point when its cycle is on the loaded week, else the cycle's leg form. A point waiting at
+      // Veroia has no onward stop to name.
+      const moved = (body.shipments || []).filter((x) => { const o = f.edit.ships.find((y) => y.shipment_id === x.shipment_id) || {};
+        return x.shipment_id != null && !x.remove && o.rides && !(o.at_hub && o.waits) && ['load_from', 'load_to', 'deliver_from', 'deliver_to'].some((k) => k in x); });
+      if (moved.length) {
+        const here = moved.every((x) => f.el.querySelector(`[data-shipstop="${x.shipment_id}"] [data-act="stop-time"]`));
+        f.el.querySelector('[data-done]').textContent += here ? ' · η ώρα της στάσης του φορτηγού δεν άλλαξε: «Αλλαγή ώρας στάσης ›» στο σημείο'
+          : ' · η ώρα της στάσης του φορτηγού δεν άλλαξε: αλλάζει από το σκέλος του κύκλου (άλλη εβδομάδα)';
+      }
+      const added = (ans && ans.ids && ans.ids.new_shipment_ids) || [];
+      if (added.length) {
+        f.el.querySelector('[data-done]').textContent += ` · ${added.length === 1 ? 'νέο σημείο' : added.length + ' νέα σημεία'} ΠΡΟΣ ΑΝΑΘΕΣΗ: βάλ' ${added.length === 1 ? 'το' : 'τα'} σε φορτηγό από το Εβδομαδιαίο`;
+        // A-7: opened from a leg («+ σημείο» of the leg form): the way back to that leg, one press away
+        const leg = f.p.leg;
+        if (leg && Number.isSafeInteger(leg.rtId)) {
+          f.el.querySelector('[data-done]').insertAdjacentHTML('beforeend', ` <button type="button" class="wn5f-lnk" data-act="to-leg">Στο ${_esc(leg.code || 'RT-' + leg.rtId)} · ${SIDE_GR[leg.side] || ''} ›</button>`);
+        }
+      }
     } catch (e) { await _failed(f, e, null); }
     finally { f.busy = false; _setSave(f); }
+  }
+  async function _openEdit(p, ids) {
+    let ans = null, err = null;
+    try { ans = await planFetch('GET', '/plan/orders/' + p.natOrderId); } catch (e) { err = e; }
+    const edit = err ? null : _editFromRead(ans);
+    if (!edit) {
+      // F13: never a form on values it could not read — the user would save over what was not shown (principle 1)
+      if (!err) err = new Error('GET /plan/orders/' + p.natOrderId + ': answer without order or points');
+      if (typeof PlanError === 'undefined' || !(err instanceof PlanError)) _log(err, 'WN5Form edit read');
+      if (typeof toast === 'function') toast('Η παραγγελία #' + p.natOrderId + ' δεν διαβάστηκε — η φόρμα δεν άνοιξε: ' + String(err.message || err), 'danger');
+      return false;
+    }
+    const f = { kind: 'order', p, seq: 0, busy: false, done: false, locked: false, edit };
+    f.onSave = _saveEdit;
+    f.onRefresh = _editRefresh;
+    f.slot = PlanApi.slot();   // ONE id for this open form (decision 44): a new point is a creation
+    _open(f, 'Επεξεργασία παραγγελίας #' + _esc(p.natOrderId), '· ' + _esc(edit.client || ''), _editHTML(f), 'Μία «Αποθήκευση» = μία συναλλαγή.');
+    f.onAct = (ff, a, t) => {
+      if (a === 'to-leg') {
+        // A-7: the new point waits (owner 28/10); one board move puts it on the leg it was added from — the «+» of that
+        // side, its waiting list read after this save (f.reloaded), where «Πρόσθεσε» is one press
+        const leg = ff.p.leg;
+        _close(ff);
+        Promise.resolve(ff.reloaded).then(() => {
+          const anchor = document.querySelector(`#content .wn5-row[data-rt="${leg.rtId}"] .wn5-plus[data-side="${leg.side}"]`) || document.querySelector(`#content .wn5-row[data-rt="${leg.rtId}"]`);
+          WN5Act.plus(leg.rtId, leg.side, anchor);
+        }).catch((e) => _log(e, 'WN5Form to-leg'));
+        return;
+      }
+      if (a === 'stop-time') {
+        // F30 → F29: the truck's stop moves in its own panel (dry run, list), one act per save (Ε-4). Changes typed here
+        // and not saved would be lost with the form: said, never dropped in silence (principle 1)
+        if (!ff.done && _editDirty(ff)) { _lines(ff, ['Αποθήκευσε πρώτα τις αλλαγές της παραγγελίας (ή «Άκυρο»), μετά άλλαξε την ώρα της στάσης']); return; }
+        const anchor = document.querySelector(`#content .wn5-row[data-rt="${t.dataset.rt}"]`) || document.querySelector('#content .wn5');
+        _close(ff);
+        WN5Act.datePanel(Number(t.dataset.rt), t.dataset.side, anchor, { stopId: Number(t.dataset.stop) });
+        return;
+      }
+      if (ff.done || ff.locked) return;   // saved or closed: no row the form could no longer send
+      if (a === 'add-ship') { _addShip(ff, t.dataset.k); return _refresh(ff); }
+      if (a !== 'del-ship') return;
+      const row = t.closest('.wn5f-ship');
+      if (row.hasAttribute('data-newship')) { row.remove(); return _refresh(ff); }
+      // an existing point is marked, not dropped from the screen: one more press brings it back before «Αποθήκευση»
+      const rm = !row.hasAttribute('data-rm');
+      row.toggleAttribute('data-rm', rm);
+      // a read-only point (two-day window) keeps its fields disabled whatever the mark
+      row.querySelectorAll('input').forEach((x) => { x.disabled = rm || row.hasAttribute('data-ro'); });
+      t.textContent = rm ? '↺' : '×';
+      t.setAttribute('aria-label', rm ? 'Επαναφορά σημείου' : 'Αφαίρεση σημείου');
+      return _refresh(ff);
+    };
+    if (!ids.ok) WN5Act.strip(_strip(f), ids.err);
+    if (_closedNow()) { WN5Act.strip(_strip(f), _closedNow()); f.locked = true; }
+    // A-7: «+ σημείο φόρτωσης / παράδοσης» of the leg form opens here with its new row ready
+    if (!f.locked && (p.addShip === 'load' || p.addShip === 'drop')) _addShip(f, p.addShip);
+    _refresh(f);
+    return true;
   }
 
   // Ε-6: the session's first 409 writes_closed, whether a form or another v5 window got it (WN5Act keeps its own)
@@ -771,27 +1095,13 @@
       return false;
     }
     const ids = await PlanIds.load();
+    if (p.natOrderId != null) return _openEdit(p, ids);   // F13: the order's own read, never the board's
     const board = await _board();
     const f = { kind: 'order', p, seq: 0, busy: false, done: false, locked: false, mode: 'normal', cycleStops: {}, cycles: [], dayDefault: p.day || '' };
     for (const c of (board && board.cycles) || []) {
       f.cycleStops[c.rt_id] = (c.stops || []).map((s) => ({ stop_id: s.stop_id, location_id: s.location_id, side: s.side }));
       const who = c.trip_type === 'PARTNER' ? (c.partner || 'Συνεργάτης') : [c.truck, c.driver].filter(Boolean).join(' · ');
       f.cycles.push({ rt_id: c.rt_id, label: `${c.code || 'RT-' + c.rt_id} · ${who || 'χωρίς όχημα'}` });
-    }
-    if (p.natOrderId != null) {
-      f.kind = 'order';
-      f.edit = _editSource(board, p.natOrderId);
-      if (!f.edit) {   // Ε-9: the card reads the loaded week only
-        if (typeof toast === 'function') toast('Η παραγγελία #' + p.natOrderId + ' είναι σε άλλη εβδομάδα — άνοιξέ την από εκείνη', 'warn');
-        return false;
-      }
-      f.onSave = _saveEdit;
-      f.onRefresh = null;
-      _open(f, 'Επεξεργασία παραγγελίας #' + _esc(p.natOrderId), '· ' + _esc(f.edit.client || ''), _editHTML(f), 'Μία «Αποθήκευση» = μία συναλλαγή.');
-      if (!ids.ok) WN5Act.strip(_strip(f), ids.err);
-      if (_closedNow()) { WN5Act.strip(_strip(f), _closedNow()); f.locked = true; }
-      _refresh(f);
-      return true;
     }
     f.onSave = _saveOrder;
     f.onRefresh = _orderRefresh;
@@ -829,7 +1139,7 @@
   // A VS is the international's (price, invoicing, its pallets and windows change there: decision 21, vs_locked);
   // a national order is edited here, ONE order per «Αποθήκευση» (Ε-4: one save = one RPC = one transaction);
   // moving goes through «Μεταφορά σε…» (WN5Act.move, its own dry run and list), never a delete; the stop times
-  // change from the day panel (Δ4, WN5Act.datePanel), never from this save.
+  // change from the day panel (Δ4, WN5Act.datePanel: the whole side, or one stop from «Αλλαγή ώρας ›»), never from this save.
   // The hub as the board names it (WN5Act's model: the Veroia stop of a painted side), else the catalogue: PlanIds
   // runs on its stub until GET /plan/lookups exists, and a null hub only shows «Βέροια» by its name.
   function _hubId() {
@@ -896,7 +1206,8 @@
   // lucide «lock» at 13px (Figma 2011:9434); the colour is the block's grey-2, set in CSS
   const LOCK = '<svg class="wn5f-lock-i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
   const _lth = (win) => `<div class="wn5f-th ro"><span>Τοποθεσία</span><span>Ημέρα</span><span>${win}</span><span>Παλέτες</span></div>`;
-  // A point of a leg is read-only here (pallets and windows change with «Μεταφορά σε…» or the day panel Δ4), drawn in
+  // A point of a leg is read-only here — its pallets, day and window change in its order's edit form (F30), its truck's
+  // stop from «Αλλαγή ώρας ›» (F29), its truck with «Μεταφορά σε…» — drawn in
   // Figma's boxes (2011:9452 / 9520): a VS's place and pallets in the locked grey cell, the rest white.
   function _roRowHTML(r, vs) {
     const ro = vs ? 'wn5f-c vro' : 'wn5f-c';
@@ -955,6 +1266,10 @@
           + `<span class="wn5f-cwin"><span class="wn5f-c until">${_hm(r.to)}</span></span><span class="wn5f-c nro">${_pal(r.pallets)}</span><span></span>`
           + `<button type="button" class="wn5f-lnk" data-act="time">Αλλαγή ώρας ›</button></div>`).join('') : '')
       + `<div class="wn5f-acts"><button type="button" class="wn5f-lnk" data-act="move-order" data-nat="${id}">Μεταφορά σε… (όλη η παραγγελία)</button>`
+      // A-7 (Figma audit 28/10): a point of THIS order, in its edit form (077: the new point waits, owner 28/10, and the
+      // form then offers the way back to this leg)
+      + `<button type="button" class="wn5f-lnk" data-act="add-point" data-k="load" data-nat="${id}">+ σημείο φόρτωσης</button>`
+      + `<button type="button" class="wn5f-lnk" data-act="add-point" data-k="drop" data-nat="${id}">+ σημείο παράδοσης</button>`
       + `<button type="button" class="wn5f-card" data-act="card" data-nat="${id}">Άνοιγμα καρτέλας ›</button></div>`
       + `<div class="wn5f-note">#${_esc(b.reference || id)} · ${_pal(b.pallets)}π${b.price == null ? '' : ` · ${_esc(_pal(b.price))} €`} · τιμολογείται χωριστά · η διαγραφή γίνεται από την καρτέλα: λίστα παραστατικών + επιβεβαίωση, χωρίς επαναφορά</div></div>`;
   }
@@ -962,10 +1277,15 @@
     const m = f.m;
     return `<div class="wn5f-head wn5f-lhead" data-side="${m.side}">` + m.head.concat([['Φορτηγό', m.plates]]).map(([k, v]) => `<div class="wn5f-f"><span>${k}</span><span class="wn5f-ro">${_esc(v)}</span></div>`).join('') + `</div>`
       + m.blocks.map((b) => (b.vs ? _vsBlockHTML(f, b) : _natBlockHTML(f, b))).join('')
+      // A-7: a new order on this leg — the create form with this cycle and side set, as the «+» → «Νέα παραγγελία»
+      + '<div class="wn5f-adds"><button type="button" class="wn5f-add" data-act="leg-add-order">+ παραγγελία</button></div>'
       // the summary's right side is the total only (Figma 2011:9569); the per-order sum is the header badge's
       + `<div class="wn5f-sum"><div class="wn5f-sum-h"><b>${m.shipments} ${m.shipments === 1 ? 'αποστολή' : 'αποστολές'} · ${m.shipments === 1 ? 'σκέλος ' + SIDE_GR[m.side] : 'ίδιο σκέλος'} · ${_esc(m.vehicle)}</b><b>${_pal(m.total)}/33</b></div>`
       + `<div class="wn5f-sec">ΣΕΙΡΑ ΣΤΑΣΕΩΝ ΚΑΤΑ ΩΡΑ</div><ol class="wn5f-seq">`
-      + m.seq.map((x, i) => `<li><span class="wn5f-seq-n">${i + 1}</span><span class="wn5f-seq-w">${_esc(x.when)}</span><span class="wn5f-seq-p">${_esc(x.place)}</span><span class="wn5f-seq-c">${_esc(x.what)}</span><span class="wn5f-seq-q">${_pal(x.pallets)}π</span></li>`).join('')
+      // F29 (live 28/10): every stop's own day and window, from here — the day panel for that one stop (Δ4, its dry run
+      // and list), never inside this form's «Αποθήκευση» (Ε-4: one save = one act)
+      + m.seq.map((x, i) => `<li data-stop="${x.stop_id}"><span class="wn5f-seq-n">${i + 1}</span><span class="wn5f-seq-w">${_esc(x.when)}</span><span class="wn5f-seq-p">${_esc(x.place)}</span><span class="wn5f-seq-c">${_esc(x.what)}</span><span class="wn5f-seq-q">${_pal(x.pallets)}π</span>`
+        + `<button type="button" class="wn5f-lnk" data-act="stop-time" data-stop="${x.stop_id}">Αλλαγή ώρας ›</button></li>`).join('')
       + `</ol><div class="wn5f-note">${m.lastLoad
         ? 'Τελευταίο φορτίο → ο κύκλος σβήνεται· με κόστη ή γεμάτη μισθοδοσία πρώτα η λίστα, κενή σβήνεται σιωπηλά.'
         : 'Σε άλλο φορτηγό: «Μεταφορά σε…» — VS ανά παράδοση, εθνική όλη η παραγγελία· η ίδια παραγγελία μετακινείται, δεν σβήνεται, δεν ξαναγράφεται.'}</div></div>`;
@@ -1016,8 +1336,18 @@
   }
   // Before «Μεταφορά σε…», «Άνοιγμα καρτέλας ›» or «Αλλαγή ώρας ›» the leg form closes: the board changes after
   // them and an open form would show the old picture.
+  // The exits added with F29 / A-7 (a stop's time, + σημείο, + παραγγελία) close it too: a price or a note typed and not
+  // saved is said, never lost in silence (code review)
+  const LEG_KEEP = ['stop-time', 'add-point', 'leg-add-order'];
+  function _legDirty(f) {
+    return Object.keys(f.orig).some((id) => {
+      const st = _legState(f, id), b = _patchBody(f.orig[id], st);
+      return !!(b.set || b.shipments) || Number.isNaN(st.price) || Number.isNaN(st.temperature_c);
+    });
+  }
   function _legAct(f, a, t) {
     const rt = f.rtId;
+    if (LEG_KEEP.includes(a) && !f.done && _legDirty(f)) { _lines(f, ['Αποθήκευσε πρώτα τις αλλαγές της φόρμας (ή «Άκυρο»), μετά συνέχισε']); return; }
     const anchor = () => document.querySelector(`#content .wn5-row[data-rt="${rt}"]`) || document.querySelector('#content .wn5');
     if (a === 'move') { _close(f); WN5Act.move({ piece_ids: [Number(t.dataset.piece)], rt_id: rt }, { side: f.side, entry: 'leg' }); return; }
     if (a === 'move-order') {
@@ -1030,7 +1360,15 @@
       return;
     }
     if (a === 'card') { _close(f); WN5Act.orderCard(Number(t.dataset.nat)); return; }
+    if (a === 'add-point') {
+      const nat = Number(t.dataset.nat);
+      _close(f);
+      openOrder({ natOrderId: nat, addShip: t.dataset.k, leg: { rtId: rt, side: f.side, code: f.cyc.code || null } });
+      return;
+    }
+    if (a === 'leg-add-order') { _close(f); openOrder({ side: f.side, day: f.m.day || '', rtId: rt }); return; }
     if (a === 'time') { _close(f); WN5Act.datePanel(rt, 'ANODOS', anchor()); return; }
+    if (a === 'stop-time') { _close(f); WN5Act.datePanel(rt, f.side, anchor(), { stopId: Number(t.dataset.stop) }); return; }
     if (a === 'vs-day') {
       const box = t.closest('[data-vs]');
       vsDay(Number(t.dataset.order), box.querySelector('[data-f="vsday"]').value);
@@ -1154,5 +1492,5 @@
       'Ίδιος προορισμός — η διεθνής δεν άλλαξε', 'vs-place', `[data-vs]:has([data-osid="${orderStopId}"]) [data-vsok]`);
   }
 
-  window.WN5Form = Object.freeze({ openOrder, openLeg, vsDay, vsPlace, _locDropNoHub, _body, _check, _patchBody, _findOrders, _iso, _parts, _legModel, _rowWin });
+  window.WN5Form = Object.freeze({ openOrder, openLeg, vsDay, vsPlace, _locDropNoHub, _body, _check, _patchBody, _editFromRead, _findOrders, _iso, _parts, _legModel, _rowWin, _dayParse });
 })();

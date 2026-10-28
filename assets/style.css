@@ -9802,6 +9802,15 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5f-day:not(.has) > .wn5f-dayt { color:var(--wi4-grey-3); }
 .wn5f-day > .form-input:focus + .wn5f-dayt { display:none; }
 .wn5f-day > .form-input:disabled + .wn5f-dayt { color:var(--wi4-grey-1); }
+/* The national order form (wn5_forms.js, live 28/10): the day is typed text — the native date input under the label
+   took a click on a segment that could not be seen (the year), so typing changed nothing visible. The native input is
+   only the picker behind the calendar button. The rules above stay for the handover window (wn5_handover.js). */
+.wn5f-day > .wn5f-dayx, .wn5f-day > .wn5f-dayx:not(:focus) { padding-right:26px; color:var(--wi4-ink); }
+.wn5f-day > .wn5f-dayx:disabled { color:var(--wi4-grey-1); }
+.wn5f-day > .wn5f-dayx.bad { border-color:var(--wi4-red); color:var(--wi4-red); }
+.wn5f-day > .wn5f-dayp { position:absolute; right:0; bottom:0; width:24px; height:100%; margin:0; padding:0; border:0; opacity:0; pointer-events:none; }
+.wn5f-day > .wn5f-dayc { position:absolute; top:0; bottom:0; right:3px; width:22px; padding:0; border:0; background:none; display:flex; align-items:center; justify-content:center; color:var(--wi4-grey-2); cursor:pointer; }
+.wn5f-day > .wn5f-dayc:disabled { cursor:default; color:var(--wi4-grey-3); }
 .wn5f-add { align-self:flex-start; height:26px; padding:0 9px; box-sizing:border-box; border:1px solid var(--wi4-ctl); border-radius:5px; background:var(--surface-card); font-size:12px; color:var(--wi4-grey-1); cursor:pointer; }
 .wn5f-adds { display:flex; gap:10px; }
 .wn5f-adds > .wn5f-add[hidden] { display:none; }
@@ -9827,6 +9836,10 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5f-msg:empty { display:none; }
 .wn5f-msg { padding:6px 10px; border-radius:6px; background:var(--wi4-red-bg); font-size:12px; color:var(--wi4-red); }
 .wn5f-done { padding:6px 10px; border-radius:6px; background:var(--wi4-partner); font-weight:600; color:var(--wi4-partner-ink); }
+/* A-7: «Στο RT-… ›» inside the saved line, back to the leg the point was added from */
+.wn5f-done .wn5f-lnk { padding:0 6px; line-height:18px; }
+/* F26: what a save still lacks, in red beside its button — WN5Act's one footer reason (Δ1 / Δ4 «Λείπει: …») */
+.wn5f-ft .wn5-why { font-size:12px; font-weight:500; color:var(--wi4-red); text-align:right; }
 /* the footer (2011:10013): note, then «Άκυρο» and the accent «Αποθήκευση», both 36px */
 .wn5f > .wn5f-ft { flex:none; height:64px; margin:0; padding:0 22px; gap:10px; align-items:center; box-sizing:border-box; border-top:1px solid var(--wi4-line-2); }
 .wn5f-ft-note { margin-right:auto; font-size:11.5px; color:var(--wi4-grey-2); }
@@ -9839,8 +9852,20 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 /* the edit form's ΑΠΟΣΤΟΛΕΣ row: the create form's own fields — a day field 100 with its weekday label (2069:7984 /
    8007) and two 71px ΗΗ:ΛΛ fields per side, pallets 70 (2069:7992); never the native time input (12-hour in el-GR, a
    clock icon, 90px) */
-.wn5f-ships-h, .wn5f-ship { display:grid; grid-template-columns:minmax(0, 1fr) 100px 71px 71px 100px 71px 71px 70px; gap:6px; align-items:center; }
-.wn5f-ships-h { font-size:11px; color:var(--wi4-grey-2); grid-template-columns:minmax(0, 1fr) 254px 254px 70px; }
+.wn5f-ships-h, .wn5f-ship { display:grid; grid-template-columns:minmax(0, 1fr) 100px 71px 71px 100px 71px 71px 70px 20px; gap:6px; align-items:center; }
+.wn5f-ships-h { font-size:11px; color:var(--wi4-grey-2); grid-template-columns:minmax(0, 1fr) 254px 254px 70px 20px; }
+/* F13 / F21 (077): the points of the edit form - a riding point names its cycle, a removed one is struck until saved,
+   a new one picks both ends (the create form's place picker, two in the route cell) */
+.wn5f-ships { display:flex; flex-direction:column; gap:6px; }
+.wn5f-shipc { font-size:11px; color:var(--wi4-grey-2); }
+.wn5f-ship[data-rm] > span:first-child { text-decoration:line-through; color:var(--wi4-grey-3); }
+.wn5f-ship[data-rm] .form-input { opacity:.5; }
+/* F30: under a riding point, what its truck does there and «Αλλαγή ώρας στάσης ›» (the day panel of that stop) */
+.wn5f-shipstop { display:flex; flex-wrap:wrap; align-items:center; gap:2px 6px; margin-top:-3px; font-size:11px; color:var(--wi4-grey-2); }
+.wn5f-shipstop .wn5f-lnk { padding:0 6px; font-size:11px; line-height:18px; }
+.wn5f-ends { display:flex; align-items:center; gap:4px; min-width:0; }
+.wn5f-ends > .wn5f-loc { flex:1 1 0; min-width:0; }
+.wn5f-arr { flex:none; color:var(--wi4-grey-2); }
 /* the leg form (T21, Figma 2011:9406 / Δ7 2069:7858) */
 .wn5f-lhead { grid-template-columns:150px 120px 130px 190px; align-items:center; }
 .wn5f-lhead[data-side="ANODOS"] { grid-template-columns:150px 120px 170px 190px; }
@@ -9867,8 +9892,10 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5f-leg .wn5f-sum-h { font-size:12.5px; }
 /* one grid shared by every row (subgrid): the ref column is 160 (Figma 2011:9574) but grows to the longest ref, so
    a stop with 3+ references (the Veroia load of a groupage leg) stays on one line and the columns stay aligned */
-.wn5f-leg .wn5f-seq { display:grid; grid-template-columns:14px 130px 230px minmax(160px, max-content) auto; gap:4px 8px; }
+.wn5f-leg .wn5f-seq { display:grid; grid-template-columns:14px 130px 230px minmax(160px, max-content) auto auto; gap:4px 8px; }
 .wn5f-leg .wn5f-seq li { grid-column:1 / -1; grid-template-columns:subgrid; }
+/* F29: «Αλλαγή ώρας ›» at the end of each stop line, inside the line's 22px */
+.wn5f-leg .wn5f-seq .wn5f-lnk { padding:0 6px; font-size:11.5px; line-height:18px; }
 .wn5-row [data-leg] { cursor:pointer; }
 .wn5f-vsday { display:flex; align-items:flex-end; gap:8px; }
 .wn5f-vsplace { display:grid; grid-template-columns:180px minmax(0, 1fr) 150px; gap:8px; align-items:center; padding-left:12px; }

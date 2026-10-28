@@ -35,7 +35,8 @@ const EXPECT = {
   lookups: { GET: ROLES },
   notices: { GET: ROLES },
   'notices-read': { POST: ROLES },
-  orders: { POST: ROLES, PATCH: ROLES },
+  // 077 (F13): the edit form reads the one order it edits - every role that may PATCH it
+  orders: { GET: ROLES, POST: ROLES, PATCH: ROLES },
   legs: { POST: ROLES },
   move: { POST: ROLES },
   split: { POST: ROLES },
@@ -117,6 +118,7 @@ const REQ = {
   'lookups GET': ['GET', '/plan/lookups'],
   'notices GET': ['GET', '/plan/notices?desk=natl'],
   'notices-read POST': ['POST', '/plan/notices/12/read', {}],
+  'orders GET': ['GET', '/plan/orders/17'],
   'orders POST': ['POST', '/plan/orders', { orders: [] }],
   'orders PATCH': ['PATCH', '/plan/orders/17', { set: {} }],
   'legs POST': ['POST', '/plan/legs', { pieces: [] }],

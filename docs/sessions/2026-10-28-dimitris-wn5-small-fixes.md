@@ -11,7 +11,7 @@
   - `tests/critics/wn5-small-fixes-rig.js`: NO-GO στο `origin/main` 967d3aad, GO στον κλάδο.
   - Unit tests: NO-GO στο main, GO στον κλάδο. Τα board/form/handover/pilot/identity rigs πράσινα, εκτός από ένα ✗ pixel του board rig που υπάρχει ίδιο και στο main.
   - `/code-review high`: 7 γύροι.
-  - ?v= / SW_VERSION 1793205749.
+  - ?v= / SW_VERSION 1793213920 (μετά το merge του main με #170 / #171).
 - **Τι μένει (στο PR):**
   - Πρόταση προς τον κάτοχο του #153 (`openLeg`: η αποτυχημένη ανάγνωση να μη λέγεται «δεν βρέθηκε»).
   - Το `recheckErr` να φαίνεται και στις άλλες οθόνες.

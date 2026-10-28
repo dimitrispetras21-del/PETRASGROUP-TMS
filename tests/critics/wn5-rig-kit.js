@@ -93,6 +93,29 @@ function week() {
   };
 }
 
+// GET /plan/orders/:id (077 plan_order_read, F13): the kit week's national orders as the edit form reads them - 3101
+// waits (two points, PE yes, notes), 3001 rides on the KATHODOS of RT-T101 (its price and notes are NOT on the board).
+function orders() {
+  const sh = (shipment_id, o, d, pallets, lf, lt, df, dt, rides, rt_codes) => ({ shipment_id, origin_location_id: o, dest_location_id: d, pallets,
+    load_from: lf, load_to: lt, deliver_from: df, deliver_to: dt, vs_locked: false, rides, waits: !rides, at_hub: false, rt_codes });
+  return {
+    3101: { ok: true, op: 'plan_order_read',
+      order: { nat_order_id: 3101, legacy_id: 'recWn5Nat3101', client_id: 41, client: 'ΠΕΛΑΤΗΣ Α', price: 310, reference: 'N-T101', goods: 'Γιαούρτι',
+        notes: 'ράμπα 2', temperature_c: 4, pallet_exchange: true, direction: 'KATHODOS', pallets: 8 },
+      shipments: [sh(5201, 3, 2, 8, '2026-10-14T05:00:00+00:00', '2026-10-14T07:00:00+00:00', '2026-10-15T05:00:00+00:00', '2026-10-15T07:00:00+00:00', false, [])] },
+    3001: { ok: true, op: 'plan_order_read',
+      order: { nat_order_id: 3001, legacy_id: 'recWn5Nat3001', client_id: 41, client: 'ΠΕΛΑΤΗΣ Α', price: 420, reference: 'N-T001', goods: null,
+        notes: 'κλήση πριν', temperature_c: 4, pallet_exchange: false, direction: 'KATHODOS', pallets: 6 },
+      shipments: [sh(5202, 1, 3, 6, '2026-10-12T13:00:00+00:00', '2026-10-12T15:00:00+00:00', '2026-10-13T04:00:00+00:00', '2026-10-13T06:00:00+00:00', true, ['RT-T101'])] },
+    // live F23: sent back to Veroia (two parts after «Σπάσε…», 4 + 3): rides (its leg ended at the hub) AND waits there
+    3150: { ok: true, op: 'plan_order_read',
+      order: { nat_order_id: 3150, legacy_id: 'recWn5Nat3150', client_id: 43, client: 'ΠΕΛΑΤΗΣ Γ', price: 250, reference: null, goods: null,
+        notes: null, temperature_c: null, pallet_exchange: false, direction: null, pallets: 7 },
+      shipments: [Object.assign(sh(5255, 3, 2, 7, '2026-10-15T04:00:00+00:00', '2026-10-15T06:00:00+00:00', '2026-10-16T11:00:00+00:00', '2026-10-16T13:00:00+00:00', true, ['RT-T102']),
+        { waits: true, at_hub: true })] },
+  };
+}
+
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json',
   '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.webmanifest': 'application/manifest+json' };
 function serve() {
@@ -128,6 +151,10 @@ function defaultPlan(e, S) {
   if (r === 'GET /plan/board') return [200, S.board];
   if (r === 'GET /plan/lookups') return [200, S.lookups];
   if (r === 'GET /plan/notices') return [200, { desk: e.q.desk || 'natl', unread: [], recent: [] }];
+  if (r === 'GET /plan/orders/:id') {
+    const o = S.orders[e.path.split('/').pop()];
+    return o ? [200, o] : planErr(422, 'PLAN_RULE', 'order_gone');
+  }
   if (e.body && e.body.dry_run === true && DRY.includes(r))
     return [200, { ok: true, op: 'rig_dry', dry_run: true, needs_confirm: false, confirm_token: 'rig-token-0', consequences: [] }];
   return planErr(409, 'WRITES_CLOSED', 'writes_closed');   // as deployed until day L
@@ -141,7 +168,7 @@ async function openApp(browser, origin, opts = {}) {
   const page = await ctx.newPage();
   await page.clock.setFixedTime(new Date(NOW));   // BEFORE the session is stamped (wn-wave1-proof.js note)
   const S = { plan: [], facade: [], pageErrors: [], console: [], preflight: [], t0: Date.now(),
-    board: clone(opts.board || week()), lookups: clone(opts.lookups || LOOKUPS) };
+    board: clone(opts.board || week()), lookups: clone(opts.lookups || LOOKUPS), orders: clone(opts.orders || orders()) };
   page.on('pageerror', (e) => S.pageErrors.push(String(e).slice(0, 300)));
   page.on('console', (m) => { if (m.type() === 'error') { const x = m.text().slice(0, 300); S.console.push(x); CONSOLE.push({ t: x, url: (m.location() || {}).url || '' }); } });
   page.on('dialog', (d) => d.accept());
@@ -274,5 +301,5 @@ async function run(opts) {
   }
 }
 
-module.exports = { WT, TREE, HOST, NOW, UUID4, LOOKUPS, FACADE_LOCS, week, leg, stop, clone, routeOf, planErr, sleep,
+module.exports = { WT, TREE, HOST, NOW, UUID4, LOOKUPS, FACADE_LOCS, week, orders, leg, stop, clone, routeOf, planErr, sleep,
   openApp, has, count, text, planOf, run };
