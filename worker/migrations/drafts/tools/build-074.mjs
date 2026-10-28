@@ -18,7 +18,9 @@ export const DIR = path.resolve(HERE, '..');
 const V5_LIVE = `(SELECT count(*) FROM public.shipments WHERE deleted_at IS NULL)`;
 const TRIGGERS = `(SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace ns ON ns.oid = c.relnamespace
       WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public')`;
-const VEH = `kind = 'nl_unlinked' AND (before_data->>'truck_id' IS NOT NULL OR before_data->>'partner_id' IS NOT NULL)`;
+// Q-3: the unlinked loads the desk re-records in v5 (a vehicle, or a status past Pending) - 074 PART 8's rule
+const VEH = `kind = 'nl_unlinked' AND (before_data->>'truck_id' IS NOT NULL OR before_data->>'partner_id' IS NOT NULL
+       OR before_data->>'status' IS DISTINCT FROM 'Pending')`;
 export const PAIRS = [
   {
     source: '074_plan_cutover.sql', target: '074_plan_cutover_dryrun.sql', name: 'DRY RUN 074',
@@ -30,9 +32,9 @@ export const PAIRS = [
 -- WHEN: Thursday L-2 after 15:00 (the rehearsal P-8) and Friday L-1 after 15:00 (Runbook R-2), after 074a.
 -- EXPECTED (the red ERROR is deliberate): a NOTICE "074 OK: ..." and then
 --   ERROR: P0001: DRY RUN 074 finished - EVERYTHING UNDONE, nothing kept. The block ran to its end  ||  074 ran:
---   cutover <L>, bridges <n> on <m> VS, NL unlinked <m>, NL with vehicle <k> [<ids>], tests cleaned 6/7/1/2, via_hub <n>, legs 0, triggers <B-54 + 6>
+--   cutover <L>, bridges <n> on <m> VS, NL unlinked <m>, NL to re-record <k> [<ids>], tests cleaned 6/7/1/2, via_hub <n>, legs 0, triggers <B-54 + 6>
 --   Write n / m / k / the ids into docs/sessions/. Anything else: do NOT run 074, copy the message to the coordinator.`,
-    epilogue: `  res := format('074 ran: cutover %s, bridges %s on %s VS, NL unlinked %s, NL with vehicle %s [%s], tests cleaned %s/%s/%s/%s, via_hub %s, legs %s, triggers %s',
+    epilogue: `  res := format('074 ran: cutover %s, bridges %s on %s VS, NL unlinked %s, NL to re-record %s [%s], tests cleaned %s/%s/%s/%s, via_hub %s, legs %s, triggers %s',
     public.plan_cutover_day(), ${V5_LIVE},
     (SELECT count(DISTINCT order_id) FROM public.shipments WHERE deleted_at IS NULL),
     (SELECT count(*) FROM public.plan_cutover_log WHERE kind = 'nl_unlinked'),

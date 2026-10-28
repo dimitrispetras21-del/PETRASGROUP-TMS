@@ -465,9 +465,11 @@ begin
   end loop;
   if v_new > 0 then
     -- an old national load that already DELIVERED is history (Q-10): an old VS moved onto day L or later after the
-    -- fact (a date correction) is refused by name instead of deleting what happened (principle 1); the owner fixes it
-    if exists (select 1 from national_loads where source_order_id = p_order and source_type = 'Direct' and deleted_at is null
-                 and (status = 'Delivered' or actual_delivery_date is not null)) then
+    -- fact (a date correction) is refused by name instead of deleting what happened (principle 1); the owner fixes it.
+    -- NOT in the backfill: there a Delivered NL is an export of hub day L that loaded on Friday (030 marks it Delivered
+    -- when the export goes In Transit) - Q-3: unlinked, and the desk records that loading in v5 on Saturday
+    if v_actor <> '074 backfill' and exists (select 1 from national_loads where source_order_id = p_order and source_type = 'Direct'
+                 and deleted_at is null and (status = 'Delivered' or actual_delivery_date is not null)) then
       perform plan_h_raise('legacy_executed', p_order::text);
     end if;
     select coalesce(reference, id::text) into v_ref from orders where id = p_order;
@@ -479,11 +481,14 @@ begin
               jsonb_build_object('order_id', p_order, 'truck_id', nl.truck_id, 'partner_id', nl.partner_id, 'status', nl.status));
       perform plan_h_audit(v_actor, v_role, 'delete', 'national_loads', coalesce(nl.legacy_id, nl.id::text),
                            jsonb_build_object('deleted_at', null), jsonb_build_object('deleted_at', now(), 'reason', 'v5 bridge (074)'));
-      if nl.truck_id is not null or nl.partner_id is not null then
+      -- Q-3: the desk re-records in v5 every unlinked load that was already moving - a vehicle on it, or a status past
+      -- Pending (a Friday export Delivered at Veroia with no truck on the record)
+      if nl.truck_id is not null or nl.partner_id is not null or nl.status is distinct from 'Pending' then
         -- "I VS %s perase sto neo board; to palio ethniko fortio eiche ochima (%s): anathese tin xana"
         perform plan_h_notice('natl', 'legacy_nl_replaced',
           'zpcgVlMgJXMgz4DOrc+BzrHPg861IM+Dz4TOvyDOvc6tzr8gYm9hcmTCtyDPhM6/IM+AzrHOu865z4wgzrXOuM69zrnOus+MIM+Gzr/Pgc+Ezq/OvyDOtc6vz4fOtSDPjM+HzrfOvM6xICglcyk6IM6xzr3OrM64zrXPg86tIM+EzrfOvSDOvs6xzr3OrA==',
-          array[v_ref, coalesce('truck ' || nl.truck_id, 'partner ' || nl.partner_id)], p_order, null, null, v_actor, v_role);
+          array[v_ref, coalesce('truck ' || nl.truck_id, 'partner ' || nl.partner_id, 'status ' || coalesce(nl.status, '-'))],
+          p_order, null, null, v_actor, v_role);
       end if;
     end loop;
   end if;
@@ -638,7 +643,8 @@ $f$;
   SELECT count(*) INTO v_sh FROM public.shipments WHERE deleted_at IS NULL;
   SELECT count(*) INTO v_nl FROM public.plan_cutover_log WHERE kind = 'nl_unlinked';
   SELECT coalesce(string_agg(l.row_id::text, ',' ORDER BY l.row_id), '-') INTO v_nlveh FROM public.plan_cutover_log l
-   WHERE l.kind = 'nl_unlinked' AND (l.before_data->>'truck_id' IS NOT NULL OR l.before_data->>'partner_id' IS NOT NULL);
+   WHERE l.kind = 'nl_unlinked' AND (l.before_data->>'truck_id' IS NOT NULL OR l.before_data->>'partner_id' IS NOT NULL
+          OR l.before_data->>'status' IS DISTINCT FROM 'Pending');
   SELECT count(*) INTO v_via FROM public.order_stops WHERE via_hub;
   -- the bridge = the wanted stops, exactly (B-95's equality, spec 8)
   IF EXISTS (SELECT 1 FROM public.order_stops s WHERE s.order_id IS NOT NULL
@@ -683,7 +689,7 @@ $f$;
   UPDATE monitoring.checks SET red_value = v_trg1 WHERE id = 'B-54' AND red_value = v_trg0;
   GET DIAGNOSTICS v_k = ROW_COUNT;
   IF v_k <> 1 THEN RAISE EXCEPTION '074: B-54 not updated (% rows)', v_k; END IF;
-  RAISE NOTICE '074 OK: cutover %, bridges % on % VS, NL unlinked %, NL with vehicle % [%], tests cleaned %/%/%/%, via_hub %, triggers % -> %, B-54 %, legs 0',
+  RAISE NOTICE '074 OK: cutover %, bridges % on % VS, NL unlinked %, NL to re-record % [%], tests cleaned %/%/%/%, via_hub %, triggers % -> %, B-54 %, legs 0',
     c_cutover_day, v_sh, v_vs, v_nl, CASE WHEN v_nlveh = '-' THEN 0 ELSE cardinality(string_to_array(v_nlveh, ',')) END, v_nlveh,
     cardinality(c_tests_no), cardinality(c_tests_nl), cardinality(c_tests_cl), cardinality(c_tests_gl), v_via, v_trg0, v_trg1, v_trg1;
 END $do$;

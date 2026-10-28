@@ -471,6 +471,9 @@ async function seedBefore(db, L) {
   for (const [ref, dir, k, p] of rows) await db.query(`SELECT t74_vs($1, $2, $3::date + $4::int, $5::numeric[])`, [ref, dir, L, k, p]);
   // B7: a VS with a vehicle on its NL (Q-3: listed, the desk is told)
   await db.exec(`UPDATE national_loads SET truck_id = (SELECT min(id) FROM trucks) WHERE legacy_id = 'rec74NB5'`);
+  // B3: an export of hub day L that loaded on Friday - its NL already Delivered (030 on In Transit): Q-3, unlinked by
+  // the backfill (never legacy_executed there) and listed for the desk
+  await db.exec(`UPDATE national_loads SET status = 'Delivered' WHERE legacy_id = 'rec74NB3'`);
   // B8: a VS without a hub day (spec 2.3): no bridge, its NL stays
   await db.exec(`UPDATE orders SET cross_dock_date = NULL WHERE reference = 'B6'`);
 }
@@ -550,7 +553,7 @@ test('074 on the production-shaped copy', async (t) => {
 
   await t.test('C39: the dry run runs to its end and keeps nothing (no bridge, plan_config empty)', async () => {
     const e = await errorOf(db, withL(read('074_plan_cutover_dryrun.sql'), L));
-    assert.match(e?.msg ?? '', /DRY RUN 074 finished - EVERYTHING UNDONE, nothing kept\. The block ran to its end {2}\|\| {2}074 ran: cutover \S+, bridges 4 on 3 VS, NL unlinked 3, NL with vehicle 1 \[\d+\], tests cleaned 6\/7\/1\/2/, e?.msg);
+    assert.match(e?.msg ?? '', /DRY RUN 074 finished - EVERYTHING UNDONE, nothing kept\. The block ran to its end {2}\|\| {2}074 ran: cutover \S+, bridges 4 on 3 VS, NL unlinked 3, NL to re-record 2 \[\d+,\d+\], tests cleaned 6\/7\/1\/2/, e?.msg);
     assert.strictEqual(await n(db, `SELECT count(*) FROM shipments`), 0);
     assert.strictEqual(await n(db, `SELECT count(*) FROM plan_config`), 0);
     assert.strictEqual(await n(db, TRG), trg0);
@@ -571,6 +574,7 @@ test('074 on the production-shaped copy', async (t) => {
     }
     // Q-3: the NL with a vehicle is listed and the desk is told
     assert.strictEqual(await noticesOf(db, 'B5', 'legacy_nl_replaced'), 1);
+    assert.strictEqual(await noticesOf(db, 'B3', 'legacy_nl_replaced'), 1);   // Delivered on Friday, no vehicle
     // C37: exactly the test rows, nothing else
     assert.strictEqual(await n(db, `SELECT count(*) FROM national_orders WHERE deleted_at IS NULL`), 0);
     assert.strictEqual(await n(db, `SELECT count(*) FROM national_loads WHERE deleted_at IS NULL AND source_type <> 'Direct'`), 0);
@@ -772,4 +776,17 @@ test('074b: B-95..B-99 + B-10/B-26/B-42 are 0 on the production copy after 074, 
     }
     assert.strictEqual(await errorOf(db, read('074b_plan_cutover_monitoring.sql')), null);
   });
+});
+
+// Round 2 of the review: the refusal of an executed old NL must never reach the backfill (Q-3: the Friday exports of
+// hub day L arrive there with their NL already Delivered). The mutant without the backfill exception stops 074.
+test('mutant "legacy_executed in the backfill too" stops 074 on a Friday export of hub day L', async () => {
+  const L = nextSaturday();
+  const db = await base();
+  await seedBefore(db, L);
+  const src = withL(read('074_plan_cutover.sql'), L);
+  const mut = src.replace("if v_actor <> '074 backfill' and exists (select 1 from national_loads", 'if exists (select 1 from national_loads');
+  assert.notStrictEqual(mut, src, 'the mutation applied');
+  assert.strictEqual((await errorOf(db, mut))?.hint, 'plan:legacy_executed');
+  assert.strictEqual(await errorOf(db, src), null);
 });
