@@ -37,7 +37,11 @@ test('F4α-T11: CONSEQUENCE keys = the consequence kinds built in 072 + 072b', (
   // T28: 073 (live) adds its own kinds; they are built inside E'...' bodies, where every quote is doubled
   const f073 = ['073_plan_money.sql', 'drafts/073_plan_money.sql'].map((f) => path.join(ROOT, 'worker', 'migrations', f)).find((f) => fs.existsSync(f));
   const k073 = f073 ? [...fs.readFileSync(f073, 'utf8').matchAll(/'{1,2}kind'{1,2}, '{1,2}([a-z_]+)'/g)].map((m) => m[1]) : [];
-  assert.deepStrictEqual(Object.keys(L.CONSEQUENCE).sort(), [...new Set([...kinds, ...k073])].sort());
+  // F5: 074a's order_delete_preview (Ε-19) adds piece_on_rt — the delete of an international order lists it
+  const f074a = ['074a_plan_reads.sql', 'drafts/074a_plan_reads.sql'].map((f) => path.join(ROOT, 'worker', 'migrations', f)).find((f) => fs.existsSync(f));
+  const k074a = f074a ? [...fs.readFileSync(f074a, 'utf8').matchAll(/'{1,2}kind'{1,2}, '{1,2}([a-z_]+)'/g)].map((m) => m[1]) : [];
+  assert.ok(!f074a || k074a.includes('piece_on_rt'), '074a no longer builds piece_on_rt: ' + k074a.join());
+  assert.deepStrictEqual(Object.keys(L.CONSEQUENCE).sort(), [...new Set([...kinds, ...k073, ...k074a])].sort());
   assert.ok(Object.isFrozen(L.CONSEQUENCE));
 });
 
@@ -72,6 +76,12 @@ test('F4α-T11: no line says «πληρωμένη» (S-85)', () => {
   const all = [...Object.keys(L.CONSEQUENCE).map((k) => L.consequenceLine(Object.assign({ kind: k }, full)).text),
     ...Object.keys(L.WARNING).map((k) => L.warningLine({ code: k, side: 'ANODOS', pallets: 40, delta_c: 4, rt_code: 'RT-1', first_hub_day: '2026-10-12' }).text)];
   for (const t of all) assert.ok(!/πληρωμ/i.test(t), t);
+});
+
+test('F5: piece_on_rt (074a order_delete_preview) names the cycle and the stop; no money key, no amount', () => {
+  assert.deepStrictEqual(L.consequenceLine({ kind: 'piece_on_rt', leg_id: 9, piece_id: 4101, rt_id: 201, code: 'RT-T201', order_stop_id: 6101 }),
+    { text: 'βγαίνει από το RT-T201 το φορτίο της στάσης #6101', unknown: false });
+  assert.strictEqual(L.consequenceLine({ kind: 'piece_on_rt', rt_id: 201 }).text, 'βγαίνει από το — το φορτίο της στάσης #—');
 });
 
 test('F4α-T11: unknown kind / code → {unknown:true}, never dropped (S-52, Ε-21)', () => {
