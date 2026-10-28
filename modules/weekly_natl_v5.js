@@ -469,12 +469,13 @@ function _qbandHTML(m, known) {
   // query and the same one repaint on crossing 1600 as the stops (_visPts).
   const max = _visPts() === 1 ? 2 : 3;
   const shown = _qAll ? q : q.slice(0, max);
-  // The counts say what they count (live W45, 28/10: «Όλα 4» beside 7 pieces on the board): a card is one VS order
-  // (the base assigns an order whole), its pieces are the board's points — both numbers, each with its noun.
+  // A card is one VS order (the base assigns an order whole), its pieces are the board's points (live W45, 28/10:
+  // «Όλα 4» beside 7 pieces). Figma audit B-7 (owner 28/10): the short «ΕΠΟΜΕΝΑ · 4 · 7 κομμάτια» — the cards say they
+  // are VS; the pieces keep their noun, only when they differ from the cards.
   const pcs = q.reduce((n, it) => n + (it.pieces || 1), 0);
-  const nVs = `${q.length} ${q.length === 1 ? 'παραγγελία VS' : 'παραγγελίες VS'}`;
+  const nVs = String(q.length);
   const more = q.length > max ? `<button type="button" class="wi4-link wi4-q-all" onclick="WN5._qMore()">${_qAll ? 'Λιγότερα ▴' : `Όλες οι ${q.length} ▾`}</button>` : '';
-  return `<div class="wi4-q wn5-q">${search}<div class="wi4-q-hd"><span>ΕΠΟΜΕΝΑ · ${nVs}${pcs !== q.length ? ` · ${pcs} κομμάτια` : ''}</span><span class="wi4-q-n">${_esc(_qSub(q, m.today))}</span></div>`
+  return `<div class="wi4-q wn5-q">${search}<div class="wi4-q-hd"><span>ΕΠΟΜΕΝΑ · ${nVs}${pcs !== q.length ? ` · <span class="wn5-lc">${pcs} κομμάτια</span>` : ''}</span><span class="wi4-q-n">${_esc(_qSub(q, m.today))}</span></div>`
     + `<div class="wn5-qcards">${shown.map((it) => _qcardHTML(it, m)).join('')}</div>${more}</div>`;
 }
 // «2 VS από Δευ · 1 Παρ» (Figma 2011:7745): how many of the queue fall on each day; «VS» once, on the first.
@@ -498,7 +499,8 @@ function _qcardHTML(it, m) {
   const pl = [...new Set(pts.map((p) => p.name))];
   // Three spans (fidelity T5 r2): at 1440 the card is ~350px and the place is what gives way — the code and «+N»
   // stay whole, so «+2» is never cut away with the name (the whole line is in title).
-  const short = `<span class="wn5-qc-k">${_esc(it.code || '—')} ${anod ? '←' : '→'}</span><span class="wn5-qc-cl">${_esc(pl[0] || '—')}</span>`
+  // a VS without a reference starts at its arrow (Figma audit B-11): a «—» before it read as a missing place
+  const short = `<span class="wn5-qc-k">${it.code ? _esc(it.code) + ' ' : ''}${anod ? '←' : '→'}</span><span class="wn5-qc-cl">${_esc(pl[0] || '—')}</span>`
     + (pl.length > 1 ? `<span class="wn5-qc-n">+${pl.length - 1}</span>` : '');
   return `<div class="wi4-qcard wi4-r-red wn5-qcard" data-piece="${_id(it.pieceId)}">`
     + `<span class="wi4-dc ${_chipCls(it.day, today)}">${_esc(_dl(it.day))}</span>`
@@ -688,11 +690,23 @@ function _ptCity(p) {
 // not on the row (a long company name filled four lines and the place got lost; the national dispatcher plans by
 // place): it is in the order card and in this title.
 // The whole stop in one line, place first as on the row, the client last: the point's title and the «+N» list.
+// B-12: the deadline of an ΑΝΟΔΟΣ ending at Veroia — the window's END (its own day: a window can cross midnight), else
+// the base's due day; never an hour the base did not give
+const _hubBy = (p) => (p.to && (p.toDay || p.day) ? `${_dow(p.toDay || p.day)} ${p.to}` : p.due ? _dl(p.due) : '—');
 function _ptFull(p) {
+  if (p.hub) return `Βέροια · τέλος κύκλου · ως ${_hubBy(p)} · ${_pal(p.pallets)}`;   // the same words in title and «+N»
   const city = _ptCity(p), who = _ptWho(p);
   return `${p.name}${city ? ', ' + city : ''} · ${p.from && p.to ? p.from + '–' + p.to : '—'} · ${_pal(p.pallets)}${_tempTxt(p) ? ' · ' + _tempTxt(p) : ''}${who ? ' · ' + who : ''}`;
 }
 function _ptHTML(p, n, ok) {
+  // Figma audit B-12 (H1): a load waiting for its ΑΝΟΔΟΣ that ends at Veroia reads as a cycle's end (r.end): «Βέροια
+  // · τέλος κύκλου», then its deadline; no city «Veroia» under «Βέροια». The deadline is the window's end when the
+  // board has one, else the base's due DAY (nat_due_day) — no hour is invented for it.
+  if (p.hub) {
+    const by = _hubBy(p);
+    return `<span class="wi4-pt wn5-pt wn5-end${p.late ? ' wn5-late' : ''}" data-stop="${_id(p.stopId)}" title="${_esc(_ptFull(p))}">`
+      + `<span class="wi4-l1">Βέροια<span class="wn5-endx"> · τέλος κύκλου</span></span><span class="wi4-l2">ως ${_esc(by)}</span></span>`;
+  }
   const city = _ptCity(p);
   const full = _ptFull(p);
   return `<span class="wi4-pt wn5-pt${p.late ? ' wn5-late' : ''}${_dc(ok && p.dim && !p.late)}" data-stop="${_id(p.stopId)}"${_segAttr(p.segLabel)} title="${_esc(full)}">`
