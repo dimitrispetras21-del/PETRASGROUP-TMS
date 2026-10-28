@@ -2809,6 +2809,23 @@ SCN.why = async (browser, origin) => {
     await bClick(o.page, '.wn5-row[data-rt="204"] [data-act="date"][data-side="KATHODOS"]');
     const a = [await bOff(o.page, `${T} [data-act="save"]`), await ftWhy(o.page, T)];
     ok(scn, 'date: nothing changed → off, red «Λείπει: άλλη ημέρα ή νέο παράθυρο»', a[0] === true && a[1] === 'Λείπει: άλλη ημέρα ή νέο παράθυρο', a);
+    // a day chosen AND the Veroia window typed wrong: the save stays off (it would send the shift and drop the hour)
+    await bClick(o.page, `${T} [data-day="2026-10-13"]`);
+    await o.page.fill(`${T} input[data-win="from"]`, '8', { timeout: 2000 }).catch(() => {});
+    await o.page.waitForTimeout(400);
+    const b = [await bOff(o.page, `${T} [data-act="save"]`), await ftWhy(o.page, T)];
+    ok(scn, 'date: a day + a window that is not ΗΗ:ΛΛ → off, red «Λείπει: παράθυρο σε μορφή ΗΗ:ΛΛ»', b[0] === true && b[1] === 'Λείπει: παράθυρο σε μορφή ΗΗ:ΛΛ', b);
+    await o.page.context().close();
+  }
+  {
+    // Δ1 with the catalogue not loaded: no new truck to offer, the partner save off and says why
+    const o = await openBoard(browser, origin, { board: live45(), plan: { 'GET /plan/lookups': () => planErr(503, 'SLOW', 'slow') } });
+    await o.page.waitForSelector('#content > .wi4.wn5[data-state="ok"]', { timeout: 8000 }).catch(() => {});
+    await o.page.click('#content .wn5 .wn5-qcard[data-piece="15"] [data-act="assign"]', { timeout: 3000 }).catch(() => {});
+    await o.page.waitForTimeout(700);
+    const s = await saves(o.page);
+    const p = s.find((x) => x.cand === 'partner');
+    ok(scn, 'Δ1 without the catalogue: the partner save off, red «Λείπουν οι κατάλογοι…»; every off save says why', !!p && p.off && /^Λείπουν οι κατάλογοι/.test(p.why || '') && honest(s), s);
     await o.page.context().close();
   }
   {

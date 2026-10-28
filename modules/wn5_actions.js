@@ -657,10 +657,12 @@
     if (n.loc == null) return 'προορισμός ' + act + ' (δεν ήρθε από τη βάση)';
     return n.day ? 'παράθυρο ' + act + ' ' + _placeName(n.loc) : 'ημέρα ' + act + ' ' + _placeName(n.loc) + ' (δεν ήρθε από τη βάση)';
   }
+  // the board gives the ids of a cycle («rt:») and of «wait»; a new vehicle or a partner needs the catalogue
+  const _needsIds = (cand) => !/^(rt:|wait$)/.test(cand || '');
   const _missWords = (st, req) => 'Λείπει: ' + [...new Set((req.lack || []).map((n) => _lackText(st, n)))].join(', ');
   function _assignWhy(st, cand, req) {
     const kind = String(cand || '').split(':')[0];
-    if (!/^(rt:|wait$)/.test(cand || '') && !st.ids.ok) return 'Λείπουν οι κατάλογοι: δεν φορτώθηκαν, κλείσε και ξανάνοιξε';
+    if (_needsIds(cand) && !st.ids.ok) return 'Λείπουν οι κατάλογοι: δεν φορτώθηκαν, κλείσε και ξανάνοιξε';
     if (kind === 'partner' && !st.partner) return 'Λείπει: συνεργάτης';
     if (kind === 'partner' && !_rate(st.rateTxt).ok) return 'Κόμιστρο: μόνο αριθμός (π.χ. 350 ή 350,50)';
     if (req && req.missing) return _missWords(st, req);
@@ -862,8 +864,9 @@
   }
   function _picker(st, kind, title) {
     // Owner 28/10: an empty required Veroia window opens as its whole day, 00:00–23:59, still editable — as the stop
-    // windows (DAY_WIN). Into st.hubFrom/To, the field's own state: the request carries what the field shows.
-    if (_hubAsked(st) && !st.hubFrom && !st.hubTo) { st.hubFrom = DAY_WIN.from; st.hubTo = DAY_WIN.to; }
+    // windows (DAY_WIN). Into st.hubFrom/To, the field's own state: the request carries what the field shows. Not when
+    // a moved piece brings its own Veroia window: a typed window wins over it in _stopsFor, a default must not.
+    if (_hubAsked(st) && !st.hubFrom && !st.hubTo && !st.needs.some((n) => n.hub && n.own && n.from && n.to)) { st.hubFrom = DAY_WIN.from; st.hubTo = DAY_WIN.to; }
     const d = _dlg(kind, title, { wide: true });
     d.ft.innerHTML = '<button type="button" class="wi4-btn" data-act="cancel">Άκυρο</button>';
     // Figma Δ1 header: the meta inline after the title in grey, «Μόνο ελεύθερα | Όλα» at the top right. In the header,
@@ -893,8 +896,7 @@
     d.refresh = () => {
       for (const b of d.dlg.querySelectorAll(SAVES)) {
         const req = _assignReq(st, b.dataset.cand);
-        const needsIds = !/^(rt:|wait$)/.test(b.dataset.cand || '');   // the board gives these ids; new vehicles need the catalogue
-        b.disabled = d.locked || d.busy || !req || !!req.missing || (needsIds && !st.ids.ok);
+        b.disabled = d.locked || d.busy || !req || !!req.missing || (_needsIds(b.dataset.cand) && !st.ids.ok);
         // beside the button: inside «Ρυμούλκα / Οδηγός / Ανάθεση» after it, else under its row
         const row = b.closest('.wn5-more') ? null : b.closest('.wn5-cand');
         const w = _why(row || b, 'afterend', _assignWhy(st, b.dataset.cand, req));
@@ -1037,8 +1039,8 @@
   }
   // why a line's «Πρόσθεσε» is off (owner 28/10, red beside it): the Veroia window is the user's field above the list;
   // a place or a day the board does not carry is the base's (Ε-26); a stock «πόσες» out of range
-  function _plusWhy(st, it) {
-    const req = _plusReq(st, it);
+  function _plusWhy(st, it, req) {
+    if (req === undefined) req = _plusReq(st, it);
     if (!req) return 'Λείπει: πόσες, από 0,1 ως ' + _pal(it.pallets) + ' (ένα δεκαδικό)';
     return req.missing ? _missWords(st, req) : null;
   }
@@ -1143,7 +1145,7 @@
         const req = it && _plusReq(st, it);
         b.disabled = d.locked || d.busy || !req || !!req.missing;
         const cap = b.closest('.wn5-pline') && b.closest('.wn5-pline').querySelector('.wn5-pcap');
-        const text = it ? _plusWhy(st, it) : 'Δεν στέλνεται: ανανέωσε τον πίνακα';
+        const text = it ? _plusWhy(st, it, req) : 'Δεν στέλνεται: ανανέωσε τον πίνακα';
         let m = cap && cap.querySelector('.wn5-why');
         if (!text) { if (m) m.remove(); }
         else if (cap) {
@@ -1444,10 +1446,13 @@
   }
   // why «Αποθήκευση» of the date panel is off (owner 28/10): nothing changed, an hour that is not ΗΗ:ΛΛ, the dry run
   // still out, refused (its strip) or a conflict (its line on the right)
+  // a Veroia window edited into something that is not ΗΗ:ΛΛ: _dateBody leaves it out, so with a new day the save would
+  // send the shift alone and drop the typed hour unseen (principle 1) — the save stays off and says so
+  const _dateBadWin = (st) => !!st.vStop && (st.from !== st.from0 || st.to !== st.to0) && (!_hhmm(st.from) || !_hhmm(st.to));
   function _dateWhy(st, body) {
+    if (_dateBadWin(st)) return 'Λείπει: παράθυρο σε μορφή ΗΗ:ΛΛ';
     if (body && st.okFor === JSON.stringify(body) && rtSaveBody(st.dryBody, st.dryAnswer)) return null;
-    const badWin = st.vStop && (st.from !== st.from0 || st.to !== st.to0) && (!_hhmm(st.from) || !_hhmm(st.to));
-    if (!body) return badWin ? 'Λείπει: παράθυρο σε μορφή ΗΗ:ΛΛ' : 'Λείπει: άλλη ημέρα ή νέο παράθυρο';
+    if (!body) return 'Λείπει: άλλη ημέρα ή νέο παράθυρο';
     if (st.err) return 'Δεν αποθηκεύεται: δες το μήνυμα πάνω';
     if (st.preview && st.preview.conflict) return 'Δεν αποθηκεύεται: σύγκρουση, δες δεξιά';
     if (st.dryAnswer && !rtSaveBody(st.dryBody, st.dryAnswer)) return 'Δεν αποθηκεύεται: η προεπισκόπηση ήρθε χωρίς επιβεβαίωση';
@@ -1636,7 +1641,7 @@
       const b = d.dlg.querySelector('[data-act="save"]');
       const body = _dateBody(st);
       if (!b) return;
-      b.disabled = d.locked || d.busy || !body || st.okFor !== JSON.stringify(body) || !rtSaveBody(st.dryBody, st.dryAnswer);
+      b.disabled = d.locked || d.busy || !body || st.okFor !== JSON.stringify(body) || !rtSaveBody(st.dryBody, st.dryAnswer) || _dateBadWin(st);
       _why(d.ft.querySelector('[data-act="cancel"]'), 'beforebegin', _dateWhy(st, body));
       b.textContent = st.dryAnswer && st.dryAnswer.needs_confirm === true ? 'Αποθήκευση · επιβεβαίωση' : 'Αποθήκευση';
     };
