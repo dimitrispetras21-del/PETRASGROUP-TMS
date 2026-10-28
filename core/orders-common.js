@@ -82,6 +82,12 @@ const OrdersCommon = {
   isDelivered(rec) {
     const f = rec.fields || {};
     if (rec._type !== 'natl') return f['Status'] === 'Delivered';
+    // A v5 national order (natV5Attach): delivered = every piece has an executed
+    // delivery stop (spec 2.3, v_national_order_state) — never its date, which
+    // the board may have moved. An unread state ('err') keeps the date rule:
+    // the same answer as before L for every old order, and the views that
+    // read the set say the v5 state is missing (NAT_V5_WARN).
+    if (rec._v5 && typeof rec._v5 === 'object') return rec._v5.executed === true;
     return OrdersCommon.deliveredByDate(f['Status'], f['Delivery DateTime']);
   },
   // The national rule itself — also called by weekly_natl.js _wnIsDelivered
@@ -278,6 +284,20 @@ const OrdersCommon = {
     const open = title => ({ key: 'pa', text: 'προς ανάθεση',
       html: `<span class="oc-adot hollow"></span><span class="oc-adim"${title ? ` title="${esc(title)}"` : ''}>— προς ανάθεση</span>` });
     if (rec._type === 'natl') {
+      // v5 (natV5Attach): the vehicle is the cycle's, never a national load's —
+      // a v5 order has none, so the load rules below would call it «εκτός».
+      if (rec._v5 && typeof rec._v5 === 'object') {
+        const cs = Array.isArray(rec._v5.carriers) ? rec._v5.carriers : [];
+        const c = cs.find(x => x.kind !== 'none');
+        if (!c) return open('Στο Εβδομαδιαίο Εθνικών, χωρίς όχημα');
+        // Split at Veroia = more than one cycle: the first one, and how many more.
+        const more = cs.length > 1 ? '+' + (cs.length - 1) : '';
+        const top = c.kind === 'partner' ? (c.partner || 'συνεργάτης') : [c.truck || '—', c.trailer].filter(Boolean).join(' · ');
+        const sub = [c.kind === 'partner' ? 'συνεργάτης' : String(c.driver || '').trim(), more].filter(Boolean).join(' · ');
+        return two(top, sub, c.kind === 'partner' ? 'partner' : 'own', [top, sub].filter(Boolean).join(' · '));
+      }
+      // The v5 read failed: without a load this order may be v5 — unknown, never «εκτός».
+      if (rec._v5 === 'err' && !o.load && !f['National Groupage']) return { key: 'unknown', text: '', html: '<span class="oc-adim" title="Η κατάσταση των εθνικών v5 δεν διαβάστηκε">—</span>' };
       if (f['National Groupage']) return { key: 'grp', text: 'μέσω ομαδοποίησης', html: '<span class="oc-adot hollow"></span>μέσω ομαδοπ.' };
       if (o.missingLoad) {
         const send = o.canSend ? ` <button type="button" class="oc-alink" onclick="event.stopPropagation();_natlSendToWeekly('${rec.id}')" title="Δημιουργεί το φορτίο που λείπει — μετά εμφανίζεται στο Εβδομαδιαίο Εθνικών">Στείλε →</button>` : '';
@@ -309,6 +329,70 @@ const OrdersCommon = {
       nls.forEach(n => { const id = getLinkedId(n.fields['Source National Order']); if (id && !out.has(id)) out.set(id, n); });
     }
     return out;
+  },
+
+  // ── National v5 (F5 Ε3/Ε5, plan 2026-10-28 §10 d1; read spec
+  // docs/national-v5/f5/d1-orders-read-spec.md) ───────────────────────────
+  // From day L a national order is born on the v5 board (plan_orders_create):
+  // shipments and pieces, never a NATIONAL LOAD, and its status / truck /
+  // partner are never written (spec 2.1, no mirror). The load rules would call
+  // every such order «εκτός» and date it «delivered». WHICH orders are v5 is
+  // the base's answer (GET /plan/nat-state, "missing" = the old model): no
+  // screen compares a date with L. Before L (PlanConfig 'before') nothing is
+  // requested and no record is touched — today's path, not a copy of it.
+  // Sets rec._v5 = its state (v5 orders) | 'err' (the read failed: on every
+  // record, since any may be v5); leaves it unset otherwise.
+  // → { ran, failed, state }: on failed the caller shows NAT_V5_WARN; state =
+  // PlanConfig's ('before' | 'after' | 'unknown') for the entry points of Task F.
+  NAT_V5_WARN: 'Η κατάσταση των εθνικών v5 δεν διαβάστηκε — η ΑΝΑΘΕΣΗ των εθνικών χωρίς φορτίο δείχνει «—» και το «παραδόθηκε» τους ακολουθεί την ημερομηνία παράδοσης. Δεν σημαίνει ότι δεν έχουν όχημα· ξαναδοκίμασε με Ανανέωση.',
+  async natV5Attach(natlRecs) {
+    const recs = natlRecs || [];
+    recs.forEach(r => { delete r._v5; });
+    const state = await OrdersCommon._planState();
+    if (!recs.length || state === 'before') return { ran: false, failed: false, state };
+    // 'Order No' = national_orders.id (view 054): the id /plan/* speaks.
+    const byNo = new Map();
+    recs.forEach(r => {
+      const n = Number((r.fields || {})['Order No']);
+      if (!Number.isSafeInteger(n) || n <= 0) return;
+      if (!byNo.has(n)) byNo.set(n, []);
+      byNo.get(n).push(r);
+    });
+    if (!byNo.size) return { ran: false, failed: false, state };
+    try {
+      for (const part of OrdersList.chunk([...byNo.keys()], 500)) {
+        const st = await planFetch('GET', '/plan/nat-state?nat_order_ids=' + part.join(','), { designed: ['no_route'] });
+        for (const n of part) {
+          const s = st && st[String(n)];
+          if (s === 'missing') continue;
+          // An answer without this id, or of another shape, is a contract fault — loud, never «old model».
+          if (!s || typeof s !== 'object' || !Array.isArray(s.carriers)) throw new Error('nat-state: no state for ' + n);
+          byNo.get(n).forEach(r => { r._v5 = s; });
+        }
+      }
+      return { ran: true, failed: false, state };
+    } catch (e) {
+      // Before Worker deploy 1 the route does not exist, so no v5 order can
+      // either (writes open only with deploy 2): today's path, not a failure.
+      if (e && e.code === 'no_route') { recs.forEach(r => { delete r._v5; }); return { ran: false, failed: false, state }; }
+      // planFetch logs its own errors; a lost session (_sessionGone, core/api.js) is never logged again after
+      // the first 401 — only a fault of this reader (a broken answer) is.
+      if (!(e && (e.name === 'PlanError' || e._sessionGone)) && typeof logError === 'function') logError(e, 'OrdersCommon.natV5Attach');
+      recs.forEach(r => { r._v5 = 'err'; });
+      return { ran: true, failed: true, state };
+    }
+  },
+  // 'before' | 'after' | 'unknown' from core/plan-config.js (stream c). Its
+  // absence is 'unknown' — the read then runs and tells the truth — and is
+  // logged once: a missing script must not silently mean «before L».
+  // opts {fresh:true} on write paths (PlanConfig contract, PR #117): a cached 'before' is not trusted for a save.
+  async _planState(opts) {
+    if (typeof PlanConfig === 'undefined' || !PlanConfig || typeof PlanConfig.load !== 'function') {
+      if (!OrdersCommon._pcMissing && typeof logError === 'function') logError(new Error('PlanConfig is not loaded'), 'OrdersCommon._planState');
+      OrdersCommon._pcMissing = true;
+      return 'unknown';
+    }
+    try { const c = await PlanConfig.load(opts); return (c && c.state) || 'unknown'; } catch (e) { return 'unknown'; }
   },
 
   // Tokens only (DESIGN.md #1). Injected once.
@@ -693,8 +777,11 @@ const OrdersData = {
       const intlVis = (typeof FEATURES !== 'undefined' && FEATURES.ORDER_SPLIT)
         ? intl.filter(r => !getLinkedId(r.fields['Parent Order'])) : intl;
       const set = { at: Date.now(), intl: OrdersData.withoutPieces(intlVis), natl: natlRes.r, natlFailed: !natlRes.ok, gate: {}, gateFailed: false };
+      // F5 Ε5: «delivered» (stateOf, ageOf) of a v5 national order is its pieces' (natV5Attach); before L: nothing.
+      const v5P = OrdersCommon.natV5Attach(set.natl);
       await OrdersData._loadGate(set);
       await OrdersData._loadStock(set);
+      set.v5Failed = (await v5P).failed;
       const clientIds = [...new Set([...set.intl, ...set.natl].map(r => (r.fields['Client'] || [])[0]).filter(Boolean))];
       if (clientIds.length && typeof fhBatchResolveClients === 'function') { try { await fhBatchResolveClients(clientIds); } catch (e) { console.warn('orders data: clients', e); } }
       OrdersData._cache = set;

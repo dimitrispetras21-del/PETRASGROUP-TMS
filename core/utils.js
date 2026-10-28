@@ -1454,8 +1454,19 @@ async function _refreshNotifs() {
       // the not-entitled branch returns.
       (isChiefOps) ? safeFetch(() => atGetAll(TABLES.NAT_LOADS, { fields: ['Direction','Status','Delivery DateTime'] }, true), 'dashboard alerts: national loads') : Promise.resolve([]),
       (isChiefOps || isEquip) ? safeFetch(() => atGetAll(TABLES.MAINT_REQ, { fields: ['Status','Priority','Date Reported','Vehicle Plate','Description'] }, true), 'dashboard alerts: maintenance requests') : Promise.resolve([]),
+      // F5 Ε15: from day L a national order makes no national_loads row, so the
+      // Chief Ops alerts read v5 national state too (NatV5Kpi, modules/performance.js).
+      // Before L: GET /plan/config only (PlanConfig keeps 'before' 5 min), no other
+      // request, no new alert. null = not this user, or before L.
+      (isChiefOps) ? (async () => {
+        const pc = (typeof NatV5Kpi !== 'undefined') ? await NatV5Kpi.state() : { state: 'unknown', cutoverDay: null };
+        if (pc.state === 'before') return null;
+        const recs = await safeFetch(() => atGetAll(TABLES.NAT_ORDERS, { fields: ['Order No','Reference','Delivery DateTime'] }, true), 'dashboard alerts: national orders');
+        if (didFail(recs) || typeof NatV5Kpi === 'undefined') return { recs: [], v5: { failed: true } };
+        return { recs, v5: await NatV5Kpi.read(recs, pc) };
+      })() : Promise.resolve(null),
     ];
-    const [orders, trucks, trailers, natLoads, maint] = await Promise.all(promises);
+    const [orders, trucks, trailers, natLoads, maint, natV5] = await Promise.all(promises);
 
     // ── 1. UNIVERSAL: Unassigned orders due in 48h ──
     orders.filter(r => {
@@ -1542,6 +1553,24 @@ async function _refreshNotifs() {
         items.push({ rid: r.id, type: 'info', title: 'National χωρίς Performance',
           sub: escapeHtml(`${f['Direction']||''} — ορίσε On-Time/Delayed`), page: 'weekly_natl' });
       });
+
+      // F5 Ε15: v5 national orders planned to deliver after the requested day
+      // and not yet delivered (v_national_order_state: late, not executed). A
+      // failed read raises its own item and keeps the previous alerts' state
+      // (_buildOk), so «no alert» never stands in for «not checked».
+      if (natV5 && natV5.v5.failed) {
+        _buildOk = false;
+        items.push({ type: 'warn', title: 'Εθνικές v5: η κατάσταση δεν διαβάστηκε',
+          sub: 'Οι εκπρόθεσμες εθνικές v5 δεν ελέγχθηκαν — ξαναδοκίμασε', page: 'weekly_natl' });
+      } else if (natV5) {
+        NatV5Kpi.v5Of(natV5.recs, natV5.v5).filter(x => x.s.late && !x.s.executed).slice(0, 5).forEach(({ rec, s }) => {
+          const f = rec.fields;
+          const dd = toLocalDate(f['Delivery DateTime']);
+          items.push({ rid: 'natv5:' + rec.id, type: 'warn', title: 'Εθνική v5 εκπρόθεσμη',
+            sub: escapeHtml(`Ε-${f['Order No']}${f['Reference'] ? ' · ' + f['Reference'] : ''}${dd ? ' — ζητήθηκε ' + dd.split('-').reverse().join('/') : ''}${s.planned ? '' : ' · χωρίς πλήρη ανάθεση'}`),
+            page: 'weekly_natl' });
+        });
+      }
 
       // Critical maintenance issues open.
       // The work-order form stores Priority as SOS / Άμεσα / Κανονικό and Status as

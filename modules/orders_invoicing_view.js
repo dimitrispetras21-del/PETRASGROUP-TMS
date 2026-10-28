@@ -414,6 +414,9 @@ const OrdersInvoicingView = (() => {
     if (!ctx || !ctx.isCurrent()) return;
     const banners = [];
     if (S.set.natlFailed) banners.push('Οι εθνικές παραγγελίες δεν φόρτωσαν — η λίστα είναι ελλιπής. Δεν σημαίνει ότι δεν υπάρχουν εθνικές προς τιμολόγηση· ξαναδοκίμασε.');
+    // F5 (d1): the v5 state of the national orders did not load — their «delivered» (age, «λείπει δελτίο») then
+    // follows the date. Said here as on «Χωρίς τιμή», with the ONE text (OrdersCommon.NAT_V5_WARN).
+    if (S.set.v5Failed) banners.push(OrdersCommon.NAT_V5_WARN);
     if (S.set.gateFailed) banners.push('Ο έλεγχος δελτίων παλετών δεν φόρτωσε — ισχύει ο παλιός έλεγχος ανά παραγγελία (δελτία 1 και 2).');
     if (S.clientsFailed) banners.push('Τα στοιχεία ERP των πελατών (ΑΦΜ, διεύθυνση, όροι) δεν φόρτωσαν — δεν σημαίνει ότι λείπουν.');
     if (S.set.stockFailed) banners.push('Η κατάσταση των παρτίδων αποθήκης δεν φόρτωσε — η κάρτα δεν δείχνει τα κομμάτια τους. Η τιμολόγηση δεν επηρεάζεται· ξαναδοκίμασε.');

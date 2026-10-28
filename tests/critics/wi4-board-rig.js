@@ -211,6 +211,25 @@ function serve() {
   return new Promise(r => srv.listen(0, '127.0.0.1', () => r(srv)));
 }
 
+// F5 FE-1: the three reads the VS chain makes after day L. Base ids = the order's place in the fixture + 1.
+function planAnswer(route, S, u, json) {
+  S.planGets.push(u.pathname + u.search);
+  const ords = S.db[T.ORDERS] || [];
+  if (u.pathname === '/plan/config') {
+    return S.plan.config ? json(route, S.plan.config) : json(route, { error: { type: 'NOT_FOUND', code: 'no_route', message: 'rig: no /plan/config (before deploy 1)' } }, 404);
+  }
+  if (u.pathname === '/pallets/gate') {
+    const recs = (u.searchParams.get('order_recs') || '').split(',').filter(Boolean);
+    return json(route, { records: recs.map(r => ({ order_rec: r, order_id: ords.findIndex(o => o.id === r) + 1 })).filter(x => x.order_id > 0) });
+  }
+  if (u.pathname === '/plan/vs-state') {
+    if (S.plan.failVs) return json(route, { error: { type: 'PLAN', code: 'plan_failed', message: 'rig: forced vs-state failure' } }, 500);
+    const ids = (u.searchParams.get('order_ids') || '').split(',').map(Number);
+    return json(route, Object.fromEntries(ids.map(id => { const rec = (ords[id - 1] || {}).id; return [String(id), (rec && S.plan.vs[rec]) || 'missing']; })));
+  }
+  return json(route, { error: { type: 'NOT_FOUND', code: 'no_route', message: 'rig: ' + u.pathname } }, 404);
+}
+
 function applyFields(target, fields) {
   for (const [k, v] of Object.entries(fields || {})) {
     if (v === null || v === '' || (Array.isArray(v) && v.length === 0)) delete target[k]; else target[k] = v;
@@ -255,11 +274,25 @@ async function openBoard(browser, origin, opts = {}) {
   const S = { db, log: [], inflight: 0, held: [], heldRelay: [], pageErrors: [], unknown: new Set(), mainReads: 0, beats: [],
     fail: Object.assign({ patch: {}, get: {} }, opts.fail || {}), hold: Object.assign({}, opts.hold || {}),
     expectLive: opts.expectLive !== false, triggers: !!opts.triggers, vs: !!opts.vs, gets: [], onGet: {}, delay: {}, seq: 0, ready: false, readyWaiters: [],
-    presence: Object.assign({ mode: 200, others: [], changes: { n: 0, last_by: null, last_at: null, auto_n: 0 }, next_ms: 2500 }, opts.presenceCfg || {}) };
+    presence: Object.assign({ mode: 200, others: [], changes: { n: 0, last_by: null, last_at: null, auto_n: 0 }, next_ms: 2500 }, opts.presenceCfg || {}),
+    // F5 FE-1: /plan/config as the live Worker answers today (404 no_route = before deploy 1), unless a scenario
+    // sets {config, vs: {rec: entry|'missing'}, failVs}. planGets records every /plan or /pallets/gate read.
+    plan: Object.assign({ config: null, vs: {}, failVs: false }, opts.plan || {}), planGets: [] };
   page.on('pageerror', e => S.pageErrors.push(String(e).slice(0, 300)));
   page.on('dialog', d => d.accept());
   await page.addInitScript(initScript, opts.role || 'dispatcher');
   await page.route(u => !u.href.startsWith(origin) && !u.href.includes(HOST), route => route.abort());
+  // F5 FE-1: core/plan-config.js is new and stream (e) adds its tag to app.html with the bump; served here
+  // as that bump will serve it (after core/plan-api.js), in memory only. Already there → left alone.
+  await page.route(u => u.href.startsWith(origin) && ['/', '/app.html'].includes(new URL(u.href).pathname), async route => {
+    const r = await route.fetch(); let body = await r.text();
+    if (!/core\/plan-config\.js/.test(body)) {
+      const re = /(<script src="core\/plan-api\.js[^"]*"><\/script>)/;
+      if (!re.test(body)) throw new Error('app.html changed: the rig cannot find core/plan-api.js');
+      body = body.replace(re, '$1\n<script src="core/plan-config.js"></script>');
+    }
+    await route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body });
+  });
   // The flag lives in config.js; it is rewritten in memory, never on disk.
   await page.route(u => u.href.startsWith(origin) && new URL(u.href).pathname === '/config.js', async route => {
     const r = await route.fetch(); let body = await r.text();
@@ -290,6 +323,7 @@ async function openBoard(browser, origin, opts = {}) {
     }
     S.inflight++;
     try {
+      if (u.pathname.startsWith('/plan/') || u.pathname === '/pallets/gate') return planAnswer(route, S, u, json);
       if (!mm) return json(route, m === 'GET' ? { records: [] } : { ok: true });
       const tbl = db[tid] || (db[tid] = []);
       if (m === 'GET') {
@@ -327,7 +361,16 @@ async function openBoard(browser, origin, opts = {}) {
         if (body && Array.isArray(body.records)) return json(route, { records: body.records.map(x => make(x && x.fields)) });
         return json(route, make(body && body.fields));
       }
-      if (m === 'DELETE') { S.log.push({ k: 'delete', tid, id: rid }); return json(route, { deleted: true, id: rid }); }
+      if (m === 'DELETE') {
+        // F5 Ε19 (Worker deploy 1): an ORDER delete with consequences answers 428 until it carries the token
+        const tok = u.searchParams.get('confirm_token');
+        if (S.plan.del428 && tid === T.ORDERS && tok !== 'tok-rig') {
+          S.log.push({ k: 'delete', tid, id: rid, status: 428, tok });
+          return json(route, { error: { type: 'PLAN_RULE', code: tok ? 'stale_confirm' : 'need_token', message: 'rig: η διαγραφή έχει συνέπειες' },
+            preview: { consequences: ['Αποσύρει 2 κομμάτια εθνικής πλευράς', { text: 'Σβήνει 4 στάσεις' }], confirm_token: 'tok-rig' } }, tok ? 422 : 428);
+        }
+        S.log.push({ k: 'delete', tid, id: rid, tok }); return json(route, { deleted: true, id: rid });
+      }
       return json(route, {});
     } finally { S.inflight--; }
   });
@@ -3664,6 +3707,61 @@ async function scnDone(browser, origin) {
   await page.context().close();
 }
 
+// F5 FE-1 Ε1/Ε20 (plan 2026-10-28, Task F): after day L the national tiles read /plan/vs-state for a VS with a
+// bridge and NATIONAL LOADS only for the ones the base answers «missing». Judged by what was READ (the NL filter,
+// the /plan calls) and what the tile says; done = all_executed, never the NL Status. And: a failed vs-state read
+// = every VS tile «unknown», never «δεν υπάρχει εθνικό».
+const V5_AFTER = { cutover_day: '2026-10-03', opened_at: '2026-10-02T13:30:00Z', writes_open: false };
+function v5Week(db) {
+  const vs = (id, nl, st) => { const o = db[T.ORDERS].find(r => r.id === id).fields; o['Veroia Switch'] = true; o.Status = 'Delivered';
+    db[T.NAT_LOADS].push({ id: nl, fields: { 'Source Order': [id], Partner: ['recWiP001'], 'Is Partner Trip': true, 'Partner Truck Plates': 'PRT-399', Status: st } }); };
+  // both NL rows exist (soft-deleted by the bridge in real life): if the screen read them, the tiles would say PRT-399
+  vs('recWiE021', 'recWiN921', 'Assigned');
+  vs('recWiE020', 'recWiN920', 'Assigned');
+}
+async function scnV5(browser, origin) {
+  const scn = 'v5';
+  const vsMap = {
+    recWiE021: { carriers: [{ kind: 'owned', text: 'TST-V5 / Driver V5', code: 'R1', hub_day: '2026-10-07' }], all_executed: false, all_planned: true, first_hub_day: '2026-10-07', n_pieces: 1 },
+    recWiE020: { carriers: [{ kind: 'partner', text: 'Partner V5', code: 'R2', hub_day: '2026-10-07' }], all_executed: true, all_planned: true, first_hub_day: '2026-10-07', n_pieces: 1 },
+  };
+  const { page, S } = await openBoard(browser, origin, { mutate: v5Week, plan: { config: V5_AFTER, vs: vsMap } });
+  await settle(page, S, 2600);
+  const r = await page.evaluate(([js]) => {
+    const row = eval(js);
+    const tile = oid => { const x = row(oid); const t = x && x.querySelector('.wi4-c-fl .wi4-tile'); return t ? t.textContent.trim() : null; };
+    const eff = el => { let v = 1; for (let x = el; x && !x.classList.contains('wi4'); x = x.parentElement) v *= +getComputedStyle(x).opacity; return Math.round(v * 100) / 100; };
+    return { e21: tile('recWiE021'), e20: tile('recWiE020'), e20xd: row('recWiE020').classList.contains('wi4-xd'), e21xd: row('recWiE021').classList.contains('wi4-xd'),
+      e20nat: eff(row('recWiE020').querySelector('.wi4-c-fl .wi4-tile')), nl: WINTL.data.nlState,
+      src: Object.fromEntries(Object.entries(WINTL.data.natBySrc || {}).map(([k, v]) => [k, v.src])) };
+  }, [ROW_JS]);
+  ok(scn, 'a bridged VS shows the carrier of the base (TST-V5 / Driver V5), not its old NL (PRT-399)', /TST-V5/.test(r.e21 || '') && !/PRT-399/.test(r.e21 || ''), r);
+  ok(scn, 'a bridged partner VS shows the partner name of the base', /Partner V5/.test(r.e20 || ''), r);
+  ok(scn, 'done = all_executed: E020 fades whole (its NL says Assigned), E021 does not', r.e20xd && r.e20nat === 0.4 && !r.e21xd, r);
+  ok(scn, 'natBySrc: the two bridged ones from v5, the rest from NL; nlState ok', r.src.recWiE021 === 'v5' && r.src.recWiE020 === 'v5' && r.nl === 'ok'
+    && Object.entries(r.src).filter(([k]) => !['recWiE021', 'recWiE020'].includes(k)).every(([, v]) => v === 'nl'), r.src);
+  const nlReads = S.gets.filter(g => g.tid === T.NAT_LOADS && /Source Order/.test(g.f)).map(g => g.f);
+  ok(scn, 'the NATIONAL LOADS read asks only for the «missing» ones (never E020/E021)', nlReads.length === 1 && !/recWiE02[01]/.test(nlReads[0]), nlReads);
+  ok(scn, 'one /plan/config, one gate, one vs-state (≤500 ids per call)', S.planGets.filter(g => g === '/plan/config').length === 1
+    && S.planGets.filter(g => g.startsWith('/pallets/gate')).length === 1 && S.planGets.filter(g => g.startsWith('/plan/vs-state')).length === 1, S.planGets);
+  await shot(page, 'v5');
+  ok(scn, 'display only: nothing written; no page errors', !writes(S).length && !S.pageErrors.length, { w: writes(S), e: S.pageErrors });
+  await page.context().close();
+}
+async function scnV5Err(browser, origin) {
+  const scn = 'v5err';
+  const { page, S } = await openBoard(browser, origin, { mutate: v5Week, plan: { config: V5_AFTER, failVs: true } });
+  await settle(page, S, 2600);
+  const r = await page.evaluate(() => ({ nl: WINTL.data.nlState, unk: document.querySelectorAll('#content .wi4 .wi4-tile.unk').length,
+    miss: [...document.querySelectorAll('#content .wi4 .wi4-tile')].filter(t => /δεν υπάρχει εθνικό/.test(t.textContent)).length,
+    un: [...document.querySelectorAll('#content .wi4 .wi4-tile.un')].filter(t => /ΠΡΟΣ ΑΝΑΘΕΣΗ/.test(t.textContent)).length }));
+  ok(scn, 'vs-state 500 → nlState err; VS tiles «unknown»; none says «δεν υπάρχει εθνικό»', r.nl === 'err' && r.unk >= 2 && r.miss === 0, r);
+  ok(scn, 'no NATIONAL LOADS read after the failed vs-state (no half answer)', !S.gets.some(g => g.tid === T.NAT_LOADS && /Source Order/.test(g.f)), S.gets.filter(g => g.tid === T.NAT_LOADS));
+  await shot(page, 'v5err');
+  ok(scn, 'nothing written; no page errors', !writes(S).length && !S.pageErrors.length, { w: writes(S), e: S.pageErrors });
+  await page.context().close();
+}
+
 // §e #20: 1440 is not designed yet (Φ8, the owner's Figma) — but nothing on it
 // may be cut without its title, overlap, or break the 32px rows.
 
@@ -4083,6 +4181,97 @@ async function vsSubmit(page, S) {
 }
 const vsSaid = (evs, re) => evs.some(e => (e.k === 'toast' || e.k === 'errtoast' || e.k === 'reportError') && re.test(String(e.a[0])));
 const vsLogged = (evs, re) => evs.some(e => e.k === 'logError' && re.test(JSON.stringify(e.a)));
+// F5 FE-1 (plan 2026-10-28, Task F) — the international ORDER FORM opened and saved for real (CLAUDE.md «ΔΕΝ
+// ΣΤΕΛΝΟΥΜΕ ΑΔΟΚΙΜΑΣΤΗ ΔΗΜΙΟΥΡΓΙΑ ΠΑΡΑΓΓΕΛΙΩΝ»). Judged on the table: which ORDER STOPS records were PATCHed or
+// deleted, and whether NATIONAL LOADS was read or written at all.
+//   before   the live Worker (404 /plan/config): removing the MIDDLE delivery keeps the third its own record
+//            (renumbered), deletes the second — and the VS chain writes the national load as today.
+//   after    a bridge: the save writes NO national load and reads none; the stage says what the base made.
+//   missing  after, VS on, no bridge: ✗ in words, nothing national written.
+async function scnVsForm(browser, origin) {
+  const U3 = 'recWiVS05';
+  const world = db => {
+    vsWorld(db);
+    db[T.ORDER_STOPS].push({ id: U3, fields: { 'Parent Order': [VS.O], 'Stop Type': 'Unloading', 'Stop Number': 3, Location: ['recWiL006'], Pallets: 4, DateTime: '2026-10-09T07:00:00.000Z' } });
+    const o = db[T.ORDERS].find(r => r.id === VS.O).fields;
+    o['ORDER STOPS'] = [VS.L, VS.U1, VS.U2, U3, VS.CD]; o['Unloading Location 3'] = ['recWiL006'];
+  };
+  const stopWrites = (S, l0) => S.log.slice(l0).filter(x => x.tid === T.ORDER_STOPS && (x.k === 'patch' || x.k === 'delete'))
+    .map(x => [x.k, x.id, x.k === 'patch' ? x.fields['Stop Number'] : null]).filter(x => [VS.U1, VS.U2, U3].includes(x[1]));
+  // the VS chain's own read of this order's national load ({Source Record}, _syncVeroiaSwitch); the board's
+  // re-read after a save (FIND on {Source Order}, for the VS the base answers «missing») is the board's, not the form's
+  const natTouch = (S, l0, g0) => ({ w: S.log.slice(l0).filter(x => x.tid === T.NAT_LOADS).length,
+    r: S.gets.slice(g0).filter(g => g.tid === T.NAT_LOADS && /\{Source Record\}/.test(g.f || '') && (g.f || '').includes(VS.O)).length });
+  let scn = 'vsform.before';
+  {
+    const { page, S } = await openBoard(browser, origin, { vs: true, mutate: world });
+    await vsOpenForm(page);
+    const rows = await page.evaluate(() => [1, 2, 3].map(i => (document.getElementById('sid_u_' + i) || {}).value || null));
+    ok(scn, 'each delivery row carries its record id', JSON.stringify(rows) === JSON.stringify([VS.U1, VS.U2, 'recWiVS05']), rows);
+    await page.evaluate(() => _removeStop('u', 2));
+    const l0 = S.log.length, g0 = S.gets.length;
+    const ev = await vsSubmit(page, S);
+    const sw = stopWrites(S, l0);
+    ok(scn, 'middle delivery removed: U1 stays #1, U3 keeps ITS record as #2, U2 is deleted (never U3 deleted)',
+      sw.some(x => x[0] === 'patch' && x[1] === VS.U1 && x[2] === 1) && sw.some(x => x[0] === 'patch' && x[1] === U3 && x[2] === 2)
+      && sw.some(x => x[0] === 'delete' && x[1] === VS.U2) && !sw.some(x => x[0] === 'delete' && x[1] === U3) && !sw.some(x => x[0] === 'patch' && x[1] === VS.U2), sw);
+    const nt = natTouch(S, l0, g0);
+    ok(scn, 'before day L the VS chain still reads and writes the national load (today\'s behaviour)', nt.r > 0 && nt.w > 0, nt);
+    ok(scn, 'the stage said ✓ «Το εθνικό φορτίο συγχρονίστηκε»', vsSaid(ev, /Το εθνικό φορτίο συγχρονίστηκε/), ev.map(e => e.a && e.a[0]).slice(-8));
+    ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  const after = { cutover_day: '2026-10-03', opened_at: '2026-10-02T13:30:00Z', writes_open: false };
+  scn = 'vsform.after';
+  {
+    const { page, S } = await openBoard(browser, origin, { vs: true, mutate: world,
+      plan: { config: after, vs: { [VS.O]: { carriers: [], all_executed: false, all_planned: false, first_hub_day: '2026-10-07', n_pieces: 2 } } } });
+    await vsOpenForm(page);
+    const l0 = S.log.length, g0 = S.gets.length, p0 = S.planGets.length;
+    const ev = await vsSubmit(page, S);
+    const nt = natTouch(S, l0, g0);
+    ok(scn, 'after day L the save writes NO national load and reads none', nt.w === 0 && nt.r === 0, nt);
+    ok(scn, 'the order itself and its stops were saved', S.log.slice(l0).some(x => x.tid === T.ORDERS && x.k === 'patch' && x.id === VS.O)
+      && S.log.slice(l0).some(x => x.tid === T.ORDER_STOPS && x.k === 'patch'), S.log.slice(l0).map(x => [x.k, x.tid, x.id]).slice(0, 12));
+    ok(scn, 'the stage says what the base made: «VS chain: η βάση έφτιαξε την εθνική πλευρά (2 κομμάτια) ✓»', vsSaid(ev, /η βάση έφτιαξε την εθνική πλευρά \(2 κομμάτια\)/), ev.map(e => e.a && e.a[0]).slice(-8));
+    ok(scn, 'the order\'s VS side read through gate + vs-state («after» is final: no second /plan/config)', S.planGets.slice(p0).includes('/pallets/gate?order_recs=' + VS.O)
+      && S.planGets.slice(p0).includes('/plan/vs-state?order_ids=' + (S.db[T.ORDERS].findIndex(o => o.id === VS.O) + 1)) && !S.planGets.slice(p0).includes('/plan/config'), S.planGets.slice(p0));
+    ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  scn = 'vsform.missing';
+  {
+    const { page, S } = await openBoard(browser, origin, { vs: true, mutate: world, plan: { config: after, vs: {} } });
+    await vsOpenForm(page);
+    const l0 = S.log.length, g0 = S.gets.length;
+    const ev = await vsSubmit(page, S);
+    const nt = natTouch(S, l0, g0);
+    ok(scn, 'VS on, the base has no bridge: ✗ «δεν δημιουργήθηκε εθνικό σκέλος», never ✓', vsSaid(ev, /δεν δημιουργήθηκε εθνικό σκέλος|συγχρονισμός εθνικού φορτίου απέτυχε/i)
+      && !vsSaid(ev, /Το εθνικό φορτίο συγχρονίστηκε|η βάση έφτιαξε/), ev.map(e => e.a && e.a[0]).slice(-8));
+    ok(scn, 'logged as an app error (the form\'s VS sync line)', ev.filter(e => e.k === 'logError' && /orders_intl form: VS sync/.test(JSON.stringify(e.a))).length === 1, ev.filter(e => e.k === 'logError').map(e => JSON.stringify(e.a).slice(0, 160)));
+    ok(scn, 'nothing national written or read', nt.w === 0 && nt.r === 0, nt);
+    await page.context().close();
+  }
+}
+
+// F5 FE-1 / Ε19: deleting a VS order whose delete has consequences (Worker deploy 1 → 428 + preview). Judged on
+// the DELETEs that reached the fake Worker: one without a token (428, never resent), then — after the user read the
+// consequences in words — one with ?confirm_token=. Dialogs are accepted (the user's «yes»).
+async function scnDel428(browser, origin) {
+  const scn = 'del428';
+  const { page, S } = await openBoard(browser, origin, { vs: true, mutate: vsWorld, plan: { del428: true } });
+  const asked = []; page.on('dialog', d => asked.push(d.message()));
+  const l0 = S.log.length;
+  await page.evaluate(id => { window.__p = deleteIntlOrder(id); }, VS.O);
+  await page.evaluate(() => Promise.resolve(window.__p).catch(() => {}));
+  await settle(page, S, 1500);
+  const dl = S.log.slice(l0).filter(x => x.k === 'delete' && x.tid === T.ORDERS && x.id === VS.O).map(x => [x.status || 200, x.tok || null]);
+  ok(scn, 'one DELETE without a token (428), then ONE with ?confirm_token=tok-rig — never resent', JSON.stringify(dl) === JSON.stringify([[428, null], [200, 'tok-rig']]), dl);
+  ok(scn, 'the consequences were shown in words before the second DELETE', asked.some(t => /Αποσύρει 2 κομμάτια εθνικής πλευράς/.test(t) && /Σβήνει 4 στάσεις/.test(t)), asked);
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await page.context().close();
+}
+
 async function scnVs(browser, origin) {
   let scn = 'vs.assign';
   const { page, S } = await openBoard(browser, origin, { vs: true, mutate: vsWorld });
@@ -4233,7 +4422,7 @@ async function scnVs(browser, origin) {
       date: scnDate, keys: scnKeys, search: scnSearch, savefail: scnSaveFail, presence: scnPresence, conflict: scnConflict, fallback: scnFallback, styles: scnStyles,
       twins: scnTwins, queue: scnQueue, unread: scnUnread,
       print: scnPrint, shift: scnShift, late: scnLate, offline: scnOffline, quiet: scnQuiet, natmissing: scnNatMissing, done: scnDone, w1440: scnW1440, parity: scnParity,
-      vs: scnVs };
+      vs: scnVs, v5: scnV5, v5err: scnV5Err, vsform: scnVsForm, del428: scnDel428 };
     // A watchdog per scenario: one missing locator or one write that never
     // settles fails THAT scenario, closes its pages, and the run goes on.
     const WATCHDOG_MS = 360000;
