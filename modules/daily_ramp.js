@@ -797,8 +797,16 @@ function _rampMarkEdit() { _rampEditCooldownUntil = Date.now() + 10000; }  // 10
 function _rampInEditCooldown() { return Date.now() < _rampEditCooldownUntil; }
 
 function _rampSD(d){RAMP.date=d;renderDailyRamp();}
+// A v5 line (Ε14) is not a RAMP row: no write path may take its id, whatever calls it (a stale onclick, the
+// console). Born closed — the national desk changes it on the board.
+function _rampV5Refuse(id){
+  if(!String(id).startsWith('v5:')) return false;
+  toast('Η γραμμή v5 αλλάζει μόνο από το Εβδομαδιαίο Εθνικών','warn');
+  return true;
+}
 async function _rampSvF(id,fld,v){
   if(_rampBlockReadOnly()) return;
+  if(_rampV5Refuse(id)) return;
   _rampMarkEdit();
   try {
     await atSafePatch(TABLES.RAMP,id,{[fld]:v||null});
@@ -822,6 +830,7 @@ function _rampTimeHHMM(raw){
 }
 async function _rampSvTime(id,v){
   if(_rampBlockReadOnly()) return;
+  if(_rampV5Refuse(id)) return;
   // Mark edit cooldown so auto-refresh doesn't overwrite our optimistic update
   // before the indexed read reflects the change.
   _rampMarkEdit();
@@ -845,6 +854,7 @@ async function _rampSvTime(id,v){
 
 async function _rampDone(id,isIn){
   if(_rampBlockReadOnly()) return;
+  if(_rampV5Refuse(id)) return;
   const fields={'Status':'Done'};
   // isIn may arrive as boolean (direct call) or string 'true'/'false' (via onclick template literal).
   // Accept both so Stock Status is set reliably for inbound deliveries.
@@ -859,6 +869,9 @@ async function _rampDone(id,isIn){
     // Inbound (Παραλαβή) Done = goods received at Veroia (Loaded leg complete)
     //   For non-VS orders this also means the order has been loaded → 'In Transit'
     const r = RAMP.records.find(x=>x.id===id);
+    // core/ui.js has ONE #toast: a closing «Done ✓» painted green over the red «ΔΕΝ πέρασε» a sync failure had just
+    // shown (after day L, Q-10's 422 legacy_closed on a historic load). The row IS done; the failure stays on screen.
+    let syncFailed = false;
     if (r) {
       const orderId = getLinkId(r.fields['Order']);
       const natOrderId = getLinkId(r.fields['National Order']);
@@ -879,6 +892,7 @@ async function _rampDone(id,isIn){
           }
         } catch(e) {
           // Heard, not console.warn (audit 13/9): the ramp row is Done but the order stayed on its old status.
+          syncFailed = true;
           toast('Η ράμπα ολοκληρώθηκε αλλά η παραγγελία ΔΕΝ πέρασε σε μεταφορά', 'danger');
           if (typeof logError === 'function') logError(e, 'ramp done Order sync ' + orderId);
         }
@@ -897,6 +911,7 @@ async function _rampDone(id,isIn){
             }
           }
         } catch(e) {
+          syncFailed = true;
           toast('Η ράμπα ολοκληρώθηκε αλλά η εθνική παραγγελία ΔΕΝ πέρασε σε μεταφορά', 'danger');
           if (typeof logError === 'function') logError(e, 'ramp done NatOrder sync ' + natOrderId);
         }
@@ -936,19 +951,21 @@ async function _rampDone(id,isIn){
           // Silent console.warn hid this: the ramp row is Done but the load /
           // national order kept a stale status (spec national-load-source,
           // global constraint — every failure is heard).
+          syncFailed = true;
           toast('Η ράμπα ολοκληρώθηκε αλλά το φορτίο/η παραγγελία ΔΕΝ ενημερώθηκε', 'danger');
           if (typeof logError === 'function') logError(e, 'ramp done National Load sync ' + nlId);
         }
       }
     }
 
-    toast('Done ✓');
+    if (!syncFailed) toast('Done ✓');
     renderDailyRamp();
   } catch(e) { toast('Error','danger'); }
 }
 
 async function _rampRestore(id){
   if(_rampBlockReadOnly()) return;
+  if(_rampV5Refuse(id)) return;
   _rampMarkEdit();
   try {
     await atSafePatch(TABLES.RAMP,id,{'Plan Date':RAMP.date,'Postponed To':null});
@@ -963,6 +980,7 @@ async function _rampRestore(id){
 }
 async function _rampPostpone(id){
   if(_rampBlockReadOnly()) return;
+  if(_rampV5Refuse(id)) return;
   // Date arithmetic: anchor at noon to avoid DST off-by-one. 864e5 = 1 day in ms.
   // Guard: ensure RAMP.date is a valid YYYY-MM-DD string before computing tomorrow.
   if (!RAMP.date || !/^\d{4}-\d{2}-\d{2}$/.test(RAMP.date)) {

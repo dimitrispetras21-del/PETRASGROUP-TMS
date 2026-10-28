@@ -310,6 +310,19 @@ test('a cleared date input: no /plan/board?week=null, no strip', async () => {
   assert.ok(!S.content.innerHTML.includes('Οι εθνικές κινήσεις v5 δεν διαβάστηκαν'));
 });
 
+test('no write path takes a v5 id (Done, Postpone, Restore, time, field): nothing sent, a warn toast', async () => {
+  const { ctx, S } = load();
+  const toasts = []; ctx.toast = (m, t) => toasts.push(t + ': ' + m); ctx.invalidateCache = () => {};
+  await ctx.renderDailyRamp();
+  await ctx._rampDone('v5:stop:10:load', 'false');
+  await ctx._rampPostpone('v5:hub:40');
+  await ctx._rampRestore('v5:hub:40');
+  await ctx._rampSvTime('v5:stop:10:load', '10:00');
+  await ctx._rampSvF('v5:stop:10:load', 'Pallets', 3);
+  assert.deepStrictEqual(S.writes, []);
+  assert.strictEqual(toasts.filter(t => /Εβδομαδιαίο Εθνικών/.test(t)).length, 5, toasts);
+});
+
 test('CSV export carries the v5 lines with truck and driver names', async () => {
   const { ctx, S } = load();
   await ctx.renderDailyRamp();

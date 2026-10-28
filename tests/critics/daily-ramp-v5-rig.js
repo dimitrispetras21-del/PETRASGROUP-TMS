@@ -10,7 +10,8 @@
 //   node <tree>/tests/critics/daily-ramp-v5-rig.js [scenario…] [--shots <dir>]
 // Scenarios: before (after deploy 1: cutover_day null) · before404 (before deploy 1: no route — its one 404 resource
 //   line is plan-config's designed probe, stream c) · same (before = the pre-Ε14 tip's daily_ramp.js, byte for byte) ·
-//   after · warehouse · fail · noconfig
+//   after · warehouse · fail · noconfig · legacy (after deploy 2, a dispatcher marks a legacy NL loading Done: the
+//   Worker answers 422 legacy_closed (Q-10) — the Greek refusal shows, one PATCH, no retry; a v5 id writes nothing)
 // Exit: 0 all green · 1 a check failed.
 'use strict';
 const path = require('path');
@@ -54,6 +55,9 @@ const BOARD = {
   waiting: [{ piece_id: 50, kind: 'vs_export', pallets: 5, nat_from_location_id: 505, nat_to_location_id: HUB, nat_ready_day: '2026-11-01', nat_due_day: D, client: 'Πελάτης Κ', temperature_c: 3 }],
   notices: [],
 };
+const NL_T = 'tblVW42cZnfC47gTb';
+const CLOSED_MSG = 'Τα παλιά εθνικά φορτία είναι μόνο για ανάγνωση από την ημέρα L (rig)';
+const LEGACY_NL = { id: 'recRAMP00000002', createdTime: '2026-10-30T10:00:00.000Z', fields: { 'Plan Date': D, Time: '2026-11-02T06:00:00.000Z', Type: 'Φόρτωση', Status: 'Planned', Pallets: 12, 'Supplier/Client': 'Πελάτης Ο', 'Ramp Category': 'VS Simple', 'Is Veroia Switch': true, Notes: 'STOP:recSTOP0000000002', 'National Load': ['recNL0000000001'] } };
 const LEGACY = { id: 'recRAMP00000001', createdTime: '2026-10-30T10:00:00.000Z', fields: { 'Plan Date': D, Time: '2026-11-02T05:00:00.000Z', Type: 'Παραλαβή', Status: 'Planned', Pallets: 20, 'Supplier/Client': 'Πελάτης Δ', 'Ramp Category': 'VS Simple', 'Is Veroia Switch': true, Notes: 'STOP:recSTOP0000000001' } };
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.webmanifest': 'application/manifest+json' };
@@ -70,7 +74,7 @@ function serve() {
 
 // opts: config 'before'|'before404'|'after' · board object | 500 · role · withConfig (default true) · rampSrc (override daily_ramp.js)
 async function open(browser, origin, opts) {
-  const o = Object.assign({ config: 'after', board: BOARD, role: 'owner', withConfig: true }, opts);
+  const o = Object.assign({ config: 'after', board: BOARD, role: 'owner', withConfig: true, legacy: [LEGACY] }, opts);
   const ctx = await browser.newContext({ baseURL: origin + '/', viewport: { width: 1440, height: 1000 }, serviceWorkers: 'block', timezoneId: 'Europe/Athens', locale: 'el-GR' });
   const page = await ctx.newPage();
   await page.clock.setFixedTime(new Date(NOW));
@@ -120,10 +124,16 @@ async function open(browser, origin, opts) {
       return json(route, { error: { type: 'NOT_FOUND', code: 'no_route', message: 'rig' } }, 404);
     }
     if (/app-errors/.test(u.pathname)) { S.appErrors.push(rq.postData()); return json(route, { ok: true }); }
-    const mm = u.pathname.match(/\/v0\/[^/]+\/([A-Za-z_][A-Za-z0-9_]*)/);
+    const mm = u.pathname.match(/\/v0\/[^/]+\/([A-Za-z_][A-Za-z0-9_]*)(?:\/(rec[A-Za-z0-9]+))?/);
     if (mm) {
-      if (m !== 'GET') { S.facadeWrites.push(m + ' ' + mm[1] + ' ' + (rq.postData() || '')); return json(route, { id: 'recRIGNEW000001', fields: {} }); }
-      return json(route, { records: mm[1] === RAMP_T ? [LEGACY] : [] });
+      if (m !== 'GET') {
+        S.facadeWrites.push(m + ' ' + mm[1] + ' ' + (rq.postData() || ''));
+        // deploy 2 + Q-10: a legacy national load is closed to every role but the owner (stream b, 422 legacy_closed)
+        if (mm[1] === NL_T && o.role !== 'owner') return json(route, { error: { type: 'LEGACY_CLOSED', code: 'legacy_closed', message: CLOSED_MSG } }, 422);
+        return json(route, { id: mm[2] || 'recRIGNEW000001', fields: {} });
+      }
+      if (mm[2]) return json(route, { id: mm[2], createdTime: '2026-10-30T10:00:00.000Z', fields: mm[1] === NL_T ? { Status: 'Assigned' } : {} });
+      return json(route, { records: mm[1] === RAMP_T ? o.legacy : [] });
     }
     S.unknown.push(m + ' ' + u.pathname);
     return json(route, {});
@@ -178,7 +188,9 @@ const clean = async (scn, S, allow) => {
       if (main) {
         const a = await open(browser, origin, { config: 'before' });
         const b = await open(browser, origin, { config: 'before', rampSrc: main });
-        const ha = await content(a.page), hb = await content(b.page);
+        // the router appends .page-footer to #content after the module draws: when it lands is timing, not the module
+        const strip = h => h.replace(/<div class="page-footer">[\s\S]*?<\/div>\s*$/, '');
+        const ha = strip(await content(a.page)), hb = strip(await content(b.page));
         check('same', 'before L: #content identical to 5f55a943\'s daily_ramp.js', ha === hb, `${ha.length} vs ${hb.length}`);
         await clean('same(main)', b.S);
         await a.ctx.close(); await b.ctx.close();
@@ -212,6 +224,28 @@ const clean = async (scn, S, allow) => {
       const rest = S.consoleErrors.filter(t => !(own > 0 && /net::ERR_FAILED/.test(t) && own--));
       check('fail', 'console: the 500 resource line + that one [TMS ERROR], no script error', !S.pageErrors.length && rest.every(t => /status of 500|\[TMS ERROR\] planFetch GET \/plan\/board/.test(t)), rest.concat(S.pageErrors));
       if (OUT) await page.screenshot({ path: path.join(OUT, 'ramp-fail-1440.png'), fullPage: false });
+      await ctx.close();
+    }
+    if (on('legacy')) {
+      const { ctx, page, S } = await open(browser, origin, { config: 'after', role: 'dispatcher', legacy: [LEGACY, LEGACY_NL] });
+      await page.evaluate(() => { window.confirmAction = async () => true; });
+      await page.locator('.ramp-pair > div:nth-child(2) tbody tr', { hasText: 'Πελάτης Ο' }).getByRole('button', { name: 'Φορτώθηκε' }).click();
+      await page.waitForTimeout(2500);      // longer than _atRetry's first back-off (1 s): a retry would show here
+      const nlPatches = S.facadeWrites.filter(w => w.startsWith('PATCH ' + NL_T));
+      check('legacy', 'the RAMP row is marked Done (ramp is not frozen)', S.facadeWrites.some(w => w.startsWith('PATCH ' + RAMP_T) && /"Status":"Done"/.test(w)), S.facadeWrites);
+      check('legacy', 'exactly ONE PATCH of the national load — no retry after 422 legacy_closed', nlPatches.length === 1, nlPatches);
+      // two places: showErrorToast's container (the Worker's words, api.js) and the one #toast of core/ui.js (the ramp's own)
+      const toasts = await page.evaluate(() => ['tms-toast-container', 'toast'].map(id => (document.getElementById(id) || { innerText: '' }).innerText).join(' | '));
+      check('legacy', 'the Worker\'s Greek refusal is on screen', toasts.includes(CLOSED_MSG), toasts.slice(0, 300));
+      check('legacy', 'and the ramp says the load did NOT advance — not overwritten by a green «Done ✓»', /ΔΕΝ ενημερώθηκε/.test(toasts) && !/Done ✓/.test(toasts), toasts.slice(0, 300));
+      check('legacy', 'no script error', !S.pageErrors.length, S.pageErrors);
+      const logged = await S.logged();
+      check('legacy', 'the refusal is in the error log (not silent)', logged.some(l => l.includes(CLOSED_MSG)), logged);
+      const before = S.facadeWrites.length;
+      await page.evaluate(() => Promise.all([window._rampDone('v5:stop:10:load', 'false'), window._rampPostpone('v5:hub:40'), window._rampSvTime('v5:stop:10:load', '10:00')]));
+      await page.waitForTimeout(500);
+      check('legacy', 'a v5 id never reaches a write (Done / Postpone / time)', S.facadeWrites.length === before, S.facadeWrites.slice(before));
+      if (OUT) await page.screenshot({ path: path.join(OUT, 'ramp-legacy-closed-1440.png'), fullPage: false });
       await ctx.close();
     }
     if (on('noconfig')) {
