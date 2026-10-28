@@ -10,9 +10,9 @@ import { fileURLToPath } from 'node:url';
 import { buildDryRun } from './build-073-dryrun.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-// The folder that holds the 077 files: drafts/ until the owner runs them (CLAUDE.md rule 5), then one up - move the
-// files and change this line in the same commit, as 075 did.
-export const DIR = path.resolve(HERE, '..');
+// The folder that holds the 077 files. 077 was executed 28/10 and left drafts/ (CLAUDE.md rule 5): the source and the
+// generated files are one up, the builder stays here.
+export const DIR = path.resolve(HERE, '..', '..');
 export const SOURCE = '077_plan_order_edit.sql';
 const SIG = 'public.plan_order_update(jsonb,text,text)';
 const md5Of = (sig) => `(SELECT md5(prosrc) FROM pg_proc WHERE oid = '${sig}'::regprocedure)`;
