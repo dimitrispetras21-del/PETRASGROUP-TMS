@@ -25,9 +25,10 @@
   // F1 (owner 28/10): a stop entered without a window is its whole day; the driver reads «όλη η ημέρα», never an hour
   // nobody agreed. The rule is WN5L.allDay (one rule, core/wn5-logic.js); without it the hours are printed as they are.
   const _hmWin = (a, b) => (typeof WN5L !== 'undefined' && WN5L.allDay(a, b) ? 'όλη η ημέρα' : `${_hm(a)}–${_hm(b)}`);
-  const _pal = (n) => String(Math.round((Number(n) || 0) * 10) / 10).replace('.', ',');
-  // F1/F4 (080): the driver reads «;» for pallets not known yet and «12+;» for a sum with such pieces — never 0
-  const _palU = (n, unk) => WN5L.palText(n, unk);   // one rule: core/wn5-logic.js, loaded before this file
+  // F1/F4 (080): the driver reads «;» for pallets not known yet and «12+;» for a sum with such pieces — never 0.
+  // One rule: core/wn5-logic.js, loaded before this file. Without it the sheet says «;» rather than a number it cannot
+  // vouch for (a sheet printed as «0π» would send a driver out with a wrong load).
+  const _palU = (n, unk) => (typeof WN5L !== 'undefined' && WN5L.palText ? WN5L.palText(n, unk) : ';');
   const _unk = (legs) => legs.filter((l) => l.pallets == null).length;
   const _temp = (ts, sp) => (ts.length ? ts.slice().sort((a, b) => a - b).map((t) => (t > 0 ? '+' : '') + t).join(sp ? ' / ' : '/') + (sp ? ' °C' : '°C') : '—');
   const _dash = (v) => (v == null || String(v).trim() === '' ? '—' : String(v));

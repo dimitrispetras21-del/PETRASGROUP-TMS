@@ -344,16 +344,17 @@ BEGIN
     RAISE EXCEPTION '080: B-54 red_value is not the live trigger count % - re-measure', v_trg0;
   END IF;
   -- today's v5 money, before: every share and every v5 cycle's revenue that 080 must not move - all of them on the
-  -- first run (no v5 order lacks a price or pallets: both were refused). After a rollback and a second run the orders
-  -- left without a price stay out of it (their share is 0 under 073's text, NULL under 080's: by design).
+  -- first run (plan_* refused an order without price or pallets; a stock-lot order without price reads 0 under 073
+  -- AND under 080, so it stays IN the proof). After a rollback and a second run the plain orders left without a price
+  -- stay out of it (their share is 0 under 073's text, NULL under 080's: by design).
   SELECT count(*) || ':' || md5(coalesce(string_agg(to_jsonb(x)::text, '|' ORDER BY x.piece_id, x.leg_id), '')) INTO v_fp0
     FROM public.ct_v_v5_revenue x
-   WHERE x.nat_order_id IS NULL OR x.nat_order_id NOT IN (SELECT id FROM public.national_orders WHERE price IS NULL);
+   WHERE x.nat_order_id IS NULL OR x.nat_order_id NOT IN (SELECT id FROM public.national_orders WHERE price IS NULL AND stock_lot_id IS NULL);
   SELECT v_fp0 || '/' || count(*) || ':' || md5(coalesce(string_agg(to_jsonb(r)::text, '|' ORDER BY r.rt_id), '')) INTO v_fp0
     FROM public.ct_v_rt_revenue r WHERE r.rt_id IN (SELECT l.rt_id FROM public.piece_legs l)
      AND r.rt_id NOT IN (SELECT l.rt_id FROM public.piece_legs l JOIN public.shipment_pieces sp ON sp.id = l.piece_id
                           JOIN public.shipments sh ON sh.id = sp.shipment_id JOIN public.national_orders o ON o.id = sh.nat_order_id
-                         WHERE o.price IS NULL);
+                         WHERE o.price IS NULL AND o.stock_lot_id IS NULL);
 
   -- ===== PART 1: SCHEMA (unknown pallets = NULL, only on a root piece never split) =====
   ALTER TABLE public.shipment_pieces ALTER COLUMN pallets DROP NOT NULL;
@@ -460,12 +461,12 @@ BEGIN
   -- no v5 order is without price or pallets before 080 (both were refused): today's money does not move
   SELECT count(*) || ':' || md5(coalesce(string_agg(to_jsonb(x)::text, '|' ORDER BY x.piece_id, x.leg_id), '')) INTO v_fp1
     FROM public.ct_v_v5_revenue x
-   WHERE x.nat_order_id IS NULL OR x.nat_order_id NOT IN (SELECT id FROM public.national_orders WHERE price IS NULL);
+   WHERE x.nat_order_id IS NULL OR x.nat_order_id NOT IN (SELECT id FROM public.national_orders WHERE price IS NULL AND stock_lot_id IS NULL);
   SELECT v_fp1 || '/' || count(*) || ':' || md5(coalesce(string_agg((to_jsonb(r) - 'revenue_missing')::text, '|' ORDER BY r.rt_id), '')) INTO v_fp1
     FROM public.ct_v_rt_revenue r WHERE r.rt_id IN (SELECT l.rt_id FROM public.piece_legs l)
      AND r.rt_id NOT IN (SELECT l.rt_id FROM public.piece_legs l JOIN public.shipment_pieces sp ON sp.id = l.piece_id
                           JOIN public.shipments sh ON sh.id = sp.shipment_id JOIN public.national_orders o ON o.id = sh.nat_order_id
-                         WHERE o.price IS NULL);
+                         WHERE o.price IS NULL AND o.stock_lot_id IS NULL);
   IF v_fp1 IS DISTINCT FROM v_fp0 THEN
     RAISE EXCEPTION '080 proof: the v5 money moved (% -> %)', v_fp0, v_fp1;
   END IF;

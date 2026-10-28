@@ -574,7 +574,7 @@
       if (!same) { lines.push(Object.assign({}, x, { clients: x.clients.slice() })); continue; }
       same.clients.push(x.clients[0]);
       // F1: an unknown (null) keeps the known sum and is said «+;»; a typo (NaN) still reads «—»
-      same.unk = (same.unk || same.pal === null ? 1 : 0) + (x.pal === null ? 1 : 0);
+      same.unk = (same.unk || (same.pal === null ? 1 : 0)) + (x.pal === null ? 1 : 0);
       same.pal = Number.isNaN(same.pal) || Number.isNaN(x.pal) ? NaN : (same.pal || 0) + (x.pal || 0);
     }
     // whole names, never a first word (DESIGN.md #6): Figma's «Zeta, Kappa» shortens, a shortened name can mislead
@@ -588,7 +588,7 @@
       `<div class="wn5f-sum-h"><b>${n} ${n === 1 ? 'παραγγελία θα δημιουργηθεί' : 'παραγγελίες θα δημιουργηθούν'} · ${SIDE_GR[dir]}${DAY.test(day) ? ' · ' + _esc(_dlab(day)) : ''} · ${_esc(where)}</b><b>${_palU(total, totalUnk)}/33 παλέτες</b></div>`
       + (n > 1 ? `<div class="wn5f-sum-c">${_esc(cli.concat(['κάθε παραγγελία τιμολογείται χωριστά']).join('   ·   '))}</div>` : '')
       + `<div class="wn5f-sec">ΣΕΙΡΑ ΣΤΑΣΕΩΝ ΚΑΤΑ ΩΡΑ</div><ol class="wn5f-seq">`
-      + lines.map((x, i) => `<li><span class="wn5f-seq-n">${i + 1}</span><span class="wn5f-seq-w">${_esc(x.when)}</span><span class="wn5f-seq-a">${x.act}</span><span class="wn5f-seq-p">${_esc(x.place || '—')}</span><span class="wn5f-seq-c">${_esc(who(x))}</span><span class="wn5f-seq-q">${x.pal === null || x.unk ? _palU(x.pal || 0, x.unk || 1) + 'π' : Number.isFinite(x.pal) ? _pal(x.pal) + 'π' : '—'}</span></li>`).join('')
+      + lines.map((x, i) => `<li><span class="wn5f-seq-n">${i + 1}</span><span class="wn5f-seq-w">${_esc(x.when)}</span><span class="wn5f-seq-a">${x.act}</span><span class="wn5f-seq-p">${_esc(x.place || '—')}</span><span class="wn5f-seq-c">${_esc(who(x))}</span><span class="wn5f-seq-q">${Number.isNaN(x.pal) ? '—' : x.pal === null || x.unk ? _palU(x.pal || 0, x.unk || 1) + 'π' : Number.isFinite(x.pal) ? _pal(x.pal) + 'π' : '—'}</span></li>`).join('')
       + `</ol><div class="wn5f-note wn5f-sum-n">Θα γραφτούν σε μία συναλλαγή: ${n} ${n === 1 ? 'παραγγελία' : 'παραγγελίες'} → ${ships} ${ships === 1 ? 'αποστολή' : 'αποστολές'} → στάσεις στην ${SIDE_ACC[dir]}${DAY.test(day) ? ' ' + _esc(_dlab(day)) : ''} (${_esc(where)}). Χωρίς βήμα ένωσης.</div>`;
     f.el.querySelector('[data-act="add-order"]').hidden = f.mode !== 'groupage';
     f.el.querySelectorAll('[data-act="del-order"]').forEach((b) => { b.hidden = f.mode !== 'groupage' || n < 2; });
@@ -683,7 +683,8 @@
     const w = (board.waiting || []).filter((x) => x.nat_order_id === id)
       .concat((board.hub || []).filter((x) => x.nat_order_id === id).map((x) => Object.assign({}, x, { nat_from_location_id: hubId })));
     const legs = [];
-    for (const c of board.cycles || []) for (const s of c.stops || []) for (const l of s.legs || []) if (l.nat_order_id === id) legs.push(l);
+    // the stop's place goes with the leg: a riding shipment of unknown pallets is named by its stops (_ridingUnknown)
+    for (const c of board.cycles || []) for (const s of c.stops || []) for (const l of s.legs || []) if (l.nat_order_id === id) legs.push(Object.assign({}, l, { _place: s.location || null }));
     if (!w.length && !legs.length) return null;
     const any = w[0] || legs[0];
     const has = (x) => !!x && Object.prototype.hasOwnProperty.call(x, 'price');
@@ -728,7 +729,10 @@
     for (const l of legs) {
       if (l.act !== 'load' || l.pallets != null || l.shipment_id == null || seen.has(l.shipment_id)) continue;
       seen.add(l.shipment_id);
-      out.push({ shipment_id: l.shipment_id, origin: null, dest: null, pallets: null, riding: true });
+      // named by its stops, as the card names it: two riding shipments of one order are never two bare numbers
+      const un = legs.find((x) => x.act === 'unload' && x.shipment_id === l.shipment_id);
+      out.push({ shipment_id: l.shipment_id, origin: null, dest: null, pallets: null, riding: true,
+        from: l._place, to: un ? un._place : null });
     }
     return out;
   }
@@ -742,17 +746,21 @@
       const lf = t(s.load_from), lt = t(s.load_to), df = t(s.deliver_from), dt = t(s.deliver_to);
       // F1: a riding shipment of unknown pallets: its pallets only (windows locked as for any riding load)
       if (s.riding) {
-        return `<div class="wn5f-ship" data-ship="${s.shipment_id}" data-ride="1"><span>αποστολή #${_esc(s.shipment_id)} · σε κύκλο · παλέτες άγνωστες</span>`
+        const route = s.from || s.to ? `${_esc(s.from || '—')} → ${_esc(s.to || '—')} · ` : '';
+        return `<div class="wn5f-ship" data-ship="${s.shipment_id}" data-ride="1"><span>${route}αποστολή #${_esc(s.shipment_id)} · σε κύκλο · παλέτες άγνωστες</span>`
           + `${_editDay('lday', '', ' disabled')}<input ${HM_INPUT} disabled><input ${HM_INPUT} disabled>`
           + `${_editDay('dday', '', ' disabled')}<input ${HM_INPUT} disabled><input ${HM_INPUT} disabled>`
           + `<input class="form-input" data-f="pal" inputmode="decimal" value="" placeholder="άγνωστες"></div>`;
       }
-      return `<div class="wn5f-ship" data-ship="${s.shipment_id}"><span>${_esc(_placeName(s.origin))} → ${_esc(_placeName(s.dest))}</span>`
+      // F1 (code review xhigh r2): an order partly on a cycle locks its waiting rows too — but a waiting shipment of
+      // unknown pallets keeps its pallets open (data-ride: pallets only), or nothing on the page could write them
+      const palOpen = e.riding && s.pallets == null;
+      return `<div class="wn5f-ship" data-ship="${s.shipment_id}"${palOpen ? ' data-ride="1"' : ''}><span>${_esc(_placeName(s.origin))} → ${_esc(_placeName(s.dest))}</span>`
         // the create form's fields (2011:9704): a day with its weekday label, ΗΗ:ΛΛ text — the native time input is
         // 12-hour in el-GR and cut in its cell (_hmNorm note)
         + `${_editDay('lday', lf.day, ro)}<input ${HM_INPUT} data-f="lfrom" value="${lf.hm}"${ro}><input ${HM_INPUT} data-f="lto" value="${lt.hm}"${ro}>`
         + `${_editDay('dday', df.day, ro)}<input ${HM_INPUT} data-f="dfrom" value="${df.hm}"${ro}><input ${HM_INPUT} data-f="dto" value="${dt.hm}"${ro}>`
-        + `<input class="form-input" data-f="pal" inputmode="decimal" value="${_esc(s.pallets)}" placeholder="${s.pallets == null ? 'άγνωστες' : ''}"${ro}></div>`;
+        + `<input class="form-input" data-f="pal" inputmode="decimal" value="${_esc(s.pallets)}" placeholder="${s.pallets == null ? 'άγνωστες' : ''}"${palOpen ? '' : ro}></div>`;
     }).join('');
     return `<div class="wn5f-grid4">`
       + `<div class="wn5f-f"><span>Πελάτης</span><span class="wn5f-ro">${_esc(e.client || '—')}</span></div>`

@@ -5,7 +5,10 @@
 -- NULL back, B-100 out of the catalog (results removed, open incidents closed). REFUSES while a national shipment or a
 -- piece has unknown pallets (071 would refuse them): write the pallets first (B-100 lists the live ones); a DELETED row
 -- with unknown pallets is history (never given a made-up number): then no rollback, fixes forward. Prices left
--- NULL stay NULL (the user's data; B-90 lists them). Only with an explicit yes, after 15:00. ASCII. ONE DO block.
+-- NULL stay NULL (the user's data; B-90 lists them) - BUT after this rollback the P&L reads them as 0 again (073's
+-- COALESCE) and can no longer flag them: v5_revenue_missing is gone, so the page shows such a cycle's net as complete.
+-- Write those prices first (B-90), or tell the owner which cycles read low. Only with an explicit yes, after 15:00.
+-- ASCII. ONE DO block.
 -- EXPECTED: NOTICE "080 ROLLBACK OK".
 DO $do$
 DECLARE

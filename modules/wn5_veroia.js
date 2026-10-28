@@ -22,10 +22,6 @@
   const CHEV = '<svg class="wn5-hub-chev" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 9L7.5 6L4.5 3" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   let _open = false;                    // survives a re-read: after «Σπάσε» the panel comes back open
 
-  const _num = (n) => (typeof n === 'number' && isFinite(n) ? n : 0);
-  const _sumP = (list) => list.reduce((s, x) => s + _num(x.pallets), 0);
-  // F1/F4 (080): «12+;» — the known pallets and the pieces whose pallets are not known yet, never added as 0
-  const _palL = (list) => WN5L.palText(_sumP(list), list.filter((x) => x.pallets == null).length);
   const _wd = (ymd) => K().dayShort(ymd).split(' ')[0];                  // «Τρί» (Figma: the weekday, no date, in a row)
   // «φεύγει ως [Τετ] 22:00»: the day is left out when it is the panel's own day (Figma 2011:7745 Theta Berries)
   const _leaveWord = (ymd, day) => (ymd === day ? '' : _wd(ymd) + ' ') + '22:00';
@@ -90,9 +86,13 @@
     const split = hub.split || [], stock = hub.stock || [];
     const day = _hubDay(model);
     const trucks = day ? _trucks(day) : [];
+    // F1/F4 (080): «12+;» — the known pallets and the pieces whose pallets are not known yet, never added as 0; the
+    // model counts both (hub.pallets), the panel only says them
+    const P = hub.pallets || {};
+    const palS = WN5L.palText(P.split, P.splitUnknown), palK = WN5L.palText(P.stock, P.stockUnknown);
     // the summary drops a part that is zero (Δ11 header: «· απόθεμα 17π», no «για μοίρασμα»)
-    const sum = [split.length ? split.length + ' για μοίρασμα · ' + _palL(split) + 'π' : null,
-      stock.length ? 'απόθεμα ' + _palL(stock) + 'π' : null].filter(Boolean).join(' · ');
+    const sum = [split.length ? split.length + ' για μοίρασμα · ' + palS + 'π' : null,
+      stock.length ? 'απόθεμα ' + palK + 'π' : null].filter(Boolean).join(' · ');
     const dayTxt = day ? k.dayShort(day) : '—';
     if (!_open) {
       // the closed line names what waits to be split (Figma 2011:7934), not the stock
@@ -110,8 +110,8 @@
     const load = trucks.length ? trucks.length + (trucks.length === 1 ? ' φορτηγό φορτώνει' : ' φορτηγά φορτώνουν') + span : '';
     const rest = [sum, load].filter(Boolean).join(' · ');
     let left = '';
-    if (split.length) left += '<div class="wn5-grp-h wn5-hub-gh">ΓΙΑ ΜΟΙΡΑΣΜΑ · ' + split.length + ' · ' + k.esc(_palL(split)) + 'π</div>' + split.map((h) => _itemHTML(h, false, day)).join('');
-    if (stock.length) left += '<div class="wn5-grp-h wn5-hub-gh">ΑΠΟΘΕΜΑ · ' + stock.length + ' · ' + k.esc(_palL(stock)) + 'π</div>' + stock.map((h) => _itemHTML(h, true, day)).join('');
+    if (split.length) left += '<div class="wn5-grp-h wn5-hub-gh">ΓΙΑ ΜΟΙΡΑΣΜΑ · ' + split.length + ' · ' + k.esc(palS) + 'π</div>' + split.map((h) => _itemHTML(h, false, day)).join('');
+    if (stock.length) left += '<div class="wn5-grp-h wn5-hub-gh">ΑΠΟΘΕΜΑ · ' + stock.length + ' · ' + k.esc(palK) + 'π</div>' + stock.map((h) => _itemHTML(h, true, day)).join('');
     const dd = day ? DOW_UP[k.dow(day)] + ' ' + k.dm(day) : '—';
     let right = '<div class="wn5-grp-h wn5-hub-gh">ΦΟΡΤΗΓΑ ' + k.esc(dd) + ' · χωρητικότητα</div>';
     if (!trucks.length) right += '<p class="wn5-none wn5-hub-none">κανένα φορτηγό δεν φορτώνει στη Βέροια αυτή την ημέρα</p>';

@@ -571,6 +571,8 @@ function _rampDraw() {
   // F1/F4 (080): v5 lines whose pallets are not all known (_palText): the sums are a floor and say «+;», never complete
   const inUnk=inb.some(r=>r.fields['_palText']), outUnk=out.some(r=>r.fields['_palText']);
   const unkTag=(u)=>u?'+;':'';
+  // the net with unknowns is not a floor: unknown IN pieces raise it, unknown OUT pieces lower it — «+;», «−;», «±;»
+  const netTag=inUnk&&outUnk?'±;':inUnk?'+;':outUnk?'−;':'';
   const total=recs.length;
   const done=recs.filter(r=>r.fields['Status']==='Done').length;
   const stockPal=RAMP.stock.reduce((s,r)=>s+(r.fields['Pallets']||0),0);
@@ -637,7 +639,7 @@ function _rampDraw() {
       <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('arrow_up_right', 11)} Εξερχόμενα σήμερα</div>
         <div><span class="ramp-kpi-val" style="color:var(--panel-accent)">-${outPal}${unkTag(outUnk)}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
       <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('activity', 11)} Καθαρό σήμερα</div>
-        <div><span class="ramp-kpi-val" style="color:${net>=0?'var(--panel-ok)':'var(--panel-bad)'}">${net>=0?'+':''}${net}${inUnk||outUnk?' ;':''}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
+        <div><span class="ramp-kpi-val" style="color:${net>=0?'var(--panel-ok)':'var(--panel-bad)'}">${net>=0?'+':''}${net}${netTag}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
       <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('package', 11)} Σύνολο αποθέματος</div>
         <div><span class="ramp-kpi-val" style="color:var(--panel-warn)">${stockPal}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
     </div>

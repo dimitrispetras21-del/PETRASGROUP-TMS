@@ -231,20 +231,28 @@ async function scnNoPP({ browser, origin, ok, scn }) {
   // «Επεξεργασία» opens the pallets of that shipment (only), one PATCH with them; before, no field reached them
   const b = K.week();
   for (const st of b.cycles[1].stops) for (const l of st.legs) Object.assign(l, { pallets: null, shipment_id: 5303, price: null });
+  // code review xhigh r2: the same order also has a WAITING shipment of unknown pallets (an order partly on a cycle):
+  // its windows stay locked as for any riding order, its pallets open — before, nothing on the page reached them
+  b.waiting.push(Object.assign(K.clone(b.waiting[0]), { piece_id: 9904, shipment_id: 5304, nat_order_id: 3003, pallets: null, price: null, reference: 'N-T003' }));
   const plan = { 'PATCH /plan/orders/3003': () => [200, { ok: true, op: 'plan_order_update', dry_run: false, ids: { nat_order_id: 3003, shipment_ids: [] }, warnings: [], notice_ids: [] }] };
   const p2 = await K.openApp(browser, origin, { board: b, plan });
   await openForm(p2.page, { natOrderId: 3003 });
   const ride = await p2.page.evaluate((d) => { const r = document.querySelector(`${d} [data-ship="5303"][data-ride="1"]`); if (!r) return null;
     const pal = r.querySelector('[data-f="pal"]'); const pr = document.querySelector(`${d} [data-f="price"]`);
-    return { label: r.textContent, palOn: !!pal && !pal.disabled, pricePh: pr && pr.placeholder, note: document.querySelector(d).innerText.includes('δεν έχει ακόμη τιμή') }; }, DLG);
-  ok(scn, 'edit of a riding order of unknown pallets: «αποστολή #5303 · σε κύκλο · παλέτες άγνωστες», its pallets open; price «λείπει»',
-    !!ride && ride.palOn && /παλέτες άγνωστες/.test(ride.label) && ride.pricePh === 'λείπει' && ride.note, ride);
+    const w = document.querySelector(`${d} [data-ship="5304"]`); const wp = w && w.querySelector('[data-f="pal"]'); const wl = w && w.querySelector('[data-f="lfrom"]');
+    return { label: r.textContent, palOn: !!pal && !pal.disabled, pricePh: pr && pr.placeholder, note: document.querySelector(d).innerText.includes('δεν έχει ακόμη τιμή'),
+      wait: w ? { ride: w.dataset.ride, palOn: !!wp && !wp.disabled, winOff: !!wl && wl.disabled } : null }; }, DLG);
+  ok(scn, 'edit of a riding order of unknown pallets: «ATHENS TEST → ΒΕΡΟΙΑ TEST · αποστολή #5303 · σε κύκλο · παλέτες άγνωστες», its pallets open; price «λείπει»',
+    !!ride && ride.palOn && /ATHENS TEST → ΒΕΡΟΙΑ TEST · αποστολή #5303 · σε κύκλο · παλέτες άγνωστες/.test(ride.label) && ride.pricePh === 'λείπει' && ride.note, ride);
+  ok(scn, 'the same order\'s WAITING shipment of unknown pallets: pallets open, windows locked (partly on a cycle)',
+    !!ride && !!ride.wait && ride.wait.ride === '1' && ride.wait.palOn && ride.wait.winOff, ride && ride.wait);
   await p2.page.fill(`${DLG} [data-ship="5303"] [data-f="pal"]`, '10').catch(() => {});
+  await p2.page.fill(`${DLG} [data-ship="5304"] [data-f="pal"]`, '4').catch(() => {});
   await save(p2.page);
   await p2.page.waitForTimeout(1200);
   const pt = K.planOf(p2.S, 'PATCH', '/plan/orders/3003');
-  ok(scn, 'one PATCH /plan/orders/3003 {shipments:[{shipment_id:5303, pallets:10}]} — the pallets only, no window', pt.length === 1
-    && JSON.stringify(pt[0].body) === JSON.stringify({ shipments: [{ shipment_id: 5303, pallets: 10 }] }), pt.map((x) => x.body));
+  ok(scn, 'one PATCH /plan/orders/3003 {shipments:[{5304, pallets:4}, {5303, pallets:10}]} — the pallets only, no window', pt.length === 1
+    && JSON.stringify(pt[0].body) === JSON.stringify({ shipments: [{ shipment_id: 5304, pallets: 4 }, { shipment_id: 5303, pallets: 10 }] }), pt.map((x) => x.body));
   ok(scn, 'edit: no page errors', !p2.S.pageErrors.length, p2.S.pageErrors);
   await p2.page.context().close();
 }
