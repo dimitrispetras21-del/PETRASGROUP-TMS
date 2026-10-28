@@ -15,14 +15,16 @@ BEGIN
   DELETE FROM monitoring.checks WHERE id IN ('B-95', 'B-96', 'B-97', 'B-98', 'B-99');
   UPDATE monitoring.checks SET sql_text = $m$SELECT count(*) FROM ct_round_trips WHERE status='planned' AND date_end < current_date-14$m$,
          ids_sql = NULL, exceptions = NULL WHERE id = 'B-10';
-  IF (SELECT md5(sql_text) <> '0e5b6dfe36d29383bcb8f6413edf1fa8' OR md5(coalesce(ids_sql, '')) <> 'd41d8cd98f00b204e9800998ecf8427e' FROM monitoring.checks WHERE id = 'B-10') THEN
+  IF (SELECT md5(sql_text) <> '0e5b6dfe36d29383bcb8f6413edf1fa8' OR md5(coalesce(ids_sql, '')) <> 'd41d8cd98f00b204e9800998ecf8427e'
+             OR md5(coalesce(exceptions, '')) <> 'd41d8cd98f00b204e9800998ecf8427e' FROM monitoring.checks WHERE id = 'B-10') THEN
     RAISE EXCEPTION '074b rollback proof: B-10 is not back to its live text';
   END IF;
   UPDATE monitoring.checks SET sql_text = $m$SELECT count(*) FROM orders o WHERE o.deleted_at IS NULL AND o.veroia_switch AND o.status<>'Cancelled' AND o.created_at < now()-interval '15 minutes'
  AND NOT EXISTS (SELECT 1 FROM national_loads nl WHERE nl.source_order_id=o.id AND nl.deleted_at IS NULL)$m$,
          ids_sql = $m$SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM (SELECT o.legacy_id AS x FROM orders o WHERE o.deleted_at IS NULL AND o.veroia_switch AND o.status<>'Cancelled' AND o.created_at < now()-interval '15 minutes'
  AND NOT EXISTS (SELECT 1 FROM national_loads nl WHERE nl.source_order_id=o.id AND nl.deleted_at IS NULL) LIMIT 50) s$m$, exceptions = NULL WHERE id = 'B-26';
-  IF (SELECT md5(sql_text) <> '899625b6164282e371edf6514056a320' OR md5(coalesce(ids_sql, '')) <> '20aa1cc0a7b3589e21e3fb6c872ecd55' FROM monitoring.checks WHERE id = 'B-26') THEN
+  IF (SELECT md5(sql_text) <> '899625b6164282e371edf6514056a320' OR md5(coalesce(ids_sql, '')) <> '20aa1cc0a7b3589e21e3fb6c872ecd55'
+             OR md5(coalesce(exceptions, '')) <> 'd41d8cd98f00b204e9800998ecf8427e' FROM monitoring.checks WHERE id = 'B-26') THEN
     RAISE EXCEPTION '074b rollback proof: B-26 is not back to its live text';
   END IF;
   UPDATE monitoring.checks SET sql_text = $m$SELECT count(*) FROM national_orders n WHERE n.deleted_at IS NULL AND coalesce(n.status,'')<>'Cancelled' AND n.created_at < now()-interval '15 minutes'
@@ -31,7 +33,8 @@ BEGIN
          ids_sql = $m$SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM (SELECT n.legacy_id AS x FROM national_orders n WHERE n.deleted_at IS NULL AND coalesce(n.status,'')<>'Cancelled' AND n.created_at < now()-interval '15 minutes'
  AND NOT EXISTS (SELECT 1 FROM national_loads l WHERE l.source_national_order_id=n.id AND l.deleted_at IS NULL)
  AND NOT EXISTS (SELECT 1 FROM groupage_lines g WHERE g.national_order_id=n.id AND g.deleted_at IS NULL) LIMIT 50) s$m$, exceptions = convert_from(decode('bmF0aW9uYWxfb3JkZXJzIM6szrTOtc65zr8gPSDOo86pzqPOpM6fICjPhM6/IFZTIM6zz4HOrM+GzrXOuSDOus6xz4TOtc+FzrjOtc6vzrHOvSDPg8+Ezr8gbmF0aW9uYWxfbG9hZHMsIDIzLzgpwrcgQ2FuY2VsbGVkLg==', 'base64'), 'UTF8') WHERE id = 'B-42';
-  IF (SELECT md5(sql_text) <> '29fef6876cdeda2b25e531bb6693495b' OR md5(coalesce(ids_sql, '')) <> '6e88921da3057da28783439850771dd2' FROM monitoring.checks WHERE id = 'B-42') THEN
+  IF (SELECT md5(sql_text) <> '29fef6876cdeda2b25e531bb6693495b' OR md5(coalesce(ids_sql, '')) <> '6e88921da3057da28783439850771dd2'
+             OR md5(coalesce(exceptions, '')) <> '4f28a64e1f2accab2c24634dcab1dfbf' FROM monitoring.checks WHERE id = 'B-42') THEN
     RAISE EXCEPTION '074b rollback proof: B-42 is not back to its live text';
   END IF;
   IF EXISTS (SELECT 1 FROM monitoring.checks WHERE id IN ('B-95', 'B-96', 'B-97', 'B-98', 'B-99')) THEN

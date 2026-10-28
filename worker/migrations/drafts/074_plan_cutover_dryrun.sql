@@ -200,16 +200,23 @@ $f$;
 
   -- Legs that go because the international changed (day, pallets, stop, VS off): the steps of plan_delete (072 B4,
   -- with 072b's handover cut), in its lock order - the cycles by id first. Q-4 (owner 28/10, (a)): a cycle left
-  -- empty is cancelled ONLY without money (payroll with amounts, cost lines); with money it stays empty, the
+  -- empty is cancelled ONLY without money (payroll with amounts, cost lines, a local loading); with money it stays empty, the
   -- national desk is told, B-82 shows it, and the desk decides with the Cleanup list. Money never goes silently.
   CREATE FUNCTION public.plan_h_bridge_drop(p_legs bigint[], p_reason text, p_actor text, p_role text) RETURNS void
     LANGUAGE plpgsql SET search_path = public AS $f$
-declare v_rts bigint[]; v_full jsonb; v_stops bigint[]; v_leg bigint; v_rt bigint;
+declare v_rts bigint[]; v_full jsonb; v_stops bigint[]; v_leg bigint; v_rt bigint; v_docs bigint[];
 begin
   if coalesce(cardinality(p_legs), 0) = 0 then return; end if;
+  -- plan B2: the international's transaction already holds its orders / order_stops row and comes here for the
+  -- cycles, the reverse of every plan_* (cycles first). A bounded wait: 55P03 (or the deadlock detector's 40P01)
+  -- reaches the Worker as busy_retry, never an endless save. Set only when the caller set none.
+  if current_setting('lock_timeout') in ('0', '') then perform set_config('lock_timeout', '5s', true); end if;
   select coalesce(array_agg(distinct rt_id), '{}') into v_rts from piece_legs where id = any (p_legs);
   perform 1 from ct_round_trips c where c.id = any (v_rts) order by c.id for no key update;
   v_full := plan_h_drop_consequences(p_legs, null);
+  -- Q-4: a local loading is a document too (its TOPIKO line); read it before the sweep takes it with its stop
+  select coalesce(array_agg(distinct s.rt_id), '{}') into v_docs from local_moves lm join rt_stops s on s.id = lm.rt_stop_id
+   where s.rt_id = any (v_rts) and lm.move_kind = 'nat_loading' and lm.deleted_at is null and lm.status <> 'Cancelled';
   select coalesce(array_agg(distinct q), '{}') into v_stops
     from piece_legs l, unnest(array[l.pickup_stop_id, l.drop_stop_id]) q where l.id = any (p_legs);
   foreach v_leg in array p_legs loop
@@ -220,7 +227,7 @@ begin
   foreach v_rt in array v_rts loop
     if exists (select 1 from piece_legs where rt_id = v_rt and deleted_at is null) then
       perform plan_h_reseq(v_rt, p_actor, p_role);
-    elsif plan_h_rt_consequences(v_rt) = '[]'::jsonb then
+    elsif not (v_rt = any (v_docs)) and plan_h_rt_consequences(v_rt) = '[]'::jsonb then
       perform plan_h_rt_cancel_if_empty(v_rt, p_reason, p_actor, p_role);
     else
       -- "O kyklos %s adeiase alla echei misthodosia i exoda: den akyrothike, apofasi ston Katharismo"
@@ -447,6 +454,12 @@ begin
     end if;
   end loop;
   if v_new > 0 then
+    -- an old national load that already DELIVERED is history (Q-10): an old VS moved onto day L or later after the
+    -- fact (a date correction) is refused by name instead of deleting what happened (principle 1); the owner fixes it
+    if exists (select 1 from national_loads where source_order_id = p_order and source_type = 'Direct' and deleted_at is null
+                 and (status = 'Delivered' or actual_delivery_date is not null)) then
+      perform plan_h_raise('legacy_executed', p_order::text);
+    end if;
     select coalesce(reference, id::text) into v_ref from orders where id = p_order;
     for nl in update national_loads set deleted_at = now()
                where source_order_id = p_order and source_type = 'Direct' and deleted_at is null
@@ -493,6 +506,13 @@ declare v_sh bigint; v_o orders%rowtype;
 begin
   if plan_cutover_day() is null then return null; end if;
   if new.order_id is null and (tg_op = 'INSERT' or old.order_id is null) then return null; end if;
+  -- the common case first, as plan_bridge_on_order: a stop of an order that is not a VS and has no bridge, written
+  -- without via_hub, is not the bridge's (a non-VS stop WITH via_hub is set back by the sync, B-99's rule)
+  if (tg_op = 'INSERT' or old.order_id is not distinct from new.order_id) and not new.via_hub
+     and not exists (select 1 from orders o where o.id = new.order_id and o.veroia_switch)
+     and not exists (select 1 from shipments s where s.order_id = new.order_id and s.deleted_at is null) then
+    return null;
+  end if;
   if tg_op = 'UPDATE' then
     select id into v_sh from shipments where order_stop_id = new.id and deleted_at is null;
     if v_sh is not null and new.order_id is not distinct from old.order_id and new.deleted_at is null then
@@ -627,8 +647,9 @@ $f$;
               AND EXISTS (SELECT 1 FROM public.national_loads nl WHERE nl.source_order_id = o.id AND nl.source_type = 'Direct' AND nl.deleted_at IS NULL)) THEN
     RAISE EXCEPTION '074 proof: an order has a bridge AND a live Direct national load';
   END IF;
+  -- notices: only this transaction's (created_at = now()); an earlier 074 that was rolled back may have left its own
   IF (SELECT count(*) FROM public.piece_legs) + (SELECT count(*) FROM public.rt_stops) + (SELECT count(*) FROM public.plan_notices
-        WHERE kind <> 'legacy_nl_replaced' OR created_by <> '074 backfill') <> 0 THEN
+        WHERE created_at = now() AND kind <> 'legacy_nl_replaced') <> 0 THEN
     RAISE EXCEPTION '074 proof: legs, stops or notices other than legacy_nl_replaced were written';
   END IF;
   IF (SELECT count(*) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.oid = ANY (ARRAY[

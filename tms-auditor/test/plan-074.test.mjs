@@ -167,6 +167,18 @@ const noticesOf = (db, ref, kind) => n(db, `SELECT count(*) FROM plan_notices pn
 const orderId = (db, ref) => n(db, `SELECT id FROM orders WHERE reference = $1`, [ref]);
 const rtOf = (put) => Number(put.ids.rt_id);
 
+// 26 split at Veroia 12 + 14 (as plan_split_piece leaves it); the 12 ride on L+1 when rideFirst
+async function splitPiece(db, ref, L, rideFirst) {
+  const p = await n(db, `SELECT t74_piece($1, 1)`, [ref]);
+  await tx(db, `BEGIN; SET CONSTRAINTS ALL DEFERRED;
+    UPDATE shipment_pieces SET split_at = now(), split_by = 'test:074' WHERE id = ${p};
+    INSERT INTO shipment_pieces (shipment_id, parent_piece_id, pallets, created_by) SELECT shipment_id, id, 12, 'test:074' FROM shipment_pieces WHERE id = ${p};
+    INSERT INTO shipment_pieces (shipment_id, parent_piece_id, pallets, created_by) SELECT shipment_id, id, 14, 'test:074' FROM shipment_pieces WHERE id = ${p};
+    COMMIT;`);
+  if (rideFirst) await db.query(`SELECT t74_put((SELECT id FROM shipment_pieces WHERE parent_piece_id = $1 AND pallets = 12), $2::date + 1)`, [p, L]);
+  return p;
+}
+
 // the cases, each on its own VS (k = case number); L = day L of the copy, d(L, k) = L + k days
 const day = (L, k) => { const d = new Date(L + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + k); return d.toISOString().slice(0, 10); };
 export const CASES = {
@@ -213,32 +225,22 @@ export const CASES = {
     assert.deepStrictEqual(await piecesOf(db, 'C5'), [20]);
     assert.strictEqual(await noticesOf(db, 'C5', 'vs_pallets_changed'), 1);
   },
-  async split(db, ref, L, rideFirst) {   // 26 split at Veroia 12 + 14; the 12 ride on L+1 when rideFirst
-    const p = await n(db, `SELECT t74_piece($1, 1)`, [ref]);
-    await tx(db, `BEGIN; SET CONSTRAINTS ALL DEFERRED;
-      UPDATE shipment_pieces SET split_at = now(), split_by = 'test:074' WHERE id = ${p};
-      INSERT INTO shipment_pieces (shipment_id, parent_piece_id, pallets, created_by) SELECT shipment_id, id, 12, 'test:074' FROM shipment_pieces WHERE id = ${p};
-      INSERT INTO shipment_pieces (shipment_id, parent_piece_id, pallets, created_by) SELECT shipment_id, id, 14, 'test:074' FROM shipment_pieces WHERE id = ${p};
-      COMMIT;`);
-    if (rideFirst) await db.query(`SELECT t74_put((SELECT id FROM shipment_pieces WHERE parent_piece_id = $1 AND pallets = 12), $2::date + 1)`, [p, L]);
-    return p;
-  },
   async C6(db, L) {   // split 12 (rides) + 14 (stock), 26 -> 20: stock 8, first day 12
     await db.query(`SELECT t74_vs('C6', 'Import', $1::date, '{26}')`, [L]);
-    await CASES.split(db, 'C6', L, true);
+    await splitPiece(db, 'C6', L, true);
     await db.exec(`UPDATE order_stops SET pallets = 20 WHERE id = t74_stop('C6', 1)`);
     assert.deepStrictEqual(await piecesOf(db, 'C6'), [8, 12]);
     assert.strictEqual(await legsOf(db, 'C6'), 1);
   },
   async C7(db, L) {   // split, 26 -> 30: the first day's piece 16
     await db.query(`SELECT t74_vs('C7', 'Import', $1::date, '{26}')`, [L]);
-    await CASES.split(db, 'C7', L, true);
+    await splitPiece(db, 'C7', L, true);
     await db.exec(`UPDATE order_stops SET pallets = 30 WHERE id = t74_stop('C7', 1)`);
     assert.deepStrictEqual(await piecesOf(db, 'C7'), [14, 16]);
   },
   async C8(db, L) {   // split, 26 -> 10: the stock goes (0), the first day 10
     await db.query(`SELECT t74_vs('C8', 'Import', $1::date, '{26}')`, [L]);
-    await CASES.split(db, 'C8', L, true);
+    await splitPiece(db, 'C8', L, true);
     await db.exec(`UPDATE order_stops SET pallets = 10 WHERE id = t74_stop('C8', 1)`);
     assert.deepStrictEqual(await piecesOf(db, 'C8'), [10]);
     assert.strictEqual(await legsOf(db, 'C8'), 1);
@@ -263,6 +265,19 @@ export const CASES = {
     assert.strictEqual(await n(db, `SELECT count(*) FROM plan_notices WHERE rt_id = $1 AND kind = 'rt_empty_kept'`, [rtOf(put)]), 1);
     assert.strictEqual(await n(db, `SELECT count(*) FROM dl_entries WHERE rt_id = $1 AND trip_value = 100 AND deleted_at IS NULL`, [rtOf(put)]), 1);
   },
+  async C10b(db, L) {   // Q-4: the same, the cycle's only document is a local loading (TOPIKO line): NOT cancelled
+    await db.query(`SELECT t74_vs('C10b', 'Export', $1::date, '{9}')`, [L]);
+    const put = (await one(db, `SELECT t74_put(t74_piece('C10b', 1), $1::date - 1) AS r`, [L])).r;
+    const pick = await n(db, `SELECT l.pickup_stop_id FROM piece_legs l WHERE l.piece_id = t74_piece('C10b', 1) AND l.deleted_at IS NULL`);
+    const drv = await n(db, `INSERT INTO drivers (full_name) VALUES ('TEST 074 local C10b') RETURNING id`);
+    const trk = await n(db, `INSERT INTO trucks (license_plate) VALUES ('TEST-074-C10b') RETURNING id`);
+    await db.query(`SELECT plan_local_loading(jsonb_build_object('rt_stop_id', $1::bigint, 'driver_id', $2::bigint, 'truck_id', $3::bigint,
+      'request_id', gen_random_uuid()), 'test:074', 'dispatcher')`, [pick, drv, trk]);
+    await db.exec(`UPDATE orders SET cross_dock_date = cross_dock_date + 1 WHERE reference = 'C10b'`);
+    assert.strictEqual(await legsOf(db, 'C10b'), 0);
+    assert.strictEqual((await one(db, `SELECT status FROM ct_round_trips WHERE id = $1`, [rtOf(put)])).status, 'planned');
+    assert.strictEqual(await n(db, `SELECT count(*) FROM plan_notices WHERE rt_id = $1 AND kind = 'rt_empty_kept'`, [rtOf(put)]), 1);
+  },
   async C11(db, L) {   // the same change by the national desk (plan_vs_set_day, writer natl): no leg goes
     await db.query(`SELECT t74_vs('C11', 'Import', $1::date, '{10}')`, [L]);
     await db.query(`SELECT t74_put(t74_piece('C11', 1), $1::date + 1)`, [L]);
@@ -272,7 +287,7 @@ export const CASES = {
   },
   async C12(db, L) {   // a split VS, the international moves the day: the split is undone, one piece with all pallets
     await db.query(`SELECT t74_vs('C12', 'Import', $1::date, '{26}')`, [L]);
-    await CASES.split(db, 'C12', L, true);
+    await splitPiece(db, 'C12', L, true);
     await db.exec(`UPDATE orders SET cross_dock_date = cross_dock_date + 1 WHERE reference = 'C12'`);
     assert.deepStrictEqual(await piecesOf(db, 'C12'), [26]);
     assert.strictEqual(await legsOf(db, 'C12'), 0);
@@ -334,6 +349,14 @@ export const CASES = {
     await db.exec(`UPDATE orders SET cross_dock_date = cross_dock_date + 3 WHERE reference = 'C19'`);
     assert.strictEqual(await bridgesOf(db, 'C19'), 1);
     assert.strictEqual(await nlLive(db, 'C19'), 0);
+  },
+  async C19b(db, L) {   // an old VS whose NL already DELIVERED, moved onto day L after the fact: refused by name, nothing changes
+    await db.query(`SELECT t74_vs('C19b', 'Import', $1::date - 9, '{10}')`, [L]);
+    await db.exec(`UPDATE national_loads SET status = 'Delivered' WHERE legacy_id = 'rec74NC19b'`);
+    const e = await errorOf(db, `UPDATE orders SET cross_dock_date = cross_dock_date + 10 WHERE reference = 'C19b'`);
+    assert.strictEqual(e?.hint, 'plan:legacy_executed', JSON.stringify(e));
+    assert.strictEqual(await bridgesOf(db, 'C19b'), 0);
+    assert.strictEqual(await nlLive(db, 'C19b'), 1);
   },
   async C20(db, L) {   // an executed leg (yesterday) and a day change: nothing goes, notice vs_changed_after_execution
     await db.query(`SELECT t74_vs('C20', 'Import', $1::date, '{10}')`, [L]);
@@ -567,7 +590,6 @@ test('074 on the production-shaped copy', async (t) => {
   });
 
   for (const [k, fn] of Object.entries(CASES)) {
-    if (k === 'split') continue;
     await t.test(`${k}`, async () => { await fn(db, L); await NETS(db); });
   }
 
@@ -603,6 +625,12 @@ test('074 rollback right after (R1), then again (R3); a missing REVOKE fails the
   const trg0 = await n(db, TRG);
   const fp0 = await one(db, fp);
   await db.exec(src);
+  await t.test('R-5: right after 074 the international rows are untouched (orders_md5, stops_md5); the patched texts move as declared', async () => {
+    const fp1 = await one(db, fp);
+    assert.strictEqual(fp1.orders_md5, fp0.orders_md5);
+    assert.strictEqual(fp1.stops_md5, fp0.stops_md5);
+    assert.notStrictEqual(fp1.f028_md5, fp0.f028_md5);
+  });
   await t.test('R1: the rollback dry run keeps everything, the rollback puts back every row and text (fingerprint equal)', async () => {
     const e = await errorOf(db, read('074_plan_cutover_rollback_dryrun.sql'));
     assert.match(e?.msg ?? '', /DRY RUN 074 ROLLBACK finished - EVERYTHING UNDONE/, e?.msg);
@@ -612,9 +640,11 @@ test('074 rollback right after (R1), then again (R3); a missing REVOKE fails the
     assert.strictEqual(await n(db, TRG), trg0);
     assert.strictEqual(await n(db, `SELECT red_value FROM monitoring.checks WHERE id = 'B-54'`), trg0);
     assert.strictEqual(await n(db, `SELECT count(*) FROM plan_config`), 0);
-    assert.strictEqual(to(await one(db, `SELECT to_regclass('public.plan_cutover_log')::text AS r`)), null);
+    assert.strictEqual((await one(db, `SELECT to_regclass('public.plan_cutover_log')::text AS r`)).r, null);
   });
-  await t.test('R3: 074 again after the rollback gives the same bridges', async () => {
+  await t.test('R3: 074 again after the rollback gives the same bridges (a notice the first run left does not stop it)', async () => {
+    await db.exec(`INSERT INTO plan_notices (to_desk, kind, message, created_by, created_at)
+      VALUES ('natl', 'vs_withdrawn', 'left by the first run', 'trigger:plan_bridge_sync', now() - interval '1 hour')`);
     await db.exec(src);
     assert.strictEqual(await n(db, `SELECT count(*) FROM shipments WHERE deleted_at IS NULL`), 4);
     await NETS(db);
@@ -627,13 +657,14 @@ test('074 rollback right after (R1), then again (R3); a missing REVOKE fails the
     assert.match(e?.msg ?? '', /074 proof: a new function or plan_cutover_log is open to an API role/, e?.msg);
   });
 });
-const to = (r) => r.r;
 
 // Mutations (plan B2 Step 4): each mutant breaks exactly the cases of its rule.
 const MUTANTS = [
   ['no writer check', (s) => s.replaceAll("current_setting('plan.writer', true) is distinct from 'natl'", 'true'), ['C11', 'C13']],
   ['no stock first', (s) => s.replace('order by ps.is_stock desc,', 'order by ps.is_stock asc,'), ['C6', 'C8']],
-  ['no money check (Q-4)', (s) => s.replace("elsif plan_h_rt_consequences(v_rt) = '[]'::jsonb then", 'elsif true then'), ['C10']],
+  ['no money check (Q-4)', (s) => s.replace("elsif not (v_rt = any (v_docs)) and plan_h_rt_consequences(v_rt) = '[]'::jsonb then", 'elsif true then'), ['C10', 'C10b']],
+  ['a local loading is not a document (Q-4)', (s) => s.replace('elsif not (v_rt = any (v_docs)) and ', 'elsif '), ['C10b']],
+  ['an executed old NL unlinked anyway', (s) => s.replace("perform plan_h_raise('legacy_executed', p_order::text);", 'null;'), ['C19b']],
   ['cut by the export loading day (not Q-2)', (s) => s.replace('and ((o.cross_dock_date is not null and o.cross_dock_date >= plan_cutover_day())',
     "and ((o.cross_dock_date is not null and o.cross_dock_date - case when o.direction = 'Export' then 1 else 0 end >= plan_cutover_day())"), ['C3']],
 ];
