@@ -1,0 +1,65 @@
+-- 078 - audit_log accepts every action the Worker writes (owner 28/10, pallets step Y2: "pame A"). ASCII. The change is ONE DO block, bounded by SET/RESET statement_timeout.
+-- Why: audit_log_action_check accepted only create/update/delete/cascade_delete, so the Worker's confirm, reverse,
+-- invoice_override and upload rows were refused and audit() kept it to console.error (A41). Measured 28/10:
+-- 0 of 215 confirmations, 0 reversals, 0 invoice overrides in audit_log. The 140+ lost confirmations are NOT
+-- recovered: the history screen reads them from the movement itself (confirmed_by/confirmed_at) and says so.
+-- The Worker list (worker/src/index.js, every audit()/auditMany() call, 28/10): create, update, delete,
+-- cascade_delete, confirm, reverse, invoice_override, upload. No grant or revoke: the constraint widens only.
+-- Rows already there all hold one of the four old actions (measured 14 826 rows, 0 outside), so the new CHECK
+-- validates them all; the block proves it before and after.
+-- EXPECTED: NOTICE "078 OK | ..." and COMMIT.
+-- statement_timeout before the block (coordinator 28/10: Supabase restarted twice today under heavy reads): the
+-- block itself is one statement, so a SET inside it would not bound it. 5s is ample for 14.8k rows.
+SET statement_timeout = '5s';
+DO $m$
+DECLARE
+  v_def text; v_set text[]; v_rows bigint; v_bad bigint; v_ok int := 0;
+  v_new text[] := ARRAY['create','update','delete','cascade_delete','confirm','reverse','invoice_override','upload'];
+  v_a text;
+BEGIN
+  PERFORM set_config('lock_timeout', '5s', true);
+  -- 0. GUARDS: the constraint is the one measured, and nothing else changed it
+  SELECT pg_get_constraintdef(c.oid) INTO v_def FROM pg_constraint c
+    WHERE c.conrelid = 'public.audit_log'::regclass AND c.conname = 'audit_log_action_check';
+  IF v_def IS NULL THEN RAISE EXCEPTION '078: audit_log_action_check not found - stop, re-measure'; END IF;
+  -- the exact list, whatever its order: the four measured actions and nothing else
+  SELECT array_agg(m[1] ORDER BY m[1]) INTO v_set FROM regexp_matches(v_def, '''([a-z_]+)''::text', 'g') AS m;
+  IF v_set @> ARRAY['confirm'] THEN RAISE EXCEPTION '078: already applied (%) - stop', v_def; END IF;
+  IF v_def NOT LIKE 'CHECK ((action = ANY (ARRAY[%' OR v_set IS DISTINCT FROM ARRAY['cascade_delete','create','delete','update'] THEN
+    RAISE EXCEPTION '078: unexpected definition % - stop, re-measure', v_def;
+  END IF;
+  SELECT count(*), count(*) FILTER (WHERE NOT (action = ANY (v_new))) INTO v_rows, v_bad FROM public.audit_log;
+  IF v_bad <> 0 THEN RAISE EXCEPTION '078: % rows hold an action outside the new list - stop', v_bad; END IF;
+
+  -- 1. THE CHANGE: same name, wider list
+  ALTER TABLE public.audit_log DROP CONSTRAINT audit_log_action_check;
+  ALTER TABLE public.audit_log ADD CONSTRAINT audit_log_action_check CHECK (action = ANY (ARRAY['create','update','delete','cascade_delete','confirm','reverse','invoice_override','upload']::text[]));
+
+  -- 2. PROOF, in subtransactions that leave no row: every Worker action is accepted, an unknown one still refused
+  FOREACH v_a IN ARRAY v_new LOOP
+    BEGIN
+      INSERT INTO public.audit_log (actor, role, action, table_name, record_id, created_at)
+        VALUES ('078-proof', 'owner', v_a, 'pl_movements', '078-proof', now());
+      v_ok := v_ok + 1;
+      RAISE EXCEPTION USING ERRCODE = 'P0078', MESSAGE = 'undo proof row';
+    EXCEPTION WHEN SQLSTATE 'P0078' THEN NULL;
+    END;
+  END LOOP;
+  IF v_ok <> array_length(v_new, 1) THEN RAISE EXCEPTION '078: only % of % actions accepted', v_ok, array_length(v_new, 1); END IF;
+  BEGIN
+    INSERT INTO public.audit_log (actor, role, action, table_name, record_id, created_at)
+      VALUES ('078-proof', 'owner', 'bogus', 'pl_movements', '078-proof', now());
+    RAISE EXCEPTION '078: an unknown action was accepted - the CHECK does not hold';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+  IF EXISTS (SELECT 1 FROM public.audit_log WHERE actor = '078-proof') THEN RAISE EXCEPTION '078: a proof row was left'; END IF;
+  IF (SELECT count(*) FROM public.audit_log) < v_rows THEN RAISE EXCEPTION '078: rows lost'; END IF;
+
+  SELECT pg_get_constraintdef(c.oid) INTO v_def FROM pg_constraint c
+    WHERE c.conrelid = 'public.audit_log'::regclass AND c.conname = 'audit_log_action_check';
+  RAISE NOTICE '078 OK | rows % | accepted % of 8 | unknown refused | %', v_rows, v_ok, v_def;
+END
+$m$;
+-- the SET above lasts for the whole editor tab, so it is reset here; after an ERROR (the dry run always ends in
+-- one) the editor stops before this line: run RESET statement_timeout; by hand or close the tab.
+RESET statement_timeout;
