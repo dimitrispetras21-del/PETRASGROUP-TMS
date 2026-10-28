@@ -9669,8 +9669,6 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 /* Figma audit B-6 (H1 2120:7872): «+ Νέα παραγγελία» 135 × 32, text at x 14 — the v5 bar only (the shared
    .wi4-bar rule's 12px gives 130; the Weekly International keeps its own) */
 .wn5 .wi4-bar .btn-new-order, body.wn5-on .topbar .wn5-top .wi4-bar .btn-new-order { min-width:135px; padding:0 14px; }   /* over the topbar's button min-width:0 */
-/* Figma audit B-25: the order card title stops at two lines; the whole of it is the title attribute */
-.wn5-ocard .wi4-dlg-t { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; }
 .wn5 .wn5-hub-a .wi4-plane:hover { border-color:var(--wn5-ctl-hover); background:var(--surface-card); color:var(--wi4-ink); }
 .wn5-hub .wn5-hub-b { height:24px; padding:0 9px; border-radius:4px; font-size:11.5px; font-weight:600; color:var(--wi4-grey-1); }
 .wn5-hub .wn5-split-b { background:var(--wi4-info-bg); border-color:var(--wi4-blue); color:var(--wi4-blue-ink); }

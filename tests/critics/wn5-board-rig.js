@@ -2753,18 +2753,13 @@ SCN['veroia-card'] = async (browser, origin) => {
 // Figma audit 28/10 (PR #154), group 1 — front end only, one check per item, each NO-GO on main:
 // B-6 «+ Νέα παραγγελία» 135 × 32 (H1 2120:7872) · B-7 «ΕΠΟΜΕΝΑ · 4 · 7 κομμάτια» (in live45 check 6) · B-8 the «+»
 // seen without hover · B-11 no «—» before the arrow of a VS without reference · B-12 an ΑΝΟΔΟΣ to Veroia reads
-// «Βέροια · τέλος κύκλου» + its day, no city «Veroia» · B-18 Δ1 of a VS: «Όλο το … μαζί · σπάσιμο μόνο στον Πίνακα
-// Βέροιας» (2051:7746) · B-21 Δ1 hides a group with no line · B-25 order card title ≤ 2 lines, whole in title.
+// «Βέροια · τέλος κύκλου» + its deadline, no city «Veroia». B-18 / B-21 / B-25 (Δ1 and the order card, both in
+// wn5_actions.js) follow in their own PR, stacked on the Δ1 quick fix (coordinator 28/10).
 SCN['figma-g1'] = async (browser, origin) => {
   const scn = 'figma-g1';
   const lk = DEF_LOOKUPS();
   lk.locations.find((l) => l.id === 1).city = 'Veroia';
   const b = live45();
-  const LONG = 'ΠΕΛΑΤΗΣ ΕΘ ΜΕ ΠΟΛΥ ΜΑΚΡΥ ΟΝΟΜΑ ΕΤΑΙΡΕΙΑΣ ΠΕΡΙΟΡΙΣΜΕΝΗΣ ΕΥΘΥΝΗΣ ΚΑΙ ΑΚΟΜΗ ΜΑΚΡΥΤΕΡΟ ΕΜΠΟΡΙΚΟ ΣΗΜΑ ΤΕΣΤ';
-  b.waiting.push({ piece_id: 61, shipment_id: 61, kind: 'national', nat_order_id: 61, order_id: null, client_id: 49, client: LONG, reference: null, pallets: 5,
-    nat_from_location_id: 6, nat_to_location_id: 2, position_location_id: 6, nat_ready_day: '2026-10-12', nat_due_day: '2026-10-12', overdue: false, is_stock: false,
-    leave_by: null, pallet_exchange: false, temperature_c: null, price: 1, direction: null, load_from: '2026-10-12T08:00:00+03:00', load_to: '2026-10-12T10:00:00+03:00',
-    deliver_from: '2026-10-12T14:00:00+03:00', deliver_to: '2026-10-12T16:00:00+03:00' });
   // export 616 (pieces 20, 21) has a delivery window at Veroia that crosses midnight: its deadline is the window's end
   for (const w of b.waiting) if (w.order_id === 616) Object.assign(w, { deliver_from: '2026-10-11T22:00:00+03:00', deliver_to: '2026-10-12T02:00:00+03:00' });
   const { page, S } = await openBoard(browser, origin, { board: b, lookups: lk });
@@ -2780,19 +2775,6 @@ SCN['figma-g1'] = async (browser, origin) => {
   const to19 = await page.evaluate(() => { const c = document.querySelector('#content .wn5 .wn5-row[data-piece="19"] .wn5-ato'); return c ? { t: c.textContent.replace(/\s+/g, ' ').trim(), l1: (c.querySelector('.wi4-l1') || {}).textContent, title: (c.querySelector('[title]') || {}).title } : null; });
   ok(scn, 'B-12 · ΠΡΟΣ of export 607: «Βέροια · τέλος κύκλου» and «ως Κυρ 11/10» (its day; the base has no hour), no city «Veroia»',
     !!to19 && to19.l1 === 'Βέροια · τέλος κύκλου' && /ως Κυρ 11\/10/.test(to19.t) && !/Veroia/.test(to19.t), to19);
-  // Δ1 of VS 607 (no cycle that day, no free truck in the catalogue)
-  await page.click('#content .wn5 .wn5-row[data-piece="19"] .wi4-box.un').catch(() => {});
-  await page.waitForTimeout(700);
-  const d1 = await page.evaluate(() => { const d = document.querySelector('.wi4-dlg'); if (!d) return null; const g = d.querySelector('.wn5-grey'); return { grey: g ? g.textContent : null, grps: [...d.querySelectorAll('.wn5-grp-h[data-grp]')].map((x) => x.dataset.grp + ':' + x.textContent) }; });
-  ok(scn, 'B-18 · Δ1 of a VS: the grey band «Όλο το #607 μαζί · σπάσιμο μόνο στον Πίνακα Βέροιας»', !!d1 && d1.grey === 'Όλο το #607 μαζί · σπάσιμο μόνο στον Πίνακα Βέροιας', d1);
-  ok(scn, 'B-21 · Δ1 draws no group with 0 lines (no «ΚΥΚΛΟΙ … · 0», no «ΕΛΕΥΘΕΡΑ ΦΟΡΤΗΓΑ · … · 0»); ΣΥΝΕΡΓΑΤΗΣ stays (its picker)',
-    !!d1 && !d1.grps.some((g) => /^(rt|free):/.test(g)) && d1.grps.some((g) => /^partner:/.test(g)), d1 && d1.grps);
-  await page.keyboard.press('Escape');
-  await page.waitForTimeout(300);
-  await page.click('#content .wn5 .wn5-row[data-piece="61"] .wi4-plane[data-act="ocard"]').catch(() => {});
-  await page.waitForTimeout(500);
-  const ct = await page.evaluate(() => { const t = document.querySelector('.wi4-dlg.wn5-ocard .wi4-dlg-t'); if (!t) return null; const lh = parseFloat(getComputedStyle(t).lineHeight); return { lines: Math.round(t.getBoundingClientRect().height / lh), title: t.title, text: t.textContent }; });
-  ok(scn, 'B-25 · order card title of a 90-character client: at most 2 lines, the whole «#61 · …» in title', !!ct && ct.lines <= 2 && ct.title === '#61 · ' + LONG, ct);
   ok(scn, 'nothing written: only reads on /plan/*', S.plan.every((x) => x.m === 'GET'), S.plan.map((x) => x.m + ' ' + x.path));
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
   await page.context().close();
