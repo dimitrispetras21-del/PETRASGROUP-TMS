@@ -10069,6 +10069,9 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5h-prow { gap:10px; }
 .wn5h-partner { width:150px; }
 .wn5h-rate { width:96px; }
+/* owner 26/10: the previous partner's rate (no Figma frame); the label names the partner, so it gets the partner field's width */
+.wn5h-prate { width:150px; }
+.wn5h-cons { margin-top:8px; font-size:12.5px; line-height:17px; color:var(--wi4-grey-1); }
 /* «Δικό μας | Συνεργάτης» 2122:7769: the compact segmented control (192 × 38) */
 .wn5h-tog { display:inline-flex; align-self:flex-start; align-items:center; gap:2px; padding:3px; border:1px solid var(--wi4-line-2); border-radius:8px; background:var(--wi4-chip); }
 .wn5h-tog > button { padding:6px 14px; border:0; border-radius:6px; background:none; font:500 12.5px/16px 'DM Sans',sans-serif; color:var(--wi4-grey-2); cursor:pointer; }

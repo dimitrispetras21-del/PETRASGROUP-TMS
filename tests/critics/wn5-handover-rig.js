@@ -641,7 +641,103 @@ async function scnNarrow({ browser, origin, ok, scn }) {
   }
   ok(scn, 'no page or console errors', !pe.length, pe);
 }
-const SCN = { tiles: scnTiles, card: scnCard, change: scnChange, fix: scnFix, h7: scnH7, fid: scnFid, remove: scnRemove, 'rt-token': scnRtToken, 'clear-seg': scnClearSeg, 'sheet-seg': scnSheetSeg, narrow: scnNarrow };
+// owner 26/10 (DECISION_LOG «prev_partner_rate»): partner → partner, the previous partner's rate prefilled with today's,
+// editable, sent only when changed; its list line and token come from the dry run and the token rides in the execution;
+// stale_confirm runs the dry run again. The fix of a partner segment after a partner segment offers the same field.
+async function scnPrevRate({ browser, origin, ok, scn }) {
+  const LINE = (from, to) => [{ kind: 'partner_rate', rt_id: 101, segment_id: 703, partner_id: 51, partner: 'Partner Test 01', rate_from: from, rate_to: to }];
+  let tok = 0, exn = 0;
+  const plan = { 'POST /plan/rt/101/handover': (e) => {
+    if (e.body.dry_run === true) {
+      const r = dryOk(e.body);
+      if (e.body.prev_partner_rate !== undefined) Object.assign(r[1], { needs_confirm: true, confirm_token: 'tok-pr-' + (++tok), consequences: LINE(300, e.body.prev_partner_rate) });
+      return r;
+    }
+    return ++exn === 1 ? K.planErr(422, 'PLAN_RULE', 'stale_confirm') : K.planErr(409, 'WRITES_CLOSED', 'writes_closed');
+  } };
+  const { page, S } = await K.openApp(browser, origin, { board: handWeek(true), plan });
+  if (!(await guard(page, ok, scn, 'WN5Hand'))) return;
+  await page.evaluate(() => WN5Hand.change(101));
+  await page.waitForSelector(HDLG, { timeout: 6000 }).catch(() => {});
+  const set = (id, v) => page.evaluate(([id, v]) => { const el = document.getElementById(id); if (!el) return false; el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })); return true; }, [id, v]);
+  const field = () => page.evaluate((d) => { const f = document.querySelector(`${d} [data-prate]`); return f ? { shown: !f.hidden && f.offsetParent !== null, v: f.querySelector('input').value, label: f.textContent.trim() } : null; }, HDLG);
+  await page.click(`${HDLG} [data-vmode="partner"]`).catch(() => {});
+  for (const [id, v] of [['wn5h-day', '2026-10-13'], ['wn5h-hm', '12:00'], ['wn5h-place', 'Θήβα'], ['wn5h-reason', 'vehicle_breakdown'], ['wn5h-partner', '51'], ['wn5h-rate', '200']]) await set(id, v);
+  await page.waitForTimeout(1200);
+  const f1 = await field();
+  ok(scn, 'partner → partner: «Κόμιστρο Partner Test 01 €» shown, prefilled with today\'s 300', !!f1 && f1.shown && f1.v === '300' && /Partner Test 01/.test(f1.label), f1);
+  const d1 = posts(S).filter((x) => x.body.dry_run === true);
+  ok(scn, 'unchanged rate → the dry run carries no prev_partner_rate', d1.length === 1 && !('prev_partner_rate' in d1[0].body), d1.map((x) => x.body));
+  await set('wn5h-prate', '250');
+  await page.waitForTimeout(1200);
+  const d2 = posts(S).filter((x) => x.body.dry_run === true);
+  ok(scn, 'changed to 250 → a new dry run with prev_partner_rate 250', d2.length === 2 && d2[1].body.prev_partner_rate === 250, d2.map((x) => x.body));
+  ok(scn, 'the list line under the preview: «κόμιστρο Partner Test 01: 300 € → 250 €»', /κόμιστρο Partner Test 01: 300(,00)?\s?€ → 250(,00)?\s?€/.test(await K.text(page, `${HDLG} [data-preview] .wn5h-cons`)), await K.text(page, `${HDLG} [data-preview]`));
+  await page.click(`${HDLG} [data-act="save"]`).catch(() => {});
+  await page.waitForTimeout(1500);
+  const ex = posts(S).filter((x) => x.body.dry_run !== true);
+  ok(scn, 'the execution: prev_partner_rate 250 + the dry run\'s token + a request_id', ex.length >= 1 && ex[0].body.prev_partner_rate === 250 && ex[0].body.confirm_token === 'tok-pr-1' && K.UUID4.test(ex[0].body.request_id || ''), ex.map((x) => x.body));
+  const d3 = posts(S).filter((x) => x.body.dry_run === true);
+  ok(scn, 'stale_confirm → the dry run runs again (a new token), the old token is not re-sent', d3.length === 3 && d3[2].body.prev_partner_rate === 250, d3.map((x) => x.body));
+  ok(scn, 'stale_confirm: the Worker\'s line stays above the new list', /rig sentinel stale_confirm/.test(await K.text(page, `${HDLG} [data-strip]`)) && /250/.test(await K.text(page, `${HDLG} [data-preview] .wn5h-cons`)));
+  await page.click(`${HDLG} [data-act="save"]`).catch(() => {});
+  await page.waitForTimeout(1200);
+  const ex2 = posts(S).filter((x) => x.body.dry_run !== true);
+  ok(scn, 'the second execution carries the NEW token tok-pr-2', ex2.length === 2 && ex2[1].body.confirm_token === 'tok-pr-2', ex2.map((x) => x.body));
+  await set('wn5h-prate', '');
+  await page.waitForTimeout(600);
+  ok(scn, 'an emptied rate → the form line, the field red, no new dry run', /Κόμιστρο προηγούμενου €: αριθμός 0 ή πάνω/.test(await K.text(page, `${HDLG} [data-err]`))
+    && await page.evaluate((d) => document.querySelector(`${d} [data-prate]`).classList.contains('bad'), HDLG) && posts(S).filter((x) => x.body.dry_run === true).length === 3);
+  await set('wn5h-hm', '04:00');   // inside ΕΝΔΙΑΜΕΣΟ 702 (our truck): no previous partner
+  await page.waitForTimeout(400);
+  const f2 = await field();
+  ok(scn, 'a time that cuts our own truck → no previous-rate field', !!f2 && !f2.shown, f2);
+  await page.click(`${HDLG} [data-vmode="own"]`).catch(() => {});
+  await set('wn5h-hm', '12:00');
+  await page.waitForTimeout(400);
+  const f3 = await field();
+  ok(scn, 'our own truck as the new vehicle → no previous-rate field', !!f3 && !f3.shown, f3);
+  await page.click(`${HDLG} [data-vmode="partner"]`).catch(() => {});
+  await page.waitForTimeout(400);
+  const f4 = await field();
+  ok(scn, 'back to a partner → the field shows today\'s 300 again, never the emptied value', !!f4 && f4.shown && f4.v === '300', f4);
+  ok(scn, 'change: no page or console errors', !S.pageErrors.length && !appConsole(S).length, S.pageErrors.concat(appConsole(S)));
+  await page.context().close();
+
+  // the fix: ΤΕΛΙΚΟ partner after a partner ΕΝΔΙΑΜΕΣΟ
+  const wk = handWeek(true);
+  Object.assign(wk.cycles[0].segments[1], { trip_type: 'PARTNER', truck_id: null, truck: null, trailer_id: null, trailer: null, driver_id: null, driver: null, partner_id: 51, partner: 'Partner Test 01', partner_rate: 300 });
+  Object.assign(wk.cycles[0].segments[2], { partner_rate: 200 });
+  let ftok = 0, fexn = 0;
+  // the first execution meets 428 need_token (the base wanted a token for a list): the form runs the dry run again
+  const p2 = await K.openApp(browser, origin, { board: wk, plan: { 'PATCH /plan/segments/703': (e) => (e.body.dry_run === true
+    ? [200, Object.assign({ ok: true, op: 'plan_seg_fix', dry_run: true, preview: { segments: wk.cycles[0].segments, warnings: [], conflict: null } },
+      e.body.prev_partner_rate !== undefined ? { needs_confirm: true, confirm_token: 'tok-fx-' + (++ftok), consequences: LINE(300, e.body.prev_partner_rate) } : {})]
+    : (++fexn === 1 ? K.planErr(428, 'NEED_TOKEN', 'need_token') : K.planErr(409, 'WRITES_CLOSED', 'writes_closed'))) } });
+  await p2.page.evaluate(() => WN5Hand.fix(703));
+  await p2.page.waitForSelector('.wi4-dlg[data-wn5="fix"]', { timeout: 6000 }).catch(() => {});
+  const FX = '.wi4-dlg[data-wn5="fix"]';
+  const ff = await p2.page.evaluate((d) => { const f = document.querySelector(`${d} [data-prate]`); return f ? { shown: !f.hidden, v: f.querySelector('input').value } : null; }, FX);
+  ok(scn, 'fix: a partner after a partner → the previous rate field, prefilled 300', !!ff && ff.shown && ff.v === '300', ff);
+  await p2.page.fill(`${FX} #wn5h-prate`, '260').catch(() => {});
+  await p2.page.waitForTimeout(1200);
+  const fd = K.planOf(p2.S, 'PATCH', '/plan/segments/703');
+  ok(scn, 'fix: only the previous rate changed → {set:{}, prev_partner_rate:260} + dry_run', fd.length === 1 && JSON.stringify(fd[0].body) === JSON.stringify({ set: {}, prev_partner_rate: 260, dry_run: true }), fd.map((x) => x.body));
+  await p2.page.click(`${FX} [data-act="save"]`).catch(() => {});
+  await p2.page.waitForTimeout(1000);
+  const fe = K.planOf(p2.S, 'PATCH', '/plan/segments/703').filter((x) => x.body.dry_run !== true);
+  ok(scn, 'fix: the execution carries the token, no request_id', fe.length === 1 && fe[0].body.confirm_token === 'tok-fx-1' && !('request_id' in fe[0].body) && fe[0].body.prev_partner_rate === 260, fe.map((x) => x.body));
+  const fd2 = K.planOf(p2.S, 'PATCH', '/plan/segments/703').filter((x) => x.body.dry_run === true);
+  ok(scn, 'fix: 428 need_token → the dry run runs again (token tok-fx-2), the save opens again', fd2.length === 2 && fd2[1].body.prev_partner_rate === 260
+    && await p2.page.evaluate((d) => !document.querySelector(`${d} [data-act="save"]`).disabled, FX), fd2.map((x) => x.body));
+  await p2.page.click(`${FX} [data-act="save"]`).catch(() => {});
+  await p2.page.waitForTimeout(1000);
+  const fe2 = K.planOf(p2.S, 'PATCH', '/plan/segments/703').filter((x) => x.body.dry_run !== true);
+  ok(scn, 'fix: the second execution carries the NEW token tok-fx-2', fe2.length === 2 && fe2[1].body.confirm_token === 'tok-fx-2', fe2.map((x) => x.body));
+  ok(scn, 'fix: no page or console errors', !p2.S.pageErrors.length && !appConsole(p2.S).length, p2.S.pageErrors.concat(appConsole(p2.S)));
+  await p2.page.context().close();
+}
+const SCN = { 'prev-rate': scnPrevRate, tiles: scnTiles, card: scnCard, change: scnChange, fix: scnFix, h7: scnH7, fid: scnFid, remove: scnRemove, 'rt-token': scnRtToken, 'clear-seg': scnClearSeg, 'sheet-seg': scnSheetSeg, narrow: scnNarrow };
 module.exports = { seg, handWeek, ROW, HAND, guard, appConsole, SCN };
 if (require.main === module) {
   // The tiles scenario's fixture carries reason «zzz» on purpose: its one logError line is asserted there (count 1).
