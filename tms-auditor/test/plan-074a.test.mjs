@@ -4,7 +4,8 @@
 // 073 and 073b as executed - the state of production 28/10 - checked against fixtures/live-073b.sql (the SELECT
 // capture of that day: the texts 074a hooks or calls, the columns it reads, what must not exist yet).
 // Then: the dry run keeps nothing; 074a applies with 0 v5 rows and no trigger (A8); the verify; the rules test
-// (074a_plan_reads_test.sql, A1-A7, B1-B5, E-19) all OK; four mutations, each failing exactly its cases; the rollback
+// (074a_plan_reads_test.sql, A1-A7, B1-B5, E-19) all OK; the 072b and 073 rules tests still all OK on top; five
+// mutations, each failing exactly its cases; a REVOKE that forgets a role stops the block; the rollback
 // refuses after day L or with a v5 row, and otherwise returns the live texts byte for byte; 074a again.
 import { test } from 'node:test';
 import assert from 'node:assert';
@@ -170,6 +171,16 @@ test('074a on the production-shaped copy', async (t) => {
     assert.strictEqual(await count(db, V5_ROWS), 0);
     assert.strictEqual(await count(db, 'SELECT count(*) AS n FROM plan_config'), 0);
   });
+
+  // The hooks change no behaviour of 072 / 072b / 073 (plan C24): their own rules tests, unchanged, on top of 074a
+  for (const [f, re] of [['072b_plan_vehicle_segments_test.sql', /RULES TEST 072b finished - EVERYTHING UNDONE, nothing kept\. Result: (\d+) OK, 0 FAIL/],
+                         ['073_plan_money_test.sql', /RULES TEST 073 finished - EVERYTHING UNDONE, nothing kept\. Result: (\d+) OK, 0 FAIL/]]) {
+    await t.test(`${f} still all OK on top of 074a`, async () => {
+      const msg = await errorOf(db, read(f));
+      assert.match(msg ?? '', re, msg);
+      assert.strictEqual(await count(db, V5_ROWS), 0);
+    });
+  }
 
   // Each mutation breaks one rule of 074a and must fail exactly its cases (the rules test sees the rule, not a side
   // effect); then the 074a text is put back and checked by md5. [what, function, text, replacement, cases]
