@@ -39,6 +39,7 @@ test('076 writes no row, adds no trigger, function or table change; plan_board i
   assert.ok(!/CREATE (OR REPLACE )?(TRIGGER|FUNCTION)|ALTER TABLE|DROP /i.test(src), 'no trigger, no function, no table change');
   assert.match(read(SRC), /v_board := md5\(\(SELECT prosrc FROM pg_proc WHERE oid = 'public\.plan_board\(date,text\)'::regprocedure\)\);/);
   assert.match(read(SRC), /RAISE EXCEPTION '076 proof: plan_board changed'/);
+  assert.match(read(SRC), /m_board CONSTANT text := '670f72f60edcf09f955fb1f6a74143b9';/, 'guarded at 075\'s plan_board');
   const { view071, constants } = await import(BUILDER);
   assert.ok(read('076_plan_board_speed_rollback.sql').includes(view071()), 'the rollback holds 071\'s text verbatim');
   assert.strictEqual(constants(read(SRC)).old, 'f758827112c0a1a34f3feebb8cd36c44');

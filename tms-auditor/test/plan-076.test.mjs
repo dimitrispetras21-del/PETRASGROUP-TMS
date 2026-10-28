@@ -1,5 +1,5 @@
-// 076 (the board answers in time) on the production-shaped PGlite copy of plan-074a.test.mjs (072 + 072b + 073 + 073b +
-// the 074 fixture + 074a), with a small v5 week that HAS late pieces - so the rule 076 rewrites (has_late) is seen
+// 076 (the board answers in time) on the production-shaped PGlite copy as production holds it after 28/10
+// (prod-shaped-075.mjs: 072 ... 074a, 074, 075), with a small v5 week that HAS late pieces - so the rule 076 rewrites (has_late) is seen
 // true and false, never only false. What it proves: the dry run keeps no definition; 076 replaces the view and
 // analyzes the 17 tables; the view answers the same rows (076's own proof, and here again outside it); plan_board's
 // text and B-54 stay; a changed rule is refused by the row proof; the rollback gives 071's view back byte for byte.
@@ -9,14 +9,13 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { prodShaped072, TRG } from './prod-shaped-072.mjs';
+import { TRG } from './prod-shaped-072.mjs';
+import { prodShaped075 } from './prod-shaped-075.mjs';
 import { migrationFile } from '../lib/db.mjs';
-import { IDS as IDS_073B } from '../../worker/migrations/drafts/tools/build-073b.mjs';
 import { constants } from '../../worker/migrations/drafts/tools/build-076.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const read = (f) => fs.readFileSync(migrationFile(f), 'utf8');
-const fixture = (f) => fs.readFileSync(path.join(HERE, 'fixtures', f), 'utf8');
 async function errorOf(db, sql) { try { await db.exec(sql); return null; } catch (e) { return String(e.message); } }
 const one = async (db, sql) => (await db.query(sql)).rows[0];
 const VIEW_MD5 = `SELECT md5(pg_get_viewdef('public.v_rt_stop_state'::regclass, true)) AS m`;
@@ -64,14 +63,7 @@ END $g$;
 COMMIT;`;
 
 async function prodShaped() {
-  const db = await prodShaped072(true, { money: 'live', with072b: true });
-  await db.exec(fixture('v1-money-073.sql'));
-  await db.exec(read('073_plan_money.sql'));
-  await db.query('DELETE FROM monitoring.checks WHERE id = ANY($1)', [IDS_073B]);
-  await db.exec(read('073b_plan_monitoring.sql'));
-  await db.exec(fixture('live-074.sql'));
-  await db.exec(`UPDATE monitoring.checks SET red_value = (${TRG}) WHERE id = 'B-54'`);
-  await db.exec(read('074a_plan_reads.sql'));
+  const db = await prodShaped075();
   await db.exec(WEEK);
   return db;
 }

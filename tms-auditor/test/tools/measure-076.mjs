@@ -1,5 +1,5 @@
 // The volume test of 076 (asked by the coordinator 28/10: "under 200 ms for the week, the same order at 10x, proved
-// on PGlite or synthetic volume"). Production's shape (the 074 harness), production's statistics (none: no table of
+// on PGlite or synthetic volume"). Production's shape after 28/10 (prod-shaped-075.mjs: 072 ... 074a, 074, 075), production's statistics (none: no table of
 // public was ever analyzed, 28/10), synthetic v5 volume over 8 weeks around one week W: 5 x scale cycles a week with
 // 4 stops, 4 nationals (3 on the cycle, 1 waiting) and 2 VS imports (1 on the cycle, every third one late) per cycle,
 // plus production's 460 international orders with 3 stops each. It measures plan_board(W) as it is, applies the REAL
@@ -10,23 +10,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { prodShaped072, TRG } from '../prod-shaped-072.mjs';
+import { prodShaped075 } from '../prod-shaped-075.mjs';
 import { migrationFile } from '../../lib/db.mjs';
-import { IDS as IDS_073B } from '../../../worker/migrations/drafts/tools/build-073b.mjs';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const read = (f) => fs.readFileSync(migrationFile(f), 'utf8');
-const fixture = (f) => fs.readFileSync(path.join(HERE, '..', 'fixtures', f), 'utf8');
 const args = process.argv.slice(2);
 const scale = Number(args[0] || 1);
 
-const db = await prodShaped072(true, { money: 'live', with072b: true });
-await db.exec(fixture('v1-money-073.sql'));
-await db.exec(read('073_plan_money.sql'));
-await db.query('DELETE FROM monitoring.checks WHERE id = ANY($1)', [IDS_073B]);
-await db.exec(read('073b_plan_monitoring.sql'));
-await db.exec(fixture('live-074.sql'));
-await db.exec(`UPDATE monitoring.checks SET red_value = (${TRG}) WHERE id = 'B-54'`);
-await db.exec(read('074a_plan_reads.sql'));
+const db = await prodShaped075();
 
 const W = '2026-12-05';
 await db.exec(`BEGIN; SET CONSTRAINTS ALL DEFERRED;

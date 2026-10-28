@@ -26,7 +26,7 @@
 --     keeps the oid, the grants and security_invoker; nothing depends on this view (pg_depend 28/10).
 --   * ANALYZE of the 17 tables the board, its views and the national readers read, so the planner knows their size;
 --     from here autovacuum keeps them (its default thresholds: 50 rows + 10%).
--- NOT HERE: plan_board's text (unchanged, md5 proved before and after; 075 of stream a2 hooks it, independently).
+-- NOT HERE: plan_board's text: guarded at 075's md5 (670f72f6, live 28/10) and proved unchanged after.
 -- REVERSE: 076_plan_board_speed_rollback.sql puts 071's view back byte for byte (statistics stay: they change no row
 --   and no answer).
 -- EXPECTED: NOTICE "076 OK: ..." and ONE row: result = '076 OK', view_md5 = <new>, analyzed = 17,
@@ -39,6 +39,8 @@ DECLARE
   -- 071's view, as live 28/10 (md5 of pg_get_viewdef): what the rollback puts back
   m_view_old CONSTANT text := 'f758827112c0a1a34f3feebb8cd36c44';
   m_view_new CONSTANT text := 'a4750de0d409439961612a18adbc8a58';
+  -- plan_board after 075 (production 28/10): guarded, never changed here
+  m_board CONSTANT text := '670f72f60edcf09f955fb1f6a74143b9';
   -- the tables ANALYZE reads (the board, its views, the readers of 074a)
   t_list CONSTANT text[] := ARRAY['shipments', 'shipment_pieces', 'piece_legs', 'rt_stops', 'ct_round_trips',
     'rt_vehicle_segments', 'plan_notices', 'orders', 'order_stops', 'national_orders', 'local_moves', 'locations',
@@ -49,6 +51,12 @@ BEGIN
   -- ===== PART 0: GUARDS (read only) =====
   IF to_regprocedure('public.plan_lookups(text)') IS NULL OR to_regclass('public.v_rt_stop_state') IS NULL THEN
     RAISE EXCEPTION '076: 074a is not applied - stop';
+  END IF;
+  -- order 075 -> 076 (coordinator 28/10): 076 reads plan_board's text only for its md5, never rewrites it; it starts
+  -- from 075's text (waiting[].direction), the one live since 28/10
+  IF md5((SELECT prosrc FROM pg_proc WHERE oid = 'public.plan_board(date,text)'::regprocedure)) <> m_board THEN
+    RAISE EXCEPTION '076: plan_board is not 075''s text (md5 %) - run 075 first, or re-measure',
+      md5((SELECT prosrc FROM pg_proc WHERE oid = 'public.plan_board(date,text)'::regprocedure));
   END IF;
   IF md5(pg_get_viewdef('public.v_rt_stop_state'::regclass, true)) = m_view_new THEN
     RAISE EXCEPTION '076: already applied - run 076_plan_board_speed_verify.sql instead';
