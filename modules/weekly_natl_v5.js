@@ -135,7 +135,7 @@ function _recheckNoteHTML() {
 }
 // The note follows every answer in place — on and off — without repainting the board under a click
 function _recheckNote() {
-  try { const el = document.querySelector('.wn5-bar [data-old-view="recheck"]'); if (el) el.outerHTML = _recheckNoteHTML(); } catch (_) {}
+  try { const el = document.querySelector('.wn5-bar [data-old-view="recheck"]'); if (el) { el.outerHTML = _recheckNoteHTML(); _fitUpd(); _topFit(); } } catch (_) {}
 }
 function _cfgKick() {
   if (_cfgBusy || typeof PlanConfig === 'undefined') return;
@@ -146,7 +146,8 @@ function _cfgKick() {
   _cfgBusy = true;
   // the user's ↻ asks the base at once in either state: a kept 'before' too ({fresh}), or 074 at 15:30 waits 5 min
   // {recheck: true}: the board waits for the re-read of an aged 'after' (other screens get the kept one at once)
-  PlanConfig.load(force ? (after ? { recheck: 'now' } : { fresh: true }) : after ? { recheck: true } : undefined).then((r) => {
+  // ↻: day L read again at once whatever this board held — PlanConfig re-reads a kept 'after' ('now') or anything else ({fresh})
+  PlanConfig.load(force ? { recheck: 'now', fresh: true } : after ? { recheck: true } : undefined).then((r) => {
     const was = _cfg && _cfg.state;
     const wasDay = _cfg && _cfg.cutoverDay;
     _cfg = r; _cfgAt = Date.now();
@@ -800,6 +801,9 @@ function _leg(ev, rtId, side) {
     return;
   }
   _legBusy = Number(rtId);
+  // a read that never settles must not lock every leg for the session: planFetch gives up at 30 s, the lock at 40 s
+  const lock = _legBusy;
+  setTimeout(() => { if (_legBusy === lock) _legBusy = null; }, 40000);
   if (row) { row.classList.add('wn5-leg-busy'); row.setAttribute('aria-busy', 'true'); }
   Promise.resolve(WN5Form.openLeg(Number(rtId), side === 'ANODOS' ? 'ANODOS' : 'KATHODOS'))
     .then((ok) => {

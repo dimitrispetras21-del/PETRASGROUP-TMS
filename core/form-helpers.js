@@ -69,8 +69,11 @@ function _fhRefreshLocations(locRecords) {
 async function fhSearchClients(q) {
   if (!q || q.length < 2) return [];
   const key = q.toLowerCase();
-  // 60 s, as the probe below (F19): a client created meanwhile is found by the next search of the same text
-  if (_fhClientCache[key] && Date.now() - _fhClientCache[key].at < 60000) return _fhClientCache[key].res;
+  // 60 s, as the probe below (F19): a client created meanwhile is found by the next search of the same text. Expired
+  // entries leave here, so a day of searching does not keep every answer in memory.
+  const now = Date.now();
+  for (const k of Object.keys(_fhClientCache)) if (now - _fhClientCache[k].at >= 60000) delete _fhClientCache[k];
+  if (_fhClientCache[key]) return _fhClientCache[key].res;
   const safe = q.replace(/[^a-zA-Z0-9\s\u0370-\u03FF\u1F00-\u1FFF.-]/g, '').trim();
   if (!safe) return [];
   // F19 (live 28/10): «name + start of the 2nd word» found nothing while one word worked. The whole phrase went to
@@ -87,9 +90,13 @@ async function fhSearchClients(q) {
   const probe = words.find((w) => letters(w) >= 3) || words.reduce((a, w) => (letters(w) > letters(a) ? w : a), '');
   if (!letters(probe)) return [];
   const pk = '\u0001' + probe.toLowerCase();
-  const kept = _fhClientCache[pk];
-  const recs = kept && Date.now() - kept.at < 60000 ? kept.recs
-    : (_fhClientCache[pk] = { at: Date.now(), recs: await atGet(TABLES.CLIENTS, `SEARCH(LOWER("${probe}"), LOWER({Company Name}))`, false) }).recs;
+  // the read IN FLIGHT is kept too: keystrokes during a slow paged read share it instead of starting their own
+  if (!_fhClientCache[pk]) {
+    const p = atGet(TABLES.CLIENTS, `SEARCH(LOWER("${probe}"), LOWER({Company Name}))`, false);
+    _fhClientCache[pk] = { at: now, recs: p };
+    p.catch(() => { if (_fhClientCache[pk] && _fhClientCache[pk].recs === p) delete _fhClientCache[pk]; });   // a failure is not kept
+  }
+  const recs = await _fhClientCache[pk].recs;
   // the plain lower-case test as well: a word typed from the middle of a Greek digraph («υκ» of «Λουκ…») matches
   // the server's ilike but not its _fhNorm form («ou» ≠ «y») — a name the server found is never dropped here
   const need = words.map(w => [w.toLowerCase(), _fhNorm(w)]);

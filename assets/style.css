@@ -8232,6 +8232,9 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
    so a slow read is never a click that «does nothing» */
 .wn5-row.wn5-leg-busy, .wn5-row.wn5-leg-busy * { cursor:progress; }
 .wn5-row.wn5-leg-busy > [data-leg] { opacity:.55; }
+/* F25: the «day L not read again» note is a warning, never the first thing the bar's ellipsis eats (.wi4-range
+   shrinks first) */
+.wn5-bar [data-old-view="recheck"] { flex:0 0 auto; color:var(--wi4-amber); }
 /* v5: a folded day says what it hides (owner 28/10, live: the rows «vanished»); hidden while the day is open */
 .wn5-dayhid { margin-left:4px; font-family:'DM Sans',sans-serif; font-size:11.5px; font-weight:500; letter-spacing:0; color:var(--accent-text); }
 .wn5-day:not(.closed) .wn5-dayhid { display:none; }
