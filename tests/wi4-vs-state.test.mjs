@@ -53,7 +53,7 @@ test('F5-FE1: the read path — before = NL only; otherwise vs-state, NL only fo
   assert.match(block, /PlanConfig\.load\(\)/);
   assert.match(block, /if \(pc\.state !== 'before'\)/, 'the vs-state read is skipped only on the base\'s «before»');
   assert.match(block, /PlanConfig\.vsState\(vsIds\)/);
-  assert.match(block, /catch \(e\)[\s\S]{0,200}nlState = 'err'/, 'a failed vs-state read is err');
+  assert.match(block, /catch \(e\)[\s\S]{0,500}nlState = 'err'/, 'a failed vs-state read is err');
   assert.match(block, /vsIds = vsIds\.filter\(id => v5\.get\(id\) === 'missing'\)/, 'NL only for the orders without a bridge');
   assert.doesNotMatch(block, /cutoverDay|cutover_day/, 'no day L on the screen: the rule is the base\'s');
 });

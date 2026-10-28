@@ -33,7 +33,7 @@ const GATED = {
     submitIntlOrder: 'pre-save restore block',
   },
   'core/order-sync.js': {
-    syncGLtoCLtoNL: 'step 3 returns on after', releaseGroupageTrucks: 'callers gated (submitIntlOrder, _deleteGrpForIntl); orders_natl is stream d1',
+    syncGLtoCLtoNL: 'returns on after once it has a line', releaseGroupageTrucks: 'callers gated (submitIntlOrder, _deleteGrpForIntl); orders_natl is stream d1',
   },
   'modules/daily_ops.js': {},
 };
@@ -71,6 +71,9 @@ test('F5-FE1: the gates are where the list says', () => {
   assert.ok(oi.indexOf('_syncGroupageLines(') > 0 && [...oi.matchAll(/_syncGroupageLines\(/g)].length === 2, '_syncGroupageLines: its definition + the one call in _syncGrpFromIntl');
   assert.match(oi, /fields\['National Groupage'\] && fields\['Veroia Switch'\]\s*\n\s*&& !\(typeof PlanConfig !== 'undefined' && \(await PlanConfig\.load\(\{ fresh: true \}\)\)\.state === 'after'\)/);
   const os = read('core/order-sync.js');
-  assert.match(os, /GRP→GL→CL→NL cascade', async \(\) => \{\s*if \(await planState\(\) === 'after'\) return;\s*await syncGLtoCLtoNL/);
-  assert.match(os, /if \(_ps === 'unknown'\) throw/, 'unknown fails the step, never the old chain on a guess');
+  const gl = os.slice(os.indexOf('async function syncGLtoCLtoNL('));
+  const g = gl.indexOf("_pc.state === 'after') return"), w = gl.search(/at(Patch|Delete)\(TABLES\./);
+  assert.ok(g > 0 && g < w, 'syncGLtoCLtoNL returns on after before its first write');
+  assert.match(gl.slice(0, w), /_pc\.state === 'unknown'\) throw/, 'unknown fails the step, never the old chain on a guess');
+  assert.match(os, /if \(_ps === 'unknown'\) throw/, 'the PL step too');
 });

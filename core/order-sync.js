@@ -75,8 +75,9 @@ const _orderSync = (function() {
     }
 
     // F5 (plan 2026-10-28, Task F): from 074 (PlanConfig 'after') the old national model is history — the
-    // base freezes new NL/GL/CL and keeps the v5 side itself. Read once per call, only by the steps below.
-    // 'unknown' fails the step loudly: the old chain never runs on a guess (principle 1).
+    // base freezes new NL/GL/CL and keeps the v5 side itself. Read once per call, only by the PL step below
+    // (the GRP cascade asks inside syncGLtoCLtoNL). 'unknown' fails the step loudly: the old chain never runs
+    // on a guess (principle 1).
     let _ps = null;
     const planState = async () => {
       if (_ps === null) _ps = typeof PlanConfig !== 'undefined' ? (await PlanConfig.load()).state : 'unknown';
@@ -87,7 +88,6 @@ const _orderSync = (function() {
     // 3. National Groupage chain (both intl and natl can have groupage)
     if (!skipGRP) {
       await run('GRP→GL→CL→NL cascade', async () => {
-        if (await planState() === 'after') return;
         await syncGLtoCLtoNL(orderId, source);
       });
     }
@@ -144,6 +144,11 @@ const _orderSync = (function() {
       fields: ['Pallets','Goods','Temperature C','Reference','Status','Groupage ID','Linked Consolidated Load']
     }, false).catch(e => { if (typeof logError === 'function') logError(e, 'order-sync: GL/CL/NL read (was silent until 13/9)'); return []; });
     if (!gls.length) return;
+    // F5: after day L the CL/NL are history — their totals no longer follow the order. Asked only when there
+    // IS a line (most orders have none), so a missing or failed PlanConfig never fails an order without groupage.
+    const _pc = typeof PlanConfig !== 'undefined' ? await PlanConfig.load() : { state: 'unknown' };
+    if (_pc.state === 'after') return;
+    if (_pc.state === 'unknown') throw new Error('Δεν διαβάστηκε αν έγινε η μετάβαση εθνικών (v5) — τα σύνολα groupage δεν ενημερώθηκαν');
 
     // Find distinct CL parents for these GLs — from the line's own FK (13/9):
     // filtering CONS_LOADS by a «Groupage Lines» reverse field the Worker does

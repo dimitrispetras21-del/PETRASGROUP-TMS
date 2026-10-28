@@ -1710,15 +1710,14 @@ const _syncingOrders = new Set();
 // truck change. With the read in here no caller can starve it again;
 // tests/vs-sync-callers.test.js fails the build on a second argument.
 // After day L (F5 Ε2): read what the base made of the order's VS side, and say it. Nothing is written here.
-// {v5:true, text} is the stage the form shows; a state that is not what the order says throws (✗).
+// {v5:true, text} is the stage the form shows; a VS without a bridge throws (✗). A non-VS (or Cancelled) order
+// is not read: this runs on every international save and status change, an order without stops is not in the
+// rec → id map, and a bridge the base failed to withdraw is the auditor's B-95, not a failed stage here.
 async function _vsAfterCutover(orderId, vsOn) {
+  if (!vsOn) return { v5: true, text: 'Όχι VS — χωρίς εθνικό σκέλος ✓' };
   const st = (await PlanConfig.vsState([orderId])).get(orderId);
-  if (st !== 'missing') {
-    if (!vsOn) throw new Error(`VS chain: η παραγγελία δεν είναι πια VS, αλλά η βάση κρατά ακόμη την εθνική πλευρά (${st.n_pieces} κομμάτια) — ενημέρωσε τον Δημήτρη`);
-    return { v5: true, text: `VS chain: η βάση έφτιαξε την εθνική πλευρά (${st.n_pieces} κομμάτια) ✓` };
-  }
-  if (vsOn) throw new Error('VS chain: δεν δημιουργήθηκε εθνικό σκέλος (ημέρα κόμβου; ημέρα πριν από τη μετάβαση;) — έλεγξε την ημέρα Βέροιας');
-  return { v5: true, text: 'Χωρίς εθνικό σκέλος (όχι VS) ✓' };
+  if (st === 'missing') throw new Error('VS chain: δεν δημιουργήθηκε εθνικό σκέλος (ημέρα κόμβου; ημέρα πριν από τη μετάβαση;) — έλεγξε την ημέρα Βέροιας');
+  return { v5: true, text: `VS chain: η βάση έφτιαξε την εθνική πλευρά (${st.n_pieces} κομμάτια) ✓` };
 }
 
 async function _syncVeroiaSwitch(orderId) {

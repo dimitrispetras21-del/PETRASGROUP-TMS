@@ -164,11 +164,11 @@ test('F5-FE1 vsState: a bridge → its entry; «missing» stays the base\'s word
   assert.deepStrictEqual(paths, ['/pallets/gate?order_recs=recVS1%2CrecVS2', '/plan/vs-state?order_ids=101,102']);
 });
 
-test('F5-FE1 vsState: a rec the gate does not map → error vs_unmapped, logged, no vs-state call (never «missing»)', async () => {
+test('F5-FE1 vsState: a rec the gate does not map → error vs_unmapped, no vs-state call (never «missing»); the caller logs it, once', async () => {
   const s = sandbox([gate([['recVS1', 101]])], VSF);
   assert.deepStrictEqual(JSON.parse(await VS(s, ['recVS1', 'recVS9'])), { err: 'vs_unmapped' });
   assert.strictEqual(s.calls.length, 1);
-  assert.ok(s.errs().length >= 1);
+  assert.strictEqual(s.errs().length, 0, 'not logged here: the caller logs (review finding 4: never twice)');
 });
 
 test('F5-FE1 vsState: vs-state fails or answers another shape → throws (the caller shows «απέτυχε»)', async () => {

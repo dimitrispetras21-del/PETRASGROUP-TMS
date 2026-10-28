@@ -730,7 +730,8 @@ async function renderWeeklyIntl(){
         let v5;
         try { v5 = await PlanConfig.vsState(vsIds); }
         catch (e) {
-          if (typeof logError === 'function') logError(e, 'weekly intl: /plan/vs-state');
+          // planFetch logged its own failures (a PlanError of a /plan route); the gate's and the map's are logged here
+          if (typeof logError === 'function' && !(typeof PlanError === 'function' && e instanceof PlanError && !/^vs_/.test(e.code || ''))) logError(e, 'weekly intl: /plan/vs-state');
           if (WINTL.data.nlBySrc === nlMap) { WINTL.data.nlState = 'err'; if(_wiV2Active()) WIV2._lateLanded(); }
           return;
         }
@@ -2304,12 +2305,18 @@ function _wi2Carrier(oid){
 }
 // One entry of WINTL.data.natBySrc from a NATIONAL LOADS row (before day L, or a VS without a bridge): partner
 // first, then truck — the reading the v1 tile and v4 _carrierOf both had. Delivered/Invoiced = the leg is done.
+// carrier is a getter: the labels resolve when the tile is drawn, so the partners self-heal (a refresh of
+// PARTNERS + repaint, renderWeeklyIntl) still turns a «—» into the name — as when the tiles read the NL row.
 function _wiNatFromNl(nl){
-  const d=WINTL.data, f=nl.fields||{}; const pid=(f['Partner']||[])[0], tid=(f['Truck']||[])[0], did=(f['Driver']||[])[0];
-  let carrier=null;
-  if(pid||f['Is Partner Trip']) carrier={kind:'par', text:[(d.partners.find(x=>x.id===pid)||{}).label||'—', f['Partner Truck Plates']||''].filter(Boolean).join(' · ')};
-  else if(tid) carrier={kind:'own', text:[(d.trucks.find(x=>x.id===tid)||{}).label||'—', did?((d.drivers.find(x=>x.id===did)||{}).label||''):''].filter(Boolean).join(' · ')};
-  return {carrier, done:['Delivered','Invoiced'].includes(f['Status']), src:'nl'};
+  const f=nl.fields||{}; const pid=(f['Partner']||[])[0], tid=(f['Truck']||[])[0], did=(f['Driver']||[])[0];
+  return {
+    get carrier(){
+      const d=WINTL.data;
+      if(pid||f['Is Partner Trip']) return {kind:'par', text:[(d.partners.find(x=>x.id===pid)||{}).label||'—', f['Partner Truck Plates']||''].filter(Boolean).join(' · ')};
+      if(tid) return {kind:'own', text:[(d.trucks.find(x=>x.id===tid)||{}).label||'—', did?((d.drivers.find(x=>x.id===did)||{}).label||''):''].filter(Boolean).join(' · ')};
+      return null;
+    },
+    done:['Delivered','Invoiced'].includes(f['Status']), src:'nl'};
 }
 // One entry from /plan/vs-state (a VS with a v5 bridge). The base names each carrier (072 plan_vs_state: kind
 // owned / partner / none, text plates · driver or the partner). 'none' = a trip without a vehicle = not

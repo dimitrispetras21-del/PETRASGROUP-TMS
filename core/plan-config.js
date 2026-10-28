@@ -90,7 +90,8 @@
   // /plan/* takes the base's numeric ids. The one map rec → id open to every role is GET /pallets/gate
   // (pl_v_order_gate: every order with stops, 79/79 live VS on 28/10), the one core/rt-feed.js _rtPg uses.
   // A rec the map does not hold is an ERROR, never 'missing' (principle 1): 'missing' is the base's word only.
-  // Throws on any failure; the caller shows «απέτυχε», never «χωρίς εθνικό».
+  // Throws on any failure; the caller shows «απέτυχε», never «χωρίς εθνικό», and logs it once (planFetch
+  // already logged its own failures; the rest are logged by the caller, never twice here).
   const GATE_MAX = 300, VS_MAX = 500;
   async function vsState(orderRecs) {
     const recs = [...new Set((orderRecs || []).filter(Boolean))];
@@ -107,7 +108,6 @@
     if (lost.length) {
       const e = _err('vs_unmapped', 'Δεν βρέθηκε ο αριθμός βάσης για ' + lost.length + ' παραγγελία(ες) VS — η εθνική πλευρά δεν διαβάστηκε');
       e.data = { recs: lost };
-      _log(e);
       throw e;
     }
     for (let i = 0; i < recs.length; i += VS_MAX) {
@@ -117,9 +117,7 @@
         const v = d ? d[String(pgOf.get(r))] : undefined;
         if (v === 'missing' || (v && typeof v === 'object' && Array.isArray(v.carriers))) out.set(r, v);
         else {
-          const e = _err('vs_shape', 'Η εθνική πλευρά VS ήρθε σε άγνωστη μορφή — ενημέρωσε τον Δημήτρη');
-          _log(e);
-          throw e;
+          throw _err('vs_shape', 'Η εθνική πλευρά VS ήρθε σε άγνωστη μορφή — ενημέρωσε τον Δημήτρη');
         }
       }
     }
