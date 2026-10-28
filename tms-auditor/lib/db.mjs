@@ -79,7 +79,9 @@ export function migrationFile(name) {
 export const V5_SCHEMA = '071_plan_schema.sql';
 export const V5_SEGMENTS = path.relative(MIGRATIONS, migrationFile('072b_plan_vehicle_segments.sql'));
 export const V5_MONEY = path.relative(MIGRATIONS, migrationFile('073_plan_money.sql'));
-export const OWN_GRANTS = [STOCK_DRAFT, V5_SCHEMA, V5_SEGMENTS, V5_MONEY];
+// 074b (F5 day L) grants the auditor the read of plan_config (074a's table), which B-95..B-98 read.
+export const V5_CUTOVER = path.relative(MIGRATIONS, migrationFile('074b_plan_cutover_monitoring.sql'));
+export const OWN_GRANTS = [STOCK_DRAFT, V5_SCHEMA, V5_SEGMENTS, V5_MONEY, V5_CUTOVER];
 
 export async function createDb({ roles = false, seed = true, fixture = true, extensions, v5 = true } = {}) {
   // v5: the stand-ins of the 071 / 072b / 073 relations (schema-v5.sql); false for a harness that applies 071 itself.

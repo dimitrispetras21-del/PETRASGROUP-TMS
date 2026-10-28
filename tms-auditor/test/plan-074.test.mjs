@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { prodShaped072, TRG } from './prod-shaped-072.mjs';
 import { migrationFile, DRAFTS, MIGRATIONS } from '../lib/db.mjs';
 import { IDS as IDS_073B } from '../../worker/migrations/drafts/tools/build-073b.mjs';
+import { NEW_IDS, OLD, REWRITTEN_IDS } from '../../worker/migrations/drafts/tools/build-074.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const read = (f) => fs.readFileSync(migrationFile(f), 'utf8');
@@ -648,3 +649,96 @@ for (const [name, mutate, broken] of MUTANTS) {
     for (const k of broken) await assert.rejects(async () => { await CASES[k](db, L); await NETS(db); }, `${k} must fail under "${name}"`);
   });
 }
+
+// ---- 074b (plan Task C): the auditor learns day L ----
+// The local seed (047b, generated from every check file) already holds B-95..B-99 and the new texts of B-10 / B-26 /
+// B-42; production holds neither before 074b: take the new ones out and put the live texts back, as production.
+async function asProduction074b(db) {
+  await db.query('DELETE FROM monitoring.checks WHERE id = ANY($1)', [NEW_IDS]);
+  for (const [id, o] of Object.entries(OLD)) {
+    await db.query('UPDATE monitoring.checks SET sql_text = $2, ids_sql = $3, exceptions = $4 WHERE id = $1', [id, o.sql, o.ids_sql, o.exceptions]);
+  }
+}
+async function checkValue(db, id) {   // as monitoring.run_checks: the auditor's role, the check's text and its ids
+  const { sql_text: sql, ids_sql: ids } = await one(db, 'SELECT sql_text, ids_sql FROM monitoring.checks WHERE id = $1', [id]);
+  await db.exec('SET ROLE tms_check_runner');
+  try {
+    const v = Number(Object.values((await db.query(sql)).rows[0])[0]);
+    const named = ids ? Object.values((await db.query(ids)).rows[0])[0] : null;
+    if (ids && (v === 0) !== (named.length === 0)) throw new Error(`${id}: value ${v} but ids ${JSON.stringify(named)}`);
+    return v;
+  } finally { await db.exec('RESET ROLE'); }
+}
+async function redIn(db, id, scenario) {   // the value of a check inside a scenario that is undone afterwards
+  await db.exec('BEGIN');
+  try { await db.exec(scenario); return await checkValue(db, id); } finally { await db.exec('ROLLBACK'); }
+}
+
+test('074b: B-95..B-99 + B-10/B-26/B-42 are 0 on the production copy after 074, each new one red in its scenario', async (t) => {
+  const L = nextSaturday();
+  const db = await base();
+  await asProduction074b(db);
+  await seedBefore(db, L);
+  await db.exec(withL(read('074_plan_cutover.sql'), L));
+  const ALL = [...NEW_IDS, ...REWRITTEN_IDS];
+
+  await t.test('074b dry run keeps nothing; 074b applies; every check 0 as the auditor', async () => {
+    const e = await errorOf(db, read('074b_plan_cutover_monitoring_dryrun.sql'));
+    assert.match(e?.msg ?? '', /DRY RUN 074b finished - EVERYTHING UNDONE, nothing kept\./, e?.msg);
+    assert.strictEqual(await n(db, `SELECT count(*) FROM monitoring.checks WHERE id = ANY($1)`, [NEW_IDS]), 0);
+    assert.strictEqual(await errorOf(db, read('074b_plan_cutover_monitoring.sql')), null);
+    assert.strictEqual(await n(db, `SELECT count(*) FROM monitoring.checks WHERE id = ANY($1) AND enabled`, [NEW_IDS]), 5);
+    for (const id of ALL) assert.strictEqual(await checkValue(db, id), 0, id);
+  });
+
+  const bridged = `(SELECT s.id FROM shipments s JOIN orders o ON o.id = s.order_id WHERE o.reference = 'B1' AND s.deleted_at IS NULL ORDER BY s.id LIMIT 1)`;
+  for (const [id, why, scenario] of [
+    ['B-95', 'a bridge gone behind the trigger\'s back', `SET LOCAL session_replication_role = replica;
+       UPDATE shipment_pieces SET deleted_at = now(), deleted_reason = 't', deleted_by = 't' WHERE shipment_id = ${bridged};
+       UPDATE shipments SET deleted_at = now(), deleted_reason = 't', deleted_by = 't' WHERE id = ${bridged};`],
+    ['B-95', 'via_hub false on a bridged stop', `UPDATE order_stops SET via_hub = false WHERE id = (SELECT order_stop_id FROM shipments WHERE id = ${bridged});`],
+    ['B-96', 'a national load inserted past the freeze', `SET LOCAL session_replication_role = replica;
+       INSERT INTO national_loads (legacy_id, source_type, status) VALUES ('rec74B96', 'National', 'Pending');`],
+    ['B-96', 'a national order without a shipment', `INSERT INTO national_orders (legacy_id, reference, price) VALUES ('rec74B96n', 'B96', 10);`],
+    ['B-97', 'a VS born without a hub day', `INSERT INTO orders (legacy_id, order_type, direction, status, veroia_switch, reference)
+       VALUES ('rec74B97', 'International', 'Import', 'Pending', true, 'B97');`],
+    ['B-98', 'a national order with a price and no share', `INSERT INTO national_orders (legacy_id, reference, price) VALUES ('rec74B98', 'B98', 120);`],
+    // past the bridge trigger: through it, plan_bridge_sync sets via_hub back to what the rule says
+    ['B-99', 'via_hub on a stop of an order that is not a VS', `SET LOCAL session_replication_role = replica;
+       INSERT INTO order_stops (legacy_id, stop_type, stop_number, order_id, location_id, pallets, via_hub)
+       VALUES ('rec74B99', 'Unloading', 1, (SELECT min(id) FROM orders WHERE veroia_switch IS NOT TRUE AND deleted_at IS NULL),
+               (SELECT min(id) FROM locations WHERE NOT is_hub), 5, true);`],
+  ]) {
+    await t.test(`${id} red: ${why}`, async () => { assert.ok(await redIn(db, id, scenario) > 0, id); assert.strictEqual(await checkValue(db, id), 0); });
+  }
+
+  await t.test('E17: B-26 leaves the bridged VS to B-95; B-42 the national orders with a shipment; B-10 the v5 cycles', async () => {
+    // B-26: a VS in v5 without NL (the bridge took it) is not counted; a VS out of v5 without NL still is
+    assert.strictEqual(await redIn(db, 'B-26', `UPDATE orders SET created_at = now() - interval '1 hour' WHERE reference IN ('B1', 'B3', 'B5');`), 0);
+    assert.strictEqual(await redIn(db, 'B-26', `UPDATE orders SET created_at = now() - interval '1 hour' WHERE reference = 'B2';
+      UPDATE national_loads SET deleted_at = now() WHERE legacy_id = 'rec74NB2';`), 1);
+    const nat = `INSERT INTO national_orders (legacy_id, reference, price, created_at) VALUES ('rec74E17', 'E17', 50, now() - interval '1 hour');`;
+    assert.strictEqual(await redIn(db, 'B-42', nat), 1);
+    assert.strictEqual(await redIn(db, 'B-42', nat + `SET LOCAL session_replication_role = replica;
+      INSERT INTO shipments (nat_order_id, origin_location_id, dest_location_id, pallets, load_from, load_to, deliver_from, deliver_to, created_by)
+      SELECT n.id, (SELECT min(id) FROM locations WHERE NOT is_hub), (SELECT max(id) FROM locations WHERE NOT is_hub), 5, now(), now(), now(), now(), 't'
+        FROM national_orders n WHERE n.legacy_id = 'rec74E17';`), 0);
+    const rt = (m) => `SET LOCAL session_replication_role = replica;
+      INSERT INTO trucks (license_plate) VALUES ('TEST-074-E17-${m}');
+      INSERT INTO ct_round_trips (code, model, scope, trip_type, truck_id, date_start, date_end, start_at, end_at, status, source, created_by)
+      VALUES ('RT-E17-${m}', ${m}, 'NATL', 'OWNED', (SELECT id FROM trucks WHERE license_plate = 'TEST-074-E17-${m}'), current_date - 30, current_date - 20,
+              ${m === 2 ? "now() - interval '30 days', now() - interval '20 days'" : 'NULL, NULL'}, 'planned', 'planner', 't');`;
+    const b10 = await checkValue(db, 'B-10');
+    assert.strictEqual(await redIn(db, 'B-10', rt(2)), b10);
+    assert.strictEqual(await redIn(db, 'B-10', rt(1)), b10 + 1);
+  });
+
+  await t.test('074b rollback: the 5 checks out, the 3 texts back byte for byte; then 074b again', async () => {
+    assert.strictEqual(await errorOf(db, read('074b_plan_cutover_monitoring_rollback.sql')), null);
+    assert.strictEqual(await n(db, `SELECT count(*) FROM monitoring.checks WHERE id = ANY($1)`, [NEW_IDS]), 0);
+    for (const [id, o] of Object.entries(OLD)) {
+      assert.strictEqual((await one(db, `SELECT md5(sql_text) AS m FROM monitoring.checks WHERE id = $1`, [id])).m, o.md5, id);
+    }
+    assert.strictEqual(await errorOf(db, read('074b_plan_cutover_monitoring.sql')), null);
+  });
+});
