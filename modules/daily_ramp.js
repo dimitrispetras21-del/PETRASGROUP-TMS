@@ -98,10 +98,14 @@ async function _rampLoad() {
   // Reduces 3 parallel API calls → 1 call
   // Stock requires EXPLICIT 'In Stock' (blank is ambiguous, don't auto-count)
   const combinedFilter = `OR(IS_SAME({Plan Date},'${RAMP.date}','day'),AND({Type}='Παραλαβή',{Status}='Done',{Stock Status}='In Stock'),{Postponed To}!=BLANK())`;
-  const allRamp = await atGetAll(TABLES.RAMP,{filterByFormula:combinedFilter,fields:RAMP_FIELDS},false);
+  const [allRamp, v5] = await Promise.all([
+    atGetAll(TABLES.RAMP,{filterByFormula:combinedFilter,fields:RAMP_FIELDS},false),
+    _rampV5Load(RAMP.date),
+  ]);
+  RAMP.v5 = v5;
 
   // Split results client-side
-  const recs = allRamp.filter(r => toLocalDate(r.fields['Plan Date']) === RAMP.date);
+  const recs = allRamp.filter(r => toLocalDate(r.fields['Plan Date']) === RAMP.date).concat(v5.rows);
   const stock = allRamp.filter(r => r.fields['Type']==='Παραλαβή' && r.fields['Status']==='Done' && r.fields['Stock Status']==='In Stock');
   const postponed = allRamp.filter(r => r.fields['Postponed To'] && toLocalDate(r.fields['Postponed To']) === RAMP.date);
 
@@ -109,6 +113,127 @@ async function _rampLoad() {
   RAMP.records=recs;
   RAMP.stock=stock;
   RAMP.postponed=postponed;
+}
+
+/* ── NATIONAL v5 AT VEROIA (F5, spec §5 Ε14) ─────────────────── */
+// From day L the national leg at Veroia lives in v5 (rt_stops of the hub), not in NL: 074 soft-deletes the NLs of
+// hub day ≥ L and 022's trigger takes their RAMP rows with them, and the base refuses new NLs. These rows are READ
+// from GET /plan/board on every load and never written to RAMP: a copy would drift from the board the national
+// desk edits (principle 3). v5 computes execution from the day (spec §2.3) and moves times on the board, so the rows
+// carry no Done / Postpone / time edit. Before L (PlanConfig 'before') nothing here asks /plan/board and nothing is
+// drawn: the page is today's page. 'unknown' reads anyway (harmless: v5 has no rows before L) and says so.
+// Plan docs/superpowers/plans/2026-10-28-f5-national-v5-cutover.md §10 (d2).
+const _rampV5Logged = new Set();
+function _rampV5Log(e, where) {
+  // once per message per tab: the 2′ auto-refresh must not write the same app_errors row every tick
+  const k = where + '|' + (e && e.message);
+  if (_rampV5Logged.has(k)) return;
+  _rampV5Logged.add(k);
+  try { if (typeof logError === 'function') logError(e, where); } catch (_) { /* reporting never cascades */ }
+}
+async function _rampPlanState() {
+  if (typeof PlanConfig === 'undefined') {
+    _rampV5Log(new Error('core/plan-config.js not loaded'), 'daily_ramp v5: PlanConfig');
+    return 'unknown';
+  }
+  try { return (await PlanConfig.load()).state; } catch (e) { _rampV5Log(e, 'daily_ramp v5: PlanConfig.load'); return 'unknown'; }
+}
+// The hub's numeric id: the catalogue's is_hub (one GET /plan/lookups per session), else the board's own VS
+// (WN5L.hubFromBoard, the rule the v5 board uses). Never a name or a legacy id.
+async function _rampHubId(board, errors) {
+  if (typeof PlanIds !== 'undefined') {
+    try { const r = await PlanIds.load(); if (r && r.ok) { const h = PlanIds.hub(); if (h != null) return h; } } catch (_) { /* falls back below */ }
+  }
+  return typeof WN5L !== 'undefined' ? WN5L.hubFromBoard(board, errors) : null;
+}
+async function _rampV5Load(day) {
+  const state = await _rampPlanState();
+  if (state === 'before') return { state, rows: [], err: null };
+  let board;
+  try {
+    const week = TmsWeek.startOfDate(day);
+    board = await planFetch('GET', '/plan/board?week=' + week);
+    if (!board || typeof board !== 'object' || board.week !== week
+        || !Array.isArray(board.cycles) || !Array.isArray(board.waiting) || !Array.isArray(board.hub)) {
+      const e = new Error('Η απάντηση του Εβδομαδιαίου Εθνικών ήρθε σε άγνωστη μορφή');
+      _rampV5Log(e, 'daily_ramp v5: board shape');
+      return { state, rows: [], err: e };
+    }
+  } catch (e) {
+    // planFetch logs what is not a designed answer; every role has GET board, so a designed one is a bug too
+    if (e && e._sessionGone) return { state, rows: [], err: null };
+    if (e && typeof PlanApi !== 'undefined' && PlanApi.isDesigned(e)) _rampV5Log(e, 'daily_ramp v5: board');
+    return { state, rows: [], err: e || new Error('board') };
+  }
+  // hub[] items are at the hub by definition (071 at_hub); only stops and waiting pieces need its id
+  const needsHub = board.cycles.some(c => (c.stops || []).length) || board.waiting.length > 0;
+  const errors = [];
+  const hubId = needsHub ? await _rampHubId(board, errors) : null;
+  if (errors.length || (hubId == null && needsHub)) {
+    const e = new Error(errors[0] || 'Δεν βρέθηκε ο κόμβος Βέροιας');
+    _rampV5Log(e, 'daily_ramp v5: hub');
+    return { state, rows: [], err: e };
+  }
+  return { state, rows: _rampV5Rows(board, day, hubId), err: null };
+}
+// One ramp line per (hub stop of the day, load | unload), plus the pieces no truck carries yet that today's NL
+// would have shown: a piece that STARTS at Veroia (VS import, a national from Veroia) on its ready day, and a piece
+// heading TO Veroia on its due day. A piece that came in on a cycle and waits at the hub is stock, not a movement:
+// its arrival is already the cycle's unload line.
+function _rampV5Rows(board, day, hubId) {
+  const isHub = id => hubId != null && id != null && Number(id) === Number(hubId);
+  const d10 = v => (v == null ? '' : String(v).slice(0, 10));
+  const rows = [];
+  for (const c of board.cycles) {
+    const stops = Array.isArray(c.stops) ? c.stops : [];
+    // every leg appears at its pickup AND its drop stop: the far end of a hub line is the leg's other stop
+    const at = new Map();
+    for (const s of stops) for (const l of s.legs || []) { if (!at.has(l.leg_id)) at.set(l.leg_id, []); at.get(l.leg_id).push(s); }
+    const vehicle = c.trip_type === 'PARTNER' ? c.partner : c.truck;
+    for (const s of stops) {
+      if (!isHub(s.location_id) || d10(s.stop_day) !== day) continue;
+      for (const act of ['unload', 'load']) {
+        const legs = (s.legs || []).filter(l => l.act === act);
+        if (!legs.length) continue;
+        const far = [...new Set(legs.flatMap(l => (at.get(l.leg_id) || []).filter(o => o !== s).map(o => o.location)).filter(Boolean))];
+        rows.push(_rampV5Rec(`stop:${s.stop_id}:${act}`, { day, act, items: legs, time: s.planned_from, far, vehicle, driver: c.driver, executed: s.executed === true }));
+      }
+    }
+  }
+  for (const h of board.hub) {
+    if (h.inbound_rt_id == null && d10(h.nat_ready_day) === day) rows.push(_rampV5Rec(`hub:${h.piece_id}`, { day, act: 'load', items: [h], pending: true }));
+  }
+  for (const w of board.waiting) {
+    if (isHub(w.nat_to_location_id) && d10(w.nat_due_day) === day) rows.push(_rampV5Rec(`wait:${w.piece_id}`, { day, act: 'unload', items: [w], pending: true }));
+  }
+  return rows;
+}
+function _rampV5Rec(key, o) {
+  const uniq = a => [...new Set(a)];
+  const clients = uniq(o.items.map(x => x.client).filter(Boolean));
+  const temps = uniq(o.items.map(x => x.temperature_c).filter(v => v != null && v !== '').map(String));
+  const vs = o.items.some(x => x.kind === 'vs_import' || x.kind === 'vs_export');
+  const pal = Math.round(o.items.reduce((s, x) => s + (Number(x.pallets) || 0), 0) * 10) / 10;
+  const t = o.time ? new Date(o.time) : null;
+  const isIn = o.act === 'unload';
+  const far = (o.far || []).join(' / ');
+  return { id: 'v5:' + key, _v5: { pending: !!o.pending }, fields: {
+    'Plan Date': o.day, 'Time': t && !isNaN(t) ? t.toISOString() : '',
+    'Type': isIn ? 'Παραλαβή' : 'Φόρτωση', 'Status': o.executed ? 'Done' : 'Planned',
+    'Pallets': pal, 'Supplier/Client': clients.join(' / ') || '—', 'Goods': '', 'Temperature': temps.join(' / '),
+    'Is Veroia Switch': vs, 'Ramp Category': vs ? 'VS Simple' : '',
+    'Loading Points': isIn ? far : '', 'Delivery Points': isIn ? '' : far,
+    // plate / partner and driver come as names from the board, not as facade links
+    '_v5Truck': o.vehicle || '', '_v5Driver': o.driver || '',
+  } };
+}
+function _rampV5Strip() {
+  const v = RAMP.v5;
+  if (!v || v.state === 'before') return '';
+  const box = (color, text, retry) => `<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 var(--space-4);padding:8px 12px;border:1px solid ${color};border-radius:var(--radius);color:${color};font-size:var(--text-sm);background:var(--surface-card)"><span>${text}</span>${retry ? '<button class="btn btn-primary btn-sm" onclick="renderDailyRamp()">Ξαναδοκίμασε</button>' : ''}</div>`;
+  if (v.err) return box('var(--danger)', 'Οι εθνικές κινήσεις v5 δεν διαβάστηκαν — η ράμπα δείχνει μόνο τις υπόλοιπες.', true);
+  if (v.state === 'unknown') return box('var(--warning)', 'Η κατάσταση μετάβασης εθνικών (v5) δεν διαβάστηκε — οι εθνικές κινήσεις v5 διαβάστηκαν από το Εβδομαδιαίο Εθνικών.', true);
+  return '';
 }
 
 /* ── AUTO-SYNC: Create RAMP records from ORDER_STOPS (single source of truth) ── */
@@ -373,8 +498,9 @@ function _rampResolveFromStops(stops, stopType) {
 }
 
 /* ── HELPERS (using shared data-helpers.js) ───────────────────── */
-const _rTruck=f=>getTruckPlate(getLinkedId(f['Truck']))||'';
-const _rDriver=f=>getDriverName(getLinkedId(f['Driver']))||'';
+// a v5 line (Ε14) carries the board's names; every other line resolves its facade link
+const _rTruck=f=>f['_v5Truck']!==undefined?f['_v5Truck']:(getTruckPlate(getLinkedId(f['Truck']))||'');
+const _rDriver=f=>f['_v5Driver']!==undefined?f['_v5Driver']:(getDriverName(getLinkedId(f['Driver']))||'');
 // Strip internal markers that must never leak to the UI:
 //   - `STOP:recXXXXXX...` (sync-correlation markers written to Notes)
 //   - Bare Airtable record IDs (14-17 char strings starting with "rec")
@@ -478,7 +604,7 @@ function _rampDraw() {
       </select>
       <span class="entity-count-chip" id="rampFilterCount">${recs.length}${recs.length!==RAMP.records.length?' / '+RAMP.records.length:''}</span>
     </div>
-    <div class="ramp-kpis">
+    ${_rampV5Strip()}<div class="ramp-kpis">
       <div class="ramp-kpi ramp-kpi-primary"><div class="ramp-kpi-lbl">${_i('check_circle', 11)} Πρόοδος</div>
         <div><span class="ramp-kpi-val" style="color:${total?Math.round(done/total*100)>=80?'var(--success)':'var(--accent)':'var(--text-dim)'}">${total?Math.round(done/total*100):0}%</span><span class="ramp-kpi-sub">${done}/${total}</span></div></div>
       <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('arrow_down_left', 11)} Εισερχόμενα σήμερα</div>
@@ -556,10 +682,14 @@ function _rRow(rec,num,tOpts) {
   const truck=escapeHtml(_rTruck(f));
   const isIn=f['Type']==='Παραλαβή';
 
-  const timeSel=`<select class="tinp" onchange="_rampSvTime('${id}',this.value)"><option value="">--:--</option>${tOpts.map(t=>`<option value="${t}"${time===t?' selected':''}>${t}</option>`).join('')}</select>`;
+  const v5=rec._v5;
+  const timeSel=v5?`<span>${time||'—'}</span>`:`<select class="tinp" onchange="_rampSvTime('${id}',this.value)"><option value="">--:--</option>${tOpts.map(t=>`<option value="${t}"${time===t?' selected':''}>${t}</option>`).join('')}</select>`;
   // Labels only. _rampDone() sets Status='Done' itself (γρ. 649) — these words
   // never reach the database, so translating them is safe.
-  const acts=isDone?'<span style="color:var(--success);font-size:11px">✓ Ολοκληρώθηκε</span>'
+  // v5 (Ε14): read-only — the national desk moves it on the board; v5 executes by the day, nobody marks it
+  const acts=v5?(isDone?'<span style="color:var(--success);font-size:11px">✓ Εκτελέστηκε (v5)</span>'
+      :`<span style="color:var(--text-dim);font-size:11px" title="Αλλάζει από το Εβδομαδιαίο Εθνικών">v5 · ${v5.pending?'προς ανάθεση':'Εβδομαδιαίο Εθνικών'}</span>`)
+    :isDone?'<span style="color:var(--success);font-size:11px">✓ Ολοκληρώθηκε</span>'
     :`<button class="btn btn-success" style="padding:4px 12px;font-size:11px" onclick="confirmAction('Σήμανση ως ${isIn?'Παρελήφθη':'Φορτώθηκε'};').then(ok=>{if(ok)_rampDone('${id}','${isIn}')})">${isIn?'Παρελήφθη':'Φορτώθηκε'}</button> <button class="btn btn-ghost" style="padding:4px 12px;font-size:11px" onclick="confirmAction('Αναβολή;').then(ok=>{if(ok)_rampPostpone('${id}')})">Αναβολή</button>`;
 
   // CL sub-rows: parse Notes for supplier breakdown
@@ -622,7 +752,9 @@ function _rTlRow(rec) {
   const isIn=f['Type']==='Παραλαβή';
   const typeBadge=isIn?'<span class="tl-type in">ΕΙΣ</span>':'<span class="tl-type out">ΕΞ</span>';
   // Display only — `status` above keeps the raw 'Planned'/'Done' value.
-  const statusTxt=isDone?'<span style="color:var(--success)">✓ Ολοκληρώθηκε</span>'
+  const statusTxt=rec._v5?(isDone?'<span style="color:var(--success)">✓ Εκτελέστηκε (v5)</span>'
+      :`<span style="color:var(--text-dim)">${rec._v5.pending?'Προς ανάθεση (v5)':'Προγραμματισμένο (v5)'}</span>`)
+    :isDone?'<span style="color:var(--success)">✓ Ολοκληρώθηκε</span>'
     :f['Postponed To']?'<span style="color:var(--warning)">Αναβλήθηκε</span>'
     :'<span style="color:var(--text-dim)">Προγραμματισμένο</span>';
 
