@@ -14,7 +14,7 @@ const PLV = { movements: [], lookups: null, balances: { clients: null, partners:
   // Redesign 27/8: ομαδοποίηση (client|location|none), κατάσταση διπλώματος ανά
   // ομάδα (κρατιέται όσο ο χρήστης μένει στη σελίδα), cache παραγγελιών ανά
   // pg id για τις πλούσιες γραμμές, και σημαία αποτυχίας εμπλουτισμού.
-  groupBy: 'client', open: {}, orderById: null, enrichFail: false };
+  groupBy: 'client', open: {}, orderById: null, enrichFail: false, cut: null };
 
 // Write gate (13/9, Thodoris go-live audit): the pallet ledger had no role check;
 // management sees it (orders:view) but PL_PERMS keeps it read-only for that
@@ -27,6 +27,26 @@ function _plvBlockReadOnly(){
   return true;
 }
 
+// A list the Worker cut is said on screen, never shown as complete (principle 1). The Worker reads every row in
+// pages and answers truncated + cap; the balances come from the views and are never cut. Until that Worker is live
+// the old one stops at 300 rows and does not say it, so 300 rows without «truncated» is read as cut: drop that
+// branch once every answer carries «truncated».
+function _plvCut(res) {
+  const n = (res.records || []).length;
+  if (res.truncated === undefined) return n >= 300 ? { n, cap: 300, cut: true } : null;
+  if (res.truncated) return { n, cap: res.cap, cut: true };
+  return res.cap && n >= res.cap * 0.9 ? { n, cap: res.cap, cut: false } : null;
+}
+function _plvCutNote(cut, inCard) {
+  if (!cut) return '';
+  const msg = !cut.cut
+    ? `⚠ ${cut.n} κινήσεις, κοντά στο όριο των ${cut.cap} της λίστας: ζήτησε αύξηση`
+    : inCard
+      ? `⚠ εμφανίζονται οι ${cut.n} νεότερες κινήσεις: το τρεχούμενο δεν ξεκινά από την αρχή (το υπόλοιπο είναι σωστό)`
+      : `⚠ εμφανίζονται οι ${cut.n} νεότερες κινήσεις: οι παλαιότερες λείπουν από τη λίστα (όχι από τα υπόλοιπα)`;
+  return `<span style="color:var(--warn)">${msg}</span>`;
+}
+
 async function renderPalletLedger() {
   const c = document.getElementById('content');
   c.style.padding = ''; c.style.overflow = '';
@@ -37,6 +57,7 @@ async function renderPalletLedger() {
       PLV.lookups ? Promise.resolve(PLV.lookups) : plFetch('/pallets/lookups')
     ]);
     PLV.movements = mv.records || [];
+    PLV.cut = _plvCut(mv);
     PLV.lookups = lk;
     const [bc, bp] = await Promise.all([
       plFetch('/pallets/balances?type=clients'),
@@ -495,6 +516,7 @@ function _plvDraw() {
           `<button class="${PLV.groupBy === v ? 'on' : ''}" onclick="plvGroupBy('${v}')">${l}</button>`).join('')}
       </div>
       <span class="plv-count" title="Οι κινήσεις έρχονται ταξινομημένες από τον διακομιστή (movement_date φθίνουσα)· οι ομάδες κατά την πιο πρόσφατη κίνησή τους">Νεότερο πρώτα</span>
+      ${_plvCutNote(PLV.cut, false)}
       ${PLV.enrichFail ? '<span style="color:var(--warn)" title="Η ανάγνωση των παραγγελιών απέτυχε — οι στήλες Reference/Μεταφορικό είναι προσωρινά κενές. Οι κινήσεις εμφανίζονται κανονικά· η στήλη Αρ. και η αναζήτηση με #αρ. δουλεύουν.">⚠ στοιχεία παραγγελιών μη διαθέσιμα — η αναζήτηση με οδηγό, εβδομάδα παραγγελίας ή reference δεν βρίσκει τίποτα</span>' : ''}`;
   const actions = `<button class="plv-link" onclick="plvExportCSV()">Εξαγωγή CSV</button>
       ${(typeof can!=='function'||can('costs')==='full')?'<button class="btn-new-order" onclick="plvNewMovement()">+ Νέα κίνηση</button>':''}`;
@@ -869,6 +891,7 @@ async function plvDrill(kind, id) {
       <div class="plv-strip">
         <span>Υπόλοιπο <b class="${balCls}">${bal ? (bal.balance > 0 ? '+' : '') + bal.balance : '0'} παλ.</b></span>
         <span class="plv-dim">·</span><span>${pendCnt} εκκρεμείς (εκτός τρεχούμενου)</span>
+        ${_plvCutNote(_plvCut(hist), true)}
         ${PLV.enrichFail ? '<span style="color:var(--warn)" title="Η ανάγνωση των παραγγελιών απέτυχε — η στήλη Reference είναι προσωρινά κενή.">⚠ στοιχεία παραγγελιών μη διαθέσιμα</span>' : ''}
       </div>
       ${locRows.length ? `<div class="plv-card-l" style="margin:16px 0 4px">ΑΝΑ ΣΗΜΕΙΟ</div>
@@ -1068,6 +1091,7 @@ async function plvDoConfirm(id) {
       // ισοζύγια ξαναφορτώνονται μία φορά, στο τέλος της ουράς.
       const mv = await plFetch('/pallets/movements');
       PLV.movements = mv.records || [];
+      PLV.cut = _plvCut(mv);
       plvWizAdvance(id);
     } else {
       plvCloseModal(); await renderPalletLedger();

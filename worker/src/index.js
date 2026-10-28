@@ -6871,7 +6871,6 @@ async function handlePallets(request, url, origin, env) {
       // Μονή FK ανά πίνακα (003_pallets_schema) → κανένα ambiguous embed.
       params.set("select", "*,clients(company_name),partners(company_name),locations(name)");
       params.set("order", "movement_date.desc,id.desc");
-      params.set("limit", "300");
       if (q.get("status")) params.append("status", `eq.${q.get("status")}`);
       if (q.get("counterparty_type")) params.append("counterparty_type", `eq.${q.get("counterparty_type")}`);
       if (q.get("client_id")) params.append("client_id", `eq.${q.get("client_id")}`);
@@ -6893,7 +6892,25 @@ async function handlePallets(request, url, origin, env) {
           params.append("order_id", `eq.${r.order_id}`);
         } catch (e) { return jsonOk({ records: [] }, origin, env); }
       }
-      const { rows } = await dbSelectRaw(env, "pl_movements", params);
+      // Every matching row, in pages (Alexia's requests, owner 28/10). It was one read of «limit 300»: at 291 movements
+      // and ~8 new a day the ledger would have dropped the oldest rows in silence, and the page, the client card and
+      // the confirm wizard all read this list unfiltered. PL_MOV_PAGE is 999 + 1 probe row = PostgREST db-max-rows
+      // (1000, same as /costs/lines); asking 1000 would get 1000 and never see a cut. Past PL_MOV_MAX the answer says
+      // so (truncated, cap) and the screen shows it, never a quiet cut (principle 1). id.desc is the tie-breaker, so a
+      // page boundary inside one movement_date neither repeats nor skips a row.
+      const PL_MOV_PAGE = 999, PL_MOV_MAX = 9990;
+      const rows = [];
+      let truncated = false;
+      for (let offset = 0; ; offset += PL_MOV_PAGE) {
+        const page = new URLSearchParams(params);
+        page.set("limit", String(PL_MOV_PAGE + 1));
+        if (offset) page.set("offset", String(offset));
+        const { rows: got } = await dbSelectRaw(env, "pl_movements", page);
+        const more = got.length > PL_MOV_PAGE;
+        rows.push(...(more ? got.slice(0, PL_MOV_PAGE) : got));
+        if (!more) break;
+        if (rows.length >= PL_MOV_MAX) { truncated = true; break; }
+      }
       // 073 / E11 (spec 5): a row the national plan wrote (piece_leg_id) belongs to no international order - the
       // ledger would call it «Χειροκίνητη». One read for the page gives its national order (the screen writes
       // «εθνική #…», F4). A failed read, a leg missing from the answer or a leg without a national order is said
@@ -6901,8 +6918,12 @@ async function handlePallets(request, url, origin, env) {
       const legIds = [...new Set(rows.map((r) => r.piece_leg_id).filter((x) => x != null))];
       if (legIds.length) {
         try {
-          const { rows: legs } = await dbSelectRaw(env, "piece_legs", new URLSearchParams({
-            select: "id,shipment_pieces(shipments(nat_order_id))", id: `in.(${legIds.join(",")})` }));
+          // 200 ids per read: with every row (not 300) the in.() list would outgrow a URL once the plan writes rows.
+          const chunks = [];
+          for (let i = 0; i < legIds.length; i += 200) chunks.push(legIds.slice(i, i + 200));
+          const answers = await Promise.all(chunks.map((c) => dbSelectRaw(env, "piece_legs", new URLSearchParams({
+            select: "id,shipment_pieces(shipments(nat_order_id))", id: `in.(${c.join(",")})` }))));
+          const legs = answers.flatMap((a) => a.rows);
           const natBy = new Map(legs.map((l) => [l.id, l.shipment_pieces?.shipments?.nat_order_id ?? null]));
           for (const r of rows) {
             if (r.piece_leg_id == null) continue;
@@ -6915,7 +6936,7 @@ async function handlePallets(request, url, origin, env) {
           for (const r of rows) if (r.piece_leg_id != null) { r.nat_order_id = null; r.nat_order_unknown = true; }
         }
       }
-      return jsonOk({ records: rows }, origin, env);
+      return jsonOk({ records: rows, truncated, cap: PL_MOV_MAX }, origin, env);
     }
     // ---- POST /pallets/movements (χειροκίνητη κίνηση ή feeder Φ2) ----
     // Default: pending. Με body.confirm===true γράφεται κατευθείαν confirmed
