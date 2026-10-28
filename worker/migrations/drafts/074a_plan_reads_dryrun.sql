@@ -300,6 +300,8 @@ begin
   -- the day = the Athens day of that pickup. Every live piece counts, a split parent too (its leg to Veroia).
   if p_nat_order_ids is null then return '{}'::jsonb; end if;
   if cardinality(p_nat_order_ids) > 500 then perform plan_h_raise('bad_input', 'more than 500 nat order ids'); end if;
+  -- a NULL id would be a NULL key: a raw 22023 from jsonb_object_agg instead of a refusal by name (code review 28/10)
+  if array_position(p_nat_order_ids, null) is not null then perform plan_h_raise('bad_input', 'null nat order id'); end if;
   -- the view walks every piece (v_piece_pos is recursive): read it ONCE for the asked ids, never once per id
   return coalesce((
     with st as materialized (select * from v_national_order_state where nat_order_id = any (p_nat_order_ids))
@@ -342,21 +344,26 @@ $f$;
   -- activity of one partner / driver / truck / trailer, of one location, or the sides of every location.
   CREATE FUNCTION public.plan_activity(p_kind text, p_id text) RETURNS jsonb
     LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $f$
-declare v_id bigint; v_j jsonb; v_j_ship jsonb; v_n int; v_m int;
+declare v_id bigint; v_j jsonb; v_j_ship jsonb; v_n int; v_m int; v_rts bigint[];
 begin
   -- Money: partner_rate of the segment only (decision 41: every role sees it). Cancelled cycles are IN for a vehicle
   -- or partner (the card shows them "Cancelled" and does not count them), OUT of the location sides. Limits: 500
   -- cycles or stops, 2000 national shipments of a location, truncated:true when one is reached - never a silent cut.
+  -- Reads start from the base tables and reach a view only by its own key: v_rt_stop_state numbers stops in a window
+  -- over each cycle (and asks v_piece_state per stop), v_shipments computes every bridge's places - filtered on a
+  -- derived column, either would be computed whole on every call (code review xhigh 28/10).
   if p_kind is null or p_kind not in ('partner', 'driver', 'truck', 'trailer', 'location') then
     perform plan_h_raise('bad_input', 'kind');
   end if;
   if p_id = 'all' then
     if p_kind <> 'location' then perform plan_h_raise('bad_input', 'all:' || p_kind); end if;
+    -- the stops of v_rt_stop_state (live stops of v5 cycles), from its tables: only side and place are counted
     return jsonb_build_object('sides', coalesce((
       select jsonb_agg(jsonb_build_object('location_id', x.location_id, 'kathodos', x.k, 'anodos', x.a) order by x.location_id)
-        from (select ss.location_id, count(*) filter (where ss.side = 'KATHODOS') as k,
-                     count(*) filter (where ss.side = 'ANODOS') as a
-                from v_rt_stop_state ss where ss.rt_status <> 'cancelled' group by ss.location_id) x), '[]'::jsonb));
+        from (select s.location_id, count(*) filter (where s.side = 'KATHODOS') as k,
+                     count(*) filter (where s.side = 'ANODOS') as a
+                from rt_stops s join ct_round_trips r on r.id = s.rt_id and r.model = 2 and r.status <> 'cancelled'
+               where s.deleted_at is null group by s.location_id) x), '[]'::jsonb));
   end if;
   -- a positive id of at most 9 digits, as the Worker sends it (never a cast error, never a sign or a space)
   if p_id is null or p_id !~ '^[1-9][0-9]{0,8}$' then perform plan_h_raise('bad_input', 'id'); end if;
@@ -388,6 +395,8 @@ begin
     if v_n > 500 then v_j := v_j - 500; end if;
     return jsonb_build_object('cycles', v_j, 'truncated', v_n > 500);
   end if;
+  -- the cycles with a live stop here: v_rt_stop_state is then read by rt_id, its window key
+  v_rts := array(select distinct s.rt_id from rt_stops s where s.location_id = v_id and s.deleted_at is null);
   select coalesce(jsonb_agg(c.j order by c.planned_from desc, c.stop_id desc), '[]'::jsonb), count(*) into v_j, v_n
     from (select ss.stop_id, ss.planned_from,
                  jsonb_build_object('stop_id', ss.stop_id, 'rt_id', ss.rt_id, 'code', ss.code, 'side', ss.side,
@@ -410,7 +419,7 @@ begin
                               join v_shipments vs on vs.shipment_id = sp.shipment_id
                              where l.deleted_at is null and (l.pickup_stop_id = ss.stop_id or l.drop_stop_id = ss.stop_id)),
                             '[]'::jsonb)) as j
-            from v_rt_stop_state ss where ss.location_id = v_id
+            from v_rt_stop_state ss where ss.rt_id = any (v_rts) and ss.location_id = v_id
            order by ss.planned_from desc, ss.stop_id desc
            limit 501) c;
   if v_n > 500 then v_j := v_j - 500; end if;
@@ -421,8 +430,9 @@ begin
                    'reference', vs.reference, 'client_id', vs.client_id, 'pallets', vs.pallets,
                    'end', case when vs.origin_location_id = v_id then 'origin' else 'dest' end,
                    'day', case when vs.origin_location_id = v_id then vs.nat_ready_day else vs.nat_due_day end) as j
-            from v_shipments vs
-           where vs.kind = 'national' and vs.live and (vs.origin_location_id = v_id or vs.dest_location_id = v_id)
+            from shipments sh join v_shipments vs on vs.shipment_id = sh.id
+           where sh.order_stop_id is null and sh.deleted_at is null and (sh.origin_location_id = v_id or sh.dest_location_id = v_id)
+             and vs.live
            order by 2 desc, vs.shipment_id desc
            limit 2001) x;
   if v_m > 2000 then v_j_ship := v_j_ship - 2000; end if;

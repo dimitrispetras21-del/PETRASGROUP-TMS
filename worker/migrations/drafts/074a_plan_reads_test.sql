@@ -79,6 +79,7 @@ DECLARE
     , 'plan:bad_input'   -- 42 E12 an id with a leading zero
     , 'plan:bad_input'   -- 43 E12 an unknown kind
     , 'ok'               -- 44 E12 501 cycles of one truck: 500 answered, truncated true
+    , 'plan:bad_input'   -- 45 E3 a NULL among the ids (a refusal by name, never a raw 22023)
     -- @want (one line per case: "    , '<ok|plan:code|con:name|state:XXXXX>'  -- <k> <what>")
   ]::text[];
   verdict text; got text; hint text; msg text; cname text; st text;
@@ -305,6 +306,8 @@ BEGIN
         j := CASE k WHEN 31 THEN plan_nat_state(ARRAY[n1]) ELSE plan_activity('partner', pa::text) END;
       ELSIF k = 33 THEN
         j := plan_nat_state(ARRAY(SELECT g::bigint FROM generate_series(1, 501) g));
+      ELSIF k = 45 THEN
+        j := plan_nat_state(ARRAY[n1, NULL]);
       ELSIF k = 41 THEN
         j := plan_activity('driver', 'all');
       ELSIF k = 42 THEN

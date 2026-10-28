@@ -125,5 +125,5 @@ test('every con: of the rules test is a CHECK of 074a (or the table key); every 
   const raised = new Set([...src.matchAll(/plan_h_raise\('([a-z_]+)'/g)].map((m) => m[1]));
   for (const c of raised) assert.ok(wants.some((w) => w[0] === 'plan' && w[1] === c), `plan:${c} has a case`);
   const n = (tst.match(/^\s+, '(?:ok|plan:[a-z_]+|con:[a-z_]+|state:\w+)'\s+-- \d+ /gm) || []).length;
-  assert.ok(n >= 44, `${n} cases`);
+  assert.ok(n >= 45, `${n} cases`);
 });

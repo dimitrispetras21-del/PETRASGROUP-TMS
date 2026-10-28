@@ -172,7 +172,7 @@ test('074a on the production-shaped copy', async (t) => {
   const rules = draft('074a_plan_reads_test.sql');
   const n = wantCount(rules);
   await t.test('074a rules test: every case OK, nothing kept', async () => {
-    assert.ok(n >= 44, `${n} cases`);
+    assert.ok(n >= 45, `${n} cases`);
     const msg = await errorOf(db, rules);
     assert.match(msg ?? '', new RegExp(`RULES TEST 074a finished - EVERYTHING UNDONE, nothing kept\\. Result: ${n} OK, 0 FAIL`), msg);
     assert.strictEqual(await count(db, V5_ROWS), 0);
