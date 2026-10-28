@@ -97,7 +97,7 @@ function week() {
 // waits (two points, PE yes, notes), 3001 rides on the KATHODOS of RT-T101 (its price and notes are NOT on the board).
 function orders() {
   const sh = (shipment_id, o, d, pallets, lf, lt, df, dt, rides, rt_codes) => ({ shipment_id, origin_location_id: o, dest_location_id: d, pallets,
-    load_from: lf, load_to: lt, deliver_from: df, deliver_to: dt, vs_locked: false, rides, rt_codes });
+    load_from: lf, load_to: lt, deliver_from: df, deliver_to: dt, vs_locked: false, rides, waits: !rides, at_hub: false, rt_codes });
   return {
     3101: { ok: true, op: 'plan_order_read',
       order: { nat_order_id: 3101, legacy_id: 'recWn5Nat3101', client_id: 41, client: 'ΠΕΛΑΤΗΣ Α', price: 310, reference: 'N-T101', goods: 'Γιαούρτι',
@@ -107,6 +107,12 @@ function orders() {
       order: { nat_order_id: 3001, legacy_id: 'recWn5Nat3001', client_id: 41, client: 'ΠΕΛΑΤΗΣ Α', price: 420, reference: 'N-T001', goods: null,
         notes: 'κλήση πριν', temperature_c: 4, pallet_exchange: false, direction: 'KATHODOS', pallets: 6 },
       shipments: [sh(5202, 1, 3, 6, '2026-10-12T13:00:00+00:00', '2026-10-12T15:00:00+00:00', '2026-10-13T04:00:00+00:00', '2026-10-13T06:00:00+00:00', true, ['RT-T101'])] },
+    // live F23: sent back to Veroia (two parts after «Σπάσε…», 4 + 3): rides (its leg ended at the hub) AND waits there
+    3150: { ok: true, op: 'plan_order_read',
+      order: { nat_order_id: 3150, legacy_id: 'recWn5Nat3150', client_id: 43, client: 'ΠΕΛΑΤΗΣ Γ', price: 250, reference: null, goods: null,
+        notes: null, temperature_c: null, pallet_exchange: false, direction: null, pallets: 7 },
+      shipments: [Object.assign(sh(5255, 3, 2, 7, '2026-10-15T04:00:00+00:00', '2026-10-15T06:00:00+00:00', '2026-10-16T11:00:00+00:00', '2026-10-16T13:00:00+00:00', true, ['RT-T102']),
+        { waits: true, at_hub: true })] },
   };
 }
 

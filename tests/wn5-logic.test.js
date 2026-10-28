@@ -59,10 +59,10 @@ test('F4α-T4: cycle numbering «κύκλος 1» alone, «1/2» «2/2» for two
 
 test('F4α-T4: Veroia window lives on the side (side.veroia), never on the tile', () => {
   const m = M();
-  assert.deepStrictEqual(rowOf(m, 'rt:102').kath.veroia, { stopId: 1101, from: '16:00', to: '18:00' });
+  assert.deepStrictEqual(rowOf(m, 'rt:102').kath.veroia, { stopId: 1101, from: '16:00', to: '18:00', allDay: false });
   // live 072: the VS sits in hub[] without load_from/load_to (Ε-26) — «Βέροια» with «—», never an invented time
-  assert.deepStrictEqual(rowOf(m, 'wait:4101').kath.veroia, { stopId: null, from: null, to: null }, 'a VS at the hub says «Βέροια» before its window is on the board');
-  assert.deepStrictEqual(rowOf(M(withE26()), 'wait:4101').kath.veroia, { stopId: null, from: '14:00', to: '17:00' }, 'and its Veroia time once the Ε-26 keys come');
+  assert.deepStrictEqual(rowOf(m, 'wait:4101').kath.veroia, { stopId: null, from: null, to: null, allDay: false }, 'a VS at the hub says «Βέροια» before its window is on the board');
+  assert.deepStrictEqual(rowOf(M(withE26()), 'wait:4101').kath.veroia, { stopId: null, from: '14:00', to: '17:00', allDay: false }, 'and its Veroia time once the Ε-26 keys come');
   for (const r of m.days.flatMap((d) => d.rows)) {
     assert.ok(!/\d{1,2}:\d{2}/.test(JSON.stringify(r.tiles)), `${r.key}: a time inside the ΑΝΑΘΕΣΗ tile: ${JSON.stringify(r.tiles)}`);
   }
@@ -111,7 +111,7 @@ test("F4α-T4 / F5 FE-2: a VS no truck took (hub[]) → row kind 'unassigned', r
   const m4 = M(b4), r4 = rowOf(m4, 'wait:4191');
   assert.ok(r4 && !rowOf(m4, 'wait:4192'), 'one row for the order');
   assert.deepStrictEqual({ veroia: r4.kath.veroia, from: r4.kath.from.map((p) => [p.name, p.from, p.to, p.pallets]), pieces: r4.pieceIds, group: r4.group, pallets: r4.kath.pallets, day: r4.dayKey },
-    { veroia: { stopId: null, from: null, to: null }, from: [['—', '08:00', '10:00', 7]], pieces: [4191, 4192], group: { nat_order_id: 3291 }, pallets: 12, day: '2026-10-12' });
+    { veroia: { stopId: null, from: null, to: null, allDay: false }, from: [['—', '08:00', '10:00', 7]], pieces: [4191, 4192], group: { nat_order_id: 3291 }, pallets: 12, day: '2026-10-12' });
 });
 
 test('F4α-T4: dim/headDim/sideDim/rowDim copied from dim/side_dim/cycle_dim; the model computes no date rule', () => {
@@ -185,7 +185,7 @@ test('F4α-T4: the hub id from base facts; a week with no VS on a truck still sa
   assert.deepStrictEqual(m.errors, [L.HUB_UNKNOWN], 'a week whose hub is not identified carries one visible line');
   assert.ok(/Βέροια δεν αναγνωρίστηκε/.test(L.HUB_UNKNOWN), L.HUB_UNKNOWN);
   const mh = L.model(b, { today: TODAY, hubId: 1 });
-  assert.deepStrictEqual(rowOf(mh, 'rt:102').kath.veroia, { stopId: 1101, from: '16:00', to: '18:00' }, 'opts.hubId (PlanIds.hub) names it');
+  assert.deepStrictEqual(rowOf(mh, 'rt:102').kath.veroia, { stopId: 1101, from: '16:00', to: '18:00', allDay: false }, 'opts.hubId (PlanIds.hub) names it');
   assert.deepStrictEqual(mh.errors, [], 'with opts.hubId the line goes');
   const be = withE26(); be.cycles = [];
   assert.deepStrictEqual([M(be).hubId, M(be).errors], [null, [L.HUB_UNKNOWN]],

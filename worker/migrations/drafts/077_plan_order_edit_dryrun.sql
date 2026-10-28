@@ -168,7 +168,9 @@ begin
   -- only for waiting pieces, so an order on a cycle opened with empty fields and the user could not see what a save
   -- would keep. A NULL stays a JSON null, never a missing key (facade trap 2): the form tells "empty" from "unknown".
   -- rides = a live leg on any piece of the point: the SAME rule plan_order_update uses to refuse a place change or a
-  -- removal, so the form greys exactly what the database would refuse.
+  -- removal, so the form greys exactly what the database would refuse. waits / at_hub (v_piece_state, 071): no piece
+  -- of the point is planned to its destination / every piece stands at Veroia - an order sent back to Veroia keeps its
+  -- dates editable (live F23, 28/10). The recursive view is read ONCE for the order (as plan_nat_state).
   if p_role is null or p_role not in ('owner', 'dispatcher', 'management', 'accountant', 'warehouse') then
     perform plan_h_raise('bad_input', 'role');
   end if;
@@ -179,7 +181,9 @@ begin
   if not exists (select 1 from shipments where nat_order_id = n.id and deleted_at is null) then
     perform plan_h_raise('order_not_v5', n.id::text);
   end if;
-  return plan_h_strip_amounts(jsonb_build_object('ok', true, 'op', 'plan_order_read',
+  return plan_h_strip_amounts((
+    with ps as materialized (select shipment_id, waiting, at_hub from v_piece_state where nat_order_id = n.id)
+    select jsonb_build_object('ok', true, 'op', 'plan_order_read',
     'order', jsonb_build_object('nat_order_id', n.id, 'legacy_id', n.legacy_id, 'client_id', n.client_id,
                'client', (select c.company_name from clients c where c.id = n.client_id),
                'price', n.price, 'reference', n.reference, 'goods', n.goods, 'notes', n.notes,
@@ -193,13 +197,16 @@ begin
                'vs_locked', s.order_stop_id is not null,
                'rides', exists (select 1 from piece_legs l join shipment_pieces pp on pp.id = l.piece_id
                                  where pp.shipment_id = s.id and l.deleted_at is null),
+               'waits', not exists (select 1 from ps where ps.shipment_id = s.id and not ps.waiting),
+               'at_hub', exists (select 1 from ps where ps.shipment_id = s.id)
+                         and not exists (select 1 from ps where ps.shipment_id = s.id and not ps.at_hub),
                'rt_codes', coalesce((select jsonb_agg(distinct r.code order by r.code)
                                        from piece_legs l join shipment_pieces pp on pp.id = l.piece_id
                                        join ct_round_trips r on r.id = l.rt_id
                                       where pp.shipment_id = s.id and l.deleted_at is null and pp.deleted_at is null
                                         and r.model = 2 and r.status <> 'cancelled' and r.code is not null), '[]'::jsonb))
              order by s.id)
-        from shipments s where s.nat_order_id = n.id and s.deleted_at is null), '[]'::jsonb)), p_role);
+        from shipments s where s.nat_order_id = n.id and s.deleted_at is null), '[]'::jsonb))), p_role);
 end
 $f$;
   -- born closed (principle 5: postgres' default ACL gives EXECUTE to PUBLIC); the Worker's read only

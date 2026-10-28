@@ -1,5 +1,6 @@
 // 077 (the edit of a national order is complete; live real-user test 28/10, F13 + F21) on the production-shaped PGlite
-// copy after day L and 075 (prod-shaped-074.mjs + 075, as production holds them 28/10). Each case checks ROWS
+// copy after day L, 075 and 076 (prod-shaped-074.mjs + 075 + 076, as production holds them 28/10; 079 moves day L and
+// touches neither plan_order_update nor what 077 reads - its own header says so). Each case checks ROWS
 // (shipments, shipment_pieces, piece_legs, rt_stops, audit_log, national_orders), never only the answer of the call.
 import { test } from 'node:test';
 import assert from 'node:assert';
@@ -58,6 +59,7 @@ const stopsOf = async (db, rt) => (await db.query(`SELECT id, location_id, side,
 test('077 on the production-shaped copy after day L and 075', async (t) => {
   const db = await prodShaped074();
   await db.exec(read('075_plan_order_side.sql'));
+  await db.exec(read('076_plan_board_speed.sql'));
   const live = await md5u(db);
   const trg0 = Number((await one(db, TRG)).n);
   const S = await scene(db);
@@ -113,7 +115,8 @@ test('077 on the production-shaped copy after day L and 075', async (t) => {
     assert.match(r.order.legacy_id, /^rec[A-Za-z0-9]{14}$/);
     assert.strictEqual(r.shipments.length, 1);
     const s = r.shipments[0];
-    assert.deepStrictEqual([s.origin_location_id, s.dest_location_id, Number(s.pallets), s.rides, s.vs_locked], [S.A, S.B, 6, true, false]);
+    assert.deepStrictEqual([s.origin_location_id, s.dest_location_id, Number(s.pallets), s.rides, s.vs_locked, s.waits, s.at_hub], [S.A, S.B, 6, true, false, false, false],
+      'planned to its destination: rides, does not wait, not at Veroia');
     assert.strictEqual(Date.parse(s.load_from), Date.parse(S.t['06:00']));
     assert.strictEqual(Date.parse(s.deliver_to), Date.parse(S.t['14:00']));
     const code = (await one(db, `SELECT code FROM ct_round_trips WHERE id = $1`, [RT])).code;
@@ -123,7 +126,7 @@ test('077 on the production-shaped copy after day L and 075', async (t) => {
   await t.test('R2: a waiting order: rides false, no cycle; an empty field is a JSON null, never a missing key', async () => {
     const r = await orderRead(db, W2, 'warehouse');
     for (const k of ['notes', 'reference', 'temperature_c']) assert.ok(k in r.order && r.order[k] === null, k);
-    assert.deepStrictEqual(r.shipments.map((s) => [s.dest_location_id, Number(s.pallets), s.rides, s.rt_codes]), [[S.B, 2, false, []], [S.C, 3, false, []]]);
+    assert.deepStrictEqual(r.shipments.map((s) => [s.dest_location_id, Number(s.pallets), s.rides, s.rt_codes, s.waits, s.at_hub]), [[S.B, 2, false, [], true, false], [S.C, 3, false, [], true, false]]);
   });
 
   await t.test('R3: the read refuses by name: gone, old model, bad role', async () => {
@@ -133,6 +136,17 @@ test('077 on the production-shaped copy after day L and 075', async (t) => {
     const old = (await one(db, `INSERT INTO national_orders (legacy_id, reference, price) VALUES ('rec077OLD', 'WN077-OLD', 10) RETURNING id`)).id;
     assert.strictEqual((await errorOf(db, `SELECT plan_order_read($1, 'owner')`, [old]))?.hint, 'plan:order_not_v5');
     for (const role of ['driver', null]) assert.strictEqual((await errorOf(db, `SELECT plan_order_read($1, $2)`, [N, role]))?.hint, 'plan:bad_input', String(role));
+  });
+
+  await t.test('R4 (live F23): a point whose piece stands at Veroia (its leg ends at the hub) rides AND waits, at_hub', async () => {
+    const hub = (await one(db, `SELECT id FROM locations WHERE is_hub`)).id;
+    const r = await create(db, [S.order([S.ship(S.A, S.C, 2)])]);
+    await db.query(`SELECT plan_put_pieces($1::jsonb, 'test:077', 'dispatcher')`, [JSON.stringify({ pieces: [{ piece_id: r.ids.piece_ids[0], to_hub: true }],
+      target: { rt_id: RT, side: 'KATHODOS' },
+      stops: [{ ref: 'a', stop_id: (await stopsOf(db, RT)).find((x) => x.location_id === S.A).id },
+              { ref: 'h', location_id: hub, side: 'KATHODOS', planned_from: S.t['14:00'], planned_to: S.t['23:59'] }] })]);
+    const s = (await orderRead(db, r.ids.nat_order_ids[0])).shipments[0];
+    assert.deepStrictEqual([s.rides, s.waits, s.at_hub], [true, true, true]);
   });
 
   await t.test('U1: a save with nothing in it writes 0 rows (no audit, no row change, legs untouched)', async () => {    const f0 = await footprint(db, N);
