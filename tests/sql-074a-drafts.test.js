@@ -18,14 +18,14 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..');
-const DIR = path.join(ROOT, 'worker/migrations/drafts');   // 074a is a draft: it leaves drafts/ when the owner runs it
+const DIR = path.join(ROOT, 'worker/migrations');   // 074a executed 28/10: out of drafts/ (CLAUDE.md rule 5)
 const read = (f) => fs.readFileSync(path.join(DIR, f), 'utf8');
 const strip = (s) => s.replace(/--[^\n]*/g, '');
 const noStrings = (s) => strip(s).replace(/'[^']*'/g, "''");
 const SRC = '074a_plan_reads.sql';
 const DO_FILES = [SRC, '074a_plan_reads_dryrun.sql', '074a_plan_reads_test.sql', '074a_plan_reads_rollback.sql'];
 const READ_ONLY = ['074a_plan_reads_verify.sql'];
-const BUILDER = path.join(DIR, 'tools/build-074a.mjs');
+const BUILDER = path.join(DIR, 'drafts/tools/build-074a.mjs');   // the builder stays in drafts/tools/
 const LIVE = path.join(ROOT, 'tms-auditor/test/fixtures/live-073b.sql');
 const pairsOf = (s) => [...s.matchAll(/\('(public\.[^']+)', '([0-9a-f]{32})'\)/g)].map((m) => `${m[1]}=${m[2]}`);
 const part = (s, a, b) => s.slice(s.indexOf(a), b ? s.indexOf(b) : undefined);
@@ -40,6 +40,13 @@ test('the files are there, ASCII only, one DO block per writing file, the verify
     assert.ok(!/\b(INSERT|UPDATE|DELETE|ALTER|CREATE|DROP|GRANT|REVOKE|TRUNCATE)\b/i.test(noStrings(read(f))), `${f} writes`);
   }
   assert.ok(fs.existsSync(BUILDER));
+});
+
+test('074a executed 28/10: its five files are in worker/migrations/ only, none left in drafts/ (rule 5, one copy)', () => {
+  for (const f of [...DO_FILES, ...READ_ONLY]) {
+    assert.ok(fs.existsSync(path.join(DIR, f)), `${f} is in worker/migrations/`);
+    assert.ok(!fs.existsSync(path.join(DIR, 'drafts', f)), `${f} is not also in drafts/`);
+  }
 });
 
 test('the dry run, the rollback and the verify are what the builder makes of the source (0 drift)', () => {
