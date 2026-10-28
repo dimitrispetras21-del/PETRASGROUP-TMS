@@ -503,7 +503,8 @@
     // ITS day — the loading on nat_ready_day, the delivery on nat_due_day — with the window the user gives (B1, 28/10)
     const dLoad = it.nat_ready_day || null, dDrop = it.nat_due_day || it.nat_ready_day || null;
     return [
-      { loc: pick, from: it.load_from || null, to: it.load_to || null, hub: pick != null && pick === hub, role: 'load', day: dLoad, key: 'load:' + pick },
+      // stock: a split's remainder carries its parent's nat_ready_day, never a Veroia day of its own (_hubDays skips it)
+      { loc: pick, from: it.load_from || null, to: it.load_to || null, hub: pick != null && pick === hub, role: 'load', day: dLoad, key: 'load:' + pick, stock: !!it.is_stock },
       { loc: drop, from: it.deliver_from || null, to: it.deliver_to || null, hub: drop != null && drop === hub, role: 'drop', day: dDrop, key: 'drop:' + drop },
     ];
   }
@@ -521,8 +522,9 @@
   // _needs — a VS import loads there on nat_ready_day (= cross_dock_date, 071 v_shipments), a VS export arrives there on
   // nat_due_day (= cross_dock_date) — never on the dialog's day: that is the row's day in Δ1 (an export's PICKUP day),
   // the cycle's in «+», the panel's earliest in «Σε φορτηγό ▾», and wrote VS 617 (cross-dock Fri 30/10) on Thu 29/10.
-  // A moved piece's needs carry no day (their windows come from the source stop): [] → the caller's day stays.
-  const _hubDays = (needs) => [...new Set((needs || []).filter((n) => n.hub && n.day && !(n.own && n.from && n.to)).map((n) => n.day))].sort();
+  // A moved piece's needs carry no day (their windows come from the source stop), and a stock remainder's day is its
+  // parent's (code review): both [] → the caller's day stays (the cycle's in «+», the stock day of the panel in Δ1).
+  const _hubDays = (needs) => [...new Set((needs || []).filter((n) => n.hub && n.day && !n.stock && !(n.own && n.from && n.to)).map((n) => n.day))].sort();
   // One Veroia stop per side (decision 6) holds one day. Pieces with two Veroia days have no right one: null, and the
   // save stays off with the days named (_lackText) — 0 such orders live on 28/10, so this blocks nothing real.
   function _hubDayOf(needs, fallback) {
@@ -874,6 +876,10 @@
     if (st.ids.ok) {
       const own = vehicle ? st.cyc[st.rtId].truck_id : null;
       st.free = _freeTrucks(st.day, own);
+      // F27 (code review): a new truck's cycle runs to the Veroia day too (an export picked up Tuesday reaches Veroia
+      // Wednesday), so it is offered only when free on both — else the DB refuses it with truck_busy after the press
+      const hd = vehicle ? null : _hubDayOf(st.needs, st.day);
+      if (hd && hd !== st.day) { const also = new Set(_freeTrucks(hd, own).map((t) => t.id)); st.free = st.free.filter((t) => also.has(t.id)); }
       st.trailers = PlanIds.list('trailer'); st.drivers = PlanIds.list('driver'); st.partners = PlanIds.list('partner');
     }
   }

@@ -2998,6 +2998,11 @@ function f27Board() {
   b.waiting.push(exp({ piece_id: 4512, order_id: 2511, order_stop_id: 6512, pallets: 5, reference: 'VS-T511', position_location_id: 6, nat_from_location_id: 6, nat_due_day: '2026-10-15' }));
   b.hub.push(bHub(4601, { order_id: 2601, order_stop_id: 6601, pallets: 7, reference: 'VS-T601', nat_ready_day: '2026-10-13', nat_due_day: '2026-10-14',
     nat_to_location_id: 2, load_from: null, load_to: null, deliver_from: null, deliver_to: null }));
+  // code review: TST-2107 (15) is free on Tue 13/10 but on the road Wed 14/10 → Thu 15/10 (RT-T209, no Veroia stop):
+  // a new cycle for VS-T501 runs to Wed, so the truck is not offered; its ΚΑΘΟΔΟΣ «+» (Wed) takes the stock remainder
+  b.cycles.push(bCycle(209, { truck_id: 15, truck: 'TST-2107', trailer_id: 25, trailer: 'TRL-5105', driver_id: 35, driver: 'Driver Test 05' }, [
+    bStop(2091, 'KATHODOS', 5, '2026-10-14', '06:00', '08:00', [bLeg(6091, 5191, 'load', 5)]),
+    bStop(2092, 'KATHODOS', 2, '2026-10-15', '10:00', '12:00', [bLeg(6091, 5191, 'unload', 5)]) ]));
   return b;
 }
 SCN.f27 = async (browser, origin) => {
@@ -3013,6 +3018,8 @@ SCN.f27 = async (browser, origin) => {
     const lab = await hubLabel(page, D);
     ok(scn, 'Δ1 row: «Άφιξη Βέροιας · Τετ 14/10 *» (the cross-dock day), opened 00:00|23:59 (#160) — main: Τρί 13/10',
       !!lab && lab[0] === 'Άφιξη Βέροιας · Τετ 14/10 *' && lab[1] === '00:00|23:59', lab);
+    ok(scn, 'TST-2107, free Tue but on the road Wed (the Veroia day), is not offered as a new truck; TST-2108 is',
+      !(await bHas(page, `${D} [data-cand="truck:15"]`)) && await bHas(page, `${D} [data-cand="truck:14"]`));
     await bClick(page, `${D} [data-act="pick"][data-cand="truck:14"]`);
     await bClick(page, `${D} .wn5-more [data-act="save"][data-cand="truck:14"]`);
     await page.waitForTimeout(400);
@@ -3029,6 +3036,7 @@ SCN.f27 = async (browser, origin) => {
     await page.waitForTimeout(500);
     const lab = await hubLabel(page, D);
     ok(scn, 'two Veroia days: the field names both («Τετ 14/10 / Πέμ 15/10»)', !!lab && lab[0] === 'Άφιξη Βέροιας · Τετ 14/10 / Πέμ 15/10 *', lab);
+    ok(scn, 'control: with no single Veroia day, TST-2107 (free on the row day) stays offered', await bHas(page, `${D} [data-cand="truck:15"]`));
     await bClick(page, `${D} [data-act="pick"][data-cand="truck:14"]`);
     const off = await bOff(page, `${D} .wn5-more [data-act="save"][data-cand="truck:14"]`);
     const why = await page.$eval(`${D} .wn5-more [data-act="save"][data-cand="truck:14"]`, (b) => (b.nextElementSibling && b.nextElementSibling.classList.contains('wn5-why') ? b.nextElementSibling.textContent : null)).catch(() => null);
@@ -3071,6 +3079,35 @@ SCN.f27 = async (browser, origin) => {
     const h = hubStop(legsStops(S));
     ok(scn, 'POST /plan/legs: the Veroia loading on Tue 13/10 00:00–23:59', !!h && h.side === 'KATHODOS' && h.planned_from === '2026-10-13T00:00:00+03:00' && h.planned_to === '2026-10-13T23:59:00+03:00', legsStops(S));
     ok(scn, 'no page errors (4)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // 5 · code review: a stock remainder has no Veroia day of its own (its nat_ready_day Mon 12/10 is its parent's).
+    // N-T014 (4302) is overdue: the panel gives overdue stock today (Tue 13/10), and «Σε φορτηγό ▾» opens there.
+    const { page, S } = await bOpen(browser, origin, { board: f27Board() });
+    await bClick(page, '#wn5-hub [data-hub="open"]');
+    await bClick(page, '#wn5-hub .wn5-hub-it[data-piece="4302"] [data-hub="truck"]');
+    await page.waitForTimeout(500);
+    const meta = await bText(page, `${D} .wn5-dlg-meta`);
+    const lab = await hubLabel(page, D);
+    ok(scn, 'stock overdue: Δ1 on today «Τρί 13/10», never its parent\'s Δευ 12/10', /^· Τρί 13\/10/.test(meta.trim()) && !!lab && lab[0] === 'Παράθυρο φόρτωσης Βέροιας · Τρί 13/10 *', { meta, lab });
+    ok(scn, 'no page errors (5)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // 6 · code review: «+» ΚΑΘΟΔΟΣ of RT-T209 (Wed 14/10) takes the stock N-T013 (4301, parent's day Mon 12/10) — the
+    // Veroia loading goes on the cycle's day, the day it is loaded, never three days before the cycle's deliveries
+    const { page, S } = await bOpen(browser, origin, { board: f27Board() });
+    await page.evaluate(() => WN5Act.plus(209, 'KATHODOS', document.querySelector('#content .wn5 .wn5-row[data-rt="209"]')));
+    await page.waitForTimeout(400);
+    const line = await bText(page, `${P} .wn5-pline[data-piece="4301"]`);
+    await page.fill(`${P} input[data-hub="from"]`, '08:00').catch(() => {});
+    await page.fill(`${P} input[data-hub="to"]`, '10:00').catch(() => {});
+    await page.waitForTimeout(200);
+    await bClick(page, `${P} [data-act="save"][data-piece="4301"]`);
+    await page.waitForTimeout(400);
+    const h = hubStop(legsStops(S));
+    ok(scn, '«+» stock: the line names no «Βέροια Δευ», the Veroia stop on Wed 14/10 08:00–10:00', !/Βέροια Δευ/.test(line)
+      && !!h && h.planned_from === '2026-10-14T08:00:00+03:00' && h.planned_to === '2026-10-14T10:00:00+03:00', { line, stops: legsStops(S) });
+    ok(scn, 'no page errors (6)', !S.pageErrors.length, S.pageErrors);
     await page.context().close();
   }
 };
