@@ -5972,7 +5972,7 @@ var PLAN_ROUTES = [
   // = an order of the old model. Deploy guard marker (--f5).
   { method: "GET", re: /^\/plan\/nat-state$/, resource: "nat-state", rpc: "plan_nat_state", read: planNatStateArgs, migration: "074a" },
   // the v5 cycles of one partner / driver / truck / trailer, or the v5 stops at one place, for the cards (E12/E13,
-  // stream d3); "all" for the partner strip and the place filter. Deploy guard marker (--f5).
+  // stream d3); "all" for the place filter only. Deploy guard marker (--f5).
   { method: "GET", re: /^\/plan\/activity$/, resource: "activity", rpc: "plan_activity", read: planActivityArgs, migration: "074a" },
   { method: "POST", re: /^\/plan\/notices\/(\d+)\/read$/, resource: "notices-read", rpc: "plan_notice_read", idKey: "notice_id" },
   { method: "POST", re: /^\/plan\/orders$/, resource: "orders", rpc: "plan_orders_create" },
@@ -6022,17 +6022,17 @@ function planNatStateArgs(url) {
   return planIdsArgs(url, "nat_order_ids", "p_nat_order_ids");
 }
 __name(planNatStateArgs, "planNatStateArgs");
-// Exactly one of the five keys, a positive id of at most 9 digits, or «all» for the two lists that have one (the
-// partner strip, the place filter); anything else is a 400 before any DB call. p_id is TEXT in 074a (the id as
+// Exactly one of the five keys, a positive id of at most 9 digits, or «all» for the one list that has it (the place
+// filter; the partner strip was dropped by d3, 28/10); anything else is a 400 before any DB call. p_id is TEXT in 074a (the id as
 // written, or 'all'): sent as checked here, never re-parsed.
 var PLAN_ACTIVITY_KINDS = { partner_id: "partner", driver_id: "driver", truck_id: "truck", trailer_id: "trailer", location_id: "location" };
 function planActivityArgs(url) {
-  const bad = { error: "Ένα από partner_id, driver_id, truck_id, trailer_id, location_id: θετικός ακέραιος, ή all για partner_id / location_id", code: "bad_activity_query" };
+  const bad = { error: "Ένα από partner_id, driver_id, truck_id, trailer_id, location_id: θετικός ακέραιος, ή all για location_id", code: "bad_activity_query" };
   const keys = [...url.searchParams.keys()];
   if (keys.length !== 1 || !Object.prototype.hasOwnProperty.call(PLAN_ACTIVITY_KINDS, keys[0])) return bad;
   const kind = PLAN_ACTIVITY_KINDS[keys[0]];
   const v = url.searchParams.get(keys[0]);
-  if (v === "all" ? kind !== "partner" && kind !== "location" : !/^[1-9]\d{0,8}$/.test(v)) return bad;
+  if (v === "all" ? kind !== "location" : !/^[1-9]\d{0,8}$/.test(v)) return bad;
   return { args: { p_kind: kind, p_id: v } };
 }
 __name(planActivityArgs, "planActivityArgs");
