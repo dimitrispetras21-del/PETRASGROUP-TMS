@@ -260,7 +260,7 @@ $h$;
   WHERE rt.status <> 'cancelled'::text$v$;
   h_v1a CONSTANT text := $h$           CASE WHEN ps.kind = 'national' THEN COALESCE(n.price, 0::numeric)
 $h$;
-  h_v1b CONSTANT text := $h$           CASE WHEN ps.kind = 'national' THEN n.price
+  h_v1b CONSTANT text := $h$           CASE WHEN ps.kind = 'national' THEN CASE WHEN n.stock_lot_id IS NULL THEN n.price ELSE COALESCE(n.price, 0::numeric) END
 $h$;
   h_v2a CONSTANT text := $h$           sum(lf.pallets) OVER (PARTITION BY lf.share_key) AS all_pallets
 $h$;

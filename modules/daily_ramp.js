@@ -235,7 +235,7 @@ function _rampV5Rec(key, o) {
   // F1/F4 (owner 28/10, 080): a v5 piece may have no pallets yet (null). 'Pallets' stays the known number (the KPIs
   // add it up); the line SAYS the unknown («12+;», «;») through _palText, never a 0 or a blank that looks counted
   const palUnk = o.items.filter(x => x.pallets == null).length;
-  const palText = palUnk ? (typeof WN5L !== 'undefined' ? WN5L.palText(pal, palUnk) : (pal ? pal + '+;' : ';')) : '';
+  const palText = palUnk ? WN5L.palText(pal, palUnk) : '';   // one rule: core/wn5-logic.js (loaded before this file)
   const t = o.time ? new Date(o.time) : null;
   const isIn = o.act === 'unload';
   const far = (o.far || []).join(' / ');
@@ -568,6 +568,9 @@ function _rampDraw() {
   const inPal=inb.reduce((s,r)=>s+(r.fields['Pallets']||0),0);
   const outPal=out.reduce((s,r)=>s+(r.fields['Pallets']||0),0);
   const net=inPal-outPal;
+  // F1/F4 (080): v5 lines whose pallets are not all known (_palText): the sums are a floor and say «+;», never complete
+  const inUnk=inb.some(r=>r.fields['_palText']), outUnk=out.some(r=>r.fields['_palText']);
+  const unkTag=(u)=>u?'+;':'';
   const total=recs.length;
   const done=recs.filter(r=>r.fields['Status']==='Done').length;
   const stockPal=RAMP.stock.reduce((s,r)=>s+(r.fields['Pallets']||0),0);
@@ -630,11 +633,11 @@ function _rampDraw() {
       <div class="ramp-kpi ramp-kpi-primary"><div class="ramp-kpi-lbl">${_i('check_circle', 11)} Πρόοδος</div>
         <div><span class="ramp-kpi-val" style="color:${total?Math.round(done/total*100)>=80?'var(--success)':'var(--accent)':'var(--text-dim)'}">${total?Math.round(done/total*100):0}%</span><span class="ramp-kpi-sub">${done}/${total}</span></div></div>
       <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('arrow_down_left', 11)} Εισερχόμενα σήμερα</div>
-        <div><span class="ramp-kpi-val" style="color:var(--panel-ok)">+${inPal}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
+        <div><span class="ramp-kpi-val" style="color:var(--panel-ok)">+${inPal}${unkTag(inUnk)}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
       <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('arrow_up_right', 11)} Εξερχόμενα σήμερα</div>
-        <div><span class="ramp-kpi-val" style="color:var(--panel-accent)">-${outPal}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
+        <div><span class="ramp-kpi-val" style="color:var(--panel-accent)">-${outPal}${unkTag(outUnk)}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
       <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('activity', 11)} Καθαρό σήμερα</div>
-        <div><span class="ramp-kpi-val" style="color:${net>=0?'var(--panel-ok)':'var(--panel-bad)'}">${net>=0?'+':''}${net}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
+        <div><span class="ramp-kpi-val" style="color:${net>=0?'var(--panel-ok)':'var(--panel-bad)'}">${net>=0?'+':''}${net}${inUnk||outUnk?' ;':''}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
       <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('package', 11)} Σύνολο αποθέματος</div>
         <div><span class="ramp-kpi-val" style="color:var(--panel-warn)">${stockPal}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
     </div>
@@ -1078,7 +1081,7 @@ function _rampExportCSV() {
         f['Status']||'',
         _rStripMarkers(_rResolveClientStr(f['Supplier/Client']||'')),
         f['Goods']||'',
-        f['Pallets']||'',
+        f['_palText']||f['Pallets']||'',
         f['Temperature']||f['Temperature °C']||'',
         _rStripMarkers(f['Loading Points']||''),
         _rStripMarkers(f['Delivery Points']||''),

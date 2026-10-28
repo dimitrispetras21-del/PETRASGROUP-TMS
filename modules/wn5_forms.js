@@ -95,6 +95,7 @@
   const HM_INPUT = 'class="form-input wn5f-hm" type="text" inputmode="numeric" maxlength="5" placeholder="ΗΗ:ΛΛ" autocomplete="off"';
   // F1: the window headers lose their «*» and say what an empty window means
   const WIN_HEAD = 'Παράθυρο από – έως · κενό: όλη η ημέρα';
+  const PRICE_KEPT = 'Τιμή € (χωρίς ΦΠΑ): η παραγγελία έχει ήδη τιμή — γράψε αριθμό· μια γραμμένη τιμή δεν σβήνεται';
   const UNTIL_HEAD = 'Άφιξη ως · κενό: όλη η ημέρα';
   // A row's window as sent (F1): both ends empty = the whole day; one end only is NOT guessed — it stays as typed and
   // _check names it. An arrival «ως» row (one time, Veroia on ΑΝΟΔΟΣ) empty = by the end of its day, 23:59, and it
@@ -118,7 +119,7 @@
   const _p10 = (rows) => Math.round(rows.reduce((a, r) => a + (Number.isFinite(r.pallets) ? r.pallets : 0), 0) * 10);
   // F1/F4 (owner 28/10, 080): pallets not known yet read «;» (WN5L.palText's word), never 0
   const _pal = (n) => (n == null ? ';' : String(Math.round(n * 10) / 10).replace('.', ','));
-  const _palU = (n, unk) => (unk > 0 ? (n ? _pal(n) + '+;' : ';') : _pal(n));   // «12+;» known 12 and unknowns, «;» all unknown
+  const _palU = (n, unk) => WN5L.palText(n, unk);   // «12+;» known 12 and unknowns, «;» all unknown (one rule: WN5L)
 
   // Ε-19: N loads × 1 delivery or 1 load × N deliveries pair by themselves; N×M has no single answer (which load
   // goes where?), so it is refused instead of guessed (principle 1).
@@ -560,8 +561,10 @@
       // the summary's client line (Figma 2011:9938): «Orion Foods · 2 φορτώσεις · 10π · 640 €»
       cli.push([o.client || '—'].concat(nl > 1 ? [`${nl} φορτώσεις`] : []).concat([`${_palU(lp, lu)}π`])
         .concat(Number.isFinite(o.price) && o.price > 0 ? [`${_pal(o.price)} €`] : o.price === null ? ['τιμή λείπει'] : []).join(' · '));
+      // a 1×1 order is one shipment: both its stops carry the pallets it will have (_pairs), not their raw rows
+      const one1 = nl === 1 && nd === 1 ? sp[0] : undefined;
       for (const [act, rows] of [['φόρτωση', o.loads], ['παράδοση', o.drops]]) for (const r of rows)
-        if (DAY.test(r.day) && HM.test(r.to)) seq.push({ k: r.day + 'T' + (r.from || r.to), when: r.until ? `ως ${_dow(r.day)} ${r.to}` : r.allDay ? `${_dow(r.day)} όλη η ημέρα` : `${_dow(r.day)} ${r.from}–${r.to}`, act, place: r.hub ? 'Βέροια' : r.label, clients: [o.client || '—'], pal: r.pallets });
+        if (DAY.test(r.day) && HM.test(r.to)) seq.push({ k: r.day + 'T' + (r.from || r.to), when: r.until ? `ως ${_dow(r.day)} ${r.to}` : r.allDay ? `${_dow(r.day)} όλη η ημέρα` : `${_dow(r.day)} ${r.from}–${r.to}`, act, place: r.hub ? 'Βέροια' : r.label, clients: [o.client || '—'], pal: one1 !== undefined ? one1 : r.pallets });
     });
     seq.sort((a, b) => (a.k < b.k ? -1 : a.k > b.k ? 1 : 0));
     // Figma 2011:9940: orders at the same place in the same window are ONE stop line («Zeta, Kappa · 20π»)
@@ -683,11 +686,14 @@
     for (const c of board.cycles || []) for (const s of c.stops || []) for (const l of s.legs || []) if (l.nat_order_id === id) legs.push(l);
     if (!w.length && !legs.length) return null;
     const any = w[0] || legs[0];
+    const has = (x) => !!x && Object.prototype.hasOwnProperty.call(x, 'price');
+    const pSrc = has(w[0]) ? w[0] : legs.find(has) || null;
     return {
       nat_order_id: id, client: any.client || '', reference: any.reference || '',
-      price: w[0] && w[0].price !== undefined ? w[0].price : null,
-      // F4 (080): a waiting piece says price: null when the order has none yet — «λείπει», not «not on the board»
-      priceMissing: !!w[0] && Object.prototype.hasOwnProperty.call(w[0], 'price') && w[0].price === null,
+      // the price as the board carries it: a waiting piece, else (since 074a) a leg of the order's cycle
+      price: pSrc ? pSrc.price : null,
+      // F4 (080): price: null = the order has none yet — «λείπει», not «not on the board»
+      priceMissing: !!pSrc && pSrc.price === null,
       temperature_c: any.temperature_c === undefined ? null : any.temperature_c,
       pallet_exchange: w[0] && typeof w[0].pallet_exchange === 'boolean' ? w[0].pallet_exchange : null,
       goods: '', notes: '', riding: legs.length > 0,
@@ -695,7 +701,7 @@
       direction: w[0] && (w[0].direction === 'KATHODOS' || w[0].direction === 'ANODOS') ? w[0].direction : null,
       // hub[] does not carry the side at all: «not sent», never «never stated» (F23 code review)
       dirUnsent: !!w[0] && !('direction' in w[0]),
-      ships: _shipRows(w),
+      ships: _shipRows(w).concat(_ridingUnknown(legs, w)),
     };
   }
   // One row per shipment: the board lists PIECES, and after «Σπάσε…» two parts of one shipment can both wait at Veroia.
@@ -712,6 +718,20 @@
     }
     return [...by.values()];
   }
+  // F1 (code review xhigh 28/10): a shipment whose pallets are not known yet and that already rides a cycle has no
+  // waiting piece, so no row above — yet its pallets are written HERE (B-100, the card and the Veroia panel send the
+  // desk to «Επεξεργασία»). One row per such shipment (074a: legs carry shipment_id), pallets only: its windows
+  // change with «Μεταφορά σε…» or the day panel as for any riding load (072 plan_h_resize gives the one piece them).
+  function _ridingUnknown(legs, w) {
+    const seen = new Set(w.map((x) => x.shipment_id));
+    const out = [];
+    for (const l of legs) {
+      if (l.act !== 'load' || l.pallets != null || l.shipment_id == null || seen.has(l.shipment_id)) continue;
+      seen.add(l.shipment_id);
+      out.push({ shipment_id: l.shipment_id, origin: null, dest: null, pallets: null, riding: true });
+    }
+    return out;
+  }
   const _placeName = (id) => { const p = typeof PlanIds !== 'undefined' ? PlanIds.place(id) : null; return p ? p.name : '#' + id; };
   const _editDay = (k, v, ro) => `<span class="wn5f-day"><input class="form-input" type="date" data-f="${k}" value="${v}"${ro}><span class="wn5f-dayt" aria-hidden="true"></span></span>`;
   function _editHTML(f) {
@@ -720,6 +740,13 @@
     const ro = e.riding ? ' disabled' : '';
     const ships = e.ships.map((s) => {
       const lf = t(s.load_from), lt = t(s.load_to), df = t(s.deliver_from), dt = t(s.deliver_to);
+      // F1: a riding shipment of unknown pallets: its pallets only (windows locked as for any riding load)
+      if (s.riding) {
+        return `<div class="wn5f-ship" data-ship="${s.shipment_id}" data-ride="1"><span>αποστολή #${_esc(s.shipment_id)} · σε κύκλο · παλέτες άγνωστες</span>`
+          + `${_editDay('lday', '', ' disabled')}<input ${HM_INPUT} disabled><input ${HM_INPUT} disabled>`
+          + `${_editDay('dday', '', ' disabled')}<input ${HM_INPUT} disabled><input ${HM_INPUT} disabled>`
+          + `<input class="form-input" data-f="pal" inputmode="decimal" value="" placeholder="άγνωστες"></div>`;
+      }
       return `<div class="wn5f-ship" data-ship="${s.shipment_id}"><span>${_esc(_placeName(s.origin))} → ${_esc(_placeName(s.dest))}</span>`
         // the create form's fields (2011:9704): a day with its weekday label, ΗΗ:ΛΛ text — the native time input is
         // 12-hour in el-GR and cut in its cell (_hmNorm note)
@@ -751,9 +778,11 @@
       price: _num(v('[data-f="price"]')), temperature_c: _num(v('[data-f="temp"]')), reference: v('[data-f="ref"]').trim(),
       goods: v('[data-f="goods"]').trim(), notes: v('[data-f="notes"]').trim(), pallet_exchange: peh === 'yes' ? true : peh === 'no' ? false : null,
       direction: f.edit.riding ? null : (v('[data-f="dir"]') || null),
-      ships: f.edit.riding ? [] : [...f.el.querySelectorAll('[data-ship]')].map((r) => {
+      // a riding order sends no windows; only the pallets of a riding shipment that had none (F1, data-ride)
+      ships: [...f.el.querySelectorAll('[data-ship]')].filter((r) => !f.edit.riding || r.dataset.ride).map((r) => {
         const g = (k) => r.querySelector(`[data-f="${k}"]`).value;
         const t = (k) => _hmNorm(g(k));
+        if (r.dataset.ride) return { shipment_id: Number(r.dataset.ship), pallets: _num(g('pal')), ride: true };
         return { shipment_id: Number(r.dataset.ship), pallets: _num(g('pal')), load_from: _iso(g('lday'), t('lfrom')), load_to: _iso(g('lday'), t('lto')),
           deliver_from: _iso(g('dday'), t('dfrom')), deliver_to: _iso(g('dday'), t('dto')) };
       }),
@@ -764,6 +793,9 @@
     const st = _readEdit(f);
     const probs = [];
     if (st.price !== null && !(Number.isFinite(st.price) && st.price > 0)) probs.push('Τιμή € (χωρίς ΦΠΑ): αριθμός πάνω από 0');
+    // F4 (code review xhigh): an emptied price is not «no change» in silence — a written price is never removed (the
+    // base refuses it, no_price): said, nothing sent
+    if (st.price === null && f.edit.price != null) probs.push(PRICE_KEPT);
     if (Number.isNaN(st.temperature_c)) probs.push('Θερμοκρασία °C: αριθμός');
     for (const s of st.ships) {
       // F1 (080): empty = still unknown, allowed only where they were unknown; known pallets never become unknown
@@ -771,7 +803,7 @@
       const was = (f.edit.ships || []).find((x) => x.shipment_id === s.shipment_id);
       if (s.pallets === null) { if (was && was.pallets != null) probs.push('παλέτες: η αποστολή έχει ήδη παλέτες — γράψε αριθμό'); }
       else if (!(Number.isFinite(s.pallets) && s.pallets > 0 && _dec1(s.pallets))) probs.push('παλέτες: αριθμός πάνω από 0, ένα δεκαδικό το πολύ');
-      if (!s.load_from || !s.load_to || !s.deliver_from || !s.deliver_to) probs.push('παράθυρο από – έως σε κάθε αποστολή');
+      if (!s.ride && (!s.load_from || !s.load_to || !s.deliver_from || !s.deliver_to)) probs.push('παράθυρο από – έως σε κάθε αποστολή');
     }
     const body = probs.length ? null : _patchBody(f.edit, st);
     if (body && !body.set && !body.shipments) probs.push('Τίποτα δεν άλλαξε');
@@ -918,7 +950,7 @@
     const cyclePieces = new Set();
     for (const s of all) for (const l of s.legs || []) cyclePieces.add(l.piece_id);
     return {
-      side, stops, blocks: bl, shipments: pieces.size, total, hubStop, end, vehicle, seq, lastLoad: cyclePieces.size === 1,
+      side, stops, blocks: bl, shipments: pieces.size, total, totalUnk, hubStop, end, vehicle, seq, lastLoad: cyclePieces.size === 1,
       plates: cyc.trip_type === 'PARTNER' ? (cyc.partner || '—') : [cyc.truck, cyc.trailer].filter(Boolean).join(' · ') || '—',
       day: first ? first.stop_day : null,
       cap: (loaded.length > 1 ? loaded.map((b) => _palU(b.pallets, b.palUnk)).join(' + ') + ' = ' : '') + `${_palU(total, totalUnk)}/33`,
@@ -1001,7 +1033,7 @@
     return `<div class="wn5f-head wn5f-lhead" data-side="${m.side}">` + m.head.concat([['Φορτηγό', m.plates]]).map(([k, v]) => `<div class="wn5f-f"><span>${k}</span><span class="wn5f-ro">${_esc(v)}</span></div>`).join('') + `</div>`
       + m.blocks.map((b) => (b.vs ? _vsBlockHTML(f, b) : _natBlockHTML(f, b))).join('')
       // the summary's right side is the total only (Figma 2011:9569); the per-order sum is the header badge's
-      + `<div class="wn5f-sum"><div class="wn5f-sum-h"><b>${m.shipments} ${m.shipments === 1 ? 'αποστολή' : 'αποστολές'} · ${m.shipments === 1 ? 'σκέλος ' + SIDE_GR[m.side] : 'ίδιο σκέλος'} · ${_esc(m.vehicle)}</b><b>${_pal(m.total)}/33</b></div>`
+      + `<div class="wn5f-sum"><div class="wn5f-sum-h"><b>${m.shipments} ${m.shipments === 1 ? 'αποστολή' : 'αποστολές'} · ${m.shipments === 1 ? 'σκέλος ' + SIDE_GR[m.side] : 'ίδιο σκέλος'} · ${_esc(m.vehicle)}</b><b>${_palU(m.total, m.totalUnk)}/33</b></div>`
       + `<div class="wn5f-sec">ΣΕΙΡΑ ΣΤΑΣΕΩΝ ΚΑΤΑ ΩΡΑ</div><ol class="wn5f-seq">`
       + m.seq.map((x, i) => `<li><span class="wn5f-seq-n">${i + 1}</span><span class="wn5f-seq-w">${_esc(x.when)}</span><span class="wn5f-seq-p">${_esc(x.place)}</span><span class="wn5f-seq-c">${_esc(x.what)}</span><span class="wn5f-seq-q">${_palU(x.pallets, x.unk)}π</span></li>`).join('')
       + `</ol><div class="wn5f-note">${m.lastLoad
@@ -1029,6 +1061,7 @@
     for (const id of Object.keys(f.orig)) {
       const st = _legState(f, id);
       if (st.price !== null && !(Number.isFinite(st.price) && st.price > 0)) bad.push(`#${f.orig[id].reference || id} · Τιμή € (χωρίς ΦΠΑ): αριθμός πάνω από 0`);
+      if (st.price === null && f.orig[id].price != null) bad.push(`#${f.orig[id].reference || id} · ${PRICE_KEPT}`);
       if (Number.isNaN(st.temperature_c)) bad.push(`#${f.orig[id].reference || id} · Θερμοκρασία °C: αριθμός`);
     }
     if (bad.length) f.blocked = true;

@@ -18,7 +18,8 @@
 --           plan_h_put           "how many" (take_pallets) of an unknown piece is refused
 --           plan_split_piece     an unknown piece does not split
 --           plan_h_pallet_sync   an unknown piece feeds no pallet-ledger row until its pallets are known
---   PART 3  money views (073's text + hunks): ct_v_v5_revenue keeps a missing price NULL (never 0) and shares an
+--   PART 3  money views (073's text + hunks): ct_v_v5_revenue keeps a missing price NULL (never 0; a stock-lot
+--           national keeps 0 as before - 057 holds its price NULL on purpose, its revenue is the lot's) and shares an
 --           order with unknown pallets only when it has ONE leaf (the whole price), else NULL; ct_v_rt_revenue +
 --           revenue_missing (last column); ct_v_rt_pnl + v5_revenue_missing (last column, read by GET /costs/pnl
 --           through select=*: no Worker change)
@@ -30,8 +31,10 @@
 -- plan_shipment_problem (pieces_sum). The Worker forwards bodies as they are; its texts for the codes used here
 -- exist (parts_sum, pieces_sum, pieces_pallets, shipments_shape): no Worker change.
 -- RUN: after 15:00 or with the owner's explicit yes: 080_plan_optional_price_pallets_dryrun.sql, then this file, then
--- 080_plan_optional_price_pallets_verify.sql. REVERSE: 080_plan_optional_price_pallets_rollback.sql (refuses while a
--- national shipment has unknown pallets: write them first, B-100 lists them).
+-- 080_plan_optional_price_pallets_verify.sql. REVERSE: 080_plan_optional_price_pallets_rollback.sql - possible only
+-- while no shipment or piece row has unknown pallets (071's NOT NULL / CHECKs would refuse them): a live one gets its
+-- pallets first (B-100 lists them); once an order saved with unknown pallets has been DELETED, its rows keep NULL as
+-- history and there is no rollback, only fixes forward (as 073 after the first v5 row).
 DO $do$
 DECLARE
   -- the function hunks (anchor in the live text, replacement); each anchor is in its live text exactly once
@@ -282,7 +285,7 @@ $h$;
   WHERE rt.status <> 'cancelled'::text$v$;
   h_v1a CONSTANT text := $h$           CASE WHEN ps.kind = 'national' THEN COALESCE(n.price, 0::numeric)
 $h$;
-  h_v1b CONSTANT text := $h$           CASE WHEN ps.kind = 'national' THEN n.price
+  h_v1b CONSTANT text := $h$           CASE WHEN ps.kind = 'national' THEN CASE WHEN n.stock_lot_id IS NULL THEN n.price ELSE COALESCE(n.price, 0::numeric) END
 $h$;
   h_v2a CONSTANT text := $h$           sum(lf.pallets) OVER (PARTITION BY lf.share_key) AS all_pallets
 $h$;

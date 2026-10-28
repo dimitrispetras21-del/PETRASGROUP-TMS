@@ -459,7 +459,7 @@
   const _pal = (n) => (n == null ? ';' : String(Math.round(Number(n) * 10) / 10).replace('.', ','));
   const _sum = (a) => a.reduce((s, x) => s + (typeof x === 'number' && isFinite(x) ? x : 0), 0);
   const _unkN = (a) => a.filter((x) => x == null).length;   // how many of these pallets are not known yet
-  const _palU = (n, unk) => (unk > 0 ? _pal(n) + '+;' : _pal(n));
+  const _palU = (n, unk) => WN5L.palText(n, unk);
   const _clientErr = (code, message) => ({ kind: 'client', code, message });
   const _id = (v) => { const n = Number(v); return Number.isSafeInteger(n) && n > 0 ? n : null; };
   const _norm = (s) => (typeof fhSearchNorm === 'function' ? fhSearchNorm(s) : String(s || '').toLowerCase());

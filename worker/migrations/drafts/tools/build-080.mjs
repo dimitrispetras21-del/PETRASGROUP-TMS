@@ -95,7 +95,8 @@ export function buildRollback(src) {
 -- md5-proven), the 3 money views back to 073's text (ct_v_rt_pnl and ct_v_rt_revenue dropped and made again: CREATE OR
 -- REPLACE cannot remove their new last column; their rights are read first and given back), 071's two CHECKs and NOT
 -- NULL back, B-100 out of the catalog (results removed, open incidents closed). REFUSES while a national shipment or a
--- piece has unknown pallets (071 would refuse them): write the pallets first (B-100 lists the live ones). Prices left
+-- piece has unknown pallets (071 would refuse them): write the pallets first (B-100 lists the live ones); a DELETED row
+-- with unknown pallets is history (never given a made-up number): then no rollback, fixes forward. Prices left
 -- NULL stay NULL (the user's data; B-90 lists them). Only with an explicit yes, after 15:00. ASCII. ONE DO block.
 -- EXPECTED: NOTICE "080 ROLLBACK OK".
 DO $do$
@@ -106,6 +107,13 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM monitoring.checks WHERE id = 'B-100')
      OR (SELECT attnotnull FROM pg_attribute WHERE attrelid = 'public.shipment_pieces'::regclass AND attname = 'pallets') THEN
     RAISE EXCEPTION '080 rollback: 080 is not applied';
+  END IF;
+  -- unknown pallets block the way back (071's NOT NULL / CHECKs would refuse them). A live row gets its pallets in the
+  -- app (B-100 lists them); a DELETED row keeps NULL as history - never a made-up number: then no rollback, fixes forward
+  SELECT count(*) INTO v_k FROM public.shipments WHERE order_stop_id IS NULL AND pallets IS NULL AND deleted_at IS NOT NULL;
+  SELECT v_k + count(*) INTO v_k FROM public.shipment_pieces WHERE pallets IS NULL AND deleted_at IS NOT NULL;
+  IF v_k <> 0 THEN
+    RAISE EXCEPTION '080 rollback: % deleted shipment / piece row(s) keep unknown pallets as history - no rollback, fix forward', v_k;
   END IF;
   SELECT (SELECT count(*) FROM public.shipments WHERE order_stop_id IS NULL AND pallets IS NULL)
        + (SELECT count(*) FROM public.shipment_pieces WHERE pallets IS NULL) INTO v_k;

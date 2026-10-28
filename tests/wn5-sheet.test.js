@@ -28,6 +28,9 @@ function load(withDeps) {
   if (withDeps) {
     vm.runInContext(fs.readFileSync(path.join(ROOT, 'core/wi4-logic.js'), 'utf8'), ctx, { filename: 'core/wi4-logic.js' });
     ctx.WI4 = win.WI4;
+    // F1/F4: the pallets' text is WN5L.palText (one rule, core/wn5-logic.js loads before the sheet in app.html)
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'core/wn5-logic.js'), 'utf8'), ctx, { filename: 'core/wn5-logic.js' });
+    ctx.WN5L = win.WN5L;
     vm.runInContext(fs.readFileSync(path.join(ROOT, 'modules/wn5_forms.js'), 'utf8'), ctx, { filename: 'modules/wn5_forms.js' });
     ctx.WN5Form = win.WN5Form;
     vm.runInContext(fs.readFileSync(path.join(ROOT, 'core/wn5-labels.js'), 'utf8'), ctx, { filename: 'core/wn5-labels.js' });

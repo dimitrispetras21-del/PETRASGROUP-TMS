@@ -72,7 +72,8 @@ async function scnOrder({ browser, origin, ok, scn }) {
   await openForm(page, {});
   ok(scn, 'the order form opened (.wi4-dlg[role=dialog][data-wn5=order])', await K.count(page, DLG) === 1);
   const txt = await K.text(page, DLG);
-  ok(scn, 'label «Τιμή € (χωρίς ΦΠΑ) *»', txt.includes('Τιμή € (χωρίς ΦΠΑ) *'), txt.slice(0, 200));
+  // F4 (owner 28/10, 080): the price is optional — no «*», the field says what empty means
+  ok(scn, 'label «Τιμή € (χωρίς ΦΠΑ)» without «*»', txt.includes('Τιμή € (χωρίς ΦΠΑ)') && !txt.includes('Τιμή € (χωρίς ΦΠΑ) *'), txt.slice(0, 200));
   // F1 (owner 28/10): the window is optional — the head says what an empty one is, no «*»
   ok(scn, 'windows «Παράθυρο από – έως · κενό: όλη η ημέρα»', txt.includes('Παράθυρο από – έως · κενό: όλη η ημέρα') && !txt.includes('Παράθυρο από – έως *'));
   ok(scn, 'truck optional: «Φορτηγό (προαιρετικό)» with «— ΠΡΟΣ ΑΝΑΘΕΣΗ»', txt.includes('Φορτηγό (προαιρετικό)') && txt.includes('ΠΡΟΣ ΑΝΑΘΕΣΗ'));
@@ -226,6 +227,26 @@ async function scnNoPP({ browser, origin, ok, scn }) {
   ok(scn, 'one POST: price null and the shipment\'s pallets null — never 0', !!o && o.price === null && o.shipments.length === 1 && o.shipments[0].pallets === null, o || posts.length);
   ok(scn, 'no page errors, no console errors', !S.pageErrors.length && !appConsole(S).length, S.pageErrors.concat(appConsole(S)));
   await page.context().close();
+  // code review xhigh: a national RIDING a cycle with unknown pallets (N-T003 on RT-T102, no waiting piece) — its
+  // «Επεξεργασία» opens the pallets of that shipment (only), one PATCH with them; before, no field reached them
+  const b = K.week();
+  for (const st of b.cycles[1].stops) for (const l of st.legs) Object.assign(l, { pallets: null, shipment_id: 5303, price: null });
+  const plan = { 'PATCH /plan/orders/3003': () => [200, { ok: true, op: 'plan_order_update', dry_run: false, ids: { nat_order_id: 3003, shipment_ids: [] }, warnings: [], notice_ids: [] }] };
+  const p2 = await K.openApp(browser, origin, { board: b, plan });
+  await openForm(p2.page, { natOrderId: 3003 });
+  const ride = await p2.page.evaluate((d) => { const r = document.querySelector(`${d} [data-ship="5303"][data-ride="1"]`); if (!r) return null;
+    const pal = r.querySelector('[data-f="pal"]'); const pr = document.querySelector(`${d} [data-f="price"]`);
+    return { label: r.textContent, palOn: !!pal && !pal.disabled, pricePh: pr && pr.placeholder, note: document.querySelector(d).innerText.includes('δεν έχει ακόμη τιμή') }; }, DLG);
+  ok(scn, 'edit of a riding order of unknown pallets: «αποστολή #5303 · σε κύκλο · παλέτες άγνωστες», its pallets open; price «λείπει»',
+    !!ride && ride.palOn && /παλέτες άγνωστες/.test(ride.label) && ride.pricePh === 'λείπει' && ride.note, ride);
+  await p2.page.fill(`${DLG} [data-ship="5303"] [data-f="pal"]`, '10').catch(() => {});
+  await save(p2.page);
+  await p2.page.waitForTimeout(1200);
+  const pt = K.planOf(p2.S, 'PATCH', '/plan/orders/3003');
+  ok(scn, 'one PATCH /plan/orders/3003 {shipments:[{shipment_id:5303, pallets:10}]} — the pallets only, no window', pt.length === 1
+    && JSON.stringify(pt[0].body) === JSON.stringify({ shipments: [{ shipment_id: 5303, pallets: 10 }] }), pt.map((x) => x.body));
+  ok(scn, 'edit: no page errors', !p2.S.pageErrors.length, p2.S.pageErrors);
+  await p2.page.context().close();
 }
 
 async function scnGroupage({ browser, origin, ok, scn }) {

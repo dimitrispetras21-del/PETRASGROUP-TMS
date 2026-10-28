@@ -27,7 +27,7 @@
   const _hmWin = (a, b) => (typeof WN5L !== 'undefined' && WN5L.allDay(a, b) ? 'όλη η ημέρα' : `${_hm(a)}–${_hm(b)}`);
   const _pal = (n) => String(Math.round((Number(n) || 0) * 10) / 10).replace('.', ',');
   // F1/F4 (080): the driver reads «;» for pallets not known yet and «12+;» for a sum with such pieces — never 0
-  const _palU = (n, unk) => (unk > 0 ? (n ? _pal(n) + '+;' : ';') : _pal(n));
+  const _palU = (n, unk) => WN5L.palText(n, unk);   // one rule: core/wn5-logic.js, loaded before this file
   const _unk = (legs) => legs.filter((l) => l.pallets == null).length;
   const _temp = (ts, sp) => (ts.length ? ts.slice().sort((a, b) => a - b).map((t) => (t > 0 ? '+' : '') + t).join(sp ? ' / ' : '/') + (sp ? ' °C' : '°C') : '—');
   const _dash = (v) => (v == null || String(v).trim() === '' ? '—' : String(v));
@@ -140,8 +140,10 @@
       // what is loaded on this side, or what is delivered when nothing is; a segment that loads nothing here counts
       // what it took over (H5: ΤΕΛΙΚΟ «ΚΑΘΟΔΟΣ · 1 παράδοση · 18 παλέτες», checklist «(18)»)
       const loadsHere = sum(true) || unk(true), dropsHere = sum(false) || unk(false);
-      const pallets = loadsHere ? sum(true) : dropsHere ? sum(false) : hands.reduce((a, h) => Math.max(a, h.pallets), 0);
-      const palUnk = loadsHere ? unk(true) : dropsHere ? unk(false) : 0;
+      // a segment that only takes over: the biggest hand-over, with its own unknowns (F1, code review xhigh)
+      const big = hands.reduce((a, h) => (!a || (h.pallets || 0) + (h.palUnk || 0) > (a.pallets || 0) + (a.palUnk || 0) ? h : a), null);
+      const pallets = loadsHere ? sum(true) : dropsHere ? sum(false) : big ? big.pallets : 0;
+      const palUnk = loadsHere ? unk(true) : dropsHere ? unk(false) : big ? big.palUnk || 0 : 0;
       if (firstPallets === null) { firstPallets = pallets; firstUnk = palUnk; }
       out.push({ t: 'side', side, title: SIDE_GR[side], count, noun, pallets, palUnk, fromHub: !!ls[0] && ls[0].hub && ls[0].act === 'ΦΟΡΤΩΣΗ' });
       out.push(...hands.filter((h) => h.dir === 'in'), ...ls, ...hands.filter((h) => h.dir === 'out'));

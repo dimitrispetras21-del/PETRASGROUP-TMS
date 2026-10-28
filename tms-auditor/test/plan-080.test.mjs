@@ -214,6 +214,25 @@ test('080 on the production-shaped copy (28/10)', async (t) => {
     assert.strictEqual(rtUnk != null, true);
   });
 
+  await t.test('P9b money (code review xhigh): a stock-lot national keeps its 0 share (057 holds its price NULL on purpose), no flag', async () => {
+    // an international intake of 33 pallets at A, delivered (the lot's stock, as 073's case 30)
+    const q = (await one(db, `INSERT INTO orders (legacy_id, order_type, direction, status, client_id, price, loading_datetime, delivery_datetime,
+      unloading_location_1_id, loading_pallets_1, reference)
+      VALUES ('rec080TO1', 'International', 'Import', 'Delivered', $1, 900, $2::date - 9, $2::date - 6, $3, 33, 'WN080-TEST') RETURNING id`, [S.cl, S.day, S.la])).id;
+    const lot = (await one(db, `INSERT INTO stock_lots (legacy_id, order_id) VALUES ('rec080TL1', $1) RETURNING id`, [q])).id;
+    const x = (await one(db, `INSERT INTO national_orders (legacy_id, client_id, reference, price, pallets, stock_lot_id)
+      VALUES ('rec080TN1', $1, 'WN080-TEST', NULL, 10, $2) RETURNING id`, [S.cl, lot])).id;
+    await db.query(`UPDATE national_orders SET pickup_location_1_id = $2 WHERE id = $1`, [x, S.la]);
+    await db.exec('BEGIN');   // shipment and piece in one transaction: 071's pieces_sum is checked at COMMIT
+    const sh = (await one(db, `INSERT INTO shipments (nat_order_id, origin_location_id, dest_location_id, pallets, load_from, load_to, deliver_from, deliver_to, created_by)
+      VALUES ($1, $2, $3, 10, $4, $5, $6, $7, 'test:080') RETURNING id`, [x, S.la, S.lb, S.lf, S.lt, S.df, S.dt])).id;
+    const pc = (await one(db, `INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES ($1, 10, 'test:080') RETURNING id`, [sh])).id;
+    await db.exec('COMMIT');
+    const r = await call(db, 'plan_put_pieces', { pieces: [{ piece_id: pc }], ...tgt(S, await S.truck()) });
+    assert.strictEqual(Number((await one(db, `SELECT amount FROM ct_v_v5_revenue WHERE nat_order_id = $1`, [x])).amount), 0);
+    assert.strictEqual((await one(db, `SELECT revenue_missing FROM ct_v_rt_revenue WHERE rt_id = $1`, [r.ids.rt_id])).revenue_missing, false);
+  });
+
   await t.test('P10: the auditor\'s money checks stay green (B-79, B-80): a NULL share is not a wrong sum', async () => {
     for (const id of ['B-79', 'B-80']) assert.strictEqual((await check(db, id)).n, 0, id);
   });
@@ -239,6 +258,19 @@ test('080 on the production-shaped copy (28/10)', async (t) => {
       assert.match(msg ?? '', re, `${f}: ${msg?.slice(0, 300)}`);
       if (f.startsWith('072_')) assert.strictEqual((msg.match(/FAIL want/g) || []).length, 1, 'exactly one case changes');
     }
+  });
+
+  await t.test('080 rollback: a DELETED order of unknown pallets is history - no rollback, fix forward (nothing changes)', async () => {
+    const r = await create(db, [S.order({}, [S.ship({ pallets: null })])]);
+    await db.exec('BEGIN');
+    try {
+      await db.query(`UPDATE shipment_pieces SET deleted_at = now(), deleted_reason = 'test', deleted_by = 'test' WHERE id = $1`, [r.ids.piece_ids[0]]);
+      await db.query(`UPDATE shipments SET deleted_at = now(), deleted_reason = 'test', deleted_by = 'test' WHERE id = $1`, [r.ids.shipment_ids[0]]);
+      let msg = null;
+      try { await db.exec(read('080_plan_optional_price_pallets_rollback.sql')); } catch (e) { msg = String(e.message); }
+      assert.match(msg ?? '', /deleted shipment \/ piece row\(s\) keep unknown pallets as history - no rollback, fix forward/);
+    } finally { await db.exec('ROLLBACK'); }
+    assert.strictEqual((await one(db, read('080_plan_optional_price_pallets_verify.sql'))).applied, '080 in place');
   });
 
   await t.test('080 rollback refuses while pallets are unknown; with them written it puts everything back, then 080 again', async () => {

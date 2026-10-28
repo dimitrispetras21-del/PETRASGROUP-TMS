@@ -36,9 +36,10 @@ class ShapeError extends Error {
 const r1 = (x) => (x == null ? null : Math.round(Number(x) * 10) / 10);
 const _sum = (items) => r1(items.reduce((n, x) => n + (x.pallets == null ? 0 : Number(x.pallets)), 0));
 const _unk = (items) => items.filter((x) => x.pallets == null).length;
-// «;» unknown · «12» · «12+;» (known 12 and unknown pieces): ONE text for every v5 screen
+// «;» unknown (alone, or nothing known beside it) · «12» · «12+;» (known 12 and unknown pieces): ONE text for every v5
+// screen — the forms, the sheet, the dialogs and the ramp call it, none keeps a copy
 function palText(n, unknown) {
-  if (n == null) return ';';
+  if (n == null || (unknown > 0 && !Number(n))) return ';';
   const t = String(Math.round(Number(n) * 10) / 10).replace('.', ',');
   return unknown > 0 ? t + '+;' : t;
 }
