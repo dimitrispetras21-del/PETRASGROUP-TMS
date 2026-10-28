@@ -2,7 +2,7 @@
 // fake /plan/* (S.plan: method, path, body, count, order) and by what the page shows; never by a toast. Synthetic
 // week of tests/critics/wn5-rig-kit.js. The default answer of every non-dry write is 409 writes_closed, as deployed
 // until day L; scenarios script their own answers with sentinel messages.
-// Usage: node tests/critics/wn5-form-rig.js [order nowin groupage unknown reused replayed edit edit-ride edit-add edit-remove edit-read-fail edit-twoday veroia-edit leg leg-anodos …]
+// Usage: node tests/critics/wn5-form-rig.js [order nowin groupage unknown reused replayed edit edit-ride edit-add edit-remove edit-read-fail edit-twoday veroia-edit day-type leg leg-anodos …]
 //        WN5_TREE=<git archive origin/main> node tests/critics/wn5-form-rig.js   (plain-main proof: NO-GO, exit 1)
 // Exit: 0 green · 1 a check failed · 2 unknown scenario.
 'use strict';
@@ -77,16 +77,17 @@ async function scnOrder({ browser, origin, ok, scn }) {
   ok(scn, 'windows «Παράθυρο από – έως · κενό: όλη η ημέρα»', txt.includes('Παράθυρο από – έως · κενό: όλη η ημέρα') && !txt.includes('Παράθυρο από – έως *'));
   ok(scn, 'truck optional: «Φορτηγό (προαιρετικό)» with «— ΠΡΟΣ ΑΝΑΘΕΣΗ»', txt.includes('Φορτηγό (προαιρετικό)') && txt.includes('ΠΡΟΣ ΑΝΑΘΕΣΗ'));
   // fidelity T20 (Figma 2011:9641/9704): an empty day reads as a whole hint, never Chrome's cut «dd/mm/yy»
-  const dayE = await page.evaluate((d) => [...document.querySelectorAll(`${d} .wn5f-day`)].map((w) => w.querySelector('.wn5f-dayt').textContent), DLG);
+  // live fix 28/10: the day is typed text (.wn5f-dayx); empty, its placeholder is the hint
+  const dayE = await page.evaluate((d) => [...document.querySelectorAll(`${d} .wn5f-day`)].map((w) => { const x = w.querySelector('.wn5f-dayx'); return x && !x.value ? x.placeholder : x && x.value; }), DLG);
   ok(scn, 'empty day fields: «ηη/μμ/εεεε» in the head, «ηη/μμ» in each row', dayE.length >= 3 && dayE[0] === 'ηη/μμ/εεεε' && dayE.slice(1).every((x) => x === 'ηη/μμ'), dayE);
   await page.keyboard.press('ArrowRight');   // role=dialog: the week must not move under the open form
   ok(scn, '← → do not change the week while the form is open', await K.count(page, DLG) === 1 && (await page.evaluate(() => WN5.snapshot().week)) === '2026-10-10');
   await fillOrder(page, 0, ORDER_A);
   // the weekday the frame shows in a row («Τετ 14/10», no year); the native text hidden while not edited
-  const dayF = await page.evaluate((d) => [...document.querySelectorAll(`${d} .wn5f-row .wn5f-day`)].map((w) => ({ t: w.querySelector('.wn5f-dayt').textContent,
-    vis: getComputedStyle(w.querySelector('.wn5f-dayt')).display !== 'none', ink: getComputedStyle(w.querySelector('input')).color })), DLG);
-  ok(scn, 'filled day fields show the weekday: «Τετ 14/10» / «Πέμ 15/10», the native text hidden', dayF.length === 2
-    && dayF[0].t === 'Τετ 14/10' && dayF[1].t === 'Πέμ 15/10' && dayF.every((x) => x.vis && x.ink === 'rgba(0, 0, 0, 0)'), dayF);
+  const dayF = await page.evaluate((d) => [...document.querySelectorAll(`${d} .wn5f-row .wn5f-day`)].map((w) => ({ t: (w.querySelector('.wn5f-dayx') || {}).value,
+    nat: getComputedStyle(w.querySelector('.wn5f-dayp')).opacity })), DLG);
+  ok(scn, 'filled day fields show the weekday: «Τετ 14/10» / «Πέμ 15/10», the native date input not drawn', dayF.length === 2
+    && dayF[0].t === 'Τετ 14/10' && dayF[1].t === 'Πέμ 15/10' && dayF.every((x) => x.nat === '0'), dayF);
   await save(page);
   await page.waitForTimeout(3500);   // > the 1 s + 2 s of _atRetry: a resend would show here
   const posts = K.planOf(S, 'POST', '/plan/orders');
@@ -115,7 +116,7 @@ async function scnOrder({ browser, origin, ok, scn }) {
   const tg = await p2.page.evaluate((d) => { const s = document.querySelector(`${d} #wn5f-tgt`); return s ? { v: s.value, dis: s.disabled } : null; }, DLG);
   ok(scn, 'the cycle and side come prefilled and locked', tg && tg.v === '101' && tg.dis, tg);
   // fidelity T20 (Figma 2011:9641): the prefilled Veroia day in the head reads «Δευ 12/10/2026» (weekday + year)
-  const hd = await p2.page.evaluate((d) => { const w = document.querySelector(`${d} .wn5f-head .wn5f-day`); return w && { v: w.querySelector('input').value, t: w.querySelector('.wn5f-dayt').textContent }; }, DLG);
+  const hd = await p2.page.evaluate((d) => { const w = document.querySelector(`${d} .wn5f-head .wn5f-day`); return w && { v: w.querySelector('.wn5f-dayp').value, t: w.querySelector('.wn5f-dayx').value }; }, DLG);
   ok(scn, 'the head day shows the weekday and the year of its value', !!hd && /^\d{4}-\d\d-\d\d$/.test(hd.v)
     && hd.t === WI4dl(hd.v) + '/' + hd.v.slice(0, 4) && /^(Κυρ|Δευ|Τρί|Τετ|Πέμ|Παρ|Σάβ) /.test(hd.t), hd);
   await fillOrder(p2.page, 0, { client: C42, price: 120, temp: 2, pe: true, loads: [r(HUB, '2026-10-12', '16:00', '18:00', 4)], drops: [r(LAR, '2026-10-13', '10:00', '12:00', 4)] });
@@ -333,13 +334,14 @@ async function scnEdit({ browser, origin, ok, scn }) {
     const r = document.querySelector(`${d} .wn5f-ship`);
     if (!r) return null;
     const w = (el) => (el ? Math.round(el.getBoundingClientRect().width) : null);
-    const day = (k) => { const i = r.querySelector(`[data-f="${k}"]`), t = i && i.parentElement.querySelector('.wn5f-dayt');
-      if (!i || !t) return null; const a = i.getBoundingClientRect(), b = t.getBoundingClientRect();
-      return { w: Math.round(a.width), t: t.textContent, room: Math.round(a.right - b.right) }; };
+    // live fix 28/10: the day is typed text with the calendar button at its right end; the label must fit (no scroll)
+    const day = (k) => { const i = r.querySelector(`[data-f="${k}"]`), w = i && i.closest('.wn5f-day'), t = w && w.querySelector('.wn5f-dayx');
+      if (!t) return null;
+      return { w: Math.round(w.getBoundingClientRect().width), t: t.value, room: t.scrollWidth <= t.clientWidth ? 24 : 0, cal: !!w.querySelector('.wn5f-dayc') }; };
     return { l: day('lday'), d: day('dday'), pal: w(r.querySelector('[data-f="pal"]')) };
   }, DLG);
-  ok(scn, 'ΑΠΟΣΤΟΛΕΣ: day fields 100 with the label whole («Τετ 14/10» clear of the picker by ≥ 24px), pallets 70 (2069:7984 / 7992)',
-    !!ship && [ship.l, ship.d].every((x) => x && x.w === 100 && /^\S+ \d{1,2}\/\d{1,2}$/.test(x.t) && x.room >= 24) && ship.pal === 70, ship);
+  ok(scn, 'ΑΠΟΣΤΟΛΕΣ: day fields 100 with the label whole («Τετ 14/10», no scroll) and a calendar button, pallets 70 (2069:7984 / 7992)',
+    !!ship && [ship.l, ship.d].every((x) => x && x.w === 100 && /^\S+ \d{1,2}\/\d{1,2}$/.test(x.t) && x.room >= 24 && x.cal) && ship.pal === 70, ship);
   ok(scn, 'one point only: no × (the last point is never removed here)', await K.count(page, `${DLG} [data-ship] [data-act="del-ship"]`) === 0);
   // open + save with no change = 0 requests (the DB-level proof: plan-077.test.mjs U1, 0 rows written)
   await save(page);
@@ -523,6 +525,62 @@ async function scnVeroiaEdit({ browser, origin, ok, scn }) {
   await closeClean(page, S, ok, scn);
 }
 
+// Live 28/10: «typing in the date fields of the edit form does not change the value, only the picker works». The user
+// clicks the day where it shows («Πέμ 15/10») and types: the day must be what was typed, the field must say it, the save
+// must send it. Driven through the wrapper (.wn5f-day) and the real keyboard, so the same presses run on main (NO-GO).
+async function typeDay(page, sel, keys) {
+  const w = await page.$(sel);
+  if (!w) return false;
+  const b = await w.boundingBox();
+  await page.mouse.click(b.x + b.width * 0.4, b.y + b.height / 2);
+  await page.keyboard.type(keys);
+  await page.keyboard.press('Tab');
+  return true;
+}
+async function scnDayType({ browser, origin, ok, scn }) {
+  const { page, S } = await K.openApp(browser, origin, { plan: { 'PATCH /plan/orders/3101': UPD_OK(3101) } });
+  if (!(await guard(page, ok, scn))) return;
+  await openForm(page, { natOrderId: 3101 });
+  const W = `${DLG} [data-ship="5201"] .wn5f-day:has([data-f="dday"])`;
+  const shown = () => page.evaluate((s) => { const w = document.querySelector(s); if (!w) return null;
+    const x = w.querySelector('.wn5f-dayx'); return { v: w.querySelector('[data-f="dday"]').value, t: x ? x.value : w.textContent, red: !!x && x.classList.contains('bad') }; }, W);
+  await typeDay(page, W, '17/10');
+  const a = await shown();
+  ok(scn, 'a click on the shown day + «17/10» typed → the day is 2026-10-17 and the field reads «Σάβ 17/10»', !!a && a.v === '2026-10-17' && a.t === 'Σάβ 17/10', a);
+  for (const [keys, want] of [['18/10/2026', '2026-10-18'], ['1910', '2026-10-19'], ['20.10.26', '2026-10-20']]) {
+    await typeDay(page, W, keys);
+    const g = await shown();
+    ok(scn, `«${keys}» typed → ${want}`, !!g && g.v === want, g);
+  }
+  // a text that is no day: kept as typed, in red, the day empty — the save names it and sends nothing (principle 1)
+  await typeDay(page, W, '32/10');
+  const bad = await shown();
+  ok(scn, '«32/10» stays as typed, in red, and the day is empty', !!bad && bad.t === '32/10' && bad.red && bad.v === '', bad);
+  await save(page);
+  await page.waitForTimeout(400);
+  ok(scn, '… then «Αποθήκευση» names the day and sends nothing', K.planOf(S, 'PATCH', '/plan/orders/3101').length === 0
+    && /ημέρα/.test(await K.text(page, `${DLG} [data-err]`)), await K.text(page, `${DLG} [data-err]`));
+  await typeDay(page, W, '17/10');
+  await save(page);
+  await page.waitForTimeout(1000);
+  const p = K.planOf(S, 'PATCH', '/plan/orders/3101');
+  const sh = p[0] && p[0].body.shipments && p[0].body.shipments[0];
+  ok(scn, 'one PATCH: the typed delivery day 17/10 with its hours kept, 08:00–10:00 Athens', p.length === 1 && !!sh && sh.shipment_id === 5201
+    && Date.parse(sh.deliver_from) === Date.parse('2026-10-17T08:00:00+03:00') && Date.parse(sh.deliver_to) === Date.parse('2026-10-17T10:00:00+03:00'), p.map((x) => x.body));
+  await page.context().close();
+
+  // the create form's row day and its head day (with the year) take typing the same way
+  const p2 = await K.openApp(browser, origin);
+  await openForm(p2.page, {});
+  await typeDay(p2.page, `${DLG} .wn5f-rows[data-k="drop"] .wn5f-row .wn5f-day`, '21/10');
+  await typeDay(p2.page, `${DLG} .wn5f-head .wn5f-day`, '22/10/2026');
+  const c = await p2.page.evaluate((d) => ({ row: document.querySelector(`${d} .wn5f-rows[data-k="drop"] [data-f="day"]`).value, head: document.querySelector(`${d} #wn5f-vday`).value,
+    headT: (document.querySelector(`${d} .wn5f-head .wn5f-dayx`) || {}).value }), DLG);
+  ok(scn, 'create form: row «21/10» → 2026-10-21, head «22/10/2026» → 2026-10-22 reading «Πέμ 22/10/2026»', c.row === '2026-10-21' && c.head === '2026-10-22' && c.headT === 'Πέμ 22/10/2026', c);
+  ok(scn, 'every day field has its calendar button (the picker stays)', await p2.page.evaluate((d) => [...document.querySelectorAll(`${d} .wn5f-day`)].every((w) => !!w.querySelector('.wn5f-dayc[data-act="day-pick"]')), DLG));
+  await closeClean(p2.page, p2.S, ok, scn);
+}
+
 // T21 — the leg form. A second national order on the KATHODOS of RT-T101, so «two blocks changed» can be tried.
 function legWeek() {
   const b = K.week();
@@ -666,7 +724,7 @@ async function scnVs({ browser, origin, ok, scn }) {
 }
 
 K.run({
-  scenarios: { order: scnOrder, nowin: scnNoWin, groupage: scnGroupage, unknown: scnUnknown, reused: scnReused, replayed: scnReplayed, edit: scnEdit, 'edit-ride': scnEditRide, 'edit-add': scnEditAdd, 'edit-remove': scnEditRemove, 'edit-read-fail': scnEditReadFail, 'edit-twoday': scnEditTwoDay, 'veroia-edit': scnVeroiaEdit, leg: scnLeg, 'leg-anodos': scnLegAnodos, vs: scnVs },
+  scenarios: { order: scnOrder, nowin: scnNoWin, groupage: scnGroupage, unknown: scnUnknown, reused: scnReused, replayed: scnReplayed, edit: scnEdit, 'edit-ride': scnEditRide, 'edit-add': scnEditAdd, 'edit-remove': scnEditRemove, 'edit-read-fail': scnEditReadFail, 'edit-twoday': scnEditTwoDay, 'veroia-edit': scnVeroiaEdit, 'day-type': scnDayType, leg: scnLeg, 'leg-anodos': scnLegAnodos, vs: scnVs },
   globals: ['WN5Form'],
   go: 'the v5 order forms send one body per press, from the form only, with one request_id per open form',
 }).catch((e) => { console.error(e); process.exit(1); });

@@ -250,3 +250,19 @@ test('077 + F1: an untouched whole-day point sends nothing; a real minute change
   assert.deepStrictEqual(J(F._patchBody(orig, { price: 1, ships: [{ ...back, deliver_to: F._iso('2026-10-31', '20:00') }], removed: [], news: [] })),
     { shipments: [{ shipment_id: 9, deliver_to: '2026-10-31T20:00:00+02:00' }] });
 });
+
+// Live 28/10: typing in a day field changed a segment the user could not see (the year: «29» → 0029). The field is
+// typed text now, read by _dayParse; a day without a year takes the year nearest to the field's own day.
+test('live 28/10: a typed day is read as the dispatcher writes it, or refused (never guessed)', () => {
+  const p = (t, ref) => F._dayParse(t, ref === undefined ? '2026-10-28' : ref);
+  for (const [t, want] of [['29/10', '2026-10-29'], ['29/10/2026', '2026-10-29'], ['29.10.26', '2026-10-29'], ['29-10', '2026-10-29'],
+    ['2910', '2026-10-29'], ['29102026', '2026-10-29'], ['2026-10-29', '2026-10-29'], ['1/11', '2026-11-01'], [' 3/11 ', '2026-11-03']]) {
+    assert.strictEqual(p(t), want, t);
+  }
+  assert.strictEqual(p(''), '', 'empty = no day');
+  assert.strictEqual(p('02/01', '2026-12-30'), '2027-01-02', 'across the new year: the nearest January');
+  assert.strictEqual(p('30/12', '2027-01-02'), '2026-12-30', 'and back');
+  for (const t of ['32/10', '29/13', '31/11', '29/02/2027', '29/10/1999', '29/10/0029', 'abc', '29/10/202', '2', '29/']) assert.strictEqual(p(t), null, t);
+  assert.strictEqual(p('29/02/2028'), '2028-02-29', 'a leap day with its year');
+  assert.strictEqual(F._dayParse('29/10', ''), null, 'no year and no reference day: refused, never the clock');
+});

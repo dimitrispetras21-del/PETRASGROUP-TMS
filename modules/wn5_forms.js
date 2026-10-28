@@ -93,6 +93,41 @@
     return HM.test(out) ? out : t;
   }
   const HM_INPUT = 'class="form-input wn5f-hm" type="text" inputmode="numeric" maxlength="5" placeholder="ΗΗ:ΛΛ" autocomplete="off"';
+  // A day typed in a day field (live 28/10: «typing in the date fields does not change the value, only the picker
+  // works»). The native date input sat under the weekday label in 100px: a click landed on a segment the user could not
+  // see, «29» went into the year (0029) and the label still read «15/10». The field is now text, read here:
+  // «29/10», «29/10/2026», «29.10.26», «2910», «29102026», «2026-10-29». A day without a year takes the year that puts it
+  // nearest to ref (the field's own day, else today), so «02/01» typed on a 30/12 is the next January. Anything else is
+  // null: the form names it, never a guessed day (principle 1). Pure: no clock, ref is given.
+  function _dayParse(text, ref) {
+    const s = String(text == null ? '' : text).trim();
+    if (!s) return '';
+    let m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s), d, mo, y = null;
+    if (m) { y = +m[1]; mo = +m[2]; d = +m[3]; }
+    else {
+      m = /^(\d{1,2})[/.\- ](\d{1,2})(?:[/.\- ](\d{2}|\d{4}))?$/.exec(s) || /^(\d{2})(\d{2})(\d{2}|\d{4})?$/.exec(s);
+      if (!m) return null;
+      d = +m[1]; mo = +m[2];
+      if (m[3]) y = m[3].length === 2 ? 2000 + +m[3] : +m[3];
+    }
+    const at = (yy) => { const t = new Date(Date.UTC(yy, mo - 1, d)); return t.getUTCFullYear() === yy && t.getUTCMonth() === mo - 1 && t.getUTCDate() === d ? t.getTime() : null; };
+    const out = (ms) => (ms == null ? null : new Date(ms).toISOString().slice(0, 10));
+    if (y !== null) return y >= 2000 && y <= 2099 ? out(at(y)) : null;
+    if (!DAY.test(String(ref || ''))) return null;
+    const r = Date.UTC(+ref.slice(0, 4), +ref.slice(5, 7) - 1, +ref.slice(8, 10)), ry = +ref.slice(0, 4);
+    let best = null;
+    for (const yy of [ry - 1, ry, ry + 1]) { const ms = at(yy); if (ms !== null && (best === null || Math.abs(ms - r) < Math.abs(best - r))) best = ms; }
+    return out(best);
+  }
+  // lucide «calendar» at 14px: the picker of a day field, the native one, opened on purpose
+  const CAL = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>';
+  // One day field: the typed text (.wn5f-dayx), the native date input that holds the ISO day every reader reads (its
+  // data-f / id stay there) and opens only from the calendar button, never under a click on the text.
+  function _dayHTML(attrs, v, ro, year) {
+    return `<span class="wn5f-day"${year ? ' data-y' : ''}><input class="form-input wn5f-dayx" type="text" inputmode="numeric" maxlength="10" autocomplete="off" placeholder="${year ? 'ηη/μμ/εεεε' : 'ηη/μμ'}" aria-label="Ημέρα"${ro || ''}>`
+      + `<input class="wn5f-dayp" type="date" ${attrs} value="${_esc(v || '')}" tabindex="-1" aria-hidden="true"${ro || ''}>`
+      + `<button type="button" class="wn5f-dayc" data-act="day-pick" tabindex="-1" aria-label="Ημερολόγιο"${ro || ''}>${CAL}</button></span>`;
+  }
   // F1: the window headers lose their «*» and say what an empty window means
   const WIN_HEAD = 'Παράθυρο από – έως · κενό: όλη η ημέρα';
   const UNTIL_HEAD = 'Άφιξη ως · κενό: όλη η ημέρα';
@@ -313,8 +348,12 @@
     f.onKey = (ev) => { if (ev.key === 'Escape' && !f.busy) { ev.preventDefault(); ev.stopPropagation(); _close(f); } };
     window.addEventListener('keydown', f.onKey, true);
     box.addEventListener('click', (ev) => _onClick(f, ev));
-    box.addEventListener('input', () => _refresh(f));
-    box.addEventListener('change', () => _refresh(f));
+    box.addEventListener('input', (ev) => { _dayInput(ev.target); _refresh(f); });
+    box.addEventListener('change', (ev) => { _dayInput(ev.target); _refresh(f); });
+    box.addEventListener('focusin', (ev) => { if (ev.target.classList && ev.target.classList.contains('wn5f-dayx')) _dayEdit(ev.target); });
+    // the click that focused a day keeps the whole day selected (its mouseup would drop the selection for a caret): the
+    // keys replace the day, never append to it
+    box.addEventListener('mouseup', (ev) => { const x = ev.target; if (x && x._selOnce) { x._selOnce = false; ev.preventDefault(); } });
     // a place or client picked from the list (fhPickLinked on mousedown) fires no input: the field's blur refreshes
     box.addEventListener('focusout', (ev) => {
       const t = ev.target;
@@ -341,16 +380,46 @@
     const b = f.el.querySelector('[data-act="save"]');
     if (b) b.disabled = !!(f.busy || f.done || f.locked || f.noIds || f.blocked);
   }
-  // Figma 2011:9641/9704 show the weekday («Δευ 12/10/2026» in the head, «Δευ 12/10» in a row), which a native date
-  // input cannot. The input stays (its value is the ISO day the body reads; picker and keyboard stay native) and a
-  // label drawn over it shows the board's day format while it is not being edited. Empty, the label is a short hint:
-  // Chrome's own «dd/mm/yyyy» is cut beside the calendar icon in the 112px row cell.
+  // Figma 2011:9641/9704 show the weekday («Δευ 12/10/2026» in the head, «Δευ 12/10» in a row). While a day field is
+  // not being typed in, its text IS that label of the ISO day the body reads (.wn5f-dayp); empty, the placeholder is a
+  // short hint. A text that is not a day stays as typed, in red, and its day is empty: the save names it.
   function _dayText(f) {
     f.el.querySelectorAll('.wn5f-day').forEach((w) => {
-      const v = w.querySelector('input').value, t = w.querySelector('.wn5f-dayt'), has = DAY.test(v);
+      const x = w.querySelector('.wn5f-dayx'), p = w.querySelector('.wn5f-dayp'), c = w.querySelector('.wn5f-dayc');
+      if (!x || !p) return;
+      const v = p.value, has = DAY.test(v);
       w.classList.toggle('has', has);
-      t.textContent = has ? _dlab(v) + (w.hasAttribute('data-y') ? '/' + v.slice(0, 4) : '') : (w.hasAttribute('data-y') ? 'ηη/μμ/εεεε' : 'ηη/μμ');
+      // a disabled day (a read-only point, a point marked for removal) is disabled whole: text and calendar
+      x.disabled = p.disabled;
+      if (c) c.disabled = p.disabled;
+      if (document.activeElement === x) return;   // never rewritten under the keys
+      const bad = !has && !!x.dataset.raw;
+      x.classList.toggle('bad', bad);
+      x.value = has ? _dlab(v) + (w.hasAttribute('data-y') ? '/' + v.slice(0, 4) : '') : bad ? x.dataset.raw : '';
     });
+  }
+  // focus on a day's text: «dd/mm/yyyy» of its day (or the text left invalid), all selected so the keys replace it.
+  // ref = the day it had (else today, display only): the year of a «dd/mm» typed next (_dayParse).
+  function _dayEdit(x) {
+    const p = x.parentElement.querySelector('.wn5f-dayp');
+    if (!p) return;
+    const v = p.value;
+    x.dataset.ref = DAY.test(v) ? v : (typeof localToday === 'function' ? localToday() : '');
+    x.value = DAY.test(v) ? `${v.slice(8, 10)}/${v.slice(5, 7)}/${v.slice(0, 4)}` : (x.dataset.raw || '');
+    x.select();
+    x._selOnce = true;
+  }
+  // every key in a day's text sets its ISO day; the picker (or a script) setting the ISO day clears a typed error
+  function _dayInput(t) {
+    const w = t && t.closest ? t.closest('.wn5f-day') : null;
+    if (!w) return;
+    const x = w.querySelector('.wn5f-dayx'), p = w.querySelector('.wn5f-dayp');
+    if (!x || !p) return;
+    if (t === p) { delete x.dataset.raw; return; }
+    if (t !== x) return;
+    const d = _dayParse(x.value, x.dataset.ref);
+    if (d === null) { p.value = ''; x.dataset.raw = x.value; }
+    else { p.value = d; delete x.dataset.raw; }
   }
   function _refresh(f) { if (f.onRefresh) f.onRefresh(f); _dayText(f); _setSave(f); }
   function _onClick(f, ev) {
@@ -364,6 +433,12 @@
     }
     if (t.dataset.mode) return _setMode(f, t.dataset.mode);
     const a = t.dataset.act;
+    if (a === 'day-pick') {
+      // the native picker of the day, opened on purpose (showPicker: Chrome 99+, Safari 16+, Firefox 101+)
+      const p = t.closest('.wn5f-day').querySelector('.wn5f-dayp');
+      if (p && !p.disabled) { try { p.showPicker(); } catch (e) { _log(e, 'WN5Form day picker'); } }
+      return;
+    }
     if (a === 'cancel') { if (!f.busy) _close(f); return; }
     if (a === 'save') { if (!t.disabled) f.onSave(f); return; }
     if (a === 'add-order') { _addOrder(f); return _refresh(f); }
@@ -395,7 +470,7 @@
     const pid = 'wn5l' + (++f.seq);
     return `<div class="wn5f-row" data-k="${k}" data-pid="${pid}">`
       + `<div class="wn5f-loc">${fhLocSelect(pid, '', 'fhLocDrop')}</div>`
-      + `<span class="wn5f-day"><input class="form-input" type="date" data-f="day" value="${_esc(f.dayDefault || '')}" aria-label="Ημέρα"><span class="wn5f-dayt" aria-hidden="true"></span></span>`
+      + _dayHTML('data-f="day"', f.dayDefault, '', false)
       + `<span class="wn5f-win"><span class="wn5f-from"><input ${HM_INPUT} data-f="from" aria-label="από"><span class="wn5f-dash">–</span></span>`
       + `<input ${HM_INPUT} data-f="to" aria-label="έως"></span>`
       + `<input class="form-input" data-f="pal" inputmode="decimal" aria-label="Παλέτες">`
@@ -427,7 +502,7 @@
     return `<div class="wn5f-head">`
       + `<label class="wn5f-f"><span>Κατεύθυνση *</span><select class="form-input" id="wn5f-dir">`
       + `<option value="KATHODOS">${DIR_GR.KATHODOS}</option><option value="ANODOS">${DIR_GR.ANODOS}</option></select></label>`
-      + `<label class="wn5f-f"><span data-vdayl>Ημ. φόρτωσης Βέροιας *</span><span class="wn5f-day" data-y><input class="form-input" type="date" id="wn5f-vday"><span class="wn5f-dayt" aria-hidden="true"></span></span></label>`
+      + `<label class="wn5f-f"><span data-vdayl>Ημ. φόρτωσης Βέροιας *</span>${_dayHTML('id="wn5f-vday"', '', '', true)}</label>`
       + `<label class="wn5f-f"><span data-vwinl>Παράθυρο φόρτωσης Βέροιας</span><span class="wn5f-win"><span class="wn5f-from" data-vfromw><input ${HM_INPUT} id="wn5f-vfrom" aria-label="από"><span class="wn5f-dash">–</span></span><input ${HM_INPUT} id="wn5f-vto" aria-label="έως"></span></label>`
       + `<label class="wn5f-f"><span>Φορτηγό (προαιρετικό)</span><select class="form-input" id="wn5f-tgt">${opts}</select></label></div>`
       + `<div class="wn5f-sec">ΤΥΠΟΣ ΚΑΤΑΧΩΡΗΣΗΣ</div><div class="wn5f-modes">`
@@ -682,7 +757,7 @@
     };
   }
   const _placeName = (id) => { const p = typeof PlanIds !== 'undefined' ? PlanIds.place(id) : null; return p ? p.name : '#' + id; };
-  const _editDay = (k, v, ro) => `<span class="wn5f-day"><input class="form-input" type="date" data-f="${k}" value="${v}"${ro}><span class="wn5f-dayt" aria-hidden="true"></span></span>`;
+  const _editDay = (k, v, ro) => _dayHTML(`data-f="${k}"`, v, ro, false);
   function _shipHTML(e, s) {
     const t = (iso) => _parts(iso) || { day: '', hm: '' };
     // a point that rides (a live leg, the same rule 077 refuses by) or a VS bridge changes from the board, not here
@@ -1267,5 +1342,5 @@
       'Ίδιος προορισμός — η διεθνής δεν άλλαξε', 'vs-place', `[data-vs]:has([data-osid="${orderStopId}"]) [data-vsok]`);
   }
 
-  window.WN5Form = Object.freeze({ openOrder, openLeg, vsDay, vsPlace, _locDropNoHub, _body, _check, _patchBody, _editFromRead, _findOrders, _iso, _parts, _legModel, _rowWin });
+  window.WN5Form = Object.freeze({ openOrder, openLeg, vsDay, vsPlace, _locDropNoHub, _body, _check, _patchBody, _editFromRead, _findOrders, _iso, _parts, _legModel, _rowWin, _dayParse });
 })();
