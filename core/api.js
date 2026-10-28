@@ -1433,10 +1433,32 @@ function _atNoRestore(fields) {
 // delete — first without a token; on 428 the user reads the consequences in words and, only on «yes», run(token)
 // sends it back. A changed list since the preview = 422 stale_confirm, shown by _atRetry as any designed «no».
 // «No» throws {_noRetry, _cancelled}: nothing was deleted, and the caller says so.
+// The base's items ({kind, …ids}) are read with the board's words (core/wn5-labels.js, the one copy of them): live
+// 28/10 the confirm printed every piece_on_rt as raw JSON with its order_stop_id. A kind the labels do not know is
+// still shown («άλλη επίπτωση · <kind>»), never dropped; the same line for several pieces is said once, «×n».
+const _atUnkCons = new Set();
 function _atPreviewText(p) {
   const list = Array.isArray(p && p.consequences) ? p.consequences : [];
-  const line = (c) => (c && typeof c === 'object') ? String(c.text || c.label || c.message || JSON.stringify(c)) : String(c);
-  return 'Η διαγραφή έχει συνέπειες:\n\n' + (list.length ? list.map((c) => '• ' + line(c)).join('\n') : '• (ο διακομιστής δεν έδωσε λίστα)')
+  const line = (c) => {
+    const own = (c && typeof c === 'object') ? (c.text || c.label || c.message) : null;
+    if (c && typeof c === 'object' && c.kind && typeof WN5Lab !== 'undefined') {
+      const l = WN5Lab.consequenceLine(c);
+      // a kind the labels miss is logged once per session (as the board's two-step list does): shown is not enough
+      if (l.unknown && !_atUnkCons.has(c.kind)) {
+        _atUnkCons.add(c.kind);
+        try { if (typeof logError === 'function') logError(new Error('order delete: unknown consequence ' + c.kind), 'atWithDeleteConfirm'); } catch (_) {}
+      }
+      // a kind the labels do not know yet: the server's own sentence when it sent one, else «άλλη επίπτωση · kind»
+      if (!(l.unknown && own)) {
+        const cat = Object.prototype.hasOwnProperty.call(WN5Lab.CATEGORY, c.kind) ? WN5Lab.CATEGORY[c.kind] + ' · ' : '';
+        return cat + l.text;
+      }
+    }
+    return (c && typeof c === 'object') ? String(own || JSON.stringify(c)) : String(c);
+  };
+  const n = new Map();
+  for (const c of list) { const l = line(c); n.set(l, (n.get(l) || 0) + 1); }
+  return 'Η διαγραφή έχει συνέπειες:\n\n' + (list.length ? [...n].map(([l, k]) => '• ' + l + (k > 1 ? ' ×' + k : '')).join('\n') : '• (ο διακομιστής δεν έδωσε λίστα)')
     + '\n\nΝα γίνει η διαγραφή;';
 }
 async function atWithDeleteConfirm(run) {
