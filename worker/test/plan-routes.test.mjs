@@ -698,7 +698,9 @@ test('schema_behind names 072b on the three handover routes and 072 elsewhere; s
   const { readFileSync } = await import('node:fs');
   const src = readFileSync(SRC_PATH, 'utf8').match(/var PLAN_ROUTES = \[[\s\S]*?\n\];\n/)[0];
   assert.deepEqual([...src.matchAll(/rpc: "(plan_\w+)"[^\n]*migration: "(\w+)"/g)].map((m) => [m[1], m[2]]),
-    [['plan_seg_change', '072b'], ['plan_seg_fix', '072b'], ['plan_seg_remove', '072b']], 'only the three handover routes name another migration');
+    [['plan_config_read', '074a'], ['plan_lookups', '074a'], ['plan_nat_state', '074a'],
+      ['plan_seg_change', '072b'], ['plan_seg_fix', '072b'], ['plan_seg_remove', '072b']],
+    'only the three 074a reads (F5) and the three handover routes name another migration');
   // the Move that would narrow a cycle past a handover with the list bypassed: 422, the RT and the time in brackets
   routes.length = 0;
   on('POST', 'rpc/plan_move_pieces', () => planReject('seg_outside', 'RT-1290 26/10 09:00'));
@@ -724,7 +726,7 @@ test('PATCH /costs/rt/:id on a v5 cycle (model 2) → 409 in Greek, no PATCH; a 
   assert.equal(auditRows().length, 1);
 });
 
-test('facade PATCH ORDER STOPS refused by a plan: rule (bridge stop, 071) → 422; «Via Hub» born closed until day L, then order_stops_via_hub_intl → 422', async () => {
+test('facade PATCH ORDER STOPS refused by a plan: rule (bridge stop, 071) → 422; «Via Hub» closed to every screen before AND after day L (F5, Q-6)', async () => {
   const STOPS = '/v0/appTEST/tblaeY5QOHAS1gyE8';
   on('GET', 'order_stops', (u) => (u.searchParams.get('select') === '*' ? json([{ id: 31, legacy_id: 'recSTOP1', pallets: 20, via_hub: false }]) : null));
   on('PATCH', 'order_stops', (u, b) => (b.via_hub !== undefined
@@ -733,25 +735,22 @@ test('facade PATCH ORDER STOPS refused by a plan: rule (bridge stop, 071) → 42
   let r = await call('dispatcher', 'PATCH', `${STOPS}/recSTOP1`, { fields: { Pallets: 19 } });
   assert.equal(r.status, 422, r.text);
   assert.deepEqual(r.json, { error: { type: 'PLAN_RULE', code: 'pieces_sum', message: 'Τα κομμάτια δεν αθροίζουν στις παλέτες της αποστολής (12:19<>20)' } });
-  // before day L (finding 8, αρχή 5): a write naming «Via Hub» — alone, beside another field, single or batch —
-  // is refused before any DB call, never dropped with a 200
-  for (const [method, p, body] of [['PATCH', `${STOPS}/recSTOP1`, { fields: { 'Via Hub': true } }],
-    ['PATCH', `${STOPS}/recSTOP1`, { fields: { Pallets: 19, 'Via Hub': false } }],
-    ['PATCH', STOPS, { records: [{ id: 'recSTOP1', fields: { 'Via Hub': true } }] }],
-    ['POST', STOPS, { fields: { 'Via Hub': true } }]]) {
-    calls.length = 0;
-    r = await call('owner', method, p, body);
-    assert.equal(r.status, 400, `${method} ${JSON.stringify(body)}: ${r.text}`);
-    assert.match(r.json.error.message || r.json.error, /«Via Hub»: γράφεται από την ημέρα της μετάβασης/);
-    assert.equal(calls.filter((c) => c.method !== 'GET').length, 0, 'nothing written');
+  // finding 8 (αρχή 5) and Q-6 (owner 28/10): a write naming «Via Hub» — alone, beside another field, single or
+  // batch — is refused before any DB call, never dropped with a 200; only the DB writes it (074 plan_bridge_sync),
+  // so the /plan/* switch (day L) does not open it either
+  for (const send of [call, callOpen]) {
+    for (const [method, p, body] of [['PATCH', `${STOPS}/recSTOP1`, { fields: { 'Via Hub': true } }],
+      ['PATCH', `${STOPS}/recSTOP1`, { fields: { Pallets: 19, 'Via Hub': false } }],
+      ['PATCH', STOPS, { records: [{ id: 'recSTOP1', fields: { 'Via Hub': true } }] }],
+      ['POST', STOPS, { fields: { 'Via Hub': true } }]]) {
+      calls.length = 0;
+      r = await send('owner', method, p, body);
+      assert.equal(r.status, 400, `${method} ${JSON.stringify(body)}: ${r.text}`);
+      assert.deepEqual(r.json.error, { type: 'BAD_REQUEST', code: 'db_only',
+        message: '«Via Hub»: το γράφει μόνο η βάση (γέφυρα VS του Εβδομαδιαίου Εθνικών) — δεν αλλάζει από οθόνη' });
+      assert.equal(calls.filter((c) => c.method !== 'GET').length, 0, 'nothing written');
+    }
   }
-  // day L (the one switch flipped): the label reaches via_hub (no silent drop) and the CHECK speaks Greek
-  calls.length = 0;
-  r = await callOpen('dispatcher', 'PATCH', `${STOPS}/recSTOP1`, { fields: { 'Via Hub': true } });
-  assert.equal(r.status, 422, r.text);
-  assert.equal(r.json.error.code, 'order_stops_via_hub_intl');
-  const patch = calls.filter((c) => c.method === 'PATCH').at(-1);
-  assert.deepEqual(patch.body, { via_hub: true }, '"Via Hub" reaches via_hub (no silent drop)');
   // and it is still read by every path
   r = await call('dispatcher', 'GET', `${STOPS}/recSTOP1`);
   assert.equal(r.status, 200, r.text);

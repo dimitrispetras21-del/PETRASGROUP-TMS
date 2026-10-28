@@ -22,6 +22,11 @@
 //   git checkout feat/national-v5-handover-prev-rate -- 'worker/migrations/drafts/072b_*' worker/migrations/drafts/tools/build-072b.mjs tests/sql-072b-drafts.test.js tms-auditor/test/plan-072b.test.mjs
 // And 073 (national v5 F3, money) on deploy/worker-plan-f3: a copy of feat/national-v5-f3's file
 //   git checkout feat/national-v5-f3 -- worker/migrations/drafts/073_plan_money.sql
+// And 074a (national v5 F5, the reads of day L) on deploy/worker-plan-f5: a copy of feat/national-v5-f5-074a's file
+//   git checkout feat/national-v5-f5-074a -- worker/migrations/drafts/074a_plan_reads.sql
+// and 074 (day L itself), whose three refusal codes the Worker already speaks (deploy 1 carries the texts, deploy 2
+// is one line): a copy of feat/national-v5-f5-074's file, required once the switch is open (see CODES_074)
+//   git checkout feat/national-v5-f5-074 -- worker/migrations/drafts/074_plan_cutover.sql
 //
 // 072's own refusals are parsed from `plan_h_raise('<code>'` (a literal code
 // as the first argument — the convention of the SQL plan, Task A1) and from
@@ -63,6 +68,12 @@ const f072b = () => readOne(['drafts/072b_plan_vehicle_segments.sql', '072b_plan
   'copy it from the SQL branch: git checkout feat/national-v5-handover-prev-rate -- worker/migrations/drafts/072b_plan_vehicle_segments.sql');
 const f073 = () => readOne(['drafts/073_plan_money.sql', '073_plan_money.sql'],
   'copy it from the SQL branch: git checkout feat/national-v5-f3 -- worker/migrations/drafts/073_plan_money.sql');
+const f074a = () => readOne(['drafts/074a_plan_reads.sql', '074a_plan_reads.sql'],
+  'copy it from the SQL branch: git checkout feat/national-v5-f5-074a -- worker/migrations/drafts/074a_plan_reads.sql');
+// 074 may still be in review when deploy 1 goes (it runs on day L): null when no copy is on this branch
+const f074 = () => ['drafts/074_plan_cutover.sql', '074_plan_cutover.sql'].map((n) => path.join(MIG, n)).filter((f) => existsSync(f))
+  .map((file) => ({ file, sql: readFileSync(file, 'utf8') }))[0] || null;
+const writesOpen = /\nvar PLAN_WRITES_OPEN = true;\n/.test(src);
 const uniq = (re, text) => [...new Set([...text.matchAll(re)].map((m) => m[1]))].sort();
 const greek = /[α-ωΑ-Ωά-ώ]/;
 
@@ -84,6 +95,10 @@ const CODES_072B = ['seg_cancel', 'seg_copy', 'seg_cover', 'seg_first', 'seg_gon
 // 073 (F3): the pallet feeder's one refusal (plan_h_pallet_sync, D-10). 073 also raises 072's bad_input (a
 // non-finite number), so its codes are compared minus the 071 / 072 / 072b ones, as 072b's are.
 const CODES_073 = ['pallet_fraction'];
+// 074 (F5 plan, Task W «Consumes»): the INSERT freeze, the day-L guard, the bridge re-cut. The Worker carries their
+// texts from deploy 1; the 074 copy proves them as soon as it is on this branch, and MUST be here once the switch
+// is open (deploy 2 = day L, when 074 has run) - before that its absence is a visible skip, never a silent pass.
+const CODES_074 = ['bad_cutover_day', 'bridge_recut', 'legacy_frozen'];
 // Retired by the spec §7 — must appear nowhere (plan Interfaces).
 const RETIRED = ['hub_endpoint', 'piece_planned', 'bridge_moved', 'bridge_split', 'legacy_nl', 'frozen',
   'restore_expired', 'restore_conflict', 'partner_rate_on_owned', 'window_order'];
@@ -122,6 +137,12 @@ function codes072b(sql) {
     .filter((c) => !CODES_071.includes(c) && !CODES_072.includes(c)).sort();
 }
 
+function codes074(sql) {
+  return uniq(/plan_h_raise\(\s*'([a-z_0-9]+)'/g, sql)
+    .concat(uniq(/HINT = 'plan:([a-z_0-9]+)'/gi, sql))
+    .filter((c, i, a) => a.indexOf(c) === i)
+    .filter((c) => !CODES_071.includes(c) && !CODES_072.includes(c) && !CODES_072B.includes(c) && !CODES_073.includes(c)).sort();
+}
 function codes073(sql) {
   return uniq(/plan_h_raise\(\s*'([a-z_0-9]+)'/g, sql)
     .concat(uniq(/HINT = 'plan:([a-z_0-9]+)'/gi, sql))
@@ -129,8 +150,8 @@ function codes073(sql) {
     .filter((c) => !CODES_071.includes(c) && !CODES_072.includes(c) && !CODES_072B.includes(c)).sort();
 }
 
-test('071, 071b, 072, 072b, 073 found and fingerprinted', (t) => {
-  for (const { file, sql } of [f071(), f071b(), f072(), f072b(), f073()]) {
+test('071, 071b, 072, 072b, 073, 074a found and fingerprinted', (t) => {
+  for (const { file, sql } of [f071(), f071b(), f072(), f072b(), f073(), f074a(), ...[f074()].filter(Boolean)]) {
     t.diagnostic(`checked: ${path.relative(path.join(here, '..', '..'), file)} md5 ${createHash('md5').update(sql).digest('hex')}`);
   }
   assert.ok(f072().sql.includes('plan_h_raise('), '072 raises through plan_h_raise');
@@ -163,20 +184,32 @@ test('the 072 copy is byte-identical to the SQL branch file', (t) => sameAsSqlBr
 test('the 072b copy is byte-identical to the SQL branch file', (t) => sameAsSqlBranch(t, f072b(), 'feat/national-v5-handover-prev-rate'));
 // 073: the same rule, the F3 SQL branch
 test('the 073 copy is byte-identical to the SQL branch file', (t) => sameAsSqlBranch(t, f073(), 'feat/national-v5-f3'));
+// 074a / 074: the same rule, the F5 SQL branches
+test('the 074a copy is byte-identical to the SQL branch file', (t) => sameAsSqlBranch(t, f074a(), 'feat/national-v5-f5-074a'));
+test('074: its copy is here once the switch is open, and then byte-identical to the SQL branch file', (t) => {
+  const f = f074();
+  if (!f) {
+    assert.ok(!writesOpen, 'PLAN_WRITES_OPEN is open (deploy 2 = day L) without a copy of 074: its codes are unproven');
+    t.skip('074 copy not on this branch yet (PLAN_WRITES_OPEN false): CODES_074 checked against the plan only');
+    return;
+  }
+  sameAsSqlBranch(t, f, 'feat/national-v5-f5-074');
+});
 
 test('the parsed codes are exactly the plans\' 26 + 31 + 15 + 1 — none missing, none extra, none retired', () => {
   assert.deepEqual(codes071(f071().sql), CODES_071, '071 codes');
   assert.deepEqual(codes072(f072().sql), CODES_072, '072 codes');
   assert.deepEqual(codes072b(f072b().sql), CODES_072B, '072b codes');
   assert.deepEqual(codes073(f073().sql), CODES_073, '073 codes');
-  for (const sql of [f071().sql, f071b().sql, f072().sql, f072b().sql, f073().sql]) {
+  if (f074()) assert.deepEqual(codes074(f074().sql), CODES_074, '074 codes');
+  for (const sql of [f071().sql, f071b().sql, f072().sql, f072b().sql, f073().sql, f074a().sql, ...[f074()].filter(Boolean).map((f) => f.sql)]) {
     for (const r of RETIRED) assert.ok(!new RegExp(`'(?:plan:)?${r}[:']`).test(sql), `retired code «${r}» appears in SQL`);
   }
   for (const r of RETIRED) assert.ok(!Object.prototype.hasOwnProperty.call(W.PLAN_RULE_TEXT, r), `retired code «${r}» has a Worker text`);
 });
 
-test('every plan: code has its own Greek text, the DB detail in brackets; every Worker code key is raised by 071/072/072b/073', () => {
-  const all = [...CODES_071, ...CODES_072, ...CODES_072B, ...CODES_073];
+test('every plan: code has its own Greek text, the DB detail in brackets; every Worker code key is raised by 071/072/072b/073/074', () => {
+  const all = [...CODES_071, ...CODES_072, ...CODES_072B, ...CODES_073, ...CODES_074];
   for (const code of all) {
     assert.ok(Object.prototype.hasOwnProperty.call(W.PLAN_RULE_TEXT, code), `«${code}» has no Greek text in PLAN_RULE_TEXT`);
     const r = W.stockRuleError({ pg: { code: '23514', hint: 'plan:' + code, message: `plan rule broken: ${code}:RT-1280` } });
@@ -186,7 +219,7 @@ test('every plan: code has its own Greek text, the DB detail in brackets; every 
     assert.match(r.message, greek, `${code} text is Greek`);
   }
   const dead = Object.keys(W.PLAN_RULE_TEXT).filter((k) => !all.includes(k));
-  assert.deepEqual(dead, [], 'Worker plan: keys that 071/072/072b/073 never raise (dead code, αρχή 8)');
+  assert.deepEqual(dead, [], 'Worker plan: keys that 071/072/072b/073/074 never raise (dead code, αρχή 8)');
 });
 
 // 073 / D-9 (narrow): the Worker's POST /pallets/movements answers 409 in Greek by the NAME of 073's UNIQUE index;
@@ -277,10 +310,30 @@ test('every PLAN_ROUTES rpc exists in 072 / 072b with the argument names the Wor
   const want = { plan_board: ['p_week', 'p_role'], plan_vs_state: ['p_order_ids'], plan_notices_list: ['p_desk', 'p_role'] };
   const routes = src.match(/var PLAN_ROUTES = \[[\s\S]*?\n\];\n/);
   assert.ok(routes, 'PLAN_ROUTES not found in worker/src/index.js');
-  const routed = new Set([...routes[0].matchAll(/"(plan_[a-z_]+)"/g)].map((m) => m[1]));
+  // the 074a reads have their own test below
+  const routed = new Set([...routes[0].matchAll(/"(plan_[a-z_]+)"/g)].map((m) => m[1]).filter((fn) => !Object.hasOwn(READS_074A, fn)));
   for (const fn of routed) assert.deepEqual(sigs[fn], want[fn] || WRITE, `${fn}: 072 signature vs the Worker's args`);
   assert.deepEqual([...routed].sort(), Object.keys(sigs).filter((x) => x !== 'plan_rt_create').sort(),
     'every public plan_* routed once; plan_rt_create internal (decision 3)');
+});
+
+// F5 (074a): the three reads routed under /plan/* and the preview DELETE ORDERS asks for first (E19) - each one
+// created by 074a with exactly the argument names the Worker sends, and EXECUTE for the service role only (born
+// closed: the Worker is its one caller). Read from the copy, so a rename in a1's file fails here, not on day L.
+const READS_074A = { plan_config_read: [], plan_lookups: ['p_role'], plan_nat_state: ['p_nat_order_ids'] };
+test('074a creates the Worker\'s three /plan/* reads and order_delete_preview with the argument names it sends', () => {
+  const sql = f074a().sql;
+  const sigs = Object.fromEntries([...sql.matchAll(/CREATE (?:OR REPLACE )?FUNCTION public\.([a-z_]+)\(([^)]*)\)/g)]
+    .map((m) => [m[1], m[2].split(',').map((a) => a.trim().split(/\s+/)[0]).filter(Boolean)]));
+  for (const [fn, args] of Object.entries(READS_074A)) {
+    assert.deepEqual(sigs[fn], args, `${fn}: 074a signature vs the Worker's args`);
+    assert.ok(src.includes(`rpc: "${fn}"`), `${fn} is routed in PLAN_ROUTES`);
+    assert.match(sql, new RegExp(`GRANT EXECUTE ON FUNCTION public\\.${fn}\\([^)]*\\) TO service_role`), `${fn}: EXECUTE for the service role`);
+  }
+  const call = /dbRpc\(env, "order_delete_preview", \{ ([^}]*) \}\)/.exec(src);
+  assert.ok(call, 'the Worker calls order_delete_preview');
+  assert.deepEqual(sigs.order_delete_preview, [...call[1].matchAll(/(p_[a-z_]+):/g)].map((m) => m[1]), 'order_delete_preview: 074a signature vs the Worker\'s args');
+  assert.match(sql, /GRANT EXECUTE ON FUNCTION public\.order_delete_preview\([^)]*\) TO service_role/, 'order_delete_preview: EXECUTE for the service role');
 });
 
 // review of PR #90, finding 7: the roles that SEE amounts, held equal the same way. If the Worker's list were
