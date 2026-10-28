@@ -270,10 +270,17 @@ test('driver card: the segments read fails → the «Με ποια φορτηγ�
   await SCREENS.driverCard(s);
   assert.match(s.html('ec_recDr7_agg'), /ecard-fail v5-warn/);
 });
-test('move filter: a v5 place missing from the catalogue → the filter is cleared and said, never silently skipped', async () => {
+test('move filter: a listed place missing from the catalogue (catalogue behind) → the filter is cleared and said', async () => {
   const p = Object.assign({}, PLAN_ALL, { '/plan/activity?location_id=all': { sides: [{ location_id: 99, kathodos: 1, anodos: 0 }] } });
   const s = sandbox({ files: NEW_L(), planConfig: 'after', plan: p });
+  await s.run(`LOC.records = [{ id: 'recLoc1', fields: {} }, { id: 'recLocNew', fields: {} }]`);
   assert.match(await SCREENS.moveIdx(s), /^null\|Δεν φορτώθηκε ο δείκτης/);
+});
+test('move filter: a v5 place not on the list (soft-deleted) is skipped — the filter keeps working', async () => {
+  const p = Object.assign({}, PLAN_ALL, { '/plan/activity?location_id=all': { sides: [{ location_id: 99, kathodos: 1, anodos: 0 }, { location_id: 12, kathodos: 0, anodos: 1 }] } });
+  const s = sandbox({ files: NEW_L(), planConfig: 'after', plan: p });
+  await s.run(`LOC.records = [{ id: 'recLoc1', fields: {} }, { id: 'recLoc2', fields: {} }]`);
+  assert.match(await SCREENS.moveIdx(s), /\["recLoc2",\["ΑΝΟΔΟΣ"\]\]/);
 });
 test('a broken PlanConfig (throws) = unknown: today\'s half still renders', async () => {
   const s = sandbox({ files: NEW_E(), planConfig: 'after', plan: PLAN_ALL });

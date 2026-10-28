@@ -1064,10 +1064,15 @@ async function _locMoveIdxV5(idx) {
     if (!d) return;
     if (d.truncated) throw new Error('plan/activity location_id=all truncated');
     const locBy = _v5ById(ids, 'location');
+    // A side row the catalogue does not know is either a place newer than the session's catalogue — then a place
+    // on this list is missing from it too, and the index would silently miss it: said — or a place not on the list
+    // at all (soft-deleted): nothing to filter, skipped. Throwing for the second would break the filter for good.
+    const known = new Set(ids.list('location').map(x => x.legacy_id));
+    const catalogueBehind = (LOC.records || []).some(r => !known.has(r.id));
     for (const r of d.sides || []) {
       const rec = locBy.get(r.location_id);
-      // a place newer than the session's catalogue: the index would silently miss it
-      if (!rec) throw new Error('plan/activity: location ' + r.location_id + ' not in the catalogue — reload the page');
+      if (!rec && catalogueBehind) throw new Error('plan/activity: location ' + r.location_id + ' not in the catalogue — reload the page');
+      if (!rec) continue;
       if (!idx.has(rec.legacy_id)) idx.set(rec.legacy_id, new Set());
       if (r.kathodos > 0) idx.get(rec.legacy_id).add('ΚΑΘΟΔΟΣ');
       if (r.anodos > 0) idx.get(rec.legacy_id).add('ΑΝΟΔΟΣ');
