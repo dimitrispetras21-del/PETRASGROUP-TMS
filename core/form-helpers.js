@@ -8,7 +8,7 @@
 const _fhLocationsArr = [];  // [{id,label}]
 const _fhLocationsMap = {};  // recId → label
 const _fhClientsMap   = {};  // recId → name
-const _fhClientCache  = {};  // query → [{id,label}]
+const _fhClientCache  = {};  // query → [{id,label}]; '\u0001' + probe word → the server's records (F19)
 
 // The location records (Name/City/Country) — the reference preload's copy
 // when it has landed (kept fresh by its revalidate), else the same single
@@ -77,10 +77,14 @@ async function fhSearchClients(q) {
   // as a literal plus \u2014 and a name stored with two spaces or \u00AB-\u00BB between the words could not match it either. So
   // the server is asked for ONE word (the longest: the fewest rows) and every word must then be in the name, in any
   // order, with the search rule of the boards (_fhNorm: any case, no accents, Greek = Latin).
+  // The probe's answer is kept by the probe word: typing the rest of the 2nd word filters it here, without one more
+  // paged read per keystroke. «Most letters», not «longest string»: «Α.Ε.» would probe every S.A. company.
   const words = safe.split(/\s+/).filter(Boolean);
-  const probe = words.reduce((a, w) => (w.length > a.length ? w : a), '');
-  const formula = `SEARCH(LOWER("${probe}"), LOWER({Company Name}))`;
-  const recs = await atGet(TABLES.CLIENTS, formula, false);
+  const letters = (w) => w.replace(/[.\-]/g, '').length;
+  const probe = words.reduce((a, w) => (letters(w) > letters(a) ? w : a), '');
+  const pk = '\u0001' + probe.toLowerCase();
+  if (!_fhClientCache[pk]) _fhClientCache[pk] = await atGet(TABLES.CLIENTS, `SEARCH(LOWER("${probe}"), LOWER({Company Name}))`, false);
+  const recs = _fhClientCache[pk];
   // the plain lower-case test as well: a word typed from the middle of a Greek digraph («υκ» of «Λουκ…») matches
   // the server's ilike but not its _fhNorm form («ou» ≠ «y») — a name the server found is never dropped here
   const need = words.map(w => [w.toLowerCase(), _fhNorm(w)]);

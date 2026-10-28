@@ -550,15 +550,21 @@ async function _locGeocode() {
       let hit = null;
       try {
         const q = t.q.filter(Boolean).join(', ');
-        const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1&addressdetails=1`);
+        // 4 s per try, as _locGeocodeQuery: a slow or rate-limited Nominatim never leaves the button at «Αναζήτηση…»
+        const opt = typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? { signal: AbortSignal.timeout(4000) } : {};
+        const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1&addressdetails=1`, opt);
         const d = await r.json();
         hit = d && d[0];
       } catch (e) { failed++; continue; }
       if (!hit) continue;
-      if (t.strict && (_LOC_GEO_VAGUE.has(hit.addresstype) || hit.class === 'boundary' || hit.class === 'place' || hit.class === 'highway')) continue;
+      // an address point (OSM node with addr:* only) comes as class «place», type «house»: that IS the hit wanted;
+      // a «place» without a house number is a town or a locality
+      const house = !!(hit.address && hit.address.house_number) || hit.type === 'house' || hit.addresstype === 'house';
+      if (t.strict && !house && (_LOC_GEO_VAGUE.has(hit.addresstype) || hit.class === 'boundary' || hit.class === 'place' || hit.class === 'highway')) continue;
       document.getElementById('locF_lat').value = parseFloat(hit.lat).toFixed(6);
       document.getElementById('locF_lon').value = parseFloat(hit.lon).toFixed(6);
-      const found = String(hit.display_name || '').split(',').slice(0, 3).join(',');
+      // OpenStreetMap text is anybody's: escaped, toast() writes its message as HTML
+      const found = escapeHtml(String(hit.display_name || '').split(',').slice(0, 3).join(','));
       toast(`Οι συντεταγμένες βρέθηκαν από ${t.by}${found ? ': ' + found : ''} — έλεγξέ τες στον χάρτη`, t.strict ? 'success' : 'warn');
       return;
     }

@@ -1439,8 +1439,16 @@ function _atNoRestore(fields) {
 function _atPreviewText(p) {
   const list = Array.isArray(p && p.consequences) ? p.consequences : [];
   const line = (c) => {
-    if (c && typeof c === 'object' && c.kind && typeof WN5Lab !== 'undefined') return WN5Lab.consequenceLine(c).text;
-    return (c && typeof c === 'object') ? String(c.text || c.label || c.message || JSON.stringify(c)) : String(c);
+    const own = (c && typeof c === 'object') ? (c.text || c.label || c.message) : null;
+    if (c && typeof c === 'object' && c.kind && typeof WN5Lab !== 'undefined') {
+      const l = WN5Lab.consequenceLine(c);
+      // a kind the labels do not know yet: the server's own sentence when it sent one, else «άλλη επίπτωση · kind»
+      if (!(l.unknown && own)) {
+        const cat = Object.prototype.hasOwnProperty.call(WN5Lab.CATEGORY, c.kind) ? WN5Lab.CATEGORY[c.kind] + ' · ' : '';
+        return cat + l.text;
+      }
+    }
+    return (c && typeof c === 'object') ? String(own || JSON.stringify(c)) : String(c);
   };
   const n = new Map();
   for (const c of list) { const l = line(c); n.set(l, (n.get(l) || 0) + 1); }

@@ -91,12 +91,13 @@
     pallets_confirmed: (c) => `επιβεβαιωμένη γραμμή παλετών · ${c.event_type === 'LOADING' ? 'φόρτωση' : c.event_type === 'DELIVERY' ? 'παράδοση' : String(c.event_type)}`
       + ` · πήραμε ${c.taken} · δώσαμε ${c.given} — αντιλογίζεται μετά την επιβεβαίωση`,
     // 074a (F5 Ε-19): deleting an international order takes its VS bridge pieces off the v5 cycles. The item carries
-    // ids and the cycle code only (no client, no amount, no place). «της στάσης #6101» (live 28/10) named an internal
-    // order_stops id nobody can read, so the line names the cycle and whose load it is: the national order's number
-    // (#N, the number the board shows) or «αυτής της παραγγελίας» (the international being deleted). A place name
-    // comes only when the item carries one (c.place: a base change, proposed in the PR of 28/10) — never an id.
+    // ids and the cycle code only (no client, no amount, no place, no reference). «της στάσης #6101» (live 28/10) named
+    // an internal order_stops id nobody can read, so the line names the cycle and whose load it is: this international
+    // order's, or a national order made from it (nat_order_id: the base's id, not the reference the board shows, so
+    // not printed). A place name comes only when the item carries one (c.place: a base change, proposed in the PR of
+    // 28/10) — never an id.
     piece_on_rt: (c) => `βγαίνει από το ${c.code || '—'} `
-      + (c.place ? `το φορτίο για ${c.place}` : c.nat_order_id != null ? `το φορτίο της εθνικής #${c.nat_order_id}` : 'φορτίο αυτής της παραγγελίας'),
+      + (c.place ? `το φορτίο για ${c.place}` : c.nat_order_id != null ? 'το φορτίο της εθνικής που βγήκε από αυτή την παραγγελία' : 'φορτίο αυτής της παραγγελίας'),
   });
 
   // The category word the two-step list puts before a line (Figma Δ5 2053:8079 and H4 2125:7738: «Μισθοδοσία · …»).

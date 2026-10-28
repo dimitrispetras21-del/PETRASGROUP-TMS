@@ -83,9 +83,10 @@ test('F5 + live 28/10: piece_on_rt names the cycle and whose load it is — neve
   const vs = L.consequenceLine({ kind: 'piece_on_rt', leg_id: 9, piece_id: 4101, rt_id: 201, code: 'RT-T201', order_stop_id: 6101 });
   assert.deepStrictEqual(vs, { text: 'βγαίνει από το RT-T201 φορτίο αυτής της παραγγελίας', unknown: false });
   assert.ok(!/#6101|στάσης #/.test(vs.text), vs.text);
-  // a national order sourced by the deleted one: its number, the one the board shows («#17»)
-  assert.strictEqual(L.consequenceLine({ kind: 'piece_on_rt', rt_id: 201, code: 'RT-T201', order_stop_id: null, nat_order_id: 17 }).text,
-    'βγαίνει από το RT-T201 το φορτίο της εθνικής #17');
+  // a national order made from the deleted one: said, never by the base's internal id
+  const nat = L.consequenceLine({ kind: 'piece_on_rt', rt_id: 201, code: 'RT-T201', order_stop_id: null, nat_order_id: 5231 }).text;
+  assert.strictEqual(nat, 'βγαίνει από το RT-T201 το φορτίο της εθνικής που βγήκε από αυτή την παραγγελία');
+  assert.ok(!/5231/.test(nat), nat);
   // a place, only when the base sends one (proposal in the PR of 28/10)
   assert.strictEqual(L.consequenceLine({ kind: 'piece_on_rt', code: 'RT-T201', order_stop_id: 6101, place: 'LARISA TEST' }).text,
     'βγαίνει από το RT-T201 το φορτίο για LARISA TEST');

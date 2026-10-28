@@ -44,6 +44,9 @@ async function f22({ browser, origin, ok, scn }) {
   const ts = await toasts(page);
   ok(scn, 'the failed read is said as such («ο πίνακας δεν ξαναδιαβάστηκε … ο κύκλος υπάρχει»), with the base\'s message',
     ts.some((t) => /Το σκέλος δεν άνοιξε: ο πίνακας δεν ξαναδιαβάστηκε \(rig sentinel slow\)/.test(t)), ts);
+  // ONE #toast (core/ui.js): what stays on screen is the read failure, never «Ο κύκλος δεν βρέθηκε»
+  const shown = await page.evaluate(() => { const t = document.getElementById('toast'); return t ? t.textContent : ''; });
+  ok(scn, 'the toast left on screen is the read failure, not «δεν βρέθηκε»', /δεν ξαναδιαβάστηκε/.test(shown) && !/δεν βρέθηκε/.test(shown), shown);
   const after = await page.evaluate(() => { const r = document.querySelector('#content .wn5-row[data-rt="201"]'); return { busy: !!r && r.classList.contains('wn5-leg-busy'), strip: !!document.querySelector('#content .wn5-strip') }; });
   ok(scn, 'the row is no longer busy and the board\'s error strip is on screen', !after.busy && after.strip, after);
   await page.context().close();
@@ -137,6 +140,10 @@ async function f18({ browser, origin, ok, scn }) {
     const byAddr = /Test Street 9/.test(q);
     let body = [];
     if (byAddr && mode === 'house') body = [{ lat: '40.111111', lon: '22.111111', addresstype: 'building', class: 'building', display_name: 'Test Street 9, Larisa, Greece', address: { house_number: '9' } }];
+    // an OSM address node: class «place», type «house» (code review: the address-first try must take it)
+    if (byAddr && mode === 'node') body = [{ lat: '40.333333', lon: '22.333333', class: 'place', type: 'house', addresstype: 'place', display_name: 'Test Street 9, Larisa, Greece', address: { house_number: '9' } }];
+    // OpenStreetMap text is anybody's: it must reach the toast as text
+    if (byAddr && mode === 'html') body = [{ lat: '40.444444', lon: '22.444444', addresstype: 'building', class: 'building', display_name: '<img src=x id=rigx onerror="window.__rigx=1">, Larisa', address: { house_number: '9' } }];
     if (byAddr && mode === 'road') body = [{ lat: '40.5', lon: '22.5', addresstype: 'road', class: 'highway', display_name: 'Test Street, Larisa, Greece', address: {} }];
     if (!byAddr && mode !== 'none') body = [{ lat: '39.222222', lon: '21.222222', addresstype: 'industrial', class: 'landuse', display_name: 'Synthetic Depot, Larisa, Greece', address: {} }];
     return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
@@ -163,6 +170,11 @@ async function f18({ browser, origin, ok, scn }) {
   ok(scn, 'address + city first (the first Nominatim query is the address)', /^Test Street 9, 41222, Larisa/.test(r.asked[0] || ''), r.asked);
   ok(scn, 'the address hit fills the pin (40.111111 / 22.111111)', r.v.lat === '40.111111' && r.v.lon === '22.111111', r.v);
   ok(scn, 'it says the address matched', r.ts.some((t) => /βρέθηκαν από τη διεύθυνση: Test Street 9/.test(t)), r.ts);
+  r = await run('node');
+  ok(scn, 'an OSM address node (class place, type house) is the address hit', r.v.lat === '40.333333' && r.asked.length === 1, r);
+  r = await run('html');
+  const x = await page.evaluate(() => ({ js: !!window.__rigx, el: !!document.getElementById('rigx') }));
+  ok(scn, 'the found text is shown as text, never as HTML', r.v.lat === '40.444444' && !x.js && !x.el && r.ts.some((t) => t.includes('&lt;img')), { x, ts: r.ts });
   r = await run('road');
   ok(scn, 'an address that only finds the road falls back to name + city', r.asked.length === 2 && /^SYNTHETIC DEPOT, Larisa/.test(r.asked[1] || '') && r.v.lat === '39.222222', r);
   ok(scn, 'it says name + city matched', r.ts.some((t) => /βρέθηκαν από όνομα \+ πόλη/.test(t)), r.ts);

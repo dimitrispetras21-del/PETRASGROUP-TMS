@@ -42,3 +42,12 @@ test('F19: word order does not matter, every word must be there, one word works 
   // Greek as typed still finds the Greek name, with its 2nd word started
   assert.deepStrictEqual(await s.find('βητα αλ'), ['ΒΗΤΑ ΑΛΦΑ Α.Ε.']);
 });
+
+test('F19 code review: typing on in the 2nd word asks the server nothing more; «Α.Ε.» is never the probe', async () => {
+  const s = load();
+  await s.find('alpha b'); await s.find('alpha be'); await s.find('alpha bet');
+  assert.deepStrictEqual(s.asked, ['alpha'], 'one server read for the three keystrokes');
+  const t = load();
+  assert.deepStrictEqual(await t.find('Α.Ε. ΑΛΦ'), ['ΒΗΤΑ ΑΛΦΑ Α.Ε.']);
+  assert.deepStrictEqual(t.asked, ['ΑΛΦ']);
+});

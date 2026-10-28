@@ -112,3 +112,13 @@ test('live 28/10: the 428 list reads in words — piece_on_rt without JSON or a 
   assert.match(t, /• άλλη επίπτωση · zz_new_kind/);
   assert.ok(!/order_stop_id|6101|\{"kind"/.test(t), t);
 });
+
+test('live 28/10 code review: a kind the labels do not know keeps the server\'s own sentence; a known kind keeps its category', async () => {
+  const items = [{ kind: 'zz_newer', text: 'Η βάση λέει: σβήνει 1 τιμολόγιο' }, { kind: 'payroll_amount', rt_id: 101, month: '2026-10' }];
+  const s = sandbox([json(428, { error: { type: 'PLAN_RULE', code: 'need_token', message: 'rig: confirm' }, preview: { consequences: items, confirm_token: 'tok-1' } })],
+    false, ['core/wn5-labels.js']);
+  await s.run(DEL);
+  const t = s.asked[0] || '';
+  assert.match(t, /• Η βάση λέει: σβήνει 1 τιμολόγιο/);
+  assert.match(t, /• Μισθοδοσία · γραμμή μισθοδοσίας με ποσό \(Οκτώβριος\)/);
+});

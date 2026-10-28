@@ -124,7 +124,7 @@ const CFG_RETRY_MS = 60 * 1000;   // a non-final answer is asked again at most o
 // F25 (live 28/10): an 'after' is asked again too — its DAY can move (079: 31/10 → 24/10) and a tab opened before
 // kept the old day until a full reload. Every 5 minutes at the next render (each week change, save, ↻ goes through
 // active()), at once on the user's ↻. A moved day repaints the page and says so; a recheck that fails keeps the day
-// read before and the bar says it was not read again (principle 1: never silently stale).
+// read before and the bar says, at its next paint, that it was not read again (principle 1: never silently stale).
 const CFG_RECHECK_MS = 5 * 60 * 1000;
 function _dm(day) { return Number(day.slice(8)) + '/' + Number(day.slice(5, 7)); }   // '2026-10-31' → «31/10»
 function _afterL(sat) { return !!_cfg && _cfg.state === 'after' && !!_cfg.cutoverDay && typeof sat === 'string' && sat >= _cfg.cutoverDay; }
@@ -135,10 +135,10 @@ function _cfgKick() {
   const force = _cfgForce;
   _cfgForce = false;
   _cfgBusy = true;
-  PlanConfig.load(after ? { recheck: force ? 'now' : true } : undefined).then((r) => {
+  // the user's ↻ asks the base at once in either state: a kept 'before' too ({fresh}), or 074 at 15:30 waits 5 min
+  PlanConfig.load(force ? (after ? { recheck: 'now' } : { fresh: true }) : undefined).then((r) => {
     const was = _cfg && _cfg.state;
     const wasDay = _cfg && _cfg.cutoverDay;
-    const wasErr = !!(_cfg && _cfg.recheckErr);
     _cfg = r; _cfgAt = Date.now();
     // Paint again only when the answer changes what THIS week shows: it became 'after' and the week is ≥ L (a stored
     // old view gives way to v5, the bar loses its button), or it became 'unknown' on the v5 board (the bar says so),
@@ -150,7 +150,9 @@ function _cfgKick() {
     const moved = was === 'after' && now === 'after' && wasDay !== r.cutoverDay;
     const page = typeof currentPage !== 'undefined' && currentPage === 'weekly_natl' && typeof window.renderWeeklyNatl === 'function';
     if (moved && typeof toast === 'function') toast(`Η ημέρα μετάβασης εθνικών άλλαξε: ${_dm(wasDay)} → ${_dm(r.cutoverDay)} — η προβολή ενημερώθηκε`, 'warn');
-    if (!page || !(moved || (now === 'after' && !!r.recheckErr !== wasErr && _sat === sat && _decide() === 'v5')
+    // a failed recheck alone repaints nothing (its bar line comes with the next paint): a repaint in the middle of a click
+    // would replace the row, close a menu
+    if (!page || !(moved
       || (now !== was && sat && ((now === 'after' && _afterL(sat)) || (now === 'unknown' && _sat === sat && _decide() === 'v5'))))) return;
     // F22 (live 28/10): the v5 board of this week already on screen only needs its bar again — a repaint from the board
     // in hand, not a second GET /plan/board (every open read the board twice ~40 ms apart, on a base that was timing
@@ -779,7 +781,8 @@ function _leg(ev, rtId, side) {
   Promise.resolve(WN5Form.openLeg(Number(rtId), side === 'ANODOS' ? 'ANODOS' : 'KATHODOS'))
     .then((ok) => {
       if (ok !== false || _state !== 'err' || !_lastErr || !active() || typeof toast !== 'function') return;
-      toast(`Το σκέλος δεν άνοιξε: ο πίνακας δεν ξαναδιαβάστηκε (${String(_lastErr.message || '')}) — ο κύκλος υπάρχει· πάτα Ανανέωση`, 'danger');
+      // one #toast (core/ui.js): this replaces at once the form's «Ο κύκλος δεν βρέθηκε …», which a failed read is not
+      toast(`Το σκέλος δεν άνοιξε: ο πίνακας δεν ξαναδιαβάστηκε (${_esc(String(_lastErr.message || ''))}) — ο κύκλος δεν χάθηκε· πάτα Ανανέωση`, 'danger');
     })
     .catch((e) => _logErr(e, 'weekly natl v5: leg form'))
     .finally(() => {

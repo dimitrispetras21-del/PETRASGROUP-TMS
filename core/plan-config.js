@@ -51,16 +51,15 @@
   }
 
   // F25 (live 28/10): 'after' is final as a STATE, but its DAY is not — 079 moved day L from 31/10 to 24/10, and a tab
-  // opened before kept 31/10 and went on offering «Παλιά προβολή» on W44 until a full reload. {recheck: true} asks the
-  // base again for a kept 'after' older than AFTER_RECHECK_MS ({recheck: 'now'}: at once, the user's ↻). A recheck
-  // that fails keeps the old 'after' (074 ran; only its day may be stale) and says so in .recheckErr, never a silent
-  // fallback to 'before'. Without recheck an 'after' is answered from memory as before: the write paths ({fresh})
-  // ask nothing more per save than they did.
+  // opened before kept 31/10 (every screen: the board, Performance, the Weekly International) until a full reload.
+  // So a kept 'after' older than AFTER_RECHECK_MS is asked again, for every caller ({recheck: 'now'}: at once, the
+  // user's ↻) — at most one GET per 5 minutes, write paths included. A recheck that fails keeps the old 'after' (074
+  // ran; only its day may be stale) and says so in .recheckErr, never a silent fallback to 'before' or 'unknown'.
   const AFTER_RECHECK_MS = 5 * 60 * 1000;
   function load(opts) {
     const fresh = !!(opts && opts.fresh);
     const recheck = opts && opts.recheck;
-    if (_known && _known.state === STATE.AFTER && recheck && (recheck === 'now' || Date.now() - _knownAt >= AFTER_RECHECK_MS)) {
+    if (_known && _known.state === STATE.AFTER && (recheck === 'now' || Date.now() - _knownAt >= AFTER_RECHECK_MS)) {
       const kept = _known;
       if (_inflight) return _inflight;
       _inflight = (async () => {
