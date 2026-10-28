@@ -9824,8 +9824,17 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 /* the edit form's ΑΠΟΣΤΟΛΕΣ row: the create form's own fields — a day field 100 with its weekday label (2069:7984 /
    8007) and two 71px ΗΗ:ΛΛ fields per side, pallets 70 (2069:7992); never the native time input (12-hour in el-GR, a
    clock icon, 90px) */
-.wn5f-ships-h, .wn5f-ship { display:grid; grid-template-columns:minmax(0, 1fr) 100px 71px 71px 100px 71px 71px 70px; gap:6px; align-items:center; }
-.wn5f-ships-h { font-size:11px; color:var(--wi4-grey-2); grid-template-columns:minmax(0, 1fr) 254px 254px 70px; }
+.wn5f-ships-h, .wn5f-ship { display:grid; grid-template-columns:minmax(0, 1fr) 100px 71px 71px 100px 71px 71px 70px 20px; gap:6px; align-items:center; }
+.wn5f-ships-h { font-size:11px; color:var(--wi4-grey-2); grid-template-columns:minmax(0, 1fr) 254px 254px 70px 20px; }
+/* F13 / F21 (077): the points of the edit form - a riding point names its cycle, a removed one is struck until saved,
+   a new one picks both ends (the create form's place picker, two in the route cell) */
+.wn5f-ships { display:flex; flex-direction:column; gap:6px; }
+.wn5f-shipc { font-size:11px; color:var(--wi4-grey-2); }
+.wn5f-ship[data-rm] > span:first-child { text-decoration:line-through; color:var(--wi4-grey-3); }
+.wn5f-ship[data-rm] .form-input { opacity:.5; }
+.wn5f-ends { display:flex; align-items:center; gap:4px; min-width:0; }
+.wn5f-ends > .wn5f-loc { flex:1 1 0; min-width:0; }
+.wn5f-arr { flex:none; color:var(--wi4-grey-2); }
 /* the leg form (T21, Figma 2011:9406 / Δ7 2069:7858) */
 .wn5f-lhead { grid-template-columns:150px 120px 130px 190px; align-items:center; }
 .wn5f-lhead[data-side="ANODOS"] { grid-template-columns:150px 120px 170px 190px; }
