@@ -110,7 +110,7 @@ function preorderConvertBand(f) {
 }
 
 // ── Small form (create n / edit one) — Figma 709:1045 ─────────────
-// Direction = segmented Export|Import, count = stepper 1–9, primary = navy
+// Direction = segmented Export|Import (stored English, shown Greek — Pantelis 27/10), count = stepper 1–9, primary = navy
 // «Δημιουργία N pre-orders» (N live). The country row is NOT in the Figma: it
 // is the owner's 27/9 addition, drawn in the same style, full width.
 async function openPreorder(recId) {
@@ -123,7 +123,7 @@ async function openPreorder(recId) {
   const cid = Array.isArray(f['Client']) ? f['Client'][0] : '';
   const clabel = cid && typeof fhResolveClientName === 'function' ? (await fhResolveClientName(cid)) || '' : '';
   const dir = f['Direction'] || '';
-  const seg = (v) => `<button type="button" class="pre-seg-b${dir === v ? ' on' : ''}" data-dir="${v}" onclick="_preDir('${v}')">${v}</button>`;
+  const seg = (v) => `<button type="button" class="pre-seg-b${dir === v ? ' on' : ''}" data-dir="${v}" onclick="_preDir('${v}')">${v === 'Import' ? 'Εισαγωγή' : 'Εξαγωγή'}</button>`;
   const body = `
     <input type="hidden" id="pre_dir" value="${escapeHtml(dir)}">
     <div class="pre-f"><label class="pre-lbl">ΠΕΛΑΤΗΣ</label>${fhClientSelect('pre_client', cid, clabel)}</div>
