@@ -52,8 +52,8 @@ const _temps = (items) => [...new Set((items || []).map((x) => x && x.temperatur
 
 // The Veroia hub has no flag on the board's stops (072 plan_board sends location_id only). Its id is read from the
 // one fact the base guarantees about a VS (072 leg_place, «από την αφετηρία του, μέσω Βέροιας»): a vs_import starts
-// at the hub, a vs_export ends there. A hub[] item IS at the hub (071 at_hub) but carries no location id, so it
-// names nothing. No VS in the week → null (opts.hubId from PlanIds.hub() when the catalogue exists, Ε-27); model()
+// at the hub, a vs_export ends there. A hub[] item IS at the hub (071 at_hub); it names its destination
+// (nat_to_location_id, 074a) but not where it stands, so it says nothing about the hub's id. No VS in the week → null (opts.hubId from PlanIds.hub() when the catalogue exists, Ε-27); model()
 // then puts HUB_UNKNOWN on the board, never a silent ordinary «ΒΕΡΟΙΑ» stop (Ε-44).
 function hubFromBoard(board, errors) {
   const seen = new Set();

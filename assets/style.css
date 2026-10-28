@@ -9082,9 +9082,8 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 .wn5 .wn5-asg .wi4-box { flex:1 1 0; max-width:none; }
 /* «ΠΡΟΣ ΑΝΑΘΕΣΗ» in the button's red ink, SemiBold (H1 / 7745): its inner .wi4-l1 (ink, 500) would paint it navy. */
 .wn5 .wi4-box.un > .wi4-l1 { color:inherit; font-weight:inherit; }
-/* live fix 3 (28/10): a row waiting for its ΑΝΟΔΟΣ only — the box names the side it assigns, in its own red */
+/* live fix 3 (owner 28/10): a waiting row of one side — the box names the side it assigns, in its own red */
 .wn5 .wi4-box.un.wn5-un-a > .wn5-un-side { color:inherit; font-size:10.5px; font-weight:500; }
-.wn5 .wn5-noside { color:var(--wi4-grey-2); font-size:12px; }
 .wn5 .wn5-c-idx { align-self:stretch; display:flex; align-items:center; gap:2px; padding:0 6px 0 12px; font-size:13px; font-weight:600; color:var(--wi4-grey-1); }
 .wn5 :is(.wn5-row, .wn5-sub) > .wn5-c-idx { background:var(--wi4-chip); }
 .wn5 .wi4-day.today :is(.wn5-row, .wn5-sub) > .wn5-c-idx { background:var(--wi4-today-hover); }

@@ -67,6 +67,9 @@ let _m = null;           // WN5L.model(_board) of the last paint
 let _okAt = null;        // when the board arrived (display only)
 let _lastErr = null;     // the PlanError (or local error) of the last read
 let _idsErr = null;      // GET /plan/lookups failed: place names cannot be read (live fix 1, 28/10) — shown, never «—» in silence
+let _idsOk = false;      // the catalogue is loaded: only then are ids named (a pending one is not «unknown id»)
+let _idsFailAt = 0;      // when it last failed: asked again after 60 s or on the user's ↻, never on every reload
+let _idsForce = false;   // the user's ↻ (reload('user')) asks again at once
 let _closed = null;      // the first writes_closed answer of the session (Ε-6; set by markClosed)
 let _qAll = false;       // «Όλα N ▾» of the ΕΠΟΜΕΝΑ band
 let _qRaw = '';          // the search text, memory only; cleared when the week changes (Ε-25)
@@ -184,10 +187,26 @@ async function render() {
   // The board names places by id only (074a nat_from / nat_to): their names come from the ONE catalogue of /plan
   // (PlanIds, GET /plan/lookups), read beside the board — once per session when it succeeds, asked again at the next
   // open when it failed (decision 44: no automatic retry). Live 28/10: without it every place read «—».
-  const ids = typeof PlanIds !== 'undefined' && typeof PlanIds.load === 'function' ? PlanIds.load() : Promise.resolve({ ok: false, err: { message: 'core/plan-ids.js missing' } });
+  // A failure is not re-asked on every render (each save reloads the board): one try per 60 s, or the user's ↻ —
+  // else one dead route would write an app_errors row per act (decision 44: no automatic retry).
+  const retry = !_idsOk && (_idsForce || !_idsFailAt || Date.now() - _idsFailAt > 60000);
+  _idsForce = false;
+  let idsDone = _idsOk || !retry;
+  const ids = !retry ? Promise.resolve(null)
+    : (typeof PlanIds !== 'undefined' && typeof PlanIds.load === 'function' ? PlanIds.load() : Promise.resolve({ ok: false, err: { message: 'core/plan-ids.js missing' } }))
+      .catch((e) => ({ ok: false, err: e }))
+      .then((r) => {
+        idsDone = true;
+        _idsOk = !!(r && r.ok);
+        _idsErr = _idsOk ? null : ((r && r.err) || { message: 'άγνωστο σφάλμα' });
+        _idsFailAt = _idsOk ? 0 : Date.now();
+        return r;
+      });
   try { board = await planFetch('GET', '/plan/board?week=' + week); } catch (e) { err = e; }
-  const idr = await ids.catch((e) => ({ ok: false, err: e }));
-  _idsErr = idr && idr.ok ? null : ((idr && idr.err) || { message: 'άγνωστο σφάλμα' });
+  // The board does not wait long for its names: up to 1.5 s, then it paints («—» for a moment, no strip) and paints
+  // again when the catalogue lands (only if this render still owns the screen).
+  if (!idsDone) await Promise.race([ids, new Promise((r) => setTimeout(r, 1500))]);
+  if (!idsDone) ids.then(() => { if (seq === _seq && active() && _board) paint(); });
   if (seq !== _seq || !active()) return;               // a newer render, or another page, owns the screen now
   if (err && err._sessionGone) return;                  // the login page is on its way; nothing to draw
   if (!err && (!board || typeof board !== 'object' || board.week !== week)) {
@@ -205,7 +224,7 @@ function _isEmpty(b) {
 }
 // reason names the caller (a write, the user's «Ανανέωση», a reuse check) for the trace; the read is the same.
 async function reload(reason) {
-  void reason;
+  if (reason === 'user') _idsForce = true;   // the user's ↻ also asks the catalogue again, at once
   await render();
   return _state === 'ok' || _state === 'empty' ? _m : null;
 }
@@ -272,7 +291,7 @@ function _paint() {
   const hubId = typeof PlanIds !== 'undefined' && typeof PlanIds.hub === 'function' ? PlanIds.hub() : null;
   const mo = { today: _today() };
   if (hubId != null) mo.hubId = hubId;
-  if (!_idsErr && typeof PlanIds !== 'undefined' && typeof PlanIds.place === 'function') mo.place = (id) => PlanIds.place(id);
+  if (_idsOk && typeof PlanIds !== 'undefined' && typeof PlanIds.place === 'function') mo.place = (id) => PlanIds.place(id);
   _m = _board ? lg.model(_board, mo) : null;
   _closeMenu();
   content.innerHTML = _rootHTML();
@@ -550,10 +569,11 @@ function _kathHTML(r, m, ok) {
   const s = r.kath;
   // «Χωρίς κάθοδο»: the dashed slot ends where ΠΑΛ. begins, and the «+» stays in the side's ΠΑΛ. cell, outside the box,
   // where every row has it (Figma 2011:10217)
-  // A load waiting for a ΑΝΟΔΟΣ (a vs_export to Veroia): the empty ΚΑΘΟΔΟΣ says so in words, and its «ΠΡΟΣ ΑΝΑΘΕΣΗ»
-  // points right (live 28/10: beside a bare «—» the shared ΑΝΑΘΕΣΗ column read as the ΚΑΘΟΔΟΣ's own).
+  // A load waiting for its ΑΝΟΔΟΣ only (a vs_export to Veroia): the empty ΚΑΘΟΔΟΣ is the dashed «Χωρίς κάθοδο» of
+  // RT-T106/T107 (Figma H1), and «ΠΡΟΣ ΑΝΑΘΕΣΗ» names its side (owner 28/10, live fix 3: beside a bare «—» the shared
+  // ΑΝΑΘΕΣΗ column read as the ΚΑΘΟΔΟΣ's own). No «+» here: a waiting row is not a cycle with a free side.
   if (!s) return r.kind === 'cycle' ? `<div class="wn5-kspan wn5-gspan"><span class="wn5-gapbox">Χωρίς κάθοδο</span></div><div class="wn5-kpal wn5-gpal">${_plusHTML(r, 'KATHODOS')}</div>`
-    : r.anod ? '<div class="wn5-kspan"><span class="wn5-none wn5-noside">Χωρίς κάθοδο</span></div>' : '<div class="wn5-kspan"><span class="wn5-none">—</span></div>';
+    : r.anod ? '<div class="wn5-kspan"><span class="wn5-gapbox">Χωρίς κάθοδο</span></div>' : '<div class="wn5-kspan"><span class="wn5-none">—</span></div>';
   // The head of the side (its day, «Βέροια», the Veroia window) dims with the day of its loading stop.
   const hd = _dc(ok && s.headDim);
   const toDay = s.toDay && s.toDay !== s.day ? `<span class="wn5-dc2${hd}">→ ${_esc(_dl(s.toDay))}</span>` : '';
@@ -567,7 +587,8 @@ function _kathHTML(r, m, ok) {
 }
 function _anodHTML(r, m, ok) {
   const s = r.anod;
-  if (!s) return '<div class="wn5-aspan"><span class="wn5-none">—</span></div>';
+  // the mirror of «Χωρίς κάθοδο» for a load waiting for its ΚΑΘΟΔΟΣ only (owner 28/10, live fix 3)
+  if (!s) return r.kind === 'unassigned' && r.kath ? '<div class="wn5-aspan"><span class="wn5-gapbox">Χωρίς άνοδο</span></div>' : '<div class="wn5-aspan"><span class="wn5-none">—</span></div>';
   // «Κενό γύρισμα» is a free return to fill (a dashed slot); a partner cycle's «Μόνο κάθοδος · συνεργάτης» is a fact,
   // plain grey text (Figma H1 / 7745). The words are WN5L's; the screen only picks the look by the vehicle.
   if (s.gap) {
@@ -768,10 +789,11 @@ function _handRowHTML(r, ok) {
     + `<span class="wn5-c-idx"><span class="wn5-hand-ar">↳</span></span><span class="wn5-hand-sp"></span>${items}</div>`;
 }
 function _boxHTML(t, r) {
-  // «ΠΡΟΣ ΑΝΑΘΕΣΗ» opens the assignment window (wired by the actions file, Task T12). On a row that waits for its
-  // ΑΝΟΔΟΣ only, the box names the side it assigns («ΑΝΟΔΟΣ →», live fix 3, 28/10): the ΑΝΑΘΕΣΗ column is shared.
+  // «ΠΡΟΣ ΑΝΑΘΕΣΗ» opens the assignment window (wired by the actions file, Task T12). A waiting row of one side names
+  // the side it assigns, «ΑΝΟΔΟΣ →» / «← ΚΑΘΟΔΟΣ» (owner 28/10, live fix 3): the ΑΝΑΘΕΣΗ column is shared (H1 grid).
   if (t.type === 'un') {
-    const side = r && r.kind === 'unassigned' && r.anod && !r.kath ? '<span class="wi4-l2 wn5-un-side">ΑΝΟΔΟΣ →</span>' : '';
+    const one = r && r.kind === 'unassigned' ? (r.anod && !r.kath ? 'ΑΝΟΔΟΣ →' : r.kath && !r.anod ? '← ΚΑΘΟΔΟΣ' : '') : '';
+    const side = one ? `<span class="wi4-l2 wn5-un-side">${one}</span>` : '';
     return `<button type="button" class="wi4-box un${side ? ' wn5-un-a' : ''}" data-act="assign"><span class="wi4-l1">ΠΡΟΣ ΑΝΑΘΕΣΗ</span>${side}</button>`;
   }
   // The tile is 28px high: a long name is cut by the wi4 rule with a visible «…» and stays whole in title.

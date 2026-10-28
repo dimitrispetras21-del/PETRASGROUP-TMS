@@ -2461,7 +2461,7 @@ const liveRows = (page) => page.evaluate(() => [...document.querySelectorAll('#c
   // the shown points' titles + the «+N» title (the folded ones, one per line): every point of the cell
   const pts = (sel) => [...r.querySelectorAll(sel + ' .wn5-pt')].map((p) => p.getAttribute('title') || '')
     .concat([...r.querySelectorAll(sel + ' .wi4-more')].flatMap((m) => (m.getAttribute('title') || '').split('\n')));
-  return { piece: r.dataset.piece, ksp: t('.wn5-kspan'), kto: t('.wn5-kto'), afl: t('.wn5-afl'), ato: t('.wn5-ato'), asg: t('.wn5-asg'), kpts: pts('.wn5-kto'), apts: pts('.wn5-afl'), tpts: pts('.wn5-ato'), text: r.textContent.replace(/\s+/g, ' ') };
+  return { piece: r.dataset.piece, ksp: t('.wn5-kspan'), asp: t('.wn5-aspan'), kgap: !!r.querySelector('.wn5-kspan .wn5-gapbox'), agap: !!r.querySelector('.wn5-aspan .wn5-gapbox'), kto: t('.wn5-kto'), afl: t('.wn5-afl'), ato: t('.wn5-ato'), asg: t('.wn5-asg'), kpts: pts('.wn5-kto'), apts: pts('.wn5-afl'), tpts: pts('.wn5-ato'), text: r.textContent.replace(/\s+/g, ' ') };
 }));
 SCN.live45 = async (browser, origin) => {
   const scn = 'live45';
@@ -2479,10 +2479,11 @@ SCN.live45 = async (browser, origin) => {
     (by(19).apts || []).some((x) => x.startsWith('ΠΕΛΑΤΗΣ ΕΞ 1 · Lamia Test')) && /Βέροια/.test(by(19).ato || ''), { afl: by(19).apts, ato: by(19).ato });
   ok(scn, '2 · VS export 616: two loading places (Thessaloniki Test, Lamia Test), ΠΡΟΣ «Βέροια»',
     ['Thessaloniki Test', 'Lamia Test'].every((n) => (by(20).apts || []).some((x) => x.includes(n)) || /\+1/.test(by(20).afl || '')) && /Βέροια/.test(by(20).ato || ''), { afl: by(20).apts, ato: by(20).ato });
-  // 3 · a row waiting for its ΑΝΟΔΟΣ: the empty ΚΑΘΟΔΟΣ says «Χωρίς κάθοδο», the box says «ΑΝΟΔΟΣ →»; a ΚΑΘΟΔΟΣ row unchanged
-  ok(scn, '3 · VS export 607 / 616: «Χωρίς κάθοδο» in ΚΑΘΟΔΟΣ, «ΠΡΟΣ ΑΝΑΘΕΣΗ ΑΝΟΔΟΣ →» in ΑΝΑΘΕΣΗ; import 603 keeps «ΠΡΟΣ ΑΝΑΘΕΣΗ»',
-    [19, 20].every((p) => by(p).asg === 'ΠΡΟΣ ΑΝΑΘΕΣΗΑΝΟΔΟΣ →' && by(p).ksp === 'Χωρίς κάθοδο') && by(15).asg === 'ΠΡΟΣ ΑΝΑΘΕΣΗ',
-    [19, 20, 15].map((p) => ({ p, asg: by(p).asg, ksp: by(p).ksp })));
+  // 3 · a waiting row of one side (owner 28/10): the box names its side, the empty side is the dashed slot of H1 RT-T106/T107
+  ok(scn, '3 · VS export 607 / 616: dashed «Χωρίς κάθοδο», box «ΠΡΟΣ ΑΝΑΘΕΣΗ / ΑΝΟΔΟΣ →»; VS import 603 / 604: box «← ΚΑΘΟΔΟΣ», dashed «Χωρίς άνοδο»',
+    [19, 20].every((p) => by(p).asg === 'ΠΡΟΣ ΑΝΑΘΕΣΗΑΝΟΔΟΣ →' && by(p).ksp === 'Χωρίς κάθοδο' && by(p).kgap)
+    && [15, 16].every((p) => by(p).asg === 'ΠΡΟΣ ΑΝΑΘΕΣΗ← ΚΑΘΟΔΟΣ' && by(p).asp === 'Χωρίς άνοδο' && by(p).agap),
+    [19, 20, 15, 16].map((p) => ({ p, asg: by(p).asg, ksp: by(p).ksp, asp: by(p).asp, kgap: by(p).kgap, agap: by(p).agap })));
   // 4 · temperature as the driver sheet writes it, only where the base has one
   ok(scn, '4 · temperature: «+7 °C» on export 616, «+4 °C» on import 604, none on 603 / 607',
     /\+7 °C/.test(by(20).text || '') && /\+4 °C/.test(by(16).text || '') && !/°C/.test(by(15).text || '') && !/°C/.test(by(19).text || ''), { e616: by(20).text, i604: by(16).text });
@@ -2506,6 +2507,16 @@ SCN.live45 = async (browser, origin) => {
   await f.page.waitForSelector('#content > .wi4.wn5[data-state="ok"]', { timeout: 8000 }).catch(() => {});
   const fs1 = await f.page.evaluate(() => { const st = document.querySelector('#content .wn5 .wn5-strip[data-ids="failed"]'); return { strip: st ? st.textContent.replace(/\s+/g, ' ') : null, rows: document.querySelectorAll('#content .wn5 .wn5-row').length }; });
   ok(scn, '1 · lookups 500 → «ΟΝΟΜΑΤΑ ΤΟΠΩΝ» strip with the Worker message, the 4 rows still painted', !!fs1.strip && /ΟΝΟΜΑΤΑ ΤΟΠΩΝ/.test(fs1.strip) && /rig sentinel plan_failed/.test(fs1.strip) && fs1.rows === 4, fs1);
+  // a failed catalogue is not asked again on every reload (each save reloads the board): only the user's ↻ asks at once
+  const nL = () => f.S.plan.filter((x) => x.m === 'GET' && x.path === '/plan/lookups').length;
+  const l0 = nL();
+  await f.page.evaluate(() => WN5.reload('write'));
+  await f.page.waitForTimeout(400);
+  const l1 = nL();
+  await f.page.evaluate(() => WN5.reload('user'));
+  await f.page.waitForTimeout(400);
+  const l2 = nL();
+  ok(scn, '1 · after a failure: a write\'s reload does not ask the catalogue again, the user\'s ↻ does', l0 === 1 && l1 === 1 && l2 === 2, { l0, l1, l2 });
   await f.page.context().close();
 };
 // ── main ──
