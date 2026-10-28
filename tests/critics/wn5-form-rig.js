@@ -2,7 +2,7 @@
 // fake /plan/* (S.plan: method, path, body, count, order) and by what the page shows; never by a toast. Synthetic
 // week of tests/critics/wn5-rig-kit.js. The default answer of every non-dry write is 409 writes_closed, as deployed
 // until day L; scenarios script their own answers with sentinel messages.
-// Usage: node tests/critics/wn5-form-rig.js [order nowin nopp groupage unknown reused replayed edit leg leg-anodos …]
+// Usage: node tests/critics/wn5-form-rig.js [order nowin nopp groupage unknown reused replayed edit edit-ride edit-add edit-remove edit-read-fail edit-twoday veroia-edit leg leg-anodos …]
 //        WN5_TREE=<git archive origin/main> node tests/critics/wn5-form-rig.js   (plain-main proof: NO-GO, exit 1)
 // Exit: 0 green · 1 a check failed · 2 unknown scenario.
 'use strict';
@@ -59,7 +59,7 @@ async function guard(page, ok, scn) {
 // scripted 4xx/5xx answer of the fake /plan/* as «Failed to load resource»: network lines, not an error of the page.
 // So is the one logError line per scripted 5xx («[TMS ERROR] planFetch … rig sentinel …»: every 5xx is logged once
 // by design, counted in the «unknown» scenario). Every other console error fails the scenario.
-const appConsole = (S) => S.console.filter((m) => !/^Failed to load resource/.test(m) && !/^\[TMS ERROR\] planFetch [A-Z]+ \/plan\/[^:]*: PlanError: rig sentinel /.test(m));
+const appConsole = (S) => S.console.filter((m) => !/^Failed to load resource/.test(m) && !/^\[TMS ERROR\] planFetch [A-Z]+ \/plan\/\S*: PlanError: rig sentinel /.test(m));
 async function closeClean(page, S, ok, scn) {
   ok(scn, 'no page errors, no console errors', !S.pageErrors.length && !appConsole(S).length, S.pageErrors.concat(appConsole(S)));
   await page.context().close();
@@ -227,34 +227,49 @@ async function scnNoPP({ browser, origin, ok, scn }) {
   ok(scn, 'one POST: price null and the shipment\'s pallets null — never 0', !!o && o.price === null && o.shipments.length === 1 && o.shipments[0].pallets === null, o || posts.length);
   ok(scn, 'no page errors, no console errors', !S.pageErrors.length && !appConsole(S).length, S.pageErrors.concat(appConsole(S)));
   await page.context().close();
-  // code review xhigh: a national RIDING a cycle with unknown pallets (N-T003 on RT-T102, no waiting piece) — its
-  // «Επεξεργασία» opens the pallets of that shipment (only), one PATCH with them; before, no field reached them
-  const b = K.week();
-  for (const st of b.cycles[1].stops) for (const l of st.legs) Object.assign(l, { pallets: null, shipment_id: 5303, price: null });
-  // code review xhigh r2: the same order also has a WAITING shipment of unknown pallets (an order partly on a cycle):
-  // its windows stay locked as for any riding order, its pallets open — before, nothing on the page reached them
-  b.waiting.push(Object.assign(K.clone(b.waiting[0]), { piece_id: 9904, shipment_id: 5304, nat_order_id: 3003, pallets: null, price: null, reference: 'N-T003' }));
-  const plan = { 'PATCH /plan/orders/3003': () => [200, { ok: true, op: 'plan_order_update', dry_run: false, ids: { nat_order_id: 3003, shipment_ids: [] }, warnings: [], notice_ids: [] }] };
-  const p2 = await K.openApp(browser, origin, { board: b, plan });
-  await openForm(p2.page, { natOrderId: 3003 });
-  const ride = await p2.page.evaluate((d) => { const r = document.querySelector(`${d} [data-ship="5303"][data-ride="1"]`); if (!r) return null;
-    const pal = r.querySelector('[data-f="pal"]'); const pr = document.querySelector(`${d} [data-f="price"]`);
-    const w = document.querySelector(`${d} [data-ship="5304"]`); const wp = w && w.querySelector('[data-f="pal"]'); const wl = w && w.querySelector('[data-f="lfrom"]');
-    return { label: r.textContent, palOn: !!pal && !pal.disabled, pricePh: pr && pr.placeholder, note: document.querySelector(d).innerText.includes('δεν έχει ακόμη τιμή'),
-      wait: w ? { ride: w.dataset.ride, palOn: !!wp && !wp.disabled, winOff: !!wl && wl.disabled } : null }; }, DLG);
-  ok(scn, 'edit of a riding order of unknown pallets: «ATHENS TEST → ΒΕΡΟΙΑ TEST · αποστολή #5303 · σε κύκλο · παλέτες άγνωστες», its pallets open; price «λείπει»',
-    !!ride && ride.palOn && /ATHENS TEST → ΒΕΡΟΙΑ TEST · αποστολή #5303 · σε κύκλο · παλέτες άγνωστες/.test(ride.label) && ride.pricePh === 'λείπει' && ride.note, ride);
-  ok(scn, 'the same order\'s WAITING shipment of unknown pallets: pallets open, windows locked (partly on a cycle)',
-    !!ride && !!ride.wait && ride.wait.ride === '1' && ride.wait.palOn && ride.wait.winOff, ride && ride.wait);
-  await p2.page.fill(`${DLG} [data-ship="5303"] [data-f="pal"]`, '10').catch(() => {});
+  // code review xhigh r1/r2: the edit form (077 read) of an order WITHOUT a price whose point riding RT-T101 has unknown
+  // pallets, and a second point waiting with unknown pallets. The riding point stays locked but its PALLETS open (the
+  // only place they are written: B-100, the card and the Veroia panel send the desk here); one PATCH with both.
+  const rd = K.orders()[3001];
+  rd.order.price = null; rd.order.pallets = null;
+  rd.shipments[0].pallets = null;
+  rd.shipments.push(Object.assign(K.clone(K.orders()[3101].shipments[0]), { shipment_id: 5304, pallets: null }));
+  const plan = { 'GET /plan/orders/3001': () => [200, rd],
+    'PATCH /plan/orders/3001': () => [200, { ok: true, op: 'plan_order_update', dry_run: false, ids: { nat_order_id: 3001, shipment_ids: [] }, warnings: [], notice_ids: [] }] };
+  const p2 = await K.openApp(browser, origin, { plan });
+  await openForm(p2.page, { natOrderId: 3001 });
+  const ed = await p2.page.evaluate((d) => {
+    const row = (id) => { const r = document.querySelector(`${d} [data-ship="${id}"]`); if (!r) return null;
+      const pal = r.querySelector('[data-f="pal"]'), lf = r.querySelector('[data-f="lfrom"]');
+      return { ro: r.hasAttribute('data-ro'), palOnly: r.hasAttribute('data-palonly'), palOn: !!pal && !pal.disabled, ph: pal && pal.placeholder, winOff: !!lf && lf.disabled }; };
+    const pr = document.querySelector(`${d} [data-f="price"]`);
+    return { ride: row(5202), wait: row(5304), pricePh: pr && pr.placeholder, priceLabel: pr && pr.closest('label').textContent,
+      note: document.querySelector(d).innerText.includes('δεν έχει ακόμη τιμή') }; }, DLG);
+  ok(scn, 'edit of an order without price: the price says «λείπει» (no «*»), with the note to write it when known',
+    !!ed && ed.pricePh === 'λείπει' && ed.note && !/\*/.test(ed.priceLabel || ''), ed);
+  ok(scn, 'the point riding RT-T101 with unknown pallets: locked (data-ro), windows disabled, its PALLETS open, «άγνωστες»',
+    !!ed && !!ed.ride && ed.ride.ro && ed.ride.palOnly && ed.ride.palOn && ed.ride.winOff && ed.ride.ph === 'άγνωστες', ed && ed.ride);
+  ok(scn, 'the waiting point with unknown pallets: editable, pallets «άγνωστες»', !!ed && !!ed.wait && !ed.wait.ro && ed.wait.palOn && !ed.wait.winOff && ed.wait.ph === 'άγνωστες', ed && ed.wait);
+  await p2.page.fill(`${DLG} [data-ship="5202"] [data-f="pal"]`, '10').catch(() => {});
   await p2.page.fill(`${DLG} [data-ship="5304"] [data-f="pal"]`, '4').catch(() => {});
   await save(p2.page);
   await p2.page.waitForTimeout(1200);
-  const pt = K.planOf(p2.S, 'PATCH', '/plan/orders/3003');
-  ok(scn, 'one PATCH /plan/orders/3003 {shipments:[{5304, pallets:4}, {5303, pallets:10}]} — the pallets only, no window', pt.length === 1
-    && JSON.stringify(pt[0].body) === JSON.stringify({ shipments: [{ shipment_id: 5304, pallets: 4 }, { shipment_id: 5303, pallets: 10 }] }), pt.map((x) => x.body));
+  const pt = K.planOf(p2.S, 'PATCH', '/plan/orders/3001');
+  const sent = pt[0] ? Object.assign({}, pt[0].body) : null;
+  if (sent) delete sent.request_id;
+  ok(scn, 'one PATCH /plan/orders/3001 {shipments:[{5304, pallets:4}, {5202, pallets:10}]} — pallets only, no window, no price',
+    pt.length === 1 && JSON.stringify(sent) === JSON.stringify({ shipments: [{ shipment_id: 5304, pallets: 4 }, { shipment_id: 5202, pallets: 10 }] }), pt.map((x) => x.body));
   ok(scn, 'edit: no page errors', !p2.S.pageErrors.length, p2.S.pageErrors);
   await p2.page.context().close();
+  // a WRITTEN price is never emptied (072 no_price): said at the field, nothing sent
+  const p3 = await K.openApp(browser, origin, {});
+  await openForm(p3.page, { natOrderId: 3101 });
+  await p3.page.fill(`${DLG} [data-f="price"]`, '');
+  await save(p3.page);
+  await p3.page.waitForTimeout(600);
+  ok(scn, 'an emptied written price: «η παραγγελία έχει ήδη τιμή», no PATCH', K.planOf(p3.S, 'PATCH', '/plan/orders/3101').length === 0
+    && /η παραγγελία έχει ήδη τιμή/.test(await K.text(p3.page, `${DLG} [data-err]`)));
+  await p3.page.context().close();
 }
 
 async function scnGroupage({ browser, origin, ok, scn }) {
@@ -362,12 +377,22 @@ async function scnReplayed({ browser, origin, ok, scn }) {
   await closeClean(page, S, ok, scn);
 }
 
+// F13 / F21 (077, live test 28/10): the edit form opens on GET /plan/orders/:id (the kit answers K.orders()), shows
+// every value, sends only what changed — nothing when nothing changed — and adds / removes a point. Judged by the
+// bodies that reached the fake /plan/*.
+const UPD_OK = (id, extra) => () => [200, { ok: true, op: 'plan_order_update', dry_run: false,
+  ids: Object.assign({ nat_order_id: id, shipment_ids: [], new_shipment_ids: [], new_piece_ids: [], removed_shipment_ids: [] }, extra || {}), warnings: [], notice_ids: [] }];
+const fval = (page, sel) => page.evaluate(([d, s]) => { const x = document.querySelector(`${d} ${s}`); return x ? x.value : null; }, [DLG, sel]);
+const UUIDRE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 async function scnEdit({ browser, origin, ok, scn }) {
-  const plan = { 'PATCH /plan/orders/3101': () => [200, { ok: true, op: 'plan_order_update', dry_run: false, ids: { nat_order_id: 3101, shipment_ids: [] }, warnings: [], notice_ids: [] }] };
-  const { page, S } = await K.openApp(browser, origin, { plan });
+  const { page, S } = await K.openApp(browser, origin, { plan: { 'PATCH /plan/orders/3101': UPD_OK(3101) } });
   if (!(await guard(page, ok, scn))) return;
   await openForm(page, { natOrderId: 3101 });
-  ok(scn, 'edit opens on the waiting order with its price', (await page.evaluate((d) => document.querySelector(`${d} [data-f="price"]`).value, DLG)) === '310');
+  ok(scn, 'the form read the order once: GET /plan/orders/3101', K.planOf(S, 'GET', '/plan/orders/3101').length === 1, S.plan.map((x) => x.m + ' ' + x.path));
+  const v = { price: await fval(page, '[data-f="price"]'), ref: await fval(page, '[data-f="ref"]'), goods: await fval(page, '[data-f="goods"]'),
+    notes: await fval(page, '[data-f="notes"]'), temp: await fval(page, '[data-f="temp"]'),
+    pe: await page.evaluate((d) => document.querySelector(`${d} [data-peh]`).dataset.peh, DLG) };
+  ok(scn, 'every value of the read is shown (price, reference, goods, notes, temperature, PE yes)', JSON.stringify(v) === JSON.stringify({ price: '310', ref: 'N-T101', goods: 'Γιαούρτι', notes: 'ράμπα 2', temp: '4', pe: 'yes' }), v);
   // whole-frame r2 (Figma 2069:7984 / 8007 / 7992): the ΑΠΟΣΤΟΛΕΣ day fields 100 wide with their weekday label whole
   // inside (clear of the picker glyph at the right end), pallets 70.
   const ship = await page.evaluate((d) => {
@@ -381,12 +406,134 @@ async function scnEdit({ browser, origin, ok, scn }) {
   }, DLG);
   ok(scn, 'ΑΠΟΣΤΟΛΕΣ: day fields 100 with the label whole («Τετ 14/10» clear of the picker by ≥ 24px), pallets 70 (2069:7984 / 7992)',
     !!ship && [ship.l, ship.d].every((x) => x && x.w === 100 && /^\S+ \d{1,2}\/\d{1,2}$/.test(x.t) && x.room >= 24) && ship.pal === 70, ship);
+  ok(scn, 'one point only: no × (the last point is never removed here)', await K.count(page, `${DLG} [data-ship] [data-act="del-ship"]`) === 0);
+  // open + save with no change = 0 requests (the DB-level proof: plan-077.test.mjs U1, 0 rows written)
+  await save(page);
+  await page.waitForTimeout(400);
+  ok(scn, 'open + «Αποθήκευση» with no change → 0 PATCH, the line «Τίποτα δεν άλλαξε»', K.planOf(S, 'PATCH', '/plan/orders/3101').length === 0
+    && /Τίποτα δεν άλλαξε/.test(await K.text(page, `${DLG} [data-err]`)));
   await page.fill(`${DLG} [data-f="price"]`, '330');
   await save(page);
   await page.waitForTimeout(1000);
   const p = K.planOf(S, 'PATCH', '/plan/orders/3101');
-  ok(scn, 'one PATCH /plan/orders/3101 with only {set:{price:330}}', p.length === 1 && JSON.stringify(p[0].body) === JSON.stringify({ set: { price: 330 } }), p.map((x) => x.body));
-  ok(scn, 'an edit carries no request_id (only the 3 creations do)', p[0] && !('request_id' in p[0].body));
+  const sent = p[0] ? Object.assign({}, p[0].body) : null;
+  if (sent) delete sent.request_id;
+  ok(scn, 'one PATCH /plan/orders/3101 with only {set:{price:330}} besides its request_id', p.length === 1 && JSON.stringify(sent) === JSON.stringify({ set: { price: 330 } }), p.map((x) => x.body));
+  ok(scn, 'the edit carries the open form\'s request_id (decision 44, 077)', !!p[0] && UUIDRE.test(String(p[0].body.request_id)), p[0] && p[0].body);
+  ok(scn, 'the request_id is in memory only', !!p[0] && await noStore(page, p[0].body.request_id));
+  await closeClean(page, S, ok, scn);
+}
+async function scnEditRide({ browser, origin, ok, scn }) {
+  const { page, S } = await K.openApp(browser, origin, { plan: { 'PATCH /plan/orders/3001': UPD_OK(3001) } });
+  if (!(await guard(page, ok, scn))) return;
+  await openForm(page, { natOrderId: 3001 });
+  ok(scn, 'an order ON a cycle opens with its price and notes (not on the board: F13)', await fval(page, '[data-f="price"]') === '420' && await fval(page, '[data-f="notes"]') === 'κλήση πριν');
+  const row = await page.evaluate((d) => { const r = document.querySelector(`${d} [data-ship="5202"]`);
+    return r && { ro: r.hasAttribute('data-ro'), dis: [...r.querySelectorAll('input')].every((x) => x.disabled), txt: r.textContent, x: !!r.querySelector('[data-act="del-ship"]') }; }, DLG);
+  ok(scn, 'the riding point: shown, every field disabled, «σε κύκλο RT-T101», no ×', !!row && row.ro && row.dis && /σε κύκλο RT-T101/.test(row.txt) && !row.x, row);
+  ok(scn, 'Κατεύθυνση disabled on a cycle (the cycle\'s side holds)', await page.evaluate((d) => document.querySelector(`${d} [data-f="dir"]`).disabled, DLG));
+  await page.fill(`${DLG} [data-f="notes"]`, '');
+  await save(page);
+  await page.waitForTimeout(1000);
+  const p = K.planOf(S, 'PATCH', '/plan/orders/3001');
+  const sent = p[0] ? Object.assign({}, p[0].body) : null;
+  if (sent) delete sent.request_id;
+  ok(scn, 'notes emptied on purpose → {set:{notes:null}}, nothing else (the riding point is never sent)', p.length === 1 && JSON.stringify(sent) === JSON.stringify({ set: { notes: null } }), p.map((x) => x.body));
+  await closeClean(page, S, ok, scn);
+}
+async function scnEditAdd({ browser, origin, ok, scn }) {
+  const plan = { 'PATCH /plan/orders/3001': UPD_OK(3001, { new_shipment_ids: [5301], new_piece_ids: [4301] }) };
+  const { page, S } = await K.openApp(browser, origin, { plan });
+  if (!(await guard(page, ok, scn))) return;
+  await openForm(page, { natOrderId: 3001 });
+  await page.click(`${DLG} [data-act="add-ship"][data-k="drop"]`);
+  const nw = await page.evaluate((d) => { const r = document.querySelector(`${d} [data-newship]`);
+    const g = (k) => r.querySelector(`[data-f="${k}"]`).value;
+    return r && { o: document.getElementById('lv_' + r.dataset.po).value, ol: document.getElementById('ls_' + r.dataset.po).value,
+      d: document.getElementById('lv_' + r.dataset.pd).value, win: [g('lday'), g('lfrom'), g('lto'), g('dday'), g('dfrom'), g('dto')] }; }, DLG);
+  ok(scn, '«+ σημείο παράδοσης»: the order\'s loading place pre-picked, the delivery empty, the order\'s days, windows empty = the whole day (F1)',
+    !!nw && nw.o === 'recJucKOhC1zh4IP3' && nw.ol === 'ΒΕΡΟΙΑ TEST' && nw.d === '' && JSON.stringify(nw.win) === JSON.stringify(['2026-10-12', '', '', '2026-10-13', '', '']), nw);
+  await save(page);
+  await page.waitForTimeout(400);
+  ok(scn, 'no delivery place picked → refused on screen, nothing sent', K.planOf(S, 'PATCH', '/plan/orders/3001').length === 0
+    && /διάλεξε τοποθεσία παράδοσης/.test(await K.text(page, `${DLG} [data-err]`)));
+  await page.evaluate((d) => { const r = document.querySelector(`${d} [data-newship]`); fhPickLinked(r.dataset.pd, 'recWn5LocAth', 'ATHENS TEST');
+    const p = r.querySelector('[data-f="pal"]'); p.value = '1'; p.dispatchEvent(new Event('input', { bubbles: true })); }, DLG);
+  await save(page);
+  await page.waitForTimeout(1000);
+  const p = K.planOf(S, 'PATCH', '/plan/orders/3001');
+  const b = p[0] && p[0].body;
+  ok(scn, 'one PATCH: exactly ONE new shipment (no shipment_id), the riding point absent, no set', p.length === 1 && !b.set && Array.isArray(b.shipments)
+    && b.shipments.length === 1 && !('shipment_id' in b.shipments[0]), p.map((x) => x.body));
+  ok(scn, 'the new point: 1 → 2, 1 pallet, 00:00–23:59 Athens on 12/10 and 13/10', !!b && JSON.stringify(b.shipments[0]) === JSON.stringify({ origin_location_id: 1, dest_location_id: 2, pallets: 1,
+    load_from: '2026-10-12T00:00:00+03:00', load_to: '2026-10-12T23:59:00+03:00', deliver_from: '2026-10-13T00:00:00+03:00', deliver_to: '2026-10-13T23:59:00+03:00' }), b && b.shipments);
+  ok(scn, 'the add carries the open form\'s request_id (a creation: decision 44)', !!b && UUIDRE.test(String(b.request_id)));
+  const done = await K.text(page, `${DLG} [data-done]`);
+  ok(scn, 'saved: the line says the new point waits ΠΡΟΣ ΑΝΑΘΕΣΗ (owner 28/10: one board move puts it on a truck)', /Αποθηκεύτηκε/.test(done) && /ΠΡΟΣ ΑΝΑΘΕΣΗ/.test(done), done);
+  await closeClean(page, S, ok, scn);
+}
+async function scnEditRemove({ browser, origin, ok, scn }) {
+  const orders = K.orders();
+  orders[3101].shipments.push(Object.assign({}, orders[3101].shipments[0], { shipment_id: 5203, dest_location_id: 4, pallets: 2 }));
+  const { page, S } = await K.openApp(browser, origin, { orders, plan: { 'PATCH /plan/orders/3101': UPD_OK(3101, { removed_shipment_ids: [5203] }) } });
+  if (!(await guard(page, ok, scn))) return;
+  await openForm(page, { natOrderId: 3101 });
+  ok(scn, 'two waiting points: each has its ×', await K.count(page, `${DLG} [data-ship] [data-act="del-ship"]`) === 2);
+  // ↺ undoes the mark before «Αποθήκευση»: the point is back, its fields live again
+  await page.click(`${DLG} [data-ship="5203"] [data-act="del-ship"]`);
+  await page.click(`${DLG} [data-ship="5203"] [data-act="del-ship"]`);
+  ok(scn, '× then ↺: the point is back with live fields', await page.evaluate((d) => { const r = document.querySelector(`${d} [data-ship="5203"]`);
+    return !!r && !r.hasAttribute('data-rm') && [...r.querySelectorAll('input')].every((x) => !x.disabled); }, DLG));
+  await page.click(`${DLG} [data-ship="5203"] [data-act="del-ship"]`);
+  ok(scn, 'the × marks the point (struck, fields disabled), never drops it from the screen', await page.evaluate((d) => { const r = document.querySelector(`${d} [data-ship="5203"]`);
+    return !!r && r.hasAttribute('data-rm') && [...r.querySelectorAll('input')].every((x) => x.disabled); }, DLG));
+  await save(page);
+  await page.waitForTimeout(1000);
+  const p = K.planOf(S, 'PATCH', '/plan/orders/3101');
+  const b = p[0] && p[0].body;
+  ok(scn, 'one PATCH: {shipments:[{shipment_id:5203, remove:true}]} + request_id, the other point absent', p.length === 1 && JSON.stringify(b.shipments) === JSON.stringify([{ shipment_id: 5203, remove: true }])
+    && !b.set && UUIDRE.test(String(b.request_id)), p.map((x) => x.body));
+  // saved: the form adds no row it could no longer send
+  await page.click(`${DLG} [data-act="add-ship"][data-k="drop"]`);
+  ok(scn, 'after the save «+ σημείο παράδοσης» adds nothing', await K.count(page, `${DLG} [data-newship]`) === 0);
+  await closeClean(page, S, ok, scn);
+}
+// a stored window over midnight cannot sit in one day field per side: shown, never sent (it would come back shortened)
+async function scnEditTwoDay({ browser, origin, ok, scn }) {
+  const orders = K.orders();
+  Object.assign(orders[3101].shipments[0], { deliver_from: '2026-10-15T19:00:00+00:00', deliver_to: '2026-10-15T23:00:00+00:00' });   // 22:00 → 02:00 Athens
+  orders[3101].shipments.push(Object.assign({}, K.orders()[3101].shipments[0], { shipment_id: 5204, dest_location_id: 4, pallets: 2 }));
+  const { page, S } = await K.openApp(browser, origin, { orders, plan: { 'PATCH /plan/orders/3101': UPD_OK(3101) } });
+  if (!(await guard(page, ok, scn))) return;
+  await openForm(page, { natOrderId: 3101 });
+  const row = await page.evaluate((d) => { const r = document.querySelector(`${d} [data-ship="5201"]`);
+    return r && { ro: r.hasAttribute('data-ro'), dis: [...r.querySelectorAll('input')].every((x) => x.disabled), txt: r.textContent }; }, DLG);
+  ok(scn, 'a delivery window 22:00 → 02:00: the point is shown read-only with the reason', !!row && row.ro && row.dis && /παράθυρο σε δύο ημέρες/.test(row.txt), row);
+  // still removable (077 allows it): × marks it, its fields stay disabled, ↺ keeps them disabled
+  await page.click(`${DLG} [data-ship="5201"] [data-act="del-ship"]`);
+  await page.click(`${DLG} [data-ship="5201"] [data-act="del-ship"]`);
+  ok(scn, '× then ↺ on the read-only point: its fields stay disabled', await page.evaluate((d) => [...document.querySelectorAll(`${d} [data-ship="5201"] input`)].every((x) => x.disabled), DLG));
+  await page.click(`${DLG} [data-ship="5201"] [data-act="del-ship"]`);
+  await page.fill(`${DLG} [data-f="notes"]`, 'αλλαγή');
+  await save(page);
+  await page.waitForTimeout(1000);
+  const p = K.planOf(S, 'PATCH', '/plan/orders/3101');
+  const sent = p[0] ? Object.assign({}, p[0].body) : null;
+  if (sent) delete sent.request_id;
+  ok(scn, 'notes + the removal of the two-day point: never its window, the other point absent', p.length === 1
+    && JSON.stringify(sent) === JSON.stringify({ set: { notes: 'αλλαγή' }, shipments: [{ shipment_id: 5201, remove: true }] }), p.map((x) => x.body));
+  await closeClean(page, S, ok, scn);
+}
+async function scnEditReadFail({ browser, origin, ok, scn }) {
+  const { page, S } = await K.openApp(browser, origin, { plan: { 'GET /plan/orders/3101': () => K.planErr(503, 'SCHEMA_BEHIND', 'schema_behind') } });
+  if (!(await guard(page, ok, scn))) return;
+  await page.evaluate(() => { window.__toasts = []; const t = window.toast; window.toast = function (m, ty) { window.__toasts.push([String(m), ty]); return t && t.apply(this, arguments); }; });
+  const opened = await page.evaluate(() => WN5Form.openOrder({ natOrderId: 3101 }));
+  await page.waitForTimeout(400);
+  const ts = await page.evaluate(() => window.__toasts);
+  ok(scn, 'a read that fails opens NO form (never values it could not read) and says why', opened === false && await K.count(page, DLG) === 0
+    && ts.some(([m, ty]) => /#3101 δεν διαβάστηκε — η φόρμα δεν άνοιξε: rig sentinel schema_behind/.test(m) && ty === 'danger'), ts);
+  ok(scn, 'nothing written', K.planOf(S, 'PATCH', /\/plan\/orders\//).length === 0);
   await closeClean(page, S, ok, scn);
 }
 
@@ -416,24 +563,29 @@ async function scnVeroiaEdit({ browser, origin, ok, scn }) {
     const r = x.querySelector('[data-ship="5255"]');
     return { t: x.querySelector('.wi4-dlg-t').textContent, route: r ? r.querySelector('span').textContent : null,
       days: r ? ['lday', 'dday'].map((k) => { const i = r.querySelector(`[data-f="${k}"]`); return i ? [i.value, i.disabled] : null; }) : null,
-      price: x.querySelector('[data-f="price"]').value, note: x.textContent.includes('για παραγγελία σε κύκλο ή στη Βέροια'),
+      pdis: r ? r.querySelector('[data-f="pal"]').disabled : null,
+      price: x.querySelector('[data-f="price"]').value,
       rows: x.querySelectorAll('[data-ship="5255"]').length, pal: r ? r.querySelector('[data-f="pal"]').value : null,
       dir: (x.querySelector('[data-f="dir"] option[value=""]') || {}).textContent };
   }, DLG);
-  ok(scn, 'Veroia panel ✈ → card → «Επεξεργασία» opens the edit form of #3150 with shipment 5255, both days editable (15/10, 16/10)', !!form && /#3150/.test(form.t)
-    && JSON.stringify(form.days) === JSON.stringify([['2026-10-15', false], ['2026-10-16', false]]), form);
-  ok(scn, 'the route names Veroia, where the piece stands, then its destination — never «#undefined»', !!form && form.route === 'ΒΕΡΟΙΑ TEST → ATHENS TEST', form && form.route);
-  ok(scn, 'one row for shipment 5255 with its two Veroia parts added up (4 + 3 = 7), never a row per piece', !!form && form.rows === 1 && form.pal === '7', form);
-  ok(scn, 'the side select says hub[] did not send the side («δεν ήρθε με το board»), not «δεν έχει δηλωθεί»', !!form && form.dir === '— δεν ήρθε με το board · χωρίς αλλαγή', form && form.dir);
-  ok(scn, 'no price on hub[]: the price field is empty and the note says so («σε κύκλο ή στη Βέροια»)', !!form && form.price === '' && form.note, form);
-  for (const [k, v] of [['lday', '2026-10-12'], ['dday', '2026-10-12']]) await page.fill(`${DLG} [data-ship="5255"] [data-f="${k}"]`, v).catch(() => {});
+  // at Veroia the loading already happened: its day is shown, locked; the delivery and the pallets stay editable (F23)
+  ok(scn, 'Veroia panel ✈ → card → «Επεξεργασία» opens #3150: load day 15/10 locked (loaded), delivery 16/10 and pallets editable', !!form && /#3150/.test(form.t)
+    && JSON.stringify(form.days) === JSON.stringify([['2026-10-15', true], ['2026-10-16', false]]) && form.pdis === false, form);
+  ok(scn, 'the route names Veroia, where the piece stands, then its destination — never «#undefined»', !!form && form.route === 'ΒΕΡΟΙΑ TEST → ATHENS TEST · στη Βέροια', form && form.route);
+  ok(scn, 'the edit read the order (077, F13): GET /plan/orders/3150', K.planOf(S, 'GET', '/plan/orders/3150').length === 1);
+  ok(scn, 'one row for shipment 5255, the shipment\'s own pallets (4 + 3 = 7), never a row per piece', !!form && form.rows === 1 && form.pal === '7', form);
+  // F13: the read carries what hub[] does not - the side as stored (none here) and the price
+  ok(scn, 'the side as the order stores it (none: «δεν έχει δηλωθεί»), the price from the read (250)', !!form && form.dir === '— δεν έχει δηλωθεί' && form.price === '250', form);
+  await page.fill(`${DLG} [data-ship="5255"] [data-f="dday"]`, '2026-10-17').catch(() => {});
   await save(page).catch(() => {});
   await page.waitForTimeout(1000);
   const p = K.planOf(S, 'PATCH', '/plan/orders/3150');
-  const want = { load_from: '2026-10-12T07:00:00+03:00', load_to: '2026-10-12T09:00:00+03:00', deliver_from: '2026-10-12T14:00:00+03:00', deliver_to: '2026-10-12T16:00:00+03:00' };
+  const want = { deliver_from: '2026-10-17T14:00:00+03:00', deliver_to: '2026-10-17T16:00:00+03:00' };
   const sh = p[0] && p[0].body && p[0].body.shipments && p[0].body.shipments[0];
-  ok(scn, 'one PATCH /plan/orders/3150: shipment 5255 with its four new window ends only — no pallets, price, PE or side', p.length === 1 && !p[0].body.set
-    && p[0].body.shipments.length === 1 && sh.shipment_id === 5255 && Object.keys(sh).length === 5 && Object.keys(want).every((k) => Date.parse(sh[k]) === Date.parse(want[k])), p.map((x) => x.body));
+  ok(scn, 'one PATCH /plan/orders/3150: shipment 5255 with its two new delivery ends only — no load, pallets, price, PE or side', p.length === 1 && !p[0].body.set && Object.keys(p[0].body).sort().join() === 'request_id,shipments'
+    && p[0].body.shipments.length === 1 && sh.shipment_id === 5255 && Object.keys(sh).length === 3 && Object.keys(want).every((k) => Date.parse(sh[k]) === Date.parse(want[k])), p.map((x) => x.body));
+  // the side: an order waiting at Veroia has nothing planned onward, so it can still be corrected (F23)
+  ok(scn, 'Κατεύθυνση stays editable for an order waiting at Veroia', await page.evaluate((d) => !document.querySelector(`${d} [data-f="dir"]`).disabled, DLG));
   await closeClean(page, S, ok, scn);
 }
 
@@ -580,7 +732,7 @@ async function scnVs({ browser, origin, ok, scn }) {
 }
 
 K.run({
-  scenarios: { order: scnOrder, nowin: scnNoWin, nopp: scnNoPP, groupage: scnGroupage, unknown: scnUnknown, reused: scnReused, replayed: scnReplayed, edit: scnEdit, 'veroia-edit': scnVeroiaEdit, leg: scnLeg, 'leg-anodos': scnLegAnodos, vs: scnVs },
+  scenarios: { order: scnOrder, nowin: scnNoWin, nopp: scnNoPP, groupage: scnGroupage, unknown: scnUnknown, reused: scnReused, replayed: scnReplayed, edit: scnEdit, 'edit-ride': scnEditRide, 'edit-add': scnEditAdd, 'edit-remove': scnEditRemove, 'edit-read-fail': scnEditReadFail, 'edit-twoday': scnEditTwoDay, 'veroia-edit': scnVeroiaEdit, leg: scnLeg, 'leg-anodos': scnLegAnodos, vs: scnVs },
   globals: ['WN5Form'],
   go: 'the v5 order forms send one body per press, from the form only, with one request_id per open form',
 }).catch((e) => { console.error(e); process.exit(1); });

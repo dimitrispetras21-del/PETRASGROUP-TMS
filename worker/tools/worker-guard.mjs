@@ -5,7 +5,7 @@
 // the source, and the CF API returns the live script as multipart with a
 // random boundary per request — two downloads of the same version «differ».
 //
-// Usage:  node worker/tools/worker-guard.mjs <file> --plan 0|1|2 --handover 0|1 [--f3 0|1 [--f5 0|1]]
+// Usage:  node worker/tools/worker-guard.mjs <file> --plan 0|1|2 --handover 0|1 [--f3 0|1 [--f5 0|1 [--edit 0|1]]]
 //   <file>   worker/src/index.js, a `wrangler deploy --dry-run --outdir` bundle,
 //            or the raw CF API download (multipart is unwrapped here)
 //   --plan   the national v5 marker and its writes switch: 0 = before F2 is
@@ -37,21 +37,25 @@
 //            once -, truncated:  (E18, GET /costs/rt) and "order_delete_preview"
 //            (E19) - at least once. 0 = before deploy 1 (none), 1 = deploy 1 and
 //            after; 1 needs --f3 1. Without it: as before.
+//   --edit   optional, only after --f5 (077, the edit of a national order, live test 28/10 F13): rpc:
+//            "plan_order_read" (GET /plan/orders/:id) - the route row exactly once. 0 = before that deploy (none),
+//            1 = after it; 1 needs --f5 1. Without it: as before.
 // Prints one line per marker and exits 1 on the first STOP condition — no
 // partial «OK» (αρχή 1).
 import { readFileSync } from 'node:fs';
 
 const args = process.argv.slice(2);
-const [file, flag, planArg, hflag, handoverArg, f3Flag, f3Arg, f5Flag, f5Arg] = args;
-// exactly these five, seven with --f3, or nine with --f3 and --f5: an extra flag (e.g. a later phase's before its guard
+const [file, flag, planArg, hflag, handoverArg, f3Flag, f3Arg, f5Flag, f5Arg, editFlag, editArg] = args;
+// exactly these five, seven with --f3, nine with --f3 and --f5, or eleven with --edit after them: an extra flag (e.g. a later phase's before its guard
 // knows it) would be ignored and the tool would print OK without checking it - a usage error instead (code review
 // xhigh 26/10, principle 1)
-if (![5, 7, 9].includes(args.length) || !file || flag !== '--plan' || !['0', '1', '2'].includes(planArg) || hflag !== '--handover'
+if (![5, 7, 9, 11].includes(args.length) || !file || flag !== '--plan' || !['0', '1', '2'].includes(planArg) || hflag !== '--handover'
     || !['0', '1'].includes(handoverArg) || (planArg === '0' && handoverArg === '1')
     || (args.length >= 7 && (f3Flag !== '--f3' || !['0', '1'].includes(f3Arg) || (f3Arg === '1' && handoverArg !== '1')))
-    || (args.length === 9 && (f5Flag !== '--f5' || !['0', '1'].includes(f5Arg) || (f5Arg === '1' && f3Arg !== '1')))
-    || (planArg === '2' && (args.length !== 9 || handoverArg !== '1' || f3Arg !== '1' || f5Arg !== '1'))) {
-  console.error('usage: node worker/tools/worker-guard.mjs <file> --plan 0|1|2 --handover 0|1 [--f3 0|1 [--f5 0|1]] (handover 1 needs plan 1 or 2, f3 1 needs handover 1, f5 1 needs f3 1, plan 2 needs handover 1 f3 1 f5 1)');
+    || (args.length >= 9 && (f5Flag !== '--f5' || !['0', '1'].includes(f5Arg) || (f5Arg === '1' && f3Arg !== '1')))
+    || (args.length === 11 && (editFlag !== '--edit' || !['0', '1'].includes(editArg) || (editArg === '1' && f5Arg !== '1')))
+    || (planArg === '2' && (args.length < 9 || handoverArg !== '1' || f3Arg !== '1' || f5Arg !== '1'))) {
+  console.error('usage: node worker/tools/worker-guard.mjs <file> --plan 0|1|2 --handover 0|1 [--f3 0|1 [--f5 0|1 [--edit 0|1]]] (handover 1 needs plan 1 or 2, f3 1 needs handover 1, f5 1 needs f3 1, edit 1 needs f5 1, plan 2 needs handover 1 f3 1 f5 1)');
   process.exit(2);
 }
 const plan = Number(planArg);
@@ -136,11 +140,16 @@ if (f5 !== null) {
     rows.push([name, count(mark), (n) => (f5 === 1 ? (once ? n === 1 : n >= 1) : n === 0)]);
   }
 }
+const edit = editFlag === undefined ? null : Number(editArg);
+if (edit !== null) {
+  // the route row exactly once (a second would be a merge gone wrong); none before the 077 deploy
+  rows.push(['rpc: "plan_order_read" (077, F13)', count('rpc: "plan_order_read"'), (n) => (edit === 1 ? n === 1 : n === 0)]);
+}
 let ok = true;
 for (const [name, n, good] of rows) {
   const pass = good(n);
   ok = ok && pass;
   console.log(`${pass ? 'OK  ' : 'STOP'}  ${name} = ${n}`);
 }
-console.log(ok ? `GUARD OK (${rows.length} markers, plan=${plan}, handover=${handover}${f3 !== null ? `, f3=${f3}` : ''}${f5 !== null ? `, f5=${f5}` : ''}) ${file}` : `GUARD STOP — do not deploy / roll back (${file})`);
+console.log(ok ? `GUARD OK (${rows.length} markers, plan=${plan}, handover=${handover}${f3 !== null ? `, f3=${f3}` : ''}${f5 !== null ? `, f5=${f5}` : ''}${edit !== null ? `, edit=${edit}` : ''}) ${file}` : `GUARD STOP — do not deploy / roll back (${file})`);
 process.exit(ok ? 0 : 1);
