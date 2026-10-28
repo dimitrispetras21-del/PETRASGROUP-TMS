@@ -1352,7 +1352,8 @@ async function scnPlus(browser, origin) {
       const c = cell.getBoundingClientRect();
       const spill = [...cell.querySelectorAll('.wn5-pt')].some((p) => p.getBoundingClientRect().right > c.right + 0.5);
       // the stop number sits on the line of the place's first word (T14 fidelity r2: «1» stood alone on its own line)
-      const n = cell.querySelector('.wi4-pt-n'), l1 = n && n.nextElementSibling;
+      // the number inside the place line since 28/10 (wn5 small fixes), before it until then
+      const n = cell.querySelector('.wi4-pt-n'), l1 = n && (n.parentElement.classList.contains('wi4-l1') ? n.parentElement : n.nextElementSibling);
       let numLine = null;
       if (l1) {
         const tn = [...l1.childNodes].find((x) => x.nodeType === 3 && x.data.trim());
@@ -2258,10 +2259,12 @@ function r4Measure(sel) {
         out.cut.push({ row: row && row.dataset.key, t: norm(c.textContent), to: cs.textOverflow, ws: cs.whiteSpace, sw: c.scrollWidth, cw: c.clientWidth });
     }
   }
-  // the r4 extra: each point's title holds its whole first line (who · place)
+  // the r4 extra: each point's title holds its whole first line (who · place); in ΦΟΡΤΩΣΗ the stop number sits inside
+  // the line since 28/10 (wn5 small fixes) and is not part of the place
+  const own = (l1) => { const c = l1.cloneNode(true); c.querySelectorAll('.wi4-pt-n').forEach((x) => x.remove()); return norm(c.textContent); };
   for (const p of document.querySelectorAll('#content .wn5 .wn5-row .wn5-pt')) {
     const l1 = p.querySelector(':scope > .wi4-l1');
-    if (l1 && !norm(p.title).startsWith(norm(l1.textContent))) out.untitled.push({ t: norm(l1.textContent), title: p.title || null });
+    if (l1 && !norm(p.title).startsWith(own(l1))) out.untitled.push({ t: own(l1), title: p.title || null });
   }
   for (const r of document.querySelectorAll('#content .wn5 .wn5-row')) {
     const fl = r.querySelector('.wn5-fl');
@@ -2298,7 +2301,8 @@ SCN.narrow = async (browser, origin) => {
           for (const x of r.getClientRects()) if (x.width > 0.5 && !tops.some((y) => Math.abs(y - x.top) < 4)) tops.push(x.top);
           const p = l1.closest('.wn5-pt');
           const cs = getComputedStyle(l1);
-          return { t: l1.textContent, lines: tops.length, cut: cs.textOverflow === 'ellipsis' || (cs.overflowX !== 'visible' && l1.scrollWidth > l1.clientWidth + 1), title: p ? p.title : null, vh: !!row.querySelector('.wn5-fl .wn5-vh + .wn5-vtime'), h: Math.round(row.getBoundingClientRect().height) };
+          const c = l1.cloneNode(true); c.querySelectorAll('.wi4-pt-n').forEach((x) => x.remove());   // the number is inside since 28/10
+          return { t: c.textContent.trim(), lines: tops.length, cut: cs.textOverflow === 'ellipsis' || (cs.overflowX !== 'visible' && l1.scrollWidth > l1.clientWidth + 1), title: p ? p.title : null, vh: !!row.querySelector('.wn5-fl .wn5-vh + .wn5-vtime'), h: Math.round(row.getBoundingClientRect().height) };
         }, rt);
         console.log(`  · RT-T${rt} row (${name}, sidebar ${sb}): ${t && t.h}px, ΦΟΡΤΩΣΗ place on ${t && t.lines} line(s)`);
         ok(scn, `${name} 1440 sidebar ${sb}: RT-T${rt} ΦΟΡΤΩΣΗ «${want}» whole — never cut, on one line or wrapped between words; Βέροια and its window still under it`,

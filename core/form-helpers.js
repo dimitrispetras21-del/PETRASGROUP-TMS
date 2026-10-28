@@ -8,7 +8,7 @@
 const _fhLocationsArr = [];  // [{id,label}]
 const _fhLocationsMap = {};  // recId → label
 const _fhClientsMap   = {};  // recId → name
-const _fhClientCache  = {};  // query → [{id,label}]
+const _fhClientCache  = {};  // query → {at, res: [{id,label}]}; '\u0001' + probe word → {at, recs} the server's records (F19, 60 s each)
 
 // The location records (Name/City/Country) — the reference preload's copy
 // when it has landed (kept fresh by its revalidate), else the same single
@@ -69,16 +69,45 @@ function _fhRefreshLocations(locRecords) {
 async function fhSearchClients(q) {
   if (!q || q.length < 2) return [];
   const key = q.toLowerCase();
-  if (_fhClientCache[key]) return _fhClientCache[key];
+  // 60 s, as the probe below (F19): a client created meanwhile is found by the next search of the same text. Expired
+  // entries leave here, so a day of searching does not keep every answer in memory.
+  const now = Date.now();
+  for (const k of Object.keys(_fhClientCache)) if (now - _fhClientCache[k].at >= 60000) delete _fhClientCache[k];
+  if (_fhClientCache[key]) return _fhClientCache[key].res;
   const safe = q.replace(/[^a-zA-Z0-9\s\u0370-\u03FF\u1F00-\u1FFF.-]/g, '').trim();
   if (!safe) return [];
-  const formula = `SEARCH(LOWER("${safe}"), LOWER({Company Name}))`;
-  const recs = await atGet(TABLES.CLIENTS, formula, false);
+  // F19 (live 28/10): «name + start of the 2nd word» found nothing while one word worked. The whole phrase went to
+  // the server as ONE ilike, and 279 of 1,927 live names (SELECT 28/10) have two spaces between words, others «-»;
+  // the Worker also sends the phrase through URLSearchParams (a space travels as «+»; not measured). So the server is
+  // asked for ONE word (the probe, below) and every word must then be in the name, in any order, with the search
+  // rule of the boards (_fhNorm: any case, no accents, Greek = Latin).
+  // The probe is the FIRST word of 3+ letters (else the one with most): it stays the same while the 2nd word is being
+  // typed, so its answer, kept by the probe word for 60 s, is filtered here without one more paged read per keystroke
+  // (60 s, not the session: a client created meanwhile must be found by the next search); a short «Α.Ε.» / «&» never
+  // probes every S.A. company. A probe of fewer than 2 letters (punctuation, «a b») asks nothing.
+  const words = safe.split(/\s+/).filter(Boolean);
+  const letters = (w) => w.replace(/[.\-]/g, '').length;
+  const probe = words.find((w) => letters(w) >= 3) || words.reduce((a, w) => (letters(w) > letters(a) ? w : a), '');
+  // one letter would read most of the table («a b»): the user's next letter asks
+  if (letters(probe) < 2) return [];
+  const pk = '\u0001' + probe.toLowerCase();
+  // the read IN FLIGHT is kept too: keystrokes during a slow paged read share it instead of starting their own
+  if (!_fhClientCache[pk]) {
+    const p = atGet(TABLES.CLIENTS, `SEARCH(LOWER("${probe}"), LOWER({Company Name}))`, false);
+    _fhClientCache[pk] = { at: now, recs: p };
+    p.catch(() => { if (_fhClientCache[pk] && _fhClientCache[pk].recs === p) delete _fhClientCache[pk]; });   // a failure is not kept
+  }
+  const recs = await _fhClientCache[pk].recs;
+  // the plain lower-case test as well: a word typed from the middle of a Greek digraph («υκ» of «Λουκ…») matches
+  // the server's ilike but not its _fhNorm form («ou» ≠ «y») — a name the server found is never dropped here
+  const need = words.map(w => [w.toLowerCase(), _fhNorm(w)]);
   const res = recs
     .map(r => ({ id: r.id, label: r.fields['Company Name'] || '' }))
+    .filter(c => { const l = c.label.toLowerCase(), n = _fhNorm(c.label); return need.every(([w, nw]) => l.includes(w) || n.includes(nw)); })
     .sort((a, b) => a.label.localeCompare(b.label))
     .slice(0, 30);
-  _fhClientCache[key] = res;
+  // as old as the probe records it was filtered from: never kept past their 60 s
+  _fhClientCache[key] = { at: _fhClientCache[pk] ? _fhClientCache[pk].at : now, res };
   res.forEach(c => { _fhClientsMap[c.id] = c.label; });
   return res;
 }
