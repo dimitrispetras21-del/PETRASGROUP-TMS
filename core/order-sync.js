@@ -146,7 +146,8 @@ const _orderSync = (function() {
     if (!gls.length) return;
     // F5: after day L the CL/NL are history — their totals no longer follow the order. Asked only when there
     // IS a line (most orders have none), so a missing or failed PlanConfig never fails an order without groupage.
-    const _pc = typeof PlanConfig !== 'undefined' ? await PlanConfig.load() : { state: 'unknown' };
+    // fresh: a 'before' kept from before 074 ran must not patch a historical CL/NL (one GET, only with a line).
+    const _pc = typeof PlanConfig !== 'undefined' ? await PlanConfig.load({ fresh: true }) : { state: 'unknown' };
     if (_pc.state === 'after') return;
     if (_pc.state === 'unknown') throw new Error('Δεν διαβάστηκε αν έγινε η μετάβαση εθνικών (v5) — τα σύνολα groupage δεν ενημερώθηκαν');
 
