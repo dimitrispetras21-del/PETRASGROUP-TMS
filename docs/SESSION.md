@@ -12,6 +12,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
+- dimitris · `fix/wn5-vs-bridge-assign` · Εθνικά v5 B1: VS bridges can be assigned (a window per window-less stop, whole day by default); Veroia shelf for VS bridges waits for the owner; PR pending (`docs/sessions/2026-10-28-dimitris-wn5-vs-bridge-assign.md`)
 - dimitris · `docs/wn4-plan-rev6` · Weekly National v4 plan (WP-A, one Veroia day, live since 12/10 morning)
 - dimitris · `fix/wi4-*` · Weekly International v4 fixes
 - dimitris · `docs/national-v5-f0` · National v5 F0: Figma approved 22/10 (frames Δ1–Δ12, one scenario), baseline measured (`docs/sessions/2026-10-22-dimitris-national-v5-f0.md`); Worker chain `deploy/worker-plan` (F2→F3→F5) owned by dimitris (owner 22/10); F0 closed
