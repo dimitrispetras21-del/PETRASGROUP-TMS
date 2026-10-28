@@ -288,6 +288,53 @@ async function scnEdit({ browser, origin, ok, scn }) {
   await closeClean(page, S, ok, scn);
 }
 
+// Live F23 (28/10): an order sent back to Veroia (hub[], for_split, no live legs) — ✈ on the Veroia panel → its card →
+// «Επεξεργασία». The form read waiting[] only and said «άλλη εβδομάδα»: the dates could not be fixed. hub[] carries no
+// origin, price, PE or side (072 / 074a), so the route names Veroia and nothing the board did not send is sent.
+async function scnVeroiaEdit({ browser, origin, ok, scn }) {
+  const b = K.week();
+  b.hub.push({ piece_id: 4155, shipment_id: 5255, kind: 'national', order_id: null, nat_order_id: 3150, order_stop_id: null, pallets: 4, leave_by: null,
+    nat_ready_day: '2026-10-12', nat_due_day: '2026-10-12', overdue: false, is_stock: false, inbound_rt_id: null, client_id: 43, client: 'ΠΕΛΑΤΗΣ Γ', reference: null,
+    temperature_c: null, nat_to_location_id: 2, for_split: true,
+    load_from: '2026-10-15T07:00:00+03:00', load_to: '2026-10-15T09:00:00+03:00', deliver_from: '2026-10-16T14:00:00+03:00', deliver_to: '2026-10-16T16:00:00+03:00' });
+  // a second part of the same shipment, also left at Veroia by «Σπάσε…» (code review: one row per shipment, not per piece)
+  b.hub.push(Object.assign({}, b.hub[b.hub.length - 1], { piece_id: 4156, pallets: 3 }));
+  // the live catalogue names its hub (074a plan_lookups is_hub)
+  const lookups = JSON.parse(JSON.stringify(K.LOOKUPS));
+  for (const l of lookups.locations) l.is_hub = l.id === 1;
+  const plan = { 'PATCH /plan/orders/3150': () => [200, { ok: true, op: 'plan_order_update', dry_run: false, ids: { nat_order_id: 3150, shipment_ids: [5255] }, warnings: [], notice_ids: [] }] };
+  const { page, S } = await K.openApp(browser, origin, { board: b, lookups, plan });
+  if (!(await guard(page, ok, scn))) return;
+  await page.click('#wn5-hub [data-hub="open"]', { timeout: 3000 }).catch(() => {});
+  await page.click('#content .wn5 .wn5-hub-it[data-piece="4155"] .wi4-plane[data-act="ocard"]', { timeout: 3000 }).catch(() => {});
+  await page.click('.wi4-dlg.wn5-ocard [data-act="edit"]', { timeout: 3000 }).catch(() => {});
+  await page.waitForSelector(DLG, { timeout: 8000 }).catch(() => {});
+  const form = await page.evaluate((d) => {
+    const x = document.querySelector(d); if (!x) return null;
+    const r = x.querySelector('[data-ship="5255"]');
+    return { t: x.querySelector('.wi4-dlg-t').textContent, route: r ? r.querySelector('span').textContent : null,
+      days: r ? ['lday', 'dday'].map((k) => { const i = r.querySelector(`[data-f="${k}"]`); return i ? [i.value, i.disabled] : null; }) : null,
+      price: x.querySelector('[data-f="price"]').value, note: x.textContent.includes('για παραγγελία σε κύκλο ή στη Βέροια'),
+      rows: x.querySelectorAll('[data-ship="5255"]').length, pal: r ? r.querySelector('[data-f="pal"]').value : null,
+      dir: (x.querySelector('[data-f="dir"] option[value=""]') || {}).textContent };
+  }, DLG);
+  ok(scn, 'Veroia panel ✈ → card → «Επεξεργασία» opens the edit form of #3150 with shipment 5255, both days editable (15/10, 16/10)', !!form && /#3150/.test(form.t)
+    && JSON.stringify(form.days) === JSON.stringify([['2026-10-15', false], ['2026-10-16', false]]), form);
+  ok(scn, 'the route names Veroia, where the piece stands, then its destination — never «#undefined»', !!form && form.route === 'ΒΕΡΟΙΑ TEST → ATHENS TEST', form && form.route);
+  ok(scn, 'one row for shipment 5255 with its two Veroia parts added up (4 + 3 = 7), never a row per piece', !!form && form.rows === 1 && form.pal === '7', form);
+  ok(scn, 'the side select says hub[] did not send the side («δεν ήρθε με το board»), not «δεν έχει δηλωθεί»', !!form && form.dir === '— δεν ήρθε με το board · χωρίς αλλαγή', form && form.dir);
+  ok(scn, 'no price on hub[]: the price field is empty and the note says so («σε κύκλο ή στη Βέροια»)', !!form && form.price === '' && form.note, form);
+  for (const [k, v] of [['lday', '2026-10-12'], ['dday', '2026-10-12']]) await page.fill(`${DLG} [data-ship="5255"] [data-f="${k}"]`, v).catch(() => {});
+  await save(page).catch(() => {});
+  await page.waitForTimeout(1000);
+  const p = K.planOf(S, 'PATCH', '/plan/orders/3150');
+  const want = { load_from: '2026-10-12T07:00:00+03:00', load_to: '2026-10-12T09:00:00+03:00', deliver_from: '2026-10-12T14:00:00+03:00', deliver_to: '2026-10-12T16:00:00+03:00' };
+  const sh = p[0] && p[0].body && p[0].body.shipments && p[0].body.shipments[0];
+  ok(scn, 'one PATCH /plan/orders/3150: shipment 5255 with its four new window ends only — no pallets, price, PE or side', p.length === 1 && !p[0].body.set
+    && p[0].body.shipments.length === 1 && sh.shipment_id === 5255 && Object.keys(sh).length === 5 && Object.keys(want).every((k) => Date.parse(sh[k]) === Date.parse(want[k])), p.map((x) => x.body));
+  await closeClean(page, S, ok, scn);
+}
+
 // T21 — the leg form. A second national order on the KATHODOS of RT-T101, so «two blocks changed» can be tried.
 function legWeek() {
   const b = K.week();
@@ -431,7 +478,7 @@ async function scnVs({ browser, origin, ok, scn }) {
 }
 
 K.run({
-  scenarios: { order: scnOrder, groupage: scnGroupage, unknown: scnUnknown, reused: scnReused, replayed: scnReplayed, edit: scnEdit, leg: scnLeg, 'leg-anodos': scnLegAnodos, vs: scnVs },
+  scenarios: { order: scnOrder, groupage: scnGroupage, unknown: scnUnknown, reused: scnReused, replayed: scnReplayed, edit: scnEdit, 'veroia-edit': scnVeroiaEdit, leg: scnLeg, 'leg-anodos': scnLegAnodos, vs: scnVs },
   globals: ['WN5Form'],
   go: 'the v5 order forms send one body per press, from the form only, with one request_id per open form',
 }).catch((e) => { console.error(e); process.exit(1); });

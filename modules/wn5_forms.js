@@ -611,7 +611,14 @@
   // legs of a cycle have neither. Missing values are «not known», never zero (trap 2).
   function _editSource(board, id) {
     if (!board) return null;
-    const w = (board.waiting || []).filter((x) => x.nat_order_id === id);
+    // live F23 (28/10): an order sent back to Veroia is in hub[], not waiting[]; without it «Επεξεργασία» said «άλλη
+    // εβδομάδα» and its dates could not be fixed. hub[] has no origin, price, PE or side (072 / 074a): the route names
+    // Veroia, where the piece stands and loads (v_hub_bucket = at_hub, as the card's «Φόρτωση», by the card's own hub
+    // rule); the rest stays «not known» and is never sent (_patchBody skips null).
+    const kit = typeof WN5Act !== 'undefined' ? WN5Act._kit : null;
+    const hubId = kit && typeof kit.hubId === 'function' ? kit.hubId() : (typeof PlanIds !== 'undefined' ? PlanIds.hub() : null);
+    const w = (board.waiting || []).filter((x) => x.nat_order_id === id)
+      .concat((board.hub || []).filter((x) => x.nat_order_id === id).map((x) => Object.assign({}, x, { nat_from_location_id: hubId })));
     const legs = [];
     for (const c of board.cycles || []) for (const s of c.stops || []) for (const l of s.legs || []) if (l.nat_order_id === id) legs.push(l);
     if (!w.length && !legs.length) return null;
@@ -624,9 +631,23 @@
       goods: '', notes: '', riding: legs.length > 0,
       // 075: the side the board reads for a waiting order (null = never stated, the hub rule draws it)
       direction: w[0] && (w[0].direction === 'KATHODOS' || w[0].direction === 'ANODOS') ? w[0].direction : null,
-      ships: w.map((x) => ({ shipment_id: x.shipment_id, origin: x.nat_from_location_id, dest: x.nat_to_location_id, pallets: x.pallets,
-        load_from: x.load_from, load_to: x.load_to, deliver_from: x.deliver_from, deliver_to: x.deliver_to })),
+      // hub[] does not carry the side at all: «not sent», never «never stated» (F23 code review)
+      dirUnsent: !!w[0] && !('direction' in w[0]),
+      ships: _shipRows(w),
     };
+  }
+  // One row per shipment: the board lists PIECES, and after «Σπάσε…» two parts of one shipment can both wait at Veroia.
+  // A row per piece sent the second part's pallets as the shipment's own (plan_order_update pallets = the shipment's),
+  // unasked (F23 code review). The windows are the shipment's, the same on every piece; the pallets add up.
+  function _shipRows(w) {
+    const by = new Map();
+    for (const x of w) {
+      const s = by.get(x.shipment_id);
+      if (s) { s.pallets = Math.round(((Number(s.pallets) || 0) + (Number(x.pallets) || 0)) * 10) / 10; continue; }
+      by.set(x.shipment_id, { shipment_id: x.shipment_id, origin: x.nat_from_location_id, dest: x.nat_to_location_id, pallets: x.pallets,
+        load_from: x.load_from, load_to: x.load_to, deliver_from: x.deliver_from, deliver_to: x.deliver_to });
+    }
+    return [...by.values()];
   }
   const _placeName = (id) => { const p = typeof PlanIds !== 'undefined' ? PlanIds.place(id) : null; return p ? p.name : '#' + id; };
   const _editDay = (k, v, ro) => `<span class="wn5f-day"><input class="form-input" type="date" data-f="${k}" value="${v}"${ro}><span class="wn5f-dayt" aria-hidden="true"></span></span>`;
@@ -650,10 +671,10 @@
       + `<div class="wn5f-f"><span>PE · ανταλλαγή παλετών</span>${_peHTML(e.pallet_exchange)}</div></div>`
       // 075: the side is corrected here (the repair of #17); on a cycle the cycle's side holds, so it stays as it is
       + `<label class="wn5f-f"><span>Κατεύθυνση</span><select class="form-input" data-f="dir"${ro}>`
-      + (e.direction ? '' : '<option value="" selected>— δεν έχει δηλωθεί</option>')
+      + (e.direction ? '' : `<option value="" selected>${e.dirUnsent ? '— δεν ήρθε με το board · χωρίς αλλαγή' : '— δεν έχει δηλωθεί'}</option>`)
       + ['KATHODOS', 'ANODOS'].map((k) => `<option value="${k}"${e.direction === k ? ' selected' : ''}>${DIR_GR[k]}</option>`).join('')
       + `</select></label>`
-      + (e.price == null ? '<div class="wn5f-note">Η τιμή δεν έρχεται με το board για παραγγελία σε κύκλο — γράψε τιμή μόνο για να την αλλάξεις.</div>' : '')
+      + (e.price == null ? '<div class="wn5f-note">Η τιμή δεν έρχεται με το board για παραγγελία σε κύκλο ή στη Βέροια — γράψε τιμή μόνο για να την αλλάξεις.</div>' : '')
       + `<div class="wn5f-grid3"><label class="wn5f-f"><span>Αναφορά</span><input class="form-input" data-f="ref" value="${_esc(e.reference)}"></label>`
       + `<label class="wn5f-f"><span>Είδος</span><input class="form-input" data-f="goods"></label><label class="wn5f-f"><span>Σημειώσεις</span><input class="form-input" data-f="notes"></label></div>`
       + `<div class="wn5f-sec">ΑΠΟΣΤΟΛΕΣ</div><div class="wn5f-ships-h"><span>Διαδρομή</span><span>Φόρτωση από – έως</span><span>Παράδοση από – έως</span><span>Παλέτες</span></div>${ships}`

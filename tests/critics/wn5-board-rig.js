@@ -2496,7 +2496,7 @@ SCN.live45 = async (browser, origin) => {
     /\+7 °C/.test(by(20).text || '') && /\+4 °C/.test(by(16).text || '') && !/°C/.test(by(15).text || '') && !/°C/.test(by(19).text || ''), { e616: by(20).text, i604: by(16).text });
   // 6 · the queue counts with nouns: 4 VS orders, 7 pieces
   const qh = await page.evaluate(() => { const h = document.querySelector('#content .wn5 .wn5-q .wi4-q-hd'); const a = document.querySelector('#content .wn5 .wn5-q .wi4-q-all'); return { h: h ? h.textContent.replace(/\s+/g, ' ').trim() : '', a: a ? a.textContent.trim() : '' }; });
-  ok(scn, '6 · «ΕΠΟΜΕΝΑ · 4 παραγγελίες VS · 7 κομμάτια», the link «Όλες οι 4 ▾»', /^ΕΠΟΜΕΝΑ · 4 παραγγελίες VS · 7 κομμάτια/.test(qh.h) && qh.a === 'Όλες οι 4 ▾', qh);
+  ok(scn, '6 · «ΕΠΟΜΕΝΑ · 4 · 7 κομμάτια» (B-7, owner 28/10), the link «Όλες οι 4 ▾»', /^ΕΠΟΜΕΝΑ · 4 · 7 κομμάτια/.test(qh.h) && qh.a === 'Όλες οι 4 ▾', qh);
   // 5 · days always open: no chevron on an empty day, an open one on a day with rows
   const days = await page.evaluate(() => [...document.querySelectorAll('#content .wn5 .wn5-day')].map((d) => ({ date: d.dataset.date, empty: d.classList.contains('empty'), chev: !!d.querySelector('.wi4-chev'), open: d.querySelector('.wn5-dayh').getAttribute('aria-expanded') })));
   ok(scn, '5 · W45-like week: empty days draw no chevron, days with rows are open', days.length === 7 && days.every((d) => (d.empty ? !d.chev : d.chev && d.open === 'true')), days);
@@ -2849,6 +2849,71 @@ SCN.why = async (browser, origin) => {
     ok(scn, 'delete: an empty reason → «Διαγραφή» off, red «Λείπει: λόγος διαγραφής»', a[0] === true && a[1] === 'Λείπει: λόγος διαγραφής', a);
     await o.page.context().close();
   }
+};
+// F23 (live 28/10): a national order sent back to Veroia (hub[], for_split) had only «Σπάσε…» / «Σε φορτηγό ▾» — no
+// way to its card, so its dates could not be fixed nor the order deleted. Now each national piece of the Veroia panel
+// has the ✈ of the ΠΡΟΣ ΑΝΑΘΕΣΗ rows. The card's «Επεξεργασία» (its windows) is the form rig's «veroia-edit»: this
+// stub serves no facade places, so the order form refuses to open here by design.
+SCN['veroia-card'] = async (browser, origin) => {
+  const scn = 'veroia-card';
+  const b = live45();
+  b.hub.push({ piece_id: 55, shipment_id: 55, kind: 'national', nat_order_id: 50, order_id: null, order_stop_id: null, client_id: 48, client: 'ΠΕΛΑΤΗΣ ΕΘ 50', reference: null, pallets: 4,
+    nat_to_location_id: 2, nat_ready_day: '2026-10-12', nat_due_day: '2026-10-12', overdue: false, is_stock: false, for_split: true, inbound_rt_id: null, leave_by: null, temperature_c: null,
+    load_from: '2026-10-15T07:00:00+03:00', load_to: '2026-10-15T09:00:00+03:00', deliver_from: '2026-10-16T14:00:00+03:00', deliver_to: '2026-10-16T16:00:00+03:00' });
+  const { page, S } = await openBoard(browser, origin, { board: b });
+  await page.waitForSelector('#content > .wi4.wn5[data-state="ok"]', { timeout: 8000 }).catch(() => {});
+  await page.click('#wn5-hub [data-hub="open"]', { timeout: 2000 }).catch(() => {});
+  await page.waitForTimeout(300);
+  const shelf = await page.evaluate(() => {
+    const it = (p) => document.querySelector(`#content .wn5 .wn5-hub-it[data-piece="${p}"]`);
+    const pl = (p) => !!(it(p) && it(p).querySelector('.wi4-plane[data-act="ocard"]'));
+    return { n50: pl(55), vs: [15, 16, 17, 18].some(pl), split: !!(it(55) && it(55).querySelector('[data-hub="split"]')), truck: !!(it(55) && it(55).querySelector('[data-hub="truck"]')) };
+  });
+  ok(scn, 'the national #50 on the Veroia panel («ΓΙΑ ΜΟΙΡΑΣΜΑ») has the ✈ of its card beside «Σπάσε…» / «Σε φορτηγό ▾»; a VS item has none',
+    shelf.n50 && shelf.split && shelf.truck && !shelf.vs, shelf);
+  await page.click('#content .wn5 .wn5-hub-it[data-piece="55"] .wi4-plane[data-act="ocard"]', { timeout: 2000 }).catch(() => {});
+  await page.waitForTimeout(500);
+  const card = await page.evaluate(() => { const d = document.querySelector('.wi4-dlg.wn5-ocard'); return d ? { t: d.querySelector('.wi4-dlg-hd').textContent.replace(/\s+/g, ' '), edit: !!d.querySelector('[data-act="edit"]'), del: !!d.querySelector('[data-act="delete"]') } : null; });
+  ok(scn, '✈ opens the card of #50 with «Επεξεργασία» and «Διαγραφή παραγγελίας»', !!card && /#50 · ΠΕΛΑΤΗΣ ΕΘ 50/.test(card.t) && card.edit && card.del, card);
+  ok(scn, 'nothing written: only reads on /plan/*', S.plan.every((x) => x.m === 'GET'), S.plan.map((x) => x.m + ' ' + x.path));
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await page.context().close();
+};
+// Figma audit 28/10 (PR #154), group 1 — front end only, one check per item, each NO-GO on main:
+// B-6 «+ Νέα παραγγελία» 135 × 32 (H1 2120:7872) · B-7 «ΕΠΟΜΕΝΑ · 4 · 7 κομμάτια» (in live45 check 6) · B-8 the «+»
+// seen without hover · B-11 no «—» before the arrow of a VS without reference · B-12 an ΑΝΟΔΟΣ to Veroia reads
+// «Βέροια · τέλος κύκλου» + its deadline, no city «Veroia». B-18 / B-21 / B-25 (Δ1 and the order card, both in
+// wn5_actions.js) follow in their own PR, stacked on the Δ1 quick fix (coordinator 28/10).
+SCN['figma-g1'] = async (browser, origin) => {
+  const scn = 'figma-g1';
+  const lk = DEF_LOOKUPS();
+  lk.locations.find((l) => l.id === 1).city = 'Veroia';
+  const b = live45();
+  // export 616 (pieces 20, 21) has a delivery window at Veroia that crosses midnight: its deadline is the window's end
+  for (const w of b.waiting) if (w.order_id === 616) Object.assign(w, { deliver_from: '2026-10-11T22:00:00+03:00', deliver_to: '2026-10-12T02:00:00+03:00' });
+  const { page, S } = await openBoard(browser, origin, { board: b, lookups: lk });
+  await page.waitForSelector('#content > .wi4.wn5[data-state="ok"]', { timeout: 8000 }).catch(() => {});
+  const to20 = await page.evaluate(() => { const c = document.querySelector('#content .wn5 .wn5-row[data-piece="20"] .wn5-ato .wn5-end'); return c ? { t: c.textContent.replace(/\s+/g, ' ').trim(), title: c.title } : null; });
+  ok(scn, 'B-12 · with a window (Κυρ 22:00 → Δευ 02:00) the deadline is its end «ως Δευ 02:00», in the row and its title',
+    !!to20 && /ως Δευ 02:00$/.test(to20.t) && /^Βέροια · τέλος κύκλου · ως Δευ 02:00 · /.test(to20.title), to20);
+  const nb = await page.evaluate(() => { const x = [...document.querySelectorAll('.btn-new-order')].find((e) => e.offsetParent && /Νέα παραγγελία/.test(e.textContent)); if (!x) return null; const r = x.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; });
+  ok(scn, 'B-6 · «+ Νέα παραγγελία» 135 × 32 (Figma H1 2120:7872)', !!nb && nb[0] === 135 && nb[1] === 32, nb);
+  await page.click('#content .wn5 .wn5-q .wi4-q-all', { timeout: 2000 }).catch(() => {});
+  const k607 = await page.evaluate(() => { const c = document.querySelector('#content .wn5 .wn5-qcard[data-piece="19"] .wn5-qc-k'); return c ? c.textContent.trim() : null; });
+  ok(scn, 'B-11 · ΕΠΟΜΕΝΑ card of VS 607 (no reference) starts at its arrow «←» (an ΑΝΟΔΟΣ export), no «—» before it', k607 === '←', k607);
+  const to19 = await page.evaluate(() => { const c = document.querySelector('#content .wn5 .wn5-row[data-piece="19"] .wn5-ato'); return c ? { t: c.textContent.replace(/\s+/g, ' ').trim(), l1: (c.querySelector('.wi4-l1') || {}).textContent, title: (c.querySelector('[title]') || {}).title } : null; });
+  ok(scn, 'B-12 · ΠΡΟΣ of export 607: «Βέροια · τέλος κύκλου» and «ως Κυρ 11/10» (its day; the base has no hour), no city «Veroia»',
+    !!to19 && to19.l1 === 'Βέροια · τέλος κύκλου' && /ως Κυρ 11\/10/.test(to19.t) && !/Veroia/.test(to19.t), to19);
+  ok(scn, 'nothing written: only reads on /plan/*', S.plan.every((x) => x.m === 'GET'), S.plan.map((x) => x.m + ' ' + x.path));
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await page.context().close();
+  // B-8 · the «+» of a cycle side is seen without hover (Figma: always there), lighter until hover; touch has no hover
+  const c = await openBoard(browser, origin, { board: fixture() });
+  await c.page.waitForSelector('#content > .wi4.wn5[data-state="ok"]', { timeout: 8000 }).catch(() => {});
+  await c.page.mouse.move(0, 0);
+  const op = await c.page.evaluate(() => { const x = document.querySelector('#content .wn5 .wn5-row .wn5-plus'); return x ? Number(getComputedStyle(x).opacity) : null; });
+  ok(scn, 'B-8 · a «+» with no hover is visible and lighter (0 < opacity < 1)', op != null && op > 0 && op < 1, op);
+  await c.page.context().close();
 };
 // ── main ──
 (async () => {
