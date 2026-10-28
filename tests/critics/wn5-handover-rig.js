@@ -311,7 +311,11 @@ async function scnFix({ browser, origin, ok, scn }) {
   ok(scn, 'no lookups: the strip says it, the save stays disabled, the dry run = {set:{place_note}} only',
     /rig sentinel no_route/.test(await K.text(pl.page, `${FX} [data-strip]`)) && await pl.page.evaluate((f) => document.querySelector(`${f} [data-act="save"]`).disabled, FX)
       && rl.length === 1 && JSON.stringify(rl[0].body) === JSON.stringify({ set: { place_note: 'Λαμία κέντρο' }, dry_run: true }), rl.map((x) => x.body));
-  ok(scn, 'no lookups: no page or console errors', !pl.S.pageErrors.length && !appConsole(pl.S).length, pl.S.pageErrors.concat(appConsole(pl.S)));
+  // Since Worker deploy 1 (c0ccdf77, 28/10) GET /plan/lookups is live and LOOKUPS_PENDING is false: a 404 there is a
+  // real fault, logged once by planFetch (as the 404 of the handover above) — exactly that one line, nothing else.
+  const cLk = appConsole(pl.S);
+  ok(scn, 'no lookups: one planFetch log line for the 404, no other page or console error', !pl.S.pageErrors.length && cLk.length === 1
+    && /^\[TMS ERROR\] planFetch GET \/plan\/lookups: PlanError: rig sentinel no_route/.test(cLk[0]), pl.S.pageErrors.concat(cLk));
   await pl.page.context().close();
 }
 
