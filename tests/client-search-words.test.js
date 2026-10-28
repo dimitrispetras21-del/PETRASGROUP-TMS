@@ -58,4 +58,7 @@ test('F19 code review: typing on in the 2nd word asks the server nothing more; �
   const v = load();
   assert.strictEqual((await v.find('..')).length, 0);
   assert.deepStrictEqual(v.asked, []);
+  // one-letter words only: nothing is asked (never most of the table for «a b»)
+  assert.strictEqual((await v.find('a b')).length, 0);
+  assert.deepStrictEqual(v.asked, []);
 });

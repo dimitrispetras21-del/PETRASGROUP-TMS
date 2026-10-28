@@ -813,13 +813,14 @@ function _leg(ev, rtId, side) {
   if (t && t.closest && t.closest('button, a, input, select, [data-act]')) return;
   if (!active() || !ID_RE.test(String(rtId)) || typeof WN5Form === 'undefined' || typeof WN5Form.openLeg !== 'function') return;
   if (_legBusy) {
-    // the same cycle already shows its read; another cycle is told why its click waits, never a silent nothing
-    if (_legBusy.rt !== Number(rtId) && typeof toast === 'function') toast('Ανοίγει ήδη ένα άλλο σκέλος — δοκίμασε ξανά μόλις ανοίξει', 'info');
+    // the same side of the same cycle already shows its read; any other click is told why it waits, never a silent nothing
+    const sd = side === 'ANODOS' ? 'ANODOS' : 'KATHODOS';
+    if ((_legBusy.rt !== Number(rtId) || _legBusy.side !== sd) && typeof toast === 'function') toast('Ανοίγει ήδη ένα άλλο σκέλος — δοκίμασε ξανά μόλις ανοίξει', 'info');
     return;
   }
   // one token per click: only its own end (or its own 90 s guard) releases it. A read that never settles must not lock
   // every leg for the session: the form's reads (board, catalogue, places) each give up at 30 s, the lock at 90 s.
-  const lock = { rt: Number(rtId), timer: null };
+  const lock = { rt: Number(rtId), side: side === 'ANODOS' ? 'ANODOS' : 'KATHODOS', timer: null };
   const free = () => { if (_legBusy === lock) { _legBusy = null; _legMark(); } clearTimeout(lock.timer); };
   lock.timer = setTimeout(free, 90000);
   _legBusy = lock;

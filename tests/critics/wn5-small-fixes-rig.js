@@ -41,6 +41,12 @@ async function f22({ browser, origin, ok, scn }) {
   await page.waitForTimeout(100);
   const other = await toasts(page);
   ok(scn, 'a click on another row during the read says it waits', other.some((t) => /Ανοίγει ήδη ένα άλλο σκέλος/.test(t)), other);
+  // the OTHER side of the same cycle during the read is told too (code review 29/10)
+  await page.evaluate(() => { const ev = window.__ev || []; ev.length = 0; });
+  await page.click('#content .wn5-row[data-rt="201"] .wn5-afl', { force: true }).catch(() => {});
+  await page.waitForTimeout(100);
+  const side = await toasts(page);
+  ok(scn, 'a click on the other side of the same cycle during the read says it waits', side.some((t) => /Ανοίγει ήδη ένα άλλο σκέλος/.test(t)), side);
   // an impatient second and third click while the read runs: still ONE read
   await page.click('#content .wn5-row[data-rt="201"] .wn5-kto', { force: true }).catch(() => {});
   await page.click('#content .wn5-row[data-rt="201"] .wn5-kpal', { force: true }).catch(() => {});

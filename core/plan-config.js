@@ -77,7 +77,10 @@
         _log(e);
       } catch (x) {
         e = x;
-        if (x && typeof PlanApi !== 'undefined' && PlanApi.isDesigned(x)) _log(x);
+        // a Worker without the route (an emergency rollback) is the known gap of the header: said, never one log row
+        // per tab every 5 minutes
+        if (x && x.status === 404 && x.code === 'no_route') e = _err('config_no_route', 'Ο διακομιστής δεν έχει πια τη διαδρομή της ημέρας μετάβασης — ισχύει η ' + kept.cutoverDay + ' που διαβάστηκε πριν');
+        else if (x && typeof PlanApi !== 'undefined' && PlanApi.isDesigned(x)) _log(x);
       } finally {
         if (_inflight === p) _inflight = null;
       }

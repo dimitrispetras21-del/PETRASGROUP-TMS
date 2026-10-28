@@ -242,3 +242,12 @@ test('F25: recheck \'now\' asks at once; a failed recheck keeps the day read bef
   // a good answer clears the flag
   assert.deepStrictEqual(JSON.parse(await s.run(LOADR("{ recheck: 'now' }"))), { state: 'after', day: '2026-10-31', rerr: false });
 });
+
+test('F25 code review: a recheck answered 404 no_route keeps the day, says the route is gone, logs nothing', async () => {
+  const s = sandbox([json(200, AFTER('2026-10-31')), json(404, { error: { type: 'NOT_FOUND', code: 'no_route', message: 'no route' } })]);
+  await s.run(LOADR(''));
+  const n0 = s.errs().length;
+  assert.deepStrictEqual(JSON.parse(await s.run("PlanConfig.load({ recheck: 'now' }).then((r) => JSON.stringify({ state: r.state, day: r.cutoverDay, code: r.recheckErr && r.recheckErr.code }))")),
+    { state: 'after', day: '2026-10-31', code: 'config_no_route' });
+  assert.strictEqual(s.errs().length, n0, 'no app_errors row for the known gap');
+});

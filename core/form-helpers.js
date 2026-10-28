@@ -84,11 +84,12 @@ async function fhSearchClients(q) {
   // The probe is the FIRST word of 3+ letters (else the one with most): it stays the same while the 2nd word is being
   // typed, so its answer, kept by the probe word for 60 s, is filtered here without one more paged read per keystroke
   // (60 s, not the session: a client created meanwhile must be found by the next search); a short «Α.Ε.» / «&» never
-  // probes every S.A. company. A query of punctuation only asks nothing.
+  // probes every S.A. company. A probe of fewer than 2 letters (punctuation, «a b») asks nothing.
   const words = safe.split(/\s+/).filter(Boolean);
   const letters = (w) => w.replace(/[.\-]/g, '').length;
   const probe = words.find((w) => letters(w) >= 3) || words.reduce((a, w) => (letters(w) > letters(a) ? w : a), '');
-  if (!letters(probe)) return [];
+  // one letter would read most of the table («a b»): the user's next letter asks
+  if (letters(probe) < 2) return [];
   const pk = '\u0001' + probe.toLowerCase();
   // the read IN FLIGHT is kept too: keystrokes during a slow paged read share it instead of starting their own
   if (!_fhClientCache[pk]) {
