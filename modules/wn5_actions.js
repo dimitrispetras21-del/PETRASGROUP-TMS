@@ -524,8 +524,9 @@
   // F27 (owner 28/10): a typed Veroia window is written on a VS piece's OWN Veroia day (hubDay of _needs: its
   // cross_dock_date), never on the dialog's day: that is the row's day in Δ1 (an export's PICKUP day), the cycle's in
   // «+», the panel's earliest in «Σε φορτηγό ▾», and wrote VS 617 (cross-dock Fri 30/10) on Thu 29/10. A national, a
-  // stock remainder and a moved piece (its window comes from the source stop) have none: [] → the caller's day stays.
-  const _hubDays = (needs) => [...new Set((needs || []).filter((n) => n.hub && n.hubDay && !(n.own && n.from && n.to)).map((n) => n.hubDay))].sort();
+  // stock remainder and a moved piece (_moveParts: its window comes from the source stop) carry no hubDay: [] → the
+  // caller's day stays.
+  const _hubDays = (needs) => [...new Set((needs || []).filter((n) => n.hub && n.hubDay).map((n) => n.hubDay))].sort();
   // «(εκτίμηση)» after a Veroia day that came from the empty-cross-dock rule, never a bare estimated day (principle 1);
   // only when that day IS an estimate — a real cross-dock day an estimated sibling lands on stays unmarked
   const _hubEst = (needs, day) => ((needs || []).some((n) => n.hub && n.hubDay === day && n.hubEst) && !(needs || []).some((n) => n.hub && n.hubDay === day && !n.hubEst) ? ' (εκτίμηση)' : '');
@@ -739,7 +740,7 @@
     if (!vehicle) {
       // a group with no line is not drawn (Figma Δ1 shows only groups with content, audit B-21): «· 0» heads nothing
       if (st.rows.length || st.road.length) h += _grpHTML('rt', 'ΚΥΚΛΟΙ ' + DOW_GEN[_dow(st.day)] + ' ' + _dm(st.day), ' · ένωση · ' + st.rows.length);
-      const hdRow = _hubDayOf(st.needs, null), hubLoc = hdRow ? _hubId() : null;
+      const hdList = _hubDays(st.needs), hdRow = hdList.length === 1 ? hdList[0] : null, hubLoc = hdList.length ? _hubId() : null;
       for (const r of st.rows) {
         const c = st.cyc[r.rtId];
         const tx = _cycText(c, r.row);
@@ -747,9 +748,11 @@
         // stop of another day than the pieces' Veroia day is said beside the capacity; without one, a new Veroia stop
         // on a day the cycle does not run stretches it there (the DB answers truck_busy if its truck is taken).
         // Warnings, never refusals.
-        const hs = hdRow && (c.stops || []).find((s) => s.side === st.side && s.location_id === hubLoc);
-        const hsDay = hs ? hs.stop_day || _ymdOf(hs.planned_from) : null;
-        const w = hsDay ? (hsDay !== hdRow ? 'Βέροια ' + _wd(hsDay) + ', όχι ' + _wd(hdRow) : null)
+        // the stop's day by the board's rule (wn5-logic _point: stop_day, else the Athens day of planned_to); with two
+        // Veroia days (a new stop is refused) joining an existing stop is said too, it matches at most one of them
+        const hs = hubLoc != null && (c.stops || []).find((s) => s.side === st.side && s.location_id === hubLoc);
+        const hsDay = hs ? hs.stop_day || _ymdOf(hs.planned_to) : null;
+        const w = hsDay ? (hsDay !== hdRow ? 'Βέροια ' + _wd(hsDay) + ', όχι ' + hdList.map(_wd).join('/') : null)
           : hdRow && (hdRow < c.date_start || hdRow > c.date_end) ? 'Βέροια ' + _wd(hdRow) + ', ο κύκλος ' + _wd(c.date_start) + (c.date_end !== c.date_start ? '–' + _wd(c.date_end) : '') : null;
         const hubWarn = w ? '<span class="wn5-cap over">' + _esc(w) + '</span> ' : '';
         let rate = '';
@@ -1088,7 +1091,7 @@
     // the piece joins (decision 6). A warning, never a refusal.
     const hds = it._ro ? [] : _hubDays(_needs(it, false, st.hub));
     if (hds.length === 1) {
-      const stopDay = st.hubStop && st.hubWin ? _ymdOf(st.hubWin[0]) : null;
+      const stopDay = st.hubStop && st.hubWin ? _ymdOf(st.hubWin[1]) : null;      // planned_to: the board's rule
       if (stopDay && stopDay !== hds[0]) warn.push('Βέροια ' + _wd(stopDay) + ', όχι ' + _wd(hds[0]));
       else if (!st.hubStop && st.sideDays.length > 0 && !st.sideDays.includes(hds[0])) warn.push('Βέροια ' + _wd(hds[0]) + ', άλλη ημέρα');
     }

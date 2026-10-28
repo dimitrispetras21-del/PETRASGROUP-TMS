@@ -295,7 +295,8 @@ function _loadDay(w) {
 function vsHubDay(w) {
   const imp = w && w.kind === 'vs_import';
   if (!w || w.is_stock || (!imp && w.kind !== 'vs_export')) return null;
-  const d = imp ? w.nat_ready_day : w.nat_due_day;
+  // the cross-dock day, else the day of a known window at Veroia (Ε-26: an import's arrival, an export's delivery there)
+  const d = (imp ? w.nat_ready_day : w.nat_due_day) || athensDay(imp ? w.load_from : w.deliver_from);
   if (DAY_RE.test(String(d || ''))) return { day: d, est: false };
   const b = imp ? w.nat_due_day : w.nat_ready_day;
   return DAY_RE.test(String(b || '')) ? { day: _addDays(b, imp ? -1 : 1), est: true } : null;

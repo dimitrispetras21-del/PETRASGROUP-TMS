@@ -383,4 +383,7 @@ test('F27: vsHubDay — a VS\'s Veroia day is its cross_dock_date (import nat_re
   assert.strictEqual(L.vsHubDay({ kind: 'national', nat_ready_day: '2026-10-12', nat_due_day: '2026-10-13' }), null, 'a national\'s nat_ready_day is its supplier\'s day');
   assert.strictEqual(L.vsHubDay({ kind: 'vs_import', is_stock: true, nat_ready_day: '2026-10-12', nat_due_day: '2026-10-13' }), null, 'stock carries its parent\'s day');
   assert.strictEqual(L.vsHubDay({ kind: 'vs_export', nat_ready_day: null, nat_due_day: null }), null);
+  // a known window at Veroia (Ε-26) is a fact, before any estimate: an import's arrival, an export's delivery there
+  assert.deepStrictEqual(J(L.vsHubDay({ kind: 'vs_import', nat_ready_day: null, nat_due_day: '2026-10-16', load_from: '2026-10-14T18:00:00+03:00' })), { day: '2026-10-14', est: false });
+  assert.deepStrictEqual(J(L.vsHubDay({ kind: 'vs_export', nat_ready_day: '2026-10-13', nat_due_day: null, deliver_from: '2026-10-15T06:00:00+03:00' })), { day: '2026-10-15', est: false });
 });

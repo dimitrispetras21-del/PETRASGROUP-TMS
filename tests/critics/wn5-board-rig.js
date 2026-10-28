@@ -3052,6 +3052,8 @@ SCN.f27 = async (browser, origin) => {
     const lab = await hubLabel(page, D);
     ok(scn, 'two Veroia days: the field names both («Τετ 14/10 / Πέμ 15/10»)', !!lab && lab[0] === 'Άφιξη Βέροιας · Τετ 14/10 / Πέμ 15/10 *', lab);
     ok(scn, 'control: with no single Veroia day, TST-2107 (free on the row day) stays offered', await bHas(page, `${D} [data-cand="truck:15"]`));
+    const w2 = await bText(page, `${D} .wn5-cand[data-line="rt"]:has([data-cand="rt:211"])`);
+    ok(scn, 'two Veroia days: «Ένωση» into RT-T211 (its Veroia stop Tue) is said, never silent: «Βέροια Τρί, όχι Τετ/Πέμ»', /Βέροια Τρί, όχι Τετ\/Πέμ/.test(w2), w2);
     await bClick(page, `${D} [data-act="pick"][data-cand="truck:14"]`);
     const off = await bOff(page, `${D} .wn5-more [data-act="save"][data-cand="truck:14"]`);
     const why = await page.$eval(`${D} .wn5-more [data-act="save"][data-cand="truck:14"]`, (b) => (b.nextElementSibling && b.nextElementSibling.classList.contains('wn5-why') ? b.nextElementSibling.textContent : null)).catch(() => null);
