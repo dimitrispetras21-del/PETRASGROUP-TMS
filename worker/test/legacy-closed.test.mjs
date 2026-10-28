@@ -6,6 +6,9 @@
 //     Reference / Notes); local_moves: a POST of kind «local» (or no kind = the DB default) closed, relay open;
 //   - every refusal is 422 {error:{type:"LEGACY_CLOSED", code:"legacy_closed", message}} with ZERO DB calls (422, the
 //     facade's final refusal: core/api.js _atRetry resends a 409 twice more), and RBAC still speaks first (403).
+// Owner 28/10 (after code review): three more paths to the old history, owner only from day L, the same 422 — the
+// stops of a legacy national order (facade, POST/PATCH linking one, PATCH/DELETE of one), PATCH/DELETE of a «local»
+// move, and a legacy NL put on / taken off a round trip through /costs/rt.
 // Plus F5 W3: a facade write that loses a lock (40P01 / 40001 / 55P03) is a 503 busy_retry, nothing kept.
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
@@ -205,4 +208,102 @@ test('the facade answers a lost lock (40P01 / 40001 / 55P03) with 503 busy_retry
   on('PATCH', 'order_stops', (u, b) => (++n === 1 ? json([{ id: 1, legacy_id: 'recS1', ...b }]) : busy('40P01')()));
   const r = await call('dispatcher', 'PATCH', `${BASE}/${STOPS}`, { records: [{ id: 'recS1', fields: { Pallets: 3 } }, { id: 'recS2', fields: { Pallets: 4 } }] });
   assert.equal(r.status, 500, r.text);
+});
+
+// ─────────── owner 28/10: the three other paths to the old history ───────────
+const STOPS = { id: 'tblaeY5QOHAS1gyE8', pg: 'order_stops' };
+function rowsAre(table, row) {
+  on('GET', table, () => json([row]));
+  on('PATCH', table, (u, b) => json([{ ...row, ...b }]));
+  on('POST', table, (u, b) => json((Array.isArray(b) ? b : [b]).map((r, i) => ({ id: 90 + i, legacy_id: `recN${i}`, ...r })), 201));
+}
+test('day L, stops of a legacy national order: PATCH / DELETE / batch by anyone but the owner → 422 (read first, nothing written); deploy 1 and intl stops unchanged', async () => {
+  const natStop = { id: 31, legacy_id: 'recS1', national_order_id: 6, order_id: null, pallets: 4 };
+  const intlStop = { id: 32, legacy_id: 'recS2', national_order_id: null, order_id: 9, pallets: 4 };
+  for (const [method, p, body] of [['PATCH', `${BASE}/${STOPS.id}/recS1`, { fields: { Pallets: 5 } }],
+    ['PATCH', `${BASE}/${STOPS.id}`, { records: [{ id: 'recS1', fields: { Pallets: 5 } }] }],
+    ['DELETE', `${BASE}/${STOPS.id}/recS1`, undefined]]) {
+    reset(); rowsAre('order_stops', natStop);
+    let r = await callOpen('dispatcher', method, p, body);
+    assert.equal(r.status, 422, `${method} ${p}: ${r.text}`);
+    assert.equal(r.json.error.code, 'legacy_closed');
+    assert.equal(writes().length, 0, `${method}: nothing written`);
+    reset(); rowsAre('order_stops', natStop);
+    r = await callOpen('owner', method, p, body);
+    assert.ok(r.status < 300, `owner ${method}: ${r.text}`);
+    reset(); rowsAre('order_stops', natStop);
+    r = await call('dispatcher', method, p, body);
+    assert.ok(r.status < 300, `deploy 1 ${method}: ${r.text}`);
+    reset(); rowsAre('order_stops', intlStop);
+    r = await callOpen('dispatcher', method, p.replace('recS1', 'recS2'), body && JSON.parse(JSON.stringify(body).replace('recS1', 'recS2')));
+    assert.ok(r.status < 300, `intl stop ${method}: ${r.text}`);
+  }
+  // the row could not be read: refused (503), never let through unchecked
+  reset();
+  on('GET', 'order_stops', () => pgError(500, { message: 'boom' }));
+  const r = await callOpen('dispatcher', 'DELETE', `${BASE}/${STOPS.id}/recS1`);
+  assert.equal(r.status, 503, r.text);
+  assert.equal(writes().length, 0);
+});
+
+test('day L, a stop tied to a legacy national order (POST, or PATCH setting «Parent Nat Order») by anyone but the owner → 422 before any DB call', async () => {
+  for (const [method, p, body] of [['POST', `${BASE}/${STOPS.id}`, { fields: { Pallets: 3, 'Parent Nat Order': ['recNO1'] } }],
+    ['POST', `${BASE}/${STOPS.id}`, { records: [{ fields: { Pallets: 3 } }, { fields: { 'Parent Nat Order': ['recNO1'] } }] }],
+    ['PATCH', `${BASE}/${STOPS.id}/recS2`, { fields: { 'Parent Nat Order': ['recNO1'] } }]]) {
+    reset();
+    const r = await callOpen('dispatcher', method, p, body);
+    assert.equal(r.status, 422, `${method}: ${r.text}`);
+    assert.equal(r.json.error.code, 'legacy_closed');
+    assert.equal(calls.length, 0);
+  }
+  // an empty link is no tie
+  reset(); rowsAre('order_stops', { id: 32, legacy_id: 'recS2', national_order_id: null, order_id: 9 });
+  const r = await callOpen('dispatcher', 'PATCH', `${BASE}/${STOPS.id}/recS2`, { fields: { Pallets: 2, 'Parent Nat Order': [] } });
+  assert.ok(r.status < 300, r.text);
+});
+
+test('day L, «local» moves: PATCH / DELETE by anyone but the owner → 422; relay rows and the owner pass', async () => {
+  const local = { id: 5, legacy_id: 'recLM1', move_kind: 'local', rt_stop_id: null };
+  const relay = { id: 6, legacy_id: 'recLM1', move_kind: 'relay_delivery', rt_stop_id: null };
+  for (const [method, body] of [['PATCH', { fields: { Description: 'y' } }], ['DELETE', undefined]]) {
+    reset(); rowsAre('local_moves', local);
+    let r = await callOpen('dispatcher', method, `${BASE}/local_moves/recLM1`, body);
+    assert.equal(r.status, 422, `${method}: ${r.text}`);
+    assert.equal(r.json.error.code, 'legacy_closed');
+    assert.equal(writes().length, 0);
+    reset(); rowsAre('local_moves', local);
+    r = await callOpen('owner', method, `${BASE}/local_moves/recLM1`, body);
+    assert.ok(r.status < 300, `owner ${method}: ${r.text}`);
+    reset(); rowsAre('local_moves', relay);
+    r = await callOpen('dispatcher', method, `${BASE}/local_moves/recLM1`, body);
+    assert.ok(r.status < 300, `relay ${method}: ${r.text}`);
+    reset(); rowsAre('local_moves', local);
+    r = await call('dispatcher', method, `${BASE}/local_moves/recLM1`, body);
+    assert.ok(r.status < 300, `deploy 1 ${method}: ${r.text}`);
+  }
+});
+
+test('day L, /costs/rt: a legacy NL put on (POST legs nat_load_id) or taken off (DELETE ?nat_load_id) a round trip by anyone but the owner → 422 before any DB call', async () => {
+  for (const role of ['dispatcher', 'accountant']) {
+    reset();
+    const r = await callOpen(role, 'POST', '/costs/rt', { scope: 'NATL', trip_type: 'OWNED', truck_id: 3, date_start: '2026-10-31', legs: [{ direction: 'KATHODOS', nat_load_id: 77 }] });
+    assert.equal(r.status, 422, `${role}: ${r.text}`);
+    assert.equal(r.json.error.code, 'legacy_closed');
+    assert.equal(calls.length, 0);
+  }
+  reset();
+  let r = await callOpen('dispatcher', 'DELETE', '/costs/rt/5/legs?nat_load_id=77');
+  assert.equal(r.status, 422, r.text);
+  assert.equal(calls.length, 0);
+  // an order leg is not legacy national: the request goes on to the DB (whatever it answers here)
+  for (const [send, role, method, p, body] of [[callOpen, 'dispatcher', 'DELETE', '/costs/rt/5/legs?order_id=9', undefined],
+    [callOpen, 'owner', 'DELETE', '/costs/rt/5/legs?nat_load_id=77', undefined], [call, 'dispatcher', 'DELETE', '/costs/rt/5/legs?nat_load_id=77', undefined],
+    [callOpen, 'owner', 'POST', '/costs/rt', { scope: 'NATL', trip_type: 'OWNED', truck_id: 3, date_start: '2026-10-31', legs: [{ direction: 'KATHODOS', nat_load_id: 77 }] }]]) {
+    reset();
+    on('GET', 'ct_round_trips', () => json([]));
+    on('GET', 'ct_rt_legs', () => json([]));
+    r = await send(role, method, p, body);
+    assert.notEqual(r.json?.error?.code, 'legacy_closed', `${role} ${method} ${p}: ${r.text}`);
+    assert.ok(calls.length >= 1, `${role} ${method} ${p}: reached the DB`);
+  }
 });

@@ -3136,6 +3136,8 @@ async function handleFacadeBatchUpdate(request, tableId, origin, env, ctx) {
     const owned = planOwnedRefusal(cfg, beforeFailed ? void 0 : beforeBy.get(recId) || null, origin, env);
     if (owned) return owned;
   }
+  const rowClosed = legacyRowRefusal(cfg.pg, caller.role, patches.map(({ recId }) => (beforeFailed ? void 0 : beforeBy.get(recId) || null)), origin, env);
+  if (rowClosed) return rowClosed;
   const updatedRows = [];
   const auditEntries = [];
   for (const { recId, patch } of patches) {
@@ -3862,6 +3864,8 @@ async function handleFacadeUpdate(request, tableId, recId, origin, env, ctx) {
   const before = await readRowBefore(env, cfg.pg, recId);
   const owned = planOwnedRefusal(cfg, before, origin, env);
   if (owned) return owned;
+  const rowClosed = legacyRowRefusal(cfg.pg, caller.role, [before], origin, env);
+  if (rowClosed) return rowClosed;
   if (before === void 0 && invoiceNeedsBefore(cfg.pg, patch)) {
     return jsonError("Η τιμολόγηση δεν επαληθεύτηκε (η παραγγελία δεν διαβάστηκε) — ξαναδοκίμασε", 503, origin, env);
   }
@@ -4011,10 +4015,14 @@ async function handleFacadeDelete(request, tableId, recId, origin, env) {
   if (res) return res;
   const closed = legacyClosedRefusal(cfg.pg, caller.role, "DELETE", [], origin, env);
   if (closed) return closed;
-  // read only for a table with v5 rows (finding 2): every other DELETE keeps its one request
-  if (cfg.planOwned) {
-    const owned = planOwnedRefusal(cfg, await readRowBefore(env, cfg.pg, recId), origin, env);
+  // read only for a table with v5 rows (finding 2), or a legacy row rule that applies (F5): every other DELETE keeps
+  // its one request
+  if (cfg.planOwned || legacyRowsApply(cfg.pg, caller.role)) {
+    const before = await readRowBefore(env, cfg.pg, recId);
+    const owned = planOwnedRefusal(cfg, before, origin, env);
     if (owned) return owned;
+    const rowClosed = legacyRowRefusal(cfg.pg, caller.role, [before], origin, env);
+    if (rowClosed) return rowClosed;
   }
   let deleted;
   try {
@@ -4392,6 +4400,12 @@ async function handleCosts(request, url, origin, env) {
       if (!v.ok) return jsonError(v.error, v.status, origin, env);
       const orderIds = v.legs.filter((l) => l.order_id !== void 0).map((l) => l.order_id);
       const natIds = v.legs.filter((l) => l.nat_load_id !== void 0).map((l) => l.nat_load_id);
+      // F5 E16 (owner 28/10, after code review): putting a legacy NL on a round trip changes NL history - owner only
+      // from day L, the same rule and answer as a facade PATCH of national_loads, before any DB call
+      if (natIds.length) {
+        const closed = legacyClosedRefusal("national_loads", caller.role, "PATCH", [], origin, env);
+        if (closed) return closed;
+      }
       let existing = [];
       if (orderIds.length || natIds.length) {
         const parts = [];
@@ -4486,6 +4500,11 @@ async function handleCosts(request, url, origin, env) {
       const orderIdQ = url.searchParams.get("order_id");
       const natLoadIdQ = url.searchParams.get("nat_load_id");
       if (!orderIdQ && !natLoadIdQ) return jsonError("order_id or nat_load_id required", 400, origin, env);
+      // F5 E16 (owner 28/10): taking a legacy NL off a round trip, the same owner-only rule, before any DB call
+      if (!orderIdQ) {
+        const closed = legacyClosedRefusal("national_loads", caller.role, "PATCH", [], origin, env);
+        if (closed) return closed;
+      }
       const rtBefore = await dbSelectRaw(env, "ct_round_trips", new URLSearchParams({ id: `eq.${recId}`, select: "*" }));
       if (!rtBefore.rows.length) return jsonError("Not found", 404, origin, env);
       const rem = canRemoveLeg(rtBefore.rows[0]);
@@ -5851,14 +5870,25 @@ var LEGACY_CLOSED_AFTER_L = {
     PATCH: { owner: "*", accountant: ["Invoiced", "Invoice Number", "Invoice Date", "Price"], dispatcher: ["Price", "Reference", "Notes"] },
     DELETE: []
   },
-  local_moves: { closedKind: "local" }
+  local_moves: { closedKind: "local" },
+  // owner 28/10 (after code review): the stops of a legacy national order are history too - a stop is tied to one
+  // (POST, or a PATCH that sets the link) by the owner only; the stops already tied are LEGACY_ROWS_AFTER_L
+  order_stops: { closedLink: "Parent Nat Order" }
 };
 // fieldsList: the `fields` of each record of the request ([] for a DELETE). Returns the 422 or null.
 function legacyClosedRefusal(table, role, method, fieldsList, origin, env) {
   if (!PLAN_WRITES_OPEN || !Object.prototype.hasOwnProperty.call(LEGACY_CLOSED_AFTER_L, table)) return null;
   const rule = LEGACY_CLOSED_AFTER_L[table];
   let message = null;
-  if (rule.closedKind) {
+  if (rule.closedLink) {
+    const linked = (f) => {
+      const v = f && typeof f === "object" ? f[rule.closedLink] : void 0;
+      return Array.isArray(v) ? v.length > 0 : v !== void 0 && v !== null && v !== "";
+    };
+    if (role !== "owner" && (method === "POST" || method === "PATCH") && fieldsList.some(linked)) {
+      message = "Οι στάσεις των παλιών εθνικών (πριν από την ημέρα μετάβασης) αλλάζει μόνο ο Δημήτρης";
+    }
+  } else if (rule.closedKind) {
     // a missing or null kind is the DB default, «local»
     const kindOf = (f) => (f && typeof f === "object" && f["Move Kind"] !== void 0 && f["Move Kind"] !== null ? f["Move Kind"] : "local");
     if (method === "POST" && fieldsList.some((f) => kindOf(f) === rule.closedKind)) {
@@ -5896,6 +5926,29 @@ function legacyClosedRefusal(table, role, method, fieldsList, origin, env) {
   return jsonOk({ error: { type: "LEGACY_CLOSED", code: "legacy_closed", message } }, origin, env, 422);
 }
 __name(legacyClosedRefusal, "legacyClosedRefusal");
+// The same rule decided on the ROW (owner 28/10, after code review; Q-10 owner only for 14 days): PATCH / DELETE of
+// a stop of a legacy national order, or of a Weekly National «local» move, by any role but the owner. Read with
+// PLAN_WRITES_OPEN like the table rules. The row is the one read before the write; a row that could not be read is
+// refused (503, nothing written), never let through unchecked (αρχή 1).
+var LEGACY_ROWS_AFTER_L = {
+  order_stops: { is: (row) => row.national_order_id != null, message: "Οι στάσεις των παλιών εθνικών (πριν από την ημέρα μετάβασης) αλλάζει μόνο ο Δημήτρης" },
+  local_moves: { is: (row) => row.move_kind === "local", message: "Τις τοπικές κινήσεις του παλιού Εβδομαδιαίου Εθνικών αλλάζει μόνο ο Δημήτρης" }
+};
+function legacyRowsApply(table, role) {
+  return PLAN_WRITES_OPEN && role !== "owner" && Object.prototype.hasOwnProperty.call(LEGACY_ROWS_AFTER_L, table);
+}
+__name(legacyRowsApply, "legacyRowsApply");
+// rows: the rows read before the write (null = not found, undefined = the read failed). Returns the answer or null.
+function legacyRowRefusal(table, role, rows, origin, env) {
+  if (!legacyRowsApply(table, role)) return null;
+  if (rows.some((r) => r === void 0)) {
+    return jsonError("Η εγγραφή δεν επαληθεύτηκε (δεν διαβάστηκε) — τίποτα δεν γράφτηκε· ξαναδοκίμασε", 503, origin, env);
+  }
+  const rule = LEGACY_ROWS_AFTER_L[table];
+  if (!rows.some((r) => r && rule.is(r))) return null;
+  return jsonOk({ error: { type: "LEGACY_CLOSED", code: "legacy_closed", message: rule.message } }, origin, env, 422);
+}
+__name(legacyRowRefusal, "legacyRowRefusal");
 // One row per route: method + path → resource (PLAN_PERMS) + RPC. `dryRun`
 // marks the seven RPCs that take {"dry_run": true} and write nothing then
 // (072's four, 072b's three);
