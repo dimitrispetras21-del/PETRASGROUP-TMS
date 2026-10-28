@@ -5127,17 +5127,32 @@ async function handleCosts(request, url, origin, env) {
     }
     // ---- GET /costs/pnl  (ΑΠΟΤΕΛΕΣΜΑΤΑ — ΜΟΝΟ OWNER, spec §10.2.11) ----
     if (resource === "pnl" && method === "GET") {
+      // It was one read of «limit 300» with nothing said (measured 28/10: 198 RTs, ~20 new a week before the national
+      // cycles of day L), so in about five weeks the P&L would have lost RTs from the list AND from the totals in
+      // silence. Same answer as /pallets/movements (#134): records + truncated + cap, every time.
+      // NOT the paged read of #134: ct_v_rt_pnl recomputes every RT's revenue and costs on each read (the filter is
+      // not pushed into the aggregates; EXPLAIN 28/10 estimates ~10^9 rows), takes seconds for 198 RTs and its exact
+      // count ran past the statement timeout. Pages would repeat that whole cost per page. So one read of PNL_CAP
+      // rows, and the exact count from ct_round_trips with the view's own WHERE (status <> cancelled) and the same
+      // filters - an index read. Fewer rows than the count (the cap, a lower db-max-rows, an RT the view's joins
+      // drop) is truncated and said; a stale count (an RT cancelled between the two reads) can only alarm, never hide.
+      const PNL_CAP = 999;
       const q = url.searchParams;
-      const params = new URLSearchParams();
-      params.set("select", "*");
-      params.set("order", "margin_worst_pct.asc.nullsfirst");
-      params.set("limit", "300");
-      if (q.get("from")) params.append("date_start", `gte.${q.get("from")}`);
-      if (q.get("to")) params.append("date_start", `lte.${q.get("to")}`);
-      if (q.get("scope")) params.append("scope", `eq.${q.get("scope")}`);
-      if (q.get("truck_id")) params.append("truck_id", `eq.${q.get("truck_id")}`);
-      const { rows } = await dbSelectRaw(env, "ct_v_rt_pnl", params);
-      return jsonOk({ records: rows }, origin, env);
+      const filters = [];
+      if (q.get("from")) filters.push(["date_start", `gte.${q.get("from")}`]);
+      if (q.get("to")) filters.push(["date_start", `lte.${q.get("to")}`]);
+      if (q.get("scope")) filters.push(["scope", `eq.${q.get("scope")}`]);
+      if (q.get("truck_id")) filters.push(["truck_id", `eq.${q.get("truck_id")}`]);
+      // Newest first, so a cut drops the oldest RTs; the screen sorts on its own (costs.js), the order is only the cut.
+      const params = new URLSearchParams([["select", "*"], ["order", "id.desc"], ["limit", String(PNL_CAP)], ...filters]);
+      const countParams = new URLSearchParams([["select", "id"], ["status", "neq.cancelled"], ["limit", "1"], ...filters]);
+      const [{ rows }, { contentRange }] = await Promise.all([
+        dbSelectRaw(env, "ct_v_rt_pnl", params),
+        dbSelectRaw(env, "ct_round_trips", countParams, { Prefer: "count=exact" })
+      ]);
+      const total = Number(String(contentRange || "").split("/")[1]);
+      if (!Number.isSafeInteger(total)) throw new Error(`ct_round_trips: no exact count in «${contentRange}»`);
+      return jsonOk({ records: rows, truncated: rows.length < total, cap: PNL_CAP, total }, origin, env);
     }
     // ---- GET /costs/pallet-gate — ποιες διαδρομές partner περιμένουν δελτίο ----
     // Το PnL τους είναι ελλιπές όσο λείπει: οι χαμένες παλέτες είναι κόστος.
