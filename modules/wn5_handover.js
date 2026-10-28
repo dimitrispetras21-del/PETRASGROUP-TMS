@@ -23,7 +23,16 @@
   const SEG_GR = Object.freeze({ initial: 'ΑΡΧΙΚΟ', intermediate: 'ΕΝΔΙΑΜΕΣΟ', final: 'ΤΕΛΙΚΟ' });
   const OTHER_NOTE = 'Με «Άλλο» η σημείωση είναι υποχρεωτική';
   const RATE_BAD = 'Κόμιστρο €: αριθμός 0 ή πάνω';
+  const PREV_BAD = 'Κόμιστρο προηγούμενου €: αριθμός 0 ή πάνω';
   const _rateBad = (r) => r !== null && r !== undefined && !(Number.isFinite(r) && r >= 0);
+  // owner 26/10 (money, DECISION_LOG «prev_partner_rate»): a handover / correction from one partner to a partner may
+  // lower the PREVIOUS partner segment's rate in the same act. The field is prefilled with today's rate; the key is
+  // sent only when the user changed it (072b: a changed rate is a list line under one token; the same rate = no line).
+  // An emptied field cannot be sent (the base wants a number); a rate that was missing may stay missing.
+  const _prevBad = (st) => st.prev_shown === true
+    && ((st.prev_rate === null && st.prev_from !== null && st.prev_from !== undefined) || _rateBad(st.prev_rate));
+  const _prevChanged = (st) => st.prev_shown === true && st.prev_rate !== null && st.prev_rate !== undefined
+    && Number.isFinite(st.prev_rate) && st.prev_rate !== st.prev_from;
   // H7 (2130:7745, 2130:7809): the refused field gets the red border. Codes only, the text stays the Worker's.
   const FIELD_OF = Object.freeze({ truck_busy: 'wn5h-truck', driver_busy: 'wn5h-driver', payroll_locked: 'wn5h-driver', seg_time: 'wn5h-day' });
   // the board ✈ glyph (Figma icon/send 2147:7735), drawn in the button's own colour
@@ -57,6 +66,7 @@
     } else {
       if (!Number.isSafeInteger(st.partner_id)) out.push('Συνεργάτης *: διάλεξε συνεργάτη');
       if (_rateBad(st.partner_rate)) out.push(RATE_BAD);
+      if (_prevBad(st)) out.push(PREV_BAD);
     }
     return out;
   }
@@ -74,9 +84,44 @@
       const v = { trip_type: 'PARTNER', partner_id: st.partner_id };
       if (st.partner_rate !== null && st.partner_rate !== undefined) v.partner_rate = st.partner_rate;
       body.vehicle = v;
+      if (_prevChanged(st)) body.prev_partner_rate = st.prev_rate;
     }
     return body;
   }
+  // The segment a handover at `at` cuts (072b plan_seg_change: from_at <= at < to_at; the first one starts with the cycle).
+  function _cutSeg(cycle, at) {
+    const t = at ? Date.parse(at) : NaN;
+    if (!cycle || !Number.isFinite(t)) return null;
+    let segs;
+    try { segs = WN5L.segmentsOf(cycle).segments; } catch (_) { return null; }
+    return segs.find((g) => Date.parse(g.from_at || cycle.start_at) <= t && t < Date.parse(g.to_at || cycle.end_at)) || null;
+  }
+  // The previous partner's rate field (no Figma frame: the owner's 26/10 decision came after H2 was drawn — the
+  // wn5h-rate field's look, its label names the partner).
+  const _prevRateHTML = () => '<label class="wn5f-f wn5h-rate wn5h-prate" data-prate hidden><span data-pratel>Κόμιστρο προηγούμενου €</span>'
+    + '<input class="form-input" id="wn5h-prate" inputmode="decimal" value=""></label>';
+  function _prevRateSync(d, g) {
+    const f = d.el.querySelector('[data-prate]');
+    if (!f) return;
+    const show = !!g && g.trip_type === 'PARTNER';
+    f.hidden = !show;
+    if (!show) { d.prevSeg = null; return; }
+    // a new previous segment (another time, another cut): its own rate, never the last one typed
+    if (d.prevSeg !== g.segment_id) {
+      d.prevSeg = g.segment_id;
+      f.querySelector('input').value = g.partner_rate == null ? '' : String(g.partner_rate);
+      f.querySelector('[data-pratel]').textContent = `Κόμιστρο ${g.partner || 'προηγούμενου'} €`;
+    }
+  }
+  // «Τι θα γίνει» under the preview: the base's list of the dry run (the partner_rate line) in core/wn5-labels.js words.
+  function _consHTML(list) {
+    if (!Array.isArray(list) || !list.length) return '';
+    return '<div class="wn5h-cons"><div class="wn5-cons-h">Τι θα γίνει</div><ul class="wn5-cons">'
+      + list.map((c) => { const l = WN5Lab.consequenceLine(c); return `<li data-kind="${_esc(c && c.kind)}"${l.unknown ? ' data-unknown="1"' : ''}>${_esc(l.text)}</li>`; }).join('')
+      + '</ul></div>';
+  }
+  // The answer of a dry run that has a list: its token rides in the execution (one step: the list is on screen).
+  const _tokOf = (ans) => (ans && ans.needs_confirm === true && ans.confirm_token ? { token: ans.confirm_token, cons: ans.consequences || [] } : { token: null, cons: [] });
   // plan_seg_fix set: only the keys whose value changed (072b set keys).
   function _fixSet(orig, st) {
     const set = {};
@@ -291,9 +336,14 @@
     const v = (id) => (d.el.querySelector('#' + id) || {}).value || '';
     const num = (id) => { const x = v(id); return x ? Number(x) : null; };
     const hm = _hm(v('wn5h-hm'));
-    return { at: DAY.test(v('wn5h-day')) && HM.test(hm) ? _iso(v('wn5h-day'), hm) : null, place_note: v('wn5h-place').trim(), reason: v('wn5h-reason'),
+    const at = DAY.test(v('wn5h-day')) && HM.test(hm) ? _iso(v('wn5h-day'), hm) : null;
+    // the previous partner's rate: only partner → partner, read from the segment this time cuts
+    const g = d.own ? null : _cutSeg(d.cycle, at);
+    const prev = !!g && g.trip_type === 'PARTNER';
+    return { at, place_note: v('wn5h-place').trim(), reason: v('wn5h-reason'),
       reason_note: v('wn5h-note').trim(), own: d.own, truck_id: num('wn5h-truck'), trailer_id: num('wn5h-trailer'), driver_id: num('wn5h-driver'),
-      same_driver: !!(d.el.querySelector('#wn5h-same') || {}).checked, partner_id: num('wn5h-partner'), partner_rate: _num(v('wn5h-rate')) };
+      same_driver: !!(d.el.querySelector('#wn5h-same') || {}).checked, partner_id: num('wn5h-partner'), partner_rate: _num(v('wn5h-rate')),
+      prev_shown: prev, prev_from: prev ? (g.partner_rate == null ? null : Number(g.partner_rate)) : null, prev_rate: prev ? _num(v('wn5h-prate')) : null };
   }
   // Figma 2122:7800: «Μετά την αλλαγή · n τμήματα», borderless white rows on the grey block, a ⇄ line between two
   // segments «<place> · <day hh:mm> · <reason>» (the next segment's start).
@@ -317,9 +367,12 @@
     d.el.querySelectorAll('[data-par]').forEach((x) => { x.hidden = d.own; });
     _sameDriver(d);
     _dayText(d);
+    _prevRateSync(d, d.own ? null : _cutSeg(d.cycle, _readChange(d).at));   // before the read: its prefill is part of the state
     const st = _readChange(d);
     _hints(d, st);
     const probs = _changeProblems(st);
+    const pf = d.el.querySelector('[data-prate]');
+    if (pf) pf.classList.toggle('bad', probs.includes(PREV_BAD));
     const key = probs.length ? null : JSON.stringify(_changeBody(st));
     if (!d.prev || d.prev.key !== key) _dropPreview(d);   // any change after the dry run drops its preview
     _otherNote(d, probs.includes(OTHER_NOTE));
@@ -374,15 +427,27 @@
       const ans = await planFetch('POST', `/plan/rt/${d.rtId}/handover`, { body, dry: true });
       if (_d !== d || JSON.stringify(_changeBody(_readChange(d))) !== key) return;   // the form moved on: this preview is stale
       const p = ans.preview || {};
-      d.prev = { key, conflict: p.conflict || null };
-      d.el.querySelector('[data-preview]').innerHTML = p.segments ? _previewHTML(p, d.cycle, d.hub) : '';
-      if (Array.isArray(p.warnings) && p.warnings.length) WN5Act.strip(_strip(d), p.warnings); else if (!d.locked) WN5Act.strip(_strip(d), null);
+      const tk = _tokOf(ans);
+      d.prev = { key, conflict: p.conflict || null, token: tk.token };
+      d.el.querySelector('[data-preview]').innerHTML = (p.segments ? _previewHTML(p, d.cycle, d.hub) : '') + _consHTML(tk.cons);
+      // after stale_confirm / need_token the Worker's «the list changed» stays above the NEW list until the next edit
+      if (Array.isArray(p.warnings) && p.warnings.length) WN5Act.strip(_strip(d), p.warnings); else if (!d.locked && !d.relist) WN5Act.strip(_strip(d), null);
+      d.relist = false;
     } catch (e) {
       if (_d !== d) return;
       d.failedKey = key;
       _failure(d, e, key);
     }
     _changeRefresh(d);
+  }
+  // stale_confirm (the list changed since the dry run) or need_token (no token for a list): the preview no longer holds,
+  // so it goes and the same body runs its dry run again — a new list and token, never the old token sent twice.
+  function _reList(d, e) {
+    const K = typeof PlanApi !== 'undefined' ? PlanApi.KIND : {};
+    if (!e || (e.kind !== K.STALE && e.kind !== K.NEED_TOKEN)) return;
+    _dropPreview(d);
+    d.failedKey = null;
+    d.relist = true;
   }
   function _failure(d, e, key) {
     if (typeof PlanError === 'undefined' || !(e instanceof PlanError)) { _log(e, 'WN5Hand'); d.note = { key, lines: ['Δεν αποθηκεύτηκε: ' + String(e && e.message || e)] }; return; }
@@ -397,10 +462,12 @@
   async function _changeSave(d) {
     if (d.busy || d.done || d.locked || !d.prev || d.prev.conflict) return;
     const body = JSON.parse(d.prev.key);
+    // the list was on screen with the preview (one step): its token rides in the execution (072b plan_h_confirm)
+    const send = d.prev.token ? Object.assign({}, body, { confirm_token: d.prev.token }) : body;
     d.busy = true;
     _setSave(d, false);
     try {
-      const ans = await planFetch('POST', `/plan/rt/${d.rtId}/handover`, { body, requestId: d.slot.id });
+      const ans = await planFetch('POST', `/plan/rt/${d.rtId}/handover`, { body: send, requestId: d.slot.id });
       d.slot.confirm();
       _done(d, `Η αλλαγή οχήματος γράφτηκε · τμήμα #${(ans.ids && ans.ids.segment_id) || '—'}${ans.replayed ? ' · το πρώτο πάτημα είχε ήδη αποθηκευτεί' : ''}`, ans.warnings);
     } catch (e) {
@@ -414,6 +481,7 @@
         d.locked = true;
       }
       _failure(d, e, d.prev && d.prev.key);
+      _reList(d, e);
     } finally {
       d.busy = false;
       if (!d.done) _changeRefresh(d);
@@ -451,7 +519,7 @@
       + `<button type="button" class="on" role="radio" aria-checked="true" data-vmode="own">Δικό μας</button><button type="button" role="radio" aria-checked="false" data-vmode="partner">Συνεργάτης</button></div>`
       + `<div class="wn5h-vrow" data-own>${_vehFields(true, {})}`
       + `<label class="wn5h-same"><input type="checkbox" role="switch" class="wn5h-sw" id="wn5h-same"${now.driver ? '' : ' disabled'}><span>ίδιος οδηγός (${_esc(now.driver || '—')})</span></label></div>`
-      + `<div class="wn5h-vrow wn5h-prow" data-par hidden>${_vehFields(false, {})}</div>`
+      + `<div class="wn5h-vrow wn5h-prow" data-par hidden>${_vehFields(false, {})}${_prevRateHTML()}</div>`
       + `<div data-strip></div><div data-preview></div>`;
     // head: the current vehicle (truck only, or the partner) · driver · the cycle window (Figma 2122:7739)
     const cur = now.trip_type === 'PARTNER' ? (now.partner || 'Συνεργάτης') : (now.truck || 'χωρίς φορτηγό');
@@ -490,19 +558,22 @@
   // ── fix ────────────────────────────────────────────────────────────────────────────────────────────────────
   async function fix(segmentId) {
     const board = await _board();
-    let c = null, g = null, i = -1;
-    for (const x of (board && board.cycles) || []) { const s = WN5L.segmentsOf(x).segments; const k = s.findIndex((y) => y.segment_id === segmentId); if (k >= 0) { c = x; g = s[k]; i = k; break; } }
+    let c = null, g = null, i = -1, segs = [];
+    for (const x of (board && board.cycles) || []) { const s = WN5L.segmentsOf(x).segments; const k = s.findIndex((y) => y.segment_id === segmentId); if (k >= 0) { c = x; g = s[k]; i = k; segs = s; break; } }
     if (!g) { if (typeof toast === 'function') toast('Το τμήμα δεν βρέθηκε στην εβδομάδα που φαίνεται — ανανέωσε', 'warn'); return false; }
     const ids = await PlanIds.load();
     const first = i === 0;
+    // a partner segment after a partner segment: the previous one's rate may come down in the same act (owner 26/10)
+    const pv = !first && g.trip_type === 'PARTNER' && segs[i - 1] && segs[i - 1].trip_type === 'PARTNER' ? segs[i - 1] : null;
     const p = _parts(g.from_at) || { day: '', hm: '' };
     // the first segment starts with the cycle: no time, point or reason of its own (Figma 2130:7809)
     const html = (first ? '' : _whenRowHTML(p, g.place_note || '', g.reason, g.reason_note || ''))
-      + `<div class="wn5h-vrow${g.trip_type === 'PARTNER' ? ' wn5h-prow' : ''}">${_vehFields(g.trip_type !== 'PARTNER', g)}</div>`
+      + `<div class="wn5h-vrow${g.trip_type === 'PARTNER' ? ' wn5h-prow' : ''}">${_vehFields(g.trip_type !== 'PARTNER', g)}${pv ? _prevRateHTML() : ''}</div>`
       + `<div data-strip></div><div data-preview></div>`;
     const d = _open('fix', `Διόρθωση τμήματος ${SEG_GR[g.label] || ''} · ${_esc(c.code || 'RT-' + c.rt_id)}`, `· ${_when(g.from_at)} → ${_when(g.to_at)}`, html, '', 'Αποθήκευση');
     d.cycle = c;
     d.hub = _hubOf(board);
+    if (pv) _prevRateSync(d, pv);
     if (typeof fhSelectSearchIn === 'function') fhSelectSearchIn(d.el);
     if (!ids.ok) { WN5Act.strip(_strip(d), ids.err); d.locked = true; }   // as change(): no catalogue, no save
     const read = () => {
@@ -517,6 +588,9 @@
       if (v('wn5h-rate') !== undefined) st.partner_rate = _num(v('wn5h-rate'));
       return st;
     };
+    // outside the set (072b plan_seg_fix: prev_partner_rate is a key of p, beside set)
+    const readPrev = () => (pv ? { prev_shown: true, prev_from: pv.partner_rate == null ? null : Number(pv.partner_rate),
+      prev_rate: _num((d.el.querySelector('#wn5h-prate') || {}).value) } : { prev_shown: false });
     const refresh = () => {
       _dayText(d);
       const st = read();
@@ -524,10 +598,16 @@
       // own:true above skips the rate rule, and the first segment skips every rule: «abc» would be NaN, which
       // _fixSet counts as a change and JSON sends as null — one press wiping the partner's rate (review T25)
       if (_rateBad(st.partner_rate)) probs.push(RATE_BAD);
-      const rf = d.el.querySelector('.wn5h-rate');
+      const ps = readPrev();
+      if (_prevBad(ps)) probs.push(PREV_BAD);
+      const rf = d.el.querySelector('.wn5h-rate:not([data-prate])');
       if (rf) rf.classList.toggle('bad', probs.includes(RATE_BAD));
+      const pf = d.el.querySelector('[data-prate]');
+      if (pf) pf.classList.toggle('bad', probs.includes(PREV_BAD));
       const set = probs.length ? {} : _fixSet(g, st);
-      const key = Object.keys(set).length ? JSON.stringify({ set }) : null;
+      const fb = { set };
+      if (!probs.length && _prevChanged(ps)) fb.prev_partner_rate = ps.prev_rate;
+      const key = Object.keys(set).length || 'prev_partner_rate' in fb ? JSON.stringify(fb) : null;
       if (!d.prev || d.prev.key !== key) _dropPreview(d);
       _otherNote(d, probs.includes(OTHER_NOTE));
       _lines(d, probs.filter((l) => l !== OTHER_NOTE && !/^(Πότε|Πού|Λόγος) \*/.test(l)).concat(_kept(d, key)));
@@ -538,8 +618,9 @@
         try {
           const ans = await planFetch('PATCH', `/plan/segments/${segmentId}`, { body: JSON.parse(key), dry: true });
           if (_d !== d) return;
-          d.prev = { key, conflict: (ans.preview && ans.preview.conflict) || null };
-          d.el.querySelector('[data-preview]').innerHTML = ans.preview && ans.preview.segments ? _previewHTML(ans.preview, c, d.hub) : '';
+          const tk = _tokOf(ans);
+          d.prev = { key, conflict: (ans.preview && ans.preview.conflict) || null, token: tk.token };
+          d.el.querySelector('[data-preview]').innerHTML = (ans.preview && ans.preview.segments ? _previewHTML(ans.preview, c, d.hub) : '') + _consHTML(tk.cons);
         } catch (e) { if (_d !== d) return; d.failedKey = key; _failure(d, e, key); }
         refresh();
       }, 400);
@@ -552,9 +633,11 @@
       d.busy = true;
       _setSave(d, false);
       try {
-        const ans = await planFetch('PATCH', `/plan/segments/${segmentId}`, { body: JSON.parse(d.prev.key) });   // no request_id: a fix creates nothing
+        const body = JSON.parse(d.prev.key);
+        if (d.prev.token) body.confirm_token = d.prev.token;   // the previous rate's list line was on screen (one step)
+        const ans = await planFetch('PATCH', `/plan/segments/${segmentId}`, { body });   // no request_id: a fix creates nothing
         _done(d, 'Η διόρθωση γράφτηκε', ans.warnings);
-      } catch (e) { _failure(d, e, d.prev && d.prev.key); }
+      } catch (e) { _failure(d, e, d.prev && d.prev.key); _reList(d, e); }
       finally { d.busy = false; if (!d.done) refresh(); }
     });
     const edit = () => { _unmark(d); refresh(); };
@@ -621,5 +704,5 @@
     return ans;
   }
 
-  window.WN5Hand = Object.freeze({ cycleCard, change, fix, remove, _changeBody, _changeProblems, _fixSet, _payrollLine, _freeUntil });
+  window.WN5Hand = Object.freeze({ cycleCard, change, fix, remove, _changeBody, _changeProblems, _fixSet, _payrollLine, _freeUntil, _cutSeg });
 })();

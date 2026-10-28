@@ -73,6 +73,32 @@ test('F4α-T25: the change body — exactly plan_seg_change\'s keys; same_driver
   assert.ok(!('request_id' in J(H._changeBody(own))) && !('dry_run' in J(H._changeBody(own))), 'planFetch adds them, never the body');
 });
 
+test('owner 26/10: prev_partner_rate — partner → partner only, sent only when changed, an emptied rate is a form line', () => {
+  // DECISION_LOG «prev_partner_rate»: prefilled with today's rate, editable; the key goes only when the user changed it
+  // (072b: a changed rate = a list line under one token, the same rate = no line). An emptied field would send null,
+  // which plan_seg_change refuses (bad_input prev_partner_rate): the form says it first.
+  const par = { at: '2026-10-13T14:30:00+03:00', place_note: 'Λαμία', reason: 'vehicle_breakdown', reason_note: '', own: false, partner_id: 52, partner_rate: 200,
+    prev_shown: true, prev_from: 300, prev_rate: 300 };
+  assert.ok(!('prev_partner_rate' in J(H._changeBody(par))), 'unchanged → not sent');
+  assert.strictEqual(J(H._changeBody(Object.assign({}, par, { prev_rate: 250 }))).prev_partner_rate, 250);
+  assert.ok(!('prev_partner_rate' in J(H._changeBody(Object.assign({}, par, { prev_shown: false, prev_rate: 250 })))), 'not partner → partner: never');
+  assert.ok(!('prev_partner_rate' in J(H._changeBody(Object.assign({}, par, { own: true, truck_id: 12, driver_id: 32, prev_rate: 250 })))), 'our own truck: never');
+  const P = 'Κόμιστρο προηγούμενου €: αριθμός 0 ή πάνω';
+  assert.ok(J(H._changeProblems(Object.assign({}, par, { prev_rate: null }))).includes(P), 'emptied');
+  assert.ok(J(H._changeProblems(Object.assign({}, par, { prev_rate: NaN }))).includes(P), 'not a number');
+  assert.ok(J(H._changeProblems(Object.assign({}, par, { prev_rate: -1 }))).includes(P), 'negative');
+  assert.deepStrictEqual(J(H._changeProblems(Object.assign({}, par, { prev_from: null, prev_rate: null }))), [], 'a missing rate may stay missing');
+  assert.strictEqual(J(H._changeBody(Object.assign({}, par, { prev_from: null, prev_rate: 280 }))).prev_partner_rate, 280, 'a missing rate given now is a change');
+});
+
+test('owner 26/10: the change / fix execution carries the dry run\'s confirm_token; stale / need_token run the dry run again', () => {
+  const save = grab('_changeSave');
+  assert.ok(/confirm_token:\s*d\.prev\.token/.test(save) && /_reList\(d,\s*e\)/.test(save), 'the change');
+  assert.ok(/body\.confirm_token\s*=\s*d\.prev\.token/.test(SRC), 'the fix');
+  const re = grab('_reList');
+  assert.ok(/K\.STALE/.test(re) && /K\.NEED_TOKEN/.test(re) && /_dropPreview\(d\)/.test(re) && /d\.failedKey\s*=\s*null/.test(re));
+});
+
 test('F4α-T25: request_id on the change execution only, never on its dry run', () => {
   const pre = grab('_preview'), save = grab('_changeSave');
   assert.ok(/planFetch\('POST',[^)]*\{\s*body,\s*dry:\s*true\s*\}/.test(pre) && !/requestId/.test(pre), 'the dry run');
