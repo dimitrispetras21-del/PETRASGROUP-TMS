@@ -66,7 +66,28 @@ test('AU-07: any other 422 keeps «_atRetry 422» (still counted by B-34)', asyn
   assert.strictEqual(logged.filter(b34Counts).length, 1);
 });
 
-const PIECE = { id: 'recP1', fields: { Reference: 'TEST-STOCK-P1', 'Stock Lot': ['recSTOCKLOT1'], Truck: ['recT1'], Status: 'Assigned' } };
+// F4α T2 (S-13): since 071/060 the facade can answer two more designed 422s — PLAN_RULE (an ORDER STOPS PATCH
+// refused by a 071 rule, plan-routes.test.mjs) and LOCAL_RELAY_RULE (060). They are answers of the lower layer like
+// STOCK_RULE: logged under «_atRetry 422 rule» so B-34/B-34b exclude them, toast and _rule unchanged.
+for (const [id, type, code, what] of [
+  ['AU-08', 'PLAN_RULE', 'order_stops_via_hub_intl', 'an ORDER STOPS PATCH refused by 071'],
+  ['AU-09', 'LOCAL_RELAY_RULE', 'relay_exists', 'a relay refused by 060'],
+]) {
+  test(`${id}: a ${type} 422 (${what}) is logged as «_atRetry 422 rule», keeps its toast and its code`, async () => {
+    const BODY = { error: { type, code, message: `test sentinel ${type} ${code}` } };
+    const s = sandbox((url) => (url.includes('/v0/') ? json(422, BODY) : json(201, {})));
+    const err = JSON.parse(await s.run("atPatch('tblO', 'recP1', { Status: 'Pending' }).then(() => 'null', (e) => JSON.stringify({ m: e.message, rule: e._rule || null }))"));
+    await flush();
+    assert.deepStrictEqual(err, { m: BODY.error.message, rule: code });
+    assert.ok(s.toasts.includes('error: ' + BODY.error.message), s.toasts.join(' / '));
+    const logged = appErrors(s.calls);
+    assert.strictEqual(logged.length, 1, logged.join(' / '));
+    assert.ok(logged[0].startsWith('_atRetry 422 rule: ' + BODY.error.message), logged[0]);
+    assert.strictEqual(logged.filter(b34Counts).length, 0, 'B-34/B-34b would still count it');
+  });
+}
+
+const PIECE ={ id: 'recP1', fields: { Reference: 'TEST-STOCK-P1', 'Stock Lot': ['recSTOCKLOT1'], Truck: ['recT1'], Status: 'Assigned' } };
 
 test('DL-04: a REFUSED delete leaves no Κάδος entry and no «Restore» undo', async () => {
   const s = sandbox((url, m) => (!url.includes('/v0/') ? json(201, {}) : m === 'GET' ? json(200, PIECE) : json(422, RULE)));

@@ -4,7 +4,7 @@
 
 DO $dry$
 DECLARE
-  v_k int; v_trg0 int; v_g record; v_v numeric; v_sql text;
+  v_k int; v_trg0 int; v_g record; v_v numeric; v_sql text; v_ids text; v_a text[];
 BEGIN
   PERFORM set_config('lock_timeout', '5s', true);
   -- 0. GUARDS (order 072 -> 072b -> 073 -> 073b)
@@ -25,6 +25,12 @@ BEGIN
   IF has_table_privilege('tms_check_runner', 'public.ct_settings', 'SELECT') THEN
     RAISE EXCEPTION '073b: the runner already reads ct_settings - stop, re-measure';
   END IF;
+  IF EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'ct_settings') THEN
+    RAISE EXCEPTION '073b: a policy already exists on ct_settings - stop, re-measure';
+  END IF;
+  IF has_function_privilege('tms_check_runner', 'public.stock_vs_charge(numeric, numeric)', 'EXECUTE') THEN
+    RAISE EXCEPTION '073b: the runner already executes stock_vs_charge (a grant, PUBLIC or a membership) - stop, re-measure';
+  END IF;
   SELECT count(*) INTO v_trg0 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
     JOIN pg_namespace ns ON ns.oid = c.relnamespace WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public';
 
@@ -42,6 +48,18 @@ BEGIN
   --     fail with "permission denied for table ct_settings" as soon as one v5 row exists (measured on PGlite).
   --     The auditor's runner only (it already reads money: stock_v_lot_money, 057); never tms_reader.
   GRANT SELECT ON public.ct_settings TO tms_check_runner;
+  --     ct_settings has RLS on in production with no policy (measured 26/10; only service_role, which bypasses RLS,
+  --     read it): the GRANT alone gives the runner 0 rows and ct_setting() answers NULL - X is NULL, so B-79 stays
+  --     green however the shares break (the harness with production's RLS proves it), and on a stock-lot piece
+  --     stock_vs_charge raises "full_truck_pallets is missing" instead. Runner only. Created here, before the
+  --     proofs, so every check is proven in the state 073b leaves; its ACCESS EXCLUSIVE lock on ct_settings (read by
+  --     the Worker through ct_setting()) lasts to the end of this block, proof loop included - quick with 0 v5 rows,
+  --     but not bounded by a timeout: run after 15:00.
+  CREATE POLICY monitor_read ON public.ct_settings FOR SELECT TO tms_check_runner USING (true);
+  --     And the EXECUTE on stock_vs_charge: 057 gave it to service_role only, and the right to call a function is
+  --     checked when the query starts, even with 0 rows, so the 073b dry run of 26/10 stopped at B-79 with "permission denied
+  --     for function stock_vs_charge". Runner only, as above (ct_setting is already PUBLIC in production).
+  GRANT EXECUTE ON FUNCTION public.stock_vs_charge(numeric, numeric) TO tms_check_runner;
 
   -- 2. THE 17 CHECKS (text = tms-auditor/checks/<id>.sql, generated; md5-proven below)
   INSERT INTO monitoring.checks (id, title, flows, sql_text, ids_sql, entity_table, red_op, red_value, baseline, severity,
@@ -429,7 +447,10 @@ BEGIN
   IF v_k <> 17 THEN RAISE EXCEPTION '073b: % checks inserted, expected 17', v_k; END IF;
 
   -- 3. PROOFS: the text and the on/off are the file's; each check (the disabled B-80 too) passes the same guard as
-  --    monitoring.run_checks, runs as the auditor's role and says 0 today (no v5 row before day L)
+  --    monitoring.run_checks, runs as the auditor's role and says 0 today (no v5 row before day L). Its ids_sql runs
+  --    too, under the same role as in run_checks: a right missing only on the ids path would otherwise pass here
+  --    and fail the first red run (review high, 26/10). NULL ids is an error, as in 057b's proof: run_checks would
+  --    turn it into '{}', a red incident that names nothing
   FOR v_g IN SELECT * FROM (VALUES
       ('B-78', 'ff4a1d89e588a4d9afa3de6e50e4ba44', '5d4b761ec0493e219049b893539d5632', true),
       ('B-79', '2c83188a965b866d7258d2157b4c0fd9', '478d697e1363c142be6983db1091a92f', true),
@@ -453,12 +474,17 @@ BEGIN
           FROM monitoring.checks WHERE id = v_g.id) THEN
       RAISE EXCEPTION '073b proof: % is not the text (or the on/off) of its file', v_g.id;
     END IF;
-    SELECT sql_text INTO v_sql FROM monitoring.checks WHERE id = v_g.id;
+    SELECT sql_text, ids_sql INTO v_sql, v_ids FROM monitoring.checks WHERE id = v_g.id;
     PERFORM monitoring.check_sql_guard(v_sql);
+    IF v_ids IS NOT NULL THEN PERFORM monitoring.check_sql_guard(v_ids); END IF;
     SET LOCAL ROLE tms_check_runner;
     EXECUTE v_sql INTO v_v;
+    v_a := '{}';
+    IF v_ids IS NOT NULL THEN EXECUTE v_ids INTO STRICT v_a; END IF;   -- STRICT: one row, or an error that says so
     RESET ROLE;
     IF v_v IS DISTINCT FROM 0 THEN RAISE EXCEPTION '073b proof: % gives % today, expected 0 before day L', v_g.id, v_v; END IF;
+    IF v_a IS NULL THEN RAISE EXCEPTION '073b proof: % ids returned NULL', v_g.id; END IF;
+    IF cardinality(v_a) IS DISTINCT FROM 0 THEN RAISE EXCEPTION '073b proof: % names % today, expected none', v_g.id, v_a; END IF;
   END LOOP;
   IF (SELECT count(*) FROM monitoring.checks WHERE id IN ('B-78', 'B-79', 'B-80', 'B-81', 'B-82', 'B-83', 'B-84', 'B-85', 'B-86', 'B-87', 'B-88', 'B-89', 'B-90', 'B-94', 'B-91', 'B-92', 'B-93') AND enabled) <> 16 THEN
     RAISE EXCEPTION '073b proof: the enabled checks are not 16';
@@ -466,6 +492,28 @@ BEGIN
   IF NOT has_table_privilege('tms_check_runner', 'public.ct_settings', 'SELECT')
      OR has_table_privilege('tms_reader', 'public.ct_settings', 'SELECT') THEN
     RAISE EXCEPTION '073b proof: ct_settings is not readable by the runner only';
+  END IF;
+  IF (SELECT count(*) FROM pg_policies WHERE schemaname = 'public' AND tablename = 'ct_settings') <> 1
+     OR NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'ct_settings'
+                      AND policyname = 'monitor_read' AND cmd = 'SELECT' AND roles::text[] = ARRAY['tms_check_runner']
+                      AND qual = 'true' AND with_check IS NULL) THEN
+    RAISE EXCEPTION '073b proof: ct_settings has not exactly the runner''s read policy';
+  END IF;
+  --    Measured, not only the catalog (principle 2): with 0 v5 rows no check enters ct_setting() or stock_vs_charge(),
+  --    so read X here as the runner: the keys with a value first (0 = the RLS-blind case, said by name before
+  --    stock_vs_charge could misname it as deleted data), then a call through the same functions B-79 uses (the
+  --    per-pallet share of each X; a missing right would raise here, by its own name)
+  SET LOCAL ROLE tms_check_runner;
+  SELECT count(DISTINCT key) FILTER (WHERE value IS NOT NULL) INTO v_k FROM public.ct_settings WHERE key IN ('x_import', 'x_export', 'full_truck_pallets');
+  IF v_k = 3 THEN PERFORM public.stock_vs_charge(public.ct_setting('x_import'), 1) + public.stock_vs_charge(public.ct_setting('x_export'), 1); END IF;
+  RESET ROLE;
+  IF v_k <> 3 THEN
+    RAISE EXCEPTION '073b proof: the runner reads % of the 3 X keys with a value (0 = RLS without its policy)', v_k;
+  END IF;
+
+  IF NOT has_function_privilege('tms_check_runner', 'public.stock_vs_charge(numeric, numeric)', 'EXECUTE')
+     OR has_function_privilege('tms_reader', 'public.stock_vs_charge(numeric, numeric)', 'EXECUTE') THEN
+    RAISE EXCEPTION '073b proof: stock_vs_charge is not executable by the runner only';
   END IF;
   IF (SELECT count(*) FROM pg_policies WHERE schemaname = 'public' AND tablename IN ('shipments', 'shipment_pieces', 'rt_stops', 'piece_legs', 'plan_notices')) <> 5
      OR (SELECT count(*) FROM pg_policies WHERE schemaname = 'public' AND policyname = 'monitor_read' AND cmd = 'SELECT'
@@ -477,7 +525,7 @@ BEGIN
        WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public') <> v_trg0 THEN
     RAISE EXCEPTION '073b proof: a trigger appeared';
   END IF;
-  RAISE NOTICE '073b OK: 17 checks (14 of F3 + 3 of 072b, 16 enabled), 5 read policies, X readable by the runner, every check 0 today';
+  RAISE NOTICE '073b OK: 17 checks (14 of F3 + 3 of 072b, 16 enabled), 5 read policies on v5 + 1 on ct_settings, X read by the runner, every check 0 today';
   RAISE EXCEPTION 'DRY RUN 073b finished - EVERYTHING UNDONE, nothing kept.';
 END
 $dry$;

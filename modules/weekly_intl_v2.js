@@ -278,16 +278,15 @@ function _isPre(f) { return typeof isPreorder === 'function' && isPreorder(f); }
 function _preLevel(f) { return typeof preorderLevel === 'function' ? preorderLevel(f) : 'red'; }
 function _carrierOf(oid) {
   // Same reading as _wi2Carrier (weekly_intl.js): partner first, then truck.
-  const D = _D().data, nl = D.nlBySrc && D.nlBySrc[oid];
-  // The read ANSWERED and holds no national load for this VS order (the
+  // F5 Ε1/Ε20: natBySrc holds ONE reading per VS order, from NATIONAL LOADS or from /plan/vs-state
+  // (weekly_intl.js _wiNatFromNl / _wiNatFromV5); this only reads it.
+  const D = _D().data, n = D.natBySrc && D.natBySrc[oid];
+  // The read ANSWERED and holds no national leg for this VS order (the
   // chain never created it, or failed): not «a load without a carrier» —
   // there is nothing to assign on Weekly National (review 11/10; the tile
   // says «δεν υπάρχει εθνικό», as information — owner 11/10 21:20).
-  if (!nl) return _natState() === 'ok' ? { kind: 'missing' } : null;
-  const f = nl.fields || {}, pid = (f['Partner'] || [])[0], tid = (f['Truck'] || [])[0], did = (f['Driver'] || [])[0];
-  if (pid || f['Is Partner Trip']) return { kind: 'par', text: [(D.partners.find((x) => x.id === pid) || {}).label || '—', f['Partner Truck Plates'] || ''].filter(Boolean).join(' · ') };
-  if (tid) return { kind: 'own', text: [(D.trucks.find((x) => x.id === tid) || {}).label || '—', did ? ((D.drivers.find((x) => x.id === did) || {}).label || '') : ''].filter(Boolean).join(' · ') };
-  return null;
+  if (!n) return _natState() === 'ok' ? { kind: 'missing' } : null;
+  return n.carrier ? { kind: n.carrier.kind, text: n.carrier.text } : null;
 }
 
 // ═══ §b Flag, opt-in, identity ═══════════════════════════════════════════
@@ -1183,8 +1182,8 @@ function _expRowHTML(e, today) {
   // row; CSS resets any fade nested in a faded ancestor (never .16).
   const natDone = (oid) => {
     if (_natState() !== 'ok') return false;
-    const nl = (_D().data.nlBySrc || {})[oid];
-    return !!nl && ['Delivered', 'Invoiced'].includes((nl.fields || {})['Status']);
+    const n = (_D().data.natBySrc || {})[oid];
+    return !!n && n.done === true;
   };
   const impShown = !!(imp && !unc);
   const xdE = row.hasSplitLegs ? '' : _xdOf(from, to, rsE);

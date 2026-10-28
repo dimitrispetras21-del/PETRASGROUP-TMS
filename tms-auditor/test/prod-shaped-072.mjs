@@ -29,6 +29,97 @@ CREATE OR REPLACE VIEW public.ct_v_rt_pnl AS SELECT id, 0::numeric AS cost_gross
   0::numeric AS profit_ex_vat FROM public.ct_round_trips WHERE status <> 'cancelled';
 CREATE OR REPLACE VIEW public.dl_v_rt_route AS SELECT id AS rt_id, ''::text AS route_text FROM public.ct_round_trips;
 `;
+// EXECUTE rights as production holds them, for every function of live-071/072/073.sql that production has taken
+// from PUBLIC (SELECT on pg_proc.proacl, 26/10 ~23:15: each list below is the WHOLE ACL minus the owner postgres -
+// no anon, no authenticated; the other functions of the fixtures are EXECUTE to PUBLIC in production too). The
+// captures carry the views' grants but not these, so every function here kept PostgreSQL's default (EXECUTE to PUBLIC): the 073b dry run passed on this copy while production
+// refused it with "permission denied for function stock_vs_charge" as tms_check_runner (a view checks the functions
+// it calls as its CALLER). Hand-kept until the capture query emits function ACLs too; re-measure with
+//   SELECT oid::regprocedure, proacl FROM pg_proc WHERE pronamespace = 'public'::regnamespace
+//     AND NOT has_function_privilege('public', oid, 'EXECUTE');
+// only73: created by live-073.sql alone, so absent from the stubs copy.
+const FN_ACL = [
+  ['public.dl_cash_sync(bigint)', ['service_role']],
+  ['public.dl_local_day_sync(bigint, date)', []],
+  ['public.dl_local_line_guard()', []],
+  ['public.dl_sync_from_local_move()', []],
+  ['public.local_moves_before()', []],
+  ['public.order_cd_stop_follow()', []],
+  ['public.ramp_follows_stop()', []],
+  ['public.rt_auto_close(bigint)', ['service_role']],
+  ['public.rt_recompute(bigint)', ['service_role']],
+  ['public.rt_sync_audit(text, text, text, jsonb, jsonb)', ['service_role']],
+  ['public.rt_sync_to_national_loads()', ['service_role']],
+  ['public.stock_guard_natl()', ['service_role']],
+  ['public.stock_guard_orders()', ['service_role']],
+  ['public.stock_natl_delivered(text, date)', ['service_role', 'tms_check_runner', 'tms_reader']],
+  ['public.stock_raise(text, text)', ['service_role']],
+  ['public.tms_week(date)', ['service_role']],
+  ['public.tms_week_year(date)', ['service_role']],
+  ['public.order_pallets(public.orders)', ['service_role', 'tms_check_runner', 'tms_reader'], 'only73'],
+  ['public.stock_vs_charge(numeric, numeric)', ['service_role'], 'only73'],
+];
+// Every grantee the function has here is revoked first (read from its ACL, whatever role a fixture or a migration
+// granted), so the list is the WHOLE ACL on this copy too; applied after the last migration, then read back in one
+// query: the grantees other than the owner must be exactly the measured list.
+const fnAclOf = (live) => FN_ACL.filter(([, , only]) => live || only !== 'only73');
+const fnAcl = (live) => fnAclOf(live).map(([sig, to]) => `DO $a$ DECLARE g text; BEGIN
+  FOR g IN SELECT DISTINCT a.grantee::regrole::text FROM pg_proc p, aclexplode(p.proacl) a
+            WHERE p.oid = '${sig}'::regprocedure AND a.grantee <> 0 AND a.grantee <> p.proowner LOOP
+    EXECUTE format('REVOKE ALL ON FUNCTION ${sig} FROM %s', g);
+  END LOOP;
+  REVOKE ALL ON FUNCTION ${sig} FROM PUBLIC;
+END $a$;` + (to.length ? `\nGRANT EXECUTE ON FUNCTION ${sig} TO ${to.join(', ')};` : '')).join('\n');
+export async function assertFnAcl(db, live) {
+  const want = fnAclOf(live);
+  const { rows } = await db.query(`SELECT f.sig, (SELECT array_agg(DISTINCT CASE WHEN a.grantee = 0 THEN 'public' ELSE a.grantee::regrole::text END)
+      FROM pg_proc p, aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+     WHERE p.oid = f.sig::regprocedure AND a.grantee <> p.proowner) AS got FROM unnest($1::text[]) f(sig)`, [want.map(([sig]) => sig)]);
+  const bySig = new Map(rows.map((r) => [r.sig, r.got]));   // matched by signature, never by row order
+  for (const [sig, to] of want) {
+    if (!bySig.has(sig)) throw new Error(`prodShaped072: ${sig} not read back`);
+    const got = [...(bySig.get(sig) || [])].sort().join(',');
+    if (got !== [...to].sort().join(',')) throw new Error(`prodShaped072: ${sig} EXECUTE to {${got}}, production {${to.join(',')}}`);
+  }
+}
+// Row security as production holds it (pg_class.relrowsecurity + pg_policies, 26/10 ~23:40), for every table of this
+// copy that the fixtures leave with RLS off: production has RLS ON on all of them, with the auditor's read-only
+// monitor_read policy on these, and NO policy on the others (only service_role, which bypasses RLS, reads them).
+// Why it matters: ct_settings is read INSIDE ct_setting() as the caller, so with RLS on and no policy the runner sees
+// 0 rows there although it holds SELECT (the review of PR #105 found it; this copy had RLS off and could not).
+const RLS_MONITOR_READ = ['app_errors', 'audit_log', 'consolidated_loads', 'ct_cost_docs', 'ct_cost_lines', 'ct_round_trips',
+  'ct_rt_legs', 'dl_entries', 'drivers', 'facade_unknown_fields', 'groupage_lines', 'local_moves', 'locations',
+  'national_loads', 'national_orders', 'order_stops', 'orders', 'pl_movements', 'ramp', 'stock_lots', 'trailers', 'trucks'];
+const RLS_NO_POLICY = ['clients', 'ct_settings', 'maint_history', 'partner_assignments', 'partners', 'users'];
+// Three tables come only with live-073.sql: missing from the stubs copy, required in the live one; any other
+// missing table is an error (a typo or a rename must not leave a table with RLS off, silently).
+const RLS_ONLY_LIVE = ['ct_settings', 'maint_history', 'partner_assignments'];
+const rlsSql = () => [...RLS_MONITOR_READ, ...RLS_NO_POLICY].map((t) => `DO $p$ BEGIN IF to_regclass('public.${t}') IS NOT NULL THEN
+    ALTER TABLE public.${t} ENABLE ROW LEVEL SECURITY;${RLS_MONITOR_READ.includes(t) ? `
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = '${t}' AND policyname = 'monitor_read') THEN
+      CREATE POLICY monitor_read ON public.${t} FOR SELECT TO tms_check_runner, tms_reader USING (true);
+    END IF;` : ''}
+  END IF; END $p$;`).join('\n');
+export async function assertRls(db, live) {
+  const { rows } = await db.query(`SELECT c.relname, c.relrowsecurity AS rls, (SELECT string_agg(p.policyname || ':' || p.cmd || ':'
+      || array_to_string(p.roles, '+') || ':' || p.qual, ',' ORDER BY p.policyname) FROM pg_policies p
+      WHERE p.schemaname = 'public' AND p.tablename = c.relname) AS pol
+    FROM pg_class c WHERE c.relnamespace = 'public'::regnamespace AND c.relname = ANY($1)`, [[...RLS_MONITOR_READ, ...RLS_NO_POLICY]]);
+  const by = new Map(rows.map((r) => [r.relname, r]));
+  for (const t of [...RLS_MONITOR_READ, ...RLS_NO_POLICY]) {
+    const want = RLS_MONITOR_READ.includes(t) ? 'monitor_read:SELECT:tms_check_runner+tms_reader:true' : null;
+    const r = by.get(t);
+    if (!r && !live && RLS_ONLY_LIVE.includes(t)) continue;
+    if (!r || r.rls !== true || (r.pol ?? null) !== want) throw new Error(`prodShaped072: ${t} row security ${JSON.stringify(r)}, production RLS on + ${want}`);
+  }
+  // and no table of the live copy is left with RLS off: production has none (0 of 46 public tables, 26/10), so a
+  // table a later fixture adds without being listed above fails here instead of reading every row as the runner
+  // (the stubs copy holds tables standing in for production's stock/gate views, so it is not held to this)
+  if (!live) return;
+  const off = (await db.query(`SELECT string_agg(relname, ',') AS t FROM pg_class
+    WHERE relnamespace = 'public'::regnamespace AND relkind IN ('r', 'p') AND NOT relrowsecurity`)).rows[0].t;
+  if (off) throw new Error(`prodShaped072: RLS off on ${off}; production has RLS on every public table`);
+}
 export const TRG = `SELECT count(*)::int AS n FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
   JOIN pg_namespace ns ON ns.oid = c.relnamespace WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public'`;
 
@@ -41,6 +132,9 @@ export async function prodShaped072(with072 = true, { money = 'stubs', with072b 
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN CREATE ROLE service_role NOLOGIN; END IF;
   END $r$;`);
+  // production's service_role bypasses RLS (pg_roles.rolbypassrls, 26/10): with production's RLS below, a read as
+  // service_role here must see what the Worker sees
+  await db.exec('ALTER ROLE service_role BYPASSRLS');
   await db.exec(fixture('live-071.sql'));
   await db.exec(fixture('live-072.sql'));
   await db.exec(money === 'live' ? fixture('live-073.sql') : STUBS);
@@ -53,5 +147,9 @@ export async function prodShaped072(with072 = true, { money = 'stubs', with072b 
   if (with072) await db.exec(readDone('072_plan_functions.sql'));
   // 072b: executed 26/10, out of drafts/ (migrationFile reads it from where it is)
   if (with072b) await db.exec(fs.readFileSync(migrationFile('072b_plan_vehicle_segments.sql'), 'utf8'));
+  await db.exec(fnAcl(money === 'live'));   // a missing signature fails here, loudly
+  await assertFnAcl(db, money === 'live');
+  await db.exec(rlsSql());
+  await assertRls(db, money === 'live');
   return db;
 }
