@@ -188,10 +188,23 @@ async function dispatcherEdit(browser) {
   await page.context().close();
 }
 
+async function unknown(browser) {
+  console.log('\n[owner] PlanConfig unknown: today\'s path, SAID on the screen');
+  const page = await newPage(browser, 'owner', { state: 'unknown' });
+  await openCatalog(page);
+  assert(/ΣΥΝ-5001/.test(await rowText(page, 'recV5A')), 'unknown: the read still runs and tells the truth (V5A from its cycle)');
+  await page.evaluate(() => openNatlCreate());
+  await page.waitForTimeout(1200);
+  const t = await page.evaluate(() => document.body.innerText);
+  assert(/Δεν διαβάστηκε αν έγινε η μετάβαση/.test(t), 'unknown: «Νέα εθνική» says the state is unknown (never a silent before)');
+  assert(page._errors.length === 0, 'unknown: 0 console/page errors ' + JSON.stringify(page._errors));
+  await page.context().close();
+}
+
 (async () => {
   console.log('Στόχος: ' + BASE_URL);
   const browser = await chromium.launch();
-  for (const run of [before, after, fail, dispatcherEdit]) {
+  for (const run of [before, after, fail, dispatcherEdit, unknown]) {
     try { await run(browser); } catch (e) { failed++; console.log('  ✗ ΚΑΤΑΡΡΕΥΣΗ ' + run.name + ': ' + (e && e.message || e)); }
   }
   await browser.close();

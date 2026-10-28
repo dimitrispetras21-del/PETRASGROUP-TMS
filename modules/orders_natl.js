@@ -812,8 +812,14 @@ function _onWatchModalClose() {
 // leaves to the role (the Worker refuses the rest with legacy_closed anyway —
 // this is so no save looks green first); and never writes a NATIONAL LOAD
 // (the 074 freeze refuses the INSERT). «After» is the base's answer
-// (PlanConfig); 'unknown' keeps today's path and the Worker says no loudly.
-async function _natlAfterL() { return (await OrdersCommon._planState()) === 'after'; }
+// (PlanConfig, read fresh: these open a write). 'unknown' keeps today's path —
+// before L it is the right one, after L the Worker refuses loudly — but it is
+// SAID on the screen, never a silent 'before' (PlanConfig contract, PR #117).
+async function _natlAfterL() {
+  const st = await OrdersCommon._planState({ fresh: true });
+  if (st === 'unknown') toast('Δεν διαβάστηκε αν έγινε η μετάβαση στο νέο Εβδομαδιαίο Εθνικών — η φόρμα ανοίγει όπως πριν· αν η μετάβαση έχει γίνει, η αποθήκευση θα αρνηθεί με μήνυμα. Ξαναδοκίμασε σε λίγο.', 'warn');
+  return st === 'after';
+}
 // Q-10: the old-order fields a role still writes through this form after L
 // (dispatcher Price/Reference/Notes, accountant Invoiced/number/Price — the
 // form has no Reference, and invoicing has its own views). Owner: the whole

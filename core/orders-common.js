@@ -385,13 +385,14 @@ const OrdersCommon = {
   // 'before' | 'after' | 'unknown' from core/plan-config.js (stream c). Its
   // absence is 'unknown' — the read then runs and tells the truth — and is
   // logged once: a missing script must not silently mean «before L».
-  async _planState() {
+  // opts {fresh:true} on write paths (PlanConfig contract, PR #117): a cached 'before' is not trusted for a save.
+  async _planState(opts) {
     if (typeof PlanConfig === 'undefined' || !PlanConfig || typeof PlanConfig.load !== 'function') {
       if (!OrdersCommon._pcMissing && typeof logError === 'function') logError(new Error('PlanConfig is not loaded'), 'OrdersCommon._planState');
       OrdersCommon._pcMissing = true;
       return 'unknown';
     }
-    try { const c = await PlanConfig.load(); return (c && c.state) || 'unknown'; } catch (e) { return 'unknown'; }
+    try { const c = await PlanConfig.load(opts); return (c && c.state) || 'unknown'; } catch (e) { return 'unknown'; }
   },
 
   // Tokens only (DESIGN.md #1). Injected once.
