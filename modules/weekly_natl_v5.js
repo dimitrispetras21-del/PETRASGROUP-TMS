@@ -485,19 +485,21 @@ function _qSub(q, today) {
   return [...by.entries()].map(([d, n], i) => `${n}${i ? '' : ' VS'} ${d && d === today ? 'σήμερα' : (i ? '' : 'από ') + _dow(d)}`).join(' · ');
 }
 // «VS-118 → Rentis +2» (Figma 2011:7745): the first destination and how many more, so the 28px card is never cut
-// mid-name; the whole line stays in title. The board of 072 names a hub VS's clients, not its places (Ε-26), so the
-// client stands where Figma has the place, and the reason stands where Figma has «φτάνει 14:00» (no arrival on the
-// board) — never an invented place or hour.
+// mid-name; the whole line stays in title (with the client). The places come from the catalogue (live fix 1, 28/10)
+// and the client is off the board (owner 28/10, as the rows): a ΚΑΘΟΔΟΣ VS names where it goes, an ΑΝΟΔΟΣ one where it
+// loads («←»). The reason stands where Figma has «φτάνει 14:00» (no arrival on the board) — never an invented hour.
 function _qcardHTML(it, m) {
   const today = m.today;
   const why = it.reason === 'late' ? 'καθυστερεί' : 'χωρίς φορτηγό';
   let row = null;
   for (const d of m.days) for (const r of d.rows) if (!row && r.kind === 'unassigned' && r.pieceIds[0] === it.pieceId) row = r;
-  const cl = row ? row.clients : [];
-  // Three spans (fidelity T5 r2): at 1440 the card is ~350px and the client is what gives way — the code and «+N»
+  const anod = !!(row && !row.kath && row.anod);
+  const pts = row ? (anod ? row.anod.from : (row.kath ? row.kath.to : [])) : [];
+  const pl = [...new Set(pts.map((p) => p.name))];
+  // Three spans (fidelity T5 r2): at 1440 the card is ~350px and the place is what gives way — the code and «+N»
   // stay whole, so «+2» is never cut away with the name (the whole line is in title).
-  const short = `<span class="wn5-qc-k">${_esc(it.code || '—')} →</span><span class="wn5-qc-cl">${_esc(cl[0] || '—')}</span>`
-    + (cl.length > 1 ? `<span class="wn5-qc-n">+${cl.length - 1}</span>` : '');
+  const short = `<span class="wn5-qc-k">${_esc(it.code || '—')} ${anod ? '←' : '→'}</span><span class="wn5-qc-cl">${_esc(pl[0] || '—')}</span>`
+    + (pl.length > 1 ? `<span class="wn5-qc-n">+${pl.length - 1}</span>` : '');
   return `<div class="wi4-qcard wi4-r-red wn5-qcard" data-piece="${_id(it.pieceId)}">`
     + `<span class="wi4-dc ${_chipCls(it.day, today)}">${_esc(_dl(it.day))}</span>`
     + `<span class="wi4-qcard-t"><span class="wi4-l1 wn5-qc-l1" title="${_esc(it.title)}">${short}</span><span class="wi4-l2">${_esc(_pal(it.pallets))} · ${why}</span></span>`
