@@ -333,3 +333,38 @@ test('F4α-T24: the board model carries segLabel per point and the handovers per
   assert.strictEqual(row.handovers.length, 1);
   assert.strictEqual(row.tiles.length, 2);
 });
+
+// Live fixes 28/10 (W45, the first day of the v5 board): waiting / hub places by id → name through opts.place, ΑΝΟΔΟΣ
+// ΠΡΟΣ = «Βέροια», temperatures only where known, the queue's piece count.
+test('live 28/10: waiting rows name their places from opts.place; an unknown id is «—» and ONE error line; no catalogue = «—», no line', () => {
+  const b = { week: '2026-10-10', cycles: [], notices: [],
+    waiting: [{ piece_id: 20, kind: 'vs_export', order_id: 616, client: 'ΠΕΛΑΤΗΣ Α', pallets: 24, temperature_c: 7, nat_from_location_id: 6, nat_to_location_id: 1, nat_ready_day: '2026-10-10', load_from: null, load_to: null },
+      { piece_id: 21, kind: 'vs_export', order_id: 616, client: 'ΠΕΛΑΤΗΣ Α', pallets: 8, temperature_c: 7, nat_from_location_id: 9, nat_to_location_id: 1, nat_ready_day: '2026-10-10', load_from: null, load_to: null }],
+    hub: [{ piece_id: 16, kind: 'vs_import', order_id: 604, client: 'ΠΕΛΑΤΗΣ Β', pallets: 11, temperature_c: null, nat_to_location_id: 3, nat_ready_day: '2026-10-12', is_stock: false, inbound_rt_id: null, deliver_from: null, deliver_to: null }] };
+  const names = { 3: 'Aspropyrgos', 6: 'Thessaloniki' };
+  const m = L.model(b, { today: TODAY, hubId: 1, place: (id) => (names[id] ? { name: names[id] } : null) });
+  const rows = m.days.flatMap((d) => d.rows);
+  const ex = rows.find((r) => r.pieceIds.includes(20)), im = rows.find((r) => r.pieceIds.includes(16));
+  assert.strictEqual(ex.kath, null);
+  assert.deepStrictEqual(ex.anod.from.map((p) => p.name), ['Thessaloniki', '—']);
+  assert.deepStrictEqual(ex.anod.to.map((p) => p.name), ['Βέροια'], 'ΠΡΟΣ of a vs_export = the hub');
+  assert.deepStrictEqual(ex.anod.from[0].temps, [7]);
+  assert.deepStrictEqual(im.kath.to.map((p) => p.name), ['Aspropyrgos']);
+  assert.deepStrictEqual(im.kath.to[0].temps, [], 'a missing temperature is no temperature, never 0');
+  assert.deepStrictEqual(m.errors, ['τόπος #9 δεν υπάρχει στον κατάλογο τόπων — δείχνεται «—»']);
+  assert.deepStrictEqual(m.queue.map((q) => [q.orderId, q.pieces]).sort(), [[604, 1], [616, 2]]);
+  const bare = L.model(b, { today: TODAY, hubId: 1 });
+  assert.deepStrictEqual(bare.days.flatMap((d) => d.rows).find((r) => r.pieceIds.includes(16)).kath.to.map((p) => p.name), ['—']);
+  assert.deepStrictEqual(bare.errors, [], 'no catalogue: the screen says it in its own strip, not as a shape line per id');
+});
+
+test('075: waitSide — the hub ends first, then the order\'s own direction, else ΚΑΘΟΔΟΣ (one rule for the board and Δ1)', () => {
+  assert.strictEqual(L.waitSide({ kind: 'national', nat_from_location_id: 5, nat_to_location_id: 6, direction: 'ANODOS' }, 1), 'ANODOS');
+  assert.strictEqual(L.waitSide({ kind: 'national', nat_from_location_id: 5, nat_to_location_id: 6, direction: 'KATHODOS' }, 1), 'KATHODOS');
+  assert.strictEqual(L.waitSide({ kind: 'national', nat_from_location_id: 5, nat_to_location_id: 6 }, 1), 'KATHODOS', 'no key (before 075) = as before');
+  assert.strictEqual(L.waitSide({ kind: 'national', nat_from_location_id: 5, nat_to_location_id: 6, direction: null }, 1), 'KATHODOS');
+  assert.strictEqual(L.waitSide({ kind: 'national', nat_from_location_id: 5, nat_to_location_id: 1, direction: 'KATHODOS' }, 1), 'ANODOS', 'towards the hub wins over a direction');
+  assert.strictEqual(L.waitSide({ kind: 'national', nat_from_location_id: 1, nat_to_location_id: 6, direction: 'ANODOS' }, 1), 'KATHODOS', 'from the hub wins over a direction');
+  assert.strictEqual(L.waitSide({ kind: 'vs_export', nat_to_location_id: 1 }, 1), 'ANODOS');
+  assert.strictEqual(L.waitSide({ kind: 'vs_import', at_hub: true, nat_to_location_id: 3 }, 1), 'KATHODOS');
+});

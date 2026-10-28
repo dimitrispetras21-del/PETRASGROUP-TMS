@@ -75,7 +75,7 @@ test('F4α-T20: the body is exactly plan_orders_create\'s keys, numbers as JSON 
   const b = F._body(state());
   assert.deepStrictEqual(J(Object.keys(b)), ['orders']);
   assert.deepStrictEqual(J(b.orders[0]), {
-    client_id: 41, price: 310, pallet_exchange: false, temperature_c: 4,
+    client_id: 41, price: 310, pallet_exchange: false, direction: 'KATHODOS', temperature_c: 4,
     shipments: [{ origin_location_id: 3, dest_location_id: 2, pallets: 6,
       load_from: '2026-10-14T11:00:00+03:00', load_to: '2026-10-14T12:00:00+03:00',
       deliver_from: '2026-10-15T08:00:00+03:00', deliver_to: '2026-10-15T10:00:00+03:00' }] });
@@ -169,4 +169,34 @@ test('F4α-T20: edit sends only what changed; nothing changed = empty body', () 
   assert.deepStrictEqual(J(F._patchBody(orig, same)), {});
   const ch = Object.assign({}, same, { price: 330, ships: [Object.assign({}, same.ships[0], { pallets: 7 })] });
   assert.deepStrictEqual(J(F._patchBody(orig, ch)), { set: { price: 330 }, shipments: [{ shipment_id: 5101, pallets: 7 }] });
+});
+
+// 075 (live bug 28/10, order #17): the form's Κατεύθυνση reaches the base - on create for every order of the form, and
+// on edit only when it changed; never a value the base would refuse (KATHODOS / ANODOS only).
+test('075: the side is sent - create carries the form\'s Κατεύθυνση; edit only a change, never an empty one', () => {
+  for (const side of ['KATHODOS', 'ANODOS']) {
+    const b = F._body(state({ side, orders: [order(), order({ client_id: 42 })] }));
+    assert.deepStrictEqual(J(b.orders.map((o) => o.direction)), [side, side]);
+  }
+  assert.ok(!('direction' in F._body(state({ side: 'NORTH' })).orders[0]), 'an unknown side is not sent');
+  const orig = { direction: null, ships: [] };
+  assert.deepStrictEqual(J(F._patchBody(orig, { direction: 'ANODOS', ships: [] })), { set: { direction: 'ANODOS' } });
+  assert.deepStrictEqual(J(F._patchBody({ direction: 'ANODOS', ships: [] }, { direction: 'ANODOS', ships: [] })), {});
+  assert.deepStrictEqual(J(F._patchBody({ direction: 'ANODOS', ships: [] }, { direction: null, ships: [] })), {});
+});
+
+
+// F13 (live test 28/10, coordinator): the edit form opened on an order sends NOTHING when nothing changed, and one
+// changed field sends only that field - empty or unset fields (notes, PE, shipments it could not show) are never
+// written. The DB-level proof (0 rows written) is the F13 session's rig (a new read, 077).
+test('F13: open + save with no change sends no field; one change sends only that field', () => {
+  const ship = { shipment_id: 7, pallets: 6, load_from: '2026-10-14T11:00:00+03:00', load_to: '2026-10-14T12:00:00+03:00',
+    deliver_from: '2026-10-15T08:00:00+03:00', deliver_to: '2026-10-15T10:00:00+03:00' };
+  const orig = { price: 310, reference: 'R1', goods: 'G', notes: 'a note', temperature_c: 4, pallet_exchange: true, direction: 'ANODOS', ships: [ship] };
+  const same = { ...orig, ships: [{ ...ship, load_from: '2026-10-14T08:00:00.000Z' }] };   // the same instant in UTC
+  assert.deepStrictEqual(J(F._patchBody(orig, same)), {});
+  const blank = { price: null, reference: '', goods: '', notes: '', temperature_c: null, pallet_exchange: null, direction: null, ships: [] };
+  assert.deepStrictEqual(J(F._patchBody(orig, blank)), {}, 'what the form could not show is never sent as empty');
+  assert.deepStrictEqual(J(F._patchBody(orig, { ...same, notes: 'changed' })), { set: { notes: 'changed' } });
+  assert.deepStrictEqual(J(F._patchBody(orig, { ...same, ships: [{ ...ship, pallets: 8 }] })), { shipments: [{ shipment_id: 7, pallets: 8 }] });
 });

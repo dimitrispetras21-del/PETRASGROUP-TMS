@@ -45,11 +45,15 @@ function _wi4() {
 }
 const _dow = (day) => { const lg = _wi4(); return lg && day ? lg.dayLabel(day).split(' ')[0] : day || ''; };
 const _rate = (x) => Number(x).toLocaleString('el-GR', { maximumFractionDigits: 2 });
+// The distinct temperatures of a point's loads (°C, ascending): what the driver keeps the trailer at. Unknown = none
+// (an empty list), never 0 — a missing temperature is not «0 °C» (trap 2 of CLAUDE.md).
+const _temps = (items) => [...new Set((items || []).map((x) => x && x.temperature_c)
+  .filter((t) => t !== null && t !== undefined && t !== '' && Number.isFinite(Number(t))).map(Number))].sort((a, b) => a - b);
 
 // The Veroia hub has no flag on the board's stops (072 plan_board sends location_id only). Its id is read from the
 // one fact the base guarantees about a VS (072 leg_place, «από την αφετηρία του, μέσω Βέροιας»): a vs_import starts
-// at the hub, a vs_export ends there. A hub[] item IS at the hub (071 at_hub) but carries no location id, so it
-// names nothing. No VS in the week → null (opts.hubId from PlanIds.hub() when the catalogue exists, Ε-27); model()
+// at the hub, a vs_export ends there. A hub[] item IS at the hub (071 at_hub); it names its destination
+// (nat_to_location_id, 074a) but not where it stands, so it says nothing about the hub's id. No VS in the week → null (opts.hubId from PlanIds.hub() when the catalogue exists, Ε-27); model()
 // then puts HUB_UNKNOWN on the board, never a silent ordinary «ΒΕΡΟΙΑ» stop (Ε-44).
 function hubFromBoard(board, errors) {
   const seen = new Set();
@@ -113,9 +117,9 @@ function searchParts(row) {
 }
 
 function _legs(s, act) { return (s.legs || []).filter((l) => l.act === act); }
-function _point(s, pallets) {
+function _point(s, pallets, legs) {
   return { stopId: s.stop_id, n: 0, name: s.location || '—', city: null,
-    clients: [...new Set((s.legs || []).map((l) => l.client).filter(Boolean))],
+    clients: [...new Set((s.legs || []).map((l) => l.client).filter(Boolean))], temps: _temps(legs),
     from: athensTime(s.planned_from), to: athensTime(s.planned_to), pallets,
     dim: s.dim === true, late: s.has_late === true, segmentId: null, segLabel: null, day: s.stop_day || athensDay(s.planned_to) };
 }
@@ -133,7 +137,7 @@ function _side(name, list, hubId) {
     const loads = _legs(s, 'load'), unloads = _legs(s, 'unload');
     const isFrom = loads.length && !unloads.length ? true : unloads.length ? false : name === 'ANODOS';
     if (isFrom && vIdx >= 0 && i < vIdx) vBefore++;
-    (isFrom ? from : to).push(_point(s, isFrom ? _sum(loads) : _sum(unloads)));
+    (isFrom ? from : to).push(_point(s, isFrom ? _sum(loads) : _sum(unloads), isFrom ? loads : unloads));
   });
   from.forEach((p, i) => { p.n = i + 1; });
   to.forEach((p, i) => { p.n = i + 1; });
@@ -272,10 +276,21 @@ function _loadDay(w) {
   if (d || !DAY_RE.test(String(w.nat_due_day || ''))) return d;
   return w.kind === 'vs_import' ? _addDays(w.nat_due_day, -1) : w.nat_due_day;
 }
+// The side a waiting piece goes on — ONE rule for the board's row and the assignment window (wn5_actions _sideFor):
+// standing at the hub = ΚΑΘΟΔΟΣ; towards the hub (a vs_export, or nat_to = hub) = ΑΝΟΔΟΣ; neither end the hub = the
+// order's own direction (075: plan_board's waiting[].direction, from the form's «Κατεύθυνση»; 072 never stored it),
+// and with no direction (before 075, or never chosen) ΚΑΘΟΔΟΣ as before.
+function waitSide(w, hubId) {
+  if (!w) return 'KATHODOS';
+  const hub = hubId != null ? Number(hubId) : null;
+  if (w._atHub === true || w.at_hub === true || (hub != null && Number(w.nat_from_location_id) === hub)) return 'KATHODOS';
+  if (w.kind === 'vs_export' || (hub != null && w.nat_to_location_id != null && Number(w.nat_to_location_id) === hub)) return 'ANODOS';
+  return w.direction === 'ANODOS' || w.direction === 'KATHODOS' ? w.direction : 'KATHODOS';
+}
 // A load without a vehicle is a «ΠΡΟΣ ΑΝΑΘΕΣΗ» row of its order (all its pieces: a VS with two deliveries is one
 // row with two points, Figma 2011:7745 VS-118) — one row because the base assigns the order whole (072
 // plan_put_group: «a group is its waiting pieces, whole»). Its side: towards the hub = ΑΝΟΔΟΣ, else ΚΑΘΟΔΟΣ.
-function _waitRow(list, hubId, errors) {
+function _waitRow(list, hubId, errors, nameOf) {
   const ws = list.slice().sort((a, b) => a.piece_id - b.piece_id);
   const w0 = ws[0];
   // _atHub: the piece came in hub[] — at Veroia by the base rule (071 at_hub), whatever id the board names
@@ -283,25 +298,40 @@ function _waitRow(list, hubId, errors) {
   // Decided over ALL the pieces, never by the lowest one: a groupage may load at Veroia AND elsewhere (Ε-19 N×1),
   // and then the row has the «Βέροια» head and one loading point per other place.
   const hubWs = ws.filter(atHub), outWs = ws.filter((w) => !atHub(w));
-  const anodos = !hubWs.length && (w0.kind === 'vs_export' || (hubId != null && Number(w0.nat_to_location_id) === hubId));
-  const pts = ws.map((w, i) => ({ stopId: null, n: i + 1, name: w.client || '—', city: null, clients: w.client ? [w.client] : [],
+  const anodos = !hubWs.length && waitSide(w0, hubId) === 'ANODOS';
+  // Each piece is a point at ITS place (074a: every waiting / hub item names nat_from / nat_to): the loading place of an
+  // ΑΝΟΔΟΣ, the delivery place of a ΚΑΘΟΔΟΣ, with the client before it («ΠΕΛΑΤΗΣ · τόπος», Figma H1). A place the
+  // catalogue cannot name is «—» and a line of the board's error strip (nameOf), never the client in its place.
+  const pts = ws.map((w, i) => ({ stopId: null, n: i + 1, name: nameOf(anodos ? w.nat_from_location_id : w.nat_to_location_id), city: null,
+    clients: w.client ? [w.client] : [], temps: _temps([w]),
     from: athensTime(anodos ? w.load_from : w.deliver_from), to: athensTime(anodos ? w.load_to : w.deliver_to), pallets: r1(w.pallets),
     dim: false, late: w.overdue === true, segmentId: null, segLabel: null, day: athensDay(anodos ? w.load_from : w.deliver_from) }));
   const pallets = _sum(ws);
   const loadDay = ws.map(_loadDay).filter(Boolean).sort()[0] || null;
-  // A national load from a place the board names no further (the board has ids, not names, for waiting loads):
-  // its loading window under «—», never an invented place — one point per loading place outside the hub.
+  // A ΚΑΘΟΔΟΣ load that starts outside the hub: one loading point per place (nat_from), named by the catalogue.
   const byFrom = new Map();
   for (const w of anodos ? [] : outWs) {
     const k = String(w.nat_from_location_id);
     if (!byFrom.has(k)) byFrom.set(k, []);
     byFrom.get(k).push(w);
   }
-  const origin = [...byFrom.values()].map((g, i) => ({ stopId: null, n: i + 1, name: '—', city: null, clients: [], from: athensTime(g[0].load_from), to: athensTime(g[0].load_to),
+  const origin = [...byFrom.values()].map((g, i) => ({ stopId: null, n: i + 1, name: nameOf(g[0].nat_from_location_id), city: null, clients: [], temps: _temps(g),
+    from: athensTime(g[0].load_from), to: athensTime(g[0].load_to),
     pallets: _sum(g), dim: false, late: false, segmentId: null, segLabel: null, day: _loadDay(g[0]) }));
+  // ΠΡΟΣ of an ΑΝΟΔΟΣ: where the loads go (nat_to), one point per place — «Βέροια» for the hub (a vs_export), never
+  // an empty cell for a destination the board knows.
+  const byTo = new Map();
+  for (const w of anodos ? ws : []) {
+    const k = String(w.nat_to_location_id);
+    if (!byTo.has(k)) byTo.set(k, []);
+    byTo.get(k).push(w);
+  }
+  const dest = [...byTo.values()].map((g, i) => ({ stopId: null, n: i + 1, name: nameOf(g[0].nat_to_location_id), city: null, clients: [], temps: [],
+    from: athensTime(g[0].deliver_from), to: athensTime(g[0].deliver_to), pallets: _sum(g), dim: false, late: false, segmentId: null, segLabel: null,
+    day: athensDay(g[0].deliver_from) }));
   const side = { side: anodos ? 'ANODOS' : 'KATHODOS', day: loadDay, toDay: anodos || !pts.length ? null : pts[pts.length - 1].day,
     veroia: !anodos && hubWs.length ? { stopId: null, from: athensTime(hubWs[0].load_from), to: athensTime(hubWs[0].load_to) } : null, vBefore: 0,
-    headDim: false, from: anodos ? pts : origin, to: anodos ? [] : pts, pallets, over: pallets > CAP ? r1(pallets - CAP) : 0, sideDim: false, gap: null };
+    headDim: false, from: anodos ? pts : origin, to: anodos ? dest : pts, pallets, over: pallets > CAP ? r1(pallets - CAP) : 0, sideDim: false, gap: null };
   const refs = [...new Set(ws.map((w) => w.reference).filter(Boolean))];
   const clients = [...new Set(ws.map((w) => w.client).filter(Boolean))];
   // Day L (F5 FE-2, owner 28/10): no more «… δεν ήρθαν (Worker)» line under ΠΡΟΣ ΑΝΑΘΕΣΗ. 074a sends the window
@@ -335,6 +365,20 @@ function model(board, opts) {
   // A week with neither has nothing to place.
   const needsHub = board.cycles.length > 0 || board.waiting.some((w) => w && w.kind === 'national');
   if (hubId == null && needsHub && !errors.length) errors.push(HUB_UNKNOWN);
+  // The place names of the waiting / hub rows (the board has ids only): opts.place(id) → {name} from the catalogue
+  // (PlanIds.place, GET /plan/lookups). Without a catalogue every such place is «—» and the screen says why (its own
+  // strip); with one, an id it does not hold is one error line per id — never a silent «—».
+  const place = typeof o.place === 'function' ? o.place : null;
+  const unnamed = new Set();
+  const nameOf = (id) => {
+    if (id === null || id === undefined || id === '') return '—';
+    if (hubId != null && Number(id) === hubId) return 'Βέροια';
+    if (!place) return '—';
+    const p = place(Number(id));
+    if (p && p.name) return String(p.name);
+    if (!unnamed.has(String(id))) { unnamed.add(String(id)); errors.push(`τόπος #${id} δεν υπάρχει στον κατάλογο τόπων — δείχνεται «—»`); }
+    return '—';
+  };
   const nums = cycleNumbers(board.cycles);
   const rows = board.cycles.map((c) => _cycleRow(c, hubId, nums, errors));
   const groups = new Map();
@@ -347,7 +391,7 @@ function model(board, opts) {
   // so an import VS without a national truck is never in waiting[] (fixture note, Interfaces).
   for (const w of board.waiting) if (w.is_stock !== true) add(w, false);   // stock lives only in the Veroia board (owner rule 5, 19/10)
   for (const h of board.hub) if (_neverAssigned(h)) add(h, true);
-  for (const list of groups.values()) rows.push(_waitRow(list, hubId, errors));
+  for (const list of groups.values()) rows.push(_waitRow(list, hubId, errors, nameOf));
   // Days by the Veroia loading day of ΚΑΘΟΔΟΣ (else the ΑΝΟΔΟΣ day); inside a day the cycles first, by that time,
   // then the loads waiting for a vehicle (Figma 2011:7745 row order).
   rows.sort((a, b) => String(a.dayKey || '').localeCompare(String(b.dayKey || ''))
@@ -371,7 +415,7 @@ function model(board, opts) {
     pieceId: r.pieceIds[0],
     orderId: r.group && r.group.order_id != null ? r.group.order_id : null,
     natOrderId: r.group && r.group.nat_order_id != null ? r.group.nat_order_id : null,
-    code: r.refs[0] || '', title: `${r.refs[0] || '—'} → ${r.clients.join(' · ') || '—'}`, day: r.dayKey,
+    code: r.refs[0] || '', title: `${r.refs[0] || '—'} → ${r.clients.join(' · ') || '—'}`, day: r.dayKey, pieces: r.pieceIds.length,
     pallets: (r.kath || r.anod).pallets, late: r.late, reason: r.late ? 'late' : 'no_truck',
   }));
   const item = (h) => ({ pieceId: h.piece_id, client: h.client || null, place: null, pallets: r1(h.pallets), leave_by: h.leave_by || null,
@@ -416,6 +460,6 @@ function handoversOf(cycle) {
   return out;
 }
 
-const WN5L = freeze({ model, segmentsOf, stopSegments, handoversOf, searchParts, cycleNumbers, capacity, stopRank, hubFromBoard, athensDay, athensTime, CAP, HUB_UNKNOWN, ShapeError });
+const WN5L = freeze({ model, waitSide, segmentsOf, stopSegments, handoversOf, searchParts, cycleNumbers, capacity, stopRank, hubFromBoard, athensDay, athensTime, CAP, HUB_UNKNOWN, ShapeError });
 if (typeof module !== 'undefined') module.exports = WN5L; else window.WN5L = WN5L;
 })();

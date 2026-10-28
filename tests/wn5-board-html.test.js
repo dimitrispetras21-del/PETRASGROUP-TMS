@@ -98,7 +98,9 @@ test('F4α-T5: «Χωρίς κάθοδο», «Κενό γύρισμα», «Μό�
   assert.ok(/Βέροια<span class="wn5-endx"> · τέλος κύκλου<\/span><\/span><span class="wi4-l2">ως Δευ 22:00/.test(by.get('rt:101')), 'rt:101 end');
   // whole-frame r4: «↳» in the index column (as the ⇄ sub-row's .wn5-hand-ar), the text from the ΚΑΘΟΔΟΣ chip column
   assert.ok(/<span class="wn5-c-idx"><span class="wn5-hand-ar">↳<\/span><\/span> <span class="wn5-sub-t"><b>Φόρτωση με τοπικό<\/b> · Driver Test 11 · Δευ 12\/10 11:00–12:00 · για Oinofyta Test \(στάση 2\)/.test(by.get('rt:103')), 'rt:103 local');
-  assert.ok(/class="wi4-box un" data-act="assign"/.test(by.get('wait:4101')) && /wi4-r-red/.test(by.get('wait:4101')), 'wait:4101 ΠΡΟΣ ΑΝΑΘΕΣΗ');
+  // live fix 3 (owner 28/10): a waiting row of one side names its side in the box and draws the dashed empty side
+  assert.ok(/class="wi4-box un wn5-un-a" data-act="assign"><span class="wi4-l1">ΠΡΟΣ ΑΝΑΘΕΣΗ<\/span><span class="wi4-l2 wn5-un-side">← ΚΑΘΟΔΟΣ<\/span>/.test(by.get('wait:4101'))
+    && /wi4-r-red/.test(by.get('wait:4101')) && /<span class="wn5-gapbox">Χωρίς άνοδο<\/span>/.test(by.get('wait:4101')), 'wait:4101 ΠΡΟΣ ΑΝΑΘΕΣΗ');
 });
 
 test('F4α-T5: a loading before Veroia comes first in ΦΟΡΤΩΣΗ, numbered «1», then «Βέροια» (WN5L Side.vBefore, Figma H1 row 5)', () => {

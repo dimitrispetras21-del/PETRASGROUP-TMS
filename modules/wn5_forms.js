@@ -130,11 +130,14 @@
     }
     return out;
   }
-  // The body of POST /plan/orders: exactly the keys of plan_orders_create (072:596-640), nothing else. The
-  // request_id is NOT here: planFetch adds the slot's id (opts.requestId), so the replay md5 never sees it.
+  // The body of POST /plan/orders: exactly the keys of plan_orders_create (072:596-640, + direction since 075),
+  // nothing else. The request_id is NOT here: planFetch adds the slot's id (opts.requestId), so the replay md5 never
+  // sees it. direction = the form's Κατεύθυνση (live bug 28/10, order #17: it was never sent, and an order that never
+  // touches Veroia showed on the other side); with a target 075 requires it to equal the target's side, which it is.
   function _body(st) {
     const orders = st.orders.map((o) => {
       const out = { client_id: o.client_id, price: o.price, pallet_exchange: o.pallet_exchange };
+      if (st.side === 'KATHODOS' || st.side === 'ANODOS') out.direction = st.side;
       if (o.reference) out.reference = o.reference;
       if (o.goods) out.goods = o.goods;
       if (o.notes) out.notes = o.notes;
@@ -218,7 +221,7 @@
   // instants: the board writes UTC, the form writes the Athens offset.
   function _patchBody(orig, st) {
     const set = {};
-    for (const k of ['price', 'reference', 'goods', 'notes', 'temperature_c', 'pallet_exchange']) {
+    for (const k of ['price', 'reference', 'goods', 'notes', 'temperature_c', 'pallet_exchange', 'direction']) {
       const v = st[k];
       if (v === undefined || v === null || v === '' || (typeof v === 'number' && !Number.isFinite(v))) continue;
       if (v !== orig[k]) set[k] = v;
@@ -619,6 +622,8 @@
       temperature_c: any.temperature_c === undefined ? null : any.temperature_c,
       pallet_exchange: w[0] && typeof w[0].pallet_exchange === 'boolean' ? w[0].pallet_exchange : null,
       goods: '', notes: '', riding: legs.length > 0,
+      // 075: the side the board reads for a waiting order (null = never stated, the hub rule draws it)
+      direction: w[0] && (w[0].direction === 'KATHODOS' || w[0].direction === 'ANODOS') ? w[0].direction : null,
       ships: w.map((x) => ({ shipment_id: x.shipment_id, origin: x.nat_from_location_id, dest: x.nat_to_location_id, pallets: x.pallets,
         load_from: x.load_from, load_to: x.load_to, deliver_from: x.deliver_from, deliver_to: x.deliver_to })),
     };
@@ -643,6 +648,11 @@
       + `<label class="wn5f-f"><span>Τιμή € (χωρίς ΦΠΑ) *</span><input class="form-input" data-f="price" inputmode="decimal" value="${e.price == null ? '' : _esc(e.price)}" placeholder="${e.price == null ? 'χωρίς αλλαγή' : ''}"></label>`
       + `<label class="wn5f-f"><span>Θερμοκρασία °C</span><input class="form-input" data-f="temp" inputmode="decimal" value="${e.temperature_c == null ? '' : _esc(e.temperature_c)}"></label>`
       + `<div class="wn5f-f"><span>PE · ανταλλαγή παλετών</span>${_peHTML(e.pallet_exchange)}</div></div>`
+      // 075: the side is corrected here (the repair of #17); on a cycle the cycle's side holds, so it stays as it is
+      + `<label class="wn5f-f"><span>Κατεύθυνση</span><select class="form-input" data-f="dir"${ro}>`
+      + (e.direction ? '' : '<option value="" selected>— δεν έχει δηλωθεί</option>')
+      + ['KATHODOS', 'ANODOS'].map((k) => `<option value="${k}"${e.direction === k ? ' selected' : ''}>${DIR_GR[k]}</option>`).join('')
+      + `</select></label>`
       + (e.price == null ? '<div class="wn5f-note">Η τιμή δεν έρχεται με το board για παραγγελία σε κύκλο — γράψε τιμή μόνο για να την αλλάξεις.</div>' : '')
       + `<div class="wn5f-grid3"><label class="wn5f-f"><span>Αναφορά</span><input class="form-input" data-f="ref" value="${_esc(e.reference)}"></label>`
       + `<label class="wn5f-f"><span>Είδος</span><input class="form-input" data-f="goods"></label><label class="wn5f-f"><span>Σημειώσεις</span><input class="form-input" data-f="notes"></label></div>`
@@ -655,6 +665,7 @@
     return {
       price: _num(v('[data-f="price"]')), temperature_c: _num(v('[data-f="temp"]')), reference: v('[data-f="ref"]').trim(),
       goods: v('[data-f="goods"]').trim(), notes: v('[data-f="notes"]').trim(), pallet_exchange: peh === 'yes' ? true : peh === 'no' ? false : null,
+      direction: f.edit.riding ? null : (v('[data-f="dir"]') || null),
       ships: f.edit.riding ? [] : [...f.el.querySelectorAll('[data-ship]')].map((r) => {
         const g = (k) => r.querySelector(`[data-f="${k}"]`).value;
         const t = (k) => _hmNorm(g(k));
