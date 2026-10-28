@@ -75,6 +75,7 @@ jobs:
       # the review of PR #117 found tests/plan-config.test.mjs ran on no machine
       # but the author's, so a later change to core/plan-config.js could read a
       # failed GET /plan/config as 'before' again without a red check. Node only,
-      # no npm install, like plan-no-resend above.
+      # no npm install, like plan-no-resend above. sw-app-shell holds the pre-cache
+      # and the load order of the F5 files (core/plan-config.js before every module).
       - name: Run the F5 tests
-        run: node --test tests/plan-config.test.mjs
+        run: node --test tests/plan-config.test.mjs tests/sw-app-shell.test.js
