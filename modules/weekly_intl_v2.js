@@ -1351,12 +1351,14 @@ function _legRowHTML(e, today) {
   // The leg's own printer (owner 28/10: «δεν μπορώ να εκτυπώσω / στείλω WhatsApp»
   // on a rota leg — v1 drew ⎙ on it, v4 had dropped it). Same slot as a load
   // row's printer on the leg's side, same .wk3-prt + data-shq, so right-click /
-  // long-press is the share menu. Same call as the row menu's «Εκτύπωση…»
-  // (_wiMenuPrint), so paper and menu print the same sheet.
+  // long-press is the share menu. The click IS the row menu's «Εκτύπωση…»
+  // (_wiMenuPrint), so paper and menu print the same sheet. Drawn even without
+  // printSheetQuery, as a load row's printer is (only the share menu needs it).
   const hasP = !!(lr.partnerId || lr.partnerLabel);
   const prtTitle = (isImp ? 'Εισαγωγή' : 'Εξαγωγή') + ': εκτύπωση σκέλους ρότας (δεξί κλικ: κοινή χρήση)';
-  const prt = q && typeof printSheetQuery === 'function'
-    ? `<button type="button" class="wk3-prt wi4-prt${isImp ? '' : ' wi4-prt-l'}" title="${_esc(prtTitle)}" aria-label="${_esc(prtTitle)}" data-shq="${_esc(printSheetQuery(q, isImp ? 'import' : 'export', hasP))}" data-shtitle="Εντολή ${isImp ? 'εισαγωγής' : 'εξαγωγής'} — W${_D().week}" onclick="event.stopPropagation();${isImp ? `WI_INTERNAL.printImp('${q}',${hasP})` : `WI_INTERNAL.print(${lr.id},'export')`}">${PRINTER}</button>`
+  const prtShq = typeof printSheetQuery === 'function' ? ` data-shq="${_esc(printSheetQuery(q, isImp ? 'import' : 'export', hasP))}"` : '';
+  const prt = q
+    ? `<button type="button" class="wk3-prt wi4-prt${isImp ? '' : ' wi4-prt-l'}" title="${_esc(prtTitle)}" aria-label="${_esc(prtTitle)}"${prtShq} data-shtitle="Εντολή ${isImp ? 'εισαγωγής' : 'εξαγωγής'} — W${_D().week}" onclick="event.stopPropagation();WI_INTERNAL.menuPrint(${lr.id},${isImp})">${PRINTER}</button>`
     : '';
   // A leg rides its RT's truck: a same-day clash is said here, by the unlink.
   const sd = rs.SAME_DAY ? `<span class="wi4-flag amb" data-r="SAME_DAY" title="${_esc(rs.SAME_DAY.text)}">ίδια μέρα</span>` : '';
