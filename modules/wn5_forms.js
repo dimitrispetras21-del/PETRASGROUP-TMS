@@ -587,7 +587,8 @@
       f.locked = true;   // the Worker's text says where to look; a resend would be refused again
       return;
     }
-    if (e.kind === K.UNKNOWN && f.kind === 'order') {
+    // the board check finds a CREATED order (_findOrders); an edit replays by its request_id instead (077)
+    if (e.kind === K.UNKNOWN && f.kind === 'order' && !f.edit) {
       f.lastBody = body;
       // WN5Act.strip's own «Έλεγχος στο board» only re-reads; the form's one also looks for THIS order (_findOrders)
       const s = _strip(f).querySelector('.wn5-strip') || _strip(f);
@@ -644,10 +645,14 @@
   function _shipHTML(e, s) {
     const t = (iso) => _parts(iso) || { day: '', hm: '' };
     // a point that rides (a live leg, the same rule 077 refuses by) or a VS bridge changes from the board, not here
-    const lock = s.rides || s.vs_locked;
-    const ro = lock ? ' disabled' : '';
     const lf = t(s.load_from), lt = t(s.load_to), df = t(s.deliver_from), dt = t(s.deliver_to);
-    const where = s.rt_codes.length ? `<small class="wn5f-shipc"> · σε κύκλο ${_esc(s.rt_codes.join(', '))}</small>` : '';
+    // a window over midnight cannot be held by one day field per side: read back it would land on the first day and a
+    // save would shorten it without a word (code review 28/10). Shown, never sent; the board changes it.
+    const twoDays = lf.day !== lt.day || df.day !== dt.day;
+    const lock = s.rides || s.vs_locked || twoDays;
+    const ro = lock ? ' disabled' : '';
+    const where = s.rt_codes.length ? `<small class="wn5f-shipc"> · σε κύκλο ${_esc(s.rt_codes.join(', '))}</small>`
+      : twoDays ? '<small class="wn5f-shipc"> · παράθυρο σε δύο ημέρες: αλλάζει από το Εβδομαδιαίο</small>' : '';
     // × only on a point that waits, and never on the last one (077 refuses shipments:last: the delete of the order is
     // «Διαγραφή παραγγελίας», with its own list)
     const x = !lock && e.ships.length > 1
@@ -801,6 +806,7 @@
     f.slot = PlanApi.slot();   // ONE id for this open form (decision 44): a new point is a creation
     _open(f, 'Επεξεργασία παραγγελίας #' + _esc(p.natOrderId), '· ' + _esc(edit.client || ''), _editHTML(f), 'Μία «Αποθήκευση» = μία συναλλαγή.');
     f.onAct = (ff, a, t) => {
+      if (ff.done || ff.locked) return;   // saved or closed: no row the form could no longer send
       if (a === 'add-ship') { _addShip(ff, t.dataset.k); return _refresh(ff); }
       if (a !== 'del-ship') return;
       const row = t.closest('.wn5f-ship');

@@ -2,7 +2,7 @@
 // fake /plan/* (S.plan: method, path, body, count, order) and by what the page shows; never by a toast. Synthetic
 // week of tests/critics/wn5-rig-kit.js. The default answer of every non-dry write is 409 writes_closed, as deployed
 // until day L; scenarios script their own answers with sentinel messages.
-// Usage: node tests/critics/wn5-form-rig.js [order groupage unknown reused replayed edit edit-ride edit-add edit-remove edit-read-fail leg leg-anodos …]
+// Usage: node tests/critics/wn5-form-rig.js [order groupage unknown reused replayed edit edit-ride edit-add edit-remove edit-read-fail edit-twoday leg leg-anodos …]
 //        WN5_TREE=<git archive origin/main> node tests/critics/wn5-form-rig.js   (plain-main proof: NO-GO, exit 1)
 // Exit: 0 green · 1 a check failed · 2 unknown scenario.
 'use strict';
@@ -362,6 +362,11 @@ async function scnEditRemove({ browser, origin, ok, scn }) {
   if (!(await guard(page, ok, scn))) return;
   await openForm(page, { natOrderId: 3101 });
   ok(scn, 'two waiting points: each has its ×', await K.count(page, `${DLG} [data-ship] [data-act="del-ship"]`) === 2);
+  // ↺ undoes the mark before «Αποθήκευση»: the point is back, its fields live again
+  await page.click(`${DLG} [data-ship="5203"] [data-act="del-ship"]`);
+  await page.click(`${DLG} [data-ship="5203"] [data-act="del-ship"]`);
+  ok(scn, '× then ↺: the point is back with live fields', await page.evaluate((d) => { const r = document.querySelector(`${d} [data-ship="5203"]`);
+    return !!r && !r.hasAttribute('data-rm') && [...r.querySelectorAll('input')].every((x) => !x.disabled); }, DLG));
   await page.click(`${DLG} [data-ship="5203"] [data-act="del-ship"]`);
   ok(scn, 'the × marks the point (struck, fields disabled), never drops it from the screen', await page.evaluate((d) => { const r = document.querySelector(`${d} [data-ship="5203"]`);
     return !!r && r.hasAttribute('data-rm') && [...r.querySelectorAll('input')].every((x) => x.disabled); }, DLG));
@@ -371,6 +376,28 @@ async function scnEditRemove({ browser, origin, ok, scn }) {
   const b = p[0] && p[0].body;
   ok(scn, 'one PATCH: {shipments:[{shipment_id:5203, remove:true}]} + request_id, the other point absent', p.length === 1 && JSON.stringify(b.shipments) === JSON.stringify([{ shipment_id: 5203, remove: true }])
     && !b.set && UUIDRE.test(String(b.request_id)), p.map((x) => x.body));
+  // saved: the form adds no row it could no longer send
+  await page.click(`${DLG} [data-act="add-ship"][data-k="drop"]`);
+  ok(scn, 'after the save «+ σημείο παράδοσης» adds nothing', await K.count(page, `${DLG} [data-newship]`) === 0);
+  await closeClean(page, S, ok, scn);
+}
+// a stored window over midnight cannot sit in one day field per side: shown, never sent (it would come back shortened)
+async function scnEditTwoDay({ browser, origin, ok, scn }) {
+  const orders = K.orders();
+  Object.assign(orders[3101].shipments[0], { deliver_from: '2026-10-15T19:00:00+00:00', deliver_to: '2026-10-15T23:00:00+00:00' });   // 22:00 → 02:00 Athens
+  const { page, S } = await K.openApp(browser, origin, { orders, plan: { 'PATCH /plan/orders/3101': UPD_OK(3101) } });
+  if (!(await guard(page, ok, scn))) return;
+  await openForm(page, { natOrderId: 3101 });
+  const row = await page.evaluate((d) => { const r = document.querySelector(`${d} [data-ship="5201"]`);
+    return r && { ro: r.hasAttribute('data-ro'), dis: [...r.querySelectorAll('input')].every((x) => x.disabled), txt: r.textContent }; }, DLG);
+  ok(scn, 'a delivery window 22:00 → 02:00: the point is shown read-only with the reason', !!row && row.ro && row.dis && /παράθυρο σε δύο ημέρες/.test(row.txt), row);
+  await page.fill(`${DLG} [data-f="notes"]`, 'αλλαγή');
+  await save(page);
+  await page.waitForTimeout(1000);
+  const p = K.planOf(S, 'PATCH', '/plan/orders/3101');
+  const sent = p[0] ? Object.assign({}, p[0].body) : null;
+  if (sent) delete sent.request_id;
+  ok(scn, 'a notes change sends only the notes, never the two-day window', p.length === 1 && JSON.stringify(sent) === JSON.stringify({ set: { notes: 'αλλαγή' } }), p.map((x) => x.body));
   await closeClean(page, S, ok, scn);
 }
 async function scnEditReadFail({ browser, origin, ok, scn }) {
@@ -529,7 +556,7 @@ async function scnVs({ browser, origin, ok, scn }) {
 }
 
 K.run({
-  scenarios: { order: scnOrder, groupage: scnGroupage, unknown: scnUnknown, reused: scnReused, replayed: scnReplayed, edit: scnEdit, 'edit-ride': scnEditRide, 'edit-add': scnEditAdd, 'edit-remove': scnEditRemove, 'edit-read-fail': scnEditReadFail, leg: scnLeg, 'leg-anodos': scnLegAnodos, vs: scnVs },
+  scenarios: { order: scnOrder, groupage: scnGroupage, unknown: scnUnknown, reused: scnReused, replayed: scnReplayed, edit: scnEdit, 'edit-ride': scnEditRide, 'edit-add': scnEditAdd, 'edit-remove': scnEditRemove, 'edit-read-fail': scnEditReadFail, 'edit-twoday': scnEditTwoDay, leg: scnLeg, 'leg-anodos': scnLegAnodos, vs: scnVs },
   globals: ['WN5Form'],
   go: 'the v5 order forms send one body per press, from the form only, with one request_id per open form',
 }).catch((e) => { console.error(e); process.exit(1); });
