@@ -6046,11 +6046,12 @@ function planVsStateArgs(url) {
   return planIdsArgs(url, "order_ids", "p_order_ids");
 }
 __name(planVsStateArgs, "planVsStateArgs");
-// GET /plan/orders/:id: the path's id (PLAN_ROUTES matched digits only), at most 15 digits like a list id, never 0
-function planOrderReadArgs(url, caller) {
-  const m = /^\/plan\/orders\/(\d+)$/.exec(url.pathname);
-  if (!m || !/^[1-9]\d{0,14}$/.test(m[1])) return { error: "nat_order_id: θετικός ακέραιος", code: "bad_nat_order_id" };
-  return { args: { p_nat_order_id: Number(m[1]), p_role: caller.role } };
+// GET /plan/orders/:id: the path's id from the route's own match (one regex, PLAN_ROUTES: digits only), at most 15
+// digits like a list id, never 0 or a leading zero
+function planOrderReadArgs(url, caller, match) {
+  const id = match && match[1];
+  if (!/^[1-9]\d{0,14}$/.test(id || "")) return { error: "nat_order_id: θετικός ακέραιος", code: "bad_nat_order_id" };
+  return { args: { p_nat_order_id: Number(id), p_role: caller.role } };
 }
 __name(planOrderReadArgs, "planOrderReadArgs");
 function planNatStateArgs(url) {
@@ -6254,7 +6255,7 @@ async function handlePlan(request, url, origin, env) {
   try {
     let args;
     if (route.read) {
-      const a = route.read(url, caller);
+      const a = route.read(url, caller, match);
       if (a.error) return planError(400, "BAD_REQUEST", a.code, a.error, origin, env);
       fn = route.rpc;
       args = a.args;

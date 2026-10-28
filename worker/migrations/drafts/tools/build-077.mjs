@@ -39,7 +39,7 @@ export const DRY = {
 -- undoes everything inside it (lesson 056). ASCII only.
 -- EXPECTED (the red ERROR is deliberate): NOTICE "077 OK: plan_order_read (closed, Worker only), ..." and then
 --   ERROR: P0001: DRY RUN 077 finished - EVERYTHING UNDONE, nothing kept. The block ran to its end  ||  077 ran:
---   read yes, update a6c62b6c...
+--   read yes, update 39d38711...
 --   Anything else: do NOT run 077, copy the message to the coordinator.`,
   epilogue: `  res := format('077 ran: read %s, update %s',
     CASE WHEN to_regprocedure('public.plan_order_read(bigint,text)') IS NOT NULL THEN 'yes' ELSE 'NO' END, ${md5Of(SIG)});`,

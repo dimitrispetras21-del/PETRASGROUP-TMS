@@ -4,7 +4,7 @@
 -- request and 1 point after its repair).
 SELECT CASE WHEN to_regprocedure('public.plan_order_read(bigint,text)') IS NOT NULL THEN '077 in place' ELSE '077 NOT APPLIED' END AS applied,
        (SELECT count(*) FROM (VALUES
-          ('public.plan_order_update(jsonb,text,text)', 'a6c62b6cfc7850cbe5a5d90a64ad6db6')) v(sig, m)
+          ('public.plan_order_update(jsonb,text,text)', '39d38711b825e3ba698a814aeb53bbcc')) v(sig, m)
          WHERE (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure(v.sig)) IS DISTINCT FROM v.m) AS changed_texts,
        (SELECT count(*) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'plan_order_read'
           AND (has_function_privilege('anon', p.oid, 'EXECUTE') OR has_function_privilege('authenticated', p.oid, 'EXECUTE'))) AS open_read,

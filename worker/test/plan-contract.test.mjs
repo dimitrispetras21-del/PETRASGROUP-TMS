@@ -368,7 +368,7 @@ test('077 creates GET /plan/orders/:id\'s read with the argument names the Worke
     assert.match(sql, new RegExp(`GRANT EXECUTE ON FUNCTION public\\.${fn}\\(bigint,text\\) TO service_role;`));
   }
   // the args the Worker builds are exactly those names
-  const fnSrc = /function planOrderReadArgs\(url, caller\) \{[\s\S]*?\n\}/.exec(src);
+  const fnSrc = /function planOrderReadArgs\(url, caller, match\) \{[\s\S]*?\n\}/.exec(src);
   assert.ok(fnSrc, 'planOrderReadArgs not found');
   assert.deepEqual([...fnSrc[0].matchAll(/(p_[a-z_]+):/g)].map((m) => m[1]), READS_077.plan_order_read);
 });

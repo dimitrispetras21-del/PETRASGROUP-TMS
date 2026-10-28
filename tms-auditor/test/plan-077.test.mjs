@@ -86,7 +86,7 @@ test('077 on the production-shaped copy after day L and 075', async (t) => {
   await t.test('077 dry run keeps nothing', async () => {
     let msg = null;
     try { await db.exec(read('077_plan_order_edit_dryrun.sql')); } catch (e) { msg = String(e.message); }
-    assert.match(msg ?? '', /DRY RUN 077 finished - EVERYTHING UNDONE, nothing kept\. The block ran to its end {2}\|\| {2}077 ran: read yes, update a6c62b6cfc7850cbe5a5d90a64ad6db6/, msg);
+    assert.match(msg ?? '', /DRY RUN 077 finished - EVERYTHING UNDONE, nothing kept\. The block ran to its end {2}\|\| {2}077 ran: read yes, update 39d38711b825e3ba698a814aeb53bbcc/, msg);
     assert.strictEqual(await md5u(db), live);
     assert.strictEqual((await one(db, `SELECT to_regprocedure('public.plan_order_read(bigint,text)')::text AS r`)).r, null);
   });
@@ -227,13 +227,19 @@ test('077 on the production-shaped copy after day L and 075', async (t) => {
     const toC = (await orderRead(db, W2)).shipments.find((s) => s.dest_location_id === S.C && Number(s.pallets) === 3);
     const a0 = await num(db, `SELECT max(id) AS n FROM audit_log`);
     const p0 = Number((await one(db, `SELECT pallets FROM national_orders WHERE id = $1`, [W2])).pallets);
-    const r = await upd(db, { nat_order_id: W2, shipments: [{ shipment_id: toC.shipment_id, remove: true }] });
+    const rmBody = { nat_order_id: W2, request_id: rid(), shipments: [{ shipment_id: toC.shipment_id, remove: true }] };
+    const r = await upd(db, rmBody);
     assert.deepStrictEqual(r.ids.removed_shipment_ids, [toC.shipment_id]);
     const sh = await one(db, `SELECT deleted_at IS NOT NULL AS gone, deleted_reason, deleted_by FROM shipments WHERE id = $1`, [toC.shipment_id]);
     assert.deepStrictEqual(sh, { gone: true, deleted_reason: 'plan_order_update: point removed', deleted_by: 'test:077' });
     assert.strictEqual(await num(db, `SELECT count(*) AS n FROM shipment_pieces WHERE shipment_id = $1 AND deleted_at IS NULL`, [toC.shipment_id]), 0);
     const audit = (await db.query(`SELECT action, table_name FROM audit_log WHERE id > $1 ORDER BY id`, [a0])).rows.map((x) => `${x.action} ${x.table_name}`);
-    assert.deepStrictEqual(audit, ['delete shipment_pieces', 'delete shipments', 'update national_orders']);
+    assert.deepStrictEqual(audit, ['delete shipment_pieces', 'delete shipments', 'update national_orders', 'create plan_request']);
+    // a second press after a lost answer = the first answer, never a refusal of a save that was kept
+    const again = await upd(db, rmBody);
+    assert.strictEqual(again.replayed, true);
+    assert.deepStrictEqual(again.ids, r.ids);
+    assert.strictEqual((await updErr(db, { nat_order_id: W2, shipments: [{ shipment_id: toC.shipment_id, remove: true }] }))?.hint, 'plan:request_missing');
     assert.strictEqual(Number((await one(db, `SELECT pallets FROM national_orders WHERE id = $1`, [W2])).pallets), p0 - 3);
     assert.ok(!(await orderRead(db, W2)).shipments.some((s) => s.shipment_id === toC.shipment_id));
     // refused, nothing written
@@ -247,11 +253,22 @@ test('077 on the production-shaped copy after day L and 075', async (t) => {
       [W2, { shipments: [{ shipment_id: live2[0], remove: true, pallets: 1 }] }, 'plan:bad_input', /shipment:remove/],
       [W2, { shipments: [{ shipment_id: toC.shipment_id, remove: true }] }, 'plan:bad_input', /shipment_id/],
     ]) {
-      const e = await updErr(db, { nat_order_id: id, ...body });
+      const e = await updErr(db, { nat_order_id: id, request_id: rid(), ...body });
       assert.strictEqual(e?.hint, hint, JSON.stringify(body));
       assert.match(e.msg, re, JSON.stringify(body));
     }
     assert.deepStrictEqual([await footprint(db, N), await footprint(db, W2)], f0);
+  });
+
+  await t.test('U5b: a new point may start or end at Veroia (a normal place, spec 3) and waits like any other', async () => {
+    const hub = (await one(db, `SELECT id FROM locations WHERE is_hub`)).id;
+    const r = await upd(db, { nat_order_id: W2, request_id: rid(), shipments: [S.day(S.A, hub, 1), S.day(hub, S.C, 2)] });
+    assert.strictEqual(r.ids.new_shipment_ids.length, 2);
+    const pts = (await orderRead(db, W2)).shipments.filter((s) => r.ids.new_shipment_ids.includes(s.shipment_id));
+    assert.deepStrictEqual(pts.map((s) => [s.origin_location_id, s.dest_location_id, Number(s.pallets), s.rides]), [[S.A, hub, 1, false], [hub, S.C, 2, false]]);
+    // and leaves again by the same rule
+    const x = await upd(db, { nat_order_id: W2, request_id: rid(), shipments: r.ids.new_shipment_ids.map((id) => ({ shipment_id: id, remove: true })) });
+    assert.deepStrictEqual([...x.ids.removed_shipment_ids].sort(), [...r.ids.new_shipment_ids].sort());
   });
 
   await t.test('U6 (F13): a field emptied on purpose is stored as NULL; the price cannot be emptied', async () => {

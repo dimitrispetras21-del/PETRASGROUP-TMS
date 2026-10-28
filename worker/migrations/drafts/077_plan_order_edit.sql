@@ -14,7 +14,7 @@
 --           a shipments[] item WITHOUT shipment_id = a NEW point (one shipment + one piece that WAITS: no cycle, no
 --           leg - owner 28/10: the dispatcher puts it on a truck with one board move); {shipment_id, remove: true}
 --           = the point leaves the order (soft, only while nothing of it rides, never a VS bridge, never the last
---           point); a new point is a creation, so it carries the screen's request_id (decision 44, replayed);
+--           point); a new point or a removal carries the screen's request_id (decision 44, replayed);
 --           the answer names the new and the removed ids.
 --   PART 3  proofs, NOTICE "077 OK: ..."
 -- No table, no column, no trigger (B-54 stays), no row written. The Worker gains ONE read route
@@ -35,11 +35,12 @@ $h$;
 $h$;
   h_2b CONSTANT text := $h$  perform plan_h_keys(p, array['nat_order_id', 'set', 'shipments', 'request_id'], 'p');
   -- 077 (decision 44): a new point is a creation, so it carries the screen's request_id; the same request again =
-  -- the first answer, nothing written (a lost answer + a second press would otherwise add the point twice). An edit
-  -- without a new point may carry one too, and replays the same way. Before any state is read (plan_h_replay).
+  -- the first answer, nothing written (a lost answer + a second press would otherwise add the point twice). A removal
+  -- too (code review 28/10): its second press would find the point gone and refuse a save that was kept. Any other
+  -- edit may carry one, and replays the same way. Before any state is read (plan_h_replay).
   if p ? 'request_id' or exists (select 1 from jsonb_array_elements(case when jsonb_typeof(p->'shipments') = 'array'
                                                                      then p->'shipments' end) e
-                                  where jsonb_typeof(e) = 'object' and not e ? 'shipment_id') then
+                                  where jsonb_typeof(e) = 'object' and (not e ? 'shipment_id' or e ? 'remove')) then
     v_ans := plan_h_replay(p, 'plan_order_update', p_actor);
     if v_ans is not null then return v_ans; end if;
     v_rid := true;
@@ -106,11 +107,14 @@ $h$;
       if s->'remove' is distinct from 'true'::jsonb or (select count(*) from jsonb_object_keys(s)) <> 2 then
         perform plan_h_raise('bad_input', 'shipment:remove');
       end if;
+      -- the pieces are locked BEFORE their legs are read (code review 28/10, as plan_delete): plan_put_pieces locks a
+      -- piece before it adds a leg, so an assignment at the same moment either waits for this removal or is seen here
+      perform 1 from shipment_pieces where shipment_id = a.id and deleted_at is null order by id for no key update;
       if exists (select 1 from piece_legs l join shipment_pieces pp on pp.id = l.piece_id
                   where pp.shipment_id = a.id and l.deleted_at is null) then
         perform plan_h_raise('piece_busy', 'shipment:' || a.id);
       end if;
-      for rp in select * from shipment_pieces where shipment_id = a.id and deleted_at is null order by id for no key update loop
+      for rp in select * from shipment_pieces where shipment_id = a.id and deleted_at is null order by id loop
         update shipment_pieces set deleted_at = now(), deleted_reason = 'plan_order_update: point removed', deleted_by = p_actor
          where id = rp.id returning * into v_pc;
         perform plan_h_audit(p_actor, p_role, 'delete', 'shipment_pieces', rp.id::text, to_jsonb(rp), to_jsonb(v_pc));
@@ -215,7 +219,7 @@ $f$;
 
   -- ===== PART 2: plan_order_update = LIVE TEXT + HUNKS (md5 after = measured on the PGlite copy) =====
   FOR v_g IN SELECT * FROM (VALUES
-      ('public.plan_order_update(jsonb,text,text)', ARRAY[h_1a, h_2a, h_3a, h_4a, h_5a], ARRAY[h_1b, h_2b, h_3b, h_4b, h_5b], 'a6c62b6cfc7850cbe5a5d90a64ad6db6')) g(sig, a, b, m) LOOP
+      ('public.plan_order_update(jsonb,text,text)', ARRAY[h_1a, h_2a, h_3a, h_4a, h_5a], ARRAY[h_1b, h_2b, h_3b, h_4b, h_5b], '39d38711b825e3ba698a814aeb53bbcc')) g(sig, a, b, m) LOOP
     SELECT * INTO p FROM pg_proc WHERE oid = to_regprocedure(v_g.sig);
     IF p.proconfig IS DISTINCT FROM ARRAY['search_path=public'] OR p.prolang <> (SELECT oid FROM pg_language WHERE lanname = 'plpgsql')
        OR NOT p.prosecdef THEN
