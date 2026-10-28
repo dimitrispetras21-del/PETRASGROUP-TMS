@@ -1,4 +1,4 @@
--- 075 - audit_log accepts every action the Worker writes (owner 28/10, pallets step Y2: "pame A"). ASCII. ONE DO block.
+-- 075 - audit_log accepts every action the Worker writes (owner 28/10, pallets step Y2: "pame A"). ASCII. The change is ONE DO block, bounded by SET/RESET statement_timeout.
 -- Why: audit_log_action_check accepted only create/update/delete/cascade_delete, so the Worker's confirm, reverse,
 -- invoice_override and upload rows were refused and audit() kept it to console.error (A41). Measured 28/10:
 -- 0 of 215 confirmations, 0 reversals, 0 invoice overrides in audit_log. The 140+ lost confirmations are NOT
