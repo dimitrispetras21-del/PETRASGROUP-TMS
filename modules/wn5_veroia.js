@@ -38,11 +38,13 @@
   // model's hub day (today in the week). The model's hub.day alone is today: on a Tuesday it would list Tuesday's
   // trucks for a delivery that loads on Monday (rig veroia, Figma 2011:8748 «Δευ 12/10» vs Δ11 2069:8360 «Τρί 13/10»).
   // Clamped to the loaded week, the only days whose cycles the board has.
+  // a stock line's day: its leave_by, or the model's hub day (today) once overdue — the panel's and «Σε φορτηγό ▾»'s
+  const _stockDay = (h, hub) => (h.overdue ? hub && hub.day : h.leave_by) || null;
   function _hubDay(model) {
     const k = K();
     const hub = model.hub;
     let days = (hub.split || []).map((h) => (k.item(h.pieceId) || {}).nat_ready_day).filter(Boolean);
-    if (!days.length) days = (hub.stock || []).map((h) => (h.overdue ? hub.day : h.leave_by)).filter(Boolean);
+    if (!days.length) days = (hub.stock || []).map((h) => _stockDay(h, hub)).filter(Boolean);
     let d = days.sort()[0] || hub.day || null;
     if (d && model.week) { const last = k.addDays(model.week, 6); if (d < model.week) d = model.week; else if (d > last) d = last; }
     return d;
@@ -145,7 +147,16 @@
     if (!_live()) return null;
     const k = K();
     const st = WN5.state();
-    const day = st && st.model && st.model.hub ? _hubDay(st.model) : null;
+    // F27 (owner 28/10, study §3.5): Δ1 opens on the PIECE's Veroia day (nat_ready_day: the day it loads at the hub),
+    // its cycles and its Veroia window on that day — the panel's day is the earliest of every piece, and handed a piece
+    // ready on Wednesday to Sunday's trucks. The piece's day is a VS's cross-dock day (WN5Act._kit.vsHubDay, as Δ1 writes it);
+    // stock has the day this panel gives stock (_stockDay; its nat_ready_day is its parent's); a national at Veroia has
+    // no Veroia day on the board (its nat_ready_day is its supplier's, code review r3), so the panel's day, as before.
+    const it = k.item(k.id(pieceId));
+    const hub = st && st.model && st.model.hub;
+    const vh = it ? k.vsHubDay(it) : null;
+    const own = it ? (it.is_stock ? _stockDay(it, hub) : vh ? vh.day : null) : null;
+    const day = own || (hub ? _hubDay(st.model) : null);
     return WN5Act.assign({ pieces: [{ piece_id: k.id(pieceId) }] }, { entry: 'hub', day, side: 'KATHODOS' });
   }
 

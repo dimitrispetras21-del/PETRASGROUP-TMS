@@ -3015,6 +3015,208 @@ SCN['f4-unknown'] = async (browser, origin) => {
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
   await page.context().close();
 };
+
+// F27 (owner 28/10, no VS assignment until fixed): the Veroia field of Δ1 and «+» wrote its hours on the dialog's day —
+// the row's day in Δ1 (a VS export's PICKUP day), the cycle's start in «+», the panel's earliest day in «Σε φορτηγό ▾» —
+// not on the piece's own Veroia day (a VS's cross_dock_date: nat_due_day of an export, nat_ready_day of an import).
+// Live repro: VS 617, cross-dock Fri 30/10, Δ1 «Άφιξη Βέροιας · Πέμ 29/10 *». Here: VS-T501 picked up Tue 13/10 at
+// ASPROPYRGOS TEST, cross-dock Wed 14/10; RT-T201 starts Mon 12/10; VS-T601 at Veroia Tue 13/10 while the panel's
+// earliest day is Mon 12/10. Judged by the POST body (the table of this rig), not by the label alone.
+function f27Board() {
+  const b = bBoard();
+  const exp = (o) => Object.assign({ shipment_id: o.piece_id + 100, kind: 'vs_export', nat_order_id: null, leave_by: null, overdue: false, is_stock: false,
+    position_location_id: 3, nat_from_location_id: 3, nat_to_location_id: 1, client_id: 44, client: 'ΠΕΛΑΤΗΣ Δ', temperature_c: 2, pallet_exchange: false,
+    load_from: null, load_to: null, deliver_from: null, deliver_to: null, nat_ready_day: '2026-10-13', nat_due_day: '2026-10-14' }, o);
+  b.waiting.push(exp({ piece_id: 4501, order_id: 2501, order_stop_id: 6501, pallets: 15, reference: 'VS-T501' }));
+  // two pieces of one VS with two cross-dock days (0 live on 28/10): one Veroia stop cannot hold both days
+  b.waiting.push(exp({ piece_id: 4511, order_id: 2511, order_stop_id: 6511, pallets: 4, reference: 'VS-T511', position_location_id: 5, nat_from_location_id: 5, nat_due_day: '2026-10-14' }));
+  b.waiting.push(exp({ piece_id: 4512, order_id: 2511, order_stop_id: 6512, pallets: 5, reference: 'VS-T511', position_location_id: 6, nat_from_location_id: 6, nat_due_day: '2026-10-15' }));
+  b.hub.push(bHub(4601, { order_id: 2601, order_stop_id: 6601, pallets: 7, reference: 'VS-T601', nat_ready_day: '2026-10-13', nat_due_day: '2026-10-14',
+    nat_to_location_id: 2, load_from: null, load_to: null, deliver_from: null, deliver_to: null }));
+  // code review: TST-2107 (15) is free on Tue 13/10 but on the road Wed 14/10 → Thu 15/10 (RT-T209, no Veroia stop):
+  // a new cycle for VS-T501 runs to Wed, so the truck is not offered; its ΚΑΘΟΔΟΣ «+» (Wed) takes the stock remainder
+  b.cycles.push(bCycle(209, { truck_id: 15, truck: 'TST-2107', trailer_id: 25, trailer: 'TRL-5105', driver_id: 35, driver: 'Driver Test 05' }, [
+    bStop(2091, 'KATHODOS', 5, '2026-10-14', '06:00', '08:00', [bLeg(6091, 5191, 'load', 5)]),
+    bStop(2092, 'KATHODOS', 2, '2026-10-15', '10:00', '12:00', [bLeg(6091, 5191, 'unload', 5)]) ]));
+  // code review r2: VS-T521 has no cross_dock_date (nat_due_day null) → the owner's rule, loading + 1, said «εκτίμηση»;
+  // VS-T531 is picked up Tue and reaches Veroia Thu, so TST-2107 (free Tue, on the road Wed, free Thu from 12:00) is not
+  // offered; RT-T211 (Tue, no vehicle) already has its ΑΝΟΔΟΣ Veroia stop on Tue; N-T701 is a national at Veroia (its
+  // nat_ready_day Mon 12/10 is the supplier's day, not a Veroia day)
+  b.waiting.push(exp({ piece_id: 4521, order_id: 2521, order_stop_id: 6521, pallets: 3, reference: 'VS-T521', nat_due_day: null }));
+  b.waiting.push(exp({ piece_id: 4531, order_id: 2531, order_stop_id: 6531, pallets: 6, reference: 'VS-T531', nat_due_day: '2026-10-15' }));
+  b.cycles.push(bCycle(211, {}, [
+    bStop(2111, 'ANODOS', 3, '2026-10-13', '08:00', '10:00', [bLeg(6111, 5211, 'load', 4)]),
+    bStop(2112, 'ANODOS', 1, '2026-10-13', '18:00', '20:00', [bLeg(6111, 5211, 'unload', 4)]) ]));
+  // code review r3: RT-T212 (Tue only, no Veroia stop): «Ένωση» of a VS reaching Veroia Wed would stretch it to Wed
+  b.cycles.push(bCycle(212, {}, [
+    bStop(2121, 'ANODOS', 3, '2026-10-13', '06:00', '07:00', [bLeg(6121, 5221, 'load', 2)]),
+    bStop(2122, 'ANODOS', 2, '2026-10-13', '11:00', '12:00', [bLeg(6121, 5221, 'unload', 2)]) ]));
+  b.hub.push(bHub(4701, Object.assign({ kind: 'national', nat_order_id: 3701, pallets: 5, reference: 'N-T701', client: 'ΠΕΛΑΤΗΣ Ε', client_id: 45, temperature_c: 4,
+    nat_ready_day: '2026-10-12', nat_due_day: '2026-10-15' }, e26(2, '2026-10-15', '08:00', '10:00'))));
+  return b;
+}
+SCN.f27 = async (browser, origin) => {
+  const scn = 'f27';
+  const D = bDlg('assign'), P = bDlg('plus');
+  const hubLabel = (page, d) => page.$eval(`${d} [data-hub="from"]`, (i) => [i.closest('.wn5-hubwin').querySelector('span').textContent, i.value + '|' + i.closest('.wn5-hubwin').querySelector('[data-hub="to"]').value]).catch(() => null);
+  const legsStops = (S) => { const x = S.plan.filter((e) => e.m === 'POST' && e.path === '/plan/legs').pop(); return x && x.body ? x.body.stops || null : null; };
+  const hubStop = (stops) => (stops || []).find((s) => s.location_id === 1) || null;
+  { // 1 · Δ1 from the ΠΡΟΣ ΑΝΑΘΕΣΗ row of VS-T501 (row day = pickup Tue 13/10)
+    const { page, S } = await bOpen(browser, origin, { board: f27Board() });
+    await bClick(page, '#content .wn5 .wn5-row[data-piece="4501"] .wi4-box.un');
+    await page.waitForTimeout(500);
+    const lab = await hubLabel(page, D);
+    ok(scn, 'Δ1 row: «Άφιξη Βέροιας · Τετ 14/10 *» (the cross-dock day), opened 00:00|23:59 (#160) — main: Τρί 13/10',
+      !!lab && lab[0] === 'Άφιξη Βέροιας · Τετ 14/10 *' && lab[1] === '00:00|23:59', lab);
+    ok(scn, 'TST-2107, free Tue but on the road Wed (the Veroia day), is not offered as a new truck; TST-2108 is',
+      !(await bHas(page, `${D} [data-cand="truck:15"]`)) && await bHas(page, `${D} [data-cand="truck:14"]`));
+    await bClick(page, `${D} [data-act="pick"][data-cand="truck:14"]`);
+    await bClick(page, `${D} .wn5-more [data-act="save"][data-cand="truck:14"]`);
+    await page.waitForTimeout(400);
+    const stops = legsStops(S), h = hubStop(stops), pick = (stops || []).find((s) => s.location_id === 3);
+    ok(scn, 'POST /plan/legs: the Veroia stop on Wed 14/10 00:00–23:59, the pickup on Tue 13/10 (its own day)',
+      !!h && h.side === 'ANODOS' && h.planned_from === '2026-10-14T00:00:00+03:00' && h.planned_to === '2026-10-14T23:59:00+03:00'
+      && !!pick && pick.planned_from === '2026-10-13T00:00:00+03:00', stops);
+    ok(scn, 'no page errors (1)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // 2 · a VS with two cross-dock days: no right day for one Veroia stop — the save is off and says why, nothing sent
+    const { page, S } = await bOpen(browser, origin, { board: f27Board() });
+    await bClick(page, '#content .wn5 .wn5-row[data-piece="4511"] .wi4-box.un');
+    await page.waitForTimeout(500);
+    const lab = await hubLabel(page, D);
+    ok(scn, 'two Veroia days: the field names both («Τετ 14/10 / Πέμ 15/10»)', !!lab && lab[0] === 'Άφιξη Βέροιας · Τετ 14/10 / Πέμ 15/10 *', lab);
+    ok(scn, 'control: with no single Veroia day, TST-2107 (free on the row day) stays offered', await bHas(page, `${D} [data-cand="truck:15"]`));
+    const w2 = await bText(page, `${D} .wn5-cand[data-line="rt"]:has([data-cand="rt:211"])`);
+    ok(scn, 'two Veroia days: «Ένωση» into RT-T211 (its Veroia stop Tue) is said, never silent: «Βέροια Τρί, όχι Τετ/Πέμ»', /Βέροια Τρί, όχι Τετ\/Πέμ/.test(w2), w2);
+    await bClick(page, `${D} [data-act="pick"][data-cand="truck:14"]`);
+    const off = await bOff(page, `${D} .wn5-more [data-act="save"][data-cand="truck:14"]`);
+    const why = await page.$eval(`${D} .wn5-more [data-act="save"][data-cand="truck:14"]`, (b) => (b.nextElementSibling && b.nextElementSibling.classList.contains('wn5-why') ? b.nextElementSibling.textContent : null)).catch(() => null);
+    ok(scn, 'two Veroia days: «Ανάθεση» off, red «Λείπει: μία ημέρα Βέροιας (… Τετ 14/10, Πέμ 15/10) …»', off === true && /^Λείπει: μία ημέρα Βέροιας \(οι παραδόσεις έχουν Τετ 14\/10, Πέμ 15\/10\)/.test(why || ''), { off, why });
+    ok(scn, 'two Veroia days: nothing written', !S.plan.some((e) => e.m !== 'GET'), S.plan.map((e) => e.m + ' ' + e.path));
+    ok(scn, 'no page errors (2)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // 3 · «+» ΑΝΟΔΟΣ of RT-T201 (starts Mon 12/10): VS-T501 row day Tue 13/10, cross-dock Wed 14/10 — differs from both
+    const { page, S } = await bOpen(browser, origin, { board: f27Board() });
+    await page.evaluate(() => WN5Act.plus(201, 'ANODOS', document.querySelector('#content .wn5 .wn5-row[data-rt="201"]')));
+    await page.waitForTimeout(400);
+    const line = await bText(page, `${P} .wn5-pline[data-piece="4501"]`);
+    ok(scn, '«+» line of VS-T501 names its Veroia day: «Τρί όλη η ημέρα · Βέροια Τετ»', /Τρί όλη η ημέρα · Βέροια Τετ/.test(line), line);
+    // code review r5: RT-T201's ΑΝΟΔΟΣ has no stops yet; the cycle runs Mon–Tue, so a Veroia stop on Wed is said
+    ok(scn, '«+» on an empty side: «Βέροια Τετ, άλλη ημέρα» (the cycle runs Mon–Tue)', /Βέροια Τετ, άλλη ημέρα/.test(line), line);
+    await page.fill(`${P} input[data-hub="from"]`, '08:00').catch(() => {});
+    await page.fill(`${P} input[data-hub="to"]`, '10:00').catch(() => {});
+    await page.waitForTimeout(200);
+    await bClick(page, `${P} [data-act="save"][data-piece="4501"]`);
+    await page.waitForTimeout(400);
+    const h = hubStop(legsStops(S));
+    ok(scn, '«+» POST /plan/legs: Veroia 08:00–10:00 on Wed 14/10 — main: Mon 12/10, the cycle\'s start',
+      !!h && h.planned_from === '2026-10-14T08:00:00+03:00' && h.planned_to === '2026-10-14T10:00:00+03:00', legsStops(S));
+    ok(scn, 'no page errors (3)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // 4 · Veroia panel «Σε φορτηγό ▾» on VS-T601 (at Veroia Tue 13/10; panel's earliest day Mon 12/10)
+    const { page, S } = await bOpen(browser, origin, { board: f27Board() });
+    await bClick(page, '#wn5-hub [data-hub="open"]');
+    const pday = await bText(page, '#wn5-hub .wn5-hub-d');
+    await bClick(page, '#wn5-hub .wn5-hub-it[data-piece="4601"] [data-hub="truck"]');
+    await page.waitForTimeout(500);
+    const meta = await bText(page, `${D} .wn5-dlg-meta`);
+    const lab = await hubLabel(page, D);
+    ok(scn, 'panel day is the earliest piece day (Δευ 12/10): the case holds', /Δευ 12\/10/.test(pday), pday);
+    ok(scn, '«Σε φορτηγό ▾» opens Δ1 on the piece\'s day: meta «Τρί 13/10 …» — main: Δευ 12/10', /^· Τρί 13\/10/.test(meta.trim()), meta);
+    ok(scn, '… and its Veroia field «Παράθυρο φόρτωσης Βέροιας · Τρί 13/10 *» 00:00|23:59', !!lab && lab[0] === 'Παράθυρο φόρτωσης Βέροιας · Τρί 13/10 *' && lab[1] === '00:00|23:59', lab);
+    await bClick(page, `${D} [data-act="pick"][data-cand="truck:14"]`);
+    await bClick(page, `${D} .wn5-more [data-act="save"][data-cand="truck:14"]`);
+    await page.waitForTimeout(400);
+    const h = hubStop(legsStops(S));
+    ok(scn, 'POST /plan/legs: the Veroia loading on Tue 13/10 00:00–23:59', !!h && h.side === 'KATHODOS' && h.planned_from === '2026-10-13T00:00:00+03:00' && h.planned_to === '2026-10-13T23:59:00+03:00', legsStops(S));
+    ok(scn, 'no page errors (4)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // 5 · code review: a stock remainder has no Veroia day of its own (its nat_ready_day Mon 12/10 is its parent's).
+    // N-T014 (4302) is overdue: the panel gives overdue stock today (Tue 13/10), and «Σε φορτηγό ▾» opens there.
+    const { page, S } = await bOpen(browser, origin, { board: f27Board() });
+    await bClick(page, '#wn5-hub [data-hub="open"]');
+    await bClick(page, '#wn5-hub .wn5-hub-it[data-piece="4302"] [data-hub="truck"]');
+    await page.waitForTimeout(500);
+    const meta = await bText(page, `${D} .wn5-dlg-meta`);
+    const lab = await hubLabel(page, D);
+    ok(scn, 'stock overdue: Δ1 on today «Τρί 13/10», never its parent\'s Δευ 12/10', /^· Τρί 13\/10/.test(meta.trim()) && !!lab && lab[0] === 'Παράθυρο φόρτωσης Βέροιας · Τρί 13/10 *', { meta, lab });
+    ok(scn, 'no page errors (5)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // 6 · code review: «+» ΚΑΘΟΔΟΣ of RT-T209 (Wed 14/10) takes the stock N-T013 (4301, parent's day Mon 12/10) — the
+    // Veroia loading goes on the cycle's day, the day it is loaded, never three days before the cycle's deliveries
+    const { page, S } = await bOpen(browser, origin, { board: f27Board() });
+    await page.evaluate(() => WN5Act.plus(209, 'KATHODOS', document.querySelector('#content .wn5 .wn5-row[data-rt="209"]')));
+    await page.waitForTimeout(400);
+    const line = await bText(page, `${P} .wn5-pline[data-piece="4301"]`);
+    await page.fill(`${P} input[data-hub="from"]`, '08:00').catch(() => {});
+    await page.fill(`${P} input[data-hub="to"]`, '10:00').catch(() => {});
+    await page.waitForTimeout(200);
+    await bClick(page, `${P} [data-act="save"][data-piece="4301"]`);
+    await page.waitForTimeout(400);
+    const h = hubStop(legsStops(S));
+    ok(scn, '«+» stock: the line names no «Βέροια Δευ», the Veroia stop on Wed 14/10 08:00–10:00', !/Βέροια Δευ/.test(line)
+      && !!h && h.planned_from === '2026-10-14T08:00:00+03:00' && h.planned_to === '2026-10-14T10:00:00+03:00', { line, stops: legsStops(S) });
+    ok(scn, 'no page errors (6)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // 7 · code review r2: a national at Veroia (N-T701, supplier day Mon 12/10) in the same «+» of RT-T209 (Wed 14/10):
+    // its nat_ready_day is no Veroia day, so the loading goes on the cycle's day, as before F27
+    const { page, S } = await bOpen(browser, origin, { board: f27Board() });
+    await page.evaluate(() => WN5Act.plus(209, 'KATHODOS', document.querySelector('#content .wn5 .wn5-row[data-rt="209"]')));
+    await page.waitForTimeout(400);
+    await page.fill(`${P} input[data-hub="from"]`, '08:00').catch(() => {});
+    await page.fill(`${P} input[data-hub="to"]`, '10:00').catch(() => {});
+    await page.waitForTimeout(200);
+    await bClick(page, `${P} [data-act="save"][data-piece="4701"]`);
+    await page.waitForTimeout(400);
+    const h = hubStop(legsStops(S));
+    ok(scn, '«+» national at Veroia: the Veroia stop on the cycle\'s Wed 14/10, never its supplier\'s Mon 12/10', !!h && h.planned_from === '2026-10-14T08:00:00+03:00', legsStops(S));
+    ok(scn, 'no page errors (7)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // 8 · code review r2: no cross_dock_date → the owner's rule (export = loading + 1), named as an estimate
+    const { page, S } = await bOpen(browser, origin, { board: f27Board() });
+    await bClick(page, '#content .wn5 .wn5-row[data-piece="4521"] .wi4-box.un');
+    await page.waitForTimeout(500);
+    const lab = await hubLabel(page, D);
+    ok(scn, 'VS without cross-dock: «Άφιξη Βέροιας · Τετ 14/10 (εκτίμηση) *», never the pickup day silently', !!lab && lab[0] === 'Άφιξη Βέροιας · Τετ 14/10 (εκτίμηση) *', lab);
+    // RT-T211 (Tue) already stops at Veroia on Tue: «Ένωση» joins that stop, and its line says the day is not the VS's
+    const warn = await bText(page, `${D} .wn5-cand[data-line="rt"]:has([data-cand="rt:211"])`);
+    ok(scn, 'the Tue cycle with its own Veroia stop on Tue warns «Βέροια Τρί, όχι Τετ»', /Βέροια Τρί, όχι Τετ/.test(warn), warn);
+    const warn2 = await bText(page, `${D} .wn5-cand[data-line="rt"]:has([data-cand="rt:212"])`);
+    ok(scn, 'the Tue cycle with no Veroia stop warns «Βέροια Τετ, ο κύκλος Τρί» (a new stop would stretch it)', /Βέροια Τετ, ο κύκλος Τρί/.test(warn2), warn2);
+    ok(scn, 'no page errors (8)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // 9 · code review r2: VS-T531 picked up Tue, at Veroia Thu: TST-2107 is on the road Wed (free Tue, free Thu from 12:00)
+    const { page, S } = await bOpen(browser, origin, { board: f27Board() });
+    await bClick(page, '#content .wn5 .wn5-row[data-piece="4531"] .wi4-box.un');
+    await page.waitForTimeout(500);
+    ok(scn, 'a truck busy on a day between pickup and Veroia (TST-2107, Wed) is not offered; TST-2108 is',
+      !(await bHas(page, `${D} [data-cand="truck:15"]`)) && await bHas(page, `${D} [data-cand="truck:14"]`));
+    ok(scn, 'no page errors (9)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // 10 · code review r3: a national at Veroia has no Veroia day on the board (its nat_ready_day Fri 9/10 is its
+    // supplier's, before the week): «Σε φορτηγό ▾» opens on the panel's day (clamped to the week: Sat 10/10), as before.
+    // The panel lists a national once it was sent to be split (for_split, ✈ «Σπάσιμο»).
+    const b = f27Board();
+    Object.assign(b.hub.find((h) => h.piece_id === 4701), { nat_ready_day: '2026-10-09', for_split: true });
+    const { page, S } = await bOpen(browser, origin, { board: b });
+    await bClick(page, '#wn5-hub [data-hub="open"]');
+    await bClick(page, '#wn5-hub .wn5-hub-it[data-piece="4701"] [data-hub="truck"]');
+    await page.waitForTimeout(500);
+    const meta = await bText(page, `${D} .wn5-dlg-meta`);
+    ok(scn, 'national at Veroia: Δ1 on the panel\'s day «Σάβ 10/10», never its supplier\'s Παρ 9/10', /^· Σάβ 10\/10/.test(meta.trim()), meta);
+    ok(scn, 'no page errors (10)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+};
 // ── main ──
 (async () => {
   if (argv.includes('--check-fixture')) process.exit(checkFixture() ? 0 : 1);
