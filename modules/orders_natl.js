@@ -862,7 +862,7 @@ async function openNatlEdit(recId) {
 }
 // After L, an old order (opts.allow = the Q-10 fields of the role; null =
 // owner, the whole form): everything else is disabled, with the reason on top.
-function _natlLockForm(recId, allow) {
+function _natlLockForm(recId, allow, was) {
   _natlLegacyLock = null;
   if (!allow) return;
   const body = document.getElementById('modalBody'); if (!body) return;
@@ -877,15 +877,15 @@ function _natlLockForm(recId, allow) {
   body.prepend(note);
   const btn = document.getElementById('natlBtnSubmit');
   if (btn && !names.length) btn.style.display = 'none';
-  _natlLegacyLock = { recId, allow };
+  _natlLegacyLock = { recId, allow, was: was || {} };
 }
 // The save of a locked old order: ONE PATCH of the allowed fields, nothing
 // else — no stops, no national load, no groupage (Q-10: only the owner).
-async function _natlSubmitLegacy(recId, allow) {
+async function _natlSubmitLegacy(recId, allow, was) {
   const btn = document.getElementById('natlBtnSubmit');
   if (btn) { btn.textContent = 'Αποθήκευση…'; btn.disabled = true; }
-  // Only what changed: an untouched empty Notes must not turn NULL into '' (a change nobody made, in the audit).
-  const was = ((NATL_ORDERS.data || []).find(r => r.id === recId) || { fields: {} }).fields;
+  // Only what changed against the values the form opened with (`was`, also when opened from the Weekly): an
+  // untouched empty Notes must not turn NULL into '' — a change nobody made, in the audit.
   const fields = {};
   for (const [id, label] of Object.entries(allow)) {
     const el = document.getElementById(id); if (!el) continue;
@@ -1086,7 +1086,7 @@ async function _openNatlModal(recId, f, opts) {
     });
   }
   (_pre.length ? _pre : [{}]).forEach(p => _simAddRow(p));
-  _natlLockForm(recId, opts ? opts.allow : null);
+  _natlLockForm(recId, opts ? opts.allow : null, f);
 }
 
 // ─── Submit ─────────────────────────────────────
@@ -1113,7 +1113,7 @@ async function _natlSendToWeekly(recId) {
 }
 window._natlSendToWeekly = _natlSendToWeekly;
 async function submitNatlOrder(recId) {
-  if (_natlLegacyLock && _natlLegacyLock.recId === recId) return _natlSubmitLegacy(recId, _natlLegacyLock.allow);
+  if (_natlLegacyLock && _natlLegacyLock.recId === recId) return _natlSubmitLegacy(recId, _natlLegacyLock.allow, _natlLegacyLock.was);
   const btn = document.getElementById('natlBtnSubmit');
   if(btn) { btn.textContent='Αποθήκευση…'; btn.disabled=true; }
 
