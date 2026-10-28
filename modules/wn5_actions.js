@@ -641,7 +641,7 @@
         let rate = '';
         if (c.trip_type === 'PARTNER') {
           rate = c.partner_rate == null
-            ? ' <span class="wn5-flag-red">κόμιστρο λείπει</span> <span class="wn5-nw"><input class="wn5-rate" data-rate-rt="' + c.rt_id + '" inputmode="decimal" placeholder="—" aria-label="Κόμιστρο €">&nbsp;€</span> <button type="button" class="wi4-btn sm" data-act="rate" data-rt="' + c.rt_id + '" hidden>Κράτα</button>'
+            ? ' <span class="wn5-flag-red">κόμιστρο λείπει</span> <span class="wn5-nw"><input class="wn5-rate" data-rate-rt="' + c.rt_id + '" inputmode="decimal" placeholder="—" aria-label="Κόμιστρο €"><span class="wn5-eur">€</span></span> <button type="button" class="wi4-btn sm" data-act="rate" data-rt="' + c.rt_id + '" hidden>Κράτα</button>'
             : ' <span class="wn5-cand-m">κόμιστρο ' + _esc(_pal(c.partner_rate)) + ' €</span>';
         }
         // a partner cycle keeps the board's own fact on its second line («Μόνο κάθοδος · συνεργάτης», the model's gap
@@ -682,7 +682,7 @@
       + '<div class="wn5-cand" data-line="partner" data-s="' + _esc(_norm(st.partners.map((p) => p.label).join(' '))) + '">'
       + '<label class="wn5-field"><span>Συνεργάτης</span><select data-partner data-fh-search' + (st.ids.ok ? '' : ' disabled') + '><option value="">—</option>' + _optsHTML(st.partners, st.partner) + '</select></label>'
       + '<span class="wn5-cand-m"><span>κόμιστρο · κενό = «κόμιστρο λείπει»</span></span>'
-      + '<span>' + (vehicle ? '' : _capHTML(st.pallets, ' · δρομολόγιο συνεργάτη') + ' ') + '<span class="wn5-nw"><input class="wn5-rate" data-rate inputmode="decimal" placeholder="—" value="' + _esc(st.rateTxt) + '" aria-label="Κόμιστρο €">&nbsp;€</span></span>'
+      + '<span>' + (vehicle ? '' : _capHTML(st.pallets, ' · δρομολόγιο συνεργάτη') + ' ') + '<span class="wn5-nw"><input class="wn5-rate" data-rate inputmode="decimal" placeholder="—" value="' + _esc(st.rateTxt) + '" aria-label="Κόμιστρο €"><span class="wn5-eur">€</span></span></span>'
       + '<button type="button" class="wi4-btn sm" data-act="save" data-cand="partner">Ανάθεση</button></div>';
     if (st.mode === 'move') {
       h += '<div class="wn5-grp-h" data-grp="wait">ΑΛΛΟ</div><div class="wn5-cand" data-line="wait">'

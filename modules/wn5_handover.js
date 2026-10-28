@@ -589,16 +589,24 @@
     if (!g) { if (typeof toast === 'function') toast('Το τμήμα δεν βρέθηκε στην εβδομάδα που φαίνεται — ανανέωσε', 'warn'); return null; }
     const path = `/plan/segments/${segmentId}/remove`;
     const title = `Αφαίρεση αλλαγής · ${c.code || 'RT-' + c.rt_id} · ${g.place_note || '—'} ${_when(g.from_at)};`;
+    // A refusal before any list (a failed dry run, a preview conflict) has nothing to confirm: the H4 shell (600 wide,
+    // Figma 2125:7738) with one «Κλείσιμο» where H4 has Άκυρο — the frame has no «×» (style.css hides it); Esc too.
+    // Without this listener the shell had no working exit but Esc (whole-frame pass, T26 ledger line).
+    const refuse = (html) => {
+      const d = _open('remove', _esc(title), '', html, '', null);
+      d.el.insertAdjacentHTML('beforeend', '<div class="wi4-dlg-ft wn5f-ft"><button type="button" class="wi4-btn" data-act="cancel">Κλείσιμο</button></div>');
+      d.el.addEventListener('click', (ev) => { if (ev.target.closest('[data-act="cancel"]') && !d.busy) _close(); });
+      return d;
+    };
     let dry;
     try { dry = await planFetch('POST', path, { body: {}, dry: true }); }
     catch (e) {
-      const d = _open('remove', _esc(title), '', '', '', null);
-      _failure(d, e);
+      _failure(refuse(''), e);
       return null;
     }
     const conflict = dry && dry.preview && dry.preview.conflict;
     if (conflict) {
-      const d = _open('remove', _esc(title), '', '<div class="wn5f-note">Η αφαίρεση δεν γίνεται: το προηγούμενο όχημα δεν είναι ελεύθερο ως το τέλος του τμήματος.</div>', '', null);
+      const d = refuse('<div class="wn5f-note">Η αφαίρεση δεν γίνεται: το προηγούμενο όχημα δεν είναι ελεύθερο ως το τέλος του τμήματος.</div>');
       // the H7 strip like every other refusal of the handover (2130:7735): «ΔΕΝ ΑΠΟΘΗΚΕΥΤΗΚΕ · <the Worker's message>»
       WN5Act.strip(_strip(d), { kind: 'refusal', code: conflict.code, message: conflict.message });
       return null;
