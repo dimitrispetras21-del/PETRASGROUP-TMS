@@ -640,6 +640,7 @@ async function scnNarrow({ browser, origin, ok, scn }) {
 const SCN = { tiles: scnTiles, card: scnCard, change: scnChange, fix: scnFix, h7: scnH7, fid: scnFid, remove: scnRemove, 'rt-token': scnRtToken, 'clear-seg': scnClearSeg, 'sheet-seg': scnSheetSeg, narrow: scnNarrow };
 module.exports = { seg, handWeek, ROW, HAND, guard, appConsole, SCN };
 if (require.main === module) {
-  K.run({ scenarios: SCN, globals: ['WN5L', 'WN5Lab', 'WN5Hand'], go: 'the vehicle handover screens hold on the 072b stub' })
+  // The tiles scenario's fixture carries reason «zzz» on purpose: its one logError line is asserted there (count 1).
+  K.run({ scenarios: SCN, globals: ['WN5L', 'WN5Lab', 'WN5Hand'], designedConsole: [/wn5: unknown handover reason zzz/], go: 'the vehicle handover screens hold on the 072b stub' })
     .catch((e) => { console.error(e); process.exit(1); });
 }

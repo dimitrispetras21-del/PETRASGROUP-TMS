@@ -22,6 +22,13 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
 const routeOf = (m, p) => m + ' ' + p.replace(/\/\d+(?=\/|$)/g, '/:id');
 const planErr = (status, type, code) => [status, { error: { type, code, message: `rig sentinel ${code}` } }];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Every console error of every page of the run (T29: «0 σφάλματα κονσόλας»), judged once at the end of run().
+// Console rule (coordinator 27/10): a line caused by a PLANNED stub answer is excluded and listed — Chrome's «Failed to
+// load resource» for a request the kit aborted (external host) or for a /plan/* answer the stub gave with status ≥ 400,
+// and planFetch's one log line per scripted answer («rig sentinel …»); a rig may name its own designed log lines
+// (run opts.designedConsole). Any other line is an app error and fails the run.
+const CONSOLE = [];
+const PLANNED = new Map();   // request url → the statuses ≥ 400 the stub answered for it
 
 // Places, clients, vehicles: legacy rec ids (the facade pickers) ↔ numeric ids (/plan, Ε-2).
 const LOOKUPS = {
@@ -136,7 +143,7 @@ async function openApp(browser, origin, opts = {}) {
   const S = { plan: [], facade: [], pageErrors: [], console: [], preflight: [], t0: Date.now(),
     board: clone(opts.board || week()), lookups: clone(opts.lookups || LOOKUPS) };
   page.on('pageerror', (e) => S.pageErrors.push(String(e).slice(0, 300)));
-  page.on('console', (m) => { if (m.type() === 'error') S.console.push(m.text().slice(0, 300)); });
+  page.on('console', (m) => { if (m.type() === 'error') { const x = m.text().slice(0, 300); S.console.push(x); CONSOLE.push({ t: x, url: (m.location() || {}).url || '' }); } });
   page.on('dialog', (d) => d.accept());
   await page.addInitScript(initScript, opts.role || 'dispatcher');
   if (opts.sidebar === 'open') await page.addInitScript(() => localStorage.setItem('tms_sidebar_collapsed', 'false'));
@@ -165,6 +172,7 @@ async function openApp(browser, origin, opts = {}) {
       const fn = (opts.plan || {})[`${m} ${u.pathname}`] || defaultPlan;
       const [status, ans] = await fn(e, S);
       e.status = status;
+      if (status >= 400) PLANNED.set(req.url(), [...new Set((PLANNED.get(req.url()) || []).concat(status))]);
       return route.fulfill({ status, contentType: 'application/json', headers: cors, body: JSON.stringify(ans) });
     }
     S.facade.push({ m, path: u.pathname });
@@ -236,6 +244,21 @@ async function run(opts) {
         for (const c of browser.contexts()) await c.close().catch(() => {});
       } finally { clearTimeout(t); }
     }
+    const kind = (c) => {
+      if (/^Failed to load resource/.test(c.t)) {
+        if (PLANNED.has(c.url)) return `planned stub ${PLANNED.get(c.url).join('/')} · ${new URL(c.url).pathname}`;
+        if (c.url && !c.url.startsWith(origin) && !c.url.includes(HOST)) return `aborted external host · ${new URL(c.url).host}`;
+        return null;
+      }
+      if (/^\[TMS ERROR\] planFetch [A-Z]+ \/plan\/\S*: PlanError: rig sentinel /.test(c.t)) return 'planFetch log of a scripted answer (rig sentinel)';
+      if ((opts.designedConsole || []).some((re) => re.test(c.t))) return 'designed log line of a scenario';
+      return null;
+    };
+    const excl = {};
+    const app = [];
+    for (const c of CONSOLE) { const k = kind(c); if (k) excl[k] = (excl[k] || 0) + 1; else app.push(c.t); }
+    for (const [k, n] of Object.entries(excl)) console.log(`  · excluded console line ×${n}: ${k}`);
+    ok('final', 'no console errors on any page of the run', !app.length, app.slice(0, 5));
   } finally {
     await browser.close();
     srv.close();
