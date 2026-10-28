@@ -1,4 +1,4 @@
--- 075 ROLLBACK · back to the four old actions. ASCII. ONE DO block.
+-- 075 ROLLBACK - back to the four old actions. ASCII. ONE DO block.
 -- audit_log rows are evidence and are never deleted: rows written with confirm/reverse/invoice_override/upload
 -- since 075 stay. The old CHECK comes back NOT VALID, so it refuses NEW rows with those actions again (as before
 -- 075) without checking the rows already there. With the loud Worker live, every refused row then lands in
