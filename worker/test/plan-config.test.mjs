@@ -100,13 +100,12 @@ test('the reads stay GET only: a write verb on them is a 404 (no route), never a
   }
 });
 
-test('GET /plan/activity: one key → (p_kind, p_id as text), «all» for partner / location only; the DB body as is', async () => {
+test('GET /plan/activity: one key → (p_kind, p_id as text), «all» for location only (d3 28/10); the DB body as is', async () => {
   const body = { cycles: [], truncated: false };
   on('POST', 'rpc/plan_activity', () => json(body));
   for (const [q, args] of [['partner_id=12', { p_kind: 'partner', p_id: '12' }], ['driver_id=3', { p_kind: 'driver', p_id: '3' }],
     ['truck_id=999999999', { p_kind: 'truck', p_id: '999999999' }], ['trailer_id=8', { p_kind: 'trailer', p_id: '8' }],
-    ['location_id=40', { p_kind: 'location', p_id: '40' }], ['partner_id=all', { p_kind: 'partner', p_id: 'all' }],
-    ['location_id=all', { p_kind: 'location', p_id: 'all' }]]) {
+    ['location_id=40', { p_kind: 'location', p_id: '40' }], ['location_id=all', { p_kind: 'location', p_id: 'all' }]]) {
     for (const role of ROLES) {
       calls.length = 0;
       const r = await call(role, 'GET', `/plan/activity?${q}`);
@@ -117,9 +116,9 @@ test('GET /plan/activity: one key → (p_kind, p_id as text), «all» for partne
   }
 });
 
-test('GET /plan/activity: no key, two keys, an unknown key, 0, negative, 10 digits, text, or «all» for a driver / vehicle → 400 before any DB call', async () => {
+test('GET /plan/activity: no key, two keys, an unknown key, 0, negative, 10 digits, text, or «all» for anything but a place → 400 before any DB call', async () => {
   for (const q of ['', '?partner_id=', '?partner_id=1&driver_id=2', '?partner_id=1&partner_id=2', '?client_id=1', '?partner_id=0',
-    '?partner_id=-1', '?partner_id=1234567890', '?partner_id=1a', '?driver_id=all', '?truck_id=all', '?trailer_id=all', '?location_id=ALL']) {
+    '?partner_id=-1', '?partner_id=1234567890', '?partner_id=1a', '?partner_id=all', '?driver_id=all', '?truck_id=all', '?trailer_id=all', '?location_id=ALL']) {
     calls.length = 0;
     const r = await call('owner', 'GET', `/plan/activity${q}`);
     assert.equal(r.status, 400, q);
