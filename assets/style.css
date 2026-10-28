@@ -9659,7 +9659,10 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5-hub .wn5-leave { color:var(--wn5-leave-ink); font-weight:400; }
 .wn5-hub .wn5-late { color:var(--wi4-red); font-weight:400; }
 .wn5-hub-p { flex:none; font-size:12.5px; font-weight:600; color:var(--wi4-ink); }
-.wn5-hub-a { flex:none; display:flex; gap:6px; }
+.wn5-hub-a { flex:none; display:flex; align-items:center; gap:6px; }
+/* the ✈ of a national order on the panel (live F23): the row's bordered button, at the 24px of «Σπάσε…» beside it */
+.wn5 .wn5-hub-a .wi4-plane { width:24px; height:24px; background:var(--surface-card); border:1px solid var(--wi4-ctl); border-radius:4px; color:var(--wi4-grey-1); box-shadow:0 1px 1px rgba(16,24,40,.06); }
+.wn5 .wn5-hub-a .wi4-plane:hover { border-color:var(--wn5-ctl-hover); background:var(--surface-card); color:var(--wi4-ink); }
 .wn5-hub .wn5-hub-b { height:24px; padding:0 9px; border-radius:4px; font-size:11.5px; font-weight:600; color:var(--wi4-grey-1); }
 .wn5-hub .wn5-split-b { background:var(--wi4-info-bg); border-color:var(--wi4-blue); color:var(--wi4-blue-ink); }
 .wn5-hub-tr { display:flex; align-items:center; gap:10px; height:40px; padding:0 12px; box-sizing:border-box; border-bottom:1px solid var(--wi4-line); white-space:nowrap; }

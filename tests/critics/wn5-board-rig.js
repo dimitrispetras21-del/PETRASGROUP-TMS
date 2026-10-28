@@ -2721,6 +2721,35 @@ SCN['place-city'] = async (browser, origin) => {
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
   await page.context().close();
 };
+// F23 (live 28/10): a national order sent back to Veroia (hub[], for_split) had only «Σπάσε…» / «Σε φορτηγό ▾» — no
+// way to its card, so its dates could not be fixed nor the order deleted. Now each national piece of the Veroia panel
+// has the ✈ of the ΠΡΟΣ ΑΝΑΘΕΣΗ rows. The card's «Επεξεργασία» (its windows) is the form rig's «veroia-edit»: this
+// stub serves no facade places, so the order form refuses to open here by design.
+SCN['veroia-card'] = async (browser, origin) => {
+  const scn = 'veroia-card';
+  const b = live45();
+  b.hub.push({ piece_id: 55, shipment_id: 55, kind: 'national', nat_order_id: 50, order_id: null, order_stop_id: null, client_id: 48, client: 'ΠΕΛΑΤΗΣ ΕΘ 50', reference: null, pallets: 4,
+    nat_to_location_id: 2, nat_ready_day: '2026-10-12', nat_due_day: '2026-10-12', overdue: false, is_stock: false, for_split: true, inbound_rt_id: null, leave_by: null, temperature_c: null,
+    load_from: '2026-10-15T07:00:00+03:00', load_to: '2026-10-15T09:00:00+03:00', deliver_from: '2026-10-16T14:00:00+03:00', deliver_to: '2026-10-16T16:00:00+03:00' });
+  const { page, S } = await openBoard(browser, origin, { board: b });
+  await page.waitForSelector('#content > .wi4.wn5[data-state="ok"]', { timeout: 8000 }).catch(() => {});
+  await page.click('#wn5-hub [data-hub="open"]', { timeout: 2000 }).catch(() => {});
+  await page.waitForTimeout(300);
+  const shelf = await page.evaluate(() => {
+    const it = (p) => document.querySelector(`#content .wn5 .wn5-hub-it[data-piece="${p}"]`);
+    const pl = (p) => !!(it(p) && it(p).querySelector('.wi4-plane[data-act="ocard"]'));
+    return { n50: pl(55), vs: [15, 16, 17, 18].some(pl), split: !!(it(55) && it(55).querySelector('[data-hub="split"]')), truck: !!(it(55) && it(55).querySelector('[data-hub="truck"]')) };
+  });
+  ok(scn, 'the national #50 on the Veroia panel («ΓΙΑ ΜΟΙΡΑΣΜΑ») has the ✈ of its card beside «Σπάσε…» / «Σε φορτηγό ▾»; a VS item has none',
+    shelf.n50 && shelf.split && shelf.truck && !shelf.vs, shelf);
+  await page.click('#content .wn5 .wn5-hub-it[data-piece="55"] .wi4-plane[data-act="ocard"]', { timeout: 2000 }).catch(() => {});
+  await page.waitForTimeout(500);
+  const card = await page.evaluate(() => { const d = document.querySelector('.wi4-dlg.wn5-ocard'); return d ? { t: d.querySelector('.wi4-dlg-hd').textContent.replace(/\s+/g, ' '), edit: !!d.querySelector('[data-act="edit"]'), del: !!d.querySelector('[data-act="delete"]') } : null; });
+  ok(scn, '✈ opens the card of #50 with «Επεξεργασία» and «Διαγραφή παραγγελίας»', !!card && /#50 · ΠΕΛΑΤΗΣ ΕΘ 50/.test(card.t) && card.edit && card.del, card);
+  ok(scn, 'nothing written: only reads on /plan/*', S.plan.every((x) => x.m === 'GET'), S.plan.map((x) => x.m + ' ' + x.path));
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await page.context().close();
+};
 // ── main ──
 (async () => {
   if (argv.includes('--check-fixture')) process.exit(checkFixture() ? 0 : 1);
