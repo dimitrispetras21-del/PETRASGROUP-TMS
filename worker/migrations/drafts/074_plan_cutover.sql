@@ -250,9 +250,10 @@ end
 $f$;
 
   -- A bridge that must go (its stop is no longer wanted: VS off, Cancelled, deleted, the stop deleted or moved to
-  -- the other side). Executed history is never deleted: with an executed leg on a stop / order that still lives the
-  -- bridge stays and the desk is told (B-95 then shows it red until a person decides); on a stop or order that is
-  -- gone it is refused (plan:vs_executed) - 071's pieces_sum would refuse the same at COMMIT, unnamed.
+  -- the other side). With an executed leg on a stop / order that still lives the bridge stays and the desk is told
+  -- (B-95 then shows it red until a person decides). A DELETE is never refused (owner 28/10: the international or its
+  -- national stop may be deleted after the national leg ran): everything goes soft, with its audit rows, after the
+  -- E19 preview has listed the executed leg; a cycle with money stays (Q-4) - 071's pieces_sum needs it gone anyway.
   CREATE FUNCTION public.plan_h_bridge_retire(p_sh bigint, p_reason text, p_actor text, p_role text) RETURNS void
     LANGUAGE plpgsql SET search_path = public AS $f$
 declare s shipments%rowtype; v_live boolean; v_ref text; v_legs bigint[]; x record;
@@ -260,8 +261,7 @@ begin
   select * into s from shipments where id = p_sh and deleted_at is null for no key update;
   if s.id is null then return; end if;
   select vs.live, coalesce(vs.reference, s.order_id::text) into v_live, v_ref from v_shipments vs where vs.shipment_id = p_sh;
-  if plan_h_bridge_executed(p_sh) then
-    if not v_live then perform plan_h_raise('vs_executed', p_sh::text); end if;
+  if v_live and plan_h_bridge_executed(p_sh) then
     -- "I VS %s allaxe meta tin ektelesi tou ethnikou skelous (%s): elegxe to fortigo"
     perform plan_h_notice('natl', 'vs_changed_after_execution',
       'zpcgVlMgJXMgzqzOu867zrHOvs61IM68zrXPhM6sIM+EzrfOvSDOtc66z4TOrc67zrXPg863IM+Ezr/PhSDOtc64zr3Ouc66zr/PjSDPg866zq3Ou86/z4XPgiAoJXMpOiDOrc67zrXOs86+zrUgz4TOvyDPhs6/z4HPhM63zrPPjA==',
@@ -464,14 +464,9 @@ begin
     end if;
   end loop;
   if v_new > 0 then
-    -- an old national load that already DELIVERED is history (Q-10): an old VS moved onto day L or later after the
-    -- fact (a date correction) is refused by name instead of deleting what happened (principle 1); the owner fixes it.
-    -- NOT in the backfill: there a Delivered NL is an export of hub day L that loaded on Friday (030 marks it Delivered
-    -- when the export goes In Transit) - Q-3: unlinked, and the desk records that loading in v5 on Saturday
-    if v_actor <> '074 backfill' and exists (select 1 from national_loads where source_order_id = p_order and source_type = 'Direct'
-                 and deleted_at is null and (status = 'Delivered' or actual_delivery_date is not null)) then
-      perform plan_h_raise('legacy_executed', p_order::text);
-    end if;
+    -- every old Direct NL is unlinked, Delivered ones too (owner 28/10: the old national data has no business value
+    -- and never blocks v5 - an old VS moved onto day L or later takes the normal bridge path); its id stays in
+    -- plan_cutover_log and the soft delete is audited
     select coalesce(reference, id::text) into v_ref from orders where id = p_order;
     for nl in update national_loads set deleted_at = now()
                where source_order_id = p_order and source_type = 'Direct' and deleted_at is null

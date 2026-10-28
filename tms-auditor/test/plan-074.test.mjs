@@ -324,13 +324,14 @@ export const CASES = {
     assert.strictEqual(await bridgesOf(db, 'C19'), 1);
     assert.strictEqual(await nlLive(db, 'C19'), 0);
   },
-  async C19b(db, L) {   // an old VS whose NL already DELIVERED, moved onto day L after the fact: refused by name, nothing changes
+  async C19b(db, L) {   // owner 28/10: an old VS whose NL already DELIVERED, moved onto day L: the normal bridge path
     await db.query(`SELECT t74_vs('C19b', 'Import', $1::date - 9, '{10}')`, [L]);
     await db.exec(`UPDATE national_loads SET status = 'Delivered' WHERE legacy_id = 'rec74NC19b'`);
-    const e = await errorOf(db, `UPDATE orders SET cross_dock_date = cross_dock_date + 10 WHERE reference = 'C19b'`);
-    assert.strictEqual(e?.hint, 'plan:legacy_executed', JSON.stringify(e));
-    assert.strictEqual(await bridgesOf(db, 'C19b'), 0);
-    assert.strictEqual(await nlLive(db, 'C19b'), 1);
+    await db.exec(`UPDATE orders SET cross_dock_date = cross_dock_date + 10 WHERE reference = 'C19b'`);
+    assert.strictEqual(await bridgesOf(db, 'C19b'), 1);
+    assert.strictEqual(await nlLive(db, 'C19b'), 0);
+    assert.strictEqual(await n(db, `SELECT count(*) FROM plan_cutover_log l JOIN national_loads nl ON nl.id = l.row_id
+      WHERE nl.legacy_id = 'rec74NC19b' AND l.kind = 'nl_unlinked'`), 1);
   },
   async C20(db, L) {   // an executed leg (yesterday) and a day change: nothing goes, notice vs_changed_after_execution
     await db.query(`SELECT t74_vs('C20', 'Import', $1::date, '{10}')`, [L]);
@@ -338,6 +339,29 @@ export const CASES = {
     await db.exec(`UPDATE orders SET cross_dock_date = cross_dock_date + 1 WHERE reference = 'C20'`);
     assert.strictEqual(await legsOf(db, 'C20'), 1);
     assert.strictEqual(await noticesOf(db, 'C20', 'vs_changed_after_execution'), 1);
+  },
+  async C14b(db, L) {   // owner 28/10: the national stop deleted AFTER its leg executed (yesterday) - allowed, all soft
+    await db.query(`SELECT t74_vs('C14b', 'Import', $1::date, '{10,6}')`, [L]);
+    await db.query(`SELECT t74_put(t74_piece('C14b', 1), (now() AT TIME ZONE 'Europe/Athens')::date - 1)`);
+    assert.strictEqual(await errorOf(db, `UPDATE order_stops SET deleted_at = now() WHERE id = t74_stop('C14b', 1)`), null);
+    assert.strictEqual(await bridgesOf(db, 'C14b'), 1);
+    assert.strictEqual(await legsOf(db, 'C14b'), 0);
+    assert.strictEqual(await noticesOf(db, 'C14b', 'vs_withdrawn'), 1);
+  },
+  async C29b(db, L) {   // owner 28/10: the international deleted after the national leg executed - allowed, nothing left live
+    await db.query(`SELECT t74_vs('C29b', 'Import', $1::date, '{10}')`, [L]);
+    await db.query(`SELECT t74_put(t74_piece('C29b', 1), (now() AT TIME ZONE 'Europe/Athens')::date - 1, true)`);
+    await db.query(`UPDATE dl_entries SET trip_value = 80 WHERE rt_id = (SELECT l.rt_id FROM piece_legs l WHERE l.piece_id = t74_piece('C29b', 1) AND l.deleted_at IS NULL)`);
+    const rt = await n(db, `SELECT l.rt_id FROM piece_legs l WHERE l.piece_id = t74_piece('C29b', 1) AND l.deleted_at IS NULL`);
+    await tx(db, `BEGIN;
+      UPDATE order_stops SET deleted_at = now() WHERE order_id = (SELECT id FROM orders WHERE reference = 'C29b') AND deleted_at IS NULL;
+      UPDATE orders SET deleted_at = now() WHERE reference = 'C29b';
+      COMMIT;`);
+    assert.strictEqual(await bridgesOf(db, 'C29b'), 0);
+    assert.strictEqual(await legsOf(db, 'C29b'), 0);
+    // Q-4: the cycle with money stays (empty, told), its payroll line too
+    assert.strictEqual((await one(db, `SELECT status FROM ct_round_trips WHERE id = $1`, [rt])).status, 'planned');
+    assert.strictEqual(await n(db, `SELECT count(*) FROM dl_entries WHERE rt_id = $1 AND trip_value = 80 AND deleted_at IS NULL`, [rt]), 1);
   },
   async C21(db, L) {   // only stop_number changes: no move (the stop's identity is its id)
     await db.query(`SELECT t74_vs('C21', 'Import', $1::date, '{10,6}')`, [L]);
@@ -446,7 +470,7 @@ async function seedBefore(db, L) {
   // B7: a VS with a vehicle on its NL (Q-3: listed, the desk is told)
   await db.exec(`UPDATE national_loads SET truck_id = (SELECT min(id) FROM trucks) WHERE legacy_id = 'rec74NB5'`);
   // B3: an export of hub day L that loaded on Friday - its NL already Delivered (030 on In Transit): Q-3, unlinked by
-  // the backfill (never legacy_executed there) and listed for the desk
+  // the backfill and listed for the desk
   await db.exec(`UPDATE national_loads SET status = 'Delivered' WHERE legacy_id = 'rec74NB3'`);
   // B1: its old NL Cancelled (still live): unlinked, but nothing to re-record - no notice, not in the list
   await db.exec(`UPDATE national_loads SET status = 'Cancelled' WHERE legacy_id = 'rec74NB1'`);
@@ -644,7 +668,7 @@ const MUTANTS = [
   ['no stock first', (s) => s.replace('order by ps.is_stock desc,', 'order by ps.is_stock asc,'), ['C6', 'C8']],
   ['no money check (Q-4)', (s) => s.replace("elsif not (v_rt = any (v_docs)) and plan_h_rt_consequences(v_rt) = '[]'::jsonb then", 'elsif true then'), ['C10', 'C10b']],
   ['a local loading is not a document (Q-4)', (s) => s.replace('elsif not (v_rt = any (v_docs)) and ', 'elsif '), ['C10b']],
-  ['an executed old NL unlinked anyway', (s) => s.replace("perform plan_h_raise('legacy_executed', p_order::text);", 'null;'), ['C19b']],
+  ['an executed bridge kept on a delete', (s) => s.replace('  if v_live and plan_h_bridge_executed(p_sh) then', '  if plan_h_bridge_executed(p_sh) then'), ['C14b', 'C29b']],
   ['cut by the export loading day (not Q-2)', (s) => s.replace('and ((o.cross_dock_date is not null and o.cross_dock_date >= plan_cutover_day())',
     "and ((o.cross_dock_date is not null and o.cross_dock_date - case when o.direction = 'Export' then 1 else 0 end >= plan_cutover_day())"), ['C3']],
 ];
@@ -752,17 +776,4 @@ test('074b: B-95..B-99 + B-10/B-26/B-42 are 0 on the production copy after 074, 
     }
     assert.strictEqual(await errorOf(db, read('074b_plan_cutover_monitoring.sql')), null);
   });
-});
-
-// Round 2 of the review: the refusal of an executed old NL must never reach the backfill (Q-3: the Friday exports of
-// hub day L arrive there with their NL already Delivered). The mutant without the backfill exception stops 074.
-test('mutant "legacy_executed in the backfill too" stops 074 on a Friday export of hub day L', async () => {
-  const L = nextSaturday();
-  const db = await base();
-  await seedBefore(db, L);
-  const src = withL(read('074_plan_cutover.sql'), L);
-  const mut = src.replace("if v_actor <> '074 backfill' and exists (select 1 from national_loads", 'if exists (select 1 from national_loads');
-  assert.notStrictEqual(mut, src, 'the mutation applied');
-  assert.strictEqual((await errorOf(db, mut))?.hint, 'plan:legacy_executed');
-  assert.strictEqual(await errorOf(db, src), null);
 });
