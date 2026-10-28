@@ -130,6 +130,20 @@ test('075 on the production-shaped copy after day L', async (t) => {
     assert.strictEqual(await dirOf(db, before), ARROW.ANODOS);
   });
 
+  await t.test('D7: as the Worker (service_role) the three plan_* still run, with the closed helpers inside them', async () => {
+    await db.exec('SET ROLE service_role');
+    try {
+      const r = (await db.query(`SELECT plan_orders_create($1::jsonb, 'test:075', 'dispatcher') AS r`,
+        [JSON.stringify({ request_id: crypto.randomUUID(), orders: [S.order({ direction: 'ANODOS' })] })])).rows[0].r;
+      const id = r.ids.nat_order_ids[0];
+      await db.query(`SELECT plan_order_update($1::jsonb, 'test:075', 'dispatcher')`, [JSON.stringify({ nat_order_id: id, set: { direction: 'KATHODOS' } })]);
+      const w = await boardItem(db, S.week, id);
+      assert.strictEqual(w.direction, 'KATHODOS');
+      const e = await errorOf(db, `SELECT plan_h_side_dir('ANODOS')`);
+      assert.match(e?.msg ?? '', /permission denied/, 'the helper itself stays closed to the Worker');
+    } finally { await db.exec('RESET ROLE'); }
+  });
+
   await t.test('the 072 and 072b rules tests still pass on top of 075', async () => {
     for (const [f, re] of [['072_plan_functions_test.sql', /RULES TEST 072 finished - EVERYTHING UNDONE, nothing kept\. Result: (\d+) OK, 0 FAIL/],
       ['072b_plan_vehicle_segments_test.sql', /RULES TEST 072b finished - EVERYTHING UNDONE, nothing kept\. Result: (\d+) OK, 0 FAIL/]]) {
