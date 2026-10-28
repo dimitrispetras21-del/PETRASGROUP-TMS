@@ -1348,6 +1348,16 @@ function _legRowHTML(e, today) {
   const tag = `<span class="wi4-ell wi4-sub-leg-t" style="display:block;text-align:${isImp ? 'right' : 'left'}" title="ΣΚΕΛΟΣ ΡΟΤΑΣ · ίδιο φορτηγό — σκέλος ρότας, το ίδιο φορτηγό">ΣΚΕΛΟΣ ΡΟΤΑΣ · ίδιο φορτηγό</span>`;
   const lvl = _levelOf(e.facts, today);
   const unlink = q ? `<button type="button" class="wi4-unlink" title="Ακύρωση προώθησης — αποσύνδεση σκέλους από τη ρότα" onclick="event.stopPropagation();WI_INTERNAL.rotUnlink(event,'${q}')">× αποσύνδεση</button>` : '';
+  // The leg's own printer (owner 28/10: «δεν μπορώ να εκτυπώσω / στείλω WhatsApp»
+  // on a rota leg — v1 drew ⎙ on it, v4 had dropped it). Same slot as a load
+  // row's printer on the leg's side, same .wk3-prt + data-shq, so right-click /
+  // long-press is the share menu. Same call as the row menu's «Εκτύπωση…»
+  // (_wiMenuPrint), so paper and menu print the same sheet.
+  const hasP = !!(lr.partnerId || lr.partnerLabel);
+  const prtTitle = (isImp ? 'Εισαγωγή' : 'Εξαγωγή') + ': εκτύπωση σκέλους ρότας (δεξί κλικ: κοινή χρήση)';
+  const prt = q && typeof printSheetQuery === 'function'
+    ? `<button type="button" class="wk3-prt wi4-prt${isImp ? '' : ' wi4-prt-l'}" title="${_esc(prtTitle)}" aria-label="${_esc(prtTitle)}" data-shq="${_esc(printSheetQuery(q, isImp ? 'import' : 'export', hasP))}" data-shtitle="Εντολή ${isImp ? 'εισαγωγής' : 'εξαγωγής'} — W${_D().week}" onclick="event.stopPropagation();${isImp ? `WI_INTERNAL.printImp('${q}',${hasP})` : `WI_INTERNAL.print(${lr.id},'export')`}">${PRINTER}</button>`
+    : '';
   // A leg rides its RT's truck: a same-day clash is said here, by the unlink.
   const sd = rs.SAME_DAY ? `<span class="wi4-flag amb" data-r="SAME_DAY" title="${_esc(rs.SAME_DAY.text)}">ίδια μέρα</span>` : '';
   // A VS leg has a national leg like any VS row: drawn in its column, so a
@@ -1360,7 +1370,7 @@ function _legRowHTML(e, today) {
   return `<div class="wi4-subrow wi4-sub-leg${_rail(lvl)}" data-row-id="${lr.id}" data-oid="${q}" data-qi="${e.qi}"${q ? ` onclick="WI_INTERNAL.edit('${q}')" oncontextmenu="WI4Actions.openRowMenu(event,'${q}')"` : ''}>` +
     `<div class="wi4-c-idx"><span class="wi4-legidx"${why ? ` title="${_esc(why)}"` : ''}>↳</span></div><div class="wi4-c-fl">${isImp ? '' : nat}</div>` +
     `<div class="wi4-c-exp">${isImp ? tag : leg}</div>` +
-    `<div class="wi4-c-asg"><div class="wi4-asg">${sd}${unlink}</div></div>` +
+    `<div class="wi4-c-asg"><div class="wi4-asg">${isImp ? '' : prt}${sd}${unlink}${isImp ? prt : ''}</div></div>` +
     `<div class="wi4-c-imp">${isImp ? leg : tag}</div><div class="wi4-c-fr">${isImp ? nat : ''}</div></div>`;
 }
 // Local driver (§e #11): «ΤΟΠΙΚΗ ΦΟΡΤΩΣΗ · Οδηγός · Σάβ 3/10 05:00» in the

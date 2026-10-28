@@ -5638,11 +5638,19 @@ async function _wiRotUnlink(e,legOid,skipConfirm){
 function _wiLegCtxItems(legOid){
   let html='';
   html+=_wiCtxBtn('Επεξεργασία…',`_wk3Edit('${legOid}')`);
+  // Print / WhatsApp for the leg itself (owner 28/10: a rota leg could not be
+  // printed or shared from the v4 board). A leg is a row of its own, so the
+  // load rows' _wiMenuPrint prints it unchanged (single order, its direction).
+  const legRow=WINTL.rows.find(r=>r.legOf&&(r.orderIds||[r.orderId]).includes(legOid));
+  if(legRow) html+=_wiCtxBtn('Εκτύπωση…',`_wiMenuPrint(${legRow.id},${legRow.type==='import'?'true':'false'})`);
   html+='<div class="wi-ctx-sep"></div>';
   html+=_wiCtxBtn('Ακύρωση προώθησης',`_wiPanelConfirmUnlink('${legOid}')`,true);
   return html;
 }
 function _wiLegCtx(e,legOid){
+  // A right-click on the leg's ⎙ is its share menu (shareMenuDelegate on the
+  // document): this row-level handler stopped it before it got there (28/10).
+  if(e.target&&e.target.closest&&e.target.closest('.wk3-prt[data-shq]')) return;
   e.preventDefault(); e.stopPropagation();
   if(_wiBlockReadOnly()) return;
   if(_wiPreCtx(e,{orderIds:[legOid]},false)) return;

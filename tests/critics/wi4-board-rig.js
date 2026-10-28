@@ -3410,6 +3410,44 @@ async function scnPrint(browser, origin) {
     ok(scn, 'nothing written', !writes(S).length, writes(S));
     await page.context().close();
   }
+  // Owner 28/10: a rota leg (I010, an import leg of E023) could not be printed
+  // or shared — v4 drew no printer on the ↳ row and its menu had no print item.
+  scn = 'print.leg';
+  {
+    const { page, S } = await openBoard(browser, origin);
+    await page.evaluate(() => { window.__prints = []; window.printOrderSheet = function () { window.__prints.push([...arguments]); }; });
+    const legL = page.locator('#content .wi4 .wi4-subrow.wi4-sub-leg[data-oid="recWiI010"]');
+    const has = await legL.count();
+    await legL.scrollIntoViewIfNeeded().catch(() => {});
+    await legL.hover({ position: { x: 600, y: 16 } }).catch(() => {}); await page.waitForTimeout(150);
+    const btn = legL.locator('.wi4-asg .wk3-prt');
+    const g = await legL.evaluate(row => {
+      const b = row.querySelector('.wi4-asg .wk3-prt'), u = row.querySelector('.wi4-unlink'), chip = row.querySelector('.wi4-c-imp .wi4-dc, .wi4-c-imp button');
+      const R = el => { if (!el) return null; const r = el.getBoundingClientRect(); return { l: Math.round(r.left), r: Math.round(r.right) }; };
+      return { vis: b ? getComputedStyle(b).visibility : 'missing', left: b ? b.classList.contains('wi4-prt-l') : null, shq: b ? b.getAttribute('data-shq') : '', b: R(b), u: R(u), chip: R(chip) };
+    }).catch(() => null);
+    ok(scn, 'the import leg I010 draws its printer right of the assignment cell (clear of the unlink and the import\'s first chip), visible on hover, share query = I010 import',
+      has === 1 && !!g && g.vis === 'visible' && g.left === false && /orderId=recWiI010&leg=import/.test(g.shq) && (!g.u || g.b.l >= g.u.r) && (!g.chip || g.b.r <= g.chip.l), { has, g });
+    await btn.click({ timeout: 4000 }).catch(() => {}); await page.waitForTimeout(250);
+    let prints = await page.evaluate(() => window.__prints.splice(0));
+    ok(scn, 'a click on it prints I010 (import)', prints.length === 1 && prints[0][0] === 'recWiI010' && prints[0][1] === 'import', prints);
+    await page.evaluate(() => { const m = document.getElementById('shMenu'); if (m) m.remove(); const o = document.getElementById('wi-ov') || null; if (o) o.remove(); });
+    await page.mouse.click(5, 5); await page.waitForTimeout(150);
+    await legL.hover({ position: { x: 600, y: 16 } }); await page.waitForTimeout(150);
+    await btn.click({ button: 'right', timeout: 4000 }).catch(() => {}); await page.waitForTimeout(250);
+    const r = await page.evaluate(() => { const m = document.getElementById('shMenu');
+      return { sh: !!m, items: m ? [...m.querySelectorAll('button')].map(b => b.textContent) : [], ctx: ((document.getElementById('wi-ctx') || {}).style || {}).display === 'block' }; });
+    ok(scn, 'right-click on the leg\'s printer opens the share menu (Κοινή χρήση), not the per-load menu', r.sh && !r.ctx && r.items.some(t => /Κοινή χρήση/.test(t)), r);
+    await page.mouse.click(5, 5); await page.waitForTimeout(150);
+    await legL.click({ button: 'right', position: { x: 300, y: 16 } }).catch(() => {}); await page.waitForTimeout(300);
+    const items = await page.evaluate(() => [...document.querySelectorAll('#wi-ctx button')].map(b => b.textContent.trim()));
+    const pi = await page.evaluate(() => { const b = [...document.querySelectorAll('#wi-ctx button')].find(x => /Εκτύπωση/.test(x.textContent)); if (b) b.click(); return !!b; });
+    await page.waitForTimeout(250);
+    prints = await page.evaluate(() => window.__prints.splice(0));
+    ok(scn, 'the leg\'s menu (ΣΚΕΛΟΣ ΡΟΤΑΣ) offers «Εκτύπωση / WhatsApp…», and it prints I010 (import)', pi && items.some(t => /Εκτύπωση \/ WhatsApp/.test(t)) && prints.length === 1 && prints[0][0] === 'recWiI010' && prints[0][1] === 'import', { items, prints });
+    ok(scn, 'nothing written; no page errors', !writes(S).length && !S.pageErrors.length, { w: writes(S), e: S.pageErrors });
+    await page.context().close();
+  }
 }
 
 // P1 review 11/10: a write takes its row id at the start and reports after
