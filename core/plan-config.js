@@ -50,8 +50,38 @@
     return day === null ? _result(STATE.BEFORE, null, d.writes_open) : _result(STATE.AFTER, day, d.writes_open);
   }
 
+  // F25 (live 28/10): 'after' is final as a STATE, but its DAY is not — 079 moved day L from 31/10 to 24/10, and a tab
+  // opened before kept 31/10 and went on offering «Παλιά προβολή» on W44 until a full reload. {recheck: true} asks the
+  // base again for a kept 'after' older than AFTER_RECHECK_MS ({recheck: 'now'}: at once, the user's ↻). A recheck
+  // that fails keeps the old 'after' (074 ran; only its day may be stale) and says so in .recheckErr, never a silent
+  // fallback to 'before'. Without recheck an 'after' is answered from memory as before: the write paths ({fresh})
+  // ask nothing more per save than they did.
+  const AFTER_RECHECK_MS = 5 * 60 * 1000;
   function load(opts) {
     const fresh = !!(opts && opts.fresh);
+    const recheck = opts && opts.recheck;
+    if (_known && _known.state === STATE.AFTER && recheck && (recheck === 'now' || Date.now() - _knownAt >= AFTER_RECHECK_MS)) {
+      const kept = _known;
+      if (_inflight) return _inflight;
+      _inflight = (async () => {
+        try {
+          const r = typeof planFetch === 'function' ? _read(await planFetch('GET', '/plan/config', { designed: ['no_route'] })) : null;
+          // a base that ran 074 never answers 'before' again; such an answer (or an unreadable one) is not taken
+          if (r && r.state === STATE.AFTER) return _keep(r);
+          _knownAt = Date.now();   // asked again after AFTER_RECHECK_MS, not on every render while the base is down
+          const e = _err('config_recheck', 'Η ημέρα μετάβασης δεν ξαναδιαβάστηκε — ισχύει η ' + kept.cutoverDay + ' που διαβάστηκε πριν');
+          _log(e);
+          return Object.freeze(Object.assign({}, kept, { recheckErr: e }));
+        } catch (e) {
+          _knownAt = Date.now();
+          if (e && typeof PlanApi !== 'undefined' && PlanApi.isDesigned(e)) _log(e);
+          return Object.freeze(Object.assign({}, kept, { recheckErr: e }));
+        } finally {
+          _inflight = null;
+        }
+      })();
+      return _inflight;
+    }
     if (_known && (_known.state === STATE.AFTER || (!fresh && Date.now() - _knownAt < BEFORE_TTL_MS))) return Promise.resolve(_known);
     _known = null;
     if (_inflight) return _inflight;

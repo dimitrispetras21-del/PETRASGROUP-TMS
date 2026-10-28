@@ -460,7 +460,7 @@ function _locFormHTML(f) {
   </div>
   <div class="form-field span-2 loc-geo-row">
     <button class="loc-geo-link" id="locGeoBtn">Εύρεση συντεταγμένων</button>
-    <span class="loc-geo-caption">γεωκωδικοποίηση από Name + City + Country</span>
+    <span class="loc-geo-caption">από τη διεύθυνση, αλλιώς από όνομα + πόλη</span>
   </div>
 </div>`;
 }
@@ -523,27 +523,49 @@ async function _locSave() {
   }
 }
 
+// F18 (owner 28/10): the ADDRESS first, then name + city. OpenStreetMap rarely knows a client's company name, so the
+// name search found nothing for one of the two places created in the live test and the place stayed without a pin,
+// although its street address was typed in the form. The address try refuses a town, road or postcode hit (as
+// _locGeocodeQuery does: «Odos 5, Larisa» returned the ring road) and falls back to the name; the name try keeps
+// its old reading. The person is told WHICH search matched and what OpenStreetMap found, so a pin from the name is
+// never taken for the address's (principle 1). Both form fields stay editable: the person checks before saving.
 async function _locGeocode() {
   const name    = document.getElementById('locF_name')?.value.trim();
   const city    = document.getElementById('locF_city')?.value.trim();
   const country = document.getElementById('locF_country')?.value.trim();
+  const address = document.getElementById('locF_address')?.value.trim();
   // The select now stores the ISO code (GR), not free text (Greece) — Nominatim's
   // free-text q= matches the full country name far more reliably than a bare code.
   const countryQ = country && typeof countryName === 'function' ? countryName(country, 'en') : country;
-  const q = [name, city, countryQ].filter(Boolean).join(', ');
-  if (!q) { toast('Συμπλήρωσε πρώτα όνομα ή πόλη', 'danger'); return; }
+  const tries = [
+    { by: 'τη διεύθυνση', q: address ? [address, city, countryQ] : [], strict: true },
+    { by: 'όνομα + πόλη', q: name || city ? [name, city, countryQ] : [], strict: false },
+  ].filter((t) => t.q.length);
+  if (!tries.length) { toast('Συμπλήρωσε πρώτα διεύθυνση, όνομα ή πόλη', 'danger'); return; }
   const btn = document.getElementById('locGeoBtn');
   if (btn) { btn.textContent = 'Αναζήτηση…'; btn.disabled = true; }
+  let failed = 0;
   try {
-    const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1`);
-    const d = await r.json();
-    if (d[0]) {
-      document.getElementById('locF_lat').value = parseFloat(d[0].lat).toFixed(6);
-      document.getElementById('locF_lon').value = parseFloat(d[0].lon).toFixed(6);
-      toast('Οι συντεταγμένες συμπληρώθηκαν ✓', 'success');
-    } else { toast('Δεν βρέθηκε αποτέλεσμα', 'danger'); }
-  } catch (e) { toast('Η γεωκωδικοποίηση απέτυχε', 'danger'); }
-  finally { if (btn) { btn.textContent = 'Εύρεση συντεταγμένων από όνομα + πόλη'; btn.disabled = false; } }
+    for (const t of tries) {
+      let hit = null;
+      try {
+        const q = t.q.filter(Boolean).join(', ');
+        const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1&addressdetails=1`);
+        const d = await r.json();
+        hit = d && d[0];
+      } catch (e) { failed++; continue; }
+      if (!hit) continue;
+      if (t.strict && (_LOC_GEO_VAGUE.has(hit.addresstype) || hit.class === 'boundary' || hit.class === 'place' || hit.class === 'highway')) continue;
+      document.getElementById('locF_lat').value = parseFloat(hit.lat).toFixed(6);
+      document.getElementById('locF_lon').value = parseFloat(hit.lon).toFixed(6);
+      const found = String(hit.display_name || '').split(',').slice(0, 3).join(',');
+      toast(`Οι συντεταγμένες βρέθηκαν από ${t.by}${found ? ': ' + found : ''} — έλεγξέ τες στον χάρτη`, t.strict ? 'success' : 'warn');
+      return;
+    }
+    // every try failed on the network: «nothing found» would be a lie about a search that never ran
+    if (failed === tries.length) toast('Η γεωκωδικοποίηση απέτυχε', 'danger');
+    else toast(`Δεν βρέθηκε αποτέλεσμα (${tries.map((t) => t.by).join(', ')})`, 'danger');
+  } finally { if (btn) { btn.textContent = 'Εύρεση συντεταγμένων'; btn.disabled = false; } }
 }
 
 // ── New place from an order scan (T44, walkthrough item 16) ──────────────────
@@ -568,7 +590,7 @@ const _LOC_GEO_VAGUE = new Set(['city', 'town', 'village', 'hamlet', 'municipali
 /**
  * Nominatim lookup → {lat, lon, found} or null (found = the address
  * OpenStreetMap matched); never throws, never waits more than 4 s per try. Tries name + city + country
- * (what the form's «Εύρεση συντεταγμένων» sends), then the street address +
+ * (the form's «Εύρεση συντεταγμένων» tries the address first since F18), then the street address +
  * city + country: OpenStreetMap rarely knows a client's company name, but a
  * scanned document usually carries the address. A hit that is only a town,
  * a road or a postcode area is refused, and the address try must have a

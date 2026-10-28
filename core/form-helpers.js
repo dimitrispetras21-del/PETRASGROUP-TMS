@@ -72,10 +72,21 @@ async function fhSearchClients(q) {
   if (_fhClientCache[key]) return _fhClientCache[key];
   const safe = q.replace(/[^a-zA-Z0-9\s\u0370-\u03FF\u1F00-\u1FFF.-]/g, '').trim();
   if (!safe) return [];
-  const formula = `SEARCH(LOWER("${safe}"), LOWER({Company Name}))`;
+  // F19 (live 28/10): \u00ABname + start of the 2nd word\u00BB found nothing while one word worked. The whole phrase went to
+  // the Worker as ONE ilike, which it sends to PostgREST through URLSearchParams \u2014 the space travels as \u00AB+\u00BB, read
+  // as a literal plus \u2014 and a name stored with two spaces or \u00AB-\u00BB between the words could not match it either. So
+  // the server is asked for ONE word (the longest: the fewest rows) and every word must then be in the name, in any
+  // order, with the search rule of the boards (_fhNorm: any case, no accents, Greek = Latin).
+  const words = safe.split(/\s+/).filter(Boolean);
+  const probe = words.reduce((a, w) => (w.length > a.length ? w : a), '');
+  const formula = `SEARCH(LOWER("${probe}"), LOWER({Company Name}))`;
   const recs = await atGet(TABLES.CLIENTS, formula, false);
+  // the plain lower-case test as well: a word typed from the middle of a Greek digraph («υκ» of «Λουκ…») matches
+  // the server's ilike but not its _fhNorm form («ou» ≠ «y») — a name the server found is never dropped here
+  const need = words.map(w => [w.toLowerCase(), _fhNorm(w)]);
   const res = recs
     .map(r => ({ id: r.id, label: r.fields['Company Name'] || '' }))
+    .filter(c => { const l = c.label.toLowerCase(), n = _fhNorm(c.label); return need.every(([w, nw]) => l.includes(w) || n.includes(nw)); })
     .sort((a, b) => a.label.localeCompare(b.label))
     .slice(0, 30);
   _fhClientCache[key] = res;

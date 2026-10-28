@@ -119,24 +119,44 @@ function _decide() {
 // 'unknown', a Worker without the route, the file not loaded — the choice holds as today: the old board is a READ
 // path, its writes are refused below the screen, and an unknown day never traps a user in one view. An 'unknown'
 // answer is said on the v5 bar («Η ημέρα μετάβασης δεν διαβάστηκε»), never silent (principle 1).
-let _cfg = null, _cfgAt = 0, _cfgBusy = false;
+let _cfg = null, _cfgAt = 0, _cfgBusy = false, _cfgForce = false;
 const CFG_RETRY_MS = 60 * 1000;   // a non-final answer is asked again at most once a minute (PlanConfig caches 'after')
+// F25 (live 28/10): an 'after' is asked again too — its DAY can move (079: 31/10 → 24/10) and a tab opened before
+// kept the old day until a full reload. Every 5 minutes at the next render (each week change, save, ↻ goes through
+// active()), at once on the user's ↻. A moved day repaints the page and says so; a recheck that fails keeps the day
+// read before and the bar says it was not read again (principle 1: never silently stale).
+const CFG_RECHECK_MS = 5 * 60 * 1000;
 function _dm(day) { return Number(day.slice(8)) + '/' + Number(day.slice(5, 7)); }   // '2026-10-31' → «31/10»
 function _afterL(sat) { return !!_cfg && _cfg.state === 'after' && !!_cfg.cutoverDay && typeof sat === 'string' && sat >= _cfg.cutoverDay; }
 function _cfgKick() {
-  if (_cfgBusy || typeof PlanConfig === 'undefined' || (_cfg && _cfg.state === 'after') || Date.now() - _cfgAt < CFG_RETRY_MS) return;
+  if (_cfgBusy || typeof PlanConfig === 'undefined') return;
+  const after = !!_cfg && _cfg.state === 'after';
+  if (!_cfgForce && Date.now() - _cfgAt < (after ? CFG_RECHECK_MS : CFG_RETRY_MS)) return;
+  const force = _cfgForce;
+  _cfgForce = false;
   _cfgBusy = true;
-  PlanConfig.load().then((r) => {
+  PlanConfig.load(after ? { recheck: force ? 'now' : true } : undefined).then((r) => {
     const was = _cfg && _cfg.state;
+    const wasDay = _cfg && _cfg.cutoverDay;
+    const wasErr = !!(_cfg && _cfg.recheckErr);
     _cfg = r; _cfgAt = Date.now();
     // Paint again only when the answer changes what THIS week shows: it became 'after' and the week is ≥ L (a stored
-    // old view gives way to v5, the bar loses its button), or it became 'unknown' on the v5 board (the bar says so).
+    // old view gives way to v5, the bar loses its button), or it became 'unknown' on the v5 board (the bar says so),
+    // or day L itself moved (F25: the bar, the old-view choice and the «before L» line all read it).
     // A week before L keeps what it painted: no second load of the old board.
     let sat = null;
     try { sat = weekParam(window.WNATL.week); } catch (_) { /* no week: nothing to repaint */ }
     const now = r && r.state;
-    if (now !== was && sat && ((now === 'after' && _afterL(sat)) || (now === 'unknown' && _sat === sat && _decide() === 'v5'))
-      && typeof currentPage !== 'undefined' && currentPage === 'weekly_natl' && typeof window.renderWeeklyNatl === 'function') window.renderWeeklyNatl();
+    const moved = was === 'after' && now === 'after' && wasDay !== r.cutoverDay;
+    const page = typeof currentPage !== 'undefined' && currentPage === 'weekly_natl' && typeof window.renderWeeklyNatl === 'function';
+    if (moved && typeof toast === 'function') toast(`Η ημέρα μετάβασης εθνικών άλλαξε: ${_dm(wasDay)} → ${_dm(r.cutoverDay)} — η προβολή ενημερώθηκε`, 'warn');
+    if (!page || !(moved || (now === 'after' && !!r.recheckErr !== wasErr && _sat === sat && _decide() === 'v5')
+      || (now !== was && sat && ((now === 'after' && _afterL(sat)) || (now === 'unknown' && _sat === sat && _decide() === 'v5'))))) return;
+    // F22 (live 28/10): the v5 board of this week already on screen only needs its bar again — a repaint from the board
+    // in hand, not a second GET /plan/board (every open read the board twice ~40 ms apart, on a base that was timing
+    // out). A render in flight paints the new bar itself when its board lands.
+    if (_sat === sat && !WN5._broken && document.querySelector('#content > .wn5') && (_decide() === 'v5' || _afterL(sat))) paint();
+    else window.renderWeeklyNatl();
   }, () => { _cfgAt = Date.now(); }).finally(() => { _cfgBusy = false; });   // load() never rejects; belt and braces
 }
 // The old-view choice is set aside for a week ≥ L: v5 is what the flag would show without the choice.
@@ -229,7 +249,7 @@ function _isEmpty(b) {
 }
 // reason names the caller (a write, the user's «Ανανέωση», a reuse check) for the trace; the read is the same.
 async function reload(reason) {
-  if (reason === 'user') _idsForce = true;   // the user's ↻ also asks the catalogue again, at once
+  if (reason === 'user') { _idsForce = true; _cfgForce = true; }   // the user's ↻ also asks the catalogue and day L again, at once
   await render();
   const ok = _state === 'ok' || _state === 'empty';
   // a confirmed save whose read failed: the strip says the save happened and the rows are old (F11, principle 1)
@@ -374,6 +394,9 @@ function _barHTML() {
     // Φ4β (Ε-42, Ε-38): the scan creates an order of the OLD model, which this board never shows (principle 1).
     // «+ Νέα παραγγελία» comes with the v5 form (T20): never a button that opens nothing, never the old form here.
     + '<div class="wi4-bar-r">'
+    // F25: day L was read before and could not be read again — the board says which day it still uses
+    + (_cfg && _cfg.state === 'after' && _cfg.recheckErr && _cfg.cutoverDay
+      ? `<span class="wi4-range" data-old-view="recheck" title="${_esc(String(_cfg.recheckErr.message || ''))}">Η ημέρα μετάβασης δεν ξαναδιαβάστηκε · ισχύει η ${_esc(_dm(_cfg.cutoverDay))}</span>` : '')
     + (typeof WN5Form !== 'undefined' && typeof OrdersCommon !== 'undefined' && OrdersCommon.newOrderButton
       ? OrdersCommon.newOrderButton('WN5Form.openOrder({})', '+ Νέα παραγγελία', 'Νέα εθνική παραγγελία v5 — χωρίς έξοδο από το εβδομαδιαίο') : '')
     // Q-10: the old view only for a week before day L; from L on it is not offered, and a stored choice says why
@@ -536,8 +559,13 @@ function _dayHTML(d, m, known, no) {
   // «›» on every day of an empty week read as «folded» (live W44, 28/10), while an empty day of a week with loads had
   // none (Figma H1 «ΤΡΙΤΗ 13/10 · σήμερα · καμία φόρτωση»). Nothing to open, so nothing that looks closed.
   const [name, date] = d.head.split(' ');
+  // A day the user folded says what it hides (owner 28/10, live: one click on a day head folded it and its rows
+  // looked deleted). Drawn on every foldable day, shown by CSS only while it is closed (.wn5-day.closed); a click on
+  // it is a click on the head, which opens the day again.
+  const n = d.rows.length;
   const tail = (today ? '<span class="wi4-today"> · σήμερα</span>' : '')
-    + (!known ? `<span class="wn5-dayx"> · ${_state === 'loading' ? '…' : '—'}</span>` : empty ? '<span class="wn5-dayx"> · καμία φόρτωση</span>' : '');
+    + (!known ? `<span class="wn5-dayx"> · ${_state === 'loading' ? '…' : '—'}</span>` : empty ? '<span class="wn5-dayx"> · καμία φόρτωση</span>' : '')
+    + (fold ? `<span class="wn5-dayhid">▸ ${n} ${n === 1 ? 'γραμμή κρυμμένη' : 'γραμμές κρυμμένες'} · άνοιγμα</span>` : '');
   const head = `<div class="wi4-dayh wn5-dayh"${fold ? ` role="button" tabindex="0" aria-expanded="${!closed}" onclick="WN5._dayTog('${d.date}')"` : ''}>`
     + (fold || skel ? `<span class="wi4-chev">${CHEV}</span>` : '<span class="wi4-dayh-sp"></span>')
     + `<span class="wi4-dayn">${_esc(name)} <span class="wi4-dayd">${_esc(date)}</span></span>${tail}</div>`;
@@ -733,11 +761,31 @@ function _legAttr(r, side) {
 }
 // A click on a control inside the side (the «+», a later print button) is that control's own: ignored here, so the
 // controls need no stopPropagation and a «+» never opens the leg form too.
+// F22 (live 28/10): the leg form reads the whole board again before it opens (decision 31). On a heavy week that read
+// took seconds or hit the base's timeout, the screen showed nothing meanwhile, every impatient click started one more
+// read, and a failed read ended in the form's «Ο κύκλος δεν βρέθηκε στην εβδομάδα που φαίνεται» — it read as a week
+// stuck on the old one, «until a reload» (the reload opens the lighter current week). So: the clicked row says at once
+// that it is reading (.wn5-leg-busy, aria-busy), one leg read at a time (a click while one runs is that same read),
+// and a read that failed is said as what it is, with the way on (↻). The week state itself was right all along.
+let _legBusy = false;
 function _leg(ev, rtId, side) {
   const t = ev && ev.target;
   if (t && t.closest && t.closest('button, a, input, select, [data-act]')) return;
   if (!active() || !ID_RE.test(String(rtId)) || typeof WN5Form === 'undefined' || typeof WN5Form.openLeg !== 'function') return;
-  Promise.resolve(WN5Form.openLeg(Number(rtId), side === 'ANODOS' ? 'ANODOS' : 'KATHODOS')).catch((e) => _logErr(e, 'weekly natl v5: leg form'));
+  if (_legBusy) return;   // the busy row already shows the read in flight
+  _legBusy = true;
+  const row = ev && ev.currentTarget && ev.currentTarget.closest ? ev.currentTarget.closest('.wn5-row') : null;
+  if (row) { row.classList.add('wn5-leg-busy'); row.setAttribute('aria-busy', 'true'); }
+  Promise.resolve(WN5Form.openLeg(Number(rtId), side === 'ANODOS' ? 'ANODOS' : 'KATHODOS'))
+    .then((ok) => {
+      if (ok !== false || _state !== 'err' || !_lastErr || !active() || typeof toast !== 'function') return;
+      toast(`Το σκέλος δεν άνοιξε: ο πίνακας δεν ξαναδιαβάστηκε (${String(_lastErr.message || '')}) — ο κύκλος υπάρχει· πάτα Ανανέωση`, 'danger');
+    })
+    .catch((e) => _logErr(e, 'weekly natl v5: leg form'))
+    .finally(() => {
+      _legBusy = false;
+      if (row && row.isConnected) { row.classList.remove('wn5-leg-busy'); row.removeAttribute('aria-busy'); }
+    });
 }
 // T13: «+» on hover of the side (Figma 2011:10022); data-side is the API's ASCII side, the label is Greek. Only on a
 // cycle row (an unassigned row has no cycle to add to), also on an empty side so a first load can go in.

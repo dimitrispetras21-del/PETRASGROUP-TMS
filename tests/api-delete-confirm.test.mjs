@@ -12,7 +12,7 @@ import { webcrypto } from 'node:crypto';
 
 const HERE = path.dirname(new URL(import.meta.url).pathname);
 const ROOT = process.env.TMS_ROOT ? path.resolve(process.env.TMS_ROOT) : path.resolve(HERE, '..');
-function sandbox(answers, yes) {
+function sandbox(answers, yes, extra = []) {
   const calls = [], asked = [], store = new Map();
   const ctx = {
     console: { log() {}, warn() {}, error() {}, info() {}, debug() {} }, crypto: webcrypto, URL, URLSearchParams, AbortController,
@@ -37,7 +37,7 @@ function sandbox(answers, yes) {
     return next;
   };
   vm.createContext(ctx);
-  for (const f of ['core/constants.js', 'core/utils.js', 'core/api.js']) vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), ctx, { filename: f });
+  for (const f of ['core/constants.js', 'core/utils.js', 'core/api.js', ...extra]) vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), ctx, { filename: f });
   vm.runInContext('showErrorToast = function () {}; toast = function () {};', ctx);   // no DOM here: the toasts are not under test
   const errs = () => { try { return JSON.parse(store.get('tms_errors') || '[]'); } catch (_) { return []; } };
   return { calls, asked, errs, run: (code) => vm.runInContext(code, ctx) };
@@ -95,4 +95,20 @@ test('F5 deploy 2: 422 LEGACY_CLOSED is a designed «no» (logged under «_atRet
   assert.deepStrictEqual(r, { m: 'rig: closed after L', rule: 'legacy_closed' });
   assert.strictEqual(dels(s).length, 1);
   assert.ok(s.errs().some((x) => /_atRetry 422 rule/.test(JSON.stringify(x))), JSON.stringify(s.errs()));
+});
+
+// live 28/10: the base's items are {kind, …ids}; the confirm printed each piece_on_rt as raw JSON with its
+// order_stop_id. Read with the board's words (core/wn5-labels.js), the same line for several pieces once with «×n».
+test('live 28/10: the 428 list reads in words — piece_on_rt without JSON or a stop id, repeated lines «×n», unknown kinds kept', async () => {
+  const items = [
+    { kind: 'piece_on_rt', leg_id: 9, piece_id: 4101, rt_id: 201, code: 'RT-T201', order_stop_id: 6101, nat_order_id: null },
+    { kind: 'piece_on_rt', leg_id: 10, piece_id: 4102, rt_id: 201, code: 'RT-T201', order_stop_id: 6102, nat_order_id: null },
+    { kind: 'zz_new_kind', rt_id: 201 }];
+  const s = sandbox([json(428, { error: { type: 'PLAN_RULE', code: 'need_token', message: 'rig: confirm' }, preview: { consequences: items, confirm_token: 'tok-1' } })],
+    false, ['core/wn5-labels.js']);
+  await s.run(DEL);
+  const t = s.asked[0] || '';
+  assert.match(t, /• βγαίνει από το RT-T201 φορτίο αυτής της παραγγελίας ×2/);
+  assert.match(t, /• άλλη επίπτωση · zz_new_kind/);
+  assert.ok(!/order_stop_id|6101|\{"kind"/.test(t), t);
 });

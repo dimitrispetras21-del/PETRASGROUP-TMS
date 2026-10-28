@@ -197,3 +197,37 @@ test('F5-FE1 isLegacyTable: NAT_ORDERS / NAT_LOADS / GL_LINES / CONS_LOADS only'
   assert.deepStrictEqual(JSON.parse(s.run("JSON.stringify(['tO','tNO','tNL','tGL','tCL','tT',null].map((t) => PlanConfig.isLegacyTable(t)))")),
     [false, true, true, true, true, false, false]);
 });
+
+// F25 (live 28/10): 079 moved day L 31/10 → 24/10; a tab opened before kept 31/10 forever ('after' was final).
+const AFTER = (day) => ({ cutover_day: day, opened_at: '2026-10-28T12:00:00Z', writes_open: true });
+const LOADR = (o) => `PlanConfig.load(${o}).then((r) => JSON.stringify({ state: r.state, day: r.cutoverDay, rerr: !!r.recheckErr }))`;
+
+test('F25: {recheck:true} re-reads an \'after\' older than 5 min and takes the moved day; never earlier, never without recheck', async () => {
+  const s = sandbox([json(200, AFTER('2026-10-31')), json(200, AFTER('2026-10-24'))]);
+  assert.deepStrictEqual(JSON.parse(await s.run(LOADR(''))), { state: 'after', day: '2026-10-31', rerr: false });
+  // within 5 minutes: from memory, also with recheck
+  s.clock.t += 4 * 60 * 1000;
+  assert.deepStrictEqual(JSON.parse(await s.run(LOADR('{ recheck: true }'))), { state: 'after', day: '2026-10-31', rerr: false });
+  // the write paths ({fresh}) and a plain load ask nothing more for an 'after' (one GET per save is not added)
+  s.clock.t += 60 * 60 * 1000;
+  await s.run('PlanConfig.load({ fresh: true })');
+  await s.run('PlanConfig.load()');
+  assert.strictEqual(cfg(s).length, 1, 'no re-read without recheck');
+  assert.deepStrictEqual(JSON.parse(await s.run(LOADR('{ recheck: true }'))), { state: 'after', day: '2026-10-24', rerr: false });
+  assert.strictEqual(cfg(s).length, 2);
+  // every reader of the session now has the new day
+  assert.deepStrictEqual(JSON.parse(await s.run(LOADR(''))), { state: 'after', day: '2026-10-24', rerr: false });
+});
+
+test('F25: recheck \'now\' asks at once; a failed recheck keeps the day read before, flags recheckErr, logs, and waits 5 min', async () => {
+  const s = sandbox([json(200, AFTER('2026-10-31')), json(500, { error: { type: 'INTERNAL', code: 'plan_failed', message: 'boom' } }),
+    json(200, BEFORE)]);
+  await s.run(LOADR(''));
+  assert.deepStrictEqual(JSON.parse(await s.run(LOADR("{ recheck: 'now' }"))), { state: 'after', day: '2026-10-31', rerr: true });
+  assert.ok(s.errs().length >= 1, 'the failed recheck is logged');
+  // not asked again on the next render
+  assert.deepStrictEqual(JSON.parse(await s.run(LOADR('{ recheck: true }'))), { state: 'after', day: '2026-10-31', rerr: false });
+  assert.strictEqual(cfg(s).length, 2);
+  // a 'before' after 074 ran is not believed: the kept day stays, flagged
+  assert.deepStrictEqual(JSON.parse(await s.run(LOADR("{ recheck: 'now' }"))), { state: 'after', day: '2026-10-31', rerr: true });
+});

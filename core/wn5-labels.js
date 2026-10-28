@@ -90,9 +90,13 @@
     // it is reversed after the token and a new pending line is written for the new movement.
     pallets_confirmed: (c) => `επιβεβαιωμένη γραμμή παλετών · ${c.event_type === 'LOADING' ? 'φόρτωση' : c.event_type === 'DELIVERY' ? 'παράδοση' : String(c.event_type)}`
       + ` · πήραμε ${c.taken} · δώσαμε ${c.given} — αντιλογίζεται μετά την επιβεβαίωση`,
-    // 074a (F5 Ε-19): deleting an international order takes its VS bridge pieces off the v5 cycles. Ids and the
-    // cycle code only (no client, no amount), so the line says which truck loses which stop's load.
-    piece_on_rt: (c) => `βγαίνει από το ${c.code || '—'} το φορτίο της στάσης #${c.order_stop_id != null ? c.order_stop_id : '—'}`,
+    // 074a (F5 Ε-19): deleting an international order takes its VS bridge pieces off the v5 cycles. The item carries
+    // ids and the cycle code only (no client, no amount, no place). «της στάσης #6101» (live 28/10) named an internal
+    // order_stops id nobody can read, so the line names the cycle and whose load it is: the national order's number
+    // (#N, the number the board shows) or «αυτής της παραγγελίας» (the international being deleted). A place name
+    // comes only when the item carries one (c.place: a base change, proposed in the PR of 28/10) — never an id.
+    piece_on_rt: (c) => `βγαίνει από το ${c.code || '—'} `
+      + (c.place ? `το φορτίο για ${c.place}` : c.nat_order_id != null ? `το φορτίο της εθνικής #${c.nat_order_id}` : 'φορτίο αυτής της παραγγελίας'),
   });
 
   // The category word the two-step list puts before a line (Figma Δ5 2053:8079 and H4 2125:7738: «Μισθοδοσία · …»).
