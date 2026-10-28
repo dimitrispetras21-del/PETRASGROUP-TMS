@@ -70,6 +70,8 @@ const f073 = () => readOne(['drafts/073_plan_money.sql', '073_plan_money.sql'],
   'copy it from the SQL branch: git checkout feat/national-v5-f3 -- worker/migrations/drafts/073_plan_money.sql');
 const f074a = () => readOne(['drafts/074a_plan_reads.sql', '074a_plan_reads.sql'],
   'copy it from the SQL branch: git checkout feat/national-v5-f5-074a -- worker/migrations/drafts/074a_plan_reads.sql');
+const f077 = () => readOne(['drafts/077_plan_order_edit.sql', '077_plan_order_edit.sql'],
+  'it travels with this Worker change (077 + GET /plan/orders/:id, one PR)');
 // 074 may still be in review when deploy 1 goes (it runs on day L): null when no copy is on this branch
 const f074 = () => ['drafts/074_plan_cutover.sql', '074_plan_cutover.sql'].map((n) => path.join(MIG, n)).filter((f) => existsSync(f))
   .map((file) => ({ file, sql: readFileSync(file, 'utf8') }))[0] || null;
@@ -322,8 +324,9 @@ test('every PLAN_ROUTES rpc exists in 072 / 072b with the argument names the Wor
   const want = { plan_board: ['p_week', 'p_role'], plan_vs_state: ['p_order_ids'], plan_notices_list: ['p_desk', 'p_role'] };
   const routes = src.match(/var PLAN_ROUTES = \[[\s\S]*?\n\];\n/);
   assert.ok(routes, 'PLAN_ROUTES not found in worker/src/index.js');
-  // the 074a reads have their own test below
-  const routed = new Set([...routes[0].matchAll(/"(plan_[a-z_]+)"/g)].map((m) => m[1]).filter((fn) => !Object.hasOwn(READS_074A, fn)));
+  // the 074a and 077 reads have their own tests below
+  const routed = new Set([...routes[0].matchAll(/"(plan_[a-z_]+)"/g)].map((m) => m[1])
+    .filter((fn) => !Object.hasOwn(READS_074A, fn) && !Object.hasOwn(READS_077, fn)));
   for (const fn of routed) assert.deepEqual(sigs[fn], want[fn] || WRITE, `${fn}: 072 signature vs the Worker's args`);
   assert.deepEqual([...routed].sort(), Object.keys(sigs).filter((x) => x !== 'plan_rt_create').sort(),
     'every public plan_* routed once; plan_rt_create internal (decision 3)');
@@ -349,6 +352,25 @@ test('074a creates the Worker\'s four /plan/* reads and order_delete_preview wit
   assert.ok(call, 'the Worker calls order_delete_preview');
   assert.deepEqual(sigs.order_delete_preview, [...call[1].matchAll(/(p_[a-z_]+):/g)].map((m) => m[1]), 'order_delete_preview: 074a signature vs the Worker\'s args');
   assert.ok(granted.has('order_delete_preview'), 'order_delete_preview: EXECUTE for the service role');
+});
+
+// 077 (F13): the edit form's read of one national order - created by 077 with exactly the argument names the Worker
+// sends, born closed (REVOKE from every API role, EXECUTE for the service role only), routed once.
+const READS_077 = { plan_order_read: ['p_nat_order_id', 'p_role'] };
+test('077 creates GET /plan/orders/:id\'s read with the argument names the Worker sends, EXECUTE for the service role only', () => {
+  const sql = f077().sql;
+  const sigs = Object.fromEntries([...sql.matchAll(/CREATE FUNCTION public\.([a-z_]+)\(([^)]*)\)/g)]
+    .map((m) => [m[1], m[2].split(',').map((a) => a.trim().split(/\s+/)[0]).filter(Boolean)]));
+  for (const [fn, args] of Object.entries(READS_077)) {
+    assert.deepEqual(sigs[fn], args, `${fn}: 077 signature vs the Worker's args`);
+    assert.equal(src.split(`rpc: "${fn}"`).length - 1, 1, `${fn} is routed once in PLAN_ROUTES`);
+    assert.match(sql, new RegExp(`REVOKE ALL ON FUNCTION public\\.${fn}\\(bigint,text\\) FROM PUBLIC, anon, authenticated, service_role;`));
+    assert.match(sql, new RegExp(`GRANT EXECUTE ON FUNCTION public\\.${fn}\\(bigint,text\\) TO service_role;`));
+  }
+  // the args the Worker builds are exactly those names
+  const fnSrc = /function planOrderReadArgs\(url, caller\) \{[\s\S]*?\n\}/.exec(src);
+  assert.ok(fnSrc, 'planOrderReadArgs not found');
+  assert.deepEqual([...fnSrc[0].matchAll(/(p_[a-z_]+):/g)].map((m) => m[1]), READS_077.plan_order_read);
 });
 
 // review of PR #90, finding 7: the roles that SEE amounts, held equal the same way. If the Worker's list were
