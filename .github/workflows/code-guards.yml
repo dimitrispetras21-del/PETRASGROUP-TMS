@@ -65,8 +65,8 @@ jobs:
     name: National v5 F5 tests
     runs-on: ubuntu-latest
     steps:
-      # Full history: tests/f5-d3-entities-v5.test.mjs compares with origin/main and tests/daily-ramp-v5.test.js
-      # with the pre-Ε14 tip (git show); a depth-1 checkout has neither ref, and the d3 test would fail on it.
+      # Full history: tests/f5-d3-entities-v5.test.mjs and tests/daily-ramp-v5.test.js compare with the pre-F5
+      # tip 5f55a943 (git show, pinned since #137); a depth-1 checkout does not have that commit.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
