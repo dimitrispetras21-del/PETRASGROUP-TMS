@@ -64,15 +64,22 @@ async function _natlLoad() {
     NATL_ORDERS.noLoad = new Set();
     NATL_ORDERS.loads = new Map();
     NATL_ORDERS.loadsFailed = false;
+    // F5 Ε3: a v5 order (rec._v5) has no load on purpose — never «εκτός». In
+    // parallel with the loads; before L it requests nothing (natV5Attach).
+    const v5P = OrdersCommon.natV5Attach(records);
     try {
       NATL_ORDERS.loads = await OrdersCommon.natLoadsFor(records);
-      records.forEach(r => { if (!r.fields['National Groupage'] && !NATL_ORDERS.loads.has(r.id)) NATL_ORDERS.noLoad.add(r.id); });
+      await v5P;
+      records.forEach(r => { if (!r.fields['National Groupage'] && !r._v5 && !NATL_ORDERS.loads.has(r.id)) NATL_ORDERS.noLoad.add(r.id); });
     } catch(e) {
       // Unknown ≠ «εκτός»: without the answer no row is marked missing, and
       // the list SAYS the check did not run (warn below).
       NATL_ORDERS.loadsFailed = true;
       if (typeof logError === 'function') logError(e, 'orders_natl: load presence check');
     }
+    const v5 = await v5P;
+    NATL_ORDERS.v5Failed = v5.failed;
+    NATL_ORDERS.afterL = v5.state === 'after';
 
   return NATL_ORDERS.data;
 }
@@ -93,7 +100,11 @@ async function loadOrdersNatlData(period) {
   await _natlLoad();
   _onEnsureStyles();
   return { records: NATL_ORDERS.data, noLoad: NATL_ORDERS.noLoad || new Set(), loads: NATL_ORDERS.loads || new Map(), namesReady: NATL_ORDERS.namesReady,
-    warns: NATL_ORDERS.loadsFailed ? ['Τα εθνικά φορτία δεν φορτώθηκαν — η στήλη ΑΝΑΘΕΣΗ των εθνικών δεν δείχνει όχημα ούτε «εκτός». Δεν σημαίνει ότι δεν υπάρχουν. Ξαναδοκίμασε με Ανανέωση.'] : [] };
+    afterL: !!NATL_ORDERS.afterL,
+    warns: [
+      ...(NATL_ORDERS.loadsFailed ? ['Τα εθνικά φορτία δεν φορτώθηκαν — η στήλη ΑΝΑΘΕΣΗ των εθνικών δεν δείχνει όχημα ούτε «εκτός». Δεν σημαίνει ότι δεν υπάρχουν. Ξαναδοκίμασε με Ανανέωση.'] : []),
+      ...(NATL_ORDERS.v5Failed ? [OrdersCommon.NAT_V5_WARN] : []),
+    ] };
 }
 
 // Kept for its callers (form submit, groupage submit, delete, scan, retry):
@@ -124,6 +135,8 @@ const _onDate = d => d ? new Date(d).toLocaleDateString('el-GR', { day: 'numeric
 // A failed load read is «unknown» — never «προς ανάθεση» (principle 1).
 function _onAssignment(rec) {
   const loads = NATL_ORDERS.loads instanceof Map ? NATL_ORDERS.loads : null;
+  // A v5 order's vehicle is its cycle's (F5 Ε3): the loads are not asked.
+  if (rec._v5 && typeof rec._v5 === 'object') return OrdersCommon.assignOf({ ...rec, _type: 'natl' }, {});
   if (!rec.fields['National Groupage'] && (NATL_ORDERS.loadsFailed || !loads)) return { key: 'unknown', text: '' };
   return OrdersCommon.assignOf({ ...rec, _type: 'natl' },
     { load: (loads && loads.get(rec.id)) || null, missingLoad: !!(NATL_ORDERS.noLoad && NATL_ORDERS.noLoad.has(rec.id)) });
@@ -133,6 +146,7 @@ const _ON_ASSIGN_LINE = {
   out: 'ΕΚΤΟΣ ΕΒΔΟΜΑΔΙΑΙΟΥ — δεν έχει εθνικό φορτίο',
   unknown: 'Άγνωστη — τα εθνικά φορτία δεν φορτώθηκαν. Δεν σημαίνει ότι είναι χωρίς ανάθεση· ξαναδοκίμασε με Ανανέωση.',
   pa: 'ΠΡΟΣ ΑΝΑΘΕΣΗ — στο Εβδομαδιαίο, χωρίς όχημα',
+  unknownV5: 'Άγνωστη — η κατάσταση των εθνικών v5 δεν διαβάστηκε. Δεν σημαίνει ότι είναι χωρίς ανάθεση· ξαναδοκίμασε με Ανανέωση.',
 };
 
 // Scoped styles for this screen only (spec w4-orders-interaction-spec 208:724).
@@ -317,7 +331,7 @@ function selectNatlOrder(recId) {
       <div class="on-sec-title">Ανάθεση</div>
       <div class="on-row">
         <span class="on-dot${asgOk ? ' ok' : asgOpen ? ' unassigned' : ''}"></span>
-        <span class="on-row-main${asgOpen ? ' unassigned' : ''}" data-assign="${asg.key}">${asgOk ? escapeHtml(asg.text) : (_ON_ASSIGN_LINE[asg.key] || _ON_ASSIGN_LINE.unknown)}</span>
+        <span class="on-row-main${asgOpen ? ' unassigned' : ''}" data-assign="${asg.key}">${asgOk ? escapeHtml(asg.text) : rec._v5 === 'err' && asg.key === 'unknown' ? _ON_ASSIGN_LINE.unknownV5 : (_ON_ASSIGN_LINE[asg.key] || _ON_ASSIGN_LINE.unknown)}</span>
       </div>
       <div class="on-row"><button type="button" class="on-link" onclick="navigate('weekly_natl')">άνοιγμα στο Weekly National →</button></div>
     </div>
@@ -791,7 +805,52 @@ function _onWatchModalClose() {
   });
   _onModalObs.observe(overlay, { attributes: true, attributeFilter: ['class'] });
 }
-function openNatlCreate() { _openNatlModal(null, {}); }
+// ─── Day L (F5 Task F, owner Q-10 28/10/2026) ───
+// From day L national work is born and changed on the v5 board only. This
+// page then sends a new order, and any change of a v5 order, to the Weekly
+// National; keeps the old form for an OLD order with only the fields Q-10
+// leaves to the role (the Worker refuses the rest with 422 legacy_closed anyway —
+// this is so no save looks green first); and never writes a NATIONAL LOAD
+// (the 074 freeze refuses the INSERT). «After» is the base's answer
+// (PlanConfig, read fresh: these open a write). 'unknown' keeps today's path —
+// before L it is the right one, after L the Worker refuses loudly — but it is
+// SAID on the screen, never a silent 'before' (PlanConfig contract, PR #117).
+async function _natlAfterL() {
+  const st = await OrdersCommon._planState({ fresh: true });
+  if (st === 'unknown') toast('Δεν διαβάστηκε αν έγινε η μετάβαση στο νέο Εβδομαδιαίο Εθνικών — η φόρμα ανοίγει όπως πριν· αν η μετάβαση έχει γίνει, η αποθήκευση θα αρνηθεί με μήνυμα. Ξαναδοκίμασε σε λίγο.', 'warn');
+  return st === 'after';
+}
+// Q-10: the old-order fields a role still writes through this form after L
+// (dispatcher Price/Reference/Notes; accountant Invoiced, invoice number,
+// Invoice Date (owner 28/10) and Price — the form has no Reference and no
+// invoice fields: those are written by the invoicing views, which this filter
+// does not touch). Owner: the whole form, as before. A role not here changes
+// nothing. The Worker refuses the rest with 422 legacy_closed after deploy 2.
+const _NATL_Q10 = { dispatcher: { nf_Price: 'Price', nf_Notes: 'Notes' }, accountant: { nf_Price: 'Price' } };
+let _natlLegacyLock = null;   // { recId, allow } while an old order is open after L
+function _natlRole() { return typeof ROLE !== 'undefined' ? ROLE : ''; }
+// The Weekly National, on the order's week when there is one. The v5 form
+// reads only the loaded week (Ε-9), so the order is opened from there.
+function _natlToBoard(rec, msg) {
+  const day = rec ? OrdersCommon.weekDateOf({ _type: 'natl', fields: rec.fields || {} }) : '';
+  const wk = day && typeof TmsWeek !== 'undefined' ? TmsWeek.numOf(day) : null;
+  if (wk && window.WNATL) window.WNATL.week = wk;
+  if (typeof closeModal === 'function') closeModal();
+  toast(msg, 'info');
+  navigate('weekly_natl');
+}
+const _NATL_NEW_ON_BOARD = 'Οι νέες εθνικές καταχωρούνται από το Εβδομαδιαίο Εθνικών («+ Νέα παραγγελία»)';
+async function openNatlCreate() {
+  if (await _natlAfterL()) return _natlToBoard(null, _NATL_NEW_ON_BOARD);
+  _openNatlModal(null, {});
+}
+// v5 or not, asked of the base for this one order (it may come from the
+// Weekly, unread by the list): true | false | 'err'.
+async function _natlIsV5(rec) {
+  const probe = { id: rec.id, _type: 'natl', fields: rec.fields || {} };
+  const r = await OrdersCommon.natV5Attach([probe]);
+  return r.failed ? 'err' : !!(probe._v5 && typeof probe._v5 === 'object');
+}
 async function openNatlEdit(recId) {
   let rec = NATL_ORDERS.data.find(r => r.id === recId);
   if (!rec) {
@@ -799,10 +858,67 @@ async function openNatlEdit(recId) {
     // the click used to be a silent no-op). atGetOne already toasts + logs.
     try { rec = await atGetOne(TABLES.NAT_ORDERS, recId); } catch (e) { return; }
   }
-  if (rec && rec.fields) _openNatlModal(recId, rec.fields);
+  if (!(rec && rec.fields)) return;
+  if (await _natlAfterL()) {
+    const v5 = await _natlIsV5(rec);
+    if (v5 === 'err') return toast('Δεν διαβάστηκε αν η παραγγελία ανήκει στο νέο Εβδομαδιαίο — δεν άνοιξε τίποτα. Ξαναδοκίμασε.', 'danger');
+    if (v5) return _natlToBoard(rec, 'Η παραγγελία αλλάζει από το Εβδομαδιαίο Εθνικών — άνοιξέ την από την εβδομάδα της');
+    const allow = _natlRole() === 'owner' ? null : (_NATL_Q10[_natlRole()] || {});
+    return _openNatlModal(recId, rec.fields, { allow });
+  }
+  _openNatlModal(recId, rec.fields);
+}
+// After L, an old order (opts.allow = the Q-10 fields of the role; null =
+// owner, the whole form): everything else is disabled, with the reason on top.
+function _natlLockForm(recId, allow, was) {
+  _natlLegacyLock = null;
+  if (!allow) return;
+  const body = document.getElementById('modalBody'); if (!body) return;
+  body.querySelectorAll('input,select,textarea,button').forEach(el => { if (!Object.prototype.hasOwnProperty.call(allow, el.id)) el.disabled = true; });
+  const names = Object.values(allow).map(l => ({ Price: 'τιμή', Notes: 'σημειώσεις' })[l] || l);
+  const note = document.createElement('div');
+  note.className = 'on-legacy-note';
+  note.style.cssText = 'margin-bottom:12px;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-md, 6px);color:var(--text-mid);font-size:13px';
+  note.textContent = names.length
+    ? 'Παλιά εθνική (πριν από το νέο Εβδομαδιαίο): αλλάζει μόνο ' + names.join(' και ') + '. Τα υπόλοιπα τα αλλάζει μόνο ο owner.'
+    : 'Παλιά εθνική (πριν από το νέο Εβδομαδιαίο): μόνο ανάγνωση για τον ρόλο σου. Τις αλλαγές τις κάνει ο owner.';
+  body.prepend(note);
+  const btn = document.getElementById('natlBtnSubmit');
+  if (btn && !names.length) btn.style.display = 'none';
+  _natlLegacyLock = { recId, allow, was: was || {} };
+}
+// The save of a locked old order: ONE PATCH of the allowed fields, nothing
+// else — no stops, no national load, no groupage (Q-10: only the owner).
+async function _natlSubmitLegacy(recId, allow, was) {
+  const btn = document.getElementById('natlBtnSubmit');
+  if (btn) { btn.textContent = 'Αποθήκευση…'; btn.disabled = true; }
+  // Only what changed against the values the form opened with (`was`, also when opened from the Weekly): an
+  // untouched empty Notes must not turn NULL into '' — a change nobody made, in the audit.
+  const fields = {};
+  for (const [id, label] of Object.entries(allow)) {
+    const el = document.getElementById(id); if (!el) continue;
+    const v = String(el.value || '').trim();
+    if (label === 'Price') {
+      const n = v === '' ? null : parseFloat(v);
+      if (n !== null && !(Number.isFinite(n) && n > 0)) { toast('Η τιμή πρέπει να είναι αριθμός πάνω από 0', 'danger'); if (btn) { btn.textContent = 'Αποθήκευση'; btn.disabled = false; } return; }
+      if (n !== (OrdersCommon.price(was))) fields.Price = n;
+    } else if (v !== String(was[label] == null ? '' : was[label]).trim()) fields[label] = v;
+  }
+  if (!Object.keys(fields).length) { _natlLegacyLock = null; closeModal(); toast('Καμία αλλαγή — δεν γράφτηκε τίποτα', 'info'); return; }
+  try {
+    await atPatch(TABLES.NAT_ORDERS, recId, fields);
+    invalidateCache(TABLES.NAT_ORDERS);
+    _natlLegacyLock = null;
+    closeModal();
+    toast('Αποθηκεύτηκε');
+    renderOrdersNatl();
+  } catch (e) {
+    if (typeof reportError === 'function') reportError('Η αλλαγή ΔΕΝ αποθηκεύτηκε', e); else toast('Η αλλαγή ΔΕΝ αποθηκεύτηκε: ' + (e && e.message), 'danger');
+    if (btn) { btn.textContent = 'Αποθήκευση'; btn.disabled = false; }
+  }
 }
 
-async function _openNatlModal(recId, f) {
+async function _openNatlModal(recId, f, opts) {
   // P1 4/10 (live, owner's Chrome): the location pickers (fhLocSelect/fhLocDrop)
   // search the shared _fhLocationsArr, which only fhLoadLocations() fills. The
   // Orders page fills it in the background since perf 29/9 and the Weekly
@@ -978,12 +1094,14 @@ async function _openNatlModal(recId, f) {
     });
   }
   (_pre.length ? _pre : [{}]).forEach(p => _simAddRow(p));
+  _natlLockForm(recId, opts ? opts.allow : null, f);
 }
 
 // ─── Submit ─────────────────────────────────────
 // «Στείλε στο Weekly» (13/9): create the missing NATIONAL LOAD for an order
 // saved while the create failed. Same function the form calls on save.
 async function _natlSendToWeekly(recId) {
+  if (await _natlAfterL()) return toast('Το παλιό μοντέλο εθνικών έκλεισε την ημέρα μετάβασης — νέο φορτίο δεν δημιουργείται. Οι νέες εθνικές καταχωρούνται από το Εβδομαδιαίο Εθνικών.', 'warn');
   try {
     const rec = await atGetOne(TABLES.NAT_ORDERS, recId);
     if (!rec || !rec.fields) throw new Error('order not found');
@@ -1003,6 +1121,7 @@ async function _natlSendToWeekly(recId) {
 }
 window._natlSendToWeekly = _natlSendToWeekly;
 async function submitNatlOrder(recId) {
+  if (_natlLegacyLock && _natlLegacyLock.recId === recId) return _natlSubmitLegacy(recId, _natlLegacyLock.allow, _natlLegacyLock.was);
   const btn = document.getElementById('natlBtnSubmit');
   if(btn) { btn.textContent='Αποθήκευση…'; btn.disabled=true; }
 
@@ -1676,6 +1795,14 @@ const _NATL_DELETE_ROLES = ['owner', 'dispatcher'];
 // Returns true only when the order was deleted — the toolbar Undo of a new
 // national order runs this and must know a cancel/refusal from a delete (§4 #9).
 async function deleteNatlOrder(recId) {
+  // Q-10: after L no national order is deleted here — a v5 one through the
+  // board (with its list of consequences), an old one by nobody.
+  if (await _natlAfterL()) {
+    const rec = (NATL_ORDERS.data || []).find(r => r.id === recId) || { id: recId, fields: {} };
+    const v5 = rec.fields['Order No'] ? await _natlIsV5(rec) : false;
+    toast(v5 === true ? 'Η παραγγελία διαγράφεται από το Εβδομαδιαίο Εθνικών, με τη λίστα συνεπειών' : v5 === 'err' ? 'Δεν διαβάστηκε αν η παραγγελία ανήκει στο νέο Εβδομαδιαίο — δεν σβήστηκε τίποτα. Ξαναδοκίμασε.' : 'Οι παλιές εθνικές δεν διαγράφονται μετά την ημέρα μετάβασης — δεν σβήστηκε τίποτα', 'warn');
+    return false;
+  }
   if (!confirm('Διαγραφή αυτής της εθνικής παραγγελίας; Θα αφαιρεθούν και τα συνδεδεμένα φορτία και οι γραμμές groupage.')) return false;
 
   try {
@@ -1807,7 +1934,8 @@ async function deleteNatlOrder(recId) {
 // SCAN FLOW — clone of orders_intl with national-specific schema
 // ═══════════════════════════════════════════════════════════════
 
-function openNatlScan() {
+async function openNatlScan() {
+  if (await _natlAfterL()) return _natlToBoard(null, _NATL_NEW_ON_BOARD);
   document.getElementById('modal').style.maxWidth = '520px';
   openModal('Νέα National Order από Scan', `
     <div style="text-align:center;padding:4px 0 24px">
@@ -2405,7 +2533,7 @@ function _natlPrefillFromScan(fields) {
 window.renderOrdersNatl = renderOrdersNatl;
 window.loadOrdersNatlData = loadOrdersNatlData;
 window.openNatlCreate = openNatlCreate;
-window.openNatlCreateWith = f => _openNatlModal(null, f || {}); // 9/9: Weekly National «νέα άνοδος» prefill
+window.openNatlCreateWith = async f => (await _natlAfterL()) ? _natlToBoard(null, _NATL_NEW_ON_BOARD) : _openNatlModal(null, f || {}); // 9/9: Weekly National «νέα άνοδος» prefill
 window.openNatlEdit = openNatlEdit;
 window.selectNatlOrder = selectNatlOrder;
 window.natlQuickEdit = natlQuickEdit;
