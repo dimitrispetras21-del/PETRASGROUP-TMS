@@ -147,11 +147,13 @@
     const st = WN5.state();
     // F27 (owner 28/10, study §3.5): Δ1 opens on the PIECE's Veroia day (nat_ready_day: the day it loads at the hub),
     // its cycles and its Veroia window on that day — the panel's day is the earliest of every piece, and handed a piece
-    // ready on Wednesday to Sunday's trucks. A stock remainder has no such day (its nat_ready_day is its parent's): its
-    // day is the one this panel gives stock (_stockDay). The panel's day only when the base sent the piece none.
+    // ready on Wednesday to Sunday's trucks. The piece's day is a VS's cross-dock day (WN5L.vsHubDay, as Δ1 writes it);
+    // stock has the day this panel gives stock (_stockDay; its nat_ready_day is its parent's); a national at Veroia has
+    // no Veroia day on the board (its nat_ready_day is its supplier's, code review r3), so the panel's day, as before.
     const it = k.item(k.id(pieceId));
     const hub = st && st.model && st.model.hub;
-    const own = it ? (it.is_stock ? _stockDay(it, hub) : it.nat_ready_day) : null;
+    const vh = it && typeof WN5L !== 'undefined' ? WN5L.vsHubDay(it) : null;
+    const own = it ? (it.is_stock ? _stockDay(it, hub) : vh ? vh.day : null) : null;
     const day = own || (hub ? _hubDay(st.model) : null);
     return WN5Act.assign({ pieces: [{ piece_id: k.id(pieceId) }] }, { entry: 'hub', day, side: 'KATHODOS' });
   }

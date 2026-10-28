@@ -502,17 +502,10 @@
     // day / key: a stop with no window of its own (every VS bridge: order_stops hold dates only, 074a) is placed on
     // ITS day — the loading on nat_ready_day, the delivery on nat_due_day — with the window the user gives (B1, 28/10)
     const dLoad = it.nat_ready_day || null, dDrop = it.nat_due_day || it.nat_ready_day || null;
-    // hubDay (F27): a VS's Veroia day is its cross_dock_date — nat_ready_day of an import, nat_due_day of an export
-    // (071 v_shipments). With no cross_dock_date, the owner's rule for an empty one (CLAUDE.md, locked 23/8): import =
-    // delivery − 1, export = loading + 1, named «εκτίμηση» on screen (hubEst). None for a national (its nat_ready_day is
-    // its supplier's day, code review) nor for stock (its parent's day): the dialog's day stays for those.
-    let hubDay = null, hubEst = false;
-    if ((it.kind === 'vs_import' || it.kind === 'vs_export') && !it.is_stock) {
-      const imp = it.kind === 'vs_import';
-      hubDay = (imp ? it.nat_ready_day : it.nat_due_day) || null;
-      const base = imp ? it.nat_due_day : it.nat_ready_day;
-      if (!hubDay && base) { hubDay = _addDays(base, imp ? -1 : 1); hubEst = true; }
-    }
+    // hubDay (F27): a VS's Veroia day, its cross_dock_date — the board's one rule (WN5L.vsHubDay, the owner's estimate
+    // when it is empty, hubEst = named «εκτίμηση»). None for a national (its nat_ready_day is its supplier's day) nor
+    // for stock (its parent's): the dialog's day stays for those.
+    const vh = WN5L.vsHubDay(it), hubDay = vh ? vh.day : null, hubEst = !!(vh && vh.est);
     return [
       { loc: pick, from: it.load_from || null, to: it.load_to || null, hub: pick != null && pick === hub, role: 'load', day: dLoad, key: 'load:' + pick, hubDay, hubEst },
       { loc: drop, from: it.deliver_from || null, to: it.deliver_to || null, hub: drop != null && drop === hub, role: 'drop', day: dDrop, key: 'drop:' + drop, hubDay, hubEst },
@@ -533,8 +526,10 @@
   // «+», the panel's earliest in «Σε φορτηγό ▾», and wrote VS 617 (cross-dock Fri 30/10) on Thu 29/10. A national, a
   // stock remainder and a moved piece (its window comes from the source stop) have none: [] → the caller's day stays.
   const _hubDays = (needs) => [...new Set((needs || []).filter((n) => n.hub && n.hubDay && !(n.own && n.from && n.to)).map((n) => n.hubDay))].sort();
-  // «(εκτίμηση)» after a Veroia day that came from the empty-cross-dock rule, never a bare estimated day (principle 1)
-  const _hubEst = (needs) => ((needs || []).some((n) => n.hub && n.hubEst) ? ' (εκτίμηση)' : '');
+  // «(εκτίμηση)» after a Veroia day that came from the empty-cross-dock rule, never a bare estimated day (principle 1);
+  // only when that day IS an estimate — a real cross-dock day an estimated sibling lands on stays unmarked
+  const _hubEst = (needs, day) => ((needs || []).some((n) => n.hub && n.hubDay === day && n.hubEst) && !(needs || []).some((n) => n.hub && n.hubDay === day && !n.hubEst) ? ' (εκτίμηση)' : '');
+  const _hubDayText = (needs, day) => _dayShort(day) + _hubEst(needs, day);
   // One Veroia stop per side (decision 6) holds one day. Pieces with two Veroia days have no right one: null, and the
   // save stays off with the days named (_lackText) — 0 such orders live on 28/10, so this blocks nothing real.
   function _hubDayOf(needs, fallback) {
@@ -684,7 +679,8 @@
     const act = n.role === 'load' ? 'φόρτωσης' : 'παράδοσης';
     if (n.hub) {
       const ds = _hubDays(st.needs);
-      if (ds.length > 1) return 'μία ημέρα Βέροιας (οι παραδόσεις έχουν ' + ds.map(_dayShort).join(', ') + '): ανάθεση μία-μία';
+      // Δ1 takes a VS whole (plan_put_group): one piece at a time is the «+» of a cycle (one line per piece)
+      if (ds.length > 1) return 'μία ημέρα Βέροιας (οι παραδόσεις έχουν ' + ds.map(_dayShort).join(', ') + '): ανά παράδοση από το «+» του κύκλου';
       return st.side === 'ANODOS' ? 'άφιξη Βέροιας' : 'παράθυρο φόρτωσης Βέροιας';
     }
     if (n.loc == null) return 'προορισμός ' + act + ' (δεν ήρθε από τη βάση)';
@@ -735,7 +731,7 @@
     // above name theirs; two Veroia days are both named, and the save says it cannot pick one
     if (_hubAsked(st)) {
       const hd = _hubDayOf(st.needs, st.day);
-      h += '<div class="wn5-hubwin"><span>' + (st.side === 'ANODOS' ? 'Άφιξη Βέροιας' : 'Παράθυρο φόρτωσης Βέροιας') + ' · ' + _esc((hd ? _dayShort(hd) : _hubDays(st.needs).map(_dayShort).join(' / ')) + _hubEst(st.needs)) + ' *</span>'
+      h += '<div class="wn5-hubwin"><span>' + (st.side === 'ANODOS' ? 'Άφιξη Βέροιας' : 'Παράθυρο φόρτωσης Βέροιας') + ' · ' + _esc(hd ? _hubDayText(st.needs, hd) : _hubDays(st.needs).map((d) => _hubDayText(st.needs, d)).join(' / ')) + ' *</span>'
         + '<input class="wn5-hm" data-hub="from" inputmode="numeric" placeholder="ΗΗ:ΛΛ" value="' + _esc(st.hubFrom) + '"> – '
         + '<input class="wn5-hm" data-hub="to" inputmode="numeric" placeholder="ΗΗ:ΛΛ" value="' + _esc(st.hubTo) + '">'
         + '<small>μόνο όταν γίνεται νέα στάση Βέροιας</small></div>';
@@ -743,15 +739,19 @@
     if (!vehicle) {
       // a group with no line is not drawn (Figma Δ1 shows only groups with content, audit B-21): «· 0» heads nothing
       if (st.rows.length || st.road.length) h += _grpHTML('rt', 'ΚΥΚΛΟΙ ' + DOW_GEN[_dow(st.day)] + ' ' + _dm(st.day), ' · ένωση · ' + st.rows.length);
-      const hdRow = _hubDays(st.needs).length === 1 ? _hubDays(st.needs)[0] : null, hubLoc = hdRow ? _hubId() : null;
+      const hdRow = _hubDayOf(st.needs, null), hubLoc = hdRow ? _hubId() : null;
       for (const r of st.rows) {
         const c = st.cyc[r.rtId];
         const tx = _cycText(c, r.row);
         // F27 (code review): «Ένωση» puts the pieces in the cycle's own Veroia stop (decision 6), whatever its day — a
-        // stop of another day than the pieces' Veroia day is said beside the capacity, a warning, never a refusal
+        // stop of another day than the pieces' Veroia day is said beside the capacity; without one, a new Veroia stop
+        // on a day the cycle does not run stretches it there (the DB answers truck_busy if its truck is taken).
+        // Warnings, never refusals.
         const hs = hdRow && (c.stops || []).find((s) => s.side === st.side && s.location_id === hubLoc);
         const hsDay = hs ? hs.stop_day || _ymdOf(hs.planned_from) : null;
-        const hubWarn = hsDay && hsDay !== hdRow ? '<span class="wn5-cap over">' + _esc('Βέροια ' + _wd(hsDay) + ', όχι ' + _wd(hdRow)) + '</span> ' : '';
+        const w = hsDay ? (hsDay !== hdRow ? 'Βέροια ' + _wd(hsDay) + ', όχι ' + _wd(hdRow) : null)
+          : hdRow && (hdRow < c.date_start || hdRow > c.date_end) ? 'Βέροια ' + _wd(hdRow) + ', ο κύκλος ' + _wd(c.date_start) + (c.date_end !== c.date_start ? '–' + _wd(c.date_end) : '') : null;
+        const hubWarn = w ? '<span class="wn5-cap over">' + _esc(w) + '</span> ' : '';
         let rate = '';
         if (c.trip_type === 'PARTNER') {
           rate = c.partner_rate == null
@@ -1123,7 +1123,7 @@
     // F27: a line that would make a new Veroia stop names the day the field's hours go on, when it is not the line's
     // own day already («Πέμ όλη η ημέρα · Βέροια Παρ»: an export picked up Thursday reaches Veroia Friday)
     const hn = !it._ro && !st.hubStop ? _needs(it, false, st.hub) : [], hdays = _hubDays(hn);
-    const vday = hdays.length === 1 && hdays[0] !== wday ? ' · Βέροια ' + _wd(hdays[0]) + _hubEst(hn) : '';
+    const vday = hdays.length === 1 && hdays[0] !== wday ? ' · Βέροια ' + _wd(hdays[0]) + _hubEst(hn, hdays[0]) : '';
     const when = (win[0] ? _wd(_ymdOf(win[0])) + ' ' + _hmw(win[0], win[1]) : wday ? _wd(wday) + ' όλη η ημέρα' : '—') + vday;
     const loc = anod ? it.position_location_id : it.nat_to_location_id;
     const place = _placeName(loc), city = _placeCity(loc);

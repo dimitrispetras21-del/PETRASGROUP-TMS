@@ -3012,6 +3012,10 @@ function f27Board() {
   b.cycles.push(bCycle(211, {}, [
     bStop(2111, 'ANODOS', 3, '2026-10-13', '08:00', '10:00', [bLeg(6111, 5211, 'load', 4)]),
     bStop(2112, 'ANODOS', 1, '2026-10-13', '18:00', '20:00', [bLeg(6111, 5211, 'unload', 4)]) ]));
+  // code review r3: RT-T212 (Tue only, no Veroia stop): «Ένωση» of a VS reaching Veroia Wed would stretch it to Wed
+  b.cycles.push(bCycle(212, {}, [
+    bStop(2121, 'ANODOS', 3, '2026-10-13', '06:00', '07:00', [bLeg(6121, 5221, 'load', 2)]),
+    bStop(2122, 'ANODOS', 2, '2026-10-13', '11:00', '12:00', [bLeg(6121, 5221, 'unload', 2)]) ]));
   b.hub.push(bHub(4701, Object.assign({ kind: 'national', nat_order_id: 3701, pallets: 5, reference: 'N-T701', client: 'ΠΕΛΑΤΗΣ Ε', client_id: 45, temperature_c: 4,
     nat_ready_day: '2026-10-12', nat_due_day: '2026-10-15' }, e26(2, '2026-10-15', '08:00', '10:00'))));
   return b;
@@ -3145,6 +3149,8 @@ SCN.f27 = async (browser, origin) => {
     // RT-T211 (Tue) already stops at Veroia on Tue: «Ένωση» joins that stop, and its line says the day is not the VS's
     const warn = await bText(page, `${D} .wn5-cand[data-line="rt"]:has([data-cand="rt:211"])`);
     ok(scn, 'the Tue cycle with its own Veroia stop on Tue warns «Βέροια Τρί, όχι Τετ»', /Βέροια Τρί, όχι Τετ/.test(warn), warn);
+    const warn2 = await bText(page, `${D} .wn5-cand[data-line="rt"]:has([data-cand="rt:212"])`);
+    ok(scn, 'the Tue cycle with no Veroia stop warns «Βέροια Τετ, ο κύκλος Τρί» (a new stop would stretch it)', /Βέροια Τετ, ο κύκλος Τρί/.test(warn2), warn2);
     ok(scn, 'no page errors (8)', !S.pageErrors.length, S.pageErrors);
     await page.context().close();
   }
@@ -3155,6 +3161,20 @@ SCN.f27 = async (browser, origin) => {
     ok(scn, 'a truck busy on a day between pickup and Veroia (TST-2107, Wed) is not offered; TST-2108 is',
       !(await bHas(page, `${D} [data-cand="truck:15"]`)) && await bHas(page, `${D} [data-cand="truck:14"]`));
     ok(scn, 'no page errors (9)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // 10 · code review r3: a national at Veroia has no Veroia day on the board (its nat_ready_day Fri 9/10 is its
+    // supplier's, before the week): «Σε φορτηγό ▾» opens on the panel's day (clamped to the week: Sat 10/10), as before.
+    // The panel lists a national once it was sent to be split (for_split, ✈ «Σπάσιμο»).
+    const b = f27Board();
+    Object.assign(b.hub.find((h) => h.piece_id === 4701), { nat_ready_day: '2026-10-09', for_split: true });
+    const { page, S } = await bOpen(browser, origin, { board: b });
+    await bClick(page, '#wn5-hub [data-hub="open"]');
+    await bClick(page, '#wn5-hub .wn5-hub-it[data-piece="4701"] [data-hub="truck"]');
+    await page.waitForTimeout(500);
+    const meta = await bText(page, `${D} .wn5-dlg-meta`);
+    ok(scn, 'national at Veroia: Δ1 on the panel\'s day «Σάβ 10/10», never its supplier\'s Παρ 9/10', /^· Σάβ 10\/10/.test(meta.trim()), meta);
+    ok(scn, 'no page errors (10)', !S.pageErrors.length, S.pageErrors);
     await page.context().close();
   }
 };
