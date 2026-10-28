@@ -5846,7 +5846,7 @@ __name(planCan, "planCan");
 // only while there is none. Reads and dry runs stay open. F5 sets this to
 // true in the SAME deploy that turns WN_V5 on — nowhere else (no env var:
 // one switch, in the source that is deployed, αρχή 3).
-var PLAN_WRITES_OPEN = false;
+var PLAN_WRITES_OPEN = true;
 // E16 (spec §5; owner 28/10, Q-10): from day L the old national model (NL / GL / CL and the Weekly National
 // «local» moves) is history, and a national order is created, planned and deleted only through /plan/*. The DB
 // freezes INSERT (074, plan:legacy_frozen); the UPDATE / soft delete of history is cut HERE, per role, before any
