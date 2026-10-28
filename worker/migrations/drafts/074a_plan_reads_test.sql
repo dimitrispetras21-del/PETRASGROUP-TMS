@@ -41,19 +41,19 @@ DECLARE
     , 'ok'               -- 4 A3 a national leg: price 400, pallet_exchange, shipment_id, order_stop_id null, goods, notes
     , 'ok'               -- 5 A3 a VS leg: price null (invoiced as the international), order_stop_id = the Greek stop, the stop's goods / notes
     , 'ok'               -- 6 A4 a VS sent back to waiting at Veroia (Split -> Veroia): for_split true, for_split_at set, one audit row
-    , 'ok'               -- 7 A4 the mark goes stale once a cycle took the piece again: for_split false
+    , 'ok'               -- 7 A4 a cycle takes the piece again: the mark is cleared (one audit row), and back at the hub by another path it is not for splitting
     , 'ok'               -- 8 A4 a national sent back to waiting where it is not at the hub: no mark
     , 'ok'               -- 9 A5 plan_lookups: six lists, one hub, phone on drivers and places, a deleted truck left out
     , 'plan:bad_input'   -- 10 A5 plan_lookups for an unknown role
-    , 'state:42501'      -- 11 A6 anon calls plan_lookups: permission denied
-    , 'ok'               -- 12 A6 EXECUTE: the Worker's three to service_role only; plan_cutover_day to nobody
+    , 'ok'               -- 11 A6 anon calls plan_lookups: permission denied for that function (never a refused SET ROLE)
+    , 'ok'               -- 12 A6 EXECUTE: the four to service_role, plan_cutover_day also to the auditor's two roles, none to anon / authenticated
     , 'ok'               -- 13 A7 the old keys of the board all there; the new ones exactly the asked ones
     , 'con:plan_config_saturday' -- 14 B1 day L not a Saturday
     , 'con:plan_config_future'   -- 15 B2 day L not after the day it is opened (Athens)
     , 'con:plan_config_pkey'     -- 16 B3 a second row (id 1 again: the primary key)
     , 'con:plan_config_one'      -- 17 B3 a second row with another id
-    , 'state:42501'      -- 18 B4 service_role cannot INSERT into plan_config
-    , 'state:42501'      -- 19 B4 service_role cannot UPDATE plan_config
+    , 'ok'               -- 18 B4 service_role cannot INSERT into plan_config (permission denied for that table)
+    , 'ok'               -- 19 B4 service_role cannot UPDATE plan_config (permission denied for that table)
     , 'ok'               -- 20 B5 plan_config_read / plan_cutover_day: null before, the row's day after
     , 'ok'               -- 21 E-19 a VS with a bridge but nothing on a truck: empty list, no token
     , 'ok'               -- 22 E-19 a VS on a cycle that empties: piece_on_rt + rt_cancelled, a token, the same for every role
@@ -61,6 +61,7 @@ DECLARE
     , 'ok'               -- 24 E-19 the amount changes: another token (the Worker answers stale_confirm)
     , 'ok'               -- 25 E-19 an unknown order: the empty answer, order_id null
     , 'plan:bad_input'   -- 26 E-19 an unknown role
+    , 'ok'               -- 27 E-19 a national order sourced by the international (the cascade deletes it too): its piece on a cycle is listed
     -- @want (one line per case: "    , '<ok|plan:code|con:name|state:XXXXX>'  -- <k> <what>")
   ]::text[];
   verdict text; got text; hint text; msg text; cname text; st text;
@@ -177,8 +178,7 @@ BEGIN
         r2 := plan_move_pieces(jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(z)),
                 'target', '{"wait": true}'::jsonb, 'confirm_token', r->>'confirm_token'), 'test:074a', 'dispatcher');
         IF k = 7 THEN
-          -- an older mark (one transaction has one now()), then a cycle takes the piece and another path drops it
-          UPDATE shipment_pieces SET for_split_at = now() - interval '1 hour' WHERE id = z;
+          -- a cycle takes the marked piece (plan_h_leg_add clears the mark), then another path drops the leg
           r := plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', z)),
                  'target', tgt1, 'stops', jsonb_build_array(jsonb_build_object('ref', 'h', 'stop_id', s1h),
                                                             jsonb_build_object('ref', 'b', 'stop_id', s1b))), 'test:074a', 'owner');
@@ -200,8 +200,13 @@ BEGIN
       ELSIF k = 10 THEN
         j := plan_lookups('nobody');
       ELSIF k = 11 THEN
+        -- the SET itself outside the inner block: if it is refused, the case fails (state:42501), never passes
         SET LOCAL ROLE anon;
-        j := plan_lookups('owner');
+        BEGIN
+          j := plan_lookups('owner'); t1 := 'called';
+        EXCEPTION WHEN insufficient_privilege THEN GET STACKED DIAGNOSTICS t1 = MESSAGE_TEXT;
+        END;
+        RESET ROLE;
       ELSIF k IN (14, 15, 16, 17, 20) THEN
         IF k = 20 THEN t1 := plan_config_read()::text; t2 := coalesce(plan_cutover_day()::text, 'null'); END IF;
         INSERT INTO plan_config (id, cutover_day, opened_at, opened_by)
@@ -210,11 +215,16 @@ BEGIN
         IF k = 17 THEN INSERT INTO plan_config (id, cutover_day, opened_at, opened_by) VALUES (2, sat + 7, now(), 'test:074a'); END IF;
       ELSIF k IN (18, 19) THEN
         SET LOCAL ROLE service_role;
-        IF k = 18 THEN
-          INSERT INTO plan_config (id, cutover_day, opened_at, opened_by) VALUES (1, sat, now(), 'test:074a');
-        ELSE
-          UPDATE plan_config SET opened_by = 'test:074a';
-        END IF;
+        BEGIN
+          IF k = 18 THEN
+            INSERT INTO plan_config (id, cutover_day, opened_at, opened_by) VALUES (1, sat, now(), 'test:074a');
+          ELSE
+            UPDATE plan_config SET opened_by = 'test:074a';
+          END IF;
+          t1 := 'written';
+        EXCEPTION WHEN insufficient_privilege THEN GET STACKED DIAGNOSTICS t1 = MESSAGE_TEXT;
+        END;
+        RESET ROLE;
       ELSIF k = 21 THEN
         r := order_delete_preview('rec074aTO1', 'owner');
       ELSIF k IN (22, 23, 24) THEN
@@ -235,6 +245,12 @@ BEGIN
         r := order_delete_preview('rec074aT-none', 'owner');
       ELSIF k = 26 THEN
         r := order_delete_preview('rec074aTO1', 'nobody');
+      ELSIF k = 27 THEN
+        UPDATE national_orders SET source_order_id = vso WHERE id = n1;
+        r := plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', p1)),
+               'target', tgt1, 'stops', st1), 'test:074a', 'owner');
+        x := (r->'ids'->'leg_ids'->>0)::bigint;
+        r := order_delete_preview('rec074aTO1', 'owner');
       END IF;
 
       -- verdicts
@@ -281,7 +297,17 @@ BEGIN
                         ELSE 'FAIL for_split: ' || coalesce(h::text, 'not in hub[]') END;
       ELSIF k = 7 THEN
         verdict := CASE WHEN h IS NOT NULL AND h->'for_split' = 'false'::jsonb
-                        THEN 'ok an old mark after a later cycle reads false' ELSE 'FAIL stale mark: ' || coalesce(h::text, 'not in hub[]') END;
+                          AND (SELECT for_split_at IS NULL FROM shipment_pieces WHERE id = z)
+                          AND (SELECT count(*) FROM audit_log WHERE table_name = 'shipment_pieces' AND record_id = z::text
+                                AND after_data = '{"for_split_at": null}'::jsonb AND before_data ? 'for_split_at') = 1
+                        THEN 'ok the cycle cleared the mark (audited); back at the hub it is waiting, not for splitting'
+                        ELSE 'FAIL stale mark: ' || coalesce(h::text, 'not in hub[]') END;
+      ELSIF k = 11 THEN
+        verdict := CASE WHEN t1 LIKE 'permission denied for function plan_lookups%'
+                        THEN 'ok anon: permission denied for plan_lookups' ELSE 'FAIL anon: ' || coalesce(t1, 'null') END;
+      ELSIF k IN (18, 19) THEN
+        verdict := CASE WHEN t1 LIKE 'permission denied for table plan_config%'
+                        THEN 'ok service_role: permission denied for plan_config' ELSE 'FAIL service_role: ' || coalesce(t1, 'null') END;
       ELSIF k = 8 THEN
         verdict := CASE WHEN (SELECT for_split_at IS NULL FROM shipment_pieces WHERE id = p1)
                           AND (r2->>'ok')::boolean
@@ -302,8 +328,10 @@ BEGIN
         SELECT count(*) INTO n FROM unnest(ARRAY['public.plan_cutover_day()', 'public.plan_config_read()',
             'public.plan_lookups(text)', 'public.order_delete_preview(text,text)']) f(sig)
          WHERE NOT has_function_privilege('anon', f.sig, 'EXECUTE') AND NOT has_function_privilege('authenticated', f.sig, 'EXECUTE')
-           AND has_function_privilege('service_role', f.sig, 'EXECUTE') = (f.sig <> 'public.plan_cutover_day()');
-        verdict := CASE WHEN n = 4 THEN 'ok service_role calls the three, nobody plan_cutover_day' ELSE 'FAIL rights: ' || n || ' of 4' END;
+           AND has_function_privilege('service_role', f.sig, 'EXECUTE')
+           AND has_function_privilege('tms_check_runner', f.sig, 'EXECUTE') = (f.sig = 'public.plan_cutover_day()')
+           AND has_function_privilege('tms_reader', f.sig, 'EXECUTE') = (f.sig = 'public.plan_cutover_day()');
+        verdict := CASE WHEN n = 4 THEN 'ok service_role calls the four, the auditor plan_cutover_day only, anon none' ELSE 'FAIL rights: ' || n || ' of 4' END;
       ELSIF k = 13 THEN
         verdict := CASE WHEN (SELECT bool_and(array(SELECT jsonb_object_keys(c) ORDER BY 1) =
                                               (SELECT array_agg(q ORDER BY q) FROM unnest(k_cycle) q))
@@ -350,6 +378,11 @@ BEGIN
       ELSIF k = 24 THEN
         verdict := CASE WHEN r->>'confirm_token' IS DISTINCT FROM r2->>'confirm_token' AND r2->>'confirm_token' IS NOT NULL
                         THEN 'ok a changed amount changes the token' ELSE 'FAIL same token after the change' END;
+      ELSIF k = 27 THEN
+        verdict := CASE WHEN r->'needs_confirm' = 'true'::jsonb
+                          AND EXISTS (SELECT 1 FROM jsonb_array_elements(r->'consequences') c WHERE c->>'kind' = 'piece_on_rt'
+                                       AND (c->>'leg_id')::bigint = x AND (c->>'nat_order_id')::bigint = n1)
+                        THEN 'ok the sourced national''s piece on R1 is listed' ELSE 'FAIL sourced national: ' || r::text END;
       ELSIF k = 25 THEN
         verdict := CASE WHEN jsonb_typeof(r->'order_id') = 'null' AND r->'needs_confirm' = 'false'::jsonb
                           AND jsonb_typeof(r->'confirm_token') = 'null' AND r->'consequences' = '[]'::jsonb

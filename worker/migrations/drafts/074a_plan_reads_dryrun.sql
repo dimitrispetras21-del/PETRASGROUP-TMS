@@ -2,12 +2,12 @@
 -- DO NOT EDIT BY HAND: edit the source and regenerate (tests/sql-074a-drafts.test.js fails on any drift).
 -- WHY ONE DO BLOCK: the Supabase SQL editor is NOT atomic across statements (lesson 056), but ONE DO block is
 --   ONE statement: its final error undoes everything inside it. ASCII only.
--- WHAT: 074a's own DO block, statement for statement (guards, column, 4 hooks, plan_config, functions, rights,
+-- WHAT: 074a's own DO block, statement for statement (guards, column, 5 hooks, plan_config, functions, rights,
 --   proofs), then a read of the result, ENDING WITH A DELIBERATE ERROR: NOTHING is kept.
 -- WHEN: AFTER 15:00 (the team works 05:30-14:30), BEFORE 074a_plan_reads.sql. Same 5 s lock timeout as 074a.
 -- EXPECTED (the red ERROR is deliberate): a NOTICE "074a OK: ..." and then
 --   ERROR: P0001: DRY RUN 074a finished - EVERYTHING UNDONE, nothing kept. The block ran to its end  ||  074a ran:
---   hooked functions 2, for_split_at yes, plan_config rows 0, config {"opened_at": null, "cutover_day": null},
+--   hooked functions 3, for_split_at yes, plan_config rows 0, config {"opened_at": null, "cutover_day": null},
 --   lookups lists 6, hubs 1, open to API 0, triggers <T>, B-54 <T>, v5 rows 0
 --   Anything else (an ERROR from one of 074a's guards or proofs): do NOT run 074a, copy the message to the coordinator.
 
@@ -19,24 +19,23 @@ BEGIN
 DECLARE
   v_g record; v_fn record; v_src text; v_new text; v_oid oid; v_acl text; v_def boolean; v_vol "char";
   v_lang oid; v_cfg text[];
-  v_trg0 int; v_trg1 int; v_k bigint; v_n int := 0; v_j jsonb;
+  v_trg0 int; v_trg1 int; v_fns0 int; v_k bigint; v_n int := 0; v_j jsonb;
 
-  -- ===== the 4 hooks: (text before -> 074a text), each exactly once in its function =====
-  -- E-34: what a leg is, for the cycle card and the sheet (price of the national; the VS stop's goods / notes)
+  -- ===== the hooks: (text before -> 074a text), each exactly once in its function =====
+  -- E-34: what a leg is, for the cycle card and the sheet. price = the national's (a VS is invoiced as the
+  -- international: null); goods / notes of the national, else of the VS stop. ONE read per leg (code review xhigh
+  -- 28/10: five scalar reads before); the last fallback keeps the three keys on every leg, whatever happens
   h_brd_leg_a CONSTANT text := $h$                                       'temperature_c', vs.temperature_c) order by l.id)
 $h$;
   h_brd_leg_b CONSTANT text := $h$                                       'temperature_c', vs.temperature_c,
-                                       -- 074a (E-34): price = the national's (a VS is invoiced as the international,
-                                       -- so null); goods / notes of the national, else of the VS stop
+                                       -- 074a (E-34)
                                        'shipment_id', vs.shipment_id, 'order_stop_id', vs.order_stop_id,
-                                       'pallet_exchange', vs.pallet_exchange,
-                                       'price', (select n.price from national_orders n where n.id = vs.nat_order_id),
-                                       'goods', case when vs.nat_order_id is not null
-                                                     then (select n.goods from national_orders n where n.id = vs.nat_order_id)
-                                                     else (select os.goods from order_stops os where os.id = vs.order_stop_id) end,
-                                       'notes', case when vs.nat_order_id is not null
-                                                     then (select n.notes from national_orders n where n.id = vs.nat_order_id)
-                                                     else (select os.notes from order_stops os where os.id = vs.order_stop_id) end) order by l.id)
+                                       'pallet_exchange', vs.pallet_exchange)
+                                     || coalesce((select jsonb_build_object('price', n.price, 'goods', n.goods, 'notes', n.notes)
+                                                    from national_orders n where n.id = vs.nat_order_id),
+                                                 (select jsonb_build_object('price', null, 'goods', os.goods, 'notes', os.notes)
+                                                    from order_stops os where os.id = vs.order_stop_id),
+                                                 jsonb_build_object('price', null, 'goods', null, 'notes', null)) order by l.id)
 $h$;
   -- E-27 / E-44: the hub is a fact of the base, on every stop
   h_brd_hub_a CONSTANT text := $h$                            'location', lo.name, 'planned_from', ss.planned_from, 'planned_to', ss.planned_to,
@@ -44,9 +43,9 @@ $h$;
   h_brd_hub_b CONSTANT text := $h$                            'location', lo.name, 'is_hub', coalesce(lo.is_hub, false),  -- 074a (E-27)
                             'planned_from', ss.planned_from, 'planned_to', ss.planned_to,
 $h$;
-  -- E-26 + E-41: where a hub[] item goes and when; for_split only while no cycle took the piece since it was sent
-  -- back (a leg created after for_split_at): a piece put on a cycle and dropped back by a delete is waiting again,
-  -- never "for splitting" by an old mark
+  -- E-26 + E-41: where a hub[] item goes and when, and whether it was sent to Veroia to be split. The mark is the
+  -- column itself: plan_h_leg_add clears it when a cycle takes the piece (hook 5), so no old mark survives a later
+  -- cycle (code review xhigh 28/10: a rule on created_at depended on transaction start times)
   h_brd_bkt_a CONSTANT text := $h$                                                          'reference', vs.reference, 'temperature_c', vs.temperature_c)
 $h$;
   h_brd_bkt_b CONSTANT text := $h$                                                          'reference', vs.reference, 'temperature_c', vs.temperature_c)
@@ -54,27 +53,38 @@ $h$;
                        || jsonb_build_object('nat_to_location_id', vs.nat_to_location_id,
                                              'load_from', vs.load_from, 'load_to', vs.load_to,
                                              'deliver_from', vs.deliver_from, 'deliver_to', vs.deliver_to,
-                                             'for_split', (select sp.for_split_at is not null
-                                                                  and not exists (select 1 from piece_legs l
-                                                                                   where l.piece_id = sp.id
-                                                                                     and l.created_at > sp.for_split_at)
-                                                             from shipment_pieces sp where sp.id = hb.piece_id))
+                                             'for_split', (select sp.for_split_at is not null from shipment_pieces sp
+                                                            where sp.id = hb.piece_id))
 $h$;
-  -- E-41: back to waiting AT THE HUB = sent to Veroia to be split. Pieces that went back elsewhere are not marked.
+  -- E-41: back to waiting AT THE HUB = sent to Veroia to be split (the screen's only "back" for loads that all pick
+  -- up at Veroia, F4a plan). Pieces that went back elsewhere are not marked.
   h_mv_split_a CONSTANT text := $h$  perform plan_h_finish();
   return plan_h_ok('plan_move_pieces',
 $h$;
   h_mv_split_b CONSTANT text := $h$  -- 074a (E-41): the pieces this move sent back to waiting that now stand at the hub were sent there to be
-  -- split; the board reads the mark as hub[].for_split
+  -- split; the board reads the mark as hub[].for_split. The audit keeps the mark it replaces.
   if v_wait then
     for v_x in select ps.piece_id from v_piece_state ps where ps.piece_id = any (v_pieces) and ps.at_hub order by ps.piece_id loop
-      update shipment_pieces set for_split_at = now() where id = v_x;
-      perform plan_h_audit(p_actor, p_role, 'update', 'shipment_pieces', v_x::text, null,
+      perform plan_h_audit(p_actor, p_role, 'update', 'shipment_pieces', v_x::text,
+                           (select jsonb_build_object('for_split_at', sp.for_split_at) from shipment_pieces sp where sp.id = v_x),
                            jsonb_build_object('for_split_at', now()));
+      update shipment_pieces set for_split_at = now() where id = v_x;
     end loop;
   end if;
   perform plan_h_finish();
   return plan_h_ok('plan_move_pieces',
+$h$;
+  -- E-41: a cycle took the piece (the one place a leg is written, 072): it is no longer waiting to be split
+  h_leg_add_a CONSTANT text := $h$  perform plan_h_audit(p_actor, p_role, 'create', 'piece_legs', l.id::text, null, to_jsonb(l));
+$h$;
+  h_leg_add_b CONSTANT text := $h$  perform plan_h_audit(p_actor, p_role, 'create', 'piece_legs', l.id::text, null, to_jsonb(l));
+  -- 074a (E-41): a cycle took the piece, so it is no longer waiting at Veroia to be split
+  if exists (select 1 from shipment_pieces where id = p_piece and for_split_at is not null) then
+    perform plan_h_audit(p_actor, p_role, 'update', 'shipment_pieces', p_piece::text,
+                         (select jsonb_build_object('for_split_at', sp.for_split_at) from shipment_pieces sp where sp.id = p_piece),
+                         jsonb_build_object('for_split_at', null));
+    update shipment_pieces set for_split_at = null where id = p_piece;
+  end if;
 $h$;
 BEGIN
   PERFORM set_config('lock_timeout', '5s', true);
@@ -124,24 +134,28 @@ BEGIN
   SELECT count(*) INTO v_trg0 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
     JOIN pg_namespace ns ON ns.oid = c.relnamespace
    WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public';
+  -- measured, never a constant (code review xhigh 28/10): PART 6 proves exactly three plan_* more than here
+  SELECT count(*) INTO v_fns0 FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname LIKE 'plan\_%';
 
   -- ===== PART 1: THE COLUMN (E-41) =====
   ALTER TABLE public.shipment_pieces ADD COLUMN for_split_at timestamptz;
   COMMENT ON COLUMN public.shipment_pieces.for_split_at IS
     'Sent back to the hub to be split (plan_move_pieces, target wait, 074a). Read by plan_board hub[].for_split.';
 
-  -- ===== PART 2: THE 4 HOOKS (the live text + one replacement each; proved reversible). Applied in order k; the
-  -- three in plan_board chain - the "before" of each is the "after" of the one before it - and the rollback undoes
-  -- them in reverse order (k desc). =====
+  -- ===== PART 2: THE 5 HOOKS IN 3 FUNCTIONS (the live text + one replacement each; proved reversible). Applied in
+  -- order k; the three in plan_board chain - the "before" of each is the "after" of the one before it - and the
+  -- rollback undoes them in reverse order (k desc). =====
   FOR v_fn IN SELECT * FROM (VALUES
       (1, 'public.plan_board(date,text)', h_brd_leg_a, h_brd_leg_b,
-       '2e030bfc158de8a26d5814f618d1f5ac', '28f5a2deb97b24ea3a9eae01e7264df4'),
+       '2e030bfc158de8a26d5814f618d1f5ac', '86b4c66a4818d0c2aff51836b66b8c9f'),
       (2, 'public.plan_board(date,text)', h_brd_hub_a, h_brd_hub_b,
-       '28f5a2deb97b24ea3a9eae01e7264df4', '45dc3b6a5ce0d38281d486fc92f56417'),
+       '86b4c66a4818d0c2aff51836b66b8c9f', 'c18b72a7118b68d73d0af9b9caf08744'),
       (3, 'public.plan_board(date,text)', h_brd_bkt_a, h_brd_bkt_b,
-       '45dc3b6a5ce0d38281d486fc92f56417', '7af6fda2c555b1f7c7622bafabad7d08'),
+       'c18b72a7118b68d73d0af9b9caf08744', 'fc33642e81560b42f217b80c98543467'),
       (4, 'public.plan_move_pieces(jsonb,text,text)', h_mv_split_a, h_mv_split_b,
-       '97984f7500dead965ddcba0d2c3360ab', 'baa0fa827bfd3020204da2639852cf4c')
+       '97984f7500dead965ddcba0d2c3360ab', '9bfa8d7fc5978efe84cb5990309b076f'),
+      (5, 'public.plan_h_leg_add(bigint,bigint,bigint,bigint,text,text,integer)', h_leg_add_a, h_leg_add_b,
+       '0d95758b35f6095d42b551c287e3008b', 'c6f40152cd13f2ec502872e803c10b8e')
     ) v(k, sig, a, b, m0, m1) ORDER BY k LOOP
     v_oid := to_regprocedure(v_fn.sig);
     SELECT prosrc, proacl::text, prosecdef, provolatile, prolang, proconfig
@@ -244,7 +258,9 @@ begin
   -- first, shows a non-empty list (428) and deletes with the token; a changed list = another token (stale_confirm).
   -- p_role: amounts only to owner / accountant (plan_h_strip_amounts, decision 9); the token is the same for every
   -- role and hashes no amount (plan_h_token). An unknown or deleted order has nothing on a truck: the empty answer
-  -- (the delete keeps its own 404).
+  -- (the delete keeps its own 404). The cascade also soft-deletes the national orders sourced by the order
+  -- (national_orders.source_order_id, live delete_order_cascade 28/10): their v5 pieces on cycles are listed too
+  -- (code review xhigh 28/10), so nothing leaves a truck without the list.
   if p_role is null or p_role not in ('owner', 'dispatcher', 'management', 'accountant', 'warehouse') then
     perform plan_h_raise('bad_input', 'role');
   end if;
@@ -252,10 +268,13 @@ begin
   select o.id into v_order from orders o where o.legacy_id = p_order_legacy_id and o.deleted_at is null;
   select coalesce(array_agg(l.id order by l.id), '{}') into v_legs
     from piece_legs l join shipment_pieces sp on sp.id = l.piece_id join shipments s on s.id = sp.shipment_id
-   where s.order_id = v_order and l.deleted_at is null;
+   where l.deleted_at is null
+     and (s.order_id = v_order
+          or s.nat_order_id in (select n.id from national_orders n where n.source_order_id = v_order and n.deleted_at is null));
   v_full := plan_h_drop_consequences(v_legs, null)
     || coalesce((select jsonb_agg(jsonb_build_object('kind', 'piece_on_rt', 'leg_id', l.id, 'piece_id', l.piece_id,
-                                                     'rt_id', l.rt_id, 'code', c.code, 'order_stop_id', s.order_stop_id))
+                                                     'rt_id', l.rt_id, 'code', c.code, 'order_stop_id', s.order_stop_id,
+                                                     'nat_order_id', s.nat_order_id))
                    from piece_legs l join ct_round_trips c on c.id = l.rt_id
                    join shipment_pieces sp on sp.id = l.piece_id join shipments s on s.id = sp.shipment_id
                   where l.id = any (v_legs)), '[]'::jsonb);
@@ -278,12 +297,16 @@ $f$;
   CREATE POLICY monitor_read ON public.plan_config FOR SELECT TO tms_check_runner, tms_reader USING (true);
   REVOKE ALL ON FUNCTION public.plan_cutover_day(), public.plan_config_read(), public.plan_lookups(text),
     public.order_delete_preview(text,text) FROM PUBLIC, anon, authenticated, service_role;
-  -- the three the Worker of deploy 1 calls; plan_cutover_day is for 074's own functions (owner postgres)
+  -- the three the Worker of deploy 1 calls
   GRANT EXECUTE ON FUNCTION public.plan_config_read(), public.plan_lookups(text), public.order_delete_preview(text,text)
     TO service_role;
+  -- day L itself (a date, no secret): 074's triggers fire as the role that writes (service_role through the facade)
+  -- and 074b's checks run as the auditor's roles; without this a trigger that is not SECURITY DEFINER would answer a
+  -- raw 42501 on day L instead of its plan: code (code review xhigh 28/10)
+  GRANT EXECUTE ON FUNCTION public.plan_cutover_day() TO service_role, tms_check_runner, tms_reader;
 
   -- ===== PART 6: PROOFS =====
-  IF v_n <> 4 THEN RAISE EXCEPTION '074a proof: % hooks applied (expected 4)', v_n; END IF;
+  IF v_n <> 5 THEN RAISE EXCEPTION '074a proof: % hooks applied (expected 5)', v_n; END IF;
   FOR v_g IN SELECT * FROM (VALUES
       ('public.plan_h_raise(text,text)', '8c2b50932d181f8c674530cdddf8c328'),
       ('public.plan_h_audit(text,text,text,text,text,jsonb,jsonb)', '5eb6ede8180b8f4d4c3982de2b29bb8c'),
@@ -318,7 +341,9 @@ $f$;
   SELECT count(*) INTO v_k FROM unnest(ARRAY['public.plan_cutover_day()', 'public.plan_config_read()',
       'public.plan_lookups(text)', 'public.order_delete_preview(text,text)']) f(sig)
    WHERE has_function_privilege('anon', f.sig, 'EXECUTE') OR has_function_privilege('authenticated', f.sig, 'EXECUTE')
-      OR has_function_privilege('service_role', f.sig, 'EXECUTE') <> (f.sig <> 'public.plan_cutover_day()');
+      OR NOT has_function_privilege('service_role', f.sig, 'EXECUTE')
+      OR has_function_privilege('tms_check_runner', f.sig, 'EXECUTE') <> (f.sig = 'public.plan_cutover_day()')
+      OR has_function_privilege('tms_reader', f.sig, 'EXECUTE') <> (f.sig = 'public.plan_cutover_day()');
   IF v_k <> 0 THEN RAISE EXCEPTION '074a proof: % new function(s) with the wrong EXECUTE rights', v_k; END IF;
   v_j := public.plan_lookups('warehouse');
   IF (SELECT count(*) FROM jsonb_object_keys(v_j) k
@@ -326,8 +351,8 @@ $f$;
      OR (SELECT count(*) FROM jsonb_array_elements(v_j->'locations') x WHERE (x->>'is_hub')::boolean) <> 1 THEN
     RAISE EXCEPTION '074a proof: plan_lookups does not answer six lists with exactly one hub';
   END IF;
-  IF (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname LIKE 'plan\_%') <> 80 + 3 THEN
-    RAISE EXCEPTION '074a proof: plan_* count is not the 80 of 071..073b + 3';
+  IF (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname LIKE 'plan\_%') <> v_fns0 + 3 THEN
+    RAISE EXCEPTION '074a proof: plan_* count is not % + 3', v_fns0;
   END IF;
   SELECT (SELECT count(*) FROM public.shipments) + (SELECT count(*) FROM public.shipment_pieces)
        + (SELECT count(*) FROM public.rt_stops) + (SELECT count(*) FROM public.piece_legs)
@@ -345,12 +370,12 @@ $f$;
   END IF;
 
   PERFORM pg_notify('pgrst', 'reload schema');
-  RAISE NOTICE '074a OK: 4 hooks (plan_board x3, plan_move_pieces x1), for_split_at, plan_config empty, plan_lookups, plan_config_read, order_delete_preview; triggers % = B-54, v5 rows 0',
+  RAISE NOTICE '074a OK: 5 hooks (plan_board x3, plan_move_pieces x1, plan_h_leg_add x1), for_split_at, plan_config empty, plan_lookups, plan_config_read, order_delete_preview; triggers % = B-54, v5 rows 0',
     v_trg1;
 END;
   -- ===== what it did =====
   res := format('074a ran: hooked functions %s, for_split_at %s, plan_config rows %s, config %s, lookups lists %s, hubs %s, open to API %s, triggers %s, B-54 %s, v5 rows %s',
-    (SELECT count(*) FROM (VALUES ('public.plan_board(date,text)', '7af6fda2c555b1f7c7622bafabad7d08'), ('public.plan_move_pieces(jsonb,text,text)', 'baa0fa827bfd3020204da2639852cf4c')) h(sig, m)
+    (SELECT count(*) FROM (VALUES ('public.plan_board(date,text)', 'fc33642e81560b42f217b80c98543467'), ('public.plan_move_pieces(jsonb,text,text)', '9bfa8d7fc5978efe84cb5990309b076f'), ('public.plan_h_leg_add(bigint,bigint,bigint,bigint,text,text,integer)', 'c6f40152cd13f2ec502872e803c10b8e')) h(sig, m)
       WHERE (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure(h.sig)) = h.m),
     CASE WHEN EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = 'public.shipment_pieces'::regclass AND attname = 'for_split_at'
                       AND NOT attisdropped) THEN 'yes' ELSE 'no' END,

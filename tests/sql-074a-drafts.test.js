@@ -2,7 +2,7 @@
 // The 074a drafts (national v5 F5, the reads day L needs) at build time, plain node, no database (principle 6):
 //   - the five files and the builder are there; ASCII only; the writing files are ONE DO block; verify writes nothing;
 //   - the dry run, the rollback and the verify are what the builder makes of the source (never hand-edited);
-//   - every md5 pair of PART 0 is there twice (the guard + the proof of PART 6); the four hooks chain from the live
+//   - every md5 pair of PART 0 is there twice (the guard + the proof of PART 6); the five hooks chain from the live
 //     text of 28/10 (= fixtures/live-073b.sql) and the rollback undoes them last first; the verify knows each hooked
 //     function at its final text;
 //   - born closed: every created function revoked from every API role, EXECUTE to service_role on the Worker's three
@@ -47,7 +47,7 @@ test('the dry run, the rollback and the verify are what the builder makes of the
   assert.match(out, /0 drift/);
 });
 
-test('guards: PART 0 = PART 6 (unchanged functions); four hooks chain from the live texts of 28/10', async () => {
+test('guards: PART 0 = PART 6 (unchanged functions); five hooks chain from the live texts of 28/10', async () => {
   const src = read(SRC);
   const p0 = pairsOf(part(src, '===== PART 0', '===== PART 1'));
   const p6 = pairsOf(part(src, '===== PART 6', 'END $do$;'));
@@ -55,7 +55,7 @@ test('guards: PART 0 = PART 6 (unchanged functions); four hooks chain from the l
   assert.deepStrictEqual(p6, p0, 'every guarded pair proved again, same order');
   const { hooks, finalMd5 } = await import(BUILDER);
   const h = hooks(src);
-  assert.deepStrictEqual(h.map((x) => x.k), [1, 2, 3, 4]);
+  assert.deepStrictEqual(h.map((x) => x.k), [1, 2, 3, 4, 5]);
   // the live texts, from the production capture (one source with the fixture the PGlite test checks)
   const live = Object.fromEntries([...fs.readFileSync(LIVE, 'utf8').matchAll(/\('fn', '([^']+)', '([0-9a-f]{32})'\)/g)].map((m) => [m[1], m[2]]));
   const last = {};
@@ -79,7 +79,7 @@ test('guards: PART 0 = PART 6 (unchanged functions); four hooks chain from the l
   }
 });
 
-test('born closed: revoke all, EXECUTE only on the Worker three, RLS + ONE auditor policy; the drop list = the created', async () => {
+test('born closed: revoke all, EXECUTE on the Worker three + day L, RLS + ONE auditor policy; the drop list = the created', async () => {
   const src = read(SRC);
   const created = [...src.matchAll(/CREATE FUNCTION (public\.\w+)\(([^)]*)\)/g)].map((m) => m[1]);
   assert.deepStrictEqual(created.slice().sort(), ['public.order_delete_preview', 'public.plan_config_read', 'public.plan_cutover_day', 'public.plan_lookups']);
@@ -87,6 +87,8 @@ test('born closed: revoke all, EXECUTE only on the Worker three, RLS + ONE audit
   for (const f of created) assert.ok(revoke && revoke[1].includes(f + '('), `${f} is revoked`);
   const grant = /GRANT EXECUTE ON FUNCTION ([\s\S]*?)\n\s+TO service_role;/.exec(src);
   assert.deepStrictEqual([...grant[1].matchAll(/public\.(\w+)\(/g)].map((m) => m[1]).sort(), ['order_delete_preview', 'plan_config_read', 'plan_lookups']);
+  // day L itself also to the writer and the auditor: 074's triggers fire as service_role, 074b's checks as the runner
+  assert.match(src, /GRANT EXECUTE ON FUNCTION public\.plan_cutover_day\(\) TO service_role, tms_check_runner, tms_reader;/);
   for (const f of ['plan_config_read', 'plan_lookups', 'order_delete_preview']) {
     assert.match(src, new RegExp(`CREATE FUNCTION public\\.${f}\\([^)]*\\) RETURNS jsonb\\n\\s+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public`), `${f}: STABLE definer, search_path fixed`);
   }
@@ -121,5 +123,5 @@ test('every con: of the rules test is a CHECK of 074a (or the table key); every 
   const raised = new Set([...src.matchAll(/plan_h_raise\('([a-z_]+)'/g)].map((m) => m[1]));
   for (const c of raised) assert.ok(wants.some((w) => w[0] === 'plan' && w[1] === c), `plan:${c} has a case`);
   const n = (tst.match(/^\s+, '(?:ok|plan:[a-z_]+|con:[a-z_]+|state:\w+)'\s+-- \d+ /gm) || []).length;
-  assert.ok(n >= 26, `${n} cases`);
+  assert.ok(n >= 27, `${n} cases`);
 });

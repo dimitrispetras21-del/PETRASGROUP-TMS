@@ -32,6 +32,11 @@ async function prodShaped() {
   // the local seed (047b, generated from every check file) already holds 073b's checks; production had none before 073b
   await db.query('DELETE FROM monitoring.checks WHERE id = ANY($1)', [IDS_073B]);
   await db.exec(read('073b_plan_monitoring.sql'));
+  // Supabase's default privileges for objects postgres creates in public (pg_default_acl, production 28/10): new
+  // functions EXECUTE to anon / authenticated / service_role, new tables arwxtm to service_role. Without them a REVOKE
+  // that forgets a role would pass here and fail only in the owner's evening dry run (code review xhigh 28/10).
+  await db.exec(`ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role;
+    ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT INSERT, SELECT, UPDATE, REFERENCES, TRIGGER, MAINTAIN ON TABLES TO service_role;`);
   return db;
 }
 async function errorOf(db, sql) { try { await db.exec(sql); return null; } catch (e) { return String(e.message); } }
@@ -81,9 +86,20 @@ test('074a on the production-shaped copy', async (t) => {
     assert.match(msg ?? '', /RULES TEST 074a: 074a is not applied/);
   });
 
+  await t.test('born closed against Supabase\'s defaults: a REVOKE that forgets a role stops 074a in its own proof', async () => {
+    const fnRevoke = 'public.order_delete_preview(text,text) FROM PUBLIC, anon, authenticated, service_role;';
+    const tblRevoke = 'REVOKE ALL ON public.plan_config FROM PUBLIC, anon, authenticated, service_role;';
+    assert.ok(src.includes(fnRevoke) && src.includes(tblRevoke));
+    assert.match(await errorOf(db, src.replace(fnRevoke, 'public.order_delete_preview(text,text) FROM PUBLIC, authenticated, service_role;')) ?? '',
+      /074a proof: \d+ new function\(s\) with the wrong EXECUTE rights/);
+    assert.match(await errorOf(db, src.replace(tblRevoke, 'REVOKE ALL ON public.plan_config FROM PUBLIC, anon, authenticated;')) ?? '',
+      /074a proof: plan_config is not RLS on \+ monitor_read \+ SELECT only for service_role/);
+    assert.strictEqual((await one(db, `SELECT to_regclass('public.plan_config')::text AS r`)).r, null, 'nothing kept');
+  });
+
   await t.test('074a dry run runs to its end and keeps nothing', async () => {
     const msg = await errorOf(db, draft('074a_plan_reads_dryrun.sql'));
-    assert.match(msg ?? '', /DRY RUN 074a finished - EVERYTHING UNDONE, nothing kept\. The block ran to its end {2}\|\| {2}074a ran: hooked functions 2, for_split_at yes, plan_config rows 0, config \{"opened_at": null, "cutover_day": null\}, lookups lists 6, hubs 1, open to API 0, triggers (\d+), B-54 \1, v5 rows 0/, msg);
+    assert.match(msg ?? '', /DRY RUN 074a finished - EVERYTHING UNDONE, nothing kept\. The block ran to its end {2}\|\| {2}074a ran: hooked functions 3, for_split_at yes, plan_config rows 0, config \{"opened_at": null, "cutover_day": null\}, lookups lists 6, hubs 1, open to API 0, triggers (\d+), B-54 \1, v5 rows 0/, msg);
     assert.strictEqual((await one(db, `SELECT to_regclass('public.plan_config')::text AS r`)).r, null);
     for (const f of finalMd5(src)) assert.strictEqual(await fnMd5(db, f.sig), f.before, `${f.sig} untouched`);
   });
@@ -92,7 +108,7 @@ test('074a on the production-shaped copy', async (t) => {
     const res = await db.exec(src);
     const r = res.at(-1).rows[0];
     assert.strictEqual(r.result, '074a OK');
-    assert.strictEqual(Number(r.hooked_functions), 2);
+    assert.strictEqual(Number(r.hooked_functions), 3);
     assert.strictEqual(Number(r.plan_config_rows), 0);
     assert.strictEqual(Number(r.public_triggers), trg0);
     assert.strictEqual(Number(r.b54_red_value), trg0);
@@ -103,7 +119,7 @@ test('074a on the production-shaped copy', async (t) => {
   await t.test('074a verify: in place, closed, empty, B-54 matches', async () => {
     const r = await one(db, draft('074a_plan_reads_verify.sql'));
     assert.strictEqual(r.applied, '074a in place');
-    assert.strictEqual(Number(r.hooks_in_place), 2);
+    assert.strictEqual(Number(r.hooks_in_place), 3);
     assert.strictEqual(r.column_ok, true);
     assert.strictEqual(Number(r.plan_config_rows), 0);
     assert.deepStrictEqual(r.config, { cutover_day: null, opened_at: null });
@@ -115,7 +131,7 @@ test('074a on the production-shaped copy', async (t) => {
     assert.strictEqual(Number(r.v5_rows), 0);
   });
 
-  await t.test('the Worker role reads what it needs, anon nothing (service_role as PostgREST calls it)', async () => {
+  await t.test('the Worker role reads what it needs, the auditor day L only, anon nothing (as PostgREST calls them)', async () => {
     await db.exec('SET ROLE service_role');
     try {
       const cfg = (await one(db, 'SELECT plan_config_read() AS j')).j;
@@ -124,8 +140,15 @@ test('074a on the production-shaped copy', async (t) => {
       assert.deepStrictEqual(Object.keys(lk).sort(), ['clients', 'drivers', 'locations', 'partners', 'trailers', 'trucks']);
       const pv = (await one(db, `SELECT order_delete_preview('rec-none', 'dispatcher') AS j`)).j;
       assert.deepStrictEqual(pv, { ok: true, op: 'order_delete_preview', order_id: null, needs_confirm: false, confirm_token: null, consequences: [] });
-      assert.match(await errorOf(db, `SELECT plan_cutover_day()`) ?? '', /permission denied/);
-      assert.match(await errorOf(db, `INSERT INTO plan_config VALUES (1, '2099-01-03', now(), 'x')`) ?? '', /permission denied/);
+      // day L for 074's triggers, which fire as the writer (service_role through the facade)
+      assert.strictEqual((await one(db, 'SELECT plan_cutover_day() AS d')).d, null);
+      assert.match(await errorOf(db, `INSERT INTO plan_config VALUES (1, '2099-01-03', now(), 'x')`) ?? '', /permission denied for table plan_config/);
+    } finally { await db.exec('RESET ROLE'); }
+    await db.exec('SET ROLE tms_check_runner');
+    try {
+      assert.strictEqual((await one(db, 'SELECT plan_cutover_day() AS d')).d, null);
+      assert.strictEqual(Number((await one(db, 'SELECT count(*) AS n FROM plan_config')).n), 0);
+      assert.match(await errorOf(db, `SELECT plan_lookups('owner')`) ?? '', /permission denied for function plan_lookups/);
     } finally { await db.exec('RESET ROLE'); }
     for (const role of ['anon', 'authenticated']) {
       await db.exec(`SET ROLE ${role}`);
@@ -141,7 +164,7 @@ test('074a on the production-shaped copy', async (t) => {
   const rules = draft('074a_plan_reads_test.sql');
   const n = wantCount(rules);
   await t.test('074a rules test: every case OK, nothing kept', async () => {
-    assert.ok(n >= 26, `${n} cases`);
+    assert.ok(n >= 27, `${n} cases`);
     const msg = await errorOf(db, rules);
     assert.match(msg ?? '', new RegExp(`RULES TEST 074a finished - EVERYTHING UNDONE, nothing kept\\. Result: ${n} OK, 0 FAIL`), msg);
     assert.strictEqual(await count(db, V5_ROWS), 0);
@@ -153,10 +176,13 @@ test('074a on the production-shaped copy', async (t) => {
   const MUTATIONS = [
     ['no is_hub on the stops (E-27)', 'public.plan_board(date,text)', "'is_hub', coalesce(lo.is_hub, false),", "'no_hub', null,", [3, 13]],
     ['no mark on Split -> Veroia (E-41)', 'public.plan_move_pieces(jsonb,text,text)',
-      'update shipment_pieces set for_split_at = now() where id = v_x;', 'perform 1;', [6]],
-    ['an old mark never goes stale (E-41)', 'public.plan_board(date,text)', 'l.created_at > sp.for_split_at', 'l.id < 0', [7]],
+      'update shipment_pieces set for_split_at = now() where id = v_x;', 'perform 1;', [6, 7]],   // 7 clears the mark 6 sets
+    ['a cycle that takes the piece leaves its mark (E-41)', 'public.plan_h_leg_add(bigint,bigint,bigint,bigint,text,text,integer)',
+      'update shipment_pieces set for_split_at = null where id = p_piece;', 'perform 1;', [7]],
     ['the delete preview shows amounts to every role (E-19)', 'public.order_delete_preview(text,text)',
       'plan_h_strip_amounts(v_full, p_role)', 'plan_h_strip_amounts(v_full, $$owner$$)', [23]],
+    ['the delete preview forgets the national orders the cascade deletes (E-19)', 'public.order_delete_preview(text,text)',
+      'or s.nat_order_id in (', 'or false and s.nat_order_id in (', [27]],
   ];
   for (const [what, sig, from, to, cases] of MUTATIONS) {
     await t.test(`mutation "${what}" fails cases ${cases.join(', ')} only`, async () => {
@@ -194,7 +220,7 @@ test('074a on the production-shaped copy', async (t) => {
     await db.exec('ROLLBACK');
     const r = await one(db, draft('074a_plan_reads_verify.sql'));
     assert.strictEqual(r.applied, '074a in place');
-    assert.strictEqual(Number(r.hooks_in_place), 2);
+    assert.strictEqual(Number(r.hooks_in_place), 3);
   });
 
   await t.test('rollback: the live texts back byte for byte, plan_config and the column gone; then 074a again', async () => {
@@ -207,7 +233,7 @@ test('074a on the production-shaped copy', async (t) => {
     assert.strictEqual((await db.query(`SELECT 1 FROM pg_attribute WHERE attrelid = 'public.shipment_pieces'::regclass AND attname = 'for_split_at' AND NOT attisdropped`)).rows.length, 0);
     for (const s of CREATED) assert.strictEqual((await one(db, 'SELECT to_regprocedure($1)::text AS p', [s])).p, null, s);
     assert.strictEqual((await db.exec(src)).at(-1).rows[0].result, '074a OK');
-    assert.strictEqual(hooks(src).length, 4);
+    assert.strictEqual(hooks(src).length, 5);
     const msg = await errorOf(db, rules);
     assert.match(msg ?? '', new RegExp(`Result: ${n} OK, 0 FAIL`), msg);
   });
