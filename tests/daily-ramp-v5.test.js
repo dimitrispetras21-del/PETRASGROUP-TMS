@@ -131,10 +131,13 @@ test('before L (cutover_day null): same — the base says no L', async () => {
   assert.ok(!/v5/.test(S.content.innerHTML));
 });
 
-test('before L the page is byte-for-byte the page of origin/main (flag off = today)', async (t) => {
+// Pinned to the tip this PR started from: after the merge origin/main IS this file, and the test would compare
+// the file with itself.
+const BASE = '5f55a943';
+test('before L the page is byte-for-byte the page of the pre-Ε14 tip (flag off = today)', async (t) => {
   let main;
-  try { main = execSync('git show origin/main:modules/daily_ramp.js', { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }); }
-  catch (_) { return t.skip('origin/main not reachable'); }
+  try { main = execSync(`git show ${BASE}:modules/daily_ramp.js`, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }); }
+  catch (_) { return t.skip(BASE + ' not in this clone'); }
   const a = load({ config: 'before' }), b = load({ config: 'before', src: main });
   await a.ctx.renderDailyRamp(); await b.ctx.renderDailyRamp();
   assert.strictEqual(a.S.content.innerHTML, b.S.content.innerHTML);
@@ -257,6 +260,39 @@ test('unknown before L in reality (board empty): amber strip only, no v5 line, n
   const html = S.content.innerHTML;
   assert.ok(!html.includes('Οι εθνικές κινήσεις v5 δεν διαβάστηκαν'));
   assert.ok(!/v5 ·/.test(html));
+});
+
+test('after L, 072b: a hub stop served by the second segment names THAT segment\'s truck and driver', async () => {
+  const b = board();
+  b.cycles[0].segments = [
+    { segment_id: 1, label: null, trip_type: 'OWNED', truck: 'ΑΒΓ-1001', driver: 'Οδηγός Α', partner: null, has_vehicle: true, stop_ids: [10, 11, 12] },
+    { segment_id: 2, label: null, trip_type: 'OWNED', truck: 'ΔΕΖ-2002', driver: 'Οδηγός Β', partner: null, has_vehicle: true, stop_ids: [13, 14] },
+  ];
+  const { ctx, S } = load({ board: b });
+  await ctx.renderDailyRamp();
+  const html = S.content.innerHTML;
+  const inb = section(html, 'inbound'), out = section(html, 'outbound');
+  assert.ok(inb.includes('ΔΕΖ-2002') && !inb.includes('ΑΒΓ-1001'), inb);
+  assert.ok(out.includes('ΑΒΓ-1001'));
+  assert.ok(section(html, 'timeline').includes('Οδηγός Β'));
+});
+
+test('after L, 072b segments in a shape the board cannot read: red strip, logged, no v5 line', async () => {
+  const b = board(); b.cycles[0].segments = [];
+  const { ctx, S } = load({ board: b });
+  await ctx.renderDailyRamp();
+  assert.ok(S.content.innerHTML.includes('Οι εθνικές κινήσεις v5 δεν διαβάστηκαν'));
+  assert.ok(S.logged.some(l => l.startsWith('daily_ramp v5: board shape')));
+});
+
+test('a cleared date input: no /plan/board?week=null, no strip', async () => {
+  const { ctx, S } = load();
+  ctx.localToday = () => '';
+  ctx._rampSD('');                  // sets RAMP.date = '' (and starts a render)
+  await ctx.renderDailyRamp();       // a full render on that date, awaited
+  assert.ok(S.calls.includes('GET /plan/config'), 'the state was asked: the guard below is not vacuous');
+  assert.ok(!S.calls.some(c => c.startsWith('GET /plan/board')), S.calls);
+  assert.ok(!S.content.innerHTML.includes('Οι εθνικές κινήσεις v5 δεν διαβάστηκαν'));
 });
 
 test('CSV export carries the v5 lines with truck and driver names', async () => {

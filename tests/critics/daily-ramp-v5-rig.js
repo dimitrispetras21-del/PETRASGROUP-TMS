@@ -9,7 +9,7 @@
 // Usage (cwd = the main repo, which has node_modules — memory «Κριτές από worktree»):
 //   node <tree>/tests/critics/daily-ramp-v5-rig.js [scenario…] [--shots <dir>]
 // Scenarios: before (after deploy 1: cutover_day null) · before404 (before deploy 1: no route — its one 404 resource
-//   line is plan-config's designed probe, stream c) · same (before = origin/main's daily_ramp.js, byte for byte) ·
+//   line is plan-config's designed probe, stream c) · same (before = the pre-Ε14 tip's daily_ramp.js, byte for byte) ·
 //   after · warehouse · fail · noconfig
 // Exit: 0 all green · 1 a check failed.
 'use strict';
@@ -172,13 +172,14 @@ const clean = async (scn, S, allow) => {
     }
     if (on('same')) {
       let main = null;
-      try { main = execSync('git show origin/main:modules/daily_ramp.js', { cwd: TREE, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }); } catch (_) { /* below */ }
-      check('same', 'origin/main readable', !!main);
+      // pinned: after the merge origin/main IS this file (the comparison would be with itself)
+      try { main = execSync('git show 5f55a943:modules/daily_ramp.js', { cwd: TREE, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }); } catch (_) { /* below */ }
+      check('same', 'the pre-Ε14 tip 5f55a943 readable', !!main);
       if (main) {
         const a = await open(browser, origin, { config: 'before' });
         const b = await open(browser, origin, { config: 'before', rampSrc: main });
         const ha = await content(a.page), hb = await content(b.page);
-        check('same', 'before L: #content identical to origin/main\'s daily_ramp.js', ha === hb, `${ha.length} vs ${hb.length}`);
+        check('same', 'before L: #content identical to 5f55a943\'s daily_ramp.js', ha === hb, `${ha.length} vs ${hb.length}`);
         await clean('same(main)', b.S);
         await a.ctx.close(); await b.ctx.close();
       }

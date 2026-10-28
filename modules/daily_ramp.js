@@ -149,9 +149,10 @@ async function _rampHubId(board, errors) {
 async function _rampV5Load(day) {
   const state = await _rampPlanState();
   if (state === 'before') return { state, rows: [], err: null };
+  const week = TmsWeek.startOfDate(day);
+  if (!week) return { state, rows: [], err: null };      // a cleared date input: no day, nothing to ask
   let board;
   try {
-    const week = TmsWeek.startOfDate(day);
     board = await planFetch('GET', '/plan/board?week=' + week);
     if (!board || typeof board !== 'object' || board.week !== week
         || !Array.isArray(board.cycles) || !Array.isArray(board.waiting) || !Array.isArray(board.hub)) {
@@ -174,7 +175,20 @@ async function _rampV5Load(day) {
     _rampV5Log(e, 'daily_ramp v5: hub');
     return { state, rows: [], err: e };
   }
-  return { state, rows: _rampV5Rows(board, day, hubId), err: null };
+  try { return { state, rows: _rampV5Rows(board, day, hubId), err: null }; }
+  catch (e) { _rampV5Log(e, 'daily_ramp v5: board shape'); return { state, rows: [], err: e }; }
+}
+// The vehicle at one stop: with 072b a cycle may change truck at a point (segments[].stop_ids), so a hub stop
+// names ITS segment's vehicle, never blindly the cycle's. WN5L.segmentsOf is the board's own reading (a 072 board
+// without segments = one segment from the cycle); a malformed list throws, and the caller shows the red strip.
+function _rampVehicleAt(c) {
+  const segs = typeof WN5L !== 'undefined' ? WN5L.segmentsOf(c).segments : [c];
+  const byStop = new Map();
+  for (const g of segs) for (const id of g.stop_ids || []) byStop.set(id, g);
+  return stopId => {
+    const g = byStop.get(stopId) || segs[0];
+    return { vehicle: g.trip_type === 'PARTNER' ? g.partner : g.truck, driver: g.driver };
+  };
 }
 // One ramp line per (hub stop of the day, load | unload), plus the pieces no truck carries yet that today's NL
 // would have shown: a piece that STARTS at Veroia (VS import, a national from Veroia) on its ready day, and a piece
@@ -189,14 +203,14 @@ function _rampV5Rows(board, day, hubId) {
     // every leg appears at its pickup AND its drop stop: the far end of a hub line is the leg's other stop
     const at = new Map();
     for (const s of stops) for (const l of s.legs || []) { if (!at.has(l.leg_id)) at.set(l.leg_id, []); at.get(l.leg_id).push(s); }
-    const vehicle = c.trip_type === 'PARTNER' ? c.partner : c.truck;
+    const vehicleAt = _rampVehicleAt(c);
     for (const s of stops) {
       if (!isHub(s.location_id) || d10(s.stop_day) !== day) continue;
       for (const act of ['unload', 'load']) {
         const legs = (s.legs || []).filter(l => l.act === act);
         if (!legs.length) continue;
         const far = [...new Set(legs.flatMap(l => (at.get(l.leg_id) || []).filter(o => o !== s).map(o => o.location)).filter(Boolean))];
-        rows.push(_rampV5Rec(`stop:${s.stop_id}:${act}`, { day, act, items: legs, time: s.planned_from, far, vehicle, driver: c.driver, executed: s.executed === true }));
+        rows.push(_rampV5Rec(`stop:${s.stop_id}:${act}`, Object.assign({ day, act, items: legs, time: s.planned_from, far, executed: s.executed === true }, vehicleAt(s.stop_id))));
       }
     }
   }
