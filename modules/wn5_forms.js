@@ -675,7 +675,8 @@
       pallet_exchange: typeof o.pallet_exchange === 'boolean' ? o.pallet_exchange : null,
       reference: o.reference || '', goods: o.goods || '', notes: o.notes || '',
       direction: o.direction === 'KATHODOS' || o.direction === 'ANODOS' ? o.direction : null,
-      riding: ships.some((s) => s.rides), ships,
+      // the side is the cycle's while a point rides onward; one waiting at Veroia (F23) has nothing planned yet
+      riding: ships.some((s) => s.rides && !(s.at_hub && s.waits)), ships,
     };
   }
   const _placeName = (id) => { const p = typeof PlanIds !== 'undefined' ? PlanIds.place(id) : null; return p ? p.name : '#' + id; };
@@ -692,6 +693,10 @@
     const hubWait = s.at_hub && s.waits;
     const lock = (s.rides && !hubWait) || s.vs_locked || twoDays;
     const ro = lock ? ' disabled' : '';
+    // at Veroia the loading already happened: its side stays as loaded, the delivery and the pallets stay editable
+    const lro = lock || hubWait ? ' disabled' : '';
+    // F1 (owner 28/10): a whole-day window shows as empty fields, as the create form writes it («κενό: όλη η ημέρα»)
+    const lAll = WN5L.allDay(s.load_from, s.load_to), dAll = WN5L.allDay(s.deliver_from, s.deliver_to);
     const where = hubWait ? '<small class="wn5f-shipc"> · στη Βέροια</small>'
       : s.rt_codes.length ? `<small class="wn5f-shipc"> · σε κύκλο ${_esc(s.rt_codes.join(', '))}</small>`
       : twoDays ? '<small class="wn5f-shipc"> · παράθυρο σε δύο ημέρες: αλλάζει από το Εβδομαδιαίο</small>' : '';
@@ -703,14 +708,14 @@
     return `<div class="wn5f-ship" data-ship="${s.shipment_id}"${lock ? ' data-ro' : ''}><span>${_esc(_placeName(from))} → ${_esc(_placeName(s.dest))}${where}</span>`
       // the create form's fields (2011:9704): a day with its weekday label, ΗΗ:ΛΛ text — the native time input is
       // 12-hour in el-GR and cut in its cell (_hmNorm note)
-      + `${_editDay('lday', lf.day, ro)}<input ${HM_INPUT} data-f="lfrom" value="${lf.hm}"${ro}><input ${HM_INPUT} data-f="lto" value="${lt.hm}"${ro}>`
-      + `${_editDay('dday', df.day, ro)}<input ${HM_INPUT} data-f="dfrom" value="${df.hm}"${ro}><input ${HM_INPUT} data-f="dto" value="${dt.hm}"${ro}>`
-      + `<input class="form-input" data-f="pal" inputmode="decimal" value="${_esc(s.pallets)}"${ro}>${x}</div>`;
+      + `${_editDay('lday', lf.day, lro)}<input ${HM_INPUT} data-f="lfrom" value="${lAll ? '' : lf.hm}"${lro}><input ${HM_INPUT} data-f="lto" value="${lAll ? '' : lt.hm}"${lro}>`
+      + `${_editDay('dday', df.day, ro)}<input ${HM_INPUT} data-f="dfrom" value="${dAll ? '' : df.hm}"${ro}><input ${HM_INPUT} data-f="dto" value="${dAll ? '' : dt.hm}"${ro}>`
+      + `<input class="form-input" data-f="pal" inputmode="decimal" value="${s.pallets == null ? '' : _esc(s.pallets)}"${ro}>${x}</div>`;
   }
   // F21 (live test 28/10, #84 needs a 2nd delivery): a new point of the order. Both ends are picked from the places
   // list; the end the order already has (its one loading place for a new delivery, its one delivery place for a new
-  // loading) is pre-picked and stays changeable. The window is the whole day, WN5L.DAY_WIN (F1's one rule, 00:00–23:59:
-  // never an invented hour; the user narrows it if the client gave one).
+  // loading) is pre-picked and stays changeable. The window fields start empty = the whole day (F1's one rule, _rowWin /
+  // WN5L.DAY_WIN, 00:00–23:59: never an invented hour; the user types one if the client gave one).
   function _newShipHTML(f, k) {
     const po = 'wn5n' + (++f.seq), pd = 'wn5n' + (++f.seq);
     const first = f.edit.ships[0] || {};
@@ -718,8 +723,8 @@
     return `<div class="wn5f-ship wn5f-new" data-newship data-k="${k}" data-po="${po}" data-pd="${pd}">`
       + `<span class="wn5f-ends"><span class="wn5f-loc">${fhLocSelect(po, '', 'fhLocDrop')}</span><span class="wn5f-arr">→</span>`
       + `<span class="wn5f-loc">${fhLocSelect(pd, '', 'fhLocDrop')}</span></span>`
-      + `${_editDay('lday', ld, '')}<input ${HM_INPUT} data-f="lfrom" value="${_dayWin().from}"><input ${HM_INPUT} data-f="lto" value="${_dayWin().to}">`
-      + `${_editDay('dday', dd, '')}<input ${HM_INPUT} data-f="dfrom" value="${_dayWin().from}"><input ${HM_INPUT} data-f="dto" value="${_dayWin().to}">`
+      + `${_editDay('lday', ld, '')}<input ${HM_INPUT} data-f="lfrom"><input ${HM_INPUT} data-f="lto">`
+      + `${_editDay('dday', dd, '')}<input ${HM_INPUT} data-f="dfrom"><input ${HM_INPUT} data-f="dto">`
       + `<input class="form-input" data-f="pal" inputmode="decimal" aria-label="Παλέτες">`
       + `<button type="button" class="wn5f-x" data-act="del-ship" aria-label="Αφαίρεση νέου σημείου">×</button></div>`;
   }
@@ -747,7 +752,7 @@
       + `<div class="wn5f-grid3"><label class="wn5f-f"><span>Αναφορά</span><input class="form-input" data-f="ref" value="${_esc(e.reference)}"></label>`
       + `<label class="wn5f-f"><span>Είδος</span><input class="form-input" data-f="goods" value="${_esc(e.goods)}"></label>`
       + `<label class="wn5f-f"><span>Σημειώσεις</span><input class="form-input" data-f="notes" value="${_esc(e.notes)}"></label></div>`
-      + `<div class="wn5f-sec">ΑΠΟΣΤΟΛΕΣ</div><div class="wn5f-ships-h"><span>Διαδρομή</span><span>Φόρτωση από – έως</span><span>Παράδοση από – έως</span><span>Παλέτες</span><span></span></div>`
+      + `<div class="wn5f-sec">ΑΠΟΣΤΟΛΕΣ</div><div class="wn5f-ships-h"><span>Διαδρομή</span><span>Φόρτωση από – έως · κενό: όλη η ημέρα</span><span>Παράδοση από – έως · κενό: όλη η ημέρα</span><span>Παλέτες</span><span></span></div>`
       + `<div class="wn5f-ships" data-ships>${e.ships.map((s) => _shipHTML(e, s)).join('')}</div>`
       + `<div class="wn5f-adds"><button type="button" class="wn5f-add" data-act="add-ship" data-k="drop">+ σημείο παράδοσης</button>`
       + `<button type="button" class="wn5f-add" data-act="add-ship" data-k="load">+ σημείο φόρτωσης</button></div>`
@@ -761,8 +766,10 @@
     const win = (r) => {
       const g = (k) => r.querySelector(`[data-f="${k}"]`).value;
       const t = (k) => _hmNorm(g(k));
-      return { pallets: _num(g('pal')), load_from: _iso(g('lday'), t('lfrom')), load_to: _iso(g('lday'), t('lto')),
-        deliver_from: _iso(g('dday'), t('dfrom')), deliver_to: _iso(g('dday'), t('dto')) };
+      // F1: both ends empty = the whole day (the create form's _rowWin); one end only stays as typed and is named
+      const lw = _rowWin(false, t('lfrom'), t('lto')), dw = _rowWin(false, t('dfrom'), t('dto'));
+      return { pallets: _num(g('pal')), load_from: _iso(g('lday'), lw.from), load_to: _iso(g('lday'), lw.to),
+        deliver_from: _iso(g('dday'), dw.from), deliver_to: _iso(g('dday'), dw.to) };
     };
     const rec = (pid) => (document.getElementById('lv_' + pid) || {}).value || '';
     return {
@@ -788,7 +795,7 @@
       // pallets stored as unknown (NULL, F4) and left empty is no change: never a refusal of a save the user did not ask
       const unknownKept = s.pallets === null && stored && stored.pallets === null;
       if (!unknownKept && !(Number.isFinite(s.pallets) && s.pallets > 0 && _dec1(s.pallets))) out.push(w + 'παλέτες: αριθμός πάνω από 0, ένα δεκαδικό το πολύ');
-      if (!s.load_from || !s.load_to || !s.deliver_from || !s.deliver_to) out.push(w + 'παράθυρο από – έως (ημέρα και ώρες)');
+      if (!s.load_from || !s.load_to || !s.deliver_from || !s.deliver_to) out.push(w + 'ημέρα, και παράθυρο: ΗΗ:ΛΛ και στα δύο άκρα, ή κανένα (όλη η ημέρα)');
       else if (Date.parse(s.load_from) > Date.parse(s.load_to) || Date.parse(s.deliver_from) > Date.parse(s.deliver_to)) out.push(w + 'το «έως» πρέπει να είναι μετά το «από»');
       else if (Date.parse(s.load_from) > Date.parse(s.deliver_to)) out.push(w + 'η παράδοση πριν από τη φόρτωση');
     };

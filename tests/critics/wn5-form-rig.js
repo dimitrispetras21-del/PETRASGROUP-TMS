@@ -385,8 +385,8 @@ async function scnEditAdd({ browser, origin, ok, scn }) {
     const g = (k) => r.querySelector(`[data-f="${k}"]`).value;
     return r && { o: document.getElementById('lv_' + r.dataset.po).value, ol: document.getElementById('ls_' + r.dataset.po).value,
       d: document.getElementById('lv_' + r.dataset.pd).value, win: [g('lday'), g('lfrom'), g('lto'), g('dday'), g('dfrom'), g('dto')] }; }, DLG);
-  ok(scn, '«+ σημείο παράδοσης»: the order\'s loading place pre-picked, the delivery empty, whole-day windows on the order\'s days',
-    !!nw && nw.o === 'recJucKOhC1zh4IP3' && nw.ol === 'ΒΕΡΟΙΑ TEST' && nw.d === '' && JSON.stringify(nw.win) === JSON.stringify(['2026-10-12', '00:00', '23:59', '2026-10-13', '00:00', '23:59']), nw);
+  ok(scn, '«+ σημείο παράδοσης»: the order\'s loading place pre-picked, the delivery empty, the order\'s days, windows empty = the whole day (F1)',
+    !!nw && nw.o === 'recJucKOhC1zh4IP3' && nw.ol === 'ΒΕΡΟΙΑ TEST' && nw.d === '' && JSON.stringify(nw.win) === JSON.stringify(['2026-10-12', '', '', '2026-10-13', '', '']), nw);
   await save(page);
   await page.waitForTimeout(400);
   ok(scn, 'no delivery place picked → refused on screen, nothing sent', K.planOf(S, 'PATCH', '/plan/orders/3001').length === 0
@@ -497,25 +497,29 @@ async function scnVeroiaEdit({ browser, origin, ok, scn }) {
     const r = x.querySelector('[data-ship="5255"]');
     return { t: x.querySelector('.wi4-dlg-t').textContent, route: r ? r.querySelector('span').textContent : null,
       days: r ? ['lday', 'dday'].map((k) => { const i = r.querySelector(`[data-f="${k}"]`); return i ? [i.value, i.disabled] : null; }) : null,
+      pdis: r ? r.querySelector('[data-f="pal"]').disabled : null,
       price: x.querySelector('[data-f="price"]').value,
       rows: x.querySelectorAll('[data-ship="5255"]').length, pal: r ? r.querySelector('[data-f="pal"]').value : null,
       dir: (x.querySelector('[data-f="dir"] option[value=""]') || {}).textContent };
   }, DLG);
-  ok(scn, 'Veroia panel ✈ → card → «Επεξεργασία» opens the edit form of #3150 with shipment 5255, both days editable (15/10, 16/10)', !!form && /#3150/.test(form.t)
-    && JSON.stringify(form.days) === JSON.stringify([['2026-10-15', false], ['2026-10-16', false]]), form);
+  // at Veroia the loading already happened: its day is shown, locked; the delivery and the pallets stay editable (F23)
+  ok(scn, 'Veroia panel ✈ → card → «Επεξεργασία» opens #3150: load day 15/10 locked (loaded), delivery 16/10 and pallets editable', !!form && /#3150/.test(form.t)
+    && JSON.stringify(form.days) === JSON.stringify([['2026-10-15', true], ['2026-10-16', false]]) && form.pdis === false, form);
   ok(scn, 'the route names Veroia, where the piece stands, then its destination — never «#undefined»', !!form && form.route === 'ΒΕΡΟΙΑ TEST → ATHENS TEST · στη Βέροια', form && form.route);
   ok(scn, 'the edit read the order (077, F13): GET /plan/orders/3150', K.planOf(S, 'GET', '/plan/orders/3150').length === 1);
   ok(scn, 'one row for shipment 5255, the shipment\'s own pallets (4 + 3 = 7), never a row per piece', !!form && form.rows === 1 && form.pal === '7', form);
   // F13: the read carries what hub[] does not - the side as stored (none here) and the price
   ok(scn, 'the side as the order stores it (none: «δεν έχει δηλωθεί»), the price from the read (250)', !!form && form.dir === '— δεν έχει δηλωθεί' && form.price === '250', form);
-  for (const [k, v] of [['lday', '2026-10-12'], ['dday', '2026-10-12']]) await page.fill(`${DLG} [data-ship="5255"] [data-f="${k}"]`, v).catch(() => {});
+  await page.fill(`${DLG} [data-ship="5255"] [data-f="dday"]`, '2026-10-17').catch(() => {});
   await save(page).catch(() => {});
   await page.waitForTimeout(1000);
   const p = K.planOf(S, 'PATCH', '/plan/orders/3150');
-  const want = { load_from: '2026-10-12T07:00:00+03:00', load_to: '2026-10-12T09:00:00+03:00', deliver_from: '2026-10-12T14:00:00+03:00', deliver_to: '2026-10-12T16:00:00+03:00' };
+  const want = { deliver_from: '2026-10-17T14:00:00+03:00', deliver_to: '2026-10-17T16:00:00+03:00' };
   const sh = p[0] && p[0].body && p[0].body.shipments && p[0].body.shipments[0];
-  ok(scn, 'one PATCH /plan/orders/3150: shipment 5255 with its four new window ends only — no pallets, price, PE or side', p.length === 1 && !p[0].body.set && Object.keys(p[0].body).sort().join() === 'request_id,shipments'
-    && p[0].body.shipments.length === 1 && sh.shipment_id === 5255 && Object.keys(sh).length === 5 && Object.keys(want).every((k) => Date.parse(sh[k]) === Date.parse(want[k])), p.map((x) => x.body));
+  ok(scn, 'one PATCH /plan/orders/3150: shipment 5255 with its two new delivery ends only — no load, pallets, price, PE or side', p.length === 1 && !p[0].body.set && Object.keys(p[0].body).sort().join() === 'request_id,shipments'
+    && p[0].body.shipments.length === 1 && sh.shipment_id === 5255 && Object.keys(sh).length === 3 && Object.keys(want).every((k) => Date.parse(sh[k]) === Date.parse(want[k])), p.map((x) => x.body));
+  // the side: an order waiting at Veroia has nothing planned onward, so it can still be corrected (F23)
+  ok(scn, 'Κατεύθυνση stays editable for an order waiting at Veroia', await page.evaluate((d) => !document.querySelector(`${d} [data-f="dir"]`).disabled, DLG));
   await closeClean(page, S, ok, scn);
 }
 
