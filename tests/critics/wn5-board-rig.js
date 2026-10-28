@@ -100,6 +100,13 @@ async function openBoard(browser, origin, opts = {}) {
   await page.route(`**/${HOST}/**`, async (route) => {
     const req = route.request(); const u = new URL(req.url()); const m = req.method();
     if (m === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': '*' } });
+    // F5 FE-2: the board asks GET /plan/config (is this week ≥ day L? Q-10). Answered as the deploy-1 Worker does
+    // before L and counted in S.config, not S.plan: S.plan stays the board's own traffic that every scenario judges;
+    // the day-L rule has its own rig (tests/critics/wn5-pilot-rig.js).
+    if (m === 'GET' && u.pathname === '/plan/config' && !S.routes['GET /plan/config']) {
+      S.config = (S.config || 0) + 1;
+      return json(route, { cutover_day: null, opened_at: null, writes_open: false });
+    }
     if (u.pathname.startsWith('/plan/')) {
       const raw = req.postData();
       let body = null;

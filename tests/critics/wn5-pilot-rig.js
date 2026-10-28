@@ -26,9 +26,20 @@ const CASES = [
   { name: 'demo_dispatcher', role: 'dispatcher', username: 'demo_dispatcher', optIn: null },
   { name: 'demo_dispatcher + «Παλιά προβολή»', role: 'dispatcher', username: 'demo_dispatcher', optIn: '0' },
   { name: 'demo_accountant', role: 'accountant', username: 'demo_accountant', optIn: null },
+  // Q-10 (FE-2): GET /plan/config says day L. The rig week is Sat 10/10 (kit clock Tue 13/10).
+  { name: 'Q-10 dispatcher + «Παλιά προβολή», L = 10/10 (this week)', role: 'dispatcher', username: 'demo_dispatcher', optIn: '0', cfg: '2026-10-10' },
+  { name: 'Q-10 dispatcher + «Παλιά προβολή», L = 17/10 (next week)', role: 'dispatcher', username: 'demo_dispatcher', optIn: '0', cfg: '2026-10-17' },
+  { name: 'Q-10 dispatcher, L = 3/10 (a past week)', role: 'dispatcher', username: 'demo_dispatcher', optIn: null, cfg: '2026-10-03' },
+  { name: 'Q-10 dispatcher, before L (cutover_day null)', role: 'dispatcher', username: 'demo_dispatcher', optIn: null, cfg: null },
 ];
+const RIG_SAT = '2026-10-10';
 // The rule of the plan, written out here (not WI4.v2Decide: the rig must not judge the app by the app's own code).
-const want = (flag, c) => (c.optIn === '0' ? 'old' : flag === 'on' ? 'v5' : flag === 'pilot' && c.username === 'dimitris' ? 'v5' : 'old');
+// Q-10: from day L the old view holds only for a week before L — a stored choice is set aside for a week ≥ L.
+const afterL = (c) => typeof c.cfg === 'string' && RIG_SAT >= c.cfg;
+const open = (flag, c) => flag === 'on' || (flag === 'pilot' && c.username === 'dimitris');
+const want = (flag, c) => (!open(flag, c) ? 'old' : c.optIn !== '0' || afterL(c) ? 'v5' : 'old');
+// the «Παλιά προβολή» button on the v5 bar: only for a week before L; the «only before» line when a choice was set aside
+const wantBtn = (c) => !afterL(c);
 
 function serve() {
   const srv = http.createServer((req, res) => {
@@ -75,6 +86,7 @@ async function one(browser, origin, c) {
       if (u.pathname === '/plan/board') ans = board;
       else if (u.pathname === '/plan/lookups') ans = kit.LOOKUPS;
       else if (u.pathname === '/plan/notices') ans = { desk: 'natl', unread: [], recent: [] };
+      else if (u.pathname === '/plan/config' && m === 'GET' && 'cfg' in c) ans = { cutover_day: c.cfg, opened_at: null, writes_open: false };
       else {
         // An unknown read is a route the Worker does not have yet (404 no_route, as before deploy 1 — e.g. GET
         // /plan/config of FE-1); a write is closed until day L (409). Both are planned answers, listed apart.
@@ -93,14 +105,18 @@ async function one(browser, origin, c) {
   try {
     await page.waitForFunction(() => !!document.querySelector('#content > .wi4.wn5[data-state="ok"]')
       || (!!document.querySelector('#content .wn4') && !/Φόρτωση εβδομάδας/.test(document.getElementById('content').textContent)), null, { timeout: 30000 });
-    got = await page.evaluate(() => (document.querySelector('#content .wn5') ? 'v5' : 'old'));
   } catch (_) { /* neither board painted: reported below */ }
-  // Long enough for a deferred v5 read (a timer after the paint) to show up in S.plan for a non-pilot user.
+  // Long enough for a deferred v5 read (a timer after the paint) to show up in S.plan for a non-pilot user, and for
+  // the PlanConfig answer to repaint a week ≥ L from the old board to v5 (Q-10).
   await page.waitForTimeout(3000);
+  got = await page.evaluate(() => (document.querySelector('#content .wn5') ? 'v5' : document.querySelector('#content .wn4') ? 'old' : 'none'));
+  // the v5 bar may sit in the app's top bar (outside #content), so the whole document is searched
+  const bar = await page.evaluate(() => ({ btn: [...document.querySelectorAll('button[onclick*="WN5._switch"]')].some((b) => b.textContent.trim() === 'Παλιά προβολή'),
+    closed: ((document.querySelector('[data-old-view="closed"]') || {}).textContent || '').trim() }));
   const flag = await page.evaluate(() => ({ flag: typeof FEATURES !== 'undefined' ? FEATURES.WN_V5 : undefined,
     users: typeof WN_V5_USERS !== 'undefined' ? WN_V5_USERS : undefined })).catch(() => ({}));
   await ctx.close();
-  return { got, S, flag };
+  return { got, S, flag, bar };
 }
 
 (async () => {
@@ -126,8 +142,12 @@ async function one(browser, origin, c) {
       if (c.want === 'v5') {
         ok(c.name, 'reads GET /plan/board', r.S.plan.includes('GET /plan/board'), r.S.plan);
         ok(c.name, 'read-only at load: no /plan/* request other than GET', r.S.plan.every((x) => x.startsWith('GET ')), r.S.plan);
+        ok(c.name, `«Παλιά προβολή» ${wantBtn(c) ? 'offered' : 'not offered (week ≥ L)'}`, r.bar.btn === wantBtn(c), r.bar);
+        if (c.optIn === '0' && afterL(c)) ok(c.name, 'says why: «… μόνο για εβδομάδες πριν από 10/10»', r.bar.closed === 'Η παλιά προβολή υπάρχει μόνο για εβδομάδες πριν από 10/10', r.bar);
       } else {
-        ok(c.name, 'zero /plan/* requests', r.S.plan.length === 0, r.S.plan);
+        // Q-10: a stored old-view choice under an open flag asks the base for day L — that one read, nothing else
+        const allowed = open(flag, c) && c.optIn === '0' ? ['GET /plan/config'] : [];
+        ok(c.name, allowed.length ? 'only GET /plan/config (is this week ≥ L?)' : 'zero /plan/* requests', r.S.plan.every((x) => allowed.includes(x)), r.S.plan);
       }
       ok(c.name, 'no page errors', r.S.pageErrors.length === 0, r.S.pageErrors);
       ok(c.name, '0 console errors' + (r.S.planned.length ? ` (${r.S.planned.length} planned: aborted hosts / stub answers)` : ''), r.S.console.length === 0, r.S.console);
