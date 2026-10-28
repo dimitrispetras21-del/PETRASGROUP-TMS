@@ -3,7 +3,7 @@
 //                          Worker's switch (false in deploy 1, true in deploy 2), never a DB value;
 //   - GET /plan/lookups  → plan_lookups(p_role), the DB body as is;
 //   - GET /plan/nat-state?nat_order_ids=… → plan_nat_state(p_nat_order_ids), the rule of /plan/vs-state;
-//   - GET /plan/activity?<one of partner_id|driver_id|truck_id|trailer_id|location_id>=N|all → plan_activity(p_kind, p_id).
+//   - GET /plan/activity?<one of partner_id|driver_id|truck_id|trailer_id|location_id>=N|all → plan_activity(p_kind, p_id text).
 // Every role, open with the switch closed (reads), one RPC each, no audit row; 074a missing → 503 naming 074a; an
 // answer FE-1 could misread (a cutover_day that is not a date or null) → a loud 500, never «not yet».
 import { test, beforeEach, afterEach } from 'node:test';
@@ -100,13 +100,13 @@ test('the reads stay GET only: a write verb on them is a 404 (no route), never a
   }
 });
 
-test('GET /plan/activity: one key → (p_kind, p_id), «all» → p_id null for partner / location only; the DB body as is', async () => {
+test('GET /plan/activity: one key → (p_kind, p_id as text), «all» for partner / location only; the DB body as is', async () => {
   const body = { cycles: [], truncated: false };
   on('POST', 'rpc/plan_activity', () => json(body));
-  for (const [q, args] of [['partner_id=12', { p_kind: 'partner', p_id: 12 }], ['driver_id=3', { p_kind: 'driver', p_id: 3 }],
-    ['truck_id=999999999', { p_kind: 'truck', p_id: 999999999 }], ['trailer_id=8', { p_kind: 'trailer', p_id: 8 }],
-    ['location_id=40', { p_kind: 'location', p_id: 40 }], ['partner_id=all', { p_kind: 'partner', p_id: null }],
-    ['location_id=all', { p_kind: 'location', p_id: null }]]) {
+  for (const [q, args] of [['partner_id=12', { p_kind: 'partner', p_id: '12' }], ['driver_id=3', { p_kind: 'driver', p_id: '3' }],
+    ['truck_id=999999999', { p_kind: 'truck', p_id: '999999999' }], ['trailer_id=8', { p_kind: 'trailer', p_id: '8' }],
+    ['location_id=40', { p_kind: 'location', p_id: '40' }], ['partner_id=all', { p_kind: 'partner', p_id: 'all' }],
+    ['location_id=all', { p_kind: 'location', p_id: 'all' }]]) {
     for (const role of ROLES) {
       calls.length = 0;
       const r = await call(role, 'GET', `/plan/activity?${q}`);
