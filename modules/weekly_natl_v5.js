@@ -120,12 +120,12 @@ function _decide() {
 // path, its writes are refused below the screen, and an unknown day never traps a user in one view. An 'unknown'
 // answer is said on the v5 bar («Η ημέρα μετάβασης δεν διαβάστηκε»), never silent (principle 1).
 let _cfg = null, _cfgAt = 0, _cfgBusy = false, _cfgForce = false;
-const CFG_RETRY_MS = 60 * 1000;   // a non-final answer is asked again at most once a minute ('after': CFG_RECHECK_MS)
-// F25 (live 28/10): an 'after' is asked again too — its DAY can move (079: 31/10 → 24/10) and a tab opened before
-// kept the old day until a full reload. Every 5 minutes at the next render (each week change, save, ↻ goes through
-// active()), at once on the user's ↻. A moved day repaints the page and says so; a recheck that fails keeps the day
-// read before and the bar says at once that it was not read again (principle 1: never silently stale).
-const CFG_RECHECK_MS = 5 * 60 * 1000;
+// At most one ask a minute, whatever the state. F25 (live 28/10): an 'after' is asked too — its DAY can move (079:
+// 31/10 → 24/10) and a tab opened before kept the old day until a full reload. WHEN an 'after' is old enough to be
+// read again is PlanConfig's rule (AFTER_RECHECK_MS, one source); the board asks {recheck: true} and waits for that
+// answer, at once ({recheck: 'now'}) on the user's ↻. A moved day repaints the page and says so; a recheck that fails
+// keeps the day read before and the bar says at once that it was not read again (principle 1: never silently stale).
+const CFG_RETRY_MS = 60 * 1000;
 function _dm(day) { return Number(day.slice(8)) + '/' + Number(day.slice(5, 7)); }   // '2026-10-31' → «31/10»
 function _afterL(sat) { return !!_cfg && _cfg.state === 'after' && !!_cfg.cutoverDay && typeof sat === 'string' && sat >= _cfg.cutoverDay; }
 function _recheckNoteHTML() {
@@ -140,7 +140,7 @@ function _recheckNote() {
 function _cfgKick() {
   if (_cfgBusy || typeof PlanConfig === 'undefined') return;
   const after = !!_cfg && _cfg.state === 'after';
-  if (!_cfgForce && Date.now() - _cfgAt < (after ? CFG_RECHECK_MS : CFG_RETRY_MS)) return;
+  if (!_cfgForce && Date.now() - _cfgAt < CFG_RETRY_MS) return;
   const force = _cfgForce;
   _cfgForce = false;
   _cfgBusy = true;
@@ -171,7 +171,11 @@ function _cfgKick() {
     if (moved && typeof toast === 'function') toast(`Η ημέρα μετάβασης εθνικών άλλαξε: ${_dm(wasDay)} → ${_dm(r.cutoverDay)} — η προβολή ενημερώθηκε`, 'warn');
     if (_sat === sat && !WN5._broken && document.querySelector('#content > .wn5') && (_decide() === 'v5' || _afterL(sat))) { if (!paint()) _fallback(); }
     else window.renderWeeklyNatl();
-  }, () => { _cfgAt = Date.now(); }).finally(() => { _cfgBusy = false; });   // load() never rejects; belt and braces
+  }, () => { _cfgAt = Date.now(); }).finally(() => {   // load() never rejects; belt and braces
+    _cfgBusy = false;
+    // a ↻ pressed while this ask ran is served now, not by whatever calls active() next (a click it would repaint under)
+    if (_cfgForce) _cfgKick();
+  });
 }
 // The old-view choice is set aside for a week ≥ L: v5 is what the flag would show without the choice.
 function _oldViewBlocked() {
@@ -685,15 +689,17 @@ function _anodHTML(r, m, ok) {
 // (WN5L vBefore, by the base's stop order) comes first, numbered with Veroia among the cell's loadings (Figma H1
 // row 5 «1 Thessaloniki»); the ones after it follow. Veroia itself carries no number box: its word is its mark.
 // Like every point (owner 28/10): place + city; the clients are in the order card and the titles.
+// The number sits INSIDE the place line here (inl): the two flow as one run, so a place that does not fit beside its
+// number goes whole to the next line, and that run is the box cut at two lines (long names, owner 28/10).
 function _flHTML(s, ok, hd) {
-  if (!s.veroia) return _ptsHTML(s.from, ok, null);
+  if (!s.veroia) return _ptsHTML(s.from, ok, null, true);
   const vh = `<span class="wn5-vh${hd}">Βέροια</span><span class="wn5-vtime${hd}"${_segAttr(s.veroia.segLabel)}>${_win(s.veroia.from, s.veroia.to, s.veroia.allDay)}</span>`;
   const k = Math.min(s.vBefore || 0, s.from.length);
-  return _ptsHTML(s.from.slice(0, k), ok, 1) + vh + _ptsHTML(s.from.slice(k), ok, k + 2);
+  return _ptsHTML(s.from.slice(0, k), ok, 1, true) + vh + _ptsHTML(s.from.slice(k), ok, k + 2, true);
 }
 // start (a number) = number the points from it, boxes always shown (a cell that also has «Βέροια»); else WN5L's n and
 // no box on a lone point (wi4 rule 6). Every point is place + city (owner 28/10), so no cell is «place only» any more.
-function _ptsHTML(pts, ok, start) {
+function _ptsHTML(pts, ok, start, inl) {
   if (!pts.length) return '';
   const num = start == null ? (p) => (pts.length === 1 ? null : p.n) : (p, i) => start + i;
   const vis = _visPts();
@@ -708,7 +714,7 @@ function _ptsHTML(pts, ok, start) {
   const more = rest.length
     ? `<span class="wi4-more${restLate ? ' wn5-late' : ''}" title="${_esc(rest.map((i) => `${num(pts[i], i) || pts[i].n}. ${_ptFull(pts[i])}`).join('\n'))}"><b>+${rest.length}</b></span>`
     : '';
-  return `<span class="wi4-pts wn5-pts">${idx.filter((i) => shown.has(i)).map((i) => _ptHTML(pts[i], num(pts[i], i), ok)).join('')}${more}</span>`;
+  return `<span class="wi4-pts wn5-pts">${idx.filter((i) => shown.has(i)).map((i) => _ptHTML(pts[i], num(pts[i], i), ok, inl)).join('')}${more}</span>`;
 }
 // Who, then where (Figma H1 «Omega Market · Rentis»): the client in bold, the place in grey. Two runs that break
 // between them, the «·» staying on the first line («ΠΕΛΑΤΗΣ Δ ·» / «Aspropyrgos»), never inside a name that fits. A waiting load's point
@@ -743,7 +749,7 @@ function _ptFull(p) {
   const city = _ptCity(p), who = _ptWho(p);
   return `${p.name}${city ? ', ' + city : ''} · ${_winTxt(p.from, p.to, p.allDay)} · ${_pal(p.pallets)}${_tempTxt(p) ? ' · ' + _tempTxt(p) : ''}${who ? ' · ' + who : ''}`;
 }
-function _ptHTML(p, n, ok) {
+function _ptHTML(p, n, ok, inl) {
   // Figma audit B-12 (H1): a load waiting for its ΑΝΟΔΟΣ that ends at Veroia reads as a cycle's end (r.end): «Βέροια
   // · τέλος κύκλου», then its deadline; no city «Veroia» under «Βέροια». The deadline is the window's end when the
   // board has one, else the base's due DAY (nat_due_day) — no hour is invented for it.
@@ -755,8 +761,9 @@ function _ptHTML(p, n, ok) {
   const city = _ptCity(p);
   const full = _ptFull(p);
   return `<span class="wi4-pt wn5-pt${p.late ? ' wn5-late' : ''}${_dc(ok && p.dim && !p.late)}" data-stop="${_id(p.stopId)}"${_segAttr(p.segLabel)} title="${_esc(full)}">`
-    + (n == null ? '' : `<span class="wi4-pt-n">${n}</span>`)
-    + `<span class="wi4-l1">${_esc(p.name)}</span>`
+    + (n == null ? `<span class="wi4-l1">${_esc(p.name)}</span>`
+      : inl ? `<span class="wi4-l1"><span class="wi4-pt-n">${n}</span> ${_esc(p.name)}</span>`
+        : `<span class="wi4-pt-n">${n}</span><span class="wi4-l1">${_esc(p.name)}</span>`)
     + `<span class="wi4-l2${p.late ? ' wi4-t-amb' : ''}">${city ? `<span class="wn5-pcity">${_esc(city)}</span> · ` : ''}${_win(p.from, p.to, p.allDay)} · ${_esc(_pal(p.pallets))}${_tempTxt(p) ? `<span class="wn5-temp"> · ${_esc(_tempTxt(p))}</span>` : ''}</span></span>`;
 }
 // The day chip of a side. On a cycle row it is a button: T16, it opens the date panel Δ4 of its side
@@ -781,18 +788,18 @@ function _legAttr(r, side) {
 // stuck on the old one, «until a reload» (the reload opens the lighter current week). So: the clicked row says at once
 // that it is reading (.wn5-leg-busy, aria-busy), one leg read at a time (a click while one runs is that same read),
 // and a read that failed is said as what it is, with the way on (↻). The week state itself was right all along.
-let _legBusy = null;   // the row whose leg read is running
+let _legBusy = null;   // the cycle (rt_id) whose leg read is running: a repaint replaces the row, not the cycle
 function _leg(ev, rtId, side) {
   const t = ev && ev.target;
   if (t && t.closest && t.closest('button, a, input, select, [data-act]')) return;
   if (!active() || !ID_RE.test(String(rtId)) || typeof WN5Form === 'undefined' || typeof WN5Form.openLeg !== 'function') return;
   const row = ev && ev.currentTarget && ev.currentTarget.closest ? ev.currentTarget.closest('.wn5-row') : null;
-  if (_legBusy) {
-    // the same row already shows its read; another row is told why its click waits, never a silent nothing
-    if (_legBusy !== row && typeof toast === 'function') toast('Ανοίγει ήδη ένα άλλο σκέλος — δοκίμασε ξανά μόλις ανοίξει', 'info');
+  if (_legBusy !== null) {
+    // the same cycle already shows its read; another cycle is told why its click waits, never a silent nothing
+    if (_legBusy !== Number(rtId) && typeof toast === 'function') toast('Ανοίγει ήδη ένα άλλο σκέλος — δοκίμασε ξανά μόλις ανοίξει', 'info');
     return;
   }
-  _legBusy = row || true;
+  _legBusy = Number(rtId);
   if (row) { row.classList.add('wn5-leg-busy'); row.setAttribute('aria-busy', 'true'); }
   Promise.resolve(WN5Form.openLeg(Number(rtId), side === 'ANODOS' ? 'ANODOS' : 'KATHODOS'))
     .then((ok) => {

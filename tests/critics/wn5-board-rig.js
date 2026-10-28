@@ -1352,7 +1352,8 @@ async function scnPlus(browser, origin) {
       const c = cell.getBoundingClientRect();
       const spill = [...cell.querySelectorAll('.wn5-pt')].some((p) => p.getBoundingClientRect().right > c.right + 0.5);
       // the stop number sits on the line of the place's first word (T14 fidelity r2: «1» stood alone on its own line)
-      const n = cell.querySelector('.wi4-pt-n'), l1 = n && n.nextElementSibling;
+      // the number inside the place line since 28/10 (wn5 small fixes), before it until then
+      const n = cell.querySelector('.wi4-pt-n'), l1 = n && (n.parentElement.classList.contains('wi4-l1') ? n.parentElement : n.nextElementSibling);
       let numLine = null;
       if (l1) {
         const tn = [...l1.childNodes].find((x) => x.nodeType === 3 && x.data.trim());

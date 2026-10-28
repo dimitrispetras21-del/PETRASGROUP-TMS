@@ -97,7 +97,7 @@
     // not printed). A place name comes only when the item carries one (c.place: a base change, proposed in the PR of
     // 28/10) — never an id.
     piece_on_rt: (c) => `βγαίνει από το ${c.code || '—'} `
-      + (c.place ? `το φορτίο για ${c.place}` : c.nat_order_id != null ? 'το φορτίο της εθνικής που βγήκε από αυτή την παραγγελία' : 'φορτίο αυτής της παραγγελίας'),
+      + (c.place ? `το φορτίο για ${c.place}` : c.nat_order_id != null ? 'το φορτίο της εθνικής που βγήκε από αυτή την παραγγελία' : 'το φορτίο αυτής της παραγγελίας'),
   });
 
   // The category word the two-step list puts before a line (Figma Δ5 2053:8079 and H4 2125:7738: «Μισθοδοσία · …»).

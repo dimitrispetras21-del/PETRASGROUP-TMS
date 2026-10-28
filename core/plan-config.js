@@ -63,7 +63,8 @@
   const AFTER_RECHECK_MS = 5 * 60 * 1000;
   function _recheck(kept) {
     if (_inflight) return _inflight;
-    _inflight = (async () => {
+    const p = (async () => {
+      await null;   // never settle before _inflight is set (no planFetch = no await below)
       let e = null;
       try {
         const r = typeof planFetch === 'function' ? _read(await planFetch('GET', '/plan/config', { designed: ['no_route'] })) : null;
@@ -75,12 +76,13 @@
         e = x;
         if (x && typeof PlanApi !== 'undefined' && PlanApi.isDesigned(x)) _log(x);
       } finally {
-        _inflight = null;
+        if (_inflight === p) _inflight = null;
       }
       // asked again after AFTER_RECHECK_MS, not on every render while the base is down
       return _keep(Object.freeze(Object.assign({}, kept, { recheckErr: e })));
     })();
-    return _inflight;
+    _inflight = p;
+    return p;
   }
   function load(opts) {
     const fresh = !!(opts && opts.fresh);

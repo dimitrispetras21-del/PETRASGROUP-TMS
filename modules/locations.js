@@ -604,8 +604,12 @@ async function _locGeocodeQuery(name, city, country, address) {
 // a town, road, postcode area or boundary is refused, and a try that wants a house (the address) refuses it too.
 async function _locGeoTries(tries) {
   const failed = [];
+  let asked = false;
   for (const t of tries) {
     let hit = null;
+    // Nominatim allows one request a second: the second try waits, or it is the one rate-limited
+    if (asked) await new Promise((r) => setTimeout(r, 1000));
+    asked = true;
     try {
       const q = t.q.filter(Boolean).join(', ');
       const opt = typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? { signal: AbortSignal.timeout(4000) } : {};

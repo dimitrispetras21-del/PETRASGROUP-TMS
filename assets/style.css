@@ -9131,21 +9131,17 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 .wn5 :is(.wn5-pts, .wn5-end) :is(.wi4-l1, .wi4-l2), .wn5 .wn5-gapbox > .wi4-ell { white-space:normal; overflow:visible; text-overflow:clip; overflow-wrap:break-word; }
 /* ΦΟΡΤΩΣΗ (120px at 1440): the number and the place flow inline, so a place that does not fit beside its number
    goes whole to the next line instead of breaking mid-word («THESSALONI/KI», DESIGN.md #6 forbids the «…» on a place).
-   The break after the number comes from the l1's leading space; break-word stays only for a word wider than the cell. */
+   The number is inside the place line (since 28/10) and a space follows it; break-word stays only for a word wider
+   than the cell. */
 .wn5 .wn5-fl .wn5-pt { display:block; }
-.wn5 .wn5-fl .wn5-pt > .wi4-pt-n { display:inline-block; vertical-align:top; }
-.wn5 .wn5-fl .wn5-pt > .wi4-pt-n + .wi4-l1 { display:inline; }
-.wn5 .wn5-fl .wn5-pt > .wi4-pt-n + .wi4-l1::before { content:' '; }
+.wn5 .wn5-fl .wn5-pt > .wi4-l1 > .wi4-pt-n { display:inline-block; vertical-align:top; }
 .wn5 .wn5-fl .wn5-pt > .wi4-l2 { display:block; }
 /* Long names (owner 28/10, live test): a place name of four lines made its row twice as tall as its neighbours and
    pushed the board apart. Over the «never cut» above, the owner's rule for the place line of a point: at most TWO
    lines, then «…», the whole stop (place first) in the point's title — the Weekly International's way of keeping
-   the name readable on hover. Line 2 (city · window · pallets) is never cut. In ΦΟΡΤΩΣΗ the number floats at the
-   left so the name can be a clamped box beside it (an inline run cannot be clamped). */
+   the name readable on hover. Line 2 (city · window · pallets) is never cut. In ΦΟΡΤΩΣΗ the number is inside the
+   place line (modules/weekly_natl_v5.js _flHTML), so number + place stay one run and the run is what is clamped. */
 .wn5 .wn5-pts .wn5-pt > .wi4-l1 { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; white-space:normal; }
-.wn5 .wn5-fl .wn5-pt > .wi4-pt-n { float:left; margin-right:3px; }
-.wn5 .wn5-fl .wn5-pt > .wi4-pt-n + .wi4-l1 { display:-webkit-box; }
-.wn5 .wn5-fl .wn5-pt > .wi4-pt-n + .wi4-l1::before { content:none; }
 /* ...and the points may use the cell's right 9px gutter: at 1440 the 102px content is 2px short of «1 THESSALONIKI»
    (14 + 3 + 87), which left the number alone on its line; the next column keeps its own 9px, so text never touches. */
 .wn5 .wn5-fl .wn5-pts { margin-right:-9px; }

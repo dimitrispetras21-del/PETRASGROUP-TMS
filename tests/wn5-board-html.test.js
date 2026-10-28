@@ -113,7 +113,8 @@ test('F4α-T5: a loading before Veroia comes first in ΦΟΡΤΩΣΗ, numbered �
   // gap and waiting sides make no loading before the hub: 0, never undefined
   for (const r of all) for (const s of [r.kath, r.anod]) if (s && (s.gap || r.key.startsWith('wait:'))) assert.strictEqual(s.vBefore, 0, `${r.key} ${s.side}: vBefore ${s.vBefore}`);
   const fl = cell(rows(c.WN5._html(m)).find((x) => keyOf(x) === 'rt:105'), 'wn5-fl');
-  assert.ok(/<span class="wi4-pt-n">1<\/span><span class="wi4-l1">Thessaloniki Test<\/span>[\s\S]*<span class="wn5-vh[^"]*">Βέροια<\/span>/.test(fl), `rt:105 ΦΟΡΤΩΣΗ: ${fl}`);
+  // the number inside the place line since 28/10 (long names: number + place are one run, cut at two lines)
+  assert.ok(/<span class="wi4-l1"><span class="wi4-pt-n">1<\/span> Thessaloniki Test<\/span>[\s\S]*<span class="wn5-vh[^"]*">Βέροια<\/span>/.test(fl), `rt:105 ΦΟΡΤΩΣΗ: ${fl}`);
 });
 
 test('F4α-T17 fidelity: a local loading on a pickup names what is loaded → Βέροια and the delivery it is for (Figma 2011:8305)', () => {

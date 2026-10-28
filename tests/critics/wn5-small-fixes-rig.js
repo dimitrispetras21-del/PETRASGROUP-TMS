@@ -138,11 +138,11 @@ async function fold({ browser, origin, ok, scn }) {
 // F18: the address first, then name + city, and the person is told which one matched.
 async function f18({ browser, origin, ok, scn }) {
   const { page } = await K.openApp(browser, origin);
-  const asked = [];
+  const asked = [], at = [];
   let mode = 'house';
   await page.route('**/nominatim.openstreetmap.org/**', (route) => {
     const q = new URL(route.request().url()).searchParams.get('q') || '';
-    asked.push(q);
+    asked.push(q); at.push(Date.now());
     const byAddr = /Test Street 9/.test(q);
     if (byAddr && mode === 'netfail') return route.abort('timedout');   // the address search never gets an answer
     if (!byAddr && mode === 'netfail') return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '[]' });
@@ -159,7 +159,7 @@ async function f18({ browser, origin, ok, scn }) {
   await page.evaluate(() => navigate('locations'));
   await page.waitForTimeout(500);
   const run = async (m) => {
-    mode = m; asked.length = 0;
+    mode = m; asked.length = 0; at.length = 0;
     await page.evaluate(() => { const ev = window.__ev || []; ev.length = 0; });
     await page.evaluate(() => _locOpenCreate());
     await page.waitForSelector('#locF_name', { timeout: 5000 });
@@ -168,11 +168,13 @@ async function f18({ browser, origin, ok, scn }) {
     await page.fill('#locF_address', 'Test Street 9, 41222');
     await page.waitForTimeout(150);
     await page.click('#locGeoBtn');
-    await page.waitForTimeout(600);
+    // the second try waits 1 s (Nominatim: one request a second): the button comes back when the search ends
+    await page.waitForFunction(() => { const b = document.getElementById('locGeoBtn'); return b && !b.disabled; }, null, { timeout: 15000 }).catch(() => {});
+    await page.waitForTimeout(100);
     const v = await page.evaluate(() => ({ lat: document.getElementById('locF_lat').value, lon: document.getElementById('locF_lon').value }));
     const ts = await toasts(page);
     await page.evaluate(() => closeModal());
-    return { v, ts, asked: asked.slice() };
+    return { v, ts, asked: asked.slice(), gap: at.length > 1 ? at[1] - at[0] : null };
   };
   let r = await run('house');
   ok(scn, 'address + city first (the first Nominatim query is the address)', /^Test Street 9, 41222, Larisa/.test(r.asked[0] || ''), r.asked);
@@ -184,6 +186,7 @@ async function f18({ browser, origin, ok, scn }) {
   const x = await page.evaluate(() => ({ js: !!window.__rigx, el: !!document.getElementById('rigx') }));
   ok(scn, 'the found text is shown as text, never as HTML', r.v.lat === '40.444444' && !x.js && !x.el && r.ts.some((t) => t.includes('&lt;img')), { x, ts: r.ts });
   r = await run('road');
+  ok(scn, 'the second Nominatim request waits 1 s after the first (one request a second)', r.gap >= 950, r.gap);
   ok(scn, 'an address that only finds the road falls back to name + city', r.asked.length === 2 && /^SYNTHETIC DEPOT, Larisa/.test(r.asked[1] || '') && r.v.lat === '39.222222', r);
   ok(scn, 'it says name + city matched', r.ts.some((t) => /βρέθηκαν από όνομα \+ πόλη/.test(t)), r.ts);
   r = await run('netfail');

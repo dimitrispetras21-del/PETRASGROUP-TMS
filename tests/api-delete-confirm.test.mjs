@@ -108,7 +108,7 @@ test('live 28/10: the 428 list reads in words — piece_on_rt without JSON or a 
     false, ['core/wn5-labels.js']);
   await s.run(DEL);
   const t = s.asked[0] || '';
-  assert.match(t, /• βγαίνει από το RT-T201 φορτίο αυτής της παραγγελίας ×2/);
+  assert.match(t, /• βγαίνει από το RT-T201 το φορτίο αυτής της παραγγελίας ×2/);
   assert.match(t, /• άλλη επίπτωση · zz_new_kind/);
   assert.ok(!/order_stop_id|6101|\{"kind"/.test(t), t);
 });

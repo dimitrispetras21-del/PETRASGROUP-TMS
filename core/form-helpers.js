@@ -8,7 +8,7 @@
 const _fhLocationsArr = [];  // [{id,label}]
 const _fhLocationsMap = {};  // recId → label
 const _fhClientsMap   = {};  // recId → name
-const _fhClientCache  = {};  // query → [{id,label}]; '\u0001' + probe word → {at, recs} the server's records (F19, 60 s)
+const _fhClientCache  = {};  // query → {at, res: [{id,label}]}; '\u0001' + probe word → {at, recs} the server's records (F19, 60 s each)
 
 // The location records (Name/City/Country) — the reference preload's copy
 // when it has landed (kept fresh by its revalidate), else the same single
@@ -69,7 +69,8 @@ function _fhRefreshLocations(locRecords) {
 async function fhSearchClients(q) {
   if (!q || q.length < 2) return [];
   const key = q.toLowerCase();
-  if (_fhClientCache[key]) return _fhClientCache[key];
+  // 60 s, as the probe below (F19): a client created meanwhile is found by the next search of the same text
+  if (_fhClientCache[key] && Date.now() - _fhClientCache[key].at < 60000) return _fhClientCache[key].res;
   const safe = q.replace(/[^a-zA-Z0-9\s\u0370-\u03FF\u1F00-\u1FFF.-]/g, '').trim();
   if (!safe) return [];
   // F19 (live 28/10): «name + start of the 2nd word» found nothing while one word worked. The whole phrase went to
@@ -97,7 +98,7 @@ async function fhSearchClients(q) {
     .filter(c => { const l = c.label.toLowerCase(), n = _fhNorm(c.label); return need.every(([w, nw]) => l.includes(w) || n.includes(nw)); })
     .sort((a, b) => a.label.localeCompare(b.label))
     .slice(0, 30);
-  _fhClientCache[key] = res;
+  _fhClientCache[key] = { at: Date.now(), res };
   res.forEach(c => { _fhClientsMap[c.id] = c.label; });
   return res;
 }
