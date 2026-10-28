@@ -126,10 +126,14 @@ BEGIN
   SELECT count(*) INTO v_stops0 FROM public.rt_stops;
   SELECT count(*) INTO v_via0 FROM public.order_stops WHERE via_hub;
   SELECT opened_at INTO v_opened FROM public.plan_config WHERE id = 1;
-  -- what the soft delete of the week's NL will take with it (principle 1: declared, never silent)
+  -- the NL the sync will unlink - those of a VS of the week (Cancelled aside) with a stop to bridge: a live stop with
+  -- pallets on its national side (plan_h_bridge_wanted under the new day; a VS with none keeps its NL, as in 074) -
+  -- and what their soft delete will take with it (principle 1: declared, never silent)
   SELECT coalesce(array_agg(nl.id ORDER BY nl.id), '{}') INTO v_nls FROM public.national_loads nl JOIN public.orders o ON o.id = nl.source_order_id
    WHERE o.veroia_switch AND o.deleted_at IS NULL AND o.status IS DISTINCT FROM 'Cancelled'
-     AND o.cross_dock_date >= c_new AND o.cross_dock_date < c_old AND nl.source_type = 'Direct' AND nl.deleted_at IS NULL;
+     AND o.cross_dock_date >= c_new AND o.cross_dock_date < c_old AND nl.source_type = 'Direct' AND nl.deleted_at IS NULL
+     AND EXISTS (SELECT 1 FROM public.order_stops s WHERE s.order_id = o.id AND s.deleted_at IS NULL AND coalesce(s.pallets, 0) > 0
+                   AND plan_h_vs_nat_side(o.direction, s.stop_type));
   SELECT count(*) INTO v_cas_stops FROM public.order_stops WHERE national_load_id = ANY (v_nls) AND deleted_at IS NULL;
   SELECT count(*) INTO v_cas_ramp FROM public.ramp WHERE national_load_id = ANY (v_nls) AND deleted_at IS NULL;
   SELECT count(*) INTO v_cas_lm FROM public.local_moves WHERE parent_nat_load_id = ANY (v_nls) AND deleted_at IS NULL;

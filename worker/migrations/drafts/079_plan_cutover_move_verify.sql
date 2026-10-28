@@ -1,7 +1,7 @@
 -- 079 VERIFY - read only (SELECT), after 079_plan_cutover_move.sql and any time after. One row.
 -- EXPECTED: applied = '079 in place', cutover_day = 2026-10-24, opened_at unchanged (28/10 11:39 UTC), floor = true,
--- week_vs_in_v5 = week_vs (every live VS of 24-30/10, Cancelled aside), week_nl_live = 0 (their NL; a
--- Cancelled VS keeps its own), gap = 0 (B-95's
+-- week_vs_in_v5 = week_vs (every live VS of 24-30/10, Cancelled aside), week_nl_live = 0 (the NL of those
+-- with a stop to bridge; a Cancelled VS, or one without a national-side stop with pallets, keeps its own), gap = 0 (B-95's
 -- equality), b78 = 0, b54_matches = true. bridges_079 grows only if the desk adds VS to the week (the trigger
 -- bridges them as 'trigger:plan_bridge_sync', not '079 backfill').
 SELECT CASE WHEN public.plan_cutover_day() = DATE '2026-10-24' THEN '079 in place' ELSE '079 NOT APPLIED' END AS applied,
@@ -15,7 +15,8 @@ SELECT CASE WHEN public.plan_cutover_day() = DATE '2026-10-24' THEN '079 in plac
           AND o.cross_dock_date >= DATE '2026-10-24' AND o.cross_dock_date < DATE '2026-10-31' AND public.plan_h_vs_in_v5(o.id)) AS week_vs_in_v5,
        (SELECT count(*) FROM public.national_loads nl JOIN public.orders o ON o.id = nl.source_order_id
          WHERE nl.deleted_at IS NULL AND nl.source_type = 'Direct' AND o.veroia_switch AND o.deleted_at IS NULL
-           AND o.status IS DISTINCT FROM 'Cancelled' AND o.cross_dock_date >= DATE '2026-10-24' AND o.cross_dock_date < DATE '2026-10-31') AS week_nl_live,
+           AND o.status IS DISTINCT FROM 'Cancelled' AND o.cross_dock_date >= DATE '2026-10-24' AND o.cross_dock_date < DATE '2026-10-31'
+           AND EXISTS (SELECT 1 FROM public.order_stops s WHERE s.order_id = o.id AND public.plan_h_bridge_wanted(s.id))) AS week_nl_live,
        (SELECT count(*) FROM public.shipments WHERE created_by = '079 backfill' AND deleted_at IS NULL) AS bridges_079,
        (SELECT count(*) FROM public.plan_cutover_log WHERE kind = 'nl_unlinked' AND reason = '079 backfill') AS nl_unlinked_079,
        (SELECT count(*) FROM public.plan_notices WHERE created_by = '079 backfill' AND kind = 'legacy_nl_replaced') AS notices_079,

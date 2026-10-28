@@ -109,6 +109,7 @@ async function copy() {
   await db.exec(vs('C3', 'Import', '2026-11-07', [4], 'Pending'));               // after 31/10: bridged by the trigger
   await db.exec(vs('C4', 'Export', '2026-11-07', [2], 'Pending'));               // bridged, then moved into the week:
   await db.exec(`UPDATE orders SET cross_dock_date = DATE '2026-10-29' WHERE reference = 'T79-C4'`);   // once v5
+  await db.exec(vs('C5', 'Import', '2026-10-29', [0], 'Pending'));               // the week, no pallets: nothing to bridge
   return db;
 }
 
@@ -188,6 +189,9 @@ test('079 on the production-shaped copy', async (t) => {
     assert.strictEqual(await nlLive(db, 'C1'), 1, 'C1 (23/10) keeps its NL');
     assert.strictEqual(await inV5(db, 'C2'), false);
     assert.strictEqual(await nlLive(db, 'C2'), 1, 'C2 (Cancelled) keeps its NL');
+    assert.strictEqual(await inV5(db, 'C5'), true, 'C5 is v5 by its day');
+    assert.strictEqual(await bridgesOf(db, 'C5'), 0, 'C5 has no stop to bridge');
+    assert.strictEqual(await nlLive(db, 'C5'), 1, 'C5 keeps its NL (the sync unlinks only when it bridges)');
     assert.deepStrictEqual(await shipIds(db, 'C3'), c3);
     assert.deepStrictEqual(await shipIds(db, 'C4'), c4);
     assert.strictEqual(await n(db, GAP), 0);
@@ -208,8 +212,8 @@ test('079 on the production-shaped copy', async (t) => {
     const v = await one(db, read(VERIFY));
     assert.strictEqual(v.applied, '079 in place');
     assert.strictEqual(v.floor, true);
-    assert.strictEqual(Number(v.week_vs), 10, 'the 9 of production + C4 (C2 is Cancelled)');
-    assert.strictEqual(Number(v.week_vs_in_v5), 10);
+    assert.strictEqual(Number(v.week_vs), 11, 'the 9 of production + C4 + C5 (C2 is Cancelled)');
+    assert.strictEqual(Number(v.week_vs_in_v5), 11);
     assert.strictEqual(Number(v.week_nl_live), 0);
     assert.deepStrictEqual([v.bridges_079, v.nl_unlinked_079, v.notices_079, v.gap, v.b78].map(Number), [19, 8, 2, 0, 0]);
     assert.strictEqual(v.b54_matches, true);
@@ -253,8 +257,8 @@ test('079 on the production-shaped copy', async (t) => {
     assert.strictEqual(await bridgesOf(db, 'A3'), 2);
     const at79 = await one(db, STATE);
     const msg = await errorOf(db, read(RB_DRY));
-    assert.match(msg ?? '', /DRY RUN 079 ROLLBACK finished - EVERYTHING UNDONE.*rollback ran: day L 2026-10-31, live bridges \d+, via_hub \d+, live NL of the week 10, triggers \d+/, msg);
-    assert.deepStrictEqual(await one(db, STATE), at79, 'nothing kept (the 10: the 8, N1\'s, the Cancelled C2\'s own)');
+    assert.match(msg ?? '', /DRY RUN 079 ROLLBACK finished - EVERYTHING UNDONE.*rollback ran: day L 2026-10-31, live bridges \d+, via_hub \d+, live NL of the week 11, triggers \d+/, msg);
+    assert.deepStrictEqual(await one(db, STATE), at79, 'nothing kept (the 11: the 8, N1\'s, C2\'s and C5\'s own)');
 
     await db.exec(read(RB));
     const back = await one(db, STATE);
