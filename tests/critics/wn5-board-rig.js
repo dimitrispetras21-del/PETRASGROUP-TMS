@@ -73,6 +73,13 @@ function defaultPlan(e, S) {
   if (e.m === 'GET' && e.path === '/plan/notices') return [200, { desk: e.q.desk, unread: [], recent: [] }];
   return planErr(409, 'WRITES_CLOSED', 'writes_closed');   // PLAN_WRITES_OPEN = false until day L
 }
+// The rig catalogue every board open gets (GET /plan/lookups, live since Worker deploy 1): the fixture's places by id
+// (stops name 1–7; 8 = the N-T020 national's Lamia), id 1 the one hub — the shape of 074a plan_lookups.
+const DEF_LOOKUPS = () => {
+  const names = { 1: 'ΒΕΡΟΙΑ TEST', 2: 'Rentis Test', 3: 'Aspropyrgos Test', 4: 'Oinofyta Test', 5: 'Larisa Test', 6: 'Thessaloniki Test', 7: 'Athens Test', 8: 'Lamia Test' };
+  return { locations: Object.keys(names).map((k) => ({ id: Number(k), legacy_id: 'recDEF' + k, name: names[k], address: null, city: null, phone: null, is_hub: k === '1' })),
+    clients: [], trucks: [], trailers: [], drivers: [], partners: [] };
+};
 const routeKey = (m, p) => `${m} ${p.replace(/\/\d+(?=\/|$)/g, '/:id')}`;
 
 // opts: role · flag ('on' | 'pilot' | 'off') · board · plan { 'POST /plan/x/:id/y': (entry, S) => [status, body] } · viewport
@@ -106,6 +113,13 @@ async function openBoard(browser, origin, opts = {}) {
     if (m === 'GET' && u.pathname === '/plan/config' && !S.routes['GET /plan/config']) {
       S.config = (S.config || 0) + 1;
       return json(route, { cutover_day: null, opened_at: null, writes_open: false });
+    }
+    // Live fix 1 (28/10): the board reads GET /plan/lookups beside /plan/board for its place names. Answered with the
+    // rig catalogue and counted in S.lookups (like S.config): S.plan stays the traffic every scenario judges. A
+    // scenario that stubs the route itself (plan['GET /plan/lookups']) sees it in S.plan, as before.
+    if (m === 'GET' && u.pathname === '/plan/lookups' && !S.routes['GET /plan/lookups']) {
+      S.lookups = (S.lookups || 0) + 1;
+      return json(route, clone(opts.lookups || DEF_LOOKUPS()));
     }
     if (u.pathname.startsWith('/plan/')) {
       const raw = req.postData();
@@ -422,11 +436,13 @@ SCN.paint = async (browser, origin) => {
   ok(scn, '1440: no page errors', !narrow.S.pageErrors.length, narrow.S.pageErrors);
   await shot(narrow.page, 'paint-1440-w40');
   await narrow.page.context().close();
-  // Ε-27/Ε-44: a week with no VS leg and no PlanIds.hub() (live: GET /plan/lookups is 404) cannot place Veroia —
+  // Ε-27/Ε-44: a week with no VS leg and no PlanIds.hub() (a catalogue without its one hub) cannot place Veroia —
   // the board says so in a strip, never Veroia as an ordinary stop in silence.
   const hubless = fixture();
   for (const c of hubless.cycles) for (const s of c.stops) for (const l of s.legs) if (String(l.kind).startsWith('vs_')) l.kind = 'national';
-  const hl = await openBoard(browser, origin, { board: hubless });
+  const noHub = DEF_LOOKUPS();
+  for (const l of noHub.locations) l.is_hub = false;
+  const hl = await openBoard(browser, origin, { board: hubless, lookups: noHub });
   const hlText = await hl.page.evaluate(() => { const x = document.querySelector('#content .wn5 .wn5-strip[data-kind="client"]'); return x ? x.textContent : null; });
   ok(scn, 'a week whose Veroia is not identified shows the WN5L.HUB_UNKNOWN strip', !!hlText && hlText.includes('Η Βέροια δεν αναγνωρίστηκε'), hlText);
   await hl.page.context().close();
@@ -2423,6 +2439,86 @@ function checkFixture() {
   console.log(fails === before ? '\nFIXTURE GO: every case is in the week' : `\nFIXTURE NO-GO: ${fails - before} check(s) failed`);
   return fails === before;
 }
+// Live W45 (28/10, the first day of the v5 board): the shape plan_board sends today — VS pieces with ids for their
+// places and no windows (074a), three vs_export waiting for a ΑΝΟΔΟΣ to Veroia, four vs_import at the hub. The six
+// owner-approved fixes of 28/10, each a check that is ✗ on the main of that morning (eea29d62).
+function live45() {
+  const base = { load_from: null, load_to: null, deliver_from: null, deliver_to: null, overdue: false, is_stock: false, leave_by: null,
+    reference: null, nat_order_id: null, pallet_exchange: true, temperature_c: null };
+  const ex = (o) => Object.assign({}, base, { kind: 'vs_export', nat_to_location_id: 1, nat_ready_day: '2026-10-10', nat_due_day: '2026-10-11' }, o, { position_location_id: o.nat_from_location_id });
+  const im = (o) => Object.assign({}, base, { kind: 'vs_import', for_split: false, inbound_rt_id: null, nat_ready_day: '2026-10-12', nat_due_day: '2026-10-13' }, o);
+  return { week: WEEK, cycles: [], notices: [],
+    waiting: [ex({ piece_id: 19, shipment_id: 19, order_id: 607, order_stop_id: 2112, client_id: 41, client: 'ΠΕΛΑΤΗΣ ΕΞ 1', pallets: 33, nat_from_location_id: 8 }),
+      ex({ piece_id: 20, shipment_id: 20, order_id: 616, order_stop_id: 2141, client_id: 42, client: 'ΠΕΛΑΤΗΣ ΕΞ 2', reference: 'EX-616', pallets: 24, temperature_c: 7, nat_from_location_id: 6 }),
+      ex({ piece_id: 21, shipment_id: 21, order_id: 616, order_stop_id: 2142, client_id: 42, client: 'ΠΕΛΑΤΗΣ ΕΞ 2', reference: 'EX-616', pallets: 8, temperature_c: 7, nat_from_location_id: 8 })],
+    hub: [im({ piece_id: 15, shipment_id: 15, order_id: 603, order_stop_id: 2091, client_id: 43, client: 'ΠΕΛΑΤΗΣ ΕΙ 1', pallets: 30, nat_ready_day: '2026-10-11', nat_due_day: '2026-10-12', nat_to_location_id: 2 }),
+      im({ piece_id: 16, shipment_id: 16, order_id: 604, order_stop_id: 2096, client_id: 44, client: 'ΠΕΛΑΤΗΣ ΕΙ 2', reference: 'IM-604', pallets: 11, temperature_c: 4, nat_to_location_id: 3 }),
+      im({ piece_id: 17, shipment_id: 17, order_id: 604, order_stop_id: 2097, client_id: 44, client: 'ΠΕΛΑΤΗΣ ΕΙ 2', reference: 'IM-604', pallets: 6, temperature_c: 4, nat_to_location_id: 4 }),
+      im({ piece_id: 18, shipment_id: 18, order_id: 604, order_stop_id: 2098, client_id: 44, client: 'ΠΕΛΑΤΗΣ ΕΙ 2', reference: 'IM-604', pallets: 15, temperature_c: 4, nat_to_location_id: 5 })] };
+}
+const liveRows = (page) => page.evaluate(() => [...document.querySelectorAll('#content .wn5 .wn5-row[data-piece]')].map((r) => {
+  const t = (sel) => { const e = r.querySelector(sel); return e ? e.textContent.replace(/\s+/g, ' ').trim() : null; };
+  // the shown points' titles + the «+N» title (the folded ones, one per line): every point of the cell
+  const pts = (sel) => [...r.querySelectorAll(sel + ' .wn5-pt')].map((p) => p.getAttribute('title') || '')
+    .concat([...r.querySelectorAll(sel + ' .wi4-more')].flatMap((m) => (m.getAttribute('title') || '').split('\n')));
+  return { piece: r.dataset.piece, ksp: t('.wn5-kspan'), asp: t('.wn5-aspan'), kgap: !!r.querySelector('.wn5-kspan .wn5-gapbox'), agap: !!r.querySelector('.wn5-aspan .wn5-gapbox'), kto: t('.wn5-kto'), afl: t('.wn5-afl'), ato: t('.wn5-ato'), asg: t('.wn5-asg'), kpts: pts('.wn5-kto'), apts: pts('.wn5-afl'), tpts: pts('.wn5-ato'), text: r.textContent.replace(/\s+/g, ' ') };
+}));
+SCN.live45 = async (browser, origin) => {
+  const scn = 'live45';
+  const { page, S } = await openBoard(browser, origin, { board: live45() });
+  await page.waitForSelector('#content > .wi4.wn5[data-state="ok"]', { timeout: 8000 }).catch(() => {});
+  const rows = await liveRows(page);
+  const by = (p) => rows.find((r) => r.piece === String(p)) || {};
+  // 1 · place names from GET /plan/lookups (the page never read it: every place «—»)
+  ok(scn, '1 · the board reads GET /plan/lookups once beside the board', (S.lookups || 0) === 1, S.lookups);
+  ok(scn, '1 · VS import 604: its three deliveries name their places (Aspropyrgos / Oinofyta / Larisa), never «—»',
+    ['Aspropyrgos Test', 'Oinofyta Test', 'Larisa Test'].every((n) => (by(16).kpts || []).some((x) => x.includes('ΠΕΛΑΤΗΣ ΕΙ 2 · ' + n))) && !(by(16).kpts || []).some((x) => /ΕΙ 2 · — ·/.test(x)), by(16).kpts);
+  ok(scn, '1 · VS import 603: «ΠΕΛΑΤΗΣ ΕΙ 1 · Rentis Test», not «… — · 30π»', (by(15).kpts || []).some((x) => x.startsWith('ΠΕΛΑΤΗΣ ΕΙ 1 · Rentis Test')), by(15).kpts);
+  // 2 · ΑΝΟΔΟΣ (vs_export): the supplier's place in ΦΟΡΤΩΣΗ, «Βέροια» in ΠΡΟΣ
+  ok(scn, '2 · VS export 607: ΦΟΡΤΩΣΗ names the supplier place (Lamia Test), ΠΡΟΣ = «Βέροια»',
+    (by(19).apts || []).some((x) => x.startsWith('ΠΕΛΑΤΗΣ ΕΞ 1 · Lamia Test')) && /Βέροια/.test(by(19).ato || ''), { afl: by(19).apts, ato: by(19).ato });
+  ok(scn, '2 · VS export 616: two loading places (Thessaloniki Test, Lamia Test), ΠΡΟΣ «Βέροια»',
+    ['Thessaloniki Test', 'Lamia Test'].every((n) => (by(20).apts || []).some((x) => x.includes(n)) || /\+1/.test(by(20).afl || '')) && /Βέροια/.test(by(20).ato || ''), { afl: by(20).apts, ato: by(20).ato });
+  // 3 · a waiting row of one side (owner 28/10): the box names its side, the empty side is the dashed slot of H1 RT-T106/T107
+  ok(scn, '3 · VS export 607 / 616: dashed «Χωρίς κάθοδο», box «ΠΡΟΣ ΑΝΑΘΕΣΗ / ΑΝΟΔΟΣ →»; VS import 603 / 604: box «← ΚΑΘΟΔΟΣ», dashed «Χωρίς άνοδο»',
+    [19, 20].every((p) => by(p).asg === 'ΠΡΟΣ ΑΝΑΘΕΣΗΑΝΟΔΟΣ →' && by(p).ksp === 'Χωρίς κάθοδο' && by(p).kgap)
+    && [15, 16].every((p) => by(p).asg === 'ΠΡΟΣ ΑΝΑΘΕΣΗ← ΚΑΘΟΔΟΣ' && by(p).asp === 'Χωρίς άνοδο' && by(p).agap),
+    [19, 20, 15, 16].map((p) => ({ p, asg: by(p).asg, ksp: by(p).ksp, asp: by(p).asp, kgap: by(p).kgap, agap: by(p).agap })));
+  // 4 · temperature as the driver sheet writes it, only where the base has one
+  ok(scn, '4 · temperature: «+7 °C» on export 616, «+4 °C» on import 604, none on 603 / 607',
+    /\+7 °C/.test(by(20).text || '') && /\+4 °C/.test(by(16).text || '') && !/°C/.test(by(15).text || '') && !/°C/.test(by(19).text || ''), { e616: by(20).text, i604: by(16).text });
+  // 6 · the queue counts with nouns: 4 VS orders, 7 pieces
+  const qh = await page.evaluate(() => { const h = document.querySelector('#content .wn5 .wn5-q .wi4-q-hd'); const a = document.querySelector('#content .wn5 .wn5-q .wi4-q-all'); return { h: h ? h.textContent.replace(/\s+/g, ' ').trim() : '', a: a ? a.textContent.trim() : '' }; });
+  ok(scn, '6 · «ΕΠΟΜΕΝΑ · 4 παραγγελίες VS · 7 κομμάτια», the link «Όλες οι 4 ▾»', /^ΕΠΟΜΕΝΑ · 4 παραγγελίες VS · 7 κομμάτια/.test(qh.h) && qh.a === 'Όλες οι 4 ▾', qh);
+  // 5 · days always open: no chevron on an empty day, an open one on a day with rows
+  const days = await page.evaluate(() => [...document.querySelectorAll('#content .wn5 .wn5-day')].map((d) => ({ date: d.dataset.date, empty: d.classList.contains('empty'), chev: !!d.querySelector('.wi4-chev'), open: d.querySelector('.wn5-dayh').getAttribute('aria-expanded') })));
+  ok(scn, '5 · W45-like week: empty days draw no chevron, days with rows are open', days.length === 7 && days.every((d) => (d.empty ? !d.chev : d.chev && d.open === 'true')), days);
+  ok(scn, 'no shape strip, no catalogue strip', !(await page.$('#content .wn5 .wn5-strip')), await page.evaluate(() => [...document.querySelectorAll('#content .wn5 .wn5-strip')].map((e) => e.textContent)));
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await shot(page, 'live45');
+  await page.context().close();
+  // 5 · a week with no load at all (W44 before L): no day looks folded
+  const e = await openBoard(browser, origin, { board: EMPTY(WEEK) });
+  const ed = await e.page.evaluate(() => [...document.querySelectorAll('#content .wn5 .wn5-day')].map((d) => !!d.querySelector('.wi4-chev')));
+  ok(scn, '5 · an empty week (W44): no «›» on any day', ed.length === 7 && ed.every((c) => !c), ed);
+  await e.page.context().close();
+  // 1 · the catalogue fails: the rows still paint, places «—», and a strip says why (never a silent «—»)
+  const f = await openBoard(browser, origin, { board: live45(), plan: { 'GET /plan/lookups': () => planErr(500, 'SERVER', 'plan_failed') } });
+  await f.page.waitForSelector('#content > .wi4.wn5[data-state="ok"]', { timeout: 8000 }).catch(() => {});
+  const fs1 = await f.page.evaluate(() => { const st = document.querySelector('#content .wn5 .wn5-strip[data-ids="failed"]'); return { strip: st ? st.textContent.replace(/\s+/g, ' ') : null, rows: document.querySelectorAll('#content .wn5 .wn5-row').length }; });
+  ok(scn, '1 · lookups 500 → «ΟΝΟΜΑΤΑ ΤΟΠΩΝ» strip with the Worker message, the 4 rows still painted', !!fs1.strip && /ΟΝΟΜΑΤΑ ΤΟΠΩΝ/.test(fs1.strip) && /rig sentinel plan_failed/.test(fs1.strip) && fs1.rows === 4, fs1);
+  // a failed catalogue is not asked again on every reload (each save reloads the board): only the user's ↻ asks at once
+  const nL = () => f.S.plan.filter((x) => x.m === 'GET' && x.path === '/plan/lookups').length;
+  const l0 = nL();
+  await f.page.evaluate(() => WN5.reload('write'));
+  await f.page.waitForTimeout(400);
+  const l1 = nL();
+  await f.page.evaluate(() => WN5.reload('user'));
+  await f.page.waitForTimeout(400);
+  const l2 = nL();
+  ok(scn, '1 · after a failure: a write\'s reload does not ask the catalogue again, the user\'s ↻ does', l0 === 1 && l1 === 1 && l2 === 2, { l0, l1, l2 });
+  await f.page.context().close();
+};
 // ── main ──
 (async () => {
   if (argv.includes('--check-fixture')) process.exit(checkFixture() ? 0 : 1);
