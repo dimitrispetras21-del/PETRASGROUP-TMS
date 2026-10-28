@@ -5970,7 +5970,8 @@ function planNatStateArgs(url) {
 }
 __name(planNatStateArgs, "planNatStateArgs");
 // Exactly one of the five keys, a positive id of at most 9 digits, or «all» for the two lists that have one (the
-// partner strip, the place filter); anything else is a 400 before any DB call. «all» = p_id null.
+// partner strip, the place filter); anything else is a 400 before any DB call. p_id is TEXT in 074a (the id as
+// written, or 'all'): sent as checked here, never re-parsed.
 var PLAN_ACTIVITY_KINDS = { partner_id: "partner", driver_id: "driver", truck_id: "truck", trailer_id: "trailer", location_id: "location" };
 function planActivityArgs(url) {
   const bad = { error: "Ένα από partner_id, driver_id, truck_id, trailer_id, location_id: θετικός ακέραιος, ή all για partner_id / location_id", code: "bad_activity_query" };
@@ -5978,9 +5979,8 @@ function planActivityArgs(url) {
   if (keys.length !== 1 || !Object.prototype.hasOwnProperty.call(PLAN_ACTIVITY_KINDS, keys[0])) return bad;
   const kind = PLAN_ACTIVITY_KINDS[keys[0]];
   const v = url.searchParams.get(keys[0]);
-  if (v === "all" && (kind === "partner" || kind === "location")) return { args: { p_kind: kind, p_id: null } };
-  if (!/^[1-9]\d{0,8}$/.test(v)) return bad;
-  return { args: { p_kind: kind, p_id: Number(v) } };
+  if (v === "all" ? kind !== "partner" && kind !== "location" : !/^[1-9]\d{0,8}$/.test(v)) return bad;
+  return { args: { p_kind: kind, p_id: v } };
 }
 __name(planActivityArgs, "planActivityArgs");
 function planNoticesArgs(url, caller) {
