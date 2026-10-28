@@ -83,7 +83,7 @@ test('F4α-T5: one-segment cycle has no label and no slanted edge', () => {
   }
 });
 
-test('F4α-T5: «Χωρίς κάθοδο», «Κενό γύρισμα», «Μόνο κάθοδος · συνεργάτης», partner tile «—», «ως Δευ 22:00», ↳ τοπικός, the hub[] miss line', () => {
+test('F4α-T5: «Χωρίς κάθοδο», «Κενό γύρισμα», «Μόνο κάθοδος · συνεργάτης», partner tile «—», «ως Δευ 22:00», ↳ τοπικός; no hub[] waiting line (F5 FE-2)', () => {
   const by = new Map(rows(html()).map((r) => [keyOf(r), r]));
   assert.ok(/Χωρίς κάθοδο/.test(by.get('rt:106')), 'rt:106');
   assert.ok(/<span class="wn5-gaph">Κενό γύρισμα<\/span> · ελεύθερο από Τρί 11:00 · Athens Test/.test(by.get('rt:103')), 'rt:103');
@@ -92,7 +92,8 @@ test('F4α-T5: «Χωρίς κάθοδο», «Κενό γύρισμα», «Μό�
   const p104 = cell(by.get('rt:104'), 'wn5-asg');
   assert.ok(/Partner Test Pelagos/.test(p104) && /title="—">—</.test(p104) && !/κόμιστρο λείπει|€/.test(p104), 'rt:104 partner tile: ' + p104);
   // live 072: VS-T118 is in hub[] without its destination / windows (Ε-26): «—» on the points and a visible line
-  assert.ok(/class="wn5-sub wn5-miss" data-qi="wait:4101"/.test(by.get('wait:4101')) && /δεν ήρθαν με τον πίνακα/.test(by.get('wait:4101')), 'wait:4101 miss line');
+  // FE-2 (owner 28/10): the «… δεν ήρθαν (Worker)» line is gone — an absent key is the error strip (tests/wn5-logic.test.js)
+  assert.ok(!/wn5-miss|δεν ήρθαν με τον πίνακα/.test(by.get('wait:4101')), 'wait:4101 still carries the waiting line');
   assert.ok(!/null/.test(by.get('wait:4101')), 'wait:4101 prints no «null»');
   assert.ok(/Βέροια<span class="wn5-endx"> · τέλος κύκλου<\/span><\/span><span class="wi4-l2">ως Δευ 22:00/.test(by.get('rt:101')), 'rt:101 end');
   // whole-frame r4: «↳» in the index column (as the ⇄ sub-row's .wn5-hand-ar), the text from the ΚΑΘΟΔΟΣ chip column

@@ -1,14 +1,15 @@
-// Rig — National v5 F5 PILOT (plan 2026-10-28 Q-9, owner 28/10): FEATURES.WN_V5 = 'pilot', WN_V5_USERS = the owner.
+// Rig — National v5 F5 PILOT and DAY L (plan 2026-10-28 Q-9 / FE-2): who gets which board under the flag that ships —
+// 'pilot' (WN_V5_USERS = the owner) from Thu 29/10, 'on' (every user) from day L.
 //
 // Why: the other v5 rigs rewrite the flag in memory ('on' or 'off'), so none of them runs the config.js that ships.
-// This one serves the tree AS IT IS and proves who gets which board: the owner ('dimitris') the v5 board, read-only
-// (only GET to /plan/*), everyone else the old board with ZERO /plan/* requests, and the owner's own «Παλιά προβολή»
-// (tms_wn5 = '0') the old board too. Judged by what reached the fake backend (the table of this rig) and the DOM,
+// This one serves the tree AS IT IS and proves who gets which board. Under 'pilot': the owner ('dimitris') the v5
+// board, read-only at load (only GET to /plan/*), everyone else the old board with ZERO /plan/* requests. Under 'on':
+// every user the v5 board. Under both, «Παλιά προβολή» (tms_wn5 = '0') gives the old board. Judged by what reached the fake backend (the table of this rig) and the DOM,
 // never by a screenshot. Synthetic data only (public repo); nothing leaves the machine. Clock = the kit's week.
 //
 // Usage (cwd = a checkout with node_modules, memory note «Κριτές από worktree»):
 //   node tests/critics/wn5-pilot-rig.js                         this tree
-//   WN5_TREE=<git archive origin/main> node tests/critics/wn5-pilot-rig.js     plain-main proof: the owner case ✗
+//   WN5_TREE=<git archive origin/main> node tests/critics/wn5-pilot-rig.js     plain-main proof ('off'): the preflight ✗
 // Exit: 0 all green · 1 a check failed.
 'use strict';
 const path = require('path');
@@ -19,12 +20,15 @@ const kit = require('./wn5-rig-kit');
 const TREE = kit.TREE;
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.json': 'application/json' };
 const CASES = [
-  { name: 'owner dimitris', role: 'owner', username: 'dimitris', optIn: null, want: 'v5' },
-  { name: 'owner dimitris + «Παλιά προβολή»', role: 'owner', username: 'dimitris', optIn: '0', want: 'old' },
-  { name: 'demo_owner (not in WN_V5_USERS)', role: 'owner', username: 'demo_owner', optIn: null, want: 'old' },
-  { name: 'demo_dispatcher', role: 'dispatcher', username: 'demo_dispatcher', optIn: null, want: 'old' },
-  { name: 'demo_accountant', role: 'accountant', username: 'demo_accountant', optIn: null, want: 'old' },
+  { name: 'owner dimitris', role: 'owner', username: 'dimitris', optIn: null },
+  { name: 'owner dimitris + «Παλιά προβολή»', role: 'owner', username: 'dimitris', optIn: '0' },
+  { name: 'demo_owner (not in WN_V5_USERS)', role: 'owner', username: 'demo_owner', optIn: null },
+  { name: 'demo_dispatcher', role: 'dispatcher', username: 'demo_dispatcher', optIn: null },
+  { name: 'demo_dispatcher + «Παλιά προβολή»', role: 'dispatcher', username: 'demo_dispatcher', optIn: '0' },
+  { name: 'demo_accountant', role: 'accountant', username: 'demo_accountant', optIn: null },
 ];
+// The rule of the plan, written out here (not WI4.v2Decide: the rig must not judge the app by the app's own code).
+const want = (flag, c) => (c.optIn === '0' ? 'old' : flag === 'on' ? 'v5' : flag === 'pilot' && c.username === 'dimitris' ? 'v5' : 'old');
 
 function serve() {
   const srv = http.createServer((req, res) => {
@@ -109,10 +113,15 @@ async function one(browser, origin, c) {
   const srv = await serve();
   const origin = `http://127.0.0.1:${srv.address().port}`;
   const browser = await chromium.launch();
+  let flag;
   try {
     for (const c of CASES) {
       const r = await one(browser, origin, c);
-      if (c === CASES[0]) ok('preflight', "config.js as served: WN_V5 'pilot', WN_V5_USERS ['dimitris']", r.flag.flag === 'pilot' && JSON.stringify(r.flag.users) === '["dimitris"]', r.flag);
+      if (c === CASES[0]) {
+        flag = r.flag.flag;
+        ok('preflight', `config.js as served: WN_V5 'pilot' or 'on' (${flag}), WN_V5_USERS ['dimitris']`, ['pilot', 'on'].includes(flag) && JSON.stringify(r.flag.users) === '["dimitris"]', r.flag);
+      }
+      c.want = want(flag, c);
       ok(c.name, `paints the ${c.want} board`, r.got === c.want, r.got);
       if (c.want === 'v5') {
         ok(c.name, 'reads GET /plan/board', r.S.plan.includes('GET /plan/board'), r.S.plan);
@@ -127,6 +136,6 @@ async function one(browser, origin, c) {
     await browser.close();
     srv.close();
   }
-  console.log(fails ? `NO-GO: ${fails} check(s) failed` : 'GO: the pilot opens v5 for the owner alone, read-only');
+  console.log(fails ? `NO-GO: ${fails} check(s) failed` : `GO: WN_V5 '${flag}' opens v5 for ${flag === 'on' ? 'every user' : 'the owner alone'}; «Παλιά προβολή» gives the old board`);
   process.exit(fails ? 1 : 0);
 })();

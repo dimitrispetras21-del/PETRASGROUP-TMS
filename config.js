@@ -398,8 +398,9 @@ const PERMS = {
 // deploy that sets PLAN_WRITES_OPEN = true in the Worker (decision Ε-24) — before that every v5 write answers 409.
 // 'pilot' from Thu 29/10/2026 (F5 plan Q-9, owner 28/10): the owner alone, read-only — the Worker still answers
 // every v5 write 409 writes_closed until day L. As with WI_V2, a browser that opts in with ?wn5=1 also gets the
-// board. Rollback = 'off' (+ config.js ?v= and SW_VERSION): 'off' overrides every opt-in.
-const FEATURES = { ORDER_SPLIT: true, GROUP_TILES: true, STOCK_LOTS: true, WI_V2: 'on', WI_PRESENCE: false, WN_V5: 'pilot' };
+// board. 'on' from day L (FE-2, merged at Runbook R-8, after Worker deploy 2 opened the writes): every user.
+// Rollback = 'pilot' (WN_V5_USERS kept for that) or 'off', + config.js ?v= and SW_VERSION; 'off' overrides every opt-in.
+const FEATURES = { ORDER_SPLIT: true, GROUP_TILES: true, STOCK_LOTS: true, WI_V2: 'on', WI_PRESENCE: false, WN_V5: 'on' };
 // Pilot usernames for FEATURES.WI_V2 === 'pilot' (PLAN §2.1). Empty = nobody.
 const WI_V2_USERS = [];
 // Pilot usernames for FEATURES.WN_V5 === 'pilot' (Ε-1): only a name the owner gives. Empty = nobody.
