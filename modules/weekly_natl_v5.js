@@ -635,16 +635,16 @@ function _anodHTML(r, m, ok) {
 // ΦΟΡΤΩΣΗ of ΚΑΘΟΔΟΣ: «Βέροια» and its window stay together (owner 25/10); a loading the cycle makes BEFORE Veroia
 // (WN5L vBefore, by the base's stop order) comes first, numbered with Veroia among the cell's loadings (Figma H1
 // row 5 «1 Thessaloniki»); the ones after it follow. Veroia itself carries no number box: its word is its mark.
-// This narrow cell names the place only, as Figma does: the clients of the side are in ΠΑΡΑΔΟΣΗ.
+// Like every point (owner 28/10): place + city; the clients are in the order card and the titles.
 function _flHTML(s, ok, hd) {
-  if (!s.veroia) return _ptsHTML(s.from, ok, null, true);
+  if (!s.veroia) return _ptsHTML(s.from, ok, null);
   const vh = `<span class="wn5-vh${hd}">Βέροια</span><span class="wn5-vtime${hd}"${_segAttr(s.veroia.segLabel)}>${_win(s.veroia.from, s.veroia.to)}</span>`;
   const k = Math.min(s.vBefore || 0, s.from.length);
-  return _ptsHTML(s.from.slice(0, k), ok, 1, true) + vh + _ptsHTML(s.from.slice(k), ok, k + 2, true);
+  return _ptsHTML(s.from.slice(0, k), ok, 1) + vh + _ptsHTML(s.from.slice(k), ok, k + 2);
 }
 // start (a number) = number the points from it, boxes always shown (a cell that also has «Βέροια»); else WN5L's n and
-// no box on a lone point (wi4 rule 6). placeOnly: the place without its client (ΦΟΡΤΩΣΗ of ΚΑΘΟΔΟΣ).
-function _ptsHTML(pts, ok, start, placeOnly) {
+// no box on a lone point (wi4 rule 6). Every point is place + city (owner 28/10), so no cell is «place only» any more.
+function _ptsHTML(pts, ok, start) {
   if (!pts.length) return '';
   const num = start == null ? (p) => (pts.length === 1 ? null : p.n) : (p, i) => start + i;
   const vis = _visPts();
@@ -657,9 +657,9 @@ function _ptsHTML(pts, ok, start, placeOnly) {
   // More late stops than slots: the chip itself carries the amber, so a hidden late stop is still seen.
   const restLate = rest.some((i) => pts[i].late);
   const more = rest.length
-    ? `<span class="wi4-more${restLate ? ' wn5-late' : ''}" title="${_esc(rest.map((i) => `${num(pts[i], i) || pts[i].n}. ${_ptName(pts[i])} · ${pts[i].from && pts[i].to ? pts[i].from + '–' + pts[i].to : '—'} · ${_pal(pts[i].pallets)}${_tempTxt(pts[i]) ? ' · ' + _tempTxt(pts[i]) : ''}`).join('\n'))}"><b>+${rest.length}</b></span>`
+    ? `<span class="wi4-more${restLate ? ' wn5-late' : ''}" title="${_esc(rest.map((i) => `${num(pts[i], i) || pts[i].n}. ${_ptFull(pts[i])}`).join('\n'))}"><b>+${rest.length}</b></span>`
     : '';
-  return `<span class="wi4-pts wn5-pts">${idx.filter((i) => shown.has(i)).map((i) => _ptHTML(pts[i], num(pts[i], i), ok, placeOnly)).join('')}${more}</span>`;
+  return `<span class="wi4-pts wn5-pts">${idx.filter((i) => shown.has(i)).map((i) => _ptHTML(pts[i], num(pts[i], i), ok)).join('')}${more}</span>`;
 }
 // Who, then where (Figma H1 «Omega Market · Rentis»): the client in bold, the place in grey. Two runs that break
 // between them, the «·» staying on the first line («ΠΕΛΑΤΗΣ Δ ·» / «Aspropyrgos»), never inside a name that fits. A waiting load's point
@@ -668,7 +668,6 @@ function _ptWho(p) {
   const cl = Array.isArray(p.clients) ? p.clients : [];
   return cl.length && !(cl.length === 1 && cl[0] === p.name) ? cl.join(', ') : null;
 }
-function _ptName(p) { const who = _ptWho(p); return who ? `${who} · ${p.name}` : p.name; }
 // The temperatures of the point's loads (WN5L temps: known ones only), «+4 °C», «+2 / +4 °C» (the driver sheet's form,
 // modules/wn5_sheet.js _temp). None known = nothing drawn: the line never says «0 °C» for a missing value.
 function _tempTxt(p) {
@@ -676,15 +675,28 @@ function _tempTxt(p) {
   return ts.length ? ts.map((t) => (t > 0 ? '+' : '') + String(t).replace('.', ',')).join(' / ') + ' °C' : '';
 }
 // Each point with its own day: a delivery of Tuesday stays bold until Tuesday ends, even if its hour passed.
-function _ptHTML(p, n, ok, placeOnly) {
-  const who = placeOnly ? null : _ptWho(p);
-  // The whole stop in the point's title (whole-frame r4). Its lines are never cut — they wrap (DESIGN.md #6, plan T5;
-  // whole-frame fix round 1) — the title is a convenience on hover, not where a name has to be read.
-  const full = `${placeOnly ? p.name : _ptName(p)} · ${p.from && p.to ? p.from + '–' + p.to : '—'} · ${_pal(p.pallets)}${_tempTxt(p) ? ' · ' + _tempTxt(p) : ''}`;
+// The point's city: the catalogue's (PlanIds, GET /plan/lookups) for its place id; '' while the catalogue is not in.
+function _ptCity(p) {
+  if (p && p.city) return String(p.city);
+  if (!p || p.locId == null || typeof PlanIds === 'undefined' || typeof PlanIds.place !== 'function') return '';
+  try { const x = PlanIds.place(p.locId); return x && x.city ? String(x.city) : ''; } catch (_) { return ''; }
+}
+// Owner 28/10 (over Figma's «who, then where»): a point reads as on the Weekly International — the PLACE in bold on
+// line 1 (.wi4-l1), its city under it on line 2 (.wi4-l2) with the window, pallets and temperature. The client is
+// not on the row (a long company name filled four lines and the place got lost; the national dispatcher plans by
+// place): it is in the order card and in this title.
+// The whole stop in one line, place first as on the row, the client last: the point's title and the «+N» list.
+function _ptFull(p) {
+  const city = _ptCity(p), who = _ptWho(p);
+  return `${p.name}${city ? ', ' + city : ''} · ${p.from && p.to ? p.from + '–' + p.to : '—'} · ${_pal(p.pallets)}${_tempTxt(p) ? ' · ' + _tempTxt(p) : ''}${who ? ' · ' + who : ''}`;
+}
+function _ptHTML(p, n, ok) {
+  const city = _ptCity(p);
+  const full = _ptFull(p);
   return `<span class="wi4-pt wn5-pt${p.late ? ' wn5-late' : ''}${_dc(ok && p.dim && !p.late)}" data-stop="${_id(p.stopId)}"${_segAttr(p.segLabel)} title="${_esc(full)}">`
     + (n == null ? '' : `<span class="wi4-pt-n">${n}</span>`)
-    + `<span class="wi4-l1">${who ? `<span class="wn5-who">${_esc(who)}<span class="wn5-city">&nbsp;·</span></span> <span class="wn5-city">${_esc(p.name)}</span>` : _esc(p.name)}</span>`
-    + `<span class="wi4-l2${p.late ? ' wi4-t-amb' : ''}">${_win(p.from, p.to)} · ${_esc(_pal(p.pallets))}${_tempTxt(p) ? `<span class="wn5-temp"> · ${_esc(_tempTxt(p))}</span>` : ''}</span></span>`;
+    + `<span class="wi4-l1">${_esc(p.name)}</span>`
+    + `<span class="wi4-l2${p.late ? ' wi4-t-amb' : ''}">${city ? `<span class="wn5-pcity">${_esc(city)}</span> · ` : ''}${_win(p.from, p.to)} · ${_esc(_pal(p.pallets))}${_tempTxt(p) ? `<span class="wn5-temp"> · ${_esc(_tempTxt(p))}</span>` : ''}</span></span>`;
 }
 // The day chip of a side. On a cycle row it is a button: T16, it opens the date panel Δ4 of its side
 // (Figma 2011:8858 / 2053:7837). The classes stay those of T5/T6 (dim, «σήμερα»); other rows keep a plain chip.
