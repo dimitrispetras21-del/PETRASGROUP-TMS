@@ -294,6 +294,39 @@ async function main() {
       ok(n, 'no raw table name left (RT VEHICLE SEGMENTS / LOCAL MOVES)', !/RT VEHICLE SEGMENTS|LOCAL MOVES/.test(t));
       ok(n, 'side change reads «Πλευρά: ΚΑΘΟΔΟΣ → ΑΝΟΔΟΣ»', /Πλευρά: ΚΑΘΟΔΟΣ → ΑΝΟΔΟΣ/.test(t), (t.match(/.{0,40}ΑΝΟΔΟΣ.{0,20}/) || [t.slice(0, 200)])[0]);
     });
+    // ── Chief Ops alerts (core/utils.js _refreshNotifs §4, coordinator 28/10) ──
+    // The panel's own refresh, called directly; _notifRaw is the list it builds (before snooze/grouping).
+    const alerts = async (page) => page.evaluate(async () => { await _refreshNotifs(); return _notifRaw.map((x) => ({ title: x.title, sub: x.sub, rid: x.rid })); });
+    await sc('alerts-before', async (n) => {
+      const { page, S } = await open(browser, origin, { page: 'performance', user: SOTIRIS, config: 'before' });
+      const f0 = S.facade.length;
+      const a = await alerts(page);
+      ok(n, 'no v5 alert and no NAT_ORDERS read before L', !a.some((x) => /v5/.test(x.title)) && !S.facade.slice(f0).some((x) => x.tid === T.NAT_ORDERS), a);
+      ok(n, 'no /plan/nat-state before L', !S.plan.some((x) => x.path === '/plan/nat-state'), S.plan);
+      if (borigin) {
+        const b = await open(browser, borigin, { page: 'performance', user: SOTIRIS, config: 'before' });
+        const ab = await alerts(b.page);
+        ok(n, 'flag off: the same alerts as the base tree', JSON.stringify(a) === JSON.stringify(ab), { mine: a, base: ab });
+      }
+    });
+    await sc('alerts-after', async (n) => {
+      const { page } = await open(browser, origin, { page: 'performance', user: SOTIRIS, config: 'after' });
+      const a = (await alerts(page)).filter((x) => /v5/.test(x.title));
+      // 9004: late and not executed → one alert; 9002 is late but delivered → none
+      ok(n, 'one «Εθνική v5 εκπρόθεσμη»: Ε-9004, requested 06/11/2026, not fully assigned',
+        a.length === 1 && a[0].title === 'Εθνική v5 εκπρόθεσμη' && a[0].sub === 'Ε-9004 — ζητήθηκε 06/11/2026 · χωρίς πλήρη ανάθεση' && a[0].rid === 'natv5:recRigNo4', a);
+    });
+    await sc('alerts-fail', async (n) => {
+      const { page } = await open(browser, origin, { page: 'performance', user: SOTIRIS, config: 'after', natState: 'fail' });
+      const a = (await alerts(page)).filter((x) => /v5/.test(x.title));
+      ok(n, 'nat-state 500 → «Εθνικές v5: η κατάσταση δεν διαβάστηκε», never silence', a.length === 1 && a[0].title === 'Εθνικές v5: η κατάσταση δεν διαβάστηκε', a);
+    });
+    await sc('alerts-other-user', async (n) => {
+      const { page, S } = await open(browser, origin, { page: 'performance', user: { username: 'kelesmitos', role: 'dispatcher' }, config: 'after' });
+      const f0 = S.facade.length;
+      const a = await alerts(page);
+      ok(n, 'not Chief Ops: no v5 alert, no NAT_ORDERS read', !a.some((x) => /v5/.test(x.title)) && !S.facade.slice(f0).some((x) => x.tid === T.NAT_ORDERS), a);
+    });
     // Console rule (coordinator 27/10): Chrome's «Failed to load resource» for a planned ≥400 stub answer or an
     // aborted external host, and planFetch's one log line per scripted answer («rig sentinel»), are excluded and
     // counted; anything else fails the run.
