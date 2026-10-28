@@ -181,6 +181,9 @@ function ctKind(t) {
     const other = own === 'NATL' ? Number(t.revenue_intl) : Number(t.revenue_natl);
     if (other !== 0) return 'MIX';
   }
+  // F1/F4: an international cycle whose national order has no revenue yet (no price, or no share) carries a
+  // national part all the same: revenue_natl 0 there is «missing», not «none»
+  if (own === 'INTL' && ctRevMissing(t)) return 'MIX';
   return own;
 }
 // Λεξιλόγιο κατάστασης (owner review 24/8) — δύο ανεξάρτητα σήματα: η ΕΚΤΕΛΕΣΗ
@@ -522,6 +525,15 @@ function ctCostInfo(t) {
   const n = (_ct.linesByRt && _ct.linesByRt[t.id] ? _ct.linesByRt[t.id].length : 0);
   return { n, complete: n > 0 };
 }
+// F1/F4 (owner 28/10, 080): a v5 cycle that carries a national order whose price is not written yet (or whose share
+// cannot be told: several shipments with unknown pallets) has a revenue that LACKS that order —
+// ct_v_rt_pnl.v5_revenue_missing. Its revenue is a floor, never complete: like a missing cost, net and margin are «—».
+// The key is absent before 080 (the view had no such column): then nothing can be missing.
+function ctRevMissing(t) { return t.v5_revenue_missing === true; }
+// Two causes, one flag: no price, or a price that cannot be shared (pallets unknown) — the words name both
+const CT_REV_MISSING = 'εθνικό έσοδο που λείπει';
+const CT_REV_MISSING_WHY = 'εθνική παραγγελία χωρίς τιμή, ή με άγνωστες παλέτες ώστε να μη μοιράζεται η τιμή της';
+const CT_REV_MISSING_FIX = 'Γράψε την τιμή ή τις παλέτες από το Εβδομαδιαίο Εθνικών (Καρτέλα παραγγελίας → Επεξεργασία).';
 function ctVehOk(t) {
   return _ct.veh === 'ALL' || (_ct.veh === 'PARTNERS' ? t.trip_type === 'PARTNER' : t.truck_id === _ct.veh);
 }
@@ -542,8 +554,9 @@ function ctKindTotals(list) {
   const s = k => list.reduce((a, t) => a + Number(t[k] || 0), 0);
   const n = list.length, rev = s('revenue'), gross = s('cost_gross');
   const withCosts = list.filter(t => ctCostInfo(t).complete).length;
-  const complete = !_ct.linesFailed && n > 0 && withCosts === n;
-  return { n, rev, ri: s('revenue_intl'), rn: s('revenue_natl'), gross, withCosts, complete,
+  const revMissing = list.filter(ctRevMissing).length;
+  const complete = !_ct.linesFailed && n > 0 && withCosts === n && revMissing === 0;
+  return { n, rev, ri: s('revenue_intl'), rn: s('revenue_natl'), gross, withCosts, revMissing, complete,
     p: rev - gross, mg: rev ? (rev - gross) / rev * 100 : null };
 }
 function ctKindTableHtml() {
@@ -553,12 +566,13 @@ function ctKindTableHtml() {
     const d = '<span style="color:var(--text-dim)">—</span>';
     const e = (v, ok) => ok ? ctEur(v) : d;
     const has = tot.n > 0;
-    const costQ = has && !tot.complete && !_ct.linesFailed ? ` <span class="ct-eqq">${tot.withCosts}/${tot.n}</span>` : '';
+    // the «n/n» scope says how many have COSTS; a revenue that lacks an order says so beside the revenue
+    const costQ = has && tot.withCosts < tot.n && !_ct.linesFailed ? ` <span class="ct-eqq">${tot.withCosts}/${tot.n}</span>` : '';
     return `<tr data-kind="${k}"${k === 'TOTAL' ? ' class="ct-ktot"' : ''}><td>${label}</td>
       <td class="ct-num ct-mono" data-c="n">${tot.n}</td>
       <td class="ct-num ct-mono" data-c="ri">${e(tot.ri, has && split)}</td>
       <td class="ct-num ct-mono" data-c="rn">${e(tot.rn, has && split)}</td>
-      <td class="ct-num ct-mono" data-c="rev">${e(tot.rev, has)}</td>
+      <td class="ct-num ct-mono" data-c="rev">${e(tot.rev, has)}${tot.revMissing ? ` <span class="ct-eqq" title="${tot.revMissing} δρομολόγια: ${CT_REV_MISSING_WHY}">+ ${tot.revMissing} ${CT_REV_MISSING}</span>` : ''}</td>
       <td class="ct-num ct-mono" data-c="cost">${e(tot.gross, has)}${costQ}</td>
       <td class="ct-num ct-mono" data-c="net"${tot.complete && tot.p < 0 ? ' style="color:var(--danger)"' : ''}>${tot.complete ? ctEurP(tot.p) : d}</td>
       <td class="ct-num ct-mono" data-c="mg">${tot.complete && tot.mg != null ? tot.mg.toFixed(1) + '%' : d}</td></tr>`;
@@ -592,7 +606,7 @@ function ctRenderSummary() {
   const net = V.reduce((a, t) => a + Number(t.cost_net || 0), 0);
   const incomplete = V.filter(t => !ctCostInfo(t).complete);
   const losses = V.filter(t => ctCostInfo(t).complete && Number(t.profit_worst) < 0);
-  const allComplete = V.length > 0 && incomplete.length === 0;
+  const revMiss = V.filter(ctRevMissing);
   // Έσοδα «σε αναμονή» = των δρομολογίων χωρίς κόστη: αυτό είναι το διακύβευμα,
   // όχι διακόσμηση — όσο μένουν ακοστολόγητα, το καθαρό τους είναι άγνωστο.
   const pendingRev = incomplete.reduce((a, t) => a + Number(t.revenue || 0), 0);
@@ -600,18 +614,24 @@ function ctRenderSummary() {
   // ΕΣΟΔΑ αθροίζουν όλα. Χωρίς το εύρος δίπλα στο ποσό, «€65.024 − €900» καλεί
   // το μάτι να αφαιρέσει και να διαβάσει κέρδος €64.124 που δεν υπάρχει.
   const withCosts = V.length - incomplete.length;
-  const costScope = allComplete ? '' :
+  const costScope = V.length > 0 && incomplete.length === 0 ? '' :
     `<span class="ct-eqq">${withCosts}/${V.length}</span>`;
   let title, stake = '', netVal, foot;
   if (_ct.linesFailed) {
     title = 'Οι γραμμές κόστους δεν φόρτωσαν — άγνωστη πληρότητα';
     netVal = '<b class="nv dim">—</b>';
     foot = 'Τα ΚΟΣΤΗ είναι τα καταχωρημένα στη βάση· αν είναι πλήρη δεν είναι γνωστό όσο οι γραμμές δεν φορτώνουν. Δοκίμασε «Ανανέωση».';
-  } else if (!allComplete) {
+  } else if (incomplete.length || !V.length) {
     title = `${incomplete.length} από ${V.length} δρομολόγια χωρίς καταχωρημένο κόστος`;
-    stake = `<span class="stake ct-mono">${ctEur(pendingRev)} έσοδα σε αναμονή</span>`;
+    stake = `<span class="stake ct-mono">${ctEur(pendingRev)} έσοδα σε αναμονή</span>`
+      + (revMiss.length ? ` <span class="stake">· ${revMiss.length} με ${CT_REV_MISSING}</span>` : '');
     netVal = '<b class="nv dim">—</b>';
     foot = 'Το περιθώριο κέρδους δεν υπολογίζεται μέχρι να καταχωρηθούν τα κόστη. Τα δρομολόγια ταξινομούνται κατά έσοδα φθίνοντα.';
+  } else if (revMiss.length) {
+    title = `${revMiss.length} από ${V.length} δρομολόγια με ${CT_REV_MISSING}`;
+    stake = `<span class="stake">τα έσοδα είναι ελάχιστο, όχι σύνολο</span>`;
+    netVal = '<b class="nv dim">—</b>';
+    foot = `Μια ${CT_REV_MISSING_WHY} δεν δίνει ακόμη έσοδο: το καθαρό δεν υπολογίζεται μέχρι να γραφτούν. ${CT_REV_MISSING_FIX}`;
   } else {
     const p = rev - gross;
     title = losses.length
@@ -739,7 +759,8 @@ function ctRenderList() {
     // With linesFailed the completeness of EVERY RT is unknown (review
     // fix/pnl-lines-cap): all RTs count, and net/margin are «—» below — not
     // margins of a partial set beside «ελλιπή κόστη ΔΕΝ μετρούν».
-    if (!_ct.linesFailed && !ctCostInfo(t).complete) { skipped++; return; }
+    // F1/F4: a revenue that lacks an order's price is not a margin either
+    if (!_ct.linesFailed && (!ctCostInfo(t).complete || ctRevMissing(t))) { skipped++; return; }
     const k = keyFn(t); (m[k] = m[k] || { n: 0, rev: 0, gross: 0, net: 0 }); m[k].n++; m[k].rev += Number(t.revenue || 0); m[k].gross += Number(t.cost_gross || 0); m[k].net += Number(t.cost_net || 0); });
   const unk = _ct.linesFailed;
   const rows = Object.entries(m).map(([k, v]) => ({ k, ...v, p: unk ? null : v.rev - v.gross, mg: !unk && v.rev ? (v.rev - v.gross) / v.rev * 100 : null, mx: !unk && v.rev ? (v.rev - v.net) / v.rev * 100 : null }))
@@ -751,7 +772,7 @@ function ctRenderList() {
     <td class="ct-num ct-mono" style="color:var(--text-dim)">${r.mx != null ? r.mx.toFixed(1) + '%' : '—'}</td></tr>`).join('');
   const h = _ct.group === 'truck' ? 'Φορτηγό / Συνεργάτης' : _ct.group === 'driver' ? 'Οδηγός' : 'Εβδομάδα';
   el.innerHTML = notice +
-    (skipped ? `<div class="ct-note ct-nwarn">${icon('warning', 13)} ${skipped} ${skipped === 1 ? 'δρομολόγιο' : 'δρομολόγια'} με ελλιπή κόστη ΔΕΝ μετρούν στα παρακάτω αθροίσματα.</div>` : '') +
+    (skipped ? `<div class="ct-note ct-nwarn">${icon('warning', 13)} ${skipped} ${skipped === 1 ? 'δρομολόγιο' : 'δρομολόγια'} με ελλιπή κόστη ή ${CT_REV_MISSING} ΔΕΝ μετρούν στα παρακάτω αθροίσματα.</div>` : '') +
     `<table class="ct-tbl"><thead><tr><th>${h}</th><th class="ct-num">Δρομολόγια</th><th class="ct-num">Έσοδα</th>
     <th class="ct-num">Κόστη</th><th class="ct-num">Καθαρό</th><th style="text-align:center">Περιθώριο (με ΦΠΑ)</th><th class="ct-num">χωρίς ΦΠΑ</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
@@ -802,6 +823,9 @@ function ctCardNums(t, ci) {
     note = `<span class="ct-eqnote">οι γραμμές κόστους δεν φόρτωσαν — πληρότητα άγνωστη</span>`;
   } else if (!ci.complete) {
     right = `<button class="ct-btn ct-accbtn" onclick="event.stopPropagation();ctOpenEntry(${t.id})">+ Καταχώρηση κοστών</button>`;
+  } else if (ctRevMissing(t)) {
+    // costs are in, the revenue is not: the costs show, net and margin stay «—»
+    costs = `<b class="nv ct-mono">${ctEur(t.cost_gross)}</b>`;
   } else {
     const p = Number(t.profit_worst);
     costs = `<b class="nv ct-mono">${ctEur(t.cost_gross)}</b>`;
@@ -810,7 +834,7 @@ function ctCardNums(t, ci) {
   }
   return `<div class="ct-eqrow">
     <div class="ct-eq ct-eqsm">
-      <span class="ct-eqi"><span class="l">Έσοδα</span><b class="nv ct-mono">${ctEur(t.revenue)}</b>${ctKind(t) === 'MIX' ? `<span class="ct-eqq ct-split">διεθνή ${ctEur(t.revenue_intl)} · εθνικά ${ctEur(t.revenue_natl)}</span>` : ''}</span>
+      <span class="ct-eqi"><span class="l">Έσοδα</span><b class="nv ct-mono">${ctEur(t.revenue)}</b>${ctRevMissing(t) ? `<span class="ct-eqq ct-revmiss" title="${CT_REV_MISSING_WHY}">+ ${CT_REV_MISSING}</span>` : ''}${ctKind(t) === 'MIX' ? `<span class="ct-eqq ct-split">διεθνή ${ctEur(t.revenue_intl)} · εθνικά ${ctEur(t.revenue_natl)}</span>` : ''}</span>
       <span class="op">−</span>
       <span class="ct-eqi"><span class="l">Κόστη</span>${costs}</span>
       <span class="op">=</span>
@@ -872,7 +896,7 @@ function ctCardHtml(t) {
         : `<div class="ct-leg" style="color:var(--warn);font-size:12px">${icon('warning', 12)} οι τιμές των σκελών αθροίζουν ${ctEur(legsSum)} αλλά το έσοδο trip είναι ${ctEur(t.revenue)} — ανεξήγητη διαφορά ${ctEur(diff)}</div>`;
     }
   }
-  const why = ci.complete && Number(t.profit_worst) < 0 ? `<div class="ct-dwhy">${icon('warning', 12)} ${ctWhyText(t, lines)}</div>` : '';
+  const why = ci.complete && !ctRevMissing(t) && Number(t.profit_worst) < 0 ? `<div class="ct-dwhy">${icon('warning', 12)} ${ctWhyText(t, lines)}</div>` : '';
   return `<div class="ct-card" id="ctCard${t.id}" onclick="ctOpenPanel(${t.id})">
     <div class="ct-chead">
       <div class="ct-chl">
@@ -905,7 +929,9 @@ function ctWeekTotals(trips) {
   const rev = trips.reduce((a, t) => a + Number(t.revenue || 0), 0);
   const cost = trips.reduce((a, t) => a + Number(t.cost_gross || 0), 0);
   const net = rev - cost;
-  return { rev, cost, net, margin: rev ? (net / rev * 100) : null };
+  // F1/F4: a week with a revenue that lacks an order's price has no net or margin yet (its revenue is a floor)
+  const revMissing = trips.filter(ctRevMissing).length;
+  return { rev, cost, net: revMissing ? null : net, margin: !revMissing && rev ? (net / rev * 100) : null, revMissing };
 }
 // Default: η τρέχουσα + η προηγούμενη εβδομάδα (idx 0,1 στη νεότερη-πρώτη
 // σειρά) ανοιχτές, οι παλαιότερες κλειστές — ΕΚΤΟΣ αν ο χρήστης το άλλαξε
@@ -940,9 +966,9 @@ function ctGroupedTripsHtml(sorted) {
         <span class="ct-wklabel">${ctEsc(label)}</span>
         <span class="ct-wkn">${g.trips.length} ${g.trips.length === 1 ? 'δρομολόγιο' : 'δρομολόγια'}</span>
         <span class="ct-wksum">
-          <span class="ct-wksumi"><span class="l">Έσοδα</span><b class="ct-mono">${ctEur(tot.rev)}</b></span>
+          <span class="ct-wksumi"><span class="l">Έσοδα</span><b class="ct-mono">${ctEur(tot.rev)}</b>${tot.revMissing ? `<span class="ct-eqq" title="${CT_REV_MISSING_WHY}">+ ${tot.revMissing} ${CT_REV_MISSING}</span>` : ''}</span>
           <span class="ct-wksumi"><span class="l">Κόστη</span><b class="ct-mono">${ctEur(tot.cost)}</b></span>
-          <span class="ct-wksumi"><span class="l">Καθαρό</span><b class="ct-mono${tot.net < 0 ? ' neg' : tot.net > 0 ? ' pos' : ''}">${ctEurP(tot.net)}</b></span>
+          <span class="ct-wksumi"><span class="l">Καθαρό</span><b class="ct-mono${tot.net != null && tot.net < 0 ? ' neg' : tot.net > 0 ? ' pos' : ''}">${tot.net == null ? '—' : ctEurP(tot.net)}</b></span>
           <span class="ct-wksumi"><span class="l">Περιθώριο</span><b class="ct-mono">${tot.margin != null ? tot.margin.toFixed(1) + '%' : '—'}</b></span>
         </span>
       </div>
@@ -1053,10 +1079,11 @@ async function ctOpenPanel(id) {
        · ${fmtDate(t.date_start)}${t.date_end ? ' → ' + fmtDate(t.date_end) : ''} · ${t.total_km ? t.total_km.toLocaleString('el-GR') + ' km' : 'χωρίς km'}</div>
       ${t.status === 'planned' || t.status === 'in_progress' ? `<button class="ct-btn" style="margin-top:12px" onclick="ctCloseRt(${t.id})">Κλείσιμο δρομολογίου — χειροκίνητο</button>` : ''}</div>
     ${gateNote}
+    ${ctRevMissing(t) ? `<div class="ct-psec"><div class="ct-note ct-nwarn" style="margin:0">${icon('warning', 13)} Έσοδα ελλιπή — ${CT_REV_MISSING_WHY}: το έσοδό της δεν μετρά ακόμη στα ${ctEur(t.revenue)}. ${CT_REV_MISSING_FIX}</div></div>` : ''}
     ${!complete ? `<div class="ct-psec"><div class="ct-note ct-nwarn" style="margin:0">
       <div style="font-weight:700;font-size:13px">Κόστη ελλιπή — καμία γραμμή κόστους ακόμη</div>
       <div style="font-size:12px;margin-top:4px">Το καθαρό/περιθώριο δεν υπολογίζεται — το άγραφο κόστος θα διαβαζόταν σαν καθαρό κέρδος που δεν υπάρχει. Καταχώρησε τα κόστη ακριβώς από κάτω.</div>
-    </div></div>` : `<div class="ct-psec"><div class="ct-duo">
+    </div></div>` : ctRevMissing(t) ? '' : `<div class="ct-psec"><div class="ct-duo">
       <div class="ct-m ct-mprimary"><div class="l">Καθαρό — με ΦΠΑ (χειρότερη περίπτωση)</div><div class="v ct-mono">${ctEurP(t.profit_worst)}</div><div class="s">${worstNeg ? 'ζημιά · ' : ''}περιθώριο ${t.margin_worst_pct != null ? Number(t.margin_worst_pct).toFixed(1) + '%' : '—'}</div></div>
       <div class="ct-m"><div class="l">Καθαρό — χωρίς ΦΠΑ</div><div class="v ct-mono"${Number(t.profit_ex_vat) < 0 ? ' style="color:var(--danger)"' : ''}>${ctEurP(t.profit_ex_vat)}</div><div class="s">περιθώριο ${t.margin_ex_vat_pct != null ? Number(t.margin_ex_vat_pct).toFixed(1) + '%' : '—'} · ΦΠΑ ${ctEur(t.cost_vat)}</div></div>
     </div>${ctWhyLine(t, lines)}</div>`}
@@ -1126,7 +1153,8 @@ function ctWhyText(t, lines) {
   return `Τα κόστη ξεπερνούν τα έσοδα κατά ${ctEur(-t.profit_worst)}.`;
 }
 function ctWhyLine(t, lines) {
-  if (!(Number(t.profit_worst) < 0)) return '';
+  // F1/F4: a «loss» against a revenue that lacks an order's price is not a loss yet
+  if (!(Number(t.profit_worst) < 0) || ctRevMissing(t)) return '';
   return `<div class="ct-dwhy" style="display:block;margin-top:12px">${icon('warning', 12)} ${ctWhyText(t, lines)}</div>`;
 }
 
