@@ -9,7 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build078Dryrun } from '../migrations/drafts/tools/build-078-dryrun.mjs';
 
-const D = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../migrations/drafts');
+const D = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../migrations');
 const read = (f) => fs.readFileSync(path.join(D, f), 'utf8');
 const ACTIONS = ['create', 'update', 'delete', 'cascade_delete', 'confirm', 'reverse', 'invoice_override', 'upload'];
 
@@ -18,7 +18,7 @@ test('the dry run is 078 verbatim plus the deliberate error', () => {
 });
 
 test('078 lists exactly the actions the Worker writes', () => {
-  const src = fs.readFileSync(path.resolve(D, '../../src/index.js'), 'utf8');
+  const src = fs.readFileSync(path.resolve(D, '../src/index.js'), 'utf8');
   const worker = [...new Set([...src.matchAll(/action: "([a-z_]+)"/g)].map((m) => m[1]))].filter((a) => a !== 'action').sort();
   assert.deepEqual(worker, [...ACTIONS].sort());
   const add = read('078_audit_actions.sql').match(/ADD CONSTRAINT audit_log_action_check CHECK \(action = ANY \(ARRAY\[([^\]]+)\]/)[1];

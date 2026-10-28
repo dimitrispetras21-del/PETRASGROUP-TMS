@@ -5,7 +5,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+// 078 was executed 28/10 and its files left drafts/ (rule 5): they live in worker/migrations/.
+const DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 export function build078Dryrun(main) {
   // from the statement_timeout line: the dry run is bounded like 078
   const at = main.indexOf("\nSET statement_timeout = '5s';\nDO $m$");
