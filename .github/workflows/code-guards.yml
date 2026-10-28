@@ -65,7 +65,11 @@ jobs:
     name: National v5 F5 tests
     runs-on: ubuntu-latest
     steps:
+      # Full history: tests/f5-d3-entities-v5.test.mjs and tests/daily-ramp-v5.test.js compare with the pre-F5
+      # tip 5f55a943 (git show, pinned since #137); a depth-1 checkout does not have that commit.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -77,5 +81,13 @@ jobs:
       # failed GET /plan/config as 'before' again without a red check. Node only,
       # no npm install, like plan-no-resend above. sw-app-shell holds the pre-cache
       # and the load order of the F5 files (core/plan-config.js before every module).
+      # Lines by stream: (c) wi4-vs-state, stops-helpers-identity, legacy-writes-gated,
+      # api-delete-confirm; (d1) orders-natl-v5; (d2) daily-ramp-v5; (d3) d3-entities;
+      # (d4) natv5-kpi; (a1) sql-074a-drafts; (e) wn5-labels (piece_on_rt of 074a).
       - name: Run the F5 tests
-        run: node --test tests/plan-config.test.mjs tests/sw-app-shell.test.js
+        run: >-
+          node --test
+          tests/plan-config.test.mjs tests/sw-app-shell.test.js
+          tests/wi4-vs-state.test.mjs tests/stops-helpers-identity.test.mjs tests/f5-legacy-writes-gated.test.mjs tests/api-delete-confirm.test.mjs
+          tests/orders-natl-v5.test.js tests/daily-ramp-v5.test.js tests/f5-d3-entities-v5.test.mjs tests/f5-natv5-kpi.test.js
+          tests/sql-074a-drafts.test.js tests/wn5-labels.test.js
