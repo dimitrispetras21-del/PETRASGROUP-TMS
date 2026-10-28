@@ -124,10 +124,19 @@ const CFG_RETRY_MS = 60 * 1000;   // a non-final answer is asked again at most o
 // F25 (live 28/10): an 'after' is asked again too — its DAY can move (079: 31/10 → 24/10) and a tab opened before
 // kept the old day until a full reload. Every 5 minutes at the next render (each week change, save, ↻ goes through
 // active()), at once on the user's ↻. A moved day repaints the page and says so; a recheck that fails keeps the day
-// read before and the bar says, at its next paint, that it was not read again (principle 1: never silently stale).
+// read before and the bar says at once that it was not read again (principle 1: never silently stale).
 const CFG_RECHECK_MS = 5 * 60 * 1000;
 function _dm(day) { return Number(day.slice(8)) + '/' + Number(day.slice(5, 7)); }   // '2026-10-31' → «31/10»
 function _afterL(sat) { return !!_cfg && _cfg.state === 'after' && !!_cfg.cutoverDay && typeof sat === 'string' && sat >= _cfg.cutoverDay; }
+function _recheckNoteHTML() {
+  const on = !!(_cfg && _cfg.state === 'after' && _cfg.recheckErr && _cfg.cutoverDay);
+  return `<span class="wi4-range" data-old-view="recheck"${on ? ` title="${_esc(String(_cfg.recheckErr.message || ''))}"` : ' hidden'}>`
+    + (on ? `Η ημέρα μετάβασης δεν ξαναδιαβάστηκε · ισχύει η ${_esc(_dm(_cfg.cutoverDay))}` : '') + '</span>';
+}
+// The note follows every answer in place — on and off — without repainting the board under a click
+function _recheckNote() {
+  try { const el = document.querySelector('.wn5-bar [data-old-view="recheck"]'); if (el) el.outerHTML = _recheckNoteHTML(); } catch (_) {}
+}
 function _cfgKick() {
   if (_cfgBusy || typeof PlanConfig === 'undefined') return;
   const after = !!_cfg && _cfg.state === 'after';
@@ -150,8 +159,9 @@ function _cfgKick() {
     const now = r && r.state;
     const moved = was === 'after' && now === 'after' && wasDay !== r.cutoverDay;
     const page = typeof currentPage !== 'undefined' && currentPage === 'weekly_natl' && typeof window.renderWeeklyNatl === 'function';
-    // a failed recheck alone repaints nothing (its bar line comes with the next paint): a repaint in the middle of a click
-    // would replace the row, close a menu
+    if (page) _recheckNote();
+    // a failed (or recovered) recheck alone repaints nothing but its bar line (_recheckNote): a repaint in the middle of
+    // a click would replace the row, close a menu
     if (!page || !(moved
       || (now !== was && sat && ((now === 'after' && _afterL(sat)) || (now === 'unknown' && _sat === sat && _decide() === 'v5'))))) return;
     // F22 (live 28/10): the v5 board of this week already on screen only needs its bar again — a repaint from the board
@@ -399,8 +409,7 @@ function _barHTML() {
     // «+ Νέα παραγγελία» comes with the v5 form (T20): never a button that opens nothing, never the old form here.
     + '<div class="wi4-bar-r">'
     // F25: day L was read before and could not be read again — the board says which day it still uses
-    + (_cfg && _cfg.state === 'after' && _cfg.recheckErr && _cfg.cutoverDay
-      ? `<span class="wi4-range" data-old-view="recheck" title="${_esc(String(_cfg.recheckErr.message || ''))}">Η ημέρα μετάβασης δεν ξαναδιαβάστηκε · ισχύει η ${_esc(_dm(_cfg.cutoverDay))}</span>` : '')
+    + _recheckNoteHTML()
     + (typeof WN5Form !== 'undefined' && typeof OrdersCommon !== 'undefined' && OrdersCommon.newOrderButton
       ? OrdersCommon.newOrderButton('WN5Form.openOrder({})', '+ Νέα παραγγελία', 'Νέα εθνική παραγγελία v5 — χωρίς έξοδο από το εβδομαδιαίο') : '')
     // Q-10: the old view only for a week before day L; from L on it is not offered, and a stored choice says why
@@ -566,7 +575,8 @@ function _dayHTML(d, m, known, no) {
   // A day the user folded says what it hides (owner 28/10, live: one click on a day head folded it and its rows
   // looked deleted). Drawn on every foldable day, shown by CSS only while it is closed (.wn5-day.closed); a click on
   // it is a click on the head, which opens the day again.
-  const n = d.rows.length;
+  // every line the fold hides: a row, its «⇄» line and its «↳ Φόρτωση με τοπικό» lines (as _rowHTML draws them)
+  const n = d.rows.reduce((a, r) => a + 1 + (r.handovers && r.handovers.length ? 1 : 0) + (Array.isArray(r.local) ? r.local.length : 0), 0);
   const tail = (today ? '<span class="wi4-today"> · σήμερα</span>' : '')
     + (!known ? `<span class="wn5-dayx"> · ${_state === 'loading' ? '…' : '—'}</span>` : empty ? '<span class="wn5-dayx"> · καμία φόρτωση</span>' : '')
     + (fold ? `<span class="wn5-dayhid">▸ ${n} ${n === 1 ? 'γραμμή κρυμμένη' : 'γραμμές κρυμμένες'} · άνοιγμα</span>` : '');

@@ -1436,12 +1436,18 @@ function _atNoRestore(fields) {
 // The base's items ({kind, …ids}) are read with the board's words (core/wn5-labels.js, the one copy of them): live
 // 28/10 the confirm printed every piece_on_rt as raw JSON with its order_stop_id. A kind the labels do not know is
 // still shown («άλλη επίπτωση · <kind>»), never dropped; the same line for several pieces is said once, «×n».
+const _atUnkCons = new Set();
 function _atPreviewText(p) {
   const list = Array.isArray(p && p.consequences) ? p.consequences : [];
   const line = (c) => {
     const own = (c && typeof c === 'object') ? (c.text || c.label || c.message) : null;
     if (c && typeof c === 'object' && c.kind && typeof WN5Lab !== 'undefined') {
       const l = WN5Lab.consequenceLine(c);
+      // a kind the labels miss is logged once per session (as the board's two-step list does): shown is not enough
+      if (l.unknown && !_atUnkCons.has(c.kind)) {
+        _atUnkCons.add(c.kind);
+        try { if (typeof logError === 'function') logError(new Error('order delete: unknown consequence ' + c.kind), 'atWithDeleteConfirm'); } catch (_) {}
+      }
       // a kind the labels do not know yet: the server's own sentence when it sent one, else «άλλη επίπτωση · kind»
       if (!(l.unknown && own)) {
         const cat = Object.prototype.hasOwnProperty.call(WN5Lab.CATEGORY, c.kind) ? WN5Lab.CATEGORY[c.kind] + ' · ' : '';

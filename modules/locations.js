@@ -539,9 +539,10 @@ async function _locGeocode() {
   const countryQ = country && typeof countryName === 'function' ? countryName(country, 'en') : country;
   const tries = [
     { by: 'τη διεύθυνση', q: address ? [address, city, countryQ] : [], house: true },
-    { by: 'όνομα + πόλη', q: name || city ? [name, city, countryQ] : [], house: false },
+    // without a name, «city, country» can only answer the town, which no try takes: not asked (as the scan)
+    { by: 'όνομα + πόλη', q: name ? [name, city, countryQ] : [], house: false },
   ].filter((t) => t.q.length);
-  if (!tries.length) { toast('Συμπλήρωσε πρώτα διεύθυνση, όνομα ή πόλη', 'danger'); return; }
+  if (!tries.length) { toast('Συμπλήρωσε πρώτα διεύθυνση ή όνομα', 'danger'); return; }
   const btn = document.getElementById('locGeoBtn');
   if (btn) { btn.textContent = 'Αναζήτηση…'; btn.disabled = true; }
   try {
@@ -609,6 +610,8 @@ async function _locGeoTries(tries) {
       const q = t.q.filter(Boolean).join(', ');
       const opt = typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? { signal: AbortSignal.timeout(4000) } : {};
       const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1&addressdetails=1`, opt);
+      // a 429 / 5xx with a JSON body is a search that did not run, never «nothing found»
+      if (!r.ok) throw new Error('nominatim ' + r.status);
       const d = await r.json();
       hit = d && d[0];
     } catch (e) { failed.push(t.by); continue; }   // timeout, network or rate limit: the next try, else no pin

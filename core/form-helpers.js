@@ -8,7 +8,7 @@
 const _fhLocationsArr = [];  // [{id,label}]
 const _fhLocationsMap = {};  // recId → label
 const _fhClientsMap   = {};  // recId → name
-const _fhClientCache  = {};  // query → [{id,label}]; '\u0001' + probe word → the server's records (F19)
+const _fhClientCache  = {};  // query → [{id,label}]; '\u0001' + probe word → {at, recs} the server's records (F19, 60 s)
 
 // The location records (Name/City/Country) — the reference preload's copy
 // when it has landed (kept fresh by its revalidate), else the same single
@@ -72,21 +72,23 @@ async function fhSearchClients(q) {
   if (_fhClientCache[key]) return _fhClientCache[key];
   const safe = q.replace(/[^a-zA-Z0-9\s\u0370-\u03FF\u1F00-\u1FFF.-]/g, '').trim();
   if (!safe) return [];
-  // F19 (live 28/10): \u00ABname + start of the 2nd word\u00BB found nothing while one word worked. The whole phrase went to
-  // the Worker as ONE ilike, which it sends to PostgREST through URLSearchParams \u2014 the space travels as \u00AB+\u00BB, read
-  // as a literal plus \u2014 and a name stored with two spaces or \u00AB-\u00BB between the words could not match it either. So
-  // the server is asked for ONE word (the longest: the fewest rows) and every word must then be in the name, in any
-  // order, with the search rule of the boards (_fhNorm: any case, no accents, Greek = Latin).
+  // F19 (live 28/10): «name + start of the 2nd word» found nothing while one word worked. The whole phrase went to
+  // the server as ONE ilike, and 279 of 1,927 live names (SELECT 28/10) have two spaces between words, others «-»;
+  // the Worker also sends the phrase through URLSearchParams (a space travels as «+»; not measured). So the server is
+  // asked for ONE word (the probe, below) and every word must then be in the name, in any order, with the search
+  // rule of the boards (_fhNorm: any case, no accents, Greek = Latin).
   // The probe is the FIRST word of 3+ letters (else the one with most): it stays the same while the 2nd word is being
-  // typed, so its answer, kept by the probe word, is filtered here without one more paged read per keystroke; and a
-  // short «Α.Ε.» / «&» never probes every S.A. company. A query of punctuation only asks nothing.
+  // typed, so its answer, kept by the probe word for 60 s, is filtered here without one more paged read per keystroke
+  // (60 s, not the session: a client created meanwhile must be found by the next search); a short «Α.Ε.» / «&» never
+  // probes every S.A. company. A query of punctuation only asks nothing.
   const words = safe.split(/\s+/).filter(Boolean);
   const letters = (w) => w.replace(/[.\-]/g, '').length;
   const probe = words.find((w) => letters(w) >= 3) || words.reduce((a, w) => (letters(w) > letters(a) ? w : a), '');
   if (!letters(probe)) return [];
   const pk = '\u0001' + probe.toLowerCase();
-  if (!_fhClientCache[pk]) _fhClientCache[pk] = await atGet(TABLES.CLIENTS, `SEARCH(LOWER("${probe}"), LOWER({Company Name}))`, false);
-  const recs = _fhClientCache[pk];
+  const kept = _fhClientCache[pk];
+  const recs = kept && Date.now() - kept.at < 60000 ? kept.recs
+    : (_fhClientCache[pk] = { at: Date.now(), recs: await atGet(TABLES.CLIENTS, `SEARCH(LOWER("${probe}"), LOWER({Company Name}))`, false) }).recs;
   // the plain lower-case test as well: a word typed from the middle of a Greek digraph («υκ» of «Λουκ…») matches
   // the server's ilike but not its _fhNorm form («ou» ≠ «y») — a name the server found is never dropped here
   const need = words.map(w => [w.toLowerCase(), _fhNorm(w)]);

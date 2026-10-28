@@ -115,7 +115,8 @@ async function fold({ browser, origin, ok, scn }) {
   const { page } = await K.openApp(browser, origin);
   const d = await page.evaluate(() => {
     const sec = [...document.querySelectorAll('#content .wn5-day')].find((s) => s.querySelector('.wn5-row'));
-    return { date: sec.dataset.date, rows: sec.querySelectorAll('.wn5-row').length };
+    // every line the fold hides: rows and their «⇄» / «↳» lines
+    return { date: sec.dataset.date, rows: sec.querySelectorAll('.wn5-row, .wn5-sub').length };
   });
   await page.click(`#content .wn5-day[data-date="${d.date}"] > .wn5-dayh`);
   const c = await page.evaluate((date) => {
