@@ -201,7 +201,8 @@
         let rank = null;
         try { if (typeof WN5L !== 'undefined' && st.item.deliver_from) rank = WN5L.stopRank(tr.sideStops, st.item.deliver_from); } catch (e) { k.log(e, 'WN5Hub split stopRank'); }
         return '<span class="wn5-cap' + (after > 33 ? ' over' : '') + '">' + k.esc(k.pal(tr.pal) + ' → ' + k.pal(after) + '/33' + (after > 33 ? ' · υπέρβαση ' + k.pal(after - 33) : '') + (rank > 0 ? ' · μπαίνει ' + rank + 'η' : '')) + '</span>'
-          + (p.stops ? '' : ' <span class="wn5-miss">λείπει ο προορισμός από τη βάση</span>');
+          + (p.stops ? (st.needs.some((n) => n.role === 'drop' && !n.hub && !(n.from && n.to) && n.day) ? ' <span class="wn5-part-u">παράδοση ' + k.esc(k.dayShort(st.needs.find((n) => n.role === 'drop').day)) + ' όλη η ημέρα</span>' : '')
+            : ' <span class="wn5-miss">λείπει ο προορισμός από τη βάση</span>');
       }
       if (p.t !== 'stay') return '';
       return st.item.leave_by
@@ -236,7 +237,8 @@
       p.rt = /^rt:/.test(el.value) ? k.id(el.value.slice(3)) : null;
       // a part on a truck needs its stops on that cycle: the Veroia stop and the delivery (072 plan_h_put per part)
       const tr = p.rt ? st.trucks.find((t) => t.rtId === p.rt) : null;
-      const r = tr ? k.stopsFor(st.needs, tr.cyc, 'KATHODOS', null) : null;
+      // B1: a delivery with no window of its own (a VS bridge) goes on its day, whole day — the badge says it
+      const r = tr ? k.stopsFor(st.needs, tr.cyc, 'KATHODOS', null, (n) => k.dayWin(n)) : null;
       p.stops = r && !r.missing.length ? r.stops : null;
       draw();
     });
