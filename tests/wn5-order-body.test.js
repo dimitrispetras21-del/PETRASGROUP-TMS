@@ -237,3 +237,16 @@ test('077: a removed point and a new point - exactly those items, the others abs
     'the new point: every field, never the screen\'s own keys (k, recs)');
   assert.deepStrictEqual(J(F._patchBody(orig, { price: 1, ships: [], removed: [5], news: [] })), { shipments: [{ shipment_id: 5, remove: true }] });
 });
+
+// F1 in the edit form: a whole-day point is shown empty and read back as WN5L.DAY_WIN (00:00–23:59); untouched it sends
+// nothing, even when the base holds an end with seconds (code review 28/10: compared to the minute)
+test('077 + F1: an untouched whole-day point sends nothing; a real minute change does', () => {
+  const ship = { shipment_id: 9, pallets: 2, load_from: '2026-10-30T00:00:00+02:00', load_to: '2026-10-30T23:59:59+02:00',
+    deliver_from: '2026-10-31T00:00:00+02:00', deliver_to: '2026-10-31T23:59:00+02:00' };
+  const orig = { full: true, price: 1, ships: [ship] };
+  const back = { shipment_id: 9, pallets: 2, load_from: F._iso('2026-10-30', '00:00'), load_to: F._iso('2026-10-30', '23:59'),
+    deliver_from: F._iso('2026-10-31', '00:00'), deliver_to: F._iso('2026-10-31', '23:59') };
+  assert.deepStrictEqual(J(F._patchBody(orig, { price: 1, ships: [back], removed: [], news: [] })), {});
+  assert.deepStrictEqual(J(F._patchBody(orig, { price: 1, ships: [{ ...back, deliver_to: F._iso('2026-10-31', '20:00') }], removed: [], news: [] })),
+    { shipments: [{ shipment_id: 9, deliver_to: '2026-10-31T20:00:00+02:00' }] });
+});

@@ -248,6 +248,7 @@
   // (never sent) unless orig.full: then the form showed the order's own value (077 read, F13) and emptying a text or
   // the temperature clears it on purpose (null). The price is required (no_price), PE and the side are choices.
   const _CLEARABLE = ['reference', 'goods', 'notes', 'temperature_c'];
+  const _min = (iso) => Math.floor(Date.parse(iso) / 60000);
   function _patchBody(orig, st) {
     const set = {};
     for (const k of ['price', 'reference', 'goods', 'notes', 'temperature_c', 'pallet_exchange', 'direction']) {
@@ -265,7 +266,8 @@
       if (!o) continue;
       const ch = {};
       if (Number.isFinite(s.pallets) && Math.round(s.pallets * 10) !== Math.round(o.pallets * 10)) ch.pallets = s.pallets;
-      for (const k of ['load_from', 'load_to', 'deliver_from', 'deliver_to']) if (s[k] && Date.parse(s[k]) !== Date.parse(o[k])) ch[k] = s[k];
+      // to the minute: the form holds ΗΗ:ΛΛ, so a stored end with seconds (23:59:59) is never «changed» by reading it back
+      for (const k of ['load_from', 'load_to', 'deliver_from', 'deliver_to']) if (s[k] && _min(s[k]) !== _min(o[k])) ch[k] = s[k];
       if (Object.keys(ch).length) shipments.push(Object.assign({ shipment_id: s.shipment_id }, ch));
     }
     for (const id of st.removed || []) shipments.push({ shipment_id: id, remove: true });
@@ -752,12 +754,12 @@
       + `<div class="wn5f-grid3"><label class="wn5f-f"><span>Αναφορά</span><input class="form-input" data-f="ref" value="${_esc(e.reference)}"></label>`
       + `<label class="wn5f-f"><span>Είδος</span><input class="form-input" data-f="goods" value="${_esc(e.goods)}"></label>`
       + `<label class="wn5f-f"><span>Σημειώσεις</span><input class="form-input" data-f="notes" value="${_esc(e.notes)}"></label></div>`
-      + `<div class="wn5f-sec">ΑΠΟΣΤΟΛΕΣ</div><div class="wn5f-ships-h"><span>Διαδρομή</span><span>Φόρτωση από – έως · κενό: όλη η ημέρα</span><span>Παράδοση από – έως · κενό: όλη η ημέρα</span><span>Παλέτες</span><span></span></div>`
+      + `<div class="wn5f-sec">ΑΠΟΣΤΟΛΕΣ</div><div class="wn5f-ships-h"><span>Διαδρομή</span><span>Φόρτωση από – έως</span><span>Παράδοση από – έως</span><span>Παλέτες</span><span></span></div>`
       + `<div class="wn5f-ships" data-ships>${e.ships.map((s) => _shipHTML(e, s)).join('')}</div>`
       + `<div class="wn5f-adds"><button type="button" class="wn5f-add" data-act="add-ship" data-k="drop">+ σημείο παράδοσης</button>`
       + `<button type="button" class="wn5f-add" data-act="add-ship" data-k="load">+ σημείο φόρτωσης</button></div>`
       // owner 28/10: a new point is not put on the order's cycle by itself — one board move puts it on a truck
-      + '<div class="wn5f-note">Νέο σημείο: μένει ΠΡΟΣ ΑΝΑΘΕΣΗ — βάλ\' το σε φορτηγό από το Εβδομαδιαίο.</div>'
+      + '<div class="wn5f-note">Παράθυρο κενό: όλη η ημέρα. Νέο σημείο: μένει ΠΡΟΣ ΑΝΑΘΕΣΗ — βάλ\' το σε φορτηγό από το Εβδομαδιαίο.</div>'
       + (e.riding ? '<div class="wn5f-note">Φορτίο σε κύκλο: παλέτες και παράθυρα αλλάζουν με «Μεταφορά σε…» ή από την ημέρα του σκέλους.</div>' : '');
   }
   function _readEdit(f) {
