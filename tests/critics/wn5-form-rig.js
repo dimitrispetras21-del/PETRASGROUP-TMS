@@ -606,6 +606,12 @@ async function scnDayType({ browser, origin, ok, scn }) {
   const c = await p2.page.evaluate((d) => ({ row: document.querySelector(`${d} .wn5f-rows[data-k="drop"] [data-f="day"]`).value, head: document.querySelector(`${d} #wn5f-vday`).value,
     headT: (document.querySelector(`${d} .wn5f-head .wn5f-dayx`) || {}).value }), DLG);
   ok(scn, 'create form: row «21/10» → 2026-10-21, head «22/10/2026» → 2026-10-22 reading «Πέμ 22/10/2026»', c.row === '2026-10-21' && c.head === '2026-10-22' && c.headT === 'Πέμ 22/10/2026', c);
+  // code review: a Veroia row's day typed wrong is never filled over by the head's Veroia day (it stays red)
+  await p2.page.evaluate((d) => { const r = document.querySelector(`${d} .wn5f-rows[data-k="load"] .wn5f-row`); fhPickLinked(r.dataset.pid, 'recJucKOhC1zh4IP3', 'ΒΕΡΟΙΑ TEST'); }, DLG);
+  await typeDay(p2.page, `${DLG} .wn5f-rows[data-k="load"] .wn5f-row .wn5f-day`, '31/11');
+  const vr = await p2.page.evaluate((d) => { const w = document.querySelector(`${d} .wn5f-rows[data-k="load"] .wn5f-row .wn5f-day`);
+    return { v: w.querySelector('[data-f="day"]').value, t: w.querySelector('.wn5f-dayx').value, red: w.querySelector('.wn5f-dayx').classList.contains('bad') }; }, DLG);
+  ok(scn, 'a Veroia row: «31/11» stays red and empty — the head\'s day (22/10) does not fill over it', vr.v === '' && vr.t === '31/11' && vr.red, vr);
   ok(scn, 'every day field has its calendar button (the picker stays)', await p2.page.evaluate((d) => [...document.querySelectorAll(`${d} .wn5f-day`)].every((w) => !!w.querySelector('.wn5f-dayc[data-act="day-pick"]')), DLG));
   await closeClean(p2.page, p2.S, ok, scn);
 }
@@ -755,7 +761,7 @@ async function scnMiss({ browser, origin, ok, scn }) {
   await page.evaluate((d) => { const r = document.querySelector(`${d} .wn5f-rows[data-k="drop"] .wn5f-row`);
     document.getElementById('lv_' + r.dataset.pid).value = ''; const t = document.getElementById('ls_' + r.dataset.pid); t.value = 'ΑΓΝΩΣΤΟΣ ΠΡΟΟΡΙΣΜΟΣ';
     t.dispatchEvent(new Event('input', { bubbles: true })); }, DLG);
-  const why = () => page.evaluate((d) => { const x = document.querySelector(`${d} .wn5f-ft [data-why]`);
+  const why = () => page.evaluate((d) => { const x = document.querySelector(`${d} .wn5f-ft .wn5-why`);
     return x ? { t: x.textContent, c: getComputedStyle(x).color, vis: x.getBoundingClientRect().width > 0 } : null; }, DLG);
   const w1 = await why();
   ok(scn, 'before any press: a red «Λείπει: τόπος παράδοσης» beside «Αποθήκευση»', !!w1 && w1.t === 'Λείπει: τόπος παράδοσης' && w1.vis && w1.c === 'rgb(185, 28, 28)', w1);
@@ -770,7 +776,7 @@ async function scnMiss({ browser, origin, ok, scn }) {
   const p2 = await K.openApp(browser, origin);
   await openForm(p2.page, { natOrderId: 3101 });
   await p2.page.click(`${DLG} [data-act="add-ship"][data-k="drop"]`);
-  const w2 = await p2.page.evaluate((d) => { const x = document.querySelector(`${d} .wn5f-ft [data-why]`); return x ? x.textContent : null; }, DLG);
+  const w2 = await p2.page.evaluate((d) => { const x = document.querySelector(`${d} .wn5f-ft .wn5-why`); return x ? x.textContent : null; }, DLG);
   ok(scn, 'edit form, «+ σημείο παράδοσης» not filled → «Λείπει: τόπος παράδοσης»', w2 === 'Λείπει: τόπος παράδοσης', w2);
   await closeClean(p2.page, p2.S, ok, scn);
 }
@@ -786,10 +792,25 @@ async function scnLegAdd({ browser, origin, ok, scn }) {
   ok(scn, 'each national block has «+ σημείο φόρτωσης» and «+ σημείο παράδοσης», the VS none', await K.count(page, `${LEG} [data-nat="3001"] [data-act="add-point"]`) === 2
     && await K.count(page, `${LEG} [data-nat="3004"] [data-act="add-point"]`) === 2 && await K.count(page, `${LEG} [data-vs] [data-act="add-point"]`) === 0);
   ok(scn, 'the leg has «+ παραγγελία»', await K.count(page, `${LEG} [data-act="leg-add-order"]`) === 1);
+  // code review: a price typed in the leg form and not saved is not lost by these exits
+  await page.fill(`${LEG} [data-nat="3001"] [data-f="price"]`, '999');
+  await page.click(`${LEG} [data-nat="3001"] [data-act="add-point"][data-k="drop"]`);
+  ok(scn, 'a price typed and not saved + «+ σημείο» → the line says save first, the leg form stays, nothing opened', await K.count(page, LEG) === 1 && await K.count(page, DLG) === 0
+    && /Αποθήκευσε πρώτα/.test(await K.text(page, `${LEG} [data-err]`)));
+  await page.fill(`${LEG} [data-nat="3001"] [data-f="price"]`, '');
+  // code review: the row A-7 opens with is not «a change» — the riding point's stop time still opens at once
+  await page.click(`${LEG} [data-nat="3001"] [data-act="add-point"][data-k="drop"]`);
+  await page.waitForSelector(DLG, { timeout: 8000 }).catch(() => {});
+  await page.click(`${DLG} [data-shipstop="5202"] [data-act="stop-time"][data-stop="1003"]`).catch(() => {});
+  await page.waitForSelector('.wi4-dlg[data-wn5="date"]', { timeout: 6000 }).catch(() => {});
+  ok(scn, 'the edit form opened by «+ σημείο» with its untouched row: «Αλλαγή ώρας στάσης ›» opens the panel, no «save first»',
+    await K.count(page, '.wi4-dlg[data-wn5="date"]') === 1 && await K.count(page, DLG) === 0);
+  await page.keyboard.press('Escape');
+  await openLegBy(page, 101, 'KATHODOS');
   await page.click(`${LEG} [data-nat="3001"] [data-act="add-point"][data-k="drop"]`);
   await page.waitForSelector(DLG, { timeout: 8000 }).catch(() => {});
   ok(scn, '«+ σημείο παράδοσης» → the leg form closes, #3001 opens to edit (GET /plan/orders/3001) with ONE new delivery row', await K.count(page, LEG) === 0
-    && K.planOf(S, 'GET', '/plan/orders/3001').length === 1 && await K.count(page, `${DLG} [data-newship][data-k="drop"]`) === 1);
+    && K.planOf(S, 'GET', '/plan/orders/3001').length === 2 && await K.count(page, `${DLG} [data-newship][data-k="drop"]`) === 1);
   await page.evaluate((d) => { const r = document.querySelector(`${d} [data-newship]`); fhPickLinked(r.dataset.pd, 'recWn5LocAth', 'ATHENS TEST');
     const x = r.querySelector('[data-f="pal"]'); x.value = '2'; x.dispatchEvent(new Event('input', { bubbles: true })); }, DLG);
   await save(page);

@@ -655,6 +655,7 @@
     if (w.textContent !== text) w.textContent = text;
     return w;
   }
+  KIT.why = _why;   // the national order forms' «Λείπει: …» (wn5_forms.js, F26): one footer reason, not two
   // one missing stop in words: «παράθυρο παράδοσης <place>», «άφιξη Βέροιας», …
   function _lackText(st, n) {
     const act = n.role === 'load' ? 'φόρτωσης' : 'παράδοσης';

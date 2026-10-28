@@ -9823,8 +9823,8 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5f-done { padding:6px 10px; border-radius:6px; background:var(--wi4-partner); font-weight:600; color:var(--wi4-partner-ink); }
 /* A-7: «Στο RT-… ›» inside the saved line, back to the leg the point was added from */
 .wn5f-done .wn5f-lnk { padding:0 6px; line-height:18px; }
-/* F26: what a save still lacks, in red beside its button (as Δ1's «Λείπει: …») */
-.wn5f-ft .wn5f-why { font-size:12px; font-weight:500; color:var(--wi4-red); text-align:right; }
+/* F26: what a save still lacks, in red beside its button — WN5Act's one footer reason (Δ1 / Δ4 «Λείπει: …») */
+.wn5f-ft .wn5-why { font-size:12px; font-weight:500; color:var(--wi4-red); text-align:right; }
 /* the footer (2011:10013): note, then «Άκυρο» and the accent «Αποθήκευση», both 36px */
 .wn5f > .wn5f-ft { flex:none; height:64px; margin:0; padding:0 22px; gap:10px; align-items:center; box-sizing:border-box; border-top:1px solid var(--wi4-line-2); }
 .wn5f-ft-note { margin-right:auto; font-size:11.5px; color:var(--wi4-grey-2); }

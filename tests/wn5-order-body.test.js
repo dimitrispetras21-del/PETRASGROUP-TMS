@@ -263,6 +263,12 @@ test('live 28/10: a typed day is read as the dispatcher writes it, or refused (n
   assert.strictEqual(p('02/01', '2026-12-30'), '2027-01-02', 'across the new year: the nearest January');
   assert.strictEqual(p('30/12', '2027-01-02'), '2026-12-30', 'and back');
   for (const t of ['32/10', '29/13', '31/11', '29/02/2027', '29/10/1999', '29/10/0029', 'abc', '29/10/202', '2', '29/']) assert.strictEqual(p(t), null, t);
-  assert.strictEqual(p('29/02/2028'), '2028-02-29', 'a leap day with its year');
+  assert.strictEqual(p('29/02/2028', '2027-10-28'), '2028-02-29', 'a leap day with its year');
+  // code review: a typed year must be within a year of the field's day — «29/10/20» is a slip, never 2020
+  assert.strictEqual(p('29/10/20'), null, '2020 typed on a 2026 field');
+  assert.strictEqual(p('29/10/2028'), null, 'two years ahead');
+  assert.strictEqual(p('15/01/27'), '2027-01-15', 'next year is fine');
+  assert.strictEqual(p('15/12/2025'), '2025-12-15', 'last year is fine');
+  assert.strictEqual(F._dayParse('29/10/2030', ''), '2030-10-29', 'no reference day: any year 2000-2099 written in full');
   assert.strictEqual(F._dayParse('29/10', ''), null, 'no year and no reference day: refused, never the clock');
 });
