@@ -234,6 +234,10 @@ async function scnNoPP({ browser, origin, ok, scn }) {
   rd.order.price = null; rd.order.pallets = null;
   rd.shipments[0].pallets = null;
   rd.shipments.push(Object.assign(K.clone(K.orders()[3101].shipments[0]), { shipment_id: 5304, pallets: null }));
+  // code review xhigh r4: a two-day point of unknown pallets (locked, pallets open, ×) and a point at Veroia (its loading
+  // locked, ×) — ↺ gives each field back the lock it was drawn with
+  rd.shipments.push(Object.assign(K.clone(K.orders()[3101].shipments[0]), { shipment_id: 5305, pallets: null, deliver_to: '2026-10-16T07:00:00+00:00' }));
+  rd.shipments.push(Object.assign(K.clone(K.orders()[3101].shipments[0]), { shipment_id: 5306, pallets: 3, at_hub: true, waits: true }));
   const plan = { 'GET /plan/orders/3001': () => [200, rd],
     'PATCH /plan/orders/3001': () => [200, { ok: true, op: 'plan_order_update', dry_run: false, ids: { nat_order_id: 3001, shipment_ids: [] }, warnings: [], notice_ids: [] }] };
   const p2 = await K.openApp(browser, origin, { plan });
@@ -252,13 +256,25 @@ async function scnNoPP({ browser, origin, ok, scn }) {
   ok(scn, 'the waiting point with unknown pallets: editable, pallets «άγνωστες»', !!ed && !!ed.wait && !ed.wait.ro && ed.wait.palOn && !ed.wait.winOff && ed.wait.ph === 'άγνωστες', ed && ed.wait);
   await p2.page.fill(`${DLG} [data-ship="5202"] [data-f="pal"]`, '10').catch(() => {});
   await p2.page.fill(`${DLG} [data-ship="5304"] [data-f="pal"]`, '4').catch(() => {});
+  const lk = (id) => p2.page.evaluate(([d, i]) => { const r = document.querySelector(`${d} [data-ship="${i}"]`);
+    const g = (k) => { const x = r.querySelector(`[data-f="${k}"]`); return x ? !x.disabled : null; };
+    return { pal: g('pal'), lfrom: g('lfrom'), dfrom: g('dfrom'), rm: r.hasAttribute('data-rm') }; }, [DLG, id]);
+  const x = (id) => p2.page.click(`${DLG} [data-ship="${id}"] [data-act="del-ship"]`);
+  const two0 = await lk(5305);
+  await p2.page.fill(`${DLG} [data-ship="5305"] [data-f="pal"]`, '3').catch(() => {});
+  await x(5305); const two1 = await lk(5305); await x(5305); const two2 = await lk(5305);
+  await x(5306); await x(5306); const hub2 = await lk(5306);
+  ok(scn, 'two-day point of unknown pallets: pallets open, windows locked; × closes them all; ↺ gives back exactly that',
+    two0.pal === true && two0.lfrom === false && two0.dfrom === false && two1.pal === false && two1.rm && two2.pal === true && two2.lfrom === false && two2.dfrom === false && !two2.rm, { two0, two1, two2 });
+  ok(scn, 'a point at Veroia: after × and ↺ its loading stays locked, its delivery and pallets open', hub2.lfrom === false && hub2.dfrom === true && hub2.pal === true, hub2);
+  await x(5305);   // marked: it sends its removal, never the pallets typed before
   await save(p2.page);
   await p2.page.waitForTimeout(1200);
   const pt = K.planOf(p2.S, 'PATCH', '/plan/orders/3001');
   const sent = pt[0] ? Object.assign({}, pt[0].body) : null;
   if (sent) delete sent.request_id;
-  ok(scn, 'one PATCH /plan/orders/3001 {shipments:[{5304, pallets:4}, {5202, pallets:10}]} — pallets only, no window, no price',
-    pt.length === 1 && JSON.stringify(sent) === JSON.stringify({ shipments: [{ shipment_id: 5304, pallets: 4 }, { shipment_id: 5202, pallets: 10 }] }), pt.map((x) => x.body));
+  ok(scn, 'one PATCH /plan/orders/3001 {shipments:[{5304, pallets:4}, {5202, pallets:10}, {5305, remove}]} — pallets only, no window, no price',
+    pt.length === 1 && JSON.stringify(sent) === JSON.stringify({ shipments: [{ shipment_id: 5304, pallets: 4 }, { shipment_id: 5202, pallets: 10 }, { shipment_id: 5305, remove: true }] }), pt.map((x) => x.body));
   ok(scn, 'edit: no page errors', !p2.S.pageErrors.length, p2.S.pageErrors);
   await p2.page.context().close();
   // code review xhigh r3: N×1 with the one delivery left empty and both loads known (allowed) — the delivery stop of the

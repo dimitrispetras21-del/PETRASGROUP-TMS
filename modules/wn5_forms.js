@@ -559,6 +559,9 @@
       if (h) h.textContent = rows.length && rows.every((r) => r.classList.contains('until')) ? UNTIL_HEAD : WIN_HEAD;
     });
     let total = 0, totalUnk = 0, ships = 0;
+    // {pal: known sum | null when all unknown | NaN when a typo, unk: count of unknown}
+    const _palAgg = (xs) => (xs.some((x) => Number.isNaN(x)) ? { pal: NaN, unk: 0 }
+      : { pal: xs.every((x) => x === null) ? null : xs.reduce((a, x) => a + (Number.isFinite(x) ? x : 0), 0), unk: xs.filter((x) => x === null).length });
     const seq = [];
     const cli = [];
     raw.forEach((o, i) => {
@@ -580,15 +583,9 @@
         .concat(Number.isFinite(o.price) && o.price > 0 ? [`${_pal(o.price)} €`] : o.price === null ? ['τιμή λείπει'] : []).join(' · '));
       // a stop carries the pallets its shipments will have (_pairs), not its raw row: the one row of a 1×1 / N×1 / 1×N
       // side carries them all (code review xhigh r3: an N×1 delivery left empty is NOT «;» when every load is known),
-      // a row of the N side its own shipment's. {pal: known sum | null when all unknown | NaN typo, unk: count}
-      const agg = (xs) => (xs.some((x) => Number.isNaN(x)) ? { pal: NaN, unk: 0 }
-        : { pal: xs.every((x) => x === null) ? null : xs.reduce((a, x) => a + (Number.isFinite(x) ? x : 0), 0), unk: xs.filter((x) => x === null).length });
-      const palOf = (r, single) => {
-        if (!prs) return agg([r.pallets]);
-        if (single) return agg(sp);
-        const pr = prs.find((x) => x[0] === r || x[1] === r);
-        return agg([pr ? pr[2] : r.pallets]);
-      };
+      // a row of the N side its own shipment's
+      // (a row of the N side IS its shipment: _pairs takes its own pallets)
+      const palOf = (r, single) => (prs && single ? _palAgg(sp) : _palAgg([r.pallets]));
       for (const [act, rows, single] of [['φόρτωση', o.loads, nl === 1], ['παράδοση', o.drops, nd === 1]]) for (const r of rows)
         if (DAY.test(r.day) && HM.test(r.to)) seq.push(Object.assign({ k: r.day + 'T' + (r.from || r.to), when: r.until ? `ως ${_dow(r.day)} ${r.to}` : r.allDay ? `${_dow(r.day)} όλη η ημέρα` : `${_dow(r.day)} ${r.from}–${r.to}`, act, place: r.hub ? 'Βέροια' : r.label, clients: [o.client || '—'] }, palOf(r, single)));
     });
@@ -918,10 +915,14 @@
       // an existing point is marked, not dropped from the screen: one more press brings it back before «Αποθήκευση»
       const rm = !row.hasAttribute('data-rm');
       row.toggleAttribute('data-rm', rm);
-      // a read-only point (two-day window) keeps its fields disabled whatever the mark — but its pallets, when unknown
-      // (data-palonly, F1), come back open: the only place they are written
-      const palOpen = (x) => row.hasAttribute('data-palonly') && x.dataset.f === 'pal';
-      row.querySelectorAll('input').forEach((x) => { x.disabled = rm || (row.hasAttribute('data-ro') && !palOpen(x)); });
+      // ↺ gives each field back the lock _shipHTML drew (read once, at the first ×): a two-day point stays read-only,
+      // the loading of a point at Veroia stays locked, the unknown pallets of a locked point (F1) come back open —
+      // one source for «which field is locked», never a second rule here (code review xhigh r4)
+      if (!row.hasAttribute('data-lock0')) {
+        row.querySelectorAll('input').forEach((x) => { x.dataset.lock0 = x.disabled ? '1' : ''; });
+        row.setAttribute('data-lock0', '');
+      }
+      row.querySelectorAll('input').forEach((x) => { x.disabled = rm || x.dataset.lock0 === '1'; });
       t.textContent = rm ? '↺' : '×';
       t.setAttribute('aria-label', rm ? 'Επαναφορά σημείου' : 'Αφαίρεση σημείου');
       return _refresh(ff);

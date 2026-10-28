@@ -250,6 +250,11 @@ test('080 on the production-shaped copy (28/10)', async (t) => {
     const r = await call(db, 'plan_put_pieces', { pieces: [{ piece_id: pc }], ...tgt(S, await S.truck()) });
     assert.strictEqual(Number((await one(db, `SELECT amount FROM ct_v_v5_revenue WHERE nat_order_id = $1`, [x])).amount), 0);
     assert.strictEqual((await one(db, `SELECT revenue_missing FROM ct_v_rt_revenue WHERE rt_id = $1`, [r.ids.rt_id])).revenue_missing, false);
+    // code review xhigh r4: a stock-lot order cannot have unknown pallets at all - 057 refuses it (piece_empty) - so a
+    // lot's share is never NULL and never flagged; nothing in 080's views has to cover that case
+    const e = await errorOf(db, `INSERT INTO national_orders (legacy_id, client_id, reference, price, pallets, stock_lot_id)
+      VALUES ('rec080TN2', $1, 'WN080-TEST', NULL, NULL, $2)`, [S.cl, lot]);
+    assert.match(e?.msg ?? '', /Κομμάτι χωρίς παλέτες/, JSON.stringify(e));
   });
 
   await t.test('P10: the auditor\'s money checks stay green (B-79, B-80): a NULL share is not a wrong sum', async () => {
@@ -288,6 +293,18 @@ test('080 on the production-shaped copy (28/10)', async (t) => {
       let msg = null;
       try { await db.exec(read('080_plan_optional_price_pallets_rollback.sql')); } catch (e) { msg = String(e.message); }
       assert.match(msg ?? '', /deleted shipment \/ piece row\(s\) keep unknown pallets as history - no rollback, fix forward/);
+    } finally { await db.exec('ROLLBACK'); }
+    assert.strictEqual((await one(db, read('080_plan_optional_price_pallets_verify.sql'))).applied, '080 in place');
+  });
+
+  await t.test('080 rollback: a money view with options stops it before any DROP (nothing changes)', async () => {
+    await db.exec('BEGIN');
+    try {
+      await db.exec(`UPDATE shipment_pieces SET pallets = 1 WHERE pallets IS NULL; UPDATE shipments SET pallets = 1 WHERE order_stop_id IS NULL AND pallets IS NULL;
+        ALTER VIEW public.ct_v_rt_pnl SET (security_barrier = true)`);
+      let msg = null;
+      try { await db.exec(read('080_plan_optional_price_pallets_rollback.sql')); } catch (e) { msg = String(e.message); }
+      assert.match(msg ?? '', /080 rollback: a money view has options \(reloptions\) the way back would drop/);
     } finally { await db.exec('ROLLBACK'); }
     assert.strictEqual((await one(db, read('080_plan_optional_price_pallets_verify.sql'))).applied, '080 in place');
   });

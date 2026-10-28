@@ -86,8 +86,8 @@ test('F1: the board model keeps unknown pallets null and counts them; palText sa
   const side = r.kath || r.anod;
   const pts = side.from.concat(side.to).filter((p) => p.pallets === null || p.palUnknown);
   assert.ok(pts.length >= 1, 'a point keeps the unknown');
-  // code review xhigh r3: every point COUNTS its unknown (palUnknown 1), its pallets being the known part (null / 0)
-  assert.ok(pts.every((p) => p.palUnknown === 1 && !p.pallets), JSON.stringify(pts.map((p) => [p.pallets, p.palUnknown])));
+  // code review xhigh r3/r4: every point holding an unknown COUNTS it (palUnknown ≥ 1), never only through pallets null
+  assert.ok(pts.every((p) => p.palUnknown >= 1), JSON.stringify(pts.map((p) => [p.pallets, p.palUnknown])));
   assert.ok(side.palUnknown >= 1, 'the side counts it');
   // capacity of a cycle side with one unknown leg
   const cyc = b.cycles[0];
