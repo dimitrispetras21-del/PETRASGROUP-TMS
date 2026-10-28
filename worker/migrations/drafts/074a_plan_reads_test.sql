@@ -21,7 +21,7 @@ DECLARE
   b06 timestamptz; b08 timestamptz; b09 timestamptz; b10 timestamptz; b12 timestamptz; b14 timestamptz;
   rt1 bigint; rt2 bigint; s1a bigint; s1h bigint; s1b bigint; s2a bigint; s2h bigint; s2b bigint;
   n1 bigint; n2 bigint; sh1 bigint; sh2 bigint; p1 bigint; p2 bigint; vso bigint; vs_b bigint; vsh bigint; z bigint;
-  x bigint; y bigint; n int; t1 text; t2 text;
+  x bigint; y bigint; n int; t1 text; t2 text; pa bigint; rt3 bigint; trk3 bigint; n3 bigint;
   r jsonb; r2 jsonb; j jsonb; h jsonb; tgt1 jsonb; tgt2 jsonb; st1 jsonb; st2v jsonb;
   -- the keys of plan_board as live before 074a (072 + 072b hook 10): every one must still be there (A7)
   k_cycle CONSTANT text[] := ARRAY['code', 'date_end', 'date_start', 'driver', 'driver_id', 'end_at', 'ended', 'partner',
@@ -62,6 +62,23 @@ DECLARE
     , 'ok'               -- 25 E-19 an unknown order: the empty answer, order_id null
     , 'plan:bad_input'   -- 26 E-19 an unknown role
     , 'ok'               -- 27 E-19 a national order sourced by the international (the cascade deletes it too): its piece on a cycle is listed
+    , 'ok'               -- 28 E3 plan_nat_state: "missing" for an order without shipments and for an unknown id, an object for a v5 one
+    , 'ok'               -- 29 E3 a piece without a leg: planned false, carriers [], hub_side null (A->B) / KATHODOS (from Veroia)
+    , 'ok'               -- 30 E3 on an OWNED cycle: one carrier, owned, plate and driver, its code, side, the Athens day of the pickup
+    , 'ok'               -- 31 E3 on a PARTNER cycle: kind partner, the partner's name, no plate
+    , 'ok'               -- 32 E3 a cancelled cycle is out of carriers, and the order is not executed
+    , 'plan:bad_input'   -- 33 E3 501 ids
+    , 'ok'               -- 34 E3 NULL -> {}
+    , 'ok'               -- 35 E12 plan_activity truck: its cycle, one segment, first, route_text and ended keys, not truncated
+    , 'ok'               -- 36 E12 a driver only on the 2nd segment: the cycle with that segment only, first false
+    , 'ok'               -- 37 E12 a partner: its cycle and its segment's partner_rate
+    , 'ok'               -- 38 E12 a cancelled cycle stays in, with status cancelled
+    , 'ok'               -- 39 E13 a location: its stops with their loads (two drops at B) and carrier; its national shipments, not the VS bridge
+    , 'ok'               -- 40 E13 location all: KATHODOS / ANODOS per place, cancelled cycles out
+    , 'plan:bad_input'   -- 41 E12 'all' for a driver
+    , 'plan:bad_input'   -- 42 E12 an id with a leading zero
+    , 'plan:bad_input'   -- 43 E12 an unknown kind
+    , 'ok'               -- 44 E12 501 cycles of one truck: 500 answered, truncated true
     -- @want (one line per case: "    , '<ok|plan:code|con:name|state:XXXXX>'  -- <k> <what>")
   ]::text[];
   verdict text; got text; hint text; msg text; cname text; st text;
@@ -245,6 +262,61 @@ BEGIN
         r := order_delete_preview('rec074aT-none', 'owner');
       ELSIF k = 26 THEN
         r := order_delete_preview('rec074aTO1', 'nobody');
+      ELSIF k IN (28, 29, 34) THEN
+        INSERT INTO national_orders (legacy_id, client_id, reference, price, pallets) VALUES ('rec074aTN3', cl1, 'WN074a-TEST', 1, 1)
+          RETURNING id INTO n3;
+        j := CASE WHEN k = 34 THEN plan_nat_state(NULL) ELSE plan_nat_state(ARRAY[n1, n2, n3, 999999999]) END;
+      ELSIF k IN (30, 32, 35, 36, 38, 39, 40) THEN
+        r := plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', p1)),
+               'target', tgt1, 'stops', st1), 'test:074a', 'owner');
+        x := (r->'ids'->'leg_ids'->>0)::bigint;
+        r := plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', p2)),
+               'target', tgt1, 'stops', jsonb_build_array(jsonb_build_object('ref', 'h', 'stop_id', s1h),
+                                                          jsonb_build_object('ref', 'b', 'stop_id', s1b))), 'test:074a', 'owner');
+        -- plan_h_finish (inside the puts) made the COMMIT rules immediate: defer them again, this case never commits
+        SET CONSTRAINTS ALL DEFERRED;
+        IF k IN (32, 38) THEN UPDATE ct_round_trips SET status = 'cancelled' WHERE id = rt1; END IF;
+        IF k = 40 THEN UPDATE ct_round_trips SET status = 'cancelled' WHERE id = rt2; END IF;
+        IF k = 36 THEN
+          -- a handover at Veroia: the second segment of R1 has driver 2 (written directly; the COMMIT rules never run here)
+          UPDATE rt_vehicle_segments SET to_at = a09 WHERE rt_id = rt1 AND deleted_at IS NULL;
+          INSERT INTO rt_vehicle_segments (rt_id, from_at, to_at, trip_type, truck_id, driver_id, created_by)
+          VALUES (rt1, a09, a14, 'OWNED', trk1, drv2, 'test:074a');
+        END IF;
+        j := CASE WHEN k IN (30, 32) THEN plan_nat_state(ARRAY[n1])
+                  WHEN k IN (35, 38) THEN plan_activity('truck', trk1::text)
+                  WHEN k = 36 THEN plan_activity('driver', drv2::text)
+                  WHEN k = 39 THEN plan_activity('location', lb::text)
+                  ELSE plan_activity('location', 'all') END;
+      ELSIF k IN (31, 37) THEN
+        INSERT INTO partners (company_name) VALUES ('TEST 074a partner') RETURNING id INTO pa;
+        r := plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'PARTNER', 'partner_id', pa, 'partner_rate', 300),
+               'stops', jsonb_build_array(
+                 jsonb_build_object('ref', 'a', 'location_id', la, 'side', 'KATHODOS', 'planned_from', a06, 'planned_to', a08),
+                 jsonb_build_object('ref', 'b', 'location_id', lb, 'side', 'KATHODOS', 'planned_from', a12, 'planned_to', a14))),
+               'test:074a', 'owner');
+        rt3 := (r->>'rt_id')::bigint;
+        r := plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', p1)),
+               'target', jsonb_build_object('rt_id', rt3, 'side', 'KATHODOS'),
+               'stops', jsonb_build_array(
+                 jsonb_build_object('ref', 'a', 'stop_id', (SELECT id FROM rt_stops WHERE rt_id = rt3 AND location_id = la)),
+                 jsonb_build_object('ref', 'b', 'stop_id', (SELECT id FROM rt_stops WHERE rt_id = rt3 AND location_id = lb)))),
+               'test:074a', 'owner');
+        j := CASE k WHEN 31 THEN plan_nat_state(ARRAY[n1]) ELSE plan_activity('partner', pa::text) END;
+      ELSIF k = 33 THEN
+        j := plan_nat_state(ARRAY(SELECT g::bigint FROM generate_series(1, 501) g));
+      ELSIF k = 41 THEN
+        j := plan_activity('driver', 'all');
+      ELSIF k = 42 THEN
+        j := plan_activity('truck', '0' || trk1);
+      ELSIF k = 43 THEN
+        j := plan_activity('ship', trk1::text);
+      ELSIF k = 44 THEN
+        INSERT INTO trucks (license_plate) VALUES ('TEST-074a-3') RETURNING id INTO trk3;
+        -- 501 cycles of one truck, one window (the EXCLUDE is deferred and this transaction never commits)
+        INSERT INTO ct_round_trips (model, scope, trip_type, truck_id, date_start, date_end, start_at, end_at, status, source, created_by)
+        SELECT 2, 'NATL', 'OWNED', trk3, e, e, b06, b14, 'planned', 'planner', 'test:074a' FROM generate_series(1, 501);
+        j := plan_activity('truck', trk3::text);
       ELSIF k = 27 THEN
         UPDATE national_orders SET source_order_id = vso WHERE id = n1;
         r := plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', p1)),
@@ -383,6 +455,76 @@ BEGIN
                           AND EXISTS (SELECT 1 FROM jsonb_array_elements(r->'consequences') c WHERE c->>'kind' = 'piece_on_rt'
                                        AND (c->>'leg_id')::bigint = x AND (c->>'nat_order_id')::bigint = n1)
                         THEN 'ok the sourced national''s piece on R1 is listed' ELSE 'FAIL sourced national: ' || r::text END;
+      ELSIF k = 28 THEN
+        verdict := CASE WHEN j->(n3::text) = '"missing"'::jsonb AND j->'999999999' = '"missing"'::jsonb
+                          AND jsonb_typeof(j->(n1::text)) = 'object'
+                          AND (SELECT array_agg(k0 ORDER BY k0) FROM jsonb_object_keys(j->(n1::text)) k0)
+                              = ARRAY['carriers', 'executed', 'hub_side', 'late', 'n_executed', 'n_pieces', 'planned']
+                        THEN 'ok missing / missing / the seven keys' ELSE 'FAIL nat_state: ' || j::text END;
+      ELSIF k = 29 THEN
+        verdict := CASE WHEN j->(n1::text)->'planned' = 'false'::jsonb AND j->(n1::text)->'carriers' = '[]'::jsonb
+                          AND (j->(n1::text)->>'n_pieces')::int = 1 AND jsonb_typeof(j->(n1::text)->'hub_side') = 'null'
+                          AND j->(n2::text)->>'hub_side' = 'KATHODOS'
+                        THEN 'ok not planned, no carrier; Veroia -> B is KATHODOS' ELSE 'FAIL no leg: ' || j::text END;
+      ELSIF k = 30 THEN
+        h := j->(n1::text)->'carriers'->0;
+        verdict := CASE WHEN jsonb_array_length(j->(n1::text)->'carriers') = 1 AND j->(n1::text)->'planned' = 'true'::jsonb
+                          AND h->>'kind' = 'owned' AND h->>'truck' = 'TEST-074a-1' AND h->>'driver' = 'TEST 074a driver 1'
+                          AND h->>'code' = (SELECT code FROM ct_round_trips WHERE id = rt1) AND h->>'side' = 'KATHODOS'
+                          AND h->>'day' = d::text AND jsonb_typeof(h->'partner') = 'null'
+                        THEN 'ok owned, plate, driver, code, side, day' ELSE 'FAIL owned carrier: ' || j::text END;
+      ELSIF k = 31 THEN
+        h := j->(n1::text)->'carriers'->0;
+        verdict := CASE WHEN h->>'kind' = 'partner' AND h->>'partner' = 'TEST 074a partner' AND jsonb_typeof(h->'truck') = 'null'
+                        THEN 'ok partner' ELSE 'FAIL partner carrier: ' || j::text END;
+      ELSIF k = 32 THEN
+        verdict := CASE WHEN j->(n1::text)->'carriers' = '[]'::jsonb AND j->(n1::text)->'executed' = 'false'::jsonb
+                        THEN 'ok cancelled cycle out' ELSE 'FAIL cancelled: ' || j::text END;
+      ELSIF k = 34 THEN
+        verdict := CASE WHEN j = '{}'::jsonb THEN 'ok NULL -> {}' ELSE 'FAIL null: ' || coalesce(j::text, 'null') END;
+      ELSIF k = 35 THEN
+        h := j->'cycles'->0;
+        verdict := CASE WHEN jsonb_array_length(j->'cycles') = 1 AND (h->>'rt_id')::bigint = rt1 AND j->'truncated' = 'false'::jsonb
+                          AND h ? 'route_text' AND h->'ended' = 'false'::jsonb AND h->>'status' = 'planned'
+                          AND jsonb_array_length(h->'segs') = 1 AND h->'segs'->0->'first' = 'true'::jsonb
+                          AND (h->'segs'->0->>'truck_id')::bigint = trk1
+                        THEN 'ok one cycle, one first segment' ELSE 'FAIL truck: ' || j::text END;
+      ELSIF k = 36 THEN
+        verdict := CASE WHEN (SELECT count(*) FROM jsonb_array_elements(j->'cycles')) = 2
+                          AND (SELECT c->'segs' FROM jsonb_array_elements(j->'cycles') c WHERE (c->>'rt_id')::bigint = rt1) IS NOT NULL
+                          AND (SELECT jsonb_array_length(c->'segs') = 1 AND c->'segs'->0->'first' = 'false'::jsonb
+                                 FROM jsonb_array_elements(j->'cycles') c WHERE (c->>'rt_id')::bigint = rt1)
+                          AND (SELECT c->'segs'->0->'first' = 'true'::jsonb FROM jsonb_array_elements(j->'cycles') c WHERE (c->>'rt_id')::bigint = rt2)
+                        THEN 'ok R1 by its 2nd segment only (first false), R2 first' ELSE 'FAIL driver 2nd segment: ' || j::text END;
+      ELSIF k = 37 THEN
+        h := j->'cycles'->0;
+        verdict := CASE WHEN jsonb_array_length(j->'cycles') = 1 AND (h->>'rt_id')::bigint = rt3
+                          AND h->'segs'->0->>'trip_type' = 'PARTNER' AND (h->'segs'->0->>'partner_id')::bigint = pa
+                          AND (h->'segs'->0->>'partner_rate')::numeric = 300
+                        THEN 'ok the partner''s cycle and rate' ELSE 'FAIL partner: ' || j::text END;
+      ELSIF k = 38 THEN
+        verdict := CASE WHEN j->'cycles'->0->>'status' = 'cancelled' AND (j->'cycles'->0->>'rt_id')::bigint = rt1
+                        THEN 'ok cancelled stays in' ELSE 'FAIL cancelled: ' || j::text END;
+      ELSIF k = 39 THEN
+        h := (SELECT st0 FROM jsonb_array_elements(j->'stops') st0 WHERE (st0->>'stop_id')::bigint = s1b);
+        verdict := CASE WHEN jsonb_array_length(j->'stops') = 2 AND j->'truncated' = 'false'::jsonb
+                          AND jsonb_array_length(h->'loads') = 2
+                          AND (SELECT bool_and(l0->>'act' = 'drop') FROM jsonb_array_elements(h->'loads') l0)
+                          AND EXISTS (SELECT 1 FROM jsonb_array_elements(h->'loads') l0 WHERE (l0->>'shipment_id')::bigint = sh1
+                                       AND l0->>'kind' = 'national' AND (l0->>'pallets')::numeric = 10 AND (l0->>'nat_order_id')::bigint = n1)
+                          AND h->'carrier'->>'trip_type' = 'OWNED' AND (h->'carrier'->>'truck_id')::bigint = trk1
+                          AND (SELECT array_agg((x0->>'shipment_id')::bigint ORDER BY (x0->>'shipment_id')::bigint)
+                                 FROM jsonb_array_elements(j->'shipments') x0) = ARRAY[sh1, sh2]
+                          AND (SELECT bool_and(x0->>'end' = 'dest') FROM jsonb_array_elements(j->'shipments') x0)
+                        THEN 'ok two stops, two drops at B, its carrier, the two nationals, no bridge' ELSE 'FAIL location: ' || j::text END;
+      ELSIF k = 40 THEN
+        verdict := CASE WHEN (SELECT (x0->>'kathodos')::int = 1 AND (x0->>'anodos')::int = 0
+                                FROM jsonb_array_elements(j->'sides') x0 WHERE (x0->>'location_id')::bigint = la)
+                          AND (SELECT (x0->>'kathodos')::int FROM jsonb_array_elements(j->'sides') x0 WHERE (x0->>'location_id')::bigint = hub) = 1
+                        THEN 'ok A: 1 KATHODOS (R2 cancelled, out)' ELSE 'FAIL sides: ' || j::text END;
+      ELSIF k = 44 THEN
+        verdict := CASE WHEN jsonb_array_length(j->'cycles') = 500 AND j->'truncated' = 'true'::jsonb
+                        THEN 'ok 500 and truncated' ELSE 'FAIL truncated: ' || jsonb_array_length(j->'cycles') || ' ' || (j->'truncated')::text END;
       ELSIF k = 25 THEN
         verdict := CASE WHEN jsonb_typeof(r->'order_id') = 'null' AND r->'needs_confirm' = 'false'::jsonb
                           AND jsonb_typeof(r->'confirm_token') = 'null' AND r->'consequences' = '[]'::jsonb

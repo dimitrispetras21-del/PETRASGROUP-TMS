@@ -4,7 +4,7 @@
 --   that error IS the answer "074a not applied" (a SELECT cannot call a function only when it exists).
 -- EXPECTED after 074a: applied = '074a in place', hooks_in_place = 3, column_ok = true, plan_config_rows = 0,
 --   config = {"opened_at": null, "cutover_day": null} (until 074 on day L), lookups_lists = 6, hubs = 1,
---   open_to_api = 0, worker_can_call = 3, b54_matches = true, v5_rows = 0.
+--   open_to_api = 0, worker_can_call = 5, b54_matches = true, v5_rows = 0.
 SELECT '074a in place' AS applied,
        (SELECT count(*) FROM (VALUES ('public.plan_board(date,text)', 'fc33642e81560b42f217b80c98543467'), ('public.plan_move_pieces(jsonb,text,text)', '9bfa8d7fc5978efe84cb5990309b076f'), ('public.plan_h_leg_add(bigint,bigint,bigint,bigint,text,text,integer)', 'c6f40152cd13f2ec502872e803c10b8e')) h(sig, m)
          WHERE (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure(h.sig)) = h.m) AS hooks_in_place,
@@ -14,14 +14,14 @@ SELECT '074a in place' AS applied,
        public.plan_config_read() AS config,
        (SELECT count(*) FROM jsonb_each(public.plan_lookups('warehouse')) e WHERE jsonb_typeof(e.value) = 'array') AS lookups_lists,
        (SELECT count(*) FROM jsonb_array_elements(public.plan_lookups('warehouse')->'locations') x WHERE (x->>'is_hub')::boolean) AS hubs,
-       (SELECT count(*) FROM unnest(ARRAY['public.order_delete_preview(text,text)', 'public.plan_lookups(text)', 'public.plan_config_read()', 'public.plan_cutover_day()']) f(sig)
+       (SELECT count(*) FROM unnest(ARRAY['public.order_delete_preview(text,text)', 'public.plan_lookups(text)', 'public.plan_config_read()', 'public.plan_cutover_day()', 'public.plan_nat_state(bigint[])', 'public.plan_activity(text,text)']) f(sig)
       WHERE to_regprocedure(f.sig) IS NOT NULL
         AND (has_function_privilege('anon', f.sig, 'EXECUTE') OR has_function_privilege('authenticated', f.sig, 'EXECUTE')))
     + (SELECT count(*) FROM pg_class c WHERE c.oid = to_regclass('public.plan_config')
         AND (has_table_privilege('anon', c.oid, 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
           OR has_table_privilege('authenticated', c.oid, 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
           OR has_table_privilege('service_role', c.oid, 'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'))) AS open_to_api,
-       (SELECT count(*) FROM unnest(ARRAY['public.plan_config_read()', 'public.plan_lookups(text)', 'public.order_delete_preview(text,text)']) f(sig)
+       (SELECT count(*) FROM unnest(ARRAY['public.plan_config_read()', 'public.plan_lookups(text)', 'public.order_delete_preview(text,text)', 'public.plan_nat_state(bigint[])', 'public.plan_activity(text,text)']) f(sig)
          WHERE has_function_privilege('service_role', f.sig, 'EXECUTE')) AS worker_can_call,
        (SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace ns ON ns.oid = c.relnamespace
       WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public') = (SELECT red_value FROM monitoring.checks WHERE id = 'B-54') AS b54_matches,

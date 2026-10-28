@@ -51,7 +51,7 @@ test('guards: PART 0 = PART 6 (unchanged functions); five hooks chain from the l
   const src = read(SRC);
   const p0 = pairsOf(part(src, '===== PART 0', '===== PART 1'));
   const p6 = pairsOf(part(src, '===== PART 6', 'END $do$;'));
-  assert.strictEqual(p0.length, 6);
+  assert.strictEqual(p0.length, 7);
   assert.deepStrictEqual(p6, p0, 'every guarded pair proved again, same order');
   const { hooks, finalMd5 } = await import(BUILDER);
   const h = hooks(src);
@@ -79,17 +79,19 @@ test('guards: PART 0 = PART 6 (unchanged functions); five hooks chain from the l
   }
 });
 
-test('born closed: revoke all, EXECUTE on the Worker three + day L, RLS + ONE auditor policy; the drop list = the created', async () => {
+test('born closed: revoke all, EXECUTE on the Worker five + day L, RLS + ONE auditor policy; the drop list = the created', async () => {
   const src = read(SRC);
   const created = [...src.matchAll(/CREATE FUNCTION (public\.\w+)\(([^)]*)\)/g)].map((m) => m[1]);
-  assert.deepStrictEqual(created.slice().sort(), ['public.order_delete_preview', 'public.plan_config_read', 'public.plan_cutover_day', 'public.plan_lookups']);
+  assert.deepStrictEqual(created.slice().sort(), ['public.order_delete_preview', 'public.plan_activity', 'public.plan_config_read',
+    'public.plan_cutover_day', 'public.plan_lookups', 'public.plan_nat_state']);
   const revoke = /REVOKE ALL ON FUNCTION ([\s\S]*?) FROM PUBLIC, anon, authenticated, service_role;/.exec(src);
   for (const f of created) assert.ok(revoke && revoke[1].includes(f + '('), `${f} is revoked`);
   const grant = /GRANT EXECUTE ON FUNCTION ([\s\S]*?)\n\s+TO service_role;/.exec(src);
-  assert.deepStrictEqual([...grant[1].matchAll(/public\.(\w+)\(/g)].map((m) => m[1]).sort(), ['order_delete_preview', 'plan_config_read', 'plan_lookups']);
+  assert.deepStrictEqual([...grant[1].matchAll(/public\.(\w+)\(/g)].map((m) => m[1]).sort(),
+    ['order_delete_preview', 'plan_activity', 'plan_config_read', 'plan_lookups', 'plan_nat_state']);
   // day L itself also to the writer and the auditor: 074's triggers fire as service_role, 074b's checks as the runner
   assert.match(src, /GRANT EXECUTE ON FUNCTION public\.plan_cutover_day\(\) TO service_role, tms_check_runner, tms_reader;/);
-  for (const f of ['plan_config_read', 'plan_lookups', 'order_delete_preview']) {
+  for (const f of ['plan_config_read', 'plan_lookups', 'order_delete_preview', 'plan_nat_state', 'plan_activity']) {
     assert.match(src, new RegExp(`CREATE FUNCTION public\\.${f}\\([^)]*\\) RETURNS jsonb\\n\\s+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public`), `${f}: STABLE definer, search_path fixed`);
   }
   assert.match(src, /ALTER TABLE public\.plan_config ENABLE ROW LEVEL SECURITY;/);
@@ -123,5 +125,5 @@ test('every con: of the rules test is a CHECK of 074a (or the table key); every 
   const raised = new Set([...src.matchAll(/plan_h_raise\('([a-z_]+)'/g)].map((m) => m[1]));
   for (const c of raised) assert.ok(wants.some((w) => w[0] === 'plan' && w[1] === c), `plan:${c} has a case`);
   const n = (tst.match(/^\s+, '(?:ok|plan:[a-z_]+|con:[a-z_]+|state:\w+)'\s+-- \d+ /gm) || []).length;
-  assert.ok(n >= 27, `${n} cases`);
+  assert.ok(n >= 44, `${n} cases`);
 });

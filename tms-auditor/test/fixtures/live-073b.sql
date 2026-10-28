@@ -2,6 +2,7 @@
 -- is written on. Read by tms-auditor/test/plan-074a.test.mjs: the PGlite copy (072 + 072b + 073 + 073b) must hold
 -- these same texts and columns, and 074a's PART 0 must guard on these same md5. Three sources, one truth (principle 3):
 -- if production moves, re-capture with the queries below and the test says what drifted.
+--   view:  SELECT relname, md5(pg_get_viewdef(oid, true)) FROM pg_class WHERE relnamespace = 'public'::regnamespace AND relname IN (...)
 --   fn:    SELECT oid::regprocedure, md5(prosrc) FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname IN (...)
 --   col:   SELECT table_name || '.' || column_name, data_type FROM information_schema.columns WHERE table_schema = 'public' AND ...
 --   count: SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname LIKE 'plan\_%'
@@ -20,6 +21,11 @@ SELECT kind, name, value FROM (VALUES
   ('fn', 'public.plan_h_finish()', '59d88ec85661d3ef2ac957aecd0e0fcd'),
   ('fn', 'public.plan_h_ok(text,jsonb,jsonb,jsonb)', 'cc4b43dc712e5389398840bf7b687cf5'),
   ('fn', 'public.plan_h_leg_add(bigint,bigint,bigint,bigint,text,text,integer)', '0d95758b35f6095d42b551c287e3008b'),
+  ('fn', 'public.plan_h_seg_of_stop(bigint)', 'd2522a02fe675ff8001925cd07e9b668'),
+  ('view', 'v_rt_segments', 'fd5ef0abf6cf2c0c7ddcdaa6abd420e1'), ('view', 'v_rt_cycle', '47ca7d81be348ec9f7f7bddd8c6563d9'),
+  ('view', 'v_rt_stop_state', 'f758827112c0a1a34f3feebb8cd36c44'), ('view', 'v_national_order_state', '4d2f22b0689f2fd3d17a330ed0005782'),
+  ('view', 'v_shipments', 'ea427b9516b1add5372a387e22b798f1'), ('view', 'v_piece_state', '598fd9472beaef97adaf49b1ff431504'),
+  ('view', 'dl_v_rt_route', 'b21405a7856b912d2ea697235461cbd6'),
   ('col', 'locations.id', 'bigint'), ('col', 'locations.legacy_id', 'text'), ('col', 'locations.name', 'text'),
   ('col', 'locations.address', 'text'), ('col', 'locations.city', 'text'), ('col', 'locations.phone', 'text'),
   ('col', 'locations.is_hub', 'boolean'), ('col', 'locations.deleted_at', 'timestamp with time zone'),

@@ -124,7 +124,8 @@ BEGIN
       ('public.plan_h_token(text,text,jsonb)', '5ebb4630c920cf626c346dcc5aa2a34a'),
       ('public.plan_h_strip_amounts(jsonb,text)', 'cc19be0190b5b82d50ee8521cc7bee43'),
       ('public.plan_h_drop_consequences(bigint[],bigint,bigint[])', 'e370e52c9dd96d7e4e152b3ce348736e'),
-      ('public.plan_h_rt_consequences(bigint)', 'cddea3a5fb20a563283a16db3b50f133')
+      ('public.plan_h_rt_consequences(bigint)', 'cddea3a5fb20a563283a16db3b50f133'),
+      ('public.plan_h_seg_of_stop(bigint)', 'd2522a02fe675ff8001925cd07e9b668')
     ) g(sig, m) LOOP
     IF to_regprocedure(v_g.sig) IS NULL
        OR (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure(v_g.sig)) IS DISTINCT FROM v_g.m THEN
@@ -134,7 +135,7 @@ BEGIN
   SELECT count(*) INTO v_trg0 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
     JOIN pg_namespace ns ON ns.oid = c.relnamespace
    WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public';
-  -- measured, never a constant (code review xhigh 28/10): PART 6 proves exactly three plan_* more than here
+  -- measured, never a constant (code review xhigh 28/10): PART 6 proves exactly five plan_* more than here
   SELECT count(*) INTO v_fns0 FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname LIKE 'plan\_%';
 
   -- ===== PART 1: THE COLUMN (E-41) =====
@@ -288,6 +289,147 @@ begin
 end
 $f$;
 
+  -- E3 / E5 (stream d1, spec docs/national-v5/f5/d1-orders-read-spec.md section 2): what the national orders list
+  -- and "Week" show of a v5 national order - its state and who carries it. The shape of plan_vs_state (072).
+  CREATE FUNCTION public.plan_nat_state(p_nat_order_ids bigint[]) RETURNS jsonb
+    LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $f$
+begin
+  -- "missing" = no row in v_national_order_state (no live v5 piece: an order of the old model). No amount here.
+  -- carriers: one per (cycle, side of the pickup stop) of the order's live legs on live v5 cycles, the vehicle of
+  -- the segment that executes the first pickup (THE rule, plan_h_seg_of_stop, H-9 - as plan_vs_state since 072b),
+  -- the day = the Athens day of that pickup. Every live piece counts, a split parent too (its leg to Veroia).
+  if p_nat_order_ids is null then return '{}'::jsonb; end if;
+  if cardinality(p_nat_order_ids) > 500 then perform plan_h_raise('bad_input', 'more than 500 nat order ids'); end if;
+  -- the view walks every piece (v_piece_pos is recursive): read it ONCE for the asked ids, never once per id
+  return coalesce((
+    with st as materialized (select * from v_national_order_state where nat_order_id = any (p_nat_order_ids))
+    select jsonb_object_agg(o::text, coalesce((
+             select jsonb_build_object(
+                      'n_pieces', v.n_pieces, 'n_executed', v.n_executed, 'executed', v.executed,
+                      'planned', v.planned, 'late', v.late,
+                      'hub_side', (select case when bool_and(vs.nat_to_location_id = hub.id) then 'ANODOS'
+                                               when bool_and(vs.nat_from_location_id = hub.id) then 'KATHODOS' end
+                                     from v_shipments vs join locations hub on hub.is_hub
+                                    where vs.nat_order_id = o and vs.live),
+                      'carriers', coalesce((
+                        select jsonb_agg(jsonb_build_object(
+                                 'kind', case when g.trip_type = 'PARTNER' then 'partner'
+                                              when g.truck_id is null then 'none' else 'owned' end,
+                                 'truck', tr.license_plate, 'trailer', tl.license_plate, 'driver', dv.full_name,
+                                 'partner', pa.company_name, 'code', c.code, 'side', c.side,
+                                 'day', (c.first_from at time zone 'Europe/Athens')::date)
+                               order by (c.first_from at time zone 'Europe/Athens')::date, c.code)
+                          from (select distinct on (l.rt_id, pk.side) l.rt_id, r.code, pk.side, pk.id as pickup_stop,
+                                       pk.planned_from as first_from
+                                  from shipments s
+                                  join shipment_pieces sp on sp.shipment_id = s.id and sp.deleted_at is null
+                                  join piece_legs l on l.piece_id = sp.id and l.deleted_at is null
+                                  join rt_stops pk on pk.id = l.pickup_stop_id
+                                  join ct_round_trips r on r.id = l.rt_id and r.model = 2 and r.status <> 'cancelled'
+                                 where s.nat_order_id = o and s.deleted_at is null
+                                 order by l.rt_id, pk.side, pk.planned_from, l.id) c
+                          left join rt_vehicle_segments g on g.id = plan_h_seg_of_stop(c.pickup_stop)
+                          left join trucks tr on tr.id = g.truck_id
+                          left join trailers tl on tl.id = g.trailer_id
+                          left join drivers dv on dv.id = g.driver_id
+                          left join partners pa on pa.id = g.partner_id), '[]'::jsonb))
+               from st v where v.nat_order_id = o), '"missing"'::jsonb))
+      from unnest(p_nat_order_ids) o), '{}'::jsonb);
+end
+$f$;
+
+  -- E12 / E13 (stream d3, spec f5-d3-entities-read-spec.md 2.2 (a)(c)(d), cut by its section 7 on 28/10): the v5
+  -- activity of one partner / driver / truck / trailer, of one location, or the sides of every location.
+  CREATE FUNCTION public.plan_activity(p_kind text, p_id text) RETURNS jsonb
+    LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $f$
+declare v_id bigint; v_j jsonb; v_j_ship jsonb; v_n int; v_m int;
+begin
+  -- Money: partner_rate of the segment only (decision 41: every role sees it). Cancelled cycles are IN for a vehicle
+  -- or partner (the card shows them "Cancelled" and does not count them), OUT of the location sides. Limits: 500
+  -- cycles or stops, 2000 national shipments of a location, truncated:true when one is reached - never a silent cut.
+  if p_kind is null or p_kind not in ('partner', 'driver', 'truck', 'trailer', 'location') then
+    perform plan_h_raise('bad_input', 'kind');
+  end if;
+  if p_id = 'all' then
+    if p_kind <> 'location' then perform plan_h_raise('bad_input', 'all:' || p_kind); end if;
+    return jsonb_build_object('sides', coalesce((
+      select jsonb_agg(jsonb_build_object('location_id', x.location_id, 'kathodos', x.k, 'anodos', x.a) order by x.location_id)
+        from (select ss.location_id, count(*) filter (where ss.side = 'KATHODOS') as k,
+                     count(*) filter (where ss.side = 'ANODOS') as a
+                from v_rt_stop_state ss where ss.rt_status <> 'cancelled' group by ss.location_id) x), '[]'::jsonb));
+  end if;
+  -- a positive id of at most 9 digits, as the Worker sends it (never a cast error, never a sign or a space)
+  if p_id is null or p_id !~ '^[1-9][0-9]{0,8}$' then perform plan_h_raise('bad_input', 'id'); end if;
+  v_id := p_id::bigint;
+  if p_kind <> 'location' then
+    select coalesce(jsonb_agg(c.j order by c.start_at desc, c.rt_id desc), '[]'::jsonb), count(*) into v_j, v_n
+      from (select vc.rt_id, vc.start_at,
+                   jsonb_build_object('rt_id', vc.rt_id, 'code', vc.code, 'status', vc.status,
+                     'start_at', vc.start_at, 'end_at', vc.end_at, 'ended', vc.ended,
+                     'route_text', (select rr.route_text from dl_v_rt_route rr where rr.rt_id = vc.rt_id),
+                     -- the live segments of the cycle with the entity in them; "first" = it starts the cycle (072b
+                     -- keeps the first segment's from_at = the cycle's start_at). The table, not v_rt_segments: that
+                     -- view numbers every segment of every cycle (a window) before any filter
+                     'segs', (select jsonb_agg(jsonb_build_object('from_at', g.from_at, 'to_at', g.to_at,
+                                'trip_type', g.trip_type, 'first', g.from_at = vc.start_at, 'truck_id', g.truck_id,
+                                'trailer_id', g.trailer_id, 'driver_id', g.driver_id, 'partner_id', g.partner_id,
+                                'partner_rate', g.partner_rate) order by g.from_at, g.id)
+                                from rt_vehicle_segments g
+                               where g.rt_id = vc.rt_id and g.deleted_at is null
+                                 and v_id = case p_kind when 'partner' then g.partner_id when 'driver' then g.driver_id
+                                                        when 'truck' then g.truck_id else g.trailer_id end)) as j
+              from v_rt_cycle vc
+             where vc.rt_id in (select g.rt_id from rt_vehicle_segments g where g.deleted_at is null
+                                  and v_id = case p_kind when 'partner' then g.partner_id when 'driver' then g.driver_id
+                                                         when 'truck' then g.truck_id else g.trailer_id end)
+             order by vc.start_at desc, vc.rt_id desc
+             limit 501) c;
+    -- 501 read, 500 answered: the 501st only says that more exist
+    if v_n > 500 then v_j := v_j - 500; end if;
+    return jsonb_build_object('cycles', v_j, 'truncated', v_n > 500);
+  end if;
+  select coalesce(jsonb_agg(c.j order by c.planned_from desc, c.stop_id desc), '[]'::jsonb), count(*) into v_j, v_n
+    from (select ss.stop_id, ss.planned_from,
+                 jsonb_build_object('stop_id', ss.stop_id, 'rt_id', ss.rt_id, 'code', ss.code, 'side', ss.side,
+                   'planned_from', ss.planned_from, 'planned_to', ss.planned_to, 'executed', ss.executed,
+                   'rt_status', ss.rt_status,
+                   -- the segment that executes the stop (H-9); a stop outside every segment shows the cycle's copy
+                   'carrier', coalesce((select jsonb_build_object('trip_type', g.trip_type, 'truck_id', g.truck_id,
+                                                                  'partner_id', g.partner_id)
+                                          from rt_vehicle_segments g where g.id = plan_h_seg_of_stop(ss.stop_id)),
+                                       (select jsonb_build_object('trip_type', r.trip_type, 'truck_id', r.truck_id,
+                                                                  'partner_id', r.partner_id)
+                                          from ct_round_trips r where r.id = ss.rt_id)),
+                   'loads', coalesce((select jsonb_agg(jsonb_build_object(
+                              'act', case when l.pickup_stop_id = ss.stop_id then 'pickup' else 'drop' end,
+                              'shipment_id', vs.shipment_id, 'kind', vs.kind, 'order_id', vs.order_id,
+                              'nat_order_id', vs.nat_order_id, 'reference', vs.reference, 'client_id', vs.client_id,
+                              'pallets', sp.pallets) order by l.id)
+                              from piece_legs l
+                              join shipment_pieces sp on sp.id = l.piece_id
+                              join v_shipments vs on vs.shipment_id = sp.shipment_id
+                             where l.deleted_at is null and (l.pickup_stop_id = ss.stop_id or l.drop_stop_id = ss.stop_id)),
+                            '[]'::jsonb)) as j
+            from v_rt_stop_state ss where ss.location_id = v_id
+           order by ss.planned_from desc, ss.stop_id desc
+           limit 501) c;
+  if v_n > 500 then v_j := v_j - 500; end if;
+  -- the national shipments that start or end here (VS bridges stay out: their international stop is the record)
+  select coalesce(jsonb_agg(x.j order by x.day desc, x.shipment_id desc), '[]'::jsonb), count(*) into v_j_ship, v_m
+    from (select vs.shipment_id, case when vs.origin_location_id = v_id then vs.nat_ready_day else vs.nat_due_day end as day,
+                 jsonb_build_object('shipment_id', vs.shipment_id, 'nat_order_id', vs.nat_order_id,
+                   'reference', vs.reference, 'client_id', vs.client_id, 'pallets', vs.pallets,
+                   'end', case when vs.origin_location_id = v_id then 'origin' else 'dest' end,
+                   'day', case when vs.origin_location_id = v_id then vs.nat_ready_day else vs.nat_due_day end) as j
+            from v_shipments vs
+           where vs.kind = 'national' and vs.live and (vs.origin_location_id = v_id or vs.dest_location_id = v_id)
+           order by 2 desc, vs.shipment_id desc
+           limit 2001) x;
+  if v_m > 2000 then v_j_ship := v_j_ship - 2000; end if;
+  return jsonb_build_object('stops', v_j, 'shipments', v_j_ship, 'truncated', v_n > 500 or v_m > 2000);
+end
+$f$;
+
   -- ===== PART 5: BORN CLOSED (principle 5: postgres' default ACL gives EXECUTE to anon / authenticated and a new
   -- table's arwxtm to service_role) =====
   ALTER TABLE public.plan_config ENABLE ROW LEVEL SECURITY;
@@ -296,9 +438,11 @@ $f$;
   GRANT SELECT ON public.plan_config TO service_role, tms_reader, tms_check_runner;
   CREATE POLICY monitor_read ON public.plan_config FOR SELECT TO tms_check_runner, tms_reader USING (true);
   REVOKE ALL ON FUNCTION public.plan_cutover_day(), public.plan_config_read(), public.plan_lookups(text),
-    public.order_delete_preview(text,text) FROM PUBLIC, anon, authenticated, service_role;
-  -- the three the Worker of deploy 1 calls
-  GRANT EXECUTE ON FUNCTION public.plan_config_read(), public.plan_lookups(text), public.order_delete_preview(text,text)
+    public.order_delete_preview(text,text), public.plan_nat_state(bigint[]), public.plan_activity(text,text)
+    FROM PUBLIC, anon, authenticated, service_role;
+  -- the five the Worker of deploy 1 calls
+  GRANT EXECUTE ON FUNCTION public.plan_config_read(), public.plan_lookups(text), public.order_delete_preview(text,text),
+    public.plan_nat_state(bigint[]), public.plan_activity(text,text)
     TO service_role;
   -- day L itself (a date, no secret): 074's triggers fire as the role that writes (service_role through the facade)
   -- and 074b's checks run as the auditor's roles; without this a trigger that is not SECURITY DEFINER would answer a
@@ -313,7 +457,8 @@ $f$;
       ('public.plan_h_token(text,text,jsonb)', '5ebb4630c920cf626c346dcc5aa2a34a'),
       ('public.plan_h_strip_amounts(jsonb,text)', 'cc19be0190b5b82d50ee8521cc7bee43'),
       ('public.plan_h_drop_consequences(bigint[],bigint,bigint[])', 'e370e52c9dd96d7e4e152b3ce348736e'),
-      ('public.plan_h_rt_consequences(bigint)', 'cddea3a5fb20a563283a16db3b50f133')
+      ('public.plan_h_rt_consequences(bigint)', 'cddea3a5fb20a563283a16db3b50f133'),
+      ('public.plan_h_seg_of_stop(bigint)', 'd2522a02fe675ff8001925cd07e9b668')
     ) g(sig, m) LOOP
     IF (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure(v_g.sig)) IS DISTINCT FROM v_g.m THEN
       RAISE EXCEPTION '074a proof: % changed', v_g.sig;
@@ -339,7 +484,8 @@ $f$;
     RAISE EXCEPTION '074a proof: plan_config is not RLS on + monitor_read + SELECT only for service_role';
   END IF;
   SELECT count(*) INTO v_k FROM unnest(ARRAY['public.plan_cutover_day()', 'public.plan_config_read()',
-      'public.plan_lookups(text)', 'public.order_delete_preview(text,text)']) f(sig)
+      'public.plan_lookups(text)', 'public.order_delete_preview(text,text)', 'public.plan_nat_state(bigint[])',
+      'public.plan_activity(text,text)']) f(sig)
    WHERE has_function_privilege('anon', f.sig, 'EXECUTE') OR has_function_privilege('authenticated', f.sig, 'EXECUTE')
       OR NOT has_function_privilege('service_role', f.sig, 'EXECUTE')
       OR has_function_privilege('tms_check_runner', f.sig, 'EXECUTE') <> (f.sig = 'public.plan_cutover_day()')
@@ -351,8 +497,8 @@ $f$;
      OR (SELECT count(*) FROM jsonb_array_elements(v_j->'locations') x WHERE (x->>'is_hub')::boolean) <> 1 THEN
     RAISE EXCEPTION '074a proof: plan_lookups does not answer six lists with exactly one hub';
   END IF;
-  IF (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname LIKE 'plan\_%') <> v_fns0 + 3 THEN
-    RAISE EXCEPTION '074a proof: plan_* count is not % + 3', v_fns0;
+  IF (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname LIKE 'plan\_%') <> v_fns0 + 5 THEN
+    RAISE EXCEPTION '074a proof: plan_* count is not % + 5', v_fns0;
   END IF;
   SELECT (SELECT count(*) FROM public.shipments) + (SELECT count(*) FROM public.shipment_pieces)
        + (SELECT count(*) FROM public.rt_stops) + (SELECT count(*) FROM public.piece_legs)
@@ -370,7 +516,7 @@ $f$;
   END IF;
 
   PERFORM pg_notify('pgrst', 'reload schema');
-  RAISE NOTICE '074a OK: 5 hooks (plan_board x3, plan_move_pieces x1, plan_h_leg_add x1), for_split_at, plan_config empty, plan_lookups, plan_config_read, order_delete_preview; triggers % = B-54, v5 rows 0',
+  RAISE NOTICE '074a OK: 5 hooks (plan_board x3, plan_move_pieces x1, plan_h_leg_add x1), for_split_at, plan_config empty, plan_lookups, plan_config_read, order_delete_preview, plan_nat_state, plan_activity; triggers % = B-54, v5 rows 0',
     v_trg1;
 END;
   -- ===== what it did =====
@@ -383,7 +529,7 @@ END;
     public.plan_config_read(),
     (SELECT count(*) FROM jsonb_each(public.plan_lookups('warehouse')) e WHERE jsonb_typeof(e.value) = 'array'),
     (SELECT count(*) FROM jsonb_array_elements(public.plan_lookups('warehouse')->'locations') x WHERE (x->>'is_hub')::boolean),
-    (SELECT count(*) FROM unnest(ARRAY['public.order_delete_preview(text,text)', 'public.plan_lookups(text)', 'public.plan_config_read()', 'public.plan_cutover_day()']) f(sig)
+    (SELECT count(*) FROM unnest(ARRAY['public.order_delete_preview(text,text)', 'public.plan_lookups(text)', 'public.plan_config_read()', 'public.plan_cutover_day()', 'public.plan_nat_state(bigint[])', 'public.plan_activity(text,text)']) f(sig)
       WHERE to_regprocedure(f.sig) IS NOT NULL
         AND (has_function_privilege('anon', f.sig, 'EXECUTE') OR has_function_privilege('authenticated', f.sig, 'EXECUTE')))
     + (SELECT count(*) FROM pg_class c WHERE c.oid = to_regclass('public.plan_config')

@@ -23,7 +23,10 @@ const OPEN = '\nDO $do$\n';
 const CLOSE = '\nEND $do$;\n';
 // Every function 074a creates (the rollback drops exactly these; the build test checks the list against the source)
 export const CREATED = ['public.order_delete_preview(text,text)', 'public.plan_lookups(text)', 'public.plan_config_read()',
-  'public.plan_cutover_day()'];
+  'public.plan_cutover_day()', 'public.plan_nat_state(bigint[])', 'public.plan_activity(text,text)'];
+// the ones the Worker of deploy 1 calls (EXECUTE to service_role; plan_cutover_day too, for 074's triggers)
+export const WORKER_CALLS = ['public.plan_config_read()', 'public.plan_lookups(text)', 'public.order_delete_preview(text,text)',
+  'public.plan_nat_state(bigint[])', 'public.plan_activity(text,text)'];
 
 const V5_ROWS = `(SELECT count(*) FROM public.shipments) + (SELECT count(*) FROM public.shipment_pieces)
       + (SELECT count(*) FROM public.rt_stops) + (SELECT count(*) FROM public.piece_legs)
@@ -234,7 +237,7 @@ export function buildVerify(src) {
 --   that error IS the answer "074a not applied" (a SELECT cannot call a function only when it exists).
 -- EXPECTED after 074a: applied = '074a in place', hooks_in_place = ${fin.length}, column_ok = true, plan_config_rows = 0,
 --   config = {"opened_at": null, "cutover_day": null} (until 074 on day L), lookups_lists = 6, hubs = 1,
---   open_to_api = 0, worker_can_call = 3, b54_matches = true, v5_rows = 0.
+--   open_to_api = 0, worker_can_call = ${WORKER_CALLS.length}, b54_matches = true, v5_rows = 0.
 SELECT '074a in place' AS applied,
        (SELECT count(*) FROM (VALUES ${fin.map((f) => `('${f.sig}', '${f.after}')`).join(', ')}) h(sig, m)
          WHERE (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure(h.sig)) = h.m) AS hooks_in_place,
@@ -245,7 +248,7 @@ SELECT '074a in place' AS applied,
        (SELECT count(*) FROM jsonb_each(public.plan_lookups('warehouse')) e WHERE jsonb_typeof(e.value) = 'array') AS lookups_lists,
        (SELECT count(*) FROM jsonb_array_elements(public.plan_lookups('warehouse')->'locations') x WHERE (x->>'is_hub')::boolean) AS hubs,
        ${OPEN_TO_API} AS open_to_api,
-       (SELECT count(*) FROM unnest(ARRAY['public.plan_config_read()', 'public.plan_lookups(text)', 'public.order_delete_preview(text,text)']) f(sig)
+       (SELECT count(*) FROM unnest(ARRAY[${WORKER_CALLS.map((s) => `'${s}'`).join(', ')}]) f(sig)
          WHERE has_function_privilege('service_role', f.sig, 'EXECUTE')) AS worker_can_call,
        ${TRIGGERS} = (SELECT red_value FROM monitoring.checks WHERE id = 'B-54') AS b54_matches,
        ${V5_ROWS} AS v5_rows;
