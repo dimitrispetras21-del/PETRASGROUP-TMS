@@ -809,7 +809,7 @@ function _onWatchModalClose() {
 // From day L national work is born and changed on the v5 board only. This
 // page then sends a new order, and any change of a v5 order, to the Weekly
 // National; keeps the old form for an OLD order with only the fields Q-10
-// leaves to the role (the Worker refuses the rest with legacy_closed anyway —
+// leaves to the role (the Worker refuses the rest with 422 legacy_closed anyway —
 // this is so no save looks green first); and never writes a NATIONAL LOAD
 // (the 074 freeze refuses the INSERT). «After» is the base's answer
 // (PlanConfig, read fresh: these open a write). 'unknown' keeps today's path —
@@ -821,9 +821,11 @@ async function _natlAfterL() {
   return st === 'after';
 }
 // Q-10: the old-order fields a role still writes through this form after L
-// (dispatcher Price/Reference/Notes, accountant Invoiced/number/Price — the
-// form has no Reference, and invoicing has its own views). Owner: the whole
-// form, as before. A role not here changes nothing.
+// (dispatcher Price/Reference/Notes; accountant Invoiced, invoice number,
+// Invoice Date (owner 28/10) and Price — the form has no Reference and no
+// invoice fields: those are written by the invoicing views, which this filter
+// does not touch). Owner: the whole form, as before. A role not here changes
+// nothing. The Worker refuses the rest with 422 legacy_closed after deploy 2.
 const _NATL_Q10 = { dispatcher: { nf_Price: 'Price', nf_Notes: 'Notes' }, accountant: { nf_Price: 'Price' } };
 let _natlLegacyLock = null;   // { recId, allow } while an old order is open after L
 function _natlRole() { return typeof ROLE !== 'undefined' ? ROLE : ''; }

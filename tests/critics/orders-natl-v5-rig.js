@@ -157,6 +157,11 @@ async function fail(browser) {
   const a = await rowText(page, 'recV5A');
   assert(!/εκτός/.test(a) && /—/.test(a), 'fail: an order without load shows «—», never «εκτός»');
   assert(/ΤΣΤ-1001/.test(await rowText(page, 'recOLDA')), 'fail: an old order with a load keeps its truck');
+  // «Προς τιμολόγηση» reads the same invoicing set: the same strip, the same words.
+  await page.evaluate(() => OrdersHub.setView('invoicing'));
+  await page.waitForSelector('.oiv', { timeout: 30000 });
+  const inv = await page.$$eval('.oiv-banner', bs => bs.map(b => b.textContent));
+  assert(inv.some(t => /κατάσταση των εθνικών v5 δεν διαβάστηκε/.test(t)), 'fail/invoicing: «Προς τιμολόγηση» shows the v5 strip');
   const unexpected = page._errors.filter(e => !/500|nat-state|planFetch|boom/i.test(e));
   assert(unexpected.length === 0, 'fail: no error besides the mocked 500 ' + JSON.stringify(unexpected));
   await page.context().close();
