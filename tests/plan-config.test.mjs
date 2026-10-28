@@ -150,3 +150,50 @@ test('F5-FE1: nothing at load — defining PlanConfig fetches nothing', () => {
   assert.strictEqual(s.calls.length, 0);
   assert.deepStrictEqual(JSON.parse(s.run('JSON.stringify(PlanConfig.STATE)')), { BEFORE: 'before', AFTER: 'after', UNKNOWN: 'unknown' });
 });
+
+// ── vsState (Ε1/Ε2/Ε20): rec → base id through /pallets/gate, then /plan/vs-state ──
+const VSF = ['core/constants.js', 'core/utils.js', 'core/api.js', 'core/plan-api.js', 'core/pallet-feed.js', 'core/plan-config.js'];
+const gate = (rows) => json(200, { records: rows.map(([rec, id]) => ({ order_rec: rec, order_id: id })) });
+const VS = (s, recs) => s.run(`PlanConfig.vsState(${JSON.stringify(recs)}).then((m) => JSON.stringify([...m]), (e) => JSON.stringify({ err: e.code || e.message }))`);
+
+test('F5-FE1 vsState: a bridge → its entry; «missing» stays the base\'s word; keyed by rec', async () => {
+  const st = { carriers: [{ kind: 'owned', text: 'TST-1 / D1', code: 'R1', hub_day: '2026-10-31' }], all_executed: false, all_planned: true, first_hub_day: '2026-10-31', n_pieces: 2 };
+  const s = sandbox([gate([['recVS1', 101], ['recVS2', 102]]), json(200, { 101: st, 102: 'missing' })], VSF);
+  assert.deepStrictEqual(JSON.parse(await VS(s, ['recVS1', 'recVS2', 'recVS1'])), [['recVS1', st], ['recVS2', 'missing']]);
+  const paths = s.calls.map((c) => new URL(c.url).pathname + new URL(c.url).search);
+  assert.deepStrictEqual(paths, ['/pallets/gate?order_recs=recVS1%2CrecVS2', '/plan/vs-state?order_ids=101,102']);
+});
+
+test('F5-FE1 vsState: a rec the gate does not map → error vs_unmapped, no vs-state call (never «missing»); the caller logs it, once', async () => {
+  const s = sandbox([gate([['recVS1', 101]])], VSF);
+  assert.deepStrictEqual(JSON.parse(await VS(s, ['recVS1', 'recVS9'])), { err: 'vs_unmapped' });
+  assert.strictEqual(s.calls.length, 1);
+  assert.strictEqual(s.errs().length, 0, 'not logged here: the caller logs (review finding 4: never twice)');
+});
+
+test('F5-FE1 vsState: vs-state fails or answers another shape → throws (the caller shows «απέτυχε»)', async () => {
+  let s = sandbox([gate([['recVS1', 101]]), json(500, { error: { type: 'PLAN', code: 'plan_failed', message: 'rig 500' } })], VSF);
+  assert.deepStrictEqual(JSON.parse(await VS(s, ['recVS1'])), { err: 'plan_failed' });
+  s = sandbox([gate([['recVS1', 101]]), json(200, { 101: { n_pieces: 1 } })], VSF);
+  assert.deepStrictEqual(JSON.parse(await VS(s, ['recVS1'])), { err: 'vs_shape' });
+  s = sandbox([json(500, { error: 'rig gate down' })], VSF);
+  assert.ok(JSON.parse(await VS(s, ['recVS1'])).err, 'a gate failure throws');
+});
+
+test('F5-FE1 vsState: no recs → empty map, no request; 301 recs → two gate calls', async () => {
+  let s = sandbox([], VSF);
+  assert.deepStrictEqual(JSON.parse(await VS(s, [])), []);
+  assert.strictEqual(s.calls.length, 0);
+  const recs = Array.from({ length: 301 }, (_, i) => 'recV' + i);
+  s = sandbox([gate(recs.slice(0, 300).map((r, i) => [r, i + 1])), gate([[recs[300], 301]]),
+               json(200, Object.fromEntries(recs.map((_, i) => [String(i + 1), 'missing'])))], VSF);
+  assert.strictEqual(JSON.parse(await VS(s, recs)).length, 301);
+  assert.strictEqual(s.calls.filter((c) => c.url.includes('/pallets/gate')).length, 2);
+});
+
+test('F5-FE1 isLegacyTable: NAT_ORDERS / NAT_LOADS / GL_LINES / CONS_LOADS only', () => {
+  const s = sandbox([]);
+  s.run("globalThis.TABLES = { ORDERS: 'tO', NAT_ORDERS: 'tNO', NAT_LOADS: 'tNL', GL_LINES: 'tGL', CONS_LOADS: 'tCL', TRUCKS: 'tT' }");
+  assert.deepStrictEqual(JSON.parse(s.run("JSON.stringify(['tO','tNO','tNL','tGL','tCL','tT',null].map((t) => PlanConfig.isLegacyTable(t)))")),
+    [false, true, true, true, true, false, false]);
+});
