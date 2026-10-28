@@ -163,14 +163,19 @@ test('071, 071b, 072, 072b, 073, 074a found and fingerprinted', (t) => {
 function sameAsSqlBranch(t, { file, sql }, sqlBranch) {
   const rel = path.relative(path.join(here, '..', '..'), file).split(path.sep).join('/');
   const md5 = (x) => createHash('md5').update(x).digest('hex');
+  // the drafts/ path first, then the executed one: once the migration ran, rule 5 moves it out of drafts/ on main
+  // and its branch may be gone, while this branch still carries the copy it was reviewed with (F5 review r2)
+  const paths = rel.includes('/drafts/') ? [rel, rel.replace('/drafts/', '/')] : [rel];
   for (const ref of [sqlBranch, `origin/${sqlBranch}`, 'origin/main']) {
-    let theirs;
-    try {
-      theirs = execFileSync('git', ['show', `${ref}:${rel}`], { cwd: here, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
-    } catch { continue; }
-    assert.equal(md5(sql), md5(theirs), `${rel} differs from ${ref}: git checkout ${ref} -- ${rel}`);
-    t.diagnostic(`copy: ${rel} = ${ref} (md5 ${md5(sql)})`);
-    return;
+    for (const at of paths) {
+      let theirs;
+      try {
+        theirs = execFileSync('git', ['show', `${ref}:${at}`], { cwd: here, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+      } catch { continue; }
+      assert.equal(md5(sql), md5(theirs), `${rel} differs from ${ref}:${at}: git show ${ref}:${at} > ${rel}`);
+      t.diagnostic(`copy: ${rel} = ${ref}:${at} (md5 ${md5(sql)})`);
+      return;
+    }
   }
   // A copy still in drafts/ is a migration nobody ran yet: its SQL branch is the only source that can say the copy is
   // right, so a clone that cannot reach it FAILS (final review 26/10, W-10: the 073 copy skipped in silence in a
@@ -184,6 +189,13 @@ test('the 072 copy is byte-identical to the SQL branch file', (t) => sameAsSqlBr
 test('the 072b copy is byte-identical to the SQL branch file', (t) => sameAsSqlBranch(t, f072b(), 'feat/national-v5-handover-prev-rate'));
 // 073: the same rule, the F3 SQL branch
 test('the 073 copy is byte-identical to the SQL branch file', (t) => sameAsSqlBranch(t, f073(), 'feat/national-v5-f3'));
+// A migration is in drafts/ OR executed, never both (CLAUDE.md rule 5): a copy carried here and merged after the
+// file moved on main would leave a stale drafts/ twin that readOne() reads first (F5 review r2)
+test('no migration of this chain is both in drafts/ and executed', () => {
+  for (const name of ['072_plan_functions.sql', '072b_plan_vehicle_segments.sql', '073_plan_money.sql', '074a_plan_reads.sql', '074_plan_cutover.sql']) {
+    assert.ok(!(existsSync(path.join(MIG, 'drafts', name)) && existsSync(path.join(MIG, name))), `${name} is in drafts/ and executed: remove the drafts/ copy`);
+  }
+});
 // 074a / 074: the same rule, the F5 SQL branches
 test('the 074a copy is byte-identical to the SQL branch file', (t) => sameAsSqlBranch(t, f074a(), 'feat/national-v5-f5-074a'));
 test('074: its copy is here once the switch is open, and then byte-identical to the SQL branch file', (t) => {

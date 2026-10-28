@@ -5929,7 +5929,8 @@ __name(legacyClosedRefusal, "legacyClosedRefusal");
 // The same rule decided on the ROW (owner 28/10, after code review; Q-10 owner only for 14 days): PATCH / DELETE of
 // a stop of a legacy national order, or of a Weekly National «local» move, by any role but the owner. Read with
 // PLAN_WRITES_OPEN like the table rules. The row is the one read before the write; a row that could not be read is
-// refused (503, nothing written), never let through unchecked (αρχή 1).
+// refused (503 row_unread, nothing written), never let through unchecked (αρχή 1). Deploy guard marker (--f5): the
+// declaration below, its own feature (owner 28/10), not only a part of LEGACY_CLOSED_AFTER_L.
 var LEGACY_ROWS_AFTER_L = {
   order_stops: { is: (row) => row.national_order_id != null, message: "Οι στάσεις των παλιών εθνικών (πριν από την ημέρα μετάβασης) αλλάζει μόνο ο Δημήτρης" },
   local_moves: { is: (row) => row.move_kind === "local", message: "Τις τοπικές κινήσεις του παλιού Εβδομαδιαίου Εθνικών αλλάζει μόνο ο Δημήτρης" }
@@ -5942,7 +5943,7 @@ __name(legacyRowsApply, "legacyRowsApply");
 function legacyRowRefusal(table, role, rows, origin, env) {
   if (!legacyRowsApply(table, role)) return null;
   if (rows.some((r) => r === void 0)) {
-    return jsonError("Η εγγραφή δεν επαληθεύτηκε (δεν διαβάστηκε) — τίποτα δεν γράφτηκε· ξαναδοκίμασε", 503, origin, env);
+    return jsonOk({ error: { type: "SERVER", code: "row_unread", message: "Η εγγραφή δεν επαληθεύτηκε (δεν διαβάστηκε) — τίποτα δεν γράφτηκε· ξαναδοκίμασε" } }, origin, env, 503);
   }
   const rule = LEGACY_ROWS_AFTER_L[table];
   if (!rows.some((r) => r && rule.is(r))) return null;
