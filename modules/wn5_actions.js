@@ -493,16 +493,29 @@
   function _needs(it, toHub, hub) {
     const pick = it.at_hub ? hub : (it.position_location_id == null ? null : it.position_location_id);
     const drop = toHub ? hub : (it.nat_to_location_id == null ? null : it.nat_to_location_id);
+    // day / key: a stop with no window of its own (every VS bridge: order_stops hold dates only, 074a) is placed on
+    // ITS day — the loading on nat_ready_day, the delivery on nat_due_day — with the window the user gives (B1, 28/10)
+    const dLoad = it.nat_ready_day || null, dDrop = it.nat_due_day || it.nat_ready_day || null;
     return [
-      { loc: pick, from: it.load_from || null, to: it.load_to || null, hub: pick != null && pick === hub },
-      { loc: drop, from: it.deliver_from || null, to: it.deliver_to || null, hub: drop != null && drop === hub },
+      { loc: pick, from: it.load_from || null, to: it.load_to || null, hub: pick != null && pick === hub, role: 'load', day: dLoad, key: 'load:' + pick },
+      { loc: drop, from: it.deliver_from || null, to: it.deliver_to || null, hub: drop != null && drop === hub, role: 'drop', day: dDrop, key: 'drop:' + drop },
     ];
+  }
+  // B1 (live 28/10): 072 refuses a new stop without planned_from / planned_to (decision 4: the base invents no hour),
+  // and a VS bridge has no window on the board. A window-less stop takes the window the user gave (typed[n.key]), and
+  // until then the whole of its day, 00:00–23:59 — always shown where it is used (Δ1 fields, «+» line, split badge),
+  // never a silent hour. null = the stop's day is not known either (then it stays «window» missing).
+  const DAY_WIN = Object.freeze({ from: '00:00', to: '23:59' });
+  function _dayWin(n, typed) {
+    const v = (typed && typed[n.key]) || DAY_WIN;
+    const f = _hhmm(v.from), t = _hhmm(v.to);
+    return n && n.day && f && t ? _win(n.day, f, t) : null;
   }
   // One stop per place per side (decision 6): a live stop of the target on that side is named by stop_id; any other
   // place becomes a new stop with its pieces' window (the earliest start, the latest end of the pieces there); a NEW
   // Veroia stop takes the window the user typed (Ε-5: the base invents no hour, and neither does the screen).
   // Never seq (decision 5), never one stop_id twice. missing: 'place' | 'window' | 'hub'.
-  function _stopsFor(needs, cyc, side, hubWin) {
+  function _stopsFor(needs, cyc, side, hubWin, winOf) {
     const out = [], seen = new Map(), miss = new Set();
     for (const n of needs) {
       if (n.loc == null) { miss.add('place'); continue; }
@@ -524,7 +537,11 @@
         if (!w) { miss.add('hub'); continue; }
         st = { ref: 'n' + n.loc, location_id: n.loc, side, planned_from: w[0], planned_to: w[1] };
       }
-      else if (!n.from || !n.to) { miss.add('window'); continue; }
+      else if (!n.from || !n.to) {
+        const w = typeof winOf === 'function' ? winOf(n) : null;
+        if (!w) { miss.add('window'); continue; }
+        st = { ref: 'n' + n.loc, location_id: n.loc, side, planned_from: w[0], planned_to: w[1] };
+      }
       else st = { ref: 'n' + n.loc, location_id: n.loc, side, planned_from: n.from, planned_to: n.to };
       seen.set(n.loc, st);
       out.push(st);
@@ -577,7 +594,7 @@
   }
   Object.assign(KIT, { parts: _parts, hm: _hm, ymdOf: _ymdOf, dm: _dm, dayShort: _dayShort, addDays: _addDays, iso: _iso, win: _win, hhmm: _hhmm,
     t: _t, pal: _pal, sum: _sum, clientErr: _clientErr, id: _id, norm: _norm, cycles: _cycles, cycle: _cycle, item: _item, groupItems: _groupItems,
-    row: _row, dayRows: _dayRows, hubId: _hubId, sideFor: _sideFor, needs: _needs, stopsFor: _stopsFor, cycText: _cycText, boxHTML: _boxHTML,
+    row: _row, dayRows: _dayRows, hubId: _hubId, sideFor: _sideFor, needs: _needs, stopsFor: _stopsFor, dayWin: _dayWin, cycText: _cycText, boxHTML: _boxHTML,
     sidePal: _sidePal, veroiaOf: _veroiaOf, capHTML: _capHTML, optsHTML: _optsHTML, freeTrucks: _freeTrucks, rate: _rate, DOW_GEN, dow: _dow });
 
   // ═══ T12 · the assignment window Δ1 (Figma 2051:7735): one window for four entries ═══
@@ -610,7 +627,7 @@
       target = { new_rt: { trip_type: 'PARTNER', partner_id: st.partner, partner_rate: r.v }, side: st.side };
     } else return null;
     const f = _hhmm(st.hubFrom), t = _hhmm(st.hubTo);
-    const r = _stopsFor(st.needs, cyc, st.side, f && t ? _win(st.day, f, t) : null);
+    const r = _stopsFor(st.needs, cyc, st.side, f && t ? _win(st.day, f, t) : null, (n) => _dayWin(n, st.win));
     if (r.missing.length) return { missing: r.missing };
     if (st.mode === 'move') return { method: 'POST', path: '/plan/move', body: { from: st.from, target, stops: r.stops } };
     return { method: 'POST', path: '/plan/legs', body: st.group ? { group: st.group, target, stops: r.stops } : { pieces: st.pieces, target, stops: r.stops } };
@@ -627,8 +644,21 @@
     if (vehicle) h += '<div class="wn5-grey">Ένωση με άλλο κύκλο: «Μεταφορά σε…» από τη φόρμα σκέλους (όλη η πλευρά).</div>';
     h += '<input type="search" class="wn5-dq" data-q placeholder="Αναζήτηση φορτηγού, οδηγού ή συνεργάτη" value="' + _esc(st.q) + '">';
     if (!st.ids.ok) h += '<div class="wn5-miss" data-ids-miss>Οι κατάλογοι δεν είναι διαθέσιμοι ακόμη: νέο φορτηγό και συνεργάτης ανοίγουν όταν έρθουν.</div>';
-    if (!vehicle && _stopsFor(st.needs, null, st.side, ['probe', 'probe']).missing.length) {
-      h += '<div class="wn5-miss" data-place-miss>Η ανάθεση θέλει τον προορισμό και το παράθυρο κάθε παράδοσης· για παραδόσεις από τη Βέροια δεν έρχονται ακόμη από τη βάση.</div>';
+    if (!vehicle && _stopsFor(st.needs, null, st.side, ['probe', 'probe'], (n) => _dayWin(n, st.win)).missing.length) {
+      h += '<div class="wn5-miss" data-place-miss>Η ανάθεση θέλει τον προορισμό και την ημέρα κάθε φόρτωσης και παράδοσης· για αυτή την παραγγελία δεν ήρθαν από τη βάση.</div>';
+    }
+    // B1: one window per stop the board brought without one (a VS bridge), on its own day, filled with the whole day
+    if (!vehicle) {
+      const seenW = new Set();
+      for (const n of st.needs) {
+        if (n.hub || n.loc == null || (n.from && n.to) || !n.day || seenW.has(n.key)) continue;
+        seenW.add(n.key);
+        const v = st.win[n.key] || DAY_WIN;
+        h += '<div class="wn5-hubwin wn5-stopwin" data-stopwin="' + _esc(n.key) + '"><span>' + (n.role === 'load' ? 'Φόρτωση' : 'Παράδοση') + ' ' + _esc(_placeName(n.loc)) + ' · ' + _esc(_dayShort(n.day)) + ' *</span>'
+          + '<input class="wn5-hm" data-win="' + _esc(n.key) + '" data-k="from" inputmode="numeric" placeholder="ΗΗ:ΛΛ" value="' + _esc(v.from) + '"> – '
+          + '<input class="wn5-hm" data-win="' + _esc(n.key) + '" data-k="to" inputmode="numeric" placeholder="ΗΗ:ΛΛ" value="' + _esc(v.to) + '">'
+          + '<small>όλη η ημέρα, αν δεν ξέρεις ώρα</small></div>';
+      }
     }
     // a move carries the source's Veroia window (_stopsFor), so the field shows only when a Veroia stop would have no
     // window: an asterisk over a field nothing waits for claims a requirement that does not exist (Figma 2011:9294)
@@ -711,7 +741,7 @@
     const vehicle = !src || (!src.group && !src.pieces);
     const st = { mode: vehicle ? 'vehicle' : 'legs', rtId: _id(ctx.rtId), side: ctx.side === 'ANODOS' ? 'ANODOS' : 'KATHODOS', day: ctx.day || null,
       group: null, pieces: null, items: [], needs: [], pallets: 0, cyc: {}, rows: [], road: [], free: [], trailers: [], drivers: [], partners: [],
-      ids: { ok: false }, pick: null, trailer: null, driver: null, partner: null, rateTxt: '', hubFrom: '', hubTo: '', filter: 'all', q: '', meta: '', ref: '', skipRt: null, from: null };
+      ids: { ok: false }, pick: null, trailer: null, driver: null, partner: null, rateTxt: '', hubFrom: '', hubTo: '', filter: 'all', q: '', meta: '', ref: '', skipRt: null, from: null, win: {} };
     let title;
     // the snapshot: every value a body can carry is copied now (rule 4)
     if (vehicle) {
@@ -855,6 +885,11 @@
       const el = ev.target;
       if (el.matches('[data-q]')) { st.q = el.value; filter(); }
       else if (el.matches('[data-hub]')) { if (el.dataset.hub === 'from') st.hubFrom = el.value; else st.hubTo = el.value; d.refresh(); }
+      else if (el.matches('[data-win]')) {
+        const w = st.win[el.dataset.win] || (st.win[el.dataset.win] = Object.assign({}, DAY_WIN));
+        w[el.dataset.k === 'to' ? 'to' : 'from'] = el.value;
+        d.refresh();
+      }
       else if (el.matches('[data-rate]')) { st.rateTxt = el.value; d.refresh(); }
       else if (el.matches('[data-rate-rt]')) {
         // «Κράτα» only once there is a rate to keep: an empty press did nothing, and the hidden button keeps the partner
@@ -921,7 +956,7 @@
   function _plusReq(st, it) {
     if (it._ro) return null;
     const f = _hhmm(st.hubFrom), t = _hhmm(st.hubTo);
-    const r = _stopsFor(_needs(it, false, st.hub), st.cyc, st.side, f && t ? _win(st.day, f, t) : null);
+    const r = _stopsFor(_needs(it, false, st.hub), st.cyc, st.side, f && t ? _win(st.day, f, t) : null, (n) => _dayWin(n));
     if (r.missing.length) return { missing: r.missing };
     const piece = { piece_id: it.piece_id };
     if (it.is_stock) {
@@ -968,7 +1003,9 @@
   function _plusLineHTML(st, it) {
     const anod = st.side === 'ANODOS';
     const win = _plusWin(st, it);
-    const when = win[0] ? _wd(_ymdOf(win[0])) + ' ' + _hm(win[0]) + '–' + _hm(win[1]) : '—';
+    // B1: a piece with no window of its own goes in on its day, whole day — said here, never a silent hour
+    const wday = st.side === 'ANODOS' ? it.nat_ready_day : (it.nat_due_day || it.nat_ready_day);
+    const when = win[0] ? _wd(_ymdOf(win[0])) + ' ' + _hm(win[0]) + '–' + _hm(win[1]) : wday ? _wd(wday) + ' όλη η ημέρα' : '—';
     const loc = anod ? it.position_location_id : it.nat_to_location_id;
     const place = _placeName(loc), city = _placeCity(loc);
     const req = _plusReq(st, it);

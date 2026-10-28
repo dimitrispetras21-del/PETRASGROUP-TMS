@@ -2039,8 +2039,9 @@ async function scnVeroia(browser, origin) {
     const box = await page.$eval(PANEL, (e) => e.getBoundingClientRect().height).catch(() => null);
     ok(scn, 'open → #wn5-hub-panel at most 1/3 of the window', box !== null && box <= 1080 / 3 + 2, box);
     const txt = await bText(page, PANEL);
-    ok(scn, 'VS-T118 (hub[], no truck ever: live 072) is a «ΠΡΟΣ ΑΝΑΘΕΣΗ» row, never an item of the open panel', (await bHas(page, PANEL))
-      && !(await bHas(page, `${PANEL} [data-piece="4101"]`)) && await bHas(page, '.wn5-row[data-key="wait:4101"]') && await bHas(page, `${PANEL} [data-piece="4401"]`));
+    // B1 (owner 28/10): a VS import at Veroia with no truck is a «ΠΡΟΣ ΑΝΑΘΕΣΗ» row AND an item of the panel («ΓΙΑ ΜΟΙΡΑΣΜΑ»)
+    ok(scn, 'VS-T118 (hub[], no truck ever) is a «ΠΡΟΣ ΑΝΑΘΕΣΗ» row AND an item of the open panel (B1)', (await bHas(page, PANEL))
+      && await bHas(page, `${PANEL} [data-piece="4101"]`) && await bHas(page, '.wn5-row[data-key="wait:4101"]') && await bHas(page, `${PANEL} [data-piece="4401"]`));
     ok(scn, 'sections «ΓΙΑ ΜΟΙΡΑΣΜΑ», «ΑΠΟΘΕΜΑ», «ΦΟΡΤΗΓΑ ΔΕΥ 12/10 · χωρητικότητα» with «27/33»', txt.includes('ΓΙΑ ΜΟΙΡΑΣΜΑ') && txt.includes('ΑΠΟΘΕΜΑ')
       && txt.includes('ΦΟΡΤΗΓΑ ΔΕΥ 12/10 · χωρητικότητα') && txt.includes('27/33'), txt.slice(0, 600));
     const capL2 = await page.$$eval(`${PANEL} [data-line="cap"] .wi4-l2`, (es) => es.map((e) => e.innerText)).catch(() => []);
@@ -2478,11 +2479,11 @@ SCN.live45 = async (browser, origin) => {
   // 1 · place names from GET /plan/lookups (the page never read it: every place «—»)
   ok(scn, '1 · the board reads GET /plan/lookups once beside the board', (S.lookups || 0) === 1, S.lookups);
   ok(scn, '1 · VS import 604: its three deliveries name their places (Aspropyrgos / Oinofyta / Larisa), never «—»',
-    ['Aspropyrgos Test', 'Oinofyta Test', 'Larisa Test'].every((n) => (by(16).kpts || []).some((x) => x.includes('ΠΕΛΑΤΗΣ ΕΙ 2 · ' + n))) && !(by(16).kpts || []).some((x) => /ΕΙ 2 · — ·/.test(x)), by(16).kpts);
-  ok(scn, '1 · VS import 603: «ΠΕΛΑΤΗΣ ΕΙ 1 · Rentis Test», not «… — · 30π»', (by(15).kpts || []).some((x) => x.startsWith('ΠΕΛΑΤΗΣ ΕΙ 1 · Rentis Test')), by(15).kpts);
+    ['Aspropyrgos Test', 'Oinofyta Test', 'Larisa Test'].every((n) => (by(16).kpts || []).some((x) => x.includes(n) && x.endsWith('ΠΕΛΑΤΗΣ ΕΙ 2'))) && !(by(16).kpts || []).some((x) => /^(\d+\. )?— /.test(x)), by(16).kpts);
+  ok(scn, '1 · VS import 603: «Rentis Test …», not «— · 30π»', (by(15).kpts || []).some((x) => x.startsWith('Rentis Test')), by(15).kpts);
   // 2 · ΑΝΟΔΟΣ (vs_export): the supplier's place in ΦΟΡΤΩΣΗ, «Βέροια» in ΠΡΟΣ
   ok(scn, '2 · VS export 607: ΦΟΡΤΩΣΗ names the supplier place (Lamia Test), ΠΡΟΣ = «Βέροια»',
-    (by(19).apts || []).some((x) => x.startsWith('ΠΕΛΑΤΗΣ ΕΞ 1 · Lamia Test')) && /Βέροια/.test(by(19).ato || ''), { afl: by(19).apts, ato: by(19).ato });
+    (by(19).apts || []).some((x) => x.startsWith('Lamia Test')) && /Βέροια/.test(by(19).ato || ''), { afl: by(19).apts, ato: by(19).ato });
   ok(scn, '2 · VS export 616: two loading places (Thessaloniki Test, Lamia Test), ΠΡΟΣ «Βέροια»',
     ['Thessaloniki Test', 'Lamia Test'].every((n) => (by(20).apts || []).some((x) => x.includes(n)) || /\+1/.test(by(20).afl || '')) && /Βέροια/.test(by(20).ato || ''), { afl: by(20).apts, ato: by(20).ato });
   // 3 · a waiting row of one side (owner 28/10): the box names its side, the empty side is the dashed slot of H1 RT-T106/T107
@@ -2616,6 +2617,109 @@ SCN['live-f11'] = async (browser, origin) => {
   ok(scn, 'F12 · assigned order card: «Τιμή 1 € …» and «PE Όχι» from the legs, never «—»', /^1 € \(χωρίς ΦΠΑ\)/.test(val('Τιμή')[0] || '') && val('PE')[0] === 'Όχι', { price: val('Τιμή'), pe: val('PE') });
   ok(scn, 'F12 · «Παράδοση» names the place, the day and the window, not the client again', val('Παράδοση').length > 0 && val('Παράδοση').every((v) => !/ΠΕΛΑΤΗΣ Α/.test(v)), val('Παράδοση'));
   await c2.page.context().close();
+};
+// B1 (live 28/10, blocker): a VS bridge (hub[] item: destination as nat_to_location_id, NO window — order_stops hold
+// dates only) could not be assigned: 072 wants planned_from/to on every new stop and Δ1 had a field only for Veroia.
+// Now each window-less stop has its own field on its day, filled with the whole day; the split's «Σε φορτηγό» and
+// the «+» take the same whole-day window and say so.
+SCN.b1 = async (browser, origin) => {
+  const scn = 'b1';
+  const lk = DEF_LOOKUPS();
+  lk.trucks = [{ id: 14, legacy_id: 'recDEFT14', license_plate: 'TST-2108', active: true }];
+  lk.drivers = [{ id: 34, legacy_id: 'recDEFD34', full_name: 'Driver Test 04', active: true }];
+  const { page, S } = await openBoard(browser, origin, { board: live45(), lookups: lk });
+  await page.waitForSelector('#content > .wi4.wn5[data-state="ok"]', { timeout: 8000 }).catch(() => {});
+  await page.click('#content .wn5 .wn5-row[data-piece="15"] .wi4-box.un').catch(() => {});
+  await page.waitForTimeout(700);
+  const D = '.wi4-dlg';
+  const f = await page.evaluate((d) => [...document.querySelectorAll(`${d} [data-stopwin]`)].map((w) => ({ key: w.dataset.stopwin, t: w.textContent.replace(/\s+/g, ' ').trim(), v: [...w.querySelectorAll('input')].map((i) => i.value) })), D);
+  ok(scn, 'Δ1 of VS 603: a «Παράδοση Rentis Test · Δευ 12/10 *» window, filled 00:00 – 23:59', f.length === 1 && /^Παράδοση Rentis Test · Δευ 12\/10 \*/.test(f[0].t) && f[0].v.join('|') === '00:00|23:59', f);
+  await page.fill(`${D} input[data-hub="from"]`, '08:00', { timeout: 2000 }).catch(() => {});
+  await page.fill(`${D} input[data-hub="to"]`, '10:00', { timeout: 2000 }).catch(() => {});
+  await page.click(`${D} [data-act="pick"][data-cand="truck:14"]`, { timeout: 2000 }).catch(() => {});
+  await page.waitForTimeout(300);
+  const off = await page.evaluate((d) => { const b = document.querySelector(`${d} [data-act="save"][data-cand="truck:14"]`); return b ? b.disabled : null; }, D);
+  ok(scn, 'with the Veroia window typed, «Ανάθεση» to a new truck is ENABLED (was disabled: «window missing»)', off === false, off);
+  await page.click(`${D} [data-act="save"][data-cand="truck:14"]`, { timeout: 2000 }).catch(() => {});
+  await page.waitForTimeout(500);
+  const legs = S.plan.filter((x) => x.m === 'POST' && x.path === '/plan/legs');
+  const stops = legs[0] && legs[0].body && legs[0].body.stops;
+  ok(scn, 'POST /plan/legs: Veroia 08:00–10:00 and the delivery on its day 00:00–23:59 (072 wants a window on every new stop)', !!stops
+    && JSON.stringify(stops) === JSON.stringify([{ ref: 'n1', location_id: 1, side: 'KATHODOS', planned_from: '2026-10-11T08:00:00+03:00', planned_to: '2026-10-11T10:00:00+03:00' },
+      { ref: 'n2', location_id: 2, side: 'KATHODOS', planned_from: '2026-10-12T00:00:00+03:00', planned_to: '2026-10-12T23:59:00+03:00' }]), legs.map((x) => x.raw));
+  // the split / «+» rule (WN5Act._kit.dayWin): a window-less delivery gets its whole day, no «window» missing
+  const kit = await page.evaluate(() => {
+    if (!WN5Act._kit || typeof WN5Act._kit.dayWin !== 'function') return null;
+    const it = (WN5.state().board.hub || []).find((h) => h.piece_id === 16);
+    const r = WN5Act._kit.stopsFor(WN5Act._kit.needs(Object.assign({ at_hub: true }, it), false, 1), null, 'KATHODOS', ['2026-10-12T08:00:00+03:00', '2026-10-12T10:00:00+03:00'], (n) => WN5Act._kit.dayWin(n));
+    return r;
+  });
+  ok(scn, 'split / «+»: a hub VS delivery with no window takes its day 00:00–23:59, nothing missing', !!kit && !kit.missing.length && kit.stops[1] && kit.stops[1].planned_from === '2026-10-13T00:00:00+03:00' && kit.stops[1].planned_to === '2026-10-13T23:59:00+03:00', kit);
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await page.context().close();
+  // B1 part 2 (owner 28/10): VS imports at Veroia with no truck are ALSO «ΓΙΑ ΜΟΙΡΑΣΜΑ» in the Πίνακας Βέροιας (rows stay),
+  // and «Σπάσε…» puts a part on a Veroia truck of the day with the delivery on its day, whole day
+  const wk = fixture();
+  // piece 16 delivers to Athens Test (7): no stop of the day's Veroia truck RT-T102 (1, 2, 3, 5), so its part needs a NEW
+  // delivery stop — the whole-day window path, not an existing stop_id
+  wk.hub = live45().hub.map((h) => Object.assign(h, { nat_ready_day: '2026-10-12' }, h.piece_id === 16 ? { nat_to_location_id: 7 } : {}));
+  const v = await openBoard(browser, origin, { board: wk, lookups: lk });
+  await v.page.waitForSelector('#content > .wi4.wn5[data-state="ok"]', { timeout: 8000 }).catch(() => {});
+  await v.page.click('#wn5-hub [data-hub="open"]', { timeout: 2000 }).catch(() => {});   // the Veroia line opens the panel
+  await v.page.waitForTimeout(300);
+  const shelf = await v.page.evaluate(() => ({ items: [...document.querySelectorAll('#content .wn5 .wn5-hub-it')].map((x) => [x.dataset.piece, !!x.querySelector('[data-hub="split"]'), !!x.querySelector('[data-hub="truck"]')]),
+    rows: [15, 16].map((p) => !!document.querySelector(`#content .wn5 .wn5-row[data-piece="${p}"] .wi4-box.un`)) }));
+  ok(scn, 'part 2 · the VS bridges 15–18 are in «ΓΙΑ ΜΟΙΡΑΣΜΑ» with «Σπάσε…» and «Σε φορτηγό ▾», and their ΠΡΟΣ ΑΝΑΘΕΣΗ rows stay',
+    ['15', '16', '17', '18'].every((p) => shelf.items.some((x) => x[0] === p && x[1] && x[2])) && shelf.rows.every(Boolean), shelf);
+  await v.page.click('#content .wn5 .wn5-hub-it[data-piece="16"] [data-hub="split"]').catch(() => {});
+  await v.page.waitForTimeout(500);
+  const SP = '.wi4-dlg[data-wn5="split"]';
+  const rtOpt = await v.page.evaluate((d) => { const o = [...document.querySelectorAll(`${d} select[data-part-target][data-i="0"] option`)].find((x) => /^rt:/.test(x.value)); return o ? o.value : null; }, SP);
+  if (rtOpt) await v.page.selectOption(`${SP} select[data-part-target][data-i="0"]`, rtOpt).catch(() => {});
+  await v.page.fill(`${SP} input[data-part-pal][data-i="0"]`, '5', { timeout: 2000 }).catch(() => {});
+  await v.page.fill(`${SP} input[data-part-pal][data-i="1"]`, '6', { timeout: 2000 }).catch(() => {});
+  await v.page.waitForTimeout(300);
+  const badge = await v.page.evaluate((d) => { const b = document.querySelector(`${d} .wn5-pbadge[data-i="0"]`); const s = document.querySelector(`${d} [data-act="save"]`); return { b: b ? b.textContent : null, off: s ? s.disabled : null }; }, SP);
+  ok(scn, 'part 2 · «Σπάσε…» of VS 16 onto a Veroia truck: the badge says «παράδοση Τρί 13/10 όλη η ημέρα», «Σπάσε» enabled (was «λείπει ο προορισμός»)',
+    !!rtOpt && !!badge.b && /παράδοση Τρί 13\/10 όλη η ημέρα/.test(badge.b) && !/λείπει ο προορισμός/.test(badge.b) && badge.off === false, { rtOpt, badge });
+  await v.page.click(`${SP} [data-act="save"]`).catch(() => {});
+  await v.page.waitForTimeout(500);
+  const sp = v.S.plan.filter((x) => x.m === 'POST' && x.path === '/plan/pieces/split')[0];
+  const p0 = sp && sp.body && sp.body.parts && sp.body.parts[0];
+  ok(scn, 'part 2 · POST /plan/pieces/split: part 1 on the truck with the delivery stop 2026-10-13 00:00–23:59, part 2 stays', !!p0 && p0.pallets === 5
+    && (p0.stops || []).some((x) => x.location_id === 7 && x.planned_from === '2026-10-13T00:00:00+03:00' && x.planned_to === '2026-10-13T23:59:00+03:00')
+    && sp.body.parts[1].pallets === 6 && !sp.body.parts[1].target, sp && sp.raw);
+  ok(scn, 'part 2 · no page errors', !v.S.pageErrors.length, v.S.pageErrors);
+  await v.page.context().close();
+};
+// Owner 28/10 (over Figma's «who, then where»): a point reads as on the Weekly International — the place in bold on
+// line 1, its city under it on line 2 with the window / pallets / temperature; the client only in the title (and the
+// order card). A long company name had filled four lines and hidden the place.
+SCN['place-city'] = async (browser, origin) => {
+  const scn = 'place-city';
+  const lk = DEF_LOOKUPS();
+  for (const l of lk.locations) l.city = 'City ' + l.id;
+  const b = live45();
+  b.hub[0].client = 'IFCO SYSTEMS HELLAS R P C PALLET SYSTEMS ΕΤΑΙΡΕΙΑ ΠΕΡΙΟΡΙΣΜΕΝΗΣ ΕΥΘΥΝΗΣ - IFCO S';
+  const { page, S } = await openBoard(browser, origin, { board: b, lookups: lk });
+  await page.waitForSelector('#content > .wi4.wn5[data-state="ok"]', { timeout: 8000 }).catch(() => {});
+  const pt = await page.evaluate(() => {
+    const p = document.querySelector('#content .wn5 .wn5-row[data-piece="15"] .wn5-kto .wn5-pt');
+    const row = document.querySelector('#content .wn5 .wn5-row[data-piece="15"]');
+    if (!p) return null;
+    const l1 = p.querySelector('.wi4-l1'), l2 = p.querySelector('.wi4-l2');
+    return { l1: l1 && l1.textContent.trim(), l1w: l1 && [getComputedStyle(l1).fontWeight, getComputedStyle(l1).fontSize, getComputedStyle(l1).color].join(' '), l2: l2 && l2.textContent.replace(/\s+/g, ' ').trim(), title: p.title,
+      rowText: row.querySelector('.wn5-kto').textContent, h: Math.round(p.getBoundingClientRect().height) };
+  });
+  // the Weekly International point's own line 1 (.wi4-l1: DM Sans 500 12px, ink) — the same size and style
+  ok(scn, 'line 1 = the place «Rentis Test» in the Weekly International point style (500 12px ink)', !!pt && pt.l1 === 'Rentis Test' && /^500 12px rgb\(/.test(pt.l1w), pt);
+  ok(scn, 'line 2 = its city first, then the window and the pallets («City 2 · — · 30π»)', !!pt && /^City 2 · — · 30π/.test(pt.l2 || ''), pt && pt.l2);
+  ok(scn, 'the client is OFF the row and in the title (place first, client last)', !!pt && !/IFCO/.test(pt.rowText) && /^Rentis Test, City 2 · .* · IFCO SYSTEMS/.test(pt.title || ''), pt && { row: pt.rowText, title: pt.title });
+  ok(scn, 'two lines: the point is not four lines tall (≤ 40px)', !!pt && pt.h <= 40, pt && pt.h);
+  const qc = await page.evaluate(() => { const c = document.querySelector('#content .wn5 .wn5-qcard[data-piece="15"]'); return c ? { pl: (c.querySelector('.wn5-qc-cl') || {}).textContent, text: c.textContent, title: (c.querySelector('.wn5-qc-l1') || {}).title } : null; });
+  ok(scn, 'the ΕΠΟΜΕΝΑ card names the place («→ Rentis Test»), the client only in its title', !!qc && qc.pl === 'Rentis Test' && !/IFCO/.test(qc.text) && /IFCO/.test(qc.title || ''), qc);
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await page.context().close();
 };
 // ── main ──
 (async () => {
