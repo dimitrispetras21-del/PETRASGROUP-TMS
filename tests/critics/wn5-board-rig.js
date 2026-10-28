@@ -2479,11 +2479,11 @@ SCN.live45 = async (browser, origin) => {
   // 1 · place names from GET /plan/lookups (the page never read it: every place «—»)
   ok(scn, '1 · the board reads GET /plan/lookups once beside the board', (S.lookups || 0) === 1, S.lookups);
   ok(scn, '1 · VS import 604: its three deliveries name their places (Aspropyrgos / Oinofyta / Larisa), never «—»',
-    ['Aspropyrgos Test', 'Oinofyta Test', 'Larisa Test'].every((n) => (by(16).kpts || []).some((x) => x.includes('ΠΕΛΑΤΗΣ ΕΙ 2 · ' + n))) && !(by(16).kpts || []).some((x) => /ΕΙ 2 · — ·/.test(x)), by(16).kpts);
-  ok(scn, '1 · VS import 603: «ΠΕΛΑΤΗΣ ΕΙ 1 · Rentis Test», not «… — · 30π»', (by(15).kpts || []).some((x) => x.startsWith('ΠΕΛΑΤΗΣ ΕΙ 1 · Rentis Test')), by(15).kpts);
+    ['Aspropyrgos Test', 'Oinofyta Test', 'Larisa Test'].every((n) => (by(16).kpts || []).some((x) => x.includes(n) && x.endsWith('ΠΕΛΑΤΗΣ ΕΙ 2'))) && !(by(16).kpts || []).some((x) => /^(\d+\. )?— /.test(x)), by(16).kpts);
+  ok(scn, '1 · VS import 603: «Rentis Test …», not «— · 30π»', (by(15).kpts || []).some((x) => x.startsWith('Rentis Test')), by(15).kpts);
   // 2 · ΑΝΟΔΟΣ (vs_export): the supplier's place in ΦΟΡΤΩΣΗ, «Βέροια» in ΠΡΟΣ
   ok(scn, '2 · VS export 607: ΦΟΡΤΩΣΗ names the supplier place (Lamia Test), ΠΡΟΣ = «Βέροια»',
-    (by(19).apts || []).some((x) => x.startsWith('ΠΕΛΑΤΗΣ ΕΞ 1 · Lamia Test')) && /Βέροια/.test(by(19).ato || ''), { afl: by(19).apts, ato: by(19).ato });
+    (by(19).apts || []).some((x) => x.startsWith('Lamia Test')) && /Βέροια/.test(by(19).ato || ''), { afl: by(19).apts, ato: by(19).ato });
   ok(scn, '2 · VS export 616: two loading places (Thessaloniki Test, Lamia Test), ΠΡΟΣ «Βέροια»',
     ['Thessaloniki Test', 'Lamia Test'].every((n) => (by(20).apts || []).some((x) => x.includes(n)) || /\+1/.test(by(20).afl || '')) && /Βέροια/.test(by(20).ato || ''), { afl: by(20).apts, ato: by(20).ato });
   // 3 · a waiting row of one side (owner 28/10): the box names its side, the empty side is the dashed slot of H1 RT-T106/T107
@@ -2691,6 +2691,35 @@ SCN.b1 = async (browser, origin) => {
     && sp.body.parts[1].pallets === 6 && !sp.body.parts[1].target, sp && sp.raw);
   ok(scn, 'part 2 · no page errors', !v.S.pageErrors.length, v.S.pageErrors);
   await v.page.context().close();
+};
+// Owner 28/10 (over Figma's «who, then where»): a point reads as on the Weekly International — the place in bold on
+// line 1, its city under it on line 2 with the window / pallets / temperature; the client only in the title (and the
+// order card). A long company name had filled four lines and hidden the place.
+SCN['place-city'] = async (browser, origin) => {
+  const scn = 'place-city';
+  const lk = DEF_LOOKUPS();
+  for (const l of lk.locations) l.city = 'City ' + l.id;
+  const b = live45();
+  b.hub[0].client = 'IFCO SYSTEMS HELLAS R P C PALLET SYSTEMS ΕΤΑΙΡΕΙΑ ΠΕΡΙΟΡΙΣΜΕΝΗΣ ΕΥΘΥΝΗΣ - IFCO S';
+  const { page, S } = await openBoard(browser, origin, { board: b, lookups: lk });
+  await page.waitForSelector('#content > .wi4.wn5[data-state="ok"]', { timeout: 8000 }).catch(() => {});
+  const pt = await page.evaluate(() => {
+    const p = document.querySelector('#content .wn5 .wn5-row[data-piece="15"] .wn5-kto .wn5-pt');
+    const row = document.querySelector('#content .wn5 .wn5-row[data-piece="15"]');
+    if (!p) return null;
+    const l1 = p.querySelector('.wi4-l1'), l2 = p.querySelector('.wi4-l2');
+    return { l1: l1 && l1.textContent.trim(), l1w: l1 && [getComputedStyle(l1).fontWeight, getComputedStyle(l1).fontSize, getComputedStyle(l1).color].join(' '), l2: l2 && l2.textContent.replace(/\s+/g, ' ').trim(), title: p.title,
+      rowText: row.querySelector('.wn5-kto').textContent, h: Math.round(p.getBoundingClientRect().height) };
+  });
+  // the Weekly International point's own line 1 (.wi4-l1: DM Sans 500 12px, ink) — the same size and style
+  ok(scn, 'line 1 = the place «Rentis Test» in the Weekly International point style (500 12px ink)', !!pt && pt.l1 === 'Rentis Test' && /^500 12px rgb\(/.test(pt.l1w), pt);
+  ok(scn, 'line 2 = its city first, then the window and the pallets («City 2 · — · 30π»)', !!pt && /^City 2 · — · 30π/.test(pt.l2 || ''), pt && pt.l2);
+  ok(scn, 'the client is OFF the row and in the title (place first, client last)', !!pt && !/IFCO/.test(pt.rowText) && /^Rentis Test, City 2 · .* · IFCO SYSTEMS/.test(pt.title || ''), pt && { row: pt.rowText, title: pt.title });
+  ok(scn, 'two lines: the point is not four lines tall (≤ 40px)', !!pt && pt.h <= 40, pt && pt.h);
+  const qc = await page.evaluate(() => { const c = document.querySelector('#content .wn5 .wn5-qcard[data-piece="15"]'); return c ? { pl: (c.querySelector('.wn5-qc-cl') || {}).textContent, text: c.textContent, title: (c.querySelector('.wn5-qc-l1') || {}).title } : null; });
+  ok(scn, 'the ΕΠΟΜΕΝΑ card names the place («→ Rentis Test»), the client only in its title', !!qc && qc.pl === 'Rentis Test' && !/IFCO/.test(qc.text) && /IFCO/.test(qc.title || ''), qc);
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await page.context().close();
 };
 // ── main ──
 (async () => {

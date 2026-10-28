@@ -45,6 +45,7 @@ function _wi4() {
 }
 const _dow = (day) => { const lg = _wi4(); return lg && day ? lg.dayLabel(day).split(' ')[0] : day || ''; };
 const _rate = (x) => Number(x).toLocaleString('el-GR', { maximumFractionDigits: 2 });
+const _idOrNull = (x) => (x === null || x === undefined || x === '' || !Number.isFinite(Number(x)) ? null : Number(x));
 // The distinct temperatures of a point's loads (°C, ascending): what the driver keeps the trailer at. Unknown = none
 // (an empty list), never 0 — a missing temperature is not «0 °C» (trap 2 of CLAUDE.md).
 const _temps = (items) => [...new Set((items || []).map((x) => x && x.temperature_c)
@@ -118,7 +119,8 @@ function searchParts(row) {
 
 function _legs(s, act) { return (s.legs || []).filter((l) => l.act === act); }
 function _point(s, pallets, legs) {
-  return { stopId: s.stop_id, n: 0, name: s.location || '—', city: null,
+  // locId: the screen names the place's city from the catalogue (owner 28/10: place + city, as the Weekly International)
+  return { stopId: s.stop_id, n: 0, name: s.location || '—', city: null, locId: s.location_id == null ? null : Number(s.location_id),
     clients: [...new Set((s.legs || []).map((l) => l.client).filter(Boolean))], temps: _temps(legs),
     from: athensTime(s.planned_from), to: athensTime(s.planned_to), pallets,
     dim: s.dim === true, late: s.has_late === true, segmentId: null, segLabel: null, day: s.stop_day || athensDay(s.planned_to) };
@@ -303,6 +305,7 @@ function _waitRow(list, hubId, errors, nameOf) {
   // ΑΝΟΔΟΣ, the delivery place of a ΚΑΘΟΔΟΣ, with the client before it («ΠΕΛΑΤΗΣ · τόπος», Figma H1). A place the
   // catalogue cannot name is «—» and a line of the board's error strip (nameOf), never the client in its place.
   const pts = ws.map((w, i) => ({ stopId: null, n: i + 1, name: nameOf(anodos ? w.nat_from_location_id : w.nat_to_location_id), city: null,
+    locId: _idOrNull(anodos ? w.nat_from_location_id : w.nat_to_location_id),
     clients: w.client ? [w.client] : [], temps: _temps([w]),
     from: athensTime(anodos ? w.load_from : w.deliver_from), to: athensTime(anodos ? w.load_to : w.deliver_to), pallets: r1(w.pallets),
     dim: false, late: w.overdue === true, segmentId: null, segLabel: null, day: athensDay(anodos ? w.load_from : w.deliver_from) }));
@@ -315,7 +318,7 @@ function _waitRow(list, hubId, errors, nameOf) {
     if (!byFrom.has(k)) byFrom.set(k, []);
     byFrom.get(k).push(w);
   }
-  const origin = [...byFrom.values()].map((g, i) => ({ stopId: null, n: i + 1, name: nameOf(g[0].nat_from_location_id), city: null, clients: [], temps: _temps(g),
+  const origin = [...byFrom.values()].map((g, i) => ({ stopId: null, n: i + 1, name: nameOf(g[0].nat_from_location_id), city: null, locId: _idOrNull(g[0].nat_from_location_id), clients: [], temps: _temps(g),
     from: athensTime(g[0].load_from), to: athensTime(g[0].load_to),
     pallets: _sum(g), dim: false, late: false, segmentId: null, segLabel: null, day: _loadDay(g[0]) }));
   // ΠΡΟΣ of an ΑΝΟΔΟΣ: where the loads go (nat_to), one point per place — «Βέροια» for the hub (a vs_export), never
@@ -326,7 +329,7 @@ function _waitRow(list, hubId, errors, nameOf) {
     if (!byTo.has(k)) byTo.set(k, []);
     byTo.get(k).push(w);
   }
-  const dest = [...byTo.values()].map((g, i) => ({ stopId: null, n: i + 1, name: nameOf(g[0].nat_to_location_id), city: null, clients: [], temps: [],
+  const dest = [...byTo.values()].map((g, i) => ({ stopId: null, n: i + 1, name: nameOf(g[0].nat_to_location_id), city: null, locId: _idOrNull(g[0].nat_to_location_id), clients: [], temps: [],
     from: athensTime(g[0].deliver_from), to: athensTime(g[0].deliver_to), pallets: _sum(g), dim: false, late: false, segmentId: null, segLabel: null,
     day: athensDay(g[0].deliver_from) }));
   const side = { side: anodos ? 'ANODOS' : 'KATHODOS', day: loadDay, toDay: anodos || !pts.length ? null : pts[pts.length - 1].day,
