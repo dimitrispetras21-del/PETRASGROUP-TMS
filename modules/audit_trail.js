@@ -375,7 +375,7 @@ function _auditFmtVal(v, field) {
 // The Worker's eight audit() verbs (grep 'action: "' on deployed src/index.js).
 // Counted in audit_log 3/9/2026: create 2.027 · update 1.254 · delete 88 ·
 // cascade_delete 30. confirm, reverse, invoice_override and upload had no row
-// because audit_log_action_check refused them (measured 28/10); 075 accepts
+// because audit_log_action_check refused them (measured 28/10); 078 accepts
 // them, rows from then on, none recovered before it. They stay listed so they
 // read as a word, not as raw English. 'login' was REMOVED: the Worker has no such call and never
 // had one, so the entry described an event that cannot happen (principle 8).

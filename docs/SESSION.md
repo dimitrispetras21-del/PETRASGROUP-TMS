@@ -47,7 +47,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 - vd-nick · `vd/session-rules-v2` (PR #40) · session rules v2: parallel work, per-session files
 - vd-nick · (not started, PR planned this week) · import the Valuedriven backend, tests and CI into this repo
 - dimitris · `fix/pallets-movements-limit` · Pallets step 1 (owner go 28/10): `GET /pallets/movements` reads every row in pages (999 + probe, cap 9 990, `truncated` + `cap`), ⚠ on screen when cut; on top of main = F5 deploy 1 source, deploys with/after deploy 1 only on owner «go deploy» after 15:00 (`docs/sessions/2026-10-28-dimitris-pallets-limit.md`)
-- dimitris · `fix/audit-write-loud` · Pallets Υ2 (owner «παμε Α» 28/10): Worker `audit()` failures go to `app_errors`; draft 075 widens `audit_log_action_check` to the 8 Worker actions (PGlite: dry run, apply, rollback NOT VALID); order: Worker deploy, then 075, both on owner yes (`docs/sessions/2026-10-28-dimitris-audit-trace.md`)
+- dimitris · `fix/audit-write-loud` · Pallets Υ2 (owner «παμε Α» 28/10): Worker `audit()` failures go to `app_errors`; draft 078 widens `audit_log_action_check` to the 8 Worker actions (PGlite: dry run, apply, rollback NOT VALID); order: Worker deploy, then 078, both on owner yes (`docs/sessions/2026-10-28-dimitris-audit-trace.md`)
 
 **Do not touch**
 - GROUPAGE LINES are never deleted, only set to `Unassigned`.
