@@ -394,6 +394,17 @@ const OrdersWeekView = (() => {
       if (used.has(r.id)) continue;
       used.add(r.id);
       const own = { kind: 'order', rec: r, inWeek: true, week };
+      // F5 Ε3: a v5 order (natV5Attach) has no load and no Direction. Its pair
+      // is its cycle, drawn on the v5 board — here one row of its own, on the
+      // side its first cycle carries it (else the hub's side: to Veroia =
+      // ΑΝΟΔΟΣ), the vehicle from the cycle. Never «εκτός φορτίου».
+      if (r._v5 && typeof r._v5 === 'object') {
+        const c0 = (r._v5.carriers || [])[0];
+        const up = (c0 ? c0.side : r._v5.hub_side) === 'ANODOS';
+        rows.push({ kind: 'natl', day: O.weekDateOf(r), kat: up ? null : own, ano: up ? own : null,
+          assign: { kind: 'v5', state: r._v5 }, loadsFailed: false, openRec: r, counted: [r] });
+        continue;
+      }
       const load = loadOfOrder.get(r.id) || null;
       let other = null;
       const pid = load ? pairOf.get(load.id) : null;
@@ -421,6 +432,8 @@ const OrdersWeekView = (() => {
       let assign;
       if (failed) assign = { kind: 'failed' };
       else if (aLoad) assign = { kind: 'load', load: aLoad };
+      // The v5 read failed and this order has no load: it may be v5 — unknown, never «εκτός».
+      else if (anchor._v5 === 'err' && !(anchor.fields || {})['National Groupage']) assign = { kind: 'failed' };
       else if ((anchor.fields || {})['National Groupage']) assign = { kind: 'grp' };
       else assign = { kind: 'out' };
       rows.push({
@@ -508,6 +521,21 @@ const OrdersWeekView = (() => {
     return { key: '~', kind: 'none', plate: '', who: '', text: 'Προς ανάθεση' };
   }
 
+  // The vehicle of a v5 national order: its first cycle's (GET /plan/nat-state,
+  // names resolved by the base), «+N» when a split at Veroia puts it on more.
+  function vehicleOfV5(st) {
+    const cs = (st && st.carriers) || [];
+    const c = cs.find(x => x.kind !== 'none');
+    if (!c) return st && st.executed ? { key: '~', kind: 'none', plate: '', who: '', text: '—' } : { key: '~', kind: 'none', plate: '', who: '', text: 'Προς ανάθεση' };
+    const more = cs.length > 1 ? ' +' + (cs.length - 1) : '';
+    if (c.kind === 'partner') {
+      const name = (c.partner || 'συνεργάτης') + more;
+      return { key: 'p:' + name, kind: 'partner', plate: '', who: name, text: name };
+    }
+    const plate = c.truck || '—', who = String(c.driver || '').trim() + more;
+    return { key: 't:' + plate, kind: 'own', plate, who, text: [plate, who].filter(Boolean).join(' · ') };
+  }
+
   // Ends of an order as the frame draws them: first loading and first delivery,
   // «+N» for the other points of that end («Edessa → Kraków PL +1»); `last` =
   // the final delivery, where an empty truck turns back («Κενό γύρισμα»).
@@ -573,12 +601,16 @@ const OrdersWeekView = (() => {
     // Without the invoicing set the slip gate is unknown → the per-order sheet
     // flags decide (OrdersData.sheetsOk fallback) and a strip says so.
     const set = setRes.ok ? setRes.r : { gate: {}, gateFailed: true, intl: [], natl: [] };
-    const loadsRes = natlRes.ok && wantNatl ? await _natLoads(natl.filter(r => O.weekStartOf(r) === week)) : { ok: true, loads: [] };
+    // F5 Ε3/Ε5: the v5 state of the window's national orders, beside their loads (before L: no request).
+    const [loadsRes, v5Res] = await Promise.all([
+      natlRes.ok && wantNatl ? _natLoads(natl.filter(r => O.weekStartOf(r) === week)) : Promise.resolve({ ok: true, loads: [] }),
+      natlRes.ok && wantNatl ? OrdersCommon.natV5Attach(natl) : Promise.resolve({ failed: false }),
+    ]);
     return {
       week, strip, intl, cancelled, natl, natlFailed: !natlRes.ok, rts: rtRes.ok ? (rtRes.r.records || []) : null,
       rtCapped: rtRes.ok && (rtRes.r.records || []).length >= 500,
       set, setFailed: !setRes.ok, gateFailed: !!set.gateFailed, parentsFailed, refFailed: !refRes.ok,
-      natLoads: loadsRes.ok ? loadsRes.loads : null,
+      natLoads: loadsRes.ok ? loadsRes.loads : null, v5Failed: v5Res.failed,
     };
   }
 
@@ -675,6 +707,7 @@ const OrdersWeekView = (() => {
     if (scope !== 'natl' && d.rtCapped) add('Τα δρομολόγια έφτασαν το όριο ανάγνωσης (500).', 'Κάποια παλαιότερα μπορεί να λείπουν — οι παραγγελίες τους φαίνονται στο «ΧΩΡΙΣ RT», με σωστά ποσά.');
     if (scope !== 'natl' && m.rtFailed) add('Δεν διαβάστηκαν τα δρομολόγια (RT).', 'Κάθε διεθνής φαίνεται στο «ΧΩΡΙΣ RT» με το ποσό της· τα σύνολα μένουν σωστά.');
     if (scope !== 'intl' && d.natlFailed) add('Δεν διαβάστηκαν οι εθνικές.', 'Η ενότητα Εθνικές γράφει «—», όχι 0· ο τζίρος δείχνει μόνο τα διεθνή, με σήμανση «χωρίς εθνικά».');
+    if (scope !== 'intl' && !d.natlFailed && d.v5Failed) add('Δεν διαβάστηκε η κατάσταση των εθνικών v5.', 'Η ανάθεση εθνικών χωρίς φορτίο γράφει «—», όχι «εκτός φορτίου»· το «παραδόθηκε» τους ακολουθεί την ημερομηνία παράδοσης.');
     if (scope !== 'intl' && !d.natlFailed && d.natLoads == null) add('Δεν διαβάστηκαν τα φορτία εθνικών.', 'Η ανάθεση εθνικών γράφει «—», όχι «εκτός φορτίου»· το ζευγάρι κάθοδος–άνοδος δεν σχεδιάζεται.');
     if (d.setFailed || d.gateFailed) add('Δεν απάντησε ο έλεγχος δελτίων.', 'Ισχύουν οι σημάνσεις δελτίων της ίδιας της παραγγελίας.');
     if (scope !== 'natl' && d.parentsFailed) add('Δεν διαβάστηκαν οι αρχικές των σπασμένων.', 'Τα σκέλη τους γράφουν «αρχική εκτός ανάγνωσης» και δεν αθροίζονται.');
@@ -1079,11 +1112,12 @@ const OrdersWeekView = (() => {
     };
     let v, extra = '';
     if (r.assign.kind === 'load') v = vehicleOf(r.assign.load);
+    else if (r.assign.kind === 'v5') v = vehicleOfV5(r.assign.state);
     else {
       v = { kind: 'none', plate: '', who: '', text: '' };
       extra = r.assign.kind === 'grp' ? '<span class="ow4-asg-none">μέσω ομαδοποίησης</span>'
         : r.assign.kind === 'out' ? '<span class="ow4-asg-none" title="Εθνική που δεν μπήκε σε φορτίο">εκτός φορτίου</span>'
-        : '<span class="ow4-d" title="Τα φορτία εθνικών δεν διαβάστηκαν">—</span>';
+        : `<span class="ow4-d" title="${r.openRec && r.openRec._v5 === 'err' ? 'Η κατάσταση των εθνικών v5 δεν διαβάστηκε' : 'Τα φορτία εθνικών δεν διαβάστηκαν'}">—</span>`;
     }
     const verdict = rtInvoicing(r.counted, stateOf);
     const n = r.counted.filter(x => !isVsNational(x)).length;

@@ -5,8 +5,86 @@
 (function() {
 'use strict';
 
+// ── National v5 (F5 Ε15, plan 2026-10-28 §10 d4) ─────────────────────────────
+// From day L a national order lives in shipments/pieces/cycles (v5) and makes NO
+// national_loads row, so every KPI that counts NAT_LOADS would silently lose it.
+// This is the ONE reader of v5 national state for the KPI screens (this page and
+// modules/metrics_audit.js, which loads after it). Whether an order is v5 is the
+// base's answer (GET /plan/nat-state, "missing" = old model), never a date
+// compared with L on screen (principle 3).
+//   state(): PlanConfig, or 'unknown' when core/plan-config.js is not loaded —
+//            never silently 'before' (principle 1).
+//   read():  'before' → no request at all (today's path, not a copy of it).
+//            Otherwise one GET per 500 national order ids. 404 no_route with L
+//            not known to have happened = the Worker has no v5 reads yet (before
+//            deploy 1), so no v5 order can exist: nothing to add, not a failure
+//            (as core/plan-ids.js). After L the same 404 is a failure.
+// Later: one client with OrdersCommon.natV5Attach (stream d1) once both merge.
+const NatV5Kpi = {
+  CHUNK: 500,
+  async state() {
+    if (typeof PlanConfig === 'undefined' || !PlanConfig || typeof PlanConfig.load !== 'function') {
+      if (!NatV5Kpi._pcMissing && typeof logError === 'function') logError(new Error('PlanConfig is not loaded'), 'NatV5Kpi.state');
+      NatV5Kpi._pcMissing = true;
+      return { state: 'unknown', cutoverDay: null };
+    }
+    try {
+      const c = await PlanConfig.load();
+      return { state: (c && c.state) || 'unknown', cutoverDay: (c && c.cutoverDay) || null };
+    } catch (_) { return { state: 'unknown', cutoverDay: null }; }
+  },
+  // natRecs: NAT_ORDERS records carrying 'Order No' (= national_orders.id, view 054).
+  // → { state, cutoverDay, ran, failed, byNo: Map<number, state object> } — byNo
+  //   holds only the v5 orders; an order absent from it is the old model.
+  async read(natRecs, pc) {
+    const st = pc || await NatV5Kpi.state();
+    const out = { state: st.state, cutoverDay: st.cutoverDay, ran: false, failed: false, byNo: new Map() };
+    if (st.state === 'before') return out;
+    const ids = [...new Set((natRecs || []).map(r => Number((r.fields || {})['Order No']))
+      .filter(n => Number.isSafeInteger(n) && n > 0))];
+    if (!ids.length) return out;
+    out.ran = true;
+    try {
+      if (typeof planFetch !== 'function') throw new Error('planFetch is not loaded');
+      for (let i = 0; i < ids.length; i += NatV5Kpi.CHUNK) {
+        const part = ids.slice(i, i + NatV5Kpi.CHUNK);
+        const ans = await planFetch('GET', '/plan/nat-state?nat_order_ids=' + part.join(','), { designed: ['no_route'] });
+        for (const n of part) {
+          const s = ans && ans[String(n)];
+          if (s === 'missing') continue;
+          // An id without an answer, or of another shape, is a contract fault: loud, never «old model».
+          if (!s || typeof s !== 'object' || typeof s.executed !== 'boolean' || typeof s.late !== 'boolean') {
+            throw new Error('nat-state: no state for ' + n);
+          }
+          out.byNo.set(n, s);
+        }
+      }
+    } catch (e) {
+      // Benign only while L may not have happened: once the base says 'after', a
+      // Worker without the read (rolled back, or deploy 1 without it) hides every
+      // v5 order, so it is a failure, logged here (a designed answer planFetch does not log).
+      if (e && e.code === 'no_route' && st.state !== 'after') { out.byNo.clear(); out.ran = false; return out; }
+      if (e && e.code === 'no_route' && typeof logError === 'function') logError(e, 'NatV5Kpi.read: no /plan/nat-state after L');
+      // planFetch logs its own failures (PlanError); anything else is logged here.
+      if (!(e && e.name === 'PlanError') && typeof logError === 'function') logError(e, 'NatV5Kpi.read');
+      out.byNo.clear();
+      out.failed = true;
+    }
+    return out;
+  },
+  // The v5 records of a NAT_ORDERS list, each with its state: [{ rec, s }].
+  v5Of(natRecs, v5) {
+    if (!v5 || !v5.byNo || !v5.byNo.size) return [];
+    return (natRecs || []).map(rec => ({ rec, s: v5.byNo.get(Number((rec.fields || {})['Order No'])) }))
+      .filter(x => x.s);
+  },
+};
+if (typeof window !== 'undefined') window.NatV5Kpi = NatV5Kpi;
+
 const PERF = {
   orders: [], natLoads: [], trucks: [], drivers: [], maint: [],
+  // National v5 state (NatV5Kpi.read). null = never read; state 'before' = today's page.
+  natV5: null,
   // Period selector — week offset (0 = current week, -1 = last week, etc).
   // Default to current week. User can switch via dropdown in header.
   weekOffset: 0,
@@ -118,7 +196,12 @@ async function _perfLoad() {
            'CMR Photo Received','CMR Received',
            'Loading Location 1','Unloading Location 1'];
   if (typeof FEATURES !== 'undefined' && FEATURES.ORDER_SPLIT) _perfOrderFields.push('Parent Order');
-  const [orders, natLoads, trucks, maint] = await Promise.all([
+  // F5 Ε15: before L the page sends exactly today's requests (the NAT_ORDERS read
+  // below is not made at all); from L, or when L is unknown, it also reads the
+  // national orders whose v5 state the national KPIs need.
+  // The state is read alongside the facade reads; only NAT_ORDERS waits for it.
+  const _pcP = NatV5Kpi.state();
+  const [orders, natLoads, trucks, maint, natOrders] = await Promise.all([
     atGetAll(TABLES.ORDERS, {
       // Note: 'Loading Points' / 'Delivery Points' removed — they don't exist as
       // Airtable fields and cause UNKNOWN_FIELD_NAME 422. The fallback below
@@ -137,7 +220,17 @@ async function _perfLoad() {
     }, true), 'performance: national loads'),
     preloadReferenceData().then(() => getRefTrucks()),
     safeFetch(() => atGetAll(TABLES.MAINT_REQ, { fields: ['Status','Priority','Date Reported'] }, true), 'performance: maintenance requests'),
+    _pcP.then(pc => pc.state !== 'before'
+      ? safeFetch(() => atGetAll(TABLES.NAT_ORDERS, { fields: ['Order No'] }, true), 'performance: national orders')
+      : null),
   ]);
+  const _pc = await _pcP;
+  const _natV5On = _pc.state !== 'before';
+  // A failed NAT_ORDERS read is a failed v5 read: no id, no state, so the
+  // national KPIs say «not read», never a sample without the v5 orders.
+  PERF.natV5 = (_natV5On && didFail(natOrders))
+    ? { state: _pc.state, cutoverDay: _pc.cutoverDay, ran: true, failed: true, byNo: new Map() }
+    : await NatV5Kpi.read(natOrders || [], _pc);
 
   // Named so the metrics below are read as partial rather than as fact.
   PERF.failedSources = [
@@ -152,6 +245,7 @@ async function _perfLoad() {
     ? (orders || []).filter(r => !getLinkedId(r.fields['Parent Order']))
     : (orders || []);
   PERF.natLoads = natLoads || [];
+  PERF.natOrders = natOrders || [];
   PERF.trucks = trucks || [];
   PERF.maint = maint || [];
   PERF.locs = getRefLocations() || [];
@@ -299,7 +393,29 @@ function _perfCompute() {
     const expected = (r.fields['Delivery DateTime']||'').slice(0,10);
     return actual && expected && actual <= expected;
   }).length;
-  const natl_on_time = natlDelivered.length ? Math.round(natlOnTime / natlDelivered.length * 100) : 0;
+  let natl_on_time = natlDelivered.length ? Math.round(natlOnTime / natlDelivered.length * 100) : 0;
+  // F5 Ε15: from L (or with L unknown) the v5 national orders join the sample —
+  // delivered = every piece's delivery stop executed, on time = not late (both
+  // the base's own rule, v_national_order_state, spec 2.3). An empty sample is
+  // «—», not 0%: before L this card's 0 is kept as it is (flag off = today).
+  // VS national legs stay out: /plan/vs-state carries no «late», and the card says so.
+  const natV5 = PERF.natV5;
+  const natNote = {};
+  const natWhy = {};
+  if (natV5 && natV5.state !== 'before') {
+    const pcNote = natV5.state === 'unknown' ? ' · μετάβαση εθνικών: άγνωστη' : '';
+    if (natV5.failed) {
+      natl_on_time = -1;
+      natWhy.natl_on_time = 'η κατάσταση των εθνικών v5 δεν διαβάστηκε — ξαναδοκίμασε' + pcNote;
+    } else {
+      const v5Done = NatV5Kpi.v5Of(PERF.natOrders, natV5).filter(x => x.s.executed);
+      const v5OnTime = v5Done.filter(x => !x.s.late).length;
+      const total = natlDelivered.length + v5Done.length;
+      natl_on_time = total ? Math.round((natlOnTime + v5OnTime) / total * 100) : -1;
+      natNote.natl_on_time = `v5 ${v5Done.length} · παλιό ${natlDelivered.length} · χωρίς σκέλη VS${pcNote}`;
+      natWhy.natl_on_time = 'καμία εκτελεσμένη εθνική · χωρίς σκέλη VS' + pcNote;
+    }
+  }
 
   // Invoiced %
   const deliveredOrders = orders.filter(r => r.fields['Status'] === 'Delivered' || r.fields['Status'] === 'Invoiced');
@@ -379,13 +495,20 @@ function _perfCompute() {
     const cost = parseFloat(r.fields['Total Cost'] || r.fields['Cost']) || 0;
     return rev > 0 && cost > 0;
   });
-  const natl_profit = natlWithFinancials.length
+  let natl_profit = natlWithFinancials.length
     ? Math.round(natlWithFinancials.reduce((s, r) => {
         const rev = parseFloat(r.fields['Price']) || 0;
         const cost = parseFloat(r.fields['Total Cost'] || r.fields['Cost']) || 0;
         return s + ((rev - cost) / rev * 100);
       }, 0) / natlWithFinancials.length)
     : 0;
+  // F5 Ε15: a v5 national has no Price/Cost row here; its money lives in the
+  // cycle P&L, which a dispatcher does not see (owner 23/8). From L the card
+  // says «εκτός» instead of a 0 built from the old loads alone.
+  if (natV5 && natV5.state !== 'before') {
+    natl_profit = -1;
+    natWhy.natl_profit = 'εκτός: το περιθώριο των εθνικών μετριέται στο P&L, όχι εδώ';
+  }
 
   // CMR archived — distinct from collected.
   // Use explicit 'CMR Archived' field if present, otherwise proxy to 100% of what's collected
@@ -462,7 +585,9 @@ function _perfCompute() {
     natl_profit, crisis_count, plan_reviewed,
     outstanding, pallet_balance,
     zero_anxiety: 0,
-    _meta: { wn, totalWeek, assignedWeek, activeTrucks, weekExports: weekExports.length, weekN, weekNone, weekEarly }
+    _meta: { wn, totalWeek, assignedWeek, activeTrucks, weekExports: weekExports.length, weekN, weekNone, weekEarly },
+    // F5 Ε15: the national cards' reasons (empty before L).
+    _natNote: natNote, _natWhy: natWhy,
   };
 }
 
@@ -621,7 +746,8 @@ function _perfDraw() {
   // is the RIGHT reason: «καμία παράδοση με επίδοση» under ΑΞΙΟΠΟΙΗΣΗ ΣΤΟΛΟΥ was
   // a lie for the fleet KPI, whose sample is the week's orders.
   const unknownWhy = id =>
-    id === 'on_time' ? 'καμία παράδοση με καταγεγραμμένη επίδοση'
+    vals._natWhy[id] ? vals._natWhy[id]
+    : id === 'on_time' ? 'καμία παράδοση με καταγεγραμμένη επίδοση'
     : id === 'dead_km' ? 'κανένα ζεύγος εξαγωγής/εισαγωγής με συντεταγμένες'
     : id === 'weekly_score' ? 'χωρίς δείγμα — δεν υπολογίζεται'
     : WEEK_KPIS.has(id) ? `καμία παραγγελία στη W${meta.wn}`
@@ -648,7 +774,8 @@ function _perfDraw() {
     const glowColor = barColor;
     const iconName = kpiIconMap[kpi.id] || 'activity';
     const note = unknown ? unknownWhy(kpi.id)
-      : early ? `πολύ νωρίς — ${meta.weekN} ${meta.weekN === 1 ? 'παραγγελία' : 'παραγγελίες'} στη W${meta.wn}` : '';
+      : early ? `πολύ νωρίς — ${meta.weekN} ${meta.weekN === 1 ? 'παραγγελία' : 'παραγγελίες'} στη W${meta.wn}`
+      : (vals._natNote[kpi.id] || '');
     return `<div class="perf-kpi">
       <div class="perf-kpi-glow" style="background:linear-gradient(90deg,${glowColor},transparent)"></div>
       <div class="perf-kpi-label">${_i(iconName, 11)} ${kpi.label}</div>
