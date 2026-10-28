@@ -41,14 +41,15 @@ async function one(browser, origin, c) {
   const ctx = await browser.newContext({ baseURL: origin + '/', viewport: { width: 1920, height: 1080 }, serviceWorkers: 'block', timezoneId: 'Europe/Athens', locale: 'el-GR' });
   const page = await ctx.newPage();
   await page.clock.setFixedTime(new Date(kit.NOW));
-  const S = { plan: [], pageErrors: [], console: [], planned: [], aborted: new Set() };
+  const S = { plan: [], pageErrors: [], console: [], planned: [], aborted: new Set(), stubbed: new Set() };
   page.on('pageerror', (e) => S.pageErrors.push(String(e).slice(0, 300)));
   // Console rule of the kit (coordinator 27/10): Chrome's «Failed to load resource» for a request THIS rig aborted
-  // (an external host) is planned, listed apart; any other error line is an app error.
+  // (an external host) or answered ≥ 400 on purpose, and planFetch's line for that answer («rig sentinel …»), are
+  // planned, listed apart; any other error line is an app error.
   page.on('console', (m) => {
     if (m.type() !== 'error') return;
     const t = m.text().slice(0, 300), at = (m.location() || {}).url || '';
-    (/^Failed to load resource/.test(t) && S.aborted.has(at) ? S.planned : S.console).push(t + (at ? ' @ ' + at.slice(0, 80) : ''));
+    ((/^Failed to load resource/.test(t) && (S.aborted.has(at) || S.stubbed.has(at))) || /rig sentinel /.test(t) ? S.planned : S.console).push(t + (at ? ' @ ' + at.slice(0, 80) : ''));
   });
   await page.addInitScript((x) => {
     localStorage.setItem('tms_user', JSON.stringify({ name: 'Rig Test', role: x.role, username: x.username, loginAt: Date.now(), expiresAt: Date.now() + 8 * 3600 * 1000 }));
@@ -70,7 +71,13 @@ async function one(browser, origin, c) {
       if (u.pathname === '/plan/board') ans = board;
       else if (u.pathname === '/plan/lookups') ans = kit.LOOKUPS;
       else if (u.pathname === '/plan/notices') ans = { desk: 'natl', unread: [], recent: [] };
-      else return route.fulfill({ status: 409, contentType: 'application/json', headers: cors, body: JSON.stringify({ error: { type: 'WRITES_CLOSED', code: 'writes_closed', message: 'rig sentinel writes_closed' } }) });
+      else {
+        // An unknown read is a route the Worker does not have yet (404 no_route, as before deploy 1 — e.g. GET
+        // /plan/config of FE-1); a write is closed until day L (409). Both are planned answers, listed apart.
+        const [st, type, code] = m === 'GET' ? [404, 'NOT_FOUND', 'no_route'] : [409, 'WRITES_CLOSED', 'writes_closed'];
+        S.stubbed.add(req.url());
+        return route.fulfill({ status: st, contentType: 'application/json', headers: cors, body: JSON.stringify({ error: { type, code, message: `rig sentinel ${code}` } }) });
+      }
     } else {
       const tid = (u.pathname.match(/\/v0\/[^/]+\/([A-Za-z0-9]+)/) || [])[1];
       if (m === 'GET' && tid === 'tblxu8DRfTQOFRCzS') ans = { records: kit.FACADE_LOCS };
@@ -84,7 +91,8 @@ async function one(browser, origin, c) {
       || (!!document.querySelector('#content .wn4') && !/Φόρτωση εβδομάδας/.test(document.getElementById('content').textContent)), null, { timeout: 30000 });
     got = await page.evaluate(() => (document.querySelector('#content .wn5') ? 'v5' : 'old'));
   } catch (_) { /* neither board painted: reported below */ }
-  await page.waitForTimeout(500);
+  // Long enough for a deferred v5 read (a timer after the paint) to show up in S.plan for a non-pilot user.
+  await page.waitForTimeout(3000);
   const flag = await page.evaluate(() => ({ flag: typeof FEATURES !== 'undefined' ? FEATURES.WN_V5 : undefined,
     users: typeof WN_V5_USERS !== 'undefined' ? WN_V5_USERS : undefined })).catch(() => ({}));
   await ctx.close();
@@ -113,7 +121,7 @@ async function one(browser, origin, c) {
         ok(c.name, 'zero /plan/* requests', r.S.plan.length === 0, r.S.plan);
       }
       ok(c.name, 'no page errors', r.S.pageErrors.length === 0, r.S.pageErrors);
-      ok(c.name, '0 console errors' + (r.S.planned.length ? ` (${r.S.planned.length} planned: aborted external hosts)` : ''), r.S.console.length === 0, r.S.console);
+      ok(c.name, '0 console errors' + (r.S.planned.length ? ` (${r.S.planned.length} planned: aborted hosts / stub answers)` : ''), r.S.console.length === 0, r.S.console);
     }
   } finally {
     await browser.close();

@@ -1,6 +1,7 @@
 // node --test tests/wn5-flag.test.js
 // National v5 F4α Tasks T3/T10 — the switch is born closed (principle 5) and the old board has ONE seam:
-//   - FEATURES.WN_V5 is 'off' until day L: F5 changes this assertion in the same commit as the flag (owner decision);
+//   - FEATURES.WN_V5: 'off' in F4α, 'pilot' for the owner alone from the F5 pilot (Q-9), 'on' at day L (FE-2) — each
+//     change of the flag changes its assertion here in the same commit (owner decision);
 //   - modules/weekly_natl.js gains exactly one line, the first statement of renderWeeklyNatl(), before _wnLoadAll:
 //     v5 owns its load, and with the switch off that line is false and nothing else of the old board runs differently.
 const { test } = require('node:test');
