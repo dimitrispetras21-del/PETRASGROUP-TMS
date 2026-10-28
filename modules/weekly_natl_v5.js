@@ -135,7 +135,10 @@ function _recheckNoteHTML() {
 }
 // The note follows every answer in place — on and off — without repainting the board under a click
 function _recheckNote() {
-  try { const el = document.querySelector('.wn5-bar [data-old-view="recheck"]'); if (el) { el.outerHTML = _recheckNoteHTML(); _fitUpd(); _topFit(); } } catch (_) {}
+  try {
+    const el = document.querySelector('.wn5-bar [data-old-view="recheck"]'), h = _recheckNoteHTML();
+    if (el && el.outerHTML !== h) { el.outerHTML = h; _fitUpd(); _topFit(); }
+  } catch (_) {}
 }
 function _cfgKick() {
   if (_cfgBusy || typeof PlanConfig === 'undefined') return;
@@ -144,9 +147,8 @@ function _cfgKick() {
   const force = _cfgForce;
   _cfgForce = false;
   _cfgBusy = true;
-  // the user's ↻ asks the base at once in either state: a kept 'before' too ({fresh}), or 074 at 15:30 waits 5 min
-  // {recheck: true}: the board waits for the re-read of an aged 'after' (other screens get the kept one at once)
-  // ↻: day L read again at once whatever this board held — PlanConfig re-reads a kept 'after' ('now') or anything else ({fresh})
+  // ↻: day L read again at once, whatever is kept ('now' for an 'after', fresh for the rest). Otherwise the board waits
+  // for PlanConfig's re-read of an aged 'after' ({recheck: true}); other screens get the kept one at once.
   PlanConfig.load(force ? { recheck: 'now', fresh: true } : after ? { recheck: true } : undefined).then((r) => {
     const was = _cfg && _cfg.state;
     const wasDay = _cfg && _cfg.cutoverDay;
@@ -167,11 +169,13 @@ function _cfgKick() {
       || (now !== was && sat && ((now === 'after' && _afterL(sat)) || (now === 'unknown' && _sat === sat && _decide() === 'v5'))))) return;
     // F22 (live 28/10): the v5 board of this week already on screen only needs its bar again — a repaint from the board
     // in hand, not a second GET /plan/board (every open read the board twice ~40 ms apart, on a base that was timing
-    // out). A render in flight paints the new bar itself when its board lands.
-    // said only where it is true: on this page, which is repainted now (another page reads the new day when it asks)
-    if (moved && typeof toast === 'function') toast(`Η ημέρα μετάβασης εθνικών άλλαξε: ${_dm(wasDay)} → ${_dm(r.cutoverDay)} — η προβολή ενημερώθηκε`, 'warn');
-    if (_sat === sat && !WN5._broken && document.querySelector('#content > .wn5') && (_decide() === 'v5' || _afterL(sat))) { if (!paint()) _fallback(); }
-    else window.renderWeeklyNatl();
+    // out). A render in flight paints the new bar itself when its board lands. The «moved» toast is said only here,
+    // on the page repainted now. A throw lands in the log and the old board, never in an unhandled rejection.
+    try {
+      if (moved && typeof toast === 'function') toast(`Η ημέρα μετάβασης εθνικών άλλαξε: ${_dm(wasDay)} → ${_dm(r.cutoverDay)} — η προβολή ενημερώθηκε`, 'warn');
+      if (_sat === sat && !WN5._broken && document.querySelector('#content > .wn5') && (_decide() === 'v5' || _afterL(sat))) { if (!paint()) _fallback(); }
+      else window.renderWeeklyNatl();
+    } catch (e) { _logErr(e, 'weekly natl v5: repaint after day L'); _fallback(); }
   }, () => { _cfgAt = Date.now(); }).finally(() => {   // load() never rejects; belt and braces
     _cfgBusy = false;
     // a ↻ pressed while this ask ran is served now, not by whatever calls active() next (a click it would repaint under)
@@ -350,6 +354,7 @@ function _paint() {
   _install();
   _logShape(_m);
   _buildIndex(_m);
+  _legMark();   // F22: a leg read in flight keeps its mark on the repainted row
   _applySearch(false);
   _fitUpd();
   _fitAfterFonts();
@@ -789,22 +794,29 @@ function _legAttr(r, side) {
 // stuck on the old one, «until a reload» (the reload opens the lighter current week). So: the clicked row says at once
 // that it is reading (.wn5-leg-busy, aria-busy), one leg read at a time (a click while one runs is that same read),
 // and a read that failed is said as what it is, with the way on (↻). The week state itself was right all along.
-let _legBusy = null;   // the cycle (rt_id) whose leg read is running: a repaint replaces the row, not the cycle
+let _legBusy = null;   // {rt, timer} of the leg read running: keyed by cycle (a repaint replaces the row, not the cycle)
+// The busy mark is (re)drawn by cycle, so a paint during the read (its own board re-read) keeps it on the new row
+function _legMark() {
+  for (const r of document.querySelectorAll('#content .wn5-row.wn5-leg-busy')) { r.classList.remove('wn5-leg-busy'); r.removeAttribute('aria-busy'); }
+  const r = _legBusy && document.querySelector(`#content .wn5-row[data-rt="${_legBusy.rt}"]`);
+  if (r) { r.classList.add('wn5-leg-busy'); r.setAttribute('aria-busy', 'true'); }
+}
 function _leg(ev, rtId, side) {
   const t = ev && ev.target;
   if (t && t.closest && t.closest('button, a, input, select, [data-act]')) return;
   if (!active() || !ID_RE.test(String(rtId)) || typeof WN5Form === 'undefined' || typeof WN5Form.openLeg !== 'function') return;
-  const row = ev && ev.currentTarget && ev.currentTarget.closest ? ev.currentTarget.closest('.wn5-row') : null;
-  if (_legBusy !== null) {
+  if (_legBusy) {
     // the same cycle already shows its read; another cycle is told why its click waits, never a silent nothing
-    if (_legBusy !== Number(rtId) && typeof toast === 'function') toast('Ανοίγει ήδη ένα άλλο σκέλος — δοκίμασε ξανά μόλις ανοίξει', 'info');
+    if (_legBusy.rt !== Number(rtId) && typeof toast === 'function') toast('Ανοίγει ήδη ένα άλλο σκέλος — δοκίμασε ξανά μόλις ανοίξει', 'info');
     return;
   }
-  _legBusy = Number(rtId);
-  // a read that never settles must not lock every leg for the session: planFetch gives up at 30 s, the lock at 40 s
-  const lock = _legBusy;
-  setTimeout(() => { if (_legBusy === lock) _legBusy = null; }, 40000);
-  if (row) { row.classList.add('wn5-leg-busy'); row.setAttribute('aria-busy', 'true'); }
+  // one token per click: only its own end (or its own 40 s guard) releases it. A read that never settles must not lock
+  // every leg for the session: planFetch gives up at 30 s, the lock at 40 s.
+  const lock = { rt: Number(rtId), timer: null };
+  const free = () => { if (_legBusy === lock) { _legBusy = null; _legMark(); } clearTimeout(lock.timer); };
+  lock.timer = setTimeout(free, 40000);
+  _legBusy = lock;
+  _legMark();
   Promise.resolve(WN5Form.openLeg(Number(rtId), side === 'ANODOS' ? 'ANODOS' : 'KATHODOS'))
     .then((ok) => {
       if (ok !== false || _state !== 'err' || !_lastErr || !active() || typeof toast !== 'function') return;
@@ -812,10 +824,7 @@ function _leg(ev, rtId, side) {
       toast(`Το σκέλος δεν άνοιξε: ο πίνακας δεν ξαναδιαβάστηκε (${_esc(String(_lastErr.message || ''))}) — ο κύκλος δεν χάθηκε· πάτα Ανανέωση`, 'danger');
     })
     .catch((e) => _logErr(e, 'weekly natl v5: leg form'))
-    .finally(() => {
-      _legBusy = null;
-      if (row && row.isConnected) { row.classList.remove('wn5-leg-busy'); row.removeAttribute('aria-busy'); }
-    });
+    .finally(free);
 }
 // T13: «+» on hover of the side (Figma 2011:10022); data-side is the API's ASCII side, the label is Greek. Only on a
 // cycle row (an unassigned row has no cycle to add to), also on an empty side so a first load can go in.

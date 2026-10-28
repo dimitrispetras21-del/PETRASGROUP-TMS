@@ -70,7 +70,9 @@
         const r = typeof planFetch === 'function' ? _read(await planFetch('GET', '/plan/config', { designed: ['no_route'] })) : null;
         // a base that ran 074 never answers 'before' again; such an answer (or an unreadable one) is not taken
         if (r && r.state === STATE.AFTER) return _keep(r);
-        e = _err('config_recheck', 'Η ημέρα μετάβασης δεν ξαναδιαβάστηκε — ισχύει η ' + kept.cutoverDay + ' που διαβάστηκε πριν');
+        // the base answered, and said «no day L» after 074 ran (a rollback?): a fact to say, not a failed read
+        e = r ? _err('config_went_before', 'Η βάση απαντά ότι δεν υπάρχει ημέρα μετάβασης, ενώ είχε την ' + kept.cutoverDay + ' — ενημέρωσε τον Δημήτρη')
+          : _err('config_recheck', 'Η ημέρα μετάβασης δεν ξαναδιαβάστηκε — ισχύει η ' + kept.cutoverDay + ' που διαβάστηκε πριν');
         _log(e);
       } catch (x) {
         e = x;

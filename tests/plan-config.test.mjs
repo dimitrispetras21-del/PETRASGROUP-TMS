@@ -236,8 +236,9 @@ test('F25: recheck \'now\' asks at once; a failed recheck keeps the day read bef
   // another screen's plain call: the same flag, from memory (not asked again within 5 minutes)
   assert.deepStrictEqual(JSON.parse(await s.run(LOADR(''))), { state: 'after', day: '2026-10-31', rerr: true });
   assert.strictEqual(cfg(s).length, 2);
-  // a 'before' after 074 ran is not believed: the kept day stays, flagged
-  assert.deepStrictEqual(JSON.parse(await s.run(LOADR("{ recheck: 'now' }"))), { state: 'after', day: '2026-10-31', rerr: true });
+  // a 'before' after 074 ran is not believed: the kept day stays, flagged — as what the base SAID, not a failed read
+  assert.deepStrictEqual(JSON.parse(await s.run("PlanConfig.load({ recheck: 'now' }).then((r) => JSON.stringify({ state: r.state, day: r.cutoverDay, code: r.recheckErr && r.recheckErr.code }))")),
+    { state: 'after', day: '2026-10-31', code: 'config_went_before' });
   // a good answer clears the flag
   assert.deepStrictEqual(JSON.parse(await s.run(LOADR("{ recheck: 'now' }"))), { state: 'after', day: '2026-10-31', rerr: false });
 });
