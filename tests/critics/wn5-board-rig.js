@@ -2496,7 +2496,7 @@ SCN.live45 = async (browser, origin) => {
     /\+7 °C/.test(by(20).text || '') && /\+4 °C/.test(by(16).text || '') && !/°C/.test(by(15).text || '') && !/°C/.test(by(19).text || ''), { e616: by(20).text, i604: by(16).text });
   // 6 · the queue counts with nouns: 4 VS orders, 7 pieces
   const qh = await page.evaluate(() => { const h = document.querySelector('#content .wn5 .wn5-q .wi4-q-hd'); const a = document.querySelector('#content .wn5 .wn5-q .wi4-q-all'); return { h: h ? h.textContent.replace(/\s+/g, ' ').trim() : '', a: a ? a.textContent.trim() : '' }; });
-  ok(scn, '6 · «ΕΠΟΜΕΝΑ · 4 παραγγελίες VS · 7 κομμάτια», the link «Όλες οι 4 ▾»', /^ΕΠΟΜΕΝΑ · 4 παραγγελίες VS · 7 κομμάτια/.test(qh.h) && qh.a === 'Όλες οι 4 ▾', qh);
+  ok(scn, '6 · «ΕΠΟΜΕΝΑ · 4 · 7 κομμάτια» (B-7, owner 28/10), the link «Όλες οι 4 ▾»', /^ΕΠΟΜΕΝΑ · 4 · 7 κομμάτια/.test(qh.h) && qh.a === 'Όλες οι 4 ▾', qh);
   // 5 · days always open: no chevron on an empty day, an open one on a day with rows
   const days = await page.evaluate(() => [...document.querySelectorAll('#content .wn5 .wn5-day')].map((d) => ({ date: d.dataset.date, empty: d.classList.contains('empty'), chev: !!d.querySelector('.wi4-chev'), open: d.querySelector('.wn5-dayh').getAttribute('aria-expanded') })));
   ok(scn, '5 · W45-like week: empty days draw no chevron, days with rows are open', days.length === 7 && days.every((d) => (d.empty ? !d.chev : d.chev && d.open === 'true')), days);
@@ -2749,6 +2749,55 @@ SCN['veroia-card'] = async (browser, origin) => {
   ok(scn, 'nothing written: only reads on /plan/*', S.plan.every((x) => x.m === 'GET'), S.plan.map((x) => x.m + ' ' + x.path));
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
   await page.context().close();
+};
+// Figma audit 28/10 (PR #154), group 1 — front end only, one check per item, each NO-GO on main:
+// B-6 «+ Νέα παραγγελία» 135 × 32 (H1 2120:7872) · B-7 «ΕΠΟΜΕΝΑ · 4 · 7 κομμάτια» (in live45 check 6) · B-8 the «+»
+// seen without hover · B-11 no «—» before the arrow of a VS without reference · B-12 an ΑΝΟΔΟΣ to Veroia reads
+// «Βέροια · τέλος κύκλου» + its day, no city «Veroia» · B-18 Δ1 of a VS: «Όλο το … μαζί · σπάσιμο μόνο στον Πίνακα
+// Βέροιας» (2051:7746) · B-21 Δ1 hides a group with no line · B-25 order card title ≤ 2 lines, whole in title.
+SCN['figma-g1'] = async (browser, origin) => {
+  const scn = 'figma-g1';
+  const lk = DEF_LOOKUPS();
+  lk.locations.find((l) => l.id === 1).city = 'Veroia';
+  const b = live45();
+  const LONG = 'ΠΕΛΑΤΗΣ ΕΘ ΜΕ ΠΟΛΥ ΜΑΚΡΥ ΟΝΟΜΑ ΕΤΑΙΡΕΙΑΣ ΠΕΡΙΟΡΙΣΜΕΝΗΣ ΕΥΘΥΝΗΣ ΚΑΙ ΑΚΟΜΗ ΜΑΚΡΥΤΕΡΟ ΕΜΠΟΡΙΚΟ ΣΗΜΑ ΤΕΣΤ';
+  b.waiting.push({ piece_id: 61, shipment_id: 61, kind: 'national', nat_order_id: 61, order_id: null, client_id: 49, client: LONG, reference: null, pallets: 5,
+    nat_from_location_id: 6, nat_to_location_id: 2, position_location_id: 6, nat_ready_day: '2026-10-12', nat_due_day: '2026-10-12', overdue: false, is_stock: false,
+    leave_by: null, pallet_exchange: false, temperature_c: null, price: 1, direction: null, load_from: '2026-10-12T08:00:00+03:00', load_to: '2026-10-12T10:00:00+03:00',
+    deliver_from: '2026-10-12T14:00:00+03:00', deliver_to: '2026-10-12T16:00:00+03:00' });
+  const { page, S } = await openBoard(browser, origin, { board: b, lookups: lk });
+  await page.waitForSelector('#content > .wi4.wn5[data-state="ok"]', { timeout: 8000 }).catch(() => {});
+  const nb = await page.evaluate(() => { const x = [...document.querySelectorAll('.btn-new-order')].find((e) => e.offsetParent && /Νέα παραγγελία/.test(e.textContent)); if (!x) return null; const r = x.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; });
+  ok(scn, 'B-6 · «+ Νέα παραγγελία» 135 × 32 (Figma H1 2120:7872)', !!nb && nb[0] === 135 && nb[1] === 32, nb);
+  await page.click('#content .wn5 .wn5-q .wi4-q-all', { timeout: 2000 }).catch(() => {});
+  const k607 = await page.evaluate(() => { const c = document.querySelector('#content .wn5 .wn5-qcard[data-piece="19"] .wn5-qc-k'); return c ? c.textContent.trim() : null; });
+  ok(scn, 'B-11 · ΕΠΟΜΕΝΑ card of VS 607 (no reference) starts at its arrow «←» (an ΑΝΟΔΟΣ export), no «—» before it', k607 === '←', k607);
+  const to19 = await page.evaluate(() => { const c = document.querySelector('#content .wn5 .wn5-row[data-piece="19"] .wn5-ato'); return c ? { t: c.textContent.replace(/\s+/g, ' ').trim(), l1: (c.querySelector('.wi4-l1') || {}).textContent, title: (c.querySelector('[title]') || {}).title } : null; });
+  ok(scn, 'B-12 · ΠΡΟΣ of export 607: «Βέροια · τέλος κύκλου» and «ως Κυρ 11/10» (its day; the base has no hour), no city «Veroia»',
+    !!to19 && to19.l1 === 'Βέροια · τέλος κύκλου' && /ως Κυρ 11\/10/.test(to19.t) && !/Veroia/.test(to19.t), to19);
+  // Δ1 of VS 607 (no cycle that day, no free truck in the catalogue)
+  await page.click('#content .wn5 .wn5-row[data-piece="19"] .wi4-box.un').catch(() => {});
+  await page.waitForTimeout(700);
+  const d1 = await page.evaluate(() => { const d = document.querySelector('.wi4-dlg'); if (!d) return null; const g = d.querySelector('.wn5-grey'); return { grey: g ? g.textContent : null, grps: [...d.querySelectorAll('.wn5-grp-h[data-grp]')].map((x) => x.dataset.grp + ':' + x.textContent) }; });
+  ok(scn, 'B-18 · Δ1 of a VS: the grey band «Όλο το #607 μαζί · σπάσιμο μόνο στον Πίνακα Βέροιας»', !!d1 && d1.grey === 'Όλο το #607 μαζί · σπάσιμο μόνο στον Πίνακα Βέροιας', d1);
+  ok(scn, 'B-21 · Δ1 draws no group with 0 lines (no «ΚΥΚΛΟΙ … · 0», no «ΕΛΕΥΘΕΡΑ ΦΟΡΤΗΓΑ · … · 0»); ΣΥΝΕΡΓΑΤΗΣ stays (its picker)',
+    !!d1 && !d1.grps.some((g) => /^(rt|free):/.test(g)) && d1.grps.some((g) => /^partner:/.test(g)), d1 && d1.grps);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
+  await page.click('#content .wn5 .wn5-row[data-piece="61"] .wi4-plane[data-act="ocard"]').catch(() => {});
+  await page.waitForTimeout(500);
+  const ct = await page.evaluate(() => { const t = document.querySelector('.wi4-dlg.wn5-ocard .wi4-dlg-t'); if (!t) return null; const lh = parseFloat(getComputedStyle(t).lineHeight); return { lines: Math.round(t.getBoundingClientRect().height / lh), title: t.title, text: t.textContent }; });
+  ok(scn, 'B-25 · order card title of a 90-character client: at most 2 lines, the whole «#61 · …» in title', !!ct && ct.lines <= 2 && ct.title === '#61 · ' + LONG, ct);
+  ok(scn, 'nothing written: only reads on /plan/*', S.plan.every((x) => x.m === 'GET'), S.plan.map((x) => x.m + ' ' + x.path));
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await page.context().close();
+  // B-8 · the «+» of a cycle side is seen without hover (Figma: always there), lighter until hover; touch has no hover
+  const c = await openBoard(browser, origin, { board: fixture() });
+  await c.page.waitForSelector('#content > .wi4.wn5[data-state="ok"]', { timeout: 8000 }).catch(() => {});
+  await c.page.mouse.move(0, 0);
+  const op = await c.page.evaluate(() => { const x = document.querySelector('#content .wn5 .wn5-row .wn5-plus'); return x ? Number(getComputedStyle(x).opacity) : null; });
+  ok(scn, 'B-8 · a «+» with no hover is visible and lighter (0 < opacity < 1)', op != null && op > 0 && op < 1, op);
+  await c.page.context().close();
 };
 // ── main ──
 (async () => {

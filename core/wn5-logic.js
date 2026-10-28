@@ -329,9 +329,12 @@ function _waitRow(list, hubId, errors, nameOf) {
     if (!byTo.has(k)) byTo.set(k, []);
     byTo.get(k).push(w);
   }
+  // hub: the ΑΝΟΔΟΣ ends at Veroia (the screen draws it as a cycle's end, Figma audit B-12) and due is the base's day
+  // for it (the earliest nat_due_day of the group), never an hour
   const dest = [...byTo.values()].map((g, i) => ({ stopId: null, n: i + 1, name: nameOf(g[0].nat_to_location_id), city: null, locId: _idOrNull(g[0].nat_to_location_id), clients: [], temps: [],
     from: athensTime(g[0].deliver_from), to: athensTime(g[0].deliver_to), pallets: _sum(g), dim: false, late: false, segmentId: null, segLabel: null,
-    day: athensDay(g[0].deliver_from) }));
+    day: athensDay(g[0].deliver_from), hub: hubId != null && Number(g[0].nat_to_location_id) === hubId,
+    due: g.map((w) => w.nat_due_day).filter((d) => DAY_RE.test(String(d || ''))).sort()[0] || null }));
   const side = { side: anodos ? 'ANODOS' : 'KATHODOS', day: loadDay, toDay: anodos || !pts.length ? null : pts[pts.length - 1].day,
     veroia: !anodos && hubWs.length ? { stopId: null, from: athensTime(hubWs[0].load_from), to: athensTime(hubWs[0].load_to) } : null, vBefore: 0,
     headDim: false, from: anodos ? pts : origin, to: anodos ? dest : pts, pallets, over: pallets > CAP ? r1(pallets - CAP) : 0, sideDim: false, gap: null };
