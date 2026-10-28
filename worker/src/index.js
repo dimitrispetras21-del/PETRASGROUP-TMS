@@ -5852,11 +5852,13 @@ var PLAN_PERMS = {
   // (E-2), to show a v5 national order's carriers and «delivered», and the v5
   // cycles of a partner / driver / vehicle or the stops at a place - every
   // role, read only (the only money in them is the partner rate, decision 41).
-  owner: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], activity: ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "rt-clear": ["POST"], delete: ["POST"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"], "segment-remove": ["POST"] },
-  dispatcher: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], activity: ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "rt-clear": ["POST"], delete: ["POST"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"], "segment-remove": ["POST"] },
-  management: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], activity: ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"] },
-  accountant: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], activity: ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"] },
-  warehouse: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], activity: ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"] }
+  // GET orders (077, live test 28/10 F13): the edit form reads the one order it
+  // edits before it opens - every role that may PATCH it may read it.
+  owner: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], activity: ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["GET", "POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "rt-clear": ["POST"], delete: ["POST"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"], "segment-remove": ["POST"] },
+  dispatcher: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], activity: ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["GET", "POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "rt-clear": ["POST"], delete: ["POST"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"], "segment-remove": ["POST"] },
+  management: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], activity: ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["GET", "POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"] },
+  accountant: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], activity: ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["GET", "POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"] },
+  warehouse: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], activity: ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["GET", "POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"] }
 };
 function planCan(role, resource, method) {
   const r = PLAN_PERMS[role];
@@ -5999,6 +6001,9 @@ var PLAN_ROUTES = [
   { method: "GET", re: /^\/plan\/activity$/, resource: "activity", rpc: "plan_activity", read: planActivityArgs, migration: "074a" },
   { method: "POST", re: /^\/plan\/notices\/(\d+)\/read$/, resource: "notices-read", rpc: "plan_notice_read", idKey: "notice_id" },
   { method: "POST", re: /^\/plan\/orders$/, resource: "orders", rpc: "plan_orders_create" },
+  // 077 (F13, live test 28/10): one national order as the edit form shows it - every field and every live point,
+  // wherever its pieces are (the board carries them only for waiting pieces). Deploy guard marker (--edit).
+  { method: "GET", re: /^\/plan\/orders\/(\d+)$/, resource: "orders", rpc: "plan_order_read", read: planOrderReadArgs, migration: "077" },
   { method: "PATCH", re: /^\/plan\/orders\/(\d+)$/, resource: "orders", rpc: "plan_order_update", idKey: "nat_order_id" },
   { method: "POST", re: /^\/plan\/legs$/, resource: "legs", rpc: (body) => body.group !== void 0 ? "plan_put_group" : "plan_put_pieces" },
   { method: "POST", re: /^\/plan\/move$/, resource: "move", rpc: "plan_move_pieces", dryRun: true },
@@ -6041,6 +6046,14 @@ function planVsStateArgs(url) {
   return planIdsArgs(url, "order_ids", "p_order_ids");
 }
 __name(planVsStateArgs, "planVsStateArgs");
+// GET /plan/orders/:id: the path's id from the route's own match (one regex, PLAN_ROUTES: digits only), at most 15
+// digits like a list id, never 0 or a leading zero
+function planOrderReadArgs(url, caller, match) {
+  const id = match && match[1];
+  if (!/^[1-9]\d{0,14}$/.test(id || "")) return { error: "nat_order_id: θετικός ακέραιος", code: "bad_nat_order_id" };
+  return { args: { p_nat_order_id: Number(id), p_role: caller.role } };
+}
+__name(planOrderReadArgs, "planOrderReadArgs");
 function planNatStateArgs(url) {
   return planIdsArgs(url, "nat_order_ids", "p_nat_order_ids");
 }
@@ -6242,7 +6255,7 @@ async function handlePlan(request, url, origin, env) {
   try {
     let args;
     if (route.read) {
-      const a = route.read(url, caller);
+      const a = route.read(url, caller, match);
       if (a.error) return planError(400, "BAD_REQUEST", a.code, a.error, origin, env);
       fn = route.rpc;
       args = a.args;
