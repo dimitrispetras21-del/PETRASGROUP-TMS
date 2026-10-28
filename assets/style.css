@@ -8630,6 +8630,8 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 .wi4 .wi4-asg .wk3-prt.wi4-prt-l { left:auto; right:calc(100% + 5px); }
 .wi4 .wi4-row:hover .wi4-asg .wk3-prt, .wi4 .wi4-row:focus-within .wi4-asg .wk3-prt, .wi4.wi4-kbd .wi4-focus .wi4-asg .wk3-prt { visibility:visible; }
 .wi4 .wi4-asg .wk3-prt:hover { color:var(--wi4-grey-1); background:var(--wi4-chip); }
+/* A rota leg's own printer (owner 28/10): the leg is a sub-row, not a .wi4-row. */
+.wi4 .wi4-sub-leg:hover .wi4-asg .wk3-prt, .wi4 .wi4-sub-leg:focus-within .wi4-asg .wk3-prt { visibility:visible; }
 @media (hover:none) { .wi4 .wi4-asg .wk3-prt { visibility:visible; } }
 /* Copy plates (item 16): over the box's right end, left of the plane, on hover or
    focus only (a touch screen uses the per-load menu: the icon would cover the text). */
