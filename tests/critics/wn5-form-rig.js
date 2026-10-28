@@ -385,19 +385,26 @@ async function scnEditRemove({ browser, origin, ok, scn }) {
 async function scnEditTwoDay({ browser, origin, ok, scn }) {
   const orders = K.orders();
   Object.assign(orders[3101].shipments[0], { deliver_from: '2026-10-15T19:00:00+00:00', deliver_to: '2026-10-15T23:00:00+00:00' });   // 22:00 → 02:00 Athens
+  orders[3101].shipments.push(Object.assign({}, K.orders()[3101].shipments[0], { shipment_id: 5204, dest_location_id: 4, pallets: 2 }));
   const { page, S } = await K.openApp(browser, origin, { orders, plan: { 'PATCH /plan/orders/3101': UPD_OK(3101) } });
   if (!(await guard(page, ok, scn))) return;
   await openForm(page, { natOrderId: 3101 });
   const row = await page.evaluate((d) => { const r = document.querySelector(`${d} [data-ship="5201"]`);
     return r && { ro: r.hasAttribute('data-ro'), dis: [...r.querySelectorAll('input')].every((x) => x.disabled), txt: r.textContent }; }, DLG);
   ok(scn, 'a delivery window 22:00 → 02:00: the point is shown read-only with the reason', !!row && row.ro && row.dis && /παράθυρο σε δύο ημέρες/.test(row.txt), row);
+  // still removable (077 allows it): × marks it, its fields stay disabled, ↺ keeps them disabled
+  await page.click(`${DLG} [data-ship="5201"] [data-act="del-ship"]`);
+  await page.click(`${DLG} [data-ship="5201"] [data-act="del-ship"]`);
+  ok(scn, '× then ↺ on the read-only point: its fields stay disabled', await page.evaluate((d) => [...document.querySelectorAll(`${d} [data-ship="5201"] input`)].every((x) => x.disabled), DLG));
+  await page.click(`${DLG} [data-ship="5201"] [data-act="del-ship"]`);
   await page.fill(`${DLG} [data-f="notes"]`, 'αλλαγή');
   await save(page);
   await page.waitForTimeout(1000);
   const p = K.planOf(S, 'PATCH', '/plan/orders/3101');
   const sent = p[0] ? Object.assign({}, p[0].body) : null;
   if (sent) delete sent.request_id;
-  ok(scn, 'a notes change sends only the notes, never the two-day window', p.length === 1 && JSON.stringify(sent) === JSON.stringify({ set: { notes: 'αλλαγή' } }), p.map((x) => x.body));
+  ok(scn, 'notes + the removal of the two-day point: never its window, the other point absent', p.length === 1
+    && JSON.stringify(sent) === JSON.stringify({ set: { notes: 'αλλαγή' }, shipments: [{ shipment_id: 5201, remove: true }] }), p.map((x) => x.body));
   await closeClean(page, S, ok, scn);
 }
 async function scnEditReadFail({ browser, origin, ok, scn }) {

@@ -653,9 +653,9 @@
     const ro = lock ? ' disabled' : '';
     const where = s.rt_codes.length ? `<small class="wn5f-shipc"> · σε κύκλο ${_esc(s.rt_codes.join(', '))}</small>`
       : twoDays ? '<small class="wn5f-shipc"> · παράθυρο σε δύο ημέρες: αλλάζει από το Εβδομαδιαίο</small>' : '';
-    // × only on a point that waits, and never on the last one (077 refuses shipments:last: the delete of the order is
+    // × on every point that waits (a two-day one too: 077 removes it), never on the last one (077 refuses shipments:last: the delete of the order is
     // «Διαγραφή παραγγελίας», with its own list)
-    const x = !lock && e.ships.length > 1
+    const x = !(s.rides || s.vs_locked) && e.ships.length > 1
       ? `<button type="button" class="wn5f-x" data-act="del-ship" aria-label="Αφαίρεση σημείου">×</button>` : '<span></span>';
     return `<div class="wn5f-ship" data-ship="${s.shipment_id}"${lock ? ' data-ro' : ''}><span>${_esc(_placeName(s.origin))} → ${_esc(_placeName(s.dest))}${where}</span>`
       // the create form's fields (2011:9704): a day with its weekday label, ΗΗ:ΛΛ text — the native time input is
@@ -767,7 +767,7 @@
       try {
         st.news = st.news.map((s) => Object.assign({}, s, { origin_location_id: PlanIds.id('location', s.origin_rec), dest_location_id: PlanIds.id('location', s.dest_rec) }));
       } catch (e) {
-        if (typeof PlanError !== 'undefined' && e instanceof PlanError) { WN5Act.strip(_strip(f), e); return; }
+        if (typeof PlanError !== 'undefined' && e instanceof PlanError) { _lines(f, []); WN5Act.strip(_strip(f), e); return; }
         throw e;
       }
       body = _patchBody(f.edit, st);
@@ -814,7 +814,8 @@
       // an existing point is marked, not dropped from the screen: one more press brings it back before «Αποθήκευση»
       const rm = !row.hasAttribute('data-rm');
       row.toggleAttribute('data-rm', rm);
-      row.querySelectorAll('input').forEach((x) => { x.disabled = rm; });
+      // a read-only point (two-day window) keeps its fields disabled whatever the mark
+      row.querySelectorAll('input').forEach((x) => { x.disabled = rm || row.hasAttribute('data-ro'); });
       t.textContent = rm ? '↺' : '×';
       t.setAttribute('aria-label', rm ? 'Επαναφορά σημείου' : 'Αφαίρεση σημείου');
       return _refresh(ff);
