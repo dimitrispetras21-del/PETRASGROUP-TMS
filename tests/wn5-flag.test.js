@@ -33,10 +33,24 @@ function grab(src, name, file) {
 }
 const SEAM = "if (typeof WN5 !== 'undefined' && WN5.active()) { ++_wnLoadId; return WN5.render(); }";
 
-test("F4α-T3: FEATURES.WN_V5 is 'off' until day L (F5 changes this line with the flag)", () => {
+// F5 pilot (plan Q-9, owner 28/10): 'pilot' for the owner alone until day L; FE-2 changes this to 'on'.
+test("F5 pilot: FEATURES.WN_V5 is 'pilot' and WN_V5_USERS names the owner only", () => {
   const v = config();
-  assert.strictEqual(v('FEATURES.WN_V5'), 'off', 'FEATURES.WN_V5 undefined or open: ' + v('String(FEATURES.WN_V5)'));
-  assert.strictEqual(v('JSON.stringify(WN_V5_USERS)'), '[]', 'WN_V5_USERS must exist and name nobody');
+  assert.strictEqual(v('FEATURES.WN_V5'), 'pilot', 'FEATURES.WN_V5 is not the pilot: ' + v('String(FEATURES.WN_V5)'));
+  assert.strictEqual(v('JSON.stringify(WN_V5_USERS)'), '["dimitris"]', 'WN_V5_USERS must name the owner and nobody else');
+  assert.strictEqual(v("USERS.filter(u => WN_V5_USERS.includes(u.username)).map(u => u.role).join()"), 'owner',
+    'a WN_V5_USERS name is not an owner in the USERS roster');
+});
+
+test('F5 pilot: the real config.js + WI4.v2Decide open v5 for the owner alone (a ?wn5=0 browser stays old)', () => {
+  const v = config();
+  const lg = require(path.join(ROOT, 'core/wi4-logic.js'));
+  const decide = (user, optIn) => lg.v2Decide({ flag: v('FEATURES.WN_V5'), pilot: JSON.parse(v('JSON.stringify(WN_V5_USERS)')), user, optIn });
+  assert.strictEqual(decide('dimitris', null), 'v4');
+  assert.strictEqual(decide('dimitris', '0'), 'old');
+  const others = JSON.parse(v("JSON.stringify(USERS.map(u => u.username).filter(n => n !== 'dimitris'))"));
+  assert.ok(others.length > 5, 'roster not read: ' + others.join());
+  assert.deepStrictEqual(others.filter((n) => decide(n, null) !== 'old'), [], 'a user other than the owner gets v5 without opting in');
 });
 
 test('F4α-T3: weekly_natl.js has exactly one v5 line, first statement of renderWeeklyNatl, before _wnLoadAll', () => {
