@@ -207,31 +207,37 @@ test('F5-FE1 isLegacyTable: NAT_ORDERS / NAT_LOADS / GL_LINES / CONS_LOADS only'
 const AFTER = (day) => ({ cutover_day: day, opened_at: '2026-10-28T12:00:00Z', writes_open: true });
 const LOADR = (o) => `PlanConfig.load(${o}).then((r) => JSON.stringify({ state: r.state, day: r.cutoverDay, rerr: !!r.recheckErr }))`;
 
-test('F25: a kept \'after\' older than 5 min is read again for every caller and takes the moved day; never earlier', async () => {
-  const s = sandbox([json(200, AFTER('2026-10-31')), json(200, AFTER('2026-10-24'))]);
+test('F25: an \'after\' older than 5 min is read again — the board ({recheck:true}) waits for it, every other call gets the kept one at once and the new day next', async () => {
+  const s = sandbox([json(200, AFTER('2026-10-31')), json(200, AFTER('2026-10-24')), json(200, AFTER('2026-10-17'))]);
   assert.deepStrictEqual(JSON.parse(await s.run(LOADR(''))), { state: 'after', day: '2026-10-31', rerr: false });
-  // within 5 minutes: from memory — a plain load and a write path's {fresh} alike (no GET per save)
+  // within 5 minutes: from memory, every kind of call
   s.clock.t += 4 * 60 * 1000;
   await s.run('PlanConfig.load({ fresh: true })');
-  assert.deepStrictEqual(JSON.parse(await s.run(LOADR(''))), { state: 'after', day: '2026-10-31', rerr: false });
+  assert.deepStrictEqual(JSON.parse(await s.run(LOADR('{ recheck: true }'))), { state: 'after', day: '2026-10-31', rerr: false });
   assert.strictEqual(cfg(s).length, 1, 'no re-read within 5 minutes');
+  // a write path ({fresh}) after 5 minutes: answered at once with the kept day, the re-read runs behind it
   s.clock.t += 60 * 1000;
+  assert.deepStrictEqual(JSON.parse(await s.run(LOADR('{ fresh: true }'))), { state: 'after', day: '2026-10-31', rerr: false });
+  assert.strictEqual(cfg(s).length, 2, 'the re-read started');
+  for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));   // the re-read behind the call lands
   assert.deepStrictEqual(JSON.parse(await s.run(LOADR(''))), { state: 'after', day: '2026-10-24', rerr: false });
-  assert.strictEqual(cfg(s).length, 2);
-  // every reader of the session now has the new day, from memory
-  assert.deepStrictEqual(JSON.parse(await s.run(LOADR('{ fresh: true }'))), { state: 'after', day: '2026-10-24', rerr: false });
-  assert.strictEqual(cfg(s).length, 2);
+  // the board after 5 more minutes: it waits for the answer and gets the moved day in the same call
+  s.clock.t += 6 * 60 * 1000;
+  assert.deepStrictEqual(JSON.parse(await s.run(LOADR('{ recheck: true }'))), { state: 'after', day: '2026-10-17', rerr: false });
+  assert.strictEqual(cfg(s).length, 3);
 });
 
-test('F25: recheck \'now\' asks at once; a failed recheck keeps the day read before, flags recheckErr, logs, and waits 5 min', async () => {
+test('F25: recheck \'now\' asks at once; a failed recheck keeps the day read before, flagged for EVERY caller, logged, asked again after 5 min', async () => {
   const s = sandbox([json(200, AFTER('2026-10-31')), json(500, { error: { type: 'INTERNAL', code: 'plan_failed', message: 'boom' } }),
-    json(200, BEFORE)]);
+    json(200, BEFORE), json(200, AFTER('2026-10-31'))]);
   await s.run(LOADR(''));
   assert.deepStrictEqual(JSON.parse(await s.run(LOADR("{ recheck: 'now' }"))), { state: 'after', day: '2026-10-31', rerr: true });
   assert.ok(s.errs().length >= 1, 'the failed recheck is logged');
-  // not asked again on the next render
-  assert.deepStrictEqual(JSON.parse(await s.run(LOADR(''))), { state: 'after', day: '2026-10-31', rerr: false });
+  // another screen's plain call: the same flag, from memory (not asked again within 5 minutes)
+  assert.deepStrictEqual(JSON.parse(await s.run(LOADR(''))), { state: 'after', day: '2026-10-31', rerr: true });
   assert.strictEqual(cfg(s).length, 2);
   // a 'before' after 074 ran is not believed: the kept day stays, flagged
   assert.deepStrictEqual(JSON.parse(await s.run(LOADR("{ recheck: 'now' }"))), { state: 'after', day: '2026-10-31', rerr: true });
+  // a good answer clears the flag
+  assert.deepStrictEqual(JSON.parse(await s.run(LOADR("{ recheck: 'now' }"))), { state: 'after', day: '2026-10-31', rerr: false });
 });

@@ -77,11 +77,13 @@ async function fhSearchClients(q) {
   // as a literal plus \u2014 and a name stored with two spaces or \u00AB-\u00BB between the words could not match it either. So
   // the server is asked for ONE word (the longest: the fewest rows) and every word must then be in the name, in any
   // order, with the search rule of the boards (_fhNorm: any case, no accents, Greek = Latin).
-  // The probe's answer is kept by the probe word: typing the rest of the 2nd word filters it here, without one more
-  // paged read per keystroke. «Most letters», not «longest string»: «Α.Ε.» would probe every S.A. company.
+  // The probe is the FIRST word of 3+ letters (else the one with most): it stays the same while the 2nd word is being
+  // typed, so its answer, kept by the probe word, is filtered here without one more paged read per keystroke; and a
+  // short «Α.Ε.» / «&» never probes every S.A. company. A query of punctuation only asks nothing.
   const words = safe.split(/\s+/).filter(Boolean);
   const letters = (w) => w.replace(/[.\-]/g, '').length;
-  const probe = words.reduce((a, w) => (letters(w) > letters(a) ? w : a), '');
+  const probe = words.find((w) => letters(w) >= 3) || words.reduce((a, w) => (letters(w) > letters(a) ? w : a), '');
+  if (!letters(probe)) return [];
   const pk = '\u0001' + probe.toLowerCase();
   if (!_fhClientCache[pk]) _fhClientCache[pk] = await atGet(TABLES.CLIENTS, `SEARCH(LOWER("${probe}"), LOWER({Company Name}))`, false);
   const recs = _fhClientCache[pk];

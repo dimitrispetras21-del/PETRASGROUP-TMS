@@ -50,4 +50,12 @@ test('F19 code review: typing on in the 2nd word asks the server nothing more; �
   const t = load();
   assert.deepStrictEqual(await t.find('Α.Ε. ΑΛΦ'), ['ΒΗΤΑ ΑΛΦΑ Α.Ε.']);
   assert.deepStrictEqual(t.asked, ['ΑΛΦ']);
+  // the 2nd word growing longer than the 1st does not change the probe (one read)
+  const u = load();
+  await u.find('beta alph'); await u.find('beta alpha'); await u.find('beta alphab');
+  assert.deepStrictEqual(u.asked, ['beta']);
+  // punctuation only: nothing is asked (never SEARCH(LOWER("")) over the whole table)
+  const v = load();
+  assert.strictEqual((await v.find('..')).length, 0);
+  assert.deepStrictEqual(v.asked, []);
 });

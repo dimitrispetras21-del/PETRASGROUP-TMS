@@ -36,6 +36,11 @@ async function f22({ browser, origin, ok, scn }) {
   await page.waitForTimeout(150);
   const busy = await page.evaluate(() => { const r = document.querySelector('#content .wn5-row[data-rt="201"]'); return { cls: !!r && r.classList.contains('wn5-leg-busy'), aria: r && r.getAttribute('aria-busy') }; });
   ok(scn, 'the clicked row says at once that it is reading (.wn5-leg-busy, aria-busy)', busy.cls && busy.aria === 'true', busy);
+  // a click on ANOTHER row while the read runs is told why it waits (never a silent nothing)
+  await page.click('#content .wn5-row[data-rt="202"] .wn5-afl', { force: true }).catch(() => {});
+  await page.waitForTimeout(100);
+  const other = await toasts(page);
+  ok(scn, 'a click on another row during the read says it waits', other.some((t) => /Ανοίγει ήδη ένα άλλο σκέλος/.test(t)), other);
   // an impatient second and third click while the read runs: still ONE read
   await page.click('#content .wn5-row[data-rt="201"] .wn5-kto', { force: true }).catch(() => {});
   await page.click('#content .wn5-row[data-rt="201"] .wn5-kpal', { force: true }).catch(() => {});
@@ -138,6 +143,8 @@ async function f18({ browser, origin, ok, scn }) {
     const q = new URL(route.request().url()).searchParams.get('q') || '';
     asked.push(q);
     const byAddr = /Test Street 9/.test(q);
+    if (byAddr && mode === 'netfail') return route.abort('timedout');   // the address search never gets an answer
+    if (!byAddr && mode === 'netfail') return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '[]' });
     let body = [];
     if (byAddr && mode === 'house') body = [{ lat: '40.111111', lon: '22.111111', addresstype: 'building', class: 'building', display_name: 'Test Street 9, Larisa, Greece', address: { house_number: '9' } }];
     // an OSM address node: class «place», type «house» (code review: the address-first try must take it)
@@ -178,6 +185,9 @@ async function f18({ browser, origin, ok, scn }) {
   r = await run('road');
   ok(scn, 'an address that only finds the road falls back to name + city', r.asked.length === 2 && /^SYNTHETIC DEPOT, Larisa/.test(r.asked[1] || '') && r.v.lat === '39.222222', r);
   ok(scn, 'it says name + city matched', r.ts.some((t) => /βρέθηκαν από όνομα \+ πόλη/.test(t)), r.ts);
+  r = await run('netfail');
+  ok(scn, 'an address search that never ran is not reported as «nothing found» for the address', r.v.lat === ''
+    && r.ts.some((t) => /Δεν βρέθηκε αποτέλεσμα \(όνομα \+ πόλη\) · η αναζήτηση με τη διεύθυνση δεν ολοκληρώθηκε/.test(t)), r.ts);
   r = await run('none');
   ok(scn, 'nothing found: says which searches ran, no pin', r.v.lat === '' && r.ts.some((t) => /Δεν βρέθηκε αποτέλεσμα \(τη διεύθυνση, όνομα \+ πόλη\)/.test(t)), r);
   await page.context().close();

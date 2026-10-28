@@ -120,7 +120,7 @@ function _decide() {
 // path, its writes are refused below the screen, and an unknown day never traps a user in one view. An 'unknown'
 // answer is said on the v5 bar («Η ημέρα μετάβασης δεν διαβάστηκε»), never silent (principle 1).
 let _cfg = null, _cfgAt = 0, _cfgBusy = false, _cfgForce = false;
-const CFG_RETRY_MS = 60 * 1000;   // a non-final answer is asked again at most once a minute (PlanConfig caches 'after')
+const CFG_RETRY_MS = 60 * 1000;   // a non-final answer is asked again at most once a minute ('after': CFG_RECHECK_MS)
 // F25 (live 28/10): an 'after' is asked again too — its DAY can move (079: 31/10 → 24/10) and a tab opened before
 // kept the old day until a full reload. Every 5 minutes at the next render (each week change, save, ↻ goes through
 // active()), at once on the user's ↻. A moved day repaints the page and says so; a recheck that fails keeps the day
@@ -136,7 +136,8 @@ function _cfgKick() {
   _cfgForce = false;
   _cfgBusy = true;
   // the user's ↻ asks the base at once in either state: a kept 'before' too ({fresh}), or 074 at 15:30 waits 5 min
-  PlanConfig.load(force ? (after ? { recheck: 'now' } : { fresh: true }) : undefined).then((r) => {
+  // {recheck: true}: the board waits for the re-read of an aged 'after' (other screens get the kept one at once)
+  PlanConfig.load(force ? (after ? { recheck: 'now' } : { fresh: true }) : after ? { recheck: true } : undefined).then((r) => {
     const was = _cfg && _cfg.state;
     const wasDay = _cfg && _cfg.cutoverDay;
     _cfg = r; _cfgAt = Date.now();
@@ -149,7 +150,6 @@ function _cfgKick() {
     const now = r && r.state;
     const moved = was === 'after' && now === 'after' && wasDay !== r.cutoverDay;
     const page = typeof currentPage !== 'undefined' && currentPage === 'weekly_natl' && typeof window.renderWeeklyNatl === 'function';
-    if (moved && typeof toast === 'function') toast(`Η ημέρα μετάβασης εθνικών άλλαξε: ${_dm(wasDay)} → ${_dm(r.cutoverDay)} — η προβολή ενημερώθηκε`, 'warn');
     // a failed recheck alone repaints nothing (its bar line comes with the next paint): a repaint in the middle of a click
     // would replace the row, close a menu
     if (!page || !(moved
@@ -157,7 +157,9 @@ function _cfgKick() {
     // F22 (live 28/10): the v5 board of this week already on screen only needs its bar again — a repaint from the board
     // in hand, not a second GET /plan/board (every open read the board twice ~40 ms apart, on a base that was timing
     // out). A render in flight paints the new bar itself when its board lands.
-    if (_sat === sat && !WN5._broken && document.querySelector('#content > .wn5') && (_decide() === 'v5' || _afterL(sat))) paint();
+    // said only where it is true: on this page, which is repainted now (another page reads the new day when it asks)
+    if (moved && typeof toast === 'function') toast(`Η ημέρα μετάβασης εθνικών άλλαξε: ${_dm(wasDay)} → ${_dm(r.cutoverDay)} — η προβολή ενημερώθηκε`, 'warn');
+    if (_sat === sat && !WN5._broken && document.querySelector('#content > .wn5') && (_decide() === 'v5' || _afterL(sat))) { if (!paint()) _fallback(); }
     else window.renderWeeklyNatl();
   }, () => { _cfgAt = Date.now(); }).finally(() => { _cfgBusy = false; });   // load() never rejects; belt and braces
 }
@@ -769,14 +771,18 @@ function _legAttr(r, side) {
 // stuck on the old one, «until a reload» (the reload opens the lighter current week). So: the clicked row says at once
 // that it is reading (.wn5-leg-busy, aria-busy), one leg read at a time (a click while one runs is that same read),
 // and a read that failed is said as what it is, with the way on (↻). The week state itself was right all along.
-let _legBusy = false;
+let _legBusy = null;   // the row whose leg read is running
 function _leg(ev, rtId, side) {
   const t = ev && ev.target;
   if (t && t.closest && t.closest('button, a, input, select, [data-act]')) return;
   if (!active() || !ID_RE.test(String(rtId)) || typeof WN5Form === 'undefined' || typeof WN5Form.openLeg !== 'function') return;
-  if (_legBusy) return;   // the busy row already shows the read in flight
-  _legBusy = true;
   const row = ev && ev.currentTarget && ev.currentTarget.closest ? ev.currentTarget.closest('.wn5-row') : null;
+  if (_legBusy) {
+    // the same row already shows its read; another row is told why its click waits, never a silent nothing
+    if (_legBusy !== row && typeof toast === 'function') toast('Ανοίγει ήδη ένα άλλο σκέλος — δοκίμασε ξανά μόλις ανοίξει', 'info');
+    return;
+  }
+  _legBusy = row || true;
   if (row) { row.classList.add('wn5-leg-busy'); row.setAttribute('aria-busy', 'true'); }
   Promise.resolve(WN5Form.openLeg(Number(rtId), side === 'ANODOS' ? 'ANODOS' : 'KATHODOS'))
     .then((ok) => {
@@ -786,7 +792,7 @@ function _leg(ev, rtId, side) {
     })
     .catch((e) => _logErr(e, 'weekly natl v5: leg form'))
     .finally(() => {
-      _legBusy = false;
+      _legBusy = null;
       if (row && row.isConnected) { row.classList.remove('wn5-leg-busy'); row.removeAttribute('aria-busy'); }
     });
 }
