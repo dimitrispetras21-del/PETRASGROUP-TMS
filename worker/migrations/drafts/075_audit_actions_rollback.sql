@@ -4,6 +4,9 @@
 -- 075) without checking the rows already there. With the loud Worker live, every refused row then lands in
 -- app_errors, as it did between the Worker deploy and 075.
 -- EXPECTED: NOTICE "075 ROLLBACK OK | ..." and COMMIT.
+-- statement_timeout before the block (coordinator 28/10: Supabase restarted twice today under heavy reads): the
+-- block itself is one statement, so a SET inside it would not bound it. 5s is ample for 14.8k rows.
+SET statement_timeout = '5s';
 DO $r$
 DECLARE v_def text; v_kept bigint;
 BEGIN

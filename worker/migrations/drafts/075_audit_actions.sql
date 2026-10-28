@@ -8,6 +8,9 @@
 -- Rows already there all hold one of the four old actions (measured 14 826 rows, 0 outside), so the new CHECK
 -- validates them all; the block proves it before and after.
 -- EXPECTED: NOTICE "075 OK | ..." and COMMIT.
+-- statement_timeout before the block (coordinator 28/10: Supabase restarted twice today under heavy reads): the
+-- block itself is one statement, so a SET inside it would not bound it. 5s is ample for 14.8k rows.
+SET statement_timeout = '5s';
 DO $m$
 DECLARE
   v_def text; v_set text[]; v_rows bigint; v_bad bigint; v_ok int := 0;

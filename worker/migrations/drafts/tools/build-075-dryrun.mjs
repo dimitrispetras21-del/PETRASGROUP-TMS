@@ -7,7 +7,9 @@ import { fileURLToPath } from 'node:url';
 
 const DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export function build075Dryrun(main) {
-  const block = main.slice(main.indexOf('DO $m$'));
+  // from the statement_timeout line: the dry run is bounded like 075
+  const block = main.slice(main.indexOf("SET statement_timeout"));
+  if (!block.startsWith("SET statement_timeout = '5s';\nDO $m$")) throw new Error('075: SET statement_timeout must precede the block');
   const end = 'END\n$m$;';
   if (!block.endsWith(end + '\n')) throw new Error('075: the block must end with END $m$;');
   return [

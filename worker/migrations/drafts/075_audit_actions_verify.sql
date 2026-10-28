@@ -1,4 +1,5 @@
--- 075 VERIFY · read only. Run after 075, and again after the first confirmation in the app.
+-- 075 VERIFY · read only. Run after 075, and again after the first confirmation in the app. Tables only, no views.
+SET statement_timeout = '5s';
 -- 1. the constraint (EXPECTED: the eight actions, validated)
 SELECT conname, convalidated, pg_get_constraintdef(oid) AS def
 FROM pg_constraint WHERE conrelid = 'public.audit_log'::regclass AND conname = 'audit_log_action_check';
