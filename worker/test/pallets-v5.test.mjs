@@ -65,7 +65,12 @@ beforeEach(() => {
     calls.push({ method, table, params: u.searchParams, body: init.body ? JSON.parse(init.body) : null });
     if (table === 'pl_movements' && method === 'GET') {
       const id = (u.searchParams.get('id') || '').replace(/^eq\./, '');
-      return json(id ? ROWS.filter((r) => String(r.id) === id) : ROWS);
+      const got = id ? ROWS.filter((r) => String(r.id) === id) : ROWS;
+      // the list asks the exact count (Prefer: count=exact), as PostgREST answers it in Content-Range
+      if ((init.headers || {}).Prefer === 'count=exact') {
+        return new Response(JSON.stringify(got), { headers: { 'content-type': 'application/json', 'content-range': `0-${got.length - 1}/${got.length}` } });
+      }
+      return json(got);
     }
     if (table === 'piece_legs') {
       if (legsFail) return json({ message: 'boom' }, 500);

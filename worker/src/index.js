@@ -174,13 +174,14 @@ async function dbSelect(env, table, opts = {}) {
   return res.json();
 }
 __name(dbSelect, "dbSelect");
-async function dbSelectRaw(env, table, params) {
+async function dbSelectRaw(env, table, params, extraHeaders) {
   const url = `${env.SUPABASE_URL}/rest/v1/${table}?${params.toString()}`;
   const res = await fetch(url, {
     headers: {
       apikey: env.SUPABASE_SERVICE_KEY,
       Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
-      Accept: "application/json"
+      Accept: "application/json",
+      ...extraHeaders
     }
   });
   if (!res.ok) {
@@ -6862,6 +6863,7 @@ async function handlePallets(request, url, origin, env) {
     // ---- GET /pallets/movements?status=&counterparty_type=&client_id=&partner_id=&event_type=&from=&to=&order_stop_id=&cons_load_id= ----
     if (resource === "movements" && method === "GET" && !recId) {
       const q = url.searchParams;
+      const PL_MOV_PAGE = 999, PL_MOV_MAX = PL_MOV_PAGE * 10; // the paged read below; every answer says cap
       const params = new URLSearchParams();
       // Embedded τα ονόματα αντί για σκέτο "*": το UI τα έλυνε μέσω
       // /pallets/lookups, που η PostgREST κόβει στα 1000 (db-max-rows) ενώ οι
@@ -6871,7 +6873,6 @@ async function handlePallets(request, url, origin, env) {
       // Μονή FK ανά πίνακα (003_pallets_schema) → κανένα ambiguous embed.
       params.set("select", "*,clients(company_name),partners(company_name),locations(name)");
       params.set("order", "movement_date.desc,id.desc");
-      params.set("limit", "300");
       if (q.get("status")) params.append("status", `eq.${q.get("status")}`);
       if (q.get("counterparty_type")) params.append("counterparty_type", `eq.${q.get("counterparty_type")}`);
       if (q.get("client_id")) params.append("client_id", `eq.${q.get("client_id")}`);
@@ -6885,15 +6886,42 @@ async function handlePallets(request, url, origin, env) {
         try {
           const r = await plResolveRefs(env, { order_stop_rec: q.get("order_stop_rec") });
           params.append("order_stop_id", `eq.${r.order_stop_id}`);
-        } catch (e) { return jsonOk({ records: [] }, origin, env); }
+        } catch (e) { return jsonOk({ records: [], truncated: false, cap: PL_MOV_MAX }, origin, env); }
       }
       if (q.get("order_rec")) {
         try {
           const r = await plResolveRefs(env, { order_rec: q.get("order_rec") });
           params.append("order_id", `eq.${r.order_id}`);
-        } catch (e) { return jsonOk({ records: [] }, origin, env); }
+        } catch (e) { return jsonOk({ records: [], truncated: false, cap: PL_MOV_MAX }, origin, env); }
       }
-      const { rows } = await dbSelectRaw(env, "pl_movements", params);
+      // Every matching row, in pages (Alexia's requests, owner 28/10). It was one read of «limit 300»: at 291 movements
+      // and ~8 new a day the ledger would have dropped the oldest rows in silence, and the page, the client card and
+      // the confirm wizard all read this list unfiltered.
+      // - The first page asks the exact count, so a page shorter than asked (PostgREST db-max-rows, 1000 today, or
+      //   any lower value later) never ends the read early in silence (principle 1). The answer is cut (truncated)
+      //   only at the cap PL_MOV_MAX, and every answer says the cap.
+      // - Keyset, not offset: the next page starts after the last (movement_date, id) read, so a movement written
+      //   or deleted while the pages are read never repeats or skips another one. movement_date is NOT NULL (003).
+      const rows = [];
+      let total = null;
+      for (let last = null; rows.length < PL_MOV_MAX; last = rows[rows.length - 1]) {
+        const page = new URLSearchParams(params);
+        const asked = Math.min(PL_MOV_PAGE, PL_MOV_MAX - rows.length);
+        page.set("limit", String(asked));
+        if (last) page.append("or", `(movement_date.lt.${last.movement_date},and(movement_date.eq.${last.movement_date},id.lt.${last.id}))`);
+        const { rows: got, contentRange } = await dbSelectRaw(env, "pl_movements", page, last ? undefined : { Prefer: "count=exact" });
+        if (!last) {
+          total = Number(String(contentRange || "").split("/")[1]);
+          if (!Number.isSafeInteger(total)) throw new Error(`pl_movements: no exact count in «${contentRange}»`);
+        }
+        rows.push(...got);
+        // the end is a short page AND the count reached; a short page alone may be db-max-rows, the count alone may
+        // include a row written below the window while the pages were read
+        if (!got.length || (got.length < asked && rows.length >= total)) break;
+      }
+      // Cut only at the cap: below it the read runs until a page comes back empty, so fewer rows than the count can
+      // only mean rows deleted while the pages were read, and a «missing» warning would be false.
+      const truncated = rows.length >= PL_MOV_MAX && rows.length < total;
       // 073 / E11 (spec 5): a row the national plan wrote (piece_leg_id) belongs to no international order - the
       // ledger would call it «Χειροκίνητη». One read for the page gives its national order (the screen writes
       // «εθνική #…», F4). A failed read, a leg missing from the answer or a leg without a national order is said
@@ -6901,8 +6929,12 @@ async function handlePallets(request, url, origin, env) {
       const legIds = [...new Set(rows.map((r) => r.piece_leg_id).filter((x) => x != null))];
       if (legIds.length) {
         try {
-          const { rows: legs } = await dbSelectRaw(env, "piece_legs", new URLSearchParams({
-            select: "id,shipment_pieces(shipments(nat_order_id))", id: `in.(${legIds.join(",")})` }));
+          // 200 ids per read: with every row (not 300) the in.() list would outgrow a URL once the plan writes rows.
+          const chunks = [];
+          for (let i = 0; i < legIds.length; i += 200) chunks.push(legIds.slice(i, i + 200));
+          const answers = await Promise.all(chunks.map((c) => dbSelectRaw(env, "piece_legs", new URLSearchParams({
+            select: "id,shipment_pieces(shipments(nat_order_id))", id: `in.(${c.join(",")})` }))));
+          const legs = answers.flatMap((a) => a.rows);
           const natBy = new Map(legs.map((l) => [l.id, l.shipment_pieces?.shipments?.nat_order_id ?? null]));
           for (const r of rows) {
             if (r.piece_leg_id == null) continue;
@@ -6915,7 +6947,7 @@ async function handlePallets(request, url, origin, env) {
           for (const r of rows) if (r.piece_leg_id != null) { r.nat_order_id = null; r.nat_order_unknown = true; }
         }
       }
-      return jsonOk({ records: rows }, origin, env);
+      return jsonOk({ records: rows, truncated, cap: PL_MOV_MAX }, origin, env);
     }
     // ---- POST /pallets/movements (χειροκίνητη κίνηση ή feeder Φ2) ----
     // Default: pending. Με body.confirm===true γράφεται κατευθείαν confirmed
