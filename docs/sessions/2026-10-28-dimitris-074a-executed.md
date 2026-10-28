@@ -2,8 +2,8 @@
 
 - **Εκτελέστηκε:** 28/10, περίπου 13:00 ώρα Αθήνας, από τον owner στον SQL editor. Το γραφείο ήταν κλειστό και ο owner έδωσε ρητό «ναι» πριν από τις 15:00. Το SQL είναι αυτό του `main` στο merge του PR #120 (`1e7e58e5`), md5 `5ddf3c36ecab7914da3f58f4183a0ae1`.
 - **Αποτελέσματα:**
-  - dry run: κόκκινο σκόπιμα, με την αναμενόμενη γραμμή (`hooked functions 3 … triggers 50, B-54 50, v5 rows 0`);
-  - εφαρμογή: `074a OK | 3 | 0 | 50 | 50 | 0`;
+  - dry run: κόκκινο σκόπιμα, με την αναμενόμενη γραμμή (`hooked functions 3 … triggers 50, B-54 50, v5 rows 0`)·
+  - εφαρμογή: `074a OK | 3 | 0 | 50 | 50 | 0`·
   - verify (SELECT, συντονιστής): `074a in place`, hooks 3, `worker_can_call 5`, `open_to_api 0`, `plan_config` άδειος, `b54_matches true`, γραμμές v5 0.
 
   Μετά ανέβηκε το Worker deploy 1, `c0ccdf77` (φρουρός 28 σημάδια, smoke 18/18).
