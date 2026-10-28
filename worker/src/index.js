@@ -5806,14 +5806,16 @@ var PLAN_PERMS = {
   // role (handover plan H-17). No money here: the DB
   // cuts payroll/DKV amounts by role (decision 9), the tripwire below refuses
   // to forward one; price and partner rate are for every role (decision 41).
-  // config, lookups and nat-state (F5, plan W1/W2; stream d1 E3/E5): reads
-  // every screen needs to know day L, to fill its pickers (E-2) and to show
-  // a v5 national order's carriers and «delivered» - every role, read only.
-  owner: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "rt-clear": ["POST"], delete: ["POST"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"], "segment-remove": ["POST"] },
-  dispatcher: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "rt-clear": ["POST"], delete: ["POST"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"], "segment-remove": ["POST"] },
-  management: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"] },
-  accountant: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"] },
-  warehouse: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"] }
+  // config, lookups, nat-state and activity (F5, plan W1/W2; streams d1 E3/E5,
+  // d3 E12/E13): reads every screen needs to know day L, to fill its pickers
+  // (E-2), to show a v5 national order's carriers and «delivered», and the v5
+  // cycles of a partner / driver / vehicle or the stops at a place - every
+  // role, read only (the only money in them is the partner rate, decision 41).
+  owner: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], activity: ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "rt-clear": ["POST"], delete: ["POST"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"], "segment-remove": ["POST"] },
+  dispatcher: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], activity: ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "rt-clear": ["POST"], delete: ["POST"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"], "segment-remove": ["POST"] },
+  management: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], activity: ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"] },
+  accountant: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], activity: ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"] },
+  warehouse: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], activity: ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"] }
 };
 function planCan(role, resource, method) {
   const r = PLAN_PERMS[role];
@@ -5916,6 +5918,9 @@ var PLAN_ROUTES = [
   // the carriers and «delivered» (spec §2.3) of v5 national orders, for the Orders page (E3/E5, stream d1); "missing"
   // = an order of the old model. Deploy guard marker (--f5).
   { method: "GET", re: /^\/plan\/nat-state$/, resource: "nat-state", rpc: "plan_nat_state", read: planNatStateArgs, migration: "074a" },
+  // the v5 cycles of one partner / driver / truck / trailer, or the v5 stops at one place, for the cards (E12/E13,
+  // stream d3); "all" for the partner strip and the place filter. Deploy guard marker (--f5).
+  { method: "GET", re: /^\/plan\/activity$/, resource: "activity", rpc: "plan_activity", read: planActivityArgs, migration: "074a" },
   { method: "POST", re: /^\/plan\/notices\/(\d+)\/read$/, resource: "notices-read", rpc: "plan_notice_read", idKey: "notice_id" },
   { method: "POST", re: /^\/plan\/orders$/, resource: "orders", rpc: "plan_orders_create" },
   { method: "PATCH", re: /^\/plan\/orders\/(\d+)$/, resource: "orders", rpc: "plan_order_update", idKey: "nat_order_id" },
@@ -5964,6 +5969,20 @@ function planNatStateArgs(url) {
   return planIdsArgs(url, "nat_order_ids", "p_nat_order_ids");
 }
 __name(planNatStateArgs, "planNatStateArgs");
+// Exactly one of the five keys, a positive id of at most 9 digits, or «all» for the two lists that have one (the
+// partner strip, the place filter); anything else is a 400 before any DB call. «all» = p_id null.
+var PLAN_ACTIVITY_KINDS = { partner_id: "partner", driver_id: "driver", truck_id: "truck", trailer_id: "trailer", location_id: "location" };
+function planActivityArgs(url) {
+  const bad = { error: "Ένα από partner_id, driver_id, truck_id, trailer_id, location_id: θετικός ακέραιος, ή all για partner_id / location_id", code: "bad_activity_query" };
+  const keys = [...url.searchParams.keys()];
+  if (keys.length !== 1 || !Object.prototype.hasOwnProperty.call(PLAN_ACTIVITY_KINDS, keys[0])) return bad;
+  const kind = PLAN_ACTIVITY_KINDS[keys[0]];
+  const v = url.searchParams.get(keys[0]);
+  if (v === "all" && (kind === "partner" || kind === "location")) return { args: { p_kind: kind, p_id: null } };
+  if (!/^[1-9]\d{0,8}$/.test(v)) return bad;
+  return { args: { p_kind: kind, p_id: Number(v) } };
+}
+__name(planActivityArgs, "planActivityArgs");
 function planNoticesArgs(url, caller) {
   const desk = url.searchParams.get("desk") || "";
   if (desk !== "intl" && desk !== "natl") return { error: "desk: intl ή natl", code: "bad_desk" };

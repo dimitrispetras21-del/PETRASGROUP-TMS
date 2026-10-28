@@ -2,7 +2,8 @@
 //   - GET /plan/config   → plan_config_read(), answered {cutover_day, opened_at, writes_open}; writes_open is THIS
 //                          Worker's switch (false in deploy 1, true in deploy 2), never a DB value;
 //   - GET /plan/lookups  → plan_lookups(p_role), the DB body as is;
-//   - GET /plan/nat-state?nat_order_ids=… → plan_nat_state(p_nat_order_ids), the rule of /plan/vs-state.
+//   - GET /plan/nat-state?nat_order_ids=… → plan_nat_state(p_nat_order_ids), the rule of /plan/vs-state;
+//   - GET /plan/activity?<one of partner_id|driver_id|truck_id|trailer_id|location_id>=N|all → plan_activity(p_kind, p_id).
 // Every role, open with the switch closed (reads), one RPC each, no audit row; 074a missing → 503 naming 074a; an
 // answer FE-1 could misread (a cutover_day that is not a date or null) → a loud 500, never «not yet».
 import { test, beforeEach, afterEach } from 'node:test';
@@ -44,8 +45,9 @@ test('GET /plan/config: an answer FE-1 cannot read is a 500 plan_failed, never a
   }
 });
 
-test('the three reads with 074a missing → 503 schema_behind naming 074a (never the 500 path)', async () => {
-  for (const [fn, p] of [['plan_config_read', '/plan/config'], ['plan_lookups', '/plan/lookups'], ['plan_nat_state', '/plan/nat-state?nat_order_ids=7']]) {
+test('the four reads with 074a missing → 503 schema_behind naming 074a (never the 500 path)', async () => {
+  for (const [fn, p] of [['plan_config_read', '/plan/config'], ['plan_lookups', '/plan/lookups'], ['plan_nat_state', '/plan/nat-state?nat_order_ids=7'],
+    ['plan_activity', '/plan/activity?driver_id=7']]) {
     reset();
     on('POST', `rpc/${fn}`, () => pgError(404, { code: 'PGRST202', details: null, hint: null, message: `Could not find the function public.${fn} in the schema cache` }));
     const r = await call('warehouse', 'GET', p);
@@ -88,12 +90,41 @@ test('GET /plan/nat-state: ids deduplicated into p_nat_order_ids; 0, negative, t
 });
 
 test('the reads stay GET only: a write verb on them is a 404 (no route), never an RPC', async () => {
-  for (const p of ['/plan/config', '/plan/lookups', '/plan/nat-state']) {
+  for (const p of ['/plan/config', '/plan/lookups', '/plan/nat-state', '/plan/activity']) {
     for (const verb of ['POST', 'PATCH']) {
       calls.length = 0;
       const r = await callOpen('owner', verb, p, {});
       assert.equal(r.status, 404, `${verb} ${p}`);
       assert.equal(calls.length, 0);
     }
+  }
+});
+
+test('GET /plan/activity: one key → (p_kind, p_id), «all» → p_id null for partner / location only; the DB body as is', async () => {
+  const body = { cycles: [], truncated: false };
+  on('POST', 'rpc/plan_activity', () => json(body));
+  for (const [q, args] of [['partner_id=12', { p_kind: 'partner', p_id: 12 }], ['driver_id=3', { p_kind: 'driver', p_id: 3 }],
+    ['truck_id=999999999', { p_kind: 'truck', p_id: 999999999 }], ['trailer_id=8', { p_kind: 'trailer', p_id: 8 }],
+    ['location_id=40', { p_kind: 'location', p_id: 40 }], ['partner_id=all', { p_kind: 'partner', p_id: null }],
+    ['location_id=all', { p_kind: 'location', p_id: null }]]) {
+    for (const role of ROLES) {
+      calls.length = 0;
+      const r = await call(role, 'GET', `/plan/activity?${q}`);
+      assert.equal(r.status, 200, `${role} ${q}: ${r.text}`);
+      assert.deepEqual(r.json, body);
+      assert.deepEqual(rpcCalls().map((c) => [c.table, c.body]), [['rpc/plan_activity', args]], `${role} ${q}`);
+    }
+  }
+});
+
+test('GET /plan/activity: no key, two keys, an unknown key, 0, negative, 10 digits, text, or «all» for a driver / vehicle → 400 before any DB call', async () => {
+  for (const q of ['', '?partner_id=', '?partner_id=1&driver_id=2', '?partner_id=1&partner_id=2', '?client_id=1', '?partner_id=0',
+    '?partner_id=-1', '?partner_id=1234567890', '?partner_id=1a', '?driver_id=all', '?truck_id=all', '?trailer_id=all', '?location_id=ALL']) {
+    calls.length = 0;
+    const r = await call('owner', 'GET', `/plan/activity${q}`);
+    assert.equal(r.status, 400, q);
+    assert.equal(r.json.error.code, 'bad_activity_query', q);
+    assert.equal(r.json.error.type, 'BAD_REQUEST', q);
+    assert.equal(calls.length, 0, q);
   }
 });

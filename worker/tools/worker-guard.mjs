@@ -30,7 +30,8 @@
 //            --handover 1 (F3 is built on it, one chain). Without it: as before.
 //   --f5     optional, only after --f3 (national v5 F5, plan W8): the F5 markers,
 //            ONE PER FEATURE: rpc: "plan_config_read" (W1), rpc: "plan_lookups"
-//            (W2), rpc: "plan_nat_state" (E3/E5, stream d1) - each route row
+//            (W2), rpc: "plan_nat_state" (E3/E5, stream d1), rpc: "plan_activity"
+//            (E12/E13, stream d3) - each route row
 //            exactly once -, var LEGACY_CLOSED_AFTER_L (E16, the declaration
 //            once), truncated:  (E18, GET /costs/rt) and "order_delete_preview"
 //            (E19) - at least once. 0 = before deploy 1 (none), 1 = deploy 1 and
@@ -127,6 +128,7 @@ if (f5 !== null) {
   // least once; none of them before deploy 1
   for (const [name, mark, once] of [['rpc: "plan_config_read" (F5, W1)', 'rpc: "plan_config_read"', true],
     ['rpc: "plan_lookups" (F5, W2)', 'rpc: "plan_lookups"', true], ['rpc: "plan_nat_state" (F5, E3/E5)', 'rpc: "plan_nat_state"', true],
+    ['rpc: "plan_activity" (F5, E12/E13)', 'rpc: "plan_activity"', true],
     ['var LEGACY_CLOSED_AFTER_L (F5, E16)', 'var LEGACY_CLOSED_AFTER_L', true], ['truncated:  (F5, E18)', 'truncated: ', false],
     ['"order_delete_preview" (F5, E19)', '"order_delete_preview"', false]]) {
     rows.push([name, count(mark), (n) => (f5 === 1 ? (once ? n === 1 : n >= 1) : n === 0)]);

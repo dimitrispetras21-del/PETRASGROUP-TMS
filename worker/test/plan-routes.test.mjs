@@ -702,9 +702,9 @@ test('schema_behind names 072b on the three handover routes and 072 elsewhere; s
   const { readFileSync } = await import('node:fs');
   const src = readFileSync(SRC_PATH, 'utf8').match(/var PLAN_ROUTES = \[[\s\S]*?\n\];\n/)[0];
   assert.deepEqual([...src.matchAll(/rpc: "(plan_\w+)"[^\n]*migration: "(\w+)"/g)].map((m) => [m[1], m[2]]),
-    [['plan_config_read', '074a'], ['plan_lookups', '074a'], ['plan_nat_state', '074a'],
+    [['plan_config_read', '074a'], ['plan_lookups', '074a'], ['plan_nat_state', '074a'], ['plan_activity', '074a'],
       ['plan_seg_change', '072b'], ['plan_seg_fix', '072b'], ['plan_seg_remove', '072b']],
-    'only the three 074a reads (F5) and the three handover routes name another migration');
+    'only the four 074a reads (F5) and the three handover routes name another migration');
   // the Move that would narrow a cycle past a handover with the list bypassed: 422, the RT and the time in brackets
   routes.length = 0;
   on('POST', 'rpc/plan_move_pieces', () => planReject('seg_outside', 'RT-1290 26/10 09:00'));
