@@ -1,0 +1,7 @@
+# 2026-10-28 · dimitris · F5 stream (d4) Ε15: KPI screens read v5 national work
+
+- **Changed:** `modules/performance.js` gains `NatV5Kpi` (the one reader of `GET /plan/nat-state` for the KPI screens); «ΣΥΝΕΠΕΙΑ ΕΘΝΙΚΩΝ» adds executed v5 national orders (on time = not `late`), «ΚΕΡΔΟΦΟΡΙΑ ΕΘΝΙΚΩΝ» says «εκτός … P&L». `modules/metrics_audit.js`: outstanding / invoiced revenue add the v5 share, new group «Εθνικά v5». `modules/audit_trail.js`: Greek labels for `rt_vehicle_segments`, `local_moves`, `dl_entries` and the v5-only columns; `side` reads ΚΑΘΟΔΟΣ/ΑΝΟΔΟΣ.
+- **Decided:** v5 or not = the base's answer (`"missing"`), never a date. Before L (`PlanConfig` 'before') the pages send today's requests and paint today's DOM (rig: byte-identical `#content` vs main). 'unknown' reads anyway and says so. VS national legs stay out of on-time (`vs-state` has no `late`), and the card says it.
+- **Measured (SELECT 28/10):** 0 of 86 national loads have `actual_delivery_date` → «ΣΥΝΕΠΕΙΑ ΕΘΝΙΚΩΝ» already shows a false 0% today; kept as is until L (flag off = today), fix proposed as follow-up.
+- **Checks:** `tests/critics/f5-metrics-rig.js` GO on this tree (44 checks, 0 console errors), NO-GO on `origin/main` (23 ✗); `tests/f5-natv5-kpi.test.js` 6/6. Suite: only F4α-T29 fails (no `?v=` bump, stream e's job).
+- **Open:** Chief Ops alerts (`core/utils.js` §4) wait for the coordinator; labels for `plan_config`/`plan_cutover_log` only if 074 audits them; `/plan/nat-state` must be in Worker deploy 1; stream (e) must load `core/plan-config.js` in the same bump.
