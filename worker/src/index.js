@@ -6864,7 +6864,6 @@ async function handlePallets(request, url, origin, env) {
     if (resource === "movements" && method === "GET" && !recId) {
       const q = url.searchParams;
       const PL_MOV_PAGE = 999, PL_MOV_MAX = PL_MOV_PAGE * 10; // the paged read below; every answer says cap
-
       const params = new URLSearchParams();
       // Embedded τα ονόματα αντί για σκέτο "*": το UI τα έλυνε μέσω
       // /pallets/lookups, που η PostgREST κόβει στα 1000 (db-max-rows) ενώ οι
@@ -6898,9 +6897,9 @@ async function handlePallets(request, url, origin, env) {
       // Every matching row, in pages (Alexia's requests, owner 28/10). It was one read of «limit 300»: at 291 movements
       // and ~8 new a day the ledger would have dropped the oldest rows in silence, and the page, the client card and
       // the confirm wizard all read this list unfiltered.
-      // - The first page asks the exact count, and the answer is cut only when it holds fewer rows than that count
-      //   (truncated, cap): a page shorter than asked (PostgREST db-max-rows, 1000 today, or any lower value later)
-      //   never ends the read early in silence (principle 1).
+      // - The first page asks the exact count, so a page shorter than asked (PostgREST db-max-rows, 1000 today, or
+      //   any lower value later) never ends the read early in silence (principle 1). The answer is cut (truncated)
+      //   only at the cap PL_MOV_MAX, and every answer says the cap.
       // - Keyset, not offset: the next page starts after the last (movement_date, id) read, so a movement written
       //   or deleted while the pages are read never repeats or skips another one. movement_date is NOT NULL (003).
       const rows = [];
