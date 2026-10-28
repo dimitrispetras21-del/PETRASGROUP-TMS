@@ -11,6 +11,7 @@
 //   BEFORE (GET /plan/config → cutover_day null) and NONE (a Worker without the /plan routes: 404 no_route, which
 //     PlanConfig reads as 'before'): the same text as PW_BASE_URL_TIP (5f55a943 served: the tip before the readers)
 //     on every screen above, and 0 /plan/activity calls.
+//   UNKNOWN (GET /plan/config → 500): the v5 half is read anyway (G).
 //   The real core/plan-config.js runs: the rig answers its GET /plan/config, never sets window.PlanConfig.
 //   Every case: 0 console errors.
 // Run from a checkout root that has node_modules (cwd = the main repo, see tests/critics/auth.js):
@@ -57,7 +58,7 @@ const RT_LIST = { records: [{ id: 801, model: 1, status: 'closed', date_start: '
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) { pass++; console.log('  ✓ ' + m); } else { fail++; console.log('  ✗ ' + m); } };
 
-// mode: 'after' | 'before' | 'none'; activity: 'ok' | 'fail' | 'absent' (404 no_route)
+// mode: 'after' | 'before' | 'none' | 'unknown'; activity: 'ok' | 'fail' | 'absent' (404 no_route)
 async function fresh(base, route, mode, activity) {
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ baseURL: base, viewport: { width: 1440, height: 960 }, serviceWorkers: 'block' });
@@ -80,6 +81,8 @@ async function fresh(base, route, mode, activity) {
     // none = a Worker without the route (404 no_route, which PlanConfig reads as 'before').
     if (p === '/plan/config') {
       if (mode === 'none') return J(r, 404, { error: { type: 'NOT_FOUND', code: 'no_route', message: 'no route' } });
+      // unknown = no answer (a 500): PlanConfig says 'unknown', and the readers must read anyway (never 'before')
+      if (mode === 'unknown') return J(r, 500, { error: { type: 'PLAN_FAILED', code: 'plan_failed', message: 'stub failure' } });
       return J(r, 200, { cutover_day: mode === 'after' ? '2026-10-31' : null, opened_at: mode === 'after' ? '2026-10-30T15:30:00Z' : null, writes_open: false });
     }
     if (p === '/plan/lookups') return mode === 'none' ? J(r, 404, { error: { type: 'NOT_FOUND', code: 'no_route', message: 'no route' } }) : J(r, 200, LOOKUPS);
@@ -195,6 +198,16 @@ async function run(name, base, mode, activity) {
     const logged = s.errors.filter(e => /\[TMS ERROR\] planFetch GET \/plan\/activity/.test(e));
     const other = s.errors.filter(e => !/status of 500/.test(e) && !logged.includes(e));
     ok(logged.length === 1, name + ': the failure logged exactly once (' + logged.length + ')');
+    ok(!other.length, name + ': no other console error ' + JSON.stringify(other));
+  }
+
+  console.log("\n── G. GET /plan/config fails (PlanConfig 'unknown') → the v5 half is read anyway, never taken for 'before'");
+  for (const name of ['partnerCard', 'locCard']) {
+    const s = await run(name, BASE, 'unknown', 'ok');
+    ok(name === 'partnerCard' ? /2 αναθέσεις/.test(s.text) && /RT-901/.test(s.title) : /3 κινήσεις/.test(s.text), name + ': v5 shown: ' + s.text.slice(0, 100));
+    ok(s.calls.some(c => c.startsWith('/plan/activity')), name + ': /plan/activity read');
+    // the 500 on /plan/config is the browser's network line + planFetch's one logged failure; nothing else is red
+    const other = s.errors.filter(e => !/status of 500/.test(e) && !/\[TMS ERROR\] planFetch GET \/plan\/config/.test(e));
     ok(!other.length, name + ': no other console error ' + JSON.stringify(other));
   }
 
