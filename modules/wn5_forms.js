@@ -778,7 +778,8 @@
       price: _num(v('[data-f="price"]')), temperature_c: _num(v('[data-f="temp"]')), reference: v('[data-f="ref"]').trim(),
       goods: v('[data-f="goods"]').trim(), notes: v('[data-f="notes"]').trim(), pallet_exchange: peh === 'yes' ? true : peh === 'no' ? false : null,
       direction: f.edit.riding ? null : (v('[data-f="dir"]') || null),
-      // a point that rides is shown, never sent: its pallets and windows change from the board (072 keeps that rule)
+      // a point that rides is shown, never sent: its pallets and windows change from the board. This lock is the FORM's
+      // (F4α rule): 072 / 077 accept windows and pallets on a riding point and refuse only its place change and removal
       ships: [...f.el.querySelectorAll('[data-ship]:not([data-ro]):not([data-rm])')].map((r) => Object.assign({ shipment_id: Number(r.dataset.ship) }, win(r))),
       removed: [...f.el.querySelectorAll('[data-ship][data-rm]')].map((r) => Number(r.dataset.ship)),
       // the picked places as rec ids; _saveEdit turns them into numbers (PlanIds, Ε-2)
