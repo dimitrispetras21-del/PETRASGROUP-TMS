@@ -11,8 +11,9 @@ import { fileURLToPath } from 'node:url';
 import { buildDryRun } from './build-073-dryrun.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-// drafts/ until the owner runs them (CLAUDE.md rule 5); the builder stays here
-export const DIR = path.resolve(HERE, '..');
+// 079 was executed 28/10 and its files left drafts/ (CLAUDE.md rule 5): they live in worker/migrations/, the builder
+// stays here
+export const DIR = path.resolve(HERE, '..', '..');
 const TRIGGERS = `(SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace ns ON ns.oid = c.relnamespace
       WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public')`;
 // the unlinked loads the desk re-records in v5 (a vehicle, or a status past Pending; never a Cancelled one) - 074's rule
