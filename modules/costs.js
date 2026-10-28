@@ -403,7 +403,8 @@ function ctPnlCut(res) {
 function ctPnlCutNote(cut) {
   if (!cut) return '';
   const txt = !cut.cut
-    ? `${cut.n} δρομολόγια, κοντά στο όριο των ${cut.cap} της σελίδας: ζήτησε αύξηση`
+    // Not «ask for a higher cap»: one read cannot pass PostgREST's 1000 rows, the next step is pages or a faster view.
+    ? `${cut.n} δρομολόγια, κοντά στο όριο των ${cut.cap} μιας ανάγνωσης: χρειάζεται σελιδοποίηση πριν κοπεί`
     : `Φορτώθηκαν ${cut.n}${cut.total != null ? ' από ' + cut.total : ''} δρομολόγια: τα υπόλοιπα λείπουν από τη λίστα ΚΑΙ από τα σύνολα (έσοδα, κόστη, καθαρό).`;
   return `<div class="ct-note ct-nwarn" id="ctPnlCut">${icon('warning', 13)} ${txt}</div>`;
 }

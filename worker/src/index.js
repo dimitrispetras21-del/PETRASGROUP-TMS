@@ -191,6 +191,14 @@ async function dbSelectRaw(env, table, params, extraHeaders) {
   return { rows: await res.json(), contentRange: res.headers.get("content-range") };
 }
 __name(dbSelectRaw, "dbSelectRaw");
+// The exact row count of a read made with Prefer: count=exact («0-998/2500», «*/0»). No count is an error, never a
+// guessed «complete» (principle 1): /pallets/movements and /costs/pnl decide «cut» from it, so one rule for both.
+function dbExactCount(contentRange, table) {
+  const total = Number(String(contentRange || "").split("/")[1]);
+  if (!Number.isSafeInteger(total)) throw new Error(`${table}: no exact count in «${contentRange}»`);
+  return total;
+}
+__name(dbExactCount, "dbExactCount");
 
 // src/routes/audit.js
 var AUDIT_READERS = ["owner", "management"];
@@ -5150,8 +5158,7 @@ async function handleCosts(request, url, origin, env) {
         dbSelectRaw(env, "ct_v_rt_pnl", params),
         dbSelectRaw(env, "ct_round_trips", countParams, { Prefer: "count=exact" })
       ]);
-      const total = Number(String(contentRange || "").split("/")[1]);
-      if (!Number.isSafeInteger(total)) throw new Error(`ct_round_trips: no exact count in «${contentRange}»`);
+      const total = dbExactCount(contentRange, "ct_round_trips");
       return jsonOk({ records: rows, truncated: rows.length < total, cap: PNL_CAP, total }, origin, env);
     }
     // ---- GET /costs/pallet-gate — ποιες διαδρομές partner περιμένουν δελτίο ----
@@ -6925,10 +6932,7 @@ async function handlePallets(request, url, origin, env) {
         page.set("limit", String(asked));
         if (last) page.append("or", `(movement_date.lt.${last.movement_date},and(movement_date.eq.${last.movement_date},id.lt.${last.id}))`);
         const { rows: got, contentRange } = await dbSelectRaw(env, "pl_movements", page, last ? undefined : { Prefer: "count=exact" });
-        if (!last) {
-          total = Number(String(contentRange || "").split("/")[1]);
-          if (!Number.isSafeInteger(total)) throw new Error(`pl_movements: no exact count in «${contentRange}»`);
-        }
+        if (!last) total = dbExactCount(contentRange, "pl_movements");
         rows.push(...got);
         // the end is a short page AND the count reached; a short page alone may be db-max-rows, the count alone may
         // include a row written below the window while the pages were read
