@@ -33,7 +33,7 @@ async function get(q = '', role = 'owner') {
 }
 
 let MAX_ROWS; // PostgREST db-max-rows
-let rts; let calls; let dropFromView; let noCount;
+let rts; let calls; let dropFromView; let noCount; let badRange;
 const realFetch = globalThis.fetch;
 const realError = console.error;
 const match = (sp, r) => ['date_start', 'scope', 'truck_id'].every((col) => sp.getAll(col).every((f) => {
@@ -43,7 +43,7 @@ const match = (sp, r) => ['date_start', 'scope', 'truck_id'].every((col) => sp.g
 }));
 beforeEach(() => {
   console.error = () => {};
-  calls = []; MAX_ROWS = 1000; dropFromView = () => false; noCount = false;
+  calls = []; MAX_ROWS = 1000; dropFromView = () => false; noCount = false; badRange = null;
   globalThis.fetch = async (url, init = {}) => {
     const u = new URL(url);
     const name = u.pathname.replace(/^\/rest\/v1\//, '');
@@ -56,7 +56,7 @@ beforeEach(() => {
       assert.equal(sp.get('status'), 'neq.cancelled', 'the count uses the view\'s own WHERE');
       assert.equal(prefer, 'count=exact');
       const out = live.slice(0, Number(sp.get('limit'))).map((r) => ({ id: r.id }));
-      if (!noCount) headers['content-range'] = out.length ? `0-${out.length - 1}/${live.length}` : `*/${live.length}`;
+      if (!noCount) headers['content-range'] = badRange ?? (out.length ? `0-${out.length - 1}/${live.length}` : `*/${live.length}`);
       return new Response(JSON.stringify(out), { status: out.length ? 206 : 200, headers });
     }
     assert.equal(name, 'ct_v_rt_pnl');
@@ -152,6 +152,14 @@ test('no exact count in the answer: a loud error, never a guessed «complete»',
   noCount = true;
   const r = await get();
   assert.ok(r.status >= 500, 'status ' + r.status);
+});
+
+test('a range without a total («0-0/», «0-0/*», «0-0/ »): a loud error, never read as 0', async () => {
+  rts = mk(10);
+  for (const range of ['0-0/', '0-0/*', '0-0/ ', 'garbage']) {
+    badRange = range;
+    assert.ok((await get()).status >= 500, 'range ' + JSON.stringify(range));
+  }
 });
 
 test('empty: no rows, total 0, not truncated', async () => {

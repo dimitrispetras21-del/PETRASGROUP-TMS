@@ -194,7 +194,9 @@ __name(dbSelectRaw, "dbSelectRaw");
 // The exact row count of a read made with Prefer: count=exact («0-998/2500», «*/0»). No count is an error, never a
 // guessed «complete» (principle 1): /pallets/movements and /costs/pnl decide «cut» from it, so one rule for both.
 function dbExactCount(contentRange, table) {
-  const total = Number(String(contentRange || "").split("/")[1]);
+  // digits only after the slash: Number("") is 0, so a «0-999/» would otherwise read as an exact count of 0
+  const m = /\/(\d+)$/.exec(String(contentRange || ""));
+  const total = m ? Number(m[1]) : NaN;
   if (!Number.isSafeInteger(total)) throw new Error(`${table}: no exact count in «${contentRange}»`);
   return total;
 }
