@@ -10,7 +10,7 @@ DECLARE
   v_rows0 text; v_rows1 text; v_acl text; v_trg0 int; v_trg1 int;
 BEGIN
   PERFORM set_config('lock_timeout', '5s', true);
-  IF md5(pg_get_viewdef('public.v_rt_stop_state'::regclass, true)) <> '1d5fcedc0416dbaa5390e3e3bc1b744a' THEN
+  IF md5(pg_get_viewdef('public.v_rt_stop_state'::regclass, true)) <> 'a4750de0d409439961612a18adbc8a58' THEN
     RAISE EXCEPTION '076 rollback: v_rt_stop_state is not 076''s view (md5 %) - nothing to undo, or it changed since',
       md5(pg_get_viewdef('public.v_rt_stop_state'::regclass, true));
   END IF;

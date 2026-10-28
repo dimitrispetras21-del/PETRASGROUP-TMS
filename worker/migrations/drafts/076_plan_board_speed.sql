@@ -38,7 +38,7 @@ DECLARE
   v_trg0 int; v_trg1 int; v_k int;
   -- 071's view, as live 28/10 (md5 of pg_get_viewdef): what the rollback puts back
   m_view_old CONSTANT text := 'f758827112c0a1a34f3feebb8cd36c44';
-  m_view_new CONSTANT text := '1d5fcedc0416dbaa5390e3e3bc1b744a';
+  m_view_new CONSTANT text := 'a4750de0d409439961612a18adbc8a58';
   -- the tables ANALYZE reads (the board, its views, the readers of 074a)
   t_list CONSTANT text[] := ARRAY['shipments', 'shipment_pieces', 'piece_legs', 'rt_stops', 'ct_round_trips',
     'rt_vehicle_segments', 'plan_notices', 'orders', 'order_stops', 'national_orders', 'local_moves', 'locations',
@@ -75,10 +75,11 @@ BEGIN
 
   -- ===== PART 1: has_late IN ONE PASS =====
   -- 071's rule unchanged: a stop "has a late piece" when a live piece ends there (v_piece_state.end_stop_id) and its
-  -- planned delivery day is after the requested one (late). The late end stops are read once for the whole query (a
-  -- hash join keeps them across the board's per-cycle reads), never once per stop.
+  -- planned delivery day is after the requested one (late). The late end stops are read ONCE per query and kept:
+  -- MATERIALIZED, so that does not depend on the join the planner picks (plan_board reads this view once per cycle;
+  -- an inlined CTE under a nested loop would walk every piece again per cycle - code review xhigh 28/10).
   CREATE OR REPLACE VIEW public.v_rt_stop_state WITH (security_invoker = true) AS
-  WITH late AS (
+  WITH late AS MATERIALIZED (
     SELECT DISTINCT ps.end_stop_id FROM public.v_piece_state ps WHERE ps.late AND ps.end_stop_id IS NOT NULL
   ), st AS (
     SELECT s.id AS stop_id, s.rt_id, r.code, s.seq, s.side, s.location_id, s.planned_from, s.planned_to,
@@ -99,6 +100,8 @@ BEGIN
   FROM st;
 
   -- ===== PART 2: STATISTICS =====
+  -- ANALYZE waits for an autovacuum working on the same table; past the 5 s lock timeout the whole block stops,
+  -- nothing kept: run it again a minute later.
   FOR v_k IN 1..cardinality(t_list) LOOP
     EXECUTE format('ANALYZE public.%I', t_list[v_k]);
   END LOOP;
@@ -118,8 +121,11 @@ BEGIN
   IF md5((SELECT prosrc FROM pg_proc WHERE oid = 'public.plan_board(date,text)'::regprocedure)) <> v_board THEN
     RAISE EXCEPTION '076 proof: plan_board changed';
   END IF;
+  -- analyzed = a size estimate AND, for a table with rows, column statistics (pg_stats). A size estimate alone is not
+  -- proof: CREATE INDEX writes one too (orders / order_stops had one, never a statistic, 28/10)
   SELECT count(*) INTO v_k FROM unnest(t_list) t
-   WHERE EXISTS (SELECT 1 FROM pg_class c WHERE c.oid = ('public.' || t)::regclass AND c.reltuples >= 0);
+   WHERE EXISTS (SELECT 1 FROM pg_class c WHERE c.oid = ('public.' || t)::regclass AND c.reltuples >= 0
+                   AND (c.reltuples = 0 OR EXISTS (SELECT 1 FROM pg_stats ps WHERE ps.schemaname = 'public' AND ps.tablename = t)));
   IF v_k <> cardinality(t_list) THEN RAISE EXCEPTION '076 proof: % of % tables analyzed', v_k, cardinality(t_list); END IF;
   SELECT count(*) INTO v_trg1 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
     JOIN pg_namespace ns ON ns.oid = c.relnamespace
@@ -135,9 +141,10 @@ BEGIN
 END $do$;
 
 -- The result row (read-only). If the block above failed, the editor stops before this line.
-SELECT CASE WHEN md5(pg_get_viewdef('public.v_rt_stop_state'::regclass, true)) = '1d5fcedc0416dbaa5390e3e3bc1b744a' THEN '076 OK' ELSE '076 NOT APPLIED' END AS result,
+SELECT CASE WHEN md5(pg_get_viewdef('public.v_rt_stop_state'::regclass, true)) = 'a4750de0d409439961612a18adbc8a58' THEN '076 OK' ELSE '076 NOT APPLIED' END AS result,
        md5(pg_get_viewdef('public.v_rt_stop_state'::regclass, true)) AS view_md5,
        (SELECT count(*) FROM pg_class c WHERE c.relnamespace = 'public'::regnamespace AND c.reltuples >= 0
+         AND (c.reltuples = 0 OR EXISTS (SELECT 1 FROM pg_stats ps WHERE ps.schemaname = 'public' AND ps.tablename = c.relname))
          AND c.relname IN ('shipments', 'shipment_pieces', 'piece_legs', 'rt_stops', 'ct_round_trips', 'rt_vehicle_segments',
            'plan_notices', 'orders', 'order_stops', 'national_orders', 'local_moves', 'locations', 'clients', 'trucks',
            'trailers', 'drivers', 'partners')) AS analyzed,

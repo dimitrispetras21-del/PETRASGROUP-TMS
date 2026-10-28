@@ -23,6 +23,9 @@ const VIEW_MD5 = `SELECT md5(pg_get_viewdef('public.v_rt_stop_state'::regclass, 
 const ROWS = `SELECT md5(coalesce(string_agg(to_jsonb(v)::text, '|' ORDER BY v.stop_id), '')) AS m, count(*) FILTER (WHERE v.has_late) AS late,
   count(*) FILTER (WHERE NOT v.has_late) AS on_time FROM v_rt_stop_state v`;
 const BOARD_MD5 = `SELECT md5(prosrc) AS m FROM pg_proc WHERE oid = 'public.plan_board(date,text)'::regprocedure`;
+// what the board ANSWERS for the week of the fixture (Saturday 5/12), for two roles
+const ANSWER = `SELECT md5(plan_board(DATE '2026-12-05', 'dispatcher')::text || plan_board(DATE '2026-12-05', 'owner')::text) AS m,
+  jsonb_array_length(plan_board(DATE '2026-12-05', 'dispatcher')->'cycles') AS cycles`;
 
 // three v5 cycles of one week; each carries a national to its delivery and a VS import from Veroia, the VS of the
 // second cycle asked one day earlier than the cycle delivers it (late) - written with the COMMIT rules deferred
@@ -80,6 +83,7 @@ test('076 on the production-shaped copy', async (t) => {
   const trg0 = Number((await one(db, TRG)).n);
   const board0 = (await one(db, BOARD_MD5)).m;
   const rows0 = await one(db, ROWS);
+  const answer0 = await one(db, ANSWER);
 
   await t.test('the copy holds 071\'s view as production (md5 of 28/10), and the week has late AND on-time stops', async () => {
     assert.strictEqual(old, 'f758827112c0a1a34f3feebb8cd36c44');
@@ -119,6 +123,8 @@ test('076 on the production-shaped copy', async (t) => {
     assert.strictEqual(Number(r.b54_red_value), trg0);
     assert.deepStrictEqual(await one(db, ROWS), rows0, 'the same rows, late and on time');
     assert.strictEqual((await one(db, BOARD_MD5)).m, board0);
+    assert.strictEqual(Number(answer0.cycles), 3, 'the board of the week holds the three cycles');
+    assert.deepStrictEqual(await one(db, ANSWER), answer0, 'the board answers the same bytes');
   });
 
   await t.test('076 verify: in place, analyzed, B-54 matches; a second run refuses', async () => {

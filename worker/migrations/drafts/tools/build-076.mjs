@@ -42,7 +42,9 @@ export function view071() {
 const rows = (into) => `SELECT md5(coalesce(string_agg(to_jsonb(v)::text, '|' ORDER BY v.stop_id), '')) INTO ${into} FROM public.v_rt_stop_state v;`;
 const TRIGGERS = `(SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace ns ON ns.oid = c.relnamespace
       WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public')`;
+// the migration's own proof: a size estimate and, for a table with rows, column statistics
 const analyzed = (tables) => `(SELECT count(*) FROM pg_class c WHERE c.relnamespace = 'public'::regnamespace AND c.reltuples >= 0
+      AND (c.reltuples = 0 OR EXISTS (SELECT 1 FROM pg_stats ps WHERE ps.schemaname = 'public' AND ps.tablename = c.relname))
       AND c.relname IN (${tables.map((t) => `'${t}'`).join(', ')}))`;
 
 export function buildDryRun(src) {

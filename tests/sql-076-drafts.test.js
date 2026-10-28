@@ -46,10 +46,12 @@ test('076 writes no row, adds no trigger, function or table change; plan_board i
 
 test('the new view keeps 071\'s rule and columns: late at an end stop, the same names in the same order', async () => {
   const { view071 } = await import(BUILDER);
-  const cols = (s) => [...strip(s).matchAll(/ AS (\w+)/g)].map((m) => m[1]).filter((c) => !['late', 'st'].includes(c));
+  const cols = (s) => [...strip(s).matchAll(/ AS (\w+)/g)].map((m) => m[1]).filter((c) => !['late', 'st', 'MATERIALIZED'].includes(c));
   const neu = /CREATE OR REPLACE VIEW public\.v_rt_stop_state[\s\S]*?\n  FROM st;/.exec(read(SRC))[0];
   assert.deepStrictEqual(cols(neu), cols(view071()), 'every column of 071, in order');
   assert.match(neu, /FROM public\.v_piece_state ps WHERE ps\.late AND ps\.end_stop_id IS NOT NULL/);
+  // read once per query whatever join the planner picks (code review xhigh 28/10)
+  assert.match(neu, /WITH late AS MATERIALIZED \(/);
   assert.match(view071(), /WHERE ps\.end_stop_id = s\.id AND ps\.late\) AS has_late/);
   assert.ok(!/EXISTS \(SELECT 1 FROM public\.v_piece_state/.test(neu), 'no sub-query per stop');
 });
