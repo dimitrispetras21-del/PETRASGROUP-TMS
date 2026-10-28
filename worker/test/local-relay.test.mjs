@@ -45,6 +45,7 @@ const parts = [
   // F5 (E16): the legacy model closed after day L, read only with the switch open
   lift(/var PLAN_WRITES_OPEN = [^\n]*\n/, 'PLAN_WRITES_OPEN'), fn('planOwnedRefusal'),
   lift(/var LEGACY_CLOSED_AFTER_L = \{[\s\S]*?\n\};\n/, 'LEGACY_CLOSED_AFTER_L'), fn('legacyClosedRefusal'),
+  lift(/var LEGACY_ROWS_AFTER_L = \{[\s\S]*?\n\};\n/, 'LEGACY_ROWS_AFTER_L'), fn('legacyRowsApply'), fn('legacyRowRefusal'),
   fn('dbInsert'), fn('dbInsertMany'), fn('dbUpdate'),
   fn('handleFacadeCreate'), fn('facadeBatchCreate'), fn('handleFacadeUpdate'), fn('handleFacadeBatchUpdate'),
   fn('schemaBehind060'), fn('schemaBehind060Response'), fn('localLineCancelFacts'), fn('handleCosts'),
