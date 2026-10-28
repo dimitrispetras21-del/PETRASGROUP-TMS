@@ -482,8 +482,9 @@ begin
       perform plan_h_audit(v_actor, v_role, 'delete', 'national_loads', coalesce(nl.legacy_id, nl.id::text),
                            jsonb_build_object('deleted_at', null), jsonb_build_object('deleted_at', now(), 'reason', 'v5 bridge (074)'));
       -- Q-3: the desk re-records in v5 every unlinked load that was already moving - a vehicle on it, or a status past
-      -- Pending (a Friday export Delivered at Veroia with no truck on the record)
-      if nl.truck_id is not null or nl.partner_id is not null or nl.status is distinct from 'Pending' then
+      -- Pending (a Friday export Delivered at Veroia with no truck on the record); a Cancelled load has nothing to re-record
+      if nl.status is distinct from 'Cancelled'
+         and (nl.truck_id is not null or nl.partner_id is not null or nl.status is distinct from 'Pending') then
         -- "I VS %s perase sto neo board; to palio ethniko fortio eiche ochima (%s): anathese tin xana"
         perform plan_h_notice('natl', 'legacy_nl_replaced',
           'zpcgVlMgJXMgz4DOrc+BzrHPg861IM+Dz4TOvyDOvc6tzr8gYm9hcmTCtyDPhM6/IM+AzrHOu865z4wgzrXOuM69zrnOus+MIM+Gzr/Pgc+Ezq/OvyDOtc6vz4fOtSDPjM+HzrfOvM6xICglcyk6IM6xzr3OrM64zrXPg86tIM+EzrfOvSDOvs6xzr3OrA==',
@@ -643,7 +644,8 @@ $f$;
   SELECT count(*) INTO v_sh FROM public.shipments WHERE deleted_at IS NULL;
   SELECT count(*) INTO v_nl FROM public.plan_cutover_log WHERE kind = 'nl_unlinked';
   SELECT coalesce(string_agg(l.row_id::text, ',' ORDER BY l.row_id), '-') INTO v_nlveh FROM public.plan_cutover_log l
-   WHERE l.kind = 'nl_unlinked' AND (l.before_data->>'truck_id' IS NOT NULL OR l.before_data->>'partner_id' IS NOT NULL
+   WHERE l.kind = 'nl_unlinked' AND l.before_data->>'status' IS DISTINCT FROM 'Cancelled'
+     AND (l.before_data->>'truck_id' IS NOT NULL OR l.before_data->>'partner_id' IS NOT NULL
           OR l.before_data->>'status' IS DISTINCT FROM 'Pending');
   SELECT count(*) INTO v_via FROM public.order_stops WHERE via_hub;
   -- the bridge = the wanted stops, exactly (B-95's equality, spec 8)

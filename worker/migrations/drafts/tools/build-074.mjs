@@ -18,8 +18,10 @@ export const DIR = path.resolve(HERE, '..');
 const V5_LIVE = `(SELECT count(*) FROM public.shipments WHERE deleted_at IS NULL)`;
 const TRIGGERS = `(SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace ns ON ns.oid = c.relnamespace
       WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public')`;
-// Q-3: the unlinked loads the desk re-records in v5 (a vehicle, or a status past Pending) - 074 PART 8's rule
-const VEH = `kind = 'nl_unlinked' AND (before_data->>'truck_id' IS NOT NULL OR before_data->>'partner_id' IS NOT NULL
+// Q-3: the unlinked loads the desk re-records in v5 (a vehicle, or a status past Pending; never a Cancelled one) -
+// 074 PART 8's rule
+const VEH = `kind = 'nl_unlinked' AND before_data->>'status' IS DISTINCT FROM 'Cancelled'
+       AND (before_data->>'truck_id' IS NOT NULL OR before_data->>'partner_id' IS NOT NULL
        OR before_data->>'status' IS DISTINCT FROM 'Pending')`;
 export const PAIRS = [
   {

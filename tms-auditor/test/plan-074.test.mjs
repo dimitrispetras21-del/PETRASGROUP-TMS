@@ -3,45 +3,20 @@
 // holds them 28/10), plus fixtures/live-074.sql (028, 030, the national-load and order soft-delete triggers, captured
 // 28/10) and 074a. Every case checks ROWS, never a message only, and commits (071's deferred rules fire at COMMIT, as
 // through PostgREST): a case builds its own VS with its own reference, so cases do not share rows.
-// 074a: stream (a1) builds it in parallel. Until its file exists, STAND_IN_074A below creates exactly the interface
-// plan Task A / B1 defines (plan_config, plan_cutover_day, plan_config_read, plan_lookups) and the run says so; once
-// 074a_plan_reads.sql exists (drafts/ or one up), the real file is applied instead and the stand-in is never used.
+// 074a: the real file (PR #120), read from where it is (drafts/ or one up, migrationFile).
 import { test } from 'node:test';
 import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { prodShaped072, TRG } from './prod-shaped-072.mjs';
-import { migrationFile, DRAFTS, MIGRATIONS } from '../lib/db.mjs';
+import { migrationFile } from '../lib/db.mjs';
 import { IDS as IDS_073B } from '../../worker/migrations/drafts/tools/build-073b.mjs';
 import { NEW_IDS, OLD, REWRITTEN_IDS } from '../../worker/migrations/drafts/tools/build-074.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const read = (f) => fs.readFileSync(migrationFile(f), 'utf8');
 const fixture = (f) => fs.readFileSync(path.join(HERE, 'fixtures', f), 'utf8');
-const has074a = () => ['074a_plan_reads.sql'].some((f) => fs.existsSync(path.join(DRAFTS, f)) || fs.existsSync(path.join(MIGRATIONS, f)));
-
-// plan Task A / B1, verbatim interface: an EMPTY plan_config (id 1 only, a Saturday, opened_at / opened_by), the
-// read of day L, the Worker's read, and plan_lookups (only its existence is 074's business).
-const STAND_IN_074A = `
-CREATE TABLE public.plan_config (
-  id smallint PRIMARY KEY CHECK (id = 1),
-  cutover_day date NOT NULL CHECK (extract(isodow from cutover_day) = 6),
-  opened_at timestamptz NOT NULL,
-  opened_by text NOT NULL);
-ALTER TABLE public.plan_config ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON public.plan_config FROM PUBLIC, anon, authenticated, service_role;
-GRANT SELECT ON public.plan_config TO tms_check_runner, tms_reader;
-CREATE POLICY monitor_read ON public.plan_config FOR SELECT TO tms_check_runner, tms_reader USING (true);
-CREATE FUNCTION public.plan_cutover_day() RETURNS date LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS
-  $f$ select cutover_day from plan_config where id = 1 $f$;
-CREATE FUNCTION public.plan_config_read() RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS
-  $f$ select coalesce((select jsonb_build_object('cutover_day', cutover_day, 'opened_at', opened_at) from plan_config where id = 1),
-                      jsonb_build_object('cutover_day', null)) $f$;
-CREATE FUNCTION public.plan_lookups(p_role text) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS
-  $f$ select '{}'::jsonb $f$;
-REVOKE ALL ON FUNCTION public.plan_cutover_day(), public.plan_config_read(), public.plan_lookups(text) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.plan_config_read(), public.plan_lookups(text) TO service_role;`;
 
 // The test rows of the old model at their production ids (074 PART 7 refuses any other live row of these kinds).
 // The v1 money fixture's national order and its National load (073's proof of today's money) are not production's:
@@ -70,7 +45,7 @@ function nextSaturday() {
 }
 const withL = (sql, L) => { assert.ok(sql.includes(L_CONST), 'the Q-1 constant'); return sql.replace(L_CONST, `DATE '${L}'`); };
 
-async function base({ standIn = true } = {}) {
+async function base() {
   const db = await prodShaped072(true, { money: 'live', with072b: true });
   await db.exec(fixture('v1-money-073.sql'));
   await db.exec(read('073_plan_money.sql'));
@@ -79,8 +54,7 @@ async function base({ standIn = true } = {}) {
   await db.exec(read('073b_plan_monitoring.sql'));
   await db.exec(fixture('live-074.sql'));
   await db.exec(`UPDATE monitoring.checks SET red_value = (${TRG}) WHERE id = 'B-54'`);   // + the 5 triggers of live-074.sql
-  if (has074a()) await db.exec(read('074a_plan_reads.sql'));
-  else if (standIn) await db.exec(STAND_IN_074A);
+  await db.exec(read('074a_plan_reads.sql'));   // 074a as executed (PR #120): plan_config empty, plan_lookups, ...
   await db.exec(PROD_TESTS);
   return db;
 }
@@ -474,6 +448,8 @@ async function seedBefore(db, L) {
   // B3: an export of hub day L that loaded on Friday - its NL already Delivered (030 on In Transit): Q-3, unlinked by
   // the backfill (never legacy_executed there) and listed for the desk
   await db.exec(`UPDATE national_loads SET status = 'Delivered' WHERE legacy_id = 'rec74NB3'`);
+  // B1: its old NL Cancelled (still live): unlinked, but nothing to re-record - no notice, not in the list
+  await db.exec(`UPDATE national_loads SET status = 'Cancelled' WHERE legacy_id = 'rec74NB1'`);
   // B8: a VS without a hub day (spec 2.3): no bridge, its NL stays
   await db.exec(`UPDATE orders SET cross_dock_date = NULL WHERE reference = 'B6'`);
 }
@@ -539,7 +515,6 @@ test('Task 0 Step 6 / C41: a v5 leg can be planned with a past window (the Frida
 test('074 on the production-shaped copy', async (t) => {
   const L = nextSaturday();
   const db = await base();
-  if (!has074a()) t.diagnostic('074a_plan_reads.sql not in the tree yet: the plan Task A / B1 interface stand-in is used');
   await seedBefore(db, L);
   const src = withL(read('074_plan_cutover.sql'), L);
   const trg0 = await n(db, TRG);
@@ -575,6 +550,7 @@ test('074 on the production-shaped copy', async (t) => {
     // Q-3: the NL with a vehicle is listed and the desk is told
     assert.strictEqual(await noticesOf(db, 'B5', 'legacy_nl_replaced'), 1);
     assert.strictEqual(await noticesOf(db, 'B3', 'legacy_nl_replaced'), 1);   // Delivered on Friday, no vehicle
+    assert.strictEqual(await noticesOf(db, 'B1', 'legacy_nl_replaced'), 0);   // Cancelled: nothing to re-record
     // C37: exactly the test rows, nothing else
     assert.strictEqual(await n(db, `SELECT count(*) FROM national_orders WHERE deleted_at IS NULL`), 0);
     assert.strictEqual(await n(db, `SELECT count(*) FROM national_loads WHERE deleted_at IS NULL AND source_type <> 'Direct'`), 0);
