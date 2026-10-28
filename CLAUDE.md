@@ -162,7 +162,9 @@ cd worker && CLOUDFLARE_API_TOKEN=$CF_API_TOKEN npx wrangler deploy
    - επεξεργασία εθνικής παραγγελίας (077 + Worker 6b7a04f4, ζωντανό 28/10): `rpc: "plan_order_read" (077, F13)`
      (σημαία `--edit`, ακριβώς μία φορά)
    Μία εντολή για όλα, πριν και μετά: `node worker/tools/worker-guard.mjs <bundle ή λήψη CF> --plan 2 --handover 1 --f3 1 --f5 1 --edit 1`
-   (ξετυλίγει το multipart· `GUARD OK (29 markers, plan=2, handover=1, f3=1, f5=1, edit=1)`). Χωρίς `--handover`, ή με όρισμα που
+   (ξετυλίγει το multipart· `GUARD OK (29 markers, plan=2, handover=1, f3=1, f5=1, edit=1)`).
+   Μετά από επείγουσα επαναφορά `wrangler rollback bacc4240-f28c-48ea-bd9d-41ebf43e8aae` (χωρίς την 077· η 077 μένει,
+   η φόρμα λέει «δεν διαβάστηκε»): `--edit 0`, `GUARD OK (29 markers, plan=2, handover=1, f3=1, f5=1, edit=0)`. Χωρίς `--handover`, ή με όρισμα που
    δεν ξέρει, το εργαλείο σταματά με exit 2, ποτέ «OK». Το `--f3` είναι **προαιρετικό** στο εργαλείο: χωρίς αυτό
    ελέγχει 16 σημάδια και **δεν** κοιτά τα τέσσερα της Φ3, άρα το `--f3 1` γράφεται πάντα.
    Με `--plan 1` ΣΤΑΜΑΤΑ και αν βρει `PLAN_WRITES_OPEN = true` οπουδήποτε στο bundle (ως την ημέρα L).
