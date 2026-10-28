@@ -3003,6 +3003,17 @@ function f27Board() {
   b.cycles.push(bCycle(209, { truck_id: 15, truck: 'TST-2107', trailer_id: 25, trailer: 'TRL-5105', driver_id: 35, driver: 'Driver Test 05' }, [
     bStop(2091, 'KATHODOS', 5, '2026-10-14', '06:00', '08:00', [bLeg(6091, 5191, 'load', 5)]),
     bStop(2092, 'KATHODOS', 2, '2026-10-15', '10:00', '12:00', [bLeg(6091, 5191, 'unload', 5)]) ]));
+  // code review r2: VS-T521 has no cross_dock_date (nat_due_day null) → the owner's rule, loading + 1, said «εκτίμηση»;
+  // VS-T531 is picked up Tue and reaches Veroia Thu, so TST-2107 (free Tue, on the road Wed, free Thu from 12:00) is not
+  // offered; RT-T211 (Tue, no vehicle) already has its ΑΝΟΔΟΣ Veroia stop on Tue; N-T701 is a national at Veroia (its
+  // nat_ready_day Mon 12/10 is the supplier's day, not a Veroia day)
+  b.waiting.push(exp({ piece_id: 4521, order_id: 2521, order_stop_id: 6521, pallets: 3, reference: 'VS-T521', nat_due_day: null }));
+  b.waiting.push(exp({ piece_id: 4531, order_id: 2531, order_stop_id: 6531, pallets: 6, reference: 'VS-T531', nat_due_day: '2026-10-15' }));
+  b.cycles.push(bCycle(211, {}, [
+    bStop(2111, 'ANODOS', 3, '2026-10-13', '08:00', '10:00', [bLeg(6111, 5211, 'load', 4)]),
+    bStop(2112, 'ANODOS', 1, '2026-10-13', '18:00', '20:00', [bLeg(6111, 5211, 'unload', 4)]) ]));
+  b.hub.push(bHub(4701, Object.assign({ kind: 'national', nat_order_id: 3701, pallets: 5, reference: 'N-T701', client: 'ΠΕΛΑΤΗΣ Ε', client_id: 45, temperature_c: 4,
+    nat_ready_day: '2026-10-12', nat_due_day: '2026-10-15' }, e26(2, '2026-10-15', '08:00', '10:00'))));
   return b;
 }
 SCN.f27 = async (browser, origin) => {
@@ -3108,6 +3119,42 @@ SCN.f27 = async (browser, origin) => {
     ok(scn, '«+» stock: the line names no «Βέροια Δευ», the Veroia stop on Wed 14/10 08:00–10:00', !/Βέροια Δευ/.test(line)
       && !!h && h.planned_from === '2026-10-14T08:00:00+03:00' && h.planned_to === '2026-10-14T10:00:00+03:00', { line, stops: legsStops(S) });
     ok(scn, 'no page errors (6)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // 7 · code review r2: a national at Veroia (N-T701, supplier day Mon 12/10) in the same «+» of RT-T209 (Wed 14/10):
+    // its nat_ready_day is no Veroia day, so the loading goes on the cycle's day, as before F27
+    const { page, S } = await bOpen(browser, origin, { board: f27Board() });
+    await page.evaluate(() => WN5Act.plus(209, 'KATHODOS', document.querySelector('#content .wn5 .wn5-row[data-rt="209"]')));
+    await page.waitForTimeout(400);
+    await page.fill(`${P} input[data-hub="from"]`, '08:00').catch(() => {});
+    await page.fill(`${P} input[data-hub="to"]`, '10:00').catch(() => {});
+    await page.waitForTimeout(200);
+    await bClick(page, `${P} [data-act="save"][data-piece="4701"]`);
+    await page.waitForTimeout(400);
+    const h = hubStop(legsStops(S));
+    ok(scn, '«+» national at Veroia: the Veroia stop on the cycle\'s Wed 14/10, never its supplier\'s Mon 12/10', !!h && h.planned_from === '2026-10-14T08:00:00+03:00', legsStops(S));
+    ok(scn, 'no page errors (7)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // 8 · code review r2: no cross_dock_date → the owner's rule (export = loading + 1), named as an estimate
+    const { page, S } = await bOpen(browser, origin, { board: f27Board() });
+    await bClick(page, '#content .wn5 .wn5-row[data-piece="4521"] .wi4-box.un');
+    await page.waitForTimeout(500);
+    const lab = await hubLabel(page, D);
+    ok(scn, 'VS without cross-dock: «Άφιξη Βέροιας · Τετ 14/10 (εκτίμηση) *», never the pickup day silently', !!lab && lab[0] === 'Άφιξη Βέροιας · Τετ 14/10 (εκτίμηση) *', lab);
+    // RT-T211 (Tue) already stops at Veroia on Tue: «Ένωση» joins that stop, and its line says the day is not the VS's
+    const warn = await bText(page, `${D} .wn5-cand[data-line="rt"]:has([data-cand="rt:211"])`);
+    ok(scn, 'the Tue cycle with its own Veroia stop on Tue warns «Βέροια Τρί, όχι Τετ»', /Βέροια Τρί, όχι Τετ/.test(warn), warn);
+    ok(scn, 'no page errors (8)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // 9 · code review r2: VS-T531 picked up Tue, at Veroia Thu: TST-2107 is on the road Wed (free Tue, free Thu from 12:00)
+    const { page, S } = await bOpen(browser, origin, { board: f27Board() });
+    await bClick(page, '#content .wn5 .wn5-row[data-piece="4531"] .wi4-box.un');
+    await page.waitForTimeout(500);
+    ok(scn, 'a truck busy on a day between pickup and Veroia (TST-2107, Wed) is not offered; TST-2108 is',
+      !(await bHas(page, `${D} [data-cand="truck:15"]`)) && await bHas(page, `${D} [data-cand="truck:14"]`));
+    ok(scn, 'no page errors (9)', !S.pageErrors.length, S.pageErrors);
     await page.context().close();
   }
 };
