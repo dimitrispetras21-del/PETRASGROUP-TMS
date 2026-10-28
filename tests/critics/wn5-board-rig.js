@@ -1094,7 +1094,13 @@ async function scnAssign(browser, origin) {
       ? planErr(422, 'PLAN_RULE', 'truck_busy') : planErr(409, 'WRITES_CLOSED', 'writes_closed')) } });
     await bClick(page, B_QVS);
     await bClick(page, `${D} [data-act="pick"][data-cand="truck:14"]`);
-    ok(scn, 'a free truck needs the Veroia window: «Ανάθεση» disabled until it is typed (no default)', (await bOff(page, `${D} [data-act="save"][data-cand="truck:14"]`)) === true);
+    // F12 (live 28/10): the window the shipment already has (14:00–17:00 at Veroia, the assignment's day) fills the field;
+    // emptied, «Ανάθεση» locks again — the screen still invents no hour (Ε-5)
+    const pre = await page.evaluate((d) => [...document.querySelectorAll(`${d} input[data-hub]`)].map((i) => i.value), D);
+    await page.fill(`${D} input[data-hub="from"]`, '', { timeout: 2000 }).catch(() => {});
+    await page.fill(`${D} input[data-hub="to"]`, '', { timeout: 2000 }).catch(() => {});
+    ok(scn, 'a free truck: the Veroia window comes from the shipment (14:00 – 17:00, F12); emptied, «Ανάθεση» is disabled (no invented hour)',
+      pre.join('|') === '14:00|17:00' && (await bOff(page, `${D} [data-act="save"][data-cand="truck:14"]`)) === true, pre);
     // quiet on a tree without the window (plain main): a missing field is the ✗ of the checks below, never a 30 s abort
     await page.fill(`${D} input[data-hub="from"]`, '16:00', { timeout: 2000 }).catch(() => {});
     await page.fill(`${D} input[data-hub="to"]`, '18:00', { timeout: 2000 }).catch(() => {});
@@ -2518,6 +2524,98 @@ SCN.live45 = async (browser, origin) => {
   const l2 = nL();
   ok(scn, '1 · after a failure: a write\'s reload does not ask the catalogue again, the user\'s ↻ does', l0 === 1 && l1 === 1 && l2 === 2, { l0, l1, l2 });
   await f.page.context().close();
+};
+// Live F6 (28/10, real-user test): a national order waiting for a vehicle had no way to its card (edit / delete) — only
+// a cycle's ✈ «Άνοιγμα παραγγελιών» opened it. And 075's waiting[].direction: a national whose ends are both outside
+// the hub goes on its own direction's side, on the board AND in the assignment window (one rule, WN5L.waitSide).
+SCN['live-f6'] = async (browser, origin) => {
+  const scn = 'live-f6';
+  const b = live45();
+  const nat = (o) => Object.assign({ kind: 'national', order_id: null, overdue: false, is_stock: false, leave_by: null, pallet_exchange: false, temperature_c: null,
+    load_from: null, load_to: null, deliver_from: null, deliver_to: null, nat_ready_day: '2026-10-12', nat_due_day: '2026-10-12', price: null }, o);
+  b.waiting.push(nat({ piece_id: 31, shipment_id: 31, nat_order_id: 17, client_id: 45, client: 'ΠΕΛΑΤΗΣ ΕΘ 17', pallets: 10, nat_from_location_id: 6, nat_to_location_id: 2, position_location_id: 6 }));
+  b.waiting.push(nat({ piece_id: 32, shipment_id: 32, nat_order_id: 18, client_id: 46, client: 'ΠΕΛΑΤΗΣ ΕΘ 18', pallets: 12, nat_from_location_id: 5, nat_to_location_id: 3, position_location_id: 5, direction: 'ANODOS' }));
+  const { page, S } = await openBoard(browser, origin, { board: b });
+  await page.waitForSelector('#content > .wi4.wn5[data-state="ok"]', { timeout: 8000 }).catch(() => {});
+  const r = await page.evaluate(() => {
+    const row = (p) => document.querySelector(`#content .wn5 .wn5-row[data-piece="${p}"]`);
+    const plane = (p) => !!(row(p) && row(p).querySelector('.wn5-c-idx .wi4-plane[data-act="ocard"]'));
+    return { n17: plane(31), n18: plane(32), vs: plane(20) || plane(15),
+      d18: row(32) ? { kpts: row(32).querySelectorAll('.wn5-kto .wn5-pt, .wn5-fl .wn5-pt').length, apts: row(32).querySelectorAll('.wn5-afl .wn5-pt').length } : null,
+      d17: row(31) ? { kpts: row(31).querySelectorAll('.wn5-kto .wn5-pt').length, apts: row(31).querySelectorAll('.wn5-afl .wn5-pt').length } : null,
+      side18: typeof WN5Act !== 'undefined' && WN5Act._kit && WN5Act._kit.sideFor ? WN5Act._kit.sideFor((WN5.state().board.waiting || []).find((x) => x.piece_id === 32)) : null };
+  });
+  ok(scn, 'F6 · a waiting national order (#17, #18) has the ✈ of its card; a VS row has none (the Weekly International owns it)', r.n17 && r.n18 && !r.vs, r);
+  await page.click('#content .wn5 .wn5-row[data-piece="31"] .wi4-plane[data-act="ocard"]').catch(() => {});
+  await page.waitForTimeout(500);
+  const card = await page.evaluate(() => { const d = document.querySelector('.wi4-dlg.wn5-ocard'); return d ? { t: d.querySelector('.wi4-dlg-hd').textContent.replace(/\s+/g, ' '), edit: !!d.querySelector('[data-act="edit"]'), del: !!d.querySelector('[data-act="delete"]') } : null; });
+  ok(scn, 'F6 · ✈ opens the order card of #17 with «Επεξεργασία» and «Διαγραφή παραγγελίας»', !!card && /ΠΕΛΑΤΗΣ ΕΘ 17/.test(card.t) && card.edit && card.del, card);
+  ok(scn, '075 · #18 (Thessaloniki → Aspropyrgos, direction ANODOS) sits on ΑΝΟΔΟΣ; #17 (no direction) on ΚΑΘΟΔΟΣ as before',
+    !!r.d18 && r.d18.apts >= 1 && r.d18.kpts === 0 && !!r.d17 && r.d17.kpts >= 1 && r.d17.apts === 0, { d17: r.d17, d18: r.d18 });
+  ok(scn, '075 · the assignment window takes the same side (WN5Act._kit.sideFor = ANODOS for #18)', r.side18 === 'ANODOS', r.side18);
+  ok(scn, 'nothing written: only the board read on /plan/*', S.plan.every((x) => x.m === 'GET'), S.plan.map((x) => x.m + ' ' + x.path));
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await page.context().close();
+};
+// Live F11 / F7 / F12 (28/10, real-user test): a save whose board read fails must say the save happened and mark the
+// rows old (never «ΣΦΑΛΜΑ» alone, an invitation to assign twice); «Ανάθεση · #17 → …» when an order has no reference;
+// the Veroia window the order already has fills Δ1's field; the order card shows the price / PE the legs carry (074)
+// and does not repeat the client under each delivery.
+SCN['live-f11'] = async (browser, origin) => {
+  const scn = 'live-f11';
+  const b = live45();
+  b.waiting.push({ piece_id: 31, shipment_id: 31, kind: 'national', nat_order_id: 17, order_id: null, client_id: 45, client: 'ΠΕΛΑΤΗΣ ΕΘ 17', reference: null, pallets: 10,
+    nat_from_location_id: 6, nat_to_location_id: 2, position_location_id: 6, nat_ready_day: '2026-10-12', nat_due_day: '2026-10-12', overdue: false, is_stock: false,
+    leave_by: null, pallet_exchange: false, temperature_c: null, price: 1, load_from: '2026-10-12T08:00:00+03:00', load_to: '2026-10-12T10:00:00+03:00', deliver_from: '2026-10-12T14:00:00+03:00', deliver_to: '2026-10-12T16:00:00+03:00' });
+  b.hub.push({ piece_id: 33, shipment_id: 33, kind: 'national', nat_order_id: 19, order_id: null, client_id: 47, client: 'ΠΕΛΑΤΗΣ ΕΘ 19', reference: 'N-19', pallets: 9,
+    nat_to_location_id: 4, nat_ready_day: '2026-10-12', nat_due_day: '2026-10-12', overdue: false, is_stock: false, for_split: false, inbound_rt_id: null, leave_by: null,
+    pallet_exchange: true, temperature_c: null, load_from: '2026-10-12T07:00:00+03:00', load_to: '2026-10-12T09:30:00+03:00', deliver_from: '2026-10-12T15:00:00+03:00', deliver_to: '2026-10-12T17:00:00+03:00' });
+  let boards = 0;
+  const plan = { 'GET /plan/board': (e) => (++boards === 2 ? planErr(503, 'SLOW', 'slow') : [200, Object.assign(clone(b), { week: e.q.week })]) };
+  const { page, S } = await openBoard(browser, origin, { board: b, plan });
+  await page.waitForSelector('#content > .wi4.wn5[data-state="ok"]', { timeout: 8000 }).catch(() => {});
+  // F7 · the Δ1 title of #17 (no reference)
+  await page.click('#content .wn5 .wn5-row[data-piece="31"] .wi4-box.un').catch(() => {});
+  await page.waitForTimeout(700);
+  const t17 = await page.evaluate(() => { const d = document.querySelector('.wi4-dlg .wi4-dlg-t'); return d ? d.textContent : null; });
+  ok(scn, 'F7 · «Ανάθεση · #17 → Rentis Test» — the order number when there is no reference, never «— →»', !!t17 && /^Ανάθεση · #17 → Rentis Test/.test(t17), t17);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
+  // F12 · the Veroia window of #19 (a national loading at Veroia, its shipment 07:00–09:30) fills Δ1's field
+  await page.click('#content .wn5 .wn5-row[data-piece="33"] .wi4-box.un').catch(() => {});
+  await page.waitForTimeout(700);
+  const hw = await page.evaluate(() => { const f = document.querySelector('.wi4-dlg [data-hub="from"]'), t = document.querySelector('.wi4-dlg [data-hub="to"]'); return f && t ? [f.value, t.value, f.disabled || t.disabled] : null; });
+  ok(scn, 'F12 · Δ1 «Παράθυρο φόρτωσης Βέροιας» of #19 = 07:00 – 09:30 from its shipment, still editable', !!hw && hw[0] === '07:00' && hw[1] === '09:30' && !hw[2], hw);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
+  // F11 · a save's board read fails (503): the strip says it was saved, the rows are marked old, «Ανανέωση» clears it
+  await page.evaluate(() => WN5.reload('save'));
+  await page.waitForTimeout(400);
+  const st = await page.evaluate(() => { const r = document.querySelector('#content .wn5'); const x = r && r.querySelector('.wn5-strip[data-stale]'); return { stale: r && r.dataset.stale, strip: x ? x.textContent.replace(/\s+/g, ' ') : null, rows: document.querySelectorAll('#content .wn5 .wn5-row').length, op: getComputedStyle(document.getElementById('wn5-rows')).opacity }; });
+  ok(scn, 'F11 · a failed read after a save: «ΑΠΟΘΗΚΕΥΤΗΚΕ · Ο ΠΙΝΑΚΑΣ ΔΕΝ ΑΝΑΝΕΩΘΗΚΕ», «μην την ξανακάνεις», rows kept and dimmed',
+    st.stale === '1' && !!st.strip && /ΑΠΟΘΗΚΕΥΤΗΚΕ · Ο ΠΙΝΑΚΑΣ ΔΕΝ ΑΝΑΝΕΩΘΗΚΕ/.test(st.strip) && /μην την ξανακάνεις/.test(st.strip) && /rig sentinel slow/.test(st.strip) && st.rows > 0 && Number(st.op) < 1, st);
+  await page.evaluate(() => WN5.reload('user'));
+  await page.waitForTimeout(400);
+  const st2 = await page.evaluate(() => ({ stale: (document.querySelector('#content .wn5') || {}).dataset ? document.querySelector('#content .wn5').dataset.stale || null : null, strip: !!document.querySelector('#content .wn5 .wn5-strip[data-stale]') }));
+  ok(scn, 'F11 · «Ανανέωση» that reads the board clears the stale mark', !st2.stale && !st2.strip, st2);
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await page.context().close();
+  // F12 · the card of an ASSIGNED order (from a cycle): price and PE from its legs (074), no client under the delivery
+  const fx = fixture();
+  for (const c of fx.cycles) for (const s0 of c.stops) for (const l of s0.legs) if (l.nat_order_id === 3001) Object.assign(l, { price: 1, pallet_exchange: false });
+  const c2 = await openBoard(browser, origin, { board: fx });
+  await c2.page.waitForSelector('#content > .wi4.wn5[data-state="ok"]', { timeout: 8000 }).catch(() => {});
+  await c2.page.evaluate(() => WN5Act.orderCard(3001));
+  await c2.page.waitForTimeout(400);
+  const card = await c2.page.evaluate(() => {
+    const d = document.querySelector('.wi4-dlg.wn5-ocard'); if (!d) return null;
+    const kv = [...d.querySelectorAll('.wn5-kv')].map((x) => [x.querySelector('span').textContent, x.querySelector('b').textContent.replace(/\s+/g, ' ')]);
+    return kv;
+  });
+  const val = (k) => (card || []).filter((x) => x[0] === k).map((x) => x[1]);
+  ok(scn, 'F12 · assigned order card: «Τιμή 1 € …» and «PE Όχι» from the legs, never «—»', /^1 € \(χωρίς ΦΠΑ\)/.test(val('Τιμή')[0] || '') && val('PE')[0] === 'Όχι', { price: val('Τιμή'), pe: val('PE') });
+  ok(scn, 'F12 · «Παράδοση» names the place, the day and the window, not the client again', val('Παράδοση').length > 0 && val('Παράδοση').every((v) => !/ΠΕΛΑΤΗΣ Α/.test(v)), val('Παράδοση'));
+  await c2.page.context().close();
 };
 // ── main ──
 (async () => {

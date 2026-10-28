@@ -70,6 +70,11 @@ let _idsErr = null;      // GET /plan/lookups failed: place names cannot be read
 let _idsOk = false;      // the catalogue is loaded: only then are ids named (a pending one is not «unknown id»)
 let _idsFailAt = 0;      // when it last failed: asked again after 60 s or on the user's ↻, never on every reload
 let _idsForce = false;   // the user's ↻ (reload('user')) asks again at once
+let _stale = null;       // a save landed but the board read after it failed: {at} — the rows show the state BEFORE it (F11)
+// The reload reasons of a write that the base has CONFIRMED (a 200): if the read after one fails, the screen must not
+// look as if the save did not happen (live F11, 28/10: a 503 after «Ανάθεση» left «ΠΡΟΣ ΑΝΑΘΕΣΗ» on screen and invited
+// a second assignment). Every caller of WN5.reload after a confirmed write uses one of these.
+const SAVE_RELOADS = Object.freeze(['save', 'handover', 'order-saved', 'segment-removed']);
 let _closed = null;      // the first writes_closed answer of the session (Ε-6; set by markClosed)
 let _qAll = false;       // «Όλα N ▾» of the ΕΠΟΜΕΝΑ band
 let _qRaw = '';          // the search text, memory only; cleared when the week changes (Ε-25)
@@ -170,7 +175,7 @@ function _week(n) {
   window.WNATL.week = v;
   window.renderWeeklyNatl();
 }
-function _onWeekChange() { _closedDays.clear(); _qAll = false; _qRaw = ''; _sIdx = 0; _noteErr = null; }
+function _onWeekChange() { _closedDays.clear(); _qAll = false; _qRaw = ''; _sIdx = 0; _noteErr = null; _stale = null; }
 
 // ═══ Load ═══
 // No reportPageMetrics under v5 (F4α T10): the metrics audit (modules/metrics_audit.js) compares the OLD board's
@@ -214,7 +219,7 @@ async function render() {
     _logErr(new Error(err.message), 'weekly natl v5: board week');
   }
   if (err) { _state = 'err'; _lastErr = err; }
-  else { _board = board; _okAt = new Date(); _state = _isEmpty(board) ? 'empty' : 'ok'; }
+  else { _board = board; _okAt = new Date(); _state = _isEmpty(board) ? 'empty' : 'ok'; _stale = null; }
   if (!paint()) return _fallback();
 }
 // Empty = the three lists that make rows came back empty (a malformed list is not «empty»: WN5L.model refuses it).
@@ -226,7 +231,10 @@ function _isEmpty(b) {
 async function reload(reason) {
   if (reason === 'user') _idsForce = true;   // the user's ↻ also asks the catalogue again, at once
   await render();
-  return _state === 'ok' || _state === 'empty' ? _m : null;
+  const ok = _state === 'ok' || _state === 'empty';
+  // a confirmed save whose read failed: the strip says the save happened and the rows are old (F11, principle 1)
+  if (!ok && SAVE_RELOADS.includes(reason) && _state === 'err' && active()) { _stale = { at: new Date() }; paint(); }
+  return ok ? _m : null;
 }
 // request_reused (F2 note 1): the first send WAS saved but no ids came back — read the board again and find it.
 // pred receives the WHOLE re-read board JSON ({week, cycles, waiting, hub, notices}) and returns the found
@@ -350,7 +358,7 @@ function _rootHTML() {
   // the counters say «…» / «—» (known = false), never «καμία φόρτωση» or 0 (Δ12 πλακ. 2–3).
   const m = _m || L().model({ week: _sat, cycles: [], waiting: [], hub: [], notices: [] }, { today: _today() });
   const known = !!_m;
-  return `<div class="wi4 wn5" data-week="${_esc(_sat)}" data-state="${_esc(_state)}">`
+  return `<div class="wi4 wn5" data-week="${_esc(_sat)}" data-state="${_esc(_state)}"${_stale && _state === 'err' ? ' data-stale="1"' : ''}>`
     + _barHTML() + _errHTML() + (known ? _idsHTML() + _shapeHTML(m) : '') + _boardHTML(m, known) + '</div>';
 }
 function _barHTML() {
@@ -404,6 +412,13 @@ function _hhmm(d) { return `${String(d.getHours()).padStart(2, '0')}:${String(d.
 // Δ12 πλακ. 3: the Worker's message as it came, what it does NOT mean, and the one way on — a press, never a timer.
 function _errHTML() {
   if (_state !== 'err' || !_lastErr) return '';
+  // F11: the save is done, only the read after it failed — never «ΣΦΑΛΜΑ» alone, which reads as «not saved»
+  if (_stale) {
+    return `<div class="wn5-strip" data-kind="stale" data-stale="1" role="alert"><b>ΑΠΟΘΗΚΕΥΤΗΚΕ · Ο ΠΙΝΑΚΑΣ ΔΕΝ ΑΝΑΝΕΩΘΗΚΕ</b>`
+      + `<span>Η αλλαγή γράφτηκε (${_hhmm(_stale.at)}), αλλά η ανάγνωση μετά απέτυχε: ${_esc(_lastErr.message)}</span>`
+      + '<span class="wn5-strip-sub">Οι σειρές δείχνουν την κατάσταση ΠΡΙΝ από την αλλαγή — μην την ξανακάνεις· πάτα Ανανέωση</span>'
+      + '<button type="button" class="wi4-link wn5-strip-act" data-act="reload" onclick="WN5.reload(\'user\')">Ανανέωση <span class="wn5-ico-re" aria-hidden="true">↻</span></button></div>';
+  }
   const last = _okAt ? ` · Τελευταία πλήρης ${_hhmm(_okAt)}` : '';
   return `<div class="wn5-strip" data-kind="${_esc(_lastErr.kind || 'failed')}" role="alert"><b>ΣΦΑΛΜΑ</b><span>${_esc(_lastErr.message)}</span>`
     + `<span class="wn5-strip-sub">${_board ? 'Ό,τι ήρθε πριν μένει στην οθόνη' : 'Η εβδομάδα δεν διαβάστηκε — δεν σημαίνει ότι είναι άδεια'}${last}</span>`
@@ -555,7 +570,11 @@ function _rowHTML(r, m, no) {
   const ids = r.rtId != null ? ` data-rt="${_id(r.rtId)}"` : ` data-piece="${_id(r.pieceIds[0])}"`;
   let h = `<div class="wn5-row${rail}${_dc(ok && r.rowDim)}" data-key="${_esc(r.key)}" data-qi="${_esc(r.key)}"${ids}>`
     + `<div class="wn5-c-idx"><span class="wi4-no">${n == null ? '' : n}</span>`
-    + (r.rtId != null ? `<button type="button" class="wi4-plane" title="Ενέργειες σειράς" aria-haspopup="menu" onclick="WN5.rowMenu(event, ${_id(r.rtId)})">${PLANE}</button>` : '')
+    + (r.rtId != null ? `<button type="button" class="wi4-plane" title="Ενέργειες σειράς" aria-haspopup="menu" onclick="WN5.rowMenu(event, ${_id(r.rtId)})">${PLANE}</button>`
+      // a national order waiting for a vehicle (waiting[] or hub[]): the same order card as a cycle's «Άνοιγμα
+      // παραγγελιών» (Επεξεργασία, Διαγραφή) — without it an order could not be fixed or deleted before it was on a
+      // truck (live F6, 28/10). A VS is the international's order: it changes in the Weekly International.
+      : r.kind === 'unassigned' && r.group && _id(r.group.nat_order_id) ? `<button type="button" class="wi4-plane" title="Καρτέλα παραγγελίας" data-act="ocard" onclick="WN5._orderCard(event, ${_id(r.group.nat_order_id)})">${PLANE}</button>` : '')
     + '</div>'
     + _kathHTML(r, m, ok)
     + `<div class="wn5-asg">${r.segSource === 'segments' && r.tiles.length > 1 ? _tilesHTML(r) : r.tiles.map((t) => _boxHTML(t, r)).join('')}${_cpyHTML(r)}</div>`
@@ -704,6 +723,12 @@ function _cpyHTML(r) {
   const pl = _platesOf(r.rtId);
   if (!pl) return '';
   return `<button type="button" class="wn5-cpy" title="Αντιγραφή πινακίδων: ${_esc(pl)}" aria-label="Αντιγραφή πινακίδων ${_esc(pl)}" onclick="WN5._cpy(event, ${_id(r.rtId)})">${COPY}</button>`;
+}
+// ✈ of a waiting national order (live F6, 28/10): its card, the one T18 built for a cycle's orders.
+function _orderCard(ev, natOrderId) {
+  try { if (ev && ev.stopPropagation) ev.stopPropagation(); } catch (_) {}
+  if (!active() || !ID_RE.test(String(natOrderId)) || typeof WN5Act === 'undefined') return;
+  WN5Act.orderCard(Number(natOrderId));
 }
 // «Αντιγράφηκε» over the glyph (2011:9282) only when the clipboard took the text: a refusal is copyPlates' own box.
 function _cpy(ev, rtId) {
@@ -1290,6 +1315,7 @@ const WN5 = {
   _noteRead,
   _leg,
   _cpy,
+  _orderCard,
   MENU_ITEMS: [
     // T18: the orders of the cycle with their number (Figma 2011:8858 «Άνοιγμα παραγγελιών 4»); delete lives in the
     // order card only (owner 19/10)

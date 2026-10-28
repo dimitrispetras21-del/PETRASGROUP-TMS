@@ -276,6 +276,17 @@ function _loadDay(w) {
   if (d || !DAY_RE.test(String(w.nat_due_day || ''))) return d;
   return w.kind === 'vs_import' ? _addDays(w.nat_due_day, -1) : w.nat_due_day;
 }
+// The side a waiting piece goes on — ONE rule for the board's row and the assignment window (wn5_actions _sideFor):
+// standing at the hub = ΚΑΘΟΔΟΣ; towards the hub (a vs_export, or nat_to = hub) = ΑΝΟΔΟΣ; neither end the hub = the
+// order's own direction (075: plan_board's waiting[].direction, from the form's «Κατεύθυνση»; 072 never stored it),
+// and with no direction (before 075, or never chosen) ΚΑΘΟΔΟΣ as before.
+function waitSide(w, hubId) {
+  if (!w) return 'KATHODOS';
+  const hub = hubId != null ? Number(hubId) : null;
+  if (w._atHub === true || w.at_hub === true || (hub != null && Number(w.nat_from_location_id) === hub)) return 'KATHODOS';
+  if (w.kind === 'vs_export' || (hub != null && w.nat_to_location_id != null && Number(w.nat_to_location_id) === hub)) return 'ANODOS';
+  return w.direction === 'ANODOS' || w.direction === 'KATHODOS' ? w.direction : 'KATHODOS';
+}
 // A load without a vehicle is a «ΠΡΟΣ ΑΝΑΘΕΣΗ» row of its order (all its pieces: a VS with two deliveries is one
 // row with two points, Figma 2011:7745 VS-118) — one row because the base assigns the order whole (072
 // plan_put_group: «a group is its waiting pieces, whole»). Its side: towards the hub = ΑΝΟΔΟΣ, else ΚΑΘΟΔΟΣ.
@@ -287,7 +298,7 @@ function _waitRow(list, hubId, errors, nameOf) {
   // Decided over ALL the pieces, never by the lowest one: a groupage may load at Veroia AND elsewhere (Ε-19 N×1),
   // and then the row has the «Βέροια» head and one loading point per other place.
   const hubWs = ws.filter(atHub), outWs = ws.filter((w) => !atHub(w));
-  const anodos = !hubWs.length && (w0.kind === 'vs_export' || (hubId != null && Number(w0.nat_to_location_id) === hubId));
+  const anodos = !hubWs.length && waitSide(w0, hubId) === 'ANODOS';
   // Each piece is a point at ITS place (074a: every waiting / hub item names nat_from / nat_to): the loading place of an
   // ΑΝΟΔΟΣ, the delivery place of a ΚΑΘΟΔΟΣ, with the client before it («ΠΕΛΑΤΗΣ · τόπος», Figma H1). A place the
   // catalogue cannot name is «—» and a line of the board's error strip (nameOf), never the client in its place.
@@ -449,6 +460,6 @@ function handoversOf(cycle) {
   return out;
 }
 
-const WN5L = freeze({ model, segmentsOf, stopSegments, handoversOf, searchParts, cycleNumbers, capacity, stopRank, hubFromBoard, athensDay, athensTime, CAP, HUB_UNKNOWN, ShapeError });
+const WN5L = freeze({ model, waitSide, segmentsOf, stopSegments, handoversOf, searchParts, cycleNumbers, capacity, stopRank, hubFromBoard, athensDay, athensTime, CAP, HUB_UNKNOWN, ShapeError });
 if (typeof module !== 'undefined') module.exports = WN5L; else window.WN5L = WN5L;
 })();
