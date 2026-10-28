@@ -64,15 +64,20 @@ async function _natlLoad() {
     NATL_ORDERS.noLoad = new Set();
     NATL_ORDERS.loads = new Map();
     NATL_ORDERS.loadsFailed = false;
+    // F5 Ε3: a v5 order (rec._v5) has no load on purpose — never «εκτός». In
+    // parallel with the loads; before L it requests nothing (natV5Attach).
+    const v5P = OrdersCommon.natV5Attach(records);
     try {
       NATL_ORDERS.loads = await OrdersCommon.natLoadsFor(records);
-      records.forEach(r => { if (!r.fields['National Groupage'] && !NATL_ORDERS.loads.has(r.id)) NATL_ORDERS.noLoad.add(r.id); });
+      await v5P;
+      records.forEach(r => { if (!r.fields['National Groupage'] && !r._v5 && !NATL_ORDERS.loads.has(r.id)) NATL_ORDERS.noLoad.add(r.id); });
     } catch(e) {
       // Unknown ≠ «εκτός»: without the answer no row is marked missing, and
       // the list SAYS the check did not run (warn below).
       NATL_ORDERS.loadsFailed = true;
       if (typeof logError === 'function') logError(e, 'orders_natl: load presence check');
     }
+    NATL_ORDERS.v5Failed = (await v5P).failed;
 
   return NATL_ORDERS.data;
 }
@@ -93,7 +98,10 @@ async function loadOrdersNatlData(period) {
   await _natlLoad();
   _onEnsureStyles();
   return { records: NATL_ORDERS.data, noLoad: NATL_ORDERS.noLoad || new Set(), loads: NATL_ORDERS.loads || new Map(), namesReady: NATL_ORDERS.namesReady,
-    warns: NATL_ORDERS.loadsFailed ? ['Τα εθνικά φορτία δεν φορτώθηκαν — η στήλη ΑΝΑΘΕΣΗ των εθνικών δεν δείχνει όχημα ούτε «εκτός». Δεν σημαίνει ότι δεν υπάρχουν. Ξαναδοκίμασε με Ανανέωση.'] : [] };
+    warns: [
+      ...(NATL_ORDERS.loadsFailed ? ['Τα εθνικά φορτία δεν φορτώθηκαν — η στήλη ΑΝΑΘΕΣΗ των εθνικών δεν δείχνει όχημα ούτε «εκτός». Δεν σημαίνει ότι δεν υπάρχουν. Ξαναδοκίμασε με Ανανέωση.'] : []),
+      ...(NATL_ORDERS.v5Failed ? [OrdersCommon.NAT_V5_WARN] : []),
+    ] };
 }
 
 // Kept for its callers (form submit, groupage submit, delete, scan, retry):
@@ -124,6 +132,8 @@ const _onDate = d => d ? new Date(d).toLocaleDateString('el-GR', { day: 'numeric
 // A failed load read is «unknown» — never «προς ανάθεση» (principle 1).
 function _onAssignment(rec) {
   const loads = NATL_ORDERS.loads instanceof Map ? NATL_ORDERS.loads : null;
+  // A v5 order's vehicle is its cycle's (F5 Ε3): the loads are not asked.
+  if (rec._v5 && typeof rec._v5 === 'object') return OrdersCommon.assignOf({ ...rec, _type: 'natl' }, {});
   if (!rec.fields['National Groupage'] && (NATL_ORDERS.loadsFailed || !loads)) return { key: 'unknown', text: '' };
   return OrdersCommon.assignOf({ ...rec, _type: 'natl' },
     { load: (loads && loads.get(rec.id)) || null, missingLoad: !!(NATL_ORDERS.noLoad && NATL_ORDERS.noLoad.has(rec.id)) });
@@ -133,6 +143,7 @@ const _ON_ASSIGN_LINE = {
   out: 'ΕΚΤΟΣ ΕΒΔΟΜΑΔΙΑΙΟΥ — δεν έχει εθνικό φορτίο',
   unknown: 'Άγνωστη — τα εθνικά φορτία δεν φορτώθηκαν. Δεν σημαίνει ότι είναι χωρίς ανάθεση· ξαναδοκίμασε με Ανανέωση.',
   pa: 'ΠΡΟΣ ΑΝΑΘΕΣΗ — στο Εβδομαδιαίο, χωρίς όχημα',
+  unknownV5: 'Άγνωστη — η κατάσταση των εθνικών v5 δεν διαβάστηκε. Δεν σημαίνει ότι είναι χωρίς ανάθεση· ξαναδοκίμασε με Ανανέωση.',
 };
 
 // Scoped styles for this screen only (spec w4-orders-interaction-spec 208:724).
@@ -317,7 +328,7 @@ function selectNatlOrder(recId) {
       <div class="on-sec-title">Ανάθεση</div>
       <div class="on-row">
         <span class="on-dot${asgOk ? ' ok' : asgOpen ? ' unassigned' : ''}"></span>
-        <span class="on-row-main${asgOpen ? ' unassigned' : ''}" data-assign="${asg.key}">${asgOk ? escapeHtml(asg.text) : (_ON_ASSIGN_LINE[asg.key] || _ON_ASSIGN_LINE.unknown)}</span>
+        <span class="on-row-main${asgOpen ? ' unassigned' : ''}" data-assign="${asg.key}">${asgOk ? escapeHtml(asg.text) : rec._v5 === 'err' && asg.key === 'unknown' ? _ON_ASSIGN_LINE.unknownV5 : (_ON_ASSIGN_LINE[asg.key] || _ON_ASSIGN_LINE.unknown)}</span>
       </div>
       <div class="on-row"><button type="button" class="on-link" onclick="navigate('weekly_natl')">άνοιγμα στο Weekly National →</button></div>
     </div>
