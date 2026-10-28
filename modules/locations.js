@@ -836,7 +836,7 @@ function _locEsc(s) {
 // Η δομή είναι το πρότυπο καρτέλας του συστήματος (owner 2/9, Figma
 // w2-location-card 230:821): navy κεφαλή, outline chips, «— δεν έχει
 // καταχωρηθεί» για το κενό, δίγραμμο ιστορικό.
-const LOCC = { openId: null, stops: null, orderById: {}, natById: {}, natOrdById: {}, pgByRec: {}, failed: false };
+const LOCC = { openId: null, stops: null, orderById: {}, natById: {}, natOrdById: {}, pgByRec: {}, failed: false, v5: [], v5Warn: '' };
 
 function _locCardHost() {
   let ov = document.getElementById('loccOverlay');
@@ -913,7 +913,7 @@ async function _locOpenCard(id) {
   const panel = _locCardHost();
   document.getElementById('loccOverlay').classList.add('open');
   panel.classList.add('open');
-  LOCC.openId = id; LOCC.stops = null; LOCC.failed = false; LOCC.pgByRec = {};
+  LOCC.openId = id; LOCC.stops = null; LOCC.failed = false; LOCC.pgByRec = {}; LOCC.v5 = []; LOCC.v5Warn = '';
   panel.innerHTML = _locCardHtml(rec, '<div class="locc-empty">Φόρτωση ιστορικού…</div>');
   try {
     const stops = await atGetAll(TABLES.ORDER_STOPS, {
@@ -939,7 +939,63 @@ async function _locOpenCard(id) {
     LOCC.failed = true; LOCC.stops = [];
     if (typeof logError === 'function') logError(e, '_locOpenCard history');
   }
+  if (!LOCC.failed) {
+    const v5 = await _locLoadV5(id);
+    if (LOCC.openId !== id) return;   // another card opened meanwhile: its own call owns LOCC
+    LOCC.v5 = v5.rows; LOCC.v5Warn = v5.warn;
+  }
   if (LOCC.openId === id) panel.innerHTML = _locCardHtml(rec, null);
+}
+
+// Ε13 (F5, dormant until day L): a v5 national order has no order_stops (spec 2.1) — its places are its
+// shipments, its moves the cycle stops (rt_stops). Both come from /plan/activity and join the same history. Helpers
+// _v5* live in core/entity.js (one gate, one id catalogue for every master-data screen). PlanConfig 'before' = no
+// call: the card is today's. A failed read keeps today's history and says the rest is missing — never «Καμία
+// κίνηση». Places are matched by the catalogue id (PlanIds), never by name (Latin-only names, 9/8).
+async function _locLoadV5(recId) {
+  const out = { rows: [], warn: '' };
+  const gate = await _v5Gate();
+  if (!gate) return out;
+  try {
+    const ids = await _v5Ids(gate);
+    const d = ids && await _v5Activity(gate, 'location_id', ids.id('location', recId));
+    if (!d) return out;
+    const clientBy = _v5ById(ids, 'client'), truckBy = _v5ById(ids, 'truck'), partnerBy = _v5ById(ids, 'partner');
+    const label = (m, k) => (k != null && m.get(k)) ? m.get(k).label : '';
+    const onStop = new Set();
+    for (const st of d.stops || []) {
+      // a cancelled cycle moved nothing: not a move, and its shipments stay «to assign» below
+      if (st.rt_status === 'cancelled') continue;
+      const loads = Array.isArray(st.loads) ? st.loads : [];
+      loads.forEach(l => onStop.add(l.shipment_id));
+      const acts = new Set(loads.map(l => l.act));
+      const c = st.carrier || {};
+      out.rows.push({
+        day: _v5Day(st.planned_from),
+        move: st.side === 'KATHODOS' ? 'ΚΑΘΟΔΟΣ' : st.side === 'ANODOS' ? 'ΑΝΟΔΟΣ' : null,
+        stype: [acts.has('pickup') ? 'ΦΟΡΤΩΣΗ' : '', acts.has('drop') ? 'ΠΑΡΑΔΟΣΗ' : ''].filter(Boolean).join(' · ') || '—',
+        client: [...new Set(loads.map(l => label(clientBy, l.client_id)).filter(Boolean))].join(', '),
+        pallets: loads.length ? loads.reduce((sum, l) => sum + (Number(l.pallets) || 0), 0) : null,
+        refs: [...new Set(loads.map(l => l.reference).filter(Boolean))],
+        who: c.trip_type === 'PARTNER' ? label(partnerBy, c.partner_id) : label(truckBy, c.truck_id),
+        title: st.code || '',   // no RT code on screen (owner rule): title only
+      });
+    }
+    for (const sh of d.shipments || []) {
+      if (onStop.has(sh.shipment_id)) continue;
+      out.rows.push({
+        day: sh.day || '', move: null, stype: sh.end === 'origin' ? 'ΦΟΡΤΩΣΗ' : 'ΠΑΡΑΔΟΣΗ',
+        client: label(clientBy, sh.client_id), pallets: sh.pallets != null ? sh.pallets : null,
+        refs: sh.reference ? [sh.reference] : [], who: '— προς ανάθεση', title: '',
+      });
+    }
+    if (d.truncated) out.warn = '⚠ Εθνικά v5: η ανάγνωση έφτασε το όριο — το ιστορικό είναι ελλιπές.';
+  } catch (e) {
+    out.rows = [];
+    out.warn = _v5FailText(gate);
+    _v5Log(e, '_locOpenCard v5');
+  }
+  return out;
 }
 
 // Οι 4 τύποι κίνησης μιας στάσης, από τον γονιό της (Β):
@@ -985,6 +1041,7 @@ async function _locBuildMoveIdx() {
       if (!idx.has(loc)) idx.set(loc, new Set());
       idx.get(loc).add(t);
     });
+    await _locMoveIdxV5(idx);
     LOC.moveIdx = idx;
   } catch (e) {
     // Ορατή αποτυχία: το φίλτρο μηδενίζεται — δεν φιλτράρει «σιωπηλά τίποτα».
@@ -996,10 +1053,35 @@ async function _locBuildMoveIdx() {
   }
 }
 
+// Ε13: the v5 stops' sides join the index. A failed read throws into _locBuildMoveIdx's catch: the filter is
+// cleared and the toast says so — never a filter that silently drops the v5-only places.
+async function _locMoveIdxV5(idx) {
+  const gate = await _v5Gate();
+  if (!gate) return;
+  try {
+    const ids = await _v5Ids(gate);
+    const d = ids && await _v5Activity(gate, 'location_id', 'all');
+    if (!d) return;
+    if (d.truncated) throw new Error('plan/activity location_id=all truncated');
+    const locBy = _v5ById(ids, 'location');
+    for (const r of d.sides || []) {
+      const rec = locBy.get(r.location_id);
+      if (!rec) continue;
+      if (!idx.has(rec.legacy_id)) idx.set(rec.legacy_id, new Set());
+      if (r.kathodos > 0) idx.get(rec.legacy_id).add('ΚΑΘΟΔΟΣ');
+      if (r.anodos > 0) idx.get(rec.legacy_id).add('ΑΝΟΔΟΣ');
+    }
+  } catch (e) {
+    _v5Log(e, '_locBuildMoveIdx v5');
+    throw e;
+  }
+}
+
 function _locTypeChips() {
-  if (!LOCC.stops || LOCC.failed || !LOCC.stops.length) return '';
+  if (!LOCC.stops || LOCC.failed || !(LOCC.stops.length + LOCC.v5.length)) return '';
   const by = {};
   LOCC.stops.forEach(s => { const t = _locStopMoveType(s); if (t) by[t] = (by[t] || 0) + 1; });
+  LOCC.v5.forEach(r => { if (r.move) by[r.move] = (by[r.move] || 0) + 1; });
   const order = ['ΕΞΑΓΩΓΗ', 'ΕΙΣΑΓΩΓΗ', 'ΚΑΘΟΔΟΣ', 'ΑΝΟΔΟΣ'];
   const chips = order.filter(t => by[t]).map(t => `<span class="locc-chip">${t} ${by[t]}×</span>`);
   return chips.length ? `<div class="locc-chips">${chips.join('')}</div>` : '';
@@ -1064,13 +1146,44 @@ function _locCardHtml(rec, loadingBody) {
       ? agg.map(g => `<div class="locc-row"><span>${_locEsc(g.name)}</span><span class="v" style="color:var(--text-dim);font-variant-numeric:tabular-nums">${g.n}×</span></div>`).join('')
       : '<div class="locc-row"><span style="color:var(--text-dim)">Κανένα εμπόρευμα καταγεγραμμένο στις στάσεις</span></div>'}
   </div>`;
-  const history = LOCC.stops.length ? `
-    <div class="locc-sect">Ιστορικό <span class="n">· ${LOCC.stops.length} ${LOCC.stops.length === 1 ? 'κίνηση' : 'κινήσεις'}</span></div>
-    <div class="locc-rows">${LOCC.stops.map(_locHistRow).join('')}</div>`
+  const nMoves = LOCC.stops.length + LOCC.v5.length;
+  const history = (nMoves ? `
+    <div class="locc-sect">Ιστορικό <span class="n">· ${nMoves} ${nMoves === 1 ? 'κίνηση' : 'κινήσεις'}</span></div>
+    <div class="locc-rows">${_locHistRowsHtml()}</div>`
+    // with the v5 half missing, «no move» would be a claim nobody measured: the alert below says it instead
+    : LOCC.v5Warn ? `<div class="locc-sect">Ιστορικό</div>`
     : `<div class="locc-sect">Ιστορικό</div>
        <div class="locc-empty">Καμία κίνηση καταγεγραμμένη για αυτή την τοποθεσία.
-       Το ιστορικό ξεκινά με την πρώτη στάση παραγγελίας που θα τη δηλώσει σημείο φόρτωσης ή παράδοσης.</div>`;
+       Το ιστορικό ξεκινά με την πρώτη στάση παραγγελίας που θα τη δηλώσει σημείο φόρτωσης ή παράδοσης.</div>`)
+    + (LOCC.v5Warn ? `<div class="locc-note" role="alert">${_locEsc(LOCC.v5Warn)}
+      <button type="button" class="btn btn-sm" style="margin-left:var(--space-2)" onclick="_locOpenCard('${rec.id}')">Ξαναδοκίμασε</button></div>` : '');
   return head + info + goods + history;
+}
+
+// Today's rows as before; with v5 rows, one list by day (newest first). The sort is stable, so today's order
+// among equal days is kept.
+function _locHistRowsHtml() {
+  if (!LOCC.v5.length) return LOCC.stops.map(_locHistRow).join('');
+  const items = [
+    ...LOCC.stops.map(s => ({ k: String(s.fields['DateTime'] || '').slice(0, 10), html: _locHistRow(s) })),
+    ...LOCC.v5.map(r => ({ k: r.day, html: _locV5Row(r) })),
+  ];
+  return items.sort((a, b) => b.k.localeCompare(a.k)).map(x => x.html).join('');
+}
+
+// A v5 move in the same two-line row as _locHistRow: day · type · client · pallets, then references · plate or
+// partner (or «— προς ανάθεση» for a national shipment no cycle stops at yet).
+function _locV5Row(r) {
+  const l2 = [...r.refs, r.who].filter(Boolean).join(' · ');
+  return `<div class="locc-h"${r.title ? ` title="${_locEsc(r.title)}"` : ''}>
+    <div class="locc-h1">
+      <span style="color:var(--text-dim);font-variant-numeric:tabular-nums">${r.day ? fmtDateDM(r.day) + '/' + r.day.slice(2, 4) : '—'}</span>
+      <span><span class="locc-stype">${_locEsc(r.stype)}</span></span>
+      <span class="who">${r.client ? _locEsc(r.client) : '—'}</span>
+      <span class="num">${r.pallets != null ? r.pallets + ' pal' : '—'}</span>
+    </div>
+    ${l2 ? '<div class="locc-h2">' + _locEsc(l2) + '</div>' : ''}
+  </div>`;
 }
 
 // Ιστορικό σε ΔΥΟ γραμμές ανά κίνηση (owner 25/8) — αναφορά και πινακίδα
