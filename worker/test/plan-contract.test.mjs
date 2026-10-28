@@ -325,15 +325,18 @@ test('074a creates the Worker\'s three /plan/* reads and order_delete_preview wi
   const sql = f074a().sql;
   const sigs = Object.fromEntries([...sql.matchAll(/CREATE (?:OR REPLACE )?FUNCTION public\.([a-z_]+)\(([^)]*)\)/g)]
     .map((m) => [m[1], m[2].split(',').map((a) => a.trim().split(/\s+/)[0]).filter(Boolean)]));
+  // one GRANT may name several functions: the names granted EXECUTE to service_role, from every such statement
+  const granted = new Set([...sql.matchAll(/GRANT EXECUTE ON FUNCTION ([^;]*?)\s+TO service_role\s*;/g)]
+    .flatMap((m) => [...m[1].matchAll(/public\.([a-z_]+)\(/g)].map((x) => x[1])));
   for (const [fn, args] of Object.entries(READS_074A)) {
     assert.deepEqual(sigs[fn], args, `${fn}: 074a signature vs the Worker's args`);
     assert.ok(src.includes(`rpc: "${fn}"`), `${fn} is routed in PLAN_ROUTES`);
-    assert.match(sql, new RegExp(`GRANT EXECUTE ON FUNCTION public\\.${fn}\\([^)]*\\) TO service_role`), `${fn}: EXECUTE for the service role`);
+    assert.ok(granted.has(fn), `${fn}: EXECUTE for the service role`);
   }
   const call = /dbRpc\(env, "order_delete_preview", \{ ([^}]*) \}\)/.exec(src);
   assert.ok(call, 'the Worker calls order_delete_preview');
   assert.deepEqual(sigs.order_delete_preview, [...call[1].matchAll(/(p_[a-z_]+):/g)].map((m) => m[1]), 'order_delete_preview: 074a signature vs the Worker\'s args');
-  assert.match(sql, /GRANT EXECUTE ON FUNCTION public\.order_delete_preview\([^)]*\) TO service_role/, 'order_delete_preview: EXECUTE for the service role');
+  assert.ok(granted.has('order_delete_preview'), 'order_delete_preview: EXECUTE for the service role');
 });
 
 // review of PR #90, finding 7: the roles that SEE amounts, held equal the same way. If the Worker's list were
