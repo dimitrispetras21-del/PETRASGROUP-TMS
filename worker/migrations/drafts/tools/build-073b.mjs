@@ -20,9 +20,9 @@ import { fileURLToPath } from 'node:url';
 import { loadChecks } from '../../../../tms-auditor/checks/load.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-// The folder that holds the 073b files. After the owner runs them they leave drafts/ (CLAUDE.md rule 5): then
-// this becomes path.resolve(HERE, '../..') and nothing else changes.
-export const DIR = path.resolve(HERE, '..');
+// The folder that holds the 073b files. 073b was executed 28/10 and left drafts/ (CLAUDE.md rule 5): the generated
+// files are one up, the builder stays here.
+export const DIR = path.resolve(HERE, '..', '..');
 // F3's own checks: the ones that read 073's objects, so 073's rollback refuses while they exist (one list: the build
 // test holds 073_plan_money_rollback.sql equal to it).
 export const F3_IDS = ['B-78', 'B-79', 'B-80', 'B-81', 'B-82', 'B-83', 'B-84', 'B-85', 'B-86', 'B-87', 'B-88', 'B-89', 'B-90', 'B-94'];
