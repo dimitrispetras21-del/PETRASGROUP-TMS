@@ -237,7 +237,7 @@ SCN.week = async (browser, origin) => {
   const next = await until(page, () => { const r = document.querySelector('#content .wn5'); return r && r.dataset.week === '2026-10-17' && r.dataset.state !== 'loading'; });
   ok(scn, '→ moves to W43: data-week 2026-10-17', next, await page.evaluate(() => (document.querySelector('#content .wn5') || {}).dataset));
   ok(scn, '→ read GET /plan/board?week=2026-10-17', boardReads(S).some((x) => x.q.week === '2026-10-17'), boardReads(S).map((x) => x.q.week));
-  const tab = await page.evaluate(() => { const b = document.querySelector('#content .wn5 .wi4-tab[data-w="41"]'); if (b) b.click(); return !!b; });
+  const tab = await page.evaluate(() => { const b = document.querySelector('.wn5-bar .wi4-tab[data-w="41"]'); if (b) b.click(); return !!b; });
   const w41 = tab && await until(page, () => { const r = document.querySelector('#content .wn5'); return r && r.dataset.week === '2026-10-03' && r.dataset.state !== 'loading'; });
   ok(scn, 'tab W41 → data-week 2026-10-03', w41, { tab });
   const weeks = boardReads(S).map((x) => x.q.week);
@@ -368,7 +368,7 @@ SCN.paint = async (browser, origin) => {
   // moving the title's right margin (room for all, then half a word too little), each time with the FontFaceSet's own
   // «loadingdone»; independent of how the rig's fallback font fits at paint.
   const fit = await narrow.page.evaluate(() => {
-    const bl = document.querySelector('#content .wn5 .wn5-bar .wi4-bar-l');
+    const bl = document.querySelector('.wn5-bar .wi4-bar-l');
     const t = bl && bl.querySelector('.wi4-title'), rg = bl && bl.querySelector('.wi4-range'), w = bl && bl.querySelector('.wn5-upd-w');
     if (!t || !rg || !w || !document.fonts) return null;
     const was = bl.classList.contains('wn5-upd-short');
@@ -397,7 +397,7 @@ SCN.paint = async (browser, origin) => {
   await narrow.page.evaluate(() => (document.fonts ? document.fonts.ready : null)).catch(() => {});
   await narrow.page.evaluate(() => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)))).catch(() => {});
   const bar = await narrow.page.evaluate(() => {
-    const bl = document.querySelector('#content .wn5 .wn5-bar .wi4-bar-l');
+    const bl = document.querySelector('.wn5-bar .wi4-bar-l');
     const up = bl && bl.querySelector('.wn5-upd');
     const rg = bl && bl.querySelector('.wi4-range');
     if (!up) return null;
@@ -421,6 +421,68 @@ SCN.paint = async (browser, origin) => {
   await hl.page.context().close();
 };
 // Figma 2035:7735 «εκτελεσμένα σβηστά ανά ημέρα», now = Tue 13/10 09:30: what the base flags is at 40%, nothing else.
+// whole-frame r3 (Figma 2120:7825 «Top bar 60px», as 2011:7745): ONE 60px bar holds title, range, ↻, tabs, actions,
+// bell and avatar — the board's bar moves into the app's top bar (the Weekly International v4 mechanism), the app's
+// title and Sign out give way, the queue starts at y 70 (Content y 60 + 10). «Παλιά προβολή» and a page change give
+// the app its own top bar back; the flag-off board never touches it (wn5-identity-rig).
+SCN.topbar = async (browser, origin) => {
+  const scn = 'topbar';
+  const { page, S } = await openBoard(browser, origin, { board: fixture(), viewport: { width: 1440, height: 900 } });
+  await page.evaluate(() => (document.fonts ? document.fonts.ready : null)).catch(() => {});
+  await page.waitForTimeout(300);   // the sidebar's 0.22 s collapse (the app restarts it at load and at a week change)
+  const read = () => page.evaluate(() => {
+    const tb = document.querySelector('.main > .topbar');
+    const vis = (el) => !!el && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+    const q = document.querySelector('#content .wn5 .wn5-q');
+    const chip = document.querySelector('.topbar .user-chip');
+    const titles = [...document.querySelectorAll('body *')].filter((e) => vis(e) && [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim() === 'Εβδομαδιαίο Εθνικών')).length;
+    const tabs = tb && tb.querySelector('.wn5-bar .wi4-tabs'), av = document.getElementById('userAvatar');
+    const tr = tabs && tabs.getBoundingClientRect(), tbr = tb && tb.getBoundingClientRect();
+    return { inTop: !!(tb && tb.querySelector(':scope > #wn5-top > .wn5-bar')), inContent: !!document.querySelector('#content .wn5-bar'),
+      on: document.body.classList.contains('wn5-top-on'), tbH: tbr ? Math.round(tbr.height) : null,
+      titleShown: vis(document.getElementById('topbarTitle')), crumbShown: vis(document.getElementById('topbarBreadcrumb')),
+      logoutShown: vis(document.querySelector('.topbar .btn-logout')), nameShown: vis(document.getElementById('userName')), avatar: vis(av),
+      menu: !!(chip && chip.querySelector('.wn5-umenu')), chipRole: chip ? chip.getAttribute('role') : null,
+      titles, qTop: q ? Math.round(q.getBoundingClientRect().top) : null,
+      tabsMid: tr ? Math.round(tr.left + tr.width / 2) : null, barMid: tbr ? Math.round((tbr.left + 28 + tbr.right - 20) / 2) : null };
+  });
+  const a = await read();
+  ok(scn, '1440: the v5 bar is inside .main > .topbar (#wn5-top), not in #content; body.wn5-top-on', a.inTop && !a.inContent && a.on, a);
+  ok(scn, '1440: one 60px top bar — the app title / breadcrumb, the name and «Sign out» give way, the avatar stays', a.tbH === 60 && !a.titleShown && !a.crumbShown && !a.logoutShown && !a.nameShown && a.avatar, a);
+  ok(scn, '1440: «Εβδομαδιαίο Εθνικών» is drawn once', a.titles === 1, a);
+  ok(scn, '1440: the queue starts at the frame\'s y 70 (Content 60 + 10)', a.qTop != null && Math.abs(a.qTop - 70) <= 1, a);
+  ok(scn, '1440: the week tabs centred between the title\'s left edge and the avatar\'s right edge (±12px)', a.tabsMid != null && Math.abs(a.tabsMid - a.barMid) <= 12, a);
+  // the avatar holds name, role and «Αποσύνδεση» (never a bar without a way out)
+  await page.click('.topbar .user-chip', { timeout: 3000 }).catch(() => {});
+  const um = await page.evaluate(() => { const m = document.querySelector('.topbar .user-chip .wn5-umenu'); return m ? { open: !m.hidden, text: m.innerText.replace(/\s+/g, ' ').trim() } : null; });
+  ok(scn, 'the avatar opens name · role and «Αποσύνδεση»', !!um && um.open && /Rig/.test(um.text) && um.text.includes('Αποσύνδεση'), um);
+  await page.keyboard.press('Escape');
+  // the tabs still work from the top bar
+  await page.evaluate(() => { const b = document.querySelector('.topbar .wn5-bar .wi4-tab[data-w="43"]'); if (b) b.click(); });
+  const w43 = await until(page, () => { const r = document.querySelector('#content .wn5'); return r && r.dataset.week === '2026-10-17' && r.dataset.state !== 'loading'; });
+  const b = await read();
+  const bars = await page.evaluate(() => document.querySelectorAll('.wn5-bar').length);
+  ok(scn, 'tab W43 from the top bar → data-week 2026-10-17, the new bar replaces the old (one bar)', w43 && b.inTop && !b.inContent && bars === 1, Object.assign({ bars }, b));
+  await page.waitForTimeout(300);
+  await shot(page, 'topbar-1440');
+  // «Παλιά προβολή» → the old board: the app's own top bar comes back whole
+  await page.evaluate(() => { if (window.WN5 && WN5._switch) WN5._switch('0'); });
+  await until(page, () => !document.querySelector('#content .wn5'));
+  await page.waitForTimeout(300);
+  const c = await read();
+  ok(scn, '«Παλιά προβολή»: no #wn5-top, no wn5-top-on, the app title and «Sign out» back, the chip is the app\'s again',
+    !c.inTop && !c.on && c.titleShown && c.logoutShown && c.nameShown && !c.menu && c.chipRole === null, c);
+  // back to v5, then another page: the same
+  await page.evaluate(() => { if (window.WN5 && WN5._switch) WN5._switch('1'); });
+  const again = await until(page, () => !!document.querySelector('#wn5-top > .wn5-bar'));
+  await page.evaluate(() => { if (typeof navigate === 'function') navigate('dashboard'); });
+  await until(page, () => !document.querySelector('#content .wn5'));
+  await page.waitForTimeout(300);
+  const d = await read();
+  ok(scn, 'leaving the board (dashboard): the app\'s top bar is restored', again && !d.inTop && !d.on && d.titleShown && d.logoutShown && !d.menu && d.chipRole === null, Object.assign({ again }, d));
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await page.context().close();
+};
 SCN.dim = async (browser, origin) => {
   const scn = 'dim';
   const { page, S } = await openBoard(browser, origin, { board: fixture() });
@@ -665,7 +727,7 @@ SCN.strips = async (browser, origin) => {
       w2: w2.querySelectorAll('ul > li').length,
       // T11 fidelity round 2: the «↻» drawn as an icon the height of the text; several warnings with the dialog's «•»
       ico: (() => { const i = ask.querySelector('.wn5-strip-act .wn5-ico-re'); if (!i) return null; const c = getComputedStyle(i); const r = i.getBoundingClientRect();
-        const b = ask.querySelector('.wn5-strip-act'); const br = b.getBoundingClientRect(); const up = document.querySelector('#content .wn5 .wn5-upd'); const ui = up && up.querySelector('.wn5-ico-re');
+        const b = ask.querySelector('.wn5-strip-act'); const br = b.getBoundingClientRect(); const up = document.querySelector('.wn5-bar .wn5-upd'); const ui = up && up.querySelector('.wn5-ico-re');
         const mid = (e) => { const q = e.getBoundingClientRect(); return (q.top + q.bottom) / 2; };
         return { w: r.width, h: r.height, fs: c.fontSize, mask: c.maskImage || c.webkitMaskImage, hidden: i.getAttribute('aria-hidden'), bg: c.backgroundColor, color: getComputedStyle(b).color,
           linkH: br.height, mid: Math.abs(mid(i) - mid(b)), stripH: ask.getBoundingClientRect().height,
@@ -1039,6 +1101,14 @@ async function scnPlus(browser, origin) {
   const K201 = '.wn5-row[data-rt="201"] [data-act="plus"][data-side="KATHODOS"]';
   { // A · KATHODOS of RT-T201: the groups, the line texts, the body of a whole VS piece (writes closed)
     const { page, S } = await bOpen(browser, origin);
+    // whole-frame r3 (2011:10089 / 2120:8167): on the row's hover the «+» is the info fill with a 1px #027bbd border
+    // and the 11px icon/plus — never the #bae6fd border and a text «+»
+    await page.hover('.wn5-row[data-rt="201"] .wn5-kd', { timeout: 3000 }).catch(() => {});
+    const hv = await page.evaluate((sel) => { const b = document.querySelector(sel); if (!b) return null; const cs = getComputedStyle(b); const sv = b.querySelector('svg');
+      const r = sv && sv.getBoundingClientRect();
+      return { op: cs.opacity, bc: cs.borderTopColor, bw: cs.borderTopWidth, bg: cs.backgroundColor, svg: r ? [Math.round(r.width), Math.round(r.height)] : null, text: b.textContent.trim(), ink: sv ? getComputedStyle(sv).color : null }; }, K201);
+    ok(scn, 'row hover: the «+» bg #f0f9ff, border 1px #027bbd, the 11px plus icon in #0369a1, no text glyph', !!hv && hv.op === '1' && hv.bc === 'rgb(2, 123, 189)' && hv.bw === '1px'
+      && hv.bg === 'rgb(240, 249, 255)' && !!hv.svg && hv.svg.join('×') === '11×11' && hv.text === '' && hv.ink === 'rgb(3, 105, 161)', hv);
     ok(scn, 'the «+» of a KATHODOS opens .wi4-dlg[data-wn5=plus] as a popover', (await bClick(page, K201)) && await bHas(page, `.wn5-pop-back ${D}`));
     const txt = await bText(page, D);
     ok(scn, 'header «Πρόσθεσε στην ΚΑΘΟΔΟ» · TST-2106 · Δευ 12/10 · φόρτωση 16:00–18:00 · 27/33', txt.includes('Πρόσθεσε στην ΚΑΘΟΔΟ') && txt.includes('TST-2106 · Δευ 12/10 · φόρτωση 16:00–18:00 · 27/33'), txt.slice(0, 300));
@@ -1534,6 +1604,16 @@ async function scnDate(browser, origin) {
       Math.round(fa.w) === 568 && fa.noX && fa.metaSize === '11px' && fa.metaH > 0 && fa.metaH <= 16 && fa.prose === 0 && fa.rule === 'solid' && fa.hd === '10px', fa);
     ok(scn, 'calendar: the chosen day filled, the cycle\'s own day a dashed ring, a greyed «1» after 31, cells 30×26',
       fa.orig && fa.sel && fa.out.join(',') === '1' && fa.cell.join('×') === '30×26', fa);
+    // whole-frame r3 (2053:7838): the compact shell — padding 12, the pop shadow, title DM Sans SemiBold 12.5 ink,
+    // footer buttons 26 / 11.5 SemiBold / r5 / px 10 — not the generic wi4 dialog (Syne 15, 32px, 16 padding)
+    const sh = await page.$eval(D, (dlg) => { const cs = (e) => getComputedStyle(e); const t = dlg.querySelector('.wi4-dlg-t');
+      const btns = [...dlg.querySelectorAll('.wi4-dlg-ft .wi4-btn')].filter((b) => b.offsetParent !== null);
+      return { pad: cs(dlg).paddingTop + ' ' + cs(dlg).paddingLeft, shadow: cs(dlg).boxShadow, tf: cs(t).fontFamily, ts: cs(t).fontSize, tw: cs(t).fontWeight, tc: cs(t).color,
+        b: btns.map((b) => ({ h: Math.round(b.getBoundingClientRect().height), fs: cs(b).fontSize, fw: cs(b).fontWeight, r: cs(b).borderTopLeftRadius, px: cs(b).paddingLeft + ' ' + cs(b).paddingRight, t: b.innerText.trim() })) };
+    }).catch((e) => ({ err: String(e) }));
+    ok(scn, 'Δ4 shell: padding 12, shadow 0 8 12 rgba(10,26,41,.16), title DM Sans 600 12.5px ink, buttons 26px / 11.5px 600 / r5 / px 10',
+      sh.pad === '12px 12px' && /rgba\(10, 26, 41, 0\.16\) 0px 8px 12px/.test(sh.shadow || '') && /^"?DM Sans/.test(sh.tf || '') && sh.ts === '12.5px' && sh.tw === '600' && sh.tc === 'rgb(11, 25, 41)'
+      && Array.isArray(sh.b) && sh.b.length >= 2 && sh.b.every((x) => x.h === 26 && x.fs === '11.5px' && x.fw === '600' && x.r === '5px' && x.px === '10px 10px'), sh);
     await shot(page, 'date-A-day13');
     ok(scn, 'preview.vs_day → «ενημερώνει τη διεθνή #2101 · 12/10 → 13/10»; preview.warnings → the label line',
       res.includes('ενημερώνει τη διεθνή #2101 · 12/10 → 13/10') && res.includes('Η γραμμή μισθοδοσίας του τοπικού οδηγού με ποσό πάει για έλεγχο στο λογιστήριο'));

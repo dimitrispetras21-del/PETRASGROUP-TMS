@@ -46,6 +46,8 @@ function _visPts() {
 // Figma 2011:9279 «αντιγραφή πινακίδων»: the 13px copy glyph (two squares), stroke 1.08 at that size.
 const COPY = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="13" height="13" x="9" y="9" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
 const PLANE = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>';
+// Figma 2011:10090 «icon/plus»: 11px, stroke 1.1 at that size, in the «+» box's colour (whole-frame r3, not a text glyph).
+const PLUS = '<svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 2.29v6.42M2.29 5.5h6.42"/></svg>';
 const CHEV = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
 
 const _esc = (s) => (typeof escapeHtml === 'function'
@@ -229,6 +231,7 @@ function _paint() {
   if (typeof WN5Act !== 'undefined') WN5Act.bind(document.querySelector('#content > .wn5'));
   _noteStrip();
   document.body.classList.add('wn5-on');
+  _topMount();
   _install();
   _logShape(_m);
   _buildIndex(_m);
@@ -241,7 +244,7 @@ function _paint() {
 // (open or folded) change the room at the same window width.
 function _fitUpd() {
   try {
-    const bl = document.querySelector('#content .wn5 .wn5-bar .wi4-bar-l');
+    const b = _bar(), bl = b && b.querySelector('.wi4-bar-l');
     if (!bl) return;
     // Measured with the range whole (.wn5-fit): outside the measure the range may shrink, which would hide the need.
     bl.classList.add('wn5-fit');
@@ -591,7 +594,7 @@ function _leg(ev, rtId, side) {
 // cycle row (an unassigned row has no cycle to add to), also on an empty side so a first load can go in.
 function _plusHTML(r, side) {
   if (r.kind !== 'cycle' || r.rtId == null) return '';
-  return `<button type="button" class="wn5-plus" data-act="plus" data-side="${side === 'ANODOS' ? 'ANODOS' : 'KATHODOS'}" aria-label="Πρόσθεσε στην ${side === 'ANODOS' ? 'ΑΝΟΔΟ' : 'ΚΑΘΟΔΟ'}" title="Πρόσθεσε">+</button>`;
+  return `<button type="button" class="wn5-plus" data-act="plus" data-side="${side === 'ANODOS' ? 'ANODOS' : 'KATHODOS'}" aria-label="Πρόσθεσε στην ${side === 'ANODOS' ? 'ΑΝΟΔΟ' : 'ΚΑΘΟΔΟ'}" title="Πρόσθεσε">${PLUS}</button>`;
 }
 // whole-frame r2 (Figma 2011:9279 / 9282): copy the plates from the assignment box on row hover — the Weekly
 // International .wi4-cpy shortcut, beside the ✈ line it repeats. The same copyPlatesOf (Ε-22: the cycle's truck and
@@ -870,9 +873,144 @@ function _onKey(e) {
     searchFocus();
   }
 }
+// ═══ ONE top bar (Figma 2120:7825 «Top bar 60px», as on 2011:7745) ═══
+// The frame draws title, range, ↻, week tabs, actions, bell and avatar in ONE 60px bar; the app's own bar stacked over
+// the board's repeated the title and cost ~56px of a 900px screen (whole-frame r3). This is the Weekly International
+// v4 mechanism (modules/weekly_intl_v2.js _topMount, owner 11/10), mirrored here because WIV2's functions are private
+// and its page-leave observer removes #wi4-top / wi4-top-on whenever WIV2 is not active — i.e. at every v5 paint. So
+// v5 has its own slot (#wn5-top, class "wi4 wn5" so every `.wi4 …` / `.wn5 …` rule still reaches the bar) and its own
+// body class (wn5-top-on, assets/style.css wn5 block). The bar is painted with the board, then moved; _cleanup (page
+// left, «Παλιά προβολή», a failed paint → old board) takes it out and the app's own title and Sign out come back.
+function _bar() { return document.querySelector('#wn5-top > .wn5-bar') || document.querySelector('#content > .wn5 > .wn5-bar'); }
+function _topMount() {
+  const tb = document.querySelector('.main > .topbar');
+  const bar = document.querySelector('#content > .wn5 > .wn5-bar');
+  if (!tb || !bar) return;   // no app top bar (a bare page): the bar stays on the board, as before
+  let slot = document.getElementById('wn5-top');
+  if (!slot) {
+    slot = document.createElement('div');
+    slot.id = 'wn5-top';
+    slot.className = 'wi4 wn5 wn5-top';
+    tb.insertBefore(slot, tb.querySelector('.topbar-right'));
+  }
+  slot.replaceChildren(bar);
+  document.body.classList.add('wn5-top-on');
+  _umenuMount();
+  // measured after wn5-top-on: that class hides the name, the role and Sign out, which changes .topbar-right's width
+  _topFit();
+  _topWatch();
+}
+// The frame centres the week tabs between the title's left edge and the avatar's right edge (2120:7826 and 2120:7861
+// are both 663 wide, the bell and the avatar INSIDE the right one). Here they are the app's .topbar-right, outside the
+// bar's grid: the slot reaches under it by its width + the top bar's gap (--wn5-tr) and the actions step back by as
+// much (CSS), so the two side tracks are equal again. The variable lives on the slot and leaves with it.
+function _topFit() {
+  const slot = document.getElementById('wn5-top');
+  const tb = slot && slot.parentElement, tr = tb && tb.querySelector('.topbar-right');
+  if (!tr) return;
+  const w = tr.getBoundingClientRect().width + (parseFloat(getComputedStyle(tb).columnGap) || 0);
+  slot.style.setProperty('--wn5-tr', w + 'px');
+}
+// ONE observer on the app's top bar and its right end (the undo button appears there without the bar changing size).
+let _topRO = null;
+function _topWatch() {
+  const tb = !_topRO && typeof ResizeObserver === 'function' && document.querySelector('.main > .topbar');
+  if (!tb) return;
+  _topRO = new ResizeObserver(() => { if (document.getElementById('wn5-top')) { _topFit(); _fitUpd(); } });
+  _topRO.observe(tb);
+  const tr = tb.querySelector('.topbar-right');
+  if (tr) _topRO.observe(tr);
+}
+function _topUnmount() {
+  const slot = document.getElementById('wn5-top');
+  if (slot) slot.remove();
+  try { document.body.classList.remove('wn5-top-on'); } catch (_) {}
+  _umenuUnmount();
+}
+// Name, role and Sign out behind the avatar (the frame ends the bar with the avatar «Δ» alone), as WIV2 does: built
+// from what the app wrote in the chip, so it never disagrees with it. Never a bar without a way to sign out.
+let _umenu = null;
+function _umenuTog(ev) {
+  if (!_umenu) return;
+  if (ev && ev.target && _umenu.contains(ev.target)) return;
+  if (ev) ev.stopPropagation();
+  const open = _umenu.hidden;
+  _umenu.hidden = !open;
+  if (_umenu.parentElement) _umenu.parentElement.setAttribute('aria-expanded', String(open));
+  if (open) document.addEventListener('click', _umenuClose, { once: true });
+}
+function _umenuClose() {
+  if (!_umenu) return;
+  _umenu.hidden = true;
+  if (_umenu.parentElement) _umenu.parentElement.setAttribute('aria-expanded', 'false');
+}
+// Esc, Enter and Space stop here; inside the menu the button keeps its own Enter/Space. The open menu owns ↓/↑/Home/End.
+function _umenuKey(ev) {
+  if (!_umenu) return;
+  const chip = _umenu.parentElement;
+  if (!_umenu.hidden && ['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(ev.key)) {
+    const its = [..._umenu.querySelectorAll('[role="menuitem"]')];
+    if (!its.length) return;
+    ev.preventDefault(); ev.stopPropagation();
+    const i = its.indexOf(document.activeElement), last = its.length - 1;
+    const k = ev.key === 'Home' ? 0 : ev.key === 'End' ? last
+      : ev.key === 'ArrowDown' ? (i < 0 || i === last ? 0 : i + 1) : (i <= 0 ? last : i - 1);
+    its[k].focus();
+    return;
+  }
+  if (ev.key !== 'Escape' && ev.key !== 'Enter' && ev.key !== ' ') return;
+  ev.stopPropagation();
+  if (ev.key === 'Escape') { ev.preventDefault(); _umenuClose(); if (chip) chip.focus(); return; }
+  if (_umenu.contains(ev.target)) return;
+  ev.preventDefault(); _umenuTog(ev);
+  if (!_umenu.hidden) { const f = _umenu.querySelector('[role="menuitem"]'); if (f) f.focus(); }
+}
+function _umenuOut(ev) {
+  if (!_umenu || _umenu.hidden) return;
+  const chip = _umenu.parentElement;
+  if (ev.relatedTarget && chip && !chip.contains(ev.relatedTarget)) _umenuClose();
+}
+function _umenuMount() {
+  const chip = document.querySelector('.topbar .user-chip');
+  if (!chip || _umenu) return;
+  const name = (document.getElementById('userName') || {}).textContent || '';
+  const role = (document.getElementById('roleBadge') || {}).textContent || '';
+  const m = document.createElement('div');
+  m.className = 'wi4-umenu wn5-umenu';
+  m.hidden = true;
+  m.setAttribute('role', 'menu');
+  m.innerHTML = `<div class="wi4-umenu-h">${_esc(name)}${role ? ` <span>· ${_esc(role)}</span>` : ''}</div>`
+    + '<button type="button" role="menuitem" onclick="logout()">Αποσύνδεση</button>';
+  chip.appendChild(m);
+  chip.setAttribute('role', 'button');
+  chip.setAttribute('tabindex', '0');
+  chip.setAttribute('aria-haspopup', 'true');
+  chip.setAttribute('aria-expanded', 'false');
+  chip.title = name ? name + ' — Αποσύνδεση' : 'Αποσύνδεση';
+  chip.addEventListener('click', _umenuTog);
+  chip.addEventListener('keydown', _umenuKey);
+  chip.addEventListener('focusout', _umenuOut);
+  _umenu = m;
+}
+function _umenuUnmount() {
+  if (!_umenu) return;
+  const chip = _umenu.parentElement;
+  _umenu.remove();
+  _umenu = null;
+  document.removeEventListener('click', _umenuClose);
+  if (!chip) return;
+  chip.removeEventListener('click', _umenuTog);
+  chip.removeEventListener('keydown', _umenuKey);
+  chip.removeEventListener('focusout', _umenuOut);
+  // Leaving v5 for the Weekly International: its paint may have put ITS menu on the chip before this observer ran —
+  // the chip's button attributes are then its, not ours to take away.
+  if (chip.querySelector('.wi4-umenu')) return;
+  ['role', 'tabindex', 'aria-haspopup', 'aria-expanded', 'title'].forEach((a) => chip.removeAttribute(a));
+}
 function _cleanup() {
   try { if (typeof WN5Act !== 'undefined') WN5Act.closeAll(); } catch (_) {}   // no dialog survives the page it belongs to
   try { document.body.classList.remove('wn5-on'); } catch (_) {}
+  try { _topUnmount(); } catch (e) { _logErr(e, 'weekly natl v5: top bar unmount'); }
   // Every body-level overlay of v5 carries data-wn5-overlay: one rule removes them all when the board leaves.
   try { document.querySelectorAll('body > [data-wn5-overlay]').forEach((el) => el.remove()); } catch (_) {}
 }

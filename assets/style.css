@@ -8994,8 +8994,9 @@ body.wi4-on #wi-popover .wi-pop-save:hover { background:var(--navy-light); }
      (core/form-helpers.js, .fh-cb-input), so a native select and a searchable one in the same form look the same */
   --wn5-sel-chev: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%2364748B' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
-/* The same page frame as v4 (body.wi4-on .content), while the v5 board is on screen. */
-body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; background:var(--surface-page); }
+/* The same page frame as v4 (body.wi4-on .content), while the v5 board is on screen. Top 10px: the queue at y 70 under
+   the one 60px top bar (Figma 2120:7880 Content y 60, «Ουρά ΕΠΟΜΕΝΑ» y 10; whole-frame r3). */
+body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; background:var(--surface-page); }
 .wn5 .wn5-lc { text-transform:none; letter-spacing:0; }
 .wn5-bar { margin-bottom:8px; }
 /* H1 2120:7827: «Εβδομαδιαίο Εθνικών» Syne SemiBold 17px, no tracking — the shared .wi4-title is 700 / -.1px */
@@ -9386,9 +9387,14 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-wide .wn5-cand .wi4-btn.sm { height:22px; }
 /* ── T13: «+» of a side and its popover (Figma 2011:10022). The «+» shows on hover/focus (opacity, so it stays
    clickable for keyboard and rigs); «πόσες» only on stock lines. ── */
-.wn5-plus { flex:none; width:18px; height:18px; margin-left:4px; padding:0; border:1px solid var(--wi4-info-line); border-radius:4px; background:var(--wi4-info-bg);
-  color:var(--wi4-info-ink); font:600 12px/1 'DM Sans',sans-serif; cursor:pointer; opacity:0; }
+/* whole-frame r3: at rest (2120:8217) white with the control border; on the row's hover (2011:10089 / 2120:8167) the
+   info fill with a 1px --wi4-blue border; the glyph is the frame's 11px icon/plus (PLUS in weekly_natl_v5.js) in
+   --accent-text (#0369a1), not a text «+». */
+.wn5-plus { flex:none; display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; margin-left:4px; padding:0;
+  border:1px solid var(--wi4-ctl); border-radius:4px; background:var(--surface-card); color:var(--accent-text); cursor:pointer; opacity:0; }
+.wn5-plus > svg { flex:none; display:block; }
 .wn5-row:hover .wn5-plus, .wn5-plus:focus-visible { opacity:1; }
+.wn5-row:hover .wn5-plus { border-color:var(--wi4-blue); background:var(--wi4-info-bg); }
 /* «27 [+]» on one line (Figma 2011:10089/10140/10217/10299): every «+» of a side sits at one x, 12px in from the
    side's right edge (691 of 721), whatever the count — so the cell is right-aligned and the count abuts the «+». A count
    that started at the left padding pushed the «+» right by its own width (a gap side's «+» ended past the row edge).
@@ -9472,6 +9478,14 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-dlg[data-wn5="date"] .wi4-dlg-x { display:none; }
 .wn5-dlg[data-wn5="date"] > .wi4-dlg-hd { flex-wrap:wrap; justify-content:flex-start; row-gap:2px; }
 .wn5-dlg[data-wn5="date"] .wi4-dlg-hd > .wn5-dlg-meta { order:1; flex:0 0 100%; font-size:11px; line-height:15px; }
+/* whole-frame r3 (2053:7838): the compact Δ4 shell, as its sibling the local loading window (2011:9195) — padding 12,
+   the pop shadow, title DM Sans SemiBold 12.5 ink, footer buttons 26 / 11.5 SemiBold / r5 / px 10, 8 apart. The
+   generic wi4 dialog scale (Syne 15, 32px buttons, 16 padding) is for the Weekly International's own dialogs. */
+.wn5-dlg[data-wn5="date"] { padding:12px; box-shadow:var(--wn5-pop-shadow); }
+.wn5-dlg[data-wn5="date"] .wi4-dlg-t { font:600 12.5px/16px 'DM Sans',sans-serif; color:var(--wi4-ink); }
+.wn5-dlg[data-wn5="date"] .wi4-dlg-ft { gap:8px; }
+.wn5-dlg[data-wn5="date"] .wi4-dlg-ft .wi4-btn { height:26px; padding:0 10px; border-radius:5px; font-size:11.5px; font-weight:600; }
+.wn5-dlg[data-wn5="date"] .wi4-dlg-ft .wi4-btn:not(.pri) { color:var(--wi4-grey-1); }
 .wn5-datep { display:grid; grid-template-columns:222px minmax(0,1fr); gap:16px; }
 .wn5-datep-r { border-left:1px solid var(--border); padding-left:14px; display:flex; flex-direction:column; gap:6px; font-size:11px; line-height:15px; }
 .wn5-cal { width:222px; }
@@ -9571,6 +9585,34 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-ask[data-wn5="delete"] .wn5-dlg-b > p { order:1; padding:8px 10px; border-radius:6px; background:var(--wi4-chip); font-size:12px; line-height:16px; color:var(--wi4-grey-1); }
 .wn5-ask[data-wn5="delete"] .wn5-dlg-b > .wn5-field { order:2; }
 .wn5-ask[data-wn5="delete"] .wi4-dlg-ft { margin-top:14px; }
+/* ── whole-frame r3: ONE top bar (Figma 2120:7825 «Top bar 60px», as on 2011:7745). The board's bar moves into the
+   app's bar (#wn5-top, weekly_natl_v5.js _topMount) — the Weekly International v4 mechanism (body.wi4-on /
+   wi4-top-on above), mirrored under v5's own classes because WIV2 clears its own at every paint of another page.
+   Height and gutters follow wn5-on, so the bar never jumps; the title, the chip and the idle undo follow wn5-top-on,
+   set only while the bar is IN the top bar. Name, role and Sign out sit behind the avatar (.wn5-umenu = .wi4-umenu). ── */
+body.wn5-on .topbar { height:60px; padding:0 20px 0 28px; gap:8px; position:relative; z-index:35; box-shadow:none; }
+body.wn5-top-on #topbarTitle, body.wn5-top-on #topbarBreadcrumb { display:none; }
+body.wn5-on .topbar .wn5-top { flex:1; min-width:0; align-self:stretch; display:flex; align-items:center; background:transparent; }
+body.wn5-on .topbar .wn5-top > .wi4-bar { flex:1; min-width:0; min-height:60px; margin-bottom:0; border-bottom:0; }
+body.wn5-top-on .topbar .wn5-top { margin-right:calc(-1 * var(--wn5-tr, 0px)); }
+body.wn5-top-on .wn5-top .wi4-bar-r { margin-right:var(--wn5-tr, 0px); }
+body.wn5-top-on .topbar .topbar-right { position:relative; z-index:1; }
+body.wn5-on .topbar .wn5-top button { min-height:0; min-width:0; }
+body.wn5-on .topbar-right { gap:4px; }
+@media (max-width:1600px) {
+  body.wn5-on .topbar { padding:0 16px 0 20px; }
+  body.wn5-on .wn5-top .wi4-bar { column-gap:8px; }
+}
+body.wn5-top-on #undoBtn.undo-btn-idle { display:none; }
+body.wn5-on .topbar .notif-wrap { margin-right:0 !important; }
+body.wn5-top-on .topbar .user-chip { padding:0; border:0; background:transparent; cursor:pointer; position:relative; min-width:44px; min-height:44px; justify-content:center; margin-right:-8px; }
+body.wn5-top-on .topbar .user-chip > #userName, body.wn5-top-on .topbar .user-chip > .role-badge, body.wn5-top-on .topbar .btn-logout { display:none; }
+body.wn5-top-on .topbar .notif-wrap { display:flex; align-items:center; margin-right:-12px !important; }
+body.wn5-top-on .topbar .notif-wrap::before { content:''; flex:none; width:1px; height:22px; margin-right:1px; background:var(--wi4-line-2); }
+body.wn5-top-on .topbar .notif-bell { color:var(--text-mid); padding:0; display:inline-flex; align-items:center; justify-content:center; }
+body.wn5-top-on .topbar .notif-bell svg { width:15px; height:15px; }
+body.wn5-top-on .topbar .notif-dot { top:11px; right:11px; }
+body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px; font-weight:600; background:var(--wi4-ink); color:var(--surface-card); }
 /* ── wn5 end ── */
 
 /* ── T19: the Veroia board (Figma 2011:8744, Δ11 2069:8356; closed line 2011:7929). Closed = one white 34px line
