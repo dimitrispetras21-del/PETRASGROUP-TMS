@@ -517,6 +517,18 @@
     const f = _hhmm(v.from), t = _hhmm(v.to);
     return n && n.day && f && t ? _win(n.day, f, t) : null;
   }
+  // F27 (owner 28/10): a typed Veroia window is written on the piece's OWN Veroia day, the day of its hub need in
+  // _needs — a VS import loads there on nat_ready_day (= cross_dock_date, 071 v_shipments), a VS export arrives there on
+  // nat_due_day (= cross_dock_date) — never on the dialog's day: that is the row's day in Δ1 (an export's PICKUP day),
+  // the cycle's in «+», the panel's earliest in «Σε φορτηγό ▾», and wrote VS 617 (cross-dock Fri 30/10) on Thu 29/10.
+  // A moved piece's needs carry no day (their windows come from the source stop): [] → the caller's day stays.
+  const _hubDays = (needs) => [...new Set((needs || []).filter((n) => n.hub && n.day && !(n.own && n.from && n.to)).map((n) => n.day))].sort();
+  // One Veroia stop per side (decision 6) holds one day. Pieces with two Veroia days have no right one: null, and the
+  // save stays off with the days named (_lackText) — 0 such orders live on 28/10, so this blocks nothing real.
+  function _hubDayOf(needs, fallback) {
+    const ds = _hubDays(needs);
+    return ds.length === 1 ? ds[0] : ds.length ? null : fallback || null;
+  }
   // One stop per place per side (decision 6): a live stop of the target on that side is named by stop_id; any other
   // place becomes a new stop with its pieces' window (the earliest start, the latest end of the pieces there); a NEW
   // Veroia stop takes the window the user typed (Ε-5: the base invents no hour, and neither does the screen).
@@ -634,8 +646,8 @@
       if (!r.ok) return null;
       target = { new_rt: { trip_type: 'PARTNER', partner_id: st.partner, partner_rate: r.v }, side: st.side };
     } else return null;
-    const f = _hhmm(st.hubFrom), t = _hhmm(st.hubTo);
-    const r = _stopsFor(st.needs, cyc, st.side, f && t ? _win(st.day, f, t) : null, (n) => _dayWin(n, st.win));
+    const f = _hhmm(st.hubFrom), t = _hhmm(st.hubTo), hd = _hubDayOf(st.needs, st.day);
+    const r = _stopsFor(st.needs, cyc, st.side, f && t && hd ? _win(hd, f, t) : null, (n) => _dayWin(n, st.win));
     if (r.missing.length) return { missing: r.missing, lack: r.lack };
     if (st.mode === 'move') return { method: 'POST', path: '/plan/move', body: { from: st.from, target, stops: r.stops } };
     return { method: 'POST', path: '/plan/legs', body: st.group ? { group: st.group, target, stops: r.stops } : { pieces: st.pieces, target, stops: r.stops } };
@@ -658,7 +670,11 @@
   // one missing stop in words: «παράθυρο παράδοσης <place>», «άφιξη Βέροιας», …
   function _lackText(st, n) {
     const act = n.role === 'load' ? 'φόρτωσης' : 'παράδοσης';
-    if (n.hub) return st.side === 'ANODOS' ? 'άφιξη Βέροιας' : 'παράθυρο φόρτωσης Βέροιας';
+    if (n.hub) {
+      const ds = _hubDays(st.needs);
+      if (ds.length > 1) return 'μία ημέρα Βέροιας (οι παραδόσεις έχουν ' + ds.map(_dayShort).join(', ') + '): ανάθεση μία-μία';
+      return st.side === 'ANODOS' ? 'άφιξη Βέροιας' : 'παράθυρο φόρτωσης Βέροιας';
+    }
     if (n.loc == null) return 'προορισμός ' + act + ' (δεν ήρθε από τη βάση)';
     return n.day ? 'παράθυρο ' + act + ' ' + _placeName(n.loc) : 'ημέρα ' + act + ' ' + _placeName(n.loc) + ' (δεν ήρθε από τη βάση)';
   }
@@ -703,9 +719,11 @@
           + '<small>όλη η ημέρα, αν δεν ξέρεις ώρα</small></div>';
       }
     }
-    // the field's hours are put on st.day (_assignReq), so it names that day, as the stop fields above name theirs
+    // the field's hours are put on the pieces' Veroia day (_assignReq, F27), so it names that day, as the stop fields
+    // above name theirs; two Veroia days are both named, and the save says it cannot pick one
     if (_hubAsked(st)) {
-      h += '<div class="wn5-hubwin"><span>' + (st.side === 'ANODOS' ? 'Άφιξη Βέροιας' : 'Παράθυρο φόρτωσης Βέροιας') + ' · ' + _esc(_dayShort(st.day)) + ' *</span>'
+      const hd = _hubDayOf(st.needs, st.day);
+      h += '<div class="wn5-hubwin"><span>' + (st.side === 'ANODOS' ? 'Άφιξη Βέροιας' : 'Παράθυρο φόρτωσης Βέροιας') + ' · ' + _esc(hd ? _dayShort(hd) : _hubDays(st.needs).map(_dayShort).join(' / ')) + ' *</span>'
         + '<input class="wn5-hm" data-hub="from" inputmode="numeric" placeholder="ΗΗ:ΛΛ" value="' + _esc(st.hubFrom) + '"> – '
         + '<input class="wn5-hm" data-hub="to" inputmode="numeric" placeholder="ΗΗ:ΛΛ" value="' + _esc(st.hubTo) + '">'
         + '<small>μόνο όταν γίνεται νέα στάση Βέροιας</small></div>';
@@ -817,10 +835,11 @@
     }
     if (!st.day) { WN5Act.strip(_boardHost(), _clientErr('day_missing', 'Η ημέρα της ανάθεσης δεν είναι γνωστή — ανανέωσε')); return null; }
     // F12 (live 28/10): the Veroia window the order already has (its shipment's window at the hub) fills the field,
-    // still editable — never asked again. Only a window of the assignment's own day: the field's hours are put on
-    // st.day (_win), so a window of another day would move to the wrong date.
+    // still editable — never asked again. Only a window of the pieces' Veroia day: the field's hours are put on that
+    // day (_win, F27), so a window of another day would move to the wrong date.
     if (!vehicle && !st.hubFrom && !st.hubTo) {
-      const hw = (st.needs || []).find((n) => n.hub && n.from && n.to && _ymdOf(n.from) === st.day);
+      const hd = _hubDayOf(st.needs, st.day);
+      const hw = (st.needs || []).find((n) => n.hub && n.from && n.to && _ymdOf(n.from) === hd);
       if (hw) { st.hubFrom = _hm(hw.from); st.hubTo = _hm(hw.to); }
     }
     await _loadCands(st);
@@ -1009,7 +1028,9 @@
   function _plusReq(st, it) {
     if (it._ro) return null;
     const f = _hhmm(st.hubFrom), t = _hhmm(st.hubTo);
-    const r = _stopsFor(_needs(it, false, st.hub), st.cyc, st.side, f && t ? _win(st.day, f, t) : null, (n) => _dayWin(n));
+    // F27: one field for every line, each line's window on its own Veroia day — never the cycle's start (st.day)
+    const needs = _needs(it, false, st.hub), hd = _hubDayOf(needs, st.day);
+    const r = _stopsFor(needs, st.cyc, st.side, f && t && hd ? _win(hd, f, t) : null, (n) => _dayWin(n));
     if (r.missing.length) return { missing: r.missing, lack: r.lack };
     const piece = { piece_id: it.piece_id };
     if (it.is_stock) {
@@ -1060,7 +1081,11 @@
     const win = _plusWin(st, it);
     // B1: a piece with no window of its own goes in on its day, whole day — said here, never a silent hour
     const wday = st.side === 'ANODOS' ? it.nat_ready_day : (it.nat_due_day || it.nat_ready_day);
-    const when = win[0] ? _wd(_ymdOf(win[0])) + ' ' + _hmw(win[0], win[1]) : wday ? _wd(wday) + ' όλη η ημέρα' : '—';
+    // F27: a line that would make a new Veroia stop names the day the field's hours go on, when it is not the line's
+    // own day already («Πέμ όλη η ημέρα · Βέροια Παρ»: an export picked up Thursday reaches Veroia Friday)
+    const hdays = !it._ro && !st.hubStop ? _hubDays(_needs(it, false, st.hub)) : [];
+    const vday = hdays.length === 1 && hdays[0] !== wday ? ' · Βέροια ' + _wd(hdays[0]) : '';
+    const when = (win[0] ? _wd(_ymdOf(win[0])) + ' ' + _hmw(win[0], win[1]) : wday ? _wd(wday) + ' όλη η ημέρα' : '—') + vday;
     const loc = anod ? it.position_location_id : it.nat_to_location_id;
     const place = _placeName(loc), city = _placeCity(loc);
     const why = it._ro ? null : _plusWhy(st, it);
@@ -1182,7 +1207,8 @@
         if (!anod) h += '<input type="search" class="wn5-dq" data-q placeholder="Αναζήτηση στην αναμονή (πελάτης, σημείο, VS)" value="' + _esc(st.q) + '">';
         if (!st.hubStop && st.groups.some((g) => g.items.some((it) => !it._ro && _needs(it, false, hub).some((n) => n.hub)))) {
           h += '<div class="wn5-hubwin"><span>' + (anod ? 'Άφιξη Βέροιας *' : 'Παράθυρο φόρτωσης Βέροιας *') + '</span>'
-            + '<input class="wn5-hm" data-hub="from" placeholder="ΗΗ:ΛΛ" value="' + _esc(st.hubFrom) + '"> – <input class="wn5-hm" data-hub="to" placeholder="ΗΗ:ΛΛ" value="' + _esc(st.hubTo) + '"></div>';
+            + '<input class="wn5-hm" data-hub="from" placeholder="ΗΗ:ΛΛ" value="' + _esc(st.hubFrom) + '"> – <input class="wn5-hm" data-hub="to" placeholder="ΗΗ:ΛΛ" value="' + _esc(st.hubTo) + '">'
+            + '<small>στην ημέρα Βέροιας κάθε φορτίου</small></div>';
         }
         if (!st.groups.length) h += '<p class="wn5-none">Καμία παράδοση σε αναμονή για αυτό το σκέλος.</p>';
         for (const g of st.groups) h += '<div class="wn5-grp-h">' + _esc(g.head) + (g.chip ? '<span class="wn5-grp-c">' + _esc(g.chip) + '</span>' : '') + '<span class="wn5-grp-s">' + _esc(g.sub) + '</span></div>' + g.items.map((it) => _plusLineHTML(st, it)).join('');
