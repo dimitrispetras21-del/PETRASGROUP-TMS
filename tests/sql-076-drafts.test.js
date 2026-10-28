@@ -14,14 +14,14 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..');
-const DIR = path.join(ROOT, 'worker/migrations/drafts');   // 076 is a draft: it leaves drafts/ when the owner runs it
+const DIR = path.join(ROOT, 'worker/migrations');   // 076 executed 28/10: out of drafts/ (CLAUDE.md rule 5)
 const read = (f) => fs.readFileSync(path.join(DIR, f), 'utf8');
 const strip = (s) => s.replace(/--[^\n]*/g, '');
 const noStrings = (s) => strip(s).replace(/'[^']*'/g, "''");
 const SRC = '076_plan_board_speed.sql';
 const DO_FILES = [SRC, '076_plan_board_speed_dryrun.sql', '076_plan_board_speed_rollback.sql'];
 const READ_ONLY = ['076_plan_board_speed_verify.sql'];
-const BUILDER = path.join(DIR, 'tools/build-076.mjs');
+const BUILDER = path.join(DIR, 'drafts/tools/build-076.mjs');
 
 test('the files are there, ASCII only, one DO block per writing file, the verify writes nothing', () => {
   for (const f of [...DO_FILES, ...READ_ONLY]) assert.ok(!/[^\x00-\x7F]/.test(read(f)), `${f} has a non-ASCII character`);

@@ -11,9 +11,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-// 076 is a draft until the owner runs it; then it leaves drafts/ (CLAUDE.md rule 5) and DIR goes one up
-export const DIR = path.resolve(HERE, '..');
-const DONE = path.resolve(HERE, '..', '..');   // executed migrations (071)
+// The folder that holds the 076 files. 076 was executed 28/10 and left drafts/ (CLAUDE.md rule 5): the source and the
+// generated files are one up (next to 071), the builder stays here.
+export const DIR = path.resolve(HERE, '..', '..');
+const DONE = DIR;   // executed migrations (071)
 export const SOURCE = '076_plan_board_speed.sql';
 export const DRYRUN = '076_plan_board_speed_dryrun.sql';
 export const ROLLBACK = '076_plan_board_speed_rollback.sql';
