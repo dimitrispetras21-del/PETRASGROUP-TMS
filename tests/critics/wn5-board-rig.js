@@ -100,6 +100,13 @@ async function openBoard(browser, origin, opts = {}) {
   await page.route(`**/${HOST}/**`, async (route) => {
     const req = route.request(); const u = new URL(req.url()); const m = req.method();
     if (m === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': '*' } });
+    // F5 FE-2: the board asks GET /plan/config (is this week ≥ day L? Q-10). Answered as the deploy-1 Worker does
+    // before L and counted in S.config, not S.plan: S.plan stays the board's own traffic that every scenario judges;
+    // the day-L rule has its own rig (tests/critics/wn5-pilot-rig.js).
+    if (m === 'GET' && u.pathname === '/plan/config' && !S.routes['GET /plan/config']) {
+      S.config = (S.config || 0) + 1;
+      return json(route, { cutover_day: null, opened_at: null, writes_open: false });
+    }
     if (u.pathname.startsWith('/plan/')) {
       const raw = req.postData();
       let body = null;
@@ -268,6 +275,7 @@ SCN.paint = async (browser, origin) => {
       qcards: [...r.querySelectorAll('.wn5-qcard[data-piece]')].map((c) => ({ piece: c.dataset.piece, assign: !!c.querySelector('[data-act="assign"]') })),
       p104: ((r.querySelector('.wn5-row[data-key="rt:104"] .wn5-asg') || {}).textContent || '').replace(/\s+/g, ' ').trim(),
       miss: ((r.querySelector('.wn5-miss[data-qi="wait:4101"]') || {}).textContent || '').trim(),
+      strip: ((r.querySelector('.wn5-strip[data-kind="client"]') || {}).textContent || '').trim(),
       text: r.textContent.replace(/\s+/g, ' ') };
   });
   ok(scn, 'state ok, 12 rows (8 cycles + 4 loads waiting for a vehicle)', !!st && st.state === 'ok' && st.rows === 12, st && { state: st.state, rows: st.rows });
@@ -281,7 +289,8 @@ SCN.paint = async (browser, origin) => {
     ok(scn, `shows «${w}»`, !!st && st.text.includes(w));
   }
   ok(scn, 'a one-segment partner tile = «Partner Test Pelagos» / «—», never the rate (F0 7745 / H1, Ε-36)', !!st && st.p104 === 'Partner Test Pelagos—', st && st.p104);
-  ok(scn, 'VS-T118 (hub[] of the live 072) is a ΠΡΟΣ ΑΝΑΘΕΣΗ row that says its destination did not come (Ε-26)', !!st && /δεν ήρθαν με τον πίνακα/.test(st.miss), st && st.miss);
+  // FE-2 (owner 28/10): no «… δεν ήρθαν (Worker)» line under ΠΡΟΣ ΑΝΑΘΕΣΗ, and the 074a-shaped week draws clean
+  ok(scn, 'VS-T118 is a ΠΡΟΣ ΑΝΑΘΕΣΗ row with no waiting line, and no shape strip (FE-2)', !!st && st.miss === '' && !st.strip, st && { miss: st.miss, strip: st.strip });
   ok(scn, '«ΕΠΟΜΕΝΑ · 3», three cards, each with «Ανάθεση» (data-act=assign)', !!st && /^ΕΠΟΜΕΝΑ · 3/.test(st.q) && st.qcards.length === 3 && st.qcards.every((c) => c.assign), st && { q: st.q, cards: st.qcards });
   // A day folds only by the user's click, and only that day.
   await page.evaluate(() => { const h = document.querySelector('#content .wn5 .wn5-day[data-date="2026-10-12"] .wn5-dayh'); if (h) h.click(); });
@@ -421,6 +430,14 @@ SCN.paint = async (browser, origin) => {
   const hlText = await hl.page.evaluate(() => { const x = document.querySelector('#content .wn5 .wn5-strip[data-kind="client"]'); return x ? x.textContent : null; });
   ok(scn, 'a week whose Veroia is not identified shows the WN5L.HUB_UNKNOWN strip', !!hlText && hlText.includes('Η Βέροια δεν αναγνωρίστηκε'), hlText);
   await hl.page.context().close();
+  { // FE-2: the 072 shape (hub[] without the Ε-26 keys) is a broken board from day L — said in the strip, by key
+    const raw = await openBoard(browser, origin, { board: fixture072() });
+    const t = await raw.page.evaluate(() => ({ strip: ((document.querySelector('#content .wn5 .wn5-strip[data-kind="client"]') || {}).textContent || '').replace(/\s+/g, ' ').trim(),
+      miss: document.querySelectorAll('#content .wn5 .wn5-miss').length }));
+    ok(scn, 'the 072 shape: «ΔΕΔΟΜΕΝΑ ΠΟΥ ΔΕΝ ΣΧΕΔΙΑΣΤΗΚΑΝ» names VS-T118 and «deliver_from», no waiting line', /ΔΕΔΟΜΕΝΑ ΠΟΥ ΔΕΝ ΣΧΕΔΙΑΣΤΗΚΑΝ/.test(t.strip)
+      && t.strip.includes('VS-T118: ο πίνακας ήρθε χωρίς «deliver_from»') && t.miss === 0, t);
+    await raw.page.context().close();
+  }
 };
 // Figma 2035:7735 «εκτελεσμένα σβηστά ανά ημέρα», now = Tue 13/10 09:30: what the base flags is at 40%, nothing else.
 // whole-frame r3 (Figma 2120:7825 «Top bar 60px», as 2011:7745): ONE 60px bar holds title, range, ↻, tabs, actions,
@@ -2308,7 +2325,15 @@ SCN.narrow = async (browser, origin) => {
 // tests/wn5-logic.test.js; here the rig holds its DATA: invented names only (public repo), the flags of the base's
 // per-day rule at the rig's clock (else the dim scenario would test the fixture, not the screen), and every case
 // the scenarios need present.
-function fixture() { return JSON.parse(fs.readFileSync(path.join(WT, 'tests/fixtures/wn5-week.json'), 'utf8')); }
+function fixture072() { return JSON.parse(fs.readFileSync(path.join(WT, 'tests/fixtures/wn5-week.json'), 'utf8')); }
+// From day L (F5 FE-2) the board is 074a's: every hub[] item carries the Ε-26 window keys. They come here with null
+// (no window on the stop: «—», as the fixture painted before), so every scenario sees the 074a shape and the same
+// screen; the 072 shape (keys absent) is a shape error, which SCN.paint proves on fixture072().
+function fixture() {
+  const b = fixture072();
+  for (const h of b.hub) for (const k of ['load_from', 'load_to', 'deliver_from', 'deliver_to']) if (!(k in h)) h[k] = null;
+  return b;
+}
 function checkFixture() {
   const scn = 'fixture';
   const before = fails;

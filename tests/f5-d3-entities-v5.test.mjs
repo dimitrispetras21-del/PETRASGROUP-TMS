@@ -2,8 +2,8 @@
 // National v5 F5, stream (d3), Ε12 + Ε13: the master-data cards and Locations read the v5 half after day L
 // (plan docs/superpowers/plans/2026-10-28-f5-national-v5-cutover.md §10 d3; read spec: GET /plan/activity and
 // the 072b segments). The REAL core/entity.js and modules/locations.js run in a vm with the network
-// stubbed. Every «before» case is held byte for byte to the origin/main copy of the same file (flag off = today).
-// NO-GO: on origin/main the v5 cases fail (the readers do not exist there).
+// stubbed. Every «before» case is held byte for byte to the 5f55a943 copy of the same file (flag off = the screen as
+// it was before the readers). NO-GO: on 5f55a943 the v5 cases fail (the readers do not exist there).
 import { test } from 'node:test';
 import assert from 'node:assert';
 import fs from 'node:fs';
@@ -13,8 +13,9 @@ import { execFileSync } from 'node:child_process';
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const SRC = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
-// The baseline = what production runs today. D3_BASE_REF lets the NO-GO run point both sides at the old tip.
-const BASE_REF = process.env.D3_BASE_REF || 'origin/main';
+// The baseline = the tip before the (d3) readers (5f55a943, pinned like tests/daily-ramp-v5.test.js): after the
+// merge origin/main IS this file, and a comparison with itself proves nothing. D3_BASE_REF overrides it.
+const BASE_REF = process.env.D3_BASE_REF || '5f55a943';
 const BASE = (f) => execFileSync('git', ['show', `${BASE_REF}:${f}`], { cwd: ROOT, encoding: 'utf8' });
 
 // ── Fixture (ids only: public repo) ────────────────────────────────────────

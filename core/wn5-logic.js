@@ -240,7 +240,7 @@ function _cycleRow(c, hubId, nums, errors) {
   const places = [...new Set(stops.map((s) => s.location).filter(Boolean))];
   const sortStop = (kath && kath.veroia && by.KATHODOS.find((s) => s.stop_id === kath.veroia.stopId)) || by.KATHODOS[0] || by.ANODOS[0] || null;
   return {
-    key: 'rt:' + c.rt_id, rtId: c.rt_id, kind: 'cycle', dayKey: kath ? kath.day : anod.day, miss: null,
+    key: 'rt:' + c.rt_id, rtId: c.rt_id, kind: 'cycle', dayKey: kath ? kath.day : anod.day,
     kath, anod, tiles, segSource: seg.source, cycleNo: no,
     end: A && A.endStop ? { place: 'Βέροια', by: A.endStop.planned_to, stopId: A.endStop.stop_id, dim: A.endStop.dim === true,
       ...(segOf(A.endStop.stop_id) ? { segLabel: segOf(A.endStop.stop_id).label } : {}) } : null,
@@ -259,9 +259,6 @@ function _cycleRow(c, hubId, nums, errors) {
 // 072 does not have yet). It is a «ΠΡΟΣ ΑΝΑΘΕΣΗ» row, never «για μοίρασμα» (owner 19/10: «VS μπαίνει ως σειρά
 // ΠΡΟΣ ΑΝΑΘΕΣΗ», «απόθεμα μόνο στον Πίνακα Βέροιας»).
 const _neverAssigned = (h) => h.is_stock !== true && h.inbound_rt_id == null && h.for_split !== true;
-// The visible line of a row whose destination / windows the board did not send (hub[] of 072, Ε-26): the points
-// show «—», never a guess, and the assignment says what it waits for (T12).
-const MISS_TEXT = 'Ο προορισμός και τα παράθυρα δεν ήρθαν με τον πίνακα — η ανάθεση περιμένει τον Worker';
 // The visible line of a week whose hub id is unknown (Ε-27, Ε-44): no PlanIds.hub() (GET /plan/lookups not live)
 // and no VS leg to read it from. A cycle then cannot name its Veroia stop: its window would vanish from under
 // «Βέροια» and Veroia would read as an ordinary point. Said on the board, never in silence (principle 1).
@@ -278,7 +275,7 @@ function _loadDay(w) {
 // A load without a vehicle is a «ΠΡΟΣ ΑΝΑΘΕΣΗ» row of its order (all its pieces: a VS with two deliveries is one
 // row with two points, Figma 2011:7745 VS-118) — one row because the base assigns the order whole (072
 // plan_put_group: «a group is its waiting pieces, whole»). Its side: towards the hub = ΑΝΟΔΟΣ, else ΚΑΘΟΔΟΣ.
-function _waitRow(list, hubId) {
+function _waitRow(list, hubId, errors) {
   const ws = list.slice().sort((a, b) => a.piece_id - b.piece_id);
   const w0 = ws[0];
   // _atHub: the piece came in hub[] — at Veroia by the base rule (071 at_hub), whatever id the board names
@@ -307,9 +304,13 @@ function _waitRow(list, hubId) {
     headDim: false, from: anodos ? pts : origin, to: anodos ? [] : pts, pallets, over: pallets > CAP ? r1(pallets - CAP) : 0, sideDim: false, gap: null };
   const refs = [...new Set(ws.map((w) => w.reference).filter(Boolean))];
   const clients = [...new Set(ws.map((w) => w.client).filter(Boolean))];
-  const miss = ws.some((w) => (anodos ? w.load_from : w.deliver_from) == null) ? MISS_TEXT : null;
+  // Day L (F5 FE-2, owner 28/10): no more «… δεν ήρθαν (Worker)» line under ΠΡΟΣ ΑΝΑΘΕΣΗ. 074a sends the window
+  // keys for every hub[] item (Ε-26), so an ABSENT key is a broken board, said once per row in the error strip
+  // (model.errors), never a waiting line; a key present with null (a stop without a window) shows «—».
+  const wk = anodos ? 'load_from' : 'deliver_from';
+  if (ws.some((w) => !Object.prototype.hasOwnProperty.call(w, wk))) errors.push(`${refs[0] || 'κομμάτι ' + w0.piece_id}: ο πίνακας ήρθε χωρίς «${wk}» — τα παράθυρα δείχνουν «—»`);
   return {
-    key: 'wait:' + w0.piece_id, rtId: null, kind: 'unassigned', dayKey: loadDay, miss,
+    key: 'wait:' + w0.piece_id, rtId: null, kind: 'unassigned', dayKey: loadDay,
     kath: anodos ? null : side, anod: anodos ? side : null,
     tiles: [{ type: 'un', label: null, line1: 'ΠΡΟΣ ΑΝΑΘΕΣΗ', line2: '', segmentId: null, partnerRate: null }],
     segSource: 'cycle', cycleNo: null, end: null, local: [], handovers: [],
@@ -346,7 +347,7 @@ function model(board, opts) {
   // so an import VS without a national truck is never in waiting[] (fixture note, Interfaces).
   for (const w of board.waiting) if (w.is_stock !== true) add(w, false);   // stock lives only in the Veroia board (owner rule 5, 19/10)
   for (const h of board.hub) if (_neverAssigned(h)) add(h, true);
-  for (const list of groups.values()) rows.push(_waitRow(list, hubId));
+  for (const list of groups.values()) rows.push(_waitRow(list, hubId, errors));
   // Days by the Veroia loading day of ΚΑΘΟΔΟΣ (else the ΑΝΟΔΟΣ day); inside a day the cycles first, by that time,
   // then the loads waiting for a vehicle (Figma 2011:7745 row order).
   rows.sort((a, b) => String(a.dayKey || '').localeCompare(String(b.dayKey || ''))

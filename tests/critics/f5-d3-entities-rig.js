@@ -1,20 +1,22 @@
 // Proof rig — National v5 F5, stream (d3), Ε12 + Ε13, in the real app (fully stubbed backend, ids only).
 // Plan: docs/superpowers/plans/2026-10-28-f5-national-v5-cutover.md §10 d3. Contract: GET /plan/activity
 // (partner_id | driver_id | truck_id | trailer_id = N, location_id = N | all) + GET /plan/lookups.
-//   AFTER (PlanConfig 'after'):
+//   AFTER (GET /plan/config → cutover_day 2026-10-31):
 //     A. partner card «Αναθέσεις»: the v5 cycle is one more «NAT» row and counts (assignments, active, τζίρος)
 //     B. driver card: a cycle the driver joined by a handover (2nd segment) is listed; an ended v5 cycle reads
 //        «ολοκληρωμένο»
 //     C. location card: v5 stop + a national shipment still to assign in the history, ΚΑΘΟΔΟΣ chip
 //     D. location list, filter ΑΝΟΔΟΣ: a place with v5 stops only is in it
 //     E. /plan/activity fails → each card keeps today's half and shows a visible line
-//   BEFORE (PlanConfig 'before') and NONE (no PlanConfig — today's app.html — and a Worker without the routes):
-//     the same text as PW_BASE_URL_TIP (origin/main served) on every screen above, and 0 /plan/activity calls in
-//     BEFORE.
+//   BEFORE (GET /plan/config → cutover_day null) and NONE (a Worker without the /plan routes: 404 no_route, which
+//     PlanConfig reads as 'before'): the same text as PW_BASE_URL_TIP (5f55a943 served: the tip before the readers)
+//     on every screen above, and 0 /plan/activity calls.
+//   UNKNOWN (GET /plan/config → 500): the v5 half is read anyway (G).
+//   The real core/plan-config.js runs: the rig answers its GET /plan/config, never sets window.PlanConfig.
 //   Every case: 0 console errors.
 // Run from a checkout root that has node_modules (cwd = the main repo, see tests/critics/auth.js):
 //   PW_BASE_URL=http://127.0.0.1:<port>/ PW_BASE_URL_TIP=http://127.0.0.1:<tip-port>/ node <worktree>/tests/critics/f5-d3-entities-rig.js
-// NO-GO: PW_BASE_URL=<tip> → A–E fail. Exit 1 on any ✗.
+// NO-GO: PW_BASE_URL=<5f55a943 served> → A–E fail. Exit 1 on any ✗.
 const { chromium } = require('playwright');
 const path = require('path');
 const { preparePage, gotoPage } = require(path.resolve(__dirname, 'auth.js'));
@@ -56,7 +58,7 @@ const RT_LIST = { records: [{ id: 801, model: 1, status: 'closed', date_start: '
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) { pass++; console.log('  ✓ ' + m); } else { fail++; console.log('  ✗ ' + m); } };
 
-// mode: 'after' | 'before' | 'none'; activity: 'ok' | 'fail' | 'absent' (404 no_route)
+// mode: 'after' | 'before' | 'none' | 'unknown'; activity: 'ok' | 'fail' | 'absent' (404 no_route)
 async function fresh(base, route, mode, activity) {
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ baseURL: base, viewport: { width: 1440, height: 960 }, serviceWorkers: 'block' });
@@ -66,13 +68,6 @@ async function fresh(base, route, mode, activity) {
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
   page.on('dialog', d => d.accept());
   await preparePage(page, 'owner');
-  if (mode !== 'none') {
-    // app.html loads core/plan-config.js only from stream (e)'s bump: the rig stands in for it with the contract
-    await page.addInitScript(st => {
-      window.PlanConfig = Object.freeze({ STATE: { BEFORE: 'before', AFTER: 'after', UNKNOWN: 'unknown' },
-        load: async () => ({ state: st, cutoverDay: st === 'after' ? '2026-10-31' : null, writesOpen: false, err: null }) });
-    }, mode);
-  }
   const J = (r, status, body) => r.fulfill({ status, contentType: 'application/json',
     headers: { 'access-control-allow-origin': new URL(base).origin, 'access-control-allow-credentials': 'true' },
     body: JSON.stringify(body) });
@@ -81,6 +76,15 @@ async function fresh(base, route, mode, activity) {
     if (req.method() === 'OPTIONS') return r.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': '*' } });
     const p = u.pathname;
     if (p.startsWith('/plan/')) calls.push(p + u.search);
+    // The REAL core/plan-config.js decides (app.html loads it since #126; a window.PlanConfig set before load is
+    // overwritten by it, so the rig answers its one read): after = cutover_day set (074 ran), before = null,
+    // none = a Worker without the route (404 no_route, which PlanConfig reads as 'before').
+    if (p === '/plan/config') {
+      if (mode === 'none') return J(r, 404, { error: { type: 'NOT_FOUND', code: 'no_route', message: 'no route' } });
+      // unknown = no answer (a 500): PlanConfig says 'unknown', and the readers must read anyway (never 'before')
+      if (mode === 'unknown') return J(r, 500, { error: { type: 'PLAN_FAILED', code: 'plan_failed', message: 'stub failure' } });
+      return J(r, 200, { cutover_day: mode === 'after' ? '2026-10-31' : null, opened_at: mode === 'after' ? '2026-10-30T15:30:00Z' : null, writes_open: false });
+    }
     if (p === '/plan/lookups') return mode === 'none' ? J(r, 404, { error: { type: 'NOT_FOUND', code: 'no_route', message: 'no route' } }) : J(r, 200, LOOKUPS);
     if (p === '/plan/activity') {
       if (activity === 'absent' || mode === 'none') return J(r, 404, { error: { type: 'NOT_FOUND', code: 'no_route', message: 'no route' } });
@@ -197,17 +201,25 @@ async function run(name, base, mode, activity) {
     ok(!other.length, name + ': no other console error ' + JSON.stringify(other));
   }
 
+  console.log("\n── G. GET /plan/config fails (PlanConfig 'unknown') → the v5 half is read anyway, never taken for 'before'");
+  for (const name of ['partnerCard', 'locCard']) {
+    const s = await run(name, BASE, 'unknown', 'ok');
+    ok(name === 'partnerCard' ? /2 αναθέσεις/.test(s.text) && /RT-901/.test(s.title) : /3 κινήσεις/.test(s.text), name + ': v5 shown: ' + s.text.slice(0, 100));
+    ok(s.calls.some(c => c.startsWith('/plan/activity')), name + ': /plan/activity read');
+    // the 500 on /plan/config is the browser's network line + planFetch's one logged failure; nothing else is red
+    const other = s.errors.filter(e => !/status of 500/.test(e) && !/\[TMS ERROR\] planFetch GET \/plan\/config/.test(e));
+    ok(!other.length, name + ': no other console error ' + JSON.stringify(other));
+  }
+
   if (TIP) {
     for (const mode of ['before', 'none']) {
-      console.log(`\n── F. ${mode === 'before' ? "PlanConfig 'before'" : 'no PlanConfig + Worker without the routes'} = the same text as the tip`);
+      console.log(`\n── F. ${mode === 'before' ? 'GET /plan/config: cutover_day null' : 'Worker without the /plan routes (404)'} = the same text as the tip`);
       for (const name of Object.keys(SCREENS)) {
         const a = await run(name, BASE, mode, mode === 'none' ? 'absent' : 'ok');
         const b = await run(name, TIP, mode, mode === 'none' ? 'absent' : 'ok');
         ok(a.text === b.text, `${name}: identical (${a.text.length} chars)` + (a.text === b.text ? '' : '\n      new: ' + a.text + '\n      tip: ' + b.text));
-        if (mode === 'before') ok(!a.calls.some(c => c.startsWith('/plan/activity')), `${name}: 0 /plan/activity calls`);
-        // 'none' (new code served WITHOUT core/plan-config.js against a Worker before deploy 1) does not occur in
-        // production: stream (e)'s bump ships this code and plan-config.js together, and PlanConfig reads a 404 as
-        // 'before'. If it did, the only red line is the browser's own network line for the 404 — no app error.
+        ok(!a.calls.some(c => c.startsWith('/plan/activity')), `${name}: 0 /plan/activity calls`);
+        // 'none': the Worker's 404 no_route on /plan/config is the browser's own network line, not an app error
         const ownErr = a.errors.filter(e => !/status of 404/.test(e));
         ok(!ownErr.length, `${name}: 0 app console errors` + (a.errors.length ? ` (browser network lines: ${a.errors.length})` : ''));
       }
