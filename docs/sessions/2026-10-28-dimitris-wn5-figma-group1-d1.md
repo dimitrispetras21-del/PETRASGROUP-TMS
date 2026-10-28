@@ -5,7 +5,7 @@
   - B-21: το Δ1 χωρίς ομάδες με 0 γραμμές.
   - B-25: ο τίτλος της κάρτας παραγγελίας σε 2 γραμμές το πολύ, ολόκληρος στο `title`.
   - Αρχεία: `modules/wn5_actions.js`, `assets/style.css`· `?v=` και `SW_VERSION` `1793198090` (μετά το merge του #160 στο main).
-- **Σειρά merge:** #157 → #159 → #160 → αυτό. Κάθε PR μετά το πρώτο θέλει rebase στα `?v=` / `SW_VERSION`.
+- **Σειρά merge:** #157, #159, #160 είναι ήδη στο main (`0dcbb1c6`)· ο κλάδος πήρε το main με merge, και μένει μόνο αυτό.
 - **Αποδείξεις:**
   - board rig `figma-g1b`: NO-GO 3 στο `cf4bfb0a` και 3 στο `af63a904` (#160), GO στον κλάδο.
   - board, form, handover, pilot και identity rigs: GO.
