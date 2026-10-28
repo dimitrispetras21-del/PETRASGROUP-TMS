@@ -70,18 +70,28 @@ test('F4α-T4: Veroia window lives on the side (side.veroia), never on the tile'
   assert.strictEqual(L.athensTime(rowOf(m, 'rt:101').end.by), '22:00');
 });
 
-test("F4α-T4: a VS no truck took (hub[] of the live 072) → row kind 'unassigned', rail red, never dims; «—» and a miss line without the Ε-26 keys", () => {
+test("F4α-T4 / F5 FE-2: a VS no truck took (hub[]) → row kind 'unassigned', rail red, never dims; «—»; without the Ε-26 keys a shape error, never a waiting line", () => {
   const m = M();
   const r = rowOf(m, 'wait:4101');
   assert.ok(r, 'VS-T118 is in hub[] (071:419 at_hub, 072:2443) and must still be a «ΠΡΟΣ ΑΝΑΘΕΣΗ» row');
   assert.deepStrictEqual({ kind: r.kind, rail: r.rail, rowDim: r.rowDim, pallets: r.kath.pallets, points: r.kath.to.length, group: r.group, pieces: r.pieceIds },
     { kind: 'unassigned', rail: 'red', rowDim: false, pallets: 27, points: 2, group: { order_id: 2101 }, pieces: [4101, 4102] });
   assert.ok(r.kath.to.every((p) => p.dim === false && p.from === null && p.to === null) && r.kath.headDim === false, 'no invented window');
-  assert.ok(/προορισμ/.test(r.miss || ''), 'the missing destination is said on the row: ' + r.miss);
+  // FE-2 (owner 28/10): the «… δεν ήρθαν (Worker)» line is gone; from day L 074a sends the keys, so their absence is
+  // a broken board in the error strip — one line per row, naming the key
+  assert.ok(!('miss' in r), 'no waiting line on the row: ' + r.miss);
+  assert.deepStrictEqual(m.errors.filter((e) => /ήρθε χωρίς/.test(e)),
+    ['VS-T118: ο πίνακας ήρθε χωρίς «deliver_from» — τα παράθυρα δείχνουν «—»', 'VS-T121: ο πίνακας ήρθε χωρίς «deliver_from» — τα παράθυρα δείχνουν «—»',
+     'VS-T133: ο πίνακας ήρθε χωρίς «deliver_from» — τα παράθυρα δείχνουν «—»']);
   assert.strictEqual(r.tiles[0].type, 'un');
   assert.ok(!m.hub.split.some((x) => [4101, 4102, 4103, 4104].includes(x.pieceId)), 'a never-assigned VS is never «για μοίρασμα»');
-  const r2 = rowOf(M(withE26()), 'wait:4101');
-  assert.strictEqual(r2.miss, null, 'with the Ε-26 keys the line goes');
+  const m2 = M(withE26()), r2 = rowOf(m2, 'wait:4101');
+  assert.deepStrictEqual(m2.errors, [], 'with the Ε-26 keys the board draws without a shape error');
+  // a key PRESENT with null (a stop without a window) is not a broken board: «—», no error
+  const bn = withE26();
+  for (const h of bn.hub) if (h.piece_id === 4103) h.deliver_from = h.deliver_to = null;
+  const mn = M(bn);
+  assert.deepStrictEqual([mn.errors, rowOf(mn, 'wait:4103').kath.to.map((p) => p.from)], [[], [null]]);
   assert.deepStrictEqual(r2.kath.to.map((p) => [p.from, p.to]), [['06:00', '08:00'], ['07:00', '09:00']]);
   // a national that loads at Veroia without a truck sits in hub[] too (same 071 rule): a row, never ΕΠΟΜΕΝΑ, never «σπάσιμο»
   const b = fix();
@@ -163,7 +173,7 @@ test('F4α-T4: hub split = unloaded at Veroia by a cycle (inbound_rt_id) or for_
 
 test('F4α-T4: the hub id from base facts; a week with no VS on a truck still says «Βέροια» on hub[] rows, cycles take opts.hubId', () => {
   assert.strictEqual(M().hubId, 1);
-  const b = fix();
+  const b = withE26();   // the 074a shape (FE-2): only the hub line may be in errors, compared exactly
   for (const c of b.cycles) for (const s of c.stops) s.legs = s.legs.filter((l) => !String(l.kind).startsWith('vs_'));
   const m = M(b);
   assert.strictEqual(m.hubId, null, 'no VS leg, no vs_export waiting: nothing on the 072 board names the hub (Ε-27)');
@@ -175,10 +185,10 @@ test('F4α-T4: the hub id from base facts; a week with no VS on a truck still sa
   const mh = L.model(b, { today: TODAY, hubId: 1 });
   assert.deepStrictEqual(rowOf(mh, 'rt:102').kath.veroia, { stopId: 1101, from: '16:00', to: '18:00' }, 'opts.hubId (PlanIds.hub) names it');
   assert.deepStrictEqual(mh.errors, [], 'with opts.hubId the line goes');
-  const be = fix(); be.cycles = [];
+  const be = withE26(); be.cycles = [];
   assert.deepStrictEqual([M(be).hubId, M(be).errors], [null, [L.HUB_UNKNOWN]],
     'no cycle but a waiting national: its side needs the hub, so the line stays');
-  const bn = fix(); bn.cycles = []; bn.waiting = bn.waiting.filter((w) => w.kind !== 'national');
+  const bn = withE26(); bn.cycles = []; bn.waiting = bn.waiting.filter((w) => w.kind !== 'national');
   assert.deepStrictEqual([M(bn).hubId, M(bn).errors], [null, []], 'no cycle and no waiting national: nothing to place, no line');
 });
 
@@ -278,7 +288,9 @@ test('F4α-T4: fixture keys = jsonb_build_object keys of plan_board in 072; no m
   for (const h of f.hub) same(Object.keys(h), W.hub, `hub ${h.piece_id}`);
   for (const n of f.notices) same(Object.keys(n), W.notice, `notice ${n.id}`);
   assert.ok(!/"(amount|advance|expenses|invoice_number)"/.test(FIX_TEXT), 'a money key in the dispatcher fixture');
-  assert.deepStrictEqual(M().errors, [], 'the fixture draws without a shape error');
+  // the fixture is the 072 shape (hub[] without the Ε-26 keys): from day L that IS a shape error (FE-2); with the
+  // keys 074a adds, it draws clean
+  assert.deepStrictEqual(M(withE26()).errors, [], 'the fixture + Ε-26 keys draws without a shape error');
 });
 
 // ── F4α-T24 (072b): a stop takes its segment ONLY from segments[].stop_ids (H-9) ─────────────────────────────
