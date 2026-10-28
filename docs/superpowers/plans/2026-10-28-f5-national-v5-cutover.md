@@ -390,7 +390,7 @@
   - το `plan_config` υπάρχει και είναι **άδειο**·
   - η σταθερά `c_cutover_day` (Q-1) είναι Σάββατο και > σήμερα Αθήνας.
 
-  PART 1: πίνακες + συναρτήσεις.
+  PART 1: `plan_cutover_log` + η γραμμή του `plan_config` (ο πίνακας υπάρχει από την 074a).
 - [ ] **Step 4:** PASS B1–B5.
 - [ ] **Step 5:** Commit.
 
@@ -565,7 +565,7 @@
     - `via_hub` false·
     - `DROP` των triggers και των συναρτήσεων της 074·
     - 028/030 στο ζωντανό τους κείμενο, byte προς byte (md5)·
-    - `DROP plan_config`, `plan_cutover_log`·
+    - `DELETE` της μίας γραμμής του `plan_config`: ο πίνακας και το `plan_config_read` ανήκουν στην 074a και μένουν, γιατί τα καλεί ο Worker του deploy 1· `DROP plan_cutover_log`·
     - B-54 πίσω.
   - Η 074a μένει (είναι αναγνώσεις).
 - **`_fingerprint`:** το SELECT του §0 + md5 των 79 Direct NL + `orders`/`order_stops` χωρίς `via_hub`. Τρέχει πριν και μετά· η μόνη επιτρεπτή διαφορά είναι όσα δηλώνει το NOTICE.
