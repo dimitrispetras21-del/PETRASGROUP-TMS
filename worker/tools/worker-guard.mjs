@@ -1,20 +1,19 @@
 #!/usr/bin/env node
 // Worker deploy guard (CLAUDE.md «Ο WORKER»: the three + one marker per live
 // feature: stock lots, local moves, stop delay, presence, temperature per CMR,
-// the VD /costs/rt filters, national v5, its vehicle handover and its F3), counted in CONTENT, never by byte equality: wrangler re-bundles
+// the VD /costs/rt filters, national v5, its vehicle handover, its F3 and its F5 (day L), counted in CONTENT, never by byte equality: wrangler re-bundles
 // the source, and the CF API returns the live script as multipart with a
 // random boundary per request — two downloads of the same version «differ».
 //
-// Usage:  node worker/tools/worker-guard.mjs <file> --plan 0|1 --handover 0|1 [--f3 0|1]
+// Usage:  node worker/tools/worker-guard.mjs <file> --plan 0|1|2 --handover 0|1 [--f3 0|1 [--f5 0|1]]
 //   <file>   worker/src/index.js, a `wrangler deploy --dry-run --outdir` bundle,
 //            or the raw CF API download (multipart is unwrapped here)
-//   --plan   expected count of the national v5 marker (0 = before F2 is live,
-//            1 = the F2 bundle / live after the F2 deploy). With 1, writes must
-//            also be closed in that bundle (decision 22). F5 (day L) opens the
-//            writes in the same deploy as WN_V5, and --plan 1 STOPs on an open
-//            switch: that chain adds the day-L mode here (e.g. --plan 2 = open,
-//            the same 13 markers + PLAN_PERMS) with its test, never a deploy
-//            that skips the guard (K1 review r2; plan K3 Step 2).
+//   --plan   the national v5 marker and its writes switch: 0 = before F2 is
+//            live (no PLAN_PERMS); 1 = PLAN_PERMS once, writes CLOSED (decision
+//            22: `var PLAN_WRITES_OPEN = false;` once, no `= true` anywhere);
+//            2 = day L (F5 deploy 2, plan W7/W8): PLAN_PERMS once, writes OPEN
+//            (`var PLAN_WRITES_OPEN = true;` once, no `= false` anywhere). 2 needs
+//            --handover 1 --f3 1 --f5 1: the switch opens only on the whole chain.
 //   --handover expected count of the vehicle handover marker (072b routes,
 //            `rpc: "plan_seg_change"`): 0 before that deploy, 1 after it, and
 //            1 needs --plan 1. Never a default: a forgotten flag is a usage
@@ -29,18 +28,30 @@
 //            deploy (none of them), 1 = the F3 bundle / live after it (each at
 //            least once: later phases may use them again); 1 needs
 //            --handover 1 (F3 is built on it, one chain). Without it: as before.
+//   --f5     optional, only after --f3 (national v5 F5, plan W8): the F5 markers,
+//            ONE PER FEATURE: rpc: "plan_config_read" (W1), rpc: "plan_lookups"
+//            (W2), rpc: "plan_nat_state" (E3/E5, stream d1), rpc: "plan_activity"
+//            (E12/E13, stream d3) - each route row
+//            exactly once -, var LEGACY_CLOSED_AFTER_L (E16) and var
+//            LEGACY_ROWS_AFTER_L (E16 by row, owner 28/10) - each declaration
+//            once -, truncated:  (E18, GET /costs/rt) and "order_delete_preview"
+//            (E19) - at least once. 0 = before deploy 1 (none), 1 = deploy 1 and
+//            after; 1 needs --f3 1. Without it: as before.
 // Prints one line per marker and exits 1 on the first STOP condition — no
 // partial «OK» (αρχή 1).
 import { readFileSync } from 'node:fs';
 
 const args = process.argv.slice(2);
-const [file, flag, planArg, hflag, handoverArg, f3Flag, f3Arg] = args;
-// exactly these five, or seven with --f3: an extra flag (e.g. a later phase's before its guard knows it) would be
-// ignored and the tool would print OK without checking it - a usage error instead (code review xhigh 26/10, principle 1)
-if (![5, 7].includes(args.length) || !file || flag !== '--plan' || !['0', '1'].includes(planArg) || hflag !== '--handover'
+const [file, flag, planArg, hflag, handoverArg, f3Flag, f3Arg, f5Flag, f5Arg] = args;
+// exactly these five, seven with --f3, or nine with --f3 and --f5: an extra flag (e.g. a later phase's before its guard
+// knows it) would be ignored and the tool would print OK without checking it - a usage error instead (code review
+// xhigh 26/10, principle 1)
+if (![5, 7, 9].includes(args.length) || !file || flag !== '--plan' || !['0', '1', '2'].includes(planArg) || hflag !== '--handover'
     || !['0', '1'].includes(handoverArg) || (planArg === '0' && handoverArg === '1')
-    || (args.length === 7 && (f3Flag !== '--f3' || !['0', '1'].includes(f3Arg) || (f3Arg === '1' && handoverArg !== '1')))) {
-  console.error('usage: node worker/tools/worker-guard.mjs <file> --plan 0|1 --handover 0|1 [--f3 0|1] (handover 1 needs plan 1, f3 1 needs handover 1)');
+    || (args.length >= 7 && (f3Flag !== '--f3' || !['0', '1'].includes(f3Arg) || (f3Arg === '1' && handoverArg !== '1')))
+    || (args.length === 9 && (f5Flag !== '--f5' || !['0', '1'].includes(f5Arg) || (f5Arg === '1' && f3Arg !== '1')))
+    || (planArg === '2' && (args.length !== 9 || handoverArg !== '1' || f3Arg !== '1' || f5Arg !== '1'))) {
+  console.error('usage: node worker/tools/worker-guard.mjs <file> --plan 0|1|2 --handover 0|1 [--f3 0|1 [--f5 0|1]] (handover 1 needs plan 1 or 2, f3 1 needs handover 1, f5 1 needs f3 1, plan 2 needs handover 1 f3 1 f5 1)');
   process.exit(2);
 }
 const plan = Number(planArg);
@@ -91,13 +102,18 @@ const rows = [
   ['Temp Per CMR', count('Temp Per CMR'), (n) => n === 1],
   // the 24 lines of ValueDriven 19/10 (Worker 3439b1e3, decision 29): the order_ids check of GET /costs/rt
   ['VD /costs/rt order_ids {0,49}$/', count('{0,49}$/'), (n) => n === 1],
-  ['var PLAN_PERMS = {', count('var PLAN_PERMS = {'), (n) => n === plan],
+  ['var PLAN_PERMS = {', count('var PLAN_PERMS = {'), (n) => n === (plan === 0 ? 0 : 1)],
   // the vehicle handover (072b): its route row, once live never removed (CLAUDE.md rule of one source 3)
   ['rpc: "plan_seg_change"', count('rpc: "plan_seg_change"'), (n) => n === handover]
 ];
 if (plan === 1) {
   rows.push(['var PLAN_WRITES_OPEN = false;', count('var PLAN_WRITES_OPEN = false;'), (n) => n === 1]);
   rows.push(['PLAN_WRITES_OPEN = true', count('PLAN_WRITES_OPEN = true'), (n) => n === 0]);
+}
+if (plan === 2) {
+  // day L: the one line of deploy 2, and nothing of the closed switch left anywhere
+  rows.push(['var PLAN_WRITES_OPEN = true;', count('var PLAN_WRITES_OPEN = true;'), (n) => n === 1]);
+  rows.push(['PLAN_WRITES_OPEN = false', count('PLAN_WRITES_OPEN = false'), (n) => n === 0]);
 }
 const f3 = f3Flag === undefined ? null : Number(f3Arg);
 if (f3 !== null) {
@@ -107,11 +123,24 @@ if (f3 !== null) {
     rows.push([name, count(mark), (n) => (f3 === 1 ? n >= 1 : n === 0)]);
   }
 }
+const f5 = f5Flag === undefined ? null : Number(f5Arg);
+if (f5 !== null) {
+  // the three route rows and the declaration exactly once (a second would be a merge gone wrong), the two names at
+  // least once; none of them before deploy 1
+  for (const [name, mark, once] of [['rpc: "plan_config_read" (F5, W1)', 'rpc: "plan_config_read"', true],
+    ['rpc: "plan_lookups" (F5, W2)', 'rpc: "plan_lookups"', true], ['rpc: "plan_nat_state" (F5, E3/E5)', 'rpc: "plan_nat_state"', true],
+    ['rpc: "plan_activity" (F5, E12/E13)', 'rpc: "plan_activity"', true],
+    ['var LEGACY_CLOSED_AFTER_L (F5, E16)', 'var LEGACY_CLOSED_AFTER_L', true],
+    ['var LEGACY_ROWS_AFTER_L (F5, E16 rows, owner 28/10)', 'var LEGACY_ROWS_AFTER_L', true], ['truncated:  (F5, E18)', 'truncated: ', false],
+    ['"order_delete_preview" (F5, E19)', '"order_delete_preview"', false]]) {
+    rows.push([name, count(mark), (n) => (f5 === 1 ? (once ? n === 1 : n >= 1) : n === 0)]);
+  }
+}
 let ok = true;
 for (const [name, n, good] of rows) {
   const pass = good(n);
   ok = ok && pass;
   console.log(`${pass ? 'OK  ' : 'STOP'}  ${name} = ${n}`);
 }
-console.log(ok ? `GUARD OK (${rows.length} markers, plan=${plan}, handover=${handover}${f3 !== null ? `, f3=${f3}` : ''}) ${file}` : `GUARD STOP — do not deploy / roll back (${file})`);
+console.log(ok ? `GUARD OK (${rows.length} markers, plan=${plan}, handover=${handover}${f3 !== null ? `, f3=${f3}` : ''}${f5 !== null ? `, f5=${f5}` : ''}) ${file}` : `GUARD STOP — do not deploy / roll back (${file})`);
 process.exit(ok ? 0 : 1);

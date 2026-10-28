@@ -12,9 +12,12 @@ import path from 'node:path';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const TOOL = path.join(here, '..', 'tools', 'worker-guard.mjs');
-const SRC = path.join(here, '..', 'src', 'index.js');
-const src = readFileSync(SRC, 'utf8');
+// the deploy-1 state of the source (writes closed), whichever value this branch holds: the day-L commit (F5 deploy 2)
+// carries the open switch, and the checks below are about the closed bundle (--plan 2 has its own test, -f5)
+const src = readFileSync(path.join(here, '..', 'src', 'index.js'), 'utf8').replace('\nvar PLAN_WRITES_OPEN = true;\n', '\nvar PLAN_WRITES_OPEN = false;\n');
 const dir = mkdtempSync(path.join(tmpdir(), 'worker-guard-'));
+const SRC = path.join(dir, 'index.js');
+writeFileSync(SRC, src);
 // removed when the file ends (review of PR #90, finding 14): one directory per run used to stay in the temp dir
 after(() => rmSync(dir, { recursive: true, force: true }));
 // handover: the vehicle handover marker (072b routes); this source carries them, so 1 unless a test says otherwise

@@ -27,6 +27,12 @@ const DESK = ['owner', 'dispatcher'];
 const EXPECT = {
   board: { GET: ROLES },
   'vs-state': { GET: ROLES },
+  // F5 (plan W1/W2, 074a; streams d1, d3): day L, the board's pickers, the v5 national orders' state and the v5
+  // activity of a partner / driver / vehicle / place, every role
+  'nat-state': { GET: ROLES },
+  activity: { GET: ROLES },
+  config: { GET: ROLES },
+  lookups: { GET: ROLES },
   notices: { GET: ROLES },
   'notices-read': { POST: ROLES },
   orders: { POST: ROLES, PATCH: ROLES },
@@ -105,6 +111,10 @@ afterEach(() => { Object.assign(console, realConsole); globalThis.fetch = realFe
 const REQ = {
   'board GET': ['GET', '/plan/board?week=2026-10-10'],
   'vs-state GET': ['GET', '/plan/vs-state?order_ids=1,2'],
+  'nat-state GET': ['GET', '/plan/nat-state?nat_order_ids=1,2'],
+  'activity GET': ['GET', '/plan/activity?partner_id=all'],
+  'config GET': ['GET', '/plan/config'],
+  'lookups GET': ['GET', '/plan/lookups'],
   'notices GET': ['GET', '/plan/notices?desk=natl'],
   'notices-read POST': ['POST', '/plan/notices/12/read', {}],
   'orders POST': ['POST', '/plan/orders', { orders: [] }],
