@@ -89,9 +89,11 @@ test('deploy guard markers: the older ones and var PLAN_PERMS = { exactly once; 
   assert.equal(count('rpc: "plan_seg_change"'), 1, 'handover route marker');
 });
 
-test('writes closed until day L, in the deployed source (decision 22); one switch, no env override', () => {
-  assert.equal(count('var PLAN_WRITES_OPEN = false;'), 1);
-  assert.equal(count('PLAN_WRITES_OPEN = true'), 0);
+// Closed until day L (decision 22); F5 deploy 2 flips this one line (plan W7). Which value is right for a bundle is the
+// deploy guard's question (--plan 1 closed / --plan 2 open); here: one declaration, no second assignment anywhere, no env.
+test('one writes switch in the deployed source, false or true, nothing else names a value; no env override', () => {
+  assert.equal((src.match(/^var PLAN_WRITES_OPEN = (?:true|false);$/gm) || []).length, 1);
+  assert.equal(count('PLAN_WRITES_OPEN = '), 1, 'no second assignment, no comment naming a value (the guard counts them)');
   assert.ok(!/env\.PLAN_WRITES/.test(src), 'no environment switch beside the constant');
 });
 

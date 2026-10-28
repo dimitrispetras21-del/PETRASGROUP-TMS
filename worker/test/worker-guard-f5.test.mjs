@@ -14,9 +14,12 @@ import path from 'node:path';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const TOOL = path.join(here, '..', 'tools', 'worker-guard.mjs');
-const SRC = path.join(here, '..', 'src', 'index.js');
-const src = readFileSync(SRC, 'utf8');
+// the deploy-1 state of the source (writes closed), whichever value this branch holds: the day-L commit (F5 deploy 2)
+// carries the open switch, and the checks below are about the closed bundle (--plan 2 has its own test, -f5)
+const src = readFileSync(path.join(here, '..', 'src', 'index.js'), 'utf8').replace('\nvar PLAN_WRITES_OPEN = true;\n', '\nvar PLAN_WRITES_OPEN = false;\n');
 const dir = mkdtempSync(path.join(tmpdir(), 'worker-guard-f5-'));
+const SRC = path.join(dir, 'index.js');
+writeFileSync(SRC, src);
 const write = (name, text) => { const f = path.join(dir, name); writeFileSync(f, text); return f; };
 const run = (file, ...args) => {
   const r = spawnSync(process.execPath, [TOOL, file, ...args], { encoding: 'utf8' });
@@ -113,7 +116,7 @@ test('a double esbuild bundle (what wrangler deploys) and its CF multipart downl
   const opts = { bundle: true, format: 'esm', write: false, platform: 'neutral', external: ['@cloudflare/puppeteer', 'node:*'], logLevel: 'silent' };
   const bundle = async (text, name) => {
     // resolveDir: the source imports its sibling modules (./rt-rules.mjs, ../../core/dkv-parser.js)
-    const stdin = (contents) => ({ contents, sourcefile: name, loader: 'js', resolveDir: path.dirname(SRC) });
+    const stdin = (contents) => ({ contents, sourcefile: name, loader: 'js', resolveDir: path.join(here, '..', 'src') });
     const once = await esbuild.build({ ...opts, stdin: stdin(text) });
     const twice = await esbuild.build({ ...opts, stdin: stdin(once.outputFiles[0].text) });
     return twice.outputFiles[0].text;

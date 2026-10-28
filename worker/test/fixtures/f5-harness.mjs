@@ -1,7 +1,7 @@
 // F5 (national v5, day L) tests: the real Worker in Node, PostgREST stubbed via fetch — the harness of
-// plan-routes.test.mjs, shared by the F5 test files only. Two instances of the same source: as deployed (deploy 1,
-// writes closed) and one with the single switch flipped by a loader hook (deploy 2, day L), so the day-L behaviour
-// is tested without a second switch in the source.
+// plan-routes.test.mjs, shared by the F5 test files only. Two instances of the same source, the single switch set by a
+// loader hook: closed (deploy 1) and open (deploy 2, day L) — whichever value the branch holds, so the same tests
+// pass on the deploy-1 branch and on the one-line deploy-2 commit, and no second switch is ever added to the source.
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -16,14 +16,17 @@ export async function resolve(spec, ctx, next) {
   return next(spec, ctx);
 }
 export async function load(url, ctx, next) {
-  if (!url.endsWith('/worker/src/index.js?plan-writes-open')) return next(url, ctx);
+  const q = url.endsWith('/worker/src/index.js?plan-writes-open') ? 'open' : url.endsWith('/worker/src/index.js?plan-writes-closed') ? 'closed' : null;
+  if (!q) return next(url, ctx);
   const r = await next(url, { ...ctx, format: 'module' });
   const text = new TextDecoder().decode(r.source);
-  const needle = 'var PLAN_WRITES_OPEN = false;';
-  if (text.split(needle).length !== 2) throw new Error('f5-harness: the writes switch is not exactly once in index.js');
-  return { format: 'module', source: text.replace(needle, 'var PLAN_WRITES_OPEN = true;'), shortCircuit: true };
+  // either value in the source: the day-L commit (deploy 2) carries the open switch, and both behaviours stay tested
+  const decl = ['var PLAN_WRITES_OPEN = false;', 'var PLAN_WRITES_OPEN = true;'];
+  if (decl.reduce((n, d) => n + text.split(d).length - 1, 0) !== 1) throw new Error('f5-harness: the writes switch is not exactly once in index.js');
+  const want = 'var PLAN_WRITES_OPEN = ' + (q === 'open') + ';';
+  return { format: 'module', source: decl.reduce((t, d) => t.replace(d, want), text), shortCircuit: true };
 }`));
-const { default: worker } = await import(pathToFileURL(SRC_PATH).href);
+const { default: worker } = await import(pathToFileURL(SRC_PATH).href + '?plan-writes-closed');
 const { default: workerOpen } = await import(pathToFileURL(SRC_PATH).href + '?plan-writes-open');
 
 export const ORIGIN = 'https://dimitrispetras21-del.github.io';

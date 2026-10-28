@@ -15,9 +15,10 @@
 //   - the older paths: PATCH /costs/rt/:id on a v5 cycle → 409 before the DB;
 //     a facade write refused by a plan: rule → 422 instead of 500;
 //   - the Worker writes no audit_log of its own on /plan/* (the DB does).
-// Two instances of the same source: as deployed (writes closed), and one with
-// the single switch flipped by a loader hook (`?plan-writes-open`), so the
-// write routes can be exercised without a second switch in the source.
+// Two instances of the same source, the single switch set by a loader hook:
+// closed (`?plan-writes-closed`, deploy 1) and open (`?plan-writes-open`, day L),
+// whichever value the branch holds (F5 deploy 2 is one line), so the write
+// routes can be exercised without a second switch in the source.
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -34,14 +35,17 @@ export async function resolve(spec, ctx, next) {
   return next(spec, ctx);
 }
 export async function load(url, ctx, next) {
-  if (!url.endsWith('/worker/src/index.js?plan-writes-open')) return next(url, ctx);
+  const q = url.endsWith('/worker/src/index.js?plan-writes-open') ? 'open' : url.endsWith('/worker/src/index.js?plan-writes-closed') ? 'closed' : null;
+  if (!q) return next(url, ctx);
   const r = await next(url, { ...ctx, format: 'module' });
   const text = new TextDecoder().decode(r.source);
-  const needle = 'var PLAN_WRITES_OPEN = false;';
-  if (text.split(needle).length !== 2) throw new Error('plan-routes: the writes switch is not exactly once in index.js');
-  return { format: 'module', source: text.replace(needle, 'var PLAN_WRITES_OPEN = true;'), shortCircuit: true };
+  // either value in the source: the day-L commit (deploy 2) carries the open switch, and both behaviours stay tested
+  const decl = ['var PLAN_WRITES_OPEN = false;', 'var PLAN_WRITES_OPEN = true;'];
+  if (decl.reduce((n, d) => n + text.split(d).length - 1, 0) !== 1) throw new Error('plan-routes: the writes switch is not exactly once in index.js');
+  const want = 'var PLAN_WRITES_OPEN = ' + (q === 'open') + ';';
+  return { format: 'module', source: decl.reduce((t, d) => t.replace(d, want), text), shortCircuit: true };
 }`));
-const { default: worker } = await import(pathToFileURL(SRC_PATH).href);
+const { default: worker } = await import(pathToFileURL(SRC_PATH).href + '?plan-writes-closed');
 const { default: workerOpen } = await import(pathToFileURL(SRC_PATH).href + '?plan-writes-open');
 
 const ORIGIN = 'https://dimitrispetras21-del.github.io';
