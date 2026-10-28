@@ -455,8 +455,11 @@
     return /^([01]\d|2[0-3]):[0-5]\d$/.test(s) ? s : '';
   }
   const _t = (x) => (typeof x === 'string' && /^\d{2}:\d{2}$/.test(x) ? x : _hm(x));      // model times: HH:MM or ISO
-  const _pal = (n) => String(Math.round(Number(n) * 10) / 10).replace('.', ',');
+  // F1/F4 (owner 28/10, 080): pallets not known yet (null) read «;», a sum with unknowns «12+;» (WN5L.palText), never 0
+  const _pal = (n) => (n == null ? ';' : String(Math.round(Number(n) * 10) / 10).replace('.', ','));
   const _sum = (a) => a.reduce((s, x) => s + (typeof x === 'number' && isFinite(x) ? x : 0), 0);
+  const _unkN = (a) => a.filter((x) => x == null).length;   // how many of these pallets are not known yet
+  const _palU = (n, unk) => (unk > 0 ? _pal(n) + '+;' : _pal(n));
   const _clientErr = (code, message) => ({ kind: 'client', code, message });
   const _id = (v) => { const n = Number(v); return Number.isSafeInteger(n) && n > 0 ? n : null; };
   const _norm = (s) => (typeof fhSearchNorm === 'function' ? fhSearchNorm(s) : String(s || '').toLowerCase());
@@ -566,10 +569,13 @@
   const _boxHTML = (x) => '<div class="wi4-box ' + x.cls + '"><span class="wi4-l1' + (x.cls === 'own' ? ' wi4-plate' : '') + '">' + _esc(x.l1) + '</span>' + (x.l2 ? '<span class="wi4-l2">' + _esc(x.l2) + '</span>' : '') + '</div>';
   const _sideOfRow = (r, side) => (r ? (side === 'ANODOS' ? r.anod : r.kath) : null);
   const _sidePal = (r, side) => { const sd = _sideOfRow(r, side); return sd && typeof sd.pallets === 'number' ? sd.pallets : 0; };
+  const _sideUnk = (r, side) => { const sd = _sideOfRow(r, side); return (sd && sd.palUnknown) || 0; };
   // F1: a Veroia window of the whole day (WN5L model: allDay) reads «όλη η ημέρα», never 00:00–23:59
   const _veroiaOf = (r, side) => { const sd = _sideOfRow(r, side); return sd && sd.veroia ? (sd.veroia.allDay ? 'όλη η ημέρα' : _t(sd.veroia.from) + '–' + _t(sd.veroia.to)) : null; };
   // over capacity is a warning, never a refusal (Δ1, Ε-17: the sum of the side's loadings, like 072 over_33)
-  const _capHTML = (n, tail) => '<span class="wn5-cap' + (n > 33 ? ' over' : '') + '">→ ' + _pal(n) + '/33' + (n > 33 ? ' · υπέρβαση ' + _pal(n - 33) : '') + (tail || '') + '</span>';
+  // unk: pieces whose pallets are not known yet — the x/33 is then a floor, said «n+;/33» with its title (F1/F4)
+  const _capHTML = (n, tail, unk) => '<span class="wn5-cap' + (n > 33 ? ' over' : '') + '"' + (unk ? ' title="παλέτες άγνωστες σε ' + unk + (unk === 1 ? ' φορτίο' : ' φορτία') + '"' : '') + '>→ '
+    + _palU(n, unk) + '/33' + (n > 33 ? ' · υπέρβαση ' + _pal(n - 33) : '') + (tail || '') + '</span>';
   const _optsHTML = (list, cur) => list.filter((x) => x.active).map((x) => '<option value="' + x.id + '"' + (x.id === cur ? ' selected' : '') + '>' + _esc(x.label) + '</option>').join('');
   // trucks with no cycle over that day; a cycle that ENDS that day frees its truck from its end time (display only:
   // the DB refuses a real overlap with truck_busy)
@@ -603,7 +609,7 @@
   Object.assign(KIT, { parts: _parts, hm: _hm, hmw: _hmw, ymdOf: _ymdOf, dm: _dm, dayShort: _dayShort, addDays: _addDays, iso: _iso, win: _win, hhmm: _hhmm,
     t: _t, pal: _pal, sum: _sum, clientErr: _clientErr, id: _id, norm: _norm, cycles: _cycles, cycle: _cycle, item: _item, groupItems: _groupItems,
     row: _row, dayRows: _dayRows, hubId: _hubId, sideFor: _sideFor, needs: _needs, stopsFor: _stopsFor, dayWin: _dayWin, cycText: _cycText, boxHTML: _boxHTML,
-    sidePal: _sidePal, veroiaOf: _veroiaOf, capHTML: _capHTML, optsHTML: _optsHTML, freeTrucks: _freeTrucks, rate: _rate, DOW_GEN, dow: _dow });
+    sidePal: _sidePal, sideUnk: _sideUnk, veroiaOf: _veroiaOf, capHTML: _capHTML, optsHTML: _optsHTML, freeTrucks: _freeTrucks, rate: _rate, DOW_GEN, dow: _dow });
 
   // ═══ T12 · the assignment window Δ1 (Figma 2051:7735): one window for four entries ═══
   // The request of one candidate, from the window's state only. cand: 'rt:<id>' | 'truck:<id>' | 'partner'.
@@ -726,11 +732,11 @@
         // side), with the Veroia window and the pallets on the first (Figma Δ1 Pelagos row)
         const gap = c.trip_type === 'PARTNER' && r.row && r.row.anod && r.row.anod.gap ? r.row.anod.gap.text : null;
         const where = r.veroia ? 'Βέροια ' + r.veroia : 'χωρίς στάση Βέροιας';
-        const l1 = gap ? where + ' · ' + _pal(r.pallets) + 'π σήμερα' : where;
-        const l2 = gap || _pal(r.pallets) + 'π σήμερα';
+        const l1 = gap ? where + ' · ' + _palU(r.pallets, r.palUnk) + 'π σήμερα' : where;
+        const l2 = gap || _palU(r.pallets, r.palUnk) + 'π σήμερα';
         h += '<div class="wn5-cand" data-line="rt" data-s="' + _esc(_norm([tx.l1, tx.l2, c.code].join(' '))) + '">' + _boxHTML(tx)
           + '<span class="wn5-cand-m"><b>' + _esc(l1) + '</b><span>' + _esc(l2) + '</span></span>'
-          + '<span>' + _capHTML(r.pallets + st.pallets) + rate + '</span>'
+          + '<span>' + _capHTML(r.pallets + st.pallets, '', (r.palUnk || 0) + (st.palUnk || 0)) + rate + '</span>'
           + '<button type="button" class="wi4-btn sm" data-act="save" data-cand="rt:' + c.rt_id + '">' + (st.mode === 'move' ? 'Μεταφορά' : 'Ένωση') + '</button></div>';
       }
       for (const c of st.road) {
@@ -748,7 +754,7 @@
       const next = t.next ? 'επόμενο: ' + (t.next.side ? t.next.side + ' ' : '') + _dayShort(t.next.day) : '';
       h += '<div class="wn5-cand" data-line="free" data-s="' + _esc(_norm(t.label)) + '"><div class="wi4-box own"><span class="wi4-l1 wi4-plate">' + _esc(t.label) + '</span></div>'
         + '<span class="wn5-cand-m"><b>' + _esc(t.from ? 'ελεύθερο από ' + t.from : 'ελεύθερο') + '</b>' + (next ? '<span>' + _esc(next) + '</span>' : '') + '</span>'
-        + '<span>' + (vehicle ? '' : _capHTML(st.pallets, ' · νέος κύκλος')) + '</span>'
+        + '<span>' + (vehicle ? '' : _capHTML(st.pallets, ' · νέος κύκλος', st.palUnk)) + '</span>'
         + '<button type="button" class="wi4-btn sm" data-act="pick" data-cand="' + key + '"' + (st.ids.ok ? '' : ' disabled') + '>Ανάθεση</button></div>';
       if (st.pick === key) {
         h += '<div class="wn5-more" data-more="' + key + '">'
@@ -761,7 +767,7 @@
       + '<div class="wn5-cand" data-line="partner" data-s="' + _esc(_norm(st.partners.map((p) => p.label).join(' '))) + '">'
       + '<label class="wn5-field"><span>Συνεργάτης</span><select data-partner data-fh-search' + (st.ids.ok ? '' : ' disabled') + '><option value="">—</option>' + _optsHTML(st.partners, st.partner) + '</select></label>'
       + '<span class="wn5-cand-m"><span>κόμιστρο · κενό = «κόμιστρο λείπει»</span></span>'
-      + '<span>' + (vehicle ? '' : _capHTML(st.pallets, ' · δρομολόγιο συνεργάτη') + ' ') + '<span class="wn5-nw"><input class="wn5-rate" data-rate inputmode="decimal" placeholder="—" value="' + _esc(st.rateTxt) + '" aria-label="Κόμιστρο €"><span class="wn5-eur">€</span></span></span>'
+      + '<span>' + (vehicle ? '' : _capHTML(st.pallets, ' · δρομολόγιο συνεργάτη', st.palUnk) + ' ') + '<span class="wn5-nw"><input class="wn5-rate" data-rate inputmode="decimal" placeholder="—" value="' + _esc(st.rateTxt) + '" aria-label="Κόμιστρο €"><span class="wn5-eur">€</span></span></span>'
       + '<button type="button" class="wi4-btn sm" data-act="save" data-cand="partner">Ανάθεση</button></div>';
     if (st.mode === 'move') {
       h += '<div class="wn5-grp-h" data-grp="wait">ΑΛΛΟ</div><div class="wn5-cand" data-line="wait">'
@@ -771,11 +777,11 @@
         // «Πίσω στην αναμονή» (a load picked up elsewhere) is not in Figma: R-66.
         + '<span class="wn5-alt"><b>' + (st.allHub ? 'Πίσω στη Βέροια' : 'Πίσω στην αναμονή') + '</b>'
         + '<span>' + (st.allHub ? 'σπάσιμο μόνο εκεί' : 'γυρίζουν ΠΡΟΣ ΑΝΑΘΕΣΗ') + '</span></span>'
-        + '<span><span class="wn5-alt-p">' + _pal(st.pallets) + 'π</span></span>'
+        + '<span><span class="wn5-alt-p">' + _palU(st.pallets, st.palUnk) + 'π</span></span>'
         + '<button type="button" class="wi4-btn sm" data-act="save" data-cand="wait">Μεταφορά</button></div>';
       // the source vehicle after the move (Figma 2011:9294 «ΚΖΗ 2108 · 33 → 24/33»), from its board row; a source
       // with no row on the loaded board has no line, never a guessed load
-      if (st.src) h += '<div class="wn5-srcafter" data-src-after>' + _esc(st.src.label) + ' · ' + _pal(st.src.before) + ' → ' + _pal(st.src.before - st.pallets) + '/33</div>';
+      if (st.src) h += '<div class="wn5-srcafter" data-src-after>' + _esc(st.src.label) + ' · ' + _palU(st.src.before, st.src.unk) + ' → ' + _palU(st.src.before - st.pallets, Math.max(0, (st.src.unk || 0) - (st.palUnk || 0))) + '/33</div>';
     }
     return h;
   }
@@ -806,14 +812,16 @@
       const take = new Map((src.pieces || []).map((p) => [p.piece_id, p]));
       const hub = _hubId();
       st.needs = st.items.flatMap((it) => _needs(it, !!(take.get(it.piece_id) || {}).to_hub, hub));
-      st.pallets = _sum(st.items.map((it) => { const p = take.get(it.piece_id); return p && typeof p.take_pallets === 'number' ? p.take_pallets : it.pallets; }));
+      const pals = st.items.map((it) => { const p = take.get(it.piece_id); return p && typeof p.take_pallets === 'number' ? p.take_pallets : it.pallets; });
+      st.pallets = _sum(pals);
+      st.palUnk = _unkN(pals);
       st.day = st.day || st.items[0].nat_ready_day || null;
       if (!ctx.side) st.side = _sideFor(st.items[0]);
       // F7 (live 28/10): an order without a reference is named by its number («Ανάθεση · #17 → …»), never «—»
       const i0 = st.items[0];
       st.ref = i0.reference || (i0.nat_order_id != null ? '#' + i0.nat_order_id : i0.order_id != null ? '#' + i0.order_id : '—');
       const vs = st.items[0].kind === 'vs_import' && st.items[0].load_from ? ' · φτάνει ' + _hm(st.items[0].load_from) : '';
-      st.meta = _dayShort(st.day) + ' · ' + st.items.length + (st.items.length === 1 ? ' παράδοση' : ' παραδόσεις') + ' · ' + _pal(st.pallets) + 'π' + vs;
+      st.meta = _dayShort(st.day) + ' · ' + st.items.length + (st.items.length === 1 ? ' παράδοση' : ' παραδόσεις') + ' · ' + _palU(st.pallets, st.palUnk) + 'π' + vs;
     }
     if (!st.day) { WN5Act.strip(_boardHost(), _clientErr('day_missing', 'Η ημέρα της ανάθεσης δεν είναι γνωστή — ανανέωσε')); return null; }
     // F12 (live 28/10): the Veroia window the order already has (its shipment's window at the hub) fills the field,
@@ -847,7 +855,7 @@
         if (!c || c.rt_id === st.skipRt) continue;
         ids.add(c.rt_id);
         st.cyc[c.rt_id] = _copy(c);
-        st.rows.push({ rtId: c.rt_id, row: _copy(r), pallets: _sidePal(r, st.side), veroia: _veroiaOf(r, st.side) });
+        st.rows.push({ rtId: c.rt_id, row: _copy(r), pallets: _sidePal(r, st.side), palUnk: _sideUnk(r, st.side), veroia: _veroiaOf(r, st.side) });
       }
       st.road = _copy(_cycles().filter((c) => !ids.has(c.rt_id) && c.rt_id !== st.skipRt && c.date_start < st.day && st.day <= c.date_end));
     }
@@ -1027,7 +1035,8 @@
   function _plusChips(st, it) {
     const anod = st.side === 'ANODOS';
     const win = _plusWin(st, it);
-    const n = st.pallets + (it.is_stock ? (_takeOf(st, it) || 0) : it.pallets);
+    const n = st.pallets + (it.is_stock ? (_takeOf(st, it) || 0) : (it.pallets == null ? 0 : it.pallets));
+    const unk = (st.palUnk || 0) + (!it.is_stock && it.pallets == null ? 1 : 0);   // F1/F4: a floor when pallets are unknown
     const warn = [];
     const day = _ymdOf(win[0]);
     const other = !!day && st.sideDays.length > 0 && !st.sideDays.includes(day);
@@ -1044,8 +1053,8 @@
       if (!other && typeof WN5L !== 'undefined' && win[0]) { const x = WN5L.stopRank(st.sideStops, win[0]); if (Number.isFinite(x) && x > 0) k = x; }
     } catch (e) { _log(e, 'WN5Act plus stopRank'); }
     let h = warn.map((w) => '<span class="wn5-cap over">' + _esc(w) + '</span>').join('');
-    if (n > 33) h += _capHTML(n) + (k ? '<span class="wn5-cap">μπαίνει ' + k + 'η</span>' : '');
-    else h += _capHTML(n, k ? (late ? ' · ' : ' · μπαίνει ') + k + 'η' : '');
+    if (n > 33) h += _capHTML(n, '', unk) + (k ? '<span class="wn5-cap">μπαίνει ' + k + 'η</span>' : '');
+    else h += _capHTML(n, k ? (late ? ' · ' : ' · μπαίνει ') + k + 'η' : '', unk);
     return h;
   }
   // why a line's «Πρόσθεσε» is off (owner 28/10, red beside it): the Veroia window is the user's field above the list;
@@ -1099,7 +1108,7 @@
           // the grey «αργό VS» chip = the base's overdue of a waiting VS (Ε-35: the flag only, no time — plan_board
           // carries none); the count only from two lines up (Figma 2011:10373 «· φτάνει 18:00 · 3π»)
           const chip = vs && items.some((x) => x.overdue === true) ? 'αργό VS' : null;
-          groups.push({ head: head(items[0]), chip, sub: arr + _cnt(items) + ' · ' + _pal(_sum(items.map((x) => x.pallets))) + 'π', items });
+          groups.push({ head: head(items[0]), chip, sub: arr + _cnt(items) + ' · ' + _palU(_sum(items.map((x) => x.pallets)), _unkN(items.map((x) => x.pallets))) + 'π', items });
         }
       };
       by((x) => (x.kind === 'vs_import' ? 'o' + x.order_id : null), (x) => (x.reference || 'VS') + ' · ' + (x.client || '—'));
@@ -1128,7 +1137,7 @@
     const sideStops = _copy((c.stops || []).filter((s) => s.side === side && s.location_id !== hub));
     const hubStop = (c.stops || []).find((s) => s.side === side && s.location_id === hub) || null;
     const st = { rtId: c.rt_id, side, cyc: _copy(c), hub, day: (sd && sd.day) || (r && r.dayKey) || c.date_start,
-      pallets: _sidePal(r, side), veroia: _veroiaOf(r, side), take: {}, hubFrom: '', hubTo: '', q: '', mode: 'wait', groups: [],
+      pallets: _sidePal(r, side), palUnk: _sideUnk(r, side), veroia: _veroiaOf(r, side), take: {}, hubFrom: '', hubTo: '', q: '', mode: 'wait', groups: [],
       sideStops, sideDays: [...new Set(sideStops.map((s) => s.stop_day || _ymdOf(s.planned_from)).filter(Boolean))],
       hubWin: hubStop && hubStop.planned_from && hubStop.planned_to ? [hubStop.planned_from, hubStop.planned_to] : null };
     st.groups = _plusGroups(st);
@@ -1136,7 +1145,7 @@
     const box = _cycText(c, r);
     const anod = side === 'ANODOS';
     const title = anod ? 'Πρόσθεσε στην ΑΝΟΔΟ' : 'Πρόσθεσε στην ΚΑΘΟΔΟ';
-    const meta = [box.l1.split(' · ')[0], _dayShort(st.day), st.veroia ? 'φόρτωση ' + st.veroia : null, _pal(st.pallets) + '/33'].filter(Boolean).join(' · ');
+    const meta = [box.l1.split(' · ')[0], _dayShort(st.day), st.veroia ? 'φόρτωση ' + st.veroia : null, _palU(st.pallets, st.palUnk) + '/33'].filter(Boolean).join(' · ');
     // A popover (Figma 2011:10306/10447): no «×» and no footer — Esc, a click outside or another «+» close it. The
     // header holds title · meta and «Νέα παραγγελία | Από αναμονή», like Δ1 (T12): a redraw of the body keeps them.
     const d = _dlg('plus', title, { anchor: anchorEl, wide: true, pop: true });
@@ -1176,7 +1185,7 @@
         if (!anod && typeof WN5Form !== 'undefined' && typeof WN5Form.openOrder === 'function') {
           const truck = box.cls === 'un' ? null : box.l1.split(' · ')[0];
           h += '<div class="wn5-grey wn5-phint">«Νέα παραγγελία» ανοίγει τη σύντομη φόρμα με ' + _esc(_dayShort(st.day)) + ', ΚΑΘΟΔΟ'
-            + (truck ? ' και ' + _esc(truck) : '') + ' έτοιμα· Τιμή € (χωρίς ΦΠΑ) υποχρεωτική.</div>';
+            + (truck ? ' και ' + _esc(truck) : '') + ' έτοιμα· τιμή, παλέτες και παράθυρο μπαίνουν και αργότερα.</div>';
         }
         // Figma 2011:10446: the ΑΝΟΔΟΣ popover has no search (its list is the requests of one side's day)
         if (!anod) h += '<input type="search" class="wn5-dq" data-q placeholder="Αναζήτηση στην αναμονή (πελάτης, σημείο, VS)" value="' + _esc(st.q) + '">';
@@ -1314,19 +1323,19 @@
     // goes and how much, then which load, which side, which delivery day. Never the client (the Δ1 rule of T12).
     const sideW = side === 'ANODOS' ? 'ΑΝΟΔΟΣ' : 'ΚΑΘΟΔΟΣ';
     const whole = !Array.isArray(from.piece_ids);
-    const pal = _sum(mp.items.map((x) => x.pallets));
+    const pal = _sum(mp.items.map((x) => x.pallets)), palUnk = _unkN(mp.items.map((x) => x.pallets));
     const drops = [...new Set(mp.items.map((x) => x.dropLoc))];
     const place = mp.items[0] ? (mp.items[0].dropName || _placeName(mp.items[0].dropLoc)) : '—';
     const refs = [...new Set(mp.items.map((x) => x.reference).filter(Boolean))].join(', ') || '—';
     const firstDrop = mp.items.map((x) => x.dropFrom).filter(Boolean).sort((a, b) => new Date(a) - new Date(b))[0];
-    const head = whole ? 'όλη η ' + sideW + ' · ' + _pal(pal) + 'π' : place + (drops.length > 1 ? ' +' + (drops.length - 1) : '') + ' · ' + _pal(pal) + 'π';
+    const head = whole ? 'όλη η ' + sideW + ' · ' + _palU(pal, palUnk) + 'π' : place + (drops.length > 1 ? ' +' + (drops.length - 1) : '') + ' · ' + _palU(pal, palUnk) + 'π';
     const meta = [whole ? (src.code || 'κύκλος') : refs, sideW, whole ? mp.items.length + (mp.items.length === 1 ? ' παράδοση' : ' παραδόσεις') : null,
       firstDrop ? 'παράδοση ' + _dayShort(_ymdOf(firstDrop)) : null].filter(Boolean).join(' · ');
     const what = whole ? 'όλη η ' + sideW + ' του ' + (src.code || 'κύκλου') : refs + ' · ' + place;
     const tx0 = _cycText(src, r);
-    const srcAfter = r ? { label: src.trip_type === 'PARTNER' ? tx0.l1 : (src.truck || tx0.l1), before: _sidePal(r, side) } : null;
+    const srcAfter = r ? { label: src.trip_type === 'PARTNER' ? tx0.l1 : (src.truck || tx0.l1), before: _sidePal(r, side), unk: _sideUnk(r, side) } : null;
     const st = { mode: 'move', from: _copy(from), side, day: ctx.day || (sd && sd.day) || (r && r.dayKey) || src.date_start, skipRt: src.rt_id,
-      rtId: null, group: null, pieces: null, items: _copy(mp.items), needs: _copy(mp.needs), pallets: _sum(mp.items.map((x) => x.pallets)),
+      rtId: null, group: null, pieces: null, items: _copy(mp.items), needs: _copy(mp.needs), pallets: pal, palUnk,
       allHub: mp.items.length > 0 && mp.items.every((x) => x.pickHub), cyc: {}, rows: [], road: [], free: [], trailers: [], drivers: [], partners: [],
       ids: { ok: false }, pick: null, trailer: null, driver: null, partner: null, rateTxt: '', hubFrom: '', hubTo: '', filter: 'all', q: '', ref: '',
       what, meta, src: srcAfter };
@@ -1892,8 +1901,11 @@
     // order read «Τιμή —» / «PE —» while the base had them). The dispatcher sees the price (locked decision 23/8).
     const src = f.items.concat(f.legs.map((x) => x.l));
     const price = src.find((x) => typeof x.price === 'number');
+    // F4 (owner 28/10, 080): a price not written yet comes as price: null — «λείπει», never «—» (= the board did not say)
+    const noPrice = !price && src.some((x) => Object.prototype.hasOwnProperty.call(x, 'price') && x.price === null);
     const pe = src.find((x) => typeof x.pallet_exchange === 'boolean');
-    const pal = _sum(f.items.map((x) => x.pallets)) + _sum(f.legs.filter((x) => x.l.act === 'load').map((x) => x.l.pallets));
+    const pals = f.items.map((x) => x.pallets).concat(f.legs.filter((x) => x.l.act === 'load').map((x) => x.l.pallets));
+    const pal = _sum(pals), palUnk = _unkN(pals);
     const assigned = f.legs.length > 0;
     const side = assigned ? f.legs[0].s.side : (f.items[0] ? _sideFor(f.items[0]) : 'KATHODOS');
     const row = (k, v) => '<div class="wn5-kv"><span>' + _esc(k) + '</span><b>' + _esc(v) + '</b></div>';
@@ -1906,8 +1918,9 @@
       + '<span class="wn5-chip ' + (assigned ? 'ok' : 'un') + '">' + (assigned ? 'ΑΝΑΤΕΘΗΚΕ' : 'ΠΡΟΣ ΑΝΑΘΕΣΗ') + '</span></div>';
     let h = sec('ΣΤΟΙΧΕΙΑ', row('Πελάτης', any.client || '—')
       // absent on both the pieces and the legs = «—», never a guess
-      + row('Τιμή', price ? _pal(price.price) + ' € (χωρίς ΦΠΑ) · τιμολογείται χωριστά' : '—')
-      + row('Παλέτες', pal ? _pal(pal) : '—') + row('Θερμοκρασία', _temp(any.temperature_c)) + row('PE', pe ? (pe.pallet_exchange ? 'Ναι' : 'Όχι') : '—'));
+      + row('Τιμή', price ? _pal(price.price) + ' € (χωρίς ΦΠΑ) · τιμολογείται χωριστά' : noPrice ? 'λείπει — γράψε την από «Επεξεργασία»' : '—')
+      // F1: unknown pallets are said, never summed as 0 («;» all unknown, «12+;» some)
+      + row('Παλέτες', palUnk ? (pal ? _palU(pal, palUnk) : ';') + ' · άγνωστες σε ' + palUnk + (palUnk === 1 ? ' φορτίο' : ' φορτία') : pal ? _pal(pal) : '—') + row('Θερμοκρασία', _temp(any.temperature_c)) + row('PE', pe ? (pe.pallet_exchange ? 'Ναι' : 'Όχι') : '—'));
     // one national order has one client, already in «Πελάτης»: a stop line names the place, the day and the window,
     // never the client again (live F12, 28/10 — it read as a second place under the first)
     const stopLine = (s, l) => [s.location || '—', _dayShort(_ymdOf(s.planned_from)), _hmw(s.planned_from, s.planned_to), _pal(l.pallets) + 'π'];
@@ -1943,24 +1956,26 @@
     h += sec('ΚΥΚΛΟΣ', cy);
     // «invoiced» is not on the board: the delete list (dry run) says it when it is true
     h += sec('ΤΙΜΟΛΟΓΗΣΗ', row('Τιμολογήθηκε', '—'));
-    return { html: h, chips, ref, client: any.client || '—', pal };
+    return { html: h, chips, ref, client: any.client || '—', pal, palUnk };
   }
   // «Τι θα γίνει» rows the screen adds from the board it holds (Figma 2011:10585–10600): each vehicle's x/33 after the
   // order leaves, each stop left with no leg (plan_h_stops_sweep drops it), and each cycle that stays. The base's own
   // list follows them.
   function _deleteWhat(f, ctx, list) {
-    const out = ['σβήνεται 1 παραγγελία · ' + (ctx.client || '—') + (ctx.pal ? ' · ' + _pal(ctx.pal) + 'π' : '')];
+    const out = ['σβήνεται 1 παραγγελία · ' + (ctx.client || '—') + (ctx.pal || ctx.palUnk ? ' · ' + _palU(ctx.pal, ctx.palUnk) + 'π' : '')];
     const sides = new Map();
     for (const x of f.legs) {
       if (x.l.act !== 'load') continue;
       const k = x.c.rt_id + '|' + x.s.side;
-      const p = sides.get(k) || { c: x.c, side: x.s.side, n: 0 };
+      const p = sides.get(k) || { c: x.c, side: x.s.side, n: 0, unk: 0 };
       p.n += Number(x.l.pallets) || 0;
+      if (x.l.pallets == null) p.unk++;
       sides.set(k, p);
     }
     for (const p of sides.values()) {
       const before = _sidePal(_row(p.c.rt_id), p.side);
-      out.push((p.c.truck || p.c.partner || p.c.code || '—') + ' πάει ' + _pal(before) + ' → ' + _pal(Math.max(0, before - p.n)) + '/33');
+      const bu = _sideUnk(_row(p.c.rt_id), p.side);
+      out.push((p.c.truck || p.c.partner || p.c.code || '—') + ' πάει ' + _palU(before, bu) + ' → ' + _palU(Math.max(0, before - p.n), Math.max(0, bu - p.unk)) + '/33');
     }
     const stops = new Set();
     for (const x of f.legs) {
@@ -2004,7 +2019,7 @@
     d.dlg.addEventListener('click', (ev) => {
       const b = ev.target.closest('[data-act]');
       if (!b || b.disabled || !_live()) return;
-      if (b.dataset.act === 'delete') WN5Act.deleteOrder(no, { host: d.msg, ref: card.ref, client: card.client, pal: card.pal });
+      if (b.dataset.act === 'delete') WN5Act.deleteOrder(no, { host: d.msg, ref: card.ref, client: card.client, pal: card.pal, palUnk: card.palUnk });
       else if (b.dataset.act === 'edit') {
         _close(d);   // the card's own close (its listeners go with it) before the form takes the screen
         WN5Form.openOrder({ natOrderId: no });   // T20: edit = PATCH /plan/orders/:id, only what changed

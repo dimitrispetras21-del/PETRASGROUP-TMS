@@ -24,6 +24,8 @@
 
   const _num = (n) => (typeof n === 'number' && isFinite(n) ? n : 0);
   const _sumP = (list) => list.reduce((s, x) => s + _num(x.pallets), 0);
+  // F1/F4 (080): «12+;» — the known pallets and the pieces whose pallets are not known yet, never added as 0
+  const _palL = (list) => WN5L.palText(_sumP(list), list.filter((x) => x.pallets == null).length);
   const _wd = (ymd) => K().dayShort(ymd).split(' ')[0];                  // «Τρί» (Figma: the weekday, no date, in a row)
   // «φεύγει ως [Τετ] 22:00»: the day is left out when it is the panel's own day (Figma 2011:7745 Theta Berries)
   const _leaveWord = (ymd, day) => (ymd === day ? '' : _wd(ymd) + ' ') + '22:00';
@@ -54,7 +56,7 @@
     const k = K();
     return k.dayRows(day).filter((r) => r.kath && r.kath.veroia).map((r) => {
       const c = k.cycle(r.rtId);
-      return c ? { rtId: r.rtId, c, r, pal: k.sidePal(r, 'KATHODOS'), win: k.veroiaOf(r, 'KATHODOS') } : null;
+      return c ? { rtId: r.rtId, c, r, pal: k.sidePal(r, 'KATHODOS'), unk: k.sideUnk(r, 'KATHODOS'), win: k.veroiaOf(r, 'KATHODOS') } : null;
     }).filter(Boolean);
   }
   // the delivery place, by name, only when the board sent it (Ε-26) and the catalogue has it; else «—» (rule 6), as the
@@ -89,8 +91,8 @@
     const day = _hubDay(model);
     const trucks = day ? _trucks(day) : [];
     // the summary drops a part that is zero (Δ11 header: «· απόθεμα 17π», no «για μοίρασμα»)
-    const sum = [split.length ? split.length + ' για μοίρασμα · ' + k.pal(_sumP(split)) + 'π' : null,
-      stock.length ? 'απόθεμα ' + k.pal(_sumP(stock)) + 'π' : null].filter(Boolean).join(' · ');
+    const sum = [split.length ? split.length + ' για μοίρασμα · ' + _palL(split) + 'π' : null,
+      stock.length ? 'απόθεμα ' + _palL(stock) + 'π' : null].filter(Boolean).join(' · ');
     const dayTxt = day ? k.dayShort(day) : '—';
     if (!_open) {
       // the closed line names what waits to be split (Figma 2011:7934), not the stock
@@ -108,8 +110,8 @@
     const load = trucks.length ? trucks.length + (trucks.length === 1 ? ' φορτηγό φορτώνει' : ' φορτηγά φορτώνουν') + span : '';
     const rest = [sum, load].filter(Boolean).join(' · ');
     let left = '';
-    if (split.length) left += '<div class="wn5-grp-h wn5-hub-gh">ΓΙΑ ΜΟΙΡΑΣΜΑ · ' + split.length + ' · ' + k.esc(k.pal(_sumP(split))) + 'π</div>' + split.map((h) => _itemHTML(h, false, day)).join('');
-    if (stock.length) left += '<div class="wn5-grp-h wn5-hub-gh">ΑΠΟΘΕΜΑ · ' + stock.length + ' · ' + k.esc(k.pal(_sumP(stock))) + 'π</div>' + stock.map((h) => _itemHTML(h, true, day)).join('');
+    if (split.length) left += '<div class="wn5-grp-h wn5-hub-gh">ΓΙΑ ΜΟΙΡΑΣΜΑ · ' + split.length + ' · ' + k.esc(_palL(split)) + 'π</div>' + split.map((h) => _itemHTML(h, false, day)).join('');
+    if (stock.length) left += '<div class="wn5-grp-h wn5-hub-gh">ΑΠΟΘΕΜΑ · ' + stock.length + ' · ' + k.esc(_palL(stock)) + 'π</div>' + stock.map((h) => _itemHTML(h, true, day)).join('');
     const dd = day ? DOW_UP[k.dow(day)] + ' ' + k.dm(day) : '—';
     let right = '<div class="wn5-grp-h wn5-hub-gh">ΦΟΡΤΗΓΑ ' + k.esc(dd) + ' · χωρητικότητα</div>';
     if (!trucks.length) right += '<p class="wn5-none wn5-hub-none">κανένα φορτηγό δεν φορτώνει στη Βέροια αυτή την ημέρα</p>';
@@ -122,7 +124,7 @@
       const tx = k.cycText(t.c, t.r);
       if (tx.cls === 'own' && !(t.r && t.r.tiles && t.r.tiles.length > 1)) tx.l2 = t.c.driver || 'χωρίς οδηγό';
       right += '<div class="wn5-hub-tr" data-line="cap">' + k.boxHTML(tx) + '<span class="wn5-hub-chip">' + k.esc(t.win || 'όλη μέρα') + '</span>'
-        + '<span class="wn5-hub-sp"></span><span class="wn5-hub-x33' + (free < 0 ? ' over' : '') + '">' + k.esc(k.pal(t.pal)) + '/33</span>'
+        + '<span class="wn5-hub-sp"></span><span class="wn5-hub-x33' + (free < 0 ? ' over' : '') + '"' + (t.unk ? ' title="παλέτες άγνωστες σε ' + t.unk + (t.unk === 1 ? ' φορτίο' : ' φορτία') + '"' : '') + '>' + k.esc(WN5L.palText(t.pal, t.unk)) + '/33</span>'
         + '<span class="wn5-hub-free' + (free < 0 ? ' over' : '') + '">· ' + (free >= 0 ? k.esc(k.pal(free)) + ' ελεύθερες' : 'υπέρβαση ' + k.esc(k.pal(-free))) + '</span></div>';
     }
     return '<div id="wn5-hub" class="wn5-hub open"><div id="wn5-hub-panel" class="wn5-hub-panel" role="region" aria-label="Πίνακας Βέροιας">'
@@ -172,6 +174,9 @@
     const pid = k.id(pieceId);
     const it = pid ? k.item(pid) : null;
     if (!it || !it.at_hub) { WN5Act.strip(k.boardHost(), k.clientErr('piece_missing', 'Η παράδοση δεν είναι πια στη Βέροια — ανανέωσε')); return null; }
+    // F1 (080): a piece whose pallets are not known yet does not split (the base refuses it: parts_sum … pallets
+    // unknown) — said here, before a dialog whose sum could never close
+    if (it.pallets == null) { WN5Act.strip(k.boardHost(), k.clientErr('pallets_unknown', 'Οι παλέτες του φορτίου δεν είναι γνωστές — γράψε τες πρώτα στην παραγγελία (Καρτέλα → Επεξεργασία), μετά σπάσε')); return null; }
     const hubSt = WN5.state();
     const day = hubSt && hubSt.model && hubSt.model.hub ? _hubDay(hubSt.model) : it.nat_ready_day;
     const hubId = k.hubId();

@@ -342,7 +342,9 @@ function _today() { return typeof localToday === 'function' ? localToday() : '';
 // The day words come from ONE place (core/wi4-logic.js dayLabel): «Τρί 13/10» / «Τρί».
 const _dl = (d) => (d && typeof WI4 !== 'undefined' ? WI4.dayLabel(d) : d || '—');
 const _dow = (d) => _dl(d).split(' ')[0];
-const _pal = (n) => String(n == null ? '—' : n).replace('.', ',') + 'π';
+// F1/F4 (owner 28/10, 080): pallets not known yet read «;π», a sum with unknown pieces «12+;π» (WN5L.palText: one
+// text for every v5 screen), never 0π
+const _pal = (n, unknown) => WN5L.palText(n, unknown) + 'π';
 function _chipCls(day, today) { return !day || !today ? 'next' : day === today ? 'today' : day < today ? 'past' : 'next'; }
 function _rowOf(rtId) {
   if (!_m) return null;
@@ -504,7 +506,7 @@ function _qcardHTML(it, m) {
     + (pl.length > 1 ? `<span class="wn5-qc-n">+${pl.length - 1}</span>` : '');
   return `<div class="wi4-qcard wi4-r-red wn5-qcard" data-piece="${_id(it.pieceId)}">`
     + `<span class="wi4-dc ${_chipCls(it.day, today)}">${_esc(_dl(it.day))}</span>`
-    + `<span class="wi4-qcard-t"><span class="wi4-l1 wn5-qc-l1" title="${_esc(it.title)}">${short}</span><span class="wi4-l2">${_esc(_pal(it.pallets))} · ${why}</span></span>`
+    + `<span class="wi4-qcard-t"><span class="wi4-l1 wn5-qc-l1" title="${_esc(it.title)}">${short}</span><span class="wi4-l2">${_esc(_pal(it.pallets, it.palUnknown))} · ${why}</span></span>`
     + '<button type="button" class="wi4-btn sm" data-act="assign">Ανάθεση</button></div>';
 }
 function _qMore() {
@@ -697,9 +699,9 @@ function _ptCity(p) {
 // the base's due day; never an hour the base did not give
 const _hubBy = (p) => (p.to && (p.toDay || p.day) ? `${_dow(p.toDay || p.day)} ${p.to}` : p.due ? _dl(p.due) : '—');
 function _ptFull(p) {
-  if (p.hub) return `Βέροια · τέλος κύκλου · ως ${_hubBy(p)} · ${_pal(p.pallets)}`;   // the same words in title and «+N»
+  if (p.hub) return `Βέροια · τέλος κύκλου · ως ${_hubBy(p)} · ${_pal(p.pallets, p.palUnknown)}`;   // the same words in title and «+N»
   const city = _ptCity(p), who = _ptWho(p);
-  return `${p.name}${city ? ', ' + city : ''} · ${_winTxt(p.from, p.to, p.allDay)} · ${_pal(p.pallets)}${_tempTxt(p) ? ' · ' + _tempTxt(p) : ''}${who ? ' · ' + who : ''}`;
+  return `${p.name}${city ? ', ' + city : ''} · ${_winTxt(p.from, p.to, p.allDay)} · ${_pal(p.pallets, p.palUnknown)}${_tempTxt(p) ? ' · ' + _tempTxt(p) : ''}${who ? ' · ' + who : ''}`;
 }
 function _ptHTML(p, n, ok) {
   // Figma audit B-12 (H1): a load waiting for its ΑΝΟΔΟΣ that ends at Veroia reads as a cycle's end (r.end): «Βέροια
@@ -715,7 +717,7 @@ function _ptHTML(p, n, ok) {
   return `<span class="wi4-pt wn5-pt${p.late ? ' wn5-late' : ''}${_dc(ok && p.dim && !p.late)}" data-stop="${_id(p.stopId)}"${_segAttr(p.segLabel)} title="${_esc(full)}">`
     + (n == null ? '' : `<span class="wi4-pt-n">${n}</span>`)
     + `<span class="wi4-l1">${_esc(p.name)}</span>`
-    + `<span class="wi4-l2${p.late ? ' wi4-t-amb' : ''}">${city ? `<span class="wn5-pcity">${_esc(city)}</span> · ` : ''}${_win(p.from, p.to, p.allDay)} · ${_esc(_pal(p.pallets))}${_tempTxt(p) ? `<span class="wn5-temp"> · ${_esc(_tempTxt(p))}</span>` : ''}</span></span>`;
+    + `<span class="wi4-l2${p.late ? ' wi4-t-amb' : ''}">${city ? `<span class="wn5-pcity">${_esc(city)}</span> · ` : ''}${_win(p.from, p.to, p.allDay)} · ${_esc(_pal(p.pallets, p.palUnknown))}${_tempTxt(p) ? `<span class="wn5-temp"> · ${_esc(_tempTxt(p))}</span>` : ''}</span></span>`;
 }
 // The day chip of a side. On a cycle row it is a button: T16, it opens the date panel Δ4 of its side
 // (Figma 2011:8858 / 2053:7837). The classes stay those of T5/T6 (dim, «σήμερα»); other rows keep a plain chip.
@@ -794,7 +796,10 @@ function _prtHTML(r, side) {
   return `<button type="button" class="wn5-prt" data-act="sheet" data-side="${sd}" title="Φύλλο οδηγού · ${sd === 'KATHODOS' ? 'Κάθοδος' : 'Άνοδος'}" aria-label="Φύλλο οδηγού" onclick="event.stopPropagation();WN5Sheet.print(${_id(r.rtId)}, '${sd}')">${svg}</button>`;
 }
 function _palHTML(s) {
-  return `<span class="wi4-pal${s.over ? ' over' : ''}"${s.over ? ` title="υπέρβαση ${_esc(_pal(s.over))}"` : ''}>${_esc(String(s.pallets).replace('.', ','))}</span>`;
+  // F1/F4: a side with pieces of unknown pallets reads «12+;», titled how many — the x/33 is a floor, never «OK»
+  const unk = s.palUnknown || 0;
+  const title = [s.over ? `υπέρβαση ${_pal(s.over)}` : '', unk ? `παλέτες άγνωστες σε ${unk} ${unk === 1 ? 'φορτίο' : 'φορτία'}` : ''].filter(Boolean).join(' · ');
+  return `<span class="wi4-pal${s.over ? ' over' : ''}${unk ? ' unk' : ''}"${title ? ` title="${_esc(title)}"` : ''}>${_esc(WN5L.palText(s.pallets, unk))}</span>`;
 }
 // 072b tiles (Figma H1 2120:7738, H3 2123:7735, Ε5 2140:7810): one tile per segment, side by side, no «/». The
 // ΑΡΧΙΚΟ keeps a straight 3px line at the column's edge; every next tile has a slanted left side in its colour (CSS).
@@ -874,7 +879,7 @@ function _localHTML(r, lm, ok) {
     + (lm.pickup
       // a pickup (Figma 2011:8305): what is loaded there → Βέροια, then the delivery it is for (none named when the
       // leg unloads at Veroia or off this cycle — never the pickup's own place after «για»)
-      ? ` · ${_esc(lm.pickup.who ? `${lm.pickup.who}, ${lm.pickup.place}` : lm.pickup.place)} → Βέροια · ${_esc(_pal(lm.pickup.pallets))}`
+      ? ` · ${_esc(lm.pickup.who ? `${lm.pickup.who}, ${lm.pickup.place}` : lm.pickup.place)} → Βέροια · ${_esc(_pal(lm.pickup.pallets, lm.pickup.palUnknown))}`
         + (lm.forStops && lm.forStops.length ? ` · για ${lm.forStops.map((f) => `${_esc(f.name)}${f.n ? ` (στάση ${f.n})` : ''}`).join(', ')}` : '')
       : `${lm.stopName ? ` · για ${_esc(lm.stopName)}${lm.stopN ? ` (στάση ${lm.stopN})` : ''}` : ''}`)
     // T17: the cancel of THIS loading (no request_id); the id is the board's local_move_id

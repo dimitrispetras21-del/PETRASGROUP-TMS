@@ -2,7 +2,7 @@
 // fake /plan/* (S.plan: method, path, body, count, order) and by what the page shows; never by a toast. Synthetic
 // week of tests/critics/wn5-rig-kit.js. The default answer of every non-dry write is 409 writes_closed, as deployed
 // until day L; scenarios script their own answers with sentinel messages.
-// Usage: node tests/critics/wn5-form-rig.js [order nowin groupage unknown reused replayed edit leg leg-anodos …]
+// Usage: node tests/critics/wn5-form-rig.js [order nowin nopp groupage unknown reused replayed edit leg leg-anodos …]
 //        WN5_TREE=<git archive origin/main> node tests/critics/wn5-form-rig.js   (plain-main proof: NO-GO, exit 1)
 // Exit: 0 green · 1 a check failed · 2 unknown scenario.
 'use strict';
@@ -204,6 +204,28 @@ async function scnNoWin({ browser, origin, ok, scn }) {
     && s2.deliver_from === '2026-10-14T23:59:00+03:00' && s2.deliver_to === '2026-10-14T23:59:00+03:00', s2);
   ok(scn, 'no page errors, no console errors', ![S, p2.S].some((x) => x.pageErrors.length || appConsole(x).length), [S, p2.S].flatMap((x) => x.pageErrors.concat(appConsole(x))));
   await p2.page.context().close();
+}
+
+// F1/F4 (owner 28/10, SQL 080): price and pallets empty = not known yet. The form says it («τιμή λείπει», «;π»,
+// «σύνολο ;/33») and sends price null / pallets null — never 0. NO-GO on main and on PR A (both refused there).
+async function scnNoPP({ browser, origin, ok, scn }) {
+  const { page, S } = await K.openApp(browser, origin);
+  if (!(await guard(page, ok, scn))) return;
+  await openForm(page, {});
+  const head = await K.text(page, DLG);
+  ok(scn, 'labels «Τιμή € (χωρίς ΦΠΑ)» and «Παλέτες · κενό: ;», no «*» on either', head.includes('Τιμή € (χωρίς ΦΠΑ)') && !head.includes('Τιμή € (χωρίς ΦΠΑ) *')
+    && head.includes('Παλέτες · κενό: ;') && !head.includes('Παλέτες *'), head.slice(0, 400));
+  await fillOrder(page, 0, { client: C41, price: '', temp: 4, pe: false, loads: [r(ASP, '2026-10-14', '08:00', '10:00', '')], drops: [r(ATH, '2026-10-15', '', '', '')] });
+  const sum = await K.text(page, `${DLG} [data-sum]`);
+  const osum = await K.text(page, `${DLG} [data-osum]`);
+  ok(scn, 'the summary says «;/33 παλέτες», the order line «;π · τιμή λείπει»', sum.includes(';/33 παλέτες') && osum.includes(';π') && osum.includes('τιμή λείπει'), { sum: sum.slice(0, 200), osum });
+  await save(page);
+  await page.waitForTimeout(1500);
+  const posts = K.planOf(S, 'POST', '/plan/orders');
+  const o = posts.length === 1 && posts[0].body.orders && posts[0].body.orders[0];
+  ok(scn, 'one POST: price null and the shipment\'s pallets null — never 0', !!o && o.price === null && o.shipments.length === 1 && o.shipments[0].pallets === null, o || posts.length);
+  ok(scn, 'no page errors, no console errors', !S.pageErrors.length && !appConsole(S).length, S.pageErrors.concat(appConsole(S)));
+  await page.context().close();
 }
 
 async function scnGroupage({ browser, origin, ok, scn }) {
@@ -529,7 +551,7 @@ async function scnVs({ browser, origin, ok, scn }) {
 }
 
 K.run({
-  scenarios: { order: scnOrder, nowin: scnNoWin, groupage: scnGroupage, unknown: scnUnknown, reused: scnReused, replayed: scnReplayed, edit: scnEdit, 'veroia-edit': scnVeroiaEdit, leg: scnLeg, 'leg-anodos': scnLegAnodos, vs: scnVs },
+  scenarios: { order: scnOrder, nowin: scnNoWin, nopp: scnNoPP, groupage: scnGroupage, unknown: scnUnknown, reused: scnReused, replayed: scnReplayed, edit: scnEdit, 'veroia-edit': scnVeroiaEdit, leg: scnLeg, 'leg-anodos': scnLegAnodos, vs: scnVs },
   globals: ['WN5Form'],
   go: 'the v5 order forms send one body per press, from the form only, with one request_id per open form',
 }).catch((e) => { console.error(e); process.exit(1); });

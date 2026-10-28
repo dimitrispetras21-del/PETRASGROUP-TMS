@@ -26,6 +26,9 @@
   // nobody agreed. The rule is WN5L.allDay (one rule, core/wn5-logic.js); without it the hours are printed as they are.
   const _hmWin = (a, b) => (typeof WN5L !== 'undefined' && WN5L.allDay(a, b) ? 'όλη η ημέρα' : `${_hm(a)}–${_hm(b)}`);
   const _pal = (n) => String(Math.round((Number(n) || 0) * 10) / 10).replace('.', ',');
+  // F1/F4 (080): the driver reads «;» for pallets not known yet and «12+;» for a sum with such pieces — never 0
+  const _palU = (n, unk) => (unk > 0 ? (n ? _pal(n) + '+;' : ';') : _pal(n));
+  const _unk = (legs) => legs.filter((l) => l.pallets == null).length;
   const _temp = (ts, sp) => (ts.length ? ts.slice().sort((a, b) => a - b).map((t) => (t > 0 ? '+' : '') + t).join(sp ? ' / ' : '/') + (sp ? ' °C' : '°C') : '—');
   const _dash = (v) => (v == null || String(v).trim() === '' ? '—' : String(v));
 
@@ -39,8 +42,9 @@
   function _pe(legs, loading) {
     const known = legs.filter((l) => typeof l.pallet_exchange === 'boolean');
     if (!known.length) return '—';
-    const n = known.filter((l) => l.pallet_exchange).reduce((a, l) => a + (Number(l.pallets) || 0), 0);
-    return n ? `${loading ? 'δίνεις' : 'παίρνεις'} ${_pal(n)}` : '—';
+    const pe = known.filter((l) => l.pallet_exchange);
+    const n = pe.reduce((a, l) => a + (Number(l.pallets) || 0), 0), u = _unk(pe);
+    return n || u ? `${loading ? 'δίνεις' : 'παίρνεις'} ${_palU(n, u)}` : '—';
   }
   function _stopLine(s, side, P, n) {
     const legs = s.legs || [];
@@ -58,7 +62,7 @@
       name: hub ? 'Αποθήκη Βέροιας' + (end ? ' · τέλος κύκλου' : '') : (clients.join(' · ') || _dash(s.location)),
       address: _dash(place && place.address), city: (place && place.city) || '', phone: _dash(place && place.phone),
       window: end ? `ως ${_dow(s.stop_day)} ${_hm(s.planned_to)}` : `${_dow(s.stop_day)} ${_hmWin(s.planned_from, s.planned_to)}`,
-      pallets: use.reduce((a, l) => a + (Number(l.pallets) || 0), 0),
+      pallets: use.reduce((a, l) => a + (Number(l.pallets) || 0), 0), palUnk: _unk(use),
       // Figma 2011:11036 «3 παραγγελίες» after the badge of the Veroia loading: the distinct orders loaded there
       orders: new Set(use.map((l) => (l.order_id != null ? 'i' + l.order_id : l.nat_order_id != null ? 'n' + l.nat_order_id : null)).filter(Boolean)).size,
       temp: _temp(temps, true), tempWa: _temp(temps, false),
@@ -81,7 +85,7 @@
       const pieces = new Map();
       for (const s of bySeq) if (ids.has(s.stop_id)) for (const l of s.legs || []) { if (l.act === 'load') pieces.set(l.piece_id, l); else pieces.delete(l.piece_id); }
       const legs = [...pieces.values()];
-      return { pallets: legs.reduce((a, l) => a + (Number(l.pallets) || 0), 0),
+      return { pallets: legs.reduce((a, l) => a + (Number(l.pallets) || 0), 0), palUnk: _unk(legs),
         temp: _temp([...new Set(legs.map((l) => l.temperature_c).filter((t) => t !== null && t !== undefined))], true),
         refs: _dash([...new Set(legs.map((l) => l.reference).filter(Boolean))].join(' · ')) };
     };
@@ -96,7 +100,7 @@
       const p = _parts(change.from_at) || {};
       const b = onBoard(upto);
       return { t: 'hand', dir, side, reason: typeof WN5Lab !== 'undefined' ? WN5Lab.reasonLine(change.reason).text : _dash(change.reason),
-        place: _dash(change.place_note), when: `${_dow(p.day)} ${p.hm || '—'}`, hm: p.hm || '—', other: who(other), pallets: b.pallets, temp: b.temp, refs: b.refs };
+        place: _dash(change.place_note), when: `${_dow(p.day)} ${p.hm || '—'}`, hm: p.hm || '—', other: who(other), pallets: b.pallets, palUnk: b.palUnk, temp: b.temp, refs: b.refs };
     };
     const seg = segs[i];
     const hands = [];
@@ -120,7 +124,7 @@
       veroia: vStop ? `${_dlab(vStop.stop_day)} · ${_hmWin(vStop.planned_from, vStop.planned_to)}` : '—' },
     SG ? { segment: SEG_GR[SG.seg.label] || '—', segLabel: SG.seg.label || null, change: SG.changeText || '—' } : {})];
     let n = 0;
-    let firstPallets = null;
+    let firstPallets = null, firstUnk = 0;
     for (const side of part === 'ALL' ? ['KATHODOS', 'ANODOS'] : [part]) {
       const stops = _partStops(cycle, side).filter((s) => !SG || SG.stopIds.has(s.stop_id));
       const hands = SG ? SG.hands.filter((h) => h.side === side) : [];
@@ -132,14 +136,17 @@
       const noun = own.length && own.every((l) => l.act === 'ΦΟΡΤΩΣΗ') ? (count === 1 ? 'φόρτωση' : 'φορτώσεις')
         : own.length && own.every((l) => l.act === 'ΠΑΡΑΔΟΣΗ') ? (count === 1 ? 'παράδοση' : 'παραδόσεις') : (count === 1 ? 'στάση' : 'στάσεις');
       const sum = (load) => stops.reduce((a, s) => a + (s.legs || []).filter((l) => (l.act === 'load') === load).reduce((b, l) => b + (Number(l.pallets) || 0), 0), 0);
+      const unk = (load) => stops.reduce((a, s) => a + _unk((s.legs || []).filter((l) => (l.act === 'load') === load)), 0);
       // what is loaded on this side, or what is delivered when nothing is; a segment that loads nothing here counts
       // what it took over (H5: ΤΕΛΙΚΟ «ΚΑΘΟΔΟΣ · 1 παράδοση · 18 παλέτες», checklist «(18)»)
-      const pallets = sum(true) || sum(false) || hands.reduce((a, h) => Math.max(a, h.pallets), 0);
-      if (firstPallets === null) firstPallets = pallets;
-      out.push({ t: 'side', side, title: SIDE_GR[side], count, noun, pallets, fromHub: !!ls[0] && ls[0].hub && ls[0].act === 'ΦΟΡΤΩΣΗ' });
+      const loadsHere = sum(true) || unk(true), dropsHere = sum(false) || unk(false);
+      const pallets = loadsHere ? sum(true) : dropsHere ? sum(false) : hands.reduce((a, h) => Math.max(a, h.pallets), 0);
+      const palUnk = loadsHere ? unk(true) : dropsHere ? unk(false) : 0;
+      if (firstPallets === null) { firstPallets = pallets; firstUnk = palUnk; }
+      out.push({ t: 'side', side, title: SIDE_GR[side], count, noun, pallets, palUnk, fromHub: !!ls[0] && ls[0].hub && ls[0].act === 'ΦΟΡΤΩΣΗ' });
       out.push(...hands.filter((h) => h.dir === 'in'), ...ls, ...hands.filter((h) => h.dir === 'out'));
     }
-    out.push({ t: 'check', pallets: firstPallets || 0 });
+    out.push({ t: 'check', pallets: firstPallets || 0, palUnk: firstUnk || 0 });
     return out;
   }
   // T27: a segment's section can hold no stop of its own but Veroia's (ΑΡΧΙΚΟ = the hub loading) or none at all
@@ -158,17 +165,17 @@
       `${x.dir === 'in' ? 'παραδίδει ο' : 'παραλαμβάνει ο'} ${x.other.driver}${x.other.phone === '—' ? '' : ' · Τηλ. ' + x.other.phone}`]));
     for (const l of ls) {
       if (l.t === 'side') {
-        out.push('', [`*${l.title}*`, l.fromHub ? 'φόρτωση Βέροια' : _what(l), `${_pal(l.pallets)}π`].filter(Boolean).join(' · '));
+        out.push('', [`*${l.title}*`, l.fromHub ? 'φόρτωση Βέροια' : _what(l), `${_palU(l.pallets, l.palUnk)}π`].filter(Boolean).join(' · '));
       } else if (l.t === 'stop') {
         const tel = l.phone === '—' ? '' : ` · Τηλ. ${l.phone}`;
         if (l.hub) {
-          out.push(`${l.n}) ${l.name} · ${l.window} · ${_pal(l.pallets)}π`);
+          out.push(`${l.n}) ${l.name} · ${l.window} · ${_palU(l.pallets, l.palUnk)}π`);
           out.push(`   ${_street(l) || '—'}${tel}`);
           out.push(`   ${l.refs}`);
         } else {
           const where = [_street(l), l.city].filter(Boolean).join(', ');
           out.push(`${l.n}) ${l.name}${where ? ' · ' + where : ''}${tel}`);
-          out.push('   ' + [l.window, `${_pal(l.pallets)}π`, l.tempWa === '—' ? '' : l.tempWa, l.refs === '—' ? '' : l.refs, l.pe === '—' ? '' : l.pe + 'π'].filter(Boolean).join(' · '));
+          out.push('   ' + [l.window, `${_palU(l.pallets, l.palUnk)}π`, l.tempWa === '—' ? '' : l.tempWa, l.refs === '—' ? '' : l.refs, l.pe === '—' ? '' : l.pe + 'π'].filter(Boolean).join(' · '));
         }
       }
     }
@@ -197,7 +204,7 @@
     for (const l of ls) {
       if (l.t === 'side') {
         if (open) body += '</tbody></table>';
-        body += `<table class="s-t">${COLS}<tbody><tr><td colspan="2"><div class="s-sec"><span>${[_esc(l.title), l.count ? _what(l) : l.fromHub ? 'φόρτωση Βέροια' : '', `${_pal(l.pallets)} παλέτες`].filter(Boolean).join(' · ')}</span><i></i></div></td></tr>`;
+        body += `<table class="s-t">${COLS}<tbody><tr><td colspan="2"><div class="s-sec"><span>${[_esc(l.title), l.count ? _what(l) : l.fromHub ? 'φόρτωση Βέροια' : '', `${_palU(l.pallets, l.palUnk)} παλέτες`].filter(Boolean).join(' · ')}</span><i></i></div></td></tr>`;
         open = true;
       } else if (l.t === 'hand') {
         // H5 2128:7793/8017: the stop row's shape (circle · card, the 2 columns of COLS), an outlined ⇄ circle and
@@ -207,14 +214,14 @@
           + `<div class="s-bdg"><span class="s-act s-ho">ΑΛΛΑΓΗ ΟΧΗΜΑΤΟΣ</span><span class="s-cnt">${_esc(l.reason)}</span></div>`
           + `<div class="s-name">${vb} ${_esc(l.other.vehicle)} · ${_esc(l.place)} ${_esc(l.hm)}</div>`
           + `<div class="s-adr">${l.dir === 'in' ? 'παραδίδει ο' : 'παραλαμβάνει ο'} ${_esc(l.other.driver)}  ·  Τηλ. <b>${_esc(l.other.phone)}</b></div>`
-          + `<div class="s-meta">${_pair('Ώρα', l.when)}${_pair('Παλέτες', _pal(l.pallets))}${_pair('Θερμ.', l.temp, 's-temp')}${_pair('Αναφορά', l.refs)}</div></div></td></tr>`;
+          + `<div class="s-meta">${_pair('Ώρα', l.when)}${_pair('Παλέτες', _palU(l.pallets, l.palUnk))}${_pair('Θερμ.', l.temp, 's-temp')}${_pair('Αναφορά', l.refs)}</div></div></td></tr>`;
       } else if (l.t === 'stop') {
         const ld = l.act === 'ΦΟΡΤΩΣΗ' ? ' s-ld' : '';
         const nOrd = l.hub && l.act === 'ΦΟΡΤΩΣΗ' && l.orders ? `<span class="s-cnt">${l.orders} ${l.orders === 1 ? 'παραγγελία' : 'παραγγελίες'}</span>` : '';
         body += `<tr class="s-stop" data-side="${l.side}"><td><span class="s-n${ld}">${l.n}</span></td><td><div class="s-card">`
           + `<div class="s-bdg"><span class="s-act${ld}">${l.act}</span>${nOrd}</div>`
           + `<div class="s-name">${_esc(l.name)}</div><div class="s-adr">${_adr(l)}</div>`
-          + `<div class="s-meta">${_pair(l.end ? 'Άφιξη' : 'Παράθυρο', l.window)}${_pair('Παλέτες', _pal(l.pallets))}${_pair('Θερμ.', l.temp, 's-temp')}`
+          + `<div class="s-meta">${_pair(l.end ? 'Άφιξη' : 'Παράθυρο', l.window)}${_pair('Παλέτες', _palU(l.pallets, l.palUnk))}${_pair('Θερμ.', l.temp, 's-temp')}`
           + `${_pair('Επιστροφή παλετών', l.pe)}${_pair('Αναφορά', l.refs)}</div></div></td></tr>`;
       }
     }
@@ -276,7 +283,7 @@
       + (h.segment ? `<div class="s-segl" data-label="${_esc(h.segLabel || '')}"></div>` : '')
       + body
       + `<div class="s-chk"><b>ΠΡΙΝ ΤΗΝ ΑΝΑΧΩΡΗΣΗ</b><span>☐ Θερμογράφος σε λειτουργία</span><span>☐ Ρυμούλκα καθαρή / προψυγμένη</span>`
-      + `<span>☐ Παλέτες μετρημένες (${_pal(chk.pallets)})</span><span>☐ CMR υπογεγραμμένα</span></div>`
+      + `<span>☐ Παλέτες μετρημένες (${_palU(chk.pallets, chk.palUnk)})</span><span>☐ CMR υπογεγραμμένα</span></div>`
       + '<div class="s-sp"></div>'
       + '<div class="s-sig"><div><b>PETRAS GROUP</b><span>ΚΙΝΗΣΗ · ΠΑΡΑΔΟΣΗ ΦΥΛΛΟΥ</span><small>Υπογραφή & ημερομηνία</small></div>'
       + `<div><b>${_esc(h.partner || h.driver || '—')}</b><span>ΟΔΗΓΟΣ · ΠΑΡΑΛΑΒΗ</span><small>Υπογραφή & ημερομηνία</small></div></div></div>`;

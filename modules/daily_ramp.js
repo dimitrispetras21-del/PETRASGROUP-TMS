@@ -232,13 +232,17 @@ function _rampV5Rec(key, o) {
   const temps = uniq(o.items.map(x => x.temperature_c).filter(v => v != null && v !== '').map(String));
   const vs = o.items.some(x => x.kind === 'vs_import' || x.kind === 'vs_export');
   const pal = Math.round(o.items.reduce((s, x) => s + (Number(x.pallets) || 0), 0) * 10) / 10;
+  // F1/F4 (owner 28/10, 080): a v5 piece may have no pallets yet (null). 'Pallets' stays the known number (the KPIs
+  // add it up); the line SAYS the unknown («12+;», «;») through _palText, never a 0 or a blank that looks counted
+  const palUnk = o.items.filter(x => x.pallets == null).length;
+  const palText = palUnk ? (typeof WN5L !== 'undefined' ? WN5L.palText(pal, palUnk) : (pal ? pal + '+;' : ';')) : '';
   const t = o.time ? new Date(o.time) : null;
   const isIn = o.act === 'unload';
   const far = (o.far || []).join(' / ');
   return { id: 'v5:' + key, _v5: { pending: !!o.pending }, fields: {
     'Plan Date': o.day, 'Time': t && !isNaN(t) ? t.toISOString() : '',
     'Type': isIn ? 'Παραλαβή' : 'Φόρτωση', 'Status': o.executed ? 'Done' : 'Planned',
-    'Pallets': pal, 'Supplier/Client': clients.join(' / ') || '—', 'Goods': '', 'Temperature': temps.join(' / '),
+    'Pallets': pal, '_palText': palText, 'Supplier/Client': clients.join(' / ') || '—', 'Goods': '', 'Temperature': temps.join(' / '),
     'Is Veroia Switch': vs, 'Ramp Category': vs ? 'VS Simple' : '',
     'Loading Points': isIn ? far : '', 'Delivery Points': isIn ? '' : far,
     // plate / partner and driver come as names from the board, not as facade links
@@ -669,7 +673,7 @@ function _rampDraw() {
           <td>${_rResolveClientStr(f['Supplier/Client']||'—')}</td>
           <td>${escapeHtml((f['Goods']||'').substring(0,25))}</td>
           <td>${escapeHtml(f['Temperature']||'')}</td>
-          <td>${escapeHtml(f['Pallets']||'')}</td>
+          <td>${escapeHtml(f['_palText']||f['Pallets']||'')}</td>
           <td>${movedTo}</td>
           <td><button class="btn btn-primary" style="padding:4px 8px;font-size:11px" onclick="confirmAction('Επαναφορά στο σήμερα;').then(ok=>{if(ok)_rampRestore('${r.id}')})">Επαναφορά</button></td>
         </tr>`;}).join('')}</tbody></table>
@@ -696,7 +700,7 @@ function _rRow(rec,num,tOpts) {
   const client=_rStripMarkers(f['Supplier/Client']||'—')||'—';
   const goods=escapeHtml(_rStripMarkers((f['Goods']||'').substring(0,35)));
   const temp=escapeHtml(f['Temperature']||f['Temperature °C']||'');
-  const pal=escapeHtml(f['Pallets']||'');
+  const pal=escapeHtml(f['_palText']||f['Pallets']||'');
   const truck=escapeHtml(_rTruck(f));
   const isIn=f['Type']==='Παραλαβή';
 
@@ -783,7 +787,7 @@ function _rTlRow(rec) {
     <td class="trn">${tlLoc||'—'}</td>
     <td class="trn">${escapeHtml((f['Goods']||'').substring(0,35))}</td>
     <td>${escapeHtml((f['Temperature']||f['Temperature °C'])?((f['Temperature']||f['Temperature °C'])+'°C'):'')}</td>
-    <td>${escapeHtml(f['Pallets']||'')}</td>
+    <td>${escapeHtml(f['_palText']||f['Pallets']||'')}</td>
     <td>${escapeHtml(_rTruck(f)||'—')}</td><td>${escapeHtml(_rDriver(f)||'—')}</td>
     <td>${statusTxt}</td></tr>`;
 }

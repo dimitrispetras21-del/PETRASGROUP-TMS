@@ -105,10 +105,14 @@ test('F4α-T20: loaded pallets must equal delivered pallets per order (a form li
   assert.ok(F._check(state({ orders: [o] })).some((l) => /παλέτες φόρτωσης/.test(l)));
 });
 
-test('F4α-T20: price is required, never a 0 default', () => {
-  for (const price of [null, 0, -5, NaN]) {
+// F4 (owner 28/10, 080): the price is optional — empty goes as null (the base stores NULL, «λείπει»), a written one
+// is > 0; never a 0 default (0 reads as an amount)
+test('F4α-T20 / F4: price optional — empty = null, a written price > 0, never a 0 default', () => {
+  assert.deepStrictEqual(J(F._check(state({ orders: [order({ price: null })] }))), []);
+  assert.strictEqual(J(F._body(state({ orders: [order({ price: null })] }))).orders[0].price, null);
+  for (const price of [0, -5, NaN]) {
     const lines = F._check(state({ orders: [order({ price })] }));
-    assert.ok(lines.some((l) => l.includes('Τιμή € (χωρίς ΦΠΑ) *')), `price ${price}: ${lines.join(' / ')}`);
+    assert.ok(lines.some((l) => l.includes('Τιμή € (χωρίς ΦΠΑ): αριθμός πάνω από 0, ή κενό (λείπει)')), `price ${price}: ${lines.join(' / ')}`);
   }
   assert.ok(!/price\s*:\s*0\b|price\s*\|\|\s*0/.test(grab('_body')), 'a 0 default for the price in _body');
 });
