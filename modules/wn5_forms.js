@@ -22,6 +22,11 @@
   'use strict';
   const DAY = /^\d{4}-\d{2}-\d{2}$/;
   const HM = /^([01]\d|2[0-3]):[0-5]\d$/;
+  // F1 (owner 28/10): a point's window is optional. Left empty, it is the whole of the point's day, 00:00–23:59 — the
+  // value the Δ1 quick fix gives a window-less stop (#160) — because shipments_win / rt_stops_win (071) hold a window
+  // on every national point and the base invents no hour. Never a silent hour: every reader names it «όλη η ημέρα».
+  const DAY_WIN = Object.freeze({ from: '00:00', to: '23:59' });
+  const _allDay = (from, to) => from === DAY_WIN.from && to === DAY_WIN.to;
   const SIDE_GR = Object.freeze({ KATHODOS: 'ΚΑΘΟΔΟΣ', ANODOS: 'ΑΝΟΔΟΣ' });
   const DIR_GR = Object.freeze({ KATHODOS: 'ΚΑΘΟΔΟΣ (Βορράς → Νότος)', ANODOS: 'ΑΝΟΔΟΣ (Νότος → Βορράς)' });
   // «στάσεις στην ΚΑΘΟΔΟ» (Figma 2011:10012): the closing line needs the accusative, not the nominative of SIDE_GR
@@ -74,6 +79,7 @@
   function _win(fromIso, toIso) {
     const a = _parts(fromIso), b = _parts(toIso);
     if (!a || !b) return '—';
+    if (a.day === b.day && _allDay(a.hm, b.hm)) return `${_dlab(a.day)} όλη η ημέρα`;
     return a.day === b.day ? `${_dlab(a.day)} ${a.hm}–${b.hm}` : `${_dlab(a.day)} ${a.hm} – ${_dlab(b.day)} ${b.hm}`;
   }
   // A time typed in a 71px text field (Figma 2011:9645 «16:00»): the native <input type=time> follows the browser's
@@ -87,6 +93,16 @@
     return HM.test(out) ? out : t;
   }
   const HM_INPUT = 'class="form-input wn5f-hm" type="text" inputmode="numeric" maxlength="5" placeholder="ΗΗ:ΛΛ" autocomplete="off"';
+  // F1: the window headers lose their «*» and say what an empty window means
+  const WIN_HEAD = 'Παράθυρο από – έως · κενό: όλη η ημέρα';
+  const UNTIL_HEAD = 'Άφιξη ως · κενό: όλη η ημέρα';
+  // A row's window as sent (F1): both ends empty = the whole day (an arrival «ως» row: by 23:59); one end only is NOT
+  // guessed — it stays as typed and _check names it. allDay says the default was used or typed, for the readers.
+  function _rowWin(until, from, to) {
+    if (until) return to === '' ? { from: DAY_WIN.to, to: DAY_WIN.to, allDay: true } : { from: to, to, allDay: false };
+    if (from === '' && to === '') return { from: DAY_WIN.from, to: DAY_WIN.to, allDay: true };
+    return { from, to, allDay: _allDay(from, to) };
+  }
   function _num(v) {
     const s = String(v == null ? '' : v).trim().replace(',', '.');
     if (!s) return null;
@@ -172,7 +188,7 @@
         const w = `${n}${k} ${j + 1}: `;
         if (!Number.isSafeInteger(r.location_id)) out.push(w + 'διάλεξε τοποθεσία από τη λίστα');
         if (!DAY.test(String(r.day || ''))) out.push(w + 'γράψε ημέρα');
-        if (!HM.test(String(r.from || '')) || !HM.test(String(r.to || ''))) out.push(w + 'γράψε παράθυρο από – έως');
+        if (!HM.test(String(r.from || '')) || !HM.test(String(r.to || ''))) out.push(w + 'παράθυρο: ΗΗ:ΛΛ και στα δύο άκρα, ή κανένα (όλη η ημέρα)');
         else if (!r.until && r.from >= r.to) out.push(w + 'το «έως» πρέπει να είναι μετά το «από»');
         if (!(Number.isFinite(r.pallets) && r.pallets > 0 && _dec1(r.pallets))) out.push(w + 'παλέτες: αριθμός πάνω από 0, ένα δεκαδικό το πολύ');
       });
@@ -362,7 +378,7 @@
   }
   function _blockHTML(f) {
     const cid = 'wn5c' + (++f.seq);
-    const head = `<div class="wn5f-th"><span>Τοποθεσία</span><span>Ημέρα</span><span data-wh>Παράθυρο από – έως *</span><span>Παλέτες *</span></div>`;
+    const head = `<div class="wn5f-th"><span>Τοποθεσία</span><span>Ημέρα</span><span data-wh>${WIN_HEAD}</span><span>Παλέτες *</span></div>`;
     // Figma 2011:9671: no head line — the block's «×» ends the fields row, «Παραγγελία n» is a chip in its foot
     return `<div class="wn5f-ord">`
       + `<div class="wn5f-fields">`
@@ -387,7 +403,7 @@
       + `<label class="wn5f-f"><span>Κατεύθυνση *</span><select class="form-input" id="wn5f-dir">`
       + `<option value="KATHODOS">${DIR_GR.KATHODOS}</option><option value="ANODOS">${DIR_GR.ANODOS}</option></select></label>`
       + `<label class="wn5f-f"><span data-vdayl>Ημ. φόρτωσης Βέροιας *</span><span class="wn5f-day" data-y><input class="form-input" type="date" id="wn5f-vday"><span class="wn5f-dayt" aria-hidden="true"></span></span></label>`
-      + `<label class="wn5f-f"><span data-vwinl>Παράθυρο φόρτωσης Βέροιας *</span><span class="wn5f-win"><span class="wn5f-from" data-vfromw><input ${HM_INPUT} id="wn5f-vfrom" aria-label="από"><span class="wn5f-dash">–</span></span><input ${HM_INPUT} id="wn5f-vto" aria-label="έως"></span></label>`
+      + `<label class="wn5f-f"><span data-vwinl>Παράθυρο φόρτωσης Βέροιας</span><span class="wn5f-win"><span class="wn5f-from" data-vfromw><input ${HM_INPUT} id="wn5f-vfrom" aria-label="από"><span class="wn5f-dash">–</span></span><input ${HM_INPUT} id="wn5f-vto" aria-label="έως"></span></label>`
       + `<label class="wn5f-f"><span>Φορτηγό (προαιρετικό)</span><select class="form-input" id="wn5f-tgt">${opts}</select></label></div>`
       + `<div class="wn5f-sec">ΤΥΠΟΣ ΚΑΤΑΧΩΡΗΣΗΣ</div><div class="wn5f-modes">`
       + `<button type="button" class="wn5f-mode" data-mode="normal"><span class="wn5f-mode-t"><i class="wn5f-radio" aria-hidden="true"></i>Κανονικό φορτίο</span><span class="wn5f-mode-s">Ένας πελάτης — 1 παραγγελία</span></button>`
@@ -442,9 +458,9 @@
         const rec = (document.getElementById('lv_' + r.dataset.pid) || {}).value || '';
         const until = k === 'drop' && dir === 'ANODOS' && !!hub && rec === hub;
         r.classList.toggle('until', until);
-        const to = _hmNorm(r.querySelector('[data-f="to"]').value);
+        const w = _rowWin(until, _hmNorm(r.querySelector('[data-f="from"]').value), _hmNorm(r.querySelector('[data-f="to"]').value));
         return { rec, label: (document.getElementById('ls_' + r.dataset.pid) || {}).value || '', day: r.querySelector('[data-f="day"]').value,
-          from: until ? to : _hmNorm(r.querySelector('[data-f="from"]').value), to, until, pallets: _num(r.querySelector('[data-f="pal"]').value), hub: !!hub && rec === hub };
+          from: w.from, to: w.to, until, allDay: w.allDay, pallets: _num(r.querySelector('[data-f="pal"]').value), hub: !!hub && rec === hub };
       });
       return { cid, rec: (document.getElementById('lv_' + cid) || {}).value || '', client: (document.getElementById('ls_' + cid) || {}).value || '',
         price: _num(v('[data-f="price"]')), temperature_c: _num(v('[data-f="temp"]')), pe: b.querySelector('[data-peh]').dataset.peh,
@@ -469,7 +485,7 @@
   function _orderRefresh(f) {
     const dir = f.el.querySelector('#wn5f-dir').value;
     f.el.querySelector('[data-vdayl]').textContent = dir === 'ANODOS' ? 'Ημ. άφιξης Βέροιας *' : 'Ημ. φόρτωσης Βέροιας *';
-    f.el.querySelector('[data-vwinl]').textContent = dir === 'ANODOS' ? 'Άφιξη Βέροιας ως *' : 'Παράθυρο φόρτωσης Βέροιας *';
+    f.el.querySelector('[data-vwinl]').textContent = dir === 'ANODOS' ? 'Άφιξη Βέροιας ως' : 'Παράθυρο φόρτωσης Βέροιας';
     f.el.querySelector('[data-vfromw]').hidden = dir === 'ANODOS';
     const raw = _raw(f);
     // the header's Veroia day/window fills an empty Veroia row: one value typed once (Figma 9624)
@@ -487,7 +503,7 @@
     f.el.querySelectorAll('.wn5f-ord').forEach((b) => {
       const rows = [...b.querySelectorAll('.wn5f-rows[data-k="drop"] .wn5f-row')];
       const h = b.querySelectorAll('[data-wh]')[1];
-      if (h) h.textContent = rows.length && rows.every((r) => r.classList.contains('until')) ? 'Άφιξη ως *' : 'Παράθυρο από – έως *';
+      if (h) h.textContent = rows.length && rows.every((r) => r.classList.contains('until')) ? UNTIL_HEAD : WIN_HEAD;
     });
     let total = 0, ships = 0;
     const seq = [];
@@ -505,7 +521,7 @@
       cli.push([o.client || '—'].concat(nl > 1 ? [`${nl} φορτώσεις`] : []).concat([`${_pal(lp)}π`])
         .concat(Number.isFinite(o.price) && o.price > 0 ? [`${_pal(o.price)} €`] : []).join(' · '));
       for (const [act, rows] of [['φόρτωση', o.loads], ['παράδοση', o.drops]]) for (const r of rows)
-        if (DAY.test(r.day) && HM.test(r.to)) seq.push({ k: r.day + 'T' + (r.from || r.to), when: r.until ? `ως ${_dow(r.day)} ${r.to}` : `${_dow(r.day)} ${r.from}–${r.to}`, act, place: r.hub ? 'Βέροια' : r.label, clients: [o.client || '—'], pal: r.pallets });
+        if (DAY.test(r.day) && HM.test(r.to)) seq.push({ k: r.day + 'T' + (r.from || r.to), when: r.allDay ? `${_dow(r.day)} όλη η ημέρα` : r.until ? `ως ${_dow(r.day)} ${r.to}` : `${_dow(r.day)} ${r.from}–${r.to}`, act, place: r.hub ? 'Βέροια' : r.label, clients: [o.client || '—'], pal: r.pallets });
     });
     seq.sort((a, b) => (a.k < b.k ? -1 : a.k > b.k ? 1 : 0));
     // Figma 2011:9940: orders at the same place in the same window are ONE stop line («Zeta, Kappa · 20π»)
@@ -1116,5 +1132,5 @@
       'Ίδιος προορισμός — η διεθνής δεν άλλαξε', 'vs-place', `[data-vs]:has([data-osid="${orderStopId}"]) [data-vsok]`);
   }
 
-  window.WN5Form = Object.freeze({ openOrder, openLeg, vsDay, vsPlace, _locDropNoHub, _body, _check, _patchBody, _findOrders, _iso, _parts, _legModel });
+  window.WN5Form = Object.freeze({ openOrder, openLeg, vsDay, vsPlace, _locDropNoHub, _body, _check, _patchBody, _findOrders, _iso, _parts, _legModel, _rowWin, _win });
 })();

@@ -2,7 +2,7 @@
 // fake /plan/* (S.plan: method, path, body, count, order) and by what the page shows; never by a toast. Synthetic
 // week of tests/critics/wn5-rig-kit.js. The default answer of every non-dry write is 409 writes_closed, as deployed
 // until day L; scenarios script their own answers with sentinel messages.
-// Usage: node tests/critics/wn5-form-rig.js [order groupage unknown reused replayed edit leg leg-anodos …]
+// Usage: node tests/critics/wn5-form-rig.js [order nowin groupage unknown reused replayed edit leg leg-anodos …]
 //        WN5_TREE=<git archive origin/main> node tests/critics/wn5-form-rig.js   (plain-main proof: NO-GO, exit 1)
 // Exit: 0 green · 1 a check failed · 2 unknown scenario.
 'use strict';
@@ -73,7 +73,8 @@ async function scnOrder({ browser, origin, ok, scn }) {
   ok(scn, 'the order form opened (.wi4-dlg[role=dialog][data-wn5=order])', await K.count(page, DLG) === 1);
   const txt = await K.text(page, DLG);
   ok(scn, 'label «Τιμή € (χωρίς ΦΠΑ) *»', txt.includes('Τιμή € (χωρίς ΦΠΑ) *'), txt.slice(0, 200));
-  ok(scn, 'windows «Παράθυρο από – έως *»', txt.includes('Παράθυρο από – έως *'));
+  // F1 (owner 28/10): the window is optional — the head says what an empty one is, no «*»
+  ok(scn, 'windows «Παράθυρο από – έως · κενό: όλη η ημέρα»', txt.includes('Παράθυρο από – έως · κενό: όλη η ημέρα') && !txt.includes('Παράθυρο από – έως *'));
   ok(scn, 'truck optional: «Φορτηγό (προαιρετικό)» with «— ΠΡΟΣ ΑΝΑΘΕΣΗ»', txt.includes('Φορτηγό (προαιρετικό)') && txt.includes('ΠΡΟΣ ΑΝΑΘΕΣΗ'));
   // fidelity T20 (Figma 2011:9641/9704): an empty day reads as a whole hint, never Chrome's cut «dd/mm/yy»
   const dayE = await page.evaluate((d) => [...document.querySelectorAll(`${d} .wn5f-day`)].map((w) => w.querySelector('.wn5f-dayt').textContent), DLG);
@@ -153,6 +154,48 @@ async function scnOrder({ browser, origin, ok, scn }) {
   ok(scn, 'no page errors', ![S, p2.S, p3.S, p4.S].some((x) => x.pageErrors.length), S.pageErrors.concat(p2.S.pageErrors, p3.S.pageErrors, p4.S.pageErrors));
   ok(scn, 'no console errors', ![S, p2.S, p3.S, p4.S].some((x) => appConsole(x).length), [S, p2.S, p3.S, p4.S].flatMap(appConsole));
   await p4.page.context().close();
+}
+
+// F1 (owner 28/10, real-user test of National v5): a point without a window is saved as its whole day, 00:00–23:59
+// (the schema keeps a window on every national point; the base invents no hour), and the form says «όλη η ημέρα».
+// One end alone is refused by name, nothing sent. On plain main the empty window is refused: NO-GO.
+async function scnNoWin({ browser, origin, ok, scn }) {
+  const { page, S } = await K.openApp(browser, origin);
+  if (!(await guard(page, ok, scn))) return;
+  await openForm(page, {});
+  // one end only: refused on screen, nothing sent
+  await fillOrder(page, 0, { client: C41, price: 310, temp: 4, pe: false, loads: [r(ASP, '2026-10-14', '08:00', '', 6)], drops: [r(ATH, '2026-10-15', '', '', 6)] });
+  await save(page);
+  await page.waitForTimeout(600);
+  const err = await K.text(page, `${DLG} [data-err]`);
+  ok(scn, 'one end only → «φόρτωση 1: παράθυρο: ΗΗ:ΛΛ και στα δύο άκρα, ή κανένα (όλη η ημέρα)», nothing sent',
+    err.includes('φόρτωση 1: παράθυρο: ΗΗ:ΛΛ και στα δύο άκρα, ή κανένα (όλη η ημέρα)') && !K.planOf(S, 'POST', '/plan/orders').length, err);
+  // both ends empty on both points: whole day, said in the summary before the save
+  await page.evaluate((d) => { const x = document.querySelector(`${d} .wn5f-rows[data-k="load"] [data-f="from"]`); x.value = ''; x.dispatchEvent(new Event('input', { bubbles: true })); }, DLG);
+  const sum = await K.text(page, `${DLG} [data-sum]`);
+  ok(scn, 'the summary names both points «όλη η ημέρα», never 00:00–23:59', sum.includes('Τετ όλη η ημέρα') && sum.includes('Πέμ όλη η ημέρα') && !sum.includes('00:00–23:59'), sum.slice(0, 400));
+  await save(page);
+  await page.waitForTimeout(1500);
+  const posts = K.planOf(S, 'POST', '/plan/orders');
+  const sh = posts.length === 1 && posts[0].body.orders && posts[0].body.orders[0].shipments;
+  ok(scn, 'one press → one POST; the shipment carries 00:00–23:59 of each point\'s day, Athens offset', !!sh && JSON.stringify(sh) === JSON.stringify([{ origin_location_id: 3, dest_location_id: 2, pallets: 6,
+    load_from: '2026-10-14T00:00:00+03:00', load_to: '2026-10-14T23:59:00+03:00', deliver_from: '2026-10-15T00:00:00+03:00', deliver_to: '2026-10-15T23:59:00+03:00' }]), sh || posts.length);
+  await page.context().close();
+  // ΑΝΟΔΟΣ to Veroia («Άφιξη ως»): empty = by 23:59 of its day
+  const p2 = await K.openApp(browser, origin);
+  await p2.page.evaluate(() => WN5Form.openOrder({ side: 'ANODOS' }));
+  await p2.page.waitForSelector(DLG, { timeout: 8000 }).catch(() => {});
+  await fillOrder(p2.page, 0, { client: C42, price: 120, temp: 2, pe: false, loads: [r(LAR, '2026-10-14', '', '', 4)], drops: [r(HUB, '2026-10-14', '', '', 4)] });
+  const head = await K.text(p2.page, DLG);
+  ok(scn, 'ΑΝΟΔΟΣ: «Άφιξη ως · κενό: όλη η ημέρα» heads the Veroia arrival, «Άφιξη Βέροιας ως» has no «*»', head.includes('Άφιξη ως · κενό: όλη η ημέρα') && head.includes('Άφιξη Βέροιας ως') && !head.includes('Άφιξη Βέροιας ως *'), head.slice(0, 400));
+  await save(p2.page);
+  await p2.page.waitForTimeout(1500);
+  const b2 = (K.planOf(p2.S, 'POST', '/plan/orders')[0] || {}).body || {};
+  const s2 = b2.orders && b2.orders[0].shipments[0];
+  ok(scn, 'ΑΝΟΔΟΣ body: loading 00:00–23:59, the arrival at Veroia by 23:59 (from = to)', !!s2 && s2.load_from === '2026-10-14T00:00:00+03:00' && s2.load_to === '2026-10-14T23:59:00+03:00'
+    && s2.deliver_from === '2026-10-14T23:59:00+03:00' && s2.deliver_to === '2026-10-14T23:59:00+03:00', s2);
+  ok(scn, 'no page errors, no console errors', ![S, p2.S].some((x) => x.pageErrors.length || appConsole(x).length), [S, p2.S].flatMap((x) => x.pageErrors.concat(appConsole(x))));
+  await p2.page.context().close();
 }
 
 async function scnGroupage({ browser, origin, ok, scn }) {
@@ -478,7 +521,7 @@ async function scnVs({ browser, origin, ok, scn }) {
 }
 
 K.run({
-  scenarios: { order: scnOrder, groupage: scnGroupage, unknown: scnUnknown, reused: scnReused, replayed: scnReplayed, edit: scnEdit, 'veroia-edit': scnVeroiaEdit, leg: scnLeg, 'leg-anodos': scnLegAnodos, vs: scnVs },
+  scenarios: { order: scnOrder, nowin: scnNoWin, groupage: scnGroupage, unknown: scnUnknown, reused: scnReused, replayed: scnReplayed, edit: scnEdit, 'veroia-edit': scnVeroiaEdit, leg: scnLeg, 'leg-anodos': scnLegAnodos, vs: scnVs },
   globals: ['WN5Form'],
   go: 'the v5 order forms send one body per press, from the form only, with one request_id per open form',
 }).catch((e) => { console.error(e); process.exit(1); });

@@ -566,7 +566,10 @@ function _dayTog(date) {
 function _dimOk(r) { return r.kind === 'cycle' && r.rail !== 'red'; }
 const _dc = (on) => (on ? ' wn5-dim' : '');
 // A window the board did not send (hub[] of 072, Ε-26) is «—», never «null–null» and never a guess (as T5).
-const _win = (f, t) => (f && t ? `${_esc(f)}–${_esc(t)}` : '—');
+// F1 (owner 28/10): a point entered without a window is stored as its whole day, 00:00–23:59 (the form's default);
+// the board names it «όλη η ημέρα», so it never reads as an hour someone agreed.
+const _winTxt = (f, t) => (f && t ? (f === '00:00' && t === '23:59' ? 'όλη η ημέρα' : `${f}–${t}`) : '—');
+const _win = (f, t) => _esc(_winTxt(f, t));
 function _rowHTML(r, m, no) {
   const n = r.kind === 'cycle' ? ++no.n : null;
   const ok = _dimOk(r);
@@ -696,7 +699,7 @@ const _hubBy = (p) => (p.to && (p.toDay || p.day) ? `${_dow(p.toDay || p.day)} $
 function _ptFull(p) {
   if (p.hub) return `Βέροια · τέλος κύκλου · ως ${_hubBy(p)} · ${_pal(p.pallets)}`;   // the same words in title and «+N»
   const city = _ptCity(p), who = _ptWho(p);
-  return `${p.name}${city ? ', ' + city : ''} · ${p.from && p.to ? p.from + '–' + p.to : '—'} · ${_pal(p.pallets)}${_tempTxt(p) ? ' · ' + _tempTxt(p) : ''}${who ? ' · ' + who : ''}`;
+  return `${p.name}${city ? ', ' + city : ''} · ${_winTxt(p.from, p.to)} · ${_pal(p.pallets)}${_tempTxt(p) ? ' · ' + _tempTxt(p) : ''}${who ? ' · ' + who : ''}`;
 }
 function _ptHTML(p, n, ok) {
   // Figma audit B-12 (H1): a load waiting for its ΑΝΟΔΟΣ that ends at Veroia reads as a cycle's end (r.end): «Βέροια
@@ -988,7 +991,7 @@ function _menuTitle(row) {
 function _menuSub(row) {
   const s = row.kath || row.anod;
   if (!s || !s.day) return '';
-  return _dl(s.day) + (row.kath && row.kath.veroia ? ` · Βέροια ${row.kath.veroia.from}–${row.kath.veroia.to}` : '');
+  return _dl(s.day) + (row.kath && row.kath.veroia ? ` · Βέροια ${_winTxt(row.kath.veroia.from, row.kath.veroia.to)}` : '');
 }
 function _closeMenu() { const m = document.getElementById('wn5-menu'); if (m) m.remove(); }
 // Ε-22: only the cycle's truck and trailer — nothing of the hub, nothing of a VS (Veroia is never shown to a
