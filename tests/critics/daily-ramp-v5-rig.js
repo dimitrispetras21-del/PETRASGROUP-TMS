@@ -3,8 +3,9 @@
 // The real app (app.html → modules/daily_ramp.js, core/plan-config.js, core/plan-api.js, WN5L) against an
 // in-memory Worker: the RAMP facade holds ONE legacy line, /plan/config says before / after, /plan/board holds a
 // synthetic week (invented names only — the repo is public). Nothing leaves the machine. Clock frozen at
-// Mon 2/11/2026 09:00 Athens. app.html is served with core/plan-config.js added after core/plan-api.js, as stream
-// (e)'s bump will load it (scenario `noconfig` serves app.html as it is today).
+// Mon 2/11/2026 09:00 Athens. app.html is served as it is: since #126 it loads core/plan-config.js after
+// core/plan-api.js, and every scenario checks that it still does (scenario `noconfig` answers that file 404 — a load
+// that failed, or an old cache — and the ramp must say «unknown», never act as before L).
 //
 // Usage (cwd = the main repo, which has node_modules — memory «Κριτές από worktree»):
 //   node <tree>/tests/critics/daily-ramp-v5-rig.js [scenario…] [--shots <dir>]
@@ -72,9 +73,10 @@ function serve() {
   return new Promise(r => srv.listen(0, '127.0.0.1', () => r(srv)));
 }
 
-// opts: config 'before'|'before404'|'after' · board object | 500 · role · withConfig (default true) · rampSrc (override daily_ramp.js)
+// opts: config 'before'|'before404'|'after' · board object | 500 · role · configFile (default true; false = core/plan-config.js
+// answered 404) · rampSrc (override daily_ramp.js)
 async function open(browser, origin, opts) {
-  const o = Object.assign({ config: 'after', board: BOARD, role: 'owner', withConfig: true, legacy: [LEGACY] }, opts);
+  const o = Object.assign({ config: 'after', board: BOARD, role: 'owner', configFile: true, legacy: [LEGACY] }, opts);
   const ctx = await browser.newContext({ baseURL: origin + '/', viewport: { width: 1440, height: 1000 }, serviceWorkers: 'block', timezoneId: 'Europe/Athens', locale: 'el-GR' });
   const page = await ctx.newPage();
   await page.clock.setFixedTime(new Date(NOW));
@@ -90,14 +92,17 @@ async function open(browser, origin, opts) {
   // fonts and Sentry (SRI-pinned, so it cannot be answered empty): aborted, and EXACTLY that many
   // «net::ERR_FAILED» console lines are the rig's own — clean() subtracts them, no more
   await page.route(u => !u.href.startsWith(origin) && !u.href.includes(HOST), route => { S.aborted++; return route.abort(); });
-  if (o.withConfig) {
-    await page.route(u => u.href.startsWith(origin) && /^\/(app\.html)?$/.test(new URL(u.href).pathname), async route => {
-      const r = await route.fetch(); let body = await r.text();
-      const re = /(<script src="core\/plan-api\.js[^"]*"><\/script>)/;
-      if (!re.test(body)) throw new Error('app.html changed: the rig cannot find core/plan-api.js');
-      if (!/core\/plan-config\.js/.test(body)) body = body.replace(re, '$1\n<script src="core/plan-config.js"></script>');
-      await route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body });
-    });
+  // app.html as served: the loader of core/plan-config.js must come after core/plan-api.js (PlanConfig calls planFetch)
+  await page.route(u => u.href.startsWith(origin) && /^\/(app\.html)?$/.test(new URL(u.href).pathname), async route => {
+    const r = await route.fetch(); const body = await r.text();
+    // any attributes (defer, type) — the order is the contract, not the exact tag
+    const api = body.search(/<script\b[^>]*\bsrc="core\/plan-api\.js[^"]*"/), cfg = body.search(/<script\b[^>]*\bsrc="core\/plan-config\.js[^"]*"/);
+    S.loader = api >= 0 && cfg > api;
+    await route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body });
+  });
+  if (!o.configFile) {
+    await page.route(u => u.href.startsWith(origin) && new URL(u.href).pathname === '/core/plan-config.js',
+      route => { S.cfg404 = true; return route.fulfill({ status: 404, body: '' }); });
   }
   if (o.rampSrc) {
     await page.route(u => u.href.startsWith(origin) && new URL(u.href).pathname === '/modules/daily_ramp.js',
@@ -149,6 +154,7 @@ const content = page => page.evaluate(() => document.getElementById('content').i
 const rows = (page, sel) => page.evaluate(s => [...document.querySelectorAll(s)].map(tr => tr.innerText.replace(/\s+/g, ' ').trim()), sel);
 const IN = '.ramp-pair > div:nth-child(1) tbody tr', OUTR = '.ramp-pair > div:nth-child(2) tbody tr';
 const clean = async (scn, S, allow) => {
+  check(scn, 'app.html loads core/plan-config.js after core/plan-api.js', S.loader === true);
   let own = S.aborted;
   const errs = S.consoleErrors.filter(t => !(allow && allow.test(t))).filter(t => !(own > 0 && /net::ERR_FAILED/.test(t) && own--));
   check(scn, '0 console errors, 0 page errors' + (allow ? ' (besides ' + allow + ')' : ''), !errs.length && !S.pageErrors.length, errs.concat(S.pageErrors));
@@ -249,9 +255,14 @@ const clean = async (scn, S, allow) => {
       await ctx.close();
     }
     if (on('noconfig')) {
-      const { ctx, page, S } = await open(browser, origin, { config: 'before', withConfig: false });
+      // /plan/config would say «before»: without the file nobody asks it, and the ramp must not guess
+      const { ctx, page, S } = await open(browser, origin, { config: 'before', configFile: false });
       const html = await content(page);
-      check('noconfig', 'app.html without core/plan-config.js = unknown: amber strip (the dependency on (e)\'s bump)', /Η κατάσταση μετάβασης εθνικών \(v5\) δεν διαβάστηκε/.test(html));
+      check('noconfig', 'core/plan-config.js answered 404 by the rig', S.cfg404 === true);
+      check('noconfig', 'no PlanConfig = unknown: amber strip, never silently «before»', /Η κατάσταση μετάβασης εθνικών \(v5\) δεν διαβάστηκε/.test(html));
+      check('noconfig', 'and it still reads the board (harmless) — /plan/config is never asked', S.plan.some(p => p.startsWith('GET /plan/board')) && !S.plan.includes('GET /plan/config'), S.plan);
+      const logged = await S.logged();
+      check('noconfig', 'the missing file is logged once', logged.filter(l => /plan-config\.js not loaded/.test(l)).length === 1, logged);
       check('noconfig', 'no script error', !S.pageErrors.length, S.pageErrors);
       await ctx.close();
     }
