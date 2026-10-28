@@ -209,7 +209,9 @@ test('077: _editFromRead keeps every value (nulls as «empty», never as zero) a
     order: { nat_order_id: 84, client: 'C', price: 100, reference: null, goods: 'G', notes: null, temperature_c: null, pallet_exchange: false, direction: 'KATHODOS', pallets: 6 },
     shipments: [{ shipment_id: 9, origin_location_id: 1, dest_location_id: 2, pallets: 6, load_from: 'a', load_to: 'b', deliver_from: 'c', deliver_to: 'd', vs_locked: false, rides: true, rt_codes: ['RT-1287'] }] });
   assert.deepStrictEqual(J(e), { full: true, nat_order_id: 84, client: 'C', price: 100, temperature_c: null, pallet_exchange: false, reference: '', goods: 'G', notes: '',
-    direction: 'KATHODOS', riding: true, ships: [{ shipment_id: 9, origin: 1, dest: 2, pallets: 6, load_from: 'a', load_to: 'b', deliver_from: 'c', deliver_to: 'd', rides: true, vs_locked: false, rt_codes: ['RT-1287'] }] });
+    direction: 'KATHODOS', riding: true, ships: [{ shipment_id: 9, origin: 1, dest: 2, pallets: 6, load_from: 'a', load_to: 'b', deliver_from: 'c', deliver_to: 'd', rides: true, vs_locked: false, waits: false, at_hub: false, rt_codes: ['RT-1287'] }] });
+  // F4 (080 to come): pallets unknown stay null, never 0
+  assert.strictEqual(F._editFromRead({ order: { nat_order_id: 1 }, shipments: [{ shipment_id: 2, pallets: null }] }).ships[0].pallets, null);
   for (const bad of [null, {}, { order: {} }, { order: { nat_order_id: 1 }, shipments: [] }]) assert.strictEqual(F._editFromRead(bad), null, JSON.stringify(bad));
 });
 
