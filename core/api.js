@@ -1444,6 +1444,14 @@ async function atRestoreFromTrash(trashIndex) {
       if (typeof reportError === 'function') reportError('Η επαναφορά κομματιού/παρτίδας γίνεται από το ΑΠΟΘΕΜΑ — όχι από τον κάδο');
       return null;
     }
+    // F5 Ε16: after day L the base refuses a new NL / GL / CL (plan:legacy_frozen); said here, before a POST.
+    if (typeof PlanConfig !== 'undefined' && PlanConfig.isLegacyTable(item.table)) {
+      const pc = await PlanConfig.load({ fresh: true });
+      if (pc.state !== 'before') {
+        if (typeof showErrorToast === 'function') showErrorToast(PlanConfig.LEGACY_TEXT[pc.state], 'warn', 10000);
+        return null;
+      }
+    }
     // Re-create the record in its original table
     const restored = await atCreate(item.table, item.fields);
     // Remove from trash

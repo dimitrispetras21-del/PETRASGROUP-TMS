@@ -74,9 +74,20 @@ const _orderSync = (function() {
       });
     }
 
+    // F5 (plan 2026-10-28, Task F): from 074 (PlanConfig 'after') the old national model is history — the
+    // base freezes new NL/GL/CL and keeps the v5 side itself. Read once per call, only by the steps below.
+    // 'unknown' fails the step loudly: the old chain never runs on a guess (principle 1).
+    let _ps = null;
+    const planState = async () => {
+      if (_ps === null) _ps = typeof PlanConfig !== 'undefined' ? (await PlanConfig.load()).state : 'unknown';
+      if (_ps === 'unknown') throw new Error('Δεν διαβάστηκε αν έγινε η μετάβαση εθνικών (v5) — το βήμα δεν έτρεξε');
+      return _ps;
+    };
+
     // 3. National Groupage chain (both intl and natl can have groupage)
     if (!skipGRP) {
       await run('GRP→GL→CL→NL cascade', async () => {
+        if (await planState() === 'after') return;
         await syncGLtoCLtoNL(orderId, source);
       });
     }
@@ -96,6 +107,13 @@ const _orderSync = (function() {
     // 5. Παλέτες Φ2: PE toggle → sync εκκρεμών (ON: δημιουργία, OFF: καθαρισμός pending)
     if (!skipPL && changedFields.includes('Pallet Exchange')) {
       await run('PL feed sync', async () => {
+        // A national order after day L may carry a v5 shipment, whose pallets the plan writes (073
+        // plan_h_pallet_sync); feeding it here too would count them twice. The facade does not say which
+        // national order has one, so after L none is fed here — and the user is told, never a silent gap.
+        if (source === 'natl' && await planState() === 'after') {
+          if (typeof showErrorToast === 'function') showErrorToast('Παλέτες: η εθνική δεν τροφοδοτήθηκε αυτόματα μετά τη μετάβαση v5 — καταχώρησε από το Ισοζύγιο αν χρειάζεται', 'warn', 10000);
+          return;
+        }
         if (typeof plOnOrderSaved === 'function') await plOnOrderSaved(orderId, source);
         if (source === 'intl' && typeof rtOnOrderSaved === 'function') await rtOnOrderSaved(orderId);
       });

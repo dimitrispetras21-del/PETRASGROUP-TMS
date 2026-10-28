@@ -578,6 +578,15 @@ async function _aicExecTool(name, input) {
       case 'update_record': {
         const tKey = _TABLE_MAP[input.table];
         if (!tKey || !TABLES[tKey]) return { error: 'Unknown table: ' + input.table };
+        // F5 Ε16: the old national tables after day L (or when that is unknown) are not written from here.
+        if (typeof PlanConfig !== 'undefined' ? PlanConfig.isLegacyTable(TABLES[tKey]) : tKey === 'NAT_ORDERS') {
+          const pc = typeof PlanConfig !== 'undefined' ? await PlanConfig.load({ fresh: true }) : { state: 'unknown' };
+          if (pc.state !== 'before') {
+            const msg = typeof PlanConfig !== 'undefined' ? PlanConfig.LEGACY_TEXT[pc.state] : 'Η κατάσταση μετάβασης εθνικών δεν διαβάστηκε — η αλλαγή δεν στάλθηκε';
+            if (typeof showErrorToast === 'function') showErrorToast(msg, 'warn', 8000);
+            return { error: msg };
+          }
+        }
         await atPatch(TABLES[tKey], input.record_id, input.fields);
         toast('Record updated', 'success');
         return { success: true };

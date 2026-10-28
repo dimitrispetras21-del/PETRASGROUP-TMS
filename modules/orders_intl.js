@@ -505,7 +505,9 @@ function _clientSelect(id, currentId, currentLabel) { return fhClientSelect(id, 
 // type: 'l'=loading, 'u'=unloading
 // stop 1 datetime field: 'Loading DateTime' / 'Delivery DateTime' (main fields)
 // stop 2-10: 'Loading DateTime 2-10' / 'Unloading DateTime 1-10'
-function _stopRow(type, i, locId, palVal, dtVal) {
+// stopId: the ORDER STOPS record the row came from ('' for a new row). stopsSave matches by it, so removing a
+// middle row never hands its record to the row after it (F5 plan, Task F; the v5 bridge keys on order_stop_id).
+function _stopRow(type, i, locId, palVal, dtVal, stopId) {
   const req   = i===1 ? ' *' : '';
   // ✕ μόνο στα i>1 (owner 12/8): το πρώτο σημείο είναι υποχρεωτικό — αν δεν
   // το θες, αλλάζεις την τιμή του, δεν το σβήνεις. Ο spacer κρατά τη στοίχιση.
@@ -525,6 +527,7 @@ function _stopRow(type, i, locId, palVal, dtVal) {
     <div>
       <label class="form-label" style="font-size:11px">Ημερομηνία${req}</label>
       <input class="form-input" type="date" id="dt_${type}_${i}" value="${dtVal||''}">
+      <input type="hidden" id="sid_${type}_${i}" value="${escapeHtml(stopId||'')}">
     </div>
     ${rm}
   </div>`;
@@ -760,7 +763,7 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill, _piece) 
         const locArr = sf[F.STOP_LOCATION];
         const locId = Array.isArray(locArr) ? locArr[0] : '';
         const dt = sf[F.STOP_DATETIME] ? toLocalDate(sf[F.STOP_DATETIME]) : '';
-        html += _stopRow(type, i + 1, locId, sf[F.STOP_PALLETS], dt);
+        html += _stopRow(type, i + 1, locId, sf[F.STOP_PALLETS], dt, stopsOfType[i].id);
       }
     } else {
       // New order or no stops — single empty row
@@ -1706,6 +1709,18 @@ const _syncingOrders = new Set();
 // the same and the national load was rewritten to the ±1 estimate on every
 // truck change. With the read in here no caller can starve it again;
 // tests/vs-sync-callers.test.js fails the build on a second argument.
+// After day L (F5 Ε2): read what the base made of the order's VS side, and say it. Nothing is written here.
+// {v5:true, text} is the stage the form shows; a state that is not what the order says throws (✗).
+async function _vsAfterCutover(orderId, vsOn) {
+  const st = (await PlanConfig.vsState([orderId])).get(orderId);
+  if (st !== 'missing') {
+    if (!vsOn) throw new Error(`VS chain: η παραγγελία δεν είναι πια VS, αλλά η βάση κρατά ακόμη την εθνική πλευρά (${st.n_pieces} κομμάτια) — ενημέρωσε τον Δημήτρη`);
+    return { v5: true, text: `VS chain: η βάση έφτιαξε την εθνική πλευρά (${st.n_pieces} κομμάτια) ✓` };
+  }
+  if (vsOn) throw new Error('VS chain: δεν δημιουργήθηκε εθνικό σκέλος (ημέρα κόμβου; ημέρα πριν από τη μετάβαση;) — έλεγξε την ημέρα Βέροιας');
+  return { v5: true, text: 'Χωρίς εθνικό σκέλος (όχι VS) ✓' };
+}
+
 async function _syncVeroiaSwitch(orderId) {
   if (_syncingOrders.has(orderId)) {
     if (typeof showErrorToast === 'function') showErrorToast('Sync already in progress for this order', 'warn');
@@ -1734,6 +1749,20 @@ async function _syncVeroiaSwitch(orderId) {
 
   _tmsLog('_syncVeroiaSwitch called:', {orderId, veroiaSwitch, direction, isIntl});
   if (!isIntl) { _tmsLog('SKIP: not intl'); return; }
+
+  // F5 Ε2 (plan 2026-10-28, Task F): from 074 the BASE keeps the VS national side — its bridge trigger makes
+  // one shipment per national-side stop and withdraws it when VS goes off or the order is Cancelled (Q-5).
+  // The old chain below (NATIONAL LOADS, legacy NATIONAL ORDERS, groupage) then neither writes, deletes nor
+  // reads: a new NL is 422 plan:legacy_frozen, and deleting a historical one would erase history. fresh: a
+  // 'before' read at 14:00 must not write an NL after 074 ran at 15:30. 'unknown' writes nothing and fails
+  // the stage loudly — never the old chain on a guess (principle 1).
+  const _pc = typeof PlanConfig !== 'undefined' ? await PlanConfig.load({ fresh: true }) : { state: 'unknown', err: null };
+  if (_pc.state === 'unknown') {
+    const e = new Error('Δεν διαβάστηκε αν έγινε η μετάβαση εθνικών (v5) — το εθνικό σκέλος ΔΕΝ συγχρονίστηκε· ξαναδοκίμασε την αποθήκευση');
+    e.cause = _pc.err;
+    throw e;
+  }
+  if (_pc.state === 'after') return await _vsAfterCutover(orderId, !!veroiaSwitch && fields['Status'] !== 'Cancelled');
 
   const _lid = v => (v && typeof v === 'object' && v.id) ? v.id : (typeof v === 'string' ? v : null);
 
@@ -2401,14 +2430,16 @@ async function submitIntlOrder(recId) {
       const locId = document.getElementById('lv_l_'+i)?.value;
       const pal   = document.getElementById('pal_l_'+i)?.value;
       const dt    = document.getElementById('dt_l_'+i)?.value;
-      if (locId) _formStops.push({ stopNumber: ++_seqL, stopType: 'Loading', locationId: locId, pallets: parseFloat(pal) || 0, dateTime: dt || null, clientId: clientId || null, ref: _stopRef || null, goods: _stopGoods || null, temp: _stopTemp ? parseFloat(_stopTemp) : null });
+      const sid   = document.getElementById('sid_l_'+i)?.value || null;
+      if (locId) _formStops.push({ recordId: sid, stopNumber: ++_seqL, stopType: 'Loading', locationId: locId, pallets: parseFloat(pal) || 0, dateTime: dt || null, clientId: clientId || null, ref: _stopRef || null, goods: _stopGoods || null, temp: _stopTemp ? parseFloat(_stopTemp) : null });
     }
     let _seqU = 0;
     for (let i = 1; i <= 10; i++) {
       const locId = document.getElementById('lv_u_'+i)?.value;
       const pal   = document.getElementById('pal_u_'+i)?.value;
       const dt    = document.getElementById('dt_u_'+i)?.value;
-      if (locId) _formStops.push({ stopNumber: ++_seqU, stopType: 'Unloading', locationId: locId, pallets: parseFloat(pal) || 0, dateTime: dt || null, clientId: clientId || null, ref: _stopRef || null, goods: _stopGoods || null, temp: _stopTemp ? parseFloat(_stopTemp) : null });
+      const sid   = document.getElementById('sid_u_'+i)?.value || null;
+      if (locId) _formStops.push({ recordId: sid, stopNumber: ++_seqU, stopType: 'Unloading', locationId: locId, pallets: parseFloat(pal) || 0, dateTime: dt || null, clientId: clientId || null, ref: _stopRef || null, goods: _stopGoods || null, temp: _stopTemp ? parseFloat(_stopTemp) : null });
     }
 
     // Auto-create Cross-dock stop for Veroia Switch orders
@@ -2522,7 +2553,10 @@ async function submitIntlOrder(recId) {
     }
 
     // ── Pre-save check: auto-restore CL if GL lines are Assigned ───
-    if (recId && fields['National Groupage'] && fields['Veroia Switch']) {
+    // Not after day L (F5): the GL/CL/NL are history then, and releasing a truck would delete a historical CL
+    // and NL; the VS side of the order is the base's bridge (_syncVeroiaSwitch → _vsAfterCutover).
+    if (recId && fields['National Groupage'] && fields['Veroia Switch']
+        && !(typeof PlanConfig !== 'undefined' && (await PlanConfig.load({ fresh: true })).state === 'after')) {
       try {
         // Find GL lines linked to this intl order via Linked International Order (JS filter)
         const allGLs = await atGetAll(TABLES.GL_LINES, {
@@ -2747,13 +2781,13 @@ async function submitIntlOrder(recId) {
       toast('Συγχρονισμός εθνικού φορτίου VS…', 'info');
       // The sync reads the saved order itself (WP-A): same one GET as before,
       // now in one place for every caller.
-      await _syncVeroiaSwitch(savedOrderId);
+      const _vsr = await _syncVeroiaSwitch(savedOrderId);
       // Central sync — RAMP trigger + PL cleanup (if PE=OFF) + cache invalidation
       if (typeof syncOrderDownstream === 'function') {
         syncOrderDownstream(savedOrderId, { source: 'intl', skipVS: true, skipGRP: true })
           .catch(e => console.warn('[intl save sync]', e));
       }
-      toast('Το εθνικό φορτίο συγχρονίστηκε ✓');
+      toast(_vsr && _vsr.v5 ? _vsr.text : 'Το εθνικό φορτίο συγχρονίστηκε ✓');
     } catch(e) {
       console.error('VS sync error:', e);
       // One app_errors line (reportError is a toast only): a national load
