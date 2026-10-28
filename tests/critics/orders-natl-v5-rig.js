@@ -6,8 +6,11 @@
 //   cd /Users/dimitrispetras/PETRASGROUP-TMS && PW_BASE_URL=http://127.0.0.1:8791/ node <worktree>/tests/critics/orders-natl-v5-rig.js
 // NO-GO: the same against a server of the previous tip (origin/main) must FAIL the «after» scenarios.
 //
-// Everything is SYNTHETIC (no production names). PlanConfig (core/plan-config.js, stream c) is injected with the
-// state of each scenario; /plan/nat-state answers with the contract of the read spec §2. The proof is DOM text and
+// Everything is SYNTHETIC (no production names). The REAL core/plan-config.js (loaded by app.html since #126)
+// reads a stubbed GET /plan/config — the Worker's answer {cutover_day, opened_at, writes_open} (planConfigAnswer,
+// worker/src/index.js) — so the rig exercises the client the users run. Until #126 the rig set window.PlanConfig,
+// which the real file now overwrites (stream e, 30/10): every scenario then ran as «before». /plan/nat-state
+// answers with the contract of plan_nat_state (074a) / the read spec §2. The proof is DOM text and
 // request bodies, computed here independently of the code under test — never a screenshot.
 
 const path = require('path');
@@ -51,17 +54,24 @@ const json = (route, body, status = 200) => route.fulfill({ status, contentType:
 async function newPage(browser, role, sc) {
   const ctx = await browser.newContext({ baseURL: BASE_URL, viewport: { width: 1440, height: 960 } });
   const page = await ctx.newPage();
-  const errors = [], log = { natState: [], patches: [], nlPosts: 0, natDeletes: 0 };
+  const errors = [], log = { natState: [], patches: [], nlPosts: 0, natDeletes: 0, config: 0 };
   page.on('pageerror', e => errors.push('pageerror: ' + e));
-  page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
+  // The resource URL goes with the text: Chrome's «Failed to load resource: … 500» names no route by itself.
+  page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text() + ' @ ' + ((m.location() || {}).url || '')); });
   page.on('dialog', d => { errors.push('native dialog: ' + d.message()); d.dismiss(); });
   await preparePage(page, role);
-  await page.addInitScript(([r, state, view]) => {
+  await page.addInitScript(([r, view]) => {
     localStorage.setItem('tms_orders_hub_demo_' + r, JSON.stringify({ scope: 'natl', view }));
-    // core/plan-config.js (stream c) is not on main yet: its contract, with the scenario's state.
-    window.PlanConfig = { load: async () => ({ state, cutoverDay: state === 'after' ? '2026-10-31' : null, writesOpen: state === 'after' }) };
-  }, [role, sc.state, sc.view || 'catalog']);
+  }, [role, sc.view || 'catalog']);
   page.route('**/petras-tms-backend-staging.petrasgroup.workers.dev/**', route => json(route, { records: [] }));
+  // Day L as the Worker says it: 'after' = cutover_day set (074 ran); 'before' = null; 'unknown' = no answer.
+  page.route('**/plan/config', route => {
+    log.config++;
+    if (sc.state === 'unknown') return json(route, { error: { type: 'INTERNAL', code: 'plan_failed', message: 'boom' } }, 500);
+    return json(route, sc.state === 'after'
+      ? { cutover_day: '2026-10-31', opened_at: '2026-10-30T15:30:00Z', writes_open: false }
+      : { cutover_day: null, opened_at: null, writes_open: false });
+  });
   page.route(`**/${T.NAT_ORDERS}**`, route => {
     const req = route.request();
     if (req.method() === 'PATCH') { log.patches.push({ url: req.url(), body: req.postDataJSON() }); return json(route, { id: 'recOLDA', fields: {} }); }
@@ -104,6 +114,7 @@ async function before(browser) {
   console.log('\n[owner] before L: today\'s page');
   const page = await newPage(browser, 'owner', { state: 'before' });
   await openCatalog(page);
+  assert(page._log.config >= 1, 'before: the real PlanConfig asked GET /plan/config');
   assert(page._log.natState.length === 0, 'before: no /plan/nat-state request');
   assert(/εκτός/.test(await rowText(page, 'recOLDB')), 'before: old order without load still «εκτός»');
   assert(/ΤΣΤ-1001/.test(await rowText(page, 'recOLDA')), 'before: old order shows its load\'s truck');
@@ -117,6 +128,7 @@ async function after(browser) {
   const page = await newPage(browser, 'owner', { state: 'after' });
   await openCatalog(page);
   // One read per data set: the catalog's list and the counters' invoicing set (OrdersData), each with every Order No.
+  assert(page._log.config >= 1, 'after: the real PlanConfig asked GET /plan/config');
   assert(page._log.natState.length >= 1 && page._log.natState.length <= 2 && page._log.natState.every(q => /nat_order_ids=9001(%2C|,)9002(%2C|,)9003(%2C|,)9004(%2C|,)9005$/.test(q)),
     'after: /plan/nat-state read once per data set (≤ 2), each with the 5 Order Nos ' + JSON.stringify(page._log.natState));
   const a = await rowText(page, 'recV5A'), b = await rowText(page, 'recV5B'), c = await rowText(page, 'recV5C');
@@ -152,6 +164,7 @@ async function fail(browser) {
   console.log('\n[owner] after L, /plan/nat-state fails');
   const page = await newPage(browser, 'owner', { state: 'after', natFail: true });
   await openCatalog(page);
+  assert(page._log.config >= 1, 'fail: the real PlanConfig asked GET /plan/config');
   const warns = await page.locator('#ocWarns').innerText();
   assert(/κατάσταση των εθνικών v5 δεν διαβάστηκε/.test(warns), 'fail: the strip says the v5 state was not read');
   const a = await rowText(page, 'recV5A');
@@ -202,7 +215,9 @@ async function unknown(browser) {
   await page.waitForTimeout(1200);
   const t = await page.evaluate(() => document.body.innerText);
   assert(/Δεν διαβάστηκε αν έγινε η μετάβαση/.test(t), 'unknown: «Νέα εθνική» says the state is unknown (never a silent before)');
-  assert(page._errors.length === 0, 'unknown: 0 console/page errors ' + JSON.stringify(page._errors));
+  // Only the mocked /plan/config failure may be logged (PlanConfig.load / planFetch name the route).
+  const unexpected = page._errors.filter(e => !/plan\/config|PlanConfig\.load/i.test(e));
+  assert(unexpected.length === 0, 'unknown: no error besides the mocked /plan/config 500 ' + JSON.stringify(unexpected));
   await page.context().close();
 }
 

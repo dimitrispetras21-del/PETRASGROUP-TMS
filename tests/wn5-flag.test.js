@@ -1,6 +1,7 @@
 // node --test tests/wn5-flag.test.js
 // National v5 F4α Tasks T3/T10 — the switch is born closed (principle 5) and the old board has ONE seam:
-//   - FEATURES.WN_V5 is 'off' until day L: F5 changes this assertion in the same commit as the flag (owner decision);
+//   - FEATURES.WN_V5: 'off' in F4α, 'pilot' for the owner alone from the F5 pilot (Q-9), 'on' at day L (FE-2) — each
+//     change of the flag changes its assertion here in the same commit (owner decision);
 //   - modules/weekly_natl.js gains exactly one line, the first statement of renderWeeklyNatl(), before _wnLoadAll:
 //     v5 owns its load, and with the switch off that line is false and nothing else of the old board runs differently.
 const { test } = require('node:test');
@@ -33,19 +34,23 @@ function grab(src, name, file) {
 }
 const SEAM = "if (typeof WN5 !== 'undefined' && WN5.active()) { ++_wnLoadId; return WN5.render(); }";
 
-test("F4α-T3: FEATURES.WN_V5 is 'off' until day L (F5 changes this line with the flag)", () => {
+// F5 FE-2 (day L, Runbook R-8): 'on' for every user; WN_V5_USERS keeps the owner, so a rollback to 'pilot' is one word.
+test("F5 FE-2: FEATURES.WN_V5 is 'on'; WN_V5_USERS still names the owner only", () => {
   const v = config();
-  assert.strictEqual(v('FEATURES.WN_V5'), 'off', 'FEATURES.WN_V5 undefined or open: ' + v('String(FEATURES.WN_V5)'));
-  assert.strictEqual(v('JSON.stringify(WN_V5_USERS)'), '[]', 'WN_V5_USERS must exist and name nobody');
+  assert.strictEqual(v('FEATURES.WN_V5'), 'on', 'FEATURES.WN_V5 is not open: ' + v('String(FEATURES.WN_V5)'));
+  assert.strictEqual(v('JSON.stringify(WN_V5_USERS)'), '["dimitris"]', 'WN_V5_USERS must name the owner and nobody else');
+  assert.strictEqual(v("USERS.filter(u => WN_V5_USERS.includes(u.username)).map(u => u.role).join()"), 'owner',
+    'a WN_V5_USERS name is not an owner in the USERS roster');
 });
 
-test('F4α-T3: weekly_natl.js has exactly one v5 line, first statement of renderWeeklyNatl, before _wnLoadAll', () => {
-  const src = read('modules/weekly_natl.js');
-  const fn = grab(src, 'renderWeeklyNatl', 'modules/weekly_natl.js');
-  const body = fn.slice(fn.indexOf('{') + 1).split('\n').map((s) => s.trim()).filter((s) => s && !s.startsWith('//'));
-  assert.strictEqual(body[0], SEAM, 'WN5 seam not found as the first statement of renderWeeklyNatl');
-  assert.ok(fn.indexOf(SEAM) < fn.indexOf('_wnLoadAll()'), 'the seam must come before _wnLoadAll');
-  assert.strictEqual(src.split('\n').filter((l) => /\bWN5\b/.test(l)).length, 1, 'only ONE line of weekly_natl.js may name WN5');
+test('F5 FE-2: the real config.js + WI4.v2Decide open v5 for every roster user; «Παλιά προβολή» (tms_wn5=0) still gives the old board', () => {
+  const v = config();
+  const lg = require(path.join(ROOT, 'core/wi4-logic.js'));
+  const decide = (user, optIn) => lg.v2Decide({ flag: v('FEATURES.WN_V5'), pilot: JSON.parse(v('JSON.stringify(WN_V5_USERS)')), user, optIn });
+  const all = JSON.parse(v('JSON.stringify(USERS.map(u => u.username))'));
+  assert.ok(all.length > 5, 'roster not read: ' + all.join());
+  assert.deepStrictEqual(all.filter((n) => decide(n, null) !== 'v4'), [], 'a roster user does not get v5');
+  assert.strictEqual(decide('demo_dispatcher', '0'), 'old');
 });
 
 // F4α T10 — the readers of the old board's state under v5.

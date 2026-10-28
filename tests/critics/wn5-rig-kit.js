@@ -163,6 +163,12 @@ async function openApp(browser, origin, opts = {}) {
     const u = new URL(req.url());
     const m = req.method();
     if (m === 'OPTIONS') return route.fulfill({ status: 204, headers: Object.assign({ 'access-control-allow-headers': '*', 'access-control-allow-methods': '*' }, cors) });
+    // F5 FE-2: GET /plan/config (Q-10, is this week ≥ day L?) answered as the deploy-1 Worker does before L, counted
+    // in S.config and kept out of S.plan, the table of the board's own traffic (see tests/critics/wn5-board-rig.js).
+    if (m === 'GET' && u.pathname === '/plan/config' && !(opts.plan || {})['GET /plan/config']) {
+      S.config = (S.config || 0) + 1;
+      return route.fulfill({ status: 200, contentType: 'application/json', headers: cors, body: JSON.stringify({ cutover_day: null, opened_at: null, writes_open: false }) });
+    }
     if (u.pathname.startsWith('/plan/')) {
       const raw = req.postData();
       let body = null;
