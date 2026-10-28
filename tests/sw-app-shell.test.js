@@ -41,3 +41,25 @@ test('the four Weekly International v4 files are pre-cached (§a.1)', () => {
   for (const f of ['core/wi4-logic.js', 'core/wi4-presence.js', 'modules/weekly_intl_v2.js', 'modules/wi4_actions.js'])
     assert.ok(list.includes(PREFIX + f), `${f} missing from APP_SHELL`);
 });
+
+// National v5 F4α (plan 2026-10-26): every new file of the v5 board, added by the Task that creates it — a file
+// that app.html loads but the shell lacks would be fetched live and missing offline; a path that 404s would
+// fail the whole install (above).
+const V5_FILES = ['core/plan-api.js', 'modules/weekly_natl_v5.js', 'core/wn5-logic.js', 'core/wn5-labels.js', 'modules/wn5_actions.js', 'core/plan-ids.js', 'modules/wn5_veroia.js', 'modules/wn5_forms.js', 'modules/wn5_sheet.js', 'modules/wn5_handover.js'];
+test('the National v5 files are pre-cached (F4α)', () => {
+  const list = appShell();
+  for (const f of V5_FILES) assert.ok(list.includes(PREFIX + f), `${f} missing from APP_SHELL`);
+});
+
+// National v5 F5 (plan 2026-10-28 §10): stream (e) adds each new served file of F5 here with its app.html loader.
+const F5_FILES = ['core/plan-config.js'];
+test('the National v5 F5 files are pre-cached; app.html loads core/plan-config.js after core/plan-api.js and before every module', () => {
+  const list = appShell();
+  for (const f of F5_FILES) assert.ok(list.includes(PREFIX + f), `${f} missing from APP_SHELL`);
+  const html = fs.readFileSync(path.join(ROOT, 'app.html'), 'utf8');
+  const order = [...html.matchAll(/<script src="([^"?]+)\?v=\d+"><\/script>/g)].map((m) => m[1]);
+  // after its planFetch, and before any screen that calls it (coordinator 28/10: d1–d4 and c read PlanConfig)
+  const at = order.indexOf('core/plan-config.js'), firstModule = order.findIndex((f) => f.startsWith('modules/'));
+  assert.ok(at > order.indexOf('core/plan-api.js') && order.indexOf('core/plan-api.js') >= 0, 'core/plan-config.js must load after core/plan-api.js');
+  assert.ok(firstModule > at, 'core/plan-config.js must load before the first modules/ script: ' + order[firstModule]);
+});
