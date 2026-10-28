@@ -1094,7 +1094,13 @@ async function scnAssign(browser, origin) {
       ? planErr(422, 'PLAN_RULE', 'truck_busy') : planErr(409, 'WRITES_CLOSED', 'writes_closed')) } });
     await bClick(page, B_QVS);
     await bClick(page, `${D} [data-act="pick"][data-cand="truck:14"]`);
-    ok(scn, 'a free truck needs the Veroia window: «Ανάθεση» disabled until it is typed (no default)', (await bOff(page, `${D} [data-act="save"][data-cand="truck:14"]`)) === true);
+    // F12 (live 28/10): the window the shipment already has (14:00–17:00 at Veroia, the assignment's day) fills the field;
+    // emptied, «Ανάθεση» locks again — the screen still invents no hour (Ε-5)
+    const pre = await page.evaluate((d) => [...document.querySelectorAll(`${d} input[data-hub]`)].map((i) => i.value), D);
+    await page.fill(`${D} input[data-hub="from"]`, '', { timeout: 2000 }).catch(() => {});
+    await page.fill(`${D} input[data-hub="to"]`, '', { timeout: 2000 }).catch(() => {});
+    ok(scn, 'a free truck: the Veroia window comes from the shipment (14:00 – 17:00, F12); emptied, «Ανάθεση» is disabled (no invented hour)',
+      pre.join('|') === '14:00|17:00' && (await bOff(page, `${D} [data-act="save"][data-cand="truck:14"]`)) === true, pre);
     // quiet on a tree without the window (plain main): a missing field is the ✗ of the checks below, never a 30 s abort
     await page.fill(`${D} input[data-hub="from"]`, '16:00', { timeout: 2000 }).catch(() => {});
     await page.fill(`${D} input[data-hub="to"]`, '18:00', { timeout: 2000 }).catch(() => {});
