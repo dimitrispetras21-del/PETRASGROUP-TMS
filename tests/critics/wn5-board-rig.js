@@ -2656,6 +2656,40 @@ SCN.b1 = async (browser, origin) => {
   ok(scn, 'split / «+»: a hub VS delivery with no window takes its day 00:00–23:59, nothing missing', !!kit && !kit.missing.length && kit.stops[1] && kit.stops[1].planned_from === '2026-10-13T00:00:00+03:00' && kit.stops[1].planned_to === '2026-10-13T23:59:00+03:00', kit);
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
   await page.context().close();
+  // B1 part 2 (owner 28/10): VS imports at Veroia with no truck are ALSO «ΓΙΑ ΜΟΙΡΑΣΜΑ» in the Πίνακας Βέροιας (rows stay),
+  // and «Σπάσε…» puts a part on a Veroia truck of the day with the delivery on its day, whole day
+  const wk = fixture();
+  // piece 16 delivers to Athens Test (7): no stop of the day's Veroia truck RT-T102 (1, 2, 3, 5), so its part needs a NEW
+  // delivery stop — the whole-day window path, not an existing stop_id
+  wk.hub = live45().hub.map((h) => Object.assign(h, { nat_ready_day: '2026-10-12' }, h.piece_id === 16 ? { nat_to_location_id: 7 } : {}));
+  const v = await openBoard(browser, origin, { board: wk, lookups: lk });
+  await v.page.waitForSelector('#content > .wi4.wn5[data-state="ok"]', { timeout: 8000 }).catch(() => {});
+  await v.page.click('#wn5-hub [data-hub="open"]', { timeout: 2000 }).catch(() => {});   // the Veroia line opens the panel
+  await v.page.waitForTimeout(300);
+  const shelf = await v.page.evaluate(() => ({ items: [...document.querySelectorAll('#content .wn5 .wn5-hub-it')].map((x) => [x.dataset.piece, !!x.querySelector('[data-hub="split"]'), !!x.querySelector('[data-hub="truck"]')]),
+    rows: [15, 16].map((p) => !!document.querySelector(`#content .wn5 .wn5-row[data-piece="${p}"] .wi4-box.un`)) }));
+  ok(scn, 'part 2 · the VS bridges 15–18 are in «ΓΙΑ ΜΟΙΡΑΣΜΑ» with «Σπάσε…» and «Σε φορτηγό ▾», and their ΠΡΟΣ ΑΝΑΘΕΣΗ rows stay',
+    ['15', '16', '17', '18'].every((p) => shelf.items.some((x) => x[0] === p && x[1] && x[2])) && shelf.rows.every(Boolean), shelf);
+  await v.page.click('#content .wn5 .wn5-hub-it[data-piece="16"] [data-hub="split"]').catch(() => {});
+  await v.page.waitForTimeout(500);
+  const SP = '.wi4-dlg[data-wn5="split"]';
+  const rtOpt = await v.page.evaluate((d) => { const o = [...document.querySelectorAll(`${d} select[data-part-target][data-i="0"] option`)].find((x) => /^rt:/.test(x.value)); return o ? o.value : null; }, SP);
+  if (rtOpt) await v.page.selectOption(`${SP} select[data-part-target][data-i="0"]`, rtOpt).catch(() => {});
+  await v.page.fill(`${SP} input[data-part-pal][data-i="0"]`, '5', { timeout: 2000 }).catch(() => {});
+  await v.page.fill(`${SP} input[data-part-pal][data-i="1"]`, '6', { timeout: 2000 }).catch(() => {});
+  await v.page.waitForTimeout(300);
+  const badge = await v.page.evaluate((d) => { const b = document.querySelector(`${d} .wn5-pbadge[data-i="0"]`); const s = document.querySelector(`${d} [data-act="save"]`); return { b: b ? b.textContent : null, off: s ? s.disabled : null }; }, SP);
+  ok(scn, 'part 2 · «Σπάσε…» of VS 16 onto a Veroia truck: the badge says «παράδοση Τρί 13/10 όλη η ημέρα», «Σπάσε» enabled (was «λείπει ο προορισμός»)',
+    !!rtOpt && !!badge.b && /παράδοση Τρί 13\/10 όλη η ημέρα/.test(badge.b) && !/λείπει ο προορισμός/.test(badge.b) && badge.off === false, { rtOpt, badge });
+  await v.page.click(`${SP} [data-act="save"]`).catch(() => {});
+  await v.page.waitForTimeout(500);
+  const sp = v.S.plan.filter((x) => x.m === 'POST' && x.path === '/plan/pieces/split')[0];
+  const p0 = sp && sp.body && sp.body.parts && sp.body.parts[0];
+  ok(scn, 'part 2 · POST /plan/pieces/split: part 1 on the truck with the delivery stop 2026-10-13 00:00–23:59, part 2 stays', !!p0 && p0.pallets === 5
+    && (p0.stops || []).some((x) => x.location_id === 7 && x.planned_from === '2026-10-13T00:00:00+03:00' && x.planned_to === '2026-10-13T23:59:00+03:00')
+    && sp.body.parts[1].pallets === 6 && !sp.body.parts[1].target, sp && sp.raw);
+  ok(scn, 'part 2 · no page errors', !v.S.pageErrors.length, v.S.pageErrors);
+  await v.page.context().close();
 };
 // ── main ──
 (async () => {
