@@ -191,6 +191,16 @@ async function dbSelectRaw(env, table, params, extraHeaders) {
   return { rows: await res.json(), contentRange: res.headers.get("content-range") };
 }
 __name(dbSelectRaw, "dbSelectRaw");
+// The exact row count of a read made with Prefer: count=exact («0-998/2500», «*/0»). No count is an error, never a
+// guessed «complete» (principle 1): /pallets/movements and /costs/pnl decide «cut» from it, so one rule for both.
+function dbExactCount(contentRange, table) {
+  // digits only after the slash: Number("") is 0, so a «0-999/» would otherwise read as an exact count of 0
+  const m = /\/(\d+)$/.exec(String(contentRange || ""));
+  const total = m ? Number(m[1]) : NaN;
+  if (!Number.isSafeInteger(total)) throw new Error(`${table}: no exact count in «${contentRange}»`);
+  return total;
+}
+__name(dbExactCount, "dbExactCount");
 
 // src/routes/audit.js
 var AUDIT_READERS = ["owner", "management"];
@@ -5127,17 +5137,31 @@ async function handleCosts(request, url, origin, env) {
     }
     // ---- GET /costs/pnl  (ΑΠΟΤΕΛΕΣΜΑΤΑ — ΜΟΝΟ OWNER, spec §10.2.11) ----
     if (resource === "pnl" && method === "GET") {
+      // It was one read of «limit 300» with nothing said (measured 28/10: 198 RTs, ~20 new a week before the national
+      // cycles of day L), so in about five weeks the P&L would have lost RTs from the list AND from the totals in
+      // silence. Same answer as /pallets/movements (#134): records + truncated + cap, every time.
+      // NOT the paged read of #134: ct_v_rt_pnl recomputes every RT's revenue and costs on each read (the filter is
+      // not pushed into the aggregates; EXPLAIN 28/10 estimates ~10^9 rows), takes seconds for 198 RTs and its exact
+      // count ran past the statement timeout. Pages would repeat that whole cost per page. So one read of PNL_CAP
+      // rows, and the exact count from ct_round_trips with the view's own WHERE (status <> cancelled) and the same
+      // filters - an index read. Fewer rows than the count (the cap, a lower db-max-rows, an RT the view's joins
+      // drop) is truncated and said; a stale count (an RT cancelled between the two reads) can only alarm, never hide.
+      const PNL_CAP = 999;
       const q = url.searchParams;
-      const params = new URLSearchParams();
-      params.set("select", "*");
-      params.set("order", "margin_worst_pct.asc.nullsfirst");
-      params.set("limit", "300");
-      if (q.get("from")) params.append("date_start", `gte.${q.get("from")}`);
-      if (q.get("to")) params.append("date_start", `lte.${q.get("to")}`);
-      if (q.get("scope")) params.append("scope", `eq.${q.get("scope")}`);
-      if (q.get("truck_id")) params.append("truck_id", `eq.${q.get("truck_id")}`);
-      const { rows } = await dbSelectRaw(env, "ct_v_rt_pnl", params);
-      return jsonOk({ records: rows }, origin, env);
+      const filters = [];
+      if (q.get("from")) filters.push(["date_start", `gte.${q.get("from")}`]);
+      if (q.get("to")) filters.push(["date_start", `lte.${q.get("to")}`]);
+      if (q.get("scope")) filters.push(["scope", `eq.${q.get("scope")}`]);
+      if (q.get("truck_id")) filters.push(["truck_id", `eq.${q.get("truck_id")}`]);
+      // Newest first, so a cut drops the oldest RTs; the screen sorts on its own (costs.js), the order is only the cut.
+      const params = new URLSearchParams([["select", "*"], ["order", "id.desc"], ["limit", String(PNL_CAP)], ...filters]);
+      const countParams = new URLSearchParams([["select", "id"], ["status", "neq.cancelled"], ["limit", "1"], ...filters]);
+      const [{ rows }, { contentRange }] = await Promise.all([
+        dbSelectRaw(env, "ct_v_rt_pnl", params),
+        dbSelectRaw(env, "ct_round_trips", countParams, { Prefer: "count=exact" })
+      ]);
+      const total = dbExactCount(contentRange, "ct_round_trips");
+      return jsonOk({ records: rows, truncated: rows.length < total, cap: PNL_CAP, total }, origin, env);
     }
     // ---- GET /costs/pallet-gate — ποιες διαδρομές partner περιμένουν δελτίο ----
     // Το PnL τους είναι ελλιπές όσο λείπει: οι χαμένες παλέτες είναι κόστος.
@@ -6910,10 +6934,7 @@ async function handlePallets(request, url, origin, env) {
         page.set("limit", String(asked));
         if (last) page.append("or", `(movement_date.lt.${last.movement_date},and(movement_date.eq.${last.movement_date},id.lt.${last.id}))`);
         const { rows: got, contentRange } = await dbSelectRaw(env, "pl_movements", page, last ? undefined : { Prefer: "count=exact" });
-        if (!last) {
-          total = Number(String(contentRange || "").split("/")[1]);
-          if (!Number.isSafeInteger(total)) throw new Error(`pl_movements: no exact count in «${contentRange}»`);
-        }
+        if (!last) total = dbExactCount(contentRange, "pl_movements");
         rows.push(...got);
         // the end is a short page AND the count reached; a short page alone may be db-max-rows, the count alone may
         // include a row written below the window while the pages were read

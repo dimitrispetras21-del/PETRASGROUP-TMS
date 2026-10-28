@@ -323,7 +323,7 @@ async function ctReload() {
   // Reset ΟΛΩΝ των σημαιών αποτυχίας ανά φόρτωση — μια παλιά αποτυχία δεν
   // πρέπει να στοιχειώνει την επόμενη επιτυχία (εύρημα review 24/8).
   _ct.palletGateFailed = false; _ct.linesFailed = false;
-  _ct.linesCapped = false; _ct.rtsCapped = false;
+  _ct.linesCapped = false; _ct.rtsCapped = false; _ct.pnlCut = null;
   _ct.loadFailed = false; _ct.loadError = '';
   try {
     // Φ4: pallet-gate failure must NOT take down the whole PnL page — a
@@ -345,6 +345,9 @@ async function ctReload() {
       ctFetch('/costs/lines?limit=' + CT_LINES_PAGE).catch(e => { console.warn('[costs] lines failed', e.message); _ct.linesFailed = true; return { records: [] }; })
     ]);
     _ct.pnl = pnl.records || [];
+    _ct.pnlCut = ctPnlCut(pnl);
+    // An empty list the count says is not empty is a failed read, never the «waiting for the first RT» onboarding.
+    if (!_ct.pnl.length && _ct.pnlCut && _ct.pnlCut.cut) throw new Error(`το P&L ήρθε κενό ενώ υπάρχουν ${_ct.pnlCut.total} δρομολόγια`);
     _ct.splitMissing = _ct.pnl.some(t => !ctHasSplit(t));
     _ct.rts = {}; (rts.records || []).forEach(r => { _ct.rts[r.id] = r; });
     if (!lookups.cached) _ct.lookups = lookups;
@@ -386,6 +389,24 @@ async function ctReload() {
     const rc = document.getElementById('ctRecon'); if (rc) rc.innerHTML = '';
     const tb = document.getElementById('ctToolbar2'); if (tb) tb.style.display = 'none';
   }
+}
+// The P&L says when its list is cut (28/10), like the pallet ledger (#134): the Worker answers truncated + cap + total
+// (total = the RTs that exist). A cut list is cut from the totals too, so the note sits on the banner. Until that
+// Worker is live the old one stops at 300 RTs and does not say it, so 300 without «truncated» is read as cut: drop
+// that branch once every answer carries «truncated».
+function ctPnlCut(res) {
+  const n = (res.records || []).length;
+  if (res.truncated === undefined) return n >= 300 ? { n, cap: 300, total: null, cut: true } : null;
+  if (res.truncated) return { n, cap: res.cap, total: res.total, cut: true };
+  return res.cap && n >= res.cap * 0.9 ? { n, cap: res.cap, total: res.total, cut: false } : null;
+}
+function ctPnlCutNote(cut) {
+  if (!cut) return '';
+  const txt = !cut.cut
+    // Not «ask for a higher cap»: one read cannot pass PostgREST's 1000 rows, the next step is pages or a faster view.
+    ? `${cut.n} δρομολόγια, κοντά στο όριο των ${cut.cap} μιας ανάγνωσης: χρειάζεται σελιδοποίηση πριν κοπεί`
+    : `Φορτώθηκαν ${cut.n}${cut.total != null ? ' από ' + cut.total : ''} δρομολόγια: τα υπόλοιπα λείπουν από τη λίστα ΚΑΙ από τα σύνολα (έσοδα, κόστη, καθαρό).`;
+  return `<div class="ct-note ct-nwarn" id="ctPnlCut">${icon('warning', 13)} ${txt}</div>`;
 }
 function ctErrorCard() {
   return `<div class="ct-empty ct-fail">Τα /costs/* δεν απάντησαν: <b>${ctEsc(_ct.loadError)}</b><br>
@@ -621,7 +642,7 @@ function ctRenderSummary() {
     netVal = `<b class="nv ct-mono${p < 0 ? ' neg' : p > 0 ? ' pos' : ''}">${ctEurP(p)}</b>`;
     foot = `Περιθώριο ${rev ? (p / rev * 100).toFixed(1) + '%' : '—'} με ΦΠΑ · ${rev ? ((rev - net) / rev * 100).toFixed(1) + '%' : '—'} χωρίς. Τα δρομολόγια ταξινομούνται κατά έσοδα φθίνοντα.`;
   }
-  lede.innerHTML = `<div class="ct-stake">
+  lede.innerHTML = ctPnlCutNote(_ct.pnlCut) + `<div class="ct-stake">
     <div class="ct-stop"><span class="t">${title}</span>${stake}</div>
     <div class="ct-eq">
       <span class="ct-eqi"><span class="l">Έσοδα</span><b class="nv ct-mono">${ctEur(rev)}</b></span>
