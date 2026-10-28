@@ -162,6 +162,11 @@ ${loop}) g(sig, b, a, m_now, m_live) LOOP
     INTO v_gr
     FROM pg_class c CROSS JOIN LATERAL aclexplode(c.relacl) a
    WHERE c.oid IN ('public.ct_v_rt_revenue'::regclass, 'public.ct_v_rt_pnl'::regclass) AND a.grantee <> c.relowner;
+  -- DROP + CREATE (and CREATE OR REPLACE) give a view no options: one set since 080 stops here, never lost in silence
+  IF EXISTS (SELECT 1 FROM pg_class WHERE oid IN ('public.ct_v_v5_revenue'::regclass, 'public.ct_v_rt_revenue'::regclass,
+             'public.ct_v_rt_pnl'::regclass) AND reloptions IS NOT NULL) THEN
+    RAISE EXCEPTION '080 rollback: a money view has options (reloptions) the way back would drop - stop, re-measure';
+  END IF;
   DROP VIEW public.ct_v_rt_pnl;
   DROP VIEW public.ct_v_rt_revenue;
   EXECUTE 'CREATE OR REPLACE VIEW public.ct_v_v5_revenue AS ' || v_v5_0;

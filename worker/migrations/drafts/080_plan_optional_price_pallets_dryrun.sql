@@ -277,7 +277,7 @@ $h$;
   h_r5a CONSTANT text := $h$            x.amount AS rev_natl
 $h$;
   h_r5b CONSTANT text := $h$            x.amount AS rev_natl,
-            x.amount IS NULL AS missing
+            x.amount IS NULL AND x.kind = 'price' AS missing
 $h$;
   h_r6a CONSTANT text := $h$         SELECT legs.rt_id, legs.rev_intl, legs.rev_natl FROM legs
 $h$;
@@ -330,6 +330,12 @@ BEGIN
     END IF;
     EXECUTE format('DROP VIEW pg_temp.t080_%s', v_g.v);
   END LOOP;
+  -- CREATE OR REPLACE VIEW without WITH empties a view's options (security_invoker / security_barrier: the trap 057
+  -- names). Measured 28/10 in production: none of the three has any. One set since then stops 080 here, never lost.
+  IF EXISTS (SELECT 1 FROM pg_class WHERE oid IN ('public.ct_v_v5_revenue'::regclass, 'public.ct_v_rt_revenue'::regclass,
+             'public.ct_v_rt_pnl'::regclass) AND reloptions IS NOT NULL) THEN
+    RAISE EXCEPTION '080: a money view has options (reloptions) that CREATE OR REPLACE would drop - stop, re-measure';
+  END IF;
   -- the two CHECKs as 071 wrote them (read by what they demand, not by the deparser's spacing)
   IF position('pallets IS NOT NULL' IN (SELECT pg_get_constraintdef(oid) FROM pg_constraint
                                          WHERE conrelid = 'public.shipments'::regclass AND conname = 'shipments_shape')) = 0
@@ -457,6 +463,10 @@ BEGIN
      OR (SELECT attname FROM pg_attribute WHERE attrelid = 'public.ct_v_rt_pnl'::regclass AND attnum > 0 ORDER BY attnum DESC LIMIT 1)
        <> 'v5_revenue_missing' THEN
     RAISE EXCEPTION '080 proof: the money views do not have the columns 080 gives them';
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_class WHERE oid IN ('public.ct_v_v5_revenue'::regclass, 'public.ct_v_rt_revenue'::regclass,
+             'public.ct_v_rt_pnl'::regclass) AND reloptions IS NOT NULL) THEN
+    RAISE EXCEPTION '080 proof: a money view has options it did not have';
   END IF;
   -- no v5 order is without price or pallets before 080 (both were refused): today's money does not move
   SELECT count(*) || ':' || md5(coalesce(string_agg(to_jsonb(x)::text, '|' ORDER BY x.piece_id, x.leg_id), '')) INTO v_fp1

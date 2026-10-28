@@ -264,7 +264,8 @@
   // PATCH /plan/orders/:id: only what changed (plan_order_update 072:1329 set + shipments, 077 new / removed points).
   // Times compare as instants: the board writes UTC, the form writes the Athens offset. An empty field is «not shown»
   // (never sent) unless orig.full: then the form showed the order's own value (077 read, F13) and emptying a text or
-  // the temperature clears it on purpose (null). The price is required (no_price), PE and the side are choices.
+  // the temperature clears it on purpose (null). A written price is never emptied (no_price; F4, 080: an order may have
+  // none yet), PE and the side are choices.
   const _CLEARABLE = ['reference', 'goods', 'notes', 'temperature_c'];
   const _min = (iso) => Math.floor(Date.parse(iso) / 60000);
   function _patchBody(orig, st) {
@@ -563,8 +564,9 @@
     raw.forEach((o, i) => {
       // the pallets of the order = those of its shipments (_pairs: the 1×1 takes either row); unknown ones are counted
       // apart and said «+;», never added as 0 (F1)
-      let sp;
-      try { sp = o.loads.length && o.drops.length ? _pairs(o).map((x) => x[2]) : o.loads.map((r) => r.pallets); } catch (_) { sp = o.loads.map((r) => r.pallets); }
+      let sp, prs = null;
+      try { prs = o.loads.length && o.drops.length ? _pairs(o) : null; } catch (_) { prs = null; }
+      sp = prs ? prs.map((x) => x[2]) : o.loads.map((r) => r.pallets);
       const lp = sp.reduce((a, x) => a + (Number.isFinite(x) ? x : 0), 0), lu = sp.filter((x) => x === null).length;
       total += lp; totalUnk += lu;
       ships += o.loads.length > 1 && o.drops.length > 1 ? 0 : Math.max(o.loads.length, o.drops.length);
@@ -576,10 +578,19 @@
       // the summary's client line (Figma 2011:9938): «Orion Foods · 2 φορτώσεις · 10π · 640 €»
       cli.push([o.client || '—'].concat(nl > 1 ? [`${nl} φορτώσεις`] : []).concat([`${_palU(lp, lu)}π`])
         .concat(Number.isFinite(o.price) && o.price > 0 ? [`${_pal(o.price)} €`] : o.price === null ? ['τιμή λείπει'] : []).join(' · '));
-      // a 1×1 order is one shipment: both its stops carry the pallets it will have (_pairs), not their raw rows
-      const one1 = nl === 1 && nd === 1 ? sp[0] : undefined;
-      for (const [act, rows] of [['φόρτωση', o.loads], ['παράδοση', o.drops]]) for (const r of rows)
-        if (DAY.test(r.day) && HM.test(r.to)) seq.push({ k: r.day + 'T' + (r.from || r.to), when: r.until ? `ως ${_dow(r.day)} ${r.to}` : r.allDay ? `${_dow(r.day)} όλη η ημέρα` : `${_dow(r.day)} ${r.from}–${r.to}`, act, place: r.hub ? 'Βέροια' : r.label, clients: [o.client || '—'], pal: one1 !== undefined ? one1 : r.pallets });
+      // a stop carries the pallets its shipments will have (_pairs), not its raw row: the one row of a 1×1 / N×1 / 1×N
+      // side carries them all (code review xhigh r3: an N×1 delivery left empty is NOT «;» when every load is known),
+      // a row of the N side its own shipment's. {pal: known sum | null when all unknown | NaN typo, unk: count}
+      const agg = (xs) => (xs.some((x) => Number.isNaN(x)) ? { pal: NaN, unk: 0 }
+        : { pal: xs.every((x) => x === null) ? null : xs.reduce((a, x) => a + (Number.isFinite(x) ? x : 0), 0), unk: xs.filter((x) => x === null).length });
+      const palOf = (r, single) => {
+        if (!prs) return agg([r.pallets]);
+        if (single) return agg(sp);
+        const pr = prs.find((x) => x[0] === r || x[1] === r);
+        return agg([pr ? pr[2] : r.pallets]);
+      };
+      for (const [act, rows, single] of [['φόρτωση', o.loads, nl === 1], ['παράδοση', o.drops, nd === 1]]) for (const r of rows)
+        if (DAY.test(r.day) && HM.test(r.to)) seq.push(Object.assign({ k: r.day + 'T' + (r.from || r.to), when: r.until ? `ως ${_dow(r.day)} ${r.to}` : r.allDay ? `${_dow(r.day)} όλη η ημέρα` : `${_dow(r.day)} ${r.from}–${r.to}`, act, place: r.hub ? 'Βέροια' : r.label, clients: [o.client || '—'] }, palOf(r, single)));
     });
     seq.sort((a, b) => (a.k < b.k ? -1 : a.k > b.k ? 1 : 0));
     // Figma 2011:9940: orders at the same place in the same window are ONE stop line («Zeta, Kappa · 20π»)
@@ -588,9 +599,9 @@
       const same = lines.find((y) => y.k === x.k && y.when === x.when && y.act === x.act && y.place === x.place && !!x.place);
       if (!same) { lines.push(Object.assign({}, x, { clients: x.clients.slice() })); continue; }
       same.clients.push(x.clients[0]);
-      // F1: an unknown (null) keeps the known sum and is said «+;»; a typo (NaN) still reads «—»
-      same.unk = (same.unk || (same.pal === null ? 1 : 0)) + (x.pal === null ? 1 : 0);
-      same.pal = Number.isNaN(same.pal) || Number.isNaN(x.pal) ? NaN : (same.pal || 0) + (x.pal || 0);
+      // F1: an unknown keeps the known sum and is said «+;»; a typo (NaN) still reads «—»
+      same.unk += x.unk;
+      same.pal = Number.isNaN(same.pal) || Number.isNaN(x.pal) ? NaN : same.pal === null && x.pal === null ? null : (same.pal || 0) + (x.pal || 0);
     }
     // whole names, never a first word (DESIGN.md #6): Figma's «Zeta, Kappa» shortens, a shortened name can mislead
     const who = (l) => l.clients.join(', ');
@@ -603,7 +614,7 @@
       `<div class="wn5f-sum-h"><b>${n} ${n === 1 ? 'παραγγελία θα δημιουργηθεί' : 'παραγγελίες θα δημιουργηθούν'} · ${SIDE_GR[dir]}${DAY.test(day) ? ' · ' + _esc(_dlab(day)) : ''} · ${_esc(where)}</b><b>${_palU(total, totalUnk)}/33 παλέτες</b></div>`
       + (n > 1 ? `<div class="wn5f-sum-c">${_esc(cli.concat(['κάθε παραγγελία τιμολογείται χωριστά']).join('   ·   '))}</div>` : '')
       + `<div class="wn5f-sec">ΣΕΙΡΑ ΣΤΑΣΕΩΝ ΚΑΤΑ ΩΡΑ</div><ol class="wn5f-seq">`
-      + lines.map((x, i) => `<li><span class="wn5f-seq-n">${i + 1}</span><span class="wn5f-seq-w">${_esc(x.when)}</span><span class="wn5f-seq-a">${x.act}</span><span class="wn5f-seq-p">${_esc(x.place || '—')}</span><span class="wn5f-seq-c">${_esc(who(x))}</span><span class="wn5f-seq-q">${Number.isNaN(x.pal) ? '—' : x.pal === null || x.unk ? _palU(x.pal || 0, x.unk || 1) + 'π' : Number.isFinite(x.pal) ? _pal(x.pal) + 'π' : '—'}</span></li>`).join('')
+      + lines.map((x, i) => `<li><span class="wn5f-seq-n">${i + 1}</span><span class="wn5f-seq-w">${_esc(x.when)}</span><span class="wn5f-seq-a">${x.act}</span><span class="wn5f-seq-p">${_esc(x.place || '—')}</span><span class="wn5f-seq-c">${_esc(who(x))}</span><span class="wn5f-seq-q">${Number.isNaN(x.pal) ? '—' : x.pal === null || x.unk ? _palU(x.pal, x.unk || 1) + 'π' : Number.isFinite(x.pal) ? _pal(x.pal) + 'π' : '—'}</span></li>`).join('')
       + `</ol><div class="wn5f-note wn5f-sum-n">Θα γραφτούν σε μία συναλλαγή: ${n} ${n === 1 ? 'παραγγελία' : 'παραγγελίες'} → ${ships} ${ships === 1 ? 'αποστολή' : 'αποστολές'} → στάσεις στην ${SIDE_ACC[dir]}${DAY.test(day) ? ' ' + _esc(_dlab(day)) : ''} (${_esc(where)}). Χωρίς βήμα ένωσης.</div>`;
     f.el.querySelector('[data-act="add-order"]').hidden = f.mode !== 'groupage';
     f.el.querySelectorAll('[data-act="del-order"]').forEach((b) => { b.hidden = f.mode !== 'groupage' || n < 2; });
@@ -792,7 +803,7 @@
       + `<button type="button" class="wn5f-add" data-act="add-ship" data-k="load">+ σημείο φόρτωσης</button></div>`
       // owner 28/10: a new point is not put on the order's cycle by itself — one board move puts it on a truck
       + '<div class="wn5f-note">Παράθυρο κενό: όλη η ημέρα. Νέο σημείο: μένει ΠΡΟΣ ΑΝΑΘΕΣΗ — βάλ\' το σε φορτηγό από το Εβδομαδιαίο.</div>'
-      + (e.riding ? '<div class="wn5f-note">Φορτίο σε κύκλο: παλέτες και παράθυρα αλλάζουν με «Μεταφορά σε…» ή από την ημέρα του σκέλους.</div>' : '');
+      + (e.riding ? `<div class="wn5f-note">Φορτίο σε κύκλο: παλέτες και παράθυρα αλλάζουν με «Μεταφορά σε…» ή από την ημέρα του σκέλους${e.ships.some((s) => s.pallets == null) ? ' — οι άγνωστες παλέτες γράφονται εδώ' : ''}.</div>` : '');
   }
   function _readEdit(f) {
     const v = (sel) => { const x = f.el.querySelector(sel); return x ? x.value : ''; };
@@ -810,10 +821,11 @@
       price: _num(v('[data-f="price"]')), temperature_c: _num(v('[data-f="temp"]')), reference: v('[data-f="ref"]').trim(),
       goods: v('[data-f="goods"]').trim(), notes: v('[data-f="notes"]').trim(), pallet_exchange: peh === 'yes' ? true : peh === 'no' ? false : null,
       direction: f.edit.riding ? null : (v('[data-f="dir"]') || null),
-      // a point that rides is shown, never sent: its pallets and windows change from the board (072 keeps that rule)
+      // a point that rides is shown, never sent: its windows change from the board (072 keeps that rule)
       ships: [...f.el.querySelectorAll('[data-ship]:not([data-ro]):not([data-rm])')].map((r) => Object.assign({ shipment_id: Number(r.dataset.ship) }, win(r)))
-        // F1 (080): a locked point of unknown pallets sends its pallets only (_shipHTML data-palonly), never a window
-        .concat([...f.el.querySelectorAll('[data-ship][data-palonly]')].map((r) => ({ shipment_id: Number(r.dataset.ship),
+        // F1 (080): a locked point of unknown pallets sends its pallets only (_shipHTML data-palonly), never a window;
+        // a point marked for removal sends nothing but the removal
+        .concat([...f.el.querySelectorAll('[data-ship][data-palonly]:not([data-rm])')].map((r) => ({ shipment_id: Number(r.dataset.ship),
           pallets: _num(r.querySelector('[data-f="pal"]').value), palOnly: true }))),
       removed: [...f.el.querySelectorAll('[data-ship][data-rm]')].map((r) => Number(r.dataset.ship)),
       // the picked places as rec ids; _saveEdit turns them into numbers (PlanIds, Ε-2)
@@ -906,8 +918,10 @@
       // an existing point is marked, not dropped from the screen: one more press brings it back before «Αποθήκευση»
       const rm = !row.hasAttribute('data-rm');
       row.toggleAttribute('data-rm', rm);
-      // a read-only point (two-day window) keeps its fields disabled whatever the mark
-      row.querySelectorAll('input').forEach((x) => { x.disabled = rm || row.hasAttribute('data-ro'); });
+      // a read-only point (two-day window) keeps its fields disabled whatever the mark — but its pallets, when unknown
+      // (data-palonly, F1), come back open: the only place they are written
+      const palOpen = (x) => row.hasAttribute('data-palonly') && x.dataset.f === 'pal';
+      row.querySelectorAll('input').forEach((x) => { x.disabled = rm || (row.hasAttribute('data-ro') && !palOpen(x)); });
       t.textContent = rm ? '↺' : '×';
       t.setAttribute('aria-label', rm ? 'Επαναφορά σημείου' : 'Αφαίρεση σημείου');
       return _refresh(ff);

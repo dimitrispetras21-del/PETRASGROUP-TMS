@@ -1,5 +1,6 @@
 // 080 (F1/F4 of the real-user test, owner 28/10: price and pallets optional) on the production-shaped PGlite copy as
-// production holds it on 28/10 (prod-shaped-075.mjs + 076). Every case reads ROWS: national_orders, shipments,
+// production holds it on 28/10 (prod-shaped-075.mjs + 076 + 077: plan_order_read exists live, measured 28/10 - the
+// pallets a desk writes on a riding point go through 077's plan_order_update). Every case reads ROWS: national_orders, shipments,
 // shipment_pieces, pl_movements, the money views and the auditor's B-100 / B-90 - never only the answer of a call.
 // Synthetic rows only (TEST 080 ..., references WN080-...).
 import { test } from 'node:test';
@@ -55,6 +56,7 @@ const tgt = (S, trk) => ({ target: { new_rt: { trip_type: 'OWNED', truck_id: trk
 test('080 on the production-shaped copy (28/10)', async (t) => {
   const db = await prodShaped075();
   await db.exec(read('076_plan_board_speed.sql'));
+  await db.exec(read('077_plan_order_edit.sql'));
   // the seed of the copy is the whole catalog (B-100's file included): 080 seeds its own check
   await db.exec(`DELETE FROM monitoring.checks WHERE id = 'B-100'`);
   const live = await md5s(db);
@@ -82,6 +84,17 @@ test('080 on the production-shaped copy (28/10)', async (t) => {
     assert.strictEqual(await md5s(db), live);
     assert.strictEqual(await n(db, `SELECT count(*) FROM monitoring.checks WHERE id = 'B-100'`), 0);
     assert.strictEqual((await one(db, `SELECT attnotnull FROM pg_attribute WHERE attrelid = 'public.shipment_pieces'::regclass AND attname = 'pallets'`)).attnotnull, true);
+  });
+
+  await t.test('a money view with options (reloptions) stops 080: CREATE OR REPLACE would drop them in silence', async () => {
+    await db.exec('BEGIN');
+    try {
+      await db.exec('ALTER VIEW public.ct_v_rt_pnl SET (security_barrier = true)');
+      let msg = null;
+      try { await db.exec(read(SRC)); } catch (e) { msg = String(e.message); }
+      assert.match(msg ?? '', /a money view has options \(reloptions\) that CREATE OR REPLACE would drop/);
+    } finally { await db.exec('ROLLBACK'); }
+    assert.strictEqual(await md5s(db), live);
   });
 
   let fp0;
@@ -198,6 +211,9 @@ test('080 on the production-shaped copy (28/10)', async (t) => {
     assert.strictEqual(rev.revenue_missing, true);
     const p = await one(db, `SELECT v5_revenue_missing, revenue FROM ct_v_rt_pnl WHERE id = $1`, [r.ids.rt_id]);
     assert.strictEqual(p.v5_revenue_missing, true);
+    // the flag names a NATIONAL share only (code review xhigh r3): a VS stock-charge row ('x') without a charge setting is
+    // not «a national order without price or pallets»
+    assert.match((await one(db, `SELECT pg_get_viewdef('public.ct_v_rt_revenue'::regclass) AS d`)).d, /amount IS NULL\) AND \(x\.kind = 'price'::text\)\) AS missing/);
     // the price written later: the flag goes, the revenue is the price
     await call(db, 'plan_order_update', { nat_order_id: r.ids.nat_order_ids[0], set: { price: 250 } });
     const p2 = await one(db, `SELECT v5_revenue_missing, revenue FROM ct_v_rt_pnl WHERE id = $1`, [r.ids.rt_id]);
@@ -224,10 +240,13 @@ test('080 on the production-shaped copy (28/10)', async (t) => {
       VALUES ('rec080TN1', $1, 'WN080-TEST', NULL, 10, $2) RETURNING id`, [S.cl, lot])).id;
     await db.query(`UPDATE national_orders SET pickup_location_1_id = $2 WHERE id = $1`, [x, S.la]);
     await db.exec('BEGIN');   // shipment and piece in one transaction: 071's pieces_sum is checked at COMMIT
-    const sh = (await one(db, `INSERT INTO shipments (nat_order_id, origin_location_id, dest_location_id, pallets, load_from, load_to, deliver_from, deliver_to, created_by)
-      VALUES ($1, $2, $3, 10, $4, $5, $6, $7, 'test:080') RETURNING id`, [x, S.la, S.lb, S.lf, S.lt, S.df, S.dt])).id;
-    const pc = (await one(db, `INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES ($1, 10, 'test:080') RETURNING id`, [sh])).id;
-    await db.exec('COMMIT');
+    let pc;
+    try {
+      const sh = (await one(db, `INSERT INTO shipments (nat_order_id, origin_location_id, dest_location_id, pallets, load_from, load_to, deliver_from, deliver_to, created_by)
+        VALUES ($1, $2, $3, 10, $4, $5, $6, $7, 'test:080') RETURNING id`, [x, S.la, S.lb, S.lf, S.lt, S.df, S.dt])).id;
+      pc = (await one(db, `INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES ($1, 10, 'test:080') RETURNING id`, [sh])).id;
+      await db.exec('COMMIT');
+    } catch (e) { await db.exec('ROLLBACK').catch(() => {}); throw e; }
     const r = await call(db, 'plan_put_pieces', { pieces: [{ piece_id: pc }], ...tgt(S, await S.truck()) });
     assert.strictEqual(Number((await one(db, `SELECT amount FROM ct_v_v5_revenue WHERE nat_order_id = $1`, [x])).amount), 0);
     assert.strictEqual((await one(db, `SELECT revenue_missing FROM ct_v_rt_revenue WHERE rt_id = $1`, [r.ids.rt_id])).revenue_missing, false);

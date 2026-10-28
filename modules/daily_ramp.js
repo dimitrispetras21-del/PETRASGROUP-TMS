@@ -235,7 +235,8 @@ function _rampV5Rec(key, o) {
   // F1/F4 (owner 28/10, 080): a v5 piece may have no pallets yet (null). 'Pallets' stays the known number (the KPIs
   // add it up); the line SAYS the unknown («12+;», «;») through _palText, never a 0 or a blank that looks counted
   const palUnk = o.items.filter(x => x.pallets == null).length;
-  const palText = palUnk ? WN5L.palText(pal, palUnk) : '';   // one rule: core/wn5-logic.js (loaded before this file)
+  // one rule: core/wn5-logic.js (loaded before this file); without it the line still says «;», never a bare number
+  const palText = !palUnk ? '' : typeof WN5L !== 'undefined' && WN5L.palText ? WN5L.palText(pal, palUnk) : ';';
   const t = o.time ? new Date(o.time) : null;
   const isIn = o.act === 'unload';
   const far = (o.far || []).join(' / ');

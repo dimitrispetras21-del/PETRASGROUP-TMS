@@ -330,7 +330,7 @@ function _waitRow(list, hubId, errors, nameOf) {
     locId: _idOrNull(anodos ? w.nat_from_location_id : w.nat_to_location_id),
     clients: w.client ? [w.client] : [], temps: _temps([w]),
     from: athensTime(anodos ? w.load_from : w.deliver_from), to: athensTime(anodos ? w.load_to : w.deliver_to),
-    allDay: anodos ? allDay(w.load_from, w.load_to) : allDay(w.deliver_from, w.deliver_to), pallets: r1(w.pallets), palUnknown: 0,
+    allDay: anodos ? allDay(w.load_from, w.load_to) : allDay(w.deliver_from, w.deliver_to), pallets: r1(w.pallets), palUnknown: w.pallets == null ? 1 : 0,
     dim: false, late: w.overdue === true, segmentId: null, segLabel: null, day: athensDay(anodos ? w.load_from : w.deliver_from) }));
   const pallets = _sum(ws), palUnknown = _unk(ws);
   const loadDay = ws.map(_loadDay).filter(Boolean).sort()[0] || null;

@@ -261,6 +261,16 @@ async function scnNoPP({ browser, origin, ok, scn }) {
     pt.length === 1 && JSON.stringify(sent) === JSON.stringify({ shipments: [{ shipment_id: 5304, pallets: 4 }, { shipment_id: 5202, pallets: 10 }] }), pt.map((x) => x.body));
   ok(scn, 'edit: no page errors', !p2.S.pageErrors.length, p2.S.pageErrors);
   await p2.page.context().close();
+  // code review xhigh r3: N×1 with the one delivery left empty and both loads known (allowed) — the delivery stop of the
+  // summary carries the shipments' 10, never «;π»
+  const p4 = await K.openApp(browser, origin, {});
+  await openForm(p4.page, {});
+  await fillOrder(p4.page, 0, { client: C41, price: '', temp: 4, pe: false, loads: [r(ASP, '2026-10-14', '08:00', '10:00', 4), r(THE, '2026-10-14', '11:00', '12:00', 6)],
+    drops: [r(ATH, '2026-10-15', '08:00', '10:00', '')] });
+  const seqTxt = await p4.page.evaluate((d) => [...document.querySelectorAll(`${d} .wn5f-seq li`)].map((li) => li.textContent), DLG);
+  ok(scn, 'N×1, delivery empty, loads 4 + 6: the delivery stop says «10π», the loads «4π» / «6π», no «;π»',
+    seqTxt.some((x) => /παράδοση/.test(x) && /10π$/.test(x)) && seqTxt.some((x) => /4π$/.test(x)) && seqTxt.some((x) => /6π$/.test(x)) && !seqTxt.some((x) => x.includes(';π')), seqTxt);
+  await p4.page.context().close();
   // a WRITTEN price is never emptied (072 no_price): said at the field, nothing sent
   const p3 = await K.openApp(browser, origin, {});
   await openForm(p3.page, { natOrderId: 3101 });

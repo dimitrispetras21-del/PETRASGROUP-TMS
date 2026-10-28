@@ -141,8 +141,10 @@
       // what is loaded on this side, or what is delivered when nothing is; a segment that loads nothing here counts
       // what it took over (H5: ΤΕΛΙΚΟ «ΚΑΘΟΔΟΣ · 1 παράδοση · 18 παλέτες», checklist «(18)»)
       const loadsHere = sum(true) || unk(true), dropsHere = sum(false) || unk(false);
-      // a segment that only takes over: the biggest hand-over, with its own unknowns (F1, code review xhigh)
-      const big = hands.reduce((a, h) => (!a || (h.pallets || 0) + (h.palUnk || 0) > (a.pallets || 0) + (a.palUnk || 0) ? h : a), null);
+      // a segment that only takes over: the biggest hand-over by KNOWN pallets (a count of unknown pieces is not
+      // pallets, code review xhigh r3), more unknowns breaking a tie; it keeps its own unknowns (F1)
+      const big = hands.reduce((a, h) => (!a || (h.pallets || 0) > (a.pallets || 0)
+        || ((h.pallets || 0) === (a.pallets || 0) && (h.palUnk || 0) > (a.palUnk || 0)) ? h : a), null);
       const pallets = loadsHere ? sum(true) : dropsHere ? sum(false) : big ? big.pallets : 0;
       const palUnk = loadsHere ? unk(true) : dropsHere ? unk(false) : big ? big.palUnk || 0 : 0;
       if (firstPallets === null) { firstPallets = pallets; firstUnk = palUnk; }

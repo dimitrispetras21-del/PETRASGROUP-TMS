@@ -607,7 +607,6 @@ function ctRenderSummary() {
   const incomplete = V.filter(t => !ctCostInfo(t).complete);
   const losses = V.filter(t => ctCostInfo(t).complete && Number(t.profit_worst) < 0);
   const revMiss = V.filter(ctRevMissing);
-  const allComplete = V.length > 0 && incomplete.length === 0 && revMiss.length === 0;
   // Έσοδα «σε αναμονή» = των δρομολογίων χωρίς κόστη: αυτό είναι το διακύβευμα,
   // όχι διακόσμηση — όσο μένουν ακοστολόγητα, το καθαρό τους είναι άγνωστο.
   const pendingRev = incomplete.reduce((a, t) => a + Number(t.revenue || 0), 0);

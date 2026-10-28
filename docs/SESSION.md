@@ -58,7 +58,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 - vd-nick · (not started, PR planned this week) · import the Valuedriven backend, tests and CI into this repo
 - dimitris · `fix/pallets-movements-limit` · Pallets step 1 (owner go 28/10): `GET /pallets/movements` reads every row in pages (999 + probe, cap 9 990, `truncated` + `cap`), ⚠ on screen when cut; on top of main = F5 deploy 1 source, deploys with/after deploy 1 only on owner «go deploy» after 15:00 (`docs/sessions/2026-10-28-dimitris-pallets-limit.md`)
 - dimitris · `fix/audit-write-loud` · Pallets Υ2 (owner «παμε Α» 28/10): Worker `audit()` failures go to `app_errors`; 078 widens `audit_log_action_check` to the 8 Worker actions; LIVE 28/10: Worker `bacc4240` (13:12 UTC) then 078 executed (verify: 8 actions validated, 0 proof rows, 0 `worker:audit`); files out of drafts/; next: first `confirm` row, merge #140, then Υ4 (`docs/sessions/2026-10-28-dimitris-audit-trace.md`)
-- dimitris · `claude/trusting-cori-5gjwgk` (+ `-080`) · Εθνικά v5 F1/F4 (owner 28/10): τιμή, παλέτες, παράθυρο προαιρετικά· PR Α μόνο front end (κενό παράθυρο = όλη η ημέρα)· PR Β = SQL 080 (τιμή/παλέτες NULL, πρόχειρο, ΔΕΝ εκτελέστηκε) + front end, merge μετά την εκτέλεση της 080 (`docs/sessions/2026-10-28-dimitris-f1f4-optional.md`)
+- dimitris · `claude/trusting-cori-5gjwgk` (+ `-080`) · Εθνικά v5 F1/F4 (owner 28/10): τιμή, παλέτες, παράθυρο προαιρετικά· PR Α μόνο front end (κενό παράθυρο = όλη η ημέρα, merged #165)· PR Β = SQL 080 (τιμή/παλέτες NULL, πρόχειρο, ΔΕΝ εκτελέστηκε) + front end, merge μετά την εκτέλεση της 080 (`docs/sessions/2026-10-28-dimitris-f1f4-optional.md`)
 
 **Do not touch**
 - GROUPAGE LINES are never deleted, only set to `Unassigned`.
