@@ -219,14 +219,16 @@
   }
   async function _afterSave(out, okText, opts) {
     opts = opts || {};
-    if (!opts.reloaded && typeof WN5 !== 'undefined') await WN5.reload('save');
+    let fresh = true;
+    if (!opts.reloaded && typeof WN5 !== 'undefined') fresh = !!(await WN5.reload('save'));
     const host = _boardHost();
     // after a save the over_33 line names the vehicle (Δ12 tile 7): the cycle's truck or partner, from the board just read
     if (host && out && Array.isArray(out.warnings) && out.warnings.length) WN5Act.strip(host, out.warnings.map(_savedOn));
     const intl = opts.intl && out && Array.isArray(out.notice_ids) && out.notice_ids.length ? ' · ενημερώθηκε και ο υπεύθυνος διεθνών' : '';
     // okText may read the answer (e.g. already:true of a cancel says «ήταν ήδη ακυρωμένη»)
     const said = typeof okText === 'function' ? okText(out || {}) : okText;
-    if (typeof toast === 'function') toast(said + intl, 'success');
+    // F11: the save is real even when the read after it failed — the toast says both (the board's strip says why)
+    if (typeof toast === 'function') toast(said + intl + (fresh ? '' : ' · ο πίνακας δεν ανανεώθηκε — πάτα Ανανέωση'), fresh ? 'success' : 'warn');
   }
 
   // One send of a dialog. req = { method, path, body, requestId? }.
@@ -484,7 +486,8 @@
     }
     return typeof PlanIds !== 'undefined' ? PlanIds.hub() : null;
   }
-  const _sideFor = (it) => (it.kind === 'vs_export' || (it.nat_to_location_id != null && it.nat_to_location_id === _hubId()) ? 'ANODOS' : 'KATHODOS');
+  // the board's own rule (WN5L.waitSide: the hub ends, then 075's direction), so the window never assigns the other side
+  const _sideFor = (it) => WN5L.waitSide(it, _hubId());
   // what a piece needs on the target side (plan_h_put): a stop at its position (pickup) and at its national end
   // (drop, or Veroia with to_hub). null place = the board did not send it (hub[] of 072, Ε-26).
   function _needs(it, toHub, hub) {
@@ -732,11 +735,20 @@
       st.pallets = _sum(st.items.map((it) => { const p = take.get(it.piece_id); return p && typeof p.take_pallets === 'number' ? p.take_pallets : it.pallets; }));
       st.day = st.day || st.items[0].nat_ready_day || null;
       if (!ctx.side) st.side = _sideFor(st.items[0]);
-      st.ref = st.items[0].reference || '—';
+      // F7 (live 28/10): an order without a reference is named by its number («Ανάθεση · #17 → …»), never «—»
+      const i0 = st.items[0];
+      st.ref = i0.reference || (i0.nat_order_id != null ? '#' + i0.nat_order_id : i0.order_id != null ? '#' + i0.order_id : '—');
       const vs = st.items[0].kind === 'vs_import' && st.items[0].load_from ? ' · φτάνει ' + _hm(st.items[0].load_from) : '';
       st.meta = _dayShort(st.day) + ' · ' + st.items.length + (st.items.length === 1 ? ' παράδοση' : ' παραδόσεις') + ' · ' + _pal(st.pallets) + 'π' + vs;
     }
     if (!st.day) { WN5Act.strip(_boardHost(), _clientErr('day_missing', 'Η ημέρα της ανάθεσης δεν είναι γνωστή — ανανέωσε')); return null; }
+    // F12 (live 28/10): the Veroia window the order already has (its shipment's window at the hub) fills the field,
+    // still editable — never asked again. Only a window of the assignment's own day: the field's hours are put on
+    // st.day (_win), so a window of another day would move to the wrong date.
+    if (!vehicle && !st.hubFrom && !st.hubTo) {
+      const hw = (st.needs || []).find((n) => n.hub && n.from && n.to && _ymdOf(n.from) === st.day);
+      if (hw) { st.hubFrom = _hm(hw.from); st.hubTo = _hm(hw.to); }
+    }
     await _loadCands(st);
     if (!vehicle) {
       // «Ανάθεση · VS-118 → Rentis +2» (Figma Δ1): the first delivery's place, then how many other deliveries. Named
@@ -1763,8 +1775,11 @@
     const any = f.items[0] || (f.legs[0] && f.legs[0].l) || {};
     // «#N-2244» (Figma 2011:10506 / 10583): the '#' before the reference too, not only before the bare id
     const ref = '#' + (any.reference || no);
-    const price = f.items.find((x) => typeof x.price === 'number');
-    const pe = f.items.find((x) => typeof x.pallet_exchange === 'boolean');
+    // price and PE: the waiting pieces carry them, and since 074 the cycle's legs too (live F12, 28/10: an assigned
+    // order read «Τιμή —» / «PE —» while the base had them). The dispatcher sees the price (locked decision 23/8).
+    const src = f.items.concat(f.legs.map((x) => x.l));
+    const price = src.find((x) => typeof x.price === 'number');
+    const pe = src.find((x) => typeof x.pallet_exchange === 'boolean');
     const pal = _sum(f.items.map((x) => x.pallets)) + _sum(f.legs.filter((x) => x.l.act === 'load').map((x) => x.l.pallets));
     const assigned = f.legs.length > 0;
     const side = assigned ? f.legs[0].s.side : (f.items[0] ? _sideFor(f.items[0]) : 'KATHODOS');
@@ -1777,18 +1792,18 @@
     const chips = '<div class="wn5-chips"><span class="wn5-chip">ΕΘΝΙΚΗ</span><span class="wn5-chip">' + _sideWord(side) + '</span>'
       + '<span class="wn5-chip ' + (assigned ? 'ok' : 'un') + '">' + (assigned ? 'ΑΝΑΤΕΘΗΚΕ' : 'ΠΡΟΣ ΑΝΑΘΕΣΗ') + '</span></div>';
     let h = sec('ΣΤΟΙΧΕΙΑ', row('Πελάτης', any.client || '—')
-      // the price comes with the waiting pieces only (072:2445); an assigned order shows «—», never a guess
+      // absent on both the pieces and the legs = «—», never a guess
       + row('Τιμή', price ? _pal(price.price) + ' € (χωρίς ΦΠΑ) · τιμολογείται χωριστά' : '—')
       + row('Παλέτες', pal ? _pal(pal) : '—') + row('Θερμοκρασία', _temp(any.temperature_c)) + row('PE', pe ? (pe.pallet_exchange ? 'Ναι' : 'Όχι') : '—'));
-    // Figma 2011:10548: a delivery names its client after the place, a loading does not
-    const stopLine = (s, l) => [s.location || '—', l.act === 'unload' ? (l.client || '—') : null, _dayShort(_ymdOf(s.planned_from)), _hm(s.planned_from) + '–' + _hm(s.planned_to), _pal(l.pallets) + 'π']
-      .filter((x) => x != null);
+    // one national order has one client, already in «Πελάτης»: a stop line names the place, the day and the window,
+    // never the client again (live F12, 28/10 — it read as a second place under the first)
+    const stopLine = (s, l) => [s.location || '—', _dayShort(_ymdOf(s.planned_from)), _hm(s.planned_from) + '–' + _hm(s.planned_to), _pal(l.pallets) + 'π'];
     const when = (a, b) => (a ? [_dayShort(_ymdOf(a)), _hm(a) + '–' + _hm(b)] : ['—']);
     let st = '';
     for (const x of f.legs) st += rowP(x.l.act === 'load' ? 'Φόρτωση' : 'Παράδοση', stopLine(x.s, x.l));
     for (const it of f.items) {
       st += rowP('Φόρτωση', [_placeName(it.at_hub ? _hubId() : it.position_location_id), ...when(it.load_from, it.load_to), _pal(it.pallets) + 'π'])
-        + rowP('Παράδοση', [_placeName(it.nat_to_location_id), it.client || '—', ...when(it.deliver_from, it.deliver_to), _pal(it.pallets) + 'π']);
+        + rowP('Παράδοση', [_placeName(it.nat_to_location_id), ...when(it.deliver_from, it.deliver_to), _pal(it.pallets) + 'π']);
     }
     h += sec('ΣΤΑΣΕΙΣ', st);
     let cy = '';
