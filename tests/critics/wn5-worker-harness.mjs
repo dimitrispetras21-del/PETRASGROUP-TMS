@@ -1,7 +1,9 @@
 // National v5 F4α — the REAL worker/src/index.js in Node behind a stub PostgREST, for tests and rigs that must meet
 // the Worker's own statuses, codes and Greek texts (never a copy of them: principle 3). Pattern of
-// worker/test/plan-routes.test.mjs: a loader hook shims @cloudflare/puppeteer and, for the «day L» instance, flips the
-// ONE switch `var PLAN_WRITES_OPEN = false;` (asserting it occurs exactly once, as that test does).
+// worker/test/plan-routes.test.mjs: a loader hook shims @cloudflare/puppeteer and sets the ONE switch
+// `var PLAN_WRITES_OPEN = …;` for each instance — open (day L) and closed (before L) — asserting it occurs exactly once.
+// Since Worker deploy 2 (4d6e97c7, day L 28/10) the source says `true`: the harness no longer assumes `false`, it
+// writes both values itself, so each test still meets the switch it asks for.
 //   makeWorker({ writesOpen, role, sub, db }) → { fetch(request) → Promise<Response>, calls[] }
 //   - the browser's Origin and a JWT signed for `role` replace whatever the request carried (the screen keeps a fake
 //     token; the Worker verifies HS256 with the test secret);
@@ -24,14 +26,17 @@ export async function resolve(spec, ctx, next) {
   return next(spec, ctx);
 }
 export async function load(url, ctx, next) {
-  if (!url.endsWith('/worker/src/index.js?wn5-writes-open')) return next(url, ctx);
+  // plain string checks: a regex literal here would lose its backslashes inside this template string
+  const open = url.endsWith('/worker/src/index.js?wn5-writes-open');
+  if (!open && !url.endsWith('/worker/src/index.js?wn5-writes-closed')) return next(url, ctx);
   const r = await next(url, { ...ctx, format: 'module' });
   const text = new TextDecoder().decode(r.source);
-  const needle = 'var PLAN_WRITES_OPEN = false;';
-  if (text.split(needle).length !== 2) throw new Error('wn5-worker-harness: the writes switch is not exactly once in index.js');
-  return { format: 'module', source: text.replace(needle, 'var PLAN_WRITES_OPEN = true;'), shortCircuit: true };
+  const on = 'var PLAN_WRITES_OPEN = true;', off = 'var PLAN_WRITES_OPEN = false;';
+  const n = text.split(on).length - 1 + text.split(off).length - 1;
+  if (n !== 1) throw new Error('wn5-worker-harness: the writes switch is not exactly once in index.js');
+  return { format: 'module', source: text.replace(open ? off : on, open ? on : off), shortCircuit: true };
 }`));
-const closedWorker = (await import(pathToFileURL(SRC).href)).default;
+const closedWorker = (await import(pathToFileURL(SRC).href + '?wn5-writes-closed')).default;
 const openWorker = (await import(pathToFileURL(SRC).href + '?wn5-writes-open')).default;
 
 export const ORIGIN = 'https://dimitrispetras21-del.github.io';
