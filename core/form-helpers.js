@@ -105,7 +105,8 @@ async function fhSearchClients(q) {
     .filter(c => { const l = c.label.toLowerCase(), n = _fhNorm(c.label); return need.every(([w, nw]) => l.includes(w) || n.includes(nw)); })
     .sort((a, b) => a.label.localeCompare(b.label))
     .slice(0, 30);
-  _fhClientCache[key] = { at: Date.now(), res };
+  // as old as the probe records it was filtered from: never kept past their 60 s
+  _fhClientCache[key] = { at: _fhClientCache[pk] ? _fhClientCache[pk].at : now, res };
   res.forEach(c => { _fhClientsMap[c.id] = c.label; });
   return res;
 }

@@ -12,7 +12,8 @@
 // inside load()). 'after' is final as a state; its day is asked again every 5 minutes (F25, see load()). 'before' is
 // kept BEFORE_TTL_MS only: a tab opened at 14:00 must not go on reading the old model after 074 runs at 15:30 and
 // soft-deletes the NLs it would show. A write path asks with {fresh:true} (one GET per save of a VS order while
-// 'before'; none once 'after'); a fresh read that fails forgets the old 'before' too.
+// 'before'; once 'after' it never waits, and an 'after' older than 5 min is re-read behind it); a fresh read that
+// fails forgets the old 'before' too.
 // Callers guard with typeof PlanConfig: app.html loads this file only from stream (e)'s bump on (F5 plan §10).
 // Nothing at load: the first call to load() is the first fetch. UMD like core/plan-ids.js.
 (function (root) {

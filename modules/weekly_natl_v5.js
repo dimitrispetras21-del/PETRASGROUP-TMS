@@ -136,8 +136,14 @@ function _recheckNoteHTML() {
 // The note follows every answer in place — on and off — without repainting the board under a click
 function _recheckNote() {
   try {
-    const el = document.querySelector('.wn5-bar [data-old-view="recheck"]'), h = _recheckNoteHTML();
-    if (el && el.outerHTML !== h) { el.outerHTML = h; _fitUpd(); _topFit(); }
+    const el = document.querySelector('.wn5-bar [data-old-view="recheck"]');
+    if (!el) return;
+    // compared by what is seen (shown, words), not by markup: the browser writes «hidden» back as hidden=""
+    const box = document.createElement('div');
+    box.innerHTML = _recheckNoteHTML();
+    const nu = box.firstElementChild;
+    if (el.hidden === nu.hidden && el.textContent === nu.textContent) return;
+    el.replaceWith(nu); _fitUpd(); _topFit();
   } catch (_) {}
 }
 function _cfgKick() {
@@ -272,7 +278,8 @@ function _isEmpty(b) {
 }
 // reason names the caller (a write, the user's «Ανανέωση», a reuse check) for the trace; the read is the same.
 async function reload(reason) {
-  if (reason === 'user') { _idsForce = true; _cfgForce = true; }   // the user's ↻ also asks the catalogue and day L again, at once
+  // the user's ↻ also asks the catalogue and day L again, at once — day L beside the board read, not after it
+  if (reason === 'user') { _idsForce = true; _cfgForce = true; _cfgKick(); }
   await render();
   const ok = _state === 'ok' || _state === 'empty';
   // a confirmed save whose read failed: the strip says the save happened and the rows are old (F11, principle 1)
@@ -810,11 +817,11 @@ function _leg(ev, rtId, side) {
     if (_legBusy.rt !== Number(rtId) && typeof toast === 'function') toast('Ανοίγει ήδη ένα άλλο σκέλος — δοκίμασε ξανά μόλις ανοίξει', 'info');
     return;
   }
-  // one token per click: only its own end (or its own 40 s guard) releases it. A read that never settles must not lock
-  // every leg for the session: planFetch gives up at 30 s, the lock at 40 s.
+  // one token per click: only its own end (or its own 90 s guard) releases it. A read that never settles must not lock
+  // every leg for the session: the form's reads (board, catalogue, places) each give up at 30 s, the lock at 90 s.
   const lock = { rt: Number(rtId), timer: null };
   const free = () => { if (_legBusy === lock) { _legBusy = null; _legMark(); } clearTimeout(lock.timer); };
-  lock.timer = setTimeout(free, 40000);
+  lock.timer = setTimeout(free, 90000);
   _legBusy = lock;
   _legMark();
   Promise.resolve(WN5Form.openLeg(Number(rtId), side === 'ANODOS' ? 'ANODOS' : 'KATHODOS'))
