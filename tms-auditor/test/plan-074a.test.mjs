@@ -13,13 +13,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { prodShaped072, TRG } from './prod-shaped-072.mjs';
-import { migrationFile, DRAFTS } from '../lib/db.mjs';
+import { migrationFile } from '../lib/db.mjs';
 import { IDS as IDS_073B } from '../../worker/migrations/drafts/tools/build-073b.mjs';
 import { hooks, finalMd5, CREATED } from '../../worker/migrations/drafts/tools/build-074a.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const read = (f) => fs.readFileSync(migrationFile(f), 'utf8');                   // 073 / 073b: executed, out of drafts/
-const draft = (f) => fs.readFileSync(path.join(DRAFTS, f), 'utf8');              // 074a: a draft until the owner runs it
+const draft = (f) => fs.readFileSync(migrationFile(f), 'utf8');                  // 074a: executed 28/10, out of drafts/ (one copy only)
 const fixture = (f) => fs.readFileSync(path.join(HERE, 'fixtures', f), 'utf8');
 
 const V5_ROWS = `SELECT (SELECT count(*) FROM shipments) + (SELECT count(*) FROM shipment_pieces) + (SELECT count(*) FROM rt_stops)

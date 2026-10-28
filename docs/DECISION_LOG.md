@@ -4518,3 +4518,14 @@ Partner Truck Plates — επιβεβαιωμένα στον χάρτη του �
 - Νέα ανάγνωση Worker ανά ημέρα: δεν χρειάζεται, το `/plan/board` είναι ζωντανό και ανοιχτό σε όλους τους ρόλους.
 **Απόδειξη:** `tests/daily-ramp-v5.test.js` (20/20· στο 5f55a943 κόκκινα όλα τα tests v5)· `tests/critics/daily-ramp-v5-rig.js` (GO, 0 σφάλματα κονσόλας εφαρμογής).
 **Ποιος:** agent (stream d2), μέσα στο Q-7 του owner (28/10). Η απώλεια του «Φορτώθηκε» στις εθνικές γραμμές από το L επισημαίνεται στον συντονιστή για τον owner.
+
+### 2026-10-28 · Εθνικά v5 Φ5 · η `074a` εκτελέστηκε στην παραγωγή (PR #120)
+**Επιλογή:** ο owner εκτέλεσε την `074a_plan_reads` στις 28/10, περίπου στις 13:00 ώρα Αθήνας. Το γραφείο ήταν κλειστό, και ο owner ενέκρινε ρητά να τρέξει πριν από τις 15:00. Η σειρά ήταν dry run → εφαρμογή → verify. Το SQL ήταν αυτό του `main` στο merge του #120 (`1e7e58e5`), με md5 `5ddf3c36ecab7914da3f58f4183a0ae1`.
+- **Dry run:** κόκκινο σκόπιμα, με την αναμενόμενη γραμμή: `hooked functions 3, for_split_at yes, plan_config rows 0, config {"opened_at": null, "cutover_day": null}, lookups lists 6, hubs 1, open to API 0, triggers 50, B-54 50, v5 rows 0`.
+- **Εφαρμογή:** `074a OK | 3 | 0 | 50 | 50 | 0`.
+- **Verify** (SELECT, συντονιστής): `074a in place`, `hooks_in_place 3`, `column_ok true`, `plan_config_rows 0`, config και τα δύο null, `lookups_lists 6`, `hubs 1`, `open_to_api 0`, `worker_can_call 5`, `b54_matches true`, `v5_rows 0`.
+- Μετά ανέβηκε το Worker deploy 1, `c0ccdf77` (φρουρός 28 σημάδια, smoke 18/18).
+- Τα πέντε αρχεία της 074a βγήκαν από το `drafts/` (κανόνας 5), χωρίς καμία αλλαγή στο κείμενό τους. Ο `build-074a.mjs` μένει στο `drafts/tools/`, γράφει πλέον ένα επίπεδο πάνω, και τα αναπαράγει ίδια byte προς byte (`--check`: 0 drift).
+**Εναλλακτικές:** εκτέλεση την Πέμπτη 29/10 μετά τις 15:00, όπως όριζε το χρονοδιάγραμμα (§9). Ο owner προτίμησε τη μέρα με το γραφείο κλειστό, ώστε το deploy 1 να είναι ζωντανό νωρίτερα.
+**Απόδειξη:** οι τρεις γραμμές αποτελέσματος παραπάνω· `tests/sql-074a-drafts.test.js` 7/7, με το drift του builder και τον έλεγχο «μόνο ένα αντίγραφο»· `tms-auditor/test/plan-074a.test.mjs` 20/20· `tms-auditor` 162/162· `tests/sql-*` 74/74.
+**Ποιος:** owner 28/10 (εκτέλεση και «ναι»)· verify από τον συντονιστή· ίχνος: agent, stream (a1).
