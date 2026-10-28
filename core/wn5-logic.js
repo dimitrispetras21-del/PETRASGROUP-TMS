@@ -420,8 +420,10 @@ function model(board, opts) {
   }));
   const item = (h) => ({ pieceId: h.piece_id, client: h.client || null, place: null, pallets: r1(h.pallets), leave_by: h.leave_by || null,
     overdue: h.overdue === true, nat_due_day: h.nat_due_day || null, kind: h.kind, reference: h.reference || null });
-  // «ΓΙΑ ΜΟΙΡΑΣΜΑ» = unloaded at Veroia by a cycle (inbound_rt_id) or sent there to be split (for_split, Ε-41).
-  const split = board.hub.filter((h) => h.is_stock !== true && !_neverAssigned(h)).map(item);
+  // «ΓΙΑ ΜΟΙΡΑΣΜΑ» = unloaded at Veroia by a cycle (inbound_rt_id), sent there to be split (for_split, Ε-41), or a VS
+  // import standing at Veroia with no national truck yet (owner 28/10, B1: the international truck unloads it there,
+  // so it is split and loaded from the Veroia board) — it ALSO stays a «ΠΡΟΣ ΑΝΑΘΕΣΗ» row, for assigning the order whole.
+  const split = board.hub.filter((h) => h.is_stock !== true && (!_neverAssigned(h) || h.kind === 'vs_import')).map(item);
   const stock = board.hub.filter((h) => h.is_stock === true).map(item);
   return {
     week, today, hubId, days, queue,

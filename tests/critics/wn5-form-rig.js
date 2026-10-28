@@ -94,7 +94,8 @@ async function scnOrder({ browser, origin, ok, scn }) {
   const rid = b.request_id;
   const rest = Object.assign({}, b); delete rest.request_id;
   ok(scn, 'request_id is a uuid v4', K.UUID4.test(rid || ''), rid);
-  ok(scn, 'body = form state, exact keys, numbers as numbers, Athens offset', JSON.stringify(rest) === JSON.stringify({ orders: [{ client_id: 41, price: 310, pallet_exchange: false, temperature_c: 4,
+  // 075 (stream a2, 028e9e57): the order's «Κατεύθυνση» reaches the base — `direction` sits after pallet_exchange
+  ok(scn, 'body = form state, exact keys, numbers as numbers, Athens offset', JSON.stringify(rest) === JSON.stringify({ orders: [{ client_id: 41, price: 310, pallet_exchange: false, direction: 'KATHODOS', temperature_c: 4,
     shipments: [{ origin_location_id: 3, dest_location_id: 2, pallets: 6, load_from: '2026-10-14T11:00:00+03:00', load_to: '2026-10-14T12:00:00+03:00',
       deliver_from: '2026-10-15T08:00:00+03:00', deliver_to: '2026-10-15T10:00:00+03:00' }] }] }), rest);
   ok(scn, 'no truck → no target, no stops (ΠΡΟΣ ΑΝΑΘΕΣΗ)', !('target' in b) && !('stops' in b));
