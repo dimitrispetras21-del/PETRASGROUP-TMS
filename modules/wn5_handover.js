@@ -106,9 +106,11 @@
     const show = !!g && g.trip_type === 'PARTNER';
     f.hidden = !show;
     if (!show) { d.prevSeg = null; return; }
-    // a new previous segment (another time, another cut): its own rate, never the last one typed
-    if (d.prevSeg !== g.segment_id) {
-      d.prevSeg = g.segment_id;
+    // a new previous segment (another time, another cut, or the field shown again): its own rate, never the last one
+    // typed. A keyed string, so a synthesized segment (segment_id null, WN5L.segmentsOf) is not «the same» as hidden.
+    const k = 'seg:' + g.segment_id;
+    if (d.prevSeg !== k) {
+      d.prevSeg = k;
       f.querySelector('input').value = g.partner_rate == null ? '' : String(g.partner_rate);
       f.querySelector('[data-pratel]').textContent = `Κόμιστρο ${g.partner || 'προηγούμενου'} €`;
     }
@@ -423,6 +425,8 @@
   async function _preview(d, key) {
     if (_d !== d) return;
     const body = JSON.parse(key);
+    const relist = d.relist === true;   // this run follows a stale_confirm / need_token (_reList): one run only, success or not
+    d.relist = false;
     try {
       const ans = await planFetch('POST', `/plan/rt/${d.rtId}/handover`, { body, dry: true });
       if (_d !== d || JSON.stringify(_changeBody(_readChange(d))) !== key) return;   // the form moved on: this preview is stale
@@ -431,8 +435,7 @@
       d.prev = { key, conflict: p.conflict || null, token: tk.token };
       d.el.querySelector('[data-preview]').innerHTML = (p.segments ? _previewHTML(p, d.cycle, d.hub) : '') + _consHTML(tk.cons);
       // after stale_confirm / need_token the Worker's «the list changed» stays above the NEW list until the next edit
-      if (Array.isArray(p.warnings) && p.warnings.length) WN5Act.strip(_strip(d), p.warnings); else if (!d.locked && !d.relist) WN5Act.strip(_strip(d), null);
-      d.relist = false;
+      if (Array.isArray(p.warnings) && p.warnings.length) WN5Act.strip(_strip(d), p.warnings); else if (!d.locked && !relist) WN5Act.strip(_strip(d), null);
     } catch (e) {
       if (_d !== d) return;
       d.failedKey = key;

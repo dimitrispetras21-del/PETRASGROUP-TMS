@@ -697,6 +697,10 @@ async function scnPrevRate({ browser, origin, ok, scn }) {
   await page.waitForTimeout(400);
   const f3 = await field();
   ok(scn, 'our own truck as the new vehicle → no previous-rate field', !!f3 && !f3.shown, f3);
+  await page.click(`${HDLG} [data-vmode="partner"]`).catch(() => {});
+  await page.waitForTimeout(400);
+  const f4 = await field();
+  ok(scn, 'back to a partner → the field shows today\'s 300 again, never the emptied value', !!f4 && f4.shown && f4.v === '300', f4);
   ok(scn, 'change: no page or console errors', !S.pageErrors.length && !appConsole(S).length, S.pageErrors.concat(appConsole(S)));
   await page.context().close();
 
@@ -704,11 +708,12 @@ async function scnPrevRate({ browser, origin, ok, scn }) {
   const wk = handWeek(true);
   Object.assign(wk.cycles[0].segments[1], { trip_type: 'PARTNER', truck_id: null, truck: null, trailer_id: null, trailer: null, driver_id: null, driver: null, partner_id: 51, partner: 'Partner Test 01', partner_rate: 300 });
   Object.assign(wk.cycles[0].segments[2], { partner_rate: 200 });
-  let ftok = 0;
+  let ftok = 0, fexn = 0;
+  // the first execution meets 428 need_token (the base wanted a token for a list): the form runs the dry run again
   const p2 = await K.openApp(browser, origin, { board: wk, plan: { 'PATCH /plan/segments/703': (e) => (e.body.dry_run === true
     ? [200, Object.assign({ ok: true, op: 'plan_seg_fix', dry_run: true, preview: { segments: wk.cycles[0].segments, warnings: [], conflict: null } },
       e.body.prev_partner_rate !== undefined ? { needs_confirm: true, confirm_token: 'tok-fx-' + (++ftok), consequences: LINE(300, e.body.prev_partner_rate) } : {})]
-    : K.planErr(409, 'WRITES_CLOSED', 'writes_closed')) } });
+    : (++fexn === 1 ? K.planErr(428, 'NEED_TOKEN', 'need_token') : K.planErr(409, 'WRITES_CLOSED', 'writes_closed'))) } });
   await p2.page.evaluate(() => WN5Hand.fix(703));
   await p2.page.waitForSelector('.wi4-dlg[data-wn5="fix"]', { timeout: 6000 }).catch(() => {});
   const FX = '.wi4-dlg[data-wn5="fix"]';
@@ -722,6 +727,13 @@ async function scnPrevRate({ browser, origin, ok, scn }) {
   await p2.page.waitForTimeout(1000);
   const fe = K.planOf(p2.S, 'PATCH', '/plan/segments/703').filter((x) => x.body.dry_run !== true);
   ok(scn, 'fix: the execution carries the token, no request_id', fe.length === 1 && fe[0].body.confirm_token === 'tok-fx-1' && !('request_id' in fe[0].body) && fe[0].body.prev_partner_rate === 260, fe.map((x) => x.body));
+  const fd2 = K.planOf(p2.S, 'PATCH', '/plan/segments/703').filter((x) => x.body.dry_run === true);
+  ok(scn, 'fix: 428 need_token → the dry run runs again (token tok-fx-2), the save opens again', fd2.length === 2 && fd2[1].body.prev_partner_rate === 260
+    && await p2.page.evaluate((d) => !document.querySelector(`${d} [data-act="save"]`).disabled, FX), fd2.map((x) => x.body));
+  await p2.page.click(`${FX} [data-act="save"]`).catch(() => {});
+  await p2.page.waitForTimeout(1000);
+  const fe2 = K.planOf(p2.S, 'PATCH', '/plan/segments/703').filter((x) => x.body.dry_run !== true);
+  ok(scn, 'fix: the second execution carries the NEW token tok-fx-2', fe2.length === 2 && fe2[1].body.confirm_token === 'tok-fx-2', fe2.map((x) => x.body));
   ok(scn, 'fix: no page or console errors', !p2.S.pageErrors.length && !appConsole(p2.S).length, p2.S.pageErrors.concat(appConsole(p2.S)));
   await p2.page.context().close();
 }
