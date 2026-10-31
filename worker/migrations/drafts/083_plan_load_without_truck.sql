@@ -23,6 +23,9 @@
 -- No table, no column, no trigger, no grant, no row written. No Worker change: /plan/legs passes the body to the
 -- function as it is (index.js, the plan routes), and its texts already cover bad_input / no_vehicle.
 -- 081 (draft, PR #182) patches other functions; any order between 081 and 083 is fine.
+-- 072b's proof list (072b_plan_vehicle_segments.sql / _verify.sql) pins plan_rt_create to 37c04d58...: after 083 that
+-- line of a re-run 072b verify reads "changed" by design - 083_plan_load_without_truck_verify.sql holds its md5 now.
+-- The new_rt still names trip_type 'OWNED' with "later" (the type check before the hunk stays as it is).
 -- RUN: 083_plan_load_without_truck_dryrun.sql, then this file, then 083_plan_load_without_truck_verify.sql.
 -- REVERSE: 083_plan_load_without_truck_rollback.sql (cycles born without a vehicle STAY - they are what the desk made;
 -- a vehicle is given to them with PATCH /plan/rt as to any cleared cycle).

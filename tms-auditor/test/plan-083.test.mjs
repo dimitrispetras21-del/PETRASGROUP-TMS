@@ -47,7 +47,7 @@ CREATE FUNCTION t83_piece(p_ref text, p_i int) RETURNS bigint LANGUAGE sql AS
        where st.legacy_id = 'rec83S' || p_ref || p_i and s.deleted_at is null and sp.deleted_at is null and sp.parent_piece_id is null $t$;
 CREATE SEQUENCE t83_plate;
 -- the Veroia board's «Νέο φορτίο»: the given pieces from Veroia to their Greek stops, ONE request, the given new_rt
-CREATE FUNCTION t83_put(p_pieces bigint[], p_day date, p_new jsonb) RETURNS jsonb LANGUAGE plpgsql AS $t$
+CREATE FUNCTION t83_put(p_pieces bigint[], p_day date, p_new jsonb, p_order bigint DEFAULT NULL) RETURNS jsonb LANGUAGE plpgsql AS $t$
 declare st jsonb; i int; hub bigint;
 begin
   select id into hub from locations where is_hub;
@@ -59,6 +59,10 @@ begin
             'planned_from', ((p_day + 1) + make_time(8 + i, 0, 0)) at time zone 'Europe/Athens',
             'planned_to', ((p_day + 1) + make_time(9 + i, 0, 0)) at time zone 'Europe/Athens');
   end loop;
+  if p_order is not null then   -- the whole order (plan_put_group), as the board's «Ανάθεση»
+    return plan_put_group(jsonb_build_object('group', jsonb_build_object('order_id', p_order),
+           'target', jsonb_build_object('new_rt', p_new, 'side', 'KATHODOS'), 'stops', st), 'test:083', 'dispatcher');
+  end if;
   return plan_put_pieces(jsonb_build_object(
          'pieces', (select jsonb_agg(jsonb_build_object('piece_id', x)) from unnest(p_pieces) x),
          'target', jsonb_build_object('new_rt', p_new, 'side', 'KATHODOS'), 'stops', st), 'test:083', 'dispatcher');
@@ -73,12 +77,12 @@ async function scenario(db, steps) {
   } finally { await db.exec('ROLLBACK'); }
 }
 // one load from Veroia: two VS pieces on day L + 3, new_rt as given; the rows it wrote, or the refusal
-const load = (db, L, newRt, tag) => scenario(db, async () => {
+const load = (db, L, newRt, tag, group = false) => scenario(db, async () => {
   const day = `DATE '${L}' + 3`;
-  await num(db, `SELECT t83_vs('${tag}', ${day}, '{12,10}')`);
+  const o = await num(db, `SELECT t83_vs('${tag}', ${day}, '{12,10}')`);
   const pcs = (await db.query(`SELECT t83_piece('${tag}', i) AS p FROM generate_series(1, 2) i`)).rows.map((r) => r.p);
   let res = null;
-  try { res = (await one(db, `SELECT t83_put($1::bigint[], ${day}, $2::jsonb) AS r`, [pcs, JSON.stringify(newRt)])).r; } catch (e) { return { err: String(e.message) }; }
+  try { res = (await one(db, `SELECT t83_put($1::bigint[], ${day}, $2::jsonb, $3::bigint) AS r`, [pcs, JSON.stringify(newRt), group ? o : null])).r; } catch (e) { return { err: String(e.message) }; }
   const rt = Number(res.ids ? res.ids.rt_id : res.rt_id);
   const out = {
     err: null, rt,
@@ -90,10 +94,13 @@ const load = (db, L, newRt, tag) => scenario(db, async () => {
   };
   // the vehicle is given later, with the same act as for any cleared cycle (PATCH /plan/rt)
   const trk = await num(db, `INSERT INTO trucks (license_plate) VALUES ('TEST-083-' || nextval('t83_plate')) RETURNING id`);
+  const drv = await num(db, `INSERT INTO drivers (full_name) VALUES ('TEST 083 driver ' || nextval('t83_plate')) RETURNING id`);
+  out.payroll0 = await num(db, `SELECT count(*) FROM dl_entries WHERE rt_id = $1`, [rt]);
   try {
-    await db.query(`SELECT plan_rt_update($1::jsonb, 'test:083', 'dispatcher')`, [JSON.stringify({ rt_id: rt, set: { trip_type: 'OWNED', truck_id: trk } })]);
+    await db.query(`SELECT plan_rt_update($1::jsonb, 'test:083', 'dispatcher')`, [JSON.stringify({ rt_id: rt, set: { trip_type: 'OWNED', truck_id: trk, driver_id: drv } })]);
     out.later = { truck: Number((await one(db, `SELECT truck_id FROM ct_round_trips WHERE id = $1`, [rt])).truck_id) === trk,
-      segTruck: Number((await one(db, `SELECT truck_id FROM rt_vehicle_segments WHERE rt_id = $1 AND deleted_at IS NULL`, [rt])).truck_id) === trk };
+      segTruck: Number((await one(db, `SELECT truck_id FROM rt_vehicle_segments WHERE rt_id = $1 AND deleted_at IS NULL`, [rt])).truck_id) === trk,
+      payroll: await num(db, `SELECT count(*) FROM dl_entries WHERE rt_id = $1 AND driver_id = $2`, [rt, drv]) };
   } catch (e) { out.later = { err: String(e.message) }; }
   return out;
 });
@@ -153,7 +160,16 @@ test('083 on the production-shaped copy (31/10): a load without a truck refused 
     assert.strictEqual(r.stops, 3);
     assert.strictEqual(r.legs, 2);
     assert.strictEqual(r.hasVehicle, false, 'the board paints it PROS ANATHESI');
-    assert.deepStrictEqual(r.later, { truck: true, segTruck: true }, 'a truck is given later with PATCH /plan/rt');
+    assert.strictEqual(r.payroll0, 0, 'no driver, no payroll line');
+    assert.deepStrictEqual(r.later, { truck: true, segTruck: true, payroll: 1 }, 'truck and driver given later with PATCH /plan/rt; the payroll line follows (011)');
+  });
+  await t.test('GO: the whole order (plan_put_group, the board\'s «Ανάθεση») as a load without a truck', async () => {
+    const r = await load(db, L, LATER, 'G2', true);
+    assert.strictEqual(r.err, null, r.err);
+    assert.strictEqual(r.late, null);
+    assert.strictEqual(r.cyc.truck_id, null);
+    assert.strictEqual(r.legs, 2);
+    assert.strictEqual(r.hasVehicle, false);
   });
   await t.test('still refused: a forgotten truck (no "later"), "later" with a vehicle or a partner, "later" not a boolean', async () => {
     assert.match((await load(db, L, { trip_type: 'OWNED' }, 'R1')).err ?? '', /no_vehicle/);
