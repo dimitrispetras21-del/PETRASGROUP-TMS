@@ -53,11 +53,6 @@
   // whose message (the Worker's own words, PLAN_RULE_TEXT) asks for «ανανέωσε». Read from the message, not from a
   // list of codes here: a second list of the Worker's codes would drift (principle 3).
   const _wantsReread = (x, kind) => kind === 'stale' || /ανανέωσε/i.test(String(x.message || ''));
-  // F33 (owner 28/10): stop_order (071 plan_rt_problem) said as «which stop, and what to do». The Worker sends the code
-  // and the cycle's id in brackets («… σε χρονική σειρά (305)»), which named neither. The base sorts a cycle's stops
-  // ΚΑΘΟΔΟΣ first, then by planned_from (072 plan_h_reseq), so the refusal is always a stop of the ΑΝΟΔΟΣ that starts
-  // before one of the ΚΑΘΟΔΟΣ. The pair is rebuilt here from the cycle on the board plus the new stops of the request
-  // (req.body.stops); without them the text still names the cycle and the rule, never the bare id.
   // The pair the base would refuse: the cycle's live stops plus the request's new ones, sorted as 072 plan_h_reseq
   // sorts them; the first stop that starts before an earlier one of the other side. null = in order (or no cycle).
   function _orderPair(c, stops) {
@@ -88,6 +83,11 @@
   // code review: the same words BEFORE the press, beside the save of Δ1 / «+» (red, the button stays on: the base is
   // the judge, and a stale board must not block a save it would take)
   const _orderWarn = (c, req) => { const p = req && !req.missing && req.body ? _orderPair(c, req.body.stops) : null; return p ? _orderText(p, c && c.code) : null; };
+  // F33 (owner 28/10): stop_order (071 plan_rt_problem) said as «which stop, and what to do». The Worker sends the code
+  // and the cycle's id in brackets («… σε χρονική σειρά (305)»), which named neither. The base sorts a cycle's stops
+  // ΚΑΘΟΔΟΣ first, then by planned_from (072 plan_h_reseq), so the refusal is always a stop of the ΑΝΟΔΟΣ that starts
+  // before one of the ΚΑΘΟΔΟΣ. The pair is rebuilt here from the cycle on the board plus the new stops of the request
+  // (req.body.stops); without them the text still names the cycle and the rule, never the bare id.
   function _orderErr(e, req) {
     if (!e || Array.isArray(e) || e.code !== 'stop_order' || e._said) return e;
     const body = (req && req.body) || {};
