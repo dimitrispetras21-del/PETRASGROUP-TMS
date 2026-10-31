@@ -152,21 +152,22 @@ $h$;
     v_nt := v_nt || coalesce(v_ru->'notice_ids', '[]'::jsonb);
   end loop;
   v_sum := plan_h_order_summary($h$;
-  o_5a CONSTANT text := $h$  if n.id is null or n.deleted_at is not null then perform plan_h_raise('order_gone', coalesce(p->>'nat_order_id', 'null')); end if;
+  o_5a CONSTANT text := $h$  select * into n from national_orders where id = (p->>'nat_order_id')::bigint for no key update;
 $h$;
-  o_5b CONSTANT text := $h$  if n.id is null or n.deleted_at is not null then perform plan_h_raise('order_gone', coalesce(p->>'nat_order_id', 'null')); end if;
-  -- 081: a save that changes a window may move truck stops (below): the cycles this order rides are locked NOW, before
-  -- any point or piece is written and before "who else stops there" is read - the order of plan_put_pieces (cycle,
-  -- then pieces), so the two never wait on each other crosswise, and an assignment onto the same stop waits for this
-  -- save instead of slipping in between the read and the move. A save without a window change locks nothing new.
+  o_5b CONSTANT text := $h$  -- 081: a save that changes a window may move truck stops (below): the cycles this order rides are locked FIRST, by
+  -- id, before the order row, any point or piece is written and before "who else stops there" is read - the one lock
+  -- order of every plan_* (plan_delete: cycles, then the national order; plan_put_pieces: cycle, then pieces), and an
+  -- assignment onto the same stop waits for this save instead of slipping in between the read and the move. A save
+  -- without a window change locks nothing new.
   if exists (select 1 from jsonb_array_elements(case when jsonb_typeof(p->'shipments') = 'array' then p->'shipments' end) e
               where jsonb_typeof(e) = 'object' and e ?| array['load_from', 'load_to', 'deliver_from', 'deliver_to']) then
     perform 1 from ct_round_trips c
      where c.id in (select l.rt_id from shipments sh join shipment_pieces sp on sp.shipment_id = sh.id
                       join piece_legs l on l.piece_id = sp.id
-                     where sh.nat_order_id = n.id and sh.deleted_at is null and l.deleted_at is null)
+                     where sh.nat_order_id = (p->>'nat_order_id')::bigint and sh.deleted_at is null and l.deleted_at is null)
      order by c.id for no key update;
   end if;
+  select * into n from national_orders where id = (p->>'nat_order_id')::bigint for no key update;
 $h$;
   o_4a CONSTANT text := $h$             'removed_shipment_ids', to_jsonb(v_rm)), null, null);
 $h$;
@@ -198,7 +199,7 @@ BEGIN
     RAISE EXCEPTION '081 rollback proof: public.plan_h_reseq(bigint,text,text) is not back to its live text with its rights';
   END IF;
   SELECT * INTO p FROM pg_proc WHERE oid = to_regprocedure('public.plan_order_update(jsonb,text,text)');
-  IF md5(p.prosrc) <> 'd531cd3364b9148394a2b7ba310a1d16' THEN
+  IF md5(p.prosrc) <> '9bbf9d1cc79598aae762cbd4ee6ef225' THEN
     RAISE EXCEPTION '081 rollback: public.plan_order_update(jsonb,text,text) is not the text 081 wrote (md5 %) - stop', md5(p.prosrc);
   END IF;
   v_new := p.prosrc;

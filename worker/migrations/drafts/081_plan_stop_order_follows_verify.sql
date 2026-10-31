@@ -11,7 +11,7 @@ SELECT CASE WHEN (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.plan_h_res
                  = 'f246c362c3f3bb1746a1d536ad1338bb' THEN '081 in place' ELSE '081 NOT APPLIED' END AS applied,
        (SELECT count(*) FROM (VALUES
           ('public.plan_h_reseq(bigint,text,text)', 'f246c362c3f3bb1746a1d536ad1338bb'),
-          ('public.plan_order_update(jsonb,text,text)', 'd531cd3364b9148394a2b7ba310a1d16')) v(sig, m)
+          ('public.plan_order_update(jsonb,text,text)', '9bbf9d1cc79598aae762cbd4ee6ef225')) v(sig, m)
          WHERE (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure(v.sig)) IS DISTINCT FROM v.m) AS changed_texts,
        (SELECT md5(prosrc) = 'be70612fb940356278c7c66705c8ee33' FROM pg_proc
          WHERE oid = 'public.plan_rt_update(jsonb,text,text)'::regprocedure) AS rt_update_untouched,

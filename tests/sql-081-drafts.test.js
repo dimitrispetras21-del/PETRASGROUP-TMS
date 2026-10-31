@@ -71,7 +71,8 @@ test('081 creates nothing; a stop moves only through plan_rt_update; the reseq k
   assert.ok(/group by 1, 2 order by 1, 2/.test(hunk('r_2b')));
   assert.ok(/\(s\.side = 'ANODOS'\) as up, s\.planned_from/.test(hunk('r_2b')));
   // the cycles are locked at the start of a window save, before any point / piece is written (cycle before piece, as
-  // plan_put_pieces) and before "who else stops there" is read (code review xhigh r2)
-  assert.match(hunk('o_5b'), /from ct_round_trips c[\s\S]*for no key update/);
+  // plan_put_pieces) and before the order row (plan_delete), before "who else stops there" is read (code review xhigh r2, r3)
+  assert.match(hunk('o_5b'), /from ct_round_trips c[\s\S]*for no key update;[\s\S]*end if;\n  select \* into n from national_orders/,
+    'the cycles before the national order row (plan_delete\'s order: cycles, then the order)');
   assert.ok(!/for no key update/.test(hunk('o_3b')), 'no second, late lock');
 });
