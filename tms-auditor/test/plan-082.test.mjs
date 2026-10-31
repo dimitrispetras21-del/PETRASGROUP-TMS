@@ -1,6 +1,6 @@
 // 082 (F40 + F41, owner's real-user entry of W44, 28/10) on the production-shaped PGlite copy as production holds it on
-// 28/10: prod-shaped-074.mjs (072 ... 074a, 074, 074b) + 075, 076, 077, 078. 079 only moved day L (the copy has its
-// own L, the next Saturday) and touches neither function 082 patches.
+// 31/10: prod-shaped-074.mjs (072 ... 074a, 074, 074b) + 075, 076, 077, 078, 080 (executed 30/10: plan_put_pieces'
+// helpers). 079 only moved day L (the copy has its own L, the next Saturday) and touches neither function 082 patches.
 // Each scenario runs inside a transaction that is always rolled back, with the deferred rules (071's plan_chk) fired
 // before the rows are read (SET CONSTRAINTS ALL IMMEDIATE): the same scenario first on the LIVE texts (it must show
 // F40 / F41 as production did = NO-GO), then after 082 (GO), then after the rollback (the live behaviour again).
@@ -206,6 +206,9 @@ const gainsLeg = (db) => scenario(db, async () => {
 test('082 on the production-shaped copy (28/10): F40 and F41 reproduced on the live texts, gone after 082', async (t) => {
   const db = await prodShaped074();
   for (const f of ['075_plan_order_side.sql', '076_plan_board_speed.sql', '077_plan_order_edit.sql', '078_audit_actions.sql']) await db.exec(read(f));
+  // the copy's seed is the whole catalog (B-100's file included): 080 seeds its own check, as plan-080.test.mjs
+  await db.exec(`DELETE FROM monitoring.checks WHERE id = 'B-100'`);
+  await db.exec(read('080_plan_optional_price_pallets.sql'));
   await db.exec(HELPERS);
   await db.exec(fs.readFileSync(new URL('./fixtures/live-082.sql', import.meta.url), 'utf8'));
   const L = (await one(db, `SELECT plan_cutover_day()::text AS l`)).l;
