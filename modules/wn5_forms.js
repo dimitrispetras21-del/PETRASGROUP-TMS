@@ -1250,7 +1250,8 @@
       // F57 (code review r2): a ΚΑΘΟΔΟΣ delivers after its Veroia loading — its filled points never open before that day
       const day = dir.value === 'KATHODOS' && hubDay && (!p.day || p.day < hubDay) ? hubDay : p.day || hubDay, vd = hubDay || p.day || '';
       const vEl = f.el.querySelector('#wn5f-vday');
-      if (vd) { vEl.value = vd; if (!hubDay) vEl.dataset.auto = '1'; }
+      // f.vPrev: the Veroia day the filled points open against — F57 moves them only when that day moves
+      if (vd) { vEl.value = vd; f.vPrev = vd; if (!hubDay) vEl.dataset.auto = '1'; }
       if (day) { f.dayDefault = day; f.el.querySelectorAll('[data-f="day"]').forEach((x) => { if (!x.value) { x.value = day; x.dataset.auto = '1'; } }); }
       if (v) {
         const a = /^\d\d:\d\d$/.test(v.from) ? v.from : (_parts(v.from) || {}).hm, b = /^\d\d:\d\d$/.test(v.to) ? v.to : (_parts(v.to) || {}).hm;
