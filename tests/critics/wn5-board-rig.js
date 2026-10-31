@@ -3365,6 +3365,60 @@ SCN.f33 = async (browser, origin) => {
     await b2.page.context().close();
   }
 };
+// F32 (owner 28/10, real-user test): dragging #92's ΠΡΟΣ ΑΝΑΘΕΣΗ row onto RT-1303 only selected text — the v5 board had
+// no drag. Here: N-T392 dragged onto RT-T301 opens RT-T301's «+» ΑΝΟΔΟΣ with its line marked and its own Veroia window
+// («ως 23:59») in the field; one «Πρόσθεσε». A drop never writes by itself. f33Board() is the week.
+SCN.f32 = async (browser, origin) => {
+  const scn = 'f32';
+  const P = bDlg('plus');
+  const writes = (S) => S.plan.filter((e) => e.m !== 'GET');
+  { // 1 · drag onto a cycle row → that cycle's «+» on the load's side, nothing written yet
+    const { page, S } = await bOpen(browser, origin, { board: f33Board() });
+    const src = '#content .wn5 .wn5-row[data-piece="4392"]', dst = '#content .wn5 .wn5-row[data-rt="301"]';
+    ok(scn, 'the ΠΡΟΣ ΑΝΑΘΕΣΗ row is draggable, a cycle row is not — main: no drag at all',
+      (await page.$eval(src, (e) => e.getAttribute('draggable')).catch(() => null)) === 'true' && (await page.$eval(dst, (e) => e.getAttribute('draggable')).catch(() => 'x')) === null);
+    await page.dragAndDrop(src, dst).catch(() => {});
+    await page.waitForTimeout(500);
+    const t = await bText(page, `${P} .wi4-dlg-t`), meta = await bText(page, `${P} .wn5-dlg-meta`);
+    ok(scn, 'drop → «Πρόσθεσε στην ΑΝΟΔΟ» of RT-T301 (TST-2108) opens', t === 'Πρόσθεσε στην ΑΝΟΔΟ' && /TST-2108/.test(meta), { t, meta });
+    ok(scn, '… the dropped load\'s line is marked (.wn5-pfocus), the others are not', await bHas(page, `${P} .wn5-pline.wn5-pfocus[data-piece="4392"]`)
+      && (await page.$$eval(`${P} .wn5-pline.wn5-pfocus`, (x) => x.length).catch(() => 0)) === 1);
+    const hw = await page.$eval(`${P} [data-hub="from"]`, (i) => i.value + '|' + i.closest('.wn5-hubwin').querySelector('[data-hub="to"]').value).catch(() => null);
+    ok(scn, '… its own Veroia window «ως 23:59» fills the field (23:59|23:59)', hw === '23:59|23:59', hw);
+    ok(scn, 'a drop writes nothing by itself', writes(S).length === 0, writes(S).map((e) => e.m + ' ' + e.path));
+    await bClick(page, `${P} [data-act="save"][data-piece="4392"]`);
+    await page.waitForTimeout(400);
+    const x = bCalls(S, 'POST', '/plan/legs').pop(), h = x && (x.body.stops || []).find((s) => s.location_id === 1);
+    ok(scn, 'one «Πρόσθεσε» → POST /plan/legs: piece 4392 into rt 301 ΑΝΟΔΟΣ, Veroia Wed 14/10 23:59', !!x && JSON.stringify(x.body.target) === '{"rt_id":301,"side":"ANODOS"}'
+      && JSON.stringify(x.body.pieces) === '[{"piece_id":4392}]' && !!h && h.planned_from === '2026-10-14T23:59:00+03:00', x && x.body);
+    ok(scn, 'no page errors (1)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // 3 · code review: the board repaints during the drag (a reload) — the drop on the new root still opens the «+»
+    const { page, S } = await bOpen(browser, origin, { board: f33Board() });
+    await page.evaluate(() => {
+      const src = document.querySelector('#content .wn5 .wn5-row[data-piece="4392"]'), dt = new DataTransfer();
+      src.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt }));
+      return WN5.reload('user').then(() => {
+        const dst = document.querySelector('#content .wn5 .wn5-row[data-rt="301"]');
+        dst.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
+        dst.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+      });
+    }).catch((e) => S.pageErrors.push(String(e)));
+    await page.waitForTimeout(500);
+    ok(scn, 'repaint mid-drag: the drop on the repainted board opens RT-T301\'s «+» with the load marked', await bHas(page, `${P} .wn5-pline.wn5-pfocus[data-piece="4392"]`));
+    ok(scn, 'no page errors (3)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // 2 · a drop on another waiting row (not a cycle) opens nothing and writes nothing
+    const { page, S } = await bOpen(browser, origin, { board: f33Board() });
+    await page.dragAndDrop('#content .wn5 .wn5-row[data-piece="4392"]', '#content .wn5 .wn5-row[data-piece="4393"]').catch(() => {});
+    await page.waitForTimeout(400);
+    ok(scn, 'drop on a waiting row: no dialog, nothing written, no row left marked', !(await bHas(page, '.wi4-dlg[role="dialog"]')) && writes(S).length === 0 && !(await bHas(page, '.wn5-row.wn5-drop')));
+    ok(scn, 'no page errors (2)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+};
 // ── main ──
 (async () => {
   if (argv.includes('--check-fixture')) process.exit(checkFixture() ? 0 : 1);
