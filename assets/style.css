@@ -9060,15 +9060,44 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 .wn5-skel > span:nth-child(3) { flex-basis:150px; } .wn5-skel > span:nth-child(4) { flex-basis:240px; } .wn5-skel > span:nth-child(6) { flex:1 1 auto; }
 /* Board grid (Figma H1 2120:7738 at 1920: one 1803px row from x=88). Twelve tracks:
    # · gap · ΚΑΘΟΔΟΣ day · ΦΟΡΤΩΣΗ · ΠΑΡΑΔΟΣΗ · ΠΑΛ. · ΑΝΑΘΕΣΗ · gap · ΑΝΟΔΟΣ day · ΦΟΡΤΩΣΗ · ΠΡΟΣ · ΠΑΛ.
-   ΑΝΑΘΕΣΗ is 266px and no Veroia-time column exists (owner 25/10: +16px taken from the ΑΝΟΔΟΣ points), so ΑΝΟΔΟΣ
-   starts 266 + 16 = 282px after ΑΝΑΘΕΣΗ. The two point columns share what is left (403.5px each at 1920 = two
-   ~178px stops + «+N»; 165px at 1440 = one stop + «+N»). Cells shrink, never overlap, and wrap names (no cut). */
-.wn5 { --wn5-kpal-w:86px; --wn5-apal-w:77px;
+   No Veroia-time column exists (owner 25/10), so ΑΝΟΔΟΣ starts ΑΝΑΘΕΣΗ + 16px after it. Cells shrink, never
+   overlap, and wrap names (no cut). Widths: the density block below (owner 31/10). */
+/* Density (owner 31/10: «ο πίνακας χάνει χώρο», the Weekly International is the reference): ΑΝΑΘΕΣΗ is the Weekly
+   International's 176px (was 266), the day columns its 70px, the pallet columns the ≤1600 widths at every size. A
+   ΦΟΡΤΩΣΗ that is only «Βέροια» + its window, and a ΠΡΟΣ that is only «Βέροια · τέλος κύκλου», are a 76px cell
+   (--wn5-vw); everything else of a side goes to its places. Each row is its own grid, so the four point tracks are
+   set per row (rules below) as shares of ONE side width, --wn5-side: what a side gets is the same in every row, and
+   ΑΝΑΘΕΣΗ and ΑΝΟΔΟΣ stay on one line down the board whatever a row's split. */
+.wn5 { --wn5-kpal-w:calc(50px + var(--wn5-kprt-gap)); --wn5-apal-w:50px;
   /* T23 fidelity (Figma 2011:9284): the ΚΑΘΟΔΟΣ printer sits between the side's «+» and ΑΝΑΘΕΣΗ, 14px clear of the
      «+» and 2px before the tile (14 + 12 + 2 = the 12px pad + this). With the old 12px pad it touched both. */
-  --wn5-kprt-gap:16px; }
+  --wn5-kprt-gap:16px;
+  --wn5-idx:64px; --wn5-g1:8px; --wn5-dw:70px; --wn5-asg-w:176px; --wn5-vw:76px;
+  /* 100% is the row's own width (resolved where the template uses it); the 16px is the gap before ΑΝΟΔΟΣ */
+  --wn5-side:max(0px, calc((100% - var(--wn5-idx) - var(--wn5-g1) - 2 * var(--wn5-dw) - var(--wn5-kpal-w) - var(--wn5-asg-w) - 16px - var(--wn5-apal-w)) / 2));
+  /* the common row: ΚΑΘΟΔΟΣ loads at Veroia only, ΑΝΟΔΟΣ ends at a place (a delivery: places on both ends) */
+  --wn5-t4:var(--wn5-vw); --wn5-t5:max(0px, calc(var(--wn5-side) - var(--wn5-vw)));
+  --wn5-t10:calc(var(--wn5-side) * .55); --wn5-t11:calc(var(--wn5-side) * .45); }
 .wn5-cols, .wn5-row, .wn5-sub {
-  display:grid; grid-template-columns:64px 8px 78px 169px minmax(0,1fr) var(--wn5-kpal-w) 266px 16px 78px minmax(0,1fr) 154px var(--wn5-apal-w); align-items:center; }
+  display:grid; grid-template-columns:var(--wn5-idx) var(--wn5-g1) var(--wn5-dw) var(--wn5-t4) var(--wn5-t5) var(--wn5-kpal-w) var(--wn5-asg-w) 16px var(--wn5-dw) var(--wn5-t10) var(--wn5-t11) var(--wn5-apal-w); align-items:center; }
+/* ΦΟΡΤΩΣΗ of ΚΑΘΟΔΟΣ with a loading besides Veroia (before or after it): the loadings get 40% of the side */
+.wn5-row:has(> .wn5-fl .wn5-pt) { --wn5-t4:calc(var(--wn5-side) * .4); --wn5-t5:calc(var(--wn5-side) * .6); }
+/* ΑΝΟΔΟΣ that ends at Veroia only (the cycle's end, or a waiting load's «τέλος κύκλου»): the 76px cell, the loadings
+   take the rest */
+.wn5-row:has(> .wn5-ato .wn5-end):not(:has(> .wn5-ato .wn5-pt:not(.wn5-end))) { --wn5-t10:max(0px, calc(var(--wn5-side) - var(--wn5-vw))); --wn5-t11:var(--wn5-vw); }
+/* The 76px Veroia cells: 6px in (not 9), and «· τέλος κύκλου» left to the title (the whole text is there): «Βέροια»
+   and «ως Τετ 12:00» are what is read. */
+.wn5-row:not(:has(> .wn5-fl .wn5-pt)) > .wn5-fl, .wn5-row:has(> .wn5-ato .wn5-end):not(:has(> .wn5-ato .wn5-pt:not(.wn5-end))) > .wn5-ato { padding:0 6px; }
+.wn5-row:has(> .wn5-ato .wn5-end):not(:has(> .wn5-ato .wn5-pt:not(.wn5-end))) > .wn5-ato .wn5-endx { display:none; }
+/* «όλη η ημέρα» and «ως Τετ 23:59» are 57–62px: one line in the 64px inside the cell, never broken after «Τετ» */
+.wn5-row:not(:has(> .wn5-fl .wn5-pt)) > .wn5-fl .wn5-vtime,
+.wn5-row:has(> .wn5-ato .wn5-end):not(:has(> .wn5-ato .wn5-pt:not(.wn5-end))) > .wn5-ato .wi4-l2 { white-space:nowrap; }
+/* The 176px tile (Weekly International's): «Antoniadis Ioannis · κύκλος 1/2» is ~165px at 11px and the box keeps
+   158px inside its 9px pads, so «κύκλος n/m» was cut to «1/…». 7px pads and 10.5px for line 2 (the size of every
+   other line 2 on the board) give 162px: the cycle count is read, not guessed; a longer name still ends in «…» and
+   is whole in the title. */
+.wn5 .wn5-asg .wi4-box:not(.un) { padding:0 7px; }
+.wn5 .wn5-asg .wi4-box.own > .wi4-l2 { font-size:10.5px; }
 .wn5 .wn5-c-idx { grid-column:1; }
 .wn5 :is(.wn5-c-kd, .wn5-kd) { grid-column:3; }
 .wn5 :is(.wn5-c-kfl, .wn5-fl) { grid-column:4; }
@@ -9118,6 +9147,10 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 .wn5 .wn5-ad .wi4-dc.past { border-color:var(--wi4-blue); color:var(--wi4-blue-ink); background:var(--surface-card); }
 .wn5 .wn5-row:not(.wn5-dim) .wn5-kd .wi4-dc:is(.past, .today) { border-color:var(--wi4-blue); color:var(--wi4-blue-ink); background:var(--surface-card); }
 .wn5-dc2 { font-size:10px; line-height:12px; color:var(--wi4-grey-2); white-space:nowrap; }
+/* A waiting VS names its reference under the day: the order's text, sometimes a long list. It stays inside the 70px
+   cell, cut with «…» (whole in its title), and «αργό» after it is never cut (a flex item: the gap is its space). */
+.wn5 .wn5-kref { display:flex; gap:3px; max-width:100%; }
+.wn5 .wn5-kref-t { min-width:0; overflow:hidden; text-overflow:ellipsis; }
 /* ΦΟΡΤΩΣΗ: «Βέροια» and, under it, its loading window — on every row that loads there (owner 25/10). */
 .wn5 .wn5-fl { display:flex; flex-direction:column; gap:2px; }
 .wn5-vh { display:block; font-size:12px; line-height:15px; font-weight:500; color:var(--wi4-ink); }
@@ -9148,8 +9181,10 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 /* ...and the points may use the cell's right 9px gutter: at 1440 the 102px content is 2px short of «1 THESSALONIKI»
    (14 + 3 + 87), which left the number alone on its line; the next column keeps its own 9px, so text never touches. */
 .wn5 .wn5-fl .wn5-pts { margin-right:-9px; }
-/* 164px: two stops + the 34px «+N» fit the 386px of a point column at 1920 (Figma: stops 178px apart, gap included). */
-.wn5 .wn5-pt { flex:0 1 164px; }
+/* Two stops + the 34px «+N» at 1920 (Figma: stops 178px apart, gap included). Since the density change (owner 31/10) a
+   point column is wider than two 164px stops; a stop GROWS into what is left, so a long place stays on one line
+   instead of wrapping inside 164px beside empty room. 140px is the least two stops get side by side. */
+.wn5 .wn5-pt { flex:1 1 140px; }
 /* A point with no number (a waiting VS, a single stop): its name starts at x0, flush with the numbers above — in the
    wi4 grid the empty number column still kept its 4px gap. */
 .wn5 .wn5-pt > .wi4-l1:first-child { grid-column:1 / -1; }
@@ -9198,10 +9233,9 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 .wn5 .wn5-qc-k, .wn5 .wn5-qc-n { flex:none; }
 .wn5 .wn5-qc-cl { min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
 /* Narrower than the Figma 1920 frame (1440 with the sidebar open): the fixed tracks give way so the point columns keep
-   one whole stop + «+N» (ΑΝΑΘΕΣΗ stays 266px, owner 25/10); the long column notes go, the column names stay. */
+   one whole stop + «+N»; the long column notes go, the column names stay. */
 @media (max-width:1600px) {
-  .wn5 { --wn5-kpal-w:calc(50px + var(--wn5-kprt-gap)); --wn5-apal-w:50px; }
-  .wn5-cols, .wn5-row, .wn5-sub { grid-template-columns:48px 6px 70px 120px minmax(0,1fr) var(--wn5-kpal-w) 266px 16px 70px minmax(0,1fr) 156px var(--wn5-apal-w); }
+  .wn5 { --wn5-idx:48px; --wn5-g1:6px; }
   .wn5-h-long { display:none; }
   /* one stop per point column here (_visPts): it takes the column */
   .wn5 .wn5-pts { flex-wrap:nowrap; }
@@ -9930,22 +9964,23 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
   --wn5-seg-intermediate-ink: var(--warn);
   --wn5-seg-final-ink:        var(--accent-text);
 }
-/* Two segments: 135 + 135 with a 4px overlap = the 266px column, 28px high, the row stays 36 (H1 2120:8904); the slant
-   is 8px over 28 (16°). Three (or more): 93 / 99 / 92 with 9px overlaps, 44px high (row 48), slant 13px over 44 (H3
-   2123:7847). The overlap is the slant less the 4px gap measured along the cut. */
-.wn5-tiles { display:flex; align-items:center; width:266px; min-width:0; }
+/* Two segments: two halves with a 4px overlap = the ΑΝΑΘΕΣΗ column (90 + 90 of 176 since 31/10; 135 + 135 of 266 in
+   H1 2120:8904), 28px high, the row stays 36; the slant is 8px over 28 (16°). Three (or more): 64 / 66 / 64 with 9px
+   overlaps = 176 (93 / 99 / 92 of 266 in H3 2123:7847), 44px high (row 48), slant 13px over 44; the words are cut with
+   «…» and whole in the tile's title. The overlap is the slant less the 4px gap measured along the cut. */
+.wn5-tiles { display:flex; align-items:center; width:var(--wn5-asg-w); min-width:0; }
 .wn5-tile { --s:8px; position:relative; flex:1 1 0; min-width:0; height:28px; display:flex; flex-direction:column; justify-content:center;
   padding:0 4px 0 15px; box-sizing:border-box; border:0; background:none; text-align:left; cursor:pointer; overflow:hidden; isolation:isolate;
   font-family:'DM Sans',sans-serif; clip-path:polygon(var(--s) 0, 100% 0, 100% 100%, 0 100%); }
-.wn5-tiles.n2 .wn5-tile { flex:none; width:135px; }
+.wn5-tiles.n2 .wn5-tile { flex:none; width:calc((var(--wn5-asg-w) + 4px) / 2); }
 .wn5-tiles.n2 .wn5-tile + .wn5-tile { margin-left:-4px; }
 .wn5-tiles:not(.n2) .wn5-tile { --s:13px; height:44px; padding:0 3px 0 20px; }
 .wn5-tiles:not(.n2) .wn5-tile + .wn5-tile { margin-left:-9px; }
 .wn5-tiles.n3 .wn5-tile { flex:none; }
 .wn5-tiles:not(.n2) .wn5-tile[data-label="initial"] { padding-left:9px; }
-.wn5-tiles.n3 .wn5-tile[data-label="initial"] { width:93px; }
-.wn5-tiles.n3 .wn5-tile[data-label="intermediate"] { width:99px; }
-.wn5-tiles.n3 .wn5-tile[data-label="final"] { width:92px; padding-left:21px; }
+.wn5-tiles.n3 .wn5-tile[data-label="initial"] { width:64px; }
+.wn5-tiles.n3 .wn5-tile[data-label="intermediate"] { width:66px; }
+.wn5-tiles.n3 .wn5-tile[data-label="final"] { width:64px; padding-left:21px; }
 /* A right side that slants keeps the slant + 3px clear (Figma 2123:8287: pr 3 inside the cut body). The 3-segment
    padding above (0,3,0) outranked the slant reserve below (0,2,0), so a long driver ran under the cut and clip-path
    sliced it mid-glyph instead of the ellipsis. The bottom line meets the cut at width − s; this rule (0,4,0) holds there. */
@@ -9977,6 +10012,13 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5-tl-1 { display:flex; align-items:baseline; gap:4px; min-width:0; }
 .wn5-tiles:not(.n2) .wn5-tl-1 { flex-direction:column; align-items:flex-start; gap:0; }
 .wn5-tl-l { flex:none; font-size:10px; line-height:13px; font-weight:700; letter-spacing:.3px; white-space:nowrap; }
+/* In the 176px column (density, owner 31/10) a tile of a 2- or 3-segment cycle is 90 / ~65px. Two segments: the
+   word ΑΡΧΙΚΟ / ΤΕΛΙΚΟ beside the plate left the plate «CB013…» (measured on W44); the plate is what is worked with,
+   so the word is not drawn there: the segment is told by its edge (straight grey = ΑΡΧΙΚΟ, slanted blue = ΤΕΛΙΚΟ)
+   and the word stays in the tile's text and title. Three segments: the word is on its own line and gives way with
+   «…» before the slanted cut («ΕΝΔ…»), never sliced by the clip. */
+.wn5-tl-l { min-width:0; max-width:100%; overflow:hidden; text-overflow:ellipsis; }
+.wn5-tiles.n2 .wn5-tl-l { display:none; }
 .wn5-tile[data-label="initial"] .wn5-tl-l { color:var(--wn5-seg-initial-ink); }
 .wn5-tile[data-label="intermediate"] .wn5-tl-l { color:var(--wn5-seg-intermediate-ink); }
 .wn5-tile[data-label="final"] .wn5-tl-l { color:var(--wn5-seg-final-ink); }

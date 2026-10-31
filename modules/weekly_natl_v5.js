@@ -666,7 +666,10 @@ function _kathHTML(r, m, ok) {
   const toDay = s.toDay && s.toDay !== s.day ? `<span class="wn5-dc2${hd}">→ ${_esc(_dl(s.toDay))}</span>` : '';
   // A VS waiting for a vehicle names its reference under the day (Figma H1 «Δευ 12/10 / VS-118», «VS-121 αργό»):
   // the queue card and the row then read as the same load.
-  const ref = r.kind === 'unassigned' && r.vs && r.refs.length ? `<span class="wn5-dc2">${_esc(r.refs[0])}${r.late ? ' αργό' : ''}</span>` : '';
+  // The reference is the VS order's own text and can be a long list («1001, 1002, 1003, …», live W44): it ends in «…»
+  // inside its 70px cell (CSS .wn5-kref) and is whole in the title; it ran across ΦΟΡΤΩΣΗ and ΠΑΡΑΔΟΣΗ before (31/10).
+  // «αργό» is outside the cut part: a warning is never what the «…» hides.
+  const ref = r.kind === 'unassigned' && r.vs && r.refs.length ? `<span class="wn5-dc2 wn5-kref" title="${_esc(r.refs[0])}"><span class="wn5-kref-t">${_esc(r.refs[0])}</span>${r.late ? ' αργό' : ''}</span>` : '';
   return `<div class="wn5-kd">${_chipHTML(r, 'KATHODOS', `wi4-dc ${_chipCls(s.day, m.today)}${hd}`, _dl(s.day))}${toDay}${ref}</div>`
     + `<div class="wn5-fl"${_legAttr(r, 'KATHODOS')}>${_flHTML(s, ok, hd)}</div>`
     + `<div class="wn5-kto${_hx(r, s, null)}"${_legAttr(r, 'KATHODOS')}>${_hxHTML(r, s, null)}${_ptsHTML(s.to, ok)}</div>`

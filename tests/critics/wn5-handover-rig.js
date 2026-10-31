@@ -55,8 +55,14 @@ async function scnTiles({ browser, origin, ok, scn }) {
       line: (() => { const p = row && row.querySelector('.wn5-pt[data-seg-label="final"]'); if (!p) return null; const a = getComputedStyle(p, '::after'); return { w: a.width, h: a.height, bg: a.backgroundColor }; })() };
   }, ROW(101));
   ok(scn, 'RT-T101 shows 2 tiles, ΑΡΧΙΚΟ then ΤΕΛΙΚΟ', g.n === 2 && g.labels.join() === 'initial,final', g.labels);
-  ok(scn, 'the tiles stay inside the 266px ΑΝΑΘΕΣΗ (±1): 135 − 4 + 135', !!g.asg && Math.abs(g.asg.r - g.asg.l - 266) <= 1 && g.tiles.every((t) => t.l >= g.asg.l - 1 && t.r <= g.asg.r + 1)
-    && g.tiles.length === 2 && Math.abs(g.tiles[0].r - g.tiles[0].l - 135) <= 1 && Math.abs(g.tiles[1].l - g.tiles[0].l - 131) <= 1, { asg: g.asg, tiles: g.tiles });
+  // density (owner 31/10): ΑΝΑΘΕΣΗ 176px as the Weekly International (was 266: 135 − 4 + 135)
+  ok(scn, 'the tiles stay inside the 176px ΑΝΑΘΕΣΗ (±1): 90 − 4 + 90', !!g.asg && Math.abs(g.asg.r - g.asg.l - 176) <= 1 && g.tiles.every((t) => t.l >= g.asg.l - 1 && t.r <= g.asg.r + 1)
+    && g.tiles.length === 2 && Math.abs(g.tiles[0].r - g.tiles[0].l - 90) <= 1 && Math.abs(g.tiles[1].l - g.tiles[0].l - 86) <= 1, { asg: g.asg, tiles: g.tiles });
+  // at 90px the word beside the plate cut the plate («CB013…», W44): two segments draw the plate whole, the word stays in the text and title
+  ok(scn, '2 segments: each plate is whole (no «…»), the segment word not drawn beside it, still in the tile\'s text', await page.evaluate((r) => {
+    const ts = [...document.querySelectorAll(r + ' .wn5-tile')];
+    return ts.length === 2 && ts.every((t) => { const p = t.querySelector('.wn5-tl-p'), l = t.querySelector('.wn5-tl-l'); return p.scrollWidth <= p.clientWidth && getComputedStyle(l).display === 'none' && /ΑΡΧΙΚΟ|ΤΕΛΙΚΟ/.test(t.textContent + t.title); });
+  }, ROW(101)));
   ok(scn, 'no plate overlaps another', g.plates.length === 2 && g.plates.every(Boolean) && g.plates[0].r <= g.plates[1].l, g.plates);
   ok(scn, 'no hh:mm inside ΑΝΑΘΕΣΗ (R-56)', !/\d\d:\d\d/.test(g.asgText), g.asgText);
   ok(scn, 'the next tile has a slanted side (clip-path), on the board', g.clip[1] && g.clip[1] !== 'none', g.clip);
@@ -96,8 +102,8 @@ async function scnTiles({ browser, origin, ok, scn }) {
       partner: row.querySelector('.wn5-tile.par') ? row.querySelector('.wn5-tile.par').textContent : '', cut };
   }, ROW(101));
   ok(scn, '3 segments: every line of ΑΡΧΙΚΟ / ΕΝΔΙΑΜΕΣΟ ends before its slanted cut, plate and driver with an ellipsis',
-    t3.cut.length === 6 && t3.cut.every((c) => c.right <= c.cutAt && (/wn5-tl-l/.test(c.cls) || c.ellipsis === 'ellipsis')), t3.cut);
-  ok(scn, '3 segments: 3 tiles fit in 266px (93 / 99 / 92)', t3.n === 3 && t3.fit && t3.w.join() === '93,99,92', t3);
+    t3.cut.length === 6 && t3.cut.every((c) => c.right <= c.cutAt && c.ellipsis === 'ellipsis'), t3.cut);
+  ok(scn, '3 segments: 3 tiles fit in 176px (64 / 66 / 64; was 93 / 99 / 92 of 266)', t3.n === 3 && t3.fit && t3.w.join() === '64,66,64', t3);
   ok(scn, '3 segments: the row is at least 48px', t3.h >= 48, t3.h);
   ok(scn, 'a partner ΤΕΛΙΚΟ shows its rate «300 €» (Ε-13, decision 41)', /ΤΕΛΙΚΟ/.test(t3.partner) && /300 €/.test(t3.partner), t3.partner);
   const hand3 = await K.text(p3.page, HAND(101));

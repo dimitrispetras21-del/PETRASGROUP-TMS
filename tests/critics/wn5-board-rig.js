@@ -281,6 +281,11 @@ SCN.paint = async (browser, origin) => {
     return { state: r.dataset.state, rows: r.querySelectorAll('.wn5-row').length,
       asgW: [...r.querySelectorAll('.wn5-row > .wn5-asg')].map((e) => Math.round(box(e).w)),
       anodShift: hAsg && hAd ? Math.round(box(hAd).l - box(hAsg).l) : null,
+      // density (owner 31/10): each row splits its sides itself, so the columns between them must still line up
+      asgL: [...r.querySelectorAll('.wn5-row > .wn5-asg')].map((e) => Math.round(box(e).l)),
+      adL: [...r.querySelectorAll('.wn5-row > .wn5-ad')].map((e) => Math.round(box(e).l)),
+      vOnlyW: [...r.querySelectorAll('.wn5-row > .wn5-fl')].filter((e) => e.querySelector('.wn5-vh') && !e.querySelector('.wn5-pt')).map((e) => Math.round(box(e).w)),
+      refOut: [...r.querySelectorAll('.wn5-kd > .wn5-kref')].map((e) => Math.round(e.getBoundingClientRect().right - e.parentElement.getBoundingClientRect().right)),
       asgTimes: [...r.querySelectorAll('.wn5-asg')].map((e) => e.textContent).filter((t) => /\d{1,2}:\d{2}/.test(t)),
       vtime: [...r.querySelectorAll('.wn5-vtime')].map((e) => ({ inFl: !!e.closest('.wn5-fl'), row: e.closest('.wn5-row').dataset.key, t: e.textContent })),
       days: [...r.querySelectorAll('.wn5-day')].map((d) => ({ date: d.dataset.date, closed: d.classList.contains('closed'), rows: d.querySelectorAll('.wn5-row').length })),
@@ -293,8 +298,13 @@ SCN.paint = async (browser, origin) => {
       text: r.textContent.replace(/\s+/g, ' ') };
   });
   ok(scn, 'state ok, 12 rows (8 cycles + 4 loads waiting for a vehicle)', !!st && st.state === 'ok' && st.rows === 12, st && { state: st.state, rows: st.rows });
-  ok(scn, 'ΑΝΑΘΕΣΗ is 266px on every row (owner 25/10)', !!st && st.asgW.length === 12 && st.asgW.every((w) => Math.abs(w - 266) <= 1), st && st.asgW);
-  ok(scn, 'ΑΝΟΔΟΣ starts 282px after ΑΝΑΘΕΣΗ (266 + 16, Figma §Σ2: 1172 → 1188)', !!st && st.anodShift !== null && Math.abs(st.anodShift - 282) <= 1, st && st.anodShift);
+  // Density (owner 31/10, the Weekly International's 176px tile): was 266px / 282px (owner 25/10, Figma H1 §Σ2)
+  ok(scn, 'ΑΝΑΘΕΣΗ is 176px on every row (density, owner 31/10; was 266)', !!st && st.asgW.length === 12 && st.asgW.every((w) => Math.abs(w - 176) <= 1), st && st.asgW);
+  ok(scn, 'ΑΝΟΔΟΣ starts 192px after ΑΝΑΘΕΣΗ (176 + 16; was 266 + 16)', !!st && st.anodShift !== null && Math.abs(st.anodShift - 192) <= 1, st && st.anodShift);
+  ok(scn, 'ΑΝΑΘΕΣΗ and the ΑΝΟΔΟΣ day start at one x on every row, whatever the row\'s split of its sides',
+    !!st && st.asgL.length === 12 && st.asgL.every((x) => Math.abs(x - st.asgL[0]) <= 1) && st.adL.length >= 4 && st.adL.every((x) => Math.abs(x - st.adL[0]) <= 1), st && { asgL: st.asgL, adL: st.adL });
+  ok(scn, 'a ΦΟΡΤΩΣΗ that is only «Βέροια» + its window is the 76px cell', !!st && st.vOnlyW.length >= 6 && st.vOnlyW.every((w) => Math.abs(w - 76) <= 1), st && st.vOnlyW);
+  ok(scn, 'the VS reference under a waiting row\'s day ends inside its cell (cut, whole in title)', !!st && st.refOut.length >= 1 && st.refOut.every((d) => d <= 0), st && st.refOut);
   ok(scn, 'the head is «ΑΝΑΘΕΣΗ» alone', !!st && st.head === 'ΑΝΑΘΕΣΗ', st && st.head);
   ok(scn, 'no hh:mm anywhere in ΑΝΑΘΕΣΗ', !!st && !st.asgTimes.length, st && st.asgTimes);
   ok(scn, 'the Veroia time sits under «Βέροια» in ΦΟΡΤΩΣΗ on all 9 rows that load there', !!st && st.vtime.length === 9 && st.vtime.every((v) => v.inFl), st && st.vtime);
