@@ -12,6 +12,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
+- dimitris · `fix/wn5-f44-f47` · Εθνικά v5 F44/F46 (ημέρα Βέροιας της σύντομης φόρμας του «+»), F48 (ορφανό πάνελ ρυμούλκας/οδηγού), F47 δεν αναπαράγεται; stacked πάνω στο #176, ?v= / SW_VERSION 1793476256 (`docs/sessions/2026-10-31-dimitris-wn5-f44-f48.md`)
 - dimitris · `fix/wn5-f32-drag` · Εθνικά v5 F32: σύρσιμο ΠΡΟΣ ΑΝΑΘΕΣΗ σε κύκλο → το «+» του κύκλου; #175 merged, ?v= / SW_VERSION 1793476255 (`docs/sessions/2026-10-31-dimitris-wn5-f32-drag.md`)
 - dimitris · `fix/f40-f41-bridge-sync` · F40/F41: a date change of the international never takes a v5 cycle away, a closed RT keeps its dates: 082 EXECUTED 31/10 (option a, files out of drafts/), PR #177 = rt-feed stops writing RT dates, waits for merge; no data repaired (`docs/sessions/2026-10-28-dimitris-f40-f41-bridge-sync.md`)
 - dimitris · `fix/wn5-f33-f35` · Εθνικά v5 F33–F35: εθνική προς Βέροια στην ημέρα της, `stop_order` με λέξεις, «Ένωση» με κύκλο στο δρόμο, «+ από αναμονή» στη φόρμα σκέλους, 3 της review #171; PR pending, ?v= / SW_VERSION 1793213922 (`docs/sessions/2026-10-28-dimitris-wn5-f33-f35.md`)
