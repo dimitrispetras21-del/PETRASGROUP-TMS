@@ -391,6 +391,10 @@ function tmsSessionRestored() {
   const waiters = _tmsLoginWaiters;
   _tmsLoginWaiters = [];
   for (const w of waiters) { try { w(); } catch (_) {} }
+  // The offline queue keeps its items «for the next login's page» (_flushOfflineQueue): that page's atPreload
+  // flushed them. A login in the window makes no new page, so the flush happens here instead. Nothing new is
+  // re-sent: these are changes the session's end left unsent (or refused with a 401, before the Worker read them).
+  if (typeof _flushOfflineQueue === 'function') _flushOfflineQueue().catch(() => {});
 }
 
 // Called on a 401. The first one per page reads whose login it was BEFORE

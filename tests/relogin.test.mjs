@@ -7,7 +7,8 @@
 //   2. a facade write is never re-sent by itself — after the login only the user's next press sends;
 //   3. a /plan/* write with a request_id waits for the login and is sent once more with the SAME request_id;
 //      one without a request_id is refused (one fetch) and the window says «πάτα ξανά Αποθήκευση»;
-//   4. index.html and core/relogin.js read the JWT expiry with the same function body.
+//   4. the offline queue left unsent at the session's end is flushed after the window login;
+//   5. index.html and core/relogin.js read the JWT expiry with the same function body.
 import { test } from 'node:test';
 import assert from 'node:assert';
 import fs from 'node:fs';
@@ -117,6 +118,19 @@ test('a /plan/* write with a request_id made while the session is already gone: 
   for (let i = 0; i < 6 && out === null; i++) await tick();
   assert.deepStrictEqual(JSON.parse(JSON.stringify(out)), { ok: true });
   assert.strictEqual(s.calls.filter((c) => c.url.includes('/plan/')).length, 1);
+});
+
+test('the offline queue kept at the session\'s end is flushed after the window login (it used to be the next page\'s load)', async () => {
+  const s = sandbox((url, m) => (m === 'GET' && s.calls.length === 1 ? json(401, { error: 'Unauthorized' }) : json(200, { id: 'recQ1', fields: {} })));
+  await s.run("atGet('tblEAPExIAjiA3asD', '', true).catch((e) => e)");   // the session ends
+  s.store.set('tms_offline_queue', JSON.stringify([{ method: 'POST', url: 'https://w.invalid/v0/appX/tblEAPExIAjiA3asD', body: { fields: { Plate: 'Q' } }, timestamp: 1 }]));
+  s.run('_loadOfflineQueue()');
+  assert.strictEqual(s.calls.length, 1, 'nothing sent while the session is gone');
+  s.relogin();
+  for (let i = 0; i < 6 && s.calls.length < 2; i++) await tick();
+  assert.strictEqual(s.calls.length, 2, 'the queued change is sent once, after the login');
+  assert.strictEqual(s.calls[1].method, 'POST');
+  assert.strictEqual(s.calls[1].auth, 'Bearer jwt.new');
 });
 
 test('index.html and core/relogin.js read the JWT expiry with the same function body', () => {

@@ -4958,6 +4958,7 @@ Partner Truck Plates — επιβεβαιωμένα στον χάρτη του �
 **Απόδειξη:**
 - Rig `tests/critics/f36-reload-relogin-rig.js` στο Chromium: NO-GO 4 στο `origin/main` 252965f1 (reload πάνω σε ανοιχτή φόρμα, μετάβαση στο `index.html` σε 401), GO στον κλάδο.
 - 18 κύριες σελίδες χωρίς ανοιχτή φόρμα διαβάζονται «καμία φόρμα».
-- `tests/relogin.test.mjs` 6/6, όλα τα unit tests 1126/1126.
+- `tests/relogin.test.mjs` 7/7, όλα τα unit tests περνούν.
+- `/code-review high`: 9 ευρήματα, 4 διορθώθηκαν, τα υπόλοιπα στο PR.
 
 **Ποιος:** owner 31/10 (μέσω του συντονιστή), agent (υλοποίηση).

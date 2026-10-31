@@ -12,7 +12,11 @@
 //   swform (a typed modal: no reload, the pill; the modal closes → the reload comes by itself) · pill (a click on it
 //   reloads, form or not) · facade401 (atPatch → 401: page kept, form kept, login window with «πάτα ξανά
 //   Αποθήκευση», after the login the PATCH is NOT re-sent; a second press sends it with the new token) ·
-//   plan401 (planFetch POST /plan/orders with a request_id → 401: after the login it is sent once more, same id)
+//   plan401 (planFetch POST /plan/orders with a request_id → 401: after the login it is sent once more, same id) ·
+//   confirm (a confirm dialog open under the window: Enter in the password field logs in and never answers the
+//   dialog; Tab never leaves the window)
+// FEATURES.WN_V5 is 'on' (config.js), so «weekly_natl» in idle is the v5 board (with /plan/* answering 404: its
+// empty / error state — the board with cycles is not drawn here).
 // Exit: 0 all green (GO) · 1 a check failed (on origin/main before F36: NO-GO).
 'use strict';
 const path = require('path');
@@ -92,6 +96,7 @@ async function open(browser, origin, page0) {
         if (S.facadeWrites401 && S.facadeWrites.length === 1) return json(route, { error: 'Unauthorized' }, 401);
         return json(route, { id: mm[2] || 'recRIGNEW000001', fields: {} });
       }
+      if (S.get401) return json(route, { error: 'Unauthorized' }, 401);
       if (mm[2]) return json(route, { id: mm[2], createdTime: '2026-10-30T10:00:00.000Z', fields: {} });
       return json(route, { records: [] });
     }
@@ -248,6 +253,32 @@ const newVersion = page => page.evaluate(() => {
         }
       }
       check('plan401', '0 page errors', !S.pageErrors.length, S.pageErrors);
+      await ctx.close();
+    }
+    if (on('confirm')) {
+      const { ctx, page, S } = await open(browser, origin);
+      await page.evaluate(() => { window.__rigConfirm = 'waiting'; confirmAction('Διαγραφή της παραγγελίας;', { danger: true }).then(v => { window.__rigConfirm = v; }); });
+      await page.waitForTimeout(300);
+      S.get401 = true;
+      await page.evaluate(() => atGet(TABLES.ORDERS, '', true).catch(() => null));
+      await page.waitForTimeout(800);
+      const win = !!(await page.$('#tmsRelogin'));
+      check('confirm', 'the login window opens over the confirm dialog', win);
+      if (win) {
+        S.get401 = false;
+        await page.keyboard.press('Tab');
+        await page.keyboard.press('Tab');
+        await page.keyboard.press('Tab');
+        check('confirm', 'Tab keeps focus inside the window', await page.evaluate(() => document.getElementById('tmsRelogin').contains(document.activeElement)));
+        await page.fill('#tmsReloginPass', 'rig-password');
+        await page.focus('#tmsReloginPass');
+        await page.keyboard.press('Enter');
+        await page.waitForTimeout(1200);
+        check('confirm', 'Enter logs in (one /auth/login, window gone)', S.logins === 1 && !(await page.$('#tmsRelogin')), S.logins);
+        check('confirm', 'Enter did NOT answer the confirm dialog underneath', await page.evaluate(() => window.__rigConfirm) === 'waiting', await page.evaluate(() => window.__rigConfirm));
+        check('confirm', 'the confirm dialog is still open', await page.evaluate(() => document.getElementById('modalOverlay').classList.contains('open')));
+      }
+      check('confirm', '0 page errors', !S.pageErrors.length, S.pageErrors);
       await ctx.close();
     }
   } finally {

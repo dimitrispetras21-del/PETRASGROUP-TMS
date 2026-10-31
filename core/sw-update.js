@@ -58,7 +58,9 @@ function _searchy(el) {
 }
 
 function _changed(el) {
-  if (el.isContentEditable) return true;
+  // An inline cell (contenteditable) has no «default» to compare with: it counts while it has focus (above), never
+  // after — otherwise one edited cell left on screen would hold the reload for the rest of the visit.
+  if (el.isContentEditable) return false;
   if (el.tagName === 'SELECT') return Array.from(el.options).some((o) => o.selected !== o.defaultSelected);
   if (el.type === 'checkbox' || el.type === 'radio') return el.checked !== el.defaultChecked;
   return el.value !== el.defaultValue;

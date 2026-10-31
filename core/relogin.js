@@ -66,9 +66,6 @@ function _build(u) {
     + 'color:#fff;font:600 13px "DM Sans",sans-serif;cursor:pointer;">Σύνδεση</button>'
     + '</div></form>';
   ov.querySelector('#tmsReloginUser').value = u.username;
-  // Keys typed here never reach the page underneath: an Escape that bubbled to a module's handler would close
-  // the very form this window exists to keep.
-  ov.addEventListener('keydown', (e) => e.stopPropagation());
   ov.querySelector('#tmsReloginForm').addEventListener('submit', (e) => { e.preventDefault(); _submit(); });
   return ov;
 }
@@ -90,6 +87,26 @@ function _err(text) {
 
 // core/api.js calls this for every request refused while the session is gone (idempotent). lostWrite: a write of
 // the user was refused or answered 401 and will not be sent by itself.
+// While the window is open no key reaches the page and focus stays in it. Keys are stopped on WINDOW in the capture
+// phase, the first stop of every key: core/ui.js's confirm dialog listens on document in the capture phase too
+// (Enter → confirm), so a stop on the window element itself would come too late and an Enter in the password
+// field would confirm the dialog underneath. stopPropagation leaves the form's own Enter → submit (a default action).
+function _guardKey(e) {
+  if (!_el) return;
+  e.stopPropagation();
+  if (!_el.contains(e.target)) e.preventDefault();
+  if (e.key === 'Tab') {
+    // past the last field Tab would leave the page (no focusin to catch it): cycle inside the window
+    const f = Array.from(_el.querySelectorAll('input:not([readonly]), a[href], button'));
+    const i = f.indexOf(document.activeElement);
+    e.preventDefault();
+    f[(i + (e.shiftKey ? f.length - 1 : 1)) % f.length].focus();
+  }
+}
+function _trapFocus(e) {
+  if (_el && !_el.contains(e.target)) { const p = _el.querySelector('#tmsReloginPass'); if (p) p.focus(); }
+}
+
 function tmsReloginOpen(lostWrite) {
   const u = _pageUser();
   if (!u) throw new Error('relogin: no page user');   // core/api.js falls back to the old navigation
@@ -97,12 +114,16 @@ function tmsReloginOpen(lostWrite) {
   if (!_el) {
     _el = _build(u);
     document.body.appendChild(_el);
+    window.addEventListener('keydown', _guardKey, true);
+    document.addEventListener('focusin', _trapFocus, true);
     setTimeout(() => { const p = _el && _el.querySelector('#tmsReloginPass'); if (p) p.focus(); }, 0);
   }
   if (_lost) _showLost();
 }
 
 function _close() {
+  window.removeEventListener('keydown', _guardKey, true);
+  document.removeEventListener('focusin', _trapFocus, true);
   if (_el) _el.remove();
   _el = null;
 }
