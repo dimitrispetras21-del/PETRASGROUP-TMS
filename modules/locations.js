@@ -504,6 +504,9 @@ async function _locSave() {
       ? await atPatch(TABLES.LOCATIONS, LOC.editingId, fields)
       : await atCreate(TABLES.LOCATIONS, fields);
     if (data.error) throw new Error(data.error.message || 'Η αποθήκευση απέτυχε');
+    // F52: the order forms' pickers see the new / renamed place without a reload — never an offline-queued one, whose
+    // temporary id no order may point at (as locScanSave below, code review)
+    if (typeof fhLocationSaved === 'function' && !data._offline && !String(data.id || '').startsWith('offline_')) fhLocationSaved(data);
     if (LOC.editingId) {
       const idx = LOC.records.findIndex(r => r.id === LOC.editingId);
       if (idx !== -1) LOC.records[idx] = data;
@@ -758,7 +761,7 @@ async function locScanSave(uid) {
       geo = { lat: la, lon: lo };
     }
     // The label the order form's pickers use (core/form-helpers.js fhLoadLocations).
-    const label = [name, city, typeof countryName === 'function' ? countryName(country) : country].filter(Boolean).join(', ');
+    const label = _fhLocLabel({ Name: name, City: city, Country: country });
     const same = _locScanExisting(label, address);
     if (same) { _locScanLinked(uid, ctx, same, 'Υπάρχει ήδη αυτή η τοποθεσία, συνδέθηκε με τη στάση', 'info'); return; }
     const pkey = _fhNorm(label) + '|' + _fhNorm(address);
@@ -778,9 +781,9 @@ async function locScanSave(uid) {
         }
         const item = { id: rec.id, label };
         // The pickers read this shared list; without the push the stop could
-        // not be picked in the order form until the next reload.
-        _fhLocationsArr.push(item);
-        _fhLocationsMap[rec.id] = label;
+        // not be picked in the order form until the next reload. The fields
+        // sent give the same label (core/form-helpers.js fhLocationSaved, F52).
+        fhLocationSaved({ id: rec.id, fields });
         // atCreate cleared every reference list (trucks … locations, clients);
         // the next scan matches against them, so they are read again now.
         if (typeof preloadReferenceData === 'function') {

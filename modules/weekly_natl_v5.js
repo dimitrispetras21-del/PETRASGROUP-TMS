@@ -625,8 +625,9 @@ function _dimOk(r) { return r.kind === 'cycle' && r.rail !== 'red'; }
 const _dc = (on) => (on ? ' wn5-dim' : '');
 // A window the board did not send (hub[] of 072, Ε-26) is «—», never «null–null» and never a guess (as T5).
 // F1 (owner 28/10): a point entered without a window is its whole day; the model says so (allDay, WN5L.allDay: one
-// rule) and the board names it «όλη η ημέρα», never an hour someone agreed.
-const _winTxt = (f, t, all) => (f && t ? (all ? 'όλη η ημέρα' : `${f}–${t}`) : '—');
+// rule) and the board names it «όλη η ημέρα», never an hour someone agreed. F64: one minute is «στις 08:00», the day's
+// last minute «ως 23:59» — WN5L.winText, the rule the driver sheet reads too.
+const _winTxt = (f, t, all) => WN5L.winText(f, t, all) || '—';
 const _win = (f, t, all) => _esc(_winTxt(f, t, all));
 function _rowHTML(r, m, no) {
   const n = r.kind === 'cycle' ? ++no.n : null;
@@ -986,7 +987,7 @@ function _localHTML(r, lm, ok) {
 // ═══ ✈ row menu (Figma 2011:8858) ═══
 // Each Task appends its line to WN5.MENU_ITEMS; `order` keeps the Figma order whatever the order of the Tasks:
 // 10 Άνοιγμα παραγγελιών · 20 Ανάθεση · 30 Νέα παραγγελία · 40 Φόρτωση με τοπικό · 50 Σπάσιμο · 60 Εκτύπωση ·
-// 70 Αντιγραφή πινακίδων · 90 Καθαρισμός (danger, after a separator).
+// 70 Αντιγραφή πινακίδων · 80 Αλλαγή οχήματος… · 90 Καθαρισμός (danger, after a separator).
 function rowMenu(ev, rtId) {
   try { if (ev && ev.stopPropagation) ev.stopPropagation(); } catch (_) {}
   _closeMenu();
@@ -1575,6 +1576,8 @@ const WN5 = {
       { id: 'sheet-a', label: 'Άνοδος', run: (rtId) => WN5Sheet.print(rtId, 'ANODOS') },
       { id: 'sheet-all', label: 'Όλο το δρομολόγιο', run: (rtId) => WN5Sheet.print(rtId, 'ALL') }] },
     { id: 'plates', order: 70, label: 'Αντιγραφή πινακίδων', run: (rtId) => copyPlatesOf(rtId) },
+    // owner 31/10 (B-13 = α, Figma 2396:7831): the way into the vehicle change (H2) for every cycle, also one never changed
+    { id: 'handover', order: 80, label: 'Αλλαγή οχήματος…', sub: '›', run: (rtId) => WN5Hand.entry(rtId) },
     // T15: last and red (Figma 2011:8858); owner + dispatcher on the Worker, but visible to all (Δ12 tile 8)
     { id: 'clear', order: 90, label: 'Καθαρισμός ανάθεσης', sub: 'κάθοδος + άνοδος', danger: true, run: (rtId) => WN5Act.clear(rtId) },
   ],
