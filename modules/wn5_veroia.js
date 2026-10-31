@@ -452,9 +452,10 @@
             : ' <span class="wn5-miss">λείπει ο προορισμός από τη βάση</span>');
       }
       if (p.t !== 'stay') return '';
-      if (!p.day) return '<span class="wn5-part-u">μένει απόθεμα · χωρίς ημέρα παράδοσης, χωρίς προθεσμία</span>';
-      // relaxed rules (owner 31/10): a day gone or after the delivery is allowed, said before the save
-      const today = typeof localToday === 'function' ? localToday() : '';
+      if (!p.day) return '<span class="wn5-part-u">μένει απόθεμα</span>';
+      // relaxed rules (owner 31/10): a day gone or after the delivery is allowed, said before the save. «Today» is the
+      // Athens day, the one the base's overdue reads (071 v_piece_state), whatever the machine's clock zone.
+      const today = WN5L.athensDay(new Date().toISOString()) || '';
       const warn = today && p.day < today ? 'έχει περάσει · θα φαίνεται σε καθυστέρηση'
         : st.defDay && p.day > st.defDay ? 'μετά την παράδοση ' + k.dayShort(st.item.nat_due_day) : '';
       return '<span class="wn5-part-u">φεύγει ως</span><span class="wn5-part-d wn5-lb">'
@@ -510,7 +511,8 @@
       else if (b.dataset.act === 'more') { st.parts.push({ t: '', rt: null, pal: '', stops: null }); draw(); }
       else if (b.dataset.act === 'lb') {
         const p = st.parts[Number(b.dataset.i)];
-        if (p && p.day) {
+        // not while a press is on its way: its bytes are the request (rule 3, decision 44)
+        if (p && p.day && !d.busy) {
           p.day = k.addDays(p.day, Number(b.dataset.n));
           d.refresh();
           // refresh rewrote the badge: the same arrow again, so a keyboard user keeps stepping
