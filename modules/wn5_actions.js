@@ -904,13 +904,13 @@
     // B-21: hidden only when the catalogue says 0 — without it the count is unknown and the header stays (line above)
     // code review: trucks whose days outside the week are unknown are not called free in the header either
     const unk = st.free.length && st.free.every((t) => t.unknown);
-    if (st.free.length || !st.ids.ok) h += _grpHTML('free', unk ? 'ΦΟΡΤΗΓΑ' : 'ΕΛΕΥΘΕΡΑ ΦΟΡΤΗΓΑ', ' · νέος κύκλος' + (st.ids.ok ? ' · ' + st.free.length : '') + (unk ? ' · διαθεσιμότητα άγνωστη εκτός εβδομάδας' : ''));
+    if (st.free.length || !st.ids.ok) h += _grpHTML('free', unk ? 'ΦΟΡΤΗΓΑ' : 'ΕΛΕΥΘΕΡΑ ΦΟΡΤΗΓΑ', ' · νέο φορτηγό' + (st.ids.ok ? ' · ' + st.free.length : '') + (unk ? ' · διαθεσιμότητα άγνωστη εκτός εβδομάδας' : ''));
     for (const t of st.free) {
       const key = 'truck:' + t.id;
       const next = t.next ? 'επόμενο: ' + (t.next.side ? t.next.side + ' ' : '') + _dayShort(t.next.day) : '';
       h += '<div class="wn5-cand" data-line="free" data-s="' + _esc(_norm(t.label)) + '"><div class="wi4-box own"><span class="wi4-l1 wi4-plate">' + _esc(t.label) + '</span></div>'
         + '<span class="wn5-cand-m"><b>' + _esc(t.unknown ? 'διαθεσιμότητα ' + t.unknown.map(_dayShort).join(', ') + ' άγνωστη εκτός εβδομάδας' : t.from ? 'ελεύθερο από ' + t.from : 'ελεύθερο') + '</b>' + (next ? '<span>' + _esc(next) + '</span>' : '') + '</span>'
-        + '<span>' + _capHTML(st.pallets, ' · νέος κύκλος', st.palUnk) + '</span>'
+        + '<span>' + _capHTML(st.pallets, ' · νέο φορτηγό', st.palUnk) + '</span>'
         + '<button type="button" class="wi4-btn sm" data-act="pick" data-cand="' + key + '"' + (st.ids.ok ? '' : ' disabled') + '>Ανάθεση</button></div>';
       if (st.pick === key) {
         h += '<div class="wn5-more" data-more="' + key + '">'
@@ -1115,7 +1115,7 @@
       const group = it.order_id != null ? { order_id: it.order_id } : (it.nat_order_id != null ? { nat_order_id: it.nat_order_id } : null);
       const dayEl = row && row.closest('.wn5-day[data-date]');
       WN5Act.assign(group ? { group } : { pieces: [{ piece_id: pid }] },
-        // focus: the piece pressed, for «μόνο αυτό το κομμάτι» (F42); anchor: the form opens under what was pressed
+        // focus: the piece pressed, for «μόνο αυτές οι παλέτες» (F42); anchor: the form opens under what was pressed
         { day: it.nat_ready_day || (dayEl && dayEl.dataset.date) || null, side: _sideFor(it), entry: card ? 'queue' : 'row', focus: pid, anchor: el });
       return;
     }
