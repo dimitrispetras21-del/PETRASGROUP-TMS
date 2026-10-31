@@ -326,14 +326,21 @@ async function price({ browser, origin, ok, scn }) {
     await page.evaluate(() => WN5Form.openOrder({}));
     await page.waitForSelector(DLG, { timeout: 8000 }).catch(() => {});
     const create = await page.$eval(`${DLG} [data-f="price"]`, (x) => x.disabled).catch(() => null);
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
+    // the leg form (a click on the ΚΑΘΟΔΟΣ of RT-T101): N-T001's price field
+    await page.click('#content .wn5-row[data-rt="101"] [data-leg="KATHODOS"]').catch(() => {});
+    await page.waitForSelector(dlg('leg'), { timeout: 6000 }).catch(() => {});
+    const leg = await page.$eval(`${dlg('leg')} [data-nat="3001"] [data-f="price"]`, (x) => x.disabled).catch(() => null);
     const errs = S.pageErrors.slice();
     await page.context().close();
-    return { edit, create, errs };
+    return { edit, create, leg, errs };
   };
   const d = await st('dispatcher'), a = await st('accountant'), o = await st('owner'), m = await st('management');
   ok(scn, 'dispatcher: the edit form\'s price is read only, says who changes it, still shows the value — main: editable', !!d.edit && d.edit.dis && d.edit.v === '310' && /owner ή λογιστήριο/.test(d.edit.t), d.edit);
   ok(scn, 'management: read only too', !!m.edit && m.edit.dis, m.edit);
   ok(scn, 'accountant and owner: editable', !!a.edit && !a.edit.dis && !!o.edit && !o.edit.dis, [a.edit, o.edit]);
+  ok(scn, 'the leg form too: read only for dispatcher, editable for accountant', d.leg === true && a.leg === false, [d.leg, a.leg]);
   ok(scn, 'a NEW order takes its price from whoever enters it (every role)', d.create === false && a.create === false, [d.create, a.create]);
   ok(scn, 'no page errors', !d.errs.length && !a.errs.length && !o.errs.length && !m.errs.length, d.errs.concat(a.errs, o.errs, m.errs));
 }
