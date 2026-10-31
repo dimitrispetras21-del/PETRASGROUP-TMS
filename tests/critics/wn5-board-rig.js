@@ -3312,7 +3312,8 @@ SCN.f33 = async (browser, origin) => {
     await page.waitForTimeout(400);
     const x = legs(S).pop(), h = at(x && x.body.stops, 1);
     ok(scn, '«Ένωση» → POST /plan/legs into rt 301 ΑΝΟΔΟΣ, Veroia on Wed 14/10 (the order\'s «ως 23:59»)', !!x && JSON.stringify(x.body.target) === '{"rt_id":301,"side":"ANODOS"}'
-      && !!h && h.planned_from === '2026-10-14T23:59:00+03:00', x && x.body);
+      // F64 (live 31/10): «ως 23:59» ends 23:59 on Wed 14/10 itself — main sent 23:59 Wed → 23:59 Thu (24 h)
+      && !!h && h.planned_to === '2026-10-14T23:59:00+03:00' && h.planned_from.slice(0, 10) === '2026-10-14', x && x.body);
     ok(scn, 'no page errors (3)', !S.pageErrors.length, S.pageErrors);
     await page.context().close();
   }
@@ -3384,13 +3385,14 @@ SCN.f32 = async (browser, origin) => {
     ok(scn, '… the dropped load\'s line is marked (.wn5-pfocus), the others are not', await bHas(page, `${P} .wn5-pline.wn5-pfocus[data-piece="4392"]`)
       && (await page.$$eval(`${P} .wn5-pline.wn5-pfocus`, (x) => x.length).catch(() => 0)) === 1);
     const hw = await page.$eval(`${P} [data-hub="from"]`, (i) => i.value + '|' + i.closest('.wn5-hubwin').querySelector('[data-hub="to"]').value).catch(() => null);
-    ok(scn, '… its own Veroia window «ως 23:59» fills the field (23:59|23:59)', hw === '23:59|23:59', hw);
+    // F64 (live 31/10): «ως 23:59» is the day up to it, never 23:59–23:59 (that read as 24 h to the next day)
+    ok(scn, '… its own Veroia window «ως 23:59» fills the field as the day up to it (00:00|23:59)', hw === '00:00|23:59', hw);
     ok(scn, 'a drop writes nothing by itself', writes(S).length === 0, writes(S).map((e) => e.m + ' ' + e.path));
     await bClick(page, `${P} [data-act="save"][data-piece="4392"]`);
     await page.waitForTimeout(400);
     const x = bCalls(S, 'POST', '/plan/legs').pop(), h = x && (x.body.stops || []).find((s) => s.location_id === 1);
-    ok(scn, 'one «Πρόσθεσε» → POST /plan/legs: piece 4392 into rt 301 ΑΝΟΔΟΣ, Veroia Wed 14/10 23:59', !!x && JSON.stringify(x.body.target) === '{"rt_id":301,"side":"ANODOS"}'
-      && JSON.stringify(x.body.pieces) === '[{"piece_id":4392}]' && !!h && h.planned_from === '2026-10-14T23:59:00+03:00', x && x.body);
+    ok(scn, 'one «Πρόσθεσε» → POST /plan/legs: piece 4392 into rt 301 ΑΝΟΔΟΣ, Veroia Wed 14/10 00:00–23:59 (same day)', !!x && JSON.stringify(x.body.target) === '{"rt_id":301,"side":"ANODOS"}'
+      && JSON.stringify(x.body.pieces) === '[{"piece_id":4392}]' && !!h && h.planned_from === '2026-10-14T00:00:00+03:00' && h.planned_to === '2026-10-14T23:59:00+03:00', x && x.body);
     ok(scn, 'no page errors (1)', !S.pageErrors.length, S.pageErrors);
     await page.context().close();
   }

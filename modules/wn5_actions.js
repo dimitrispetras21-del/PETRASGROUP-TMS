@@ -531,7 +531,15 @@
   }
   const _iso = (ymd, hm) => ymd + 'T' + hm + ':00' + _offset(ymd, hm);
   // a window that ends at or before it starts ends the next day (a 22:00–06:00 arrival)
-  const _win = (ymd, from, to) => [_iso(ymd, from), _iso(to <= from ? _addDays(ymd, 1) : ymd, to)];
+  // F64 (live 31/10, VS 644): the same hour twice is «at 08:00», that day — it read as 24 h to the next day and moved
+  // the truck. The base wants planned_to > planned_from (071 rt_stops_win): it is the minute that starts there (23:59:
+  // the minute that ends there). An end before the start still crosses midnight (a night window).
+  const _hmMin = (hm) => Number(hm.slice(0, 2)) * 60 + Number(hm.slice(3, 5));
+  const _minHm = (m) => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+  const _win = (ymd, from, to) => {
+    if (to === from) { const m = _hmMin(from); return m < 1439 ? [_iso(ymd, from), _iso(ymd, _minHm(m + 1))] : [_iso(ymd, _minHm(m - 1)), _iso(ymd, to)]; }
+    return [_iso(ymd, from), _iso(to < from ? _addDays(ymd, 1) : ymd, to)];
+  };
   // «0730», «7:30» → «07:30»; anything else → '' (the same reading as wi4_actions _hhmm)
   function _hhmm(v) {
     let s = String(v || '').trim();
@@ -1367,7 +1375,9 @@
     if (fIt && !hubStop) {
       const fn = _needs(fIt, false, hub), hd = _hubDayOf(fn, st.day);
       const hw = fn.find((n) => n.hub && n.from && n.to && _ymdOf(n.from) === hd);
-      if (hw) { st.hubFrom = _hm(hw.from); st.hubTo = _hm(hw.to); }
+      // F64: a deadline stored as one instant («ως 23:59») is the day up to it, 00:00–23:59 — never 23:59–23:59,
+      // which read as 24 h to the next day
+      if (hw) { st.hubTo = _hm(hw.to); st.hubFrom = _hm(hw.from) === st.hubTo ? DAY_WIN.from : _hm(hw.from); }
     }
     const box = _cycText(c, r);
     const anod = side === 'ANODOS';

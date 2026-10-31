@@ -2,7 +2,7 @@
 // point on the same truck, B-22 (PE «Όχι»), the invoice price for owner / accountant only. Judged by what reached the
 // fake /plan/* (S.plan: method, path, raw body, order — «the table» of this rig) and by the DOM; never by a toast or a
 // screenshot. Synthetic data only (public repo).
-// Usage: node tests/critics/wn5-pack2-rig.js [menu delpt half delwait listdel drag day newpt newanod price b22] [--shots <dir>]
+// Usage: node tests/critics/wn5-pack2-rig.js [menu delpt half delwait listdel drag day newpt newanod price f64 f65 b22] [--shots <dir>]
 //        WN5_TREE=<git archive origin/main> node tests/critics/wn5-pack2-rig.js   (plain-main proof: NO-GO, exit 1)
 // Exit: 0 green · 1 a check failed · 2 unknown scenario.
 'use strict';
@@ -313,10 +313,13 @@ async function newanod({ browser, origin, ok, scn }) {
   await page.context().close();
 }
 
-// 8 · the invoice price of an existing order: owner and accountant only (owner 31/10); a new order: everyone
+// 8 · the price (owner 31/10, study Κ1): every role while the national is not invoiced; once invoiced (the read says
+// invoiced: true), owner and accountant only. A new order: every role.
 async function price({ browser, origin, ok, scn }) {
-  const st = async (role) => {
-    const { page, S } = await K.openApp(browser, origin, { role });
+  const st = async (role, invoiced) => {
+    const orders = K.orders();
+    if (invoiced) orders[3101].order.invoiced = true;
+    const { page, S } = await K.openApp(browser, origin, { role, orders });
     const DLG = dlg('order');
     await page.evaluate(() => WN5Form.openOrder({ natOrderId: 3101 }));
     await page.waitForSelector(DLG, { timeout: 8000 }).catch(() => {});
@@ -326,23 +329,50 @@ async function price({ browser, origin, ok, scn }) {
     await page.evaluate(() => WN5Form.openOrder({}));
     await page.waitForSelector(DLG, { timeout: 8000 }).catch(() => {});
     const create = await page.$eval(`${DLG} [data-f="price"]`, (x) => x.disabled).catch(() => null);
-    await page.keyboard.press('Escape');
-    await page.waitForTimeout(300);
-    // the leg form (a click on the ΚΑΘΟΔΟΣ of RT-T101): N-T001's price field
-    await page.click('#content .wn5-row[data-rt="101"] [data-leg="KATHODOS"]').catch(() => {});
-    await page.waitForSelector(dlg('leg'), { timeout: 6000 }).catch(() => {});
-    const leg = await page.$eval(`${dlg('leg')} [data-nat="3001"] [data-f="price"]`, (x) => x.disabled).catch(() => null);
     const errs = S.pageErrors.slice();
     await page.context().close();
-    return { edit, create, leg, errs };
+    return { edit, create, errs };
   };
-  const d = await st('dispatcher'), a = await st('accountant'), o = await st('owner'), m = await st('management');
-  ok(scn, 'dispatcher: the edit form\'s price is read only, says who changes it, still shows the value — main: editable', !!d.edit && d.edit.dis && d.edit.v === '310' && /owner ή λογιστήριο/.test(d.edit.t), d.edit);
-  ok(scn, 'management: read only too', !!m.edit && m.edit.dis, m.edit);
-  ok(scn, 'accountant and owner: editable', !!a.edit && !a.edit.dis && !!o.edit && !o.edit.dis, [a.edit, o.edit]);
-  ok(scn, 'the leg form too: read only for dispatcher, editable for accountant', d.leg === true && a.leg === false, [d.leg, a.leg]);
-  ok(scn, 'a NEW order takes its price from whoever enters it (every role)', d.create === false && a.create === false, [d.create, a.create]);
-  ok(scn, 'no page errors', !d.errs.length && !a.errs.length && !o.errs.length && !m.errs.length, d.errs.concat(a.errs, o.errs, m.errs));
+  const d = await st('dispatcher', false), di = await st('dispatcher', true), ai = await st('accountant', true), oi = await st('owner', true), mi = await st('management', true);
+  ok(scn, 'not invoiced: the dispatcher changes the price (Σωτήρης writes it when he learns it)', !!d.edit && !d.edit.dis && d.edit.v === '310', d.edit);
+  ok(scn, 'invoiced: read only for dispatcher and management, says why — main: editable', !!di.edit && di.edit.dis && /Τιμολογημένη/.test(di.edit.t) && !!mi.edit && mi.edit.dis, [di.edit, mi.edit]);
+  ok(scn, 'invoiced: accountant and owner still change it', !!ai.edit && !ai.edit.dis && !!oi.edit && !oi.edit.dis, [ai.edit, oi.edit]);
+  ok(scn, 'a NEW order takes its price from every role', d.create === false && di.create === false, [d.create, di.create]);
+  ok(scn, 'no page errors', [d, di, ai, oi, mi].every((x) => !x.errs.length), [d, di, ai, oi, mi].flatMap((x) => x.errs));
+}
+
+// 10 · F64 (live 31/10, VS 644): the same hour twice is «at 08:00», that day — never 24 h to the next day
+async function f64({ browser, origin, ok, scn }) {
+  const { page, S } = await K.openApp(browser, origin, {});
+  const w = await page.evaluate(() => { const k = WN5Act._kit; return [k.win('2026-10-13', '08:00', '08:00'), k.win('2026-10-13', '23:59', '23:59'), k.win('2026-10-13', '22:00', '02:00'), k.win('2026-10-13', '08:00', '10:00')]; });
+  ok(scn, '08:00–08:00 → Tue 08:00–08:01, the same day — main: Tue 08:00 → Wed 08:00', JSON.stringify(w[0]) === JSON.stringify(['2026-10-13T08:00:00+03:00', '2026-10-13T08:01:00+03:00']), w[0]);
+  ok(scn, '23:59–23:59 → Tue 23:58–23:59, the same day', JSON.stringify(w[1]) === JSON.stringify(['2026-10-13T23:58:00+03:00', '2026-10-13T23:59:00+03:00']), w[1]);
+  ok(scn, 'a night window 22:00–02:00 still ends the next day; 08:00–10:00 as it was', JSON.stringify(w[2]) === JSON.stringify(['2026-10-13T22:00:00+03:00', '2026-10-14T02:00:00+03:00'])
+    && JSON.stringify(w[3]) === JSON.stringify(['2026-10-13T08:00:00+03:00', '2026-10-13T10:00:00+03:00']), [w[2], w[3]]);
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await page.context().close();
+}
+
+// 11 · F65 (live 31/10): the stop-time panel in a six-week month keeps «Αποθήκευση» in view, at 1440×900 and 1440×700
+async function f65({ browser, origin, ok, scn, shots }) {
+  for (const h of [900, 700]) {
+    const { page, S } = await K.openApp(browser, origin, { board: week2(), viewport: { width: 1440, height: h } });
+    // anchored low on the board (the live case: a row in the lower half), so the panel opens under it with little room
+    await page.evaluate(() => WN5Act.datePanel(101, 'KATHODOS', document.querySelector('#content .wn5-row[data-rt="102"]'), { stopId: 1002 }));
+    await page.waitForSelector(dlg('date'), { timeout: 6000 }).catch(() => {});
+    await page.click(`${dlg('date')} [data-act="mon"][data-d="1"]`).catch(() => {});   // → November 2026: six weeks
+    await page.waitForTimeout(300);
+    const v = await page.evaluate((D) => {
+      const dd = document.querySelector(D), b = document.querySelector(`${D} [data-act="save"]`), r = b.getBoundingClientRect();
+      const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return { scrolls: dd.scrollHeight > dd.clientHeight, inView: r.bottom <= innerHeight && r.top >= 0, hit: !!at && (at === b || b.contains(at)),
+        month: (document.querySelector(`${D} [data-cal]`) || {}).textContent.slice(0, 40) };
+    }, dlg('date'));
+    ok(scn, `${h}px high, November 2026: «Αποθήκευση» in the window and on top (not under the calendar) — main: under it`, v.inView && v.hit && /Νοέμβριος/.test(v.month), v);
+    await shot(page, shots, 'pack2-f65-november-1440x' + h);
+    ok(scn, `no page errors (${h})`, !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
 }
 
 // 9 · Figma audit B-22: a new order starts on PE «Όχι»
@@ -357,5 +387,5 @@ async function b22({ browser, origin, ok, scn }) {
   await page.context().close();
 }
 
-K.run({ scenarios: { menu, delpt, half, delwait, listdel, drag, day, newpt, newanod, price, b22 }, globals: ['WN5Act', 'WN5Form', 'WN5Edit'],
+K.run({ scenarios: { menu, delpt, half, delwait, listdel, drag, day, newpt, newanod, price, f64, f65, b22 }, globals: ['WN5Act', 'WN5Form', 'WN5Edit'],
   go: 'board pack 2: delete from the board, drag to truck / day, new point on its truck, B-22, price roles' });

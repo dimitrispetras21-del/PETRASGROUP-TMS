@@ -134,12 +134,13 @@
   // F1: the window headers lose their «*» and say what an empty window means
   const WIN_HEAD = 'Παράθυρο από – έως · κενό: όλη η ημέρα';
   const PRICE_KEPT = 'Τιμή € (χωρίς ΦΠΑ): η παραγγελία έχει ήδη τιμή — γράψε αριθμό· μια γραμμένη τιμή δεν σβήνεται';
-  // Owner 31/10: the invoice price of an existing order changes only by owner and accountant. A new order still takes
-  // its price from whoever enters it (the creation form is not gated). Screen only for now: the Worker still lets every
-  // role PATCH a price (decision 41) until its own check lands, so this is the way in that the office uses, not a lock.
+  // Owner 31/10 (flexible-rules study Κ1 / question 6): while a national is not invoiced, every role changes its price
+  // (the dispatcher writes it when he learns it, F4); once invoiced, only owner and accountant. The form knows
+  // «invoiced» only when GET /plan/orders/:id says it (invoiced: true; the SQL draft that adds it also makes
+  // plan_order_update refuse it, principle 4): an order whose read says nothing stays open, as every order is today.
   const PRICE_ROLES = Object.freeze(['owner', 'accountant']);
-  const _priceRo = () => !PRICE_ROLES.includes(typeof ROLE !== 'undefined' ? ROLE : '');
-  const PRICE_RO_TITLE = 'Η τιμή αλλάζει μόνο από owner ή λογιστήριο';
+  const _priceRo = (invoiced) => invoiced === true && !PRICE_ROLES.includes(typeof ROLE !== 'undefined' ? ROLE : '');
+  const PRICE_RO_TITLE = 'Τιμολογημένη: η τιμή αλλάζει μόνο από owner ή λογιστήριο';
   const UNTIL_HEAD = 'Άφιξη ως · κενό: όλη η ημέρα';
   // A row's window as sent (F1): both ends empty = the whole day; one end only is NOT guessed — it stays as typed and
   // _check names it. An arrival «ως» row (one time, Veroia on ΑΝΟΔΟΣ) empty = by the end of its day, 23:59, and it
@@ -184,7 +185,11 @@
     // F1 (code review 28/10): a row left without a window (the whole day) asks nothing of the stop, so it never widens
     // the hours another order agreed at the same place: the timed rows make the window, the whole-day rows only when
     // a place has nothing else.
-    const rows = st.orders.flatMap((o) => o.loads.concat(o.drops));
+    // F66 (owner 31/10): an arrival «ως» (Veroia on ΑΝΟΔΟΣ) has one time, and a new stop needs planned_to >
+    // planned_from (071 rt_stops_win). A cycle with no Veroia stop on its ΑΝΟΔΟΣ («Κενό γύρισμα») gets one on the
+    // arrival day: open from the end of the order's last loading that day (else the day's start) to the «ως».
+    const untilFrom = (o, d) => o.loads.filter((l) => l.day === d.day && l.to && l.to < d.to).map((l) => l.to).sort().pop() || '00:00';
+    const rows = st.orders.flatMap((o) => o.loads.concat(o.drops.map((d) => (d.until && d.to > '00:00' ? Object.assign({}, d, { from: untilFrom(o, d) }) : d))));
     for (const r of rows.filter((x) => !x.allDay).concat(rows.filter((x) => x.allDay))) {
       const f = _iso(r.day, r.from), t = _iso(r.day, r.to);
       const e = byLoc.get(r.location_id);
@@ -267,13 +272,13 @@
         }
       }
     });
+    // F66: an arrival «ως» on a cycle with no Veroia stop on that side makes one (_stops); only «ως 00:00» has no
+    // time before it on its day
     if (st.target) {
-      // A new stop needs planned_to > planned_from (071 rt_stops_win); an arrival «ως» has one time only, so it
-      // can only use the cycle's own Veroia stop of that side.
       for (const o of st.orders) for (const r of o.drops) {
-        if (!r.until) continue;
+        if (!r.until || r.to > '00:00') continue;
         const ex = (st.cycleStops || []).some((s) => s.side === st.target.side && s.location_id === r.location_id);
-        if (!ex) { out.push('Ο κύκλος δεν έχει στάση Βέροιας στην ΑΝΟΔΟ — όρισέ τη πρώτα από την ημέρα του σκέλους'); return out; }
+        if (!ex) { out.push('Άφιξη Βέροιας ως 00:00: γράψε ώρα μετά τις 00:00'); return out; }
       }
     }
     return out;
@@ -826,7 +831,7 @@
       full: true, nat_order_id: o.nat_order_id, client: o.client || '',
       price: o.price == null ? null : Number(o.price), temperature_c: o.temperature_c == null ? null : Number(o.temperature_c),
       pallet_exchange: typeof o.pallet_exchange === 'boolean' ? o.pallet_exchange : null,
-      reference: o.reference || '', goods: o.goods || '', notes: o.notes || '',
+      reference: o.reference || '', goods: o.goods || '', notes: o.notes || '', invoiced: o.invoiced === true,
       direction: o.direction === 'KATHODOS' || o.direction === 'ANODOS' ? o.direction : null,
       // the side is the cycle's while a point rides onward; one waiting at Veroia (F23) has nothing planned yet
       riding: ships.some((s) => s.rides && !(s.at_hub && s.waits)), ships,
@@ -927,7 +932,7 @@
     const dro = e.riding ? ' disabled' : '';
     return `<div class="wn5f-grid4">`
       + `<div class="wn5f-f"><span>Πελάτης</span><span class="wn5f-ro">${_esc(e.client || '—')}</span></div>`
-      + `<label class="wn5f-f"><span>Τιμή € (χωρίς ΦΠΑ)</span><input class="form-input" data-f="price" inputmode="decimal" value="${e.price == null ? '' : _esc(e.price)}" placeholder="${e.price == null ? 'λείπει' : ''}"${_priceRo() ? ` disabled title="${PRICE_RO_TITLE}"` : ''}></label>`
+      + `<label class="wn5f-f"><span>Τιμή € (χωρίς ΦΠΑ)</span><input class="form-input" data-f="price" inputmode="decimal" value="${e.price == null ? '' : _esc(e.price)}" placeholder="${e.price == null ? 'λείπει' : ''}"${_priceRo(e.invoiced) ? ` disabled title="${PRICE_RO_TITLE}"` : ''}></label>`
       + `<label class="wn5f-f"><span>Θερμοκρασία °C</span><input class="form-input" data-f="temp" inputmode="decimal" value="${e.temperature_c == null ? '' : _esc(e.temperature_c)}"></label>`
       + `<div class="wn5f-f"><span>PE · ανταλλαγή παλετών</span>${_peHTML(e.pallet_exchange)}</div></div>`
       // 075: the side is corrected here (the repair of #17); on a cycle the cycle's side holds, so it stays as it is
@@ -936,7 +941,7 @@
       + ['KATHODOS', 'ANODOS'].map((k) => `<option value="${k}"${e.direction === k ? ' selected' : ''}>${DIR_GR[k]}</option>`).join('')
       + `</select></label>`
       // F4 (080): read from the order itself (077), a null price is «none yet» — said, and written here when known
-      + (e.price == null && !_priceRo() ? '<div class="wn5f-note">Η παραγγελία δεν έχει ακόμη τιμή — γράψε την εδώ όταν τη μάθεις.</div>' : '')
+      + (e.price == null && !_priceRo(e.invoiced) ? '<div class="wn5f-note">Η παραγγελία δεν έχει ακόμη τιμή — γράψε την εδώ όταν τη μάθεις.</div>' : '')
       + `<div class="wn5f-grid3"><label class="wn5f-f"><span>Αναφορά</span><input class="form-input" data-f="ref" value="${_esc(e.reference)}"></label>`
       + `<label class="wn5f-f"><span>Είδος</span><input class="form-input" data-f="goods" value="${_esc(e.goods)}"></label>`
       + `<label class="wn5f-f"><span>Σημειώσεις</span><input class="form-input" data-f="notes" value="${_esc(e.notes)}"></label></div>`
@@ -1364,12 +1369,12 @@
     const drops = f.m.side === 'ANODOS' ? b.drops.filter((r) => !r.hub) : b.drops;
     return `<div class="wn5f-ord" data-nat="${id}">`
       + `<div class="wn5f-lf"><div class="wn5f-f"><span>Πελάτης *</span><span class="wn5f-ro">${_esc(b.client || '—')}</span></div>`
-      + `<label class="wn5f-f"><span>Τιμή € (χωρίς ΦΠΑ)</span><input class="form-input" data-f="price" inputmode="decimal" value="${b.price == null ? '' : _esc(b.price)}" placeholder="${b.priceMissing ? 'λείπει' : b.price == null ? 'χωρίς αλλαγή' : ''}"${_priceRo() ? ` disabled title="${PRICE_RO_TITLE}"` : ''}></label>`
+      + `<label class="wn5f-f"><span>Τιμή € (χωρίς ΦΠΑ)</span><input class="form-input" data-f="price" inputmode="decimal" value="${b.price == null ? '' : _esc(b.price)}" placeholder="${b.priceMissing ? 'λείπει' : b.price == null ? 'χωρίς αλλαγή' : ''}"></label>`
       + `<label class="wn5f-f"><span>Θερμοκρασία °C</span><input class="form-input" data-f="temp" inputmode="decimal" value="${b.temps.length === 1 ? (b.temps[0] > 0 ? '+' : '') + _esc(b.temps[0]) : ''}"></label>`
       + `<div class="wn5f-f"><span>PE</span>${_peHTML(b.pallet_exchange)}</div></div>`
       + `<div class="wn5f-grid3"><label class="wn5f-f"><span>Αναφορά</span><input class="form-input" data-f="ref" value="${_esc(b.reference)}"></label>`
       + `<label class="wn5f-f"><span>Είδος</span><input class="form-input" data-f="goods"></label><label class="wn5f-f"><span>Σημειώσεις</span><input class="form-input" data-f="notes"></label></div>`
-      + (_priceRo() ? '' : b.priceMissing ? '<div class="wn5f-note">Η παραγγελία δεν έχει ακόμη τιμή — γράψε την εδώ όταν τη μάθεις.</div>'
+      + (b.priceMissing ? '<div class="wn5f-note">Η παραγγελία δεν έχει ακόμη τιμή — γράψε την εδώ όταν τη μάθεις.</div>'
         : b.price == null ? '<div class="wn5f-note">Η τιμή δεν έρχεται με το board για παραγγελία σε κύκλο — γράψε τιμή μόνο για να την αλλάξεις.</div>' : '')
       + `<div class="wn5f-sec">ΣΗΜΕΙΑ ΦΟΡΤΩΣΗΣ</div>` + _lth('Παράθυρο από – έως *') + b.loads.map((r) => _roRowHTML(r, false)).join('')
       + (drops.length ? `<div class="wn5f-sec">ΣΗΜΕΙΑ ΠΑΡΑΔΟΣΗΣ</div>` + _lth('Παράθυρο από – έως *') + drops.map((r) => _roRowHTML(r, false)).join('') : '')
