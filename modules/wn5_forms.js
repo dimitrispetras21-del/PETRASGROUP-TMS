@@ -454,6 +454,8 @@
     if (!w) return;
     const x = w.querySelector('.wn5f-dayx'), p = w.querySelector('.wn5f-dayp');
     if (!x || !p) return;
+    // F44: a day the user typed or picked is theirs — it no longer follows what the screen filled (data-auto)
+    if (t === p || t === x) delete p.dataset.auto;
     if (t === p) { delete x.dataset.raw; return; }
     if (t !== x) return;
     const d = _dayParse(x.value, x.dataset.ref);
@@ -509,7 +511,7 @@
     const pid = 'wn5l' + (++f.seq);
     return `<div class="wn5f-row" data-k="${k}" data-pid="${pid}">`
       + `<div class="wn5f-loc">${fhLocSelect(pid, '', 'fhLocDrop')}</div>`
-      + _dayHTML('data-f="day"', f.dayDefault, '', false)
+      + _dayHTML('data-f="day"' + (f.dayDefault ? ' data-auto="1"' : ''), f.dayDefault, '', false)
       + `<span class="wn5f-win"><span class="wn5f-from"><input ${HM_INPUT} data-f="from" aria-label="από"><span class="wn5f-dash">–</span></span>`
       + `<input ${HM_INPUT} data-f="to" aria-label="έως"></span>`
       + `<input class="form-input" data-f="pal" inputmode="decimal" aria-label="Παλέτες">`
@@ -635,8 +637,16 @@
     f.el.querySelector('[data-vwinl]').textContent = dir === 'ANODOS' ? 'Άφιξη Βέροιας ως' : 'Παράθυρο φόρτωσης Βέροιας';
     f.el.querySelector('[data-vfromw]').hidden = dir === 'ANODOS';
     const raw = _raw(f);
-    // the header's Veroia day/window fills an empty Veroia row: one value typed once (Figma 9624)
-    const vday = f.el.querySelector('#wn5f-vday').value, vf = _hmNorm(f.el.querySelector('#wn5f-vfrom').value), vt = _hmNorm(f.el.querySelector('#wn5f-vto').value);
+    // F44 (F33's rule): with no Veroia stop on the cycle yet, an ΑΝΟΔΟΣ arrival the screen filled follows the order's
+    // own loading — its last loading day — until the user types the arrival day
+    const vEl = f.el.querySelector('#wn5f-vday');
+    if (dir === 'ANODOS' && vEl.dataset.auto) {
+      const last = [...f.el.querySelectorAll('.wn5f-rows[data-k="load"] [data-f="day"]')].map((x) => x.value).filter((v) => DAY.test(v)).sort().pop();
+      if (last && last !== vEl.value) vEl.value = last;
+    }
+    // the header's Veroia day/window fills an empty Veroia row: one value typed once (Figma 9624); a Veroia row the
+    // screen filled (data-auto) follows the header, one the user typed never
+    const vday = vEl.value, vf = _hmNorm(f.el.querySelector('#wn5f-vfrom').value), vt = _hmNorm(f.el.querySelector('#wn5f-vto').value);
     const whole = _headWinCheck(f).length === 0;   // F1: half a head window never reaches the rows
     f.el.querySelectorAll('.wn5f-row').forEach((r) => {
       const rec = (document.getElementById('lv_' + r.dataset.pid) || {}).value || '';
@@ -644,7 +654,7 @@
         const d = r.querySelector('[data-f="day"]'), a = r.querySelector('[data-f="from"]'), b = r.querySelector('[data-f="to"]');
         // a day typed wrong stays wrong, in red (_dayInput): the head never fills it over the user's keys
         const typed = d.parentElement && d.parentElement.querySelector('.wn5f-dayx');
-        if (!d.value && vday && !(typed && typed.dataset.raw)) d.value = vday;
+        if ((!d.value || (d.dataset.auto && d.value !== vday)) && vday && !(typed && typed.dataset.raw)) { d.value = vday; d.dataset.auto = '1'; }
         if (whole && !a.value && vf) a.value = vf;
         if (whole && !b.value && vt) b.value = vt;
       }
@@ -832,11 +842,13 @@
   }
   // «Φορτηγό RT-1293 · φόρτωση Δευ 26/10 όλη η ημέρα [Αλλαγή ώρας στάσης ›] · παράδοση …»: what the truck does there, and
   // the way to move it (F29, the day panel of that one stop). The order's own window changes in the row above.
+  // one text for a ride stop, drawn here and redrawn after a save that moved it (081)
+  const _rideText = (code, k, from, to) => `${code} · ${k === 'load' ? 'φόρτωση' : 'παράδοση'} ${_dlab((_parts(from) || {}).day)} ${_hmw(from, to)}`;
   function _rideHTML(e, s) {
     const st = _rideStops(e.nat_order_id, s);
     if (!st.length) return '';
-    return `<div class="wn5f-shipstop" data-shipstop="${s.shipment_id}">` + st.map((x) => `<span>${_esc(x.code)} · ${x.k === 'load' ? 'φόρτωση' : 'παράδοση'} `
-      + `${_esc(_dlab((_parts(x.from) || {}).day))} ${_esc(_hmw(x.from, x.to))}</span><button type="button" class="wn5f-lnk" data-act="stop-time" data-rt="${x.rt_id}" data-side="${x.side}" data-stop="${x.stop_id}">Αλλαγή ώρας στάσης ›</button>`).join('')
+    return `<div class="wn5f-shipstop" data-shipstop="${s.shipment_id}">` + st.map((x) => `<span data-ridestop="${x.stop_id}" data-k="${x.k}" data-code="${_esc(x.code)}">${_esc(_rideText(x.code, x.k, x.from, x.to))}</span>`
+      + `<button type="button" class="wn5f-lnk" data-act="stop-time" data-rt="${x.rt_id}" data-side="${x.side}" data-stop="${x.stop_id}">Αλλαγή ώρας στάσης ›</button>`).join('')
       + '</div>';
   }
   function _shipHTML(e, s) {
@@ -928,7 +940,9 @@
       // owner 28/10: a new point is not put on the order's cycle by itself — one board move puts it on a truck
       + '<div class="wn5f-note">Παράθυρο κενό: όλη η ημέρα. Νέο σημείο: μένει ΠΡΟΣ ΑΝΑΘΕΣΗ — βάλ\' το σε φορτηγό από το Εβδομαδιαίο.</div>'
       // F30: what a save does to a riding point, said before it is pressed (principle 1)
-      + (e.riding ? '<div class="wn5f-note" data-ridenote>Σημείο σε κύκλο: παλέτες, ημέρα και παράθυρο αλλάζουν εδώ και μένει στο ίδιο φορτηγό. Η ώρα της στάσης του φορτηγού δεν αλλάζει μαζί: «Αλλαγή ώρας στάσης ›».</div>' : '');
+      // 081: the stop follows only when it is this point's alone (the base decides, and before 081 runs it never does):
+      // the note claims neither; the line after the save says which stop moved and which stayed
+      + (e.riding ? '<div class="wn5f-note" data-ridenote>Σημείο σε κύκλο: παλέτες, ημέρα και παράθυρο αλλάζουν εδώ και μένει στο ίδιο φορτηγό. Μετά την αποθήκευση γράφεται αν άλλαξε και η στάση του φορτηγού.</div>' : '');
   }
   function _readEdit(f) {
     const v = (sel) => { const x = f.el.querySelector(sel); return x ? x.value : ''; };
@@ -1052,7 +1066,20 @@
       // Veroia has no onward stop to name.
       const moved = (body.shipments || []).filter((x) => { const o = f.edit.ships.find((y) => y.shipment_id === x.shipment_id) || {};
         return x.shipment_id != null && !x.remove && o.rides && !(o.at_hub && o.waits) && ['load_from', 'load_to', 'deliver_from', 'deliver_to'].some((k) => k in x); });
-      if (moved.length) {
+      // 081: the base moved the point's own stops in this save and named the ones it kept (warnings stop_kept, in the
+      // strip by _done). Before 081 runs the answer has no stops_moved: the line below says the stop did not change.
+      const follow = ans && ans.ids && Array.isArray(ans.ids.stops_moved) ? ans.ids.stops_moved : null;
+      if (follow && follow.length) {
+        const codes = [...new Set(follow.map((x) => x.rt_code).filter(Boolean))];
+        f.el.querySelector('[data-done]').textContent += ` · η στάση του φορτηγού ακολούθησε${codes.length ? ' (' + codes.join(', ') + ')' : ''}`;
+        // the stop rows under the point show the stop where it is now, not the board as it was before the save
+        for (const m of follow) {
+          const a = m && m.after;
+          if (!a) continue;
+          f.el.querySelectorAll(`[data-ridestop="${Number(m.stop_id)}"]`).forEach((sp) => { sp.textContent = _rideText(sp.dataset.code, sp.dataset.k, a.planned_from, a.planned_to); });
+        }
+      }
+      if (moved.length && !follow) {
         const here = moved.every((x) => f.el.querySelector(`[data-shipstop="${x.shipment_id}"] [data-act="stop-time"]`));
         f.el.querySelector('[data-done]').textContent += here ? ' · η ώρα της στάσης του φορτηγού δεν άλλαξε: «Αλλαγή ώρας στάσης ›» στο σημείο'
           : ' · η ώρα της στάσης του φορτηγού δεν άλλαξε: αλλάζει από το σκέλος του κύκλου (άλλη εβδομάδα)';
@@ -1172,8 +1199,15 @@
       const hubSel = (c && c.stops || []).filter((s) => s.side === dir.value).sort((a, b) => a.seq - b.seq);
       const hubStop = hubSel.find((s) => { try { return s.location_id === PlanIds.id('location', _hubRec()); } catch (_) { return false; } });
       const v = p.veroia || (hubStop ? { from: hubStop.planned_from, to: hubStop.planned_to } : null);
-      const day = p.day || (hubStop ? hubStop.stop_day : '');
-      if (day) { f.el.querySelector('#wn5f-vday').value = day; f.dayDefault = day; f.el.querySelectorAll('[data-f="day"]').forEach((x) => { if (!x.value) x.value = day; }); }
+      // F44/F46 (live 31/10): the Veroia day is the cycle's own Veroia stop on that side, before the cycle's start
+      // (p.day): the start put a Veroia arrival on Thu 29 for a cycle that stops at Veroia on Fri 30, fixed by hand
+      // three times. The points keep the cycle's day as before. What the screen fills is marked data-auto and follows
+      // (_orderRefresh); a day the user types or picks stays theirs (_dayInput).
+      const hubDay = hubStop ? hubStop.stop_day || '' : '';
+      const day = p.day || hubDay, vd = hubDay || p.day || '';
+      const vEl = f.el.querySelector('#wn5f-vday');
+      if (vd) { vEl.value = vd; if (!hubDay) vEl.dataset.auto = '1'; }
+      if (day) { f.dayDefault = day; f.el.querySelectorAll('[data-f="day"]').forEach((x) => { if (!x.value) { x.value = day; x.dataset.auto = '1'; } }); }
       if (v) {
         const a = /^\d\d:\d\d$/.test(v.from) ? v.from : (_parts(v.from) || {}).hm, b = /^\d\d:\d\d$/.test(v.to) ? v.to : (_parts(v.to) || {}).hm;
         if (a) f.el.querySelector('#wn5f-vfrom').value = a;

@@ -60,6 +60,25 @@
     seg_stop_moved: (w) => `η στάση #${w.stop_id} περνά στο όχημα του άλλου τμήματος (#${w.from_segment_id} → #${w.to_segment_id})`,
     // 072b H-24: the handover time falls inside the stop's window — it stays with the segment of its arrival (H-9)
     seg_stop_straddles: (w) => `η ώρα της αλλαγής πέφτει μέσα στο παράθυρο της στάσης #${w.stop_id}: μένει στο τμήμα της άφιξης`,
+    // 081 (owner 31/10): a point's new window did not take its truck's stop with it, and why. 'shared' names how many
+    // other points stop there: the stop-time change moves it for all of them, with its own preview. 'windows_differ':
+    // points of the same save asked the one stop for different windows (no other point is there to count). Any other
+    // reason is a rule the move broke (owner 31/10, loose rules now): the point was saved and the stop stayed.
+    stop_kept: (w) => {
+      const n = Array.isArray(w.others) ? w.others.length : 0;
+      const head = `η στάση του φορτηγού στο ${w.rt_code || '—'} δεν άλλαξε`;
+      if (w.reason === 'executed') return head + ': έχει ήδη εκτελεστεί';
+      if (w.reason === 'handover') return head + ': ο κύκλος έχει αλλαγή οχήματος · «Αλλαγή ώρας στάσης ›»';
+      if (w.reason === 'windows_differ') return head + ': σημεία αυτής της αποθήκευσης ζητούν διαφορετική ώρα εκεί · «Αλλαγή ώρας στάσης ›»';
+      // a rule the move would break (the point was saved, the stop stayed): the rule in words, never a code; the
+      // busy detail only when it is cycle codes (in a race plan_h_finish can only name its EXCLUDE constraint)
+      if (w.reason === 'truck_busy') return head + `: το φορτηγό είναι απασχολημένο τότε${/^RT-[\w/ -]+$/.test(w.detail || '') ? ' (' + w.detail + ')' : ''}`;
+      if (w.reason === 'driver_busy') return head + `: ο οδηγός είναι απασχολημένος τότε${/^RT-[\w/ -]+$/.test(w.detail || '') ? ' (' + w.detail + ')' : ''}`;
+      if (w.reason === 'stop_order' || w.reason === 'side_order' || w.reason === 'leg_order') return head + ': η νέα ώρα χαλάει τη σειρά των στάσεων του κύκλου · «Αλλαγή ώρας στάσης ›»';
+      if (w.reason === 'payroll_locked') return head + ': η μισθοδοσία του κύκλου έχει ήδη ποσά';
+      if (w.reason !== 'shared') return head + ': η μετακίνηση δεν επιτρέπεται εδώ · «Αλλαγή ώρας στάσης ›»';
+      return head + `: εξυπηρετεί και ${n === 1 ? '1 άλλο σημείο' : n > 1 ? n + ' άλλα σημεία' : 'άλλα σημεία'} · «Αλλαγή ώρας στάσης ›» την αλλάζει για όλα`;
+    },
   });
 
   const CONSEQUENCE = Object.freeze({

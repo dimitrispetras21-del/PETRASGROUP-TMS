@@ -3032,6 +3032,59 @@ SCN.f32 = async (browser, origin) => {
     await page.context().close();
   }
 };
+// F47 (live simulation 31/10): «Ανάθεση / αλλαγή φορτηγού» of a cycle — a click in the search field closed the panel,
+// twice in a row, and the user scrolled through 35 trucks. Repro on RT-T301 from the ✈ menu.
+SCN.f47 = async (browser, origin) => {
+  const scn = 'f47';
+  const D = bDlg('assign');
+  const { page, S } = await bOpen(browser, origin, { board: f33Board() });
+  await bMenu(page, 301, 'assign');
+  await page.waitForTimeout(500);
+  ok(scn, '✈ «Ανάθεση / αλλαγή φορτηγού» opens Δ1', await bHas(page, D));
+  await page.click(`${D} [data-q]`).catch((e) => S.pageErrors.push('click: ' + e.message));
+  await page.waitForTimeout(300);
+  ok(scn, 'a click in the search keeps the panel open — live: it closed', await bHas(page, D));
+  await page.click(`${D} [data-q]`).catch(() => {});
+  await page.keyboard.type('2104').catch(() => {});
+  await page.waitForTimeout(300);
+  const shown = await page.$$eval(`${D} [data-line="free"]`, (xs) => xs.filter((x) => !x.hidden).map((x) => x.innerText.split('\n')[0])).catch(() => null);
+  ok(scn, '… and typing filters the trucks («2104» → TST-2104 only)', await bHas(page, D) && Array.isArray(shown) && shown.length === 1 && /TST-2104/.test(shown[0]), shown);
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await page.context().close();
+  // the live case: 35 trucks, a 1440×800 window — the panel is taller than the window
+  const many = clone(B_LOOKUPS);
+  for (let i = 0; i < 30; i++) many.trucks.push({ id: 100 + i, legacy_id: 'recTRK' + (100 + i), license_plate: 'TST-3' + String(i).padStart(3, '0'), active: true });
+  const b = await bOpen(browser, origin, { board: f33Board(), viewport: { width: 1440, height: 800 }, plan: { 'GET /plan/lookups': () => [200, clone(many)] } });
+  await bMenu(b.page, 301, 'assign');
+  await b.page.waitForTimeout(500);
+  const box = await b.page.$eval(`${D} [data-q]`, (i) => { const r = i.getBoundingClientRect(); return { y: Math.round(r.top), h: Math.round(r.height), at: document.elementFromPoint(r.left + 10, r.top + r.height / 2) === i }; }).catch((e) => ({ err: String(e) }));
+  await b.page.click(`${D} [data-q]`).catch((e) => b.S.pageErrors.push('click: ' + e.message));
+  await b.page.waitForTimeout(300);
+  ok(scn, '35 trucks, 1440×800: a click in the search keeps the panel open', await bHas(b.page, D), box);
+  await b.page.context().close();
+};
+// F48 (live simulation 31/10): in Δ1 / «Μεταφορά σε…» a picked truck's «Ρυμούλκα / Οδηγός» panel stayed open after the
+// search hid its line — orphaned, under a list that no longer showed its truck.
+SCN.f48 = async (browser, origin) => {
+  const scn = 'f48';
+  const D = bDlg('assign');
+  const { page, S } = await bOpen(browser, origin, { board: f33Board() });
+  await bMenu(page, 301, 'assign');
+  await page.waitForTimeout(400);
+  await bClick(page, `${D} [data-act="pick"][data-cand="truck:11"]`);
+  const vis = () => page.$eval(`${D} .wn5-more[data-more="truck:11"]`, (e) => e.offsetParent !== null).catch(() => null);
+  const open0 = await vis();
+  await page.fill(`${D} [data-q]`, '2108').catch(() => {});
+  await page.waitForTimeout(200);
+  const open1 = await vis();
+  await page.fill(`${D} [data-q]`, '').catch(() => {});
+  await page.waitForTimeout(200);
+  const open2 = await vis();
+  ok(scn, 'the picked truck\'s «Ρυμούλκα / Οδηγός» hides with its line and comes back with it — main: left open, orphaned',
+    open0 === true && open1 === false && open2 === true, { open0, open1, open2 });
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await page.context().close();
+};
 // ── main ──
 (async () => {
   if (argv.includes('--check-fixture')) process.exit(checkFixture() ? 0 : 1);

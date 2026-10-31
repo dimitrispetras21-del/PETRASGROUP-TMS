@@ -1048,6 +1048,12 @@
       }
       // a row's red «Λείπει: …» goes and comes with its row
       for (const w of d.body.querySelectorAll('.wn5-cand + .wn5-why')) w.hidden = w.previousElementSibling.hidden;
+      // F48 (live 31/10): the «Ρυμούλκα / Οδηγός» panel of a picked truck goes with its truck's line — the search
+      // left it open under a hidden line, orphaned, saving for a truck the list no longer showed
+      for (const m of d.body.querySelectorAll('.wn5-more[data-more]')) {
+        const b = d.body.querySelector('.wn5-cand[data-line="free"] [data-cand="' + m.dataset.more + '"]');
+        m.hidden = !!(b && b.closest('.wn5-cand').hidden);
+      }
     };
     d.refresh = () => {
       for (const b of d.dlg.querySelectorAll(SAVES)) {

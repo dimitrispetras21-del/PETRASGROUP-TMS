@@ -7,7 +7,7 @@
 //   - Offline banner via postMessage to all clients
 // ═══════════════════════════════════════════════════════════
 
-const SW_VERSION = '1793476255';
+const SW_VERSION = '1793480010';
 
 // Το vendor/leaflet/* ΔΕΝ μπαίνει στο APP_SHELL επίτηδες: το pre-cache στο
 // install θα κατέβαζε 228 KB σε κάθε χρήστη, ακυρώνοντας το lazy loading της
