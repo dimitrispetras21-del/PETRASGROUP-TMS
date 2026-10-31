@@ -10,7 +10,7 @@
 <!-- DM Sans 600/700: το TRIP PnL (Figma 28/8) ζητά πραγματικά SemiBold/Bold
      ποσά — χωρίς αυτά ο browser συνθέτει faux-bold απ' το 500. -->
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=1793480040">
+<link rel="stylesheet" href="assets/style.css?v=1793482520">
 </head>
 <body>
 
@@ -111,13 +111,16 @@
 <script src="core/dkv-parser.js?v=1789665946"></script>
 <script src="core/constants.js?v=1788768866"></script>
 <script src="core/auth.js?v=1791464457"></script>
-<script src="core/api.js?v=1793213920"></script>
+<script src="core/api.js?v=1793482508"></script>
 <!-- 2a. National v5 (F4α): the one client of /plan/* — inert at load, used only by the v5 board (FEATURES.WN_V5). -->
-<script src="core/plan-api.js?v=1793210792"></script>
+<script src="core/plan-api.js?v=1793482508"></script>
 <!-- 2b. National v5 F5 (FE-1): PlanConfig.load() = has day L happened (GET /plan/config); inert at load. -->
 <script src="core/plan-config.js?v=1793213920"></script>
+<!-- F36: the login window over the page (core/api.js opens it on a 401) and the new-version reload that waits for open forms. -->
+<script src="core/relogin.js?v=1793482508"></script>
+<script src="core/sw-update.js?v=1793482508"></script>
 <script src="core/countries.js?v=1788767479"></script>
-<script src="core/utils.js?v=1793187358"></script>
+<script src="core/utils.js?v=1793482508"></script>
 <script src="core/tms-week.js?v=1791046616"></script>
   <script src="core/share-helpers.js?v=1790108919"></script>
 <script src="core/ui.js?v=1792010591"></script>
@@ -128,7 +131,7 @@
 <script src="core/doc-text.js?v=1790625635"></script>
 <script src="core/scan-engine-v2.js?v=1790625635"></script>
 <script src="core/doc-viewer.js?v=1790625635"></script>
-<script src="core/order-docs.js?v=1792092833"></script>
+<script src="core/order-docs.js?v=1793482508"></script>
 <script src="core/stops-helpers.js?v=1793187358"></script>
 <script src="core/vs-dates.js?v=1791757438"></script>
 <script src="core/pa-helpers.js?v=1791147854"></script>
@@ -160,7 +163,7 @@
 <script src="modules/wi4_actions.js?v=1792094982"></script>
 <script src="modules/weekly_natl.js?v=1793048102"></script>
   <script src="modules/daily_ramp.js?v=1793213921"></script>
-  <script src="modules/costs.js?v=1793213921"></script>
+  <script src="modules/costs.js?v=1793482508"></script>
   <script src="modules/payroll.js?v=1791230000"></script>
   <script src="modules/payroll_print.js?v=1791230000"></script>
   <script src="modules/expenses.js?v=1792092833"></script>
@@ -169,13 +172,13 @@
   <script src="modules/orders_intl.js?v=1793187358"></script>
 <script src="modules/orders_natl.js?v=1793187358"></script>
 <!-- 3a. Weekly National v5 (F4α): inert while FEATURES.WN_V5 is 'off' (one seam line in modules/weekly_natl.js). -->
-<script src="modules/weekly_natl_v5.js?v=1793480040"></script>
-<script src="modules/wn5_actions.js?v=1793480040"></script>
-<script src="modules/wn5_assign.js?v=1793480040"></script>
-<script src="modules/wn5_veroia.js?v=1793480040"></script>
+<script src="modules/weekly_natl_v5.js?v=1793482520"></script>
+<script src="modules/wn5_actions.js?v=1793482520"></script>
+<script src="modules/wn5_assign.js?v=1793482520"></script>
+<script src="modules/wn5_veroia.js?v=1793482520"></script>
 <script src="modules/wn5_forms.js?v=1793480001"></script>
 <script src="modules/wn5_sheet.js?v=1793213921"></script>
-<script src="modules/wn5_handover.js?v=1793480040"></script>
+<script src="modules/wn5_handover.js?v=1793482520"></script>
   <script src="modules/orders_hub.js?v=1792529441"></script>
   <script src="modules/orders_catalog.js?v=1793187358"></script>
   <script src="modules/orders_noprice_view.js?v=1793187358"></script>
@@ -222,7 +225,8 @@ function init() {
         tracesSampleRate: 0.1,
         beforeSend(event) {
           // Don't report benign 401s (session expired — handled by auth.js)
-          if (event.exception?.values?.[0]?.value?.includes('Unauthorized')) return null;
+          const _v = event.exception?.values?.[0]?.value || '';
+          if (_v.includes('Unauthorized') || _v.includes('Η σύνδεση έληξε')) return null;
           return event;
         },
       });
@@ -307,12 +311,16 @@ if ('serviceWorker' in navigator) {
     if (banner) { banner.style.opacity = '0'; setTimeout(() => { if (banner) banner.style.display = 'none'; }, 300); }
   }
 
-  // Reload when new SW takes control (seamless update)
+  // A new SW took control: reload — but never over a half-filled form (F20/F58, owner 31/10/2026). The reload waits
+  // until no form, dialog or popover is open; meanwhile a «Νέα έκδοση · ανανέωση» pill reloads on a click
+  // (core/sw-update.js). Without that file (a stale cache) the old immediate reload stays.
+  if (typeof tmsSwUpdateWatch === 'function') tmsSwUpdateWatch();
   let refreshing = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (refreshing) return;
     refreshing = true;
-    window.location.reload();
+    if (typeof tmsSwUpdateReady === 'function') tmsSwUpdateReady();
+    else window.location.reload();
   });
 }
 </script>
