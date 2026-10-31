@@ -2,7 +2,7 @@
 // fake /plan/* (S.plan: method, path, body, count, order) and by what the page shows; never by a toast. Synthetic
 // week of tests/critics/wn5-rig-kit.js. The default answer of every non-dry write is 409 writes_closed, as deployed
 // until day L; scenarios script their own answers with sentinel messages.
-// Usage: node tests/critics/wn5-form-rig.js [order nowin nopp groupage unknown reused replayed edit edit-ride edit-add edit-remove edit-read-fail edit-twoday veroia-edit day-type leg leg-anodos stop-time miss leg-add …]
+// Usage: node tests/critics/wn5-form-rig.js [order nowin nopp groupage unknown reused replayed edit edit-ride edit-follow edit-add edit-remove edit-read-fail edit-twoday veroia-edit day-type leg leg-anodos stop-time miss leg-add …]
 //        WN5_TREE=<git archive origin/main> node tests/critics/wn5-form-rig.js   (plain-main proof: NO-GO, exit 1)
 // Exit: 0 green · 1 a check failed · 2 unknown scenario.
 'use strict';
@@ -471,7 +471,8 @@ async function scnEditRide({ browser, origin, ok, scn }) {
   ok(scn, 'under it the truck\'s stops: «RT-T101 · φόρτωση Δευ 12/10 16:00–18:00» and «RT-T101 · παράδοση Τρί 13/10 07:00–09:00», each with «Αλλαγή ώρας στάσης ›»',
     !!stop && stop.t.includes('RT-T101 · φόρτωση Δευ 12/10 16:00–18:00') && stop.t.includes('RT-T101 · παράδοση Τρί 13/10 07:00–09:00')
     && JSON.stringify(stop.b) === JSON.stringify(['1001:KATHODOS', '1003:KATHODOS']), stop);
-  ok(scn, 'the form says before the save that the truck\'s stop does not move with the order', /Η ώρα της στάσης του φορτηγού δεν αλλάζει μαζί/.test(await K.text(page, `${DLG} [data-ridenote]`)));
+  // 081: the note claims neither «follows» nor «does not» (the base decides, and before 081 runs it never follows)
+  ok(scn, 'the form says before the save that the line after it tells whether the truck\'s stop changed', /Μετά την αποθήκευση γράφεται αν άλλαξε και η στάση του φορτηγού/.test(await K.text(page, `${DLG} [data-ridenote]`)));
   ok(scn, 'Κατεύθυνση disabled on a cycle (the cycle\'s side holds)', await page.evaluate((d) => document.querySelector(`${d} [data-f="dir"]`).disabled, DLG));
   // the owner's waiting fixes (#17, #84 …): 1 pallet → 30, and a delivery one day later, in ONE save; notes emptied on purpose
   await page.fill(`${DLG} [data-ship="5202"] [data-f="pal"]`, '30');
@@ -492,13 +493,42 @@ async function scnEditRide({ browser, origin, ok, scn }) {
     && Object.keys(sh).sort().join() === 'deliver_from,deliver_to,pallets,shipment_id'
     && Date.parse(sh.deliver_from) === Date.parse('2026-10-14T07:00:00+03:00') && Date.parse(sh.deliver_to) === Date.parse('2026-10-14T09:00:00+03:00'), p.map((x) => x.body));
   const done = await K.text(page, `${DLG} [data-done]`);
-  ok(scn, 'saved: the line says the truck\'s stop did not change and where to change it', /Αποθηκεύτηκε/.test(done) && /η ώρα της στάσης του φορτηγού δεν άλλαξε/.test(done), done);
+  ok(scn, 'saved, before 081 (no stops_moved in the answer): the line says the truck\'s stop did not change and where to change it', /Αποθηκεύτηκε/.test(done) && /η ώρα της στάσης του φορτηγού δεν άλλαξε/.test(done), done);
   await page.click(`${DLG} [data-shipstop="5202"] [data-act="stop-time"][data-stop="1003"]`);
   await page.waitForSelector('.wi4-dlg[data-wn5="date"]', { timeout: 6000 }).catch(() => {});
   ok(scn, 'after the save «Αλλαγή ώρας στάσης ›» closes the form and opens the day panel of THAT stop (1003)', await K.count(page, DLG) === 0
     && await page.evaluate(() => { const x = document.querySelector('.wi4-dlg[data-wn5="date"]'); return x ? x.dataset.stop : null; }) === '1003');
   await closeClean(page, S, ok, scn);
 }
+// 081 (owner 31/10): the base moves the point's own truck stop in the same save (ids.stops_moved) and names a stop it
+// kept (warnings stop_kept: shared with another point). The form says both: the moved one in the line, the kept one in
+// the warning strip; never «the stop did not change» for a stop that moved.
+async function scnEditFollow({ browser, origin, ok, scn }) {
+  const ans = () => [200, { ok: true, op: 'plan_order_update', dry_run: false,
+    ids: { nat_order_id: 3001, shipment_ids: [5202], new_shipment_ids: [], new_piece_ids: [], removed_shipment_ids: [],
+      stops_moved: [{ stop_id: 1003, rt_id: 101, rt_code: 'RT-T101', shipment_ids: [5202],
+        after: { planned_from: '2026-10-14T07:00:00+03:00', planned_to: '2026-10-14T09:00:00+03:00' } }] },
+    warnings: [{ code: 'stop_kept', reason: 'shared', stop_id: 1001, rt_id: 101, rt_code: 'RT-T101', shipment_ids: [5202],
+      others: [{ shipment_id: 5301, nat_order_id: 3002, order_id: null }] }], notice_ids: [] }];
+  const { page, S } = await K.openApp(browser, origin, { plan: { 'PATCH /plan/orders/3001': ans } });
+  if (!(await guard(page, ok, scn))) return;
+  await openForm(page, { natOrderId: 3001 });
+  await typeDay(page, `${DLG} [data-ship="5202"] .wn5f-day:has([data-f="dday"])`, '14/10');
+  await save(page);
+  await page.waitForTimeout(1000);
+  ok(scn, 'one PATCH /plan/orders/3001', K.planOf(S, 'PATCH', '/plan/orders/3001').length === 1);
+  const done = await K.text(page, `${DLG} [data-done]`);
+  ok(scn, 'saved: «η στάση του φορτηγού ακολούθησε (RT-T101)», and never «δεν άλλαξε» in the line', /Αποθηκεύτηκε/.test(done)
+    && /η στάση του φορτηγού ακολούθησε \(RT-T101\)/.test(done) && !/δεν άλλαξε/.test(done), done);
+  const row = await page.evaluate((d) => { const x = document.querySelector(`${d} [data-shipstop="5202"]`); return x ? x.textContent.replace(/\s+/g, ' ') : ''; }, DLG);
+  ok(scn, 'the stop row under the point shows the moved stop where it is now: «RT-T101 · παράδοση Τετ 14/10 07:00–09:00»; the loading row as it was',
+    row.includes('RT-T101 · παράδοση Τετ 14/10 07:00–09:00') && row.includes('RT-T101 · φόρτωση Δευ 12/10 16:00–18:00') && !row.includes('Τρί 13/10'), row);
+  const strip = await K.text(page, `${DLG} .wn5-strip[data-kind="warning"]`);
+  ok(scn, 'the kept shared stop in the warning strip: RT-T101, 1 other point, «Αλλαγή ώρας στάσης ›» changes it for all',
+    /η στάση του φορτηγού στο RT-T101 δεν άλλαξε: εξυπηρετεί και 1 άλλο σημείο · «Αλλαγή ώρας στάσης ›» την αλλάζει για όλα/.test(strip), strip);
+  await closeClean(page, S, ok, scn);
+}
+
 async function scnEditAdd({ browser, origin, ok, scn }) {
   const plan = { 'PATCH /plan/orders/3001': UPD_OK(3001, { new_shipment_ids: [5301], new_piece_ids: [4301] }) };
   const { page, S } = await K.openApp(browser, origin, { plan });
@@ -1030,7 +1060,7 @@ async function scnVs({ browser, origin, ok, scn }) {
 }
 
 K.run({
-  scenarios: { order: scnOrder, nowin: scnNoWin, nopp: scnNoPP, groupage: scnGroupage, unknown: scnUnknown, reused: scnReused, replayed: scnReplayed, edit: scnEdit, 'edit-ride': scnEditRide, 'edit-add': scnEditAdd, 'edit-remove': scnEditRemove, 'edit-read-fail': scnEditReadFail, 'edit-twoday': scnEditTwoDay, 'veroia-edit': scnVeroiaEdit, 'day-type': scnDayType, leg: scnLeg, 'leg-anodos': scnLegAnodos, 'stop-time': scnStopTime, miss: scnMiss, 'leg-add': scnLegAdd, vs: scnVs, f44: scnF44 },
+  scenarios: { order: scnOrder, nowin: scnNoWin, nopp: scnNoPP, groupage: scnGroupage, unknown: scnUnknown, reused: scnReused, replayed: scnReplayed, edit: scnEdit, 'edit-ride': scnEditRide, 'edit-follow': scnEditFollow, 'edit-add': scnEditAdd, 'edit-remove': scnEditRemove, 'edit-read-fail': scnEditReadFail, 'edit-twoday': scnEditTwoDay, 'veroia-edit': scnVeroiaEdit, 'day-type': scnDayType, leg: scnLeg, 'leg-anodos': scnLegAnodos, 'stop-time': scnStopTime, miss: scnMiss, 'leg-add': scnLegAdd, vs: scnVs, f44: scnF44 },
   globals: ['WN5Form'],
   go: 'the v5 order forms send one body per press, from the form only, with one request_id per open form',
 }).catch((e) => { console.error(e); process.exit(1); });
