@@ -179,6 +179,10 @@ async function scnCard({ browser, origin, ok, scn }) {
   ok(scn, 'no page or console errors (5 roles)', !errs.length, errs);
 }
 
+// F50 (owner 31/10): the cycle's row is the one in hand after the save — marked, flashed, in view, alone
+const focused = (page) => page.evaluate(() => { const rs = [...document.querySelectorAll('#content .wn5 .wn5-row.wn5-focus')];
+  const r = rs[0] && rs[0].getBoundingClientRect(); return { keys: rs.map((e) => e.dataset.key), flash: !!(rs[0] && rs[0].classList.contains('wn5-flash')), inView: !!r && r.top >= 0 && r.bottom <= innerHeight }; });
+const isFocused = (f, key) => JSON.stringify(f.keys) === JSON.stringify([key]) && f.flash && f.inView;
 async function scnChange({ browser, origin, ok, scn }) {
   const { page, S } = await K.openApp(browser, origin, { board: oneSegWeek(), plan: { 'POST /plan/rt/101/handover': (e) => (e.body.dry_run === true ? dryOk(e.body) : K.planErr(409, 'WRITES_CLOSED', 'writes_closed')) } });
   if (!(await guard(page, ok, scn, 'WN5Hand'))) return;
@@ -229,6 +233,18 @@ async function scnChange({ browser, origin, ok, scn }) {
     /rig sentinel conflict truck_busy/.test(await K.text(pc.page, `${HDLG} [data-err]`)) && await saveOff() && posts(pc.S).length === 1, posts(pc.S).map((x) => x.body));
   ok(scn, 'conflict: no page or console errors', !pc.S.pageErrors.length && !appConsole(pc.S).length, pc.S.pageErrors.concat(appConsole(pc.S)));
   await pc.page.context().close();
+  // a saved change: F50 shows the cycle's row after the re-read
+  const ps = await K.openApp(browser, origin, { board: oneSegWeek(), plan: { 'POST /plan/rt/101/handover': (e) => (e.body.dry_run === true ? dryOk(e.body)
+    : [200, { ok: true, op: 'plan_seg_change', dry_run: false, ids: { rt_id: 101, segment_id: 702 }, warnings: [], notice_ids: [] }]) } });
+  await ps.page.evaluate(() => WN5Hand.change(101));
+  await ps.page.waitForSelector(HDLG, { timeout: 6000 }).catch(() => {});
+  await fillChange(ps.page, CH);
+  await ps.page.waitForTimeout(1200);
+  await ps.page.click(`${HDLG} [data-act="save"]`).catch(() => {});
+  await ps.page.waitForTimeout(1200);
+  const fc = await focused(ps.page);
+  ok(scn, 'F50 · after a saved vehicle change the cycle\'s row (rt:101) is marked, flashes and is in view — main: nothing', isFocused(fc, 'rt:101'), fc);
+  await ps.page.context().close();
   // 404 before 072b is live
   const p2 = await K.openApp(browser, origin, { board: oneSegWeek(), plan: { 'POST /plan/rt/101/handover': () => K.planErr(404, 'NOT_FOUND', 'no_route') } });
   await p2.page.evaluate(() => WN5Hand.change(101));
@@ -471,6 +487,8 @@ async function scnRemove({ browser, origin, ok, scn }) {
   const all = K.planOf(S, 'POST', '/plan/segments/702/remove');
   const ex = all.filter((x) => x.body.dry_run !== true);
   ok(scn, 'conflict check + the two-step\'s dry run, then ONE execution with the token, no request_id', all.length === 3 && ex.length === 1 && ex[0].body.confirm_token === 'tok-702' && !('request_id' in ex[0].body), all.map((x) => x.body));
+  const fr = await focused(page);
+  ok(scn, 'F50 · after the removal the cycle\'s row (rt:101) is marked, flashes and is in view — main: nothing', isFocused(fr, 'rt:101'), fr);
   // a second press of the same removal: the base answers replayed:true — the same success, no error
   await page.evaluate(() => { WN5Hand.remove(702); });   // not awaited: it resolves only after the confirm
   await page.waitForSelector(`${RDLG} [data-act="confirm"]`, { timeout: 6000 }).catch(() => {});
