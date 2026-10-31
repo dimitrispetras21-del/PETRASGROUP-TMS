@@ -268,10 +268,10 @@
     });
     return parts.length ? parts.join('<span> · </span>') : '<span>—</span>';
   }
-  function _segRowHTML(g, cycle, withButtons, first, hub) {
+  function _segRowHTML(g, cycle, withButtons, first, hub, noLab) {
     const par = g.trip_type === 'PARTNER';
     return `<div class="wn5h-seg" data-seg="${g.segment_id}" data-label="${g.label || ''}"><span class="wn5h-line"></span>`
-      + `<b class="wn5h-lab">${SEG_GR[g.label] || ''}</b>`
+      + (noLab ? '' : `<b class="wn5h-lab">${SEG_GR[g.label] || ''}</b>`)
       + `<span class="wn5h-vc"><span class="wn5h-chip${par ? ' par' : ''}"><b class="wn5h-pl">${_esc(_plate(g))}</b><span class="wn5h-dr">${_esc(_line2(g))}</span></span></span>`
       + `<span class="wn5h-win">${_when(g.from_at)} → ${_when(g.to_at)}</span><span class="wn5h-stops">${_stopsHTML(g, cycle, hub)}</span><span class="wn5h-sp"></span>`
       + (withButtons ? `<span class="wn5h-btns"><button type="button" class="wn5h-link" data-act="fix" data-seg="${g.segment_id}">Διόρθωση</button>`
@@ -321,6 +321,38 @@
     });
     return true;
   }
+  // the cycle's days in a head: «Δευ 12/10 → Πέμ 15/10» (Figma 2396:7888), one day once
+  function _days(c) {
+    const a = _parts(c.start_at), b = _parts(c.end_at);
+    if (!a || !b) return '—';
+    return a.day === b.day ? _dlab(a.day) : `${_dlab(a.day)} → ${_dlab(b.day)}`;
+  }
+  // ── «Αλλαγή οχήματος…» of the ✈ menu (owner 31/10, B-13 = α, Figma 2396:7888) ─────────────────────────────
+  // The way into H2 for every cycle, with or without an earlier change: the vehicles so far (plates and hours only),
+  // then «Συνέχεια ›». Writes nothing.
+  async function entry(rtId) {
+    const board = await _board();
+    const c = board && (board.cycles || []).find((x) => x.rt_id === rtId);
+    if (!c) { if (typeof toast === 'function') toast('Δεν βρέθηκε στην εβδομάδα που φαίνεται — ανανέωσε', 'warn'); return false; }
+    await PlanIds.load();
+    const segs = WN5L.segmentsOf(c).segments;
+    const now = segs[segs.length - 1] || {};
+    const cur = now.trip_type === 'PARTNER' ? (now.partner || 'Συνεργάτης') : (now.truck || 'χωρίς φορτηγό');
+    const head = segs.length > 1 ? 'ΜΕ ΑΛΛΑΓΗ ΗΔΗ' : now.trip_type === 'PARTNER' ? 'ΕΝΑΣ ΣΥΝΕΡΓΑΤΗΣ ΩΣ ΤΩΡΑ' : 'ΕΝΑ ΦΟΡΤΗΓΟ ΩΣ ΤΩΡΑ';
+    const rows = segs.map((g, i) => `<div class="wn5h-erow${g.trip_type === 'PARTNER' ? ' par' : ''}${i ? ' next' : ''}"><b class="wn5h-pl">${_esc(_plate(g))}</b>`
+      + `<span>${_when(g.from_at || c.start_at)} → ${_when(g.to_at || c.end_at)}</span></div>`).join('');
+    const d = _open('entry', 'Αλλαγή οχήματος', `${[cur, now.driver].filter(Boolean).map(_esc).join(' · ')} · ${_days(c)}`,
+      `<div class="wn5f-sec">${head}</div>${rows}`, '', 'Συνέχεια ›');
+    const save = d.el.querySelector('[data-act="save"]');
+    save.disabled = false;
+    d.el.addEventListener('click', (ev) => {
+      const t = ev.target.closest('[data-act]');
+      if (!t || !d.el.contains(t)) return;
+      if (t.dataset.act === 'cancel') { _close(); return; }
+      if (t.dataset.act === 'save') { _close(); change(rtId); }
+    });
+    return true;
+  }
   // ── H2 / H3 change ─────────────────────────────────────────────────────────────────────────────────────────
   function _reasonOptions(cur) {
     const R = WN5Lab.REASON;
@@ -354,9 +386,10 @@
   function _previewHTML(prev, cycle, hub) {
     const segs = prev.segments || [];
     const pay = _payrollLine(segs);
-    return `<div class="wn5h-prev"><div class="wn5h-prev-h"><b>Μετά την αλλαγή · ${segs.length} ${segs.length === 1 ? 'τμήμα' : 'τμήματα'}</b><span>φορτία και στάσεις δεν αλλάζουν</span></div>`
+    // owner 31/10 (density): plates, hours and places only — no «τμήματα», no ΑΡΧΙΚΟ / ΤΕΛΙΚΟ, no explanatory subline
+    return `<div class="wn5h-prev"><div class="wn5h-prev-h"><b>Μετά την αλλαγή</b></div>`
       + segs.map((g, i) => (i ? `<div class="wn5h-hx"><b>⇄</b><span>${_esc([g.place_note, _when(g.from_at), _reasonText(g.reason)].filter(Boolean).join(' · '))}</span></div>` : '')
-        + _segRowHTML(g, cycle, false, false, hub)).join('') + (pay ? `<div class="wn5h-pay">${_esc(pay)}</div>` : '') + '</div>';
+        + _segRowHTML(g, cycle, false, false, hub, true)).join('') + (pay ? `<div class="wn5h-pay">${_esc(pay)}</div>` : '') + '</div>';
   }
   // The preview describes ONE body: once the form no longer says that body (invalid, another reason, another mode)
   // its rows go too, or the screen would show a change nobody is asking for (fidelity T25).
@@ -474,7 +507,7 @@
     try {
       const ans = await planFetch('POST', `/plan/rt/${d.rtId}/handover`, { body: send, requestId: d.slot.id });
       d.slot.confirm();
-      _done(d, `Η αλλαγή οχήματος γράφτηκε · τμήμα #${(ans.ids && ans.ids.segment_id) || '—'}${ans.replayed ? ' · το πρώτο πάτημα είχε ήδη αποθηκευτεί' : ''}`, ans.warnings);
+      _done(d, `Η αλλαγή οχήματος γράφτηκε${ans.replayed ? ' · το πρώτο πάτημα είχε ήδη αποθηκευτεί' : ''}`, ans.warnings);
     } catch (e) {
       if (typeof PlanError !== 'undefined' && e instanceof PlanError && e.kind === PlanApi.KIND.REUSED) {
         // the first press created the segment: find it on a fresh board before saying so
@@ -482,7 +515,7 @@
           const c = (b.cycles || []).find((x) => x.rt_id === d.rtId);
           return c && (c.segments || []).find((g) => Date.parse(g.from_at) === Date.parse(body.at)) || null;
         });
-        if (found) { d.slot.confirm(); _done(d, `Η αλλαγή οχήματος γράφτηκε · τμήμα #${found.segment_id} · βρέθηκε στο Εβδομαδιαίο`, []); return; }
+        if (found) { d.slot.confirm(); _done(d, 'Η αλλαγή οχήματος γράφτηκε · βρέθηκε στο Εβδομαδιαίο', []); return; }
         d.locked = true;
       }
       _failure(d, e, d.prev && d.prev.key);
@@ -528,7 +561,7 @@
       + `<div data-strip></div><div data-preview></div>`;
     // head: the current vehicle (truck only, or the partner) · driver · the cycle window (Figma 2122:7739)
     const cur = now.trip_type === 'PARTNER' ? (now.partner || 'Συνεργάτης') : (now.truck || 'χωρίς φορτηγό');
-    const d = _open('handover', `Αλλαγή οχήματος · ${_esc(c.code || 'RT-' + rtId)}`, `· ${[cur, now.driver].filter(Boolean).map(_esc).join(' · ')} · ${_whenD(c.start_at)} → ${_whenD(c.end_at)}`,
+    const d = _open('handover', 'Αλλαγή οχήματος', `${[cur, now.driver].filter(Boolean).map(_esc).join(' · ')} · ${_days(c)}`,
       html, '', 'Αλλαγή οχήματος');
     d.rtId = rtId;
     d.cycle = c;
@@ -709,5 +742,5 @@
     return ans;
   }
 
-  window.WN5Hand = Object.freeze({ cycleCard, change, fix, remove, _changeBody, _changeProblems, _fixSet, _payrollLine, _freeUntil, _cutSeg });
+  window.WN5Hand = Object.freeze({ cycleCard, entry, change, fix, remove, _changeBody, _changeProblems, _fixSet, _payrollLine, _freeUntil, _cutSeg });
 })();

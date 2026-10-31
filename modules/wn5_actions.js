@@ -953,62 +953,11 @@
     return h;
   }
 
-  WN5Act.assign = async function assign(src, ctx) {
-    ctx = Object.assign({ entry: 'row' }, ctx || {});
-    const vehicle = !src || (!src.group && !src.pieces);
-    const st = { mode: vehicle ? 'vehicle' : 'legs', rtId: _id(ctx.rtId), side: ctx.side === 'ANODOS' ? 'ANODOS' : 'KATHODOS', day: ctx.day || null,
-      group: null, pieces: null, items: [], needs: [], pallets: 0, cyc: {}, rows: [], road: [], free: [], trailers: [], drivers: [], partners: [],
-      ids: { ok: false }, pick: null, trailer: null, driver: null, partner: null, rateTxt: '', hubFrom: '', hubTo: '', filter: 'all', q: '', meta: '', ref: '', skipRt: null, from: null, win: {} };
-    let title;
-    // the snapshot: every value a body can carry is copied now (rule 4)
-    if (vehicle) {
-      const c = _cycle(st.rtId);
-      if (!c) { WN5Act.strip(_boardHost(), _clientErr('rt_missing', 'Ο κύκλος δεν είναι στο board που φορτώθηκε — ανανέωσε')); return null; }
-      st.cyc[c.rt_id] = _copy(c);
-      const r = _row(c.rt_id);
-      st.day = st.day || (r && r.dayKey) || c.date_start;
-      const now = _cycText(c, r);
-      title = 'Ανάθεση · ' + (c.code || 'κύκλος');
-      st.meta = _dayShort(st.day) + ' · τώρα: ' + now.l1 + (now.l2 ? ' · ' + now.l2 : '');
-    } else {
-      const list = src.group ? _groupItems(src.group) : (src.pieces || []).map((p) => _item(p.piece_id)).filter(Boolean);
-      if (!list.length) { WN5Act.strip(_boardHost(), _clientErr('piece_missing', 'Η παράδοση δεν είναι πια στο board — ανανέωσε')); return null; }
-      st.items = _copy(list);
-      st.group = src.group ? _copy(src.group) : null;
-      st.pieces = src.pieces ? _copy(src.pieces) : null;
-      const take = new Map((src.pieces || []).map((p) => [p.piece_id, p]));
-      const hub = _hubId();
-      st.needs = st.items.flatMap((it) => _needs(it, !!(take.get(it.piece_id) || {}).to_hub, hub));
-      const pals = st.items.map((it) => { const p = take.get(it.piece_id); return p && typeof p.take_pallets === 'number' ? p.take_pallets : it.pallets; });
-      st.pallets = _sum(pals);
-      st.palUnk = _unkN(pals);
-      st.day = st.day || st.items[0].nat_ready_day || null;
-      if (!ctx.side) st.side = _sideFor(st.items[0]);
-      // F7 (live 28/10): an order without a reference is named by its number («Ανάθεση · #17 → …»), never «—»
-      const i0 = st.items[0];
-      st.ref = i0.reference || (i0.nat_order_id != null ? '#' + i0.nat_order_id : i0.order_id != null ? '#' + i0.order_id : '—');
-      const vs = st.items[0].kind === 'vs_import' && st.items[0].load_from ? ' · φτάνει ' + _hm(st.items[0].load_from) : '';
-      st.meta = _dayShort(st.day) + ' · ' + st.items.length + (st.items.length === 1 ? ' παράδοση' : ' παραδόσεις') + ' · ' + _palU(st.pallets, st.palUnk) + 'π' + vs;
-    }
-    if (!st.day) { WN5Act.strip(_boardHost(), _clientErr('day_missing', 'Η ημέρα της ανάθεσης δεν είναι γνωστή — ανανέωσε')); return null; }
-    // F12 (live 28/10): the Veroia window the order already has (its shipment's window at the hub) fills the field,
-    // still editable — never asked again. Only a window of the pieces' Veroia day: the field's hours are put on that
-    // day (_win, F27), so a window of another day would move to the wrong date.
-    if (!vehicle && !st.hubFrom && !st.hubTo) {
-      const hd = _hubDayOf(st.needs, st.day);
-      const hw = (st.needs || []).find((n) => n.hub && n.from && n.to && _ymdOf(n.from) === hd);
-      if (hw) { st.hubFrom = _hm(hw.from); st.hubTo = _hm(hw.to); }
-    }
-    await _loadCands(st);
-    if (!vehicle) {
-      // «Ανάθεση · VS-118 → Rentis +2» (Figma Δ1): the first delivery's place, then how many other deliveries. Named
-      // after the catalogue loads (the board has ids, not names, for waiting loads); a place the board did not send
-      // (072 hub[], Ε-26) or a catalogue that did not come reads «—», never the client in its place.
-      const drop = st.needs[1] || {};
-      const pl = drop.loc == null ? null : drop.hub ? { name: 'Βέροια' } : (typeof PlanIds !== 'undefined' ? PlanIds.place(drop.loc) : null);
-      title = 'Ανάθεση · ' + st.ref + ' → ' + ((pl && pl.name) || '—') + (st.items.length > 1 ? ' +' + (st.items.length - 1) : '');
-    }
-    return _picker(st, 'assign', title);
+  // «Ανάθεση» is the Weekly International form since 31/10 (owner, Figma 2394:7793): modules/wn5_assign.js. This list
+  // (_assignHTML / _picker) stays for «Μεταφορά σε…» only.
+  WN5Act.assign = function assign(src, ctx) {
+    if (typeof WN5Assign === 'undefined') { WN5Act.strip(_boardHost(), _clientErr('assign_missing', 'Η φόρμα ανάθεσης δεν φορτώθηκε — ανανέωσε τη σελίδα')); return null; }
+    return WN5Assign.open(src, ctx);
   };
 
   // The candidates of a window, snapshotted: the day's cycles (minus st.skipRt, the source of a move), the cycles
@@ -1174,11 +1123,12 @@
       const group = it.order_id != null ? { order_id: it.order_id } : (it.nat_order_id != null ? { nat_order_id: it.nat_order_id } : null);
       const dayEl = row && row.closest('.wn5-day[data-date]');
       WN5Act.assign(group ? { group } : { pieces: [{ piece_id: pid }] },
-        { day: it.nat_ready_day || (dayEl && dayEl.dataset.date) || null, side: _sideFor(it), entry: card ? 'queue' : 'row' });
+        // focus: the piece pressed, for «μόνο αυτό το κομμάτι» (F42); anchor: the form opens under what was pressed
+        { day: it.nat_ready_day || (dayEl && dayEl.dataset.date) || null, side: _sideFor(it), entry: card ? 'queue' : 'row', focus: pid, anchor: el });
       return;
     }
     const rt = _id(row && row.dataset.rt);
-    if (rt) WN5Act.assign(null, { entry: 'row', rtId: rt });
+    if (rt) WN5Act.assign(null, { entry: 'row', rtId: rt, anchor: el });
   };
 
   // ═══ T13 · «+» on a side: «Νέα παραγγελία | Από αναμονή» (Figma 2011:10022) ═══
@@ -2350,6 +2300,9 @@
   }
   WN5Act.rtSaveBody = rtSaveBody;
 
+  // for modules/wn5_assign.js (the form of «Ανάθεση») and the Veroia board: the same day, place and order rules
+  Object.assign(KIT, { hubDayOf: _hubDayOf, hubDays: _hubDays, stopDay: _stopDay, placeName: _placeName, placeCity: _placeCity,
+    orderWarn: _orderWarn, wd: _wd, dow: _dow });
   WN5Act._kit = KIT;
   window.WN5Act = WN5Act;
 })();

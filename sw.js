@@ -58,6 +58,7 @@ const APP_SHELL = [
   '/PETRASGROUP-TMS/modules/weekly_natl.js',
   '/PETRASGROUP-TMS/modules/weekly_natl_v5.js',
   '/PETRASGROUP-TMS/modules/wn5_actions.js',
+  '/PETRASGROUP-TMS/modules/wn5_assign.js',
   '/PETRASGROUP-TMS/modules/wn5_veroia.js',
   '/PETRASGROUP-TMS/modules/wn5_forms.js',
   '/PETRASGROUP-TMS/modules/wn5_sheet.js',
