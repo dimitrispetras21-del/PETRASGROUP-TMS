@@ -9384,6 +9384,9 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 /* blue chips keep their 1px edge; the over-capacity chip is a flat amber fill (Δ1) */
 .wn5-cap { display:inline-block; font-size:10.5px; font-weight:500; line-height:14px; padding:2px 6px; border-radius:4px; background:var(--wi4-info-bg); border:1px solid var(--wi4-info-line); color:var(--wi4-info-ink); }
 .wn5-cap.over { background:var(--wi4-amber-bg); border-color:transparent; color:var(--wi4-amber); }
+/* the Veroia-day warning (F27/F33, code review of #171): its own chip — white with an amber edge — never the capacity's
+   filled amber «υπέρβαση», so a day warning is not read as an overload */
+.wn5-hubday { display:inline-block; font-size:10.5px; font-weight:500; line-height:14px; padding:2px 6px; border-radius:4px; background:var(--surface-card); border:1px solid var(--wi4-amber); color:var(--wi4-amber); }
 .wn5-flag-red { font-size:10.5px; font-weight:500; padding:2px 6px; border-radius:4px; background:var(--wi4-red-bg); color:var(--wi4-red); }
 .wn5-rate { width:66px; height:22px; padding:0 6px; border:1.5px solid var(--wi4-blue); border-radius:4px; font:inherit; font-size:11.5px; }
 .wn5-rate::placeholder { color:var(--wi4-grey-3); }
