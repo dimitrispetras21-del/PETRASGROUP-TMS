@@ -957,6 +957,13 @@ async function scnF44({ browser, origin, ok, scn }) {
     await page.waitForTimeout(200);
     const v1 = await vday(page);
     ok(scn, 'no Veroia stop: loading typed Wed 14/10 → the filled arrival follows to Wed 14/10 — main: stays Mon 12/10', v0 === '2026-10-12' && v1 === '2026-10-14', { v0, v1 });
+    // the Veroia point row the screen filled follows the header (the live «fixed by hand 3 times» was this row)
+    await page.evaluate((d) => { const r = document.querySelector(`${d} .wn5f-rows[data-k="drop"] .wn5f-row`); fhPickLinked(r.dataset.pid, 'recJucKOhC1zh4IP3', 'ΒΕΡΟΙΑ TEST'); }, DLG);
+    await page.waitForTimeout(150);
+    await page.fill(`${DLG} .wn5f-rows[data-k="load"] .wn5f-dayx`, '15/10');
+    await page.waitForTimeout(200);
+    const rowDay = await page.$eval(`${DLG} .wn5f-rows[data-k="drop"] [data-f="day"]`, (i) => i.value).catch(() => null);
+    ok(scn, '… the Veroia point row follows too (loading Thu 15/10 → Veroia row Thu 15/10)', rowDay === '2026-10-15' && (await vday(page)) === '2026-10-15', rowDay);
     await page.fill(`${DLG} .wn5f-day:has(#wn5f-vday) .wn5f-dayx`, '16/10');
     await page.waitForTimeout(150);
     await page.fill(`${DLG} .wn5f-rows[data-k="load"] .wn5f-dayx`, '13/10');
