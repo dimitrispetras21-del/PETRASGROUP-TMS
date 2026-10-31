@@ -3035,41 +3035,42 @@ SCN.f32 = async (browser, origin) => {
 // F47 (live simulation 31/10): «Ανάθεση / αλλαγή φορτηγού» of a cycle — a click in the search field closed the panel,
 // twice in a row, and the user scrolled through 35 trucks. Repro on RT-T301 from the ✈ menu.
 SCN.f47 = async (browser, origin) => {
+  // F47 since 31/10: the assignment is the International form — its search is in each field; a click there opens
+  // the field's list and keeps the form open
   const scn = 'f47';
   const D = bDlg('assign');
   const { page, S } = await bOpen(browser, origin, { board: f33Board() });
   await bMenu(page, 301, 'assign');
   await page.waitForTimeout(500);
-  ok(scn, '✈ «Ανάθεση / αλλαγή φορτηγού» opens Δ1', await bHas(page, D));
-  await page.click(`${D} [data-q]`).catch((e) => S.pageErrors.push('click: ' + e.message));
+  ok(scn, '✈ «Ανάθεση / αλλαγή φορτηγού» opens the assignment form', await bHas(page, D));
+  await page.click(`${D} [data-in="tk"]`, { clickCount: 3 }).catch((e) => S.pageErrors.push('click: ' + e.message));
   await page.waitForTimeout(300);
-  ok(scn, 'a click in the search keeps the panel open — live: it closed', await bHas(page, D));
-  await page.click(`${D} [data-q]`).catch(() => {});
+  ok(scn, 'a click in the truck field keeps the form open and shows the list — live: the panel closed', await bHas(page, D) && await bHas(page, '.wn5a-list [data-pick]'));
   await page.keyboard.type('2104').catch(() => {});
   await page.waitForTimeout(300);
-  const shown = await page.$$eval(`${D} [data-line="free"]`, (xs) => xs.filter((x) => !x.hidden).map((x) => x.innerText.split('\n')[0])).catch(() => null);
+  const shown = await page.$$eval('.wn5a-list [data-pick]', (xs) => xs.map((x) => x.innerText.split('\n')[0])).catch(() => null);
   ok(scn, '… and typing filters the trucks («2104» → TST-2104 only)', await bHas(page, D) && Array.isArray(shown) && shown.length === 1 && /TST-2104/.test(shown[0]), shown);
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
   await page.context().close();
-  // the live case: 35 trucks, a 1440×800 window — the panel is taller than the window
+  // the live case: 35 trucks, a 1440×800 window
   const many = clone(B_LOOKUPS);
   for (let i = 0; i < 30; i++) many.trucks.push({ id: 100 + i, legacy_id: 'recTRK' + (100 + i), license_plate: 'TST-3' + String(i).padStart(3, '0'), active: true });
   const b = await bOpen(browser, origin, { board: f33Board(), viewport: { width: 1440, height: 800 }, plan: { 'GET /plan/lookups': () => [200, clone(many)] } });
   await bMenu(b.page, 301, 'assign');
   await b.page.waitForTimeout(500);
-  const box = await b.page.$eval(`${D} [data-q]`, (i) => { const r = i.getBoundingClientRect(); return { y: Math.round(r.top), h: Math.round(r.height), at: document.elementFromPoint(r.left + 10, r.top + r.height / 2) === i }; }).catch((e) => ({ err: String(e) }));
-  await b.page.click(`${D} [data-q]`).catch((e) => b.S.pageErrors.push('click: ' + e.message));
+  await b.page.click(`${D} [data-in="tk"]`).catch((e) => b.S.pageErrors.push('click: ' + e.message));
   await b.page.waitForTimeout(300);
-  ok(scn, '35 trucks, 1440×800: a click in the search keeps the panel open', await bHas(b.page, D), box);
+  const lst = await b.page.$eval('.wn5a-list', (l) => { const r = l.getBoundingClientRect(); return { n: l.querySelectorAll('[data-pick]').length, top: Math.round(r.top), bottom: Math.round(r.bottom), vh: innerHeight }; }).catch((e) => ({ err: String(e) }));
+  ok(scn, '35 trucks, 1440×800: the form stays open, the list shows every truck inside the window', await bHas(b.page, D) && lst.n === 35 && lst.top >= 0 && lst.bottom <= lst.vh, lst);
   await b.page.context().close();
 };
-// F48 (live simulation 31/10): in Δ1 / «Μεταφορά σε…» a picked truck's «Ρυμούλκα / Οδηγός» panel stayed open after the
-// search hid its line — orphaned, under a list that no longer showed its truck.
+// F48 (live simulation 31/10): in «Μεταφορά σε…» (the Δ1 list since 31/10) a picked truck's «Ρυμούλκα / Οδηγός» panel
+// stayed open after the search hid its line — orphaned, under a list that no longer showed its truck.
 SCN.f48 = async (browser, origin) => {
   const scn = 'f48';
-  const D = bDlg('assign');
+  const D = bDlg('move');
   const { page, S } = await bOpen(browser, origin, { board: f33Board() });
-  await bMenu(page, 301, 'assign');
+  await page.evaluate(() => WN5Act.move({ rt_id: 301, side: 'KATHODOS' })).catch((e) => S.pageErrors.push(String(e)));
   await page.waitForTimeout(400);
   await bClick(page, `${D} [data-act="pick"][data-cand="truck:11"]`);
   const vis = () => page.$eval(`${D} .wn5-more[data-more="truck:11"]`, (e) => e.offsetParent !== null).catch(() => null);
