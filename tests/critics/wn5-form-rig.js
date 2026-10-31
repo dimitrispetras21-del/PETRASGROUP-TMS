@@ -2,7 +2,7 @@
 // fake /plan/* (S.plan: method, path, body, count, order) and by what the page shows; never by a toast. Synthetic
 // week of tests/critics/wn5-rig-kit.js. The default answer of every non-dry write is 409 writes_closed, as deployed
 // until day L; scenarios script their own answers with sentinel messages.
-// Usage: node tests/critics/wn5-form-rig.js [order nowin groupage unknown reused replayed edit edit-ride edit-add edit-remove edit-read-fail edit-twoday veroia-edit day-type leg leg-anodos stop-time miss leg-add …]
+// Usage: node tests/critics/wn5-form-rig.js [order nowin nopp groupage unknown reused replayed edit edit-ride edit-add edit-remove edit-read-fail edit-twoday veroia-edit day-type leg leg-anodos stop-time miss leg-add …]
 //        WN5_TREE=<git archive origin/main> node tests/critics/wn5-form-rig.js   (plain-main proof: NO-GO, exit 1)
 // Exit: 0 green · 1 a check failed · 2 unknown scenario.
 'use strict';
@@ -72,7 +72,8 @@ async function scnOrder({ browser, origin, ok, scn }) {
   await openForm(page, {});
   ok(scn, 'the order form opened (.wi4-dlg[role=dialog][data-wn5=order])', await K.count(page, DLG) === 1);
   const txt = await K.text(page, DLG);
-  ok(scn, 'label «Τιμή € (χωρίς ΦΠΑ) *»', txt.includes('Τιμή € (χωρίς ΦΠΑ) *'), txt.slice(0, 200));
+  // F4 (owner 28/10, 080): the price is optional — no «*», the field says what empty means
+  ok(scn, 'label «Τιμή € (χωρίς ΦΠΑ)» without «*»', txt.includes('Τιμή € (χωρίς ΦΠΑ)') && !txt.includes('Τιμή € (χωρίς ΦΠΑ) *'), txt.slice(0, 200));
   // F1 (owner 28/10): the window is optional — the head says what an empty one is, no «*»
   ok(scn, 'windows «Παράθυρο από – έως · κενό: όλη η ημέρα»', txt.includes('Παράθυρο από – έως · κενό: όλη η ημέρα') && !txt.includes('Παράθυρο από – έως *'));
   ok(scn, 'truck optional: «Φορτηγό (προαιρετικό)» with «— ΠΡΟΣ ΑΝΑΘΕΣΗ»', txt.includes('Φορτηγό (προαιρετικό)') && txt.includes('ΠΡΟΣ ΑΝΑΘΕΣΗ'));
@@ -205,6 +206,98 @@ async function scnNoWin({ browser, origin, ok, scn }) {
     && s2.deliver_from === '2026-10-14T23:59:00+03:00' && s2.deliver_to === '2026-10-14T23:59:00+03:00', s2);
   ok(scn, 'no page errors, no console errors', ![S, p2.S].some((x) => x.pageErrors.length || appConsole(x).length), [S, p2.S].flatMap((x) => x.pageErrors.concat(appConsole(x))));
   await p2.page.context().close();
+}
+
+// F1/F4 (owner 28/10, SQL 080): price and pallets empty = not known yet. The form says it («τιμή λείπει», «;π»,
+// «σύνολο ;/33») and sends price null / pallets null — never 0. NO-GO on main and on PR A (both refused there).
+async function scnNoPP({ browser, origin, ok, scn }) {
+  const { page, S } = await K.openApp(browser, origin);
+  if (!(await guard(page, ok, scn))) return;
+  await openForm(page, {});
+  const head = await K.text(page, DLG);
+  ok(scn, 'labels «Τιμή € (χωρίς ΦΠΑ)» and «Παλέτες · κενό: ;», no «*» on either', head.includes('Τιμή € (χωρίς ΦΠΑ)') && !head.includes('Τιμή € (χωρίς ΦΠΑ) *')
+    && head.includes('Παλέτες · κενό: ;') && !head.includes('Παλέτες *'), head.slice(0, 400));
+  await fillOrder(page, 0, { client: C41, price: '', temp: 4, pe: false, loads: [r(ASP, '2026-10-14', '08:00', '10:00', '')], drops: [r(ATH, '2026-10-15', '', '', '')] });
+  const sum = await K.text(page, `${DLG} [data-sum]`);
+  const osum = await K.text(page, `${DLG} [data-osum]`);
+  ok(scn, 'the summary says «;/33 παλέτες», the order line «;π · τιμή λείπει»', sum.includes(';/33 παλέτες') && osum.includes(';π') && osum.includes('τιμή λείπει'), { sum: sum.slice(0, 200), osum });
+  await save(page);
+  await page.waitForTimeout(1500);
+  const posts = K.planOf(S, 'POST', '/plan/orders');
+  const o = posts.length === 1 && posts[0].body.orders && posts[0].body.orders[0];
+  ok(scn, 'one POST: price null and the shipment\'s pallets null — never 0', !!o && o.price === null && o.shipments.length === 1 && o.shipments[0].pallets === null, o || posts.length);
+  ok(scn, 'no page errors, no console errors', !S.pageErrors.length && !appConsole(S).length, S.pageErrors.concat(appConsole(S)));
+  await page.context().close();
+  // code review xhigh r1/r2: the edit form (077 read) of an order WITHOUT a price whose point riding RT-T101 has unknown
+  // pallets, and a second point waiting with unknown pallets: both written here (B-100, the card and the Veroia panel
+  // send the desk here); one PATCH with both.
+  const rd = K.orders()[3001];
+  rd.order.price = null; rd.order.pallets = null;
+  rd.shipments[0].pallets = null;
+  rd.shipments.push(Object.assign(K.clone(K.orders()[3101].shipments[0]), { shipment_id: 5304, pallets: null }));
+  // code review xhigh r4: a two-day point of unknown pallets (locked, pallets open, ×) and a point at Veroia (its loading
+  // locked, ×) — ↺ gives each field back the lock it was drawn with
+  rd.shipments.push(Object.assign(K.clone(K.orders()[3101].shipments[0]), { shipment_id: 5305, pallets: null, deliver_to: '2026-10-16T07:00:00+00:00' }));
+  rd.shipments.push(Object.assign(K.clone(K.orders()[3101].shipments[0]), { shipment_id: 5306, pallets: 3, at_hub: true, waits: true }));
+  const plan = { 'GET /plan/orders/3001': () => [200, rd],
+    'PATCH /plan/orders/3001': () => [200, { ok: true, op: 'plan_order_update', dry_run: false, ids: { nat_order_id: 3001, shipment_ids: [] }, warnings: [], notice_ids: [] }] };
+  const p2 = await K.openApp(browser, origin, { plan });
+  await openForm(p2.page, { natOrderId: 3001 });
+  const ed = await p2.page.evaluate((d) => {
+    const row = (id) => { const r = document.querySelector(`${d} [data-ship="${id}"]`); if (!r) return null;
+      const pal = r.querySelector('[data-f="pal"]'), lf = r.querySelector('[data-f="lfrom"]');
+      return { ro: r.hasAttribute('data-ro'), palOnly: r.hasAttribute('data-palonly'), palOn: !!pal && !pal.disabled, ph: pal && pal.placeholder, winOff: !!lf && lf.disabled }; };
+    const pr = document.querySelector(`${d} [data-f="price"]`);
+    return { ride: row(5202), wait: row(5304), pricePh: pr && pr.placeholder, priceLabel: pr && pr.closest('label').textContent,
+      note: document.querySelector(d).innerText.includes('δεν έχει ακόμη τιμή') }; }, DLG);
+  ok(scn, 'edit of an order without price: the price says «λείπει» (no «*»), with the note to write it when known',
+    !!ed && ed.pricePh === 'λείπει' && ed.note && !/\*/.test(ed.priceLabel || ''), ed);
+  // F30 (#170): a riding point is edited in place, so its unknown pallets are written in its own row
+  ok(scn, 'the point riding RT-T101 with unknown pallets: edited in place (F30), pallets open, «άγνωστες»',
+    !!ed && !!ed.ride && !ed.ride.ro && ed.ride.palOn && ed.ride.ph === 'άγνωστες', ed && ed.ride);
+  ok(scn, 'the waiting point with unknown pallets: editable, pallets «άγνωστες»', !!ed && !!ed.wait && !ed.wait.ro && ed.wait.palOn && !ed.wait.winOff && ed.wait.ph === 'άγνωστες', ed && ed.wait);
+  await p2.page.fill(`${DLG} [data-ship="5202"] [data-f="pal"]`, '10')   // throws (and names it) if the field is locked;
+  await p2.page.fill(`${DLG} [data-ship="5304"] [data-f="pal"]`, '4')   // throws (and names it) if the field is locked;
+  const lk = (id) => p2.page.evaluate(([d, i]) => { const r = document.querySelector(`${d} [data-ship="${i}"]`);
+    const g = (k) => { const x = r.querySelector(`[data-f="${k}"]`); return x ? !x.disabled : null; };
+    return { pal: g('pal'), lfrom: g('lfrom'), dfrom: g('dfrom'), rm: r.hasAttribute('data-rm') }; }, [DLG, id]);
+  const x = (id) => p2.page.click(`${DLG} [data-ship="${id}"] [data-act="del-ship"]`);
+  const two0 = await lk(5305);
+  await p2.page.fill(`${DLG} [data-ship="5305"] [data-f="pal"]`, '3')   // throws (and names it) if the field is locked;
+  await x(5305); const two1 = await lk(5305); await x(5305); const two2 = await lk(5305);
+  await x(5306); await x(5306); const hub2 = await lk(5306);
+  ok(scn, 'two-day point of unknown pallets: pallets open, windows locked; × closes them all; ↺ gives back exactly that',
+    two0.pal === true && two0.lfrom === false && two0.dfrom === false && two1.pal === false && two1.rm && two2.pal === true && two2.lfrom === false && two2.dfrom === false && !two2.rm, { two0, two1, two2 });
+  ok(scn, 'a point at Veroia: after × and ↺ its loading stays locked, its delivery and pallets open', hub2.lfrom === false && hub2.dfrom === true && hub2.pal === true, hub2);
+  await x(5305);   // marked: it sends its removal, never the pallets typed before
+  await save(p2.page);
+  await p2.page.waitForTimeout(1200);
+  const pt = K.planOf(p2.S, 'PATCH', '/plan/orders/3001');
+  const sent = pt[0] ? Object.assign({}, pt[0].body) : null;
+  if (sent) delete sent.request_id;
+  ok(scn, 'one PATCH /plan/orders/3001 {shipments:[{5202, pallets:10}, {5304, pallets:4}, {5305, remove}]} — pallets only, no window, no price',
+    pt.length === 1 && JSON.stringify(sent) === JSON.stringify({ shipments: [{ shipment_id: 5202, pallets: 10 }, { shipment_id: 5304, pallets: 4 }, { shipment_id: 5305, remove: true }] }), pt.map((x) => x.body));
+  ok(scn, 'edit: no page errors', !p2.S.pageErrors.length, p2.S.pageErrors);
+  await p2.page.context().close();
+  // code review xhigh r3: N×1 with the one delivery left empty and both loads known (allowed) — the delivery stop of the
+  // summary carries the shipments' 10, never «;π»
+  const p4 = await K.openApp(browser, origin, {});
+  await openForm(p4.page, {});
+  await fillOrder(p4.page, 0, { client: C41, price: '', temp: 4, pe: false, loads: [r(ASP, '2026-10-14', '08:00', '10:00', 4), r(THE, '2026-10-14', '11:00', '12:00', 6)],
+    drops: [r(ATH, '2026-10-15', '08:00', '10:00', '')] });
+  const seqTxt = await p4.page.evaluate((d) => [...document.querySelectorAll(`${d} .wn5f-seq li`)].map((li) => li.textContent), DLG);
+  ok(scn, 'N×1, delivery empty, loads 4 + 6: the delivery stop says «10π», the loads «4π» / «6π», no «;π»',
+    seqTxt.some((x) => /παράδοση/.test(x) && /10π$/.test(x)) && seqTxt.some((x) => /4π$/.test(x)) && seqTxt.some((x) => /6π$/.test(x)) && !seqTxt.some((x) => x.includes(';π')), seqTxt);
+  await p4.page.context().close();
+  // a WRITTEN price is never emptied (072 no_price): said at the field, nothing sent
+  const p3 = await K.openApp(browser, origin, {});
+  await openForm(p3.page, { natOrderId: 3101 });
+  await p3.page.fill(`${DLG} [data-f="price"]`, '');
+  await save(p3.page);
+  await p3.page.waitForTimeout(600);
+  ok(scn, 'an emptied written price: «η παραγγελία έχει ήδη τιμή», no PATCH', K.planOf(p3.S, 'PATCH', '/plan/orders/3101').length === 0
+    && /η παραγγελία έχει ήδη τιμή/.test(await K.text(p3.page, `${DLG} [data-err]`)));
+  await p3.page.context().close();
 }
 
 async function scnGroupage({ browser, origin, ok, scn }) {
@@ -891,7 +984,7 @@ async function scnVs({ browser, origin, ok, scn }) {
 }
 
 K.run({
-  scenarios: { order: scnOrder, nowin: scnNoWin, groupage: scnGroupage, unknown: scnUnknown, reused: scnReused, replayed: scnReplayed, edit: scnEdit, 'edit-ride': scnEditRide, 'edit-add': scnEditAdd, 'edit-remove': scnEditRemove, 'edit-read-fail': scnEditReadFail, 'edit-twoday': scnEditTwoDay, 'veroia-edit': scnVeroiaEdit, 'day-type': scnDayType, leg: scnLeg, 'leg-anodos': scnLegAnodos, 'stop-time': scnStopTime, miss: scnMiss, 'leg-add': scnLegAdd, vs: scnVs },
+  scenarios: { order: scnOrder, nowin: scnNoWin, nopp: scnNoPP, groupage: scnGroupage, unknown: scnUnknown, reused: scnReused, replayed: scnReplayed, edit: scnEdit, 'edit-ride': scnEditRide, 'edit-add': scnEditAdd, 'edit-remove': scnEditRemove, 'edit-read-fail': scnEditReadFail, 'edit-twoday': scnEditTwoDay, 'veroia-edit': scnVeroiaEdit, 'day-type': scnDayType, leg: scnLeg, 'leg-anodos': scnLegAnodos, 'stop-time': scnStopTime, miss: scnMiss, 'leg-add': scnLegAdd, vs: scnVs },
   globals: ['WN5Form'],
   go: 'the v5 order forms send one body per press, from the form only, with one request_id per open form',
 }).catch((e) => { console.error(e); process.exit(1); });
