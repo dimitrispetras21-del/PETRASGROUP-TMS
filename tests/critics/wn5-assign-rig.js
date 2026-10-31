@@ -238,5 +238,97 @@ async function handover({ browser, origin, ok, scn, shots }) {
   await page.context().close();
 }
 
-K.run({ scenarios: { own_new, own_join, only_hours, partner, vehicle, handover }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],
-  go: 'the assignment form (own new / join / only / hours / F39 / partner / vehicle) and ✈ «Αλλαγή οχήματος…» hold' });
+// The Veroia board v2 week: the two VS pieces (Veroia day Mon 12/10), a late one (Sun 11/10, due Mon 12/10: before
+// today Tue 13/10) and a national that loads elsewhere on Mon 12/10 09:00–10:00 (an «other loading» candidate).
+function hubBoard() {
+  const b = board();
+  b.hub.push(Object.assign({}, VS_BASE, { piece_id: 4203, shipment_id: 5303, order_id: 2202, reference: 'VS-T202', client: 'ΠΕΛΑΤΗΣ Γ', pallets: 5, temperature_c: 4,
+    nat_to_location_id: 2, nat_ready_day: '2026-10-11', nat_due_day: '2026-10-12', overdue: true }));
+  b.waiting.push({ piece_id: 4301, shipment_id: 5401, kind: 'national', order_id: null, nat_order_id: 3301, order_stop_id: null, pallets: 4, leave_by: null,
+    position_location_id: 3, nat_from_location_id: 3, nat_to_location_id: 2, nat_ready_day: '2026-10-12', nat_due_day: '2026-10-13', overdue: false,
+    is_stock: false, client_id: 43, client: 'ΠΕΛΑΤΗΣ Γ', reference: 'N-T301', temperature_c: 2, pallet_exchange: false, direction: 'KATHODOS',
+    load_from: '2026-10-12T06:00:00+00:00', load_to: '2026-10-12T07:00:00+00:00', deliver_from: '2026-10-13T05:00:00+00:00', deliver_to: '2026-10-13T07:00:00+00:00', price: null });
+  return b;
+}
+const nfText = (page) => page.evaluate(() => { const n = document.querySelector('#wn5-hub .wn5-nf'); return n ? n.innerText.replace(/\s+/g, ' ').trim() : null; });
+const hubText = (page) => page.evaluate(() => { const h = document.getElementById('wn5-hub'); return h ? h.textContent.replace(/\s+/g, ' ').trim() : null; });
+
+// 7 · the list: by day, oldest on top, the late day red, «παρ. <day>», places in the closed line, «⋯» → «Σπάσε…»
+async function veroia_list({ browser, origin, ok, scn }) {
+  const { page, S } = await K.openApp(browser, origin, { board: hubBoard() });
+  const closed = await hubText(page);
+  ok(scn, 'the closed line names delivery places, never clients', /LARISA TEST/.test(closed) && /THESSALONIKI TEST/.test(closed) && !/ΠΕΛΑΤΗΣ/.test(closed), closed);
+  await page.click('#wn5-hub [data-hub="open"]');
+  const g = await page.evaluate(() => [...document.querySelectorAll('#wn5-hub .wn5-hub-l > .wn5-hub-gh, #wn5-hub .wn5-hub-l > .wn5-hub-it')].map((e) => e.classList.contains('wn5-hub-gh') ? 'H ' + e.textContent.replace(/\s+/g, ' ').trim() : 'R ' + e.dataset.piece));
+  ok(scn, 'by day, the oldest first: Sun 11/10 (late, red «αργό · παράδοση Δευ 12/10») then Mon 12/10', g[0] === 'H ΚΥΡ 11/10 · 1 · 5παργό · παράδοση Δευ 12/10' && g[1] === 'R 4203' && /^H ΔΕΥ 12\/10 · 2 · 22π$/.test(g[2]) && g[3] === 'R 4201' && g[4] === 'R 4202', g);
+  const t = await hubText(page);
+  ok(scn, 'a delivery without a window says its day: «παρ. Τρί 13/10» (never «παρ. —»)', /παρ\. Τρί 13\/10/.test(t) && !/παρ\. —/.test(t), t);
+  ok(scn, 'the header counts the late: «1 αργό»', /1 αργό/.test(t), t);
+  ok(scn, '«Σε φορτηγό ▾» on the row; «Σπάσε…» only in «⋯»', (await K.count(page, '#wn5-hub .wn5-hub-it[data-piece="4201"] [data-hub="truck"]')) === 1 && !(await K.count(page, '#wn5-hub .wn5-hub-it .wn5-split-b')));
+  await page.click('#wn5-hub .wn5-hub-it[data-piece="4201"] [data-hub="more"]');
+  await page.click('.wn5-hub-pop [data-v="split"]');
+  ok(scn, '«⋯» → «Σπάσε…» opens the split window', await page.waitForSelector('.wn5-dlg[data-wn5="split"]', { timeout: 3000 }).then(() => true, () => false));
+  ok(scn, 'nothing written', !saves(S).length, saves(S).map((x) => x.path));
+  await page.context().close();
+}
+
+// 8 · «Νέο φορτίο»: tick two rows, add another loading, pick the truck in the SAME form, one POST /plan/legs
+async function veroia_new({ browser, origin, ok, scn, shots }) {
+  const { page, S } = await K.openApp(browser, origin, { board: hubBoard(), plan: { 'POST /plan/legs': async () => OK('plan_put_pieces', { rt_id: 902 }) } });
+  await page.click('#wn5-hub [data-hub="open"]');
+  await page.click('#wn5-hub .wn5-hub-it[data-piece="4201"] .wn5-hub-ck');
+  await page.click('#wn5-hub .wn5-hub-it[data-piece="4202"] .wn5-hub-ck');
+  let t = await nfText(page);
+  ok(scn, '«ΝΕΟ ΦΟΡΤΙΟ · 2 επιλεγμένα · 22π», the Veroia day today Tue 13/10 (the rows are late: never before today), «όλη η ημέρα»', /ΝΕΟ ΦΟΡΤΙΟ 2 επιλεγμένα · 22π/.test(t)
+    && (await page.evaluate(() => document.querySelector('#wn5-hub .wn5-nf-day').value)) === '2026-10-13' && /όλη η ημέρα/.test(t), t);
+  ok(scn, 'no truck yet: «Λείπει: φορτηγό», «Δημιουργία φορτίου» off', /Λείπει: φορτηγό/.test(t) && await page.isDisabled('#wn5-hub [data-act="nf-create"]'), t);
+  ok(scn, 'no «κύκλος» on the panel (the Figma heading «…ΣΤΟΝ ΙΔΙΟ ΚΥΚΛΟ» reads «…ΣΤΟ ΙΔΙΟ ΦΟΡΤΗΓΟ»)', !jargon(t).length && /ΑΛΛΕΣ ΦΟΡΤΩΣΕΙΣ ΣΤΟ ΙΔΙΟ ΦΟΡΤΗΓΟ/.test(t), jargon(t));
+  await page.selectOption('#wn5-hub .wn5-nf-day', '2026-10-14');
+  t = await nfText(page);
+  ok(scn, 'a Veroia day after the deliveries\' day says it, short: «2 παραδόσεις είναι για Τρί 13/10 · θα φύγουν αργά»', /2 παραδόσεις είναι για Τρί 13\/10 · θα φύγουν αργά/.test(t), t);
+  await page.selectOption('#wn5-hub .wn5-nf-day', '2026-10-12');
+  await page.click('#wn5-hub .wn5-nf .wn5a-hrs');
+  await page.fill('#wn5-hub [data-nfhm="from"]', '1600');
+  await page.press('#wn5-hub [data-nfhm="from"]', 'Tab');
+  await page.fill('#wn5-hub [data-nfhm="to"]', '1800');
+  await page.press('#wn5-hub [data-nfhm="to"]', 'Tab');
+  await page.click('#wn5-hub .wn5-nf-add');
+  await page.click('.wn5-hub-pop [data-v="4301"]');
+  t = await nfText(page);
+  ok(scn, '«+ φόρτωση από αναμονή» adds the national that loads elsewhere (3 επιλεγμένα · 26π), the note gone', /3 επιλεγμένα · 26π/.test(t) && /ΠΕΛΑΤΗΣ Γ/.test(t) && !/αργά/.test(t), t);
+  await page.click('#wn5-hub .wn5-nf-pick');
+  await page.waitForSelector(DLG, { timeout: 4000 });
+  const f0 = await dlgText(page);
+  ok(scn, 'the truck is chosen in the SAME form; Veroia read-only on the panel\'s day and window', /Ανάθεση/.test(f0) && /Φόρτωση · Βέροια · Δευ 12\/10 ?16:00–18:00/.test(f0) && /ΔΙΚΟΣ ΣΤΟΛΟΣ/.test(f0), f0);
+  await pickIn(page, 'tk', '2106', 'TST-2106');
+  await pickIn(page, 'tl', '5104', 'TRL-5104');
+  await pickIn(page, 'dr', 'Test 03', 'Driver Test 03');
+  const f1 = await foot(page);
+  ok(scn, 'the form says «Επιλογή · TST-2106» (it writes nothing)', f1.save === 'Επιλογή · TST-2106' && !f1.off, f1);
+  await page.click(`${DLG} [data-act="save"]`);
+  await page.waitForTimeout(150);
+  ok(scn, '«Επιλογή» wrote nothing', !saves(S).length, saves(S).map((x) => x.path));
+  t = await nfText(page);
+  ok(scn, 'the panel: the truck line «TST-2106 · TRL-5104 · Driver Test 03 · ελεύθερο · 0 → 26/33 · Αλλαγή ▾»', /TST-2106 TRL-5104 · Driver Test 03 ελεύθερο 0 → 26\/33 Αλλαγή ▾/.test(t), t);
+  ok(scn, 'the stop order (the base\'s: by start) and the load: «Σειρά: 1 Aspropyrgos φόρτωση 09:00–10:00 → 2 Βέροια φόρτωση 16:00–18:00 → 3 Larisa → 4 Thessaloniki → 5 Athens», «26/33 · 7 ελεύθερες»',
+    /Σειρά: 1 Aspropyrgos φόρτωση 09:00–10:00 → 2 Βέροια φόρτωση 16:00–18:00 → 3 Larisa → 4 Thessaloniki → 5 Athens/.test(t) && /26\/33 · 7 ελεύθερες/.test(t), t);
+  ok(scn, 'temperatures 2 °C one value: «2 °C ✓»', /2 °C ✓/.test(t), t);
+  if (shots) await page.screenshot({ path: shots + '/veroia-new.png' });
+  ok(scn, '«Δημιουργία φορτίου · 26π → TST-2106» on', !(await page.isDisabled('#wn5-hub [data-act="nf-create"]')) && /Δημιουργία φορτίου · 26π → TST-2106/.test(t), t);
+  await page.click('#wn5-hub [data-act="nf-create"]');
+  await page.waitForTimeout(600);
+  const w = saves(S);
+  const body = w[0] && w[0].body;
+  ok(scn, 'ONE write: POST /plan/legs {pieces: 4201, 4202, 4301}', w.length === 1 && w[0].path === '/plan/legs' && body && JSON.stringify(body.pieces) === '[{"piece_id":4201},{"piece_id":4202},{"piece_id":4301}]', w.map((x) => x.raw));
+  ok(scn, 'target: new_rt OWNED 13 / 22 / 33, side KATHODOS', body && JSON.stringify(body.target) === JSON.stringify({ new_rt: { trip_type: 'OWNED', truck_id: 13, trailer_id: 22, driver_id: 33 }, side: 'KATHODOS' }), body && body.target);
+  const st = body ? body.stops : [];
+  const at = (loc) => st.find((s) => s.location_id === loc) || {};
+  ok(scn, 'stops: Veroia Mon 12/10 16:00–18:00 (the panel\'s), Aspropyrgos its own 09:00–10:00, the VS deliveries Tue 13/10 whole day, Athens its own',
+    at(1).planned_from === '2026-10-12T16:00:00+03:00' && at(1).planned_to === '2026-10-12T18:00:00+03:00' && at(3).planned_from === '2026-10-12T06:00:00+00:00'
+    && at(4).planned_from === '2026-10-13T00:00:00+03:00' && at(5).planned_to === '2026-10-13T23:59:00+03:00' && at(2).planned_from === '2026-10-13T05:00:00+00:00' && st.length === 5, st);
+  ok(scn, 'after the 200: the board read again, the new load empty', K.planOf(S, 'GET', '/plan/board').length >= 2 && !(await K.count(page, '#wn5-hub .wn5-hub-ck:checked')));
+  await page.context().close();
+}
+
+K.run({ scenarios: { own_new, own_join, only_hours, partner, vehicle, handover, veroia_list, veroia_new }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],
+  go: 'the assignment form (own new / join / only / hours / F39 / partner / vehicle), ✈ «Αλλαγή οχήματος…» and the Veroia board v2 «Νέο φορτίο» hold' });

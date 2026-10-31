@@ -10428,3 +10428,48 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5h-erow > .wn5h-pl { flex:0 0 108px; margin-left:8px; padding:4px 10px; border-radius:5px; background:var(--wi4-own); }
 .wn5h-erow.par > .wn5h-pl { background:var(--wi4-partner); font-family:'DM Sans',sans-serif; color:var(--wi4-partner-ink); }
 .wn5h-erow > span { font-size:12px; color:var(--wi4-grey-1); }
+/* National v5 · Veroia board v2 (Figma 2383:7736, owner 31/10 «εστίαση στη δημιουργία νέων φορτίων»): the list by day
+   with a red «αργό» chip, a checkbox per row, «⋯» for «Σπάσε…», and «Νέο φορτίο» on the right. */
+.wn5-hub-panel.v2 { max-height:none; }
+.wn5-hub-panel.v2 .wn5-hub-l { flex:1 1 58%; max-height:min(520px, 60vh); overflow-y:auto; }
+.wn5-hub-panel.v2 .wn5-hub-r { flex:1 1 42%; }
+.wn5-hub-late { flex:none; margin-left:8px; padding:1px 6px; border-radius:4px; background:var(--wi4-red-bg); border:1px solid var(--wi4-red-line); font-size:10.5px; font-weight:500; line-height:14px; color:var(--danger); }
+.wn5-hub-ck { flex:none; margin:0; width:14px; height:14px; accent-color:var(--wi4-blue); cursor:pointer; }
+.wn5-hub-it.on { background:var(--wn5-info-bg); }
+.wn5-hub .wn5-hub-more { padding:0 7px; font-weight:700; letter-spacing:1px; }
+.wn5-hub-pop { position:fixed; z-index:var(--z-top); min-width:160px; max-width:360px; max-height:300px; overflow-y:auto; padding:4px 0; background:var(--surface-card);
+  border:1px solid var(--wi4-line-2); border-radius:8px; box-shadow:0 8px 24px rgba(11,25,41,.14); font-family:'DM Sans',sans-serif; }
+.wn5-hub-pi { display:flex; flex-direction:column; align-items:flex-start; gap:1px; width:100%; padding:6px 12px; border:0; background:none; text-align:left; font-size:12px; color:var(--wi4-ink); cursor:pointer; }
+.wn5-hub-pi:hover { background:var(--wi4-hover); }
+.wn5-hub-pi > span { font-size:11px; color:var(--wi4-grey-2); }
+.wn5-hub-pe { padding:6px 12px; font-size:12px; color:var(--wi4-grey-2); }
+/* «Νέο φορτίο» */
+.wn5-nf { display:flex; flex-direction:column; gap:8px; padding:10px 14px 12px; font-size:12px; color:var(--wi4-grey-1); }
+.wn5-nf-hd { display:flex; align-items:center; gap:8px; }
+.wn5-nf-t, .wn5-nf-sec { font:600 10.5px 'DM Sans',sans-serif; letter-spacing:1.2px; color:var(--wi4-grey-2); }
+.wn5-nf-sec { margin-top:4px; }
+.wn5-nf-n { font-size:11.5px; font-weight:500; color:var(--accent-text); }
+.wn5-nf-empty { margin:0; }
+.wn5-nf-row { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.wn5-nf-l { font-size:12px; color:var(--wi4-grey-2); }
+.wn5-nf-day { height:28px; padding:0 8px; border:1px solid var(--wi4-ctl); border-radius:6px; background:var(--surface-card); font:500 12px 'DM Sans',sans-serif; color:var(--wi4-ink); }
+.wn5-nf .wn5a-hm { width:64px; height:28px; }
+.wn5-nf-note { align-self:flex-start; padding:2px 6px; border-radius:4px; background:var(--wn5-note-bg); border:1px solid var(--wn5-note-line); font-size:11px; font-weight:500; color:var(--wn5-note-ink); }
+.wn5-nf-it { display:flex; align-items:center; gap:8px; min-height:28px; border-bottom:1px solid var(--wi4-line); }
+.wn5-nf-it > b { font-weight:600; color:var(--wi4-ink); }
+.wn5-nf-it > span:not(.wn5-hub-sp):not(.wn5-hub-p) { font-size:11px; color:var(--wi4-grey-2); }
+.wn5-nf-x { font-size:14px; line-height:1; color:var(--wi4-grey-2); }
+.wn5-nf-add { align-self:flex-start; font-size:12px; font-weight:500; color:var(--accent-text); }
+.wn5-nf-order { padding:8px 10px; border-radius:6px; background:var(--wn5-info-bg); border:1px solid var(--wn5-info-line); font-size:11.5px; color:var(--wi4-grey-1); display:flex; flex-direction:column; gap:2px; }
+.wn5-nf-order b.ok, .wn5-nf-order span.ok { color:var(--ok); font-weight:600; }
+.wn5-nf-order b.over { color:var(--danger); font-weight:600; }
+.wn5-nf-order span.warn { color:var(--wi4-amber); font-weight:600; }
+.wn5-nf-truck { display:flex; align-items:center; gap:10px; min-height:44px; padding:4px 10px; border:1.5px solid var(--wi4-blue); border-radius:6px; background:var(--wn5-info-bg); }
+.wn5-nf-tb { display:flex; flex-direction:column; padding:3px 8px; border-radius:5px; background:var(--wi4-own); }
+.wn5-nf-tb > b { font-size:12px; color:var(--wi4-ink); }
+.wn5-nf-tb > span { font-size:11px; color:var(--wi4-grey-2); }
+.wn5-nf-av { font-size:11.5px; color:var(--ok); }
+.wn5-nf-ch { font-size:12px; font-weight:600; color:var(--accent-text); }
+.wn5-nf .wn5-nf-pick { align-self:flex-start; height:28px; }
+.wn5-nf-msg:empty { display:none; }
+.wn5-nf-ft { display:flex; align-items:center; justify-content:flex-end; gap:8px; margin-top:4px; }

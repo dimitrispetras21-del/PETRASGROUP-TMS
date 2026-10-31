@@ -69,6 +69,11 @@
       st.ref = i0.reference || (i0.nat_order_id != null ? '#' + i0.nat_order_id : i0.order_id != null ? '#' + i0.order_id : '—');
       if (ctx.choice) Object.assign(st, k.copy(ctx.choice));
       _needsOf(st);
+      // F12 (live 28/10): the Veroia window the order already has (its shipment's window at the hub, on the pieces'
+      // Veroia day) fills the row, still the user's to change — never asked again, never replaced by «όλη η ημέρα»
+      const hd = k.hubDayOf(st.needs, st.day);
+      const hw = !st.hub && !st.win.hub && st.needs.find((n) => n.hub && !n.own && n.from && n.to && k.ymdOf(n.from) === hd);
+      if (hw) st.win.hub = { all: false, from: k.hm(hw.from), to: k.hm(hw.to) };
     }
     if (!st.day) st.err = k.clientErr('day_missing', 'Η ημέρα της ανάθεσης δεν είναι γνωστή — ανανέωσε');
     for (const c of st.cycles) { const r = k.row(c.rt_id); st.sidePal[c.rt_id] = { pal: k.sidePal(r, st.side), unk: k.sideUnk(r, st.side) }; }
@@ -91,6 +96,10 @@
   // supplier on its own day, so its truck must run that day
   const _dayD = (st) => (st.hub ? st.hub.day : st.side === 'KATHODOS' ? (_hd(st) || st.day) : st.day);
   const _inWeek = (st, d) => !st.week || (d >= st.week && d <= K().addDays(st.week, 6));
+  // the days the vehicle must run for this request: the row's day, the Veroia day and the joining day
+  const _span = (st) => { const ds = [st.day, st.mode === 'vehicle' ? null : _hd(st), _dayD(st)].filter(Boolean).sort(); return ds.length ? [ds[0], ds[ds.length - 1]] : null; };
+  // a day of the span outside the loaded week: what the vehicle does then is not on the board (code review of #171)
+  const _blind = (st) => { const sp = _span(st); if (!sp) return false; for (let d = sp[0]; d <= sp[1]; d = K().addDays(d, 1)) if (!_inWeek(st, d)) return true; return false; };
   const _covers = (c, d) => (c.date_start <= d && d <= c.date_end) || K().ymdOf(c.end_at) === d;
   const _segs = (c) => { try { return typeof WN5L !== 'undefined' ? WN5L.segmentsOf(c).segments : [c]; } catch (e) { return [c]; } };
   const _uses = (c, key, id) => id != null && (c[key] === id || _segs(c).some((g) => g[key] === id));
@@ -126,12 +135,14 @@
       const verb = n.role === 'load' ? 'Φόρτωση' : (n.hub ? 'Άφιξη' : 'Παράδοση');
       const ex = n.loc != null && cyc ? (cyc.stops || []).find((s) => s.side === st.side && s.location_id === n.loc) : null;
       const pl = n.hub ? 'Βέροια' : _place(n.loc);
-      const row = { key, n, verb, place: pl, day: ex ? k.stopDay(ex) : day, fixed: null, missing: n.loc == null || !day };
+      const row = { key, n, verb, place: pl, day: ex ? k.stopDay(ex) : day, fixed: null, missing: n.loc == null || !day,
+        est: !ex && !st.hub && n.hub && !!n.hubEst && !st.needs.some((m) => m.hub && m.hubDay === day && !m.hubEst) };
       if (ex) row.fixed = k.hmw(ex.planned_from, ex.planned_to);
       else if (n.hub && st.hub) row.fixed = st.hub.from && st.hub.to ? (st.hub.from === '00:00' && st.hub.to === '23:59' ? 'όλη η ημέρα' : st.hub.from + '–' + st.hub.to) : null;
       else if (n.hub && n.own && n.from && n.to) row.fixed = k.hmw(n.from, n.to);
       else if (!n.hub && n.from && n.to) row.fixed = k.hmw(n.from, n.to);
-      if (n.hub && hubLoc != null && k.hubDays(st.needs).length > 1) row.twoDays = k.hubDays(st.needs);
+      // two Veroia days have no right one (decision 6) — unless the Veroia board fixed the day (st.hub)
+      if (n.hub && !st.hub && hubLoc != null && k.hubDays(st.needs).length > 1) row.twoDays = k.hubDays(st.needs);
       out.push(row);
     }
     return out;
@@ -217,11 +228,10 @@
     if (id == null || px === 'pt') return null;
     const key = f.kind + '_id';
     const D = _dayD(st);
-    const hd = st.mode === 'vehicle' ? null : _hd(st);
-    const days = [st.day, hd, D].filter(Boolean).sort();
-    if (!days.length) return null;
-    const a = days[0], b = days[days.length - 1];
-    for (let d = a; d <= b; d = k.addDays(d, 1)) if (!_inWeek(st, d)) return { txt: '—', cls: '' };
+    const sp = _span(st);
+    if (!sp) return null;
+    const a = sp[0], b = sp[1];
+    if (_blind(st)) return { txt: '—', cls: '' };
     const mine = st.cycles.filter((c) => c.rt_id !== st.rtId && _uses(c, key, id));
     const on = mine.filter((c) => { for (let d = a; d <= b; d = k.addDays(d, 1)) if (_covers(c, d)) return true; return false; })
       .sort((x, y) => Date.parse(x.start_at) - Date.parse(y.start_at));
@@ -274,7 +284,7 @@
       // the cycle's own Veroia stop on another day than the load's: the load goes to that stop (decision 6)
       const hs = st.needs.some((n) => n.hub) && (tg.cyc.stops || []).find((s) => s.side === st.side && s.location_id === k.hubId());
       if (hs && k.stopDay(hs) !== D) other = 'Βέροια ' + k.dayShort(k.stopDay(hs));
-    } else txt = lbl + ' · ' + (_inWeek(st, D) ? 'ελεύθερο' : '—');
+    } else txt = lbl + ' · ' + (_blind(st) ? '—' : 'ελεύθερο');
     const sp = tg.cyc ? (st.sidePal[tg.cyc.rt_id] || { pal: 0, unk: 0 }) : { pal: 0, unk: 0 };
     const after = sp.pal + st.pallets;
     return { txt, road, other, alt: tg.n > 1, before: WN5L.palText(sp.pal, sp.unk), after: WN5L.palText(after, sp.unk + st.palUnk), over: after > 33,
@@ -303,7 +313,7 @@
     let h = '';
     for (const row of _rows(st, cyc)) {
       const bad = pb.rows[row.key];
-      const lbl = row.verb + ' · ' + row.place + (row.day ? ' · ' + k.dayShort(row.day) : '');
+      const lbl = row.verb + ' · ' + row.place + (row.day ? ' · ' + k.dayShort(row.day) + (row.est ? ' (εκτίμηση)' : '') : '');
       if (row.fixed != null || row.missing || row.twoDays) {
         const v = row.twoDays ? row.twoDays.map(k.dayShort).join(' / ') : row.missing ? '—' : row.fixed;
         h += '<div class="wn5a-win" data-row="' + _e(row.key) + '"><span class="wn5a-wl' + (row.missing || row.twoDays ? ' bad' : '') + '">' + _e(lbl) + '</span><span class="wn5a-wv">' + _e(v) + '</span></div>';
