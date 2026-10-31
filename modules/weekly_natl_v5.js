@@ -625,8 +625,9 @@ function _dimOk(r) { return r.kind === 'cycle' && r.rail !== 'red'; }
 const _dc = (on) => (on ? ' wn5-dim' : '');
 // A window the board did not send (hub[] of 072, Ε-26) is «—», never «null–null» and never a guess (as T5).
 // F1 (owner 28/10): a point entered without a window is its whole day; the model says so (allDay, WN5L.allDay: one
-// rule) and the board names it «όλη η ημέρα», never an hour someone agreed.
-const _winTxt = (f, t, all) => (f && t ? (all ? 'όλη η ημέρα' : `${f}–${t}`) : '—');
+// rule) and the board names it «όλη η ημέρα», never an hour someone agreed. F64: one minute is «στις 08:00», the day's
+// last minute «ως 23:59» — WN5L.winText, the rule the driver sheet reads too.
+const _winTxt = (f, t, all) => WN5L.winText(f, t, all) || '—';
 const _win = (f, t, all) => _esc(_winTxt(f, t, all));
 function _rowHTML(r, m, no) {
   const n = r.kind === 'cycle' ? ++no.n : null;

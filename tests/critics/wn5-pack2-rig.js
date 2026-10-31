@@ -2,7 +2,7 @@
 // point on the same truck, B-22 (PE «Όχι»), the invoice price for owner / accountant only. Judged by what reached the
 // fake /plan/* (S.plan: method, path, raw body, order — «the table» of this rig) and by the DOM; never by a toast or a
 // screenshot. Synthetic data only (public repo).
-// Usage: node tests/critics/wn5-pack2-rig.js [menu delpt half delwait listdel drag day newpt newanod price f64 f65 b22] [--shots <dir>]
+// Usage: node tests/critics/wn5-pack2-rig.js [menu delpt half delwait listdel drag day newpt newanod price f64 f65 f63 b22] [--shots <dir>]
 //        WN5_TREE=<git archive origin/main> node tests/critics/wn5-pack2-rig.js   (plain-main proof: NO-GO, exit 1)
 // Exit: 0 green · 1 a check failed · 2 unknown scenario.
 'use strict';
@@ -375,7 +375,46 @@ async function f65({ browser, origin, ok, scn, shots }) {
   }
 }
 
+// 12 · F63 (live 31/10): «+» → «Πρόσθεσε» wrote and the board kept «Κενό γύρισμα» until «Ανανέωση», with no word.
+// After the press: the board is read AGAIN after the POST /plan/legs, a toast says it, the truck's row flashes (F50).
+async function f63({ browser, origin, ok, scn, shots }) {
+  let put = false;
+  const NT = { nat_order_id: 3101, reference: 'N-T101', client_id: 41, client: 'ΠΕΛΑΤΗΣ Α', temperature_c: 4 };
+  const after = () => { const b = K.week(); const w = b.waiting.shift();
+    b.cycles[0].stops.push(K.stop(1006, 6, 'KATHODOS', 3, '2026-10-14T08:00:00+03:00', '2026-10-14T10:00:00+03:00', [K.leg(5005, w.piece_id, 'load', w.pallets, NT)]),
+      K.stop(1007, 7, 'KATHODOS', 2, '2026-10-15T08:00:00+03:00', '2026-10-15T10:00:00+03:00', [K.leg(5005, w.piece_id, 'unload', w.pallets, NT)]));
+    return b; };
+  const plan = {
+    'GET /plan/board': (e, S) => [200, put ? after() : S.board],
+    'POST /plan/legs': () => { put = true; return [200, { ok: true, op: 'plan_put_pieces', dry_run: false, ids: { leg_ids: [5005], rt_id: 101 }, warnings: [], notice_ids: [] }]; },
+  };
+  const { page, S } = await K.openApp(browser, origin, { plan, viewport: { width: 1440, height: 900 } });
+  await page.evaluate(() => document.querySelector('#content .wn5-row[data-rt="101"] [data-act="plus"][data-side="KATHODOS"]').click()).catch((e) => S.pageErrors.push('plus: ' + e.message));
+  await page.waitForSelector(dlg('plus'), { timeout: 6000 }).catch(() => {});
+  const on = await page.$eval(`${dlg('plus')} .wn5-pline[data-piece="4101"] [data-act="save"]`, (b) => !b.disabled).catch(() => null);
+  ok(scn, '«+» of TST-2104 ΚΑΘΟΔΟΣ: N-T101 waits there with «Πρόσθεσε» on', on === true, on);
+  const t0 = S.plan.length;
+  await page.click(`${dlg('plus')} .wn5-pline[data-piece="4101"] [data-act="save"]`).catch(() => {});
+  await page.waitForTimeout(500);
+  const seq = S.plan.slice(t0).map((x) => x.m + ' ' + x.path);
+  const iLegs = seq.indexOf('POST /plan/legs');
+  ok(scn, 'one POST /plan/legs, then GET /plan/board (the board read again) — the order of S.plan', iLegs >= 0 && seq.indexOf('GET /plan/board', iLegs) > iLegs
+    && seq.filter((x) => x === 'POST /plan/legs').length === 1, seq);
+  const fl = await page.evaluate(() => { const rs = [...document.querySelectorAll('#content .wn5-row.wn5-focus')];
+    const r = rs[0] && rs[0].getBoundingClientRect(); return { keys: rs.map((e) => e.dataset.key), flash: !!(rs[0] && rs[0].classList.contains('wn5-flash')), inView: !!r && r.top >= 0 && r.bottom <= innerHeight }; });
+  ok(scn, 'the truck\'s row (rt:101) is marked, flashes and is in view', JSON.stringify(fl.keys) === '["rt:101"]' && fl.flash && fl.inView, fl);
+  const ts = await toasts(page);
+  ok(scn, 'a toast says it was added', ts.some((x) => /^Προστέθηκε/.test(x)), ts);
+  const pts = await page.$$eval('#content .wn5-row[data-rt="101"] .wn5-pt[data-stop]', (xs) => xs.map((x) => x.dataset.stop)).catch(() => []);
+  ok(scn, 'the board shows the new points (stop 1006 or 1007) without «Ανανέωση»', pts.includes('1006') || pts.includes('1007'), pts);
+  ok(scn, 'the popover closed', await K.count(page, dlg('plus')) === 0);
+  await shot(page, shots, 'pack2-f63-after-add-1440');
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await page.context().close();
+}
+
 // 9 · Figma audit B-22: a new order starts on PE «Όχι»
+
 async function b22({ browser, origin, ok, scn }) {
   const { page, S } = await K.openApp(browser, origin, {});
   const DLG = dlg('order');
@@ -387,5 +426,5 @@ async function b22({ browser, origin, ok, scn }) {
   await page.context().close();
 }
 
-K.run({ scenarios: { menu, delpt, half, delwait, listdel, drag, day, newpt, newanod, price, f64, f65, b22 }, globals: ['WN5Act', 'WN5Form', 'WN5Edit'],
+K.run({ scenarios: { menu, delpt, half, delwait, listdel, drag, day, newpt, newanod, price, f64, f65, f63, b22 }, globals: ['WN5Act', 'WN5Form', 'WN5Edit'],
   go: 'board pack 2: delete from the board, drag to truck / day, new point on its truck, B-22, price roles' });
