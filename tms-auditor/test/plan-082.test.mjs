@@ -17,7 +17,9 @@ const read = (f) => fs.readFileSync(migrationFile(f), 'utf8');
 const one = async (db, sql, p) => (await db.query(sql, p)).rows[0];
 const num = async (db, sql, p) => Number(Object.values((await db.query(sql, p)).rows[0])[0]);
 async function errorOf(db, sql) { try { await db.exec(sql); return null; } catch (e) { return String(e.message); } }
-const SIGS = ['public.plan_h_bridge_unplan(bigint,bigint,text,text,text)', 'public.rt_recompute(bigint)'];
+const SIGS = ['public.plan_h_bridge_unplan(bigint,bigint,text,text,text)', 'public.rt_sync_from_order()'];
+const RECOMPUTE = '5fa0a08418147b22d2852db3b8c72c3e';   // rt_recompute, production 28/10: 082 never patches it
+const recomputeMd5 = async (db) => (await one(db, `SELECT md5(prosrc) AS m FROM pg_proc WHERE oid = 'public.rt_recompute(bigint)'::regprocedure`)).m;
 const md5s = async (db) => Promise.all(SIGS.map(async (s) => (await one(db, `SELECT md5(prosrc) AS m FROM pg_proc WHERE oid = '${s}'::regprocedure`)).m));
 
 // test rows only: legacy ids rec82..., references T82-..., locations TEST 082 ..., plates TEST-082-...
@@ -108,9 +110,14 @@ const f40 = (db, L, how = 'delivery') => scenario(db, async () => {
   const legs0 = await legsOf(db, o);
   const stops0 = await num(db, `SELECT count(*) FROM rt_stops WHERE rt_id = $1 AND deleted_at IS NULL`, [rt]);
   const n0 = await lastNotice(db);
-  await db.exec(how === 'delivery'
-    ? `UPDATE orders SET delivery_datetime = delivery_datetime + interval '1 day' WHERE id = ${o}`
-    : `UPDATE orders SET cross_dock_date = cross_dock_date + 1 WHERE id = ${o}`);
+  if (how === 'executed') {   // the cycle ran: its stops are of yesterday (v_rt_stop_state.executed = an Athens day gone)
+    // the cycle's day (hub + 1) moved back to yesterday, every stop by the same days (the order of the stops kept)
+    await db.exec(`UPDATE rt_stops SET planned_from = planned_from - make_interval(days => ${hub} + 1 - ((now() AT TIME ZONE 'Europe/Athens')::date - 1)),
+      planned_to = planned_to - make_interval(days => ${hub} + 1 - ((now() AT TIME ZONE 'Europe/Athens')::date - 1)) WHERE rt_id = ${rt}`);
+  }
+  await db.exec(how === 'hub' ? `UPDATE orders SET cross_dock_date = cross_dock_date + 1 WHERE id = ${o}`
+    : how === 'hub5' ? `UPDATE orders SET cross_dock_date = cross_dock_date + 5 WHERE id = ${o}`
+    : `UPDATE orders SET delivery_datetime = delivery_datetime + interval '1 day' WHERE id = ${o}`);
   return {
     legs0, stops0, code, legs: await legsOf(db, o),
     stops: await num(db, `SELECT count(*) FROM rt_stops WHERE rt_id = $1 AND deleted_at IS NULL`, [rt]),
@@ -211,6 +218,7 @@ test('082 on the production-shaped copy (28/10): F40 and F41 reproduced on the l
 
   await t.test('the copy holds the LIVE texts 082 guards on, and the RT sync F41 runs through (production md5, SELECT 28-31/10)', async () => {
     assert.deepStrictEqual(live, SIGS.map((s) => F.live[s]));
+    assert.strictEqual(await recomputeMd5(db), RECOMPUTE);
     const sync = Object.fromEntries((await db.query(`SELECT proname, md5(prosrc) AS m FROM pg_proc WHERE pronamespace = 'public'::regnamespace
       AND proname IN ('rt_sync_from_order', 'rt_auto_close_order', 'rt_auto_close', 'rt_auto_close_legs', 'order_dates_follow',
                       'plan_bridge_on_order', 'plan_bridge_on_stop')`)).rows.map((r) => [r.proname, r.m]));
@@ -229,6 +237,12 @@ test('082 on the production-shaped copy (28/10): F40 and F41 reproduced on the l
     assert.strictEqual(r.stops, 0, 'the 4 rt_stops deleted');
     assert.strictEqual(r.status, 'cancelled', 'RT-1304 cancelled');
     assert.deepStrictEqual(r.notices, { vs_day_moved: 3 }, '3 identical notices, one per piece');
+  });
+  await t.test('live: a bridge whose national leg already ran keeps everything, but is told once per stop', async () => {
+    const r = await f40(db, L, 'executed');
+    assert.strictEqual(r.legs, 3);
+    assert.strictEqual(r.stops, 4);
+    assert.ok((r.notices.vs_changed_after_execution ?? 0) > 1, JSON.stringify(r.notices));
   });
   await t.test('NO-GO on the live texts: VS 601 - the moved VS loses its leg and stops, the other piece stays', async () => {
     const r = await f601(db, L);
@@ -257,7 +271,7 @@ test('082 on the production-shaped copy (28/10): F40 and F41 reproduced on the l
   await t.test('082 dry run keeps nothing', async () => {
     const msg = await errorOf(db, read('082_plan_bridge_keeps_cycles_dryrun.sql'));
     const gen = F.gen.map((g) => g.m);
-    assert.match(msg ?? '', new RegExp(`DRY RUN 082 finished - EVERYTHING UNDONE, nothing kept\\. The block ran to its end {2}\\|\\| {2}082 ran: unplan ${gen[0]}, recompute ${gen[1]}`), msg);
+    assert.match(msg ?? '', new RegExp(`DRY RUN 082 finished - EVERYTHING UNDONE, nothing kept\\. The block ran to its end {2}\\|\\| {2}082 ran: unplan ${gen[0]}, sync ${gen[1]}`), msg);
     assert.deepStrictEqual(await md5s(db), live);
   });
 
@@ -267,10 +281,12 @@ test('082 on the production-shaped copy (28/10): F40 and F41 reproduced on the l
     assert.deepStrictEqual(await md5s(db), F.gen.map((g) => g.m));
     assert.deepStrictEqual((await db.query(`SELECT proacl::text AS a, prosecdef FROM pg_proc WHERE oid = ANY($1::regprocedure[]) ORDER BY oid`, [SIGS])).rows, acl0);
     assert.strictEqual(await num(db, TRG), trg0);
+    assert.strictEqual(await recomputeMd5(db), RECOMPUTE, 'rt_recompute is not patched (leg joins and rt_merge re-date as before)');
     const v = await one(db, read('082_plan_bridge_keeps_cycles_verify.sql'));
     assert.strictEqual(v.applied, '082 in place');
     assert.strictEqual(Number(v.changed_texts), 0);
     assert.strictEqual(v.unplan_drops, false);
+    assert.strictEqual(v.recompute_untouched, true);
   });
   await t.test('082 a second time is refused by its guard, nothing changes', async () => {
     assert.match(await errorOf(db, src) ?? '', /082: public\.plan_h_bridge_unplan.* is not its live text of 28\/10/);
@@ -293,6 +309,18 @@ test('082 on the production-shaped copy (28/10): F40 and F41 reproduced on the l
     assert.strictEqual(r.legs, 3);
     assert.strictEqual(r.stops, 4);
     assert.deepStrictEqual(r.notices, { vs_day_moved_kept: 1 });
+  });
+  await t.test('GO: the hub day moves 5 days, past the cycle\'s own day - the cycle is kept and the request commits', async () => {
+    const r = await f40(db, L, 'hub5');
+    assert.strictEqual(r.late, null, 'no 071 rule refuses the kept legs at COMMIT');
+    assert.strictEqual(r.legs, 3);
+    assert.strictEqual(r.stops, 4);
+    assert.deepStrictEqual(r.notices, { vs_day_moved_kept: 1 });
+  });
+  await t.test('GO: a bridge whose national leg already ran - kept, told ONCE', async () => {
+    const r = await f40(db, L, 'executed');
+    assert.strictEqual(r.legs, 3);
+    assert.deepStrictEqual(r.notices, { vs_changed_after_execution: 1 });
   });
   await t.test('GO: VS 601 - its leg and stops stay, one notice', async () => {
     const r = await f601(db, L);
@@ -334,7 +362,7 @@ test('082 on the production-shaped copy (28/10): F40 and F41 reproduced on the l
 
   await t.test('rollback dry run keeps nothing; the rollback brings the live texts and the live behaviour back', async () => {
     const msg = await errorOf(db, read('082_plan_bridge_keeps_cycles_rollback_dryrun.sql'));
-    assert.match(msg ?? '', new RegExp(`DRY RUN 082 ROLLBACK finished - EVERYTHING UNDONE.*rollback ran: unplan ${live[0]}, recompute ${live[1]}`), msg);
+    assert.match(msg ?? '', new RegExp(`DRY RUN 082 ROLLBACK finished - EVERYTHING UNDONE.*rollback ran: unplan ${live[0]}, sync ${live[1]}`), msg);
     assert.deepStrictEqual(await md5s(db), F.gen.map((g) => g.m));
     await db.exec(read('082_plan_bridge_keeps_cycles_rollback.sql'));
     assert.deepStrictEqual(await md5s(db), live);

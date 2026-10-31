@@ -3,7 +3,7 @@
 -- undoes everything inside it (lesson 056). ASCII only.
 -- EXPECTED (the red ERROR is deliberate): NOTICE "082 OK: plan_h_bridge_unplan keeps riding bridges ..." and then
 --   ERROR: P0001: DRY RUN 082 finished - EVERYTHING UNDONE, nothing kept. The block ran to its end  ||  082 ran:
---   unplan 18edaee1e5a5e855a81e50b838b05d99, recompute b014c26613d448d6b34ea2065ccd467f
+--   unplan b4450bcd533afcb24348e8f46e914276, sync 1a1c357803bc1c0c7368e1ba5b1335cc
 --   Anything else (an ERROR from one of 082's guards or proofs): do NOT run 082, copy the message to the coordinator.
 
 DO $dry$
@@ -15,7 +15,7 @@ DECLARE
   -- the hunks: (anchor in the live text, replacement); each anchor is in the live text exactly once
   u_1a CONSTANT text := $h$declare v_sh bigint[]; v_legs bigint[]; v_ref text; v_done boolean := false; x record;
 $h$;
-  u_1b CONSTANT text := $h$declare v_sh bigint[]; v_legs bigint[]; v_ref text; v_done boolean := false; x record;
+  u_1b CONSTANT text := $h$declare v_sh bigint[]; v_ref text; v_done boolean := false; x record;
   -- 082: the bridges that ride a cycle (kept) and those that do not (unplanned as before); the cycles named
   v_keep bigint[]; v_free bigint[]; v_rts text; v_rt bigint; v_n int;
 $h$;
@@ -51,14 +51,15 @@ $h$;
   -- chose it. Now the legs, stops and split of a riding bridge stay as the dispatcher left them and the national
   -- desk is told once which cycles to check; moving the stops or taking the pieces off is the dispatcher's own act
   -- on the board. A bridge that rides nothing is unplanned as before (its split undone, its pallets the stop's).
-  select coalesce(array_agg(q order by q) filter (where exists (select 1 from piece_legs l
-           join shipment_pieces sp on sp.id = l.piece_id where sp.shipment_id = q and l.deleted_at is null)), '{}'),
-         coalesce(array_agg(q order by q) filter (where not exists (select 1 from piece_legs l
-           join shipment_pieces sp on sp.id = l.piece_id where sp.shipment_id = q and l.deleted_at is null)), '{}')
-    into v_keep, v_free from unnest(v_sh) q;
+  select coalesce(array_agg(q order by q) filter (where rides), '{}'), coalesce(array_agg(q order by q) filter (where not rides), '{}')
+    into v_keep, v_free
+    from (select q, exists (select 1 from piece_legs l join shipment_pieces sp on sp.id = l.piece_id
+                             where sp.shipment_id = q and l.deleted_at is null) as rides
+            from unnest(v_sh) q) t;
   if cardinality(v_keep) > 0 and not exists (select 1 from plan_notices where order_id = p_order
                                                and kind = 'vs_day_moved_kept' and created_at = now()) then
-    -- every cycle of the order's live bridges, not only this stop's: the first call of a save names them all
+    -- every cycle of the order's live bridges, not only this stop's: the first call of a request names them all
+    -- (the later calls of the same request are deduplicated, so naming only this stop's would lose the others)
     select string_agg(distinct r.code, ', ' order by r.code), min(r.id), count(distinct r.id) into v_rts, v_rt, v_n
       from piece_legs l join shipment_pieces sp on sp.id = l.piece_id join shipments s on s.id = sp.shipment_id
       join ct_round_trips r on r.id = l.rt_id
@@ -75,19 +76,24 @@ $h$;
   u_5b CONSTANT text := $h$  if v_done and not exists (select 1 from plan_notices where order_id = p_order and kind = 'vs_day_moved'
                                 and created_at = now()) then
 $h$;
-  r_1a CONSTANT text := $h$  if d1 is not null and (r.date_start <> d1 or r.date_end is distinct from greatest(d2, d1)) then
+  s_1a CONSTANT text := $h$    perform rt_recompute(leg.rt_id);
+  end loop;
+  return null;
 $h$;
-  r_1b CONSTANT text := $h$  -- 082 (F41, owner 28/10): the dates of a closed round trip are history - its P&L, its payroll week. The sync
-  -- re-dated closed RTs on every save of one of their orders (RT-1252, 28/10: 22 -> 27 -> 22 three times). A person
-  -- still changes them (TRIP PnL); an RT that gains an open leg re-dates, because 046 reopens it (same rule of open).
-  if r.status in ('closed', 'complete') and not exists (
-       select 1 from ct_rt_legs l left join orders o on o.id = l.order_id left join national_loads nl on nl.id = l.nat_load_id
-        where l.rt_id = p_rt and coalesce(o.deleted_at, nl.deleted_at) is null
-          and coalesce(o.status, nl.status) is distinct from 'Delivered'
-          and coalesce(o.status, nl.status) is distinct from 'Cancelled') then
-    return;
-  end if;
-  if d1 is not null and (r.date_start <> d1 or r.date_end is distinct from greatest(d2, d1)) then
+  s_1b CONSTANT text := $h$    -- 082 (F41, owner 28/10): the dates of a closed round trip are history - its P&L, its payroll week. A save
+    -- of one of its orders re-dated it every time (RT-1252, 28/10: 22 -> 27 -> 22 three times). A person still
+    -- changes them (TRIP PnL). Only this path: a leg that joins or leaves still re-dates (rt_sync_legs, rt_merge),
+    -- and an order that is no longer Delivered re-dates it here, before 046 reopens it (046's rule of open).
+    if not (rt.status in ('closed', 'complete') and not exists (
+         select 1 from ct_rt_legs l2 left join orders o2 on o2.id = l2.order_id
+           left join national_loads nl2 on nl2.id = l2.nat_load_id
+          where l2.rt_id = leg.rt_id and coalesce(o2.deleted_at, nl2.deleted_at) is null
+            and coalesce(o2.status, nl2.status) is distinct from 'Delivered'
+            and coalesce(o2.status, nl2.status) is distinct from 'Cancelled')) then
+      perform rt_recompute(leg.rt_id);
+    end if;
+  end loop;
+  return null;
 $h$;
   v_g record; v_h record; v_src text; v_new text; p pg_proc%rowtype; v_trg0 int; v_trg1 int; v_b54 int;
 BEGIN
@@ -102,7 +108,7 @@ BEGIN
   END IF;
   FOR v_g IN SELECT * FROM (VALUES
       ('public.plan_h_bridge_unplan(bigint,bigint,text,text,text)', '104f50467bfe6bc1ec2cd747d92943b7'),
-      ('public.rt_recompute(bigint)', '5fa0a08418147b22d2852db3b8c72c3e')) g(sig, m) LOOP
+      ('public.rt_sync_from_order()', '68d7a46e020c13a6b5a6edbd5578c985')) g(sig, m) LOOP
     IF to_regprocedure(v_g.sig) IS NULL
        OR (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure(v_g.sig)) IS DISTINCT FROM v_g.m THEN
       RAISE EXCEPTION '082: % is not its live text of 28/10 (082 already applied, or changed since) - stop', v_g.sig;
@@ -117,8 +123,8 @@ BEGIN
 
   -- ===== PART 1 + PART 2: LIVE TEXT + HUNKS (md5 after = measured on the production-shaped PGlite copy) =====
   FOR v_g IN SELECT * FROM (VALUES
-      ('public.plan_h_bridge_unplan(bigint,bigint,text,text,text)', ARRAY[u_1a, u_2a, u_3a, u_4a, u_5a], ARRAY[u_1b, u_2b, u_3b, u_4b, u_5b], '18edaee1e5a5e855a81e50b838b05d99'),
-      ('public.rt_recompute(bigint)', ARRAY[r_1a], ARRAY[r_1b], 'b014c26613d448d6b34ea2065ccd467f')) g(sig, a, b, m) LOOP
+      ('public.plan_h_bridge_unplan(bigint,bigint,text,text,text)', ARRAY[u_1a, u_2a, u_3a, u_4a, u_5a], ARRAY[u_1b, u_2b, u_3b, u_4b, u_5b], 'b4450bcd533afcb24348e8f46e914276'),
+      ('public.rt_sync_from_order()', ARRAY[s_1a], ARRAY[s_1b], '1a1c357803bc1c0c7368e1ba5b1335cc')) g(sig, a, b, m) LOOP
     SELECT * INTO p FROM pg_proc WHERE oid = to_regprocedure(v_g.sig);
     IF p.proconfig IS DISTINCT FROM ARRAY['search_path=public'] OR p.prolang <> (SELECT oid FROM pg_language WHERE lanname = 'plpgsql') THEN
       RAISE EXCEPTION '082: % is not a plpgsql function with search_path=public - stop', v_g.sig;
@@ -154,12 +160,12 @@ BEGIN
   IF (SELECT prosrc FROM pg_proc WHERE oid = 'public.plan_h_bridge_unplan(bigint,bigint,text,text,text)'::regprocedure) LIKE '%plan_h_bridge_drop(%' THEN
     RAISE EXCEPTION '082 proof: plan_h_bridge_unplan still drops legs';
   END IF;
-  RAISE NOTICE '082 OK: plan_h_bridge_unplan keeps riding bridges (one notice per save), rt_recompute leaves closed RT dates, triggers %',
+  RAISE NOTICE '082 OK: plan_h_bridge_unplan keeps riding bridges (one notice per request), rt_sync_from_order leaves closed RT dates, triggers %',
     v_trg1;
 END;
   -- ===== what it did =====
-  res := format('082 ran: unplan %s, recompute %s',
-    (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.plan_h_bridge_unplan(bigint,bigint,text,text,text)'::regprocedure), (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.rt_recompute(bigint)'::regprocedure));
+  res := format('082 ran: unplan %s, sync %s',
+    (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.plan_h_bridge_unplan(bigint,bigint,text,text,text)'::regprocedure), (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.rt_sync_from_order()'::regprocedure));
   RAISE EXCEPTION 'DRY RUN 082 finished - EVERYTHING UNDONE, nothing kept. The block ran to its end  ||  %', res;
 END
 $dry$;

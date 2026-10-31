@@ -545,9 +545,10 @@ async function rtOnOrderSaved(orderId) {
       if (!partnerTrip && ids.driver_id && rt.driver_id !== ids.driver_id) patch.driver_id = ids.driver_id;
       // No dates here (F41, owner 28/10): an existing RT's dates belong to the database (rt_recompute: the earliest
       // loading and the latest delivery of ALL its legs, on every leg or order change; 082 leaves a closed RT's
-      // alone). This line wrote the anchor export's own dates instead, so every save of a paired import moved
-      // date_end back (RT-1252: 22 -> 27 by the base, 27 -> 22 from here, three times on 28/10; 102 such pairs on
-      // 58 RT in 30 days). Two writers with two rules = the value of whoever wrote last (principle 3).
+      // alone on an order save). This line wrote the anchor export's own dates instead, so every save of a paired
+      // import moved date_end back (RT-1252: 22 -> 27 by the base, 27 -> 22 from here, three times on 28/10; 102
+      // such pairs on 58 RT in 30 days). Two writers with two rules = the value of whoever wrote last (principle 3).
+      // One writer is left outside the base: POST /costs/rt's attach below still extends date_end (Worker, own chain).
       if (Object.keys(patch).length) await plFetch('/costs/rt/' + rt.id, { method: 'PATCH', body: patch });
       // Λείπον σκέλος σε ήδη υπάρχον RT — π.χ. ταίριασμα στο Weekly International
       // ΜΕΤΑ τη δημιουργία του RT εξαγωγής (9 μονοσκελή RT μετρημένα 5/9, CLAUDE.md
