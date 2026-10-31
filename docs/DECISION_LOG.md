@@ -4938,6 +4938,14 @@ Partner Truck Plates — επιβεβαιωμένα στον χάρτη του �
 
 **Ποιος:** owner 31/10 (μέσω του συντονιστή), agent (ανάλυση, υλοποίηση, `/code-review xhigh`).
 
+**Εκτελέστηκε (31/10 βράδυ, owner, μετά το merge του #182):**
+- **Dry run:** «081 ran: reseq f246c362…, order_update 323eb4cc…».
+- **Εφαρμογή:** `f246c362c3f3bb1746a1d536ad1338bb` / `323eb4ccde77d1848c74a8b4ab310021`.
+- **Verify:** `081 in place`, changed_texts 0, rt_update_untouched true, order_update_via_rt_update true, live_cycles 20, order_broken 0, legs_broken 0.
+- **Αρχεία:** εκτός `drafts/`.
+- **Αναδιάταξη:** καμία μαζική. 0 κύκλοι άλλαξαν σειρά μετά την εκτέλεση (SELECT 31/10 22:58 Αθήνας). Στην επόμενη εγγραφή αλλάζει 1 από τους 20: RT-1323, ΑΝΟΔΟΣ 01/11, 360 → 560 → 628 αντί για 360 → 628 → 560.
+- **Επαναφορά:** `081_plan_stop_order_follows_rollback.sql`. Οι στάσεις που μετακινήθηκαν ή αναδιατάχθηκαν μένουν.
+
 ### 2026-10-31 · Front end · F36: νέα έκδοση και λήξη σύνδεσης χωρίς χαμένη φόρμα (owner 31/10)
 
 **Επιλογή:**
