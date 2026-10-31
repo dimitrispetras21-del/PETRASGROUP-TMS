@@ -9114,6 +9114,12 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 /* F32: a ΠΡΟΣ ΑΝΑΘΕΣΗ row is dragged onto a cycle row; the row under the pointer is the drop target */
 .wn5-row[draggable="true"] { cursor:grab; }
 .wn5-row.wn5-drop { outline:2px dashed var(--wi4-blue); outline-offset:-2px; background:var(--wi4-info-bg); }
+/* pack 2 (owner 31/10): a point is dragged onto another truck's row, or onto another day's head (same truck) */
+.wn5-row .wn5-pt[draggable="true"] { cursor:grab; }
+.wn5-dayh.wn5-drop, .wn5-day.empty.wn5-drop { outline:2px dashed var(--wi4-blue); outline-offset:-2px; background:var(--wi4-info-bg); }
+/* F65 (live 31/10): a panel taller than the room scrolls inside (.wn5-dlg max-height), and «Αποθήκευση» went under a
+   six-week November. The buttons stay at the panel's foot, the content scrolls behind them. */
+.wn5-dlg > .wi4-dlg-ft { position:sticky; bottom:0; z-index:1; background:var(--surface-card); }
 .wn5 .wn5-asg .wi4-box { flex:1 1 0; max-width:none; }
 /* «ΠΡΟΣ ΑΝΑΘΕΣΗ» in the button's red ink, SemiBold (H1 / 7745): its inner .wi4-l1 (ink, 500) would paint it navy. */
 .wn5 .wi4-box.un > .wi4-l1 { color:inherit; font-weight:inherit; }
@@ -9927,6 +9933,9 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5f-c.vro { border-color:var(--wi4-line-2); background:var(--wi4-chip); color:var(--wi4-grey-2); }
 .wn5f-c.nro { background:var(--wi4-chip); color:var(--wi4-grey-1); }
 .wn5f-c.until { border-width:2px; line-height:30px; }
+/* F55: a VS point's day/window opens its stop's day panel — a box that answers a click, never a dead field */
+.wn5f-cbtn { font-family:inherit; text-align:left; cursor:pointer; }
+.wn5f-cbtn:hover, .wn5f-cbtn:focus-visible { border-color:var(--accent); }
 .wn5f-cwin { display:flex; align-items:center; gap:4px; }
 .wn5f-cwin > .wn5f-c { flex:none; width:71px; }
 .wn5f-lf { display:grid; grid-template-columns:minmax(0, 1fr) 128px 100px max-content; gap:12px; align-items:end; }

@@ -975,7 +975,8 @@ async function scnF44({ browser, origin, ok, scn }) {
     const v = await vday(page);
     ok(scn, '«+» of RT-T101 ΑΝΟΔΟΣ (cycle day Mon 12/10): «Ημ. άφιξης Βέροιας» = its Veroia stop Tue 13/10 — main: Mon 12/10', v === '2026-10-13', v);
     const pt = await page.$eval(`${DLG} .wn5f-rows[data-k="load"] [data-f="day"]`, (i) => i.value).catch(() => null);
-    ok(scn, '… the loading point keeps the cycle\'s day (Mon 12/10), as before', pt === '2026-10-12', pt);
+    // F57 (owner 31/10) replaced «the points keep the cycle's day»: a point the screen filled takes the Veroia day
+    ok(scn, '… the filled loading point is on that Veroia day Tue 13/10 (F57; before: the cycle\'s Mon 12/10)', pt === '2026-10-13', pt);
     await closeClean(page, S, ok, scn);
   }
   { // no Veroia stop on the ΑΝΟΔΟΣ yet: RT-T101 without its two ΑΝΟΔΟΣ stops
