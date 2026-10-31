@@ -9434,6 +9434,7 @@ button.wn5-note-who { color:var(--wi4-blue-ink); cursor:pointer; }
 .wn5-dlg .wn5-nw { white-space:nowrap; }   /* the rate field and its «€» never part */
 .wn5-eur { margin-left:4px; font-size:10.5px; font-weight:400; color:var(--wi4-grey-2); }   /* Δ1 2051:7846: 4px after the field, Regular 10.5 grey-2 */
 .wn5-more { display:flex; flex-wrap:wrap; gap:8px; align-items:flex-end; padding:6px 0 8px 192px; }   /* under the middle column: 24 + 176 + 8 − 16 */
+.wn5-more[hidden] { display:none; }   /* F48: goes with its truck's line when the search hides it */
 /* Δ1 vertical rhythm (Figma 2051:7735 metadata): a 44px header (pl 14 / pr 12, the 34px filter tray at y 5, title DM Sans
    SemiBold 13), then blocks that touch — band 30, search 40 (a 287×28 field at x 12, 12px text, so the whole placeholder
    fits), group header 26 (text at y 9, 14 tall), rows 40 with only their rule between them. The body's 8px flex gap would
