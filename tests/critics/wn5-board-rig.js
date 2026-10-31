@@ -370,13 +370,13 @@ SCN.paint = async (browser, origin) => {
   ok(scn, 'row hover: the plates glyph in ΑΝΑΘΕΣΗ (13px, 6 in / 3 down in the box), a click copies «TST-2106 / TRL-5101» and says «Αντιγράφηκε»; none on the partner cycle',
     !!cpyAt && cpyAt.op === '1' && cpyAt.w === 13 && cpyAt.h === 13 && Math.abs(cpyAt.inR - 6) <= 1 && Math.abs(cpyAt.inT - 3) <= 1 && !cpyAt.partner
     && copied2.length === 2 && copied2[1] === 'TST-2106 / TRL-5101' && tip, { cpyAt, copied: copied2, tip });
-  // whole-frame r2: «· τέλος κύκλου» and «ως … 22:00» DM Sans Medium 10.5 grey-2 (2120:8885 / 8886); the dashed
+  // whole-frame r2: «ως … 22:00» DM Sans Medium 10.5 grey-2 (2120:8886; «· τέλος κύκλου» is gone, owner 31/10); the dashed
   // «Κενό γύρισμα» / «Χωρίς κάθοδο» text 12px (2120:8287 / 2011:9038).
   const ty = await page.evaluate(() => {
     const cs = (sel) => { const e = document.querySelector('#content .wn5 ' + sel); if (!e) return null; const c = getComputedStyle(e); return [c.fontWeight, c.fontSize, c.color].join(' '); };
-    return { endx: cs('.wn5-endx'), by: cs('.wn5-end .wi4-l2'), gap: [...document.querySelectorAll('#content .wn5 .wn5-gapbox')].map((e) => getComputedStyle(e).fontSize) };
+    return { endx: document.querySelectorAll('#content .wn5 .wn5-endx').length, by: cs('.wn5-end .wi4-l2'), gap: [...document.querySelectorAll('#content .wn5 .wn5-gapbox')].map((e) => getComputedStyle(e).fontSize) };
   });
-  ok(scn, 'ΠΡΟΣ «· τέλος κύκλου» / «ως …» 500 10.5px grey-2; the dashed gap boxes 12px', ty.endx === '500 10.5px rgb(91, 107, 127)' && ty.by === '500 10.5px rgb(91, 107, 127)'
+  ok(scn, 'ΠΡΟΣ: no «· τέλος κύκλου» (owner 31/10), «ως …» 500 10.5px grey-2; the dashed gap boxes 12px', ty.endx === 0 && ty.by === '500 10.5px rgb(91, 107, 127)'
     && ty.gap.length >= 2 && ty.gap.every((f) => f === '12px'), ty);
   ok(scn, 'nothing was sent to /plan/* but the board read', S.plan.every((x) => x.m === 'GET' && x.path === '/plan/board'), S.plan.map((x) => x.m + ' ' + x.path));
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);

@@ -9085,19 +9085,11 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 /* ΑΝΟΔΟΣ that ends at Veroia only (the cycle's end, or a waiting load's «τέλος κύκλου»): the 76px cell, the loadings
    take the rest */
 .wn5-row:has(> .wn5-ato .wn5-end):not(:has(> .wn5-ato .wn5-pt:not(.wn5-end))) { --wn5-t10:max(0px, calc(var(--wn5-side) - var(--wn5-vw))); --wn5-t11:var(--wn5-vw); }
-/* The 76px Veroia cells: 6px in (not 9), and «· τέλος κύκλου» left to the title (the whole text is there): «Βέροια»
-   and «ως Τετ 12:00» are what is read. */
+/* The 76px Veroia cells: 6px in (not 9): «Βέροια» and «ως Τετ 12:00» fit whole. */
 .wn5-row:not(:has(> .wn5-fl .wn5-pt)) > .wn5-fl, .wn5-row:has(> .wn5-ato .wn5-end):not(:has(> .wn5-ato .wn5-pt:not(.wn5-end))) > .wn5-ato { padding:0 6px; }
-.wn5-row:has(> .wn5-ato .wn5-end):not(:has(> .wn5-ato .wn5-pt:not(.wn5-end))) > .wn5-ato .wn5-endx { display:none; }
 /* «όλη η ημέρα» and «ως Τετ 23:59» are 57–62px: one line in the 64px inside the cell, never broken after «Τετ» */
 .wn5-row:not(:has(> .wn5-fl .wn5-pt)) > .wn5-fl .wn5-vtime,
 .wn5-row:has(> .wn5-ato .wn5-end):not(:has(> .wn5-ato .wn5-pt:not(.wn5-end))) > .wn5-ato .wi4-l2 { white-space:nowrap; }
-/* The 176px tile (Weekly International's): «Antoniadis Ioannis · κύκλος 1/2» is ~165px at 11px and the box keeps
-   158px inside its 9px pads, so «κύκλος n/m» was cut to «1/…». 7px pads and 10.5px for line 2 (the size of every
-   other line 2 on the board) give 162px: the cycle count is read, not guessed; a longer name still ends in «…» and
-   is whole in the title. */
-.wn5 .wn5-asg .wi4-box:not(.un) { padding:0 7px; }
-.wn5 .wn5-asg .wi4-box.own > .wi4-l2 { font-size:10.5px; }
 .wn5 .wn5-c-idx { grid-column:1; }
 .wn5 :is(.wn5-c-kd, .wn5-kd) { grid-column:3; }
 .wn5 :is(.wn5-c-kfl, .wn5-fl) { grid-column:4; }
@@ -9114,7 +9106,6 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
   font-size:10px; font-weight:600; letter-spacing:.5px; line-height:1.2; color:var(--wi4-grey-2); align-items:end; }
 .wn5-cols > span { min-width:0; padding:0 9px; box-sizing:border-box; }
 .wn5-cols > .wn5-h-asg { padding-left:9px; }
-.wn5-h-sub { font-weight:400; letter-spacing:0; }
 /* 36px as the Figma rows (H1 2120:7738): the rule and 1px above, the 32px day + REF cell, 2px below. */
 .wn5-row { position:relative; min-height:36px; padding:1px 0 2px; box-sizing:border-box; border-top:1px solid var(--wi4-line); }
 .wn5 .wi4-day-body > :first-child { border-top:0; }
@@ -9193,11 +9184,8 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 /* A point with no number (a waiting VS, a single stop): its name starts at x0, flush with the numbers above — in the
    wi4 grid the empty number column still kept its 4px gap. */
 .wn5 .wn5-pt > .wi4-l1:first-child { grid-column:1 / -1; }
-/* Figma H1: the place after the client is smaller than the name (10.5 against 12) — grey-2, not lighter: grey-3 is
-   never information (2.6:1). The same for «· τέλος κύκλου» after «Βέροια» in ΠΡΟΣ, Medium there (2120:8885), as its
-   «ως Πέμ 22:00» line (2120:8886). */
-.wn5-endx { font-size:10.5px; font-weight:400; color:var(--wi4-grey-2); }
-.wn5-endx, .wn5 .wn5-end .wi4-l2 { font-weight:500; }
+/* «ως Πέμ 22:00» under «Βέροια» in ΠΡΟΣ: Medium (2120:8886); «· τέλος κύκλου» before it is gone (owner 31/10). */
+.wn5 .wn5-end .wi4-l2 { font-weight:500; }
 /* «+N» (Figma H1): a 22px chip, its figure centred, in the middle of the stop. */
 .wn5 .wn5-pts .wi4-more { flex:0 0 24px; width:24px; height:22px; display:grid; place-items:center; }
 .wn5 .wn5-pt > .wi4-l2 { font-weight:500; color:var(--wi4-grey-1); }   /* before the late rule: a late window stays amber */
@@ -9241,7 +9229,6 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
    one whole stop + «+N»; the long column notes go, the column names stay. */
 @media (max-width:1600px) {
   .wn5 { --wn5-idx:48px; --wn5-g1:6px; }
-  .wn5-h-long { display:none; }
   /* one stop per point column here (_visPts): it may take the whole column, «+N» right after it */
   .wn5 .wn5-pt { max-width:none; }
   /* 48px band: the number and the 26px ✈ fit with 8px in front */
@@ -9297,19 +9284,30 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 /* Medium, not the shared .wi4-link 600 (2069:10418) */
 .wn5-snone > .wi4-link { flex:none; margin-left:auto; font-weight:500; }
 .wn5-snone[hidden], .wn5 .wn5-cols[hidden] { display:none; }
-/* Notices (Figma 2011:7745): one amber line, «ΕΙΔΟΠΟΙΗΣΕΙΣ · n», the DB's texts (the second one paler), «Σημείωσα ✓»
-   at the end; an answer that stopped it sits in the line as a small strip. */
-.wn5-notes { display:flex; flex-wrap:wrap; align-items:center; gap:4px 8px; min-height:34px; box-sizing:border-box; margin:0 0 8px; padding:7px 12px 7px 10px;
-  border:1px solid var(--wn5-note-line); border-radius:6px; background:var(--wn5-note-bg); font-size:12px; line-height:normal; color:var(--wi4-grey-1); }
-/* 2049:7797: «ΕΙΔΟΠΟΙΗΣΕΙΣ · 2» is one run, set like the day names (Syne SemiBold 12.5px, tracking .8px) */
-.wn5-notes-h { font:600 12.5px 'Syne',sans-serif; letter-spacing:.8px; color:var(--wn5-note-ink); }
-.wn5-notes-l { flex:1 1 auto; min-width:0; }
-/* 2049:7798/7799: the newest notice Medium 12px grey-1, the others Regular 11.5px grey-2 — its «(Π.Κ. 08:12)» in the same run */
-.wn5-note, .wn5-note-by { font-size:11.5px; color:var(--wi4-grey-2); }
-.wn5-note:first-child, .wn5-note:first-child + .wn5-note-by { font-size:12px; font-weight:500; color:var(--wi4-grey-1); }
+/* Notices (owner 31/10, over Figma 2011:7745's amber line): quiet, as the ΒΕΡΟΙΑ strip — white, the board's line,
+   ONE line whatever comes: the label, the newest order's line, «+N ακόμη ▾», «Σημείωσα όλες ✓». The label keeps the
+   amber ink (something to read), nothing else is coloured. The other orders unfold under it, one line each; a line
+   that does not fit ends in «…», whole in its title. */
+.wn5-notes { display:flex; flex-wrap:wrap; align-items:center; gap:0 10px; min-height:34px; box-sizing:border-box; margin:0 0 8px; padding:0 12px 0 10px;
+  border:1px solid var(--wi4-line-2); border-radius:6px; background:var(--surface-card); font-size:12px; line-height:normal; color:var(--wi4-grey-1); }
+.wn5-notes-h { flex:none; font:600 12.5px 'Syne',sans-serif; letter-spacing:.8px; color:var(--wn5-note-ink); }
+.wn5-notes-l { flex:1 1 0; min-width:0; display:flex; height:32px; align-items:center; }
+.wn5-note { display:flex; align-items:baseline; gap:0; min-width:0; flex:1 1 auto; white-space:nowrap; font-size:12px; color:var(--wi4-grey-1); }
+.wn5-note-who { flex:none; padding:0; border:0; background:none; font:inherit; font-weight:600; color:var(--wi4-ink); }
+button.wn5-note-who { color:var(--wi4-blue-ink); cursor:pointer; }
+.wn5-note-t { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.wn5-note-by { flex:none; font-size:11px; color:var(--wi4-grey-2); }
+.wn5-note-ok { flex:none; margin-left:auto; padding-left:12px; font-weight:500; }
+.wn5-notes-more { flex:none; font-weight:500; }
+.wn5-notes-rest { flex:0 0 100%; display:flex; flex-direction:column; border-top:1px solid var(--wi4-line); }
+.wn5-notes-rest[hidden] { display:none; }
+.wn5-notes-rest > .wn5-note { height:30px; align-items:center; }
+.wn5-notes-rest > .wn5-note + .wn5-note { border-top:1px solid var(--wi4-line); }
 .wn5-notes > .wn5-strip { min-height:0; margin:0; padding:2px 8px; }
-.wn5-notes > #wn5-note-read { margin-left:auto; font-weight:500; }   /* 2049:7801: Medium, not the shared .wi4-link 600 */
-.wn5-notes > #wn5-note-read:disabled { color:var(--wi4-grey-2); cursor:default; text-decoration:none; }
+.wn5-notes > #wn5-note-read { flex:none; font-weight:500; }   /* 2049:7801: Medium, not the shared .wi4-link 600 */
+.wn5-notes :is(#wn5-note-read, .wn5-note-ok):disabled { color:var(--wi4-grey-2); cursor:default; text-decoration:none; }
+/* the row a notice's link went to, marked for a moment */
+.wn5 .wn5-row.wn5-flash { background:var(--wi4-sel); transition:background .2s; }
 /* ── National v5 actions (modules/wn5_actions.js, F4α T11): result strips and dialogs. Only tokens (one value, one
    source); no ellipsis and no silent nowrap cut (critics static ratchet). The strip itself is the rule above (Δ12
    fidelity of T3/T8: refusal/error red by default, warning amber, preview blue — Ε-6); T11 adds the amber answers a
