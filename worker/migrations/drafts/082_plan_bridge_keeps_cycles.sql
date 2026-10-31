@@ -16,7 +16,7 @@
 --           plan_h_bridge_unplan and rt_sync_from_order (md5 of prosrc = production, SELECT 28/10 and 31/10), day L
 --           set, B-54 = the enabled triggers
 --   PART 1  plan_h_bridge_unplan = live text + 5 hunks: a bridge whose pieces ride a cycle KEEPS its legs, stops and
---           split (nothing deleted, no cycle cancelled); the national desk gets ONE notice per save
+--           split (nothing deleted, no cycle cancelled); the national desk gets ONE notice per request
 --           (vs_day_moved_kept: the VS and the codes of its cycles, "check the times of the stops"). A bridge that
 --           rides nothing is unplanned as before (its split undone). Each notice of this function once per request
 --           (same kind, same order, same transaction): the 3 identical notices of F40 become 1. (The form's follow-up
