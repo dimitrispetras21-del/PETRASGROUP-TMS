@@ -10474,3 +10474,9 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5-nf .wn5-nf-pick { align-self:flex-start; height:28px; }
 .wn5-nf-msg:empty { display:none; }
 .wn5-nf-ft { display:flex; align-items:center; justify-content:flex-end; gap:8px; margin-top:4px; }
+/* F51 / F61: «στο ίδιο φορτίο» | «νέο φορτίο» of a truck that already runs that day; F56: a suggested trailer / driver */
+.wn5a-opts { flex:none; display:inline-flex; gap:2px; padding:2px; border-radius:6px; background:var(--surface-card); border:1px solid var(--border); }
+.wn5a-opt { height:22px; padding:0 8px; border:0; border-radius:4px; background:none; font:500 11px 'DM Sans',sans-serif; color:var(--wi4-grey-2); cursor:pointer; }
+.wn5a-opt.on { background:var(--wi4-ink); color:var(--surface-card); }
+.wn5a-sugg .wi-pop-inp:not(:focus) { border-style:dashed; border-color:var(--wn5-info-line); background:var(--wn5-info-bg); }
+.wn5a-av.sugg { color:var(--accent-text); }

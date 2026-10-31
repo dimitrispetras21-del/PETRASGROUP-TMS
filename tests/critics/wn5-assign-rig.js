@@ -330,5 +330,53 @@ async function veroia_new({ browser, origin, ok, scn, shots }) {
   await page.context().close();
 }
 
-K.run({ scenarios: { own_new, own_join, only_hours, partner, vehicle, handover, veroia_list, veroia_new }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],
-  go: 'the assignment form (own new / join / only / hours / F39 / partner / vehicle), ✈ «Αλλαγή οχήματος…» and the Veroia board v2 «Νέο φορτίο» hold' });
+// 9 · F51 / F61 / F56 (owner 30-31/10): TST-2104 runs RT-T101 Mon 16:00 → Tue 22:00, back at Veroia. A ΚΑΘΟΔΟΣ load of
+// Tue: «νέο φορτίο μετά την Βέροια · ελεύθερο από 22:00» by default (it came back), «στο ίδιο φορτίο» one click away;
+// the new load's whole-day rows start at 22:00 (the base's [) busy check: no clash); trailer / driver suggested.
+async function f61({ browser, origin, ok, scn, shots }) {
+  const b = board();
+  b.waiting.push({ piece_id: 4401, shipment_id: 5501, kind: 'national', order_id: null, nat_order_id: 3401, order_stop_id: null, pallets: 6, leave_by: null,
+    position_location_id: 2, nat_from_location_id: 2, nat_to_location_id: 4, nat_ready_day: '2026-10-13', nat_due_day: '2026-10-13', overdue: false,
+    is_stock: false, client_id: 41, client: 'ΠΕΛΑΤΗΣ Α', reference: 'N-T401', temperature_c: 4, pallet_exchange: false, direction: 'KATHODOS',
+    load_from: null, load_to: null, deliver_from: null, deliver_to: null, price: null });
+  const { page, S } = await K.openApp(browser, origin, { board: b, plan: { 'POST /plan/legs': async () => OK('plan_put_group') } });
+  await openWaiting(page, 4401);
+  await pickIn(page, 'tk', '2104', 'TST-2104');
+  let l = await lineOf(page);
+  ok(scn, 'F61: two options «στο ίδιο φορτίο» | «νέο φορτίο», the new one chosen (the truck came back to Veroia that day)',
+    !!l && /στο ίδιο φορτίο/.test(l.text) && /νέο φορτίο/.test(l.text) && l.txt === 'TST-2104 · νέο φορτίο μετά την Βέροια · ελεύθερο από 22:00', l);
+  const tl = await field(page, 'tl'), dr = await field(page, 'dr');
+  ok(scn, 'F56: trailer and driver of its last trip are SUGGESTED (shown «πρόταση», editable, not locked)', tl.val === 'TRL-5102' && dr.val === 'Driver Test 01'
+    && /^πρόταση/.test(tl.av) && /^πρόταση/.test(dr.av) && !tl.dis && !dr.dis && (await K.count(page, `${DLG} .wn5a-sugg`)) === 2, { tl, dr });
+  const chips = await page.evaluate((s) => [...document.querySelectorAll(`${s} .wn5a-all.on`)].map((x) => x.textContent), DLG);
+  ok(scn, 'F51: the rows of that day read «από 22:00» (what is sent), never a silent 00:00', chips.length === 2 && chips.every((c) => c === 'από 22:00'), chips);
+  if (shots) await page.screenshot({ path: shots + '/f61-new-after.png' });
+  await page.click(`${DLG} [data-act="save"]`);
+  await page.waitForTimeout(500);
+  let x = saves(S).pop();
+  ok(scn, 'POST /plan/legs: new_rt OWNED 11 / 21 / 31, every stop of Tue from 22:00', !!x && JSON.stringify(x.body.target.new_rt) === JSON.stringify({ trip_type: 'OWNED', truck_id: 11, trailer_id: 21, driver_id: 31 })
+    && x.body.stops.every((s) => s.planned_from === '2026-10-13T22:00:00+03:00'), x && x.body);
+  await openWaiting(page, 4401);
+  await pickIn(page, 'tk', '2104', 'TST-2104');
+  await page.click(`${DLG} [data-act="opt"][data-i="0"]`);
+  l = await lineOf(page);
+  const tl2 = await field(page, 'tl');
+  ok(scn, '«στο ίδιο φορτίο»: the line names the trip, its trailer read-only', /^TST-2104 · Δευ 12\/10|^TST-2104 · στο δρόμο από Δευ 12\/10/.test(l.txt) && tl2.dis && !/πρόταση/.test(tl2.av), { l, tl2 });
+  await page.click(`${DLG} [data-act="save"]`);
+  await page.waitForTimeout(500);
+  x = saves(S).pop();
+  ok(scn, '… POST /plan/legs into rt 101', !!x && x.body.target.rt_id === 101, x && x.body);
+  await page.context().close();
+}
+
+// 10 · F54: the load of a side is its peak along the stops, never the sum (30 off at Patra, then 27 on = 30, not 57)
+async function f54({ browser, origin, ok, scn }) {
+  const { page } = await K.openApp(browser, origin, { board: board() });
+  const r = await page.evaluate(() => [WN5Assign._peak([{ t: 1, d: 30 }, { t: 2, d: -30 }, { t: 3, d: 27 }]), WN5Assign._peak([{ t: 1, d: 21 }, { t: 1, d: 6 }, { t: 5, d: -21 }, { t: 6, d: -6 }]),
+    WN5Assign._peak([{ t: 2, d: 10 }, { t: 2, d: -10 }, { t: 2, d: 5 }])]);
+  ok(scn, 'peak: 30 / 27 / 5 (an unload at the same time goes first)', JSON.stringify(r) === '[30,27,5]', r);
+  await page.context().close();
+}
+
+K.run({ scenarios: { own_new, own_join, only_hours, partner, vehicle, handover, veroia_list, veroia_new, f61, f54 }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],
+  go: 'the assignment form (own new / join / only / hours / F39 / partner / vehicle / F51-F61 / F54 / F56), ✈ «Αλλαγή οχήματος…» and the Veroia board v2 «Νέο φορτίο» hold' });

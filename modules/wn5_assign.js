@@ -50,7 +50,7 @@
     const st = { mode: vehicle ? 'vehicle' : (ctx.pick ? 'pick' : 'legs'), side: ctx.side === 'ANODOS' ? 'ANODOS' : 'KATHODOS', day: ctx.day || null,
       group: null, pieces: null, items: [], needs: [], pallets: 0, palUnk: 0, focus: k.id(ctx.focus), only: false,
       who: null, truck: null, trailer: null, driver: null, partner: null, rateTxt: '', typed: { tk: '', tl: '', dr: '', pt: '' },
-      win: {}, alt: 0, rtId: k.id(ctx.rtId), cur: null, hub: ctx.hub ? k.copy(ctx.hub) : null, week: null, cycles: [], sidePal: {}, ref: '', err: null };
+      win: {}, opt: null, sugg: {}, rtId: k.id(ctx.rtId), cur: null, hub: ctx.hub ? k.copy(ctx.hub) : null, week: null, cycles: [], sidePal: {}, ref: '', err: null };
     const b = k.state().board || {};
     st.week = b.week || null;
     // the form snapshots (two presses, the same bytes); forChoice is re-read at each redraw and copies nothing
@@ -120,13 +120,64 @@
     return st.cycles.filter((c) => (who === 'partner' ? c.trip_type === 'PARTNER' : c.trip_type !== 'PARTNER') && _uses(c, key, id) && _covers(c, d))
       .sort((a, b) => Date.parse(a.start_at) - Date.parse(b.start_at) || a.rt_id - b.rt_id);
   }
-  // join: the chosen vehicle's cycle of that day; else a new one (target new_rt)
+  // F51 / F61 (owner 30-31/10): a vehicle that already runs that day offers BOTH «στο ίδιο φορτίο» (each of its
+  // cycles of the day: target rt_id) and «νέο φορτίο μετά την <last stop>» (target new_rt, its stops of that day from
+  // the previous trip's end: the base's busy check is [) — an end at 14:00 and a start at 14:00 do not clash, 071b).
+  // Default: join; a ΚΑΘΟΔΟΣ after a trip that came back to Veroia that day is a new load. The user switches, one click.
   function _target(st) {
+    const k = K();
     const id = st.who === 'partner' ? st.partner : st.who === 'own' ? st.truck : null;
     if (id == null) return null;
-    const cs = _cands(st, st.who, id, _dayD(st));
-    const cyc = cs.length ? cs[st.alt % cs.length] : null;
-    return { cyc, n: cs.length };
+    const D = _dayD(st);
+    const cs = _cands(st, st.who, id, D);
+    const opts = cs.map((c) => ({ cyc: c, after: null }));
+    let def = 0;
+    if (cs.length) {
+      const last = cs.slice().sort((a, b) => Date.parse(b.end_at) - Date.parse(a.end_at))[0];
+      const end = (last.stops || []).slice().sort((x, y) => Date.parse(x.planned_to) - Date.parse(y.planned_to)).pop();
+      const hub = k.hubId();
+      const place = end ? (end.location_id === hub ? 'Βέροια' : k.placeCity(end.location_id) || end.location || k.placeName(end.location_id)) : '—';
+      opts.push({ cyc: null, after: { iso: last.end_at, day: k.ymdOf(last.end_at), hm: k.hm(last.end_at), place } });
+      if (st.side === 'KATHODOS' && end && end.location_id === hub && k.ymdOf(last.end_at) === D) def = opts.length - 1;
+    }
+    const i = opts.length ? (st.opt == null ? def : st.opt % opts.length) : 0;
+    const o = opts[i] || { cyc: null, after: null };
+    return { cyc: o.cyc, after: o.after, n: cs.length, opts, i };
+  }
+  // F54 (owner 30/10): the load of a side is its PEAK along the stops in time order, never the sum of every loading —
+  // 30 unloaded at Patra then 27 loaded is 30 at most, not 57. Unloads first at the same time. Unknown pallets count 0
+  // and are said by WN5L.palText as before.
+  function _peak(ev) {
+    let cur = 0, max = 0;
+    for (const e of ev.slice().sort((a, b) => a.t - b.t || a.d - b.d)) { cur += e.d; if (cur > max) max = cur; }
+    return Math.round(max * 10) / 10;
+  }
+  function _sideEvents(cyc, side) {
+    const ev = [];
+    for (const s of (cyc && cyc.stops) || []) {
+      if (s.side !== side) continue;
+      for (const l of s.legs || []) if (typeof l.pallets === 'number') ev.push({ t: Date.parse(s.planned_from), d: l.act === 'unload' ? -l.pallets : l.pallets });
+    }
+    return ev;
+  }
+  // before / after of the line: the target's side, then the same with this request's pieces at their stops' times
+  function _load(st, tg, r) {
+    const before = tg && tg.cyc ? _peak(_sideEvents(tg.cyc, st.side)) : 0;
+    if (!r || r.missing || !r.body) return { before, after: before + st.pallets };
+    const t = new Map();
+    for (const s of r.body.stops || []) {
+      const ex = s.stop_id != null && tg.cyc ? (tg.cyc.stops || []).find((x) => x.stop_id === s.stop_id) : null;
+      if (ex) t.set(ex.location_id, Date.parse(ex.planned_from)); else if (s.location_id != null) t.set(s.location_id, Date.parse(s.planned_from));
+    }
+    const take = new Map((st.pieces || []).map((p) => [p.piece_id, p]));
+    const ev = _sideEvents(tg.cyc, st.side);
+    _sel(st).forEach((it, i) => {
+      const p = take.get(it.piece_id), pal = p && typeof p.take_pallets === 'number' ? p.take_pallets : it.pallets;
+      const a = st.needs[2 * i], b = st.needs[2 * i + 1];
+      if (typeof pal !== 'number' || !a || !b || !t.has(a.loc) || !t.has(b.loc)) return;
+      ev.push({ t: t.get(a.loc), d: pal }, { t: t.get(b.loc), d: -pal });
+    });
+    return { before, after: _peak(ev) };
   }
 
   // ═══ «Ημέρα και παράθυρο»: one row per stop of the request (decision 6: one stop per place per side) ═══
@@ -170,9 +221,9 @@
   }
   // a row the user owns: {all: true} (default) or {all: false, from, to}
   const _w = (st, key) => st.win[key] || { all: true, from: '', to: '' };
-  function _winOf(st, key, day) {
+  function _winOf(st, key, day, after) {
     const k = K(), w = _w(st, key);
-    if (w.all) return day ? k.win(day, '00:00', '23:59') : null;
+    if (w.all) return day ? k.win(day, after && after.day === day && after.hm < '23:59' ? after.hm : '00:00', '23:59') : null;
     const f = k.hhmm(w.from), t = k.hhmm(w.to);
     return day && f && t ? k.win(day, f, t) : null;
   }
@@ -205,8 +256,8 @@
       target = { new_rt: { trip_type: 'PARTNER', partner_id: st.partner, partner_rate: r.v }, side: st.side };
     }
     const hd = st.hub ? st.hub.day : _hd(st);
-    const hubWin = st.hub ? (k.hhmm(st.hub.from) && k.hhmm(st.hub.to) ? k.win(st.hub.day, k.hhmm(st.hub.from), k.hhmm(st.hub.to)) : null) : _winOf(st, 'hub', hd);
-    const r = k.stopsFor(st.needs, tg.cyc, st.side, hubWin, (n) => _winOf(st, n.key, n.day));
+    const hubWin = st.hub ? (k.hhmm(st.hub.from) && k.hhmm(st.hub.to) ? k.win(st.hub.day, k.hhmm(st.hub.from), k.hhmm(st.hub.to)) : null) : _winOf(st, 'hub', hd, tg.after);
+    const r = k.stopsFor(st.needs, tg.cyc, st.side, hubWin, (n) => _winOf(st, n.key, n.day, tg.after));
     if (r.missing.length) return { missing: r.missing, lack: r.lack };
     const sel = _sel(st);
     const body = st.only || !st.group
@@ -232,7 +283,7 @@
       if (row.hubBad) { add('παράθυρο Βέροιας'); continue; }
       if (row.missing) { add((row.n.role === 'load' ? 'τόπος φόρτωσης' : 'τόπος παράδοσης') + (row.n.loc == null ? '' : ' ' + row.place)); continue; }
       if (row.fixed != null) continue;
-      if (!_winOf(st, row.key, row.day)) { out.rows[row.key] = HOURS; add('ώρες ' + (row.n.role === 'load' ? 'φόρτωσης' : 'παράδοσης') + ' ' + (row.n.hub ? 'Βέροια' : k.placeCity(row.n.loc) || k.placeName(row.n.loc))); }   // Figma 2395:8132: the town («ώρες παράδοσης Larisa»)
+      if (!_winOf(st, row.key, row.day, tg && tg.after)) { out.rows[row.key] = HOURS; add('ώρες ' + (row.n.role === 'load' ? 'φόρτωσης' : 'παράδοσης') + ' ' + (row.n.hub ? 'Βέροια' : k.placeCity(row.n.loc) || k.placeName(row.n.loc))); }   // Figma 2395:8132: the town («ώρες παράδοσης Larisa»)
     }
     return out;
   }
@@ -300,10 +351,14 @@
       // the cycle's own Veroia stop on another day than the load's: the load goes to that stop (decision 6)
       const hs = st.needs.some((n) => n.hub) && (tg.cyc.stops || []).find((s) => s.side === st.side && s.location_id === k.hubId());
       if (hs && k.stopDay(hs) !== D) other = 'Βέροια ' + k.dayShort(k.stopDay(hs));
-    } else txt = lbl + ' · ' + (_blind(st) ? '—' : 'ελεύθερο');
-    const sp = tg.cyc ? (st.sidePal[tg.cyc.rt_id] || { pal: 0, unk: 0 }) : { pal: 0, unk: 0 };
-    const after = sp.pal + st.pallets;
-    return { txt, road, other, alt: tg.n > 1, before: WN5L.palText(sp.pal, sp.unk), after: WN5L.palText(after, sp.unk + st.palUnk), over: after > 33,
+    } else if (tg.after) txt = lbl + ' · νέο φορτίο μετά την ' + tg.after.place + ' · ελεύθερο από ' + (tg.after.day === D ? '' : k.dayShort(tg.after.day) + ' ') + tg.after.hm;
+    else txt = lbl + ' · ' + (_blind(st) ? '—' : 'ελεύθερο');
+    const unk = tg.cyc ? (st.sidePal[tg.cyc.rt_id] || { unk: 0 }).unk : 0;
+    const ld = _load(st, tg, req(st));
+    // the options of a vehicle that already runs that day (F51 / F61): «στο ίδιο φορτίο» per cycle, then «νέο φορτίο»
+    const opts = tg.opts.length > 1 ? tg.opts.map((o, i) => ({ i, on: i === tg.i,
+      label: o.cyc ? 'στο ίδιο φορτίο' + (tg.n > 1 ? ' · ' + k.hm(o.cyc.start_at) : '') : 'νέο φορτίο' })) : [];
+    return { txt, road, other, opts, before: WN5L.palText(ld.before, unk), after: WN5L.palText(ld.after, unk + st.palUnk), over: ld.after > 33,
       join: !!tg.cyc, rtId: tg.cyc ? tg.cyc.rt_id : null };
   }
   function _label(px, id) {
@@ -318,13 +373,16 @@
     const id = st[f.key];
     const val = id != null ? _label(px, id) : st.typed[px];
     const bad = pb.fields[px];
-    const av = bad ? { txt: bad, cls: 'bad' } : (st.who === (px === 'pt' ? 'partner' : 'own') && id != null ? avail(st, px, id) : null);
-    return '<div class="wi-pop-field wn5a-f' + (bad ? ' wn5a-bad' : '') + '" data-f="' + px + '"><span class="wi-pop-lbl">' + f.lbl + '</span>'
+    let av = bad ? { txt: bad, cls: 'bad' } : (st.who === (px === 'pt' ? 'partner' : 'own') && id != null ? avail(st, px, id) : null);
+    // F56 (owner 31/10): the truck's last trailer / driver is a SUGGESTION — shown as one, one click to change
+    const sg = !bad && !disabled && id != null && st.sugg[px];
+    if (sg) av = { txt: 'πρόταση' + (av && av.txt ? ' · ' + av.txt : ''), cls: 'sugg' };
+    return '<div class="wi-pop-field wn5a-f' + (bad ? ' wn5a-bad' : '') + (sg ? ' wn5a-sugg' : '') + '" data-f="' + px + '"><span class="wi-pop-lbl">' + f.lbl + '</span>'
       + '<span class="wn5a-sd"><input type="text" class="wi-pop-inp wn5a-in' + (f.mono ? ' wn5a-mono' : '') + '" data-in="' + px + '" placeholder="' + f.ph + '" value="' + _e(val) + '" autocomplete="off"'
       + (disabled ? ' disabled' : '') + ' aria-label="' + f.lbl + '"><span class="wn5a-car" aria-hidden="true">▾</span></span>'
       + '<span class="wn5a-av' + (av ? ' ' + av.cls : '') + '" data-av="' + px + '">' + _e(av ? av.txt : '') + '</span></div>';
   }
-  function _rowsHTML(st, pb, cyc) {
+  function _rowsHTML(st, pb, cyc, after) {
     const k = K();
     let h = '';
     for (const row of _rows(st, cyc)) {
@@ -338,7 +396,7 @@
       const w = _w(st, row.key);
       h += '<div class="wn5a-win" data-row="' + _e(row.key) + '"><span class="wn5a-wl' + (bad ? ' bad' : '') + '">' + _e(lbl) + '</span>'
         + (w.all
-          ? '<button type="button" class="wn5a-all on" data-act="all" data-row="' + _e(row.key) + '">όλη η ημέρα</button><button type="button" class="wn5a-hrs" data-act="hours" data-row="' + _e(row.key) + '">ώρες…</button>'
+          ? '<button type="button" class="wn5a-all on" data-act="all" data-row="' + _e(row.key) + '">' + (after && after.day === row.day && after.hm < '23:59' ? 'από ' + _e(after.hm) : 'όλη η ημέρα') + '</button><button type="button" class="wn5a-hrs" data-act="hours" data-row="' + _e(row.key) + '">ώρες…</button>'
           : '<input class="wi-pop-inp wn5a-hm' + (bad ? ' bad' : '') + '" data-hm="from" data-row="' + _e(row.key) + '" inputmode="numeric" maxlength="5" placeholder="ΗΗ:ΛΛ" value="' + _e(w.from) + '" aria-label="από">'
             + '<span class="wn5a-dash">–</span><input class="wi-pop-inp wn5a-hm' + (bad ? ' bad' : '') + '" data-hm="to" data-row="' + _e(row.key) + '" inputmode="numeric" maxlength="5" placeholder="ΗΗ:ΛΛ" value="' + _e(w.to) + '" aria-label="έως">'
             + '<button type="button" class="wn5a-all" data-act="all" data-row="' + _e(row.key) + '">όλη η ημέρα</button>')
@@ -352,7 +410,7 @@
     return '<div class="wn5a-line" data-line><span class="wn5a-lt">' + _e(l.txt) + '</span>'
       + (l.other ? '<span class="wn5a-note">' + _e(l.other) + '</span>' : '')
       + (l.road && st.who === 'own' ? '<span class="wn5a-note">νέο φύλλο στον οδηγό</span>' : '')
-      + (l.alt ? '<button type="button" class="wn5a-alt" data-act="alt">άλλο ›</button>' : '')
+      + (l.opts.length ? '<span class="wn5a-opts" role="group">' + l.opts.map((o) => '<button type="button" class="wn5a-opt' + (o.on ? ' on' : '') + '" data-act="opt" data-i="' + o.i + '">' + _e(o.label) + '</button>').join('') + '</span>' : '')
       + '<span class="wn5a-cap' + (l.over ? ' over' : '') + '" data-cap>' + _e(l.before + ' → ' + l.after + '/33') + '</span></div>';
   }
   function bodyHTML(st) {
@@ -368,7 +426,7 @@
         + '<label class="wn5a-only"><input type="checkbox" data-only' + (st.only ? ' checked' : '') + '><span>μόνο αυτό το κομμάτι</span></label></div>';
     }
     h += '<div class="wi-pop-body wn5a-body">';
-    if (st.mode !== 'vehicle') h += _rowsHTML(st, pb, tg && tg.cyc);
+    if (st.mode !== 'vehicle') h += _rowsHTML(st, pb, tg && tg.cyc, tg && tg.after);
     h += '<div class="wn5a-sec"><div class="wi-pop-section-lbl">ΔΙΚΟΣ ΣΤΟΛΟΣ</div><div class="wi-pop-row">'
       + _fieldHTML(st, 'tk', pb) + _fieldHTML(st, 'tl', pb, joinOwn) + _fieldHTML(st, 'dr', pb, joinOwn) + '</div></div>';
     const rateBad = pb.fields.rate;
@@ -476,21 +534,32 @@
         if (!bad && e) e.remove();
       }
     };
+    // after a truck or an option is chosen: joining keeps that cycle's trailer and driver (a change of them is
+    // «Αλλαγή οχήματος…»); a new load gets the truck's last trailer and driver as a suggestion (F56), never over a
+    // value the user picked
+    const _vehicleOf = () => {
+      if (st.mode === 'vehicle') return;
+      const tg = _target(st);
+      if (tg && tg.cyc) { st.trailer = tg.cyc.trailer_id || null; st.driver = tg.cyc.driver_id || null; st.typed.tl = st.typed.dr = ''; st.sugg.tl = st.sugg.dr = false; return; }
+      const last = st.cycles.filter((c) => c.trip_type !== 'PARTNER' && _uses(c, 'truck_id', st.truck))
+        .sort((a, b) => Date.parse(b.end_at) - Date.parse(a.end_at))[0];
+      for (const [px, key] of [['tl', 'trailer'], ['dr', 'driver']]) {
+        if (st[key] != null && !st.sugg[px]) continue;
+        const v = last ? last[key + '_id'] || null : null;
+        st[key] = v; st.sugg[px] = v != null; st.typed[px] = '';
+      }
+    };
     // a pick from the list (or an exact name typed); own and partner exclude each other, as one executes
     const choose = (px, id, next) => {
       const f = FIELDS[px];
       st[f.key] = id;
       st.typed[px] = '';
-      if (px === 'pt') { st.who = 'partner'; st.truck = st.trailer = st.driver = null; st.typed.tk = st.typed.tl = st.typed.dr = ''; st.alt = 0; }
+      st.sugg[px] = false;
+      if (px === 'pt') { st.who = 'partner'; st.truck = st.trailer = st.driver = null; st.typed.tk = st.typed.tl = st.typed.dr = ''; st.opt = null; st.sugg = {}; }
       else {
         if (st.who !== 'own') { st.partner = null; st.typed.pt = ''; if (st.mode !== 'vehicle') st.rateTxt = ''; }
         st.who = 'own';
-        if (px === 'tk') {
-          st.alt = 0;
-          // joining a truck's cycle keeps that cycle's trailer and driver (a change of them is «Αλλαγή οχήματος…»)
-          const tg = st.mode === 'vehicle' ? null : _target(st);
-          if (tg && tg.cyc) { st.trailer = tg.cyc.trailer_id || null; st.driver = tg.cyc.driver_id || null; st.typed.tl = st.typed.dr = ''; }
-        }
+        if (px === 'tk') { st.opt = null; _vehicleOf(st); }
       }
       draw(next);
     };
@@ -533,10 +602,10 @@
       const next = ev.relatedTarget || null;
       if (list && next && list.el.contains(next)) return;
       if (st[f.key] != null && v === _label(px, st[f.key])) { _dropList(); return; }
-      if (!v) { if (st[f.key] != null || st.typed[px]) { st[f.key] = null; st.typed[px] = ''; if (px === 'pt' ? st.who === 'partner' : (px === 'tk' && st.who === 'own')) st.who = null; draw(next); } else _dropList(); return; }
+      if (!v) { if (st[f.key] != null || st.typed[px]) { st[f.key] = null; st.typed[px] = ''; st.sugg[px] = false; if (px === 'pt' ? st.who === 'partner' : (px === 'tk' && st.who === 'own')) st.who = null; draw(next); } else _dropList(); return; }
       const hit = _options(st, px, '').filter((o) => k.norm(o.label) === k.norm(v));
       if (hit.length === 1) { choose(px, hit[0].id, next); return; }
-      st[f.key] = null; st.typed[px] = v;
+      st[f.key] = null; st.typed[px] = v; st.sugg[px] = false;
       if (px === 'tk' && st.who === 'own') st.who = null;
       if (px === 'pt' && st.who === 'partner') st.who = null;
       draw(next);
@@ -573,7 +642,7 @@
       const a = b.dataset.act;
       if (a === 'all') { st.win[b.dataset.row] = { all: true, from: '', to: '' }; draw(); }
       else if (a === 'hours') { st.win[b.dataset.row] = { all: false, from: '', to: '' }; draw(); const el = d.body.querySelector('[data-hm="from"][data-row="' + b.dataset.row + '"]'); if (el) el.focus(); }
-      else if (a === 'alt') { st.alt++; draw(); }
+      else if (a === 'opt') { st.opt = Number(b.dataset.i); _vehicleOf(); draw(); }
       else if (a === 'clear') { if (!d.busy) WN5Act.clear(st.rtId); }
       else if (a === 'save') {
         const r = req(st);
@@ -593,7 +662,7 @@
 
   // the choice of the pick mode: who executes, the windows typed, the cycle shown (the caller re-reads it at the save)
   function choiceOf(st) {
-    return K().copy({ who: st.who, truck: st.truck, trailer: st.trailer, driver: st.driver, partner: st.partner, rateTxt: st.rateTxt, win: st.win, alt: st.alt });
+    return K().copy({ who: st.who, truck: st.truck, trailer: st.trailer, driver: st.driver, partner: st.partner, rateTxt: st.rateTxt, win: st.win, opt: st.opt, sugg: st.sugg });
   }
 
   // ═══ public ═══
@@ -628,5 +697,5 @@
       sub: st.who === 'own' ? [_label('tl', st.trailer), _label('dr', st.driver)].filter(Boolean).join(' · ') : '' };
   }
 
-  window.WN5Assign = Object.freeze({ open, pick, forChoice, _build: build, _req: req, _problems: problems, _line: line, _avail: avail });
+  window.WN5Assign = Object.freeze({ open, pick, forChoice, _build: build, _req: req, _problems: problems, _line: line, _avail: avail, _peak });
 })();
