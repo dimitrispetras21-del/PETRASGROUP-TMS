@@ -650,8 +650,8 @@
     const whole = _headWinCheck(f).length === 0;   // F1: half a head window never reaches the rows
     // F57 (live 31/10, extends F46): «+ → Νέα παραγγελία» put the points on the trip's first day, and a new Veroia day
     // did not move them. A point the screen filled (data-auto) follows the Veroia day once that day is a set one (the
-    // trip's Veroia stop, or typed / picked); a point the user typed keeps its day. ΑΝΟΔΟΣ: the filled loading takes
-    // the arrival day (F33's rule read back: the arrival is the loading's day). ΚΑΘΟΔΟΣ: the Veroia day is the
+    // trip's Veroia stop, or typed / picked); a point the user typed keeps its day. ΑΝΟΔΟΣ: every filled point takes
+    // the arrival day (F33's rule read back: the arrival is the loading's day; a drop on the way is that day too). ΚΑΘΟΔΟΣ: the Veroia day is the
     // loading AT Veroia and the deliveries come after it, so a filled point moves by as many days as the Veroia day
     // moved, never onto the loading day (code review). Not while the Veroia day is itself the screen's (ΑΝΟΔΟΣ without
     // a Veroia stop follows the loading, F44): the two would only chase each other.
@@ -660,6 +660,11 @@
     // it), so the first day the user sets moves them already (code review r2)
     const shift = dir === 'KATHODOS' && vSet && f.vPrev && f.vPrev !== vday ? Math.round((Date.parse(vday) - Date.parse(f.vPrev)) / 864e5) : 0;
     if (DAY.test(vday)) f.vPrev = vday;
+    // a row or an order added later opens where the filled ones are now (code review r3), never on the old day
+    if (vSet && f.dayDefault && DAY.test(f.dayDefault)) {
+      if (dir === 'ANODOS') f.dayDefault = vday;
+      else if (shift && typeof WN5Act !== 'undefined' && WN5Act._kit && WN5Act._kit.addDays) f.dayDefault = WN5Act._kit.addDays(f.dayDefault, shift);
+    }
     // the board's own day arithmetic (wn5_actions _addDays), never a second copy
     const addDays = typeof WN5Act !== 'undefined' && WN5Act._kit && typeof WN5Act._kit.addDays === 'function' ? WN5Act._kit.addDays : null;
     f.el.querySelectorAll('.wn5f-row').forEach((r) => {
@@ -748,12 +753,21 @@
     _why(f, !f.done && lack.length ? 'Λείπει: ' + lack.join(', ') : null);
   }
 
+  // F52 (code review r2/r3): a place saved while a form was open is in the pickers; its number comes with the
+  // catalogue's re-read (PlanIds.stale), asked by the press itself — a no-op while the catalogue is current. f.busy
+  // keeps a second press out and the button says aria-busy while it reads; it is not disabled, which would take the
+  // focus off it and leave the form's next blur (the «Λείπει: …» refresh) unfired.
+  async function _idsFresh(f) {
+    const b = f.el.querySelector('[data-act="save"]');
+    f.busy = true;
+    if (b) b.setAttribute('aria-busy', 'true');
+    try { await PlanIds.load(); } catch (e) { _log(e, 'WN5Form save PlanIds'); }
+    finally { f.busy = false; if (b) b.removeAttribute('aria-busy'); }
+  }
   async function _saveOrder(f) {
     if (f.busy || f.done || f.locked) return;
     let st, body;
-    // F52 (code review r2): a place saved while this form was open is in the pickers; its number comes with the
-    // catalogue's re-read, asked here by the press (a no-op while the catalogue is current)
-    try { await PlanIds.load(); } catch (e) { _log(e, 'WN5Form save PlanIds'); }
+    await _idsFresh(f);
     if (f.busy || f.done || f.locked) return;
     try { st = _readState(f); }
     catch (e) { if (typeof PlanError !== 'undefined' && e instanceof PlanError) WN5Act.strip(_strip(f), e); else _lines(f, [String(e && e.message || e)]); return; }
@@ -1063,6 +1077,8 @@
     return !!(b.set || b.shipments);
   }
   async function _saveEdit(f) {
+    if (f.busy || f.done || f.locked) return;
+    await _idsFresh(f);
     if (f.busy || f.done || f.locked) return;
     const st = _readEdit(f);
     const probs = _checkEdit(f, st);
@@ -1518,10 +1534,13 @@
           : 'Οι τοποθεσίες δεν φορτώθηκαν — κλείσε και άνοιξε ξανά τη φόρμα']);
         return;
       }
-      let loc;
-      try { loc = PlanIds.id('location', rec); }
-      catch (e) { WN5Act.strip(_strip(f), e); return; }
-      vsPlace(Number(t.dataset.osid), loc);
+      const osid = Number(t.dataset.osid);
+      PlanIds.load().catch((e) => _log(e, 'WN5Form vs-place PlanIds')).then(() => {   // F52: a place saved meanwhile
+        let loc;
+        try { loc = PlanIds.id('location', rec); }
+        catch (e) { WN5Act.strip(_strip(f), e); return; }
+        vsPlace(osid, loc);
+      });
     }
   }
   // The clicked side stays marked on the board while its form is open (Figma 2011:9305 / 2069:8150: the side's cells

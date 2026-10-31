@@ -1317,7 +1317,13 @@
     const m = _moreC.m;
     let p = m.get(w);
     if (!p) {
-      p = planFetch('GET', '/plan/board?week=' + w);
+      // the main loader's own check (weekly_natl_v5 render): an answer for another week, or without its lists, is a
+      // failed read, said as such — never «nothing waiting» (code review r3)
+      p = planFetch('GET', '/plan/board?week=' + w).then((x) => {
+        if (!x || typeof x !== 'object' || x.week !== w || !Array.isArray(x.waiting) || !Array.isArray(x.hub))
+          throw _clientErr('board_week', 'η απάντηση ήταν για άλλη εβδομάδα (' + String(x && x.week) + ')');
+        return x;
+      });
       m.set(w, p);
       p.catch(() => { if (m.get(w) === p) m.delete(w); });
     }

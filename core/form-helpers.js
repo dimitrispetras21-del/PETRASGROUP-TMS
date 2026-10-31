@@ -27,6 +27,14 @@ function _fhLocLabel(f) {
   return [f['Name'], f['City'], typeof countryName === 'function' ? countryName(f['Country']) : f['Country']].filter(Boolean).join(', ');
 }
 
+// The picker lines of a LOCATIONS read, sorted. F52: the places this page saved win over the read — a read that
+// started before the save (the first one, or the background re-read) has no new place and an old name.
+function _fhLocItems(records) {
+  const byId = new Map(records.map(r => [r.id, { id: r.id, label: _fhLocLabel(r.fields) }]));
+  for (const [id, l] of _fhLocSaved) byId.set(id, l);
+  return [...byId.values()].sort((a, b) => a.label.localeCompare(b.label));
+}
+
 /**
  * Load all locations into shared cache (idempotent)
  */
@@ -36,16 +44,8 @@ async function fhLoadLocations() {
   // Two callers can await the same read (the Orders page loads both types at
   // once): only the first fills the shared arrays, or every picker doubles.
   if (_fhLocationsArr.length) return;
-  const sorted = locs
-    .map(r => ({
-      id: r.id,
-      label: _fhLocLabel(r.fields)
-    }));
-  // F52: a read that started before a place was saved here does not have it — the place stays (as the re-read below)
-  for (const [id, l] of _fhLocSaved) if (!sorted.some(x => x.id === id)) sorted.push(l);
-  sorted.sort((a, b) => a.label.localeCompare(b.label));
   // Push into shared array (don't reassign — other refs may hold it)
-  sorted.forEach(l => {
+  _fhLocItems(locs).forEach(l => {
     _fhLocationsArr.push(l);
     _fhLocationsMap[l.id] = l.label;
   });
@@ -56,14 +56,7 @@ async function fhLoadLocations() {
 // (length=0, push) γιατί άλλα modules κρατούν αναφορά στο ίδιο array.
 function _fhRefreshLocations(locRecords) {
   if (!Array.isArray(locRecords) || !locRecords.length || !_fhLocationsArr.length) return;
-  const sorted = locRecords
-    .map(r => ({
-      id: r.id,
-      label: _fhLocLabel(r.fields)
-    }));
-  // F52 (code review r2): a re-read that started before a place was saved here does not have it — the place stays
-  for (const [id, l] of _fhLocSaved) if (!sorted.some(x => x.id === id)) sorted.push(l);
-  sorted.sort((a, b) => a.label.localeCompare(b.label));
+  const sorted = _fhLocItems(locRecords);
   _fhLocationsArr.length = 0;
   sorted.forEach(l => {
     _fhLocationsArr.push(l);
@@ -75,7 +68,7 @@ function _fhRefreshLocations(locRecords) {
 // above is read once per page (fhLoadLocations returns while it holds anything) and the revalidate runs once per
 // load. The saved record goes into THE list (no copy of it), with the label fhLoadLocations gives it, in its
 // sorted place; a renamed place replaces its old line. _fhLocSaved remembers only what this page saved, so a read
-// that started before the save (the first one, or the background re-read) cannot drop it. The v5 catalogue
+// that started before the save (the first one, or the background re-read) cannot drop it or bring back its old name. The v5 catalogue
 // (/plan/lookups, the place's number) is told to read again on its next use, or the national v5 form would find
 // the place and refuse it at «Αποθήκευση».
 function fhLocationSaved(rec) {
