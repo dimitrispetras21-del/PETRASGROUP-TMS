@@ -14,7 +14,7 @@ DECLARE
 $h$;
   b_1b CONSTANT text := $h$  if v_code is null then return; end if;
   -- 086 (owner 1/11): a save that accepted the overlap (accept_busy: true, the screen's "save anyway") is not refused
-  -- here; plan_seg_overlap_ok marks the segments it writes and leaves the audit row, the EXCLUDE skips only those
+  -- here; plan_seg_overlap_mark names the trips on the segments it writes (audit row), the COMMIT rules check the pairs
   if current_setting('plan.accept_busy', true) = '1' then return; end if;
 $h$;
   t_1a CONSTANT text := $h$  perform plan_h_keys(p_target, array['rt_id', 'side', 'new_rt'], 'target');
@@ -22,6 +22,11 @@ $h$;
   t_1b CONSTANT text := $h$  perform plan_h_keys(p_target, array['rt_id', 'side', 'new_rt', 'accept_busy'], 'target');
   -- 086: target.accept_busy = true lets this save overlap another trip of the same truck / driver, with a trace
   perform plan_h_accept_busy(p_target, 'target', p_actor, p_role);
+$h$;
+  m_1a CONSTANT text := $h$    perform plan_h_keys(p->'target', array['rt_id', 'side', 'new_rt'], 'target');
+$h$;
+  m_1b CONSTANT text := $h$    -- 086: accept_busy is plan_h_target's key (read there, at execution)
+    perform plan_h_keys(p->'target', array['rt_id', 'side', 'new_rt', 'accept_busy'], 'target');
 $h$;
   u_1a CONSTANT text := $h$  perform plan_h_keys(p, array['rt_id', 'set', 'stops', 'shift', 'dry_run', 'confirm_token'], 'p');
 $h$;
@@ -61,13 +66,14 @@ $h$;
   v_h record; v_new text; p pg_proc%rowtype; v_trg0 int; v_trg1 int; v_b54 int; v_list text;
 BEGIN
   PERFORM set_config('lock_timeout', '5s', true);
-  IF NOT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = 'public.rt_vehicle_segments'::regclass AND attname = 'overlap_ok' AND NOT attisdropped)
+  IF NOT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = 'public.rt_vehicle_segments'::regclass AND attname = 'overlap_rts' AND NOT attisdropped)
      OR to_regprocedure('public.plan_h_accept_busy(jsonb,text,text,text)') IS NULL
-     OR to_regprocedure('public.plan_seg_overlap_ok()') IS NULL
+     OR to_regprocedure('public.plan_seg_overlap_mark()') IS NULL
+     OR to_regprocedure('public.plan_chk_seg_overlap()') IS NULL
      OR (SELECT md5(pg_get_constraintdef(oid)) FROM pg_constraint WHERE conrelid = 'public.rt_vehicle_segments'::regclass
-        AND conname = 'rt_v2_truck_once' AND contype = 'x' AND condeferrable AND condeferred) IS DISTINCT FROM '140cd0ded05accd213a0e619be63e953'
+        AND conname = 'rt_v2_truck_once' AND contype = 'x' AND condeferrable AND condeferred) IS DISTINCT FROM '4b6dc90d32d0acea6475d94fad282a50'
      OR (SELECT md5(pg_get_constraintdef(oid)) FROM pg_constraint WHERE conrelid = 'public.rt_vehicle_segments'::regclass
-        AND conname = 'rt_v2_driver_once' AND contype = 'x' AND condeferrable AND condeferred) IS DISTINCT FROM 'efd66085a4dcf26fa68f51c176b36f06' THEN
+        AND conname = 'rt_v2_driver_once' AND contype = 'x' AND condeferrable AND condeferred) IS DISTINCT FROM 'e45254c4bf19b503f0d78e7377cf061f' THEN
     RAISE EXCEPTION '086 rollback: 086 is not applied (column, functions or the partial EXCLUDE missing) - stop';
   END IF;
   SELECT count(*) INTO v_trg0 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
@@ -90,7 +96,7 @@ BEGIN
     RAISE EXCEPTION '086 rollback: trips that overlap are in the base, the full EXCLUDE cannot be rebuilt: % - stop (move or end one trip of each pair, then run again)', v_list;
   END IF;
   SELECT * INTO p FROM pg_proc WHERE oid = to_regprocedure('public.plan_h_busy(text,bigint,timestamptz,timestamptz,bigint)');
-  IF md5(p.prosrc) <> 'ddc1f26f185e7a8e2a7524471a169180' THEN
+  IF md5(p.prosrc) <> 'ffbfbf45a9b3cc353862b943a1761388' THEN
     RAISE EXCEPTION '086 rollback: public.plan_h_busy(text,bigint,timestamptz,timestamptz,bigint) is not the text 086 wrote (md5 %) - stop', md5(p.prosrc);
   END IF;
   v_new := p.prosrc;
@@ -132,6 +138,28 @@ BEGIN
   IF (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.plan_h_target(jsonb,jsonb,text,text)'::regprocedure) <> 'aa5c32e3968e1a0f141bdb4c568528ca'
      OR (SELECT proacl::text FROM pg_proc WHERE oid = p.oid) IS DISTINCT FROM p.proacl::text THEN
     RAISE EXCEPTION '086 rollback proof: public.plan_h_target(jsonb,jsonb,text,text) is not back to its text before 086 with its rights';
+  END IF;
+  SELECT * INTO p FROM pg_proc WHERE oid = to_regprocedure('public.plan_move_pieces(jsonb,text,text)');
+  IF md5(p.prosrc) <> '2a8c746b726a9b37f0247166da0ecae5' THEN
+    RAISE EXCEPTION '086 rollback: public.plan_move_pieces(jsonb,text,text) is not the text 086 wrote (md5 %) - stop', md5(p.prosrc);
+  END IF;
+  v_new := p.prosrc;
+  FOR v_h IN SELECT * FROM unnest(ARRAY[m_1b], ARRAY[m_1a]) h(b, a) LOOP
+    IF (length(v_new) - length(replace(v_new, v_h.b, ''))) <> length(v_h.b) THEN
+      RAISE EXCEPTION '086 rollback: a hunk of 086 is not in public.plan_move_pieces(jsonb,text,text) exactly once - stop';
+    END IF;
+    v_new := replace(v_new, v_h.b, v_h.a);
+  END LOOP;
+  IF md5(v_new) <> '70e21dad2a56d7db294e45ac592ed380' THEN
+    RAISE EXCEPTION '086 rollback: public.plan_move_pieces(jsonb,text,text) would not be its text before 086 (md5 %)', md5(v_new);
+  END IF;
+  EXECUTE format('CREATE OR REPLACE FUNCTION %s(%s) RETURNS %s LANGUAGE plpgsql %s %s SET search_path = public AS %L',
+    split_part('public.plan_move_pieces(jsonb,text,text)', '(', 1), pg_get_function_arguments(p.oid), pg_get_function_result(p.oid),
+    CASE p.provolatile WHEN 'i' THEN 'IMMUTABLE' WHEN 's' THEN 'STABLE' ELSE 'VOLATILE' END,
+    CASE WHEN p.prosecdef THEN 'SECURITY DEFINER' ELSE 'SECURITY INVOKER' END, v_new);
+  IF (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.plan_move_pieces(jsonb,text,text)'::regprocedure) <> '70e21dad2a56d7db294e45ac592ed380'
+     OR (SELECT proacl::text FROM pg_proc WHERE oid = p.oid) IS DISTINCT FROM p.proacl::text THEN
+    RAISE EXCEPTION '086 rollback proof: public.plan_move_pieces(jsonb,text,text) is not back to its text before 086 with its rights';
   END IF;
   SELECT * INTO p FROM pg_proc WHERE oid = to_regprocedure('public.plan_rt_update(jsonb,text,text)');
   IF md5(p.prosrc) <> 'd8de8c443ddc601469c53a90c4e5c1fc' THEN
@@ -199,8 +227,10 @@ BEGIN
      OR (SELECT proacl::text FROM pg_proc WHERE oid = p.oid) IS DISTINCT FROM p.proacl::text THEN
     RAISE EXCEPTION '086 rollback proof: public.plan_h_reseq(bigint,text,text) is not back to its text before 086 with its rights';
   END IF;
-  DROP TRIGGER plan_seg_overlap_ok ON public.rt_vehicle_segments;
-  DROP FUNCTION public.plan_seg_overlap_ok();
+  DROP TRIGGER plan_seg_overlap_verify ON public.rt_vehicle_segments;
+  DROP TRIGGER plan_seg_overlap_mark ON public.rt_vehicle_segments;
+  DROP FUNCTION public.plan_chk_seg_overlap();
+  DROP FUNCTION public.plan_seg_overlap_mark();
   DROP FUNCTION public.plan_h_accept_busy(jsonb,text,text,text);
   -- the two EXCLUDE exactly as 072b made them, then the column
   ALTER TABLE public.rt_vehicle_segments DROP CONSTRAINT rt_v2_truck_once, DROP CONSTRAINT rt_v2_driver_once,
@@ -210,10 +240,10 @@ BEGIN
     ADD CONSTRAINT rt_v2_driver_once EXCLUDE USING gist (driver_id WITH =, tstzrange(from_at, greatest(from_at, to_at), '[)') WITH &&)
       WHERE (trip_type = 'OWNED' AND driver_id IS NOT NULL AND deleted_at IS NULL AND NOT rt_cancelled)
       DEFERRABLE INITIALLY DEFERRED;
-  ALTER TABLE public.rt_vehicle_segments DROP COLUMN overlap_ok;
+  ALTER TABLE public.rt_vehicle_segments DROP COLUMN overlap_rts;
   SELECT count(*) INTO v_trg1 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
     JOIN pg_namespace ns ON ns.oid = c.relnamespace WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public';
-  IF v_trg1 <> v_trg0 - 1 THEN RAISE EXCEPTION '086 rollback proof: triggers % -> % (one less)', v_trg0, v_trg1; END IF;
+  IF v_trg1 <> v_trg0 - 2 THEN RAISE EXCEPTION '086 rollback proof: triggers % -> % (two less)', v_trg0, v_trg1; END IF;
   UPDATE monitoring.checks SET red_value = v_trg1 WHERE id = 'B-54';
   IF (SELECT md5(pg_get_constraintdef(oid)) FROM pg_constraint WHERE conrelid = 'public.rt_vehicle_segments'::regclass
         AND conname = 'rt_v2_truck_once' AND contype = 'x' AND condeferrable AND condeferred) IS DISTINCT FROM '1add7b5c9ebb0e17af7d07d2f9318d18'

@@ -17,7 +17,7 @@ const one = async (db, sql, p) => (await db.query(sql, p)).rows[0];
 const num = async (db, sql, p) => Number(Object.values((await db.query(sql, p)).rows[0])[0]);
 async function errorOf(db, sql) { try { await db.exec(sql); return null; } catch (e) { return String(e.message); } }
 const SIGS = ['public.plan_h_busy(text,bigint,timestamptz,timestamptz,bigint)', 'public.plan_h_target(jsonb,jsonb,text,text)',
-  'public.plan_rt_update(jsonb,text,text)', 'public.plan_rt_problem(bigint)', 'public.plan_h_reseq(bigint,text,text)'];
+  'public.plan_move_pieces(jsonb,text,text)', 'public.plan_rt_update(jsonb,text,text)', 'public.plan_rt_problem(bigint)', 'public.plan_h_reseq(bigint,text,text)'];
 const md5s = async (db) => Promise.all(SIGS.map(async (s) => (await one(db, `SELECT md5(prosrc) AS m FROM pg_proc WHERE oid = '${s}'::regprocedure`)).m));
 const XDEF = `SELECT string_agg(conname || '=' || md5(pg_get_constraintdef(oid)), ',' ORDER BY conname) AS x FROM pg_constraint
   WHERE conrelid = 'public.rt_vehicle_segments'::regclass AND conname IN ('rt_v2_truck_once', 'rt_v2_driver_once')`;
@@ -97,9 +97,9 @@ const busy = (db, L, tag, { accept, by = 'truck' } = {}) => scenario(db, async (
     stops: [{ ref: 'p', location_id: hub, side: 'KATHODOS', planned_from: await at(db, `${fri} + 1`, '09:00'), planned_to: await at(db, `${fri} + 1`, '10:00') },
       { ref: 'd', location_id: await num(db, `SELECT t86_dest(${b1})`), side: 'KATHODOS', planned_from: await at(db, `${fri} + 2`, '09:00'), planned_to: await at(db, `${fri} + 2`, '10:00') }] });
   const b = B.r ? Number(B.r.ids.rt_id) : null;
-  const hasCol = await num(db, `SELECT count(*) FROM pg_attribute WHERE attrelid = 'public.rt_vehicle_segments'::regclass AND attname = 'overlap_ok' AND NOT attisdropped`);
-  const marked = b && hasCol ? await num(db, `SELECT count(*) FROM rt_vehicle_segments WHERE rt_id = $1 AND overlap_ok`, [b]) : 0;
-  const markedA = hasCol ? await num(db, `SELECT count(*) FROM rt_vehicle_segments WHERE rt_id = $1 AND overlap_ok`, [a]) : 0;
+  const hasCol = await num(db, `SELECT count(*) FROM pg_attribute WHERE attrelid = 'public.rt_vehicle_segments'::regclass AND attname = 'overlap_rts' AND NOT attisdropped`);
+  const marked = b && hasCol ? await num(db, `SELECT count(*) FROM rt_vehicle_segments WHERE rt_id = $1 AND overlap_rts <> '{}'`, [b]) : 0;
+  const markedA = hasCol ? await num(db, `SELECT count(*) FROM rt_vehicle_segments WHERE rt_id = $1 AND overlap_rts <> '{}'`, [a]) : 0;
   const audit = b ? (await db.query(`SELECT actor, role, action, after_data FROM audit_log WHERE table_name = 'rt_vehicle_segments'
       AND after_data ? 'overlaps' AND (after_data->>'rt_id')::bigint = $1`, [b])).rows : [];
   const aCode = (await one(db, `SELECT code FROM ct_round_trips WHERE id = $1`, [a])).code;
@@ -158,10 +158,10 @@ test('086 on the production-shaped copy (1/11): busy and all-day refused on the 
   });
   await t.test('086 dry run keeps nothing', async () => {
     const msg = await errorOf(db, read('086_plan_busy_overlap_ok_dryrun.sql'));
-    assert.match(msg ?? '', new RegExp(`DRY RUN 086 finished - EVERYTHING UNDONE, nothing kept\\. The block ran to its end {2}\\|\\| {2}086 ran: busy ${gen[0]}, reseq ${gen[4]}`), msg);
+    assert.match(msg ?? '', new RegExp(`DRY RUN 086 finished - EVERYTHING UNDONE, nothing kept\\. The block ran to its end {2}\\|\\| {2}086 ran: busy ${gen[0]}, reseq ${gen[5]}`), msg);
     assert.deepStrictEqual(await md5s(db), live);
     assert.strictEqual((await one(db, XDEF)).x, x0);
-    assert.strictEqual(await num(db, `SELECT count(*) FROM pg_attribute WHERE attrelid = 'public.rt_vehicle_segments'::regclass AND attname = 'overlap_ok' AND NOT attisdropped`), 0);
+    assert.strictEqual(await num(db, `SELECT count(*) FROM pg_attribute WHERE attrelid = 'public.rt_vehicle_segments'::regclass AND attname = 'overlap_rts' AND NOT attisdropped`), 0);
     assert.strictEqual(await num(db, TRG), trg0);
   });
   await t.test('086 applies: generated texts with their old rights, partial EXCLUDE, one trigger, B-54 follows, verify', async () => {
@@ -170,14 +170,14 @@ test('086 on the production-shaped copy (1/11): busy and all-day refused on the 
     assert.deepStrictEqual(await md5s(db), gen);
     assert.deepStrictEqual((await db.query(`SELECT proacl::text AS a, prosecdef, provolatile FROM pg_proc WHERE oid = ANY($1::regprocedure[]) ORDER BY oid`, [SIGS])).rows, acl0);
     assert.strictEqual((await one(db, XDEF)).x, `rt_v2_driver_once=${F.xGen.driver},rt_v2_truck_once=${F.xGen.truck}`);
-    assert.strictEqual(await num(db, TRG), trg0 + 1);
-    assert.strictEqual(await num(db, `SELECT red_value FROM monitoring.checks WHERE id = 'B-54'`), trg0 + 1);
+    assert.strictEqual(await num(db, TRG), trg0 + 2);
+    assert.strictEqual(await num(db, `SELECT red_value FROM monitoring.checks WHERE id = 'B-54'`), trg0 + 2);
     const v = await one(db, read('086_plan_busy_overlap_ok_verify.sql'));
-    assert.deepStrictEqual([v.applied, Number(v.changed_texts), Number(v.exclude_partial), Number(v.mark_trigger), Number(v.has_column)],
-      ['086 in place', 0, 2, 1, 1]);
-    // internal: no role may call the two new functions directly (only the owner, whom PGlite runs as)
-    const acl = (await db.query(`SELECT proname, proacl::text AS a FROM pg_proc WHERE proname IN ('plan_h_accept_busy', 'plan_seg_overlap_ok')`)).rows;
-    assert.strictEqual(acl.length, 2);
+    assert.deepStrictEqual([v.applied, Number(v.changed_texts), Number(v.exclude_partial), Number(v.pair_rule), Number(v.mark_trigger), Number(v.has_column)],
+      ['086 in place', 0, 2, 1, 1, 1]);
+    // internal: no role may call the three new functions directly (only the owner, whom PGlite runs as)
+    const acl = (await db.query(`SELECT proname, proacl::text AS a FROM pg_proc WHERE proname IN ('plan_h_accept_busy', 'plan_seg_overlap_mark', 'plan_chk_seg_overlap')`)).rows;
+    assert.strictEqual(acl.length, 3);
     for (const r of acl) assert.ok(r.a && !/(^|[{,])(=|anon=|authenticated=|service_role=)/.test(r.a), `${r.proname}: ${r.a}`);
   });
   await t.test('086 a second time is refused by its guard, nothing changes', async () => {
@@ -190,7 +190,7 @@ test('086 on the production-shaped copy (1/11): busy and all-day refused on the 
     assert.match((await busy(db, L, 'G0f', { accept: false })).err ?? '', /truck_busy/);
     assert.match((await busy(db, L, 'G0s', { accept: 'yes' })).err ?? '', /bad_input/);
   });
-  await t.test('GO with accept_busy: B saved over A, COMMIT passes, only B marked, one audit row naming A, the person and the role', async () => {
+  await t.test('GO with accept_busy: B saved over A, COMMIT passes, only B names A, one audit row naming A, the person and the role', async () => {
     for (const by of ['truck', 'driver']) {
       const r = await busy(db, L, 'G1' + by[0], { accept: true, by });
       assert.strictEqual(r.err, null, r.err);
@@ -200,6 +200,95 @@ test('086 on the production-shaped copy (1/11): busy and all-day refused on the 
       assert.strictEqual(r.audit.length, r.marked, 'one audit row per mark');
       assert.deepStrictEqual([r.audit[0].actor, r.audit[0].role, r.audit[0].action], ['test:086', 'dispatcher', 'update']);
       assert.deepStrictEqual(r.audit[0].after_data.overlaps, [{ rt_code: r.aCode, by }]);
+    }
+  });
+  await t.test('pair by pair: an accepted pair stays accepted; a NEW overlap with an accepted trip, without accept_busy, is refused at COMMIT (a load added to a trip - no early check)', async () => {
+    for (const acceptC of [false, true]) {
+      const r = await scenario(db, async () => {
+        const fri = `DATE '${L}' + 3`, tag = 'P' + (acceptC ? 1 : 0);
+        for (const [x, d] of [['A', 0], ['B', 1], ['C', 3], ['D', 2], ['E', 0]]) await num(db, `SELECT t86_vs('${tag}${x}', ${fri} + ${d})`);
+        const hub = await num(db, `SELECT id FROM locations WHERE is_hub`), tk = await truck(db);
+        const pc = async (x) => num(db, `SELECT t86_piece('${tag}${x}', 1)`);
+        const leg = async (x, target, pick, drop) => {
+          const p = await pc(x);
+          return put(db, { pieces: [{ piece_id: p }], target,
+            stops: [{ ref: 'p', location_id: hub, side: 'KATHODOS', planned_from: await at(db, `${fri} + ${pick[0]}`, pick[1]), planned_to: await at(db, `${fri} + ${pick[0]}`, pick[2]) },
+              { ref: 'd', location_id: await num(db, `SELECT t86_dest(${p})`), side: 'KATHODOS', planned_from: await at(db, `${fri} + ${drop[0]}`, drop[1]), planned_to: await at(db, `${fri} + ${drop[0]}`, drop[2]) }] });
+        };
+        const own = (accept) => Object.assign({ new_rt: { trip_type: 'OWNED', truck_id: tk, driver_id: null }, side: 'KATHODOS' }, accept ? { accept_busy: true } : {});
+        // A Fri 06:00 -> Sat 14:00; B Sat 09:00 -> Sun 10:00, accepted over A; C Mon 09:00 -> Mon 13:00, apart
+        const A = await leg('A', own(false), [0, '06:00', '07:00'], [1, '12:00', '14:00']);
+        await db.exec(`SET CONSTRAINTS ALL IMMEDIATE; SET CONSTRAINTS ALL DEFERRED;`);
+        const B = await leg('B', own(true), [1, '09:00', '10:00'], [2, '09:00', '10:00']);
+        const C = await leg('C', own(false), [3, '09:00', '10:00'], [3, '12:00', '13:00']);
+        if (A.err || B.err || C.err) throw new Error(A.err || B.err || C.err);
+        const late0 = await errorOf(db, `SET CONSTRAINTS ALL IMMEDIATE`);
+        await db.exec(`SET CONSTRAINTS ALL DEFERRED`);
+        const [a, b, c] = [A, B, C].map((x) => Number(x.r.ids.rt_id));
+        // a later load into A, inside A's own window, without accept_busy: the pair A-B is accepted (B names A)
+        const intoA = await leg('E', { rt_id: a, side: 'KATHODOS' }, [0, '07:00', '08:00'], [1, '10:00', '11:00']);
+        const lateA = await errorOf(db, `SET CONSTRAINTS ALL IMMEDIATE`);
+        await db.exec(`SET CONSTRAINTS ALL DEFERRED`);
+        // a load into C picked up Sun 08:00 at Veroia: C now reaches into B (Sun 08:00-10:00) - a NEW pair, B-C
+        const intoC = await leg('D', Object.assign({ rt_id: c, side: 'KATHODOS' }, acceptC ? { accept_busy: true } : {}), [2, '08:00', '09:00'], [3, '14:00', '15:00']);
+        const names = async (rt) => (await db.query(`SELECT DISTINCT unnest(overlap_rts) AS x FROM rt_vehicle_segments WHERE rt_id = $1 ORDER BY 1`, [rt])).rows.map((x) => Number(x.x));
+        const codes = (await db.query(`SELECT id, code FROM ct_round_trips WHERE id = ANY($1::bigint[])`, [[a, b, c]])).rows;
+        return { late0, intoA: intoA.err, lateA, intoC: intoC.err, b, a, c, bNames: await names(b), cNames: await names(c), codes };
+      });
+      assert.strictEqual(r.late0, null, 'A, B (accepted over A), C pass their COMMIT');
+      assert.deepStrictEqual(r.bNames, [r.a], 'B names A');
+      assert.strictEqual(r.intoA, null, r.intoA);
+      assert.strictEqual(r.lateA, null, 'a later write to A without accept_busy: the accepted pair A-B stays accepted');
+      if (acceptC) {
+        assert.strictEqual(r.intoC, null, JSON.stringify(r));
+        assert.strictEqual(r.late, null, r.late);
+        assert.deepStrictEqual(r.cNames, [r.b], 'C names B');
+      } else {
+        // refused at the end of the call (plan_h_finish fires the deferred rules) or at COMMIT - never let through
+        // because B was accepted once over A
+        assert.match((r.intoC || r.late) ?? '', new RegExp(`truck_busy:${r.codes.find((x) => Number(x.id) === r.b).code}`), JSON.stringify(r));
+        assert.deepStrictEqual(r.cNames, [], 'C names nothing');
+      }
+    }
+  });
+  await t.test('plan_move_pieces (move to) a new trip of a busy truck: refused without accept_busy, moved and named with it', async () => {
+    for (const accept of [false, true]) {
+      const r = await scenario(db, async () => {
+        const fri = `DATE '${L}' + 3`, tag = 'M' + (accept ? 1 : 0);
+        await num(db, `SELECT t86_vs('${tag}A', ${fri})`); await num(db, `SELECT t86_vs('${tag}X', ${fri} + 1)`);
+        const hub = await num(db, `SELECT id FROM locations WHERE is_hub`), tk = await truck(db), t2 = await truck(db);
+        const pa = await num(db, `SELECT t86_piece('${tag}A', 1)`), px = await num(db, `SELECT t86_piece('${tag}X', 1)`);
+        const A = await put(db, { pieces: [{ piece_id: pa }], target: { new_rt: { trip_type: 'OWNED', truck_id: tk, driver_id: null }, side: 'KATHODOS' },
+          stops: [{ ref: 'p', location_id: hub, side: 'KATHODOS', planned_from: await at(db, fri, '06:00'), planned_to: await at(db, fri, '07:00') },
+            { ref: 'd', location_id: await num(db, `SELECT t86_dest(${pa})`), side: 'KATHODOS', planned_from: await at(db, `${fri} + 1`, '12:00'), planned_to: await at(db, `${fri} + 1`, '14:00') }] });
+        const X = await put(db, { pieces: [{ piece_id: px }], target: { new_rt: { trip_type: 'OWNED', truck_id: t2, driver_id: null }, side: 'KATHODOS' },
+          stops: [{ ref: 'p', location_id: hub, side: 'KATHODOS', planned_from: await at(db, `${fri} + 1`, '09:00'), planned_to: await at(db, `${fri} + 1`, '10:00') },
+            { ref: 'd', location_id: await num(db, `SELECT t86_dest(${px})`), side: 'KATHODOS', planned_from: await at(db, `${fri} + 2`, '09:00'), planned_to: await at(db, `${fri} + 2`, '10:00') }] });
+        if (A.err || X.err) throw new Error(A.err || X.err);
+        await db.exec(`SET CONSTRAINTS ALL IMMEDIATE; SET CONSTRAINTS ALL DEFERRED;`);
+        // X's piece moves to a NEW trip of A's truck, Sat 09:00 - inside A's window
+        const target = Object.assign({ new_rt: { trip_type: 'OWNED', truck_id: tk, driver_id: null }, side: 'KATHODOS' }, accept ? { accept_busy: true } : {});
+        const body = { from: { rt_id: Number(X.r.ids.rt_id), piece_ids: [px] }, target,
+          stops: [{ ref: 'p', location_id: hub, side: 'KATHODOS', planned_from: await at(db, `${fri} + 1`, '09:00'), planned_to: await at(db, `${fri} + 1`, '10:00') },
+            { ref: 'd', location_id: await num(db, `SELECT t86_dest(${px})`), side: 'KATHODOS', planned_from: await at(db, `${fri} + 2`, '09:00'), planned_to: await at(db, `${fri} + 2`, '10:00') }] };
+        await db.exec('SAVEPOINT mv');
+        let err = null, moved = null;
+        try {
+          const dry = (await one(db, `SELECT plan_move_pieces($1::jsonb, 'test:086', 'dispatcher') AS r`, [JSON.stringify({ ...body, dry_run: true })])).r;
+          const exe = dry && dry.confirm_token ? { ...body, confirm_token: dry.confirm_token } : body;
+          moved = (await one(db, `SELECT plan_move_pieces($1::jsonb, 'test:086', 'dispatcher') AS r`, [JSON.stringify(exe)])).r;
+          await db.exec('RELEASE SAVEPOINT mv');
+        } catch (e) { err = String(e.message); await db.exec('ROLLBACK TO SAVEPOINT mv'); }
+        const named = await num(db, `SELECT count(*) FROM rt_vehicle_segments WHERE truck_id = $1 AND overlap_rts @> ARRAY[$2::bigint]`, [tk, Number(A.r.ids.rt_id)]);
+        return { err, named };
+      });
+      if (accept) {
+        assert.strictEqual(r.err, null, r.err);
+        assert.strictEqual(r.late, null, r.late);
+        assert.strictEqual(r.named, 1, 'the new trip names A');
+      } else {
+        assert.match((r.err || r.late) ?? '', /truck_busy/, r.err || r.late);
+      }
     }
   });
   await t.test('plan_rt_update (truck change): refused without accept_busy, saved and marked with it', async () => {
@@ -225,7 +314,7 @@ test('086 on the production-shaped copy (1/11): busy and all-day refused on the 
         let err = null;
         try { await db.query(`SELECT plan_rt_update($1::jsonb, 'test:086', 'dispatcher')`, [JSON.stringify(body)]); await db.exec('RELEASE SAVEPOINT u'); }
         catch (e) { err = String(e.message); await db.exec('ROLLBACK TO SAVEPOINT u'); }
-        return { err, marked: await num(db, `SELECT count(*) FROM rt_vehicle_segments WHERE rt_id = $1 AND overlap_ok AND truck_id = $2`, [c, tA]) };
+        return { err, marked: await num(db, `SELECT count(*) FROM rt_vehicle_segments WHERE rt_id = $1 AND overlap_rts <> '{}' AND truck_id = $2`, [c, tA]) };
       });
       if (accept) {
         assert.strictEqual(r.err, null, r.err);
@@ -272,14 +361,14 @@ test('086 on the production-shaped copy (1/11): busy and all-day refused on the 
     assert.ok(codes.length === 2 && codes.every((c) => msg.includes(c)), `both trips named: ${codes} in ${msg}`);
     assert.deepStrictEqual(await md5s(db), gen, 'the stopped rollback changed nothing');
     const dry = await errorOf(db, read('086_plan_busy_overlap_ok_rollback_dryrun.sql'));
-    assert.match(dry ?? '', new RegExp(`DRY RUN 086 ROLLBACK finished - EVERYTHING UNDONE.*rollback ran: busy ${live[0]}, reseq ${live[4]}`), dry);
+    assert.match(dry ?? '', new RegExp(`DRY RUN 086 ROLLBACK finished - EVERYTHING UNDONE.*rollback ran: busy ${live[0]}, reseq ${live[5]}`), dry);
     assert.deepStrictEqual(await md5s(db), gen);
     await db.exec(read('086_plan_busy_overlap_ok_rollback.sql'));
     assert.deepStrictEqual(await md5s(db), live);
     assert.strictEqual((await one(db, XDEF)).x, x0);
     assert.strictEqual(await num(db, TRG), trg0);
     assert.strictEqual(await num(db, `SELECT red_value FROM monitoring.checks WHERE id = 'B-54'`), trg0);
-    assert.strictEqual(await num(db, `SELECT count(*) FROM pg_attribute WHERE attrelid = 'public.rt_vehicle_segments'::regclass AND attname = 'overlap_ok' AND NOT attisdropped`), 0);
+    assert.strictEqual(await num(db, `SELECT count(*) FROM pg_attribute WHERE attrelid = 'public.rt_vehicle_segments'::regclass AND attname = 'overlap_rts' AND NOT attisdropped`), 0);
     assert.strictEqual((await one(db, read('086_plan_busy_overlap_ok_verify.sql'))).applied, '086 NOT APPLIED');
     assert.match((await busy(db, L, 'B1')).err ?? '', /truck_busy/);
     const ad = await allDay(db, L, 'B2');

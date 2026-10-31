@@ -46,10 +46,10 @@ test('086: one md5 per fact - PART 2 = verify = the rollback\'s start; PART 0 = 
   const src = read(`${P}.sql`);
   const part2 = src.slice(src.indexOf('===== PART 2'), src.indexOf('===== PART 3'));
   const gen = [...part2.matchAll(/\], '([0-9a-f]{32})'\)/g)].map((m) => m[1]);
-  assert.strictEqual(gen.length, 5, 'five generated texts');
+  assert.strictEqual(gen.length, 6, 'six generated texts');
   const part0 = src.slice(src.indexOf('===== PART 0'), src.indexOf('===== PART 1'));
   const live = [...part0.matchAll(/', '([0-9a-f]{32})'\)/g)].map((m) => m[1]);
-  assert.strictEqual(live.length, 5, 'five live texts');
+  assert.strictEqual(live.length, 6, 'six live texts');
   for (const m of gen) {
     assert.ok(read(`${P}_verify.sql`).includes(m), 'verify reads the generated md5');
     assert.ok(read(`${P}_rollback.sql`).includes(m), 'the rollback starts from it');
@@ -62,21 +62,25 @@ test('086: one md5 per fact - PART 2 = verify = the rollback\'s start; PART 0 = 
   }
   const part3 = src.slice(src.indexOf('===== PART 3'));
   const xGen = [...part3.matchAll(/IS DISTINCT FROM '([0-9a-f]{32})'/g)].map((m) => m[1]);
+  // (the trigger count proof reads no md5)
   assert.strictEqual(xGen.length, 2);
   for (const m of xGen) assert.ok(read(`${P}_verify.sql`).includes(m) && read(`${P}_rollback.sql`).includes(m), `partial EXCLUDE ${m}`);
   assert.ok(!/GEN_/.test(src), 'no placeholder left');
 });
 
-test('086: the rule stays in the base - the same two EXCLUDE, partial on NOT overlap_ok, deferred; the new functions closed', () => {
+test('086: the rule stays in the base - the same two EXCLUDE, partial on overlap_rts = {}, deferred, and the deferred pair rule beside them; the new functions closed', () => {
   const src = strip(read(`${P}.sql`));
   for (const n of ['rt_v2_truck_once', 'rt_v2_driver_once']) {
     const m = new RegExp(`ADD CONSTRAINT ${n} EXCLUDE USING gist \\(([a-z_]+) WITH =[^;]*?WHERE \\(([^)]*\\))[^;]*?DEFERRABLE INITIALLY DEFERRED`).exec(src);
     assert.ok(m, n);
-    assert.match(m[2], /NOT overlap_ok/);
+    assert.match(m[2], /overlap_rts = '\{\}'/);
   }
   assert.ok(!/DROP CONSTRAINT rt_v2_(truck|driver)_once\s*;/.test(src), 'never dropped without being rebuilt in the same statement');
-  assert.match(src, /REVOKE ALL ON FUNCTION public\.plan_h_accept_busy\(jsonb,text,text,text\), public\.plan_seg_overlap_ok\(\)\s+FROM PUBLIC, anon, authenticated, service_role;/);
-  assert.match(src, /ADD COLUMN overlap_ok boolean NOT NULL DEFAULT false/);
+  assert.match(src, /REVOKE ALL ON FUNCTION public\.plan_h_accept_busy\(jsonb,text,text,text\), public\.plan_seg_overlap_mark\(\),\s+public\.plan_chk_seg_overlap\(\) FROM PUBLIC, anon, authenticated, service_role;/);
+  assert.match(src, /ADD COLUMN overlap_rts bigint\[\] NOT NULL DEFAULT '\{\}'/);
+  assert.match(src, /CREATE CONSTRAINT TRIGGER plan_seg_overlap_verify AFTER INSERT OR UPDATE ON public\.rt_vehicle_segments\s+DEFERRABLE INITIALLY DEFERRED/);
+  // an acceptance never outlives the call that sent it
+  assert.match(src, /perform set_config\('plan\.accept_busy', '', true\);/);
   // the rollback stops on an accepted overlap, never drops it in silence
   assert.match(read(`${P}_rollback.sql`), /trips that overlap are in the base, the full EXCLUDE cannot be rebuilt/);
 });
