@@ -636,7 +636,7 @@
     f.el.querySelector('[data-vdayl]').textContent = dir === 'ANODOS' ? 'Ημ. άφιξης Βέροιας *' : 'Ημ. φόρτωσης Βέροιας *';
     f.el.querySelector('[data-vwinl]').textContent = dir === 'ANODOS' ? 'Άφιξη Βέροιας ως' : 'Παράθυρο φόρτωσης Βέροιας';
     f.el.querySelector('[data-vfromw]').hidden = dir === 'ANODOS';
-    const raw = _raw(f);
+    let raw = _raw(f);
     // F44 (F33's rule): with no Veroia stop on the cycle yet, an ΑΝΟΔΟΣ arrival the screen filled follows the order's
     // own loading — its last loading day — until the user types the arrival day
     const vEl = f.el.querySelector('#wn5f-vday');
@@ -665,6 +665,7 @@
     // the board's own day arithmetic (wn5_actions _addDays), never a second copy
     const addDays = typeof WN5Act !== 'undefined' && WN5Act._kit && typeof WN5Act._kit.addDays === 'function' ? WN5Act._kit.addDays : null;
     // a row or an order added later opens where the filled ones are now (code review r3), never on the old day
+    let moved = false;   // a day moved here: the summary below is built from the rows as they are now (code review r6)
     if (vSet && DAY.test(f.dayDefault || '')) {
       if (dir === 'ANODOS') f.dayDefault = vday;
       else if (shift && addDays) f.dayDefault = addDays(f.dayDefault, shift);
@@ -674,19 +675,20 @@
       if (vSet && !(rec && rec === _hubRec())) {
         const d = r.querySelector('[data-f="day"]'), typed = d.parentElement && d.parentElement.querySelector('.wn5f-dayx');
         if (d.dataset.auto && !(typed && typed.dataset.raw)) {
-          if (dir === 'ANODOS' && d.value !== vday) d.value = vday;
-          else if (shift && addDays && DAY.test(d.value)) d.value = addDays(d.value, shift);
+          if (dir === 'ANODOS' && d.value !== vday) { d.value = vday; moved = true; }
+          else if (shift && addDays && DAY.test(d.value)) { d.value = addDays(d.value, shift); moved = true; }
         }
       }
       if (rec && rec === _hubRec()) {
         const d = r.querySelector('[data-f="day"]'), a = r.querySelector('[data-f="from"]'), b = r.querySelector('[data-f="to"]');
         // a day typed wrong stays wrong, in red (_dayInput): the head never fills it over the user's keys
         const typed = d.parentElement && d.parentElement.querySelector('.wn5f-dayx');
-        if ((!d.value || (d.dataset.auto && d.value !== vday)) && vday && !(typed && typed.dataset.raw)) { d.value = vday; d.dataset.auto = '1'; }
+        if ((!d.value || (d.dataset.auto && d.value !== vday)) && vday && !(typed && typed.dataset.raw)) { d.value = vday; d.dataset.auto = '1'; moved = true; }
         if (whole && !a.value && vf) a.value = vf;
         if (whole && !b.value && vt) b.value = vt;
       }
     });
+    if (moved) raw = _raw(f);
     // a drop section whose rows are all Veroia arrivals heads its window «Άφιξη ως *» (Figma Δ7 2069:7995)
     f.el.querySelectorAll('.wn5f-ord').forEach((b) => {
       const rows = [...b.querySelectorAll('.wn5f-rows[data-k="drop"] .wn5f-row')];
@@ -756,18 +758,19 @@
   }
 
   // F52 (code review r2/r3): a place saved while a form was open is in the pickers; its number comes with the
-  // catalogue's re-read (PlanIds.stale), asked by the press itself — a no-op while the catalogue is current. f.busy
-  // keeps a second press out and the button says aria-busy while it reads; it is not disabled, which would take the
-  // focus off it and leave the form's next blur (the «Λείπει: …» refresh) unfired.
+  // catalogue's re-read (PlanIds.stale), asked by the press itself — a no-op while the catalogue is current.
+  // f.reading (not f.busy: «Άκυρο» / Esc still close the form, and nothing disables the button) keeps a second press
+  // out; the button says aria-busy while it reads. Not disabled: that would take the focus off it and leave the
+  // form's next blur (the «Λείπει: …» refresh) unfired (code review r3/r6).
   async function _idsFresh(f) {
     const b = f.el.querySelector('[data-act="save"]');
-    f.busy = true;
+    f.reading = true;
     if (b) b.setAttribute('aria-busy', 'true');
     // load() never rejects: a failed read keeps the catalogue in hand, and a missing number is said at _readState
-    try { await PlanIds.load(); } finally { f.busy = false; if (b) b.removeAttribute('aria-busy'); }
+    try { await PlanIds.load(); } finally { f.reading = false; if (b) b.removeAttribute('aria-busy'); }
   }
   async function _saveOrder(f) {
-    if (f.busy || f.done || f.locked) return;
+    if (f.busy || f.reading || f.done || f.locked) return;
     let st, body;
     await _idsFresh(f);
     if (_f !== f || f.busy || f.done || f.locked) return;   // closed or replaced while the catalogue was read
@@ -1079,7 +1082,7 @@
     return !!(b.set || b.shipments);
   }
   async function _saveEdit(f) {
-    if (f.busy || f.done || f.locked) return;
+    if (f.busy || f.reading || f.done || f.locked) return;
     await _idsFresh(f);
     if (_f !== f || f.busy || f.done || f.locked) return;   // closed or replaced while the catalogue was read
     const st = _readEdit(f);
