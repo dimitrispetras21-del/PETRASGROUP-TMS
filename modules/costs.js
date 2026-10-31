@@ -38,7 +38,8 @@ async function ctFetch(path, opts = {}) {
   const _rq = (typeof tmsNewAction === 'function' ? tmsNewAction() : null);   // Level A: one id per action
   // Same rule as the facade (core/api.js _atRetry, 5/10 storm): once a 401 has
   // ended the session, no /costs request is sent and none is logged.
-  if (typeof tmsSessionGone === 'function' && tmsSessionGone()) throw tmsSessionRefuse(_rq);
+  const _write = (opts.method || 'GET') !== 'GET';   // F36: the login window's «πάτα ξανά Αποθήκευση»
+  if (typeof tmsSessionGone === 'function' && tmsSessionGone()) throw tmsSessionRefuse(_rq, _write);
   let res;
   try {
     res = await fetch(PROXY_URL + path, {
@@ -56,7 +57,7 @@ async function ctFetch(path, opts = {}) {
   // Every Worker 401 outside /auth/login means «no valid token» (worker/src:
   // `if (!caller) return jsonError("Unauthorized", 401)`): the session is over
   // for /costs exactly as for the facade.
-  if (res.status === 401 && typeof tmsSessionExpired === 'function') throw tmsSessionExpired('costs ' + String(path).split('?')[0], _rq);
+  if (res.status === 401 && typeof tmsSessionExpired === 'function') throw tmsSessionExpired('costs ' + String(path).split('?')[0], _rq, _write);
   const data = await res.json().catch(() => null);
   if (!res.ok) {
     // Status + body travel with the error so a caller can say more than the

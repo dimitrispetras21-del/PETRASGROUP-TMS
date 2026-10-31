@@ -7,7 +7,7 @@
 //   - Offline banner via postMessage to all clients
 // ═══════════════════════════════════════════════════════════
 
-const SW_VERSION = '1793480001';
+const SW_VERSION = '1793482508';
 
 // Το vendor/leaflet/* ΔΕΝ μπαίνει στο APP_SHELL επίτηδες: το pre-cache στο
 // install θα κατέβαζε 228 KB σε κάθε χρήστη, ακυρώνοντας το lazy loading της
@@ -27,6 +27,9 @@ const APP_SHELL = [
   '/PETRASGROUP-TMS/core/plan-api.js',
   // National v5 F5 (FE-1): PlanConfig, loaded on every page right after plan-api.js.
   '/PETRASGROUP-TMS/core/plan-config.js',
+  // F36: app.html loads both on every page; the login window and the reload that waits for open forms.
+  '/PETRASGROUP-TMS/core/relogin.js',
+  '/PETRASGROUP-TMS/core/sw-update.js',
   '/PETRASGROUP-TMS/core/auth.js',
   '/PETRASGROUP-TMS/core/router.js',
   '/PETRASGROUP-TMS/core/utils.js',
