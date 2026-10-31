@@ -285,6 +285,9 @@
     if (typeof toast === 'function') toast(said + intl + (fresh ? '' : ' · ο πίνακας δεν ανανεώθηκε — πάτα Ανανέωση'), fresh ? 'success' : 'warn');
   }
 
+  // F50: the cycle a request names (a «+», an assign or a move to a cycle, a PATCH of one); a new cycle's id comes in
+  // the answer (_afterSave reads ids.rt_id)
+  function _reqRt(req) { return _id(req && req.body && req.body.target && req.body.target.rt_id) || _id((/^\/plan\/rt\/(\d+)/.exec((req && req.path) || '') || [])[1]); }
   // One send of a dialog. req = { method, path, body, requestId? }.
   // opts = { slot (PlanApi.slot of a creation), onReused (pred for WN5.findAfterReuse), intl }
   async function _send(d, req, okText, opts) {
@@ -304,7 +307,9 @@
         if (hit) {
           if (opts.slot) opts.slot.confirm();
           _close(d);
-          await _afterSave({ warnings: [], notice_ids: [] }, (typeof okText === 'function' ? okText({}) : okText) + ' (είχε ήδη σταλεί)', { reloaded: true });
+          // F50 here too: the board was re-read by findAfterReuse; the cycle the request names is shown
+          const rt0 = _reqRt(req);
+          await _afterSave({ warnings: [], notice_ids: [] }, (typeof okText === 'function' ? okText({}) : okText) + ' (είχε ήδη σταλεί)', { reloaded: true, rt: rt0 });
           return hit;
         }
       }
@@ -318,8 +323,7 @@
     }
     if (opts.slot) opts.slot.confirm();      // a new request_id only after a confirmed 200 (replayed included)
     _close(d);
-    // the cycle the request names (a «+», an assign to a cycle, a PATCH of one); a new cycle's id comes in the answer
-    const rt = _id(req.body && req.body.target && req.body.target.rt_id) || _id((/^\/plan\/rt\/(\d+)/.exec(req.path || '') || [])[1]);
+    const rt = _reqRt(req);
     await _afterSave(out, okText, { intl: opts.intl, rt });
     return out;
   }
@@ -1073,7 +1077,7 @@
     WN5Act.twoStep({ method: req.method, path: req.path, body: req.body, kind: 'move', title: 'Μεταφορά · ' + st.what, verb: 'Μεταφορά', host: d.msg })
       .then(async (out) => {
         if (!d.closed) { d.busy = false; _btns(d, false); }
-        if (out) { _close(d); await _afterSave(out, 'Μεταφέρθηκε', { intl: true, rt: req.body && req.body.target && req.body.target.rt_id }); }
+        if (out) { _close(d); await _afterSave(out, 'Μεταφέρθηκε', { intl: true, rt: _reqRt(req) }); }
       });
   }
   function _picker(st, kind, title) {

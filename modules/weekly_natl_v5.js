@@ -524,9 +524,7 @@ function _qbandHTML(m, known) {
   // query and the same one repaint on crossing 1600 as the stops (_visPts).
   const max = _visPts() === 1 ? 2 : 3;
   const shown = _qAll ? q : q.slice(0, max);
-  // A card is one VS order (the base assigns an order whole), its pieces are the board's points (live W45, 28/10:
-  // «Όλα 4» beside 7 pieces). Figma audit B-7 (owner 28/10): the short «ΕΠΟΜΕΝΑ · 4 · 7 κομμάτια» — the cards say they
-  // are VS; the pieces keep their noun, only when they differ from the cards.
+  // A card is one VS order (the base assigns an order whole), its pieces are the board's points.
   const nVs = String(q.length);
   const more = q.length > max ? `<button type="button" class="wi4-link wi4-q-all" onclick="WN5._qMore()">${_qAll ? 'Λιγότερα ▴' : `Όλες οι ${q.length} ▾`}</button>` : '';
   // Owner 31/10 (no «κομμάτι» on the board): the count is the VS orders, as the cards; their pieces are on the rows.
@@ -696,7 +694,6 @@ function _anodHTML(r, m, ok) {
     // every side of a cycle row (Figma 2011:10299 row 4); the «+» sits outside the dashed box (2011:10217)
     return `<div class="wn5-aspan wn5-gspan"><span class="${par ? 'wn5-gaptxt' : 'wn5-gapbox'}">${txt}</span></div><div class="wn5-apal wn5-gpal">${_plusHTML(r, 'ANODOS')}</div>`;
   }
-  const n = s.from.length;
   const hd = _dc(ok && s.headDim);
   const end = r.end ? `<span class="wn5-end${_dc(ok && r.end.dim)}"${_segAttr(r.end.segLabel)} title="${_esc(`Βέροια · ως ${_dow(L().athensDay(r.end.by))} ${L().athensTime(r.end.by)}`)}"><span class="wi4-l1">Βέροια</span><span class="wi4-l2">ως ${_esc(_dow(L().athensDay(r.end.by)))} ${_esc(L().athensTime(r.end.by))}</span></span>` : '';
   return `<div class="wn5-ad">${_prtHTML(r, 'ANODOS')}${_chipHTML(r, 'ANODOS', `wi4-dc ${_chipCls(s.day, m.today)}${hd}`, _dl(s.day))}</div>`
@@ -1375,11 +1372,9 @@ function _searchKey(ev) {
   }
 }
 
-// ═══ Notices strip (Figma 2011:7745 «ΕΙΔΟΠΟΙΗΣΕΙΣ») ═══
-// The text of a notice is the DB's (072 plan_h_notice writes it in Greek, decision 25): shown as it is, the screen
-// writes no text per kind (principle 3). «Σημείωσα ✓» marks every notice on screen read — one POST per notice, body
-// {}, sent once per press (planFetch never re-sends), stopping at the first «no». Until day L the Worker answers 409
-// writes_closed: its message is shown, the notices stay, and the button stays off for the session (Ε-6).
+// ═══ Notices strip ═══
+// «Σημείωσα» marks notices read — one POST per notice, body {}, sent once per press (planFetch never re-sends),
+// stopping at the first «no». A 409 writes_closed: its message is shown, the notices stay, the buttons stay off (Ε-6).
 // Notices (owner 31/10, over Figma 2011:7745's amber line): a quiet white strip as the ΒΕΡΟΙΑ one, ONE line however
 // many come. Grouped by order (one line per VS / national order, or per truck when a notice names only its cycle):
 // «VS 2130 · νέος προορισμός: …», the order a link to its row. The newest group is on the line; the others are counted
@@ -1468,7 +1463,7 @@ function _noticesHTML(m) {
   const off = _noteBusy || !!_closed;
   const gs = _noteGroups(m);
   const more = gs.length - 1;
-  return `<div id="wn5-notices" class="wn5-notes${_notesOpen && more ? ' open' : ''}" role="status"><b class="wn5-notes-h">ΕΙΔΟΠΟΙΗΣΕΙΣ<span class="wn5-notes-n"> · ${m.notices.length}</span></b>`
+  return `<div id="wn5-notices" class="wn5-notes" role="status"><b class="wn5-notes-h">ΕΙΔΟΠΟΙΗΣΕΙΣ<span class="wn5-notes-n"> · ${m.notices.length}</span></b>`
     + `<span class="wn5-notes-l">${_noteLineHTML(gs[0], off, more > 0)}</span>`
     + (more ? `<button type="button" class="wi4-link wn5-notes-more" aria-expanded="${_notesOpen}" onclick="WN5._notesTog()">${_notesOpen ? 'λιγότερες ▴' : `+${more} ακόμη ▾`}</button>` : '')
     + `<button type="button" id="wn5-note-read" class="wi4-link"${off ? ' disabled' : ''}${_closed ? ` title="${_esc(_closed.message)}"` : ''} onclick="WN5._noteRead()">${more ? 'Σημείωσα όλες ✓' : 'Σημείωσα ✓'}</button>`

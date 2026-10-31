@@ -8987,7 +8987,7 @@ body.wi4-on #wi-popover .wi-pop-save:hover { background:var(--navy-light); }
    match an element. Names are never cut (DESIGN.md #6) — the one exception, as on the Weekly International, is the
    28px queue card, whose whole line is in title (.wn5-qc-cl below). */
 :root {
-  --wn5-note-bg:   #fff7eb;   /* notices strip (Figma 2011:7745 «ΕΙΔΟΠΟΙΗΣΕΙΣ») */
+  --wn5-note-bg:   #fff7eb;   /* amber answers (warning strips); the notices strip is white since 31/10, its label keeps the ink */
   --wn5-note-line: #fad199;
   --wn5-note-ink:  #b5540a;   /* 4.9:1 on --wn5-note-bg */
   --wn5-err-line:  #fecaca;   /* refusal / error strip border (Δ12) */
