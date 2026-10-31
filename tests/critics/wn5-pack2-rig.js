@@ -347,6 +347,11 @@ async function f64({ browser, origin, ok, scn }) {
   const w = await page.evaluate(() => { const k = WN5Act._kit; return [k.win('2026-10-13', '08:00', '08:00'), k.win('2026-10-13', '23:59', '23:59'), k.win('2026-10-13', '22:00', '02:00'), k.win('2026-10-13', '08:00', '10:00')]; });
   ok(scn, '08:00–08:00 → Tue 08:00–08:01, the same day — main: Tue 08:00 → Wed 08:00', JSON.stringify(w[0]) === JSON.stringify(['2026-10-13T08:00:00+03:00', '2026-10-13T08:01:00+03:00']), w[0]);
   ok(scn, '23:59–23:59 → Tue 23:58–23:59, the same day', JSON.stringify(w[1]) === JSON.stringify(['2026-10-13T23:58:00+03:00', '2026-10-13T23:59:00+03:00']), w[1]);
+  // a piece whose own window is one instant (a deadline «ως 23:59» stored from = to): its new stop is the day's last minute
+  const ow = await page.evaluate(() => { const k = WN5Act._kit; const t = '2026-10-14T23:59:00+03:00';
+    return k.stopsFor([{ loc: 4, from: t, to: t, hub: false, key: 'drop:4' }], null, 'KATHODOS', null, null).stops[0]; });
+  ok(scn, 'a piece\'s own instant window (23:59 = 23:59) → a stop 23:58–23:59 that day, never equal ends', !!ow && Date.parse(ow.planned_to) - Date.parse(ow.planned_from) === 60000
+    && Date.parse(ow.planned_to) === Date.parse('2026-10-14T23:59:00+03:00'), ow);
   ok(scn, 'a night window 22:00–02:00 still ends the next day; 08:00–10:00 as it was', JSON.stringify(w[2]) === JSON.stringify(['2026-10-13T22:00:00+03:00', '2026-10-14T02:00:00+03:00'])
     && JSON.stringify(w[3]) === JSON.stringify(['2026-10-13T08:00:00+03:00', '2026-10-13T10:00:00+03:00']), [w[2], w[3]]);
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);

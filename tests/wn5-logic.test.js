@@ -377,7 +377,7 @@ test('075: waitSide — the hub ends first, then the order\'s own direction, els
 test('F64: winText — one minute is «στις HH:MM», the day\'s last minute «ως 23:59», the whole day and a window as before', () => {
   const W = require(path.join(ROOT, 'core/wn5-logic.js'));
   assert.strictEqual(W.winText('08:00', '08:01', false), 'στις 08:00');
-  assert.strictEqual(W.winText('08:00', '08:00', false), 'στις 08:00');   // stored before F64 as 24 h: read as meant
+  assert.strictEqual(W.winText('08:00', '08:00', false), '08:00–08:00');   // a 24 h window stored before F64: as it is
   assert.strictEqual(W.winText('23:58', '23:59', false), 'ως 23:59');
   assert.strictEqual(W.winText('00:00', '23:59', true), 'όλη η ημέρα');
   assert.strictEqual(W.winText('06:00', '08:00', false), '06:00–08:00');

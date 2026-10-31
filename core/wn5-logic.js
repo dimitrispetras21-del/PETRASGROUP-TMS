@@ -59,15 +59,15 @@ function allDay(fromIso, toIso) {
 // and an arrival with no hour («ως 23:59») as 23:58–23:59. Printed as stored, both read as a window nobody agreed.
 // ONE reader rule for the board and the driver sheet (principle 3): a window of at most one minute is an instant,
 // «στις 08:00»; the instant that ends the day is the deadline «ως 23:59»; the whole day stays «όλη η ημέρα».
-// It reads the Athens clock (HH:MM, what the board's model carries): a window over midnight is never an instant, and
-// the old 24 h «08:00 → 08:00 next day» stored before F64 (the same hour typed twice) reads «στις 08:00», as meant.
-// null when an end is missing (each screen keeps its own «—»).
+// It reads the Athens clock (HH:MM, what the board's model carries): a window over midnight is never an instant. An
+// old 24 h «08:00 → 08:00 next day» stored before F64 keeps «08:00–08:00»: its row sits on the end day, and «στις 08:00»
+// there would name an appointment that never was (code review). null when an end is missing (each screen keeps «—»).
 function winText(from, to, all) {
   if (!from || !to) return null;
   if (all) return 'όλη η ημέρα';
   const min = (hm) => { const x = /^(\d{2}):(\d{2})$/.exec(hm); return x ? Number(x[1]) * 60 + Number(x[2]) : NaN; };
   const d = min(to) - min(from);
-  if (d === 0 || d === 1) return to === DAY_WIN.to ? 'ως ' + DAY_WIN.to : 'στις ' + from;
+  if (d === 1) return to === DAY_WIN.to ? 'ως ' + DAY_WIN.to : 'στις ' + from;
   return from + '–' + to;
 }
 function _addDays(day, n) { const [y, m, d] = day.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); }
