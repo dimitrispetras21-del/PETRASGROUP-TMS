@@ -30,7 +30,7 @@
 -- No table, no column, no trigger, no grant, no row written. No Worker change (PATCH /plan/orders/:id passes the
 -- answer as it is; every role with orders PATCH has rt PATCH in PLAN_PERMS). Existing cycles are NOT re-sequenced
 -- here: a cycle takes the new order at its next write (audit row per stop), its executed days never.
--- 082 (PR #177) patches plan_h_bridge_unplan and rt_sync_from_order: no function in common, any order between them.
+-- 082 (executed 31/10, PR #177) patched plan_h_bridge_unplan and rt_sync_from_order: no function in common with 081.
 -- RUN: after 15:00 or with the owner's explicit yes: 081_plan_stop_order_follows_dryrun.sql, then this file, then
 -- 081_plan_stop_order_follows_verify.sql. REVERSE: 081_plan_stop_order_follows_rollback.sql.
 DO $do$

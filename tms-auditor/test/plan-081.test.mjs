@@ -1,6 +1,7 @@
 // 081 (F28 the stops of a cycle by the road, and the truck's stop follows its point; owner 31/10) on the
 // production-shaped PGlite copy as production holds it on 31/10: prod-shaped-074.mjs (072 ... 074a, 074, 074b) + 075,
-// 076, 077, 078, 080. 079 only moved day L (the copy has its own L). 082 (PR #177, not run) patches other functions.
+// 076, 077, 078, 080, and 082 (executed 31/10, with the order-side RT triggers of its fixture). 079 only moved day L (the
+// copy has its own L). 082 patches plan_h_bridge_unplan and rt_sync_from_order, none of the texts 081 patches or calls.
 // Each scenario runs inside a transaction that is always rolled back, with the deferred rules (071's plan_chk) fired
 // before the rows are read: the same scenario first on the LIVE texts (it must show F28 / the stop that stays =
 // NO-GO), then after 081 (GO), then after the rollback (the live behaviour again). Every case reads ROWS (rt_stops,
@@ -177,6 +178,11 @@ test('081 on the production-shaped copy (31/10): F28 and the stop that stays rep
   for (const f of ['075_plan_order_side.sql', '076_plan_board_speed.sql', '077_plan_order_edit.sql', '078_audit_actions.sql']) await db.exec(read(f));
   await db.exec(`DELETE FROM monitoring.checks WHERE id = 'B-100'`);
   await db.exec(read('080_plan_optional_price_pallets.sql'));
+  await db.exec(fs.readFileSync(new URL('./fixtures/live-082.sql', import.meta.url), 'utf8'));
+  // B-54 as production holds it (= the enabled triggers): 082's guard and 081's compare the two (as plan-082.test.mjs)
+  await db.query(`UPDATE monitoring.checks SET red_value = (SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+    JOIN pg_namespace ns ON ns.oid = c.relnamespace WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public') WHERE id = 'B-54'`);
+  await db.exec(read('082_plan_bridge_keeps_cycles.sql'));
   // the hub's coordinates, as production holds them (the copy's hub row has none)
   await db.exec(`UPDATE locations SET latitude = ${TOWN.veroia[0]}, longitude = ${TOWN.veroia[1]} WHERE is_hub`);
   const src = read('081_plan_stop_order_follows.sql');
@@ -186,6 +192,9 @@ test('081 on the production-shaped copy (31/10): F28 and the stop that stays rep
     assert.deepStrictEqual(await md5s(db), LIVE);
     assert.deepStrictEqual(F.gen.map((g) => F.live[g.sig]), LIVE, 'PART 0 names the production md5');
     assert.strictEqual(await md5Of(db, 'public.plan_rt_update(jsonb,text,text)'), RT_UPDATE);
+    // 082 as production holds it since 31/10 (SELECT 31/10 after its run)
+    assert.strictEqual(await md5Of(db, 'public.plan_h_bridge_unplan(bigint,bigint,text,text,text)'), 'b4450bcd533afcb24348e8f46e914276');
+    assert.strictEqual(await md5Of(db, 'public.rt_sync_from_order()'), '1a1c357803bc1c0c7368e1ba5b1335cc');
   });
 
   await t.test('NO-GO on the live texts: F28 - RT-1300 comes out 386 -> 778 -> 904 -> 541 (entry order)', async () => {
