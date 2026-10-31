@@ -51,6 +51,13 @@ async function scnInvoiced({ browser, origin, ok, scn }) {
   await open(page);
   const c = await client(page);
   ok(scn, 'invoiced: «Πελάτης» is read-only, the client named, the reason in its title', !c.picker && c.shown === 'ΠΕΛΑΤΗΣ Α' && /Τιμολογημένη: ο πελάτης δεν αλλάζει/.test(c.title || ''), c);
+  // #189's price lock (_priceRo) takes the same invoiced: true from the read - dispatcher locked, accountant open
+  const priceRo = (pg) => pg.evaluate((d) => { const x = document.querySelector(`${d} [data-f="price"]`); return !!x && x.disabled; }, DLG);
+  ok(scn, 'invoiced: the price is locked for the dispatcher (#189 lock, fed by the read)', await priceRo(page));
+  const acc = await K.openApp(browser, origin, { role: 'accountant', orders: ordersWith(true) });
+  await open(acc.page);
+  ok(scn, 'invoiced: the price stays open for the accountant; the client stays read-only', !(await priceRo(acc.page)) && !(await client(acc.page)).picker);
+  await closeClean(acc.page, acc.S, ok, scn);
   await page.fill(`${DLG} [data-f="notes"]`, 'ράμπα 3');
   await save(page);
   await page.waitForTimeout(1000);

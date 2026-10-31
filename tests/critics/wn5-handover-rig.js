@@ -200,7 +200,10 @@ async function scnChange({ browser, origin, ok, scn }) {
   const dry = posts(S).filter((x) => x.body.dry_run === true);
   ok(scn, 'a valid form runs ONE dry run, without request_id', dry.length === 1 && !('request_id' in dry[0].body), posts(S).map((x) => x.body));
   ok(scn, 'the dry body = the form state', dry[0] && JSON.stringify(dry[0].body) === JSON.stringify({ at: '2026-10-13T03:00:00+03:00', place_note: 'Λαμία', reason: 'vehicle_breakdown', vehicle: { trip_type: 'OWNED', truck_id: 12, trailer_id: 22, driver_id: 32 }, dry_run: true }), dry[0] && dry[0].body);
-  ok(scn, 'preview «Μετά την αλλαγή · 2 τμήματα» before any save', /Μετά την αλλαγή · 2 τμήματα/.test(await K.text(page, `${HDLG} [data-preview]`)));
+  // owner 31/10 (density): «Μετά την αλλαγή» and the vehicles' rows — no «n τμήματα», no ΑΡΧΙΚΟ / ΤΕΛΙΚΟ
+  const pv = await K.text(page, `${HDLG} [data-preview]`);
+  ok(scn, 'preview «Μετά την αλλαγή» with two vehicle rows before any save, no «τμήματα» / ΑΡΧΙΚΟ', /^Μετά την αλλαγή/.test(pv) && !/τμήμα|ΑΡΧΙΚΟ|ΤΕΛΙΚΟ/.test(pv)
+    && (await K.count(page, `${HDLG} [data-preview] .wn5h-seg`)) === 2, pv);
   await page.click(`${HDLG} [data-act="save"]`);
   await page.waitForTimeout(1000);
   const ex = posts(S).filter((x) => x.body.dry_run !== true);
@@ -409,7 +412,7 @@ async function scnFid({ browser, origin, ok, scn }) {
   ok(scn, 'the «Άλλο» line is ONE line and stays inside the form body', fe.h > 0 && fe.h <= 16 && fe.inside, fe);
   await page.evaluate(() => { const r = document.getElementById('wn5h-reason'); r.value = 'vehicle_breakdown'; r.dispatchEvent(new Event('change', { bubbles: true })); });
   await page.waitForTimeout(1200);
-  ok(scn, 'the same body again → a preview again', /Μετά την αλλαγή · 2 τμήματα/.test(await prevText()));
+  ok(scn, 'the same body again → a preview again', /^Μετά την αλλαγή/.test(await prevText()));
   await page.click(`${HDLG} [data-vmode="partner"]`);
   await page.waitForTimeout(300);
   ok(scn, '«Συνεργάτης» with nothing picked: the own-vehicle preview is gone', !(await prevText()), await prevText());
