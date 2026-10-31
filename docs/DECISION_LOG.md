@@ -5041,7 +5041,8 @@ Partner Truck Plates — επιβεβαιωμένα στον χάρτη του �
   - στα ζωντανά κείμενα (NO-GO): ο πελάτης δεν αλλάζει (`bad_input:set`), τιμολογημένη τιμή αλλάζει από dispatcher, η ανάγνωση δεν λέει `invoiced`·
   - μετά την 085 (GO): πελάτης από κάθε ρόλο σε μη τιμολογημένη με γραμμή ίχνους και εκκρεμείς παλέτες στον νέο πελάτη· `invoiced_client` για dispatcher / accountant / owner· `invoiced_price` για dispatcher / warehouse / management· owner / accountant αλλάζουν τιμή· ίδιες τιμές περνούν· ανύπαρκτος / σβησμένος / null πελάτης = `no_client`, μη αριθμός = `bad_input`·
   - επαναφορά: τα ζωντανά κείμενα και η ζωντανή συμπεριφορά.
-- `tests/sql-085-drafts.test.js` 4/4· `worker/test` 415/415 (contract + φρουρός `--invoiced`)· `tests/` 948/948.
-- Rig `tests/critics/wn5-f62-rig.js`: NO-GO 5 στο `origin/main` 2163b11c, GO στον κλάδο· form rig: GO.
+- `tests/sql-085-drafts.test.js` 4/4· `worker/test` 415 περνούν, 2 παραλείψεις, 0 αποτυχίες (contract + φρουρός `--invoiced`)· `tests/` 948 περνούν, 1 todo, 0 αποτυχίες.
+- Rig `tests/critics/wn5-f62-rig.js`: NO-GO 7 στο `origin/main` 2163b11c, GO στον κλάδο· form rig: GO.
+- `/code-review xhigh`: 10 ευρήματα. Διορθώθηκαν: όνομα πελάτη που γράφτηκε χωρίς να επιλεγεί έστελνε σιωπηλά τον παλιό (`f62-typed`, NO-GO 2 στο πρώτο commit του κλάδου)· λάθος λόγος για σβησμένο πελάτη· οι αριθμοί tests εδώ. Μένουν: ο δρόμος του facade (παραπάνω), η φόρμα σκέλους δεν κλειδώνει την τιμή (ο πίνακας δεν φέρνει `invoiced`), συγκρούσεις με το #189, η αλυσίδα Worker με το #145, δύο αντιγραφές builder / αντιγράφου και μία ταξινόμηση καταλόγου.
 
 **Ποιος:** owner 31/10 (μέσω του συντονιστή), agent (υλοποίηση).

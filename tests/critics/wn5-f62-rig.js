@@ -2,7 +2,7 @@
 // the order is not invoiced, read-only with its reason once GET /plan/orders/:id says invoiced: true. Judged by what
 // reached the fake /plan/* (S.plan: the PATCH bodies) and by what the form shows; never by a toast. Synthetic week of
 // tests/critics/wn5-rig-kit.js (3101: client 41 «ΠΕΛΑΤΗΣ Α», waiting).
-// Usage: node tests/critics/wn5-f62-rig.js [f62-edit f62-invoiced f62-empty f62-refused]
+// Usage: node tests/critics/wn5-f62-rig.js [f62-edit f62-invoiced f62-empty f62-typed f62-refused]
 //        WN5_TREE=<git archive origin/main> node tests/critics/wn5-f62-rig.js   (plain-main proof: NO-GO, exit 1)
 // Exit: 0 green · 1 a check failed · 2 unknown scenario.
 'use strict';
@@ -71,6 +71,27 @@ async function scnEmpty({ browser, origin, ok, scn }) {
     && /Πελάτης: διάλεξε πελάτη από τη λίστα/.test(await K.text(page, `${DLG} [data-err]`)), await K.text(page, `${DLG} [data-err]`));
   await closeClean(page, S, ok, scn);
 }
+// code review xhigh: a name typed over the picked one, never picked from the list, is no client - never the old
+// client sent back in silence; the same after a pick whose text is then typed over
+async function scnTyped({ browser, origin, ok, scn }) {
+  const { page, S } = await K.openApp(browser, origin, { orders: ordersWith(false), plan: { 'PATCH /plan/orders/3101': UPD_OK(3101) } });
+  await open(page);
+  const c = await client(page);
+  if (c.cid) await page.fill(`#ls_${c.cid}`, 'ΠΕΛΑΤΗΣ Β');
+  await save(page);
+  await page.waitForTimeout(500);
+  ok(scn, 'typed «ΠΕΛΑΤΗΣ Β», not picked → «Πελάτης: διάλεξε πελάτη από τη λίστα», 0 PATCH', c.picker && sentOf(S).length === 0
+    && /Πελάτης: διάλεξε πελάτη από τη λίστα/.test(await K.text(page, `${DLG} [data-err]`)), await K.text(page, `${DLG} [data-err]`));
+  if (c.cid) {
+    await page.evaluate((id) => fhPickLinked(id, 'recWn5Cli42', 'ΠΕΛΑΤΗΣ Β'), c.cid);
+    await page.fill(`#ls_${c.cid}`, 'ΠΕΛΑΤΗΣ Γ');
+  }
+  await save(page);
+  await page.waitForTimeout(500);
+  ok(scn, 'picked Β then typed «ΠΕΛΑΤΗΣ Γ» over it → refused the same way, 0 PATCH', sentOf(S).length === 0
+    && /Πελάτης: διάλεξε πελάτη από τη λίστα/.test(await K.text(page, `${DLG} [data-err]`)));
+  await closeClean(page, S, ok, scn);
+}
 // the base refuses (invoiced meanwhile, 085 invoiced_client): its message is shown as is and the form stays open
 async function scnRefused({ browser, origin, ok, scn }) {
   const { page, S } = await K.openApp(browser, origin, { orders: ordersWith(false),
@@ -86,7 +107,7 @@ async function scnRefused({ browser, origin, ok, scn }) {
 }
 
 K.run({
-  scenarios: { 'f62-edit': scnEdit, 'f62-invoiced': scnInvoiced, 'f62-empty': scnEmpty, 'f62-refused': scnRefused },
+  scenarios: { 'f62-edit': scnEdit, 'f62-invoiced': scnInvoiced, 'f62-empty': scnEmpty, 'f62-typed': scnTyped, 'f62-refused': scnRefused },
   globals: ['WN5Form'],
   go: 'the edit form corrects the client while the order is not invoiced, sends its number only when it changed, and keeps it read-only once invoiced',
 }).catch((e) => { console.error(e); process.exit(1); });

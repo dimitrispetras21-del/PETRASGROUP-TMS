@@ -926,15 +926,17 @@
   // (fhClientSelect), so a client the catalogue cannot name stays shown as text, with the reason, never a blank field.
   const CLIENT_RO_INVOICED = 'Τιμολογημένη: ο πελάτης δεν αλλάζει';
   const CLIENT_RO_NO_LIST = 'Ο κατάλογος πελατών δεν φορτώθηκε — ο πελάτης δεν αλλάζει από εδώ· άνοιξε ξανά τη φόρμα';
+  // the catalogue holds live clients only (074a): one that was deleted since is said as such (code review xhigh)
+  const CLIENT_RO_GONE = 'Ο πελάτης της παραγγελίας δεν υπάρχει πια στον κατάλογο πελατών — δεν αλλάζει από εδώ';
+  const _clients = () => { try { return typeof PlanIds !== 'undefined' ? PlanIds.list('client') : []; } catch (_) { return []; } };
   function _clientCell(f) {
     const e = f.edit;
-    let rec = '';
-    try {
-      const hit = typeof PlanIds !== 'undefined' && e.client_id != null ? PlanIds.list('client').find((x) => x.id === e.client_id) : null;
-      rec = hit ? hit.legacy_id : '';
-    } catch (_) { rec = ''; }
+    const all = e.invoiced ? [] : _clients();
+    const hit = e.client_id != null ? all.find((x) => x.id === e.client_id) : null;
+    const rec = hit && hit.legacy_id ? hit.legacy_id : '';
     if (e.invoiced || !rec) {
-      return `<div class="wn5f-f"><span>Πελάτης</span><span class="wn5f-ro" title="${e.invoiced ? CLIENT_RO_INVOICED : CLIENT_RO_NO_LIST}">${_esc(e.client || '—')}</span></div>`;
+      const why = e.invoiced ? CLIENT_RO_INVOICED : all.length ? CLIENT_RO_GONE : CLIENT_RO_NO_LIST;
+      return `<div class="wn5f-f"><span>Πελάτης</span><span class="wn5f-ro" title="${why}">${_esc(e.client || '—')}</span></div>`;
     }
     f.clientRec = rec;
     const cid = 'wn5c' + (++f.seq);
@@ -981,10 +983,23 @@
         deliver_from: _iso(g('dday'), dw.from), deliver_to: _iso(g('dday'), dw.to) };
     };
     const rec = (pid) => (document.getElementById('lv_' + pid) || {}).value || '';
+    // F62 (code review xhigh): the picker keeps its last pick in lv_ while its text is typed over, so a name typed but
+    // not picked from the list would send the OLD client back in silence. The text must be the picked client's name;
+    // otherwise it is no client ('' → «διάλεξε πελάτη από τη λίστα»). A rec the catalogue cannot name goes on, and
+    // PlanIds.id refuses it at the save with its own words.
+    const sp = (x) => String(x == null ? '' : x).replace(/\s+/g, ' ').trim();
+    const clientRec = (pid) => {
+      const r = rec(pid);
+      if (!r) return '';
+      const hit = r === f.clientRec ? { label: f.edit.client } : _clients().find((x) => x.legacy_id === r);
+      if (!hit) return r;
+      return sp((document.getElementById('ls_' + pid) || {}).value) === sp(hit.label) ? r : '';
+    };
     const cp = f.el.querySelector('.wn5f-grid4 [data-cpick]');
     return {
-      // F62: the picked client as a rec… id ('' = the field emptied); _saveEdit turns it into the number (PlanIds)
-      client_rec: cp ? rec(cp.dataset.cpick) : undefined,
+      // F62: the picked client as a rec… id ('' = emptied, or typed and not picked); _saveEdit turns it into the
+      // number (PlanIds)
+      client_rec: cp ? clientRec(cp.dataset.cpick) : undefined,
       price: _num(v('[data-f="price"]')), temperature_c: _num(v('[data-f="temp"]')), reference: v('[data-f="ref"]').trim(),
       goods: v('[data-f="goods"]').trim(), notes: v('[data-f="notes"]').trim(), pallet_exchange: peh === 'yes' ? true : peh === 'no' ? false : null,
       direction: f.edit.riding ? null : (v('[data-f="dir"]') || null),
