@@ -111,16 +111,21 @@ test('F5-FE1: {fresh:true} reads again after a before, never after an after (aft
 });
 
 test('F5-FE1: before is kept 5 minutes only — a tab opened before 074 learns after (review finding 1)', async () => {
-  const s = sandbox([json(200, BEFORE), json(200, { cutover_day: '2026-10-31', opened_at: '2026-10-30T13:30:00Z', writes_open: false })]);
+  const s = sandbox([json(200, BEFORE), json(200, { cutover_day: '2026-10-31', opened_at: '2026-10-30T13:30:00Z', writes_open: false }),
+    json(200, { cutover_day: '2026-10-31', opened_at: '2026-10-30T13:30:00Z', writes_open: false })]);
   assert.strictEqual(JSON.parse(await s.run(LOAD())).state, 'before');
   s.clock.t += 4 * 60 * 1000;
   assert.strictEqual(JSON.parse(await s.run(LOAD())).state, 'before', 'within 5 minutes: kept');
   assert.strictEqual(cfg(s).length, 1);
   s.clock.t += 2 * 60 * 1000;
   assert.strictEqual(JSON.parse(await s.run(LOAD())).state, 'after', 'past 5 minutes: read again');
-  s.clock.t += 60 * 60 * 1000;
+  s.clock.t += 4 * 60 * 1000;
   await s.run('PlanConfig.load()');
-  assert.strictEqual(cfg(s).length, 2, 'after is final: never read again');
+  assert.strictEqual(cfg(s).length, 2, 'after is kept 5 minutes');
+  // F25: its DAY is asked again after 5 minutes (079 moved it); the state stays 'after'
+  s.clock.t += 60 * 60 * 1000;
+  assert.strictEqual(JSON.parse(await s.run(LOAD())).state, 'after');
+  assert.strictEqual(cfg(s).length, 3, 'after is read again after 5 minutes (F25)');
 });
 
 test('F5-FE1: a fresh read that fails forgets the old before (review finding 3)', async () => {
@@ -196,4 +201,53 @@ test('F5-FE1 isLegacyTable: NAT_ORDERS / NAT_LOADS / GL_LINES / CONS_LOADS only'
   s.run("globalThis.TABLES = { ORDERS: 'tO', NAT_ORDERS: 'tNO', NAT_LOADS: 'tNL', GL_LINES: 'tGL', CONS_LOADS: 'tCL', TRUCKS: 'tT' }");
   assert.deepStrictEqual(JSON.parse(s.run("JSON.stringify(['tO','tNO','tNL','tGL','tCL','tT',null].map((t) => PlanConfig.isLegacyTable(t)))")),
     [false, true, true, true, true, false, false]);
+});
+
+// F25 (live 28/10): 079 moved day L 31/10 → 24/10; a tab opened before kept 31/10 forever ('after' was final).
+const AFTER = (day) => ({ cutover_day: day, opened_at: '2026-10-28T12:00:00Z', writes_open: true });
+const LOADR = (o) => `PlanConfig.load(${o}).then((r) => JSON.stringify({ state: r.state, day: r.cutoverDay, rerr: !!r.recheckErr }))`;
+
+test('F25: an \'after\' older than 5 min is read again — the board ({recheck:true}) waits for it, every other call gets the kept one at once and the new day next', async () => {
+  const s = sandbox([json(200, AFTER('2026-10-31')), json(200, AFTER('2026-10-24')), json(200, AFTER('2026-10-17'))]);
+  assert.deepStrictEqual(JSON.parse(await s.run(LOADR(''))), { state: 'after', day: '2026-10-31', rerr: false });
+  // within 5 minutes: from memory, every kind of call
+  s.clock.t += 4 * 60 * 1000;
+  await s.run('PlanConfig.load({ fresh: true })');
+  assert.deepStrictEqual(JSON.parse(await s.run(LOADR('{ recheck: true }'))), { state: 'after', day: '2026-10-31', rerr: false });
+  assert.strictEqual(cfg(s).length, 1, 'no re-read within 5 minutes');
+  // a write path ({fresh}) after 5 minutes: answered at once with the kept day, the re-read runs behind it
+  s.clock.t += 60 * 1000;
+  assert.deepStrictEqual(JSON.parse(await s.run(LOADR('{ fresh: true }'))), { state: 'after', day: '2026-10-31', rerr: false });
+  assert.strictEqual(cfg(s).length, 2, 'the re-read started');
+  for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));   // the re-read behind the call lands
+  assert.deepStrictEqual(JSON.parse(await s.run(LOADR(''))), { state: 'after', day: '2026-10-24', rerr: false });
+  // the board after 5 more minutes: it waits for the answer and gets the moved day in the same call
+  s.clock.t += 6 * 60 * 1000;
+  assert.deepStrictEqual(JSON.parse(await s.run(LOADR('{ recheck: true }'))), { state: 'after', day: '2026-10-17', rerr: false });
+  assert.strictEqual(cfg(s).length, 3);
+});
+
+test('F25: recheck \'now\' asks at once; a failed recheck keeps the day read before, flagged for EVERY caller, logged, asked again after 5 min', async () => {
+  const s = sandbox([json(200, AFTER('2026-10-31')), json(500, { error: { type: 'INTERNAL', code: 'plan_failed', message: 'boom' } }),
+    json(200, BEFORE), json(200, AFTER('2026-10-31'))]);
+  await s.run(LOADR(''));
+  assert.deepStrictEqual(JSON.parse(await s.run(LOADR("{ recheck: 'now' }"))), { state: 'after', day: '2026-10-31', rerr: true });
+  assert.ok(s.errs().length >= 1, 'the failed recheck is logged');
+  // another screen's plain call: the same flag, from memory (not asked again within 5 minutes)
+  assert.deepStrictEqual(JSON.parse(await s.run(LOADR(''))), { state: 'after', day: '2026-10-31', rerr: true });
+  assert.strictEqual(cfg(s).length, 2);
+  // a 'before' after 074 ran is not believed: the kept day stays, flagged — as what the base SAID, not a failed read
+  assert.deepStrictEqual(JSON.parse(await s.run("PlanConfig.load({ recheck: 'now' }).then((r) => JSON.stringify({ state: r.state, day: r.cutoverDay, code: r.recheckErr && r.recheckErr.code }))")),
+    { state: 'after', day: '2026-10-31', code: 'config_went_before' });
+  // a good answer clears the flag
+  assert.deepStrictEqual(JSON.parse(await s.run(LOADR("{ recheck: 'now' }"))), { state: 'after', day: '2026-10-31', rerr: false });
+});
+
+test('F25 code review: a recheck answered 404 no_route keeps the day, says the route is gone, logs nothing', async () => {
+  const s = sandbox([json(200, AFTER('2026-10-31')), json(404, { error: { type: 'NOT_FOUND', code: 'no_route', message: 'no route' } })]);
+  await s.run(LOADR(''));
+  const n0 = s.errs().length;
+  assert.deepStrictEqual(JSON.parse(await s.run("PlanConfig.load({ recheck: 'now' }).then((r) => JSON.stringify({ state: r.state, day: r.cutoverDay, code: r.recheckErr && r.recheckErr.code }))")),
+    { state: 'after', day: '2026-10-31', code: 'config_no_route' });
+  assert.strictEqual(s.errs().length, n0, 'no app_errors row for the known gap');
 });

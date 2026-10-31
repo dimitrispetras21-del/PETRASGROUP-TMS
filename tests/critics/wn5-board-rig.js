@@ -1292,8 +1292,8 @@ async function scnPlus(browser, origin) {
       const cs = getComputedStyle(h);
       return { t: h.textContent, h: Math.round(h.getBoundingClientRect().height), under: Math.round(h.getBoundingClientRect().top - hd.getBoundingClientRect().bottom),
         st: [cs.fontSize, cs.color, cs.backgroundColor].join('|') }; }).catch(() => null);
-    ok(scn, 'KATHODOS hint band: «… με Δευ 12/10, ΚΑΘΟΔΟ και TST-2106 έτοιμα· Τιμή € (χωρίς ΦΠΑ) υποχρεωτική.», 30px, 11px grey-2 on chip grey, under the header', !!hint
-      && hint.t === '«Νέα παραγγελία» ανοίγει τη σύντομη φόρμα με Δευ 12/10, ΚΑΘΟΔΟ και TST-2106 έτοιμα· Τιμή € (χωρίς ΦΠΑ) υποχρεωτική.'
+    ok(scn, 'KATHODOS hint band: «… με Δευ 12/10, ΚΑΘΟΔΟ και TST-2106 έτοιμα· τιμή, παλέτες και παράθυρο μπαίνουν και αργότερα.», 30px, 11px grey-2 on chip grey, under the header', !!hint
+      && hint.t === '«Νέα παραγγελία» ανοίγει τη σύντομη φόρμα με Δευ 12/10, ΚΑΘΟΔΟ και TST-2106 έτοιμα· τιμή, παλέτες και παράθυρο μπαίνουν και αργότερα.'
       && hint.h === 30 && hint.under === 0 && hint.st === '11px|rgb(91, 107, 127)|rgb(241, 245, 249)', hint);
     // fidelity T13 r4 (Figma 2011:10310-10314): the segmented at the base 12.5px (236px control at 1440 with DM Sans)
     const seg = await page.$eval(`${D} .wn5-seg button`, (b) => getComputedStyle(b).fontSize).catch(() => null);
@@ -1353,7 +1353,8 @@ async function scnPlus(browser, origin) {
       const c = cell.getBoundingClientRect();
       const spill = [...cell.querySelectorAll('.wn5-pt')].some((p) => p.getBoundingClientRect().right > c.right + 0.5);
       // the stop number sits on the line of the place's first word (T14 fidelity r2: «1» stood alone on its own line)
-      const n = cell.querySelector('.wi4-pt-n'), l1 = n && n.nextElementSibling;
+      // the number inside the place line since 28/10 (wn5 small fixes), before it until then
+      const n = cell.querySelector('.wi4-pt-n'), l1 = n && (n.parentElement.classList.contains('wi4-l1') ? n.parentElement : n.nextElementSibling);
       let numLine = null;
       if (l1) {
         const tn = [...l1.childNodes].find((x) => x.nodeType === 3 && x.data.trim());
@@ -2259,10 +2260,12 @@ function r4Measure(sel) {
         out.cut.push({ row: row && row.dataset.key, t: norm(c.textContent), to: cs.textOverflow, ws: cs.whiteSpace, sw: c.scrollWidth, cw: c.clientWidth });
     }
   }
-  // the r4 extra: each point's title holds its whole first line (who · place)
+  // the r4 extra: each point's title holds its whole first line (who · place); in ΦΟΡΤΩΣΗ the stop number sits inside
+  // the line since 28/10 (wn5 small fixes) and is not part of the place
+  const own = (l1) => { const c = l1.cloneNode(true); c.querySelectorAll('.wi4-pt-n').forEach((x) => x.remove()); return norm(c.textContent); };
   for (const p of document.querySelectorAll('#content .wn5 .wn5-row .wn5-pt')) {
     const l1 = p.querySelector(':scope > .wi4-l1');
-    if (l1 && !norm(p.title).startsWith(norm(l1.textContent))) out.untitled.push({ t: norm(l1.textContent), title: p.title || null });
+    if (l1 && !norm(p.title).startsWith(own(l1))) out.untitled.push({ t: own(l1), title: p.title || null });
   }
   for (const r of document.querySelectorAll('#content .wn5 .wn5-row')) {
     const fl = r.querySelector('.wn5-fl');
@@ -2299,7 +2302,8 @@ SCN.narrow = async (browser, origin) => {
           for (const x of r.getClientRects()) if (x.width > 0.5 && !tops.some((y) => Math.abs(y - x.top) < 4)) tops.push(x.top);
           const p = l1.closest('.wn5-pt');
           const cs = getComputedStyle(l1);
-          return { t: l1.textContent, lines: tops.length, cut: cs.textOverflow === 'ellipsis' || (cs.overflowX !== 'visible' && l1.scrollWidth > l1.clientWidth + 1), title: p ? p.title : null, vh: !!row.querySelector('.wn5-fl .wn5-vh + .wn5-vtime'), h: Math.round(row.getBoundingClientRect().height) };
+          const c = l1.cloneNode(true); c.querySelectorAll('.wi4-pt-n').forEach((x) => x.remove());   // the number is inside since 28/10
+          return { t: c.textContent.trim(), lines: tops.length, cut: cs.textOverflow === 'ellipsis' || (cs.overflowX !== 'visible' && l1.scrollWidth > l1.clientWidth + 1), title: p ? p.title : null, vh: !!row.querySelector('.wn5-fl .wn5-vh + .wn5-vtime'), h: Math.round(row.getBoundingClientRect().height) };
         }, rt);
         console.log(`  · RT-T${rt} row (${name}, sidebar ${sb}): ${t && t.h}px, ΦΟΡΤΩΣΗ place on ${t && t.lines} line(s)`);
         ok(scn, `${name} 1440 sidebar ${sb}: RT-T${rt} ΦΟΡΤΩΣΗ «${want}» whole — never cut, on one line or wrapped between words; Βέροια and its window still under it`,
@@ -2982,6 +2986,41 @@ SCN['f1-allday'] = async (browser, origin) => {
     await page.context().close();
   }
 };
+// F1/F4 (owner 28/10, SQL 080): a national order may have no price and no pallets yet (both NULL in the base, null on
+// the board). Every reader says it: the row «;π», the order card «Τιμή λείπει …» and «Παλέτες ; · άγνωστες σε 1
+// φορτίο», a cycle side «15+;» (titled), the Veroia panel refuses to split it with words, never «0π» / «—» / a sum
+// that hides it. Writes stay closed (409 stub). NO-GO on main and on PR A.
+SCN['f4-unknown'] = async (browser, origin) => {
+  const scn = 'f4-unknown';
+  const b = bBoard();
+  const w = b.waiting.find((x) => x.piece_id === 4201);
+  w.pallets = null; w.price = null;
+  b.cycles[0].stops[0].legs[0].pallets = null;            // RT-T201 ΚΑΘΟΔΟΣ: 12 → unknown, 15 known
+  b.cycles[0].stops[1].legs[0].pallets = null;
+  b.hub.push(bHub(4501, Object.assign({ kind: 'national', nat_order_id: 3501, pallets: null, for_split: true, inbound_rt_id: 201, reference: 'N-T501', client: 'ΠΕΛΑΤΗΣ Γ', client_id: 43, temperature_c: 4 },
+    e26(4, '2026-10-13', '08:00', '10:00'))));
+  const { page, S } = await bOpen(browser, origin, { board: b });
+  const rowTxt = await bText(page, '#content .wn5 .wn5-row[data-piece="4201"]');
+  ok(scn, 'the waiting row of N-T201 says «;π», never «0π»', rowTxt.includes(';π') && !/(^|\D)0π/.test(rowTxt), rowTxt);
+  const pal = await page.evaluate(() => { const e = document.querySelector('#content .wn5 .wn5-row[data-rt="201"] .wn5-kpal .wi4-pal'); return e ? { t: e.textContent, title: e.title } : null; });
+  ok(scn, 'RT-T201 ΚΑΘΟΔΟΣ reads «15+;» titled «παλέτες άγνωστες σε 1 φορτίο»', !!pal && pal.t === '15+;' && /παλέτες άγνωστες σε 1 φορτίο/.test(pal.title), pal);
+  await page.click('#content .wn5 .wn5-row[data-piece="4201"] .wi4-plane[data-act="ocard"]').catch(() => {});
+  await page.waitForTimeout(500);
+  const card = await bText(page, '.wi4-dlg.wn5-ocard');
+  ok(scn, 'the order card: «Τιμή λείπει — γράψε την από «Επεξεργασία»», «Παλέτες ; · άγνωστες σε 1 φορτίο», the stops «;π»',
+    card.includes('λείπει — γράψε την από «Επεξεργασία»') && card.includes('; · άγνωστες σε 1 φορτίο') && card.includes(';π') && !/(^|\D)0π/.test(card), card.slice(0, 600));
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
+  await page.evaluate(() => WN5Hub.split(4501));
+  await page.waitForTimeout(400);
+  const strip = await bText(page, '#content .wn5');
+  ok(scn, 'Veroia: «Σπάσε…» on N-T501 (pallets unknown) is refused with words, no split dialog', strip.includes('Οι παλέτες του φορτίου δεν είναι γνωστές')
+    && !(await bHas(page, '.wi4-dlg[data-wn5="split"]')), strip.slice(0, 300));
+  ok(scn, 'nothing written', S.plan.every((x) => x.m === 'GET'), S.plan.map((x) => x.m + ' ' + x.path));
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await page.context().close();
+};
+
 // F27 (owner 28/10, no VS assignment until fixed): the Veroia field of Δ1 and «+» wrote its hours on the dialog's day —
 // the row's day in Δ1 (a VS export's PICKUP day), the cycle's start in «+», the panel's earliest day in «Σε φορτηγό ▾» —
 // not on the piece's own Veroia day (a VS's cross_dock_date: nat_due_day of an export, nat_ready_day of an import).

@@ -119,25 +119,74 @@ function _decide() {
 // 'unknown', a Worker without the route, the file not loaded — the choice holds as today: the old board is a READ
 // path, its writes are refused below the screen, and an unknown day never traps a user in one view. An 'unknown'
 // answer is said on the v5 bar («Η ημέρα μετάβασης δεν διαβάστηκε»), never silent (principle 1).
-let _cfg = null, _cfgAt = 0, _cfgBusy = false;
-const CFG_RETRY_MS = 60 * 1000;   // a non-final answer is asked again at most once a minute (PlanConfig caches 'after')
+let _cfg = null, _cfgAt = 0, _cfgBusy = false, _cfgForce = false;
+// At most one ask a minute, whatever the state. F25 (live 28/10): an 'after' is asked too — its DAY can move (079:
+// 31/10 → 24/10) and a tab opened before kept the old day until a full reload. WHEN an 'after' is old enough to be
+// read again is PlanConfig's rule (AFTER_RECHECK_MS, one source); the board asks {recheck: true} and waits for that
+// answer, at once ({recheck: 'now'}) on the user's ↻. A moved day repaints the page and says so; a recheck that fails
+// keeps the day read before and the bar says at once that it was not read again (principle 1: never silently stale).
+const CFG_RETRY_MS = 60 * 1000;
 function _dm(day) { return Number(day.slice(8)) + '/' + Number(day.slice(5, 7)); }   // '2026-10-31' → «31/10»
 function _afterL(sat) { return !!_cfg && _cfg.state === 'after' && !!_cfg.cutoverDay && typeof sat === 'string' && sat >= _cfg.cutoverDay; }
+function _recheckNoteHTML() {
+  const on = !!(_cfg && _cfg.state === 'after' && _cfg.recheckErr && _cfg.cutoverDay);
+  return `<span class="wi4-range" data-old-view="recheck"${on ? ` title="${_esc(String(_cfg.recheckErr.message || ''))}"` : ' hidden'}>`
+    + (on ? `Η ημέρα μετάβασης δεν ξαναδιαβάστηκε · ισχύει η ${_esc(_dm(_cfg.cutoverDay))}` : '') + '</span>';
+}
+// The note follows every answer in place — on and off — without repainting the board under a click
+function _recheckNote() {
+  try {
+    const el = document.querySelector('.wn5-bar [data-old-view="recheck"]');
+    if (!el) return;
+    // compared by what is seen (shown, words), not by markup: the browser writes «hidden» back as hidden=""
+    const box = document.createElement('div');
+    box.innerHTML = _recheckNoteHTML();
+    const nu = box.firstElementChild;
+    if (el.hidden === nu.hidden && el.textContent === nu.textContent) return;
+    el.replaceWith(nu); _fitUpd(); _topFit();
+  } catch (_) {}
+}
 function _cfgKick() {
-  if (_cfgBusy || typeof PlanConfig === 'undefined' || (_cfg && _cfg.state === 'after') || Date.now() - _cfgAt < CFG_RETRY_MS) return;
+  if (_cfgBusy || typeof PlanConfig === 'undefined') return;
+  const after = !!_cfg && _cfg.state === 'after';
+  if (!_cfgForce && Date.now() - _cfgAt < CFG_RETRY_MS) return;
+  const force = _cfgForce;
+  _cfgForce = false;
   _cfgBusy = true;
-  PlanConfig.load().then((r) => {
+  // ↻: day L read again at once, whatever is kept ('now' for an 'after', fresh for the rest). Otherwise the board waits
+  // for PlanConfig's re-read of an aged 'after' ({recheck: true}); other screens get the kept one at once.
+  PlanConfig.load(force ? { recheck: 'now', fresh: true } : after ? { recheck: true } : undefined).then((r) => {
     const was = _cfg && _cfg.state;
+    const wasDay = _cfg && _cfg.cutoverDay;
     _cfg = r; _cfgAt = Date.now();
     // Paint again only when the answer changes what THIS week shows: it became 'after' and the week is ≥ L (a stored
-    // old view gives way to v5, the bar loses its button), or it became 'unknown' on the v5 board (the bar says so).
+    // old view gives way to v5, the bar loses its button), or it became 'unknown' on the v5 board (the bar says so),
+    // or day L itself moved (F25: the bar, the old-view choice and the «before L» line all read it).
     // A week before L keeps what it painted: no second load of the old board.
     let sat = null;
     try { sat = weekParam(window.WNATL.week); } catch (_) { /* no week: nothing to repaint */ }
     const now = r && r.state;
-    if (now !== was && sat && ((now === 'after' && _afterL(sat)) || (now === 'unknown' && _sat === sat && _decide() === 'v5'))
-      && typeof currentPage !== 'undefined' && currentPage === 'weekly_natl' && typeof window.renderWeeklyNatl === 'function') window.renderWeeklyNatl();
-  }, () => { _cfgAt = Date.now(); }).finally(() => { _cfgBusy = false; });   // load() never rejects; belt and braces
+    const moved = was === 'after' && now === 'after' && wasDay !== r.cutoverDay;
+    const page = typeof currentPage !== 'undefined' && currentPage === 'weekly_natl' && typeof window.renderWeeklyNatl === 'function';
+    if (page) _recheckNote();
+    // a failed (or recovered) recheck alone repaints nothing but its bar line (_recheckNote): a repaint in the middle of
+    // a click would replace the row, close a menu
+    if (!page || !(moved
+      || (now !== was && sat && ((now === 'after' && _afterL(sat)) || (now === 'unknown' && _sat === sat && _decide() === 'v5'))))) return;
+    // F22 (live 28/10): the v5 board of this week already on screen only needs its bar again — a repaint from the board
+    // in hand, not a second GET /plan/board (every open read the board twice ~40 ms apart, on a base that was timing
+    // out). A render in flight paints the new bar itself when its board lands. The «moved» toast is said only here,
+    // on the page repainted now. A throw lands in the log and the old board, never in an unhandled rejection.
+    try {
+      if (moved && typeof toast === 'function') toast(`Η ημέρα μετάβασης εθνικών άλλαξε: ${_dm(wasDay)} → ${_dm(r.cutoverDay)} — η προβολή ενημερώθηκε`, 'warn');
+      if (_sat === sat && !WN5._broken && document.querySelector('#content > .wn5') && (_decide() === 'v5' || _afterL(sat))) { if (!paint()) _fallback(); }
+      else window.renderWeeklyNatl();
+    } catch (e) { _logErr(e, 'weekly natl v5: repaint after day L'); _fallback(); }
+  }, () => { _cfgAt = Date.now(); }).finally(() => {   // load() never rejects; belt and braces
+    _cfgBusy = false;
+    // a ↻ pressed while this ask ran is served now, not by whatever calls active() next (a click it would repaint under)
+    if (_cfgForce) _cfgKick();
+  });
 }
 // The old-view choice is set aside for a week ≥ L: v5 is what the flag would show without the choice.
 function _oldViewBlocked() {
@@ -229,7 +278,8 @@ function _isEmpty(b) {
 }
 // reason names the caller (a write, the user's «Ανανέωση», a reuse check) for the trace; the read is the same.
 async function reload(reason) {
-  if (reason === 'user') _idsForce = true;   // the user's ↻ also asks the catalogue again, at once
+  // the user's ↻ also asks the catalogue and day L again, at once — day L beside the board read, not after it
+  if (reason === 'user') { _idsForce = true; _cfgForce = true; _cfgKick(); }
   await render();
   const ok = _state === 'ok' || _state === 'empty';
   // a confirmed save whose read failed: the strip says the save happened and the rows are old (F11, principle 1)
@@ -311,6 +361,7 @@ function _paint() {
   _install();
   _logShape(_m);
   _buildIndex(_m);
+  _legMark();   // F22: a leg read in flight keeps its mark on the repainted row
   _applySearch(false);
   _fitUpd();
   _fitAfterFonts();
@@ -342,7 +393,9 @@ function _today() { return typeof localToday === 'function' ? localToday() : '';
 // The day words come from ONE place (core/wi4-logic.js dayLabel): «Τρί 13/10» / «Τρί».
 const _dl = (d) => (d && typeof WI4 !== 'undefined' ? WI4.dayLabel(d) : d || '—');
 const _dow = (d) => _dl(d).split(' ')[0];
-const _pal = (n) => String(n == null ? '—' : n).replace('.', ',') + 'π';
+// F1/F4 (owner 28/10, 080): pallets not known yet read «;π», a sum with unknown pieces «12+;π» (WN5L.palText: one
+// text for every v5 screen), never 0π
+const _pal = (n, unknown) => WN5L.palText(n, unknown) + 'π';
 function _chipCls(day, today) { return !day || !today ? 'next' : day === today ? 'today' : day < today ? 'past' : 'next'; }
 function _rowOf(rtId) {
   if (!_m) return null;
@@ -374,6 +427,8 @@ function _barHTML() {
     // Φ4β (Ε-42, Ε-38): the scan creates an order of the OLD model, which this board never shows (principle 1).
     // «+ Νέα παραγγελία» comes with the v5 form (T20): never a button that opens nothing, never the old form here.
     + '<div class="wi4-bar-r">'
+    // F25: day L was read before and could not be read again — the board says which day it still uses
+    + _recheckNoteHTML()
     + (typeof WN5Form !== 'undefined' && typeof OrdersCommon !== 'undefined' && OrdersCommon.newOrderButton
       ? OrdersCommon.newOrderButton('WN5Form.openOrder({})', '+ Νέα παραγγελία', 'Νέα εθνική παραγγελία v5 — χωρίς έξοδο από το εβδομαδιαίο') : '')
     // Q-10: the old view only for a week before day L; from L on it is not offered, and a stored choice says why
@@ -504,7 +559,7 @@ function _qcardHTML(it, m) {
     + (pl.length > 1 ? `<span class="wn5-qc-n">+${pl.length - 1}</span>` : '');
   return `<div class="wi4-qcard wi4-r-red wn5-qcard" data-piece="${_id(it.pieceId)}">`
     + `<span class="wi4-dc ${_chipCls(it.day, today)}">${_esc(_dl(it.day))}</span>`
-    + `<span class="wi4-qcard-t"><span class="wi4-l1 wn5-qc-l1" title="${_esc(it.title)}">${short}</span><span class="wi4-l2">${_esc(_pal(it.pallets))} · ${why}</span></span>`
+    + `<span class="wi4-qcard-t"><span class="wi4-l1 wn5-qc-l1" title="${_esc(it.title)}">${short}</span><span class="wi4-l2">${_esc(_pal(it.pallets, it.palUnknown))} · ${why}</span></span>`
     + '<button type="button" class="wi4-btn sm" data-act="assign">Ανάθεση</button></div>';
 }
 function _qMore() {
@@ -536,8 +591,14 @@ function _dayHTML(d, m, known, no) {
   // «›» on every day of an empty week read as «folded» (live W44, 28/10), while an empty day of a week with loads had
   // none (Figma H1 «ΤΡΙΤΗ 13/10 · σήμερα · καμία φόρτωση»). Nothing to open, so nothing that looks closed.
   const [name, date] = d.head.split(' ');
+  // A day the user folded says what it hides (owner 28/10, live: one click on a day head folded it and its rows
+  // looked deleted). Drawn on every foldable day, shown by CSS only while it is closed (.wn5-day.closed); a click on
+  // it is a click on the head, which opens the day again.
+  // every line the fold hides: a row, its «⇄» line and its «↳ Φόρτωση με τοπικό» lines (as _rowHTML draws them)
+  const n = d.rows.reduce((a, r) => a + 1 + (r.handovers && r.handovers.length ? 1 : 0) + (Array.isArray(r.local) ? r.local.length : 0), 0);
   const tail = (today ? '<span class="wi4-today"> · σήμερα</span>' : '')
-    + (!known ? `<span class="wn5-dayx"> · ${_state === 'loading' ? '…' : '—'}</span>` : empty ? '<span class="wn5-dayx"> · καμία φόρτωση</span>' : '');
+    + (!known ? `<span class="wn5-dayx"> · ${_state === 'loading' ? '…' : '—'}</span>` : empty ? '<span class="wn5-dayx"> · καμία φόρτωση</span>' : '')
+    + (fold ? `<span class="wn5-dayhid">▸ ${n} ${n === 1 ? 'γραμμή κρυμμένη' : 'γραμμές κρυμμένες'} · άνοιγμα</span>` : '');
   const head = `<div class="wi4-dayh wn5-dayh"${fold ? ` role="button" tabindex="0" aria-expanded="${!closed}" onclick="WN5._dayTog('${d.date}')"` : ''}>`
     + (fold || skel ? `<span class="wi4-chev">${CHEV}</span>` : '<span class="wi4-dayh-sp"></span>')
     + `<span class="wi4-dayn">${_esc(name)} <span class="wi4-dayd">${_esc(date)}</span></span>${tail}</div>`;
@@ -643,15 +704,17 @@ function _anodHTML(r, m, ok) {
 // (WN5L vBefore, by the base's stop order) comes first, numbered with Veroia among the cell's loadings (Figma H1
 // row 5 «1 Thessaloniki»); the ones after it follow. Veroia itself carries no number box: its word is its mark.
 // Like every point (owner 28/10): place + city; the clients are in the order card and the titles.
+// The number sits INSIDE the place line here (inl): the two flow as one run, so a place that does not fit beside its
+// number goes whole to the next line, and that run is the box cut at two lines (long names, owner 28/10).
 function _flHTML(s, ok, hd) {
-  if (!s.veroia) return _ptsHTML(s.from, ok, null);
+  if (!s.veroia) return _ptsHTML(s.from, ok, null, true);
   const vh = `<span class="wn5-vh${hd}">Βέροια</span><span class="wn5-vtime${hd}"${_segAttr(s.veroia.segLabel)}>${_win(s.veroia.from, s.veroia.to, s.veroia.allDay)}</span>`;
   const k = Math.min(s.vBefore || 0, s.from.length);
-  return _ptsHTML(s.from.slice(0, k), ok, 1) + vh + _ptsHTML(s.from.slice(k), ok, k + 2);
+  return _ptsHTML(s.from.slice(0, k), ok, 1, true) + vh + _ptsHTML(s.from.slice(k), ok, k + 2, true);
 }
 // start (a number) = number the points from it, boxes always shown (a cell that also has «Βέροια»); else WN5L's n and
 // no box on a lone point (wi4 rule 6). Every point is place + city (owner 28/10), so no cell is «place only» any more.
-function _ptsHTML(pts, ok, start) {
+function _ptsHTML(pts, ok, start, inl) {
   if (!pts.length) return '';
   const num = start == null ? (p) => (pts.length === 1 ? null : p.n) : (p, i) => start + i;
   const vis = _visPts();
@@ -666,7 +729,7 @@ function _ptsHTML(pts, ok, start) {
   const more = rest.length
     ? `<span class="wi4-more${restLate ? ' wn5-late' : ''}" title="${_esc(rest.map((i) => `${num(pts[i], i) || pts[i].n}. ${_ptFull(pts[i])}`).join('\n'))}"><b>+${rest.length}</b></span>`
     : '';
-  return `<span class="wi4-pts wn5-pts">${idx.filter((i) => shown.has(i)).map((i) => _ptHTML(pts[i], num(pts[i], i), ok)).join('')}${more}</span>`;
+  return `<span class="wi4-pts wn5-pts">${idx.filter((i) => shown.has(i)).map((i) => _ptHTML(pts[i], num(pts[i], i), ok, inl)).join('')}${more}</span>`;
 }
 // Who, then where (Figma H1 «Omega Market · Rentis»): the client in bold, the place in grey. Two runs that break
 // between them, the «·» staying on the first line («ΠΕΛΑΤΗΣ Δ ·» / «Aspropyrgos»), never inside a name that fits. A waiting load's point
@@ -697,11 +760,11 @@ function _ptCity(p) {
 // the base's due day; never an hour the base did not give
 const _hubBy = (p) => (p.to && (p.toDay || p.day) ? `${_dow(p.toDay || p.day)} ${p.to}` : p.due ? _dl(p.due) : '—');
 function _ptFull(p) {
-  if (p.hub) return `Βέροια · τέλος κύκλου · ως ${_hubBy(p)} · ${_pal(p.pallets)}`;   // the same words in title and «+N»
+  if (p.hub) return `Βέροια · τέλος κύκλου · ως ${_hubBy(p)} · ${_pal(p.pallets, p.palUnknown)}`;   // the same words in title and «+N»
   const city = _ptCity(p), who = _ptWho(p);
-  return `${p.name}${city ? ', ' + city : ''} · ${_winTxt(p.from, p.to, p.allDay)} · ${_pal(p.pallets)}${_tempTxt(p) ? ' · ' + _tempTxt(p) : ''}${who ? ' · ' + who : ''}`;
+  return `${p.name}${city ? ', ' + city : ''} · ${_winTxt(p.from, p.to, p.allDay)} · ${_pal(p.pallets, p.palUnknown)}${_tempTxt(p) ? ' · ' + _tempTxt(p) : ''}${who ? ' · ' + who : ''}`;
 }
-function _ptHTML(p, n, ok) {
+function _ptHTML(p, n, ok, inl) {
   // Figma audit B-12 (H1): a load waiting for its ΑΝΟΔΟΣ that ends at Veroia reads as a cycle's end (r.end): «Βέροια
   // · τέλος κύκλου», then its deadline; no city «Veroia» under «Βέροια». The deadline is the window's end when the
   // board has one, else the base's due DAY (nat_due_day) — no hour is invented for it.
@@ -713,9 +776,10 @@ function _ptHTML(p, n, ok) {
   const city = _ptCity(p);
   const full = _ptFull(p);
   return `<span class="wi4-pt wn5-pt${p.late ? ' wn5-late' : ''}${_dc(ok && p.dim && !p.late)}" data-stop="${_id(p.stopId)}"${_segAttr(p.segLabel)} title="${_esc(full)}">`
-    + (n == null ? '' : `<span class="wi4-pt-n">${n}</span>`)
-    + `<span class="wi4-l1">${_esc(p.name)}</span>`
-    + `<span class="wi4-l2${p.late ? ' wi4-t-amb' : ''}">${city ? `<span class="wn5-pcity">${_esc(city)}</span> · ` : ''}${_win(p.from, p.to, p.allDay)} · ${_esc(_pal(p.pallets))}${_tempTxt(p) ? `<span class="wn5-temp"> · ${_esc(_tempTxt(p))}</span>` : ''}</span></span>`;
+    + (n == null ? `<span class="wi4-l1">${_esc(p.name)}</span>`
+      : inl ? `<span class="wi4-l1"><span class="wi4-pt-n">${n}</span> ${_esc(p.name)}</span>`
+        : `<span class="wi4-pt-n">${n}</span><span class="wi4-l1">${_esc(p.name)}</span>`)
+    + `<span class="wi4-l2${p.late ? ' wi4-t-amb' : ''}">${city ? `<span class="wn5-pcity">${_esc(city)}</span> · ` : ''}${_win(p.from, p.to, p.allDay)} · ${_esc(_pal(p.pallets, p.palUnknown))}${_tempTxt(p) ? `<span class="wn5-temp"> · ${_esc(_tempTxt(p))}</span>` : ''}</span></span>`;
 }
 // The day chip of a side. On a cycle row it is a button: T16, it opens the date panel Δ4 of its side
 // (Figma 2011:8858 / 2053:7837). The classes stay those of T5/T6 (dim, «σήμερα»); other rows keep a plain chip.
@@ -733,11 +797,44 @@ function _legAttr(r, side) {
 }
 // A click on a control inside the side (the «+», a later print button) is that control's own: ignored here, so the
 // controls need no stopPropagation and a «+» never opens the leg form too.
+// F22 (live 28/10): the leg form reads the whole board again before it opens (decision 31). On a heavy week that read
+// took seconds or hit the base's timeout, the screen showed nothing meanwhile, every impatient click started one more
+// read, and a failed read ended in the form's «Ο κύκλος δεν βρέθηκε στην εβδομάδα που φαίνεται» — it read as a week
+// stuck on the old one, «until a reload» (the reload opens the lighter current week). So: the clicked row says at once
+// that it is reading (.wn5-leg-busy, aria-busy), one leg read at a time (a click while one runs is that same read),
+// and a read that failed is said as what it is, with the way on (↻). The week state itself was right all along.
+let _legBusy = null;   // {rt, timer} of the leg read running: keyed by cycle (a repaint replaces the row, not the cycle)
+// The busy mark is (re)drawn by cycle, so a paint during the read (its own board re-read) keeps it on the new row
+function _legMark() {
+  for (const r of document.querySelectorAll('#content .wn5-row.wn5-leg-busy')) { r.classList.remove('wn5-leg-busy'); r.removeAttribute('aria-busy'); }
+  const r = _legBusy && document.querySelector(`#content .wn5-row[data-rt="${_legBusy.rt}"]`);
+  if (r) { r.classList.add('wn5-leg-busy'); r.setAttribute('aria-busy', 'true'); }
+}
 function _leg(ev, rtId, side) {
   const t = ev && ev.target;
   if (t && t.closest && t.closest('button, a, input, select, [data-act]')) return;
   if (!active() || !ID_RE.test(String(rtId)) || typeof WN5Form === 'undefined' || typeof WN5Form.openLeg !== 'function') return;
-  Promise.resolve(WN5Form.openLeg(Number(rtId), side === 'ANODOS' ? 'ANODOS' : 'KATHODOS')).catch((e) => _logErr(e, 'weekly natl v5: leg form'));
+  if (_legBusy) {
+    // the same side of the same cycle already shows its read; any other click is told why it waits, never a silent nothing
+    const sd = side === 'ANODOS' ? 'ANODOS' : 'KATHODOS';
+    if ((_legBusy.rt !== Number(rtId) || _legBusy.side !== sd) && typeof toast === 'function') toast('Ανοίγει ήδη ένα άλλο σκέλος — δοκίμασε ξανά μόλις ανοίξει', 'info');
+    return;
+  }
+  // one token per click: only its own end (or its own 90 s guard) releases it. A read that never settles must not lock
+  // every leg for the session: the form's reads (board, catalogue, places) each give up at 30 s, the lock at 90 s.
+  const lock = { rt: Number(rtId), side: side === 'ANODOS' ? 'ANODOS' : 'KATHODOS', timer: null };
+  const free = () => { if (_legBusy === lock) { _legBusy = null; _legMark(); } clearTimeout(lock.timer); };
+  lock.timer = setTimeout(free, 90000);
+  _legBusy = lock;
+  _legMark();
+  Promise.resolve(WN5Form.openLeg(Number(rtId), side === 'ANODOS' ? 'ANODOS' : 'KATHODOS'))
+    .then((ok) => {
+      if (ok !== false || _state !== 'err' || !_lastErr || !active() || typeof toast !== 'function') return;
+      // one #toast (core/ui.js): this replaces at once the form's «Ο κύκλος δεν βρέθηκε …», which a failed read is not
+      toast(`Το σκέλος δεν άνοιξε: ο πίνακας δεν ξαναδιαβάστηκε (${_esc(String(_lastErr.message || ''))}) — ο κύκλος δεν χάθηκε· πάτα Ανανέωση`, 'danger');
+    })
+    .catch((e) => _logErr(e, 'weekly natl v5: leg form'))
+    .finally(free);
 }
 // T13: «+» on hover of the side (Figma 2011:10022); data-side is the API's ASCII side, the label is Greek. Only on a
 // cycle row (an unassigned row has no cycle to add to), also on an empty side so a first load can go in.
@@ -794,7 +891,10 @@ function _prtHTML(r, side) {
   return `<button type="button" class="wn5-prt" data-act="sheet" data-side="${sd}" title="Φύλλο οδηγού · ${sd === 'KATHODOS' ? 'Κάθοδος' : 'Άνοδος'}" aria-label="Φύλλο οδηγού" onclick="event.stopPropagation();WN5Sheet.print(${_id(r.rtId)}, '${sd}')">${svg}</button>`;
 }
 function _palHTML(s) {
-  return `<span class="wi4-pal${s.over ? ' over' : ''}"${s.over ? ` title="υπέρβαση ${_esc(_pal(s.over))}"` : ''}>${_esc(String(s.pallets).replace('.', ','))}</span>`;
+  // F1/F4: a side with pieces of unknown pallets reads «12+;», titled how many — the x/33 is a floor, never «OK»
+  const unk = s.palUnknown || 0;
+  const title = [s.over ? `υπέρβαση ${_pal(s.over)}` : '', unk ? `παλέτες άγνωστες σε ${unk} ${unk === 1 ? 'φορτίο' : 'φορτία'}` : ''].filter(Boolean).join(' · ');
+  return `<span class="wi4-pal${s.over ? ' over' : ''}${unk ? ' unk' : ''}"${title ? ` title="${_esc(title)}"` : ''}>${_esc(WN5L.palText(s.pallets, unk))}</span>`;
 }
 // 072b tiles (Figma H1 2120:7738, H3 2123:7735, Ε5 2140:7810): one tile per segment, side by side, no «/». The
 // ΑΡΧΙΚΟ keeps a straight 3px line at the column's edge; every next tile has a slanted left side in its colour (CSS).
@@ -874,7 +974,7 @@ function _localHTML(r, lm, ok) {
     + (lm.pickup
       // a pickup (Figma 2011:8305): what is loaded there → Βέροια, then the delivery it is for (none named when the
       // leg unloads at Veroia or off this cycle — never the pickup's own place after «για»)
-      ? ` · ${_esc(lm.pickup.who ? `${lm.pickup.who}, ${lm.pickup.place}` : lm.pickup.place)} → Βέροια · ${_esc(_pal(lm.pickup.pallets))}`
+      ? ` · ${_esc(lm.pickup.who ? `${lm.pickup.who}, ${lm.pickup.place}` : lm.pickup.place)} → Βέροια · ${_esc(_pal(lm.pickup.pallets, lm.pickup.palUnknown))}`
         + (lm.forStops && lm.forStops.length ? ` · για ${lm.forStops.map((f) => `${_esc(f.name)}${f.n ? ` (στάση ${f.n})` : ''}`).join(', ')}` : '')
       : `${lm.stopName ? ` · για ${_esc(lm.stopName)}${lm.stopN ? ` (στάση ${lm.stopN})` : ''}` : ''}`)
     // T17: the cancel of THIS loading (no request_id); the id is the board's local_move_id
