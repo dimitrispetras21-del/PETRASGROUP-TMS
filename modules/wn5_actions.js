@@ -748,20 +748,6 @@
     const kind = parts[0], id = _id(parts[1]);
     // T14: «Πίσω στην αναμονή» / «Πίσω στη Βέροια» — wait takes no stops (072:1162)
     if (st.mode === 'move' && kind === 'wait') return { method: 'POST', path: '/plan/move', body: { from: st.from, target: { wait: true } } };
-    if (st.mode === 'vehicle') {
-      // only what the user chose: a key sent as null would EMPTY it (vehicle_clear_use_clear, 072:1680)
-      if (kind === 'truck' && id) {
-        const set = { trip_type: 'OWNED', truck_id: id };
-        if (st.trailer) set.trailer_id = st.trailer;
-        if (st.driver) set.driver_id = st.driver;
-        return { method: 'PATCH', path: '/plan/rt/' + st.rtId, body: { set } };
-      }
-      if (kind === 'partner' && st.partner) {
-        const r = _rate(st.rateTxt);
-        return r.ok ? { method: 'PATCH', path: '/plan/rt/' + st.rtId, body: { set: { trip_type: 'PARTNER', partner_id: st.partner, partner_rate: r.v } } } : null;
-      }
-      return null;
-    }
     let target, cyc = null;
     if (kind === 'rt' && id && st.cyc[id]) { cyc = st.cyc[id]; target = { rt_id: id, side: st.side }; }
     else if (kind === 'truck' && id) target = { new_rt: { trip_type: 'OWNED', truck_id: id, trailer_id: st.trailer || null, driver_id: st.driver || null }, side: st.side };
@@ -773,12 +759,11 @@
     const f = _hhmm(st.hubFrom), t = _hhmm(st.hubTo), hd = _hubDayOf(st.needs, st.day);
     const r = _stopsFor(st.needs, cyc, st.side, f && t && hd ? _win(hd, f, t) : null, (n) => _dayWin(n, st.win));
     if (r.missing.length) return { missing: r.missing, lack: r.lack };
-    if (st.mode === 'move') return { method: 'POST', path: '/plan/move', body: { from: st.from, target, stops: r.stops } };
-    return { method: 'POST', path: '/plan/legs', body: st.group ? { group: st.group, target, stops: r.stops } : { pieces: st.pieces, target, stops: r.stops } };
+    return { method: 'POST', path: '/plan/move', body: { from: st.from, target, stops: r.stops } };
   }
   // The Veroia window field is asked only when a Veroia stop would have no window: a move carries the source's
   // (_stopsFor), so an asterisk over a field nothing waits for claims a requirement that does not exist (Figma 2011:9294)
-  const _hubAsked = (st) => st.mode !== 'vehicle' && st.needs.some((n) => n.hub && !(n.own && n.from && n.to));
+  const _hubAsked = (st) => st.needs.some((n) => n.hub && !(n.own && n.from && n.to));
   // Owner 28/10: a save that is off says why, in red, beside it — a grey button alone read as «it does not click»
   // (Δ1 of a VS bridge, 28/10). The reason is the data's only; an off button while sending (busy) or after a closed
   // answer (locked) has its own strip. where: 'afterend' of a row / a button, 'beforebegin' of a footer's first button.
@@ -820,21 +805,14 @@
   // a group header: the caps label, then a lighter suffix (Figma Δ1: «ΚΥΚΛΟΙ ΤΗΣ ΔΕΥΤΕΡΑΣ 12/10 · ένωση · 4»)
   const _grpHTML = (grp, label, tail) => '<div class="wn5-grp-h" data-grp="' + grp + '">' + _esc(label) + (tail ? '<span>' + _esc(tail) + '</span>' : '') + '</div>';
   function _assignHTML(st) {
-    const vehicle = st.mode === 'vehicle';
     let h = '';
-    // «Όλο το … μαζί»: every VS (Figma Δ1 2051:7746, audit B-18 — the band said nothing for a one-piece VS or an export,
-    // and the user did not learn why a VS does not split here), and a national whose several pieces stand at Veroia.
-    // The Veroia board is the one place that splits; a one-delivery national has nothing to split.
-    const vsSrc = !!(st.group && st.group.order_id != null);
-    if (!vehicle && st.group && (vsSrc || (st.items.length > 1 && st.items.every((it) => it.at_hub)))) h += '<div class="wn5-grey">Όλο το ' + _esc(st.ref) + ' μαζί · σπάσιμο μόνο στον Πίνακα Βέροιας</div>';
-    if (vehicle) h += '<div class="wn5-grey">Ένωση με άλλο κύκλο: «Μεταφορά σε…» από τη φόρμα σκέλους (όλη η πλευρά).</div>';
     h += '<input type="search" class="wn5-dq" data-q placeholder="Αναζήτηση φορτηγού, οδηγού ή συνεργάτη" value="' + _esc(st.q) + '">';
     if (!st.ids.ok) h += '<div class="wn5-miss" data-ids-miss>Οι κατάλογοι δεν είναι διαθέσιμοι ακόμη: νέο φορτηγό και συνεργάτης ανοίγουν όταν έρθουν.</div>';
-    if (!vehicle && _stopsFor(st.needs, null, st.side, ['probe', 'probe'], (n) => _dayWin(n, st.win)).missing.length) {
+    if (_stopsFor(st.needs, null, st.side, ['probe', 'probe'], (n) => _dayWin(n, st.win)).missing.length) {
       h += '<div class="wn5-miss" data-place-miss>Η ανάθεση θέλει τον προορισμό και την ημέρα κάθε φόρτωσης και παράδοσης· για αυτή την παραγγελία δεν ήρθαν από τη βάση.</div>';
     }
     // B1: one window per stop the board brought without one (a VS bridge), on its own day, filled with the whole day
-    if (!vehicle) {
+    {
       const seenW = new Set();
       for (const n of st.needs) {
         if (n.hub || n.loc == null || (n.from && n.to) || !n.day || seenW.has(n.key)) continue;
@@ -855,7 +833,7 @@
         + '<input class="wn5-hm" data-hub="to" inputmode="numeric" placeholder="ΗΗ:ΛΛ" value="' + _esc(st.hubTo) + '">'
         + '<small>μόνο όταν γίνεται νέα στάση Βέροιας</small></div>';
     }
-    if (!vehicle) {
+    {
       // a group with no line is not drawn (Figma Δ1 shows only groups with content, audit B-21): «· 0» heads nothing
       if (st.rows.length || st.road.length) h += _grpHTML('rt', 'ΚΥΚΛΟΙ ' + DOW_GEN[_dow(st.day)] + ' ' + _dm(st.day), ' · ένωση · ' + (st.rows.length + st.road.length));
       const hdList = _hubDays(st.needs), hdRow = hdList.length === 1 ? hdList[0] : null, hubLoc = hdList.length ? _hubId() : null;
@@ -915,13 +893,13 @@
     // B-21: hidden only when the catalogue says 0 — without it the count is unknown and the header stays (line above)
     // code review: trucks whose days outside the week are unknown are not called free in the header either
     const unk = st.free.length && st.free.every((t) => t.unknown);
-    if (st.free.length || !st.ids.ok) h += _grpHTML('free', unk ? 'ΦΟΡΤΗΓΑ' : 'ΕΛΕΥΘΕΡΑ ΦΟΡΤΗΓΑ', ' · ' + (vehicle ? 'άλλο όχημα' : 'νέος κύκλος') + (st.ids.ok ? ' · ' + st.free.length : '') + (unk ? ' · διαθεσιμότητα άγνωστη εκτός εβδομάδας' : ''));
+    if (st.free.length || !st.ids.ok) h += _grpHTML('free', unk ? 'ΦΟΡΤΗΓΑ' : 'ΕΛΕΥΘΕΡΑ ΦΟΡΤΗΓΑ', ' · νέος κύκλος' + (st.ids.ok ? ' · ' + st.free.length : '') + (unk ? ' · διαθεσιμότητα άγνωστη εκτός εβδομάδας' : ''));
     for (const t of st.free) {
       const key = 'truck:' + t.id;
       const next = t.next ? 'επόμενο: ' + (t.next.side ? t.next.side + ' ' : '') + _dayShort(t.next.day) : '';
       h += '<div class="wn5-cand" data-line="free" data-s="' + _esc(_norm(t.label)) + '"><div class="wi4-box own"><span class="wi4-l1 wi4-plate">' + _esc(t.label) + '</span></div>'
         + '<span class="wn5-cand-m"><b>' + _esc(t.unknown ? 'διαθεσιμότητα ' + t.unknown.map(_dayShort).join(', ') + ' άγνωστη εκτός εβδομάδας' : t.from ? 'ελεύθερο από ' + t.from : 'ελεύθερο') + '</b>' + (next ? '<span>' + _esc(next) + '</span>' : '') + '</span>'
-        + '<span>' + (vehicle ? '' : _capHTML(st.pallets, ' · νέος κύκλος', st.palUnk)) + '</span>'
+        + '<span>' + _capHTML(st.pallets, ' · νέος κύκλος', st.palUnk) + '</span>'
         + '<button type="button" class="wi4-btn sm" data-act="pick" data-cand="' + key + '"' + (st.ids.ok ? '' : ' disabled') + '>Ανάθεση</button></div>';
       if (st.pick === key) {
         h += '<div class="wn5-more" data-more="' + key + '">'
@@ -934,7 +912,7 @@
       + '<div class="wn5-cand" data-line="partner" data-s="' + _esc(_norm(st.partners.map((p) => p.label).join(' '))) + '">'
       + '<label class="wn5-field"><span>Συνεργάτης</span><select data-partner data-fh-search' + (st.ids.ok ? '' : ' disabled') + '><option value="">—</option>' + _optsHTML(st.partners, st.partner) + '</select></label>'
       + '<span class="wn5-cand-m"><span>κόμιστρο · κενό = «κόμιστρο λείπει»</span></span>'
-      + '<span>' + (vehicle ? '' : _capHTML(st.pallets, ' · δρομολόγιο συνεργάτη', st.palUnk) + ' ') + '<span class="wn5-nw"><input class="wn5-rate" data-rate inputmode="decimal" placeholder="—" value="' + _esc(st.rateTxt) + '" aria-label="Κόμιστρο €"><span class="wn5-eur">€</span></span></span>'
+      + '<span>' + _capHTML(st.pallets, ' · δρομολόγιο συνεργάτη', st.palUnk) + ' ' + '<span class="wn5-nw"><input class="wn5-rate" data-rate inputmode="decimal" placeholder="—" value="' + _esc(st.rateTxt) + '" aria-label="Κόμιστρο €"><span class="wn5-eur">€</span></span></span>'
       + '<button type="button" class="wi4-btn sm" data-act="save" data-cand="partner">Ανάθεση</button></div>';
     if (st.mode === 'move') {
       h += '<div class="wn5-grp-h" data-grp="wait">ΑΛΛΟ</div><div class="wn5-cand" data-line="wait">'
@@ -961,11 +939,10 @@
   };
 
   // The candidates of a window, snapshotted: the day's cycles (minus st.skipRt, the source of a move), the cycles
-  // still on the road that day (shown, not offered), the catalogue lists (Ε-2). Shared by Δ1 and «Μεταφορά σε…»
-  // (Δ1 note: «Ίδια λίστα στη «Μεταφορά σε…» της φόρμας σκέλους»).
+  // still on the road that day (joinable, F34), the catalogue lists (Ε-2). «Μεταφορά σε…» only since 31/10: the
+  // assignment is the form of wn5_assign.js.
   async function _loadCands(st) {
-    const vehicle = st.mode === 'vehicle';
-    if (!vehicle) {
+    {
       const ids = new Set();
       for (const r of _dayRows(st.day)) {
         const c = _cycle(r.rtId);
@@ -983,12 +960,11 @@
     }
     st.ids = typeof PlanIds !== 'undefined' ? await PlanIds.load() : { ok: false };
     if (st.ids.ok) {
-      const own = vehicle ? st.cyc[st.rtId].truck_id : null;
-      st.free = _freeTrucks(st.day, own);
+      st.free = _freeTrucks(st.day, null);
       // F27 (code review): a new truck's cycle runs to the Veroia day too (an export picked up Tuesday reaches Veroia
       // Thursday), so it is offered only when free on every day from one to the other — else the DB refuses it with
       // truck_busy after the press
-      const hd = vehicle ? null : _hubDayOf(st.needs, st.day);
+      const hd = _hubDayOf(st.needs, st.day);
       const [a, b] = hd && hd !== st.day ? (hd < st.day ? [hd, st.day] : [st.day, hd]) : [st.day, st.day];
       // code review of PR 171: the board holds the cycles of ONE week, so a day outside it has no cycles to read and
       // _freeTrucks would call every truck free. Such days are named on each truck («διαθεσιμότητα … άγνωστη εκτός
@@ -998,7 +974,7 @@
       for (let d = a; d <= b; d = _addDays(d, 1)) {
         if (wk && (d < wk || d > _addDays(wk, 6))) { out.push(d); continue; }
         if (d === st.day) continue;
-        const also = new Set(_freeTrucks(d, own).map((t) => t.id));
+        const also = new Set(_freeTrucks(d, null).map((t) => t.id));
         st.free = st.free.filter((t) => also.has(t.id));
       }
       if (out.length) for (const t of st.free) t.unknown = out;
@@ -1009,7 +985,6 @@
   function _pickSave(d, st, cand) {
     const req = _assignReq(st, cand);
     if (!req || req.missing) return;
-    if (st.mode !== 'move') { _send(d, req, st.mode === 'vehicle' ? 'Άλλαξε το όχημα' : 'Ανατέθηκε', { intl: true }); return; }
     // a move drops legs: the two steps of S-82; a refusal before the list lands in this window (host)
     d.busy = true; _btns(d, true);
     WN5Act.twoStep({ method: req.method, path: req.path, body: req.body, kind: 'move', title: 'Μεταφορά · ' + st.what, verb: 'Μεταφορά', host: d.msg })

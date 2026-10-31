@@ -201,14 +201,16 @@
     h += '<div class="wn5-nf-sec">ΦΟΡΤΗΓΟ</div>';
     if (p && p.label) {
       h += '<div class="wn5-nf-truck"><span class="wn5-nf-tb"><b class="' + (_nf.choice.who === 'own' ? 'wn5a-mono' : '') + '">' + k.esc(p.label) + '</b>' + (p.sub ? '<span>' + k.esc(p.sub) + '</span>' : '') + '</span>'
-        + '<span class="wn5-nf-av">' + k.esc(ln ? ln.txt.split(' · ').slice(1).join(' · ') : '') + '</span><span class="wn5-hub-sp"></span>'
+        + '<span class="wn5-nf-av">' + k.esc(ln ? ln.txt.split(' · ').slice(1).join(' · ') : '') + '</span>'
+        // the truck already stops at Veroia another day: the load goes to that stop (decision 6), not the day above
+        + (ln && ln.other ? '<span class="wn5a-note">' + k.esc(ln.other) + '</span>' : '') + '<span class="wn5-hub-sp"></span>'
         + (ln ? '<span class="wn5a-cap' + (ln.over ? ' over' : '') + '">' + k.esc(ln.before + ' → ' + ln.after + '/33') + '</span>' : '')
         + '<button type="button" class="wi4-link wn5-nf-ch" onclick="WN5Hub.nfPick(this)">Αλλαγή ▾</button></div>';
     } else h += '<button type="button" class="wi4-btn sm wn5-nf-pick" onclick="WN5Hub.nfPick(this)">Φορτηγό ή συνεργάτης ▾</button>';
-    const words = !p ? (_nf.choice ? [] : ['φορτηγό']) : (p.problems ? p.problems.words : []);
+    const words = !p ? (_nf.choice ? [] : ['φορτηγό']) : p.err ? [p.err.message] : (p.problems ? p.problems.words : []);
     if (p && p.req && p.req.missing) words.push('παράθυρο Βέροιας');
-    const can = !!(p && p.req && !p.req.missing && !words.length && !_nf.busy);
-    h += '<div class="wn5-nf-msg" data-nfmsg></div><div class="wn5-nf-ft"><span class="wn5a-miss">' + k.esc(words.length ? 'Λείπει: ' + words.join(', ') : '') + '</span>'
+    const can = !!(p && p.req && !p.req.missing && !words.length && !_nf.busy && !k.closedErr());
+    h += '<div class="wn5-nf-msg" data-nfmsg></div><div class="wn5-nf-ft"><span class="wn5a-miss">' + k.esc(p && p.err ? p.err.message : words.length ? 'Λείπει: ' + words.join(', ') : '') + '</span>'
       + '<button type="button" class="wi4-btn" onclick="WN5Hub.nfReset()">Άκυρο</button>'
       + '<button type="button" class="wi4-btn pri wn5-nf-go" data-act="nf-create"' + (can ? '' : ' disabled') + ' onclick="WN5Hub.nfCreate()">'
       + k.esc('Δημιουργία φορτίου · ' + WN5L.palText(pal, unk) + 'π' + (p && p.label ? ' → ' + p.label : '')) + '</button></div></div>';

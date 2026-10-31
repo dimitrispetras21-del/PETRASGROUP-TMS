@@ -34,6 +34,10 @@
   const HOURS = 'γράψε ώρες ή «όλη η ημέρα»';
   // the 561/2006 note at the foot of the driver list, as the International popover has it
   const DRV_NOTE = '561/2006: επιστροφή Χ → επόμενη αναχώρηση Χ+2';
+  // PlanIds.list maps and sorts the whole catalogue on each call: read once per form (build() empties it), never per
+  // option or keystroke (code review high)
+  let _lists = {};
+  const _list = (kind) => (_lists[kind] || (_lists[kind] = typeof PlanIds === 'undefined' ? [] : PlanIds.list(kind)));
 
   // ═══ the state of one form, snapshotted at open (rule 4 of wn5_actions.js: two presses send the same bytes) ═══
   // src: {group} | {pieces} | null (null = the vehicle of the cycle ctx.rtId). ctx: {day, side, focus (the piece the
@@ -41,6 +45,7 @@
   function build(src, ctx) {
     const k = K();
     ctx = ctx || {};
+    _lists = {};
     const vehicle = !src || (!src.group && !src.pieces);
     const st = { mode: vehicle ? 'vehicle' : (ctx.pick ? 'pick' : 'legs'), side: ctx.side === 'ANODOS' ? 'ANODOS' : 'KATHODOS', day: ctx.day || null,
       group: null, pieces: null, items: [], needs: [], pallets: 0, palUnk: 0, focus: k.id(ctx.focus), only: false,
@@ -48,7 +53,8 @@
       win: {}, alt: 0, rtId: k.id(ctx.rtId), cur: null, hub: ctx.hub ? k.copy(ctx.hub) : null, week: null, cycles: [], sidePal: {}, ref: '', err: null };
     const b = k.state().board || {};
     st.week = b.week || null;
-    st.cycles = k.copy(k.cycles());
+    // the form snapshots (two presses, the same bytes); forChoice is re-read at each redraw and copies nothing
+    st.cycles = ctx.live ? k.cycles() : k.copy(k.cycles());
     if (vehicle) {
       const c = st.cycles.find((x) => x.rt_id === st.rtId);
       if (!c) { st.err = k.clientErr('rt_missing', 'Δεν είναι στον πίνακα που φορτώθηκε — ανανέωσε'); return st; }
@@ -97,7 +103,11 @@
   const _dayD = (st) => (st.hub ? st.hub.day : st.side === 'KATHODOS' ? (_hd(st) || st.day) : st.day);
   const _inWeek = (st, d) => !st.week || (d >= st.week && d <= K().addDays(st.week, 6));
   // the days the vehicle must run for this request: the row's day, the Veroia day and the joining day
-  const _span = (st) => { const ds = [st.day, st.mode === 'vehicle' ? null : _hd(st), _dayD(st)].filter(Boolean).sort(); return ds.length ? [ds[0], ds[ds.length - 1]] : null; };
+  // (a vehicle change: every day of the cycle it changes, code review high)
+  const _span = (st) => {
+    const ds = (st.mode === 'vehicle' && st.cur ? [st.cur.date_start, st.cur.date_end, st.day] : [st.day, _hd(st), _dayD(st)]).filter(Boolean).sort();
+    return ds.length ? [ds[0], ds[ds.length - 1]] : null;
+  };
   // a day of the span outside the loaded week: what the vehicle does then is not on the board (code review of #171)
   const _blind = (st) => { const sp = _span(st); if (!sp) return false; for (let d = sp[0]; d <= sp[1]; d = K().addDays(d, 1)) if (!_inWeek(st, d)) return true; return false; };
   const _covers = (c, d) => (c.date_start <= d && d <= c.date_end) || K().ymdOf(c.end_at) === d;
@@ -138,7 +148,12 @@
       const row = { key, n, verb, place: pl, day: ex ? k.stopDay(ex) : day, fixed: null, missing: n.loc == null || !day,
         est: !ex && !st.hub && n.hub && !!n.hubEst && !st.needs.some((m) => m.hub && m.hubDay === day && !m.hubEst) };
       if (ex) row.fixed = k.hmw(ex.planned_from, ex.planned_to);
-      else if (n.hub && st.hub) row.fixed = st.hub.from && st.hub.to ? (st.hub.from === '00:00' && st.hub.to === '23:59' ? 'όλη η ημέρα' : st.hub.from + '–' + st.hub.to) : null;
+      else if (n.hub && st.hub) {
+        // the Veroia board's window is the one sent (req): a half-typed one is red here and named, never this form's own
+        const f = k.hhmm(st.hub.from), t = k.hhmm(st.hub.to);
+        row.fixed = f && t ? (f === '00:00' && t === '23:59' ? 'όλη η ημέρα' : f + '–' + t) : '—';
+        row.hubBad = !(f && t);
+      }
       else if (n.hub && n.own && n.from && n.to) row.fixed = k.hmw(n.from, n.to);
       else if (!n.hub && n.from && n.to) row.fixed = k.hmw(n.from, n.to);
       // two Veroia days have no right one (decision 6) — unless the Veroia board fixed the day (st.hub)
@@ -214,6 +229,7 @@
     const tg = _target(st);
     for (const row of _rows(st, tg && tg.cyc)) {
       if (row.twoDays) { add('μία ημέρα Βέροιας (' + row.twoDays.map(k.dayShort).join(', ') + ')'); continue; }
+      if (row.hubBad) { add('παράθυρο Βέροιας'); continue; }
       if (row.missing) { add((row.n.role === 'load' ? 'τόπος φόρτωσης' : 'τόπος παράδοσης') + (row.n.loc == null ? '' : ' ' + row.place)); continue; }
       if (row.fixed != null) continue;
       if (!_winOf(st, row.key, row.day)) { out.rows[row.key] = HOURS; add('ώρες ' + (row.n.role === 'load' ? 'φόρτωσης' : 'παράδοσης') + ' ' + (row.n.hub ? 'Βέροια' : k.placeCity(row.n.loc) || k.placeName(row.n.loc))); }   // Figma 2395:8132: the town («ώρες παράδοσης Larisa»)
@@ -263,7 +279,7 @@
   function _warn(px, id) {
     if ((px !== 'tk' && px !== 'tl') || typeof vehicleWarnings !== 'function' || typeof PlanIds === 'undefined') return [];
     try {
-      const x = PlanIds.list(FIELDS[px].kind).find((v) => v.id === id);
+      const x = _list(FIELDS[px].kind).find((v) => v.id === id);
       return x && x.legacy_id ? vehicleWarnings(px === 'tl' ? 'trailer' : 'truck', x.legacy_id) : [];
     } catch (e) { K().log(e, 'WN5Assign vehicleWarnings'); return []; }
   }
@@ -292,7 +308,7 @@
   }
   function _label(px, id) {
     if (id == null || typeof PlanIds === 'undefined') return '';
-    try { const x = PlanIds.list(FIELDS[px].kind).find((v) => v.id === id); return x ? x.label : '#' + id; } catch (e) { return '#' + id; }
+    try { const x = _list(FIELDS[px].kind).find((v) => v.id === id); return x ? x.label : '#' + id; } catch (e) { return '#' + id; }
   }
 
   // ═══ drawing ═══
@@ -316,7 +332,7 @@
       const lbl = row.verb + ' · ' + row.place + (row.day ? ' · ' + k.dayShort(row.day) + (row.est ? ' (εκτίμηση)' : '') : '');
       if (row.fixed != null || row.missing || row.twoDays) {
         const v = row.twoDays ? row.twoDays.map(k.dayShort).join(' / ') : row.missing ? '—' : row.fixed;
-        h += '<div class="wn5a-win" data-row="' + _e(row.key) + '"><span class="wn5a-wl' + (row.missing || row.twoDays ? ' bad' : '') + '">' + _e(lbl) + '</span><span class="wn5a-wv">' + _e(v) + '</span></div>';
+        h += '<div class="wn5a-win" data-row="' + _e(row.key) + '"><span class="wn5a-wl' + (row.missing || row.twoDays || row.hubBad ? ' bad' : '') + '">' + _e(lbl) + '</span><span class="wn5a-wv">' + _e(v) + '</span></div>';
         continue;
       }
       const w = _w(st, row.key);
@@ -384,7 +400,7 @@
     const k = K();
     if (typeof PlanIds === 'undefined') return [];
     const nq = q ? k.norm(q) : '';
-    return PlanIds.list(FIELDS[px].kind).filter((x) => x.active && (!nq || k.norm(x.label).includes(nq))).slice(0, 60).map((x) => {
+    return _list(FIELDS[px].kind).filter((x) => x.active && (!nq || k.norm(x.label).includes(nq))).slice(0, 60).map((x) => {
       const a = px === 'pt' ? null : avail(Object.assign({}, st, { who: 'own' }), px, x.id);
       const sub = px === 'pt' ? _lastRate(st, x.id) : (a ? a.txt : '');
       return { id: x.id, label: x.label, sub, cls: a ? a.cls : '', warn: _warn(px, x.id) };
@@ -606,7 +622,7 @@
   }
   // the request and the line of a choice, for a caller that holds its own pieces (the Veroia board's «Νέο φορτίο»)
   function forChoice(pieces, ctx, choice) {
-    const st = build({ pieces }, Object.assign({}, ctx, { pick: true, choice }));
+    const st = build({ pieces }, Object.assign({}, ctx, { pick: true, choice, live: true }));
     if (st.err) return { err: st.err };
     return { req: req(st), line: line(st), problems: problems(st), label: st.who ? _label(st.who === 'own' ? 'tk' : 'pt', st.who === 'own' ? st.truck : st.partner) : '',
       sub: st.who === 'own' ? [_label('tl', st.trailer), _label('dr', st.driver)].filter(Boolean).join(' · ') : '' };
