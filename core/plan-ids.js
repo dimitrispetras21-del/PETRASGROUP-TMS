@@ -1,5 +1,5 @@
 // core/plan-ids.js — National v5 (F4α, T12): the numeric ids /plan/* wants, from ONE GET /plan/lookups per
-// session (Ε-2). The app's pickers hold rec… legacy ids (fhLocSelect / fhClientSelect); 072 casts every id to
+// session (Ε-2) — read again only after stale() (F52: a place saved in «Τοποθεσίες»), see below. The app's pickers hold rec… legacy ids (fhLocSelect / fhClientSelect); 072 casts every id to
 // bigint (072:605-678); /costs/lookups maps only vehicles and people and is closed to warehouse.
 // Until the route is in the Worker (it is NOT in 39842d18: 404 no_route), load() says {ok:false} and the screens
 // switch off only what needs a catalogue. A failed read is NOT kept: the next dialog asks again — a user's act,
@@ -14,6 +14,14 @@
   });
   let _data = null;
   let _inflight = null;
+  // F52: a place saved in «Τοποθεσίες» is not in the catalogue read before it. stale() asks the next load() — the next
+  // opening of a form, a user's act (decision 44) — to read again; the old catalogue stays in use until the new one
+  // lands, and stays if that read fails (the board keeps its names; only the new place would still say ids_missing).
+  let _stale = false;
+  let _gen = 0;          // a stale() during a read in flight: that read is older than the place, it never clears it
+  let _inflightGen = 0;
+  let _staleAfter = 0;
+  let _staleErr = null;
   // Ε-2: until Worker deploy 1 (c0ccdf77, live 28/10/2026 with 074a) GET /plan/lookups did not exist and its 404
   // no_route was the KNOWN gap, not logged. The route is live now, so a 404 is a logged bug again (principle 1).
   // tests/wn5-plan-ids.test.mjs holds this flag to the Worker source: false exactly while the route is in it.
@@ -31,19 +39,29 @@
   function _shapeOk(d) { return !!d && typeof d === 'object' && Object.values(LISTS).every((k) => Array.isArray(d[k])); }
 
   function load() {
-    if (_data) return Promise.resolve({ ok: true });
-    if (_inflight) return _inflight;
+    // a re-read that failed is asked again at most once a minute (the board's own rule for the catalogue): a base that
+    // is down gets no read per click, and app_errors no row per click (code review r4)
+    if (_data && !_stale) return Promise.resolve({ ok: true });
+    if (_data && Date.now() < _staleAfter) return Promise.resolve({ ok: true, err: _staleErr });   // the last re-read's reason
+    // a read that started before the last stale() is older than the place: wait for it, then read again
+    if (_inflight) return _inflightGen === _gen ? _inflight : _inflight.then(() => load());
+    const gen = _inflightGen = _gen;
     _inflight = (async () => {
       try {
         const d = await planFetch('GET', '/plan/lookups', LOOKUPS_PENDING ? { designed: ['no_route'] } : undefined);
         if (!_shapeOk(d)) {
           const e = _err('ids_shape', 'Οι κατάλογοι ήρθαν χωρίς όλες τις λίστες — ενημέρωσε τον Δημήτρη');
           if (typeof logError === 'function') logError(e, 'PlanIds.load');
+          if (_data) { if (gen === _gen) { _staleAfter = Date.now() + 60e3; _staleErr = e; } return { ok: true, err: e }; }   // a re-read after stale(): the catalogue in hand serves
           return { ok: false, err: e };
         }
         _data = d;
+        if (gen === _gen) _stale = false;
         return { ok: true };
       } catch (e) {
+        // a re-read after stale(): the catalogue in hand still serves (logged by planFetch); the minute's wait only when
+        // no place was saved since this read began (a newer stale() asks at once, code review r5)
+        if (_data) { if (gen === _gen) { _staleAfter = Date.now() + 60e3; _staleErr = e; } return { ok: true, err: e }; }
         return { ok: false, err: e };      // planFetch already logged what is not a designed answer (no_route: Ε-2, above)
       } finally {
         _inflight = null;
@@ -78,7 +96,9 @@
     return h.length === 1 ? h[0].id : null;
   }
 
-  const PlanIds = Object.freeze({ load, id, place, list, hub });
+  function stale() { _stale = true; _gen++; _staleAfter = 0; }
+
+  const PlanIds = Object.freeze({ load, id, place, list, hub, stale });
   if (typeof module !== 'undefined' && module.exports) module.exports = PlanIds;
   else root.PlanIds = PlanIds;
 })(typeof window !== 'undefined' ? window : this);
