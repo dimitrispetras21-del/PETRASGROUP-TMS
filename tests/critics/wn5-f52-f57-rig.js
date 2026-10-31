@@ -37,7 +37,9 @@ const vsWait = (piece_id, order_id, reference, day, due) => ({ piece_id, shipmen
 function nextWeek() {
   const w = K.week();
   return { week: NEXT, cycles: [], hub: [], notices: [],
-    waiting: [w.waiting[0], vsWait(4801, 2201, 'VS-T801', '2026-10-18', '2026-10-18'), vsWait(4802, 2202, 'VS-T802', '2026-10-21', '2026-10-21')] };
+    waiting: [w.waiting[0], vsWait(4801, 2201, 'VS-T801', '2026-10-18', '2026-10-18'), vsWait(4802, 2202, 'VS-T802', '2026-10-21', '2026-10-21'),
+      // a VS without cross-dock: no nat_ready_day, its delivery Wed 21/10 — after the trip too
+      Object.assign(vsWait(4803, 2203, 'VS-T803', '2026-10-21', '2026-10-21'), { nat_ready_day: null, nat_due_day: null })] };
 }
 const lines = (page) => page.evaluate((p) => [...document.querySelectorAll(`${p} .wn5-pline[data-piece]`)].map((x) => Number(x.dataset.piece)), PLUS);
 
@@ -53,6 +55,7 @@ async function f53({ browser, origin, ok, scn }) {
     const ls = await lines(page);
     ok(scn, 'the VS of Sun 18/10 (VS-T801, piece 4801) is in its list — main: missing', ls.includes(4801), ls);
     ok(scn, 'a load ready after the trip\'s last day (VS-T802, Wed 21/10) is not', !ls.includes(4802), ls);
+    ok(scn, '… nor a VS without its ready day whose window is after it (VS-T803, Wed 21/10)', !ls.includes(4803), ls);
     ok(scn, 'a load on both boards (4101) is listed once', ls.filter((x) => x === 4101).length === 1, ls);
     ok(scn, 'no «φορτώνει» / «δεν διαβάστηκε» line left once read', (await K.count(page, `${PLUS} [data-beyond]`)) === 0);
     await page.click(`${PLUS} [data-act="save"][data-piece="4801"]`, { timeout: 3000 }).catch(() => {});
@@ -168,6 +171,18 @@ async function f57({ browser, origin, ok, scn }) {
     ok(scn, 'ONE POST /plan/orders: the filled loading on Fri 16/10 (whole day), arrival at Veroia by Fri 16/10 20:00 — main: loading Tue 13/10', posts.length === 1 && !!sh
       && sh.load_from === '2026-10-16T00:00:00+03:00' && sh.deliver_to === '2026-10-16T20:00:00+03:00', posts.map((x) => x.raw));
     ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // ΚΑΘΟΔΟΣ: the Veroia day is the loading at Veroia; a filled delivery moves by as many days, never onto it
+    const { page, S } = await K.openApp(browser, origin);
+    await page.evaluate(() => WN5Form.openOrder({ side: 'KATHODOS', day: '2026-10-13', rtId: 101 }));
+    await page.waitForSelector(ORDER, { timeout: 8000 }).catch(() => {});
+    const v0 = await dayOf(page, `${ORDER} #wn5f-vday`), d0 = await dayOf(page, D);
+    await typeDay(page, V, '14/10');
+    const d1 = await dayOf(page, D);
+    ok(scn, 'ΚΑΘΟΔΟΣ (Veroia Mon 12/10, delivery filled Tue 13/10): Veroia → Wed 14/10 moves the delivery to Thu 15/10 — main: stays Tue 13/10',
+      v0 === '2026-10-12' && d0 === '2026-10-13' && d1 === '2026-10-15', { v0, d0, d1 });
+    ok(scn, 'no page errors (ΚΑΘΟΔΟΣ)', !S.pageErrors.length, S.pageErrors);
     await page.context().close();
   }
   { // a point the user typed keeps its day

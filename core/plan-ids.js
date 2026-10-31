@@ -18,6 +18,7 @@
   // opening of a form, a user's act (decision 44) — to read again; the old catalogue stays in use until the new one
   // lands, and stays if that read fails (the board keeps its names; only the new place would still say ids_missing).
   let _stale = false;
+  let _gen = 0;          // a stale() during a read in flight: that read is older than the place, it never clears it
   // Ε-2: until Worker deploy 1 (c0ccdf77, live 28/10/2026 with 074a) GET /plan/lookups did not exist and its 404
   // no_route was the KNOWN gap, not logged. The route is live now, so a 404 is a logged bug again (principle 1).
   // tests/wn5-plan-ids.test.mjs holds this flag to the Worker source: false exactly while the route is in it.
@@ -37,16 +38,17 @@
   function load() {
     if (_data && !_stale) return Promise.resolve({ ok: true });
     if (_inflight) return _inflight;
+    const gen = _gen;
     _inflight = (async () => {
       try {
         const d = await planFetch('GET', '/plan/lookups', LOOKUPS_PENDING ? { designed: ['no_route'] } : undefined);
         if (!_shapeOk(d)) {
           const e = _err('ids_shape', 'Οι κατάλογοι ήρθαν χωρίς όλες τις λίστες — ενημέρωσε τον Δημήτρη');
           if (typeof logError === 'function') logError(e, 'PlanIds.load');
-          return { ok: false, err: e };
+          return _data ? { ok: true } : { ok: false, err: e };   // a re-read after stale(): the catalogue in hand serves
         }
         _data = d;
-        _stale = false;
+        if (gen === _gen) _stale = false;
         return { ok: true };
       } catch (e) {
         if (_data) return { ok: true };    // a re-read after stale(): the catalogue in hand still serves (logged by planFetch)
@@ -84,7 +86,7 @@
     return h.length === 1 ? h[0].id : null;
   }
 
-  function stale() { _stale = true; }
+  function stale() { _stale = true; _gen++; }
 
   const PlanIds = Object.freeze({ load, id, place, list, hub, stale });
   if (typeof module !== 'undefined' && module.exports) module.exports = PlanIds;

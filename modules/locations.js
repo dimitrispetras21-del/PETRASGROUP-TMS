@@ -504,8 +504,9 @@ async function _locSave() {
       ? await atPatch(TABLES.LOCATIONS, LOC.editingId, fields)
       : await atCreate(TABLES.LOCATIONS, fields);
     if (data.error) throw new Error(data.error.message || 'Η αποθήκευση απέτυχε');
-    // F52: the order forms' pickers see the new / renamed place without a reload
-    if (typeof fhLocationSaved === 'function') fhLocationSaved(data);
+    // F52: the order forms' pickers see the new / renamed place without a reload — never an offline-queued one, whose
+    // temporary id no order may point at (as locScanSave below, code review)
+    if (typeof fhLocationSaved === 'function' && !data._offline && !String(data.id || '').startsWith('offline_')) fhLocationSaved(data);
     if (LOC.editingId) {
       const idx = LOC.records.findIndex(r => r.id === LOC.editingId);
       if (idx !== -1) LOC.records[idx] = data;

@@ -1310,25 +1310,31 @@
   // and their loads ready by that day join the list. A read that fails is said with its days, never a silent gap.
   async function _plusMore(st, week) {
     const have = new Set(_allItems().map((x) => x.piece_id));
+    // one GET per week, each Saturday after the loaded one, side by side; at most 3 (a trip is days long, never weeks):
+    // days past them are said, never dropped in silence (code review)
+    const weeks = [];
+    for (let w = _addDays(week, 7); w <= st.beyond.to; w = _addDays(w, 7)) weeks.push(w);
+    const read = weeks.slice(0, 3);
+    const res = await Promise.allSettled(read.map((w) => planFetch('GET', '/plan/board?week=' + w)));
     const out = [];
-    try {
-      // one week per GET, at most 3 (a trip is days long, never weeks): each Saturday after the loaded one
-      for (let w = _addDays(week, 7), n = 0; w <= st.beyond.to && n < 3; w = _addDays(w, 7), n++) {
-        const b = await planFetch('GET', '/plan/board?week=' + w);
-        const items = [...((b && b.waiting) || []).map((x) => Object.assign({ at_hub: false }, x)), ...((b && b.hub) || []).map((x) => Object.assign({ at_hub: true }, x))];
-        for (const it of items) {
-          if (have.has(it.piece_id) || (it.nat_ready_day && it.nat_ready_day > st.beyond.to)) continue;
-          have.add(it.piece_id);
-          out.push(it);
-        }
+    let i = 0;
+    // the weeks read in a row from the loaded one: their loads join; the first that failed and every day after it are
+    // the ones said unread (a week read after a failed one is not used, so the line never claims less than it shows)
+    for (; i < res.length && res[i].status === 'fulfilled'; i++) {
+      const b = res[i].value;
+      const items = [...((b && b.waiting) || []).map((x) => Object.assign({ at_hub: false }, x)), ...((b && b.hub) || []).map((x) => Object.assign({ at_hub: true }, x))];
+      for (const it of items) {
+        // its day: the base's ready day, else its window's (a VS without cross-dock has no nat_ready_day, code review)
+        const rd = it.nat_ready_day || _ymdOf(it.load_from) || _ymdOf(it.deliver_from);
+        if (have.has(it.piece_id) || (rd && rd > st.beyond.to)) continue;
+        have.add(it.piece_id);
+        out.push(it);
       }
-      st.more = out;
-      st.beyond.state = 'ok';
-    } catch (e) {
-      st.more = out;
-      st.beyond.state = 'failed';
-      st.beyond.err = e;
     }
+    st.more = out;
+    if (i < res.length) { st.beyond.state = 'failed'; st.beyond.from = read[i]; st.beyond.err = res[i].reason; }
+    else if (read.length < weeks.length) { st.beyond.state = 'cut'; st.beyond.from = weeks[read.length]; }
+    else st.beyond.state = 'ok';
   }
   function _plusGroups(st) {
     const all = _copy(_allItems().concat(st.more || []));
@@ -1455,7 +1461,8 @@
         if (st.beyond && st.beyond.state !== 'ok') {
           const days = _dayShort(st.beyond.from) + (st.beyond.to !== st.beyond.from ? '–' + _dayShort(st.beyond.to) : '');
           h += st.beyond.state === 'loading' ? '<p class="wn5-grey" data-beyond="loading">Αναμονή ' + _esc(days) + ': φορτώνει…</p>'
-            : '<p class="wn5-miss" data-beyond="failed">Αναμονή ' + _esc(days) + ': δεν διαβάστηκε (' + _esc((st.beyond.err && st.beyond.err.message) || 'σφάλμα') + ')</p>';
+            : '<p class="wn5-miss" data-beyond="' + st.beyond.state + '">Αναμονή ' + _esc(days) + ': δεν διαβάστηκε ('
+              + _esc(st.beyond.state === 'cut' ? 'πάνω από 3 εβδομάδες' : (st.beyond.err && st.beyond.err.message) || 'σφάλμα') + ')</p>';
         }
         if (!st.groups.length && !(st.beyond && st.beyond.state === 'loading')) h += '<p class="wn5-none">Καμία παράδοση σε αναμονή για αυτό το σκέλος.</p>';
         for (const g of st.groups) h += '<div class="wn5-grp-h">' + _esc(g.head) + (g.chip ? '<span class="wn5-grp-c">' + _esc(g.chip) + '</span>' : '') + '<span class="wn5-grp-s">' + _esc(g.sub) + '</span></div>' + g.items.map((it) => _plusLineHTML(st, it)).join('');

@@ -649,15 +649,24 @@
     const vday = vEl.value, vf = _hmNorm(f.el.querySelector('#wn5f-vfrom').value), vt = _hmNorm(f.el.querySelector('#wn5f-vto').value);
     const whole = _headWinCheck(f).length === 0;   // F1: half a head window never reaches the rows
     // F57 (live 31/10, extends F46): «+ → Νέα παραγγελία» put the points on the trip's first day, and a new Veroia day
-    // did not move them. A point the screen filled (data-auto) takes the Veroia day once that day is a set one (the
-    // trip's Veroia stop, or typed / picked); a point the user typed keeps its day. Not while the Veroia day is itself
-    // the screen's (ΑΝΟΔΟΣ without a Veroia stop follows the loading, F44): the two would only chase each other.
+    // did not move them. A point the screen filled (data-auto) follows the Veroia day once that day is a set one (the
+    // trip's Veroia stop, or typed / picked); a point the user typed keeps its day. ΑΝΟΔΟΣ: the filled loading takes
+    // the arrival day (F33's rule read back: the arrival is the loading's day). ΚΑΘΟΔΟΣ: the Veroia day is the
+    // loading AT Veroia and the deliveries come after it, so a filled point moves by as many days as the Veroia day
+    // moved, never onto the loading day (code review). Not while the Veroia day is itself the screen's (ΑΝΟΔΟΣ without
+    // a Veroia stop follows the loading, F44): the two would only chase each other.
     const vSet = !vEl.dataset.auto && DAY.test(vday);
+    const shift = dir === 'KATHODOS' && vSet && f.vPrev && f.vPrev !== vday ? Math.round((Date.parse(vday) - Date.parse(f.vPrev)) / 864e5) : 0;
+    if (vSet) f.vPrev = vday;
+    const addDays = (ymd, n) => new Date(Date.parse(ymd) + n * 864e5).toISOString().slice(0, 10);
     f.el.querySelectorAll('.wn5f-row').forEach((r) => {
       const rec = (document.getElementById('lv_' + r.dataset.pid) || {}).value || '';
       if (vSet && !(rec && rec === _hubRec())) {
         const d = r.querySelector('[data-f="day"]'), typed = d.parentElement && d.parentElement.querySelector('.wn5f-dayx');
-        if (d.dataset.auto && d.value !== vday && !(typed && typed.dataset.raw)) d.value = vday;
+        if (d.dataset.auto && !(typed && typed.dataset.raw)) {
+          if (dir === 'ANODOS' && d.value !== vday) d.value = vday;
+          else if (shift && DAY.test(d.value)) d.value = addDays(d.value, shift);
+        }
       }
       if (rec && rec === _hubRec()) {
         const d = r.querySelector('[data-f="day"]'), a = r.querySelector('[data-f="from"]'), b = r.querySelector('[data-f="to"]');
@@ -1210,8 +1219,8 @@
       const v = p.veroia || (hubStop ? { from: hubStop.planned_from, to: hubStop.planned_to } : null);
       // F44/F46 (live 31/10): the Veroia day is the cycle's own Veroia stop on that side, before the cycle's start
       // (p.day): the start put a Veroia arrival on Thu 29 for a cycle that stops at Veroia on Fri 30, fixed by hand
-      // three times. The points keep the cycle's day as before. What the screen fills is marked data-auto and follows
-      // (_orderRefresh); a day the user types or picks stays theirs (_dayInput).
+      // three times. The points open on the cycle's day; what the screen fills is marked data-auto and follows the
+      // Veroia day (F57, _orderRefresh); a day the user types or picks stays theirs (_dayInput).
       const hubDay = hubStop ? hubStop.stop_day || '' : '';
       const day = p.day || hubDay, vd = hubDay || p.day || '';
       const vEl = f.el.querySelector('#wn5f-vday');
@@ -1314,18 +1323,18 @@
   // A point of a leg is read-only here — its pallets, day and window change in its order's edit form (F30), its truck's
   // stop from «Αλλαγή ώρας ›» (F29), its truck with «Μεταφορά σε…» — drawn in
   // Figma's boxes (2011:9452 / 9520): a VS's place and pallets in the locked grey cell, the rest white.
-  // F55 (live 31/10): a VS point's day and window are white boxes that look like fields; typing in them did nothing, in
-  // silence. They are the truck's stop (the VS's own window is the international's, decision 21), so a click opens that
-  // stop's day panel, the one of «Αλλαγή ώρας ›» (F29). A national point keeps its edit form (F30).
+  // F55 (live 31/10): a VS point's day is a white box that looks like a field; typing in it did nothing, in silence.
+  // It is the day of the truck's stop there, so a click opens that stop's day panel, the one of «Αλλαγή ώρας ›» (F29,
+  // already in this form's stop list). The VS's own day changes with «Ορισμός ημέρας», its window stays the
+  // international's (decision 21). A national point keeps its edit form (F30).
   function _roRowHTML(r, vs) {
     const ro = vs ? 'wn5f-c vro' : 'wn5f-c';
-    const c = (txt) => (vs && r.stop_id != null
-      ? `<button type="button" class="wn5f-c wn5f-cbtn" data-act="stop-time" data-stop="${r.stop_id}" title="Αλλαγή ώρας ›">${_esc(txt)}</button>`
-      : `<span class="wn5f-c">${_esc(txt)}</span>`);
     return `<div class="wn5f-row ro" data-piece="${r.piece_id}"><span class="${ro}">${_esc(r.hub ? 'Βέροια' : r.location)}</span>`
-      + c(_dlab(r.day))
-      + (WN5L.allDay(r.from, r.to) ? `<span class="wn5f-cwin">${c('όλη η ημέρα')}</span>`
-        : `<span class="wn5f-cwin">${c(_hm(r.from))}<span class="wn5f-dash">–</span>${c(_hm(r.to))}</span>`)
+      + (vs && r.stop_id != null
+        ? `<button type="button" class="wn5f-c wn5f-cbtn" data-act="stop-time" data-stop="${r.stop_id}" title="Αλλαγή ώρας ›">${_esc(_dlab(r.day))}</button>`
+        : `<span class="wn5f-c">${_esc(_dlab(r.day))}</span>`)
+      + (WN5L.allDay(r.from, r.to) ? '<span class="wn5f-cwin"><span class="wn5f-c">όλη η ημέρα</span></span>'
+        : `<span class="wn5f-cwin"><span class="wn5f-c">${_hm(r.from)}</span><span class="wn5f-dash">–</span><span class="wn5f-c">${_hm(r.to)}</span></span>`)
       + `<span class="${ro}">${_pal(r.pallets)}</span><span></span>`
       + (vs ? `<button type="button" class="wn5f-lnk" data-act="move" data-piece="${r.piece_id}">Μεταφορά σε…</button>` : '<span></span>') + '</div>';
   }

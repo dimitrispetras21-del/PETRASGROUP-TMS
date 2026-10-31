@@ -12,6 +12,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
+- dimitris · `fix/wn5-f52-f57` · Εθνικά v5 F53 («+» με τις ημέρες του δρομολογίου, και πέρα από την εβδομάδα), F55 (ημέρα σημείου VS → πάνελ ώρας στάσης), F57 (τα σημεία που συμπλήρωσε η οθόνη ακολουθούν την ημέρα Βέροιας), F52 (νέα τοποθεσία στα πεδία χωρίς reload)· μόνο front end, ?v= / SW_VERSION 1793480020 (`docs/sessions/2026-10-31-dimitris-wn5-f52-f57.md`)
 - dimitris · `fix/v5-081-stop-order-follows` · Εθνικά v5: 081 προσχέδιο: σειρά στάσεων με τον δρόμο (F28), η στάση του φορτηγού ακολουθεί το σημείο της φόρμας· PR, merge του FE πριν την 081 (`docs/sessions/2026-10-31-dimitris-081-stop-order-follows.md`)
 - dimitris · `fix/wn5-f44-f47` · Εθνικά v5 F44/F46 (ημέρα Βέροιας της σύντομης φόρμας του «+»), F48 (ορφανό πάνελ ρυμούλκας/οδηγού), F47 δεν αναπαράγεται; stacked πάνω στο #176, ?v= / SW_VERSION 1793476256 (`docs/sessions/2026-10-31-dimitris-wn5-f44-f48.md`)
 - dimitris · `fix/wn5-f32-drag` · Εθνικά v5 F32: σύρσιμο ΠΡΟΣ ΑΝΑΘΕΣΗ σε κύκλο → το «+» του κύκλου; #175 merged, ?v= / SW_VERSION 1793476255 (`docs/sessions/2026-10-31-dimitris-wn5-f32-drag.md`)
