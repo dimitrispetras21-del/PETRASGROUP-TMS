@@ -298,7 +298,9 @@
   // «Με φορτηγό τώρα | Φορτηγό αργότερα»: the truck picked before is kept for when «τώρα» comes back
   function nfLater(on) {
     if (!_live()) return;
-    if (on) { if (!(_nf.choice && _nf.choice.who === 'later')) _nf.now = _nf.choice; _nf.choice = { who: 'later' }; }
+    const later = !!(_nf.choice && _nf.choice.who === 'later');
+    if (on === later) return;   // a press on the option already chosen changes nothing (code review: «τώρα» twice lost the truck)
+    if (on) { _nf.now = _nf.choice; _nf.choice = { who: 'later' }; }
     else { _nf.choice = _nf.now; _nf.now = null; }
     _redraw();
   }

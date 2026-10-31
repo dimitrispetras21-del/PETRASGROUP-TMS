@@ -393,6 +393,8 @@ async function veroia_later({ browser, origin, ok, scn, shots }) {
   await pickIn(page, 'tk', '2106', 'TST-2106');
   await page.click(`${DLG} [data-act="save"]`);
   await page.waitForTimeout(150);
+  await page.click('#wn5-hub [data-act="nf-now"]');   // the option already chosen: nothing changes
+  ok(scn, 'a press on «Με φορτηγό τώρα» while it is chosen keeps the truck', /TST-2106/.test(await nfText(page)));
   await page.click('#wn5-hub [data-act="nf-later"]');
   let t = await nfText(page);
   ok(scn, '«Φορτηγό αργότερα»: no truck line, «Δημιουργία φορτίου · 22π» on, no «Λείπει»', !/TST-2106/.test(t) && /Δημιουργία φορτίου · 22π$/.test(t)
