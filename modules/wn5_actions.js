@@ -1305,10 +1305,16 @@
     else if (read.length < weeks.length) { st.beyond.state = 'cut'; st.beyond.from = weeks[read.length]; }
     else st.beyond.state = 'ok';
   }
-  // F53 (code review r8): the loaded week's groups first, the later weeks' after them, so the lines read later land
-  // under the ones already on screen and never move a line the user is aiming at
+  // F53 (code review r8): the loaded week's groups keep their order and the later weeks' new groups come after them,
+  // so a line read later lands under the ones on screen (a press aimed before the redraw waits, d.settle). ONE group
+  // per head: a VS with pieces on both sides of the week, the stock, the ΑΝΟΔΟΣ requests are never said twice with
+  // half the count (code review r9); inside a group the loaded week's lines come first (the order of `all`)
   function _plusGroups(st) {
-    return _plusGroupsOf(st, _copy(_allItems())).concat(st.more && st.more.length ? _plusGroupsOf(st, _copy(st.more)) : []);
+    const loaded = _plusGroupsOf(st, _copy(_allItems()));
+    if (!st.more || !st.more.length) return loaded;
+    const at = new Map(loaded.map((g, i) => [g.head, i]));
+    return _plusGroupsOf(st, _copy(_allItems().concat(st.more)))
+      .map((g, i) => [g, at.has(g.head) ? at.get(g.head) : loaded.length + i]).sort((a, b) => a[1] - b[1]).map((x) => x[0]);
   }
   function _plusGroupsOf(st, all) {
     const anodIt = all.filter((it) => !it.is_stock && _sideFor(it) === 'ANODOS');

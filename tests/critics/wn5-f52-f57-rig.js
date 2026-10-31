@@ -37,7 +37,10 @@ const vsWait = (piece_id, order_id, reference, day, due) => ({ piece_id, shipmen
 function nextWeek() {
   const w = K.week();
   return { week: NEXT, cycles: [], hub: [], notices: [],
-    waiting: [w.waiting[0], vsWait(4801, 2201, 'VS-T801', '2026-10-18', '2026-10-18'), vsWait(4802, 2202, 'VS-T802', '2026-10-21', '2026-10-21'),
+    waiting: [w.waiting[0],
+      // one more piece of the loaded week's first waiting order, ready Sat 17/10: it joins that VS's group, never a second head (r9)
+      Object.assign({}, w.waiting[0], { piece_id: 4804, shipment_id: 5804, nat_ready_day: '2026-10-17' }),
+      vsWait(4801, 2201, 'VS-T801', '2026-10-18', '2026-10-18'), vsWait(4802, 2202, 'VS-T802', '2026-10-21', '2026-10-21'),
       // a VS without cross-dock: no nat_ready_day, its delivery Wed 21/10 — after the trip too
       Object.assign(vsWait(4803, 2203, 'VS-T803', '2026-10-21', '2026-10-21'), { nat_ready_day: null, nat_due_day: null })] };
 }
@@ -57,6 +60,10 @@ async function f53({ browser, origin, ok, scn }) {
     ok(scn, 'a load ready after the trip\'s last day (VS-T802, Wed 21/10) is not', !ls.includes(4802), ls);
     ok(scn, '… nor a VS without its ready day whose window is after it (VS-T803, Wed 21/10)', !ls.includes(4803), ls);
     ok(scn, 'a load on both boards (4101) is listed once', ls.filter((x) => x === 4101).length === 1, ls);
+    const heads = await page.evaluate((p) => [...document.querySelectorAll(`${p} .wn5-grp-h`)].map((x) => x.textContent), PLUS);
+    const w0 = K.week().waiting[0], ref0 = w0.kind === 'vs_import' ? w0.reference + ' · ' + w0.client : 'ΕΘΝ · ' + w0.client;
+    ok(scn, `an order with pieces in both weeks («${ref0}», 4804 read later) is ONE group, its later piece under the loaded one (code review r9)`,
+      ls.includes(4804) && heads.filter((h) => h.startsWith(ref0)).length === 1 && ls.indexOf(4804) > ls.indexOf(4101), { heads, ls });
     ok(scn, 'no «φορτώνει» / «δεν διαβάστηκε» line left once read', (await K.count(page, `${PLUS} [data-beyond]`)) === 0);
     await page.click(`${PLUS} [data-act="save"][data-piece="4801"]`, { timeout: 3000 }).catch(() => {});
     await page.waitForTimeout(600);
