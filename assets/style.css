@@ -10454,7 +10454,7 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5a-o { padding:6px 10px; font-size:var(--text-xs); cursor:pointer; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .wn5a-o:hover, .wn5a-o.hi { background:var(--bg-hover); }
 /* the 561/2006 foot note: the International popover's .wi2-sd-note lives in weekly_intl.js, absent on this page */
-.wn5a-note { padding:4px 12px; font-size:11px; color:var(--text-dim); background:var(--surface-sunken); white-space:normal; }
+.wn5a-lnote { padding:4px 12px; font-size:11px; color:var(--text-dim); background:var(--surface-sunken); white-space:normal; }
 .wn5a-osub.free { color:var(--ok); }
 .wn5a-osub.dim { color:var(--wi4-grey-2); }
 .wn5a-none { padding:6px 10px; font-size:var(--text-xs); color:var(--text-dim); }

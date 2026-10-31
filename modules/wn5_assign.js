@@ -470,7 +470,7 @@
       + (o.sub ? '<div class="wi-sdo-sub wn5a-osub ' + o.cls + '">' + _e(o.sub) + '</div>' : '')
       + (o.warn.length ? '<div class="wi-sdo-sub wi-sdo-warn">' + _e(o.warn.join(' · ')) + '</div>' : '') + '</div>').join('')
       + (opts.length ? '' : '<div class="wn5a-none">—</div>')
-      + (px === 'dr' ? '<div class="wn5a-note">' + _e(DRV_NOTE) + '</div>' : '');
+      + (px === 'dr' ? '<div class="wn5a-lnote">' + _e(DRV_NOTE) + '</div>' : '');
   }
 
   // ═══ one open form ═══

@@ -1278,6 +1278,7 @@ async function scnMove(browser, origin) {
     ok(scn, '«Μεταφορά σε…» = the Δ1 list: the day\'s cycles without the source, free trucks, partner, «Πίσω στη Βέροια» (Figma 9294)',
       /ΚΥΚΛΟΙ ΤΗΣ ΔΕΥΤΕΡΑΣ 12\/10/.test(txt) && txt.includes('ΕΛΕΥΘΕΡΑ ΦΟΡΤΗΓΑ') && txt.includes('ΣΥΝΕΡΓΑΤΗΣ') && txt.includes('Πίσω στη Βέροια')
       && !(await bHas(page, `${D} [data-cand="rt:201"]`)), txt.slice(0, 500));
+    ok(scn, 'free trucks read «νέο φορτηγό», never «νέος κύκλος» (owner 31/10)', txt.includes('νέο φορτηγό') && !/νέος κύκλος/.test(txt), txt.slice(0, 500));
     await bClick(page, `${D} [data-act="save"][data-cand="rt:204"]`);
     const c = bCalls(S, 'POST', '/plan/move');
     ok(scn, 'the dry run: {from, target RT-T204 KATHODOS, stops from the source\'s places} + dry_run:true', c.length === 1 && c[0].body.dry_run === true && strip(c[0].body) === JSON.stringify(BODY), c.map((x) => x.raw));
