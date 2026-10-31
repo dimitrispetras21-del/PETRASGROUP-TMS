@@ -12,7 +12,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
-- dimitris · `fix/f40-f41-bridge-sync` · F40/F41: a date change of the international never takes a v5 cycle away (082 draft, keeps + one notice), a closed RT keeps its dates (082 + rt-feed stops writing RT dates); waits for the owner's choice (a/b/c) and the run of 082; no data repaired (`docs/sessions/2026-10-28-dimitris-f40-f41-bridge-sync.md`)
+- dimitris · `fix/f40-f41-bridge-sync` · F40/F41: a date change of the international never takes a v5 cycle away, a closed RT keeps its dates: 082 EXECUTED 31/10 (option a, files out of drafts/), PR #177 = rt-feed stops writing RT dates, waits for merge; no data repaired (`docs/sessions/2026-10-28-dimitris-f40-f41-bridge-sync.md`)
 - dimitris · `fix/wn5-f33-f35` · Εθνικά v5 F33–F35: εθνική προς Βέροια στην ημέρα της, `stop_order` με λέξεις, «Ένωση» με κύκλο στο δρόμο, «+ από αναμονή» στη φόρμα σκέλους, 3 της review #171; PR pending, ?v= / SW_VERSION 1793213922 (`docs/sessions/2026-10-28-dimitris-wn5-f33-f35.md`)
 - dimitris · `fix/wn5-figma-group1-d1` · Εθνικά v5: Figma audit group 1 part B (B-18, B-21, B-25 in wn5_actions.js), PR #161, on main after #160 (merged); ?v= / SW_VERSION 1793198090 (`docs/sessions/2026-10-28-dimitris-wn5-figma-group1-d1.md`)
 - dimitris · `feat/national-v5-079-move-l` (PR #155) · Εθνικά v5: η ημέρα L 31/10 → 24/10. Η 079 ΕΚΤΕΛΕΣΤΗΚΕ 28/10 ~17:20 (19 γέφυρες σε 9 VS, 8 NL, via_hub 27, verify πράσινο, το CHECK `plan_config_future` έγινε δάπεδο) και τα αρχεία βγήκαν από το `drafts/`· μένει το merge (`docs/sessions/2026-10-28-dimitris-079-move-l.md`)

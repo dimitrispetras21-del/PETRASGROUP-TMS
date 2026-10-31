@@ -1,4 +1,6 @@
 -- 082 - NATIONAL v5: A DATE CHANGE OF THE INTERNATIONAL NEVER TAKES A CYCLE AWAY (F40), A CLOSED RT KEEPS ITS DATES (F41).
+-- EXECUTED 31/10/2026 by the owner: dry run '082 ran: unplan b4450bcd..., sync 1a1c3578...', then this file; verify
+--   '082 in place', changed_texts 0, unplan_drops false, recompute_untouched true (files out of drafts/, rule 5).
 -- Found in the owner's real-user entry of W44 (28/10/2026, audit 17:07-20:11 UTC):
 -- F40: VS 576 (Import, 3 unloadings) rode cycle RT-1304. The owner moved its delivery 28 -> 27 in the INTERNATIONAL
 --   form. order_dates_follow moved the 3 unloading stops, plan_bridge_on_stop saw a national-side stop change day and

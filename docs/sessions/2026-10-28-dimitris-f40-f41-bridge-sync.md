@@ -13,7 +13,8 @@
   - `tests/sql-082-drafts` 4/4, `tests/rt-feed-no-date-patch` 1/1, και τα τέσσερα τεστ rt-feed πράσινα.
   - Το verify τρέχει στην παραγωγή σήμερα: `082 NOT APPLIED`, day_moved 4, repeated 1, closed_dates_off 14.
 - **Αποφασίστηκε:** προτείνεται το (α) «κρατά και λέει». Υπάρχουν και το (β) άρνηση και το (γ) προειδοποίηση στη φόρμα. Περιμένει την επιλογή του owner (DECISION_LOG 28/10).
+- **Η 082 ΕΚΤΕΛΕΣΤΗΚΕ 31/10 (owner):** dry run «082 ran: unplan b4450bcd…, sync 1a1c3578…»· verify «082 in place», changed_texts 0, unplan_drops false, recompute_untouched true, kept 0, day_moved 4, repeated 1, closed_dates_off 15 (14 στις 28/10: το front end γράφει ακόμη ως το merge). SELECT 31/10: md5 στην παραγωγή = τα παραγόμενα, `rt_recompute` 5fa0a084 ανέγγιχτο, B-54 56 = triggers. Τα αρχεία βγήκαν από το `drafts/` (κανόνας 5).
 - **Τι μένει:**
-  - Εκτέλεση της 082 από τον owner (dry run → 082 → verify, μετά τις 15:00).
+  - Merge του #177, ώστε το front end να σταματήσει να γράφει ημερομηνίες RT· μετά, το `closed_dates_off` δεν πρέπει να ξεπερνά το 15.
   - Δεν έγινε επισκευή δεδομένων: το RT-1306 μένει ο ζωντανός κύκλος, και 21 RT έχουν ημερομηνίες εκτός κανόνα.
   - Επόμενα: (1) ο Worker στην προσάρτηση (`POST /costs/rt`, attach) επεκτείνει ακόμη το `date_end` πάνω σε παλιά ανάγνωση· (2) VS OFF / σβήσιμο στάσης (`retire`) ακυρώνει ακόμη κύκλο, ίδια οικογένεια· (3) το (γ), αν το θέλει ο owner.
