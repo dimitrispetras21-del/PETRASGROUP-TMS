@@ -987,7 +987,7 @@ function _localHTML(r, lm, ok) {
 // ═══ ✈ row menu (Figma 2011:8858) ═══
 // Each Task appends its line to WN5.MENU_ITEMS; `order` keeps the Figma order whatever the order of the Tasks:
 // 10 Άνοιγμα παραγγελιών · 20 Ανάθεση · 30 Νέα παραγγελία · 40 Φόρτωση με τοπικό · 50 Σπάσιμο · 60 Εκτύπωση ·
-// 70 Αντιγραφή πινακίδων · 90 Καθαρισμός (danger, after a separator).
+// 70 Αντιγραφή πινακίδων · 80 Αλλαγή οχήματος… · 90 Καθαρισμός (danger, after a separator).
 function rowMenu(ev, rtId) {
   try { if (ev && ev.stopPropagation) ev.stopPropagation(); } catch (_) {}
   _closeMenu();
@@ -1576,6 +1576,8 @@ const WN5 = {
       { id: 'sheet-a', label: 'Άνοδος', run: (rtId) => WN5Sheet.print(rtId, 'ANODOS') },
       { id: 'sheet-all', label: 'Όλο το δρομολόγιο', run: (rtId) => WN5Sheet.print(rtId, 'ALL') }] },
     { id: 'plates', order: 70, label: 'Αντιγραφή πινακίδων', run: (rtId) => copyPlatesOf(rtId) },
+    // owner 31/10 (B-13 = α, Figma 2396:7831): the way into the vehicle change (H2) for every cycle, also one never changed
+    { id: 'handover', order: 80, label: 'Αλλαγή οχήματος…', sub: '›', run: (rtId) => WN5Hand.entry(rtId) },
     // T15: last and red (Figma 2011:8858); owner + dispatcher on the Worker, but visible to all (Δ12 tile 8)
     { id: 'clear', order: 90, label: 'Καθαρισμός ανάθεσης', sub: 'κάθοδος + άνοδος', danger: true, run: (rtId) => WN5Act.clear(rtId) },
   ],

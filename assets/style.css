@@ -10404,3 +10404,132 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .loc-scan-geo-msg { color: var(--text-mid); }
 .loc-scan-form .loc-geo-link { background: none; border: none; padding: 0; font: inherit; font-weight: 600; color: var(--accent); cursor: pointer; }
 .loc-scan-form .loc-geo-link:hover { text-decoration: underline; }
+
+/* National v5 · the assignment form = the Weekly International form (owner 28/10 + 31/10, Figma 2394:7793,
+   modules/wn5_assign.js). The .wi-pop-* classes of #wi-popover give fields and section labels; this block fits
+   them into the v5 dialog shell (WN5Act._kit.dlg: Esc, strip, send) and draws what the International popover has
+   not: the «Ημέρα και παράθυρο» rows, the line of the vehicle, the red marks of a missing field. Values from the
+   frames' metadata (600 wide, header 12/16/8, body 12/16/8 with 12 between sections, fields 32 high, radius 6). */
+.wn5-dlg.wn5a { width:600px; padding:0; border-radius:6px; border-color:var(--border); font-size:12px;
+  box-shadow:0 8px 32px rgba(0,0,0,0.18),0 2px 8px rgba(0,0,0,0.1); }
+.wn5a > .wi4-dlg-hd { justify-content:flex-start; gap:8px; padding:12px 16px 8px; border-bottom:1px solid var(--border); background:var(--surface-card); }
+.wn5a .wi4-dlg-t { font:700 14px 'Syne',sans-serif; color:var(--text); white-space:nowrap; }
+.wn5a-sub { flex:1; min-width:0; font-size:12px; color:var(--text-mid); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.wn5a-side { flex:none; padding:2px 6px; border-radius:4px; background:var(--wi4-own); font:600 10.5px 'DM Sans',sans-serif; letter-spacing:.4px; color:var(--wi4-grey-1); }
+.wn5a .wi4-dlg-x { font-size:13px; color:var(--text-dim); }
+.wn5a > .wn5-dlg-msg { margin:8px 16px 0; }
+.wn5a > .wn5-dlg-b { margin-top:0; gap:0; font-size:12px; }
+.wn5a-body { padding:12px 16px 8px; }
+.wn5a-sec { display:flex; flex-direction:column; gap:8px; }
+.wn5a-sec:first-child { gap:6px; }
+.wn5a .wi-pop-section-lbl { color:var(--text-dim); }
+.wn5a .wi-pop-row { align-items:flex-start; }
+.wn5a-band { display:flex; align-items:center; gap:8px; padding:6px 16px; background:var(--surface-sunken); border-bottom:1px solid var(--border); font-size:11.5px; font-weight:600; color:var(--wi4-grey-1); }
+.wn5a-band > span { flex:1; }
+.wn5a-only { display:inline-flex; align-items:center; gap:6px; font-weight:400; color:var(--wi4-grey-2); cursor:pointer; }
+/* one row per stop: label · «όλη η ημέρα» | ώρες… — or the two hour fields */
+.wn5a-win { display:flex; align-items:center; gap:8px; min-height:28px; }
+.wn5a-wl { flex:1; min-width:0; font-size:12px; color:var(--wi4-grey-1); }
+.wn5a-wl.bad { color:var(--danger); font-weight:500; }
+.wn5a-wv { flex:none; font-size:12px; color:var(--wi4-grey-1); }
+.wn5a-all { height:28px; padding:0 10px; border:1px solid var(--border); border-radius:6px; background:var(--surface-card); font:500 11.5px 'DM Sans',sans-serif; color:var(--wi4-grey-2); cursor:pointer; }
+.wn5a-all.on { background:var(--wn5-info-bg); border-color:var(--wn5-info-line); color:var(--accent-text); font-weight:600; }
+.wn5a-hrs { padding:0; border:0; background:none; font:500 11.5px 'DM Sans',sans-serif; color:var(--accent-text); cursor:pointer; }
+.wn5a .wn5a-hm { width:64px; flex:none; }
+.wn5a-dash { color:var(--wi4-grey-2); }
+.wn5a-werr { margin-top:-4px; font:500 11px/14px 'DM Sans',sans-serif; color:var(--danger); }
+/* fields: the International dropdown, 32 high, with the ▾ inside and a line of availability under it */
+.wn5a-f { gap:3px; }
+.wn5a-rate { flex:0 0 130px; }
+.wn5a-sd { position:relative; display:block; }
+.wn5a .wn5a-in { padding-right:22px; }
+.wn5a-mono { font-family:'DM Mono',ui-monospace,SFMono-Regular,Menlo,monospace; font-weight:500; }
+.wn5a-car { position:absolute; right:8px; top:50%; transform:translateY(-50%); font-size:11px; color:var(--text-dim); pointer-events:none; }
+.wn5a-av { min-height:14px; font:400 11px/14px 'DM Sans',sans-serif; color:var(--wi4-grey-2); }
+.wn5a-av:empty { display:none; }
+.wn5a-av.free { color:var(--ok); }
+.wn5a-av.busy { color:var(--wi4-amber); }
+.wn5a-av.bad { color:var(--danger); font-weight:500; }
+.wn5a-bad > .wi-pop-lbl { color:var(--danger); }
+.wn5a .wi-pop-inp.bad, .wn5a-bad .wi-pop-inp { border:1.5px solid var(--danger); }
+.wn5a .wi-pop-inp:disabled { color:var(--wi4-grey-2); }
+/* the list of a field: fixed under it (the popover scrolls), the look of the International .wi-sdl / .wi-sdo — its own
+   classes, because weekly_intl.js hides every .wi-sdl and takes every .wi-sdo click of the page */
+.wn5a-list { position:fixed; z-index:var(--z-top); max-height:260px; overflow-y:auto; background:var(--bg-card); border:1px solid var(--border-mid);
+  border-radius:var(--radius); box-shadow:0 6px 24px rgba(0,0,0,0.12); }
+.wn5a-o { padding:6px 10px; font-size:var(--text-xs); cursor:pointer; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.wn5a-o:hover, .wn5a-o.hi { background:var(--bg-hover); }
+/* the 561/2006 foot note: the International popover's .wi2-sd-note lives in weekly_intl.js, absent on this page */
+.wn5a-lnote { padding:4px 12px; font-size:11px; color:var(--text-dim); background:var(--surface-sunken); white-space:normal; }
+.wn5a-osub.free { color:var(--ok); }
+.wn5a-osub.dim { color:var(--wi4-grey-2); }
+.wn5a-none { padding:6px 10px; font-size:var(--text-xs); color:var(--text-dim); }
+/* the line of the vehicle: «ΚΖΗ 2108 · Δευ 12/10» and «12 → 24/33»; over 33 the number red, never a refusal (F31) */
+.wn5a-line { display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:6px; background:var(--surface-sunken); }
+.wn5a-lt { flex:1; min-width:0; font:600 12px 'DM Sans',sans-serif; color:var(--wi4-ink); }
+.wn5a-note { flex:none; font:500 11px 'DM Sans',sans-serif; color:var(--wi4-amber); }
+.wn5a-alt { flex:none; padding:0; border:0; background:none; font:500 11.5px 'DM Sans',sans-serif; color:var(--accent-text); cursor:pointer; }
+.wn5a-cap { flex:none; padding:2px 6px; border:1px solid var(--wn5-info-line); border-radius:4px; background:var(--wn5-info-bg); font:500 10.5px/14px 'DM Sans',sans-serif; color:var(--accent-text); }
+.wn5a-cap.over { border-color:var(--wi4-red-line); background:var(--wi4-red-bg); color:var(--danger); }
+/* footer: «Λείπει: …» in red beside the one dark button (#160) */
+.wn5a > .wi4-dlg-ft { align-items:center; gap:12px; margin:0; padding:12px 16px; border-top:1px solid var(--border); }
+.wn5a-miss { flex:1; min-width:0; text-align:right; font:500 12px 'DM Sans',sans-serif; color:var(--danger); }
+.wn5a .wi-pop-save { background:var(--wi4-ink); }
+.wn5a .wi-pop-save:hover { background:var(--navy-light); }
+/* «Αλλαγή οχήματος…» (Figma 2396:7888): the vehicles so far, plates and hours */
+.wn5h-erow { display:flex; align-items:center; gap:16px; min-height:36px; margin-top:8px; padding:0 14px 0 0; border-radius:6px; background:var(--surface-sunken); box-shadow:inset 3px 0 0 var(--wn5-seg-initial); }
+.wn5h-erow.next { box-shadow:inset 3px 0 0 var(--wn5-seg-final); }
+.wn5h-erow > .wn5h-pl { flex:0 0 108px; margin-left:8px; padding:4px 10px; border-radius:5px; background:var(--wi4-own); }
+.wn5h-erow.par > .wn5h-pl { background:var(--wi4-partner); font-family:'DM Sans',sans-serif; color:var(--wi4-partner-ink); }
+.wn5h-erow > span { font-size:12px; color:var(--wi4-grey-1); }
+/* National v5 · Veroia board v2 (Figma 2383:7736, owner 31/10 «εστίαση στη δημιουργία νέων φορτίων»): the list by day
+   with a red «αργό» chip, a checkbox per row, «⋯» for «Σπάσε…», and «Νέο φορτίο» on the right. */
+.wn5-hub-panel.v2 { max-height:none; }
+.wn5-hub-panel.v2 .wn5-hub-l { flex:1 1 58%; max-height:min(520px, 60vh); overflow-y:auto; }
+.wn5-hub-panel.v2 .wn5-hub-r { flex:1 1 42%; }
+.wn5-hub-late { flex:none; margin-left:8px; padding:1px 6px; border-radius:4px; background:var(--wi4-red-bg); border:1px solid var(--wi4-red-line); font-size:10.5px; font-weight:500; line-height:14px; color:var(--danger); }
+.wn5-hub-ck { flex:none; margin:0; width:14px; height:14px; accent-color:var(--wi4-blue); cursor:pointer; }
+.wn5-hub-it.on { background:var(--wn5-info-bg); }
+.wn5-hub .wn5-hub-more { padding:0 7px; font-weight:700; letter-spacing:1px; }
+.wn5-hub-pop { position:fixed; z-index:var(--z-top); min-width:160px; max-width:360px; max-height:300px; overflow-y:auto; padding:4px 0; background:var(--surface-card);
+  border:1px solid var(--wi4-line-2); border-radius:8px; box-shadow:0 8px 24px rgba(11,25,41,.14); font-family:'DM Sans',sans-serif; }
+.wn5-hub-pi { display:flex; flex-direction:column; align-items:flex-start; gap:1px; width:100%; padding:6px 12px; border:0; background:none; text-align:left; font-size:12px; color:var(--wi4-ink); cursor:pointer; }
+.wn5-hub-pi:hover { background:var(--wi4-hover); }
+.wn5-hub-pi > span { font-size:11px; color:var(--wi4-grey-2); }
+.wn5-hub-pe { padding:6px 12px; font-size:12px; color:var(--wi4-grey-2); }
+/* «Νέο φορτίο» */
+.wn5-nf { display:flex; flex-direction:column; gap:8px; padding:10px 14px 12px; font-size:12px; color:var(--wi4-grey-1); }
+.wn5-nf-hd { display:flex; align-items:center; gap:8px; }
+.wn5-nf-t, .wn5-nf-sec { font:600 10.5px 'DM Sans',sans-serif; letter-spacing:1.2px; color:var(--wi4-grey-2); }
+.wn5-nf-sec { margin-top:4px; }
+.wn5-nf-n { font-size:11.5px; font-weight:500; color:var(--accent-text); }
+.wn5-nf-empty { margin:0; }
+.wn5-nf-row { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.wn5-nf-l { font-size:12px; color:var(--wi4-grey-2); }
+.wn5-nf-day { height:28px; padding:0 8px; border:1px solid var(--wi4-ctl); border-radius:6px; background:var(--surface-card); font:500 12px 'DM Sans',sans-serif; color:var(--wi4-ink); }
+.wn5-nf .wn5a-hm { width:64px; height:28px; }
+.wn5-nf-note { align-self:flex-start; padding:2px 6px; border-radius:4px; background:var(--wn5-note-bg); border:1px solid var(--wn5-note-line); font-size:11px; font-weight:500; color:var(--wn5-note-ink); }
+.wn5-nf-it { display:flex; align-items:center; gap:8px; min-height:28px; border-bottom:1px solid var(--wi4-line); }
+.wn5-nf-it > b { font-weight:600; color:var(--wi4-ink); }
+.wn5-nf-it > span:not(.wn5-hub-sp):not(.wn5-hub-p) { font-size:11px; color:var(--wi4-grey-2); }
+.wn5-nf-x { font-size:14px; line-height:1; color:var(--wi4-grey-2); }
+.wn5-nf-add { align-self:flex-start; font-size:12px; font-weight:500; color:var(--accent-text); }
+.wn5-nf-order { padding:8px 10px; border-radius:6px; background:var(--wn5-info-bg); border:1px solid var(--wn5-info-line); font-size:11.5px; color:var(--wi4-grey-1); display:flex; flex-direction:column; gap:2px; }
+.wn5-nf-order b.ok, .wn5-nf-order span.ok { color:var(--ok); font-weight:600; }
+.wn5-nf-order b.over { color:var(--danger); font-weight:600; }
+.wn5-nf-order span.warn { color:var(--wi4-amber); font-weight:600; }
+.wn5-nf-truck { display:flex; align-items:center; gap:10px; min-height:44px; padding:4px 10px; border:1.5px solid var(--wi4-blue); border-radius:6px; background:var(--wn5-info-bg); }
+.wn5-nf-tb { display:flex; flex-direction:column; padding:3px 8px; border-radius:5px; background:var(--wi4-own); }
+.wn5-nf-tb > b { font-size:12px; color:var(--wi4-ink); }
+.wn5-nf-tb > span { font-size:11px; color:var(--wi4-grey-2); }
+.wn5-nf-av { font-size:11.5px; color:var(--ok); }
+.wn5-nf-ch { font-size:12px; font-weight:600; color:var(--accent-text); }
+.wn5-nf .wn5-nf-pick { align-self:flex-start; height:28px; }
+.wn5-nf-msg:empty { display:none; }
+.wn5-nf-ft { display:flex; align-items:center; justify-content:flex-end; gap:8px; margin-top:4px; }
+/* F51 / F61: «στο ίδιο φορτίο» | «νέο φορτίο» of a truck that already runs that day; F56: a suggested trailer / driver */
+.wn5a-opts { flex:none; display:inline-flex; gap:2px; padding:2px; border-radius:6px; background:var(--surface-card); border:1px solid var(--border); }
+.wn5a-opt { height:22px; padding:0 8px; border:0; border-radius:4px; background:none; font:500 11px 'DM Sans',sans-serif; color:var(--wi4-grey-2); cursor:pointer; }
+.wn5a-opt.on { background:var(--wi4-ink); color:var(--surface-card); }
+.wn5a-sugg .wi-pop-inp:not(:focus) { border-style:dashed; border-color:var(--wn5-info-line); background:var(--wn5-info-bg); }
+.wn5a-av.sugg { color:var(--accent-text); }
