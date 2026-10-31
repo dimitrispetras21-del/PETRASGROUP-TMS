@@ -126,6 +126,8 @@
   // Default: join; a ΚΑΘΟΔΟΣ after a trip that came back to Veroia that day is a new load. The user switches, one click.
   function _target(st) {
     const k = K();
+    // «Φορτηγό αργότερα» (083, owner 31/10): a load with no vehicle — a new cycle born without one, nothing to join
+    if (st.who === 'later') return { cyc: null, after: null, n: 0, opts: [], i: 0 };
     const id = st.who === 'partner' ? st.partner : st.who === 'own' ? st.truck : null;
     if (id == null) return null;
     const D = _dayD(st);
@@ -170,7 +172,7 @@
       if (ex) t.set(ex.location_id, Date.parse(ex.planned_from)); else if (s.location_id != null) t.set(s.location_id, Date.parse(s.planned_from));
     }
     const take = new Map((st.pieces || []).map((p) => [p.piece_id, p]));
-    const ev = _sideEvents(tg.cyc, st.side);
+    const ev = _sideEvents(tg && tg.cyc, st.side);
     _sel(st).forEach((it, i) => {
       const p = take.get(it.piece_id), pal = p && typeof p.take_pallets === 'number' ? p.take_pallets : it.pallets;
       const a = st.needs[2 * i], b = st.needs[2 * i + 1];
@@ -249,6 +251,8 @@
     if (!tg) return null;
     let target;
     if (tg.cyc) target = { rt_id: tg.cyc.rt_id, side: st.side };
+    // 083: the opt-in key of plan_rt_create; the vehicle is given later with PATCH /plan/rt (the red «ΠΡΟΣ ΑΝΑΘΕΣΗ»)
+    else if (st.who === 'later') target = { new_rt: { trip_type: 'OWNED', later: true }, side: st.side };
     else if (st.who === 'own') target = { new_rt: { trip_type: 'OWNED', truck_id: st.truck, trailer_id: st.trailer || null, driver_id: st.driver || null }, side: st.side };
     else {
       const r = k.rate(st.rateTxt);
@@ -339,6 +343,10 @@
   function line(st) {
     const k = K();
     if (st.mode === 'vehicle' || !st.who) return null;
+    if (st.who === 'later') {
+      const ld = _load(st, _target(st), req(st));
+      return { txt: 'Φορτηγό αργότερα', road: false, other: null, opts: [], before: '0', after: WN5L.palText(ld.after, st.palUnk), over: ld.after > 33, join: false, rtId: null };
+    }
     const id = st.who === 'own' ? st.truck : st.partner;
     if (id == null) return null;
     const lbl = _label(st.who === 'own' ? 'tk' : 'pt', id);

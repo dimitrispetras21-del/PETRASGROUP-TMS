@@ -378,5 +378,39 @@ async function f54({ browser, origin, ok, scn }) {
   await page.context().close();
 }
 
-K.run({ scenarios: { own_new, own_join, only_hours, partner, vehicle, handover, veroia_list, veroia_new, f61, f54 }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],
+// 11 · 083 «Φορτηγό αργότερα» (owner 31/10): the load is made with no vehicle — new_rt {OWNED, later: true}, one POST;
+// «Με φορτηγό τώρα» gives the truck picked before back. NO-GO on #184 alone (no such choice).
+async function veroia_later({ browser, origin, ok, scn, shots }) {
+  const { page, S } = await K.openApp(browser, origin, { board: hubBoard(), plan: { 'POST /plan/legs': async () => OK('plan_put_pieces', { rt_id: 903 }) } });
+  await page.click('#wn5-hub [data-hub="open"]');
+  await page.click('#wn5-hub .wn5-hub-it[data-piece="4201"] .wn5-hub-ck');
+  await page.click('#wn5-hub .wn5-hub-it[data-piece="4202"] .wn5-hub-ck');
+  const has = await K.count(page, '#wn5-hub [data-act="nf-later"]');
+  ok(scn, '«Με φορτηγό τώρα | Φορτηγό αργότερα» under ΦΟΡΤΗΓΟ', has === 1);
+  if (!has) { await page.context().close(); return; }
+  await page.click('#wn5-hub .wn5-nf-pick');
+  await page.waitForSelector(DLG, { timeout: 4000 });
+  await pickIn(page, 'tk', '2106', 'TST-2106');
+  await page.click(`${DLG} [data-act="save"]`);
+  await page.waitForTimeout(150);
+  await page.click('#wn5-hub [data-act="nf-later"]');
+  let t = await nfText(page);
+  ok(scn, '«Φορτηγό αργότερα»: no truck line, «Δημιουργία φορτίου · 22π» on, no «Λείπει»', !/TST-2106/.test(t) && /Δημιουργία φορτίου · 22π$/.test(t)
+    && !(await page.isDisabled('#wn5-hub [data-act="nf-create"]')) && !/Λείπει/.test(t), t);
+  if (shots) await page.screenshot({ path: shots + '/veroia-later.png' });
+  await page.click('#wn5-hub [data-act="nf-now"]');
+  t = await nfText(page);
+  ok(scn, '«Με φορτηγό τώρα» brings TST-2106 back', /TST-2106/.test(t), t);
+  await page.click('#wn5-hub [data-act="nf-later"]');
+  await page.click('#wn5-hub [data-act="nf-create"]');
+  await page.waitForTimeout(600);
+  const w = saves(S);
+  const body = w[0] && w[0].body;
+  ok(scn, 'ONE POST /plan/legs: {pieces 4201, 4202, target {new_rt {OWNED, later: true}, side KATHODOS}} — no vehicle key at all',
+    w.length === 1 && JSON.stringify(body.pieces) === '[{"piece_id":4201},{"piece_id":4202}]' && JSON.stringify(body.target) === '{"new_rt":{"trip_type":"OWNED","later":true},"side":"KATHODOS"}', w.map((x) => x.raw));
+  ok(scn, 'stops: Veroia on the panel\'s day, whole day; the two deliveries on their day', !!body && body.stops.length === 3 && body.stops.every((s) => s.location_id && s.planned_from && s.planned_to), body && body.stops);
+  await page.context().close();
+}
+
+K.run({ scenarios: { own_new, own_join, only_hours, partner, vehicle, handover, veroia_list, veroia_new, f61, f54, veroia_later }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],
   go: 'the assignment form (own new / join / only / hours / F39 / partner / vehicle / F51-F61 / F54 / F56), ✈ «Αλλαγή οχήματος…» and the Veroia board v2 «Νέο φορτίο» hold' });
