@@ -8,7 +8,6 @@
 const _fhLocationsArr = [];  // [{id,label}]
 const _fhLocationsMap = {};  // recId → label
 const _fhClientsMap   = {};  // recId → name
-const _fhLocSaved     = new Map();  // recId → {item:{id,label}, prev: label before the save}: this page's saves (fhLocationSaved)
 const _fhClientCache  = {};  // query → {at, res: [{id,label}]}; '\u0001' + probe word → {at, recs} the server's records (F19, 60 s each)
 
 // The location records (Name/City/Country) — the reference preload's copy
@@ -27,14 +26,9 @@ function _fhLocLabel(f) {
   return [f['Name'], f['City'], typeof countryName === 'function' ? countryName(f['Country']) : f['Country']].filter(Boolean).join(', ');
 }
 
-// The picker lines of a LOCATIONS read, sorted. F52: the places this page saved win over the read — a read that
-// started before the save (the first one, or the background re-read) has no new place and an old name.
+// The picker lines of a LOCATIONS read, sorted: one rule for the first read and the background re-read.
 function _fhLocItems(records) {
-  const byId = new Map(records.map(r => [r.id, { id: r.id, label: _fhLocLabel(r.fields) }]));
-  // a read without the place, or with the name it had before the save, is older than the save; a read with another
-  // name is newer (someone renamed it since) and wins (code review r4)
-  for (const [id, x] of _fhLocSaved) { const r = byId.get(id); if (!r || r.label === x.prev) byId.set(id, x.item); }
-  return [...byId.values()].sort((a, b) => a.label.localeCompare(b.label));
+  return records.map(r => ({ id: r.id, label: _fhLocLabel(r.fields) })).sort((a, b) => a.label.localeCompare(b.label));
 }
 
 /**
@@ -67,19 +61,18 @@ function _fhRefreshLocations(locRecords) {
 }
 
 // F52 (live 31/10): a place saved in «Τοποθεσίες» was not in the order forms' pickers until a reload — the list
-// above is read once per page (fhLoadLocations returns while it holds anything) and the revalidate runs once per
-// load. The saved record goes into THE list (no copy of it), with the label fhLoadLocations gives it, in its
-// sorted place; a renamed place replaces its old line. _fhLocSaved remembers only what this page saved, so a read
-// that started before the save (the first one, or the background re-read) cannot drop it or bring back its old name. The v5 catalogue
-// (/plan/lookups, the place's number) is told to read again on its next use, or the national v5 form would find
-// the place and refuse it at «Αποθήκευση».
+// above is read once per page (fhLoadLocations returns while it holds anything) and the background re-read runs
+// once per load. The saved record goes into THE list (no copy of it), with the label fhLoadLocations gives it, in
+// its sorted place; a renamed place replaces its old line. A list not read yet is left alone: its first read comes
+// after the save (atCreate/atPatch cleared the reference cache). Known limit, kept simple (code review r5): a
+// background re-read that started before the save and lands after it rebuilds the list without the place — a
+// window of the page's first seconds. The v5 catalogue (/plan/lookups, the place's number) is told to read again on
+// its next use, or the national v5 form would find the place and refuse it at «Αποθήκευση».
 function fhLocationSaved(rec) {
   if (!rec || !rec.id || !rec.fields) return;
   if (typeof PlanIds !== 'undefined' && typeof PlanIds.stale === 'function') PlanIds.stale();
-  const item = { id: rec.id, label: _fhLocLabel(rec.fields) };
-  const was = _fhLocSaved.get(rec.id);
-  _fhLocSaved.set(rec.id, { item, prev: was ? was.prev : (_fhLocationsMap[rec.id] || null) });
   if (!_fhLocationsArr.length) return;
+  const item = { id: rec.id, label: _fhLocLabel(rec.fields) };
   const at = _fhLocationsArr.findIndex(l => l.id === rec.id);
   if (at !== -1) _fhLocationsArr.splice(at, 1);
   const pos = _fhLocationsArr.findIndex(l => l.label.localeCompare(item.label) > 0);

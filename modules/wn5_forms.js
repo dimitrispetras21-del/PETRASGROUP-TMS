@@ -770,7 +770,7 @@
     if (f.busy || f.done || f.locked) return;
     let st, body;
     await _idsFresh(f);
-    if (f.busy || f.done || f.locked) return;
+    if (_f !== f || f.busy || f.done || f.locked) return;   // closed or replaced while the catalogue was read
     try { st = _readState(f); }
     catch (e) { if (typeof PlanError !== 'undefined' && e instanceof PlanError) WN5Act.strip(_strip(f), e); else _lines(f, [String(e && e.message || e)]); return; }
     // F1 (code review 28/10): the head's Veroia window fills the empty Veroia rows only when it is whole; half of it is
@@ -1081,7 +1081,7 @@
   async function _saveEdit(f) {
     if (f.busy || f.done || f.locked) return;
     await _idsFresh(f);
-    if (f.busy || f.done || f.locked) return;
+    if (_f !== f || f.busy || f.done || f.locked) return;   // closed or replaced while the catalogue was read
     const st = _readEdit(f);
     const probs = _checkEdit(f, st);
     let body = null;
@@ -1544,7 +1544,7 @@
         try { loc = PlanIds.id('location', rec); }
         catch (e) { WN5Act.strip(_strip(f), e); return; }
         vsPlace(osid, loc);
-      });
+      }).catch((e) => { _log(e, 'WN5Form vs-place'); _lines(f, [String((e && e.message) || e)]); });
     }
   }
   // The clicked side stays marked on the board while its form is open (Figma 2011:9305 / 2069:8150: the side's cells

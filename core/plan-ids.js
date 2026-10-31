@@ -50,14 +50,16 @@
         if (!_shapeOk(d)) {
           const e = _err('ids_shape', 'Οι κατάλογοι ήρθαν χωρίς όλες τις λίστες — ενημέρωσε τον Δημήτρη');
           if (typeof logError === 'function') logError(e, 'PlanIds.load');
-          if (_data) { _staleAfter = Date.now() + 60e3; return { ok: true }; }   // a re-read after stale(): the catalogue in hand serves
+          if (_data) { if (gen === _gen) _staleAfter = Date.now() + 60e3; return { ok: true }; }   // a re-read after stale(): the catalogue in hand serves
           return { ok: false, err: e };
         }
         _data = d;
         if (gen === _gen) _stale = false;
         return { ok: true };
       } catch (e) {
-        if (_data) { _staleAfter = Date.now() + 60e3; return { ok: true }; }   // a re-read after stale(): the catalogue in hand still serves (logged by planFetch)
+        // a re-read after stale(): the catalogue in hand still serves (logged by planFetch); the minute's wait only when
+        // no place was saved since this read began (a newer stale() asks at once, code review r5)
+        if (_data) { if (gen === _gen) _staleAfter = Date.now() + 60e3; return { ok: true }; }
         return { ok: false, err: e };      // planFetch already logged what is not a designed answer (no_route: Ε-2, above)
       } finally {
         _inflight = null;
