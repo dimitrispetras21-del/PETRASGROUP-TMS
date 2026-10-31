@@ -537,17 +537,22 @@
     // after a truck or an option is chosen: joining keeps that cycle's trailer and driver (a change of them is
     // «Αλλαγή οχήματος…»); a new load gets the truck's last trailer and driver as a suggestion (F56), never over a
     // value the user picked
+    let fromJoin = false;   // trailer / driver copied from a joined cycle (not the user's pick): replaced when it no longer joins
     const _vehicleOf = () => {
-      if (st.mode === 'vehicle') return;
+      if (st.mode === 'vehicle' || st.who !== 'own') return;
       const tg = _target(st);
-      if (tg && tg.cyc) { st.trailer = tg.cyc.trailer_id || null; st.driver = tg.cyc.driver_id || null; st.typed.tl = st.typed.dr = ''; st.sugg.tl = st.sugg.dr = false; return; }
-      const last = st.cycles.filter((c) => c.trip_type !== 'PARTNER' && _uses(c, 'truck_id', st.truck))
-        .sort((a, b) => Date.parse(b.end_at) - Date.parse(a.end_at))[0];
+      if (tg && tg.cyc) { st.trailer = tg.cyc.trailer_id || null; st.driver = tg.cyc.driver_id || null; st.typed.tl = st.typed.dr = ''; st.sugg.tl = st.sugg.dr = false; fromJoin = true; return; }
+      // the truck's last trip BEFORE the load's day (a later trip is not «the last one»), else its latest on the board
+      const D = _dayD(st);
+      const mine = st.cycles.filter((c) => c.trip_type !== 'PARTNER' && _uses(c, 'truck_id', st.truck))
+        .sort((a, b) => Date.parse(b.end_at) - Date.parse(a.end_at));
+      const last = mine.find((c) => !D || K().ymdOf(c.end_at) <= D) || mine[0];
       for (const [px, key] of [['tl', 'trailer'], ['dr', 'driver']]) {
-        if (st[key] != null && !st.sugg[px]) continue;
+        if (st[key] != null && !st.sugg[px] && !fromJoin) continue;
         const v = last ? last[key + '_id'] || null : null;
         st[key] = v; st.sugg[px] = v != null; st.typed[px] = '';
       }
+      fromJoin = false;
     };
     // a pick from the list (or an exact name typed); own and partner exclude each other, as one executes
     const choose = (px, id, next) => {
@@ -555,6 +560,7 @@
       st[f.key] = id;
       st.typed[px] = '';
       st.sugg[px] = false;
+      if (px === 'tl' || px === 'dr') fromJoin = false;   // the user's own pick from here on
       if (px === 'pt') { st.who = 'partner'; st.truck = st.trailer = st.driver = null; st.typed.tk = st.typed.tl = st.typed.dr = ''; st.opt = null; st.sugg = {}; }
       else {
         if (st.who !== 'own') { st.partner = null; st.typed.pt = ''; if (st.mode !== 'vehicle') st.rateTxt = ''; }

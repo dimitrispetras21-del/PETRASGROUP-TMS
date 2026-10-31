@@ -366,6 +366,13 @@ async function f61({ browser, origin, ok, scn, shots }) {
   await page.waitForTimeout(500);
   x = saves(S).pop();
   ok(scn, '… POST /plan/legs into rt 101', !!x && x.body.target.rt_id === 101, x && x.body);
+  // code review: the joined trip's trailer / driver never stick to another truck unmarked
+  await openWaiting(page, 4401);
+  await pickIn(page, 'tk', '2104', 'TST-2104');
+  await page.click(`${DLG} [data-act="opt"][data-i="0"]`);
+  await pickIn(page, 'tk', '2106', 'TST-2106');
+  const tl3 = await field(page, 'tl'), dr3 = await field(page, 'dr');
+  ok(scn, 'join TST-2104, then pick free TST-2106: its trailer / driver are not the other truck\'s, unmarked', !(tl3.val === 'TRL-5102' && !/πρόταση/.test(tl3.av)) && !(dr3.val === 'Driver Test 01' && !/πρόταση/.test(dr3.av)), { tl3, dr3 });
   await page.context().close();
 }
 
