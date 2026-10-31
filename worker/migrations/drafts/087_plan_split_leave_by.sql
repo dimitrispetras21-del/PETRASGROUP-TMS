@@ -8,7 +8,7 @@
 --   PART 0  guards: 080 applied (the last migration that patched plan_split_piece), 087 not applied, the LIVE text of
 --           plan_split_piece (md5 of prosrc = production, SELECT 1/11/2026), day L set, B-54 = the enabled triggers
 --   PART 1  plan_split_piece = live text + 2 hunks: a part WITHOUT a target may carry leave_by, a 'YYYY-MM-DD' text;
---           absent = nat_due_day - 1 as before (the screen sends nothing it did not show). leave_by with a target, a
+--           absent = nat_due_day - 1 as before (the Veroia panel always sends the day it shows). leave_by with a target, a
 --           null, a number or any other shape = bad_input (a part that rides now has no deadline: decision 18). A day
 --           already gone is NOT refused (relaxed rules, owner 31/10): the dialog warns before the save, and the panel
 --           shows the part late (v_piece_state.overdue reads coalesce(leave_by, nat_due_day)).

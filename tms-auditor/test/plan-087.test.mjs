@@ -43,6 +43,26 @@ begin
   values ('rec87S' || r, 'Unloading', 1, p_hub + 1, o, lg, p_pallets);
   return (select sp.id from shipment_pieces sp join shipments s on s.id = sp.shipment_id
            where s.order_id = o and s.deleted_at is null and sp.deleted_at is null and sp.parent_piece_id is null);
+end $t$;
+-- ONE new OWNED cycle on day p_day that takes p_piece from Veroia to its Greek stop (as plan-082's t82_put)
+CREATE FUNCTION t87_put(p_piece bigint, p_day date) RETURNS bigint LANGUAGE plpgsql AS $t$
+declare trk bigint; hub bigint; r jsonb;
+begin
+  select id into hub from locations where is_hub;
+  insert into trucks (license_plate) values ('TEST-087-' || nextval('t87_n')) returning id into trk;
+  r := plan_put_pieces(jsonb_build_object(
+         'pieces', jsonb_build_array(jsonb_build_object('piece_id', p_piece, 'drop', 'd')),
+         'target', jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', trk), 'side', 'KATHODOS'),
+         'stops', jsonb_build_array(
+           jsonb_build_object('ref', 'p', 'location_id', hub, 'side', 'KATHODOS',
+             'planned_from', (p_day + time '06:00') at time zone 'Europe/Athens', 'planned_to', (p_day + time '07:00') at time zone 'Europe/Athens'),
+           jsonb_build_object('ref', 'd', 'side', 'KATHODOS',
+             'location_id', (select vs.nat_to_location_id from shipment_pieces sp join v_shipments vs on vs.shipment_id = sp.shipment_id where sp.id = p_piece),
+             'planned_from', (p_day + time '10:00') at time zone 'Europe/Athens', 'planned_to', (p_day + time '11:00') at time zone 'Europe/Athens'))),
+       'test:087', 'dispatcher');
+  perform set_config('plan.writer', '', true);
+  set constraints all deferred;
+  return (r->'ids'->>'rt_id')::bigint;
 end $t$;`;
 
 // A scenario inside a transaction that is always rolled back; the deferred rules fire before the rows are read
@@ -70,6 +90,28 @@ const split = (db, L, parts) => scenario(db, async () => {
     WHERE table_name = 'shipment_pieces' AND action = 'create' AND record_id = ANY($1::text[])`,
     [kids.map((k) => String(k.id))])).rows.map((r) => r.leave_by);
   return { err: null, due, kids, audit };
+});
+// a split whose FIRST part rides a real cycle: the piece's own empty-run cycle (made for a twin piece of the same place,
+// the cycle's Veroia stop + its drop stop), the second part stays with p_stay merged in
+const splitRide = (db, L, stay) => scenario(db, async () => {
+  const pc = await num(db, `SELECT t87_vs(DATE '${L}' + 3, 11)`);
+  const due = (await one(db, `SELECT nat_due_day::text AS d FROM v_piece_state WHERE piece_id = $1`, [pc])).d;
+  // the twin: another delivery to the SAME place, put on a new cycle the part can join
+  const twin = await num(db, `SELECT t87_vs(DATE '${L}' + 3, 5)`);
+  await db.query(`UPDATE order_stops SET location_id = (SELECT vs.nat_to_location_id FROM shipment_pieces sp JOIN v_shipments vs ON vs.shipment_id = sp.shipment_id WHERE sp.id = $1)
+    WHERE id = (SELECT s.order_stop_id FROM shipment_pieces sp JOIN shipments s ON s.id = sp.shipment_id WHERE sp.id = $2)`, [pc, twin]);
+  const rt = await num(db, `SELECT t87_put($1, DATE '${L}' + 4)`, [twin]);
+  const stops = (await db.query(`SELECT id FROM rt_stops WHERE rt_id = $1 AND deleted_at IS NULL ORDER BY planned_from`, [rt])).rows.map((r) => Number(r.id));
+  const body = { piece_id: pc, request_id: rid(), parts: [
+    { pallets: 4, target: { rt_id: rt, side: 'KATHODOS' }, stops: [{ ref: 'p', stop_id: stops[0] }, { ref: 'd', stop_id: stops[1] }] },
+    { pallets: 7, ...stay }] };
+  const err = await errorOf(db, `SELECT plan_split_piece($1::jsonb, 'test:087', 'dispatcher')`, [JSON.stringify(body)]);
+  if (err) return { err, due };
+  const kids = (await db.query(`SELECT sp.pallets::numeric AS pallets, sp.leave_by::text AS leave_by, ps.is_stock,
+      (SELECT count(*)::int FROM piece_legs l WHERE l.piece_id = sp.id AND l.deleted_at IS NULL) AS legs
+    FROM shipment_pieces sp JOIN v_piece_state ps ON ps.piece_id = sp.id
+    WHERE sp.parent_piece_id = $1 AND sp.deleted_at IS NULL ORDER BY sp.pallets`, [pc])).rows;
+  return { err: null, due, kids };
 });
 const dayBefore = (ymd) => new Date(Date.parse(ymd) - 864e5).toISOString().slice(0, 10);
 
@@ -127,6 +169,12 @@ test('087 on the production-shaped copy (1/11): leave_by refused on the live tex
     assert.strictEqual(r.late, null, 'the deferred rules pass');
     assert.deepStrictEqual(r.kids.map((k) => [Number(k.pallets), k.leave_by, k.is_stock]), [[4, dayBefore(r.due), true], [7, day(10), true]]);
     assert.deepStrictEqual(r.audit.sort(), [dayBefore(r.due), day(10)].sort(), 'the audit rows hold what was written');
+  });
+  await t.test('GO: a part on a truck rides with NO leave_by (decision 18), the part that stays gets the chosen day', async () => {
+    const r = await splitRide(db, L, { leave_by: day(9) });
+    assert.strictEqual(r.err, null, r.err);
+    assert.strictEqual(r.late, null, 'the deferred rules pass');
+    assert.deepStrictEqual(r.kids.map((k) => [Number(k.pallets), k.leave_by, k.is_stock, k.legs]), [[4, null, false, 1], [7, day(9), true, 0]]);
   });
   await t.test('GO: a day already gone is written (relaxed rules), and the part reads late at once', async () => {
     const r = await split(db, L, [{ leave_by: '2026-01-05' }, {}]);
