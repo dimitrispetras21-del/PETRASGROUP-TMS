@@ -168,6 +168,13 @@ test('F4α-T20: ANODOS arrival at Veroia «ως» → deliver_from = deliver_to;
   assert.ok(J(F._body(withStop).stops).some((x) => x.stop_id === 1005));
 });
 
+test('F64: a point typed 08:00–08:00 on a target cycle is the stop 08:00–08:01 that day, never equal ends', () => {
+  const o = order({ loads: [row(1, '2026-10-12', '16:00', '18:00', 4)], drops: [row(4, '2026-10-13', '08:00', '08:00', 4)] });
+  const st = state({ target: { rt_id: 101, side: 'KATHODOS' }, cycleStops: [{ stop_id: 1001, location_id: 1, side: 'KATHODOS' }], orders: [o] });
+  const s4 = J(F._body(st).stops).find((x) => x.location_id === 4);
+  assert.deepStrictEqual([s4.planned_from, s4.planned_to], ['2026-10-13T08:00:00+03:00', '2026-10-13T08:01:00+03:00']);
+});
+
 test('F4α-T20: request_reused — the board holds the order of the same client, reference and pallets', () => {
   const body = F._body(state({ orders: [order({ reference: 'N-T900' })] }));
   const board = { waiting: [{ piece_id: 1, nat_order_id: 3900, client_id: 41, reference: 'N-T900', pallets: 6 },

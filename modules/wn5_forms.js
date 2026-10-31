@@ -179,6 +179,14 @@
   // One stop per place of the form on the target side: the cycle's own stop there (snapshot of the open), or a
   // new one spanning the earliest «από» to the latest «έως» of its rows. plan_h_stop_at finds a piece's stop by
   // place, so two new stops at one place would be refused as ambiguous.
+  // F64 (live 31/10): «08:00–08:00» is the minute that starts at 08:00 (23:59: the one that ends there) — the base
+  // refuses a stop whose end is its start (071 rt_stops_win); the same rule as WN5Act's _win, never a day later
+  function _sameMin(day, from, to) {
+    if (from !== to || !/^\d{2}:\d{2}$/.test(String(from))) return [_iso(day, from), _iso(day, to)];
+    const m = Number(from.slice(0, 2)) * 60 + Number(from.slice(3, 5));
+    const hm = (x) => String(Math.floor(x / 60)).padStart(2, '0') + ':' + String(x % 60).padStart(2, '0');
+    return m < 1439 ? [_iso(day, from), _iso(day, hm(m + 1))] : [_iso(day, hm(m - 1)), _iso(day, to)];
+  }
   function _stops(st) {
     const side = st.target.side;
     const byLoc = new Map();
@@ -191,7 +199,8 @@
     const untilFrom = (o, d) => o.loads.filter((l) => l.day === d.day && l.to && l.to < d.to).map((l) => l.to).sort().pop() || '00:00';
     const rows = st.orders.flatMap((o) => o.loads.concat(o.drops.map((d) => (d.until && d.to > '00:00' ? Object.assign({}, d, { from: untilFrom(o, d) }) : d))));
     for (const r of rows.filter((x) => !x.allDay).concat(rows.filter((x) => x.allDay))) {
-      const f = _iso(r.day, r.from), t = _iso(r.day, r.to);
+      // F64: the same hour twice is that minute of that day (planned_to > planned_from), as WN5Act's _win
+      const [f, t] = _sameMin(r.day, r.from, r.to);
       const e = byLoc.get(r.location_id);
       if (!e) byLoc.set(r.location_id, { from: f, to: t, allDay: !!r.allDay });
       else if (!r.allDay || e.allDay) {
