@@ -241,7 +241,9 @@ async function scnNoPP({ browser, origin, ok, scn }) {
   rd.shipments.push(Object.assign(K.clone(K.orders()[3101].shipments[0]), { shipment_id: 5306, pallets: 3, at_hub: true, waits: true }));
   const plan = { 'GET /plan/orders/3001': () => [200, rd],
     'PATCH /plan/orders/3001': () => [200, { ok: true, op: 'plan_order_update', dry_run: false, ids: { nat_order_id: 3001, shipment_ids: [] }, warnings: [], notice_ids: [] }] };
-  const p2 = await K.openApp(browser, origin, { plan });
+  // owner 31/10 (pack 2): the price of an existing order changes only by owner / accountant — the price edits here run
+  // as accountant; the dispatcher's read-only field is tests/critics/wn5-pack2-rig.js «price»
+  const p2 = await K.openApp(browser, origin, { plan, role: 'accountant' });
   await openForm(p2.page, { natOrderId: 3001 });
   const ed = await p2.page.evaluate((d) => {
     const row = (id) => { const r = document.querySelector(`${d} [data-ship="${id}"]`); if (!r) return null;
@@ -290,7 +292,7 @@ async function scnNoPP({ browser, origin, ok, scn }) {
     seqTxt.some((x) => /παράδοση/.test(x) && /10π$/.test(x)) && seqTxt.some((x) => /4π$/.test(x)) && seqTxt.some((x) => /6π$/.test(x)) && !seqTxt.some((x) => x.includes(';π')), seqTxt);
   await p4.page.context().close();
   // a WRITTEN price is never emptied (072 no_price): said at the field, nothing sent
-  const p3 = await K.openApp(browser, origin, {});
+  const p3 = await K.openApp(browser, origin, { role: 'accountant' });
   await openForm(p3.page, { natOrderId: 3101 });
   await p3.page.fill(`${DLG} [data-f="price"]`, '');
   await save(p3.page);
@@ -413,7 +415,7 @@ const UPD_OK = (id, extra) => () => [200, { ok: true, op: 'plan_order_update', d
 const fval = (page, sel) => page.evaluate(([d, s]) => { const x = document.querySelector(`${d} ${s}`); return x ? x.value : null; }, [DLG, sel]);
 const UUIDRE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 async function scnEdit({ browser, origin, ok, scn }) {
-  const { page, S } = await K.openApp(browser, origin, { plan: { 'PATCH /plan/orders/3101': UPD_OK(3101) } });
+  const { page, S } = await K.openApp(browser, origin, { plan: { 'PATCH /plan/orders/3101': UPD_OK(3101) }, role: 'accountant' });
   if (!(await guard(page, ok, scn))) return;
   await openForm(page, { natOrderId: 3101 });
   ok(scn, 'the form read the order once: GET /plan/orders/3101', K.planOf(S, 'GET', '/plan/orders/3101').length === 1, S.plan.map((x) => x.m + ' ' + x.path));
@@ -760,7 +762,7 @@ async function scnLeg({ browser, origin, ok, scn }) {
   const plan = { 'PATCH /plan/orders/3001': () => (++patchN === 1
     ? [200, { ok: true, op: 'plan_order_update', dry_run: false, ids: { nat_order_id: 3001, shipment_ids: [] }, warnings: [{ code: 'mixed_temp', rt_id: 101, side: 'KATHODOS', delta_c: 2 }], notice_ids: [] }]
     : K.planErr(422, 'PLAN_RULE', 'vs_locked')) };
-  const { page, S } = await K.openApp(browser, origin, { board: legWeek(), plan });
+  const { page, S } = await K.openApp(browser, origin, { board: legWeek(), plan, role: 'accountant' });
   if (!(await guard(page, ok, scn))) return;
   ok(scn, 'a click on the KATHODOS leg of RT-T101 opens the leg form', await openLegBy(page, 101, 'KATHODOS') && await K.count(page, LEG) === 1);
   const t = await K.text(page, `${LEG} .wi4-dlg-hd`);
@@ -909,7 +911,7 @@ async function scnMiss({ browser, origin, ok, scn }) {
 // leg's «+», where «Πρόσθεσε» is one press; «+ παραγγελία» is the create form on this cycle and side.
 async function scnLegAdd({ browser, origin, ok, scn }) {
   const plan = { 'PATCH /plan/orders/3001': UPD_OK(3001, { new_shipment_ids: [5301], new_piece_ids: [4301] }) };
-  const { page, S } = await K.openApp(browser, origin, { board: legWeek(), plan });
+  const { page, S } = await K.openApp(browser, origin, { board: legWeek(), plan, role: 'accountant' });
   if (!(await guard(page, ok, scn))) return;
   await openLegBy(page, 101, 'KATHODOS');
   ok(scn, 'each national block has «+ σημείο φόρτωσης» and «+ σημείο παράδοσης», the VS none', await K.count(page, `${LEG} [data-nat="3001"] [data-act="add-point"]`) === 2
