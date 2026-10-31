@@ -84,10 +84,11 @@ async function _odFetch(url, opts) {
   // branch, which is how the copies drift (5/10 storm, 2010 rows). typeof
   // guards like ctFetch (modules/costs.js): a page that loads this file
   // without api.js must get its answer, not a ReferenceError (review 6/10 P3-4).
-  if (typeof tmsSessionGone === 'function' && tmsSessionGone()) throw tmsSessionRefuse();
+  const write = !!(opts && opts.method && opts.method !== 'GET');   // F36: «πάτα ξανά Αποθήκευση»
+  if (typeof tmsSessionGone === 'function' && tmsSessionGone()) throw tmsSessionRefuse(undefined, write);
   const res = await fetch(url, opts);
   if (typeof tmsNoteResponse === 'function') tmsNoteResponse(res);
-  if (res.status === 401 && typeof tmsSessionExpired === 'function') throw tmsSessionExpired('docs');
+  if (res.status === 401 && typeof tmsSessionExpired === 'function') throw tmsSessionExpired('docs', undefined, write);
   return res;
 }
 async function _odErrMsg(res, fallback) {

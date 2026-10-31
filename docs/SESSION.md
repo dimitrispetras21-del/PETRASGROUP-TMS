@@ -12,6 +12,8 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
+- dimitris · `fix/f36-sw-reload-session-expiry` · F36/F20/F58: νέα έκδοση χωρίς reload πάνω σε ανοιχτή φόρμα· λήξη σύνδεσης = παράθυρο σύνδεσης στη σελίδα, επανάληψη μόνο με `request_id`· PR, ?v= / SW_VERSION 1793482508 (`docs/sessions/2026-10-31-dimitris-f36-reload-relogin.md`)
+- dimitris · `docs/081-executed` · Εθνικά v5: η 081 ΕΚΤΕΛΕΣΤΗΚΕ 31/10 (#182 merged, verify πράσινο, αρχεία εκτός drafts/)· καμία μαζική αναδιάταξη, 1 κύκλος αλλάζει στην επόμενη εγγραφή (`docs/sessions/2026-10-31-dimitris-081-executed.md`)
 - dimitris · `feat/wn5-assign-intl-form` · Εθνικά v5: η «Ανάθεση» = η φόρμα του Weekly Διεθνών (Figma `2394:7793`, owner 31/10), ✈ «Αλλαγή οχήματος…», Πίνακας Βέροιας v2 «Νέο φορτίο»· ένα κόμιστρο (το ΑΝΟΔΟΥ = 083 + Worker, follow-up)· PR, ?v= / SW_VERSION 1793480010 (`docs/sessions/2026-10-31-dimitris-wn5-assign-intl-form.md`)
 - dimitris · `feat/083-load-without-truck` · Εθνικά v5: 083 προσχέδιο, φορτίο χωρίς φορτηγό (`plan_rt_create` + `new_rt.later`), PGlite 9/9· ΔΕΝ εκτελέστηκε (`docs/sessions/2026-10-31-dimitris-083-load-without-truck.md`)
 - dimitris · `fix/v5-081-stop-order-follows` · Εθνικά v5: 081 προσχέδιο: σειρά στάσεων με τον δρόμο (F28), η στάση του φορτηγού ακολουθεί το σημείο της φόρμας· PR, merge του FE πριν την 081 (`docs/sessions/2026-10-31-dimitris-081-stop-order-follows.md`)
