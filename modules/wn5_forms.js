@@ -928,7 +928,9 @@
       // owner 28/10: a new point is not put on the order's cycle by itself — one board move puts it on a truck
       + '<div class="wn5f-note">Παράθυρο κενό: όλη η ημέρα. Νέο σημείο: μένει ΠΡΟΣ ΑΝΑΘΕΣΗ — βάλ\' το σε φορτηγό από το Εβδομαδιαίο.</div>'
       // F30: what a save does to a riding point, said before it is pressed (principle 1)
-      + (e.riding ? '<div class="wn5f-note" data-ridenote>Σημείο σε κύκλο: παλέτες, ημέρα και παράθυρο αλλάζουν εδώ και μένει στο ίδιο φορτηγό. Η ώρα της στάσης του φορτηγού δεν αλλάζει μαζί: «Αλλαγή ώρας στάσης ›».</div>' : '');
+      // 081: the stop follows only when it is this point's alone (the base decides, and before 081 runs it never does):
+      // the note claims neither; the line after the save says which stop moved and which stayed
+      + (e.riding ? '<div class="wn5f-note" data-ridenote>Σημείο σε κύκλο: παλέτες, ημέρα και παράθυρο αλλάζουν εδώ και μένει στο ίδιο φορτηγό. Μετά την αποθήκευση γράφεται αν άλλαξε και η στάση του φορτηγού.</div>' : '');
   }
   function _readEdit(f) {
     const v = (sel) => { const x = f.el.querySelector(sel); return x ? x.value : ''; };
@@ -1052,7 +1054,14 @@
       // Veroia has no onward stop to name.
       const moved = (body.shipments || []).filter((x) => { const o = f.edit.ships.find((y) => y.shipment_id === x.shipment_id) || {};
         return x.shipment_id != null && !x.remove && o.rides && !(o.at_hub && o.waits) && ['load_from', 'load_to', 'deliver_from', 'deliver_to'].some((k) => k in x); });
-      if (moved.length) {
+      // 081: the base moved the point's own stops in this save and named the ones it kept (warnings stop_kept, in the
+      // strip by _done). Before 081 runs the answer has no stops_moved: the line below says the stop did not change.
+      const follow = ans && ans.ids && Array.isArray(ans.ids.stops_moved) ? ans.ids.stops_moved : null;
+      if (follow && follow.length) {
+        const codes = [...new Set(follow.map((x) => x.rt_code).filter(Boolean))];
+        f.el.querySelector('[data-done]').textContent += ` · η στάση του φορτηγού ακολούθησε${codes.length ? ' (' + codes.join(', ') + ')' : ''}`;
+      }
+      if (moved.length && !follow) {
         const here = moved.every((x) => f.el.querySelector(`[data-shipstop="${x.shipment_id}"] [data-act="stop-time"]`));
         f.el.querySelector('[data-done]').textContent += here ? ' · η ώρα της στάσης του φορτηγού δεν άλλαξε: «Αλλαγή ώρας στάσης ›» στο σημείο'
           : ' · η ώρα της στάσης του φορτηγού δεν άλλαξε: αλλάζει από το σκέλος του κύκλου (άλλη εβδομάδα)';

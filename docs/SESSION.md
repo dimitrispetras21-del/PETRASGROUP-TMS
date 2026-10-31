@@ -12,6 +12,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
+- dimitris · `fix/v5-081-stop-order-follows` · Εθνικά v5: 081 προσχέδιο: σειρά στάσεων με τον δρόμο (F28), η στάση του φορτηγού ακολουθεί το σημείο της φόρμας· PR, merge του FE πριν την 081 (`docs/sessions/2026-10-31-dimitris-081-stop-order-follows.md`)
 - dimitris · `fix/wn5-figma-group1-d1` · Εθνικά v5: Figma audit group 1 part B (B-18, B-21, B-25 in wn5_actions.js), PR #161, on main after #160 (merged); ?v= / SW_VERSION 1793198090 (`docs/sessions/2026-10-28-dimitris-wn5-figma-group1-d1.md`)
 - dimitris · `feat/national-v5-079-move-l` (PR #155) · Εθνικά v5: η ημέρα L 31/10 → 24/10. Η 079 ΕΚΤΕΛΕΣΤΗΚΕ 28/10 ~17:20 (19 γέφυρες σε 9 VS, 8 NL, via_hub 27, verify πράσινο, το CHECK `plan_config_future` έγινε δάπεδο) και τα αρχεία βγήκαν από το `drafts/`· μένει το merge (`docs/sessions/2026-10-28-dimitris-079-move-l.md`)
 - dimitris · `fix/wn5-points-place-city` · Εθνικά v5: board points as the Weekly International (place bold, city under, client off the row; owner 28/10); PR pending (`docs/sessions/2026-10-28-dimitris-wn5-points-place-city.md`)
