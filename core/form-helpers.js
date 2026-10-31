@@ -19,6 +19,13 @@ async function fhLocationRecords() {
   return refLocationsFetch();
 }
 
+// A place's line in every picker. One list everywhere (owner 5/9): the picker
+// shows the Greek name even when the record still stores an old English/Greek
+// spelling or code.
+function _fhLocLabel(f) {
+  return [f['Name'], f['City'], typeof countryName === 'function' ? countryName(f['Country']) : f['Country']].filter(Boolean).join(', ');
+}
+
 /**
  * Load all locations into shared cache (idempotent)
  */
@@ -31,9 +38,7 @@ async function fhLoadLocations() {
   const sorted = locs
     .map(r => ({
       id: r.id,
-      // One list everywhere (owner 5/9): the picker shows the Greek name even
-      // when the record still stores an old English/Greek spelling or code.
-      label: [r.fields['Name'], r.fields['City'], typeof countryName === 'function' ? countryName(r.fields['Country']) : r.fields['Country']].filter(Boolean).join(', ')
+      label: _fhLocLabel(r.fields)
     }))
     .sort((a, b) => a.label.localeCompare(b.label));
   // Push into shared array (don't reassign — other refs may hold it)
@@ -51,9 +56,7 @@ function _fhRefreshLocations(locRecords) {
   const sorted = locRecords
     .map(r => ({
       id: r.id,
-      // One list everywhere (owner 5/9): the picker shows the Greek name even
-      // when the record still stores an old English/Greek spelling or code.
-      label: [r.fields['Name'], r.fields['City'], typeof countryName === 'function' ? countryName(r.fields['Country']) : r.fields['Country']].filter(Boolean).join(', ')
+      label: _fhLocLabel(r.fields)
     }))
     .sort((a, b) => a.label.localeCompare(b.label));
   _fhLocationsArr.length = 0;
@@ -61,6 +64,25 @@ function _fhRefreshLocations(locRecords) {
     _fhLocationsArr.push(l);
     _fhLocationsMap[l.id] = l.label;
   });
+}
+
+// F52 (live 31/10): a place saved in «Τοποθεσίες» was not in the order forms' pickers until a reload — the list
+// above is read once per page (fhLoadLocations returns while it holds anything) and the revalidate runs once per
+// load. The saved record goes into THE list (no second cache), with the label fhLoadLocations gives it, in its
+// sorted place; a renamed place replaces its old line. A list not read yet is left alone: its first read is fresh
+// (atCreate/atPatch cleared the reference cache). The v5 catalogue (/plan/lookups, the place's number) is told to
+// read again on its next use, or the national v5 form would find the place and refuse it at «Αποθήκευση».
+function fhLocationSaved(rec) {
+  if (!rec || !rec.id || !rec.fields) return;
+  if (typeof PlanIds !== 'undefined' && typeof PlanIds.stale === 'function') PlanIds.stale();
+  if (!_fhLocationsArr.length) return;
+  const label = _fhLocLabel(rec.fields);
+  const at = _fhLocationsArr.findIndex(l => l.id === rec.id);
+  if (at !== -1) _fhLocationsArr.splice(at, 1);
+  const item = { id: rec.id, label };
+  const pos = _fhLocationsArr.findIndex(l => l.label.localeCompare(label) > 0);
+  _fhLocationsArr.splice(pos === -1 ? _fhLocationsArr.length : pos, 0, item);
+  _fhLocationsMap[rec.id] = label;
 }
 
 /**

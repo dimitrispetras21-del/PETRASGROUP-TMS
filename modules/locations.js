@@ -504,6 +504,8 @@ async function _locSave() {
       ? await atPatch(TABLES.LOCATIONS, LOC.editingId, fields)
       : await atCreate(TABLES.LOCATIONS, fields);
     if (data.error) throw new Error(data.error.message || 'Η αποθήκευση απέτυχε');
+    // F52: the order forms' pickers see the new / renamed place without a reload
+    if (typeof fhLocationSaved === 'function') fhLocationSaved(data);
     if (LOC.editingId) {
       const idx = LOC.records.findIndex(r => r.id === LOC.editingId);
       if (idx !== -1) LOC.records[idx] = data;
@@ -778,9 +780,9 @@ async function locScanSave(uid) {
         }
         const item = { id: rec.id, label };
         // The pickers read this shared list; without the push the stop could
-        // not be picked in the order form until the next reload.
-        _fhLocationsArr.push(item);
-        _fhLocationsMap[rec.id] = label;
+        // not be picked in the order form until the next reload. The fields
+        // sent give the same label (core/form-helpers.js fhLocationSaved, F52).
+        fhLocationSaved({ id: rec.id, fields });
         // atCreate cleared every reference list (trucks … locations, clients);
         // the next scan matches against them, so they are read again now.
         if (typeof preloadReferenceData === 'function') {
