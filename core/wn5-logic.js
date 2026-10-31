@@ -187,7 +187,7 @@ function _gapSide(c, kath) {
   }
   return { side: 'ANODOS', day: null, toDay: null, veroia: null, vBefore: 0, headDim: false, from: [], to: [], pallets: 0, over: 0, sideDim: false, gap: { text } };
 }
-function _tile(s, no, multi) {
+function _tile(s, multi) {
   const type = s.has_vehicle !== true ? 'un' : s.trip_type === 'PARTNER' ? 'par' : 'own';
   const t = { type, label: s.label || null, line1: '', line2: '', segmentId: s.segment_id == null ? null : s.segment_id,
     partnerRate: type === 'par' && s.partner_rate != null ? Number(s.partner_rate) : null, missing: false };
@@ -209,7 +209,9 @@ function _tile(s, no, multi) {
   }
   if (multi) { t.line1 = s.truck || '—'; t.line2 = s.driver || 'χωρίς οδηγό'; return t; }   // Σ5: no trailer, no «κύκλος n/m»
   t.line1 = [s.truck, s.trailer].filter(Boolean).join(' · ') || '—';
-  t.line2 = [s.driver || 'χωρίς οδηγό', no ? (no.m > 1 ? `κύκλος ${no.n}/${no.m}` : 'κύκλος 1') : null].filter(Boolean).join(' · ');
+  // Owner 31/10: the driver alone — no «κύκλος n/m» on the board (the term is not the trade's); cycleNo stays data for
+  // the driver sheet and the menu.
+  t.line2 = s.driver || 'χωρίς οδηγό';
   return t;
 }
 function _cycleRow(c, hubId, nums, errors) {
@@ -228,7 +230,7 @@ function _cycleRow(c, hubId, nums, errors) {
   const anod = A ? A.side : _gapSide(c, kath);
   const no = nums.get(c.rt_id) || null;
   const seg = segmentsOf(c);
-  const tiles = seg.segments.map((s) => _tile(s, no, seg.source === 'segments' && seg.segments.length > 1));
+  const tiles = seg.segments.map((s) => _tile(s, seg.source === 'segments' && seg.segments.length > 1));
   const pts = [...(kath ? kath.from.concat(kath.to) : []), ...anod.from, ...anod.to];
   // H-9 (072b): each point's segment from stop_ids alone; the Veroia loading head and the cycle end are stops too
   // (Figma H1 2120:8921 draws the segment line under «Βέροια · τέλος κύκλου» as well).

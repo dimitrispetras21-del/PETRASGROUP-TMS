@@ -108,7 +108,8 @@ const DIAG = 'nav navigate; from index.html; Win Chrome 149; #dashboard';
 test('401 short-circuit: after the first 401 the next facade request never calls fetch', async () => {
   const s = sandbox(all401);
   const e1 = await preload(s, 'TRUCKS');
-  assert.strictEqual(e1.message, 'Unauthorized');
+  // F36: the user's text (the page no longer leaves, so callers' lines show it); code reads _sessionGone
+  assert.strictEqual(e1.message, 'Η σύνδεση έληξε');
   assert.strictEqual(e1._noRetry, true);
   assert.strictEqual(s.facade().length, 1, 'the first request goes to the network once (no retries)');
   assert.strictEqual(s.store.has('tms_user') || s.store.has('tms_jwt'), false, 'the login is cleared on the first 401');
@@ -119,7 +120,7 @@ test('401 short-circuit: after the first 401 the next facade request never calls
   const e4 = await s.run("atPatch('tblEAPExIAjiA3asD', 'recT1', { Active: true }).catch((e) => e)");
   assert.strictEqual(s.facade().length, 1, 'no fetch after the session is gone');
   for (const e of [e2, e3, e4]) {
-    assert.strictEqual(e.message, 'Unauthorized', 'callers get the same error as before');
+    assert.strictEqual(e.message, 'Η σύνδεση έληξε', 'callers get the same error as the first');
     assert.strictEqual(e._noRetry, true);
     assert.strictEqual(e._sessionGone, true);
   }
