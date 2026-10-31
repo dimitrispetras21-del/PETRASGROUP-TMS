@@ -270,6 +270,11 @@
     opts = opts || {};
     let fresh = true;
     if (!opts.reloaded && typeof WN5 !== 'undefined') fresh = !!(await WN5.reload('save'));
+    // F50 (owner 31/10): the rows renumber per truck after a save, so the cycle just saved can land elsewhere on the
+    // board — it is found again by its id and shown (scrolled into view, marked, flashed once), as the Weekly
+    // International's focusRow. Only on a fresh board: on a stale one its place is the old one.
+    const rt = _id(opts.rt) || _id(out && out.ids && out.ids.rt_id);
+    if (fresh && rt && typeof WN5 !== 'undefined' && typeof WN5.focusRow === 'function') WN5.focusRow('rt:' + rt);
     const host = _boardHost();
     // after a save the over_33 line names the vehicle (Δ12 tile 7): the cycle's truck or partner, from the board just read
     if (host && out && Array.isArray(out.warnings) && out.warnings.length) WN5Act.strip(host, out.warnings.map(_savedOn));
@@ -280,6 +285,9 @@
     if (typeof toast === 'function') toast(said + intl + (fresh ? '' : ' · ο πίνακας δεν ανανεώθηκε — πάτα Ανανέωση'), fresh ? 'success' : 'warn');
   }
 
+  // F50: the cycle a request names (a «+», an assign or a move to a cycle, a PATCH of one); a new cycle's id comes in
+  // the answer (_afterSave reads ids.rt_id)
+  function _reqRt(req) { return _id(req && req.body && req.body.target && req.body.target.rt_id) || _id((/^\/plan\/rt\/(\d+)/.exec((req && req.path) || '') || [])[1]); }
   // One send of a dialog. req = { method, path, body, requestId? }.
   // opts = { slot (PlanApi.slot of a creation), onReused (pred for WN5.findAfterReuse), intl }
   async function _send(d, req, okText, opts) {
@@ -299,7 +307,9 @@
         if (hit) {
           if (opts.slot) opts.slot.confirm();
           _close(d);
-          await _afterSave({ warnings: [], notice_ids: [] }, (typeof okText === 'function' ? okText({}) : okText) + ' (είχε ήδη σταλεί)', { reloaded: true });
+          // F50 here too: the board was re-read by findAfterReuse; the cycle the request names is shown
+          const rt0 = _reqRt(req);
+          await _afterSave({ warnings: [], notice_ids: [] }, (typeof okText === 'function' ? okText({}) : okText) + ' (είχε ήδη σταλεί)', { reloaded: true, rt: rt0 });
           return hit;
         }
       }
@@ -313,7 +323,8 @@
     }
     if (opts.slot) opts.slot.confirm();      // a new request_id only after a confirmed 200 (replayed included)
     _close(d);
-    await _afterSave(out, okText, { intl: opts.intl });
+    const rt = _reqRt(req);
+    await _afterSave(out, okText, { intl: opts.intl, rt });
     return out;
   }
 
@@ -893,13 +904,13 @@
     // B-21: hidden only when the catalogue says 0 — without it the count is unknown and the header stays (line above)
     // code review: trucks whose days outside the week are unknown are not called free in the header either
     const unk = st.free.length && st.free.every((t) => t.unknown);
-    if (st.free.length || !st.ids.ok) h += _grpHTML('free', unk ? 'ΦΟΡΤΗΓΑ' : 'ΕΛΕΥΘΕΡΑ ΦΟΡΤΗΓΑ', ' · νέος κύκλος' + (st.ids.ok ? ' · ' + st.free.length : '') + (unk ? ' · διαθεσιμότητα άγνωστη εκτός εβδομάδας' : ''));
+    if (st.free.length || !st.ids.ok) h += _grpHTML('free', unk ? 'ΦΟΡΤΗΓΑ' : 'ΕΛΕΥΘΕΡΑ ΦΟΡΤΗΓΑ', ' · νέο φορτηγό' + (st.ids.ok ? ' · ' + st.free.length : '') + (unk ? ' · διαθεσιμότητα άγνωστη εκτός εβδομάδας' : ''));
     for (const t of st.free) {
       const key = 'truck:' + t.id;
       const next = t.next ? 'επόμενο: ' + (t.next.side ? t.next.side + ' ' : '') + _dayShort(t.next.day) : '';
       h += '<div class="wn5-cand" data-line="free" data-s="' + _esc(_norm(t.label)) + '"><div class="wi4-box own"><span class="wi4-l1 wi4-plate">' + _esc(t.label) + '</span></div>'
         + '<span class="wn5-cand-m"><b>' + _esc(t.unknown ? 'διαθεσιμότητα ' + t.unknown.map(_dayShort).join(', ') + ' άγνωστη εκτός εβδομάδας' : t.from ? 'ελεύθερο από ' + t.from : 'ελεύθερο') + '</b>' + (next ? '<span>' + _esc(next) + '</span>' : '') + '</span>'
-        + '<span>' + _capHTML(st.pallets, ' · νέος κύκλος', st.palUnk) + '</span>'
+        + '<span>' + _capHTML(st.pallets, ' · νέο φορτηγό', st.palUnk) + '</span>'
         + '<button type="button" class="wi4-btn sm" data-act="pick" data-cand="' + key + '"' + (st.ids.ok ? '' : ' disabled') + '>Ανάθεση</button></div>';
       if (st.pick === key) {
         h += '<div class="wn5-more" data-more="' + key + '">'
@@ -990,7 +1001,7 @@
     WN5Act.twoStep({ method: req.method, path: req.path, body: req.body, kind: 'move', title: 'Μεταφορά · ' + st.what, verb: 'Μεταφορά', host: d.msg })
       .then(async (out) => {
         if (!d.closed) { d.busy = false; _btns(d, false); }
-        if (out) { _close(d); await _afterSave(out, 'Μεταφέρθηκε', { intl: true }); }
+        if (out) { _close(d); await _afterSave(out, 'Μεταφέρθηκε', { intl: true, rt: _reqRt(req) }); }
       });
   }
   function _picker(st, kind, title) {
@@ -1104,7 +1115,7 @@
       const group = it.order_id != null ? { order_id: it.order_id } : (it.nat_order_id != null ? { nat_order_id: it.nat_order_id } : null);
       const dayEl = row && row.closest('.wn5-day[data-date]');
       WN5Act.assign(group ? { group } : { pieces: [{ piece_id: pid }] },
-        // focus: the piece pressed, for «μόνο αυτό το κομμάτι» (F42); anchor: the form opens under what was pressed
+        // focus: the piece pressed, for «μόνο αυτές οι παλέτες» (F42); anchor: the form opens under what was pressed
         { day: it.nat_ready_day || (dayEl && dayEl.dataset.date) || null, side: _sideFor(it), entry: card ? 'queue' : 'row', focus: pid, anchor: el });
       return;
     }
@@ -1593,7 +1604,7 @@
       what: (list) => _clearWhat(c, r, list),
     });
     // a costs_without_rt notice goes to the national desk: it shows in the notices strip after the re-read
-    if (out) await _afterSave(out, 'Καθαρίστηκε η ανάθεση', {});
+    if (out) await _afterSave(out, 'Καθαρίστηκε η ανάθεση', { rt: c.rt_id });
     return out;
   };
 

@@ -12,7 +12,7 @@
 //     picked from the list stays in its field, red, «διάλεξε από τη λίστα» — never silently dropped (F39).
 //  4. «Ημέρα και παράθυρο»: every stop the request creates, prefilled «όλη η ημέρα» (B1); hours only when known. A VS
 //     uses its own Veroia day (VsDates, #171), a national to Veroia its own day (#175): KIT.needs / hubDayOf.
-//  5. A VS goes whole by default (plan_put_group); «μόνο αυτό το κομμάτι» sends that piece alone (F42).
+//  5. A VS goes whole by default (plan_put_group); «μόνο αυτές οι παλέτες» sends that piece alone (F42).
 //  6. ONE partner rate (the cycle's partner_rate, 071): the ΑΝΟΔΟΥ rate needs SQL + Worker (follow-up draft), so its
 //     field is not drawn — a field that does not write is the silent rejection of principle 1. The partner's
 //     «Πινακίδες» are not drawn either: v5 has no column for them.
@@ -85,7 +85,7 @@
     for (const c of st.cycles) { const r = k.row(c.rt_id); st.sidePal[c.rt_id] = { pal: k.sidePal(r, st.side), unk: k.sideUnk(r, st.side) }; }
     return st;
   }
-  // the pieces the request carries: the whole group, or the pressed piece alone («μόνο αυτό το κομμάτι», F42)
+  // the pieces the request carries: the whole group, or the pressed piece alone («μόνο αυτές οι παλέτες», F42)
   function _sel(st) { return st.only && st.focus ? st.items.filter((it) => it.piece_id === st.focus) : st.items; }
   function _needsOf(st) {
     const k = K();
@@ -428,10 +428,10 @@
     const joinOwn = !!(tg && tg.cyc && st.who === 'own');
     const joinPar = !!(tg && tg.cyc && st.who === 'partner');
     let h = '';
-    // F42: a VS with several deliveries goes whole; «μόνο αυτό το κομμάτι» sends the pressed piece alone
+    // F42: a VS with several deliveries goes whole; «μόνο αυτές οι παλέτες» sends the pressed piece alone
     if (st.mode === 'legs' && st.group && st.group.order_id != null && st.items.length > 1 && st.focus) {
       h += '<div class="wn5a-band"><span>' + _e(st.ref + ' · ' + st.items.length + ' παραδόσεις · ' + WN5L.palText(k.sum(st.items.map((x) => x.pallets)), st.items.filter((x) => x.pallets == null).length) + 'π') + '</span>'
-        + '<label class="wn5a-only"><input type="checkbox" data-only' + (st.only ? ' checked' : '') + '><span>μόνο αυτό το κομμάτι</span></label></div>';
+        + '<label class="wn5a-only"><input type="checkbox" data-only' + (st.only ? ' checked' : '') + '><span>μόνο αυτές οι παλέτες</span></label></div>';
     }
     h += '<div class="wi-pop-body wn5a-body">';
     if (st.mode !== 'vehicle') h += _rowsHTML(st, pb, tg && tg.cyc, tg && tg.after);
@@ -478,7 +478,7 @@
       + (o.sub ? '<div class="wi-sdo-sub wn5a-osub ' + o.cls + '">' + _e(o.sub) + '</div>' : '')
       + (o.warn.length ? '<div class="wi-sdo-sub wi-sdo-warn">' + _e(o.warn.join(' · ')) + '</div>' : '') + '</div>').join('')
       + (opts.length ? '' : '<div class="wn5a-none">—</div>')
-      + (px === 'dr' ? '<div class="wi2-sd-note">' + _e(DRV_NOTE) + '</div>' : '');
+      + (px === 'dr' ? '<div class="wn5a-lnote">' + _e(DRV_NOTE) + '</div>' : '');
   }
 
   // ═══ one open form ═══
