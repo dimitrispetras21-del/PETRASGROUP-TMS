@@ -24,8 +24,9 @@ $h$;
   r_2b CONSTANT text := $h$  -- 081 (F28, owner 31/10): stops of the same side and the same planned_from (every point without an hour is
   -- 00:00-23:59 since 28/10) went by entry order (RT-1300: 386 -> 778 -> 904 -> 541, the road 386 -> 904 -> 778 ->
   -- 541). Inside such a group the order is the road as a straight line: from the stop before (a cycle's first group:
-  -- the hub going down, the farthest from the hub coming up) the nearest next. Within 15 km of the nearest is one
-  -- place (a town): the dispatcher's order stays (an international's unloadings in Athens, RT-1306). A drop waits for
+  -- the hub going down, the farthest from the hub coming up) the nearest next. Stops within 15 km OF THAT NEAREST one
+  -- are one place (a town): the dispatcher's order stays among them (an international's unloadings in Athens,
+  -- RT-1306); two places farther apart never tie, so the result never depends on the order of entry. A drop waits for
   -- its own pickup (071 leg_order); no coordinates = after the others, in entry order. A group with an executed stop
   -- keeps the order it ran in. The groups themselves stay KATHODOS, ANODOS, then planned_from: an hour decides first.
   select latitude::float8, longitude::float8 into v_hla, v_hlo from locations where is_hub;
@@ -49,8 +50,9 @@ $h$;
         v_la := v_hla; v_lo := v_hlo; v_far := g.up;
       end if;
       v_pick := null;
+      -- k: km from the point the walk stands on (negative = the farthest first); n: the nearest one, the town's centre
       with c as (
-        select s.id, s.seq,
+        select s.id, s.seq, l.latitude::float8 as la, l.longitude::float8 as lo,
                (case when v_far then -1 else 1 end)
                * 2 * 6371 * asin(least(1, sqrt(power(sin(radians(l.latitude::float8 - v_la) / 2), 2)
                    + cos(radians(v_la)) * cos(radians(l.latitude::float8))
@@ -58,9 +60,13 @@ $h$;
           from rt_stops s join locations l on l.id = s.location_id
          where s.id = any (v_left)
            and not exists (select 1 from piece_legs lg where lg.drop_stop_id = s.id and lg.deleted_at is null
-                             and lg.pickup_stop_id <> s.id and lg.pickup_stop_id = any (v_left)))
-      select c.id into v_pick from c
-       order by (c.k is null), (c.k > (select min(k) from c) + 15), c.seq, c.id limit 1;
+                             and lg.pickup_stop_id <> s.id and lg.pickup_stop_id = any (v_left))),
+      n as (select c.la, c.lo from c where c.k is not null order by c.k, c.seq, c.id limit 1)
+      select c.id into v_pick from c left join n on true
+       order by (c.k is null),
+                (n.la is null or 2 * 6371 * asin(least(1, sqrt(power(sin(radians(c.la - n.la) / 2), 2)
+                   + cos(radians(n.la)) * cos(radians(c.la)) * power(sin(radians(c.lo - n.lo) / 2), 2)))) > 15),
+                c.seq, c.id limit 1;
       -- a drop whose pickup is also waiting in the group, both ways: 071 refuses it at the end, as before 081
       v_pick := coalesce(v_pick, v_left[1]);
       v_ord := v_ord || v_pick;
@@ -94,9 +100,17 @@ $h$;
   -- Only a stop that serves THIS point alone (or points of this save moved to the same window), not executed, on a
   -- cycle with one vehicle segment. Otherwise it stays and the answer says why (stop_kept): 'executed' (history),
   -- 'shared' (the other points are named: one point does not move another's truck stop; the stop-time change of
-  -- F29 moves it for all, with its own preview), 'handover' (the move could cut a handover: list + token, F29).
+  -- F29 moves it for all, with its own preview), 'windows_differ' (points of this save ask it different windows),
+  -- 'handover' (the move could cut a handover: list + token, F29).
   -- The move is plan_rt_update, the one path of a stop's time (truck_busy, payroll lock, local loading day, pallet
   -- rows, VS day, reseq, 071 stop_order / side_order / leg_order): a rule it breaks refuses this save, named.
+  -- The cycles are locked BEFORE "who else stops there" is read: an assignment onto the same stop (plan_h_target
+  -- locks the cycle) waits for this save instead of slipping in between the read and the move.
+  perform 1 from ct_round_trips c
+   where c.id in (select l.rt_id from jsonb_to_recordset(v_win) w(sh bigint)
+                    join shipment_pieces sp on sp.shipment_id = w.sh join piece_legs l on l.piece_id = sp.id
+                   where l.deleted_at is null)
+   order by c.id for no key update;
   for y in
     select s.id as stop_id, s.rt_id, c.code, c.status, s.planned_from, s.planned_to,
            array_agg(distinct w.sh order by w.sh) as mine,
@@ -123,7 +137,9 @@ $h$;
     v_why := case
       when y.status <> 'cancelled' and (y.planned_to at time zone 'Europe/Athens')::date
                                        < (now() at time zone 'Europe/Athens')::date then 'executed'
-      when jsonb_array_length(v_oth) > 0 or y.wins > 1 then 'shared'
+      when jsonb_array_length(v_oth) > 0 then 'shared'
+      -- points of this same save ask the one stop for different windows: which one would it take?
+      when y.wins > 1 then 'windows_differ'
       when (select count(*) from rt_vehicle_segments g where g.rt_id = y.rt_id and g.deleted_at is null) > 1 then 'handover'
     end;
     if v_why is not null then
@@ -152,7 +168,7 @@ $h$;
 BEGIN
   PERFORM set_config('lock_timeout', '5s', true);
   SELECT * INTO p FROM pg_proc WHERE oid = to_regprocedure('public.plan_h_reseq(bigint,text,text)');
-  IF md5(p.prosrc) <> 'ec964ec2bc048ee129a9feef4f5aa0ec' THEN
+  IF md5(p.prosrc) <> 'f246c362c3f3bb1746a1d536ad1338bb' THEN
     RAISE EXCEPTION '081 rollback: public.plan_h_reseq(bigint,text,text) is not the text 081 wrote (md5 %) - stop', md5(p.prosrc);
   END IF;
   v_new := p.prosrc;
@@ -174,7 +190,7 @@ BEGIN
     RAISE EXCEPTION '081 rollback proof: public.plan_h_reseq(bigint,text,text) is not back to its live text with its rights';
   END IF;
   SELECT * INTO p FROM pg_proc WHERE oid = to_regprocedure('public.plan_order_update(jsonb,text,text)');
-  IF md5(p.prosrc) <> 'c4cc7a0673ff568fc9cef33d9d996f70' THEN
+  IF md5(p.prosrc) <> '1500396fb85a204dc6a1bcbbbd75ad25' THEN
     RAISE EXCEPTION '081 rollback: public.plan_order_update(jsonb,text,text) is not the text 081 wrote (md5 %) - stop', md5(p.prosrc);
   END IF;
   v_new := p.prosrc;

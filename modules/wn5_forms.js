@@ -832,11 +832,13 @@
   }
   // «Φορτηγό RT-1293 · φόρτωση Δευ 26/10 όλη η ημέρα [Αλλαγή ώρας στάσης ›] · παράδοση …»: what the truck does there, and
   // the way to move it (F29, the day panel of that one stop). The order's own window changes in the row above.
+  // one text for a ride stop, drawn here and redrawn after a save that moved it (081)
+  const _rideText = (code, k, from, to) => `${code} · ${k === 'load' ? 'φόρτωση' : 'παράδοση'} ${_dlab((_parts(from) || {}).day)} ${_hmw(from, to)}`;
   function _rideHTML(e, s) {
     const st = _rideStops(e.nat_order_id, s);
     if (!st.length) return '';
-    return `<div class="wn5f-shipstop" data-shipstop="${s.shipment_id}">` + st.map((x) => `<span>${_esc(x.code)} · ${x.k === 'load' ? 'φόρτωση' : 'παράδοση'} `
-      + `${_esc(_dlab((_parts(x.from) || {}).day))} ${_esc(_hmw(x.from, x.to))}</span><button type="button" class="wn5f-lnk" data-act="stop-time" data-rt="${x.rt_id}" data-side="${x.side}" data-stop="${x.stop_id}">Αλλαγή ώρας στάσης ›</button>`).join('')
+    return `<div class="wn5f-shipstop" data-shipstop="${s.shipment_id}">` + st.map((x) => `<span data-ridestop="${x.stop_id}" data-k="${x.k}" data-code="${_esc(x.code)}">${_esc(_rideText(x.code, x.k, x.from, x.to))}</span>`
+      + `<button type="button" class="wn5f-lnk" data-act="stop-time" data-rt="${x.rt_id}" data-side="${x.side}" data-stop="${x.stop_id}">Αλλαγή ώρας στάσης ›</button>`).join('')
       + '</div>';
   }
   function _shipHTML(e, s) {
@@ -1060,6 +1062,12 @@
       if (follow && follow.length) {
         const codes = [...new Set(follow.map((x) => x.rt_code).filter(Boolean))];
         f.el.querySelector('[data-done]').textContent += ` · η στάση του φορτηγού ακολούθησε${codes.length ? ' (' + codes.join(', ') + ')' : ''}`;
+        // the stop rows under the point show the stop where it is now, not the board as it was before the save
+        for (const m of follow) {
+          const a = m && m.after;
+          if (!a) continue;
+          f.el.querySelectorAll(`[data-ridestop="${Number(m.stop_id)}"]`).forEach((sp) => { sp.textContent = _rideText(sp.dataset.code, sp.dataset.k, a.planned_from, a.planned_to); });
+        }
       }
       if (moved.length && !follow) {
         const here = moved.every((x) => f.el.querySelector(`[data-shipstop="${x.shipment_id}"] [data-act="stop-time"]`));

@@ -89,6 +89,17 @@ const f28 = (db) => scenario(db, async () => {
     AND record_id IN (SELECT id::text FROM rt_stops WHERE rt_id = $1) AND after_data ? 'seq'`, [rt])).n);
   return { names: namesOf(await order(db, rt), L), seqAudit };
 });
+// The same four points entered the OTHER way round (#91 Dimini -> Kopanos first): the road must not depend on it.
+// From Dimini, Alexandria (149 km) and Kopanos (154 km) are about as far; they are 23 km apart, so not one town.
+const f28rev = (db) => scenario(db, async () => {
+  const L = await places(db, ['asp', 'alx', 'dim', 'kop']);
+  const cl = await client(db), trk = await truck(db);
+  const a = await create(db, cl, 'ANODOS', [await day(db, L.dim, L.kop, 20)], { new_rt: { trip_type: 'OWNED', truck_id: trk }, side: 'ANODOS' },
+    [await stop(db, 'c', L.dim, 'ANODOS', 20), await stop(db, 'd', L.kop, 'ANODOS', 20)]);
+  await create(db, cl, 'ANODOS', [await day(db, L.asp, L.alx, 20)], { rt_id: a.ids.rt_id, side: 'ANODOS' },
+    [await stop(db, 'a', L.asp, 'ANODOS', 20), await stop(db, 'b', L.alx, 'ANODOS', 20)]);
+  return { names: namesOf(await order(db, a.ids.rt_id), L) };
+});
 // RT-1306's shape: KATHODOS Kozani -> three points in Athens 1-3 km apart, entered ath1, ath2, ath3 (the order of the
 // international's unloadings); ath2 is the nearest to Kozani. One place: the dispatcher's order stays.
 const town = (db) => scenario(db, async () => {
@@ -133,8 +144,11 @@ const follow = (db, opts = {}) => scenario(db, async () => {
   const L = await places(db, ['kozani', 'larisa', 'ath1', 'dim', 'asp', 'kop']);
   const cl = await client(db), trk = await truck(db);
   const k = opts.past ? -3 : 20;
-  const a = await create(db, cl, 'KATHODOS', [await day(db, L.kozani, L.ath1, k)], { new_rt: { trip_type: 'OWNED', truck_id: trk }, side: 'KATHODOS' },
-    [await stop(db, 'a', L.kozani, 'KATHODOS', k), await stop(db, 'b', L.ath1, 'KATHODOS', k)]);
+  const kb = opts.handover ? k + 2 : k;   // a handover needs a time between the two stops
+  const pts = [await day(db, L.kozani, L.ath1, k, kb)];
+  if (opts.twin) pts.push(await day(db, L.kozani, L.ath1, k, kb, 2));
+  const a = await create(db, cl, 'KATHODOS', pts, { new_rt: { trip_type: 'OWNED', truck_id: trk }, side: 'KATHODOS' },
+    [await stop(db, 'a', L.kozani, 'KATHODOS', k), await stop(db, 'b', L.ath1, 'KATHODOS', kb)]);
   const rt = a.ids.rt_id, nat = a.ids.nat_order_ids[0];
   let other = null;
   if (opts.shared) {
@@ -150,17 +164,27 @@ const follow = (db, opts = {}) => scenario(db, async () => {
     await create(db, cl, 'KATHODOS', [await day(db, L.dim, L.kop, k + 1)], { new_rt: { trip_type: 'OWNED', truck_id: trk }, side: 'KATHODOS' },
       [await stop(db, 'd', L.dim, 'KATHODOS', k + 1), await stop(db, 'e', L.kop, 'KATHODOS', k + 1)]);
   }
+  if (opts.handover) {
+    await one(db, `SELECT plan_seg_change($1::jsonb, 'test:081', 'dispatcher') AS r`, [JSON.stringify({ request_id: crypto.randomUUID(),
+      rt_id: rt, at: await T(db, k + 1, '12:00'), place_note: 'TEST 081', reason: 'vehicle_breakdown',
+      vehicle: { trip_type: 'OWNED', truck_id: await truck(db) } })]);
+  }
   await db.exec('SET CONSTRAINTS ALL IMMEDIATE');   // the assignments' own requests end here (their COMMIT)
   const sh0 = await shipOf(db, nat);
   const stops0 = await order(db, rt);
   const audit0 = Number((await one(db, `SELECT coalesce(max(id), 0) AS n FROM audit_log`)).n);
-  const kd = k + 1 + (opts.days ?? 0);
+  const kd = kb + 1 + (opts.days ?? 0);
   const ship = opts.pallets ? { shipment_id: sh0.id, pallets: 4 }
     : { shipment_id: sh0.id, deliver_from: await T(db, kd, '00:00'), deliver_to: await T(db, kd, '23:59') };
+  const ships = [ship];
+  if (opts.twin) {   // the order's second point at the same stop, moved to ANOTHER day in the same save
+    const sh2 = (await one(db, `SELECT id FROM shipments WHERE nat_order_id = $1 AND deleted_at IS NULL AND id <> $2`, [nat, sh0.id])).id;
+    ships.push({ shipment_id: sh2, deliver_from: await T(db, kd + 1, '00:00'), deliver_to: await T(db, kd + 1, '23:59') });
+  }
   if (opts.both) Object.assign(ship, { load_from: await T(db, k - 1, '00:00'), load_to: await T(db, k - 1, '23:59') });
   let ans = null, err = null;
   await db.exec('SAVEPOINT u');
-  try { ans = await update(db, { nat_order_id: nat, shipments: [ship] }); await db.exec('RELEASE SAVEPOINT u'); }
+  try { ans = await update(db, { nat_order_id: nat, shipments: ships }); await db.exec('RELEASE SAVEPOINT u'); }
   catch (e) { err = { msg: String(e.message), hint: e.hint ?? null }; await db.exec('ROLLBACK TO SAVEPOINT u'); }
   const stops1 = await order(db, rt);
   const sh1 = await shipOf(db, nat);
@@ -201,6 +225,9 @@ test('081 on the production-shaped copy (31/10): F28 and the stop that stays rep
     const r = await f28(db);
     assert.strictEqual(r.late, null);
     assert.deepStrictEqual(r.names, ['asp', 'alx', 'dim', 'kop']);
+  });
+  await t.test('NO-GO on the live texts: the same points entered the other way round come out in THAT entry order', async () => {
+    assert.deepStrictEqual((await f28rev(db)).names, ['dim', 'kop', 'asp', 'alx']);
   });
   await t.test('live: one town (RT-1306) and the climb (RT-1315) both keep entry order', async () => {
     assert.deepStrictEqual((await town(db)).names, ['kozani', 'ath1', 'ath2', 'ath3']);
@@ -247,6 +274,11 @@ test('081 on the production-shaped copy (31/10): F28 and the stop that stays rep
     assert.strictEqual(r.late, null, 'leg_order / stop_order hold');
     assert.deepStrictEqual(r.names, ['asp', 'dim', 'alx', 'kop']);
     assert.ok(r.seqAudit >= 2, `audit rows for the re-sequenced stops: ${r.seqAudit}`);
+  });
+  await t.test('GO: entered the other way round, the same road (the result never depends on entry order)', async () => {
+    const r = await f28rev(db);
+    assert.strictEqual(r.late, null);
+    assert.deepStrictEqual(r.names, ['asp', 'dim', 'alx', 'kop']);
   });
   await t.test('GO: one town (RT-1306, 1-3 km apart) keeps the dispatcher\'s order', async () => {
     assert.deepStrictEqual((await town(db)).names, ['kozani', 'ath1', 'ath2', 'ath3']);
@@ -301,6 +333,22 @@ test('081 on the production-shaped copy (31/10): F28 and the stop that stays rep
     const w = r.ans.warnings.find((x) => x.code === 'stop_kept');
     assert.strictEqual(w?.reason, 'shared', JSON.stringify(r.ans.warnings));
     assert.deepStrictEqual(w.others.map((o) => o.shipment_id), [r.otherShip]);
+  });
+  await t.test('GO: two points of the same save ask the one stop for different days - it stays, windows_differ, no 0-others', async () => {
+    const r = await follow(db, { twin: true });
+    assert.strictEqual(r.err, null, JSON.stringify(r.err));
+    assert.strictEqual(r.B1, r.B0);
+    const w = r.ans.warnings.find((x) => x.code === 'stop_kept');
+    assert.strictEqual(w?.reason, 'windows_differ', JSON.stringify(r.ans.warnings));
+    assert.deepStrictEqual(w.others, []);
+    assert.strictEqual(w.shipment_ids.length, 2);
+  });
+  await t.test('GO: a cycle with a vehicle handover - the stop stays (handover), never a need_token refusal', async () => {
+    const r = await follow(db, { handover: true });
+    assert.strictEqual(r.err, null, JSON.stringify(r.err));
+    assert.strictEqual(r.shipDeliver, r.want, 'the point is saved');
+    assert.strictEqual(r.B1, r.B0);
+    assert.strictEqual(r.ans.warnings.find((x) => x.code === 'stop_kept')?.reason, 'handover', JSON.stringify(r.ans.warnings));
   });
   await t.test('GO: an EXECUTED stop is never moved; the answer says so', async () => {
     const r = await follow(db, { past: true });

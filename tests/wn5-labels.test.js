@@ -217,3 +217,14 @@ test('F4α-T28: a payroll line names the driver\'s segment when 073 sends segmen
   assert.ok(WN5Lab.consequenceLine(Object.assign({ segment_text: 'RT-T101 · ΑΡΧΙΚΟ ως Λαμία' }, base)).text.includes('RT-T101 · ΑΡΧΙΚΟ ως Λαμία'));
   assert.ok(!WN5Lab.consequenceLine(base).text.includes('ΑΡΧΙΚΟ'));
 });
+
+test('081: stop_kept says why the truck stop stayed - never «0 άλλα σημεία», never a code', () => {
+  const t = (w) => L.warningLine(Object.assign({ code: 'stop_kept', rt_code: 'RT-1' }, w));
+  assert.deepStrictEqual(t({ reason: 'shared', others: [{ shipment_id: 2 }] }),
+    { text: 'η στάση του φορτηγού στο RT-1 δεν άλλαξε: εξυπηρετεί και 1 άλλο σημείο · «Αλλαγή ώρας στάσης ›» την αλλάζει για όλα', unknown: false });
+  assert.match(t({ reason: 'shared', others: [{}, {}] }).text, /εξυπηρετεί και 2 άλλα σημεία/);
+  assert.match(t({ reason: 'windows_differ', others: [] }).text, /ζητούν διαφορετική ώρα/);
+  assert.match(t({ reason: 'executed' }).text, /έχει ήδη εκτελεστεί$/);
+  assert.match(t({ reason: 'handover' }).text, /αλλαγή οχήματος/);
+  for (const r of ['shared', 'windows_differ', 'executed', 'handover']) assert.ok(!/\b0 άλλα|stop_kept|undefined/.test(t({ reason: r, others: [] }).text), r);
+});

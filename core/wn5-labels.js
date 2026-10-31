@@ -61,13 +61,15 @@
     // 072b H-24: the handover time falls inside the stop's window — it stays with the segment of its arrival (H-9)
     seg_stop_straddles: (w) => `η ώρα της αλλαγής πέφτει μέσα στο παράθυρο της στάσης #${w.stop_id}: μένει στο τμήμα της άφιξης`,
     // 081 (owner 31/10): a point's new window did not take its truck's stop with it, and why. 'shared' names how many
-    // other points stop there: the stop-time change moves it for all of them, with its own preview.
+    // other points stop there: the stop-time change moves it for all of them, with its own preview. 'windows_differ':
+    // points of the same save asked the one stop for different windows (no other point is there to count).
     stop_kept: (w) => {
       const n = Array.isArray(w.others) ? w.others.length : 0;
       const head = `η στάση του φορτηγού στο ${w.rt_code || '—'} δεν άλλαξε`;
       if (w.reason === 'executed') return head + ': έχει ήδη εκτελεστεί';
       if (w.reason === 'handover') return head + ': ο κύκλος έχει αλλαγή οχήματος · «Αλλαγή ώρας στάσης ›»';
-      return head + `: εξυπηρετεί και ${n === 1 ? '1 άλλο σημείο' : n + ' άλλα σημεία'} · «Αλλαγή ώρας στάσης ›» την αλλάζει για όλα`;
+      if (w.reason === 'windows_differ') return head + ': σημεία αυτής της αποθήκευσης ζητούν διαφορετική ώρα εκεί · «Αλλαγή ώρας στάσης ›»';
+      return head + `: εξυπηρετεί και ${n === 1 ? '1 άλλο σημείο' : n > 1 ? n + ' άλλα σημεία' : 'άλλα σημεία'} · «Αλλαγή ώρας στάσης ›» την αλλάζει για όλα`;
     },
   });
 

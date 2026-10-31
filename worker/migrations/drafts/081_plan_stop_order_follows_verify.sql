@@ -8,10 +8,10 @@
 --   order_broken: live stop pairs that break 071 stop_order / side_order (must stay 0: 081 keeps the groups).
 --   legs_broken: live legs whose pickup is not before their drop (071 leg_order; must stay 0).
 SELECT CASE WHEN (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.plan_h_reseq(bigint,text,text)'::regprocedure)
-                 = 'ec964ec2bc048ee129a9feef4f5aa0ec' THEN '081 in place' ELSE '081 NOT APPLIED' END AS applied,
+                 = 'f246c362c3f3bb1746a1d536ad1338bb' THEN '081 in place' ELSE '081 NOT APPLIED' END AS applied,
        (SELECT count(*) FROM (VALUES
-          ('public.plan_h_reseq(bigint,text,text)', 'ec964ec2bc048ee129a9feef4f5aa0ec'),
-          ('public.plan_order_update(jsonb,text,text)', 'c4cc7a0673ff568fc9cef33d9d996f70')) v(sig, m)
+          ('public.plan_h_reseq(bigint,text,text)', 'f246c362c3f3bb1746a1d536ad1338bb'),
+          ('public.plan_order_update(jsonb,text,text)', '1500396fb85a204dc6a1bcbbbd75ad25')) v(sig, m)
          WHERE (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure(v.sig)) IS DISTINCT FROM v.m) AS changed_texts,
        (SELECT md5(prosrc) = 'be70612fb940356278c7c66705c8ee33' FROM pg_proc
          WHERE oid = 'public.plan_rt_update(jsonb,text,text)'::regprocedure) AS rt_update_untouched,

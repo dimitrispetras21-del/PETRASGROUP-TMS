@@ -506,7 +506,8 @@ async function scnEditRide({ browser, origin, ok, scn }) {
 async function scnEditFollow({ browser, origin, ok, scn }) {
   const ans = () => [200, { ok: true, op: 'plan_order_update', dry_run: false,
     ids: { nat_order_id: 3001, shipment_ids: [5202], new_shipment_ids: [], new_piece_ids: [], removed_shipment_ids: [],
-      stops_moved: [{ stop_id: 1003, rt_id: 101, rt_code: 'RT-T101', shipment_ids: [5202] }] },
+      stops_moved: [{ stop_id: 1003, rt_id: 101, rt_code: 'RT-T101', shipment_ids: [5202],
+        after: { planned_from: '2026-10-14T07:00:00+03:00', planned_to: '2026-10-14T09:00:00+03:00' } }] },
     warnings: [{ code: 'stop_kept', reason: 'shared', stop_id: 1001, rt_id: 101, rt_code: 'RT-T101', shipment_ids: [5202],
       others: [{ shipment_id: 5301, nat_order_id: 3002, order_id: null }] }], notice_ids: [] }];
   const { page, S } = await K.openApp(browser, origin, { plan: { 'PATCH /plan/orders/3001': ans } });
@@ -519,6 +520,9 @@ async function scnEditFollow({ browser, origin, ok, scn }) {
   const done = await K.text(page, `${DLG} [data-done]`);
   ok(scn, 'saved: «η στάση του φορτηγού ακολούθησε (RT-T101)», and never «δεν άλλαξε» in the line', /Αποθηκεύτηκε/.test(done)
     && /η στάση του φορτηγού ακολούθησε \(RT-T101\)/.test(done) && !/δεν άλλαξε/.test(done), done);
+  const row = await page.evaluate((d) => { const x = document.querySelector(`${d} [data-shipstop="5202"]`); return x ? x.textContent.replace(/\s+/g, ' ') : ''; }, DLG);
+  ok(scn, 'the stop row under the point shows the moved stop where it is now: «RT-T101 · παράδοση Τετ 14/10 07:00–09:00»; the loading row as it was',
+    row.includes('RT-T101 · παράδοση Τετ 14/10 07:00–09:00') && row.includes('RT-T101 · φόρτωση Δευ 12/10 16:00–18:00') && !row.includes('Τρί 13/10'), row);
   const strip = await K.text(page, `${DLG} .wn5-strip[data-kind="warning"]`);
   ok(scn, 'the kept shared stop in the warning strip: RT-T101, 1 other point, «Αλλαγή ώρας στάσης ›» changes it for all',
     /η στάση του φορτηγού στο RT-T101 δεν άλλαξε: εξυπηρετεί και 1 άλλο σημείο · «Αλλαγή ώρας στάσης ›» την αλλάζει για όλα/.test(strip), strip);
