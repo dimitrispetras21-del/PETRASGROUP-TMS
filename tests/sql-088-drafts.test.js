@@ -1,11 +1,11 @@
-// tests/sql-087-drafts.test.js - run: node --test tests/sql-087-drafts.test.js
-// The 087 drafts (B-26, the day a part that stays at Veroia leaves by, 1/11) at build time, plain node, no database:
+// tests/sql-088-drafts.test.js - run: node --test tests/sql-088-drafts.test.js
+// The 088 drafts (B-26, the day a part that stays at Veroia leaves by, 1/11) at build time, plain node, no database:
 //   - every file and the builder are there; ASCII only; the writing files are ONE DO block; verify only reads;
-//   - the generated dry runs and rollback have 0 drift (the rollback reads 087's hunks and md5, never a copy);
+//   - the generated dry runs and rollback have 0 drift (the rollback reads 088's hunks and md5, never a copy);
 //   - one md5 per fact: the generated text of PART 1 is the one verify reads and the dry run expects, the live one
 //     of PART 0 the one the rollback returns to;
-//   - 087 creates nothing (no table, function, trigger, grant), and leave_by is read only on a part without a target.
-// The rule is proven on PGlite by tms-auditor/test/plan-087.test.mjs (refused live, written after, refused again after
+//   - 088 creates nothing (no table, function, trigger, grant), and leave_by is read only on a part without a target.
+// The rule is proven on PGlite by tms-auditor/test/plan-088.test.mjs (refused live, written after, refused again after
 // the rollback).
 'use strict';
 const { test } = require('node:test');
@@ -24,11 +24,11 @@ const file = (f) => {
 };
 const read = (f) => fs.readFileSync(file(f), 'utf8');
 const strip = (s) => s.replace(/--[^\n]*/g, '');
-const P = '087_plan_split_leave_by';
+const P = '088_plan_split_leave_by';
 const DO_FILES = [`${P}.sql`, `${P}_dryrun.sql`, `${P}_rollback.sql`, `${P}_rollback_dryrun.sql`];
-const BUILDER = path.join(DRAFTS, 'tools/build-087.mjs');
+const BUILDER = path.join(DRAFTS, 'tools/build-088.mjs');
 
-test('087: every file is there, ASCII only; one DO block per writing file; verify only reads', () => {
+test('088: every file is there, ASCII only; one DO block per writing file; verify only reads', () => {
   for (const f of [...DO_FILES, `${P}_verify.sql`]) {
     const bad = read(f).split('\n').map((l, i) => [i + 1, l]).filter(([, l]) => /[^\x00-\x7f]/.test(l));
     assert.deepStrictEqual(bad, [], `${f}: non-ASCII lines`);
@@ -38,11 +38,11 @@ test('087: every file is there, ASCII only; one DO block per writing file; verif
   assert.ok(!/\b(insert|update|delete|create|alter|drop|grant|revoke|truncate)\b/i.test(v));
 });
 
-test('087: the builder has no drift (dry runs and rollback)', () => {
+test('088: the builder has no drift (dry runs and rollback)', () => {
   assert.match(execFileSync(process.execPath, [BUILDER, '--check']).toString(), /0 drift/);
 });
 
-test('087: one md5 per fact - PART 1 = verify = the dry run; PART 0 = the rollback\'s end', () => {
+test('088: one md5 per fact - PART 1 = verify = the dry run; PART 0 = the rollback\'s end', () => {
   const src = read(`${P}.sql`);
   const part1 = src.slice(src.indexOf('===== PART 1'), src.indexOf('===== PART 2'));
   const gen = [...part1.matchAll(/\], '([0-9a-f]{32})'\)/g)].map((m) => m[1]);
@@ -59,7 +59,7 @@ test('087: one md5 per fact - PART 1 = verify = the dry run; PART 0 = the rollba
   assert.ok(!/GEN_/.test(src), 'no placeholder left');
 });
 
-test('087 creates nothing, and a part with a target never takes a leave_by', () => {
+test('088 creates nothing, and a part with a target never takes a leave_by', () => {
   const src = strip(read(`${P}.sql`));
   assert.ok(!/CREATE (TABLE|FUNCTION|VIEW|INDEX|(CONSTRAINT )?TRIGGER)\b/.test(src));
   assert.ok(!/\b(GRANT|REVOKE|ALTER)\b/.test(src));

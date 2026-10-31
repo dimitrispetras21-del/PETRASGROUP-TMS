@@ -389,8 +389,8 @@
     return { piece_id: st.pieceId, parts: st.parts.map((p) => {
       const o = { pallets: _valid(p.pal) };
       if (p.rt) { o.target = { rt_id: p.rt, side: 'KATHODOS' }; o.stops = p.stops; }
-      // B-26 (087): a part that stays leaves by the day shown, ALWAYS sent: the shown day is the written day, and the
-      // base's default (nat_due_day − 1) is never re-decided here (principle 3). Needs 087 live: before it, bad_input.
+      // B-26 (088): a part that stays leaves by the day shown, ALWAYS sent: the shown day is the written day, and the
+      // base's default (nat_due_day − 1) is never re-decided here (principle 3). Needs 088 live: before it, bad_input.
       else if (p.t === 'stay' && p.day) o.leave_by = p.day;
       return o;
     }) };

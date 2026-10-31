@@ -1954,7 +1954,7 @@ async function scnVeroia(browser, origin) {
     await page.waitForTimeout(500);
     const c = bCalls(S, 'POST', P);
     const noId = c[0] ? (() => { const o = Object.assign({}, c[0].body); delete o.request_id; return JSON.stringify(o); })() : '';
-    // B-26 (087): the part that stays carries the day it showed (Mon 12/10 = nat_due_day − 1), always
+    // B-26 (088): the part that stays carries the day it showed (Mon 12/10 = nat_due_day − 1), always
     ok(scn, 'one POST {piece_id, parts:[{20, target RT-T201, stops}, {13, leave_by Mon}]} + a uuid v4 request_id', c.length === 1 && UUID.test(c[0].body.request_id || '')
       && noId === '{"piece_id":4401,"parts":[{"pallets":20,"target":{"rt_id":201,"side":"KATHODOS"},"stops":[{"ref":"s2001","stop_id":2001},{"ref":"s2003","stop_id":2003}]},{"pallets":13,"leave_by":"2026-10-12"}]}', c.map((x) => x.raw));
     const ev = await bEv(page);
@@ -2061,7 +2061,7 @@ async function scnVeroia(browser, origin) {
     pe.push(...S.pageErrors);
     await page.context().close();
   }
-  { // G · B-26 (087, Figma 2011:8744): the part that stays shows «φεύγει ως ‹ day 22:00 ›», prefilled with the base's
+  { // G · B-26 (088, Figma 2011:8744): the part that stays shows «φεύγει ως ‹ day 22:00 ›», prefilled with the base's
     //     own day (nat_due_day − 1 = Mon 12/10 for VS-T125) and stepped in place; the day shown is the leave_by sent
     const { page, S } = await bOpen(browser, origin, { plan: { ['POST ' + P]: () => planErr(409, 'WRITES_CLOSED', 'writes_closed') } });
     await bClick(page, '#wn5-hub [data-hub="open"]');
