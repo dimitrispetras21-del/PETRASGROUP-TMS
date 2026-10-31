@@ -197,6 +197,33 @@ const follow = (db, opts = {}) => scenario(db, async () => {
     otherShip: other ? (await shipOf(db, other.ids.nat_order_ids[0])).id : null, stopB: stops0.find((x) => x.location_id === L.ath1).id };
 });
 
+// Two cycles: the point rides Kozani -> Veroia on cycle A (truck 1, day 20) and Veroia -> Athens on cycle B (truck 2,
+// day 21); truck 2 has another cycle on day 23. One save moves the loading to day 19 (A can) and the delivery to day 23
+// (B cannot: truck_busy). A's stop moves, B's stays with stop_kept: each cycle in its own savepoint.
+const twoCycles = (db) => scenario(db, async () => {
+  const L = await places(db, ['kozani', 'ath1', 'dim', 'kop']);
+  const hub = (await one(db, `SELECT id FROM locations WHERE is_hub`)).id;
+  const cl = await client(db), t1 = await truck(db), t2 = await truck(db);
+  const a = await create(db, cl, 'KATHODOS', [await day(db, L.kozani, L.ath1, 20, 21)]);
+  const pc = a.ids.piece_ids[0], nat = a.ids.nat_order_ids[0];
+  const put = async (target, stops, item) => one(db, `SELECT plan_put_pieces($1::jsonb, 'test:081', 'dispatcher') AS r`,
+    [JSON.stringify({ pieces: [item], target, stops })]);
+  const A = (await put({ new_rt: { trip_type: 'OWNED', truck_id: t1 }, side: 'KATHODOS' },
+    [await stop(db, 'a', L.kozani, 'KATHODOS', 20), await stop(db, 'h', hub, 'KATHODOS', 20)], { piece_id: pc, to_hub: true })).r.ids.rt_id;
+  await db.exec('SET CONSTRAINTS ALL IMMEDIATE');
+  const B = (await put({ new_rt: { trip_type: 'OWNED', truck_id: t2 }, side: 'KATHODOS' },
+    [await stop(db, 'h', hub, 'KATHODOS', 21), await stop(db, 'b', L.ath1, 'KATHODOS', 21)], { piece_id: pc })).r.ids.rt_id;
+  await create(db, cl, 'KATHODOS', [await day(db, L.dim, L.kop, 23)], { new_rt: { trip_type: 'OWNED', truck_id: t2 }, side: 'KATHODOS' },
+    [await stop(db, 'd', L.dim, 'KATHODOS', 23), await stop(db, 'e', L.kop, 'KATHODOS', 23)]);
+  await db.exec('SET CONSTRAINTS ALL IMMEDIATE');
+  const sh = await shipOf(db, nat);
+  const ans = await update(db, { nat_order_id: nat, shipments: [{ shipment_id: sh.id,
+    load_from: await T(db, 19, '00:00'), load_to: await T(db, 19, '23:59'), deliver_from: await T(db, 23, '00:00'), deliver_to: await T(db, 23, '23:59') }] });
+  const at = async (rt, loc) => new Date((await order(db, rt)).find((x) => x.location_id === loc).planned_from).toISOString();
+  return { ans, A, B, aDay: await at(A, L.kozani), bDay: await at(B, L.ath1),
+    want19: new Date(await T(db, 19, '00:00')).toISOString(), was21: new Date(await T(db, 21, '00:00')).toISOString() };
+});
+
 test('081 on the production-shaped copy (31/10): F28 and the stop that stays reproduced on the live texts, gone after 081', async (t) => {
   const db = await prodShaped074();
   for (const f of ['075_plan_order_side.sql', '076_plan_board_speed.sql', '077_plan_order_edit.sql', '078_audit_actions.sql']) await db.exec(read(f));
@@ -369,6 +396,15 @@ test('081 on the production-shaped copy (31/10): F28 and the stop that stays rep
     assert.strictEqual(w?.reason, 'truck_busy', JSON.stringify(r.ans.warnings));
     assert.match(w.detail || '', /RT-/);
     assert.strictEqual(r.auditStops, 0, 'the undone move left no audit row');
+  });
+  await t.test('GO: two cycles in one save - the loading stop on A moves, the delivery stop on B stays (truck_busy), each said', async () => {
+    const r = await twoCycles(db);
+    assert.strictEqual(r.late, null);
+    assert.strictEqual(r.aDay, r.want19, 'cycle A moved');
+    assert.strictEqual(r.bDay, r.was21, 'cycle B stayed');
+    assert.deepStrictEqual(r.ans.ids.stops_moved.map((m) => m.rt_id), [r.A]);
+    const w = r.ans.warnings.find((x) => x.code === 'stop_kept');
+    assert.deepStrictEqual([w?.reason, w?.rt_id], ['truck_busy', r.B], JSON.stringify(r.ans.warnings));
   });
   await t.test('GO: the moved stop would come after the ANODOS ones - the point is saved, the stop stays, stop_kept stop_order', async () => {
     const r = await follow(db, { anodos: true, days: 1 });

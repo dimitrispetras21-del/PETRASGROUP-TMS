@@ -70,9 +70,10 @@
       if (w.reason === 'executed') return head + ': έχει ήδη εκτελεστεί';
       if (w.reason === 'handover') return head + ': ο κύκλος έχει αλλαγή οχήματος · «Αλλαγή ώρας στάσης ›»';
       if (w.reason === 'windows_differ') return head + ': σημεία αυτής της αποθήκευσης ζητούν διαφορετική ώρα εκεί · «Αλλαγή ώρας στάσης ›»';
-      // a rule the move would break (the point was saved, the stop stayed): the rule in words, never a code
-      if (w.reason === 'truck_busy') return head + `: το φορτηγό είναι απασχολημένο τότε${w.detail ? ' (' + w.detail + ')' : ''}`;
-      if (w.reason === 'driver_busy') return head + `: ο οδηγός είναι απασχολημένος τότε${w.detail ? ' (' + w.detail + ')' : ''}`;
+      // a rule the move would break (the point was saved, the stop stayed): the rule in words, never a code; the
+      // busy detail only when it is cycle codes (in a race plan_h_finish can only name its EXCLUDE constraint)
+      if (w.reason === 'truck_busy') return head + `: το φορτηγό είναι απασχολημένο τότε${/^RT-[\w/ -]+$/.test(w.detail || '') ? ' (' + w.detail + ')' : ''}`;
+      if (w.reason === 'driver_busy') return head + `: ο οδηγός είναι απασχολημένος τότε${/^RT-[\w/ -]+$/.test(w.detail || '') ? ' (' + w.detail + ')' : ''}`;
       if (w.reason === 'stop_order' || w.reason === 'side_order' || w.reason === 'leg_order') return head + ': η νέα ώρα χαλάει τη σειρά των στάσεων του κύκλου · «Αλλαγή ώρας στάσης ›»';
       if (w.reason === 'payroll_locked') return head + ': η μισθοδοσία του κύκλου έχει ήδη ποσά';
       if (w.reason !== 'shared') return head + ': η μετακίνηση δεν επιτρέπεται εδώ · «Αλλαγή ώρας στάσης ›»';

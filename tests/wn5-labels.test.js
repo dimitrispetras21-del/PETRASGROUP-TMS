@@ -228,6 +228,7 @@ test('081: stop_kept says why the truck stop stayed - never «0 άλλα σημ�
   assert.match(t({ reason: 'handover' }).text, /αλλαγή οχήματος/);
   assert.strictEqual(t({ reason: 'truck_busy', detail: 'RT-1/RT-2' }).text, 'η στάση του φορτηγού στο RT-1 δεν άλλαξε: το φορτηγό είναι απασχολημένο τότε (RT-1/RT-2)');
   assert.match(t({ reason: 'stop_order' }).text, /σειρά των στάσεων/);
+  assert.strictEqual(t({ reason: 'truck_busy', detail: 'rt_v2_truck_once' }).text, 'η στάση του φορτηγού στο RT-1 δεν άλλαξε: το φορτηγό είναι απασχολημένο τότε');
   assert.match(t({ reason: 'some_new_rule' }).text, /η μετακίνηση δεν επιτρέπεται εδώ/);
   for (const r of ['shared', 'windows_differ', 'executed', 'handover', 'truck_busy', 'driver_busy', 'stop_order', 'payroll_locked', 'x_rule'])
     assert.ok(!/\b0 άλλα|stop_kept|x_rule|undefined/.test(t({ reason: r, others: [] }).text), r);
