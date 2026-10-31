@@ -3,7 +3,7 @@
 -- undoes everything inside it (lesson 056). ASCII only.
 -- EXPECTED (the red ERROR is deliberate): NOTICE "081 OK: plan_h_reseq orders a same-time group by the road ..." and then
 --   ERROR: P0001: DRY RUN 081 finished - EVERYTHING UNDONE, nothing kept. The block ran to its end  ||  081 ran:
---   reseq f246c362c3f3bb1746a1d536ad1338bb, order_update 9bbf9d1cc79598aae762cbd4ee6ef225
+--   reseq f246c362c3f3bb1746a1d536ad1338bb, order_update 323eb4ccde77d1848c74a8b4ab310021
 --   Anything else (an ERROR from one of 081's guards or proofs): do NOT run 081, copy the message to the coordinator.
 
 DO $dry$
@@ -85,6 +85,7 @@ $h$;
   -- 081: the windows that changed (v_win), the stops moved / kept, what plan_rt_update answered
   v_win jsonb := '[]'::jsonb; v_moved jsonb := '[]'::jsonb; v_kept jsonb := '[]'::jsonb; v_mv jsonb := '{}'::jsonb;
   v_wn jsonb := '[]'::jsonb; v_nt jsonb := '[]'::jsonb; v_ru jsonb; v_oth jsonb; v_why text; v_rtid bigint; y record;
+  v_hint text; v_msg text; v_code text; v_det text;
 $h$;
   o_2a CONSTANT text := $h$    perform plan_h_resize(a.id, b.pallets - a.pallets, p_actor, p_role);
 $h$;
@@ -106,7 +107,9 @@ $h$;
   -- F29 moves it for all, with its own preview), 'windows_differ' (points of this save ask it different windows),
   -- 'handover' (the move could cut a handover: list + token, F29).
   -- The move is plan_rt_update, the one path of a stop's time (truck_busy, payroll lock, local loading day, pallet
-  -- rows, VS day, reseq, 071 stop_order / side_order / leg_order): a rule it breaks refuses this save, named.
+  -- rows, VS day, reseq, 071 stop_order / side_order / leg_order). A rule the MOVE breaks undoes only the move: the
+  -- point keeps its new window, the stop stays where it was (every rule still true) and stop_kept names the rule -
+  -- owner 31/10 "loose rules now, strict later": a save that passed before 081 is never refused because of 081.
   -- (the cycles were locked at the start, o_5b: an assignment onto the same stop cannot slip in before the move)
   for y in
     select s.id as stop_id, s.rt_id, c.code, c.status, s.planned_from, s.planned_to,
@@ -151,10 +154,27 @@ $h$;
                    'after', jsonb_build_object('planned_from', y.f, 'planned_to', y.t));
     end if;
   end loop;
+  -- the rules of this save's own rows fire HERE, outside the block below, so a refusal it catches is the move's alone
+  if v_mv <> '{}'::jsonb then perform plan_h_finish(); end if;
   for v_rtid in select k::bigint from jsonb_object_keys(v_mv) k order by 1 loop
-    v_ru := plan_rt_update(jsonb_build_object('rt_id', v_rtid, 'stops', v_mv->(v_rtid::text)), p_actor, p_role);
-    v_wn := v_wn || coalesce(v_ru->'warnings', '[]'::jsonb);
-    v_nt := v_nt || coalesce(v_ru->'notice_ids', '[]'::jsonb);
+    begin
+      v_ru := plan_rt_update(jsonb_build_object('rt_id', v_rtid, 'stops', v_mv->(v_rtid::text)), p_actor, p_role);
+      v_wn := v_wn || coalesce(v_ru->'warnings', '[]'::jsonb);
+      v_nt := v_nt || coalesce(v_ru->'notice_ids', '[]'::jsonb);
+    exception when check_violation then
+      get stacked diagnostics v_hint = pg_exception_hint, v_msg = message_text;
+      if coalesce(v_hint, '') not like 'plan:%' then raise; end if;
+      -- the block's savepoint undid the move of this cycle's stops; they stay, said with the rule and its detail
+      v_code := substr(v_hint, 6);
+      v_det := case when strpos(v_msg, v_code || ':') > 0
+                    then nullif(substr(v_msg, strpos(v_msg, v_code || ':') + length(v_code) + 1), '') end;
+      v_kept := v_kept || coalesce((select jsonb_agg(jsonb_build_object('code', 'stop_kept', 'reason', v_code, 'detail', v_det,
+                                      'stop_id', e->'stop_id', 'rt_id', v_rtid, 'rt_code', e->'rt_code',
+                                      'shipment_ids', e->'shipment_ids', 'others', '[]'::jsonb))
+                                      from jsonb_array_elements(v_moved) e where (e->>'rt_id')::bigint = v_rtid), '[]'::jsonb);
+      v_moved := coalesce((select jsonb_agg(e) from jsonb_array_elements(v_moved) e where (e->>'rt_id')::bigint <> v_rtid),
+                          '[]'::jsonb);
+    end;
   end loop;
   v_sum := plan_h_order_summary($h$;
   o_5a CONSTANT text := $h$  select * into n from national_orders where id = (p->>'nat_order_id')::bigint for no key update;
@@ -210,7 +230,7 @@ BEGIN
   -- ===== PART 1 + PART 2: LIVE TEXT + HUNKS (md5 after = measured on the production-shaped PGlite copy) =====
   FOR v_g IN SELECT * FROM (VALUES
       ('public.plan_h_reseq(bigint,text,text)', ARRAY[r_1a, r_2a], ARRAY[r_1b, r_2b], 'f246c362c3f3bb1746a1d536ad1338bb'),
-      ('public.plan_order_update(jsonb,text,text)', ARRAY[o_1a, o_2a, o_3a, o_4a, o_5a], ARRAY[o_1b, o_2b, o_3b, o_4b, o_5b], '9bbf9d1cc79598aae762cbd4ee6ef225')) g(sig, a, b, m) LOOP
+      ('public.plan_order_update(jsonb,text,text)', ARRAY[o_1a, o_2a, o_3a, o_4a, o_5a], ARRAY[o_1b, o_2b, o_3b, o_4b, o_5b], '323eb4ccde77d1848c74a8b4ab310021')) g(sig, a, b, m) LOOP
     SELECT * INTO p FROM pg_proc WHERE oid = to_regprocedure(v_g.sig);
     IF p.proconfig IS DISTINCT FROM ARRAY['search_path=public'] OR p.prolang <> (SELECT oid FROM pg_language WHERE lanname = 'plpgsql') THEN
       RAISE EXCEPTION '081: % is not a plpgsql function with search_path=public - stop', v_g.sig;

@@ -356,17 +356,27 @@ test('081 on the production-shaped copy (31/10): F28 and the stop that stays rep
     assert.strictEqual(r.B1, r.B0);
     assert.strictEqual(r.ans.warnings.find((x) => x.code === 'stop_kept')?.reason, 'executed', JSON.stringify(r.ans.warnings));
   });
-  await t.test('GO: the truck is busy that day on another cycle - truck_busy refuses the whole save, nothing written', async () => {
+  // owner 31/10 "loose rules now, strict later": a rule the MOVE breaks never refuses the save (it passed before 081);
+  // the move alone is undone, the stop stays valid, and stop_kept names the rule
+  await t.test('GO: the truck is busy that day on another cycle - the point is saved, the stop stays, stop_kept truck_busy names the cycle', async () => {
     const r = await follow(db, { busy: true });
-    assert.strictEqual(r.err?.hint, 'plan:truck_busy', JSON.stringify(r.err));
-    assert.strictEqual(r.shipDeliver, r.shipDeliver0, 'the point did not move either');
-    assert.strictEqual(r.B1, r.B0);
+    assert.strictEqual(r.err, null, JSON.stringify(r.err));
+    assert.strictEqual(r.late, null, 'no rule is broken at COMMIT');
+    assert.strictEqual(r.shipDeliver, r.want, 'the point is saved');
+    assert.strictEqual(r.B1, r.B0, 'the stop stays');
+    assert.deepStrictEqual(r.ans.ids.stops_moved, []);
+    const w = r.ans.warnings.find((x) => x.code === 'stop_kept');
+    assert.strictEqual(w?.reason, 'truck_busy', JSON.stringify(r.ans.warnings));
+    assert.match(w.detail || '', /RT-/);
+    assert.strictEqual(r.auditStops, 0, 'the undone move left no audit row');
   });
-  await t.test('GO: the moved stop would come after the ANODOS ones - 071 stop_order refuses the whole save', async () => {
+  await t.test('GO: the moved stop would come after the ANODOS ones - the point is saved, the stop stays, stop_kept stop_order', async () => {
     const r = await follow(db, { anodos: true, days: 1 });
-    assert.strictEqual(r.err?.hint, 'plan:stop_order', JSON.stringify(r.err));
-    assert.strictEqual(r.shipDeliver, r.shipDeliver0);
+    assert.strictEqual(r.err, null, JSON.stringify(r.err));
+    assert.strictEqual(r.late, null);
+    assert.strictEqual(r.shipDeliver, r.want);
     assert.strictEqual(r.B1, r.B0);
+    assert.strictEqual(r.ans.warnings.find((x) => x.code === 'stop_kept')?.reason, 'stop_order', JSON.stringify(r.ans.warnings));
   });
 
   await t.test('081 rollback dry run keeps nothing; the rollback returns the live texts and the live behaviour', async () => {
