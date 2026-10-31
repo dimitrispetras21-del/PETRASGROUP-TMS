@@ -140,7 +140,7 @@
 
 ## 4. Μετά την έγκριση
 
-- SQL `087` (τοποθεσίες) και `088` (audit) στο `worker/migrations/drafts/`: dry run, rollback, verify, build script,
+- SQL `090` (τοποθεσίες) και `091` (audit· 086–089 πιασμένοι, συντονιστής 1/11) στο `worker/migrations/drafts/`: dry run, rollback, verify, build script,
   δοκιμή PGlite. Εκτέλεση από τον owner μετά τις 15:00.
 - Οθόνη: `modules/locations.js` (και οι δύο δρόμοι δημιουργίας) και `modules/wn5_forms.js` (F15), bump `?v=` και
   `SW_VERSION`.
