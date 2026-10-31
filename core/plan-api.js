@@ -5,7 +5,8 @@
 // handlePlan (PLAN_ROUTES, planError — the ONE error shape {error:{type, code, message}}).
 // The binding notes of F2 (docs/superpowers/plans/2026-10-22-f2-national-v5-plan-functions.md, decision 44) this
 // file keeps, each one a way a v5 record would be written twice or a refusal would read as success:
-//   - ONE fetch per call, whatever the answer. Never core/api.js _atRetry (it re-sends every 5xx and every network
+//   - ONE fetch per call, whatever the answer (one exception, F36: a 401 on a write with a request_id, re-sent
+//     after the user logs in again — see planFetch). Never core/api.js _atRetry (it re-sends every 5xx and every network
 //     drop up to three times), never _enqueue, never the offline queue (it replays writes from localStorage later).
 //     A 500 plan_unknown may have been SAVED: only the user, after looking at the board, presses again — with the
 //     SAME request_id, so the DB answers the first result (replayed) instead of writing again.
@@ -177,23 +178,42 @@ async function planFetch(method, path, opts) {
   // req = null on purpose, here and on the 401 below: the facade's req is its Level-A request id, sent as an
   // x-tms-* header; /plan/* sends Authorization + Content-Type only (the Worker's CORS), so no id exists to tie the
   // session row to — the `where` («plan POST /plan/move») names the call instead.
-  if (typeof tmsSessionGone === 'function' && tmsSessionGone()) throw tmsSessionRefuse(null);
-  // Offline: refused loudly and NOT queued — a queued v5 write would be replayed later without the user.
-  if (typeof navigator !== 'undefined' && navigator && navigator.onLine === false) throw _local('offline', KIND.OFFLINE, route, write);
-  let jwt = null;
-  try { jwt = localStorage.getItem('tms_jwt'); } catch (_) { jwt = null; }
-  if (!jwt) throw tmsSessionExpired('plan ' + route, null);
-  const headers = { Authorization: 'Bearer ' + jwt };
-  if (raw !== undefined) headers['Content-Type'] = 'application/json';
+  // F36 (owner 31/10/2026) — the ONE exception to «one fetch per call»: a write that carries a request_id waits for
+  // the login window (core/relogin.js) and is sent again after it, with the SAME request_id. Safe twice over: the
+  // Worker answers 401 before it reads the body (handlePlan, «if (!caller)»), so nothing was done; and if it had been,
+  // the DB answers the same id with the first result (replayed). Every other call is refused as before, and a write
+  // among them makes the window say «πάτα ξανά Αποθήκευση»: the user presses again and sees what is sent.
+  const replay = write && o.requestId !== undefined;
   let res;
-  try {
-    // _fetchWithTimeout (core/api.js) is a plain fetch with an abort timer and cache:'no-store' — no retry in it.
-    res = await _fetchWithTimeout(PROXY_URL + path, { method: m, headers, body: raw }, o.timeoutMs || 30000);
-  } catch (_) {
-    // No answer (network, abort, timeout): on a write the COMMIT may have happened — never «not saved».
-    throw _local(write ? 'net_unknown' : 'net_failed', write ? KIND.UNKNOWN : KIND.FAILED, route, write);
+  for (;;) {
+    if (typeof tmsSessionGone === 'function' && tmsSessionGone()) {
+      const refused = tmsSessionRefuse(null, write && !replay);
+      const wait = replay && typeof tmsSessionWaitLogin === 'function' ? tmsSessionWaitLogin() : null;
+      if (!wait) throw refused;
+      await wait;
+    }
+    // Offline: refused loudly and NOT queued — a queued v5 write would be replayed later without the user.
+    if (typeof navigator !== 'undefined' && navigator && navigator.onLine === false) throw _local('offline', KIND.OFFLINE, route, write);
+    let jwt = null;
+    try { jwt = localStorage.getItem('tms_jwt'); } catch (_) { jwt = null; }
+    if (jwt) {
+      const headers = { Authorization: 'Bearer ' + jwt };
+      if (raw !== undefined) headers['Content-Type'] = 'application/json';
+      try {
+        // _fetchWithTimeout (core/api.js) is a plain fetch with an abort timer and cache:'no-store' — no retry in it.
+        res = await _fetchWithTimeout(PROXY_URL + path, { method: m, headers, body: raw }, o.timeoutMs || 30000);
+      } catch (_) {
+        // No answer (network, abort, timeout): on a write the COMMIT may have happened — never «not saved».
+        throw _local(write ? 'net_unknown' : 'net_failed', write ? KIND.UNKNOWN : KIND.FAILED, route, write);
+      }
+      if (res.status !== 401) break;
+    }
+    // No token, or a 401: the session is over (the page's first one clears the login and opens the window).
+    const ended = tmsSessionExpired('plan ' + route, null, write && !replay);
+    const wait = replay && typeof tmsSessionWaitLogin === 'function' ? tmsSessionWaitLogin() : null;
+    if (!wait) throw ended;
+    await wait;
   }
-  if (res.status === 401) throw tmsSessionExpired('plan ' + route, null);
   let text = null;
   try { text = await res.text(); } catch (_) { text = null; }
   let data = null;

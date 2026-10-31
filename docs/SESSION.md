@@ -12,6 +12,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
+- dimitris · `fix/f36-sw-reload-session-expiry` · F36/F20/F58: νέα έκδοση χωρίς reload πάνω σε ανοιχτή φόρμα· λήξη σύνδεσης = παράθυρο σύνδεσης στη σελίδα, επανάληψη μόνο με `request_id`· PR, ?v= / SW_VERSION 1793482508 (`docs/sessions/2026-10-31-dimitris-f36-reload-relogin.md`)
 - dimitris · `docs/081-executed` · Εθνικά v5: η 081 ΕΚΤΕΛΕΣΤΗΚΕ 31/10 (#182 merged, verify πράσινο, αρχεία εκτός drafts/)· καμία μαζική αναδιάταξη, 1 κύκλος αλλάζει στην επόμενη εγγραφή (`docs/sessions/2026-10-31-dimitris-081-executed.md`)
 - dimitris · `fix/wn5-f44-f47` · Εθνικά v5 F44/F46 (ημέρα Βέροιας της σύντομης φόρμας του «+»), F48 (ορφανό πάνελ ρυμούλκας/οδηγού), F47 δεν αναπαράγεται; stacked πάνω στο #176, ?v= / SW_VERSION 1793476256 (`docs/sessions/2026-10-31-dimitris-wn5-f44-f48.md`)
 - dimitris · `fix/wn5-f32-drag` · Εθνικά v5 F32: σύρσιμο ΠΡΟΣ ΑΝΑΘΕΣΗ σε κύκλο → το «+» του κύκλου; #175 merged, ?v= / SW_VERSION 1793476255 (`docs/sessions/2026-10-31-dimitris-wn5-f32-drag.md`)
