@@ -108,8 +108,8 @@ async function scnOrder({ browser, origin, ok, scn }) {
   ok(scn, 'the request_id lives in memory only', rid ? await noStore(page, rid) : false);
   await page.context().close();
 
-  // the «+» of a row: same form, target = the row's side, stops = existing stop by id + one new place
-  const p2 = await K.openApp(browser, origin);
+  // the «+» of a row: same form, target = the row's side, stops = existing stop by id + one new place (a 200, for F50)
+  const p2 = await K.openApp(browser, origin, { plan: { 'POST /plan/orders': () => [200, { ok: true, op: 'plan_orders_create', dry_run: false, ids: { nat_order_ids: [3999] }, warnings: [], notice_ids: [] }] } });
   await p2.page.evaluate(() => WN5Act.plus(101, 'KATHODOS', document.querySelector('#content .wn5-row[data-rt="101"]') || document.querySelector('#content .wn5')));
   await p2.page.click('.wi4-dlg[data-wn5="plus"] >> text=Νέα παραγγελία').catch(() => {});
   await p2.page.waitForSelector(DLG, { timeout: 8000 }).catch(() => {});
@@ -127,6 +127,9 @@ async function scnOrder({ browser, origin, ok, scn }) {
   ok(scn, '«+» body: target {rt_id:101, side:KATHODOS}', JSON.stringify(b2.target) === JSON.stringify({ rt_id: 101, side: 'KATHODOS' }), b2.target);
   ok(scn, '«+» body: Veroia by its stop_id, Larisa as one new stop', JSON.stringify(b2.stops) === JSON.stringify([{ ref: 's1', stop_id: 1001 },
     { ref: 's2', location_id: 4, side: 'KATHODOS', planned_from: '2026-10-13T10:00:00+03:00', planned_to: '2026-10-13T12:00:00+03:00' }]), b2.stops);
+  // F50 (owner 31/10): after the save and the re-read the cycle that took the order is the row in hand
+  const f50 = await p2.page.evaluate(() => { const rs = [...document.querySelectorAll('#content .wn5 .wn5-row.wn5-focus')]; return { keys: rs.map((e) => e.dataset.key), flash: !!(rs[0] && rs[0].classList.contains('wn5-flash'))}; });
+  ok(scn, 'F50 · «+» → new order saved: the cycle\'s row (rt:101) is marked and flashes — main: nothing', JSON.stringify(f50.keys) === '["rt:101"]' && f50.flash, f50);
   await p2.page.context().close();
 
   // «+ Άδειες παλέτες · 1 €» (Figma 9624; the ΠΡΟΡΥΘΜΙΣΗ of 10022, Ε-39): a prefill only — nothing is sent by it
@@ -144,7 +147,7 @@ async function scnOrder({ browser, origin, ok, scn }) {
     !!pre && pre.goods === 'Άδειες παλέτες' && pre.price === '1' && pre.drop === HUB.rec && pre.btn && !K.planOf(p3.S, 'POST', '/plan/orders').length, pre);
   await p3.page.context().close();
 
-  // ✈ «Νέα παραγγελία σε αυτό το σκέλος ›» → «Κάθοδος» (S-45, Figma 2011:8858): the same short form as the «+»
+  // ✈ «Νέα παραγγελία σε αυτό το δρομολόγιο ›» → «Κάθοδος» (S-45, Figma 2011:8858): the same short form as the «+»
   const p4 = await K.openApp(browser, origin);
   await p4.page.evaluate(() => WN5.rowMenu(null, 101));
   await p4.page.click('#wn5-menu [data-item="new-order"]', { timeout: 2000 }).catch(() => {});

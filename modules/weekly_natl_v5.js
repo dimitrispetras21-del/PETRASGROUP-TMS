@@ -82,6 +82,7 @@ let _sIdx = 0;           // the match Enter is on («1/2»)
 const _qi = new Map();   // row key → search text of the last paint (fhSearchBlob: the fields of a row kept apart)
 let _noteBusy = false;   // «Σημείωσα ✓» in flight: one press at a time
 let _noteErr = null;     // the answer that stopped the last «Σημείωσα ✓» (shown in the strip until the week changes)
+let _notesOpen = false;  // the notices of the other orders unfolded under the strip (owner 31/10); closed on a week change
 let _installed = false, _bannerShown = false, _warned = false;
 const _closedDays = new Set();   // days the USER folded; the board never folds a day itself (owner 12/10)
 const _errLogged = new Set();    // shape lines already logged (one row per distinct line per session)
@@ -224,7 +225,7 @@ function _week(n) {
   window.WNATL.week = v;
   window.renderWeeklyNatl();
 }
-function _onWeekChange() { _closedDays.clear(); _qAll = false; _qRaw = ''; _sIdx = 0; _noteErr = null; _stale = null; }
+function _onWeekChange() { _closedDays.clear(); _qAll = false; _qRaw = ''; _sIdx = 0; _noteErr = null; _stale = null; _notesOpen = false; }
 
 // ═══ Load ═══
 // No reportPageMetrics under v5 (F4α T10): the metrics audit (modules/metrics_audit.js) compares the OLD board's
@@ -504,14 +505,13 @@ function _logShape(m) {
 // ═══ Board body ═══
 function _boardHTML(m, known) {
   const no = { n: 0 };
-  const cycles = m.days.flatMap((d) => d.rows).filter((r) => r.kind === 'cycle');
   return _qbandHTML(m, known)
     // Δ12 2069:10269 (fidelity T7 r1): the no-match words are a strip of their own under the band, not text inside it.
     + '<div id="wn5-snone" class="wn5-snone" role="status" hidden></div>'
     + (known ? _noticesHTML(m) : '')
     + (known && typeof WN5Hub !== 'undefined' && typeof WN5Hub.shelfHTML === 'function' ? WN5Hub.shelfHTML(m) : '')
     // Δ12 (empty / loading / error frames): no column heads over a board with no row — they head nothing.
-    + (m.days.some((d) => d.rows.length) ? _colsHTML(cycles, known) : '')
+    + (m.days.some((d) => d.rows.length) ? _colsHTML() : '')
     + `<div id="wn5-rows">${m.days.map((d) => _dayHTML(d, m, known, no)).join('')}</div>`;
 }
 function _qbandHTML(m, known) {
@@ -524,13 +524,11 @@ function _qbandHTML(m, known) {
   // query and the same one repaint on crossing 1600 as the stops (_visPts).
   const max = _visPts() === 1 ? 2 : 3;
   const shown = _qAll ? q : q.slice(0, max);
-  // A card is one VS order (the base assigns an order whole), its pieces are the board's points (live W45, 28/10:
-  // «Όλα 4» beside 7 pieces). Figma audit B-7 (owner 28/10): the short «ΕΠΟΜΕΝΑ · 4 · 7 κομμάτια» — the cards say they
-  // are VS; the pieces keep their noun, only when they differ from the cards.
-  const pcs = q.reduce((n, it) => n + (it.pieces || 1), 0);
+  // A card is one VS order (the base assigns an order whole), its pieces are the board's points.
   const nVs = String(q.length);
   const more = q.length > max ? `<button type="button" class="wi4-link wi4-q-all" onclick="WN5._qMore()">${_qAll ? 'Λιγότερα ▴' : `Όλες οι ${q.length} ▾`}</button>` : '';
-  return `<div class="wi4-q wn5-q">${search}<div class="wi4-q-hd"><span>ΕΠΟΜΕΝΑ · ${nVs}${pcs !== q.length ? ` · <span class="wn5-lc">${pcs} κομμάτια</span>` : ''}</span><span class="wi4-q-n">${_esc(_qSub(q, m.today))}</span></div>`
+  // Owner 31/10 (no «κομμάτι» on the board): the count is the VS orders, as the cards; their pieces are on the rows.
+  return `<div class="wi4-q wn5-q">${search}<div class="wi4-q-hd"><span>ΕΠΟΜΕΝΑ · ${nVs}</span><span class="wi4-q-n">${_esc(_qSub(q, m.today))}</span></div>`
     + `<div class="wn5-qcards">${shown.map((it) => _qcardHTML(it, m)).join('')}</div>${more}</div>`;
 }
 // «2 VS από Δευ · 1 Παρ» (Figma 2011:7745): how many of the queue fall on each day; «VS» once, on the first.
@@ -568,15 +566,14 @@ function _qMore() {
   if (q && _m) q.outerHTML = _qbandHTML(_m, true);
 }
 // Column heads of Figma H1 2120:7738: «ΑΝΑΘΕΣΗ» alone (owner 25/10), no Veroia-time column anywhere.
-function _colsHTML(cycles, known) {
-  const kn = cycles.filter((r) => r.kath).length;
-  const an = cycles.filter((r) => r.anod && !r.anod.gap).length;
-  const cnt = (n) => (known ? ` · ${n} ${n === 1 ? 'κύκλος' : 'κύκλοι'}` : '');
+function _colsHTML() {
+  // Owner 31/10: the column names only — no «N κύκλοι» counts, no «ανά ημέρα φόρτωσης Βέροιας» note (a professional
+  // board does not count «cycles»; the rows are what is counted).
   return '<div class="wn5-cols" role="row">'
     + '<span class="wn5-c-idx"></span><span class="wn5-c-kd">ΚΑΘΟΔΟΣ</span><span class="wn5-c-kfl">ΦΟΡΤΩΣΗ</span>'
-    + `<span class="wn5-c-kto">ΠΑΡΑΔΟΣΗ<span class="wn5-h-sub">${cnt(kn)}${known ? '<span class="wn5-h-long"> · ανά ημέρα φόρτωσης Βέροιας</span>' : ''}</span></span>`
+    + '<span class="wn5-c-kto">ΠΑΡΑΔΟΣΗ</span>'
     + '<span class="wn5-c-kpal">ΠΑΛ.</span><span class="wn5-c-asg wn5-h-asg">ΑΝΑΘΕΣΗ</span>'
-    + `<span class="wn5-c-ad">ΑΝΟΔΟΣ</span><span class="wn5-c-afl">ΦΟΡΤΩΣΗ<span class="wn5-h-sub">${cnt(an)}</span></span>`
+    + '<span class="wn5-c-ad">ΑΝΟΔΟΣ</span><span class="wn5-c-afl">ΦΟΡΤΩΣΗ</span>'
     + '<span class="wn5-c-ato">ΠΡΟΣ</span><span class="wn5-c-apal">ΠΑΛ.</span></div>';
 }
 function _dayHTML(d, m, known, no) {
@@ -668,7 +665,10 @@ function _kathHTML(r, m, ok) {
   const toDay = s.toDay && s.toDay !== s.day ? `<span class="wn5-dc2${hd}">→ ${_esc(_dl(s.toDay))}</span>` : '';
   // A VS waiting for a vehicle names its reference under the day (Figma H1 «Δευ 12/10 / VS-118», «VS-121 αργό»):
   // the queue card and the row then read as the same load.
-  const ref = r.kind === 'unassigned' && r.vs && r.refs.length ? `<span class="wn5-dc2">${_esc(r.refs[0])}${r.late ? ' αργό' : ''}</span>` : '';
+  // The reference is the VS order's own text and can be a long list («1001, 1002, 1003, …», live W44): it ends in «…»
+  // inside its 70px cell (CSS .wn5-kref) and is whole in the title; it ran across ΦΟΡΤΩΣΗ and ΠΑΡΑΔΟΣΗ before (31/10).
+  // «αργό» is outside the cut part: a warning is never what the «…» hides.
+  const ref = r.kind === 'unassigned' && r.vs && r.refs.length ? `<span class="wn5-dc2 wn5-kref" title="${_esc(r.refs[0])}"><span class="wn5-kref-t">${_esc(r.refs[0])}</span>${r.late ? ' αργό' : ''}</span>` : '';
   return `<div class="wn5-kd">${_chipHTML(r, 'KATHODOS', `wi4-dc ${_chipCls(s.day, m.today)}${hd}`, _dl(s.day))}${toDay}${ref}</div>`
     + `<div class="wn5-fl"${_legAttr(r, 'KATHODOS')}>${_flHTML(s, ok, hd)}</div>`
     + `<div class="wn5-kto${_hx(r, s, null)}"${_legAttr(r, 'KATHODOS')}>${_hxHTML(r, s, null)}${_ptsHTML(s.to, ok)}</div>`
@@ -694,10 +694,9 @@ function _anodHTML(r, m, ok) {
     // every side of a cycle row (Figma 2011:10299 row 4); the «+» sits outside the dashed box (2011:10217)
     return `<div class="wn5-aspan wn5-gspan"><span class="${par ? 'wn5-gaptxt' : 'wn5-gapbox'}">${txt}</span></div><div class="wn5-apal wn5-gpal">${_plusHTML(r, 'ANODOS')}</div>`;
   }
-  const n = s.from.length;
   const hd = _dc(ok && s.headDim);
-  const end = r.end ? `<span class="wn5-end${_dc(ok && r.end.dim)}"${_segAttr(r.end.segLabel)} title="${_esc(`Βέροια · τέλος κύκλου · ως ${_dow(L().athensDay(r.end.by))} ${L().athensTime(r.end.by)}`)}"><span class="wi4-l1">Βέροια<span class="wn5-endx"> · τέλος κύκλου</span></span><span class="wi4-l2">ως ${_esc(_dow(L().athensDay(r.end.by)))} ${_esc(L().athensTime(r.end.by))}</span></span>` : '';
-  return `<div class="wn5-ad">${_prtHTML(r, 'ANODOS')}${_chipHTML(r, 'ANODOS', `wi4-dc ${_chipCls(s.day, m.today)}${hd}`, _dl(s.day))}<span class="wn5-dc2${hd}">${n} ${n === 1 ? 'φορτίο' : 'φορτία'}</span></div>`
+  const end = r.end ? `<span class="wn5-end${_dc(ok && r.end.dim)}"${_segAttr(r.end.segLabel)} title="${_esc(`Βέροια · ως ${_dow(L().athensDay(r.end.by))} ${L().athensTime(r.end.by)}`)}"><span class="wi4-l1">Βέροια</span><span class="wi4-l2">ως ${_esc(_dow(L().athensDay(r.end.by)))} ${_esc(L().athensTime(r.end.by))}</span></span>` : '';
+  return `<div class="wn5-ad">${_prtHTML(r, 'ANODOS')}${_chipHTML(r, 'ANODOS', `wi4-dc ${_chipCls(s.day, m.today)}${hd}`, _dl(s.day))}</div>`
     + `<div class="wn5-afl"${_legAttr(r, 'ANODOS')}>${_ptsHTML(s.from, ok)}</div>`
     + `<div class="wn5-ato${_hx(r, s, r.end)}"${_legAttr(r, 'ANODOS')}>${_hxHTML(r, s, r.end)}${_ptsHTML(s.to, ok)}${end}</div>`
     + `<div class="wn5-apal"${_legAttr(r, 'ANODOS')}>${_palHTML(s)}${_plusHTML(r, 'ANODOS')}</div>`;
@@ -762,7 +761,7 @@ function _ptCity(p) {
 // the base's due day; never an hour the base did not give
 const _hubBy = (p) => (p.to && (p.toDay || p.day) ? `${_dow(p.toDay || p.day)} ${p.to}` : p.due ? _dl(p.due) : '—');
 function _ptFull(p) {
-  if (p.hub) return `Βέροια · τέλος κύκλου · ως ${_hubBy(p)} · ${_pal(p.pallets, p.palUnknown)}`;   // the same words in title and «+N»
+  if (p.hub) return `Βέροια · ως ${_hubBy(p)} · ${_pal(p.pallets, p.palUnknown)}`;   // the same words in title and «+N»
   const city = _ptCity(p), who = _ptWho(p);
   return `${p.name}${city ? ', ' + city : ''} · ${_winTxt(p.from, p.to, p.allDay)} · ${_pal(p.pallets, p.palUnknown)}${_tempTxt(p) ? ' · ' + _tempTxt(p) : ''}${who ? ' · ' + who : ''}`;
 }
@@ -773,7 +772,7 @@ function _ptHTML(p, n, ok, inl) {
   if (p.hub) {
     const by = _hubBy(p);
     return `<span class="wi4-pt wn5-pt wn5-end${p.late ? ' wn5-late' : ''}" data-stop="${_id(p.stopId)}" title="${_esc(_ptFull(p))}">`
-      + `<span class="wi4-l1">Βέροια<span class="wn5-endx"> · τέλος κύκλου</span></span><span class="wi4-l2">ως ${_esc(by)}</span></span>`;
+      + `<span class="wi4-l1">Βέροια</span><span class="wi4-l2">ως ${_esc(by)}</span></span>`;
   }
   const city = _ptCity(p);
   const full = _ptFull(p);
@@ -819,7 +818,7 @@ function _leg(ev, rtId, side) {
   if (_legBusy) {
     // the same side of the same cycle already shows its read; any other click is told why it waits, never a silent nothing
     const sd = side === 'ANODOS' ? 'ANODOS' : 'KATHODOS';
-    if ((_legBusy.rt !== Number(rtId) || _legBusy.side !== sd) && typeof toast === 'function') toast('Ανοίγει ήδη ένα άλλο σκέλος — δοκίμασε ξανά μόλις ανοίξει', 'info');
+    if ((_legBusy.rt !== Number(rtId) || _legBusy.side !== sd) && typeof toast === 'function') toast('Ανοίγει ήδη μια άλλη γραμμή — δοκίμασε ξανά μόλις ανοίξει', 'info');   // owner 31/10: no «σκέλος» on the board
     return;
   }
   // one token per click: only its own end (or its own 90 s guard) releases it. A read that never settles must not lock
@@ -833,7 +832,7 @@ function _leg(ev, rtId, side) {
     .then((ok) => {
       if (ok !== false || _state !== 'err' || !_lastErr || !active() || typeof toast !== 'function') return;
       // one #toast (core/ui.js): this replaces at once the form's «Ο κύκλος δεν βρέθηκε …», which a failed read is not
-      toast(`Το σκέλος δεν άνοιξε: ο πίνακας δεν ξαναδιαβάστηκε (${_esc(String(_lastErr.message || ''))}) — ο κύκλος δεν χάθηκε· πάτα Ανανέωση`, 'danger');
+      toast(`Δεν άνοιξε: ο πίνακας δεν ξαναδιαβάστηκε (${_esc(String(_lastErr.message || ''))}) — τίποτα δεν χάθηκε· πάτα Ανανέωση`, 'danger');
     })
     .catch((e) => _logErr(e, 'weekly natl v5: leg form'))
     .finally(free);
@@ -987,7 +986,7 @@ function _localHTML(r, lm, ok) {
 // ═══ ✈ row menu (Figma 2011:8858) ═══
 // Each Task appends its line to WN5.MENU_ITEMS; `order` keeps the Figma order whatever the order of the Tasks:
 // 10 Άνοιγμα παραγγελιών · 20 Ανάθεση · 30 Νέα παραγγελία · 40 Φόρτωση με τοπικό · 50 Σπάσιμο · 60 Εκτύπωση ·
-// 70 Αντιγραφή πινακίδων · 90 Καθαρισμός (danger, after a separator).
+// 70 Αντιγραφή πινακίδων · 80 Αλλαγή οχήματος… · 90 Καθαρισμός (danger, after a separator).
 function rowMenu(ev, rtId) {
   try { if (ev && ev.stopPropagation) ev.stopPropagation(); } catch (_) {}
   _closeMenu();
@@ -1087,8 +1086,8 @@ function _menuItems(rtId) {
 }
 function _menuTitle(row) {
   const c = _cycleOf(row.rtId);
-  const who = (c && (c.truck || c.partner)) || (c && c.code) || '';
-  return who + (row.cycleNo ? ` · κύκλος ${row.cycleNo.m > 1 ? `${row.cycleNo.n}/${row.cycleNo.m}` : '1'}` : '');
+  // plates · driver, or the partner (owner 31/10: no RT code, no «κύκλος n/m» on the board)
+  return (c && ([c.truck, c.driver].filter(Boolean).join(' · ') || c.partner)) || '—';
 }
 function _menuSub(row) {
   const s = row.kath || row.anod;
@@ -1373,25 +1372,119 @@ function _searchKey(ev) {
   }
 }
 
-// ═══ Notices strip (Figma 2011:7745 «ΕΙΔΟΠΟΙΗΣΕΙΣ») ═══
-// The text of a notice is the DB's (072 plan_h_notice writes it in Greek, decision 25): shown as it is, the screen
-// writes no text per kind (principle 3). «Σημείωσα ✓» marks every notice on screen read — one POST per notice, body
-// {}, sent once per press (planFetch never re-sends), stopping at the first «no». Until day L the Worker answers 409
-// writes_closed: its message is shown, the notices stay, and the button stays off for the session (Ε-6).
+// ═══ Notices strip ═══
+// «Σημείωσα» marks notices read — one POST per notice, body {}, sent once per press (planFetch never re-sends),
+// stopping at the first «no». A 409 writes_closed: its message is shown, the notices stay, the buttons stay off (Ε-6).
+// Notices (owner 31/10, over Figma 2011:7745's amber line): a quiet white strip as the ΒΕΡΟΙΑ one, ONE line however
+// many come. Grouped by order (one line per VS / national order, or per truck when a notice names only its cycle):
+// «VS 2130 · νέος προορισμός: …», the order a link to its row. The newest group is on the line; the others are counted
+// in «+N ακόμη ▾» and unfold under it — a notice is never hidden without its number on screen. «Σημείωσα» per group
+// and «Σημείωσα όλες ✓».
+// The words: the base's message reads «… της VS 2130: τα κομμάτια …», «… (trigger:plan_bridge_sync) …» — codes and
+// the terms the owner does not want on the board. A kind this screen knows gets a short line of its own (the value the
+// message carries, e.g. the new destination, is kept); a kind it does not know shows the base's message as it is,
+// less the «(trigger:…)» tag, never nothing.
+const NOTE_TXT = Object.freeze({
+  vs_day_moved: 'ημέρα Βέροιας άλλαξε · ξανά προς ανάθεση',
+  vs_day_moved_kept: 'ημέρα άλλαξε · έμεινε στο φορτηγό του · έλεγξε ώρες',
+  vs_withdrawn: 'βγήκε από τα εθνικά',
+  vs_changed_after_execution: 'άλλαξε μετά την εκτέλεση · έλεγξε το φορτηγό',
+  legacy_nl_replaced: 'πέρασε στον νέο πίνακα · ανάθεσέ την ξανά',
+});
+const _noteClean = (t) => String(t || '').replace(/\s*\(trigger:[^)]*\)/gi, '').trim();
+function _noteText(x) {
+  if (x.kind === 'vs_place_changed') {
+    const t = String(x.message || ''), i = t.lastIndexOf(' → ');
+    return 'νέος προορισμός' + (i >= 0 ? ': ' + t.slice(i + 3).trim() : '');
+  }
+  return NOTE_TXT[x.kind] || _noteClean(x.message) || '—';
+}
+// What the board knows of each order: its reference and its pieces (cycles' legs, waiting, hub) — read from the
+// board in hand, so a link goes to a row of THIS week or is not drawn.
+function _noteIndex() {
+  const ix = new Map();
+  const put = (k, ref, pc) => { if (!k) return; const e = ix.get(k) || { ref: null, pieces: new Set() }; if (!e.ref && ref) e.ref = String(ref); if (pc != null) e.pieces.add(Number(pc)); ix.set(k, e); };
+  const key = (o) => (o.order_id != null ? 'o' + o.order_id : o.nat_order_id != null ? 'n' + o.nat_order_id : null);
+  const b = _board || {};
+  for (const c of b.cycles || []) for (const st of c.stops || []) for (const l of st.legs || []) put(key(l), l.reference, l.piece_id);
+  for (const w of [...(b.waiting || []), ...(b.hub || [])]) put(key(w), w.reference, w.piece_id);
+  return ix;
+}
+function _noteGroups(m) {
+  const ix = _noteIndex();
+  const rows = m.days.flatMap((d) => d.rows);
+  const byPiece = new Map();
+  for (const r of rows) for (const pc of r.pieceIds || []) if (!byPiece.has(Number(pc))) byPiece.set(Number(pc), r.key);
+  const groups = new Map();
+  for (const x of m.notices) {
+    const ok = x.order_id != null ? 'o' + x.order_id : x.nat_order_id != null ? 'n' + x.nat_order_id : null;
+    const gk = ok || (x.rt_id != null ? 'r' + x.rt_id : 'i' + x.id);
+    let g = groups.get(gk);
+    if (!g) {
+      const e = ok ? ix.get(ok) : null;
+      // the order's reference from the board, else the «VS <ref>» the base wrote in the message; a cycle is its truck
+      const m1 = !e || !e.ref ? /\bVS ([^:(]+?)(?::|\s\(|\sβγήκε|\sάλλαξε|\sπέρασε|$)/.exec(String(x.message || '')) : null;
+      const ref = (e && e.ref) || (m1 && m1[1].trim()) || null;
+      const c = !ok && x.rt_id != null ? _cycleOf(x.rt_id) : null;
+      // «VS 2130»; a reference that already says it («VS-118») is not prefixed twice
+      const name = ok ? (ref && /^VS[-\s]/i.test(ref) ? ref : `${x.order_id != null ? 'VS' : 'Εθνική'}${ref ? ' ' + ref : ''}`)
+        : c ? ([c.truck, c.driver].filter(Boolean).join(' · ') || c.partner || 'Δρομολόγιο') : '';
+      let rowKey = null;
+      if (x.rt_id != null && rows.some((r) => r.key === 'rt:' + x.rt_id)) rowKey = 'rt:' + x.rt_id;
+      else if (e) for (const pc of e.pieces) if (byPiece.has(pc)) { rowKey = byPiece.get(pc); break; }
+      g = { key: gk, name, rowKey, items: [] };
+      groups.set(gk, g);
+    }
+    g.items.push(x);
+  }
+  return [...groups.values()];
+}
+function _noteAt(x) {
+  if (!x.created_at) return '';
+  const who = x.created_by && !/^trigger:/i.test(x.created_by) ? (typeof userDisplayName === 'function' ? userDisplayName(x.created_by) : x.created_by) : '';
+  return [_dow(L().athensDay(x.created_at)) + ' ' + L().athensTime(x.created_at), who].filter(Boolean).join(' · ');
+}
+function _noteLineHTML(g, off, own) {
+  const texts = [...new Set(g.items.map(_noteText))];
+  const ids = g.items.map((x) => _id(x.id)).join(',');
+  const at = _noteAt(g.items[0]);
+  const full = [g.name, ...texts, at].filter(Boolean).join(' · ');
+  const who = !g.name ? '' : g.rowKey
+    ? `<button type="button" class="wi4-link wn5-note-who" title="Στη γραμμή" onclick="WN5.focusRow('${_esc(g.rowKey)}')">${_esc(g.name)}</button>`
+    : `<b class="wn5-note-who" title="Δεν είναι γραμμή αυτής της εβδομάδας">${_esc(g.name)}</b>`;
+  return `<span class="wn5-note" data-id="${_id(g.items[0].id)}" data-ids="${ids}" title="${_esc(full)}">${who}`
+    // \u00a0: a flex item drops a leading space, and «VS 2130· νέος» read as one word
+    + `<span class="wn5-note-t">${g.name ? '\u00a0· ' : ''}${_esc(texts.join(' · '))}</span>${at ? `<span class="wn5-note-by">\u00a0· ${_esc(at)}</span>` : ''}`
+    + (own ? `<button type="button" class="wi4-link wn5-note-ok"${off ? ' disabled' : ''} onclick="WN5._noteRead('${_esc(g.key)}')">Σημείωσα</button>` : '')
+    + '</span>';
+}
 function _noticesHTML(m) {
   if (!m || !m.notices.length) return '';
   const off = _noteBusy || !!_closed;
+  const gs = _noteGroups(m);
+  const more = gs.length - 1;
   return `<div id="wn5-notices" class="wn5-notes" role="status"><b class="wn5-notes-h">ΕΙΔΟΠΟΙΗΣΕΙΣ<span class="wn5-notes-n"> · ${m.notices.length}</span></b>`
-    + `<span class="wn5-notes-l">${m.notices.map((x) => `<span class="wn5-note" data-id="${_id(x.id)}"> · ${_esc(x.message)}</span>${_noteBy(x)}`).join('')}</span>`
-    + `<button type="button" id="wn5-note-read" class="wi4-link"${off ? ' disabled' : ''}${_closed ? ` title="${_esc(_closed.message)}"` : ''} onclick="WN5._noteRead()">Σημείωσα ✓</button></div>`;
+    + `<span class="wn5-notes-l">${_noteLineHTML(gs[0], off, more > 0)}</span>`
+    + (more ? `<button type="button" class="wi4-link wn5-notes-more" aria-expanded="${_notesOpen}" onclick="WN5._notesTog()">${_notesOpen ? 'λιγότερες ▴' : `+${more} ακόμη ▾`}</button>` : '')
+    + `<button type="button" id="wn5-note-read" class="wi4-link"${off ? ' disabled' : ''}${_closed ? ` title="${_esc(_closed.message)}"` : ''} onclick="WN5._noteRead()">${more ? 'Σημείωσα όλες ✓' : 'Σημείωσα ✓'}</button>`
+    + (more ? `<div class="wn5-notes-rest"${_notesOpen ? '' : ' hidden'}>${gs.slice(1).map((g) => _noteLineHTML(g, off, true)).join('')}</div>` : '')
+    + '</div>';
 }
-// «(Π.Κ. 08:12)» after each text (Figma 2011:7745): who wrote it and when, from the notice row itself (created_by,
-// created_at). Beside the text, never inside it: the text stays the DB's, as it is.
-function _noteBy(x) {
-  const who = x.created_by ? (typeof userDisplayName === 'function' ? userDisplayName(x.created_by) : x.created_by) : '';
-  const at = x.created_at ? L().athensTime(x.created_at) : '';
-  const t = [who, at].filter(Boolean).join(' ');
-  return t ? `<span class="wn5-note-by"> (${_esc(t)})</span>` : '';
+function _notesTog() { _notesOpen = !_notesOpen; _paintNotices(); }
+// A row found again and shown (F50, owner 31/10; a notice's link too): its day opened if the user folded it, scrolled
+// into view, marked as the row in hand (.wn5-focus, until the next paint) and flashed once — the Weekly International's
+// focusRow. false = no such row on this board (nothing scrolls).
+function focusRow(key) {
+  const sel = `#content .wn5 .wn5-row[data-key="${String(key).replace(/["\\]/g, '')}"]`;
+  let el = document.querySelector(sel);
+  const day = el && el.closest('.wn5-day.closed');
+  if (day) { _dayTog(day.dataset.date); el = document.querySelector(sel); }
+  if (!el) return false;
+  for (const x of document.querySelectorAll('#content .wn5 .wn5-row.wn5-focus')) x.classList.remove('wn5-focus');
+  el.classList.add('wn5-focus', 'wn5-flash');
+  try { el.scrollIntoView({ block: 'nearest' }); } catch (_) {}
+  setTimeout(() => { if (el.isConnected) el.classList.remove('wn5-flash'); }, 1500);
+  return true;
 }
 function _paintNotices() {
   const el = document.getElementById('wn5-notices');
@@ -1409,9 +1502,12 @@ function _noteStrip() {
   const btn = document.getElementById('wn5-note-read');
   if (el && btn && btn.parentNode === host) host.insertBefore(el, btn);
 }
-async function _noteRead() {
+async function _noteRead(group) {
   if (_noteBusy || _closed || !active() || !_m) return;
-  const ids = _m.notices.map((x) => x.id).filter((id) => ID_RE.test(String(id)));
+  // one group (its «Σημείωσα») or all of them (the strip's button)
+  const g = group ? _noteGroups(_m).find((x) => x.key === group) : null;
+  if (group && !g) return;
+  const ids = (g ? g.items : _m.notices).map((x) => x.id).filter((id) => ID_RE.test(String(id)));
   if (!ids.length) return;
   _noteBusy = true;
   _noteErr = null;
@@ -1452,6 +1548,8 @@ const WN5 = {
   searchFocus,
   _searchKey,
   _noteRead,
+  _notesTog,
+  focusRow,
   _leg,
   _cpy,
   _orderCard,
@@ -1463,7 +1561,7 @@ const WN5 = {
     // T12: the same Δ1 window as the red box and ΕΠΟΜΕΝΑ; on a cycle it changes the vehicle (PATCH /plan/rt/:id)
     { id: 'assign', order: 20, label: 'Ανάθεση / αλλαγή φορτηγού ή συνεργάτη', run: (rtId) => WN5Act.assign(null, { entry: 'menu', rtId }) },
     // T20: the same short form as the «+» of a leg (S-45): target = this cycle's side, day/Veroia from the cycle
-    { id: 'new-order', order: 30, label: 'Νέα παραγγελία σε αυτό το σκέλος', children: [
+    { id: 'new-order', order: 30, label: 'Νέα παραγγελία σε αυτό το δρομολόγιο', children: [
       { id: 'new-order-k', label: 'Κάθοδος', run: (rtId) => WN5Form.openOrder({ side: 'KATHODOS', rtId }) },
       { id: 'new-order-a', label: 'Άνοδος', run: (rtId) => WN5Form.openOrder({ side: 'ANODOS', rtId }) }] },
     // T17: the stop is chosen inside the window (its day is the stop's day, 072:2283)
@@ -1477,6 +1575,8 @@ const WN5 = {
       { id: 'sheet-a', label: 'Άνοδος', run: (rtId) => WN5Sheet.print(rtId, 'ANODOS') },
       { id: 'sheet-all', label: 'Όλο το δρομολόγιο', run: (rtId) => WN5Sheet.print(rtId, 'ALL') }] },
     { id: 'plates', order: 70, label: 'Αντιγραφή πινακίδων', run: (rtId) => copyPlatesOf(rtId) },
+    // owner 31/10 (B-13 = α, Figma 2396:7831): the way into the vehicle change (H2) for every cycle, also one never changed
+    { id: 'handover', order: 80, label: 'Αλλαγή οχήματος…', sub: '›', run: (rtId) => WN5Hand.entry(rtId) },
     // T15: last and red (Figma 2011:8858); owner + dispatcher on the Worker, but visible to all (Δ12 tile 8)
     { id: 'clear', order: 90, label: 'Καθαρισμός ανάθεσης', sub: 'κάθοδος + άνοδος', danger: true, run: (rtId) => WN5Act.clear(rtId) },
   ],
