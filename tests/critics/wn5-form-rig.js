@@ -958,6 +958,52 @@ async function scnLegAdd({ browser, origin, ok, scn }) {
   await closeClean(page, S, ok, scn);
 }
 
+// F44/F46 (live simulation 31/10): «+» → «Νέα παραγγελία» put «Ημ. άφιξης Βέροιας» on the cycle's START day (the
+// «+» passes it as day): Thu 29 for a cycle that stops at Veroia on Fri 30, fixed by hand three times. The cycle's own
+// Veroia stop on that side fixes the day; with none yet, the arrival the screen filled follows the order's loading
+// (F33's rule: on or after its loading), and a day the user typed stays theirs.
+async function scnF44({ browser, origin, ok, scn }) {
+  const vday = (page) => page.$eval(`${DLG} #wn5f-vday`, (i) => i.value).catch(() => null);
+  { // RT-T101 starts Mon 12/10, its ΑΝΟΔΟΣ stops at Veroia Tue 13/10; RT-T102 (Wed 14/10) is all ΑΝΟΔΟΣ
+    const { page, S } = await K.openApp(browser, origin, { board: K.week() });
+    if (!(await guard(page, ok, scn))) return;
+    await page.evaluate(() => WN5Form.openOrder({ side: 'ANODOS', day: '2026-10-12', rtId: 101 }));
+    await page.waitForSelector(DLG, { timeout: 8000 }).catch(() => {});
+    const v = await vday(page);
+    ok(scn, '«+» of RT-T101 ΑΝΟΔΟΣ (cycle day Mon 12/10): «Ημ. άφιξης Βέροιας» = its Veroia stop Tue 13/10 — main: Mon 12/10', v === '2026-10-13', v);
+    const pt = await page.$eval(`${DLG} .wn5f-rows[data-k="load"] [data-f="day"]`, (i) => i.value).catch(() => null);
+    ok(scn, '… the loading point keeps the cycle\'s day (Mon 12/10), as before', pt === '2026-10-12', pt);
+    await closeClean(page, S, ok, scn);
+  }
+  { // no Veroia stop on the ΑΝΟΔΟΣ yet: RT-T101 without its two ΑΝΟΔΟΣ stops
+    const b = K.week();
+    b.cycles[0].stops = b.cycles[0].stops.filter((x) => x.side === 'KATHODOS');
+    const { page, S } = await K.openApp(browser, origin, { board: b });
+    if (!(await guard(page, ok, scn))) return;
+    await page.evaluate(() => WN5Form.openOrder({ side: 'ANODOS', day: '2026-10-12', rtId: 101 }));
+    await page.waitForSelector(DLG, { timeout: 8000 }).catch(() => {});
+    const v0 = await vday(page);
+    await page.fill(`${DLG} .wn5f-rows[data-k="load"] .wn5f-dayx`, '14/10');
+    await page.waitForTimeout(200);
+    const v1 = await vday(page);
+    ok(scn, 'no Veroia stop: loading typed Wed 14/10 → the filled arrival follows to Wed 14/10 — main: stays Mon 12/10', v0 === '2026-10-12' && v1 === '2026-10-14', { v0, v1 });
+    // the Veroia point row the screen filled follows the header (the live «fixed by hand 3 times» was this row)
+    await page.evaluate((d) => { const r = document.querySelector(`${d} .wn5f-rows[data-k="drop"] .wn5f-row`); fhPickLinked(r.dataset.pid, 'recJucKOhC1zh4IP3', 'ΒΕΡΟΙΑ TEST'); }, DLG);
+    await page.waitForTimeout(150);
+    await page.fill(`${DLG} .wn5f-rows[data-k="load"] .wn5f-dayx`, '15/10');
+    await page.waitForTimeout(200);
+    const rowDay = await page.$eval(`${DLG} .wn5f-rows[data-k="drop"] [data-f="day"]`, (i) => i.value).catch(() => null);
+    ok(scn, '… the Veroia point row follows too (loading Thu 15/10 → Veroia row Thu 15/10)', rowDay === '2026-10-15' && (await vday(page)) === '2026-10-15', rowDay);
+    await page.fill(`${DLG} .wn5f-day:has(#wn5f-vday) .wn5f-dayx`, '16/10');
+    await page.waitForTimeout(150);
+    await page.fill(`${DLG} .wn5f-rows[data-k="load"] .wn5f-dayx`, '13/10');
+    await page.waitForTimeout(200);
+    const v2 = await vday(page);
+    ok(scn, '… an arrival the user typed (Fri 16/10) stays when the loading changes again', v2 === '2026-10-16', v2);
+    await closeClean(page, S, ok, scn);
+  }
+}
+
 // T22 — VS day and destination from the leg form: one POST per change, never inside the form's save.
 function vsWeek(withStop) {
   const b = K.week();
@@ -1014,7 +1060,7 @@ async function scnVs({ browser, origin, ok, scn }) {
 }
 
 K.run({
-  scenarios: { order: scnOrder, nowin: scnNoWin, nopp: scnNoPP, groupage: scnGroupage, unknown: scnUnknown, reused: scnReused, replayed: scnReplayed, edit: scnEdit, 'edit-ride': scnEditRide, 'edit-follow': scnEditFollow, 'edit-add': scnEditAdd, 'edit-remove': scnEditRemove, 'edit-read-fail': scnEditReadFail, 'edit-twoday': scnEditTwoDay, 'veroia-edit': scnVeroiaEdit, 'day-type': scnDayType, leg: scnLeg, 'leg-anodos': scnLegAnodos, 'stop-time': scnStopTime, miss: scnMiss, 'leg-add': scnLegAdd, vs: scnVs },
+  scenarios: { order: scnOrder, nowin: scnNoWin, nopp: scnNoPP, groupage: scnGroupage, unknown: scnUnknown, reused: scnReused, replayed: scnReplayed, edit: scnEdit, 'edit-ride': scnEditRide, 'edit-follow': scnEditFollow, 'edit-add': scnEditAdd, 'edit-remove': scnEditRemove, 'edit-read-fail': scnEditReadFail, 'edit-twoday': scnEditTwoDay, 'veroia-edit': scnVeroiaEdit, 'day-type': scnDayType, leg: scnLeg, 'leg-anodos': scnLegAnodos, 'stop-time': scnStopTime, miss: scnMiss, 'leg-add': scnLegAdd, vs: scnVs, f44: scnF44 },
   globals: ['WN5Form'],
   go: 'the v5 order forms send one body per press, from the form only, with one request_id per open form',
 }).catch((e) => { console.error(e); process.exit(1); });

@@ -454,6 +454,8 @@
     if (!w) return;
     const x = w.querySelector('.wn5f-dayx'), p = w.querySelector('.wn5f-dayp');
     if (!x || !p) return;
+    // F44: a day the user typed or picked is theirs — it no longer follows what the screen filled (data-auto)
+    if (t === p || t === x) delete p.dataset.auto;
     if (t === p) { delete x.dataset.raw; return; }
     if (t !== x) return;
     const d = _dayParse(x.value, x.dataset.ref);
@@ -509,7 +511,7 @@
     const pid = 'wn5l' + (++f.seq);
     return `<div class="wn5f-row" data-k="${k}" data-pid="${pid}">`
       + `<div class="wn5f-loc">${fhLocSelect(pid, '', 'fhLocDrop')}</div>`
-      + _dayHTML('data-f="day"', f.dayDefault, '', false)
+      + _dayHTML('data-f="day"' + (f.dayDefault ? ' data-auto="1"' : ''), f.dayDefault, '', false)
       + `<span class="wn5f-win"><span class="wn5f-from"><input ${HM_INPUT} data-f="from" aria-label="από"><span class="wn5f-dash">–</span></span>`
       + `<input ${HM_INPUT} data-f="to" aria-label="έως"></span>`
       + `<input class="form-input" data-f="pal" inputmode="decimal" aria-label="Παλέτες">`
@@ -635,8 +637,16 @@
     f.el.querySelector('[data-vwinl]').textContent = dir === 'ANODOS' ? 'Άφιξη Βέροιας ως' : 'Παράθυρο φόρτωσης Βέροιας';
     f.el.querySelector('[data-vfromw]').hidden = dir === 'ANODOS';
     const raw = _raw(f);
-    // the header's Veroia day/window fills an empty Veroia row: one value typed once (Figma 9624)
-    const vday = f.el.querySelector('#wn5f-vday').value, vf = _hmNorm(f.el.querySelector('#wn5f-vfrom').value), vt = _hmNorm(f.el.querySelector('#wn5f-vto').value);
+    // F44 (F33's rule): with no Veroia stop on the cycle yet, an ΑΝΟΔΟΣ arrival the screen filled follows the order's
+    // own loading — its last loading day — until the user types the arrival day
+    const vEl = f.el.querySelector('#wn5f-vday');
+    if (dir === 'ANODOS' && vEl.dataset.auto) {
+      const last = [...f.el.querySelectorAll('.wn5f-rows[data-k="load"] [data-f="day"]')].map((x) => x.value).filter((v) => DAY.test(v)).sort().pop();
+      if (last && last !== vEl.value) vEl.value = last;
+    }
+    // the header's Veroia day/window fills an empty Veroia row: one value typed once (Figma 9624); a Veroia row the
+    // screen filled (data-auto) follows the header, one the user typed never
+    const vday = vEl.value, vf = _hmNorm(f.el.querySelector('#wn5f-vfrom').value), vt = _hmNorm(f.el.querySelector('#wn5f-vto').value);
     const whole = _headWinCheck(f).length === 0;   // F1: half a head window never reaches the rows
     f.el.querySelectorAll('.wn5f-row').forEach((r) => {
       const rec = (document.getElementById('lv_' + r.dataset.pid) || {}).value || '';
@@ -644,7 +654,7 @@
         const d = r.querySelector('[data-f="day"]'), a = r.querySelector('[data-f="from"]'), b = r.querySelector('[data-f="to"]');
         // a day typed wrong stays wrong, in red (_dayInput): the head never fills it over the user's keys
         const typed = d.parentElement && d.parentElement.querySelector('.wn5f-dayx');
-        if (!d.value && vday && !(typed && typed.dataset.raw)) d.value = vday;
+        if ((!d.value || (d.dataset.auto && d.value !== vday)) && vday && !(typed && typed.dataset.raw)) { d.value = vday; d.dataset.auto = '1'; }
         if (whole && !a.value && vf) a.value = vf;
         if (whole && !b.value && vt) b.value = vt;
       }
@@ -1189,8 +1199,15 @@
       const hubSel = (c && c.stops || []).filter((s) => s.side === dir.value).sort((a, b) => a.seq - b.seq);
       const hubStop = hubSel.find((s) => { try { return s.location_id === PlanIds.id('location', _hubRec()); } catch (_) { return false; } });
       const v = p.veroia || (hubStop ? { from: hubStop.planned_from, to: hubStop.planned_to } : null);
-      const day = p.day || (hubStop ? hubStop.stop_day : '');
-      if (day) { f.el.querySelector('#wn5f-vday').value = day; f.dayDefault = day; f.el.querySelectorAll('[data-f="day"]').forEach((x) => { if (!x.value) x.value = day; }); }
+      // F44/F46 (live 31/10): the Veroia day is the cycle's own Veroia stop on that side, before the cycle's start
+      // (p.day): the start put a Veroia arrival on Thu 29 for a cycle that stops at Veroia on Fri 30, fixed by hand
+      // three times. The points keep the cycle's day as before. What the screen fills is marked data-auto and follows
+      // (_orderRefresh); a day the user types or picks stays theirs (_dayInput).
+      const hubDay = hubStop ? hubStop.stop_day || '' : '';
+      const day = p.day || hubDay, vd = hubDay || p.day || '';
+      const vEl = f.el.querySelector('#wn5f-vday');
+      if (vd) { vEl.value = vd; if (!hubDay) vEl.dataset.auto = '1'; }
+      if (day) { f.dayDefault = day; f.el.querySelectorAll('[data-f="day"]').forEach((x) => { if (!x.value) { x.value = day; x.dataset.auto = '1'; } }); }
       if (v) {
         const a = /^\d\d:\d\d$/.test(v.from) ? v.from : (_parts(v.from) || {}).hm, b = /^\d\d:\d\d$/.test(v.to) ? v.to : (_parts(v.to) || {}).hm;
         if (a) f.el.querySelector('#wn5f-vfrom').value = a;
