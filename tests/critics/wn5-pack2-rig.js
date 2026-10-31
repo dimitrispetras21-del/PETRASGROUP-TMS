@@ -2,7 +2,7 @@
 // point on the same truck, B-22 (PE «Όχι»), the invoice price for owner / accountant only. Judged by what reached the
 // fake /plan/* (S.plan: method, path, raw body, order — «the table» of this rig) and by the DOM; never by a toast or a
 // screenshot. Synthetic data only (public repo).
-// Usage: node tests/critics/wn5-pack2-rig.js [menu delpt half delwait listdel drag day newpt price b22] [--shots <dir>]
+// Usage: node tests/critics/wn5-pack2-rig.js [menu delpt half delwait listdel drag day newpt newanod price b22] [--shots <dir>]
 //        WN5_TREE=<git archive origin/main> node tests/critics/wn5-pack2-rig.js   (plain-main proof: NO-GO, exit 1)
 // Exit: 0 green · 1 a check failed · 2 unknown scenario.
 'use strict';
@@ -287,6 +287,32 @@ async function newpt({ browser, origin, ok, scn }) {
   await page.context().close();
 }
 
+// 7b · ΑΝΟΔΟΣ: a new loading point goes after the last pickup, never after the Veroia end; a lost answer is «maybe»
+async function newanod({ browser, origin, ok, scn }) {
+  const b = K.week();
+  // N-T002 rides RT-T101's ΑΝΟΔΟΣ (Aspropyrgos 12–14 → Veroia 20–22, Tue 13/10); its new point waits at Larisa (whole day)
+  b.waiting.push({ piece_id: 4302, shipment_id: 5302, kind: 'national', order_id: null, nat_order_id: 3002, order_stop_id: null, pallets: 2, leave_by: null,
+    position_location_id: 4, nat_from_location_id: 4, nat_to_location_id: 1, nat_ready_day: '2026-10-13', nat_due_day: '2026-10-13', overdue: false, is_stock: false,
+    client_id: 43, client: 'ΠΕΛΑΤΗΣ Γ', reference: 'N-T002', temperature_c: 4, pallet_exchange: false, direction: 'ANODOS',
+    load_from: '2026-10-12T21:00:00+00:00', load_to: '2026-10-13T20:59:00+00:00', deliver_from: '2026-10-12T21:00:00+00:00', deliver_to: '2026-10-13T20:59:00+00:00', price: 120 });
+  let n = 0;
+  const plan = { 'POST /plan/legs': () => (++n === 1 ? [200, { ok: true, op: 'plan_put_pieces', dry_run: false, ids: {}, warnings: [{ code: 'over_33', rt_id: 101, side: 'ANODOS', pallets: 34 }], notice_ids: [] }]
+    : K.planErr(422, 'PLAN_RULE', 'plan_unknown')) };
+  const { page, S } = await K.openApp(browser, origin, { board: b, plan });
+  const r1 = await page.evaluate(() => { const h = document.createElement('div'); h.id = 'rig-host'; document.body.appendChild(h);
+    return WN5Edit.putNew({ natOrderId: 3002, shipmentIds: [5302], host: h }).then((x) => x && { ok: x.ok, text: x.text }); });
+  const x = K.planOf(S, 'POST', '/plan/legs')[0];
+  const lar = x && (x.body.stops || []).find((s) => s.location_id === 4);
+  ok(scn, 'onto rt 101 ΑΝΟΔΟΣ; Larisa starts when the last PICKUP ends (14:00), not after the Veroia end (22:00)', !!x && JSON.stringify(x.body.target) === '{"rt_id":101,"side":"ANODOS"}'
+    && !!lar && Date.parse(lar.planned_from) === Date.parse('2026-10-13T14:00:00+03:00') && (x.body.stops || []).some((s) => s.stop_id === 1005), x && x.body);
+  ok(scn, 'its warning (over_33) in the host it was given, the form\'s', !!r1 && r1.ok && await K.count(page, '#rig-host .wn5-strip[data-kind="warning"]') === 1, r1);
+  const r2 = await page.evaluate(() => WN5Edit.putNew({ natOrderId: 3002, shipmentIds: [5302], host: document.getElementById('rig-host') }).then((x) => x && { ok: x.ok, text: x.text }));
+  ok(scn, 'a lost answer (plan_unknown) → «μπορεί να έγινε», never «έμεινε ΠΡΟΣ ΑΝΑΘΕΣΗ»', !!r2 && !r2.ok && /μπορεί να έγινε/.test(r2.text || '')
+    && !/έμεινε ΠΡΟΣ ΑΝΑΘΕΣΗ/.test(await K.text(page, '#rig-host')), [r2, await K.text(page, '#rig-host')]);
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await page.context().close();
+}
+
 // 8 · the invoice price of an existing order: owner and accountant only (owner 31/10); a new order: everyone
 async function price({ browser, origin, ok, scn }) {
   const st = async (role) => {
@@ -324,5 +350,5 @@ async function b22({ browser, origin, ok, scn }) {
   await page.context().close();
 }
 
-K.run({ scenarios: { menu, delpt, half, delwait, listdel, drag, day, newpt, price, b22 }, globals: ['WN5Act', 'WN5Form', 'WN5Edit'],
+K.run({ scenarios: { menu, delpt, half, delwait, listdel, drag, day, newpt, newanod, price, b22 }, globals: ['WN5Act', 'WN5Form', 'WN5Edit'],
   go: 'board pack 2: delete from the board, drag to truck / day, new point on its truck, B-22, price roles' });
