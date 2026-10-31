@@ -9156,8 +9156,10 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 .wn5-vh { display:block; font-size:12px; line-height:15px; font-weight:500; color:var(--wi4-ink); }
 /* H1 2120:8134/8150/8817: every stop's time line, Veroia's window included, is DM Sans Medium 10.5px grey-1 */
 .wn5-vtime { display:block; font-size:10.5px; line-height:13px; font-weight:500; color:var(--wi4-grey-1); }
-/* At 1920 two stops fit side by side; narrower (1440: 147px) they wrap to a second line instead of spilling. */
-.wn5 .wn5-pts { flex-wrap:wrap; row-gap:4px; }
+/* The stops of a cell stay on ONE line at every width (density, owner 31/10; ≤1600 already did): a stop shrinks and
+   its name wraps inside it, «+N» stays beside its stops. Whole stops wrapping under each other made the row 62px and
+   left «+1» alone on a line (W44 at 1920). */
+.wn5 .wn5-pts { flex-wrap:nowrap; row-gap:4px; }
 /* Stops, the end of the cycle and the «Κενό γύρισμα» slot WRAP at every width (DESIGN.md #6: a company or place name is
    never cut; plan T5: «No text-overflow anywhere», at 1440 stops wrap to a second line). The wi4 block cuts
    .wi4-l1/.wi4-l2/.wi4-ell with a visible «…» (its one truncation rule); here that rule stays only on the 28px vehicle
@@ -9182,9 +9184,12 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
    (14 + 3 + 87), which left the number alone on its line; the next column keeps its own 9px, so text never touches. */
 .wn5 .wn5-fl .wn5-pts { margin-right:-9px; }
 /* Two stops + the 34px «+N» at 1920 (Figma: stops 178px apart, gap included). Since the density change (owner 31/10) a
-   point column is wider than two 164px stops; a stop GROWS into what is left, so a long place stays on one line
-   instead of wrapping inside 164px beside empty room. 140px is the least two stops get side by side. */
-.wn5 .wn5-pt { flex:1 1 140px; }
+   point column is wider than two 164px stops: a stop takes its own width (a long place on one line instead of
+   wrapping inside 164px beside empty room) and shrinks only when the column is full; «+N» follows its stops, never
+   pushed to the column's far end beside ΠΑΛ. Two stops share the cell evenly (each at most half, so a long name never
+   squeezes its neighbour into three lines); a stop alone keeps the whole cell. */
+.wn5 .wn5-pt { flex:0 1 auto; max-width:50%; }
+.wn5 .wn5-pt:only-child { max-width:none; }
 /* A point with no number (a waiting VS, a single stop): its name starts at x0, flush with the numbers above — in the
    wi4 grid the empty number column still kept its 4px gap. */
 .wn5 .wn5-pt > .wi4-l1:first-child { grid-column:1 / -1; }
@@ -9237,9 +9242,8 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 @media (max-width:1600px) {
   .wn5 { --wn5-idx:48px; --wn5-g1:6px; }
   .wn5-h-long { display:none; }
-  /* one stop per point column here (_visPts): it takes the column */
-  .wn5 .wn5-pts { flex-wrap:nowrap; }
-  .wn5 .wn5-pt { flex:1 1 auto; }
+  /* one stop per point column here (_visPts): it may take the whole column, «+N» right after it */
+  .wn5 .wn5-pt { max-width:none; }
   /* 48px band: the number and the 26px ✈ fit with 8px in front */
   .wn5 .wn5-c-idx { padding:0 4px 0 8px; }
 }
