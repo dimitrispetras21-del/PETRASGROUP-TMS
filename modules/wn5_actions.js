@@ -449,6 +449,36 @@
       ev.preventDefault(); ev.stopPropagation();
       try { fn(el, ev); } catch (e) { _log(e, 'WN5Act ' + el.getAttribute('data-act')); }
     });
+    // F32 (owner 28/10, real-user test): a ΠΡΟΣ ΑΝΑΘΕΣΗ row dragged onto a cycle row did nothing (text got selected,
+    // no message: the v5 board had no drag). Now the drop opens THAT cycle's «+» on the load's side with its line
+    // marked: one press «Πρόσθεσε» puts it there. A drop never writes by itself — the Veroia window and the warnings
+    // (stop_order, another day, capacity) are said first, as on every other way in (principle 1).
+    let dragPid = null, over = null;
+    const mark = (row) => { if (over === row) return; if (over) over.classList.remove('wn5-drop'); over = row; if (row) row.classList.add('wn5-drop'); };
+    root.addEventListener('dragstart', (ev) => {
+      const row = ev.target && ev.target.closest ? ev.target.closest('.wn5-row[data-piece][draggable="true"]') : null;
+      if (!row || !_live()) return;
+      dragPid = _id(row.dataset.piece);
+      try { ev.dataTransfer.setData('text/plain', 'wn5-piece:' + dragPid); ev.dataTransfer.effectAllowed = 'move'; } catch (_) { /* the drop reads dragPid */ }
+    });
+    root.addEventListener('dragover', (ev) => {
+      if (dragPid == null) return;
+      const row = ev.target.closest ? ev.target.closest('.wn5-row[data-rt]') : null;
+      mark(row);
+      if (row) { ev.preventDefault(); try { ev.dataTransfer.dropEffect = 'move'; } catch (_) { /* cosmetic */ } }
+    });
+    root.addEventListener('dragleave', (ev) => { if (over && !over.contains(ev.relatedTarget)) mark(null); });
+    root.addEventListener('dragend', () => { dragPid = null; mark(null); });
+    root.addEventListener('drop', (ev) => {
+      const pid = dragPid, row = ev.target.closest ? ev.target.closest('.wn5-row[data-rt]') : null;
+      dragPid = null; mark(null);
+      if (pid == null || !row || !_live()) return;
+      ev.preventDefault();
+      const it = _item(pid);
+      if (!it) { WN5Act.strip(_boardHost(), _clientErr('piece_missing', 'Η παράδοση δεν είναι πια στο board — ανανέωσε')); return; }
+      const side = _sideFor(it);
+      WN5Act.plus(_id(row.dataset.rt), side, row.querySelector('.wn5-plus[data-side="' + side + '"]') || row, { focus: pid });
+    });
   };
 
   Object.assign(KIT, { esc: _esc, log: _log, copy: _copy, state: _state, dlg: _dlg, close: _close, place: _place,
@@ -1256,7 +1286,7 @@
     const s = _norm([it.client, it.reference, place, city].join(' '));
     // col 1 = the place, as the frame (the group header names the client); the client and the reference stay in the
     // line's title and in its search text. ΑΝΟΔΟΣ adds its reference under the place (2011:10446 «Aspropyrgos · VS-140»).
-    return '<div class="wn5-pline' + (it._ro ? ' wn5-na' : '') + '" data-piece="' + it.piece_id + '" data-s="' + _esc(s) + '" title="' + _esc([it.client, it.reference].filter(Boolean).join(' · ')) + '">'
+    return '<div class="wn5-pline' + (it._ro ? ' wn5-na' : st.focus && st.focus(it) ? ' wn5-pfocus' : '') + '" data-piece="' + it.piece_id + '" data-s="' + _esc(s) + '" title="' + _esc([it.client, it.reference].filter(Boolean).join(' · ')) + '">'
       + '<span class="wn5-cand-m wn5-pl-who"><b>' + _esc(place) + '</b><span><span data-city="' + _esc(loc == null ? '' : loc) + '">' + _esc(city) + '</span>'
       + (anod && it.reference ? '<span class="wn5-pl-ref">' + _esc(it.reference) + '</span>' : '') + '</span></span>'
       + '<span class="wn5-cand-m wn5-pl-when"><b>' + _esc(when) + '</b>' + pal + '</span>'
@@ -1301,7 +1331,7 @@
     return groups;
   }
 
-  WN5Act.plus = function plus(rtId, side, anchorEl) {
+  WN5Act.plus = function plus(rtId, side, anchorEl, opts) {
     const c = _cycle(_id(rtId));
     if (!c) { WN5Act.strip(_boardHost(), _clientErr('rt_missing', 'Ο κύκλος δεν είναι στο board που φορτώθηκε — ανανέωσε')); return null; }
     side = side === 'ANODOS' ? 'ANODOS' : 'KATHODOS';
@@ -1318,6 +1348,16 @@
     st.groups = _plusGroups(st);
     st.hubStop = !!hubStop;
     st.hubStopDay = _stopDay(hubStop);
+    // F32: a dropped load — its order's lines are marked, and its own Veroia window on its Veroia day fills the field
+    // (as Δ1's F12), still editable; never a window of another day (the field's hours go on the load's Veroia day)
+    const fIt = opts && opts.focus != null ? _item(_id(opts.focus)) : null;
+    const same = (x) => !!fIt && (fIt.order_id != null ? x.order_id === fIt.order_id : fIt.nat_order_id != null ? x.nat_order_id === fIt.nat_order_id : x.piece_id === fIt.piece_id);
+    st.focus = fIt ? same : null;
+    if (fIt && !hubStop) {
+      const fn = _needs(fIt, false, hub), hd = _hubDayOf(fn, st.day);
+      const hw = fn.find((n) => n.hub && n.from && n.to && _ymdOf(n.from) === hd);
+      if (hw) { st.hubFrom = _hm(hw.from); st.hubTo = _hm(hw.to); }
+    }
     const box = _cycText(c, r);
     const anod = side === 'ANODOS';
     const title = anod ? 'Πρόσθεσε στην ΑΝΟΔΟ' : 'Πρόσθεσε στην ΚΑΘΟΔΟ';
@@ -1372,6 +1412,7 @@
         }
         if (!st.groups.length) h += '<p class="wn5-none">Καμία παράδοση σε αναμονή για αυτό το σκέλος.</p>';
         for (const g of st.groups) h += '<div class="wn5-grp-h">' + _esc(g.head) + (g.chip ? '<span class="wn5-grp-c">' + _esc(g.chip) + '</span>' : '') + '<span class="wn5-grp-s">' + _esc(g.sub) + '</span></div>' + g.items.map((it) => _plusLineHTML(st, it)).join('');
+        if (!st.groups.some((g) => g.items.some((it) => !it._ro && same(it))) && fIt) h += '<p class="wn5-miss" data-focus-miss>Το φορτίο που έσυρες δεν μπαίνει σε αυτή την πλευρά από εδώ — άνοιξε την «Ανάθεση» της γραμμής του.</p>';
         // Figma 2011:10022 (ΑΝΟΔΟΣ): «ΠΡΟΡΥΘΜΙΣΗ · Άδειες παλέτες · εθνική 1 € · Άνοιγμα» — the T20 form prefilled (Ε-39).
         // Drawn only once the form exists, so no dead line before T20.
         if (anod && typeof WN5Form !== 'undefined' && typeof WN5Form.openOrder === 'function') {
@@ -1430,6 +1471,10 @@
     });
     draw();
     _gate(d);
+    if (fIt) {
+      const ln = d.body.querySelector('.wn5-pline.wn5-pfocus');
+      if (ln && ln.scrollIntoView) ln.scrollIntoView({ block: 'nearest' });
+    }
     // the city under each place comes from the catalogue (Ε-2): filled in place when it is read, never a redraw (a
     // typed «πόσες» or search stays as it is); without the catalogue the line keeps the place alone
     if (typeof PlanIds !== 'undefined') {
