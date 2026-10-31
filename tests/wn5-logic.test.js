@@ -134,10 +134,10 @@ test('F4α-T4: dim/headDim/sideDim/rowDim copied from dim/side_dim/cycle_dim; th
 
 test('F4α-T4: capacity sums load legs of the side; over = pallets − 33', () => {
   const c101 = fix().cycles.find((c) => c.rt_id === 101);
-  assert.deepStrictEqual(L.capacity(c101.stops.filter((s) => s.side === 'KATHODOS')), { pallets: 31, over: 0 });
-  assert.deepStrictEqual(L.capacity(c101.stops.filter((s) => s.side === 'ANODOS')), { pallets: 14, over: 0 });
+  assert.deepStrictEqual(L.capacity(c101.stops.filter((s) => s.side === 'KATHODOS')), { pallets: 31, unknown: 0, over: 0 });
+  assert.deepStrictEqual(L.capacity(c101.stops.filter((s) => s.side === 'ANODOS')), { pallets: 14, unknown: 0, over: 0 });
   const big = [{ legs: [{ act: 'load', pallets: 20.5 }, { act: 'load', pallets: 15.6 }, { act: 'unload', pallets: 99 }] }];
-  assert.deepStrictEqual(L.capacity(big), { pallets: 36.1, over: 3.1 });
+  assert.deepStrictEqual(L.capacity(big), { pallets: 36.1, unknown: 0, over: 3.1 });
   assert.strictEqual(rowOf(M(), 'rt:108').kath.over, 0, '33 is full, not over');
 });
 
@@ -160,7 +160,7 @@ test('F4α-T4: queue = the VS of the «ΠΡΟΣ ΑΝΑΘΕΣΗ» rows (hub[] nev
 test('F4α-T4 / B1: hub split = unloaded at Veroia by a cycle (inbound_rt_id), for_split, or a VS import with no truck (owner 28/10); never a never-assigned national; stock; overdue → red; nothing to split or hold → hub.empty', () => {
   const h = M().hub;
   assert.deepStrictEqual({ day: h.day, split: h.split.map((x) => x.pieceId), stock: h.stock.map((x) => [x.pieceId, x.overdue, x.leave_by]), pallets: h.pallets, empty: h.empty },
-    { day: TODAY, split: [4101, 4102, 4103, 4302, 4104], stock: [[4301, true, '2026-10-12']], pallets: { split: 83, stock: 13 }, empty: false });
+    { day: TODAY, split: [4101, 4102, 4103, 4302, 4104], stock: [[4301, true, '2026-10-12']], pallets: { split: 83, stock: 13, splitUnknown: 0, stockUnknown: 0 }, empty: false });
   // the Ε-41 key (not in 072): what ✈ «Σπάσιμο» sent back is «για μοίρασμα», and leaves the rows and the queue
   const b = fix();
   for (const x of b.hub) if (x.order_id === 2101) x.for_split = true;

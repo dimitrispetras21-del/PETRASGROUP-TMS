@@ -157,7 +157,7 @@ const UNKNOWN = 'Οι γραμμές κόστους δεν φόρτωσαν — 
     await page.selectOption('#ctGroup', 'truck'); await page.waitForTimeout(400);
     const g = await page.$$eval('#ctList table.ct-tbl tbody tr', trs => trs.map(tr => [...tr.cells].map(c => c.textContent.trim())));
     ok(g.length === 1 && g[0][1] === '41' && g[0][4] === '—' && g[0][5] === '—', 'grouped by truck: all 41 RTs counted, Καθαρό and Περιθώριο «—»: ' + JSON.stringify(g));
-    ok(!/ελλιπή κόστη ΔΕΝ μετρούν/.test(await page.$eval('#ctList', el => el.textContent)), 'grouped by truck: no «ελλιπή κόστη ΔΕΝ μετρούν» claim');
+    ok(!/ελλιπή κόστη.*ΔΕΝ μετρούν/.test(await page.$eval('#ctList', el => el.textContent)), 'grouped by truck: no «ελλιπή κόστη ΔΕΝ μετρούν» claim');
     ok(S.errors.length === 0, 'no page errors: ' + S.errors.slice(0, 2).join(' | '));
     await page.context().close();
   }

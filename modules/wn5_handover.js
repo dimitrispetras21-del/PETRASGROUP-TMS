@@ -286,11 +286,13 @@
     if (!c) { if (typeof toast === 'function') toast('Ο κύκλος δεν βρέθηκε στην εβδομάδα που φαίνεται — ανανέωσε', 'warn'); return false; }
     await PlanIds.load();
     const segs = WN5L.segmentsOf(c).segments;
-    const pallets = (c.stops || []).reduce((a, s) => a + (s.legs || []).filter((l) => l.act === 'load').reduce((b, l) => b + (Number(l.pallets) || 0), 0), 0);
+    const loads = (c.stops || []).flatMap((s) => (s.legs || []).filter((l) => l.act === 'load'));
+    // F1/F4 (080): «12+;π» when some loads have pallets not known yet (WN5L.palText), never counted as 0
+    const pallets = WN5L.palText(loads.reduce((b, l) => b + (Number(l.pallets) || 0), 0), loads.filter((l) => l.pallets == null).length);
     const sheets = segs.length;
     const hub = _hubOf(board);
     const d = _open('cycle', `Κύκλος ${_esc(c.code || 'RT-' + rtId)}`,
-      `· ${_whenD(c.start_at)} → ${_whenD(c.end_at)} · ${segs.length} ${segs.length === 1 ? 'τμήμα' : 'τμήματα'} · ${String(pallets).replace('.', ',')}π`,
+      `· ${_whenD(c.start_at)} → ${_whenD(c.end_at)} · ${segs.length} ${segs.length === 1 ? 'τμήμα' : 'τμήματα'} · ${pallets}π`,
       `<div class="wn5h-acts"><button type="button" class="wi4-btn wn5h-pri" data-act="change">Αλλαγή οχήματος</button>`
       + `<button type="button" class="wi4-btn wn5h-out" data-act="sheets">${SEND_ICON}Φύλλα οδηγών (${sheets})</button>`
       + `<button type="button" class="wi4-btn wn5h-out wn5h-danger" data-act="clear">Καθαρισμός ανάθεσης</button></div><div class="wn5h-sheets" data-sheets hidden></div>`
