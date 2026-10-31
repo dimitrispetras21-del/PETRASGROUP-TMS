@@ -12,6 +12,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
+- dimitris · `feat/085-v5-invoiced-client-price` · Εθνικά v5: 085 προσχέδιο (F62 πελάτης ώσπου να τιμολογηθεί· τιμή τιμολογημένης μόνο owner / λογιστήριο· η ανάγνωση λέει `invoiced`) + Worker κείμενα / φρουρός `--invoiced` + πεδίο πελάτη στην «Επεξεργασία»· merge μετά την εκτέλεση (`docs/sessions/2026-11-01-dimitris-085-invoiced-client-price.md`)
 - dimitris · `fix/f36-sw-reload-session-expiry` · F36/F20/F58: νέα έκδοση χωρίς reload πάνω σε ανοιχτή φόρμα· λήξη σύνδεσης = παράθυρο σύνδεσης στη σελίδα, επανάληψη μόνο με `request_id`· PR, ?v= / SW_VERSION 1793482508 (`docs/sessions/2026-10-31-dimitris-f36-reload-relogin.md`)
 - dimitris · `docs/081-executed` · Εθνικά v5: η 081 ΕΚΤΕΛΕΣΤΗΚΕ 31/10 (#182 merged, verify πράσινο, αρχεία εκτός drafts/)· καμία μαζική αναδιάταξη, 1 κύκλος αλλάζει στην επόμενη εγγραφή (`docs/sessions/2026-10-31-dimitris-081-executed.md`)
 - dimitris · `fix/wn5-f44-f47` · Εθνικά v5 F44/F46 (ημέρα Βέροιας της σύντομης φόρμας του «+»), F48 (ορφανό πάνελ ρυμούλκας/οδηγού), F47 δεν αναπαράγεται; stacked πάνω στο #176, ?v= / SW_VERSION 1793476256 (`docs/sessions/2026-10-31-dimitris-wn5-f44-f48.md`)

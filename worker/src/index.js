@@ -3456,6 +3456,11 @@ const PLAN_RULE_TEXT = {
   vs_not_bridge: "Η παραγγελία ή η στάση δεν περνά από τη Βέροια (VS)",
   // 073 - the pallet feeder (plan_h_pallet_sync, D-10): the ledger counts whole pallets
   pallet_fraction: "Η ανταλλαγή παλετών μετρά ακέραιες παλέτες — διόρθωσε τις παλέτες ή βγάλε την ανταλλαγή",
+  // 085 (owner 31/10, F62 + flexible-rules study K1): an invoiced national is the ERP's — its client changes from no
+  // role, its price only from owner / accountant. The DB detail in brackets is the national order's number.
+  // Deploy guard marker (--invoiced).
+  invoiced_client: "Η παραγγελία έχει τιμολογηθεί — ο πελάτης της δεν αλλάζει",
+  invoiced_price: "Η παραγγελία έχει τιμολογηθεί — την τιμή την αλλάζει μόνο ο Δημήτρης ή το λογιστήριο",
   // 072b — vehicle handover at a point (segments ΑΡΧΙΚΟ / ΕΝΔΙΑΜΕΣΟ / ΤΕΛΙΚΟ; spec
   // 2026-10-23-national-v5-vehicle-handover-design.md). Without these a refusal
   // would reach the screen as raw English (review R1 of the plan, finding 1).

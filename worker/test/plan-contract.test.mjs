@@ -72,6 +72,9 @@ const f074a = () => readOne(['drafts/074a_plan_reads.sql', '074a_plan_reads.sql'
   'copy it from the SQL branch: git checkout feat/national-v5-f5-074a -- worker/migrations/drafts/074a_plan_reads.sql');
 const f077 = () => readOne(['drafts/077_plan_order_edit.sql', '077_plan_order_edit.sql'],
   'it travels with this Worker change (077 + GET /plan/orders/:id, one PR)');
+// 085 (owner 31/10, F62): its two refusal codes travel with their Worker texts in one PR
+const f085 = () => readOne(['drafts/085_plan_invoiced_client_price.sql', '085_plan_invoiced_client_price.sql'],
+  'it travels with this Worker change (085 + invoiced_client / invoiced_price, one PR)');
 // 074 may still be in review when deploy 1 goes (it runs on day L): null when no copy is on this branch
 const f074 = () => ['drafts/074_plan_cutover.sql', '074_plan_cutover.sql'].map((n) => path.join(MIG, n)).filter((f) => existsSync(f))
   .map((file) => ({ file, sql: readFileSync(file, 'utf8') }))[0] || null;
@@ -101,6 +104,9 @@ const CODES_073 = ['pallet_fraction'];
 // texts from deploy 1; the 074 copy proves them as soon as it is on this branch, and MUST be here once the switch
 // is open (deploy 2 = day L, when 074 has run) - before that its absence is a visible skip, never a silent pass.
 const CODES_074 = ['bad_cutover_day', 'bridge_recut', 'legacy_frozen'];
+// 085 (owner 31/10): an invoiced national keeps its client; its price only from owner / accountant. 085 also raises
+// 072's no_client and bad_input, so its codes are compared minus the earlier ones.
+const CODES_085 = ['invoiced_client', 'invoiced_price'];
 // Retired by the spec §7 — must appear nowhere (plan Interfaces).
 const RETIRED = ['hub_endpoint', 'piece_planned', 'bridge_moved', 'bridge_split', 'legacy_nl', 'frozen',
   'restore_expired', 'restore_conflict', 'partner_rate_on_owned', 'window_order'];
@@ -144,6 +150,10 @@ function codes074(sql) {
     .concat(uniq(/HINT = 'plan:([a-z_0-9]+)'/gi, sql))
     .filter((c, i, a) => a.indexOf(c) === i)
     .filter((c) => !CODES_071.includes(c) && !CODES_072.includes(c) && !CODES_072B.includes(c) && !CODES_073.includes(c)).sort();
+}
+function codes085(sql) {
+  return uniq(/plan_h_raise\(\s*'([a-z_0-9]+)'/g, sql)
+    .filter((c) => ![...CODES_071, ...CODES_072, ...CODES_072B, ...CODES_073, ...CODES_074].includes(c)).sort();
 }
 function codes073(sql) {
   return uniq(/plan_h_raise\(\s*'([a-z_0-9]+)'/g, sql)
@@ -216,14 +226,15 @@ test('the parsed codes are exactly the plans\' 26 + 31 + 15 + 1 — none missing
   assert.deepEqual(codes072b(f072b().sql), CODES_072B, '072b codes');
   assert.deepEqual(codes073(f073().sql), CODES_073, '073 codes');
   if (f074()) assert.deepEqual(codes074(f074().sql), CODES_074, '074 codes');
+  assert.deepEqual(codes085(f085().sql), CODES_085, '085 codes');
   for (const sql of [f071().sql, f071b().sql, f072().sql, f072b().sql, f073().sql, f074a().sql, ...[f074()].filter(Boolean).map((f) => f.sql)]) {
     for (const r of RETIRED) assert.ok(!new RegExp(`'(?:plan:)?${r}[:']`).test(sql), `retired code «${r}» appears in SQL`);
   }
   for (const r of RETIRED) assert.ok(!Object.prototype.hasOwnProperty.call(W.PLAN_RULE_TEXT, r), `retired code «${r}» has a Worker text`);
 });
 
-test('every plan: code has its own Greek text, the DB detail in brackets; every Worker code key is raised by 071/072/072b/073/074', () => {
-  const all = [...CODES_071, ...CODES_072, ...CODES_072B, ...CODES_073, ...CODES_074];
+test('every plan: code has its own Greek text, the DB detail in brackets; every Worker code key is raised by 071/072/072b/073/074/085', () => {
+  const all = [...CODES_071, ...CODES_072, ...CODES_072B, ...CODES_073, ...CODES_074, ...CODES_085];
   for (const code of all) {
     assert.ok(Object.prototype.hasOwnProperty.call(W.PLAN_RULE_TEXT, code), `«${code}» has no Greek text in PLAN_RULE_TEXT`);
     const r = W.stockRuleError({ pg: { code: '23514', hint: 'plan:' + code, message: `plan rule broken: ${code}:RT-1280` } });
@@ -233,7 +244,7 @@ test('every plan: code has its own Greek text, the DB detail in brackets; every 
     assert.match(r.message, greek, `${code} text is Greek`);
   }
   const dead = Object.keys(W.PLAN_RULE_TEXT).filter((k) => !all.includes(k));
-  assert.deepEqual(dead, [], 'Worker plan: keys that 071/072/072b/073/074 never raise (dead code, αρχή 8)');
+  assert.deepEqual(dead, [], 'Worker plan: keys that 071/072/072b/073/074/085 never raise (dead code, αρχή 8)');
 });
 
 // 073 / D-9 (narrow): the Worker's POST /pallets/movements answers 409 in Greek by the NAME of 073's UNIQUE index;
