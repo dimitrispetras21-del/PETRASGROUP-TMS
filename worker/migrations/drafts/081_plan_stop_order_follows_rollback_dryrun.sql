@@ -104,13 +104,7 @@ $h$;
   -- 'handover' (the move could cut a handover: list + token, F29).
   -- The move is plan_rt_update, the one path of a stop's time (truck_busy, payroll lock, local loading day, pallet
   -- rows, VS day, reseq, 071 stop_order / side_order / leg_order): a rule it breaks refuses this save, named.
-  -- The cycles are locked BEFORE "who else stops there" is read: an assignment onto the same stop (plan_h_target
-  -- locks the cycle) waits for this save instead of slipping in between the read and the move.
-  perform 1 from ct_round_trips c
-   where c.id in (select l.rt_id from jsonb_to_recordset(v_win) w(sh bigint)
-                    join shipment_pieces sp on sp.shipment_id = w.sh join piece_legs l on l.piece_id = sp.id
-                   where l.deleted_at is null)
-   order by c.id for no key update;
+  -- (the cycles were locked at the start, o_5b: an assignment onto the same stop cannot slip in before the move)
   for y in
     select s.id as stop_id, s.rt_id, c.code, c.status, s.planned_from, s.planned_to,
            array_agg(distinct w.sh order by w.sh) as mine,
@@ -160,6 +154,22 @@ $h$;
     v_nt := v_nt || coalesce(v_ru->'notice_ids', '[]'::jsonb);
   end loop;
   v_sum := plan_h_order_summary($h$;
+  o_5a CONSTANT text := $h$  if n.id is null or n.deleted_at is not null then perform plan_h_raise('order_gone', coalesce(p->>'nat_order_id', 'null')); end if;
+$h$;
+  o_5b CONSTANT text := $h$  if n.id is null or n.deleted_at is not null then perform plan_h_raise('order_gone', coalesce(p->>'nat_order_id', 'null')); end if;
+  -- 081: a save that changes a window may move truck stops (below): the cycles this order rides are locked NOW, before
+  -- any point or piece is written and before "who else stops there" is read - the order of plan_put_pieces (cycle,
+  -- then pieces), so the two never wait on each other crosswise, and an assignment onto the same stop waits for this
+  -- save instead of slipping in between the read and the move. A save without a window change locks nothing new.
+  if exists (select 1 from jsonb_array_elements(case when jsonb_typeof(p->'shipments') = 'array' then p->'shipments' end) e
+              where jsonb_typeof(e) = 'object' and e ?| array['load_from', 'load_to', 'deliver_from', 'deliver_to']) then
+    perform 1 from ct_round_trips c
+     where c.id in (select l.rt_id from shipments sh join shipment_pieces sp on sp.shipment_id = sh.id
+                      join piece_legs l on l.piece_id = sp.id
+                     where sh.nat_order_id = n.id and sh.deleted_at is null and l.deleted_at is null)
+     order by c.id for no key update;
+  end if;
+$h$;
   o_4a CONSTANT text := $h$             'removed_shipment_ids', to_jsonb(v_rm)), null, null);
 $h$;
   o_4b CONSTANT text := $h$             'removed_shipment_ids', to_jsonb(v_rm), 'stops_moved', v_moved), v_kept || v_wn, v_nt);
@@ -190,11 +200,11 @@ BEGIN
     RAISE EXCEPTION '081 rollback proof: public.plan_h_reseq(bigint,text,text) is not back to its live text with its rights';
   END IF;
   SELECT * INTO p FROM pg_proc WHERE oid = to_regprocedure('public.plan_order_update(jsonb,text,text)');
-  IF md5(p.prosrc) <> '1500396fb85a204dc6a1bcbbbd75ad25' THEN
+  IF md5(p.prosrc) <> 'd531cd3364b9148394a2b7ba310a1d16' THEN
     RAISE EXCEPTION '081 rollback: public.plan_order_update(jsonb,text,text) is not the text 081 wrote (md5 %) - stop', md5(p.prosrc);
   END IF;
   v_new := p.prosrc;
-  FOR v_h IN SELECT * FROM unnest(ARRAY[o_4b, o_3b, o_2b, o_1b], ARRAY[o_4a, o_3a, o_2a, o_1a]) h(b, a) LOOP
+  FOR v_h IN SELECT * FROM unnest(ARRAY[o_5b, o_4b, o_3b, o_2b, o_1b], ARRAY[o_5a, o_4a, o_3a, o_2a, o_1a]) h(b, a) LOOP
     IF (length(v_new) - length(replace(v_new, v_h.b, ''))) <> length(v_h.b) THEN
       RAISE EXCEPTION '081 rollback: a hunk of 081 is not in public.plan_order_update(jsonb,text,text) exactly once - stop';
     END IF;

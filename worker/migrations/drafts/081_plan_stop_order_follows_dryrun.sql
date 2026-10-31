@@ -3,7 +3,7 @@
 -- undoes everything inside it (lesson 056). ASCII only.
 -- EXPECTED (the red ERROR is deliberate): NOTICE "081 OK: plan_h_reseq orders a same-time group by the road ..." and then
 --   ERROR: P0001: DRY RUN 081 finished - EVERYTHING UNDONE, nothing kept. The block ran to its end  ||  081 ran:
---   reseq f246c362c3f3bb1746a1d536ad1338bb, order_update 1500396fb85a204dc6a1bcbbbd75ad25
+--   reseq f246c362c3f3bb1746a1d536ad1338bb, order_update d531cd3364b9148394a2b7ba310a1d16
 --   Anything else (an ERROR from one of 081's guards or proofs): do NOT run 081, copy the message to the coordinator.
 
 DO $dry$
@@ -107,13 +107,7 @@ $h$;
   -- 'handover' (the move could cut a handover: list + token, F29).
   -- The move is plan_rt_update, the one path of a stop's time (truck_busy, payroll lock, local loading day, pallet
   -- rows, VS day, reseq, 071 stop_order / side_order / leg_order): a rule it breaks refuses this save, named.
-  -- The cycles are locked BEFORE "who else stops there" is read: an assignment onto the same stop (plan_h_target
-  -- locks the cycle) waits for this save instead of slipping in between the read and the move.
-  perform 1 from ct_round_trips c
-   where c.id in (select l.rt_id from jsonb_to_recordset(v_win) w(sh bigint)
-                    join shipment_pieces sp on sp.shipment_id = w.sh join piece_legs l on l.piece_id = sp.id
-                   where l.deleted_at is null)
-   order by c.id for no key update;
+  -- (the cycles were locked at the start, o_5b: an assignment onto the same stop cannot slip in before the move)
   for y in
     select s.id as stop_id, s.rt_id, c.code, c.status, s.planned_from, s.planned_to,
            array_agg(distinct w.sh order by w.sh) as mine,
@@ -163,6 +157,22 @@ $h$;
     v_nt := v_nt || coalesce(v_ru->'notice_ids', '[]'::jsonb);
   end loop;
   v_sum := plan_h_order_summary($h$;
+  o_5a CONSTANT text := $h$  if n.id is null or n.deleted_at is not null then perform plan_h_raise('order_gone', coalesce(p->>'nat_order_id', 'null')); end if;
+$h$;
+  o_5b CONSTANT text := $h$  if n.id is null or n.deleted_at is not null then perform plan_h_raise('order_gone', coalesce(p->>'nat_order_id', 'null')); end if;
+  -- 081: a save that changes a window may move truck stops (below): the cycles this order rides are locked NOW, before
+  -- any point or piece is written and before "who else stops there" is read - the order of plan_put_pieces (cycle,
+  -- then pieces), so the two never wait on each other crosswise, and an assignment onto the same stop waits for this
+  -- save instead of slipping in between the read and the move. A save without a window change locks nothing new.
+  if exists (select 1 from jsonb_array_elements(case when jsonb_typeof(p->'shipments') = 'array' then p->'shipments' end) e
+              where jsonb_typeof(e) = 'object' and e ?| array['load_from', 'load_to', 'deliver_from', 'deliver_to']) then
+    perform 1 from ct_round_trips c
+     where c.id in (select l.rt_id from shipments sh join shipment_pieces sp on sp.shipment_id = sh.id
+                      join piece_legs l on l.piece_id = sp.id
+                     where sh.nat_order_id = n.id and sh.deleted_at is null and l.deleted_at is null)
+     order by c.id for no key update;
+  end if;
+$h$;
   o_4a CONSTANT text := $h$             'removed_shipment_ids', to_jsonb(v_rm)), null, null);
 $h$;
   o_4b CONSTANT text := $h$             'removed_shipment_ids', to_jsonb(v_rm), 'stops_moved', v_moved), v_kept || v_wn, v_nt);
@@ -199,7 +209,7 @@ BEGIN
   -- ===== PART 1 + PART 2: LIVE TEXT + HUNKS (md5 after = measured on the production-shaped PGlite copy) =====
   FOR v_g IN SELECT * FROM (VALUES
       ('public.plan_h_reseq(bigint,text,text)', ARRAY[r_1a, r_2a], ARRAY[r_1b, r_2b], 'f246c362c3f3bb1746a1d536ad1338bb'),
-      ('public.plan_order_update(jsonb,text,text)', ARRAY[o_1a, o_2a, o_3a, o_4a], ARRAY[o_1b, o_2b, o_3b, o_4b], '1500396fb85a204dc6a1bcbbbd75ad25')) g(sig, a, b, m) LOOP
+      ('public.plan_order_update(jsonb,text,text)', ARRAY[o_1a, o_2a, o_3a, o_4a, o_5a], ARRAY[o_1b, o_2b, o_3b, o_4b, o_5b], 'd531cd3364b9148394a2b7ba310a1d16')) g(sig, a, b, m) LOOP
     SELECT * INTO p FROM pg_proc WHERE oid = to_regprocedure(v_g.sig);
     IF p.proconfig IS DISTINCT FROM ARRAY['search_path=public'] OR p.prolang <> (SELECT oid FROM pg_language WHERE lanname = 'plpgsql') THEN
       RAISE EXCEPTION '081: % is not a plpgsql function with search_path=public - stop', v_g.sig;
