@@ -19,6 +19,7 @@
   // lands, and stays if that read fails (the board keeps its names; only the new place would still say ids_missing).
   let _stale = false;
   let _gen = 0;          // a stale() during a read in flight: that read is older than the place, it never clears it
+  let _inflightGen = 0;
   // Ε-2: until Worker deploy 1 (c0ccdf77, live 28/10/2026 with 074a) GET /plan/lookups did not exist and its 404
   // no_route was the KNOWN gap, not logged. The route is live now, so a 404 is a logged bug again (principle 1).
   // tests/wn5-plan-ids.test.mjs holds this flag to the Worker source: false exactly while the route is in it.
@@ -37,8 +38,9 @@
 
   function load() {
     if (_data && !_stale) return Promise.resolve({ ok: true });
-    if (_inflight) return _inflight;
-    const gen = _gen;
+    // a read that started before the last stale() is older than the place: wait for it, then read again
+    if (_inflight) return _inflightGen === _gen ? _inflight : _inflight.then(() => load());
+    const gen = _inflightGen = _gen;
     _inflight = (async () => {
       try {
         const d = await planFetch('GET', '/plan/lookups', LOOKUPS_PENDING ? { designed: ['no_route'] } : undefined);

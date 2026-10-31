@@ -761,7 +761,7 @@ async function locScanSave(uid) {
       geo = { lat: la, lon: lo };
     }
     // The label the order form's pickers use (core/form-helpers.js fhLoadLocations).
-    const label = [name, city, typeof countryName === 'function' ? countryName(country) : country].filter(Boolean).join(', ');
+    const label = _fhLocLabel({ Name: name, City: city, Country: country });
     const same = _locScanExisting(label, address);
     if (same) { _locScanLinked(uid, ctx, same, 'Υπάρχει ήδη αυτή η τοποθεσία, συνδέθηκε με τη στάση', 'info'); return; }
     const pkey = _fhNorm(label) + '|' + _fhNorm(address);

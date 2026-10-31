@@ -656,16 +656,19 @@
     // moved, never onto the loading day (code review). Not while the Veroia day is itself the screen's (ΑΝΟΔΟΣ without
     // a Veroia stop follows the loading, F44): the two would only chase each other.
     const vSet = !vEl.dataset.auto && DAY.test(vday);
+    // the day the points were last aligned with: the screen's Veroia day too (a ΚΑΘΟΔΟΣ with no Veroia stop opens with
+    // it), so the first day the user sets moves them already (code review r2)
     const shift = dir === 'KATHODOS' && vSet && f.vPrev && f.vPrev !== vday ? Math.round((Date.parse(vday) - Date.parse(f.vPrev)) / 864e5) : 0;
-    if (vSet) f.vPrev = vday;
-    const addDays = (ymd, n) => new Date(Date.parse(ymd) + n * 864e5).toISOString().slice(0, 10);
+    if (DAY.test(vday)) f.vPrev = vday;
+    // the board's own day arithmetic (wn5_actions _addDays), never a second copy
+    const addDays = typeof WN5Act !== 'undefined' && WN5Act._kit && typeof WN5Act._kit.addDays === 'function' ? WN5Act._kit.addDays : null;
     f.el.querySelectorAll('.wn5f-row').forEach((r) => {
       const rec = (document.getElementById('lv_' + r.dataset.pid) || {}).value || '';
       if (vSet && !(rec && rec === _hubRec())) {
         const d = r.querySelector('[data-f="day"]'), typed = d.parentElement && d.parentElement.querySelector('.wn5f-dayx');
         if (d.dataset.auto && !(typed && typed.dataset.raw)) {
           if (dir === 'ANODOS' && d.value !== vday) d.value = vday;
-          else if (shift && DAY.test(d.value)) d.value = addDays(d.value, shift);
+          else if (shift && addDays && DAY.test(d.value)) d.value = addDays(d.value, shift);
         }
       }
       if (rec && rec === _hubRec()) {
@@ -748,6 +751,10 @@
   async function _saveOrder(f) {
     if (f.busy || f.done || f.locked) return;
     let st, body;
+    // F52 (code review r2): a place saved while this form was open is in the pickers; its number comes with the
+    // catalogue's re-read, asked here by the press (a no-op while the catalogue is current)
+    try { await PlanIds.load(); } catch (e) { _log(e, 'WN5Form save PlanIds'); }
+    if (f.busy || f.done || f.locked) return;
     try { st = _readState(f); }
     catch (e) { if (typeof PlanError !== 'undefined' && e instanceof PlanError) WN5Act.strip(_strip(f), e); else _lines(f, [String(e && e.message || e)]); return; }
     // F1 (code review 28/10): the head's Veroia window fills the empty Veroia rows only when it is whole; half of it is
@@ -1222,7 +1229,8 @@
       // three times. The points open on the cycle's day; what the screen fills is marked data-auto and follows the
       // Veroia day (F57, _orderRefresh); a day the user types or picks stays theirs (_dayInput).
       const hubDay = hubStop ? hubStop.stop_day || '' : '';
-      const day = p.day || hubDay, vd = hubDay || p.day || '';
+      // F57 (code review r2): a ΚΑΘΟΔΟΣ delivers after its Veroia loading — its filled points never open before that day
+      const day = dir.value === 'KATHODOS' && hubDay && (!p.day || p.day < hubDay) ? hubDay : p.day || hubDay, vd = hubDay || p.day || '';
       const vEl = f.el.querySelector('#wn5f-vday');
       if (vd) { vEl.value = vd; if (!hubDay) vEl.dataset.auto = '1'; }
       if (day) { f.dayDefault = day; f.el.querySelectorAll('[data-f="day"]').forEach((x) => { if (!x.value) { x.value = day; x.dataset.auto = '1'; } }); }

@@ -66,6 +66,12 @@ async function f53({ browser, origin, ok, scn }) {
       && JSON.stringify(b.pieces) === JSON.stringify([{ piece_id: 4801 }]) && JSON.stringify(b.target) === JSON.stringify({ rt_id: 103, side: 'KATHODOS' })
       && (b.stops || []).some((s) => s.stop_id === 1201), legs.map((x) => x.raw));
     ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+    // a second «+» on the same board asks the next week no more (one read per loaded board)
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => WN5Act.plus(103, 'KATHODOS', document.querySelector('#content .wn5-row[data-rt="103"]') || document.querySelector('#content .wn5')));
+    await page.waitForTimeout(500);
+    ok(scn, 'a second «+» of RT-T103 lists VS-T801 again without a second GET of 2026-10-17', (await lines(page)).includes(4801)
+      && K.planOf(S, 'GET', '/plan/board').filter((x) => x.q.week === NEXT).length === 1, K.planOf(S, 'GET', '/plan/board').map((x) => x.q.week));
     // control: a trip inside the week reads no other week
     await page.keyboard.press('Escape');
     const n0 = K.planOf(S, 'GET', '/plan/board').length;
@@ -183,6 +189,17 @@ async function f57({ browser, origin, ok, scn }) {
     ok(scn, 'ΚΑΘΟΔΟΣ (Veroia Mon 12/10, delivery filled Tue 13/10): Veroia → Wed 14/10 moves the delivery to Thu 15/10 — main: stays Tue 13/10',
       v0 === '2026-10-12' && d0 === '2026-10-13' && d1 === '2026-10-15', { v0, d0, d1 });
     ok(scn, 'no page errors (ΚΑΘΟΔΟΣ)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // ΚΑΘΟΔΟΣ with no Veroia stop yet (RT-T102 has only an ΑΝΟΔΟΣ): the first Veroia day the user sets moves the points
+    const { page, S } = await K.openApp(browser, origin);
+    await page.evaluate(() => WN5Form.openOrder({ side: 'KATHODOS', day: '2026-10-14', rtId: 102 }));
+    await page.waitForSelector(ORDER, { timeout: 8000 }).catch(() => {});
+    const d0 = await dayOf(page, D);
+    await typeDay(page, V, '15/10');
+    const d1 = await dayOf(page, D), l1 = await dayOf(page, L);
+    ok(scn, 'ΚΑΘΟΔΟΣ without a Veroia stop: points filled Wed 14/10, Veroia set Thu 15/10 → points Thu 15/10 — main: stay', d0 === '2026-10-14' && d1 === '2026-10-15' && l1 === '2026-10-15', { d0, d1, l1 });
+    ok(scn, 'no page errors (ΚΑΘΟΔΟΣ no stop)', !S.pageErrors.length, S.pageErrors);
     await page.context().close();
   }
   { // a point the user typed keeps its day

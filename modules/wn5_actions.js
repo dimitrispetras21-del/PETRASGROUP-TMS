@@ -1308,6 +1308,21 @@
   // Sun 1/11 in its «+», while the same «+» from the next week showed it. The list is the trip's own days: the weeks
   // after the loaded one, up to the trip's last day (its end, its side's stop days), are read once when the «+» opens
   // and their loads ready by that day join the list. A read that fails is said with its days, never a silent gap.
+  // one read of a week per loaded board (code review r2): a second «+» on the weekend's trips asks no more, a new
+  // board read (save, ↻, week tab) is a new object and starts over; a failed read is forgotten, the next «+» asks again
+  let _moreC = { b: null, m: new Map() };
+  function _moreWeek(w) {
+    const b = _state().board;
+    if (_moreC.b !== b) _moreC = { b, m: new Map() };
+    const m = _moreC.m;
+    let p = m.get(w);
+    if (!p) {
+      p = planFetch('GET', '/plan/board?week=' + w);
+      m.set(w, p);
+      p.catch(() => { if (m.get(w) === p) m.delete(w); });
+    }
+    return p;
+  }
   async function _plusMore(st, week) {
     const have = new Set(_allItems().map((x) => x.piece_id));
     // one GET per week, each Saturday after the loaded one, side by side; at most 3 (a trip is days long, never weeks):
@@ -1315,7 +1330,7 @@
     const weeks = [];
     for (let w = _addDays(week, 7); w <= st.beyond.to; w = _addDays(w, 7)) weeks.push(w);
     const read = weeks.slice(0, 3);
-    const res = await Promise.allSettled(read.map((w) => planFetch('GET', '/plan/board?week=' + w)));
+    const res = await Promise.allSettled(read.map(_moreWeek));
     const out = [];
     let i = 0;
     // the weeks read in a row from the loaded one: their loads join; the first that failed and every day after it are
@@ -1526,7 +1541,9 @@
     draw();
     _gate(d);
     if (st.beyond) {
-      _plusMore(st, week).then(() => {
+      // a throw outside the reads is said as a failed read too, never a «φορτώνει…» that stays (code review r2)
+      const fail = (e) => { _log(e, 'WN5Act plus more'); st.beyond.state = 'failed'; st.beyond.err = e; };
+      _plusMore(st, week).catch(fail).then(() => {
         if (d.closed) return;
         // the redraw keeps what was typed (st holds it) and the field the user is in
         const a = document.activeElement;
@@ -1537,7 +1554,7 @@
         draw();
         const back = sel && d.body.querySelector(sel);
         if (back) { back.focus(); try { back.setSelectionRange(back.value.length, back.value.length); } catch (_) { /* search inputs */ } }
-      }, (e) => _log(e, 'WN5Act plus more'));
+      }).catch((e) => _log(e, 'WN5Act plus more draw'));
     }
     if (fIt) {
       const ln = d.body.querySelector('.wn5-pline.wn5-pfocus');
