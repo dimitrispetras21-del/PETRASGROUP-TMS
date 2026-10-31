@@ -153,8 +153,26 @@ test('F4α-T20: ANODOS arrival at Veroia «ως» → deliver_from = deliver_to;
   const o = order({ loads: [row(3, '2026-10-14', '12:00', '14:00', 20)], drops: [row(1, '2026-10-14', '22:00', '22:00', 20, { until: true })] });
   const b = F._body(state({ side: 'ANODOS', orders: [o] }));
   assert.strictEqual(b.orders[0].shipments[0].deliver_from, b.orders[0].shipments[0].deliver_to);
+  // F66 (owner 31/10): a cycle with no Veroia stop on its ΑΝΟΔΟΣ («Κενό γύρισμα») is no longer refused — the stop is
+  // made on the arrival day, from the end of the order's last loading that day to the «ως» (planned_to > planned_from)
   const noStop = state({ side: 'ANODOS', target: { rt_id: 102, side: 'ANODOS' }, cycleStops: [{ stop_id: 1101, location_id: 2, side: 'ANODOS' }], orders: [o] });
-  assert.ok(F._check(noStop).some((l) => /στάση Βέροιας στην ΑΝΟΔΟ/.test(l)), F._check(noStop).join(' / '));
+  assert.deepStrictEqual(J(F._check(noStop)), []);
+  const hub = J(F._body(noStop).stops).find((x) => x.location_id === 1);
+  assert.deepStrictEqual(hub, { ref: 's2', location_id: 1, side: 'ANODOS', planned_from: '2026-10-14T14:00:00+03:00', planned_to: '2026-10-14T22:00:00+03:00' });
+  // no loading that day before the «ως»: from the day's start
+  const o2 = order({ loads: [row(3, '2026-10-13', '12:00', '14:00', 20)], drops: [row(1, '2026-10-14', '22:00', '22:00', 20, { until: true })] });
+  const hub2 = J(F._body(state({ side: 'ANODOS', target: { rt_id: 102, side: 'ANODOS' }, cycleStops: [], orders: [o2] })).stops).find((x) => x.location_id === 1);
+  assert.strictEqual(hub2.planned_from, '2026-10-14T00:00:00+03:00');
+  // the cycle's own Veroia stop, when it has one, is still used as it is
+  const withStop = state({ side: 'ANODOS', target: { rt_id: 101, side: 'ANODOS' }, cycleStops: [{ stop_id: 1005, location_id: 1, side: 'ANODOS' }], orders: [o] });
+  assert.ok(J(F._body(withStop).stops).some((x) => x.stop_id === 1005));
+});
+
+test('F64: a point typed 08:00–08:00 on a target cycle is the stop 08:00–08:01 that day, never equal ends', () => {
+  const o = order({ loads: [row(1, '2026-10-12', '16:00', '18:00', 4)], drops: [row(4, '2026-10-13', '08:00', '08:00', 4)] });
+  const st = state({ target: { rt_id: 101, side: 'KATHODOS' }, cycleStops: [{ stop_id: 1001, location_id: 1, side: 'KATHODOS' }], orders: [o] });
+  const s4 = J(F._body(st).stops).find((x) => x.location_id === 4);
+  assert.deepStrictEqual([s4.planned_from, s4.planned_to], ['2026-10-13T08:00:00+03:00', '2026-10-13T08:01:00+03:00']);
 });
 
 test('F4α-T20: request_reused — the board holds the order of the same client, reference and pallets', () => {
@@ -212,8 +230,10 @@ test('077: _editFromRead keeps every value (nulls as «empty», never as zero) a
   const e = F._editFromRead({ ok: true, op: 'plan_order_read',
     order: { nat_order_id: 84, client: 'C', price: 100, reference: null, goods: 'G', notes: null, temperature_c: null, pallet_exchange: false, direction: 'KATHODOS', pallets: 6 },
     shipments: [{ shipment_id: 9, origin_location_id: 1, dest_location_id: 2, pallets: 6, load_from: 'a', load_to: 'b', deliver_from: 'c', deliver_to: 'd', vs_locked: false, rides: true, rt_codes: ['RT-1287'] }] });
-  assert.deepStrictEqual(J(e), { full: true, nat_order_id: 84, client: 'C', price: 100, temperature_c: null, pallet_exchange: false, reference: '', goods: 'G', notes: '',
+  assert.deepStrictEqual(J(e), { full: true, nat_order_id: 84, client: 'C', price: 100, temperature_c: null, pallet_exchange: false, reference: '', goods: 'G', notes: '', invoiced: false,
     direction: 'KATHODOS', riding: true, ships: [{ shipment_id: 9, origin: 1, dest: 2, pallets: 6, load_from: 'a', load_to: 'b', deliver_from: 'c', deliver_to: 'd', rides: true, vs_locked: false, waits: false, at_hub: false, rt_codes: ['RT-1287'] }] });
+  // owner 31/10: «invoiced» only when the read says true (the price locks for every role but owner / accountant)
+  assert.strictEqual(F._editFromRead({ order: { nat_order_id: 1, invoiced: true }, shipments: [{ shipment_id: 2 }] }).invoiced, true);
   // F4 (080 to come): pallets unknown stay null, never 0
   assert.strictEqual(F._editFromRead({ order: { nat_order_id: 1 }, shipments: [{ shipment_id: 2, pallets: null }] }).ships[0].pallets, null);
   for (const bad of [null, {}, { order: {} }, { order: { nat_order_id: 1 }, shipments: [] }]) assert.strictEqual(F._editFromRead(bad), null, JSON.stringify(bad));
