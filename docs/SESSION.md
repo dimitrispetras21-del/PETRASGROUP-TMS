@@ -12,6 +12,8 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
+- dimitris · `feat/wn5-board-pack2` · Εθνικά v5 πακέτο 2 του board (owner 31/10): διαγραφή σημείου/παραγγελίας από το board (δεξί κλικ, λίστα παραγγελιών), σύρσιμο σημείου σε άλλο φορτηγό ή ημέρα, νέο σημείο στο ίδιο φορτηγό, τιμή τιμολογημένης μόνο owner/accountant, B-22, F64–F66· μόνο front end· F62 + έλεγχος τιμής (SQL), B-26 (SQL), A-3 (Worker) χωριστά· ?v= / SW_VERSION 1793490000 (`docs/sessions/2026-10-31-dimitris-wn5-board-pack2.md`)
+- dimitris · `fix/v5-081-stop-order-follows` · Εθνικά v5: 081 προσχέδιο: σειρά στάσεων με τον δρόμο (F28), η στάση του φορτηγού ακολουθεί το σημείο της φόρμας· PR, merge του FE πριν την 081 (`docs/sessions/2026-10-31-dimitris-081-stop-order-follows.md`)
 - dimitris · `fix/wn5-f52-f57` · Εθνικά v5 F53 («+» με τις ημέρες του δρομολογίου, και πέρα από την εβδομάδα), F55 (ημέρα σημείου VS → πάνελ ώρας στάσης), F57 (τα σημεία που συμπλήρωσε η οθόνη ακολουθούν την ημέρα Βέροιας), F52 (νέα τοποθεσία στα πεδία χωρίς reload)· μόνο front end, ?v= / SW_VERSION 1793483020 (`docs/sessions/2026-10-31-dimitris-wn5-f52-f57.md`)
 - dimitris · `fix/f36-sw-reload-session-expiry` · F36/F20/F58: νέα έκδοση χωρίς reload πάνω σε ανοιχτή φόρμα· λήξη σύνδεσης = παράθυρο σύνδεσης στη σελίδα, επανάληψη μόνο με `request_id`· PR, ?v= / SW_VERSION 1793482508 (`docs/sessions/2026-10-31-dimitris-f36-reload-relogin.md`)
 - dimitris · `docs/081-executed` · Εθνικά v5: η 081 ΕΚΤΕΛΕΣΤΗΚΕ 31/10 (#182 merged, verify πράσινο, αρχεία εκτός drafts/)· καμία μαζική αναδιάταξη, 1 κύκλος αλλάζει στην επόμενη εγγραφή (`docs/sessions/2026-10-31-dimitris-081-executed.md`)
