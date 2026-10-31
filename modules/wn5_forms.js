@@ -767,15 +767,22 @@
     f.reading = true;
     if (b) b.setAttribute('aria-busy', 'true');
     // load() never rejects: a failed read keeps the catalogue in hand, and a missing number is said at _readState
-    try { await PlanIds.load(); } finally { f.reading = false; if (b) b.removeAttribute('aria-busy'); }
+    let r = null;
+    try { r = await PlanIds.load(); } finally { f.reading = false; if (b) b.removeAttribute('aria-busy'); }
+    // a re-read that failed: the catalogue in hand still serves, and the reason is said beside a refusal (code review r8)
+    return r && r.ok && r.err ? 'Ο κατάλογος δεν ξαναδιαβάστηκε (' + String(r.err.message || r.err) + ') — ξαναδοκίμασε σε ένα λεπτό' : null;
   }
   async function _saveOrder(f) {
     if (f.busy || f.reading || f.done || f.locked) return;
     let st, body;
-    await _idsFresh(f);
+    const idsWhy = await _idsFresh(f);
     if (_f !== f || f.busy || f.done || f.locked) return;   // closed or replaced while the catalogue was read
     try { st = _readState(f); }
-    catch (e) { if (typeof PlanError !== 'undefined' && e instanceof PlanError) WN5Act.strip(_strip(f), e); else _lines(f, [String(e && e.message || e)]); return; }
+    catch (e) {
+      if (typeof PlanError !== 'undefined' && e instanceof PlanError) { WN5Act.strip(_strip(f), e); if (idsWhy) _lines(f, [idsWhy]); }
+      else _lines(f, [String(e && e.message || e)]);
+      return;
+    }
     // F1 (code review 28/10): the head's Veroia window fills the empty Veroia rows only when it is whole; half of it is
     // named HERE, at the field the user typed, never as a row error the user did not cause
     const probs = _headWinCheck(f).concat(_check(st));
@@ -1089,7 +1096,7 @@
   }
   async function _saveEdit(f) {
     if (f.busy || f.reading || f.done || f.locked) return;
-    await _idsFresh(f);
+    const idsWhy = await _idsFresh(f);
     if (_f !== f || f.busy || f.done || f.locked) return;   // closed or replaced while the catalogue was read
     const st = _readEdit(f);
     const probs = _checkEdit(f, st);
@@ -1098,7 +1105,7 @@
       try {
         st.news = st.news.map((s) => Object.assign({}, s, { origin_location_id: PlanIds.id('location', s.origin_rec), dest_location_id: PlanIds.id('location', s.dest_rec) }));
       } catch (e) {
-        if (typeof PlanError !== 'undefined' && e instanceof PlanError) { _lines(f, []); WN5Act.strip(_strip(f), e); return; }
+        if (typeof PlanError !== 'undefined' && e instanceof PlanError) { _lines(f, idsWhy ? [idsWhy] : []); WN5Act.strip(_strip(f), e); return; }
         throw e;
       }
       body = _patchBody(f.edit, st);

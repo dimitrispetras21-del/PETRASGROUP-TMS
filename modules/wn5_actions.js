@@ -1287,8 +1287,12 @@
     else if (read.length < weeks.length) { st.beyond.state = 'cut'; st.beyond.from = weeks[read.length]; }
     else st.beyond.state = 'ok';
   }
+  // F53 (code review r8): the loaded week's groups first, the later weeks' after them, so the lines read later land
+  // under the ones already on screen and never move a line the user is aiming at
   function _plusGroups(st) {
-    const all = _copy(_allItems().concat(st.more || []));
+    return _plusGroupsOf(st, _copy(_allItems())).concat(st.more && st.more.length ? _plusGroupsOf(st, _copy(st.more)) : []);
+  }
+  function _plusGroupsOf(st, all) {
     const anodIt = all.filter((it) => !it.is_stock && _sideFor(it) === 'ANODOS');
     const groups = [];
     if (st.side === 'KATHODOS') {
@@ -1408,16 +1412,17 @@
             + '<input class="wn5-hm" data-hub="from" placeholder="ΗΗ:ΛΛ" value="' + _esc(st.hubFrom) + '"> – <input class="wn5-hm" data-hub="to" placeholder="ΗΗ:ΛΛ" value="' + _esc(st.hubTo) + '">'
             + '<small>στην ημέρα Βέροιας κάθε φορτίου</small></div>';
         }
-        // F53: the days after the loaded week: being read, or not read (with the base's words) — never a silent gap
+        // «none» only when every day of the trip was read: a day not read is never said to have nothing (code review r7)
+        if (!st.groups.length && !(st.beyond && st.beyond.state !== 'ok')) h += '<p class="wn5-none">Καμία παράδοση σε αναμονή για αυτό το σκέλος.</p>';
+        for (const g of st.groups) h += '<div class="wn5-grp-h">' + _esc(g.head) + (g.chip ? '<span class="wn5-grp-c">' + _esc(g.chip) + '</span>' : '') + '<span class="wn5-grp-s">' + _esc(g.sub) + '</span></div>' + g.items.map((it) => _plusLineHTML(st, it)).join('');
+        // F53: the days after the loaded week: being read, or not read (with the base's words) — never a silent gap;
+        // under the list, so its going away and the lines read later move nothing above it
         if (st.beyond && st.beyond.state !== 'ok') {
           const days = _dayShort(st.beyond.from) + (st.beyond.to !== st.beyond.from ? '–' + _dayShort(st.beyond.to) : '');
           h += st.beyond.state === 'loading' ? '<p class="wn5-grey" data-beyond="loading">Αναμονή ' + _esc(days) + ': φορτώνει…</p>'
             : '<p class="wn5-miss" data-beyond="' + st.beyond.state + '">Αναμονή ' + _esc(days) + ': δεν διαβάστηκε ('
               + _esc(st.beyond.state === 'cut' ? 'πάνω από 3 εβδομάδες' : (st.beyond.err && st.beyond.err.message) || 'σφάλμα') + ')</p>';
         }
-        // «none» only when every day of the trip was read: a day not read is never said to have nothing (code review r7)
-        if (!st.groups.length && !(st.beyond && st.beyond.state !== 'ok')) h += '<p class="wn5-none">Καμία παράδοση σε αναμονή για αυτό το σκέλος.</p>';
-        for (const g of st.groups) h += '<div class="wn5-grp-h">' + _esc(g.head) + (g.chip ? '<span class="wn5-grp-c">' + _esc(g.chip) + '</span>' : '') + '<span class="wn5-grp-s">' + _esc(g.sub) + '</span></div>' + g.items.map((it) => _plusLineHTML(st, it)).join('');
         if (!st.groups.some((g) => g.items.some((it) => !it._ro && same(it))) && fIt) h += '<p class="wn5-miss" data-focus-miss>Το φορτίο που έσυρες δεν μπαίνει σε αυτή την πλευρά από εδώ — άνοιξε την «Ανάθεση» της γραμμής του.</p>';
         // Figma 2011:10022 (ΑΝΟΔΟΣ): «ΠΡΟΡΥΘΜΙΣΗ · Άδειες παλέτες · εθνική 1 € · Άνοιγμα» — the T20 form prefilled (Ε-39).
         // Drawn only once the form exists, so no dead line before T20.
@@ -1457,6 +1462,7 @@
         _close(d);
         WN5Form.openOrder({ side, day: st.day, rtId: st.rtId, veroia: sd && sd.veroia ? { from: _t(sd.veroia.from), to: _t(sd.veroia.to) } : undefined, preset: 'empties' });
       } else if (a === 'save') {
+        if (d.settle && performance.now() < d.settle) return;
         const it = byId(_id(b.dataset.piece));
         const req = it && _plusReq(st, it);
         if (req && !req.missing) _send(d, req, 'Προστέθηκε στο σκέλος', { intl: true });
@@ -1488,7 +1494,11 @@
           : a.dataset.take ? '[data-take="' + a.dataset.take + '"]' : null) : null;
         st.groups = _plusGroups(st);
         if (st.mode !== 'wait') return;
+        const top = [d.body.scrollTop, d.dlg.scrollTop];
         draw();
+        d.body.scrollTop = top[0]; d.dlg.scrollTop = top[1];
+        // a press aimed before the redraw is not taken for a line it now lands on (code review r8): 400 ms
+        d.settle = performance.now() + 400;
         const back = sel && d.body.querySelector(sel);
         if (back) { back.focus(); try { back.setSelectionRange(back.value.length, back.value.length); } catch (_) { /* search inputs */ } }
       }).catch((e) => _log(e, 'WN5Act plus more draw'));
