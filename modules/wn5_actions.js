@@ -482,6 +482,8 @@
       const side = _sideFor(it);
       WN5Act.plus(_id(row.dataset.rt), side, row.querySelector('.wn5-plus[data-side="' + side + '"]') || row, { focus: pid });
     });
+    // owner 31/10 (pack 2): a point's right-click menu (delete) and the drag of a point to another truck or day
+    if (typeof WN5Edit !== 'undefined') WN5Edit.bind(root);
   };
 
   Object.assign(KIT, { esc: _esc, log: _log, copy: _copy, state: _state, dlg: _dlg, close: _close, place: _place,
@@ -1520,6 +1522,7 @@
     }
     return { needs, items };
   }
+  KIT.moveParts = _moveParts;   // the drag of a point (wn5_edit.js): one reading of «what a moved piece needs»
 
   // Where the board shows the pieces after ✈ «Σπάσιμο»: «για μοίρασμα» only when the Veroia board lists them
   // (072 has no mark for «sent to be split» yet, Ε-41: a piece without a prior drop comes back as «ΠΡΟΣ ΑΝΑΘΕΣΗ»).
@@ -2010,12 +2013,16 @@
       if (ev.target.matches('[data-win]')) run();
       else if (ev.target.matches('[data-anod]')) { st.alsoAnod = ev.target.checked; run(); }
     });
+    // owner 31/10 (pack 2): a point dragged onto another day opens its own one-stop panel with that day chosen and
+    // its dry run on screen; the save stays the user's press (a drop never writes by itself)
+    const pre = one && opts && /^\d{4}-\d{2}-\d{2}$/.test(String(opts.day || '')) && opts.day !== st.cur ? opts.day : null;
+    if (pre) { st.sel = pre; st.view = [Number(pre.slice(0, 4)), Number(pre.slice(5, 7)) - 1]; }
     drawCal();
-    draw();
+    if (pre) run(); else draw();
     _gate(d);
     return d;
   };
-  ACTS.date = (el) => { const row = el.closest('.wn5-row[data-rt]'); WN5Act.datePanel(_id(row && row.dataset.rt), el.dataset.side, el); };
+  ACTS.date =(el) => { const row = el.closest('.wn5-row[data-rt]'); WN5Act.datePanel(_id(row && row.dataset.rt), el.dataset.side, el); };
 
   // ═══ T17 · «Φόρτωση με τοπικό» (decision 44): request_id on the creation, never on the cancel ═══
   // the stops a local driver can load: the cycle's ΚΑΘΟΔΟΣ pickups outside Veroia (Veroia is loaded by the cycle's
@@ -2322,7 +2329,9 @@
     if (nat.size === 1 && !vs.size) return WN5Act.orderCard([...nat.keys()][0]);
     const d = _dlg('card', 'Παραγγελίες · ' + (c.code || 'κύκλος'));
     let h = '';
-    for (const [no, l] of nat) h += '<div class="wn5-cand" data-line="nat"><span class="wn5-cand-m"><b>' + _esc(l.reference || '#' + no) + '</b><span>' + _esc(l.client || '—') + '</span></span><span>εθνική</span><span></span>'
+    // owner 31/10: delete from the Weekly too, one press from the cycle's list (the card keeps its own)
+    for (const [no, l] of nat) h += '<div class="wn5-cand" data-line="nat"><span class="wn5-cand-m"><b>' + _esc(l.reference || '#' + no) + '</b><span>' + _esc(l.client || '—') + '</span></span><span>εθνική</span>'
+      + '<button type="button" class="wi4-btn sm wn5-danger-o" data-act="del" data-no="' + no + '">Διαγραφή</button>'
       + '<button type="button" class="wi4-btn sm" data-act="card" data-no="' + no + '">Καρτέλα</button></div>';
     for (const [, l] of vs) h += '<div class="wn5-cand" data-line="vs"><span class="wn5-cand-m"><b>' + _esc(l.reference || 'VS') + '</b><span>' + _esc(l.client || '—') + '</span></span>'
       + '<span>διεθνής παραγγελία · αλλάζει από το Weekly Διεθνών</span><span></span><span></span></div>';
@@ -2333,6 +2342,10 @@
       if (!b || !_live()) return;
       if (b.dataset.act === 'cancel') _close(d);
       else if (b.dataset.act === 'card') WN5Act.orderCard(_id(b.dataset.no));
+      else if (b.dataset.act === 'del') {
+        const no2 = _id(b.dataset.no), l = nat.get(no2) || {};
+        WN5Act.deleteOrder(no2, { host: d.msg, ref: l.reference ? '#' + l.reference : null, client: l.client || null });
+      }
     });
     return d;
   };

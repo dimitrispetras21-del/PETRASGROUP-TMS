@@ -12,6 +12,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
+- dimitris · `feat/wn5-board-pack2` · Εθνικά v5 πακέτο 2 του board (owner 31/10): διαγραφή σημείου/παραγγελίας από το board (δεξί κλικ, λίστα παραγγελιών), σύρσιμο σημείου σε άλλο φορτηγό ή ημέρα, νέο σημείο στο ίδιο φορτηγό, τιμή μόνο owner/accountant (οθόνη), B-22· μόνο front end· B-26 (SQL) και A-3 (Worker) χωριστά· ?v= / SW_VERSION 1793490000 (`docs/sessions/2026-10-31-dimitris-wn5-board-pack2.md`)
 - dimitris · `fix/v5-081-stop-order-follows` · Εθνικά v5: 081 προσχέδιο: σειρά στάσεων με τον δρόμο (F28), η στάση του φορτηγού ακολουθεί το σημείο της φόρμας· PR, merge του FE πριν την 081 (`docs/sessions/2026-10-31-dimitris-081-stop-order-follows.md`)
 - dimitris · `fix/wn5-f44-f47` · Εθνικά v5 F44/F46 (ημέρα Βέροιας της σύντομης φόρμας του «+»), F48 (ορφανό πάνελ ρυμούλκας/οδηγού), F47 δεν αναπαράγεται; stacked πάνω στο #176, ?v= / SW_VERSION 1793476256 (`docs/sessions/2026-10-31-dimitris-wn5-f44-f48.md`)
 - dimitris · `fix/wn5-f32-drag` · Εθνικά v5 F32: σύρσιμο ΠΡΟΣ ΑΝΑΘΕΣΗ σε κύκλο → το «+» του κύκλου; #175 merged, ?v= / SW_VERSION 1793476255 (`docs/sessions/2026-10-31-dimitris-wn5-f32-drag.md`)
