@@ -437,6 +437,7 @@
   };
 
   // ═══ The board root: one delegated click listener per painted root ═══
+  const DRAG = { pid: null, over: null };   // F32: the load being dragged (survives a repaint of the root)
   WN5Act.bind = function bind(root) {
     if (!root || root._wn5Bound) return;
     root._wn5Bound = true;
@@ -453,25 +454,27 @@
     // no message: the v5 board had no drag). Now the drop opens THAT cycle's «+» on the load's side with its line
     // marked: one press «Πρόσθεσε» puts it there. A drop never writes by itself — the Veroia window and the warnings
     // (stop_order, another day, capacity) are said first, as on every other way in (principle 1).
-    let dragPid = null, over = null;
-    const mark = (row) => { if (over === row) return; if (over) over.classList.remove('wn5-drop'); over = row; if (row) row.classList.add('wn5-drop'); };
+    // the drag lives in DRAG (outside this root): the root is rebuilt on every paint, and a repaint during a drag (a
+    // reload) must not leave the drop on the new root with nothing to drop (code review)
+    const mark = (row) => { if (DRAG.over === row) return; if (DRAG.over) DRAG.over.classList.remove('wn5-drop'); DRAG.over = row; if (row) row.classList.add('wn5-drop'); };
     root.addEventListener('dragstart', (ev) => {
       const row = ev.target && ev.target.closest ? ev.target.closest('.wn5-row[data-piece][draggable="true"]') : null;
       if (!row || !_live()) return;
-      dragPid = _id(row.dataset.piece);
-      try { ev.dataTransfer.setData('text/plain', 'wn5-piece:' + dragPid); ev.dataTransfer.effectAllowed = 'move'; } catch (_) { /* the drop reads dragPid */ }
+      DRAG.pid = _id(row.dataset.piece);
+      try { ev.dataTransfer.setData('text/plain', 'wn5-piece:' + DRAG.pid); ev.dataTransfer.effectAllowed = 'move'; } catch (_) { /* the drop reads DRAG.pid */ }
     });
     root.addEventListener('dragover', (ev) => {
-      if (dragPid == null) return;
+      if (DRAG.pid == null) return;
       const row = ev.target.closest ? ev.target.closest('.wn5-row[data-rt]') : null;
       mark(row);
       if (row) { ev.preventDefault(); try { ev.dataTransfer.dropEffect = 'move'; } catch (_) { /* cosmetic */ } }
     });
-    root.addEventListener('dragleave', (ev) => { if (over && !over.contains(ev.relatedTarget)) mark(null); });
-    root.addEventListener('dragend', () => { dragPid = null; mark(null); });
+    root.addEventListener('dragleave', (ev) => { if (DRAG.over && !DRAG.over.contains(ev.relatedTarget)) mark(null); });
+    // dragend fires on the source row; once a repaint detached it, it never reaches a root — the next dragstart resets
+    root.addEventListener('dragend', () => { DRAG.pid = null; mark(null); });
     root.addEventListener('drop', (ev) => {
-      const pid = dragPid, row = ev.target.closest ? ev.target.closest('.wn5-row[data-rt]') : null;
-      dragPid = null; mark(null);
+      const pid = DRAG.pid, row = ev.target.closest ? ev.target.closest('.wn5-row[data-rt]') : null;
+      DRAG.pid = null; mark(null);
       if (pid == null || !row || !_live()) return;
       ev.preventDefault();
       const it = _item(pid);

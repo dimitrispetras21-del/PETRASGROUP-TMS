@@ -3394,6 +3394,22 @@ SCN.f32 = async (browser, origin) => {
     ok(scn, 'no page errors (1)', !S.pageErrors.length, S.pageErrors);
     await page.context().close();
   }
+  { // 3 · code review: the board repaints during the drag (a reload) — the drop on the new root still opens the «+»
+    const { page, S } = await bOpen(browser, origin, { board: f33Board() });
+    await page.evaluate(() => {
+      const src = document.querySelector('#content .wn5 .wn5-row[data-piece="4392"]'), dt = new DataTransfer();
+      src.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt }));
+      return WN5.reload('user').then(() => {
+        const dst = document.querySelector('#content .wn5 .wn5-row[data-rt="301"]');
+        dst.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
+        dst.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+      });
+    }).catch((e) => S.pageErrors.push(String(e)));
+    await page.waitForTimeout(500);
+    ok(scn, 'repaint mid-drag: the drop on the repainted board opens RT-T301\'s «+» with the load marked', await bHas(page, `${P} .wn5-pline.wn5-pfocus[data-piece="4392"]`));
+    ok(scn, 'no page errors (3)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
   { // 2 · a drop on another waiting row (not a cycle) opens nothing and writes nothing
     const { page, S } = await bOpen(browser, origin, { board: f33Board() });
     await page.dragAndDrop('#content .wn5 .wn5-row[data-piece="4392"]', '#content .wn5 .wn5-row[data-piece="4393"]').catch(() => {});
