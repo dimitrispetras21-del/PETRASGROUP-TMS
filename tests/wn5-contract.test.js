@@ -21,6 +21,7 @@ const V5 = [
   { file: 'modules/wn5_assign.js', globals: ['WN5Assign'], after: 'modules/wn5_actions.js' },
   { file: 'modules/wn5_veroia.js', globals: ['WN5Hub'], after: 'modules/wn5_assign.js' },
   { file: 'modules/wn5_forms.js', globals: ['WN5Form'], after: 'modules/wn5_veroia.js' },
+  { file: 'modules/wn5_edit.js', globals: ['WN5Edit'], after: 'modules/wn5_handover.js' },
   { file: 'core/plan-ids.js', globals: ['PlanIds'], after: 'core/wn5-labels.js' },
 ];
 

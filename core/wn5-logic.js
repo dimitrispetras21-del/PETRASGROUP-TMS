@@ -55,6 +55,21 @@ function allDay(fromIso, toIso) {
   const a = athensDay(fromIso);
   return !!a && a === athensDay(toIso) && athensTime(fromIso) === DAY_WIN.from && athensTime(toIso) === DAY_WIN.to;
 }
+// F64 (owner 31/10): the base wants planned_to > planned_from, so «the same hour» is stored as one minute (08:00–08:01)
+// and an arrival with no hour («ως 23:59») as 23:58–23:59. Printed as stored, both read as a window nobody agreed.
+// ONE reader rule for the board and the driver sheet (principle 3): a window of at most one minute is an instant,
+// «στις 08:00»; the instant that ends the day is the deadline «ως 23:59»; the whole day stays «όλη η ημέρα».
+// It reads the Athens clock (HH:MM, what the board's model carries): a window over midnight is never an instant. An
+// old 24 h «08:00 → 08:00 next day» stored before F64 keeps «08:00–08:00»: its row sits on the end day, and «στις 08:00»
+// there would name an appointment that never was (code review). null when an end is missing (each screen keeps «—»).
+function winText(from, to, all) {
+  if (!from || !to) return null;
+  if (all) return 'όλη η ημέρα';
+  const min = (hm) => { const x = /^(\d{2}):(\d{2})$/.exec(hm); return x ? Number(x[1]) * 60 + Number(x[2]) : NaN; };
+  const d = min(to) - min(from);
+  if (d === 1) return to === DAY_WIN.to ? 'ως ' + DAY_WIN.to : 'στις ' + from;
+  return from + '–' + to;
+}
 function _addDays(day, n) { const [y, m, d] = day.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); }
 function _dowOf(day) { const [y, m, d] = day.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)).getUTCDay(); }
 // The board's day words come from ONE place, WI4.dayLabel (core/wi4-logic.js): «Τρί 13/10».
@@ -493,6 +508,6 @@ function handoversOf(cycle) {
   return out;
 }
 
-const WN5L = freeze({ model, waitSide, segmentsOf, stopSegments, handoversOf, searchParts, cycleNumbers, capacity, stopRank, hubFromBoard, athensDay, athensTime, allDay, DAY_WIN, palText, CAP, HUB_UNKNOWN, ShapeError });
+const WN5L = freeze({ model, waitSide, segmentsOf, stopSegments, handoversOf, searchParts, cycleNumbers, capacity, stopRank, hubFromBoard, athensDay, athensTime, allDay, winText, DAY_WIN, palText, CAP, HUB_UNKNOWN, ShapeError });
 if (typeof module !== 'undefined') module.exports = WN5L; else window.WN5L = WN5L;
 })();

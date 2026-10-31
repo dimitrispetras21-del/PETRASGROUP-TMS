@@ -134,6 +134,13 @@
   // F1: the window headers lose their «*» and say what an empty window means
   const WIN_HEAD = 'Παράθυρο από – έως · κενό: όλη η ημέρα';
   const PRICE_KEPT = 'Τιμή € (χωρίς ΦΠΑ): η παραγγελία έχει ήδη τιμή — γράψε αριθμό· μια γραμμένη τιμή δεν σβήνεται';
+  // Owner 31/10 (flexible-rules study Κ1 / question 6): while a national is not invoiced, every role changes its price
+  // (the dispatcher writes it when he learns it, F4); once invoiced, only owner and accountant. The form knows
+  // «invoiced» only when GET /plan/orders/:id says it (invoiced: true; the SQL draft that adds it also makes
+  // plan_order_update refuse it, principle 4): an order whose read says nothing stays open, as every order is today.
+  const PRICE_ROLES = Object.freeze(['owner', 'accountant']);
+  const _priceRo = (invoiced) => invoiced === true && !PRICE_ROLES.includes(typeof ROLE !== 'undefined' ? ROLE : '');
+  const PRICE_RO_TITLE = 'Τιμολογημένη: η τιμή αλλάζει μόνο από owner ή λογιστήριο';
   const UNTIL_HEAD = 'Άφιξη ως · κενό: όλη η ημέρα';
   // A row's window as sent (F1): both ends empty = the whole day; one end only is NOT guessed — it stays as typed and
   // _check names it. An arrival «ως» row (one time, Veroia on ΑΝΟΔΟΣ) empty = by the end of its day, 23:59, and it
@@ -172,15 +179,28 @@
   // One stop per place of the form on the target side: the cycle's own stop there (snapshot of the open), or a
   // new one spanning the earliest «από» to the latest «έως» of its rows. plan_h_stop_at finds a piece's stop by
   // place, so two new stops at one place would be refused as ambiguous.
+  // F64 (live 31/10): «08:00–08:00» is the minute that starts at 08:00 (23:59: the one that ends there) — the base
+  // refuses a stop whose end is its start (071 rt_stops_win); the same rule as WN5Act's _win, never a day later
+  function _sameMin(day, from, to) {
+    if (from !== to || !/^\d{2}:\d{2}$/.test(String(from))) return [_iso(day, from), _iso(day, to)];
+    const m = Number(from.slice(0, 2)) * 60 + Number(from.slice(3, 5));
+    const hm = (x) => String(Math.floor(x / 60)).padStart(2, '0') + ':' + String(x % 60).padStart(2, '0');
+    return m < 1439 ? [_iso(day, from), _iso(day, hm(m + 1))] : [_iso(day, hm(m - 1)), _iso(day, to)];
+  }
   function _stops(st) {
     const side = st.target.side;
     const byLoc = new Map();
     // F1 (code review 28/10): a row left without a window (the whole day) asks nothing of the stop, so it never widens
     // the hours another order agreed at the same place: the timed rows make the window, the whole-day rows only when
     // a place has nothing else.
-    const rows = st.orders.flatMap((o) => o.loads.concat(o.drops));
+    // F66 (owner 31/10): an arrival «ως» (Veroia on ΑΝΟΔΟΣ) has one time, and a new stop needs planned_to >
+    // planned_from (071 rt_stops_win). A cycle with no Veroia stop on its ΑΝΟΔΟΣ («Κενό γύρισμα») gets one on the
+    // arrival day: open from the end of the order's last loading that day (else the day's start) to the «ως».
+    const untilFrom = (o, d) => o.loads.filter((l) => l.day === d.day && l.to && l.to < d.to).map((l) => l.to).sort().pop() || '00:00';
+    const rows = st.orders.flatMap((o) => o.loads.concat(o.drops.map((d) => (d.until && d.to > '00:00' ? Object.assign({}, d, { from: untilFrom(o, d) }) : d))));
     for (const r of rows.filter((x) => !x.allDay).concat(rows.filter((x) => x.allDay))) {
-      const f = _iso(r.day, r.from), t = _iso(r.day, r.to);
+      // F64: the same hour twice is that minute of that day (planned_to > planned_from), as WN5Act's _win
+      const [f, t] = _sameMin(r.day, r.from, r.to);
       const e = byLoc.get(r.location_id);
       if (!e) byLoc.set(r.location_id, { from: f, to: t, allDay: !!r.allDay });
       else if (!r.allDay || e.allDay) {
@@ -261,13 +281,13 @@
         }
       }
     });
+    // F66: an arrival «ως» on a cycle with no Veroia stop on that side makes one (_stops); only «ως 00:00» has no
+    // time before it on its day
     if (st.target) {
-      // A new stop needs planned_to > planned_from (071 rt_stops_win); an arrival «ως» has one time only, so it
-      // can only use the cycle's own Veroia stop of that side.
       for (const o of st.orders) for (const r of o.drops) {
-        if (!r.until) continue;
+        if (!r.until || r.to > '00:00') continue;
         const ex = (st.cycleStops || []).some((s) => s.side === st.target.side && s.location_id === r.location_id);
-        if (!ex) { out.push('Ο κύκλος δεν έχει στάση Βέροιας στην ΑΝΟΔΟ — όρισέ τη πρώτα από την ημέρα του σκέλους'); return out; }
+        if (!ex) { out.push('Άφιξη Βέροιας ως 00:00: γράψε ώρα μετά τις 00:00'); return out; }
       }
     }
     return out;
@@ -526,7 +546,8 @@
       + `<label class="wn5f-f"><span>Πελάτης *</span><span data-cpick="${cid}">${fhClientSelect(cid, '', '', 'fhClientDrop')}</span></label>`
       + `<label class="wn5f-f"><span>Τιμή € (χωρίς ΦΠΑ)</span><input class="form-input" data-f="price" inputmode="decimal" placeholder="κενό: λείπει"></label>`
       + `<label class="wn5f-f"><span>Θερμοκρασία °C</span><input class="form-input" data-f="temp" inputmode="decimal"></label>`
-      + `<div class="wn5f-f"><span>PE · ανταλλαγή παλετών</span>${_peHTML(null)}</div>`
+      // Figma audit B-22 (owner 31/10): a new order starts on «Όχι»; the dispatcher presses «Ναι» when there is exchange
+      + `<div class="wn5f-f"><span>PE · ανταλλαγή παλετών</span>${_peHTML(false)}</div>`
       + `<button type="button" class="wn5f-x wn5f-ox" data-act="del-order" aria-label="Αφαίρεση παραγγελίας">×</button></div>`
       + `<div class="wn5f-grid3">`
       + `<label class="wn5f-f"><span>Αναφορά</span><input class="form-input" data-f="ref"></label>`
@@ -825,7 +846,7 @@
       full: true, nat_order_id: o.nat_order_id, client: o.client || '',
       price: o.price == null ? null : Number(o.price), temperature_c: o.temperature_c == null ? null : Number(o.temperature_c),
       pallet_exchange: typeof o.pallet_exchange === 'boolean' ? o.pallet_exchange : null,
-      reference: o.reference || '', goods: o.goods || '', notes: o.notes || '',
+      reference: o.reference || '', goods: o.goods || '', notes: o.notes || '', invoiced: o.invoiced === true,
       direction: o.direction === 'KATHODOS' || o.direction === 'ANODOS' ? o.direction : null,
       // the side is the cycle's while a point rides onward; one waiting at Veroia (F23) has nothing planned yet
       riding: ships.some((s) => s.rides && !(s.at_hub && s.waits)), ships,
@@ -926,7 +947,7 @@
     const dro = e.riding ? ' disabled' : '';
     return `<div class="wn5f-grid4">`
       + `<div class="wn5f-f"><span>Πελάτης</span><span class="wn5f-ro">${_esc(e.client || '—')}</span></div>`
-      + `<label class="wn5f-f"><span>Τιμή € (χωρίς ΦΠΑ)</span><input class="form-input" data-f="price" inputmode="decimal" value="${e.price == null ? '' : _esc(e.price)}" placeholder="${e.price == null ? 'λείπει' : ''}"></label>`
+      + `<label class="wn5f-f"><span>Τιμή € (χωρίς ΦΠΑ)</span><input class="form-input" data-f="price" inputmode="decimal" value="${e.price == null ? '' : _esc(e.price)}" placeholder="${e.price == null ? 'λείπει' : ''}"${_priceRo(e.invoiced) ? ` disabled title="${PRICE_RO_TITLE}"` : ''}></label>`
       + `<label class="wn5f-f"><span>Θερμοκρασία °C</span><input class="form-input" data-f="temp" inputmode="decimal" value="${e.temperature_c == null ? '' : _esc(e.temperature_c)}"></label>`
       + `<div class="wn5f-f"><span>PE · ανταλλαγή παλετών</span>${_peHTML(e.pallet_exchange)}</div></div>`
       // 075: the side is corrected here (the repair of #17); on a cycle the cycle's side holds, so it stays as it is
@@ -935,7 +956,7 @@
       + ['KATHODOS', 'ANODOS'].map((k) => `<option value="${k}"${e.direction === k ? ' selected' : ''}>${DIR_GR[k]}</option>`).join('')
       + `</select></label>`
       // F4 (080): read from the order itself (077), a null price is «none yet» — said, and written here when known
-      + (e.price == null ? '<div class="wn5f-note">Η παραγγελία δεν έχει ακόμη τιμή — γράψε την εδώ όταν τη μάθεις.</div>' : '')
+      + (e.price == null && !_priceRo(e.invoiced) ? '<div class="wn5f-note">Η παραγγελία δεν έχει ακόμη τιμή — γράψε την εδώ όταν τη μάθεις.</div>' : '')
       + `<div class="wn5f-grid3"><label class="wn5f-f"><span>Αναφορά</span><input class="form-input" data-f="ref" value="${_esc(e.reference)}"></label>`
       + `<label class="wn5f-f"><span>Είδος</span><input class="form-input" data-f="goods" value="${_esc(e.goods)}"></label>`
       + `<label class="wn5f-f"><span>Σημειώσεις</span><input class="form-input" data-f="notes" value="${_esc(e.notes)}"></label></div>`
@@ -1091,7 +1112,16 @@
           : ' · η ώρα της στάσης του φορτηγού δεν άλλαξε: αλλάζει από το σκέλος του κύκλου (άλλη εβδομάδα)';
       }
       const added = (ans && ans.ids && ans.ids.new_shipment_ids) || [];
-      if (added.length) {
+      // owner 31/10 (pack 2): a new point of an order that rides goes on the same truck, after its last stop — one
+      // more write after the board read. When it cannot (no single truck, a refusal), the point waits and the old
+      // line below says so, with the base's reason in the strip (wn5_edit.js putNew).
+      let put = null;
+      if (added.length && typeof WN5Edit !== 'undefined') {
+        try { await f.reloaded; } catch (_) { /* the board's own strip says the read failed */ }
+        put = await WN5Edit.putNew({ natOrderId: f.edit.nat_order_id, shipmentIds: added, leg: f.p.leg || null, host: _strip(f) });
+      }
+      if (put && put.text) f.el.querySelector('[data-done]').textContent += ' · ' + put.text;
+      else if (added.length) {
         f.el.querySelector('[data-done]').textContent += ` · ${added.length === 1 ? 'νέο σημείο' : added.length + ' νέα σημεία'} ΠΡΟΣ ΑΝΑΘΕΣΗ: βάλ' ${added.length === 1 ? 'το' : 'τα'} σε φορτηγό από το Εβδομαδιαίο`;
         // A-7: opened from a leg («+ σημείο» of the leg form): the way back to that leg, one press away
         const leg = f.p.leg;
