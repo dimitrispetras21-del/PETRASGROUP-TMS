@@ -10,8 +10,8 @@ import { fileURLToPath } from 'node:url';
 import { buildDryRun } from './build-073-dryrun.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-// drafts/ until the owner runs 080 (CLAUDE.md rule 5); then the files go one up and this constant follows
-export const DIR = path.resolve(HERE, '..');
+// executed 31/10/2026 (owner): the files are one up, out of drafts/ (CLAUDE.md rule 5)
+export const DIR = path.resolve(HERE, '..', '..');
 export const SOURCE = '080_plan_optional_price_pallets.sql';
 export const FILES = ['080_plan_optional_price_pallets_dryrun.sql', '080_plan_optional_price_pallets_rollback.sql'];
 export const SIGS = ['public.plan_orders_create(jsonb,text,text)', 'public.plan_h_order_summary(jsonb)', 'public.plan_shipment_problem(bigint)',
