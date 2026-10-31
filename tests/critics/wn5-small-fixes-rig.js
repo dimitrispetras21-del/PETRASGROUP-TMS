@@ -40,13 +40,13 @@ async function f22({ browser, origin, ok, scn }) {
   await page.click('#content .wn5-row[data-rt="202"] .wn5-afl', { force: true }).catch(() => {});
   await page.waitForTimeout(100);
   const other = await toasts(page);
-  ok(scn, 'a click on another row during the read says it waits', other.some((t) => /Ανοίγει ήδη ένα άλλο σκέλος/.test(t)), other);
+  ok(scn, 'a click on another row during the read says it waits', other.some((t) => /Ανοίγει ήδη μια άλλη γραμμή/.test(t)), other);
   // the OTHER side of the same cycle during the read is told too (code review 29/10)
   await page.evaluate(() => { const ev = window.__ev || []; ev.length = 0; });
   await page.click('#content .wn5-row[data-rt="201"] .wn5-afl', { force: true }).catch(() => {});
   await page.waitForTimeout(100);
   const side = await toasts(page);
-  ok(scn, 'a click on the other side of the same cycle during the read says it waits', side.some((t) => /Ανοίγει ήδη ένα άλλο σκέλος/.test(t)), side);
+  ok(scn, 'a click on the other side of the same cycle during the read says it waits', side.some((t) => /Ανοίγει ήδη μια άλλη γραμμή/.test(t)), side);
   // an impatient second and third click while the read runs: still ONE read
   await page.click('#content .wn5-row[data-rt="201"] .wn5-kto', { force: true }).catch(() => {});
   await page.click('#content .wn5-row[data-rt="201"] .wn5-kpal', { force: true }).catch(() => {});
@@ -54,7 +54,7 @@ async function f22({ browser, origin, ok, scn }) {
   ok(scn, 'three clicks during one slow read = one GET /plan/board', boards(S).length - before === 1, boards(S).slice(before).map((x) => x.at + 'ms ' + x.status));
   const ts = await toasts(page);
   ok(scn, 'the failed read is said as such («ο πίνακας δεν ξαναδιαβάστηκε … ο κύκλος υπάρχει»), with the base\'s message',
-    ts.some((t) => /Το σκέλος δεν άνοιξε: ο πίνακας δεν ξαναδιαβάστηκε \(rig sentinel slow\)/.test(t)), ts);
+    ts.some((t) => /Δεν άνοιξε: ο πίνακας δεν ξαναδιαβάστηκε \(rig sentinel slow\)/.test(t)), ts);
   // ONE #toast (core/ui.js): what stays on screen is the read failure, never «Ο κύκλος δεν βρέθηκε»
   const shown = await page.evaluate(() => { const t = document.getElementById('toast'); return t ? t.textContent : ''; });
   ok(scn, 'the toast left on screen is the read failure, not «δεν βρέθηκε»', /δεν ξαναδιαβάστηκε/.test(shown) && !/δεν βρέθηκε/.test(shown), shown);

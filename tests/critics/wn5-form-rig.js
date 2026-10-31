@@ -144,7 +144,7 @@ async function scnOrder({ browser, origin, ok, scn }) {
     !!pre && pre.goods === 'Άδειες παλέτες' && pre.price === '1' && pre.drop === HUB.rec && pre.btn && !K.planOf(p3.S, 'POST', '/plan/orders').length, pre);
   await p3.page.context().close();
 
-  // ✈ «Νέα παραγγελία σε αυτό το σκέλος ›» → «Κάθοδος» (S-45, Figma 2011:8858): the same short form as the «+»
+  // ✈ «Νέα παραγγελία σε αυτό το δρομολόγιο ›» → «Κάθοδος» (S-45, Figma 2011:8858): the same short form as the «+»
   const p4 = await K.openApp(browser, origin);
   await p4.page.evaluate(() => WN5.rowMenu(null, 101));
   await p4.page.click('#wn5-menu [data-item="new-order"]', { timeout: 2000 }).catch(() => {});

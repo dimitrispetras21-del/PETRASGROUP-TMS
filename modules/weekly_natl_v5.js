@@ -821,7 +821,7 @@ function _leg(ev, rtId, side) {
   if (_legBusy) {
     // the same side of the same cycle already shows its read; any other click is told why it waits, never a silent nothing
     const sd = side === 'ANODOS' ? 'ANODOS' : 'KATHODOS';
-    if ((_legBusy.rt !== Number(rtId) || _legBusy.side !== sd) && typeof toast === 'function') toast('Ανοίγει ήδη ένα άλλο σκέλος — δοκίμασε ξανά μόλις ανοίξει', 'info');
+    if ((_legBusy.rt !== Number(rtId) || _legBusy.side !== sd) && typeof toast === 'function') toast('Ανοίγει ήδη μια άλλη γραμμή — δοκίμασε ξανά μόλις ανοίξει', 'info');   // owner 31/10: no «σκέλος» on the board
     return;
   }
   // one token per click: only its own end (or its own 90 s guard) releases it. A read that never settles must not lock
@@ -835,7 +835,7 @@ function _leg(ev, rtId, side) {
     .then((ok) => {
       if (ok !== false || _state !== 'err' || !_lastErr || !active() || typeof toast !== 'function') return;
       // one #toast (core/ui.js): this replaces at once the form's «Ο κύκλος δεν βρέθηκε …», which a failed read is not
-      toast(`Το σκέλος δεν άνοιξε: ο πίνακας δεν ξαναδιαβάστηκε (${_esc(String(_lastErr.message || ''))}) — ο κύκλος δεν χάθηκε· πάτα Ανανέωση`, 'danger');
+      toast(`Δεν άνοιξε: ο πίνακας δεν ξαναδιαβάστηκε (${_esc(String(_lastErr.message || ''))}) — τίποτα δεν χάθηκε· πάτα Ανανέωση`, 'danger');
     })
     .catch((e) => _logErr(e, 'weekly natl v5: leg form'))
     .finally(free);
@@ -1431,7 +1431,8 @@ function _noteGroups(m) {
       const m1 = !e || !e.ref ? /\bVS ([^:(]+?)(?::|\s\(|\sβγήκε|\sάλλαξε|\sπέρασε|$)/.exec(String(x.message || '')) : null;
       const ref = (e && e.ref) || (m1 && m1[1].trim()) || null;
       const c = !ok && x.rt_id != null ? _cycleOf(x.rt_id) : null;
-      const name = ok ? `${x.order_id != null ? 'VS' : 'Εθνική'}${ref ? ' ' + ref : ''}`
+      // «VS 2130»; a reference that already says it («VS-118») is not prefixed twice
+      const name = ok ? (ref && /^VS[-\s]/i.test(ref) ? ref : `${x.order_id != null ? 'VS' : 'Εθνική'}${ref ? ' ' + ref : ''}`)
         : c ? ([c.truck, c.driver].filter(Boolean).join(' · ') || c.partner || 'Δρομολόγιο') : '';
       let rowKey = null;
       if (x.rt_id != null && rows.some((r) => r.key === 'rt:' + x.rt_id)) rowKey = 'rt:' + x.rt_id;
@@ -1454,10 +1455,11 @@ function _noteLineHTML(g, off, own) {
   const at = _noteAt(g.items[0]);
   const full = [g.name, ...texts, at].filter(Boolean).join(' · ');
   const who = !g.name ? '' : g.rowKey
-    ? `<button type="button" class="wi4-link wn5-note-who" title="Στη γραμμή" onclick="WN5._noteGo('${_esc(g.rowKey)}')">${_esc(g.name)}</button>`
+    ? `<button type="button" class="wi4-link wn5-note-who" title="Στη γραμμή" onclick="WN5.focusRow('${_esc(g.rowKey)}')">${_esc(g.name)}</button>`
     : `<b class="wn5-note-who" title="Δεν είναι γραμμή αυτής της εβδομάδας">${_esc(g.name)}</b>`;
   return `<span class="wn5-note" data-id="${_id(g.items[0].id)}" data-ids="${ids}" title="${_esc(full)}">${who}`
-    + `<span class="wn5-note-t">${g.name ? ' · ' : ''}${_esc(texts.join(' · '))}</span>${at ? `<span class="wn5-note-by"> · ${_esc(at)}</span>` : ''}`
+    // \u00a0: a flex item drops a leading space, and «VS 2130· νέος» read as one word
+    + `<span class="wn5-note-t">${g.name ? '\u00a0· ' : ''}${_esc(texts.join(' · '))}</span>${at ? `<span class="wn5-note-by">\u00a0· ${_esc(at)}</span>` : ''}`
     + (own ? `<button type="button" class="wi4-link wn5-note-ok"${off ? ' disabled' : ''} onclick="WN5._noteRead('${_esc(g.key)}')">Σημείωσα</button>` : '')
     + '</span>';
 }
@@ -1474,16 +1476,20 @@ function _noticesHTML(m) {
     + '</div>';
 }
 function _notesTog() { _notesOpen = !_notesOpen; _paintNotices(); }
-// The order's row: its day opened if the user folded it, scrolled to the middle, marked for a moment
-function _noteGo(key) {
+// A row found again and shown (F50, owner 31/10; a notice's link too): its day opened if the user folded it, scrolled
+// into view, marked as the row in hand (.wn5-focus, until the next paint) and flashed once — the Weekly International's
+// focusRow. false = no such row on this board (nothing scrolls).
+function focusRow(key) {
   const sel = `#content .wn5 .wn5-row[data-key="${String(key).replace(/["\\]/g, '')}"]`;
   let el = document.querySelector(sel);
   const day = el && el.closest('.wn5-day.closed');
   if (day) { _dayTog(day.dataset.date); el = document.querySelector(sel); }
-  if (!el) return;
-  el.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  el.classList.add('wn5-flash');
-  setTimeout(() => el.classList.remove('wn5-flash'), 1800);
+  if (!el) return false;
+  for (const x of document.querySelectorAll('#content .wn5 .wn5-row.wn5-focus')) x.classList.remove('wn5-focus');
+  el.classList.add('wn5-focus', 'wn5-flash');
+  try { el.scrollIntoView({ block: 'nearest' }); } catch (_) {}
+  setTimeout(() => { if (el.isConnected) el.classList.remove('wn5-flash'); }, 1500);
+  return true;
 }
 function _paintNotices() {
   const el = document.getElementById('wn5-notices');
@@ -1548,7 +1554,7 @@ const WN5 = {
   _searchKey,
   _noteRead,
   _notesTog,
-  _noteGo,
+  focusRow,
   _leg,
   _cpy,
   _orderCard,
@@ -1560,7 +1566,7 @@ const WN5 = {
     // T12: the same Δ1 window as the red box and ΕΠΟΜΕΝΑ; on a cycle it changes the vehicle (PATCH /plan/rt/:id)
     { id: 'assign', order: 20, label: 'Ανάθεση / αλλαγή φορτηγού ή συνεργάτη', run: (rtId) => WN5Act.assign(null, { entry: 'menu', rtId }) },
     // T20: the same short form as the «+» of a leg (S-45): target = this cycle's side, day/Veroia from the cycle
-    { id: 'new-order', order: 30, label: 'Νέα παραγγελία σε αυτό το σκέλος', children: [
+    { id: 'new-order', order: 30, label: 'Νέα παραγγελία σε αυτό το δρομολόγιο', children: [
       { id: 'new-order-k', label: 'Κάθοδος', run: (rtId) => WN5Form.openOrder({ side: 'KATHODOS', rtId }) },
       { id: 'new-order-a', label: 'Άνοδος', run: (rtId) => WN5Form.openOrder({ side: 'ANODOS', rtId }) }] },
     // T17: the stop is chosen inside the window (its day is the stop's day, 072:2283)

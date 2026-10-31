@@ -270,6 +270,11 @@
     opts = opts || {};
     let fresh = true;
     if (!opts.reloaded && typeof WN5 !== 'undefined') fresh = !!(await WN5.reload('save'));
+    // F50 (owner 31/10): the rows renumber per truck after a save, so the cycle just saved can land elsewhere on the
+    // board — it is found again by its id and shown (scrolled into view, marked, flashed once), as the Weekly
+    // International's focusRow. Only on a fresh board: on a stale one its place is the old one.
+    const rt = _id(opts.rt) || _id(out && out.ids && out.ids.rt_id);
+    if (fresh && rt && typeof WN5 !== 'undefined' && typeof WN5.focusRow === 'function') WN5.focusRow('rt:' + rt);
     const host = _boardHost();
     // after a save the over_33 line names the vehicle (Δ12 tile 7): the cycle's truck or partner, from the board just read
     if (host && out && Array.isArray(out.warnings) && out.warnings.length) WN5Act.strip(host, out.warnings.map(_savedOn));
@@ -313,7 +318,9 @@
     }
     if (opts.slot) opts.slot.confirm();      // a new request_id only after a confirmed 200 (replayed included)
     _close(d);
-    await _afterSave(out, okText, { intl: opts.intl });
+    // the cycle the request names (a «+», an assign to a cycle, a PATCH of one); a new cycle's id comes in the answer
+    const rt = _id(req.body && req.body.target && req.body.target.rt_id) || _id((/^\/plan\/rt\/(\d+)/.exec(req.path || '') || [])[1]);
+    await _afterSave(out, okText, { intl: opts.intl, rt });
     return out;
   }
 
@@ -1066,7 +1073,7 @@
     WN5Act.twoStep({ method: req.method, path: req.path, body: req.body, kind: 'move', title: 'Μεταφορά · ' + st.what, verb: 'Μεταφορά', host: d.msg })
       .then(async (out) => {
         if (!d.closed) { d.busy = false; _btns(d, false); }
-        if (out) { _close(d); await _afterSave(out, 'Μεταφέρθηκε', { intl: true }); }
+        if (out) { _close(d); await _afterSave(out, 'Μεταφέρθηκε', { intl: true, rt: req.body && req.body.target && req.body.target.rt_id }); }
       });
   }
   function _picker(st, kind, title) {
@@ -1662,7 +1669,7 @@
       what: (list) => _clearWhat(c, r, list),
     });
     // a costs_without_rt notice goes to the national desk: it shows in the notices strip after the re-read
-    if (out) await _afterSave(out, 'Καθαρίστηκε η ανάθεση', {});
+    if (out) await _afterSave(out, 'Καθαρίστηκε η ανάθεση', { rt: c.rt_id });
     return out;
   };
 

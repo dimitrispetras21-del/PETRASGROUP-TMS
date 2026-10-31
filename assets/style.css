@@ -9309,7 +9309,8 @@ button.wn5-note-who { color:var(--wi4-blue-ink); cursor:pointer; }
 .wn5-notes > .wn5-strip { min-height:0; margin:0; padding:2px 8px; }
 .wn5-notes > #wn5-note-read { flex:none; font-weight:500; }   /* 2049:7801: Medium, not the shared .wi4-link 600 */
 .wn5-notes :is(#wn5-note-read, .wn5-note-ok):disabled { color:var(--wi4-grey-2); cursor:default; text-decoration:none; }
-/* the row a notice's link went to, marked for a moment */
+/* F50 / a notice's link: the row in hand keeps a blue outline until the next paint, and flashes once */
+.wn5 .wn5-row.wn5-focus { outline:2px solid var(--wi4-blue); outline-offset:-2px; }
 .wn5 .wn5-row.wn5-flash { background:var(--wi4-sel); transition:background .2s; }
 /* ── National v5 actions (modules/wn5_actions.js, F4α T11): result strips and dialogs. Only tokens (one value, one
    source); no ellipsis and no silent nowrap cut (critics static ratchet). The strip itself is the rule above (Δ12
