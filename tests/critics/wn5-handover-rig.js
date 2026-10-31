@@ -55,8 +55,14 @@ async function scnTiles({ browser, origin, ok, scn }) {
       line: (() => { const p = row && row.querySelector('.wn5-pt[data-seg-label="final"]'); if (!p) return null; const a = getComputedStyle(p, '::after'); return { w: a.width, h: a.height, bg: a.backgroundColor }; })() };
   }, ROW(101));
   ok(scn, 'RT-T101 shows 2 tiles, ΑΡΧΙΚΟ then ΤΕΛΙΚΟ', g.n === 2 && g.labels.join() === 'initial,final', g.labels);
-  ok(scn, 'the tiles stay inside the 266px ΑΝΑΘΕΣΗ (±1): 135 − 4 + 135', !!g.asg && Math.abs(g.asg.r - g.asg.l - 266) <= 1 && g.tiles.every((t) => t.l >= g.asg.l - 1 && t.r <= g.asg.r + 1)
-    && g.tiles.length === 2 && Math.abs(g.tiles[0].r - g.tiles[0].l - 135) <= 1 && Math.abs(g.tiles[1].l - g.tiles[0].l - 131) <= 1, { asg: g.asg, tiles: g.tiles });
+  // density (owner 31/10): ΑΝΑΘΕΣΗ 176px as the Weekly International (was 266: 135 − 4 + 135)
+  ok(scn, 'the tiles stay inside the 176px ΑΝΑΘΕΣΗ (±1): 90 − 4 + 90', !!g.asg && Math.abs(g.asg.r - g.asg.l - 176) <= 1 && g.tiles.every((t) => t.l >= g.asg.l - 1 && t.r <= g.asg.r + 1)
+    && g.tiles.length === 2 && Math.abs(g.tiles[0].r - g.tiles[0].l - 90) <= 1 && Math.abs(g.tiles[1].l - g.tiles[0].l - 86) <= 1, { asg: g.asg, tiles: g.tiles });
+  // at 90px the word beside the plate cut the plate («CB013…», W44): two segments draw the plate whole, the word stays in the text and title
+  ok(scn, '2 segments: each plate is whole (no «…»), the segment word not drawn beside it, still in the tile\'s text', await page.evaluate((r) => {
+    const ts = [...document.querySelectorAll(r + ' .wn5-tile')];
+    return ts.length === 2 && ts.every((t) => { const p = t.querySelector('.wn5-tl-p'), l = t.querySelector('.wn5-tl-l'); return p.scrollWidth <= p.clientWidth && getComputedStyle(l).display === 'none' && /ΑΡΧΙΚΟ|ΤΕΛΙΚΟ/.test(t.textContent + t.title); });
+  }, ROW(101)));
   ok(scn, 'no plate overlaps another', g.plates.length === 2 && g.plates.every(Boolean) && g.plates[0].r <= g.plates[1].l, g.plates);
   ok(scn, 'no hh:mm inside ΑΝΑΘΕΣΗ (R-56)', !/\d\d:\d\d/.test(g.asgText), g.asgText);
   ok(scn, 'the next tile has a slanted side (clip-path), on the board', g.clip[1] && g.clip[1] !== 'none', g.clip);
@@ -96,8 +102,8 @@ async function scnTiles({ browser, origin, ok, scn }) {
       partner: row.querySelector('.wn5-tile.par') ? row.querySelector('.wn5-tile.par').textContent : '', cut };
   }, ROW(101));
   ok(scn, '3 segments: every line of ΑΡΧΙΚΟ / ΕΝΔΙΑΜΕΣΟ ends before its slanted cut, plate and driver with an ellipsis',
-    t3.cut.length === 6 && t3.cut.every((c) => c.right <= c.cutAt && (/wn5-tl-l/.test(c.cls) || c.ellipsis === 'ellipsis')), t3.cut);
-  ok(scn, '3 segments: 3 tiles fit in 266px (93 / 99 / 92)', t3.n === 3 && t3.fit && t3.w.join() === '93,99,92', t3);
+    t3.cut.length === 6 && t3.cut.every((c) => c.right <= c.cutAt && c.ellipsis === 'ellipsis'), t3.cut);
+  ok(scn, '3 segments: 3 tiles fit in 176px (64 / 66 / 64; was 93 / 99 / 92 of 266)', t3.n === 3 && t3.fit && t3.w.join() === '64,66,64', t3);
   ok(scn, '3 segments: the row is at least 48px', t3.h >= 48, t3.h);
   ok(scn, 'a partner ΤΕΛΙΚΟ shows its rate «300 €» (Ε-13, decision 41)', /ΤΕΛΙΚΟ/.test(t3.partner) && /300 €/.test(t3.partner), t3.partner);
   const hand3 = await K.text(p3.page, HAND(101));
@@ -173,6 +179,10 @@ async function scnCard({ browser, origin, ok, scn }) {
   ok(scn, 'no page or console errors (5 roles)', !errs.length, errs);
 }
 
+// F50 (owner 31/10): the cycle's row is the one in hand after the save — marked, flashed, in view, alone
+const focused = (page) => page.evaluate(() => { const rs = [...document.querySelectorAll('#content .wn5 .wn5-row.wn5-focus')];
+  const r = rs[0] && rs[0].getBoundingClientRect(); return { keys: rs.map((e) => e.dataset.key), flash: !!(rs[0] && rs[0].classList.contains('wn5-flash')), inView: !!r && r.top >= 0 && r.bottom <= innerHeight }; });
+const isFocused = (f, key) => JSON.stringify(f.keys) === JSON.stringify([key]) && f.flash && f.inView;
 async function scnChange({ browser, origin, ok, scn }) {
   const { page, S } = await K.openApp(browser, origin, { board: oneSegWeek(), plan: { 'POST /plan/rt/101/handover': (e) => (e.body.dry_run === true ? dryOk(e.body) : K.planErr(409, 'WRITES_CLOSED', 'writes_closed')) } });
   if (!(await guard(page, ok, scn, 'WN5Hand'))) return;
@@ -226,6 +236,18 @@ async function scnChange({ browser, origin, ok, scn }) {
     /rig sentinel conflict truck_busy/.test(await K.text(pc.page, `${HDLG} [data-err]`)) && await saveOff() && posts(pc.S).length === 1, posts(pc.S).map((x) => x.body));
   ok(scn, 'conflict: no page or console errors', !pc.S.pageErrors.length && !appConsole(pc.S).length, pc.S.pageErrors.concat(appConsole(pc.S)));
   await pc.page.context().close();
+  // a saved change: F50 shows the cycle's row after the re-read
+  const ps = await K.openApp(browser, origin, { board: oneSegWeek(), plan: { 'POST /plan/rt/101/handover': (e) => (e.body.dry_run === true ? dryOk(e.body)
+    : [200, { ok: true, op: 'plan_seg_change', dry_run: false, ids: { rt_id: 101, segment_id: 702 }, warnings: [], notice_ids: [] }]) } });
+  await ps.page.evaluate(() => WN5Hand.change(101));
+  await ps.page.waitForSelector(HDLG, { timeout: 6000 }).catch(() => {});
+  await fillChange(ps.page, CH);
+  await ps.page.waitForTimeout(1200);
+  await ps.page.click(`${HDLG} [data-act="save"]`).catch(() => {});
+  await ps.page.waitForTimeout(1200);
+  const fc = await focused(ps.page);
+  ok(scn, 'F50 · after a saved vehicle change the cycle\'s row (rt:101) is marked, flashes and is in view — main: nothing', isFocused(fc, 'rt:101'), fc);
+  await ps.page.context().close();
   // 404 before 072b is live
   const p2 = await K.openApp(browser, origin, { board: oneSegWeek(), plan: { 'POST /plan/rt/101/handover': () => K.planErr(404, 'NOT_FOUND', 'no_route') } });
   await p2.page.evaluate(() => WN5Hand.change(101));
@@ -468,6 +490,8 @@ async function scnRemove({ browser, origin, ok, scn }) {
   const all = K.planOf(S, 'POST', '/plan/segments/702/remove');
   const ex = all.filter((x) => x.body.dry_run !== true);
   ok(scn, 'conflict check + the two-step\'s dry run, then ONE execution with the token, no request_id', all.length === 3 && ex.length === 1 && ex[0].body.confirm_token === 'tok-702' && !('request_id' in ex[0].body), all.map((x) => x.body));
+  const fr = await focused(page);
+  ok(scn, 'F50 · after the removal the cycle\'s row (rt:101) is marked, flashes and is in view — main: nothing', isFocused(fr, 'rt:101'), fr);
   // a second press of the same removal: the base answers replayed:true — the same success, no error
   await page.evaluate(() => { WN5Hand.remove(702); });   // not awaited: it resolves only after the confirm
   await page.waitForSelector(`${RDLG} [data-act="confirm"]`, { timeout: 6000 }).catch(() => {});
