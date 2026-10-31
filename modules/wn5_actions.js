@@ -1308,26 +1308,19 @@
   // Sun 1/11 in its «+», while the same «+» from the next week showed it. The list is the trip's own days: the weeks
   // after the loaded one, up to the trip's last day (its end, its side's stop days), are read once when the «+» opens
   // and their loads ready by that day join the list. A read that fails is said with its days, never a silent gap.
-  // one read of a week per loaded board (code review r2): a second «+» on the weekend's trips asks no more, a new
-  // board read (save, ↻, week tab) is a new object and starts over; a failed read is forgotten, the next «+» asks again
-  let _moreC = { b: null, m: new Map() };
+  // one week's board for the «+» (F53). No cache across openings: caching waits for the owner (PRIME DIRECTIVE); the
+  // main loader's own check (weekly_natl_v5 render) holds — an answer for another week, or without its lists, is a
+  // failed read, logged and said as such, never «nothing waiting» (code review r3/r4)
   function _moreWeek(w) {
-    const b = _state().board;
-    if (_moreC.b !== b) _moreC = { b, m: new Map() };
-    const m = _moreC.m;
-    let p = m.get(w);
-    if (!p) {
-      // the main loader's own check (weekly_natl_v5 render): an answer for another week, or without its lists, is a
-      // failed read, said as such — never «nothing waiting» (code review r3)
-      p = planFetch('GET', '/plan/board?week=' + w).then((x) => {
-        if (!x || typeof x !== 'object' || x.week !== w || !Array.isArray(x.waiting) || !Array.isArray(x.hub))
-          throw _clientErr('board_week', 'η απάντηση ήταν για άλλη εβδομάδα (' + String(x && x.week) + ')');
-        return x;
-      });
-      m.set(w, p);
-      p.catch(() => { if (m.get(w) === p) m.delete(w); });
-    }
-    return p;
+    return planFetch('GET', '/plan/board?week=' + w).then((x) => {
+      const bad = !x || typeof x !== 'object' ? 'κενή απάντηση'
+        : x.week !== w ? 'η απάντηση ήταν για άλλη εβδομάδα (' + String(x.week) + ')'
+        : !Array.isArray(x.waiting) || !Array.isArray(x.hub) ? 'η απάντηση ήρθε χωρίς λίστα αναμονής' : null;
+      if (!bad) return x;
+      const e = _clientErr('board_shape', bad);
+      _log(new Error('wn5 plus: board ' + w + ': ' + bad), 'WN5Act plus more');
+      throw e;
+    });
   }
   async function _plusMore(st, week) {
     const have = new Set(_allItems().map((x) => x.piece_id));
@@ -1353,6 +1346,7 @@
       }
     }
     st.more = out;
+    if (i < res.length && res[i].reason && res[i].reason._sessionGone) { st.beyond.state = 'ok'; return; }   // the login page takes over
     if (i < res.length) { st.beyond.state = 'failed'; st.beyond.from = read[i]; st.beyond.err = res[i].reason; }
     else if (read.length < weeks.length) { st.beyond.state = 'cut'; st.beyond.from = weeks[read.length]; }
     else st.beyond.state = 'ok';

@@ -66,12 +66,12 @@ async function f53({ browser, origin, ok, scn }) {
       && JSON.stringify(b.pieces) === JSON.stringify([{ piece_id: 4801 }]) && JSON.stringify(b.target) === JSON.stringify({ rt_id: 103, side: 'KATHODOS' })
       && (b.stops || []).some((s) => s.stop_id === 1201), legs.map((x) => x.raw));
     ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
-    // a second «+» on the same board asks the next week no more (one read per loaded board)
+    // a second «+» reads the next week again (no cache across openings until the owner says so) and lists it again
     await page.keyboard.press('Escape');
     await page.evaluate(() => WN5Act.plus(103, 'KATHODOS', document.querySelector('#content .wn5-row[data-rt="103"]') || document.querySelector('#content .wn5')));
     await page.waitForTimeout(500);
-    ok(scn, 'a second «+» of RT-T103 lists VS-T801 again without a second GET of 2026-10-17', (await lines(page)).includes(4801)
-      && K.planOf(S, 'GET', '/plan/board').filter((x) => x.q.week === NEXT).length === 1, K.planOf(S, 'GET', '/plan/board').map((x) => x.q.week));
+    ok(scn, 'a second «+» of RT-T103 lists VS-T801 again (one more GET of 2026-10-17)', (await lines(page)).includes(4801)
+      && K.planOf(S, 'GET', '/plan/board').filter((x) => x.q.week === NEXT).length === 2, K.planOf(S, 'GET', '/plan/board').map((x) => x.q.week));
     // control: a trip inside the week reads no other week
     await page.keyboard.press('Escape');
     const n0 = K.planOf(S, 'GET', '/plan/board').length;

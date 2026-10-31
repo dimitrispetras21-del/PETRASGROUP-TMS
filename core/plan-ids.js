@@ -20,6 +20,7 @@
   let _stale = false;
   let _gen = 0;          // a stale() during a read in flight: that read is older than the place, it never clears it
   let _inflightGen = 0;
+  let _staleAfter = 0;
   // Ε-2: until Worker deploy 1 (c0ccdf77, live 28/10/2026 with 074a) GET /plan/lookups did not exist and its 404
   // no_route was the KNOWN gap, not logged. The route is live now, so a 404 is a logged bug again (principle 1).
   // tests/wn5-plan-ids.test.mjs holds this flag to the Worker source: false exactly while the route is in it.
@@ -37,7 +38,9 @@
   function _shapeOk(d) { return !!d && typeof d === 'object' && Object.values(LISTS).every((k) => Array.isArray(d[k])); }
 
   function load() {
-    if (_data && !_stale) return Promise.resolve({ ok: true });
+    // a re-read that failed is asked again at most once a minute (the board's own rule for the catalogue): a base that
+    // is down gets no read per click, and app_errors no row per click (code review r4)
+    if (_data && (!_stale || Date.now() < _staleAfter)) return Promise.resolve({ ok: true });
     // a read that started before the last stale() is older than the place: wait for it, then read again
     if (_inflight) return _inflightGen === _gen ? _inflight : _inflight.then(() => load());
     const gen = _inflightGen = _gen;
@@ -47,13 +50,14 @@
         if (!_shapeOk(d)) {
           const e = _err('ids_shape', 'Οι κατάλογοι ήρθαν χωρίς όλες τις λίστες — ενημέρωσε τον Δημήτρη');
           if (typeof logError === 'function') logError(e, 'PlanIds.load');
-          return _data ? { ok: true } : { ok: false, err: e };   // a re-read after stale(): the catalogue in hand serves
+          if (_data) { _staleAfter = Date.now() + 60e3; return { ok: true }; }   // a re-read after stale(): the catalogue in hand serves
+          return { ok: false, err: e };
         }
         _data = d;
         if (gen === _gen) _stale = false;
         return { ok: true };
       } catch (e) {
-        if (_data) return { ok: true };    // a re-read after stale(): the catalogue in hand still serves (logged by planFetch)
+        if (_data) { _staleAfter = Date.now() + 60e3; return { ok: true }; }   // a re-read after stale(): the catalogue in hand still serves (logged by planFetch)
         return { ok: false, err: e };      // planFetch already logged what is not a designed answer (no_route: Ε-2, above)
       } finally {
         _inflight = null;
@@ -88,7 +92,7 @@
     return h.length === 1 ? h[0].id : null;
   }
 
-  function stale() { _stale = true; _gen++; }
+  function stale() { _stale = true; _gen++; _staleAfter = 0; }
 
   const PlanIds = Object.freeze({ load, id, place, list, hub, stale });
   if (typeof module !== 'undefined' && module.exports) module.exports = PlanIds;

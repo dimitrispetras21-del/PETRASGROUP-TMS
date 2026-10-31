@@ -8,7 +8,7 @@
 const _fhLocationsArr = [];  // [{id,label}]
 const _fhLocationsMap = {};  // recId → label
 const _fhClientsMap   = {};  // recId → name
-const _fhLocSaved     = new Map();  // recId → {id,label}: the places this page saved (fhLocationSaved), kept by a re-read
+const _fhLocSaved     = new Map();  // recId → {item:{id,label}, prev: label before the save}: this page's saves (fhLocationSaved)
 const _fhClientCache  = {};  // query → {at, res: [{id,label}]}; '\u0001' + probe word → {at, recs} the server's records (F19, 60 s each)
 
 // The location records (Name/City/Country) — the reference preload's copy
@@ -31,7 +31,9 @@ function _fhLocLabel(f) {
 // started before the save (the first one, or the background re-read) has no new place and an old name.
 function _fhLocItems(records) {
   const byId = new Map(records.map(r => [r.id, { id: r.id, label: _fhLocLabel(r.fields) }]));
-  for (const [id, l] of _fhLocSaved) byId.set(id, l);
+  // a read without the place, or with the name it had before the save, is older than the save; a read with another
+  // name is newer (someone renamed it since) and wins (code review r4)
+  for (const [id, x] of _fhLocSaved) { const r = byId.get(id); if (!r || r.label === x.prev) byId.set(id, x.item); }
   return [...byId.values()].sort((a, b) => a.label.localeCompare(b.label));
 }
 
@@ -75,7 +77,8 @@ function fhLocationSaved(rec) {
   if (!rec || !rec.id || !rec.fields) return;
   if (typeof PlanIds !== 'undefined' && typeof PlanIds.stale === 'function') PlanIds.stale();
   const item = { id: rec.id, label: _fhLocLabel(rec.fields) };
-  _fhLocSaved.set(rec.id, item);
+  const was = _fhLocSaved.get(rec.id);
+  _fhLocSaved.set(rec.id, { item, prev: was ? was.prev : (_fhLocationsMap[rec.id] || null) });
   if (!_fhLocationsArr.length) return;
   const at = _fhLocationsArr.findIndex(l => l.id === rec.id);
   if (at !== -1) _fhLocationsArr.splice(at, 1);

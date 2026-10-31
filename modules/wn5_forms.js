@@ -658,15 +658,17 @@
     const vSet = !vEl.dataset.auto && DAY.test(vday);
     // the day the points were last aligned with: the screen's Veroia day too (a ΚΑΘΟΔΟΣ with no Veroia stop opens with
     // it), so the first day the user sets moves them already (code review r2)
-    const shift = dir === 'KATHODOS' && vSet && f.vPrev && f.vPrev !== vday ? Math.round((Date.parse(vday) - Date.parse(f.vPrev)) / 864e5) : 0;
+    // a form opened with no Veroia day at all aligns from the day its points were filled on (code review r4)
+    const prev = f.vPrev || (DAY.test(f.dayDefault || '') ? f.dayDefault : null);
+    const shift = dir === 'KATHODOS' && vSet && prev && prev !== vday ? Math.round((Date.parse(vday) - Date.parse(prev)) / 864e5) : 0;
     if (DAY.test(vday)) f.vPrev = vday;
-    // a row or an order added later opens where the filled ones are now (code review r3), never on the old day
-    if (vSet && f.dayDefault && DAY.test(f.dayDefault)) {
-      if (dir === 'ANODOS') f.dayDefault = vday;
-      else if (shift && typeof WN5Act !== 'undefined' && WN5Act._kit && WN5Act._kit.addDays) f.dayDefault = WN5Act._kit.addDays(f.dayDefault, shift);
-    }
     // the board's own day arithmetic (wn5_actions _addDays), never a second copy
     const addDays = typeof WN5Act !== 'undefined' && WN5Act._kit && typeof WN5Act._kit.addDays === 'function' ? WN5Act._kit.addDays : null;
+    // a row or an order added later opens where the filled ones are now (code review r3), never on the old day
+    if (vSet && DAY.test(f.dayDefault || '')) {
+      if (dir === 'ANODOS') f.dayDefault = vday;
+      else if (shift && addDays) f.dayDefault = addDays(f.dayDefault, shift);
+    }
     f.el.querySelectorAll('.wn5f-row').forEach((r) => {
       const rec = (document.getElementById('lv_' + r.dataset.pid) || {}).value || '';
       if (vSet && !(rec && rec === _hubRec())) {
@@ -761,8 +763,8 @@
     const b = f.el.querySelector('[data-act="save"]');
     f.busy = true;
     if (b) b.setAttribute('aria-busy', 'true');
-    try { await PlanIds.load(); } catch (e) { _log(e, 'WN5Form save PlanIds'); }
-    finally { f.busy = false; if (b) b.removeAttribute('aria-busy'); }
+    // load() never rejects: a failed read keeps the catalogue in hand, and a missing number is said at _readState
+    try { await PlanIds.load(); } finally { f.busy = false; if (b) b.removeAttribute('aria-busy'); }
   }
   async function _saveOrder(f) {
     if (f.busy || f.done || f.locked) return;
@@ -1535,7 +1537,8 @@
         return;
       }
       const osid = Number(t.dataset.osid);
-      PlanIds.load().catch((e) => _log(e, 'WN5Form vs-place PlanIds')).then(() => {   // F52: a place saved meanwhile
+      PlanIds.load().then(() => {   // F52: a place saved meanwhile (load() never rejects)
+        if (_f !== f || f.done) return;   // the form was closed or replaced while the catalogue was read: nothing is sent
         let loc;
         try { loc = PlanIds.id('location', rec); }
         catch (e) { WN5Act.strip(_strip(f), e); return; }
