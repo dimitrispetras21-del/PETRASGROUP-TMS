@@ -476,7 +476,10 @@ function _runAllMetrics(d) {
   const nv = d.natV5 && d.natV5.state !== 'before' ? d.natV5 : null;
   const v5Nat = nv ? NatV5Kpi.v5Of(d.natOrders, nv) : [];
   const v5Price = xs => xs.reduce((s, x) => s + (parseFloat(x.rec.fields['Price']) || 0), 0);
-  const v5Note = (xs, sum) => (nv ? ` · εκ των οποίων εθνικές v5: ${eur(sum)} (${xs.length})` : '');
+  // F4 (owner 28/10, 080): a v5 national order may have no price yet — it adds nothing to the sum, and the line says
+  // how many, never a smaller total that looks complete (principle 1)
+  const v5NoPrice = xs => xs.filter(x => !OrdersCommon.hasPrice(x.rec.fields)).length;
+  const v5Note = (xs, sum) => (nv ? ` · εκ των οποίων εθνικές v5: ${eur(sum)} (${xs.length})` + (v5NoPrice(xs) ? ` · ${v5NoPrice(xs)} χωρίς τιμή` : '') : '');
 
   // ════ FINANCIAL ══════════════════════════════════
   try {
