@@ -759,6 +759,7 @@
     _lines(f, probs);
     if (probs.length) return;
     try { body = _body(st); } catch (e) { _lines(f, [e.text || String(e.message || e)]); return; }
+    f.rt = body.target ? body.target.rt_id : null;   // F50: the cycle this order goes to, shown after the re-read
     f.busy = true;
     _setSave(f);
     try {
@@ -821,7 +822,12 @@
     f.el.querySelectorAll('.wn5f-ft [data-act="cancel"]').forEach((b) => { b.textContent = 'Κλείσιμο'; });
     _why(f, null);
     // A-7: the leg form's «Στο RT-… ›» waits for this read, so its list shows the point just added
-    if (ans) f.reloaded = WN5.reload('order-saved');
+    if (ans) {
+      f.reloaded = WN5.reload('order-saved');
+      // F50 (owner 31/10): the cycle that took the order is found again at its new place, as after every board save
+      const rt = f.rt;
+      if (rt && typeof WN5.focusRow === 'function') Promise.resolve(f.reloaded).then((fresh) => { if (fresh) WN5.focusRow('rt:' + rt); });
+    }
   }
 
   // ── edit (from the order card «Επεξεργασία», T18) ─────────────────────────────────────────────────────────

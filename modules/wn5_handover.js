@@ -501,7 +501,9 @@
     const s = d.el.querySelector('[data-act="save"]');
     if (s) s.hidden = true;
     d.el.querySelectorAll('.wn5f-ft [data-act="cancel"]').forEach((b) => { b.textContent = 'Κλείσιμο'; b.classList.add('wn5h-close'); });
-    WN5.reload('handover');
+    // F50 (owner 31/10): after a vehicle change the cycle's row renumbers per truck — found again and shown
+    const rt = d.rtId || (d.cycle && d.cycle.rt_id);
+    Promise.resolve(WN5.reload('handover')).then((fresh) => { if (fresh && rt && typeof WN5.focusRow === 'function') WN5.focusRow('rt:' + rt); });
   }
   function _vehFields(own, sel) {
     // Figma 2122:7774: Φορτηγό * 170 · Ρυμούλκα 130 · Οδηγός * 180 (plates in DM Mono); partner 150 + rate 96
@@ -704,7 +706,7 @@
       what: (list) => _removeWhat(g, prev, list) });
     if (ans) {
       if (typeof toast === 'function') toast(`Η αλλαγή οχήματος αφαιρέθηκε · ${c.code || 'RT-' + c.rt_id}${ans.replayed ? ' · το πρώτο πάτημα είχε ήδη αποθηκευτεί' : ''}`, 'success');
-      WN5.reload('segment-removed');
+      Promise.resolve(WN5.reload('segment-removed')).then((fresh) => { if (fresh && typeof WN5.focusRow === 'function') WN5.focusRow('rt:' + c.rt_id); });   // F50
     }
     return ans;
   }
