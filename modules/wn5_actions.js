@@ -58,6 +58,36 @@
   // ΚΑΘΟΔΟΣ first, then by planned_from (072 plan_h_reseq), so the refusal is always a stop of the ΑΝΟΔΟΣ that starts
   // before one of the ΚΑΘΟΔΟΣ. The pair is rebuilt here from the cycle on the board plus the new stops of the request
   // (req.body.stops); without them the text still names the cycle and the rule, never the bare id.
+  // The pair the base would refuse: the cycle's live stops plus the request's new ones, sorted as 072 plan_h_reseq
+  // sorts them; the first stop that starts before an earlier one of the other side. null = in order (or no cycle).
+  function _orderPair(c, stops) {
+    if (!c || !Array.isArray(stops)) return null;
+    const all = (c.stops || []).map((s) => ({ side: s.side, loc: s.location_id, name: s.location, from: s.planned_from, to: s.planned_to, isNew: false }));
+    for (const s of stops) if (s && s.stop_id == null && s.planned_from) all.push({ side: s.side, loc: s.location_id, from: s.planned_from, to: s.planned_to, isNew: true });
+    all.sort((a, b) => (a.side === 'ANODOS') - (b.side === 'ANODOS') || new Date(a.from) - new Date(b.from));
+    let top = null;
+    for (const s of all) {
+      if (top && new Date(s.from) < new Date(top.from)) return s.side !== top.side ? [s, top] : null;
+      if (!top || new Date(s.from) > new Date(top.from)) top = s;
+    }
+    return null;
+  }
+  // the words of a pair: which stop, before which, in which cycle, and what to do
+  function _orderText(pair, code) {
+    const hub = _hubId();
+    const when = (s) => _dayShort(_ymdOf(s.from)) + ' ' + (s.to && _allDay(s.from, s.to) ? 'όλη η ημέρα' : _hm(s.from));
+    const name = (s) => '«' + (s.loc === hub ? 'Βέροια' : s.name || _placeName(s.loc)) + ' ' + when(s) + '»';
+    const [late, first] = pair;
+    const tag = (s) => (s.side === 'ANODOS' ? 'ΑΝΟΔΟΣ' : 'ΚΑΘΟΔΟΣ') + (s.isNew ? ', νέα' : '');
+    return 'Η στάση ' + name(late) + ' (' + tag(late) + ') θα ήταν πριν από τη ' + name(first) + ' (' + tag(first) + ')' + (code ? ' στο ' + code : '')
+      + ': η ΑΝΟΔΟΣ αρχίζει μετά την ΚΑΘΟΔΟ. '
+      + (late.isNew ? 'Βάλε την ' + name(late) + ' από ' + _dayShort(_ymdOf(first.from)) + ' ' + _hm(first.from) + ' και μετά, ή διάλεξε άλλον κύκλο.'
+        : first.isNew ? 'Βάλε τη ' + name(first) + ' πριν από ' + _dayShort(_ymdOf(late.from)) + ' ' + _hm(late.from) + ', ή διάλεξε άλλον κύκλο.'
+        : 'Άλλαξε την ώρα μιας από τις δύο («Αλλαγή ώρας ›»), ή διάλεξε άλλον κύκλο.');
+  }
+  // code review: the same words BEFORE the press, beside the save of Δ1 / «+» (red, the button stays on: the base is
+  // the judge, and a stale board must not block a save it would take)
+  const _orderWarn = (c, req) => { const p = req && !req.missing && req.body ? _orderPair(c, req.body.stops) : null; return p ? _orderText(p, c && c.code) : null; };
   function _orderErr(e, req) {
     if (!e || Array.isArray(e) || e.code !== 'stop_order' || e._said) return e;
     const body = (req && req.body) || {};
@@ -65,32 +95,10 @@
     const rtId = _id(body.target && body.target.rt_id) || _id(m && m[1]);
     const c = rtId ? _cycle(rtId) : null;
     const code = c && c.code ? c.code : null;
-    const when = (s) => _dayShort(_ymdOf(s.from)) + ' ' + (s.to && _allDay(s.from, s.to) ? 'όλη η ημέρα' : _hm(s.from));
-    const name = (s) => '«' + (s.loc === _hubId() ? 'Βέροια' : s.name || _placeName(s.loc)) + ' ' + when(s) + '»';
-    let pair = null;
-    if (c && Array.isArray(body.stops)) {
-      const all = (c.stops || []).map((s) => ({ side: s.side, loc: s.location_id, name: s.location, from: s.planned_from, to: s.planned_to, isNew: false }));
-      for (const s of body.stops) if (s && s.stop_id == null && s.planned_from) all.push({ side: s.side, loc: s.location_id, from: s.planned_from, to: s.planned_to, isNew: true });
-      all.sort((a, b) => (a.side === 'ANODOS') - (b.side === 'ANODOS') || new Date(a.from) - new Date(b.from));
-      let top = null;
-      for (const s of all) {
-        if (top && new Date(s.from) < new Date(top.from)) { if (s.side !== top.side) pair = [s, top]; break; }
-        if (!top || new Date(s.from) > new Date(top.from)) top = s;
-      }
-    }
-    let msg;
-    if (pair) {
-      const [late, first] = pair;
-      const tag = (s) => (s.side === 'ANODOS' ? 'ΑΝΟΔΟΣ' : 'ΚΑΘΟΔΟΣ') + (s.isNew ? ', νέα' : '');
-      msg = 'Η στάση ' + name(late) + ' (' + tag(late) + ') θα ήταν πριν από τη ' + name(first) + ' (' + tag(first) + ')' + (code ? ' στο ' + code : '')
-        + ': η ΑΝΟΔΟΣ αρχίζει μετά την ΚΑΘΟΔΟ. '
-        + (late.isNew ? 'Βάλε την ' + name(late) + ' από ' + _dayShort(_ymdOf(first.from)) + ' ' + _hm(first.from) + ' και μετά, ή διάλεξε άλλον κύκλο.'
-          : first.isNew ? 'Βάλε τη ' + name(first) + ' πριν από ' + _dayShort(_ymdOf(late.from)) + ' ' + _hm(late.from) + ', ή διάλεξε άλλον κύκλο.'
-          : 'Άλλαξε την ώρα μιας από τις δύο («Αλλαγή ώρας ›»), ή διάλεξε άλλον κύκλο.');
-    } else {
-      msg = 'Οι στάσεις ' + (code ? 'του ' + code : 'του δρομολογίου') + ' δεν θα ήταν σε χρονική σειρά: μια στάση της ΑΝΟΔΟΥ θα ήταν πριν από στάση της ΚΑΘΟΔΟΥ (η ΑΝΟΔΟΣ αρχίζει μετά την ΚΑΘΟΔΟ). '
+    const pair = _orderPair(c, body.stops);
+    const msg = pair ? _orderText(pair, code)
+      : 'Οι στάσεις ' + (code ? 'του ' + code : 'του δρομολογίου') + ' δεν θα ήταν σε χρονική σειρά: μια στάση της ΑΝΟΔΟΥ θα ήταν πριν από στάση της ΚΑΘΟΔΟΥ (η ΑΝΟΔΟΣ αρχίζει μετά την ΚΑΘΟΔΟ). '
         + 'Άλλαξε την ημέρα ή την ώρα της, ή διάλεξε άλλον κύκλο.';
-    }
     return Object.assign({}, e, { kind: e.kind, code: e.code, message: msg, _said: true });
   }
 
@@ -766,6 +774,7 @@
     if (kind === 'partner' && !st.partner) return 'Λείπει: συνεργάτης';
     if (kind === 'partner' && !_rate(st.rateTxt).ok) return 'Κόμιστρο: μόνο αριθμός (π.χ. 350 ή 350,50)';
     if (req && req.missing) return _missWords(st, req);
+    if (req && kind === 'rt') return _orderWarn(st.cyc[_id(String(cand).split(':')[1])], req);
     return req ? null : 'Δεν στέλνεται: ανανέωσε τον πίνακα';
   }
 
@@ -846,14 +855,18 @@
       // F34: a cycle on the road that day, joinable. The box as on the board (its row's tile: «κύκλος n/m»); «ως Δευ
       // 22:00» names the day, the date is in the row. Beside the capacity, «+»'s warnings (_plusChips): the cycle's
       // Veroia stop of another day, and a load / delivery of the pieces on a day the side does not stop.
+      const hubNow = st.road.length ? _hubId() : null;
       for (const c of st.road) {
         const row = _row(c.rt_id), tx = _cycText(c, row), pal = _sidePal(row, st.side), v = _veroiaOf(row, st.side);
-        const sideDays = new Set((c.stops || []).filter((s) => s.side === st.side && s.location_id !== _hubId()).map(_stopDay).filter(Boolean));
+        const sideDays = new Set((c.stops || []).filter((s) => s.side === st.side && s.location_id !== hubNow).map(_stopDay).filter(Boolean));
+        // code review: «… ως» names the cycle's LAST stop, where end_at is — «Βέροια» only when that stop is Veroia
+        const last = (c.stops || []).slice().sort((x, y) => new Date(x.planned_to) - new Date(y.planned_to)).pop();
+        const endAt = last ? (last.location_id === hubNow ? 'Βέροια' : last.location || _placeName(last.location_id)) : 'τέλος';
         const own = st.needs.filter((n) => !n.hub && n.role === (st.side === 'ANODOS' ? 'load' : 'drop')).map((n) => (n.from ? _ymdOf(n.from) : n.day)).filter(Boolean);
         const other = sideDays.size ? [...new Set(own)].filter((d) => !sideDays.has(d)).sort() : [];
         const otherWarn = other.length ? '<span class="wn5-cap over">' + _esc((st.side === 'ANODOS' ? 'φόρτωση ' : 'παράδοση ') + other.map(_wd).join('/') + ', άλλη ημέρα') + '</span> ' : '';
         h += '<div class="wn5-cand" data-line="road" data-s="' + _esc(_norm([tx.l1, tx.l2, c.code].join(' '))) + '">' + _boxHTML(tx)
-          + '<span class="wn5-cand-m"><b>' + _esc(_dayShort(c.date_start) + ' · στο δρόμο · Βέροια ως ' + DOW[_dow(_ymdOf(c.end_at))] + ' ' + _hm(c.end_at)) + '</b>'
+          + '<span class="wn5-cand-m"><b>' + _esc(_dayShort(c.date_start) + ' · στο δρόμο · ' + endAt + ' ως ' + DOW[_dow(_ymdOf(c.end_at))] + ' ' + _hm(c.end_at)) + '</b>'
           + '<span>' + _esc((v ? 'Βέροια ' + v : 'χωρίς στάση Βέροιας') + ' · ' + _pal(pal) + 'π') + '</span></span>'
           + '<span>' + hubWarnOf(c) + otherWarn + _capHTML(pal + st.pallets) + '</span>' + btn(c);
       }
@@ -861,7 +874,9 @@
     // without the catalogue the list's size is unknown, never 0 (principle 1): the header has no count then, and the
     // line above says why
     // B-21: hidden only when the catalogue says 0 — without it the count is unknown and the header stays (line above)
-    if (st.free.length || !st.ids.ok) h += _grpHTML('free', 'ΕΛΕΥΘΕΡΑ ΦΟΡΤΗΓΑ', ' · ' + (vehicle ? 'άλλο όχημα' : 'νέος κύκλος') + (st.ids.ok ? ' · ' + st.free.length : ''));
+    // code review: trucks whose days outside the week are unknown are not called free in the header either
+    const unk = st.free.length && st.free.every((t) => t.unknown);
+    if (st.free.length || !st.ids.ok) h += _grpHTML('free', unk ? 'ΦΟΡΤΗΓΑ' : 'ΕΛΕΥΘΕΡΑ ΦΟΡΤΗΓΑ', ' · ' + (vehicle ? 'άλλο όχημα' : 'νέος κύκλος') + (st.ids.ok ? ' · ' + st.free.length : '') + (unk ? ' · διαθεσιμότητα άγνωστη εκτός εβδομάδας' : ''));
     for (const t of st.free) {
       const key = 'truck:' + t.id;
       const next = t.next ? 'επόμενο: ' + (t.next.side ? t.next.side + ' ' : '') + _dayShort(t.next.day) : '';
@@ -985,7 +1000,7 @@
       // truck_busy after the press
       const hd = vehicle ? null : _hubDayOf(st.needs, st.day);
       const [a, b] = hd && hd !== st.day ? (hd < st.day ? [hd, st.day] : [st.day, hd]) : [st.day, st.day];
-      // code review of #171: the board holds the cycles of ONE week, so a day outside it has no cycles to read and
+      // code review of PR 171: the board holds the cycles of ONE week, so a day outside it has no cycles to read and
       // _freeTrucks would call every truck free. Such days are named on each truck («διαθεσιμότητα … άγνωστη εκτός
       // εβδομάδας»), never «ελεύθερο»; the base still refuses a real overlap (truck_busy).
       const wk = (_state().board || {}).week || null;
@@ -1197,7 +1212,7 @@
     try {
       if (!other && typeof WN5L !== 'undefined' && win[0]) { const x = WN5L.stopRank(st.sideStops, win[0]); if (Number.isFinite(x) && x > 0) k = x; }
     } catch (e) { _log(e, 'WN5Act plus stopRank'); }
-    // the Veroia-day chip has its own look (.wn5-hubday, code review of #171): not the capacity's amber «υπέρβαση»
+    // the Veroia-day chip has its own look (.wn5-hubday, code review of PR 171): not the capacity's amber «υπέρβαση»
     let h = warn.map((w) => (w.hub ? '<span class="wn5-hubday">' + _esc(w.hub) : '<span class="wn5-cap over">' + _esc(w)) + '</span>').join('');
     if (n > 33) h += _capHTML(n) + (k ? '<span class="wn5-cap">μπαίνει ' + k + 'η</span>' : '');
     else h += _capHTML(n, k ? (late ? ' · ' : ' · μπαίνει ') + k + 'η' : '');
@@ -1208,7 +1223,7 @@
   function _plusWhy(st, it, req) {
     if (req === undefined) req = _plusReq(st, it);
     if (!req) return 'Λείπει: πόσες, από 0,1 ως ' + _pal(it.pallets) + ' (ένα δεκαδικό)';
-    return req.missing ? _missWords(st, req) : null;
+    return req.missing ? _missWords(st, req) : _orderWarn(st.cyc, req);
   }
   function _plusLineHTML(st, it) {
     const anod = st.side === 'ANODOS';

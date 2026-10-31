@@ -3239,6 +3239,11 @@ SCN.f33 = async (browser, origin) => {
     await page.fill(`${P} input[data-hub="from"]`, '08:00').catch(() => {});
     await page.fill(`${P} input[data-hub="to"]`, '10:00').catch(() => {});
     await page.waitForTimeout(200);
+    // code review: the same words BEFORE the press, red beside the line; the button stays on (the base judges)
+    const pre = await bText(page, `${P} .wn5-pline[data-piece="4393"] .wn5-why`);
+    ok(scn, 'before the press: the line says «Η στάση «LARISA TEST Τρί 13/10 όλη η ημέρα» (ΑΝΟΔΟΣ, νέα) θα ήταν πριν …», «Πρόσθεσε» on; N-T392 says nothing',
+      pre.startsWith('Η στάση «LARISA TEST Τρί 13/10 όλη η ημέρα» (ΑΝΟΔΟΣ, νέα) θα ήταν πριν από τη «ATHENS TEST Τετ 14/10 όλη η ημέρα» (ΚΑΘΟΔΟΣ) στο RT-T301')
+      && (await bOff(page, `${P} [data-act="save"][data-piece="4393"]`)) === false && !(await bHas(page, `${P} .wn5-pline[data-piece="4392"] .wn5-why`)), pre);
     await bClick(page, `${P} [data-act="save"][data-piece="4393"]`);
     await page.waitForTimeout(500);
     const t = await bText(page, `${P} .wn5-strip`);
@@ -3258,8 +3263,8 @@ SCN.f33 = async (browser, origin) => {
     await bClick(page, '#content .wn5 .wn5-row[data-piece="4392"] .wi4-box.un');
     await page.waitForTimeout(500);
     const line = await bText(page, `${D} [data-line="road"]:has([data-cand="rt:301"])`);
-    ok(scn, 'Δ1 Wed: RT-T301 «Τρί 13/10 · στο δρόμο · Βέροια ως Τετ 23:59» WITH «Ένωση» — main: grey, no button',
-      /Τρί 13\/10 · στο δρόμο · Βέροια ως Τετ 23:59/.test(line) && /Ένωση/.test(line) && (await bOff(page, `${D} [data-cand="rt:301"]`)) === false, line);
+    ok(scn, 'Δ1 Wed: RT-T301 «Τρί 13/10 · στο δρόμο · ATHENS TEST ως Τετ 23:59» (its last stop, not «Βέροια») WITH «Ένωση» — main: grey, no button',
+      /Τρί 13\/10 · στο δρόμο · ATHENS TEST ως Τετ 23:59/.test(line) && /Ένωση/.test(line) && (await bOff(page, `${D} [data-cand="rt:301"]`)) === false, line);
     ok(scn, 'the road line carries the side\'s pallets and the capacity after joining («→ 8/33»)', /χωρίς στάση Βέροιας · 0π/.test(line) && line.includes('→ 8/33'), line);
     // the day's cycles and the road ones share one header count: every line it offers
     const grp = await bText(page, `${D} [data-grp="rt"]`), offered = await page.$$eval(`${D} [data-cand^="rt:"]`, (xs) => xs.length).catch(() => -1);
@@ -3294,8 +3299,9 @@ SCN.f33 = async (browser, origin) => {
     await bClick(page, '#content .wn5 .wn5-row[data-piece="4394"] .wi4-box.un');
     await page.waitForTimeout(500);
     const free = await page.$$eval(`${D} [data-line="free"] .wn5-cand-m b`, (xs) => xs.map((x) => x.textContent)).catch(() => []);
-    ok(scn, 'every new truck says «διαθεσιμότητα Σάβ 17/10 άγνωστη εκτός εβδομάδας», none «ελεύθερο» — main: «ελεύθερο»',
-      free.length > 0 && free.every((x) => x === 'διαθεσιμότητα Σάβ 17/10 άγνωστη εκτός εβδομάδας'), free);
+    const fh = await bText(page, `${D} [data-grp="free"]`);
+    ok(scn, 'every new truck says «διαθεσιμότητα Σάβ 17/10 άγνωστη εκτός εβδομάδας», none «ελεύθερο», nor the header — main: «ελεύθερο»',
+      free.length > 0 && free.every((x) => x === 'διαθεσιμότητα Σάβ 17/10 άγνωστη εκτός εβδομάδας') && /^ΦΟΡΤΗΓΑ · νέος κύκλος · \d+ · διαθεσιμότητα άγνωστη εκτός εβδομάδας$/.test(fh), { free, fh });
     ok(scn, 'no page errors (5)', !S.pageErrors.length, S.pageErrors);
     await page.context().close();
   }

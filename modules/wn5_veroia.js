@@ -154,7 +154,7 @@
     const hub = st && st.model && st.model.hub;
     const vh = it ? k.vsHubDay(it) : null;
     // a stock piece's day from the panel's own stock entry (hub.stock: overdue, leave_by), the line the user pressed —
-    // one reading of it for the panel and for Δ1 (code review of #171)
+    // one reading of it for the panel and for Δ1 (code review of PR 171)
     const se = it && it.is_stock && hub ? (hub.stock || []).find((h) => h.pieceId === it.piece_id) : null;
     const own = it ? (it.is_stock ? _stockDay(se || it, hub) : vh ? vh.day : null) : null;
     const day = own || (hub ? _hubDay(st.model) : null);
