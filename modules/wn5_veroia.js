@@ -389,6 +389,9 @@
     return { piece_id: st.pieceId, parts: st.parts.map((p) => {
       const o = { pallets: _valid(p.pal) };
       if (p.rt) { o.target = { rt_id: p.rt, side: 'KATHODOS' }; o.stops = p.stops; }
+      // B-26 (087): a part that stays leaves by the day shown; sent only when it is not the base's own (nat_due_day − 1),
+      // so a split that keeps the default writes exactly what it wrote before 087
+      else if (p.t === 'stay' && p.day && p.day !== st.defDay) o.leave_by = p.day;
       return o;
     }) };
   }
@@ -420,6 +423,11 @@
         sideStops: k.copy((t.c.stops || []).filter((s) => s.side === 'KATHODOS' && s.location_id !== hubId)) })),
       parts: [{ t: '', rt: null, pal: '', stops: null }, { t: 'stay', rt: null, pal: '', stops: null }],
       slot: PlanApi.slot() };
+    // B-26 (Figma 2011:8744): the day a part that stays leaves by, shown and changeable before the save. The base's
+    // own is the evening before the national day (decision 18); a piece that is already stock keeps the day it has.
+    st.defDay = it.nat_due_day ? k.addDays(it.nat_due_day, -1) : null;
+    st.stayDay = it.leave_by || st.defDay;
+    st.parts[1].day = st.stayDay;
     // a popover over the panel, under its «Σπάσε…» (Figma 2011:8744: drawn floating over the board), no «×»
     // Figma 2011:8822: the popover ends at the row's buttons and opens to their left, over the lists it splits, so the
     // ΦΟΡΤΗΓΑ capacity column beside them stays in view (whole-frame r4: opened rightwards it covered «27/33 · 6 ελεύθερες»)
@@ -432,8 +440,7 @@
       const okSum = Math.round(s * 10) === Math.round(st.total * 10) && ns.every((n) => n !== null);
       return '<span class="wn5-sum' + (okSum ? ' ok' : '') + '">' + k.esc(ns.map((n) => (n === null ? '—' : k.pal(n))).join(' + ') + ' = ' + k.pal(s) + (okSum ? ' ✓' : ' · πρέπει ' + k.pal(st.total))) + '</span>';
     };
-    // what a part does: on a truck «before → after/33 · μπαίνει kη» (Figma 2011:8832); staying, the deadline only
-    // when the piece already has one — the base writes it at the save (nat_due_day − 1), the screen never guesses it
+    // what a part does: on a truck «before → after/33 · μπαίνει kη» (Figma 2011:8832); staying, the day it leaves by
     const badgeHTML = (p) => {
       const tr = p.rt ? st.trucks.find((t) => t.rtId === p.rt) : null;
       if (tr) {
@@ -445,9 +452,16 @@
             : ' <span class="wn5-miss">λείπει ο προορισμός από τη βάση</span>');
       }
       if (p.t !== 'stay') return '';
-      return st.item.leave_by
-        ? '<span class="wn5-part-u">φεύγει ως</span><span class="wn5-part-d">' + k.esc(k.dayShort(st.item.leave_by) + ' 22:00') + '</span>'
-        : '<span class="wn5-part-u">μένει απόθεμα · η προθεσμία γράφεται με την αποθήκευση</span>';
+      if (!p.day) return '<span class="wn5-part-u">μένει απόθεμα · χωρίς ημέρα παράδοσης, χωρίς προθεσμία</span>';
+      // relaxed rules (owner 31/10): a day gone or after the delivery is allowed, said before the save
+      const today = typeof localToday === 'function' ? localToday() : '';
+      const warn = today && p.day < today ? 'έχει περάσει · θα φαίνεται σε καθυστέρηση'
+        : st.defDay && p.day > st.defDay ? 'μετά την παράδοση ' + k.dayShort(st.item.nat_due_day) : '';
+      return '<span class="wn5-part-u">φεύγει ως</span><span class="wn5-part-d wn5-lb">'
+        + '<button type="button" class="wn5-lb-b" data-act="lb" data-n="-1" data-i="' + st.parts.indexOf(p) + '" aria-label="Μία ημέρα νωρίτερα">‹</button>'
+        + '<span>' + k.esc(k.dayShort(p.day) + ' 22:00') + '</span>'
+        + '<button type="button" class="wn5-lb-b" data-act="lb" data-n="1" data-i="' + st.parts.indexOf(p) + '" aria-label="Μία ημέρα αργότερα">›</button></span>'
+        + (warn ? ' <span class="wn5-miss">' + k.esc(warn) + '</span>' : '');
     };
     const partHTML = (p, i) => {
       const opts = '<option value="">— διάλεξε —</option><option value="stay"' + (p.t === 'stay' ? ' selected' : '') + '>μένει στη Βέροια</option>'
@@ -475,6 +489,7 @@
       const p = st.parts[Number(el.dataset.i)];
       p.t = el.value;
       p.rt = /^rt:/.test(el.value) ? k.id(el.value.slice(3)) : null;
+      if (p.t === 'stay' && !p.day) p.day = st.stayDay;
       // a part on a truck needs its stops on that cycle: the Veroia stop and the delivery (072 plan_h_put per part)
       const tr = p.rt ? st.trucks.find((t) => t.rtId === p.rt) : null;
       // B1: a delivery with no window of its own (a VS bridge) goes on its day, whole day — the badge says it
@@ -493,6 +508,7 @@
       if (!b || b.disabled || !_live()) return;
       if (b.dataset.act === 'cancel') { if (!d.busy) k.close(d); }
       else if (b.dataset.act === 'more') { st.parts.push({ t: '', rt: null, pal: '', stops: null }); draw(); }
+      else if (b.dataset.act === 'lb') { const p = st.parts[Number(b.dataset.i)]; if (p && p.day) { p.day = k.addDays(p.day, Number(b.dataset.n)); d.refresh(); } }
       else if (b.dataset.act === 'save' && _partsOk(st)) {
         k.send(d, { method: 'POST', path: '/plan/pieces/split', body: _splitBody(st), requestId: st.slot.id }, 'Αποθηκεύτηκε το σπάσιμο', {
           slot: st.slot, intl: true,

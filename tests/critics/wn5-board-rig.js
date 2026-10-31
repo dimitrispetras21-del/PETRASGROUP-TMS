@@ -2060,7 +2060,36 @@ async function scnVeroia(browser, origin) {
     pe.push(...S.pageErrors);
     await page.context().close();
   }
-  ok(scn, 'no page errors (A–F)', !pe.length, pe);
+  { // G · B-26 (087, Figma 2011:8744): the part that stays shows «φεύγει ως ‹ day 22:00 ›», prefilled with the base's
+    //     own day (nat_due_day − 1 = Mon 12/10 for VS-T125) and stepped in place; a day the user moved is sent as
+    //     leave_by, the base's own day is never sent (a split that keeps it writes what it wrote before 087)
+    const { page, S } = await bOpen(browser, origin, { plan: { ['POST ' + P]: () => planErr(409, 'WRITES_CLOSED', 'writes_closed') } });
+    await bClick(page, '#wn5-hub [data-hub="open"]');
+    await bClick(page, `${PANEL} [data-piece="4401"] [data-hub="more"]`);
+    await bClick(page, '.wn5-hub-pop [data-v="split"]');
+    const stay = () => bText(page, `${D} .wn5-pbadge[data-i="1"]`);
+    const t0 = await stay();
+    ok(scn, 'B-26: the part that stays reads «φεύγει ως ‹ Δευ 12/10 22:00 ›», and a day gone says so (rig clock Tue 13/10)',
+      /φεύγει ως\s*‹\s*Δευ 12\/10 22:00\s*›/.test(t0) && t0.includes('έχει περάσει') && !t0.includes('γράφεται με την αποθήκευση'), t0);
+    await bClick(page, `${D} .wn5-pbadge[data-i="1"] [data-act="lb"][data-n="1"]`);
+    await bClick(page, `${D} .wn5-pbadge[data-i="1"] [data-act="lb"][data-n="1"]`);
+    const t2 = await stay();
+    await shot(page, 'b26-split-leave-by');
+    ok(scn, 'B-26: › twice → «Τετ 14/10 22:00», «μετά την παράδοση Τρί 13/10»', t2.includes('Τετ 14/10 22:00') && t2.includes('μετά την παράδοση Τρί 13/10'), t2);
+    await bPick(page, `${D} select[data-part-target][data-i="0"]`, 'rt:201');
+    await page.fill(`${D} input[data-part-pal][data-i="0"]`, '20').catch(() => {});
+    await page.fill(`${D} input[data-part-pal][data-i="1"]`, '13').catch(() => {});
+    const t3 = await stay();
+    ok(scn, 'B-26: the day stays the user\'s while the other part and the pallets change', t3.includes('Τετ 14/10 22:00'), t3);
+    await bClick(page, `${D} [data-act="save"]`);
+    await page.waitForTimeout(400);
+    const c = bCalls(S, 'POST', P);
+    ok(scn, 'B-26: one POST, the part that stays carries leave_by "2026-10-14", the part on a truck none', c.length === 1
+      && JSON.stringify(c[0].body.parts[1]) === '{"pallets":13,"leave_by":"2026-10-14"}' && !('leave_by' in c[0].body.parts[0]), c.map((x) => x.raw));
+    pe.push(...S.pageErrors);
+    await page.context().close();
+  }
+  ok(scn, 'no page errors (A–G)', !pe.length, pe);
 }
 
 SCN['veroia'] = scnVeroia;
