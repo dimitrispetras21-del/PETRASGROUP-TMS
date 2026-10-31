@@ -51,8 +51,9 @@ test('F4α-T4: cycle numbering «κύκλος 1» alone, «1/2» «2/2» for two
   const m = M();
   assert.deepStrictEqual(rowOf(m, 'rt:101').cycleNo, { n: 1, m: 2 });
   assert.deepStrictEqual(rowOf(m, 'rt:107').cycleNo, { n: 2, m: 2 });
-  assert.strictEqual(rowOf(m, 'rt:101').tiles[0].line2, 'Driver Test 01 · κύκλος 1/2');
-  assert.strictEqual(rowOf(m, 'rt:103').tiles[0].line2, 'Driver Test 03 · κύκλος 1');
+  // owner 31/10: the tile names the driver alone; the numbering stays data (cycleNo) for the sheet and the menu
+  assert.strictEqual(rowOf(m, 'rt:101').tiles[0].line2, 'Driver Test 01');
+  assert.strictEqual(rowOf(m, 'rt:103').tiles[0].line2, 'Driver Test 03');
   assert.strictEqual(rowOf(m, 'rt:104').cycleNo, null, 'a partner is not numbered');
   assert.deepStrictEqual([...L.cycleNumbers(fix().cycles).keys()].sort(), [101, 102, 103, 105, 106, 107]);
 });
