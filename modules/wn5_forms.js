@@ -1098,9 +1098,9 @@
       let put = null;
       if (added.length && typeof WN5Edit !== 'undefined') {
         try { await f.reloaded; } catch (_) { /* the board's own strip says the read failed */ }
-        put = await WN5Edit.putNew({ natOrderId: f.edit.nat_order_id, shipmentIds: added, news: st.news, leg: f.p.leg || null, host: _strip(f) });
+        put = await WN5Edit.putNew({ natOrderId: f.edit.nat_order_id, shipmentIds: added, leg: f.p.leg || null, host: _strip(f) });
       }
-      if (put && put.ok) f.el.querySelector('[data-done]').textContent += ' · ' + put.text;
+      if (put && put.text) f.el.querySelector('[data-done]').textContent += ' · ' + put.text;
       else if (added.length) {
         f.el.querySelector('[data-done]').textContent += ` · ${added.length === 1 ? 'νέο σημείο' : added.length + ' νέα σημεία'} ΠΡΟΣ ΑΝΑΘΕΣΗ: βάλ' ${added.length === 1 ? 'το' : 'τα'} σε φορτηγό από το Εβδομαδιαίο`;
         // A-7: opened from a leg («+ σημείο» of the leg form): the way back to that leg, one press away

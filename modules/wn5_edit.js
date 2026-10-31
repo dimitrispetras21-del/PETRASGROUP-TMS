@@ -131,6 +131,13 @@
     const facts = { nat_order_id: no, stop_id: ctx.stopId || null, rt_id: ctx.rtId || null, shipment_ids: mine.map((s) => s.shipment_id) };
     if (!mine.length) { WN5Act.strip(host, _err('WN5E_point_unknown', 'Το σημείο δεν βρέθηκε στην παραγγελία ' + ref + ' — ανανέωσε', facts)); return null; }
     if (mine.length >= ships.length) return WN5Act.deleteOrder(no, { ref, client: o.client });
+    // a point that also rides another truck (a national via Veroia, a split part) would leave this truck and then be
+    // refused (piece_busy): said before anything is written
+    const other = [...new Set(mine.flatMap((s) => (Array.isArray(s.rt_codes) ? s.rt_codes : [])).filter((c) => !ctx.c || c !== ctx.c.code))];
+    if (other.length) {
+      WN5Act.strip(host, _err('WN5E_point_rides_elsewhere', 'Το σημείο ' + ref + ' είναι και σε άλλο φορτηγό — βγάλ\' το πρώτα από εκεί (δεξί κλικ → «Μεταφορά σε άλλο φορτηγό…»), μετά σβήσ\' το', Object.assign({ rt_codes: other }, facts)));
+      return null;
+    }
     const hub = k.hubId();
     const place = ctx.s ? _place(ctx.s, hub) : _route(ctx.it, hub);
     const pal = mine.reduce((a, s) => a + (s.pallets == null ? 0 : Number(s.pallets)), 0), unk = mine.filter((s) => s.pallets == null).length;
@@ -174,8 +181,14 @@
       slot.close();
       if (e && e._sessionGone) return null;
       if (typeof WN5 !== 'undefined') await WN5.reload('save');
-      WN5Act.strip(k.boardHost(), _err('WN5E_point_half', 'Το σημείο ' + place + ' · ' + ref + ' βγήκε από το φορτηγό αλλά δεν σβήστηκε (' + String((e && e.message) || e) + ') — είναι στα ΠΡΟΣ ΑΝΑΘΕΣΗ: δεξί κλικ εκεί → «Διαγραφή σημείου»',
-        Object.assign({ cause: e && e.code }, facts)));
+      // no answer (plan_unknown, a lost reply): it may have been deleted — the base's own «μπορεί να αποθηκεύτηκε» strip
+      if (e && e.kind === PlanApi.KIND.UNKNOWN) { WN5Act.strip(k.boardHost(), e); return null; }
+      // where the piece waits now, by the board just read: at Veroia (a load that starts there) or ΠΡΟΣ ΑΝΑΘΕΣΗ
+      const b2 = k.state().board || {};
+      const atHub = (b2.hub || []).some((h) => riding.includes(h.piece_id));
+      const where = atHub ? 'είναι στον Πίνακα Βέροιας: Καρτέλα παραγγελίας → Επεξεργασία → × στο σημείο' : 'είναι στα ΠΡΟΣ ΑΝΑΘΕΣΗ: δεξί κλικ εκεί → «Διαγραφή σημείου»';
+      WN5Act.strip(k.boardHost(), _err('WN5E_point_half', 'Το σημείο ' + place + ' · ' + ref + ' βγήκε από το φορτηγό αλλά δεν σβήστηκε (' + String((e && e.message) || e) + ') — ' + where,
+        Object.assign({ cause: e && e.code, at_hub: atHub }, facts)));
       return null;
     }
   }
@@ -239,7 +252,8 @@
       const t = ev.target && ev.target.closest ? ev.target : null;
       // a point of a cycle row, or anywhere on a ΠΡΟΣ ΑΝΑΘΕΣΗ row; never inside a field or a button
       if (!t || t.closest('input, textarea, select, button')) return;
-      const hit = t.closest('.wn5-row[data-rt] .wn5-pt[data-stop]') || t.closest('.wn5-row[data-piece]');
+      // never the «Βέροια · τέλος κύκλου» end (.wn5-end): it is the side's end, not a point of one order (as the drag)
+      const hit = t.closest('.wn5-row[data-rt] .wn5-pt[data-stop]:not(.wn5-end)') || t.closest('.wn5-row[data-piece]');
       const ctx = hit ? _ctxOf(hit) : null;
       if (ctx && _menu(ev, ctx)) ev.preventDefault();
     });
@@ -310,12 +324,18 @@
     const c = k.cycle(rtId);
     if (!c) return null;
     const facts = { nat_order_id: p.natOrderId, shipment_ids: [...ids], rt_id: rtId, side };
+    // its own place in the form's strip host: WN5Act.strip empties its host, and the save's warnings (stop_kept,
+    // mixed_temp) are already there
+    let host = k.boardHost();
+    if (p.host) { host = document.createElement('div'); host.dataset.wn5e = 'put'; p.host.appendChild(host); }
     const r = k.stopsFor(items.flatMap((it) => k.needs(it, false, hub)), c, side, null, (n) => k.dayWin(n));
     if (r.missing.length) {
-      WN5Act.strip(p.host || k.boardHost(), _err('WN5E_new_point_waits', 'Το νέο σημείο έμεινε ΠΡΟΣ ΑΝΑΘΕΣΗ: λείπει ' + (r.missing.includes('hub') ? 'το παράθυρο Βέροιας' : r.missing.includes('place') ? 'ο τόπος' : 'το παράθυρο') + ' — βάλ\' το με το «+» του φορτηγού', Object.assign({ missing: r.missing }, facts)));
+      WN5Act.strip(host, _err('WN5E_new_point_waits', 'Το νέο σημείο έμεινε ΠΡΟΣ ΑΝΑΘΕΣΗ: λείπει ' + (r.missing.includes('hub') ? 'το παράθυρο Βέροιας' : r.missing.includes('place') ? 'ο τόπος' : 'το παράθυρο') + ' — βάλ\' το με το «+» του φορτηγού', Object.assign({ missing: r.missing }, facts)));
       return { ok: false };
     }
-    const last = (c.stops || []).filter((s) => s.side === side).sort((a, b2) => a.seq - b2.seq).pop();
+    // the side's last stop that is not Veroia: on ΑΝΟΔΟΣ the last one is the Veroia end, and a pickup after it would
+    // come after its own delivery
+    const last = (c.stops || []).filter((s) => s.side === side && s.location_id !== hub).sort((a, b2) => a.seq - b2.seq).pop();
     if (last && last.planned_to) {
       for (const st of r.stops) {
         if (st.stop_id != null || !WN5L.allDay(st.planned_from, st.planned_to)) continue;
@@ -329,7 +349,8 @@
       out = await planFetch('POST', '/plan/legs', { body: { pieces: items.map((it) => ({ piece_id: it.piece_id })), target: { rt_id: rtId, side }, stops: r.stops } });
     } catch (e) {
       if (e && e._sessionGone) return { ok: false };
-      WN5Act.strip(p.host || k.boardHost(), _err('WN5E_new_point_waits', 'Το νέο σημείο έμεινε ΠΡΟΣ ΑΝΑΘΕΣΗ: ' + String((e && e.message) || e), Object.assign({ cause: e && e.code }, facts)));
+      if (e && e.kind === PlanApi.KIND.UNKNOWN) { WN5Act.strip(host, e); return { ok: false, text: 'νέο σημείο: η τοποθέτηση στο φορτηγό μπορεί να έγινε — δες το board' }; }
+      WN5Act.strip(host, _err('WN5E_new_point_waits', 'Το νέο σημείο έμεινε ΠΡΟΣ ΑΝΑΘΕΣΗ: ' + String((e && e.message) || e), Object.assign({ cause: e && e.code }, facts)));
       return { ok: false };
     }
     if (typeof WN5 !== 'undefined') await WN5.reload('save');

@@ -2022,7 +2022,7 @@
     _gate(d);
     return d;
   };
-  ACTS.date =(el) => { const row = el.closest('.wn5-row[data-rt]'); WN5Act.datePanel(_id(row && row.dataset.rt), el.dataset.side, el); };
+  ACTS.date = (el) => { const row = el.closest('.wn5-row[data-rt]'); WN5Act.datePanel(_id(row && row.dataset.rt), el.dataset.side, el); };
 
   // ═══ T17 · «Φόρτωση με τοπικό» (decision 44): request_id on the creation, never on the cancel ═══
   // the stops a local driver can load: the cycle's ΚΑΘΟΔΟΣ pickups outside Veroia (Veroia is loaded by the cycle's

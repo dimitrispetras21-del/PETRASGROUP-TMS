@@ -111,7 +111,16 @@ async function delpt({ browser, origin, ok, scn, shots }) {
 
 // 2b · the second write refused: the point is out of the truck and not deleted — said, with where it is
 async function half({ browser, origin, ok, scn }) {
-  const plan = { 'POST /plan/move': (e) => (e.body.dry_run === true ? [200, { ok: true, op: 'plan_move_pieces', dry_run: true, needs_confirm: false, confirm_token: 't0', consequences: [] }] : MOVE_OK),
+  // after the move the piece (it loads at Veroia) stands at the hub: the board read after it lists it in hub[]
+  let moved = false;
+  const atHub = () => { const b = week2(); b.cycles[0].stops.forEach((x) => { x.legs = x.legs.filter((l) => l.piece_id !== 4002); });
+    b.hub.push({ piece_id: 4002, shipment_id: 5202, kind: 'national', order_id: null, nat_order_id: 3001, order_stop_id: null, pallets: 6, leave_by: null,
+      position_location_id: 1, nat_from_location_id: 1, nat_to_location_id: 3, nat_ready_day: '2026-10-12', nat_due_day: '2026-10-13', overdue: false, is_stock: false,
+      client_id: 41, client: 'ΠΕΛΑΤΗΣ Α', reference: 'N-T001', temperature_c: 4, pallet_exchange: false,
+      load_from: '2026-10-12T13:00:00+00:00', load_to: '2026-10-12T15:00:00+00:00', deliver_from: '2026-10-13T04:00:00+00:00', deliver_to: '2026-10-13T06:00:00+00:00', direction: 'KATHODOS' });
+    return b; };
+  const plan = { 'POST /plan/move': (e) => (e.body.dry_run === true ? [200, { ok: true, op: 'plan_move_pieces', dry_run: true, needs_confirm: false, confirm_token: 't0', consequences: [] }] : (moved = true, MOVE_OK)),
+    'GET /plan/board': (e, S) => [200, moved ? atHub() : S.board],
     'PATCH /plan/orders/3001': () => K.planErr(422, 'PLAN_RULE', 'piece_busy') };
   const { page, S } = await K.openApp(browser, origin, { board: week2(), orders: orders2(), plan });
   await rclick(page, PT(101, 1003));
@@ -121,7 +130,21 @@ async function half({ browser, origin, ok, scn }) {
   await page.waitForTimeout(1200);
   const st = await K.text(page, '#content .wn5-acthost .wn5-strip');
   ok(scn, 'refused PATCH → the board strip says it left the truck and was not deleted, with the base\'s words and where it is',
-    /βγήκε από το φορτηγό αλλά δεν σβήστηκε \(rig sentinel piece_busy\)/.test(st) && /ΠΡΟΣ ΑΝΑΘΕΣΗ/.test(st), st);
+    /βγήκε από το φορτηγό αλλά δεν σβήστηκε \(rig sentinel piece_busy\)/.test(st) && /Πίνακα Βέροιας: Καρτέλα παραγγελίας → Επεξεργασία/.test(st) && !/ΠΡΟΣ ΑΝΑΘΕΣΗ/.test(st), st);
+  await page.context().close();
+  // a point that also rides another truck: said before anything is written
+  const o2 = orders2();
+  o2[3001].shipments[0].rt_codes = ['RT-T101', 'RT-T999'];
+  const b = await K.openApp(browser, origin, { board: week2(), orders: o2 });
+  await rclick(b.page, PT(101, 1003));
+  await pick(b.page, 'Διαγραφή σημείου');
+  await b.page.waitForTimeout(600);
+  const st2 = await K.text(b.page, '#content .wn5-acthost .wn5-strip');
+  ok(scn, 'a point on another truck too → refused before any write (no dry run, no write), with the way out', /είναι και σε άλλο φορτηγό/.test(st2)
+    && dries(b.S).length === 0 && writes(b.S).length === 0, st2);
+  ok(scn, 'no page errors (2)', !b.S.pageErrors.length, b.S.pageErrors);
+  await b.page.context().close();
+  return;
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
   await page.context().close();
 }
