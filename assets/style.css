@@ -10455,6 +10455,13 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .loc-scan-geo-msg { color: var(--text-mid); }
 .loc-scan-form .loc-geo-link { background: none; border: none; padding: 0; font: inherit; font-weight: 600; color: var(--accent); cursor: pointer; }
 .loc-scan-form .loc-geo-link:hover { text-decoration: underline; }
+/* F16 / F15 (owner 1/11): «Υπάρχει ήδη…» in the Locations form and in the order forms' new-place panel */
+.loc-dup { border: 1px solid var(--warn-border); background: var(--warn-bg); border-radius: var(--radius); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-3); display: grid; gap: var(--space-1); font-size: var(--text-sm); }
+.loc-dup-row { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); }
+.loc-dup-why { color: var(--text-dim); font-size: var(--text-xs); }
+.loc-dup-t, .loc-dup-n { font-size: var(--text-xs); color: var(--text-mid); }
+.wn5f-newloc { margin: 4px 0 8px; }
+.wn5f-newloc-opt { color: var(--accent); font-weight: 600; }
 
 /* National v5 · the assignment form = the Weekly International form (owner 28/10 + 31/10, Figma 2394:7793,
    modules/wn5_assign.js). The .wi-pop-* classes of #wi-popover give fields and section labels; this block fits

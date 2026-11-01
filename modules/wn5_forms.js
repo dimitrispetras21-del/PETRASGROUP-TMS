@@ -548,7 +548,7 @@
   function _rowHTML(f, k) {
     const pid = 'wn5l' + (++f.seq);
     return `<div class="wn5f-row" data-k="${k}" data-pid="${pid}">`
-      + `<div class="wn5f-loc">${fhLocSelect(pid, '', 'fhLocDrop')}</div>`
+      + `<div class="wn5f-loc">${fhLocSelect(pid, '', 'WN5Form.locDrop')}</div>`
       + _dayHTML('data-f="day"' + (f.dayDefault ? ' data-auto="1"' : ''), f.dayDefault, '', false)
       + `<span class="wn5f-win"><span class="wn5f-from"><input ${HM_INPUT} data-f="from" aria-label="από"><span class="wn5f-dash">–</span></span>`
       + `<input ${HM_INPUT} data-f="to" aria-label="έως"></span>`
@@ -1004,8 +1004,8 @@
     const first = f.edit.ships[0] || {};
     const ld = (_parts(first.load_from) || {}).day || '', dd = (_parts(first.deliver_from) || {}).day || '';
     return `<div class="wn5f-ship wn5f-new" data-newship data-k="${k}" data-po="${po}" data-pd="${pd}" data-ld="${ld}" data-dd="${dd}">`
-      + `<span class="wn5f-ends"><span class="wn5f-loc">${fhLocSelect(po, '', 'fhLocDrop')}</span><span class="wn5f-arr">→</span>`
-      + `<span class="wn5f-loc">${fhLocSelect(pd, '', 'fhLocDrop')}</span></span>`
+      + `<span class="wn5f-ends"><span class="wn5f-loc">${fhLocSelect(po, '', 'WN5Form.locDrop')}</span><span class="wn5f-arr">→</span>`
+      + `<span class="wn5f-loc">${fhLocSelect(pd, '', 'WN5Form.locDrop')}</span></span>`
       + `${_editDay('lday', ld, '')}<input ${HM_INPUT} data-f="lfrom"><input ${HM_INPUT} data-f="lto">`
       + `${_editDay('dday', dd, '')}<input ${HM_INPUT} data-f="dfrom"><input ${HM_INPUT} data-f="dto">`
       + `<input class="form-input" data-f="pal" inputmode="decimal" aria-label="Παλέτες">`
@@ -1670,6 +1670,42 @@
     return true;
   }
 
+  // ── a place not in the list (F15, owner 1/11) ──────────────────────────────────────────────────────────────────
+  // The dispatcher typed a place the list does not hold (the Excel says a town, the client a new depot): the list
+  // ends with «+ Νέα τοποθεσία», which opens under the row THE one «new place» panel of the order forms
+  // (modules/locations.js locScanNewHTML): the same «Υπάρχει ήδη…» check, the country as a code, Latin letters. The
+  // saved place goes into this field and, through fhLocationSaved (F52), into every picker and the v5 catalogue, with
+  // no reload and no trip to the Locations page.
+  function locDrop(id, q) {
+    fhLocDrop(id, q);
+    const t = String(q || '').trim();
+    const d = document.getElementById('ls_' + id + '_d');
+    if (!d || t.length < 2 || typeof locScanNewHTML !== 'function') return;
+    // fhShowDrop hides an empty list without clearing it: the last keystroke's places would come back with this line
+    if (d.style.display === 'none') d.innerHTML = '';
+    // the text IS a place of the list, its whole label (a field holding a picked place, focused again) or its name
+    // (the label goes on «, City, Country»): nothing new to make
+    const nt = _fhNorm(t);
+    if (_fhLocationsArr.some((o) => { const n = o._n || (o._n = _fhNorm(o.label)); return n === nt || n.startsWith(nt + ', '); })) return;
+    d.style.display = 'block';
+    d.insertAdjacentHTML('beforeend', `<div class="linked-drop-item wn5f-newloc-opt" onmousedown="WN5Form.newLoc('${id}')">+ Νέα τοποθεσία «${escapeHtml(t)}»</div>`);
+  }
+  function newLoc(id) {
+    const inp = document.getElementById('ls_' + id);
+    const row = inp && inp.closest('.wn5f-row, .wn5f-ship');
+    if (!row || typeof locScanNewHTML !== 'function') return;
+    const old = row.nextElementSibling;
+    if (old && old.classList.contains('wn5f-newloc')) old.remove();
+    const html = locScanNewHTML('v' + id, { location_name: inp.value.trim(), country: 'GR' }, (item) => {
+      fhPickLinked(id, item.id, item.label);
+      const panel = row.nextElementSibling;
+      if (panel && panel.classList.contains('wn5f-newloc')) setTimeout(() => panel.remove(), 1500);
+    });
+    row.insertAdjacentHTML('afterend', `<div class="wn5f-newloc">${html}</div>`);
+    const open = row.nextElementSibling.querySelector('.loc-scan-new > button');
+    if (open) open.click();
+  }
+
   // ── VS day / destination (T22) ─────────────────────────────────────────────────────────────────────────────
   // The places list without the hub: Veroia is never a VS destination after Veroia (072 plan_vs_set_place).
   // Same filter rule as fhLocDrop (form-helpers.js: _fhNorm over the label), only the hub left out.
@@ -1729,5 +1765,5 @@
       'Ίδιος προορισμός — η διεθνής δεν άλλαξε', 'vs-place', `[data-vs]:has([data-osid="${orderStopId}"]) [data-vsok]`);
   }
 
-  window.WN5Form = Object.freeze({ openOrder, openLeg, vsDay, vsPlace, _locDropNoHub, _body, _check, _patchBody, _editFromRead, _findOrders, _iso, _parts, _legModel, _rowWin, _dayParse });
+  window.WN5Form = Object.freeze({ openOrder, openLeg, vsDay, vsPlace, locDrop, newLoc, _locDropNoHub, _body, _check, _patchBody, _editFromRead, _findOrders, _iso, _parts, _legModel, _rowWin, _dayParse });
 })();
