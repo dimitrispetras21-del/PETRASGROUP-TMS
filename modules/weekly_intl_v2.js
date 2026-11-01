@@ -1004,17 +1004,24 @@ function _impLegHTML(host, imp, today, rs) {
 
 // 092 (F45): ✎ = the national desk changed this VS (its Veroia day, its pallets) and nobody here has marked it yet; the
 // words are the notice's own (the base writes them), the press shows them with «Σημείωσα» (POST /plan/notices/:id/read)
+// One line per change in the screen's words, the base's own («Βέροια Κυρ 1/11 (ήταν Δευ 2/11)», «22π (ήταν 24) ·
+// φόρτωση …»), and who made it, by the first name of the roster (config.js USERS), else the login
+function _vsNoteWho(u) {
+  const r = typeof USERS !== 'undefined' && Array.isArray(USERS) ? USERS.find((x) => x && x.username === u) : null;
+  return (r && r.name ? String(r.name).split(' ')[0] : u) || '';
+}
+function _vsNoteText(ns) { return ns.map((n) => [n.message, _vsNoteWho(n.created_by)].filter(Boolean).join(' · ')).join('\n'); }
 function _vsNoteHTML(oid) {
   const ns = (_D().data.vsNotes || {})[oid];
   const q = _q(oid);
   if (!ns || !ns.length || !q) return '';
-  return `<button type="button" class="wi4-vsnote" title="${_esc(ns.map((n) => n.message).join('\n'))}" onclick="event.stopPropagation();WIV2._vsNote('${q}')">✎</button>`;
+  return `<button type="button" class="wi4-vsnote" title="${_esc(_vsNoteText(ns))}" onclick="event.stopPropagation();WIV2._vsNote('${q}')">✎</button>`;
 }
 async function _vsNote(oid) {
   const notes = _D().data.vsNotes || {};
   const ns = notes[oid];
   if (!ns || !ns.length || typeof confirmAction !== 'function') return;
-  const yes = await confirmAction(ns.map((n) => n.message).join('\n'), { title: 'Αλλαγή από το Εθνικών', confirmLabel: 'Σημείωσα', cancelLabel: 'Κλείσιμο' });
+  const yes = await confirmAction(_vsNoteText(ns), { title: 'Αλλαγή από το Εθνικών', confirmLabel: 'Σημείωσα', cancelLabel: 'Κλείσιμο' });
   if (!yes) return;
   // one POST per notice (the national board's «Σημείωσα» does the same); a failure keeps the ✎ and says why
   for (const n of ns.slice()) {

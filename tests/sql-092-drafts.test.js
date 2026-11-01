@@ -46,16 +46,16 @@ test('092: one md5 per fact - PART 1 + 2 = verify = the dry run; PART 0 = the ro
   const src = read(`${P}.sql`);
   const part12 = src.slice(src.indexOf('===== PART 1'), src.indexOf('===== PART 3'));
   const gen = [...part12.matchAll(/\], '([0-9a-f]{32})'\)/g)].map((m) => m[1]);
-  assert.strictEqual(gen.length, 2, 'two generated texts');
+  assert.strictEqual(gen.length, 3, 'three generated texts');
   const part0 = src.slice(src.indexOf('===== PART 0'), src.indexOf('===== PART 1'));
   const live = [...part0.matchAll(/', '([0-9a-f]{32})'\)/g)].map((m) => m[1]);
-  assert.strictEqual(live.length, 4, 'four live texts: two patched, two relied on');
+  assert.strictEqual(live.length, 4, 'four live texts: three patched, one relied on');
   for (const m of gen) {
     assert.ok(read(`${P}_verify.sql`).includes(m), 'verify reads the generated md5');
     assert.ok(read(`${P}_dryrun.sql`).split('\n').filter((l) => l.startsWith('--')).join('\n').includes(m), 'the dry run header expects it');
     assert.ok(read(`${P}_rollback.sql`).includes(m), 'the rollback starts from it');
   }
-  for (const m of live.slice(0, 2)) assert.ok(read(`${P}_rollback.sql`).includes(m), 'the rollback returns to the live text');
+  for (const m of live.slice(0, 3)) assert.ok(read(`${P}_rollback.sql`).includes(m), 'the rollback returns to the live text');
   assert.ok(!/GEN_/.test(src), 'no placeholder left');
 });
 

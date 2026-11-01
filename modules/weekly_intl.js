@@ -2340,7 +2340,13 @@ function _wiVsNotes(natMap){
       if (rec) (notes[rec] = notes[rec] || []).push(n);
     }
     if (Object.keys(notes).length && _wiV2Active()) WIV2._lateLanded();
-  }).catch(e => { if (!(typeof PlanError === 'function' && e instanceof PlanError) && typeof logError === 'function') logError(e, 'weekly intl: /plan/notices'); });
+  }).catch(e => {
+    // the board stays as it is, without ✎; the failure is logged once (principle 1): planFetch logs a PlanError that is
+    // not a designed answer itself, so a designed one (a 403 / 409) and a fault of this code are logged here
+    const pe = typeof PlanError === 'function' && e instanceof PlanError;
+    const designed = pe && typeof PlanApi !== 'undefined' && PlanApi.isDesigned(e);
+    if ((!pe || designed) && !(e && e._sessionGone) && typeof logError === 'function') logError(e, 'weekly intl: /plan/notices (✎)');
+  });
 }
 function _wiNatFromV5(v){
   const cs=(v.carriers||[]).filter(c=>c&&(c.kind==='owned'||c.kind==='partner'));

@@ -4,9 +4,8 @@
 // Judged by what reached the fake /plan/* (S.plan = «the table» of the rig) and by what the page shows:
 //   mark      the international has the VS at Veroia on Sun 11/10 (GET /plan/vs-state cross_dock_date, 092): the row of
 //             RT-T101 says «VS Κυρ 11/10» beside its Veroia; the same answer without the key (before 092) = no mark
-//   day       the leg form's «Ημέρα Βέροιας» = the international's day; the truck's day is said with a «Φορτηγό → …»
-//             press that opens the stop's own day panel with that day chosen (its dry run); «Ορισμός ημέρας» sends
-//             ONE POST /plan/vs/day {order_id, day} and then offers the truck's step for the new day
+//   day       the leg form's «Ημέρα Βέροιας» = the international's day; «Ορισμός ημέρας» previews it WITH its trucks
+//             (POST /plan/vs/day {…, preview: true}), «Επιβεβαίωση» does it (option a, coordinator 1/11)
 //   pallets   the VS point's pallets are a field: 21 → 19 = ONE POST /plan/vs/day {order_id, piece_id, pallets}; the
 //             same number, 2,55 or 0 send nothing and say why
 // Usage: cd <main repo> && node <this tree>/tests/critics/wn5-092-rig.js [mark|day|pallets]
@@ -70,18 +69,18 @@ async function scnMark({ browser, origin, ok, scn }) {
   ok(scn, 'stock piece on a later truck → no mark', await K.count(p5.page, MARK) === 0);
   await p5.page.evaluate(() => WN5Form.openLeg(101, 'KATHODOS'));
   await p5.page.waitForSelector(LEG, { timeout: 6000 }).catch(() => {});
-  ok(scn, 'stock piece on a later truck → no «Φορτηγό → …» step', (await K.text(p5.page, `${V} [data-vstruck]`)) === '');
+  ok(scn, 'stock piece on a later truck → no «other day» line', (await K.text(p5.page, `${V} [data-vstruck]`)) === '');
   await p5.page.context().close();
 }
 
 async function scnDay({ browser, origin, ok, scn }) {
+  // option a (coordinator 1/11): «Ορισμός ημέρας» previews the international's day AND its trucks; «Επιβεβαίωση» does it
+  const PREVIEW = { vs_day: { from: '2026-10-11', to: '2026-10-10' }, trucks: [{ rt_id: 101, rt_code: 'RT-T101', truck: 'TST-2104', from: '2026-10-12', to: '2026-10-10' }],
+    pallets: null, warnings: [{ code: 'vs_truck_kept', rt_code: 'RT-T999', truck: 'TST-9999', day: '2026-10-12', reason: 'executed' }] };
   const plan = Object.assign(vsState('2026-10-11'), {
-    'POST /plan/vs/day': () => [200, { ok: true, op: 'plan_vs_set_day', dry_run: false, ids: { order_id: 2101 }, warnings: [], notice_ids: [9201] }],
-    // the stop's day panel: a dry run answers its preview (072 plan_rt_update), here with the international following
-    'PATCH /plan/rt/101': (e) => (e.body && e.body.dry_run === true
-      ? [200, { ok: true, op: 'plan_rt_update', dry_run: true, preview: { before: {}, after: {}, next_rt: null, conflict: null,
-          vs_day: [{ order_id: 2101, from: '2026-10-10', to: '2026-10-10' }], warnings: [] } }]
-      : K.planErr(409, 'WRITES_CLOSED', 'writes_closed')),
+    'POST /plan/vs/day': (e) => (e.body && e.body.preview === true
+      ? [200, { ok: true, op: 'plan_vs_set_day', dry_run: true, preview: PREVIEW }]
+      : [200, { ok: true, op: 'plan_vs_set_day', dry_run: false, ids: { order_id: 2101 }, trucks: PREVIEW.trucks, warnings: [], notice_ids: [9201] }]),
   });
   const { page, S } = await K.openApp(browser, origin, { plan });
   await page.waitForTimeout(800);
@@ -91,25 +90,27 @@ async function scnDay({ browser, origin, ok, scn }) {
   ok(scn, 'the field is «Ημέρα Βέροιας»', lab === 'Ημέρα Βέροιας', lab);
   ok(scn, 'its value is the international\'s day (Κυρ 11/10), not the truck\'s', (await page.evaluate((v) => (document.querySelector(`${v} [data-f="vsday"]`) || {}).value, V)) === '2026-10-11');
   const truck = await K.text(page, `${V} [data-vstruck]`);
-  ok(scn, 'the truck\'s own day is said, with the step «Φορτηγό → Κυρ 11/10 ›»', /φορτηγό στη Βέροια Δευ 12\/10/.test(truck) && /Φορτηγό → Κυρ 11\/10 ›/.test(truck), truck);
-  // «Ορισμός ημέρας» to Sat 10/10: one POST, then the truck's step follows the new day
+  ok(scn, 'the truck on another day is said (no separate step any more)', /φορτηγό στη Βέροια Δευ 12\/10/.test(truck) && await K.count(page, `${V} [data-act="vs-truck-day"]`) === 0, truck);
   await page.fill(`${V} [data-f="vsday"]`, '2026-10-10');
   await page.click(`${V} [data-act="vs-day"]`);
+  await page.waitForTimeout(1000);
+  let days = K.planOf(S, 'POST', '/plan/vs/day');
+  ok(scn, '«Ορισμός ημέρας» = ONE preview POST {order_id:2101, day:"2026-10-10", preview:true}', days.length === 1 && JSON.stringify(days[0].body) === JSON.stringify({ order_id: 2101, day: '2026-10-10', preview: true }), days.map((x) => x.body));
+  const prev = await K.text(page, `${V} [data-vsprev]`);
+  ok(scn, 'the preview says the day, each truck by its plate, and what stays', /Βέροια Σάβ 10\/10 \(ήταν Κυρ 11\/10\)/.test(prev) && /TST-2104: Δευ 12\/10 → Σάβ 10\/10/.test(prev)
+    && /TST-9999 μένει στη Βέροια 12\/10 — η στάση του έγινε/.test(prev) && !/RT-/.test(prev), prev);
+  // a day changed after the preview is previewed again, never sent unseen
+  await page.fill(`${V} [data-f="vsday"]`, '2026-10-09');
+  await page.click(`${V} [data-act="vs-day-ok"]`);
+  await page.waitForTimeout(1000);
+  days = K.planOf(S, 'POST', '/plan/vs/day');
+  ok(scn, 'a day changed after the preview → a new preview, nothing kept', days.length === 2 && days[1].body.preview === true && days[1].body.day === '2026-10-09', days.map((x) => x.body));
+  await page.click(`${V} [data-act="vs-day-ok"]`);
   await page.waitForTimeout(1200);
-  const days = K.planOf(S, 'POST', '/plan/vs/day');
-  ok(scn, 'one press = ONE POST /plan/vs/day {order_id:2101, day:"2026-10-10"}', days.length === 1 && JSON.stringify(days[0].body) === JSON.stringify({ order_id: 2101, day: '2026-10-10' }), days.map((x) => x.body));
-  const truck2 = await K.text(page, `${V} [data-vstruck]`);
-  ok(scn, 'after the 200 the truck\'s step is for the new day (Σάβ 10/10)', /Φορτηγό → Σάβ 10\/10 ›/.test(truck2), truck2);
-  ok(scn, 'no truck stop was moved by «Ορισμός ημέρας» (no PATCH /plan/rt)', !S.plan.some((x) => x.m === 'PATCH'));
-  // the second step: the stop's day panel with that day chosen, its dry run on screen; the save stays the user's
-  await page.click(`${V} [data-act="vs-truck-day"]`);
-  await page.waitForTimeout(1200);
-  ok(scn, 'the leg form closed and the stop\'s day panel opened for stop 1001', await K.count(page, LEG) === 0 && await K.count(page, '.wn5-dlg[data-stop="1001"]') === 1);
-  const dry = S.plan.filter((x) => x.m === 'PATCH' && x.path === '/plan/rt/101');
-  const b = dry[0] && dry[0].body;
-  ok(scn, 'its dry run moves stop 1001 to Sat 10/10 (PATCH /plan/rt/101, dry_run)', dry.length === 1 && b && b.dry_run === true
-    && Array.isArray(b.stops) && b.stops.length === 1 && b.stops[0].stop_id === 1001 && /^2026-10-10/.test(new Date(b.stops[0].planned_from).toLocaleString('sv-SE', { timeZone: 'Europe/Athens' })), dry.map((x) => x.body));
-  ok(scn, 'nothing is saved without the press (only the dry run)', S.plan.filter((x) => x.m === 'PATCH' && !(x.body && x.body.dry_run)).length === 0);
+  days = K.planOf(S, 'POST', '/plan/vs/day');
+  ok(scn, '«Επιβεβαίωση» = ONE POST {order_id:2101, day:"2026-10-09"} (no preview key)', days.length === 3 && JSON.stringify(days[2].body) === JSON.stringify({ order_id: 2101, day: '2026-10-09' }), days.map((x) => x.body));
+  ok(scn, 'after the 200: «γράφτηκε στη διεθνή και στα φορτηγά», the preview closed', /γράφτηκε στη διεθνή και στα φορτηγά/.test(await K.text(page, `${V} [data-vsok]`)) && (await K.text(page, `${V} [data-vsprev]`)) === '');
+  ok(scn, 'the trucks move in the base, not from the screen (no PATCH /plan/rt)', !S.plan.some((x) => x.m === 'PATCH'));
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
   await page.context().close();
 }
@@ -124,7 +125,7 @@ async function scnPallets({ browser, origin, ok, scn }) {
   await page.waitForSelector(LEG, { timeout: 6000 }).catch(() => {});
   const P = `${V} [data-f="vspal"][data-piece="4001"]`;
   ok(scn, 'the VS point\'s pallets are a field with 21', await K.count(page, P) === 1 && (await page.evaluate((s) => document.querySelector(s).value, P)) === '21');
-  ok(scn, 'the days agree → no truck step', (await K.text(page, `${V} [data-vstruck]`)) === '');
+  ok(scn, 'the days agree → no «other day» line', (await K.text(page, `${V} [data-vstruck]`)) === '');
   await page.click(`${V} [data-act="vs-pal"]`);
   await page.waitForTimeout(400);
   ok(scn, 'the same number → nothing sent, said', K.planOf(S, 'POST', '/plan/vs/day').length === 0 && /ίδιος αριθμός/.test(await K.text(page, `${LEG} [data-err]`)));
@@ -168,8 +169,8 @@ async function scnExport({ browser, origin, ok, scn }) {
   await page.waitForSelector(LEG, { timeout: 6000 }).catch(() => {});
   const VX = `${LEG} [data-vs="2102"]`;
   ok(scn, 'the export\'s «Ημέρα Βέροιας» = the international\'s Tue 13/10', (await page.evaluate((v) => (document.querySelector(`${v} [data-f="vsday"]`) || {}).value, VX)) === '2026-10-13');
-  const step = await page.evaluate((v) => { const b = document.querySelector(`${v} [data-act="vs-truck-day"]`); return b ? [b.dataset.stop, b.dataset.day, b.textContent] : null; }, VX);
-  ok(scn, 'the truck step is for its Veroia arrival (stop 1102) → Tue 13/10', !!step && step[0] === '1102' && step[1] === '2026-10-13' && /Φορτηγό → Τρί 13\/10/.test(step[2]), step);
+  const info = await K.text(page, `${VX} [data-vstruck]`);
+  ok(scn, 'the truck\'s own day at its Veroia arrival (Wed 14/10) is said', /φορτηγό στη Βέροια Τετ 14\/10/.test(info), info);
   const P = `${VX} [data-f="vspal"][data-piece="4005"]`;
   ok(scn, 'the pallets field is on the Greek loading (12)', await K.count(page, P) === 1 && (await page.evaluate((x) => document.querySelector(x).value, P)) === '12');
   await page.fill(P, '11');

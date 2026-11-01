@@ -17,7 +17,7 @@ const read = (f) => fs.readFileSync(migrationFile(f), 'utf8');
 const one = async (db, sql, p) => (await db.query(sql, p)).rows[0];
 const num = async (db, sql, p) => Number(Object.values((await db.query(sql, p)).rows[0])[0]);
 async function errorOf(db, sql) { try { await db.exec(sql); return null; } catch (e) { return String(e.message); } }
-const SIGS = ['public.plan_vs_set_day(jsonb,text,text)', 'public.plan_vs_state(bigint[])'];
+const SIGS = ['public.plan_vs_set_day(jsonb,text,text)', 'public.plan_vs_state(bigint[])', 'public.plan_h_vs_day(bigint,date,text,text)'];
 const md5s = async (db) => Promise.all(SIGS.map(async (s) => (await one(db, `SELECT md5(prosrc) AS m FROM pg_proc WHERE oid = '${s}'::regprocedure`)).m));
 
 // test rows only: legacy ids rec92..., references T92-..., locations TEST 092 ..., plates TEST-092-...
@@ -85,7 +85,7 @@ begin
 end $t$;
 -- ONE new OWNED cycle that takes the given EXPORT pieces from their Greek loading to Veroia on its ANODOS (VS 610's
 -- shape: the supplier loading on p_day 09:00, the Veroia arrival the same day 18:00)
-CREATE FUNCTION t92_put_anodos(p_pieces bigint[], p_day date) RETURNS bigint LANGUAGE plpgsql AS $t$
+CREATE FUNCTION t92_put_anodos(p_pieces bigint[], p_day date, p_drop date DEFAULT NULL) RETURNS bigint LANGUAGE plpgsql AS $t$
 declare trk bigint; st jsonb := '[]'::jsonb; i int; r jsonb; hub bigint;
 begin
   select id into hub from locations where is_hub;
@@ -96,8 +96,12 @@ begin
             'planned_from', (p_day + make_time(8 + i, 0, 0)) at time zone 'Europe/Athens',
             'planned_to', (p_day + make_time(9 + i, 0, 0)) at time zone 'Europe/Athens');
   end loop;
-  st := st || jsonb_build_object('ref', 'd', 'location_id', hub, 'side', 'ANODOS',
-          'planned_from', (p_day + time '18:00') at time zone 'Europe/Athens', 'planned_to', (p_day + time '19:00') at time zone 'Europe/Athens');
+  -- p_drop: FAGE 644's shape, the arrival at Veroia the next day, the whole day (00:00-23:59)
+  st := st || case when p_drop is null
+    then jsonb_build_object('ref', 'd', 'location_id', hub, 'side', 'ANODOS',
+          'planned_from', (p_day + time '18:00') at time zone 'Europe/Athens', 'planned_to', (p_day + time '19:00') at time zone 'Europe/Athens')
+    else jsonb_build_object('ref', 'd', 'location_id', hub, 'side', 'ANODOS',
+          'planned_from', (p_drop + time '00:00') at time zone 'Europe/Athens', 'planned_to', (p_drop + time '23:59') at time zone 'Europe/Athens') end;
   r := plan_put_pieces(jsonb_build_object(
          'pieces', (select jsonb_agg(jsonb_build_object('piece_id', x, 'pickup', 'p' || n, 'drop', 'd')) from unnest(p_pieces) with ordinality u(x, n)),
          'target', jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', trk), 'side', 'ANODOS'),
@@ -175,10 +179,8 @@ test('092 on the production-shaped copy (1/11): the national desk sets the palle
 
   await t.test('the copy holds the LIVE texts 092 guards on (production md5, SELECT 1/11)', async () => {
     assert.deepStrictEqual(live, SIGS.map((s) => F.live[s]));
-    const other = Object.fromEntries((await db.query(`SELECT proname, md5(prosrc) AS m FROM pg_proc WHERE pronamespace = 'public'::regnamespace
-      AND proname IN ('plan_h_vs_day', 'plan_h_bridge_recut')`)).rows.map((r) => [r.proname, r.m]));
-    assert.deepStrictEqual(other, { plan_h_vs_day: F.live['public.plan_h_vs_day(bigint,date,text,text)'],
-      plan_h_bridge_recut: F.live['public.plan_h_bridge_recut(bigint,text,text,text)'] });
+    assert.strictEqual((await one(db, `SELECT md5(prosrc) AS m FROM pg_proc WHERE oid = 'public.plan_h_bridge_recut(bigint,text,text,text)'::regprocedure`)).m,
+      F.live['public.plan_h_bridge_recut(bigint,text,text,text)']);
   });
 
   await t.test('NO-GO on the live texts: the national desk cannot set the pallets of VS 610 (24 stays, 22 was loaded)', async () => {
@@ -194,7 +196,7 @@ test('092 on the production-shaped copy (1/11): the national desk sets the palle
   await t.test('092 dry run keeps nothing', async () => {
     const msg = await errorOf(db, read('092_plan_vs_pallets_day_dryrun.sql'));
     const gen = F.gen.map((g) => g.m);
-    assert.match(msg ?? '', new RegExp(`DRY RUN 092 finished - EVERYTHING UNDONE, nothing kept\\. The block ran to its end {2}\\|\\| {2}092 ran: set_day ${gen[0]}, vs_state ${gen[1]}`), msg);
+    assert.match(msg ?? '', new RegExp(`DRY RUN 092 finished - EVERYTHING UNDONE, nothing kept\\. The block ran to its end {2}\\|\\| {2}092 ran: set_day ${gen[0]}, vs_state ${gen[1]}, vs_day ${gen[2]}`), msg);
     assert.deepStrictEqual(await md5s(db), live);
   });
 
@@ -227,7 +229,7 @@ test('092 on the production-shaped copy (1/11): the national desk sets the palle
     assert.strictEqual(r.cd, 30, 'Cross-dock 32 -> 30');
     assert.strictEqual(r.total, 30, 'what the Weekly International sums (order_pallets)');
     assert.deepStrictEqual(r.notices.map((n) => [n.to_desk, n.kind]), [['intl', 'vs_pallets_set']], 'no notice of the national desk to itself');
-    assert.match(r.notices[0].message, /T92-610, φόρτωση TEST 092 GR 610 1: 24 → 22 · έλεγξε τις παραδόσεις/);
+    assert.strictEqual(r.notices[0].message, '22π (ήταν 24) · φόρτωση TEST 092 GR 610 1', 'the screen\'s words (coordinator 1/11)');
     assert.deepStrictEqual(r.audit.map((a) => a.table_name), ['shipment_pieces', 'order_stops', 'orders', 'order_stops']);
     assert.deepStrictEqual(r.audit[2].before_data, { loading_pallets_1: 24 });
     assert.strictEqual(r.audit[2].after_data.loading_pallets_1, 22);
@@ -309,7 +311,7 @@ test('092 on the production-shaped copy (1/11): the national desk sets the palle
     assert.strictEqual(r.cd, 18, 'the Cross-dock is the loadings abroad: unchanged');
     assert.strictEqual(r.legs, 1);
     assert.deepStrictEqual(r.notices.map((n) => n.kind), ['vs_pallets_set']);
-    assert.match(r.notices[0].message, /παράδοση TEST 092 GR IM 1: 11 → 9 · έλεγξε τη φόρτωση$/);
+    assert.strictEqual(r.notices[0].message, '9π (ήταν 11) · παράδοση TEST 092 GR IM 1');
   });
   await t.test('GO: VS 610 on its ΑΝΟΔΟΣ truck (24 -> 22): the leg and its two stops stay, the order column and the Cross-dock follow', async () => {
     const r = await scenario(db, async () => {
@@ -333,6 +335,117 @@ test('092 on the production-shaped copy (1/11): the national desk sets the palle
     assert.strictEqual(r.stops, r.stops0);
     assert.notStrictEqual(r.status, 'cancelled');
     assert.deepStrictEqual(r.notices.map((n) => [n.to_desk, n.kind]), [['intl', 'vs_pallets_set']]);
+  });
+  // ===== the DAY (option a, coordinator 1/11): the international AND its trucks =====
+  const hubDay = (db, rt) => one(db, `SELECT ((s.planned_from AT TIME ZONE 'Europe/Athens'))::text AS f, ((s.planned_to AT TIME ZONE 'Europe/Athens'))::text AS t
+    FROM rt_stops s JOIN locations lo ON lo.id = s.location_id AND lo.is_hub WHERE s.rt_id = $1 AND s.deleted_at IS NULL ORDER BY s.seq LIMIT 1`, [rt]);
+  const cdOf = async (db, o) => (await one(db, `SELECT cross_dock_date::text AS d FROM orders WHERE id = $1`, [o])).d;
+  await t.test('GO: VS 630\'s shape - the day moves its truck\'s Veroia stop too (hours kept), ONE notice in the screen\'s words', async () => {
+    const want = await dayOf(db, 3);
+    const r = await scenario(db, async () => {
+      const o = await num(db, `SELECT t92_vs('MV', 'Import', DATE '${L}' + 4, '{11,7}')`);
+      const p = await num(db, `SELECT t92_piece('MV', 1)`);
+      const rt = await num(db, `SELECT t92_put(ARRAY[$1::bigint], DATE '${L}' + 5)`, [p]);
+      const before = await hubDay(db, rt);
+      const n0 = await lastId(db, 'plan_notices');
+      const res = await setDay(db, { order_id: o, day: want });
+      return { ...res, rt, before, after: await hubDay(db, rt), cd: await cdOf(db, o), notices: await noticesOf(db, o, n0),
+        legs: await num(db, `SELECT count(*) FROM piece_legs WHERE piece_id = $1 AND deleted_at IS NULL AND rt_id = $2`, [p, rt]) };
+    });
+    assert.strictEqual(r.err, null, JSON.stringify(r.err));
+    assert.strictEqual(r.late, null, 'the deferred rules pass');
+    assert.strictEqual(r.cd, want, 'the international');
+    assert.strictEqual(r.after.f.slice(0, 10), want, 'the truck at Veroia: the same day');
+    assert.strictEqual(r.after.f.slice(11), r.before.f.slice(11), 'its hours kept');
+    assert.strictEqual(r.legs, 1);
+    assert.strictEqual(r.ans.trucks.length, 1);
+    const days = r.notices.filter((n) => n.kind === 'vs_day_changed');
+    assert.strictEqual(days.length, 1, JSON.stringify(r.notices));
+    assert.match(days[0].message, /^Βέροια \S+ \d{1,2}\/\d{1,2} \(ήταν \S+ \d{1,2}\/\d{1,2}\)$/, days[0].message);
+    assert.deepStrictEqual(r.ans.warnings, []);
+  });
+  await t.test('GO: preview - the same act given back undone: the trucks and the day it would write, nothing kept', async () => {
+    const want = await dayOf(db, 3);
+    const r = await scenario(db, async () => {
+      const o = await num(db, `SELECT t92_vs('PV', 'Import', DATE '${L}' + 4, '{11,7}')`);
+      const p = await num(db, `SELECT t92_piece('PV', 1)`);
+      const rt = await num(db, `SELECT t92_put(ARRAY[$1::bigint], DATE '${L}' + 5)`, [p]);
+      const before = await hubDay(db, rt);
+      const n0 = await lastId(db, 'plan_notices'), a0 = await lastId(db, 'audit_log');
+      const res = await setDay(db, { order_id: o, day: want, preview: true });
+      return { ...res, before, after: await hubDay(db, rt), cd: await cdOf(db, o), notices: await noticesOf(db, o, n0),
+        audit: await num(db, `SELECT count(*) FROM audit_log WHERE id > $1`, [a0]) };
+    });
+    assert.strictEqual(r.err, null, JSON.stringify(r.err));
+    assert.strictEqual(r.ans.dry_run, true);
+    assert.strictEqual(r.ans.preview.vs_day.to, want);
+    assert.strictEqual(r.ans.preview.trucks.length, 1);
+    assert.strictEqual(r.ans.preview.trucks[0].to, want);
+    assert.deepStrictEqual(r.after, r.before, 'the stop did not move');
+    assert.notStrictEqual(r.cd, want, 'the international did not change');
+    assert.deepStrictEqual(r.notices, []);
+    assert.strictEqual(r.audit, 0);
+  });
+  await t.test('GO: a VS on TWO trucks - both move, the international gets ONE notice', async () => {
+    const want = await dayOf(db, 3);
+    const r = await scenario(db, async () => {
+      const o = await num(db, `SELECT t92_vs('TW', 'Import', DATE '${L}' + 4, '{11,7}')`);
+      const p1 = await num(db, `SELECT t92_piece('TW', 1)`), p2 = await num(db, `SELECT t92_piece('TW', 2)`);
+      const rt1 = await num(db, `SELECT t92_put(ARRAY[$1::bigint], DATE '${L}' + 5)`, [p1]);
+      const rt2 = await num(db, `SELECT t92_put(ARRAY[$1::bigint], DATE '${L}' + 6)`, [p2]);
+      const n0 = await lastId(db, 'plan_notices');
+      const res = await setDay(db, { order_id: o, day: want });
+      return { ...res, a: await hubDay(db, rt1), b: await hubDay(db, rt2), cd: await cdOf(db, o), notices: await noticesOf(db, o, n0) };
+    });
+    assert.strictEqual(r.err, null, JSON.stringify(r.err));
+    assert.strictEqual(r.late, null);
+    assert.strictEqual(r.a.f.slice(0, 10), want);
+    assert.strictEqual(r.b.f.slice(0, 10), want);
+    assert.strictEqual(r.cd, want);
+    assert.strictEqual(r.ans.trucks.length, 2);
+    assert.strictEqual(r.notices.filter((n) => n.kind === 'vs_day_changed').length, 1, JSON.stringify(r.notices));
+  });
+  await t.test('GO: a truck whose Veroia stop ran keeps its day, named in the answer; the international gets the day', async () => {
+    const want = await dayOf(db, 3);
+    const r = await scenario(db, async () => {
+      const o = await num(db, `SELECT t92_vs('EX', 'Import', DATE '${L}' + 4, '{11,7}')`);
+      const p = await num(db, `SELECT t92_piece('EX', 1)`);
+      const rt = await num(db, `SELECT t92_put(ARRAY[$1::bigint], DATE '${L}' + 5)`, [p]);
+      // the cycle ran: its stops are of yesterday (082's 'executed' shape), every stop by the same days
+      await db.exec(`UPDATE rt_stops SET planned_from = planned_from - make_interval(days => DATE '${L}' + 5 - ((now() AT TIME ZONE 'Europe/Athens')::date - 1)),
+        planned_to = planned_to - make_interval(days => DATE '${L}' + 5 - ((now() AT TIME ZONE 'Europe/Athens')::date - 1)) WHERE rt_id = ${rt}`);
+      const before = await hubDay(db, rt);
+      const res = await setDay(db, { order_id: o, day: want });
+      return { ...res, before, after: await hubDay(db, rt), cd: await cdOf(db, o),
+        code: (await one(db, `SELECT code FROM ct_round_trips WHERE id = $1`, [rt])).code };
+    });
+    assert.strictEqual(r.err, null, JSON.stringify(r.err));
+    assert.strictEqual(r.late, null);
+    assert.deepStrictEqual(r.after, r.before, 'the stop that ran did not move');
+    assert.strictEqual(r.cd, want, 'the international has the day');
+    const kept = r.ans.warnings.filter((w) => w.code === 'vs_truck_kept');
+    assert.strictEqual(kept.length, 1, JSON.stringify(r.ans.warnings));
+    assert.strictEqual(kept[0].reason, 'executed');
+    assert.strictEqual(kept[0].rt_code, r.code);
+    assert.ok(r.ans.warnings.some((w) => w.code === 'vs_day_differs'), 'and the VS is said to be on another day');
+  });
+  await t.test('GO: FAGE 644\'s shape - an export loaded Tue 09:00, at Veroia Wed all day; Excel says Tue: the arrival moves to Tue', async () => {
+    const want = await dayOf(db, 2);
+    const r = await scenario(db, async () => {
+      const o = await num(db, `SELECT t92_vs('644', 'Export', DATE '${L}' + 3, '{33}')`);
+      const p = await num(db, `SELECT t92_piece('644', 1)`);
+      const rt = await num(db, `SELECT t92_put_anodos(ARRAY[$1::bigint], DATE '${L}' + 2, DATE '${L}' + 3)`, [p]);
+      const res = await setDay(db, { order_id: o, day: want });
+      const drop = await one(db, `SELECT ((s.planned_from AT TIME ZONE 'Europe/Athens'))::text AS f FROM rt_stops s JOIN locations lo ON lo.id = s.location_id AND lo.is_hub
+        WHERE s.rt_id = $1 AND s.deleted_at IS NULL`, [rt]);
+      return { ...res, drop, cd: await cdOf(db, o) };
+    });
+    assert.strictEqual(r.err, null, JSON.stringify(r.err));
+    assert.strictEqual(r.late, null);
+    assert.strictEqual(r.cd, want);
+    assert.strictEqual(r.ans.trucks.length, 1, JSON.stringify(r.ans.warnings));
+    assert.strictEqual(r.drop.f, want + ' 09:01:00', 'the arrival starts one minute after the loading, on the new day');
+    assert.deepStrictEqual(r.ans.warnings.filter((w) => w.code === 'vs_truck_kept'), []);
   });
   // a load splits only at Veroia (071 split_not_at_hub): an import piece, waiting at the hub
   await t.test('GO: a split piece (4 + 20) - the 4 becomes 3, the stop 23, the other part untouched', async () => {
@@ -377,7 +490,7 @@ test('092 on the production-shaped copy (1/11): the national desk sets the palle
 
   await t.test('rollback dry run keeps nothing; the rollback brings the live texts and the live behaviour back', async () => {
     const msg = await errorOf(db, read('092_plan_vs_pallets_day_rollback_dryrun.sql'));
-    assert.match(msg ?? '', new RegExp(`DRY RUN 092 ROLLBACK finished - EVERYTHING UNDONE.*rollback ran: set_day ${live[0]}, vs_state ${live[1]}`), msg);
+    assert.match(msg ?? '', new RegExp(`DRY RUN 092 ROLLBACK finished - EVERYTHING UNDONE.*rollback ran: set_day ${live[0]}, vs_state ${live[1]}, vs_day ${live[2]}`), msg);
     assert.deepStrictEqual(await md5s(db), F.gen.map((g) => g.m));
     await db.exec(read('092_plan_vs_pallets_day_rollback.sql'));
     assert.deepStrictEqual(await md5s(db), live);

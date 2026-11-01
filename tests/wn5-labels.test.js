@@ -30,7 +30,7 @@ const literals = (re) => [...new Set([...SQL.matchAll(re)].map((m) => m[1]))].so
 const B_WARN = SQL_072B_FILE ? ['seg_stop_moved', 'seg_stop_straddles'] : [];
 const B_KIND = SQL_072B_FILE ? ['partner_rate', 'seg_removed', 'seg_vehicle'] : [];
 const C_WARN = SQL_081_FILE ? ['stop_kept'] : [];
-const D_WARN = SQL_092_FILE ? ['vs_order_column_missing'] : [];
+const D_WARN = SQL_092_FILE ? ['vs_order_column_missing', 'vs_truck_kept'] : [];
 
 test('F4α-T11: WARNING keys = the warning codes raised in 072 + 072b (over_33, mixed_temp, v1_same_truck, local_payroll_review, vs_day_differs; seg_stop_moved, seg_stop_straddles)', () => {
   const codes = literals(/jsonb_build_object\(\s*'code',\s*'([a-z0-9_]+)'/g);

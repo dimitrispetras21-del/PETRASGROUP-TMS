@@ -57,6 +57,10 @@
     local_payroll_review: () => 'Η γραμμή μισθοδοσίας του τοπικού οδηγού με ποσό πάει για έλεγχο στο λογιστήριο',
     vs_day_differs: (w) => 'Η ημέρα του VS διαφέρει από την πρώτη ημέρα του στη Βέροια (' + day(w.first_hub_day) + ')',
     // 092: the pallets were written, but the international order has no column of that point (its stop number is not 1-10)
+    // 092: a truck «Ορισμός ημέρας» could not move with the VS day (its stop ran, or one of its own rules says no)
+    vs_truck_kept: (w) => (w.truck || 'Το φορτηγό') + ' μένει στη Βέροια ' + day(w.day) + ' — '
+      + ({ executed: 'η στάση του έγινε', truck_busy: 'είναι απασχολημένο τότε', driver_busy: 'ο οδηγός είναι απασχολημένος τότε',
+           need_token: 'έχει αλλαγή οχήματος', leg_order: 'οι στάσεις του δεν το επιτρέπουν' }[w.reason] || 'δεν μετακινείται'),
     vs_order_column_missing: () => 'Οι παλέτες γράφτηκαν· η διεθνής παραγγελία δεν έχει πεδίο για αυτό το σημείο — έλεγξέ τη',
     // 072b: a stop that the new vehicle now executes (the driver sheet and the payroll days follow it)
     seg_stop_moved: (w) => `η στάση #${w.stop_id} περνά στο όχημα του άλλου τμήματος (#${w.from_segment_id} → #${w.to_segment_id})`,

@@ -9962,6 +9962,8 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5f-vstruck { display:flex; align-items:center; gap:6px; padding-bottom:6px; }
 .wn5f-vstruck .wn5f-sub { color:var(--wi4-amber); font-weight:600; }
 .wn5f-vspal { display:flex; align-items:center; gap:8px; }
+.wn5f-vsprev { display:flex; flex-direction:column; align-items:flex-start; gap:4px; }
+.wn5f-vsprev:empty { display:none; }
 .wn5f-row.ro input.wn5f-c[data-f="vspal"] { width:100%; line-height:normal; }
 .wn5f-vsplace { display:grid; grid-template-columns:180px minmax(0, 1fr) 150px; gap:8px; align-items:center; padding-left:12px; }
 .wn5f-ok { font-size:11.5px; color:var(--wi4-partner-ink); }

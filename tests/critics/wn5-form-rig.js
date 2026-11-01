@@ -1017,9 +1017,12 @@ function vsWeek(withStop) {
 async function scnVs({ browser, origin, ok, scn }) {
   let dayN = 0;
   const plan = {
-    'POST /plan/vs/day': () => (++dayN === 1
-      ? [200, { ok: true, op: 'plan_vs_set_day', dry_run: false, ids: { order_id: 2101 }, warnings: [{ code: 'vs_day_differs', first_hub_day: '2026-10-12' }], notice_ids: [9101] }]
-      : K.planErr(422, 'PLAN_RULE', 'vs_not_bridge')),
+    // 092 (option a): «Ορισμός ημέρας» previews ({preview: true}), «Επιβεβαίωση» sends the act
+    'POST /plan/vs/day': (e) => (e.body && e.body.preview === true
+      ? [200, { ok: true, op: 'plan_vs_set_day', dry_run: true, preview: { vs_day: { from: '2026-10-12', to: e.body.day }, trucks: [], pallets: null, warnings: [] } }]
+      : ++dayN === 1
+        ? [200, { ok: true, op: 'plan_vs_set_day', dry_run: false, ids: { order_id: 2101 }, warnings: [{ code: 'vs_day_differs', first_hub_day: '2026-10-12' }], notice_ids: [9101] }]
+        : K.planErr(422, 'PLAN_RULE', 'vs_not_bridge')),
     'POST /plan/vs/place': () => [200, { ok: true, op: 'plan_vs_set_place', dry_run: false, ids: { order_stop_id: 6101, leg_ids: [], stop_ids: [] }, warnings: [], notice_ids: [9102] }],
   };
   const { page, S } = await K.openApp(browser, origin, { board: vsWeek(true), plan });
@@ -1031,12 +1034,16 @@ async function scnVs({ browser, origin, ok, scn }) {
   const writes0 = S.plan.filter((x) => x.m !== 'GET').length;
   await page.fill(`${V} [data-f="vsday"]`, '2026-10-14');
   await page.click(`${V} [data-act="vs-day"]`);
+  await page.waitForTimeout(800);
+  await page.click(`${V} [data-act="vs-day-ok"]`);
   await page.waitForTimeout(1200);
-  const days = K.planOf(S, 'POST', '/plan/vs/day');
-  ok(scn, 'one change = ONE POST /plan/vs/day {order_id:2101, day:"2026-10-14"}', days.length === 1 && JSON.stringify(days[0].body) === JSON.stringify({ order_id: 2101, day: '2026-10-14' }), days.map((x) => x.body));
-  ok(scn, 'after 200 with notice_ids: «γράφτηκε και στη διεθνή, ο διεθνών ειδοποιήθηκε»', /γράφτηκε και στη διεθνή, ο διεθνών ειδοποιήθηκε/.test(await K.text(page, `${V} [data-vsok]`)));
+  const days = K.planOf(S, 'POST', '/plan/vs/day').filter((x) => !(x.body && x.body.preview));
+  ok(scn, 'one change = ONE POST /plan/vs/day {order_id:2101, day:"2026-10-14"} after its preview', days.length === 1 && JSON.stringify(days[0].body) === JSON.stringify({ order_id: 2101, day: '2026-10-14' }), days.map((x) => x.body));
+  ok(scn, 'after 200 with notice_ids: «γράφτηκε στη διεθνή και στα φορτηγά, ο διεθνών ειδοποιήθηκε»', /γράφτηκε στη διεθνή και στα φορτηγά, ο διεθνών ειδοποιήθηκε/.test(await K.text(page, `${V} [data-vsok]`)));
   ok(scn, 'vs_day_differs → a warning line', await K.count(page, `${LEG} .wn5-strip[data-kind="warning"]`) >= 1);
   await page.click(`${V} [data-act="vs-day"]`);
+  await page.waitForTimeout(800);
+  await page.click(`${V} [data-act="vs-day-ok"]`);
   await page.waitForTimeout(1000);
   ok(scn, '422 vs_not_bridge → the Worker message, form open', /rig sentinel vs_not_bridge/.test(await K.text(page, `${LEG} [data-strip]`)) && await K.count(page, LEG) === 1);
   const pid = await page.evaluate((v) => { const b = document.querySelector(`${v} [data-act="vs-place"]`); return b && b.dataset.pid; }, V);
@@ -1052,7 +1059,9 @@ async function scnVs({ browser, origin, ok, scn }) {
   await page.waitForTimeout(600);
   ok(scn, 'Veroia pasted as destination → refused on screen, nothing sent', K.planOf(S, 'POST', '/plan/vs/place').length === 1 && /Η Βέροια δεν είναι προορισμός VS/.test(await K.text(page, `${LEG} [data-err]`)));
   ok(scn, 'no PATCH /plan/orders during the VS changes (not the form\'s save)', !S.plan.some((x) => x.m === 'PATCH'));
-  ok(scn, 'exactly the 3 VS writes reached /plan', S.plan.filter((x) => x.m !== 'GET').length - writes0 === 3, S.plan.filter((x) => x.m !== 'GET').map((x) => x.m + ' ' + x.path));
+  // 092: two previews (they keep nothing) + the 3 VS writes
+  ok(scn, 'exactly the 3 VS writes (and their 2 previews) reached /plan', S.plan.filter((x) => x.m !== 'GET').length - writes0 === 5
+    && S.plan.filter((x) => x.m !== 'GET' && !(x.body && x.body.preview)).length - writes0 === 3, S.plan.filter((x) => x.m !== 'GET').map((x) => x.m + ' ' + x.path));
   await closeClean(page, S, ok, scn);
   // 072 board: no order_stop_id on legs → the destination button is off and says why
   const p2 = await K.openApp(browser, origin, { board: vsWeek(false) });

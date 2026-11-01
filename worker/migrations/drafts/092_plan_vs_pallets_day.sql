@@ -11,24 +11,35 @@
 --   International sums: order_pallets()), the Cross-dock stop (the international form writes it as the sum of the
 --   loadings) and the national pieces (shipment_pieces.pallets, whose leaves sum to the stop: 071 pieces_sum).
 -- WHAT, in ONE DO block (ASCII only):
---   PART 0  guards: day L set; the LIVE texts of plan_vs_set_day and plan_vs_state (patched) and of plan_h_vs_day and
---           plan_h_bridge_recut (called / relied on, NOT patched: recut returns at once when the leaves equal the stop)
+--   PART 0  guards: day L set; the LIVE texts of plan_vs_set_day, plan_vs_state and plan_h_vs_day (patched) and of
+--           plan_h_bridge_recut (relied on, NOT patched: recut returns at once when the leaves equal the stop)
 --           = production 1/11 (md5 of prosrc, SELECT 1/11; none of the open drafts 083-091 touches any of the four);
 --           B-54 = the enabled triggers
---   PART 1  plan_vs_set_day = live text + 5 hunks: the body may carry piece_id + pallets (the pallets of ONE VS piece
---           the dispatcher sees on a truck or waiting), with or without day; at least one of the two. The pallets go,
---           in this one transaction and with plan.writer = 'natl': the piece; the bridge's order stop (+delta, so the
---           leaves still sum to it); the order's {loading|unloading}_pallets_N of that stop (= the stop); for a loading,
---           the Cross-dock stop (+delta). One audit row per row changed (before -> after, by 'national desk (092)'),
---           ONE notice to the international desk (vs_pallets_set, the stop's numbers). The bridge trigger then finds
---           leaves = stop and recut does nothing: no loop, no notice of the national desk to itself. Allowed after
---           the loading too (owner 31/10: light rules with a trace) - that is when the real count is known. The same
---           number again changes nothing and tells nobody. A body with day only is the 072 call as it was.
+--   PART 1  plan_vs_set_day = live text + 4 hunks:
+--           DAY (option a, coordinator 1/11: ONE number - the international AND its trucks): the Veroia stop of every
+--           truck that takes or brings this VS (not a stock piece's) moves to the day, its hours kept, each through
+--           plan_rt_update (its own rules, segments, busy checks); then the international's day (plan_h_vs_day, the
+--           072 path: plan.writer = 'natl', its audit row, one notice). A truck that cannot move (its stop ran, or one
+--           of its own rules says no) keeps its day and the answer names it (vs_truck_kept): light rules, owner 31/10.
+--           plan_h_vs_follow (decision 16, inside plan_rt_update) stays as it is: it no longer writes the day back,
+--           because the international and its trucks now hold the same day.
+--           PALLETS: the body may carry piece_id + pallets (ONE VS piece the dispatcher sees on a truck or waiting),
+--           with or without day. In this one transaction, plan.writer = 'natl': the piece; the bridge's order stop
+--           (+delta, the leaves still sum to it); the order's {loading|unloading}_pallets_N of that stop (= the stop);
+--           for a loading, the Cross-dock stop (+delta). One audit row per row changed (by 'national desk (092)'), ONE
+--           notice to the international desk (vs_pallets_set). The bridge trigger then finds leaves = stop and recut
+--           does nothing: no loop, no notice of the national desk to itself. Allowed after the loading too.
+--           PREVIEW: {"preview": true} runs all of it and gives it back undone ({dry_run: true, preview: {vs_day,
+--           trucks, pallets, warnings}}), the leg form's step before the press that keeps it. Not dry_run: planFetch
+--           keeps that key for the Worker's dry-run routes and /plan/vs/day is not one of them.
 --   PART 2  plan_vs_state = live text + 1 hunk: each VS answers its cross_dock_date too, so the national board shows a
---           truck that is at Veroia on another day than the VS (coordinator 1/11: never two numbers in silence).
+--           truck kept at Veroia on another day than the VS (coordinator 1/11: never two numbers in silence).
+--           plan_h_vs_day = live text + 1 hunk: the day notice in the screen's words, "Veroia <day> (itan <day>)", as the
+--           Weekly International shows it beside the order (coordinator 1/11).
 --   PART 3  proofs, NOTICE "092 OK: ..."
 -- No table, no column, no trigger, no grant. No Worker change: /plan/vs/day passes its body as p (PLAN_ROUTES) and
--- every role has "vs-day": POST; /plan/vs-state passes the new key through.
+-- every role has "vs-day": POST; /plan/vs-state passes the new key through. plan_rt_update is called, not patched (089
+-- patches it for the ANODOS rate: the call {rt_id, stops} is the same before and after it).
 -- ORDER: after 088 (the chain 083 ... 088 touches none of these four texts; any order among them works, the owner's
 -- order is kept). RUN: after 15:00 or with the owner's explicit yes: 092_plan_vs_pallets_day_dryrun.sql, then this
 -- file, then 092_plan_vs_pallets_day_verify.sql. REVERSE: 092_plan_vs_pallets_day_rollback.sql.
@@ -38,16 +49,22 @@ DECLARE
   d_1a CONSTANT text := $h$  v_order bigint; v_day date; o orders%rowtype; v_nid bigint; v_warn jsonb;
 $h$;
   d_1b CONSTANT text := $h$  v_order bigint; v_day date; o orders%rowtype; v_nid bigint; v_warn jsonb;
-  -- 092: the pallets of one VS piece (F45, owner 1/11 option a)
-  v_piece bigint; v_pal numeric; v_sid bigint; v_st order_stops%rowtype; v_old numeric; v_new numeric;
-  v_col text; v_ocol numeric; v_place text; v_pid bigint; v_warn2 jsonb := '[]'::jsonb; x record;
+  -- 092: the pallets of one VS piece, the trucks that follow the day, the preview (F45, owner 1/11 option a)
+  v_piece bigint; v_pal numeric; v_sid bigint; v_st order_stops%rowtype; v_old numeric; v_new numeric; v_pal0 numeric;
+  v_col text; v_ocol numeric; v_place text; v_pid bigint; v_warn2 jsonb := '[]'::jsonb; x record; y record;
+  v_dry boolean := false; v_cd0 date; v_mv jsonb := '[]'::jsonb; v_kept jsonb := '[]'::jsonb; v_nids bigint[] := '{}';
+  v_r jsonb; v_hint text; v_det text;
 $h$;
   d_2a CONSTANT text := $h$  perform plan_h_keys(p, array['order_id', 'day'], 'p');
   -- coordinator 25/10 (cross-cutting input rule): an order_id of 'NaN' / '+-Infinity' is refused by this cast itself
   -- (a bigint has no non-finite value), as bad_input 'order_id or day' - never through numeric (a raw 0A000)
 $h$;
-  d_2b CONSTANT text := $h$  -- 092: piece_id + pallets set the pallets of one VS piece; the day and the pallets may come together
-  perform plan_h_keys(p, array['order_id', 'day', 'piece_id', 'pallets'], 'p');
+  d_2b CONSTANT text := $h$  -- 092: piece_id + pallets set the pallets of one VS piece; the day and the pallets may come together. preview =
+  -- the whole act run and undone (not dry_run: planFetch keeps that key for the Worker's dry-run routes, and
+  -- /plan/vs/day is not one of them - so no Worker change)
+  perform plan_h_keys(p, array['order_id', 'day', 'piece_id', 'pallets', 'preview'], 'p');
+  if p ? 'preview' and jsonb_typeof(p->'preview') <> 'boolean' then perform plan_h_raise('bad_input', 'preview'); end if;
+  v_dry := coalesce((p->>'preview')::boolean, false);
   -- coordinator 25/10 (cross-cutting input rule): an id of 'NaN' / '+-Infinity' is refused by its cast itself (a
   -- bigint has no non-finite value), as bad_input - never through numeric (a raw 0A000)
 $h$;
@@ -77,83 +94,195 @@ $h$;
 $h$;
   d_4a CONSTANT text := $h$  v_nid := plan_h_vs_day(v_order, v_day, p_actor, p_role);
   perform plan_h_finish();
-$h$;
-  d_4b CONSTANT text := $h$  if v_day is not null then v_nid := plan_h_vs_day(v_order, v_day, p_actor, p_role); end if;
-  if v_piece is not null then
-    -- 092 (F45, owner 1/11 option a): VS 610 - the international said 24, the truck loaded 22, and the dispatcher
-    -- could not say so from the Weekly. The piece the dispatcher sees, the bridge's order stop (+delta: 071's
-    -- pieces_sum keeps the leaves equal to it), the order's column of that stop and, for a loading, the Cross-dock stop
-    -- follow in this one transaction. plan.writer = 'natl' as plan_h_vs_day: the bridge trigger that runs on the stop
-    -- then finds leaves = stop, so plan_h_bridge_recut returns at once (no second writer, no notice of the national
-    -- desk to itself). The stop is locked before the piece, the order the international's save and recut use.
-    select ps.order_stop_id into v_sid from v_piece_state ps
-     where ps.piece_id = v_piece and ps.order_id = v_order and ps.order_stop_id is not null;
-    if v_sid is null then perform plan_h_raise('bad_input', 'piece_id:' || v_piece); end if;
-    select * into v_st from order_stops where id = v_sid and deleted_at is null for no key update;
-    perform 1 from shipment_pieces where id = v_piece for no key update;
-    select ps.pallets into v_old from v_piece_state ps where ps.piece_id = v_piece and ps.order_stop_id = v_sid;
-    if v_st.id is null or v_old is null then perform plan_h_raise('bad_input', 'piece_id:' || v_piece); end if;
-    if v_old <> v_pal then
-      v_new := coalesce(v_st.pallets, 0) + (v_pal - v_old);
-      perform set_config('plan.writer', 'natl', true);
-      update shipment_pieces set pallets = v_pal where id = v_piece;
-      perform plan_h_audit(p_actor, p_role, 'update', 'shipment_pieces', v_piece::text,
-                           jsonb_build_object('pallets', v_old), jsonb_build_object('pallets', v_pal, 'by', 'national desk (092)'));
-      update order_stops set pallets = v_new where id = v_st.id;
-      perform plan_h_audit(p_actor, p_role, 'update', 'order_stops', v_st.id::text, jsonb_build_object('pallets', v_st.pallets),
-                           jsonb_build_object('pallets', v_new, 'order_id', v_order, 'by', 'national desk (092)'));
-      -- the order's own column of this stop (loading_pallets_N / unloading_pallets_N, N = stop_number: equal on all
-      -- 193 VS stops of the last 60 days, SELECT 1/11): the Weekly International and its totals read these
-      if v_st.stop_type in ('Loading', 'Unloading') and v_st.stop_number between 1 and 10
-         and v_st.stop_number = trunc(v_st.stop_number) then
-        v_col := lower(v_st.stop_type) || '_pallets_' || v_st.stop_number::int;
-        execute format('select %I from orders where id = $1', v_col) into v_ocol using v_order;
-        if v_ocol is distinct from v_new then
-          execute format('update orders set %I = $1 where id = $2', v_col) using v_new, v_order;
-          perform plan_h_audit(p_actor, p_role, 'update', 'orders', coalesce(o.legacy_id, o.id::text),
-                               jsonb_build_object(v_col, v_ocol), jsonb_build_object(v_col, v_new, 'by', 'national desk (092)'));
-        end if;
-      else
-        -- never a silent skip (principle 1): the answer says the order's column was not found
-        v_warn2 := v_warn2 || jsonb_build_object('code', 'vs_order_column_missing', 'order_stop_id', v_st.id);
-      end if;
-      -- the Cross-dock stop is the sum of the loadings (the international form writes it so): it follows a loading
-      if v_st.stop_type = 'Loading' then
-        for x in update order_stops c set pallets = c.pallets + (v_pal - v_old) from order_stops c0
-                  where c0.id = c.id and c.order_id = v_order and c.stop_type = 'Cross-dock' and c.deleted_at is null
-                    and c.pallets is not null
-                  returning c.id, c0.pallets as before, c.pallets as after loop
-          perform plan_h_audit(p_actor, p_role, 'update', 'order_stops', x.id::text, jsonb_build_object('pallets', x.before),
-                               jsonb_build_object('pallets', x.after, 'order_id', v_order, 'by', 'national desk (092)'));
-        end loop;
-      end if;
-      select lo.name into v_place from locations lo where lo.id = v_st.location_id;
-      -- the stop's numbers, as the international sees them (a split piece is a part of the stop)
-      v_pid := plan_h_notice('intl', 'vs_pallets_set',
-        case when v_st.stop_type = 'Loading'
-          -- "To Ethnikon allaxe tis paletes tis diethnous %s, fortosi %s: %s -> %s . elegxe tis paradoseis"
-          then 'zqTOvyDOlc64zr3Ouc66z47OvSDOrM67zrvOsc6+zrUgz4TOuc+CIM+AzrHOu86tz4TOtc+CIM+EzrfPgiDOtM65zrXOuM69zr/Pjc+CICVzLCDPhs+Mz4HPhM+Jz4POtyAlczogJXMg4oaSICVzIMK3IM6tzrvOtc6zzr7OtSDPhM65z4Igz4DOsc+BzrHOtM+Mz4POtc65z4I='
-          -- "To Ethnikon allaxe tis paletes tis diethnous %s, paradosi %s: %s -> %s . elegxe ti fortosi" (an import: the
-          -- loading abroad and the Weekly International's total stay as the international wrote them, code review xhigh)
-          else 'zqTOvyDOlc64zr3Ouc66z47OvSDOrM67zrvOsc6+zrUgz4TOuc+CIM+AzrHOu86tz4TOtc+CIM+EzrfPgiDOtM65zrXOuM69zr/Pjc+CICVzLCDPgM6xz4HOrM60zr/Pg863ICVzOiAlcyDihpIgJXMgwrcgzq3Ou861zrPOvs61IM+Ezrcgz4bPjM+Bz4TPic+Dzrc=' end,
-        array[coalesce(o.reference, o.id::text), coalesce(nullif(btrim(v_place), ''), '-'),
-              coalesce(trim_scale(v_st.pallets)::text, '-'), trim_scale(v_new)::text],
-        v_order, null, null, p_actor, p_role);
-    end if;
-  end if;
-  perform plan_h_finish();
-$h$;
-  d_5a CONSTANT text := $h$     and v.first_hub_day is not null;
+  -- a VS already on a truck of another day keeps its truck (moving it is the F5 bridge's "follows + notice"); the
+  -- answer says so instead of passing silently (principle 1)
+  select coalesce(jsonb_agg(jsonb_build_object('code', 'vs_day_differs', 'first_hub_day', v.first_hub_day)), '[]'::jsonb)
+    into v_warn from v_vs_state v where v.order_id = v_order and v.first_hub_day is distinct from v_day
+     and v.first_hub_day is not null;
   return jsonb_build_object('ok', true, 'op', 'plan_vs_set_day', 'dry_run', false,
     'ids', jsonb_build_object('order_id', v_order), 'warnings', v_warn,
     'notice_ids', case when v_nid is null then '[]'::jsonb else jsonb_build_array(v_nid) end);
 $h$;
-  d_5b CONSTANT text := $h$     and v.first_hub_day is not null and v_day is not null;   -- 092: only a call that set the day
+  d_4b CONSTANT text := $h$  -- 092: a preview runs ALL of it inside this block and gives it back undone (the raise below), as plan_rt_update's
+  -- dry run; a real call keeps it
+  begin
+    if v_day is not null then
+      v_cd0 := o.cross_dock_date;
+      -- 092 (option a, coordinator 1/11; owner 11/10 one synced VS date): ONE number - the trucks that take or bring
+      -- this VS at Veroia move to the day with it. Before 092 only the international's day changed and the truck kept
+      -- its day, so plan_h_vs_follow (decision 16, inside plan_rt_update) put the international back on the truck's day
+      -- at that truck's next change. Each truck through plan_rt_update itself (its rules, segments, busy checks,
+      -- pallets): the Veroia stop of the VS keeps its hours on the new day. A stock piece (split at Veroia, loaded
+      -- later on purpose) keeps its truck. A truck that cannot move (its stop ran, or one of its own rules says no)
+      -- keeps its day and the answer names it (light rules, owner 31/10): the board marks that row.
+      -- FAGE 644's shape (PGlite): an export loaded Tue 09:00 and at Veroia Wed 00:00-23:59, Excel Tue. Shifted as it is,
+      -- the arrival would start before its loading (leg_order: the stops follow the clock, 081): on the new day it
+      -- starts one minute after the latest loading it unloads, the rest of that day ("the whole day after the
+      -- loading", 086). A loading on a later day than the VS day is not pulled back: that truck is kept and named.
+      for y in
+        select h.rt_id, h.code, h.truck, min(h.day) as from_day, bool_or(h.executed) as executed,
+               jsonb_agg(jsonb_build_object('stop_id', h.stop_id, 'planned_from', h.nf, 'planned_to', greatest(h.nt, h.nf))
+                 order by h.stop_id) filter (where not h.executed) as stops
+          from (select h1.*,
+                       case when h1.floor is not null and h1.floor >= h1.sf
+                             and (h1.floor at time zone 'Europe/Athens')::date = v_day
+                            then h1.floor + interval '1 minute' else h1.sf end as nf,
+                       h1.st_to as nt
+                  from (select h0.*,
+                               ((h0.planned_from at time zone 'Europe/Athens') + make_interval(days => v_day - h0.day)) at time zone 'Europe/Athens' as sf,
+                               ((h0.planned_to at time zone 'Europe/Athens') + make_interval(days => v_day - h0.day)) at time zone 'Europe/Athens' as st_to
+                          from (select distinct r.id as rt_id, r.code, coalesce(tr.license_plate, pa.company_name, r.code) as truck,
+                                       st.id as stop_id, st.planned_from, st.planned_to, coalesce(ss.executed, false) as executed,
+                                       ((case when ps.kind = 'vs_import' then st.planned_from else st.planned_to end)
+                                         at time zone 'Europe/Athens')::date as day,
+                                       -- an arrival at Veroia (an export) never starts before a loading it unloads
+                                       case when ps.kind <> 'vs_import' then
+                                         (select max(pk2.planned_from) from piece_legs l2
+                                            join rt_stops pk2 on pk2.id = l2.pickup_stop_id and pk2.deleted_at is null
+                                           where l2.drop_stop_id = st.id and l2.deleted_at is null) end as floor
+                                  from v_piece_state ps
+                                  join piece_legs l on l.piece_id = ps.piece_id and l.deleted_at is null
+                                  join rt_stops st on st.deleted_at is null
+                                   and st.id = case when ps.kind = 'vs_import' then l.pickup_stop_id else l.drop_stop_id end
+                                  join locations lo on lo.id = st.location_id and lo.is_hub
+                                  join ct_round_trips r on r.id = l.rt_id and r.status <> 'cancelled'
+                                  left join v_rt_stop_state ss on ss.stop_id = st.id
+                                  left join trucks tr on tr.id = r.truck_id
+                                  left join partners pa on pa.id = r.partner_id
+                                 where ps.order_id = v_order and ps.kind in ('vs_import', 'vs_export') and not ps.is_stock) h0
+                         where h0.day <> v_day) h1) h
+         group by h.rt_id, h.code, h.truck
+         order by h.rt_id
+      loop
+        if y.executed then
+          v_kept := v_kept || jsonb_build_object('code', 'vs_truck_kept', 'rt_code', y.code, 'truck', y.truck,
+                                                 'day', y.from_day, 'reason', 'executed');
+        end if;
+        if y.stops is not null then
+          begin
+            v_r := plan_rt_update(jsonb_build_object('rt_id', y.rt_id, 'stops', y.stops), p_actor, p_role);
+            v_mv := v_mv || jsonb_build_object('rt_id', y.rt_id, 'rt_code', y.code, 'truck', y.truck, 'from', y.from_day, 'to', v_day);
+            v_warn2 := v_warn2 || coalesce(v_r->'warnings', '[]'::jsonb);
+            v_nids := v_nids || coalesce(array(select e::bigint from jsonb_array_elements_text(coalesce(v_r->'notice_ids', '[]'::jsonb)) e), '{}');
+          exception when sqlstate '23514' then
+            -- a rule of that truck (plan_h_raise / plan_chk: busy, a handover the change would remove, an order of its
+            -- stops): only this truck's change is undone, the rest goes on
+            get stacked diagnostics v_hint = pg_exception_hint;
+            v_kept := v_kept || jsonb_build_object('code', 'vs_truck_kept', 'rt_code', y.code, 'truck', y.truck,
+                                                   'day', y.from_day, 'reason', coalesce(nullif(substr(v_hint, 6), ''), 'rule'));
+          end;
+        end if;
+      end loop;
+      -- the trucks moved first: plan_rt_update's own follow has written the day (one notice, in v_nids) when its truck
+      -- carried the first piece; else (no truck, or a truck kept) the day is written here
+      if (select cross_dock_date from orders where id = v_order) is distinct from v_day then
+        v_nid := plan_h_vs_day(v_order, v_day, p_actor, p_role);
+      end if;
+      -- plan_rt_update ends with plan_h_finish (the rules IMMEDIATE): deferred again for the pallets below, whose
+      -- pieces_sum holds only once the piece AND its stop are written
+      set constraints all deferred;
+    end if;
+    if v_piece is not null then
+      -- 092 (F45, owner 1/11 option a): VS 610 - the international said 24, the truck loaded 22, and the dispatcher
+      -- could not say so from the Weekly. The piece the dispatcher sees, the bridge's order stop (+delta: 071's
+      -- pieces_sum keeps the leaves equal to it), the order's column of that stop and, for a loading, the Cross-dock stop
+      -- follow in this one transaction. plan.writer = 'natl' as plan_h_vs_day: the bridge trigger that runs on the stop
+      -- then finds leaves = stop, so plan_h_bridge_recut returns at once (no second writer, no notice of the national
+      -- desk to itself). The stop is locked before the piece, the order the international's save and recut use.
+      select ps.order_stop_id into v_sid from v_piece_state ps
+       where ps.piece_id = v_piece and ps.order_id = v_order and ps.order_stop_id is not null;
+      if v_sid is null then perform plan_h_raise('bad_input', 'piece_id:' || v_piece); end if;
+      select * into v_st from order_stops where id = v_sid and deleted_at is null for no key update;
+      perform 1 from shipment_pieces where id = v_piece for no key update;
+      select ps.pallets into v_old from v_piece_state ps where ps.piece_id = v_piece and ps.order_stop_id = v_sid;
+      if v_st.id is null or v_old is null then perform plan_h_raise('bad_input', 'piece_id:' || v_piece); end if;
+      v_pal0 := v_st.pallets;
+      if v_old <> v_pal then
+        v_new := coalesce(v_st.pallets, 0) + (v_pal - v_old);
+        perform set_config('plan.writer', 'natl', true);
+        update shipment_pieces set pallets = v_pal where id = v_piece;
+        perform plan_h_audit(p_actor, p_role, 'update', 'shipment_pieces', v_piece::text,
+                             jsonb_build_object('pallets', v_old), jsonb_build_object('pallets', v_pal, 'by', 'national desk (092)'));
+        update order_stops set pallets = v_new where id = v_st.id;
+        perform plan_h_audit(p_actor, p_role, 'update', 'order_stops', v_st.id::text, jsonb_build_object('pallets', v_st.pallets),
+                             jsonb_build_object('pallets', v_new, 'order_id', v_order, 'by', 'national desk (092)'));
+        -- the order's own column of this stop (loading_pallets_N / unloading_pallets_N, N = stop_number: equal on all
+        -- 193 VS stops of the last 60 days, SELECT 1/11): the Weekly International and its totals read these
+        if v_st.stop_type in ('Loading', 'Unloading') and v_st.stop_number between 1 and 10
+           and v_st.stop_number = trunc(v_st.stop_number) then
+          v_col := lower(v_st.stop_type) || '_pallets_' || v_st.stop_number::int;
+          execute format('select %I from orders where id = $1', v_col) into v_ocol using v_order;
+          if v_ocol is distinct from v_new then
+            execute format('update orders set %I = $1 where id = $2', v_col) using v_new, v_order;
+            perform plan_h_audit(p_actor, p_role, 'update', 'orders', coalesce(o.legacy_id, o.id::text),
+                                 jsonb_build_object(v_col, v_ocol), jsonb_build_object(v_col, v_new, 'by', 'national desk (092)'));
+          end if;
+        else
+          -- never a silent skip (principle 1): the answer says the order's column was not found
+          v_warn2 := v_warn2 || jsonb_build_object('code', 'vs_order_column_missing', 'order_stop_id', v_st.id);
+        end if;
+        -- the Cross-dock stop is the sum of the loadings (the international form writes it so): it follows a loading
+        if v_st.stop_type = 'Loading' then
+          for x in update order_stops c set pallets = c.pallets + (v_pal - v_old) from order_stops c0
+                    where c0.id = c.id and c.order_id = v_order and c.stop_type = 'Cross-dock' and c.deleted_at is null
+                      and c.pallets is not null
+                    returning c.id, c0.pallets as before, c.pallets as after loop
+            perform plan_h_audit(p_actor, p_role, 'update', 'order_stops', x.id::text, jsonb_build_object('pallets', x.before),
+                                 jsonb_build_object('pallets', x.after, 'order_id', v_order, 'by', 'national desk (092)'));
+          end loop;
+        end if;
+        select lo.name into v_place from locations lo where lo.id = v_st.location_id;
+        -- the stop's numbers as the international sees them, in the screen's words (coordinator 1/11): "22p (itan 24) .
+        -- fortosi <place>"; who did it is the notice's created_by
+        v_pid := plan_h_notice('intl', 'vs_pallets_set',
+          case when v_st.stop_type = 'Loading'
+            -- "%sp (itan %s) . fortosi %s"
+            then 'JXPPgCAozq7PhM6xzr0gJXMpIMK3IM+Gz4zPgc+Ez4nPg863ICVz'
+            -- "%sp (itan %s) . paradosi %s"
+            else 'JXPPgCAozq7PhM6xzr0gJXMpIMK3IM+AzrHPgc6szrTOv8+DzrcgJXM=' end,
+          array[trim_scale(v_new)::text, coalesce(trim_scale(v_st.pallets)::text, '-'), coalesce(nullif(btrim(v_place), ''), '-')],
+          v_order, null, null, p_actor, p_role);
+      end if;
+    end if;
+    perform plan_h_finish();
+    -- a VS still on a truck of another day (a truck kept, a stock piece): the answer says so (principle 1)
+    select coalesce(jsonb_agg(jsonb_build_object('code', 'vs_day_differs', 'first_hub_day', v.first_hub_day)), '[]'::jsonb)
+      into v_warn from v_vs_state v where v.order_id = v_order and v.first_hub_day is distinct from v_day
+       and v.first_hub_day is not null and v_day is not null;
+    if v_dry then
+      raise exception 'plan dry run' using errcode = 'P0001', hint = 'plan_dry_run', detail = jsonb_build_object(
+        'vs_day', case when v_day is not null then jsonb_build_object('from', v_cd0, 'to', v_day) end,
+        'trucks', v_mv,
+        'pallets', case when v_piece is not null then jsonb_build_object('from', v_pal0, 'to', coalesce(v_new, v_pal0)) end,
+        'warnings', v_warn || v_kept || v_warn2)::text;
+    end if;
+  exception when others then
+    get stacked diagnostics v_hint = pg_exception_hint, v_det = pg_exception_detail;
+    if v_hint = 'plan_dry_run' then
+      return jsonb_build_object('ok', true, 'op', 'plan_vs_set_day', 'dry_run', true, 'preview', v_det::jsonb);
+    end if;
+    raise;
+  end;
   return jsonb_build_object('ok', true, 'op', 'plan_vs_set_day', 'dry_run', false,
     'ids', jsonb_build_object('order_id', v_order)
            || case when v_piece is null then '{}'::jsonb else jsonb_build_object('piece_id', v_piece) end,
-    'warnings', v_warn || v_warn2,
-    'notice_ids', to_jsonb(array_remove(array[v_nid, v_pid], null)));
+    'trucks', v_mv,
+    'warnings', v_warn || v_kept || v_warn2,
+    'notice_ids', to_jsonb(array_remove(array[v_nid, v_pid] || v_nids, null)));
+$h$;
+  h_1a CONSTANT text := $h$  -- "The national desk changed the Veroia day of international %s: %s -> %s"
+  return plan_h_notice('intl', 'vs_day_changed',
+    'zqTOvyDOlc64zr3Ouc66z47OvSDOrM67zrvOsc6+zrUgz4TOt869IM63zrzOrc+BzrEgzpLOrc+Bzr/Ouc6xz4Igz4TOt8+CIM60zrnOtc64zr3Ov8+Nz4IgJXM6ICVzIOKGkiAlcw==',
+    array[coalesce(o.reference, o.id::text), coalesce(to_char(o.cross_dock_date, 'DD/MM'), '-'), to_char(p_day, 'DD/MM')],
+$h$;
+  h_1b CONSTANT text := $h$  -- 092 (coordinator 1/11): in the screen's words, as the Weekly International shows it beside the order (its pencil mark):
+  -- "Veroia <Kyr 1/11> (itan <Def 2/11>)"; the order is the notice's order_id, who did it its created_by
+  return plan_h_notice('intl', 'vs_day_changed',
+    'zpLOrc+Bzr/Ouc6xICVzICjOrs+EzrHOvSAlcyk=',
+    array[(string_to_array(convert_from(decode('zpTOtc+FLM6kz4HOryzOpM61z4QszqDOrc68LM6gzrHPgSzOo86szrIszprPhc+B', 'base64'), 'UTF8'), ','))[extract(isodow from p_day)::int]
+            || ' ' || to_char(p_day, 'FMDD/FMMM'),
+          coalesce((string_to_array(convert_from(decode('zpTOtc+FLM6kz4HOryzOpM61z4QszqDOrc68LM6gzrHPgSzOo86szrIszprPhc+B', 'base64'), 'UTF8'), ','))[extract(isodow from o.cross_dock_date)::int]
+            || ' ' || to_char(o.cross_dock_date, 'FMDD/FMMM'), '-')],
 $h$;
   s_1a CONSTANT text := $h$                      'first_hub_day', v.first_hub_day, 'n_pieces', v.n_pieces)
 $h$;
@@ -189,8 +318,9 @@ BEGIN
 
   -- ===== PART 1 + PART 2: LIVE TEXT + HUNKS (md5 after = measured on the production-shaped PGlite copy) =====
   FOR v_g IN SELECT * FROM (VALUES
-      ('public.plan_vs_set_day(jsonb,text,text)', ARRAY[d_1a, d_2a, d_3a, d_4a, d_5a], ARRAY[d_1b, d_2b, d_3b, d_4b, d_5b], '843ddcb55a0812b015b5cd14c298a11a'),
-      ('public.plan_vs_state(bigint[])', ARRAY[s_1a], ARRAY[s_1b], '4decce12c3ca9b3ebd30a7a6b3447d5d')) g(sig, a, b, m) LOOP
+      ('public.plan_vs_set_day(jsonb,text,text)', ARRAY[d_1a, d_2a, d_3a, d_4a], ARRAY[d_1b, d_2b, d_3b, d_4b], '2d0c8da95da3f903673a57469ffd79d0'),
+      ('public.plan_vs_state(bigint[])', ARRAY[s_1a], ARRAY[s_1b], '4decce12c3ca9b3ebd30a7a6b3447d5d'),
+      ('public.plan_h_vs_day(bigint,date,text,text)', ARRAY[h_1a], ARRAY[h_1b], 'b5070d28989e1536a74051f786b47a7c')) g(sig, a, b, m) LOOP
     SELECT * INTO p FROM pg_proc WHERE oid = to_regprocedure(v_g.sig);
     IF p.proconfig IS DISTINCT FROM ARRAY['search_path=public'] OR p.prolang <> (SELECT oid FROM pg_language WHERE lanname = 'plpgsql') THEN
       RAISE EXCEPTION '092: % is not a plpgsql function with search_path=public - stop', v_g.sig;
@@ -226,10 +356,11 @@ BEGIN
      <> '53a6022f8f851641de134cdcf1462d55' THEN
     RAISE EXCEPTION '092 proof: plan_h_bridge_recut changed (092 never patches it)';
   END IF;
-  RAISE NOTICE '092 OK: plan_vs_set_day sets the pallets of a VS piece (the international follows), plan_vs_state answers cross_dock_date, triggers %',
+  RAISE NOTICE '092 OK: plan_vs_set_day moves the trucks with the VS day and sets its pallets (the international follows), plan_vs_state answers cross_dock_date, triggers %',
     v_trg1;
 END $do$;
 
 -- The result row (read-only). If the block above failed, the editor stops before this line.
 SELECT (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.plan_vs_set_day(jsonb,text,text)'::regprocedure) AS set_day_md5,
-       (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.plan_vs_state(bigint[])'::regprocedure) AS vs_state_md5;
+       (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.plan_vs_state(bigint[])'::regprocedure) AS vs_state_md5,
+       (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.plan_h_vs_day(bigint,date,text,text)'::regprocedure) AS vs_day_md5;

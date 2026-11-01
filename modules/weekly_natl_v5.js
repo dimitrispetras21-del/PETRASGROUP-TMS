@@ -314,8 +314,11 @@ function _vsDayKick(board, seq) {
   }).catch((e) => {
     if (seq !== _seq) return;
     _vsRead = 'err';
-    // planFetch logged its own failure (a PlanError); only a fault of this code is logged here, once
-    if (!(e && e._sessionGone) && !(typeof PlanError === 'function' && e instanceof PlanError)) _logErr(e, 'weekly natl v5: /plan/vs-state (Veroia day marks)');
+    // logged once: planFetch logs a PlanError that is not a designed answer itself; a designed one and a fault of
+    // this code are logged here (principle 1: the marks that are off are never off in silence)
+    const pe = typeof PlanError === 'function' && e instanceof PlanError;
+    const designed = pe && typeof PlanApi !== 'undefined' && PlanApi.isDesigned(e);
+    if (!(e && e._sessionGone) && (!pe || designed)) _logErr(e, 'weekly natl v5: /plan/vs-state (Veroia day marks)');
   });
 }
 // The mark beside a hub stop whose VS the international has at Veroia on another day («VS Κυρ 1/11»); the whole
