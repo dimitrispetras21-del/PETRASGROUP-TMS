@@ -10066,8 +10066,10 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
    from stop_ids (H-9). */
 .wn5 :is(.wn5-pt, .wn5-vtime, .wn5-end)[data-seg-label]::after { content:''; display:block; grid-column:1 / -1; width:24px; height:2px; margin-top:3px;
   border-radius:1px; background:var(--wn5-seg-initial); }
-.wn5 :is(.wn5-pt, .wn5-vtime, .wn5-end)[data-seg-label="intermediate"]::after { background:var(--wn5-seg-intermediate); }
-.wn5 :is(.wn5-pt, .wn5-vtime, .wn5-end)[data-seg-label="final"]::after { background:var(--wn5-seg-final); }
+/* the Veroia end folded into «+N» (1e) keeps its segment mark: the same bar, under the chip */
+.wn5 .wn5-more-end[data-seg-label]::after { content:''; position:absolute; left:3px; right:3px; bottom:-4px; height:2px; border-radius:1px; background:var(--wn5-seg-initial); }
+.wn5 :is(.wn5-pt, .wn5-vtime, .wn5-end, .wn5-more-end)[data-seg-label="intermediate"]::after { background:var(--wn5-seg-intermediate); }
+.wn5 :is(.wn5-pt, .wn5-vtime, .wn5-end, .wn5-more-end)[data-seg-label="final"]::after { background:var(--wn5-seg-final); }
 /* ⇄ in place of the → (Figma 2138:7745): a 16×16 box, SemiBold 11 ink, centred where the arrow was (6 + 16 + 7 = the
    arrow's 29px, nothing after it moves). The selector repeats the arrow rule's own (:is + :not(:empty), 0,3,1) and adds
    .wn5-hx, so it outranks it: a plain `.wn5-row > .wn5-hx` (0,2,1) lost and the → stayed drawn under the ⇄. */

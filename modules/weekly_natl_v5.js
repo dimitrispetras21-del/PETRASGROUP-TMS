@@ -221,7 +221,7 @@ function weekParam(week, year) {
   return TmsWeek.startOfDate(TmsWeek.start(Number(week), year));
 }
 function _week(n, home) {
-  const v = Number(n);
+  const v = Math.min(53, Math.max(1, Number(n)));   // TMS weeks 1..53 (‹ on W1 stayed on a week 0 outside the strip)
   if (!Number.isInteger(v) || !window.WNATL) return;
   if (home === true) _tabFrom = null;   // «Σήμερα»: the strip goes back to its own place around the current week
   window.WNATL.week = v;
