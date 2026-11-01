@@ -360,8 +360,10 @@
       return { ok: false };
     }
     if (typeof WN5 !== 'undefined') await WN5.reload('save');
-    // its warnings (over_33, a stop out of order) in the form the user still has open, not under it
-    if (out && Array.isArray(out.warnings) && out.warnings.length) WN5Act.strip(host(), out.warnings);
+    // its warnings (a stop out of order) in the form the user still has open, not under it; over_33 stays on the row
+    // only (owner 1/11, WN5Act.savedWarnings)
+    const ws = WN5Act.savedWarnings(out && out.warnings);
+    if (ws.length) WN5Act.strip(host(), ws);
     return { ok: true, text: (items.length === 1 ? 'νέο σημείο στο ' : items.length + ' νέα σημεία στο ') + _truck(c), out };
   }
 
