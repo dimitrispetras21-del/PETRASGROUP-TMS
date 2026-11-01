@@ -225,6 +225,8 @@ test('092 on the production-shaped copy (1/11): the national desk sets the palle
                             [(o, p) => ({ order_id: o, piece_id: p, pallets: -1 }), /bad_input:pallets:positive/],
                             [(o, p) => ({ order_id: o, piece_id: p, pallets: 'NaN' }), /bad_input:pallets:positive/],
                             [(o, p) => ({ order_id: o, piece_id: p, pallets: 'Infinity' }), /bad_input:pallets:positive/],
+                            [(o, p) => ({ order_id: o, piece_id: p, pallets: 2.55 }), /bad_input:pallets:positive/],
+                            [(o, p) => ({ order_id: o, piece_id: p, pallets: 100000 }), /bad_input:pallets:positive/],
                             [(o, p) => ({ order_id: o, piece_id: p }), /bad_input:piece_id and pallets/],
                             [(o) => ({ order_id: o }), /bad_input:order_id and day/],
                             [(o, p) => ({ order_id: o, piece_id: p + 100000, pallets: 20 }), /bad_input:piece_id:/]]) {

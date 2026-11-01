@@ -227,6 +227,15 @@ function planAnswer(route, S, u, json) {
     const ids = (u.searchParams.get('order_ids') || '').split(',').map(Number);
     return json(route, Object.fromEntries(ids.map(id => { const rec = (ords[id - 1] || {}).id; return [String(id), (rec && S.plan.vs[rec]) || 'missing']; })));
   }
+  // 092 (F45): the national desk's notices to this desk; S.plan.notes = [{ rec, id, kind, message }] (order_id = the
+  // rec's base id, as plan_notices holds it). A «Σημείωσα» is recorded in S.plan.reads.
+  if (u.pathname === '/plan/notices') {
+    const unread = (S.plan.notes || []).filter(n => !(S.plan.reads || []).includes(n.id))
+      .map(n => ({ id: n.id, to_desk: 'intl', kind: n.kind, message: n.message, order_id: ords.findIndex(o => o.id === n.rec) + 1, read_at: null }));
+    return json(route, { desk: 'intl', unread, recent: [] });
+  }
+  const rd = u.pathname.match(/^\/plan\/notices\/(\d+)\/read$/);
+  if (rd) { (S.plan.reads = S.plan.reads || []).push(Number(rd[1])); return json(route, { ok: true, op: 'plan_notice_read' }); }
   return json(route, { error: { type: 'NOT_FOUND', code: 'no_route', message: 'rig: ' + u.pathname } }, 404);
 }
 
@@ -3800,6 +3809,34 @@ async function scnV5Err(browser, origin) {
   await page.context().close();
 }
 
+// 092 (F45, owner 1/11 option a): the national desk changed a VS (its pallets) → ✎ on that order's national cell, the
+// notice's own words in its title and in the confirmation, «Σημείωσα» = ONE POST /plan/notices/:id/read, then no ✎.
+async function scnVsNote(browser, origin) {
+  const scn = 'vsnote';
+  const vsMap = {
+    recWiE021: { carriers: [{ kind: 'owned', text: 'TST-V5 / Driver V5', code: 'R1', hub_day: '2026-10-07' }], all_executed: false, all_planned: true, first_hub_day: '2026-10-07', n_pieces: 1 },
+    recWiE020: { carriers: [{ kind: 'partner', text: 'Partner V5', code: 'R2', hub_day: '2026-10-07' }], all_executed: false, all_planned: true, first_hub_day: '2026-10-07', n_pieces: 1 },
+  };
+  const MSG = 'Το Εθνικών άλλαξε τις παλέτες της διεθνούς T-RIG, φόρτωση RIG PLACE: 24 → 22 · έλεγξε τις παραδόσεις';
+  const { page, S } = await openBoard(browser, origin, { mutate: v5Week, plan: { config: V5_AFTER, vs: vsMap, notes: [{ rec: 'recWiE021', id: 77, kind: 'vs_pallets_set', message: MSG }] } });
+  await settle(page, S, 2600);
+  const r = await page.evaluate(([js]) => { const row = eval(js); const b = (oid) => row(oid) && row(oid).querySelector('.wi4-vsnote');
+    return { e21: !!b('recWiE021'), title: b('recWiE021') ? b('recWiE021').title : '', e20: !!b('recWiE020'), all: document.querySelectorAll('#content .wi4 .wi4-vsnote').length }; }, [ROW_JS]);
+  ok(scn, 'the changed VS has ✎ with the notice\'s words; the other VS has none', r.e21 && r.title === MSG && !r.e20 && r.all === 1, r);
+  ok(scn, 'the notices are read once (GET /plan/notices?desk=intl)', S.planGets.filter(g => g === '/plan/notices?desk=intl').length === 1, S.planGets);
+  await page.evaluate(([js]) => eval(js)('recWiE021').querySelector('.wi4-vsnote').click(), [ROW_JS]);
+  await page.waitForTimeout(400);
+  const dlg = await page.evaluate(() => { const o = document.getElementById('modalOverlay'); return { open: !!(o && o.classList.contains('open')), text: o ? o.textContent : '' }; });
+  ok(scn, 'the press shows the words with «Σημείωσα»', dlg.open && dlg.text.includes(MSG) && /Σημείωσα/.test(dlg.text), dlg);
+  await page.click('#_cfaOk');
+  await page.waitForTimeout(1200);
+  ok(scn, '«Σημείωσα» = ONE POST /plan/notices/77/read', JSON.stringify(S.plan.reads || []) === '[77]', S.plan.reads);
+  ok(scn, 'then no ✎ on the board', (await page.evaluate(() => document.querySelectorAll('#content .wi4 .wi4-vsnote').length)) === 0);
+  await shot(page, 'vsnote');
+  ok(scn, 'no page errors; no facade write', !writes(S).length && !S.pageErrors.length, { w: writes(S), e: S.pageErrors });
+  await page.context().close();
+}
+
 // §e #20: 1440 is not designed yet (Φ8, the owner's Figma) — but nothing on it
 // may be cut without its title, overlap, or break the 32px rows.
 
@@ -4460,7 +4497,7 @@ async function scnVs(browser, origin) {
       date: scnDate, keys: scnKeys, search: scnSearch, savefail: scnSaveFail, presence: scnPresence, conflict: scnConflict, fallback: scnFallback, styles: scnStyles,
       twins: scnTwins, queue: scnQueue, unread: scnUnread,
       print: scnPrint, shift: scnShift, late: scnLate, offline: scnOffline, quiet: scnQuiet, natmissing: scnNatMissing, done: scnDone, w1440: scnW1440, parity: scnParity,
-      vs: scnVs, v5: scnV5, v5err: scnV5Err, vsform: scnVsForm, del428: scnDel428 };
+      vs: scnVs, v5: scnV5, v5err: scnV5Err, vsnote: scnVsNote, vsform: scnVsForm, del428: scnDel428 };
     // A watchdog per scenario: one missing locator or one write that never
     // settles fails THAT scenario, closes its pages, and the run goes on.
     const WATCHDOG_MS = 360000;

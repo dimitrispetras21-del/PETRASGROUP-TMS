@@ -71,6 +71,10 @@ let _idsOk = false;      // the catalogue is loaded: only then are ids named (a 
 let _idsFailAt = 0;      // when it last failed: asked again after 60 s or on the user's ↻, never on every reload
 let _idsForce = false;   // the user's ↻ (reload('user')) asks again at once
 let _stale = null;       // a save landed but the board read after it failed: {at} — the rows show the state BEFORE it (F11)
+// 092 (F45): the international's Veroia day of each VS at a hub stop of the board (GET /plan/vs-state cross_dock_date),
+// so a truck at Veroia on another day than the VS is marked on its row (coordinator 1/11: never two numbers in silence)
+let _vsDays = new Map();  // order_id → 'YYYY-MM-DD' | null (key absent = not read, or the base is before 092)
+let _hubVs = new Map();   // rt_stop id → { day, orders: [order_id] } of the VS legs there (from the last board)
 // The reload reasons of a write that the base has CONFIRMED (a 200): if the read after one fails, the screen must not
 // look as if the save did not happen (live F11, 28/10: a 503 after «Ανάθεση» left «ΠΡΟΣ ΑΝΑΘΕΣΗ» on screen and invited
 // a second assignment). Every caller of WN5.reload after a confirmed write uses one of these.
@@ -269,9 +273,52 @@ async function render() {
     _logErr(new Error(err.message), 'weekly natl v5: board week');
   }
   if (err) { _state = 'err'; _lastErr = err; }
-  else { _board = board; _okAt = new Date(); _state = _isEmpty(board) ? 'empty' : 'ok'; _stale = null; }
+  else { _board = board; _okAt = new Date(); _state = _isEmpty(board) ? 'empty' : 'ok'; _stale = null; _vsDayKick(board, seq); }
   if (!paint()) return _fallback();
 }
+// 092: the VS legs of the board's stops, and the international's Veroia day of those VS, read beside the board
+// (one GET, at most 500 ids: plan_vs_state's limit). It never holds the board back; a failed read is logged and the
+// marks stay off (the board itself is whole). Before 092 the answer has no cross_dock_date: no mark, as today.
+function _vsDayKick(board, seq) {
+  const idx = new Map();
+  for (const c of board.cycles || []) {
+    // every stop with a VS leg; the mark is drawn only beside the stops the model calls Veroia (kath.veroia, end:
+    // WN5L's hub rule), so no second hub test lives here
+    for (const s of c.stops || []) {
+      const ids = (s.legs || []).filter((l) => /^vs_/.test(String(l.kind || '')) && l.order_id != null).map((l) => Number(l.order_id));
+      if (ids.length) idx.set(Number(s.stop_id), { day: s.stop_day || null, orders: [...new Set(ids)] });
+    }
+  }
+  _hubVs = idx;
+  const ids = [...new Set([...idx.values()].flatMap((h) => h.orders))].slice(0, 500);
+  if (!ids.length || typeof planFetch !== 'function') { _vsDays = new Map(); return; }
+  planFetch('GET', '/plan/vs-state?order_ids=' + ids.join(',')).then((ans) => {
+    if (seq !== _seq || !active()) return;
+    const m = new Map();
+    for (const id of ids) {
+      const v = ans && ans[String(id)];
+      if (v && typeof v === 'object' && Object.prototype.hasOwnProperty.call(v, 'cross_dock_date')) m.set(id, v.cross_dock_date ? String(v.cross_dock_date).slice(0, 10) : null);
+    }
+    const had = _vsDays.size;
+    _vsDays = m;
+    if (m.size || had) paint();
+  }).catch((e) => {
+    // planFetch logged its own failure (a PlanError); only a fault of this code is logged here, once
+    if (!(e && e._sessionGone) && !(typeof PlanError === 'function' && e instanceof PlanError)) _logErr(e, 'weekly natl v5: /plan/vs-state (Veroia day marks)');
+  });
+}
+// The mark beside a hub stop whose VS the international has at Veroia on another day («VS Κυρ 1/11»); the whole
+// sentence is in the title. Nothing when the days agree, or when the day was not read.
+function _vsDayMark(stopId) {
+  const h = stopId == null ? null : _hubVs.get(Number(stopId));
+  if (!h) return '';
+  const days = [...new Set(h.orders.map((o) => _vsDays.get(o)).filter((d) => d && d !== h.day))].sort();
+  if (!days.length) return '';
+  const txt = days.map(_dl).join(', ');
+  return `<span class="wn5-vsday" title="${_esc('Η διεθνής έχει Βέροια ' + txt + ' · το φορτηγό ' + _dl(h.day))}">VS ${_esc(txt)}</span>`;
+}
+// The international's Veroia day of a VS as the board read it (the leg form's «Ημέρα Βέροιας»), undefined if not read
+function vsDayOf(orderId) { const k = Number(orderId); return _vsDays.has(k) ? _vsDays.get(k) : undefined; }
 // Empty = the three lists that make rows came back empty (a malformed list is not «empty»: WN5L.model refuses it).
 function _isEmpty(b) {
   const n = (k) => (Array.isArray(b[k]) ? b[k].length : 1);
@@ -696,7 +743,7 @@ function _anodHTML(r, m, ok) {
     return `<div class="wn5-aspan wn5-gspan"><span class="${par ? 'wn5-gaptxt' : 'wn5-gapbox'}">${txt}</span></div><div class="wn5-apal wn5-gpal">${_plusHTML(r, 'ANODOS')}</div>`;
   }
   const hd = _dc(ok && s.headDim);
-  const end = r.end ? `<span class="wn5-end${_dc(ok && r.end.dim)}"${_segAttr(r.end.segLabel)} title="${_esc(`Βέροια · ως ${_dow(L().athensDay(r.end.by))} ${L().athensTime(r.end.by)}`)}"><span class="wi4-l1">Βέροια</span><span class="wi4-l2">ως ${_esc(_dow(L().athensDay(r.end.by)))} ${_esc(L().athensTime(r.end.by))}</span></span>` : '';
+  const end = r.end ? `<span class="wn5-end${_dc(ok && r.end.dim)}"${_segAttr(r.end.segLabel)} title="${_esc(`Βέροια · ως ${_dow(L().athensDay(r.end.by))} ${L().athensTime(r.end.by)}`)}"><span class="wi4-l1">Βέροια</span><span class="wi4-l2">ως ${_esc(_dow(L().athensDay(r.end.by)))} ${_esc(L().athensTime(r.end.by))}</span>${_vsDayMark(r.end.stopId)}</span>` : '';
   return `<div class="wn5-ad">${_prtHTML(r, 'ANODOS')}${_chipHTML(r, 'ANODOS', `wi4-dc ${_chipCls(s.day, m.today)}${hd}`, _dl(s.day))}</div>`
     + `<div class="wn5-afl"${_legAttr(r, 'ANODOS')}>${_ptsHTML(s.from, ok)}</div>`
     + `<div class="wn5-ato${_hx(r, s, r.end)}"${_legAttr(r, 'ANODOS')}>${_hxHTML(r, s, r.end)}${_ptsHTML(s.to, ok)}${end}</div>`
@@ -710,7 +757,7 @@ function _anodHTML(r, m, ok) {
 // number goes whole to the next line, and that run is the box cut at two lines (long names, owner 28/10).
 function _flHTML(s, ok, hd) {
   if (!s.veroia) return _ptsHTML(s.from, ok, null, true);
-  const vh = `<span class="wn5-vh${hd}">Βέροια</span><span class="wn5-vtime${hd}"${_segAttr(s.veroia.segLabel)}>${_win(s.veroia.from, s.veroia.to, s.veroia.allDay)}</span>`;
+  const vh = `<span class="wn5-vh${hd}">Βέροια</span><span class="wn5-vtime${hd}"${_segAttr(s.veroia.segLabel)}>${_win(s.veroia.from, s.veroia.to, s.veroia.allDay)}</span>${_vsDayMark(s.veroia.stopId)}`;
   const k = Math.min(s.vBefore || 0, s.from.length);
   return _ptsHTML(s.from.slice(0, k), ok, 1, true) + vh + _ptsHTML(s.from.slice(k), ok, k + 2, true);
 }
@@ -1584,6 +1631,7 @@ const WN5 = {
   // The board HTML of a model, for tests/wn5-board-html.test.js (pure: model in, string out).
   _html: (m) => _boardHTML(m, true),
   _menuItems,
+  vsDayOf,
   _dayTog,
   _qMore,
   _week,

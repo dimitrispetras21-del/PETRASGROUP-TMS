@@ -56,6 +56,8 @@
     v1_same_truck: (w) => 'Το ίδιο φορτηγό έχει τις ίδιες ημέρες και δρομολόγιο του παλιού Εβδομαδιαίου (' + (w.rt_code || '—') + ')',
     local_payroll_review: () => 'Η γραμμή μισθοδοσίας του τοπικού οδηγού με ποσό πάει για έλεγχο στο λογιστήριο',
     vs_day_differs: (w) => 'Η ημέρα του VS διαφέρει από την πρώτη ημέρα του στη Βέροια (' + day(w.first_hub_day) + ')',
+    // 092: the pallets were written, but the international order has no column of that point (its stop number is not 1-10)
+    vs_order_column_missing: () => 'Οι παλέτες γράφτηκαν· η διεθνής παραγγελία δεν έχει πεδίο για αυτό το σημείο — έλεγξέ τη',
     // 072b: a stop that the new vehicle now executes (the driver sheet and the payroll days follow it)
     seg_stop_moved: (w) => `η στάση #${w.stop_id} περνά στο όχημα του άλλου τμήματος (#${w.from_segment_id} → #${w.to_segment_id})`,
     // 072b H-24: the handover time falls inside the stop's window — it stays with the segment of its arrival (H-9)

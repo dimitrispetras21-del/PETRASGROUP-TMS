@@ -18,19 +18,23 @@ const L = require(path.join(ROOT, 'core', 'wn5-labels.js'));
 // 081 (owner 31/10): plan_order_update's stop_kept, labelled once 081 is in the tree (drafts/ until the owner runs it)
 const SQL_081_FILE = ['worker/migrations/081_plan_stop_order_follows.sql', 'worker/migrations/drafts/081_plan_stop_order_follows.sql']
   .map((f) => path.join(ROOT, f)).find((f) => fs.existsSync(f));
+// 092 (F45, owner 1/11): plan_vs_set_day's vs_order_column_missing, labelled once 092 is in the tree
+const SQL_092_FILE = ['worker/migrations/092_plan_vs_pallets_day.sql', 'worker/migrations/drafts/092_plan_vs_pallets_day.sql']
+  .map((f) => path.join(ROOT, f)).find((f) => fs.existsSync(f));
 const SQL_072B_FILE = ['worker/migrations/072b_plan_vehicle_segments.sql', 'worker/migrations/drafts/072b_plan_vehicle_segments.sql']
   .map((f) => path.join(ROOT, f)).find((f) => fs.existsSync(f));
-const SQL = [path.join(ROOT, 'worker', 'migrations', '072_plan_functions.sql'), SQL_072B_FILE, SQL_081_FILE].filter(Boolean).map((f) => fs.readFileSync(f, 'utf8')).join('\n');
+const SQL = [path.join(ROOT, 'worker', 'migrations', '072_plan_functions.sql'), SQL_072B_FILE, SQL_081_FILE, SQL_092_FILE].filter(Boolean).map((f) => fs.readFileSync(f, 'utf8')).join('\n');
 // Literal codes only: `'code', 'over_33'` is a warning; `'code', c.code` (a cycle code) is not.
 const literals = (re) => [...new Set([...SQL.matchAll(re)].map((m) => m[1]))].sort();
 // The 072b additions, present only when 072b is in the tree.
 const B_WARN = SQL_072B_FILE ? ['seg_stop_moved', 'seg_stop_straddles'] : [];
 const B_KIND = SQL_072B_FILE ? ['partner_rate', 'seg_removed', 'seg_vehicle'] : [];
 const C_WARN = SQL_081_FILE ? ['stop_kept'] : [];
+const D_WARN = SQL_092_FILE ? ['vs_order_column_missing'] : [];
 
 test('F4α-T11: WARNING keys = the warning codes raised in 072 + 072b (over_33, mixed_temp, v1_same_truck, local_payroll_review, vs_day_differs; seg_stop_moved, seg_stop_straddles)', () => {
   const codes = literals(/jsonb_build_object\(\s*'code',\s*'([a-z0-9_]+)'/g);
-  assert.deepStrictEqual(codes, ['local_payroll_review', 'mixed_temp', 'over_33', 'v1_same_truck', 'vs_day_differs', ...B_WARN, ...C_WARN].sort(), 'the 072/072b/081 warning set changed: label the new code here');
+  assert.deepStrictEqual(codes, ['local_payroll_review', 'mixed_temp', 'over_33', 'v1_same_truck', 'vs_day_differs', ...B_WARN, ...C_WARN, ...D_WARN].sort(), 'the 072/072b/081/092 warning set changed: label the new code here');
   assert.deepStrictEqual(Object.keys(L.WARNING).sort(), codes);
   assert.ok(Object.isFrozen(L.WARNING));
 });

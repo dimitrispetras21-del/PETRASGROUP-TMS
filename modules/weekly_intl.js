@@ -737,6 +737,7 @@ async function renderWeeklyIntl(){
         }
         if (WINTL.data.nlBySrc !== nlMap) return;
         v5.forEach((v, oid) => { if (v !== 'missing') natMap[oid] = _wiNatFromV5(v); });
+        _wiVsNotes(natMap);
         vsIds = vsIds.filter(id => v5.get(id) === 'missing');
         if (!vsIds.length) { WINTL.data.nlState = 'ok'; if(_wiV2Active()) WIV2._lateLanded(); else _wiPaint(); return; }
       }
@@ -2321,10 +2322,29 @@ function _wiNatFromNl(nl){
 // One entry from /plan/vs-state (a VS with a v5 bridge). The base names each carrier (072 plan_vs_state: kind
 // owned / partner / none, text plates · driver or the partner). 'none' = a trip without a vehicle = not
 // assigned. Several cycles → one tile, texts joined. Done = all_executed, never a Status (F5 plan, Task F).
+// 092 (F45, owner 1/11 option a): what the national desk changed in a VS (its Veroia day, its pallets) reaches this
+// board as an unread notice to the international desk (GET /plan/notices?desk=intl); the order's national cell shows ✎
+// until someone presses «Σημείωσα». Read beside the carriers, never holding the board; a failed read keeps the board
+// as it is (planFetch logged it). WINTL.data.vsNotes: rec id → [notice], only for the VS of the loaded week.
+function _wiVsNotes(natMap){
+  const notes = {};
+  WINTL.data.vsNotes = notes;
+  const byPg = {};
+  Object.keys(natMap).forEach(rec => { const pg = natMap[rec] && natMap[rec].pg; if (pg) byPg[pg] = rec; });
+  if (!Object.keys(byPg).length || typeof planFetch !== 'function') return;
+  planFetch('GET', '/plan/notices?desk=intl').then(d => {
+    if (WINTL.data.vsNotes !== notes) return;
+    for (const n of (d && d.unread) || []) {
+      const rec = byPg[n.order_id];
+      if (rec) (notes[rec] = notes[rec] || []).push(n);
+    }
+    if (Object.keys(notes).length && _wiV2Active()) WIV2._lateLanded();
+  }).catch(e => { if (!(typeof PlanError === 'function' && e instanceof PlanError) && typeof logError === 'function') logError(e, 'weekly intl: /plan/notices'); });
+}
 function _wiNatFromV5(v){
   const cs=(v.carriers||[]).filter(c=>c&&(c.kind==='owned'||c.kind==='partner'));
   const carrier=cs.length?{kind:cs[0].kind==='partner'?'par':'own', text:cs.map(c=>c.text||'—').join(' + ')}:null;
-  return {carrier, done:v.all_executed===true, src:'v5'};
+  return {carrier, done:v.all_executed===true, src:'v5', pg:v.order_pg_id||null};
 }
 // Clickable date chip → calendar → PATCH (existing _wk3PickDate, all dates stay editable — owner 10/8)
 function _wi2Date(oid,field,iso,txt,cls,title){

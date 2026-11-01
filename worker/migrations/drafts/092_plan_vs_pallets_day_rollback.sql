@@ -41,8 +41,10 @@ $h$;
   -- 092: the day is no longer required when the body sets pallets; a body with neither is refused as before
   if v_order is null or (v_day is null and v_piece is null) then perform plan_h_raise('bad_input', 'order_id and day'); end if;
   if (v_piece is null) <> (v_pal is null) then perform plan_h_raise('bad_input', 'piece_id and pallets'); end if;
-  -- a count of pallets is a positive finite number: 'NaN' sorts above every number, 'Infinity' is numeric input
-  if v_pal is not null and not (v_pal > 0 and v_pal < 'Infinity'::numeric) then
+  -- a count of pallets is positive, with one decimal at most and below 100000: the pieces are numeric(6,1), so 2.55
+  -- would be rounded on the piece and not on the stop (pieces_sum at COMMIT), and 1e6 would overflow (a raw 22003).
+  -- 'NaN' (it sorts above every number) and 'Infinity' are numeric input: both are refused here too.
+  if v_pal is not null and not (v_pal > 0 and v_pal < 100000 and v_pal = round(v_pal, 1)) then
     perform plan_h_raise('bad_input', 'pallets:positive');
   end if;
 $h$;
@@ -136,7 +138,7 @@ $h$;
 BEGIN
   PERFORM set_config('lock_timeout', '5s', true);
   SELECT * INTO p FROM pg_proc WHERE oid = to_regprocedure('public.plan_vs_set_day(jsonb,text,text)');
-  IF md5(p.prosrc) <> 'facf37be8b718f594bcc9872f61ce7b4' THEN
+  IF md5(p.prosrc) <> '4c25fb6028b6edb37a5a4c864ceef6c3' THEN
     RAISE EXCEPTION '092 rollback: public.plan_vs_set_day(jsonb,text,text) is not the text 092 wrote (md5 %) - stop', md5(p.prosrc);
   END IF;
   v_new := p.prosrc;

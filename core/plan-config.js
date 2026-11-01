@@ -163,7 +163,9 @@
       const d = await planFetch('GET', '/plan/vs-state?order_ids=' + part.map((r) => pgOf.get(r)).join(','));
       for (const r of part) {
         const v = d ? d[String(pgOf.get(r))] : undefined;
-        if (v === 'missing' || (v && typeof v === 'object' && Array.isArray(v.carriers))) out.set(r, v);
+        // 092: the entry carries its base id, the key of the national desk's notices (plan_notices.order_id)
+        if (v === 'missing') out.set(r, v);
+        else if (v && typeof v === 'object' && Array.isArray(v.carriers)) out.set(r, Object.assign({}, v, { order_pg_id: pgOf.get(r) }));
         else {
           throw _err('vs_shape', 'Η εθνική πλευρά VS ήρθε σε άγνωστη μορφή — ενημέρωσε τον Δημήτρη');
         }
