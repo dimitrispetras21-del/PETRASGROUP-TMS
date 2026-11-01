@@ -12,6 +12,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
+- dimitris · `feat/wn5-b26-087-split-leave-by` · Εθνικά v5 πακέτο 4: B-26 = 087 προσχέδιο (`leave_by` στο σπάσιμο) + «φεύγει ως ‹ › » στο «Σπάσε…»· εκτέλεση 087 πριν το merge· ?v= / SW_VERSION 1793496087· Π-16/Π-11/A-3/Π-8/Π-7 μετά την απάντηση του συντονιστή (`docs/sessions/2026-11-01-dimitris-wn5-pack4-b26.md`)
 - dimitris · `feat/089-partner-rate-anodos` + `feat/089-worker-rate2` + `feat/089-fe-rate-anodos` · Εθνικά v5 Π-7: κόμιστρο ΚΑΘΟΔΟΥ + ΑΝΟΔΟΥ (σύνολο + μέρος ΑΝΟΔΟΥ)· 089 προσχέδιο πάνω στην 086, Worker πάνω στο #191, φόρμα· τίποτα δεν εκτελέστηκε (`docs/sessions/2026-11-01-dimitris-089-partner-rate-anodos.md`)
 - dimitris · `feat/wn5-to-ten-pr3` · Εθνικά v5 Weekly τρίτο PR (3a–3g, F5, F48, F62, B-10, F65, F2, ✈, σταθερή διάταξη, Π-23), πάνω στο #202· μόνο front end, ?v= / SW_VERSION 1793500300 (`docs/sessions/2026-11-01-dimitris-wn5-pr3.md`)
 - dimitris · `feat/wn5-calm-step2` · Εθνικά v5 Weekly βήμα 2 «ηρεμία και σειρά» (2a–2i), πάνω στο #198· μόνο front end, ?v= / SW_VERSION 1793500200 (`docs/sessions/2026-11-01-dimitris-wn5-step2-calm.md`)

@@ -10586,3 +10586,7 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5a-av.sugg { color:var(--accent-text); }
 /* 083: «Με φορτηγό τώρα | Φορτηγό αργότερα» of «Νέο φορτίο» */
 .wn5-nf .wn5-nf-when { align-self:flex-start; }
+/* B-26 (087): «φεύγει ως ‹ Δευ 12/10 22:00 ›», a day stepped in place inside the field box of 2011:8744 */
+.wn5-part-d.wn5-lb { gap:6px; padding:0 2px; }
+.wn5-lb-b { width:20px; height:22px; padding:0; border:none; border-radius:4px; background:none; font:600 14px 'DM Sans',sans-serif; color:var(--wi4-grey-2); cursor:pointer; }
+.wn5-lb-b:hover { background:var(--wi4-hover); color:var(--wi4-ink); }
