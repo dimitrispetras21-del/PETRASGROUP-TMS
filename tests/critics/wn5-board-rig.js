@@ -2139,7 +2139,7 @@ SCN.pack4 = async (browser, origin) => {
       ['POST ' + M]: (e) => [200, { ok: true, op: 'plan_move_pieces', ids: { piece_ids: e.body.from.piece_ids, hub: e.body.target.hub }, warnings: [], notice_ids: [] }] } });
     const t = await tabs(page);
     const badges = await page.$$eval('.wn5 .wi4-tabs .wi4-tab[data-w]', (bs) => bs.map((x) => [x.dataset.w, (x.querySelector('.wn5-tab-n') || {}).textContent || ''])).catch(() => []);
-    ok(scn, 'A-3: W42 «3», W43 «1», the others bare (Figma «W43 ①»)', JSON.stringify(badges) === '[["39",""],["40",""],["41",""],["42","3"],["43","1"],["44",""],["45",""]]', badges);
+    ok(scn, 'A-3: W42 «3», W43 «1», the others bare (Figma «W43 ①»)', JSON.stringify(badges) === '[["40",""],["41",""],["42","3"],["43","1"],["44",""],["45",""],["46",""]]', badges);
     const tip = await page.$eval('.wn5 .wi4-tab[data-w="42"]', (b) => b.title).catch(() => null);
     ok(scn, 'A-3: the badge says what it counts in its title', tip === '3 παραγγελίες χωρίς φορτηγό', tip);
     const chg = await page.$eval('.wn5 .wn5-row[data-rt] .wn5-chg', (e) => e.title).catch(() => null);
@@ -3325,18 +3325,19 @@ SCN.truth = async (browser, origin) => {
   const w42 = await look();
   ok(scn, '1a W42 (current): the load of Mon 5/10 is carried to Sat 10/10, the one of Wed 14/10 stands on its day, the one of Mon 19/10 is not here',
     JSON.stringify(w42.days['2026-10-10']) === '[9101]' && JSON.stringify(w42.days['2026-10-14']) === '[9102]' && !all(w42).includes(9103), w42.days);
-  ok(scn, '1b W42: ΕΠΟΜΕΝΑ · 2 and the shelf «2 για μοίρασμα · 30π» — the two loads the week shows', /ΕΠΟΜΕΝΑ · 2$/.test(w42.q || '') && /2 για μοίρασμα · 30π/.test(w42.hub || ''), { q: w42.q, hub: w42.hub });
+  // 087 (owner answer 1, #167): a VS waiting for its national truck is in ONE place, «ΠΡΟΣ ΑΝΑΘΕΣΗ» — never on the shelf too
+  ok(scn, '1b W42: ΕΠΟΜΕΝΑ · 2, the two loads the week shows; no shelf for them (087: one place)', /ΕΠΟΜΕΝΑ · 2$/.test(w42.q || '') && !w42.hub, { q: w42.q, hub: w42.hub });
   // ── a later week W44: the base still sends all three; none of them is a load of W44
   const at44 = await go(44, '2026-10-24');
   const w44 = await look();
   ok(scn, '1a W44 (later week): no load of another week anywhere; the one ready Mon 26/10 that loads Tue 20/10 (in no earlier board) stands on Sat 24/10, never on no day — main: all four on Sat 24/10',
     at44 && JSON.stringify(w44.days['2026-10-24']) === '[9104]' && all(w44).length === 1, w44.days);
-  ok(scn, '1b W44: ΕΠΟΜΕΝΑ · 1 and «1 για μοίρασμα · 4π»', at44 && /ΕΠΟΜΕΝΑ · 1$/.test(w44.q || '') && /1 για μοίρασμα · 4π/.test(w44.hub || ''), { q: w44.q, hub: w44.hub });
+  ok(scn, '1b W44: ΕΠΟΜΕΝΑ · 1, no shelf (087)', at44 && /ΕΠΟΜΕΝΑ · 1$/.test(w44.q || '') && !w44.hub, { q: w44.q, hub: w44.hub });
   // ── W43: only the load of Mon 19/10, on Mon 19/10
   const at43 = await go(43, '2026-10-17');
   const w43 = await look();
   ok(scn, '1a W43: the load of Mon 19/10 on its day, nothing on Sat 17/10', at43 && JSON.stringify(w43.days['2026-10-19']) === '[9103]' && !(w43.days['2026-10-17'] || []).length && all(w43).length === 1, w43.days);
-  ok(scn, '1b W43: ΕΠΟΜΕΝΑ · 1 and «1 για μοίρασμα · 5π»', at43 && /ΕΠΟΜΕΝΑ · 1$/.test(w43.q || '') && /1 για μοίρασμα · 5π/.test(w43.hub || ''), { q: w43.q, hub: w43.hub });
+  ok(scn, '1b W43: ΕΠΟΜΕΝΑ · 1, no shelf (087)', at43 && /ΕΠΟΜΕΝΑ · 1$/.test(w43.q || '') && !w43.hub, { q: w43.q, hub: w43.hub });
   // ── an earlier week W41: the late load stands on its own day, Mon 5/10, never carried
   const at41 = await go(41, '2026-10-03');
   const w41 = await look();

@@ -858,10 +858,11 @@ function _rowHTML(r, m, no) {
       // a national order waiting for a vehicle (waiting[] or hub[]): the same order card as a cycle's «Άνοιγμα
       // παραγγελιών» (Επεξεργασία, Διαγραφή) — without it an order could not be fixed or deleted before it was on a
       // truck (live F6, 28/10). A VS is the international's order: it changes in the Weekly International.
-      : r.kind === 'unassigned' && r.vs && r.hubPieceIds && r.hubPieceIds.length ? _toPanelBtn(r.hubPieceIds)
       : r.kind === 'unassigned' && r.group && r.group.nat_order_id != null ? orderCardBtn(r.group.nat_order_id)
-        // 2f: a VS has no national order card (it changes in the Weekly International): its column says what it is
-        : r.kind === 'unassigned' && r.vs ? '<span class="wn5-vstag" title="Παραγγελία του Εβδομαδιαίου Διεθνών">VS</span>' : '')
+        // 2f: a VS has no national order card (it changes in the Weekly International): its column says what it is,
+        // and (087, P-11) a VS with pieces at Veroia keeps ✈ «Στον Πίνακα Βέροιας» beside it
+        : r.kind === 'unassigned' && r.vs ? '<span class="wn5-vstag" title="Παραγγελία του Εβδομαδιαίου Διεθνών">VS</span>'
+          + (r.hubPieceIds && r.hubPieceIds.length ? _toPanelBtn(r.hubPieceIds) : '') : '')
     + '</div>'
     + _kathHTML(r, m, ok)
     + `<div class="wn5-asg">${r.segSource === 'segments' && r.tiles.length > 1 ? _tilesHTML(r) : r.tiles.map((t) => _boxHTML(t, r)).join('')}${_cpyHTML(r)}${_chgHTML(r)}</div>`
