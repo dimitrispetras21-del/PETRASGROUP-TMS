@@ -42,15 +42,12 @@
   }
 
   const WARNING = Object.freeze({
-    // Δ12 tile 7: «Υπέρβαση 21π στο ΚΖΗ 2106 — αποθηκεύτηκε». 072 sends rt_id/side/pallets only; after a save the
-    // screen adds saved_on (the cycle's truck or partner, from the board it holds) and the line is Figma's. Without
-    // it (a preview, before saving) the side and the sum: nothing is claimed as saved.
+    // A preview before a save: the side and the sum. After a save over_33 is never a line (owner 1/11: it stays on the
+    // truck's row, WN5Act.savedWarnings), so the «— αποθηκεύτηκε» form of Δ12 tile 7 is gone with its last caller.
     over_33: (w) => {
       const c = cap();
       if (num(w.pallets) === null || c === null) return 'Υπέρβαση ' + (c === null ? '' : c + ' ') + 'παλετών στην ' + side(w.side);
-      return w.saved_on
-        ? 'Υπέρβαση ' + pal(w.pallets - c) + 'π στο ' + w.saved_on + ' — αποθηκεύτηκε'
-        : 'Υπέρβαση ' + pal(w.pallets - c) + 'π στην ' + side(w.side) + ' · ' + pal(w.pallets) + '/' + c;
+      return 'Υπέρβαση ' + pal(w.pallets - c) + 'π στην ' + side(w.side) + ' · ' + pal(w.pallets) + '/' + c;
     },
     mixed_temp: (w) => 'Μεικτές θερμοκρασίες στην ' + side(w.side) + ' · διαφορά ' + pal(w.delta_c) + ' °C',
     v1_same_truck: (w) => 'Το ίδιο φορτηγό έχει τις ίδιες ημέρες και δρομολόγιο του παλιού Εβδομαδιαίου (' + (w.rt_code || '—') + ')',

@@ -183,7 +183,7 @@
   // opts: { wide, anchor (a popover placed under it), end (an element: the popover's right edge on its right edge, so
   // it opens to the left of it), ask (the two-step frame of Δ5: no «×», Άκυρο and the verb are
   // its only buttons — Esc and a click outside still close it), pop (a popover with no «×»: Esc, a click outside),
-  // onClose }
+  // fit (a popover read whole: above the row rather than scrolling, _place), onClose }
   function _dlg(kind, title, opts) {
     opts = opts || {};
     WN5Act.closeAll();
@@ -203,7 +203,7 @@
     back.appendChild(dlg);
     document.body.appendChild(back);
     const d = { kind, back, dlg, msg: dlg.querySelector('.wn5-dlg-msg'), body: dlg.querySelector('.wn5-dlg-b'),
-      ft: dlg.querySelector('.wi4-dlg-ft'), anchor: opts.anchor || null, end: opts.end || null, busy: false, locked: false, closed: false,
+      ft: dlg.querySelector('.wi4-dlg-ft'), anchor: opts.anchor || null, end: opts.end || null, fit: !!opts.fit, busy: false, locked: false, closed: false,
       onClose: opts.onClose || null, refresh: null };
     // Esc and a click outside close it, never in the middle of a send (its answer must land somewhere)
     d.onKey = (ev) => { if (ev.key === 'Escape' && !d.busy) { ev.preventDefault(); ev.stopPropagation(); _close(d); } };
@@ -236,7 +236,10 @@
     const below = vh - v.bottom - 12, above = v.top - 12;
     const x = d.end && d.end.getBoundingClientRect ? d.end.getBoundingClientRect().right - w : r.left;
     d.dlg.style.left = Math.max(8, Math.min(x, window.innerWidth - w - 8)) + 'px';
-    if (h <= below || below >= POP_MIN || below >= above) {
+    // F65 (owner 1/11): a popover that must be read whole (opts.fit: the day panel — a month of six weeks, then its
+    // time fields) opens above the row when it fits there whole and not under it, instead of scrolling inside
+    const whole = d.fit && h > below && h <= above;
+    if (h <= below || ((below >= POP_MIN || below >= above) && !whole)) {
       d.dlg.style.top = (v.bottom + 4) + 'px';
       if (h > below) d.dlg.style.maxHeight = Math.max(below, 0) + 'px';
     } else {
@@ -260,12 +263,11 @@
 
   // After a confirmed 200 (or a request_reused found on the board): re-read the board, then say what the base
   // said — warnings as a strip, and «ενημερώθηκε … διεθνών» only when this act tells the international desk (Ε-3).
-  function _savedOn(w) {
-    const st = typeof WN5 !== 'undefined' && WN5.state ? WN5.state() : null;
-    const c = w && w.rt_id != null && st && st.board ? (st.board.cycles || []).find((x) => x.rt_id === w.rt_id) : null;
-    const who = c && (c.truck || c.partner);
-    return who ? Object.assign({ saved_on: who }, w) : w;
-  }
+  // Owner 1/11: «Υπέρβαση Χπ … — αποθηκεύτηκε» stood above every save of a full truck and did not say whether it was a
+  // problem. Over 33 is allowed (F49, a warning, never a refusal) and the truck's row already says it, in its red /
+  // amber pallet figure, so after a save it is quiet: only on the row. Before a save (the two-step preview, the x/33
+  // chips of Δ1 / «+») it is still said. Every other warning of the answer is shown as before.
+  WN5Act.savedWarnings = (ws) => (Array.isArray(ws) ? ws.filter((w) => !(w && w.code === 'over_33')) : []);
   async function _afterSave(out, okText, opts) {
     opts = opts || {};
     let fresh = true;
@@ -276,8 +278,8 @@
     const rt = _id(opts.rt) || _id(out && out.ids && out.ids.rt_id);
     if (fresh && rt && typeof WN5 !== 'undefined' && typeof WN5.focusRow === 'function') WN5.focusRow('rt:' + rt);
     const host = _boardHost();
-    // after a save the over_33 line names the vehicle (Δ12 tile 7): the cycle's truck or partner, from the board just read
-    if (host && out && Array.isArray(out.warnings) && out.warnings.length) WN5Act.strip(host, out.warnings.map(_savedOn));
+    const ws = WN5Act.savedWarnings(out && out.warnings);
+    if (host && ws.length) WN5Act.strip(host, ws);
     const intl = opts.intl && out && Array.isArray(out.notice_ids) && out.notice_ids.length ? ' · ενημερώθηκε και ο υπεύθυνος διεθνών' : '';
     // okText may read the answer (e.g. already:true of a cancel says «ήταν ήδη ακυρωμένη»)
     const said = typeof okText === 'function' ? okText(out || {}) : okText;
@@ -685,7 +687,7 @@
     return _hm(to) === DAY_WIN.to ? { planned_from: new Date(b - 60000).toISOString(), planned_to: to } : { planned_from: from, planned_to: new Date(a + 60000).toISOString() };
   }
   function _stopsFor(needs, cyc, side, hubWin, winOf) {
-    const out = [], seen = new Map(), miss = new Set(), lack = [];
+    const out = [], seen = new Map(), miss = new Set(), lack = [], hubNew = [];
     for (const n of needs) {
       if (n.loc == null) { miss.add('place'); lack.push(n); continue; }
       const prev = seen.get(n.loc);
@@ -705,6 +707,7 @@
         const w = hubWin || (n.own && n.from && n.to ? [n.from, n.to] : null);
         if (!w) { miss.add('hub'); lack.push(n); continue; }
         st = { ref: 'n' + n.loc, location_id: n.loc, side, planned_from: w[0], planned_to: w[1] };
+        hubNew.push(st);
       }
       else if (!n.from || !n.to) {
         const w = typeof winOf === 'function' ? winOf(n) : null;
@@ -714,6 +717,21 @@
       else st = Object.assign({ ref: 'n' + n.loc, location_id: n.loc, side }, _ownWin(n.from, n.to));
       seen.set(n.loc, st);
       out.push(st);
+    }
+    // Owner 1/11 (one Veroia default, «όλη η ημέρα»): a NEW Veroia arrival of the whole day on ΑΝΟΔΟΣ starts when that
+    // day's last pickup ends — the request's own and the cycle's. The base orders a side by planned_from (072
+    // plan_h_reseq) and refuses an arrival before its own pickup (leg_order): from 00:00 Veroia would come first. The
+    // order form's rule (F66) and a new point's (wn5_edit putNew). A pickup of the whole day too (ends 23:59) leaves it
+    // as it is: the same start, and the request's order keeps the pickup first (board rig f32).
+    if (side === 'ANODOS') for (const h of hubNew) {
+      if (!WN5L.allDay(h.planned_from, h.planned_to)) continue;
+      const day = _ymdOf(h.planned_from);
+      const ends = out.filter((x) => x !== h && x.planned_to).map((x) => x.planned_to)
+        .concat(((cyc && cyc.stops) || []).filter((x) => x.side === side && x.location_id !== h.location_id).map((x) => x.planned_to))
+        .filter((t) => t && _ymdOf(t) === day).map((t) => Date.parse(t)).filter((t) => Number.isFinite(t) && t < Date.parse(h.planned_to));
+      const last = ends.length ? Math.max(...ends) : null;
+      // written at the day's Athens offset, as every other stop of the request (_iso)
+      if (last != null && last > Date.parse(h.planned_from)) h.planned_from = _iso(day, _hm(new Date(last).toISOString()));
     }
     return { stops: out, missing: [...miss], lack };
   }
@@ -800,14 +818,26 @@
       if (!r.ok) return null;
       target = { new_rt: { trip_type: 'PARTNER', partner_id: st.partner, partner_rate: r.v }, side: st.side };
     } else return null;
-    const f = _hhmm(st.hubFrom), t = _hhmm(st.hubTo), hd = _hubDayOf(st.needs, st.day);
-    const r = _stopsFor(st.needs, cyc, st.side, f && t && hd ? _win(hd, f, t) : null, (n) => _dayWin(n, st.win));
+    const hd = _hubDayOf(st.needs, st.day);
+    const r = _stopsFor(st.needs, cyc, st.side, _hubWinOf(st, hd, _hubAsked(st)), (n) => _dayWin(n, st.win));
     if (r.missing.length) return { missing: r.missing, lack: r.lack };
     return { method: 'POST', path: '/plan/move', body: { from: st.from, target, stops: r.stops } };
   }
   // The Veroia window field is asked only when a Veroia stop would have no window: a move carries the source's
   // (_stopsFor), so an asterisk over a field nothing waits for claims a requirement that does not exist (Figma 2011:9294)
   const _hubAsked = (st) => st.needs.some((n) => n.hub && !(n.own && n.from && n.to));
+  // Owner 1/11: ONE Veroia default everywhere — its window fields left empty are «όλη η ημέρα» (00:00–23:59) of the
+  // pieces' Veroia day, as the empty window of the order form and «όλη η ημέρα» of «Ανάθεση». It opened as 00:00 – 23:59
+  // typed in «Μεταφορά σε…» and as two empty fields that blocked the save in «+». One end alone is still missing, never
+  // guessed. asked = false (a moved piece that brings its own Veroia window): empty keeps that window, a default must not
+  // win over it in _stopsFor.
+  function _hubWinOf(st, hd, asked) {
+    if (!hd) return null;
+    const empty = (x) => !String(x == null ? '' : x).trim();
+    if (empty(st.hubFrom) && empty(st.hubTo)) return asked ? _win(hd, DAY_WIN.from, DAY_WIN.to) : null;
+    const f = _hhmm(st.hubFrom), t = _hhmm(st.hubTo);
+    return f && t ? _win(hd, f, t) : null;
+  }
   // Owner 28/10: a save that is off says why, in red, beside it — a grey button alone read as «it does not click»
   // (Δ1 of a VS bridge, 28/10). The reason is the data's only; an off button while sending (busy) or after a closed
   // answer (locked) has its own strip. where: 'afterend' of a row / a button, 'beforebegin' of a footer's first button.
@@ -872,10 +902,10 @@
     // above name theirs; two Veroia days are both named, and the save says it cannot pick one
     if (_hubAsked(st)) {
       const hd = _hubDayOf(st.needs, st.day);
-      h += '<div class="wn5-hubwin"><span>' + (st.side === 'ANODOS' ? 'Άφιξη Βέροιας' : 'Παράθυρο φόρτωσης Βέροιας') + ' · ' + _esc(hd ? _hubDayText(st.needs, hd) : _hubDays(st.needs).map((d) => _hubDayText(st.needs, d)).join(' / ')) + ' *</span>'
+      h += '<div class="wn5-hubwin"><span>' + (st.side === 'ANODOS' ? 'Άφιξη Βέροιας' : 'Παράθυρο φόρτωσης Βέροιας') + ' · ' + _esc(hd ? _hubDayText(st.needs, hd) : _hubDays(st.needs).map((d) => _hubDayText(st.needs, d)).join(' / ')) + '</span>'
         + '<input class="wn5-hm" data-hub="from" inputmode="numeric" placeholder="ΗΗ:ΛΛ" value="' + _esc(st.hubFrom) + '"> – '
         + '<input class="wn5-hm" data-hub="to" inputmode="numeric" placeholder="ΗΗ:ΛΛ" value="' + _esc(st.hubTo) + '">'
-        + '<small>μόνο όταν γίνεται νέα στάση Βέροιας</small></div>';
+        + '<small>κενό: όλη η ημέρα · μόνο όταν γίνεται νέα στάση Βέροιας</small></div>';
     }
     {
       // a group with no line is not drawn (Figma Δ1 shows only groups with content, audit B-21): «· 0» heads nothing
@@ -1038,10 +1068,8 @@
       });
   }
   function _picker(st, kind, title) {
-    // Owner 28/10: an empty required Veroia window opens as its whole day, 00:00–23:59, still editable — as the stop
-    // windows (DAY_WIN). Into st.hubFrom/To, the field's own state: the request carries what the field shows. Not when
-    // a moved piece brings its own Veroia window: a typed window wins over it in _stopsFor, a default must not.
-    if (_hubAsked(st) && !st.hubFrom && !st.hubTo && !st.needs.some((n) => n.hub && n.own && n.from && n.to)) { st.hubFrom = DAY_WIN.from; st.hubTo = DAY_WIN.to; }
+    // Owner 28/10 → 1/11: an empty required Veroia window is its whole day — now left empty and said «κενό: όλη η
+    // ημέρα» (_hubWinOf), no longer typed in as 00:00 – 23:59: one default, read the same in every form.
     const d = _dlg(kind, title, { wide: true });
     d.ft.innerHTML = '<button type="button" class="wi4-btn" data-act="cancel">Άκυρο</button>';
     // Figma Δ1 header: the meta inline after the title in grey, «Μόνο ελεύθερα | Όλα» at the top right. In the header,
@@ -1057,6 +1085,15 @@
       for (const ln of d.body.querySelectorAll('.wn5-cand[data-line]')) {
         const off = (st.filter === 'free' && (ln.dataset.line === 'rt' || ln.dataset.line === 'road')) || (q && !String(ln.dataset.s || '').includes(q));
         ln.hidden = !!off;
+      }
+      // F48 (owner 1/11): the search narrows the partners too. Their line stayed for one matching name and its list
+      // still opened on every partner; now the list holds the matches (and the partner already picked). Disabled
+      // options are the ones fhSelectSearch leaves out, and its observer redraws an open list.
+      const ps = d.body.querySelector('select[data-partner]');
+      if (ps) for (const o of ps.options) {
+        if (!o.value) continue;
+        const out = !!q && o.value !== ps.value && !_norm(o.text).includes(q);
+        o.disabled = out; o.hidden = out;
       }
       // a group whose every line is filtered out loses its header too: «ΚΥΚΛΟΙ … · 3» over nothing reads as a list
       // that failed to paint. A group that has no lines at all keeps its header (its count, or the line that says why).
@@ -1181,10 +1218,9 @@
   }
   function _plusReq(st, it) {
     if (it._ro) return null;
-    const f = _hhmm(st.hubFrom), t = _hhmm(st.hubTo);
     // F27: one field for every line, each line's window on its own Veroia day — never the cycle's start (st.day)
     const needs = _needs(it, false, st.hub), hd = _hubDayOf(needs, st.day);
-    const r = _stopsFor(needs, st.cyc, st.side, f && t && hd ? _win(hd, f, t) : null, (n) => _dayWin(n));
+    const r = _stopsFor(needs, st.cyc, st.side, _hubWinOf(st, hd, true), (n) => _dayWin(n));
     if (r.missing.length) return { missing: r.missing, lack: r.lack };
     const piece = { piece_id: it.piece_id };
     if (it.is_stock) {
@@ -1449,9 +1485,9 @@
         // Figma 2011:10446: the ΑΝΟΔΟΣ popover has no search (its list is the requests of one side's day)
         if (!anod) h += '<input type="search" class="wn5-dq" data-q placeholder="Αναζήτηση στην αναμονή (πελάτης, σημείο, VS)" value="' + _esc(st.q) + '">';
         if (!st.hubStop && st.groups.some((g) => g.items.some((it) => !it._ro && _needs(it, false, hub).some((n) => n.hub)))) {
-          h += '<div class="wn5-hubwin"><span>' + (anod ? 'Άφιξη Βέροιας *' : 'Παράθυρο φόρτωσης Βέροιας *') + '</span>'
+          h += '<div class="wn5-hubwin"><span>' + (anod ? 'Άφιξη Βέροιας' : 'Παράθυρο φόρτωσης Βέροιας') + '</span>'
             + '<input class="wn5-hm" data-hub="from" placeholder="ΗΗ:ΛΛ" value="' + _esc(st.hubFrom) + '"> – <input class="wn5-hm" data-hub="to" placeholder="ΗΗ:ΛΛ" value="' + _esc(st.hubTo) + '">'
-            + '<small>στην ημέρα Βέροιας κάθε φορτίου</small></div>';
+            + '<small>κενό: όλη η ημέρα · στην ημέρα Βέροιας κάθε φορτίου</small></div>';
         }
         // «none» only when every day of the trip was read: a day not read is never said to have nothing (code review r7)
         if (!st.groups.length && !(st.beyond && st.beyond.state !== 'ok')) h += '<p class="wn5-none">Καμία παράδοση σε αναμονή για αυτό το σκέλος.</p>';
@@ -1964,7 +2000,7 @@
     const nDel = own ? own.length : sideStops.filter((s) => s.location_id !== hub).length;
     const head = (side === 'KATHODOS' ? 'ΚΑΘΟΔΟΣ' : 'ΑΝΟΔΟΣ') + ' · ' + box.l1.split(' · ')[0] + no + ' · ' + nDel + (nDel === 1 ? (side === 'KATHODOS' ? ' παράδοση' : ' φόρτωση') : (side === 'KATHODOS' ? ' παραδόσεις' : ' φορτώσεις'));
     const d = _dlg('date', one ? 'Ώρα στάσης · ' + (one.location_id === hub ? 'Βέροια' : one.location || '—')
-      : side === 'KATHODOS' ? 'Ημερομηνία φόρτωσης Βέροιας' : 'Ημερομηνία ΑΝΟΔΟΥ', { anchor: anchorEl });
+      : side === 'KATHODOS' ? 'Ημερομηνία φόρτωσης Βέροιας' : 'Ημερομηνία ΑΝΟΔΟΥ', { anchor: anchorEl, fit: true });
     if (one) d.dlg.dataset.stop = String(one.stop_id);
     // the meta under the title, across the dialog (Figma 2053:7840)
     d.dlg.querySelector('.wi4-dlg-t').insertAdjacentHTML('afterend', '<span class="wn5-dlg-meta">' + _esc(head) + '</span>');

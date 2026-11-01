@@ -84,7 +84,9 @@
       // Veroia day) fills the row, still the user's to change — never asked again, never replaced by «όλη η ημέρα»
       const hd = k.hubDayOf(st.needs, st.day);
       const hw = !st.hub && !st.win.hub && st.needs.find((n) => n.hub && !n.own && n.from && n.to && k.ymdOf(n.from) === hd);
-      if (hw) st.win.hub = { all: false, from: k.hm(hw.from), to: k.hm(hw.to) };
+      // owner 1/11 (one Veroia default): a window of the whole day, or an arrival «ως 23:59» (the order form wrote an
+      // empty arrival as 23:59 = 23:59 until 1/11), stays «όλη η ημέρα» — it opened here as the hours «23:59–23:59»
+      if (hw && !WN5L.allDay(hw.from, hw.to) && !(k.hm(hw.to) === '23:59' && Date.parse(hw.from) === Date.parse(hw.to))) st.win.hub = { all: false, from: k.hm(hw.from), to: k.hm(hw.to) };
     }
     if (!st.day) st.err = k.clientErr('day_missing', 'Η ημέρα της ανάθεσης δεν είναι γνωστή — ανανέωσε');
     for (const c of st.cycles) { const r = k.row(c.rt_id); st.sidePal[c.rt_id] = { pal: k.sidePal(r, st.side), unk: k.sideUnk(r, st.side) }; }
@@ -222,7 +224,10 @@
       const p = take.get(it.piece_id), pal = p && typeof p.take_pallets === 'number' ? p.take_pallets : it.pallets;
       const a = st.needs[2 * i], b = st.needs[2 * i + 1];
       if (typeof pal !== 'number' || !a || !b || !t.has(a.loc) || !t.has(b.loc)) return;
-      ev.push({ t: t.get(a.loc), d: pal }, { t: t.get(b.loc), d: -pal });
+      // a piece is delivered after it is loaded (the base's leg_order), also when both stops start at the same minute —
+      // a whole-day pickup and a whole-day Veroia arrival of one day (owner 1/11, one default) both start 00:00
+      const ta = t.get(a.loc), tb = t.get(b.loc);
+      ev.push({ t: ta, d: pal }, { t: tb > ta ? tb : ta + 1, d: -pal });
     });
     return { before, after: _peak(ev) };
   }

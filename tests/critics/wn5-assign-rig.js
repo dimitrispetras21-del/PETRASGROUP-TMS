@@ -514,5 +514,35 @@ async function f54({ browser, origin, ok, scn }) {
   await page.context().close();
 }
 
-K.run({ scenarios: { own_new, own_join, only_hours, partner, vehicle, rate2, handover, veroia_list, veroia_new, f61, f54 }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],
+// 11 · third PR, group B (owner via coordinator 1/11). One Veroia default: an ΑΝΟΔΟΣ national to Veroia whose arrival
+// the order form wrote as «ως 23:59» (23:59 = 23:59, as it did until 1/11) opens «Ανάθεση» on «όλη η ημέρα», never the
+// hours «23:59–23:59» (plain c533d04e: the hours). B-27 (Figma audit 28/10): the Veroia board's «ΑΠΟΘΕΜΑ · n · π» with
+// stock in the data — verified here, its code is modules/wn5_veroia.js (pack 4), not changed.
+async function pr3b({ browser, origin, ok, scn }) {
+  const b = hubBoard();
+  b.waiting.push({ piece_id: 4401, shipment_id: 5501, kind: 'national', order_id: null, nat_order_id: 3401, order_stop_id: null, pallets: 6, leave_by: null,
+    position_location_id: 4, nat_from_location_id: 4, nat_to_location_id: 1, nat_ready_day: '2026-10-14', nat_due_day: '2026-10-14', overdue: false,
+    is_stock: false, client_id: 41, client: 'ΠΕΛΑΤΗΣ Α', reference: 'N-T401', temperature_c: 4, pallet_exchange: false, direction: 'ANODOS',
+    load_from: '2026-10-14T05:00:00+00:00', load_to: '2026-10-14T07:00:00+00:00', deliver_from: '2026-10-14T20:59:00+00:00', deliver_to: '2026-10-14T20:59:00+00:00', price: null });
+  b.hub.push(Object.assign({}, VS_BASE, { piece_id: 4204, shipment_id: 5304, order_id: 2203, reference: 'VS-T203', pallets: 13, is_stock: true,
+    nat_to_location_id: null, nat_ready_day: '2026-10-12', nat_due_day: null }));
+  const { page, S } = await K.openApp(browser, origin, { board: b });
+  await openWaiting(page, 4401).catch(() => {});
+  const row = await page.evaluate((s) => { const r = document.querySelector(`${s} .wn5a-win[data-row="hub"]`); if (!r) return null;
+    const hm = [...r.querySelectorAll('input')].map((i) => i.value), on = r.querySelector('.wn5a-all.on');
+    return { label: r.querySelector('.wn5a-wl').textContent, hm, on: on ? on.textContent : null }; }, DLG);
+  ok(scn, 'one default · ΑΝΟΔΟΣ N-T401 → Veroia «ως 23:59»: «Άφιξη · Βέροια» opens on «όλη η ημέρα», no «23:59–23:59» — main: the hours 23:59|23:59',
+    !!row && row.on === 'όλη η ημέρα' && !row.hm.length, row);
+  await page.keyboard.press('Escape');
+  await page.click('#wn5-hub [data-hub="open"]').catch(() => {});
+  const gh = await page.evaluate(() => [...document.querySelectorAll('#wn5-hub .wn5-hub-l > .wn5-hub-gh')].map((e) => e.textContent.replace(/\s+/g, ' ').trim()));
+  const st = await page.evaluate(() => { const h = [...document.querySelectorAll('#wn5-hub .wn5-hub-l > .wn5-hub-gh')].pop(); const n = h && h.nextElementSibling; return n ? n.dataset.piece || null : null; });
+  ok(scn, 'B-27 · stock in the data: the Veroia board shows «ΑΠΟΘΕΜΑ · 1 · 13π» after the day groups, with its row (verified, not changed)',
+    gh.length > 1 && gh[gh.length - 1] === 'ΑΠΟΘΕΜΑ · 1 · 13π' && st === '4204', { gh, st });
+  ok(scn, 'nothing written', !saves(S).length, saves(S).map((x) => x.path));
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await page.context().close();
+}
+
+K.run({ scenarios: { own_new, own_join, only_hours, partner, vehicle, rate2, handover, veroia_list, veroia_new, f61, f54, pr3b }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],
   go: 'the assignment form (own new / join / only / hours / F39 / partner / vehicle / F51-F61 / F54 / F56 / 089 two fees), ✈ «Αλλαγή οχήματος…» and the Veroia board v2 «Νέο φορτίο» hold' });
