@@ -9227,6 +9227,9 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
    squeezes its neighbour into three lines); a stop alone keeps the whole cell. */
 .wn5 .wn5-pt { flex:0 1 auto; max-width:50%; }
 .wn5 .wn5-pt:only-child { max-width:none; }
+/* one stop shown and the rest folded into «+N» (ΑΝΟΔΟΣ since 1/11, any side at ≤1600): the stop takes the cell but the
+   chip's 24px + gap, not half of it beside empty room (owner 1/11: «Aspropyrgos · όλη η ημέρα · 24π…» cut by half) */
+.wn5 .wn5-pts:has(> .wi4-more):not(:has(> .wn5-pt ~ .wn5-pt)) > .wn5-pt { max-width:calc(100% - 32px); }
 /* A point with no number (a waiting VS, a single stop): its name starts at x0, flush with the numbers above — in the
    wi4 grid the empty number column still kept its 4px gap. */
 .wn5 .wn5-pt > .wi4-l1:first-child { grid-column:1 / -1; }
