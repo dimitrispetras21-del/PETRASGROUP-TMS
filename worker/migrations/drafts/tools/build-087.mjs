@@ -10,8 +10,8 @@ import { fileURLToPath } from 'node:url';
 import { buildDryRun } from './build-073-dryrun.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-// drafts/ until the owner runs 087; then the files go one up (CLAUDE.md rule 5) and this becomes '..', '..'
-export const DIR = path.resolve(HERE, '..');
+// 087 was executed 1/11 and its files left drafts/ (CLAUDE.md rule 5); the builder stays here
+export const DIR = path.resolve(HERE, '..', '..');
 export const SOURCE = '087_plan_board_reads_hub_mark.sql';
 export const ROLLBACK = '087_plan_board_reads_hub_mark_rollback.sql';
 const md5Of = (sig) => `(SELECT md5(prosrc) FROM pg_proc WHERE oid = '${sig}'::regprocedure)`;

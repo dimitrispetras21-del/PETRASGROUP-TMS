@@ -11,8 +11,8 @@ import { fileURLToPath } from 'node:url';
 import { buildDryRun } from './build-073-dryrun.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-// drafts/ until the owner runs them (CLAUDE.md rule 5); after the run the files go one up and this line with them
-export const DIR = path.resolve(HERE, '..');
+// 085 was executed 1/11 and its files left drafts/ (CLAUDE.md rule 5); the builder stays here
+export const DIR = path.resolve(HERE, '..', '..');
 export const SOURCE = '085_plan_invoiced_client_price.sql';
 export const ROLLBACK = '085_plan_invoiced_client_price_rollback.sql';
 const md5Of = (sig) => `(SELECT md5(prosrc) FROM pg_proc WHERE oid = '${sig}'::regprocedure)`;
