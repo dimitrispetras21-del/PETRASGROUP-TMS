@@ -70,8 +70,7 @@
   // «Νέο φορτίο» on the right builds ONE load — the ticked rows, other loadings of the same truck, the Veroia day and
   // window — with the truck chosen in the assignment form (WN5Assign.pick), and writes it once (POST /plan/legs).
   // «Φορτηγό αργότερα» (083, owner 31/10): the load is made with no vehicle (new_rt.later) and shows «ΠΡΟΣ ΑΝΑΘΕΣΗ» on
-  // its day; its truck is given later from that row. Left out, it needs SQL: «← Weekly» (a VS import is on both lists
-  // today; answer 1 needs the base to tell them apart).
+  // its day; its truck is given later from that row. «← Weekly» / «→ Βέροια»: 087 (P-11, below).
   // The new load's state survives a re-read of the board (memory only); a row no longer on the board leaves it.
   const _nf = { sel: [], extra: [], day: null, win: { all: true, from: '', to: '' }, choice: null, now: null, busy: false, adding: false };
   // a piece's Veroia day: a VS's cross-dock (vsHubDay), stock its leave day, a national at Veroia its ready day
@@ -324,12 +323,43 @@
     window.addEventListener('keydown', key, true);
     _pop = { el, out, key };
   }
-  // «⋯» of a row: «Σπάσε…» («← Weekly» waits for SQL, answer 1 — not drawn until it writes)
+  // «⋯» of a row: «Σπάσε…», and «← Weekly» for a piece that was SENT here (for_split): one sent back to the Weekly
+  // leaves the panel (P-11). A piece a truck unloaded here (inbound) has no mark to clear: it stays.
   function more(pieceId, anchor) {
     if (!_live()) return;
-    const id = K().id(pieceId);
+    const k = K(), id = k.id(pieceId);
     if (!id || !anchor) return;
-    _popOpen(anchor, '<button type="button" class="wn5-hub-pi" data-v="split">Σπάσε…</button>', (v) => { if (v === 'split') split(id, anchor); });
+    const raw = k.item(id) || {};
+    _popOpen(anchor, '<button type="button" class="wn5-hub-pi" data-v="split">Σπάσε…</button>'
+      + (raw.for_split === true ? '<button type="button" class="wn5-hub-pi" data-v="weekly">← Weekly</button>' : ''),
+      (v) => { if (v === 'split') split(id, anchor); else if (v === 'weekly') _hubMark([id], false); });
+  }
+  // ═══ P-11 (087, owner 28/10, answer 1 of the Veroia panel, PR #167): a piece is in ONE place ═══
+  // A VS import starts only as a ΠΡΟΣ ΑΝΑΘΕΣΗ row; its ✈ sends it to this panel (hub: true) and it leaves the Weekly;
+  // «← Weekly» brings it back (hub: false). One mark in the base, shipment_pieces.for_split_at (the board's
+  // hub[].for_split): POST /plan/move with target {hub}. Nothing moves, so no dry run and no list.
+  async function _hubMark(pieceIds, hub) {
+    const k = K();
+    const ids = (pieceIds || []).map((x) => k.id(x)).filter(Boolean);
+    if (!ids.length) return;
+    if (k.closedErr()) { WN5Act.strip(k.boardHost(), k.closedErr()); return; }
+    let out;
+    try {
+      out = await planFetch('POST', '/plan/move', { body: { from: { piece_ids: ids }, target: { hub } } });
+    } catch (e) {
+      if (e && e._sessionGone) return;
+      WN5Act.strip(k.boardHost(), e);
+      return;
+    }
+    if (hub) _open = true;                // the panel comes back open, the piece in it
+    await k.afterSave(out, hub ? 'Στάλθηκε στη Βέροια' : 'Επέστρεψε στο Weekly');
+  }
+  // ✈ of a ΠΡΟΣ ΑΝΑΘΕΣΗ VS row standing at Veroia: one line, «Στον Πίνακα Βέροιας»
+  function toPanel(pieceIds, anchor) {
+    if (!_live() || !anchor) return;
+    const ids = String(pieceIds || '').split(',').map((x) => K().id(x)).filter(Boolean);
+    if (!ids.length) return;
+    _popOpen(anchor, '<button type="button" class="wn5-hub-pi" data-v="hub">Στον Πίνακα Βέροιας</button>', (v) => { if (v === 'hub') _hubMark(ids, true); });
   }
   // «+ φόρτωση από αναμονή»: a ΚΑΘΟΔΟΣ load that waits elsewhere, loaded on the same truck before Veroia
   function nfAddOpen(anchor) {
@@ -548,5 +578,5 @@
     return d;
   }
 
-  window.WN5Hub = { shelfHTML, open, close, split, _truck, tick, more, nfDay, nfWin, nfHm, nfDrop, nfReset, nfLater, nfAddOpen, nfPick, nfCreate };
+  window.WN5Hub = { shelfHTML, open, close, split, _truck, tick, more, toPanel, nfDay, nfWin, nfHm, nfDrop, nfReset, nfLater, nfAddOpen, nfPick, nfCreate };
 })();
