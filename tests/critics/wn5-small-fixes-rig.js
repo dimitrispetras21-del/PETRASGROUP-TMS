@@ -9,7 +9,16 @@
 const K = require('./wn5-rig-kit.js');
 
 const NOW_MS = Date.parse(K.NOW);
-const mk = (w, add) => { const b = K.week(); b.week = w; for (const c of b.cycles) { c.rt_id += add; c.code += '-' + add; } return b; };
+// The kit week moved to week w: its days too (PR3 3d: a cycle of an earlier week is the next week's «συνέχεια» line, not a
+// row, so W43 needs cycles dated in W43 — before 3d the old dates were clamped onto W43's Saturday as rows).
+const mk = (w, add) => {
+  const shift = Math.round((Date.parse(w) - Date.parse(K.week().week)) / 864e5);
+  const mv = (d) => { const t = new Date(Date.parse(d.slice(0, 10)) + shift * 864e5).toISOString().slice(0, 10); return t + d.slice(10); };
+  const b = JSON.parse(JSON.stringify(K.week()).replace(/"(\d{4}-\d{2}-\d{2})([^"]*)"/g, (m, d, rest) => JSON.stringify(mv(d + rest))));
+  b.week = w;
+  for (const c of b.cycles) { c.rt_id += add; c.code += '-' + add; }
+  return b;
+};
 const toasts = (page) => page.evaluate(() => (window.__ev || []).filter((x) => x.k === 'toast').map((x) => String(x.a[0])));
 const boards = (S) => K.planOf(S, 'GET', '/plan/board');
 
