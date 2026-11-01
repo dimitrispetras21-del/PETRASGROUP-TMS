@@ -356,7 +356,18 @@
       }
       const el = WN5Act.strip(d.msg, _orderErr(e, req));
       const acc = _withAccept(req, e);
-      if (el && acc) _acceptBtn(el, () => { if (!d.busy && !d.closed) _send(d, acc, okText, opts); }, d.body);
+      // opts.current(): the request the form would send NOW. The offer is only for the values it was refused with:
+      // a form changed since (a pick from a list outside the body, by the keyboard, leaves no trace in d.body) is
+      // said, and the user presses «Αποθήκευση» again (code review high r2, 1/11)
+      if (el && acc) _acceptBtn(el, () => {
+        if (d.busy || d.closed) return;
+        const now = typeof opts.current === 'function' ? _withAccept(opts.current(), e) : acc;
+        if (!now || JSON.stringify(now.body) !== JSON.stringify(acc.body)) {
+          WN5Act.strip(d.msg, _clientErr('form_changed', 'Η φόρμα άλλαξε μετά την άρνηση — πάτα «Αποθήκευση» για να ελεγχθεί ξανά'));
+          return;
+        }
+        _send(d, acc, okText, opts);
+      }, d.body);
       // A request_reused the board does not show (the record lies in another week, or the form was edited after a
       // plan_unknown): the SAME slot id would answer request_reused on every press — a dead end. The Worker's strip
       // says where to look; the save stays locked until the window closes (a new window = a new request_id).
@@ -1120,7 +1131,7 @@
     if (!req || req.missing) return;
     // a move drops legs: the two steps of S-82; a refusal before the list lands in this window (host)
     d.busy = true; _btns(d, true);
-    WN5Act.twoStep({ method: req.method, path: req.path, body: req.body, kind: 'move', title: 'Μεταφορά · ' + st.what, verb: 'Μεταφορά', host: d.msg, okText: 'Μεταφέρθηκε' })
+    WN5Act.twoStep({ method: req.method, path: req.path, body: req.body, kind: 'move', title: 'Μεταφορά · ' + st.what, verb: 'Μεταφορά', host: d.msg, okText: 'Μεταφέρθηκε', intl: true })
       .then(async (out) => {
         if (!d.closed) { d.busy = false; _btns(d, false); }
         if (out) { _close(d); await _afterSave(out, 'Μεταφέρθηκε', { intl: true, rt: _reqRt(req) }); }
@@ -1601,7 +1612,7 @@
         if (d.settle && performance.now() < d.settle) return;
         const it = byId(_id(b.dataset.piece));
         const req = it && _plusReq(st, it);
-        if (req && !req.missing) _send(d, req, 'Προστέθηκε στο σκέλος', { intl: true });
+        if (req && !req.missing) _send(d, req, 'Προστέθηκε στο σκέλος', { intl: true, current: () => { const it2 = byId(_id(b.dataset.piece)); return it2 && _plusReq(st, it2); } });
       }
     });
     d.dlg.addEventListener('input', (ev) => {

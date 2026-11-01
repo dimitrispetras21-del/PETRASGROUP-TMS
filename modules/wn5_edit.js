@@ -234,6 +234,7 @@
     const dr = k.row(dstRtId), before = k.sidePal(dr, side), bu = k.sideUnk(dr, side);
     const out = await WN5Act.twoStep({ method: 'POST', path: '/plan/move', body: { from: { rt_id: src.rtId, piece_ids: pcs }, target: { rt_id: dstRtId, side }, stops: r.stops },
       kind: 'move', verb: 'Μεταφορά', ask: true, title: 'Μεταφορά · ' + place + ' · ' + _palT(pal, unk) + 'π', host,
+      okText: 'Μεταφέρθηκε: ' + place + ' → ' + _truck(dst), intl: true,   // an accepted re-run (086) says the same
       what: () => [_truck(c) + ' → ' + _truck(dst), _truck(dst) + ' · ' + _palT(before, bu) + ' → ' + _palT(before + pal, bu + unk) + '/33' + (before + pal > 33 ? ' · υπέρβαση' : '')] });
     if (out) await k.afterSave(out, 'Μεταφέρθηκε: ' + place + ' → ' + _truck(dst), { intl: true });
     return out;
