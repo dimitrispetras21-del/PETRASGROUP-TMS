@@ -650,7 +650,8 @@ let _wwLast = null;      // the last board's waiting_weeks: shown while the next
                          // empty and refill the badges and shift the centred strip twice (1c; code review high, 1/11)
 function _waitOf(d) {
   // the board of the week on screen; while another week LOADS, the last one's counts (they name absolute weeks, a week
-  // outside its window shows none until the new board lands); after a failed read none, never an old count
+  // outside its window shows none until the new board lands); none while a read stands failed. The last counts may
+  // be from an older board than the one before (a failed read in between): they last only until the new board lands
   const own = _m && _m.week === _sat && Array.isArray(_m.waitingWeeks) ? _m.waitingWeeks : null;
   if (own) _wwLast = own;
   const ww = own || (_state === 'loading' ? _wwLast : null);
