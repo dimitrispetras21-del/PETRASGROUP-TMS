@@ -477,6 +477,9 @@ SCN.topbar = async (browser, origin) => {
   const { page, S } = await openBoard(browser, origin, { board: fixture(), viewport: { width: 1440, height: 900 } });
   await page.evaluate(() => (document.fonts ? document.fonts.ready : null)).catch(() => {});
   await page.waitForTimeout(300);   // the sidebar's 0.22 s collapse (the app restarts it at load and at a week change)
+  // PR3a 3a (coordinator 1/11): the current week now opens scrolled to today when today is below the middle of the
+  // screen; this scenario measures the frame's geometry from the top of the board, so it reads it there
+  await page.evaluate(() => { const c = document.getElementById('content'); if (c) c.scrollTop = 0; });
   const read = () => page.evaluate(() => {
     const tb = document.querySelector('.main > .topbar');
     const vis = (el) => !!el && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
@@ -865,7 +868,8 @@ SCN.strips = async (browser, origin) => {
     && sb.msg.color === 'rgb(52, 64, 84)' && /·/.test(sb.dot) && !/·/.test(sb.headAfter), sb);
   ok(scn, '«Ανανέωση ↻» only where the base asks for a re-read (stale, «ανανέωσε»), never on a plain refusal', !sb.refAct && sb.askAct, { ref: sb.refAct, ask: sb.askAct });
   ok(scn, '«Έλεγχος στο board» at the end, Medium, in the strip\'s own colour', !!sb.unk && sb.unk.text === 'Έλεγχος στο board' && sb.unk.w === '500' && sb.unk.c === sb.unk.head && sb.unk.atEnd, sb.unk);
-  ok(scn, 'one warning is one 34px line «ΠΡΟΕΙΔΟΠΟΙΗΣΗ · …» (2104:145961); two are a list', !sb.w1.ul && sb.w1.t === 'Υπέρβαση 21π στο TST-2106 — αποθηκεύτηκε' && sb.w1.h === 34 && sb.w2 === 2, sb);
+  // PR3 (owner 1/11): over_33 never says «— αποθηκεύτηκε» (it stays on the truck's row); the strip shows the side and sum
+  ok(scn, 'one warning is one 34px line «ΠΡΟΕΙΔΟΠΟΙΗΣΗ · …» (2104:145961); two are a list', !sb.w1.ul && /^Υπέρβαση 21π στην /.test(sb.w1.t) && sb.w1.h === 34 && sb.w2 === 2, sb);
   ok(scn, '«↻» is a 12px round-arrow icon in the link colour (a mask, the glyph sized 0, aria-hidden), not the text glyph (Δ12)', !!sb.ico && sb.ico.w === 12 && sb.ico.h === 12
     && sb.ico.fs === '0px' && /svg/.test(sb.ico.mask || '') && sb.ico.hidden === 'true' && sb.ico.bg === sb.ico.color, sb.ico);
   ok(scn, 'the icon sits on the word\'s line: the link one 16px line, the strip still 34, the icon centred on it (±1.5); the bar\'s «↻ hh:mm» too',
@@ -1058,8 +1062,10 @@ async function scnPlus(browser, origin) {
     const hv = await page.evaluate((sel) => { const b = document.querySelector(sel); if (!b) return null; const cs = getComputedStyle(b); const sv = b.querySelector('svg');
       const r = sv && sv.getBoundingClientRect();
       return { op: cs.opacity, bc: cs.borderTopColor, bw: cs.borderTopWidth, bg: cs.backgroundColor, svg: r ? [Math.round(r.width), Math.round(r.height)] : null, text: b.textContent.trim(), ink: sv ? getComputedStyle(sv).color : null }; }, K201);
-    ok(scn, 'row hover: the «+» bg #f0f9ff, border 1px #027bbd, the 11px plus icon in #0369a1, no text glyph', !!hv && hv.op === '1' && hv.bc === 'rgb(2, 123, 189)' && hv.bw === '1px'
-      && hv.bg === 'rgb(240, 249, 255)' && !!hv.svg && hv.svg.join('×') === '11×11' && hv.text === '' && hv.ink === 'rgb(3, 105, 161)', hv);
+    // 3f (coordinator 1/11, PR3a): the glyph is 12px now (was the frame's 11px): the 11px / 1.1 «+» read fainter than
+    // the «+1» chip beside it. The hover look (fill, border, ink, no text glyph) is unchanged.
+    ok(scn, 'row hover: the «+» bg #f0f9ff, border 1px #027bbd, the 12px plus icon in #0369a1, no text glyph', !!hv && hv.op === '1' && hv.bc === 'rgb(2, 123, 189)' && hv.bw === '1px'
+      && hv.bg === 'rgb(240, 249, 255)' && !!hv.svg && hv.svg.join('×') === '12×12' && hv.text === '' && hv.ink === 'rgb(3, 105, 161)', hv);
     ok(scn, 'the «+» of a KATHODOS opens .wi4-dlg[data-wn5=plus] as a popover', (await bClick(page, K201)) && await bHas(page, `.wn5-pop-back ${D}`));
     const txt = await bText(page, D);
     ok(scn, 'header «Πρόσθεσε στην ΚΑΘΟΔΟ» · TST-2106 · Δευ 12/10 · φόρτωση 16:00–18:00 · 27/33', txt.includes('Πρόσθεσε στην ΚΑΘΟΔΟ') && txt.includes('TST-2106 · Δευ 12/10 · φόρτωση 16:00–18:00 · 27/33'), txt.slice(0, 300));
@@ -2622,7 +2628,10 @@ SCN['figma-g1'] = async (browser, origin) => {
   await c.page.waitForSelector('#content > .wi4.wn5[data-state="ok"]', { timeout: 8000 }).catch(() => {});
   await c.page.mouse.move(0, 0);
   const op = await c.page.evaluate(() => { const x = document.querySelector('#content .wn5 .wn5-row .wn5-plus'); return x ? Number(getComputedStyle(x).opacity) : null; });
-  ok(scn, 'B-8 · a «+» with no hover is visible and lighter (0 < opacity < 1)', op != null && op > 0 && op < 1, op);
+  // 3f (coordinator 1/11, PR3a) replaces «lighter until hover»: at .45 the «+» was the faintest control on the row
+  // while «+1» shouted, so it is at full strength at rest (the hover still fills it, checked in «plus»). B-8's own rule
+  // — seen without hover — stays.
+  ok(scn, 'B-8 · a «+» with no hover is visible, at full strength (3f: opacity 1)', op === 1, op);
   await c.page.context().close();
 };
 // Figma audit 28/10 (PR #154), group 1 part B — Δ1 and the order card (wn5_actions.js), stacked on the Δ1 quick fix:
@@ -3341,6 +3350,161 @@ SCN.calm = async (browser, origin) => {
     ok(scn, `one line per point line, every row ≤ 58px — ${w} sidebar ${sb} (main: names on 3–4 lines, rows of 70px)`, h.n > 0 && h.max <= 58 && h.lines === 0, h);
     await o.page.context().close();
   }
+};
+// Third PR, group A «the board» (coordinator 1/11, relaying the owner): one check per item, each NO-GO on c533d04e.
+// The week strip at the rig clock: W42 (Sat 10/10 – Fri 16/10) is the current week, today Tue 13/10. Day L is 10/10
+// here (GET /plan/config answers it), so W41 and W40 are «before L». The fake board is the step-1 week plus rows
+// that push today below the middle of a 900px screen, a cycle that loads Fri 16/10 and returns Sat 17/10 (W43), a
+// waiting national with its order card, and two notices: one of the VS on Sat 10/10, one of an order no week shows.
+function pr3aBoard() {
+  const b = truthBoard();
+  const SUN = '2026-10-11', WED = '2026-10-14', FRI = '2026-10-16', SAT2 = '2026-10-17';
+  for (let i = 0; i < 4; i++) {   // four Sunday cycles: today (Tue) starts below the middle of the screen
+    const id = 211 + i;
+    b.cycles.push(bCycle(id, { truck_id: 15, truck: 'TST-21' + (10 + i), driver_id: 35, driver: 'Driver Test 05' }, [
+      bStop(id * 10 + 1, 'KATHODOS', 1, SUN, '08:00', '10:00', [bLeg(id * 10 + 1, id * 10 + 1, 'load', 5)]),
+      bStop(id * 10 + 2, 'KATHODOS', 2, SUN, '12:00', '14:00', [bLeg(id * 10 + 1, id * 10 + 1, 'unload', 5)]) ]));
+  }
+  for (let i = 0; i < 10; i++) {   // ten Wednesday cycles: rows under the pointer for the repaint check, and room to scroll today up
+    const id = 231 + i;
+    b.cycles.push(bCycle(id, { truck_id: 15, truck: 'TST-23' + (10 + i), driver_id: 35, driver: 'Driver Test 05' }, [
+      bStop(id * 10 + 1, 'KATHODOS', 1, WED, '08:00', '10:00', [bLeg(id * 10 + 1, id * 10 + 1, 'load', 5)]),
+      bStop(id * 10 + 2, 'KATHODOS', 2, WED, '12:00', '14:00', [bLeg(id * 10 + 1, id * 10 + 1, 'unload', 5)]) ]));
+  }
+  // RT-T220: loads at Veroia Fri 16/10 (W42), its ΑΝΟΔΟΣ Sat 17/10 (W43)
+  b.cycles.push(bCycle(220, { truck_id: 14, truck: 'TST-2208', driver_id: 34, driver: 'Driver Test 04' }, [
+    bStop(2201, 'KATHODOS', 1, FRI, '16:00', '18:00', [bLeg(6201, 5201, 'load', 10)]),
+    bStop(2202, 'KATHODOS', 2, FRI, '20:00', '22:00', [bLeg(6201, 5201, 'unload', 10)]),
+    bStop(2203, 'ANODOS', 3, SAT2, '08:00', '10:00', [bLeg(6203, 5203, 'load', 8)]),
+    bStop(2204, 'ANODOS', 1, SAT2, '14:00', '16:00', [bLeg(6203, 5203, 'unload', 8)]) ]));
+  b.waiting = [clone(bBoard().waiting[0])];   // N-T201, a national waiting for a vehicle (Mon 12/10): its order card
+  b.notices = [
+    { id: 801, kind: 'vs_withdrawn', message: 'rig sentinel notice', order_id: 2901, nat_order_id: null, rt_id: null, created_at: '2026-10-12T09:00:00+03:00', created_by: 'trigger:x' },
+    { id: 802, kind: 'vs_withdrawn', message: 'rig sentinel notice', order_id: 9999, nat_order_id: null, rt_id: null, created_at: '2026-10-12T10:00:00+03:00', created_by: 'trigger:x' }];
+  return b;
+}
+SCN.pr3a = async (browser, origin) => {
+  const scn = 'pr3a';
+  let extra = false;   // the repaint check adds one waiting load on Sat 10/10, above every row
+  const board = (e) => {
+    if (e.q.week === '2026-09-26') return [200, EMPTY(e.q.week)];   // W40: a week before L with nothing of v5
+    const b = pr3aBoard(); b.week = e.q.week;
+    if (extra) b.waiting.push(Object.assign(clone(bBoard().waiting[0]), { piece_id: 4299, nat_order_id: 3299, reference: 'N-T299',
+      nat_ready_day: '2026-10-10', load_from: bT('2026-10-10', '08:00'), load_to: bT('2026-10-10', '09:00') }));
+    return [200, b];
+  };
+  const { page, S } = await openBoard(browser, origin, { board: pr3aBoard(), viewport: { width: 1440, height: 900 }, sidebar: 'open',
+    plan: { 'GET /plan/lookups': () => [200, truthLookups()], 'GET /plan/board': board,
+      'GET /plan/config': () => [200, { cutover_day: '2026-10-10', opened_at: null, writes_open: false }] } });
+  const okWeek = (sat) => until(page, (d) => { const r = document.querySelector('#content .wn5'); return !!r && r.dataset.week === d && ['ok', 'empty'].includes(r.dataset.state); }, sat);
+  const go = async (n, sat) => { await page.evaluate((w) => WN5._week(w), n); const r = await okWeek(sat); await page.waitForTimeout(150); return r; };
+  await okWeek('2026-10-10');
+  await page.waitForTimeout(300);
+  await page.mouse.move(2, 890);   // the pointer off the board
+  // ── 3a: the current week opens on today
+  const a = await page.evaluate(() => {
+    const sc = document.getElementById('content'), t = document.querySelector('#content .wn5 .wn5-day.today');
+    return t ? { scroll: Math.round(sc.scrollTop), y: Math.round(t.getBoundingClientRect().top - sc.getBoundingClientRect().top), h: sc.clientHeight } : null;
+  });
+  ok(scn, '3a the current week opens scrolled to today: its day at the top, under the column heads (≤ 60px), the passed days above — main: at the top of the week, today far down',
+    !!a && a.scroll > 0 && a.y >= 0 && a.y <= 60, a);
+  // …and every day is still open: the passed days are scrolled past, never folded (owner 12/10)
+  ok(scn, '3a no day folded on the way', await page.evaluate(() => !document.querySelector('#content .wn5 .wn5-day.closed')));
+  // ── 3f: the «+» at rest is at full strength, the «+N» no louder than it
+  const f = await page.evaluate(() => {
+    const p = [...document.querySelectorAll('#content .wn5 .wn5-row[data-rt] :is(.wn5-kpal, .wn5-apal):not(.wn5-gpal) .wn5-plus')][0];
+    const m = document.querySelector('#content .wn5 .wn5-pts .wi4-more b');
+    if (!p || !m) return null;
+    const cp = getComputedStyle(p), cm = getComputedStyle(m), r = p.getBoundingClientRect(), sv = p.querySelector('svg').getBoundingClientRect();
+    const ink = (() => { const t = document.createElement('span'); t.style.color = 'var(--wi4-ink)'; document.querySelector('#content .wn5').appendChild(t); const c = getComputedStyle(t).color; t.remove(); return c; })();
+    return { op: Number(cp.opacity), w: Math.round(r.width), glyph: Math.round(sv.width), moreW: Number(cm.fontWeight), moreInk: cm.color === ink };
+  });
+  ok(scn, '3f a cycle\'s «+» at rest: opacity 1, 20px, a 12px glyph; the «+N» chip Medium grey, not bold ink — main: «+» .45 / 18px / 11px, «+1» SemiBold ink',
+    !!f && f.op === 1 && f.w >= 20 && f.glyph >= 12 && f.moreW <= 500 && !f.moreInk, f);
+  // ── ✈: one icon one meaning
+  const pl = await page.evaluate(() => {
+    const cyc = document.querySelector('#content .wn5 .wn5-row[data-rt] .wn5-c-idx .wi4-plane');
+    const card = document.querySelector('#content .wn5 .wn5-row[data-piece] .wi4-plane[data-act="ocard"]');
+    return cyc && card ? { cyc: cyc.querySelector('svg').innerHTML, card: card.querySelector('svg').innerHTML, cardTitle: card.getAttribute('title'), menu: cyc.getAttribute('aria-haspopup') } : null;
+  });
+  ok(scn, '✈ is the row\'s action menu only: a waiting order\'s card button draws another glyph — main: the same ✈ opens a card on one row, a menu on the next',
+    !!pl && pl.cyc !== pl.card && pl.menu === 'menu' && pl.cardTitle === 'Καρτέλα παραγγελίας', pl && { same: pl.cyc === pl.card, title: pl.cardTitle });
+  // ── B-10 + click consistency: hover shows what a press does
+  await page.evaluate(() => { const r = document.querySelector('#content .wn5 .wn5-row[data-rt="231"]'); if (r) r.scrollIntoView({ block: 'center' }); });
+  await page.hover('#content .wn5 .wn5-row[data-rt="231"] .wn5-c-idx', { timeout: 3000 }).catch(() => {});
+  const chip = await page.evaluate(() => { const c = document.querySelector('#content .wn5 .wn5-row[data-rt="231"] .wn5-kd button.wi4-dc[data-act="date"]'); return c ? getComputedStyle(c).borderTopColor : null; });
+  await page.hover('#content .wn5 .wn5-row[data-rt="231"] .wn5-kd button.wi4-dc[data-act="date"]', { timeout: 3000 }).catch(() => {});
+  const chipOn = await page.evaluate(() => { const c = document.querySelector('#content .wn5 .wn5-row[data-rt="231"] .wn5-kd button.wi4-dc[data-act="date"]'); return c ? getComputedStyle(c).borderTopColor : null; });
+  ok(scn, 'B-10 the ΚΑΘΟΔΟΣ day chip shows it is pressed: an outline on its row\'s hover, the accent one under the pointer — main: transparent border',
+    !!chip && chip !== 'rgba(0, 0, 0, 0)' && !!chipOn && chipOn !== chip && chipOn !== 'rgba(0, 0, 0, 0)', { row: chip, chip: chipOn });
+  const cellBg = async () => page.evaluate(() => { const c = document.querySelector('#content .wn5 .wn5-row[data-rt="231"] .wn5-kto[data-leg]'); return c ? getComputedStyle(c).backgroundColor : null; });
+  await page.hover('#content .wn5 .wn5-row[data-rt="231"] .wn5-c-idx', { timeout: 3000 }).catch(() => {});
+  const bg0 = await cellBg();
+  await page.hover('#content .wn5 .wn5-row[data-rt="231"] .wn5-kto[data-leg]', { timeout: 3000 }).catch(() => {});
+  const bg1 = await cellBg();
+  ok(scn, 'click consistency: a side\'s place cell (it opens the leg form) takes a fill under the pointer, as the day chip (date panel) takes its outline — main: nothing shows before the press',
+    bg0 != null && bg1 != null && bg0 !== bg1, { rest: bg0, hover: bg1 });
+  // ── stable layout: a repaint after a save keeps the row under the pointer where it was
+  const box = await page.evaluate(() => { const r = document.querySelector('#content .wn5 .wn5-row[data-rt="232"]'); if (!r) return null; r.scrollIntoView({ block: 'center' }); const g = r.getBoundingClientRect(); return { x: g.left + 300, y: g.top + g.height / 2 }; });
+  if (box) await page.mouse.move(box.x, box.y);
+  const top0 = await page.evaluate(() => { const r = document.querySelector('#content .wn5 .wn5-row[data-rt="232"]'); return r ? r.getBoundingClientRect().top : null; });
+  extra = true;
+  await page.evaluate(() => WN5.reload('save'));
+  await until(page, () => !!document.querySelector('#content .wn5 .wn5-row[data-piece="4299"]'), null, 5000);
+  const st = await page.evaluate(() => { const r = document.querySelector('#content .wn5 .wn5-row[data-rt="232"]'); const g = r && r.getBoundingClientRect();
+    return g ? { top: g.top, added: !!document.querySelector('#content .wn5 .wn5-row[data-piece="4299"]') } : null; });
+  extra = false;
+  ok(scn, 'stable layout: a save that re-draws the board with one more row above keeps the row under the pointer at the same height (±1px) — main: it slides down a row',
+    top0 != null && !!st && st.added && Math.abs(st.top - top0) <= 1, { before: top0, after: st });
+  // ── 3e: notices only in the week they concern (or, naming no row, in the current week)
+  const notes = () => page.evaluate(() => { const n = document.getElementById('wn5-notices'); return n ? n.querySelectorAll('.wn5-note').length : 0; });
+  const n42 = await notes();
+  // ── 3d: the cycle of Fri 16/10 → Sat 17/10
+  const d42 = await page.evaluate(() => { const r = document.querySelector('#content .wn5 .wn5-row[data-rt="220"]'); return r ? (r.querySelector('.wi4-no') || {}).textContent : null; });
+  const at43 = await go(43, '2026-10-17');
+  const n43 = await notes();
+  const d43 = await page.evaluate(() => {
+    const c = document.querySelector('#content .wn5 [data-carry="220"]');
+    return { row: !!document.querySelector('#content .wn5 .wn5-row[data-rt="220"]'), carry: c ? c.textContent.replace(/\s+/g, ' ').trim() : null,
+      h: c ? Math.round(c.getBoundingClientRect().height) : null };
+  });
+  ok(scn, '3d a cycle that loads Fri 16/10 and returns Sat 17/10: its numbered row in W42, in W43 one thin «συνέχεια από W42» line with its truck and no number of its own — main: a second full row, numbered again',
+    at43 && /^\d+$/.test(d42 || '') && !d43.row && /^↳ συνέχεια από W42 · TST-2208/.test(d43.carry || '') && d43.h <= 30, { d42, d43 });
+  await page.evaluate(() => { const b = document.querySelector('#content .wn5 [data-carry="220"] .wn5-carry-go'); if (b) b.click(); });
+  const back = await okWeek('2026-10-10');
+  await page.waitForTimeout(200);
+  const foc = await page.evaluate(() => { const r = document.querySelector('#content .wn5 .wn5-row[data-rt="220"]'); const sc = document.getElementById('content');
+    if (!r) return null; const g = r.getBoundingClientRect(), s = sc.getBoundingClientRect(); return { focus: r.classList.contains('wn5-focus'), seen: g.top >= s.top && g.bottom <= s.bottom }; });
+  ok(scn, '3d the «συνέχεια» line goes to its week and shows the row — main: no line to press', back && !!foc && foc.focus && foc.seen, foc);
+  ok(scn, '3e notices in the week they concern: W42 (current) shows both (one of its row, one of no row); W43 shows none — main: both on every week',
+    n42 === 2 && n43 === 0, { n42, n43 });
+  // ── 3b: a past week reads normally
+  const at41 = await go(41, '2026-10-03');
+  const b41 = await page.evaluate(() => ({ dim: document.querySelectorAll('#content .wn5 .wn5-dim').length, rows: document.querySelectorAll('#content .wn5 .wn5-row').length }));
+  await go(42, '2026-10-10');
+  const b42 = await page.evaluate(() => document.querySelectorAll('#content .wn5 .wn5-dim').length);
+  ok(scn, '3b a past week (W41) is drawn without the «done» fade, the current week (W42) keeps it — main: the past week faded',
+    at41 && b41.rows > 0 && b41.dim === 0 && b42 > 0, { b41, b42 });
+  // ── 3c: a week before day L
+  const bar = () => page.evaluate(() => { const n = document.querySelector('.wn5-bar [onclick*="WN5Form.openOrder"]'); const g = n && n.getBoundingClientRect();
+    return { x: g ? Math.round(g.right) : null, before: !!document.querySelector('.wn5-bar [data-old-view="before"]') }; });
+  const bar42 = await bar();
+  const at40 = await go(40, '2026-09-26');
+  const c40 = await page.evaluate(() => ({ prel: [...document.querySelectorAll('#content .wn5 .wn5-prel')].map((x) => x.textContent.replace(/\s+/g, ' ').trim()),
+    btn: !!document.querySelector('#content .wn5 .wn5-prel button[onclick*="WN5._switch"]'), days: document.querySelectorAll('#content .wn5 .wn5-day').length }));
+  const bar40 = await bar();
+  ok(scn, '3c a week before L: one centred line with «Παλιά προβολή», no seven «καμία φόρτωση» days — main: seven empty days',
+    at40 && c40.prel.length === 1 && /^Εβδομάδα πριν από 10\/10: τα εθνικά της είναι στην παλιά προβολή\s*Παλιά προβολή$/.test(c40.prel[0]) && c40.btn && c40.days === 0, c40);
+  ok(scn, '3c the explanation is off the bar and «+ Νέα παραγγελία» keeps its place (±1px) between W42 and W40 — main: the line on the bar, the button pushed left',
+    !bar40.before && bar40.x != null && Math.abs(bar40.x - bar42.x) <= 1, { bar42, bar40 });
+  // ── Π-23: a reload keeps the week
+  await go(44, '2026-10-24');
+  await page.reload();
+  const kept = await okWeek('2026-10-24');
+  ok(scn, 'Π-23 after a reload the board is on the week it was on (W44) — main: back to the current week', kept,
+    await page.evaluate(() => (document.querySelector('#content .wn5') || {}).dataset));
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await page.context().close();
 };
 // ── main ──
 (async () => {

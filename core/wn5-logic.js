@@ -299,6 +299,9 @@ function _cycleRow(c, hubId, nums, errors) {
     rates: { partner_rate: c.partner_rate == null ? null : Number(c.partner_rate), missing: c.trip_type === 'PARTNER' && c.partner_rate == null },
     pieceIds: [...new Set(legs.map((l) => l.piece_id))], group: null, vs: false, clients, refs,
     sortAt: sortStop ? sortStop.planned_from : c.start_at,
+    // the last day the cycle has a stop on (display only: the «συνέχεια» line of the next week names it, 3d)
+    lastDay: stops.map((s) => s.stop_day || athensDay(s.planned_to)).filter(Boolean).sort().pop() || null,
+    carried: false,
     _parts: [c.truck, c.trailer, c.driver, c.partner, ...clients, ...places, ...refs],
   };
 }
@@ -475,6 +478,10 @@ function model(board, opts) {
   for (const r of rows) {
     const k = placeOf(r);
     if (k == null) continue;
+    // 3d (coordinator 1/11): a cycle whose day (its Veroia loading, else its ΑΝΟΔΟΣ) is in an earlier week belongs to
+    // THAT week — its full row and its number are there; here it is the continuation of it (the screen draws one thin
+    // line). Without this the same truck was a full row with a different number in both weeks (15 in W44, 2 in W45).
+    if (r.kind === 'cycle') r.carried = !!(r.dayKey && r.dayKey < week);
     days.find((d) => d.date === k).rows.push(r);
     if (r.kind === 'unassigned') for (const id of r.pieceIds) shown.add(id);
   }
@@ -499,7 +506,8 @@ function model(board, opts) {
   const split = board.hub.filter((h) => h.is_stock !== true && (!_neverAssigned(h) || (h.kind === 'vs_import' && shown.has(h.piece_id)))).map(item);
   const stock = board.hub.filter((h) => h.is_stock === true).map(item);
   return {
-    week, today, hubId, days, queue,
+    // current: the week on screen is the TMS week of today — the board dims what is done only there (3b)
+    week, today, current, hubId, days, queue,
     hub: { day: today && today >= week && today <= last ? today : week, split, stock, pallets: { split: _sum(split), stock: _sum(stock), splitUnknown: _unk(split), stockUnknown: _unk(stock) }, empty: !split.length && !stock.length },
     notices: board.notices.map((n) => ({ id: n.id, kind: n.kind, message: n.message, order_id: n.order_id, nat_order_id: n.nat_order_id, rt_id: n.rt_id, created_at: n.created_at, created_by: n.created_by || null })),
     errors,
