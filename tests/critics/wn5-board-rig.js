@@ -303,7 +303,9 @@ SCN.paint = async (browser, origin) => {
   ok(scn, 'ΑΝΟΔΟΣ starts 192px after ΑΝΑΘΕΣΗ (176 + 16; was 266 + 16)', !!st && st.anodShift !== null && Math.abs(st.anodShift - 192) <= 1, st && st.anodShift);
   ok(scn, 'ΑΝΑΘΕΣΗ and the ΑΝΟΔΟΣ day start at one x on every row, whatever the row\'s split of its sides',
     !!st && st.asgL.length === 12 && st.asgL.every((x) => Math.abs(x - st.asgL[0]) <= 1) && st.adL.length >= 4 && st.adL.every((x) => Math.abs(x - st.adL[0]) <= 1), st && { asgL: st.asgL, adL: st.adL });
-  ok(scn, 'a ΦΟΡΤΩΣΗ that is only «Βέροια» + its window is the 76px cell', !!st && st.vOnlyW.length >= 6 && st.vOnlyW.every((w) => Math.abs(w - 76) <= 1), st && st.vOnlyW);
+  // owner 1/11: ONE ΦΟΡΤΩΣΗ / ΠΑΡΑΔΟΣΗ split per side (the destination under its head in every row), not a 76px cell
+  // for a Veroia-only loading: the Veroia-only cells are as wide as each other, and wider than the old 76px
+  ok(scn, 'a ΦΟΡΤΩΣΗ that is only «Βέροια» + its window has the side\'s one ΦΟΡΤΩΣΗ width (owner 1/11)', !!st && st.vOnlyW.length >= 6 && st.vOnlyW.every((w) => Math.abs(w - st.vOnlyW[0]) <= 1 && w > 77), st && st.vOnlyW);
   ok(scn, 'the VS reference under a waiting row\'s day ends inside its cell (cut, whole in title)', !!st && st.refOut.length >= 1 && st.refOut.every((d) => d <= 0), st && st.refOut);
   ok(scn, 'the head is «ΑΝΑΘΕΣΗ» alone', !!st && st.head === 'ΑΝΑΘΕΣΗ', st && st.head);
   ok(scn, 'no hh:mm anywhere in ΑΝΑΘΕΣΗ', !!st && !st.asgTimes.length, st && st.asgTimes);

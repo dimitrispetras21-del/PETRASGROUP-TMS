@@ -9078,12 +9078,15 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
   /* 100% is the row's own width (resolved where the template uses it); the 16px is the gap before ΑΝΟΔΟΣ */
   --wn5-side:max(0px, calc((100% - var(--wn5-idx) - var(--wn5-g1) - 2 * var(--wn5-dw) - var(--wn5-kpal-w) - var(--wn5-asg-w) - 16px - var(--wn5-apal-w)) / 2));
   /* ONE split per side for every row and the heads (owner 1/11, live check: the destination stood in two places in
-     ΚΑΘΟΔΟΣ and three in ΑΝΟΔΟΣ because each row split its side by what it held): ΦΟΡΤΩΣΗ 35% / ΠΑΡΑΔΟΣΗ 65% in
-     ΚΑΘΟΔΟΣ, 55% / 45% in ΑΝΟΔΟΣ, so every destination starts under its «ΠΑΡΑΔΟΣΗ» */
-  --wn5-t4:max(var(--wn5-vw), calc(var(--wn5-side) * .35)); --wn5-t5:max(0px, calc(var(--wn5-side) - var(--wn5-t4)));
+     ΚΑΘΟΔΟΣ and three in ΑΝΟΔΟΣ because each row split its side by what it held): ΦΟΡΤΩΣΗ 40% / ΠΑΡΑΔΟΣΗ 60% in
+     ΚΑΘΟΔΟΣ (50 / 50 up to 1366px, below), 55% / 45% in ΑΝΟΔΟΣ, so every destination starts under its «ΠΑΡΑΔΟΣΗ».
+     The loadings keep the share they had (one line per point line, «calm»); a row that loads at Veroia only gives up
+     the room its 76px cell left to the deliveries. */
+  --wn5-t4:max(var(--wn5-vw), calc(var(--wn5-side) * .4)); --wn5-t5:max(0px, calc(var(--wn5-side) - var(--wn5-t4)));
   --wn5-t10:calc(var(--wn5-side) * .55); --wn5-t11:calc(var(--wn5-side) * .45); }
 .wn5-cols, .wn5-row, .wn5-sub {
   display:grid; grid-template-columns:var(--wn5-idx) var(--wn5-g1) var(--wn5-dw) var(--wn5-t4) var(--wn5-t5) var(--wn5-kpal-w) var(--wn5-asg-w) 16px var(--wn5-dw) var(--wn5-t10) var(--wn5-t11) var(--wn5-apal-w); align-items:center; }
+@media (max-width:1366px) { .wn5 { --wn5-t4:max(var(--wn5-vw), calc(var(--wn5-side) * .5)); } }
 /* The 76px Veroia cells: 6px in (not 9): «Βέροια» and «ως Τετ 12:00» fit whole. */
 .wn5-row:not(:has(> .wn5-fl .wn5-pt)) > .wn5-fl, .wn5-row:has(> .wn5-ato .wn5-end):not(:has(> .wn5-ato .wn5-pt:not(.wn5-end))) > .wn5-ato { padding:0 6px; }
 /* «όλη η ημέρα» and «ως Τετ 23:59» are 57–62px: one line in the 64px inside the cell, never broken after «Τετ» */
@@ -10615,9 +10618,7 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 /* P-8 (087): the last 3 partner rates of the route, under the partner's rate */
 .wn5a-hist { margin-top:4px; font:400 11px/14px 'DM Sans',sans-serif; color:var(--wi4-grey-2); }
 
-/* The assistant's button on the Weekly National (owner 1/11): in the top bar beside the bell and like it, never over the
-   ΠΑΛ. column and its «+» as the fixed 52px one at the bottom right was (weekly_natl_v5.js _chatMount) */
-.aic-btn.wn5-chat-top { position:static; flex:none; width:44px; height:44px; border-radius:6px; margin-right:4px;
-  background:transparent; color:var(--text-mid); box-shadow:none; }   /* as the bell beside it (44px target) */
-.aic-btn.wn5-chat-top svg { width:18px; height:18px; }
-.aic-btn.wn5-chat-top:hover { transform:none; background:rgba(0,0,0,0.04); color:var(--text); }
+/* The assistant on the Weekly National (owner 1/11): its fixed 52px button sat over the ΠΑΛ. column and its «+» while
+   scrolling; here it opens from the avatar's menu (weekly_natl_v5.js _umenuMount). !important: _aicToggle writes the
+   button's display inline when the panel closes. */
+body.wn5-top-on .aic-btn { display:none !important; }

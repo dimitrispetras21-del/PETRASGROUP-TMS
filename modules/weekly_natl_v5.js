@@ -1474,7 +1474,6 @@ function _topMount() {
   slot.replaceChildren(bar);
   document.body.classList.add('wn5-top-on');
   _umenuMount();
-  _chatMount(tb);
   // measured after wn5-top-on: that class hides the name, the role and Sign out, which changes .topbar-right's width
   _topFit();
   _topWatch();
@@ -1505,21 +1504,6 @@ function _topUnmount() {
   if (slot) slot.remove();
   try { document.body.classList.remove('wn5-top-on'); } catch (_) {}
   _umenuUnmount();
-  _chatUnmount();
-}
-// The assistant's floating button (core/ai-chat.js #aic-toggle) covered the ΠΑΛ. column and its «+» while scrolling
-// (owner 1/11): on this page it stands in the top bar before the bell, and goes back to the page when the bar leaves.
-function _chatMount(tb) {
-  const b = document.getElementById('aic-toggle'), tr = tb && tb.querySelector('.topbar-right');
-  if (!b || !tr || b.parentElement === tr) return;
-  b.classList.add('wn5-chat-top');
-  tr.insertBefore(b, tr.querySelector('#notifWrap') || tr.firstChild);
-}
-function _chatUnmount() {
-  const b = document.getElementById('aic-toggle');
-  if (!b || !b.classList.contains('wn5-chat-top')) return;
-  b.classList.remove('wn5-chat-top');
-  document.body.appendChild(b);
 }
 // Name, role and Sign out behind the avatar (the frame ends the bar with the avatar «Δ» alone), as WIV2 does: built
 // from what the app wrote in the chip, so it never disagrees with it. Never a bar without a way to sign out.
@@ -1589,7 +1573,11 @@ function _umenuMount() {
   m.hidden = true;
   m.setAttribute('role', 'menu');
   m.innerHTML = `<div class="wi4-umenu-h">${_esc(name)}${role ? ` <span>· ${_esc(role)}</span>` : ''}</div>`
-    + '<button type="button" role="menuitem" onclick="logout()">Αποσύνδεση</button>';
+    + '<button type="button" role="menuitem" onclick="logout()">Αποσύνδεση</button>'
+    // the assistant (core/ai-chat.js): its floating button covered the ΠΑΛ. column and its «+» while scrolling (owner
+    // 1/11), so on this page it is hidden (CSS, body.wn5-top-on) and opened from here; after «Αποσύνδεση», which keeps
+    // the first place (the keyboard lands on it)
+    + (typeof _aicToggle === 'function' ? '<button type="button" role="menuitem" onclick="_aicToggle()">Νάκης · βοηθός</button>' : '');
   chip.appendChild(m);
   chip.addEventListener('click', _umenuTog);
   chip.addEventListener('keydown', _umenuKey);
