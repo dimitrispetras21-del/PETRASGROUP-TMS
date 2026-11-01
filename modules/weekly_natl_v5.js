@@ -46,8 +46,12 @@ function _visPts() {
 // Figma 2011:9279 «αντιγραφή πινακίδων»: the 13px copy glyph (two squares), stroke 1.08 at that size.
 const COPY = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="13" height="13" x="9" y="9" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
 const PLANE = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>';
-// Figma 2011:10090 «icon/plus»: 11px, stroke 1.1 at that size, in the «+» box's colour (whole-frame r3, not a text glyph).
-const PLUS = '<svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 2.29v6.42M2.29 5.5h6.42"/></svg>';
+// Figma 2011:10090 «icon/plus» in the «+» box's colour (whole-frame r3, not a text glyph). 3f (coordinator 1/11): 12px,
+// stroke 1.5 — the 11px / 1.1 glyph read fainter than the «+1» chip beside it.
+const PLUS = '<svg width="12" height="12" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 2.29v6.42M2.29 5.5h6.42"/></svg>';
+// ✈ is the row's action menu, only (coordinator 1/11, «one icon one meaning»): a waiting national order's button opens
+// its order card, so it draws a page glyph of its own — the same ✈ opened a card on one row and a menu on the next.
+const DOC = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>';
 const CHEV = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
 
 const _esc = (s) => (typeof escapeHtml === 'function'
@@ -85,6 +89,11 @@ let _noteBusy = false;   // «Σημείωσα ✓» in flight: one press at a t
 let _noteErr = null;     // the answer that stopped the last «Σημείωσα ✓» (shown in the strip until the week changes)
 let _notesOpen = false;  // the notices of the other orders unfolded under the strip (owner 31/10); closed on a week change
 let _installed = false, _bannerShown = false, _warned = false;
+let _toToday = false;    // 3a: the next paint with a board scrolls to today (set when a week opens, not on a reload)
+let _focusAfter = null;  // 3d: a row key to show once the board of the week just opened has painted
+let _ptr = null;         // the pointer's last {x, y}: the row under it keeps its place across a repaint
+let _restored = false;   // Π-23: the week of this tab read back once, at the first render after a page load
+const WEEK_KEY = 'tms_wn5_week';   // sessionStorage: the tab's week survives a reload, a new tab opens on today's
 const _closedDays = new Set();   // days the USER folded; the board never folds a day itself (owner 12/10)
 const _errLogged = new Set();    // shape lines already logged (one row per distinct line per session)
 
@@ -173,8 +182,10 @@ function _cfgKick() {
     if (page) _recheckNote();
     // a failed (or recovered) recheck alone repaints nothing but its bar line (_recheckNote): a repaint in the middle of
     // a click would replace the row, close a menu
+    // 3c: a v5 week before L on screen trades its seven empty days for the «before L» line (the old board stays as is)
     if (!page || !(moved
-      || (now !== was && sat && ((now === 'after' && _afterL(sat)) || (now === 'unknown' && _sat === sat && _decide() === 'v5'))))) return;
+      || (now !== was && sat && ((now === 'after' && _afterL(sat)) || (now === 'after' && _preL(sat) && _sat === sat && _decide() === 'v5')
+        || (now === 'unknown' && _sat === sat && _decide() === 'v5'))))) return;
     // F22 (live 28/10): the v5 board of this week already on screen only needs its bar again — a repaint from the board
     // in hand, not a second GET /plan/board (every open read the board twice ~40 ms apart, on a base that was timing
     // out). A render in flight paints the new bar itself when its board lands. The «moved» toast is said only here,
@@ -227,16 +238,30 @@ function _week(n, home) {
   window.WNATL.week = v;
   window.renderWeeklyNatl();
 }
-function _onWeekChange() { _closedDays.clear(); _qAll = false; _qRaw = ''; _sIdx = 0; _noteErr = null; _stale = null; _notesOpen = false; }
+function _onWeekChange() { _toToday = true; _closedDays.clear(); _qAll = false; _qRaw = ''; _sIdx = 0; _noteErr = null; _stale = null; _notesOpen = false; }
 
 // ═══ Load ═══
+// Π-23 (owner 28/10): a reload opened the current week, not the one the dispatcher was on. The tab keeps its week in
+// sessionStorage (a new tab or a new day of work starts on today's week as before) and the first render after a load
+// reads it back — only while WNATL.week is still the default (another page that opened a given week keeps it).
+function _restoreWeek() {
+  if (_restored) return;
+  _restored = true;
+  try {
+    const n = Number(sessionStorage.getItem(WEEK_KEY));
+    const cur = typeof TmsWeek !== 'undefined' ? TmsWeek.current() : null;
+    if (Number.isInteger(n) && n >= 1 && window.WNATL && window.WNATL.week === cur && n !== cur) window.WNATL.week = n;
+  } catch (_) { /* no storage: today's week, as before */ }
+}
 // No reportPageMetrics under v5 (F4α T10): the metrics audit (modules/metrics_audit.js) compares the OLD board's
 // numbers (weekNumberDefault, kathodos / anodos …) under the page key weekly_natl; a v5 report under the same key
 // would be a different count with the same name. Until Φ4β defines v5 metrics the audit says «δεν άνοιξε» — honest.
 async function render() {
   const seq = ++_seq;
   let week;
+  _restoreWeek();
   try { week = weekParam(window.WNATL.week); } catch (e) { _fail(e); return _fallback(); }
+  try { sessionStorage.setItem(WEEK_KEY, String(window.WNATL.week)); } catch (_) {}
   if (week !== _sat) { _board = null; _m = null; _okAt = null; _onWeekChange(); }
   _sat = week; _state = 'loading'; _lastErr = null;
   if (!_board && !paint()) return _fallback();
@@ -355,6 +380,9 @@ function _paint() {
   if (_idsOk && typeof PlanIds !== 'undefined' && typeof PlanIds.place === 'function') mo.place = (id) => PlanIds.place(id);
   _m = _board ? lg.model(_board, mo) : null;
   _closeMenu();
+  // the page opened again (from another page, or back from the old board) is a week opening too (3a)
+  if (!content.querySelector(':scope > .wn5')) _toToday = true;
+  const anchor = _toToday || _focusAfter ? null : _anchorTake(content);
   content.innerHTML = _rootHTML();
   // the one listener of the board's actions lives on this root and dies with it at the next paint
   if (typeof WN5Act !== 'undefined') WN5Act.bind(document.querySelector('#content > .wn5'));
@@ -368,6 +396,56 @@ function _paint() {
   _applySearch(false);
   _fitUpd();
   _fitAfterFonts();
+  _place(content, anchor);
+}
+// Where the board stands after a paint. A week just opened: the row a «συνέχεια» line pointed to (3d), else today's
+// day in the current week (3a: the days already passed took the top half of the screen), else the week's top. A
+// repaint of the same week (a save, ↻, a re-read): the row under the pointer stays at the same height on screen — the
+// dispatcher opened the wrong order because a save re-drew the board and the rows slid under the pointer (coordinator
+// 1/11). Days are never folded for this (owner 12/10): only the scroll moves.
+function _place(sc, anchor) {
+  if (!_m) return;   // the board has not arrived: what is pending waits for the paint that has it
+  if (_focusAfter) { const k = _focusAfter; _focusAfter = null; _toToday = false; if (focusRow(k)) return; }
+  if (_toToday) { _toToday = false; _scrollToday(sc); return; }
+  _anchorPut(sc, anchor);
+}
+function _scrollToday(sc) {
+  const sec = _m.current ? sc.querySelector(':scope > .wn5 .wn5-day.today') : null;
+  if (!sec) { sc.scrollTop = 0; return; }
+  sc.scrollTop = 0;
+  const y = sec.getBoundingClientRect().top - sc.getBoundingClientRect().top;
+  // today already in the top half: the ΕΠΟΜΕΝΑ band above it stays in view
+  if (y < sc.clientHeight / 2) return;
+  const cols = sc.querySelector(':scope > .wn5 .wn5-cols');
+  sc.scrollTop = y - (cols ? cols.getBoundingClientRect().height : 0);
+}
+// The element of the board under the pointer (else the first one visible) and its height on screen, before a repaint
+// of the same week. By key, never by index: the rows are found again by what they are.
+function _anchorTake(sc) {
+  try {
+    const root = sc.querySelector(':scope > .wn5');
+    if (!root || root.dataset.week !== _sat) return null;
+    const pick = (e) => {
+      const day = e && e.closest ? e.closest('.wn5-dayh') : null;
+      if (day && root.contains(day)) return { sel: `.wn5-day[data-date="${day.parentElement.dataset.date}"]`, el: day.parentElement };
+      const k = e && e.closest ? e.closest('[data-key]') : null;
+      return k && root.contains(k) ? { sel: `[data-key="${CSS.escape(k.getAttribute('data-key'))}"]`, el: k } : null;
+    };
+    let a = _ptr ? pick(document.elementFromPoint(_ptr.x, _ptr.y)) : null;
+    if (!a) {
+      const top = sc.getBoundingClientRect().top;
+      const e = [...root.querySelectorAll('#wn5-rows [data-key]')].find((x) => x.getBoundingClientRect().bottom > top + 1);
+      a = e ? pick(e) : null;
+    }
+    return a ? { sel: a.sel, top: a.el.getBoundingClientRect().top } : null;
+  } catch (_) { return null; }
+}
+function _anchorPut(sc, a) {
+  if (!a) return;
+  const el = sc.querySelector(':scope > .wn5 ' + a.sel);
+  if (!el) return;
+  const d = el.getBoundingClientRect().top - a.top;
+  if (Math.abs(d) >= 1) sc.scrollTop += d;
 }
 // Figma H1 «↻ Ενημερώθηκε …»: the word shows whenever it fits and goes first when it does not — before the bar's
 // overflow cuts the time. Measured, not a breakpoint: the range («26 Σεπτεμβρίου – 2 Οκτωβρίου») and the sidebar
@@ -426,23 +504,32 @@ function _barHTML() {
     + `<span class="wi4-range" title="${_esc(_rangeText(_sat))}"><span class="wn5-rg-l">${_esc(_rangeText(_sat))}</span><span class="wn5-rg-s">${_esc(_rangeText(_sat, true))}</span></span>`
     + `<button type="button" class="wn5-upd" data-act="reload" title="Ανανέωση" onclick="WN5.reload('user')"><span class="wn5-ico-re" aria-hidden="true">↻</span> ${upd}</button></div>`
     + `<nav class="wi4-tabs" aria-label="Εβδομάδες">${_tabsHTML(w)}</nav>`
-    // Figma 7745 / H1 right group: «Προβολή ▾» · «Σάρωση» · «+ Νέα παραγγελία». «Προβολή ▾» and «Σάρωση» wait for
-    // Φ4β (Ε-42, Ε-38): the scan creates an order of the OLD model, which this board never shows (principle 1).
-    // «+ Νέα παραγγελία» comes with the v5 form (T20): never a button that opens nothing, never the old form here.
     + '<div class="wi4-bar-r">'
     // F25: day L was read before and could not be read again — the board says which day it still uses
     + _recheckNoteHTML()
-    + (typeof WN5Form !== 'undefined' && typeof OrdersCommon !== 'undefined' && OrdersCommon.newOrderButton
-      ? OrdersCommon.newOrderButton('WN5Form.openOrder({})', '+ Νέα παραγγελία', 'Νέα εθνική παραγγελία v5 — χωρίς έξοδο από το εβδομαδιαίο') : '')
-    // Q-10: the old view only for a week before day L; from L on it is not offered, and a stored choice says why
+    // Q-10: the old view only for a week before day L; from L on it is not offered, and a stored choice says why.
+    // 3c (coordinator 1/11): a week before L says so in the middle of the board, with the button (_preLHTML), not here —
+    // the line and the button came and went with the week and moved «+ Νέα παραγγελία». Whatever the bar says goes
+    // BEFORE that button, so the button keeps the bar's right edge in every week.
     + (_afterL(_sat)
       ? (_ls('tms_wn5') === '0' ? `<span class="wi4-range" data-old-view="closed">Η παλιά προβολή υπάρχει μόνο για εβδομάδες πριν από ${_esc(_dm(_cfg.cutoverDay))}</span>` : '')
-      : (_cfg && _cfg.state === 'unknown' ? '<span class="wi4-range" data-old-view="unknown">Η ημέρα μετάβασης δεν διαβάστηκε</span>' : '')
-        // a week before L lives in the old model: an (almost) empty v5 week must not read as «nothing planned»
-        + (_cfg && _cfg.state === 'after' && _cfg.cutoverDay && typeof _sat === 'string' && _sat < _cfg.cutoverDay
-          ? `<span class="wi4-range" data-old-view="before">Εβδομάδα πριν από ${_esc(_dm(_cfg.cutoverDay))}: τα εθνικά της είναι στην παλιά προβολή</span>` : '')
-        + '<button type="button" class="wi4-btn sm" title="Το παλιό Εβδομαδιαίο Εθνικών" onclick="WN5._switch(\'0\')">Παλιά προβολή</button>')
+      : _preL(_sat) ? ''
+        : (_cfg && _cfg.state === 'unknown' ? '<span class="wi4-range" data-old-view="unknown">Η ημέρα μετάβασης δεν διαβάστηκε</span>' : '')
+          + _oldBtnHTML())
+    // Figma 7745 / H1 right group: «Προβολή ▾» · «Σάρωση» · «+ Νέα παραγγελία». «Προβολή ▾» and «Σάρωση» wait for
+    // Φ4β (Ε-42, Ε-38): the scan creates an order of the OLD model, which this board never shows (principle 1).
+    // «+ Νέα παραγγελία» comes with the v5 form (T20): never a button that opens nothing, never the old form here.
+    + (typeof WN5Form !== 'undefined' && typeof OrdersCommon !== 'undefined' && OrdersCommon.newOrderButton
+      ? OrdersCommon.newOrderButton('WN5Form.openOrder({})', '+ Νέα παραγγελία', 'Νέα εθνική παραγγελία v5 — χωρίς έξοδο από το εβδομαδιαίο') : '')
     + '</div></div>';
+}
+const _oldBtnHTML = () => '<button type="button" class="wi4-btn sm" title="Το παλιό Εβδομαδιαίο Εθνικών" onclick="WN5._switch(\'0\')">Παλιά προβολή</button>';
+// a week before day L lives in the old model (074 ran, the week's Saturday is earlier)
+function _preL(sat) { return !!_cfg && _cfg.state === 'after' && !!_cfg.cutoverDay && typeof sat === 'string' && sat < _cfg.cutoverDay; }
+// 3c: one quiet line in the middle of the board, where its national work is and the way to it — never seven empty
+// «καμία φόρτωση» days, which read as «nothing was planned that week»
+function _preLHTML() {
+  return `<div class="wn5-prel" role="status"><span data-old-view="before">Εβδομάδα πριν από ${_esc(_dm(_cfg.cutoverDay))}: τα εθνικά της είναι στην παλιά προβολή</span>${_oldBtnHTML()}</div>`;
 }
 // The strip stands still (coordinator 1/11, 1c): it was the seven weeks around the one on screen, so every click
 // re-drew it one place over and the week just pressed slid away under the pointer, and «Σήμερα» came and went (the
@@ -519,7 +606,11 @@ function _logShape(m) {
 // ═══ Board body ═══
 function _boardHTML(m, known) {
   const no = { n: 0 };
-  return _qbandHTML(m, known)
+  // 3c: a week before day L. Empty (as it always is: its national work is in the old model) = the one line instead of
+  // the board; with rows (a v5 load dated before L) the rows are drawn under it, never hidden.
+  const preL = known && _preL(m.week);
+  if (preL && !m.days.some((d) => d.rows.length)) return _preLHTML();
+  return (preL ? _preLHTML() : '') + _qbandHTML(m, known)
     // Δ12 2069:10269 (fidelity T7 r1): the no-match words are a strip of their own under the band, not text inside it.
     + '<div id="wn5-snone" class="wn5-snone" role="status" hidden></div>'
     + (known ? _noticesHTML(m) : '')
@@ -640,7 +731,10 @@ function _dayTog(date) {
 // own rule (never without a vehicle, never when late) the screen keeps the owner's «ποτέ σβηστό ό,τι θέλει δουλειά»
 // as a guard: a load waiting for a vehicle, a cycle without one, and a late stop are never dimmed, even if a flag
 // said so (a corrupt answer must not hide work).
-function _dimOk(r) { return r.kind === 'cycle' && r.rail !== 'red'; }
+// 3b (coordinator 1/11): the faded look says «already done» INSIDE the week being worked. A past week is read as a
+// record — every row of it is done, and forty-per-cent rows made a whole week hard to read — so the base's flags are
+// followed only when the week on screen is the current TMS week (WN5L model.current: today is in it).
+function _dimOk(r, m) { return r.kind === 'cycle' && r.rail !== 'red' && !!m && m.current === true; }
 const _dc = (on) => (on ? ' wn5-dim' : '');
 // A window the board did not send (hub[] of 072, Ε-26) is «—», never «null–null» and never a guess (as T5).
 // F1 (owner 28/10): a point entered without a window is its whole day; the model says so (allDay, WN5L.allDay: one
@@ -649,8 +743,9 @@ const _dc = (on) => (on ? ' wn5-dim' : '');
 const _winTxt = (f, t, all) => WN5L.winText(f, t, all) || '—';
 const _win = (f, t, all) => _esc(_winTxt(f, t, all));
 function _rowHTML(r, m, no) {
+  if (r.carried) return _carryHTML(r, m);
   const n = r.kind === 'cycle' ? ++no.n : null;
-  const ok = _dimOk(r);
+  const ok = _dimOk(r, m);
   // 2a: a waiting load has no rail (its one red is the word «αργό», critics r1: rail + word + chip said it three
   // times); a cycle keeps WN5L's rail
   const rail = r.kind === 'unassigned' ? '' : r.rail === 'red' ? ' wi4-r-red' : r.late ? ' wi4-r-amb' : '';
@@ -904,7 +999,7 @@ function _cpyHTML(r) {
 // to its card), so the two cannot drift apart. '' without a national order id: a VS is the international's order.
 function orderCardBtn(natOrderId) {
   const id = _id(natOrderId);
-  return id ? `<button type="button" class="wi4-plane" title="Καρτέλα παραγγελίας" data-act="ocard" onclick="WN5._orderCard(event, ${id})">${PLANE}</button>` : '';
+  return id ? `<button type="button" class="wi4-plane wn5-ocard" title="Καρτέλα παραγγελίας" aria-label="Καρτέλα παραγγελίας" data-act="ocard" onclick="WN5._orderCard(event, ${id})">${DOC}</button>` : '';
 }
 function _orderCard(ev, natOrderId) {
   try { if (ev && ev.stopPropagation) ev.stopPropagation(); } catch (_) {}
@@ -1026,6 +1121,29 @@ function _localHTML(r, lm, ok) {
       : `${lm.stopName ? ` · για ${_esc(lm.stopName)}${lm.stopN ? ` (στάση ${lm.stopN})` : ''}` : ''}`)
     // T17: the cancel of THIS loading (no request_id); the id is the board's local_move_id
     + `<button type="button" class="wi4-link wn5-sub-x" data-act="local-cancel" data-lm="${_id(lm.local_move_id)}">Ακύρωση</button></span></div>`;
+}
+// 3d (coordinator 1/11): a cycle that started in an earlier week (it loads Fri 30/10, its ΑΝΟΔΟΣ is Sat 31/10) was a
+// full row in both weeks with two different numbers (15 in W44, 2 in W45) — two rows for one truck. Its full row and
+// its number stay in the week it loads; here it is one thin line: where it comes from, the vehicle, the last day it
+// has here. The line carries no number of its own (W45 numbers its own rows from 1): the number «15» belongs to the
+// W44 board, which this board does not read, and the plate is what names the truck in both weeks. A press goes to
+// that week and shows the row. The search still finds it (data-qi).
+function _carryHTML(r, m) {
+  const w = typeof TmsWeek !== 'undefined' && r.dayKey ? TmsWeek.numOf(r.dayKey) : null;
+  const c = _cycleOf(r.rtId);
+  const who = (c && ([c.truck, c.driver].filter(Boolean).join(' · ') || c.partner)) || '';
+  const last = r.lastDay && r.lastDay >= m.week ? _dl(r.lastDay) : '';
+  const lbl = `συνέχεια από ${w ? 'W' + w : 'προηγούμενη εβδομάδα'}`;
+  return `<div class="wn5-sub wn5-carry" data-qi="${_esc(r.key)}" data-key="carry:${_id(r.rtId)}" data-carry="${_id(r.rtId)}">`
+    + '<span class="wn5-c-idx"><span class="wn5-hand-ar">↳</span></span> '
+    + `<span class="wn5-sub-t">${w ? `<button type="button" class="wi4-link wn5-carry-go" onclick="WN5._goRow(${w}, '${_esc(r.key)}')">${_esc(lbl)}</button>` : _esc(lbl)}`
+    + `${who ? ' · ' + _esc(who) : ''}${last ? ' · ως ' + _esc(last) : ''}</span></div>`;
+}
+// The week of a row and the row itself, shown once its board has painted (focusRow after render, never a guess)
+function _goRow(w, key) {
+  if (!Number.isInteger(Number(w)) || !active()) return;
+  _focusAfter = String(key);
+  _week(Number(w));
 }
 // ═══ end of rows ═══
 
@@ -1172,6 +1290,8 @@ function _install() {
     _closeMenu();
   }, true);
   document.addEventListener('keydown', _onKey, true);
+  // the pointer's place, for the anchor of a repaint (_anchorTake); read only, never acted on
+  document.addEventListener('pointermove', (e) => { _ptr = { x: e.clientX, y: e.clientY }; }, { capture: true, passive: true });
   // One stop or two per point column (_visPts) is chosen at paint: crossing 1600px repaints from the board on hand.
   try {
     const mq = typeof window.matchMedia === 'function' ? window.matchMedia(NARROW_MQ) : null;
@@ -1458,7 +1578,8 @@ function _noteIndex() {
 }
 function _noteGroups(m) {
   const ix = _noteIndex();
-  const rows = m.days.flatMap((d) => d.rows);
+  // a carried cycle (3d) is a row of the week it loads: its notice is said there, not on its «συνέχεια» line
+  const rows = m.days.flatMap((d) => d.rows).filter((r) => !r.carried);
   const byPiece = new Map();
   for (const r of rows) for (const pc of r.pieceIds || []) if (!byPiece.has(Number(pc))) byPiece.set(Number(pc), r.key);
   const groups = new Map();
@@ -1504,12 +1625,19 @@ function _noteLineHTML(g, off, own) {
     + (own ? `<button type="button" class="wi4-link wn5-note-ok"${off ? ' disabled' : ''} onclick="WN5._noteRead('${_esc(g.key)}')">Σημείωσα</button>` : '')
     + '</span>';
 }
+// 3e (coordinator 1/11): the base sends the unread notices with EVERY week's board, so «VS 2130 …» stood on W42 too.
+// A notice is shown in the week whose rows it concerns (its order or truck is a row here); one that names no row of any
+// week shown is said in the current week only — so it is never lost, and never repeated on every week.
+function _noteShown(m) {
+  return m && m.notices.length ? _noteGroups(m).filter((g) => g.rowKey || m.current === true) : [];
+}
 function _noticesHTML(m) {
-  if (!m || !m.notices.length) return '';
+  const gs = _noteShown(m);
+  if (!gs.length) return '';
   const off = _noteBusy || !!_closed;
-  const gs = _noteGroups(m);
   const more = gs.length - 1;
-  return `<div id="wn5-notices" class="wn5-notes" role="status"><b class="wn5-notes-h">ΕΙΔΟΠΟΙΗΣΕΙΣ<span class="wn5-notes-n"> · ${m.notices.length}</span></b>`
+  const nAll = gs.reduce((a, g) => a + g.items.length, 0);
+  return `<div id="wn5-notices" class="wn5-notes" role="status"><b class="wn5-notes-h">ΕΙΔΟΠΟΙΗΣΕΙΣ<span class="wn5-notes-n"> · ${nAll}</span></b>`
     + `<span class="wn5-notes-l">${_noteLineHTML(gs[0], off, more > 0)}</span>`
     + (more ? `<button type="button" class="wi4-link wn5-notes-more" aria-expanded="${_notesOpen}" onclick="WN5._notesTog()">${_notesOpen ? 'λιγότερες ▴' : `+${more} ακόμη ▾`}</button>` : '')
     + `<button type="button" id="wn5-note-read" class="wi4-link"${off ? ' disabled' : ''}${_closed ? ` title="${_esc(_closed.message)}"` : ''} onclick="WN5._noteRead()">${more ? 'Σημείωσα όλες ✓' : 'Σημείωσα ✓'}</button>`
@@ -1553,7 +1681,8 @@ async function _noteRead(group) {
   // one group (its «Σημείωσα») or all of them (the strip's button)
   const g = group ? _noteGroups(_m).find((x) => x.key === group) : null;
   if (group && !g) return;
-  const ids = (g ? g.items : _m.notices).map((x) => x.id).filter((id) => ID_RE.test(String(id)));
+  // «Σημείωσα όλες» marks what the strip shows (3e), never a notice of another week the user has not seen
+  const ids = (g ? g.items : _noteShown(_m).flatMap((x) => x.items)).map((x) => x.id).filter((id) => ID_RE.test(String(id)));
   if (!ids.length) return;
   _noteBusy = true;
   _noteErr = null;
@@ -1632,6 +1761,7 @@ const WN5 = {
   _dayTog,
   _qMore,
   _week,
+  _goRow,
   _switch,
 };
 window.WN5 = WN5;
