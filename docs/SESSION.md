@@ -12,6 +12,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
+- dimitris · `feat/wn5-to-ten-pr3` · Εθνικά v5 Weekly τρίτο PR (3a–3g, F5, F48, F62, B-10, F65, F2, ✈, σταθερή διάταξη, Π-23), πάνω στο #202· μόνο front end, ?v= / SW_VERSION 1793500300 (`docs/sessions/2026-11-01-dimitris-wn5-pr3.md`)
 - dimitris · `feat/wn5-calm-step2` · Εθνικά v5 Weekly βήμα 2 «ηρεμία και σειρά» (2a–2i), πάνω στο #198· μόνο front end, ?v= / SW_VERSION 1793500200 (`docs/sessions/2026-11-01-dimitris-wn5-step2-calm.md`)
 - dimitris · `fix/wn5-truth-step1` · Εθνικά v5 Weekly βήμα 1 «να μη λέει ψέματα» (1a–1e): αναμονή μόνο στην ημέρα της, ίδια φορτία σε ΕΠΟΜΕΝΑ/Βέροια, σταθερή λωρίδα, κεφαλίδα, ΑΝΟΔΟΣ με Βέροια· μόνο front end, ?v= / SW_VERSION 1793500100 (`docs/sessions/2026-11-01-dimitris-wn5-step1-truth.md`)
 - dimitris · `feat/wn5-board-pack2` · Εθνικά v5 πακέτο 2 του board (owner 31/10): διαγραφή σημείου/παραγγελίας από το board (δεξί κλικ, λίστα παραγγελιών), σύρσιμο σημείου σε άλλο φορτηγό ή ημέρα, νέο σημείο στο ίδιο φορτηγό, τιμή τιμολογημένης μόνο owner/accountant, B-22, F64–F66· μόνο front end· F62 + έλεγχος τιμής (SQL), B-26 (SQL), A-3 (Worker) χωριστά· ?v= / SW_VERSION 1793490000 (`docs/sessions/2026-10-31-dimitris-wn5-board-pack2.md`)
