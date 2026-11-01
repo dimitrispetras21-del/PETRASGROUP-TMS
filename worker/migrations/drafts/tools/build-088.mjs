@@ -10,7 +10,6 @@ import { fileURLToPath } from 'node:url';
 import { buildDryRun } from './build-073-dryrun.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-// drafts/ until the owner runs 088; then the files go one up (CLAUDE.md rule 5) and this becomes '..', '..'
 // 088 was executed 1/11 and its files left drafts/ (CLAUDE.md rule 5); the builder stays here
 export const DIR = path.resolve(HERE, '..', '..');
 export const SOURCE = '088_plan_split_leave_by.sql';
