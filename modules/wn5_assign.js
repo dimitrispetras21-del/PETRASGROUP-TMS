@@ -782,7 +782,7 @@
         const r = req(st);
         if (!r || r.missing || problems(st).words.length) return;
         if (st.mode === 'pick') { d.picked = true; k.close(d); if (ctx.onPick) ctx.onPick(choiceOf(st)); return; }
-        k.send(d, r, st.mode === 'vehicle' ? 'Άλλαξε το όχημα' : 'Ανατέθηκε', { intl: true });
+        k.send(d, r, st.mode === 'vehicle' ? 'Άλλαξε το όχημα' : 'Ανατέθηκε', { intl: true, current: () => req(st) });
       }
     });
     // the list follows its field when the form scrolls or the window moves, and goes when the form closes

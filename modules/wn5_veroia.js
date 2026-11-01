@@ -382,7 +382,8 @@
   }
   // «Δημιουργία φορτίου»: ONE POST /plan/legs with every piece, the target from the truck, the stops (plan_put_pieces);
   // a refusal stays in the panel with the Worker's words, the next press is the user's (decision 44)
-  async function nfCreate() {
+  // req0: the same request again with accept_busy (086), from the refusal's «Αποθήκευση έτσι κι αλλιώς»
+  async function nfCreate(req0) {
     if (!_live() || _nf.busy) return;
     const k = K();
     const p = _plan();
@@ -392,13 +393,18 @@
     const btn = document.querySelector('#wn5-hub [data-act="nf-create"]');
     if (btn) btn.disabled = true;
     let out;
+    // the acceptance holds only for the load it was given on: a selection changed since then sends without it
+    const again = req0 ? WN5Act.withAccept(p.req, { code: 'truck_busy' }) : null;
+    const req = again && JSON.stringify(again.body) === JSON.stringify(req0.body) ? req0 : p.req;
     try {
-      out = await planFetch(p.req.method, p.req.path, { body: p.req.body });
+      out = await planFetch(req.method, req.path, { body: req.body });
     } catch (e) {
       _nf.busy = false;
       if (e && e._sessionGone) return;
       _redraw();
-      WN5Act.strip(document.querySelector('#wn5-hub [data-nfmsg]'), e);
+      const el = WN5Act.strip(document.querySelector('#wn5-hub [data-nfmsg]'), e);
+      const acc = WN5Act.withAccept(req, e);
+      if (el && acc) WN5Act.acceptBtn(el, () => nfCreate(acc));
       return;
     }
     _nf.busy = false;
