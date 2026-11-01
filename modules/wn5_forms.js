@@ -134,13 +134,22 @@
   // F1: the window headers lose their «*» and say what an empty window means
   const WIN_HEAD = 'Παράθυρο από – έως · κενό: όλη η ημέρα';
   const PRICE_KEPT = 'Τιμή € (χωρίς ΦΠΑ): η παραγγελία έχει ήδη τιμή — γράψε αριθμό· μια γραμμένη τιμή δεν σβήνεται';
+  // Owner 31/10 (flexible-rules study Κ1 / question 6): while a national is not invoiced, every role changes its price
+  // (the dispatcher writes it when he learns it, F4); once invoiced, only owner and accountant. The form knows
+  // «invoiced» only when GET /plan/orders/:id says it (invoiced: true; the SQL draft that adds it also makes
+  // plan_order_update refuse it, principle 4): an order whose read says nothing stays open, as every order is today.
+  const PRICE_ROLES = Object.freeze(['owner', 'accountant']);
+  const _priceRo = (invoiced) => invoiced === true && !PRICE_ROLES.includes(typeof ROLE !== 'undefined' ? ROLE : '');
+  const PRICE_RO_TITLE = 'Τιμολογημένη: η τιμή αλλάζει μόνο από owner ή λογιστήριο';
   const UNTIL_HEAD = 'Άφιξη ως · κενό: όλη η ημέρα';
   // A row's window as sent (F1): both ends empty = the whole day; one end only is NOT guessed — it stays as typed and
-  // _check names it. An arrival «ως» row (one time, Veroia on ΑΝΟΔΟΣ) empty = by the end of its day, 23:59, and it
-  // reads «ως … 23:59» as the board shows that stop (never «όλη η ημέρα»: it is a deadline, not a window).
+  // _check names it. An arrival «ως» row (one time, Veroia on ΑΝΟΔΟΣ) with a time is a deadline (from = to); left
+  // empty it is the whole day, as every other empty window (owner 1/11: ONE Veroia default, «όλη η ημέρα» — it came as
+  // «23:59» here, «—» in the «+» and «23:59–23:59» in «Ανάθεση», which read this shipment's 23:59 = 23:59 back). Its new
+  // Veroia stop still starts after the order's loading that day (_stops, F66), so the arrival never precedes it.
   // allDay: the whole day was used or typed, for the summary.
   function _rowWin(until, from, to) {
-    if (until) return { from: to === '' ? _dayWin().to : to, to: to === '' ? _dayWin().to : to, allDay: false };
+    if (until) return to === '' ? { from: _dayWin().from, to: _dayWin().to, allDay: true } : { from: to, to, allDay: false };
     if (from === '' && to === '') return { from: _dayWin().from, to: _dayWin().to, allDay: true };
     return { from, to, allDay: _allDay(from, to) };
   }
@@ -172,15 +181,28 @@
   // One stop per place of the form on the target side: the cycle's own stop there (snapshot of the open), or a
   // new one spanning the earliest «από» to the latest «έως» of its rows. plan_h_stop_at finds a piece's stop by
   // place, so two new stops at one place would be refused as ambiguous.
+  // F64 (live 31/10): «08:00–08:00» is the minute that starts at 08:00 (23:59: the one that ends there) — the base
+  // refuses a stop whose end is its start (071 rt_stops_win); the same rule as WN5Act's _win, never a day later
+  function _sameMin(day, from, to) {
+    if (from !== to || !/^\d{2}:\d{2}$/.test(String(from))) return [_iso(day, from), _iso(day, to)];
+    const m = Number(from.slice(0, 2)) * 60 + Number(from.slice(3, 5));
+    const hm = (x) => String(Math.floor(x / 60)).padStart(2, '0') + ':' + String(x % 60).padStart(2, '0');
+    return m < 1439 ? [_iso(day, from), _iso(day, hm(m + 1))] : [_iso(day, hm(m - 1)), _iso(day, to)];
+  }
   function _stops(st) {
     const side = st.target.side;
     const byLoc = new Map();
     // F1 (code review 28/10): a row left without a window (the whole day) asks nothing of the stop, so it never widens
     // the hours another order agreed at the same place: the timed rows make the window, the whole-day rows only when
     // a place has nothing else.
-    const rows = st.orders.flatMap((o) => o.loads.concat(o.drops));
+    // F66 (owner 31/10): an arrival «ως» (Veroia on ΑΝΟΔΟΣ) has one time, and a new stop needs planned_to >
+    // planned_from (071 rt_stops_win). A cycle with no Veroia stop on its ΑΝΟΔΟΣ («Κενό γύρισμα») gets one on the
+    // arrival day: open from the end of the order's last loading that day (else the day's start) to the «ως».
+    const untilFrom = (o, d) => o.loads.filter((l) => l.day === d.day && l.to && l.to < d.to).map((l) => l.to).sort().pop() || '00:00';
+    const rows = st.orders.flatMap((o) => o.loads.concat(o.drops.map((d) => (d.until && d.to > '00:00' ? Object.assign({}, d, { from: untilFrom(o, d) }) : d))));
     for (const r of rows.filter((x) => !x.allDay).concat(rows.filter((x) => x.allDay))) {
-      const f = _iso(r.day, r.from), t = _iso(r.day, r.to);
+      // F64: the same hour twice is that minute of that day (planned_to > planned_from), as WN5Act's _win
+      const [f, t] = _sameMin(r.day, r.from, r.to);
       const e = byLoc.get(r.location_id);
       if (!e) byLoc.set(r.location_id, { from: f, to: t, allDay: !!r.allDay });
       else if (!r.allDay || e.allDay) {
@@ -242,7 +264,7 @@
         if (!Number.isSafeInteger(r.location_id)) out.push(w + 'διάλεξε τοποθεσία από τη λίστα');
         if (!DAY.test(String(r.day || ''))) out.push(w + 'γράψε ημέρα');
         if (!HM.test(String(r.from || '')) || !HM.test(String(r.to || ''))) {
-          out.push(w + (r.until ? 'άφιξη ως: ΗΗ:ΛΛ, ή κενό (ως 23:59)' : 'παράθυρο: ΗΗ:ΛΛ και στα δύο άκρα, ή κανένα (όλη η ημέρα)'));
+          out.push(w + (r.until ? 'άφιξη ως: ΗΗ:ΛΛ, ή κενό (όλη η ημέρα)' : 'παράθυρο: ΗΗ:ΛΛ και στα δύο άκρα, ή κανένα (όλη η ημέρα)'));
         }
         else if (!r.until && r.from >= r.to) out.push(w + 'το «έως» πρέπει να είναι μετά το «από»');
         // F1 (080): pallets are optional — empty = not known yet (NULL, the board writes «;»)
@@ -261,13 +283,13 @@
         }
       }
     });
+    // F66: an arrival «ως» on a cycle with no Veroia stop on that side makes one (_stops); only «ως 00:00» has no
+    // time before it on its day
     if (st.target) {
-      // A new stop needs planned_to > planned_from (071 rt_stops_win); an arrival «ως» has one time only, so it
-      // can only use the cycle's own Veroia stop of that side.
       for (const o of st.orders) for (const r of o.drops) {
-        if (!r.until) continue;
+        if (!r.until || r.to > '00:00') continue;
         const ex = (st.cycleStops || []).some((s) => s.side === st.target.side && s.location_id === r.location_id);
-        if (!ex) { out.push('Ο κύκλος δεν έχει στάση Βέροιας στην ΑΝΟΔΟ — όρισέ τη πρώτα από την ημέρα του σκέλους'); return out; }
+        if (!ex) { out.push('Άφιξη Βέροιας ως 00:00: γράψε ώρα μετά τις 00:00'); return out; }
       }
     }
     return out;
@@ -378,6 +400,22 @@
     // left to the browser.
     box.addEventListener('mousedown', (ev) => { const x = ev.target; if (x && x.classList && x.classList.contains('wn5f-dayx') && document.activeElement !== x) x._selOnce = true; });
     box.addEventListener('mouseup', (ev) => { const x = ev.target; if (x && x._selOnce) { x._selOnce = false; ev.preventDefault(); } });
+    // F5 (live 1/11): a place or client is picked from its list with ONE click and the keys stay in the form. The
+    // item's own mousedown (fhPickLinked, core/form-helpers.js) picks; the default of that mousedown moved the focus to
+    // <body> (a list item takes none), so what was typed next went nowhere or to a board shortcut, and the user clicked
+    // again. The focus goes to the next field instead, as Tab would (the row's day, the order's price).
+    box.addEventListener('mousedown', (ev) => {
+      const it = ev.target && ev.target.closest ? ev.target.closest('.linked-drop-item') : null;
+      if (!it || !box.contains(it)) return;
+      ev.preventDefault();
+      const drop = it.closest('.linked-drop');
+      const inp = drop && document.getElementById(String(drop.id).replace(/_d$/, ''));
+      const all = [...box.querySelectorAll('input:not([type="hidden"]):not([tabindex="-1"]), select:not([tabindex="-1"]), textarea')]
+        .filter((x) => !x.disabled && x.offsetParent !== null);
+      const next = inp ? all[all.indexOf(inp) + 1] : null;
+      if (next) next.focus();
+      _refresh(f);
+    });
     // a place or client picked from the list (fhPickLinked on mousedown) fires no input: the field's blur refreshes
     box.addEventListener('focusout', (ev) => {
       const t = ev.target;
@@ -526,7 +564,8 @@
       + `<label class="wn5f-f"><span>Πελάτης *</span><span data-cpick="${cid}">${fhClientSelect(cid, '', '', 'fhClientDrop')}</span></label>`
       + `<label class="wn5f-f"><span>Τιμή € (χωρίς ΦΠΑ)</span><input class="form-input" data-f="price" inputmode="decimal" placeholder="κενό: λείπει"></label>`
       + `<label class="wn5f-f"><span>Θερμοκρασία °C</span><input class="form-input" data-f="temp" inputmode="decimal"></label>`
-      + `<div class="wn5f-f"><span>PE · ανταλλαγή παλετών</span>${_peHTML(null)}</div>`
+      // Figma audit B-22 (owner 31/10): a new order starts on «Όχι»; the dispatcher presses «Ναι» when there is exchange
+      + `<div class="wn5f-f"><span>PE · ανταλλαγή παλετών</span>${_peHTML(false)}</div>`
       + `<button type="button" class="wn5f-x wn5f-ox" data-act="del-order" aria-label="Αφαίρεση παραγγελίας">×</button></div>`
       + `<div class="wn5f-grid3">`
       + `<label class="wn5f-f"><span>Αναφορά</span><input class="form-input" data-f="ref"></label>`
@@ -548,7 +587,7 @@
       + `<label class="wn5f-f"><span>Φορτηγό (προαιρετικό)</span><select class="form-input" id="wn5f-tgt">${opts}</select></label></div>`
       + `<div class="wn5f-sec">ΤΥΠΟΣ ΚΑΤΑΧΩΡΗΣΗΣ</div><div class="wn5f-modes">`
       + `<button type="button" class="wn5f-mode" data-mode="normal"><span class="wn5f-mode-t"><i class="wn5f-radio" aria-hidden="true"></i>Κανονικό φορτίο</span><span class="wn5f-mode-s">Ένας πελάτης — 1 παραγγελία</span></button>`
-      + `<button type="button" class="wn5f-mode" data-mode="groupage"><span class="wn5f-mode-t"><i class="wn5f-radio" aria-hidden="true"></i>Groupage</span><span class="wn5f-mode-s">Πολλοί πελάτες, ένα φορτηγό — 1 παραγγελία ανά πελάτη, ίδιο σκέλος, χωρίς βήμα ένωσης</span></button></div>`
+      + `<button type="button" class="wn5f-mode" data-mode="groupage"><span class="wn5f-mode-t"><i class="wn5f-radio" aria-hidden="true"></i>Groupage</span><span class="wn5f-mode-s">Πολλές παραγγελίες, ένα φορτηγό</span></button></div>`
       + `<div class="wn5f-ords">${_blockHTML(f)}</div>`
       + `<div class="wn5f-adds"><button type="button" class="wn5f-add" data-act="add-order">+ παραγγελία</button>`
       + `<button type="button" class="wn5f-add" data-act="add-empties">+ Άδειες παλέτες · 1 €</button></div>`
@@ -636,7 +675,13 @@
     f.el.querySelector('[data-vdayl]').textContent = dir === 'ANODOS' ? 'Ημ. άφιξης Βέροιας *' : 'Ημ. φόρτωσης Βέροιας *';
     f.el.querySelector('[data-vwinl]').textContent = dir === 'ANODOS' ? 'Άφιξη Βέροιας ως' : 'Παράθυρο φόρτωσης Βέροιας';
     f.el.querySelector('[data-vfromw]').hidden = dir === 'ANODOS';
-    const raw = _raw(f);
+    let raw = _raw(f);
+    // F2 (owner 1/11): an ΑΝΟΔΟΣ that does not go to Veroia is not asked its Veroia arrival — the head's day and «ως»
+    // go once every delivery row has its place and none is Veroia (they only fill a Veroia row, which keeps its own
+    // fields). A delivery not chosen yet still asks: the «+» of a trip that ends at Veroia opens with the Veroia day
+    // first (F57). Hidden in place, so «Φορτηγό» does not jump. ΚΑΘΟΔΟΣ keeps them: its points open against that day.
+    const askV = dir !== 'ANODOS' || raw.some((o) => o.drops.some((r) => r.hub || !r.rec));
+    for (const sel of ['[data-vdayl]', '[data-vwinl]']) f.el.querySelector(sel).closest('.wn5f-f').classList.toggle('off', !askV);
     // F44 (F33's rule): with no Veroia stop on the cycle yet, an ΑΝΟΔΟΣ arrival the screen filled follows the order's
     // own loading — its last loading day — until the user types the arrival day
     const vEl = f.el.querySelector('#wn5f-vday');
@@ -648,17 +693,47 @@
     // screen filled (data-auto) follows the header, one the user typed never
     const vday = vEl.value, vf = _hmNorm(f.el.querySelector('#wn5f-vfrom').value), vt = _hmNorm(f.el.querySelector('#wn5f-vto').value);
     const whole = _headWinCheck(f).length === 0;   // F1: half a head window never reaches the rows
+    // F57 (live 31/10, extends F46): «+ → Νέα παραγγελία» put the points on the trip's first day, and a new Veroia day
+    // did not move them. A point the screen filled (data-auto) follows the Veroia day once that day is a set one (the
+    // trip's Veroia stop, or typed / picked); a point the user typed keeps its day. ΑΝΟΔΟΣ: every filled point takes
+    // the arrival day (F33's rule read back: the arrival is the loading's day; a drop on the way is that day too). ΚΑΘΟΔΟΣ: the Veroia day is the
+    // loading AT Veroia and the deliveries come after it, so a filled point moves by as many days as the Veroia day
+    // moved, never onto the loading day (code review). Not while the Veroia day is itself the screen's (ΑΝΟΔΟΣ without
+    // a Veroia stop follows the loading, F44): the two would only chase each other.
+    const vSet = !vEl.dataset.auto && DAY.test(vday);
+    // the day the points were last aligned with: the screen's Veroia day too (a ΚΑΘΟΔΟΣ with no Veroia stop opens with
+    // it), so the first day the user sets moves them already (code review r2)
+    // a form opened with no Veroia day at all aligns from the day its points were filled on (code review r4)
+    const prev = f.vPrev || (DAY.test(f.dayDefault || '') ? f.dayDefault : null);
+    const shift = dir === 'KATHODOS' && vSet && prev && prev !== vday ? Math.round((Date.parse(vday) - Date.parse(prev)) / 864e5) : 0;
+    if (DAY.test(vday)) f.vPrev = vday;
+    // the board's own day arithmetic (wn5_actions _addDays), never a second copy
+    const addDays = typeof WN5Act !== 'undefined' && WN5Act._kit && typeof WN5Act._kit.addDays === 'function' ? WN5Act._kit.addDays : null;
+    // a row or an order added later opens where the filled ones are now (code review r3), never on the old day
+    let moved = false;   // a day moved here: the summary below is built from the rows as they are now (code review r6)
+    if (vSet && DAY.test(f.dayDefault || '')) {
+      if (dir === 'ANODOS') f.dayDefault = vday;
+      else if (shift && addDays) f.dayDefault = addDays(f.dayDefault, shift);
+    }
     f.el.querySelectorAll('.wn5f-row').forEach((r) => {
       const rec = (document.getElementById('lv_' + r.dataset.pid) || {}).value || '';
+      if (vSet && !(rec && rec === _hubRec())) {
+        const d = r.querySelector('[data-f="day"]'), typed = d.parentElement && d.parentElement.querySelector('.wn5f-dayx');
+        if (d.dataset.auto && !(typed && typed.dataset.raw)) {
+          if (dir === 'ANODOS' && d.value !== vday) { d.value = vday; moved = true; }
+          else if (shift && addDays && DAY.test(d.value)) { d.value = addDays(d.value, shift); moved = true; }
+        }
+      }
       if (rec && rec === _hubRec()) {
         const d = r.querySelector('[data-f="day"]'), a = r.querySelector('[data-f="from"]'), b = r.querySelector('[data-f="to"]');
         // a day typed wrong stays wrong, in red (_dayInput): the head never fills it over the user's keys
         const typed = d.parentElement && d.parentElement.querySelector('.wn5f-dayx');
-        if ((!d.value || (d.dataset.auto && d.value !== vday)) && vday && !(typed && typed.dataset.raw)) { d.value = vday; d.dataset.auto = '1'; }
+        if ((!d.value || (d.dataset.auto && d.value !== vday)) && vday && !(typed && typed.dataset.raw)) { d.value = vday; d.dataset.auto = '1'; moved = true; }
         if (whole && !a.value && vf) a.value = vf;
         if (whole && !b.value && vt) b.value = vt;
       }
     });
+    if (moved) raw = _raw(f);
     // a drop section whose rows are all Veroia arrivals heads its window «Άφιξη ως *» (Figma Δ7 2069:7995)
     f.el.querySelectorAll('.wn5f-ord').forEach((b) => {
       const rows = [...b.querySelectorAll('.wn5f-rows[data-k="drop"] .wn5f-row')];
@@ -693,7 +768,7 @@
       // a row of the N side its own shipment's (_pairs takes that row's own pallets)
       const palOf = (r, single) => (prs && single ? _palAgg(sp) : _palAgg([r.pallets]));
       for (const [act, rows, single] of [['φόρτωση', o.loads, nl === 1], ['παράδοση', o.drops, nd === 1]]) for (const r of rows)
-        if (DAY.test(r.day) && HM.test(r.to)) seq.push(Object.assign({ k: r.day + 'T' + (r.from || r.to), when: r.until ? `ως ${_dow(r.day)} ${r.to}` : r.allDay ? `${_dow(r.day)} όλη η ημέρα` : `${_dow(r.day)} ${r.from}–${r.to}`, act, place: r.hub ? 'Βέροια' : r.label, clients: [o.client || '—'] }, palOf(r, single)));
+        if (DAY.test(r.day) && HM.test(r.to)) seq.push(Object.assign({ k: r.day + 'T' + (r.until ? r.to : r.from || r.to), when: r.until && !r.allDay ? `ως ${_dow(r.day)} ${r.to}` : r.allDay ? `${_dow(r.day)} όλη η ημέρα` : `${_dow(r.day)} ${r.from}–${r.to}`, act, place: r.hub ? 'Βέροια' : r.label, clients: [o.client || '—'] }, palOf(r, single)));
     });
     seq.sort((a, b) => (a.k < b.k ? -1 : a.k > b.k ? 1 : 0));
     // Figma 2011:9940: orders at the same place in the same window are ONE stop line («Zeta, Kappa · 20π»)
@@ -727,11 +802,32 @@
     _why(f, !f.done && lack.length ? 'Λείπει: ' + lack.join(', ') : null);
   }
 
+  // F52 (code review r2/r3): a place saved while a form was open is in the pickers; its number comes with the
+  // catalogue's re-read (PlanIds.stale), asked by the press itself — a no-op while the catalogue is current.
+  // f.reading (not f.busy: «Άκυρο» / Esc still close the form, and nothing disables the button) keeps a second press
+  // out; the button says aria-busy while it reads. Not disabled: that would take the focus off it and leave the
+  // form's next blur (the «Λείπει: …» refresh) unfired (code review r3/r6).
+  async function _idsFresh(f) {
+    const b = f.el.querySelector('[data-act="save"]');
+    f.reading = true;
+    if (b) b.setAttribute('aria-busy', 'true');
+    // load() never rejects: a failed read keeps the catalogue in hand, and a missing number is said at _readState
+    let r = null;
+    try { r = await PlanIds.load(); } finally { f.reading = false; if (b) b.removeAttribute('aria-busy'); }
+    // a re-read that failed: the catalogue in hand still serves, and the reason is said beside a refusal (code review r8)
+    return r && r.ok && r.err ? 'Ο κατάλογος δεν ξαναδιαβάστηκε (' + String(r.err.message || r.err) + ') — ξαναδοκίμασε σε ένα λεπτό' : null;
+  }
   async function _saveOrder(f) {
-    if (f.busy || f.done || f.locked) return;
+    if (f.busy || f.reading || f.done || f.locked) return;
     let st, body;
+    const idsWhy = await _idsFresh(f);
+    if (_f !== f || f.busy || f.done || f.locked) return;   // closed or replaced while the catalogue was read
     try { st = _readState(f); }
-    catch (e) { if (typeof PlanError !== 'undefined' && e instanceof PlanError) WN5Act.strip(_strip(f), e); else _lines(f, [String(e && e.message || e)]); return; }
+    catch (e) {
+      if (typeof PlanError !== 'undefined' && e instanceof PlanError) { WN5Act.strip(_strip(f), e); if (idsWhy) _lines(f, [idsWhy]); }
+      else _lines(f, [String(e && e.message || e)]);
+      return;
+    }
     // F1 (code review 28/10): the head's Veroia window fills the empty Veroia rows only when it is whole; half of it is
     // named HERE, at the field the user typed, never as a row error the user did not cause
     const probs = _headWinCheck(f).concat(_check(st));
@@ -795,7 +891,9 @@
     d.hidden = false;
     d.textContent = `Αποθηκεύτηκε · ${n === 1 ? '1 παραγγελία' : n + ' παραγγελίες'}${ids.length ? ' · #' + ids.join(' · #') : ''}${why}`;
     _lines(f, []);
-    if (ans && Array.isArray(ans.warnings) && ans.warnings.length) WN5Act.strip(_strip(f), ans.warnings);
+    // over_33 stays on the truck's row only (owner 1/11, WN5Act.savedWarnings)
+    const ws = ans ? WN5Act.savedWarnings(ans.warnings) : [];
+    if (ws.length) WN5Act.strip(_strip(f), ws);
     else if (!found) _strip(f).innerHTML = '';
     f.el.querySelector('[data-act="save"]').hidden = true;
     f.el.querySelectorAll('.wn5f-ft [data-act="cancel"]').forEach((b) => { b.textContent = 'Κλείσιμο'; });
@@ -825,7 +923,7 @@
       full: true, nat_order_id: o.nat_order_id, client: o.client || '',
       price: o.price == null ? null : Number(o.price), temperature_c: o.temperature_c == null ? null : Number(o.temperature_c),
       pallet_exchange: typeof o.pallet_exchange === 'boolean' ? o.pallet_exchange : null,
-      reference: o.reference || '', goods: o.goods || '', notes: o.notes || '',
+      reference: o.reference || '', goods: o.goods || '', notes: o.notes || '', invoiced: o.invoiced === true,
       direction: o.direction === 'KATHODOS' || o.direction === 'ANODOS' ? o.direction : null,
       // the side is the cycle's while a point rides onward; one waiting at Veroia (F23) has nothing planned yet
       riding: ships.some((s) => s.rides && !(s.at_hub && s.waits)), ships,
@@ -926,7 +1024,7 @@
     const dro = e.riding ? ' disabled' : '';
     return `<div class="wn5f-grid4">`
       + `<div class="wn5f-f"><span>Πελάτης</span><span class="wn5f-ro">${_esc(e.client || '—')}</span></div>`
-      + `<label class="wn5f-f"><span>Τιμή € (χωρίς ΦΠΑ)</span><input class="form-input" data-f="price" inputmode="decimal" value="${e.price == null ? '' : _esc(e.price)}" placeholder="${e.price == null ? 'λείπει' : ''}"></label>`
+      + `<label class="wn5f-f"><span>Τιμή € (χωρίς ΦΠΑ)</span><input class="form-input" data-f="price" inputmode="decimal" value="${e.price == null ? '' : _esc(e.price)}" placeholder="${e.price == null ? 'λείπει' : ''}"${_priceRo(e.invoiced) ? ` disabled title="${PRICE_RO_TITLE}"` : ''}></label>`
       + `<label class="wn5f-f"><span>Θερμοκρασία °C</span><input class="form-input" data-f="temp" inputmode="decimal" value="${e.temperature_c == null ? '' : _esc(e.temperature_c)}"></label>`
       + `<div class="wn5f-f"><span>PE · ανταλλαγή παλετών</span>${_peHTML(e.pallet_exchange)}</div></div>`
       // 075: the side is corrected here (the repair of #17); on a cycle the cycle's side holds, so it stays as it is
@@ -935,7 +1033,7 @@
       + ['KATHODOS', 'ANODOS'].map((k) => `<option value="${k}"${e.direction === k ? ' selected' : ''}>${DIR_GR[k]}</option>`).join('')
       + `</select></label>`
       // F4 (080): read from the order itself (077), a null price is «none yet» — said, and written here when known
-      + (e.price == null ? '<div class="wn5f-note">Η παραγγελία δεν έχει ακόμη τιμή — γράψε την εδώ όταν τη μάθεις.</div>' : '')
+      + (e.price == null && !_priceRo(e.invoiced) ? '<div class="wn5f-note">Η παραγγελία δεν έχει ακόμη τιμή — γράψε την εδώ όταν τη μάθεις.</div>' : '')
       + `<div class="wn5f-grid3"><label class="wn5f-f"><span>Αναφορά</span><input class="form-input" data-f="ref" value="${_esc(e.reference)}"></label>`
       + `<label class="wn5f-f"><span>Είδος</span><input class="form-input" data-f="goods" value="${_esc(e.goods)}"></label>`
       + `<label class="wn5f-f"><span>Σημειώσεις</span><input class="form-input" data-f="notes" value="${_esc(e.notes)}"></label></div>`
@@ -1044,7 +1142,9 @@
     return !!(b.set || b.shipments);
   }
   async function _saveEdit(f) {
-    if (f.busy || f.done || f.locked) return;
+    if (f.busy || f.reading || f.done || f.locked) return;
+    const idsWhy = await _idsFresh(f);
+    if (_f !== f || f.busy || f.done || f.locked) return;   // closed or replaced while the catalogue was read
     const st = _readEdit(f);
     const probs = _checkEdit(f, st);
     let body = null;
@@ -1052,7 +1152,7 @@
       try {
         st.news = st.news.map((s) => Object.assign({}, s, { origin_location_id: PlanIds.id('location', s.origin_rec), dest_location_id: PlanIds.id('location', s.dest_rec) }));
       } catch (e) {
-        if (typeof PlanError !== 'undefined' && e instanceof PlanError) { _lines(f, []); WN5Act.strip(_strip(f), e); return; }
+        if (typeof PlanError !== 'undefined' && e instanceof PlanError) { _lines(f, idsWhy ? [idsWhy] : []); WN5Act.strip(_strip(f), e); return; }
         throw e;
       }
       body = _patchBody(f.edit, st);
@@ -1091,7 +1191,16 @@
           : ' · η ώρα της στάσης του φορτηγού δεν άλλαξε: αλλάζει από το σκέλος του κύκλου (άλλη εβδομάδα)';
       }
       const added = (ans && ans.ids && ans.ids.new_shipment_ids) || [];
-      if (added.length) {
+      // owner 31/10 (pack 2): a new point of an order that rides goes on the same truck, after its last stop — one
+      // more write after the board read. When it cannot (no single truck, a refusal), the point waits and the old
+      // line below says so, with the base's reason in the strip (wn5_edit.js putNew).
+      let put = null;
+      if (added.length && typeof WN5Edit !== 'undefined') {
+        try { await f.reloaded; } catch (_) { /* the board's own strip says the read failed */ }
+        put = await WN5Edit.putNew({ natOrderId: f.edit.nat_order_id, shipmentIds: added, leg: f.p.leg || null, host: _strip(f) });
+      }
+      if (put && put.text) f.el.querySelector('[data-done]').textContent += ' · ' + put.text;
+      else if (added.length) {
         f.el.querySelector('[data-done]').textContent += ` · ${added.length === 1 ? 'νέο σημείο' : added.length + ' νέα σημεία'} ΠΡΟΣ ΑΝΑΘΕΣΗ: βάλ' ${added.length === 1 ? 'το' : 'τα'} σε φορτηγό από το Εβδομαδιαίο`;
         // A-7: opened from a leg («+ σημείο» of the leg form): the way back to that leg, one press away
         const leg = f.p.leg;
@@ -1207,15 +1316,21 @@
       const v = p.veroia || (hubStop ? { from: hubStop.planned_from, to: hubStop.planned_to } : null);
       // F44/F46 (live 31/10): the Veroia day is the cycle's own Veroia stop on that side, before the cycle's start
       // (p.day): the start put a Veroia arrival on Thu 29 for a cycle that stops at Veroia on Fri 30, fixed by hand
-      // three times. The points keep the cycle's day as before. What the screen fills is marked data-auto and follows
-      // (_orderRefresh); a day the user types or picks stays theirs (_dayInput).
+      // three times. The points open on the cycle's day; what the screen fills is marked data-auto and follows the
+      // Veroia day (F57, _orderRefresh); a day the user types or picks stays theirs (_dayInput).
       const hubDay = hubStop ? hubStop.stop_day || '' : '';
-      const day = p.day || hubDay, vd = hubDay || p.day || '';
+      // F57 (code review r2): a ΚΑΘΟΔΟΣ delivers after its Veroia loading — its filled points never open before that day
+      const day = dir.value === 'KATHODOS' && hubDay && (!p.day || p.day < hubDay) ? hubDay : p.day || hubDay, vd = hubDay || p.day || '';
       const vEl = f.el.querySelector('#wn5f-vday');
-      if (vd) { vEl.value = vd; if (!hubDay) vEl.dataset.auto = '1'; }
+      // f.vPrev: the Veroia day the filled points open against — F57 moves them only when that day moves
+      if (vd) { vEl.value = vd; f.vPrev = vd; if (!hubDay) vEl.dataset.auto = '1'; }
       if (day) { f.dayDefault = day; f.el.querySelectorAll('[data-f="day"]').forEach((x) => { if (!x.value) { x.value = day; x.dataset.auto = '1'; } }); }
-      if (v) {
-        const a = /^\d\d:\d\d$/.test(v.from) ? v.from : (_parts(v.from) || {}).hm, b = /^\d\d:\d\d$/.test(v.to) ? v.to : (_parts(v.to) || {}).hm;
+      // owner 1/11 (one Veroia default): a Veroia stop of the whole day — or an arrival «ως 23:59», the end of its day —
+      // leaves the fields empty, which IS «όλη η ημέρα» here; it opened as «23:59» on ΑΝΟΔΟΣ and «00:00 – 23:59» on ΚΑΘΟΔΟΣ
+      const hmOf = (x) => (/^\d\d:\d\d$/.test(x) ? x : (_parts(x) || {}).hm);
+      const whole = !!v && ((hmOf(v.from) === _dayWin().from && hmOf(v.to) === _dayWin().to) || (dir.value === 'ANODOS' && hmOf(v.to) === _dayWin().to));
+      if (v && !whole) {
+        const a = hmOf(v.from), b = hmOf(v.to);
         if (a) f.el.querySelector('#wn5f-vfrom').value = a;
         if (b) f.el.querySelector('#wn5f-vto').value = b;
       }
@@ -1284,7 +1399,8 @@
       // the act that counts at this stop: the delivery at the end or where nothing loads, else the loading
       const want = isEnd || !legs.some((x) => x.act === 'load') ? 'unload' : 'load';
       const counted = legs.filter((l) => l.act === want);
-      return { stop_id: s.stop_id, when: isEnd ? `ως ${_dow(s.stop_day)} ${_hm(s.planned_to)}` : `${_dow(s.stop_day)} ${_hmw(s.planned_from, s.planned_to)}`,
+      // owner 1/11: a Veroia end of the whole day reads «όλη η ημέρα», as every whole-day window, never «ως … 23:59»
+      return { stop_id: s.stop_id, when: isEnd && !WN5L.allDay(s.planned_from, s.planned_to) ? `ως ${_dow(s.stop_day)} ${_hm(s.planned_to)}` : `${_dow(s.stop_day)} ${_hmw(s.planned_from, s.planned_to)}`,
         place: isHub(s) ? (isEnd ? 'Βέροια · τέλος κύκλου' : 'Βέροια') : s.location,
         what: [...new Set(legs.map((l) => l.reference).filter(Boolean))].join(' · ') + (isEnd ? ' · άφιξη' : legs.some((l) => l.act === 'load') ? ' · φόρτωση' : ' · παράδοση'),
         pallets: counted.reduce((a, l) => a + (l.pallets != null ? l.pallets : 0), 0), unk: counted.filter((l) => l.pallets == null).length };
@@ -1301,7 +1417,7 @@
         ? [['Κατεύθυνση', 'ΚΑΘΟΔΟΣ'], ['Φόρτωση Βέροιας', hubStop ? _dlab(hubStop.stop_day) : '—'],
            ['Παράθυρο Βέροιας', hubStop ? _hmw(hubStop.planned_from, hubStop.planned_to) : '—']]
         : [['Κατεύθυνση', 'ΑΝΟΔΟΣ'], ['Κάθοδος', others.length ? 'ΚΑΘΟΔΟΣ ' + _dlab(others[0].stop_day) : 'Χωρίς κάθοδο'],
-           ['Άφιξη Βέροιας', end ? `${_dlab((_parts(end.planned_to) || {}).day)} · ${_hm(end.planned_to)}` : '—']],
+           ['Άφιξη Βέροιας', end ? `${_dlab((_parts(end.planned_to) || {}).day)} · ${WN5L.allDay(end.planned_from, end.planned_to) ? 'όλη η ημέρα' : _hm(end.planned_to)}` : '—']],
     };
   }
   const _tempTxt = (ts) => (ts.length ? ts.slice().sort((a, b) => a - b).map((t) => (t > 0 ? '+' : '') + t).join(' / ') + ' °C' : '—');
@@ -1311,10 +1427,16 @@
   // A point of a leg is read-only here — its pallets, day and window change in its order's edit form (F30), its truck's
   // stop from «Αλλαγή ώρας ›» (F29), its truck with «Μεταφορά σε…» — drawn in
   // Figma's boxes (2011:9452 / 9520): a VS's place and pallets in the locked grey cell, the rest white.
+  // F55 (live 31/10): a VS point's day is a white box that looks like a field; typing in it did nothing, in silence.
+  // It is the day of the truck's stop there, so a click opens that stop's day panel, the one of «Αλλαγή ώρας ›» (F29,
+  // already in this form's stop list). The VS's own day changes with «Ορισμός ημέρας», its window stays the
+  // international's (decision 21). A national point keeps its edit form (F30).
   function _roRowHTML(r, vs) {
     const ro = vs ? 'wn5f-c vro' : 'wn5f-c';
     return `<div class="wn5f-row ro" data-piece="${r.piece_id}"><span class="${ro}">${_esc(r.hub ? 'Βέροια' : r.location)}</span>`
-      + `<span class="wn5f-c">${_esc(_dlab(r.day))}</span>`
+      + (vs && r.stop_id != null
+        ? `<button type="button" class="wn5f-c wn5f-cbtn" data-act="stop-time" data-stop="${r.stop_id}" title="Αλλαγή ώρας ›">${_esc(_dlab(r.day))}</button>`
+        : `<span class="wn5f-c">${_esc(_dlab(r.day))}</span>`)
       + (WN5L.allDay(r.from, r.to) ? '<span class="wn5f-cwin"><span class="wn5f-c">όλη η ημέρα</span></span>'
         : `<span class="wn5f-cwin"><span class="wn5f-c">${_hm(r.from)}</span><span class="wn5f-dash">–</span><span class="wn5f-c">${_hm(r.to)}</span></span>`)
       + `<span class="${ro}">${_pal(r.pallets)}</span><span></span>`
@@ -1492,10 +1614,14 @@
           : 'Οι τοποθεσίες δεν φορτώθηκαν — κλείσε και άνοιξε ξανά τη φόρμα']);
         return;
       }
-      let loc;
-      try { loc = PlanIds.id('location', rec); }
-      catch (e) { WN5Act.strip(_strip(f), e); return; }
-      vsPlace(Number(t.dataset.osid), loc);
+      const osid = Number(t.dataset.osid);
+      PlanIds.load().then(() => {   // F52: a place saved meanwhile (load() never rejects)
+        if (_f !== f || f.done) return;   // the form was closed or replaced while the catalogue was read: nothing is sent
+        let loc;
+        try { loc = PlanIds.id('location', rec); }
+        catch (e) { WN5Act.strip(_strip(f), e); return; }
+        vsPlace(osid, loc);
+      }).catch((e) => { _log(e, 'WN5Form vs-place'); _lines(f, [String((e && e.message) || e)]); });
     }
   }
   // The clicked side stays marked on the board while its form is open (Figma 2011:9305 / 2069:8150: the side's cells
@@ -1558,7 +1684,8 @@
   function _vsOk(f, ans, withNotice, without, sel) {
     const line = f.el.querySelector(sel);
     if (line) line.textContent = Array.isArray(ans.notice_ids) && ans.notice_ids.length ? withNotice : without;
-    if (Array.isArray(ans.warnings) && ans.warnings.length) WN5Act.strip(_strip(f), ans.warnings);
+    const ws = WN5Act.savedWarnings(ans.warnings);   // over_33: on the row only (owner 1/11)
+    if (ws.length) WN5Act.strip(_strip(f), ws);
     else _strip(f).innerHTML = '';
     _lines(f, []);
   }

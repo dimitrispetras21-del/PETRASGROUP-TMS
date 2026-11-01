@@ -222,12 +222,13 @@ test('F4α-T4: partner_rate null → rates.missing (open item, never 0)', () => 
   const r = rowOf(M(), 'rt:104');
   assert.deepStrictEqual(r.rates, { partner_rate: null, missing: true });
   // one-segment cycle = F0 7745 / H1 rows 2–6: line 2 is the partner's plate, which the 072 board does not carry
-  // (Ε-35, Ε-36) → «—»; the rate / «κόμιστρο λείπει» lives in Δ1, the move list and the H3 segment tiles (Ε-13)
-  assert.deepStrictEqual([r.tiles[0].line1, r.tiles[0].line2, r.tiles[0].missing], ['Partner Test Pelagos', '—', false]);
+  // (Ε-35, Ε-36) → nothing (step 2i, coordinator 1/11: no bare «—»); the rate / «κόμιστρο λείπει» lives in Δ1, the move
+  // list and the H3 segment tiles (Ε-13)
+  assert.deepStrictEqual([r.tiles[0].line1, r.tiles[0].line2, r.tiles[0].missing], ['Partner Test Pelagos', '', false]);
   const b = fix(); b.cycles.find((c) => c.rt_id === 104).partner_rate = 300;
   const r2 = rowOf(M(b), 'rt:104');
   assert.deepStrictEqual(r2.rates, { partner_rate: 300, missing: false });
-  assert.deepStrictEqual([r2.tiles[0].line2, r2.tiles[0].partnerRate], ['—', 300], 'the rate stays data, never on the one-segment tile');
+  assert.deepStrictEqual([r2.tiles[0].line2, r2.tiles[0].partnerRate], ['', 300], 'the rate stays data, never on the one-segment tile');
   const segs = (rate) => [{ segment_id: 1, label: 'initial', trip_type: 'OWNED', truck: 'TST-2104', driver: 'Driver Test 01', has_vehicle: true, stop_ids: [] },
     { segment_id: 2, label: 'final', trip_type: 'PARTNER', partner: 'Partner Test Pelagos', partner_rate: rate, has_vehicle: true, stop_ids: [] }];
   const b2 = fix(); b2.cycles.find((c) => c.rt_id === 104).segments = segs(null);
@@ -370,4 +371,17 @@ test('075: waitSide — the hub ends first, then the order\'s own direction, els
   assert.strictEqual(L.waitSide({ kind: 'national', nat_from_location_id: 1, nat_to_location_id: 6, direction: 'ANODOS' }, 1), 'KATHODOS', 'from the hub wins over a direction');
   assert.strictEqual(L.waitSide({ kind: 'vs_export', nat_to_location_id: 1 }, 1), 'ANODOS');
   assert.strictEqual(L.waitSide({ kind: 'vs_import', at_hub: true, nat_to_location_id: 3 }, 1), 'KATHODOS');
+});
+
+// F64 (owner 31/10): one reader rule for the board and the driver sheet — the base stores «the same hour» as one
+// minute, and an arrival «ως 23:59» as 23:58–23:59; neither is printed as a window nobody agreed.
+test('F64: winText — one minute is «στις HH:MM», the day\'s last minute «ως 23:59», the whole day and a window as before', () => {
+  const W = require(path.join(ROOT, 'core/wn5-logic.js'));
+  assert.strictEqual(W.winText('08:00', '08:01', false), 'στις 08:00');
+  assert.strictEqual(W.winText('08:00', '08:00', false), '08:00–08:00');   // a 24 h window stored before F64: as it is
+  assert.strictEqual(W.winText('23:58', '23:59', false), 'ως 23:59');
+  assert.strictEqual(W.winText('00:00', '23:59', true), 'όλη η ημέρα');
+  assert.strictEqual(W.winText('06:00', '08:00', false), '06:00–08:00');
+  assert.strictEqual(W.winText('22:00', '02:00', false), '22:00–02:00');   // a night window is never an instant
+  assert.strictEqual(W.winText(null, '08:00', false), null);
 });
