@@ -281,6 +281,8 @@ test('090 on the production-shaped copy: ISO country and one space on every writ
         const O = await id(db, 'orders', 'rec090O');
         await db.query(`INSERT INTO order_stops (legacy_id, stop_type, stop_number, datetime, order_id, location_id) VALUES ('rec090late', 'Unloading', 2, DATE '2026-11-06', $1, $2)`, [O, B]);
         assert.deepStrictEqual(JSON.parse((await one(db, read(`${P}_verify.sql`))).refs_to_merged), { 'order_stops.location_id': 1 });
+        await db.query(`UPDATE order_stops SET deleted_at = now() WHERE legacy_id = 'rec090late'`);
+        assert.deepStrictEqual(JSON.parse((await one(db, read(`${P}_verify.sql`))).refs_to_merged), {}, 'a deleted row is history, not counted');
         await db.exec('ROLLBACK TO SAVEPOINT late');
       });
 

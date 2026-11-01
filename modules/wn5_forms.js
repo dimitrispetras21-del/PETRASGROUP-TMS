@@ -1652,9 +1652,10 @@
     if (!d || t.length < 2 || typeof locScanNewHTML !== 'function') return;
     // fhShowDrop hides an empty list without clearing it: the last keystroke's places would come back with this line
     if (d.style.display === 'none') d.innerHTML = '';
-    // the text IS a place of the list (a field that holds a picked place, focused again): nothing new to make
+    // the text IS a place of the list, its whole label (a field holding a picked place, focused again) or its name
+    // (the label goes on «, City, Country»): nothing new to make
     const nt = _fhNorm(t);
-    if (_fhLocationsArr.some((o) => (o._n || (o._n = _fhNorm(o.label))) === nt)) return;
+    if (_fhLocationsArr.some((o) => { const n = o._n || (o._n = _fhNorm(o.label)); return n === nt || n.startsWith(nt + ', '); })) return;
     d.style.display = 'block';
     d.insertAdjacentHTML('beforeend', `<div class="linked-drop-item wn5f-newloc-opt" onmousedown="WN5Form.newLoc('${id}')">+ Νέα τοποθεσία «${escapeHtml(t)}»</div>`);
   }

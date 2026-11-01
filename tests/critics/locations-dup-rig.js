@@ -179,6 +179,10 @@ async function stale({ browser, origin, ok, scn }) {
   await page.evaluate((id) => { fhPickLinked(id, 'recWn5LocAth', 'ATHENS TEST, Athens, Ελλάδα'); WN5Form.locDrop(id, document.getElementById('ls_' + id).value); }, pid);
   const picked = await list();
   ok(scn, 'a field holding a picked place, focused again: the place, no «+ Νέα» line', picked.length >= 1 && !picked.some((x) => /Νέα τοποθεσία/.test(x)), picked);
+  await page.fill(`#ls_${pid}`, 'larisa test');
+  await page.waitForTimeout(150);
+  const named = await list();
+  ok(scn, 'the name of a place of the list typed alone: the place, no «+ Νέα» line', named.some((x) => /LARISA TEST/.test(x)) && !named.some((x) => /Νέα τοποθεσία/.test(x)), named);
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
   await page.context().close();
 }

@@ -279,15 +279,18 @@ end $f$;
 
   -- After a merge, a tab opened before it still offers the merged place or client until it reloads, and the facade
   -- takes a link to a deleted row. Such a new reference is not refused (relaxed rules), it is COUNTED: verify reads
-  -- this, and the auditor can (follow-up). {"table.column": rows} of every row that points at a merged row; {} = none.
+  -- this, and the auditor can (follow-up). {"table.column": rows} of every LIVE row that points at a merged row (a
+  -- soft-deleted one is history: nobody can or needs to repoint it); {} = none.
   CREATE FUNCTION public.entity_merged_refs() RETURNS jsonb LANGUAGE plpgsql STABLE SET search_path = public AS $f$
-declare fk record; n bigint; out jsonb := '{}';
+declare fk record; n bigint; out jsonb := '{}'; live text;
 begin
   for fk in select c.conrelid::regclass::text tbl, a.attname col, c.confrelid::regclass::text ref from pg_constraint c
       join pg_attribute a on a.attrelid = c.conrelid and a.attnum = c.conkey[1]
      where c.contype = 'f' and c.confrelid in ('public.locations'::regclass, 'public.clients'::regclass)
        and cardinality(c.conkey) = 1 and c.conrelid <> c.confrelid loop
-    execute format('select count(*) from %s x join %s m on m.id = x.%I where m.merged_into_id is not null', fk.tbl, fk.ref, fk.col) into n;
+    live := case when exists (select 1 from pg_attribute where attrelid = fk.tbl::regclass and attname = 'deleted_at' and not attisdropped)
+                 then ' and x.deleted_at is null' else '' end;
+    execute format('select count(*) from %s x join %s m on m.id = x.%I where m.merged_into_id is not null%s', fk.tbl, fk.ref, fk.col, live) into n;
     if n > 0 then out := out || jsonb_build_object(fk.tbl || '.' || fk.col, n); end if;
   end loop;
   return out;

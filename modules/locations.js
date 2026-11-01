@@ -484,8 +484,9 @@ async function _locSave() {
   // Latin-only names (owner 9/8): 9 of the 29 locations created in the last 14
   // days were typed in Greek and are invisible to the transliterated search.
   // Transliterate (ELOT, case kept) instead of refusing — the dispatcher keeps working.
-  if (_locLatin(name) !== name) {
-    name = _locLatin(name);
+  const latin = _locLatin(name);
+  if (latin !== name) {
+    name = latin;
     toast('Το όνομα γράφτηκε με λατινικούς χαρακτήρες: ' + name, 'info');
   }
   const fields = { Name: name };
@@ -833,12 +834,14 @@ async function locScanSave(uid) {
     if (typeof fhLoadLocations === 'function') await fhLoadLocations();
     if (!_fhLocationsArr.length) throw new Error('Οι τοποθεσίες δεν φόρτωσαν· δοκίμασε ξανά');
     // Latin-only names (owner 9/8), as _locSave: transliterate, never refuse.
-    if (_locLatin(name) !== name) {
-      name = _locLatin(name);
+    const latin = _locLatin(name);
+    if (latin !== name) {
+      name = latin;
       toast('Το όνομα γράφτηκε με λατινικούς χαρακτήρες: ' + name, 'info');
     }
     const city = _locLatin(v('city')), country = v('country'), address = v('address');
-    if (_locCountryBad(country)) throw new Error('Διάλεξε τη χώρα από τη λίστα');
+    // said in words and not logged: the catch below shows only a generic line and counts an app error
+    if (_locCountryBad(country)) { toast('Διάλεξε τη χώρα από τη λίστα', 'danger'); busy(false); return; }
     // The pin is what the form holds: found and checked, typed, or empty.
     const latS = v('lat'), lonS = v('lon');
     let geo = null;
