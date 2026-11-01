@@ -206,7 +206,7 @@ async function accept_busy({ browser, origin, ok, scn }) {
   const { page, S } = await K.openApp(browser, origin, { board: board(), plan: { 'POST /plan/legs': async (req) => {
     n++;
     if (n === 1) return K.planErr(422, 'PLAN_RULE', 'no_vehicle');
-    if (n === 2) return K.planErr(422, 'PLAN_RULE', 'truck_busy');
+    if (n === 2 || n === 3) return K.planErr(422, 'PLAN_RULE', 'truck_busy');
     return OK('plan_put_group');
   } } });
   await openWaiting(page, 4101);
@@ -219,11 +219,17 @@ async function accept_busy({ browser, origin, ok, scn }) {
   await page.click(`${DLG} [data-act="save"]`);
   await page.waitForTimeout(500);
   ok(scn, 'truck_busy: the strip offers «Αποθήκευση έτσι κι αλλιώς»', (await btn(page)) === 'Αποθήκευση έτσι κι αλλιώς', await btn(page));
+  // an edit after the refusal takes the offer away (it would send the values of before the edit)
+  await page.fill(`${DLG} [data-rate]`, '360');
+  ok(scn, 'an edit of the form takes the offer away', (await btn(page)) === null);
+  await page.click(`${DLG} [data-act="save"]`);
+  await page.waitForTimeout(500);
+  ok(scn, 'the next refusal offers it again', (await btn(page)) === 'Αποθήκευση έτσι κι αλλιώς', await btn(page));
   await page.click(`${DLG} .wn5-strip [data-act="accept-busy-send"]`);
   await page.waitForTimeout(700);
   const w = saves(S);
-  const b2 = w[1] && w[1].body, b3 = w[2] && w[2].body;
-  ok(scn, 'three POSTs: the third is the second plus target.accept_busy = true, nothing else changed', w.length === 3 && b3 && b3.target && b3.target.accept_busy === true
+  const b2 = w[2] && w[2].body, b3 = w[3] && w[3].body;
+  ok(scn, 'four POSTs: the fourth is the third (after the edit, rate 360) plus target.accept_busy = true, nothing else changed', w.length === 4 && b3 && b3.target && b3.target.new_rt && b3.target.new_rt.partner_rate === 360 && b3 && b3.target && b3.target.accept_busy === true
     && JSON.stringify(Object.assign({}, b3, { target: Object.assign({}, b3.target, { accept_busy: undefined }) })) === JSON.stringify(Object.assign({}, b2, { target: Object.assign({}, b2.target, { accept_busy: undefined }) })), { b2, b3 });
   const open = await page.evaluate((s) => !!document.querySelector(s), DLG);
   ok(scn, 'the accepted save closes the form (a 200)', !open);

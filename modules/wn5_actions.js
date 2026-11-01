@@ -58,6 +58,21 @@
   // the strip's button is data-act «accept-busy-send» (it re-sends); the day dialog's own line is «accept-busy» (it
   // re-runs the dry run): a dialog's click handler reads data-act, so the two never fire each other
   const ACCEPT_TEXT = 'Αποθήκευση έτσι κι αλλιώς';
+  // The base accepts EVERY truck / driver overlap of the save, while the refusal names the first one only (086's open
+  // item 1, owner): the button says so, never more silent than the base (code review high, 1/11)
+  const ACCEPT_TITLE = 'Δέχεσαι κάθε επικάλυψη φορτηγού και οδηγού αυτής της αποθήκευσης· γράφεται στο ιστορικό';
+  // The offer: pressed once (disabled at once, no double send); gone as soon as the form it answers is edited (a
+  // field, a pick, a click in its body): it would send the values of before the edit (code review high, 1/11)
+  function _acceptBtn(el, fn, formEl) {
+    const b = _act(el, ACCEPT_TEXT, () => { if (b.disabled) return; b.disabled = true; fn(); });
+    b.setAttribute('data-act', 'accept-busy-send');
+    b.title = ACCEPT_TITLE;
+    if (formEl) {
+      const off = () => { b.remove(); for (const t of ['input', 'change', 'click']) formEl.removeEventListener(t, off, true); };
+      for (const t of ['input', 'change', 'click']) formEl.addEventListener(t, off, true);
+    }
+    return b;
+  }
   function _withAccept(req, e) {
     if (!e || !BUSY_CODES.includes(e.code) || !req || !req.body || typeof req.body !== 'object') return null;
     const body = _copy(req.body);
@@ -125,7 +140,7 @@
 
   // 086: for a screen that sends on its own (the Veroia board's «Νέο φορτίο»): the same offer as _send
   WN5Act.withAccept = _withAccept;
-  WN5Act.acceptBtn = (el, fn) => _act(el, ACCEPT_TEXT, fn).setAttribute('data-act', 'accept-busy-send');
+  WN5Act.acceptBtn = (el, fn) => _acceptBtn(el, fn, null);
   WN5Act.strip = function strip(hostEl, x) {
     if (!hostEl) return null;
     for (const old of hostEl.querySelectorAll(':scope > .wn5-strip')) old.remove();
@@ -341,7 +356,7 @@
       }
       const el = WN5Act.strip(d.msg, _orderErr(e, req));
       const acc = _withAccept(req, e);
-      if (el && acc) _act(el, ACCEPT_TEXT, () => { if (!d.busy && !d.closed) _send(d, acc, okText, opts); }).setAttribute('data-act', 'accept-busy-send');
+      if (el && acc) _acceptBtn(el, () => { if (!d.busy && !d.closed) _send(d, acc, okText, opts); }, d.body);
       // A request_reused the board does not show (the record lies in another week, or the form was edited after a
       // plan_unknown): the SAME slot id would answer request_reused on every press — a dead end. The Worker's strip
       // says where to look; the save stays locked until the window closes (a new window = a new request_id).
@@ -427,22 +442,26 @@
     // a failure: inside the open two-step dialog, else on the caller's host, else on the board
     fail(s, e) {
       e = _orderErr(e, s);
-      // 086: the same two steps again with accept_busy; the caller's own after-save is not waiting any more (its
-      // twoStep returned), so the board is re-read and said here
+      // 086: the same two steps again with accept_busy. The caller's own continuation is gone (its twoStep returned):
+      // its dialog (a picker, the ask) closes here, a failure of the re-run is said on the board, and the board is
+      // re-read and said with the caller's own words (s.okText) when it saves
       const acc = _withAccept(s, e);
       const accept = acc ? () => {
+        WN5Act.closeAll();
         if (_ask && !_ask.d.closed) _close(_ask.d);
-        WN5Act.twoStep(Object.assign({}, s, { body: acc.body })).then((out) => { if (out) _afterSave(out, 'Αποθηκεύτηκε', { intl: true, rt: _reqRt(acc) }); });
+        WN5Act.twoStep(Object.assign({}, s, { body: acc.body, host: null }))
+          .then((out) => { if (out) _afterSave(out, s.okText || 'Αποθηκεύτηκε', { intl: !!s.intl, rt: _reqRt(acc) }); });
       } : null;
       if (_ask && !_ask.d.closed) {
         _ask.d.busy = false;
         const el = WN5Act.strip(_ask.d.msg, e);
-        if (el && accept) _act(el, ACCEPT_TEXT, accept).setAttribute('data-act', 'accept-busy-send');
+        if (el && accept) _acceptBtn(el, accept, null);
         if (e && e.kind === K().CLOSED) _lock(_ask.d); else _ask.d.refresh();
         return;
       }
-      const el = WN5Act.strip((s && s.host) || _boardHost(), e);
-      if (el && accept) _act(el, ACCEPT_TEXT, accept).setAttribute('data-act', 'accept-busy-send');
+      // a host that left the page (its dialog closed) says nothing to anyone: the board's host then (principle 1)
+      const el = WN5Act.strip(s && s.host && s.host.isConnected ? s.host : _boardHost(), e);
+      if (el && accept) _acceptBtn(el, accept, null);
     },
     done() { if (_ask) _close(_ask.d); },
   };
@@ -1101,7 +1120,7 @@
     if (!req || req.missing) return;
     // a move drops legs: the two steps of S-82; a refusal before the list lands in this window (host)
     d.busy = true; _btns(d, true);
-    WN5Act.twoStep({ method: req.method, path: req.path, body: req.body, kind: 'move', title: 'Μεταφορά · ' + st.what, verb: 'Μεταφορά', host: d.msg })
+    WN5Act.twoStep({ method: req.method, path: req.path, body: req.body, kind: 'move', title: 'Μεταφορά · ' + st.what, verb: 'Μεταφορά', host: d.msg, okText: 'Μεταφέρθηκε' })
       .then(async (out) => {
         if (!d.closed) { d.busy = false; _btns(d, false); }
         if (out) { _close(d); await _afterSave(out, 'Μεταφέρθηκε', { intl: true, rt: _reqRt(req) }); }
@@ -1979,13 +1998,13 @@
         const cx = _conflictOf(st, pv.conflict);
         const busy = BUSY_CODES.includes(pv.conflict.code);
         const red = '<div class="wn5-res-s wn5-conflict">' + _esc(pv.conflict.message || '(' + (pv.conflict.code || 'σύγκρουση') + ')') + (busy ? '' : ' · δεν αποθηκεύεται') + '</div>'
-          + (busy ? '<button type="button" class="wi4-link" data-act="accept-busy">' + _esc(ACCEPT_TEXT) + '</button>' : '');
+          + (busy ? '<button type="button" class="wi4-link" data-act="accept-busy" title="' + _esc(ACCEPT_TITLE) + '">' + _esc(ACCEPT_TEXT) + '</button>' : '');
         if (!cx) h += '<li data-row="conflict">' + red + '</li>';
         else if (!cx.next) h += '<li data-row="conflict"><div class="wn5-res-n">' + _esc('Κύκλος · ' + cx.label) + '</div>' + red + '</li>';
         else h += '<li data-row="next"><div class="wn5-res-n">' + _esc('Επόμενος κύκλος · ' + cx.label) + '</div>' + red
           + '<div class="wn5-res-s">' + _esc('Άλλη ημέρα ή ανάθεση ' + (cx.no ? 'του ' + cx.no : 'του επόμενου κύκλου') + ' σε άλλο ' + cx.who + '.') + '</div></li>';
       } else if (st.accept) {
-        h += '<li data-row="accepted"><div class="wn5-res-n">Επικάλυψη με άλλο δρομολόγιο</div><div class="wn5-res-s">αποδεκτή · γράφεται στο ιστορικό</div></li>';
+        h += '<li data-row="accepted"><div class="wn5-res-n">Επικάλυψη με άλλα δρομολόγια (φορτηγό / οδηγός)</div><div class="wn5-res-s">αποδεκτή, κάθε μία · γράφεται στο ιστορικό</div></li>';
       } else if (pv.next_rt) {
         // without a conflict 072 sends the next cycle of the truck or driver (072:1796-1801)
         const nx = _cycleByCode(pv.next_rt.code);
