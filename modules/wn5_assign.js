@@ -415,12 +415,13 @@
     // one partner named once, its rates after it (live check 1/11: a long partner name repeated per rate filled two
     // lines); the partners in the order of their latest rate
     const by = new Map();
-    for (const x of list) {
-      const p = x.partner || '—';
-      if (!by.has(p)) by.set(p, []);
-      by.get(p).push(k.pal(x.partner_rate) + ' € ' + k.dayShort(x.date_start));
-    }
-    return '<div class="wn5a-hist">' + _e('Τελευταία κόμιστρα: ' + [...by].map(([p, r]) => p + ' ' + r.join(', ')).join(' · ')) + '</div>';
+    // by partner_id (two partners may share a name; a rate without one stays on its own)
+    list.forEach((x, i) => {
+      const key = x.partner_id != null ? 'p' + x.partner_id : 'i' + i;
+      if (!by.has(key)) by.set(key, { name: x.partner || '—', rates: [] });
+      by.get(key).rates.push(k.pal(x.partner_rate) + ' € ' + k.dayShort(x.date_start));
+    });
+    return '<div class="wn5a-hist">' + _e('Τελευταία κόμιστρα: ' + [...by.values()].map((g) => g.name + ' ' + g.rates.join(', ')).join(' · ')) + '</div>';
   }
   // open work order, a document due (core/utils.js vehicleWarnings, as the International popover): by the facade id
   function _warn(px, id) {
