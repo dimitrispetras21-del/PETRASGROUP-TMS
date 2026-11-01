@@ -219,6 +219,94 @@ async function vehicle({ browser, origin, ok, scn }) {
   await page.context().close();
 }
 
+// 5b · 089 (P-7): a partner trip with a ΚΑΘΟΔΟΣ and an ΑΝΟΔΟΣ: two fields; the body = the whole fee + the ΑΝΟΔΟΥ part;
+// an empty ΑΝΟΔΟΥ = «λείπει» (null, never 0); an ΑΝΟΔΟΥ alone asks for the ΚΑΘΟΔΟΥ; a fee with no part = «σύνολο»; a
+// trip with one side keeps one field, named by its side
+function partnerBoard(part) {
+  const b = board();
+  const seg = (c, an) => [{ segment_id: 900 + c.rt_id, label: null, from_at: c.start_at, to_at: c.end_at, trip_type: 'PARTNER', truck_id: null, truck: null,
+    trailer_id: null, trailer: null, driver_id: null, driver: null, partner_id: 51, partner: 'Partner Test 01', partner_rate: c.partner_rate,
+    partner_rate_anodos: an, place_note: null, reason: null, reason_note: null, has_vehicle: true, stop_ids: c.stops.map((x) => x.stop_id) }];
+  for (const c of b.cycles) {
+    Object.assign(c, { trip_type: 'PARTNER', truck_id: null, truck: null, trailer_id: null, trailer: null, driver_id: null, driver: null,
+      partner_id: 51, partner: 'Partner Test 01', partner_rate: c.rt_id === 101 ? 700 : 500 });
+    c.segments = seg(c, c.rt_id === 101 ? part : null);
+  }
+  return b;
+}
+async function rate2({ browser, origin, ok, scn, shots }) {
+  const open = async (part, rt) => {
+    const app = await K.openApp(browser, origin, { board: partnerBoard(part), plan: { ['PATCH /plan/rt/' + rt]: async () => OK('plan_rt_update') } });
+    await app.page.evaluate((id) => WN5Act.assign(null, { entry: 'menu', rtId: id }), rt);
+    await app.page.waitForSelector(DLG, { timeout: 4000 });
+    return app;
+  };
+  const lbl = (page, px) => page.evaluate(({ s, px }) => { const f = document.querySelector(`${s} [data-f="${px}"] .wi-pop-lbl`); return f ? f.textContent : null; }, { s: DLG, px });
+  // fee 700, part 300: ΚΑΘΟΔΟΥ 400, ΑΝΟΔΟΥ 300
+  let { page, S } = await open(300, 101);
+  let k1 = await field(page, 'rate'), a1 = await field(page, 'rate2');
+  ok(scn, 'two fields «Κόμιστρο ΚΑΘΟΔΟΥ €» 400 and «Κόμιστρο ΑΝΟΔΟΥ €» 300', k1 && a1 && k1.val === '400' && a1.val === '300'
+    && (await lbl(page, 'rate')) === 'Κόμιστρο ΚΑΘΟΔΟΥ €' && (await lbl(page, 'rate2')) === 'Κόμιστρο ΑΝΟΔΟΥ €', { k1, a1 });
+  let f = await foot(page);
+  ok(scn, 'unchanged: save off', f.off, f);
+  if (shots) await page.screenshot({ path: shots + '/rate2.png' });
+  await page.fill(`${DLG} [data-rate2]`, '250,5');
+  f = await foot(page);
+  ok(scn, 'ΑΝΟΔΟΥ 250,5: save on', !f.off, f);
+  await page.click(`${DLG} [data-act="save"]`);
+  await page.waitForTimeout(500);
+  let w = saves(S);
+  ok(scn, 'PATCH /plan/rt/101 {set: PARTNER 51, partner_rate 650.5 (400 + 250.5), partner_rate_anodos 250.5}', w.length === 1
+    && JSON.stringify(w[0].body) === JSON.stringify({ set: { trip_type: 'PARTNER', partner_id: 51, partner_rate: 650.5, partner_rate_anodos: 250.5 } }), w.map((x) => x.raw));
+  await page.context().close();
+  // ΑΝΟΔΟΥ emptied: «λείπει» beside it, never a block; the body says null (never 0)
+  ({ page, S } = await open(300, 101));
+  await page.fill(`${DLG} [data-rate2]`, '');
+  a1 = await field(page, 'rate2');
+  f = await foot(page);
+  ok(scn, 'empty ΑΝΟΔΟΥ: «λείπει» beside it, nothing in «Λείπει:», save on', /λείπει/.test(a1.av) && !f.miss && !f.off, { a1, f });
+  await page.click(`${DLG} [data-act="save"]`);
+  await page.waitForTimeout(500);
+  w = saves(S);
+  ok(scn, 'body: partner_rate 400, partner_rate_anodos null', w.length === 1
+    && JSON.stringify(w[0].body) === JSON.stringify({ set: { trip_type: 'PARTNER', partner_id: 51, partner_rate: 400, partner_rate_anodos: null } }), w.map((x) => x.raw));
+  await page.context().close();
+  // ΑΝΟΔΟΥ alone: the ΚΑΘΟΔΟΥ is asked for, the save is off (a silent 0 is never sent)
+  ({ page, S } = await open(300, 101));
+  await page.fill(`${DLG} [data-rate]`, '');
+  await page.fill(`${DLG} [data-rate2]`, '300');
+  k1 = await field(page, 'rate');
+  f = await foot(page);
+  ok(scn, 'ΑΝΟΔΟΥ alone: ΚΑΘΟΔΟΥ red «γράψε ποσό», «Λείπει: κόμιστρο ΚΑΘΟΔΟΥ», save off', k1.bad && /γράψε ποσό/.test(k1.av) && /κόμιστρο ΚΑΘΟΔΟΥ/.test(f.miss) && f.off, { k1, f });
+  await page.context().close();
+  // a fee with no part (the trip got its second side later): both empty, «σύνολο 700 €», save off until typed
+  ({ page, S } = await open(null, 101));
+  k1 = await field(page, 'rate'); a1 = await field(page, 'rate2');
+  f = await foot(page);
+  ok(scn, 'no part: both empty, «σύνολο 700 €» under ΚΑΘΟΔΟΥ, ΑΝΟΔΟΥ «λείπει», save off', k1.val === '' && a1.val === '' && /σύνολο 700 €/.test(k1.av) && /λείπει/.test(a1.av) && f.off, { k1, a1, f });
+  await page.fill(`${DLG} [data-rate]`, '400');
+  await page.fill(`${DLG} [data-rate2]`, '300');
+  await page.click(`${DLG} [data-act="save"]`);
+  await page.waitForTimeout(500);
+  w = saves(S);
+  ok(scn, 'typed 400 + 300: partner_rate 700, partner_rate_anodos 300', w.length === 1
+    && JSON.stringify(w[0].body) === JSON.stringify({ set: { trip_type: 'PARTNER', partner_id: 51, partner_rate: 700, partner_rate_anodos: 300 } }), w.map((x) => x.raw));
+  const t = await dlgText(page);
+  ok(scn, 'no jargon', !jargon(t).length, t);
+  await page.context().close();
+  // one side (ΑΝΟΔΟΣ only, as the 4 live partner trips of 1/11): one field, «Κόμιστρο ΑΝΟΔΟΥ €», the fee as before
+  ({ page, S } = await open(null, 102));
+  k1 = await field(page, 'rate');
+  ok(scn, 'ΑΝΟΔΟΣ only: one field «Κόμιστρο ΑΝΟΔΟΥ €» 500, no second field', k1 && k1.val === '500' && (await lbl(page, 'rate')) === 'Κόμιστρο ΑΝΟΔΟΥ €' && !(await field(page, 'rate2')), k1);
+  await page.fill(`${DLG} [data-rate]`, '520');
+  await page.click(`${DLG} [data-act="save"]`);
+  await page.waitForTimeout(500);
+  w = saves(S);
+  ok(scn, 'one side: {partner_rate 520}, no partner_rate_anodos key', w.length === 1
+    && JSON.stringify(w[0].body) === JSON.stringify({ set: { trip_type: 'PARTNER', partner_id: 51, partner_rate: 520 } }), w.map((x) => x.raw));
+  await page.context().close();
+}
+
 // 6 · ✈ «Αλλαγή οχήματος…»: a new line above «Καθαρισμός ανάθεσης», plates and hours, «Συνέχεια ›» → H2 without RT
 async function handover({ browser, origin, ok, scn, shots }) {
   const { page, S } = await K.openApp(browser, origin, { board: board() });
@@ -385,5 +473,5 @@ async function f54({ browser, origin, ok, scn }) {
   await page.context().close();
 }
 
-K.run({ scenarios: { own_new, own_join, only_hours, partner, vehicle, handover, veroia_list, veroia_new, f61, f54 }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],
-  go: 'the assignment form (own new / join / only / hours / F39 / partner / vehicle / F51-F61 / F54 / F56), ✈ «Αλλαγή οχήματος…» and the Veroia board v2 «Νέο φορτίο» hold' });
+K.run({ scenarios: { own_new, own_join, only_hours, partner, vehicle, rate2, handover, veroia_list, veroia_new, f61, f54 }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],
+  go: 'the assignment form (own new / join / only / hours / F39 / partner / vehicle / F51-F61 / F54 / F56 / 089 two fees), ✈ «Αλλαγή οχήματος…» and the Veroia board v2 «Νέο φορτίο» hold' });

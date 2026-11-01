@@ -759,6 +759,19 @@
     const side = s0 ? ({ ANODOS: 'ΑΝΟΔΟΣ', KATHODOS: 'ΚΑΘΟΔΟΣ' })[s0.side] || null : null;
     return c ? { side, day: c.date_start } : null;
   }
+  // 089 (P-7): a partner trip with a ΚΑΘΟΔΟΣ and an ΑΝΟΔΟΣ and one vehicle has two fees: the base keeps the whole fee
+  // (partner_rate) and the ΑΝΟΔΟΥ part (its segment's partner_rate_anodos). No part on such a trip = «κόμιστρο ΑΝΟΔΟΥ
+  // λείπει» (never 0, never silent - coordinator 1/11); it is typed in the trip's own «Ανάθεση» (wn5_assign.js rule 6).
+  const _bothSides = (c) => { const s = new Set((c.stops || []).map((x) => x.side)); return s.has('KATHODOS') && s.has('ANODOS') && (c.segments || []).length <= 1; };
+  const _partOf = (c) => { const g = (c.segments || [])[0]; return g && g.partner_rate_anodos != null ? Number(g.partner_rate_anodos) : null; };
+  const _partMissing = (c) => c.trip_type === 'PARTNER' && c.partner_rate != null && _bothSides(c) && _partOf(c) === null;
+  const _feeText = (c) => {
+    const an = _bothSides(c) ? _partOf(c) : null;
+    if (an === null) return 'κόμιστρο ' + _pal(c.partner_rate) + ' €';
+    // money to the cent (_pal rounds pallets to one decimal: ΚΑΘΟΔΟΥ + ΑΝΟΔΟΥ must read as the fee the P&L reads)
+    const eur = (n) => String(Math.round(Number(n) * 100) / 100).replace('.', ',');
+    return 'ΚΑΘΟΔΟΥ ' + eur(Number(c.partner_rate) - an) + ' € · ΑΝΟΔΟΥ ' + eur(an) + ' €';
+  };
   function _rate(txt) {
     const s = String(txt == null ? '' : txt).trim().replace(',', '.');
     if (!s) return { ok: true, v: null };                 // empty = «κόμιστρο λείπει», never 0 (S-44)
@@ -886,7 +899,7 @@
         if (c.trip_type === 'PARTNER') {
           rate = c.partner_rate == null
             ? ' <span class="wn5-flag-red">κόμιστρο λείπει</span> <span class="wn5-nw"><input class="wn5-rate" data-rate-rt="' + c.rt_id + '" inputmode="decimal" placeholder="—" aria-label="Κόμιστρο €"><span class="wn5-eur">€</span></span> <button type="button" class="wi4-btn sm" data-act="rate" data-rt="' + c.rt_id + '" hidden>Κράτα</button>'
-            : ' <span class="wn5-cand-m">κόμιστρο ' + _esc(_pal(c.partner_rate)) + ' €</span>';
+            : ' <span class="wn5-cand-m">' + _esc(_feeText(c)) + '</span>' + (_partMissing(c) ? ' <span class="wn5-flag-red">κόμιστρο ΑΝΟΔΟΥ λείπει</span>' : '');
         }
         // a partner cycle keeps the board's own fact on its second line («Μόνο κάθοδος · συνεργάτης», the model's gap
         // side), with the Veroia window and the pallets on the first (Figma Δ1 Pelagos row)

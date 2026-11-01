@@ -13,9 +13,12 @@
 //  4. «Ημέρα και παράθυρο»: every stop the request creates, prefilled «όλη η ημέρα» (B1); hours only when known. A VS
 //     uses its own Veroia day (VsDates, #171), a national to Veroia its own day (#175): KIT.needs / hubDayOf.
 //  5. A VS goes whole by default (plan_put_group); «μόνο αυτές οι παλέτες» sends that piece alone (F42).
-//  6. ONE partner rate (the cycle's partner_rate, 071): the ΑΝΟΔΟΥ rate needs SQL + Worker (follow-up draft), so its
-//     field is not drawn — a field that does not write is the silent rejection of principle 1. The partner's
-//     «Πινακίδες» are not drawn either: v5 has no column for them.
+//  6. The partner rate (089, P-7, owner 31/10 + 1/11): a partner truck whose trip has a ΚΑΘΟΔΟΣ AND an ΑΝΟΔΟΣ shows
+//     two fields, «Κόμιστρο ΚΑΘΟΔΟΥ €» and «Κόμιστρο ΑΝΟΔΟΥ €», in the form of its vehicle (✈ / «Ανάθεση» of the
+//     trip). The base keeps the WHOLE fee (partner_rate, what the P&L reads) and the ΑΝΟΔΟΥ part
+//     (segment.partner_rate_anodos); the ΚΑΘΟΔΟΥ is the difference. An empty ΑΝΟΔΟΥ is saved as «λείπει» (NULL),
+//     never 0. One side = one field, as before. A new load has one side, so one field. The partner's «Πινακίδες»
+//     are not drawn: v5 has no column for them.
 //  7. Every write goes through WN5Act._kit.send (one planFetch per press, the Worker's words in the strip, a reload
 //     after a 200). The pick mode («Νέο φορτίο») writes nothing: it hands the choice back.
 //  8. Nothing at load: listeners live with the open form only. Colours only through classes (hex 0 in this file).
@@ -50,6 +53,7 @@
     const st = { mode: vehicle ? 'vehicle' : (ctx.pick ? 'pick' : 'legs'), side: ctx.side === 'ANODOS' ? 'ANODOS' : 'KATHODOS', day: ctx.day || null,
       group: null, pieces: null, items: [], needs: [], pallets: 0, palUnk: 0, focus: k.id(ctx.focus), only: false,
       who: null, truck: null, trailer: null, driver: null, partner: null, rateTxt: '', typed: { tk: '', tl: '', dr: '', pt: '' },
+      split: false, rate2Txt: '', rate0: '', rate20: '', an0: null, total: null, rateSide: null,
       win: {}, opt: null, sugg: {}, rtId: k.id(ctx.rtId), cur: null, hub: ctx.hub ? k.copy(ctx.hub) : null, week: null, cycles: [], sidePal: {}, ref: '', err: null };
     const b = k.state().board || {};
     st.week = b.week || null;
@@ -63,6 +67,7 @@
       st.day = st.day || (r && r.dayKey) || c.date_start;
       if (c.trip_type === 'PARTNER' && c.partner_id != null) { st.who = 'partner'; st.partner = c.partner_id; st.rateTxt = c.partner_rate == null ? '' : String(c.partner_rate); }
       else if (c.truck_id != null) { st.who = 'own'; st.truck = c.truck_id; st.trailer = c.trailer_id || null; st.driver = c.driver_id || null; }
+      _splitOf(st, c);
     } else {
       const list = src.group ? k.groupItems(src.group) : (src.pieces || []).map((p) => k.item(p.piece_id)).filter(Boolean);
       if (!list.length) { st.err = k.clientErr('piece_missing', 'Η παράδοση δεν είναι πια στον πίνακα — ανανέωσε'); return st; }
@@ -84,6 +89,34 @@
     if (!st.day) st.err = k.clientErr('day_missing', 'Η ημέρα της ανάθεσης δεν είναι γνωστή — ανανέωσε');
     for (const c of st.cycles) { const r = k.row(c.rt_id); st.sidePal[c.rt_id] = { pal: k.sidePal(r, st.side), unk: k.sideUnk(r, st.side) }; }
     return st;
+  }
+  // 089 (rule 6): two fields when the trip has both sides and ONE vehicle (with a handover each segment has its own fee,
+  // «Αλλαγή οχήματος…»). Prefilled from the base: ΚΑΘΟΔΟΥ = fee − part, ΑΝΟΔΟΥ = part. A fee with no part (a trip that
+  // got its second side later) prefills nothing — which side the fee was is not known — and shows the fee as «σύνολο».
+  const _r2 = (n) => Math.round(n * 100) / 100;
+  const _eur = (n) => String(_r2(Number(n))).replace('.', ',');
+  function _splitOf(st, c) {
+    const sides = new Set((c.stops || []).map((s) => s.side));
+    const segs = c.segments || [];
+    // one side: the one field is named by the trip's own side (a vehicle form has no side of its own)
+    if (sides.size === 1) st.rateSide = [...sides][0];
+    if (!(sides.has('KATHODOS') && sides.has('ANODOS')) || segs.length > 1) return;
+    st.split = true;
+    const fee = c.trip_type === 'PARTNER' && c.partner_rate != null ? Number(c.partner_rate) : null;
+    const an = c.trip_type === 'PARTNER' && segs[0] && segs[0].partner_rate_anodos != null ? Number(segs[0].partner_rate_anodos) : null;
+    st.an0 = an;
+    if (fee !== null && an !== null) { st.rateTxt = String(_r2(fee - an)); st.rate2Txt = String(an); }
+    else { st.rateTxt = ''; st.rate2Txt = ''; st.total = fee; }
+    st.rate0 = st.rateTxt; st.rate20 = st.rate2Txt;
+  }
+  // the keys of the two fields: the whole fee and its ΑΝΟΔΟΥ part (null = «λείπει»). Both fields empty and untouched on a
+  // fee with no part: no key, the fee stays as it is (plan_rt_update keeps what the body does not name).
+  function _split(st) {
+    const k = K(), a = k.rate(st.rateTxt), b = k.rate(st.rate2Txt);
+    if (!a.ok || !b.ok) return { ok: false };
+    if (b.v !== null && a.v === null) return { ok: false, needK: true };
+    if (a.v === null && b.v === null && st.rateTxt === st.rate0 && st.rate2Txt === st.rate20) return { ok: true, keys: {} };
+    return { ok: true, keys: { partner_rate: a.v === null ? null : _r2(a.v + (b.v || 0)), partner_rate_anodos: b.v } };
   }
   // the pieces the request carries: the whole group, or the pressed piece alone («μόνο αυτές οι παλέτες», F42)
   function _sel(st) { return st.only && st.focus ? st.items.filter((it) => it.piece_id === st.focus) : st.items; }
@@ -239,6 +272,10 @@
         if (st.driver) set.driver_id = st.driver;
         return { method: 'PATCH', path: '/plan/rt/' + st.rtId, body: { set } };
       }
+      if (st.who === 'partner' && st.partner && st.split) {
+        const s = _split(st);
+        return s.ok ? { method: 'PATCH', path: '/plan/rt/' + st.rtId, body: { set: Object.assign({ trip_type: 'PARTNER', partner_id: st.partner }, s.keys) } } : null;
+      }
       if (st.who === 'partner' && st.partner) {
         const r = k.rate(st.rateTxt);
         return r.ok ? { method: 'PATCH', path: '/plan/rt/' + st.rtId, body: { set: { trip_type: 'PARTNER', partner_id: st.partner, partner_rate: r.v } } } : null;
@@ -269,13 +306,21 @@
   // ═══ what is missing: field marks and the «Λείπει: …» words (rule 3) ═══
   function problems(st) {
     const k = K();
-    const out = { fields: {}, rows: {}, words: [] };
+    const out = { fields: {}, rows: {}, words: [], soft: {} };
     const add = (w) => { if (!out.words.includes(w)) out.words.push(w); };
     for (const px of Object.keys(FIELDS)) {
       if (st.typed[px] && st[FIELDS[px].key] == null) { out.fields[px] = PICK; add(FIELDS[px].lbl.toLowerCase() + ' (' + PICK + ')'); }
     }
     if (!st.who && !Object.keys(out.fields).length) add('φορτηγό ή συνεργάτης');
-    if (st.who === 'partner' && !k.rate(st.rateTxt).ok) { out.fields.rate = 'μόνο αριθμός'; add('κόμιστρο (αριθμός)'); }
+    if (st.who === 'partner' && st.split) {
+      const a = k.rate(st.rateTxt), b = k.rate(st.rate2Txt);
+      if (!a.ok) { out.fields.rate = 'μόνο αριθμός'; add('κόμιστρο ΚΑΘΟΔΟΥ (αριθμός)'); }
+      if (!b.ok) { out.fields.rate2 = 'μόνο αριθμός'; add('κόμιστρο ΑΝΟΔΟΥ (αριθμός)'); }
+      // an ΑΝΟΔΟΥ alone would make the ΚΑΘΟΔΟΥ a silent 0: it is asked for (0 is typed, never assumed)
+      if (a.ok && b.ok && b.v !== null && a.v === null) { out.fields.rate = 'γράψε ποσό'; add('κόμιστρο ΚΑΘΟΔΟΥ'); }
+      // an empty ΑΝΟΔΟΥ is saved as «λείπει» (coordinator 1/11): said beside the field, never a block
+      if (b.ok && b.v === null) out.soft.rate2 = 'λείπει';
+    } else if (st.who === 'partner' && !k.rate(st.rateTxt).ok) { out.fields.rate = 'μόνο αριθμός'; add('κόμιστρο (αριθμός)'); }
     if (st.mode === 'vehicle') return out;
     const tg = _target(st);
     for (const row of _rows(st, tg && tg.cyc)) {
@@ -431,10 +476,18 @@
       + _fieldHTML(st, 'tk', pb) + _fieldHTML(st, 'tl', pb, joinOwn) + _fieldHTML(st, 'dr', pb, joinOwn) + '</div></div>';
     const rateBad = pb.fields.rate;
     const rateVal = joinPar ? (tg.cyc.partner_rate == null ? '' : String(tg.cyc.partner_rate)) : st.rateTxt;
+    // 089: the second field and the «σύνολο» of a fee with no part (rule 6)
+    const rateSide = st.split ? 'KATHODOS' : (st.rateSide || st.side);
+    const rateAv = rateBad || (st.split && st.total !== null && !st.rateTxt && !st.rate2Txt ? 'σύνολο ' + _eur(st.total) + ' €' : '');
+    const bad2 = pb.fields.rate2, av2 = bad2 || pb.soft.rate2 || '';
     h += '<div class="wn5a-sec"><div class="wi-pop-section-lbl">ΣΥΝΕΡΓΑΤΗΣ</div><div class="wi-pop-row">' + _fieldHTML(st, 'pt', pb)
-      + '<div class="wi-pop-field wn5a-f wn5a-rate' + (rateBad ? ' wn5a-bad' : '') + '" data-f="rate"><span class="wi-pop-lbl">Κόμιστρο ' + (st.side === 'ANODOS' ? 'ΑΝΟΔΟΥ' : 'ΚΑΘΟΔΟΥ') + ' €</span>'
-      + '<input class="wi-pop-inp" data-rate inputmode="decimal" placeholder="0.00" value="' + _e(rateVal) + '"' + (joinPar ? ' disabled' : '') + ' aria-label="Κόμιστρο €">'
-      + '<span class="wn5a-av' + (rateBad ? ' bad' : '') + '">' + _e(rateBad || '') + '</span></div></div></div>';
+      + '<div class="wi-pop-field wn5a-f wn5a-rate' + (rateBad ? ' wn5a-bad' : '') + '" data-f="rate"><span class="wi-pop-lbl">Κόμιστρο ' + (rateSide === 'ANODOS' ? 'ΑΝΟΔΟΥ' : 'ΚΑΘΟΔΟΥ') + ' €</span>'
+      + '<input class="wi-pop-inp" data-rate inputmode="decimal" placeholder="0.00" value="' + _e(rateVal) + '"' + (joinPar ? ' disabled' : '') + ' aria-label="Κόμιστρο ' + (rateSide === 'ANODOS' ? 'ΑΝΟΔΟΥ' : 'ΚΑΘΟΔΟΥ') + ' €">'
+      + '<span class="wn5a-av' + (rateBad ? ' bad' : '') + '">' + _e(rateAv) + '</span></div>'
+      + (st.split ? '<div class="wi-pop-field wn5a-f wn5a-rate' + (bad2 ? ' wn5a-bad' : '') + '" data-f="rate2"><span class="wi-pop-lbl">Κόμιστρο ΑΝΟΔΟΥ €</span>'
+        + '<input class="wi-pop-inp" data-rate2 inputmode="decimal" placeholder="0.00" value="' + _e(st.rate2Txt) + '" aria-label="Κόμιστρο ΑΝΟΔΟΥ €">'
+        + '<span class="wn5a-av' + (av2 ? ' bad' : '') + '">' + _e(av2) + '</span></div>' : '')
+      + '</div></div>';
     if (st.mode !== 'vehicle') h += _lineHTML(st);
     h += '</div>';
     return h;
@@ -492,6 +545,11 @@
       if (st.mode !== 'vehicle') return true;
       const c = st.cur;
       if (st.who === 'own') return st.truck !== c.truck_id || (st.trailer && st.trailer !== c.trailer_id) || (st.driver && st.driver !== c.driver_id) || c.trip_type === 'PARTNER';
+      if (st.who === 'partner' && st.split) {
+        if (st.partner !== c.partner_id) return true;
+        const s = _split(st);
+        return s.ok && 'partner_rate' in s.keys && (s.keys.partner_rate !== (c.partner_rate == null ? null : Number(c.partner_rate)) || s.keys.partner_rate_anodos !== st.an0);
+      }
       if (st.who === 'partner') return st.partner !== c.partner_id || (k.rate(st.rateTxt).v !== (c.partner_rate == null ? null : Number(c.partner_rate)));
       return false;
     };
@@ -514,7 +572,7 @@
     const draw = (focus) => {
       _dropList();
       drawing = true;
-      const f = focus && focus.getAttribute && d.body.contains(focus) ? ['data-in', 'data-hm', 'data-rate', 'data-row'].map((a) => [a, focus.getAttribute(a)]).filter((x) => x[1] !== null) : null;
+      const f = focus && focus.getAttribute && d.body.contains(focus) ? ['data-in', 'data-hm', 'data-rate', 'data-rate2', 'data-row'].map((a) => [a, focus.getAttribute(a)]).filter((x) => x[1] !== null) : null;
       try { d.body.innerHTML = bodyHTML(st); } finally { drawing = false; }
       d.refresh();
       if (f && f.length) {
@@ -619,7 +677,20 @@
     d.dlg.addEventListener('input', (ev) => {
       const t = ev.target;
       if (t.matches('[data-in]')) { list && (list.hi = 0); openList(t); return; }
-      if (t.matches('[data-rate]')) { st.rateTxt = t.value; const pb = problems(st); const f = t.closest('.wn5a-f'); f.classList.toggle('wn5a-bad', !!pb.fields.rate); f.querySelector('.wn5a-av').textContent = pb.fields.rate || ''; f.querySelector('.wn5a-av').classList.toggle('bad', !!pb.fields.rate); d.refresh(); return; }
+      if (t.matches('[data-rate]') || t.matches('[data-rate2]')) {
+        if (t.matches('[data-rate]')) st.rateTxt = t.value; else st.rate2Txt = t.value;
+        // both fields: «γράψε ποσό» of the ΚΑΘΟΔΟΥ follows what is typed in the ΑΝΟΔΟΥ (rule 6), no redraw (the caret stays)
+        const pb = problems(st);
+        for (const [key, msg] of [['rate', pb.fields.rate || ''], ['rate2', pb.fields.rate2 || pb.soft.rate2 || '']]) {
+          const f = d.body.querySelector('.wn5a-f[data-f="' + key + '"]');
+          if (!f) continue;
+          f.classList.toggle('wn5a-bad', !!pb.fields[key]);
+          const av = f.querySelector('.wn5a-av');
+          av.textContent = key === 'rate' && !msg && st.split && st.total !== null && !st.rateTxt && !st.rate2Txt ? 'σύνολο ' + _eur(st.total) + ' €' : msg;
+          av.classList.toggle('bad', !!msg);
+        }
+        d.refresh(); return;
+      }
       if (t.matches('[data-hm]')) { const w = st.win[t.dataset.row] || (st.win[t.dataset.row] = { all: false, from: '', to: '' }); w[t.dataset.hm] = t.value; markRows(); d.refresh(); }
     });
     d.dlg.addEventListener('change', (ev) => {
