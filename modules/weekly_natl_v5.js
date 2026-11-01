@@ -651,8 +651,9 @@ const _win = (f, t, all) => _esc(_winTxt(f, t, all));
 function _rowHTML(r, m, no) {
   const n = r.kind === 'cycle' ? ++no.n : null;
   const ok = _dimOk(r);
-  // 2a: the red rail of a waiting load only when it is late; a cycle keeps WN5L's rail
-  const rail = r.kind === 'unassigned' ? (r.late ? ' wi4-r-red' : '') : r.rail === 'red' ? ' wi4-r-red' : r.late ? ' wi4-r-amb' : '';
+  // 2a: a waiting load has no rail (its one red is the word «αργό», critics r1: rail + word + chip said it three
+  // times); a cycle keeps WN5L's rail
+  const rail = r.kind === 'unassigned' ? '' : r.rail === 'red' ? ' wi4-r-red' : r.late ? ' wi4-r-amb' : '';
   const ids = r.rtId != null ? ` data-rt="${_id(r.rtId)}"` : ` data-piece="${_id(r.pieceIds[0])}"`;
   // F32: a ΠΡΟΣ ΑΝΑΘΕΣΗ row is dragged onto a cycle row (wn5_actions.js WN5Act.bind: the drop opens that cycle's «+»)
   const drag = r.rtId == null && r.kind === 'unassigned' ? ' draggable="true"' : '';
@@ -690,15 +691,15 @@ function _kathHTML(r, m, ok) {
   const toDay = s.toDay && s.toDay !== s.day ? `<span class="wn5-dc2${hd}">→ ${_esc(_dl(s.toDay))}</span>` : '';
   // A VS waiting for a vehicle names its reference under the day (Figma H1 «Δευ 12/10 / VS-118», «VS-121 αργό»):
   // the queue card and the row then read as the same load.
-  // The reference is the VS order's own text and can be a long list («1001, 1002, 1003, …», live W44): it ends in «…»
-  // inside its 70px cell (CSS .wn5-kref) and is whole in the title; it ran across ΦΟΡΤΩΣΗ and ΠΑΡΑΔΟΣΗ before (31/10).
-  // «αργό» is outside the cut part: a warning is never what the «…» hides.
-  // 2f: the first reference whole and «+N» for the rest of a list («2087 +6», all in title), never «208…»
-  const refList = r.refs.length ? String(r.refs[0]).split(/\s*,\s*/).filter(Boolean) : [];
-  const ref = r.kind === 'unassigned' && r.vs && (refList.length || r.late)
-    ? `<span class="wn5-dc2 wn5-kref"${refList.length ? ` title="${_esc(r.refs[0])}"` : ''}>${refList.length ? `<span class="wn5-kref-t">${_esc(refList[0])}${refList.length > 1 ? ' +' + (refList.length - 1) : ''}</span>` : ''}${r.late ? '<span class="wn5-late-w">αργό</span>' : ''}</span>` : '';
-  return `<div class="wn5-kd">${_chipHTML(r, 'KATHODOS', `wi4-dc ${_chipCls(s.day, m.today)}${hd}`, _dl(s.day))}${toDay}${ref}</div>`
-    + `<div class="wn5-fl"${_legAttr(r, 'KATHODOS')}>${_flHTML(s, ok, hd)}</div>`
+  // A waiting VS (2f, critics r2): its reference under «Βέροια» in ΦΟΡΤΩΣΗ (a place that is
+  // empty for such a row: the board has no Veroia window for it), the first number whole and «+N» for the rest of a
+  // list («2087 +6», all in title), never «208…». Stacked in the 70px day cell they made the row three lines tall.
+  const refList = r.kind === 'unassigned' && r.vs && r.refs.length ? String(r.refs[0]).split(/\s*,\s*/).filter(Boolean) : [];
+  // late (critics r3): the day chip itself turns red and says «αργό» in its title — one mark, no second line
+  const lateK = r.kind === 'unassigned' && r.late;
+  const vsRef = refList.length ? `<span class="wn5-dc2 wn5-kref" title="${_esc(r.refs[0])}">${_esc(refList[0])}${refList.length > 1 ? ' +' + (refList.length - 1) : ''}</span>` : '';
+  return `<div class="wn5-kd">${lateK ? `<span class="wi4-dc red" title="αργό">${_esc(_dl(s.day))}</span>` : _chipHTML(r, 'KATHODOS', `wi4-dc ${_chipCls(s.day, m.today)}${hd}`, _dl(s.day))}${toDay}</div>`
+    + `<div class="wn5-fl"${_legAttr(r, 'KATHODOS')}>${_flHTML(s, ok, hd, vsRef)}</div>`
     + `<div class="wn5-kto${_hx(r, s, null)}"${_legAttr(r, 'KATHODOS')}>${_hxHTML(r, s, null)}${_ptsHTML(s.to, ok)}</div>`
     + `<div class="wn5-kpal"${_legAttr(r, 'KATHODOS')}>${_palHTML(s)}${_plusHTML(r, 'KATHODOS')}${_prtHTML(r, 'KATHODOS')}</div>`;
 }
@@ -723,18 +724,18 @@ function _anodHTML(r, m, ok) {
     return `<div class="wn5-aspan wn5-gspan"><span class="${par ? 'wn5-gaptxt' : 'wn5-gapbox'}">${txt}</span></div><div class="wn5-apal wn5-gpal">${_plusHTML(r, 'ANODOS')}</div>`;
   }
   const hd = _dc(ok && s.headDim);
-  // 2d: the day alone when the end is the day's end (the default «23:59»), «ως Τετ 12:00» only for an hour someone set
+  // 2d: the day and date when the end is the day's end (the default «23:59»: «Δευ 2/11»), «ως Τετ 12:00» only for an
+  // hour someone set
   const endT = r.end ? L().athensTime(r.end.by) : '';
-  const endBy = r.end ? (endT && endT !== '23:59' ? `ως ${_dow(L().athensDay(r.end.by))} ${endT}` : _dow(L().athensDay(r.end.by))) : '';
+  const endBy = r.end ? (endT && endT !== '23:59' ? `ως ${_dow(L().athensDay(r.end.by))} ${endT}` : _dl(L().athensDay(r.end.by))) : '';
   const end = r.end ? `<span class="wn5-end${_dc(ok && r.end.dim)}"${_segAttr(r.end.segLabel)} title="${_esc(`Βέροια · ${endBy}`)}"><span class="wi4-l1">Βέροια</span><span class="wi4-l2">${_esc(endBy)}</span></span>` : '';
-  // ΠΡΟΣ that delivers somewhere AND ends at Veroia (coordinator 1/11, 1e): the end joins the «+N» of the deliveries
-  // (its line last in the title), so the row keeps one height. Beside the stops it pushed «Βέροια» to a third line
-  // (70px rows, a 49px stop at 1440). Alone in ΠΡΟΣ the end keeps its own 76px cell.
-  const fold = !!(r.end && s.to.some((p) => !p.hub));
-  const endTail = fold ? { title: `Βέροια · ${endBy}`, stopId: r.end.stopId, segLabel: r.end.segLabel } : null;
-  return `<div class="wn5-ad">${_prtHTML(r, 'ANODOS')}${_chipHTML(r, 'ANODOS', `wi4-dc ${_chipCls(s.day, m.today)}${hd}`, _dl(s.day))}</div>`
+  // ΠΡΟΣ that delivers somewhere AND ends at Veroia (1e, coordinator 1/11): the end stands after the stops as the last
+  // stop in its own look, on the same line (CSS: a flex row, the stop names one line with «…»), never under them.
+  // a waiting load of the ΑΝΟΔΟΣ only: its late mark is this day chip (the ΚΑΘΟΔΟΣ chip carries it otherwise)
+  const lateA = r.kind === 'unassigned' && r.late && !r.kath;
+  return `<div class="wn5-ad">${_prtHTML(r, 'ANODOS')}${lateA ? `<span class="wi4-dc red" title="αργό">${_esc(_dl(s.day))}</span>` : _chipHTML(r, 'ANODOS', `wi4-dc ${_chipCls(s.day, m.today)}${hd}`, _dl(s.day))}</div>`
     + `<div class="wn5-afl"${_legAttr(r, 'ANODOS')}>${_ptsHTML(s.from, ok)}</div>`
-    + `<div class="wn5-ato${_hx(r, s, r.end)}"${_legAttr(r, 'ANODOS')}>${_hxHTML(r, s, r.end)}${_ptsHTML(s.to, ok, null, false, endTail)}${fold ? '' : end}</div>`
+    + `<div class="wn5-ato${_hx(r, s, r.end)}"${_legAttr(r, 'ANODOS')}>${_hxHTML(r, s, r.end)}${_ptsHTML(s.to, ok)}${end}</div>`
     + `<div class="wn5-apal"${_legAttr(r, 'ANODOS')}>${_palHTML(s)}${_plusHTML(r, 'ANODOS')}</div>`;
 }
 // ΦΟΡΤΩΣΗ of ΚΑΘΟΔΟΣ: «Βέροια» and its window stay together (owner 25/10); a loading the cycle makes BEFORE Veroia
@@ -743,17 +744,17 @@ function _anodHTML(r, m, ok) {
 // Like every point (owner 28/10): place + city; the clients are in the order card and the titles.
 // The number sits INSIDE the place line here (inl): the two flow as one run, so a place that does not fit beside its
 // number goes whole to the next line, and that run is the box cut at two lines (long names, owner 28/10).
-function _flHTML(s, ok, hd) {
+function _flHTML(s, ok, hd, vsRef) {
   if (!s.veroia) return _ptsHTML(s.from, ok, null, true);
-  // 2d: no window known → «Βέροια» alone, never «Βέροια —»
+  // 2d: no window known → «Βέροια» alone, never «Βέροια —»; a waiting VS puts its reference there (vsRef)
   const vw = WN5L.winText(s.veroia.from, s.veroia.to, s.veroia.allDay);
-  const vh = `<span class="wn5-vh${hd}">Βέροια</span>${vw ? `<span class="wn5-vtime${hd}"${_segAttr(s.veroia.segLabel)}>${_esc(vw)}</span>` : ''}`;
+  const vh = `<span class="wn5-vh${hd}">Βέροια</span>${vw ? `<span class="wn5-vtime${hd}"${_segAttr(s.veroia.segLabel)}>${_esc(vw)}</span>` : vsRef || ''}`;
   const k = Math.min(s.vBefore || 0, s.from.length);
   return _ptsHTML(s.from.slice(0, k), ok, 1, true) + vh + _ptsHTML(s.from.slice(k), ok, k + 2, true);
 }
 // start (a number) = number the points from it, boxes always shown (a cell that also has «Βέροια»); else WN5L's n and
 // no box on a lone point (wi4 rule 6). Every point is place + city (owner 28/10), so no cell is «place only» any more.
-function _ptsHTML(pts, ok, start, inl, tail) {
+function _ptsHTML(pts, ok, start, inl) {
   if (!pts.length) return '';
   const num = start == null ? (p) => (pts.length === 1 ? null : p.n) : (p, i) => start + i;
   const vis = _visPts();
@@ -765,12 +766,8 @@ function _ptsHTML(pts, ok, start, inl, tail) {
   const rest = idx.filter((i) => !shown.has(i));
   // More late stops than slots: the chip itself carries the amber, so a hidden late stop is still seen.
   const restLate = rest.some((i) => pts[i].late);
-  // tail: one more line the chip holds after the folded stops (the Veroia end of a ΠΡΟΣ that also delivers, 1e)
-  const lines = rest.map((i) => `${num(pts[i], i) || pts[i].n}. ${_ptFull(pts[i])}`).concat(tail ? [tail.title] : []);
-  const more = lines.length
-    // the end is marked «Β» beside the count of the folded deliveries, never counted as one: «+1 Β» = one more stop and
-    // Veroia, «Β» alone = Veroia only (a bare «+1» read as a second delivery)
-    ? `<span class="wi4-more${restLate ? ' wn5-late' : ''}${tail ? ' wn5-more-end' : ''}"${tail ? ` data-end="1" data-stop="${_id(tail.stopId)}"${_segAttr(tail.segLabel)}` : ''} title="${_esc(lines.join('\n'))}">${rest.length ? `<b>+${rest.length}</b>` : ''}${tail ? '<span class="wn5-more-v">Β</span>' : ''}</span>`
+  const more = rest.length
+    ? `<span class="wi4-more${restLate ? ' wn5-late' : ''}" title="${_esc(rest.map((i) => `${num(pts[i], i) || pts[i].n}. ${_ptFull(pts[i])}`).join('\n'))}"><b>+${rest.length}</b></span>`
     : '';
   return `<span class="wi4-pts wn5-pts">${idx.filter((i) => shown.has(i)).map((i) => _ptHTML(pts[i], num(pts[i], i), ok, inl)).join('')}${more}</span>`;
 }
@@ -1000,8 +997,8 @@ function _handRowHTML(r, ok) {
 function _boxHTML(t, r) {
   // «ΠΡΟΣ ΑΝΑΘΕΣΗ» opens the assignment window (wired by the actions file, Task T12). A waiting row of one side names
   // the side it assigns, «ΑΝΟΔΟΣ →» / «← ΚΑΘΟΔΟΣ» (owner 28/10, live fix 3): the ΑΝΑΘΕΣΗ column is shared (H1 grid).
-  // 2a (coordinator 1/11): a quiet mark, the Weekly International's amber dashed «ΠΡΟΣ ΑΝΑΘΕΣΗ» chip, late or not; the red
-  // is the late load's own word «αργό» and its rail. The side it assigns is the one with content — no «← ΚΑΘΟΔΟΣ» line.
+  // 2a (coordinator 1/11, critics r1): a quiet grey mark, as the Weekly International's empty assignment, late or not;
+  // the red is the late load's own word «αργό», once. The side it assigns is the one with content — no «← ΚΑΘΟΔΟΣ» line.
   if (t.type === 'un') return '<button type="button" class="wi4-box un" data-act="assign" title="Ανάθεση οχήματος"><span class="wi4-l1">ΠΡΟΣ ΑΝΑΘΕΣΗ</span></button>';
   // The tile is 28px high: a long name is cut by the wi4 rule with a visible «…» and stays whole in title. A tile with
   // nothing under the name (a partner without a plate, 2i) gives the name both lines.

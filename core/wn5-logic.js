@@ -220,7 +220,7 @@ function _tile(s, multi) {
       // A one-segment cycle stays exactly as F0 7745 / H1 (R-59, Σ5): line 2 is the partner's plate. The 072 board
       // carries none (Ε-35) → «—», never the rate in its place (Ε-36). The rate stays data (partnerRate, rates):
       // Δ1, the move list and the cycle card show it.
-      // 2i (coordinator 1/11): nothing under the name rather than a bare «—»; the name takes the tile's two lines
+      // 2i (coordinator 1/11): nothing under the name rather than a bare «—»; the name on one line with «…» (CSS)
       t.line2 = '';
     }
     return t;

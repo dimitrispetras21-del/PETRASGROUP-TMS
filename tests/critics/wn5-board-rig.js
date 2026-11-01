@@ -285,7 +285,7 @@ SCN.paint = async (browser, origin) => {
       asgL: [...r.querySelectorAll('.wn5-row > .wn5-asg')].map((e) => Math.round(box(e).l)),
       adL: [...r.querySelectorAll('.wn5-row > .wn5-ad')].map((e) => Math.round(box(e).l)),
       vOnlyW: [...r.querySelectorAll('.wn5-row > .wn5-fl')].filter((e) => e.querySelector('.wn5-vh') && !e.querySelector('.wn5-pt')).map((e) => Math.round(box(e).w)),
-      refOut: [...r.querySelectorAll('.wn5-kd > .wn5-kref')].map((e) => Math.round(e.getBoundingClientRect().right - e.parentElement.getBoundingClientRect().right)),
+      refOut: [...r.querySelectorAll('.wn5-fl > .wn5-kref')].map((e) => Math.round(e.getBoundingClientRect().right - e.parentElement.getBoundingClientRect().right)),
       asgTimes: [...r.querySelectorAll('.wn5-asg')].map((e) => e.textContent).filter((t) => /\d{1,2}:\d{2}/.test(t)),
       vtime: [...r.querySelectorAll('.wn5-vtime')].map((e) => ({ inFl: !!e.closest('.wn5-fl'), row: e.closest('.wn5-row').dataset.key, t: e.textContent })),
       days: [...r.querySelectorAll('.wn5-day')].map((d) => ({ date: d.dataset.date, closed: d.classList.contains('closed'), rows: d.querySelectorAll('.wn5-row').length })),
@@ -2155,7 +2155,7 @@ function r4Measure(sel) {
     for (const c of [el, ...el.querySelectorAll(':scope > .wi4-ell')]) {
       const cs = getComputedStyle(c);
       if (cs.textOverflow === 'ellipsis' || (cs.overflowX !== 'visible' && c.scrollWidth > c.clientWidth + 1))
-        out.cut.push({ row: row && row.dataset.key, t: norm(c.textContent), to: cs.textOverflow, ws: cs.whiteSpace, sw: c.scrollWidth, cw: c.clientWidth });
+        out.cut.push({ row: row && row.dataset.key, t: norm(c.textContent), to: cs.textOverflow, ws: cs.whiteSpace, sw: c.scrollWidth, cw: c.clientWidth, inPt: !!c.closest('.wn5-pt[title]:not(.wn5-end)') });
     }
   }
   // the r4 extra: each point's title holds its whole first line (who · place); in ΦΟΡΤΩΣΗ the stop number sits inside
@@ -2186,7 +2186,9 @@ SCN.narrow = async (browser, origin) => {
       const m = await page.evaluate(r4Measure, R4_LINES).catch((e) => ({ err: String(e), cut: [{}], untitled: [], wrapped: [], rows: {} }));
       // row heights and wrapped lines are the report for the owner's 36px-row-vs-DESIGN.md-#6 question, not a check
       console.log(`  · ${name} 1440 sidebar ${sb}: #content ${m.content}px, rows ${JSON.stringify(Object.fromEntries(Object.entries(m.rows).map(([k, r]) => [k, r.h])))}, slots ${JSON.stringify(m.gaps)}, wrapped lines ${(m.wrapped || []).length}, plain rows >37px ${plainRows(m).filter(([, r]) => r.h > 37).length}/${plainRows(m).length}`);
-      ok(scn, `${name} 1440 sidebar ${sb}: no stop line, cycle end or «Κενό γύρισμα» slot is cut — no «…», a name fits or wraps (DESIGN.md #6, plan T5)`, !m.err && !m.cut.length && Object.keys(m.rows).length > 0, m.err || m.cut);
+      // step 2 (coordinator 1/11, over DESIGN.md #6 / plan T5): a stop's lines are one line each, cut with «…», the whole
+      // stop in its title; the cycle end and the «Κενό γύρισμα» text are never cut
+      ok(scn, `${name} 1440 sidebar ${sb}: only a stop line is cut («…», whole stop in its title); no cycle end or «Κενό γύρισμα» is cut`, !m.err && m.cut.every((c) => c.inPt) && Object.keys(m.rows).length > 0, m.err || m.cut.filter((c) => !c.inPt));
       ok(scn, `${name} 1440 sidebar ${sb}: every point keeps its whole stop in title (extra)`, !m.err && !m.untitled.length, m.untitled);
       // 2 · the outside loading's client on one line beside its number (2011:7745 row 5): RT-T105 «Thessaloniki Test» on
       // the board, RT-T204 «THESSALONIKI TEST» on the Veroia board; Βέροια and its window stay stacked under it (T5 3830)
@@ -2204,8 +2206,8 @@ SCN.narrow = async (browser, origin) => {
           return { t: c.textContent.trim(), lines: tops.length, cut: cs.textOverflow === 'ellipsis' || (cs.overflowX !== 'visible' && l1.scrollWidth > l1.clientWidth + 1), title: p ? p.title : null, vh: !!row.querySelector('.wn5-fl .wn5-vh + .wn5-vtime'), h: Math.round(row.getBoundingClientRect().height) };
         }, rt);
         console.log(`  · RT-T${rt} row (${name}, sidebar ${sb}): ${t && t.h}px, ΦΟΡΤΩΣΗ place on ${t && t.lines} line(s)`);
-        ok(scn, `${name} 1440 sidebar ${sb}: RT-T${rt} ΦΟΡΤΩΣΗ «${want}» whole — never cut, on one line or wrapped between words; Βέροια and its window still under it`,
-          !!t && t.t === want && !t.cut && t.lines >= 1 && t.lines <= 2 && t.vh, t);
+        ok(scn, `${name} 1440 sidebar ${sb}: RT-T${rt} ΦΟΡΤΩΣΗ «${want}» on one line (whole, or cut with «…» and whole in its title); Βέροια and its window still there`,
+          !!t && t.t === want && t.lines === 1 && (!t.cut || String(t.title || '').startsWith(want)) && t.vh, t);
       }
       if (name === 'board') {
         // 4 · the local loading sub-row of RT-T103: «↳» in the index column, the text at the ΚΑΘΟΔΟΣ chip column
@@ -3252,14 +3254,17 @@ SCN.truth = async (browser, origin) => {
     const hs = [...document.querySelectorAll('#content .wn5 .wn5-row[data-rt]')].filter((x) => x !== r).map((x) => x.getBoundingClientRect().height);
     const ato = r.querySelector('.wn5-ato');
     const chip = ato && ato.querySelector('.wi4-more');
-    return { h: Math.round(r.getBoundingClientRect().height), max: Math.round(Math.max(...hs)), endInAto: !!(ato && ato.querySelector('.wn5-end')), chip: chip ? chip.getAttribute('title') : null, chipText: chip ? chip.textContent.replace(/\s+/g, ' ').trim() : null,
+    const en = ato && ato.querySelector('.wn5-end'), pt = ato && ato.querySelector('.wn5-pt');
+    const endBeside = !!(en && pt) && Math.abs(en.getBoundingClientRect().top - pt.getBoundingClientRect().top) < 6 && en.getBoundingClientRect().left > pt.getBoundingClientRect().left;
+    return { endBeside, h: Math.round(r.getBoundingClientRect().height), max: Math.round(Math.max(...hs)), endInAto: !!(ato && ato.querySelector('.wn5-end')), chip: chip ? chip.getAttribute('title') : null, chipText: chip ? chip.textContent.replace(/\s+/g, ' ').trim() : null,
       veria: /Veria/.test(r.textContent + [...r.querySelectorAll('[title]')].map((x) => x.getAttribute('title')).join(' ')), text: ato ? ato.textContent.replace(/\s+/g, ' ').trim() : null };
   });
   ok(scn, '1e an ΑΝΟΔΟΣ with two deliveries and the Veroia end keeps a two-line row (≤ 58px, as the board\'s other rows) — main: 70px, three lines',
     !!e && e.h <= 58, e);
-  ok(scn, '1e its Veroia end is in the «+N» title («Βέροια · …»), not a third line under the stops', !!e && !e.endInAto && /\nΒέροια · /.test(e.chip || ''), e);
+  ok(scn, '1e its Veroia end stands beside the stops on the same line (step 2: the last stop in its own look), never under them',
+    !!e && e.endInAto && e.endBeside === true, e);
   ok(scn, '1e a client in the town of Veria reads «Βέροια», never «Veria» beside «Βέροια»', !!e && !e.veria, e);
-  ok(scn, '1e the chip reads «+1 Β» (one more delivery and Veroia), never a bare «+2» that counts Veroia as a delivery', !!e && /^\+1\s*Β$/.test(e.chipText || ''), e);
+  ok(scn, '1e the «+N» counts deliveries only («+1»): Veroia is never counted as a delivery', !!e && /^\+1$/.test(e.chipText || ''), e);
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
   await page.context().close();
 };
@@ -3274,20 +3279,21 @@ SCN.calm = async (browser, origin) => {
     const R = (sel) => [...document.querySelectorAll('#content .wn5 ' + sel)];
     const cs = (e) => getComputedStyle(e);
     const wait = R('.wn5-row[data-piece]');
-    const late = (r) => /αργό/.test(r.textContent);
+    const late = (r) => !!r.querySelector(':is(.wn5-kd, .wn5-ad) .wi4-dc.red[title="αργό"]');
     const box = (r) => r.querySelector('.wi4-box.un');
     const chips = R(':is(.wn5-kd, .wn5-ad) .wi4-dc');
-    const looks = new Set(chips.filter((c) => !c.classList.contains('today')).map((c) => cs(c).backgroundColor + '|' + cs(c).borderTopColor + '|' + cs(c).borderTopStyle));
+    const looks = new Set(chips.filter((c) => !c.classList.contains('today') && !c.classList.contains('red')).map((c) => cs(c).backgroundColor + '|' + cs(c).borderTopColor + '|' + cs(c).borderTopStyle));
     const cycGap = R('.wn5-row[data-rt] .wn5-gapbox').map((g) => cs(g).borderTopStyle);
     const gapPlus = R('.wn5-row[data-rt] .wn5-gpal .wn5-plus').map((x) => cs(x).opacity);
     const heads = [...document.querySelectorAll('#content .wn5 .wn5-cols > span')].map((x) => x.textContent.trim());
-    const kref = R('.wn5-row[data-piece="9101"] .wn5-kref-t')[0];
+    const kref = R('.wn5-row[data-piece="9101"] .wn5-fl > .wn5-kref')[0];
     const cards = R('.wn5-qcard');
     const ends = R('.wn5-row[data-rt] .wn5-ato > .wn5-end .wi4-l2').map((x) => x.textContent.trim());
     const gapTxt = R('.wn5-row[data-rt] .wn5-aspan .wn5-gapbox').map((x) => x.textContent.replace(/\s+/g, ' ').trim());
     const par = R('.wn5-row[data-rt="202"] .wn5-asg .wi4-box')[0];
     return {
       un: wait.map((r) => ({ p: r.dataset.piece, late: late(r), dashed: box(r) ? cs(box(r)).borderTopStyle : null, ink: box(r) ? cs(box(r)).color : null,
+        grey: getComputedStyle(document.querySelector('#content .wn5')).getPropertyValue('--wi4-grey-2').trim() ? (() => { const t = document.createElement('span'); t.style.color = 'var(--wi4-grey-2)'; document.querySelector('#content .wn5').appendChild(t); const c = getComputedStyle(t).color; t.remove(); return c; })() : null,
         side: !!r.querySelector('.wn5-un-side'), rail: r.classList.contains('wi4-r-red'), gap: !!r.querySelector('.wn5-gapbox, .wn5-none'),
         idx: (r.querySelector('.wn5-c-idx') || {}).textContent.trim(), ptLate: r.querySelectorAll('.wn5-pt.wn5-late').length,
         dash: [...r.querySelectorAll('.wn5-fl, .wn5-kto, .wn5-ato, .wn5-afl')].some((c) => /(^|\s|·)—(\s|·|$)/.test(c.textContent)) })),
@@ -3299,17 +3305,17 @@ SCN.calm = async (browser, origin) => {
     };
   });
   const un = v.un;
-  ok(scn, '2a «ΠΡΟΣ ΑΝΑΘΕΣΗ» is the quiet dashed chip on every waiting row, no «← ΚΑΘΟΔΟΣ» line — main: a 2px solid red box with the side',
-    un.length > 0 && un.every((x) => x.dashed === 'dashed' && !x.side), un);
-  ok(scn, '2a the red rail only on a late load — main: every waiting row red', un.some((x) => !x.late) && un.every((x) => x.rail === x.late), un.map((x) => [x.p, x.late, x.rail]));
+  ok(scn, '2a «ΠΡΟΣ ΑΝΑΘΕΣΗ» is quiet grey text on every waiting row (outline only on hover), no «← ΚΑΘΟΔΟΣ» line — main: a 2px solid red box with the side',
+    un.length > 0 && un.every((x) => x.dashed !== 'dashed' && !x.side && x.ink === x.grey), un);
+  ok(scn, '2a no red rail on a waiting row; a late one is its red day chip («αργό»), once — main: every waiting row red', un.some((x) => x.late) && un.every((x) => !x.rail), un.map((x) => [x.p, x.late, x.rail]));
   ok(scn, '2b a waiting row draws nothing on its empty side — main: a dashed «Χωρίς άνοδο» box / «—»', un.every((x) => !x.gap), un.map((x) => [x.p, x.gap]));
   ok(scn, '2b on a cycle the empty side is text without a box, its «+» hidden until hover — main: dashed boxes, «+» at .45',
     v.cycGap.length > 0 && v.cycGap.every((st) => st === 'none') && v.gapPlus.length > 0 && v.gapPlus.every((o) => o === '0'), { cycGap: v.cycGap, gapPlus: v.gapPlus });
-  ok(scn, '2c one day-chip look for every day but today, today the blue outline — main: three looks', v.looks.length === 1 && v.todayChips.length > 0, { looks: v.looks, today: v.todayChips });
+  ok(scn, '2c one day-chip look for every day but today (blue outline) and a late load (red) — main: three looks', v.looks.length === 1 && v.todayChips.length > 0, { looks: v.looks, today: v.todayChips });
   ok(scn, '2d no «—» standing for a missing value in a waiting row\'s cells — main: «Βέροια —», «· — ·»', un.every((x) => !x.dash), un.map((x) => [x.p, x.dash]));
   ok(scn, '2d a cycle\'s Veroia end at the day\'s end reads the day alone (no «ως … 23:59»)', v.ends.length > 0 && v.ends.every((t) => !/23:59/.test(t)), v.ends);
   ok(scn, '2e one name for the delivery column of both sides — main: «ΠΑΡΑΔΟΣΗ» / «ΠΡΟΣ»', v.heads.filter((h) => h === 'ΠΑΡΑΔΟΣΗ').length === 2 && !v.heads.includes('ΠΡΟΣ'), v.heads);
-  ok(scn, '2f a waiting VS says «VS» in its number band, its reference list as «2087 +2» uncut — main: empty band, «208…»',
+  ok(scn, '2f a waiting VS says «VS» in its number band, its reference list as «2087 +2» uncut, under «Βέροια» — main: empty band, «208…»',
     un.filter((x) => x.p.startsWith('91')).every((x) => x.idx === 'VS') && !!v.kref && v.kref.t === '2087 +2' && !v.kref.cut, { un: un.map((x) => [x.p, x.idx]), kref: v.kref });
   ok(scn, '2f the stops of a late waiting VS are not each amber (the row says «αργό» once)', un.every((x) => x.ptLate === 0), un.map((x) => [x.p, x.ptLate]));
   ok(scn, '2g ΕΠΟΜΕΝΑ cards name a place, never the reference list; no red rail on every card; no «καθυστερεί» / «χωρίς φορτηγό»',
@@ -3319,6 +3325,22 @@ SCN.calm = async (browser, origin) => {
   ok(scn, '2i the partner tile has no bare «—» under the name — main: «—»', !!v.par && !v.par.l2 && !v.par.dash, v.par);
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
   await page.context().close();
+  // one line per point line, so one row height, at 1440 with the sidebar open and closed and at 1280 (coordinator 1/11)
+  const long = truthBoard();
+  for (const c of long.cycles) for (const st of c.stops) st.location = 'A VERY LONG COMPANY NAME LOGISTICS S.A. ' + st.location;
+  const L2 = truthLookups(); for (const l of L2.locations) if (l.id !== 1) l.name = 'A VERY LONG COMPANY NAME LOGISTICS S.A. ' + l.name;
+  for (const [w, sb] of [[1440, 'open'], [1440, 'closed'], [1280, 'open']]) {
+    const o = await openBoard(browser, origin, { board: long, plan: { 'GET /plan/lookups': () => [200, L2] }, viewport: { width: w, height: 900 }, sidebar: sb === 'open' ? 'open' : undefined });
+    await o.page.waitForSelector('#content > .wi4.wn5[data-state="ok"]', { timeout: 8000 }).catch(() => {});
+    const h = await o.page.evaluate(() => {
+      const rows = [...document.querySelectorAll('#content .wn5 .wn5-row')];
+      const lines = [...document.querySelectorAll('#content .wn5 .wn5-pts .wn5-pt > :is(.wi4-l1, .wi4-l2)')].filter((e) => e.getBoundingClientRect().height > 17).length;
+      const tall = rows.filter((r) => r.getBoundingClientRect().height > 58).map((r) => (r.dataset.rt || r.dataset.piece) + ":" + [...r.children].map((c) => c.className.split(" ")[0] + "=" + Math.round(c.getBoundingClientRect().height)).join(","));
+      return { max: Math.round(Math.max(...rows.map((r) => r.getBoundingClientRect().height))), lines, n: rows.length, tall };
+    });
+    ok(scn, `one line per point line, every row ≤ 58px — ${w} sidebar ${sb} (main: names on 3–4 lines, rows of 70px)`, h.n > 0 && h.max <= 58 && h.lines === 0, h);
+    await o.page.context().close();
+  }
 };
 // ── main ──
 (async () => {
