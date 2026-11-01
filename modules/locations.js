@@ -746,7 +746,7 @@ function _locScanExisting(label, address) {
   }) || null;
 }
 
-// F16 (owner 1/11): the same place typed again under another spelling («AV VASILOPOULOS, OINOFYTA» / «AB VASILOPOULOS»).
+// F16 (owner 1/11): the same place typed again under another spelling (one letter apart, the town spelled two ways).
 // Never a refusal (relaxed rules, owner 31/10): the person sees the places that look the same, takes one or creates
 // the new one anyway. Two tests over the list already in memory: the same name once the company forms (S.A., GmbH…),
 // punctuation, case and a trailing country code are gone, in the same country; or a shared word of the name within
