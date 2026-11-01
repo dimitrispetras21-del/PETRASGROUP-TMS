@@ -2173,8 +2173,8 @@ SCN.pack4 = async (browser, origin) => {
     await bClick(page, '#content .wn5 .wn5-row[data-key="wait:4101"] .wi4-box.un');
     await page.waitForTimeout(500);
     const h = await bText(page, '.wn5a .wn5a-hist');
-    ok(scn, 'P-8: «Τελευταία κόμιστρα: 450 € Partner Test 01 Δευ 5/10 · 420 € Partner Test 02 Δευ 28/9», never the other route',
-      /^Τελευταία κόμιστρα: 450 € Partner Test 01 .+ · 420 € Partner Test 02 .+$/.test(h) && !h.includes('999'), h);
+    ok(scn, 'P-8: «Τελευταία κόμιστρα: Partner Test 01 450 € Δευ 5/10 · Partner Test 02 420 € Δευ 28/9» (each partner once), never the other route',
+      /^Τελευταία κόμιστρα: Partner Test 01 450 € .+ · Partner Test 02 420 € .+$/.test(h) && !h.includes('999'), h);
     ok(scn, 'no page errors (C)', !S.pageErrors.length, S.pageErrors);
     await page.context().close();
   }

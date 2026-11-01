@@ -490,6 +490,10 @@ function model(board, opts) {
     days.find((d) => d.date === k).rows.push(r);
     if (r.kind === 'unassigned') for (const id of r.pieceIds) shown.add(id);
   }
+  // The continuations of last week's trucks (3d) stand together at the top of their day, then the day's own rows in
+  // the order above: sorted only by day they were interleaved with the late loads carried to the same Saturday
+  // (live check 1/11: «συνέχεια από W44» lines split by a waiting VS of 29/10). Stable: each part keeps its order.
+  for (const d of days) d.rows = d.rows.filter((r) => r.carried).concat(d.rows.filter((r) => !r.carried));
   for (const d of days) d.empty = d.rows.length === 0;
   // ΕΠΟΜΕΝΑ: every VS still without a truck that this week shows. 'late' = the base's overdue of such a VS
   // (v_piece_state.overdue); a VS already on a cycle that delivers after its day is that row's amber rail (has_late),
