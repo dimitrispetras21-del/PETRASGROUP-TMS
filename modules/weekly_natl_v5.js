@@ -698,8 +698,10 @@ function _kathHTML(r, m, ok) {
   // late (critics r3): the day chip itself turns red and says «αργό» in its title — one mark, no second line
   const lateK = r.kind === 'unassigned' && r.late;
   const vsRef = refList.length ? `<span class="wn5-dc2 wn5-kref" title="${_esc(r.refs[0])}">${_esc(refList[0])}${refList.length > 1 ? ' +' + (refList.length - 1) : ''}</span>` : '';
-  return `<div class="wn5-kd">${lateK ? `<span class="wi4-dc red" title="αργό">${_esc(_dl(s.day))}</span>` : _chipHTML(r, 'KATHODOS', `wi4-dc ${_chipCls(s.day, m.today)}${hd}`, _dl(s.day))}${toDay}</div>`
-    + `<div class="wn5-fl"${_legAttr(r, 'KATHODOS')}>${_flHTML(s, ok, hd, vsRef)}</div>`
+  // the reference goes under «Βέροια» when the board has no Veroia window for the load, else under the day (never lost)
+  const refInFl = !!(s.veroia && !WN5L.winText(s.veroia.from, s.veroia.to, s.veroia.allDay));
+  return `<div class="wn5-kd">${lateK ? `<span class="wi4-dc red" title="αργό">${_esc(_dl(s.day))}</span>` : _chipHTML(r, 'KATHODOS', `wi4-dc ${_chipCls(s.day, m.today)}${hd}`, _dl(s.day))}${toDay}${refInFl ? '' : vsRef}</div>`
+    + `<div class="wn5-fl"${_legAttr(r, 'KATHODOS')}>${_flHTML(s, ok, hd, refInFl ? vsRef : '')}</div>`
     + `<div class="wn5-kto${_hx(r, s, null)}"${_legAttr(r, 'KATHODOS')}>${_hxHTML(r, s, null)}${_ptsHTML(s.to, ok)}</div>`
     + `<div class="wn5-kpal"${_legAttr(r, 'KATHODOS')}>${_palHTML(s)}${_plusHTML(r, 'KATHODOS')}${_prtHTML(r, 'KATHODOS')}</div>`;
 }
@@ -818,12 +820,13 @@ function _ptHTML(p, n, ok, inl) {
   }
   const city = _ptCity(p);
   const full = _ptFull(p);
+  const pw = WN5L.winText(p.from, p.to, p.allDay);
   return `<span class="wi4-pt wn5-pt${p.late ? ' wn5-late' : ''}${_dc(ok && p.dim && !p.late)}" data-stop="${_id(p.stopId)}"${_segAttr(p.segLabel)} title="${_esc(full)}">`
     + (n == null ? `<span class="wi4-l1">${_esc(p.name)}</span>`
       : inl ? `<span class="wi4-l1"><span class="wi4-pt-n">${n}</span> ${_esc(p.name)}</span>`
         : `<span class="wi4-pt-n">${n}</span><span class="wi4-l1">${_esc(p.name)}</span>`)
     // 2d: a part the board does not know is left out of the line, never «· — ·»
-    + `<span class="wi4-l2${p.late ? ' wi4-t-amb' : ''}">${city ? `<span class="wn5-pcity">${_esc(city)}</span> · ` : ''}${WN5L.winText(p.from, p.to, p.allDay) ? _win(p.from, p.to, p.allDay) + ' · ' : ''}${_esc(_pal(p.pallets, p.palUnknown))}${_tempTxt(p) ? `<span class="wn5-temp"> · ${_esc(_tempTxt(p))}</span>` : ''}</span></span>`;
+    + `<span class="wi4-l2${p.late ? ' wi4-t-amb' : ''}">${city ? `<span class="wn5-pcity">${_esc(city)}</span> · ` : ''}${pw ? _esc(pw) + ' · ' : ''}${_esc(_pal(p.pallets, p.palUnknown))}${_tempTxt(p) ? `<span class="wn5-temp"> · ${_esc(_tempTxt(p))}</span>` : ''}</span></span>`;
 }
 // The day chip of a side. On a cycle row it is a button: T16, it opens the date panel Δ4 of its side
 // (Figma 2011:8858 / 2053:7837). The classes stay those of T5/T6 (dim, «σήμερα»); other rows keep a plain chip.
