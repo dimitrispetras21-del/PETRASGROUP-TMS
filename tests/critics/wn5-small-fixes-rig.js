@@ -9,7 +9,16 @@
 const K = require('./wn5-rig-kit.js');
 
 const NOW_MS = Date.parse(K.NOW);
-const mk = (w, add) => { const b = K.week(); b.week = w; for (const c of b.cycles) { c.rt_id += add; c.code += '-' + add; } return b; };
+// The kit week moved to week w: its days too (PR3 3d: a cycle of an earlier week is the next week's «συνέχεια» line, not a
+// row, so W43 needs cycles dated in W43 — before 3d the old dates were clamped onto W43's Saturday as rows).
+const mk = (w, add) => {
+  const shift = Math.round((Date.parse(w) - Date.parse(K.week().week)) / 864e5);
+  const mv = (d) => { const t = new Date(Date.parse(d.slice(0, 10)) + shift * 864e5).toISOString().slice(0, 10); return t + d.slice(10); };
+  const b = JSON.parse(JSON.stringify(K.week()).replace(/"(\d{4}-\d{2}-\d{2})([^"]*)"/g, (m, d, rest) => JSON.stringify(mv(d + rest))));
+  b.week = w;
+  for (const c of b.cycles) { c.rt_id += add; c.code += '-' + add; }
+  return b;
+};
 const toasts = (page) => page.evaluate(() => (window.__ev || []).filter((x) => x.k === 'toast').map((x) => String(x.a[0])));
 const boards = (S) => K.planOf(S, 'GET', '/plan/board');
 
@@ -105,13 +114,14 @@ async function names({ browser, origin, ok, scn }) {
     const cs = getComputedStyle(el);
     const lh = parseFloat(cs.lineHeight) || 14;
     const pt = el.closest('.wn5-pt');
-    return { t: el.textContent, lines: Math.round(el.getBoundingClientRect().height / lh), clamp: cs.webkitLineClamp, cut: el.scrollHeight > el.clientHeight + 1,
+    return { t: el.textContent, lines: Math.round(el.getBoundingClientRect().height / lh), clamp: cs.webkitLineClamp, to: cs.textOverflow, cut: el.scrollWidth > el.clientWidth + 1,
       title: pt.getAttribute('title') || '', long: el.textContent === long };
   }), LONG);
   const longs = r.filter((x) => x.long);
   ok(scn, 'the long place is on the board', longs.length >= 1, r.map((x) => x.t));
-  ok(scn, 'no place line is taller than two lines', r.every((x) => x.lines <= 2), r.map((x) => `${x.lines} · ${x.t.slice(0, 30)}`));
-  ok(scn, 'the long one is cut with the clamp (-webkit-line-clamp 2, content longer than the box)', longs.every((x) => x.clamp === '2' && x.cut), longs);
+  // step 2 (coordinator 1/11): one line per place, cut with «…» (was two lines, owner 28/10)
+  ok(scn, 'no place line is taller than one line', r.every((x) => x.lines <= 1), r.map((x) => `${x.lines} · ${x.t.slice(0, 30)}`));
+  ok(scn, 'the long one is cut on one line with «…» (content wider than the box)', longs.every((x) => x.to === 'ellipsis' && x.cut), longs);
   ok(scn, 'the whole name is in the point\'s title', longs.every((x) => x.title.startsWith(LONG)), longs.map((x) => x.title));
   await page.context().close();
 }

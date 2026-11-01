@@ -18,19 +18,23 @@ const L = require(path.join(ROOT, 'core', 'wn5-labels.js'));
 // 081 (owner 31/10): plan_order_update's stop_kept, labelled once 081 is in the tree (drafts/ until the owner runs it)
 const SQL_081_FILE = ['worker/migrations/081_plan_stop_order_follows.sql', 'worker/migrations/drafts/081_plan_stop_order_follows.sql']
   .map((f) => path.join(ROOT, f)).find((f) => fs.existsSync(f));
+// 092 (F45, owner 1/11): plan_vs_set_day's vs_order_column_missing, labelled once 092 is in the tree
+const SQL_092_FILE = ['worker/migrations/092_plan_vs_pallets_day.sql', 'worker/migrations/drafts/092_plan_vs_pallets_day.sql']
+  .map((f) => path.join(ROOT, f)).find((f) => fs.existsSync(f));
 const SQL_072B_FILE = ['worker/migrations/072b_plan_vehicle_segments.sql', 'worker/migrations/drafts/072b_plan_vehicle_segments.sql']
   .map((f) => path.join(ROOT, f)).find((f) => fs.existsSync(f));
-const SQL = [path.join(ROOT, 'worker', 'migrations', '072_plan_functions.sql'), SQL_072B_FILE, SQL_081_FILE].filter(Boolean).map((f) => fs.readFileSync(f, 'utf8')).join('\n');
+const SQL = [path.join(ROOT, 'worker', 'migrations', '072_plan_functions.sql'), SQL_072B_FILE, SQL_081_FILE, SQL_092_FILE].filter(Boolean).map((f) => fs.readFileSync(f, 'utf8')).join('\n');
 // Literal codes only: `'code', 'over_33'` is a warning; `'code', c.code` (a cycle code) is not.
 const literals = (re) => [...new Set([...SQL.matchAll(re)].map((m) => m[1]))].sort();
 // The 072b additions, present only when 072b is in the tree.
 const B_WARN = SQL_072B_FILE ? ['seg_stop_moved', 'seg_stop_straddles'] : [];
 const B_KIND = SQL_072B_FILE ? ['partner_rate', 'seg_removed', 'seg_vehicle'] : [];
 const C_WARN = SQL_081_FILE ? ['stop_kept'] : [];
+const D_WARN = SQL_092_FILE ? ['vs_order_column_missing', 'vs_truck_kept'] : [];
 
 test('F4α-T11: WARNING keys = the warning codes raised in 072 + 072b (over_33, mixed_temp, v1_same_truck, local_payroll_review, vs_day_differs; seg_stop_moved, seg_stop_straddles)', () => {
   const codes = literals(/jsonb_build_object\(\s*'code',\s*'([a-z0-9_]+)'/g);
-  assert.deepStrictEqual(codes, ['local_payroll_review', 'mixed_temp', 'over_33', 'v1_same_truck', 'vs_day_differs', ...B_WARN, ...C_WARN].sort(), 'the 072/072b/081 warning set changed: label the new code here');
+  assert.deepStrictEqual(codes, ['local_payroll_review', 'mixed_temp', 'over_33', 'v1_same_truck', 'vs_day_differs', ...B_WARN, ...C_WARN, ...D_WARN].sort(), 'the 072/072b/081/092 warning set changed: label the new code here');
   assert.deepStrictEqual(Object.keys(L.WARNING).sort(), codes);
   assert.ok(Object.isFrozen(L.WARNING));
 });
@@ -62,8 +66,8 @@ test('F4α-T11: amounts appear only when the key is in the consequence; «γρα
   assert.strictEqual(L.consequenceLine({ kind: 'invoiced', nat_order_id: 3111, invoice_number: 'T-77' }).text, 'τιμολογήθηκε (T-77): το ERP κάνει το πιστωτικό');
   assert.strictEqual(L.consequenceLine({ kind: 'rt_cancelled', rt_id: 101, code: 'RT-T101' }).text, 'το δρομολόγιο RT-T101 θα σβηστεί');
   assert.strictEqual(L.warningLine({ code: 'over_33', rt_id: 101, side: 'KATHODOS', pallets: 54 }).text, 'Υπέρβαση 21π στην ΚΑΘΟΔΟ · 54/33');
-  // Δ12 tile 7 after a save: the vehicle the screen added (saved_on), Figma's words
-  assert.strictEqual(L.warningLine({ code: 'over_33', rt_id: 101, side: 'KATHODOS', pallets: 54, saved_on: 'TST-2106' }).text, 'Υπέρβαση 21π στο TST-2106 — αποθηκεύτηκε');
+  // after a save over_33 is not a line any more (owner 1/11, WN5Act.savedWarnings): a saved_on key changes nothing
+  assert.strictEqual(L.warningLine({ code: 'over_33', rt_id: 101, side: 'KATHODOS', pallets: 54, saved_on: 'TST-2106' }).text, 'Υπέρβαση 21π στην ΚΑΘΟΔΟ · 54/33');
   // principle 3: the 33 of these lines IS WN5L.CAP (held to the 072 HAVING by tests/wn5-logic.test.js). A literal 33
   // in the over_33 entry fails here, and a page whose WN5L.CAP were 30 must say «24π · 54/30».
   const src = fs.readFileSync(path.join(ROOT, 'core', 'wn5-labels.js'), 'utf8').replace(/\/\/[^\n]*/g, '');

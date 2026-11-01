@@ -253,7 +253,11 @@
       + rows.map((x) => `<option value="${x.id}"${x.id === cur ? ' selected' : ''}>${_esc(x.label)}</option>`).join('');
   };
   const _plate = (g) => (g.trip_type === 'PARTNER' ? (g.partner || 'Συνεργάτης') : [g.truck, g.trailer].filter(Boolean).join(' · ') || 'χωρίς φορτηγό');
-  const _line2 = (g) => (g.trip_type === 'PARTNER' ? (g.partner_rate == null ? 'κόμιστρο λείπει' : String(g.partner_rate).replace('.', ',') + ' €') : (g.driver || '—'));
+  // 089 (P-7): a segment with an ΑΝΟΔΟΥ part shows both fees (the whole fee = ΚΑΘΟΔΟΥ + ΑΝΟΔΟΥ, what the P&L reads)
+  const _eur = (n) => String(Math.round(Number(n) * 100) / 100).replace('.', ',');
+  const _fee = (g) => (g.partner_rate_anodos == null ? _eur(g.partner_rate) + ' €'
+    : 'ΚΑΘΟΔΟΥ ' + _eur(Number(g.partner_rate) - Number(g.partner_rate_anodos)) + ' € · ΑΝΟΔΟΥ ' + _eur(g.partner_rate_anodos) + ' €');
+  const _line2 = (g) => (g.trip_type === 'PARTNER' ? (g.partner_rate == null ? 'κόμιστρο λείπει' : _fee(g)) : (g.driver || '—'));
   // Stops of a segment: the name in Medium ink, « · city» in grey (Figma 2129:7761); the city once per run of the
   // same city, never when the name already says it; the hub reads «Βέροια» as on the board.
   function _stopsHTML(g, cycle, hub) {
