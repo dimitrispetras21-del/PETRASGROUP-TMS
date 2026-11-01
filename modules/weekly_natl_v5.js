@@ -221,7 +221,7 @@ function weekParam(week, year) {
   return TmsWeek.startOfDate(TmsWeek.start(Number(week), year));
 }
 function _week(n, home) {
-  const v = Math.min(53, Math.max(1, Number(n)));   // TMS weeks 1..53 (‹ on W1 stayed on a week 0 outside the strip)
+  const v = Math.max(1, Number(n));   // never a week 0 (‹ on W1); no upper cap: › past the last week walks into January as before
   if (!Number.isInteger(v) || !window.WNATL) return;
   if (home === true) _tabFrom = null;   // «Σήμερα»: the strip goes back to its own place around the current week
   window.WNATL.week = v;
@@ -453,7 +453,7 @@ function _tabsFrom(w, cur) {
   if (!Number.isInteger(_tabFrom)) _tabFrom = (Number.isInteger(cur) ? cur : w) - 2;
   if (w < _tabFrom) _tabFrom = w;
   else if (w > _tabFrom + 6) _tabFrom = w - 6;
-  _tabFrom = Math.min(47, Math.max(1, _tabFrom));   // TMS weeks 1..53, as the Weekly International clamps
+  _tabFrom = Math.max(1, _tabFrom);   // no W0 / W-1 tabs at the start of the year
   return _tabFrom;
 }
 function _tabsHTML(w) {
