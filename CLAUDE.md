@@ -159,6 +159,8 @@ cd worker && CLOUDFLARE_API_TOKEN=$CF_API_TOKEN npx wrangler deploy
    - εθνικά v5 Φ3 (073 + Worker ffd5531f, ζωντανό 26/10), ένα ανά λειτουργία: `"v_rt_cycle"` (Ε21, το τέλος
      κύκλου v5 στο `/costs/rt`), `review_cycles` (Ε10, DKV κατά ώρα), `pl_mov_stop_once` (Ε11, παλέτες),
      `ctPartnerLineCheck` (Q6-1, γραμμή τιμολογίου συνεργάτη)
+   - κόμιστρο ΑΝΟΔΟΥ (Π-7: 089 + Worker πάνω στο #191· **μπαίνει στον έλεγχο από το deploy του και μετά**):
+     `seg_partner_rate_anodos: "` (`--invoiced 1 --rate2 1`, `GUARD OK (31 markers, …, invoiced=1, rate2=1)`)
    Μία εντολή για όλα, πριν και μετά: `node worker/tools/worker-guard.mjs <bundle ή λήψη CF> --plan 1 --handover 1 --f3 1`
    (ξετυλίγει το multipart· `GUARD OK (20 markers, plan=1, handover=1, f3=1)`). Χωρίς `--handover`, ή με όρισμα που
    δεν ξέρει, το εργαλείο σταματά με exit 2, ποτέ «OK». Το `--f3` είναι **προαιρετικό** στο εργαλείο: χωρίς αυτό

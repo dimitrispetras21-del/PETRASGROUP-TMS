@@ -3541,6 +3541,8 @@ const PLAN_CHECK_TEXT = {
   seg_partner_no_vehicle: "Τμήμα συνεργάτη δεν έχει δικό μας φορτηγό, ρυμουλκούμενο ή οδηγό",
   seg_owned_no_partner: "Τμήμα με δικό μας φορτηγό δεν έχει συνεργάτη ή κόμιστρο",
   seg_partner_rate: "Το κόμιστρο του τμήματος δεν είναι αρνητικό",
+  // 089 (P-7, owner 31/10 + 1/11): the ANODOS part of the fee (partner_rate = the whole fee, KATHODOU + ANODOU)
+  seg_partner_rate_anodos: "Το κόμιστρο ΑΝΟΔΟΥ θέλει συνεργάτη και κόμιστρο ΚΑΘΟΔΟΥ, και δεν είναι αρνητικό",
   seg_reason_list: "Άγνωστος λόγος αλλαγής οχήματος — διάλεξε από τη λίστα",
   seg_change_pair: "Η αλλαγή οχήματος θέλει σημείο και λόγο μαζί",
   seg_place_text: "Γράψε το σημείο της αλλαγής (π.χ. «Λαμία»)",
