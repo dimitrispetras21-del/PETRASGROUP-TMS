@@ -85,9 +85,10 @@ test("F4α-T4 / F5 FE-2: a VS no truck took (hub[]) → row kind 'unassigned', r
     ['VS-T118: ο πίνακας ήρθε χωρίς «deliver_from» — τα παράθυρα δείχνουν «—»', 'VS-T121: ο πίνακας ήρθε χωρίς «deliver_from» — τα παράθυρα δείχνουν «—»',
      'VS-T133: ο πίνακας ήρθε χωρίς «deliver_from» — τα παράθυρα δείχνουν «—»']);
   assert.strictEqual(r.tiles[0].type, 'un');
-  // B1 (owner 28/10): a never-assigned VS import at Veroia is ALSO «για μοίρασμα» (split / loaded from the Veroia board)
-  // and stays this ΠΡΟΣ ΑΝΑΘΕΣΗ row, for assigning the order whole
-  assert.ok([4101, 4102, 4103, 4104].every((p) => m.hub.split.some((x) => x.pieceId === p)), 'a never-assigned VS import is also «για μοίρασμα»');
+  // P-11 (owner 28/10, answer 1, reverses B1 part 2): a never-assigned VS import at Veroia is ONLY this ΠΡΟΣ ΑΝΑΘΕΣΗ
+  // row until «→ Βέροια» sends it to the panel; the row knows which of its pieces stand at Veroia
+  assert.ok([4101, 4102, 4103, 4104].every((p) => !m.hub.split.some((x) => x.pieceId === p)), 'a never-assigned VS import is not «για μοίρασμα»');
+  assert.deepStrictEqual(r.hubPieceIds, r.pieceIds, 'every piece of the row stands at Veroia');
   const m2 = M(withE26()), r2 = rowOf(m2, 'wait:4101');
   assert.deepStrictEqual(m2.errors, [], 'with the Ε-26 keys the board draws without a shape error');
   // a key PRESENT with null (a stop without a window) is not a broken board: «—», no error
@@ -158,15 +159,16 @@ test('F4α-T4: queue = the VS of the «ΠΡΟΣ ΑΝΑΘΕΣΗ» rows (hub[] nev
   assert.ok(rowOf(m2, 'rt:102').late && !m2.queue.some((x) => x.code === 'VS-T102'), 'a VS on a truck that is late stays on its row');
 });
 
-test('F4α-T4 / B1: hub split = unloaded at Veroia by a cycle (inbound_rt_id), for_split, or a VS import with no truck (owner 28/10); never a never-assigned national; stock; overdue → red; nothing to split or hold → hub.empty', () => {
+test('F4α-T4 / P-11: hub split = unloaded at Veroia by a cycle (inbound_rt_id) or for_split — one place per piece (owner 28/10 answer 1); never a never-assigned VS or national; stock; overdue → red; nothing to split or hold → hub.empty', () => {
   const h = M().hub;
   assert.deepStrictEqual({ day: h.day, split: h.split.map((x) => x.pieceId), stock: h.stock.map((x) => [x.pieceId, x.overdue, x.leave_by]), pallets: h.pallets, empty: h.empty },
-    { day: TODAY, split: [4101, 4102, 4103, 4302, 4104], stock: [[4301, true, '2026-10-12']], pallets: { split: 83, stock: 13, splitUnknown: 0, stockUnknown: 0 }, empty: false });
+    { day: TODAY, split: [4302], stock: [[4301, true, '2026-10-12']], pallets: { split: 20, stock: 13, splitUnknown: 0, stockUnknown: 0 }, empty: false });
   // the Ε-41 key (not in 072): what ✈ «Σπάσιμο» sent back is «για μοίρασμα», and leaves the rows and the queue
   const b = fix();
   for (const x of b.hub) if (x.order_id === 2101) x.for_split = true;
   const m2 = M(b);
-  assert.deepStrictEqual(m2.hub.split.map((x) => x.pieceId), [4101, 4102, 4103, 4302, 4104]);
+  // the pieces of order 2101 (VS-T118) that were sent: on the panel; the other VS imports stay rows only
+  assert.deepStrictEqual(m2.hub.split.map((x) => x.pieceId), [4101, 4102, 4302]);
   assert.ok(!rowOf(m2, 'wait:4101') && !m2.queue.some((x) => x.code === 'VS-T118'), 'for_split: the Veroia board only');
   const b3 = fix(); b3.hub = b3.hub.filter((x) => x.is_stock !== true && x.inbound_rt_id == null).map((x) => Object.assign(x, { kind: 'national' }));
   assert.strictEqual(M(b3).hub.empty, true, 'only never-assigned nationals: rows, and the Veroia line stays hidden');
@@ -222,12 +224,13 @@ test('F4α-T4: partner_rate null → rates.missing (open item, never 0)', () => 
   const r = rowOf(M(), 'rt:104');
   assert.deepStrictEqual(r.rates, { partner_rate: null, missing: true });
   // one-segment cycle = F0 7745 / H1 rows 2–6: line 2 is the partner's plate, which the 072 board does not carry
-  // (Ε-35, Ε-36) → «—»; the rate / «κόμιστρο λείπει» lives in Δ1, the move list and the H3 segment tiles (Ε-13)
-  assert.deepStrictEqual([r.tiles[0].line1, r.tiles[0].line2, r.tiles[0].missing], ['Partner Test Pelagos', '—', false]);
+  // (Ε-35, Ε-36) → nothing (step 2i, coordinator 1/11: no bare «—»); the rate / «κόμιστρο λείπει» lives in Δ1, the move
+  // list and the H3 segment tiles (Ε-13)
+  assert.deepStrictEqual([r.tiles[0].line1, r.tiles[0].line2, r.tiles[0].missing], ['Partner Test Pelagos', '', false]);
   const b = fix(); b.cycles.find((c) => c.rt_id === 104).partner_rate = 300;
   const r2 = rowOf(M(b), 'rt:104');
   assert.deepStrictEqual(r2.rates, { partner_rate: 300, missing: false });
-  assert.deepStrictEqual([r2.tiles[0].line2, r2.tiles[0].partnerRate], ['—', 300], 'the rate stays data, never on the one-segment tile');
+  assert.deepStrictEqual([r2.tiles[0].line2, r2.tiles[0].partnerRate], ['', 300], 'the rate stays data, never on the one-segment tile');
   const segs = (rate) => [{ segment_id: 1, label: 'initial', trip_type: 'OWNED', truck: 'TST-2104', driver: 'Driver Test 01', has_vehicle: true, stop_ids: [] },
     { segment_id: 2, label: 'final', trip_type: 'PARTNER', partner: 'Partner Test Pelagos', partner_rate: rate, has_vehicle: true, stop_ids: [] }];
   const b2 = fix(); b2.cycles.find((c) => c.rt_id === 104).segments = segs(null);
@@ -370,4 +373,17 @@ test('075: waitSide — the hub ends first, then the order\'s own direction, els
   assert.strictEqual(L.waitSide({ kind: 'national', nat_from_location_id: 1, nat_to_location_id: 6, direction: 'ANODOS' }, 1), 'KATHODOS', 'from the hub wins over a direction');
   assert.strictEqual(L.waitSide({ kind: 'vs_export', nat_to_location_id: 1 }, 1), 'ANODOS');
   assert.strictEqual(L.waitSide({ kind: 'vs_import', at_hub: true, nat_to_location_id: 3 }, 1), 'KATHODOS');
+});
+
+// F64 (owner 31/10): one reader rule for the board and the driver sheet — the base stores «the same hour» as one
+// minute, and an arrival «ως 23:59» as 23:58–23:59; neither is printed as a window nobody agreed.
+test('F64: winText — one minute is «στις HH:MM», the day\'s last minute «ως 23:59», the whole day and a window as before', () => {
+  const W = require(path.join(ROOT, 'core/wn5-logic.js'));
+  assert.strictEqual(W.winText('08:00', '08:01', false), 'στις 08:00');
+  assert.strictEqual(W.winText('08:00', '08:00', false), '08:00–08:00');   // a 24 h window stored before F64: as it is
+  assert.strictEqual(W.winText('23:58', '23:59', false), 'ως 23:59');
+  assert.strictEqual(W.winText('00:00', '23:59', true), 'όλη η ημέρα');
+  assert.strictEqual(W.winText('06:00', '08:00', false), '06:00–08:00');
+  assert.strictEqual(W.winText('22:00', '02:00', false), '22:00–02:00');   // a night window is never an instant
+  assert.strictEqual(W.winText(null, '08:00', false), null);
 });

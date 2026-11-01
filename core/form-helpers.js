@@ -19,6 +19,18 @@ async function fhLocationRecords() {
   return refLocationsFetch();
 }
 
+// A place's line in every picker. One list everywhere (owner 5/9): the picker
+// shows the Greek name even when the record still stores an old English/Greek
+// spelling or code.
+function _fhLocLabel(f) {
+  return [f['Name'], f['City'], typeof countryName === 'function' ? countryName(f['Country']) : f['Country']].filter(Boolean).join(', ');
+}
+
+// The picker lines of a LOCATIONS read, sorted: one rule for the first read and the background re-read.
+function _fhLocItems(records) {
+  return records.map(r => ({ id: r.id, label: _fhLocLabel(r.fields) })).sort((a, b) => a.label.localeCompare(b.label));
+}
+
 /**
  * Load all locations into shared cache (idempotent)
  */
@@ -28,16 +40,8 @@ async function fhLoadLocations() {
   // Two callers can await the same read (the Orders page loads both types at
   // once): only the first fills the shared arrays, or every picker doubles.
   if (_fhLocationsArr.length) return;
-  const sorted = locs
-    .map(r => ({
-      id: r.id,
-      // One list everywhere (owner 5/9): the picker shows the Greek name even
-      // when the record still stores an old English/Greek spelling or code.
-      label: [r.fields['Name'], r.fields['City'], typeof countryName === 'function' ? countryName(r.fields['Country']) : r.fields['Country']].filter(Boolean).join(', ')
-    }))
-    .sort((a, b) => a.label.localeCompare(b.label));
   // Push into shared array (don't reassign — other refs may hold it)
-  sorted.forEach(l => {
+  _fhLocItems(locs).forEach(l => {
     _fhLocationsArr.push(l);
     _fhLocationsMap[l.id] = l.label;
   });
@@ -48,19 +52,32 @@ async function fhLoadLocations() {
 // (length=0, push) γιατί άλλα modules κρατούν αναφορά στο ίδιο array.
 function _fhRefreshLocations(locRecords) {
   if (!Array.isArray(locRecords) || !locRecords.length || !_fhLocationsArr.length) return;
-  const sorted = locRecords
-    .map(r => ({
-      id: r.id,
-      // One list everywhere (owner 5/9): the picker shows the Greek name even
-      // when the record still stores an old English/Greek spelling or code.
-      label: [r.fields['Name'], r.fields['City'], typeof countryName === 'function' ? countryName(r.fields['Country']) : r.fields['Country']].filter(Boolean).join(', ')
-    }))
-    .sort((a, b) => a.label.localeCompare(b.label));
+  const sorted = _fhLocItems(locRecords);
   _fhLocationsArr.length = 0;
   sorted.forEach(l => {
     _fhLocationsArr.push(l);
     _fhLocationsMap[l.id] = l.label;
   });
+}
+
+// F52 (live 31/10): a place saved in «Τοποθεσίες» was not in the order forms' pickers until a reload — the list
+// above is read once per page (fhLoadLocations returns while it holds anything) and the background re-read runs
+// once per load. The saved record goes into THE list (no copy of it), with the label fhLoadLocations gives it, in
+// its sorted place; a renamed place replaces its old line. A list not read yet is left alone: its first read comes
+// after the save (atCreate/atPatch cleared the reference cache). Known limit, kept simple (code review r5): a
+// background re-read that started before the save and lands after it rebuilds the list without the place — a
+// window of the page's first seconds. The v5 catalogue (/plan/lookups, the place's number) is told to read again on
+// its next use, or the national v5 form would find the place and refuse it at «Αποθήκευση».
+function fhLocationSaved(rec) {
+  if (!rec || !rec.id || !rec.fields) return;
+  if (typeof PlanIds !== 'undefined' && typeof PlanIds.stale === 'function') PlanIds.stale();
+  if (!_fhLocationsArr.length) return;
+  const item = { id: rec.id, label: _fhLocLabel(rec.fields) };
+  const at = _fhLocationsArr.findIndex(l => l.id === rec.id);
+  if (at !== -1) _fhLocationsArr.splice(at, 1);
+  const pos = _fhLocationsArr.findIndex(l => l.label.localeCompare(item.label) > 0);
+  _fhLocationsArr.splice(pos === -1 ? _fhLocationsArr.length : pos, 0, item);
+  _fhLocationsMap[rec.id] = item.label;
 }
 
 /**
@@ -238,7 +255,10 @@ const _FH_EL = { 'α':'a','β':'v','γ':'g','δ':'d','ε':'e','ζ':'z','η':'i',
 function _fhNorm(s) {
   let t = String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   t = t.replace(/ου/g, 'ou').replace(/αυ/g, 'av').replace(/ευ/g, 'ev').replace(/(^|\s)μπ/g, '$1b').replace(/(^|\s)ντ/g, '$1d').replace(/γγ/g, 'ng').replace(/γκ/g, 'gk');
-  return t.replace(/[α-ω]/g, c => _FH_EL[c] || c);
+  // one space between words, none at the ends (owner 1/11): a name stored with a no-break or double space
+  // («VERMION FRESH<nbsp> (WAREHOUSE)») was never found by the plain space a person types. \s holds the no-break,
+  // figure and narrow spaces; the zero-width one is named.
+  return t.replace(/[α-ω]/g, c => _FH_EL[c] || c).replace(/[\s\u200b]+/g, ' ').trim();
 }
 // One search rule for the Weekly boards (v4 and v1, Pantelis 21/10): _fhNorm
 // (any case, no accents, Greek → Latin like the stored place names, so
