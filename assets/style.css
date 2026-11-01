@@ -7892,6 +7892,8 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 .wi4-tab.on { background:var(--surface-card); border-color:var(--wi4-slot); box-shadow:0 1px 2px rgba(15,23,42,.08); color:var(--wi4-ink); font-weight:600; gap:5px; }
 /* The current week: Figma 1097:2298, a 5×5 #027BBD disc 5px after «W41» (the
    «•» glyph was a ~3px speck, r2/topbar-current-week-dot). */
+/* «Σήμερα» of the v5 strip stays in place on the current week (1c), inert and quiet. */
+.wn5-tab-today:disabled { color:var(--wi4-grey-3); cursor:default; }
 .wi4-tab-cur { flex:none; width:5px; height:5px; border-radius:50%; background:var(--wi4-blue); }
 /* A narrow bar (1440): W−3 and W+3 go (‹ › still step a week), so the title
    group keeps room for the presence words and the sync token (fix round 3). */
@@ -9102,7 +9104,9 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 .wn5 :is(.wn5-c-apal, .wn5-apal) { grid-column:12; }
 .wn5 .wn5-kspan { grid-column:3 / 7; }
 .wn5 .wn5-aspan { grid-column:9 / 13; }
-.wn5-cols { position:sticky; top:-8px; z-index:30; min-height:32px; padding:4px 1px 8px; box-sizing:border-box; background:var(--surface-page);
+/* top = minus the v5 page's own 10px top padding (body.wn5-on .content), not the v4 board's 8px: at -8px a 2px strip
+   of the rows showed above the sticky heads while scrolling (coordinator 1/11, 1d). Change both together. */
+.wn5-cols { position:sticky; top:-10px; z-index:30; min-height:32px; padding:4px 1px 8px; box-sizing:border-box; background:var(--surface-page);
   font-size:10px; font-weight:600; letter-spacing:.5px; line-height:1.2; color:var(--wi4-grey-2); align-items:end; }
 .wn5-cols > span { min-width:0; padding:0 9px; box-sizing:border-box; }
 .wn5-cols > .wn5-h-asg { padding-left:9px; }
@@ -9197,6 +9201,11 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 .wn5 .wn5-end .wi4-l2 { font-weight:500; }
 /* «+N» (Figma H1): a 22px chip, its figure centred, in the middle of the stop. */
 .wn5 .wn5-pts .wi4-more { flex:0 0 24px; width:24px; height:22px; display:grid; place-items:center; }
+/* «+N» with a small «Β» on its corner: the folded deliveries and the Veroia end of a ΠΡΟΣ that also delivers (1e). The
+   chip keeps its 24px, so the stop beside it keeps its room; «Β» alone when no delivery is folded. */
+.wn5 .wn5-pts .wi4-more.wn5-more-end { position:relative; }
+.wn5 .wi4-more.wn5-more-end > b + .wn5-more-v { position:absolute; top:-5px; right:-4px; font-size:9px; line-height:10px; padding:0 2px; border-radius:3px; background:var(--surface-card); }
+.wn5 .wn5-more-v { font-weight:600; color:var(--wi4-blue-ink); }
 .wn5 .wn5-pt > .wi4-l2 { font-weight:500; color:var(--wi4-grey-1); }   /* before the late rule: a late window stays amber */
 .wn5 .wn5-late .wi4-l2 { color:var(--wi4-amber); }
 /* More late stops than slots: the «+N» that holds one is amber too (a late stop is never hidden in grey). */
@@ -9687,6 +9696,8 @@ body.wn5-on .topbar-right { gap:4px; }
 @media (max-width:1600px) {
   body.wn5-on .topbar { padding:0 16px 0 20px; }
   body.wn5-on .wn5-top .wi4-bar { column-gap:8px; }
+  /* «Σήμερα» never leaves the strip now (1c): 9px tabs keep «31 Οκτ – 6 Νοε» whole at 1440 */
+  body.wn5-on .wn5-top .wi4-tab:not([aria-label]) { padding:0 9px; }
 }
 body.wn5-top-on #undoBtn.undo-btn-idle { display:none; }
 body.wn5-on .topbar .notif-wrap { margin-right:0 !important; }
@@ -10055,8 +10066,10 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
    from stop_ids (H-9). */
 .wn5 :is(.wn5-pt, .wn5-vtime, .wn5-end)[data-seg-label]::after { content:''; display:block; grid-column:1 / -1; width:24px; height:2px; margin-top:3px;
   border-radius:1px; background:var(--wn5-seg-initial); }
-.wn5 :is(.wn5-pt, .wn5-vtime, .wn5-end)[data-seg-label="intermediate"]::after { background:var(--wn5-seg-intermediate); }
-.wn5 :is(.wn5-pt, .wn5-vtime, .wn5-end)[data-seg-label="final"]::after { background:var(--wn5-seg-final); }
+/* the Veroia end folded into «+N» (1e) keeps its segment mark: the same bar, under the chip */
+.wn5 .wn5-more-end[data-seg-label]::after { content:''; position:absolute; left:3px; right:3px; bottom:-4px; height:2px; border-radius:1px; background:var(--wn5-seg-initial); }
+.wn5 :is(.wn5-pt, .wn5-vtime, .wn5-end, .wn5-more-end)[data-seg-label="intermediate"]::after { background:var(--wn5-seg-intermediate); }
+.wn5 :is(.wn5-pt, .wn5-vtime, .wn5-end, .wn5-more-end)[data-seg-label="final"]::after { background:var(--wn5-seg-final); }
 /* ⇄ in place of the → (Figma 2138:7745): a 16×16 box, SemiBold 11 ink, centred where the arrow was (6 + 16 + 7 = the
    arrow's 29px, nothing after it moves). The selector repeats the arrow rule's own (:is + :not(:empty), 0,3,1) and adds
    .wn5-hx, so it outranks it: a plain `.wn5-row > .wn5-hx` (0,2,1) lost and the → stayed drawn under the ⇄. */

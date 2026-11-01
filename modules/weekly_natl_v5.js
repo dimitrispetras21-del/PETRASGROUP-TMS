@@ -77,6 +77,7 @@ let _stale = null;       // a save landed but the board read after it failed: {a
 const SAVE_RELOADS = Object.freeze(['save', 'handover', 'order-saved', 'segment-removed']);
 let _closed = null;      // the first writes_closed answer of the session (Ε-6; set by markClosed)
 let _qAll = false;       // «Όλα N ▾» of the ΕΠΟΜΕΝΑ band
+let _tabFrom = null;     // the first week of the strip (1c): set once, moved only when the week on screen leaves it
 let _qRaw = '';          // the search text, memory only; cleared when the week changes (Ε-25)
 let _sIdx = 0;           // the match Enter is on («1/2»)
 const _qi = new Map();   // row key → search text of the last paint (fhSearchBlob: the fields of a row kept apart)
@@ -219,9 +220,10 @@ function weekParam(week, year) {
   if (typeof TmsWeek === 'undefined') throw new Error('TmsWeek missing (core/tms-week.js)');
   return TmsWeek.startOfDate(TmsWeek.start(Number(week), year));
 }
-function _week(n) {
-  const v = Number(n);
+function _week(n, home) {
+  const v = Math.max(1, Number(n));   // never a week 0 (‹ on W1); no upper cap: › past the last week walks into January as before
   if (!Number.isInteger(v) || !window.WNATL) return;
+  if (home === true) _tabFrom = null;   // «Σήμερα»: the strip goes back to its own place around the current week
   window.WNATL.week = v;
   window.renderWeeklyNatl();
 }
@@ -442,16 +444,28 @@ function _barHTML() {
         + '<button type="button" class="wi4-btn sm" title="Το παλιό Εβδομαδιαίο Εθνικών" onclick="WN5._switch(\'0\')">Παλιά προβολή</button>')
     + '</div></div>';
 }
+// The strip stands still (coordinator 1/11, 1c): it was the seven weeks around the one on screen, so every click
+// re-drew it one place over and the week just pressed slid away under the pointer, and «Σήμερα» came and went (the
+// tabs are centred in the bar, so its width moved them too). Now the seven weeks start two before the current one and
+// move only when the week on screen leaves them, by as little as it takes; «Σήμερα» is always there, inert on the
+// current week.
+function _tabsFrom(w, cur) {
+  if (!Number.isInteger(_tabFrom)) _tabFrom = (Number.isInteger(cur) ? cur : w) - 2;
+  if (w < _tabFrom) _tabFrom = w;
+  else if (w > _tabFrom + 6) _tabFrom = w - 6;
+  _tabFrom = Math.max(1, _tabFrom);   // no W0 / W-1 tabs at the start of the year
+  return _tabFrom;
+}
 function _tabsHTML(w) {
   if (!Number.isInteger(w)) return '';
   const cur = typeof TmsWeek !== 'undefined' ? TmsWeek.current() : null;
+  const from = _tabsFrom(w, cur);
   let h = `<button type="button" class="wi4-tab" aria-label="Προηγούμενη εβδομάδα" onclick="WN5._week(${w - 1})">‹</button>`;
-  for (let d = -3; d <= 3; d++) {
-    const n = w + d;
-    h += `<button type="button" class="wi4-tab${d === 0 ? ' on' : ''}" data-w="${n}" onclick="WN5._week(${n})">W${n}${n === cur ? '<span class="wi4-tab-cur" aria-hidden="true"></span>' : ''}</button>`;
+  for (let n = from; n <= from + 6; n++) {
+    h += `<button type="button" class="wi4-tab${n === w ? ' on' : ''}" data-w="${n}" onclick="WN5._week(${n})">W${n}${n === cur ? '<span class="wi4-tab-cur" aria-hidden="true"></span>' : ''}</button>`;
   }
   h += `<button type="button" class="wi4-tab" aria-label="Επόμενη εβδομάδα" onclick="WN5._week(${w + 1})">›</button>`;
-  if (cur && cur !== w) h += `<button type="button" class="wi4-tab" onclick="WN5._week(${cur})">Σήμερα</button>`;
+  if (Number.isInteger(cur)) h += `<button type="button" class="wi4-tab wn5-tab-today" data-today="1"${cur === w ? ' disabled aria-disabled="true"' : ''} onclick="WN5._week(${cur}, true)">Σήμερα</button>`;
   return h;
 }
 // «10–16 Οκτωβρίου», or «26 Σεπτεμβρίου – 2 Οκτωβρίου» across a month; short: «10–16 Οκτ», «26 Σεπ – 2 Οκτ».
@@ -696,10 +710,16 @@ function _anodHTML(r, m, ok) {
     return `<div class="wn5-aspan wn5-gspan"><span class="${par ? 'wn5-gaptxt' : 'wn5-gapbox'}">${txt}</span></div><div class="wn5-apal wn5-gpal">${_plusHTML(r, 'ANODOS')}</div>`;
   }
   const hd = _dc(ok && s.headDim);
-  const end = r.end ? `<span class="wn5-end${_dc(ok && r.end.dim)}"${_segAttr(r.end.segLabel)} title="${_esc(`Βέροια · ως ${_dow(L().athensDay(r.end.by))} ${L().athensTime(r.end.by)}`)}"><span class="wi4-l1">Βέροια</span><span class="wi4-l2">ως ${_esc(_dow(L().athensDay(r.end.by)))} ${_esc(L().athensTime(r.end.by))}</span></span>` : '';
+  const endBy = r.end ? `${_dow(L().athensDay(r.end.by))} ${L().athensTime(r.end.by)}` : '';
+  const end = r.end ? `<span class="wn5-end${_dc(ok && r.end.dim)}"${_segAttr(r.end.segLabel)} title="${_esc(`Βέροια · ως ${endBy}`)}"><span class="wi4-l1">Βέροια</span><span class="wi4-l2">ως ${_esc(endBy)}</span></span>` : '';
+  // ΠΡΟΣ that delivers somewhere AND ends at Veroia (coordinator 1/11, 1e): the end joins the «+N» of the deliveries
+  // (its line last in the title), so the row keeps one height. Beside the stops it pushed «Βέροια» to a third line
+  // (70px rows, a 49px stop at 1440). Alone in ΠΡΟΣ the end keeps its own 76px cell.
+  const fold = !!(r.end && s.to.some((p) => !p.hub));
+  const endTail = fold ? { title: `Βέροια · ως ${endBy}`, stopId: r.end.stopId, segLabel: r.end.segLabel } : null;
   return `<div class="wn5-ad">${_prtHTML(r, 'ANODOS')}${_chipHTML(r, 'ANODOS', `wi4-dc ${_chipCls(s.day, m.today)}${hd}`, _dl(s.day))}</div>`
     + `<div class="wn5-afl"${_legAttr(r, 'ANODOS')}>${_ptsHTML(s.from, ok)}</div>`
-    + `<div class="wn5-ato${_hx(r, s, r.end)}"${_legAttr(r, 'ANODOS')}>${_hxHTML(r, s, r.end)}${_ptsHTML(s.to, ok)}${end}</div>`
+    + `<div class="wn5-ato${_hx(r, s, r.end)}"${_legAttr(r, 'ANODOS')}>${_hxHTML(r, s, r.end)}${_ptsHTML(s.to, ok, null, false, endTail)}${fold ? '' : end}</div>`
     + `<div class="wn5-apal"${_legAttr(r, 'ANODOS')}>${_palHTML(s)}${_plusHTML(r, 'ANODOS')}</div>`;
 }
 // ΦΟΡΤΩΣΗ of ΚΑΘΟΔΟΣ: «Βέροια» and its window stay together (owner 25/10); a loading the cycle makes BEFORE Veroia
@@ -716,7 +736,7 @@ function _flHTML(s, ok, hd) {
 }
 // start (a number) = number the points from it, boxes always shown (a cell that also has «Βέροια»); else WN5L's n and
 // no box on a lone point (wi4 rule 6). Every point is place + city (owner 28/10), so no cell is «place only» any more.
-function _ptsHTML(pts, ok, start, inl) {
+function _ptsHTML(pts, ok, start, inl, tail) {
   if (!pts.length) return '';
   const num = start == null ? (p) => (pts.length === 1 ? null : p.n) : (p, i) => start + i;
   const vis = _visPts();
@@ -728,8 +748,12 @@ function _ptsHTML(pts, ok, start, inl) {
   const rest = idx.filter((i) => !shown.has(i));
   // More late stops than slots: the chip itself carries the amber, so a hidden late stop is still seen.
   const restLate = rest.some((i) => pts[i].late);
-  const more = rest.length
-    ? `<span class="wi4-more${restLate ? ' wn5-late' : ''}" title="${_esc(rest.map((i) => `${num(pts[i], i) || pts[i].n}. ${_ptFull(pts[i])}`).join('\n'))}"><b>+${rest.length}</b></span>`
+  // tail: one more line the chip holds after the folded stops (the Veroia end of a ΠΡΟΣ that also delivers, 1e)
+  const lines = rest.map((i) => `${num(pts[i], i) || pts[i].n}. ${_ptFull(pts[i])}`).concat(tail ? [tail.title] : []);
+  const more = lines.length
+    // the end is marked «Β» beside the count of the folded deliveries, never counted as one: «+1 Β» = one more stop and
+    // Veroia, «Β» alone = Veroia only (a bare «+1» read as a second delivery)
+    ? `<span class="wi4-more${restLate ? ' wn5-late' : ''}${tail ? ' wn5-more-end' : ''}"${tail ? ` data-end="1" data-stop="${_id(tail.stopId)}"${_segAttr(tail.segLabel)}` : ''} title="${_esc(lines.join('\n'))}">${rest.length ? `<b>+${rest.length}</b>` : ''}${tail ? '<span class="wn5-more-v">Β</span>' : ''}</span>`
     : '';
   return `<span class="wi4-pts wn5-pts">${idx.filter((i) => shown.has(i)).map((i) => _ptHTML(pts[i], num(pts[i], i), ok, inl)).join('')}${more}</span>`;
 }
@@ -748,10 +772,13 @@ function _tempTxt(p) {
 }
 // Each point with its own day: a delivery of Tuesday stays bold until Tuesday ends, even if its hour passed.
 // The point's city: the catalogue's (PlanIds, GET /plan/lookups) for its place id; '' while the catalogue is not in.
+// The town of the hub reads «Βέροια» wherever it shows (1e): the catalogue keeps places in Latin (owner 9/8), and a
+// client's «Veria» beside the cycle's end «Βέροια» read as two places.
+const _cityName = (c) => (/^ver(?:o?i)a$/i.test(String(c).trim()) ? 'Βέροια' : String(c));
 function _ptCity(p) {
-  if (p && p.city) return String(p.city);
+  if (p && p.city) return _cityName(p.city);
   if (!p || p.locId == null || typeof PlanIds === 'undefined' || typeof PlanIds.place !== 'function') return '';
-  try { const x = PlanIds.place(p.locId); return x && x.city ? String(x.city) : ''; } catch (_) { return ''; }
+  try { const x = PlanIds.place(p.locId); return x && x.city ? _cityName(x.city) : ''; } catch (_) { return ''; }
 }
 // Owner 28/10 (over Figma's «who, then where»): a point reads as on the Weekly International — the PLACE in bold on
 // line 1 (.wi4-l1), its city under it on line 2 (.wi4-l2) with the window, pallets and temperature. The client is

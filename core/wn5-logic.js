@@ -394,6 +394,8 @@ function _waitRow(list, hubId, errors, nameOf) {
     pieceIds: ws.map((w) => w.piece_id),
     group: w0.order_id != null ? { order_id: w0.order_id } : w0.nat_order_id != null ? { nat_order_id: w0.nat_order_id } : null,
     vs: String(w0.kind || '').startsWith('vs_'), clients, refs, sortAt: w0.load_from, _parts: [...clients, ...refs],
+    // the first week whose board carries the row (072 plan_board: nat_ready_day ≤ the week's Friday; none = every week)
+    readyDay: ws.some((w) => !DAY_RE.test(String(w.nat_ready_day || ''))) ? null : ws.map((w) => w.nat_ready_day).sort()[0],
   };
 }
 
@@ -450,14 +452,33 @@ function model(board, opts) {
     days.push({ date, head: `${DOW_HEAD[_dowOf(date)]} ${Number(date.slice(8))}/${Number(date.slice(5, 7))}`, rows: [], empty: true });
   }
   // A cycle that started the week before (or ends after it) sits on the first (last) day, never dropped.
+  // A load waiting for a vehicle sits on ITS day only (coordinator 1/11, 1a): the base sends every waiting / hub
+  // item whose ready day is on or before the week's Friday (072 plan_board, «it never leaves the board until
+  // planned»), so without this rule a load of Mon 26/10 stood on the Saturday of EVERY later week. A load older
+  // than the week moves to its Saturday only in the current TMS week (the «αργό» carried forward), where today is;
+  // in any other week it is left out (it shows on its own day, in its own week). One rule (placeOf) for the rows,
+  // the ΕΠΟΜΕΝΑ queue and the Veroia shelf: the three never count different loads.
+  const current = today != null && today >= week && today <= last;
+  const placeOf = (r) => {
+    if (r.kind !== 'unassigned') return !r.dayKey || r.dayKey < week ? week : r.dayKey > last ? last : r.dayKey;
+    if (r.dayKey && r.dayKey >= week && r.dayKey <= last) return r.dayKey;
+    if (r.dayKey && r.dayKey > last) return null;
+    // older than the week: the base sends it from its ready day's week on, so a load whose loading day is earlier than
+    // its ready day (edited dates) is in no earlier board — it stands on this Saturday, never on no day at all
+    return current || (r.readyDay != null && r.readyDay >= week) ? week : null;
+  };
+  const shown = new Set();
   for (const r of rows) {
-    const k = !r.dayKey || r.dayKey < week ? week : r.dayKey > last ? last : r.dayKey;
+    const k = placeOf(r);
+    if (k == null) continue;
     days.find((d) => d.date === k).rows.push(r);
+    if (r.kind === 'unassigned') for (const id of r.pieceIds) shown.add(id);
   }
   for (const d of days) d.empty = d.rows.length === 0;
-  // ΕΠΟΜΕΝΑ: every VS still without a truck. 'late' = the base's overdue of such a VS (v_piece_state.overdue); a
-  // VS already on a cycle that delivers after its day is that row's amber rail (has_late), never a card.
-  const queue = rows.filter((r) => r.kind === 'unassigned' && r.vs).map((r) => ({
+  // ΕΠΟΜΕΝΑ: every VS still without a truck that this week shows. 'late' = the base's overdue of such a VS
+  // (v_piece_state.overdue); a VS already on a cycle that delivers after its day is that row's amber rail (has_late),
+  // never a card.
+  const queue = rows.filter((r) => r.kind === 'unassigned' && r.vs && shown.has(r.pieceIds[0])).map((r) => ({
     pieceId: r.pieceIds[0],
     orderId: r.group && r.group.order_id != null ? r.group.order_id : null,
     natOrderId: r.group && r.group.nat_order_id != null ? r.group.nat_order_id : null,
@@ -469,7 +490,9 @@ function model(board, opts) {
   // «ΓΙΑ ΜΟΙΡΑΣΜΑ» = unloaded at Veroia by a cycle (inbound_rt_id), sent there to be split (for_split, Ε-41), or a VS
   // import standing at Veroia with no national truck yet (owner 28/10, B1: the international truck unloads it there,
   // so it is split and loaded from the Veroia board) — it ALSO stays a «ΠΡΟΣ ΑΝΑΘΕΣΗ» row, for assigning the order whole.
-  const split = board.hub.filter((h) => h.is_stock !== true && (!_neverAssigned(h) || h.kind === 'vs_import')).map(item);
+  // A VS import waiting for its national truck is counted only where its row stands (the same loads as ΕΠΟΜΕΝΑ, 1b);
+  // a piece already unloaded at Veroia or sent there to be split (not _neverAssigned) is there whatever the week.
+  const split = board.hub.filter((h) => h.is_stock !== true && (!_neverAssigned(h) || (h.kind === 'vs_import' && shown.has(h.piece_id)))).map(item);
   const stock = board.hub.filter((h) => h.is_stock === true).map(item);
   return {
     week, today, hubId, days, queue,
