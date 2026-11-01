@@ -1579,6 +1579,8 @@ function _umenuMount() {
     // the first place (the keyboard lands on it)
     + (typeof _aicToggle === 'function' ? '<button type="button" role="menuitem" onclick="_aicToggle()">Νάκης · βοηθός</button>' : '');
   chip.appendChild(m);
+  // the floating button is hidden (CSS) only while this menu holds the way to the assistant
+  document.body.classList.toggle('wn5-aic-menu', typeof _aicToggle === 'function');
   chip.addEventListener('click', _umenuTog);
   chip.addEventListener('keydown', _umenuKey);
   chip.addEventListener('focusout', _umenuOut);
@@ -1586,6 +1588,7 @@ function _umenuMount() {
   _umenuChip(chip);
 }
 function _umenuUnmount() {
+  document.body.classList.remove('wn5-aic-menu');
   if (!_umenu) return;
   const chip = _umenu.parentElement;
   _umenu.remove();

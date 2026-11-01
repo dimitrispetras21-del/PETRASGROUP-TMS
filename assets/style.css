@@ -9087,7 +9087,7 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 .wn5-cols, .wn5-row, .wn5-sub {
   display:grid; grid-template-columns:var(--wn5-idx) var(--wn5-g1) var(--wn5-dw) var(--wn5-t4) var(--wn5-t5) var(--wn5-kpal-w) var(--wn5-asg-w) 16px var(--wn5-dw) var(--wn5-t10) var(--wn5-t11) var(--wn5-apal-w); align-items:center; }
 @media (max-width:1366px) { .wn5 { --wn5-t4:max(var(--wn5-vw), calc(var(--wn5-side) * .5)); } }
-/* The 76px Veroia cells: 6px in (not 9): «Βέροια» and «ως Τετ 12:00» fit whole. */
+/* The Veroia-only cells (ΦΟΡΤΩΣΗ «Βέροια», ΠΡΟΣ «→ Βέροια»): 6px in (not 9), as when they were 76px wide. */
 .wn5-row:not(:has(> .wn5-fl .wn5-pt)) > .wn5-fl, .wn5-row:has(> .wn5-ato .wn5-end):not(:has(> .wn5-ato .wn5-pt:not(.wn5-end))) > .wn5-ato { padding:0 6px; }
 /* «όλη η ημέρα» and «ως Τετ 23:59» are 57–62px: one line in the 64px inside the cell, never broken after «Τετ» */
 .wn5-row:not(:has(> .wn5-fl .wn5-pt)) > .wn5-fl .wn5-vtime,
@@ -9209,9 +9209,7 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 .wn5-row:has(> .wn5-fl .wn5-pt) > .wn5-fl { flex-direction:row; flex-wrap:wrap; align-items:baseline; align-content:center; column-gap:5px; row-gap:2px; }
 .wn5-row:has(> .wn5-fl .wn5-pt) > .wn5-fl > .wn5-pts { flex:1 0 100%; }
 .wn5-row:has(> .wn5-fl .wn5-pt) > .wn5-fl > .wn5-vtime { white-space:nowrap; }
-/* ...at 1280 with the sidebar open 40% of the side is narrower than «Βέροια 18:00–19:00»: half the side there */
-/* ΠΡΟΣ with stops AND the Veroia end (1e): one line, the stops then «Βέροια» as the last stop in its own look; ΠΡΟΣ takes
-   60% of the side so the stop keeps a readable name */
+/* ΠΡΟΣ with stops AND the Veroia end (1e): one line, the stops then «Βέροια» as the last stop in its own look */
 .wn5-row > .wn5-ato:has(> .wn5-end):has(.wn5-pt:not(.wn5-end)) { display:flex; align-items:center; gap:8px; }
 .wn5-row > .wn5-ato:has(> .wn5-end) > .wn5-pts { flex:1 1 auto; min-width:0; }
 .wn5-row > .wn5-ato:has(.wn5-pt:not(.wn5-end)) > .wn5-end { flex:none; padding-left:8px; border-left:1px solid var(--wi4-line); }
@@ -10620,5 +10618,8 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 
 /* The assistant on the Weekly National (owner 1/11): its fixed 52px button sat over the ΠΑΛ. column and its «+» while
    scrolling; here it opens from the avatar's menu (weekly_natl_v5.js _umenuMount). !important: _aicToggle writes the
-   button's display inline when the panel closes. */
-body.wn5-top-on .aic-btn { display:none !important; }
+   button's display inline when the panel closes. Only while the menu holds the item (wn5-aic-menu): never a page with
+   no way to the assistant. Its alerts dot moves to the avatar. */
+body.wn5-top-on.wn5-aic-menu .aic-btn { display:none !important; }
+body.wn5-top-on.wn5-aic-menu:has(#aic-toggle.has-alerts) .topbar .user-chip::after { content:''; position:absolute; top:6px; right:4px;
+  width:8px; height:8px; border-radius:50%; background:var(--danger); border:2px solid var(--surface-card); pointer-events:none; }
