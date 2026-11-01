@@ -3136,6 +3136,11 @@ async function saveEntityRecord(entityKey, recId) {
       await atPatch(cfg.tableId, recId, fields);
     } else {
       await atCreate(cfg.tableId, fields);
+      // F62: a client created here is not in the v5 catalogue (/plan/lookups) read before it, so the national
+      // form would offer it and then refuse its save (ids_missing) until a reload. Same mechanism as a new place
+      // (F52, fhLocationSaved): the next opening of a form reads the catalogue again. Not for an edit: a rename
+      // keeps the number the catalogue already holds.
+      if (cfg.tableId === TABLES.CLIENTS && typeof PlanIds !== 'undefined' && typeof PlanIds.stale === 'function') PlanIds.stale();
     }
     invalidateCache(cfg.tableId);
     closeModal();
