@@ -1400,7 +1400,8 @@
   // It is the day of the truck's stop there, so a click opens that stop's day panel, the one of «Αλλαγή ώρας ›» (F29,
   // already in this form's stop list). The VS's own day changes with «Ορισμός ημέρας», its window stays the
   // international's (decision 21). A national point keeps its edit form (F30).
-  function _roRowHTML(r, vs) {
+  // pal = the VS point's pallets are a field (092 is in the base: the board's /plan/vs-state carried cross_dock_date)
+  function _roRowHTML(r, vs, pal) {
     const ro = vs ? 'wn5f-c vro' : 'wn5f-c';
     return `<div class="wn5f-row ro" data-piece="${r.piece_id}"><span class="${ro}">${_esc(r.hub ? 'Βέροια' : r.location)}</span>`
       + (vs && r.stop_id != null
@@ -1410,7 +1411,7 @@
         : `<span class="wn5f-cwin"><span class="wn5f-c">${_hm(r.from)}</span><span class="wn5f-dash">–</span><span class="wn5f-c">${_hm(r.to)}</span></span>`)
       // 092 (F45, owner 1/11 option a): a VS point's pallets are the national desk's too — the truck loaded 22 of the 24
       // the international said; «Ορισμός παλετών» writes them and the international follows (one POST per point)
-      + (vs && r.piece_id != null
+      + (vs && pal && r.piece_id != null
         ? `<input class="form-input wn5f-c" data-f="vspal" data-piece="${r.piece_id}" data-old="${_esc(r.pallets)}" inputmode="decimal" value="${_esc(_pal(r.pallets))}" aria-label="Παλέτες">`
         : `<span class="${ro}">${_pal(r.pallets)}</span>`) + '<span></span>'
       + (vs ? `<button type="button" class="wn5f-lnk" data-act="move" data-piece="${r.piece_id}">Μεταφορά σε…</button>` : '<span></span>') + '</div>';
@@ -1438,6 +1439,9 @@
     // board beside it; before 092, or when that read failed, the truck's day as before
     const vd = typeof WN5 !== 'undefined' && typeof WN5.vsDayOf === 'function' ? WN5.vsDayOf(b.order_id) : undefined;
     const day = typeof vd === 'string' ? vd : hubDay;
+    // 092 in the base = the answer carried the key (a day or null); before 092 the pallets stay the international's
+    // (a field the base would refuse is never offered)
+    const v092 = vd !== undefined;
     const noStop = imp && rows.some((r) => r.order_stop_id == null);
     return `<div class="wn5f-ord wn5f-lock" data-vs="${b.order_id}">`
       + `<div class="wn5f-ord-h">${LOCK}<b>${_esc(b.reference || 'VS')} · ${_esc(b.client)}</b><span class="wn5f-vs-s">· από διεθνή παραγγελία · ${_tempTxt(b.temps)}</span>`
@@ -1447,14 +1451,14 @@
       + `<span class="wn5f-vstruck" data-vstruck>${_truckDayHTML(hubStop, day)}</span></div>`
       + `<div class="wn5f-sec">${imp ? 'ΠΑΡΑΔΟΣΕΙΣ' : 'ΦΟΡΤΩΣΕΙΣ'}</div>` + _lth('Παράθυρο από – έως *')
       + rows.map((r) => {
-        if (!imp) return _roRowHTML(r, true);
+        if (!imp) return _roRowHTML(r, true, v092);
         // the destination changes only for an import: plan_vs_set_place is «the destination after Veroia» (072:2064)
         const pid = 'wn5v' + (++f.seq);
         const off = r.order_stop_id == null;
-        return _roRowHTML(r, true) + `<div class="wn5f-vsplace"><span class="wn5f-sub">Προορισμός μετά τη Βέροια</span>${fhLocSelect(pid, '', 'WN5Form._locDropNoHub')}`
+        return _roRowHTML(r, true, v092) + `<div class="wn5f-vsplace"><span class="wn5f-sub">Προορισμός μετά τη Βέροια</span>${fhLocSelect(pid, '', 'WN5Form._locDropNoHub')}`
           + `<button type="button" class="wi4-btn sm" data-act="vs-place" data-pid="${pid}" data-osid="${off ? '' : r.order_stop_id}"${off ? ' disabled' : ''}>Αλλαγή προορισμού</button></div>`;
       }).join('')
-      + (rows.some((r) => r.piece_id != null) ? `<div class="wn5f-vspal"><button type="button" class="wi4-btn sm" data-act="vs-pal" data-order="${b.order_id}">Ορισμός παλετών</button><span class="wn5f-ok" data-vspalok></span></div>` : '')
+      + (v092 && rows.some((r) => r.piece_id != null) ? `<div class="wn5f-vspal"><button type="button" class="wi4-btn sm" data-act="vs-pal" data-order="${b.order_id}">Ορισμός παλετών</button><span class="wn5f-ok" data-vspalok></span></div>` : '')
       + (noStop ? '<div class="wn5f-note">Ο προορισμός αλλάζει εδώ όταν το board φέρνει τη στάση της διεθνούς — ως τότε από τη διεθνή παραγγελία.</div>' : '')
       + `<div class="wn5f-note">${_pal(b.pallets || rows.reduce((a, r) => a + r.pallets, 0))}π · τιμή και τιμολόγηση στη διεθνή παραγγελία · δεν διαγράφεται από εδώ · ημέρα, παλέτες και προορισμός: όποιος μάθει πρώτος — γράφεται και στη διεθνή, ο διεθνών ειδοποιείται</div></div>`;
   }

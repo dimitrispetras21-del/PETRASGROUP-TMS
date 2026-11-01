@@ -118,6 +118,14 @@ async function scnPallets({ browser, origin, ok, scn }) {
   ok(scn, 'not through the form\'s «Αποθήκευση» (no PATCH /plan/orders)', !S.plan.some((x) => x.m === 'PATCH'));
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
   await page.context().close();
+  // before 092 (the answer has no cross_dock_date): the pallets stay the international's, no field, no button
+  const p2 = await K.openApp(browser, origin, { plan: vsState(undefined) });
+  await p2.page.waitForTimeout(800);
+  await p2.page.evaluate(() => WN5Form.openLeg(101, 'KATHODOS'));
+  await p2.page.waitForSelector(LEG, { timeout: 6000 }).catch(() => {});
+  ok(scn, 'before 092: no pallets field, no «Ορισμός παλετών»', await K.count(p2.page, `${V} [data-f="vspal"]`) === 0 && await K.count(p2.page, `${V} [data-act="vs-pal"]`) === 0
+    && /21/.test(await K.text(p2.page, `${V} .wn5f-row`)));
+  await p2.page.context().close();
 }
 
 K.run({
