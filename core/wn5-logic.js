@@ -467,8 +467,9 @@ function model(board, opts) {
   // item whose ready day is on or before the week's Friday (072 plan_board, «it never leaves the board until
   // planned»), so without this rule a load of Mon 26/10 stood on the Saturday of EVERY later week. A load older
   // than the week moves to its Saturday only in the current TMS week (the «αργό» carried forward), where today is;
-  // in any other week it is left out (it shows on its own day, in its own week). One rule (placeOf) for the rows,
-  // the ΕΠΟΜΕΝΑ queue and the Veroia shelf: the three never count different loads.
+  // in any other week it is left out (it shows on its own day, in its own week). One rule (placeOf) for the rows and
+  // the ΕΠΟΜΕΝΑ queue: the two never count different loads. The Veroia shelf is not placed by week: it lists what was
+  // unloaded at Veroia or sent there to be split, whatever the week (087: a waiting VS is never on it).
   const current = today != null && today >= week && today <= last;
   const placeOf = (r) => {
     if (r.kind !== 'unassigned') return !r.dayKey || r.dayKey < week ? week : r.dayKey > last ? last : r.dayKey;

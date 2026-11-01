@@ -9148,6 +9148,10 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 .wn5 .wn5-c-idx .wi4-plane { margin-left:auto; width:26px; height:26px; background:var(--surface-card); border:1px solid var(--wi4-ctl); border-radius:6px;
   color:var(--wi4-grey-1); box-shadow:0 1px 1px rgba(16,24,40,.06); }
 .wn5 .wn5-c-idx .wi4-plane:hover { border-color:var(--wn5-ctl-hover); background:var(--surface-card); color:var(--wi4-ink); }
+/* 087 + 2f: a waiting VS with pieces at Veroia carries «VS» and ✈ in the 48px index cell — a tighter cell and a
+   22px ✈ so both stay inside it (code review high 1/11: the 26px ✈ spilled 3.5px at 1440) */
+.wn5 .wn5-c-idx:has(> .wn5-vstag + .wi4-plane) { padding:0 2px 0 6px; }
+.wn5 .wn5-c-idx .wn5-vstag + .wi4-plane { margin-left:2px; width:22px; height:22px; }
 .wn5 .wn5-kd, .wn5 .wn5-ad { display:flex; flex-direction:column; align-items:flex-start; gap:2px; }
 /* Day chips (2c, coordinator 1/11): ONE look, the Weekly International's — every day a light grey chip, today alone
    the blue outlined chip. Executed rows fade with their row (the base's dim), never by another chip style. Before: a

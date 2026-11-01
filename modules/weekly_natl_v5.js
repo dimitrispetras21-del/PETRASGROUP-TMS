@@ -646,9 +646,14 @@ function _tabsHTML(w) {
 }
 // A-3 (087, Figma A-3 «W43 ①»): the orders without a truck of the tab d weeks from the loaded one, as the base counts
 // them (waiting_weeks: the rows of ΠΡΟΣ ΑΝΑΘΕΣΗ by their ready week). 0 before 087 or before the first read: no badge.
+let _wwLast = null;      // the last board's waiting_weeks: shown while the next week loads, so a click does not
+                         // empty and refill the badges and shift the centred strip twice (1c; code review high, 1/11)
 function _waitOf(d) {
-  // only the board of the week on screen: while another week loads (or its read failed) its window is not this one
-  const ww = _m && _m.week === _sat && Array.isArray(_m.waitingWeeks) ? _m.waitingWeeks : null;
+  // the board of the week on screen; while another week LOADS, the last one's counts (they name absolute weeks, a week
+  // outside its window shows none until the new board lands); after a failed read none, never an old count
+  const own = _m && _m.week === _sat && Array.isArray(_m.waitingWeeks) ? _m.waitingWeeks : null;
+  if (own) _wwLast = own;
+  const ww = own || (_state === 'loading' ? _wwLast : null);
   if (!ww || !DAY_RE.test(String(_sat || ''))) return 0;
   const [y, mo, da] = _sat.split('-').map(Number);
   const sat = new Date(Date.UTC(y, mo - 1, da + 7 * d)).toISOString().slice(0, 10);
