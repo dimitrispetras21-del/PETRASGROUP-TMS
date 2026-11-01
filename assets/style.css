@@ -10615,8 +10615,9 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 /* P-8 (087): the last 3 partner rates of the route, under the partner's rate */
 .wn5a-hist { margin-top:4px; font:400 11px/14px 'DM Sans',sans-serif; color:var(--wi4-grey-2); }
 
-/* The assistant's button on the Weekly National (owner 1/11): in the top bar beside the bell, 32px, never over the
+/* The assistant's button on the Weekly National (owner 1/11): in the top bar beside the bell and like it, never over the
    ΠΑΛ. column and its «+» as the fixed 52px one at the bottom right was (weekly_natl_v5.js _chatMount) */
-.aic-btn.wn5-chat-top { position:static; width:32px; height:32px; margin-right:8px; box-shadow:none; flex:none; }
-.aic-btn.wn5-chat-top svg { width:17px; height:17px; }
-.aic-btn.wn5-chat-top:hover { transform:none; }
+.aic-btn.wn5-chat-top { position:static; flex:none; width:44px; height:44px; border-radius:6px; margin-right:4px;
+  background:transparent; color:var(--text-mid); box-shadow:none; }   /* as the bell beside it (44px target) */
+.aic-btn.wn5-chat-top svg { width:18px; height:18px; }
+.aic-btn.wn5-chat-top:hover { transform:none; background:rgba(0,0,0,0.04); color:var(--text); }
