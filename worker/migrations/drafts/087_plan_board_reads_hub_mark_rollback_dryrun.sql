@@ -20,20 +20,25 @@ $h$;
 $h$;
   b_2b CONSTANT text := $h$    -- 087 (A-3): orders not yet on a truck, by the TMS week (Saturday) of their ready day, for the seven week
     -- tabs around p_week; the rows of PROS ANATHESI: waiting off Veroia, and at Veroia neither stock nor unloaded by a
-    -- cycle nor sent to the panel (core/wn5-logic.js _neverAssigned: one rule, the board's own fields)
+    -- cycle nor sent to the panel (core/wn5-logic.js _neverAssigned: one rule, the board's own fields). A row the board
+    -- carries into this week (ready before it, or with no ready day: coalesce(nat_ready_day, p_week)) counts in THIS
+    -- week (Athens today), where the dispatcher sees it, never only on a past tab.
     'waiting_weeks', coalesce((
+      with td as (select (now() at time zone 'Europe/Athens')::date as d)
       select jsonb_agg(jsonb_build_object('week', q.wk, 'orders', q.n) order by q.wk)
         from (select w.wk, count(distinct w.o) as n
-                from (select ps.nat_ready_day - ((extract(isodow from ps.nat_ready_day)::int + 1) % 7) as wk,
-                             coalesce('n' || ps.nat_order_id, 'o' || ps.order_id, 'p' || ps.piece_id) as o
-                        from v_piece_state ps
-                       where ps.waiting and not ps.at_hub and ps.nat_ready_day is not null
-                      union all
-                      select hb.nat_ready_day - ((extract(isodow from hb.nat_ready_day)::int + 1) % 7),
-                             coalesce('n' || hb.nat_order_id, 'o' || hb.order_id, 'p' || hb.piece_id)
-                        from v_hub_bucket hb join shipment_pieces sp on sp.id = hb.piece_id
-                       where hb.nat_ready_day is not null and hb.is_stock is not true and hb.inbound_rt_id is null
-                         and sp.for_split_at is null) w
+                from (select greatest(x.day - ((extract(isodow from x.day)::int + 1) % 7),
+                                      td.d - ((extract(isodow from td.d)::int + 1) % 7)) as wk, x.o
+                        from (select coalesce(ps.nat_ready_day, td.d) as day,
+                                     coalesce('n' || ps.nat_order_id, 'o' || ps.order_id, 'p' || ps.piece_id) as o
+                                from v_piece_state ps cross join td
+                               where ps.waiting and not ps.at_hub
+                              union all
+                              select coalesce(hb.nat_ready_day, td.d),
+                                     coalesce('n' || hb.nat_order_id, 'o' || hb.order_id, 'p' || hb.piece_id)
+                                from v_hub_bucket hb join shipment_pieces sp on sp.id = hb.piece_id cross join td
+                               where hb.is_stock is not true and hb.inbound_rt_id is null and sp.for_split_at is null) x
+                       cross join td) w
                where w.wk between p_week - 21 and p_week + 21
                group by w.wk) q), '[]'::jsonb),
     -- 087 (P-8): the last PARTNER v5 cycles with a rate (90 days back), the first and last place of EACH side (a cycle
@@ -100,7 +105,7 @@ $h$;
 BEGIN
   PERFORM set_config('lock_timeout', '5s', true);
   SELECT * INTO p FROM pg_proc WHERE oid = to_regprocedure('public.plan_board(date,text)');
-  IF md5(p.prosrc) <> '7c266059ad7e3b967626cf9d3bdc3800' THEN
+  IF md5(p.prosrc) <> '0de34e06dab0bb1315ba94c6934ca915' THEN
     RAISE EXCEPTION '087 rollback: public.plan_board(date,text) is not the text 087 wrote (md5 %) - stop', md5(p.prosrc);
   END IF;
   v_new := p.prosrc;

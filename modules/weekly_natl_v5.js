@@ -458,7 +458,8 @@ function _tabsHTML(w) {
 // A-3 (087, Figma A-3 «W43 ①»): the orders without a truck of the tab d weeks from the loaded one, as the base counts
 // them (waiting_weeks: the rows of ΠΡΟΣ ΑΝΑΘΕΣΗ by their ready week). 0 before 087 or before the first read: no badge.
 function _waitOf(d) {
-  const ww = _m && Array.isArray(_m.waitingWeeks) ? _m.waitingWeeks : null;
+  // only the board of the week on screen: while another week loads (or its read failed) its window is not this one
+  const ww = _m && _m.week === _sat && Array.isArray(_m.waitingWeeks) ? _m.waitingWeeks : null;
   if (!ww || !DAY_RE.test(String(_sat || ''))) return 0;
   const [y, mo, da] = _sat.split('-').map(Number);
   const sat = new Date(Date.UTC(y, mo - 1, da + 7 * d)).toISOString().slice(0, 10);
@@ -867,13 +868,17 @@ function _toPanelBtn(ids) {
 }
 // P-16 (087, flexible-rules study decision 8): ✎ on a cycle changed after its assignment, the LAST change only (when,
 // who by role, what), as the base read it from audit_log; the whole history stays in «Ιστορικό Ενεργειών» (Ε-11 «γ»).
-const _CHG_ROLE = { owner: 'ιδιοκτήτης', management: 'διοίκηση', accountant: 'λογιστήριο', dispatcher: 'δρομολόγηση', warehouse: 'αποθήκη' };
+// The role in words: «Ιστορικό Ενεργειών»'s own map (modules/audit_trail.js _AUDIT_ROLE, a global of that script —
+// one map, principle 3); an unknown role shows raw, as there.
+const _chgRole = (r) => (typeof _AUDIT_ROLE !== 'undefined' && _AUDIT_ROLE[r]) || r || '—';
+const _CHG_DAYS = ['start_at', 'end_at', 'date_start', 'date_end'];
 const _CHG_VEH = ['trip_type', 'truck_id', 'trailer_id', 'driver_id', 'partner_id', 'overlap_rts'];
 function _chgWhat(c) {
   const k = Array.isArray(c.keys) ? c.keys : [], has = (...a) => a.some((x) => k.includes(x));
   const del = c.action === 'delete' || k.includes('deleted_at');
   switch (c.table) {
-    case 'ct_round_trips': return has('partner_rate') ? 'κόμιστρο' : has(..._CHG_VEH) ? 'όχημα' : 'δρομολόγιο';
+    // a stop's day or hour re-dates the cycle in the same request: that row can be the newest, and says «ημέρα / ώρα» too
+    case 'ct_round_trips': return has('partner_rate') ? 'κόμιστρο' : has(..._CHG_VEH) ? 'όχημα' : has(..._CHG_DAYS) ? 'ημέρα / ώρα' : 'δρομολόγιο';
     case 'rt_vehicle_segments': return 'όχημα';
     case 'rt_stops': return c.action === 'create' ? 'νέο σημείο' : del ? 'σημείο αφαιρέθηκε' : has('planned_from', 'planned_to') ? 'ημέρα / ώρα' : has('seq') ? 'σειρά σημείων' : 'σημείο';
     case 'piece_legs': return c.action === 'create' ? 'φορτίο προστέθηκε' : del ? 'φορτίο αφαιρέθηκε' : 'φορτίο';
@@ -887,8 +892,9 @@ function _chgHTML(r) {
   if (!c || !c.at) return '';
   const day = L().athensDay(c.at), hm = L().athensTime(c.at);
   if (!day) return '';
-  const t = `Τελευταία αλλαγή ${day.slice(8)}/${day.slice(5, 7)} ${hm} · ${_CHG_ROLE[c.role] || c.role || '—'} · ${_chgWhat(c)}`;
-  return `<span class="wn5-chg" title="${_esc(t)}" aria-label="${_esc(t)}">✎</span>`;
+  const t = `Τελευταία αλλαγή ${Number(day.slice(8))}/${Number(day.slice(5, 7))} ${hm} · ${_chgRole(c.role)} · ${_chgWhat(c)}`;
+  // focusable: the title is the only place that says it (keyboard; a tap focuses it)
+  return `<span class="wn5-chg" tabindex="0" role="img" title="${_esc(t)}" aria-label="${_esc(t)}">✎</span>`;
 }
 function _cpyHTML(r) {
   if (r.kind !== 'cycle' || r.rtId == null) return '';

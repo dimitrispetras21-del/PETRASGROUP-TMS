@@ -5,9 +5,9 @@
 --   vs_both_lists: VS imports at Veroia that the screen BEFORE 087's front end showed on both lists (no mark, no truck,
 --   not stock); after the front end they show only as PROS ANATHESI until sent to the panel.
 SELECT CASE WHEN (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.plan_board(date,text)'::regprocedure)
-                 = '7c266059ad7e3b967626cf9d3bdc3800' THEN '087 in place' ELSE '087 NOT APPLIED' END AS applied,
+                 = '0de34e06dab0bb1315ba94c6934ca915' THEN '087 in place' ELSE '087 NOT APPLIED' END AS applied,
        (SELECT count(*) FROM (VALUES
-          ('public.plan_board(date,text)', '7c266059ad7e3b967626cf9d3bdc3800'),
+          ('public.plan_board(date,text)', '0de34e06dab0bb1315ba94c6934ca915'),
           ('public.plan_move_pieces(jsonb,text,text)', 'ec3b8073dc7d8e3666d89082433553b4')) v(sig, m)
          WHERE (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure(v.sig)) IS DISTINCT FROM v.m) AS changed_texts,
        (to_regprocedure('public.plan_h_last_change(bigint)') IS NOT NULL

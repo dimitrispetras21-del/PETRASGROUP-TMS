@@ -188,11 +188,14 @@ test('087 on the production-shaped copy (1/11): the board says last change / wee
       const e2 = await hubMark(db, [p], false);
       const n2 = waitingIn(await board(db, L), wk);
       const weeks = (await board(db, L)).waiting_weeks.map((x) => x.week);
-      return { n0, n1, n2, e1, e2, weeks, wk };
+      const thisWeek = await weekOf(db, (await one(db, `SELECT ((now() AT TIME ZONE 'Europe/Athens')::date)::text AS d`)).d);
+      return { n0, n1, n2, e1, e2, weeks, wk, thisWeek };
     });
     assert.strictEqual(r.e1, null, r.e1);
     assert.strictEqual(r.e2, null, r.e2);
     assert.deepStrictEqual([r.n1, r.n0 - r.n1, r.n2], [r.n0 - 1, 1, r.n0]);
+    // a row the board carries into this week (ready before it, or with no ready day) counts in this week, never on a past tab
+    assert.ok(r.weeks.every((w) => w >= r.thisWeek), JSON.stringify([r.thisWeek, r.weeks]));
     assert.ok(r.weeks.every((w) => w >= new Date(Date.parse(L) - 21 * 864e5).toISOString().slice(0, 10)
       && w <= new Date(Date.parse(L) + 21 * 864e5).toISOString().slice(0, 10)), 'seven weeks around p_week');
   });
