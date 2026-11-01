@@ -59,7 +59,8 @@ $h$;
   j_1a CONSTANT text := $h$'partner_rate', s.partner_rate, $h$;
   j_1b CONSTANT text := $h$'partner_rate', s.partner_rate,
            -- 089: the ANODOS part of the fee (NULL = not split; the KATHODOS part is the difference), only on a trip
-           -- with ONE vehicle: after a handover each segment is its own fee and a part kept there would be a stale claim
+           -- with ONE vehicle: after a handover each segment is its own fee and a part kept there would be a stale claim.
+           -- The key is there even when null: the board reads its presence as "089 is live" (wn5_assign.js rule 6)
            'partner_rate_anodos', case when s.n_segments = 1
              then (select g.partner_rate_anodos from rt_vehicle_segments g where g.id = s.segment_id) end, $h$;
   v_h record; v_new text; p pg_proc%rowtype; v_trg0 int; v_trg1 int; v_b54 int; v_lost int; v_list text;
@@ -104,7 +105,7 @@ BEGIN
     RAISE EXCEPTION '089 rollback proof: public.plan_rt_update(jsonb,text,text) is not back to its text before 089 with its rights';
   END IF;
   SELECT * INTO p FROM pg_proc WHERE oid = to_regprocedure('public.plan_h_seg_json(bigint)');
-  IF md5(p.prosrc) <> 'b92f3666e087ddfd621959d47f95a4cb' THEN
+  IF md5(p.prosrc) <> '27996ccc648c31d73e41ee2ee3ecd9a5' THEN
     RAISE EXCEPTION '089 rollback: public.plan_h_seg_json(bigint) is not the text 089 wrote (md5 %) - stop', md5(p.prosrc);
   END IF;
   v_new := p.prosrc;

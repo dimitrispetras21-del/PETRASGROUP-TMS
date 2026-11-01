@@ -95,7 +95,8 @@ $h$;
   j_1a CONSTANT text := $h$'partner_rate', s.partner_rate, $h$;
   j_1b CONSTANT text := $h$'partner_rate', s.partner_rate,
            -- 089: the ANODOS part of the fee (NULL = not split; the KATHODOS part is the difference), only on a trip
-           -- with ONE vehicle: after a handover each segment is its own fee and a part kept there would be a stale claim
+           -- with ONE vehicle: after a handover each segment is its own fee and a part kept there would be a stale claim.
+           -- The key is there even when null: the board reads its presence as "089 is live" (wn5_assign.js rule 6)
            'partner_rate_anodos', case when s.n_segments = 1
              then (select g.partner_rate_anodos from rt_vehicle_segments g where g.id = s.segment_id) end, $h$;
   v_g record; v_h record; v_src text; v_new text; p pg_proc%rowtype; v_trg0 int; v_trg1 int; v_b54 int;
@@ -160,7 +161,7 @@ $f$;
   -- ===== PART 2: LIVE TEXT + HUNKS (md5 after = measured on the production-shaped PGlite copy) =====
   FOR v_g IN SELECT * FROM (VALUES
       ('public.plan_rt_update(jsonb,text,text)', ARRAY[u_1a, u_2a, u_3a, u_4a, u_5a], ARRAY[u_1b, u_2b, u_3b, u_4b, u_5b], 'f232250e4672f3133b4a3fe06cb1da5c'),
-      ('public.plan_h_seg_json(bigint)', ARRAY[j_1a], ARRAY[j_1b], 'b92f3666e087ddfd621959d47f95a4cb')) g(sig, a, b, m) LOOP
+      ('public.plan_h_seg_json(bigint)', ARRAY[j_1a], ARRAY[j_1b], '27996ccc648c31d73e41ee2ee3ecd9a5')) g(sig, a, b, m) LOOP
     SELECT * INTO p FROM pg_proc WHERE oid = to_regprocedure(v_g.sig);
     -- plan_rt_update is plpgsql, plan_h_seg_json is sql (072b): each keeps its own language
     IF p.proconfig IS DISTINCT FROM ARRAY['search_path=public']

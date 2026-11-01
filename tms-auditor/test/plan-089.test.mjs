@@ -184,7 +184,8 @@ test('089 on the production-shaped copy (after 084 + 086): the ANODOS part refus
     assert.strictEqual(r.u.err, null, r.u.err);
     assert.strictEqual(Number(r.s.partner_rate), 400);
     assert.strictEqual(r.s.partner_rate_anodos, null);
-    assert.ok(!('partner_rate_anodos' in r.m.json) || r.m.json.partner_rate_anodos === null, JSON.stringify(r.m.json));
+    // the key is there, null: the board reads its presence as «089 is live» (wn5_assign.js rule 6)
+    assert.ok('partner_rate_anodos' in r.m.json && r.m.json.partner_rate_anodos === null, JSON.stringify(r.m.json));
     assert.strictEqual(Number(r.m.planned), 400);
   });
 
@@ -267,7 +268,7 @@ test('089 on the production-shaped copy (after 084 + 086): the ANODOS part refus
     assert.strictEqual(r.ch.err, null, r.ch.err);
     assert.strictEqual(Number(r.kept.partner_rate_anodos), 300, 'the row keeps it (the fee did not change)');
     assert.strictEqual(r.json.length, 2);
-    assert.ok(r.json.every((g) => g.partner_rate_anodos === null), 'never shown on a trip with two vehicles: ' + JSON.stringify(r.json));
+    assert.ok(r.json.every((g) => 'partner_rate_anodos' in g && g.partner_rate_anodos === null), 'never shown on a trip with two vehicles: ' + JSON.stringify(r.json));
     assert.match(r.many.err ?? '', /seg_many/);
     assert.strictEqual(r.fx.err, null, r.fx.err + ' / dry ' + JSON.stringify(r.dry));
     assert.deepStrictEqual([Number(r.prev.partner_rate), r.prev.partner_rate_anodos], [500, null]);
