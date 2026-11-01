@@ -1,0 +1,345 @@
+-- 090 - locations: ONE spelling per country (the ISO code, kept by the database), clean spaces in name and city, and
+-- the tool that merges duplicates (locations and clients) with every reference moved and a trace (F16, F17; owner 1/11: a
+-- permanent fix, answers (a) merges by a list the owner ticks, A1 for the country). ASCII only.
+-- Plan: docs/locations/2026-11-01-permanent-plan.md. Measured 1/11 (SELECT only): 1 339 live locations; country as a
+-- full name 1 074 (25 spellings, the July import), as a code 175 (every form writes the code since September), empty 90;
+-- 8 names with a double space and 7 with a no-break space (U+00A0: such a name is not found when typed with a plain
+-- space); 91 FK columns point at locations and 6 at clients, none ON DELETE CASCADE.
+-- WHAT, in ONE DO block:
+--   PART 0  guards: not applied, B-54 = the live trigger count, every country spelling has a code
+--   PART 1  country_iso(text) and text_one_space(text): the two rules, IMMUTABLE, used by the trigger and the data step
+--   PART 2  the rows that change are kept in loc_090_before (id, country, name, city) - the rollback restores them
+--           from it, byte for byte - then the data step
+--   PART 3  trigger locations_clean (BEFORE INSERT OR UPDATE OF country, name, city): every path, the facade, the
+--           SQL editor and tomorrow's, writes the code and one space (principle 4); CHECK locations_country_iso: a
+--           spelling the rule does not know is refused, never stored (principle 1); B-54 + 1
+--   PART 4  merged_into_id on locations and clients, and entity_merge(table, keep, drop, actor): moves EVERY reference
+--           (the FK columns are read from the catalog when it runs, so a table added tomorrow is moved too - principle
+--           3), fills the kept row's empty fields from the other, marks the other deleted and merged, writes one
+--           audit_log row per moved row, and proves that nothing but the reference columns changed. Born closed: no
+--           role but the owner's (postgres) may run it - the merges are 090b, a list the owner ticked
+--   PART 5  proofs, NOTICE "090 OK | ..."
+-- No Worker change: the facade's list reads already hide deleted rows (deleted_at is.null).
+-- RUN: after 15:00. 090_locations_clean_merge_dryrun.sql first (it ends in a deliberate ERROR, nothing kept), then this
+-- file, then 090_locations_clean_merge_verify.sql. REVERSE: 090_locations_clean_merge_rollback.sql (it refuses while a
+-- merge exists).
+SET statement_timeout = '30s';
+DO $do$
+DECLARE
+  v_trg0 bigint; v_b54 numeric; v_unknown text; v_rows bigint; v_cc bigint; v_sp bigint; v_bad bigint;
+  v_fk_loc int; v_fk_cli int; v_res jsonb;
+BEGIN
+  PERFORM set_config('lock_timeout', '5s', true);
+
+  -- ===== PART 0: GUARDS =====
+  IF to_regprocedure('public.entity_merge(text,bigint,bigint,text)') IS NOT NULL OR to_regclass('public.loc_090_before') IS NOT NULL THEN
+    RAISE EXCEPTION '090: already applied - stop';
+  END IF;
+  IF to_regprocedure('public.country_iso(text)') IS NOT NULL OR to_regprocedure('public.text_one_space(text)') IS NOT NULL THEN
+    RAISE EXCEPTION '090: a function of 090 exists without 090 - stop, re-measure';
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'merged_into_id'
+             AND table_name IN ('locations', 'clients')) THEN
+    RAISE EXCEPTION '090: merged_into_id exists without 090 - stop, re-measure';
+  END IF;
+  SELECT count(*) INTO v_trg0 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+    JOIN pg_namespace ns ON ns.oid = c.relnamespace WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public';
+  SELECT red_value INTO v_b54 FROM monitoring.checks WHERE id = 'B-54';
+  IF v_b54 IS DISTINCT FROM v_trg0 THEN
+    RAISE EXCEPTION '090: B-54 holds % but % triggers are enabled - stop, re-measure', v_b54, v_trg0;
+  END IF;
+
+  -- ===== PART 1: THE TWO RULES =====
+  -- One spelling per country: the ISO 3166 code. A two-letter text is a code already (upper-cased; EL, the EU's
+  -- code for Greece, and UK become GR and GB). A name maps when it is one the TMS has seen (the July import, the
+  -- forms' lists in core/countries.js) or a common alias; anything else comes back as it was, so the CHECK below
+  -- refuses it with the spelling in the message instead of guessing (principle 1). Empty means no country (NULL).
+  CREATE FUNCTION public.country_iso(p text) RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE SET search_path = public AS $f$
+    SELECT CASE
+      WHEN p IS NULL OR btrim(p) = '' THEN NULL
+      WHEN upper(btrim(p)) IN ('EL', 'GRC', 'GRE') THEN 'GR'
+      WHEN upper(btrim(p)) = 'UK' THEN 'GB'
+      WHEN btrim(p) ~ '^[A-Za-z]{2}$' THEN upper(btrim(p))
+      ELSE coalesce((SELECT m.code FROM (VALUES
+        ('greece', 'GR'), ('hellas', 'GR'),
+        ('italy', 'IT'), ('italia', 'IT'), ('poland', 'PL'), ('polska', 'PL'), ('germany', 'DE'), ('deutschland', 'DE'),
+        ('netherlands', 'NL'), ('the netherlands', 'NL'), ('holland', 'NL'), ('austria', 'AT'), ('osterreich', 'AT'),
+        ('czech republic', 'CZ'), ('czechia', 'CZ'), ('hungary', 'HU'), ('bulgaria', 'BG'),
+        ('romania', 'RO'), ('spain', 'ES'), ('espana', 'ES'), ('slovakia', 'SK'), ('croatia', 'HR'),
+        ('slovenia', 'SI'), ('serbia', 'RS'), ('belgium', 'BE'), ('france', 'FR'), ('north macedonia', 'MK'),
+        ('macedonia', 'MK'), ('fyrom', 'MK'), ('latvia', 'LV'), ('switzerland', 'CH'), ('portugal', 'PT'),
+        ('lithuania', 'LT'), ('bosnia and herzegovina', 'BA'), ('albania', 'AL'), ('montenegro', 'ME'),
+        ('turkey', 'TR'), ('turkiye', 'TR'), ('cyprus', 'CY'), ('denmark', 'DK'), ('sweden', 'SE'),
+        ('norway', 'NO'), ('finland', 'FI'), ('ireland', 'IE'), ('luxembourg', 'LU'), ('estonia', 'EE'), ('malta', 'MT'),
+        ('ukraine', 'UA'), ('moldova', 'MD'), ('united kingdom', 'GB'), ('great britain', 'GB')) m(name, code)
+        WHERE m.name = lower(regexp_replace(btrim(p), '\s+', ' ', 'g'))), btrim(p))
+    END $f$;
+  -- One space between words and none at the ends. The no-break, figure and narrow spaces and the zero-width space
+  -- count as spaces: the dispatcher types a plain one, and a name holding a no-break space was never found.
+  CREATE FUNCTION public.text_one_space(p text) RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE SET search_path = public AS $f$
+    SELECT NULLIF(btrim(regexp_replace(p, '[\s\u00a0\u2007\u202f\u200b]+', ' ', 'g')), '') $f$;
+  -- closed to every API role, service_role (the Worker) included: they run only inside locations_clean, which is
+  -- SECURITY DEFINER below. Without that, the Worker's save of a place would need EXECUTE on them as service_role.
+  REVOKE ALL ON FUNCTION public.country_iso(text), public.text_one_space(text) FROM PUBLIC, anon, authenticated, service_role;
+
+  SELECT string_agg(DISTINCT country, ', ') INTO v_unknown FROM public.locations
+    WHERE public.country_iso(country) IS NOT NULL AND NOT (public.country_iso(country) = ANY ('{AD,AE,AF,AG,AI,AL,AM,AO,AQ,AR,AS,AT,AU,AW,AX,AZ,BA,BB,BD,BE,BF,BG,BH,BI,BJ,BL,
+        BM,BN,BO,BQ,BR,BS,BT,BV,BW,BY,BZ,CA,CC,CD,CF,CG,CH,CI,CK,CL,CM,CN,CO,CR,CU,CV,
+        CW,CX,CY,CZ,DE,DJ,DK,DM,DO,DZ,EC,EE,EG,EH,ER,ES,ET,FI,FJ,FK,FM,FO,FR,GA,GB,GD,
+        GE,GF,GG,GH,GI,GL,GM,GN,GP,GQ,GR,GS,GT,GU,GW,GY,HK,HM,HN,HR,HT,HU,ID,IE,IL,IM,
+        IN,IO,IQ,IR,IS,IT,JE,JM,JO,JP,KE,KG,KH,KI,KM,KN,KP,KR,KW,KY,KZ,LA,LB,LC,LI,LK,
+        LR,LS,LT,LU,LV,LY,MA,MC,MD,ME,MF,MG,MH,MK,ML,MM,MN,MO,MP,MQ,MR,MS,MT,MU,MV,MW,
+        MX,MY,MZ,NA,NC,NE,NF,NG,NI,NL,NO,NP,NR,NU,NZ,OM,PA,PE,PF,PG,PH,PK,PL,PM,PN,PR,
+        PS,PT,PW,PY,QA,RE,RO,RS,RU,RW,SA,SB,SC,SD,SE,SG,SH,SI,SJ,SK,SL,SM,SN,SO,SR,SS,
+        ST,SV,SX,SY,SZ,TC,TD,TF,TG,TH,TJ,TK,TL,TM,TN,TO,TR,TT,TV,TW,TZ,UA,UG,UM,US,UY,
+        UZ,VA,VC,VE,VG,VI,VN,VU,WF,WS,YE,YT,ZA,ZM,ZW}'::text[]));
+  IF v_unknown IS NOT NULL THEN
+    RAISE EXCEPTION '090: country spellings with no code: % - add them to country_iso, re-measure', v_unknown;
+  END IF;
+
+  -- ===== PART 2: THE DATA, KEPT FIRST =====
+  -- a record of what was there, not a reference: no foreign key, or a merge would move it like an order's place
+  CREATE TABLE public.loc_090_before (
+    id bigint PRIMARY KEY,
+    country text, name text NOT NULL, city text, kept_at timestamptz NOT NULL DEFAULT now());
+  REVOKE ALL ON public.loc_090_before FROM PUBLIC, anon, authenticated, service_role;
+  INSERT INTO public.loc_090_before (id, country, name, city)
+    SELECT id, country, name, city FROM public.locations
+    WHERE country IS DISTINCT FROM public.country_iso(country) OR name IS DISTINCT FROM public.text_one_space(name)
+       OR city IS DISTINCT FROM public.text_one_space(city);
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  UPDATE public.locations l SET country = public.country_iso(b.country), name = public.text_one_space(b.name),
+         city = public.text_one_space(b.city)
+    FROM public.loc_090_before b WHERE b.id = l.id;
+  SELECT count(*) FILTER (WHERE b.country IS DISTINCT FROM l.country),
+         count(*) FILTER (WHERE b.name <> l.name OR b.city IS DISTINCT FROM l.city)
+    INTO v_cc, v_sp FROM public.loc_090_before b JOIN public.locations l ON l.id = b.id;
+  INSERT INTO public.audit_log (actor, role, action, table_name, record_id, before_data, after_data, created_at)
+    VALUES ('090', 'owner', 'update', 'locations', '090',
+            jsonb_build_object('rows', v_rows, 'kept_in', 'loc_090_before'),
+            jsonb_build_object('country_to_code', v_cc, 'spaces_cleaned', v_sp), now());
+
+  -- ===== PART 3: THE RULE ON EVERY WRITE =====
+  -- SECURITY DEFINER: the rule runs for every writer (the Worker as service_role, the SQL editor) with the owner's
+  -- rights, so the two helpers stay closed to every API role
+  CREATE FUNCTION public.locations_clean() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
+begin
+  new.country := country_iso(new.country);
+  new.name := text_one_space(new.name);
+  new.city := text_one_space(new.city);
+  return new;
+end $f$;
+  REVOKE ALL ON FUNCTION public.locations_clean() FROM PUBLIC, anon, authenticated, service_role;
+  CREATE TRIGGER locations_clean BEFORE INSERT OR UPDATE OF country, name, city ON public.locations
+    FOR EACH ROW EXECUTE FUNCTION public.locations_clean();
+  -- the ISO 3166 codes the app knows (core/countries.js COUNTRY_CODES, one list: tests/sql-090-drafts.test.js compares
+  -- them), written into the constraint itself: a function call here would need EXECUTE for every writer. Two letters
+  -- that are no country (XX, a typo) are refused like a name nobody knows.
+  ALTER TABLE public.locations ADD CONSTRAINT locations_country_iso CHECK (country IS NULL OR country = ANY ('{AD,AE,AF,AG,AI,AL,AM,AO,AQ,AR,AS,AT,AU,AW,AX,AZ,BA,BB,BD,BE,BF,BG,BH,BI,BJ,BL,
+      BM,BN,BO,BQ,BR,BS,BT,BV,BW,BY,BZ,CA,CC,CD,CF,CG,CH,CI,CK,CL,CM,CN,CO,CR,CU,CV,
+      CW,CX,CY,CZ,DE,DJ,DK,DM,DO,DZ,EC,EE,EG,EH,ER,ES,ET,FI,FJ,FK,FM,FO,FR,GA,GB,GD,
+      GE,GF,GG,GH,GI,GL,GM,GN,GP,GQ,GR,GS,GT,GU,GW,GY,HK,HM,HN,HR,HT,HU,ID,IE,IL,IM,
+      IN,IO,IQ,IR,IS,IT,JE,JM,JO,JP,KE,KG,KH,KI,KM,KN,KP,KR,KW,KY,KZ,LA,LB,LC,LI,LK,
+      LR,LS,LT,LU,LV,LY,MA,MC,MD,ME,MF,MG,MH,MK,ML,MM,MN,MO,MP,MQ,MR,MS,MT,MU,MV,MW,
+      MX,MY,MZ,NA,NC,NE,NF,NG,NI,NL,NO,NP,NR,NU,NZ,OM,PA,PE,PF,PG,PH,PK,PL,PM,PN,PR,
+      PS,PT,PW,PY,QA,RE,RO,RS,RU,RW,SA,SB,SC,SD,SE,SG,SH,SI,SJ,SK,SL,SM,SN,SO,SR,SS,
+      ST,SV,SX,SY,SZ,TC,TD,TF,TG,TH,TJ,TK,TL,TM,TN,TO,TR,TT,TV,TW,TZ,UA,UG,UM,US,UY,
+      UZ,VA,VC,VE,VG,VI,VN,VU,WF,WS,YE,YT,ZA,ZM,ZW}'::text[]));
+  UPDATE monitoring.checks SET red_value = red_value + 1 WHERE id = 'B-54';
+
+  -- ===== PART 4: THE MERGE =====
+  -- merged_into_id: "this row was merged into that one" - kept on the deleted row, so a reference found later in
+  -- history (an audit row, an old print) still leads to the place or client that holds its orders now
+  ALTER TABLE public.locations ADD COLUMN merged_into_id bigint REFERENCES public.locations(id) ON DELETE RESTRICT,
+    ADD CONSTRAINT locations_merged_is_deleted CHECK (merged_into_id IS NULL OR (deleted_at IS NOT NULL AND merged_into_id <> id));
+  ALTER TABLE public.clients ADD COLUMN merged_into_id bigint REFERENCES public.clients(id) ON DELETE RESTRICT,
+    ADD CONSTRAINT clients_merged_is_deleted CHECK (merged_into_id IS NULL OR (deleted_at IS NOT NULL AND merged_into_id <> id));
+
+  CREATE FUNCTION public.entity_merge(p_table text, p_keep bigint, p_drop bigint, p_actor text) RETURNS jsonb
+    LANGUAGE plpgsql SET search_path = public AS $f$
+declare
+  jk jsonb; jd jsonb; v_fk jsonb; fk record; ids bigint[]; tbls text[] := '{}'; t text; strip text[];
+  snap0 jsonb := '{}'; snap1 jsonb; moved jsonb := '{}'; filled text[] := '{}'; c text; n bigint;
+  fill_cols text[] := case p_table
+    when 'locations' then array['address', 'city', 'country', 'state_province', 'type', 'phone', 'opening_hours', 'delivery_days', 'notes']
+    else array['address', 'city', 'country', 'contact_person', 'phone', 'email', 'payment_terms_days'] end;
+begin
+  if p_table is distinct from 'locations' and p_table is distinct from 'clients' then
+    raise exception 'merge: only locations or clients, not %', p_table;
+  end if;
+  if p_keep is null or p_drop is null or p_keep = p_drop then
+    raise exception 'merge: two different ids are needed (keep %, drop %)', p_keep, p_drop;
+  end if;
+  if coalesce(btrim(p_actor), '') = '' then raise exception 'merge: say who merges (p_actor)'; end if;
+  -- both rows locked, lower id first, so two merges that share a row never wait on each other in a circle
+  execute format('select jsonb_object_agg(id::text, to_jsonb(x)) from (select * from %I where id in ($1, $2) order by id for update) x', p_table)
+    into jk using p_keep, p_drop;
+  jd := jk -> p_drop::text; jk := jk -> p_keep::text;
+  if jk is null then raise exception 'merge: % % does not exist', p_table, p_keep; end if;
+  if jd is null then raise exception 'merge: % % does not exist', p_table, p_drop; end if;
+  if jd ->> 'merged_into_id' is not null then
+    raise exception 'merge: % % was already merged into % - merge into that one', p_table, p_drop, jd ->> 'merged_into_id';
+  end if;
+  if jk ->> 'deleted_at' is not null then
+    raise exception 'merge: % % is deleted (merged into %) - keep a live one', p_table, p_keep, coalesce(jk ->> 'merged_into_id', 'nothing');
+  end if;
+  if jd ->> 'deleted_at' is not null then raise exception 'merge: % % is deleted - nothing to merge', p_table, p_drop; end if;
+  if p_table = 'locations' and (coalesce((jk ->> 'is_hub')::boolean, false) or coalesce((jd ->> 'is_hub')::boolean, false)) then
+    raise exception 'merge: the Veroia hub is never merged (% / %)', p_keep, p_drop;
+  end if;
+
+  -- the reference columns, from the catalog now: every single-column FK onto the table (its own merged_into_id aside)
+  select coalesce(jsonb_agg(jsonb_build_object('tbl', c.conrelid::regclass::text, 'col', a.attname)
+           order by c.conrelid::regclass::text, a.attname), '[]') into v_fk
+    from pg_constraint c join pg_attribute a on a.attrelid = c.conrelid and a.attnum = c.conkey[1]
+   where c.contype = 'f' and c.confrelid = p_table::regclass and cardinality(c.conkey) = 1 and c.conrelid <> p_table::regclass;
+  -- a key of several columns onto the table cannot be moved one column at a time: said, never skipped (principle 1)
+  if exists (select 1 from pg_constraint c where c.contype = 'f' and c.confrelid = p_table::regclass and cardinality(c.conkey) > 1) then
+    raise exception 'merge: a foreign key of several columns points at % - stop, extend entity_merge first', p_table;
+  end if;
+  for t in select distinct x.tbl from jsonb_to_recordset(v_fk) x(tbl text, col text) loop
+    if not exists (select 1 from pg_attribute where attrelid = t::regclass and attname = 'id' and not attisdropped) then
+      raise exception 'merge: % points at % but has no id column - stop', t, p_table;
+    end if;
+  end loop;
+
+  -- what may change: the rows that point at the dropped one (in orders also their parent and legs, which the order
+  -- triggers keep in step), and in them only the columns that point at the table. Everything else must read the same
+  -- after the move, or the whole merge is undone (principle 1: a trigger that rewrote a date is said, never kept).
+  for t in select distinct x.tbl from jsonb_to_recordset(v_fk) x(tbl text, col text) loop
+    execute format('select coalesce(array_agg(id), ''{}'') from %s where %s', t,
+      (select string_agg(format('%I = $1', x.col), ' or ') from jsonb_to_recordset(v_fk) x(tbl text, col text) where x.tbl = t))
+      into ids using p_drop;
+    if t = 'orders' and cardinality(ids) > 0 then
+      select coalesce(array_agg(distinct f.x), '{}') into ids from (
+        select unnest(ids) x
+        union select o.parent_order_id from orders o where o.id = any(ids) and o.parent_order_id is not null
+        union select o.id from orders o where o.parent_order_id = any(ids)
+        union select o2.id from orders o1 join orders o2 on o2.parent_order_id = o1.parent_order_id
+         where o1.id = any(ids) and o1.parent_order_id is not null) f;
+    end if;
+    if cardinality(ids) = 0 then continue; end if;
+    tbls := tbls || t;
+    strip := array(select x.col from jsonb_to_recordset(v_fk) x(tbl text, col text) where x.tbl = t) || array['updated_at'];
+    execute format('select jsonb_object_agg(id::text, to_jsonb(x) - $2) from %s x where id = any($1)', t)
+      into snap1 using ids, strip;
+    snap0 := snap0 || jsonb_build_object(t, snap1);
+  end loop;
+
+  -- the move: one UPDATE per column, one audit_log row per moved row
+  for fk in select x.tbl, x.col from jsonb_to_recordset(v_fk) x(tbl text, col text) order by 1, 2 loop
+    execute format('with u as (update %s set %I = $1 where %I = $2 returning id) select coalesce(array_agg(id), ''{}'') from u',
+      fk.tbl, fk.col, fk.col) into ids using p_keep, p_drop;
+    if cardinality(ids) = 0 then continue; end if;
+    moved := moved || jsonb_build_object(fk.tbl || '.' || fk.col, cardinality(ids));
+    insert into audit_log (actor, role, action, table_name, record_id, before_data, after_data, created_at)
+      select p_actor, 'owner', 'update', fk.tbl, x::text, jsonb_build_object(fk.col, p_drop),
+             jsonb_build_object(fk.col, p_keep, 'merge', format('%s %s into %s', p_table, p_drop, p_keep)), now()
+        from unnest(ids) x;
+  end loop;
+
+  -- nothing points at the dropped row any more, and nothing but the reference columns changed
+  for fk in select x.tbl, x.col from jsonb_to_recordset(v_fk) x(tbl text, col text) loop
+    execute format('select count(*) from %s where %I = $1', fk.tbl, fk.col) into n using p_drop;
+    if n <> 0 then raise exception 'merge: % rows of %.% still point at % - stop, nothing kept', n, fk.tbl, fk.col, p_drop; end if;
+  end loop;
+  foreach t in array tbls loop
+    strip := array(select x.col from jsonb_to_recordset(v_fk) x(tbl text, col text) where x.tbl = t) || array['updated_at'];
+    execute format('select jsonb_object_agg(id::text, to_jsonb(x) - $2) from %s x where id = any($1)', t)
+      into snap1 using array(select k::bigint from jsonb_object_keys(snap0 -> t) k), strip;
+    if snap1 is distinct from snap0 -> t then
+      raise exception 'merge: moving % % into % changed more than the reference columns in % (rows %) - stop, nothing kept',
+        p_table, p_drop, p_keep, t,
+        (select string_agg(k, ', ') from jsonb_object_keys(snap0 -> t) k where (snap0 -> t -> k) is distinct from (snap1 -> k));
+    end if;
+  end loop;
+
+  -- the kept row takes what it lacks from the other one, never overwriting what it has; coordinates only as a pair
+  foreach c in array fill_cols loop
+    if jk ->> c is null and jd ->> c is not null then
+      execute format('update %I set %I = (select %I from %I where id = $2) where id = $1', p_table, c, c, p_table) using p_keep, p_drop;
+      filled := filled || c;
+    end if;
+  end loop;
+  if p_table = 'locations' and jk ->> 'latitude' is null and jk ->> 'longitude' is null
+     and jd ->> 'latitude' is not null and jd ->> 'longitude' is not null then
+    update locations set latitude = (jd ->> 'latitude')::numeric, longitude = (jd ->> 'longitude')::numeric where id = p_keep;
+    filled := filled || array['latitude', 'longitude'];
+  end if;
+  execute format('update %I set deleted_at = now(), merged_into_id = $1 where id = $2', p_table) using p_keep, p_drop;
+
+  insert into audit_log (actor, role, action, table_name, record_id, before_data, after_data, created_at) values
+    (p_actor, 'owner', 'update', p_table, p_keep::text, (select jsonb_object_agg(f, jk -> f) from unnest(filled) f),
+     jsonb_build_object('merge', format('%s %s into %s', p_table, p_drop, p_keep), 'filled_from', p_drop, 'moved', moved), now()),
+    (p_actor, 'owner', 'update', p_table, p_drop::text, jsonb_build_object('deleted_at', null, 'merged_into_id', null),
+     jsonb_build_object('merge', format('%s %s into %s', p_table, p_drop, p_keep), 'merged_into_id', p_keep), now());
+  return jsonb_build_object('table', p_table, 'keep', p_keep, 'drop', p_drop, 'moved', moved, 'filled', to_jsonb(filled));
+end $f$;
+  REVOKE ALL ON FUNCTION public.entity_merge(text, bigint, bigint, text) FROM PUBLIC, anon, authenticated, service_role;
+
+  -- After a merge, a tab opened before it still offers the merged place or client until it reloads, and the facade
+  -- takes a link to a deleted row. Such a new reference is not refused (relaxed rules), it is COUNTED: verify reads
+  -- this, and the auditor can (follow-up). {"table.column": rows} of every LIVE row that points at a merged row (a
+  -- soft-deleted one is history: nobody can or needs to repoint it); {} = none.
+  CREATE FUNCTION public.entity_merged_refs() RETURNS jsonb LANGUAGE plpgsql STABLE SET search_path = public AS $f$
+declare fk record; n bigint; out jsonb := '{}'; live text;
+begin
+  for fk in select c.conrelid::regclass::text tbl, a.attname col, c.confrelid::regclass::text ref from pg_constraint c
+      join pg_attribute a on a.attrelid = c.conrelid and a.attnum = c.conkey[1]
+     where c.contype = 'f' and c.confrelid in ('public.locations'::regclass, 'public.clients'::regclass)
+       and cardinality(c.conkey) = 1 and c.conrelid <> c.confrelid loop
+    live := case when exists (select 1 from pg_attribute where attrelid = fk.tbl::regclass and attname = 'deleted_at' and not attisdropped)
+                 then ' and x.deleted_at is null' else '' end;
+    execute format('select count(*) from %s x join %s m on m.id = x.%I where m.merged_into_id is not null%s', fk.tbl, fk.ref, fk.col, live) into n;
+    if n > 0 then out := out || jsonb_build_object(fk.tbl || '.' || fk.col, n); end if;
+  end loop;
+  return out;
+end $f$;
+  REVOKE ALL ON FUNCTION public.entity_merged_refs() FROM PUBLIC, anon, authenticated, service_role;
+
+  -- ===== PART 5: PROOFS =====
+  SELECT count(*) INTO v_bad FROM public.locations WHERE country IS DISTINCT FROM public.country_iso(country)
+    OR name IS DISTINCT FROM public.text_one_space(name) OR city IS DISTINCT FROM public.text_one_space(city);
+  IF v_bad <> 0 THEN RAISE EXCEPTION '090: % locations still hold a name, a city or a country the rule would change', v_bad; END IF;
+  SELECT count(*) INTO v_bad FROM public.locations WHERE country IS NOT NULL AND country !~ '^[A-Z]{2}$';
+  IF v_bad <> 0 THEN RAISE EXCEPTION '090: % locations hold a country that is not a code', v_bad; END IF;
+  -- the rule on a write, in subtransactions that leave no row: a name is coded and the spaces cleaned, an unknown
+  -- spelling refused
+  BEGIN
+    INSERT INTO public.locations (legacy_id, name, city, country) VALUES ('rec090proof', E'  090\u00a0 proof  ', ' Veria ', 'Greece')
+      RETURNING to_jsonb(locations.*) INTO v_res;
+    IF v_res ->> 'country' <> 'GR' OR v_res ->> 'name' <> '090 proof' OR v_res ->> 'city' <> 'Veria' THEN
+      RAISE EXCEPTION '090: the trigger wrote %', v_res;
+    END IF;
+    RAISE EXCEPTION USING ERRCODE = 'P0090', MESSAGE = 'undo proof row';
+  EXCEPTION WHEN SQLSTATE 'P0090' THEN NULL;
+  END;
+  BEGIN
+    INSERT INTO public.locations (legacy_id, name, country) VALUES ('rec090proof', '090 proof', 'Narnia');
+    RAISE EXCEPTION '090: an unknown country was stored - the CHECK does not hold';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+  BEGIN
+    INSERT INTO public.locations (legacy_id, name, country) VALUES ('rec090proof', '090 proof', 'XX');
+    RAISE EXCEPTION '090: two letters that are no country were stored - the CHECK does not hold';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+  IF EXISTS (SELECT 1 FROM public.locations WHERE legacy_id = 'rec090proof') THEN RAISE EXCEPTION '090: a proof row was left'; END IF;
+  SELECT count(*) INTO v_fk_loc FROM pg_constraint WHERE contype = 'f' AND confrelid = 'public.locations'::regclass;
+  SELECT count(*) INTO v_fk_cli FROM pg_constraint WHERE contype = 'f' AND confrelid = 'public.clients'::regclass;
+  IF EXISTS (SELECT 1 FROM monitoring.checks WHERE id = 'B-54' AND red_value IS DISTINCT FROM v_trg0 + 1) THEN
+    RAISE EXCEPTION '090: B-54 is not the trigger count + 1';
+  END IF;
+  IF EXISTS (SELECT 1 FROM unnest(ARRAY['public.entity_merge(text,bigint,bigint,text)', 'public.entity_merged_refs()',
+               'public.country_iso(text)', 'public.text_one_space(text)', 'public.locations_clean()']) f,
+               unnest(ARRAY['anon', 'authenticated', 'service_role']) r
+             WHERE has_function_privilege(r, f, 'EXECUTE')) THEN
+    RAISE EXCEPTION '090: a function of 090 is open to an API role - it must be closed';
+  END IF;
+  IF public.entity_merged_refs() <> '{}'::jsonb THEN RAISE EXCEPTION '090: references to merged rows before any merge'; END IF;
+  RAISE NOTICE '090 OK | kept % rows in loc_090_before | country to code % | spaces cleaned % | FK onto locations %, clients % | B-54 %',
+    v_rows, v_cc, v_sp, v_fk_loc, v_fk_cli, v_trg0 + 1;
+END $do$;
+-- the SET above lasts for the editor tab: reset here. After an ERROR (the dry run always ends in one) the editor stops
+-- before this line: run RESET statement_timeout; by hand or close the tab.
+RESET statement_timeout;

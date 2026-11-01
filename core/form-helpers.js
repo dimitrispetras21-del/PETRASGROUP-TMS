@@ -255,7 +255,10 @@ const _FH_EL = { 'α':'a','β':'v','γ':'g','δ':'d','ε':'e','ζ':'z','η':'i',
 function _fhNorm(s) {
   let t = String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   t = t.replace(/ου/g, 'ou').replace(/αυ/g, 'av').replace(/ευ/g, 'ev').replace(/(^|\s)μπ/g, '$1b').replace(/(^|\s)ντ/g, '$1d').replace(/γγ/g, 'ng').replace(/γκ/g, 'gk');
-  return t.replace(/[α-ω]/g, c => _FH_EL[c] || c);
+  // one space between words, none at the ends (owner 1/11): a name stored with a no-break or double space
+  // («VERMION FRESH<nbsp> (WAREHOUSE)») was never found by the plain space a person types. \s holds the no-break,
+  // figure and narrow spaces; the zero-width one is named.
+  return t.replace(/[α-ω]/g, c => _FH_EL[c] || c).replace(/[\s\u200b]+/g, ' ').trim();
 }
 // One search rule for the Weekly boards (v4 and v1, Pantelis 21/10): _fhNorm
 // (any case, no accents, Greek → Latin like the stored place names, so

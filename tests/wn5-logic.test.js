@@ -224,12 +224,13 @@ test('F4α-T4: partner_rate null → rates.missing (open item, never 0)', () => 
   const r = rowOf(M(), 'rt:104');
   assert.deepStrictEqual(r.rates, { partner_rate: null, missing: true });
   // one-segment cycle = F0 7745 / H1 rows 2–6: line 2 is the partner's plate, which the 072 board does not carry
-  // (Ε-35, Ε-36) → «—»; the rate / «κόμιστρο λείπει» lives in Δ1, the move list and the H3 segment tiles (Ε-13)
-  assert.deepStrictEqual([r.tiles[0].line1, r.tiles[0].line2, r.tiles[0].missing], ['Partner Test Pelagos', '—', false]);
+  // (Ε-35, Ε-36) → nothing (step 2i, coordinator 1/11: no bare «—»); the rate / «κόμιστρο λείπει» lives in Δ1, the move
+  // list and the H3 segment tiles (Ε-13)
+  assert.deepStrictEqual([r.tiles[0].line1, r.tiles[0].line2, r.tiles[0].missing], ['Partner Test Pelagos', '', false]);
   const b = fix(); b.cycles.find((c) => c.rt_id === 104).partner_rate = 300;
   const r2 = rowOf(M(b), 'rt:104');
   assert.deepStrictEqual(r2.rates, { partner_rate: 300, missing: false });
-  assert.deepStrictEqual([r2.tiles[0].line2, r2.tiles[0].partnerRate], ['—', 300], 'the rate stays data, never on the one-segment tile');
+  assert.deepStrictEqual([r2.tiles[0].line2, r2.tiles[0].partnerRate], ['', 300], 'the rate stays data, never on the one-segment tile');
   const segs = (rate) => [{ segment_id: 1, label: 'initial', trip_type: 'OWNED', truck: 'TST-2104', driver: 'Driver Test 01', has_vehicle: true, stop_ids: [] },
     { segment_id: 2, label: 'final', trip_type: 'PARTNER', partner: 'Partner Test Pelagos', partner_rate: rate, has_vehicle: true, stop_ids: [] }];
   const b2 = fix(); b2.cycles.find((c) => c.rt_id === 104).segments = segs(null);

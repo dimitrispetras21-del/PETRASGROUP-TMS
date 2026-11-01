@@ -659,13 +659,14 @@ async function scnNarrow({ browser, origin, ok, scn }) {
         const els = [...document.querySelectorAll('#content .wn5 .wn5-row :is(.wn5-pt > .wi4-l1, .wn5-pt > .wi4-l2, .wn5-end > .wi4-l1, .wn5-end > .wi4-l2, .wn5-gapbox)')];
         return { content: Math.round(document.getElementById('content').getBoundingClientRect().width),
           wrapped: els.filter((e) => lines(e) > 1).map((e) => ({ row: e.closest('.wn5-row').dataset.key, t: norm(e.textContent), lines: lines(e) })),
-          cut: els.flatMap((e) => [e, ...e.querySelectorAll(':scope > .wi4-ell')]).filter((c) => { const cs = getComputedStyle(c); return cs.textOverflow === 'ellipsis' || (cs.overflowX !== 'visible' && c.scrollWidth > c.clientWidth + 1); }).map((c) => norm(c.textContent)),
+          // step 2 (coordinator 1/11): a stop line may be cut with «…» (its point's title holds the whole stop); a cycle end never
+          cut: els.flatMap((e) => [e, ...e.querySelectorAll(':scope > .wi4-ell')]).filter((c) => !c.closest('.wn5-pt[title]:not(.wn5-end)')).filter((c) => { const cs = getComputedStyle(c); return cs.textOverflow === 'ellipsis' || (cs.overflowX !== 'visible' && c.scrollWidth > c.clientWidth + 1); }).map((c) => norm(c.textContent)),
           untitled: [...document.querySelectorAll('#content .wn5 .wn5-row .wn5-pt')].filter((p) => { const l1 = p.querySelector(':scope > .wi4-l1'); return l1 && !norm(p.title).startsWith(norm(l1.textContent)); }).map((p) => norm(p.textContent)),
           rows: Object.fromEntries([...document.querySelectorAll('#content .wn5 .wn5-row')].map((r) => [r.dataset.key, Math.round(r.getBoundingClientRect().height)])) };
       }).catch((e) => ({ err: String(e), wrapped: [], cut: [{}], untitled: [], rows: {} }));
       const tag = `${three ? 3 : 2} segments, 1440 sidebar ${sb}`;
       console.log(`  · H3 ${tag}: #content ${m.content}px, rows ${JSON.stringify(m.rows)}, wrapped lines ${(m.wrapped || []).length}`);
-      ok(scn, `${tag}: no stop line or cycle end is cut — no «…», a name fits or wraps (DESIGN.md #6, plan T5)`, !m.err && !m.cut.length && Object.keys(m.rows).length > 0, m.err || m.cut);
+      ok(scn, `${tag}: no cycle end is cut; a stop line only with «…» and its whole stop in title (step 2)`, !m.err && !m.cut.length && Object.keys(m.rows).length > 0, m.err || m.cut);
       ok(scn, `${tag}: every point keeps its whole stop in title (extra)`, !m.err && !m.untitled.length, m.untitled);
       pe.push(...S.pageErrors, ...appConsole(S));
       await page.context().close();

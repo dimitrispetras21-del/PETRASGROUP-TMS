@@ -198,7 +198,9 @@ function _gapSide(c, kath) {
   if (c.trip_type === 'PARTNER') text = 'Μόνο κάθοδος · συνεργάτης';
   else if (kath && kath.to.length) {
     const last = kath.to[kath.to.length - 1];
-    text = `Κενό γύρισμα · ελεύθερο από ${_dow(last.day)} ${last.to} · ${last.name}`;
+    // 2h (coordinator 1/11): the day the truck is free, its hour only when it is not the day's end, and no repeat of
+    // the delivery the ΚΑΘΟΔΟΣ cell already names beside it
+    text = `Κενό γύρισμα · ελεύθερο από ${_dow(last.day)}${last.to && last.to !== '23:59' ? ' ' + last.to : ''}`;
   }
   return { side: 'ANODOS', day: null, toDay: null, veroia: null, vBefore: 0, headDim: false, from: [], to: [], pallets: 0, over: 0, sideDim: false, gap: { text } };
 }
@@ -218,7 +220,8 @@ function _tile(s, multi) {
       // A one-segment cycle stays exactly as F0 7745 / H1 (R-59, Σ5): line 2 is the partner's plate. The 072 board
       // carries none (Ε-35) → «—», never the rate in its place (Ε-36). The rate stays data (partnerRate, rates):
       // Δ1, the move list and the cycle card show it.
-      t.line2 = '—';
+      // 2i (coordinator 1/11): nothing under the name rather than a bare «—»; the name on one line with «…» (CSS)
+      t.line2 = '';
     }
     return t;
   }
@@ -298,6 +301,9 @@ function _cycleRow(c, hubId, nums, errors) {
     lastChange: c.last_change && typeof c.last_change === 'object' ? c.last_change : null,
     pieceIds: [...new Set(legs.map((l) => l.piece_id))], group: null, vs: false, clients, refs,
     sortAt: sortStop ? sortStop.planned_from : c.start_at,
+    // the last day the cycle has a stop on (display only: the «συνέχεια» line of the next week names it, 3d)
+    lastDay: stops.map((s) => s.stop_day || athensDay(s.planned_to)).filter(Boolean).sort().pop() || null,
+    carried: false,
     _parts: [c.truck, c.trailer, c.driver, c.partner, ...clients, ...places, ...refs],
   };
 }
@@ -350,7 +356,8 @@ function _waitRow(list, hubId, errors, nameOf) {
     clients: w.client ? [w.client] : [], temps: _temps([w]),
     from: athensTime(anodos ? w.load_from : w.deliver_from), to: athensTime(anodos ? w.load_to : w.deliver_to),
     allDay: anodos ? allDay(w.load_from, w.load_to) : allDay(w.deliver_from, w.deliver_to), pallets: r1(w.pallets), palUnknown: w.pallets == null ? 1 : 0,
-    dim: false, late: w.overdue === true, segmentId: null, segLabel: null, day: athensDay(anodos ? w.load_from : w.deliver_from) }));
+    // late is the row's (2f): one «αργό» beside the day, never every stop of a waiting VS in amber
+    dim: false, late: false, segmentId: null, segLabel: null, day: athensDay(anodos ? w.load_from : w.deliver_from) }));
   const pallets = _sum(ws), palUnknown = _unk(ws);
   const loadDay = ws.map(_loadDay).filter(Boolean).sort()[0] || null;
   // A ΚΑΘΟΔΟΣ load that starts outside the hub: one loading point per place (nat_from), named by the catalogue.
@@ -398,6 +405,8 @@ function _waitRow(list, hubId, errors, nameOf) {
     hubPieceIds: ws.filter((w) => w._atHub === true).map((w) => w.piece_id),
     group: w0.order_id != null ? { order_id: w0.order_id } : w0.nat_order_id != null ? { nat_order_id: w0.nat_order_id } : null,
     vs: String(w0.kind || '').startsWith('vs_'), clients, refs, sortAt: w0.load_from, _parts: [...clients, ...refs],
+    // the first week whose board carries the row (072 plan_board: nat_ready_day ≤ the week's Friday; none = every week)
+    readyDay: ws.some((w) => !DAY_RE.test(String(w.nat_ready_day || ''))) ? null : ws.map((w) => w.nat_ready_day).sort()[0],
   };
 }
 
@@ -454,14 +463,37 @@ function model(board, opts) {
     days.push({ date, head: `${DOW_HEAD[_dowOf(date)]} ${Number(date.slice(8))}/${Number(date.slice(5, 7))}`, rows: [], empty: true });
   }
   // A cycle that started the week before (or ends after it) sits on the first (last) day, never dropped.
+  // A load waiting for a vehicle sits on ITS day only (coordinator 1/11, 1a): the base sends every waiting / hub
+  // item whose ready day is on or before the week's Friday (072 plan_board, «it never leaves the board until
+  // planned»), so without this rule a load of Mon 26/10 stood on the Saturday of EVERY later week. A load older
+  // than the week moves to its Saturday only in the current TMS week (the «αργό» carried forward), where today is;
+  // in any other week it is left out (it shows on its own day, in its own week). One rule (placeOf) for the rows,
+  // the ΕΠΟΜΕΝΑ queue and the Veroia shelf: the three never count different loads.
+  const current = today != null && today >= week && today <= last;
+  const placeOf = (r) => {
+    if (r.kind !== 'unassigned') return !r.dayKey || r.dayKey < week ? week : r.dayKey > last ? last : r.dayKey;
+    if (r.dayKey && r.dayKey >= week && r.dayKey <= last) return r.dayKey;
+    if (r.dayKey && r.dayKey > last) return null;
+    // older than the week: the base sends it from its ready day's week on, so a load whose loading day is earlier than
+    // its ready day (edited dates) is in no earlier board — it stands on this Saturday, never on no day at all
+    return current || (r.readyDay != null && r.readyDay >= week) ? week : null;
+  };
+  const shown = new Set();
   for (const r of rows) {
-    const k = !r.dayKey || r.dayKey < week ? week : r.dayKey > last ? last : r.dayKey;
+    const k = placeOf(r);
+    if (k == null) continue;
+    // 3d (coordinator 1/11): a cycle whose day (its Veroia loading, else its ΑΝΟΔΟΣ) is in an earlier week belongs to
+    // THAT week — its full row and its number are there; here it is the continuation of it (the screen draws one thin
+    // line). Without this the same truck was a full row with a different number in both weeks (15 in W44, 2 in W45).
+    if (r.kind === 'cycle') r.carried = !!(r.dayKey && r.dayKey < week);
     days.find((d) => d.date === k).rows.push(r);
+    if (r.kind === 'unassigned') for (const id of r.pieceIds) shown.add(id);
   }
   for (const d of days) d.empty = d.rows.length === 0;
-  // ΕΠΟΜΕΝΑ: every VS still without a truck. 'late' = the base's overdue of such a VS (v_piece_state.overdue); a
-  // VS already on a cycle that delivers after its day is that row's amber rail (has_late), never a card.
-  const queue = rows.filter((r) => r.kind === 'unassigned' && r.vs).map((r) => ({
+  // ΕΠΟΜΕΝΑ: every VS still without a truck that this week shows. 'late' = the base's overdue of such a VS
+  // (v_piece_state.overdue); a VS already on a cycle that delivers after its day is that row's amber rail (has_late),
+  // never a card.
+  const queue = rows.filter((r) => r.kind === 'unassigned' && r.vs && shown.has(r.pieceIds[0])).map((r) => ({
     pieceId: r.pieceIds[0],
     orderId: r.group && r.group.order_id != null ? r.group.order_id : null,
     natOrderId: r.group && r.group.nat_order_id != null ? r.group.nat_order_id : null,
@@ -477,7 +509,8 @@ function model(board, opts) {
   const isW = (x) => x && typeof x === 'object' && DAY_RE.test(String(x.week || '')) && Number.isFinite(Number(x.orders));
   const stock = board.hub.filter((h) => h.is_stock === true).map(item);
   return {
-    week, today, hubId, days, queue,
+    // current: the week on screen is the TMS week of today — the board dims what is done only there (3b)
+    week, today, current, hubId, days, queue,
     // 087: orders without a truck per week (A-3, the tab badges) and the last partner rates (P-8); null before 087,
     // so a screen can tell «none» from «not sent» (principle 1)
     waitingWeeks: Array.isArray(board.waiting_weeks) ? board.waiting_weeks.filter(isW).map((x) => ({ week: x.week, orders: Number(x.orders) })) : null,

@@ -22,7 +22,8 @@
 --      - an accepted pair stays accepted when the times move later (no name is ever removed by the base); the early
 --        check plan_h_busy still asks again on every new trip and every vehicle change of a trip (it reads every
 --        segment), and "save anyway" answers it;
---      - a save without accept_busy is refused exactly as today; two segments of the SAME trip are never named.
+--      - a save without accept_busy is refused exactly as today; two segments of the SAME trip are never named;
+--      - the acceptance holds for the whole call that sent it (a split with several parts: one press, one person).
 -- 2. STOP ORDER. 081's road order sorts a trip's stops by planned_from first. An all-day drop at a client (00:00-23:59)
 --    on the day of its own Veroia loading (16:00-18:00) sorted BEFORE that loading, and 071 refused it (leg_order).
 --    plan_h_reseq now moves a drop to right after the last of its own pickups (leg_order: a piece is never delivered
@@ -222,6 +223,12 @@ declare s rt_vehicle_segments%rowtype; v_code text; v_rule text;
 begin
   select * into s from rt_vehicle_segments where id = new.id;
   if s.id is null or s.deleted_at is not null or s.rt_cancelled or s.trip_type is distinct from 'OWNED' then return null; end if;
+  -- two saves of the same truck / driver at once: an EXCLUDE locks its own index, this rule is a query and sees no
+  -- uncommitted row - so it takes a lock per truck and per driver (always truck first); the second save waits for the
+  -- first's COMMIT and its next statement sees those rows (READ COMMITTED). A rare crossing of two saves may end in a
+  -- deadlock, which the Worker answers busy_retry: nothing kept, the save is pressed again.
+  if s.truck_id is not null then perform pg_advisory_xact_lock(hashtextextended('plan_busy:truck:' || s.truck_id, 0)); end if;
+  if s.driver_id is not null then perform pg_advisory_xact_lock(hashtextextended('plan_busy:driver:' || s.driver_id, 0)); end if;
   select r.code, case when s.truck_id is not null and g.truck_id = s.truck_id then 'truck_busy' else 'driver_busy' end
     into v_code, v_rule
     from rt_vehicle_segments g join ct_round_trips r on r.id = g.rt_id
