@@ -969,7 +969,11 @@ function _ptsHTML(pts, ok, start, inl, max) {
   // on-time one — at ≤1600 (one slot) RT-T104's late 2nd stop would otherwise vanish into a grey «+1». The late ones
   // take the slots first; the shown and the folded keep the base's order and their own numbers.
   const idx = pts.map((p, i) => i);
-  const shown = new Set([...idx.filter((i) => pts[i].late), ...idx.filter((i) => !pts[i].late)].slice(0, vis));
+  // then a point where the vehicle changes (its ΑΡΧΙΚΟ / ΕΝΔΙΑΜΕΣΟ / ΤΕΛΙΚΟ bar, 072b): folded into «+N» the bar would
+  // be gone and the row would no longer say where the truck changes (code review medium, 1/11)
+  const seg = (i) => SEG_LABELS.includes(pts[i].segLabel);
+  const shown = new Set([...idx.filter((i) => pts[i].late), ...idx.filter((i) => !pts[i].late && seg(i)),
+    ...idx.filter((i) => !pts[i].late && !seg(i))].slice(0, vis));
   const rest = idx.filter((i) => !shown.has(i));
   // More late stops than slots: the chip itself carries the amber, so a hidden late stop is still seen.
   const restLate = rest.some((i) => pts[i].late);
