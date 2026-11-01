@@ -637,11 +637,29 @@ function _tabsHTML(w) {
   const from = _tabsFrom(w, cur);
   let h = `<button type="button" class="wi4-tab" aria-label="Προηγούμενη εβδομάδα" onclick="WN5._week(${w - 1})">‹</button>`;
   for (let n = from; n <= from + 6; n++) {
-    h += `<button type="button" class="wi4-tab${n === w ? ' on' : ''}" data-w="${n}" onclick="WN5._week(${n})">W${n}${n === cur ? '<span class="wi4-tab-cur" aria-hidden="true"></span>' : ''}</button>`;
+    const q = _waitOf(n - w);
+    h += `<button type="button" class="wi4-tab${n === w ? ' on' : ''}" data-w="${n}" onclick="WN5._week(${n})"${q ? ` title="${q} ${q === 1 ? 'παραγγελία' : 'παραγγελίες'} χωρίς φορτηγό"` : ''}>W${n}${n === cur ? '<span class="wi4-tab-cur" aria-hidden="true"></span>' : ''}${q ? `<span class="wn5-tab-n">${q}</span>` : ''}</button>`;
   }
   h += `<button type="button" class="wi4-tab" aria-label="Επόμενη εβδομάδα" onclick="WN5._week(${w + 1})">›</button>`;
   if (Number.isInteger(cur)) h += `<button type="button" class="wi4-tab wn5-tab-today" data-today="1"${cur === w ? ' disabled aria-disabled="true"' : ''} onclick="WN5._week(${cur}, true)">Σήμερα</button>`;
   return h;
+}
+// A-3 (087, Figma A-3 «W43 ①»): the orders without a truck of the tab d weeks from the loaded one, as the base counts
+// them (waiting_weeks: the rows of ΠΡΟΣ ΑΝΑΘΕΣΗ by their ready week). 0 before 087 or before the first read: no badge.
+let _wwLast = null;      // the last board's waiting_weeks: shown while the next week loads, so a click does not
+                         // empty and refill the badges and shift the centred strip twice (1c; code review high, 1/11)
+function _waitOf(d) {
+  // the board of the week on screen; while another week LOADS, the last one's counts (they name absolute weeks, a week
+  // outside its window shows none until the new board lands); none while a read stands failed. The last counts may
+  // be from an older board than the one before (a failed read in between): they last only until the new board lands
+  const own = _m && _m.week === _sat && Array.isArray(_m.waitingWeeks) ? _m.waitingWeeks : null;
+  if (own) _wwLast = own;
+  const ww = own || (_state === 'loading' ? _wwLast : null);
+  if (!ww || !DAY_RE.test(String(_sat || ''))) return 0;
+  const [y, mo, da] = _sat.split('-').map(Number);
+  const sat = new Date(Date.UTC(y, mo - 1, da + 7 * d)).toISOString().slice(0, 10);
+  const x = ww.find((e) => e.week === sat);
+  return x && x.orders > 0 ? x.orders : 0;
 }
 // «10–16 Οκτωβρίου», or «26 Σεπτεμβρίου – 2 Οκτωβρίου» across a month; short: «10–16 Οκτ», «26 Σεπ – 2 Οκτ».
 function _rangeText(sat, short) {
@@ -847,11 +865,13 @@ function _rowHTML(r, m, no) {
       // παραγγελιών» (Επεξεργασία, Διαγραφή) — without it an order could not be fixed or deleted before it was on a
       // truck (live F6, 28/10). A VS is the international's order: it changes in the Weekly International.
       : r.kind === 'unassigned' && r.group && r.group.nat_order_id != null ? orderCardBtn(r.group.nat_order_id)
-        // 2f: a VS has no national order card (it changes in the Weekly International): its column says what it is
-        : r.kind === 'unassigned' && r.vs ? '<span class="wn5-vstag" title="Παραγγελία του Εβδομαδιαίου Διεθνών">VS</span>' : '')
+        // 2f: a VS has no national order card (it changes in the Weekly International): its column says what it is,
+        // and (087, P-11) a VS with pieces at Veroia keeps ✈ «Στον Πίνακα Βέροιας» beside it
+        : r.kind === 'unassigned' && r.vs ? '<span class="wn5-vstag" title="Παραγγελία του Εβδομαδιαίου Διεθνών">VS</span>'
+          + (r.hubPieceIds && r.hubPieceIds.length ? _toPanelBtn(r.hubPieceIds) : '') : '')
     + '</div>'
     + _kathHTML(r, m, ok)
-    + `<div class="wn5-asg">${r.segSource === 'segments' && r.tiles.length > 1 ? _tilesHTML(r) : r.tiles.map((t) => _boxHTML(t, r)).join('')}${_cpyHTML(r)}</div>`
+    + `<div class="wn5-asg">${r.segSource === 'segments' && r.tiles.length > 1 ? _tilesHTML(r) : r.tiles.map((t) => _boxHTML(t, r)).join('')}${_cpyHTML(r)}${_chgHTML(r)}</div>`
     + _anodHTML(r, m, ok)
     + '</div>';
   h += _handRowHTML(r, ok);
@@ -1076,6 +1096,41 @@ function _plusHTML(r, side) {
 // International .wi4-cpy shortcut, beside the ✈ line it repeats. The same copyPlatesOf (Ε-22: the cycle's truck and
 // trailer only, the clipboard only, nothing written). No button where there is nothing to copy (a partner's cycle,
 // a cycle without a vehicle): never a control that only says «no plates».
+// P-11 (087, owner 28/10 answer 1): ✈ of a VS that stands at Veroia without a truck — «Στον Πίνακα Βέροιας»
+function _toPanelBtn(ids) {
+  const ok = ids.map(_id).filter((x) => x != null);
+  return ok.length ? `<button type="button" class="wi4-plane" title="Στον Πίνακα Βέροιας" data-act="to-panel" onclick="event.stopPropagation();WN5Hub.toPanel('${ok.join(',')}', this)">${PLANE}</button>` : '';
+}
+// P-16 (087, flexible-rules study decision 8): ✎ on a cycle changed after its assignment, the LAST change only (when,
+// who by role, what), as the base read it from audit_log; the whole history stays in «Ιστορικό Ενεργειών» (Ε-11 «γ»).
+// The role in words: «Ιστορικό Ενεργειών»'s own map (modules/audit_trail.js _AUDIT_ROLE, a global of that script —
+// one map, principle 3); an unknown role shows raw, as there.
+const _chgRole = (r) => (typeof _AUDIT_ROLE !== 'undefined' && _AUDIT_ROLE[r]) || r || '—';
+const _CHG_DAYS = ['start_at', 'end_at', 'date_start', 'date_end'];
+const _CHG_VEH = ['trip_type', 'truck_id', 'trailer_id', 'driver_id', 'partner_id', 'overlap_rts'];
+function _chgWhat(c) {
+  const k = Array.isArray(c.keys) ? c.keys : [], has = (...a) => a.some((x) => k.includes(x));
+  const del = c.action === 'delete' || k.includes('deleted_at');
+  switch (c.table) {
+    // a stop's day or hour re-dates the cycle in the same request: that row can be the newest, and says «ημέρα / ώρα» too
+    case 'ct_round_trips': return has('partner_rate') ? 'κόμιστρο' : has(..._CHG_VEH) ? 'όχημα' : has(..._CHG_DAYS) ? 'ημέρα / ώρα' : 'δρομολόγιο';
+    case 'rt_vehicle_segments': return 'όχημα';
+    case 'rt_stops': return c.action === 'create' ? 'νέο σημείο' : del ? 'σημείο αφαιρέθηκε' : has('planned_from', 'planned_to') ? 'ημέρα / ώρα' : has('seq') ? 'σειρά σημείων' : 'σημείο';
+    case 'piece_legs': return c.action === 'create' ? 'φορτίο προστέθηκε' : del ? 'φορτίο αφαιρέθηκε' : 'φορτίο';
+    case 'shipments': return has('pallets') ? 'παλέτες' : 'παραγγελία';
+    case 'national_orders': return has('price') ? 'τιμή' : has('client_id') ? 'πελάτης' : 'παραγγελία';
+    default: return 'αλλαγή';
+  }
+}
+function _chgHTML(r) {
+  const c = r.kind === 'cycle' ? r.lastChange : null;
+  if (!c || !c.at) return '';
+  const day = L().athensDay(c.at), hm = L().athensTime(c.at);
+  if (!day) return '';
+  const t = `Τελευταία αλλαγή ${Number(day.slice(8))}/${Number(day.slice(5, 7))} ${hm} · ${_chgRole(c.role)} · ${_chgWhat(c)}`;
+  // focusable: the title is the only place that says it (keyboard; a tap focuses it)
+  return `<span class="wn5-chg" tabindex="0" role="img" title="${_esc(t)}" aria-label="${_esc(t)}">✎</span>`;
+}
 function _cpyHTML(r) {
   if (r.kind !== 'cycle' || r.rtId == null) return '';
   const pl = _platesOf(r.rtId);

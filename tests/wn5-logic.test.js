@@ -85,9 +85,10 @@ test("F4α-T4 / F5 FE-2: a VS no truck took (hub[]) → row kind 'unassigned', r
     ['VS-T118: ο πίνακας ήρθε χωρίς «deliver_from» — τα παράθυρα δείχνουν «—»', 'VS-T121: ο πίνακας ήρθε χωρίς «deliver_from» — τα παράθυρα δείχνουν «—»',
      'VS-T133: ο πίνακας ήρθε χωρίς «deliver_from» — τα παράθυρα δείχνουν «—»']);
   assert.strictEqual(r.tiles[0].type, 'un');
-  // B1 (owner 28/10): a never-assigned VS import at Veroia is ALSO «για μοίρασμα» (split / loaded from the Veroia board)
-  // and stays this ΠΡΟΣ ΑΝΑΘΕΣΗ row, for assigning the order whole
-  assert.ok([4101, 4102, 4103, 4104].every((p) => m.hub.split.some((x) => x.pieceId === p)), 'a never-assigned VS import is also «για μοίρασμα»');
+  // P-11 (owner 28/10, answer 1, reverses B1 part 2): a never-assigned VS import at Veroia is ONLY this ΠΡΟΣ ΑΝΑΘΕΣΗ
+  // row until «→ Βέροια» sends it to the panel; the row knows which of its pieces stand at Veroia
+  assert.ok([4101, 4102, 4103, 4104].every((p) => !m.hub.split.some((x) => x.pieceId === p)), 'a never-assigned VS import is not «για μοίρασμα»');
+  assert.deepStrictEqual(r.hubPieceIds, r.pieceIds, 'every piece of the row stands at Veroia');
   const m2 = M(withE26()), r2 = rowOf(m2, 'wait:4101');
   assert.deepStrictEqual(m2.errors, [], 'with the Ε-26 keys the board draws without a shape error');
   // a key PRESENT with null (a stop without a window) is not a broken board: «—», no error
@@ -158,15 +159,16 @@ test('F4α-T4: queue = the VS of the «ΠΡΟΣ ΑΝΑΘΕΣΗ» rows (hub[] nev
   assert.ok(rowOf(m2, 'rt:102').late && !m2.queue.some((x) => x.code === 'VS-T102'), 'a VS on a truck that is late stays on its row');
 });
 
-test('F4α-T4 / B1: hub split = unloaded at Veroia by a cycle (inbound_rt_id), for_split, or a VS import with no truck (owner 28/10); never a never-assigned national; stock; overdue → red; nothing to split or hold → hub.empty', () => {
+test('F4α-T4 / P-11: hub split = unloaded at Veroia by a cycle (inbound_rt_id) or for_split — one place per piece (owner 28/10 answer 1); never a never-assigned VS or national; stock; overdue → red; nothing to split or hold → hub.empty', () => {
   const h = M().hub;
   assert.deepStrictEqual({ day: h.day, split: h.split.map((x) => x.pieceId), stock: h.stock.map((x) => [x.pieceId, x.overdue, x.leave_by]), pallets: h.pallets, empty: h.empty },
-    { day: TODAY, split: [4101, 4102, 4103, 4302, 4104], stock: [[4301, true, '2026-10-12']], pallets: { split: 83, stock: 13, splitUnknown: 0, stockUnknown: 0 }, empty: false });
+    { day: TODAY, split: [4302], stock: [[4301, true, '2026-10-12']], pallets: { split: 20, stock: 13, splitUnknown: 0, stockUnknown: 0 }, empty: false });
   // the Ε-41 key (not in 072): what ✈ «Σπάσιμο» sent back is «για μοίρασμα», and leaves the rows and the queue
   const b = fix();
   for (const x of b.hub) if (x.order_id === 2101) x.for_split = true;
   const m2 = M(b);
-  assert.deepStrictEqual(m2.hub.split.map((x) => x.pieceId), [4101, 4102, 4103, 4302, 4104]);
+  // the pieces of order 2101 (VS-T118) that were sent: on the panel; the other VS imports stay rows only
+  assert.deepStrictEqual(m2.hub.split.map((x) => x.pieceId), [4101, 4102, 4302]);
   assert.ok(!rowOf(m2, 'wait:4101') && !m2.queue.some((x) => x.code === 'VS-T118'), 'for_split: the Veroia board only');
   const b3 = fix(); b3.hub = b3.hub.filter((x) => x.is_stock !== true && x.inbound_rt_id == null).map((x) => Object.assign(x, { kind: 'national' }));
   assert.strictEqual(M(b3).hub.empty, true, 'only never-assigned nationals: rows, and the Veroia line stays hidden');
