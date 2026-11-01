@@ -1,8 +1,9 @@
 -- 089 - NATIONAL v5: THE PARTNER RATE OF THE ANODOS ("komistro ANODOU", P-7; owner 31/10 and 1/11).
 -- DRAFT. Never run by an agent. Run by the owner after 15:00 (or with his explicit yes): the dry run, this file, verify.
 -- NEEDS 086 APPLIED (#195, which needs 084 #188): plan_rt_update is patched on the text 086 writes. Order 084 -> 086 -> 089.
--- Independent of 083 (#186), 085 (#191), 087 (pack 4) and 088 (#194): none of them touches what 089 touches
--- (plan_rt_update's set keys, plan_h_seg_json, rt_vehicle_segments' partner columns).
+-- Independent of 083 (#186), 085 (#191) and 088 (#194): none of them touches what 089 touches (plan_rt_update's set
+-- keys, plan_h_seg_json, rt_vehicle_segments' partner columns). 087 (pack 4) was not final on 1/11: if it patches
+-- plan_rt_update or plan_h_seg_json, PART 0 stops on the md5 and the order is measured again (never a silent pass).
 --
 -- The owner: a partner truck that does the KATHODOS and the ANODOS of one trip is paid two agreed amounts, and the
 -- assignment form shows two fields, "Komistro KATHODOU EUR" and "Komistro ANODOU EUR".
@@ -13,7 +14,10 @@
 --   - NEW rt_vehicle_segments.partner_rate_anodos: the part of that fee that is the ANODOS. The KATHODOS part is the
 --     difference and is never stored. NULL = not split (a trip with one side needs no split; on a trip with both sides
 --     the board says "komistro ANODOU leipei" - never 0 in silence). Only on the segment: the cycle carries no copy.
---     The board reads it through plan_h_seg_json (the segments of every cycle).
+--     The board reads it through plan_h_seg_json (the segments of every cycle), and ONLY on a trip with ONE vehicle:
+--     a split is the agreement of the one partner who does both sides. After a handover each segment is its own fee
+--     (plan_seg_change / prev_partner_rate, seg_many here), so a part kept on the first segment is not shown and the
+--     P&L never read it (it reads the fee); removing the handover shows it again with the fee it belongs to.
 --   - Why not "partner_rate = KATHODOU" (the note of 31/10): measured 1/11, the 4 partner cycles of v5 are ANODOS only
 --     and their partner_rate IS the ANODOS fee (RT-1295/1321/1322/1324: 500/380/640/400). That reading would have
 --     relabelled them, moved 4 rows and changed the cost views. This one moves no row.
@@ -90,8 +94,10 @@ $h$;
 $h$;
   j_1a CONSTANT text := $h$'partner_rate', s.partner_rate, $h$;
   j_1b CONSTANT text := $h$'partner_rate', s.partner_rate,
-           -- 089: the ANODOS part of the fee (NULL = not split); the KATHODOS part is the difference
-           'partner_rate_anodos', (select g.partner_rate_anodos from rt_vehicle_segments g where g.id = s.segment_id), $h$;
+           -- 089: the ANODOS part of the fee (NULL = not split; the KATHODOS part is the difference), only on a trip
+           -- with ONE vehicle: after a handover each segment is its own fee and a part kept there would be a stale claim
+           'partner_rate_anodos', case when s.n_segments = 1
+             then (select g.partner_rate_anodos from rt_vehicle_segments g where g.id = s.segment_id) end, $h$;
   v_g record; v_h record; v_src text; v_new text; p pg_proc%rowtype; v_trg0 int; v_trg1 int; v_b54 int;
 BEGIN
   PERFORM set_config('lock_timeout', '5s', true);
@@ -154,7 +160,7 @@ $f$;
   -- ===== PART 2: LIVE TEXT + HUNKS (md5 after = measured on the production-shaped PGlite copy) =====
   FOR v_g IN SELECT * FROM (VALUES
       ('public.plan_rt_update(jsonb,text,text)', ARRAY[u_1a, u_2a, u_3a, u_4a, u_5a], ARRAY[u_1b, u_2b, u_3b, u_4b, u_5b], 'f232250e4672f3133b4a3fe06cb1da5c'),
-      ('public.plan_h_seg_json(bigint)', ARRAY[j_1a], ARRAY[j_1b], 'a23009d0b89532e9ec509d6cc11be56e')) g(sig, a, b, m) LOOP
+      ('public.plan_h_seg_json(bigint)', ARRAY[j_1a], ARRAY[j_1b], 'b92f3666e087ddfd621959d47f95a4cb')) g(sig, a, b, m) LOOP
     SELECT * INTO p FROM pg_proc WHERE oid = to_regprocedure(v_g.sig);
     -- plan_rt_update is plpgsql, plan_h_seg_json is sql (072b): each keeps its own language
     IF p.proconfig IS DISTINCT FROM ARRAY['search_path=public']
