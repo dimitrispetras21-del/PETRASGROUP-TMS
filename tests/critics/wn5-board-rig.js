@@ -307,12 +307,13 @@ SCN.paint = async (browser, origin) => {
   ok(scn, 'the VS reference under a waiting row\'s day ends inside its cell (cut, whole in title)', !!st && st.refOut.length >= 1 && st.refOut.every((d) => d <= 0), st && st.refOut);
   ok(scn, 'the head is «ΑΝΑΘΕΣΗ» alone', !!st && st.head === 'ΑΝΑΘΕΣΗ', st && st.head);
   ok(scn, 'no hh:mm anywhere in ΑΝΑΘΕΣΗ', !!st && !st.asgTimes.length, st && st.asgTimes);
-  ok(scn, 'the Veroia time sits under «Βέροια» in ΦΟΡΤΩΣΗ on all 9 rows that load there', !!st && st.vtime.length === 9 && st.vtime.every((v) => v.inFl), st && st.vtime);
+  // step 2d (coordinator 1/11): the 3 hub rows the board sent without a window read «Βέροια» alone (was «Βέροια —»): 6 of 9
+  ok(scn, 'the Veroia time sits under «Βέροια» in ΦΟΡΤΩΣΗ on the 6 rows that load there with a window (step 2d: none under the 3 windowless ones)', !!st && st.vtime.length === 6 && st.vtime.every((v) => v.inFl), st && st.vtime);
   ok(scn, 'every day with rows is open at paint (never folded by the board)', !!st && st.days.filter((d) => d.rows).every((d) => !d.closed), st && st.days);
   for (const w of ['Χωρίς κάθοδο', 'Κενό γύρισμα · ελεύθερο από Τρί 11:00', 'Μόνο κάθοδος · συνεργάτης', '↳ Φόρτωση με τοπικό · Driver Test 11', 'ως Δευ 22:00']) {
     ok(scn, `shows «${w}»`, !!st && st.text.includes(w));
   }
-  ok(scn, 'a one-segment partner tile = «Partner Test Pelagos» / «—», never the rate (F0 7745 / H1, Ε-36)', !!st && st.p104 === 'Partner Test Pelagos—', st && st.p104);
+  ok(scn, 'a one-segment partner tile = «Partner Test Pelagos», no «—» under it (step 2i), never the rate (F0 7745 / H1, Ε-36)', !!st && st.p104 === 'Partner Test Pelagos', st && st.p104);
   // FE-2 (owner 28/10): no «… δεν ήρθαν (Worker)» line under ΠΡΟΣ ΑΝΑΘΕΣΗ, and the 074a-shaped week draws clean
   ok(scn, 'VS-T118 is a ΠΡΟΣ ΑΝΑΘΕΣΗ row with no waiting line, and no shape strip (FE-2)', !!st && st.miss === '' && !st.strip, st && { miss: st.miss, strip: st.strip });
   ok(scn, '«ΕΠΟΜΕΝΑ · 3», three cards, each with «Ανάθεση» (data-act=assign)', !!st && /^ΕΠΟΜΕΝΑ · 3/.test(st.q) && st.qcards.length === 3 && st.qcards.every((c) => c.assign), st && { q: st.q, cards: st.qcards });
@@ -377,8 +378,8 @@ SCN.paint = async (browser, origin) => {
     const cs = (sel) => { const e = document.querySelector('#content .wn5 ' + sel); if (!e) return null; const c = getComputedStyle(e); return [c.fontWeight, c.fontSize, c.color].join(' '); };
     return { endx: document.querySelectorAll('#content .wn5 .wn5-endx').length, by: cs('.wn5-end .wi4-l2'), gap: [...document.querySelectorAll('#content .wn5 .wn5-gapbox')].map((e) => getComputedStyle(e).fontSize) };
   });
-  ok(scn, 'ΠΡΟΣ: no «· τέλος κύκλου» (owner 31/10), «ως …» 500 10.5px grey-2; the dashed gap boxes 12px', ty.endx === 0 && ty.by === '500 10.5px rgb(91, 107, 127)'
-    && ty.gap.length >= 2 && ty.gap.every((f) => f === '12px'), ty);
+  ok(scn, 'ΠΡΟΣ: no «· τέλος κύκλου» (owner 31/10), «ως …» 500 10.5px grey-2; the empty-side text 11.5px (step 2b: no box)', ty.endx === 0 && ty.by === '500 10.5px rgb(91, 107, 127)'
+    && ty.gap.length >= 2 && ty.gap.every((f) => f === '11.5px'), ty);
   ok(scn, 'nothing was sent to /plan/* but the board read', S.plan.every((x) => x.m === 'GET' && x.path === '/plan/board'), S.plan.map((x) => x.m + ' ' + x.path));
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
   await shot(page, 'paint-1920');
@@ -582,12 +583,12 @@ SCN.dim = async (browser, origin) => {
   ok(scn, 'ΠΡΟΣ ΑΝΑΘΕΣΗ (VS-T118, VS-T121) and the cycle without a vehicle never dim', st.work.every((w) => w.n === 0), st.work);
   ok(scn, 'the late stop (RT-T104 Larisa) stays bold', st.late === 1, st.late);
   ok(scn, 'nothing of Wednesday–Friday is dimmed', st.future === 0, st.future);
-  // Figma 2035:7735 / 7745 row 1: an ΑΝΟΔΟΣ day that has passed is the blue outlined chip (fading with its row); today
-  // and later ΑΝΟΔΟΣ days keep the light grey chip (H1 2120:7738).
-  const adPast = st.ad.filter((c) => c.cls === 'past'), adRest = st.ad.filter((c) => c.cls !== 'past');
-  ok(scn, 'a past ΑΝΟΔΟΣ day is the outlined chip (blue border and ink, card fill)', adPast.length > 0
-    && adPast.every((c) => c.bd === st.tok.blue && c.fg === st.tok.ink && c.bg === st.tok.card), { adPast, tok: st.tok });
-  ok(scn, 'today / later ΑΝΟΔΟΣ days keep the light grey chip', adRest.length > 0 && adRest.every((c) => c.bg === st.tok.chip), { adRest, tok: st.tok });
+  // Step 2c (coordinator 1/11, over Figma 2035:7735's blue past ΑΝΟΔΟΣ chip): ONE day chip — every day the light grey
+  // chip, today alone the blue outline; executed rows fade with their row.
+  const adToday = st.ad.filter((c) => c.cls === 'today'), adRest = st.ad.filter((c) => c.cls !== 'today');
+  ok(scn, 'today\'s ΑΝΟΔΟΣ day is the outlined chip (blue border and ink, card fill)', adToday.length > 0
+    && adToday.every((c) => c.bd === st.tok.blue && c.fg === st.tok.ink && c.bg === st.tok.card), { adToday, tok: st.tok });
+  ok(scn, 'every other ΑΝΟΔΟΣ day, past or later, is the light grey chip (step 2c)', adRest.length > 0 && adRest.every((c) => c.bg === st.tok.chip), { adRest, tok: st.tok });
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
   await shot(page, 'dim');
   await page.context().close();
@@ -2390,9 +2391,10 @@ SCN.live45 = async (browser, origin) => {
   ok(scn, '2 · VS export 616: two loading places (Thessaloniki Test, Lamia Test), ΠΡΟΣ «Βέροια»',
     ['Thessaloniki Test', 'Lamia Test'].every((n) => (by(20).apts || []).some((x) => x.includes(n)) || /\+1/.test(by(20).afl || '')) && /Βέροια/.test(by(20).ato || ''), { afl: by(20).apts, ato: by(20).ato });
   // 3 · a waiting row of one side (owner 28/10): the box names its side, the empty side is the dashed slot of H1 RT-T106/T107
-  ok(scn, '3 · VS export 607 / 616: dashed «Χωρίς κάθοδο», box «ΠΡΟΣ ΑΝΑΘΕΣΗ / ΑΝΟΔΟΣ →»; VS import 603 / 604: box «← ΚΑΘΟΔΟΣ», dashed «Χωρίς άνοδο»',
-    [19, 20].every((p) => by(p).asg === 'ΠΡΟΣ ΑΝΑΘΕΣΗΑΝΟΔΟΣ →' && by(p).ksp === 'Χωρίς κάθοδο' && by(p).kgap)
-    && [15, 16].every((p) => by(p).asg === 'ΠΡΟΣ ΑΝΑΘΕΣΗ← ΚΑΘΟΔΟΣ' && by(p).asp === 'Χωρίς άνοδο' && by(p).agap),
+  // step 2a/2b (coordinator 1/11): the quiet chip names no side, the empty side of a waiting row is drawn as nothing
+  ok(scn, '3 · VS export 607 / 616 and VS import 603 / 604: the chip «ΠΡΟΣ ΑΝΑΘΕΣΗ» alone, nothing drawn on the empty side (step 2a/2b)',
+    [19, 20].every((p) => by(p).asg === 'ΠΡΟΣ ΑΝΑΘΕΣΗ' && !by(p).ksp && !by(p).kgap)
+    && [15, 16].every((p) => by(p).asg === 'ΠΡΟΣ ΑΝΑΘΕΣΗ' && !by(p).asp && !by(p).agap),
     [19, 20, 15, 16].map((p) => ({ p, asg: by(p).asg, ksp: by(p).ksp, asp: by(p).asp, kgap: by(p).kgap, agap: by(p).agap })));
   // 4 · temperature as the driver sheet writes it, only where the base has one
   ok(scn, '4 · temperature: «+7 °C» on export 616, «+4 °C» on import 604, none on 603 / 607',
@@ -2546,7 +2548,7 @@ SCN['place-city'] = async (browser, origin) => {
   });
   // the Weekly International point's own line 1 (.wi4-l1: DM Sans 500 12px, ink) — the same size and style
   ok(scn, 'line 1 = the place «Rentis Test» in the Weekly International point style (500 12px ink)', !!pt && pt.l1 === 'Rentis Test' && /^500 12px rgb\(/.test(pt.l1w), pt);
-  ok(scn, 'line 2 = its city first, then the window and the pallets («City 2 · — · 30π»)', !!pt && /^City 2 · — · 30π/.test(pt.l2 || ''), pt && pt.l2);
+  ok(scn, 'line 2 = its city first, then the pallets; a window the board did not send is left out («City 2 · 30π», step 2d)', !!pt && /^City 2 · 30π/.test(pt.l2 || ''), pt && pt.l2);
   ok(scn, 'the client is OFF the row and in the title (place first, client last)', !!pt && !/IFCO/.test(pt.rowText) && /^Rentis Test, City 2 · .* · IFCO SYSTEMS/.test(pt.title || ''), pt && { row: pt.rowText, title: pt.title });
   ok(scn, 'two lines: the point is not four lines tall (≤ 40px)', !!pt && pt.h <= 40, pt && pt.h);
   const qc = await page.evaluate(() => { const c = document.querySelector('#content .wn5 .wn5-qcard[data-piece="15"]'); return c ? { pl: (c.querySelector('.wn5-qc-cl') || {}).textContent, text: c.textContent, title: (c.querySelector('.wn5-qc-l1') || {}).title } : null; });
@@ -3255,9 +3257,66 @@ SCN.truth = async (browser, origin) => {
   });
   ok(scn, '1e an ΑΝΟΔΟΣ with two deliveries and the Veroia end keeps a two-line row (≤ 58px, as the board\'s other rows) — main: 70px, three lines',
     !!e && e.h <= 58, e);
-  ok(scn, '1e its Veroia end is in the «+N» title («Βέροια · ως …»), not a third line under the stops', !!e && !e.endInAto && /Βέροια · ως /.test(e.chip || ''), e);
+  ok(scn, '1e its Veroia end is in the «+N» title («Βέροια · …»), not a third line under the stops', !!e && !e.endInAto && /\nΒέροια · /.test(e.chip || ''), e);
   ok(scn, '1e a client in the town of Veria reads «Βέροια», never «Veria» beside «Βέροια»', !!e && !e.veria, e);
   ok(scn, '1e the chip reads «+1 Β» (one more delivery and Veroia), never a bare «+2» that counts Veroia as a delivery', !!e && /^\+1\s*Β$/.test(e.chipText || ''), e);
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await page.context().close();
+};
+// Step 2 «ηρεμία και σειρά» (coordinator 1/11): the board's hierarchy, judged on the computed page, at 1440.
+SCN.calm = async (browser, origin) => {
+  const scn = 'calm';
+  const b = truthBoard();
+  b.hub.find((h) => h.piece_id === 9101).reference = '2087, 1839, 2103';   // a VS reference that is a list (live W44)
+  const { page, S } = await openBoard(browser, origin, { board: b, plan: { 'GET /plan/lookups': () => [200, truthLookups()] }, viewport: { width: 1440, height: 900 }, sidebar: 'open' });
+  await page.waitForSelector('#content > .wi4.wn5[data-state="ok"]', { timeout: 8000 }).catch(() => {});
+  const v = await page.evaluate(() => {
+    const R = (sel) => [...document.querySelectorAll('#content .wn5 ' + sel)];
+    const cs = (e) => getComputedStyle(e);
+    const wait = R('.wn5-row[data-piece]');
+    const late = (r) => /αργό/.test(r.textContent);
+    const box = (r) => r.querySelector('.wi4-box.un');
+    const chips = R(':is(.wn5-kd, .wn5-ad) .wi4-dc');
+    const looks = new Set(chips.filter((c) => !c.classList.contains('today')).map((c) => cs(c).backgroundColor + '|' + cs(c).borderTopColor + '|' + cs(c).borderTopStyle));
+    const cycGap = R('.wn5-row[data-rt] .wn5-gapbox').map((g) => cs(g).borderTopStyle);
+    const gapPlus = R('.wn5-row[data-rt] .wn5-gpal .wn5-plus').map((x) => cs(x).opacity);
+    const heads = [...document.querySelectorAll('#content .wn5 .wn5-cols > span')].map((x) => x.textContent.trim());
+    const kref = R('.wn5-row[data-piece="9101"] .wn5-kref-t')[0];
+    const cards = R('.wn5-qcard');
+    const ends = R('.wn5-row[data-rt] .wn5-ato > .wn5-end .wi4-l2').map((x) => x.textContent.trim());
+    const gapTxt = R('.wn5-row[data-rt] .wn5-aspan .wn5-gapbox').map((x) => x.textContent.replace(/\s+/g, ' ').trim());
+    const par = R('.wn5-row[data-rt="202"] .wn5-asg .wi4-box')[0];
+    return {
+      un: wait.map((r) => ({ p: r.dataset.piece, late: late(r), dashed: box(r) ? cs(box(r)).borderTopStyle : null, ink: box(r) ? cs(box(r)).color : null,
+        side: !!r.querySelector('.wn5-un-side'), rail: r.classList.contains('wi4-r-red'), gap: !!r.querySelector('.wn5-gapbox, .wn5-none'),
+        idx: (r.querySelector('.wn5-c-idx') || {}).textContent.trim(), ptLate: r.querySelectorAll('.wn5-pt.wn5-late').length,
+        dash: [...r.querySelectorAll('.wn5-fl, .wn5-kto, .wn5-ato, .wn5-afl')].some((c) => /(^|\s|·)—(\s|·|$)/.test(c.textContent)) })),
+      looks: [...looks], todayChips: chips.filter((c) => c.classList.contains('today')).map((c) => cs(c).borderTopColor),
+      cycGap, gapPlus, heads, kref: kref ? { t: kref.textContent.trim(), cut: kref.scrollWidth > kref.clientWidth + 1 } : null,
+      cards: cards.map((c) => ({ t: c.querySelector('.wn5-qc-l1') ? c.querySelector('.wn5-qc-l1').textContent.trim() : '', rail: c.classList.contains('wi4-r-red'),
+        l2: (c.querySelector('.wi4-l2') || {}).textContent })), ends, gapTxt,
+      par: par ? { l2: !!par.querySelector('.wi4-l2'), dash: />—</.test(par.innerHTML) } : null,
+    };
+  });
+  const un = v.un;
+  ok(scn, '2a «ΠΡΟΣ ΑΝΑΘΕΣΗ» is the quiet dashed chip on every waiting row, no «← ΚΑΘΟΔΟΣ» line — main: a 2px solid red box with the side',
+    un.length > 0 && un.every((x) => x.dashed === 'dashed' && !x.side), un);
+  ok(scn, '2a the red rail only on a late load — main: every waiting row red', un.some((x) => !x.late) && un.every((x) => x.rail === x.late), un.map((x) => [x.p, x.late, x.rail]));
+  ok(scn, '2b a waiting row draws nothing on its empty side — main: a dashed «Χωρίς άνοδο» box / «—»', un.every((x) => !x.gap), un.map((x) => [x.p, x.gap]));
+  ok(scn, '2b on a cycle the empty side is text without a box, its «+» hidden until hover — main: dashed boxes, «+» at .45',
+    v.cycGap.length > 0 && v.cycGap.every((st) => st === 'none') && v.gapPlus.length > 0 && v.gapPlus.every((o) => o === '0'), { cycGap: v.cycGap, gapPlus: v.gapPlus });
+  ok(scn, '2c one day-chip look for every day but today, today the blue outline — main: three looks', v.looks.length === 1 && v.todayChips.length > 0, { looks: v.looks, today: v.todayChips });
+  ok(scn, '2d no «—» standing for a missing value in a waiting row\'s cells — main: «Βέροια —», «· — ·»', un.every((x) => !x.dash), un.map((x) => [x.p, x.dash]));
+  ok(scn, '2d a cycle\'s Veroia end at the day\'s end reads the day alone (no «ως … 23:59»)', v.ends.length > 0 && v.ends.every((t) => !/23:59/.test(t)), v.ends);
+  ok(scn, '2e one name for the delivery column of both sides — main: «ΠΑΡΑΔΟΣΗ» / «ΠΡΟΣ»', v.heads.filter((h) => h === 'ΠΑΡΑΔΟΣΗ').length === 2 && !v.heads.includes('ΠΡΟΣ'), v.heads);
+  ok(scn, '2f a waiting VS says «VS» in its number band, its reference list as «2087 +2» uncut — main: empty band, «208…»',
+    un.filter((x) => x.p.startsWith('91')).every((x) => x.idx === 'VS') && !!v.kref && v.kref.t === '2087 +2' && !v.kref.cut, { un: un.map((x) => [x.p, x.idx]), kref: v.kref });
+  ok(scn, '2f the stops of a late waiting VS are not each amber (the row says «αργό» once)', un.every((x) => x.ptLate === 0), un.map((x) => [x.p, x.ptLate]));
+  ok(scn, '2g ΕΠΟΜΕΝΑ cards name a place, never the reference list; no red rail on every card; no «καθυστερεί» / «χωρίς φορτηγό»',
+    v.cards.length > 0 && v.cards.every((c) => !/,/.test(c.t) && !c.rail && !/καθυστερεί|χωρίς φορτηγό/.test(c.l2 || '')), v.cards);
+  ok(scn, '2h «Κενό γύρισμα» names the free day (and an hour only if set), never the delivery again or «23:59» — main: «· ελεύθερο από … · <place>»',
+    v.gapTxt.some((t) => /^Κενό γύρισμα/.test(t)) && v.gapTxt.filter((t) => /^Κενό γύρισμα/.test(t)).every((t) => /^Κενό γύρισμα · ελεύθερο από \S+( \d\d:\d\d)?$/.test(t) && !/23:59/.test(t)), v.gapTxt);
+  ok(scn, '2i the partner tile has no bare «—» under the name — main: «—»', !!v.par && !v.par.l2 && !v.par.dash, v.par);
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
   await page.context().close();
 };
