@@ -9933,6 +9933,9 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5f-c.vro { border-color:var(--wi4-line-2); background:var(--wi4-chip); color:var(--wi4-grey-2); }
 .wn5f-c.nro { background:var(--wi4-chip); color:var(--wi4-grey-1); }
 .wn5f-c.until { border-width:2px; line-height:30px; }
+/* F55: a VS point's day/window opens its stop's day panel — a box that answers a click, never a dead field */
+.wn5f-cbtn { font-family:inherit; text-align:left; cursor:pointer; }
+.wn5f-cbtn:hover, .wn5f-cbtn:focus-visible { border-color:var(--accent); }
 .wn5f-cwin { display:flex; align-items:center; gap:4px; }
 .wn5f-cwin > .wn5f-c { flex:none; width:71px; }
 .wn5f-lf { display:grid; grid-template-columns:minmax(0, 1fr) 128px 100px max-content; gap:12px; align-items:end; }

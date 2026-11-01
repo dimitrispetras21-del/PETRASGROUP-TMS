@@ -1257,8 +1257,66 @@
       + (it._ro ? '<span class="wn5-pl-ro">για την ΑΝΟΔΟ</span>' : '<button type="button" class="wi4-btn sm" data-act="save" data-piece="' + it.piece_id + '">Πρόσθεσε</button>') + '</div>';
   }
   const _cnt = (items) => (items.length > 1 ? ' · ' + items.length : '');
+  // F53 (live 31/10): plan_board lists a waiting load only up to the Friday of the week it was asked for (072
+  // plan_board: nat_ready_day <= week + 6). A trip that runs past that Friday (Fri 30/10 → Sun 1/11) missed a VS of
+  // Sun 1/11 in its «+», while the same «+» from the next week showed it. The list is the trip's own days: the weeks
+  // after the loaded one, up to the trip's last day (its end, its side's stop days), are read once when the «+» opens
+  // and their loads ready by that day join the list. A read that fails is said with its days, never a silent gap.
+  // one week's board for the «+» (F53). No cache across openings: caching waits for the owner (PRIME DIRECTIVE); the
+  // main loader's own check (weekly_natl_v5 render) holds — an answer for another week, or without its lists, is a
+  // failed read, logged and said as such, never «nothing waiting» (code review r3/r4)
+  function _moreWeek(w) {
+    return planFetch('GET', '/plan/board?week=' + w).then((x) => {
+      const bad = !x || typeof x !== 'object' ? 'κενή απάντηση'
+        : x.week !== w ? 'η απάντηση ήταν για άλλη εβδομάδα (' + String(x.week) + ')'
+        : !Array.isArray(x.waiting) || !Array.isArray(x.hub) ? 'η απάντηση ήρθε χωρίς λίστα αναμονής' : null;
+      if (!bad) return x;
+      const e = _clientErr('board_shape', bad);
+      _log(new Error('wn5 plus: board ' + w + ': ' + bad), 'WN5Act plus more');
+      throw e;
+    });
+  }
+  async function _plusMore(st, week) {
+    const have = new Set(_allItems().map((x) => x.piece_id));
+    // one GET per week, each Saturday after the loaded one, side by side; at most 3 (a trip is days long, never weeks):
+    // days past them are said, never dropped in silence (code review)
+    const weeks = [];
+    for (let w = _addDays(week, 7); w <= st.beyond.to; w = _addDays(w, 7)) weeks.push(w);
+    const read = weeks.slice(0, 3);
+    const res = await Promise.allSettled(read.map(_moreWeek));
+    const out = [];
+    let i = 0;
+    // the weeks read in a row from the loaded one: their loads join; the first that failed and every day after it are
+    // the ones said unread (a week read after a failed one is not used, so the line never claims less than it shows)
+    for (; i < res.length && res[i].status === 'fulfilled'; i++) {
+      const b = res[i].value;
+      const items = [...((b && b.waiting) || []).map((x) => Object.assign({ at_hub: false }, x)), ...((b && b.hub) || []).map((x) => Object.assign({ at_hub: true }, x))];
+      for (const it of items) {
+        // its day: the base's ready day, else its window's (a VS without cross-dock has no nat_ready_day, code review)
+        const rd = it.nat_ready_day || _ymdOf(it.load_from) || _ymdOf(it.deliver_from);
+        if (have.has(it.piece_id) || (rd && rd > st.beyond.to)) continue;
+        have.add(it.piece_id);
+        out.push(it);
+      }
+    }
+    st.more = out;
+    if (i < res.length && res[i].reason && res[i].reason._sessionGone) { st.beyond.state = 'ok'; return; }   // the login page takes over
+    if (i < res.length) { st.beyond.state = 'failed'; st.beyond.from = read[i]; st.beyond.err = res[i].reason; }
+    else if (read.length < weeks.length) { st.beyond.state = 'cut'; st.beyond.from = weeks[read.length]; }
+    else st.beyond.state = 'ok';
+  }
+  // F53 (code review r8): the loaded week's groups keep their order and the later weeks' new groups come after them,
+  // so a line read later lands under the ones on screen (a press aimed before the redraw waits, d.settle). ONE group
+  // per head: a VS with pieces on both sides of the week, the stock, the ΑΝΟΔΟΣ requests are never said twice with
+  // half the count (code review r9); inside a group the loaded week's lines come first (the order of `all`)
   function _plusGroups(st) {
-    const all = _copy(_allItems());
+    const loaded = _plusGroupsOf(st, _copy(_allItems()));
+    if (!st.more || !st.more.length) return loaded;
+    const at = new Map(loaded.map((g, i) => [g.head, i]));
+    return _plusGroupsOf(st, _copy(_allItems().concat(st.more)))
+      .map((g, i) => [g, at.has(g.head) ? at.get(g.head) : loaded.length + i]).sort((a, b) => a[1] - b[1]).map((x) => x[0]);
+  }
+  function _plusGroupsOf(st, all) {
     const anodIt = all.filter((it) => !it.is_stock && _sideFor(it) === 'ANODOS');
     const groups = [];
     if (st.side === 'KATHODOS') {
@@ -1307,7 +1365,12 @@
     const st = { rtId: c.rt_id, side, cyc: _copy(c), hub, day: (sd && sd.day) || (r && r.dayKey) || c.date_start,
       pallets: _sidePal(r, side), palUnk: _sideUnk(r, side), veroia: _veroiaOf(r, side), take: {}, hubFrom: '', hubTo: '', q: '', mode: 'wait', groups: [],
       sideStops, sideDays: [...new Set(sideStops.map((s) => s.stop_day || _ymdOf(s.planned_from)).filter(Boolean))],
-      hubWin: hubStop && hubStop.planned_from && hubStop.planned_to ? [hubStop.planned_from, hubStop.planned_to] : null };
+      hubWin: hubStop && hubStop.planned_from && hubStop.planned_to ? [hubStop.planned_from, hubStop.planned_to] : null,
+      more: [], beyond: null };
+    // F53: the trip's last day past the loaded week's Friday → those days are read (_plusMore) once, after the draw
+    const week = (_state().board || {}).week;
+    const lastDay = [c.date_end].concat(st.sideDays).filter(Boolean).sort().pop();
+    if (week && lastDay && lastDay > _addDays(week, 6)) st.beyond = { from: _addDays(week, 7), to: lastDay, state: 'loading', err: null };
     st.groups = _plusGroups(st);
     st.hubStop = !!hubStop;
     st.hubStopDay = _stopDay(hubStop);
@@ -1375,8 +1438,17 @@
             + '<input class="wn5-hm" data-hub="from" placeholder="ΗΗ:ΛΛ" value="' + _esc(st.hubFrom) + '"> – <input class="wn5-hm" data-hub="to" placeholder="ΗΗ:ΛΛ" value="' + _esc(st.hubTo) + '">'
             + '<small>στην ημέρα Βέροιας κάθε φορτίου</small></div>';
         }
-        if (!st.groups.length) h += '<p class="wn5-none">Καμία παράδοση σε αναμονή για αυτό το σκέλος.</p>';
+        // «none» only when every day of the trip was read: a day not read is never said to have nothing (code review r7)
+        if (!st.groups.length && !(st.beyond && st.beyond.state !== 'ok')) h += '<p class="wn5-none">Καμία παράδοση σε αναμονή για αυτό το σκέλος.</p>';
         for (const g of st.groups) h += '<div class="wn5-grp-h">' + _esc(g.head) + (g.chip ? '<span class="wn5-grp-c">' + _esc(g.chip) + '</span>' : '') + '<span class="wn5-grp-s">' + _esc(g.sub) + '</span></div>' + g.items.map((it) => _plusLineHTML(st, it)).join('');
+        // F53: the days after the loaded week: being read, or not read (with the base's words) — never a silent gap;
+        // under the list, so its going away and the lines read later move nothing above it
+        if (st.beyond && st.beyond.state !== 'ok') {
+          const days = _dayShort(st.beyond.from) + (st.beyond.to !== st.beyond.from ? '–' + _dayShort(st.beyond.to) : '');
+          h += st.beyond.state === 'loading' ? '<p class="wn5-grey" data-beyond="loading">Αναμονή ' + _esc(days) + ': φορτώνει…</p>'
+            : '<p class="wn5-miss" data-beyond="' + st.beyond.state + '">Αναμονή ' + _esc(days) + ': δεν διαβάστηκε ('
+              + _esc(st.beyond.state === 'cut' ? 'πάνω από 3 εβδομάδες' : (st.beyond.err && st.beyond.err.message) || 'σφάλμα') + ')</p>';
+        }
         if (!st.groups.some((g) => g.items.some((it) => !it._ro && same(it))) && fIt) h += '<p class="wn5-miss" data-focus-miss>Το φορτίο που έσυρες δεν μπαίνει σε αυτή την πλευρά από εδώ — άνοιξε την «Ανάθεση» της γραμμής του.</p>';
         // Figma 2011:10022 (ΑΝΟΔΟΣ): «ΠΡΟΡΥΘΜΙΣΗ · Άδειες παλέτες · εθνική 1 € · Άνοιγμα» — the T20 form prefilled (Ε-39).
         // Drawn only once the form exists, so no dead line before T20.
@@ -1416,6 +1488,7 @@
         _close(d);
         WN5Form.openOrder({ side, day: st.day, rtId: st.rtId, veroia: sd && sd.veroia ? { from: _t(sd.veroia.from), to: _t(sd.veroia.to) } : undefined, preset: 'empties' });
       } else if (a === 'save') {
+        if (d.settle && performance.now() < d.settle) return;
         const it = byId(_id(b.dataset.piece));
         const req = it && _plusReq(st, it);
         if (req && !req.missing) _send(d, req, 'Προστέθηκε στο σκέλος', { intl: true });
@@ -1436,6 +1509,26 @@
     });
     draw();
     _gate(d);
+    if (st.beyond) {
+      // a throw outside the reads is said as a failed read too, never a «φορτώνει…» that stays (code review r2)
+      const fail = (e) => { _log(e, 'WN5Act plus more'); st.beyond.state = 'failed'; st.beyond.err = e; };
+      _plusMore(st, week).catch(fail).then(() => {
+        if (d.closed) return;
+        // the redraw keeps what was typed (st holds it) and the field the user is in
+        const a = document.activeElement;
+        const sel = a && d.body.contains(a) ? (a.matches('[data-q]') ? '[data-q]' : a.dataset.hub ? '[data-hub="' + a.dataset.hub + '"]'
+          : a.dataset.take ? '[data-take="' + a.dataset.take + '"]' : null) : null;
+        st.groups = _plusGroups(st);
+        if (st.mode !== 'wait') return;
+        const top = [d.body.scrollTop, d.dlg.scrollTop];
+        draw();
+        d.body.scrollTop = top[0]; d.dlg.scrollTop = top[1];
+        // a press aimed before the redraw is not taken for a line it now lands on (code review r8): 400 ms
+        d.settle = performance.now() + 400;
+        const back = sel && d.body.querySelector(sel);
+        if (back) { back.focus(); try { back.setSelectionRange(back.value.length, back.value.length); } catch (_) { /* search inputs */ } }
+      }).catch((e) => _log(e, 'WN5Act plus more draw'));
+    }
     if (fIt) {
       const ln = d.body.querySelector('.wn5-pline.wn5-pfocus');
       if (ln && ln.scrollIntoView) ln.scrollIntoView({ block: 'nearest' });
