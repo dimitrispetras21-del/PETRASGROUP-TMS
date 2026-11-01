@@ -38,7 +38,7 @@
 --           finite number the column holds, else bad_input; written on the cycle's ONE segment after the vehicle, with
 --           its audit row; a cycle with a handover = seg_many as for the vehicle), plan_h_seg_json (+ the key)
 --   PART 3  proofs, NOTICE "089 OK: ..."
--- No row is written by this file. Worker: PLAN_RULE_TEXT.seg_partner_rate_anodos (the CHECK's own words) + the guard
+-- No row is written by this file. Worker: PLAN_CHECK_TEXT.seg_partner_rate_anodos (the CHECK's own words) + the guard
 -- marker, on the chain of #191; the body already reaches plan_rt_update as it is (PATCH /plan/rt).
 -- RUN: 089_plan_partner_rate_anodos_dryrun.sql, then this file, then 089_plan_partner_rate_anodos_verify.sql.
 -- REVERSE: 089_plan_partner_rate_anodos_rollback.sql (the splits are lost - the fees, and so the money, stay; it says
