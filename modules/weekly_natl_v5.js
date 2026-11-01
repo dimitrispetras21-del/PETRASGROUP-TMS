@@ -281,11 +281,13 @@ async function render() {
 // marks stay off (the board itself is whole). Before 092 the answer has no cross_dock_date: no mark, as today.
 function _vsDayKick(board, seq) {
   const idx = new Map();
-  for (const c of board.cycles || []) {
+  // a malformed board is WN5L.model's to refuse (the old board and its banner): nothing here may throw first
+  const arr = (x) => (Array.isArray(x) ? x : []);
+  for (const c of arr(board.cycles)) {
     // every stop with a VS leg; the mark is drawn only beside the stops the model calls Veroia (kath.veroia, end:
     // WN5L's hub rule), so no second hub test lives here
-    for (const s of c.stops || []) {
-      const ids = (s.legs || []).filter((l) => /^vs_/.test(String(l.kind || '')) && l.order_id != null).map((l) => Number(l.order_id));
+    for (const s of arr(c && c.stops)) {
+      const ids = arr(s && s.legs).filter((l) => l && /^vs_/.test(String(l.kind || '')) && l.order_id != null).map((l) => Number(l.order_id));
       if (ids.length) idx.set(Number(s.stop_id), { day: s.stop_day || null, orders: [...new Set(ids)] });
     }
   }
