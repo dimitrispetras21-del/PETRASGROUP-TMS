@@ -330,7 +330,7 @@
   const _min = (iso) => Math.floor(Date.parse(iso) / 60000);
   function _patchBody(orig, st) {
     const set = {};
-    for (const k of ['price', 'reference', 'goods', 'notes', 'temperature_c', 'pallet_exchange', 'direction']) {
+    for (const k of ['client_id', 'price', 'reference', 'goods', 'notes', 'temperature_c', 'pallet_exchange', 'direction']) {
       const v = st[k], o = typeof orig[k] === 'string' ? orig[k].trim() : orig[k];
       if (typeof v === 'number' && !Number.isFinite(v)) continue;
       if (v === undefined || v === null || v === '') {
@@ -920,7 +920,7 @@
       rides: s.rides === true, vs_locked: s.vs_locked === true, waits: s.waits === true, at_hub: s.at_hub === true,
       rt_codes: Array.isArray(s.rt_codes) ? s.rt_codes : [] }));
     return {
-      full: true, nat_order_id: o.nat_order_id, client: o.client || '',
+      full: true, nat_order_id: o.nat_order_id, client: o.client || '', client_id: Number.isSafeInteger(o.client_id) ? o.client_id : null,
       price: o.price == null ? null : Number(o.price), temperature_c: o.temperature_c == null ? null : Number(o.temperature_c),
       pallet_exchange: typeof o.pallet_exchange === 'boolean' ? o.pallet_exchange : null,
       reference: o.reference || '', goods: o.goods || '', notes: o.notes || '', invoiced: o.invoiced === true,
@@ -1019,11 +1019,32 @@
     const p = id == null || typeof PlanIds === 'undefined' ? null : PlanIds.place(id);
     if (p && p.legacy_id && typeof fhPickLinked === 'function') fhPickLinked(k === 'drop' ? row.dataset.po : row.dataset.pd, p.legacy_id, p.name);
   }
+  // F62 (085, owner 31/10): the client is corrected here by every role while the order is not invoiced; an invoiced
+  // order keeps it (the base refuses invoiced_client) and the field says why. The picker holds the client's rec… id
+  // (fhClientSelect), so a client the catalogue cannot name stays shown as text, with the reason, never a blank field.
+  const CLIENT_RO_INVOICED = 'Τιμολογημένη: ο πελάτης δεν αλλάζει';
+  const CLIENT_RO_NO_LIST = 'Ο κατάλογος πελατών δεν φορτώθηκε — ο πελάτης δεν αλλάζει από εδώ· άνοιξε ξανά τη φόρμα';
+  // the catalogue holds live clients only (074a): one that was deleted since is said as such (code review xhigh)
+  const CLIENT_RO_GONE = 'Ο πελάτης της παραγγελίας δεν υπάρχει πια στον κατάλογο πελατών — δεν αλλάζει από εδώ';
+  const _clients = () => { try { return typeof PlanIds !== 'undefined' ? PlanIds.list('client') : []; } catch (_) { return []; } };
+  function _clientCell(f) {
+    const e = f.edit;
+    const all = e.invoiced ? [] : _clients();
+    const hit = e.client_id != null ? all.find((x) => x.id === e.client_id) : null;
+    const rec = hit && hit.legacy_id ? hit.legacy_id : '';
+    if (e.invoiced || !rec) {
+      const why = e.invoiced ? CLIENT_RO_INVOICED : all.length ? CLIENT_RO_GONE : CLIENT_RO_NO_LIST;
+      return `<div class="wn5f-f"><span>Πελάτης</span><span class="wn5f-ro" title="${why}">${_esc(e.client || '—')}</span></div>`;
+    }
+    f.clientRec = rec;
+    const cid = 'wn5c' + (++f.seq);
+    return `<label class="wn5f-f"><span>Πελάτης</span><span data-cpick="${cid}">${fhClientSelect(cid, rec, e.client || '', 'fhClientDrop')}</span></label>`;
+  }
   function _editHTML(f) {
     const e = f.edit;
     const dro = e.riding ? ' disabled' : '';
     return `<div class="wn5f-grid4">`
-      + `<div class="wn5f-f"><span>Πελάτης</span><span class="wn5f-ro">${_esc(e.client || '—')}</span></div>`
+      + _clientCell(f)
       + `<label class="wn5f-f"><span>Τιμή € (χωρίς ΦΠΑ)</span><input class="form-input" data-f="price" inputmode="decimal" value="${e.price == null ? '' : _esc(e.price)}" placeholder="${e.price == null ? 'λείπει' : ''}"${_priceRo(e.invoiced) ? ` disabled title="${PRICE_RO_TITLE}"` : ''}></label>`
       + `<label class="wn5f-f"><span>Θερμοκρασία °C</span><input class="form-input" data-f="temp" inputmode="decimal" value="${e.temperature_c == null ? '' : _esc(e.temperature_c)}"></label>`
       + `<div class="wn5f-f"><span>PE · ανταλλαγή παλετών</span>${_peHTML(e.pallet_exchange)}</div></div>`
@@ -1060,7 +1081,23 @@
         deliver_from: _iso(g('dday'), dw.from), deliver_to: _iso(g('dday'), dw.to) };
     };
     const rec = (pid) => (document.getElementById('lv_' + pid) || {}).value || '';
+    // F62 (code review xhigh): the picker keeps its last pick in lv_ while its text is typed over, so a name typed but
+    // not picked from the list would send the OLD client back in silence. The text must be the picked client's name;
+    // otherwise it is no client ('' → «διάλεξε πελάτη από τη λίστα»). A rec the catalogue cannot name goes on, and
+    // PlanIds.id refuses it at the save with its own words.
+    const sp = (x) => String(x == null ? '' : x).replace(/\s+/g, ' ').trim();
+    const clientRec = (pid) => {
+      const r = rec(pid);
+      if (!r) return '';
+      const hit = r === f.clientRec ? { label: f.edit.client } : _clients().find((x) => x.legacy_id === r);
+      if (!hit) return r;
+      return sp((document.getElementById('ls_' + pid) || {}).value) === sp(hit.label) ? r : '';
+    };
+    const cp = f.el.querySelector('.wn5f-grid4 [data-cpick]');
     return {
+      // F62: the picked client as a rec… id ('' = emptied, or typed and not picked); _saveEdit turns it into the
+      // number (PlanIds)
+      client_rec: cp ? clientRec(cp.dataset.cpick) : undefined,
       price: _num(v('[data-f="price"]')), temperature_c: _num(v('[data-f="temp"]')), reference: v('[data-f="ref"]').trim(),
       goods: v('[data-f="goods"]').trim(), notes: v('[data-f="notes"]').trim(), pallet_exchange: peh === 'yes' ? true : peh === 'no' ? false : null,
       direction: f.edit.riding ? null : (v('[data-f="dir"]') || null),
@@ -1078,6 +1115,7 @@
   // The form's own lines for the points it adds or removes (screen words, never a Worker text)
   function _checkEdit(f, st) {
     const out = [];
+    if (st.client_rec === '') out.push('Πελάτης: διάλεξε πελάτη από τη λίστα');
     // F4 (080): an order may stay without a price; a WRITTEN price is never emptied (072 no_price) — said, never dropped
     // as «no change»
     if (st.price === null) { if (f.edit.price !== null) out.push(PRICE_KEPT); }
@@ -1137,6 +1175,7 @@
     const rows = [...f.el.querySelectorAll('[data-newship]')];
     st.news = st.news.filter((n, i) => _newTouched(rows[i]));
     if (st.news.length || st.removed.length || f.el.querySelector('[data-ship] .wn5f-dayx.bad')) return true;
+    if (st.client_rec !== undefined && st.client_rec !== f.clientRec) return true;
     if (_checkEdit(f, st).length) return true;
     const b = _patchBody(f.edit, st);
     return !!(b.set || b.shipments);
@@ -1151,6 +1190,7 @@
     if (!probs.length) {
       try {
         st.news = st.news.map((s) => Object.assign({}, s, { origin_location_id: PlanIds.id('location', s.origin_rec), dest_location_id: PlanIds.id('location', s.dest_rec) }));
+        if (st.client_rec) st.client_id = PlanIds.id('client', st.client_rec);
       } catch (e) {
         if (typeof PlanError !== 'undefined' && e instanceof PlanError) { _lines(f, idsWhy ? [idsWhy] : []); WN5Act.strip(_strip(f), e); return; }
         throw e;

@@ -230,13 +230,31 @@ test('077: _editFromRead keeps every value (nulls as «empty», never as zero) a
   const e = F._editFromRead({ ok: true, op: 'plan_order_read',
     order: { nat_order_id: 84, client: 'C', price: 100, reference: null, goods: 'G', notes: null, temperature_c: null, pallet_exchange: false, direction: 'KATHODOS', pallets: 6 },
     shipments: [{ shipment_id: 9, origin_location_id: 1, dest_location_id: 2, pallets: 6, load_from: 'a', load_to: 'b', deliver_from: 'c', deliver_to: 'd', vs_locked: false, rides: true, rt_codes: ['RT-1287'] }] });
-  assert.deepStrictEqual(J(e), { full: true, nat_order_id: 84, client: 'C', price: 100, temperature_c: null, pallet_exchange: false, reference: '', goods: 'G', notes: '', invoiced: false,
+  assert.deepStrictEqual(J(e), { full: true, nat_order_id: 84, client: 'C', client_id: null, price: 100, temperature_c: null, pallet_exchange: false, reference: '', goods: 'G', notes: '', invoiced: false,
     direction: 'KATHODOS', riding: true, ships: [{ shipment_id: 9, origin: 1, dest: 2, pallets: 6, load_from: 'a', load_to: 'b', deliver_from: 'c', deliver_to: 'd', rides: true, vs_locked: false, waits: false, at_hub: false, rt_codes: ['RT-1287'] }] });
   // owner 31/10: «invoiced» only when the read says true (the price locks for every role but owner / accountant)
   assert.strictEqual(F._editFromRead({ order: { nat_order_id: 1, invoiced: true }, shipments: [{ shipment_id: 2 }] }).invoiced, true);
   // F4 (080 to come): pallets unknown stay null, never 0
   assert.strictEqual(F._editFromRead({ order: { nat_order_id: 1 }, shipments: [{ shipment_id: 2, pallets: null }] }).ships[0].pallets, null);
   for (const bad of [null, {}, { order: {} }, { order: { nat_order_id: 1 }, shipments: [] }]) assert.strictEqual(F._editFromRead(bad), null, JSON.stringify(bad));
+});
+
+// F62 (085, owner 31/10): the edit form corrects the client while the order is not invoiced. The read's client_id and
+// invoiced are kept as they are (an id that is no safe integer is «unknown», never a number made up); the body sends
+// client_id only when it changed, never as null (a client is never «emptied»).
+test('F62: _editFromRead keeps client_id and invoiced; _patchBody sends client_id only when it changed, never null', () => {
+  const read = (o) => F._editFromRead({ order: Object.assign({ nat_order_id: 1 }, o), shipments: [{ shipment_id: 2 }] });
+  assert.strictEqual(read({ client_id: 580 }).client_id, 580);
+  assert.strictEqual(read({ client_id: '580' }).client_id, null);
+  assert.strictEqual(read({}).invoiced, false);
+  assert.strictEqual(read({ invoiced: true }).invoiced, true);
+  assert.strictEqual(read({ invoiced: 'true' }).invoiced, false, 'only a real true locks');
+  const orig = { full: true, client_id: 580, price: 310, ships: [] };
+  const same = { client_id: 580, price: 310, ships: [], removed: [], news: [] };
+  assert.deepStrictEqual(J(F._patchBody(orig, same)), {});
+  assert.deepStrictEqual(J(F._patchBody(orig, { ...same, client_id: 775 })), { set: { client_id: 775 } });
+  assert.deepStrictEqual(J(F._patchBody(orig, { ...same, client_id: undefined })), {}, 'the field not shown: nothing sent');
+  assert.deepStrictEqual(J(F._patchBody(orig, { ...same, client_id: null })), {}, 'never «emptied»');
 });
 
 test('077: with the order\'s own values (full) an emptied field is null on purpose; the price, PE and side never', () => {
