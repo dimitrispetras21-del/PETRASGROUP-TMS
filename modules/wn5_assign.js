@@ -53,7 +53,7 @@
     const st = { mode: vehicle ? 'vehicle' : (ctx.pick ? 'pick' : 'legs'), side: ctx.side === 'ANODOS' ? 'ANODOS' : 'KATHODOS', day: ctx.day || null,
       group: null, pieces: null, items: [], needs: [], pallets: 0, palUnk: 0, focus: k.id(ctx.focus), only: false,
       who: null, truck: null, trailer: null, driver: null, partner: null, rateTxt: '', typed: { tk: '', tl: '', dr: '', pt: '' },
-      split: false, rate2Txt: '', rate0: '', rate20: '', an0: null, total: null, rateSide: null,
+      split: false, rate2Txt: '', rate0: '', rate20: '', an0: null, fee0: null, total: null, rateSide: null,
       win: {}, opt: null, sugg: {}, rtId: k.id(ctx.rtId), cur: null, hub: ctx.hub ? k.copy(ctx.hub) : null, week: null, cycles: [], sidePal: {}, ref: '', err: null };
     const b = k.state().board || {};
     st.week = b.week || null;
@@ -91,8 +91,10 @@
     return st;
   }
   // 089 (rule 6): two fields when the trip has both sides and ONE vehicle (with a handover each segment has its own fee,
-  // «Αλλαγή οχήματος…»). Prefilled from the base: ΚΑΘΟΔΟΥ = fee − part, ΑΝΟΔΟΥ = part. A fee with no part (a trip that
-  // got its second side later) prefills nothing — which side the fee was is not known — and shows the fee as «σύνολο».
+  // «Αλλαγή οχήματος…»), and only once 089 runs: its plan_h_seg_json names partner_rate_anodos on every segment (null
+  // included). Before it the key is absent and the form keeps one field (the base would refuse the key: bad_input).
+  // Prefilled from the base: ΚΑΘΟΔΟΥ = fee − part, ΑΝΟΔΟΥ = part. A fee with no part (a trip that got its second side
+  // later) prefills nothing — which side the fee was is not known — and shows the fee as «σύνολο».
   const _r2 = (n) => Math.round(n * 100) / 100;
   const _eur = (n) => String(_r2(Number(n))).replace('.', ',');
   function _splitOf(st, c) {
@@ -100,11 +102,11 @@
     const segs = c.segments || [];
     // one side: the one field is named by the trip's own side (a vehicle form has no side of its own)
     if (sides.size === 1) st.rateSide = [...sides][0];
-    if (!(sides.has('KATHODOS') && sides.has('ANODOS')) || segs.length > 1) return;
+    if (!(sides.has('KATHODOS') && sides.has('ANODOS')) || segs.length > 1 || !segs[0] || !('partner_rate_anodos' in segs[0])) return;
     st.split = true;
     const fee = c.trip_type === 'PARTNER' && c.partner_rate != null ? Number(c.partner_rate) : null;
     const an = c.trip_type === 'PARTNER' && segs[0] && segs[0].partner_rate_anodos != null ? Number(segs[0].partner_rate_anodos) : null;
-    st.an0 = an;
+    st.an0 = an; st.fee0 = fee;
     if (fee !== null && an !== null) { st.rateTxt = String(_r2(fee - an)); st.rate2Txt = String(an); }
     else { st.rateTxt = ''; st.rate2Txt = ''; st.total = fee; }
     st.rate0 = st.rateTxt; st.rate20 = st.rate2Txt;
@@ -114,9 +116,19 @@
   function _split(st) {
     const k = K(), a = k.rate(st.rateTxt), b = k.rate(st.rate2Txt);
     if (!a.ok || !b.ok) return { ok: false };
-    if (b.v !== null && a.v === null) return { ok: false, needK: true };
+    if (b.v !== null && a.v === null) return { ok: false };
     if (a.v === null && b.v === null && st.rateTxt === st.rate0 && st.rate2Txt === st.rate20) return { ok: true, keys: {} };
     return { ok: true, keys: { partner_rate: a.v === null ? null : _r2(a.v + (b.v || 0)), partner_rate_anodos: b.v } };
+  }
+  // beside the ΚΑΘΟΔΟΥ: the fee the P&L reads when the save changes it («σύνολο 700 → 400 €»: an empty ΑΝΟΔΟΥ lowers it,
+  // said before the press), or the fee with no part while nothing is typed («σύνολο 700 €»); nothing otherwise
+  function _sumAv(st) {
+    if (!st.split) return '';
+    const s = _split(st);
+    if (s.ok && 'partner_rate' in s.keys && st.fee0 !== null && s.keys.partner_rate !== st.fee0) {
+      return 'σύνολο ' + _eur(st.fee0) + ' → ' + (s.keys.partner_rate === null ? '—' : _eur(s.keys.partner_rate)) + ' €';
+    }
+    return st.total !== null && !st.rateTxt && !st.rate2Txt ? 'σύνολο ' + _eur(st.total) + ' €' : '';
   }
   // the pieces the request carries: the whole group, or the pressed piece alone («μόνο αυτές οι παλέτες», F42)
   function _sel(st) { return st.only && st.focus ? st.items.filter((it) => it.piece_id === st.focus) : st.items; }
@@ -478,7 +490,7 @@
     const rateVal = joinPar ? (tg.cyc.partner_rate == null ? '' : String(tg.cyc.partner_rate)) : st.rateTxt;
     // 089: the second field and the «σύνολο» of a fee with no part (rule 6)
     const rateSide = st.split ? 'KATHODOS' : (st.rateSide || st.side);
-    const rateAv = rateBad || (st.split && st.total !== null && !st.rateTxt && !st.rate2Txt ? 'σύνολο ' + _eur(st.total) + ' €' : '');
+    const rateAv = rateBad || _sumAv(st);
     const bad2 = pb.fields.rate2, av2 = bad2 || pb.soft.rate2 || '';
     h += '<div class="wn5a-sec"><div class="wi-pop-section-lbl">ΣΥΝΕΡΓΑΤΗΣ</div><div class="wi-pop-row">' + _fieldHTML(st, 'pt', pb)
       + '<div class="wi-pop-field wn5a-f wn5a-rate' + (rateBad ? ' wn5a-bad' : '') + '" data-f="rate"><span class="wi-pop-lbl">Κόμιστρο ' + (rateSide === 'ANODOS' ? 'ΑΝΟΔΟΥ' : 'ΚΑΘΟΔΟΥ') + ' €</span>'
@@ -686,7 +698,7 @@
           if (!f) continue;
           f.classList.toggle('wn5a-bad', !!pb.fields[key]);
           const av = f.querySelector('.wn5a-av');
-          av.textContent = key === 'rate' && !msg && st.split && st.total !== null && !st.rateTxt && !st.rate2Txt ? 'σύνολο ' + _eur(st.total) + ' €' : msg;
+          av.textContent = msg || (key === 'rate' ? _sumAv(st) : '');
           av.classList.toggle('bad', !!msg);
         }
         d.refresh(); return;

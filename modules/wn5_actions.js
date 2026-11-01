@@ -762,7 +762,9 @@
   // 089 (P-7): a partner trip with a ΚΑΘΟΔΟΣ and an ΑΝΟΔΟΣ and one vehicle has two fees: the base keeps the whole fee
   // (partner_rate) and the ΑΝΟΔΟΥ part (its segment's partner_rate_anodos). No part on such a trip = «κόμιστρο ΑΝΟΔΟΥ
   // λείπει» (never 0, never silent - coordinator 1/11); it is typed in the trip's own «Ανάθεση» (wn5_assign.js rule 6).
-  const _bothSides = (c) => { const s = new Set((c.stops || []).map((x) => x.side)); return s.has('KATHODOS') && s.has('ANODOS') && (c.segments || []).length <= 1; };
+  // only once 089 runs: its segments name partner_rate_anodos (null included); before it nothing changes here
+  const _bothSides = (c) => { const s = new Set((c.stops || []).map((x) => x.side)); const g = c.segments || [];
+    return s.has('KATHODOS') && s.has('ANODOS') && g.length === 1 && 'partner_rate_anodos' in g[0]; };
   const _partOf = (c) => { const g = (c.segments || [])[0]; return g && g.partner_rate_anodos != null ? Number(g.partner_rate_anodos) : null; };
   const _partMissing = (c) => c.trip_type === 'PARTNER' && c.partner_rate != null && _bothSides(c) && _partOf(c) === null;
   const _feeText = (c) => {

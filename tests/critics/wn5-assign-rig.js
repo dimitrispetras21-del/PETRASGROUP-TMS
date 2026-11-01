@@ -234,6 +234,17 @@ function partnerBoard(part) {
   }
   return b;
 }
+// the Δ1 list («Μεταφορά σε…») of a piece on an own trip of Mon 12/10: the partner trip 101 is a candidate
+function delta1Board(part) {
+  const b = partnerBoard(part);
+  const NX = { nat_order_id: 3901, reference: 'N-T901', client_id: 41, client: 'ΠΕΛΑΤΗΣ Α', temperature_c: 4 };
+  b.cycles.push({ rt_id: 103, code: 'RT-T103', trip_type: 'OWNED', truck_id: 13, truck: 'TST-2106', trailer_id: null, trailer: null,
+    driver_id: 33, driver: 'Driver Test 03', partner_id: null, partner: null, partner_rate: null, start_at: '2026-10-12T16:00:00+03:00',
+    end_at: '2026-10-13T09:00:00+03:00', date_start: '2026-10-12', date_end: '2026-10-13', ended: false,
+    stops: [K.stop(1201, 1, 'KATHODOS', 1, '2026-10-12T16:00:00+03:00', '2026-10-12T18:00:00+03:00', [K.leg(5901, 4901, 'load', 5, NX)]),
+      K.stop(1202, 2, 'KATHODOS', 4, '2026-10-13T07:00:00+03:00', '2026-10-13T09:00:00+03:00', [K.leg(5901, 4901, 'unload', 5, NX)])] });
+  return b;
+}
 async function rate2({ browser, origin, ok, scn, shots }) {
   const open = async (part, rt) => {
     const app = await K.openApp(browser, origin, { board: partnerBoard(part), plan: { ['PATCH /plan/rt/' + rt]: async () => OK('plan_rt_update') } });
@@ -265,6 +276,8 @@ async function rate2({ browser, origin, ok, scn, shots }) {
   a1 = await field(page, 'rate2');
   f = await foot(page);
   ok(scn, 'empty ΑΝΟΔΟΥ: «λείπει» beside it, nothing in «Λείπει:», save on', /λείπει/.test(a1.av) && !f.miss && !f.off, { a1, f });
+  k1 = await field(page, 'rate');
+  ok(scn, 'the fee the P&L reads changes and it is said before the press: «σύνολο 700 → 400 €» under ΚΑΘΟΔΟΥ, not red', k1.av === 'σύνολο 700 → 400 €' && !k1.bad, k1);
   await page.click(`${DLG} [data-act="save"]`);
   await page.waitForTimeout(500);
   w = saves(S);
@@ -294,6 +307,33 @@ async function rate2({ browser, origin, ok, scn, shots }) {
   const t = await dlgText(page);
   ok(scn, 'no jargon', !jargon(t).length, t);
   await page.context().close();
+  // before 089 runs (the segments do not name partner_rate_anodos): one field, the body as before (never the new key)
+  const pre = partnerBoard(null);
+  for (const c of pre.cycles) for (const g of c.segments) delete g.partner_rate_anodos;
+  ({ page, S } = await (async () => {
+    const app = await K.openApp(browser, origin, { board: pre, plan: { 'PATCH /plan/rt/101': async () => OK('plan_rt_update') } });
+    await app.page.evaluate(() => WN5Act.assign(null, { entry: 'menu', rtId: 101 }));
+    await app.page.waitForSelector(DLG, { timeout: 4000 });
+    return app;
+  })());
+  k1 = await field(page, 'rate');
+  ok(scn, 'before 089: one field (the fee 700), no ΑΝΟΔΟΥ field', k1 && k1.val === '700' && !(await field(page, 'rate2')), k1);
+  await page.fill(`${DLG} [data-rate]`, '720');
+  await page.click(`${DLG} [data-act="save"]`);
+  await page.waitForTimeout(500);
+  w = saves(S);
+  ok(scn, 'before 089: {partner_rate 720}, no partner_rate_anodos key (the base would refuse it)', w.length === 1
+    && JSON.stringify(w[0].body) === JSON.stringify({ set: { trip_type: 'PARTNER', partner_id: 51, partner_rate: 720 } }), w.map((x) => x.raw));
+  await page.context().close();
+  // the Δ1 list («Μεταφορά σε…»): the partner trip with both sides says both fees, or «κόμιστρο ΑΝΟΔΟΥ λείπει»
+  for (const [part, want, flag] of [[300, 'ΚΑΘΟΔΟΥ 400 € · ΑΝΟΔΟΥ 300 €', false], [null, 'κόμιστρο 700 €', true]]) {
+    const app = await K.openApp(browser, origin, { board: delta1Board(part) });
+    await app.page.evaluate(() => { WN5Act.move({ piece_ids: [4901], rt_id: 103 }, {}); });
+    await app.page.waitForTimeout(400);
+    const row = await app.page.evaluate(() => { const b = document.querySelector('.wi4-dlg[data-wn5="move"] [data-cand="rt:101"]'); const r = b && b.closest('.wn5-cand, li, div'); return r ? r.parentElement.textContent.replace(/\s+/g, ' ') : null; });
+    ok(scn, 'Δ1: ' + want + (flag ? ' + «κόμιστρο ΑΝΟΔΟΥ λείπει»' : ', no flag'), row !== null && row.includes(want) && row.includes('κόμιστρο ΑΝΟΔΟΥ λείπει') === flag, row);
+    await app.page.context().close();
+  }
   // one side (ΑΝΟΔΟΣ only, as the 4 live partner trips of 1/11): one field, «Κόμιστρο ΑΝΟΔΟΥ €», the fee as before
   ({ page, S } = await open(null, 102));
   k1 = await field(page, 'rate');
