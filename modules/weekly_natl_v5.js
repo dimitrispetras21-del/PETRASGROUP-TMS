@@ -939,8 +939,10 @@ function _anodHTML(r, m, ok) {
   // a waiting load of the ΑΝΟΔΟΣ only: its late mark is this day chip (the ΚΑΘΟΔΟΣ chip carries it otherwise)
   const lateA = r.kind === 'unassigned' && r.late && !r.kath;
   return `<div class="wn5-ad">${_prtHTML(r, 'ANODOS')}${lateA ? `<span class="wi4-dc red" title="αργό">${_esc(_dl(s.day))}</span>` : _chipHTML(r, 'ANODOS', `wi4-dc ${_chipCls(s.day, m.today)}${hd}`, _dl(s.day))}</div>`
-    + `<div class="wn5-afl"${_legAttr(r, 'ANODOS')}>${_ptsHTML(s.from, ok)}</div>`
-    + `<div class="wn5-ato${_hx(r, s, r.end)}"${_legAttr(r, 'ANODOS')}>${_hxHTML(r, s, r.end)}${_ptsHTML(s.to, ok)}${end}</div>`
+    // ΑΝΟΔΟΣ: one point whole, the rest «+N» (owner 1/11): two points shared 55% / 45% of the side and both were cut
+    // («EFTHIMIOS PAN. – KORI…», «13π · +…»); the «+N» names them all in its title, a late one never folded first
+    + `<div class="wn5-afl"${_legAttr(r, 'ANODOS')}>${_ptsHTML(s.from, ok, null, false, 1)}</div>`
+    + `<div class="wn5-ato${_hx(r, s, r.end)}"${_legAttr(r, 'ANODOS')}>${_hxHTML(r, s, r.end)}${_ptsHTML(s.to, ok, null, false, 1)}${end}</div>`
     + `<div class="wn5-apal"${_legAttr(r, 'ANODOS')}>${_palHTML(s)}${_plusHTML(r, 'ANODOS')}</div>`;
 }
 // ΦΟΡΤΩΣΗ of ΚΑΘΟΔΟΣ: «Βέροια» and its window stay together (owner 25/10); a loading the cycle makes BEFORE Veroia
@@ -959,10 +961,10 @@ function _flHTML(s, ok, hd, vsRef) {
 }
 // start (a number) = number the points from it, boxes always shown (a cell that also has «Βέροια»); else WN5L's n and
 // no box on a lone point (wi4 rule 6). Every point is place + city (owner 28/10), so no cell is «place only» any more.
-function _ptsHTML(pts, ok, start, inl) {
+function _ptsHTML(pts, ok, start, inl, max) {
   if (!pts.length) return '';
   const num = start == null ? (p) => (pts.length === 1 ? null : p.n) : (p, i) => start + i;
-  const vis = _visPts();
+  const vis = max != null ? Math.min(max, _visPts()) : _visPts();
   // «Ποτέ σβηστό ό,τι θέλει δουλειά» (rule 2036:7735): a late stop is never folded into «+N» while a slot holds an
   // on-time one — at ≤1600 (one slot) RT-T104's late 2nd stop would otherwise vanish into a grey «+1». The late ones
   // take the slots first; the shown and the folded keep the base's order and their own numbers.
