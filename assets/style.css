@@ -9847,6 +9847,8 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5f select.form-input:disabled { background-image:none; }
 /* the window column hugs its label (179 in Figma 2011:9645) over the 159 of its two fields, so «Φορτηγό» gets 361 */
 .wn5f-head { display:grid; grid-template-columns:230px 150px max-content minmax(0, 1fr); gap:12px; align-items:end; }
+/* F2: the Veroia day / arrival of an ΑΝΟΔΟΣ that does not go to Veroia — not asked, its place kept (no jump) */
+.wn5f-head > .wn5f-f.off { visibility:hidden; }
 .wn5f-grid4 { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:12px; align-items:end; }
 .wn5f-grid3 { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:12px; }
 .wn5f-ro { height:34px; display:flex; align-items:center; padding:0 10px; box-sizing:border-box; border:1px solid var(--wi4-ctl); border-radius:6px; background:var(--wi4-chip); font-size:13px; color:var(--wi4-grey-1); }

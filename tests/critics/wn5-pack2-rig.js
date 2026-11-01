@@ -2,7 +2,7 @@
 // point on the same truck, B-22 (PE «Όχι»), the invoice price for owner / accountant only. Judged by what reached the
 // fake /plan/* (S.plan: method, path, raw body, order — «the table» of this rig) and by the DOM; never by a toast or a
 // screenshot. Synthetic data only (public repo).
-// Usage: node tests/critics/wn5-pack2-rig.js [menu delpt half delwait listdel drag day newpt newanod price f64 f65 f63 b22] [--shots <dir>]
+// Usage: node tests/critics/wn5-pack2-rig.js [menu delpt half delwait listdel drag day newpt newanod price f64 f65 f63 b22 pr3b] [--shots <dir>]
 //        WN5_TREE=<git archive origin/main> node tests/critics/wn5-pack2-rig.js   (plain-main proof: NO-GO, exit 1)
 // Exit: 0 green · 1 a check failed · 2 unknown scenario.
 'use strict';
@@ -296,7 +296,9 @@ async function newanod({ browser, origin, ok, scn }) {
     client_id: 43, client: 'ΠΕΛΑΤΗΣ Γ', reference: 'N-T002', temperature_c: 4, pallet_exchange: false, direction: 'ANODOS',
     load_from: '2026-10-12T21:00:00+00:00', load_to: '2026-10-13T20:59:00+00:00', deliver_from: '2026-10-12T21:00:00+00:00', deliver_to: '2026-10-13T20:59:00+00:00', price: 120 });
   let n = 0;
-  const plan = { 'POST /plan/legs': () => (++n === 1 ? [200, { ok: true, op: 'plan_put_pieces', dry_run: false, ids: {}, warnings: [{ code: 'over_33', rt_id: 101, side: 'ANODOS', pallets: 34 }], notice_ids: [] }]
+  // 1/11: over_33 is quiet after a save (owner: only the row's pallet figure says it, WN5Act.savedWarnings), so the
+  // answer carries a second warning that is still said — the check is now «the others in the form's host, over_33 not»
+  const plan = { 'POST /plan/legs': () => (++n === 1 ? [200, { ok: true, op: 'plan_put_pieces', dry_run: false, ids: {}, warnings: [{ code: 'over_33', rt_id: 101, side: 'ANODOS', pallets: 34 }, { code: 'mixed_temp', side: 'ANODOS', delta_c: 4 }], notice_ids: [] }]
     : K.planErr(422, 'PLAN_RULE', 'plan_unknown')) };
   const { page, S } = await K.openApp(browser, origin, { board: b, plan });
   const r1 = await page.evaluate(() => { const h = document.createElement('div'); h.id = 'rig-host'; document.body.appendChild(h);
@@ -305,7 +307,9 @@ async function newanod({ browser, origin, ok, scn }) {
   const lar = x && (x.body.stops || []).find((s) => s.location_id === 4);
   ok(scn, 'onto rt 101 ΑΝΟΔΟΣ; Larisa starts when the last PICKUP ends (14:00), not after the Veroia end (22:00)', !!x && JSON.stringify(x.body.target) === '{"rt_id":101,"side":"ANODOS"}'
     && !!lar && Date.parse(lar.planned_from) === Date.parse('2026-10-13T14:00:00+03:00') && (x.body.stops || []).some((s) => s.stop_id === 1005), x && x.body);
-  ok(scn, 'its warning (over_33) in the host it was given, the form\'s', !!r1 && r1.ok && await K.count(page, '#rig-host .wn5-strip[data-kind="warning"]') === 1, r1);
+  const wt = await K.text(page, '#rig-host .wn5-strip[data-kind="warning"]');
+  ok(scn, 'its warning (mixed_temp) in the host it was given, the form\'s; over_33 not there (1/11: on the row only)', !!r1 && r1.ok && await K.count(page, '#rig-host .wn5-strip[data-kind="warning"]') === 1
+    && /Μεικτές θερμοκρασίες/.test(wt) && !/Υπέρβαση/.test(wt), [r1, wt]);
   const r2 = await page.evaluate(() => WN5Edit.putNew({ natOrderId: 3002, shipmentIds: [5302], host: document.getElementById('rig-host') }).then((x) => x && { ok: x.ok, text: x.text }));
   ok(scn, 'a lost answer (plan_unknown) → «μπορεί να έγινε», never «έμεινε ΠΡΟΣ ΑΝΑΘΕΣΗ»', !!r2 && !r2.ok && /μπορεί να έγινε/.test(r2.text || '')
     && !/έμεινε ΠΡΟΣ ΑΝΑΘΕΣΗ/.test(await K.text(page, '#rig-host')), [r2, await K.text(page, '#rig-host')]);
@@ -431,5 +435,83 @@ async function b22({ browser, origin, ok, scn }) {
   await page.context().close();
 }
 
-K.run({ scenarios: { menu, delpt, half, delwait, listdel, drag, day, newpt, newanod, price, f64, f65, f63, b22 }, globals: ['WN5Act', 'WN5Form', 'WN5Edit'],
+// 14 · third PR, group B (owner via coordinator 1/11): one Veroia default in «+», over_33 quiet after a save, F48 (the
+// search of «Μεταφορά σε…» narrows the partners), F65 (a six-week month in the day panel needs no scroll). Each check
+// names what plain c533d04e does.
+async function pr3b({ browser, origin, ok, scn, shots }) {
+  { // «+» of RT-T102's ΚΑΘΟΔΟΣ (no Veroia stop there) with a VS standing at Veroia: the empty Veroia window is «όλη η ημέρα»
+    const b = K.week();
+    b.hub = [{ piece_id: 4201, shipment_id: 5301, kind: 'vs_import', order_id: 2201, nat_order_id: null, order_stop_id: null, reference: 'VS-T201', client_id: 42, client: 'ΠΕΛΑΤΗΣ Β',
+      temperature_c: 2, is_stock: false, leave_by: null, overdue: false, inbound_rt_id: null, for_split: false, pallet_exchange: false, price: null, pallets: 12,
+      position_location_id: 1, nat_from_location_id: 1, nat_to_location_id: 4, nat_ready_day: '2026-10-14', nat_due_day: '2026-10-15',
+      load_from: null, load_to: null, deliver_from: null, deliver_to: null }];
+    const plan = { 'POST /plan/legs': () => [200, { ok: true, op: 'plan_put_pieces', dry_run: false, ids: { rt_id: 102 }, warnings: [], notice_ids: [] }] };
+    const { page, S } = await K.openApp(browser, origin, { board: b, plan, viewport: { width: 1440, height: 900 } });
+    await page.evaluate(() => WN5Act.plus(102, 'KATHODOS', document.querySelector('#content .wn5-row[data-rt="102"]')));
+    await page.waitForSelector(dlg('plus'), { timeout: 6000 }).catch(() => {});
+    const w = await page.evaluate((D) => { const h = document.querySelector(`${D} .wn5-hubwin`); const sv = document.querySelector(`${D} .wn5-pline[data-piece="4201"] [data-act="save"]`);
+      return h ? { t: h.textContent.replace(/\s+/g, ' ').trim(), v: [...h.querySelectorAll('input')].map((i) => i.value), on: !!sv && !sv.disabled } : null; }, dlg('plus'));
+    ok(scn, 'one default · «+»: the Veroia fields empty say «κενό: όλη η ημέρα», no «*», and «Πρόσθεσε» is on — main: «*» and the save off until hours are typed',
+      !!w && /κενό: όλη η ημέρα/.test(w.t) && !/\*/.test(w.t) && w.v.join('|') === '|' && w.on, w);
+    await page.click(`${dlg('plus')} .wn5-pline[data-piece="4201"] [data-act="save"]`).catch(() => {});
+    await page.waitForTimeout(900);
+    const x = K.planOf(S, 'POST', '/plan/legs')[0], h = x && (x.body.stops || []).find((st) => st.location_id === 1);
+    ok(scn, 'one default · POST /plan/legs: the new Veroia stop is the VS\'s Veroia day, Wed 14/10 00:00–23:59', !!h && ATH(h.planned_from) === ATH('2026-10-14T00:00:00+03:00')
+      && ATH(h.planned_to) === ATH('2026-10-14T23:59:00+03:00'), x && x.body);
+    ok(scn, 'no page errors (plus)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // over_33 after a save (owner 1/11): «+» of TST-2104's ΚΑΘΟΔΟΣ → «Πρόσθεσε» N-T101, the answer says over_33
+    const plan = { 'POST /plan/legs': () => [200, { ok: true, op: 'plan_put_pieces', dry_run: false, ids: { leg_ids: [5005], rt_id: 101 }, warnings: [{ code: 'over_33', rt_id: 101, side: 'KATHODOS', pallets: 35 }], notice_ids: [] }] };
+    const { page, S } = await K.openApp(browser, origin, { plan, viewport: { width: 1440, height: 900 } });
+    await page.evaluate(() => document.querySelector('#content .wn5-row[data-rt="101"] [data-act="plus"][data-side="KATHODOS"]').click()).catch((e) => S.pageErrors.push('plus: ' + e.message));
+    await page.waitForSelector(dlg('plus'), { timeout: 6000 }).catch(() => {});
+    await page.click(`${dlg('plus')} .wn5-pline[data-piece="4101"] [data-act="save"]`).catch(() => {});
+    await page.waitForTimeout(900);
+    const strip = await K.text(page, '#content .wn5 .wn5-acthost');
+    const tl = await toasts(page);
+    ok(scn, 'over_33 after the save: no «Υπέρβαση … — αποθηκεύτηκε» above the board, the toast says the save — main: the strip',
+      K.planOf(S, 'POST', '/plan/legs').length === 1 && !/Υπέρβαση/.test(strip) && tl.some((t) => /Προστέθηκε/.test(t)), { strip, tl });
+    ok(scn, 'no page errors (over_33)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // F48 · «Μεταφορά σε…» of N-T001's Aspropyrgos delivery: the search narrows the partners' list too
+    const lk = K.clone(K.LOOKUPS);
+    lk.partners = [{ id: 51, legacy_id: 'recWn5Par51', company_name: 'Partner Test 01', active: true }, { id: 52, legacy_id: 'recWn5Par52', company_name: 'Pelagos Test', active: true },
+      { id: 53, legacy_id: 'recWn5Par53', company_name: 'Alpha Cargo Test', active: true }];
+    const { page, S } = await K.openApp(browser, origin, { lookups: lk, viewport: { width: 1440, height: 900 } });
+    await page.evaluate(() => WN5Act.move({ rt_id: 101, piece_ids: [4002] }));
+    await page.waitForSelector(`${dlg('move')} [data-q]`, { timeout: 6000 }).catch(() => {});
+    await page.fill(`${dlg('move')} [data-q]`, 'pelag').catch(() => {});
+    await page.waitForTimeout(200);
+    const sel = `${dlg('move')} select[data-partner]`;
+    const live = await page.$eval(sel, (s) => [...s.options].filter((o) => o.value && !o.disabled).map((o) => o.text)).catch(() => null);
+    await page.click(`${dlg('move')} .wn5-cand[data-line="partner"] .fh-cb-input`).catch(() => {});
+    const list = await page.$$eval(`${dlg('move')} .wn5-cand[data-line="partner"] .fh-cb-opt`, (xs) => xs.map((x) => x.textContent)).catch(() => null);
+    ok(scn, 'F48 · «pelag» in the search: the partner list holds Pelagos Test only — main: all three', JSON.stringify(live) === '["Pelagos Test"]' && JSON.stringify(list) === '["Pelagos Test"]', { live, list });
+    await page.fill(`${dlg('move')} [data-q]`, '').catch(() => {});   // not Esc: the window's own Esc closes the window
+    const all = await page.$eval(sel, (s) => [...s.options].filter((o) => o.value && !o.disabled).length).catch(() => null);
+    ok(scn, 'F48 · the search emptied: all three partners again', all === 3, all);
+    ok(scn, 'no page errors (move)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // F65 · the one-stop day panel opened from a row low on a 1440×900 window, moved to November (six weeks)
+    const { page, S } = await K.openApp(browser, origin, { board: week2(), viewport: { width: 1440, height: 900 } });
+    await page.evaluate(() => { const a = document.createElement('div'); a.id = 'rig-anchor'; a.style.cssText = 'position:fixed;left:400px;top:560px;width:20px;height:40px'; document.body.appendChild(a);
+      WN5Act.datePanel(101, 'KATHODOS', a, { stopId: 1002 }); });
+    await page.waitForSelector(dlg('date'), { timeout: 6000 }).catch(() => {});
+    await page.click(`${dlg('date')} [data-act="mon"][data-d="1"]`).catch(() => {});
+    await page.waitForTimeout(300);
+    const v = await page.evaluate((D) => { const dd = document.querySelector(D), r = dd.getBoundingClientRect(), a = document.getElementById('rig-anchor').getBoundingClientRect();
+      const t = dd.querySelector('.wn5-hubwin [data-win="to"]'), tr = t && t.getBoundingClientRect();
+      return { scrolls: dd.scrollHeight > dd.clientHeight, fieldsIn: !!tr && tr.bottom <= r.bottom && tr.top >= r.top, covers: r.bottom > a.top && r.top < a.bottom, month: dd.querySelector('.wn5-cal-h span').textContent }; }, dlg('date'));
+    ok(scn, 'F65 · November 2026 (six weeks), the row low on the window: no scroll, the time fields in view, the row not covered — main: it scrolls',
+      !v.scrolls && v.fieldsIn && !v.covers && /Νοέμβριος/.test(v.month), v);
+    await shot(page, shots, 'pack2-pr3b-f65-november-low-1440x900');
+    ok(scn, 'no page errors (f65)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+}
+
+K.run({ scenarios: { menu, delpt, half, delwait, listdel, drag, day, newpt, newanod, price, f64, f65, f63, b22, pr3b }, globals: ['WN5Act', 'WN5Form', 'WN5Edit'],
   go: 'board pack 2: delete from the board, drag to truck / day, new point on its truck, B-22, price roles' });
