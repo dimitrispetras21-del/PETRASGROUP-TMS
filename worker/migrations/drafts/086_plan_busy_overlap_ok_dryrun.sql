@@ -184,6 +184,12 @@ declare s rt_vehicle_segments%rowtype; v_code text; v_rule text;
 begin
   select * into s from rt_vehicle_segments where id = new.id;
   if s.id is null or s.deleted_at is not null or s.rt_cancelled or s.trip_type is distinct from 'OWNED' then return null; end if;
+  -- two saves of the same truck / driver at once: an EXCLUDE locks its own index, this rule is a query and sees no
+  -- uncommitted row - so it takes a lock per truck and per driver (always truck first); the second save waits for the
+  -- first's COMMIT and its next statement sees those rows (READ COMMITTED). A rare crossing of two saves may end in a
+  -- deadlock, which the Worker answers busy_retry: nothing kept, the save is pressed again.
+  if s.truck_id is not null then perform pg_advisory_xact_lock(hashtextextended('plan_busy:truck:' || s.truck_id, 0)); end if;
+  if s.driver_id is not null then perform pg_advisory_xact_lock(hashtextextended('plan_busy:driver:' || s.driver_id, 0)); end if;
   select r.code, case when s.truck_id is not null and g.truck_id = s.truck_id then 'truck_busy' else 'driver_busy' end
     into v_code, v_rule
     from rt_vehicle_segments g join ct_round_trips r on r.id = g.rt_id

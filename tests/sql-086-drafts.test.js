@@ -79,6 +79,8 @@ test('086: the rule stays in the base - the same two EXCLUDE, partial on overlap
   assert.match(src, /REVOKE ALL ON FUNCTION public\.plan_h_accept_busy\(jsonb,text,text,text\), public\.plan_seg_overlap_mark\(\),\s+public\.plan_chk_seg_overlap\(\) FROM PUBLIC, anon, authenticated, service_role;/);
   assert.match(src, /ADD COLUMN overlap_rts bigint\[\] NOT NULL DEFAULT '\{\}'/);
   assert.match(src, /CREATE CONSTRAINT TRIGGER plan_seg_overlap_verify AFTER INSERT OR UPDATE ON public\.rt_vehicle_segments\s+DEFERRABLE INITIALLY DEFERRED/);
+  // the pair rule is a query: it takes the truck / driver lock first, so two saves at once never both pass unseen
+  assert.match(src, /pg_advisory_xact_lock\(hashtextextended\('plan_busy:truck:' \|\| s\.truck_id, 0\)\);[\s\S]*pg_advisory_xact_lock\(hashtextextended\('plan_busy:driver:' \|\| s\.driver_id, 0\)\); end if;\s+select r\.code/);
   // an acceptance never outlives the call that sent it
   assert.match(src, /perform set_config\('plan\.accept_busy', '', true\);/);
   // the rollback stops on an accepted overlap, never drops it in silence
