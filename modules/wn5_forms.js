@@ -143,11 +143,13 @@
   const PRICE_RO_TITLE = 'Τιμολογημένη: η τιμή αλλάζει μόνο από owner ή λογιστήριο';
   const UNTIL_HEAD = 'Άφιξη ως · κενό: όλη η ημέρα';
   // A row's window as sent (F1): both ends empty = the whole day; one end only is NOT guessed — it stays as typed and
-  // _check names it. An arrival «ως» row (one time, Veroia on ΑΝΟΔΟΣ) empty = by the end of its day, 23:59, and it
-  // reads «ως … 23:59» as the board shows that stop (never «όλη η ημέρα»: it is a deadline, not a window).
+  // _check names it. An arrival «ως» row (one time, Veroia on ΑΝΟΔΟΣ) with a time is a deadline (from = to); left
+  // empty it is the whole day, as every other empty window (owner 1/11: ONE Veroia default, «όλη η ημέρα» — it came as
+  // «23:59» here, «—» in the «+» and «23:59–23:59» in «Ανάθεση», which read this shipment's 23:59 = 23:59 back). Its new
+  // Veroia stop still starts after the order's loading that day (_stops, F66), so the arrival never precedes it.
   // allDay: the whole day was used or typed, for the summary.
   function _rowWin(until, from, to) {
-    if (until) return { from: to === '' ? _dayWin().to : to, to: to === '' ? _dayWin().to : to, allDay: false };
+    if (until) return to === '' ? { from: _dayWin().from, to: _dayWin().to, allDay: true } : { from: to, to, allDay: false };
     if (from === '' && to === '') return { from: _dayWin().from, to: _dayWin().to, allDay: true };
     return { from, to, allDay: _allDay(from, to) };
   }
@@ -262,7 +264,7 @@
         if (!Number.isSafeInteger(r.location_id)) out.push(w + 'διάλεξε τοποθεσία από τη λίστα');
         if (!DAY.test(String(r.day || ''))) out.push(w + 'γράψε ημέρα');
         if (!HM.test(String(r.from || '')) || !HM.test(String(r.to || ''))) {
-          out.push(w + (r.until ? 'άφιξη ως: ΗΗ:ΛΛ, ή κενό (ως 23:59)' : 'παράθυρο: ΗΗ:ΛΛ και στα δύο άκρα, ή κανένα (όλη η ημέρα)'));
+          out.push(w + (r.until ? 'άφιξη ως: ΗΗ:ΛΛ, ή κενό (όλη η ημέρα)' : 'παράθυρο: ΗΗ:ΛΛ και στα δύο άκρα, ή κανένα (όλη η ημέρα)'));
         }
         else if (!r.until && r.from >= r.to) out.push(w + 'το «έως» πρέπει να είναι μετά το «από»');
         // F1 (080): pallets are optional — empty = not known yet (NULL, the board writes «;»)
@@ -398,6 +400,22 @@
     // left to the browser.
     box.addEventListener('mousedown', (ev) => { const x = ev.target; if (x && x.classList && x.classList.contains('wn5f-dayx') && document.activeElement !== x) x._selOnce = true; });
     box.addEventListener('mouseup', (ev) => { const x = ev.target; if (x && x._selOnce) { x._selOnce = false; ev.preventDefault(); } });
+    // F5 (live 1/11): a place or client is picked from its list with ONE click and the keys stay in the form. The
+    // item's own mousedown (fhPickLinked, core/form-helpers.js) picks; the default of that mousedown moved the focus to
+    // <body> (a list item takes none), so what was typed next went nowhere or to a board shortcut, and the user clicked
+    // again. The focus goes to the next field instead, as Tab would (the row's day, the order's price).
+    box.addEventListener('mousedown', (ev) => {
+      const it = ev.target && ev.target.closest ? ev.target.closest('.linked-drop-item') : null;
+      if (!it || !box.contains(it)) return;
+      ev.preventDefault();
+      const drop = it.closest('.linked-drop');
+      const inp = drop && document.getElementById(String(drop.id).replace(/_d$/, ''));
+      const all = [...box.querySelectorAll('input:not([type="hidden"]):not([tabindex="-1"]), select:not([tabindex="-1"]), textarea')]
+        .filter((x) => !x.disabled && x.offsetParent !== null);
+      const next = inp ? all[all.indexOf(inp) + 1] : null;
+      if (next) next.focus();
+      _refresh(f);
+    });
     // a place or client picked from the list (fhPickLinked on mousedown) fires no input: the field's blur refreshes
     box.addEventListener('focusout', (ev) => {
       const t = ev.target;
@@ -530,7 +548,7 @@
   function _rowHTML(f, k) {
     const pid = 'wn5l' + (++f.seq);
     return `<div class="wn5f-row" data-k="${k}" data-pid="${pid}">`
-      + `<div class="wn5f-loc">${fhLocSelect(pid, '', 'fhLocDrop')}</div>`
+      + `<div class="wn5f-loc">${fhLocSelect(pid, '', 'WN5Form.locDrop')}</div>`
       + _dayHTML('data-f="day"' + (f.dayDefault ? ' data-auto="1"' : ''), f.dayDefault, '', false)
       + `<span class="wn5f-win"><span class="wn5f-from"><input ${HM_INPUT} data-f="from" aria-label="από"><span class="wn5f-dash">–</span></span>`
       + `<input ${HM_INPUT} data-f="to" aria-label="έως"></span>`
@@ -569,7 +587,7 @@
       + `<label class="wn5f-f"><span>Φορτηγό (προαιρετικό)</span><select class="form-input" id="wn5f-tgt">${opts}</select></label></div>`
       + `<div class="wn5f-sec">ΤΥΠΟΣ ΚΑΤΑΧΩΡΗΣΗΣ</div><div class="wn5f-modes">`
       + `<button type="button" class="wn5f-mode" data-mode="normal"><span class="wn5f-mode-t"><i class="wn5f-radio" aria-hidden="true"></i>Κανονικό φορτίο</span><span class="wn5f-mode-s">Ένας πελάτης — 1 παραγγελία</span></button>`
-      + `<button type="button" class="wn5f-mode" data-mode="groupage"><span class="wn5f-mode-t"><i class="wn5f-radio" aria-hidden="true"></i>Groupage</span><span class="wn5f-mode-s">Πολλοί πελάτες, ένα φορτηγό — 1 παραγγελία ανά πελάτη, ίδιο σκέλος, χωρίς βήμα ένωσης</span></button></div>`
+      + `<button type="button" class="wn5f-mode" data-mode="groupage"><span class="wn5f-mode-t"><i class="wn5f-radio" aria-hidden="true"></i>Groupage</span><span class="wn5f-mode-s">Πολλές παραγγελίες, ένα φορτηγό</span></button></div>`
       + `<div class="wn5f-ords">${_blockHTML(f)}</div>`
       + `<div class="wn5f-adds"><button type="button" class="wn5f-add" data-act="add-order">+ παραγγελία</button>`
       + `<button type="button" class="wn5f-add" data-act="add-empties">+ Άδειες παλέτες · 1 €</button></div>`
@@ -658,6 +676,12 @@
     f.el.querySelector('[data-vwinl]').textContent = dir === 'ANODOS' ? 'Άφιξη Βέροιας ως' : 'Παράθυρο φόρτωσης Βέροιας';
     f.el.querySelector('[data-vfromw]').hidden = dir === 'ANODOS';
     let raw = _raw(f);
+    // F2 (owner 1/11): an ΑΝΟΔΟΣ that does not go to Veroia is not asked its Veroia arrival — the head's day and «ως»
+    // go once every delivery row has its place and none is Veroia (they only fill a Veroia row, which keeps its own
+    // fields). A delivery not chosen yet still asks: the «+» of a trip that ends at Veroia opens with the Veroia day
+    // first (F57). Hidden in place, so «Φορτηγό» does not jump. ΚΑΘΟΔΟΣ keeps them: its points open against that day.
+    const askV = dir !== 'ANODOS' || raw.some((o) => o.drops.some((r) => r.hub || !r.rec));
+    for (const sel of ['[data-vdayl]', '[data-vwinl]']) f.el.querySelector(sel).closest('.wn5f-f').classList.toggle('off', !askV);
     // F44 (F33's rule): with no Veroia stop on the cycle yet, an ΑΝΟΔΟΣ arrival the screen filled follows the order's
     // own loading — its last loading day — until the user types the arrival day
     const vEl = f.el.querySelector('#wn5f-vday');
@@ -744,7 +768,7 @@
       // a row of the N side its own shipment's (_pairs takes that row's own pallets)
       const palOf = (r, single) => (prs && single ? _palAgg(sp) : _palAgg([r.pallets]));
       for (const [act, rows, single] of [['φόρτωση', o.loads, nl === 1], ['παράδοση', o.drops, nd === 1]]) for (const r of rows)
-        if (DAY.test(r.day) && HM.test(r.to)) seq.push(Object.assign({ k: r.day + 'T' + (r.from || r.to), when: r.until ? `ως ${_dow(r.day)} ${r.to}` : r.allDay ? `${_dow(r.day)} όλη η ημέρα` : `${_dow(r.day)} ${r.from}–${r.to}`, act, place: r.hub ? 'Βέροια' : r.label, clients: [o.client || '—'] }, palOf(r, single)));
+        if (DAY.test(r.day) && HM.test(r.to)) seq.push(Object.assign({ k: r.day + 'T' + (r.until ? r.to : r.from || r.to), when: r.until && !r.allDay ? `ως ${_dow(r.day)} ${r.to}` : r.allDay ? `${_dow(r.day)} όλη η ημέρα` : `${_dow(r.day)} ${r.from}–${r.to}`, act, place: r.hub ? 'Βέροια' : r.label, clients: [o.client || '—'] }, palOf(r, single)));
     });
     seq.sort((a, b) => (a.k < b.k ? -1 : a.k > b.k ? 1 : 0));
     // Figma 2011:9940: orders at the same place in the same window are ONE stop line («Zeta, Kappa · 20π»)
@@ -867,7 +891,9 @@
     d.hidden = false;
     d.textContent = `Αποθηκεύτηκε · ${n === 1 ? '1 παραγγελία' : n + ' παραγγελίες'}${ids.length ? ' · #' + ids.join(' · #') : ''}${why}`;
     _lines(f, []);
-    if (ans && Array.isArray(ans.warnings) && ans.warnings.length) WN5Act.strip(_strip(f), ans.warnings);
+    // over_33 stays on the truck's row only (owner 1/11, WN5Act.savedWarnings)
+    const ws = ans ? WN5Act.savedWarnings(ans.warnings) : [];
+    if (ws.length) WN5Act.strip(_strip(f), ws);
     else if (!found) _strip(f).innerHTML = '';
     f.el.querySelector('[data-act="save"]').hidden = true;
     f.el.querySelectorAll('.wn5f-ft [data-act="cancel"]').forEach((b) => { b.textContent = 'Κλείσιμο'; });
@@ -978,8 +1004,8 @@
     const first = f.edit.ships[0] || {};
     const ld = (_parts(first.load_from) || {}).day || '', dd = (_parts(first.deliver_from) || {}).day || '';
     return `<div class="wn5f-ship wn5f-new" data-newship data-k="${k}" data-po="${po}" data-pd="${pd}" data-ld="${ld}" data-dd="${dd}">`
-      + `<span class="wn5f-ends"><span class="wn5f-loc">${fhLocSelect(po, '', 'fhLocDrop')}</span><span class="wn5f-arr">→</span>`
-      + `<span class="wn5f-loc">${fhLocSelect(pd, '', 'fhLocDrop')}</span></span>`
+      + `<span class="wn5f-ends"><span class="wn5f-loc">${fhLocSelect(po, '', 'WN5Form.locDrop')}</span><span class="wn5f-arr">→</span>`
+      + `<span class="wn5f-loc">${fhLocSelect(pd, '', 'WN5Form.locDrop')}</span></span>`
       + `${_editDay('lday', ld, '')}<input ${HM_INPUT} data-f="lfrom"><input ${HM_INPUT} data-f="lto">`
       + `${_editDay('dday', dd, '')}<input ${HM_INPUT} data-f="dfrom"><input ${HM_INPUT} data-f="dto">`
       + `<input class="form-input" data-f="pal" inputmode="decimal" aria-label="Παλέτες">`
@@ -1299,8 +1325,12 @@
       // f.vPrev: the Veroia day the filled points open against — F57 moves them only when that day moves
       if (vd) { vEl.value = vd; f.vPrev = vd; if (!hubDay) vEl.dataset.auto = '1'; }
       if (day) { f.dayDefault = day; f.el.querySelectorAll('[data-f="day"]').forEach((x) => { if (!x.value) { x.value = day; x.dataset.auto = '1'; } }); }
-      if (v) {
-        const a = /^\d\d:\d\d$/.test(v.from) ? v.from : (_parts(v.from) || {}).hm, b = /^\d\d:\d\d$/.test(v.to) ? v.to : (_parts(v.to) || {}).hm;
+      // owner 1/11 (one Veroia default): a Veroia stop of the whole day — or an arrival «ως 23:59», the end of its day —
+      // leaves the fields empty, which IS «όλη η ημέρα» here; it opened as «23:59» on ΑΝΟΔΟΣ and «00:00 – 23:59» on ΚΑΘΟΔΟΣ
+      const hmOf = (x) => (/^\d\d:\d\d$/.test(x) ? x : (_parts(x) || {}).hm);
+      const whole = !!v && ((hmOf(v.from) === _dayWin().from && hmOf(v.to) === _dayWin().to) || (dir.value === 'ANODOS' && hmOf(v.to) === _dayWin().to));
+      if (v && !whole) {
+        const a = hmOf(v.from), b = hmOf(v.to);
         if (a) f.el.querySelector('#wn5f-vfrom').value = a;
         if (b) f.el.querySelector('#wn5f-vto').value = b;
       }
@@ -1369,7 +1399,8 @@
       // the act that counts at this stop: the delivery at the end or where nothing loads, else the loading
       const want = isEnd || !legs.some((x) => x.act === 'load') ? 'unload' : 'load';
       const counted = legs.filter((l) => l.act === want);
-      return { stop_id: s.stop_id, when: isEnd ? `ως ${_dow(s.stop_day)} ${_hm(s.planned_to)}` : `${_dow(s.stop_day)} ${_hmw(s.planned_from, s.planned_to)}`,
+      // owner 1/11: a Veroia end of the whole day reads «όλη η ημέρα», as every whole-day window, never «ως … 23:59»
+      return { stop_id: s.stop_id, when: isEnd && !WN5L.allDay(s.planned_from, s.planned_to) ? `ως ${_dow(s.stop_day)} ${_hm(s.planned_to)}` : `${_dow(s.stop_day)} ${_hmw(s.planned_from, s.planned_to)}`,
         place: isHub(s) ? (isEnd ? 'Βέροια · τέλος κύκλου' : 'Βέροια') : s.location,
         what: [...new Set(legs.map((l) => l.reference).filter(Boolean))].join(' · ') + (isEnd ? ' · άφιξη' : legs.some((l) => l.act === 'load') ? ' · φόρτωση' : ' · παράδοση'),
         pallets: counted.reduce((a, l) => a + (l.pallets != null ? l.pallets : 0), 0), unk: counted.filter((l) => l.pallets == null).length };
@@ -1386,7 +1417,7 @@
         ? [['Κατεύθυνση', 'ΚΑΘΟΔΟΣ'], ['Φόρτωση Βέροιας', hubStop ? _dlab(hubStop.stop_day) : '—'],
            ['Παράθυρο Βέροιας', hubStop ? _hmw(hubStop.planned_from, hubStop.planned_to) : '—']]
         : [['Κατεύθυνση', 'ΑΝΟΔΟΣ'], ['Κάθοδος', others.length ? 'ΚΑΘΟΔΟΣ ' + _dlab(others[0].stop_day) : 'Χωρίς κάθοδο'],
-           ['Άφιξη Βέροιας', end ? `${_dlab((_parts(end.planned_to) || {}).day)} · ${_hm(end.planned_to)}` : '—']],
+           ['Άφιξη Βέροιας', end ? `${_dlab((_parts(end.planned_to) || {}).day)} · ${WN5L.allDay(end.planned_from, end.planned_to) ? 'όλη η ημέρα' : _hm(end.planned_to)}` : '—']],
     };
   }
   const _tempTxt = (ts) => (ts.length ? ts.slice().sort((a, b) => a - b).map((t) => (t > 0 ? '+' : '') + t).join(' / ') + ' °C' : '—');
@@ -1699,6 +1730,42 @@
     return true;
   }
 
+  // ── a place not in the list (F15, owner 1/11) ──────────────────────────────────────────────────────────────────
+  // The dispatcher typed a place the list does not hold (the Excel says a town, the client a new depot): the list
+  // ends with «+ Νέα τοποθεσία», which opens under the row THE one «new place» panel of the order forms
+  // (modules/locations.js locScanNewHTML): the same «Υπάρχει ήδη…» check, the country as a code, Latin letters. The
+  // saved place goes into this field and, through fhLocationSaved (F52), into every picker and the v5 catalogue, with
+  // no reload and no trip to the Locations page.
+  function locDrop(id, q) {
+    fhLocDrop(id, q);
+    const t = String(q || '').trim();
+    const d = document.getElementById('ls_' + id + '_d');
+    if (!d || t.length < 2 || typeof locScanNewHTML !== 'function') return;
+    // fhShowDrop hides an empty list without clearing it: the last keystroke's places would come back with this line
+    if (d.style.display === 'none') d.innerHTML = '';
+    // the text IS a place of the list, its whole label (a field holding a picked place, focused again) or its name
+    // (the label goes on «, City, Country»): nothing new to make
+    const nt = _fhNorm(t);
+    if (_fhLocationsArr.some((o) => { const n = o._n || (o._n = _fhNorm(o.label)); return n === nt || n.startsWith(nt + ', '); })) return;
+    d.style.display = 'block';
+    d.insertAdjacentHTML('beforeend', `<div class="linked-drop-item wn5f-newloc-opt" onmousedown="WN5Form.newLoc('${id}')">+ Νέα τοποθεσία «${escapeHtml(t)}»</div>`);
+  }
+  function newLoc(id) {
+    const inp = document.getElementById('ls_' + id);
+    const row = inp && inp.closest('.wn5f-row, .wn5f-ship');
+    if (!row || typeof locScanNewHTML !== 'function') return;
+    const old = row.nextElementSibling;
+    if (old && old.classList.contains('wn5f-newloc')) old.remove();
+    const html = locScanNewHTML('v' + id, { location_name: inp.value.trim(), country: 'GR' }, (item) => {
+      fhPickLinked(id, item.id, item.label);
+      const panel = row.nextElementSibling;
+      if (panel && panel.classList.contains('wn5f-newloc')) setTimeout(() => panel.remove(), 1500);
+    });
+    row.insertAdjacentHTML('afterend', `<div class="wn5f-newloc">${html}</div>`);
+    const open = row.nextElementSibling.querySelector('.loc-scan-new > button');
+    if (open) open.click();
+  }
+
   // ── VS day / destination (T22) ─────────────────────────────────────────────────────────────────────────────
   // The places list without the hub: Veroia is never a VS destination after Veroia (072 plan_vs_set_place).
   // Same filter rule as fhLocDrop (form-helpers.js: _fhNorm over the label), only the hub left out.
@@ -1713,7 +1780,8 @@
   function _vsOk(f, ans, withNotice, without, sel) {
     const line = f.el.querySelector(sel);
     if (line) line.textContent = Array.isArray(ans.notice_ids) && ans.notice_ids.length ? withNotice : without;
-    if (Array.isArray(ans.warnings) && ans.warnings.length) WN5Act.strip(_strip(f), ans.warnings);
+    const ws = WN5Act.savedWarnings(ans.warnings);   // over_33: on the row only (owner 1/11)
+    if (ws.length) WN5Act.strip(_strip(f), ws);
     else _strip(f).innerHTML = '';
     _lines(f, []);
   }
@@ -1800,5 +1868,5 @@
       'Ίδιος προορισμός — η διεθνής δεν άλλαξε', 'vs-place', `[data-vs]:has([data-osid="${orderStopId}"]) [data-vsok]`);
   }
 
-  window.WN5Form = Object.freeze({ openOrder, openLeg, vsDay, vsPlace, _locDropNoHub, _body, _check, _patchBody, _editFromRead, _findOrders, _iso, _parts, _legModel, _rowWin, _dayParse });
+  window.WN5Form = Object.freeze({ openOrder, openLeg, vsDay, vsPlace, locDrop, newLoc, _locDropNoHub, _body, _check, _patchBody, _editFromRead, _findOrders, _iso, _parts, _legModel, _rowWin, _dayParse });
 })();

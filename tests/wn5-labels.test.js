@@ -66,8 +66,8 @@ test('F4α-T11: amounts appear only when the key is in the consequence; «γρα
   assert.strictEqual(L.consequenceLine({ kind: 'invoiced', nat_order_id: 3111, invoice_number: 'T-77' }).text, 'τιμολογήθηκε (T-77): το ERP κάνει το πιστωτικό');
   assert.strictEqual(L.consequenceLine({ kind: 'rt_cancelled', rt_id: 101, code: 'RT-T101' }).text, 'το δρομολόγιο RT-T101 θα σβηστεί');
   assert.strictEqual(L.warningLine({ code: 'over_33', rt_id: 101, side: 'KATHODOS', pallets: 54 }).text, 'Υπέρβαση 21π στην ΚΑΘΟΔΟ · 54/33');
-  // Δ12 tile 7 after a save: the vehicle the screen added (saved_on), Figma's words
-  assert.strictEqual(L.warningLine({ code: 'over_33', rt_id: 101, side: 'KATHODOS', pallets: 54, saved_on: 'TST-2106' }).text, 'Υπέρβαση 21π στο TST-2106 — αποθηκεύτηκε');
+  // after a save over_33 is not a line any more (owner 1/11, WN5Act.savedWarnings): a saved_on key changes nothing
+  assert.strictEqual(L.warningLine({ code: 'over_33', rt_id: 101, side: 'KATHODOS', pallets: 54, saved_on: 'TST-2106' }).text, 'Υπέρβαση 21π στην ΚΑΘΟΔΟ · 54/33');
   // principle 3: the 33 of these lines IS WN5L.CAP (held to the 072 HAVING by tests/wn5-logic.test.js). A literal 33
   // in the over_33 entry fails here, and a page whose WN5L.CAP were 30 must say «24π · 54/30».
   const src = fs.readFileSync(path.join(ROOT, 'core', 'wn5-labels.js'), 'utf8').replace(/\/\/[^\n]*/g, '');

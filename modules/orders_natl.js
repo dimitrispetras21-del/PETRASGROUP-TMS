@@ -1014,7 +1014,7 @@ async function _openNatlModal(recId, f, opts) {
           <span><b>Κανονικό φορτίο</b><em>Ένας πελάτης — 1 παραγγελία</em></span></label>
         <label class="nf-mode" id="nf_m1" onclick="_natlMode(1)">
           <input type="radio" name="nfmode">
-          <span><b>Groupage</b><em>Πολλοί πελάτες, ένα φορτηγό — 1 παραγγελία ανά πελάτη</em></span></label>
+          <span><b>Groupage</b><em>Πολλές παραγγελίες, ένα φορτηγό</em></span></label>
       </div>
     </div>`}
 
