@@ -386,6 +386,7 @@ function _locGoPage(p) {
 // ── Create / Edit ──────────────────────────────
 function _locOpenCreate() {
   LOC.editingId = null;
+  LOC.dupOk = null;
   openModal('Νέα τοποθεσία', _locFormHTML({}),
     `<button class="btn btn-ghost" onclick="closeModal()">Άκυρο</button>
      <button class="btn btn-primary" id="locSaveBtn" onclick="_locSave()">Αποθήκευση</button>`);
@@ -405,6 +406,7 @@ function _locOpenEdit(id) {
 function _locFormHTML(f) {
   return `
 <datalist id="locTDL">${['Client Depot','Fuel Station','Partner Warehouse','ΣΥΝΕΡΓΕΙΟ','Custom Point','Veroia Hub','Πλυντήριο'].map(t => `<option value="${t}">`).join('')}</datalist>
+<div class="loc-dup" id="locDupWarn" hidden></div>
 <div class="form-grid">
   <div class="form-field span-2">
     <label class="form-label">Όνομα *</label>
@@ -465,19 +467,32 @@ function _locFormHTML(f) {
 </div>`;
 }
 
+// Latin-only names and cities (owner 9/8; the city too, owner 1/11 F16: «ΑΣΠΡΟΠΥΡΓΟΣ» next to «Aspropyrgos» made one
+// town two). Transliterated (ELOT, case kept), never refused. One rule for the Locations form and the forms' panel.
+function _locLatin(s) {
+  return s && /[Ͱ-Ͽ]/.test(s) && typeof _fhTranslit === 'function' ? _fhTranslit(s) : s;
+}
+// A country the list does not know (a scan's raw text kept as «άγνωστη γραφή») is refused HERE, in plain words: the
+// database refuses it too (090, locations_country_iso), but with a constraint's name nobody at the desk can read.
+function _locCountryBad(country) {
+  return !!country && typeof countryCode === 'function' && !countryCode(country);
+}
+
 async function _locSave() {
   let name = document.getElementById('locF_name')?.value.trim();
   if (!name) { toast('Το όνομα είναι υποχρεωτικό', 'danger'); return; }
   // Latin-only names (owner 9/8): 9 of the 29 locations created in the last 14
   // days were typed in Greek and are invisible to the transliterated search.
   // Transliterate (ELOT, case kept) instead of refusing — the dispatcher keeps working.
-  if (/[Ͱ-Ͽ]/.test(name) && typeof _fhTranslit === 'function') {
-    name = _fhTranslit(name);
+  const latin = _locLatin(name);
+  if (latin !== name) {
+    name = latin;
     toast('Το όνομα γράφτηκε με λατινικούς χαρακτήρες: ' + name, 'info');
   }
   const fields = { Name: name };
   const country = document.getElementById('locF_country')?.value.trim();
-  const city    = document.getElementById('locF_city')?.value.trim();
+  const city    = _locLatin(document.getElementById('locF_city')?.value.trim());
+  if (_locCountryBad(country)) { toast('Διάλεξε τη χώρα από τη λίστα', 'danger'); return; }
   const address = document.getElementById('locF_address')?.value.trim();
   const type    = document.getElementById('locF_type')?.value.trim();
   const lat     = parseFloat(document.getElementById('locF_lat')?.value);
@@ -498,6 +513,18 @@ async function _locSave() {
   fields['Phone'] = document.getElementById('locF_phone')?.value.trim() || null;
 
   const btn = document.getElementById('locSaveBtn');
+  // F16: a place that looks like one already in the list is said before it is created; a second press creates it
+  // (relaxed rules, owner 31/10: a warning, never a refusal). An edit is not checked: it changes a place, adds none.
+  if (!LOC.editingId) {
+    const sig = JSON.stringify([fields.Name, fields.City, fields.Country, fields.Latitude, fields.Longitude]);
+    const dup = LOC.dupOk === sig ? [] : locDupFind(fields, null);
+    if (dup.length) {
+      LOC.dupOk = sig;
+      _locShowDup(document.getElementById('locDupWarn'), dup, (d) => `<button type="button" class="btn btn-ghost btn-sm" onclick="closeModal();_locOpenEdit('${_locEsc(d.id)}')">Άνοιξε αυτή</button>`);
+      if (btn) btn.textContent = 'Δημιουργία νέας';
+      return;
+    }
+  }
   if (btn) { btn.textContent = 'Αποθήκευση…'; btn.disabled = true; }
   try {
     const data = LOC.editingId
@@ -665,6 +692,7 @@ function locScanNewHTML(key, stop, onSaved) {
           <button type="button" class="loc-geo-link" onclick="locScanFind('${uid}')">Εύρεση ξανά</button>
         </div>
       </div>
+      <div class="loc-dup" id="${id('dup')}" hidden></div>
       <div class="loc-scan-hint">Λατινικοί χαρακτήρες, όπως όλες οι τοποθεσίες. Έλεγξε τις συντεταγμένες στον χάρτη· άφησέ τες κενές αν δεν είσαι σίγουρος.</div>
       <div class="loc-scan-actions">
         <button type="button" class="btn btn-ghost btn-sm" onclick="locScanToggle('${uid}')">Άκυρο</button>
@@ -729,6 +757,67 @@ function _locScanExisting(label, address) {
   }) || null;
 }
 
+// F16 (owner 1/11): the same place typed again under another spelling (one letter apart, the town spelled two ways).
+// Never a refusal (relaxed rules, owner 31/10): the person sees the places that look the same, takes one or creates
+// the new one anyway. Two tests over the list already in memory: the same name once the company forms (S.A., GmbH…),
+// punctuation, case and a trailing country code are gone, in the same country; or a shared word of the name within
+// 500 m. The database cleans how a place is written (090: country code, one space); whether two names are one place
+// is a person's call, so it is asked here and never decided by a rule.
+const _LOC_FORMS = new RegExp('(^| )(s a|a e|abee|avee|mavee|ike|mon ike|o e|e e|epe|mepe|ltd|gmbh|srl|s r l|spa|s p a|bv|b v|nv|kg|co|ag|inc|plc|pc|p c|sp z o o|d o o|doo|eood|ood|sa|ae|oe|ee)(?= |$)', 'g');
+const _locCC = (v) => (typeof countryCode === 'function' && countryCode(v)) || String(v || '').trim().toUpperCase() || null;
+function _locDupKey(name, cc) {
+  let k = (typeof _fhNorm === 'function' ? _fhNorm(name) : String(name || '').toLowerCase()).replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  for (let i = 0; i < 3; i++) k = k.replace(_LOC_FORMS, ' ').replace(/\s+/g, ' ').trim();
+  // a trailing country code («Berries Pride, NL»); compared as text, never built into a RegExp (a raw country may hold «(»)
+  const tail = cc ? ' ' + String(cc).toLowerCase() : '';
+  if (tail && k.endsWith(tail)) k = k.slice(0, -tail.length);
+  return k;
+}
+function _locKm(a1, o1, a2, o2) {
+  const r = Math.PI / 180, x = Math.sin((a2 - a1) * r / 2), y = Math.sin((o2 - o1) * r / 2);
+  return 12742 * Math.asin(Math.sqrt(x * x + Math.cos(a1 * r) * Math.cos(a2 * r) * y * y));
+}
+// fields: {Name, City, Country, Latitude, Longitude}; the list: the Locations page's own when it is open, else the
+// app's reference list (both from the facade, deleted places left out). Up to 3 lookalikes, {id, label, why}.
+function locDupFind(fields, excludeId) {
+  const cc = _locCC(fields.Country), key = _locDupKey(fields.Name, cc);
+  if (!key) return [];
+  const words = key.split(' ').filter((w) => w.length >= 4);
+  const lat = parseFloat(fields.Latitude), lon = parseFloat(fields.Longitude);
+  // the Locations page's list while that page is on screen (its own, kept fresh by its saves); elsewhere the app's
+  // reference list, re-read after every create - LOC.records outlives the page and would miss places made since
+  const onPage = !!document.getElementById('locTableWrap') && LOC.records && LOC.records.length;
+  const recs = onPage ? LOC.records : (typeof getRefLocations === 'function' ? getRefLocations() : []);
+  const out = [];
+  for (const r of recs || []) {
+    const g = r && r.fields;
+    if (!g || !g.Name || r.id === excludeId) continue;
+    const c2 = _locCC(g.Country), k2 = _locDupKey(g.Name, c2);
+    let why = null;
+    if (k2 === key && (!cc || !c2 || cc === c2)) why = 'ίδιο όνομα';
+    else if (isFinite(lat) && isFinite(lon) && g.Latitude != null && g.Longitude != null
+      && words.some((w) => k2.split(' ').includes(w)) && _locKm(lat, lon, +g.Latitude, +g.Longitude) < 0.5) why = 'ίδιο σημείο';
+    if (why) out.push({ id: r.id, label: _fhLocLabel(g), why });
+    if (out.length === 3) break;
+  }
+  return out;
+}
+// The warning, in either form: what looks the same, why, and one action per place (open it / take it).
+function _locShowDup(el, dup, actionHtml) {
+  if (!el) return;
+  el.innerHTML = `<div class="loc-dup-t">Υπάρχει ήδη:</div>`
+    + dup.map((d) => `<div class="loc-dup-row"><span><b>${escapeHtml(d.label)}</b> <span class="loc-dup-why">${d.why}</span></span>${actionHtml(d)}</div>`).join('')
+    + `<div class="loc-dup-n">Αν είναι άλλη τοποθεσία, πάτησε «Δημιουργία νέας».</div>`;
+  el.hidden = false;
+}
+function locScanUse(uid, id) {
+  const ctx = _LOC_SCAN[uid];
+  const rec = (typeof getRefLocations === 'function' ? getRefLocations() : []).find((r) => r.id === id);
+  const label = (_fhLocationsArr.find((l) => l.id === id) || {}).label || (rec && rec.fields ? _fhLocLabel(rec.fields) : '');
+  if (!ctx || !label) return;
+  _locScanLinked(uid, ctx, { id, label }, 'Συνδέθηκε με την τοποθεσία που υπάρχει ήδη', 'info');
+}
+
 async function locScanSave(uid) {
   const ctx = _LOC_SCAN[uid];   // captured now: a re-scan while this save runs must not get its result
   if (!ctx) return;
@@ -745,11 +834,14 @@ async function locScanSave(uid) {
     if (typeof fhLoadLocations === 'function') await fhLoadLocations();
     if (!_fhLocationsArr.length) throw new Error('Οι τοποθεσίες δεν φόρτωσαν· δοκίμασε ξανά');
     // Latin-only names (owner 9/8), as _locSave: transliterate, never refuse.
-    if (/[Ͱ-Ͽ]/.test(name) && typeof _fhTranslit === 'function') {
-      name = _fhTranslit(name);
+    const latin = _locLatin(name);
+    if (latin !== name) {
+      name = latin;
       toast('Το όνομα γράφτηκε με λατινικούς χαρακτήρες: ' + name, 'info');
     }
-    const city = v('city'), country = v('country'), address = v('address');
+    const city = _locLatin(v('city')), country = v('country'), address = v('address');
+    // said in words and not logged: the catch below shows only a generic line and counts an app error
+    if (_locCountryBad(country)) { toast('Διάλεξε τη χώρα από τη λίστα', 'danger'); busy(false); return; }
     // The pin is what the form holds: found and checked, typed, or empty.
     const latS = v('lat'), lonS = v('lon');
     let geo = null;
@@ -764,6 +856,18 @@ async function locScanSave(uid) {
     const label = _fhLocLabel({ Name: name, City: city, Country: country });
     const same = _locScanExisting(label, address);
     if (same) { _locScanLinked(uid, ctx, same, 'Υπάρχει ήδη αυτή η τοποθεσία, συνδέθηκε με τη στάση', 'info'); return; }
+    const sig = JSON.stringify([name, city, country, latS, lonS]);
+    if (ctx.dupOk !== sig) {
+      const dup = locDupFind({ Name: name, City: city, Country: country, Latitude: latS, Longitude: lonS }, null);
+      if (dup.length) {
+        ctx.dupOk = sig;
+        _locShowDup(document.getElementById(`locScan_${uid}_dup`), dup,
+          (d) => `<button type="button" class="btn btn-ghost btn-sm" onclick="locScanUse('${uid}','${_locEsc(d.id)}')">Χρήση αυτής</button>`);
+        busy(false);
+        if (btn) btn.textContent = 'Δημιουργία νέας';
+        return;
+      }
+    }
     const pkey = _fhNorm(label) + '|' + _fhNorm(address);
     let job = _LOC_SCAN_PENDING[pkey];
     if (!job) {

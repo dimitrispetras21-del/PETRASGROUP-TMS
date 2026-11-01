@@ -38,14 +38,16 @@ test('F5-FE1 Ε1: from NATIONAL LOADS — partner first, then truck; Delivered/I
   assert.deepStrictEqual(run(c, "_wiNatFromNl({ fields: { Status: 'Pending' } })"), { carrier: null, done: false, src: 'nl' });
 });
 
+// 092: pg = the order's base id from PlanConfig.vsState (order_pg_id), the key of the national desk's notices
 test('F5-FE1 Ε20: from /plan/vs-state — the base\'s names; none = not assigned; done = all_executed only', () => {
   const c = ctx();
-  assert.deepStrictEqual(run(c, "_wiNatFromV5({ carriers: [], all_executed: false, n_pieces: 1 })"), { carrier: null, done: false, src: 'v5' });
-  assert.deepStrictEqual(run(c, "_wiNatFromV5({ carriers: [{ kind: 'none', text: '' }], all_executed: true })"), { carrier: null, done: true, src: 'v5' });
+  assert.strictEqual(run(c, "_wiNatFromV5({ carriers: [], all_executed: false, order_pg_id: 610 })").pg, 610);
+  assert.deepStrictEqual(run(c, "_wiNatFromV5({ carriers: [], all_executed: false, n_pieces: 1 })"), { carrier: null, done: false, src: 'v5', pg: null });
+  assert.deepStrictEqual(run(c, "_wiNatFromV5({ carriers: [{ kind: 'none', text: '' }], all_executed: true })"), { carrier: null, done: true, src: 'v5', pg: null });
   assert.deepStrictEqual(run(c, "_wiNatFromV5({ carriers: [{ kind: 'partner', text: 'Partner Test' }], all_executed: false })"),
-    { carrier: { kind: 'par', text: 'Partner Test' }, done: false, src: 'v5' });
+    { carrier: { kind: 'par', text: 'Partner Test' }, done: false, src: 'v5', pg: null });
   assert.deepStrictEqual(run(c, "_wiNatFromV5({ carriers: [{ kind: 'owned', text: 'TST-1 / Driver Test' }, { kind: 'partner', text: 'Partner Test' }], all_executed: 'true' })"),
-    { carrier: { kind: 'own', text: 'TST-1 / Driver Test + Partner Test' }, done: false, src: 'v5' }, 'a non-boolean all_executed is not done');
+    { carrier: { kind: 'own', text: 'TST-1 / Driver Test + Partner Test' }, done: false, src: 'v5', pg: null }, 'a non-boolean all_executed is not done');
 });
 
 test('F5-FE1: the read path — before = NL only; otherwise vs-state, NL only for «missing», a failure = err', () => {

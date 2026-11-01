@@ -151,6 +151,9 @@ function defaultPlan(e, S) {
   if (r === 'GET /plan/board') return [200, S.board];
   if (r === 'GET /plan/lookups') return [200, S.lookups];
   if (r === 'GET /plan/notices') return [200, { desk: e.q.desk || 'natl', unread: [], recent: [] }];
+  // 092: the board reads the VS days beside it; a GET is never «writes closed» in the Worker - answered here as a base
+  // before 092 (no cross_dock_date: no mark, no pallets field), unless a scenario stubs it
+  if (r === 'GET /plan/vs-state') return [200, {}];
   if (r === 'GET /plan/orders/:id') {
     const o = S.orders[e.path.split('/').pop()];
     return o ? [200, o] : planErr(422, 'PLAN_RULE', 'order_gone');
