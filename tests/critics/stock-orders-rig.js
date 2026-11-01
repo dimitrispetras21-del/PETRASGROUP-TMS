@@ -430,7 +430,7 @@ async function runFormTick(browser) {
   await page.evaluate(f => openIntlEditWith('recPlain', f), invF);
   await page.waitForSelector('#f_StockLot', { timeout: 8000 });
   const ti = await tickOf();
-  ok(ti.disabled && ti.title === 'Τιμολογήθηκε', 'R1 / OWNER-Q8 «never invoiced»: an invoiced order — box disabled, title «Τιμολογήθηκε» — ' + JSON.stringify(ti));
+  ok(ti.disabled && ti.title === tp.title, '071a (owner 21/10): the invoice no longer bars the mark — the invoiced order gets the same answer as the plain one — ' + JSON.stringify(ti));
   ok(!(await page.$eval('#f_Price', e => e.readOnly)), 'an invoiced ORDINARY order keeps its price field as before (only a lot\'s locks)');
   await page.evaluate(() => closeModal());
   // G-14 no_split: an existing order (lot shape: one delivery abroad) that is the PARENT of a leg
@@ -1263,7 +1263,8 @@ async function runAccountant(browser) {
   await page.click('.oiv-seg-b[data-tab="all"]');
   const body = (await page.locator('#oivBody').innerText()).replace(/\s+/g, ' ');
   ok(!/TEST-STOCK-1|TEST-STOCK-2/.test(body), 'pieces are never invoicing rows');
-  ok(/TEST-STOCK-LOT/.test(body) && /περιμένει κομμάτια/.test(body), 'the lot is listed, blocked «περιμένει κομμάτια»');
+  const lotRowTxt = (await page.locator('#oivBody tr.oiv-r', { hasText: 'TEST-STOCK-LOT' }).innerText()).replace(/\s+/g, ' ');
+  ok(/προς κοπή/.test(lotRowTxt) && !/περιμένει κομμάτια/.test(lotRowTxt), 'B0 (21/10): the lot is listed «προς κοπή» while its pieces are out — ' + lotRowTxt);
   ok(/TEST-PLAIN/.test(body), 'an ordinary order still listed');
   ok(cap.lotReads && cap.lotReads.some(q => decodeURIComponent(q).includes('{Invoiced}=0')), 'lots read with {Invoiced}=0');
   await page.locator('#oivBody tr.oiv-r', { hasText: 'TEST-STOCK-LOT' }).click();
@@ -1276,7 +1277,7 @@ async function runAccountant(browser) {
     const ck = [...document.querySelectorAll('#oivCard .oiv-ck')].find(e => /Παρτίδα ·/.test(e.innerText));
     return { rowBad: !!(row && row.querySelector('.oiv-st.bad')), rowWait: !!(row && row.querySelector('.oiv-st.wait')), ck: ck && ck.className, block: !!document.querySelector('#oivCard .oiv-block') };
   });
-  ok(!neutral.rowBad && neutral.rowWait && /\bna\b/.test(neutral.ck || '') && !neutral.block, 'O4: waiting is neutral — list, ΕΛΕΓΧΟΙ and action block carry no red — ' + JSON.stringify(neutral));
+  ok(!neutral.rowBad && !neutral.rowWait && /\bna\b/.test(neutral.ck || '') && !neutral.block, 'B0: the pieces are a neutral ΕΛΕΓΧΟΙ line; no red, no «περιμένει» chip, no block — ' + JSON.stringify(neutral));
   // C2-02 (round 3): the waiting lot's header says so, with its pieces n/N
   const hdr = (await page.locator('#oivCard .oiv-ch-st').innerText()).replace(/\s+/g, ' ');
   ok(/Στην αποθήκη/.test(hdr) && /Περιμένει κομμάτια 2\/2/.test(hdr) && !/Τελευταίο κομμάτι/.test(hdr), 'C2-02: waiting lot header «Στην αποθήκη … · Περιμένει κομμάτια 2/2» — ' + hdr);
@@ -1285,7 +1286,7 @@ async function runAccountant(browser) {
     && await page.locator('#oivBody tr.oiv-r', { hasText: 'TEST-PLAIN' }).locator('.oiv-tag').count() === 0, 'C2-07: the lot row (only) shows «→ ΑΠΟΘΗΚΗ» on screen');
   ok(/ΚΟΜΜΑΤΙΑ · 3/.test(card) && /TEST-STOCK-1/.test(card) && /TEST-STOCK-2/.test(card) && /TEST-STOCK-5/.test(card) && /Cold Hub B/.test(card), 'card: pieces list (ref, destination; the group piece of the print stage too) — ' + card);
   ok(!/Επιμερισμός/.test(card) && !cap.allocReq, 'accountant: no allocation block, no /costs/stock-lots request');
-  ok(await page.locator('#oivNum').count() === 0, 'no invoice form while blocked');
+  ok(await page.locator('#oivNum').count() === 1, 'B0: the ΤΠΥ form is there while the pieces are out');
   ok(await page.locator('.oiv-warn-btn', { hasText: 'Κλείσιμο υπολοίπου' }).count() === 1, '«Κλείσιμο υπολοίπου…» offered (chip «close», Ε3 accountant)');
   await page.screenshot({ path: shot('06-invoicing-lot-blocked') });
   // O1: with no piece drawn the modal says the WHOLE lot goes (the early-click case)
@@ -1299,7 +1300,7 @@ async function runAccountant(browser) {
   await page.click('.oiv-warn-btn:has-text("Κλείσιμο υπολοίπου")');
   await page.waitForSelector('#osCloseNote');
   const mtxt = (await page.locator('#osCloseText').innerText()).replace(/\s+/g, ' ');
-  ok(mtxt === 'Μένουν 2 παλέτες στην αποθήκη. Γράφονται χαμένες· η παρτίδα δεν δίνει άλλα κομμάτια. Ανοίγει ξανά μέχρι να τιμολογηθεί.', 'O1: the modal names the consequence — ' + mtxt);
+  ok(mtxt === 'Μένουν 2 παλέτες στην αποθήκη. Γράφονται χαμένες· η παρτίδα δεν δίνει άλλα κομμάτια. Ανοίγει ξανά αν χρειαστεί.', 'O1: the modal names the consequence — ' + mtxt);
   ok(!/€/.test(await page.locator('#modalBody').innerText()), 'close modal: no amount');
   await page.click('#osCloseBtn');
   ok(/υποχρεωτική/.test(await page.locator('#osCloseErr').innerText()) && !cap.patches.length, 'empty reason → refused on screen, nothing sent');
@@ -1324,10 +1325,10 @@ async function runAccountant(browser) {
   ok(new RegExp('Ολοκληρώθηκε ' + todayDm).test(rc) && !/Τελευταίο κομμάτι/.test(rc) && !/Παραδόθηκε 1?\d\/\d/.test(rc.split('ΣΤΟΙΧΕΙΑ')[0]), 'C2-03: ready header «Ολοκληρώθηκε ' + todayDm + '» (Completed On), never the intake — ' + rc.slice(0, 160));
   ok(rc.includes('Παρτίδα · 31/33p παραδόθηκαν') && rc.includes('Κλείσιμο υπολοίπου: 2 παλ. · 2 παλέτες χαλασμένες στην αποθήκη · ' + todayDm), 'O2: ΕΛΕΓΧΟΙ show the close where she works (31/33p · 2 παλ. · reason · date)');
   ok(await page.locator('[data-oiv="reopen"]').count() === 0, 'O1: the accountant closes but does not reopen (owner/dispatcher)');
-  // O3: an invoice dated before the last piece is warned about (it passed silently against the intake)
+  // B0 (21/10): an invoice dated before the lot's completion is normal — no warning any more
   await page.fill('#oivDate', addDays(TODAY, -2));
   await page.dispatchEvent('#oivDate', 'input');
-  ok(/πριν την ολοκλήρωση της παρτίδας \(/.test(await page.locator('#oivHint').innerText()), 'C2-03: invoice date before the completion → «πριν την ολοκλήρωση της παρτίδας» warning');
+  ok(!/πριν/.test(await page.locator('#oivHint').innerText()), 'B0: invoice date before the completion → no warning');
   await page.fill('#oivDate', TODAY); await page.dispatchEvent('#oivDate', 'input');
   await page.screenshot({ path: shot('08-after-close-ready') });
 
@@ -1650,8 +1651,9 @@ async function runOwnerNoCharge(browser) {
 
 // O1 (critic-2 E2-01 / critic-1 C1-04): owner on «Προς τιμολόγηση», a lot the
 // accountant closed by mistake — «Άνοιγμα ξανά» → confirm → ONE PATCH, the set
-// re-read, the lot waits again. A refusal (lot invoiced meanwhile) is said once
-// by core/api.js and the card adds only the context.
+// re-read, the lot waits for its pieces again (still «προς κοπή», B0). A refusal
+// (e.g. the lot was unmarked meanwhile) is said once by core/api.js and the card
+// adds only the context.
 async function runReopen(browser) {
   console.log('\n[owner] Άνοιγμα ξανά (Προς τιμολόγηση)');
   const page = await newPage(browser, 'owner', 'invoicing');
@@ -1665,17 +1667,20 @@ async function runReopen(browser) {
   await page.waitForSelector('[data-oiv="reopen"]', { timeout: 8000 });
   await page.evaluate(() => document.querySelector('.oiv-closed').scrollIntoView({ block: 'center' }));
   await page.screenshot({ path: shot('13a-owner-closed-lot-reopen') });
-  // refused once (the lot was invoiced meanwhile): the base's sentence once, the card only the context
-  cap.reopenFail = { type: 'STOCK_RULE', code: 'reopen_invoiced', message: 'Τιμολογημένη παρτίδα δεν ξανανοίγει' };
+  // refused once (071a lifted reopen_invoiced; a lot unmarked meanwhile still refuses):
+  // the base's sentence once, the card only the context
+  cap.reopenFail = { type: 'STOCK_RULE', code: 'lot_missing', message: 'Η παρτίδα δεν είναι ενεργή' };
   await page.click('[data-oiv="reopen"]');
   await page.click('#_cfaOk');
   await page.waitForFunction(() => /Δεν άνοιξε — η παρτίδα μένει κλειστή/.test((document.getElementById('oivCard') || {}).innerText || ''), null, { timeout: 8000 });
   const both = (await page.evaluate(() => [(document.getElementById('oivCard') || {}).innerText || '', (document.getElementById('tms-toast-container') || {}).innerText || ''].join(' | '))).replace(/\s+/g, ' ');
-  ok((both.match(/Τιμολογημένη παρτίδα δεν ξανανοίγει/g) || []).length === 1, 'D2: refusal once (api toast), the card says only «Δεν άνοιξε — η παρτίδα μένει κλειστή» — ' + both.slice(0, 200));
+  ok((both.match(/Η παρτίδα δεν είναι ενεργή/g) || []).length === 1, 'D2: refusal once (api toast), the card says only «Δεν άνοιξε — η παρτίδα μένει κλειστή» — ' + both.slice(0, 200));
   const nP = cap.patches.length;
   await page.click('[data-oiv="reopen"]');
   await page.click('#_cfaOk');
-  await page.waitForFunction(() => /περιμένει κομμάτια/.test(([...document.querySelectorAll('#oivBody tr.oiv-r')].find(tr => /TEST-STOCK-LOT/.test(tr.innerText)) || {}).innerText || ''), null, { timeout: 10000 });
+  await page.waitForFunction(() => /άνοιξε ξανά — περιμένει κομμάτια/.test((document.getElementById('toast') || {}).innerText || ''), null, { timeout: 10000 });
+  const reRow = (await page.locator('#oivBody tr.oiv-r', { hasText: 'TEST-STOCK-LOT' }).innerText()).replace(/\s+/g, ' ');
+  ok(/προς κοπή/.test(reRow), 'B0: the reopened lot stays «προς κοπή» — ' + reRow);
   const rp = cap.patches.slice(nP);
   ok(rp.length === 1 && rp[0].table === 'stock_lots' && JSON.stringify(rp[0].fields) === '{"Closed Note":null}', 'O1: one PATCH {Closed Note:null} — ' + JSON.stringify(rp));
   ok(/άνοιξε ξανά — περιμένει κομμάτια/.test(await page.evaluate(() => (document.getElementById('toast') || {}).innerText || '')), 'O1: after the read-back the set is re-read — the lot waits for pieces again; toast says so');
@@ -1694,7 +1699,7 @@ async function runWarehouse(browser) {
   const set = await page.evaluate(async () => { const s = await OrdersData.loadInvoicingSet(true); const lot = s.intl.find(r => r.id === 'recLotSrc'); return { lots: s.intl.filter(r => OrdersStock.isLot(r.fields)).length, st: lot && OrdersData.stateOf(s, lot), failed: s.stockFailed }; });
   ok(set.lots === 1, 'the set holds the lot (the read would have been asked)');
   ok(cap.lotReqs === 0, 'G-07: no STOCK LOTS request for the warehouse role (' + cap.lotReqs + ')');
-  ok(set.st && set.st.key === 'blocked' && set.st.reason === 'stock' && set.failed === false, 'G-07: its lot stays blocked, no «failed» banner — ' + JSON.stringify(set.st));
+  ok(set.st && set.st.key === 'ready' && set.failed === false, 'G-07 + B0: no lot read and nothing blocked, no «failed» banner — ' + JSON.stringify(set.st));
   ok(!/δικαίωμα/.test(await page.evaluate(() => (document.getElementById('tms-toast-container') || {}).innerText || '')), 'no «Δεν έχετε δικαίωμα» toast');
   ok(cap.errors.length === 0, 'no page errors — ' + cap.errors.join(' | '));
   await page.context().close();
@@ -1792,12 +1797,15 @@ async function runPrintGroup(browser) {
   ok(pcTag.stk === 'Απόθεμα · Ref TEST-STOCK-LOT · παρτίδα #1300 · Πελάτης Α' && pcTag.block && pcTag.px >= 9 && tags.filter(t => /^ΠΑΡΑΓΓΕΛΙΑ A/.test(t.head)).every(t => !t.stk),
     'O10/C4-02 + OWNER-Q10 + C4-03: the piece\'s cover stop carries «Απόθεμα · … · Πελάτης Α» on its own line at ≥ 9px; the lead\'s none — ' + JSON.stringify(tags));
   ok(!/undefined/.test(docs[0]), 'no «undefined» on the cover');
-  // Owner 7/10 (feat/group-route-message): a group is ONE WhatsApp text with a
-  // cargo block per order — the stock line belongs in the piece's block only.
+  // Owner 7/10 (feat/group-route-message): a group is ONE WhatsApp text with
+  // each order's cargo — since owner 21/10 inside its FIRST loading's block —
+  // and the stock line belongs in the piece's cargo only.
   const wa = await page.evaluate(() => _waArr);
-  const cargoOf = no => ((wa[0] || '').split('\n\n').find(b => b.split('\n')[0] === '*ΦΟΡΤΙΟ #' + no + '*') || '');
+  // (owner 21/10: a section title above numbered stops «1️⃣ date · #tag»)
+  const cargoOf = no => ((wa[0] || '').split('\n\n').map(b => b.replace(/^\*(ΦΟΡΤΩΣΗ|ΦΟΡΤΩΣΕΙΣ)\*\n/, ''))
+    .find(b => /^((?:\d\uFE0F\u20E3)+|🔟) /.test(b) && b.split('\n')[0].includes(' · #' + no) && /\n(Ref: |📦 )/.test(b)) || '');
   ok(wa.length === 1 && /Απόθεμα · Ref TEST-STOCK-LOT · παρτίδα #1300/.test(cargoOf(2002)) && cargoOf(2001) && !/Απόθεμα/.test(cargoOf(2001)),
-    'O10/C4-02: ONE group WhatsApp text (right-click share); the piece\'s «*ΦΟΡΤΙΟ #2002*» block says stock, the lead\'s «#2001» does not — ' + JSON.stringify([wa.length, cargoOf(2001), cargoOf(2002)]));
+    'O10/C4-02: ONE group WhatsApp text (right-click share); the piece\'s cargo (its loading #2002) says stock, the lead\'s #2001 does not — ' + JSON.stringify([wa.length, cargoOf(2001), cargoOf(2002)]));
   await page.screenshot({ path: shot('14-print-group-packet'), fullPage: true });
   // C4-11 (round 3): a member whose last delivery location is not resolved → «—», never «undefined»
   cap.fx.orders.push({ id: 'recUnk', fields: { 'Order No': 2009, Reference: 'TEST-UNK', Direction: 'Import', Type: 'International', Status: 'Assigned', Client: ['recCliA'], Price: 900, 'Total Pallets': 5, 'Group ID': 'GI-T|recLead', 'ORDER STOPS': ['recUk1', 'recUk2'], 'Loading DateTime': addDays(TODAY, 1) + 'T07:00:00', 'Delivery DateTime': addDays(TODAY, 3) + 'T11:00:00' } });

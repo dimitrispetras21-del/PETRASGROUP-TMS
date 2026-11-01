@@ -390,9 +390,21 @@ const PERMS = {
 // WI_PRESENCE: live «who else is here» heartbeats (§g). Born false: it costs
 // Worker requests on the Free plan (100k/day for the WHOLE app), so it waits
 // for the owner's 14-day Cloudflare number, SQL 068 and the presence Worker.
-const FEATURES = { ORDER_SPLIT: true, GROUP_TILES: true, STOCK_LOTS: true, WI_V2: 'on', WI_PRESENCE: false };
+// WN_V5 (Weekly National v5, plan docs/superpowers/plans/2026-10-26-f4a-national-v5-screens.md): the board of the
+// new national model, reading and writing ONLY through /plan/* (core/plan-api.js). Three states like WI_V2:
+// 'off' | 'pilot' | 'on'; 'off' overrides every per-browser opt-in (?wn5=1 → localStorage tms_wn5), and any other
+// value reads as 'off' (principle 5). Born 'off': with it the old board renders byte-for-byte as before (identity
+// rig tests/critics/wn5-identity-rig.js) and the v5 files do nothing at load. It opens in Φ5, on day L, in the SAME
+// deploy that sets PLAN_WRITES_OPEN = true in the Worker (decision Ε-24) — before that every v5 write answers 409.
+// 'on' from day L, 28/10/2026 (F5 FE-2, merged at Runbook R-8 after Worker deploy 2 opened the writes): every user.
+// The planned owner-only pilot (Q-9) was skipped by the owner when the cutover moved to 28/10 (PR #122 closed).
+// Rollback = 'pilot' (WN_V5_USERS keeps the owner: v5 for the owner alone, and as with WI_V2 a ?wn5=1 browser) or 'off',
+// + config.js ?v= and SW_VERSION; 'off' overrides every opt-in.
+const FEATURES = { ORDER_SPLIT: true, GROUP_TILES: true, STOCK_LOTS: true, WI_V2: 'on', WI_PRESENCE: false, WN_V5: 'on' };
 // Pilot usernames for FEATURES.WI_V2 === 'pilot' (PLAN §2.1). Empty = nobody.
 const WI_V2_USERS = [];
+// Pilot usernames for FEATURES.WN_V5 === 'pilot' (Ε-1): only a name the owner gives. Empty = nobody.
+const WN_V5_USERS = ['dimitris'];
 // Presence beat pacing in ms (§g.4): every 5 s while the user is active, 30 s
 // once idle for 2 minutes. The Worker's next_ms can only slow it down, and the
 // client never beats faster than every 2.5 s whatever these say.

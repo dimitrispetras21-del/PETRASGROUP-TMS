@@ -220,6 +220,11 @@ async function render(browser, html, qs, opts) {
   await page.waitForFunction(() => document.getElementById('doc').style.display === 'block', null, { timeout: 15000 });
   const out = await page.evaluate(() => {
     const doc = document.getElementById('doc');
+    // Owner 21/10: the card numbers now restart per section on a single sheet
+    // too. They are read here and checked on their own (phone = paper, cover
+    // numbering); «full»/«text» leave them out so the reference comparisons
+    // still prove that nothing ELSE on the paper moved.
+    doc.querySelectorAll('.stop .num').forEach(e => { e.closest('.stop').dataset.n = e.innerText; e.textContent = ''; });
     // (4b) the paper line is read, then set aside: «text» stays comparable with
     // the reference revision, which predates it. «full» keeps it.
     const full = doc.innerText, keep = [...doc.querySelectorAll('.cmr-keep')].map(e => e.innerText);
@@ -232,7 +237,7 @@ async function render(browser, html, qs, opts) {
     const cover = cov && {
       route: [...cov.querySelectorAll('.route2 .side')].map(s => s.querySelector('.n').innerText + ' | ' + s.querySelector('.d').innerText),
       sections: [...cov.querySelectorAll('.section-title')].map(e => e.innerText),
-      tls: [...cov.querySelectorAll('.tl')].map(tl => [...tl.querySelectorAll('.stop')].map(st => st.querySelector('.num').innerText + ' ' + st.querySelector('.name').innerText
+      tls: [...cov.querySelectorAll('.tl')].map(tl => [...tl.querySelectorAll('.stop')].map(st => st.dataset.n + ' ' + st.querySelector('.name').innerText
         + ' · ' + (st.querySelector('.stoptag') ? st.querySelector('.stoptag').innerText.split('\n')[0] : ''))),
       seq: ([...cov.querySelectorAll('.meta-item')].find(e => /ΣΕΙΡΑ ΠΑΡΑΔΟΣΗΣ|Delivery Sequence/i.test(e.innerText)) || { innerText: '' }).innerText.split('\n').pop(),
       // (7a) the date on each cover card
@@ -241,6 +246,7 @@ async function render(browser, html, qs, opts) {
     // (7a/7b) every document's cards (name, date, address+coordinates) and its route strip
     const sheets = [...doc.querySelectorAll('.p-doc')].map(d => ({
       stops: [...d.querySelectorAll('.stop')].map(st => ({ name: st.querySelector('.name').innerText, dt: (st.querySelector('.big') || {}).innerText || '',
+        num: st.dataset.n || '',
         addr: (st.querySelector('.addr') || {}).innerText || '' })),
       strip: [...d.querySelectorAll('.route2 .side')].map(x => x.querySelector('.n').innerText + ' | ' + x.querySelector('.d').innerText),
     }));
@@ -284,11 +290,67 @@ async function render(browser, html, qs, opts) {
 // the closing line at the end of each document.
 const expectFromBase = (msg, foot, keep) => msg.replace(/^📍 https:\/\/maps\.google\.com\/\?q=([^,\n]+),([^\n]+)$/gm, '📍 *$1, $2*\n$&')
   .replace(/^🔁 /m, keep + '\n🔁 ') + '\n\n' + foot;
+// Owner 21/10 (Pantelis): the cargo lines moved INTO the first loading's block
+// (Ref first) and the CMR line is said once, after the stops. moveCargo turns a
+// reference text of the old shape into the new one, so (3)/(6) still prove that
+// nothing ELSE moved. Single texts only (a group is frozen whole in EXAMPLE).
+const KEEPS = () => [KEEP.driver, KEEP.partner];
+const moveCargo = m => {
+  const bs = m.split('\n\n');
+  const ci = bs.findIndex(b => /^(📦|🌡|🔁|Ref: )/.test(b));
+  if (ci < 0) return m;
+  const ls = bs[ci].split('\n'), keep = ls.find(l => KEEPS().includes(l));
+  const cargo = ls.filter(l => !KEEPS().includes(l));
+  const ri = cargo.findIndex(l => /^Ref: /.test(l));
+  if (ri > 0) cargo.unshift(cargo.splice(ri, 1)[0]);
+  const li = bs.findIndex(b => /^\S+ \*(ΦΟΡΤΩΣΗ|LOADING)\* · /.test(b));
+  if (li >= 0) { bs[li] += '\n' + cargo.join('\n'); bs[ci] = keep || ''; }
+  else bs[ci] = cargo.join('\n') + (keep ? '\n\n' + keep : '');
+  return bs.filter((b, i) => b !== '' || i === bs.length - 1).join('\n\n');
+};
+// Owner 21/10: a section TITLE («ΦΟΡΤΩΣΗ»/«ΦΟΡΤΩΣΕΙΣ», «ΠΑΡΑΔΟΣΗ»/…) above
+// numbered stops, numbered from 1 in each section; the stop line itself is
+// «1️⃣ date · #tag · *N παλέτες*». walk() reads the stops of the new shape;
+// relabel() turns a reference text of the old shape («1️⃣ *ΦΟΡΤΩΣΗ* · date»,
+// one run of numbers, no titles on a single) into the new one, so the
+// «nothing else moved» checks still compare everything else.
+const SEC_L = /^\*(ΦΟΡΤΩΣΗ|ΦΟΡΤΩΣΕΙΣ|LOADING|LOADINGS)\*$/, SEC_D = /^\*(ΠΑΡΑΔΟΣΗ|ΠΑΡΑΔΟΣΕΙΣ|DELIVERY|DELIVERIES)\*$/;
+const STOP = /^((?:\d\uFE0F\u20E3)+|🔟) (.+)$/;
+const walk = m => { const ls = m.split('\n'), out = []; let sec = null;
+  ls.forEach((l, i) => {
+    if (SEC_L.test(l)) sec = 'L'; else if (SEC_D.test(l)) sec = 'D';
+    else if (sec && STOP.test(l) && (i === 0 || ls[i - 1] === '' || SEC_L.test(ls[i - 1]) || SEC_D.test(ls[i - 1]))) {
+      const x = l.match(STOP); out.push({ i, line: l, emo: x[1], load: sec === 'L', rest: x[2], name: ls[i + 1] });
+    }
+  });
+  return out; };
+const OLD_STOP = /^(\S+) \*(ΦΟΡΤΩΣΗ|ΠΑΡΑΔΟΣΗ|LOADING|DELIVERY)\* · (.*)$/;
+const KEYCAP = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
+const numOf = k => KEYCAP[k] || String(k + 1).split('').map(d => d + '\uFE0F\u20E3').join('');
+const relabel = m => {
+  const ls = m.split('\n'), isL = w => w === 'ΦΟΡΤΩΣΗ' || w === 'LOADING';
+  const old = ls.map(l => l.match(OLD_STOP));
+  const nL = old.filter(x => x && isL(x[2])).length, nD = old.filter(x => x && !isL(x[2])).length;
+  const out = []; let kL = 0, kD = 0, tL = false, tD = false;
+  ls.forEach((l, i) => {
+    const x = old[i];
+    if (!x) { if (!/^\*(ΦΟΡΤΩΣΕΙΣ|ΠΑΡΑΔΟΣΕΙΣ|LOADINGS|DELIVERIES)\*$/.test(l)) out.push(l); return; }
+    const ld = isL(x[2]), en = x[2] === 'LOADING' || x[2] === 'DELIVERY';
+    if (ld && !tL) { tL = true; out.push('*' + (nL === 1 ? (en ? 'LOADING' : 'ΦΟΡΤΩΣΗ') : (en ? 'LOADINGS' : 'ΦΟΡΤΩΣΕΙΣ')) + '*'); }
+    if (!ld && !tD) { tD = true; out.push('*' + (nD === 1 ? (en ? 'DELIVERY' : 'ΠΑΡΑΔΟΣΗ') : (en ? 'DELIVERIES' : 'ΠΑΡΑΔΟΣΕΙΣ')) + '*'); }
+    out.push(numOf(ld ? kL++ : kD++) + ' ' + x[3]);
+  });
+  return out.join('\n');
+};
+const toNew = m => relabel(moveCargo(m));
+const keyInt = e => e === '🔟' ? '10' : e.replace(/\uFE0F\u20E3/g, '');
+// The block (between blank lines) that holds line `line`.
+const blockAt = (m, line) => m.split('\n\n').find(b => b.split('\n').includes(line)) || '';
 // (8) the per-stop pallets suffix; (3)/(6) compare against references without it.
 const PAL_RE = / · \*\d+ (παλέτες|παλέτα|pallets|pallet)\*$/gm;
 const noPal = m => m.replace(PAL_RE, '');
 // The stop block (header line to the blank line) that names this place.
-const blockOf = (msg, name) => (msg.split('\n\n').find(b => b.split('\n')[1] === name) || '');
+const blockOf = (msg, name) => (msg.split('\n\n').map(b => b.replace(/^\*[^*\n]+\*\n/, '')).find(b => b.split('\n')[1] === name) || '');
 
 // (5) The IAB4166 shape as the driver / the partner receives it — the whole
 // text, frozen: pickups in the dispatcher's order (461 then 463), drops by date
@@ -298,54 +360,50 @@ const EXAMPLE = {
 👤 Driver D · TRK-1 / TRL-1
 
 *ΦΟΡΤΩΣΕΙΣ*
-1️⃣ *ΦΟΡΤΩΣΗ* · 08/10/2026 · #461 · *10 παλέτες*
+1️⃣ 08/10/2026 · #461 · *10 παλέτες*
 Packer V
 Street 1, Voitsberg, Αυστρία
 📍 *47.0446, 15.1567*
 📍 https://maps.google.com/?q=47.0446,15.1567
+Ref: REF-461
+📦 *33× EUR* · Apples · 🌡 *2°C Continuous*
+🔁 *Ανταλλαγή παλετών: ΝΑΙ*
+📝 Gate 4
 
-2️⃣ *ΦΟΡΤΩΣΗ* · 09/10/2026 · #463 · *10 παλέτες*
+2️⃣ 09/10/2026 · #463 · *10 παλέτες*
 Packer S
 Street 1, Stubenberg, Αυστρία
 📍 *47.2441, 15.8019*
 📍 https://maps.google.com/?q=47.2441,15.8019
+Ref: REF-463
+📦 *20× EUR* · Pears
+🌡 *Θερμοκρασία: όπως γράφει το CMR · Continuous*
+🔁 *Ανταλλαγή παλετών: ΟΧΙ*
 
 *ΠΑΡΑΔΟΣΕΙΣ*
-1️⃣ *ΠΑΡΑΔΟΣΗ* · 11/10/2026 · #463 · *10 παλέτες*
+1️⃣ 11/10/2026 · #463 · *10 παλέτες*
 Client B1
 Street 1, Sofia, Βουλγαρία
 📍 *42.6977, 23.3219*
 📍 https://maps.google.com/?q=42.6977,23.3219
 
-2️⃣ *ΠΑΡΑΔΟΣΗ* · 11/10/2026 · #463 · *10 παλέτες*
+2️⃣ 11/10/2026 · #463 · *10 παλέτες*
 Client B2
 Street 1, Plovdiv, Βουλγαρία
 📍 *42.1354, 24.7453*
 📍 https://maps.google.com/?q=42.1354,24.7453
 
-3️⃣ *ΠΑΡΑΔΟΣΗ* · 12/10/2026 08:00 · #461 · *10 παλέτες*
+3️⃣ 12/10/2026 08:00 · #461 · *10 παλέτες*
 Client G1
 Street 1, Thessaloniki, Ελλάδα
 📍 *40.6401, 22.9444*
 📍 https://maps.google.com/?q=40.6401,22.9444
 
-4️⃣ *ΠΑΡΑΔΟΣΗ* · 12/10/2026 14:00 · #461 · *10 παλέτες*
+4️⃣ 12/10/2026 14:00 · #461 · *10 παλέτες*
 Client G2
 Street 1, Athens, Ελλάδα
 📍 *37.9838, 23.7275*
 📍 https://maps.google.com/?q=37.9838,23.7275
-
-*ΦΟΡΤΙΟ #461*
-📦 *33× EUR* · Apples · 🌡 *2°C Continuous*
-🔁 *Ανταλλαγή παλετών: ΝΑΙ*
-Ref: REF-461
-📝 Gate 4
-
-*ΦΟΡΤΙΟ #463*
-📦 *20× EUR* · Pears
-🌡 *Θερμοκρασία: όπως γράφει το CMR · Continuous*
-🔁 *Ανταλλαγή παλετών: ΟΧΙ*
-Ref: REF-463
 
 🌡 Τήρησε τη θερμοκρασία που γράφει το CMR.
 
@@ -354,77 +412,73 @@ Ref: REF-463
 👤 Carrier P · AB-1234
 
 *LOADINGS*
-1️⃣ *LOADING* · 08/10/2026 · #461 · *10 pallets*
+1️⃣ 08/10/2026 · #461 · *10 pallets*
 Packer V
 Street 1, Voitsberg, Austria
 📍 *47.0446, 15.1567*
 📍 https://maps.google.com/?q=47.0446,15.1567
+Ref: REF-461
+📦 *33× EUR* · Apples · 🌡 *2°C Continuous*
+🔁 *Pallet Exchange: YES*
+📝 Gate 4
 
-2️⃣ *LOADING* · 09/10/2026 · #463 · *10 pallets*
+2️⃣ 09/10/2026 · #463 · *10 pallets*
 Packer S
 Street 1, Stubenberg, Austria
 📍 *47.2441, 15.8019*
 📍 https://maps.google.com/?q=47.2441,15.8019
+Ref: REF-463
+📦 *20× EUR* · Pears
+🌡 *Temperature: as stated on the CMR · Continuous*
+🔁 *Pallet Exchange: NO*
 
 *DELIVERIES*
-1️⃣ *DELIVERY* · 11/10/2026 · #463 · *10 pallets*
+1️⃣ 11/10/2026 · #463 · *10 pallets*
 Client B1
 Street 1, Sofia, Bulgaria
 📍 *42.6977, 23.3219*
 📍 https://maps.google.com/?q=42.6977,23.3219
 
-2️⃣ *DELIVERY* · 11/10/2026 · #463 · *10 pallets*
+2️⃣ 11/10/2026 · #463 · *10 pallets*
 Client B2
 Street 1, Plovdiv, Bulgaria
 📍 *42.1354, 24.7453*
 📍 https://maps.google.com/?q=42.1354,24.7453
 
-3️⃣ *DELIVERY* · 12/10/2026 08:00 · #461 · *10 pallets*
+3️⃣ 12/10/2026 08:00 · #461 · *10 pallets*
 Client G1
 Street 1, Thessaloniki, Greece
 📍 *40.6401, 22.9444*
 📍 https://maps.google.com/?q=40.6401,22.9444
 
-4️⃣ *DELIVERY* · 12/10/2026 14:00 · #461 · *10 pallets*
+4️⃣ 12/10/2026 14:00 · #461 · *10 pallets*
 Client G2
 Street 1, Athens, Greece
 📍 *37.9838, 23.7275*
 📍 https://maps.google.com/?q=37.9838,23.7275
-
-*CARGO #461*
-📦 *33× EUR* · Apples · 🌡 *2°C Continuous*
-🔁 *Pallet Exchange: YES*
-Ref: REF-461
-📝 Gate 4
-
-*CARGO #463*
-📦 *20× EUR* · Pears
-🌡 *Temperature: as stated on the CMR · Continuous*
-🔁 *Pallet Exchange: NO*
-Ref: REF-463
 
 🌡 Keep the temperature stated on the CMR.
 
 ℹ️ Automated message. If anything looks wrong, please contact the office.`,
 };
 // The stop header lines of a group text: «1️⃣ *ΦΟΡΤΩΣΗ* · 08/10/2026 · #461» + the name below it.
-const groupStops = m => { const ls = m.split('\n'); return ls.map((l, i) => {
-  const x = l.match(/^(\S+) \*(ΦΟΡΤΩΣΗ|ΠΑΡΑΔΟΣΗ|LOADING|DELIVERY)\* · (.+?) · (#\S+)(?: · \*\d+ \S+\*)?$/);
-  return x && { emo: x[1], load: x[2] === 'ΦΟΡΤΩΣΗ' || x[2] === 'LOADING', dt: x[3], tag: x[4], name: ls[i + 1] };
-}).filter(Boolean); };
+const groupStops = m => walk(m).map(s => { const x = s.rest.match(/^(.+?) · (#\S+)(?: · \*\d+ \S+\*)?$/);
+  return x && { emo: s.emo, load: s.load, dt: x[1], tag: x[2], name: s.name }; }).filter(Boolean);
 const NUM = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣'];
-// A cargo block «*ΦΟΡΤΙΟ #461*» … up to the blank line.
-const cargoBlock = (m, no) => (m.split('\n\n').find(b => /^\*(ΦΟΡΤΙΟ|CARGO) #/.test(b) && b.split('\n')[0].endsWith('#' + no + '*')) || '');
+// An order's cargo: its first loading block (owner 21/10).
+// Owner 21/10: an order's cargo sits in its FIRST loading block (tag #no).
+const cargoBlock = (m, no) => { const st = walk(m).find(s => s.load && (' ' + s.rest + ' ').includes(' · #' + no + ' ') && /\n(Ref: |📦 )/.test(blockAt(m, s.line)));
+  return st ? blockAt(m, st.line) : ''; };
 // (7a) the Veroia stop of a text: the block that holds its maps link.
 const VS_LINK = '📍 https://maps.google.com/?q=40.6312,-0.5';
 const vsBlock = m => m.split('\n\n').find(b => b.split('\n').includes(VS_LINK)) || '';
-const vsDate = m => { const h = vsBlock(m).split('\n').find(l => / \*(ΦΟΡΤΩΣΗ|ΠΑΡΑΔΟΣΗ|LOADING|DELIVERY)\* · /.test(l)) || ''; return noPal(h).replace(/^\S+ \*[^*]+\* · /, '').replace(/ · #\S+$/, ''); };
+const vsDate = m => { const h = vsBlock(m).split('\n').find(l => STOP.test(l)) || ''; return noPal(h).replace(STOP, '$2').replace(/ · #\S+$/, ''); };
 // The reference text with the Veroia stop dated d (the deliberate (7a) correction).
 const vsFix = (m, d) => d ? m.split('\n\n').map(b => b.split('\n').includes(VS_LINK) ? b.replace(/^(\S+ \*[^*]+\* · )[^\n]*/m, '$1' + d) : b).join('\n\n') : m;
 // The Veroia card of a document: the card whose address carries its coordinates.
 const vsCard = sh => ((sh && sh.stops) || []).find(x => x.addr.includes('40.6312')) || {};
 // (7d) the stop numbers of a text, in order
-const stopNums = m => m.split('\n').map(l => (l.match(/^(\S+) \*(ΦΟΡΤΩΣΗ|ΠΑΡΑΔΟΣΗ|LOADING|DELIVERY)\* · /) || [])[1]).filter(Boolean);
+const stopNums = m => walk(m).map(s => s.emo);
 
 (async () => {
   const browser = await chromium.launch();
@@ -433,7 +487,7 @@ const stopNums = m => m.split('\n').map(l => (l.match(/^(\S+) \*(ΦΟΡΤΩΣΗ|
   // (6) a single order: text and paper byte-for-byte as at SINGLE_REV.
   const sameAsSingle = async (r, qs, h, fix) => {
     const s0 = await render(browser, h || singleHtml, qs);
-    const same = JSON.stringify(r.wa.map(noPal)) === JSON.stringify(s0.wa.map(fix || (m => m))) && r.full === s0.full && r.wa.length === 1;
+    const same = JSON.stringify(r.wa.map(noPal)) === JSON.stringify(s0.wa.map(m => toNew((fix || (x => x))(m)))) && r.full === s0.full && r.wa.length === 1;
     ok(same, '(6) single order: WhatsApp text and paper byte-for-byte as ' + SINGLE_REV + (same ? '' : ' — got ' + JSON.stringify(r.wa).slice(0, 300)));
   };
   if (process.env.DUMP) {   // print the texts of a query, for a person to read (no checks)
@@ -462,7 +516,7 @@ const stopNums = m => m.split('\n').map(l => (l.match(/^(\S+) \*(ΦΟΡΤΩΣΗ|
     if (noCoordsName) {
       for (const m of a.wa.filter(m => blockOf(m, noCoordsName))) {
         const b = blockOf(m, noCoordsName), b0 = blockOf(a0.wa[a.wa.indexOf(m)], noCoordsName);
-        ok(!/📍/.test(b) && noPal(b) === b0, '(1) the stop without coordinates prints as before — ' + JSON.stringify(b));
+        ok(!/📍/.test(b) && b.split('\n').slice(1).join('\n') === b0.split('\n').slice(1).join('\n'), '(1) the stop without coordinates prints as before — ' + JSON.stringify(b));
       }
     }
     // (2) the closing line
@@ -474,19 +528,24 @@ const stopNums = m => m.split('\n').map(l => (l.match(/^(\S+) \*(ΦΟΡΤΩΣΗ|
     }
     // (8) the pallets on every stop line (every fixture stop holds 10)
     for (const m of a.wa) {
-      const hs = m.split('\n').filter(l => /^\S+ \*(ΦΟΡΤΩΣΗ|ΠΑΡΑΔΟΣΗ|LOADING|DELIVERY)\* · /.test(l));
+      const hs = walk(m).map(s => s.line);
       ok(hs.length > 0 && hs.every(l => / · \*\d+ (παλέτες|παλέτα|pallets|pallet)\*$/.test(l)), '(8) every stop line ends with its pallets — ' + JSON.stringify(hs.filter(l => !/ · \*\d+ \S+\*$/.test(l)).slice(0, 2)));
     }
+    // Owner 21/10: phone and paper give a stop the SAME number — both count
+    // from 1 in each section («ΠΑΡΑΔΟΣΗ 2» on the phone = card 2 on the sheet).
+    const phoneNums = walk(a.wa[0] || '').map(x => keyInt(x.emo)), paperNums = ((a.sheets[0] || {}).stops || []).map(x => x.num);
+    ok(phoneNums.length > 0 && JSON.stringify(phoneNums) === JSON.stringify(paperNums), '(owner 21/10) phone and paper number the stops alike, from 1 per section — ' + JSON.stringify([phoneNums, paperNums]));
     // (3) nothing else moved
-    const want = a0.wa.map(m => vsFix(expectFromBase(m, FOOT[sheet], KEEP[sheet]), cd));
+    const want = a0.wa.map(m => toNew(vsFix(expectFromBase(m, FOOT[sheet], KEEP[sheet]), cd)));
     const same = JSON.stringify(a.wa.map(noPal)) === JSON.stringify(want);
     ok(same, '(3) text = reference + exactly the three additions' + (same ? '' : ' — got ' + JSON.stringify(a.wa[0]).slice(0, 400)));
     ok(a.text === a0.text && /Συντ\/νες: |Coords: /.test(a.text), '(3) the paper (without the (4b) line) is identical to ' + BASE_REV + ' and already prints the coordinates');
-    // (4b) on a numbered order: the line follows the cargo line with its number, in the sheet's language
+    // (4b) once, on its own after the stops (owner 21/10); the number and 🔁 sit in the first loading's block
     for (const m of a.wa) {
       const ls = m.split('\n'), k = ls.indexOf(KEEP[sheet]);
-      ok(k > 0 && ls.filter(l => l === KEEP[sheet]).length === 1 && /^🔁 /.test(ls[k + 1]) && /🌡 \*2°C Continuous\*$/.test(ls[k - 1]),
-        '(4b) «' + KEEP[sheet] + '» once, after the cargo line with the number, before 🔁 — ' + JSON.stringify(ls.slice(Math.max(0, k - 1), k + 2)));
+      const f0 = walk(m).find(x => x.load), lb = f0 ? blockAt(m, f0.line) : '';
+      ok(k > 0 && ls.filter(l => l === KEEP[sheet]).length === 1 && ls[k - 1] === '' && ls[k + 1] === '' && /🌡 \*2°C Continuous\*$/m.test(lb) && /^🔁 /m.test(lb) && /^Ref: /m.test(lb),
+        '(4b) «' + KEEP[sheet] + '» once after the stops; Ref, the number and 🔁 in the first loading — ' + JSON.stringify(ls.slice(Math.max(0, k - 1), k + 2)));
       ok(!m.includes(KEEP[sheet === 'driver' ? 'partner' : 'driver']), '(4b) no CMR line of the other language');
     }
     ok(a.docs >= 1 && a.keep.length === a.docs && a.keep.every(t => t === KEEP[sheet]), '(4b) the paper carries the CMR line once per document (' + a.keep.length + '/' + a.docs + ') — ' + JSON.stringify(a.keep));
@@ -507,7 +566,7 @@ const stopNums = m => m.split('\n').map(l => (l.match(/^(\S+) \*(ΦΟΡΤΩΣΗ|
     ok(!c.errors.length, 'no page error' + (c.errors.length ? ': ' + c.errors[0] : ''));
     const m = c.wa[0] || '', ls = m.split('\n'), i = ls.indexOf(CMRL[sheet] + mode + '*');
     ok(c.wa.length === 1 && i > 0, '(4a) own line «' + CMRL[sheet] + mode + '*» — ' + JSON.stringify(ls.filter(l => /🌡/.test(l))));
-    ok(ls[i + 1] === KEEP[sheet] && /^🔁 /.test(ls[i + 2]), '(4a/4b) then «' + KEEP[sheet] + '», then 🔁 — ' + JSON.stringify(ls.slice(i, i + 3)));
+    ok(/^🔁 /.test(ls[i + 1]) && ls.filter(l => l === KEEP[sheet]).length === 1 && ls.indexOf(KEEP[sheet]) > i, '(4a/4b) then 🔁; «' + KEEP[sheet] + '» once, after the stops — ' + JSON.stringify(ls.slice(i, i + 2)));
     ok(/^📦 /.test(ls[i - 1]) && !/🌡/.test(ls[i - 1]), '(4a) the cargo line carries no temperature — ' + JSON.stringify(ls[i - 1]));
     ok(!/°C/.test(m), '(4a) no number in the WhatsApp text (the leftover 2 °C / 5 °C stay out)');
     ok(!/°C/.test(c.full), '(4a) no number anywhere on the paper');
@@ -525,7 +584,10 @@ const stopNums = m => m.split('\n').map(l => (l.match(/^(\S+) \*(ΦΟΡΤΩΣΗ|
   // (5) one text for the group: the CMR line once for the truck, each order's temperature in its own cargo block
   ok(g.wa.length === 1 && g.wa[0].split('\n').filter(l => l === KEEP.driver).length === 1, '(4b/5) ONE WhatsApp text, the CMR line once');
   // (both fixture orders are «402»: the blocks are read in the dispatcher order A, C)
-  const [gA = '', gC = ''] = (g.wa[0] || '').split('\n\n').filter(b => /^\*ΦΟΡΤΙΟ #/.test(b));
+  // (owner 21/10: each order's cargo sits in its first loading's block)
+  const gBl = walk(g.wa[0] || '').filter(x => x.load).map(x => blockAt(g.wa[0], x.line)).filter(b => /\n📦 /.test(b));
+  const gA = gBl.find(b => /°C/.test(b)) || '', gC = gBl.find(b => b.includes(CMRL.driver)) || '';
+  ok(gBl.length === 2 && !/\*ΦΟΡΤΙΟ #/.test(g.wa[0] || ''), '(owner 21/10) two loading blocks carry the cargo, no «ΦΟΡΤΙΟ #» block — ' + gBl.length);
   ok(/🌡 \*2°C Continuous\*/.test(gA) && !gA.includes(CMRL.driver) && gC.includes(CMRL.driver + ' · Continuous*') && !/°C/.test(gC),
     '(4a) the numbered order keeps its number, the CMR order says CMR — ' + JSON.stringify([gA, gC]));
 
@@ -589,7 +651,7 @@ const stopNums = m => m.split('\n').map(l => (l.match(/^(\S+) \*(ΦΟΡΤΩΣΗ|
     ok(i > 0 && ls[i + 1] === '📍 https://maps.google.com/?q=' + c.replace(', ', ','), '(1) coordinates line + maps link «' + c + '»');
   }
   // a section heading sits on the first stop's block: set it aside
-  const nb = vm.split('\n\n').map(b => b.replace(/^\*(ΦΟΡΤΩΣΕΙΣ|ΠΑΡΑΔΟΣΕΙΣ)\*\n/, '')).find(b => b.split('\n')[1] === 'Client N (no coords)') || '';
+  const nb = blockOf(vm, 'Client N (no coords)');
   ok(nb && !/📍/.test(nb), '(1) the stop without coordinates has no 📍 line — ' + JSON.stringify(nb));
   ok(JSON.stringify(coverNames(v.cover)) === JSON.stringify([names(vst, true), names(vst, false)]), '(5) the cover shows the cross-dock where the text does — ' + JSON.stringify(coverNames(v.cover)));
   ok(vm.split('\n').filter(l => /^ℹ️/.test(l)).length === 1 && vm.endsWith('\n\n' + FOOT.driver), '(2) the closing line once, last');
@@ -622,9 +684,9 @@ const stopNums = m => m.split('\n').map(l => (l.match(/^(\S+) \*(ΦΟΡΤΩΣΗ|
   ok(vsCard(va.sheets[2]).dt === '09/10/2026', '(7a) the order\'s own sheet in the same packet says the same date — ' + JSON.stringify(vsCard(va.sheets[2])));
   console.log('— driver · single V2 (import, Cross-dock Date ≠ estimate)');
   const v2 = await render(browser, html, 'orderId=recOrdV2&leg=import&sheet=driver'), v20 = await render(browser, singleHtml, 'orderId=recOrdV2&leg=import&sheet=driver');
-  ok(vsDate(v2.wa[0] || '') === '09/10/2026' && vsCard(v2.sheets[0]).dt === '09/10/2026' && vsDate(v20.wa[0] || '') === '10/10/2026',
-    '(7a) single text: 09/10 like its sheet (the reference text said the estimate 10/10) — ' + JSON.stringify([vsDate(v2.wa[0] || ''), vsCard(v2.sheets[0]).dt, vsDate(v20.wa[0] || '')]));
-  ok(JSON.stringify(v2.wa) === JSON.stringify(v20.wa.map(m => vsFix(m, '09/10/2026'))) && v2.full === v20.full,
+  ok(vsDate(v2.wa[0] || '') === '09/10/2026' && vsCard(v2.sheets[0]).dt === '09/10/2026' && vsDate(relabel(v20.wa[0] || '')) === '10/10/2026',
+    '(7a) single text: 09/10 like its sheet (the reference text said the estimate 10/10) — ' + JSON.stringify([vsDate(v2.wa[0] || ''), vsCard(v2.sheets[0]).dt, vsDate(relabel(v20.wa[0] || ''))]));
+  ok(JSON.stringify(v2.wa.map(noPal)) === JSON.stringify(v20.wa.map(m => toNew(vsFix(m, '09/10/2026')))) && v2.full === v20.full,
     '(7a) nothing else moved: text = reference with that date, paper identical');
   for (const [lg, want] of [['export', '09/10/2026 07:00'], ['import', '10/10/2026 09:00']]) {
     console.log('— driver · single V3 ' + lg + ' (no Cross-dock Date, local-time order dates), Athens vs New York');
@@ -648,7 +710,7 @@ const stopNums = m => m.split('\n').map(l => (l.match(/^(\S+) \*(ΦΟΡΤΩΣΗ|
     '(7b) cover = text, no «—» card — ' + JSON.stringify(coverNames(sl.cover)));
   ok(JSON.stringify(sl.sheets[2].stops.map(x => x.name)) === '["Packer V","Client B2"]', '(7b) the same places its own sheet prints — ' + JSON.stringify(sl.sheets[2].stops.map(x => x.name)));
   const ofs = await render(browser, html, 'orderId=recOF&leg=export&sheet=driver');
-  const ofn = (ofs.wa[0] || '').split('\n').map((l, i, ls) => /^\S+ \*(ΦΟΡΤΩΣΗ|ΠΑΡΑΔΟΣΗ)\* · /.test(l) ? ls[i + 1] : null).filter(Boolean);
+  const ofn = walk(ofs.wa[0] || '').map(x => x.name);
   ok(!ofs.errors.length && JSON.stringify(ofn) === '["Packer V","Client B2"]', '(7b) single text of the split leg too — ' + JSON.stringify(ofn));
 
   // (7c) The group text fails: the per-order texts go out, the page says so.
@@ -687,14 +749,16 @@ const stopNums = m => m.split('\n').map(l => (l.match(/^(\S+) \*(ΦΟΡΤΩΣΗ|
   const mg = await render(browser, html, 'orderIds=recM,recOrdA&leg=export&sheet=driver');
   const mgst = groupStops(mg.wa[0] || '');
   ok(!mg.errors.length && mg.wa.length === 1, 'no page error, one text');
-  ok(JSON.stringify(emos(mgst, false)) === JSON.stringify(KEYS.concat(['#11', '#12'])) && !/▪️/.test(mg.wa[0] || ''),
+  ok(JSON.stringify(emos(mgst, false)) === JSON.stringify(KEYS.concat(['1️⃣1️⃣', '1️⃣2️⃣'])) && !/▪️/.test(mg.wa[0] || ''),
     '(7d) drops 1️⃣ … 🔟, then «#11», «#12» — no «▪️» — ' + JSON.stringify(emos(mgst, false)));
   ok(JSON.stringify(coverNums(mg.cover)[1]) === JSON.stringify(Array.from({ length: 12 }, (_, i) => String(i + 1))), '(7d) the cover numbers the same drops 1–12');
   console.log('— driver · single M (12 stops)');
   const ms = await render(browser, html, 'orderId=recM&leg=export&sheet=driver'), ms0 = await render(browser, singleHtml, 'orderId=recM&leg=export&sheet=driver');
-  const strip = m => m.replace(/^\S+ (\*(ΦΟΡΤΩΣΗ|ΠΑΡΑΔΟΣΗ)\* · )/gm, 'N $1');
-  ok(JSON.stringify(stopNums(ms.wa[0] || '')) === JSON.stringify(KEYS.concat(['#11', '#12'])), '(7d) single text 1️⃣ … 🔟, #11, #12 — ' + JSON.stringify(stopNums(ms.wa[0] || '')));
-  ok(stopNums(ms0.wa[0] || '').slice(7).every(x => x === '▪️') && strip(ms.wa[0] || '') === strip(ms0.wa[0] || '') && ms.full === ms0.full,
+  // Owner 21/10: numbered per section — M has 1 loading and 11 deliveries.
+  ok(JSON.stringify(stopNums(ms.wa[0] || '')) === JSON.stringify(['1️⃣'].concat(KEYS, ['1️⃣1️⃣'])), '(7d) single text: loading 1️⃣, deliveries 1️⃣ … 🔟, 1️⃣1️⃣ — ' + JSON.stringify(stopNums(ms.wa[0] || '')));
+  const msPhone = walk(ms.wa[0] || '').map(x => keyInt(x.emo)), msPaper = ((ms.sheets[0] || {}).stops || []).map(x => x.num);
+  ok(msPhone.length === 12 && JSON.stringify(msPhone) === JSON.stringify(msPaper), '(owner 21/10) 12 stops: phone and paper give every stop the same number (1 per section) — ' + JSON.stringify([msPhone, msPaper]));
+  ok((ms0.wa[0] || '').split('\n').map(l => (l.match(OLD_STOP) || [])[1]).filter(Boolean).slice(7).every(x => x === '▪️') && noPal(ms.wa[0] || '') === toNew(ms0.wa[0] || '') && ms.full === ms0.full,
     '(7d) only the numbers changed (the reference gave stops 8–12 «▪️»); paper identical');
   await browser.close();
   console.log('\n' + pass + ' ✓ · ' + fail + ' ✗');

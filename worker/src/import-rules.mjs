@@ -377,7 +377,108 @@ function overlapDays(line, rt) {
   return Math.round((new Date(hi) - new Date(lo)) / 86400000) + 1;
 }
 
-// rts: [{id, truck_id, status, date_start, date_end}], already filtered to
+// ─── v5 cycles (073 / E10, spec 5) ──────────────────────────────────────────
+// A v5 cycle (model = 2) has an exact window, start_at..end_at. The Worker reads the rows from v_rt_vehicle_windows
+// (072b, handover P3-3): one row per OWNED segment of a v5 cycle, with the SEGMENT's truck and window, so the fuel of
+// the second truck after a handover is never the first truck's. One cycle can therefore be two rows (two trucks, or
+// one truck on two segments): ids are de-duplicated wherever a cycle is counted (here, allocateFees, aggregateLines).
+// Today's round trips (model 1 / no model) never reach any of this: their rule below is unchanged, byte for byte.
+
+// [DKV-1 beta, owner 24/10] The hour on a DKV line is the station's local time, so it is read on the clock of the
+// line's country (the document's country, or a station rule's): Intl with the country's IANA zone, never a fixed
+// offset (summer time changes twice a year). A country missing from this map is NEVER read as Athens time: the line
+// goes to the accountant as review_cycles (principle 1). Keys are what the parser emits (ISO 3166 alpha-2, upper case).
+const STATION_ZONE = {
+  GR: 'Europe/Athens', BG: 'Europe/Sofia', RO: 'Europe/Bucharest', TR: 'Europe/Istanbul',
+  AT: 'Europe/Vienna', DE: 'Europe/Berlin', IT: 'Europe/Rome', SI: 'Europe/Ljubljana', HR: 'Europe/Zagreb',
+  HU: 'Europe/Budapest', SK: 'Europe/Bratislava', CZ: 'Europe/Prague', PL: 'Europe/Warsaw', RS: 'Europe/Belgrade',
+  MK: 'Europe/Skopje', AL: 'Europe/Tirane', BA: 'Europe/Sarajevo', ME: 'Europe/Podgorica', CH: 'Europe/Zurich',
+  FR: 'Europe/Paris', BE: 'Europe/Brussels', NL: 'Europe/Amsterdam', LU: 'Europe/Luxembourg', DK: 'Europe/Copenhagen',
+  ES: 'Europe/Madrid',
+};
+// The line's clock (final review 26/10, W-6): the document's country (line.country, from the file name), else the
+// toll's country (toll_country - normalised lines carry it, and an E-SUMMARY has no country in its name). The FIRST
+// value given decides: a country that is given but unknown (or not in the parser's upper case) is a review, never
+// replaced by another guess. Greece is EL in the EU's own codes (VAT numbers, DKV entities): the same clock as GR.
+const COUNTRY_ALIAS = { EL: 'GR' };
+export function lineZone(line) {
+  const raw = [line.country, line.toll_country].find((c) => typeof c === 'string' && c !== '');
+  if (raw == null) return null;
+  const iso = Object.prototype.hasOwnProperty.call(COUNTRY_ALIAS, raw) ? COUNTRY_ALIAS[raw] : raw;
+  return Object.prototype.hasOwnProperty.call(STATION_ZONE, iso) ? STATION_ZONE[iso] : null;
+}
+const ZONE_CLOCKS = new Map();
+// instant (ms) -> 'YYYY-MM-DD HH:MM' on the zone's wall clock; formatToParts, so no locale's layout is relied on
+function zoneStamp(ms, zone) {
+  let f = ZONE_CLOCKS.get(zone);
+  if (!f) {
+    f = new Intl.DateTimeFormat('en-GB', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+    ZONE_CLOCKS.set(zone, f);
+  }
+  const p = Object.fromEntries(f.formatToParts(new Date(ms)).map((x) => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
+}
+// A window edge as an instant, or null: an unreadable or infinite timestamp ('infinity' from PostgREST, garbage, null)
+// is never a window - a cycle whose window cannot be read holds no hour, so the line becomes a review, not a pick.
+function instantMs(iso) {
+  if (typeof iso !== 'string') return null;
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms) ? ms : null;
+}
+// The line's hour: NO_HOUR when it carries none (the day decides), null when it carries one that cannot be read
+// (out of range, not HH:MM, or no real calendar day to put it on) - never guessed, a review.
+const NO_HOUR = Symbol('no hour');
+function lineStamp(line) {
+  if (line.time == null || line.time === '') return NO_HOUR;
+  const m = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(String(line.time));
+  const d = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(line.service_date || ''));
+  if (!m || !d || Number(m[1]) > 23 || Number(m[2]) > 59) return null;
+  const day = new Date(Date.UTC(Number(d[1]), Number(d[2]) - 1, Number(d[3])));
+  if (!Number.isFinite(day.getTime()) || day.toISOString().slice(0, 10) !== line.service_date) return null;
+  return `${line.service_date} ${m[1].padStart(2, '0')}:${m[2]}`;
+}
+// [D-DKV-1] Compared on the station's wall clock, as the line prints it. The window's end is open: a cycle that ends
+// at 06:00 does not hold 06:00 (the next one starting then does). Known limit: in the hour that summer time repeats
+// (25/10 03:00-04:00 Athens) one wall-clock hour is two instants and the text comparison cannot tell them apart.
+function inCycleWindow(rt, stamp, zone) {
+  const a = instantMs(rt.start_at), b = instantMs(rt.end_at);
+  if (a == null || b == null || !(a < b)) return false;
+  return zoneStamp(a, zone) <= stamp && stamp < zoneStamp(b, zone);
+}
+// [DKV-2 alpha + the review's "Open", owner 24/10] A v5 cycle has exact days: no +-1 day tolerance for it. A line
+// outside date_start..date_end stays a candidate (so the accountant sees it) but is never sure.
+function inCycleDays(line, rt) {
+  const start = rt.date_start, end = rt.date_end || rt.date_start;
+  if (!start) return false;
+  if (line.service_date) return line.service_date >= start && line.service_date <= end;
+  if (line.period_from && line.period_to) return line.period_from >= start && line.period_to <= end;
+  return false;
+}
+const uniqueIds = (list) => [...new Set(list.map((c) => c.id))];
+// Candidates of a line among which at least one v5 cycle: sure only when ONE cycle is left and the line provably
+// belongs to it; every other case is a review - none, the candidates listed, the accountant picks in today's screen.
+// [D-DKV-2] tech F3: "never a random choice"; rt_pref is a rule of a plate, not of a cycle, so it never decides here.
+function matchCycles(line, candidates) {
+  const review = (list) => ({ match: 'none', rt_id: null, alternatives: uniqueIds(list), general: false, none_reason: 'review_cycles' });
+  const sure = (id) => ({ match: 'sure', rt_id: id, alternatives: [], none_reason: null });
+  const stamp = lineStamp(line);
+  if (stamp === NO_HOUR) {
+    const ids = uniqueIds(candidates);
+    return ids.length === 1 && candidates.some((rt) => rt.model === 2 && inCycleDays(line, rt)) ? sure(ids[0]) : review(candidates);
+  }
+  const zone = lineZone(line);
+  if (stamp == null || zone == null) return review(candidates);
+  // With the hour: the trips of today's model and the v5 rows whose window holds it. An hour outside every v5
+  // window (the truck between two cycles: Wednesday 06:00 end, 14:00 start, fuel at 10:00) is not guessed either.
+  const inside = candidates.filter((rt) => rt.model === 2 && inCycleWindow(rt, stamp, zone));
+  if (!inside.length) return review(candidates);
+  const pool = candidates.filter((rt) => rt.model !== 2).concat(inside);
+  const ids = uniqueIds(pool);
+  return ids.length === 1 ? sure(ids[0]) : review(pool);
+}
+
+// rts: [{id, truck_id, status, date_start, date_end, model?, start_at?, end_at?}] (v_rt_vehicle_windows), already filtered to
 // status <> cancelled by the caller's DB query is fine, but this re-checks
 // status too — a caller that forgets the filter must not silently match a
 // cancelled round trip.
@@ -402,6 +503,9 @@ export function matchRoundTrip(line, rts, rules) {
   const candidates = (rts || []).filter(
     (rt) => rt.status !== 'cancelled' && rt.truck_id === line.truck_id && dateOverlaps(line, rt)
   );
+  // 073 / E10: a v5 cycle among the candidates (found with today's +-1 day net, so a line a day off still lists it)
+  // -> matchCycles. With no v5 candidate, today's rule below runs unchanged (spec 5: today's trips as before).
+  if (candidates.some((rt) => rt.model === 2)) return matchCycles(line, candidates);
   if (!candidates.length) return { match: 'none', rt_id: null, alternatives: [], general: false, none_reason: 'no_rt_on_date' };
   if (candidates.length === 1) return { match: 'sure', rt_id: candidates[0].id, alternatives: [], none_reason: null };
 
@@ -526,6 +630,9 @@ export function allocateFees(lines, rts, statementPeriod) {
     let candidateRts = (rts || []).filter((rt) => rt.status !== 'cancelled' && rtOverlapsPeriod(rt, period));
     // A fee naming a vehicle only ever spreads across that vehicle's own RTs.
     if (line.truck_id != null) candidateRts = candidateRts.filter((rt) => rt.truck_id === line.truck_id);
+    // 073 / P3-3: v_rt_vehicle_windows gives a v5 cycle one row per segment - a cycle is ONE candidate, or its share
+    // of the fee would be counted once per segment (weight doubled). Rows of today's model are one per trip: no-op.
+    candidateRts = candidateRts.filter((rt, i, all) => all.findIndex((x) => x.id === rt.id) === i);
     // Eligible only if the RT already has at least one allocated line from
     // this same import to weight against — an RT with a date-window overlap
     // but nothing charged to it yet has nothing to share the fee proportionally to.
@@ -719,7 +826,7 @@ function isoDayDiff(a, b) {
 
 /**
  * aggregateLines(lines, { statementDocNo, rts })
- *   - tolls with an rt_id: key = doc_no|rt_id|country → one line
+ *   - tolls with an rt_id: key = doc_no|rt_id|country|truck → one line
  *   - fee children (category 'dkv', rt_id set): key = rt_id → one «Τέλη DKV» line per RT
  *   - everything else (fuel family, unallocated tolls, ferries, fines, other) passes through
  * Returns { lines, stats:{ toll_groups, toll_members, fee_groups, fee_members } }.
@@ -727,6 +834,26 @@ function isoDayDiff(a, b) {
 export function aggregateLines(lines, opts = {}) {
   const statementDocNo = opts.statementDocNo || null;
   const rtById = new Map((opts.rts || []).map((r) => [r.id, r]));
+  // 073 / P3-3 (Q7-1, reviews r1 + r2): a v5 cycle can be several rows (one per OWNED segment of
+  // v_rt_vehicle_windows), and a truck can come back (9 -> 10 -> 9 after a breakdown). A fee line spread onto it is
+  // filed under the truck of the FIRST OWNED segment: the smallest start_at over ALL the cycle's rows, never the row
+  // that came last nor the first one that differs. The preview passes every OWNED row of a fee's cycle (index.js
+  // reads them by id, not by the trucks of the batch) and the commit keeps a truck the line already carries, so the
+  // screen and the stored row agree. That truck is not always ct_round_trips.truck_id (the first segment's copy,
+  // null when the first segment is a partner's). A start that cannot be read, or two trucks sharing the earliest
+  // start, gives no truck - a review, never a pick. Rows of today's model are unique per id and unchanged.
+  const rowsById = new Map();
+  for (const r of opts.rts || []) {
+    if (!rowsById.has(r.id)) rowsById.set(r.id, []);
+    rowsById.get(r.id).push(r);
+  }
+  for (const [id, rows] of rowsById) {
+    if (rows.every((x) => x.truck_id === rows[0].truck_id)) continue;
+    const ms = rows.map((x) => instantMs(x.start_at));
+    const min = ms.some((m) => m == null) ? null : Math.min(...ms);
+    const first = min == null ? [] : rows.filter((_, i) => ms[i] === min);
+    rtById.set(id, first.length && first.every((x) => x.truck_id === first[0].truck_id) ? first[0] : { ...rows[0], truck_id: null });
+  }
   // opts.trucks [{id, plate}] (parse only): the fee line takes the plate of its
   // RT's truck, so the preview files it under that vehicle — a fee that has a
   // round trip is not «χωρίς όχημα» any more (coordinator review 21/9).
@@ -740,7 +867,14 @@ export function aggregateLines(lines, opts = {}) {
     const members = Array.isArray(line.details) && line.details.length ? line.details : [memberOf(line)];
     if (AGG_TOLL_CATEGORIES.has(line.category) && line.rt_id != null) {
       const cc = line.toll_country || line.country || '';
-      const key = `${line.doc_no || ''}|${line.rt_id}|${cc}`;
+      // final round 2 (26/10, finding 1): the truck is part of the group. A v5 cycle can hand over from one OWNED truck
+      // to another, and both can pay tolls in the same country: one group for both kept the FIRST member's truck and
+      // the LAST member's date, so the commit's W-9 check (a truck counts only on its own segment's days) refused the
+      // whole statement. Today's round trips have one truck, so their groups - and their AGG import_keys, which
+      // already carry the first member's plate - are unchanged. Each truck's group keeps its own plate in that key; if
+      // two groups ever shared one, findDuplicateImportKeys would stop the commit.
+      const veh = line.truck_id != null ? `t${line.truck_id}` : `p${line.plate || ''}`;
+      const key = `${line.doc_no || ''}|${line.rt_id}|${cc}|${veh}`;
       if (!tollGroups.has(key)) { tollGroups.set(key, { first: line, members: [] }); order.push(['toll', key]); }
       tollGroups.get(key).members.push(...members);
       continue;

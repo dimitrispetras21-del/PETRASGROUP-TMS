@@ -18,9 +18,10 @@
 //   «Τιμολογημένες» (invSum): for one week those equal this view's «προς κοπή»
 //   and «Τιμολογημένα» — except (a) national orders of Type «Veroia Switch»,
 //   which this view excludes and that one does not (0 such rows, 13/10), and
-//   (b) up to ~60 s while OrdersData's cached set lags a save. Its turnover is
-//   NOT this view's: it holds only delivered/invoiced orders, so «σε εξέλιξη»
-//   orders are in this week's τζίρος and not there.
+//   (b) up to ~60 s while OrdersData's cached set lags a save. Since B0 (owner
+//   21/10/2026: every order is invoiced from its registration) both hold every
+//   non-cancelled order, so there is no «σε εξέλιξη» state any more: an order
+//   on the road with a price is «προς κοπή» here and there alike.
 // - An RT belongs to the week of its EXPORT leg's order (import-only RT → that
 //   import's week). A leg whose order sits in ANOTHER week is shown grey with
 //   «εβδ. d/m» and is NOT summed here: it is summed in its own week, where the RT
@@ -60,10 +61,10 @@ const OrdersWeekView = (() => {
   const MONTHS_GEN = ['Ιανουαρίου', 'Φεβρουαρίου', 'Μαρτίου', 'Απριλίου', 'Μαΐου', 'Ιουνίου', 'Ιουλίου', 'Αυγούστου', 'Σεπτεμβρίου', 'Οκτωβρίου', 'Νοεμβρίου', 'Δεκεμβρίου'];
   const STRIP_BACK = 3, STRIP_FWD = 1;   // Figma: three weeks back, one ahead
   // §06: who unblocks — the verdict under the assignment and the summary line.
-  const REASON = { sheets: 'δελτίο → λογιστήριο', price: 'τιμή → owner', stock: 'παρτίδα → κομμάτια' };
-  const REASON_TPY = { sheets: 'δελτίο', price: 'τιμή', stock: 'παρτίδα' };
-  // §06 rank 1: a slip block names the accountant, so it wins over price/stock.
-  const REASON_ORDER = ['sheets', 'price', 'stock'];
+  // The price is the ONE block OrdersData.stateOf returns: the pallet slip has
+  // not blocked since 20/10, a lot's pieces not since B0 (21/10).
+  const REASON = { price: 'τιμή → owner/λογιστήριο' };
+  const REASON_TPY = { price: 'τιμή' };
 
   // ══ Pure logic (node-tested in tests/orders-week-view.test.js) ═════════════
 
@@ -120,8 +121,8 @@ const OrdersWeekView = (() => {
   // Reconciles by construction: sum (priced) = invSum + openSum.
   function totals(recs, stateOf) {
     const t = { n: 0, sum: 0, unpriced: 0, unpricedRecs: [], invN: 0, invSum: 0, openN: 0, openSum: 0,
-      readyN: 0, readySum: 0, pendingN: 0, pendingSum: 0,
-      blockedN: 0, blocked: { price: 0, stock: 0, sheets: 0 }, blockedSum: { price: 0, stock: 0, sheets: 0 }, oldest: null };
+      readyN: 0, readySum: 0,
+      blockedN: 0, blocked: { price: 0 }, blockedSum: { price: 0 }, oldest: null };
     for (const r of recs) {
       if (isVsNational(r)) continue;
       t.n++;
@@ -137,11 +138,12 @@ const OrdersWeekView = (() => {
         t.blockedN++;
         t.blocked[s.reason] = (t.blocked[s.reason] || 0) + 1;
         t.blockedSum[s.reason] = (t.blockedSum[s.reason] || 0) + p;
-      } else { t.pendingN++; t.pendingSum += p; }
+      }
       if (s.key === 'ready' || s.key === 'blocked') {
-        // E-05: the page's state function carries OrdersData.ageOf (a lot
-        // waits from «Completed On»); a bare state function falls back.
-        const d = stateOf.ageOf ? stateOf.ageOf(r) : OC().daysSinceDelivery(r);
+        // The same age as «Προς τιμολόγηση»: OrdersData.ageOf (only a delivered
+        // order has one, B0 review #2) — carried by the page's state function,
+        // asked directly by a bare one, so the two can never disagree.
+        const d = stateOf.ageOf ? stateOf.ageOf(r) : OrdersData.ageOf(null, r);
         if (d != null && (t.oldest == null || d > t.oldest)) t.oldest = d;
       }
     }
@@ -156,16 +158,16 @@ const OrdersWeekView = (() => {
   }
 
   // One invoicing verdict per RT (or national pair), from the orders it counts
-  // this week. Priority = §06: 1 a block (slip before price/lot: it names who
-  // acts) · 2 all invoiced · 3 k ≥ 1 of n · 4 k = 0 and something not delivered
-  // · 5 k = 0 and all delivered. Rank 4 before 5 (13/10): «προς κοπή» on an RT
-  // whose import is still on the road would send the accountant to cut too soon.
+  // this week. Priority = §06: 1 a block (the price — the one block since B0)
+  // · 2 all invoiced · 3 k ≥ 1 of n · 4 k = 0 → «προς κοπή». The old rank «k = 0
+  // and something not delivered → σε εξέλιξη» (13/10) is gone with B0 (owner
+  // 21/10/2026): an order is invoiced from its registration, so an RT whose
+  // import is still on the road is already the accountant's to cut.
   function rtInvoicing(recs, stateOf) {
     recs = recs.filter(r => !isVsNational(r));
     if (!recs.length) return { kind: 'none' };
     const st = recs.map(stateOf);
-    const reasons = [...new Set(st.filter(s => s.key === 'blocked').map(s => s.reason))]
-      .sort((a, b) => REASON_ORDER.indexOf(a) - REASON_ORDER.indexOf(b));
+    const reasons = [...new Set(st.filter(s => s.key === 'blocked').map(s => s.reason))];
     if (reasons.length) return { kind: 'blocked', reasons };
     const inv = st.filter(s => s.key === 'invoiced').length;
     if (inv === recs.length) {
@@ -177,7 +179,6 @@ const OrdersWeekView = (() => {
       recs.forEach((r, i) => { if (st[i].key !== 'invoiced' && OC().hasPrice(r.fields)) open += OC().price(r.fields); });
       return { kind: 'partial', k: inv, n: recs.length, open };
     }
-    if (st.some(s => s.key === 'pending')) return { kind: 'progress' };
     return { kind: 'ready' };
   }
   // The line under the assignment (§06 column 2). Counts ORDERS — «1 από 2
@@ -188,7 +189,6 @@ const OrdersWeekView = (() => {
       case 'blocked': return REASON[v.reasons[0]] || v.reasons[0];
       case 'one': case 'all': return n > 1 ? 'τιμολογημένο' : '';
       case 'partial': return `${v.k} από ${v.n} παραγγ.` + (v.open > 0 ? ' · ατιμολόγητα ' + OC().eur(v.open) : '');
-      case 'progress': return n > 1 ? 'σε εξέλιξη' : '';
       case 'ready': return n > 1 ? 'προς κοπή' : '';
       default: return '';
     }
@@ -204,9 +204,8 @@ const OrdersWeekView = (() => {
           : { cls: 'dim', text: 'τιμολογήθηκε', title: 'Τιμολογήθηκε πριν γίνει υποχρεωτικός ο αριθμός ΤΠΥ' };
       }
       case 'cancelled': return { cls: 'dim', text: '— ακυρ.', title: 'Ακυρωμένη' };
-      case 'ready': return { cls: '', text: 'προς κοπή', title: 'Παραδόθηκε, έχει τιμή, χωρίς ΤΠΥ' };
-      case 'blocked': return { cls: 'bad', text: REASON_TPY[state.reason] || state.reason, title: REASON[state.reason] || '' };
-      default: return { cls: 'dim', text: 'σε εξέλιξη', title: 'Δεν παραδόθηκε ακόμη' };
+      case 'ready': return { cls: '', text: 'προς κοπή', title: 'Έχει τιμή, χωρίς ΤΠΥ — τιμολογείται από την καταχώρηση' };
+      default: return { cls: 'bad', text: REASON_TPY[state.reason] || state.reason, title: REASON[state.reason] || '' };   // 'blocked'
     }
   }
   // «εβδ. 26/9»: the Saturday of the week where an amount is counted.
@@ -348,8 +347,7 @@ const OrdersWeekView = (() => {
     if (!t.n) return { kind: 'empty', text: 'χωρίς παραγγελίες' };
     if (!t.openN) return { kind: 'all', text: 'όλα τιμολογημένα' };
     if (t.readyN) return { kind: 'ready', n: t.readyN, text: t.readyN + ' προς κοπή' };
-    if (t.blockedN) return { kind: 'blocked', n: t.blockedN, text: t.blockedN + ' μπλοκ' };
-    return { kind: 'progress', n: t.pendingN, text: t.pendingN + ' σε εξέλιξη' };
+    return { kind: 'blocked', n: t.blockedN, text: t.blockedN + ' μπλοκ' };   // open = ready or blocked (B0)
   }
 
   // National ΚΑΘΟΔΟΣ ↔ ΑΝΟΔΟΣ pairs (decision 2, owner 13/10): national order →
@@ -396,6 +394,17 @@ const OrdersWeekView = (() => {
       if (used.has(r.id)) continue;
       used.add(r.id);
       const own = { kind: 'order', rec: r, inWeek: true, week };
+      // F5 Ε3: a v5 order (natV5Attach) has no load and no Direction. Its pair
+      // is its cycle, drawn on the v5 board — here one row of its own, on the
+      // side its first cycle carries it (else the hub's side: to Veroia =
+      // ΑΝΟΔΟΣ), the vehicle from the cycle. Never «εκτός φορτίου».
+      if (r._v5 && typeof r._v5 === 'object') {
+        const c0 = (r._v5.carriers || [])[0];
+        const up = (c0 ? c0.side : r._v5.hub_side) === 'ANODOS';
+        rows.push({ kind: 'natl', day: O.weekDateOf(r), kat: up ? null : own, ano: up ? own : null,
+          assign: { kind: 'v5', state: r._v5 }, loadsFailed: false, openRec: r, counted: [r] });
+        continue;
+      }
       const load = loadOfOrder.get(r.id) || null;
       let other = null;
       const pid = load ? pairOf.get(load.id) : null;
@@ -423,6 +432,8 @@ const OrdersWeekView = (() => {
       let assign;
       if (failed) assign = { kind: 'failed' };
       else if (aLoad) assign = { kind: 'load', load: aLoad };
+      // The v5 read failed and this order has no load: it may be v5 — unknown, never «εκτός».
+      else if (anchor._v5 === 'err' && !(anchor.fields || {})['National Groupage']) assign = { kind: 'failed' };
       else if ((anchor.fields || {})['National Groupage']) assign = { kind: 'grp' };
       else assign = { kind: 'out' };
       rows.push({
@@ -510,6 +521,21 @@ const OrdersWeekView = (() => {
     return { key: '~', kind: 'none', plate: '', who: '', text: 'Προς ανάθεση' };
   }
 
+  // The vehicle of a v5 national order: its first cycle's (GET /plan/nat-state,
+  // names resolved by the base), «+N» when a split at Veroia puts it on more.
+  function vehicleOfV5(st) {
+    const cs = (st && st.carriers) || [];
+    const c = cs.find(x => x.kind !== 'none');
+    if (!c) return st && st.executed ? { key: '~', kind: 'none', plate: '', who: '', text: '—' } : { key: '~', kind: 'none', plate: '', who: '', text: 'Προς ανάθεση' };
+    const more = cs.length > 1 ? ' +' + (cs.length - 1) : '';
+    if (c.kind === 'partner') {
+      const name = (c.partner || 'συνεργάτης') + more;
+      return { key: 'p:' + name, kind: 'partner', plate: '', who: name, text: name };
+    }
+    const plate = c.truck || '—', who = String(c.driver || '').trim() + more;
+    return { key: 't:' + plate, kind: 'own', plate, who, text: [plate, who].filter(Boolean).join(' · ') };
+  }
+
   // Ends of an order as the frame draws them: first loading and first delivery,
   // «+N» for the other points of that end («Edessa → Kraków PL +1»); `last` =
   // the final delivery, where an empty truck turns back («Κενό γύρισμα»).
@@ -575,12 +601,16 @@ const OrdersWeekView = (() => {
     // Without the invoicing set the slip gate is unknown → the per-order sheet
     // flags decide (OrdersData.sheetsOk fallback) and a strip says so.
     const set = setRes.ok ? setRes.r : { gate: {}, gateFailed: true, intl: [], natl: [] };
-    const loadsRes = natlRes.ok && wantNatl ? await _natLoads(natl.filter(r => O.weekStartOf(r) === week)) : { ok: true, loads: [] };
+    // F5 Ε3/Ε5: the v5 state of the window's national orders, beside their loads (before L: no request).
+    const [loadsRes, v5Res] = await Promise.all([
+      natlRes.ok && wantNatl ? _natLoads(natl.filter(r => O.weekStartOf(r) === week)) : Promise.resolve({ ok: true, loads: [] }),
+      natlRes.ok && wantNatl ? OrdersCommon.natV5Attach(natl) : Promise.resolve({ failed: false }),
+    ]);
     return {
       week, strip, intl, cancelled, natl, natlFailed: !natlRes.ok, rts: rtRes.ok ? (rtRes.r.records || []) : null,
       rtCapped: rtRes.ok && (rtRes.r.records || []).length >= 500,
       set, setFailed: !setRes.ok, gateFailed: !!set.gateFailed, parentsFailed, refFailed: !refRes.ok,
-      natLoads: loadsRes.ok ? loadsRes.loads : null,
+      natLoads: loadsRes.ok ? loadsRes.loads : null, v5Failed: v5Res.failed,
     };
   }
 
@@ -677,6 +707,7 @@ const OrdersWeekView = (() => {
     if (scope !== 'natl' && d.rtCapped) add('Τα δρομολόγια έφτασαν το όριο ανάγνωσης (500).', 'Κάποια παλαιότερα μπορεί να λείπουν — οι παραγγελίες τους φαίνονται στο «ΧΩΡΙΣ RT», με σωστά ποσά.');
     if (scope !== 'natl' && m.rtFailed) add('Δεν διαβάστηκαν τα δρομολόγια (RT).', 'Κάθε διεθνής φαίνεται στο «ΧΩΡΙΣ RT» με το ποσό της· τα σύνολα μένουν σωστά.');
     if (scope !== 'intl' && d.natlFailed) add('Δεν διαβάστηκαν οι εθνικές.', 'Η ενότητα Εθνικές γράφει «—», όχι 0· ο τζίρος δείχνει μόνο τα διεθνή, με σήμανση «χωρίς εθνικά».');
+    if (scope !== 'intl' && !d.natlFailed && d.v5Failed) add('Δεν διαβάστηκε η κατάσταση των εθνικών v5.', 'Η ανάθεση εθνικών χωρίς φορτίο γράφει «—», όχι «εκτός φορτίου»· το «παραδόθηκε» τους ακολουθεί την ημερομηνία παράδοσης.');
     if (scope !== 'intl' && !d.natlFailed && d.natLoads == null) add('Δεν διαβάστηκαν τα φορτία εθνικών.', 'Η ανάθεση εθνικών γράφει «—», όχι «εκτός φορτίου»· το ζευγάρι κάθοδος–άνοδος δεν σχεδιάζεται.');
     if (d.setFailed || d.gateFailed) add('Δεν απάντησε ο έλεγχος δελτίων.', 'Ισχύουν οι σημάνσεις δελτίων της ίδιας της παραγγελίας.');
     if (scope !== 'natl' && d.parentsFailed) add('Δεν διαβάστηκαν οι αρχικές των σπασμένων.', 'Τα σκέλη τους γράφουν «αρχική εκτός ανάγνωσης» και δεν αθροίζονται.');
@@ -723,12 +754,7 @@ const OrdersWeekView = (() => {
     const natGap = showN && d.natlFailed ? ' · χωρίς εθνικά' : '';
     const pp = [];
     if (tAll.readyN) pp.push(`<span>${tAll.readyN} προς κοπή <span class="ow4-num">${O.eur(tAll.readySum)}</span></span>`);
-    if (tAll.pendingN) pp.push(`<span class="ow4-g">${tAll.pendingN} σε εξέλιξη${tAll.pendingSum > 0 ? ' <span class="ow4-num">' + O.eur(tAll.pendingSum) + '</span>' : ''}</span>`);
-    for (const k of REASON_ORDER) {
-      const n = tAll.blocked[k]; if (!n) continue;
-      const word = k === 'price' ? `${n} χωρίς τιμή → owner` : k === 'sheets' ? `${n} δελτίο → λογιστήριο` : `${n} παρτίδα → κομμάτια`;
-      pp.push(`<span><span class="ow4-dot"></span>${esc(word)}${tAll.blockedSum[k] > 0 ? ' <span class="ow4-num">' + O.eur(tAll.blockedSum[k]) + '</span>' : ''}</span>`);
-    }
+    if (tAll.blocked.price) pp.push(`<span><span class="ow4-dot"></span>${esc(tAll.blocked.price + ' χωρίς τιμή → owner')}</span>`);
     // §11: an empty week has nothing to chase — no line at all.
     const sumLine = !tAll.n ? '' : `<div class="ow4-sum">
       <span class="ow4-sum-h">Ατιμολόγητες ${tAll.openN}${tAll.openSum > 0 ? ` · <span class="ow4-num">${O.eurSym(tAll.openSum)}</span>` : ''}${esc(natGap)}</span>
@@ -1032,7 +1058,8 @@ const OrdersWeekView = (() => {
       <div class="ow4-asg-b"><span class="ow4-vd" title="${esc(verdict)}" data-full="${esc(verdict)}">${esc(verdict)}</span><span class="ow4-sig">${sumHtml}</span></div></div>`;
   }
   function _sumHtml(recs, mk) {
-    const O = OC(), t = totals(recs, () => ({ key: 'pending' }));
+    // Only the turnover (sum, unpriced) is read here: the state is not needed.
+    const O = OC(), t = totals(recs, () => ({}));
     const marks = mk && (mk.s || mk.g) ? `<sup class="ow4-mk">${mk.s ? '*' : ''}${mk.g ? '†' : ''}</sup>` : '';
     return (t.sum > 0 ? O.eur(t.sum) : '—') + marks;
   }
@@ -1062,7 +1089,7 @@ const OrdersWeekView = (() => {
     const isRt = r.kind === 'rt';
     const tag = !isRt ? (rtFailed ? '' : 'χωρίς RT') : r.guest ? 'από ' + O.dm(r.homeWeek) : r.moved ? 'μεταφορά' : v.kind === 'partner' ? 'συνεργάτης'
       : r.exp.length > 1 || r.imp.length > 1 ? 'groupage' : '';
-    const blk = verdict.kind === 'blocked' && (verdict.reasons[0] === 'sheets' || verdict.reasons[0] === 'price');
+    const blk = verdict.kind === 'blocked';   // the price: the one block since B0
     return `<div class="ow4-row${blk ? ' ow4-blk' : ''}" data-owvopen="intl:${esc(r.openRec.id)}">
       <div class="ow4-c-rt"><div class="ow4-l1">${isRt ? esc(r.code) : '<span class="ow4-d">—</span>'}</div>${tag ? `<div class="ow4-l2">${esc(tag)}</div>` : ''}</div>
       <div class="ow4-side ow4-l">${exp}</div>
@@ -1085,17 +1112,18 @@ const OrdersWeekView = (() => {
     };
     let v, extra = '';
     if (r.assign.kind === 'load') v = vehicleOf(r.assign.load);
+    else if (r.assign.kind === 'v5') v = vehicleOfV5(r.assign.state);
     else {
       v = { kind: 'none', plate: '', who: '', text: '' };
       extra = r.assign.kind === 'grp' ? '<span class="ow4-asg-none">μέσω ομαδοποίησης</span>'
         : r.assign.kind === 'out' ? '<span class="ow4-asg-none" title="Εθνική που δεν μπήκε σε φορτίο">εκτός φορτίου</span>'
-        : '<span class="ow4-d" title="Τα φορτία εθνικών δεν διαβάστηκαν">—</span>';
+        : `<span class="ow4-d" title="${r.openRec && r.openRec._v5 === 'err' ? 'Η κατάσταση των εθνικών v5 δεν διαβάστηκε' : 'Τα φορτία εθνικών δεν διαβάστηκαν'}">—</span>`;
     }
     const verdict = rtInvoicing(r.counted, stateOf);
     const n = r.counted.filter(x => !isVsNational(x)).length;
     const mk = { s: [r.kat, r.ano].some(s => s && s.kind === 'order' && !s.inWeek && O.hasPrice(s.rec.fields)),
       g: r.counted.some(x => !isVsNational(x) && !O.hasPrice(x.fields)) };
-    const blk = verdict.kind === 'blocked' && (verdict.reasons[0] === 'sheets' || verdict.reasons[0] === 'price');
+    const blk = verdict.kind === 'blocked';   // the price: the one block since B0
     return `<div class="ow4-row ow4-nat${blk ? ' ow4-blk' : ''}" data-owvopen="natl:${esc(r.openRec.id)}">
       <div class="ow4-c-rt"><div class="ow4-l1">${esc(dayShort(r.day) || '—')}</div>${v.kind === 'partner' ? '<div class="ow4-l2">συνεργάτης</div>' : ''}</div>
       <div class="ow4-side ow4-l">${side(r.kat, 'l')}</div>
@@ -1139,7 +1167,7 @@ const OrdersWeekView = (() => {
     const m = S.model; if (!m) return;
     const O = OC(), scope = S.ctx ? S.ctx.scope : 'all';
     const stateOf = _stateFn(S.data.set);
-    const stLabel = r => { if (isVsNational(r)) return 'δεν τιμολογείται'; const s = stateOf(r); return s.key === 'invoiced' ? 'τιμολογήθηκε' : s.key === 'blocked' ? 'μπλοκαρισμένη: ' + (REASON[s.reason] || s.reason) : s.key === 'ready' ? (s.noSheets ? 'προς κοπή · λείπει δελτίο' : 'προς κοπή') : 'σε εξέλιξη'; };
+    const stLabel = r => { if (isVsNational(r)) return 'δεν τιμολογείται'; const s = stateOf(r); return s.key === 'invoiced' ? 'τιμολογήθηκε' : s.key === 'blocked' ? 'μπλοκαρισμένη: ' + (REASON[s.reason] || s.reason) : s.key === 'ready' ? (s.noSheets ? 'προς κοπή · λείπει δελτίο' : 'προς κοπή') : 'ακυρωμένη'; };
     const line = (rt, r, vrec, counts) => {
       const f = r.fields, v = vehicleOf(vrec), e = endsOf(r);
       return [O.weekLabel(m.week), O.ymd(O.weekDateOf(r)), rt, r._type === 'natl' ? (f['Direction'] === 'South→North' ? 'Άνοδος' : 'Κάθοδος') : (f['Direction'] === 'Import' ? 'Εισαγωγή' : 'Εξαγωγή'),

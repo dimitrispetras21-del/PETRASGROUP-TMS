@@ -330,6 +330,12 @@ function _fetchWithTimeout(url, opts = {}, ms = 30000) {
 //     miss the next one written);
 //   - the redirect is re-attempted at most every 5 s, not once per request;
 //   - the end of the session is still heard, per TAB (core/session-streak.js).
+// F36 (owner 31/10/2026): the «redirect» is now the login window of core/relogin.js over the page, never a
+// navigation — a 401 during a save used to throw the half-filled form away with the page. The login is the same
+// /auth/login; after it tmsSessionRestored() reopens this page's requests. What is sent again by itself is only a
+// write that carries a request_id (core/plan-api.js): the DB answers a second copy with the first result. Any
+// other write is not re-sent: the window says «πάτα ξανά Αποθήκευση» and the user presses Save, seeing what goes.
+// Without core/relogin.js (a page that does not load it) the old navigation to index.html stays.
 // window._tmsNoSessionAtLoad: set by auth.js when it turns the page away at
 // load. auth.js has already counted and reported that page; Chromium never
 // runs this file after it (measured 7/10). An engine that kept parsing until
@@ -339,17 +345,24 @@ let _tmsSessionGone = !!(typeof window !== 'undefined' && window._tmsNoSessionAt
 let _tmsSessionRedirectAt = _tmsSessionGone ? Date.now() : 0;
 const _TMS_SESSION_REDIRECT_MS = 5000;
 let _tmsAliveSeen = false;
+let _tmsLoginWaiters = [];
 
 function tmsSessionGone() { return _tmsSessionGone; }
 
+// The text is the user's (F36): the page no longer leaves on a 401, so the callers' «Δεν αποθηκεύτηκε: …» lines and
+// toasts now show it. Code recognises the error by _sessionGone, never by this text.
 function _tmsUnauthorized(req) {
-  const e = new Error('Unauthorized');
+  const e = new Error('Η σύνδεση έληξε');
   e._noRetry = true; e._sessionGone = true;
   if (req) e._req = req;
   return e;
 }
 
-function _tmsSessionRedirect() {
+// write: a write of the user was refused or answered 401 — the login window then says to press Save again.
+function _tmsSessionRedirect(write) {
+  if (typeof tmsReloginOpen === 'function') {
+    try { tmsReloginOpen(!!write); return; } catch (_) { /* the window failed: the old way below still works */ }
+  }
   const now = Date.now();
   if (now - _tmsSessionRedirectAt < _TMS_SESSION_REDIRECT_MS) return;
   _tmsSessionRedirectAt = now;
@@ -357,9 +370,31 @@ function _tmsSessionRedirect() {
 }
 
 // The refusal for a request made after the session is gone: no fetch, no log.
-function tmsSessionRefuse(req) {
-  _tmsSessionRedirect();
+function tmsSessionRefuse(req, write) {
+  _tmsSessionRedirect(write);
   return _tmsUnauthorized(req);
+}
+
+// A promise that settles at the next login in the window (null = no window on this page: nothing to wait for).
+function tmsSessionWaitLogin() {
+  if (typeof tmsReloginOpen !== 'function') return null;
+  if (!_tmsSessionGone) return Promise.resolve();
+  return new Promise((resolve) => { _tmsLoginWaiters.push(resolve); });
+}
+
+// core/relogin.js, after a login of the SAME user and role in the window: the page works again. _tmsAliveSeen
+// resets so the next 2xx ends the tab's streak (core/session-streak.js), as on a fresh page.
+function tmsSessionRestored() {
+  _tmsSessionGone = false;
+  _tmsSessionRedirectAt = 0;
+  _tmsAliveSeen = false;
+  const waiters = _tmsLoginWaiters;
+  _tmsLoginWaiters = [];
+  for (const w of waiters) { try { w(); } catch (_) {} }
+  // The offline queue keeps its items «for the next login's page» (_flushOfflineQueue): that page's atPreload
+  // flushed them. A login in the window makes no new page, so the flush happens here instead. Nothing new is
+  // re-sent: these are changes the session's end left unsent (or refused with a 401, before the Worker read them).
+  if (typeof _flushOfflineQueue === 'function') _flushOfflineQueue().catch(() => {});
 }
 
 // Called on a 401. The first one per page reads whose login it was BEFORE
@@ -368,7 +403,7 @@ function tmsSessionRefuse(req) {
 // login, counts the page in the tab's streak and writes the rows the streak
 // decides (core/session-streak.js tmsStreakNote); later ones (requests already
 // in flight at that moment) only refuse.
-function tmsSessionExpired(where, req) {
+function tmsSessionExpired(where, req, write) {
   if (!_tmsSessionGone) {
     _tmsSessionGone = true;
     let u = null, note = null;
@@ -391,7 +426,7 @@ function tmsSessionExpired(where, req) {
       else if (typeof tmsStreakPost === 'function') tmsStreakPost(m);
     }
   }
-  return tmsSessionRefuse(req);
+  return tmsSessionRefuse(req, write);
 }
 
 // The first 2xx facade answer of a page that has a session ends the tab's
@@ -418,7 +453,8 @@ function _tmsSessionAlive() {
 async function _atRetry(fn, retries = 3, opts) {
   const reqId = _newReqId();
   const quiet = !!(opts && opts.quiet === true);
-  if (_tmsSessionGone) throw tmsSessionRefuse(reqId);
+  const write = !!(opts && opts.write === true);   // F36: the login window's «πάτα ξανά Αποθήκευση»
+  if (_tmsSessionGone) throw tmsSessionRefuse(reqId, write);
   for (let i = 0; i < retries; i++) {
     try {
       const res = await fn(reqId + '-' + (i + 1));
@@ -435,7 +471,7 @@ async function _atRetry(fn, retries = 3, opts) {
           const tid = (new URL(res.url).pathname.match(/\/v0\/[^/]+\/([^/?]+)/) || [])[1] || new URL(res.url).pathname;
           where = (typeof _tableNameFromId === 'function' && tid) ? (_tableNameFromId(tid) || tid) : tid;
         } catch (_) { /* diagnostics must never break the error path */ }
-        throw tmsSessionExpired(where, reqId);
+        throw tmsSessionExpired(where, reqId, write);
       }
       // 403 = ο RBAC του Worker είπε όχι. Η ίδια αίτηση παίρνει την ίδια
       // απάντηση κάθε φορά, άρα η επανάληψη δεν σώζει τίποτα: μετρημένο 3/9 —
@@ -462,6 +498,18 @@ async function _atRetry(fn, retries = 3, opts) {
         const wait = Math.pow(2, i) * 1000 + Math.random() * 500;
         await new Promise(r => setTimeout(r, wait));
         continue;
+      }
+      // 428 (F5 Ε19, Worker deploy 1): DELETE of an order whose delete has consequences answers
+      // {error:{type, code:'need_token', message}, preview:{consequences, confirm_token}}. Nothing was deleted;
+      // the same request gets the same answer, so it never feeds the retry loop (it used to be resent twice and
+      // then fall out as a plain non-ok). A designed answer, not an app error: no log, no toast — the caller
+      // shows the consequences and resends with ?confirm_token= (atWithDeleteConfirm below).
+      if (res.status === 428) {
+        const d428 = await res.json().catch(() => ({}));
+        const e428 = new Error(_atErrMsg(d428.error, 'Η διαγραφή θέλει επιβεβαίωση'));
+        e428._noRetry = true; e428._needToken = true; e428._req = reqId;
+        e428.preview = d428 && typeof d428.preview === 'object' ? d428.preview : null;
+        throw e428;
       }
       if (res.status === 400 || res.status === 422) {
         const errData = await res.json().catch(() => ({}));
@@ -498,7 +546,13 @@ async function _atRetry(fn, retries = 3, opts) {
         // auditor's B-34/B-34b («σφάλματα εφαρμογής» / «νέο μήνυμα») exclude it
         // with `message NOT LIKE '_atRetry 422 rule%'`; otherwise every refused
         // delete of a different order trips B-34b (impact map 4/10 AU-07).
-        const _rule = res.status === 422 && errData.error && typeof errData.error === 'object' && errData.error.type === 'STOCK_RULE'
+        // Since 071/060 the facade has two more such answers (F4α T2, S-13): PLAN_RULE (e.g. an ORDER STOPS PATCH
+        // refused by a 071 rule) and LOCAL_RELAY_RULE (060). Same kind of «no», same prefix; every other 422 stays
+        // «_atRetry 422» and is still counted.
+        const _ruleType = res.status === 422 && errData.error && typeof errData.error === 'object' ? errData.error.type : null;
+        // F5 (Worker deploy 2): LEGACY_CLOSED (422 legacy_closed, Ε16/Q-10) — the old national model after day L, a
+        // designed «no» like the others.
+        const _rule = _ruleType === 'STOCK_RULE' || _ruleType === 'PLAN_RULE' || _ruleType === 'LOCAL_RELAY_RULE' || _ruleType === 'LEGACY_CLOSED'
           ? String(errData.error.code || 'rule') : null;
         if (typeof logError === 'function') logError(_lv, _rule ? '_atRetry 422 rule' : `_atRetry ${res.status}`);
         if (typeof showErrorToast === 'function') showErrorToast(mapped, 'error');
@@ -793,7 +847,7 @@ async function atPatch(tableId, recId, fields, opts) {
     method: 'PATCH',
     headers: _apiHeaders('PATCH', _r),
     body: JSON.stringify(_expect ? { fields, typecast: true, _expect } : { fields, typecast: true })
-  }), undefined, _expect ? (_quiet ? { conflict: true, quiet: true } : { conflict: true }) : (_quiet ? { quiet: true } : undefined)));
+  }), undefined, Object.assign({ write: true }, _expect ? { conflict: true } : {}, _quiet ? { quiet: true } : {})));
   const data = await res.json();
   // A conflict is an ANSWER, not a failure: nothing was written, and the v4
   // caller asks «Ποια κρατάμε;». So no «Save failed» toast — but one app_errors
@@ -858,7 +912,7 @@ async function atCreate(tableId, fields, opts) {
     method: 'POST',
     headers: _apiHeaders('POST', _r),
     body: JSON.stringify({ fields, typecast: true })
-  })));
+  }), undefined, { write: true }));
   const data = await res.json();
   if (data.error) {
     const errMsg = _atErrMsg(data.error, 'Unknown Airtable error');
@@ -882,16 +936,27 @@ async function atCreate(tableId, fields, opts) {
  * @param {string} recId - Record ID to delete
  * @returns {Promise<{id:string, deleted:boolean}>} Deletion confirmation
  */
-async function atDelete(tableId, recId) {
+async function atDelete(tableId, recId, opts) {
   _auditLog('DELETE', tableId, recId, null);
+  // opts.confirmToken: the token of a 428 preview (F5 Ε19), sent back as the user confirmed it
+  const q = opts && opts.confirmToken ? '?confirm_token=' + encodeURIComponent(opts.confirmToken) : '';
   if (!_isOnline()) {
-    _queueOffline('DELETE', _apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), null, recId);
+    // F5 Ε19: an ORDER delete may need the base's consequences first (428 + a token only the live answer gives).
+    // Queued without a token it would be replayed later, refused, and the user — told «deleted» — would learn
+    // it minutes after. So an order delete is never queued: it waits for the network, said now.
+    if (typeof TABLES !== 'undefined' && tableId === TABLES.ORDERS && !q) {
+      const eOff = new Error('Η διαγραφή παραγγελίας θέλει σύνδεση — δεν έγινε τίποτα· δοκίμασε ξανά όταν επανέλθει το δίκτυο');
+      eOff._noRetry = true; eOff._kind = 'offline';
+      if (typeof showErrorToast === 'function') showErrorToast(eOff.message, 'warn', 8000);
+      throw eOff;
+    }
+    _queueOffline('DELETE', _apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}${q}`), null, recId);
     return { id: recId, deleted: true, _offline: true };
   }
-  const res = await _enqueue(() => _atRetry((_r) => _fetchWithTimeout(_apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), {
+  const res = await _enqueue(() => _atRetry((_r) => _fetchWithTimeout(_apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}${q}`), {
     method: 'DELETE',
     headers: _apiHeaders('DELETE', _r)
-  })));
+  }), undefined, { write: true }));
   const data = await res.json();
   if (data.error) {
     const errMsg = _atErrMsg(data.error, 'Unknown Airtable error');
@@ -948,7 +1013,7 @@ async function atCreateBatch(tableId, recordsArr) {
         headers: _apiHeaders('POST', _r),
         body: JSON.stringify({ records: batch, typecast: true })
       }
-    ), 1));
+    ), 1, { write: true }));
     const data = await res.json();
     if (data.error) {
       const errMsg = _atErrMsg(data.error, 'Unknown Airtable error');
@@ -989,7 +1054,7 @@ async function atPatchBatch(tableId, recordsArr) {
         headers: _apiHeaders('PATCH', _r),
         body: JSON.stringify({ records: batch, typecast: true })
       }
-    )));
+    ), undefined, { write: true }));
     const data = await res.json();
     if (data.error) {
       const errMsg = _atErrMsg(data.error, 'Unknown Airtable error');
@@ -1357,7 +1422,7 @@ async function undoLastAction() {
  * @param {string} recordId - Record ID to delete
  * @returns {Promise<{id:string, deleted:boolean}>} Deletion confirmation
  */
-async function atSoftDelete(tableId, recordId) {
+async function atSoftDelete(tableId, recordId, opts) {
   // Read the record first (the trash keeps its fields), DELETE second, and only
   // after the delete succeeded write the Κάδος entry and the «Restore» undo.
   // Until 4/10 both were written before atDelete: a REFUSED delete (403, or a
@@ -1367,7 +1432,7 @@ async function atSoftDelete(tableId, recordId) {
   // order, made routine by migration 057's designed refusals).
   let recLabel = '', rec = null, readErr = null;
   try { rec = await atGetOne(tableId, recordId); } catch(e) { readErr = e; }
-  const result = await atDelete(tableId, recordId);   // throws on refusal → no trash, no undo
+  const result = await atDelete(tableId, recordId, opts);   // throws on refusal → no trash, no undo
   try {
     if (readErr) throw readErr;
     recLabel = rec.fields?.['Name'] || rec.fields?.['Order Number'] || rec.fields?.['Full Name'] || rec.fields?.['License Plate'] || recordId;
@@ -1398,6 +1463,50 @@ async function atSoftDelete(tableId, recordId) {
 // delete, so the two can never disagree.
 function _atNoRestore(fields) {
   return typeof OrdersStock !== 'undefined' && !!fields && (OrdersStock.isPiece(fields) || OrdersStock.isLot(fields));
+}
+
+// F5 Ε19 (Worker deploy 1): an order delete with consequences answers 428 with a preview. run(token) does the
+// delete — first without a token; on 428 the user reads the consequences in words and, only on «yes», run(token)
+// sends it back. A changed list since the preview = 422 stale_confirm, shown by _atRetry as any designed «no».
+// «No» throws {_noRetry, _cancelled}: nothing was deleted, and the caller says so.
+// The base's items ({kind, …ids}) are read with the board's words (core/wn5-labels.js, the one copy of them): live
+// 28/10 the confirm printed every piece_on_rt as raw JSON with its order_stop_id. A kind the labels do not know is
+// still shown («άλλη επίπτωση · <kind>»), never dropped; the same line for several pieces is said once, «×n».
+const _atUnkCons = new Set();
+function _atPreviewText(p) {
+  const list = Array.isArray(p && p.consequences) ? p.consequences : [];
+  const line = (c) => {
+    const own = (c && typeof c === 'object') ? (c.text || c.label || c.message) : null;
+    if (c && typeof c === 'object' && c.kind && typeof WN5Lab !== 'undefined') {
+      const l = WN5Lab.consequenceLine(c);
+      // a kind the labels miss is logged once per session (as the board's two-step list does): shown is not enough
+      if (l.unknown && !_atUnkCons.has(c.kind)) {
+        _atUnkCons.add(c.kind);
+        try { if (typeof logError === 'function') logError(new Error('order delete: unknown consequence ' + c.kind), 'atWithDeleteConfirm'); } catch (_) {}
+      }
+      // a kind the labels do not know yet: the server's own sentence when it sent one, else «άλλη επίπτωση · kind»
+      if (!(l.unknown && own)) {
+        const cat = Object.prototype.hasOwnProperty.call(WN5Lab.CATEGORY, c.kind) ? WN5Lab.CATEGORY[c.kind] + ' · ' : '';
+        return cat + l.text;
+      }
+    }
+    return (c && typeof c === 'object') ? String(own || JSON.stringify(c)) : String(c);
+  };
+  const n = new Map();
+  for (const c of list) { const l = line(c); n.set(l, (n.get(l) || 0) + 1); }
+  return 'Η διαγραφή έχει συνέπειες:\n\n' + (list.length ? [...n].map(([l, k]) => '• ' + l + (k > 1 ? ' ×' + k : '')).join('\n') : '• (ο διακομιστής δεν έδωσε λίστα)')
+    + '\n\nΝα γίνει η διαγραφή;';
+}
+async function atWithDeleteConfirm(run) {
+  try { return await run(undefined); }
+  catch (e) {
+    if (!e || !e._needToken || !(e.preview && e.preview.confirm_token)) throw e;
+    if (!confirm(_atPreviewText(e.preview))) {
+      const c = new Error('Η διαγραφή ακυρώθηκε — δεν άλλαξε τίποτα'); c._noRetry = true; c._cancelled = true;
+      throw c;
+    }
+    return run(e.preview.confirm_token);
+  }
 }
 
 /**
@@ -1439,6 +1548,14 @@ async function atRestoreFromTrash(trashIndex) {
     if (_atNoRestore(item.fields)) {
       if (typeof reportError === 'function') reportError('Η επαναφορά κομματιού/παρτίδας γίνεται από το ΑΠΟΘΕΜΑ — όχι από τον κάδο');
       return null;
+    }
+    // F5 Ε16: after day L the base refuses a new NL / GL / CL (plan:legacy_frozen); said here, before a POST.
+    if (typeof PlanConfig !== 'undefined' && PlanConfig.isLegacyTable(item.table)) {
+      const pc = await PlanConfig.load({ fresh: true });
+      if (pc.state !== 'before') {
+        if (typeof showErrorToast === 'function') showErrorToast(PlanConfig.LEGACY_TEXT[pc.state], 'warn', 10000);
+        return null;
+      }
     }
     // Re-create the record in its original table
     const restored = await atCreate(item.table, item.fields);

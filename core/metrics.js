@@ -56,16 +56,12 @@ const metrics = (function() {
     return (orders || []).filter(r => !OrdersStock.isLoose(r.fields || {}));
   }
   // E-17: a PIECE is never invoiced (no price, by a DB CHECK) — never owed,
-  // ready or overdue. A LOT is invoiced once, only when COMPLETE; whether it
-  // is, only the STOCK LOTS read knows, and «Προς τιμολόγηση»
-  // (OrdersData.stateOf) is the ONE place that applies it. So here a lot is
-  // left out of «ready»/«overdue» instead of a third copy of that rule; its
-  // price still counts in «Ανεξόφλητο» (it is owed). See the money functions.
+  // ready or overdue. A LOT is an order like any other since B0 (owner
+  // 21/10/2026): invoiced once, from its registration. «Ready» and «overdue»
+  // are not decided here: they call OrdersData.stateOf / ageOf, the rule of
+  // «Προς τιμολόγηση» (B0 review #1, owner 22/10) — one rule, no copy.
   function _excludePieces(orders) {
     return (orders || []).filter(r => !OrdersStock.isPiece(r.fields || {}));
-  }
-  function _excludeStock(orders) {
-    return (orders || []).filter(r => !OrdersStock.isPiece(r.fields || {}) && !OrdersStock.isLot(r.fields || {}));
   }
 
   // ════ OPERATIONAL ═══════════════════════════════════
@@ -320,32 +316,37 @@ const metrics = (function() {
       .reduce((sum, r) => sum + (parseFloat(r.fields['Price'])||0), 0);
   }
 
+  // «Ready» and «overdue» = «Προς τιμολόγηση» (B0 review #1, owner 22/10/2026):
+  // the rule is OrdersData.stateOf / ageOf, called, never copied — the copy
+  // that lived here (delivered only, pallet slips required, lots left out)
+  // disagreed with the page from the day B0 changed it. Every non-cancelled,
+  // not-invoiced order with a price > 0 is ready (not yet delivered, a
+  // pre-order, a lot too; the slip blocks nothing). The set is empty of gate
+  // results: a missing slip only flags «ready» (noSheets), never changes it.
+  // ORDERS records only (the callers pass ORDERS): no _type = international.
+  const _INVOICING_SET = { intl: [], natl: [], gate: {}, gateFailed: false, stock: null, stockFailed: false };
+  const _invoicingState = r => OrdersData.stateOf(_INVOICING_SET, r).key;
+
   function revenueReadyToInvoice(orders) {
     orders = _excludeLegs(orders); // Wave 3: strip split legs before counting (see _excludeLegs)
-    orders = _excludeStock(orders); // E-17: lots are blocked until complete — «Προς τιμολόγηση» is the one truth
+    orders = _excludePieces(orders); // E-17: a piece is never invoiced
     return orders
-      .filter(r => {
-        const f = r.fields;
-        if (f['Status'] !== 'Delivered' || f['Invoiced']) return false;
-        if (f['Pallet Exchange']) {
-          // Must have both sheets uploaded (if VS) or sheet 1 only (if not VS)
-          if (!f['Pallet Sheet 1 Uploaded']) return false;
-          if (f['Veroia Switch'] && !f['Pallet Sheet 2 Uploaded']) return false;
-        }
-        return true;
-      })
+      .filter(r => _invoicingState(r) === 'ready')
       .reduce((sum, r) => sum + (parseFloat(r.fields['Price'])||0), 0);
   }
 
+  // Open (ready, or blocked on its price) and delivered more than daysCutoff
+  // days ago — «καθυστέρηση > 30» of «Προς τιμολόγηση» (metricsOf): the age is
+  // OrdersData.ageOf, a delivered order's age only.
   function overdueInvoices(orders, opts = {}) {
     orders = _excludeLegs(orders); // Wave 3: strip split legs before counting (see _excludeLegs)
-    orders = _excludeStock(orders); // E-17: a piece is never invoiced; a lot waits for its pieces, not for us
+    orders = _excludePieces(orders); // E-17: a piece is never invoiced
     const { daysCutoff = 30 } = opts;
-    const cutoff = _daysAgo(daysCutoff);
     return orders.filter(r => {
-      const f = r.fields;
-      if (f['Status'] !== 'Delivered' || f['Invoiced']) return false;
-      return _toISO(f['Delivery DateTime']) < cutoff;
+      const k = _invoicingState(r);
+      if (k !== 'ready' && k !== 'blocked') return false;
+      const d = OrdersData.ageOf(null, r);
+      return d !== null && d > daysCutoff;
     });
   }
 

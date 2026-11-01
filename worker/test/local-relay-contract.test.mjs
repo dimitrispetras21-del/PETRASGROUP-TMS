@@ -33,12 +33,16 @@ function lift(re, what) {
   return m[0];
 }
 const fn = (name) => lift(new RegExp(`function ${name}\\([^)]*\\) \\{[\\s\\S]*?\\n\\}\\n`), name);
-// stockRuleError is ONE mapper for the stock (057) and relay (060) families,
-// so it is lifted with all three text tables it reads.
+// stockRuleError is ONE mapper for the stock (057), relay (060) and national
+// v5 (071/072) families, so it is lifted with all five text tables it reads.
 const W = new Function('__name', [
   lift(/const STOCK_CHECK_TEXT = \{[\s\S]*?\n\};\n/, 'STOCK_CHECK_TEXT'),
   lift(/const RELAY_RULE_TEXT = \{[\s\S]*?\n\};\n/, 'RELAY_RULE_TEXT'),
   lift(/const RELAY_CHECK_TEXT = \{[\s\S]*?\n\};\n/, 'RELAY_CHECK_TEXT'),
+  lift(/const PLAN_RULE_TEXT = \{[\s\S]*?\n\};\n/, 'PLAN_RULE_TEXT'),
+  lift(/const PLAN_CHECK_TEXT = \{[\s\S]*?\n\};\n/, 'PLAN_CHECK_TEXT'),
+  // read by the 23505 / 23P01 branches (review of PR #90, finding 10): without it every unique refusal threw
+  lift(/const PLAN_CONSTRAINT_CODE = \{[\s\S]*?\n\};\n/, 'PLAN_CONSTRAINT_CODE'),
   fn('stockRuleError'),
 ].join('\n') + '\nreturn { RELAY_RULE_TEXT, RELAY_CHECK_TEXT, stockRuleError };')(() => {});
 
@@ -63,7 +67,7 @@ const NOT_FACADE_UNIQUE = {
 
 function read060() {
   assert.ok(sqlFile, '060_local_relay.sql not found in this checkout (looked in: ' + candidates.join(', ') +
-    ') — copy it from the SQL branch: git checkout origin/feat/local-relay-sql -- worker/migrations/drafts/060_local_relay.sql');
+    ') — copy it from the SQL branch: git checkout origin/feat/local-relay-sql -- worker/migrations/060_local_relay.sql');
   return readFileSync(sqlFile, 'utf8');
 }
 const uniq = (re, text) => [...new Set([...text.matchAll(re)].map((m) => m[1]))].sort();

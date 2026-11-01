@@ -19,10 +19,11 @@
 //   recX2  #1225 Nordfrisch, 7 days, NO price, partner               → listed
 //   recX3  #1211 Nordfrisch, same route, 3300                         → hint for recX2
 //   recN1  Ανδρέου (national), 4 days, NO price, no number/reference → listed, «— πρώτη φορά»
-//   recX5  #1240 NO price but still Assigned (not delivered)         → NOT listed
+//   recX5  #1240 NO price, CANCELLED                                → NOT listed (since B0, 21-22/10,
+//          an order not yet delivered and a pre-order ARE listed)
 //   recX4  #1230 priced today (audit: null → 2800)                    → «Συμπληρώθηκαν σήμερα»
 //   recN2  national priced today (audit national_orders: 0 → 420)     → «Συμπληρώθηκαν σήμερα»
-//   recX5 also has a today audit fill — pending, so NOT a «συμπλήρωση» of this list.
+//   recX5 also has a today audit fill — cancelled, so NOT a «συμπλήρωση» of this list.
 
 const path = require('path');
 const fs = require('fs');
@@ -85,7 +86,7 @@ const ORDERS = [
   intl('recX2', { 'Order No': 1225, Reference: '6100118250', Client: ['recC2'], 'Loading Location 1': ['recL3'], 'Unloading Location 1': ['recL4'], 'Loading DateTime': daysAgo(9), 'Delivery DateTime': daysAgo(7), 'Total Pallets': 33, Goods: 'Ροδάκινα', 'Temperature °C': 2, Partner: ['recP1'] }),
   intl('recX3', { 'Order No': 1211, Reference: '6100117001', Client: ['recC2'], 'Loading Location 1': ['recL3'], 'Unloading Location 1': ['recL4'], 'Loading DateTime': daysAgo(24), 'Delivery DateTime': daysAgo(22), Price: 3300, 'Total Pallets': 33 }),
   intl('recX4', { 'Order No': 1230, Reference: 'DE-44871', Client: ['recC2'], 'Loading Location 1': ['recL6'], 'Unloading Location 1': ['recL7'], 'Loading DateTime': daysAgo(6), 'Delivery DateTime': daysAgo(3), Price: 2800, 'Total Pallets': 26, Direction: 'Import' }),
-  intl('recX5', { 'Order No': 1240, Reference: 'PL-0001', Client: ['recC1'], Status: 'Assigned', 'Loading Location 1': ['recL1'], 'Unloading Location 1': ['recL2'], 'Loading DateTime': daysAgo(-2), 'Delivery DateTime': daysAgo(-3) }),
+  intl('recX5', { 'Order No': 1240, Reference: 'PL-0001', Client: ['recC1'], Status: 'Cancelled', 'Loading Location 1': ['recL1'], 'Unloading Location 1': ['recL2'], 'Loading DateTime': daysAgo(-2), 'Delivery DateTime': daysAgo(-3) }),
 ];
 const NATS = [
   { id: 'recN1', fields: { Client: ['recC3'], 'Pickup Location 1': ['recL5'], 'Delivery Location 1': ['recL2'], 'Loading DateTime': daysAgo(5), 'Delivery DateTime': daysAgo(4), Pallets: 24, Goods: 'Λαχανικά', 'Temperature °C': 4, Direction: 'South→North' } },
@@ -199,7 +200,7 @@ async function runOwner(browser) {
   const txt = await rows(page).allInnerTexts();
   assert(txt.length === 3, '3 rows listed (recX1, recX2, recN1) — got ' + txt.length);
   assert(/#1209/.test(txt[0]) && /#1225/.test(txt[1]) && /Λαχανικά/.test(txt[2]), 'order: Thracia (17 d) → Nordfrisch (7 d) → Ανδρέου national (4 d)');
-  assert(!txt.some(t => /#1240/.test(t)), 'undelivered order without price (#1240) is NOT listed');
+  assert(!txt.some(t => /#1240/.test(t)), 'a cancelled order without price (#1240) is NOT listed');
   const grp = await page.locator('.np-grp').allInnerTexts();
   assert(grp.length === 3 && /Thracia Foods EOOD/.test(grp[0]) && /ΑΦΜ BG 204567891 · όροι 30 ημ\./.test(grp[0]), 'group header: client + «ΑΦΜ … · όροι 30 ημ.»');
   assert(/Ανδρέου Logistics/.test(grp[2]) && /όροι —/.test(grp[2]), 'missing terms shown as a gap «όροι —», not hidden');
@@ -235,7 +236,7 @@ async function runOwner(browser) {
   assert(/17 ημέρες/.test(oldest) && new RegExp('από παράδοση · ' + dm(17).replace('/', '\\/')).test(oldest), 'KPI Παλαιότερη «17 ημέρες · από παράδοση · ' + dm(17) + '»: ' + oldest);
   assert(await page.locator('.np-k', { hasText: 'Παλαιότερη' }).locator('.np-red').count() === 1, 'Παλαιότερη painted red (> 10)');
   assert(await kpiVal(page, 'Πελάτες') === '3', 'KPI Πελάτες 3');
-  assert(await kpiVal(page, 'Συμπληρώθηκαν σήμερα') === '2', 'KPI Συμπληρώθηκαν σήμερα 2 (from /audit: #1230 + national; pending #1240 and the 3200→3300 correction excluded)');
+  assert(await kpiVal(page, 'Συμπληρώθηκαν σήμερα') === '2', 'KPI Συμπληρώθηκαν σήμερα 2 (from /audit: #1230 + national; cancelled #1240 and the 3200→3300 correction excluded)');
   assert(S.auditCalls.length === 2 && S.auditCalls.every(q => /action=update/.test(q) && /since=/.test(q)), '/audit read twice (orders + national_orders), action=update, since=today');
   const filled = await page.locator('#npFilled tr').allInnerTexts();
   assert(filled.length === 2 && /2\.800,00 €/.test(filled.join()) && /420,00 €/.test(filled.join()), 'filled section lists the 2 audited fills');

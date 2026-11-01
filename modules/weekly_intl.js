@@ -44,7 +44,8 @@ const WINTL = {
 
 // Search / status select / pre-order counter — all by hiding rows, no rebuild.
 function _wiApplyFilter() {
-  const q = (WINTL.filter || '').toLowerCase();
+  // Same search rule as v4 (fhSearchNorm, core/form-helpers.js, Pantelis 21/10).
+  const q = fhSearchNorm(WINTL.filter || '');
   const fs = WINTL.filterStatus || '';
   const qk = WINTL.quick || '';
   document.querySelectorAll('#wi-rows [data-row-id]').forEach(el => {
@@ -52,7 +53,7 @@ function _wiApplyFilter() {
     if (!row) { el.style.display = ''; return; }
     let show = true;
     if (q) {
-      const blob = [
+      const blob = fhSearchBlob([
         row.truckLabel, row.driverLabel, row.partnerLabel,
         ...(row.orderIds || []).map(oid => {
           const o = WINTL.data.exports.find(r=>r.id===oid) || WINTL.data.imports.find(r=>r.id===oid);
@@ -61,7 +62,7 @@ function _wiApplyFilter() {
           // 'Reference' — there is no 'Order Number' field (CLAUDE.md name traps)
           return [f['Loading Summary'], f['Delivery Summary'], f['Reference']].filter(Boolean).join(' ');
         })
-      ].join(' ').toLowerCase();
+      ]);
       if (!blob.includes(q)) show = false;
     }
     if (show && fs) {
@@ -175,7 +176,8 @@ async function _wiInjectStopSummaries(allOrders) {
           .sort((a,b)=>(a.fields[F.STOP_NUMBER]||0)-(b.fields[F.STOP_NUMBER]||0))
           .map(s=>{const lid=Array.isArray(s.fields[F.STOP_LOCATION])?s.fields[F.STOP_LOCATION][0]:null;
             // p: the stop's own pallets, so a groupage row on v4 can show them per stop (item 23, 14/10).
-            return {n:lid?(_fhLocationsMap[lid]||''):'', dt:s.fields[F.STOP_DATETIME]||'', p:s.fields[F.STOP_PALLETS]};})
+            // c: the Ημερήσιο's per-stop stamp (_opsMarkStop), so v4 fades the ONE point done (owner 21/10).
+            return {n:lid?(_fhLocationsMap[lid]||''):'', dt:s.fields[F.STOP_DATETIME]||'', p:s.fields[F.STOP_PALLETS], c:s.fields['Completed At']||''};})
           .filter(x=>x.n);
         const L=namesOf('Loading'), D=namesOf('Unloading');
         if(L.length) r.fields._stopsL=L;
@@ -710,16 +712,39 @@ async function renderWeeklyIntl(){
     // trap 2: unread ≠ «σκέλος χωρίς μεταφορέα»), so the state rides next to
     // the map. v1 never reads it, and the extra paints below run only while v4
     // is active: an extra v1 paint would close an open popover.
+    // natBySrc (F5 Ε1/Ε20): the ONE map the tiles read — {carrier, done, src:'nl'|'v5'} per VS order. Day L
+    // is the base's word (PlanConfig), never a date here: 'before' reads NATIONAL LOADS only, exactly as before
+    // 074; otherwise /plan/vs-state first and NATIONAL LOADS only for the orders the base answers «missing»
+    // (no bridge: hub day < L). A failure of either read → nlState 'err' («απέτυχε»), never «χωρίς εθνικό».
     const nlMap = {};
+    const natMap = {};
     WINTL.data.nlBySrc = nlMap;
+    WINTL.data.natBySrc = natMap;
     WINTL.data.nlState = 'loading';
     (async () => {
-      const vsIds = ([...expOrders, ...impOrders]).filter(r => r.fields && r.fields['Veroia Switch']).map(r => r.id);
+      let vsIds = ([...expOrders, ...impOrders]).filter(r => r.fields && r.fields['Veroia Switch']).map(r => r.id);
       if (!vsIds.length) { WINTL.data.nlState = 'ok'; return; }
+      const pc = typeof PlanConfig !== 'undefined' ? await PlanConfig.load() : { state: 'unknown' };
+      if (WINTL.data.nlBySrc !== nlMap) return;
+      if (pc.state !== 'before') {
+        let v5;
+        try { v5 = await PlanConfig.vsState(vsIds); }
+        catch (e) {
+          // planFetch logged its own failures (a PlanError of a /plan route); the gate's and the map's are logged here
+          if (typeof logError === 'function' && !(typeof PlanError === 'function' && e instanceof PlanError && !/^vs_/.test(e.code || ''))) logError(e, 'weekly intl: /plan/vs-state');
+          if (WINTL.data.nlBySrc === nlMap) { WINTL.data.nlState = 'err'; if(_wiV2Active()) WIV2._lateLanded(); }
+          return;
+        }
+        if (WINTL.data.nlBySrc !== nlMap) return;
+        v5.forEach((v, oid) => { if (v !== 'missing') natMap[oid] = _wiNatFromV5(v); });
+        vsIds = vsIds.filter(id => v5.get(id) === 'missing');
+        if (!vsIds.length) { WINTL.data.nlState = 'ok'; if(_wiV2Active()) WIV2._lateLanded(); else _wiPaint(); return; }
+      }
       const parts = vsIds.map(id => `FIND("${id}",ARRAYJOIN({Source Order},","))>0`);
       const f = parts.length === 1 ? parts[0] : `OR(${parts.join(',')})`;
       const nl = await safeFetch(() => atGetAll(TABLES.NAT_LOADS, { filterByFormula: f,
-        fields: ['Source Order','Truck','Driver','Partner','Partner Truck Plates','Is Partner Trip'] }, false),
+        // Status: v4 fades a VS row whole only once its national leg is Delivered (owner 21/10).
+        fields: ['Source Order','Truck','Driver','Partner','Partner Truck Plates','Is Partner Trip','Status'] }, false),
         'weekly intl: national carriers', []);
       if (WINTL.data.nlBySrc !== nlMap) return;
       // v4 repaints through WIV2._lateLanded: at once, or — when a popover,
@@ -727,10 +752,10 @@ async function renderWeeklyIntl(){
       // #content and closed the popover a dispatcher was typing in, review
       // 11/10). v1 keeps today's paint, only with carriers to show.
       if (didFail(nl)) { WINTL.data.nlState = 'err'; if(_wiV2Active()) WIV2._lateLanded(); return; }
-      nl.forEach(r => { const src = (r.fields['Source Order'] || [])[0]; if (src) nlMap[src] = r; });
+      nl.forEach(r => { const src = (r.fields['Source Order'] || [])[0]; if (src) { nlMap[src] = r; natMap[src] = _wiNatFromNl(r); } });
       WINTL.data.nlState = 'ok';
       if(_wiV2Active()) WIV2._lateLanded();
-      else if (Object.keys(nlMap).length) _wiPaint();
+      else if (Object.keys(natMap).length) _wiPaint();
     })().catch(e => {
       console.warn('[weekly intl] national carriers:', e);
       // A throw after the read must not leave v4 on «φορτώνει» for ever.
@@ -856,7 +881,10 @@ function _wiBuildRows(){
       partnerLabel:WINTL.data.partners.find(p=>p.id===partnerId)?.label||'',
       partnerPlates:f['Partner Truck Plates']||'',
       partnerRate:  f['Partner Rate']?String(f['Partner Rate']):'',
-      partnerRateImp:'',
+      // Read back from the matched import (owner 22/10, order 585): the save
+      // writes it there, but the row started empty, so the field showed blank
+      // after every reload and the next save demanded it again.
+      partnerRateImp:(importId&&impById[importId]?.fields?.['Partner Rate'])?String(impById[importId].fields['Partner Rate']):'',
       saved:!!(truckId||partnerId),
     });
   }
@@ -2269,19 +2297,34 @@ window.addEventListener('resize',()=>{ clearTimeout(_wi2BalTimer); _wi2BalTimer=
 // partner (name · plates), dashed «ΠΡΟΣ ΑΝΑΘΕΣΗ» when nothing is assigned yet.
 // Full text lives in title; the tile truncates honestly.
 function _wi2Carrier(oid){
-  const nl=WINTL.data.nlBySrc&&WINTL.data.nlBySrc[oid]; const d=WINTL.data;
+  const n=WINTL.data.natBySrc&&WINTL.data.natBySrc[oid]; const c=n&&n.carrier;
   const un=`<div class="wi2-carrier un" title="Εθνικό σκέλος χωρίς μεταφορέα — ανατίθεται στο Weekly National">ΠΡΟΣ ΑΝΑΘΕΣΗ</div>`;
-  if(!nl) return un;
+  if(!c) return un;
+  if(c.kind==='par') return `<div class="wi2-carrier par" title="Εθνικός μεταφορέας — συνεργάτης: ${escapeHtml(c.text)}">${escapeHtml(c.text)}</div>`;
+  return `<div class="wi2-carrier own" title="Εθνικός μεταφορέας — ιδιόκτητο: ${escapeHtml(c.text)}">${escapeHtml(c.text)}</div>`;
+}
+// One entry of WINTL.data.natBySrc from a NATIONAL LOADS row (before day L, or a VS without a bridge): partner
+// first, then truck — the reading the v1 tile and v4 _carrierOf both had. Delivered/Invoiced = the leg is done.
+// carrier is a getter: the labels resolve when the tile is drawn, so the partners self-heal (a refresh of
+// PARTNERS + repaint, renderWeeklyIntl) still turns a «—» into the name — as when the tiles read the NL row.
+function _wiNatFromNl(nl){
   const f=nl.fields||{}; const pid=(f['Partner']||[])[0], tid=(f['Truck']||[])[0], did=(f['Driver']||[])[0];
-  if(pid||f['Is Partner Trip']){
-    const t=[d.partners.find(x=>x.id===pid)?.label||'—', f['Partner Truck Plates']||''].filter(Boolean).join(' · ');
-    return `<div class="wi2-carrier par" title="Εθνικός μεταφορέας — συνεργάτης: ${escapeHtml(t)}">${escapeHtml(t)}</div>`;
-  }
-  if(tid){
-    const t=[d.trucks.find(x=>x.id===tid)?.label||'—', did?(d.drivers.find(x=>x.id===did)?.label||''):''].filter(Boolean).join(' · ');
-    return `<div class="wi2-carrier own" title="Εθνικός μεταφορέας — ιδιόκτητο: ${escapeHtml(t)}">${escapeHtml(t)}</div>`;
-  }
-  return un;
+  return {
+    get carrier(){
+      const d=WINTL.data;
+      if(pid||f['Is Partner Trip']) return {kind:'par', text:[(d.partners.find(x=>x.id===pid)||{}).label||'—', f['Partner Truck Plates']||''].filter(Boolean).join(' · ')};
+      if(tid) return {kind:'own', text:[(d.trucks.find(x=>x.id===tid)||{}).label||'—', did?((d.drivers.find(x=>x.id===did)||{}).label||''):''].filter(Boolean).join(' · ')};
+      return null;
+    },
+    done:['Delivered','Invoiced'].includes(f['Status']), src:'nl'};
+}
+// One entry from /plan/vs-state (a VS with a v5 bridge). The base names each carrier (072 plan_vs_state: kind
+// owned / partner / none, text plates · driver or the partner). 'none' = a trip without a vehicle = not
+// assigned. Several cycles → one tile, texts joined. Done = all_executed, never a Status (F5 plan, Task F).
+function _wiNatFromV5(v){
+  const cs=(v.carriers||[]).filter(c=>c&&(c.kind==='owned'||c.kind==='partner'));
+  const carrier=cs.length?{kind:cs[0].kind==='partner'?'par':'own', text:cs.map(c=>c.text||'—').join(' + ')}:null;
+  return {carrier, done:v.all_executed===true, src:'v5'};
 }
 // Clickable date chip → calendar → PATCH (existing _wk3PickDate, all dates stay editable — owner 10/8)
 function _wi2Date(oid,field,iso,txt,cls,title){
@@ -5210,7 +5253,7 @@ async function _wiRejoinLegs(rowId){
   const errors=[];
   for(const lr of legs){
     const oid=lr.orderIds?.[0]||lr.orderId;
-    try{ await atDelete(TABLES.ORDERS,oid); }
+    try{ await atWithDeleteConfirm(tok=>atDelete(TABLES.ORDERS,oid,{confirmToken:tok})); }   // F5 Ε19: a 428 is confirmed, never a silent fail
     catch(e){ errors.push(oid+': '+(e&&e.message||e)); }
   }
   if(errors.length){
@@ -5595,11 +5638,19 @@ async function _wiRotUnlink(e,legOid,skipConfirm){
 function _wiLegCtxItems(legOid){
   let html='';
   html+=_wiCtxBtn('Επεξεργασία…',`_wk3Edit('${legOid}')`);
+  // Print / WhatsApp for the leg itself (owner 28/10: a rota leg could not be
+  // printed or shared from the v4 board). A leg is a row of its own, so the
+  // load rows' _wiMenuPrint prints it unchanged (single order, its direction).
+  const legRow=WINTL.rows.find(r=>r.legOf&&(r.orderIds||[r.orderId]).includes(legOid));
+  if(legRow) html+=_wiCtxBtn('Εκτύπωση…',`_wiMenuPrint(${legRow.id},${legRow.type==='import'?'true':'false'})`);
   html+='<div class="wi-ctx-sep"></div>';
   html+=_wiCtxBtn('Ακύρωση προώθησης',`_wiPanelConfirmUnlink('${legOid}')`,true);
   return html;
 }
 function _wiLegCtx(e,legOid){
+  // A right-click on the leg's ⎙ is its share menu (shareMenuDelegate on the
+  // document): this row-level handler stopped it before it got there (28/10).
+  if(e.target&&e.target.closest&&e.target.closest('.wk3-prt[data-shq]')) return;
   e.preventDefault(); e.stopPropagation();
   if(_wiBlockReadOnly()) return;
   if(_wiPreCtx(e,{orderIds:[legOid]},false)) return;

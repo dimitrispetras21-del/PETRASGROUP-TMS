@@ -15,6 +15,7 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { MIGRATIONS } from '../lib/db.mjs';
 import { buildDryRun, SOURCE, TARGET, DRAFTS } from '../../worker/migrations/drafts/tools/build-063-dryrun.mjs';
 
 const OPEN = '\nDO $do$\n';
@@ -62,7 +63,7 @@ test('the 063 builder refuses a 063 it does not understand (loud, never a silent
 });
 
 test('063, its rules test and its rollback: ASCII, ONE DO block, md5 fingerprints = the texts they name', () => {
-  const s060 = read('060_local_relay.sql');
+  const s060 = fs.readFileSync(path.join(MIGRATIONS, '060_local_relay.sql'), 'utf8');
   const s063 = fs.readFileSync(SOURCE, 'utf8');
   const rb = read('063_local_line_guard_rollback.sql');
   const rt = read('063_local_line_guard_test.sql');
@@ -94,7 +95,7 @@ test('063, its rules test and its rollback: ASCII, ONE DO block, md5 fingerprint
 });
 
 test('063 re-creates dl_local_day_sync = 060 + three additions; no superuser-only statement in any 063 file', () => {
-  const s060 = read('060_local_relay.sql');
+  const s060 = fs.readFileSync(path.join(MIGRATIONS, '060_local_relay.sql'), 'utf8');
   const s063 = fs.readFileSync(SOURCE, 'utf8');
   // the three additions, read from 063's own DECLARE (the in-database proof strips the same strings)
   const lit = (name) => {

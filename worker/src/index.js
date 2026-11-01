@@ -174,13 +174,14 @@ async function dbSelect(env, table, opts = {}) {
   return res.json();
 }
 __name(dbSelect, "dbSelect");
-async function dbSelectRaw(env, table, params) {
+async function dbSelectRaw(env, table, params, extraHeaders) {
   const url = `${env.SUPABASE_URL}/rest/v1/${table}?${params.toString()}`;
   const res = await fetch(url, {
     headers: {
       apikey: env.SUPABASE_SERVICE_KEY,
       Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
-      Accept: "application/json"
+      Accept: "application/json",
+      ...extraHeaders
     }
   });
   if (!res.ok) {
@@ -299,8 +300,29 @@ async function dbSelectManyByLegacy(env, table, legacyIds) {
   return rows || [];
 }
 __name(dbSelectManyByLegacy, "dbSelectManyByLegacy");
-// N audit rows in ONE insert (14/9). Same shape as audit(); a failure is logged
-// and never blocks the user's request.
+// An audit row that did not land is said where someone reads it (owner 28/10, Υ2): one app_errors row, which the
+// auditor's 24-hour count already reads, never only console.error (A41: 140 of 215 confirmations and every
+// invoice_override were lost in silence, refused by audit_log_action_check). The user's own action still succeeds:
+// the write it records already happened. The row names the action, the role and the database's own error (code and
+// message), never the username or the refused row: PostgREST's «Failing row contains (…)» would copy both into
+// app_errors.
+async function auditFailed(env, entries, e) {
+  const first = entries[0] || {};
+  console.error("AUDIT WRITE FAILED", first.action, first.table, entries.length, e.message);
+  const why = e.pg ? `${e.pg.code || ""} ${e.pg.message || ""}`.trim() : String(e.message || "").split(":")[0];
+  try {
+    await dbInsert(env, "app_errors", {
+      actor: null,
+      message: clampStr(`AUDIT WRITE FAILED: ${entries.length} row(s), ${first.action} ${first.table} ${first.recordId || ""} by ${first.role || "?"}: ${why}`, CLAMPS.message),
+      page: "worker:audit"
+    });
+  } catch (e2) {
+    console.error("APP ERROR INSERT FAILED", e2.message);
+  }
+}
+__name(auditFailed, "auditFailed");
+// N audit rows in ONE insert (14/9). Same shape as audit(); a failure is said by auditFailed and never blocks the
+// user's request.
 async function auditMany(env, entries) {
   if (!entries || !entries.length) return;
   try {
@@ -316,7 +338,7 @@ async function auditMany(env, entries) {
       created_at: now
     })));
   } catch (e) {
-    console.error("AUDIT BATCH WRITE FAILED", entries[0]?.action, entries[0]?.table, e.message);
+    await auditFailed(env, entries, e);
   }
 }
 __name(auditMany, "auditMany");
@@ -345,6 +367,33 @@ async function dbUpdate(env, table, matchColumn, matchValue, patch) {
   return Array.isArray(rows) ? rows[0] || null : rows;
 }
 __name(dbUpdate, "dbUpdate");
+// Sibling of dbUpdate for a PATCH matched by several filters at once: the
+// compare-and-set of the «_expect» conflict check (wi-v4 §g.2). The caller
+// builds `params` with URLSearchParams, so values such as «+00:00» or spaces
+// are encoded. dbUpdate stays as it is for every other caller. 0 rows → null:
+// the caller decides what a write that did not happen means (never a 200).
+async function dbUpdateWhere(env, table, params, patch) {
+  const url = `${env.SUPABASE_URL}/rest/v1/${table}?${params.toString()}`;
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: {
+      apikey: env.SUPABASE_SERVICE_KEY,
+      Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+      "Content-Type": "application/json",
+      Prefer: "return=representation"
+    },
+    body: JSON.stringify(patch)
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    const err = new Error(`dbUpdateWhere ${table} ${res.status}: ${detail.slice(0, 200)}`);
+    try { err.pg = JSON.parse(detail); } catch {}
+    throw err;
+  }
+  const rows = await res.json();
+  return Array.isArray(rows) ? rows[0] || null : rows;
+}
+__name(dbUpdateWhere, "dbUpdateWhere");
 async function dbRpc(env, fn, args) {
   const url = `${env.SUPABASE_URL}/rest/v1/rpc/${fn}`;
   const res = await fetch(url, {
@@ -362,6 +411,8 @@ async function dbRpc(env, fn, args) {
     // Same as dbInsert: keep the parsed PostgREST error for stockRuleError()
     // (delete_order_cascade soft-deletes the order, which the 057 guard may refuse).
     try { err.pg = JSON.parse(detail); } catch {}
+    // and the HTTP status: handlePlan tells an answer that proves the RPC never ran (401/403) from a lost one
+    err.status = res.status;
     throw err;
   }
   return res.json();
@@ -709,7 +760,7 @@ async function audit(env, entry) {
       created_at: (/* @__PURE__ */ new Date()).toISOString()
     });
   } catch (e) {
-    console.error("AUDIT WRITE FAILED", entry.action, entry.table, e.message);
+    await auditFailed(env, [entry], e);
   }
 }
 __name(audit, "audit");
@@ -1716,8 +1767,40 @@ var TABLES = {
       // (CHECK 'On Time'/'Delayed'), never computed from dates.
       "Completed At": "completed_at",
       "Completed By": "completed_by",
-      Performance: "performance"
+      Performance: "performance",
+      // Why a stop was late and whose it was (migration 067, dispatcher
+      // Pantelis / owner 9/10/2026). Deploy this Worker ONLY AFTER 067 ran:
+      // before it, a save naming «Delay Reason» meets a missing column (500,
+      // loud) and a read asking for it by fields[] fails the read. Daily Ops
+      // writes reason + note together with Performance 'Delayed' in ONE PATCH
+      // (the base refuses a reason on a stop that is not Delayed, and «other»
+      // without a note: 23514 -> 500 with the constraint name in the log).
+      "Delay Reason": "delay_reason",
+      "Delay Note": "delay_note",
+      // GENERATED by the base from the reason (us/client/consignee/borders/
+      // external/other) — READ-ONLY, see readOnly below.
+      "Delay Responsibility": "delay_responsibility",
+      // 071 (F1 Interfaces, decision 27): «through Veroia» on an INTERNATIONAL
+      // stop — default false, CHECK order_stops_via_hub_intl; 074 fills it on
+      // day L. Mapped now so the column is never written-and-dropped (trap 1);
+      // 072's rollback does not count it as a v5 row.
+      "Via Hub": "via_hub"
     },
+    // Born closed (review of PR #90, finding 8; αρχή 5), and closed for good since F5 (owner 28/10, Q-6): «Via
+    // Hub» is read by every path, but only the DB writes it (074 plan_bridge_sync: true on the national side of
+    // a VS in v5, false elsewhere). A facade write naming it is refused (400 db_only, named, no DB call) before
+    // AND after day L — the /plan/* switch does not open it. It becomes an input only with the per-stop box of
+    // the International panel (F4b), in its own change. No screen writes it today (grep 26/10: none).
+    dbOnly: ["Via Hub"],
+    // Labels the base computes. Mapped in `fields` so every read path (select,
+    // filter, sort, the PATCH answer the screen reads back) carries them with
+    // no extra request; `fields` is also the write allow-list, so a write
+    // naming one is REFUSED (400, named) by refuseReadOnly before any database
+    // call — never dropped with a 200 (facade trap 1), never Postgres' generic
+    // 428C9 -> 500. Not `computed`: that path drops the label silently when it
+    // rides beside a writable one, and re-reads the row after every write of
+    // the busiest table (shapeOneWithLinks).
+    readOnly: ["Delay Responsibility"],
     links: {
       Location: { column: "location_id", table: "locations" },
       "Client at Stop": { column: "client_at_stop_id", table: "clients" },
@@ -1877,6 +1960,12 @@ var TABLES = {
       // 'local'), so Weekly National can keep only its own 'local' rows.
       "Move Kind": "move_kind"
     },
+    // v5 rows (071: move_kind 'nat_loading' ⟺ rt_stop_id set, CHECK local_moves_nat_loading) belong to /plan/*:
+    // plan_local_loading checks payroll_locked, writes the notices and the audit. A facade PATCH / DELETE of
+    // one would skip all three, so it is refused (422, nothing written; review of PR #90, finding 2). The kind is
+    // fixed for life (060 kind_locked) and rt_stop_id is not a facade field, so the row read before the write
+    // decides for good. A facade POST cannot make one: without rt_stop_id 071's CHECK refuses it.
+    planOwned: (row) => row.move_kind === "nat_loading" || row.rt_stop_id != null,
     links: {
       Driver: { column: "driver_id", table: "drivers" },
       Truck: { column: "truck_id", table: "trucks" },
@@ -2624,7 +2713,36 @@ async function authorizeWrite(request, tableId, method, origin, env) {
   return { caller, cfg };
 }
 __name(authorizeWrite, "authorizeWrite");
+// A write naming a read-only label (cfg.readOnly: a column the base computes)
+// is refused as a whole, before any database call, naming the label — the
+// caller fixes its request instead of reading «saved» over a half-applied one.
+function refuseReadOnly(cfg, fieldsList, origin, env) {
+  if (cfg.dbOnly) {
+    const shut = [];
+    for (const f of fieldsList) {
+      if (!f || typeof f !== "object") continue;
+      for (const label of cfg.dbOnly) if (Object.prototype.hasOwnProperty.call(f, label) && !shut.includes(label)) shut.push(label);
+    }
+    if (shut.length) {
+      return jsonOk({ error: { type: "BAD_REQUEST", code: "db_only", message: `${shut.map((l) => `«${l}»`).join(", ")}: το γράφει μόνο η βάση (γέφυρα VS του Εβδομαδιαίου Εθνικών) — δεν αλλάζει από οθόνη` } }, origin, env, 400);
+    }
+  }
+  if (!cfg.readOnly) return null;
+  const hit = [];
+  for (const f of fieldsList) {
+    if (!f || typeof f !== "object") continue;
+    for (const label of cfg.readOnly) if (Object.prototype.hasOwnProperty.call(f, label) && !hit.includes(label)) hit.push(label);
+  }
+  if (!hit.length) return null;
+  const named = hit.map((l) => `«${l}»`).join(", ");
+  return jsonError(hit.length === 1
+    ? `Το πεδίο ${named} το υπολογίζει η βάση και δεν γράφεται`
+    : `Τα πεδία ${named} τα υπολογίζει η βάση και δεν γράφονται`, 400, origin, env);
+}
+__name(refuseReadOnly, "refuseReadOnly");
 async function buildWriteRow(cfg, fields, origin, env) {
+  const readOnlyErr = refuseReadOnly(cfg, [fields], origin, env);
+  if (readOnlyErr) return { error: readOnlyErr, dropped: [] };
   if (cfg.linkAliases && fields && typeof fields === "object") {
     for (const [aliasLabel, linkLabel] of Object.entries(cfg.linkAliases)) {
       const v = fields[aliasLabel];
@@ -2697,6 +2815,36 @@ async function shapeOneWithLinks(row, cfg, env) {
   return record;
 }
 __name(shapeOneWithLinks, "shapeOneWithLinks");
+// The same shaping as shapeOneWithLinks, but it THROWS where that one only
+// logs (wi-v4 §g.2). The «_expect» conflict check compares what the user saw
+// with this record: a link resolve that failed for a transient PostgREST
+// error would otherwise drop «Truck» from the record and turn into a false 409
+// that shows the current truck as empty. The caller treats a throw as
+// «could not check» (write proceeds, _expectChecked: "skipped").
+// shapeOneWithLinks itself is unchanged: every other path stays forgiving.
+async function shapeOneStrict(row, cfg, env) {
+  const record = toAirtableRecord(row, columnToLabel(cfg));
+  if (cfg.computed && Object.keys(cfg.computed).length && row?.legacy_id) {
+    const params = new URLSearchParams();
+    params.set("select", ["legacy_id", ...Object.values(cfg.computed)].join(","));
+    params.set("legacy_id", `eq.${row.legacy_id}`);
+    params.set("limit", "1");
+    const { rows: viewRows } = await dbSelectRaw(env, readRelation(cfg), params);
+    if (viewRows?.[0]) {
+      for (const [label, column] of Object.entries(cfg.computed)) {
+        const v = viewRows[0][column];
+        if (v !== null && v !== void 0) record.fields[label] = v;
+      }
+    }
+  }
+  if (cfg.links && Object.keys(cfg.links).length) {
+    const byRow = await resolveLinksOnRead(env, dbSelectRaw, [row], cfg.links);
+    const extra = byRow.get(row);
+    if (extra) Object.assign(record.fields, extra);
+  }
+  return record;
+}
+__name(shapeOneStrict, "shapeOneStrict");
 async function handleFacadeCreate(request, tableId, origin, env, ctx) {
   const { res, caller, cfg } = await authorizeWrite(request, tableId, "POST", origin, env);
   if (res) return res;
@@ -2706,6 +2854,10 @@ async function handleFacadeCreate(request, tableId, origin, env, ctx) {
   } catch {
     return jsonError("Invalid request", 400, origin, env);
   }
+  // a JSON `null` / array / number would throw below (CF 1101 without CORS): the same 400 as a body that is not JSON
+  if (!body || typeof body !== "object" || Array.isArray(body)) return jsonError("Invalid request", 400, origin, env);
+  const closed = legacyClosedRefusal(cfg.pg, caller.role, "POST", Array.isArray(body.records) ? body.records.map((e) => e?.fields) : [body.fields], origin, env);
+  if (closed) return closed;
   if (Array.isArray(body.records)) {
     return facadeBatchCreate(body.records, cfg, caller, origin, env, ctx);
   }
@@ -2732,6 +2884,8 @@ async function handleFacadeCreate(request, tableId, origin, env, ctx) {
     console.error(`POST facade ${cfg.name}`, e.message);
     const rule = stockRuleError(e);
     if (rule) return stockRuleResponse(rule, origin, env);
+    const busy = facadeBusy(e, origin, env);
+    if (busy) return busy;
     return jsonError("Failed to create record: " + String(e.message || "").slice(0, 220), 500, origin, env);
   }
   await audit(env, {
@@ -2754,6 +2908,8 @@ __name(handleFacadeCreate, "handleFacadeCreate");
 // Supabase edge log: 47 requests per attempt, all 201, then the Worker's own
 // fetch was refused and the client saw «Failed to create record».
 async function buildWriteRows(cfg, fieldsList, origin, env) {
+  const readOnlyErr = refuseReadOnly(cfg, fieldsList, origin, env);
+  if (readOnlyErr) return { error: readOnlyErr, dropped: [] };
   const prepared = fieldsList.map((f) => {
     let fields = f;
     if (cfg.linkAliases && fields && typeof fields === "object") {
@@ -2884,6 +3040,8 @@ async function facadeBatchCreate(entries, cfg, caller, origin, env, ctx) {
     // One insert = one transaction: a refused row means NO row landed.
     const rule = stockRuleError(e);
     if (rule) return stockRuleResponse(rule, origin, env);
+    const busy = facadeBusy(e, origin, env);
+    if (busy) return busy;
     return jsonError("Failed to create record: " + String(e.message || "").slice(0, 220), 500, origin, env);
   }
   await auditMany(env, createdRows.map((created) => ({
@@ -2932,6 +3090,20 @@ async function readRowBefore(env, table, recId) {
   }
 }
 __name(readRowBefore, "readRowBefore");
+// cfg.planOwned (LOCAL MOVES, finding 2): a row the v5 board owns is changed only through /plan/*. `before`
+// is the row read before the write: undefined = the read failed, so nothing is written (fail closed, a 503
+// the user may press again); null = no such row, the write's own 404 answers.
+function planOwnedRefusal(cfg, before, origin, env) {
+  if (!cfg.planOwned) return null;
+  if (before === void 0) {
+    return jsonError("Η τοπική κίνηση δεν επαληθεύτηκε (δεν διαβάστηκε) — τίποτα δεν γράφτηκε· ξαναδοκίμασε", 503, origin, env);
+  }
+  if (before && cfg.planOwned(before)) {
+    return stockRuleResponse({ type: "PLAN_RULE", code: "plan_owned", message: "Η τοπική φόρτωση εθνικών ανήκει στο Εβδομαδιαίο Εθνικών — αλλάζει ή ακυρώνεται μόνο από εκεί (/plan/local-loading)· τίποτα δεν γράφτηκε" }, origin, env);
+  }
+  return null;
+}
+__name(planOwnedRefusal, "planOwnedRefusal");
 async function handleFacadeBatchUpdate(request, tableId, origin, env, ctx) {
   const { res, caller, cfg } = await authorizeWrite(request, tableId, "PATCH", origin, env);
   if (res) return res;
@@ -2949,6 +3121,8 @@ async function handleFacadeBatchUpdate(request, tableId, origin, env, ctx) {
   for (const entry of body.records) {
     if (!entry?.id) return jsonError("Each batch record needs an id", 400, origin, env);
   }
+  const closed = legacyClosedRefusal(cfg.pg, caller.role, "PATCH", body.records.map((e) => e.fields), origin, env);
+  if (closed) return closed;
   // 14/9: batch-level link resolution, one «before» read, one audit insert and
   // one shaping pass — per row this handler spent ~10 subrequests, so 5 stops
   // already touched Cloudflare's 50-subrequest ceiling and the rows after it
@@ -2971,12 +3145,21 @@ async function handleFacadeBatchUpdate(request, tableId, origin, env, ctx) {
   }
   // Το «πριν» για όλες τις γραμμές σε ΜΙΑ ανάγνωση — τεκμηρίωση, όχι προϋπόθεση.
   let beforeBy = /* @__PURE__ */ new Map();
+  let beforeFailed = false;
   try {
     const rowsBefore = await dbSelectManyByLegacy(env, cfg.pg, patches.map((p) => p.recId));
     beforeBy = new Map(rowsBefore.map((r) => [r.legacy_id, r]));
   } catch (e) {
+    beforeFailed = true;
     console.error(`AUDIT before-read failed ${cfg.pg} (batch)`, e.message);
   }
+  // before the first row is written: a batch with one v5 row writes none (finding 2)
+  for (const { recId } of patches) {
+    const owned = planOwnedRefusal(cfg, beforeFailed ? void 0 : beforeBy.get(recId) || null, origin, env);
+    if (owned) return owned;
+  }
+  const rowClosed = legacyRowRefusal(cfg.pg, caller.role, patches.map(({ recId }) => (beforeFailed ? void 0 : beforeBy.get(recId) || null)), origin, env);
+  if (rowClosed) return rowClosed;
   const updatedRows = [];
   const auditEntries = [];
   for (const { recId, patch } of patches) {
@@ -2990,6 +3173,9 @@ async function handleFacadeBatchUpdate(request, tableId, origin, env, ctx) {
       await auditMany(env, auditEntries);
       const rule = stockRuleError(e);
       if (rule) return stockRuleResponse(rule, origin, env);
+      // only while no earlier row of the batch landed: then nothing was kept
+      const busy = auditEntries.length ? null : facadeBusy(e, origin, env);
+      if (busy) return busy;
       return jsonError("Failed to update record: " + String(e.message || "").slice(0, 220), 500, origin, env);
     }
     if (!updated) {
@@ -3181,6 +3367,189 @@ const RELAY_CHECK_TEXT = {
   local_moves_time_from_fmt: "Ώρα σε μορφή ΩΩ:ΛΛ (π.χ. 07:00)",
   local_moves_time_to_fmt: "Ώρα σε μορφή ΩΩ:ΛΛ (π.χ. 07:00)"
 };
+// NATIONAL v5 (071 + 071b + 072, owner 21–22/10/2026): DB refusals → Greek 422.
+// The planning rules live ONLY in the base (071's deferred plan_chk triggers,
+// 071b's two EXCLUDE, 072's plan_* functions — spec §2.1, αρχή 4). Every v5
+// write is ONE plan_* RPC (handlePlan below), so a refusal arrives at that
+// RPC's COMMIT; without this mapping it would be a 500, retried three times,
+// with the reason dead in the logs (αρχή 1).
+// Same ONE mapper (stockRuleError), a third family beside 057 and 060:
+//   - every refusal carries hint «plan:<code>» (071 plan_chk, 071
+//     ct_rt_legs_v2_guard, 072 plan_h_raise), whatever SQLSTATE it rode on.
+//     The DB message is ASCII for the logs: «plan rule broken: <code>:<detail>».
+//     The Greek text per code lives here; the ASCII detail (an RT code, an id)
+//     is appended in brackets. A code this map does not know still answers
+//     422 and names the code — loud, never the 500 path;
+//   - row CHECKs and unique indexes cannot carry a hint: matched by name;
+//   - the two EXCLUDE of 071b (23P01) answer the SAME code as 072's own
+//     pre-check (truck_busy / driver_busy), so a screen reacts to one code
+//     whichever layer refused first. local_moves_nat_loading_once answers
+//     local_exists for the same reason (as local_moves_relay_once → relay_exists).
+// THE CODES AND NAMES ARE THE MIGRATIONS' (the lower layer names them, αρχή 4).
+// test/plan-contract.test.mjs reads 071, 071b, 072 and 072b and fails on a code or a
+// constraint without a text here, and on a key here with no counterpart there
+// (αρχή 8). Texts only — editing a text never changes what is allowed.
+const PLAN_RULE_TEXT = {
+  // 071 — deferred COMMIT rules (plan_chk) and the two direct raises
+  pieces_alive: "Η αποστολή σβήστηκε αλλά έχει ακόμη ζωντανά κομμάτια — ανανέωσε τη σελίδα",
+  piece_dead: "Το φορτίο ή η αποστολή του έχει σβηστεί — ανανέωσε τη σελίδα",
+  pieces_sum: "Τα κομμάτια δεν αθροίζουν στις παλέτες της αποστολής",
+  piece_parent: "Το κομμάτι δεν κρέμεται από ζωντανό κομμάτι της ίδιας αποστολής",
+  split_not_at_hub: "Ένα φορτίο σπάει μόνο στη Βέροια",
+  rt_not_v2: "Το δρομολόγιο είναι του παλιού Εβδομαδιαίου — δεν παίρνει στάσεις του νέου",
+  rt_cancelled: "Το δρομολόγιο έχει ακυρωθεί — διάλεξε άλλο ή νέο",
+  leg_stop_dead: "Η στάση της κίνησης έχει σβηστεί — ανανέωσε τη σελίδα",
+  leg_order: "Η φόρτωση γίνεται πριν από την εκφόρτωση στο ίδιο δρομολόγιο",
+  leg_place: "Το φορτίο ταξιδεύει μόνο από την αφετηρία του, μέσω Βέροιας, στον προορισμό του",
+  chain: "Η φόρτωση γίνεται εκεί όπου ξεφορτώθηκε το φορτίο την προηγούμενη φορά",
+  chain_time: "Η φόρτωση είναι πριν φτάσει το φορτίο εκεί — άλλαξε την ώρα",
+  stop_seq: "Δύο στάσεις του δρομολογίου έχουν την ίδια σειρά — ανανέωσε τη σελίδα",
+  stop_order: "Οι στάσεις του δρομολογίου δεν είναι σε χρονική σειρά",
+  side_order: "Η ΚΑΘΟΔΟΣ γίνεται πριν από την ΑΝΟΔΟ στο ίδιο δρομολόγιο",
+  rt_window: "Οι ώρες του δρομολογίου δεν συμφωνούν με τις στάσεις του — ανανέωσε τη σελίδα",
+  local_loading_gone: "Η τοπική φόρτωση έμεινε σε στάση που δεν υπάρχει πια",
+  local_loading_day: "Η τοπική φόρτωση γίνεται την ίδια ημέρα με τη στάση",
+  local_loading_stop: "Τοπική φόρτωση μπαίνει μόνο σε στάση που φορτώνει εμπόρευμα",
+  model_locked: "Ένα δρομολόγιο δεν περνά από το παλιό στο νέο Εβδομαδιαίο ή αντίστροφα",
+  stop_locked: "Μια στάση δεν μετακινείται σε άλλο δρομολόγιο — σβήνεται και μπαίνει νέα",
+  leg_locked: "Μια κίνηση δεν αλλάζει — σβήνεται και μπαίνει νέα",
+  piece_locked: "Ένα κομμάτι δεν αλλάζει αποστολή ή γονικό κομμάτι",
+  shipment_locked: "Μια αποστολή δεν αλλάζει παραγγελία",
+  v1_link_on_v2: "Το δρομολόγιο είναι του Εβδομαδιαίου Εθνικών — δεν παίρνει παραγγελίες από το παλιό",
+  hard_delete: "Στο Εβδομαδιαίο Εθνικών τίποτα δεν σβήνεται οριστικά — μόνο με ίχνος",
+  // 072 — the plan_* functions' own refusals (plan_h_raise)
+  no_actor: "Η αλλαγή δεν έχει χρήστη ή ο ρόλος είναι άγνωστος — συνδέσου ξανά",
+  bad_input: "Το αίτημα δεν έχει τη μορφή που περιμένει η βάση — ανανέωσε τη σελίδα",
+  no_client: "Λείπει ο πελάτης",
+  no_price: "Λείπει η τιμή",
+  no_window: "Λείπει το παράθυρο φόρτωσης ή παράδοσης",
+  stock_lot: "Κομμάτι παρτίδας αποθέματος δεν μπαίνει ακόμη στο Εβδομαδιαίο Εθνικών",
+  order_gone: "Η παραγγελία έχει σβηστεί ή δεν υπάρχει — ανανέωσε τη σελίδα",
+  order_not_v5: "Η παραγγελία δεν είναι του Εβδομαδιαίου Εθνικών",
+  vs_locked: "Οι παλέτες και τα παράθυρα του VS αλλάζουν μόνο από τις Διεθνείς",
+  piece_busy: "Το φορτίο έχει ήδη κίνηση — μετέφερέ το αντί να το ξαναβάλεις",
+  piece_split: "Το φορτίο έχει σπάσει — διάλεξε ένα από τα κομμάτια του",
+  not_stock: "Ποσότητα παίρνεις μόνο από φορτίο που περιμένει στη Βέροια",
+  parts_sum: "Τα μέρη δεν αθροίζουν στις παλέτες του φορτίου",
+  not_at_hub: "Το φορτίο δεν βρίσκεται στη Βέροια — σπάει μόνο εκεί",
+  group_empty: "Η ομάδα δεν έχει φορτίο σε αναμονή",
+  same_rt: "Το φορτίο είναι ήδη σε αυτό το δρομολόγιο",
+  rt_gone: "Το δρομολόγιο δεν υπάρχει ή έχει ακυρωθεί — ανανέωσε τη σελίδα",
+  no_vehicle: "Νέο δρομολόγιο θέλει φορτηγό ή συνεργάτη",
+  truck_busy: "Το φορτηγό είναι ήδη σε άλλο δρομολόγιο εκείνες τις ώρες",
+  driver_busy: "Ο οδηγός είναι ήδη σε άλλο δρομολόγιο εκείνες τις ώρες",
+  stop_gone: "Η στάση δεν υπάρχει πια — ανανέωσε τη σελίδα",
+  local_exists: "Η στάση έχει ήδη τοπική φόρτωση — άνοιξε την υπάρχουσα",
+  notice_gone: "Η ειδοποίηση δεν υπάρχει",
+  payroll_locked: "Η μισθοδοσία του δρομολογίου έχει ήδη ποσά — η αλλαγή οδηγού γίνεται με «Καθαρισμός ανάθεσης» και νέα ανάθεση",
+  // decision 44: the screen's request_id came back with another body, for another act or from another person: the
+  // FIRST submission is already saved — the text must not invite a new one (review of PR #84)
+  request_reused: "Αυτό το αίτημα έχει ήδη αποθηκευτεί (με άλλο περιεχόμενο ή από άλλον χρήστη) — μην το ξαναστείλεις· βρες την εγγραφή στο Εβδομαδιαίο Εθνικών και διόρθωσέ τη από εκεί",
+  // decision 44: a creation without the screen's request_id (one per open form) is refused, never a silent pass
+  request_missing: "Η οθόνη δεν έστειλε κωδικό αιτήματος — τίποτα δεν γράφτηκε· ενημέρωσε τον Δημήτρη",
+  // owner 25/10 (review of PR #84, finding 1): plan_rt_update never empties a cycle's vehicle; the owner's text
+  vehicle_clear_use_clear: "Για να βγει το όχημα, χρησιμοποίησε «Καθαρισμός ανάθεσης».",
+  // {"cancel": true} without local_move_id: nothing created, nothing cancelled
+  local_cancel_no_id: "Η ακύρωση τοπικής φόρτωσης δεν λέει ποια φόρτωση — τίποτα δεν δημιουργήθηκε ούτε ακυρώθηκε",
+  stale_confirm: "Κάτι άλλαξε από τότε που είδες τη λίστα — δες τη ξανά και επιβεβαίωσε",
+  need_token: "Η πράξη θέλει επιβεβαίωση — δες πρώτα τη λίστα συνεπειών",
+  vs_not_bridge: "Η παραγγελία ή η στάση δεν περνά από τη Βέροια (VS)",
+  // 073 - the pallet feeder (plan_h_pallet_sync, D-10): the ledger counts whole pallets
+  pallet_fraction: "Η ανταλλαγή παλετών μετρά ακέραιες παλέτες — διόρθωσε τις παλέτες ή βγάλε την ανταλλαγή",
+  // 072b — vehicle handover at a point (segments ΑΡΧΙΚΟ / ΕΝΔΙΑΜΕΣΟ / ΤΕΛΙΚΟ; spec
+  // 2026-10-23-national-v5-vehicle-handover-design.md). Without these a refusal
+  // would reach the screen as raw English (review R1 of the plan, finding 1).
+  seg_not_v2: "Αλλαγή οχήματος γίνεται μόνο σε δρομολόγιο του Εβδομαδιαίου Εθνικών",
+  seg_time: "Η ώρα της αλλαγής οχήματος είναι μέσα στο δρομολόγιο και ανάμεσα στις άλλες αλλαγές του",
+  // a Move, Delete or stop change that narrows the cycle past a handover (review R2 of the plan, DB finding 1);
+  // since owner question 7 = (b) only the net under the consequence list. The DB detail in brackets = the RT and
+  // the handover time
+  seg_outside: "Η πράξη θα άφηνε μια αλλαγή οχήματος έξω από τις ώρες του δρομολογίου — μετακίνησε ή αφαίρεσε πρώτα την αλλαγή",
+  seg_cover: "Τα τμήματα οχήματος δεν καλύπτουν όλες τις ώρες του δρομολογίου — ανανέωσε τη σελίδα",
+  seg_first: "Το ΑΡΧΙΚΟ τμήμα ξεκινά με το δρομολόγιο: δεν έχει ώρα, σημείο ή λόγο και δεν αφαιρείται — διόρθωσε το όχημά του",
+  seg_copy: "Το όχημα του δρομολογίου αλλάζει μόνο από την ανάθεση ή την αλλαγή οχήματος — ανανέωσε τη σελίδα",
+  seg_reason: "Η αλλαγή οχήματος θέλει λόγο",
+  seg_cancel: "Τα τμήματα οχήματος δεν συμφωνούν με την ακύρωση του δρομολογίου — ανανέωσε τη σελίδα",
+  seg_none: "Το δρομολόγιο έμεινε χωρίς τμήμα οχήματος — ανανέωσε τη σελίδα",
+  seg_unassigned: "Δρομολόγιο με αλλαγή οχήματος έχει όχημα σε κάθε τμήμα — ανάθεσε πρώτα όχημα, ή χρησιμοποίησε «Καθαρισμός ανάθεσης»",
+  seg_locked: "Ένα τμήμα οχήματος δεν πάει σε άλλο δρομολόγιο, και ένα που αφαιρέθηκε δεν αλλάζει",
+  seg_many: "Το δρομολόγιο έχει αλλαγή οχήματος — άλλαξε το όχημα στο συγκεκριμένο τμήμα (ΑΡΧΙΚΟ, ΕΝΔΙΑΜΕΣΟ ή ΤΕΛΙΚΟ)",
+  seg_gone: "Η αλλαγή οχήματος δεν υπάρχει πια — ανανέωσε τη σελίδα",
+  seg_same: "Το νέο όχημα είναι το ίδιο με αυτό που ήδη εκτελεί — διάλεξε άλλο",
+  seg_no_vehicle: "Η αλλαγή οχήματος θέλει φορτηγό ή συνεργάτη",
+  // 074 — day L (F5, plan W3): the INSERT freeze of the old national model, the guard on the day itself, and a
+  // bridge that could not re-cut its pieces after a change of the international order
+  legacy_frozen: "Το παλιό μοντέλο εθνικών έκλεισε την ημέρα μετάβασης· νέα εθνικά μόνο από το Εβδομαδιαίο Εθνικών",
+  bad_cutover_day: "Η ημέρα μετάβασης πρέπει να είναι Σάββατο στο μέλλον — ενημέρωσε τον Δημήτρη",
+  bridge_recut: "Η αλλαγή της διεθνούς δεν περνά στα φορτία του Εβδομαδιαίου Εθνικών (τα κομμάτια δεν ξανακόβονται) — δες τη στάση στο Εβδομαδιαίο Εθνικών και ξαναδοκίμασε"
+};
+const PLAN_CHECK_TEXT = {
+  // 071 CHECKs on ct_round_trips (+ partner_needs_partner, live before 071:
+  // a PARTNER cycle written by plan_* meets it too)
+  rt_model: "Το δρομολόγιο είναι είτε του παλιού είτε του νέου Εβδομαδιαίου",
+  rt_partner_rate: "Κόμιστρο μόνο σε δρομολόγιο συνεργάτη, και όχι αρνητικό",
+  rt_v1_no_window: "Δρομολόγιο του παλιού Εβδομαδιαίου δεν έχει ώρες αρχής/τέλους",
+  rt_v2_dates: "Οι ημέρες του δρομολογίου βγαίνουν από τις ώρες του — ανανέωσε τη σελίδα",
+  rt_v2_scope: "Το Εβδομαδιαίο Εθνικών έχει μόνο εθνικά δρομολόγια",
+  rt_v2_status: "Δρομολόγιο του Εβδομαδιαίου Εθνικών είναι μόνο «προγραμματισμένο» ή «ακυρωμένο»",
+  rt_v2_window: "Το δρομολόγιο θέλει ώρα αρχής πριν από την ώρα τέλους",
+  partner_needs_partner: "Δρομολόγιο συνεργάτη θέλει συνεργάτη",
+  // shipments
+  shipments_bridge_intl: "Γέφυρα VS υπάρχει μόνο από διεθνή παραγγελία",
+  shipments_del: "Η διαγραφή αποστολής θέλει λόγο και χρήστη",
+  shipments_ends: "Η αφετηρία και ο προορισμός της αποστολής είναι ίδιοι",
+  shipments_intl_is_bridge: "Αποστολή διεθνούς υπάρχει μόνο ως γέφυρα VS",
+  shipments_one_parent: "Η αποστολή ανήκει σε μία παραγγελία",
+  shipments_pallets: "Οι παλέτες της αποστολής είναι πάνω από 0",
+  shipments_shape: "Η αποστολή θέλει αφετηρία, προορισμό, παλέτες και παράθυρα",
+  shipments_win: "Το παράθυρο της αποστολής είναι ανάποδα (τέλος πριν από αρχή)",
+  // shipment_pieces
+  pieces_del: "Η διαγραφή κομματιού θέλει λόγο και χρήστη",
+  pieces_not_own_parent: "Ένα κομμάτι δεν είναι γονικό του εαυτού του",
+  pieces_pallets: "Ένα κομμάτι έχει πάνω από 0 παλέτες",
+  pieces_split_pair: "Το σπάσιμο γράφει ώρα και χρήστη μαζί",
+  // rt_stops
+  rt_stops_del: "Η διαγραφή στάσης θέλει λόγο και χρήστη",
+  rt_stops_seq: "Η σειρά στάσης ξεκινά από 1",
+  rt_stops_side: "Η στάση είναι ΚΑΘΟΔΟΣ ή ΑΝΟΔΟΣ",
+  rt_stops_win: "Το παράθυρο της στάσης θέλει ώρα τέλους μετά την ώρα αρχής",
+  // piece_legs
+  piece_legs_del: "Η διαγραφή κίνησης θέλει λόγο και χρήστη",
+  piece_legs_no: "Ο αριθμός κίνησης ξεκινά από 1",
+  piece_legs_two_stops: "Η φόρτωση και η εκφόρτωση είναι διαφορετικές στάσεις",
+  // plan_notices
+  plan_notices_desk: "Η ειδοποίηση πάει στις Διεθνείς ή στις Εθνικές",
+  plan_notices_kind: "Άγνωστο είδος ειδοποίησης",
+  plan_notices_read_pair: "Το «διαβάστηκε» γράφει ώρα και χρήστη μαζί",
+  // order_stops / local_moves (071 additions on live tables)
+  order_stops_via_hub_intl: "Το «μέσω Βέροιας» υπάρχει μόνο σε στάση διεθνούς παραγγελίας",
+  local_moves_nat_loading: "Η τοπική φόρτωση εθνικών θέλει στάση και οδηγό, και είναι μόνο «ανατέθηκε» ή «ακυρώθηκε»",
+  // 071 unique indexes (23505); local_moves_nat_loading_once answers local_exists instead
+  piece_legs_live_no: "Το φορτίο έχει ήδη ζωντανή κίνηση με αυτόν τον αριθμό — ανανέωσε τη σελίδα",
+  shipments_bridge_once: "Η στάση της διεθνούς έχει ήδη γέφυρα VS",
+  pl_mov_leg_once: "Η κίνηση έχει ήδη γραμμή παλετών",
+  locations_one_hub: "Υπάρχει ήδη τοποθεσία-κόμβος (Βέροια)",
+  // 072b CHECKs on rt_vehicle_segments (the reason's VALUE is the CHECK's: an
+  // unknown reason or «Άλλο» without its note reach the screen here)
+  seg_type: "Το τμήμα είναι δικό μας φορτηγό ή συνεργάτης",
+  seg_partner_needs_partner: "Τμήμα συνεργάτη θέλει συνεργάτη",
+  seg_partner_no_vehicle: "Τμήμα συνεργάτη δεν έχει δικό μας φορτηγό, ρυμουλκούμενο ή οδηγό",
+  seg_owned_no_partner: "Τμήμα με δικό μας φορτηγό δεν έχει συνεργάτη ή κόμιστρο",
+  seg_partner_rate: "Το κόμιστρο του τμήματος δεν είναι αρνητικό",
+  seg_reason_list: "Άγνωστος λόγος αλλαγής οχήματος — διάλεξε από τη λίστα",
+  seg_change_pair: "Η αλλαγή οχήματος θέλει σημείο και λόγο μαζί",
+  seg_place_text: "Γράψε το σημείο της αλλαγής (π.χ. «Λαμία»)",
+  seg_other_note: "Με λόγο «Άλλο» η σημείωση είναι υποχρεωτική",
+  seg_del: "Η αφαίρεση τμήματος θέλει λόγο και χρήστη"
+};
+// 071/071b constraints that are the race floor under a 072 refusal of their own: they answer that refusal's code
+// and text, whichever layer refused first (072's pre-check, the constraint at COMMIT, or the plan_rt_update dry
+// run's preview.conflict). ONE table for stockRuleError, which planConflictRule reads too (K1 review r2, αρχή 3).
+const PLAN_CONSTRAINT_CODE = {
+  rt_v2_truck_once: "truck_busy",
+  rt_v2_driver_once: "driver_busy",
+  local_moves_nat_loading_once: "local_exists"
+};
 function stockRuleError(e) {
   const pg = e && e.pg;
   if (!pg || typeof pg !== "object") return null;
@@ -3198,6 +3567,18 @@ function stockRuleError(e) {
       message: Object.prototype.hasOwnProperty.call(RELAY_RULE_TEXT, rc) ? RELAY_RULE_TEXT[rc] : `Η τοπική κίνηση δεν αποθηκεύτηκε (${rc || "χωρίς κωδικό"}): ${message}`
     };
   }
+  // 'plan:' (071/072): same rule — the hint is the marker, whatever SQLSTATE.
+  // It must come BEFORE the 23514 branch: plan_chk raises with 23514 and a
+  // message without «check constraint», which that branch would answer null.
+  if (hint.startsWith("plan:")) {
+    const pc = hint.slice("plan:".length).trim();
+    const prefix = `plan rule broken: ${pc}:`;
+    const detail = message.startsWith(prefix) ? message.slice(prefix.length).trim().slice(0, 120) : "";
+    if (!Object.prototype.hasOwnProperty.call(PLAN_RULE_TEXT, pc)) {
+      return { type: "PLAN_RULE", code: pc, message: `Ο κανόνας ${pc || "χωρίς κωδικό"} δεν τηρήθηκε: ${message}` };
+    }
+    return { type: "PLAN_RULE", code: pc, message: detail ? `${PLAN_RULE_TEXT[pc]} (${detail})` : PLAN_RULE_TEXT[pc] };
+  }
   if (code === "23514") {
     // 'stock:' (057) only under 23514, as 057's stock_raise sends it — a
     // stock hint under another SQLSTATE keeps the 500 path (pinned in
@@ -3210,6 +3591,8 @@ function stockRuleError(e) {
       return { code: m[1], message: STOCK_CHECK_TEXT[m[1]] };
     }
     if (Object.prototype.hasOwnProperty.call(RELAY_CHECK_TEXT, m[1])) return { type: "LOCAL_RELAY_RULE", code: m[1], message: RELAY_CHECK_TEXT[m[1]] };
+    // Before the generic local_moves_* line: local_moves_nat_loading is 071's.
+    if (Object.prototype.hasOwnProperty.call(PLAN_CHECK_TEXT, m[1])) return { type: "PLAN_RULE", code: m[1], message: PLAN_CHECK_TEXT[m[1]] };
     if (m[1].startsWith("local_moves_")) {
       return { type: "LOCAL_RELAY_RULE", code: m[1], message: `Η τοπική κίνηση δεν αποθηκεύτηκε: κανόνας ${m[1]}` };
     }
@@ -3220,6 +3603,23 @@ function stockRuleError(e) {
   }
   if (code === "23505" && /local_moves_relay_once/.test(message)) {
     return { type: "LOCAL_RELAY_RULE", code: "relay_exists", message: RELAY_RULE_TEXT.relay_exists };
+  }
+  if (code === "23505") {
+    const u = /unique constraint "([^"]+)"/.exec(message);
+    // the race floor under 072's own local_exists refusal: same code, same text (PLAN_CONSTRAINT_CODE)
+    const pc = u && Object.prototype.hasOwnProperty.call(PLAN_CONSTRAINT_CODE, u[1]) ? PLAN_CONSTRAINT_CODE[u[1]] : null;
+    if (pc) return { type: "PLAN_RULE", code: pc, message: PLAN_RULE_TEXT[pc] };
+    if (u && Object.prototype.hasOwnProperty.call(PLAN_CHECK_TEXT, u[1])) return { type: "PLAN_RULE", code: u[1], message: PLAN_CHECK_TEXT[u[1]] };
+    return null;
+  }
+  if (code === "23P01") {
+    // 071b's EXCLUDE are DEFERRED: they speak at the RPC's COMMIT, without
+    // the other cycle's code (072's pre-check names it; this is the net).
+    // The same one lookup as 23505 above (review of PR #90, finding 11): no second copy of the names.
+    const x = /exclusion constraint "([^"]+)"/.exec(message);
+    const pc = x && Object.prototype.hasOwnProperty.call(PLAN_CONSTRAINT_CODE, x[1]) ? PLAN_CONSTRAINT_CODE[x[1]] : null;
+    if (pc) return { type: "PLAN_RULE", code: pc, message: PLAN_RULE_TEXT[pc] };
+    return null;
   }
   return null;
 }
@@ -3236,6 +3636,20 @@ function stockRuleResponse(rule, origin, env) {
   return jsonOk({ error: { type: rule.type || "STOCK_RULE", code: rule.code, message: rule.message } }, origin, env, 422);
 }
 __name(stockRuleResponse, "stockRuleResponse");
+// F5 (plan W3): from day L the bridge triggers of 074 lock v5 rows inside a facade write on orders /
+// order_stops, so a write can lose a lock to /plan/* (deadlock 40P01, serialization 40001, lock_timeout 55P03).
+// The statement rolled back: nothing was kept, the same request can pass a moment later. 503 busy_retry, the code
+// of /plan/* — never «Failed to update record» (a 500 that reads as broken). Any facade table: the SQLSTATE says
+// «rolled back» whatever the table. Only where the request is ONE statement (a batch PATCH whose earlier rows
+// landed keeps its 500).
+// ONE list for both layers (handlePlan's busy_retry reads it too): deadlock, serialization, lock_timeout
+var BUSY_SQLSTATE = /^(40P01|40001|55P03)$/;
+function facadeBusy(e, origin, env) {
+  const pg = e && e.pg && typeof e.pg === "object" ? e.pg : null;
+  if (!pg || !BUSY_SQLSTATE.test(String(pg.code || ""))) return null;
+  return jsonOk({ error: { type: "SERVER", code: "busy_retry", message: "Ταυτόχρονη αλλαγή από άλλον χρήστη — τίποτα δεν γράφτηκε· δοκίμασε ξανά" } }, origin, env, 503);
+}
+__name(facadeBusy, "facadeBusy");
 // DEPLOY ORDER GUARD (060 → Worker → screens, coordinator D10 4/10/2026).
 // This Worker names 060's columns (dl_v_entries.local_move_id in the payroll
 // month read). Deployed before 060 — or left live after a 060 rollback — that
@@ -3252,10 +3666,188 @@ __name(schemaBehind060, "schemaBehind060");
 // A plain string error: /costs/* is read by ctFetch (modules/costs.js), which
 // shows `data.error` as the message — an object there would read
 // «[object Object]».
+// The same guard for F3 (final review 26/10, W-7): this Worker reads 072b's v_rt_vehicle_windows (DKV preview and
+// commit, for today's trips too) and 073's ct_v_rt_partner_cost / ct_cost_lines.partner_id. Deployed before them,
+// PostgREST answers PGRST205 / 42P01 (no relation) or PGRST204 / 42703 (no column): said by name, never «Costs request
+// failed». Recognised by the code AND an F3 name, so an unrelated error keeps today's path.
+function schemaBehindF3(e) {
+  const msg = `${String((e && e.message) || "")} ${JSON.stringify((e && e.pg) || {})}`;
+  return /PGRST205|PGRST204|"42P01"|"42703"/.test(msg) && /v_rt_vehicle_windows|rt_vehicle_segments|ct_v_rt_partner_cost|partner_id/.test(msg);
+}
+__name(schemaBehindF3, "schemaBehindF3");
 function schemaBehind060Response(origin, env) {
   return jsonError("Η βάση δεν έχει ακόμη το migration 060 (τοπικές παραδόσεις) — ο Worker μπήκε πριν από το SQL· ενημέρωσε τον Δημήτρη (060_missing)", 503, origin, env);
 }
 __name(schemaBehind060Response, "schemaBehind060Response");
+// ── «_expect»: the «someone else changed it» check (Weekly Intl v4, §g.2) ──
+// A PATCH may carry, as a TOP-LEVEL body key (never inside `fields`, so
+// buildWriteRow never sees it and it is never logged as an unknown field),
+// `_expect: {label: value-the-user-saw}`. If the row no longer holds what the
+// user saw, the write is refused with a 409 and nothing is written. It is an
+// indication, never a lock: when the Worker cannot read the row, the write
+// goes ahead and says `_expectChecked: "skipped"` (a failed read must never
+// block work at 06:00). Requests without `_expect` take exactly today's path.
+var EXPECT_MAX_LABELS = 12;
+// Columns that hold json/array values, per Postgres table. PostgREST has no
+// reliable eq. filter for them, so the compare-and-set below cannot include
+// them; an _expect on such a label is refused (400) at parse time instead of
+// being checked outside the atomic match while the answer says checked.
+// Measured 23/10/2026 from information_schema.columns (data_type ARRAY/json/
+// jsonb) over every facade table. A column added later and missing here is
+// still refused (400, logged) at the CAS step below, never checked silently.
+var EXPECT_NON_SCALAR = { locations: ["tags"], workshops: ["aliases"], scan_examples: ["corrected"] };
+// The comparator. It MUST stay equal to the front's WI4.sameValue: both run
+// worker/test/fixtures/expect-vectors.json (one file, principle 3).
+var EXPECT_DATE_LABELS = ["Loading DateTime", "Delivery DateTime", "VS CD Date"];
+var EXPECT_CHECKBOX_LABELS = ["Is Partner Trip"];
+// Strict on purpose: V8's Date.parse accepts strings like '12' or 'AB 1 2',
+// so a looser rule would make two different plates «equal» and hide a real
+// conflict. Only date labels, and only when BOTH sides match, compare by time.
+var EXPECT_ISO_RE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/;
+function expectEpoch(s) {
+  let v = s;
+  // A datetime without a zone is read as UTC, the way Postgres (session
+  // timezone UTC) stores it. Left to Date.parse, it would be LOCAL time, so a
+  // browser in Athens and the Worker (UTC) would disagree on the same pair.
+  if (v.includes("T") && !/(Z|[+-]\d{2}:?\d{2})$/.test(v)) v += "Z";
+  v = v.replace(/([+-]\d{2})(\d{2})$/, "$1:$2");
+  return Date.parse(v);
+}
+__name(expectEpoch, "expectEpoch");
+function expectSame(label, a, b) {
+  if (EXPECT_CHECKBOX_LABELS.includes(label)) {
+    // A nullable boolean that rt_sync coalesces to false: absent ≡ false.
+    if (a === false) a = null;
+    if (b === false) b = null;
+  }
+  const empty = /* @__PURE__ */ __name((v) => v === null || v === void 0 || v === "" || Array.isArray(v) && v.length === 0, "empty");
+  if (empty(a) && empty(b)) return true;
+  if (empty(a) || empty(b)) return false;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    const norm = /* @__PURE__ */ __name((v) => (Array.isArray(v) ? v : [v]).map((x) => String(x).trim()).sort().join("\0"), "norm");
+    return norm(a) === norm(b);
+  }
+  if (typeof a === "number" || typeof b === "number") {
+    const num = /* @__PURE__ */ __name((v) => typeof v === "number" ? v : String(v).trim() === "" ? NaN : Number(v), "num");
+    const na = num(a), nb = num(b);
+    if (Number.isFinite(na) && Number.isFinite(nb)) return na === nb;
+  }
+  if (EXPECT_DATE_LABELS.includes(label) && typeof a === "string" && typeof b === "string" && EXPECT_ISO_RE.test(a.trim()) && EXPECT_ISO_RE.test(b.trim())) {
+    const ea = expectEpoch(a.trim()), eb = expectEpoch(b.trim());
+    if (Number.isFinite(ea) && Number.isFinite(eb)) return ea === eb;
+  }
+  if (typeof a === "object" || typeof b === "object") return JSON.stringify(a) === JSON.stringify(b);
+  return String(a).trim() === String(b).trim();
+}
+__name(expectSame, "expectSame");
+// label → {column, readLabel}. Labels are canonicalised before comparing:
+// ORDERS has two labels on ONE column ('Cross-dock Date' and 'VS CD Date'),
+// and columnToLabel keeps only the last, so the shaped record carries
+// 'VS CD Date' only. Without this step an _expect on 'Cross-dock Date' (a
+// valid label) would always conflict. Link labels are emitted as they are by
+// resolveLinksOnRead, so they are their own read label. null = not a label of
+// this table (→ 400: a typo must never switch the check off silently).
+function expectCanon(cfg, label) {
+  const column = cfg.fields[label] || (cfg.aliases || {})[label];
+  if (column) {
+    const readLabel = columnToLabel(cfg)[column];
+    return readLabel ? { column, readLabel } : null;
+  }
+  const link = (cfg.links || {})[label];
+  if (link) return { column: link.column, readLabel: label, link: true };
+  return null;
+}
+__name(expectCanon, "expectCanon");
+// Validates body._expect. Returns {labels, canon} or {error}.
+function expectParse(cfg, raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { error: "_expect must be an object of labels" };
+  const labels = Object.keys(raw);
+  if (!labels.length) return { error: "_expect is empty" };
+  if (labels.length > EXPECT_MAX_LABELS) return { error: `_expect has more than ${EXPECT_MAX_LABELS} labels` };
+  const canon = {};
+  for (const label of labels) {
+    const c = expectCanon(cfg, label);
+    if (!c) return { error: `_expect: unknown label «${label}»` };
+    if ((EXPECT_NON_SCALAR[cfg.pg] || []).includes(c.column)) return { error: `_expect: label «${label}» holds a list/json value and cannot be checked` };
+    canon[label] = c;
+  }
+  return { labels, canon };
+}
+__name(expectParse, "expectParse");
+// The newest audit row on this record that changed one of `columns`.
+// Both key styles: Worker rows store record_id = legacy id (after_data as
+// JSON text), trigger rows store id::text (jsonb, actor «trigger:…», role
+// «system»). No row → by/at null: the dialog then says «άλλαξε από τότε που
+// το άνοιξες» instead of guessing a colleague from yesterday. A name is
+// returned only to the roles that read /audit today (AUDIT_READERS); every
+// other role gets 'user' — no role gains anything through this path.
+async function expectAttribution(env, cfg, recId, beforeRow, columns, callerRole) {
+  try {
+    const quote = /* @__PURE__ */ __name((v) => `"${String(v).replace(/["\\]/g, (m) => "\\" + m)}"`, "quote");
+    const keys = [quote(recId)];
+    if (beforeRow && beforeRow.id != null) keys.push(quote(beforeRow.id));
+    const params = new URLSearchParams();
+    params.set("select", "actor,role,created_at,before_data,after_data");
+    params.set("table_name", `eq.${cfg.pg}`);
+    params.set("record_id", `in.(${keys.join(",")})`);
+    params.set("order", "created_at.desc");
+    params.set("limit", "50");
+    const { rows } = await dbSelectRaw(env, "audit_log", params);
+    const parse = /* @__PURE__ */ __name((v) => {
+      if (typeof v !== "string") return v && typeof v === "object" ? v : null;
+      try { return JSON.parse(v); } catch { return null; }
+    }, "parse");
+    for (const r of rows || []) {
+      const b = parse(r.before_data) || {}, a = parse(r.after_data) || {};
+      const touched = columns.some((c) => (c in a || c in b) && JSON.stringify(a[c] ?? null) !== JSON.stringify(b[c] ?? null));
+      if (!touched) continue;
+      const actor = String(r.actor || "");
+      const auto = r.role === "system" || actor.startsWith("trigger:") || actor.startsWith("migration:");
+      const by = auto ? "auto" : AUDIT_READERS.includes(callerRole) ? actor : "user";
+      return { by, at: r.created_at || null };
+    }
+  } catch (e) {
+    console.error(`EXPECT attribution read failed ${cfg.pg} ${recId}`, e.message);
+  }
+  return { by: null, at: null };
+}
+__name(expectAttribution, "expectAttribution");
+// The labels whose value the user would lose: the server no longer holds what
+// the user saw AND the user is not writing what the server already holds (if
+// the server already has the user's value, nothing can be lost — most own-
+// cascade false positives, e.g. a trigger that already set the same truck).
+function expectDiff(exp, labels, canon, cur, bodyByColumn) {
+  return labels.filter((l) => {
+    const now = cur.fields[canon[l].readLabel];
+    if (expectSame(l, exp[l], now)) return false;
+    const col = canon[l].column;
+    if (Object.prototype.hasOwnProperty.call(bodyByColumn, col) && expectSame(l, bodyByColumn[col], now)) return false;
+    return true;
+  });
+}
+__name(expectDiff, "expectDiff");
+// The 409 body, in the caller's own labels. A value the row does not hold is
+// an explicit null, so «Γράψε τη δική μου» can resend _expect = current and
+// still check every label.
+function expectConflictBody(fields, labels, canon, cur, attribution) {
+  const current = {};
+  for (const l of labels) {
+    const v = cur ? cur.fields[canon[l].readLabel] : void 0;
+    current[l] = v === void 0 ? null : v;
+  }
+  return { error: { type: "conflict", fields, by: attribution.by, at: attribution.at, current } };
+}
+__name(expectConflictBody, "expectConflictBody");
+// The cfg the check shapes the row with: the full field map (so canonical
+// read labels match), only the links of the labels being checked (one
+// resolve per checked link table instead of every link of ORDERS), and no
+// computed re-read (an _expect label is a field, alias or link, never computed).
+function expectShapeCfg(cfg, labels, canon) {
+  const links = {};
+  for (const l of labels) if (canon[l].link) links[l] = cfg.links[l];
+  return { ...cfg, computed: void 0, links };
+}
+__name(expectShapeCfg, "expectShapeCfg");
 async function handleFacadeUpdate(request, tableId, recId, origin, env, ctx) {
   const { res, caller, cfg } = await authorizeWrite(request, tableId, "PATCH", origin, env);
   if (res) return res;
@@ -3264,6 +3856,15 @@ async function handleFacadeUpdate(request, tableId, recId, origin, env, ctx) {
     body = await request.json();
   } catch {
     return jsonError("Invalid request", 400, origin, env);
+  }
+  const closed = legacyClosedRefusal(cfg.pg, caller.role, "PATCH", [body && body.fields], origin, env);
+  if (closed) return closed;
+  // `_expect` is validated before anything else happens: a bad one is a 400
+  // with no side effect, never a write that silently skipped the check.
+  let expect = null;
+  if (body && body._expect !== void 0) {
+    expect = expectParse(cfg, body._expect);
+    if (expect.error) return jsonError(expect.error, 400, origin, env);
   }
   const { row: patch, error, dropped } = await buildWriteRow(cfg, body.fields, origin, env);
   // This is the deadliest shape of the bug: one good field + one wrong field
@@ -3283,19 +3884,113 @@ async function handleFacadeUpdate(request, tableId, recId, origin, env, ctx) {
   }
   // Διαβάζεται ΠΡΙΝ το dbUpdate — μετά δεν υπάρχει τρόπος να ανακτηθεί.
   const before = await readRowBefore(env, cfg.pg, recId);
+  const owned = planOwnedRefusal(cfg, before, origin, env);
+  if (owned) return owned;
+  const rowClosed = legacyRowRefusal(cfg.pg, caller.role, [before], origin, env);
+  if (rowClosed) return rowClosed;
   if (before === void 0 && invoiceNeedsBefore(cfg.pg, patch)) {
     return jsonError("Η τιμολόγηση δεν επαληθεύτηκε (η παραγγελία δεν διαβάστηκε) — ξαναδοκίμασε", 503, origin, env);
   }
   const invErr = invoiceMarkError(cfg.pg, patch, before);
   if (invErr) return jsonError(invErr, 422, origin, env);
+  // _expectChecked: true (checked) | "skipped" (could not check) | undefined
+  // (no _expect: today's path and today's response, byte for byte).
+  let expectChecked;
+  let cas = null;
+  if (expect) {
+    if (before === void 0) {
+      // The before-read failed: write as today, say so (the front shows a quiet note).
+      expectChecked = "skipped";
+    } else if (before !== null) {
+      // before === null (no such row) falls through to today's 404 path.
+      const { labels, canon } = expect;
+      const shapeCfg = expectShapeCfg(cfg, labels, canon);
+      let cur = null;
+      try {
+        cur = await shapeOneStrict(before, shapeCfg, env);
+      } catch (e) {
+        console.error(`EXPECT shape failed ${cfg.name} ${recId}`, e.message);
+        expectChecked = "skipped";
+      }
+      if (cur) {
+        const bodyByColumn = {};
+        for (const [label, value] of Object.entries(body.fields || {})) {
+          const c = expectCanon(cfg, label);
+          if (c) bodyByColumn[c.column] = value;
+        }
+        const diff = expectDiff(body._expect, labels, canon, cur, bodyByColumn);
+        if (diff.length) {
+          const who = await expectAttribution(env, cfg, recId, before, diff.map((l) => canon[l].column), caller.role);
+          return jsonOk(expectConflictBody(diff, labels, canon, cur, who), origin, env, 409);
+        }
+        // Atomic compare-and-set (same idea as the stock-lot charge write):
+        // the PATCH matches only while every checked column still holds the
+        // raw value just read, so no check-then-write window remains and the
+        // request count stays the same. A column the user writes with the
+        // value the server already holds cannot be lost, so it is left out.
+        const params = new URLSearchParams();
+        params.set("legacy_id", `eq.${recId}`);
+        const casColumns = [];
+        for (const l of labels) {
+          const col = canon[l].column;
+          if (casColumns.includes(col)) continue;
+          if (Object.prototype.hasOwnProperty.call(bodyByColumn, col) && expectSame(l, bodyByColumn[col], cur.fields[canon[l].readLabel])) continue;
+          const raw = before[col];
+          // Backstop for EXPECT_NON_SCALAR drifting from the schema: a json/
+          // array value has no reliable eq. filter, and leaving it out of the
+          // match while answering _expectChecked:true would claim a check
+          // that never happened. Refused, nothing written, logged.
+          if (raw !== null && typeof raw === "object") {
+            console.error(`EXPECT non-scalar column not in EXPECT_NON_SCALAR ${cfg.pg}.${col}`);
+            return jsonError(`_expect: label «${l}» holds a list/json value and cannot be checked`, 400, origin, env);
+          }
+          params.append(col, raw === null || raw === void 0 ? "is.null" : `eq.${raw}`);
+          casColumns.push(col);
+        }
+        cas = { params, cur, labels, canon, bodyByColumn, casColumns };
+        expectChecked = true;
+      }
+    }
+  }
   let updated;
   try {
-    updated = await dbUpdate(env, cfg.pg, "legacy_id", recId, patch);
+    updated = cas ? await dbUpdateWhere(env, cfg.pg, cas.params, patch) : await dbUpdate(env, cfg.pg, "legacy_id", recId, patch);
   } catch (e) {
     console.error(`PATCH facade ${cfg.name}`, e.message);
     const rule = stockRuleError(e);
     if (rule) return stockRuleResponse(rule, origin, env);
+    const busy = facadeBusy(e, origin, env);
+    if (busy) return busy;
     return jsonError("Failed to update record", 500, origin, env);
+  }
+  if (!updated && cas) {
+    // The row changed between the read and the write: the same 409, nothing
+    // written. The row is read again so the dialog shows what it holds NOW;
+    // answering with the value read before would make «Γράψε τη δική μου»
+    // resend a stale _expect and fail forever.
+    const after = await readRowBefore(env, cfg.pg, recId);
+    if (after === null) return jsonError("Record not found", 404, origin, env);
+    const { labels, canon, bodyByColumn } = cas;
+    let now = null;
+    if (after !== void 0) {
+      try {
+        now = await shapeOneStrict(after, expectShapeCfg(cfg, labels, canon), env);
+      } catch (e) {
+        console.error(`EXPECT re-shape failed ${cfg.name} ${recId}`, e.message);
+      }
+    }
+    let diff = now ? expectDiff(body._expect, labels, canon, now, bodyByColumn) : [];
+    if (!diff.length) {
+      // 0 rows yet no visible difference: say which columns were matched,
+      // and leave a trace — this must never pass silently (principle 1).
+      console.error(`EXPECT CAS matched 0 rows ${cfg.name} ${recId}`, cas.casColumns.join(","));
+      diff = labels.filter((l) => cas.casColumns.includes(canon[l].column));
+      if (!diff.length) diff = labels.slice();
+    }
+    const who = await expectAttribution(env, cfg, recId, after || before, diff.map((l) => canon[l].column), caller.role);
+    // If the re-read failed, `current` is the value read before: a resend
+    // with it can only 409 again, it can never overwrite.
+    return jsonOk(expectConflictBody(diff, labels, canon, now || cas.cur, who), origin, env, 409);
   }
   if (!updated) {
     return jsonError("Record not found", 404, origin, env);
@@ -3310,6 +4005,9 @@ async function handleFacadeUpdate(request, tableId, recId, origin, env, ctx) {
     after: updated
   });
   const record = await shapeOneWithLinks(updated, cfg, env);
+  // The front detects an old Worker by the ABSENCE of this key on a 2xx answer
+  // to a request that carried _expect (window.TMS_EXPECT_LIVE = false).
+  if (expectChecked !== void 0) record._expectChecked = expectChecked;
   return jsonOk(record, origin, env);
 }
 __name(handleFacadeUpdate, "handleFacadeUpdate");
@@ -3337,6 +4035,17 @@ __name(authorizeScopedDelete, "authorizeScopedDelete");
 async function handleFacadeDelete(request, tableId, recId, origin, env) {
   const { res, caller, cfg } = await authorizeScopedDelete(request, tableId, recId, origin, env);
   if (res) return res;
+  const closed = legacyClosedRefusal(cfg.pg, caller.role, "DELETE", [], origin, env);
+  if (closed) return closed;
+  // read only for a table with v5 rows (finding 2), or a legacy row rule that applies (F5): every other DELETE keeps
+  // its one request
+  if (cfg.planOwned || legacyRowsApply(cfg.pg, caller.role)) {
+    const before = await readRowBefore(env, cfg.pg, recId);
+    const owned = planOwnedRefusal(cfg, before, origin, env);
+    if (owned) return owned;
+    const rowClosed = legacyRowRefusal(cfg.pg, caller.role, [before], origin, env);
+    if (rowClosed) return rowClosed;
+  }
   let deleted;
   try {
     deleted = await dbUpdate(env, cfg.pg, "legacy_id", recId, {
@@ -3347,6 +4056,8 @@ async function handleFacadeDelete(request, tableId, recId, origin, env) {
     // e.g. unmarking a lot that already has pieces (stock_guard_lots).
     const rule = stockRuleError(e);
     if (rule) return stockRuleResponse(rule, origin, env);
+    const busy = facadeBusy(e, origin, env);
+    if (busy) return busy;
     return jsonError("Failed to delete record", 500, origin, env);
   }
   if (!deleted) {
@@ -3372,6 +4083,46 @@ async function handleOrderCascadeDelete(request, tableId, recId, origin, env) {
   if (!can(caller.role, cfg.pg, "PATCH")) {
     return jsonError("Forbidden", 403, origin, env);
   }
+  // E19 (spec §5, plan W6): deleting an international VS empties what its bridges hold in v5 (pieces on cycles,
+  // a cycle with payroll). The DB lists it first (074a order_delete_preview, the list shape of 072's
+  // plan_h_confirm); a non-empty list needs the token the user saw: none → 428 with the list, another → 422
+  // stale_confirm, nothing deleted. An empty list goes on as today: 0 bridges before day L, so this changes no
+  // delete until then. delete_order_cascade itself is unchanged. Two transactions: a leg put on the order in the
+  // milliseconds between them is not in the list (accepted; the cascade's own audit row names every step).
+  // A missing preview is a 503, never a delete without it (αρχή 5): after day L it would empty cycles unasked.
+  const sentToken = new URL(request.url).searchParams.get("confirm_token");
+  let preview;
+  try {
+    preview = await dbRpc(env, "order_delete_preview", { p_order_legacy_id: recId, p_role: caller.role });
+  } catch (e) {
+    console.error(`cascade-delete ORDERS ${recId}: preview`, e.message);
+    const pg = e && e.pg && typeof e.pg === "object" ? e.pg : null;
+    if (pg && (pg.code === "PGRST202" || (pg.code === "42883" && /\border_delete_preview\b/.test(String(pg.message || ""))))) {
+      return jsonOk({ error: { type: "SCHEMA_BEHIND", code: "schema_behind", message: "Η βάση δεν έχει ακόμη το migration 074a (λίστα συνεπειών διαγραφής) — η παραγγελία δεν σβήστηκε· ενημέρωσε τον Δημήτρη" } }, origin, env, 503);
+    }
+    const busy = facadeBusy(e, origin, env);
+    if (busy) return busy;
+    return jsonError("Failed to delete order: the list of consequences could not be read — nothing was deleted", 500, origin, env);
+  }
+  const consequences = preview && typeof preview === "object" && Array.isArray(preview.consequences) ? preview.consequences : null;
+  if (consequences === null) {
+    console.error(`cascade-delete ORDERS ${recId}: preview answered`, String(JSON.stringify(preview)).slice(0, 200));
+    return jsonError("Failed to delete order: the list of consequences could not be read — nothing was deleted", 500, origin, env);
+  }
+  if (consequences.length) {
+    // the DB cuts amounts by p_role; the same tripwire as /plan/* (PLAN_MONEY_KEYS): never forwarded to another role
+    if (!PLAN_MONEY_ROLES.includes(caller.role) && planHasAmount(consequences)) {
+      console.error(`cascade-delete ORDERS ${recId}: the preview answered an amount to role ${caller.role}`);
+      return jsonError("Failed to delete order: the list of consequences carried amounts for this role — nothing was deleted", 500, origin, env);
+    }
+    const shown = { consequences, confirm_token: preview.confirm_token ?? null };
+    if (sentToken === null) {
+      return jsonOk({ error: { type: "PLAN_RULE", code: "need_token", message: PLAN_RULE_TEXT.need_token }, preview: shown }, origin, env, 428);
+    }
+    if (typeof preview.confirm_token !== "string" || sentToken !== preview.confirm_token) {
+      return jsonOk({ error: { type: "PLAN_RULE", code: "stale_confirm", message: PLAN_RULE_TEXT.stale_confirm }, preview: shown }, origin, env, 422);
+    }
+  }
   let summary;
   try {
     summary = await dbRpc(env, "delete_order_cascade", { p_order_legacy_id: recId });
@@ -3382,6 +4133,8 @@ async function handleOrderCascadeDelete(request, tableId, recId, origin, env) {
     // cascade step too — nothing was touched.
     const rule = stockRuleError(e);
     if (rule) return stockRuleResponse(rule, origin, env);
+    const busy = facadeBusy(e, origin, env);
+    if (busy) return busy;
     return jsonError("Failed to delete order", 500, origin, env);
   }
   if (!summary || summary.order_found === false) {
@@ -3464,6 +4217,57 @@ async function ctDbPatch(env, table, filter, patch) {
   const rows = await res.json();
   return rows[0] || null;
 }
+// Q6-1 (owner 26/10, money): «a cycle with two PARTNER segments costs the SUM of the segments' partner rates; a
+// partner's invoice replaces ONLY that partner's own rate» (073 ct_v_rt_partner_cost). A partner_rate line may name
+// its partner (ct_cost_lines.partner_id, 073); on a v5 cycle the name must be one of the partners of its live PARTNER
+// segments, and with two or more of them a line must name one - written here, at the moment the line is written
+// (principle 6). The view still counts a line that names nobody (money is never dropped), and replaces no rate with
+// it. Today's round trips (model 1) and lines of any other category take today's path.
+// Final round 2 (26/10, finding 2): a line that names nobody on a cycle with exactly ONE partner is stamped with that
+// partner ({ partner_id } back to the caller, written with the line). Left unnamed, the view read it as that partner's
+// only while the cycle had one: a later handover to a second partner turned it into an unmatched row - counted on top
+// of the first partner's rate (300 + 280 + 200 instead of 480) - and nothing said so. Refusals come back as
+// { status, message }; { partner_id } = write this value (null clears it); null = nothing to do.
+// Final round 3 (26/10, review finding 1): the name already ON the row (opts.stored - the PATCH body sent none) is
+// derived, not sticky. No screen sends partner_id, so a stored name that no longer fits made every later edit 400/409
+// (recategorise, move to another cycle, even a note after the segment's partner was corrected 7 -> 9) and the only
+// way out was SQL. A stored name is kept while it is still one of the cycle's partners (a valid name is never asked
+// for again: no screen can give it); otherwise it is derived again - the single partner of a one-partner cycle, null
+// off partner_rate or (on a move, opts.moved) off a v5 cycle, the same 409 «pick one» on a cycle with two or more.
+// A v5 cycle with no PARTNER segment keeps it: the line is unmatched either way and B-94 names the cycle.
+// Limit (final round 4, review r3 finding 1): this treats EVERY stored name as a Worker stamp - true only while no
+// screen sends partner_id. It cannot tell a stamp from a name a person gave, nor a partner corrected 7 -> 9 from a
+// partner 7 who was removed but still invoices (a cancellation fee): either way the next edit makes the invoice the
+// remaining partner's, which replaces that partner's rate and understates the cost with B-94 green. So B-94's next
+// asks whose the invoice is first (a removed partner's goes to «Λοιπά», never saved as a rate), and plan D-17 makes
+// F4's partner picker mark a given name as given - never derived again here - and let partner_id through the
+// doc_id lock of PATCH, before the plan writes open (the guard counts that switch's literal, so it is not named here).
+async function ctPartnerLineCheck(env, line, opts = {}) {
+  const stored = !!opts.stored && line.partner_id != null;
+  if (stored && line.category !== "partner_rate") return { partner_id: null };
+  if (line.partner_id != null && !stored) {
+    if (!Number.isSafeInteger(line.partner_id) || line.partner_id <= 0) return { status: 400, message: "partner_id: ο συνεργάτης θέλει ακέραιο id" };
+    if (line.category !== "partner_rate") return { status: 400, message: "partner_id μόνο σε γραμμή «Κόμιστρο συνεργάτη» (partner_rate)" };
+  }
+  if (line.category !== "partner_rate" || line.rt_id == null) return stored && opts.moved ? { partner_id: null } : null;
+  const rt = (await dbSelectRaw(env, "ct_round_trips", new URLSearchParams({ select: "id,model", id: `eq.${line.rt_id}` }))).rows[0];
+  if (!rt || rt.model !== 2) return stored && opts.moved ? { partner_id: null } : null;
+  const segs = (await dbSelectRaw(env, "rt_vehicle_segments", new URLSearchParams({ select: "partner_id", rt_id: `eq.${rt.id}`, trip_type: "eq.PARTNER", deleted_at: "is.null" }))).rows;
+  const partners = [...new Set(segs.map((g) => g.partner_id))];
+  if (stored) {
+    if (partners.includes(line.partner_id) || partners.length === 0) return null;
+    line = { ...line, partner_id: null };
+  }
+  if (line.partner_id != null && !partners.includes(line.partner_id)) {
+    return { status: 409, message: "Ο συνεργάτης της γραμμής δεν εκτελεί τμήμα αυτού του κύκλου — διάλεξε τον σωστό συνεργάτη ή κύκλο" };
+  }
+  if (line.partner_id == null && partners.length > 1) {
+    return { status: 409, message: "Ο κύκλος έχει δύο ή περισσότερους συνεργάτες — διάλεξε ποιανού είναι το τιμολόγιο (κάθε τιμολόγιο αντικαθιστά μόνο το δικό του κόμιστρο)" };
+  }
+  if (line.partner_id == null && partners.length === 1) return { partner_id: partners[0] };
+  return null;
+}
+__name(ctPartnerLineCheck, "ctPartnerLineCheck");
 function ctPick(body, fields) {
   const row = {};
   for (const f of fields) {
@@ -3618,6 +4422,12 @@ async function handleCosts(request, url, origin, env) {
       if (!v.ok) return jsonError(v.error, v.status, origin, env);
       const orderIds = v.legs.filter((l) => l.order_id !== void 0).map((l) => l.order_id);
       const natIds = v.legs.filter((l) => l.nat_load_id !== void 0).map((l) => l.nat_load_id);
+      // F5 E16 (owner 28/10, after code review): putting a legacy NL on a round trip changes NL history - owner only
+      // from day L, the same rule and answer as a facade PATCH of national_loads, before any DB call
+      if (natIds.length) {
+        const closed = legacyClosedRefusal("national_loads", caller.role, "PATCH", [], origin, env);
+        if (closed) return closed;
+      }
       let existing = [];
       if (orderIds.length || natIds.length) {
         const parts = [];
@@ -3712,6 +4522,11 @@ async function handleCosts(request, url, origin, env) {
       const orderIdQ = url.searchParams.get("order_id");
       const natLoadIdQ = url.searchParams.get("nat_load_id");
       if (!orderIdQ && !natLoadIdQ) return jsonError("order_id or nat_load_id required", 400, origin, env);
+      // F5 E16 (owner 28/10): taking a legacy NL off a round trip, the same owner-only rule, before any DB call
+      if (!orderIdQ) {
+        const closed = legacyClosedRefusal("national_loads", caller.role, "PATCH", [], origin, env);
+        if (closed) return closed;
+      }
       const rtBefore = await dbSelectRaw(env, "ct_round_trips", new URLSearchParams({ id: `eq.${recId}`, select: "*" }));
       if (!rtBefore.rows.length) return jsonError("Not found", 404, origin, env);
       const rem = canRemoveLeg(rtBefore.rows[0]);
@@ -3734,10 +4549,16 @@ async function handleCosts(request, url, origin, env) {
     // ---- GET /costs/rt  (λίστα ΧΩΡΙΣ αποτελέσματα PnL) ----
     if (resource === "rt" && method === "GET") {
       const q = url.searchParams;
+      // E18 (spec §5, plan W5 — the additive half, 28/10): up to 999 trips, and the answer SAYS when it was cut
+      // (truncated), where 200 (500 with overlap) used to drop the older weeks in silence. 999, not the spec's 1000,
+      // for the same reason as /costs/lines: one probe row past the page proves «more», and PostgREST's
+      // db-max-rows is 1000 (measured 4/10), so a 1000 page would ask 1001, get 1000 and never see it was cut.
+      // from/to stay optional until all seven callers send them (their own PR after day L).
+      const RT_MAX = 999;
       const params = new URLSearchParams();
       params.set("select", "*,ct_rt_legs(id,direction,order_id,nat_load_id,seq)");
       params.set("order", "date_start.desc");
-      params.set("limit", "200");
+      params.set("limit", String(RT_MAX + 1));
       // w11 θέμα 4 (owner 21/9): the DKV import needs every trip that RUNS in
       // the period, not only those that started in it — a trip that began 8+
       // days before the statement and was still on the road was missing from
@@ -3747,7 +4568,6 @@ async function handleCosts(request, url, origin, env) {
         if (!q.get("from") || !q.get("to")) return jsonError("overlap=1 needs from and to", 400, origin, env);
         params.append("date_start", `lte.${q.get("to")}`);
         params.set("or", `(date_end.gte.${q.get("from")},date_end.is.null)`);
-        params.set("limit", "500");
       } else {
         if (q.get("from")) params.append("date_start", `gte.${q.get("from")}`);
         if (q.get("to")) params.append("date_start", `lte.${q.get("to")}`);
@@ -3774,26 +4594,58 @@ async function handleCosts(request, url, origin, env) {
         if (!/^\d{1,9}(,\d{1,9}){0,49}$/.test(orderIdsQ)) return jsonError("Μη έγκυρο order_ids", 400, origin, env);
         const legRows = await dbSelectRaw(env, "ct_rt_legs", new URLSearchParams({ select: "rt_id", order_id: `in.(${orderIdsQ})` }));
         const rtIds = [...new Set(legRows.rows.map((l) => l.rt_id).filter((x) => x != null))];
-        if (!rtIds.length) return jsonOk({ records: [] }, origin, env);
+        if (!rtIds.length) return jsonOk({ records: [], truncated: false }, origin, env);
         params.append("id", `in.(${rtIds.join(",")})`);
       }
       if (q.get("status")) params.append("status", `eq.${q.get("status")}`);
       const { rows } = await dbSelectRaw(env, "ct_round_trips", params);
+      const truncated = rows.length > RT_MAX;
+      if (truncated) rows.length = RT_MAX;
+      // the lookups below read by in.(<RT ids>): 200 ids per request keeps the URL short (999 ids ≈ 6 KB); the
+      // chunks run together, and their rows come back in chunk order (dl_entries' «lowest id wins» holds per RT)
+      const selectIn = async (table, base, ids) => {
+        const chunks = [];
+        for (let i = 0; i < ids.length; i += 200) chunks.push(ids.slice(i, i + 200));
+        const answers = await Promise.all(chunks.map((c) => {
+          const p = new URLSearchParams(base);
+          p.set("rt_id", `in.(${c.join(",")})`);
+          return dbSelectRaw(env, table, p);
+        }));
+        return answers.flatMap((a) => a.rows);
+      };
       // Route detail (leg blocks) lives in dl_v_rt_route, built for the driver
       // ledger (migration 012) — reused here instead of re-deriving it, so the
       // driver card and the ledger never disagree on what a leg shows (αρχή 3).
       if (rows.length) {
         const ids = [...new Set(rows.map((r) => r.id))];
-        const routeParams = new URLSearchParams();
-        routeParams.set("select", "rt_id,route_text,route_legs");
-        routeParams.set("rt_id", `in.(${ids.join(",")})`);
         const routeByRt = /* @__PURE__ */ new Map();
-        const { rows: routeRows } = await dbSelectRaw(env, "dl_v_rt_route", routeParams);
+        const routeRows = await selectIn("dl_v_rt_route", { select: "rt_id,route_text,route_legs" }, ids);
         for (const rr of routeRows) routeByRt.set(rr.rt_id, rr);
         for (const r of rows) {
           const rr = routeByRt.get(r.id);
           r.route_text = rr ? rr.route_text : null;
           r.route_legs = rr ? rr.route_legs : null;
+        }
+        // 073 / E21 (spec 2.3): ONE end of a cycle - the Athens day of its last stop has passed - read from
+        // v_rt_cycle.ended for a v5 cycle (model 2: its status is planned or cancelled for ever, 071 rt_v2_status).
+        // [D-13] a field of its own, never a made-up status. A failed read says so (ended: null + ended_unknown),
+        // it never reads as "still running". Today's trips (model 1) are returned exactly as before.
+        const v2Ids = rows.filter((r) => r.model === 2).map((r) => r.id);
+        if (v2Ids.length) {
+          try {
+            const cyc = await selectIn("v_rt_cycle", { select: "rt_id,ended" }, v2Ids);
+            // Only a boolean is an answer: ended is NULL in the view when end_at is NULL (rt_v2_window lets a NULL
+            // through), and a cycle missing from the answer is not known either - both are said, never read as false.
+            const endedBy = new Map(cyc.filter((c) => typeof c.ended === "boolean").map((c) => [c.rt_id, c.ended]));
+            for (const r of rows) {
+              if (r.model !== 2) continue;
+              if (endedBy.has(r.id)) r.ended = endedBy.get(r.id);
+              else { r.ended = null; r.ended_unknown = true; }
+            }
+          } catch (e) {
+            console.error("COSTS rt ended lookup failed", e.message);
+            for (const r of rows) if (r.model === 2) { r.ended = null; r.ended_unknown = true; }
+          }
         }
         // ledger_entry (owner 13/9, fuel-collection-program spec §2.Β task):
         // «Έξοδα Μ = έξοδα Μισθοδοσίας, ένα σημείο» — the weekly/vehicle
@@ -3806,13 +4658,12 @@ async function handleCosts(request, url, origin, env) {
         // σημαίνει καμία») — several rows for one rt_id is handled, not assumed
         // impossible: the lowest id wins and `ambiguous:true` is added.
         try {
-          const { rows: entryRows } = await dbSelectRaw(env, "dl_entries", new URLSearchParams({
+          const entryRows = await selectIn("dl_entries", {
             select: "id,rt_id,expenses",
-            rt_id: `in.(${ids.join(",")})`,
             entry_type: "eq.trip",
             deleted_at: "is.null",
             order: "id.asc"
-          }));
+          }, ids);
           const byRt = /* @__PURE__ */ new Map();
           for (const e of entryRows) {
             const existing = byRt.get(e.rt_id);
@@ -3827,7 +4678,7 @@ async function handleCosts(request, url, origin, env) {
           for (const r of rows) r.ledger_entry = null;
         }
       }
-      return jsonOk({ records: rows }, origin, env);
+      return jsonOk({ records: rows, truncated: truncated }, origin, env);
     }
     // ---- PATCH /costs/rt/:id  (κλείσιμο/διόρθωση — fallback του data event) ----
     if (resource === "rt" && method === "PATCH" && recId) {
@@ -3839,6 +4690,14 @@ async function handleCosts(request, url, origin, env) {
       patch.updated_at = (/* @__PURE__ */ new Date()).toISOString();
       const before = await dbSelectRaw(env, "ct_round_trips", new URLSearchParams({ id: `eq.${recId}`, select: "*" }));
       if (!before.rows.length) return jsonError("Not found", 404, origin, env);
+      // A v5 cycle (model 2, migration 071) changes ONLY through /plan/*: its
+      // days come from its stops (plan_rt_window_sync) and its truck from the
+      // assignment, under 071b's EXCLUDE. This PATCH would bypass both and end
+      // as an English DB 409 or a generic 500 — refused before the DB, in
+      // Greek, as a plain string (ctFetch shows data.error).
+      if (before.rows[0].model === 2) {
+        return jsonError("Ο κύκλος ανήκει στο Εβδομαδιαίο Εθνικών — αλλάζει μόνο από εκεί", 409, origin, env);
+      }
       let updated;
       try {
         updated = await ctDbPatch(env, "ct_round_trips", `id=eq.${encodeURIComponent(recId)}`, patch);
@@ -3884,7 +4743,7 @@ async function handleCosts(request, url, origin, env) {
       if (!CT_CATEGORIES.includes(body.category)) {
         return jsonError("Unknown category", 400, origin, env);
       }
-      const row = ctPick(body, ["rt_id", "category", "toll_country", "net", "vat", "line_date", "plate_raw", "truck_id", "trailer_id", "km_reading", "liters", "station", "note", "fuel_source", "pay_source"]);
+      const row = ctPick(body, ["rt_id", "category", "toll_country", "net", "vat", "line_date", "plate_raw", "truck_id", "trailer_id", "km_reading", "liters", "station", "note", "fuel_source", "pay_source", "partner_id"]);
       if (typeof row.net !== "number" && typeof row.vat !== "number") {
         return jsonError("net or vat amount required", 400, origin, env);
       }
@@ -3909,6 +4768,11 @@ async function handleCosts(request, url, origin, env) {
         // didn't send one explicitly; the accountant can still override it.
         const rt = await dbSelectRaw(env, "ct_round_trips", new URLSearchParams({ select: "trailer_id", id: `eq.${row.rt_id}` }));
         if (rt.rows.length && rt.rows[0].trailer_id) row.trailer_id = rt.rows[0].trailer_id;
+      }
+      {
+        const chk = await ctPartnerLineCheck(env, row);
+        if (chk && chk.status) return jsonError(chk.message, chk.status, origin, env);
+        if (chk && chk.partner_id != null) row.partner_id = chk.partner_id;
       }
       row.alloc_status = row.rt_id ? "allocated" : "unallocated";
       row.created_by = caller.sub;
@@ -3981,7 +4845,7 @@ async function handleCosts(request, url, origin, env) {
     if (resource === "lines" && method === "PATCH" && recId) {
       const body = await request.json().catch(() => null);
       if (!body || !String(body.reason || "").trim()) return jsonError("reason required", 400, origin, env);
-      const patch = ctPick(body, ["rt_id", "category", "toll_country", "net", "vat", "line_date", "truck_id", "trailer_id", "km_reading", "liters", "station", "note", "fuel_source", "pay_source"]);
+      const patch = ctPick(body, ["rt_id", "category", "toll_country", "net", "vat", "line_date", "truck_id", "trailer_id", "km_reading", "liters", "station", "note", "fuel_source", "pay_source", "partner_id"]);
       if (!Object.keys(patch).length) return jsonError("Nothing to update", 400, origin, env);
       if (patch.category && !CT_CATEGORIES.includes(patch.category)) return jsonError("Unknown category", 400, origin, env);
       if ("pay_source" in patch && !patch.pay_source) return jsonError("pay_source required (DKV/CASH/REVOLUT/CREDIT)", 400, origin, env);
@@ -4022,6 +4886,18 @@ async function handleCosts(request, url, origin, env) {
           const rt = await dbSelectRaw(env, "ct_round_trips", new URLSearchParams({ select: "trailer_id", id: `eq.${effRtId}` }));
           if (rt.rows.length && rt.rows[0].trailer_id) patch.trailer_id = rt.rows[0].trailer_id;
         }
+      }
+      {
+        // Q6-1: the EFFECTIVE line (a PATCH that moves the line to another cycle, or changes its category, is
+        // checked as the line it leaves behind). Round 3: a partner_id the body does not send is the stored one,
+        // derived again when it no longer fits (ctPartnerLineCheck). «moved» compares VALUES: the edit screen
+        // (exSaveEdit) always sends category, unchanged on most edits.
+        const prev = before.rows[0];
+        const eff = { ...prev, ...patch };
+        const moved = ("rt_id" in patch && patch.rt_id !== prev.rt_id) || ("category" in patch && patch.category !== prev.category);
+        const chk = await ctPartnerLineCheck(env, eff, { stored: !("partner_id" in patch), moved });
+        if (chk && chk.status) return jsonError(chk.message, chk.status, origin, env);
+        if (chk && "partner_id" in chk && chk.partner_id !== (prev.partner_id ?? null)) patch.partner_id = chk.partner_id;
       }
       if ("rt_id" in patch) patch.alloc_status = patch.rt_id ? "allocated" : "unallocated";
       const updated = await ctDbPatch(env, "ct_cost_lines", `id=eq.${encodeURIComponent(recId)}`, patch);
@@ -4450,11 +5326,16 @@ async function handleCosts(request, url, origin, env) {
       const normalized = applyRules(split.lines, { trucks, plateAliases, rules });
 
       // (d) match each line to a round trip (spec §4 score).
+      // 073 / E10 + handover P3-3: the rows come from v_rt_vehicle_windows (072b), not ct_round_trips - today's
+      // round trips (model 1) exactly as the old select, plus one row per OWNED segment of a v5 cycle with that
+      // segment's truck, days and window (start_at/end_at), so a v5 line is matched by its hour (import-rules.mjs
+      // matchCycles). The view exists from 072b on; this Worker is deployed only after 073, which needs 072b - a
+      // missing view is a 500 on the preview (loud), never a silent fallback to the whole-cycle truck.
       const truckIds = [...new Set(normalized.map((l) => l.truck_id).filter((v) => v != null))];
       let rts = [];
       if (truckIds.length) {
-        const rtParams = new URLSearchParams({ select: "id,truck_id,status,date_start,date_end", truck_id: `in.(${truckIds.join(",")})`, status: "neq.cancelled" });
-        rts = (await dbSelectRaw(env, "ct_round_trips", rtParams)).rows;
+        const rtParams = new URLSearchParams({ select: "id,truck_id,status,date_start,date_end,model,start_at,end_at", truck_id: `in.(${truckIds.join(",")})`, status: "neq.cancelled" });
+        rts = (await dbSelectRaw(env, "v_rt_vehicle_windows", rtParams)).rows;
       }
       let lines = normalized.map((l) => ({ ...l, ...matchRoundTrip(l, rts, rules), import_key: buildImportKey(l) }));
 
@@ -4489,7 +5370,18 @@ async function handleCosts(request, url, origin, env) {
       // «Τέλη DKV» per RT. The commit re-runs the same function on what the
       // accountant sends, so a toll she assigns in the preview joins its group.
       const summaryDocNoEarly = (parsed.docs.find((d) => d.doc_type === "summary") || {}).doc_no || null;
-      const aggregation = aggregateLines(lines, { statementDocNo: summaryDocNoEarly, rts, trucks });
+      // Q7-1 (review r2): a fee spread onto a v5 cycle is filed under the cycle's FIRST OWNED segment
+      // (aggregateLines). `rts` holds only the rows of the trucks with lines in this statement, so after a handover
+      // 9 -> 10 with only truck 10 on the statement the first segment would be missing, and the money would follow
+      // whichever trucks happened to have lines that month. Every OWNED row of those cycles is read by id instead.
+      const feeCycleIds = [...new Set(lines.filter((l) => l.category === "dkv" && l.rt_id != null).map((l) => l.rt_id))]
+        .filter((id) => rts.some((r) => r.id === id && r.model === 2));
+      let rtsForFees = rts;
+      if (feeCycleIds.length) {
+        const cycleRows = (await dbSelectRaw(env, "v_rt_vehicle_windows", new URLSearchParams({ select: "id,truck_id,status,date_start,date_end,model,start_at,end_at", id: `in.(${feeCycleIds.join(",")})`, status: "neq.cancelled" }))).rows;
+        rtsForFees = rts.filter((r) => !feeCycleIds.includes(r.id)).concat(cycleRows);
+      }
+      const aggregation = aggregateLines(lines, { statementDocNo: summaryDocNoEarly, rts: rtsForFees, trucks });
       lines = aggregation.lines;
 
       // w11 θέμα 0 (owner 21/9): manual lines the statement repeats — the
@@ -4607,7 +5499,10 @@ async function handleCosts(request, url, origin, env) {
             general_fee: lines.filter((l) => l.none_reason === "general_fee").length,
             no_plate: lines.filter((l) => l.none_reason === "no_plate").length,
             unknown_plate: lines.filter((l) => l.none_reason === "unknown_plate").length,
-            no_rt_on_date: lines.filter((l) => l.none_reason === "no_rt_on_date").length
+            no_rt_on_date: lines.filter((l) => l.none_reason === "no_rt_on_date").length,
+            // 073 / E10: lines that may belong to more than one v5 cycle (or whose hour cannot be placed) - left to
+            // the accountant with their candidates, counted so they are never only part of lines_none
+            review_cycles: lines.filter((l) => l.none_reason === "review_cycles").length
           }
         }
       }, origin, env);
@@ -4733,16 +5628,43 @@ async function handleCosts(request, url, origin, env) {
       // only catches a non-existent RT, not one of another vehicle (finding 8).
       const rtIds = [...new Set(rows.map((r) => r.rt_id).filter((v) => v != null))];
       if (rtIds.length) {
-        const rtRows = (await dbSelectRaw(env, "ct_round_trips", new URLSearchParams({ select: "id,truck_id,status", id: `in.(${rtIds.join(",")})` }))).rows;
+        const rtRows = (await dbSelectRaw(env, "ct_round_trips", new URLSearchParams({ select: "id,truck_id,status,model", id: `in.(${rtIds.join(",")})` }))).rows;
         const byId = new Map(rtRows.map((r) => [r.id, r]));
+        // 073 / E10 + handover P3-3: ct_round_trips.truck_id of a v5 cycle is the copy of its FIRST segment, while the
+        // preview matches the second truck's fuel after a handover to the same cycle (its segment's window). A v5
+        // cycle's trucks are therefore its OWNED segments' (v_rt_vehicle_windows); a line of any other truck is still
+        // refused. Today's round trips (model 1), and a v5 cycle with no OWNED segment, keep the one-truck rule.
+        const v5Ids = rtRows.filter((r) => r.model === 2).map((r) => r.id);
+        const segTrucks = new Map();
+        const segRowsById = new Map();
+        if (v5Ids.length) {
+          const segRows = (await dbSelectRaw(env, "v_rt_vehicle_windows", new URLSearchParams({ select: "id,truck_id,date_start,date_end", id: `in.(${v5Ids.join(",")})` }))).rows;
+          for (const w of segRows) {
+            if (!segTrucks.has(w.id)) segTrucks.set(w.id, new Set());
+            segTrucks.get(w.id).add(w.truck_id);
+            if (!segRowsById.has(w.id)) segRowsById.set(w.id, []);
+            segRowsById.get(w.id).push(w);
+          }
+        }
         for (let i = 0; i < rows.length; i++) {
           const r = rows[i];
           if (r.rt_id == null) continue;
           const rt = byId.get(r.rt_id);
           if (!rt) return jsonError(`line ${i + 1}: round trip ${r.rt_id} does not exist`, 409, origin, env);
           if (rt.status === "cancelled") return jsonError(`line ${i + 1}: round trip ${r.rt_id} is cancelled`, 409, origin, env);
-          if (r.truck_id != null && rt.truck_id != null && rt.truck_id !== r.truck_id) {
+          const cycleTrucks = rt.model === 2 ? segTrucks.get(rt.id) : null;
+          if (cycleTrucks ? r.truck_id != null && !cycleTrucks.has(r.truck_id) : r.truck_id != null && rt.truck_id != null && rt.truck_id !== r.truck_id) {
             return jsonError(`line ${i + 1}: round trip ${r.rt_id} belongs to another truck`, 409, origin, env);
+          }
+          // final review 26/10 (W-9): on a v5 cycle the truck is the cycle's only on its OWN segment's days (DKV-2
+          // alpha: exact days, no +-1) - truck 10's fuel of the day before the handover 9 -> 10 is not this cycle's.
+          // A DKV fee line («Τέλη DKV», category dkv) is spread over the statement's period and filed under the first
+          // segment's truck (Q7-1): its date is the statement's, so it is not held to a segment's days.
+          if (cycleTrucks && r.truck_id != null && r.category !== "dkv" && r.line_date) {
+            const day = String(r.line_date).slice(0, 10);
+            const onIt = (segRowsById.get(rt.id) || []).some((w) => w.truck_id === r.truck_id && w.date_start
+              && day >= w.date_start && day <= (w.date_end || w.date_start));
+            if (!onIt) return jsonError(`line ${i + 1}: round trip ${r.rt_id}: truck ${r.truck_id} has no segment of it on ${day}`, 409, origin, env);
           }
         }
       }
@@ -4893,10 +5815,595 @@ async function handleCosts(request, url, origin, env) {
     return jsonError("Not found", 404, origin, env);
   } catch (e) {
     console.error(`COSTS ${method} ${url.pathname}`, e.message);
+    if (schemaBehindF3(e)) {
+      return jsonError("Η βάση δεν έχει ακόμη την 072b / 073 (τμήματα οχήματος, κόστος συνεργατών) — ο Worker μπήκε πριν από το SQL· σειρά: 072b → 073 → Worker· ενημέρωσε τον Δημήτρη (f3_missing)", 503, origin, env);
+    }
     return jsonError("Costs request failed", 500, origin, env);
   }
 }
 __name(handleCosts, "handleCosts");
+// src/routes/plan.js — NATIONAL v5 /plan/* (F2, owner 21–22/10/2026; spec
+// docs/superpowers/specs/2026-10-21-national-v5-design.md §2.1, §3, §7).
+// Every v5 write is ONE plan_* RPC per request: the 071/071b rules are
+// DEFERRED, so they speak at that RPC's COMMIT — a second RPC would run after
+// the first one had already committed. The DB writes the audit_log (actor =
+// caller.sub, role = caller.role); this handler writes none of its own (one
+// trace, αρχή 3). The DB also cuts amounts by p_role (decision 9; price and
+// partner rate are for every role, decision 41): this handler never filters
+// fields, it only refuses to forward an `amount` to a role that must not see
+// one (a tripwire, not a second rule).
+// Born closed (αρχή 5): deny-by-default per resource, no "*" ever — the v5
+// tables are NOT in TABLES, so the facade's wildcard rows can never reach
+// them (trap 3). The declaration below is the deploy guard marker (CLAUDE.md
+// «Ο WORKER»): exactly one, at column 0, and in use by planCan — esbuild drops
+// an unused top-level var and the guard would no longer find it in the bundle.
+var PLAN_PERMS = {
+  // Decision 41 (owner 23/10, «everyone has rights»; the locked rule of 23/8:
+  // «all roles edit broadly for now, DELETE stays narrow»): every role reads
+  // and writes every act of the board, with its dry run (decision 26). The
+  // delete-type acts — rt-clear, delete and the removal of a vehicle handover
+  // (segment-remove, 072b, decision 41 (b)) — stay owner + dispatcher. The
+  // handover and its correction (handover, segment) are board acts: every
+  // role (handover plan H-17). No money here: the DB
+  // cuts payroll/DKV amounts by role (decision 9), the tripwire below refuses
+  // to forward one; price and partner rate are for every role (decision 41).
+  // config, lookups, nat-state and activity (F5, plan W1/W2; streams d1 E3/E5,
+  // d3 E12/E13): reads every screen needs to know day L, to fill its pickers
+  // (E-2), to show a v5 national order's carriers and «delivered», and the v5
+  // cycles of a partner / driver / vehicle or the stops at a place - every
+  // role, read only (the only money in them is the partner rate, decision 41).
+  // GET orders (077, live test 28/10 F13): the edit form reads the one order it
+  // edits before it opens - every role that may PATCH it may read it.
+  owner: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], activity: ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["GET", "POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "rt-clear": ["POST"], delete: ["POST"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"], "segment-remove": ["POST"] },
+  dispatcher: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], activity: ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["GET", "POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "rt-clear": ["POST"], delete: ["POST"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"], "segment-remove": ["POST"] },
+  management: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], activity: ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["GET", "POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"] },
+  accountant: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], activity: ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["GET", "POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"] },
+  warehouse: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], activity: ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["GET", "POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"] }
+};
+function planCan(role, resource, method) {
+  const r = PLAN_PERMS[role];
+  return !!(r && r[resource] && r[resource].includes(method));
+}
+__name(planCan, "planCan");
+// Writes stay closed until day L (decision 22, owner 22/10): a test click
+// before L would be the first real v5 row, and the way back (spec §2.2) exists
+// only while there is none. Reads and dry runs stay open. F5 sets this to
+// true in the SAME deploy that turns WN_V5 on — nowhere else (no env var:
+// one switch, in the source that is deployed, αρχή 3).
+var PLAN_WRITES_OPEN = true;
+// E16 (spec §5; owner 28/10, Q-10): from day L the old national model (NL / GL / CL and the Weekly National
+// «local» moves) is history, and a national order is created, planned and deleted only through /plan/*. The DB
+// freezes INSERT (074, plan:legacy_frozen); the UPDATE / soft delete of history is cut HERE, per role, before any
+// DB call — a stale screen (an old service worker) hears 422 legacy_closed instead of writing around plan_*.
+// 422, not the plan's 409 (code review xhigh 28/10): core/api.js _atRetry resends a 409 twice more (1s+2s) and toasts
+// a generic failure, while a 422 is the facade's final refusal (stock / relay / plan rules) and its Greek text is
+// what the user reads at once.
+// Read ONLY while PLAN_WRITES_OPEN holds: before day L the legacy boards are the live ones and keep every write
+// they have today (spec: switched on earlier, it breaks the old board). One switch, deploy 2 (Q-8).
+// Per table and method: the roles that keep the write ([] = nobody). national_orders PATCH is per label: role →
+// the labels it may still write ("*" = every label; the accountant's three are the ones the invoicing screen
+// writes together, with the price; the dispatcher's are spec §3). local_moves: only a POST of kind «local» (the
+// DB default) is closed; relay_* (060) and nat_loading (071, /plan/*) are not legacy. Owner only for 14 days
+// (Q-10): the read-only step after that is F7, never a silent expiry here. Deploy guard marker (--f5).
+var LEGACY_CLOSED_AFTER_L = {
+  national_loads: { POST: [], PATCH: ["owner"], DELETE: ["owner"] },
+  groupage_lines: { POST: [], PATCH: ["owner"], DELETE: ["owner"] },
+  consolidated_loads: { POST: [], PATCH: ["owner"], DELETE: ["owner"] },
+  national_orders: {
+    POST: [],
+    PATCH: { owner: "*", accountant: ["Invoiced", "Invoice Number", "Invoice Date", "Price"], dispatcher: ["Price", "Reference", "Notes"] },
+    DELETE: []
+  },
+  local_moves: { closedKind: "local" },
+  // owner 28/10 (after code review): the stops of a legacy national order are history too - a stop is tied to one
+  // (POST, or a PATCH that sets the link) by the owner only; the stops already tied are LEGACY_ROWS_AFTER_L
+  order_stops: { closedLink: "Parent Nat Order" }
+};
+// fieldsList: the `fields` of each record of the request ([] for a DELETE). Returns the 422 or null.
+function legacyClosedRefusal(table, role, method, fieldsList, origin, env) {
+  if (!PLAN_WRITES_OPEN || !Object.prototype.hasOwnProperty.call(LEGACY_CLOSED_AFTER_L, table)) return null;
+  const rule = LEGACY_CLOSED_AFTER_L[table];
+  let message = null;
+  if (rule.closedLink) {
+    const linked = (f) => {
+      const v = f && typeof f === "object" ? f[rule.closedLink] : void 0;
+      return Array.isArray(v) ? v.length > 0 : v !== void 0 && v !== null && v !== "";
+    };
+    if (role !== "owner" && (method === "POST" || method === "PATCH") && fieldsList.some(linked)) {
+      message = "Οι στάσεις των παλιών εθνικών (πριν από την ημέρα μετάβασης) αλλάζει μόνο ο Δημήτρης";
+    }
+  } else if (rule.closedKind) {
+    // a missing or null kind is the DB default, «local»
+    const kindOf = (f) => (f && typeof f === "object" && f["Move Kind"] !== void 0 && f["Move Kind"] !== null ? f["Move Kind"] : "local");
+    if (method === "POST" && fieldsList.some((f) => kindOf(f) === rule.closedKind)) {
+      message = "Οι τοπικές κινήσεις του παλιού Εβδομαδιαίου Εθνικών έκλεισαν την ημέρα μετάβασης — η τοπική φόρτωση γράφεται από το Εβδομαδιαίο Εθνικών";
+    }
+  } else {
+    const allowed = rule[method];
+    if (Array.isArray(allowed)) {
+      if (!allowed.includes(role)) {
+        message = method === "POST"
+          ? (table === "national_orders"
+            ? "Οι εθνικές παραγγελίες δημιουργούνται μόνο από το Εβδομαδιαίο Εθνικών"
+            : "Το παλιό μοντέλο εθνικών έκλεισε την ημέρα μετάβασης· νέα εθνικά μόνο από το Εβδομαδιαίο Εθνικών")
+          : (table === "national_orders"
+            ? "Οι εθνικές παραγγελίες σβήνονται μόνο από το Εβδομαδιαίο Εθνικών"
+            : "Τα παλιά εθνικά (πριν από την ημέρα μετάβασης) αλλάζει μόνο ο Δημήτρης");
+      }
+    } else if (allowed && typeof allowed === "object") {
+      const labels = Object.prototype.hasOwnProperty.call(allowed, role) ? allowed[role] : null;
+      if (labels === null) {
+        message = "Ο ρόλος σου δεν αλλάζει εθνικές παραγγελίες από εδώ — οι αλλαγές γίνονται από το Εβδομαδιαίο Εθνικών";
+      } else if (labels !== "*") {
+        const extra = [];
+        for (const f of fieldsList) {
+          if (!f || typeof f !== "object") continue;
+          for (const k of Object.keys(f)) if (!labels.includes(k) && !extra.includes(k)) extra.push(k);
+        }
+        if (extra.length) {
+          message = `Στις εθνικές παραγγελίες ο ρόλος σου αλλάζει από εδώ μόνο ${labels.map((l) => `«${l}»`).join(", ")} — τα ${extra.map((l) => `«${l}»`).join(", ")} από το Εβδομαδιαίο Εθνικών`;
+        }
+      }
+    }
+  }
+  if (message === null) return null;
+  return jsonOk({ error: { type: "LEGACY_CLOSED", code: "legacy_closed", message } }, origin, env, 422);
+}
+__name(legacyClosedRefusal, "legacyClosedRefusal");
+// The same rule decided on the ROW (owner 28/10, after code review; Q-10 owner only for 14 days): PATCH / DELETE of
+// a stop of a legacy national order, or of a Weekly National «local» move, by any role but the owner. Read with
+// PLAN_WRITES_OPEN like the table rules. The row is the one read before the write; a row that could not be read is
+// refused (503 row_unread, nothing written), never let through unchecked (αρχή 1). Deploy guard marker (--f5): the
+// declaration below, its own feature (owner 28/10), not only a part of LEGACY_CLOSED_AFTER_L.
+var LEGACY_ROWS_AFTER_L = {
+  order_stops: { is: (row) => row.national_order_id != null, message: "Οι στάσεις των παλιών εθνικών (πριν από την ημέρα μετάβασης) αλλάζει μόνο ο Δημήτρης" },
+  local_moves: { is: (row) => row.move_kind === "local", message: "Τις τοπικές κινήσεις του παλιού Εβδομαδιαίου Εθνικών αλλάζει μόνο ο Δημήτρης" }
+};
+function legacyRowsApply(table, role) {
+  return PLAN_WRITES_OPEN && role !== "owner" && Object.prototype.hasOwnProperty.call(LEGACY_ROWS_AFTER_L, table);
+}
+__name(legacyRowsApply, "legacyRowsApply");
+// rows: the rows read before the write (null = not found, undefined = the read failed). Returns the answer or null.
+function legacyRowRefusal(table, role, rows, origin, env) {
+  if (!legacyRowsApply(table, role)) return null;
+  if (rows.some((r) => r === void 0)) {
+    return jsonOk({ error: { type: "SERVER", code: "row_unread", message: "Η εγγραφή δεν επαληθεύτηκε (δεν διαβάστηκε) — τίποτα δεν γράφτηκε· ξαναδοκίμασε" } }, origin, env, 503);
+  }
+  const rule = LEGACY_ROWS_AFTER_L[table];
+  if (!rows.some((r) => r && rule.is(r))) return null;
+  return jsonOk({ error: { type: "LEGACY_CLOSED", code: "legacy_closed", message: rule.message } }, origin, env, 422);
+}
+__name(legacyRowRefusal, "legacyRowRefusal");
+// One row per route: method + path → resource (PLAN_PERMS) + RPC. `dryRun`
+// marks the seven RPCs that take {"dry_run": true} and write nothing then
+// (072's four, 072b's three);
+// ONLY those pass the closed switch with it — any other RPC would ignore the
+// flag and write (plan_orders_create has no dry run).
+// `migration`: the migration that brings the RPC, when it is not 072 (the 503
+// schema_behind names it: after a rollback of 072b alone, «072 is missing» would
+// send the owner to the wrong file; handover plan H-22).
+// `idKey`: the path id goes into p under that key; a different id in the body
+// is a 400, never silently overridden (αρχή 1).
+var PLAN_ROUTES = [
+  { method: "GET", re: /^\/plan\/board$/, resource: "board", rpc: "plan_board", read: planBoardArgs },
+  { method: "GET", re: /^\/plan\/vs-state$/, resource: "vs-state", rpc: "plan_vs_state", read: planVsStateArgs },
+  { method: "GET", re: /^\/plan\/notices$/, resource: "notices", rpc: "plan_notices_list", read: planNoticesArgs },
+  // 074a (F5, plan W1/W2) — day L read from the ONE row of plan_config (null until 074 writes it), with this
+  // Worker's own switch beside it (`answer`), and the board's pickers (E-2). Both rows are deploy guard markers
+  // (worker-guard --f5).
+  { method: "GET", re: /^\/plan\/config$/, resource: "config", rpc: "plan_config_read", read: planConfigArgs, answer: planConfigAnswer, migration: "074a" },
+  { method: "GET", re: /^\/plan\/lookups$/, resource: "lookups", rpc: "plan_lookups", read: planLookupsArgs, migration: "074a" },
+  // the carriers and «delivered» (spec §2.3) of v5 national orders, for the Orders page (E3/E5, stream d1); "missing"
+  // = an order of the old model. Deploy guard marker (--f5).
+  { method: "GET", re: /^\/plan\/nat-state$/, resource: "nat-state", rpc: "plan_nat_state", read: planNatStateArgs, migration: "074a" },
+  // the v5 cycles of one partner / driver / truck / trailer, or the v5 stops at one place, for the cards (E12/E13,
+  // stream d3); "all" for the place filter only. Deploy guard marker (--f5).
+  { method: "GET", re: /^\/plan\/activity$/, resource: "activity", rpc: "plan_activity", read: planActivityArgs, migration: "074a" },
+  { method: "POST", re: /^\/plan\/notices\/(\d+)\/read$/, resource: "notices-read", rpc: "plan_notice_read", idKey: "notice_id" },
+  { method: "POST", re: /^\/plan\/orders$/, resource: "orders", rpc: "plan_orders_create" },
+  // 077 (F13, live test 28/10): one national order as the edit form shows it - every field and every live point,
+  // wherever its pieces are (the board carries them only for waiting pieces). Deploy guard marker (--edit).
+  { method: "GET", re: /^\/plan\/orders\/(\d+)$/, resource: "orders", rpc: "plan_order_read", read: planOrderReadArgs, migration: "077" },
+  { method: "PATCH", re: /^\/plan\/orders\/(\d+)$/, resource: "orders", rpc: "plan_order_update", idKey: "nat_order_id" },
+  { method: "POST", re: /^\/plan\/legs$/, resource: "legs", rpc: (body) => body.group !== void 0 ? "plan_put_group" : "plan_put_pieces" },
+  { method: "POST", re: /^\/plan\/move$/, resource: "move", rpc: "plan_move_pieces", dryRun: true },
+  { method: "POST", re: /^\/plan\/pieces\/split$/, resource: "split", rpc: "plan_split_piece" },
+  { method: "PATCH", re: /^\/plan\/rt\/(\d+)$/, resource: "rt", rpc: "plan_rt_update", idKey: "rt_id", dryRun: true },
+  { method: "POST", re: /^\/plan\/rt\/(\d+)\/clear$/, resource: "rt-clear", rpc: "plan_rt_clear", idKey: "rt_id", dryRun: true },
+  { method: "POST", re: /^\/plan\/delete$/, resource: "delete", rpc: "plan_delete", dryRun: true },
+  { method: "POST", re: /^\/plan\/vs\/day$/, resource: "vs-day", rpc: "plan_vs_set_day" },
+  { method: "POST", re: /^\/plan\/vs\/place$/, resource: "vs-place", rpc: "plan_vs_set_place" },
+  { method: "POST", re: /^\/plan\/local-loading$/, resource: "local-loading", rpc: "plan_local_loading" },
+  // 072b — vehicle handover at a point (H-17). The handover CREATES a segment:
+  // request_id in the body (decision 44, the DB replays it); its preview needs
+  // none. The first row is the deploy guard marker (worker-guard --handover).
+  { method: "POST", re: /^\/plan\/rt\/(\d+)\/handover$/, resource: "handover", rpc: "plan_seg_change", idKey: "rt_id", dryRun: true, migration: "072b" },
+  { method: "PATCH", re: /^\/plan\/segments\/(\d+)$/, resource: "segment", rpc: "plan_seg_fix", idKey: "segment_id", dryRun: true, migration: "072b" },
+  { method: "POST", re: /^\/plan\/segments\/(\d+)\/remove$/, resource: "segment-remove", rpc: "plan_seg_remove", idKey: "segment_id", dryRun: true, migration: "072b" }
+];
+// Reads: the query string → RPC args, or a 400 before any DB call.
+// The week is a TMS week: Saturday to Friday (TmsWeek), named by its Saturday.
+function planBoardArgs(url, caller) {
+  const week = url.searchParams.get("week") || "";
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(week) ? new Date(`${week}T00:00:00Z`) : null;
+  if (!d || isNaN(d) || d.toISOString().slice(0, 10) !== week || d.getUTCDay() !== 6) {
+    return { error: "Η εβδομάδα δίνεται με το Σάββατό της (ΕΕΕΕ-ΜΜ-ΗΗ)", code: "bad_week" };
+  }
+  return { args: { p_week: week, p_role: caller.role } };
+}
+__name(planBoardArgs, "planBoardArgs");
+// One rule for a list of ids in the query string (072's plan_vs_state and 074a's plan_nat_state both refuse more
+// than 500): 1 to 500 positive integers of at most 15 digits (safe in JSON), deduplicated.
+function planIdsArgs(url, key, argName) {
+  const raw = (url.searchParams.get(key) || "").split(",").map((s) => s.trim()).filter(Boolean);
+  if (!raw.length || raw.length > 500 || raw.some((s) => !/^[1-9]\d{0,14}$/.test(s))) {
+    return { error: `${key}: 1 έως 500 θετικοί ακέραιοι, χωρισμένοι με κόμμα`, code: `bad_${key}` };
+  }
+  return { args: { [argName]: [...new Set(raw.map(Number))] } };
+}
+__name(planIdsArgs, "planIdsArgs");
+function planVsStateArgs(url) {
+  return planIdsArgs(url, "order_ids", "p_order_ids");
+}
+__name(planVsStateArgs, "planVsStateArgs");
+// GET /plan/orders/:id: the path's id from the route's own match (one regex, PLAN_ROUTES: digits only), at most 15
+// digits like a list id, never 0 or a leading zero
+function planOrderReadArgs(url, caller, match) {
+  const id = match && match[1];
+  if (!/^[1-9]\d{0,14}$/.test(id || "")) return { error: "nat_order_id: θετικός ακέραιος", code: "bad_nat_order_id" };
+  return { args: { p_nat_order_id: Number(id), p_role: caller.role } };
+}
+__name(planOrderReadArgs, "planOrderReadArgs");
+function planNatStateArgs(url) {
+  return planIdsArgs(url, "nat_order_ids", "p_nat_order_ids");
+}
+__name(planNatStateArgs, "planNatStateArgs");
+// Exactly one of the five keys, a positive id of at most 9 digits, or «all» for the one list that has it (the place
+// filter; the partner strip was dropped by d3, 28/10); anything else is a 400 before any DB call. p_id is TEXT in 074a (the id as
+// written, or 'all'): sent as checked here, never re-parsed.
+var PLAN_ACTIVITY_KINDS = { partner_id: "partner", driver_id: "driver", truck_id: "truck", trailer_id: "trailer", location_id: "location" };
+function planActivityArgs(url) {
+  const bad = { error: "Ένα από partner_id, driver_id, truck_id, trailer_id, location_id: θετικός ακέραιος, ή all για location_id", code: "bad_activity_query" };
+  const keys = [...url.searchParams.keys()];
+  if (keys.length !== 1 || !Object.prototype.hasOwnProperty.call(PLAN_ACTIVITY_KINDS, keys[0])) return bad;
+  const kind = PLAN_ACTIVITY_KINDS[keys[0]];
+  const v = url.searchParams.get(keys[0]);
+  if (v === "all" ? kind !== "location" : !/^[1-9]\d{0,8}$/.test(v)) return bad;
+  return { args: { p_kind: kind, p_id: v } };
+}
+__name(planActivityArgs, "planActivityArgs");
+function planNoticesArgs(url, caller) {
+  const desk = url.searchParams.get("desk") || "";
+  if (desk !== "intl" && desk !== "natl") return { error: "desk: intl ή natl", code: "bad_desk" };
+  return { args: { p_desk: desk, p_role: caller.role } };
+}
+__name(planNoticesArgs, "planNoticesArgs");
+function planConfigArgs() {
+  return { args: {} };
+}
+__name(planConfigArgs, "planConfigArgs");
+function planLookupsArgs(url, caller) {
+  return { args: { p_role: caller.role } };
+}
+__name(planLookupsArgs, "planLookupsArgs");
+// GET /plan/config: FE-1 changes behaviour only when this says day L has come, so an answer it cannot read is
+// a loud 500 (plan_failed), never a {cutover_day: null} that would read as «not yet» (αρχή 1). writes_open is the
+// switch of THIS deployed Worker, not a DB value: deploy 2 flips it, and the screen sees which Worker answers.
+function planConfigAnswer(out) {
+  const day = out && typeof out === "object" && !Array.isArray(out) ? out.cutover_day : void 0;
+  if (day !== null && !(typeof day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(day))) {
+    throw new Error(`plan_config_read answered ${String(JSON.stringify(out)).slice(0, 120)}`);
+  }
+  return { cutover_day: day, opened_at: day === null ? null : out.opened_at ?? null, writes_open: PLAN_WRITES_OPEN };
+}
+__name(planConfigAnswer, "planConfigAnswer");
+// ONE error shape for every non-2xx of /plan/* (decision 23): the F4 client
+// (core/plan-api.js) reads error.code to react and toasts error.message.
+function planError(status, type, code, message, origin, env) {
+  return jsonOk({ error: { type, code, message } }, origin, env, status);
+}
+__name(planError, "planError");
+var PLAN_MONEY_ROLES = ["owner", "accountant"];
+// The keys the DB cuts for every other role (072 plan_h_strip_amounts) - the SAME list, held equal by
+// test/plan-contract.test.mjs: an advance or an invoice number is money too (decision 34).
+var PLAN_MONEY_KEYS = ["amount", "advance", "expenses", "invoice_number"];
+function planHasAmount(v) {
+  if (Array.isArray(v)) return v.some(planHasAmount);
+  if (v && typeof v === "object") {
+    return PLAN_MONEY_KEYS.some((k) => Object.prototype.hasOwnProperty.call(v, k)) || Object.values(v).some(planHasAmount);
+  }
+  return false;
+}
+__name(planHasAmount, "planHasAmount");
+// Cross-cutting input rule (coordinator 25/10): JSON.parse reads 1e999 as Infinity, and JSON.stringify then
+// sends it to the DB as null: a silent change of meaning (a partner rate «cleared», a price «missing») that
+// no isfinite() in 072 can see any more. So the Worker refuses it, before any DB call (αρχή 1).
+// The same for an id (review of PR #90, finding 9): JSON.parse rounds 9007199254740993 to ...992 without a
+// word, so a body id that is not a safe integer would reach ANOTHER row and come back a 200. An id is a number
+// under a key `id`, `ids`, `*_id` or `*_ids` (or an element of such an array); an amount or a rate is not one,
+// so 1e308 there still reaches the DB as sent. It returns { at, rule } for the first bad number, or null.
+var PLAN_ID_KEY = /^(?:ids?|.+_ids?)$/;
+function planBadNumber(v, at, isId) {
+  if (typeof v === "number") {
+    if (!Number.isFinite(v)) return { at: at || "body", rule: "finite" };
+    return isId && !Number.isSafeInteger(v) ? { at, rule: "safe_integer" } : null;
+  }
+  if (Array.isArray(v)) {
+    for (let i = 0; i < v.length; i++) {
+      const r = planBadNumber(v[i], `${at}[${i}]`, isId);
+      if (r !== null) return r;
+    }
+    return null;
+  }
+  if (v && typeof v === "object") {
+    for (const [k, x] of Object.entries(v)) {
+      const r = planBadNumber(x, at ? `${at}.${k}` : k, PLAN_ID_KEY.test(k));
+      if (r !== null) return r;
+    }
+  }
+  return null;
+}
+__name(planBadNumber, "planBadNumber");
+// The ONE translation of a DB refusal inside /plan/* (review of PR #90, finding 4): the catch of handlePlan and
+// plan_rt_update's dry-run preview.conflict both go through it, so a preview says what its execution would
+// say, code and text, for every family stockRuleError knows (stock 057, relay 060, plan 071/072) and for a
+// constraint none of them knows (a loud 422 naming it, never the retried 500; only here — the facade/costs
+// paths keep stockRuleError's null). Returns { status, type, code, message } or null.
+function planRefusal(e) {
+  const rule = stockRuleError(e);
+  // Every bad_input inside /plan/* has ONE type, BAD_REQUEST, whatever its detail and whichever RPC (review r4 of
+  // PR #90, finding 1): 072 raises plan:bad_input with a field ('body', 'target.side') or with the SQLSTATE it
+  // caught ('22P02', in the six RPCs that catch per statement), and the seven others catch their casts as a field
+  // ('body', 'rt_id') - so the same typing mistake comes back with either detail. Splitting by detail gave one fault
+  // two types (r3); the Worker's own pre-checks already answer 400 BAD_REQUEST bad_input. The detail stays in brackets.
+  if (rule && rule.type === "PLAN_RULE" && rule.code === "bad_input") {
+    const d = /^plan rule broken: bad_input:([\s\S]*)$/.exec(String(e.pg.message || ""));
+    return planDbInput(d ? d[1].trim().slice(0, 120) : "");
+  }
+  if (rule) {
+    // need_token: the act needs the dry-run list first — 428, so the F4 client opens the list instead of
+    // toasting a refusal.
+    return { status: rule.code === "need_token" ? 428 : 422, type: rule.type || "STOCK_RULE", code: rule.code, message: rule.message };
+  }
+  const pg = e && e.pg && typeof e.pg === "object" ? e.pg : null;
+  if (pg && /^23(514|505|503|P01)$/.test(String(pg.code || ""))) {
+    const n = /constraint "([^"]+)"/.exec(String(pg.message || ""));
+    const cname = n ? n[1] : "db_rule";
+    return { status: 422, type: "PLAN_RULE", code: cname, message: n ? `Κανόνας βάσης ${cname}` : `Κανόνας βάσης: ${String(pg.message || "").slice(0, 200)}` };
+  }
+  return null;
+}
+__name(planRefusal, "planRefusal");
+// plan_rt_update's dry run SHOWS the rule a change would break as preview.conflict {code, sqlstate, detail}
+// (Figma D4, a 200). 072 fills `code` with the plan: hint's code or the constraint's name, and `detail` only
+// for the former (what follows «<code>:» in plan_h_raise's message). Rebuilt here into the error its execution
+// would raise and read by planRefusal, so the two never drift (finding 4): F4 keeps no copy of the texts (αρχή 3).
+var PLAN_CONSTRAINT_KIND = { "23514": "check", "23505": "unique", "23P01": "exclusion" };
+// The SQLSTATEs that speak of the request's OWN input (review of PR #90 r2, finding 2): a text that is not a
+// number or a date (22P02, 22007), a number or a date out of range (22003, 22008), a JSON value of the wrong
+// shape (22023, e.g. jsonb_array_elements on a scalar), a required field left null (23502). The first five are
+// the very list 072's six write RPCs catch as plan:bad_input '<SQLSTATE>' (a raw one reaches here only past 072's
+// cast blocks, e.g. a 22023 of a jsonb function or a 23502). The statement failed, so its transaction rolled back and nothing was kept: a
+// 422, the same answer on every attempt. Every other class-22 code (22012 division by zero, 22004, 22001 from
+// stored text) is a fault inside 072 that no refresh can cure, so it stays plan_failed «ενημέρωσε τον
+// Δημήτρη». A 23502 or a 22023 can also come from DB state the function read, so the text keeps the same line
+// (αρχή 1). Only on a write route or its dry run: a read's arguments are the Worker's own, checked above.
+var PLAN_DB_INPUT_STATE = new Set(["22P02", "22003", "22007", "22008", "22023", "23502"]);
+function planDbInput(detail) {
+  return { status: 422, type: "BAD_REQUEST", code: "bad_input", message: `${PLAN_RULE_TEXT.bad_input}· αν ξανασυμβεί, ενημέρωσε τον Δημήτρη${detail ? ` (${detail})` : ""}` };
+}
+__name(planDbInput, "planDbInput");
+function planConflictRule(c) {
+  const code = String((c && c.code) || "");
+  const state = String((c && c.sqlstate) || "");
+  const detail = c && c.detail !== null && c.detail !== void 0 ? String(c.detail) : null;
+  const hinted = Object.prototype.hasOwnProperty.call(PLAN_RULE_TEXT, code) || detail !== null;
+  // a NOT NULL with a name (PG 18 names them) is still bad_input at execution, never «Κανόνας βάσης» (finding 9 r2)
+  if (!hinted && PLAN_DB_INPUT_STATE.has(state)) return planDbInput(state);
+  const kind = Object.prototype.hasOwnProperty.call(PLAN_CONSTRAINT_KIND, state) ? `${PLAN_CONSTRAINT_KIND[state]} ` : "";
+  const pg = hinted
+    ? { code: state || "23514", hint: `plan:${code}`, message: `plan rule broken: ${code}:${detail || ""}` }
+    : { code: state, hint: null, message: `violates ${kind}constraint "${code}"` };
+  return planRefusal({ pg }) || { code: code || "db_rule", message: `Κανόνας βάσης ${code || "χωρίς κωδικό"}` };
+}
+__name(planConflictRule, "planConflictRule");
+// PostgREST codes that prove the RPC never ran (review of PR #90, finding 6): the request was refused before
+// any SQL was sent — no pool connection (003), the schema cache not ready (002), a request PostgREST could not
+// parse or route (1xx), a schema-cache lookup that failed (2xx: 203 = two overloads of one name), a JWT it would
+// not take (3xx). Nothing was kept, so a write says «δεν αποθηκεύτηκε». An explicit list, never a pattern: a code
+// not named here stays unknown (plan_unknown on a write). Left out on purpose, because they come AFTER the SQL
+// ran: PGRST000 / PGRST001 (the link can drop after the COMMIT), PGRST111 / PGRST112 (response.headers /
+// response.status set by the function), PGRST116 (singular answer), PGRST121 (RAISE SQLSTATE 'PGRST'),
+// PGRST124 / PGRST128 (max-affected), PGRSTX00. PGRST202 is schema_behind above.
+var PLAN_PGRST_NOT_RUN = new Set(["PGRST002", "PGRST003", "PGRST100", "PGRST101", "PGRST102", "PGRST103", "PGRST105",
+  "PGRST106", "PGRST107", "PGRST108", "PGRST114", "PGRST115", "PGRST117", "PGRST118", "PGRST120", "PGRST122",
+  "PGRST123", "PGRST125", "PGRST126", "PGRST127", "PGRST200", "PGRST201", "PGRST203", "PGRST204", "PGRST205",
+  "PGRST300", "PGRST301", "PGRST302", "PGRST303"]);
+// The status of an answer whose write may be kept (plan_unknown) or IS kept (amount_leak after a write):
+// 422, because core/api.js _atRetry sends again by itself, up to three times, every thrown fetch and every
+// non-ok status except 400 / 401 / 403 / 422 (so every 5xx, 404, 428, 429 and every 409 without opts.conflict),
+// and a lost answer after the COMMIT would then move the stops twice (review of PR #90, finding 1; decision
+// 44: no screen re-sends a /plan/* write; r3 finding 8: the full list). 401 and 403 mean something else, 400 a
+// malformed request. Pinned on both sides: worker/test/plan-routes.test.mjs
+// and tests/api-plan-no-resend.test.mjs (the real _atRetry: exactly one fetch).
+var PLAN_NO_RESEND = 422;
+async function handlePlan(request, url, origin, env) {
+  // a malformed token makes jwtVerify throw (atob): a 401 in the /plan/* shape, never a CF 1101 without CORS
+  let caller = null;
+  try { caller = await getCaller(request, env); } catch { caller = null; }
+  if (!caller) return planError(401, "AUTH", "unauthorized", "Η σύνδεση έληξε — συνδέσου ξανά", origin, env);
+  const method = request.method;
+  let route = null;
+  let match = null;
+  for (const r of PLAN_ROUTES) {
+    if (r.method !== method) continue;
+    match = r.re.exec(url.pathname);
+    if (match) { route = r; break; }
+  }
+  if (!route) return planError(404, "NOT_FOUND", "no_route", `Άγνωστη διαδρομή: ${method} ${url.pathname}`, origin, env);
+  if (!planCan(caller.role, route.resource, method)) {
+    return planError(403, "FORBIDDEN", "forbidden", "Ο ρόλος σου δεν έχει αυτή την πράξη στο Εβδομαδιαίο Εθνικών", origin, env);
+  }
+  // the path as requested (finding 12): /plan/pieces/split, /plan/rt/42 — never the resource name, which
+  // dropped the record id and named a route that does not exist. The route regex has matched it: digits only.
+  const name = `${method} ${url.pathname}`;
+  // No top-level catch in fetch(): anything thrown out of here would be a CF
+  // 1101 without CORS, which the browser reads as «network error» (αρχή 1).
+  let fn = null;
+  // true once a write (not a read, not a dry run) is sent: if its answer is lost, its outcome is unknown
+  let maybeWritten = false;
+  try {
+    let args;
+    if (route.read) {
+      const a = route.read(url, caller, match);
+      if (a.error) return planError(400, "BAD_REQUEST", a.code, a.error, origin, env);
+      fn = route.rpc;
+      args = a.args;
+    } else {
+      const text = await request.text();
+      let body = null;
+      try { body = text.trim() ? JSON.parse(text) : {}; } catch { body = null; }
+      if (!body || typeof body !== "object" || Array.isArray(body)) {
+        return planError(400, "BAD_REQUEST", "bad_json", "Το σώμα του αιτήματος δεν είναι αντικείμενο JSON", origin, env);
+      }
+      const bad = planBadNumber(body, "", false);
+      if (bad !== null) {
+        return planError(400, "BAD_REQUEST", "bad_input", `${PLAN_RULE_TEXT.bad_input} (${bad.at.slice(0, 80)}:${bad.rule})`, origin, env);
+      }
+      if (route.idKey) {
+        const id = Number(match[1]);
+        // a path id of 400 digits is Infinity (or an unsafe integer): the same rule and the same names as a
+        // body id in planBadNumber — `finite` for Infinity, `safe_integer` for a rounded one (r2 finding 7)
+        if (!Number.isSafeInteger(id)) {
+          return planError(400, "BAD_REQUEST", "bad_input", `${PLAN_RULE_TEXT.bad_input} (${route.idKey}:${Number.isFinite(id) ? "safe_integer" : "finite"})`, origin, env);
+        }
+        if (body[route.idKey] !== void 0 && Number(body[route.idKey]) !== id) {
+          return planError(400, "BAD_REQUEST", "id_mismatch", `Το ${route.idKey} του σώματος διαφέρει από τη διαδρομή`, origin, env);
+        }
+        body = { ...body, [route.idKey]: id };
+      }
+      const dry = route.dryRun === true && body.dry_run === true;
+      if (!PLAN_WRITES_OPEN && !dry) {
+        return planError(409, "WRITES_CLOSED", "writes_closed", "Οι αλλαγές στο Εβδομαδιαίο Εθνικών ανοίγουν την ημέρα της μετάβασης — ως τότε μόνο ανάγνωση και προεπισκόπηση", origin, env);
+      }
+      fn = typeof route.rpc === "function" ? route.rpc(body) : route.rpc;
+      args = { p: body, p_actor: caller.sub, p_role: caller.role };
+      maybeWritten = !dry;
+    }
+    let out = await dbRpc(env, fn, args);
+    if (route.answer) out = route.answer(out);
+    if (!PLAN_MONEY_ROLES.includes(caller.role) && planHasAmount(out)) {
+      console.error(`PLAN ${name}: the DB answered an amount to role ${caller.role} — not forwarded`);
+      // a write answered: its COMMIT is done, so the text says it was kept and must not be pressed again (K1 review r1),
+      // and the status is one the legacy client never sends again by itself (PLAN_NO_RESEND, finding 1)
+      return planError(PLAN_NO_RESEND, "SERVER", "amount_leak", maybeWritten
+        ? "Η πράξη αποθηκεύτηκε, αλλά η απάντηση της βάσης είχε ποσά για ρόλο χωρίς δικαίωμα — δεν στάλθηκε· μην την ξαναπατήσεις· ενημέρωσε τον Δημήτρη"
+        : "Η απάντηση της βάσης είχε ποσά για ρόλο χωρίς δικαίωμα — δεν στάλθηκε· ενημέρωσε τον Δημήτρη", origin, env);
+    }
+    if (out && out.preview && out.preview.conflict && typeof out.preview.conflict === "object") {
+      const c = out.preview.conflict;
+      // one code and one text per rule for a screen, whichever layer refused first (planRefusal, finding 4)
+      const rule = planConflictRule(c);
+      c.code = rule.code;
+      c.message = rule.message;
+    }
+    return jsonOk(out, origin, env);
+  } catch (e) {
+    const refusal = planRefusal(e);
+    if (refusal) return planError(refusal.status, refusal.type, refusal.code, refusal.message, origin, env);
+    const pg = e && e.pg && typeof e.pg === "object" ? e.pg : null;
+    // PostgREST 404 PGRST202 = the function is not in its schema cache: this
+    // Worker is ahead of 072 (or 072 was rolled back). Named, never a 500
+    // (pattern schemaBehind060).
+    // A 42883 naming the RPC itself is the same, between a rollback of 072 and PostgREST's cache reload (a 42883
+    // of an inner function is a bug of 072 and stays the 500 path below).
+    const own = !!(pg && fn && new RegExp(`\\bfunction (?:public\\.)?${fn}\\b`).test(String(pg.message || "")));
+    if (pg && (pg.code === "PGRST202" || (pg.code === "42883" && own))) {
+      const mig = route.migration || "072";
+      console.error(`PLAN ${name}: ${fn} missing in the DB (${mig})`);
+      return planError(503, "SCHEMA_BEHIND", "schema_behind", `Η βάση δεν έχει ακόμη το migration ${mig} (Εβδομαδιαίο Εθνικών) — ενημέρωσε τον Δημήτρη`, origin, env);
+    }
+    // 42501 on the RPC itself: 072 is there but the GRANT of its PART 5 is not (a manual REVOKE would do it)
+    if (pg && pg.code === "42501" && own) {
+      console.error(`PLAN ${name}: no EXECUTE on ${fn}`);
+      return planError(503, "SCHEMA_BEHIND", "db_grant", `Η βάση δεν δίνει δικαίωμα κλήσης στο ${fn} — ενημέρωσε τον Δημήτρη`, origin, env);
+    }
+    // A lock lost to a concurrent write (deadlock 40P01, serialization 40001,
+    // lock_timeout 55P03): nothing was kept — a 409, never the 500 path. The
+    // user presses again; this handler never calls the RPC twice (decision 44,
+    // owner 23/10). The legacy core/api.js _atRetry WOULD send this 409 (and the
+    // 503s and the 500 plan_failed) twice more by itself — harmless, because
+    // nothing was kept — which is why no /plan/* write may go through it
+    // (tests/api-plan-no-resend.test.mjs pins both; r2 findings 1 and 6).
+    // Type SERVER, as `slow`, never PLAN_RULE (finding 13): it is transient, and PLAN_RULE is the family of
+    // the business refusals a client must treat as final.
+    if (pg && BUSY_SQLSTATE.test(String(pg.code || ""))) {
+      console.error(`PLAN ${name}: ${pg.code} (concurrent change)`);
+      // a read writes nothing, so its text never speaks of writing (polish review 2 M2)
+      return planError(409, "SERVER", "busy_retry", `Ταυτόχρονη αλλαγή από άλλον χρήστη — ${route.read ? `η πράξη ${name} δεν ολοκληρώθηκε` : "τίποτα δεν γράφτηκε"}· ξαναδοκίμασε`, origin, env);
+    }
+    // statement_timeout (PostgREST, 8 s): slow, not broken — 503, try again later.
+    if (pg && String(pg.code || "") === "57014") {
+      console.error(`PLAN ${name}: statement timeout`);
+      return planError(503, "SERVER", "slow", `Η βάση άργησε να απαντήσει — ${route.read ? `η πράξη ${name} δεν ολοκληρώθηκε` : "τίποτα δεν γράφτηκε"}· ξαναδοκίμασε σε λίγο`, origin, env);
+    }
+    // Input the DB cannot take (finding 5, narrowed in r2 finding 2: PLAN_DB_INPUT_STATE), on a write or its dry
+    // run. Any other class-22 code, and any on a read, falls to plan_failed below.
+    if (pg && !route.read && PLAN_DB_INPUT_STATE.has(String(pg.code || ""))) {
+      console.error(`PLAN ${name}: ${pg.code} (input the DB cannot take)`, String(pg.message || "").slice(0, 200));
+      const bad = planDbInput(pg.code);
+      return planError(bad.status, bad.type, bad.code, bad.message, origin, env);
+    }
+    console.error(`PLAN ${name}`, e && e.message);
+    // Only a real Postgres SQLSTATE (five characters) outside the connection class 08 and the FATAL terminations
+    // (57P, 25P04) means the RPC's transaction rolled back: nothing was kept, so it is plan_failed, never «may have been saved»
+    // (K1 review r1: an inner 42883, P0001 without hint). Anything else leaves the outcome unknown,
+    // because the COMMIT may have happened before the link dropped: no answer (the fetch threw), a gateway page, or
+    // a JSON body without a SQLSTATE - the gateway's 502 / 504 {"message": …}, PostgREST's PGRST000 «connection lost»
+    // (K1 review r2) - and a 57P01 / 57P02 (polish review I1: pg_terminate_backend, a fast shutdown, or a crash of
+    // another backend can end the session after its commit record is flushed and before the client hears of it), and
+    // a 25P04 (polish review 2 M1: transaction_timeout of PG 17, FATAL; it can fire while the COMMIT holds interrupts
+    // and be served after the commit record. Off today, transaction_timeout = 0, so nothing else would warn the day it
+    // is set). 57014 (statement_timeout) is not FATAL and is answered above as slow; 25P03 (idle in transaction) fires
+    // only while the session is idle, before any COMMIT, and stays plan_failed. The classes 58 and XX are not proof
+    // either (polish review 2 r2 m3): PostgREST forwards no severity, so a PANIC reads as an ERROR, and two can follow
+    // the commit record - 58030 «could not fsync» on the WAL at COMMIT (the record may be replayed after the crash
+    // restart) and XX000 «cannot abort transaction …, it was already committed». Accepted, not covered: a PANIC on a
+    // WAL file carries its errno's code, so ENOSPC is 53100 and EACCES 42501, and those stay plan_failed (the PANIC
+    // restarts the whole DB, which everyone notices; the three creations replay by request_id).
+    const rolledBack = !!pg && /^(?!08|57P|25P04|58|XX)[0-9A-Z]{5}$/.test(String(pg.code || ""));
+    // K1 review r3 m1: some answers without a SQLSTATE prove the RPC never ran, so nothing was kept and «μπορεί να
+    // αποθηκεύτηκε» would only send the user to look for nothing: a 401 / 403 (the gateway refused the service key,
+    // e.g. after a rotation; any body, a page too) and the PostgREST codes of PLAN_PGRST_NOT_RUN (finding 6).
+    // PGRST000 / PGRST001 and the 502 / 504 stay plan_unknown: a link can drop AFTER the COMMIT.
+    // A read saves nothing, so its text never says «δεν αποθηκεύτηκε» (polish review m1): it was not run.
+    if (!rolledBack && (e && (e.status === 401 || e.status === 403))) {
+      console.error(`PLAN ${name}: the DB gateway refused the call (${e.status})`);
+      return planError(503, "SERVER", "db_refused", `Η βάση αρνήθηκε την κλήση (${e.status}) — η πράξη ${name} ${route.read ? "δεν εκτελέστηκε" : "δεν αποθηκεύτηκε"}· ενημέρωσε τον Δημήτρη`, origin, env);
+    }
+    const pgrst = pg ? String(pg.code || "") : "";
+    if (!rolledBack && PLAN_PGRST_NOT_RUN.has(pgrst)) {
+      console.error(`PLAN ${name}: ${pgrst} (PostgREST did not run it)`);
+      // 002 / 003 pass by themselves (the pool, the schema cache): «ξαναδοκίμασε σε λίγο»; the others are a
+      // Worker ↔ DB mismatch that pressing again cannot cure
+      if (pgrst === "PGRST003" || pgrst === "PGRST002") {
+        const what = pgrst === "PGRST003" ? "Η βάση δεν είχε ελεύθερη σύνδεση" : "Η βάση δεν ήταν έτοιμη (PGRST002)";
+        return planError(503, "SERVER", "slow", `${what} — ${route.read ? `η πράξη ${name} δεν εκτελέστηκε` : "τίποτα δεν αποθηκεύτηκε"}· ξαναδοκίμασε σε λίγο`, origin, env);
+      }
+      return planError(503, "SERVER", "db_refused", `Η βάση αρνήθηκε την κλήση (${pgrst}) — η πράξη ${name} ${route.read ? "δεν εκτελέστηκε" : "δεν αποθηκεύτηκε"}· ενημέρωσε τον Δημήτρη`, origin, env);
+    }
+    if (maybeWritten && !rolledBack) {
+      // the link may have dropped AFTER the COMMIT: a write never claims «not done» (αρχή 1); the F4 client
+      // must not send it again by itself, and the user re-presses the SAME form, so the same request_id replays
+      // (decision 44). Never «refresh»: that would close the form and mint a new id = a second creation.
+      // PLAN_NO_RESEND, not 500: the legacy client would send it again by itself (finding 1). Its own type, so
+      // a screen never reads it as a refusal (PLAN_RULE) or as «not done» (SERVER).
+      return planError(PLAN_NO_RESEND, "OUTCOME_UNKNOWN", "plan_unknown", `Η πράξη ${name} μπορεί να αποθηκεύτηκε — έλεγξε πρώτα στο Εβδομαδιαίο Εθνικών αν φαίνεται, και μόνο αν λείπει ξαναπάτησε το ίδιο κουμπί· ενημέρωσε τον Δημήτρη`, origin, env);
+    }
+    return planError(500, "SERVER", "plan_failed", `Η πράξη ${name} δεν ολοκληρώθηκε — ενημέρωσε τον Δημήτρη`, origin, env);
+  }
+}
+__name(handlePlan, "handlePlan");
 
 // src/routes/performance.js — ΕΠΙΔΟΣΗ ΠΑΡΑΔΟΣΗΣ (3/9/2026)
 // Read-only διαδρομή προς τα τρία views του 2026-08-30_delivery_views.sql.
@@ -5255,6 +6762,36 @@ function plCan(role, resource, method) {
   return !!(r && r[resource] && r[resource].includes(method));
 }
 var PL_FIELDS = ["movement_date", "counterparty_type", "client_id", "partner_id", "location_id", "event_type", "taken", "given", "order_stop_id", "cons_load_id", "order_id", "sheet_url", "sheet_source", "reversal_of", "reason", "notes"];
+// 073 / D-9: a row of the national plan (pl_movements.piece_leg_id) has ONE writer per field. The plan
+// (plan_h_pallet_sync) owns who, where, when and the LOADED side (corrected in the plan, never here, or the next
+// change of the leg would put the plan's number back); the user owns the EXCHANGE side, the sheet and the notes.
+// Q9-1 (coordinator 26/10), the same rule as plan_h_pallet_sync: LOADING - taken is the plan's (the pallets loaded),
+// given the user's (what we gave back there); DELIVERY - given is the plan's (the pallets delivered), taken the
+// user's («δεν τις πήραμε πίσω»: today's plvDoFix corrects taken, and the balance is sum(given - taken), 003).
+var PL_PLAN_USER_SIDE = { LOADING: "given", DELIVERY: "taken" };
+function plPlanUserFields(m) {
+  const side = PL_PLAN_USER_SIDE[m.event_type];
+  return (side ? [side] : []).concat(["sheet_url", "sheet_source", "notes"]);
+}
+var PL_PLAN_OWNED_TEXT = "Η κίνηση ανήκει στον προγραμματισμό εθνικών: πελάτης, τόπος, ημέρα και οι παλέτες που φορτώθηκαν/παραδόθηκαν αλλάζουν από το σκέλος";
+// The plan-owned fields a request would CHANGE on a plan row. Sending a field with the value the row already has
+// is no change (today's ledger sends the whole row back: taken and given on confirm, the full copy on a fix), so it
+// is not refused (Q9-2); a different value is refused, never dropped in silence behind a 200 (principle 1).
+function plPlanOwnedChanges(m, row, ignore = []) {
+  const own = plPlanUserFields(m);
+  return Object.keys(row).filter((k) => !own.includes(k) && !ignore.includes(k) && row[k] !== m[k]);
+}
+// The base's one-writer indexes, said in Greek wherever pl_movements is written (POST, PATCH, a reversal's
+// replacement): pl_mov_stop_once (073, one live LOADING / DELIVERY per international stop) and pl_mov_leg_once (071,
+// one live row per event of a national leg). Any other error keeps its own path.
+function plUniqueText(e) {
+  const pg = (e && e.pg) || {};
+  if (pg.code !== "23505" && !/"23505"/.test(String((e && e.message) || ""))) return null;
+  const t = `${pg.message || ""} ${pg.details || ""} ${(e && e.message) || ""}`;
+  if (/pl_mov_stop_once/.test(t)) return "Υπάρχει ήδη κίνηση παλετών αυτού του είδους σε αυτή τη στάση — άνοιξέ την από το Ισοζύγιο";
+  if (/pl_mov_leg_once/.test(t)) return "Ο προγραμματισμός εθνικών έχει ήδη κίνηση αυτού του είδους για το σκέλος — άνοιξέ την από το Ισοζύγιο";
+  return null;
+}
 function plValidate(row) {
   if (!row.movement_date) return "movement_date required";
   if (!PL_EVENT_TYPES.includes(row.event_type)) return "Unknown event_type";
@@ -5360,6 +6897,7 @@ async function handlePallets(request, url, origin, env) {
     // ---- GET /pallets/movements?status=&counterparty_type=&client_id=&partner_id=&event_type=&from=&to=&order_stop_id=&cons_load_id= ----
     if (resource === "movements" && method === "GET" && !recId) {
       const q = url.searchParams;
+      const PL_MOV_PAGE = 999, PL_MOV_MAX = PL_MOV_PAGE * 10; // the paged read below; every answer says cap
       const params = new URLSearchParams();
       // Embedded τα ονόματα αντί για σκέτο "*": το UI τα έλυνε μέσω
       // /pallets/lookups, που η PostgREST κόβει στα 1000 (db-max-rows) ενώ οι
@@ -5369,7 +6907,6 @@ async function handlePallets(request, url, origin, env) {
       // Μονή FK ανά πίνακα (003_pallets_schema) → κανένα ambiguous embed.
       params.set("select", "*,clients(company_name),partners(company_name),locations(name)");
       params.set("order", "movement_date.desc,id.desc");
-      params.set("limit", "300");
       if (q.get("status")) params.append("status", `eq.${q.get("status")}`);
       if (q.get("counterparty_type")) params.append("counterparty_type", `eq.${q.get("counterparty_type")}`);
       if (q.get("client_id")) params.append("client_id", `eq.${q.get("client_id")}`);
@@ -5383,16 +6920,68 @@ async function handlePallets(request, url, origin, env) {
         try {
           const r = await plResolveRefs(env, { order_stop_rec: q.get("order_stop_rec") });
           params.append("order_stop_id", `eq.${r.order_stop_id}`);
-        } catch (e) { return jsonOk({ records: [] }, origin, env); }
+        } catch (e) { return jsonOk({ records: [], truncated: false, cap: PL_MOV_MAX }, origin, env); }
       }
       if (q.get("order_rec")) {
         try {
           const r = await plResolveRefs(env, { order_rec: q.get("order_rec") });
           params.append("order_id", `eq.${r.order_id}`);
-        } catch (e) { return jsonOk({ records: [] }, origin, env); }
+        } catch (e) { return jsonOk({ records: [], truncated: false, cap: PL_MOV_MAX }, origin, env); }
       }
-      const { rows } = await dbSelectRaw(env, "pl_movements", params);
-      return jsonOk({ records: rows }, origin, env);
+      // Every matching row, in pages (Alexia's requests, owner 28/10). It was one read of «limit 300»: at 291 movements
+      // and ~8 new a day the ledger would have dropped the oldest rows in silence, and the page, the client card and
+      // the confirm wizard all read this list unfiltered.
+      // - The first page asks the exact count, so a page shorter than asked (PostgREST db-max-rows, 1000 today, or
+      //   any lower value later) never ends the read early in silence (principle 1). The answer is cut (truncated)
+      //   only at the cap PL_MOV_MAX, and every answer says the cap.
+      // - Keyset, not offset: the next page starts after the last (movement_date, id) read, so a movement written
+      //   or deleted while the pages are read never repeats or skips another one. movement_date is NOT NULL (003).
+      const rows = [];
+      let total = null;
+      for (let last = null; rows.length < PL_MOV_MAX; last = rows[rows.length - 1]) {
+        const page = new URLSearchParams(params);
+        const asked = Math.min(PL_MOV_PAGE, PL_MOV_MAX - rows.length);
+        page.set("limit", String(asked));
+        if (last) page.append("or", `(movement_date.lt.${last.movement_date},and(movement_date.eq.${last.movement_date},id.lt.${last.id}))`);
+        const { rows: got, contentRange } = await dbSelectRaw(env, "pl_movements", page, last ? undefined : { Prefer: "count=exact" });
+        if (!last) {
+          total = Number(String(contentRange || "").split("/")[1]);
+          if (!Number.isSafeInteger(total)) throw new Error(`pl_movements: no exact count in «${contentRange}»`);
+        }
+        rows.push(...got);
+        // the end is a short page AND the count reached; a short page alone may be db-max-rows, the count alone may
+        // include a row written below the window while the pages were read
+        if (!got.length || (got.length < asked && rows.length >= total)) break;
+      }
+      // Cut only at the cap: below it the read runs until a page comes back empty, so fewer rows than the count can
+      // only mean rows deleted while the pages were read, and a «missing» warning would be false.
+      const truncated = rows.length >= PL_MOV_MAX && rows.length < total;
+      // 073 / E11 (spec 5): a row the national plan wrote (piece_leg_id) belongs to no international order - the
+      // ledger would call it «Χειροκίνητη». One read for the page gives its national order (the screen writes
+      // «εθνική #…», F4). A failed read, a leg missing from the answer or a leg without a national order is said
+      // (nat_order_unknown), never shown as a manual entry.
+      const legIds = [...new Set(rows.map((r) => r.piece_leg_id).filter((x) => x != null))];
+      if (legIds.length) {
+        try {
+          // 200 ids per read: with every row (not 300) the in.() list would outgrow a URL once the plan writes rows.
+          const chunks = [];
+          for (let i = 0; i < legIds.length; i += 200) chunks.push(legIds.slice(i, i + 200));
+          const answers = await Promise.all(chunks.map((c) => dbSelectRaw(env, "piece_legs", new URLSearchParams({
+            select: "id,shipment_pieces(shipments(nat_order_id))", id: `in.(${c.join(",")})` }))));
+          const legs = answers.flatMap((a) => a.rows);
+          const natBy = new Map(legs.map((l) => [l.id, l.shipment_pieces?.shipments?.nat_order_id ?? null]));
+          for (const r of rows) {
+            if (r.piece_leg_id == null) continue;
+            const nat = natBy.get(r.piece_leg_id);
+            if (nat != null) r.nat_order_id = nat;
+            else { r.nat_order_id = null; r.nat_order_unknown = true; }
+          }
+        } catch (e) {
+          console.error("PALLETS nat_order lookup failed", e.message);
+          for (const r of rows) if (r.piece_leg_id != null) { r.nat_order_id = null; r.nat_order_unknown = true; }
+        }
+      }
+      return jsonOk({ records: rows, truncated, cap: PL_MOV_MAX }, origin, env);
     }
     // ---- POST /pallets/movements (χειροκίνητη κίνηση ή feeder Φ2) ----
     // Default: pending. Με body.confirm===true γράφεται κατευθείαν confirmed
@@ -5425,7 +7014,16 @@ async function handlePallets(request, url, origin, env) {
         row.confirmed_by = caller.sub;
         row.confirmed_at = new Date().toISOString();
       }
-      const created = await dbInsert(env, "pl_movements", row);
+      let created;
+      try {
+        created = await dbInsert(env, "pl_movements", row);
+      } catch (e) {
+        // 073 / D-9: one live LOADING / DELIVERY row per international stop - the second of two feeders writing at
+        // the same moment (GET-then-POST) is refused by the base; said in Greek, the row that is there stays.
+        const dup = plUniqueText(e);
+        if (dup) return jsonError(dup, 409, origin, env);
+        throw e;
+      }
       await audit(env, { actor: caller.sub, role: caller.role, action: "create", table: "pl_movements", recordId: String(created.id), after: created });
       return jsonOk({ record: created }, origin, env, 201);
     }
@@ -5443,6 +7041,13 @@ async function handlePallets(request, url, origin, env) {
       // επανασύνδεση σε άλλη στάση) δίνει κενό ctPick — θα απορριπτόταν λάθος.
       try { Object.assign(patch, await plResolveRefs(env, body)); }
       catch (e) { return jsonError(e.message, 400, origin, env); }
+      if (before.rows[0].piece_leg_id != null) {
+        const changed = plPlanOwnedChanges(before.rows[0], patch);
+        if (changed.length) return jsonError(`${PL_PLAN_OWNED_TEXT} (${changed.join(", ")})`, 409, origin, env);
+        // equal values are not written back: the plan may have moved them since this row was read
+        const own = plPlanUserFields(before.rows[0]);
+        for (const k of Object.keys(patch)) if (!own.includes(k)) delete patch[k];
+      }
       if (!Object.keys(patch).length) return jsonError("Nothing to update", 400, origin, env);
       const merged = { ...before.rows[0], ...patch };
       const err = plValidate(merged);
@@ -5450,7 +7055,15 @@ async function handlePallets(request, url, origin, env) {
       if (merged.event_type === "ADJUSTMENT" && caller.role !== "owner") {
         return jsonError("ADJUSTMENT is owner-only", 403, origin, env);
       }
-      const updated = await ctDbPatch(env, "pl_movements", `id=eq.${encodeURIComponent(recId)}`, patch);
+      let updated;
+      try {
+        updated = await ctDbPatch(env, "pl_movements", `id=eq.${encodeURIComponent(recId)}`, patch);
+      } catch (e) {
+        // a PATCH that moves a row onto a stop / event that already has its live row (final review 26/10, W-5)
+        const dup = plUniqueText(e);
+        if (dup) return jsonError(dup, 409, origin, env);
+        throw e;
+      }
       await audit(env, { actor: caller.sub, role: caller.role, action: "update", table: "pl_movements", recordId: String(recId), before: before.rows[0], after: updated });
       return jsonOk({ record: updated }, origin, env);
     }
@@ -5460,6 +7073,11 @@ async function handlePallets(request, url, origin, env) {
       if (!before.rows.length) return jsonError("Not found", 404, origin, env);
       if (before.rows[0].status !== "pending") {
         return jsonError("Confirmed movements are never deleted — use reverse", 409, origin, env);
+      }
+      // 073 / D-9: the plan withdraws its own rows (status reversed, never deleted); a delete here would leave the
+      // leg without its row and the next change of the leg would write it again.
+      if (before.rows[0].piece_leg_id != null) {
+        return jsonError("Η κίνηση ανήκει στον προγραμματισμό εθνικών: φεύγει μόνο με το σκέλος της", 409, origin, env);
       }
       const res = await fetch(`${env.SUPABASE_URL}/rest/v1/pl_movements?id=eq.${encodeURIComponent(recId)}`, {
         method: "DELETE",
@@ -5519,15 +7137,37 @@ async function handlePallets(request, url, origin, env) {
       if (m.event_type === "ADJUSTMENT" && caller.role !== "owner") {
         return jsonError("ADJUSTMENT is owner-only", 403, origin, env);
       }
+      // 073 / D-9 (final review 26/10, W-3): a row of the national plan is reversed only WITH its correct row. Alone,
+      // the leg is left without its row and the next change of the leg writes it again from the plan - the reversal
+      // undone in silence. The same reason DELETE refuses it: the row leaves only with its leg.
+      const hasReplacement = !!(body.replacement && typeof body.replacement === "object");
+      if (m.piece_leg_id != null && !hasReplacement) {
+        return jsonError("Η κίνηση ανήκει στον προγραμματισμό εθνικών: αντιλογίζεται μόνο μαζί με τη σωστή της εγγραφή (διόρθωση) — μόνη της θα την ξανάγραφε ο προγραμματισμός", 409, origin, env);
+      }
       let replacementRow = null;
       if (body.replacement && typeof body.replacement === "object") {
         replacementRow = ctPick(body.replacement, PL_FIELDS);
         try { Object.assign(replacementRow, await plResolveRefs(env, body.replacement)); }
         catch (e) { return jsonError(e.message, 400, origin, env); }
+        const sent = { ...replacementRow };   // what the body asked for, before the defaults below
         replacementRow.taken = replacementRow.taken ?? 0;
         replacementRow.given = replacementRow.given ?? 0;
         replacementRow.reversal_of = m.id;
         replacementRow.created_by = caller.sub;
+        // 073 / D-9: the replacement of a row of the national plan stays the leg's row (one writer per leg): it
+        // keeps the leg, the event, the client, the place, the day and the plan's side of the row it replaces; only
+        // the user's side (Q9-1: LOADING given, DELIVERY taken), the sheet and the notes come from the body. A
+        // replacement without piece_leg_id would be a second row next to the one the plan writes again at the next
+        // change of the leg (the client's balance doubles). A body that would change a plan-owned field is refused
+        // BEFORE the row is reversed (nothing written).
+        if (m.piece_leg_id != null) {
+          const changed = plPlanOwnedChanges(m, sent, ["reversal_of"]);
+          if (changed.length) return jsonError(`${PL_PLAN_OWNED_TEXT} (${changed.join(", ")})`, 409, origin, env);
+          const own = ctPick(body.replacement, plPlanUserFields(m));
+          replacementRow = { movement_date: m.movement_date, counterparty_type: m.counterparty_type, client_id: m.client_id,
+            partner_id: m.partner_id, location_id: m.location_id, event_type: m.event_type, taken: m.taken, given: m.given,
+            ...own, reversal_of: m.id, created_by: caller.sub, piece_leg_id: m.piece_leg_id };
+        }
         const err = plValidate(replacementRow);
         if (err) return jsonError(`replacement: ${err}`, 400, origin, env);
         if (replacementRow.event_type === "ADJUSTMENT" && caller.role !== "owner") {
@@ -5540,7 +7180,18 @@ async function handlePallets(request, url, origin, env) {
       });
       let replacement = null;
       if (replacementRow) {
-        replacement = await dbInsert(env, "pl_movements", replacementRow);
+        try {
+          replacement = await dbInsert(env, "pl_movements", replacementRow);
+        } catch (e) {
+          // Two writes, not one transaction: between them the national plan may write the leg's row again (its
+          // feeder sees the leg without a live row), or a feeder the stop's - the base refuses the replacement
+          // (pl_mov_leg_once / pl_mov_stop_once). The reversal stands and says so, with the row to correct; never a
+          // raw 500 that hides a half-done fix (final review 26/10, W-4).
+          const dup = plUniqueText(e);
+          if (!dup) throw e;
+          await audit(env, { actor: caller.sub, role: caller.role, action: "reverse", table: "pl_movements", recordId: String(recId), before: m, after: { ...updated, replacement_id: null, replacement_refused: dup } });
+          return jsonError(`Ο αντιλογισμός έγινε, η διόρθωση όχι: ${dup}. Διόρθωσε την εκκρεμή κίνηση που υπάρχει.`, 409, origin, env);
+        }
       }
       await audit(env, { actor: caller.sub, role: caller.role, action: "reverse", table: "pl_movements", recordId: String(recId), before: m, after: { ...updated, replacement_id: replacement ? replacement.id : null } });
       return jsonOk({ record: updated, replacement }, origin, env);
@@ -5756,6 +7407,139 @@ async function handlePrintPdf(request, url, origin, env, ctx) {
 }
 __name(handlePrintPdf, "handlePrintPdf");
 
+// src/routes/presence.js — live presence on Weekly International v4 (§g.2).
+// «Who else is on this board, and what do they have open» — an indication,
+// never a lock (owner 10/10, option A). The table and presence_beat() are SQL
+// 068; until 068 runs, the RPC fails and the client is told 503 (paused), never
+// a 200 with an empty list that would read as «nobody else is here».
+//
+// An explicit list, no wildcard, and NOT part of PERMISSIONS: presence is not
+// a table permission, so a future role is born without it (principle 5).
+var PRESENCE_ROLES = ["owner", "management", "accountant", "dispatcher", "warehouse"];
+// The ONLY action strings a colleague's browser will ever render. The same
+// list as the SQL CHECK of 068 (a Worker test compares the two): nothing
+// free-text is stored, so nothing free-text can be painted (no XSS path).
+var PRESENCE_ACTIONS = ["view", "menu", "assign", "date:Loading DateTime", "date:Delivery DateTime", "date:VS CD Date"];
+var PRESENCE_PARTS = ["truck", "export", "import"];
+var PRESENCE_BODY_KEYS = ["board", "week", "tab", "record", "part", "action", "ttl_ms", "leave", "changes_since"];
+var PRESENCE_TAB_RE = /^[a-z0-9]{8,16}$/;
+var PRESENCE_RECORD_RE = /^rec[A-Za-z0-9]{6,30}$/;
+var PRESENCE_ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})$/;
+// Per-isolate pacing guard. The client already paces at ≥ 2.5 s, so this
+// only catches a misbehaving tab. The wait travels in the JSON body because
+// Retry-After is not readable cross-origin (corsHeaders exposes no headers),
+// and adding Access-Control-Expose-Headers would change every response of
+// the app for one feature.
+var PRESENCE_MIN_GAP_MS = 2e3;
+var PRESENCE_RETRY_AFTER_MS = 2500;
+var PRESENCE_TTL_MAX_MS = 6e5;
+var PRESENCE_NEXT_MIN_MS = 2500;
+var PRESENCE_NEXT_DEFAULT_MS = 5e3;
+var _presenceLastBeat = /* @__PURE__ */ new Map();
+// next_ms comes from the PRESENCE_MS plain var, so the owner can slow every
+// open tab (10 s, 30 s) without a Pages deploy (request budget, §g.5). The
+// var is declared in wrangler.toml [vars]: a dashboard-only value is erased by
+// the next deploy. Never below 2.5 s; an unreadable value → default.
+function presenceNextMs(env) {
+  const raw = env.PRESENCE_MS;
+  if (raw === void 0 || raw === null || raw === "") return PRESENCE_NEXT_DEFAULT_MS;
+  const n = Number(raw);
+  if (!Number.isInteger(n)) {
+    console.warn("PRESENCE_MS is not an integer, using the default", String(raw).slice(0, 20));
+    return PRESENCE_NEXT_DEFAULT_MS;
+  }
+  return Math.max(PRESENCE_NEXT_MIN_MS, n);
+}
+__name(presenceNextMs, "presenceNextMs");
+// Returns an error string, or null when the body is valid. A leave (pagehide)
+// needs only the tab; a beat needs board, week, tab and ttl_ms.
+function presenceBodyError(b) {
+  if (!b || typeof b !== "object" || Array.isArray(b)) return "body must be an object";
+  for (const k of Object.keys(b)) if (!PRESENCE_BODY_KEYS.includes(k)) return `unknown key «${k}»`;
+  if (b.leave !== void 0 && typeof b.leave !== "boolean") return "leave must be boolean";
+  const leave = b.leave === true;
+  if (typeof b.tab !== "string" || !PRESENCE_TAB_RE.test(b.tab)) return "bad tab";
+  if (!leave || b.board !== void 0) {
+    if (b.board !== "weekly_intl") return "bad board";
+  }
+  if (!leave || b.week !== void 0 && b.week !== null) {
+    if (!Number.isInteger(b.week) || b.week < 1 || b.week > 53) return "bad week";
+  }
+  if (b.record !== void 0 && b.record !== null && (typeof b.record !== "string" || !PRESENCE_RECORD_RE.test(b.record))) return "bad record";
+  if (b.part !== void 0 && b.part !== null && !PRESENCE_PARTS.includes(b.part)) return "bad part";
+  if (b.action !== void 0 && b.action !== null && !PRESENCE_ACTIONS.includes(b.action)) return "bad action";
+  if (!leave || b.ttl_ms !== void 0) {
+    if (!Number.isInteger(b.ttl_ms) || b.ttl_ms <= 0 || b.ttl_ms > PRESENCE_TTL_MAX_MS) return "bad ttl_ms";
+  }
+  if (b.changes_since !== void 0 && b.changes_since !== null) {
+    if (typeof b.changes_since !== "string" || !PRESENCE_ISO_RE.test(b.changes_since) || !Number.isFinite(Date.parse(b.changes_since))) return "bad changes_since";
+  }
+  return null;
+}
+__name(presenceBodyError, "presenceBodyError");
+async function handlePresence(request, origin, env) {
+  // The owner's lever first, before any DB call: every open tab stops beating
+  // for the session at its next beat (410 {stop:true}).
+  if (env.PRESENCE_OFF === "1") return jsonOk({ stop: true }, origin, env, 410);
+  const caller = await getCaller(request, env);
+  if (!caller) return jsonError("Unauthorized", 401, origin, env);
+  if (!PRESENCE_ROLES.includes(caller.role)) return jsonError("Forbidden", 403, origin, env);
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return jsonError("Invalid request", 400, origin, env);
+  }
+  const bad = presenceBodyError(body);
+  if (bad) return jsonError(`Invalid presence: ${bad}`, 400, origin, env);
+  const leave = body.leave === true;
+  // A leave is one request per tab lifetime (pagehide), right after a beat:
+  // refusing it would keep the row on screen until its TTL.
+  const key = `${caller.sub}|${body.tab}`;
+  const nowMs = Date.now();
+  if (!leave) {
+    const last = _presenceLastBeat.get(key);
+    if (last !== void 0 && nowMs - last < PRESENCE_MIN_GAP_MS) {
+      return jsonOk({ error: "too fast", retry_after_ms: PRESENCE_RETRY_AFTER_MS }, origin, env, 429);
+    }
+    _presenceLastBeat.set(key, nowMs);
+    if (_presenceLastBeat.size > 500) {
+      for (const [k, t] of _presenceLastBeat) if (nowMs - t > 6e4) _presenceLastBeat.delete(k);
+    }
+  }
+  const nextMs = presenceNextMs(env);
+  let out;
+  try {
+    // Name, sub and role come ONLY from the JWT, never from the body.
+    out = await dbRpc(env, "presence_beat", {
+      p_sub: caller.sub,
+      p_tab: body.tab,
+      p_name: caller.name || caller.sub,
+      p_role: caller.role,
+      p_board: "weekly_intl",
+      p_week: body.week ?? null,
+      p_record: body.record ?? null,
+      p_part: body.part ?? null,
+      p_action: body.action ?? null,
+      p_ttl_ms: body.ttl_ms ?? null,
+      p_leave: leave,
+      p_changes_since: body.changes_since ?? null,
+      // Names of colleagues follow today's /audit access (owner, management);
+      // every other role gets counts only.
+      p_names: AUDIT_READERS.includes(caller.role)
+    });
+  } catch (e) {
+    console.error("PRESENCE rpc failed", e.message);
+    return jsonError("presence unavailable", 503, origin, env);
+  }
+  // An answer without the list is not «nobody here»: say it is unavailable.
+  if (!out || typeof out !== "object" || !Array.isArray(out.others)) {
+    console.error("PRESENCE rpc answered without others", String(JSON.stringify(out)).slice(0, 200));
+    return jsonError("presence unavailable", 503, origin, env);
+  }
+  return jsonOk({ others: out.others, changes: out.changes ?? null, now: new Date(nowMs).toISOString(), next_ms: nextMs }, origin, env);
+}
+__name(handlePresence, "handlePresence");
 var FACADE_PATH = /^\/v0\/[^/]+\/([^/]+)(?:\/([^/]+))?\/?$/;
 var ORDERS_TABLE_ID = "tblgHlNmLBH3JTdIM";
 var index_default = {
@@ -5802,6 +7586,9 @@ var index_default = {
     if (url.pathname.startsWith("/costs/")) {
       return handleCosts(request, url, origin, env);
     }
+    if (url.pathname.startsWith("/plan/")) {
+      return handlePlan(request, url, origin, env);
+    }
     if (url.pathname.startsWith("/pallets/")) {
       return handlePallets(request, url, origin, env);
     }
@@ -5810,6 +7597,9 @@ var index_default = {
     }
     if (url.pathname === "/performance/delivery" && request.method === "GET") {
       return handlePerformance(request, url, origin, env);
+    }
+    if (url.pathname === "/presence" && request.method === "POST") {
+      return handlePresence(request, origin, env);
     }
     const facadeMatch = url.pathname.match(FACADE_PATH);
     if (facadeMatch) {

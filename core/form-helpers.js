@@ -8,7 +8,7 @@
 const _fhLocationsArr = [];  // [{id,label}]
 const _fhLocationsMap = {};  // recId → label
 const _fhClientsMap   = {};  // recId → name
-const _fhClientCache  = {};  // query → [{id,label}]
+const _fhClientCache  = {};  // query → {at, res: [{id,label}]}; '\u0001' + probe word → {at, recs} the server's records (F19, 60 s each)
 
 // The location records (Name/City/Country) — the reference preload's copy
 // when it has landed (kept fresh by its revalidate), else the same single
@@ -17,6 +17,18 @@ async function fhLocationRecords() {
   const ref = typeof getRefLocations === 'function' ? getRefLocations() : [];
   if (ref.length) return ref;
   return refLocationsFetch();
+}
+
+// A place's line in every picker. One list everywhere (owner 5/9): the picker
+// shows the Greek name even when the record still stores an old English/Greek
+// spelling or code.
+function _fhLocLabel(f) {
+  return [f['Name'], f['City'], typeof countryName === 'function' ? countryName(f['Country']) : f['Country']].filter(Boolean).join(', ');
+}
+
+// The picker lines of a LOCATIONS read, sorted: one rule for the first read and the background re-read.
+function _fhLocItems(records) {
+  return records.map(r => ({ id: r.id, label: _fhLocLabel(r.fields) })).sort((a, b) => a.label.localeCompare(b.label));
 }
 
 /**
@@ -28,16 +40,8 @@ async function fhLoadLocations() {
   // Two callers can await the same read (the Orders page loads both types at
   // once): only the first fills the shared arrays, or every picker doubles.
   if (_fhLocationsArr.length) return;
-  const sorted = locs
-    .map(r => ({
-      id: r.id,
-      // One list everywhere (owner 5/9): the picker shows the Greek name even
-      // when the record still stores an old English/Greek spelling or code.
-      label: [r.fields['Name'], r.fields['City'], typeof countryName === 'function' ? countryName(r.fields['Country']) : r.fields['Country']].filter(Boolean).join(', ')
-    }))
-    .sort((a, b) => a.label.localeCompare(b.label));
   // Push into shared array (don't reassign — other refs may hold it)
-  sorted.forEach(l => {
+  _fhLocItems(locs).forEach(l => {
     _fhLocationsArr.push(l);
     _fhLocationsMap[l.id] = l.label;
   });
@@ -48,19 +52,32 @@ async function fhLoadLocations() {
 // (length=0, push) γιατί άλλα modules κρατούν αναφορά στο ίδιο array.
 function _fhRefreshLocations(locRecords) {
   if (!Array.isArray(locRecords) || !locRecords.length || !_fhLocationsArr.length) return;
-  const sorted = locRecords
-    .map(r => ({
-      id: r.id,
-      // One list everywhere (owner 5/9): the picker shows the Greek name even
-      // when the record still stores an old English/Greek spelling or code.
-      label: [r.fields['Name'], r.fields['City'], typeof countryName === 'function' ? countryName(r.fields['Country']) : r.fields['Country']].filter(Boolean).join(', ')
-    }))
-    .sort((a, b) => a.label.localeCompare(b.label));
+  const sorted = _fhLocItems(locRecords);
   _fhLocationsArr.length = 0;
   sorted.forEach(l => {
     _fhLocationsArr.push(l);
     _fhLocationsMap[l.id] = l.label;
   });
+}
+
+// F52 (live 31/10): a place saved in «Τοποθεσίες» was not in the order forms' pickers until a reload — the list
+// above is read once per page (fhLoadLocations returns while it holds anything) and the background re-read runs
+// once per load. The saved record goes into THE list (no copy of it), with the label fhLoadLocations gives it, in
+// its sorted place; a renamed place replaces its old line. A list not read yet is left alone: its first read comes
+// after the save (atCreate/atPatch cleared the reference cache). Known limit, kept simple (code review r5): a
+// background re-read that started before the save and lands after it rebuilds the list without the place — a
+// window of the page's first seconds. The v5 catalogue (/plan/lookups, the place's number) is told to read again on
+// its next use, or the national v5 form would find the place and refuse it at «Αποθήκευση».
+function fhLocationSaved(rec) {
+  if (!rec || !rec.id || !rec.fields) return;
+  if (typeof PlanIds !== 'undefined' && typeof PlanIds.stale === 'function') PlanIds.stale();
+  if (!_fhLocationsArr.length) return;
+  const item = { id: rec.id, label: _fhLocLabel(rec.fields) };
+  const at = _fhLocationsArr.findIndex(l => l.id === rec.id);
+  if (at !== -1) _fhLocationsArr.splice(at, 1);
+  const pos = _fhLocationsArr.findIndex(l => l.label.localeCompare(item.label) > 0);
+  _fhLocationsArr.splice(pos === -1 ? _fhLocationsArr.length : pos, 0, item);
+  _fhLocationsMap[rec.id] = item.label;
 }
 
 /**
@@ -69,16 +86,45 @@ function _fhRefreshLocations(locRecords) {
 async function fhSearchClients(q) {
   if (!q || q.length < 2) return [];
   const key = q.toLowerCase();
-  if (_fhClientCache[key]) return _fhClientCache[key];
+  // 60 s, as the probe below (F19): a client created meanwhile is found by the next search of the same text. Expired
+  // entries leave here, so a day of searching does not keep every answer in memory.
+  const now = Date.now();
+  for (const k of Object.keys(_fhClientCache)) if (now - _fhClientCache[k].at >= 60000) delete _fhClientCache[k];
+  if (_fhClientCache[key]) return _fhClientCache[key].res;
   const safe = q.replace(/[^a-zA-Z0-9\s\u0370-\u03FF\u1F00-\u1FFF.-]/g, '').trim();
   if (!safe) return [];
-  const formula = `SEARCH(LOWER("${safe}"), LOWER({Company Name}))`;
-  const recs = await atGet(TABLES.CLIENTS, formula, false);
+  // F19 (live 28/10): «name + start of the 2nd word» found nothing while one word worked. The whole phrase went to
+  // the server as ONE ilike, and 279 of 1,927 live names (SELECT 28/10) have two spaces between words, others «-»;
+  // the Worker also sends the phrase through URLSearchParams (a space travels as «+»; not measured). So the server is
+  // asked for ONE word (the probe, below) and every word must then be in the name, in any order, with the search
+  // rule of the boards (_fhNorm: any case, no accents, Greek = Latin).
+  // The probe is the FIRST word of 3+ letters (else the one with most): it stays the same while the 2nd word is being
+  // typed, so its answer, kept by the probe word for 60 s, is filtered here without one more paged read per keystroke
+  // (60 s, not the session: a client created meanwhile must be found by the next search); a short «Α.Ε.» / «&» never
+  // probes every S.A. company. A probe of fewer than 2 letters (punctuation, «a b») asks nothing.
+  const words = safe.split(/\s+/).filter(Boolean);
+  const letters = (w) => w.replace(/[.\-]/g, '').length;
+  const probe = words.find((w) => letters(w) >= 3) || words.reduce((a, w) => (letters(w) > letters(a) ? w : a), '');
+  // one letter would read most of the table («a b»): the user's next letter asks
+  if (letters(probe) < 2) return [];
+  const pk = '\u0001' + probe.toLowerCase();
+  // the read IN FLIGHT is kept too: keystrokes during a slow paged read share it instead of starting their own
+  if (!_fhClientCache[pk]) {
+    const p = atGet(TABLES.CLIENTS, `SEARCH(LOWER("${probe}"), LOWER({Company Name}))`, false);
+    _fhClientCache[pk] = { at: now, recs: p };
+    p.catch(() => { if (_fhClientCache[pk] && _fhClientCache[pk].recs === p) delete _fhClientCache[pk]; });   // a failure is not kept
+  }
+  const recs = await _fhClientCache[pk].recs;
+  // the plain lower-case test as well: a word typed from the middle of a Greek digraph («υκ» of «Λουκ…») matches
+  // the server's ilike but not its _fhNorm form («ou» ≠ «y») — a name the server found is never dropped here
+  const need = words.map(w => [w.toLowerCase(), _fhNorm(w)]);
   const res = recs
     .map(r => ({ id: r.id, label: r.fields['Company Name'] || '' }))
+    .filter(c => { const l = c.label.toLowerCase(), n = _fhNorm(c.label); return need.every(([w, nw]) => l.includes(w) || n.includes(nw)); })
     .sort((a, b) => a.label.localeCompare(b.label))
     .slice(0, 30);
-  _fhClientCache[key] = res;
+  // as old as the probe records it was filtered from: never kept past their 60 s
+  _fhClientCache[key] = { at: _fhClientCache[pk] ? _fhClientCache[pk].at : now, res };
   res.forEach(c => { _fhClientsMap[c.id] = c.label; });
   return res;
 }
@@ -211,6 +257,13 @@ function _fhNorm(s) {
   t = t.replace(/ου/g, 'ou').replace(/αυ/g, 'av').replace(/ευ/g, 'ev').replace(/(^|\s)μπ/g, '$1b').replace(/(^|\s)ντ/g, '$1d').replace(/γγ/g, 'ng').replace(/γκ/g, 'gk');
   return t.replace(/[α-ω]/g, c => _FH_EL[c] || c);
 }
+// One search rule for the Weekly boards (v4 and v1, Pantelis 21/10): _fhNorm
+// (any case, no accents, Greek → Latin like the stored place names, so
+// «Βέροια» finds «Veroia») and no spaces, dashes, dots or slashes («iaz4471»
+// finds «IAZ 4471»). A text of several fields keeps them apart with a char no
+// query can hold, so a query never matches across two fields (truck+trailer).
+function fhSearchNorm(s) { return _fhNorm(s).replace(/[\s\-‐-―./]+/g, ''); }
+function fhSearchBlob(parts) { return parts.filter(Boolean).map(fhSearchNorm).join('\u0001'); }
 function fhLocDrop(id, q) {
   const nq = _fhNorm(q.trim());
   const pool = nq

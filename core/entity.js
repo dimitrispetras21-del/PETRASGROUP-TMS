@@ -1263,6 +1263,94 @@ async function _enrichWorkshopsV2(entityKey, workshops) {
   }
 }
 
+// ── National v5 readers (F5, Ε12/Ε13 — dormant until day L) ──────────────
+// From day L a v5 national order has no partner_assignments row and no order_stops (spec 2.1: no mirror), and a
+// cycle's vehicle lives in its segments (072b): the cycle row holds only the FIRST segment's copy. These helpers
+// add the v5 half next to today's reads (partner card, round-trip cards, Locations). What is v5 is the base's
+// answer — before L an empty list — and no screen computes the cut from a date (principle 3).
+// PlanConfig 'before' = no v5 call at all: the screen is today's. 'unknown' (or no PlanConfig: app.html loads it
+// only from stream (e)'s bump) reads anyway — before L the reads answer empty, so the picture is today's; a
+// failure is said on screen, never a silent 0 (principle 1).
+// Never rejects: PlanConfig.load() answers 'unknown' on any failure, and a throw here (a broken PlanConfig) is
+// 'unknown' too — run beside today's reads, the gate must never take today's half down with it.
+async function _v5Gate() {
+  if (typeof PlanConfig === 'undefined') return { state: 'unknown' };
+  try {
+    const r = await PlanConfig.load();
+    return r && r.state === 'before' ? null : { state: (r && r.state) || 'unknown' };
+  } catch (e) {
+    if (typeof logError === 'function') logError(e, 'v5 gate: PlanConfig.load');
+    return { state: 'unknown' };
+  }
+}
+// A 404 no_route before L is the known gap (Worker before deploy 1, like PlanConfig and PlanIds): undefined,
+// not logged. After L a missing route is a fault and throws like any other.
+function _v5Gap(gate, e) {
+  return gate.state !== 'after' && !!e && e.status === 404 && e.code === 'no_route';
+}
+async function _v5Get(gate, path) {
+  if (typeof planFetch !== 'function') throw new Error('core/plan-api.js not loaded');
+  try {
+    return await planFetch('GET', path, gate.state === 'after' ? undefined : { designed: ['no_route'] });
+  } catch (e) {
+    if (_v5Gap(gate, e)) return undefined;
+    throw e;
+  }
+}
+// The ONE rec… ↔ numeric id catalogue (core/plan-ids.js, GET /plan/lookups). undefined = no catalogue yet.
+async function _v5Ids(gate) {
+  if (typeof PlanIds === 'undefined') throw new Error('core/plan-ids.js not loaded');
+  const r = await PlanIds.load();
+  if (r.ok) return PlanIds;
+  if (_v5Gap(gate, r.err)) return undefined;
+  throw r.err;
+}
+// numeric id → {legacy_id, label} for one catalogue list
+function _v5ById(ids, kind) {
+  const m = new Map();
+  for (const x of ids.list(kind)) m.set(x.id, x);
+  return m;
+}
+// planFetch logs every answer that is not a designed one; the rest (a 403 on a read every role holds, a missing
+// catalogue row, a local fault) is logged here, once.
+function _v5Log(e, where) {
+  const logged = !!e && e.name === 'PlanError' && !/^ids_(missing|kind)$/.test(String(e.code || ''))
+    && !(typeof PlanApi !== 'undefined' && PlanApi.isDesigned(e));
+  if (!logged && typeof logError === 'function') logError(e, where);
+}
+// PlanIds keeps its catalogue for the whole session (core/plan-ids.js): a record created after it loaded is not
+// in it (ids_missing), and a retry reads the same catalogue — only a reload helps, so that is what is said.
+function _v5FailText(gate, e) {
+  if (e && e.code === 'ids_missing') {
+    return '⚠ Τα εθνικά v5 δεν διαβάστηκαν: η εγγραφή είναι νεότερη από τον κατάλογο της σελίδας — ανανέωσε τη σελίδα.';
+  }
+  return '⚠ Τα εθνικά v5 δεν διαβάστηκαν — η εικόνα είναι ελλιπής.'
+    + (gate && gate.state === 'unknown' ? ' Κατάσταση μετάβασης άγνωστη.' : '') + ' Ξαναδοκίμασε.';
+}
+// The local day of a timestamp, as the rest of the card shows days (CL-3: local, not UTC).
+function _v5Day(ts) { return ts ? toLocalDate(ts) : ''; }
+// GET /plan/activity?<key>=<value> (F5 d3 contract). undefined = route not there yet (before L only).
+async function _v5Activity(gate, key, value) {
+  const d = await _v5Get(gate, '/plan/activity?' + key + '=' + encodeURIComponent(value));
+  if (d === undefined) return undefined;
+  if (!d || typeof d !== 'object') throw new Error('plan/activity: unreadable answer');
+  return d;
+}
+// A v5 cycle of a partner, in the words partner_assignments uses (the cards read PA statuses): cancelled →
+// Cancelled; the end of a cycle (spec 2.3, v_rt_cycle.ended) → Delivered; else Assigned. ended null = not known:
+// '—', counted neither active nor done. Rate = the sum of this partner's segment rates; none set → null («—»),
+// never €0 (decision 41: the partner rate is for every role).
+function _v5PartnerRow(c) {
+  const segs = Array.isArray(c.segs) ? c.segs : [];
+  const rates = segs.map(s => s.partner_rate).filter(v => typeof v === 'number' && isFinite(v));
+  const from = segs.map(s => s.from_at).filter(Boolean).sort()[0] || c.start_at;
+  return {
+    code: c.code || '',
+    status: c.status === 'cancelled' ? 'Cancelled' : c.ended === true ? 'Delivered' : c.ended === false ? 'Assigned' : '—',
+    date: _v5Day(from), rate: rates.length ? rates.reduce((s, v) => s + v, 0) : null,
+  };
+}
+
 // ── Partners top stats strip ──────────────────────
 async function _renderPartnersStatsStrip(partners) {
   const el = document.getElementById('partners_stats_strip');
@@ -2343,12 +2431,42 @@ async function _loadEntityCardRT(entityKey, rec) {
     // base passed 200. The browser filter stays: a Worker deployed before
     // driver_id/trailer_id ignores them, and the card is then as before.
     const rtQ = isTrailer ? 'trailer_id=' : isDriver ? 'driver_id=' : 'truck_id=';
-    const res = await ctFetch('/costs/rt?' + rtQ + encodeURIComponent(pgId));
+    // the gate (PlanConfig, one read per session) runs beside /costs/rt, not after it
+    const [res, gate] = await Promise.all([ctFetch('/costs/rt?' + rtQ + encodeURIComponent(pgId)), _v5Gate()]);
     el = body();
     if (!el) return;
     let recsAll = res.records || [];
     if (isTrailer) recsAll = recsAll.filter(r => r.trailer_id === pgId);
     if (isDriver)  recsAll = recsAll.filter(r => r.driver_id === pgId);
+    // 072b: a v5 cycle's vehicle lives in its segments and the cycle row (what /costs/rt filters) holds only the
+    // FIRST segment's copy — a driver or vehicle that joined by a handover would miss the cycle. Its segments are
+    // read from /plan/activity and the missing cycles join the list. A failed read keeps today's list and says so.
+    let v5Warn = '';
+    if (gate) {
+      try {
+        const d = await _v5Activity(gate, isTrailer ? 'trailer_id' : isDriver ? 'driver_id' : 'truck_id', pgId);
+        if (d) {
+          const have = new Set(recsAll.map(r => r.id));
+          const extra = (d.cycles || []).filter(c => !have.has(c.rt_id)).map(c => {
+            const segs = Array.isArray(c.segs) ? c.segs : [];
+            const truckSeg = segs.find(g => g.truck_id != null);
+            return { id: c.rt_id, code: c.code, status: c.status, model: 2, ended: c.ended,
+              date_start: _v5Day(segs.map(g => g.from_at).filter(Boolean).sort()[0] || c.start_at),
+              date_end: _v5Day(segs.map(g => g.to_at).filter(Boolean).sort().pop() || c.end_at),
+              route_text: c.route_text || null, route_legs: null,
+              truck_id: truckSeg ? truckSeg.truck_id : null };
+          });
+          if (extra.length) {
+            recsAll = recsAll.concat(extra)
+              .sort((a, b) => String(b.date_start || '').localeCompare(String(a.date_start || '')));
+          }
+          if (d.truncated) v5Warn = '⚠ Εθνικά v5: η ανάγνωση έφτασε το όριο — η λίστα είναι ελλιπής.';
+        }
+      } catch (e) {
+        v5Warn = _v5FailText(gate, e);
+        _v5Log(e, 'entity card: v5 segments');
+      }
+    }
     const rts = recsAll.slice(0, 5);
     const plateById = {};
     for (const x of lk.trucks || []) plateById[x.id] = x.license_plate;
@@ -2359,7 +2477,11 @@ async function _loadEntityCardRT(entityKey, rec) {
     // No RT code on screen (owner rule) — it only lives in the title attr.
     el.innerHTML = rts.length
       ? rts.map(rt => {
-          const status = RT_STATUS_WORD[rt.status] || _ecEsc(rt.status || '—');
+          // A v5 cycle's status stays planned for ever (071 rt_v2_status): its end is v_rt_cycle.ended (Ε21,
+          // /costs/rt «ended»). Unknown (null) is said as «—», never as still running. Model 1 as before.
+          const status = rt.model === 2 && rt.status !== 'cancelled'
+            ? (rt.ended === true ? RT_STATUS_WORD.complete : rt.ended === false ? RT_STATUS_WORD.planned : '—')
+            : RT_STATUS_WORD[rt.status] || _ecEsc(rt.status || '—');
           const legs = Array.isArray(rt.route_legs) && rt.route_legs.length
             ? rtLegBlockHtml(rt.route_legs)
             : `<div class="ecard-empty">${rt.route_text ? _ecEsc(rt.route_text) : 'Καμία καταγεγραμμένη διαδρομή.'}</div>`;
@@ -2372,6 +2494,7 @@ async function _loadEntityCardRT(entityKey, rec) {
           </div>`;
         }).join('')
       : `<div class="ecard-empty">Καμία καταγεγραμμένη διαδρομή.</div>`;
+    if (v5Warn) el.insertAdjacentHTML('beforeend', `<div class="ecard-fail v5-warn" role="alert">${_ecEsc(v5Warn)}</div>`);
 
     // «Με ποια φορτηγά» (driver card): per-truck round-trip counts from the
     // SAME fetch — bars are relative to the driver's own busiest truck.
@@ -2392,6 +2515,8 @@ async function _loadEntityCardRT(entityKey, rec) {
               <span class="ecard-agg-bar"><span style="width:${Math.round(n / max * 100)}%"></span></span>
             </div>`).join('')
           : `<div class="ecard-empty">Καμία καταγεγραμμένη διαδρομή.</div>`;
+        // the bars are built from the same list: if its v5 half is missing, so may be a truck here
+        if (v5Warn) aggEl.insertAdjacentHTML('beforeend', `<div class="ecard-fail v5-warn" role="alert">${_ecEsc(v5Warn)}</div>`);
       }
     }
   } catch (e) {
@@ -2462,7 +2587,7 @@ async function _loadEntityCardActivity(entityKey, rec) {
   const recEl = () => document.getElementById(`ec_${recId}_recent`);
   const kpi = (n, l) => `<div class="ecard-usage-item"><span class="ecard-usage-num">${n}</span><span class="ecard-usage-lbl">${l}</span></div>`;
   try {
-    let rows = [], k1, k2, k3, k4 = '', k5 = '';
+    let rows = [], k1, k2, k3, k4 = '', k5 = '', v5Warn = '';
     if (cfg.cardActivity === 'orders') {
       // Ο σύνδεσμος είναι παραμετρικός: πελάτης → {Client}, οδηγός → {Driver}.
       // Έτσι ο ΟΡΙΣΜΟΣ της επίδοσης μένει ΕΝΑΣ (αρχή 3)· χωρίς αυτό η καρτέλα
@@ -2514,21 +2639,43 @@ async function _loadEntityCardActivity(entityKey, rec) {
         k5 = kpi(rev ? '€' + Math.round(rev).toLocaleString('el-GR') : '—', 'τζίρος');
       }
     } else {
-      const pa = await paListByPartner(recId);
-      const activeN = pa.filter(r => ['Assigned', 'In Transit'].includes(r.fields[F.PA_STATUS] || '')).length;
-      const sorted = [...pa].sort((a, b) => String(b.fields[F.PA_ASSIGN_DATE] || '').localeCompare(String(a.fields[F.PA_ASSIGN_DATE] || '')));
-      rows = sorted.slice(0, 3).map(r => ({
-        code: (Array.isArray(r.fields[F.PA_ORDER]) && r.fields[F.PA_ORDER].length) ? 'INTL' : 'NAT',
-        date: String(r.fields[F.PA_ASSIGN_DATE] || '').slice(0, 10),
-        main: r.fields[F.PA_STATUS] || '—',
-      }));
-      k1 = kpi(pa.length, pa.length === 1 ? 'ανάθεση' : 'αναθέσεις');
-      k2 = kpi(sorted.length && sorted[0].fields[F.PA_ASSIGN_DATE]
-        ? _ecDate(String(sorted[0].fields[F.PA_ASSIGN_DATE]).slice(0, 10)) : '—', 'τελευταία');
+      const [pa, gate] = await Promise.all([paListByPartner(recId), _v5Gate()]);
+      // Ε12: the partner's national v5 cycles (no PA row from day L), one «NAT» row each. A failed read keeps
+      // the PA half and says the rest is missing.
+      let v5 = [];
+      if (gate) {
+        try {
+          const ids = await _v5Ids(gate);
+          const d = ids && await _v5Activity(gate, 'partner_id', ids.id('partner', recId));
+          if (d) {
+            v5 = (d.cycles || []).map(_v5PartnerRow);
+            if (d.truncated) v5Warn = '⚠ Εθνικά v5: η ανάγνωση έφτασε το όριο — τα σύνολα είναι ελλιπή.';
+          }
+        } catch (e) {
+          v5Warn = _v5FailText(gate, e);
+          _v5Log(e, 'partner card: v5');
+        }
+      }
+      const items = [
+        ...pa.map(r => ({
+          code: (Array.isArray(r.fields[F.PA_ORDER]) && r.fields[F.PA_ORDER].length) ? 'INTL' : 'NAT',
+          date: String(r.fields[F.PA_ASSIGN_DATE] || '').slice(0, 10),
+          main: r.fields[F.PA_STATUS] || '—',
+          key: String(r.fields[F.PA_ASSIGN_DATE] || ''),
+        })),
+        // No RT code on screen (owner rule): it lives in the row's title only.
+        ...v5.map(c => ({ code: 'NAT', date: c.date, main: c.status, title: c.code, key: c.date })),
+      ];
+      const activeN = items.filter(r => ['Assigned', 'In Transit'].includes(r.main)).length;
+      const sorted = [...items].sort((a, b) => b.key.localeCompare(a.key));
+      rows = sorted.slice(0, 3);
+      k1 = kpi(items.length, items.length === 1 ? 'ανάθεση' : 'αναθέσεις');
+      k2 = kpi(sorted.length && sorted[0].date ? _ecDate(sorted[0].date) : '—', 'τελευταία');
       k3 = kpi(activeN, activeN === 1 ? 'ενεργή' : 'ενεργές');
       // Τζίρος συνεργάτη = τι του πληρώσαμε. Δωρεάν: το paListByPartner ζητά
       // ΟΛΑ τα πεδία ({}), οπότε το Rate έχει ήδη έρθει.
-      const paid = pa.reduce((s, r) => s + (parseFloat(r.fields[F.PA_RATE]) || 0), 0);
+      const paid = pa.reduce((s, r) => s + (parseFloat(r.fields[F.PA_RATE]) || 0), 0)
+        + v5.filter(c => c.status !== 'Cancelled').reduce((s, c) => s + (c.rate || 0), 0);
       k5 = kpi(paid ? '€' + Math.round(paid).toLocaleString('el-GR') : '—', 'τζίρος');
       // Ποσοστό παράδοσης: η επίδοση ζει στην ΠΑΡΑΓΓΕΛΙΑ, όχι στην ανάθεση.
       // Χωριστό try ώστε μια αποτυχία εδώ να χάνει ΜΟΝΟ αυτό το νούμερο και
@@ -2548,10 +2695,11 @@ async function _loadEntityCardActivity(entityKey, rec) {
       }
     }
     const a = actEl();
-    if (a) a.innerHTML = `<div class="ecard-usage">${k1}${k2}${k3}${k4}${k5}</div>`;
+    if (a) a.innerHTML = `<div class="ecard-usage">${k1}${k2}${k3}${k4}${k5}</div>`
+      + (v5Warn ? `<div class="ecard-fail v5-warn" role="alert">${_ecEsc(v5Warn)}</div>` : '');
     const rEl = recEl();
     if (rEl) rEl.innerHTML = rows.length
-      ? rows.map(o => `<div class="ecard-row">
+      ? rows.map(o => `<div class="ecard-row"${o.title ? ` title="${_ecEsc(o.title)}"` : ''}>
           <span class="ecard-row-code">${_ecEsc(o.code)}</span>
           <span class="ecard-row-date">${o.date ? _ecDate(o.date) : '—'}</span>
           <span class="ecard-row-main">${_ecEsc(o.main)}</span>
@@ -2589,7 +2737,8 @@ async function _loadEntityHistory(type, recId, name) {
       ]);
       orders = [
         ...intl.map(r => ({ type:'INTL', dir:r.fields['Direction']||'—', route:orderRoute(r.fields, 20)||'—', status:r.fields['Status']||'—', pals:r.fields['Total Pallets']||0, date:(r.fields['Loading DateTime']||'').substring(0,10), price:parseFloat(r.fields['Price'])||0, perf:r.fields['Delivery Performance']||'' })),
-        ...natl.map(r => ({ type:'NATL', dir:r.fields['Direction']||'—', route:`${getLocationName(getLinkedId(r.fields['Pickup Location 1']))||'—'} → ${getLocationName(getLinkedId(r.fields['Delivery Location 1']))||'—'}`, status:r.fields['Status']||'—', pals:r.fields['Pallets']||0, date:toLocalDate(r.fields['Loading DateTime']), price:parseFloat(r.fields['Price'])||0, perf:r.fields['Delivery Performance']||'' })),
+        // F1/F4 (080): a v5 national order may have no pallets yet — the facade omits the NULL key: «—», never 0
+        ...natl.map(r => ({ type:'NATL', dir:r.fields['Direction']||'—', route:`${getLocationName(getLinkedId(r.fields['Pickup Location 1']))||'—'} → ${getLocationName(getLinkedId(r.fields['Delivery Location 1']))||'—'}`, status:r.fields['Status']||'—', pals:r.fields['Pallets'] != null ? r.fields['Pallets'] : '—', date:toLocalDate(r.fields['Loading DateTime']), price:parseFloat(r.fields['Price'])||0, perf:r.fields['Delivery Performance']||'' })),
       ];
       _renderClientOrders(el, orders);
       return;

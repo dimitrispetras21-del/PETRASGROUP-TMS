@@ -31,10 +31,14 @@ function liftFn(re, name) {
   assert.ok(m, `${name} not found in worker/src/index.js`);
   return m[0];
 }
-// stockRuleError is ONE mapper for the stock (057) and local-relay (060)
-// families, so it is lifted with all three text tables it reads.
+// stockRuleError is ONE mapper for the stock (057), local-relay (060) and
+// national v5 (071/072) families, so it is lifted with all five text tables
+// it reads.
 const stockRuleError = new Function(
   liftVar('STOCK_CHECK_TEXT') + liftVar('RELAY_RULE_TEXT') + liftVar('RELAY_CHECK_TEXT') +
+  liftVar('PLAN_RULE_TEXT') + liftVar('PLAN_CHECK_TEXT') +
+  // read by the 23505 / 23P01 branches (review of PR #90, finding 10)
+  liftVar('PLAN_CONSTRAINT_CODE') +
   liftFn(/function stockRuleError\(e\) \{[\s\S]*?\n\}\n/, 'stockRuleError') + '\nreturn stockRuleError;'
 )();
 const { PERMISSIONS, can } = new Function(
@@ -442,6 +446,8 @@ test('batch PATCH ORDERS: row 1 lands, row 2 refused → 422, and row 1 IS audit
 
 test('DELETE ORDERS of a lot source with pieces → cascade RPC refused → 422 lot_has_pieces, nothing audited', async () => {
   const msg = 'Η παρτίδα έχει κομμάτια — δεν σβήνεται, δεν αλλάζει πελάτη ή αποθήκη';
+  // E19 (F5): the cascade is asked for after an empty list of consequences (no bridge)
+  on('POST', 'rpc/order_delete_preview', () => json({ needs_confirm: false, confirm_token: null, consequences: [] }));
   on('POST', 'rpc/delete_order_cascade', (u, body) => (body.p_order_legacy_id === 'recORDER1' ? stockReject('lot_has_pieces', msg) : null));
   const r = await call('owner', 'DELETE', `${ORDERS}/recORDER1`);
   assert.equal(r.status, 422, r.text);
@@ -456,6 +462,7 @@ test('non-stock errors keep today\'s 500s — the 043 invoice guard and a non-JS
   assert.equal(r.status, 500);
   assert.deepEqual(r.json, { error: 'Failed to update record' });
   routes.length = 0;
+  on('POST', 'rpc/order_delete_preview', () => json({ needs_confirm: false, confirm_token: null, consequences: [] }));
   on('POST', 'rpc/delete_order_cascade', () => new Response('<html>bad gateway</html>', { status: 502 }));
   r = await call('owner', 'DELETE', `${ORDERS}/recORDER1`);
   assert.equal(r.status, 500);

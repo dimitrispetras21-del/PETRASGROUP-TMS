@@ -8,6 +8,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 global.TmsWeek = require('../core/tms-week.js');
 global.OrdersCommon = require('../core/orders-common.js').OrdersCommon;
+global.OrdersData = require('../core/orders-common.js').OrdersData;
 const W = require('../modules/orders_week_view.js');
 
 const WEEK = '2026-09-19';          // Sat 19/9 – Fri 25/9
@@ -48,11 +49,12 @@ const RTS = [
     { order_id: 1232, direction: 'EXPORT', seq: 1 }, { order_id: 1230, direction: 'IMPORT', seq: 2 } ] },
   { id: 99, code: 'RT-1199', date_start: '2026-09-22', status: 'cancelled', ct_rt_legs: [{ order_id: 1240, direction: 'EXPORT', seq: 1 }] },
 ];
-// Same shape as OrdersData.stateOf, without the pallet gate.
+// Same shape as OrdersData.stateOf since B0 (owner 21/10/2026: invoiced from the registration — no
+// «not delivered» state), without the pallet gate.
 const stateOf = r => {
   const f = r.fields;
   if (OrdersCommon.isInvoiced(f)) return { key: 'invoiced' };
-  if (f.Status !== 'Delivered') return { key: 'pending' };
+  if (f.Status === 'Cancelled') return { key: 'cancelled' };
   if (!OrdersCommon.hasPrice(f)) return { key: 'blocked', reason: 'price' };
   return { key: 'ready' };
 };
@@ -99,7 +101,8 @@ test('totals: unpriced orders are counted apart, never as 0; Σ RT rows + Χωρ
   assert.strictEqual(tI.unpriced, 1);
   assert.strictEqual(tI.invN, 2); assert.strictEqual(tI.invSum, 3200 + 2750);
   assert.strictEqual(tI.blockedN, 1); assert.strictEqual(tI.blocked.price, 1);
-  assert.strictEqual(tI.pendingN, 1);                                   // recI3 in transit
+  assert.strictEqual(tI.readyN, 4, 'recI3 in transit is «προς κοπή» too (B0)');
+  assert.ok(!('pendingN' in tI) && !('pendingSum' in tI), 'no «σε εξέλιξη» bucket since B0');
   const perRow = [...model.rows, ...model.noRt].reduce((s, r) => s + W.totals(r.counted, stateOf).sum, 0);
   assert.strictEqual(perRow, tI.sum);
   const tN = W.totals(model.weekNatl, stateOf);
@@ -112,7 +115,7 @@ test('invoicing verdict per RT', () => {
   assert.deepStrictEqual(v('RT-1187'), { kind: 'partial', k: 1, n: 2, open: 2800 });
   assert.deepStrictEqual(v('RT-1183'), { kind: 'blocked', reasons: ['price'] });
   assert.strictEqual(v('RT-1188').kind, 'ready');
-  assert.strictEqual(v('RT-1185').kind, 'progress');
+  assert.strictEqual(v('RT-1185').kind, 'ready', 'B0: an import on the road is «προς κοπή»');
   const two = [o('a', 1, { Invoiced: true, 'Invoice Number': '1' }), o('b', 2, { Invoiced: true, 'Invoice Number': '2' })];
   assert.strictEqual(W.rtInvoicing(two, stateOf).kind, 'all');
   assert.strictEqual(W.rtInvoicing([], stateOf).kind, 'none');
@@ -129,10 +132,10 @@ test('% vs the previous week only when the previous week had turnover', () => {
 test('strip = three weeks back, one ahead; the cell word comes from the totals, never «ανοιχτά»', () => {
   assert.deepStrictEqual(W.stripWeeks(WEEK), ['2026-08-29', '2026-09-05', '2026-09-12', '2026-09-19', '2026-09-26']);
   const st = recs => W.weekStatus(W.totals(recs, stateOf));
-  assert.deepStrictEqual(st(model.weekIntl), { kind: 'ready', n: 3, text: '3 προς κοπή' });
+  assert.deepStrictEqual(st(model.weekIntl), { kind: 'ready', n: 4, text: '4 προς κοπή' });
   assert.strictEqual(st([]).text, 'χωρίς παραγγελίες');
   assert.strictEqual(st([INTL[8]]).text, 'όλα τιμολογημένα');
-  assert.strictEqual(st([INTL[3]]).text, '1 σε εξέλιξη');
+  assert.strictEqual(st([INTL[3]]).text, '1 προς κοπή', 'B0: never «σε εξέλιξη»');
   assert.strictEqual(st([INTL[4]]).text, '1 μπλοκ');
 });
 
@@ -169,7 +172,7 @@ test('pg id: «Order ID», else «Order No»', () => {
 // This view reads its OWN ORDERS window (not OrdersData's set), so a piece
 // reaches buildWeek: it must never be counted (no price, the lot is invoiced
 // once) — its RT shows the leg «στην παρτίδα #n» and no total moves.
-test('stock: a piece in an RT is shown, never counted; no total changes because of it; the lot blocks as «stock»', () => {
+test('stock: a piece in an RT is shown, never counted; no total changes because of it; the lot is «ready» like any priced order (B0)', () => {
   require('vm').runInThisContext(require('fs').readFileSync(require('path').join(__dirname, '..', 'core', 'data-helpers.js'), 'utf8'));
   const { OrdersStock, OrdersData } = require('../core/orders-common.js');
   global.OrdersStock = OrdersStock;
@@ -195,18 +198,17 @@ test('stock: a piece in an RT is shown, never counted; no total changes because 
   assert.ok(only && only.counted.length === 0, 'a piece-only RT is listed with nothing counted');
   const perRow = [...m1.rows, ...m1.noRt].reduce((s, r) => s + W.totals(r.counted, stateOf).sum, 0);
   assert.strictEqual(perRow, W.totals(m1.weekIntl, stateOf).sum, 'Σ RT rows + Χωρίς RT = the week, still');
-  // the lot itself: delivered INTO the warehouse, blocked until its pieces are delivered
+  // the lot itself (B0, owner 21/10/2026): invoiced from its registration — never blocked on its pieces
   const set = { intl: [], natl: [], gate: {}, gateFailed: false, stockFailed: false,
     stock: new Map([['recLot1', { id: 'recLot1', fields: { Complete: false, 'Remaining Pallets': 13, Pieces: 2, 'Pieces Delivered': 1 } }]]) };
   const t = W.totals(m1.weekIntl, r => OrdersData.stateOf(set, r));
-  assert.strictEqual(t.blocked.stock, 1);
+  assert.deepStrictEqual(Object.keys(t.blocked), ['price'], 'B0: the price is the one block bucket');
   assert.strictEqual(t.blocked.price, 1, 'the unpriced export is still «price»');
 });
 
-// E-05 (impact map 4/10): «παλαιότερη εκκρεμής» of a lot counts from its
-// «Completed On» (OrdersData.ageOf, carried by the page's state function) —
-// never from the warehouse intake while its pieces are still out.
-test('stock: oldest pending ignores an incomplete lot\'s intake date; a bare state function keeps the old rule', () => {
+// B0 (owner 21/10/2026): «παλαιότερη εκκρεμής» of a lot counts from its own
+// delivery, like every order (OrdersData.ageOf, carried by the page's state function).
+test('stock: oldest pending counts a lot from its own delivery, like every order (B0)', () => {
   const { OrdersStock, OrdersData } = require('../core/orders-common.js');
   global.OrdersStock = OrdersStock;
   const LOT = o('recLot', 1300, { Direction: 'Import', 'Loading DateTime': '2026-09-20T08:00', 'Delivery DateTime': '2026-09-21T08:00', Price: 3300, Status: 'Delivered', 'Own Stock Lot': 'recLot1' });
@@ -214,10 +216,20 @@ test('stock: oldest pending ignores an incomplete lot\'s intake date; a bare sta
     stock: new Map([['recLot1', { id: 'recLot1', fields: { Complete: false } }]]) };
   const bare = r => OrdersData.stateOf(set, r);
   const paged = Object.assign(r => OrdersData.stateOf(set, r), { ageOf: r => OrdersData.ageOf(set, r) });
-  assert.strictEqual(W.totals([LOT], paged).oldest, null, 'incomplete lot → no age');
-  assert.strictEqual(W.totals([LOT], bare).oldest, OrdersCommon.daysSinceDelivery(LOT), 'fallback: the delivery age');
+  assert.strictEqual(W.totals([LOT], paged).oldest, OrdersCommon.daysSinceDelivery(LOT), 'incomplete lot → its delivery age');
+  assert.strictEqual(W.totals([LOT], bare).oldest, OrdersCommon.daysSinceDelivery(LOT), 'the bare state function agrees');
   set.stock.get('recLot1').fields = { Complete: true, 'Completed On': OrdersCommon.addDays(OrdersCommon.today(), -1) };
-  assert.strictEqual(W.totals([LOT], paged).oldest, 1);
+  assert.strictEqual(W.totals([LOT], paged).oldest, OrdersCommon.daysSinceDelivery(LOT), '«Completed On» no longer counts');
+});
+
+// Review B0 #2: «παλαιότερη εκκρεμής» is a DELIVERED order's age (OrdersData.ageOf), with the page's
+// state function or a bare one — an order still on the road past its date, or a future one, has none.
+test('oldest pending: only delivered orders have an age — in transit past its date counts nothing (B0 review #2)', () => {
+  const late = o('recLate', 1600, { Direction: 'Import', 'Loading DateTime': '2026-09-20T08:00', 'Delivery DateTime': '2026-09-21T08:00', Price: 900, Status: 'In Transit' });
+  const done = o('recDone', 1601, { Direction: 'Import', 'Loading DateTime': '2026-09-20T08:00', 'Delivery DateTime': '2026-09-22T08:00', Price: 900, Status: 'Delivered' });
+  const bare = r => OrdersData.stateOf({ gate: {}, gateFailed: false }, r);
+  assert.strictEqual(W.totals([late], bare).oldest, null, 'in transit: no age');
+  assert.strictEqual(W.totals([late, done], bare).oldest, OrdersCommon.daysSinceDelivery(done), 'only the delivered one counts');
 });
 
 // ══ v4 (owner 13/10, Figma 1514:8013) ═══════════════════════════════════════
@@ -236,7 +248,7 @@ test('totals reconcile: τζίρος = τιμολογημένα + ατιμολό
     const t = W.totals(recs, stateOf);
     assert.strictEqual(Math.round((t.invSum + t.openSum) * 100), Math.round(t.sum * 100));
     assert.strictEqual(t.invN + t.openN, t.n);
-    assert.strictEqual(t.openSum, t.readySum + t.pendingSum + t.blockedSum.price + t.blockedSum.stock + t.blockedSum.sheets);
+    assert.strictEqual(t.openSum, t.readySum + t.blockedSum.price);
   }
   const tI = W.totals(model.weekIntl, stateOf);
   assert.strictEqual(tI.openSum, 3350 + 2650 + 2800 + 1000);
@@ -284,14 +296,13 @@ test('verdict under the assignment: «1 από 2 παραγγ.», block priority
   const v = code => W.rtInvoicing(row(code).counted, stateOf);
   assert.strictEqual(W.verdictText(v('RT-1187'), 2), '1 από 2 παραγγ. · ατιμολόγητα 2.800,00');
   assert.ok(!/\d\/\d/.test(W.verdictText(v('RT-1187'), 2)), 'never «1/2»');
-  assert.strictEqual(W.verdictText(v('RT-1183'), 1), 'τιμή → owner');
+  assert.strictEqual(W.verdictText(v('RT-1183'), 1), 'τιμή → owner/λογιστήριο');
   assert.strictEqual(W.verdictText(v('RT-1181'), 1), '', 'one invoiced order: the ΤΠΥ cell says it');
   assert.strictEqual(W.verdictText(v('RT-1188'), 1), '');
-  // a slip block wins over a price block
-  assert.deepStrictEqual(W.rtInvoicing([INTL[4], INTL[6]], r => r.id === 'recI5' ? { key: 'blocked', reason: 'sheets' } : stateOf(r)).reasons, ['sheets', 'price']);
-  // rank 4 before 5: one delivered + one on the road = «σε εξέλιξη», not «προς κοπή»
-  assert.strictEqual(W.rtInvoicing([INTL[1], INTL[3]], stateOf).kind, 'progress');
-  assert.strictEqual(W.verdictText({ kind: 'progress' }, 2), 'σε εξέλιξη');
+  // the price is the one block (B0); a priced order beside it does not hide it
+  assert.deepStrictEqual(W.rtInvoicing([INTL[4], INTL[6]], stateOf).reasons, ['price']);
+  // B0 (owner 21/10/2026): one delivered + one on the road = «προς κοπή» (invoiced from the registration)
+  assert.strictEqual(W.rtInvoicing([INTL[1], INTL[3]], stateOf).kind, 'ready');
   assert.strictEqual(W.verdictText({ kind: 'ready' }, 2), 'προς κοπή');
 });
 
@@ -300,10 +311,8 @@ test('ΤΠΥ vocabulary (§06)', () => {
   assert.deepStrictEqual([t(INTL[0], { key: 'invoiced' }).cls, t(INTL[0], { key: 'invoiced' }).text], ['ok', '✓ 0431']);
   assert.strictEqual(t(o('a', 1, { Invoiced: true }), { key: 'invoiced' }).text, 'τιμολογήθηκε');
   assert.strictEqual(t(INTL[1], { key: 'ready' }).text, 'προς κοπή');
-  assert.strictEqual(t(INTL[3], { key: 'pending' }).text, 'σε εξέλιξη');
+  assert.strictEqual(t(INTL[3], { key: 'cancelled' }).text, '— ακυρ.');
   assert.deepStrictEqual([t(INTL[4], { key: 'blocked', reason: 'price' }).cls, t(INTL[4], { key: 'blocked', reason: 'price' }).text], ['bad', 'τιμή']);
-  assert.strictEqual(t(INTL[4], { key: 'blocked', reason: 'sheets' }).text, 'δελτίο');
-  assert.strictEqual(t(INTL[4], { key: 'blocked', reason: 'stock' }).text, 'παρτίδα');
 });
 
 test('word-safe route truncation: never below the destination\'s first word (§12 #06)', () => {

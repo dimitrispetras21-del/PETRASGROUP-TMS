@@ -1,0 +1,113 @@
+// National v5 F2 — the deploy guard markers and «born closed» for /plan/*
+// (CLAUDE.md «Ο WORKER», «Τρεις κανόνες μίας πηγής» rule 3; αρχή 5).
+// Read from worker/src/index.js itself — the deploy source — never a copy.
+//   - the v5 tables never enter TABLES: the facade's "*" rows (owner all,
+//     management/accountant GET) would open them by themselves (trap 3);
+//   - PLAN_PERMS: no "*" anywhere, `var PLAN_PERMS = {` exactly once and in use
+//     (esbuild drops an unused top-level var — the live guard would then miss it);
+//   - the older markers (CLAUDE.md, and the features live since 24/10) stay exactly once;
+//   - writes are closed in the source that is deployed (decision 22).
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const src = readFileSync(path.join(here, '..', 'src', 'index.js'), 'utf8');
+const count = (needle) => src.split(needle).length - 1;
+function liftVar(name) {
+  const m = src.match(new RegExp(`(?:var|const) ${name} = \\{[\\s\\S]*?\\n\\};\\n`));
+  assert.ok(m, `${name} not found in worker/src/index.js`);
+  return m[0];
+}
+const TABLES = new Function(liftVar('TABLES') + '\nreturn TABLES;')();
+const PLAN_PERMS = new Function(liftVar('PLAN_PERMS') + '\nreturn PLAN_PERMS;')();
+// + 072b: the segments table and its two views (vehicle handover) - reached only through /plan/*, never the facade
+// + F5: the day-L trace of 074 (plan_config is already listed)
+const V5_TABLES = ['shipments', 'shipment_pieces', 'rt_stops', 'piece_legs', 'plan_notices', 'plan_config', 'local_moves',
+  'rt_vehicle_segments', 'v_rt_segments', 'v_rt_vehicle_windows', 'plan_cutover_log'];
+// Tables that hold v5 rows beside older ones (review of PR #90, finding 2): reachable through the facade for
+// their older rows only, so each must carry a planOwned guard that tells its v5 rows apart.
+const SHARED = { local_moves: 'v5 nat_loading rows beside the 060 local / relay rows of Weekly National' };
+
+test('no v5 table is reachable through the facade (TABLES pg / readView); a shared one only with its planOwned guard', () => {
+  for (const [id, cfg] of Object.entries(TABLES)) {
+    if (Object.prototype.hasOwnProperty.call(SHARED, cfg.pg)) {
+      assert.equal(typeof cfg.planOwned, 'function', `${id} (${cfg.pg}: ${SHARED[cfg.pg]}) has no planOwned guard`);
+      continue;
+    }
+    assert.ok(!V5_TABLES.includes(cfg.pg), `${id} maps a v5 table: ${cfg.pg}`);
+    assert.ok(!V5_TABLES.includes(cfg.readView), `${id} reads a v5 table: ${cfg.readView}`);
+    for (const l of Object.values(cfg.links || {})) assert.ok(!V5_TABLES.includes(l.table), `${id} links a v5 table: ${l.table}`);
+  }
+  for (const t of V5_TABLES) if (!SHARED[t]) assert.ok(!Object.prototype.hasOwnProperty.call(TABLES, t), `TABLES key ${t}`);
+  // the guard tells the v5 rows apart by both marks of 071 (move_kind ⟺ rt_stop_id, CHECK local_moves_nat_loading)
+  const g = TABLES.local_moves.planOwned;
+  assert.equal(g({ move_kind: 'nat_loading', rt_stop_id: 3 }), true);
+  assert.equal(g({ move_kind: 'nat_loading', rt_stop_id: null }), true);
+  assert.equal(g({ move_kind: 'local', rt_stop_id: 3 }), true);
+  for (const k of ['local', 'relay_delivery', 'relay_loading']) assert.equal(g({ move_kind: k, rt_stop_id: null }), false, k);
+  assert.ok(!Object.values(TABLES.local_moves.fields).includes('rt_stop_id'), 'rt_stop_id is no facade field');
+  assert.ok(!Object.values(TABLES.local_moves.links || {}).some((l) => l.column === 'rt_stop_id'), 'nor a facade link');
+});
+
+test('PLAN_PERMS: five roles, no wildcard, only GET/POST/PATCH', () => {
+  assert.deepEqual(Object.keys(PLAN_PERMS).sort(), ['accountant', 'dispatcher', 'management', 'owner', 'warehouse']);
+  for (const [role, map] of Object.entries(PLAN_PERMS)) {
+    assert.ok(!Object.prototype.hasOwnProperty.call(map, '*'), `${role} has "*"`);
+    for (const [res, methods] of Object.entries(map)) {
+      assert.ok(!res.includes('*'), `${role}.${res}`);
+      for (const m of methods) assert.ok(['GET', 'POST', 'PATCH'].includes(m), `${role}.${res} ${m}`);
+    }
+  }
+});
+
+test('deploy guard markers: the older ones and var PLAN_PERMS = { exactly once; PLAN_PERMS in use', () => {
+  assert.equal(count('var PLAN_PERMS = {'), 1, 'var PLAN_PERMS = {');
+  assert.match(src, /\nvar PLAN_PERMS = \{\n/, 'at column 0, alone on its line');
+  assert.match(src, /function planCan\(role, resource, method\) \{\n {2}const r = PLAN_PERMS\[role\];/, 'planCan reads PLAN_PERMS');
+  assert.match(src, /if \(!planCan\(caller\.role, route\.resource, method\)\)/, 'handlePlan calls planCan');
+  assert.match(src, /if \(url\.pathname\.startsWith\("\/plan\/"\)\) \{\n {6}return handlePlan\(request, url, origin, env\);/, 'router reaches handlePlan');
+  // inside the dispatcher block only: the lazy scan stops at the next 2-space key (another role)
+  assert.match(src, /\n {2}dispatcher: \{\n(?:(?! {2}\S)[^\n]*\n)*? {4}order_stops: \["GET", "POST", "PATCH", "DELETE"\]/, 'dispatcher order_stops DELETE');
+  assert.equal(count('"VS CD Date": "cross_dock_date"'), 1, 'VS CD Date');
+  // the WORKSHOPS fields counted INSIDE the WORKSHOPS block: Country: "country" is in six tables, so a whole-file
+  // count could never see it go missing from this one (CLAUDE.md: the three; review 23/10)
+  const ws = (src.match(/\n {2}tblMiFxbm9ky8PCQi: \{\n[\s\S]*?\n {2}\},?\n/) || [''])[0];
+  for (const m of ['Country: "country"', 'Aliases: "aliases"', '"VAT Number": "tax_id"', '"Legal Name": "legal_name"']) {
+    assert.equal(ws.split(m).length - 1, 1, `WORKSHOPS ${m}`);
+  }
+  assert.equal(count('tblStockLots: {'), 1, 'tblStockLots');
+  assert.equal(count('"Move Kind": "move_kind"'), 1, 'Move Kind');
+  // the features live before F2 (rule of one source 3; deploys of 23-24/10): stop-delay, presence, temp per CMR
+  assert.equal(count('"Delay Reason": "delay_reason"'), 1, 'Delay Reason');
+  assert.equal(count('var PRESENCE_ROLES'), 1, 'PRESENCE_ROLES');
+  assert.equal(count('Temp Per CMR'), 1, 'Temp Per CMR');
+  assert.equal(count('{0,49}$/'), 1, 'VD /costs/rt order_ids (decision 29)');
+  // the vehicle handover (072b): its route row is the deploy marker (worker-guard --handover 1)
+  assert.equal(count('rpc: "plan_seg_change"'), 1, 'handover route marker');
+});
+
+// Closed until day L (decision 22); F5 deploy 2 flips this one line (plan W7). Which value is right for a bundle is the
+// deploy guard's question (--plan 1 closed / --plan 2 open); here: one declaration, no second assignment anywhere, no env.
+test('one writes switch in the deployed source, false or true, nothing else names a value; no env override', () => {
+  assert.equal((src.match(/^var PLAN_WRITES_OPEN = (?:true|false);$/gm) || []).length, 1);
+  assert.equal(count('PLAN_WRITES_OPEN = '), 1, 'no second assignment, no comment naming a value (the guard counts them)');
+  assert.ok(!/env\.PLAN_WRITES/.test(src), 'no environment switch beside the constant');
+});
+
+test('one DB-rule mapper still: no planRuleError / planRuleResponse beside stockRuleError', () => {
+  assert.equal((src.match(/^function \w+RuleError\(/gm) || []).length, 1);
+  assert.equal((src.match(/^function \w+RuleResponse\(/gm) || []).length, 1);
+});
+
+test('"Via Hub" is an ORDER STOPS label for via_hub — once, nowhere else — closed to every facade write, before and after day L (finding 8; F5 Q-6)', () => {
+  assert.equal(TABLES.tblaeY5QOHAS1gyE8.fields['Via Hub'], 'via_hub');
+  assert.equal(count('"Via Hub": "via_hub"'), 1);
+  assert.deepEqual(TABLES.tblaeY5QOHAS1gyE8.dbOnly, ['Via Hub']);
+  // only the DB writes it (074 plan_bridge_sync): the refusal does NOT read the /plan/* switch
+  assert.match(src, /function refuseReadOnly\(cfg, fieldsList, origin, env\) \{\n {2}if \(cfg\.dbOnly\) \{/);
+  for (const [id, cfg] of Object.entries(TABLES)) if (cfg.dbOnly) assert.equal(id, 'tblaeY5QOHAS1gyE8', `${id} dbOnly`);
+  assert.equal(count('closedUntilPlan'), 0, 'the old name would say it opens on day L');
+});

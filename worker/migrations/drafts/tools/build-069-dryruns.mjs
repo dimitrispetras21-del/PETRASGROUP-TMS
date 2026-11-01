@@ -13,7 +13,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-export const DRAFTS = path.resolve(HERE, '..');
+export const DIR = path.resolve(HERE, '../..');   // 057/060/069/071a executed: out of drafts/ (CLAUDE.md rule 5)
 const OPEN = '\nDO $do$\n';
 const CLOSE = '\nEND $do$;\n';
 
@@ -81,8 +81,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const check = process.argv.includes('--check');
   let drift = 0;
   for (const p of PAIRS) {
-    const out = buildDryRun(fs.readFileSync(path.join(DRAFTS, p.source), 'utf8'), p);
-    const target = path.join(DRAFTS, p.target);
+    const out = buildDryRun(fs.readFileSync(path.join(DIR, p.source), 'utf8'), p);
+    const target = path.join(DIR, p.target);
     if (check) { if (!fs.existsSync(target) || fs.readFileSync(target, 'utf8') !== out) { drift++; console.error('drift: ' + p.target); } }
     else { fs.writeFileSync(target, out); console.log('wrote ' + p.target); }
   }

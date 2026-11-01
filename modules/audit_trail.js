@@ -273,6 +273,45 @@ const _AUDIT_FIELD = {
   // «Κλείσιμο υπολοίπου» note (the auditor S-09 reports every close).
   stock_lot_id:             'Παρτίδα αποθέματος',
   closed_note:              'Κλείσιμο υπολοίπου · αιτιολογία',
+  // National v5 (F5 Ε15): the columns only the v5 tables have (071 shipments,
+  // shipment_pieces, rt_stops, piece_legs, plan_notices; 072b
+  // rt_vehicle_segments; 071 order_stops.via_hub, pl_movements.piece_leg_id,
+  // local_moves.rt_stop_id), read off their CREATE TABLE. Columns every table
+  // shares (pallets, location_id, truck_id, …) keep their labels above.
+  side:                     'Πλευρά',
+  seq:                      'Σειρά στάσης',
+  planned_from:             'Από (πλάνο)',
+  planned_to:               'Έως (πλάνο)',
+  rt_id:                    'Κύκλος',
+  rt_stop_id:               'Στάση κύκλου',
+  piece_id:                 'Κομμάτι',
+  piece_leg_id:             'Σκέλος κομματιού',
+  leg_no:                   'Αριθμός σκέλους',
+  pickup_stop_id:           'Στάση παραλαβής',
+  drop_stop_id:             'Στάση παράδοσης',
+  shipment_id:              'Αποστολή',
+  parent_piece_id:          'Αρχικό κομμάτι',
+  leave_by:                 'Φεύγει έως',
+  split_at:                 'Σπάσιμο',
+  split_by:                 'Σπάσιμο από',
+  nat_order_id:             'Εθνική παραγγελία',
+  order_stop_id:            'Στάση διεθνούς',
+  origin_location_id:       'Αφετηρία',
+  dest_location_id:         'Προορισμός',
+  load_from:                'Φόρτωση από',
+  load_to:                  'Φόρτωση έως',
+  deliver_from:             'Παράδοση από',
+  deliver_to:               'Παράδοση έως',
+  from_at:                  'Από',
+  to_at:                    'Έως',
+  place_note:               'Σημείο αλλαγής',
+  reason:                   'Λόγος',
+  reason_note:              'Λόγος · σημείωση',
+  rt_cancelled:             'Ακυρωμένος κύκλος',
+  to_desk:                  'Προς γραφείο',
+  read_at:                  'Διαβάστηκε',
+  read_by:                  'Διαβάστηκε από',
+  via_hub:                  'Μέσω Βέροιας',
 };
 function _auditFieldLabel(f) {
   return _AUDIT_FIELD[f] || String(f);
@@ -296,6 +335,11 @@ const _AUDIT_DIRECTION = {
   'Import':      'ΕΙΣΑΓΩΓΗ',
   'North→South': 'ΚΑΘΟΔΟΣ',
   'South→North': 'ΑΝΟΔΟΣ',
+};
+// rt_stops.side (071 CHECK: KATHODOS / ANODOS) — the same two words, Latin-spelled in the base.
+const _AUDIT_SIDE = {
+  KATHODOS: 'ΚΑΘΟΔΟΣ',
+  ANODOS:   'ΑΝΟΔΟΣ',
 };
 
 const _AUDIT_ISO_TS = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/;
@@ -324,14 +368,16 @@ function _auditFmtVal(v, field) {
   // changed", which is this column's question.
   if (field && /_id$/.test(field) && /^\d+$/.test(s)) return `#${s}`;
   if (field === 'direction' && _AUDIT_DIRECTION[s]) return _AUDIT_DIRECTION[s];
+  if (field === 'side' && _AUDIT_SIDE[s]) return _AUDIT_SIDE[s];
   return s;
 }
 
-// The Worker's nine audit() verbs (grep 'action: "' on deployed src/index.js).
+// The Worker's eight audit() verbs (grep 'action: "' on deployed src/index.js).
 // Counted in audit_log 3/9/2026: create 2.027 · update 1.254 · delete 88 ·
-// cascade_delete 30 — the other five routes exist but have never written a
-// row. They stay listed because the day one fires it must read as a word, not
-// as raw English. 'login' was REMOVED: the Worker has no such call and never
+// cascade_delete 30. confirm, reverse, invoice_override and upload had no row
+// because audit_log_action_check refused them (measured 28/10); 078 accepts
+// them, rows from then on, none recovered before it. They stay listed so they
+// read as a word, not as raw English. 'login' was REMOVED: the Worker has no such call and never
 // had one, so the entry described an event that cannot happen (principle 8).
 // Anything else still shows raw, so a tenth verb is visible, not swallowed.
 const _AUDIT_ACTION = {
@@ -393,6 +439,21 @@ const _AUDIT_TABLE = {
   ct_round_trips:           'Δρομολόγια P&L',
   ct_cost_lines:            'Γραμμές κόστους',
   stock_lots:               'Παρτίδες αποθέματος',   // AT-01 (stock lots Φ1)
+  // National v5 (F4α T9): the tables of 071 the plan_* functions write; their audit rows are the DB's own.
+  shipments:                'Αποστολές εθνικών',
+  shipment_pieces:          'Κομμάτια αποστολών',
+  piece_legs:               'Σκέλη κομματιών',
+  rt_stops:                 'Στάσεις κύκλων',
+  plan_notices:             'Ειδοποιήσεις εθνικών',
+  // F5 Ε15: the other tables the plan_* functions write through plan_h_audit
+  // (072b vehicle change; 071/072 local loading; 072b/073 payroll lines of a
+  // cycle). local_moves and dl_entries already had rows shown raw.
+  rt_vehicle_segments:      'Αλλαγές οχήματος κύκλου',
+  local_moves:              'Τοπικές μετακινήσεις',
+  dl_entries:               'Μισθοδοσία οδηγών',
+  // F2 decision 44: the ONE record of a creation's request_id (072 plan_h_remember). Not a business table: its row
+  // says which act the request was, never the raw JSON of its answer (F2 note 4).
+  plan_request:             'Κωδικός αιτήματος',
 };
 function _auditTableLabel(t) {
   if (!t) return '—';
@@ -408,6 +469,9 @@ const _AUDIT_LABEL_KEYS = ['code', 'reference', 'name', 'stop_label', 'plate', '
 function _auditRecordLabel(e) {
   const snap = e._after || e._before;
   if (!snap) return '';
+  // A plan_request snapshot is {op, request_id, body_md5, answer}: the act names it (plan_orders_create); the uuid is
+  // already the record id beside it. None of its other keys is a business handle.
+  if (e.table_name === 'plan_request') return typeof snap.op === 'string' ? snap.op : '';
   for (const k of _AUDIT_LABEL_KEYS) {
     const v = snap[k];
     if (v !== null && v !== undefined && String(v).trim() !== '') return String(v);

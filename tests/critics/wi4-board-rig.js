@@ -40,7 +40,7 @@
 //   queue (card buttons after a row-id shift, Q, Print / WhatsApp) ·
 //   fix round 3: print (view role, share menu) · shift (a save fails across a
 //   re-read) · late (relays empty / national while a popover is open) ·
-//   offline · quiet (a group member fails) · natmissing · w1440 ·
+//   offline · quiet (a group member fails) · natmissing · done (executed = dimmed) · w1440 ·
 //   vs (WP-A of the Weekly National v4 plan: one Veroia day — assignment,
 //   form, drop order by place, loud failures, Pallet Exchange)
 // Exit: 0 all green · 1 a check failed · 2 usage · 3 NOT READY (v4 inactive).
@@ -211,6 +211,25 @@ function serve() {
   return new Promise(r => srv.listen(0, '127.0.0.1', () => r(srv)));
 }
 
+// F5 FE-1: the three reads the VS chain makes after day L. Base ids = the order's place in the fixture + 1.
+function planAnswer(route, S, u, json) {
+  S.planGets.push(u.pathname + u.search);
+  const ords = S.db[T.ORDERS] || [];
+  if (u.pathname === '/plan/config') {
+    return S.plan.config ? json(route, S.plan.config) : json(route, { error: { type: 'NOT_FOUND', code: 'no_route', message: 'rig: no /plan/config (before deploy 1)' } }, 404);
+  }
+  if (u.pathname === '/pallets/gate') {
+    const recs = (u.searchParams.get('order_recs') || '').split(',').filter(Boolean);
+    return json(route, { records: recs.map(r => ({ order_rec: r, order_id: ords.findIndex(o => o.id === r) + 1 })).filter(x => x.order_id > 0) });
+  }
+  if (u.pathname === '/plan/vs-state') {
+    if (S.plan.failVs) return json(route, { error: { type: 'PLAN', code: 'plan_failed', message: 'rig: forced vs-state failure' } }, 500);
+    const ids = (u.searchParams.get('order_ids') || '').split(',').map(Number);
+    return json(route, Object.fromEntries(ids.map(id => { const rec = (ords[id - 1] || {}).id; return [String(id), (rec && S.plan.vs[rec]) || 'missing']; })));
+  }
+  return json(route, { error: { type: 'NOT_FOUND', code: 'no_route', message: 'rig: ' + u.pathname } }, 404);
+}
+
 function applyFields(target, fields) {
   for (const [k, v] of Object.entries(fields || {})) {
     if (v === null || v === '' || (Array.isArray(v) && v.length === 0)) delete target[k]; else target[k] = v;
@@ -255,11 +274,25 @@ async function openBoard(browser, origin, opts = {}) {
   const S = { db, log: [], inflight: 0, held: [], heldRelay: [], pageErrors: [], unknown: new Set(), mainReads: 0, beats: [],
     fail: Object.assign({ patch: {}, get: {} }, opts.fail || {}), hold: Object.assign({}, opts.hold || {}),
     expectLive: opts.expectLive !== false, triggers: !!opts.triggers, vs: !!opts.vs, gets: [], onGet: {}, delay: {}, seq: 0, ready: false, readyWaiters: [],
-    presence: Object.assign({ mode: 200, others: [], changes: { n: 0, last_by: null, last_at: null, auto_n: 0 }, next_ms: 2500 }, opts.presenceCfg || {}) };
+    presence: Object.assign({ mode: 200, others: [], changes: { n: 0, last_by: null, last_at: null, auto_n: 0 }, next_ms: 2500 }, opts.presenceCfg || {}),
+    // F5 FE-1: /plan/config as the live Worker answers today (404 no_route = before deploy 1), unless a scenario
+    // sets {config, vs: {rec: entry|'missing'}, failVs}. planGets records every /plan or /pallets/gate read.
+    plan: Object.assign({ config: null, vs: {}, failVs: false }, opts.plan || {}), planGets: [] };
   page.on('pageerror', e => S.pageErrors.push(String(e).slice(0, 300)));
   page.on('dialog', d => d.accept());
   await page.addInitScript(initScript, opts.role || 'dispatcher');
   await page.route(u => !u.href.startsWith(origin) && !u.href.includes(HOST), route => route.abort());
+  // F5 FE-1: core/plan-config.js is new and stream (e) adds its tag to app.html with the bump; served here
+  // as that bump will serve it (after core/plan-api.js), in memory only. Already there → left alone.
+  await page.route(u => u.href.startsWith(origin) && ['/', '/app.html'].includes(new URL(u.href).pathname), async route => {
+    const r = await route.fetch(); let body = await r.text();
+    if (!/core\/plan-config\.js/.test(body)) {
+      const re = /(<script src="core\/plan-api\.js[^"]*"><\/script>)/;
+      if (!re.test(body)) throw new Error('app.html changed: the rig cannot find core/plan-api.js');
+      body = body.replace(re, '$1\n<script src="core/plan-config.js"></script>');
+    }
+    await route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body });
+  });
   // The flag lives in config.js; it is rewritten in memory, never on disk.
   await page.route(u => u.href.startsWith(origin) && new URL(u.href).pathname === '/config.js', async route => {
     const r = await route.fetch(); let body = await r.text();
@@ -290,6 +323,7 @@ async function openBoard(browser, origin, opts = {}) {
     }
     S.inflight++;
     try {
+      if (u.pathname.startsWith('/plan/') || u.pathname === '/pallets/gate') return planAnswer(route, S, u, json);
       if (!mm) return json(route, m === 'GET' ? { records: [] } : { ok: true });
       const tbl = db[tid] || (db[tid] = []);
       if (m === 'GET') {
@@ -327,7 +361,16 @@ async function openBoard(browser, origin, opts = {}) {
         if (body && Array.isArray(body.records)) return json(route, { records: body.records.map(x => make(x && x.fields)) });
         return json(route, make(body && body.fields));
       }
-      if (m === 'DELETE') { S.log.push({ k: 'delete', tid, id: rid }); return json(route, { deleted: true, id: rid }); }
+      if (m === 'DELETE') {
+        // F5 Ε19 (Worker deploy 1): an ORDER delete with consequences answers 428 until it carries the token
+        const tok = u.searchParams.get('confirm_token');
+        if (S.plan.del428 && tid === T.ORDERS && tok !== 'tok-rig') {
+          S.log.push({ k: 'delete', tid, id: rid, status: 428, tok });
+          return json(route, { error: { type: 'PLAN_RULE', code: tok ? 'stale_confirm' : 'need_token', message: 'rig: η διαγραφή έχει συνέπειες' },
+            preview: { consequences: ['Αποσύρει 2 κομμάτια εθνικής πλευράς', { text: 'Σβήνει 4 στάσεις' }], confirm_token: 'tok-rig' } }, tok ? 422 : 428);
+        }
+        S.log.push({ k: 'delete', tid, id: rid, tok }); return json(route, { deleted: true, id: rid });
+      }
       return json(route, {});
     } finally { S.inflight--; }
   });
@@ -2566,17 +2609,73 @@ async function scnSearch(browser, origin) {
   await box.fill('ΠΕΛΑΤΗΣ Β'); await page.waitForTimeout(300);
   let s = await st();
   ok('search', 'client name: «1/3», the other rows dim', s.n === '1/3' && s.dim === s.rows - 3, s);
+  // Pantelis 21/10: the matches are RAISED — a white card, 6px corners, a soft
+  // shadow, the number in bold ink (owner picked this of three) — at full
+  // strength even when executed (a done match must not read like a miss).
+  const lit = () => page.evaluate(() => [...document.querySelectorAll('#content .wi4 .wi4-row.wi4-sm')].map(r => {
+    const cs = getComputedStyle(r);
+    const faded = [...r.querySelectorAll('.wi4-leg, .wi4-l-date, .wi4-l-from, .wi4-pt')].filter(x => getComputedStyle(x).opacity !== '1').length;
+    const no = r.querySelector('.wi4-c-idx .wi4-no');
+    return { bg: cs.backgroundColor, radius: cs.borderTopLeftRadius, shadow: cs.boxShadow !== 'none', no: no && getComputedStyle(no).fontWeight, op: cs.opacity, faded };
+  }));
+  const L1 = await lit();
+  ok('search', 'matches raised: 3 rows, white card, radius 6px, a shadow, number 700, opacity 1, no faded part inside',
+    L1.length === 3 && L1.every(x => x.bg === 'rgb(255, 255, 255)' && x.radius === '6px' && x.shadow && x.no === '700' && x.op === '1' && !x.faded), L1);
+  await shot(page, 'search-lit-1920');
   await box.press('Enter'); await page.waitForTimeout(150);
   ok('search', 'Enter → «2/3»', (await st()).n === '2/3', await st());
+  // Pantelis 21/10: accents, case, spaces and dashes do not matter, on either side.
+  await box.fill('πελάτης β'); await page.waitForTimeout(300);
+  ok('search', 'accents/case ignored: «πελάτης β» = «ΠΕΛΑΤΗΣ Β», «1/3»', (await st()).n === '1/3', await st());
+  await box.fill('tst1017'); await page.waitForTimeout(300);
+  ok('search', 'dash ignored: «tst1017» finds TST-1017', /^1\/\d+$/.test((await st()).n), await st());
+  // Greek finds the Latin-stored places (fhSearchNorm transliterates like _fhNorm).
+  await box.fill('Κοζάνη'); await page.waitForTimeout(300);
+  ok('search', 'Greek → Latin: «Κοζάνη» finds the Kozani rows', /^1\/\d+$/.test((await st()).n), await st());
+  // Fields stay apart: truck «TST-1010» + trailer «TRL-2010» never make «tst1010trl».
+  await box.fill('tst1010trl'); await page.waitForTimeout(300);
+  ok('search', 'no match across two fields: «tst1010trl» finds nothing', (await st()).n === '0', await st());
+  await box.fill(' - '); await page.waitForTimeout(300);
+  ok('search', 'only separators = no search: nothing dimmed, no card', (await st()).dim === 0 && !(await page.evaluate(() => document.querySelectorAll('#content .wi4 .wi4-sm').length)), await st());
   await box.fill('TST-1017'); await page.waitForTimeout(300);
   ok('search', 'plate: matches the E024 row', /^1\/\d+$/.test((await st()).n), await st());
   await box.fill('REF-E019'); await page.waitForTimeout(300);
   ok('search', 'ΑΝΑΦ.: «1/1»', (await st()).n === '1/1', await st());
+  // Partial words find (substring, any case): «alpha fa» → the Alpha Farm rows.
+  await box.fill('alpha fa'); await page.waitForTimeout(300);
+  ok('search', 'part of a name, any case: «alpha fa» finds rows', /^1\/\d+$/.test((await st()).n), await st());
+  // An EXECUTED match (REF-E010: export delivered, faded before the search) is
+  // raised at full strength — no faded piece left inside it (Pantelis 21/10).
+  await box.fill('REF-E010'); await page.waitForTimeout(300);
+  const ex = await page.evaluate(() => {
+    const r = document.querySelector('#content .wi4 .wi4-row.wi4-sm');
+    if (!r) return null;
+    const doneBefore = !!r.querySelector('.wi4-xd-done, .wi4-xd-half, .wi4-xd-pt') || r.classList.contains('wi4-xd');
+    let op = 1; for (let n = r.querySelector('.wi4-l-to') || r; n && n !== document.body; n = n.parentElement) op *= +getComputedStyle(n).opacity;
+    return { doneBefore, op: Math.round(op * 100) / 100, bg: getComputedStyle(r).backgroundColor };
+  });
+  ok('search', 'an executed match is raised at full strength (it was faded; effective opacity 1)', !!ex && ex.doneBefore && ex.op === 1 && ex.bg === 'rgb(255, 255, 255)', ex);
+  await shot(page, 'search-executed-1920');
+  // Review 21/10: a matched row and its matched ↳ sub-rows read as ONE card —
+  // the row keeps its top corners only, the last piece its bottom corners.
+  // TST-1002 = row 3 and its rota leg (ΣΚΕΛΟΣ ΡΟΤΑΣ · ίδιο φορτηγό) on Monday.
+  await box.fill('TST-1002'); await page.waitForTimeout(300);
+  const grp = await page.evaluate(() => {
+    const r = [...document.querySelectorAll('#content .wi4 .wi4-row.wi4-sm')].find(x => x.nextElementSibling && x.nextElementSibling.matches('.wi4-subrow.wi4-sm'));
+    if (!r) return null;
+    let last = r; while (last.nextElementSibling && last.nextElementSibling.matches('.wi4-subrow.wi4-sm')) last = last.nextElementSibling;
+    const cs = getComputedStyle(r), cl = getComputedStyle(last);
+    return { rowTop: cs.borderTopLeftRadius, rowBot: cs.borderBottomLeftRadius, lastBot: cl.borderBottomLeftRadius, lastBg: cl.backgroundColor };
+  });
+  await shot(page, 'search-group-1920');
+  ok('search', 'row + ↳ sub-rows matched: one card (row top 6px / bottom 0, last piece bottom 6px, white)',
+    !!grp && (grp.rowTop === '6px' && grp.rowBot === '0px' && grp.lastBot === '6px' && grp.lastBg === 'rgb(255, 255, 255)'), grp);
   await box.fill('Driver Test 18'); await page.waitForTimeout(300);
   ok('search', 'driver: matches', /^1\/\d+$/.test((await st()).n), await st());
   await box.press('Escape'); await page.waitForTimeout(200);
   s = await st();
   ok('search', 'Esc clears: nothing dimmed', s.dim === 0, s);
+  ok('search', 'Esc clears the mark too', !(await lit()).length, await lit());
   ok('search', 'search wrote nothing, hid nothing (dims, never _wiApplyFilter)', !writes(S).length && s.rows > 20, s);
   await page.context().close();
 }
@@ -3311,6 +3410,44 @@ async function scnPrint(browser, origin) {
     ok(scn, 'nothing written', !writes(S).length, writes(S));
     await page.context().close();
   }
+  // Owner 28/10: a rota leg (I010, an import leg of E023) could not be printed
+  // or shared — v4 drew no printer on the ↳ row and its menu had no print item.
+  scn = 'print.leg';
+  {
+    const { page, S } = await openBoard(browser, origin);
+    await page.evaluate(() => { window.__prints = []; window.printOrderSheet = function () { window.__prints.push([...arguments]); }; });
+    const legL = page.locator('#content .wi4 .wi4-subrow.wi4-sub-leg[data-oid="recWiI010"]');
+    const has = await legL.count();
+    await legL.scrollIntoViewIfNeeded().catch(() => {});
+    await legL.hover({ position: { x: 600, y: 16 } }).catch(() => {}); await page.waitForTimeout(150);
+    const btn = legL.locator('.wi4-asg .wk3-prt');
+    const g = await legL.evaluate(row => {
+      const b = row.querySelector('.wi4-asg .wk3-prt'), u = row.querySelector('.wi4-unlink'), chip = row.querySelector('.wi4-c-imp .wi4-dc, .wi4-c-imp button');
+      const R = el => { if (!el) return null; const r = el.getBoundingClientRect(); return { l: Math.round(r.left), r: Math.round(r.right) }; };
+      return { vis: b ? getComputedStyle(b).visibility : 'missing', left: b ? b.classList.contains('wi4-prt-l') : null, shq: b ? b.getAttribute('data-shq') : '', b: R(b), u: R(u), chip: R(chip) };
+    }).catch(() => null);
+    ok(scn, 'the import leg I010 draws its printer right of the assignment cell (clear of the unlink and the import\'s first chip), visible on hover, share query = I010 import',
+      has === 1 && !!g && g.vis === 'visible' && g.left === false && /orderId=recWiI010&leg=import/.test(g.shq) && (!g.u || g.b.l >= g.u.r) && (!g.chip || g.b.r <= g.chip.l), { has, g });
+    await btn.click({ timeout: 4000 }).catch(() => {}); await page.waitForTimeout(250);
+    let prints = await page.evaluate(() => window.__prints.splice(0));
+    ok(scn, 'a click on it prints I010 (import)', prints.length === 1 && prints[0][0] === 'recWiI010' && prints[0][1] === 'import', prints);
+    await page.evaluate(() => { const m = document.getElementById('shMenu'); if (m) m.remove(); const o = document.getElementById('wi-ov') || null; if (o) o.remove(); });
+    await page.mouse.click(5, 5); await page.waitForTimeout(150);
+    await legL.hover({ position: { x: 600, y: 16 } }); await page.waitForTimeout(150);
+    await btn.click({ button: 'right', timeout: 4000 }).catch(() => {}); await page.waitForTimeout(250);
+    const r = await page.evaluate(() => { const m = document.getElementById('shMenu');
+      return { sh: !!m, items: m ? [...m.querySelectorAll('button')].map(b => b.textContent) : [], ctx: ((document.getElementById('wi-ctx') || {}).style || {}).display === 'block' }; });
+    ok(scn, 'right-click on the leg\'s printer opens the share menu (Κοινή χρήση), not the per-load menu', r.sh && !r.ctx && r.items.some(t => /Κοινή χρήση/.test(t)), r);
+    await page.mouse.click(5, 5); await page.waitForTimeout(150);
+    await legL.click({ button: 'right', position: { x: 300, y: 16 } }).catch(() => {}); await page.waitForTimeout(300);
+    const items = await page.evaluate(() => [...document.querySelectorAll('#wi-ctx button')].map(b => b.textContent.trim()));
+    const pi = await page.evaluate(() => { const b = [...document.querySelectorAll('#wi-ctx button')].find(x => /Εκτύπωση/.test(x.textContent)); if (b) b.click(); return !!b; });
+    await page.waitForTimeout(250);
+    prints = await page.evaluate(() => window.__prints.splice(0));
+    ok(scn, 'the leg\'s menu (ΣΚΕΛΟΣ ΡΟΤΑΣ) offers «Εκτύπωση / WhatsApp…», and it prints I010 (import)', pi && items.some(t => /Εκτύπωση \/ WhatsApp/.test(t)) && prints.length === 1 && prints[0][0] === 'recWiI010' && prints[0][1] === 'import', { items, prints });
+    ok(scn, 'nothing written; no page errors', !writes(S).length && !S.pageErrors.length, { w: writes(S), e: S.pageErrors });
+    await page.context().close();
+  }
 }
 
 // P1 review 11/10: a write takes its row id at the start and reports after
@@ -3515,6 +3652,150 @@ async function scnNatMissing(browser, origin) {
   await page.click('[data-rig-natmiss="1"]'); await page.waitForTimeout(500);
   const opened = await page.evaluate(() => !!(document.querySelector('#modalOverlay.open') || document.querySelector('.mf-overlay')));
   ok(scn, 'a click on «δεν υπάρχει εθνικό» opens the order (saving it re-runs the Veroia Switch chain)', opened);
+  ok(scn, 'nothing written; no page errors', !writes(S).length && !S.pageErrors.length, { w: writes(S), e: S.pageErrors });
+  await page.context().close();
+}
+
+// Executed = dimmed (owner 21/10, Figma 2022:7736 / rule 2024:8134): what the
+// Ημερήσιο marked done fades to 40%, read from Status alone. Judged on computed
+// opacity — the EFFECTIVE one (product up to the board), so a double fade or a
+// fade that leaks into «Κενό γύρισμα» shows as a number, not as «looks right».
+async function scnDone(browser, origin) {
+  const scn = 'done';
+  const set = (db, id, st) => { db[T.ORDERS].find(r => r.id === id).fields.Status = st; };
+  const { page, S } = await openBoard(browser, origin, { mutate: db => {
+    set(db, 'recWiE002', 'Delivered');   // partner, no import: every leg it draws is done
+    set(db, 'recWiE001', 'Delivered');   // export delivered …
+    set(db, 'recWiI001', 'In Transit');  // … its matched import loaded, not delivered
+    set(db, 'recWiE006', 'Delivered');   // own truck, no import: «Κενό γύρισμα» still open
+    set(db, 'recWiE010', 'In Transit');  // red «Κενό γύρισμα» rail, export loaded, not delivered
+    // Per point (owner 21/10): E019's FIRST delivery stamped by the Ημερήσιο, the order still Assigned.
+    db[T.ORDER_STOPS].find(x => (x.fields['Parent Order'] || [])[0] === 'recWiE019' && x.fields['Stop Type'] === 'Unloading' && x.fields['Stop Number'] === 1)
+      .fields['Completed At'] = '2026-10-06T06:30:00.000Z';
+    // VS partner exports, both delivered abroad: E021's national leg still Assigned, E020's Delivered (review 21/10 #1).
+    const vs = (id, nl, st) => { const o = db[T.ORDERS].find(r => r.id === id).fields; o['Veroia Switch'] = true; o.Status = 'Delivered';
+      db[T.NAT_LOADS].push({ id: nl, fields: { 'Source Order': [id], Partner: ['recWiP001'], 'Is Partner Trip': true, 'Partner Truck Plates': 'PRT-399', Status: st } }); };
+    vs('recWiE021', 'recWiN921', 'Assigned');
+    vs('recWiE020', 'recWiN920', 'Delivered');
+    // Groupage ×3 with one member cancelled: the other two delivered = the leg is done (review 21/10 #4).
+    set(db, 'recWiE011', 'Cancelled'); set(db, 'recWiE012', 'Delivered'); set(db, 'recWiE013', 'Delivered');
+  } });
+  const read = () => page.evaluate(([js]) => {
+    const row = eval(js);
+    const op = el => (el ? +getComputedStyle(el).opacity : null);
+    const eff = el => { let v = 1; for (let x = el; x && !x.classList.contains('wi4'); x = x.parentElement) v *= +getComputedStyle(x).opacity; return Math.round(v * 100) / 100; };
+    const q = (oid, sel) => { const r = row(oid); return r && r.querySelector(sel); };
+    return {
+      e2: { xd: !!(row('recWiE002') || {}).classList?.contains('wi4-xd'), row: op(row('recWiE002')), asg: eff(q('recWiE002', '.wi4-box')), leg: eff(q('recWiE002', '.wi4-c-exp .wi4-leg')) },
+      e1: { xd: row('recWiE001').classList.contains('wi4-xd'), row: op(row('recWiE001')), exp: eff(q('recWiE001', '.wi4-c-exp .wi4-leg')),
+        iDate: eff(q('recWiE001', '.wi4-c-imp .wi4-l-date')), iFrom: eff(q('recWiE001', '.wi4-c-imp .wi4-l-from')),
+        iTo: eff(q('recWiE001', '.wi4-c-imp .wi4-l-to')), iPal: eff(q('recWiE001', '.wi4-c-imp .wi4-l-pal')), asg: eff(q('recWiE001', '.wi4-box')) },
+      e6: { xd: row('recWiE006').classList.contains('wi4-xd'), exp: eff(q('recWiE006', '.wi4-c-exp .wi4-leg')), gap: q('recWiE006', '.wi4-gap') ? eff(q('recWiE006', '.wi4-gap')) : null },
+      // E010: In Transit, red rail (EMPTY_RETURN red): the red lives in the gap, so the loaded half still fades.
+      e10: { red: row('recWiE010').classList.contains('wi4-r-red'), row: op(row('recWiE010')), date: eff(q('recWiE010', '.wi4-c-exp .wi4-l-date')),
+        from: eff(q('recWiE010', '.wi4-c-exp .wi4-l-from')), to: eff(q('recWiE010', '.wi4-c-exp .wi4-l-to')), gap: eff(q('recWiE010', '.wi4-gap')) },
+      e19: (() => { const p = [...row('recWiE019').querySelectorAll('.wi4-c-exp .wi4-l-to .wi4-pt')];
+        return { leg: row('recWiE019').querySelector('.wi4-c-exp .wi4-leg').className, p1: p[0] ? eff(p[0]) : null, p2: p[1] ? eff(p[1]) : null, n: p.length }; })(),
+      e21: { xd: row('recWiE021').classList.contains('wi4-xd'), exp: eff(q('recWiE021', '.wi4-c-exp .wi4-leg')), nat: eff(q('recWiE021', '.wi4-c-fl .wi4-tile')) },
+      e20: { xd: row('recWiE020').classList.contains('wi4-xd'), row: op(row('recWiE020')), nat: eff(q('recWiE020', '.wi4-c-fl .wi4-tile')) },
+      g3: (() => { const r = row('recWiE012'); const l = r && r.querySelector('.wi4-c-exp .wi4-leg'); return { cls: l ? l.className : null, eff: l ? eff(l) : null }; })(),
+      // ΠΡΟΣ ΑΝΑΘΕΣΗ / Χωρίς εξαγωγή / red rails anywhere on the board: never faded.
+      work: [...document.querySelectorAll('#content .wi4 :is(.wi4-box.un, .wi4-noexp, .wi4-gap, .wi4-r-red)')].map(eff).filter(v => v < 1).length,
+    };
+  }, [ROW_JS]);
+  const r = await read();
+  ok(scn, 'every leg drawn delivered (partner, no import): the WHOLE row fades to 0.4, assignment included, no second fade inside', r.e2.xd && r.e2.row === 0.4 && r.e2.asg === 0.4 && r.e2.leg === 0.4, r.e2);
+  ok(scn, 'export Delivered: its leg 0.4; the row stays (its import is still running)', !r.e1.xd && r.e1.row === 1 && r.e1.exp === 0.4 && r.e1.asg === 1, r.e1);
+  ok(scn, 'import In Transit: only the left half fades (date/ref + loadings 0.4), consignee and pallets stay 1', r.e1.iDate === 0.4 && r.e1.iFrom === 0.4 && r.e1.iTo === 1 && r.e1.iPal === 1, r.e1);
+  ok(scn, 'a row with «Κενό γύρισμα» never fades whole: the delivered export 0.4, the gap 1', !r.e6.xd && r.e6.exp === 0.4 && r.e6.gap === 1, r.e6);
+  ok(scn, 'red rail from «Κενό γύρισμα» (E010, In Transit): row and rail at 1, the loaded half 0.4, the gap 1', r.e10.red && r.e10.row === 1 && r.e10.date === 0.4 && r.e10.from === 0.4 && r.e10.to === 1 && r.e10.gap === 1, r.e10);
+  ok(scn, 'per point: E019\'s stamped delivery 0.4, the next delivery 1, the leg itself not faded', r.e19.p1 === 0.4 && r.e19.p2 === 1 && !/wi4-xd-/.test(r.e19.leg), r.e19);
+  ok(scn, 'VS export delivered abroad, national leg still Assigned: the row stays, only the intl leg fades, the national tile 1', !r.e21.xd && r.e21.exp === 0.4 && r.e21.nat === 1, r.e21);
+  ok(scn, 'VS export delivered, national leg Delivered: the whole row fades, tile included (0.4, never 0.16)', r.e20.xd && r.e20.row === 0.4 && r.e20.nat === 0.4, r.e20);
+  ok(scn, 'groupage with a cancelled member, the others delivered: the leg is done (0.4)', /wi4-xd-done/.test(r.g3.cls || '') && r.g3.eff === 0.4, r.g3);
+  ok(scn, 'nothing that needs work is faded (ΠΡΟΣ ΑΝΑΘΕΣΗ, Χωρίς εξαγωγή, Κενό γύρισμα, red rail)', r.work === 0, r);
+  await shot(page, 'done');
+  // Hover brings a faded row back to full.
+  await page.evaluate(([js]) => eval(js)('recWiE002').setAttribute('data-rig-done', '1'), [ROW_JS]);
+  await page.hover('[data-rig-done="1"] .wi4-c-exp');
+  const hov = await page.evaluate(() => +getComputedStyle(document.querySelector('[data-rig-done="1"]')).opacity);
+  ok(scn, 'hover: the faded row is back at 1', hov === 1, hov);
+  await page.mouse.move(5, 5);
+  // A search that leaves them out: .35, never .35 × .4.
+  const box = page.locator('#content .wi4 .wi4-search input');
+  await box.fill('REF-E019'); await page.waitForTimeout(300);
+  const dim = await page.evaluate(([js]) => {
+    const row = eval(js);
+    const eff = el => { let v = 1; for (let x = el; x && !x.classList.contains('wi4'); x = x.parentElement) v *= +getComputedStyle(x).opacity; return Math.round(v * 100) / 100; };
+    return { e2: eff(row('recWiE002')), e2leg: eff(row('recWiE002').querySelector('.wi4-c-exp .wi4-leg')), e1exp: eff(row('recWiE001').querySelector('.wi4-c-exp .wi4-leg')),
+      e1iTo: eff(row('recWiE001').querySelector('.wi4-c-imp .wi4-l-to')) };
+  }, [ROW_JS]);
+  ok(scn, 'search-dimmed rows: 0.35 everywhere, never a second fade (0.14)', dim.e2 === 0.35 && dim.e2leg === 0.35 && dim.e1exp === 0.35 && dim.e1iTo === 0.35, dim);
+  // Hover on a done row the filter left out: .35 like the others, never lit (review 21/10 #2).
+  await page.hover('[data-rig-done="1"] .wi4-c-exp');
+  const dimHov = await page.evaluate(() => +getComputedStyle(document.querySelector('[data-rig-done="1"]')).opacity);
+  ok(scn, 'hover on a done row the search left out stays 0.35', dimHov === 0.35, dimHov);
+  await page.mouse.move(5, 5);
+  await box.fill(''); await page.waitForTimeout(300);
+  // Still clickable: a click on the faded leg opens its order, as before.
+  await page.click('[data-rig-done="1"] .wi4-c-exp .wi4-leg .wi4-l-to'); await page.waitForTimeout(500);
+  const opened = await page.evaluate(() => !!(document.querySelector('#modalOverlay.open') || document.querySelector('.mf-overlay')));
+  ok(scn, 'a click on a faded leg still opens its order', opened);
+  ok(scn, 'display only: nothing written; no page errors', !writes(S).length && !S.pageErrors.length, { w: writes(S), e: S.pageErrors });
+  await page.context().close();
+}
+
+// F5 FE-1 Ε1/Ε20 (plan 2026-10-28, Task F): after day L the national tiles read /plan/vs-state for a VS with a
+// bridge and NATIONAL LOADS only for the ones the base answers «missing». Judged by what was READ (the NL filter,
+// the /plan calls) and what the tile says; done = all_executed, never the NL Status. And: a failed vs-state read
+// = every VS tile «unknown», never «δεν υπάρχει εθνικό».
+const V5_AFTER = { cutover_day: '2026-10-03', opened_at: '2026-10-02T13:30:00Z', writes_open: false };
+function v5Week(db) {
+  const vs = (id, nl, st) => { const o = db[T.ORDERS].find(r => r.id === id).fields; o['Veroia Switch'] = true; o.Status = 'Delivered';
+    db[T.NAT_LOADS].push({ id: nl, fields: { 'Source Order': [id], Partner: ['recWiP001'], 'Is Partner Trip': true, 'Partner Truck Plates': 'PRT-399', Status: st } }); };
+  // both NL rows exist (soft-deleted by the bridge in real life): if the screen read them, the tiles would say PRT-399
+  vs('recWiE021', 'recWiN921', 'Assigned');
+  vs('recWiE020', 'recWiN920', 'Assigned');
+}
+async function scnV5(browser, origin) {
+  const scn = 'v5';
+  const vsMap = {
+    recWiE021: { carriers: [{ kind: 'owned', text: 'TST-V5 / Driver V5', code: 'R1', hub_day: '2026-10-07' }], all_executed: false, all_planned: true, first_hub_day: '2026-10-07', n_pieces: 1 },
+    recWiE020: { carriers: [{ kind: 'partner', text: 'Partner V5', code: 'R2', hub_day: '2026-10-07' }], all_executed: true, all_planned: true, first_hub_day: '2026-10-07', n_pieces: 1 },
+  };
+  const { page, S } = await openBoard(browser, origin, { mutate: v5Week, plan: { config: V5_AFTER, vs: vsMap } });
+  await settle(page, S, 2600);
+  const r = await page.evaluate(([js]) => {
+    const row = eval(js);
+    const tile = oid => { const x = row(oid); const t = x && x.querySelector('.wi4-c-fl .wi4-tile'); return t ? t.textContent.trim() : null; };
+    const eff = el => { let v = 1; for (let x = el; x && !x.classList.contains('wi4'); x = x.parentElement) v *= +getComputedStyle(x).opacity; return Math.round(v * 100) / 100; };
+    return { e21: tile('recWiE021'), e20: tile('recWiE020'), e20xd: row('recWiE020').classList.contains('wi4-xd'), e21xd: row('recWiE021').classList.contains('wi4-xd'),
+      e20nat: eff(row('recWiE020').querySelector('.wi4-c-fl .wi4-tile')), nl: WINTL.data.nlState,
+      src: Object.fromEntries(Object.entries(WINTL.data.natBySrc || {}).map(([k, v]) => [k, v.src])) };
+  }, [ROW_JS]);
+  ok(scn, 'a bridged VS shows the carrier of the base (TST-V5 / Driver V5), not its old NL (PRT-399)', /TST-V5/.test(r.e21 || '') && !/PRT-399/.test(r.e21 || ''), r);
+  ok(scn, 'a bridged partner VS shows the partner name of the base', /Partner V5/.test(r.e20 || ''), r);
+  ok(scn, 'done = all_executed: E020 fades whole (its NL says Assigned), E021 does not', r.e20xd && r.e20nat === 0.4 && !r.e21xd, r);
+  ok(scn, 'natBySrc: the two bridged ones from v5, the rest from NL; nlState ok', r.src.recWiE021 === 'v5' && r.src.recWiE020 === 'v5' && r.nl === 'ok'
+    && Object.entries(r.src).filter(([k]) => !['recWiE021', 'recWiE020'].includes(k)).every(([, v]) => v === 'nl'), r.src);
+  const nlReads = S.gets.filter(g => g.tid === T.NAT_LOADS && /Source Order/.test(g.f)).map(g => g.f);
+  ok(scn, 'the NATIONAL LOADS read asks only for the «missing» ones (never E020/E021)', nlReads.length === 1 && !/recWiE02[01]/.test(nlReads[0]), nlReads);
+  ok(scn, 'one /plan/config, one gate, one vs-state (≤500 ids per call)', S.planGets.filter(g => g === '/plan/config').length === 1
+    && S.planGets.filter(g => g.startsWith('/pallets/gate')).length === 1 && S.planGets.filter(g => g.startsWith('/plan/vs-state')).length === 1, S.planGets);
+  await shot(page, 'v5');
+  ok(scn, 'display only: nothing written; no page errors', !writes(S).length && !S.pageErrors.length, { w: writes(S), e: S.pageErrors });
+  await page.context().close();
+}
+async function scnV5Err(browser, origin) {
+  const scn = 'v5err';
+  const { page, S } = await openBoard(browser, origin, { mutate: v5Week, plan: { config: V5_AFTER, failVs: true } });
+  await settle(page, S, 2600);
+  const r = await page.evaluate(() => ({ nl: WINTL.data.nlState, unk: document.querySelectorAll('#content .wi4 .wi4-tile.unk').length,
+    miss: [...document.querySelectorAll('#content .wi4 .wi4-tile')].filter(t => /δεν υπάρχει εθνικό/.test(t.textContent)).length,
+    un: [...document.querySelectorAll('#content .wi4 .wi4-tile.un')].filter(t => /ΠΡΟΣ ΑΝΑΘΕΣΗ/.test(t.textContent)).length }));
+  ok(scn, 'vs-state 500 → nlState err; VS tiles «unknown»; none says «δεν υπάρχει εθνικό»', r.nl === 'err' && r.unk >= 2 && r.miss === 0, r);
+  ok(scn, 'no NATIONAL LOADS read after the failed vs-state (no half answer)', !S.gets.some(g => g.tid === T.NAT_LOADS && /Source Order/.test(g.f)), S.gets.filter(g => g.tid === T.NAT_LOADS));
+  await shot(page, 'v5err');
   ok(scn, 'nothing written; no page errors', !writes(S).length && !S.pageErrors.length, { w: writes(S), e: S.pageErrors });
   await page.context().close();
 }
@@ -3938,6 +4219,97 @@ async function vsSubmit(page, S) {
 }
 const vsSaid = (evs, re) => evs.some(e => (e.k === 'toast' || e.k === 'errtoast' || e.k === 'reportError') && re.test(String(e.a[0])));
 const vsLogged = (evs, re) => evs.some(e => e.k === 'logError' && re.test(JSON.stringify(e.a)));
+// F5 FE-1 (plan 2026-10-28, Task F) — the international ORDER FORM opened and saved for real (CLAUDE.md «ΔΕΝ
+// ΣΤΕΛΝΟΥΜΕ ΑΔΟΚΙΜΑΣΤΗ ΔΗΜΙΟΥΡΓΙΑ ΠΑΡΑΓΓΕΛΙΩΝ»). Judged on the table: which ORDER STOPS records were PATCHed or
+// deleted, and whether NATIONAL LOADS was read or written at all.
+//   before   the live Worker (404 /plan/config): removing the MIDDLE delivery keeps the third its own record
+//            (renumbered), deletes the second — and the VS chain writes the national load as today.
+//   after    a bridge: the save writes NO national load and reads none; the stage says what the base made.
+//   missing  after, VS on, no bridge: ✗ in words, nothing national written.
+async function scnVsForm(browser, origin) {
+  const U3 = 'recWiVS05';
+  const world = db => {
+    vsWorld(db);
+    db[T.ORDER_STOPS].push({ id: U3, fields: { 'Parent Order': [VS.O], 'Stop Type': 'Unloading', 'Stop Number': 3, Location: ['recWiL006'], Pallets: 4, DateTime: '2026-10-09T07:00:00.000Z' } });
+    const o = db[T.ORDERS].find(r => r.id === VS.O).fields;
+    o['ORDER STOPS'] = [VS.L, VS.U1, VS.U2, U3, VS.CD]; o['Unloading Location 3'] = ['recWiL006'];
+  };
+  const stopWrites = (S, l0) => S.log.slice(l0).filter(x => x.tid === T.ORDER_STOPS && (x.k === 'patch' || x.k === 'delete'))
+    .map(x => [x.k, x.id, x.k === 'patch' ? x.fields['Stop Number'] : null]).filter(x => [VS.U1, VS.U2, U3].includes(x[1]));
+  // the VS chain's own read of this order's national load ({Source Record}, _syncVeroiaSwitch); the board's
+  // re-read after a save (FIND on {Source Order}, for the VS the base answers «missing») is the board's, not the form's
+  const natTouch = (S, l0, g0) => ({ w: S.log.slice(l0).filter(x => x.tid === T.NAT_LOADS).length,
+    r: S.gets.slice(g0).filter(g => g.tid === T.NAT_LOADS && /\{Source Record\}/.test(g.f || '') && (g.f || '').includes(VS.O)).length });
+  let scn = 'vsform.before';
+  {
+    const { page, S } = await openBoard(browser, origin, { vs: true, mutate: world });
+    await vsOpenForm(page);
+    const rows = await page.evaluate(() => [1, 2, 3].map(i => (document.getElementById('sid_u_' + i) || {}).value || null));
+    ok(scn, 'each delivery row carries its record id', JSON.stringify(rows) === JSON.stringify([VS.U1, VS.U2, 'recWiVS05']), rows);
+    await page.evaluate(() => _removeStop('u', 2));
+    const l0 = S.log.length, g0 = S.gets.length;
+    const ev = await vsSubmit(page, S);
+    const sw = stopWrites(S, l0);
+    ok(scn, 'middle delivery removed: U1 stays #1, U3 keeps ITS record as #2, U2 is deleted (never U3 deleted)',
+      sw.some(x => x[0] === 'patch' && x[1] === VS.U1 && x[2] === 1) && sw.some(x => x[0] === 'patch' && x[1] === U3 && x[2] === 2)
+      && sw.some(x => x[0] === 'delete' && x[1] === VS.U2) && !sw.some(x => x[0] === 'delete' && x[1] === U3) && !sw.some(x => x[0] === 'patch' && x[1] === VS.U2), sw);
+    const nt = natTouch(S, l0, g0);
+    ok(scn, 'before day L the VS chain still reads and writes the national load (today\'s behaviour)', nt.r > 0 && nt.w > 0, nt);
+    ok(scn, 'the stage said ✓ «Το εθνικό φορτίο συγχρονίστηκε»', vsSaid(ev, /Το εθνικό φορτίο συγχρονίστηκε/), ev.map(e => e.a && e.a[0]).slice(-8));
+    ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  const after = { cutover_day: '2026-10-03', opened_at: '2026-10-02T13:30:00Z', writes_open: false };
+  scn = 'vsform.after';
+  {
+    const { page, S } = await openBoard(browser, origin, { vs: true, mutate: world,
+      plan: { config: after, vs: { [VS.O]: { carriers: [], all_executed: false, all_planned: false, first_hub_day: '2026-10-07', n_pieces: 2 } } } });
+    await vsOpenForm(page);
+    const l0 = S.log.length, g0 = S.gets.length, p0 = S.planGets.length;
+    const ev = await vsSubmit(page, S);
+    const nt = natTouch(S, l0, g0);
+    ok(scn, 'after day L the save writes NO national load and reads none', nt.w === 0 && nt.r === 0, nt);
+    ok(scn, 'the order itself and its stops were saved', S.log.slice(l0).some(x => x.tid === T.ORDERS && x.k === 'patch' && x.id === VS.O)
+      && S.log.slice(l0).some(x => x.tid === T.ORDER_STOPS && x.k === 'patch'), S.log.slice(l0).map(x => [x.k, x.tid, x.id]).slice(0, 12));
+    ok(scn, 'the stage says what the base made: «VS chain: η βάση έφτιαξε την εθνική πλευρά (2 κομμάτια) ✓»', vsSaid(ev, /η βάση έφτιαξε την εθνική πλευρά \(2 κομμάτια\)/), ev.map(e => e.a && e.a[0]).slice(-8));
+    ok(scn, 'the order\'s VS side read through gate + vs-state («after» is final: no second /plan/config)', S.planGets.slice(p0).includes('/pallets/gate?order_recs=' + VS.O)
+      && S.planGets.slice(p0).includes('/plan/vs-state?order_ids=' + (S.db[T.ORDERS].findIndex(o => o.id === VS.O) + 1)) && !S.planGets.slice(p0).includes('/plan/config'), S.planGets.slice(p0));
+    ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  scn = 'vsform.missing';
+  {
+    const { page, S } = await openBoard(browser, origin, { vs: true, mutate: world, plan: { config: after, vs: {} } });
+    await vsOpenForm(page);
+    const l0 = S.log.length, g0 = S.gets.length;
+    const ev = await vsSubmit(page, S);
+    const nt = natTouch(S, l0, g0);
+    ok(scn, 'VS on, the base has no bridge: ✗ «δεν δημιουργήθηκε εθνικό σκέλος», never ✓', vsSaid(ev, /δεν δημιουργήθηκε εθνικό σκέλος|συγχρονισμός εθνικού φορτίου απέτυχε/i)
+      && !vsSaid(ev, /Το εθνικό φορτίο συγχρονίστηκε|η βάση έφτιαξε/), ev.map(e => e.a && e.a[0]).slice(-8));
+    ok(scn, 'logged as an app error (the form\'s VS sync line)', ev.filter(e => e.k === 'logError' && /orders_intl form: VS sync/.test(JSON.stringify(e.a))).length === 1, ev.filter(e => e.k === 'logError').map(e => JSON.stringify(e.a).slice(0, 160)));
+    ok(scn, 'nothing national written or read', nt.w === 0 && nt.r === 0, nt);
+    await page.context().close();
+  }
+}
+
+// F5 FE-1 / Ε19: deleting a VS order whose delete has consequences (Worker deploy 1 → 428 + preview). Judged on
+// the DELETEs that reached the fake Worker: one without a token (428, never resent), then — after the user read the
+// consequences in words — one with ?confirm_token=. Dialogs are accepted (the user's «yes»).
+async function scnDel428(browser, origin) {
+  const scn = 'del428';
+  const { page, S } = await openBoard(browser, origin, { vs: true, mutate: vsWorld, plan: { del428: true } });
+  const asked = []; page.on('dialog', d => asked.push(d.message()));
+  const l0 = S.log.length;
+  await page.evaluate(id => { window.__p = deleteIntlOrder(id); }, VS.O);
+  await page.evaluate(() => Promise.resolve(window.__p).catch(() => {}));
+  await settle(page, S, 1500);
+  const dl = S.log.slice(l0).filter(x => x.k === 'delete' && x.tid === T.ORDERS && x.id === VS.O).map(x => [x.status || 200, x.tok || null]);
+  ok(scn, 'one DELETE without a token (428), then ONE with ?confirm_token=tok-rig — never resent', JSON.stringify(dl) === JSON.stringify([[428, null], [200, 'tok-rig']]), dl);
+  ok(scn, 'the consequences were shown in words before the second DELETE', asked.some(t => /Αποσύρει 2 κομμάτια εθνικής πλευράς/.test(t) && /Σβήνει 4 στάσεις/.test(t)), asked);
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await page.context().close();
+}
+
 async function scnVs(browser, origin) {
   let scn = 'vs.assign';
   const { page, S } = await openBoard(browser, origin, { vs: true, mutate: vsWorld });
@@ -4087,8 +4459,8 @@ async function scnVs(browser, origin) {
     const S = { paint: scnPaint, invariants: scnInvariants, relay: scnRelay, scans: scnScans, unknown: scnUnknown, drops: scnDrops, join: scnJoin, menu: scnMenu,
       date: scnDate, keys: scnKeys, search: scnSearch, savefail: scnSaveFail, presence: scnPresence, conflict: scnConflict, fallback: scnFallback, styles: scnStyles,
       twins: scnTwins, queue: scnQueue, unread: scnUnread,
-      print: scnPrint, shift: scnShift, late: scnLate, offline: scnOffline, quiet: scnQuiet, natmissing: scnNatMissing, w1440: scnW1440, parity: scnParity,
-      vs: scnVs };
+      print: scnPrint, shift: scnShift, late: scnLate, offline: scnOffline, quiet: scnQuiet, natmissing: scnNatMissing, done: scnDone, w1440: scnW1440, parity: scnParity,
+      vs: scnVs, v5: scnV5, v5err: scnV5Err, vsform: scnVsForm, del428: scnDel428 };
     // A watchdog per scenario: one missing locator or one write that never
     // settles fails THAT scenario, closes its pages, and the run goes on.
     const WATCHDOG_MS = 360000;

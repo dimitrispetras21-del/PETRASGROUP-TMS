@@ -1,4 +1,4 @@
-// The 060 dry run (worker/migrations/drafts/060_local_relay_dryrun.sql) is GENERATED from 060 — same idea as the
+// The 060 dry run (worker/migrations/060_local_relay_dryrun.sql) is GENERATED from 060 — same idea as the
 // 057 pair and the 047b seed-drift test: a hand-edited or stale copy would «prove» statements the owner will never
 // run that evening (principle 3). Its behaviour on a production-shaped database (the result line, nothing kept, a
 // broken guard speaking with its own message) needs order_soft_delete_unlink / dl_v_entries at their measured md5,

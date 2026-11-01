@@ -98,10 +98,14 @@ async function _rampLoad() {
   // Reduces 3 parallel API calls → 1 call
   // Stock requires EXPLICIT 'In Stock' (blank is ambiguous, don't auto-count)
   const combinedFilter = `OR(IS_SAME({Plan Date},'${RAMP.date}','day'),AND({Type}='Παραλαβή',{Status}='Done',{Stock Status}='In Stock'),{Postponed To}!=BLANK())`;
-  const allRamp = await atGetAll(TABLES.RAMP,{filterByFormula:combinedFilter,fields:RAMP_FIELDS},false);
+  const [allRamp, v5] = await Promise.all([
+    atGetAll(TABLES.RAMP,{filterByFormula:combinedFilter,fields:RAMP_FIELDS},false),
+    _rampV5Load(RAMP.date),
+  ]);
+  RAMP.v5 = v5;
 
   // Split results client-side
-  const recs = allRamp.filter(r => toLocalDate(r.fields['Plan Date']) === RAMP.date);
+  const recs = allRamp.filter(r => toLocalDate(r.fields['Plan Date']) === RAMP.date).concat(v5.rows);
   const stock = allRamp.filter(r => r.fields['Type']==='Παραλαβή' && r.fields['Status']==='Done' && r.fields['Stock Status']==='In Stock');
   const postponed = allRamp.filter(r => r.fields['Postponed To'] && toLocalDate(r.fields['Postponed To']) === RAMP.date);
 
@@ -109,6 +113,150 @@ async function _rampLoad() {
   RAMP.records=recs;
   RAMP.stock=stock;
   RAMP.postponed=postponed;
+}
+
+/* ── NATIONAL v5 AT VEROIA (F5, spec §5 Ε14) ─────────────────── */
+// From day L the national leg at Veroia lives in v5 (rt_stops of the hub), not in NL: 074 soft-deletes the NLs of
+// hub day ≥ L and 022's trigger takes their RAMP rows with them, and the base refuses new NLs. These rows are READ
+// from GET /plan/board on every load and never written to RAMP: a copy would drift from the board the national
+// desk edits (principle 3). v5 computes execution from the day (spec §2.3) and moves times on the board, so the rows
+// carry no Done / Postpone / time edit. Before L (PlanConfig 'before') nothing here asks /plan/board and nothing is
+// drawn: the page is today's page. 'unknown' reads anyway (harmless: v5 has no rows before L) and says so.
+// Plan docs/superpowers/plans/2026-10-28-f5-national-v5-cutover.md §10 (d2).
+const _rampV5Logged = new Set();
+function _rampV5Log(e, where) {
+  // once per message per tab: the 2′ auto-refresh must not write the same app_errors row every tick
+  const k = where + '|' + (e && e.message);
+  if (_rampV5Logged.has(k)) return;
+  _rampV5Logged.add(k);
+  try { if (typeof logError === 'function') logError(e, where); } catch (_) { /* reporting never cascades */ }
+}
+async function _rampPlanState() {
+  if (typeof PlanConfig === 'undefined') {
+    _rampV5Log(new Error('core/plan-config.js not loaded'), 'daily_ramp v5: PlanConfig');
+    return 'unknown';
+  }
+  try { return (await PlanConfig.load()).state; } catch (e) { _rampV5Log(e, 'daily_ramp v5: PlanConfig.load'); return 'unknown'; }
+}
+// The hub's numeric id: the catalogue's is_hub (one GET /plan/lookups per session), else the board's own VS
+// (WN5L.hubFromBoard, the rule the v5 board uses). Never a name or a legacy id.
+async function _rampHubId(board, errors) {
+  if (typeof PlanIds !== 'undefined') {
+    try { const r = await PlanIds.load(); if (r && r.ok) { const h = PlanIds.hub(); if (h != null) return h; } } catch (_) { /* falls back below */ }
+  }
+  return typeof WN5L !== 'undefined' ? WN5L.hubFromBoard(board, errors) : null;
+}
+async function _rampV5Load(day) {
+  const state = await _rampPlanState();
+  if (state === 'before') return { state, rows: [], err: null };
+  const week = TmsWeek.startOfDate(day);
+  if (!week) return { state, rows: [], err: null };      // a cleared date input: no day, nothing to ask
+  let board;
+  try {
+    board = await planFetch('GET', '/plan/board?week=' + week);
+    if (!board || typeof board !== 'object' || board.week !== week
+        || !Array.isArray(board.cycles) || !Array.isArray(board.waiting) || !Array.isArray(board.hub)) {
+      const e = new Error('Η απάντηση του Εβδομαδιαίου Εθνικών ήρθε σε άγνωστη μορφή');
+      _rampV5Log(e, 'daily_ramp v5: board shape');
+      return { state, rows: [], err: e };
+    }
+  } catch (e) {
+    // planFetch logs what is not a designed answer; every role has GET board, so a designed one is a bug too
+    if (e && e._sessionGone) return { state, rows: [], err: null };
+    if (e && typeof PlanApi !== 'undefined' && PlanApi.isDesigned(e)) _rampV5Log(e, 'daily_ramp v5: board');
+    return { state, rows: [], err: e || new Error('board') };
+  }
+  // hub[] items are at the hub by definition (071 at_hub); only stops and waiting pieces need its id
+  const needsHub = board.cycles.some(c => (c.stops || []).length) || board.waiting.length > 0;
+  const errors = [];
+  const hubId = needsHub ? await _rampHubId(board, errors) : null;
+  if (errors.length || (hubId == null && needsHub)) {
+    const e = new Error(errors[0] || 'Δεν βρέθηκε ο κόμβος Βέροιας');
+    _rampV5Log(e, 'daily_ramp v5: hub');
+    return { state, rows: [], err: e };
+  }
+  try { return { state, rows: _rampV5Rows(board, day, hubId), err: null }; }
+  catch (e) { _rampV5Log(e, 'daily_ramp v5: board shape'); return { state, rows: [], err: e }; }
+}
+// The vehicle at one stop: with 072b a cycle may change truck at a point (segments[].stop_ids), so a hub stop
+// names ITS segment's vehicle, never blindly the cycle's. WN5L.segmentsOf is the board's own reading (a 072 board
+// without segments = one segment from the cycle); a malformed list throws, and the caller shows the red strip.
+function _rampVehicleAt(c) {
+  const segs = typeof WN5L !== 'undefined' ? WN5L.segmentsOf(c).segments : [c];
+  const byStop = new Map();
+  for (const g of segs) for (const id of g.stop_ids || []) byStop.set(id, g);
+  return stopId => {
+    // one segment = the whole cycle; with several, a stop in none of them is a board this screen cannot read:
+    // «—» and logged, never the first segment's truck by guess
+    const g = segs.length === 1 ? segs[0] : byStop.get(stopId);
+    if (!g) { _rampV5Log(new Error(`κύκλος ${c.rt_id}: η στάση ${stopId} δεν ανήκει σε τμήμα οχήματος`), 'daily_ramp v5: segments'); return { vehicle: '', driver: '' }; }
+    return { vehicle: g.trip_type === 'PARTNER' ? g.partner : g.truck, driver: g.driver };
+  };
+}
+// One ramp line per (hub stop of the day, load | unload), plus the pieces no truck carries yet that today's NL
+// would have shown: a piece that STARTS at Veroia (VS import, a national from Veroia) on its ready day, and a piece
+// heading TO Veroia on its due day. A piece that came in on a cycle and waits at the hub is stock, not a movement:
+// its arrival is already the cycle's unload line.
+function _rampV5Rows(board, day, hubId) {
+  const isHub = id => hubId != null && id != null && Number(id) === Number(hubId);
+  const d10 = v => (v == null ? '' : String(v).slice(0, 10));
+  const rows = [];
+  for (const c of board.cycles) {
+    const stops = Array.isArray(c.stops) ? c.stops : [];
+    // every leg appears at its pickup AND its drop stop: the far end of a hub line is the leg's other stop
+    const at = new Map();
+    for (const s of stops) for (const l of s.legs || []) { if (!at.has(l.leg_id)) at.set(l.leg_id, []); at.get(l.leg_id).push(s); }
+    let vehicleAt = null;      // read only for a cycle that has a hub stop on this day
+    for (const s of stops) {
+      if (!isHub(s.location_id) || d10(s.stop_day) !== day) continue;
+      for (const act of ['unload', 'load']) {
+        const legs = (s.legs || []).filter(l => l.act === act);
+        if (!legs.length) continue;
+        const far = [...new Set(legs.flatMap(l => (at.get(l.leg_id) || []).filter(o => o !== s).map(o => o.location)).filter(Boolean))];
+        vehicleAt = vehicleAt || _rampVehicleAt(c);
+        rows.push(_rampV5Rec(`stop:${s.stop_id}:${act}`, Object.assign({ day, act, items: legs, time: s.planned_from, far, executed: s.executed === true }, vehicleAt(s.stop_id))));
+      }
+    }
+  }
+  for (const h of board.hub) {
+    if (h.inbound_rt_id == null && d10(h.nat_ready_day) === day) rows.push(_rampV5Rec(`hub:${h.piece_id}`, { day, act: 'load', items: [h], pending: true }));
+  }
+  for (const w of board.waiting) {
+    if (isHub(w.nat_to_location_id) && d10(w.nat_due_day) === day) rows.push(_rampV5Rec(`wait:${w.piece_id}`, { day, act: 'unload', items: [w], pending: true }));
+  }
+  return rows;
+}
+function _rampV5Rec(key, o) {
+  const uniq = a => [...new Set(a)];
+  const clients = uniq(o.items.map(x => x.client).filter(Boolean));
+  const temps = uniq(o.items.map(x => x.temperature_c).filter(v => v != null && v !== '').map(String));
+  const vs = o.items.some(x => x.kind === 'vs_import' || x.kind === 'vs_export');
+  const pal = Math.round(o.items.reduce((s, x) => s + (Number(x.pallets) || 0), 0) * 10) / 10;
+  // F1/F4 (owner 28/10, 080): a v5 piece may have no pallets yet (null). 'Pallets' stays the known number (the KPIs
+  // add it up); the line SAYS the unknown («12+;», «;») through _palText, never a 0 or a blank that looks counted
+  const palUnk = o.items.filter(x => x.pallets == null).length;
+  // one rule: core/wn5-logic.js (loaded before this file); without it the line still says «;», never a bare number
+  const palText = !palUnk ? '' : typeof WN5L !== 'undefined' && WN5L.palText ? WN5L.palText(pal, palUnk) : ';';
+  const t = o.time ? new Date(o.time) : null;
+  const isIn = o.act === 'unload';
+  const far = (o.far || []).join(' / ');
+  return { id: 'v5:' + key, _v5: { pending: !!o.pending }, fields: {
+    'Plan Date': o.day, 'Time': t && !isNaN(t) ? t.toISOString() : '',
+    'Type': isIn ? 'Παραλαβή' : 'Φόρτωση', 'Status': o.executed ? 'Done' : 'Planned',
+    'Pallets': pal, '_palText': palText, 'Supplier/Client': clients.join(' / ') || '—', 'Goods': '', 'Temperature': temps.join(' / '),
+    'Is Veroia Switch': vs, 'Ramp Category': vs ? 'VS Simple' : '',
+    'Loading Points': isIn ? far : '', 'Delivery Points': isIn ? '' : far,
+    // plate / partner and driver come as names from the board, not as facade links
+    '_v5Truck': o.vehicle || '', '_v5Driver': o.driver || '',
+  } };
+}
+function _rampV5Strip() {
+  const v = RAMP.v5;
+  if (!v || v.state === 'before') return '';
+  const box = (color, text, retry) => `<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 var(--space-4);padding:8px 12px;border:1px solid ${color};border-radius:var(--radius);color:${color};font-size:var(--text-sm);background:var(--surface-card)"><span>${text}</span>${retry ? '<button class="btn btn-primary btn-sm" onclick="renderDailyRamp()">Ξαναδοκίμασε</button>' : ''}</div>`;
+  if (v.err) return box('var(--danger)', 'Οι εθνικές κινήσεις v5 δεν διαβάστηκαν — η ράμπα δείχνει μόνο τις υπόλοιπες.', true);
+  if (v.state === 'unknown') return box('var(--warning)', 'Η κατάσταση μετάβασης εθνικών (v5) δεν διαβάστηκε — οι εθνικές κινήσεις v5 διαβάστηκαν από το Εβδομαδιαίο Εθνικών.', true);
+  return '';
 }
 
 /* ── AUTO-SYNC: Create RAMP records from ORDER_STOPS (single source of truth) ── */
@@ -373,8 +521,9 @@ function _rampResolveFromStops(stops, stopType) {
 }
 
 /* ── HELPERS (using shared data-helpers.js) ───────────────────── */
-const _rTruck=f=>getTruckPlate(getLinkedId(f['Truck']))||'';
-const _rDriver=f=>getDriverName(getLinkedId(f['Driver']))||'';
+// a v5 line (Ε14) carries the board's names; every other line resolves its facade link
+const _rTruck=f=>f['_v5Truck']!==undefined?f['_v5Truck']:(getTruckPlate(getLinkedId(f['Truck']))||'');
+const _rDriver=f=>f['_v5Driver']!==undefined?f['_v5Driver']:(getDriverName(getLinkedId(f['Driver']))||'');
 // Strip internal markers that must never leak to the UI:
 //   - `STOP:recXXXXXX...` (sync-correlation markers written to Notes)
 //   - Bare Airtable record IDs (14-17 char strings starting with "rec")
@@ -420,6 +569,11 @@ function _rampDraw() {
   const inPal=inb.reduce((s,r)=>s+(r.fields['Pallets']||0),0);
   const outPal=out.reduce((s,r)=>s+(r.fields['Pallets']||0),0);
   const net=inPal-outPal;
+  // F1/F4 (080): v5 lines whose pallets are not all known (_palText): the sums are a floor and say «+;», never complete
+  const inUnk=inb.some(r=>r.fields['_palText']), outUnk=out.some(r=>r.fields['_palText']);
+  const unkTag=(u)=>u?'+;':'';
+  // the net with unknowns is not a floor: unknown IN pieces raise it, unknown OUT pieces lower it — «+;», «−;», «±;»
+  const netTag=inUnk&&outUnk?'±;':inUnk?'+;':outUnk?'−;':'';
   const total=recs.length;
   const done=recs.filter(r=>r.fields['Status']==='Done').length;
   const stockPal=RAMP.stock.reduce((s,r)=>s+(r.fields['Pallets']||0),0);
@@ -478,15 +632,15 @@ function _rampDraw() {
       </select>
       <span class="entity-count-chip" id="rampFilterCount">${recs.length}${recs.length!==RAMP.records.length?' / '+RAMP.records.length:''}</span>
     </div>
-    <div class="ramp-kpis">
+    ${_rampV5Strip()}<div class="ramp-kpis">
       <div class="ramp-kpi ramp-kpi-primary"><div class="ramp-kpi-lbl">${_i('check_circle', 11)} Πρόοδος</div>
         <div><span class="ramp-kpi-val" style="color:${total?Math.round(done/total*100)>=80?'var(--success)':'var(--accent)':'var(--text-dim)'}">${total?Math.round(done/total*100):0}%</span><span class="ramp-kpi-sub">${done}/${total}</span></div></div>
       <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('arrow_down_left', 11)} Εισερχόμενα σήμερα</div>
-        <div><span class="ramp-kpi-val" style="color:var(--panel-ok)">+${inPal}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
+        <div><span class="ramp-kpi-val" style="color:var(--panel-ok)">+${inPal}${unkTag(inUnk)}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
       <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('arrow_up_right', 11)} Εξερχόμενα σήμερα</div>
-        <div><span class="ramp-kpi-val" style="color:var(--panel-accent)">-${outPal}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
+        <div><span class="ramp-kpi-val" style="color:var(--panel-accent)">-${outPal}${unkTag(outUnk)}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
       <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('activity', 11)} Καθαρό σήμερα</div>
-        <div><span class="ramp-kpi-val" style="color:${net>=0?'var(--panel-ok)':'var(--panel-bad)'}">${net>=0?'+':''}${net}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
+        <div><span class="ramp-kpi-val" style="color:${net>=0?'var(--panel-ok)':'var(--panel-bad)'}">${net>=0?'+':''}${net}${netTag}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
       <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('package', 11)} Σύνολο αποθέματος</div>
         <div><span class="ramp-kpi-val" style="color:var(--panel-warn)">${stockPal}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
     </div>
@@ -525,7 +679,7 @@ function _rampDraw() {
           <td>${_rResolveClientStr(f['Supplier/Client']||'—')}</td>
           <td>${escapeHtml((f['Goods']||'').substring(0,25))}</td>
           <td>${escapeHtml(f['Temperature']||'')}</td>
-          <td>${escapeHtml(f['Pallets']||'')}</td>
+          <td>${escapeHtml(f['_palText']||f['Pallets']||'')}</td>
           <td>${movedTo}</td>
           <td><button class="btn btn-primary" style="padding:4px 8px;font-size:11px" onclick="confirmAction('Επαναφορά στο σήμερα;').then(ok=>{if(ok)_rampRestore('${r.id}')})">Επαναφορά</button></td>
         </tr>`;}).join('')}</tbody></table>
@@ -552,14 +706,18 @@ function _rRow(rec,num,tOpts) {
   const client=_rStripMarkers(f['Supplier/Client']||'—')||'—';
   const goods=escapeHtml(_rStripMarkers((f['Goods']||'').substring(0,35)));
   const temp=escapeHtml(f['Temperature']||f['Temperature °C']||'');
-  const pal=escapeHtml(f['Pallets']||'');
+  const pal=escapeHtml(f['_palText']||f['Pallets']||'');
   const truck=escapeHtml(_rTruck(f));
   const isIn=f['Type']==='Παραλαβή';
 
-  const timeSel=`<select class="tinp" onchange="_rampSvTime('${id}',this.value)"><option value="">--:--</option>${tOpts.map(t=>`<option value="${t}"${time===t?' selected':''}>${t}</option>`).join('')}</select>`;
+  const v5=rec._v5;
+  const timeSel=v5?`<span>${time||'—'}</span>`:`<select class="tinp" onchange="_rampSvTime('${id}',this.value)"><option value="">--:--</option>${tOpts.map(t=>`<option value="${t}"${time===t?' selected':''}>${t}</option>`).join('')}</select>`;
   // Labels only. _rampDone() sets Status='Done' itself (γρ. 649) — these words
   // never reach the database, so translating them is safe.
-  const acts=isDone?'<span style="color:var(--success);font-size:11px">✓ Ολοκληρώθηκε</span>'
+  // v5 (Ε14): read-only — the national desk moves it on the board; v5 executes by the day, nobody marks it
+  const acts=v5?(isDone?'<span style="color:var(--success);font-size:11px">✓ Εκτελέστηκε (v5)</span>'
+      :`<span style="color:var(--text-dim);font-size:11px" title="Αλλάζει από το Εβδομαδιαίο Εθνικών">v5 · ${v5.pending?'προς ανάθεση':'Εβδομαδιαίο Εθνικών'}</span>`)
+    :isDone?'<span style="color:var(--success);font-size:11px">✓ Ολοκληρώθηκε</span>'
     :`<button class="btn btn-success" style="padding:4px 12px;font-size:11px" onclick="confirmAction('Σήμανση ως ${isIn?'Παρελήφθη':'Φορτώθηκε'};').then(ok=>{if(ok)_rampDone('${id}','${isIn}')})">${isIn?'Παρελήφθη':'Φορτώθηκε'}</button> <button class="btn btn-ghost" style="padding:4px 12px;font-size:11px" onclick="confirmAction('Αναβολή;').then(ok=>{if(ok)_rampPostpone('${id}')})">Αναβολή</button>`;
 
   // CL sub-rows: parse Notes for supplier breakdown
@@ -622,7 +780,9 @@ function _rTlRow(rec) {
   const isIn=f['Type']==='Παραλαβή';
   const typeBadge=isIn?'<span class="tl-type in">ΕΙΣ</span>':'<span class="tl-type out">ΕΞ</span>';
   // Display only — `status` above keeps the raw 'Planned'/'Done' value.
-  const statusTxt=isDone?'<span style="color:var(--success)">✓ Ολοκληρώθηκε</span>'
+  const statusTxt=rec._v5?(isDone?'<span style="color:var(--success)">✓ Εκτελέστηκε (v5)</span>'
+      :`<span style="color:var(--text-dim)">${rec._v5.pending?'Προς ανάθεση (v5)':'Προγραμματισμένο (v5)'}</span>`)
+    :isDone?'<span style="color:var(--success)">✓ Ολοκληρώθηκε</span>'
     :f['Postponed To']?'<span style="color:var(--warning)">Αναβλήθηκε</span>'
     :'<span style="color:var(--text-dim)">Προγραμματισμένο</span>';
 
@@ -633,7 +793,7 @@ function _rTlRow(rec) {
     <td class="trn">${tlLoc||'—'}</td>
     <td class="trn">${escapeHtml((f['Goods']||'').substring(0,35))}</td>
     <td>${escapeHtml((f['Temperature']||f['Temperature °C'])?((f['Temperature']||f['Temperature °C'])+'°C'):'')}</td>
-    <td>${escapeHtml(f['Pallets']||'')}</td>
+    <td>${escapeHtml(f['_palText']||f['Pallets']||'')}</td>
     <td>${escapeHtml(_rTruck(f)||'—')}</td><td>${escapeHtml(_rDriver(f)||'—')}</td>
     <td>${statusTxt}</td></tr>`;
 }
@@ -647,8 +807,16 @@ function _rampMarkEdit() { _rampEditCooldownUntil = Date.now() + 10000; }  // 10
 function _rampInEditCooldown() { return Date.now() < _rampEditCooldownUntil; }
 
 function _rampSD(d){RAMP.date=d;renderDailyRamp();}
+// A v5 line (Ε14) is not a RAMP row: no write path may take its id, whatever calls it (a stale onclick, the
+// console). Born closed — the national desk changes it on the board.
+function _rampV5Refuse(id){
+  if(!String(id).startsWith('v5:')) return false;
+  toast('Η γραμμή v5 αλλάζει μόνο από το Εβδομαδιαίο Εθνικών','warn');
+  return true;
+}
 async function _rampSvF(id,fld,v){
   if(_rampBlockReadOnly()) return;
+  if(_rampV5Refuse(id)) return;
   _rampMarkEdit();
   try {
     await atSafePatch(TABLES.RAMP,id,{[fld]:v||null});
@@ -672,6 +840,7 @@ function _rampTimeHHMM(raw){
 }
 async function _rampSvTime(id,v){
   if(_rampBlockReadOnly()) return;
+  if(_rampV5Refuse(id)) return;
   // Mark edit cooldown so auto-refresh doesn't overwrite our optimistic update
   // before the indexed read reflects the change.
   _rampMarkEdit();
@@ -695,6 +864,7 @@ async function _rampSvTime(id,v){
 
 async function _rampDone(id,isIn){
   if(_rampBlockReadOnly()) return;
+  if(_rampV5Refuse(id)) return;
   const fields={'Status':'Done'};
   // isIn may arrive as boolean (direct call) or string 'true'/'false' (via onclick template literal).
   // Accept both so Stock Status is set reliably for inbound deliveries.
@@ -709,6 +879,9 @@ async function _rampDone(id,isIn){
     // Inbound (Παραλαβή) Done = goods received at Veroia (Loaded leg complete)
     //   For non-VS orders this also means the order has been loaded → 'In Transit'
     const r = RAMP.records.find(x=>x.id===id);
+    // core/ui.js has ONE #toast: a closing «Done ✓» painted green over the red «ΔΕΝ πέρασε» a sync failure had just
+    // shown (after day L, Q-10's 422 legacy_closed on a historic load). The row IS done; the failure stays on screen.
+    let syncFailed = false;
     if (r) {
       const orderId = getLinkId(r.fields['Order']);
       const natOrderId = getLinkId(r.fields['National Order']);
@@ -729,6 +902,7 @@ async function _rampDone(id,isIn){
           }
         } catch(e) {
           // Heard, not console.warn (audit 13/9): the ramp row is Done but the order stayed on its old status.
+          syncFailed = true;
           toast('Η ράμπα ολοκληρώθηκε αλλά η παραγγελία ΔΕΝ πέρασε σε μεταφορά', 'danger');
           if (typeof logError === 'function') logError(e, 'ramp done Order sync ' + orderId);
         }
@@ -747,6 +921,7 @@ async function _rampDone(id,isIn){
             }
           }
         } catch(e) {
+          syncFailed = true;
           toast('Η ράμπα ολοκληρώθηκε αλλά η εθνική παραγγελία ΔΕΝ πέρασε σε μεταφορά', 'danger');
           if (typeof logError === 'function') logError(e, 'ramp done NatOrder sync ' + natOrderId);
         }
@@ -786,19 +961,21 @@ async function _rampDone(id,isIn){
           // Silent console.warn hid this: the ramp row is Done but the load /
           // national order kept a stale status (spec national-load-source,
           // global constraint — every failure is heard).
+          syncFailed = true;
           toast('Η ράμπα ολοκληρώθηκε αλλά το φορτίο/η παραγγελία ΔΕΝ ενημερώθηκε', 'danger');
           if (typeof logError === 'function') logError(e, 'ramp done National Load sync ' + nlId);
         }
       }
     }
 
-    toast('Done ✓');
+    if (!syncFailed) toast('Done ✓');
     renderDailyRamp();
   } catch(e) { toast('Error','danger'); }
 }
 
 async function _rampRestore(id){
   if(_rampBlockReadOnly()) return;
+  if(_rampV5Refuse(id)) return;
   _rampMarkEdit();
   try {
     await atSafePatch(TABLES.RAMP,id,{'Plan Date':RAMP.date,'Postponed To':null});
@@ -813,6 +990,7 @@ async function _rampRestore(id){
 }
 async function _rampPostpone(id){
   if(_rampBlockReadOnly()) return;
+  if(_rampV5Refuse(id)) return;
   // Date arithmetic: anchor at noon to avoid DST off-by-one. 864e5 = 1 day in ms.
   // Guard: ensure RAMP.date is a valid YYYY-MM-DD string before computing tomorrow.
   if (!RAMP.date || !/^\d{4}-\d{2}-\d{2}$/.test(RAMP.date)) {
@@ -906,7 +1084,7 @@ function _rampExportCSV() {
         f['Status']||'',
         _rStripMarkers(_rResolveClientStr(f['Supplier/Client']||'')),
         f['Goods']||'',
-        f['Pallets']||'',
+        f['_palText']||f['Pallets']||'',
         f['Temperature']||f['Temperature °C']||'',
         _rStripMarkers(f['Loading Points']||''),
         _rStripMarkers(f['Delivery Points']||''),

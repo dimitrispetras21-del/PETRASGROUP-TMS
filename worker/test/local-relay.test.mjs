@@ -29,16 +29,28 @@ const parts = [
   fn('columnToLabel'), fn('fieldsToColumns'), fn('filterFieldMap'), fn('toAirtableRecord'),
   lift(/\/\/ src\/lib\/formula-translate\.js[\s\S]*?(?=\/\/ src\/lib\/facade-links\.js)/, 'formula-translate section'),
   fn('preResolveLinkTerms'), fn('resolveLinksOnWrite'),
-  fn('authorizeWrite'), fn('buildWriteRow'), fn('buildWriteRows'),
+  fn('authorizeWrite'), fn('refuseReadOnly'), fn('buildWriteRow'), fn('buildWriteRows'),
   fn('invoiceMarkError'), fn('invoiceNeedsBefore'),
-  // one mapper for the stock (057) and relay (060) families: all three tables
+  // one mapper for the stock (057), relay (060) and national v5 (071/072)
+  // families: all five tables
   lift(/const STOCK_CHECK_TEXT = \{[\s\S]*?\n\};\n/, 'STOCK_CHECK_TEXT'),
   lift(/const RELAY_RULE_TEXT = \{[\s\S]*?\n\};\n/, 'RELAY_RULE_TEXT'),
   lift(/const RELAY_CHECK_TEXT = \{[\s\S]*?\n\};\n/, 'RELAY_CHECK_TEXT'),
-  fn('stockRuleError'), fn('stockRuleResponse'),
+  lift(/const PLAN_RULE_TEXT = \{[\s\S]*?\n\};\n/, 'PLAN_RULE_TEXT'),
+  lift(/const PLAN_CHECK_TEXT = \{[\s\S]*?\n\};\n/, 'PLAN_CHECK_TEXT'),
+  // read by the 23505 / 23P01 branches (review of PR #90, finding 10)
+  lift(/const PLAN_CONSTRAINT_CODE = \{[\s\S]*?\n\};\n/, 'PLAN_CONSTRAINT_CODE'),
+  fn('stockRuleError'), fn('stockRuleResponse'), lift(/var BUSY_SQLSTATE = [^\n]*\n/, 'BUSY_SQLSTATE'), fn('facadeBusy'),
+  // the facade's v5 guards (findings 2 and 8): the one switch as the source holds it, and the LOCAL MOVES guard;
+  // F5 (E16): the legacy model closed after day L, read only with the switch open
+  lift(/var PLAN_WRITES_OPEN = [^\n]*\n/, 'PLAN_WRITES_OPEN'), fn('planOwnedRefusal'),
+  lift(/var LEGACY_CLOSED_AFTER_L = \{[\s\S]*?\n\};\n/, 'LEGACY_CLOSED_AFTER_L'), fn('legacyClosedRefusal'),
+  lift(/var LEGACY_ROWS_AFTER_L = \{[\s\S]*?\n\};\n/, 'LEGACY_ROWS_AFTER_L'), fn('legacyRowsApply'), fn('legacyRowRefusal'),
   fn('dbInsert'), fn('dbInsertMany'), fn('dbUpdate'),
   fn('handleFacadeCreate'), fn('facadeBatchCreate'), fn('handleFacadeUpdate'), fn('handleFacadeBatchUpdate'),
   fn('schemaBehind060'), fn('schemaBehind060Response'), fn('localLineCancelFacts'), fn('handleCosts'),
+  // F3 (final review 26/10): handleCosts' catch names a database behind 072b / 073; the partner line check of Q6-1
+  fn('schemaBehindF3'), fn('ctPartnerLineCheck'),
 ];
 
 // Stubs for everything outside the lifted code. `state` lets each test choose

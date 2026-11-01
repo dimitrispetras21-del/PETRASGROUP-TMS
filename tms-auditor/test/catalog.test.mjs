@@ -5,18 +5,20 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadChecks, seedSql, tablesRead } from '../checks/load.mjs';
-import { schemaSql } from './fixtures/build-schema.mjs';
-import { DRAFTS, draftGrants, STOCK_DRAFT } from '../lib/db.mjs';
+import { schemaSql, schemaV5Sql } from './fixtures/build-schema.mjs';
+import { DRAFTS, draftGrants, OWN_GRANTS } from '../lib/db.mjs';
 import { freshDb, all } from './helpers.mjs';
 
 const HERE = path.dirname(new URL(import.meta.url).pathname);
-// 050 and 047 are EXECUTED and never edited for new objects: DRAFT 057 (stock lots) grants its own tables/views. Its
-// grants count in the two grant tests below, parsed by the same function that applies them to the local database.
-const granted057 = (role) => new Set(draftGrants(STOCK_DRAFT).filter((g) => g.roles.includes(role)).flatMap((g) => g.rels));
-// The one deliberate hole: 057 §7 gives tms_reader no money view («tms_reader: no money»). stock_v_lot_money is read
-// only by S-09 (ids) and S-11, which run as tms_check_runner inside run_checks; an interactive tms_reader session
-// re-running them gets «permission denied» — loud, never a silent 0. Asserted below: runner yes, reader no.
-const READER_NO_MONEY = ['stock_v_lot_money'];
+// 050 and 047 are EXECUTED and never edited for new objects: 057 (stock lots), 071 (v5 tables and views), 072b
+// (vehicle segments, read by B-91..B-93) and 073 (ct_v_v5_revenue; both executed 26/10) grant their own tables/views. Their grants
+// count in the two grant tests below, parsed by the same function that applies them to the local database.
+const grantedOwn = (role) => new Set(OWN_GRANTS.flatMap((f) => draftGrants(f)).filter((g) => g.roles.includes(role)).flatMap((g) => g.rels));
+// The deliberate holes: tms_reader gets no money view («tms_reader: no money», 057 §7 and 073). stock_v_lot_money is
+// read only by S-09 (ids) and S-11, ct_v_v5_revenue only by B-79 / B-80, ct_v_rt_partner_cost (073, Q6-1) only by
+// B-83; they run as tms_check_runner inside run_checks, and an interactive tms_reader session re-running them gets
+// «permission denied» — loud, never a silent 0. Asserted below: runner yes, reader no.
+const READER_NO_MONEY = ['stock_v_lot_money', 'ct_v_v5_revenue', 'ct_v_rt_partner_cost'];
 
 test('every check file lints clean', () => {
   const { checks, errors } = loadChecks();
@@ -39,6 +41,7 @@ test('committed seed (047b) and fixture schema are regenerated, never hand-edite
   const { checks } = loadChecks();
   assert.equal(fs.readFileSync(path.join(DRAFTS, '047b_monitoring_seed.sql'), 'utf8'), seedSql(checks), 'run: node checks/build-seed.mjs');
   assert.equal(fs.readFileSync(path.join(HERE, 'fixtures/schema.sql'), 'utf8'), schemaSql(), 'run: node test/fixtures/build-schema.mjs');
+  assert.equal(fs.readFileSync(path.join(HERE, 'fixtures/schema-v5.sql'), 'utf8'), schemaV5Sql(), 'run: node test/fixtures/build-schema.mjs');
 });
 
 test('every enabled check executes on the production-shaped schema (0 errors, every run complete)', async () => {
@@ -54,7 +57,7 @@ test('every enabled check executes on the production-shaped schema (0 errors, ev
 
 test('050 grants SELECT on every table/view a check or the package builder reads', () => {
   const sql = fs.readFileSync(path.join(DRAFTS, '050_monitor_roles.sql'), 'utf8').replace(/--[^\n]*/g, '');   // grants only, not the verify comments
-  const granted = new Set([...sql.matchAll(/public\.([a-z_]+)/g)].map((m) => m[1]).concat([...granted057('tms_reader')]));
+  const granted = new Set([...sql.matchAll(/public\.([a-z_]+)/g)].map((m) => m[1]).concat([...grantedOwn('tms_reader')]));
   const { checks } = loadChecks();
   const needed = new Set();
   for (const c of checks.filter((x) => x.enabled)) for (const s of [c.sql, c.ids_sql || '']) for (const t of tablesRead(s)) {
@@ -63,7 +66,7 @@ test('050 grants SELECT on every table/view a check or the package builder reads
   const missing = [...needed].filter((t) => !granted.has(t) && !READER_NO_MONEY.includes(t));
   assert.deepEqual(missing, [], 'tables read by checks but not granted to tms_reader');
   for (const t of READER_NO_MONEY) {
-    assert.ok(needed.has(t) && granted057('tms_check_runner').has(t) && !granted.has(t), `${t}: the no-money exception is stale — remove it`);
+    assert.ok(needed.has(t) && grantedOwn('tms_check_runner').has(t) && !granted.has(t), `${t}: the no-money exception is stale — remove it`);
   }
   assert.ok(!granted.has('users'), 'tms_reader must never be granted users');
 });
@@ -80,7 +83,7 @@ test('A1: the in-DB function allow-list equals the repo lint allow-list (no drif
 test('A1: the check runner role can read every table a check reads', () => {
   const sql = fs.readFileSync(path.join(DRAFTS, '047_monitoring_schema.sql'), 'utf8');
   const block = sql.match(/GRANT SELECT ON([\s\S]*?)TO tms_check_runner/)[1];
-  const granted = new Set([...block.matchAll(/public\.([a-z_]+)/g)].map((x) => x[1]).concat([...granted057('tms_check_runner')]));
+  const granted = new Set([...block.matchAll(/public\.([a-z_]+)/g)].map((x) => x[1]).concat([...grantedOwn('tms_check_runner')]));
   const { checks } = loadChecks();
   const missing = new Set();
   for (const c of checks.filter((x) => x.enabled)) for (const q of [c.sql, c.ids_sql || '']) for (const t of tablesRead(q))

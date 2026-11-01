@@ -70,4 +70,9 @@ module.exports = [
   // critic on the same route would test v1 twice and call it v4. Add the
   // route here when the flag opens for a pilot.
   { unit: 'weekly_intl_v2', tier: 3, routes: [],          files: ['modules/weekly_intl_v2.js', 'modules/wi4_actions.js'] },
+  // Weekly National v5 (F4α, 26/10/2026): born inside the suite like weekly_intl_v2 — allowance hex 0 / truncate 0,
+  // every colour and «…» in the wn5 block of assets/style.css (unit 'styles'). routes EMPTY on purpose: behind
+  // FEATURES.WN_V5 = 'off' the route 'weekly_natl' still paints the old board, which unit 'weekly_natl' drives; a
+  // second live critic there would test v1 twice and call it v5. Each Task that creates a v5 browser file adds it here.
+  { unit: 'weekly_natl_v5', tier: 3, routes: [],          files: ['modules/weekly_natl_v5.js', 'core/wn5-logic.js', 'modules/wn5_actions.js', 'modules/wn5_assign.js', 'core/wn5-labels.js', 'core/plan-ids.js', 'modules/wn5_veroia.js', 'modules/wn5_forms.js', 'modules/wn5_sheet.js', 'modules/wn5_handover.js'] },
 ];

@@ -9,8 +9,9 @@
 #
 # Keep it dependency-free. The value here is that it CANNOT be blocked by a
 # missing secret, an expired token, or a backend being down: a checkout is all
-# it needs. Anything requiring credentials belongs in its own workflow, so its
-# failures never mask these.
+# it needs (plan-no-resend and f5-tests add Node itself, nothing from npm). Anything
+# requiring credentials belongs in its own workflow, so its failures never
+# mask these.
 #
 # Runtime is a couple of seconds; there is no reason for it not to run on
 # every PR.
@@ -40,3 +41,53 @@ jobs:
       # and core/utils.js safeFetch().
       - name: Check fail-open data fetches
         run: bash tests/check-fail-open.sh
+
+  plan-no-resend:
+    name: /plan/* writes are never sent twice
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # Two-sided pin (review of PR #90, findings 1 and 8): the Worker answers a
+      # /plan/* write whose outcome is unknown with a status core/api.js
+      # _atRetry never sends again (plan-routes reads core/api.js), the real
+      # _atRetry is run against it (one fetch), and no client _atRetry call may
+      # send a /plan/* request at all. A later change to _atRetry or to the
+      # Worker's statuses would otherwise reopen it without a word. Node only,
+      # no npm install: both files use node:test and the source as it is.
+      - name: Run the /plan/* no-resend pins
+        run: node --test tests/api-plan-no-resend.test.mjs worker/test/plan-routes.test.mjs
+
+  f5-tests:
+    name: National v5 F5 tests
+    runs-on: ubuntu-latest
+    steps:
+      # Full history: tests/f5-d3-entities-v5.test.mjs and tests/daily-ramp-v5.test.js compare with the pre-F5
+      # tip 5f55a943 (git show, pinned since #137); a depth-1 checkout does not have that commit.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # The F5 (day L) tests of the front end, one line per file as each stream's
+      # PR lands; stream (e) of the F5 plan owns this list (plan §10). Why here:
+      # the review of PR #117 found tests/plan-config.test.mjs ran on no machine
+      # but the author's, so a later change to core/plan-config.js could read a
+      # failed GET /plan/config as 'before' again without a red check. Node only,
+      # no npm install, like plan-no-resend above. sw-app-shell holds the pre-cache
+      # and the load order of the F5 files (core/plan-config.js before every module).
+      # Lines by stream: (c) wi4-vs-state, stops-helpers-identity, legacy-writes-gated,
+      # api-delete-confirm; (d1) orders-natl-v5; (d2) daily-ramp-v5; (d3) d3-entities;
+      # (d4) natv5-kpi; (a1) sql-074a-drafts; (e) wn5-labels (piece_on_rt of 074a).
+      - name: Run the F5 tests
+        run: >-
+          node --test
+          tests/plan-config.test.mjs tests/sw-app-shell.test.js
+          tests/wi4-vs-state.test.mjs tests/stops-helpers-identity.test.mjs tests/f5-legacy-writes-gated.test.mjs tests/api-delete-confirm.test.mjs
+          tests/orders-natl-v5.test.js tests/daily-ramp-v5.test.js tests/f5-d3-entities-v5.test.mjs tests/f5-natv5-kpi.test.js
+          tests/sql-074a-drafts.test.js tests/wn5-labels.test.js

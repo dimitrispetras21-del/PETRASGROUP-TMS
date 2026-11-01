@@ -339,11 +339,11 @@ test('O1 reopenLot: PATCH {Closed Note:null} with the undo suppressed; ok only w
   assert.strictEqual(calls.length, n, 'a bad rec sends nothing');
 });
 
-test('O1 reopenable: closed and not invoiced, owner/dispatcher only (the accountant closes, does not reopen)', () => {
+test('O1 reopenable: closed (invoiced or not since 071a), owner/dispatcher only (the accountant closes, does not reopen)', () => {
   const closed = lotRec('recLot1', { 'Closed At': '2026-10-04T13:00:00Z', 'Closed Note': 'x' });
   assert.strictEqual(OrdersStock.reopenable(closed), true);
   assert.strictEqual(OrdersStock.reopenable(lotRec('recLot1', {})), false, 'open lot');
-  assert.strictEqual(OrdersStock.reopenable(lotRec('recLot1', { 'Closed At': 'x', Invoiced: true })), false, 'invoiced (reopen_invoiced)');
+  assert.strictEqual(OrdersStock.reopenable(lotRec('recLot1', { 'Closed At': 'x', Invoiced: true })), true, 'invoiced too (071a, owner 21/10: invoicing starts at registration)');
   global.ROLE = 'accountant'; assert.strictEqual(OrdersStock.reopenable(closed), false);
   global.ROLE = 'owner'; assert.strictEqual(OrdersStock.reopenable(closed), true);
 });
@@ -351,7 +351,7 @@ test('O1 reopenable: closed and not invoiced, owner/dispatcher only (the account
 test('O1 closeText: names the consequence; with no piece drawn it says the WHOLE lot', () => {
   const t = OrdersStock.closeText(lotRec('recLot1', { 'Remaining Pallets': 2, Pieces: 2 })).join(' ');
   assert.match(t, /^Μένουν 2 παλέτες στην αποθήκη\./);
-  assert.match(t, /γράφονται χαμένες/i); assert.match(t, /δεν δίνει άλλα κομμάτια/); assert.match(t, /Ανοίγει ξανά μέχρι να τιμολογηθεί/);
+  assert.match(t, /γράφονται χαμένες/i); assert.match(t, /δεν δίνει άλλα κομμάτια/); assert.match(t, /Ανοίγει ξανά αν χρειαστεί/);
   const z = OrdersStock.closeText(lotRec('recLot1', { 'Remaining Pallets': 33, Pieces: 0 })).join(' ');
   assert.match(z, /^Κλείνει ΟΛΗ η παρτίδα \(33 παλέτες\) — δεν βγήκε κανένα κομμάτι\./);
   assert.ok(!/€/.test(t + z), 'pallets only, never money');
@@ -380,12 +380,11 @@ test('loadInvoicingSet: pieces (and split legs) never enter; lots get their STOC
   assert.ok(calls.some(c => c[0] === 'atGetAll' && c[1] === 'tblStockLots' && c[2] === '{Invoiced}=0'), 'lots read with {Invoiced}=0');
   assert.strictEqual(set.stockFailed, false);
   assert.ok(set.stock.get('recLot1'));
-  const st = OrdersData.stateOf(set, set.intl[1]);
-  assert.deepStrictEqual([st.key, st.reason, st.lot && st.lot.id], ['blocked', 'stock', 'recLot1']);
+  assert.deepStrictEqual(OrdersData.stateOf(set, set.intl[1]), { key: 'ready' }, 'B0 (21/10): a lot is invoiced from its registration');
   assert.strictEqual(OrdersData.stateOf(set, set.intl[0]).key, 'ready');
 });
 
-test('loadInvoicingSet: no lot in the set → no STOCK LOTS request; a failed lot read blocks every lot', async () => {
+test('loadInvoicingSet: no lot in the set → no STOCK LOTS request; a failed lot read is said (stockFailed) and blocks nothing', async () => {
   db.orders = [order('recPlain', { Price: 1000 })];
   await OrdersData.loadInvoicingSet(true);
   assert.ok(!calls.some(c => c[1] === 'tblStockLots'), 'no lot → no read');
@@ -395,24 +394,21 @@ test('loadInvoicingSet: no lot in the set → no STOCK LOTS request; a failed lo
   db.failLots = true;
   const set = await OrdersData.loadInvoicingSet(true);
   assert.deepStrictEqual([set.stock, set.stockFailed], [null, true]);
-  assert.deepStrictEqual(OrdersData.stateOf(set, set.intl[0]), { key: 'blocked', reason: 'stock', lot: null }, 'never «ready» on a guess');
+  assert.deepStrictEqual(OrdersData.stateOf(set, set.intl[0]), { key: 'ready' }, 'B0: the lot record no longer decides the invoice');
 });
 
-test('stateOf with stock: complete → ready; price first; not delivered → pending; invoiced → invoiced', () => {
+test('stateOf with stock (B0, 21/10): a lot is «ready» like any priced order — complete or not, delivered or not', () => {
   const lot = r => ({ id: r, _type: 'intl', fields: { Status: 'Delivered', Price: 3300, 'Own Stock Lot': 'recLot1', 'Delivery DateTime': D(5) } });
   const set = l => ({ intl: [], natl: [], gate: {}, gateFailed: false, stock: new Map([['recLot1', l]]), stockFailed: false });
   assert.deepStrictEqual(OrdersData.stateOf(set(lotRec('recLot1', { Complete: true })), lot('a')), { key: 'ready' });
-  const incomplete = OrdersData.stateOf(set(lotRec('recLot1', {})), lot('a'));
-  assert.deepStrictEqual([incomplete.key, incomplete.reason], ['blocked', 'stock']);
+  assert.deepStrictEqual(OrdersData.stateOf(set(lotRec('recLot1', {})), lot('a')), { key: 'ready' }, 'incomplete: ready too');
   const noPrice = lot('a'); delete noPrice.fields.Price;
-  assert.deepStrictEqual(OrdersData.stateOf(set(lotRec('recLot1', {})), noPrice), { key: 'blocked', reason: 'price' }, 'a lot without a price is «Χωρίς τιμή» first');
+  assert.deepStrictEqual(OrdersData.stateOf(set(lotRec('recLot1', {})), noPrice), { key: 'blocked', reason: 'price' }, 'the price is the one block');
   const transit = lot('a'); transit.fields.Status = 'In Transit';
-  assert.strictEqual(OrdersData.stateOf(set(lotRec('recLot1', {})), transit).key, 'pending');
+  assert.deepStrictEqual(OrdersData.stateOf(set(lotRec('recLot1', {})), transit), { key: 'ready' }, 'not yet in the warehouse: ready');
   const inv = lot('a'); inv.fields.Invoiced = true;
   assert.strictEqual(OrdersData.stateOf({ intl: [], natl: [], gate: {} }, inv).key, 'invoiced', 'an invoiced lot needs no lot record');
-  // a set built without stock (old callers) still blocks a lot, never readies it
-  const bare = OrdersData.stateOf({ intl: [], natl: [], gate: {}, gateFailed: false }, lot('a'));
-  assert.deepStrictEqual([bare.key, bare.reason, bare.lot], ['blocked', 'stock', null]);
+  assert.deepStrictEqual(OrdersData.stateOf({ intl: [], natl: [], gate: {}, gateFailed: false }, lot('a')), { key: 'ready' }, 'a set built without stock readies a lot too');
   // a complete lot with a missing slip is ready, flagged (owner 20/10: the slip no longer blocks)
   const pe = lot('a'); pe.fields['Pallet Exchange'] = true;
   const s2 = set(lotRec('recLot1', { Complete: true })); s2.gate = { a: { sheets_ok: false } };
@@ -426,14 +422,14 @@ test('withoutPieces is the one filter; data-based (switch off changes nothing)',
 });
 
 // ── round 0 (impact map 4/10) ────────────────────────────────────────────────
-test('G-07: the warehouse role never reads STOCK LOTS (no grant → no 403 storm); its lots stay blocked', async () => {
+test('G-07: the warehouse role never reads STOCK LOTS (no grant → no 403 storm); nothing is blocked for it either', async () => {
   global.ROLE = 'warehouse';
   db.orders = [order('recLotSrc', { Price: 3300, 'Own Stock Lot': 'recLot1' })];
   db.lots = [lotRec('recLot1', { Complete: true })];
   const set = await OrdersData.loadInvoicingSet(true);
   assert.ok(!calls.some(c => c[1] === 'tblStockLots'), 'no STOCK LOTS request for the warehouse role');
   assert.strictEqual(set.stockFailed, false);
-  assert.deepStrictEqual(OrdersData.stateOf(set, set.intl[0]), { key: 'blocked', reason: 'stock', lot: null }, 'never «ready» without its lot');
+  assert.deepStrictEqual(OrdersData.stateOf(set, set.intl[0]), { key: 'ready' }, 'B0: no lot read, nothing blocked');
 });
 
 test('PR-15: invoiced lots of the set are read by id with the open ones — one formula, 40 ids per request', async () => {
@@ -454,13 +450,14 @@ test('PR-15: invoiced lots of the set are read by id with the open ones — one 
   assert.ok(r2[0].startsWith('OR({Invoiced}=0,') && r2[1] === "OR(RECORD_ID()='recLotI40')");
 });
 
-test('E-05: ageOf — a lot from «Completed On» (null while incomplete), every other order from its delivery', () => {
+test('ageOf (B0, 21/10): every order from its own delivery, a lot too; none before the delivery', () => {
   const lot = { id: 'a', _type: 'intl', fields: { Status: 'Delivered', 'Own Stock Lot': 'recLot1', 'Delivery DateTime': D(40) } };
   const set = l => ({ stock: new Map([['recLot1', l]]) });
-  assert.strictEqual(OrdersData.ageOf(set(lotRec('recLot1', {})), lot), null);
-  assert.strictEqual(OrdersData.ageOf(set(lotRec('recLot1', { Complete: true, 'Completed On': daysAgo(3) })), lot), 3);
-  assert.strictEqual(OrdersData.ageOf({ stock: null }, lot), null, 'lot not read → no age, never the intake age');
+  assert.strictEqual(OrdersData.ageOf(set(lotRec('recLot1', {})), lot), 40);
+  assert.strictEqual(OrdersData.ageOf(set(lotRec('recLot1', { Complete: true, 'Completed On': daysAgo(3) })), lot), 40, '«Completed On» no longer counts');
+  assert.strictEqual(OrdersData.ageOf({ stock: null }, lot), 40, 'the lot record is not needed');
   assert.strictEqual(OrdersData.ageOf({}, order('p', { 'Delivery DateTime': D(5) })), 5);
+  assert.strictEqual(OrdersData.ageOf({}, order('f', { 'Delivery DateTime': D(-3) })), null, 'a future delivery has no age');
 });
 
 test('DL-10: closeLot writes with the undo suppressed (the global Undo must not reopen a closed lot)', async () => {

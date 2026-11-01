@@ -1,0 +1,120 @@
+// worker/tools/worker-guard.mjs — the deploy guard run before and after every
+// Worker deploy (CLAUDE.md «Ο WORKER»). Pinned against the deploy source and
+// against a CF-API-shaped multipart copy of it, so the tool that says «OK» on
+// deploy night is the one tested here (αρχή 6).
+import { test, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const TOOL = path.join(here, '..', 'tools', 'worker-guard.mjs');
+// the deploy-1 state of the source (writes closed), whichever value this branch holds: the day-L commit (F5 deploy 2)
+// carries the open switch, and the checks below are about the closed bundle (--plan 2 has its own test, -f5)
+const src = readFileSync(path.join(here, '..', 'src', 'index.js'), 'utf8').replace('\nvar PLAN_WRITES_OPEN = true;\n', '\nvar PLAN_WRITES_OPEN = false;\n');
+const dir = mkdtempSync(path.join(tmpdir(), 'worker-guard-'));
+const SRC = path.join(dir, 'index.js');
+writeFileSync(SRC, src);
+// removed when the file ends (review of PR #90, finding 14): one directory per run used to stay in the temp dir
+after(() => rmSync(dir, { recursive: true, force: true }));
+// handover: the vehicle handover marker (072b routes); this source carries them, so 1 unless a test says otherwise
+const run = (file, plan, handover = 1) => {
+  const args = plan === undefined ? [TOOL, file] : [TOOL, file, '--plan', String(plan), '--handover', String(handover)];
+  const r = spawnSync(process.execPath, args, { encoding: 'utf8' });
+  return { code: r.status, out: r.stdout + r.stderr };
+};
+const write = (name, text) => { const f = path.join(dir, name); writeFileSync(f, text); return f; };
+
+test('the deploy source passes with --plan 1 --handover 1 (16 markers) and fails with --handover 0 or --plan 0', () => {
+  let r = run(SRC, 1);
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /GUARD OK \(16 markers, plan=1, handover=1\)/);
+  r = run(SRC, 1, 0);
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /STOP {2}rpc: "plan_seg_change" = 1/);
+  r = run(SRC, 0, 0);
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /STOP {2}var PLAN_PERMS = \{ = 1/);
+  // the bundle of F2 alone (live before the handover deploy): its routes are not there yet
+  r = run(write('f2-only.js', src.replace('rpc: "plan_seg_change"', 'rpc: "plan_seg_changeX"')), 1, 0);
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /GUARD OK \(16 markers, plan=1, handover=0\)/);
+  // once live, the handover marker gone = STOP (never removed, CLAUDE.md rule of one source 3)
+  r = run(write('no-handover.js', src.replace('rpc: "plan_seg_change"', 'rpc: "plan_seg_changeX"')), 1, 1);
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /STOP {2}rpc: "plan_seg_change" = 0/);
+});
+
+test('a CF API download (multipart, CRLF, random boundary) is unwrapped and counted the same', () => {
+  const b = 'a1b2c3d4e5f6';
+  const f = write('live.txt', `--${b}\r\nContent-Disposition: form-data; name="index.js"; filename="index.js"\r\nContent-Type: application/javascript+module\r\n\r\n${src}\r\n--${b}--\r\n`);
+  const r = run(f, 1);
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /GUARD OK \(16 markers, plan=1, handover=1\)/);
+});
+
+test('a missing marker, a doubled marker or open writes → exit 1 naming it', () => {
+  let r = run(write('no-move-kind.js', src.replace('"Move Kind": "move_kind"', '"Move Kind": "kind"')), 1);
+  assert.equal(r.code, 1);
+  assert.match(r.out, /STOP {2}"Move Kind": "move_kind" = 0/);
+  r = run(write('two-lots.js', src + '\nvar x = { tblStockLots: { } };\n'), 1);
+  assert.equal(r.code, 1);
+  assert.match(r.out, /STOP {2}tblStockLots: \{ = 2/);
+  r = run(write('open.js', src.replace('var PLAN_WRITES_OPEN = false;', 'var PLAN_WRITES_OPEN = true;')), 1);
+  assert.equal(r.code, 1);
+  assert.match(r.out, /STOP {2}var PLAN_WRITES_OPEN = false; = 0/);
+  r = run(write('no-delete.js', src.replace('    order_stops: ["GET", "POST", "PATCH", "DELETE"],\n    // LOCAL MOVES', '    order_stops: ["GET", "POST", "PATCH"],\n    // LOCAL MOVES')), 1);
+  assert.equal(r.code, 1);
+  assert.match(r.out, /STOP {2}dispatcher order_stops DELETE = 0/);
+  // the features live before F2 (24/10): one of them missing stops the deploy as well
+  r = run(write('no-presence.js', src.replace('var PRESENCE_ROLES', 'var PRESENCE_ROLEZ')), 1);
+  assert.equal(r.code, 1);
+  assert.match(r.out, /STOP {2}var PRESENCE_ROLES = 0/);
+  r = run(write('no-delay.js', src.replace('"Delay Reason": "delay_reason"', '"Delay Reason": "reason"')), 1);
+  assert.equal(r.code, 1);
+  assert.match(r.out, /STOP {2}"Delay Reason": "delay_reason" = 0/);
+  r = run(write('no-vd.js', src.replace('{0,49}$/', '{0,48}$/')), 1);
+  assert.equal(r.code, 1);
+  assert.match(r.out, /STOP {2}VD \/costs\/rt order_ids \{0,49\}\$\/ = 0/);
+});
+
+test('a part named only by name="….js" is unwrapped; an unreadable download → GUARD STOP, exit 1, never a stack trace', () => {
+  const b = 'f00dfeed';
+  let r = run(write('live-name.txt', `--${b}\r\nContent-Disposition: form-data; name="worker.js"\r\nContent-Type: application/javascript+module\r\n\r\n${src}\r\n--${b}--\r\n`), 1);
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /GUARD OK \(16 markers, plan=1, handover=1\)/);
+  r = run(write('live-bad.txt', `--${b}\r\nContent-Disposition: form-data; name="metadata"\r\n\r\n{}\r\n--${b}--\r\n`), 1);
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /GUARD STOP — multipart: expected one \.js part, found 0/);
+  assert.doesNotMatch(r.out, /at unwrapMultipart/);
+});
+
+test('WORKSHOPS fields are counted inside the WORKSHOPS block: Country missing there alone → exit 1', () => {
+  // Country: "country" is in six tables; a whole-file count would still say 5 and pass (review 23/10)
+  const anchor = '      Country: "country",\n      Aliases: "aliases",';
+  assert.equal(src.split(anchor).length - 1, 1, 'the WORKSHOPS anchor is unique');
+  const r = run(write('no-ws-country.js', src.replace(anchor, '      Aliases: "aliases",')), 1);
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /STOP {2}WORKSHOPS Country: "country" = 0/);
+});
+
+test('bad usage → exit 2, nothing counted', () => {
+  assert.equal(run(SRC).code, 2);
+  assert.equal(run(SRC, 2).code, 2);
+  // the cross-cutting input rule (coordinator 25/10): a non-finite --plan is bad usage too
+  assert.equal(run(SRC, 'NaN').code, 2);
+  assert.equal(run(SRC, 'Infinity').code, 2);
+  assert.equal(run(SRC, '-Infinity').code, 2);
+  // no default for --handover: a forgotten flag is a usage error, never an «OK» (handover plan H-18)
+  assert.equal(spawnSync(process.execPath, [TOOL, SRC, '--plan', '1'], { encoding: 'utf8' }).status, 2);
+  assert.equal(run(SRC, 0, 1).code, 2, 'handover 1 without plan 1');
+  assert.equal(run(SRC, 1, 2).code, 2, 'handover is 0 or 1');
+  assert.equal(run(SRC, 1, 'NaN').code, 2, 'a non-finite --handover is bad usage too');
+  // an argument the guard does not know is never ignored (an OK that checked less than asked)
+  // (--f3 is known since F3 Task 9, its own test worker-guard-f3.test.mjs: the unknown flag here is --f4)
+  assert.equal(spawnSync(process.execPath, [TOOL, SRC, '--plan', '1', '--handover', '1', '--f4', '1'], { encoding: 'utf8' }).status, 2,
+    'an unknown extra flag is bad usage');
+});

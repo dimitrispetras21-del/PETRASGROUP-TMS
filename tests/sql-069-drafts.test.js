@@ -1,5 +1,5 @@
 // tests/sql-069-drafts.test.js — run: node --test tests/sql-069-drafts.test.js
-// The 069 drafts (worker/migrations/drafts/069_hub_day_once*) at build time, plain node, no database
+// The 069 drafts (worker/migrations/069_hub_day_once*) at build time, plain node, no database
 // (principle 6: a stale fingerprint should fail here, not at 15:30 on the owner's evening):
 //   - ASCII only (the owner pastes them from a clipboard that has mangled Greek before);
 //   - the writing files are ONE DO block (the SQL editor is not atomic across statements); the two
@@ -19,10 +19,11 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 
 const ROOT = path.join(__dirname, '..');
-const DRAFTS = path.join(ROOT, 'worker/migrations/drafts');
-const read = (f) => fs.readFileSync(path.join(DRAFTS, f), 'utf8');
+const DRAFTS = path.join(ROOT, 'worker/migrations/drafts');   // only the generator tools stay here
+const DIR = path.join(ROOT, 'worker/migrations');   // executed 12/10: out of drafts/ (CLAUDE.md rule 5)
+const read = (f) => fs.readFileSync(path.join(DIR, f), 'utf8');
 const md5 = (s) => crypto.createHash('md5').update(s).digest('hex');
-const FILES = fs.readdirSync(DRAFTS).filter((f) => f.startsWith('069_hub_day_once'));
+const FILES = fs.readdirSync(DIR).filter((f) => f.startsWith('069_hub_day_once'));
 const DO_FILES = ['069_hub_day_once.sql', '069_hub_day_once_dryrun.sql', '069_hub_day_once_test.sql', '069_hub_day_once_rollback.sql',
   '069_hub_day_once_repair.sql', '069_hub_day_once_repair_dryrun.sql', '069_hub_day_once_repair_rollback.sql'];
 const READ_ONLY = ['069_hub_day_once_verify.sql', '069_hub_day_once_repair_verify.sql'];
@@ -41,7 +42,7 @@ test('the nine 069 files are all there', () => {
   assert.deepStrictEqual(FILES.slice().sort(), DO_FILES.concat(READ_ONLY).sort());
 });
 test('ASCII only, every 069 file and the dry-run builder', () => {
-  for (const f of FILES.concat(['tools/build-069-dryruns.mjs'])) {
+  for (const f of FILES.concat(['drafts/tools/build-069-dryruns.mjs'])) {
     const bad = [...read(f)].filter((c) => c.charCodeAt(0) > 127);
     assert.deepStrictEqual(bad, [], f);
   }

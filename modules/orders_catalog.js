@@ -48,7 +48,11 @@ const OrdersCatalog = (() => {
   // received it — the client has not. Same dot, its own word, on the screen,
   // the CSV and the paper (the raw Status is untouched: filters read it).
   // Round 1 O5 (critic-2 E2-04): an invoiced lot reads «Τιμολογήθηκε» — next
-  // to its «✓ ΤΠΥ», «Στην αποθήκη» said the goods never left.
+  // to its «✓ ΤΠΥ», «Στην αποθήκη» said the goods never left. Since B0 (owner
+  // 21/10/2026) a lot is invoiced from its registration, so «invoiced» no
+  // longer means «finished»: only a COMPLETE invoiced lot reads «Τιμολογήθηκε»;
+  // otherwise «Τιμολογήθηκε · στην αποθήκη» (or where it is), like the
+  // invoicing card's «Περιμένει κομμάτια n/m» beside its ΤΠΥ.
   // C2-05 (round 3): a lot whose pieces are all done is no longer «in the
   // warehouse» — «Ολοκληρώθηκε», read from the invoicing set when the page
   // already holds it (the hub's counters load it; no request of our own). Not
@@ -59,7 +63,12 @@ const OrdersCatalog = (() => {
     return !!(lot && lot.fields && lot.fields['Complete'] === true);
   }
   function _statusWord(r) {
-    if (r.lot && C().isInvoiced(r.f)) return 'Τιμολογήθηκε';
+    if (r.lot && C().isInvoiced(r.f)) {
+      if (_lotDone(r)) return 'Τιμολογήθηκε';
+      const where = r.status === 'Delivered' ? 'στην αποθήκη'
+        : r.status === 'Invoiced' ? '' : ((STATUS[r.status] || [r.status])[0] || '').toLowerCase();
+      return where ? 'Τιμολογήθηκε · ' + where : 'Τιμολογήθηκε';
+    }
     if (r.lot && r.status === 'Delivered') return _lotDone(r) ? 'Ολοκληρώθηκε' : 'Στην αποθήκη';
     return (STATUS[r.status] || [r.status])[0] || '';
   }
@@ -75,7 +84,8 @@ const OrdersCatalog = (() => {
   // τιμή» shows (owner 29/9). National orders take their vehicle from their
   // national load; a missing load is «εκτός» with the «Στείλε →» repair.
   function _assign(r) {
-    const canSend = typeof can === 'function' && can('orders') === 'full';
+    // After L the repair would INSERT a national load, which 074 freezes (F5 Task F).
+    const canSend = typeof can === 'function' && can('orders') === 'full' && !S.afterL;
     return OrdersCommon.assignOf(r.rec, r.type === 'natl'
       ? { load: S.loads.get(r.id) || null, missingLoad: S.noLoad.has(r.id), canSend } : {});
   }
@@ -359,6 +369,7 @@ const OrdersCatalog = (() => {
     if (ri.status === 'rejected' && rn.status === 'rejected') throw ri.reason;
     S.noLoad = natl.noLoad || new Set();
     S.loads = natl.loads || new Map();
+    S.afterL = !!natl.afterL;
     S.legParents = intl.legParents || null;
     // Dashboard KPI click («Νέα παραγγελία»/«χωρίς ανάθεση» tiles) hands over
     // a one-shot filter, as it did to the old international list.
@@ -451,7 +462,7 @@ const OrdersCatalog = (() => {
       }
       const intl = ri.value, natl = rn.value;
       S.period = 'all'; S.widenedFrom = from;
-      S.noLoad = natl.noLoad || new Set(); S.loads = natl.loads || new Map(); S.legParents = intl.legParents || null;
+      S.noLoad = natl.noLoad || new Set(); S.loads = natl.loads || new Map(); S.legParents = intl.legParents || null; S.afterL = !!natl.afterL;
       // The new rows replace the period's, so their loaders' warnings replace
       // the period's too (a failed national-loads read must still say that the
       // vehicle column cannot be trusted), and names are pending as in render().
