@@ -1426,12 +1426,15 @@
   const _lth = (win) => `<div class="wn5f-th ro"><span>Τοποθεσία</span><span>Ημέρα</span><span>${win}</span><span>Παλέτες</span></div>`;
   // A point of a leg is read-only here — its pallets, day and window change in its order's edit form (F30), its truck's
   // stop from «Αλλαγή ώρας ›» (F29), its truck with «Μεταφορά σε…» — drawn in
-  // Figma's boxes (2011:9452 / 9520): a VS's place and pallets in the locked grey cell, the rest white.
+  // Figma's boxes (2011:9452 / 9520): a VS's place in the locked grey cell, the rest white. A VS point's pallets are a
+  // field once 092 is in the base (pal), else the locked grey cell too.
   // F55 (live 31/10): a VS point's day is a white box that looks like a field; typing in it did nothing, in silence.
   // It is the day of the truck's stop there, so a click opens that stop's day panel, the one of «Αλλαγή ώρας ›» (F29,
   // already in this form's stop list). The VS's own day changes with «Ορισμός ημέρας», its window stays the
   // international's (decision 21). A national point keeps its edit form (F30).
-  function _roRowHTML(r, vs) {
+  // pal = the VS point's pallets are a field (092 is in the base: the board's /plan/vs-state carried cross_dock_date); a
+  // point whose pallets are not known keeps its cell (the field would read «;» and block the press for the others)
+  function _roRowHTML(r, vs, pal) {
     const ro = vs ? 'wn5f-c vro' : 'wn5f-c';
     return `<div class="wn5f-row ro" data-piece="${r.piece_id}"><span class="${ro}">${_esc(r.hub ? 'Βέροια' : r.location)}</span>`
       + (vs && r.stop_id != null
@@ -1439,36 +1442,78 @@
         : `<span class="wn5f-c">${_esc(_dlab(r.day))}</span>`)
       + (WN5L.allDay(r.from, r.to) ? '<span class="wn5f-cwin"><span class="wn5f-c">όλη η ημέρα</span></span>'
         : `<span class="wn5f-cwin"><span class="wn5f-c">${_hm(r.from)}</span><span class="wn5f-dash">–</span><span class="wn5f-c">${_hm(r.to)}</span></span>`)
-      + `<span class="${ro}">${_pal(r.pallets)}</span><span></span>`
+      // 092 (F45, owner 1/11 option a): a VS point's pallets are the national desk's too — the truck loaded 22 of the 24
+      // the international said; «Ορισμός παλετών» writes them and the international follows (one POST per point)
+      + (vs && pal && r.piece_id != null && r.pallets != null
+        ? `<input class="form-input wn5f-c" data-f="vspal" data-piece="${r.piece_id}" data-old="${_esc(r.pallets)}" inputmode="decimal" value="${_esc(_pal(r.pallets))}" aria-label="Παλέτες">`
+        : `<span class="${ro}">${_pal(r.pallets)}</span>`) + '<span></span>'
       + (vs ? `<button type="button" class="wn5f-lnk" data-act="move" data-piece="${r.piece_id}">Μεταφορά σε…</button>` : '<span></span>') + '</div>';
   }
-  // The VS block: locked for price, pallets and windows (decision 21); its day and — for an import — its
-  // destination after Veroia are the national desk's too, «όποιος μάθει πρώτος» (S-104, S-107), each with its
-  // own button: ONE POST per change, never inside the form's «Αποθήκευση» (Ε-4).
+  // 092: this truck at Veroia on another day than the VS (a truck «Ορισμός ημέρας» could not move: its stop ran, or a
+  // rule of its own), said beside the day as the board marks its row (weekly_natl_v5.js _vsDayMark): never two days in
+  // silence. Only a truck with a whole piece of the VS (whole): a part split at Veroia rides later on purpose.
+  function _truckDayHTML(st, day, whole) {
+    if (!st || !DAY.test(String(day || '')) || !st.stop_day || st.stop_day === day || !whole) return '';
+    return `<span class="wn5f-sub">φορτηγό στη Βέροια ${_esc(_dlab(st.stop_day))}</span>`;
+  }
+  // 092 (option a, coordinator 1/11): what «Ορισμός ημέρας» will do, before the press that does it - the international's
+  // day and every truck that moves with it, in the screen's words (a plate, a day; never a code), and what stays
+  function _vsPrevHTML(pv, orderId, day) {
+    const L = [];
+    const vd = pv.vs_day || {};
+    if (vd.to && vd.from !== vd.to) L.push(`Βέροια ${_dlab(vd.to)} (ήταν ${vd.from ? _dlab(vd.from) : '—'})`);
+    for (const t of pv.trucks || []) L.push(`${t.truck || 'φορτηγό'}: ${_dlab(t.from)} → ${_dlab(t.to)}`);
+    for (const w of pv.warnings || []) L.push(WN5Lab.warningLine(w).text);
+    if (!L.length) L.push('Ίδια ημέρα — τίποτα δεν αλλάζει');
+    return L.map((x) => `<div class="wn5f-sub">${_esc(x)}</div>`).join('')
+      + `<button type="button" class="wi4-btn sm pri" data-act="vs-day-ok" data-order="${orderId}" data-day="${_esc(day)}">Επιβεβαίωση</button>`;
+  }
+  // The VS block: locked for price and windows (decision 21); its day, its pallets (092, owner 1/11 option a) and — for
+  // an import — its destination after Veroia are the national desk's too, «όποιος μάθει πρώτος» (S-104, S-107), each
+  // with its own button: ONE POST per change, never inside the form's «Αποθήκευση» (Ε-4).
   // The 072 board carries no order_stop_id on cycle legs (only on waiting[]/hub[]): while it is missing the
   // destination button stays off and a line says why (principle 1); once the Worker adds it to legs[] the button
   // turns on with no code change. The day needs only order_id, which the legs carry.
   function _vsBlockHTML(f, b) {
     const imp = f.m.side === 'KATHODOS';
     const rows = imp ? b.drops.filter((r) => !r.hub) : b.loads.filter((r) => !r.hub);
-    const hubDay = f.m.hubStop ? f.m.hubStop.stop_day : (f.m.end ? f.m.end.stop_day : '');
+    const hubStop = _vsHubStop(f);
+    const hubDay = hubStop ? hubStop.stop_day : '';
+    // 092: the field shows the VS's own Veroia day (the international's, = the dispatcher's Excel once set), read by the
+    // board beside it; before 092, or when that read failed, the truck's day as before
+    // vd: {cd, first} once 092 is in the base, null before it, undefined while that read is pending or failed
+    const vd = typeof WN5 !== 'undefined' && typeof WN5.vsDayOf === 'function' ? WN5.vsDayOf(b.order_id) : undefined;
+    const day = vd && vd.cd ? vd.cd : hubDay;
+    const whole = !!(vd && vd.rts && vd.rts.has(Number(f.rtId)));
+    // 092 in the base = the answer carried the key; before 092 the pallets stay the international's (a field the base
+    // would refuse is never offered). Not read = said, never a field that is just missing (principle 1)
+    const v092 = !!vd;
+    const unread = vd === undefined;
     const noStop = imp && rows.some((r) => r.order_stop_id == null);
     return `<div class="wn5f-ord wn5f-lock" data-vs="${b.order_id}">`
       + `<div class="wn5f-ord-h">${LOCK}<b>${_esc(b.reference || 'VS')} · ${_esc(b.client)}</b><span class="wn5f-vs-s">· από διεθνή παραγγελία · ${_tempTxt(b.temps)}</span>`
-      + `<span class="wn5f-badge">ημέρα · προορισμός · παράθυρο κλειδωμένο</span></div>`
-      + `<div class="wn5f-vsday"><label class="wn5f-f"><span>Ημέρα</span><input class="form-input" type="date" data-f="vsday" value="${_esc(hubDay || '')}"></label>`
-      + `<button type="button" class="wi4-btn sm" data-act="vs-day" data-order="${b.order_id}">Ορισμός ημέρας</button><span class="wn5f-ok" data-vsok></span></div>`
+      + `<span class="wn5f-badge">τιμή · παράθυρο κλειδωμένα</span></div>`
+      + `<div class="wn5f-vsday"><label class="wn5f-f"><span>Ημέρα Βέροιας</span><input class="form-input" type="date" data-f="vsday" value="${_esc(day || '')}"></label>`
+      + `<button type="button" class="wi4-btn sm" data-act="vs-day" data-order="${b.order_id}">Ορισμός ημέρας</button><span class="wn5f-ok" data-vsok></span>`
+      + `<span class="wn5f-vstruck" data-vstruck>${_truckDayHTML(hubStop, day, whole)}</span></div>`
+      + '<div class="wn5f-vsprev" data-vsprev></div>'
+      + (unread ? '<div class="wn5f-note" data-vsunread>Η ημέρα Βέροιας και οι παλέτες της διεθνούς δεν διαβάστηκαν ακόμη — κλείσε και άνοιξε ξανά τη φόρμα για να τις αλλάξεις.</div>' : '')
       + `<div class="wn5f-sec">${imp ? 'ΠΑΡΑΔΟΣΕΙΣ' : 'ΦΟΡΤΩΣΕΙΣ'}</div>` + _lth('Παράθυρο από – έως *')
       + rows.map((r) => {
-        if (!imp) return _roRowHTML(r, true);
+        if (!imp) return _roRowHTML(r, true, v092);
         // the destination changes only for an import: plan_vs_set_place is «the destination after Veroia» (072:2064)
         const pid = 'wn5v' + (++f.seq);
         const off = r.order_stop_id == null;
-        return _roRowHTML(r, true) + `<div class="wn5f-vsplace"><span class="wn5f-sub">Προορισμός μετά τη Βέροια</span>${fhLocSelect(pid, '', 'WN5Form._locDropNoHub')}`
+        return _roRowHTML(r, true, v092) + `<div class="wn5f-vsplace"><span class="wn5f-sub">Προορισμός μετά τη Βέροια</span>${fhLocSelect(pid, '', 'WN5Form._locDropNoHub')}`
           + `<button type="button" class="wi4-btn sm" data-act="vs-place" data-pid="${pid}" data-osid="${off ? '' : r.order_stop_id}"${off ? ' disabled' : ''}>Αλλαγή προορισμού</button></div>`;
       }).join('')
+      + (v092 && rows.some((r) => r.piece_id != null) ? `<div class="wn5f-vspal"><button type="button" class="wi4-btn sm" data-act="vs-pal" data-order="${b.order_id}">Ορισμός παλετών</button><span class="wn5f-ok" data-vspalok></span></div>` : '')
       + (noStop ? '<div class="wn5f-note">Ο προορισμός αλλάζει εδώ όταν το board φέρνει τη στάση της διεθνούς — ως τότε από τη διεθνή παραγγελία.</div>' : '')
-      + `<div class="wn5f-note">${_pal(b.pallets || rows.reduce((a, r) => a + r.pallets, 0))}π · τιμή και τιμολόγηση στη διεθνή παραγγελία · δεν διαγράφεται από εδώ · ημέρα και προορισμός: όποιος μάθει πρώτος — γράφεται και στη διεθνή, ο διεθνών ειδοποιείται</div></div>`;
+      + `<div class="wn5f-note">${_pal(b.pallets || rows.reduce((a, r) => a + r.pallets, 0))}π · τιμή και τιμολόγηση στη διεθνή παραγγελία · δεν διαγράφεται από εδώ · ημέρα, παλέτες και προορισμός: όποιος μάθει πρώτος — γράφεται και στη διεθνή, ο διεθνών ειδοποιείται</div></div>`;
+  }
+  // the truck's stop at Veroia on this side of the leg (ΚΑΘΟΔΟΣ: its loading there; ΑΝΟΔΟΣ: its arrival)
+  function _vsHubStop(f) {
+    return f.m.side === 'KATHODOS' ? (f.m.hubStop || null) : (f.m.end || f.m.hubStop || null);
   }
   function _natBlockHTML(f, b) {
     const id = b.nat_order_id;
@@ -1601,11 +1646,23 @@
     if (a === 'leg-add-wait') { _close(f); WN5Act.plus(rt, f.side, _plusAnchor(rt, f.side)); return; }
     if (a === 'time') { _close(f); WN5Act.datePanel(rt, 'ANODOS', anchor()); return; }
     if (a === 'stop-time') { _close(f); WN5Act.datePanel(rt, f.side, anchor(), { stopId: Number(t.dataset.stop) }); return; }
-    if (a === 'vs-day') {
+    // 092 (option a): «Ορισμός ημέρας» = the preview of the day AND its trucks; «Επιβεβαίωση» = the act, for the day
+    // previewed (a day changed after the preview is previewed again, never sent unseen)
+    if (a === 'vs-day') { _vsDayPreview(f, t.closest('[data-vs]'), Number(t.dataset.order)); return; }
+    if (a === 'vs-day-ok') {
       const box = t.closest('[data-vs]');
-      vsDay(Number(t.dataset.order), box.querySelector('[data-f="vsday"]').value);
+      const day = box.querySelector('[data-f="vsday"]').value;
+      if (day !== t.dataset.day) { _vsDayPreview(f, box, Number(t.dataset.order)); return; }
+      vsDay(Number(t.dataset.order), day).then((ans) => {
+        if (!ans || _f !== f || f.done) return;
+        box.querySelector('[data-vsprev]').innerHTML = '';
+        // the trucks moved with the day; THIS truck, if the base kept it (vs_truck_kept names its code), keeps its line
+        const kept = (ans.warnings || []).some((w) => w && w.code === 'vs_truck_kept' && w.rt_code && w.rt_code === f.cyc.code);
+        box.querySelector('[data-vstruck]').innerHTML = kept ? _truckDayHTML(_vsHubStop(f), day, true) : '';
+      });
       return;
     }
+    if (a === 'vs-pal') { _vsPallets(f, t.closest('[data-vs]'), Number(t.dataset.order)); return; }
     if (a === 'vs-place') {
       const rec = (document.getElementById('lv_' + t.dataset.pid) || {}).value || '';
       if (!rec) {
@@ -1645,6 +1702,9 @@
   }
   async function openLeg(rtId, side) {
     const board = await _board();
+    // 092: that re-read also re-reads the VS days (the «Ημέρα Βέροιας» and the pallets field): wait for them (never
+    // rejects; a failed read says so in the VS block)
+    if (typeof WN5 !== 'undefined' && typeof WN5.vsDaysSettled === 'function') await WN5.vsDaysSettled();
     const cyc = board && (board.cycles || []).find((c) => c.rt_id === rtId);
     if (!cyc || (side !== 'KATHODOS' && side !== 'ANODOS')) {
       if (typeof toast === 'function') toast('Ο κύκλος δεν βρέθηκε στην εβδομάδα που φαίνεται — ανανέωσε', 'warn');
@@ -1748,13 +1808,56 @@
       if (f) { f.busy = false; _setSave(f); }
     }
   }
+  async function _vsDayPreview(f, box, orderId) {
+    const day = box.querySelector('[data-f="vsday"]').value;
+    const prev = box.querySelector('[data-vsprev]');
+    prev.innerHTML = '';
+    if (!Number.isSafeInteger(orderId) || !DAY.test(String(day || ''))) { _lines(f, ['Ημέρα: διάλεξε ημέρα']); return; }
+    if (f.busy) return;
+    f.busy = true; _setSave(f);
+    try {
+      const ans = await planFetch('POST', '/plan/vs/day', { body: { order_id: orderId, day, preview: true } });
+      if (_f !== f || f.done) return;
+      if (!ans || ans.dry_run !== true || !ans.preview || typeof ans.preview !== 'object') {
+        // an answer without its preview is never read as one (a base before 092 refuses the key: bad_input)
+        _lines(f, ['Η προεπισκόπηση δεν ήρθε — η ημέρα δεν άλλαξε· ενημέρωσε τον Δημήτρη']);
+        _log(new Error('wn5: vs/day preview without preview'), 'WN5Form vs-day');
+        return;
+      }
+      _lines(f, []);
+      prev.innerHTML = _vsPrevHTML(ans.preview, orderId, day);
+    } catch (e) {
+      if (_f === f) await _failed(f, e, null);
+    } finally {
+      f.busy = false; _setSave(f);
+    }
+  }
   function vsDay(orderId, day) {
     if (!Number.isSafeInteger(orderId) || !DAY.test(String(day || ''))) {
       if (_f && _f.kind === 'leg') _lines(_f, ['Ημέρα: διάλεξε ημέρα']);
       return Promise.resolve(null);
     }
-    return _vsSend('/plan/vs/day', { order_id: orderId, day }, 'Η ημέρα γράφτηκε και στη διεθνή, ο διεθνών ειδοποιήθηκε',
+    return _vsSend('/plan/vs/day', { order_id: orderId, day }, 'Η ημέρα γράφτηκε στη διεθνή και στα φορτηγά, ο διεθνών ειδοποιήθηκε',
       'Ίδια ημέρα — η διεθνής δεν άλλαξε, καμία ειδοποίηση', 'vs-day', `[data-vs="${orderId}"] [data-vsok]`);
+  }
+  // 092: one POST per changed point (Ε-4: never inside the form's «Αποθήκευση»), in order; a refusal stops the rest and
+  // says so in the form's lines. The same number is never sent.
+  async function _vsPallets(f, box, orderId) {
+    const changed = [...box.querySelectorAll('[data-f="vspal"]')].filter((el) => _num(el.value) !== Number(el.dataset.old));
+    if (!changed.length) { _lines(f, ['Παλέτες: ίδιος αριθμός — η διεθνής δεν άλλαξε']); return; }
+    for (const el of changed) {
+      const n = _num(el.value);
+      // the pieces are numeric(6,1): 092 refuses 2.55 too (bad_input), said here before anything is sent
+      // no el.focus() here: the button's focusout refreshes the form, and the refresh would clear this line (_legRefresh)
+      if (!(n > 0) || !Number.isFinite(n) || n >= 100000 || !_dec1(n)) { _lines(f, ['Παλέτες: γράψε θετικό αριθμό, το πολύ ένα δεκαδικό']); return; }
+    }
+    for (const el of changed) {
+      const ans = await _vsSend('/plan/vs/day', { order_id: orderId, piece_id: Number(el.dataset.piece), pallets: _num(el.value) },
+        'Οι παλέτες γράφτηκαν και στη διεθνή, ο διεθνών ειδοποιήθηκε', 'Ίδιος αριθμός — η διεθνής δεν άλλαξε', 'vs-pallets',
+        `[data-vs="${orderId}"] [data-vspalok]`);
+      if (!ans) return;
+      el.dataset.old = String(_num(el.value));
+    }
   }
   function vsPlace(orderStopId, locationId) {
     const f = _f && _f.kind === 'leg' ? _f : null;

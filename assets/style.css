@@ -9166,6 +9166,11 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 .wn5-vh { display:block; font-size:12px; line-height:15px; font-weight:500; color:var(--wi4-ink); }
 /* H1 2120:8134/8150/8817: every stop's time line, Veroia's window included, is DM Sans Medium 10.5px grey-1 */
 .wn5-vtime { display:block; font-size:10.5px; line-height:13px; font-weight:500; color:var(--wi4-grey-1); }
+/* 092 (F45): ✎ on the national cell of a VS the national desk changed (Weekly International) */
+.wi4-vsnote { flex:none; margin-left:4px; padding:0 4px; border:1px solid var(--wi4-amber); border-radius:4px; background:var(--wi4-amber-bg); color:var(--wi4-amber); font-size:11px; line-height:16px; cursor:pointer; }
+/* 092 (F45): the VS is at Veroia on another day than this truck (the international's day); a mark, the sentence in the title */
+.wn5-vsday { display:block; font-size:10.5px; line-height:13px; font-weight:600; color:var(--wi4-amber); white-space:nowrap; }
+.wn5-vsday[hidden] { display:none; }
 /* The stops of a cell stay on ONE line at every width (density, owner 31/10; ≤1600 already did): a stop shrinks and
    its name wraps inside it, «+N» stays beside its stops. Whole stops wrapping under each other made the row 62px and
    left «+1» alone on a line (W44 at 1920). */
@@ -10001,6 +10006,13 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 /* 3c: a week before day L — one quiet line in the middle of the board, its button beside it */
 .wn5-prel { display:flex; align-items:center; justify-content:center; gap:12px; min-height:240px; font-size:13px; color:var(--wi4-grey-1); }
 .wn5f-vsday { display:flex; align-items:flex-end; gap:8px; }
+/* 092: the truck's own Veroia day when it is not the VS's, and the pallets button under the VS points */
+.wn5f-vstruck { display:flex; align-items:center; gap:6px; padding-bottom:6px; }
+.wn5f-vstruck .wn5f-sub { color:var(--wi4-amber); font-weight:600; }
+.wn5f-vspal { display:flex; align-items:center; gap:8px; }
+.wn5f-vsprev { display:flex; flex-direction:column; align-items:flex-start; gap:4px; }
+.wn5f-vsprev:empty { display:none; }
+.wn5f-row.ro input.wn5f-c[data-f="vspal"] { width:100%; line-height:normal; }
 .wn5f-vsplace { display:grid; grid-template-columns:180px minmax(0, 1fr) 150px; gap:8px; align-items:center; padding-left:12px; }
 .wn5f-ok { font-size:11.5px; color:var(--wi4-partner-ink); }
 /* T23: the printer of a side on hover (Figma 2011:9284 / 9288): a bare 12px icon in --wi4-icon, no frame, in the gap

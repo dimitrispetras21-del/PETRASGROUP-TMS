@@ -75,6 +75,12 @@ let _idsOk = false;      // the catalogue is loaded: only then are ids named (a 
 let _idsFailAt = 0;      // when it last failed: asked again after 60 s or on the user's ↻, never on every reload
 let _idsForce = false;   // the user's ↻ (reload('user')) asks again at once
 let _stale = null;       // a save landed but the board read after it failed: {at} — the rows show the state BEFORE it (F11)
+// 092 (F45): the international's Veroia day of each VS at a hub stop of the board (GET /plan/vs-state cross_dock_date),
+// so a truck at Veroia on another day than the VS is marked on its row (coordinator 1/11: never two numbers in silence)
+let _vsDays = new Map();  // order_id → { cd, first, rts } (days 'YYYY-MM-DD' | null, rts: Set of rt ids); absent = not read / before 092
+let _hubVs = new Map();   // rt_stop id → { day, rt, orders: [order_id] } of the VS legs there (from the last board)
+let _vsRead = 'ok';       // the read of those days: 'loading' | 'ok' | 'err' (the leg form says why a field is missing)
+let _vsPending = null;    // that read in flight (settles, never rejects): the leg form waits for it (vsDaysSettled)
 // The reload reasons of a write that the base has CONFIRMED (a 200): if the read after one fails, the screen must not
 // look as if the save did not happen (live F11, 28/10: a 503 after «Ανάθεση» left «ΠΡΟΣ ΑΝΑΘΕΣΗ» on screen and invited
 // a second assignment). Every caller of WN5.reload after a confirmed write uses one of these.
@@ -296,9 +302,91 @@ async function render() {
     _logErr(new Error(err.message), 'weekly natl v5: board week');
   }
   if (err) { _state = 'err'; _lastErr = err; }
-  else { _board = board; _okAt = new Date(); _state = _isEmpty(board) ? 'empty' : 'ok'; _stale = null; }
+  else { _board = board; _okAt = new Date(); _state = _isEmpty(board) ? 'empty' : 'ok'; _stale = null; _vsDayKick(board, seq); }
   if (!paint()) return _fallback();
 }
+// 092: the VS legs of the board's stops, and the international's Veroia day of those VS, read beside the board
+// (one GET, at most 500 ids: plan_vs_state's limit). It never holds the board back and never repaints it: the marks
+// are filled in place (_vsMarkFill), so a menu or popover opened meanwhile stays (code review xhigh). The days of the
+// last board are dropped at once (_vsRead 'loading'): a failed read leaves no old day standing beside a new board.
+// Before 092 the answer has no cross_dock_date: no mark, as today.
+function _vsDayKick(board, seq) {
+  const idx = new Map();
+  // a malformed board is WN5L.model's to refuse (the old board and its banner): nothing here may throw first
+  const arr = (x) => (Array.isArray(x) ? x : []);
+  for (const c of arr(board.cycles)) {
+    // every stop with a VS leg; the mark is drawn only beside the stops the model calls Veroia (kath.veroia, end:
+    // WN5L's hub rule), so no second hub test lives here
+    for (const s of arr(c && c.stops)) {
+      const ids = arr(s && s.legs).filter((l) => l && /^vs_/.test(String(l.kind || '')) && l.order_id != null).map((l) => Number(l.order_id));
+      if (ids.length) idx.set(Number(s.stop_id), { day: s.stop_day || null, rt: Number(c.rt_id), orders: [...new Set(ids)] });
+    }
+  }
+  _hubVs = idx;
+  _vsDays = new Map();
+  const ids = [...new Set([...idx.values()].flatMap((h) => h.orders))].slice(0, 500);
+  if (!ids.length || typeof planFetch !== 'function') { _vsRead = 'ok'; _vsPending = null; return; }
+  _vsRead = 'loading';
+  _vsPending = planFetch('GET', '/plan/vs-state?order_ids=' + ids.join(',')).then((ans) => {
+    if (seq !== _seq || !active()) return;
+    const m = new Map();
+    const day = (x) => (x ? String(x).slice(0, 10) : null);
+    for (const id of ids) {
+      const v = ans && ans[String(id)];
+      if (v && typeof v === 'object' && Object.prototype.hasOwnProperty.call(v, 'cross_dock_date')) {
+        m.set(id, { cd: day(v.cross_dock_date), first: day(v.first_hub_day), rts: new Set((Array.isArray(v.root_rts) ? v.root_rts : []).map(Number)) });
+      }
+    }
+    _vsDays = m;
+    _vsRead = 'ok';
+    _vsMarkFill();
+  }).catch((e) => {
+    if (seq !== _seq) return;
+    _vsRead = 'err';
+    // logged once: planFetch logs a PlanError that is not a designed answer itself; a designed one and a fault of
+    // this code are logged here (principle 1: the marks that are off are never off in silence)
+    const pe = typeof PlanError === 'function' && e instanceof PlanError;
+    const designed = pe && typeof PlanApi !== 'undefined' && PlanApi.isDesigned(e);
+    if (!(e && e._sessionGone) && (!pe || designed)) _logErr(e, 'weekly natl v5: /plan/vs-state (Veroia day marks)');
+  });
+}
+// The mark beside a hub stop whose VS the international has at Veroia on another day («VS Κυρ 1/11»); the whole
+// sentence is in the title. Only on a truck that carries a WHOLE piece of the VS (root_rts of plan_vs_state): a part
+// split at Veroia and loaded days later is there on purpose, never a mismatch; a truck «Ορισμός ημέρας» could not move
+// (its stop ran, a rule of its own) is, whatever its day. Nothing when the days agree, or when the day was not read.
+function _vsMarkText(stopId) {
+  const h = _hubVs.get(Number(stopId));
+  if (!h) return null;
+  const days = [...new Set(h.orders.map((o) => _vsDays.get(o)).filter((v) => v && v.cd && v.cd !== h.day && v.rts && v.rts.has(h.rt))
+    .map((v) => v.cd))].sort();
+  return days.length ? days.map(_dl).join(', ') : null;
+}
+function _vsDayMark(stopId) {
+  if (stopId == null || !_hubVs.has(Number(stopId))) return '';
+  const id = _id(stopId);
+  const txt = _vsMarkText(stopId);
+  const h = _hubVs.get(Number(stopId));
+  return txt ? `<span class="wn5-vsday" data-vsmark="${id}" title="${_esc('Η διεθνής έχει Βέροια ' + txt + ' · το φορτηγό ' + _dl(h.day))}">VS ${_esc(txt)}</span>`
+    : `<span class="wn5-vsday" data-vsmark="${id}" hidden></span>`;
+}
+function _vsMarkFill() {
+  for (const el of document.querySelectorAll('#content .wn5 [data-vsmark]')) {
+    const txt = _vsMarkText(el.dataset.vsmark);
+    const h = _hubVs.get(Number(el.dataset.vsmark));
+    el.hidden = !txt;
+    el.textContent = txt ? 'VS ' + txt : '';
+    if (txt) el.title = 'Η διεθνής έχει Βέροια ' + txt + ' · το φορτηγό ' + _dl(h && h.day); else el.removeAttribute('title');
+  }
+}
+// The international's Veroia day of a VS as the board read it (the leg form's «Ημέρα Βέροιας»): {cd, first, rts} (cd =
+// orders.cross_dock_date, first = the first Veroia day of its trucks, rts = the cycles with a whole piece of it), null =
+// the base answered without it (before
+// 092), undefined = not read; vsDayRead() says why ('loading' | 'ok' | 'err')
+function vsDayOf(orderId) { const k = Number(orderId); return _vsDays.has(k) ? _vsDays.get(k) : (_vsRead === 'ok' ? null : undefined); }
+function vsDayRead() { return _vsRead; }
+// The leg form re-reads the board when it opens (findAfterReuse), which starts a new read of the days: it waits for it,
+// so its «Ημέρα Βέροιας» is never the day of before a save
+function vsDaysSettled() { return _vsPending || Promise.resolve(); }
 // Empty = the three lists that make rows came back empty (a malformed list is not «empty»: WN5L.model refuses it).
 function _isEmpty(b) {
   const n = (k) => (Array.isArray(b[k]) ? b[k].length : 1);
@@ -825,7 +913,7 @@ function _anodHTML(r, m, ok) {
   // hour someone set
   const endT = r.end ? L().athensTime(r.end.by) : '';
   const endBy = r.end ? (endT && endT !== '23:59' ? `ως ${_dow(L().athensDay(r.end.by))} ${endT}` : _dl(L().athensDay(r.end.by))) : '';
-  const end = r.end ? `<span class="wn5-end${_dc(ok && r.end.dim)}"${_segAttr(r.end.segLabel)} title="${_esc(`Βέροια · ${endBy}`)}"><span class="wi4-l1">Βέροια</span><span class="wi4-l2">${_esc(endBy)}</span></span>` : '';
+  const end = r.end ? `<span class="wn5-end${_dc(ok && r.end.dim)}"${_segAttr(r.end.segLabel)} title="${_esc(`Βέροια · ${endBy}`)}"><span class="wi4-l1">Βέροια</span><span class="wi4-l2">${_esc(endBy)}</span>${_vsDayMark(r.end.stopId)}</span>` : '';
   // ΠΡΟΣ that delivers somewhere AND ends at Veroia (1e, coordinator 1/11): the end stands after the stops as the last
   // stop in its own look, on the same line (CSS: a flex row, the stop names one line with «…»), never under them.
   // a waiting load of the ΑΝΟΔΟΣ only: its late mark is this day chip (the ΚΑΘΟΔΟΣ chip carries it otherwise)
@@ -845,7 +933,7 @@ function _flHTML(s, ok, hd, vsRef) {
   if (!s.veroia) return _ptsHTML(s.from, ok, null, true);
   // 2d: no window known → «Βέροια» alone, never «Βέροια —»; a waiting VS puts its reference there (vsRef)
   const vw = WN5L.winText(s.veroia.from, s.veroia.to, s.veroia.allDay);
-  const vh = `<span class="wn5-vh${hd}">Βέροια</span>${vw ? `<span class="wn5-vtime${hd}"${_segAttr(s.veroia.segLabel)}>${_esc(vw)}</span>` : vsRef || ''}`;
+  const vh = `<span class="wn5-vh${hd}">Βέροια</span>${vw ? `<span class="wn5-vtime${hd}"${_segAttr(s.veroia.segLabel)}>${_esc(vw)}</span>` : vsRef || ''}${_vsDayMark(s.veroia.stopId)}`;
   const k = Math.min(s.vBefore || 0, s.from.length);
   return _ptsHTML(s.from.slice(0, k), ok, 1, true) + vh + _ptsHTML(s.from.slice(k), ok, k + 2, true);
 }
@@ -1758,6 +1846,9 @@ const WN5 = {
   // The board HTML of a model, for tests/wn5-board-html.test.js (pure: model in, string out).
   _html: (m) => _boardHTML(m, true),
   _menuItems,
+  vsDayOf,
+  vsDayRead,
+  vsDaysSettled,
   _dayTog,
   _qMore,
   _week,

@@ -164,7 +164,8 @@ const VS = (s, recs) => s.run(`PlanConfig.vsState(${JSON.stringify(recs)}).then(
 test('F5-FE1 vsState: a bridge → its entry; «missing» stays the base\'s word; keyed by rec', async () => {
   const st = { carriers: [{ kind: 'owned', text: 'TST-1 / D1', code: 'R1', hub_day: '2026-10-31' }], all_executed: false, all_planned: true, first_hub_day: '2026-10-31', n_pieces: 2 };
   const s = sandbox([gate([['recVS1', 101], ['recVS2', 102]]), json(200, { 101: st, 102: 'missing' })], VSF);
-  assert.deepStrictEqual(JSON.parse(await VS(s, ['recVS1', 'recVS2', 'recVS1'])), [['recVS1', st], ['recVS2', 'missing']]);
+  // 092: the entry also carries its base id (the key of the national desk's notices, plan_notices.order_id)
+  assert.deepStrictEqual(JSON.parse(await VS(s, ['recVS1', 'recVS2', 'recVS1'])), [['recVS1', { ...st, order_pg_id: 101 }], ['recVS2', 'missing']]);
   const paths = s.calls.map((c) => new URL(c.url).pathname + new URL(c.url).search);
   assert.deepStrictEqual(paths, ['/pallets/gate?order_recs=recVS1%2CrecVS2', '/plan/vs-state?order_ids=101,102']);
 });

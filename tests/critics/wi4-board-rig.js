@@ -227,6 +227,17 @@ function planAnswer(route, S, u, json) {
     const ids = (u.searchParams.get('order_ids') || '').split(',').map(Number);
     return json(route, Object.fromEntries(ids.map(id => { const rec = (ords[id - 1] || {}).id; return [String(id), (rec && S.plan.vs[rec]) || 'missing']; })));
   }
+  // 092 (F45): the national desk's notices to this desk; S.plan.notes = [{ rec, id, kind, message }] (order_id = the
+  // rec's base id, as plan_notices holds it). A «Σημείωσα» is recorded in S.plan.reads.
+  if (u.pathname === '/plan/notices') {
+    // answered after the page is instrumented (the logError seam), as a slow refusal would be
+    if (S.plan.failNotes) return new Promise(r => setTimeout(r, 2000)).then(() => json(route, { error: { type: 'FORBIDDEN', code: 'forbidden', message: 'rig: forced notices refusal' } }, 403));
+    const unread = (S.plan.notes || []).filter(n => !(S.plan.reads || []).includes(n.id))
+      .map(n => ({ id: n.id, to_desk: 'intl', kind: n.kind, message: n.message, order_id: ords.findIndex(o => o.id === n.rec) + 1, read_at: null, created_by: n.by || null }));
+    return json(route, { desk: 'intl', unread, recent: [] });
+  }
+  const rd = u.pathname.match(/^\/plan\/notices\/(\d+)\/read$/);
+  if (rd) { (S.plan.reads = S.plan.reads || []).push(Number(rd[1])); return json(route, { ok: true, op: 'plan_notice_read' }); }
   return json(route, { error: { type: 'NOT_FOUND', code: 'no_route', message: 'rig: ' + u.pathname } }, 404);
 }
 
@@ -3800,6 +3811,56 @@ async function scnV5Err(browser, origin) {
   await page.context().close();
 }
 
+// 092 (F45, owner 1/11 option a): the national desk changed a VS (its pallets) → ✎ on that order's national cell, the
+// notice's own words in its title and in the confirmation, «Σημείωσα» = ONE POST /plan/notices/:id/read, then no ✎.
+async function scnVsNote(browser, origin) {
+  const scn = 'vsnote';
+  const vsMap = {
+    recWiE021: { carriers: [{ kind: 'owned', text: 'TST-V5 / Driver V5', code: 'R1', hub_day: '2026-10-07' }], all_executed: false, all_planned: true, first_hub_day: '2026-10-07', n_pieces: 1 },
+    recWiE020: { carriers: [{ kind: 'partner', text: 'Partner V5', code: 'R2', hub_day: '2026-10-07' }], all_executed: false, all_planned: true, first_hub_day: '2026-10-07', n_pieces: 1 },
+  };
+  // the base's words (092, coordinator 1/11) and who: the roster's first name (config.js USERS: sotiris → Sotiris)
+  const DAYM = 'Βέροια Κυρ 1/11 (ήταν Δευ 2/11)', PALM = '22π (ήταν 24) · φόρτωση RIG PLACE';
+  const MSG = DAYM + ' · Sotiris\n' + PALM + ' · Sotiris';
+  const { page, S } = await openBoard(browser, origin, { mutate: v5Week, plan: { config: V5_AFTER, vs: vsMap, notes: [
+    { rec: 'recWiE021', id: 77, kind: 'vs_day_changed', message: DAYM, by: 'sotiris' }, { rec: 'recWiE021', id: 78, kind: 'vs_pallets_set', message: PALM, by: 'sotiris' }] } });
+  await settle(page, S, 2600);
+  const r = await page.evaluate(([js]) => { const row = eval(js); const b = (oid) => row(oid) && row(oid).querySelector('.wi4-vsnote');
+    return { e21: !!b('recWiE021'), title: b('recWiE021') ? b('recWiE021').title : '', e20: !!b('recWiE020'), all: document.querySelectorAll('#content .wi4 .wi4-vsnote').length }; }, [ROW_JS]);
+  ok(scn, 'the changed VS has ✎ with the notice\'s words; the other VS has none', r.e21 && r.title === MSG && !r.e20 && r.all === 1, r);
+  ok(scn, 'the notices are read once (GET /plan/notices?desk=intl)', S.planGets.filter(g => g === '/plan/notices?desk=intl').length === 1, S.planGets);
+  // the cell with ✎ at 1440 (coordinator 1/11): the shot for the PR
+  if (process.env.WI4_VSNOTE_SHOT) {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.waitForTimeout(500);
+    const cell = await page.evaluateHandle(([js]) => eval(js)('recWiE021'), [ROW_JS]);
+    await cell.asElement().screenshot({ path: process.env.WI4_VSNOTE_SHOT });
+    ok(scn, 'at 1440 the ✎ is inside its cell, whole', await page.evaluate(([js]) => { const b = eval(js)('recWiE021').querySelector('.wi4-vsnote');
+      const c = b && b.closest('.wi4-nat-h'); if (!b || !c) return false; const r = b.getBoundingClientRect(), q = c.getBoundingClientRect();
+      return r.width > 0 && r.left >= q.left - 0.5 && r.right <= q.right + 0.5; }, [ROW_JS]));
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.waitForTimeout(300);
+  }
+  await page.evaluate(([js]) => eval(js)('recWiE021').querySelector('.wi4-vsnote').click(), [ROW_JS]);
+  await page.waitForTimeout(400);
+  const dlg = await page.evaluate(() => { const o = document.getElementById('modalOverlay'); return { open: !!(o && o.classList.contains('open')), text: o ? o.textContent : '' }; });
+  ok(scn, 'the press shows the words with «Σημείωσα»', dlg.open && dlg.text.includes(DAYM + ' · Sotiris') && dlg.text.includes(PALM + ' · Sotiris') && /Σημείωσα/.test(dlg.text), dlg);
+  await page.click('#_cfaOk');
+  await page.waitForTimeout(1200);
+  ok(scn, '«Σημείωσα» = ONE POST per notice (/plan/notices/77/read, /78/read)', JSON.stringify(S.plan.reads || []) === '[77,78]', S.plan.reads);
+  ok(scn, 'then no ✎ on the board', (await page.evaluate(() => document.querySelectorAll('#content .wi4 .wi4-vsnote').length)) === 0);
+  await shot(page, 'vsnote');
+  ok(scn, 'no page errors; no facade write', !writes(S).length && !S.pageErrors.length, { w: writes(S), e: S.pageErrors });
+  await page.context().close();
+  // the read refused (a designed 403 planFetch does not log): the board is whole, no ✎, and the failure is logged once
+  const f = await openBoard(browser, origin, { mutate: v5Week, plan: { config: V5_AFTER, vs: vsMap, failNotes: true, notes: [{ rec: 'recWiE021', id: 77, kind: 'vs_pallets_set', message: PALM }] } });
+  await settle(f.page, f.S, 3000);
+  const fr = await f.page.evaluate(() => ({ rows: document.querySelectorAll('#content .wi4 .wi4-row').length, notes: document.querySelectorAll('#content .wi4 .wi4-vsnote').length,
+    logged: (window.__ev || []).filter((e) => e.k === 'logError' && /plan\/notices/.test(JSON.stringify(e.a))).length }));
+  ok(scn, 'notices refused → the board painted, no ✎, one logError', fr.rows > 10 && fr.notes === 0 && fr.logged === 1, fr);
+  await f.page.context().close();
+}
+
 // §e #20: 1440 is not designed yet (Φ8, the owner's Figma) — but nothing on it
 // may be cut without its title, overlap, or break the 32px rows.
 
@@ -4460,7 +4521,7 @@ async function scnVs(browser, origin) {
       date: scnDate, keys: scnKeys, search: scnSearch, savefail: scnSaveFail, presence: scnPresence, conflict: scnConflict, fallback: scnFallback, styles: scnStyles,
       twins: scnTwins, queue: scnQueue, unread: scnUnread,
       print: scnPrint, shift: scnShift, late: scnLate, offline: scnOffline, quiet: scnQuiet, natmissing: scnNatMissing, done: scnDone, w1440: scnW1440, parity: scnParity,
-      vs: scnVs, v5: scnV5, v5err: scnV5Err, vsform: scnVsForm, del428: scnDel428 };
+      vs: scnVs, v5: scnV5, v5err: scnV5Err, vsnote: scnVsNote, vsform: scnVsForm, del428: scnDel428 };
     // A watchdog per scenario: one missing locator or one write that never
     // settles fails THAT scenario, closes its pages, and the run goes on.
     const WATCHDOG_MS = 360000;

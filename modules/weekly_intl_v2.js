@@ -1002,6 +1002,37 @@ function _impLegHTML(host, imp, today, rs) {
   }, today) };
 }
 
+// 092 (F45): ✎ = the national desk changed this VS (its Veroia day, its pallets) and nobody here has marked it yet; the
+// words are the notice's own (the base writes them), the press shows them with «Σημείωσα» (POST /plan/notices/:id/read)
+// One line per change in the screen's words, the base's own («Βέροια Κυρ 1/11 (ήταν Δευ 2/11)», «22π (ήταν 24) ·
+// φόρτωση …»), and who made it, by the first name of the roster (config.js USERS), else the login
+function _vsNoteWho(u) {
+  const r = typeof USERS !== 'undefined' && Array.isArray(USERS) ? USERS.find((x) => x && x.username === u) : null;
+  return (r && r.name ? String(r.name).split(' ')[0] : u) || '';
+}
+function _vsNoteText(ns) { return ns.map((n) => [n.message, _vsNoteWho(n.created_by)].filter(Boolean).join(' · ')).join('\n'); }
+function _vsNoteHTML(oid) {
+  const ns = (_D().data.vsNotes || {})[oid];
+  const q = _q(oid);
+  if (!ns || !ns.length || !q) return '';
+  return `<button type="button" class="wi4-vsnote" title="${_esc(_vsNoteText(ns))}" onclick="event.stopPropagation();WIV2._vsNote('${q}')">✎</button>`;
+}
+async function _vsNote(oid) {
+  const notes = _D().data.vsNotes || {};
+  const ns = notes[oid];
+  if (!ns || !ns.length || typeof confirmAction !== 'function') return;
+  const yes = await confirmAction(_vsNoteText(ns), { title: 'Αλλαγή από το Εθνικών', confirmLabel: 'Σημείωσα', cancelLabel: 'Κλείσιμο' });
+  if (!yes) return;
+  // one POST per notice (the national board's «Σημείωσα» does the same); a failure keeps the ✎ and says why
+  for (const n of ns.slice()) {
+    try { await planFetch('POST', `/plan/notices/${Number(n.id)}/read`, { body: {} }); }
+    catch (e) { if (typeof toast === 'function') toast((e && e.message) || 'Δεν σημειώθηκε — δοκίμασε ξανά', 'error'); break; }
+    ns.splice(ns.indexOf(n), 1);
+  }
+  if (!ns.length) delete notes[oid];
+  _lateLanded();
+}
+
 // National leg cell (§e #12). Never «ΠΡΟΣ ΑΝΑΘΕΣΗ» for an unread leg (§d.2a).
 // INFORMATION only (owner 11/10 21:20): national work is Weekly National's,
 // so no tile carries a reason (no data-r, never red) — it is not counted by
@@ -1011,7 +1042,7 @@ function _natHTML(oid, name, day) {
   const dayS = DAY_RE.test(day || '') ? DOW_SHORT[_dow(day)] : '';
   // The day sits OUTSIDE the cut name (Figma: name left, «Τετ» right): inside
   // it, a long client name ate the day («Omicron Dairy → Βέρο…»).
-  const head = `<div class="wi4-nat-h">${_ell('wi4-l1', name)}${dayS ? `<span class="wi4-nat-day" title="${_esc(_dayLabel(day))}">${dayS}</span>` : ''}</div>`;
+  const head = `<div class="wi4-nat-h">${_ell('wi4-l1', name)}${dayS ? `<span class="wi4-nat-day" title="${_esc(_dayLabel(day))}">${dayS}</span>` : ''}${_vsNoteHTML(oid)}</div>`;
   // The collapsed column's dot carries the tile's state and words (dot =
   // cls / words): a same blue dot for every leg said «a leg exists» for one
   // with no carrier. The un-tile is always Figma's amber dashed chip
@@ -2862,6 +2893,7 @@ const WIV2 = {
   // Old-module seams (§a.4, fix round 3): a late source landed; an assignment
   // save's attempt, for the failure line. The menu's pallet figure (_pals).
   _lateLanded, _noteAttempt, _pals,
+  _vsNote,
 };
 window.WIV2 = WIV2;
 })();

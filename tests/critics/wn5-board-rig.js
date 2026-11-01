@@ -380,7 +380,8 @@ SCN.paint = async (browser, origin) => {
   });
   ok(scn, 'ΠΡΟΣ: no «· τέλος κύκλου» (owner 31/10), «ως …» 500 10.5px grey-2; the empty-side text 11.5px (step 2b: no box)', ty.endx === 0 && ty.by === '500 10.5px rgb(91, 107, 127)'
     && ty.gap.length >= 2 && ty.gap.every((f) => f === '11.5px'), ty);
-  ok(scn, 'nothing was sent to /plan/* but the board read', S.plan.every((x) => x.m === 'GET' && x.path === '/plan/board'), S.plan.map((x) => x.m + ' ' + x.path));
+  // 092: GET /plan/vs-state beside the board (the international's Veroia day of the VS on it) is a read too
+  ok(scn, 'nothing was sent to /plan/* but the board read', S.plan.every((x) => x.m === 'GET' && ['/plan/board', '/plan/vs-state'].includes(x.path)), S.plan.map((x) => x.m + ' ' + x.path));
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
   await shot(page, 'paint-1920');
   await page.context().close();
