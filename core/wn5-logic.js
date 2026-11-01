@@ -198,7 +198,9 @@ function _gapSide(c, kath) {
   if (c.trip_type === 'PARTNER') text = 'Μόνο κάθοδος · συνεργάτης';
   else if (kath && kath.to.length) {
     const last = kath.to[kath.to.length - 1];
-    text = `Κενό γύρισμα · ελεύθερο από ${_dow(last.day)} ${last.to} · ${last.name}`;
+    // 2h (coordinator 1/11): the day the truck is free, its hour only when it is not the day's end, and no repeat of
+    // the delivery the ΚΑΘΟΔΟΣ cell already names beside it
+    text = `Κενό γύρισμα · ελεύθερο από ${_dow(last.day)}${last.to && last.to !== '23:59' ? ' ' + last.to : ''}`;
   }
   return { side: 'ANODOS', day: null, toDay: null, veroia: null, vBefore: 0, headDim: false, from: [], to: [], pallets: 0, over: 0, sideDim: false, gap: { text } };
 }
@@ -218,7 +220,8 @@ function _tile(s, multi) {
       // A one-segment cycle stays exactly as F0 7745 / H1 (R-59, Σ5): line 2 is the partner's plate. The 072 board
       // carries none (Ε-35) → «—», never the rate in its place (Ε-36). The rate stays data (partnerRate, rates):
       // Δ1, the move list and the cycle card show it.
-      t.line2 = '—';
+      // 2i (coordinator 1/11): nothing under the name rather than a bare «—»; the name on one line with «…» (CSS)
+      t.line2 = '';
     }
     return t;
   }
@@ -348,7 +351,8 @@ function _waitRow(list, hubId, errors, nameOf) {
     clients: w.client ? [w.client] : [], temps: _temps([w]),
     from: athensTime(anodos ? w.load_from : w.deliver_from), to: athensTime(anodos ? w.load_to : w.deliver_to),
     allDay: anodos ? allDay(w.load_from, w.load_to) : allDay(w.deliver_from, w.deliver_to), pallets: r1(w.pallets), palUnknown: w.pallets == null ? 1 : 0,
-    dim: false, late: w.overdue === true, segmentId: null, segLabel: null, day: athensDay(anodos ? w.load_from : w.deliver_from) }));
+    // late is the row's (2f): one «αργό» beside the day, never every stop of a waiting VS in amber
+    dim: false, late: false, segmentId: null, segLabel: null, day: athensDay(anodos ? w.load_from : w.deliver_from) }));
   const pallets = _sum(ws), palUnknown = _unk(ws);
   const loadDay = ws.map(_loadDay).filter(Boolean).sort()[0] || null;
   // A ΚΑΘΟΔΟΣ load that starts outside the hub: one loading point per place (nat_from), named by the catalogue.

@@ -9110,8 +9110,9 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
   font-size:10px; font-weight:600; letter-spacing:.5px; line-height:1.2; color:var(--wi4-grey-2); align-items:end; }
 .wn5-cols > span { min-width:0; padding:0 9px; box-sizing:border-box; }
 .wn5-cols > .wn5-h-asg { padding-left:9px; }
-/* 36px as the Figma rows (H1 2120:7738): the rule and 1px above, the 32px day + REF cell, 2px below. */
-.wn5-row { position:relative; min-height:36px; padding:1px 0 2px; box-sizing:border-box; border-top:1px solid var(--wi4-line); }
+/* One row height (critics r3, step 2): 44px, the height of a row with two lines (place + «πόλη · ώρα · π», or the day
+   and its «→ Δευ 2/11»), so the rows of a day never alternate 36 / 44 (was 36px, Figma H1 2120:7738). */
+.wn5-row { position:relative; min-height:44px; padding:1px 0 2px; box-sizing:border-box; border-top:1px solid var(--wi4-line); }
 .wn5 .wi4-day-body > :first-child { border-top:0; }
 .wn5-row > div, .wn5-sub > span { min-width:0; padding:0 9px; box-sizing:border-box; }
 .wn5-row > .wn5-asg { padding:0; display:flex; gap:4px; }
@@ -9125,12 +9126,20 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
    six-week November. The buttons stay at the panel's foot, the content scrolls behind them. */
 .wn5-dlg > .wi4-dlg-ft { position:sticky; bottom:0; z-index:1; background:var(--surface-card); }
 .wn5 .wn5-asg .wi4-box { flex:1 1 0; max-width:none; }
-/* «ΠΡΟΣ ΑΝΑΘΕΣΗ» in the button's red ink, SemiBold (H1 / 7745): its inner .wi4-l1 (ink, 500) would paint it navy. */
+/* «ΠΡΟΣ ΑΝΑΘΕΣΗ» (2a, coordinator 1/11, critics r1; the same words as every toast and form): a quiet grey mark, as an empty assignment on the Weekly
+   International — not the loudest thing on the page, late or not (a late load's red is its word «αργό»). */
+.wn5 .wi4-box.un { background:transparent; border:1px solid transparent; color:var(--wi4-grey-2); font-size:10.5px; font-weight:500; letter-spacing:.3px; }
+.wn5 .wi4-box.un:hover, .wn5 .wi4-box.un:focus-visible { border-color:var(--wi4-slot); border-style:dashed; color:var(--wi4-ink); }
 .wn5 .wi4-box.un > .wi4-l1 { color:inherit; font-weight:inherit; }
+/* A tile with nothing under its name (a partner without a plate, 2i): the name on one line with «…», whole on hover
+   (critics r4: three lines of capitals in a 28px tile). */
+.wn5 .wi4-box.wn5-box1 > .wi4-l1 { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:11px; }
 /* F11 (28/10): a save landed but the read after it failed — the rows are the state BEFORE it, so they read as old */
 .wn5[data-stale] #wn5-rows { opacity:.5; }
-/* live fix 3 (owner 28/10): a waiting row of one side — the box names the side it assigns, in its own red */
-.wn5 .wi4-box.un.wn5-un-a > .wn5-un-side { color:inherit; font-size:10.5px; font-weight:500; }
+/* 2f: a waiting VS has no order card here; its number band says «VS» */
+.wn5 .wn5-vstag { margin-left:auto; font-size:9.5px; font-weight:600; letter-spacing:.4px; color:var(--wi4-grey-2); }
+/* «αργό»: the one red word of a late load (row, queue card) */
+.wn5 .wn5-late-w { color:var(--wi4-red-ink); font-weight:600; }
 .wn5 .wn5-c-idx { align-self:stretch; display:flex; align-items:center; gap:2px; padding:0 6px 0 12px; font-size:13px; font-weight:600; color:var(--wi4-grey-1); }
 .wn5 :is(.wn5-row, .wn5-sub) > .wn5-c-idx { background:var(--wi4-chip); }
 .wn5 .wi4-day.today :is(.wn5-row, .wn5-sub) > .wn5-c-idx { background:var(--wi4-today-hover); }
@@ -9140,21 +9149,18 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
   color:var(--wi4-grey-1); box-shadow:0 1px 1px rgba(16,24,40,.06); }
 .wn5 .wn5-c-idx .wi4-plane:hover { border-color:var(--wn5-ctl-hover); background:var(--surface-card); color:var(--wi4-ink); }
 .wn5 .wn5-kd, .wn5 .wn5-ad { display:flex; flex-direction:column; align-items:flex-start; gap:2px; }
-/* Day chips of the rows (Figma H1 2120:7738): a ΚΑΘΟΔΟΣ day that has come (today or before) is the blue outlined
-   chip — it fades with its head when the base dims it — unless its whole row is executed (Figma 7745 row 1, plain);
-   a ΚΑΘΟΔΟΣ day still to come is plain text; an ΑΝΟΔΟΣ day of today or later is the light grey chip (H1 «Τρί 13/10»,
-   «Πέμ 15/10»); an ΑΝΟΔΟΣ day that has passed is the blue outlined chip, also in an executed row, where it fades
-   with the row (2035:7735 and 7745 row 1 — H1 shows no past ΑΝΟΔΟΣ day).
+/* Day chips (2c, coordinator 1/11): ONE look, the Weekly International's — every day a light grey chip, today alone
+   the blue outlined chip. Executed rows fade with their row (the base's dim), never by another chip style. Before: a
+   past ΚΑΘΟΔΟΣ day was blue outlined, a coming one plain text, and the ΑΝΟΔΟΣ grey or blue: three looks for one fact.
    The classes stay WI4's (past/today/next: wn5-dim test). */
-.wn5 :is(.wn5-kd, .wn5-ad) .wi4-dc { background:none; border-color:transparent; color:var(--wi4-grey-1); }
-.wn5 .wn5-ad .wi4-dc { background:var(--wi4-chip); }
-.wn5 .wn5-ad .wi4-dc.past { border-color:var(--wi4-blue); color:var(--wi4-blue-ink); background:var(--surface-card); }
-.wn5 .wn5-row:not(.wn5-dim) .wn5-kd .wi4-dc:is(.past, .today) { border-color:var(--wi4-blue); color:var(--wi4-blue-ink); background:var(--surface-card); }
+.wn5 :is(.wn5-kd, .wn5-ad) .wi4-dc { background:var(--wi4-chip); border-color:transparent; color:var(--wi4-grey-1); }
+.wn5 :is(.wn5-kd, .wn5-ad) .wi4-dc.today { border-color:var(--wi4-blue); color:var(--wi4-blue-ink); background:var(--surface-card); }
+/* ...and a late waiting load: the same chip in red (the board's one red, «αργό» in its title) */
+.wn5 :is(.wn5-kd, .wn5-ad) .wi4-dc.red { border-color:var(--wi4-red-line); color:var(--wi4-red-ink); background:var(--wi4-red-bg); }
 .wn5-dc2 { font-size:10px; line-height:12px; color:var(--wi4-grey-2); white-space:nowrap; }
-/* A waiting VS names its reference under the day: the order's text, sometimes a long list. It stays inside the 70px
-   cell, cut with «…» (whole in its title), and «αργό» after it is never cut (a flex item: the gap is its space). */
-.wn5 .wn5-kref { display:flex; gap:3px; max-width:100%; }
-.wn5 .wn5-kref-t { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+/* A waiting VS names its first reference under «Βέροια» in ΦΟΡΤΩΣΗ, «+N» for the rest of a list (2f; the list in
+   title); «αργό» is under its day. */
+.wn5 .wn5-kref { display:block; max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 /* ΦΟΡΤΩΣΗ: «Βέροια» and, under it, its loading window — on every row that loads there (owner 25/10). */
 .wn5 .wn5-fl { display:flex; flex-direction:column; gap:2px; }
 .wn5-vh { display:block; font-size:12px; line-height:15px; font-weight:500; color:var(--wi4-ink); }
@@ -9184,6 +9190,24 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
    the name readable on hover. Line 2 (city · window · pallets) is never cut. In ΦΟΡΤΩΣΗ the number is inside the
    place line (modules/weekly_natl_v5.js _flHTML), so number + place stay one run and the run is what is clamped. */
 .wn5 .wn5-pts .wn5-pt > .wi4-l1 { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; white-space:normal; }
+/* One line per line, at every width and with the sidebar open (coordinator 1/11, step 2): the place on line 1 and
+   «πόλη · ώρα · π» on line 2, each cut with «…» when it does not fit; the point's title holds the whole stop. Over the
+   two-line place of 28/10: names of three and four lines made rows of 58–70px at 1440 with the sidebar open. */
+.wn5 .wn5-pts .wn5-pt:not(.wn5-end) > :is(.wi4-l1, .wi4-l2) { display:block; -webkit-line-clamp:unset; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.wn5 .wn5-pts .wn5-pt { min-width:0; }
+/* ΦΟΡΤΩΣΗ with loadings AND «Βέροια» (step 2): «Βέροια 18:00–19:00» on one line under / over the loadings, so the cell is
+   three lines like the others, not four */
+.wn5-row:has(> .wn5-fl .wn5-pt) > .wn5-fl { flex-direction:row; flex-wrap:wrap; align-items:baseline; align-content:center; column-gap:5px; row-gap:2px; }
+.wn5-row:has(> .wn5-fl .wn5-pt) > .wn5-fl > .wn5-pts { flex:1 0 100%; }
+.wn5-row:has(> .wn5-fl .wn5-pt) > .wn5-fl > .wn5-vtime { white-space:nowrap; }
+/* ...at 1280 with the sidebar open 40% of the side is narrower than «Βέροια 18:00–19:00»: half the side there */
+@media (max-width:1366px) { .wn5-row:has(> .wn5-fl .wn5-pt) { --wn5-t4:calc(var(--wn5-side) * .5); --wn5-t5:calc(var(--wn5-side) * .5); } }
+/* ΠΡΟΣ with stops AND the Veroia end (1e): one line, the stops then «Βέροια» as the last stop in its own look; ΠΡΟΣ takes
+   60% of the side so the stop keeps a readable name */
+.wn5-row:has(> .wn5-ato .wn5-end):has(> .wn5-ato .wn5-pt:not(.wn5-end)) { --wn5-t10:calc(var(--wn5-side) * .4); --wn5-t11:calc(var(--wn5-side) * .6); }
+.wn5-row > .wn5-ato:has(> .wn5-end):has(.wn5-pt:not(.wn5-end)) { display:flex; align-items:center; gap:8px; }
+.wn5-row > .wn5-ato:has(> .wn5-end) > .wn5-pts { flex:1 1 auto; min-width:0; }
+.wn5-row > .wn5-ato:has(.wn5-pt:not(.wn5-end)) > .wn5-end { flex:none; padding-left:8px; border-left:1px solid var(--wi4-line); }
 /* ...and the points may use the cell's right 9px gutter: at 1440 the 102px content is 2px short of «1 THESSALONIKI»
    (14 + 3 + 87), which left the number alone on its line; the next column keeps its own 9px, so text never touches. */
 .wn5 .wn5-fl .wn5-pts { margin-right:-9px; }
@@ -9201,19 +9225,14 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 .wn5 .wn5-end .wi4-l2 { font-weight:500; }
 /* «+N» (Figma H1): a 22px chip, its figure centred, in the middle of the stop. */
 .wn5 .wn5-pts .wi4-more { flex:0 0 24px; width:24px; height:22px; display:grid; place-items:center; }
-/* «+N» with a small «Β» on its corner: the folded deliveries and the Veroia end of a ΠΡΟΣ that also delivers (1e). The
-   chip keeps its 24px, so the stop beside it keeps its room; «Β» alone when no delivery is folded. */
-.wn5 .wn5-pts .wi4-more.wn5-more-end { position:relative; }
-.wn5 .wi4-more.wn5-more-end > b + .wn5-more-v { position:absolute; top:-5px; right:-4px; font-size:9px; line-height:10px; padding:0 2px; border-radius:3px; background:var(--surface-card); }
-.wn5 .wn5-more-v { font-weight:600; color:var(--wi4-blue-ink); }
 .wn5 .wn5-pt > .wi4-l2 { font-weight:500; color:var(--wi4-grey-1); }   /* before the late rule: a late window stays amber */
 .wn5 .wn5-late .wi4-l2 { color:var(--wi4-amber); }
 /* More late stops than slots: the «+N» that holds one is amber too (a late stop is never hidden in grey). */
 .wn5 .wn5-pts .wi4-more.wn5-late b { color:var(--wi4-amber); }
 .wn5 .wn5-missing { color:var(--wi4-amber-ink); }
 .wn5-none { color:var(--wi4-grey-3); }
-.wn5-gapbox { display:flex; align-items:center; min-height:24px; padding:2px 10px; box-sizing:border-box; border:1px dashed var(--wi4-slot);
-  border-radius:5px; font-size:12px; color:var(--wi4-grey-2); }   /* 12px: 2120:8287 / 2011:9038 */
+/* 2b (coordinator 1/11): an empty side is light text, not a dashed box across the row that reads as a field */
+.wn5-gapbox { display:flex; align-items:center; min-height:24px; padding:2px 9px; box-sizing:border-box; font-size:11.5px; color:var(--wi4-grey-3); }
 .wn5-gaph { font-weight:500; color:var(--wi4-grey-1); }
 /* The span wrappers cover ΠΑΛ. too (plan 3/7, 9/13); the dashed box ends where ΠΑΛ. begins, which keeps only its «+». */
 .wn5 .wn5-kspan > .wn5-gapbox { margin-right:var(--wn5-kpal-w); }
@@ -9308,7 +9327,7 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
    that does not fit ends in «…», whole in its title. */
 .wn5-notes { display:flex; flex-wrap:wrap; align-items:center; gap:0 10px; min-height:34px; box-sizing:border-box; margin:0 0 8px; padding:0 12px 0 10px;
   border:1px solid var(--wi4-line-2); border-radius:6px; background:var(--surface-card); font-size:12px; line-height:normal; color:var(--wi4-grey-1); }
-.wn5-notes-h { flex:none; font:600 12.5px 'Syne',sans-serif; letter-spacing:.8px; color:var(--wn5-note-ink); }
+.wn5-notes-h { flex:none; font:600 11px 'Syne',sans-serif; letter-spacing:.8px; color:var(--wi4-grey-2); }   /* quiet head (critics r2) */
 .wn5-notes-l { flex:1 1 0; min-width:0; display:flex; height:32px; align-items:center; }
 .wn5-note { display:flex; align-items:baseline; gap:0; min-width:0; flex:1 1 auto; white-space:nowrap; font-size:12px; color:var(--wi4-grey-1); }
 .wn5-note-who { flex:none; padding:0; border:0; background:none; font:inherit; font-weight:600; color:var(--wi4-ink); }
@@ -9482,6 +9501,8 @@ button.wn5-note-who { color:var(--wi4-blue-ink); cursor:pointer; }
 .wn5-plus { opacity:.45; }
 @media (hover:none) { .wn5-plus { opacity:1; } }
 .wn5-row:hover .wn5-plus, .wn5-plus:focus-visible { opacity:1; }
+/* the «+» of an empty side shows on hover only (2b), where a pointer can hover */
+@media (hover:hover) { .wn5-row:not(:hover) .wn5-gpal .wn5-plus:not(:focus-visible) { opacity:0; } }
 .wn5-row:hover .wn5-plus { border-color:var(--wi4-blue); background:var(--wi4-info-bg); }
 /* «27 [+]» on one line (Figma 2011:10089/10140/10217/10299): every «+» of a side sits at one x, 12px in from the
    side's right edge (691 of 721), whatever the count — so the cell is right-aligned and the count abuts the «+». A count
@@ -10066,10 +10087,8 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
    from stop_ids (H-9). */
 .wn5 :is(.wn5-pt, .wn5-vtime, .wn5-end)[data-seg-label]::after { content:''; display:block; grid-column:1 / -1; width:24px; height:2px; margin-top:3px;
   border-radius:1px; background:var(--wn5-seg-initial); }
-/* the Veroia end folded into «+N» (1e) keeps its segment mark: the same bar, under the chip */
-.wn5 .wn5-more-end[data-seg-label]::after { content:''; position:absolute; left:3px; right:3px; bottom:-4px; height:2px; border-radius:1px; background:var(--wn5-seg-initial); }
-.wn5 :is(.wn5-pt, .wn5-vtime, .wn5-end, .wn5-more-end)[data-seg-label="intermediate"]::after { background:var(--wn5-seg-intermediate); }
-.wn5 :is(.wn5-pt, .wn5-vtime, .wn5-end, .wn5-more-end)[data-seg-label="final"]::after { background:var(--wn5-seg-final); }
+.wn5 :is(.wn5-pt, .wn5-vtime, .wn5-end)[data-seg-label="intermediate"]::after { background:var(--wn5-seg-intermediate); }
+.wn5 :is(.wn5-pt, .wn5-vtime, .wn5-end)[data-seg-label="final"]::after { background:var(--wn5-seg-final); }
 /* ⇄ in place of the → (Figma 2138:7745): a 16×16 box, SemiBold 11 ink, centred where the arrow was (6 + 16 + 7 = the
    arrow's 29px, nothing after it moves). The selector repeats the arrow rule's own (:is + :not(:empty), 0,3,1) and adds
    .wn5-hx, so it outranks it: a plain `.wn5-row > .wn5-hx` (0,2,1) lost and the → stayed drawn under the ⇄. */

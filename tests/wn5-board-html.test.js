@@ -50,9 +50,10 @@ test('F4α-T5: every row loading at Veroia has .wn5-vtime inside .wn5-fl', () =>
     const fl = cell(byKey.get(r.key), 'wn5-fl');
     // the class list may grow (T6 adds the day dimming); the order «Βέροια» then its window may not
     assert.ok(fl && /<span class="wn5-vh[^"]*">Βέροια<\/span>/.test(fl), `${r.key}: no «Βέροια» in ΦΟΡΤΩΣΗ: ${fl}`);
-    // a hub[] row of 072 has no load window yet (Ε-26): «—» under «Βέροια», never «null–null»
-    const win = r.kath.veroia.from ? `${r.kath.veroia.from}–${r.kath.veroia.to}` : '—';
-    assert.ok(new RegExp(`<span class="wn5-vh[^"]*">Βέροια</span><span class="wn5-vtime[^"]*">${win}</span>`).test(fl), `${r.key}: no Veroia time under «Βέροια»: ${fl}`);
+    // a hub[] row of 072 has no load window yet (Ε-26): «Βέροια» alone (step 2d, coordinator 1/11: never «Βέροια —»),
+    // never «null–null»
+    if (r.kath.veroia.from) assert.ok(new RegExp(`<span class="wn5-vh[^"]*">Βέροια</span><span class="wn5-vtime[^"]*">${r.kath.veroia.from}–${r.kath.veroia.to}</span>`).test(fl), `${r.key}: no Veroia time under «Βέροια»: ${fl}`);
+    else assert.ok(!/wn5-vtime|—/.test(fl), `${r.key}: «Βέροια —» for a window the board did not send: ${fl}`);
   }
   for (const r of rows(c.WN5._html(m))) assert.ok(!/wn5-vtime/.test(cell(r, 'wn5-asg') || ''), `${keyOf(r)}: a Veroia time in ΑΝΑΘΕΣΗ`);
 });
@@ -83,14 +84,16 @@ test('F4α-T5: one-segment cycle has no label and no slanted edge', () => {
   }
 });
 
-test('F4α-T5: «Χωρίς κάθοδο», «Κενό γύρισμα», «Μόνο κάθοδος · συνεργάτης», partner tile «—», «ως Δευ 22:00», ↳ τοπικός; no hub[] waiting line (F5 FE-2)', () => {
+test('F4α-T5: «Χωρίς κάθοδο», «Κενό γύρισμα», «Μόνο κάθοδος · συνεργάτης», partner tile (step 2i: no «—»), «ως Δευ 22:00», ↳ τοπικός; no hub[] waiting line (F5 FE-2)', () => {
   const by = new Map(rows(html()).map((r) => [keyOf(r), r]));
   assert.ok(/Χωρίς κάθοδο/.test(by.get('rt:106')), 'rt:106');
-  assert.ok(/<span class="wn5-gaph">Κενό γύρισμα<\/span> · ελεύθερο από Τρί 11:00 · Athens Test/.test(by.get('rt:103')), 'rt:103');
+  // step 2h: the free day and hour, no repeat of the delivery place
+  assert.ok(/<span class="wn5-gaph">Κενό γύρισμα<\/span> · ελεύθερο από Τρί 11:00</.test(by.get('rt:103')), 'rt:103');
   assert.ok(/Μόνο κάθοδος · συνεργάτης/.test(by.get('rt:104')), 'rt:104');
   // F0 7745 / H1: a one-segment partner cycle shows the partner and its plate (the 072 board has none → «—»), never the rate (Ε-36)
   const p104 = cell(by.get('rt:104'), 'wn5-asg');
-  assert.ok(/Partner Test Pelagos/.test(p104) && /title="—">—</.test(p104) && !/κόμιστρο λείπει|€/.test(p104), 'rt:104 partner tile: ' + p104);
+  // step 2i: nothing under the name (no bare «—»), the name on the tile's two lines
+  assert.ok(/Partner Test Pelagos/.test(p104) && /wn5-box1/.test(p104) && !/>—</.test(p104) && !/κόμιστρο λείπει|€/.test(p104), 'rt:104 partner tile: ' + p104);
   // live 072: VS-T118 is in hub[] without its destination / windows (Ε-26): «—» on the points and a visible line
   // FE-2 (owner 28/10): the «… δεν ήρθαν (Worker)» line is gone — an absent key is the error strip (tests/wn5-logic.test.js)
   assert.ok(!/wn5-miss|δεν ήρθαν με τον πίνακα/.test(by.get('wait:4101')), 'wait:4101 still carries the waiting line');
@@ -98,9 +101,11 @@ test('F4α-T5: «Χωρίς κάθοδο», «Κενό γύρισμα», «Μό�
   assert.ok(/Βέροια<\/span><span class="wi4-l2">ως Δευ 22:00/.test(by.get('rt:101')), 'rt:101 end');
   // whole-frame r4: «↳» in the index column (as the ⇄ sub-row's .wn5-hand-ar), the text from the ΚΑΘΟΔΟΣ chip column
   assert.ok(/<span class="wn5-c-idx"><span class="wn5-hand-ar">↳<\/span><\/span> <span class="wn5-sub-t"><b>Φόρτωση με τοπικό<\/b> · Driver Test 11 · Δευ 12\/10 11:00–12:00 · για Oinofyta Test \(στάση 2\)/.test(by.get('rt:103')), 'rt:103 local');
-  // live fix 3 (owner 28/10): a waiting row of one side names its side in the box and draws the dashed empty side
-  assert.ok(/class="wi4-box un wn5-un-a" data-act="assign"><span class="wi4-l1">ΠΡΟΣ ΑΝΑΘΕΣΗ<\/span><span class="wi4-l2 wn5-un-side">← ΚΑΘΟΔΟΣ<\/span>/.test(by.get('wait:4101'))
-    && /wi4-r-red/.test(by.get('wait:4101')) && /<span class="wn5-gapbox">Χωρίς άνοδο<\/span>/.test(by.get('wait:4101')), 'wait:4101 ΠΡΟΣ ΑΝΑΘΕΣΗ');
+  // step 2a/2b (coordinator 1/11, critics r1): the quiet «ΠΡΟΣ ΑΝΑΘΕΣΗ» mark (no side line), no rail (a late load says «αργό»), the
+  // empty side drawn as nothing on a waiting row
+  const w4101 = by.get('wait:4101');
+  assert.ok(/class="wi4-box un" data-act="assign"[^>]*><span class="wi4-l1">ΠΡΟΣ ΑΝΑΘΕΣΗ<\/span><\/button>/.test(w4101)
+    && !/wi4-r-red/.test(w4101) && !/wn5-gapbox|Χωρίς άνοδο|← ΚΑΘΟΔΟΣ/.test(w4101), 'wait:4101 ΠΡΟΣ ΑΝΑΘΕΣΗ');
 });
 
 test('F4α-T5: a loading before Veroia comes first in ΦΟΡΤΩΣΗ, numbered «1», then «Βέροια» (WN5L Side.vBefore, Figma H1 row 5)', () => {

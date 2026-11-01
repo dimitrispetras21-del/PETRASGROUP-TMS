@@ -105,13 +105,14 @@ async function names({ browser, origin, ok, scn }) {
     const cs = getComputedStyle(el);
     const lh = parseFloat(cs.lineHeight) || 14;
     const pt = el.closest('.wn5-pt');
-    return { t: el.textContent, lines: Math.round(el.getBoundingClientRect().height / lh), clamp: cs.webkitLineClamp, cut: el.scrollHeight > el.clientHeight + 1,
+    return { t: el.textContent, lines: Math.round(el.getBoundingClientRect().height / lh), clamp: cs.webkitLineClamp, to: cs.textOverflow, cut: el.scrollWidth > el.clientWidth + 1,
       title: pt.getAttribute('title') || '', long: el.textContent === long };
   }), LONG);
   const longs = r.filter((x) => x.long);
   ok(scn, 'the long place is on the board', longs.length >= 1, r.map((x) => x.t));
-  ok(scn, 'no place line is taller than two lines', r.every((x) => x.lines <= 2), r.map((x) => `${x.lines} · ${x.t.slice(0, 30)}`));
-  ok(scn, 'the long one is cut with the clamp (-webkit-line-clamp 2, content longer than the box)', longs.every((x) => x.clamp === '2' && x.cut), longs);
+  // step 2 (coordinator 1/11): one line per place, cut with «…» (was two lines, owner 28/10)
+  ok(scn, 'no place line is taller than one line', r.every((x) => x.lines <= 1), r.map((x) => `${x.lines} · ${x.t.slice(0, 30)}`));
+  ok(scn, 'the long one is cut on one line with «…» (content wider than the box)', longs.every((x) => x.to === 'ellipsis' && x.cut), longs);
   ok(scn, 'the whole name is in the point\'s title', longs.every((x) => x.title.startsWith(LONG)), longs.map((x) => x.title));
   await page.context().close();
 }
