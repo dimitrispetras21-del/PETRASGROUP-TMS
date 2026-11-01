@@ -1395,12 +1395,14 @@
   const _lth = (win) => `<div class="wn5f-th ro"><span>Τοποθεσία</span><span>Ημέρα</span><span>${win}</span><span>Παλέτες</span></div>`;
   // A point of a leg is read-only here — its pallets, day and window change in its order's edit form (F30), its truck's
   // stop from «Αλλαγή ώρας ›» (F29), its truck with «Μεταφορά σε…» — drawn in
-  // Figma's boxes (2011:9452 / 9520): a VS's place and pallets in the locked grey cell, the rest white.
+  // Figma's boxes (2011:9452 / 9520): a VS's place in the locked grey cell, the rest white. A VS point's pallets are a
+  // field once 092 is in the base (pal), else the locked grey cell too.
   // F55 (live 31/10): a VS point's day is a white box that looks like a field; typing in it did nothing, in silence.
   // It is the day of the truck's stop there, so a click opens that stop's day panel, the one of «Αλλαγή ώρας ›» (F29,
   // already in this form's stop list). The VS's own day changes with «Ορισμός ημέρας», its window stays the
   // international's (decision 21). A national point keeps its edit form (F30).
-  // pal = the VS point's pallets are a field (092 is in the base: the board's /plan/vs-state carried cross_dock_date)
+  // pal = the VS point's pallets are a field (092 is in the base: the board's /plan/vs-state carried cross_dock_date); a
+  // point whose pallets are not known keeps its cell (the field would read «;» and block the press for the others)
   function _roRowHTML(r, vs, pal) {
     const ro = vs ? 'wn5f-c vro' : 'wn5f-c';
     return `<div class="wn5f-row ro" data-piece="${r.piece_id}"><span class="${ro}">${_esc(r.hub ? 'Βέροια' : r.location)}</span>`
@@ -1411,22 +1413,24 @@
         : `<span class="wn5f-cwin"><span class="wn5f-c">${_hm(r.from)}</span><span class="wn5f-dash">–</span><span class="wn5f-c">${_hm(r.to)}</span></span>`)
       // 092 (F45, owner 1/11 option a): a VS point's pallets are the national desk's too — the truck loaded 22 of the 24
       // the international said; «Ορισμός παλετών» writes them and the international follows (one POST per point)
-      + (vs && pal && r.piece_id != null
+      + (vs && pal && r.piece_id != null && r.pallets != null
         ? `<input class="form-input wn5f-c" data-f="vspal" data-piece="${r.piece_id}" data-old="${_esc(r.pallets)}" inputmode="decimal" value="${_esc(_pal(r.pallets))}" aria-label="Παλέτες">`
         : `<span class="${ro}">${_pal(r.pallets)}</span>`) + '<span></span>'
       + (vs ? `<button type="button" class="wn5f-lnk" data-act="move" data-piece="${r.piece_id}">Μεταφορά σε…</button>` : '<span></span>') + '</div>';
   }
   // 092: the truck's own day at Veroia, when it is not the VS's (the international's): the dispatcher moves it with one
   // more press, in the stop's day panel with that day chosen (its dry run, its confirmation). Not pressed = the board
-  // marks the row (weekly_natl_v5.js _vsDayMark): never two days in silence.
-  function _truckDayHTML(st, day) {
+  // marks the row (weekly_natl_v5.js _vsDayMark): never two days in silence. Only the truck on the VS's FIRST Veroia
+  // day (first, v_vs_state): a stock piece loaded there days later rides a later truck on purpose.
+  function _truckDayHTML(st, day, first) {
     if (!st || !DAY.test(String(day || '')) || !st.stop_day || st.stop_day === day) return '';
+    if (first && st.stop_day !== first) return '';
     return `<span class="wn5f-sub">φορτηγό στη Βέροια ${_esc(_dlab(st.stop_day))}</span>`
       + `<button type="button" class="wn5f-lnk" data-act="vs-truck-day" data-stop="${st.stop_id}" data-day="${_esc(day)}">Φορτηγό → ${_esc(_dlab(day))} ›</button>`;
   }
-  // The VS block: locked for price, pallets and windows (decision 21); its day and — for an import — its
-  // destination after Veroia are the national desk's too, «όποιος μάθει πρώτος» (S-104, S-107), each with its
-  // own button: ONE POST per change, never inside the form's «Αποθήκευση» (Ε-4).
+  // The VS block: locked for price and windows (decision 21); its day, its pallets (092, owner 1/11 option a) and — for
+  // an import — its destination after Veroia are the national desk's too, «όποιος μάθει πρώτος» (S-104, S-107), each
+  // with its own button: ONE POST per change, never inside the form's «Αποθήκευση» (Ε-4).
   // The 072 board carries no order_stop_id on cycle legs (only on waiting[]/hub[]): while it is missing the
   // destination button stays off and a line says why (principle 1); once the Worker adds it to legs[] the button
   // turns on with no code change. The day needs only order_id, which the legs carry.
@@ -1437,18 +1441,22 @@
     const hubDay = hubStop ? hubStop.stop_day : '';
     // 092: the field shows the VS's own Veroia day (the international's, = the dispatcher's Excel once set), read by the
     // board beside it; before 092, or when that read failed, the truck's day as before
+    // vd: {cd, first} once 092 is in the base, null before it, undefined while that read is pending or failed
     const vd = typeof WN5 !== 'undefined' && typeof WN5.vsDayOf === 'function' ? WN5.vsDayOf(b.order_id) : undefined;
-    const day = typeof vd === 'string' ? vd : hubDay;
-    // 092 in the base = the answer carried the key (a day or null); before 092 the pallets stay the international's
-    // (a field the base would refuse is never offered)
-    const v092 = vd !== undefined;
+    const day = vd && vd.cd ? vd.cd : hubDay;
+    const first = vd && vd.first ? vd.first : '';
+    // 092 in the base = the answer carried the key; before 092 the pallets stay the international's (a field the base
+    // would refuse is never offered). Not read = said, never a field that is just missing (principle 1)
+    const v092 = !!vd;
+    const unread = vd === undefined;
     const noStop = imp && rows.some((r) => r.order_stop_id == null);
     return `<div class="wn5f-ord wn5f-lock" data-vs="${b.order_id}">`
       + `<div class="wn5f-ord-h">${LOCK}<b>${_esc(b.reference || 'VS')} · ${_esc(b.client)}</b><span class="wn5f-vs-s">· από διεθνή παραγγελία · ${_tempTxt(b.temps)}</span>`
       + `<span class="wn5f-badge">τιμή · παράθυρο κλειδωμένα</span></div>`
       + `<div class="wn5f-vsday"><label class="wn5f-f"><span>Ημέρα Βέροιας</span><input class="form-input" type="date" data-f="vsday" value="${_esc(day || '')}"></label>`
       + `<button type="button" class="wi4-btn sm" data-act="vs-day" data-order="${b.order_id}">Ορισμός ημέρας</button><span class="wn5f-ok" data-vsok></span>`
-      + `<span class="wn5f-vstruck" data-vstruck>${_truckDayHTML(hubStop, day)}</span></div>`
+      + `<span class="wn5f-vstruck" data-vstruck data-first="${_esc(first)}">${_truckDayHTML(hubStop, day, first)}</span></div>`
+      + (unread ? '<div class="wn5f-note" data-vsunread>Η ημέρα Βέροιας και οι παλέτες της διεθνούς δεν διαβάστηκαν ακόμη — κλείσε και άνοιξε ξανά τη φόρμα για να τις αλλάξεις.</div>' : '')
       + `<div class="wn5f-sec">${imp ? 'ΠΑΡΑΔΟΣΕΙΣ' : 'ΦΟΡΤΩΣΕΙΣ'}</div>` + _lth('Παράθυρο από – έως *')
       + rows.map((r) => {
         if (!imp) return _roRowHTML(r, true, v092);
@@ -1605,7 +1613,7 @@
       vsDay(Number(t.dataset.order), day).then((ans) => {
         // the international has the day now; if the truck is at Veroia on another day, the next step is offered here
         const line = ans && _f === f && !f.done ? box.querySelector('[data-vstruck]') : null;
-        if (line) line.innerHTML = _truckDayHTML(_vsHubStop(f), day);
+        if (line) line.innerHTML = _truckDayHTML(_vsHubStop(f), day, line.dataset.first || '');
       });
       return;
     }
@@ -1649,6 +1657,9 @@
   }
   async function openLeg(rtId, side) {
     const board = await _board();
+    // 092: that re-read also re-reads the VS days (the «Ημέρα Βέροιας» and the pallets field): wait for them (never
+    // rejects; a failed read says so in the VS block)
+    if (typeof WN5 !== 'undefined' && typeof WN5.vsDaysSettled === 'function') await WN5.vsDaysSettled();
     const cyc = board && (board.cycles || []).find((c) => c.rt_id === rtId);
     if (!cyc || (side !== 'KATHODOS' && side !== 'ANODOS')) {
       if (typeof toast === 'function') toast('Ο κύκλος δεν βρέθηκε στην εβδομάδα που φαίνεται — ανανέωσε', 'warn');

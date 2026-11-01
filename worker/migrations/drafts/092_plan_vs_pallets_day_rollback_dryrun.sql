@@ -108,8 +108,9 @@ $h$;
         case when v_st.stop_type = 'Loading'
           -- "To Ethnikon allaxe tis paletes tis diethnous %s, fortosi %s: %s -> %s . elegxe tis paradoseis"
           then 'zqTOvyDOlc64zr3Ouc66z47OvSDOrM67zrvOsc6+zrUgz4TOuc+CIM+AzrHOu86tz4TOtc+CIM+EzrfPgiDOtM65zrXOuM69zr/Pjc+CICVzLCDPhs+Mz4HPhM+Jz4POtyAlczogJXMg4oaSICVzIMK3IM6tzrvOtc6zzr7OtSDPhM65z4Igz4DOsc+BzrHOtM+Mz4POtc65z4I='
-          -- "To Ethnikon allaxe tis paletes tis diethnous %s, paradosi %s: %s -> %s"
-          else 'zqTOvyDOlc64zr3Ouc66z47OvSDOrM67zrvOsc6+zrUgz4TOuc+CIM+AzrHOu86tz4TOtc+CIM+EzrfPgiDOtM65zrXOuM69zr/Pjc+CICVzLCDPgM6xz4HOrM60zr/Pg863ICVzOiAlcyDihpIgJXM=' end,
+          -- "To Ethnikon allaxe tis paletes tis diethnous %s, paradosi %s: %s -> %s . elegxe ti fortosi" (an import: the
+          -- loading abroad and the Weekly International's total stay as the international wrote them, code review xhigh)
+          else 'zqTOvyDOlc64zr3Ouc66z47OvSDOrM67zrvOsc6+zrUgz4TOuc+CIM+AzrHOu86tz4TOtc+CIM+EzrfPgiDOtM65zrXOuM69zr/Pjc+CICVzLCDPgM6xz4HOrM60zr/Pg863ICVzOiAlcyDihpIgJXMgwrcgzq3Ou861zrPOvs61IM+Ezrcgz4bPjM+Bz4TPic+Dzrc=' end,
         array[coalesce(o.reference, o.id::text), coalesce(nullif(btrim(v_place), ''), '-'),
               coalesce(trim_scale(v_st.pallets)::text, '-'), trim_scale(v_new)::text],
         v_order, null, null, p_actor, p_role);
@@ -140,7 +141,7 @@ $h$;
 BEGIN
   PERFORM set_config('lock_timeout', '5s', true);
   SELECT * INTO p FROM pg_proc WHERE oid = to_regprocedure('public.plan_vs_set_day(jsonb,text,text)');
-  IF md5(p.prosrc) <> '4c25fb6028b6edb37a5a4c864ceef6c3' THEN
+  IF md5(p.prosrc) <> '843ddcb55a0812b015b5cd14c298a11a' THEN
     RAISE EXCEPTION '092 rollback: public.plan_vs_set_day(jsonb,text,text) is not the text 092 wrote (md5 %) - stop', md5(p.prosrc);
   END IF;
   v_new := p.prosrc;

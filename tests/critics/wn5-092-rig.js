@@ -15,37 +15,63 @@ const K = require('./wn5-rig-kit');
 
 const LEG = '.wi4-dlg[role="dialog"][data-wn5="leg"]';
 const V = `${LEG} [data-vs="2101"]`;
-const state = (cd) => ({ 2101: Object.assign({ carriers: [], all_executed: false, all_planned: true, first_hub_day: '2026-10-12', n_pieces: 1 },
-  cd === undefined ? {} : { cross_dock_date: cd }) });
-const vsState = (cd) => ({ 'GET /plan/vs-state': () => [200, state(cd)] });
+const entry = (cd, first) => Object.assign({ carriers: [], all_executed: false, all_planned: true, first_hub_day: first, n_pieces: 1 },
+  cd === undefined ? {} : { cross_dock_date: cd });
+const state = (cd, first = '2026-10-12') => ({ 2101: entry(cd, first) });
+const vsState = (cd, first) => ({ 'GET /plan/vs-state': () => [200, state(cd, first)] });
+const MARK = '#content .wn5-vsday:not([hidden])';
+// VS 610's shape on the kit's RT-T102: an EXPORT (order 2102, piece 4005, 12 pallets) loaded at ATHENS TEST on Wed 14/10
+// 12:00 (stop 1101) and brought to Veroia that evening (stop 1102), beside the national N-T003
+function exportWeek() {
+  const b = K.week();
+  const VSX = { kind: 'vs_export', order_id: 2102, reference: 'VS-T120', client_id: 43, client: 'ΠΕΛΑΤΗΣ Γ', temperature_c: 2 };
+  const c = b.cycles.find((x) => x.rt_id === 102);
+  c.stops.find((x) => x.stop_id === 1101).legs.push(K.leg(5102, 4005, 'load', 12, VSX));
+  c.stops.find((x) => x.stop_id === 1102).legs.push(K.leg(5102, 4005, 'unload', 12, VSX));
+  return b;
+}
 
 async function scnMark({ browser, origin, ok, scn }) {
   const { page, S } = await K.openApp(browser, origin, { plan: vsState('2026-10-11') });
   await page.waitForTimeout(800);
   const reads = K.planOf(S, 'GET', '/plan/vs-state');
   ok(scn, 'the board reads GET /plan/vs-state for the VS at its hub stops (order_ids=2101)', reads.length >= 1 && reads[0].q.order_ids === '2101', reads.map((x) => x.q));
-  const mark = await K.text(page, '#content .wn5-row[data-rt="101"] .wn5-vsday');
+  const mark = await K.text(page, '#content .wn5-row[data-rt="101"] .wn5-vsday:not([hidden])');
   ok(scn, 'the row of RT-T101 says «VS Κυρ 11/10» beside its Veroia', /^VS Κυρ 11\/10$/.test(mark), mark);
-  const title = await page.evaluate(() => (document.querySelector('#content .wn5-row[data-rt="101"] .wn5-vsday') || {}).title || '');
+  const title = await page.evaluate(() => (document.querySelector('#content .wn5-row[data-rt="101"] .wn5-vsday:not([hidden])') || {}).title || '');
   ok(scn, 'its title says both days (the international, the truck)', /Βέροια Κυρ 11\/10/.test(title) && /φορτηγό Δευ 12\/10/.test(title), title);
-  ok(scn, 'no other row is marked', await K.count(page, '#content .wn5-vsday') === 1);
+  ok(scn, 'no other row is marked', await K.count(page, MARK) === 1);
+  ok(scn, 'the late read repainted nothing: the mark was filled in place (one paint)', await page.evaluate(() => !!document.querySelector('#content .wn5-row[data-rt="101"] [data-vsmark="1001"]')));
   await page.context().close();
   // the same day = no mark
   const p2 = await K.openApp(browser, origin, { plan: vsState('2026-10-12') });
   await p2.page.waitForTimeout(800);
-  ok(scn, 'the days agree → no mark', await K.count(p2.page, '#content .wn5-vsday') === 0);
+  ok(scn, 'the days agree → no mark', await K.count(p2.page, MARK) === 0);
   await p2.page.context().close();
   // before 092: the answer has no cross_dock_date → no mark, nothing else changes
   const p3 = await K.openApp(browser, origin, { plan: vsState(undefined) });
   await p3.page.waitForTimeout(800);
-  ok(scn, 'before 092 (no cross_dock_date in the answer) → no mark', await K.count(p3.page, '#content .wn5-vsday') === 0);
+  ok(scn, 'before 092 (no cross_dock_date in the answer) → no mark', await K.count(p3.page, MARK) === 0);
   ok(scn, 'no page errors', !p3.S.pageErrors.length, p3.S.pageErrors);
   await p3.page.context().close();
   // the read fails → the board is whole, no mark (planFetch logged the failure)
   const p4 = await K.openApp(browser, origin, { plan: { 'GET /plan/vs-state': () => K.planErr(503, 'SERVER', 'slow') } });
   await p4.page.waitForTimeout(800);
-  ok(scn, 'the read fails → the board painted, no mark', await K.count(p4.page, '#content .wn5-row[data-rt="101"]') === 1 && await K.count(p4.page, '#content .wn5-vsday') === 0);
+  ok(scn, 'the read fails → the board painted, no mark', await K.count(p4.page, '#content .wn5-row[data-rt="101"]') === 1 && await K.count(p4.page, MARK) === 0);
+  await p4.page.evaluate(() => WN5Form.openLeg(101, 'KATHODOS'));
+  await p4.page.waitForSelector(LEG, { timeout: 6000 }).catch(() => {});
+  ok(scn, 'the read fails → the leg form says the VS day and pallets were not read, no pallets field', await K.count(p4.page, `${V} [data-vsunread]`) === 1
+    && await K.count(p4.page, `${V} [data-f="vspal"]`) === 0);
   await p4.page.context().close();
+  // a stock piece: the VS's first Veroia day is another truck's (Sun 11/10); this truck loads it on Mon 12/10 on
+  // purpose, so neither the row nor the form calls it a mismatch, even with the international on Sat 10/10
+  const p5 = await K.openApp(browser, origin, { plan: vsState('2026-10-10', '2026-10-11') });
+  await p5.page.waitForTimeout(800);
+  ok(scn, 'stock piece on a later truck → no mark', await K.count(p5.page, MARK) === 0);
+  await p5.page.evaluate(() => WN5Form.openLeg(101, 'KATHODOS'));
+  await p5.page.waitForSelector(LEG, { timeout: 6000 }).catch(() => {});
+  ok(scn, 'stock piece on a later truck → no «Φορτηγό → …» step', (await K.text(p5.page, `${V} [data-vstruck]`)) === '');
+  await p5.page.context().close();
 }
 
 async function scnDay({ browser, origin, ok, scn }) {
@@ -128,8 +154,35 @@ async function scnPallets({ browser, origin, ok, scn }) {
   await p2.page.context().close();
 }
 
+// the real cases (610, 630, 644) are exports on the ΑΝΟΔΟΣ: the mark at the truck's arrival in Veroia (r.end), the leg
+// form's truck step on that stop, the pallets field on the Greek loading
+async function scnExport({ browser, origin, ok, scn }) {
+  const plan = { 'GET /plan/vs-state': () => [200, { 2101: entry('2026-10-12', '2026-10-12'), 2102: entry('2026-10-13', '2026-10-14') }],
+    'POST /plan/vs/day': () => [200, { ok: true, op: 'plan_vs_set_day', dry_run: false, ids: { order_id: 2102, piece_id: 4005 }, warnings: [], notice_ids: [9401] }] };
+  const { page, S } = await K.openApp(browser, origin, { board: exportWeek(), plan });
+  await page.waitForTimeout(800);
+  const mark = await K.text(page, '#content .wn5-row[data-rt="102"] .wn5-ato .wn5-vsday:not([hidden])');
+  ok(scn, 'RT-T102\'s arrival in Veroia says «VS Τρί 13/10» (the truck: Wed 14/10)', /^VS Τρί 13\/10$/.test(mark), mark);
+  ok(scn, 'only that row', await K.count(page, MARK) === 1);
+  await page.evaluate(() => WN5Form.openLeg(102, 'ANODOS'));
+  await page.waitForSelector(LEG, { timeout: 6000 }).catch(() => {});
+  const VX = `${LEG} [data-vs="2102"]`;
+  ok(scn, 'the export\'s «Ημέρα Βέροιας» = the international\'s Tue 13/10', (await page.evaluate((v) => (document.querySelector(`${v} [data-f="vsday"]`) || {}).value, VX)) === '2026-10-13');
+  const step = await page.evaluate((v) => { const b = document.querySelector(`${v} [data-act="vs-truck-day"]`); return b ? [b.dataset.stop, b.dataset.day, b.textContent] : null; }, VX);
+  ok(scn, 'the truck step is for its Veroia arrival (stop 1102) → Tue 13/10', !!step && step[0] === '1102' && step[1] === '2026-10-13' && /Φορτηγό → Τρί 13\/10/.test(step[2]), step);
+  const P = `${VX} [data-f="vspal"][data-piece="4005"]`;
+  ok(scn, 'the pallets field is on the Greek loading (12)', await K.count(page, P) === 1 && (await page.evaluate((x) => document.querySelector(x).value, P)) === '12');
+  await page.fill(P, '11');
+  await page.click(`${VX} [data-act="vs-pal"]`);
+  await page.waitForTimeout(1200);
+  const sent = K.planOf(S, 'POST', '/plan/vs/day');
+  ok(scn, '12 → 11 = ONE POST /plan/vs/day {order_id:2102, piece_id:4005, pallets:11}', sent.length === 1 && JSON.stringify(sent[0].body) === JSON.stringify({ order_id: 2102, piece_id: 4005, pallets: 11 }), sent.map((x) => x.body));
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await page.context().close();
+}
+
 K.run({
-  scenarios: { mark: scnMark, day: scnDay, pallets: scnPallets },
+  scenarios: { mark: scnMark, day: scnDay, pallets: scnPallets, export: scnExport },
   globals: ['WN5Form', 'WN5'],
   go: '092: the board marks a truck on another Veroia day, the leg form sets the VS day and pallets with one POST each',
 }).catch((e) => { console.error(e); process.exit(1); });

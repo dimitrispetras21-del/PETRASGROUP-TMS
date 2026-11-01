@@ -83,6 +83,29 @@ begin
   set constraints all deferred;
   return (r->'ids'->>'rt_id')::bigint;
 end $t$;
+-- ONE new OWNED cycle that takes the given EXPORT pieces from their Greek loading to Veroia on its ANODOS (VS 610's
+-- shape: the supplier loading on p_day 09:00, the Veroia arrival the same day 18:00)
+CREATE FUNCTION t92_put_anodos(p_pieces bigint[], p_day date) RETURNS bigint LANGUAGE plpgsql AS $t$
+declare trk bigint; st jsonb := '[]'::jsonb; i int; r jsonb; hub bigint;
+begin
+  select id into hub from locations where is_hub;
+  insert into trucks (license_plate) values ('TEST-092-' || nextval('t92_plate')) returning id into trk;
+  for i in 1 .. cardinality(p_pieces) loop
+    st := st || jsonb_build_object('ref', 'p' || i, 'side', 'ANODOS',
+            'location_id', (select vs.nat_from_location_id from shipment_pieces sp join v_shipments vs on vs.shipment_id = sp.shipment_id where sp.id = p_pieces[i]),
+            'planned_from', (p_day + make_time(8 + i, 0, 0)) at time zone 'Europe/Athens',
+            'planned_to', (p_day + make_time(9 + i, 0, 0)) at time zone 'Europe/Athens');
+  end loop;
+  st := st || jsonb_build_object('ref', 'd', 'location_id', hub, 'side', 'ANODOS',
+          'planned_from', (p_day + time '18:00') at time zone 'Europe/Athens', 'planned_to', (p_day + time '19:00') at time zone 'Europe/Athens');
+  r := plan_put_pieces(jsonb_build_object(
+         'pieces', (select jsonb_agg(jsonb_build_object('piece_id', x, 'pickup', 'p' || n, 'drop', 'd')) from unnest(p_pieces) with ordinality u(x, n)),
+         'target', jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', trk), 'side', 'ANODOS'),
+         'stops', st), 'test:092', 'dispatcher');
+  perform set_config('plan.writer', '', true);
+  set constraints all deferred;
+  return (r->'ids'->>'rt_id')::bigint;
+end $t$;
 -- the split a dispatcher leaves at Veroia: 4 + the rest, as plan_split_piece does (082's t82_split)
 CREATE FUNCTION t92_split(p_piece bigint) RETURNS void LANGUAGE sql AS $t$
   update shipment_pieces set split_at = now(), split_by = 'test:092' where id = p_piece;
@@ -286,7 +309,30 @@ test('092 on the production-shaped copy (1/11): the national desk sets the palle
     assert.strictEqual(r.cd, 18, 'the Cross-dock is the loadings abroad: unchanged');
     assert.strictEqual(r.legs, 1);
     assert.deepStrictEqual(r.notices.map((n) => n.kind), ['vs_pallets_set']);
-    assert.match(r.notices[0].message, /παράδοση TEST 092 GR IM 1: 11 → 9$/);
+    assert.match(r.notices[0].message, /παράδοση TEST 092 GR IM 1: 11 → 9 · έλεγξε τη φόρτωση$/);
+  });
+  await t.test('GO: VS 610 on its ΑΝΟΔΟΣ truck (24 -> 22): the leg and its two stops stay, the order column and the Cross-dock follow', async () => {
+    const r = await scenario(db, async () => {
+      const o = await num(db, `SELECT t92_vs('AN', 'Export', DATE '${L}' + 3, '{24,8}')`);
+      const p = await num(db, `SELECT t92_piece('AN', 1)`);
+      const rt = await num(db, `SELECT t92_put_anodos(ARRAY[$1::bigint], DATE '${L}' + 2)`, [p]);
+      const stops0 = await num(db, `SELECT count(*) FROM rt_stops WHERE rt_id = $1 AND deleted_at IS NULL`, [rt]);
+      const n0 = await lastId(db, 'plan_notices');
+      const res = await setDay(db, { order_id: o, piece_id: p, pallets: 22 });
+      return { ...res, stops0, piece: await pal(db, p), lp1: await col(db, o, 'loading_pallets_1'), cd: await num(db, `SELECT t92_stop('H', 'AN')`),
+        legs: await num(db, `SELECT count(*) FROM piece_legs WHERE piece_id = $1 AND deleted_at IS NULL AND rt_id = $2`, [p, rt]),
+        stops: await num(db, `SELECT count(*) FROM rt_stops WHERE rt_id = $1 AND deleted_at IS NULL`, [rt]),
+        status: (await one(db, `SELECT status FROM ct_round_trips WHERE id = $1`, [rt])).status, notices: await noticesOf(db, o, n0) };
+    });
+    assert.strictEqual(r.err, null, JSON.stringify(r.err));
+    assert.strictEqual(r.late, null, 'the deferred rules pass with the leg kept');
+    assert.strictEqual(r.piece, 22);
+    assert.strictEqual(r.lp1, 22);
+    assert.strictEqual(r.cd, 30);
+    assert.strictEqual(r.legs, 1);
+    assert.strictEqual(r.stops, r.stops0);
+    assert.notStrictEqual(r.status, 'cancelled');
+    assert.deepStrictEqual(r.notices.map((n) => [n.to_desk, n.kind]), [['intl', 'vs_pallets_set']]);
   });
   // a load splits only at Veroia (071 split_not_at_hub): an import piece, waiting at the hub
   await t.test('GO: a split piece (4 + 20) - the 4 becomes 3, the stop 23, the other part untouched', async () => {

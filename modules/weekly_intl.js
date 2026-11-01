@@ -720,6 +720,7 @@ async function renderWeeklyIntl(){
     const natMap = {};
     WINTL.data.nlBySrc = nlMap;
     WINTL.data.natBySrc = natMap;
+    WINTL.data.vsNotes = {};   // 092: the national desk's notices of THIS week's VS (_wiVsNotes), never the last week's
     WINTL.data.nlState = 'loading';
     (async () => {
       let vsIds = ([...expOrders, ...impOrders]).filter(r => r.fields && r.fields['Veroia Switch']).map(r => r.id);

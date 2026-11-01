@@ -3,7 +3,7 @@
 -- undoes everything inside it (lesson 056). ASCII only.
 -- EXPECTED (the red ERROR is deliberate): NOTICE "092 OK: plan_vs_set_day sets the pallets of a VS piece ..." and then
 --   ERROR: P0001: DRY RUN 092 finished - EVERYTHING UNDONE, nothing kept. The block ran to its end  ||  092 ran:
---   set_day 4c25fb6028b6edb37a5a4c864ceef6c3, vs_state 4decce12c3ca9b3ebd30a7a6b3447d5d
+--   set_day 843ddcb55a0812b015b5cd14c298a11a, vs_state 4decce12c3ca9b3ebd30a7a6b3447d5d
 --   Anything else (an ERROR from one of 092's guards or proofs): do NOT run 092, copy the message to the coordinator.
 
 DO $dry$
@@ -111,8 +111,9 @@ $h$;
         case when v_st.stop_type = 'Loading'
           -- "To Ethnikon allaxe tis paletes tis diethnous %s, fortosi %s: %s -> %s . elegxe tis paradoseis"
           then 'zqTOvyDOlc64zr3Ouc66z47OvSDOrM67zrvOsc6+zrUgz4TOuc+CIM+AzrHOu86tz4TOtc+CIM+EzrfPgiDOtM65zrXOuM69zr/Pjc+CICVzLCDPhs+Mz4HPhM+Jz4POtyAlczogJXMg4oaSICVzIMK3IM6tzrvOtc6zzr7OtSDPhM65z4Igz4DOsc+BzrHOtM+Mz4POtc65z4I='
-          -- "To Ethnikon allaxe tis paletes tis diethnous %s, paradosi %s: %s -> %s"
-          else 'zqTOvyDOlc64zr3Ouc66z47OvSDOrM67zrvOsc6+zrUgz4TOuc+CIM+AzrHOu86tz4TOtc+CIM+EzrfPgiDOtM65zrXOuM69zr/Pjc+CICVzLCDPgM6xz4HOrM60zr/Pg863ICVzOiAlcyDihpIgJXM=' end,
+          -- "To Ethnikon allaxe tis paletes tis diethnous %s, paradosi %s: %s -> %s . elegxe ti fortosi" (an import: the
+          -- loading abroad and the Weekly International's total stay as the international wrote them, code review xhigh)
+          else 'zqTOvyDOlc64zr3Ouc66z47OvSDOrM67zrvOsc6+zrUgz4TOuc+CIM+AzrHOu86tz4TOtc+CIM+EzrfPgiDOtM65zrXOuM69zr/Pjc+CICVzLCDPgM6xz4HOrM60zr/Pg863ICVzOiAlcyDihpIgJXMgwrcgzq3Ou861zrPOvs61IM+Ezrcgz4bPjM+Bz4TPic+Dzrc=' end,
         array[coalesce(o.reference, o.id::text), coalesce(nullif(btrim(v_place), ''), '-'),
               coalesce(trim_scale(v_st.pallets)::text, '-'), trim_scale(v_new)::text],
         v_order, null, null, p_actor, p_role);
@@ -166,7 +167,7 @@ BEGIN
 
   -- ===== PART 1 + PART 2: LIVE TEXT + HUNKS (md5 after = measured on the production-shaped PGlite copy) =====
   FOR v_g IN SELECT * FROM (VALUES
-      ('public.plan_vs_set_day(jsonb,text,text)', ARRAY[d_1a, d_2a, d_3a, d_4a, d_5a], ARRAY[d_1b, d_2b, d_3b, d_4b, d_5b], '4c25fb6028b6edb37a5a4c864ceef6c3'),
+      ('public.plan_vs_set_day(jsonb,text,text)', ARRAY[d_1a, d_2a, d_3a, d_4a, d_5a], ARRAY[d_1b, d_2b, d_3b, d_4b, d_5b], '843ddcb55a0812b015b5cd14c298a11a'),
       ('public.plan_vs_state(bigint[])', ARRAY[s_1a], ARRAY[s_1b], '4decce12c3ca9b3ebd30a7a6b3447d5d')) g(sig, a, b, m) LOOP
     SELECT * INTO p FROM pg_proc WHERE oid = to_regprocedure(v_g.sig);
     IF p.proconfig IS DISTINCT FROM ARRAY['search_path=public'] OR p.prolang <> (SELECT oid FROM pg_language WHERE lanname = 'plpgsql') THEN
