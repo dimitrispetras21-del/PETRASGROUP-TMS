@@ -12,6 +12,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
+- dimitris · `fix/wn5-anodos-one-point-room` · Εθνικά v5: έλεγχος ζωντανού Weekly 1/11 (#207–#209 + αυτό: ευθυγράμμιση προορισμού, «1 σημείο +N», βοηθός στο μενού avatar, κομμένα 21→5)· επόμενο: «Αποθήκευση έτσι κι αλλιώς» (086) (`docs/sessions/2026-11-01-dimitris-weekly-live-check.md`)
 - dimitris · `chore/083-092-executed` · Εθνικά v5: 083–092 ΕΚΤΕΛΕΣΜΕΝΕΣ 1/11 + Worker b88e6150 (085/089)· αρχεία εκτός drafts/· μένουν: SQL `waiting_weeks` ±6 εβδομάδες, οθόνη «Αποθήκευση έτσι κι αλλιώς» (086), 090b (`docs/sessions/2026-11-01-dimitris-083-092-executed.md`)
 - dimitris · `feat/wn5-to-ten-pr3` · Εθνικά v5 Weekly τρίτο PR (3a–3g, F5, F48, F62, B-10, F65, F2, ✈, σταθερή διάταξη, Π-23), πάνω στο #202· μόνο front end, ?v= / SW_VERSION 1793500300 (`docs/sessions/2026-11-01-dimitris-wn5-pr3.md`)
 - dimitris · `feat/wn5-calm-step2` · Εθνικά v5 Weekly βήμα 2 «ηρεμία και σειρά» (2a–2i), πάνω στο #198· μόνο front end, ?v= / SW_VERSION 1793500200 (`docs/sessions/2026-11-01-dimitris-wn5-step2-calm.md`)
