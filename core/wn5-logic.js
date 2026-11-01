@@ -294,6 +294,8 @@ function _cycleRow(c, hubId, nums, errors) {
     rail: tiles.some((t) => t.type === 'un') ? 'red' : null,
     rowDim: stops.length > 0 && stops[0].cycle_dim === true,
     rates: { partner_rate: c.partner_rate == null ? null : Number(c.partner_rate), missing: c.trip_type === 'PARTNER' && c.partner_rate == null },
+    // 087 (P-16): the last change after the assignment, as the base read it from audit_log (null: none, or before 087)
+    lastChange: c.last_change && typeof c.last_change === 'object' ? c.last_change : null,
     pieceIds: [...new Set(legs.map((l) => l.piece_id))], group: null, vs: false, clients, refs,
     sortAt: sortStop ? sortStop.planned_from : c.start_at,
     _parts: [c.truck, c.trailer, c.driver, c.partner, ...clients, ...places, ...refs],
@@ -392,6 +394,8 @@ function _waitRow(list, hubId, errors, nameOf) {
     segSource: 'cycle', cycleNo: null, end: null, local: [], handovers: [],
     late: ws.some((w) => w.overdue === true), rail: 'red', rowDim: false, rates: { partner_rate: null, missing: false },
     pieceIds: ws.map((w) => w.piece_id),
+    // P-11 (owner 28/10, answer 1): the pieces of this row that stand at Veroia — what «→ Βέροια» sends to the panel
+    hubPieceIds: ws.filter((w) => w._atHub === true).map((w) => w.piece_id),
     group: w0.order_id != null ? { order_id: w0.order_id } : w0.nat_order_id != null ? { nat_order_id: w0.nat_order_id } : null,
     vs: String(w0.kind || '').startsWith('vs_'), clients, refs, sortAt: w0.load_from, _parts: [...clients, ...refs],
   };
@@ -466,13 +470,18 @@ function model(board, opts) {
   }));
   const item = (h) => ({ pieceId: h.piece_id, client: h.client || null, place: null, pallets: r1(h.pallets), leave_by: h.leave_by || null,
     overdue: h.overdue === true, nat_due_day: h.nat_due_day || null, kind: h.kind, reference: h.reference || null });
-  // «ΓΙΑ ΜΟΙΡΑΣΜΑ» = unloaded at Veroia by a cycle (inbound_rt_id), sent there to be split (for_split, Ε-41), or a VS
-  // import standing at Veroia with no national truck yet (owner 28/10, B1: the international truck unloads it there,
-  // so it is split and loaded from the Veroia board) — it ALSO stays a «ΠΡΟΣ ΑΝΑΘΕΣΗ» row, for assigning the order whole.
-  const split = board.hub.filter((h) => h.is_stock !== true && (!_neverAssigned(h) || h.kind === 'vs_import')).map(item);
+  // «ΓΙΑ ΜΟΙΡΑΣΜΑ» = unloaded at Veroia by a cycle (inbound_rt_id) or sent there (for_split, Ε-41). A piece is in ONE
+  // place (owner 28/10, answer 1 of the Veroia panel, PR #167 — it reverses «B1 part 2»): a VS import starts only as
+  // «ΠΡΟΣ ΑΝΑΘΕΣΗ»; «→ Βέροια» sends it to the panel and it leaves the Weekly; «← Weekly» brings it back (087).
+  const split = board.hub.filter((h) => h.is_stock !== true && !_neverAssigned(h)).map(item);
+  const isW = (x) => x && typeof x === 'object' && DAY_RE.test(String(x.week || '')) && Number.isFinite(Number(x.orders));
   const stock = board.hub.filter((h) => h.is_stock === true).map(item);
   return {
     week, today, hubId, days, queue,
+    // 087: orders without a truck per week (A-3, the tab badges) and the last partner rates (P-8); null before 087,
+    // so a screen can tell «none» from «not sent» (principle 1)
+    waitingWeeks: Array.isArray(board.waiting_weeks) ? board.waiting_weeks.filter(isW).map((x) => ({ week: x.week, orders: Number(x.orders) })) : null,
+    rateHistory: Array.isArray(board.rate_history) ? board.rate_history.filter((x) => x && x.partner_rate != null) : null,
     hub: { day: today && today >= week && today <= last ? today : week, split, stock, pallets: { split: _sum(split), stock: _sum(stock), splitUnknown: _unk(split), stockUnknown: _unk(stock) }, empty: !split.length && !stock.length },
     notices: board.notices.map((n) => ({ id: n.id, kind: n.kind, message: n.message, order_id: n.order_id, nat_order_id: n.nat_order_id, rt_id: n.rt_id, created_at: n.created_at, created_by: n.created_by || null })),
     errors,

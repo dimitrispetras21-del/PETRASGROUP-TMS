@@ -10536,3 +10536,9 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5a-opt.on { background:var(--wi4-ink); color:var(--surface-card); }
 .wn5a-sugg .wi-pop-inp:not(:focus) { border-style:dashed; border-color:var(--wn5-info-line); background:var(--wn5-info-bg); }
 .wn5a-av.sugg { color:var(--accent-text); }
+/* A-3 (087, Figma A-3 «W43 ①»): orders without a truck in that week, a red count on the tab */
+.wn5 .wn5-tab-n { min-width:16px; height:16px; padding:0 4px; box-sizing:border-box; border-radius:8px; background:var(--wi4-red); color:#fff; font-size:10.5px; font-weight:600; line-height:16px; text-align:center; }
+/* P-16 (087): ✎ = changed after the assignment; the title says the last change only */
+.wn5 .wn5-chg { flex:none; align-self:flex-start; font-size:12px; line-height:16px; color:var(--wi4-amber-ink); cursor:help; }
+/* P-8 (087): the last 3 partner rates of the route, under the partner's rate */
+.wn5a-hist { margin-top:4px; font:400 11px/14px 'DM Sans',sans-serif; color:var(--wi4-grey-2); }

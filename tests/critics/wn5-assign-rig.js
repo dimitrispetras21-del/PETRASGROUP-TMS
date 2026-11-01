@@ -248,6 +248,8 @@ function hubBoard() {
     position_location_id: 3, nat_from_location_id: 3, nat_to_location_id: 2, nat_ready_day: '2026-10-12', nat_due_day: '2026-10-13', overdue: false,
     is_stock: false, client_id: 43, client: 'ΠΕΛΑΤΗΣ Γ', reference: 'N-T301', temperature_c: 2, pallet_exchange: false, direction: 'KATHODOS',
     load_from: '2026-10-12T06:00:00+00:00', load_to: '2026-10-12T07:00:00+00:00', deliver_from: '2026-10-13T05:00:00+00:00', deliver_to: '2026-10-13T07:00:00+00:00', price: null });
+  // P-11 (087, owner 28/10 answer 1): a VS is on the Veroia panel only once its ✈ sent it there (for_split)
+  for (const h of b.hub) h.for_split = true;
   return b;
 }
 const nfText = (page) => page.evaluate(() => { const n = document.querySelector('#wn5-hub .wn5-nf'); return n ? n.innerText.replace(/\s+/g, ' ').trim() : null; });

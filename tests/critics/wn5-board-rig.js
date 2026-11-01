@@ -1932,9 +1932,11 @@ async function scnVeroia(browser, origin) {
     // v2 (owner 31/10): the list by day and «Νέο φορτίο» side by side; the list scrolls inside (min(520px, 60vh))
     ok(scn, 'open → #wn5-hub-panel (v2) within 2/3 of the window, its list scrolling inside', box !== null && box <= 1080 * 2 / 3, box);
     const txt = await bText(page, PANEL);
-    // B1 (owner 28/10): a VS import at Veroia with no truck is a «ΠΡΟΣ ΑΝΑΘΕΣΗ» row AND an item of the panel («ΓΙΑ ΜΟΙΡΑΣΜΑ»)
-    ok(scn, 'VS-T118 (hub[], no truck ever) is a «ΠΡΟΣ ΑΝΑΘΕΣΗ» row AND an item of the open panel (B1)', (await bHas(page, PANEL))
-      && await bHas(page, `${PANEL} [data-piece="4101"]`) && await bHas(page, '.wn5-row[data-key="wait:4101"]') && await bHas(page, `${PANEL} [data-piece="4401"]`));
+    // P-11 (owner 28/10, answer 1, reverses B1 part 2): a VS import at Veroia with no truck is ONLY a «ΠΡΟΣ ΑΝΑΘΕΣΗ»
+    // row until sent to the panel; VS-T125 (for_split) is only on the panel
+    ok(scn, 'VS-T118 (hub[], never sent) is a «ΠΡΟΣ ΑΝΑΘΕΣΗ» row only; VS-T125 (sent, for_split) the panel only (P-11)', (await bHas(page, PANEL))
+      && !(await bHas(page, `${PANEL} [data-piece="4101"]`)) && await bHas(page, '.wn5-row[data-key="wait:4101"]') && await bHas(page, `${PANEL} [data-piece="4401"]`)
+      && !(await bHas(page, '.wn5-row[data-key="wait:4401"]')));
     ok(scn, 'v2 sections: the list by day («ΔΕΥ 12/10 · …»), «ΑΠΟΘΕΜΑ», and «ΝΕΟ ΦΟΡΤΙΟ» on the right', /ΔΕΥ 12\/10 · /.test(txt) && txt.includes('ΑΠΟΘΕΜΑ')
       && txt.includes('ΝΕΟ ΦΟΡΤΙΟ'), txt.slice(0, 600));
     ok(scn, 'no «κύκλος» and no RT code on the panel (owner 31/10)', !/κύκλ|RT-/.test(txt), txt.slice(0, 600));
@@ -2064,6 +2066,79 @@ async function scnVeroia(browser, origin) {
 }
 
 SCN['veroia'] = scnVeroia;
+
+// Pack 4 (087, coordinator 1/11): A-3 badges on the week tabs, P-16 ✎ on a cycle changed after its assignment, P-11 one
+// place per piece at Veroia (✈ «Στον Πίνακα Βέροιας» / «← Weekly» = POST /plan/move target.hub), P-8 the last rates of
+// the route in the assignment form. The board of 087 is the rig week + its keys; without them (072..086) nothing shows.
+function p4Board(with087) {
+  const b = bBoard();
+  if (!with087) return b;
+  b.waiting_weeks = [{ week: WEEK, orders: 3 }, { week: '2026-10-17', orders: 1 }];
+  b.rate_history = [
+    { rt_id: 901, partner_id: 51, partner: 'Partner Test 01', partner_rate: 450, date_start: '2026-10-05', sides: [{ side: 'KATHODOS', from_location_id: 1, to_location_id: 4 }] },
+    { rt_id: 902, partner_id: 52, partner: 'Partner Test 02', partner_rate: 420, date_start: '2026-09-28', sides: [{ side: 'KATHODOS', from_location_id: 1, to_location_id: 4 }] },
+    { rt_id: 903, partner_id: 52, partner: 'Partner Test 02', partner_rate: 999, date_start: '2026-09-27', sides: [{ side: 'KATHODOS', from_location_id: 1, to_location_id: 6 }] },
+  ];
+  b.cycles[0].last_change = { at: '2026-10-13T05:40:00Z', role: 'dispatcher', table: 'rt_stops', action: 'update', keys: ['planned_from', 'planned_to'] };
+  return b;
+}
+SCN.pack4 = async (browser, origin) => {
+  const scn = 'pack4';
+  const PANEL = '#wn5-hub-panel', M = '/plan/move';
+  const tabs = (page) => page.$$eval('.wn5 .wi4-tabs .wi4-tab[data-w]', (bs) => bs.map((x) => x.textContent.trim())).catch(() => []);
+  { // A · before 087: no badge, no ✎, no rates line — never a guessed 0 or «no change»
+    const { page, S } = await bOpen(browser, origin, { board: p4Board(false) });
+    const t = await tabs(page);
+    ok(scn, 'before 087: the tabs read «W39…W45» with no badge', t.length === 7 && t.every((x) => /^W\d+$/.test(x)) && !(await bHas(page, '.wn5 .wn5-tab-n')), t);
+    ok(scn, 'before 087: no ✎ on any row', !(await bHas(page, '.wn5 .wn5-chg')));
+    ok(scn, 'no page errors (A)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // B · 087: badges, ✎, ✈ of a VS at Veroia, «← Weekly» on the panel
+    const { page, S } = await bOpen(browser, origin, { board: p4Board(true), plan: {
+      ['POST ' + M]: (e) => [200, { ok: true, op: 'plan_move_pieces', ids: { piece_ids: e.body.from.piece_ids, hub: e.body.target.hub }, warnings: [], notice_ids: [] }] } });
+    const t = await tabs(page);
+    const badges = await page.$$eval('.wn5 .wi4-tabs .wi4-tab[data-w]', (bs) => bs.map((x) => [x.dataset.w, (x.querySelector('.wn5-tab-n') || {}).textContent || ''])).catch(() => []);
+    ok(scn, 'A-3: W42 «3», W43 «1», the others bare (Figma «W43 ①»)', JSON.stringify(badges) === '[["39",""],["40",""],["41",""],["42","3"],["43","1"],["44",""],["45",""]]', badges);
+    const tip = await page.$eval('.wn5 .wi4-tab[data-w="42"]', (b) => b.title).catch(() => null);
+    ok(scn, 'A-3: the badge says what it counts in its title', tip === '3 παραγγελίες χωρίς φορτηγό', tip);
+    const chg = await page.$eval('.wn5 .wn5-row[data-rt] .wn5-chg', (e) => e.title).catch(() => null);
+    ok(scn, 'P-16: ✎ «Τελευταία αλλαγή 13/10 08:40 · δρομολόγηση · ημέρα / ώρα» (Athens time, a role, never a name)',
+      chg === 'Τελευταία αλλαγή 13/10 08:40 · δρομολόγηση · ημέρα / ώρα', chg);
+    ok(scn, 'P-16: one ✎ (only the changed cycle)', (await page.$$('.wn5 .wn5-chg')).length === 1);
+    // P-11 (β): the ✈ of VS-T118's ΠΡΟΣ ΑΝΑΘΕΣΗ row → «Στον Πίνακα Βέροιας» → target {hub: true} for its 3 pieces
+    await bClick(page, '.wn5-row[data-key="wait:4101"] [data-act="to-panel"]');
+    const pop = await bText(page, '.wn5-hub-pop');
+    ok(scn, 'P-11: ✈ of a VS at Veroia offers «Στον Πίνακα Βέροιας»', pop.trim() === 'Στον Πίνακα Βέροιας', pop);
+    await bClick(page, '.wn5-hub-pop [data-v="hub"]');
+    await page.waitForTimeout(400);
+    let c = bCalls(S, 'POST', M);
+    ok(scn, 'P-11: one POST /plan/move {from:{piece_ids:[4101,4102,4103]}, target:{hub:true}}, no dry run',
+      c.length === 1 && JSON.stringify(c[0].body) === '{"from":{"piece_ids":[4101,4102,4103]},"target":{"hub":true}}', c.map((x) => x.raw));
+    // P-11 (γ): «← Weekly» in «⋯» of VS-T125 (for_split) → target {hub: false}; the stock row has no «⋯»
+    await bClick(page, '#wn5-hub [data-hub="open"]');
+    await bClick(page, `${PANEL} [data-piece="4401"] [data-hub="more"]`);
+    const more = await bText(page, '.wn5-hub-pop');
+    ok(scn, 'P-11: «⋯» of a piece sent to the panel: «Σπάσε…» and «← Weekly»', /Σπάσε…/.test(more) && /← Weekly/.test(more), more);
+    await bClick(page, '.wn5-hub-pop [data-v="weekly"]');
+    await page.waitForTimeout(400);
+    c = bCalls(S, 'POST', M);
+    ok(scn, 'P-11: «← Weekly» = POST /plan/move {from:{piece_ids:[4401]}, target:{hub:false}}',
+      c.length === 2 && JSON.stringify(c[1].body) === '{"from":{"piece_ids":[4401]},"target":{"hub":false}}', c.map((x) => x.raw));
+    ok(scn, 'no page errors (B)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // C · P-8: the assignment form of VS-T118 (Veroia → Test city 4) lists the last rates of that route, newest first
+    const { page, S } = await bOpen(browser, origin, { board: p4Board(true) });
+    await bClick(page, '#content .wn5 .wn5-row[data-key="wait:4101"] .wi4-box.un');
+    await page.waitForTimeout(500);
+    const h = await bText(page, '.wn5a .wn5a-hist');
+    ok(scn, 'P-8: «Τελευταία κόμιστρα: 450 € Partner Test 01 Δευ 5/10 · 420 € Partner Test 02 Δευ 28/9», never the other route',
+      /^Τελευταία κόμιστρα: 450 € Partner Test 01 .+ · 420 € Partner Test 02 .+$/.test(h) && !h.includes('999'), h);
+    ok(scn, 'no page errors (C)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+};
 
 
 // T23 — ✈ «Εκτύπωση / WhatsApp › Κάθοδος»: the A4 of the KATHODOS only, the WhatsApp text in the clipboard.
@@ -2737,7 +2812,8 @@ function f27Board() {
   // two pieces of one VS with two cross-dock days (0 live on 28/10): one Veroia stop cannot hold both days
   b.waiting.push(exp({ piece_id: 4511, order_id: 2511, order_stop_id: 6511, pallets: 4, reference: 'VS-T511', position_location_id: 5, nat_from_location_id: 5, nat_due_day: '2026-10-14' }));
   b.waiting.push(exp({ piece_id: 4512, order_id: 2511, order_stop_id: 6512, pallets: 5, reference: 'VS-T511', position_location_id: 6, nat_from_location_id: 6, nat_due_day: '2026-10-15' }));
-  b.hub.push(bHub(4601, { order_id: 2601, order_stop_id: 6601, pallets: 7, reference: 'VS-T601', nat_ready_day: '2026-10-13', nat_due_day: '2026-10-14',
+  // P-11 (087, owner 28/10 answer 1): a VS is on the panel only once sent there (for_split)
+  b.hub.push(bHub(4601, { order_id: 2601, order_stop_id: 6601, pallets: 7, reference: 'VS-T601', for_split: true, nat_ready_day: '2026-10-13', nat_due_day: '2026-10-14',
     nat_to_location_id: 2, load_from: null, load_to: null, deliver_from: null, deliver_to: null }));
   // code review: TST-2107 (15) is free on Tue 13/10 but on the road Wed 14/10 → Thu 15/10 (RT-T209, no Veroia stop):
   // a new cycle for VS-T501 runs to Wed, so the truck is not offered; its ΚΑΘΟΔΟΣ «+» (Wed) takes the stock remainder
