@@ -2,7 +2,8 @@
 -- DO NOT EDIT BY HAND. Everything 089 did, in reverse: plan_rt_update and plan_h_seg_json back to their texts before
 -- 089 byte for byte (the hunks of 089 in reverse, md5-proven), the trigger and its function dropped, the CHECK and the
 -- column dropped, B-54 back. The ANODOS parts typed since 089 are LOST (the fees stay: partner_rate is the whole fee,
--- so the money of every trip is unchanged); how many is said in the NOTICE. The audit_log rows stay (history).
+-- so the money of every trip is unchanged); the NOTICE names each trip with its part, to type it again if 089 runs
+-- again. The audit_log rows stay (history).
 -- Only with an explicit yes. ASCII. ONE DO block.
 -- EXPECTED: NOTICE "089 ROLLBACK OK: ... splits dropped".
 DO $do$
@@ -56,9 +57,11 @@ $h$;
 $h$;
   j_1a CONSTANT text := $h$'partner_rate', s.partner_rate, $h$;
   j_1b CONSTANT text := $h$'partner_rate', s.partner_rate,
-           -- 089: the ANODOS part of the fee (NULL = not split); the KATHODOS part is the difference
-           'partner_rate_anodos', (select g.partner_rate_anodos from rt_vehicle_segments g where g.id = s.segment_id), $h$;
-  v_h record; v_new text; p pg_proc%rowtype; v_trg0 int; v_trg1 int; v_b54 int; v_lost int;
+           -- 089: the ANODOS part of the fee (NULL = not split; the KATHODOS part is the difference), only on a trip
+           -- with ONE vehicle: after a handover each segment is its own fee and a part kept there would be a stale claim
+           'partner_rate_anodos', case when s.n_segments = 1
+             then (select g.partner_rate_anodos from rt_vehicle_segments g where g.id = s.segment_id) end, $h$;
+  v_h record; v_new text; p pg_proc%rowtype; v_trg0 int; v_trg1 int; v_b54 int; v_lost int; v_list text;
 BEGIN
   PERFORM set_config('lock_timeout', '5s', true);
   IF NOT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = 'public.rt_vehicle_segments'::regclass AND attname = 'partner_rate_anodos' AND NOT attisdropped)
@@ -71,7 +74,10 @@ BEGIN
   IF v_b54 IS DISTINCT FROM v_trg0 THEN
     RAISE EXCEPTION '089 rollback: B-54 holds % but % triggers are enabled - stop, re-measure', v_b54, v_trg0;
   END IF;
-  SELECT count(*) INTO v_lost FROM public.rt_vehicle_segments WHERE partner_rate_anodos IS NOT NULL;
+  -- what is lost, named (principle 1): the trip, its fee and its ANODOS part
+  SELECT count(*), string_agg(r.code || ' ' || g.partner_rate || '/' || g.partner_rate_anodos, ', ' ORDER BY r.code, g.id)
+    INTO v_lost, v_list
+    FROM public.rt_vehicle_segments g JOIN public.ct_round_trips r ON r.id = g.rt_id WHERE g.partner_rate_anodos IS NOT NULL;
   -- the functions first: plan_h_seg_json (sql) names the column in its body
   SELECT * INTO p FROM pg_proc WHERE oid = to_regprocedure('public.plan_rt_update(jsonb,text,text)');
   IF md5(p.prosrc) <> 'f232250e4672f3133b4a3fe06cb1da5c' THEN
@@ -97,7 +103,7 @@ BEGIN
     RAISE EXCEPTION '089 rollback proof: public.plan_rt_update(jsonb,text,text) is not back to its text before 089 with its rights';
   END IF;
   SELECT * INTO p FROM pg_proc WHERE oid = to_regprocedure('public.plan_h_seg_json(bigint)');
-  IF md5(p.prosrc) <> 'a23009d0b89532e9ec509d6cc11be56e' THEN
+  IF md5(p.prosrc) <> 'b92f3666e087ddfd621959d47f95a4cb' THEN
     RAISE EXCEPTION '089 rollback: public.plan_h_seg_json(bigint) is not the text 089 wrote (md5 %) - stop', md5(p.prosrc);
   END IF;
   v_new := p.prosrc;
@@ -127,5 +133,5 @@ BEGIN
     JOIN pg_namespace ns ON ns.oid = c.relnamespace WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public';
   IF v_trg1 <> v_trg0 - 1 THEN RAISE EXCEPTION '089 rollback proof: triggers % -> % (one less)', v_trg0, v_trg1; END IF;
   UPDATE monitoring.checks SET red_value = v_trg1 WHERE id = 'B-54';
-  RAISE NOTICE '089 ROLLBACK OK: % splits dropped (the fees stay), triggers %', v_lost, v_trg1;
+  RAISE NOTICE '089 ROLLBACK OK: % splits dropped (the fees stay): %; triggers %', v_lost, coalesce(v_list, 'none'), v_trg1;
 END $do$;

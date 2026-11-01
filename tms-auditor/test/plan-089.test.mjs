@@ -6,6 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import { prodShaped086 } from './prod-shaped-086.mjs';
 import { migrationFile } from '../lib/db.mjs';
 import { facts, applyHunks, UPDATE, SEGJSON } from '../../worker/migrations/drafts/tools/build-089.mjs';
@@ -169,7 +170,8 @@ test('089 on the production-shaped copy (after 084 + 086): the ANODOS part refus
     assert.strictEqual(Number(r.m.planned), 700);
     assert.strictEqual(Number(r.m.cost), 700);
     assert.strictEqual(r.m.missing, false);
-    assert.ok(Number(r.m.linesNet) >= 700, String(r.m.linesNet));
+    // the trip has no other cost line and no payroll: its lines_net IS the partner cost, once (never 700 + 300)
+    assert.strictEqual(Number(r.m.linesNet), 700);
     assert.ok(r.audit.some((x) => Number(x.a) === 300 && x.b === null && x.role === 'dispatcher'), JSON.stringify(r.audit));
   });
 
@@ -236,6 +238,45 @@ test('089 on the production-shaped copy (after 084 + 086): the ANODOS part refus
     assert.strictEqual(r.late, null, r.late);
   });
 
+  await t.test('a handover: the part is not shown on a trip with two vehicles, the part key is seg_many; a lower previous rate or «Καθαρισμός» empties it, said in the audit', async () => {
+    const r = await scenario(db, async () => {
+      const rt = await num(db, `SELECT t89_cycle('H1', ${day}, $1, NULL)`, [await partner(db)]);
+      await upd(db, rt, { partner_rate: 700, partner_rate_anodos: 300 });
+      const s0 = await seg(db, rt);
+      const at = (await one(db, `SELECT ((${day}) + time '20:00') at time zone 'Europe/Athens' AS t`)).t;
+      const body = { request_id: crypto.randomUUID(), rt_id: rt, at, place_note: 'TEST 089', reason: 'vehicle_breakdown',
+        vehicle: { trip_type: 'PARTNER', partner_id: await partner(db), partner_rate: 200 } };
+      const ch = await call(db, `SELECT plan_seg_change($1::jsonb, 'test:089', 'dispatcher') AS r`, [JSON.stringify(body)]);
+      const kept = await one(db, `SELECT partner_rate_anodos FROM rt_vehicle_segments WHERE id = $1`, [s0.id]);
+      const json = (await one(db, `SELECT plan_h_seg_json($1::bigint) AS j`, [rt])).j;
+      const many = await upd(db, rt, { partner_rate_anodos: 100 });
+      // the previous partner's rate lowered in a correction of the new segment (072b prev_partner_rate, its token)
+      const g2 = Number(ch.r && ch.r.ids && ch.r.ids.segment_id);
+      const fixBody = { segment_id: g2, set: { partner_rate: 250 }, prev_partner_rate: 500 };
+      const dry = await call(db, `SELECT plan_seg_fix($1::jsonb, 'test:089', 'dispatcher') AS r`, [JSON.stringify({ ...fixBody, dry_run: true })]);
+      const fx = await call(db, `SELECT plan_seg_fix($1::jsonb, 'test:089', 'dispatcher') AS r`,
+        [JSON.stringify({ ...fixBody, ...(dry.r && dry.r.confirm_token ? { confirm_token: dry.r.confirm_token } : {}) })]);
+      const prev = await one(db, `SELECT partner_rate, partner_rate_anodos FROM rt_vehicle_segments WHERE id = $1`, [s0.id]);
+      const prevAudit = await segAudit(db, s0.id);
+      // the part again on the one segment left after «Καθαρισμός»: none, the trip is unassigned (OWNED, all NULL)
+      await db.query(`UPDATE rt_vehicle_segments SET partner_rate_anodos = 100 WHERE id = $1`, [s0.id]);
+      const clr = await call(db, `SELECT plan_rt_clear($1::jsonb, 'test:089', 'owner') AS r`, [JSON.stringify({ rt_id: rt })]);
+      const after = await one(db, `SELECT trip_type, partner_rate, partner_rate_anodos FROM rt_vehicle_segments WHERE id = $1`, [s0.id]);
+      return { ch, kept, json, many, dry, fx, prev, prevAudit, clr, after };
+    });
+    assert.strictEqual(r.ch.err, null, r.ch.err);
+    assert.strictEqual(Number(r.kept.partner_rate_anodos), 300, 'the row keeps it (the fee did not change)');
+    assert.strictEqual(r.json.length, 2);
+    assert.ok(r.json.every((g) => g.partner_rate_anodos === null), 'never shown on a trip with two vehicles: ' + JSON.stringify(r.json));
+    assert.match(r.many.err ?? '', /seg_many/);
+    assert.strictEqual(r.fx.err, null, r.fx.err + ' / dry ' + JSON.stringify(r.dry));
+    assert.deepStrictEqual([Number(r.prev.partner_rate), r.prev.partner_rate_anodos], [500, null]);
+    assert.ok(r.prevAudit.some((x) => Number(x.b) === 300 && x.a === null && Number(x.fee) === 500), JSON.stringify(r.prevAudit));
+    assert.strictEqual(r.clr.err, null, r.clr.err);
+    assert.deepStrictEqual([r.after.trip_type, r.after.partner_rate, r.after.partner_rate_anodos], ['OWNED', null, null]);
+    assert.strictEqual(r.late, null, r.late);
+  });
+
   await t.test('still refused: a part above the fee, a negative part, a part without a fee (CHECK seg_partner_rate_anodos); NaN / Infinity / past numeric(10,2) (bad_input)', async () => {
     const r = await scenario(db, async () => {
       const rt = await num(db, `SELECT t89_cycle('R1', ${day}, $1, NULL)`, [await partner(db)]);
@@ -283,7 +324,8 @@ test('089 on the production-shaped copy (after 084 + 086): the ANODOS part refus
     assert.strictEqual(await md5(db, UPDATE), f.gen[0].m);
     const notices = [];
     await db.query(read('089_plan_partner_rate_anodos_rollback.sql'), [], { onNotice: (n) => notices.push(n.message) });
-    assert.ok(notices.some((n) => /089 ROLLBACK OK: 1 splits dropped/.test(n)), notices.join(' | '));
+    const code = (await one(db, `SELECT code FROM ct_round_trips WHERE id = $1`, [rt])).code;
+    assert.ok(notices.some((n) => n.includes(`089 ROLLBACK OK: 1 splits dropped (the fees stay): ${code} 700.00/300.00;`)), notices.join(' | '));
     assert.strictEqual(await md5(db, UPDATE), live.u);
     assert.strictEqual(await md5(db, SEGJSON), live.j);
     assert.strictEqual(await num(db, `SELECT count(*) FROM pg_attribute WHERE attrelid = 'rt_vehicle_segments'::regclass AND attname = 'partner_rate_anodos' AND NOT attisdropped`), 0);
