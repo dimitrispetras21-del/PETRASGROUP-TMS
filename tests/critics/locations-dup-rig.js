@@ -6,7 +6,9 @@
 //          the field, and the order is sent with its number
 //   use    the order forms' new-place panel: «Χρήση αυτής» on the warning takes the place that exists, no POST
 //   space  a place stored with a no-break space is found by the plain space a person types
-// Usage: node tests/critics/locations-dup-rig.js [dup f15 use space]   (cwd: the main repo, for playwright)
+//   stale  typing on past every match: no place of the last keystroke stays in the list, ONE «+ Νέα» line; a field
+//          that holds a picked place offers nothing new
+// Usage: node tests/critics/locations-dup-rig.js [dup f15 use space stale]   (cwd: the main repo, for playwright)
 // Exit: 0 green · 1 a check failed · 2 unknown scenario.
 'use strict';
 const K = require('./wn5-rig-kit.js');
@@ -159,5 +161,27 @@ async function space({ browser, origin, ok, scn }) {
   await page.context().close();
 }
 
-K.run({ scenarios: { dup, f15, use, space }, globals: ['WN5', 'WN5Act', 'WN5Form'],
+async function stale({ browser, origin, ok, scn }) {
+  const { page, S } = await K.openApp(browser, origin, {});
+  await facade(page);
+  await page.evaluate(() => WN5Form.openOrder({}));
+  await page.waitForSelector(ORDER, { timeout: 8000 }).catch(() => {});
+  const pid = await page.evaluate((o) => document.querySelector(`${o} .wn5f-rows[data-k="load"] .wn5f-row`).dataset.pid, ORDER);
+  const list = () => page.evaluate((id) => { const d = document.getElementById('ls_' + id + '_d');
+    return d && d.style.display !== 'none' ? [...d.children].map((x) => x.textContent) : []; }, pid);
+  await page.fill(`#ls_${pid}`, 'Ath');
+  await page.waitForTimeout(150);
+  const first = await list();
+  for (const t of ['Athx', 'Athxy', 'Athxyz']) { await page.fill(`#ls_${pid}`, t); await page.waitForTimeout(100); }
+  const last = await list();
+  ok(scn, 'precondition: «Ath» lists ATHENS TEST', first.some((x) => /ATHENS TEST/.test(x)), first);
+  ok(scn, 'after «Athxyz» no place of the earlier keystrokes stays, and ONE «+ Νέα τοποθεσία «Athxyz»» line', last.length === 1 && /\+ Νέα τοποθεσία «Athxyz»/.test(last[0]), last);
+  await page.evaluate((id) => { fhPickLinked(id, 'recWn5LocAth', 'ATHENS TEST, Athens, Ελλάδα'); WN5Form.locDrop(id, document.getElementById('ls_' + id).value); }, pid);
+  const picked = await list();
+  ok(scn, 'a field holding a picked place, focused again: the place, no «+ Νέα» line', picked.length >= 1 && !picked.some((x) => /Νέα τοποθεσία/.test(x)), picked);
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await page.context().close();
+}
+
+K.run({ scenarios: { dup, f15, use, space, stale }, globals: ['WN5', 'WN5Act', 'WN5Form'],
   go: 'F15 / F16 warning / spaces hold' });

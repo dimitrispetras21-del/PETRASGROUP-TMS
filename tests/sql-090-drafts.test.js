@@ -48,3 +48,17 @@ test('090: born closed - the merge is revoked from every API role, nothing is gr
   // the record of what 090 changed is not a reference: a foreign key there would make a merge move it
   assert.ok(!/loc_090_before \([^;]*REFERENCES/s.test(src));
 });
+
+test('090: one country list - the CHECK holds exactly the codes of core/countries.js (COUNTRY_CODES)', () => {
+  const vm = require('node:vm');
+  const ctx = { window: {}, console, Intl };
+  vm.createContext(ctx);
+  vm.runInContext(fs.readFileSync(path.join(ROOT, 'core/countries.js'), 'utf8'), ctx);
+  const app = Array.from(vm.runInContext('COUNTRY_CODES', ctx)).sort();   // an array of this realm: deepStrictEqual compares prototypes
+  const src = strip(read(`${P}.sql`));
+  const m = src.match(/ADD CONSTRAINT locations_country_iso CHECK \(country IS NULL OR country = ANY \('\{([A-Z,\s]+)\}'::text\[\]\)\)/);
+  assert.ok(m, 'the CHECK with its list');
+  assert.deepStrictEqual(m[1].split(',').map((x) => x.trim()).sort(), app);
+  // every code country_iso maps a name to is one of them
+  for (const [, c] of src.matchAll(/\('[a-z ]+', '([A-Z]{2})'\)/g)) assert.ok(app.includes(c), c);
+});

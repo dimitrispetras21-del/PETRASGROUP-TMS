@@ -46,6 +46,7 @@ BEGIN
 
   -- ===== PART 2: THE OBJECTS OF 090 =====
   DROP FUNCTION public.entity_merge(text, bigint, bigint, text);
+  DROP FUNCTION public.entity_merged_refs();
   ALTER TABLE public.locations DROP CONSTRAINT locations_merged_is_deleted, DROP COLUMN merged_into_id;
   ALTER TABLE public.clients DROP CONSTRAINT clients_merged_is_deleted, DROP COLUMN merged_into_id;
   DROP FUNCTION public.locations_clean();

@@ -62,6 +62,44 @@ INSERT INTO orders (legacy_id, order_type, direction, status, reference, parent_
     FROM orders o WHERE o.legacy_id = 'rec090P';`;
 const id = async (db, t, leg) => num(db, `SELECT id FROM ${t} WHERE legacy_id = $1`, [leg]);
 
+// A v5 cycle on a VS import, as plan-082.test.mjs builds it (its helpers, prefixed t90): the order's Greek drop is
+// then held by order_stops, shipments (dest) and rt_stops - the tables whose rules plan_chk runs at COMMIT.
+const V5 = `
+CREATE FUNCTION t90_vs(p_ref text, p_hub date) RETURNS bigint LANGUAGE plpgsql AS $t$
+declare o bigint; hub bigint; lx bigint; lg bigint;
+begin
+  select id into hub from locations where is_hub;
+  insert into locations (legacy_id, name) values ('rec90X' || p_ref, 'TEST 090 abroad ' || p_ref) returning id into lx;
+  insert into locations (legacy_id, name, country) values ('rec90G' || p_ref, 'TEST 090 GR ' || p_ref, 'GR') returning id into lg;
+  insert into orders (legacy_id, order_type, direction, status, veroia_switch, loading_datetime, delivery_datetime,
+                      cross_dock_date, reference, client_id)
+  values ('rec90O' || p_ref, 'International', 'Import', 'Pending', true, p_hub - 3, p_hub + 1, p_hub, 'T90-' || p_ref,
+          (select min(id) from clients)) returning id into o;
+  insert into order_stops (legacy_id, stop_type, stop_number, datetime, order_id, location_id, pallets) values
+    ('rec90A' || p_ref, 'Loading', 1, p_hub - 3, o, lx, 10), ('rec90H' || p_ref, 'Cross-dock', 1, p_hub, o, hub, 10),
+    ('rec90S' || p_ref, 'Unloading', 1, p_hub + 1, o, lg, 10);
+  return o;
+end $t$;
+CREATE FUNCTION t90_put(p_ref text, p_day date) RETURNS bigint LANGUAGE plpgsql AS $t$
+declare trk bigint; pc bigint; hub bigint; r jsonb;
+begin
+  select id into hub from locations where is_hub;
+  select sp.id into pc from shipment_pieces sp join shipments s on s.id = sp.shipment_id join order_stops st on st.id = s.order_stop_id
+   where st.legacy_id = 'rec90S' || p_ref and s.deleted_at is null and sp.deleted_at is null and sp.parent_piece_id is null;
+  insert into trucks (license_plate) values ('TEST-090-' || p_ref) returning id into trk;
+  r := plan_put_pieces(jsonb_build_object(
+         'pieces', jsonb_build_array(jsonb_build_object('piece_id', pc, 'drop', 'd1')),
+         'target', jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', trk), 'side', 'KATHODOS'),
+         'stops', jsonb_build_array(
+           jsonb_build_object('ref', 'p', 'location_id', hub, 'side', 'KATHODOS',
+             'planned_from', (p_day + time '06:00') at time zone 'Europe/Athens', 'planned_to', (p_day + time '07:00') at time zone 'Europe/Athens'),
+           jsonb_build_object('ref', 'd1', 'side', 'KATHODOS', 'location_id', (select id from locations where legacy_id = 'rec90G' || p_ref),
+             'planned_from', (p_day + time '10:00') at time zone 'Europe/Athens', 'planned_to', (p_day + time '11:00') at time zone 'Europe/Athens'))),
+         'test:090', 'dispatcher');
+  perform set_config('plan.writer', '', true);
+  return (r->'ids'->>'rt_id')::bigint;
+end $t$;`;
+
 test('090 on the production-shaped copy: ISO country and one space on every write, the merge with every reference moved', async (t) => {
   const db = await prodShaped074();
   for (const f of ['075_plan_order_side.sql', '076_plan_board_speed.sql', '077_plan_order_edit.sql', '078_audit_actions.sql']) await db.exec(read(f));
@@ -73,6 +111,7 @@ test('090 on the production-shaped copy: ISO country and one space on every writ
   const FROZEN = ['national_loads', 'consolidated_loads', 'groupage_lines'];
   for (const f of FROZEN) await db.exec(`ALTER TABLE ${f} DISABLE TRIGGER plan_legacy_frozen`);
   await db.exec(ROWS);
+  await db.exec(V5);
   for (const f of FROZEN) await db.exec(`ALTER TABLE ${f} ENABLE TRIGGER plan_legacy_frozen`);
   const trg0 = await num(db, TRG);
   await db.query(`UPDATE monitoring.checks SET red_value = $1 WHERE id = 'B-54'`, [trg0]);
@@ -99,8 +138,8 @@ test('090 on the production-shaped copy: ISO country and one space on every writ
     await db.exec(read(`${P}.sql`));
     const v = await one(db, read(`${P}_verify.sql`));
     assert.deepStrictEqual(
-      [v.applied, Number(v.not_code), Number(v.unclean), v.trigger, v.check, v.merge, v.merge_open, Number(v.merged_rows), v.b54_ok],
-      ['090 APPLIED', 0, 0, true, true, true, false, 0, true]);
+      [v.applied, Number(v.not_code), Number(v.unclean), v.trigger, v.check, v.merge, v.merge_open, Number(v.merged_rows), v.refs_to_merged, v.b54_ok],
+      ['090 APPLIED', 0, 0, true, true, true, false, 0, '{}', true]);
     assert.ok(Number(v.kept_rows) >= 3);
     const a = await one(db, `SELECT name, city, country FROM locations WHERE id = $1`, [A]);
     assert.deepStrictEqual(a, { name: 'TEST 090 Kept (WAREHOUSE)', city: 'Veria', country: 'GR' });
@@ -122,6 +161,23 @@ test('090 on the production-shaped copy: ISO country and one space on every writ
     assert.strictEqual((await one(db, `UPDATE locations SET country = '  ' WHERE legacy_id = 'rec090W' RETURNING country`)).country, null);
     assert.match(await errorOf(db, `UPDATE locations SET country = 'Narnia' WHERE legacy_id = 'rec090W'`), /locations_country_iso/);
     assert.strictEqual((await one(db, `SELECT country FROM locations WHERE legacy_id = 'rec090W'`)).country, null, 'the refused write left nothing');
+    assert.match(await errorOf(db, `UPDATE locations SET country = 'xx' WHERE legacy_id = 'rec090W'`), /locations_country_iso/, 'two letters that are no country');
+  });
+
+  await t.test('the Worker (service_role) saves a place through the rule, while every helper stays closed to it', async () => {
+    await db.exec('BEGIN');
+    try {
+      // production grants the Worker's role the table (has_table_privilege, SELECT 1/11); the copy does not
+      await db.exec('GRANT SELECT, INSERT, UPDATE ON public.locations TO service_role');
+      await db.exec('SET LOCAL ROLE service_role');
+      const r = await one(db, `UPDATE locations SET country = 'Italy', city = $1 WHERE legacy_id = 'rec090W' RETURNING country, city`, [` Verona${NBSP} `]);
+      assert.deepStrictEqual(r, { country: 'IT', city: 'Verona' });
+      for (const sql of [`SELECT country_iso('Italy')`, `SELECT entity_merge('locations', 1, 2, 'x')`, `SELECT entity_merged_refs()`]) {
+        await db.exec('SAVEPOINT p');
+        assert.match(await errorOf(db, sql), /permission denied/, sql);
+        await db.exec('ROLLBACK TO SAVEPOINT p');
+      }
+    } finally { await db.exec('ROLLBACK'); }
   });
 
   await t.test('the merge (inside a transaction that is rolled back)', async (tt) => {
@@ -195,6 +251,37 @@ test('090 on the production-shaped copy: ISO country and one space on every writ
         assert.strictEqual(await num(db, `SELECT count(*) FROM orders WHERE client_id = $1`, [K2]), 0);
         assert.strictEqual((await one(db, `SELECT phone FROM clients WHERE id = $1`, [K1])).phone, '23320 00000');
         assert.strictEqual(Number((await one(db, `SELECT merged_into_id FROM clients WHERE id = $1`, [K2])).merged_into_id), K1);
+      });
+
+      await tt.test('a place a v5 cycle uses: order stop, shipment and cycle stop move, and the COMMIT rules pass', async () => {
+        const L = (await one(db, `SELECT plan_cutover_day()::text AS l`)).l;
+        await db.exec('SAVEPOINT v5');
+        try {
+        await num(db, `SELECT t90_vs('M1', DATE '${L}' + 3)`);
+        const rt = await num(db, `SELECT t90_put('M1', DATE '${L}' + 4)`);
+        assert.strictEqual(await errorOf(db, 'SET CONSTRAINTS ALL IMMEDIATE'), null, 'the cycle is valid before the merge');
+        await db.exec('SET CONSTRAINTS ALL DEFERRED');
+        const G = await id(db, 'locations', 'rec90GM1');
+        const K = await num(db, `INSERT INTO locations (legacy_id, name, country) VALUES ('rec090VK', 'TEST 090 GR kept', 'GR') RETURNING id`);
+        assert.strictEqual(await num(db, `SELECT count(*) FROM rt_stops WHERE rt_id = $1 AND location_id = $2 AND deleted_at IS NULL`, [rt, G]), 1, 'the cycle stops at G');
+        const r = (await one(db, `SELECT entity_merge('locations', $1, $2, 'test:090') AS r`, [K, G])).r;
+        // the order stop moves; its trigger (081: the cycle's stop follows the order's point) carries the cycle stop
+        // along before the merge reaches rt_stops, so that move is the trigger's, not counted twice
+        assert.ok(r.moved['order_stops.location_id'] === 1, JSON.stringify(r.moved));
+        assert.strictEqual(await errorOf(db, 'SET CONSTRAINTS ALL IMMEDIATE'), null, 'plan_chk at COMMIT accepts the moved cycle');
+        assert.strictEqual(await num(db, `SELECT count(*) FROM rt_stops WHERE rt_id = $1 AND location_id = $2 AND deleted_at IS NULL`, [rt, K]), 1, 'the cycle stops at K');
+        assert.strictEqual(await num(db, `SELECT count(*) FROM rt_stops WHERE location_id = $1`, [G]), 0);
+        assert.strictEqual(await num(db, `SELECT count(*) FROM v_shipments WHERE nat_to_location_id = $1`, [G]), 0);
+        } finally { await db.exec('ROLLBACK TO SAVEPOINT v5'); }
+      });
+
+      await tt.test('a row saved onto a merged place afterwards (a tab opened before the merge) is counted, never hidden', async () => {
+        assert.deepStrictEqual(JSON.parse((await one(db, read(`${P}_verify.sql`))).refs_to_merged), {});
+        await db.exec('SAVEPOINT late');
+        const O = await id(db, 'orders', 'rec090O');
+        await db.query(`INSERT INTO order_stops (legacy_id, stop_type, stop_number, datetime, order_id, location_id) VALUES ('rec090late', 'Unloading', 2, DATE '2026-11-06', $1, $2)`, [O, B]);
+        assert.deepStrictEqual(JSON.parse((await one(db, read(`${P}_verify.sql`))).refs_to_merged), { 'order_stops.location_id': 1 });
+        await db.exec('ROLLBACK TO SAVEPOINT late');
       });
 
       await tt.test('verify counts the merged rows, and the rollback of 090 refuses while they exist', async () => {

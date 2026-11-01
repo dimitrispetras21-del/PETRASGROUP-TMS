@@ -1,4 +1,4 @@
--- 090 ROLLBACK - takes 090 back out: the trigger, the CHECK, the four functions, merged_into_id, and the names,
+-- 090 ROLLBACK - takes 090 back out: the trigger, the CHECK, the five functions, merged_into_id, and the names,
 -- cities and countries 090 rewrote, restored from loc_090_before byte for byte. ASCII only.
 -- A row somebody edited AFTER 090 keeps its new value (it no longer holds what 090 wrote): restoring the old one would
 -- undo a dispatcher's save. The NOTICE says how many were kept that way.
@@ -46,6 +46,7 @@ BEGIN
 
   -- ===== PART 2: THE OBJECTS OF 090 =====
   DROP FUNCTION public.entity_merge(text, bigint, bigint, text);
+  DROP FUNCTION public.entity_merged_refs();
   ALTER TABLE public.locations DROP CONSTRAINT locations_merged_is_deleted, DROP COLUMN merged_into_id;
   ALTER TABLE public.clients DROP CONSTRAINT clients_merged_is_deleted, DROP COLUMN merged_into_id;
   DROP FUNCTION public.locations_clean();

@@ -467,21 +467,31 @@ function _locFormHTML(f) {
 </div>`;
 }
 
+// Latin-only names and cities (owner 9/8; the city too, owner 1/11 F16: «ΑΣΠΡΟΠΥΡΓΟΣ» next to «Aspropyrgos» made one
+// town two). Transliterated (ELOT, case kept), never refused. One rule for the Locations form and the forms' panel.
+function _locLatin(s) {
+  return s && /[Ͱ-Ͽ]/.test(s) && typeof _fhTranslit === 'function' ? _fhTranslit(s) : s;
+}
+// A country the list does not know (a scan's raw text kept as «άγνωστη γραφή») is refused HERE, in plain words: the
+// database refuses it too (090, locations_country_iso), but with a constraint's name nobody at the desk can read.
+function _locCountryBad(country) {
+  return !!country && typeof countryCode === 'function' && !countryCode(country);
+}
+
 async function _locSave() {
   let name = document.getElementById('locF_name')?.value.trim();
   if (!name) { toast('Το όνομα είναι υποχρεωτικό', 'danger'); return; }
   // Latin-only names (owner 9/8): 9 of the 29 locations created in the last 14
   // days were typed in Greek and are invisible to the transliterated search.
   // Transliterate (ELOT, case kept) instead of refusing — the dispatcher keeps working.
-  if (/[Ͱ-Ͽ]/.test(name) && typeof _fhTranslit === 'function') {
-    name = _fhTranslit(name);
+  if (_locLatin(name) !== name) {
+    name = _locLatin(name);
     toast('Το όνομα γράφτηκε με λατινικούς χαρακτήρες: ' + name, 'info');
   }
   const fields = { Name: name };
   const country = document.getElementById('locF_country')?.value.trim();
-  let city      = document.getElementById('locF_city')?.value.trim();
-  // the city too (owner 1/11, F16): «ΑΣΠΡΟΠΥΡΓΟΣ» next to «Aspropyrgos» made one town two
-  if (city && /[Ͱ-Ͽ]/.test(city) && typeof _fhTranslit === 'function') city = _fhTranslit(city);
+  const city    = _locLatin(document.getElementById('locF_city')?.value.trim());
+  if (_locCountryBad(country)) { toast('Διάλεξε τη χώρα από τη λίστα', 'danger'); return; }
   const address = document.getElementById('locF_address')?.value.trim();
   const type    = document.getElementById('locF_type')?.value.trim();
   const lat     = parseFloat(document.getElementById('locF_lat')?.value);
@@ -757,7 +767,9 @@ const _locCC = (v) => (typeof countryCode === 'function' && countryCode(v)) || S
 function _locDupKey(name, cc) {
   let k = (typeof _fhNorm === 'function' ? _fhNorm(name) : String(name || '').toLowerCase()).replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
   for (let i = 0; i < 3; i++) k = k.replace(_LOC_FORMS, ' ').replace(/\s+/g, ' ').trim();
-  if (cc) k = k.replace(new RegExp(' ' + cc.toLowerCase() + '$'), '');
+  // a trailing country code («Berries Pride, NL»); compared as text, never built into a RegExp (a raw country may hold «(»)
+  const tail = cc ? ' ' + String(cc).toLowerCase() : '';
+  if (tail && k.endsWith(tail)) k = k.slice(0, -tail.length);
   return k;
 }
 function _locKm(a1, o1, a2, o2) {
@@ -771,7 +783,10 @@ function locDupFind(fields, excludeId) {
   if (!key) return [];
   const words = key.split(' ').filter((w) => w.length >= 4);
   const lat = parseFloat(fields.Latitude), lon = parseFloat(fields.Longitude);
-  const recs = (LOC.records && LOC.records.length) ? LOC.records : (typeof getRefLocations === 'function' ? getRefLocations() : []);
+  // the Locations page's list while that page is on screen (its own, kept fresh by its saves); elsewhere the app's
+  // reference list, re-read after every create - LOC.records outlives the page and would miss places made since
+  const onPage = !!document.getElementById('locTableWrap') && LOC.records && LOC.records.length;
+  const recs = onPage ? LOC.records : (typeof getRefLocations === 'function' ? getRefLocations() : []);
   const out = [];
   for (const r of recs || []) {
     const g = r && r.fields;
@@ -818,13 +833,12 @@ async function locScanSave(uid) {
     if (typeof fhLoadLocations === 'function') await fhLoadLocations();
     if (!_fhLocationsArr.length) throw new Error('Οι τοποθεσίες δεν φόρτωσαν· δοκίμασε ξανά');
     // Latin-only names (owner 9/8), as _locSave: transliterate, never refuse.
-    if (/[Ͱ-Ͽ]/.test(name) && typeof _fhTranslit === 'function') {
-      name = _fhTranslit(name);
+    if (_locLatin(name) !== name) {
+      name = _locLatin(name);
       toast('Το όνομα γράφτηκε με λατινικούς χαρακτήρες: ' + name, 'info');
     }
-    let city = v('city');
-    const country = v('country'), address = v('address');
-    if (city && /[Ͱ-Ͽ]/.test(city) && typeof _fhTranslit === 'function') city = _fhTranslit(city);
+    const city = _locLatin(v('city')), country = v('country'), address = v('address');
+    if (_locCountryBad(country)) throw new Error('Διάλεξε τη χώρα από τη λίστα');
     // The pin is what the form holds: found and checked, typed, or empty.
     const latS = v('lat'), lonS = v('lon');
     let geo = null;

@@ -1650,6 +1650,11 @@
     const t = String(q || '').trim();
     const d = document.getElementById('ls_' + id + '_d');
     if (!d || t.length < 2 || typeof locScanNewHTML !== 'function') return;
+    // fhShowDrop hides an empty list without clearing it: the last keystroke's places would come back with this line
+    if (d.style.display === 'none') d.innerHTML = '';
+    // the text IS a place of the list (a field that holds a picked place, focused again): nothing new to make
+    const nt = _fhNorm(t);
+    if (_fhLocationsArr.some((o) => (o._n || (o._n = _fhNorm(o.label))) === nt)) return;
     d.style.display = 'block';
     d.insertAdjacentHTML('beforeend', `<div class="linked-drop-item wn5f-newloc-opt" onmousedown="WN5Form.newLoc('${id}')">+ Νέα τοποθεσία «${escapeHtml(t)}»</div>`);
   }
