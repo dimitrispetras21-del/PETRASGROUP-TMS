@@ -394,6 +394,26 @@
       .sort((x, y) => String(y.date_start).localeCompare(String(x.date_start)))[0];
     return c ? K().pal(c.partner_rate) + ' € · ' + K().dayShort(c.date_start) : '';
   }
+  // P-8 (087): the last 3 partner rates of this route, any partner, as the base keeps them (rate_history: a side's first
+  // and last place). The route = this assignment's load place → drop place, compared by city (Veroia by the hub id).
+  // null = the board did not send the list (before 087): nothing is drawn, never «no rates».
+  function _routeRates(st) {
+    const k = K(), stt = typeof WN5 !== 'undefined' && WN5.state ? WN5.state() : null;
+    const hist = stt && stt.model && Array.isArray(stt.model.rateHistory) ? stt.model.rateHistory : null;
+    const load = st.needs.find((n) => n.role === 'load'), drop = st.needs.slice().reverse().find((n) => n.role === 'drop');
+    if (!hist || !load || !drop) return null;
+    const hub = k.hubId();
+    const town = (id) => (id == null ? null : hub != null && Number(id) === Number(hub) ? 'Βέροια' : (k.placeCity(Number(id)) || k.placeName(Number(id)) || null));
+    const a = town(load.loc), b = town(drop.loc);
+    if (!a || !b || a === '—' || b === '—') return null;
+    return hist.filter((x) => (x.sides || []).some((sd) => town(sd.from_location_id) === a && town(sd.to_location_id) === b)).slice(0, 3);
+  }
+  function _routeRatesHTML(st) {
+    const list = st.mode === 'vehicle' ? null : _routeRates(st);
+    if (!list || !list.length) return '';
+    const k = K();
+    return '<div class="wn5a-hist">' + _e('Τελευταία κόμιστρα: ' + list.map((x) => k.pal(x.partner_rate) + ' € ' + (x.partner || '—') + ' ' + k.dayShort(x.date_start)).join(' · ')) + '</div>';
+  }
   // open work order, a document due (core/utils.js vehicleWarnings, as the International popover): by the facade id
   function _warn(px, id) {
     if ((px !== 'tk' && px !== 'tl') || typeof vehicleWarnings !== 'function' || typeof PlanIds === 'undefined') return [];
@@ -515,7 +535,7 @@
       + (st.split ? '<div class="wi-pop-field wn5a-f wn5a-rate' + (bad2 ? ' wn5a-bad' : '') + '" data-f="rate2"><span class="wi-pop-lbl">Κόμιστρο ΑΝΟΔΟΥ €</span>'
         + '<input class="wi-pop-inp" data-rate2 inputmode="decimal" placeholder="0.00" value="' + _e(st.rate2Txt) + '" aria-label="Κόμιστρο ΑΝΟΔΟΥ €">'
         + '<span class="wn5a-av' + (av2 ? ' bad' : '') + '">' + _e(av2) + '</span></div>' : '')
-      + '</div></div>';
+      + '</div>' + _routeRatesHTML(st) + '</div>';
     if (st.mode !== 'vehicle') h += _lineHTML(st);
     h += '</div>';
     return h;

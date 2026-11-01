@@ -297,6 +297,8 @@ function _cycleRow(c, hubId, nums, errors) {
     rail: tiles.some((t) => t.type === 'un') ? 'red' : null,
     rowDim: stops.length > 0 && stops[0].cycle_dim === true,
     rates: { partner_rate: c.partner_rate == null ? null : Number(c.partner_rate), missing: c.trip_type === 'PARTNER' && c.partner_rate == null },
+    // 087 (P-16): the last change after the assignment, as the base read it from audit_log (null: none, or before 087)
+    lastChange: c.last_change && typeof c.last_change === 'object' ? c.last_change : null,
     pieceIds: [...new Set(legs.map((l) => l.piece_id))], group: null, vs: false, clients, refs,
     sortAt: sortStop ? sortStop.planned_from : c.start_at,
     // the last day the cycle has a stop on (display only: the «συνέχεια» line of the next week names it, 3d)
@@ -399,6 +401,8 @@ function _waitRow(list, hubId, errors, nameOf) {
     segSource: 'cycle', cycleNo: null, end: null, local: [], handovers: [],
     late: ws.some((w) => w.overdue === true), rail: 'red', rowDim: false, rates: { partner_rate: null, missing: false },
     pieceIds: ws.map((w) => w.piece_id),
+    // P-11 (owner 28/10, answer 1): the pieces of this row that stand at Veroia — what «→ Βέροια» sends to the panel
+    hubPieceIds: ws.filter((w) => w._atHub === true).map((w) => w.piece_id),
     group: w0.order_id != null ? { order_id: w0.order_id } : w0.nat_order_id != null ? { nat_order_id: w0.nat_order_id } : null,
     vs: String(w0.kind || '').startsWith('vs_'), clients, refs, sortAt: w0.load_from, _parts: [...clients, ...refs],
     // the first week whose board carries the row (072 plan_board: nat_ready_day ≤ the week's Friday; none = every week)
@@ -463,8 +467,9 @@ function model(board, opts) {
   // item whose ready day is on or before the week's Friday (072 plan_board, «it never leaves the board until
   // planned»), so without this rule a load of Mon 26/10 stood on the Saturday of EVERY later week. A load older
   // than the week moves to its Saturday only in the current TMS week (the «αργό» carried forward), where today is;
-  // in any other week it is left out (it shows on its own day, in its own week). One rule (placeOf) for the rows,
-  // the ΕΠΟΜΕΝΑ queue and the Veroia shelf: the three never count different loads.
+  // in any other week it is left out (it shows on its own day, in its own week). One rule (placeOf) for the rows and
+  // the ΕΠΟΜΕΝΑ queue: the two never count different loads. The Veroia shelf is not placed by week: it lists what was
+  // unloaded at Veroia or sent there to be split, whatever the week (087: a waiting VS is never on it).
   const current = today != null && today >= week && today <= last;
   const placeOf = (r) => {
     if (r.kind !== 'unassigned') return !r.dayKey || r.dayKey < week ? week : r.dayKey > last ? last : r.dayKey;
@@ -498,16 +503,19 @@ function model(board, opts) {
   }));
   const item = (h) => ({ pieceId: h.piece_id, client: h.client || null, place: null, pallets: r1(h.pallets), leave_by: h.leave_by || null,
     overdue: h.overdue === true, nat_due_day: h.nat_due_day || null, kind: h.kind, reference: h.reference || null });
-  // «ΓΙΑ ΜΟΙΡΑΣΜΑ» = unloaded at Veroia by a cycle (inbound_rt_id), sent there to be split (for_split, Ε-41), or a VS
-  // import standing at Veroia with no national truck yet (owner 28/10, B1: the international truck unloads it there,
-  // so it is split and loaded from the Veroia board) — it ALSO stays a «ΠΡΟΣ ΑΝΑΘΕΣΗ» row, for assigning the order whole.
-  // A VS import waiting for its national truck is counted only where its row stands (the same loads as ΕΠΟΜΕΝΑ, 1b);
-  // a piece already unloaded at Veroia or sent there to be split (not _neverAssigned) is there whatever the week.
-  const split = board.hub.filter((h) => h.is_stock !== true && (!_neverAssigned(h) || (h.kind === 'vs_import' && shown.has(h.piece_id)))).map(item);
+  // «ΓΙΑ ΜΟΙΡΑΣΜΑ» = unloaded at Veroia by a cycle (inbound_rt_id) or sent there (for_split, Ε-41). A piece is in ONE
+  // place (owner 28/10, answer 1 of the Veroia panel, PR #167 — it reverses «B1 part 2»): a VS import starts only as
+  // «ΠΡΟΣ ΑΝΑΘΕΣΗ»; «→ Βέροια» sends it to the panel and it leaves the Weekly; «← Weekly» brings it back (087).
+  const split = board.hub.filter((h) => h.is_stock !== true && !_neverAssigned(h)).map(item);
+  const isW = (x) => x && typeof x === 'object' && DAY_RE.test(String(x.week || '')) && Number.isFinite(Number(x.orders));
   const stock = board.hub.filter((h) => h.is_stock === true).map(item);
   return {
     // current: the week on screen is the TMS week of today — the board dims what is done only there (3b)
     week, today, current, hubId, days, queue,
+    // 087: orders without a truck per week (A-3, the tab badges) and the last partner rates (P-8); null before 087,
+    // so a screen can tell «none» from «not sent» (principle 1)
+    waitingWeeks: Array.isArray(board.waiting_weeks) ? board.waiting_weeks.filter(isW).map((x) => ({ week: x.week, orders: Number(x.orders) })) : null,
+    rateHistory: Array.isArray(board.rate_history) ? board.rate_history.filter((x) => x && x.partner_rate != null) : null,
     hub: { day: today && today >= week && today <= last ? today : week, split, stock, pallets: { split: _sum(split), stock: _sum(stock), splitUnknown: _unk(split), stockUnknown: _unk(stock) }, empty: !split.length && !stock.length },
     notices: board.notices.map((n) => ({ id: n.id, kind: n.kind, message: n.message, order_id: n.order_id, nat_order_id: n.nat_order_id, rt_id: n.rt_id, created_at: n.created_at, created_by: n.created_by || null })),
     errors,
