@@ -69,10 +69,11 @@
   // νέων φορτίων»): the list by day, the oldest on top, a late day red; «Σε φορτηγό ▾» on the row, «Σπάσε…» in «⋯»;
   // «Νέο φορτίο» on the right builds ONE load — the ticked rows, other loadings of the same truck, the Veroia day and
   // window — with the truck chosen in the assignment form (WN5Assign.pick), and writes it once (POST /plan/legs).
-  // Left out, each needs SQL (listed in the PR): «Φορτηγό αργότερα» (plan_rt_create refuses a cycle with no vehicle,
-  // no_vehicle) and «← Weekly» (a VS import is on both lists today; answer 1 needs the base to tell them apart).
+  // «Φορτηγό αργότερα» (083, owner 31/10): the load is made with no vehicle (new_rt.later) and shows «ΠΡΟΣ ΑΝΑΘΕΣΗ» on
+  // its day; its truck is given later from that row. Left out, it needs SQL: «← Weekly» (a VS import is on both lists
+  // today; answer 1 needs the base to tell them apart).
   // The new load's state survives a re-read of the board (memory only); a row no longer on the board leaves it.
-  const _nf = { sel: [], extra: [], day: null, win: { all: true, from: '', to: '' }, choice: null, busy: false, adding: false };
+  const _nf = { sel: [], extra: [], day: null, win: { all: true, from: '', to: '' }, choice: null, now: null, busy: false, adding: false };
   // a piece's Veroia day: a VS's cross-dock (vsHubDay), stock its leave day, a national at Veroia its ready day
   function _rowDay(h, hub) {
     const k = K(), raw = k.item(h.pieceId) || {};
@@ -198,15 +199,18 @@
       h += '<div class="wn5-nf-order"><div>' + k.esc('Σειρά: ' + _orderLine(p.req)) + '</div><div><b class="' + (ln && ln.over ? 'over' : 'ok') + '">' + k.esc((ln ? ln.after : WN5L.palText(pal, unk)) + '/33' + (isFinite(free) && free >= 0 ? ' · ' + k.pal(free) + ' ελεύθερες' : '')) + '</b>'
         + (tp ? ' <span class="' + (tp.warn ? 'warn' : 'ok') + '">' + k.esc(tp.txt + (tp.warn ? '' : ' ✓')) + '</span>' : '') + '</div></div>';
     }
-    h += '<div class="wn5-nf-sec">ΦΟΡΤΗΓΟ</div>';
-    if (p && p.label) {
+    const later = !!(_nf.choice && _nf.choice.who === 'later');
+    h += '<div class="wn5-nf-sec">ΦΟΡΤΗΓΟ</div><span class="wn5a-opts wn5-nf-when" role="group">'
+      + '<button type="button" class="wn5a-opt' + (later ? '' : ' on') + '" data-act="nf-now" onclick="WN5Hub.nfLater(false)">Με φορτηγό τώρα</button>'
+      + '<button type="button" class="wn5a-opt' + (later ? ' on' : '') + '" data-act="nf-later" onclick="WN5Hub.nfLater(true)">Φορτηγό αργότερα</button></span>';
+    if (!later && p && p.label) {
       h += '<div class="wn5-nf-truck"><span class="wn5-nf-tb"><b class="' + (_nf.choice.who === 'own' ? 'wn5a-mono' : '') + '">' + k.esc(p.label) + '</b>' + (p.sub ? '<span>' + k.esc(p.sub) + '</span>' : '') + '</span>'
         + '<span class="wn5-nf-av">' + k.esc(ln ? ln.txt.split(' · ').slice(1).join(' · ') : '') + '</span>'
         // the truck already stops at Veroia another day: the load goes to that stop (decision 6), not the day above
         + (ln && ln.other ? '<span class="wn5a-note">' + k.esc(ln.other) + '</span>' : '') + '<span class="wn5-hub-sp"></span>'
         + (ln ? '<span class="wn5a-cap' + (ln.over ? ' over' : '') + '">' + k.esc(ln.before + ' → ' + ln.after + '/33') + '</span>' : '')
         + '<button type="button" class="wi4-link wn5-nf-ch" onclick="WN5Hub.nfPick(this)">Αλλαγή ▾</button></div>';
-    } else h += '<button type="button" class="wi4-btn sm wn5-nf-pick" onclick="WN5Hub.nfPick(this)">Φορτηγό ή συνεργάτης ▾</button>';
+    } else if (!later) h += '<button type="button" class="wi4-btn sm wn5-nf-pick" onclick="WN5Hub.nfPick(this)">Φορτηγό ή συνεργάτης ▾</button>';
     const words = !p ? (_nf.choice ? [] : ['φορτηγό']) : p.err ? [p.err.message] : (p.problems ? p.problems.words : []);
     if (p && p.req && p.req.missing) words.push('παράθυρο Βέροιας');
     const can = !!(p && p.req && !p.req.missing && !words.length && !_nf.busy && !k.closedErr());
@@ -225,7 +229,7 @@
     const onBoard = new Set([...split, ...stock].map((h) => h.pieceId));
     _nf.sel = _nf.sel.filter((id) => onBoard.has(id));
     _nf.extra = _nf.extra.filter((id) => !!k.item(id) && !k.item(id).at_hub);
-    if (!_nf.sel.length) { _nf.extra = []; _nf.choice = null; _nf.day = null; }
+    if (!_nf.sel.length) { _nf.extra = []; _nf.choice = null; _nf.now = null; _nf.day = null; }
     const day = _hubDay(model);
     const today = model.today || null;
     // F1/F4 (080): «12+;» — the known pallets and the pieces whose pallets are not known yet, never added as 0; the
@@ -290,7 +294,16 @@
     _nf.extra = _nf.extra.filter((x) => x !== id);
     _redraw();
   }
-  function nfReset() { if (!_live()) return; _nf.sel = []; _nf.extra = []; _nf.choice = null; _nf.day = null; _nf.win = { all: true, from: '', to: '' }; _redraw(); }
+  function nfReset() { if (!_live()) return; _nf.sel = []; _nf.extra = []; _nf.choice = null; _nf.now = null; _nf.day = null; _nf.win = { all: true, from: '', to: '' }; _redraw(); }
+  // «Με φορτηγό τώρα | Φορτηγό αργότερα»: the truck picked before is kept for when «τώρα» comes back
+  function nfLater(on) {
+    if (!_live()) return;
+    const later = !!(_nf.choice && _nf.choice.who === 'later');
+    if (on === later) return;   // a press on the option already chosen changes nothing (code review: «τώρα» twice lost the truck)
+    if (on) { _nf.now = _nf.choice; _nf.choice = { who: 'later' }; }
+    else { _nf.choice = _nf.now; _nf.now = null; }
+    _redraw();
+  }
   // the small lists of the panel (the «⋯» of a row, «+ φόρτωση από αναμονή»): one at a time, gone on any outside press
   let _pop = null;
   function _popClose() { if (_pop) { document.removeEventListener('mousedown', _pop.out, true); window.removeEventListener('keydown', _pop.key, true); _pop.el.remove(); _pop = null; } }
@@ -359,7 +372,7 @@
       return;
     }
     _nf.busy = false;
-    _nf.sel = []; _nf.extra = []; _nf.choice = null; _nf.day = null; _nf.win = { all: true, from: '', to: '' };
+    _nf.sel = []; _nf.extra = []; _nf.choice = null; _nf.now = null; _nf.day = null; _nf.win = { all: true, from: '', to: '' };
     await k.afterSave(out, 'Δημιουργήθηκε το φορτίο', { intl: true });
   }
 
@@ -535,5 +548,5 @@
     return d;
   }
 
-  window.WN5Hub = { shelfHTML, open, close, split, _truck, tick, more, nfDay, nfWin, nfHm, nfDrop, nfReset, nfAddOpen, nfPick, nfCreate };
+  window.WN5Hub = { shelfHTML, open, close, split, _truck, tick, more, nfDay, nfWin, nfHm, nfDrop, nfReset, nfLater, nfAddOpen, nfPick, nfCreate };
 })();

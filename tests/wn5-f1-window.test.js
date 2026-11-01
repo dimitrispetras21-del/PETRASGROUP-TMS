@@ -47,8 +47,10 @@ test('F1: an empty window is the whole day of its point; one end alone is never 
   // one end only stays as typed: _check names it
   assert.deepStrictEqual(J(F._rowWin(false, '08:00', '')), { from: '08:00', to: '', allDay: false });
   assert.deepStrictEqual(J(F._rowWin(false, '', '10:00')), { from: '', to: '10:00', allDay: false });
-  // an arrival «ως» at Veroia (ANODOS): empty = by the end of its day — a deadline, read «ως … 23:59», never «όλη η ημέρα»
-  assert.deepStrictEqual(J(F._rowWin(true, '', '')), { from: '23:59', to: '23:59', allDay: false });
+  // an arrival «ως» at Veroia (ANODOS). Changed on purpose 1/11 (owner: ONE Veroia default, «όλη η ημέρα»): empty was
+  // a 23:59 = 23:59 deadline, which «Ανάθεση» read back as «23:59–23:59»; now it is the whole day, as every empty window.
+  // A typed time stays a deadline (from = to).
+  assert.deepStrictEqual(J(F._rowWin(true, '', '')), { from: '00:00', to: '23:59', allDay: true });
   assert.deepStrictEqual(J(F._rowWin(true, '', '22:00')), { from: '22:00', to: '22:00', allDay: false });
 });
 
@@ -70,7 +72,8 @@ test('F1: one end only is refused by name — «ΗΗ:ΛΛ και στα δύο �
   const lines = J(F._check(state({ orders: [order({ loads: [row(3, '2026-10-14', '08:00', '', 6)] })] })));
   assert.ok(lines.some((l) => l.includes('φόρτωση 1: παράθυρο: ΗΗ:ΛΛ και στα δύο άκρα, ή κανένα (όλη η ημέρα)')), lines.join(' / '));
   const u = J(F._check(state({ side: 'ANODOS', orders: [order({ drops: [row(2, '2026-10-15', '25:00', '25:00', 6, { until: true })] })] })));
-  assert.ok(u.some((l) => l.includes('παράδοση 1: άφιξη ως: ΗΗ:ΛΛ, ή κενό (ως 23:59)')), u.join(' / '));
+  // 1/11: an empty arrival is the whole day now (owner), and the line says so
+  assert.ok(u.some((l) => l.includes('παράδοση 1: άφιξη ως: ΗΗ:ΛΛ, ή κενό (όλη η ημέρα)')), u.join(' / '));
 });
 
 test('F1 (code review): a whole-day row never widens the hours another order agreed at the same place', () => {
