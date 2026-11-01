@@ -5,7 +5,8 @@
 //   f55  a VS point's day in the leg form opens its stop's day panel («Αλλαγή ώρας ›») instead of doing nothing
 //   f57  «+ → Νέα παραγγελία»: the points the screen filled follow the Veroia day; a typed point stays
 //   f52  a place saved in «Τοποθεσίες» is in the order form's picker without a reload, and the save sends its number
-// Usage: node tests/critics/wn5-f52-f57-rig.js [f53 f55 f57 f52]
+//   f52c a client created in «Πελάτες» is in the v5 catalogue at the next save (one more GET /plan/lookups), not refused (F62)
+// Usage: node tests/critics/wn5-f52-f57-rig.js [f53 f55 f57 f52 f52c]
 //        WN5_TREE=<git archive origin/main> node tests/critics/wn5-f52-f57-rig.js   (plain-main proof: NO-GO, exit 1)
 // Exit: 0 green · 1 a check failed · 2 unknown scenario.
 'use strict';
@@ -297,5 +298,71 @@ async function f52({ browser, origin, ok, scn }) {
   await page.context().close();
 }
 
-K.run({ scenarios: { f53, f55, f57, f52 }, globals: ['WN5', 'WN5Act', 'WN5Form'],
-  go: 'F53 / F55 / F57 / F52 hold' });
+// F62 (live 1/11): a client created in the same session was not in the catalogue read before it, so the v5 save was
+// refused with ids_missing until a reload. Same mechanism as the place above, for the CLIENTS entity.
+async function f52c({ browser, origin, ok, scn }) {
+  const NEW = { id: 'recWn5CliNew', fields: { 'Company Name': 'ΝΕΟΣ ΠΕΛΑΤΗΣ' } };
+  const lookups = K.clone(K.LOOKUPS);
+  let created = false;
+  const { page, S } = await K.openApp(browser, origin, { lookups, plan: {
+    'GET /plan/lookups': async (e, St) => [200, created ? Object.assign(K.clone(St.lookups), { clients: St.lookups.clients.concat([{ id: 43, legacy_id: NEW.id, company_name: 'ΝΕΟΣ ΠΕΛΑΤΗΣ' }]) }) : St.lookups] } });
+  const fac = [];
+  await page.route(`**/${K.HOST}/v0/**`, async (route) => {
+    const req = route.request();
+    const isClients = /\/tblFWKAQVUzAM8mCE$/.test(new URL(req.url()).pathname);
+    const hdr = { 'access-control-allow-origin': '*' };
+    if (req.method() === 'POST' && isClients) {
+      fac.push(JSON.parse(req.postData() || '{}'));
+      created = true;
+      return route.fulfill({ status: 200, contentType: 'application/json', headers: hdr, body: JSON.stringify(NEW) });
+    }
+    if (req.method() === 'GET' && created && isClients)
+      return route.fulfill({ status: 200, contentType: 'application/json', headers: hdr, body: JSON.stringify({ records: K.LOOKUPS.clients.map((c) => ({ id: c.legacy_id, fields: { 'Company Name': c.company_name } })).concat([NEW]) }) });
+    return route.fallback();
+  });
+  // the catalogue is read once, by opening the national form (the board's «+ Νέα παραγγελία»), before the client exists
+  await page.evaluate(() => WN5Form.openOrder({}));
+  await page.waitForSelector(ORDER, { timeout: 8000 }).catch(() => {});
+  await page.click(`${ORDER} [data-act="cancel"]`).catch(() => {});
+  await page.waitForTimeout(2500);
+  const lk0 = K.planOf(S, 'GET', '/plan/lookups').length;
+  // «Πελάτες» → «+ Client» → «Αποθήκευση», the real entity form
+  await page.evaluate(() => navigate('clients'));
+  await page.waitForTimeout(500);
+  await page.evaluate(() => openEntityCreate('clients'));
+  await page.waitForSelector('#ef_Company_Name', { timeout: 5000 }).catch(() => {});
+  await page.fill('#ef_Company_Name', 'ΝΕΟΣ ΠΕΛΑΤΗΣ').catch(() => {});
+  await page.click('#ef_save_clients').catch(() => {});
+  await page.waitForTimeout(800);
+  ok(scn, 'precondition: one facade POST to CLIENTS with the typed name', fac.length === 1 && fac[0].fields && fac[0].fields['Company Name'] === 'ΝΕΟΣ ΠΕΛΑΤΗΣ', fac);
+  // back to the board, no reload; save an order for the new client
+  await page.evaluate(() => navigate('weekly_natl'));
+  await page.waitForFunction(() => !!document.querySelector('#content > .wi4.wn5[data-state="ok"]'), null, { timeout: 10000 }).catch(() => {});
+  await page.evaluate(() => WN5Form.openOrder({}));
+  await page.waitForSelector(ORDER, { timeout: 8000 }).catch(() => {});
+  await page.evaluate((o) => {
+    const b = document.querySelector(`${o} .wn5f-ord`);
+    const set = (el, v) => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); };
+    fhPickLinked(b.querySelector('[data-cpick]').dataset.cpick, 'recWn5CliNew', 'ΝΕΟΣ ΠΕΛΑΤΗΣ');
+    b.querySelector('[data-pe="no"]').click();
+    const lr = b.querySelector('.wn5f-rows[data-k="load"] .wn5f-row'), dr = b.querySelector('.wn5f-rows[data-k="drop"] .wn5f-row');
+    fhPickLinked(lr.dataset.pid, 'recWn5LocAsp', 'ASPROPYRGOS TEST');
+    fhPickLinked(dr.dataset.pid, 'recWn5LocAth', 'ATHENS TEST');
+    set(lr.querySelector('[data-f="day"]'), '2026-10-14'); set(dr.querySelector('[data-f="day"]'), '2026-10-15');
+    set(lr.querySelector('[data-f="pal"]'), '6');
+    const v = document.querySelector('#wn5f-vday'); set(v, '2026-10-14');
+  }, ORDER);
+  await page.waitForTimeout(200);
+  await page.click(`${ORDER} [data-act="save"]`, { timeout: 3000 }).catch(() => {});
+  await page.waitForTimeout(1200);
+  const posts = K.planOf(S, 'POST', '/plan/orders');
+  ok(scn, 'the v5 catalogue was read again for the new client (one more GET /plan/lookups) — main: none', K.planOf(S, 'GET', '/plan/lookups').length === lk0 + 1, K.planOf(S, 'GET', '/plan/lookups').length - lk0);
+  const o = posts[0] && posts[0].body && posts[0].body.orders && posts[0].body.orders[0];
+  ok(scn, 'ONE POST /plan/orders with the new client by its number (client_id 43) — main: refused, nothing sent', posts.length === 1 && !!o && o.client_id === 43,
+    posts.map((x) => x.raw).concat([await K.text(page, `${ORDER} [data-err]`), await K.text(page, `${ORDER} [data-strip]`)]));
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await page.context().close();
+}
+
+K.run({ scenarios: { f53, f55, f57, f52, f52c }, globals: ['WN5', 'WN5Act', 'WN5Form'],
+  go: 'F53 / F55 / F57 / F52 / F62 hold' });
