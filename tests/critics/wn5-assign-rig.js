@@ -317,7 +317,8 @@ async function rate2({ browser, origin, ok, scn, shots }) {
     return app;
   })());
   k1 = await field(page, 'rate');
-  ok(scn, 'before 089: one field (the fee 700), no ΑΝΟΔΟΥ field', k1 && k1.val === '700' && !(await field(page, 'rate2')), k1);
+  ok(scn, 'before 089: one field «Κόμιστρο €» (the whole fee 700, named by no side), no ΑΝΟΔΟΥ field', k1 && k1.val === '700'
+    && (await lbl(page, 'rate')) === 'Κόμιστρο €' && !(await field(page, 'rate2')), k1);
   await page.fill(`${DLG} [data-rate]`, '720');
   await page.click(`${DLG} [data-act="save"]`);
   await page.waitForTimeout(500);

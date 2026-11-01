@@ -100,8 +100,10 @@
   function _splitOf(st, c) {
     const sides = new Set((c.stops || []).map((s) => s.side));
     const segs = c.segments || [];
-    // one side: the one field is named by the trip's own side (a vehicle form has no side of its own)
+    // one side: the one field is named by the trip's own side (a vehicle form has no side of its own); both sides with one
+    // field (before 089, or a handover): it holds the whole fee, so it is named by no side («Κόμιστρο €»)
     if (sides.size === 1) st.rateSide = [...sides][0];
+    if (sides.size === 2) st.rateSide = 'BOTH';
     if (!(sides.has('KATHODOS') && sides.has('ANODOS')) || segs.length > 1 || !segs[0] || !('partner_rate_anodos' in segs[0])) return;
     st.split = true;
     const fee = c.trip_type === 'PARTNER' && c.partner_rate != null ? Number(c.partner_rate) : null;
@@ -490,11 +492,12 @@
     const rateVal = joinPar ? (tg.cyc.partner_rate == null ? '' : String(tg.cyc.partner_rate)) : st.rateTxt;
     // 089: the second field and the «σύνολο» of a fee with no part (rule 6)
     const rateSide = st.split ? 'KATHODOS' : (st.rateSide || st.side);
+    const rateLbl = 'Κόμιστρο ' + (rateSide === 'BOTH' ? '' : rateSide === 'ANODOS' ? 'ΑΝΟΔΟΥ ' : 'ΚΑΘΟΔΟΥ ') + '€';
     const rateAv = rateBad || _sumAv(st);
     const bad2 = pb.fields.rate2, av2 = bad2 || pb.soft.rate2 || '';
     h += '<div class="wn5a-sec"><div class="wi-pop-section-lbl">ΣΥΝΕΡΓΑΤΗΣ</div><div class="wi-pop-row">' + _fieldHTML(st, 'pt', pb)
-      + '<div class="wi-pop-field wn5a-f wn5a-rate' + (rateBad ? ' wn5a-bad' : '') + '" data-f="rate"><span class="wi-pop-lbl">Κόμιστρο ' + (rateSide === 'ANODOS' ? 'ΑΝΟΔΟΥ' : 'ΚΑΘΟΔΟΥ') + ' €</span>'
-      + '<input class="wi-pop-inp" data-rate inputmode="decimal" placeholder="0.00" value="' + _e(rateVal) + '"' + (joinPar ? ' disabled' : '') + ' aria-label="Κόμιστρο ' + (rateSide === 'ANODOS' ? 'ΑΝΟΔΟΥ' : 'ΚΑΘΟΔΟΥ') + ' €">'
+      + '<div class="wi-pop-field wn5a-f wn5a-rate' + (rateBad ? ' wn5a-bad' : '') + '" data-f="rate"><span class="wi-pop-lbl">' + rateLbl + '</span>'
+      + '<input class="wi-pop-inp" data-rate inputmode="decimal" placeholder="0.00" value="' + _e(rateVal) + '"' + (joinPar ? ' disabled' : '') + ' aria-label="' + rateLbl + '">'
       + '<span class="wn5a-av' + (rateBad ? ' bad' : '') + '">' + _e(rateAv) + '</span></div>'
       + (st.split ? '<div class="wi-pop-field wn5a-f wn5a-rate' + (bad2 ? ' wn5a-bad' : '') + '" data-f="rate2"><span class="wi-pop-lbl">Κόμιστρο ΑΝΟΔΟΥ €</span>'
         + '<input class="wi-pop-inp" data-rate2 inputmode="decimal" placeholder="0.00" value="' + _e(st.rate2Txt) + '" aria-label="Κόμιστρο ΑΝΟΔΟΥ €">'
