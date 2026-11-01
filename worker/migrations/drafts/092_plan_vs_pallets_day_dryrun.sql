@@ -3,7 +3,7 @@
 -- undoes everything inside it (lesson 056). ASCII only.
 -- EXPECTED (the red ERROR is deliberate): NOTICE "092 OK: plan_vs_set_day sets the pallets of a VS piece ..." and then
 --   ERROR: P0001: DRY RUN 092 finished - EVERYTHING UNDONE, nothing kept. The block ran to its end  ||  092 ran:
---   set_day 2d0c8da95da3f903673a57469ffd79d0, vs_state 4decce12c3ca9b3ebd30a7a6b3447d5d, vs_day b5070d28989e1536a74051f786b47a7c
+--   set_day 4920e7e4a30522f5b8bac4dee67b84d2, vs_state dfa697f5f3dd5763d41a9ea72f653a12, vs_day b5070d28989e1536a74051f786b47a7c
 --   Anything else (an ERROR from one of 092's guards or proofs): do NOT run 092, copy the message to the coordinator.
 
 DO $dry$
@@ -79,8 +79,8 @@ $h$;
       -- this VS at Veroia move to the day with it. Before 092 only the international's day changed and the truck kept
       -- its day, so plan_h_vs_follow (decision 16, inside plan_rt_update) put the international back on the truck's day
       -- at that truck's next change. Each truck through plan_rt_update itself (its rules, segments, busy checks,
-      -- pallets): the Veroia stop of the VS keeps its hours on the new day. A stock piece (split at Veroia, loaded
-      -- later on purpose) keeps its truck. A truck that cannot move (its stop ran, or one of its own rules says no)
+      -- pallets): the Veroia stop of the VS keeps its hours on the new day. A part split at Veroia (loaded
+      -- later on purpose, on another day than the VS) keeps its truck. A truck that cannot move (its stop ran, or one of its own rules says no)
       -- keeps its day and the answer names it (light rules, owner 31/10): the board marks that row.
       -- FAGE 644's shape (PGlite): an export loaded Tue 09:00 and at Veroia Wed 00:00-23:59, Excel Tue. Shifted as it is,
       -- the arrival would start before its loading (leg_order: the stops follow the clock, 081): on the new day it
@@ -88,7 +88,10 @@ $h$;
       -- loading", 086). A loading on a later day than the VS day is not pulled back: that truck is kept and named.
       for y in
         select h.rt_id, h.code, h.truck, min(h.day) as from_day, bool_or(h.executed) as executed,
-               jsonb_agg(jsonb_build_object('stop_id', h.stop_id, 'planned_from', h.nf, 'planned_to', greatest(h.nt, h.nf))
+               jsonb_agg(jsonb_build_object('stop_id', h.stop_id, 'planned_from', h.nf,
+                 -- a window the clamp passed (arrival 18:00-19:00, loading 20:00) runs to the end of that day, never 0 min
+                 'planned_to', case when h.nt > h.nf then h.nt
+                                    else greatest(h.nf, (v_day + time '23:59') at time zone 'Europe/Athens') end)
                  order by h.stop_id) filter (where not h.executed) as stops
           from (select h1.*,
                        case when h1.floor is not null and h1.floor >= h1.sf
@@ -98,10 +101,12 @@ $h$;
                   from (select h0.*,
                                ((h0.planned_from at time zone 'Europe/Athens') + make_interval(days => v_day - h0.day)) at time zone 'Europe/Athens' as sf,
                                ((h0.planned_to at time zone 'Europe/Athens') + make_interval(days => v_day - h0.day)) at time zone 'Europe/Athens' as st_to
-                          from (select distinct r.id as rt_id, r.code, coalesce(tr.license_plate, pa.company_name, r.code) as truck,
+                          from (select r.id as rt_id, r.code, coalesce(tr.license_plate, pa.company_name, r.code) as truck,
                                        st.id as stop_id, st.planned_from, st.planned_to, coalesce(ss.executed, false) as executed,
                                        ((case when ps.kind = 'vs_import' then st.planned_from else st.planned_to end)
                                          at time zone 'Europe/Athens')::date as day,
+                                       -- a whole piece of the VS (never split at Veroia) rides on the VS day by definition
+                                       bool_or(ps.parent_piece_id is null) as root,
                                        -- an arrival at Veroia (an export) never starts before a loading it unloads
                                        case when ps.kind <> 'vs_import' then
                                          (select max(pk2.planned_from) from piece_legs l2
@@ -116,8 +121,12 @@ $h$;
                                   left join v_rt_stop_state ss on ss.stop_id = st.id
                                   left join trucks tr on tr.id = r.truck_id
                                   left join partners pa on pa.id = r.partner_id
-                                 where ps.order_id = v_order and ps.kind in ('vs_import', 'vs_export') and not ps.is_stock) h0
-                         where h0.day <> v_day) h1) h
+                                 where ps.order_id = v_order and ps.kind in ('vs_import', 'vs_export')
+                                 group by r.id, r.code, tr.license_plate, pa.company_name, st.id, st.planned_from, st.planned_to,
+                                          ss.executed, ps.kind) h0
+                         -- a part split at Veroia and loaded on another day than the VS's (the cheese of 485, kept there
+                         -- days on purpose) keeps its truck; a whole piece, or a part on the VS's own day, moves
+                         where h0.day <> v_day and (h0.root or h0.day = v_cd0)) h1) h
          group by h.rt_id, h.code, h.truck
          order by h.rt_id
       loop
@@ -256,7 +265,12 @@ $h$;
   s_1b CONSTANT text := $h$                      'first_hub_day', v.first_hub_day, 'n_pieces', v.n_pieces,
                       -- 092: the international's Veroia day, so the national board shows a truck that is at Veroia
                       -- on another day than the VS (coordinator 1/11: never two numbers in silence)
-                      'cross_dock_date', (select o2.cross_dock_date from orders o2 where o2.id = o))
+                      'cross_dock_date', (select o2.cross_dock_date from orders o2 where o2.id = o),
+                      -- and the cycles that carry a whole piece of it (never a part split at Veroia and loaded later on
+                      -- purpose): the board marks those whose Veroia day is not the VS's
+                      'root_rts', (select coalesce(jsonb_agg(distinct l.rt_id), '[]'::jsonb) from v_piece_state ps2
+                                     join piece_legs l on l.piece_id = ps2.piece_id and l.deleted_at is null
+                                    where ps2.order_id = o and ps2.parent_piece_id is null))
 $h$;
   v_g record; v_h record; v_src text; v_new text; p pg_proc%rowtype; v_trg0 int; v_trg1 int; v_b54 int;
 BEGIN
@@ -285,8 +299,8 @@ BEGIN
 
   -- ===== PART 1 + PART 2: LIVE TEXT + HUNKS (md5 after = measured on the production-shaped PGlite copy) =====
   FOR v_g IN SELECT * FROM (VALUES
-      ('public.plan_vs_set_day(jsonb,text,text)', ARRAY[d_1a, d_2a, d_3a, d_4a], ARRAY[d_1b, d_2b, d_3b, d_4b], '2d0c8da95da3f903673a57469ffd79d0'),
-      ('public.plan_vs_state(bigint[])', ARRAY[s_1a], ARRAY[s_1b], '4decce12c3ca9b3ebd30a7a6b3447d5d'),
+      ('public.plan_vs_set_day(jsonb,text,text)', ARRAY[d_1a, d_2a, d_3a, d_4a], ARRAY[d_1b, d_2b, d_3b, d_4b], '4920e7e4a30522f5b8bac4dee67b84d2'),
+      ('public.plan_vs_state(bigint[])', ARRAY[s_1a], ARRAY[s_1b], 'dfa697f5f3dd5763d41a9ea72f653a12'),
       ('public.plan_h_vs_day(bigint,date,text,text)', ARRAY[h_1a], ARRAY[h_1b], 'b5070d28989e1536a74051f786b47a7c')) g(sig, a, b, m) LOOP
     SELECT * INTO p FROM pg_proc WHERE oid = to_regprocedure(v_g.sig);
     IF p.proconfig IS DISTINCT FROM ARRAY['search_path=public'] OR p.prolang <> (SELECT oid FROM pg_language WHERE lanname = 'plpgsql') THEN

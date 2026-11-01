@@ -14,10 +14,11 @@ const K = require('./wn5-rig-kit');
 
 const LEG = '.wi4-dlg[role="dialog"][data-wn5="leg"]';
 const V = `${LEG} [data-vs="2101"]`;
-const entry = (cd, first) => Object.assign({ carriers: [], all_executed: false, all_planned: true, first_hub_day: first, n_pieces: 1 },
-  cd === undefined ? {} : { cross_dock_date: cd });
-const state = (cd, first = '2026-10-12') => ({ 2101: entry(cd, first) });
-const vsState = (cd, first) => ({ 'GET /plan/vs-state': () => [200, state(cd, first)] });
+// 092's plan_vs_state: cross_dock_date, and the cycles that carry a WHOLE piece of the VS (root_rts)
+const entry = (cd, first, rts) => Object.assign({ carriers: [], all_executed: false, all_planned: true, first_hub_day: first, n_pieces: 1 },
+  cd === undefined ? {} : { cross_dock_date: cd, root_rts: rts });
+const state = (cd, first = '2026-10-12', rts = [101]) => ({ 2101: entry(cd, first, rts) });
+const vsState = (cd, first, rts) => ({ 'GET /plan/vs-state': () => [200, state(cd, first, rts)] });
 const MARK = '#content .wn5-vsday:not([hidden])';
 // VS 610's shape on the kit's RT-T102: an EXPORT (order 2102, piece 4005, 12 pallets) loaded at ATHENS TEST on Wed 14/10
 // 12:00 (stop 1101) and brought to Veroia that evening (stop 1102), beside the national N-T003
@@ -62,14 +63,14 @@ async function scnMark({ browser, origin, ok, scn }) {
   ok(scn, 'the read fails → the leg form says the VS day and pallets were not read, no pallets field', await K.count(p4.page, `${V} [data-vsunread]`) === 1
     && await K.count(p4.page, `${V} [data-f="vspal"]`) === 0);
   await p4.page.context().close();
-  // a stock piece: the VS's first Veroia day is another truck's (Sun 11/10); this truck loads it on Mon 12/10 on
-  // purpose, so neither the row nor the form calls it a mismatch, even with the international on Sat 10/10
-  const p5 = await K.openApp(browser, origin, { plan: vsState('2026-10-10', '2026-10-11') });
+  // a part split at Veroia and loaded by this truck on Mon 12/10 on purpose (RT-T101 carries no whole piece of the
+  // VS): neither the row nor the form calls it a mismatch, even with the international on Sat 10/10
+  const p5 = await K.openApp(browser, origin, { plan: vsState('2026-10-10', '2026-10-11', []) });
   await p5.page.waitForTimeout(800);
-  ok(scn, 'stock piece on a later truck → no mark', await K.count(p5.page, MARK) === 0);
+  ok(scn, 'a split part on a later truck → no mark', await K.count(p5.page, MARK) === 0);
   await p5.page.evaluate(() => WN5Form.openLeg(101, 'KATHODOS'));
   await p5.page.waitForSelector(LEG, { timeout: 6000 }).catch(() => {});
-  ok(scn, 'stock piece on a later truck → no «other day» line', (await K.text(p5.page, `${V} [data-vstruck]`)) === '');
+  ok(scn, 'a split part on a later truck → no «other day» line', (await K.text(p5.page, `${V} [data-vstruck]`)) === '');
   await p5.page.context().close();
 }
 
@@ -158,7 +159,7 @@ async function scnPallets({ browser, origin, ok, scn }) {
 // the real cases (610, 630, 644) are exports on the ΑΝΟΔΟΣ: the mark at the truck's arrival in Veroia (r.end), the leg
 // form's truck step on that stop, the pallets field on the Greek loading
 async function scnExport({ browser, origin, ok, scn }) {
-  const plan = { 'GET /plan/vs-state': () => [200, { 2101: entry('2026-10-12', '2026-10-12'), 2102: entry('2026-10-13', '2026-10-14') }],
+  const plan = { 'GET /plan/vs-state': () => [200, { 2101: entry('2026-10-12', '2026-10-12', [101]), 2102: entry('2026-10-13', '2026-10-14', [102]) }],
     'POST /plan/vs/day': () => [200, { ok: true, op: 'plan_vs_set_day', dry_run: false, ids: { order_id: 2102, piece_id: 4005 }, warnings: [], notice_ids: [9401] }] };
   const { page, S } = await K.openApp(browser, origin, { board: exportWeek(), plan });
   await page.waitForTimeout(800);

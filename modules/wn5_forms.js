@@ -1420,10 +1420,9 @@
   }
   // 092: this truck at Veroia on another day than the VS (a truck «Ορισμός ημέρας» could not move: its stop ran, or a
   // rule of its own), said beside the day as the board marks its row (weekly_natl_v5.js _vsDayMark): never two days in
-  // silence. Only the truck on the VS's FIRST Veroia day (first, v_vs_state): a stock piece rides later on purpose.
-  function _truckDayHTML(st, day, first) {
-    if (!st || !DAY.test(String(day || '')) || !st.stop_day || st.stop_day === day) return '';
-    if (first && st.stop_day !== first) return '';
+  // silence. Only a truck with a whole piece of the VS (whole): a part split at Veroia rides later on purpose.
+  function _truckDayHTML(st, day, whole) {
+    if (!st || !DAY.test(String(day || '')) || !st.stop_day || st.stop_day === day || !whole) return '';
     return `<span class="wn5f-sub">φορτηγό στη Βέροια ${_esc(_dlab(st.stop_day))}</span>`;
   }
   // 092 (option a, coordinator 1/11): what «Ορισμός ημέρας» will do, before the press that does it - the international's
@@ -1454,7 +1453,7 @@
     // vd: {cd, first} once 092 is in the base, null before it, undefined while that read is pending or failed
     const vd = typeof WN5 !== 'undefined' && typeof WN5.vsDayOf === 'function' ? WN5.vsDayOf(b.order_id) : undefined;
     const day = vd && vd.cd ? vd.cd : hubDay;
-    const first = vd && vd.first ? vd.first : '';
+    const whole = !!(vd && vd.rts && vd.rts.has(Number(f.rtId)));
     // 092 in the base = the answer carried the key; before 092 the pallets stay the international's (a field the base
     // would refuse is never offered). Not read = said, never a field that is just missing (principle 1)
     const v092 = !!vd;
@@ -1465,7 +1464,7 @@
       + `<span class="wn5f-badge">τιμή · παράθυρο κλειδωμένα</span></div>`
       + `<div class="wn5f-vsday"><label class="wn5f-f"><span>Ημέρα Βέροιας</span><input class="form-input" type="date" data-f="vsday" value="${_esc(day || '')}"></label>`
       + `<button type="button" class="wi4-btn sm" data-act="vs-day" data-order="${b.order_id}">Ορισμός ημέρας</button><span class="wn5f-ok" data-vsok></span>`
-      + `<span class="wn5f-vstruck" data-vstruck>${_truckDayHTML(hubStop, day, first)}</span></div>`
+      + `<span class="wn5f-vstruck" data-vstruck>${_truckDayHTML(hubStop, day, whole)}</span></div>`
       + '<div class="wn5f-vsprev" data-vsprev></div>'
       + (unread ? '<div class="wn5f-note" data-vsunread>Η ημέρα Βέροιας και οι παλέτες της διεθνούς δεν διαβάστηκαν ακόμη — κλείσε και άνοιξε ξανά τη φόρμα για να τις αλλάξεις.</div>' : '')
       + `<div class="wn5f-sec">${imp ? 'ΠΑΡΑΔΟΣΕΙΣ' : 'ΦΟΡΤΩΣΕΙΣ'}</div>` + _lth('Παράθυρο από – έως *')
@@ -1626,8 +1625,9 @@
       vsDay(Number(t.dataset.order), day).then((ans) => {
         if (!ans || _f !== f || f.done) return;
         box.querySelector('[data-vsprev]').innerHTML = '';
-        // the trucks moved with the day (the board is read again): the line of a truck on another day goes
-        box.querySelector('[data-vstruck]').innerHTML = '';
+        // the trucks moved with the day; THIS truck, if the base kept it (vs_truck_kept names its code), keeps its line
+        const kept = (ans.warnings || []).some((w) => w && w.code === 'vs_truck_kept' && w.rt_code && w.rt_code === f.cyc.code);
+        box.querySelector('[data-vstruck]').innerHTML = kept ? _truckDayHTML(_vsHubStop(f), day, true) : '';
       });
       return;
     }

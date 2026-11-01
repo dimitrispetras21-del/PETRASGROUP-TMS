@@ -73,8 +73,8 @@ let _idsForce = false;   // the user's ↻ (reload('user')) asks again at once
 let _stale = null;       // a save landed but the board read after it failed: {at} — the rows show the state BEFORE it (F11)
 // 092 (F45): the international's Veroia day of each VS at a hub stop of the board (GET /plan/vs-state cross_dock_date),
 // so a truck at Veroia on another day than the VS is marked on its row (coordinator 1/11: never two numbers in silence)
-let _vsDays = new Map();  // order_id → { cd, first } ('YYYY-MM-DD' | null); key absent = not read, or the base is before 092
-let _hubVs = new Map();   // rt_stop id → { day, orders: [order_id] } of the VS legs there (from the last board)
+let _vsDays = new Map();  // order_id → { cd, first, rts } (days 'YYYY-MM-DD' | null, rts: Set of rt ids); absent = not read / before 092
+let _hubVs = new Map();   // rt_stop id → { day, rt, orders: [order_id] } of the VS legs there (from the last board)
 let _vsRead = 'ok';       // the read of those days: 'loading' | 'ok' | 'err' (the leg form says why a field is missing)
 let _vsPending = null;    // that read in flight (settles, never rejects): the leg form waits for it (vsDaysSettled)
 // The reload reasons of a write that the base has CONFIRMED (a 200): if the read after one fails, the screen must not
@@ -292,7 +292,7 @@ function _vsDayKick(board, seq) {
     // WN5L's hub rule), so no second hub test lives here
     for (const s of arr(c && c.stops)) {
       const ids = arr(s && s.legs).filter((l) => l && /^vs_/.test(String(l.kind || '')) && l.order_id != null).map((l) => Number(l.order_id));
-      if (ids.length) idx.set(Number(s.stop_id), { day: s.stop_day || null, orders: [...new Set(ids)] });
+      if (ids.length) idx.set(Number(s.stop_id), { day: s.stop_day || null, rt: Number(c.rt_id), orders: [...new Set(ids)] });
     }
   }
   _hubVs = idx;
@@ -306,7 +306,9 @@ function _vsDayKick(board, seq) {
     const day = (x) => (x ? String(x).slice(0, 10) : null);
     for (const id of ids) {
       const v = ans && ans[String(id)];
-      if (v && typeof v === 'object' && Object.prototype.hasOwnProperty.call(v, 'cross_dock_date')) m.set(id, { cd: day(v.cross_dock_date), first: day(v.first_hub_day) });
+      if (v && typeof v === 'object' && Object.prototype.hasOwnProperty.call(v, 'cross_dock_date')) {
+        m.set(id, { cd: day(v.cross_dock_date), first: day(v.first_hub_day), rts: new Set((Array.isArray(v.root_rts) ? v.root_rts : []).map(Number)) });
+      }
     }
     _vsDays = m;
     _vsRead = 'ok';
@@ -322,13 +324,13 @@ function _vsDayKick(board, seq) {
   });
 }
 // The mark beside a hub stop whose VS the international has at Veroia on another day («VS Κυρ 1/11»); the whole
-// sentence is in the title. Only at the truck that carries the VS's FIRST Veroia day (v_vs_state first_hub_day, the
-// day plan_h_vs_follow reads): a stock piece loaded at Veroia days later is there on purpose, never a mismatch.
-// Nothing when the days agree, or when the day was not read.
+// sentence is in the title. Only on a truck that carries a WHOLE piece of the VS (root_rts of plan_vs_state): a part
+// split at Veroia and loaded days later is there on purpose, never a mismatch; a truck «Ορισμός ημέρας» could not move
+// (its stop ran, a rule of its own) is, whatever its day. Nothing when the days agree, or when the day was not read.
 function _vsMarkText(stopId) {
   const h = _hubVs.get(Number(stopId));
   if (!h) return null;
-  const days = [...new Set(h.orders.map((o) => _vsDays.get(o)).filter((v) => v && v.cd && v.first && v.cd !== v.first && v.first === h.day)
+  const days = [...new Set(h.orders.map((o) => _vsDays.get(o)).filter((v) => v && v.cd && v.cd !== h.day && v.rts && v.rts.has(h.rt))
     .map((v) => v.cd))].sort();
   return days.length ? days.map(_dl).join(', ') : null;
 }
@@ -349,8 +351,9 @@ function _vsMarkFill() {
     if (txt) el.title = 'Η διεθνής έχει Βέροια ' + txt + ' · το φορτηγό ' + _dl(h && h.day); else el.removeAttribute('title');
   }
 }
-// The international's Veroia day of a VS as the board read it (the leg form's «Ημέρα Βέροιας»): {cd, first} (cd =
-// orders.cross_dock_date, first = the first Veroia day of its trucks), null = the base answered without it (before
+// The international's Veroia day of a VS as the board read it (the leg form's «Ημέρα Βέροιας»): {cd, first, rts} (cd =
+// orders.cross_dock_date, first = the first Veroia day of its trucks, rts = the cycles with a whole piece of it), null =
+// the base answered without it (before
 // 092), undefined = not read; vsDayRead() says why ('loading' | 'ok' | 'err')
 function vsDayOf(orderId) { const k = Number(orderId); return _vsDays.has(k) ? _vsDays.get(k) : (_vsRead === 'ok' ? null : undefined); }
 function vsDayRead() { return _vsRead; }

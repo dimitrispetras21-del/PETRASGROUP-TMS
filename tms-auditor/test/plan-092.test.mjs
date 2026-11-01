@@ -447,6 +447,46 @@ test('092 on the production-shaped copy (1/11): the national desk sets the palle
     assert.strictEqual(r.drop.f, want + ' 09:01:00', 'the arrival starts one minute after the loading, on the new day');
     assert.deepStrictEqual(r.ans.warnings.filter((w) => w.code === 'vs_truck_kept'), []);
   });
+  await t.test('GO: a truck whose own rule says no (its Veroia pickup would come after its deliveries) is kept and named', async () => {
+    const want = await dayOf(db, 6);
+    const r = await scenario(db, async () => {
+      const o = await num(db, `SELECT t92_vs('LO', 'Import', DATE '${L}' + 4, '{11,7}')`);
+      const p = await num(db, `SELECT t92_piece('LO', 1)`);
+      const rt = await num(db, `SELECT t92_put(ARRAY[$1::bigint], DATE '${L}' + 5)`, [p]);
+      const before = await hubDay(db, rt);
+      const res = await setDay(db, { order_id: o, day: want });
+      return { ...res, before, after: await hubDay(db, rt), cd: await cdOf(db, o) };
+    });
+    assert.strictEqual(r.err, null, JSON.stringify(r.err));
+    assert.strictEqual(r.late, null, 'only that truck\'s change was undone; the rest commits');
+    assert.deepStrictEqual(r.after, r.before);
+    assert.strictEqual(r.cd, want);
+    const kept = r.ans.warnings.filter((w) => w.code === 'vs_truck_kept');
+    assert.strictEqual(kept.length, 1, JSON.stringify(r.ans.warnings));
+    assert.strictEqual(kept[0].reason, 'leg_order');
+    assert.deepStrictEqual(r.ans.trucks, []);
+  });
+  await t.test('GO: a part split at Veroia and loaded on a later day keeps its truck; the whole piece\'s truck moves', async () => {
+    const want = await dayOf(db, 3);
+    const r = await scenario(db, async () => {
+      const o = await num(db, `SELECT t92_vs('SL', 'Import', DATE '${L}' + 4, '{11,8}')`);
+      const p1 = await num(db, `SELECT t92_piece('SL', 1)`), p2 = await num(db, `SELECT t92_piece('SL', 2)`);
+      await db.exec(`SELECT t92_split(${p2})`);
+      const kid = await num(db, `SELECT min(id) FROM shipment_pieces WHERE parent_piece_id = $1`, [p2]);
+      const rt1 = await num(db, `SELECT t92_put(ARRAY[$1::bigint], DATE '${L}' + 4)`, [p1]);
+      const rt2 = await num(db, `SELECT t92_put(ARRAY[$1::bigint], DATE '${L}' + 6)`, [kid]);
+      const b2 = await hubDay(db, rt2);
+      const res = await setDay(db, { order_id: o, day: want });
+      const st = (await one(db, `SELECT plan_vs_state(ARRAY[$1::bigint]) AS s`, [o])).s[String(o)];
+      return { ...res, a: await hubDay(db, rt1), b: await hubDay(db, rt2), b2, rt1, rt2, rts: st.root_rts };
+    });
+    assert.strictEqual(r.err, null, JSON.stringify(r.err));
+    assert.strictEqual(r.late, null);
+    assert.strictEqual(r.a.f.slice(0, 10), want, 'the whole piece\'s truck moved');
+    assert.deepStrictEqual(r.b, r.b2, 'the split part\'s later truck kept its day');
+    assert.deepStrictEqual(r.ans.trucks.map((x) => Number(x.rt_id)), [r.rt1]);
+    assert.deepStrictEqual(r.rts.map(Number), [r.rt1], 'plan_vs_state names only the whole piece\'s cycle (the board marks only those)');
+  });
   // a load splits only at Veroia (071 split_not_at_hub): an import piece, waiting at the hub
   await t.test('GO: a split piece (4 + 20) - the 4 becomes 3, the stop 23, the other part untouched', async () => {
     const r = await scenario(db, async () => {

@@ -10,10 +10,10 @@
 --   Tue 3/11); the dispatcher sets them from the screen after the release - 092 repairs no row.
 --   stop_vs_order_off 0 and leaves_vs_stop_off 0 on 1/11 (SELECT before 092).
 SELECT CASE WHEN (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.plan_vs_set_day(jsonb,text,text)'::regprocedure)
-                 = '2d0c8da95da3f903673a57469ffd79d0' THEN '092 in place' ELSE '092 NOT APPLIED' END AS applied,
+                 = '4920e7e4a30522f5b8bac4dee67b84d2' THEN '092 in place' ELSE '092 NOT APPLIED' END AS applied,
        (SELECT count(*) FROM (VALUES
-          ('public.plan_vs_set_day(jsonb,text,text)', '2d0c8da95da3f903673a57469ffd79d0'),
-          ('public.plan_vs_state(bigint[])', '4decce12c3ca9b3ebd30a7a6b3447d5d'),
+          ('public.plan_vs_set_day(jsonb,text,text)', '4920e7e4a30522f5b8bac4dee67b84d2'),
+          ('public.plan_vs_state(bigint[])', 'dfa697f5f3dd5763d41a9ea72f653a12'),
           ('public.plan_h_vs_day(bigint,date,text,text)', 'b5070d28989e1536a74051f786b47a7c')) v(sig, m)
          WHERE (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure(v.sig)) IS DISTINCT FROM v.m) AS changed_texts,
        (SELECT md5(prosrc) = '53a6022f8f851641de134cdcf1462d55' FROM pg_proc
