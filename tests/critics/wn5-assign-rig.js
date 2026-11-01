@@ -199,6 +199,37 @@ async function partner({ browser, origin, ok, scn, shots }) {
   await page.context().close();
 }
 
+// 086 (owner 1/11): a busy truck is a warning with an explicit yes — «Αποθήκευση έτσι κι αλλιώς» on the refusal sends
+// the SAME body with target.accept_busy = true, once; another refusal code offers nothing
+async function accept_busy({ browser, origin, ok, scn }) {
+  let n = 0;
+  const { page, S } = await K.openApp(browser, origin, { board: board(), plan: { 'POST /plan/legs': async (req) => {
+    n++;
+    if (n === 1) return K.planErr(422, 'PLAN_RULE', 'no_vehicle');
+    if (n === 2) return K.planErr(422, 'PLAN_RULE', 'truck_busy');
+    return OK('plan_put_group');
+  } } });
+  await openWaiting(page, 4101);
+  ok(scn, 'pick partner Partner Test 01', await pickIn(page, 'pt', 'Partner', 'Partner Test 01'));
+  await page.fill(`${DLG} [data-rate]`, '350');
+  await page.click(`${DLG} [data-act="save"]`);
+  await page.waitForTimeout(500);
+  const btn = (p2) => p2.evaluate((s) => { const d = document.querySelector(s); const b = d && d.querySelector('.wn5-strip [data-act="accept-busy-send"]'); return b ? b.textContent : null; }, DLG);
+  ok(scn, 'another refusal (no_vehicle): no «Αποθήκευση έτσι κι αλλιώς»', (await btn(page)) === null);
+  await page.click(`${DLG} [data-act="save"]`);
+  await page.waitForTimeout(500);
+  ok(scn, 'truck_busy: the strip offers «Αποθήκευση έτσι κι αλλιώς»', (await btn(page)) === 'Αποθήκευση έτσι κι αλλιώς', await btn(page));
+  await page.click(`${DLG} .wn5-strip [data-act="accept-busy-send"]`);
+  await page.waitForTimeout(700);
+  const w = saves(S);
+  const b2 = w[1] && w[1].body, b3 = w[2] && w[2].body;
+  ok(scn, 'three POSTs: the third is the second plus target.accept_busy = true, nothing else changed', w.length === 3 && b3 && b3.target && b3.target.accept_busy === true
+    && JSON.stringify(Object.assign({}, b3, { target: Object.assign({}, b3.target, { accept_busy: undefined }) })) === JSON.stringify(Object.assign({}, b2, { target: Object.assign({}, b2.target, { accept_busy: undefined }) })), { b2, b3 });
+  const open = await page.evaluate((s) => !!document.querySelector(s), DLG);
+  ok(scn, 'the accepted save closes the form (a 200)', !open);
+  await page.context().close();
+}
+
 // 5 · ✈ «Ανάθεση / αλλαγή» on a cycle: the same form, PATCH /plan/rt/:id with only what changed; «Καθαρισμός» there
 async function vehicle({ browser, origin, ok, scn }) {
   const { page, S } = await K.openApp(browser, origin, { board: board(), plan: { 'PATCH /plan/rt/101': async () => OK('plan_rt_update') } });
@@ -582,5 +613,5 @@ async function pr3b({ browser, origin, ok, scn }) {
   await page.context().close();
 }
 
-K.run({ scenarios: { own_new, own_join, only_hours, partner, vehicle, rate2, handover, veroia_list, veroia_new, f61, f54, veroia_later, pr3b }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],
+K.run({ scenarios: { own_new, own_join, only_hours, partner, accept_busy, vehicle, rate2, handover, veroia_list, veroia_new, f61, f54, veroia_later, pr3b }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],
   go: 'the assignment form (own new / join / only / hours / F39 / partner / vehicle / F51-F61 / F54 / F56 / 089 two fees), ✈ «Αλλαγή οχήματος…» and the Veroia board v2 «Νέο φορτίο» hold' });

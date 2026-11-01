@@ -49,6 +49,27 @@
     el.appendChild(b);
     return b;
   }
+  // 086 (owner 1/11, relaxed rules): a truck or driver already on another cycle at those hours is a warning with an
+  // explicit yes, never a dead end. The same request again with accept_busy — on the target of a /plan/legs or
+  // /plan/move, on the body of PATCH /plan/rt — and the base keeps the pair named with an audit row (086
+  // plan_seg_overlap_mark); a third overlap nobody accepted is still refused at COMMIT. Only once: a request that
+  // already carried it gets no second offer. null = nothing to offer (another code, another route).
+  const BUSY_CODES = Object.freeze(['truck_busy', 'driver_busy']);
+  // the strip's button is data-act «accept-busy-send» (it re-sends); the day dialog's own line is «accept-busy» (it
+  // re-runs the dry run): a dialog's click handler reads data-act, so the two never fire each other
+  const ACCEPT_TEXT = 'Αποθήκευση έτσι κι αλλιώς';
+  function _withAccept(req, e) {
+    if (!e || !BUSY_CODES.includes(e.code) || !req || !req.body || typeof req.body !== 'object') return null;
+    const body = _copy(req.body);
+    if (req.method === 'PATCH' && /^\/plan\/rt\/\d+$/.test(req.path || '')) {
+      if (body.accept_busy === true) return null;
+      body.accept_busy = true;
+    } else if (req.method === 'POST' && /^\/plan\/(legs|move)$/.test(req.path || '') && body.target && typeof body.target === 'object') {
+      if (body.target.accept_busy === true) return null;
+      body.target.accept_busy = true;
+    } else return null;
+    return Object.assign({}, req, { body });
+  }
   // «Ανανέωση ↻» (Δ12 2069:9518, 2069:10146): when the base says the screen is behind — a stale_confirm, or a refusal
   // whose message (the Worker's own words, PLAN_RULE_TEXT) asks for «ανανέωσε». Read from the message, not from a
   // list of codes here: a second list of the Worker's codes would drift (principle 3).
@@ -102,6 +123,9 @@
     return Object.assign({}, e, { kind: e.kind, code: e.code, message: msg, _said: true });
   }
 
+  // 086: for a screen that sends on its own (the Veroia board's «Νέο φορτίο»): the same offer as _send
+  WN5Act.withAccept = _withAccept;
+  WN5Act.acceptBtn = (el, fn) => _act(el, ACCEPT_TEXT, fn).setAttribute('data-act', 'accept-busy-send');
   WN5Act.strip = function strip(hostEl, x) {
     if (!hostEl) return null;
     for (const old of hostEl.querySelectorAll(':scope > .wn5-strip')) old.remove();
@@ -315,7 +339,9 @@
           return hit;
         }
       }
-      WN5Act.strip(d.msg, _orderErr(e, req));
+      const el = WN5Act.strip(d.msg, _orderErr(e, req));
+      const acc = _withAccept(req, e);
+      if (el && acc) _act(el, ACCEPT_TEXT, () => { if (!d.busy && !d.closed) _send(d, acc, okText, opts); }).setAttribute('data-act', 'accept-busy-send');
       // A request_reused the board does not show (the record lies in another week, or the form was edited after a
       // plan_unknown): the SAME slot id would answer request_reused on every press — a dead end. The Worker's strip
       // says where to look; the save stays locked until the window closes (a new window = a new request_id).
@@ -401,8 +427,22 @@
     // a failure: inside the open two-step dialog, else on the caller's host, else on the board
     fail(s, e) {
       e = _orderErr(e, s);
-      if (_ask && !_ask.d.closed) { _ask.d.busy = false; WN5Act.strip(_ask.d.msg, e); if (e && e.kind === K().CLOSED) _lock(_ask.d); else _ask.d.refresh(); return; }
-      WN5Act.strip((s && s.host) || _boardHost(), e);
+      // 086: the same two steps again with accept_busy; the caller's own after-save is not waiting any more (its
+      // twoStep returned), so the board is re-read and said here
+      const acc = _withAccept(s, e);
+      const accept = acc ? () => {
+        if (_ask && !_ask.d.closed) _close(_ask.d);
+        WN5Act.twoStep(Object.assign({}, s, { body: acc.body })).then((out) => { if (out) _afterSave(out, 'Αποθηκεύτηκε', { intl: true, rt: _reqRt(acc) }); });
+      } : null;
+      if (_ask && !_ask.d.closed) {
+        _ask.d.busy = false;
+        const el = WN5Act.strip(_ask.d.msg, e);
+        if (el && accept) _act(el, ACCEPT_TEXT, accept).setAttribute('data-act', 'accept-busy-send');
+        if (e && e.kind === K().CLOSED) _lock(_ask.d); else _ask.d.refresh();
+        return;
+      }
+      const el = WN5Act.strip((s && s.host) || _boardHost(), e);
+      if (el && accept) _act(el, ACCEPT_TEXT, accept).setAttribute('data-act', 'accept-busy-send');
     },
     done() { if (_ask) _close(_ask.d); },
   };
@@ -1780,7 +1820,14 @@
   const _dayDiff = (a, b) => Math.round((_utc(b) - _utc(a)) / 86400000);
   // the same wall time N days later in Athens (display and explicit stops; the base shifts by an interval)
   const _shiftIso = (iso, n) => { const p = _parts(iso); return p ? _iso(_addDays(p.ymd, n), p.hm) : iso; };
+  // 086: «Αποθήκευση έτσι κι αλλιώς» on a busy conflict = the same body with accept_busy, dry run and save alike (the
+  // key compares the bodies, so the flag is part of it); a new day or window drops it (it accepted THAT overlap)
   function _dateBody(st) {
+    const b = _dateBody0(st);
+    if (b && st.accept) b.accept_busy = true;
+    return b;
+  }
+  function _dateBody0(st) {
     if (st.one) {
       // F29 (live 28/10): ONE stop of the cycle, any place — its own day and window as stops[] alone (plan_rt_update
       // 072:1714-1723, step 1), no shift: nothing else of the side moves. The window's hours go on the chosen day.
@@ -1930,11 +1977,15 @@
       if (pv.conflict) {
         // a conflict is a red line and never saves (Figma 2053:8076-8078); its name only from conflict.detail
         const cx = _conflictOf(st, pv.conflict);
-        const red = '<div class="wn5-res-s wn5-conflict">' + _esc(pv.conflict.message || '(' + (pv.conflict.code || 'σύγκρουση') + ')') + ' · δεν αποθηκεύεται</div>';
+        const busy = BUSY_CODES.includes(pv.conflict.code);
+        const red = '<div class="wn5-res-s wn5-conflict">' + _esc(pv.conflict.message || '(' + (pv.conflict.code || 'σύγκρουση') + ')') + (busy ? '' : ' · δεν αποθηκεύεται') + '</div>'
+          + (busy ? '<button type="button" class="wi4-link" data-act="accept-busy">' + _esc(ACCEPT_TEXT) + '</button>' : '');
         if (!cx) h += '<li data-row="conflict">' + red + '</li>';
         else if (!cx.next) h += '<li data-row="conflict"><div class="wn5-res-n">' + _esc('Κύκλος · ' + cx.label) + '</div>' + red + '</li>';
         else h += '<li data-row="next"><div class="wn5-res-n">' + _esc('Επόμενος κύκλος · ' + cx.label) + '</div>' + red
           + '<div class="wn5-res-s">' + _esc('Άλλη ημέρα ή ανάθεση ' + (cx.no ? 'του ' + cx.no : 'του επόμενου κύκλου') + ' σε άλλο ' + cx.who + '.') + '</div></li>';
+      } else if (st.accept) {
+        h += '<li data-row="accepted"><div class="wn5-res-n">Επικάλυψη με άλλο δρομολόγιο</div><div class="wn5-res-s">αποδεκτή · γράφεται στο ιστορικό</div></li>';
       } else if (pv.next_rt) {
         // without a conflict 072 sends the next cycle of the truck or driver (072:1796-1801)
         const nx = _cycleByCode(pv.next_rt.code);
@@ -2093,7 +2144,8 @@
       if (a === 'cancel') { if (!d.busy) _close(d); }
       else if (a === 'next') { if (!d.busy && b.dataset.rt) WN5Act.assign(null, { entry: 'row', rtId: _id(b.dataset.rt) }); }
       else if (a === 'mon') { const v = new Date(Date.UTC(st.view[0], st.view[1] + Number(b.dataset.d), 1)); st.view = [v.getUTCFullYear(), v.getUTCMonth()]; drawCal(); _place(d); }
-      else if (a === 'day') { st.sel = b.dataset.day === st.cur ? null : b.dataset.day; drawCal(); run(); }
+      else if (a === 'day') { st.sel = b.dataset.day === st.cur ? null : b.dataset.day; st.accept = false; drawCal(); run(); }
+      else if (a === 'accept-busy') { if (!d.busy) { st.accept = true; run(); } }
       else if (a === 'save') {
         const body = _dateBody(st);
         const sb = rtSaveBody(st.dryBody, st.dryAnswer);
@@ -2105,11 +2157,11 @@
     });
     d.dlg.addEventListener('input', (ev) => {
       // an edit after the dry run: its token dies with it (072b), the save waits for the next dry run
-      if (ev.target.matches('[data-win]')) { if (ev.target.dataset.win === 'from') st.from = ev.target.value; else st.to = ev.target.value; st.okFor = null; if (st.dryAnswer) { st.dryAnswer = null; draw(); } else d.refresh(); }
+      if (ev.target.matches('[data-win]')) { if (ev.target.dataset.win === 'from') st.from = ev.target.value; else st.to = ev.target.value; st.okFor = null; st.accept = false; if (st.dryAnswer) { st.dryAnswer = null; draw(); } else d.refresh(); }
     });
     d.dlg.addEventListener('change', (ev) => {
       if (ev.target.matches('[data-win]')) run();
-      else if (ev.target.matches('[data-anod]')) { st.alsoAnod = ev.target.checked; run(); }
+      else if (ev.target.matches('[data-anod]')) { st.alsoAnod = ev.target.checked; st.accept = false; run(); }
     });
     // owner 31/10 (pack 2): a point dragged onto another day opens its own one-stop panel with that day chosen and
     // its dry run on screen; the save stays the user's press (a drop never writes by itself)

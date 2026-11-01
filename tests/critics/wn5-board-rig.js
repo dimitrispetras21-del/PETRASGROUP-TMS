@@ -1595,7 +1595,8 @@ async function scnDate(browser, origin) {
     const s = li ? [...li.querySelectorAll('.wn5-res-s')] : [];
     const b = dlg.querySelector('.wi4-dlg-ft [data-act="next"]');
     return { row: li ? li.dataset.row : null, name: n ? n.innerText : null, red: s[0] && s[0].classList.contains('wn5-conflict') ? s[0].innerText : '',
-      redColor: s[0] ? getComputedStyle(s[0]).color : '', hint: s[1] ? s[1].innerText : null, box: !!dlg.querySelector('.wn5-res > .wn5-conflict, .wn5-datep-r > .wn5-conflict'),
+      redColor: s[0] ? getComputedStyle(s[0]).color : '', hint: s[1] ? s[1].innerText : null,
+      acc: li && li.querySelector('[data-act="accept-busy"]') ? li.querySelector('[data-act="accept-busy"]').innerText : null, box: !!dlg.querySelector('.wn5-res > .wn5-conflict, .wn5-datep-r > .wn5-conflict'),
       btn: b && b.offsetParent !== null ? b.innerText : null, btnFirst: b === dlg.querySelector('.wi4-dlg-ft').firstElementChild,
       save: (dlg.querySelector('[data-act="save"]') || {}).disabled };
   }).catch((e) => ({ err: String(e) }));
@@ -1605,8 +1606,8 @@ async function scnDate(browser, origin) {
     await bClick(page, `${D} [data-day="2026-10-13"]`);
     await page.waitForTimeout(300);
     const x = await cfRead(page);
-    ok(scn, 'truck_busy RT-T205 (not on the board) → «Κύκλος · RT-T205» over the red Worker line, no hint, no «Ανάθεση…», «Αποθήκευση» disabled',
-      x.row === 'conflict' && x.name === 'Κύκλος · RT-T205' && x.red === 'rig sentinel conflict truck_busy · δεν αποθηκεύεται' && x.hint === null && x.btn === null && x.save === true, x);
+    ok(scn, 'truck_busy RT-T205 (not on the board) → «Κύκλος · RT-T205» over the red Worker line, «Αποθήκευση έτσι κι αλλιώς» under it (086), no «Ανάθεση…», «Αποθήκευση» disabled',
+      x.row === 'conflict' && x.name === 'Κύκλος · RT-T205' && x.red === 'rig sentinel conflict truck_busy' && x.acc === 'Αποθήκευση έτσι κι αλλιώς' && x.btn === null && x.save === true, x);
     ok(scn, 'no page errors (B)', !S.pageErrors.length, S.pageErrors);
     await page.context().close();
   }
@@ -1621,7 +1622,7 @@ async function scnDate(browser, origin) {
     await page.waitForTimeout(300);
     const nx = await cfRead(page);
     ok(scn, 'conflict = the red sub-line of «Επόμενος κύκλος · TST-2103 · 2/2» (from conflict.detail), the grey hint under it, no separate red box',
-      nx.row === 'next' && nx.name === 'Επόμενος κύκλος · TST-2103 · 2/2' && nx.red === 'rig sentinel conflict truck_busy · δεν αποθηκεύεται' && nx.redColor === 'rgb(185, 28, 28)'
+      nx.row === 'next' && nx.name === 'Επόμενος κύκλος · TST-2103 · 2/2' && nx.red === 'rig sentinel conflict truck_busy' && nx.acc === 'Αποθήκευση έτσι κι αλλιώς' && nx.redColor === 'rgb(185, 28, 28)'
       && nx.hint === 'Άλλη ημέρα ή ανάθεση του 2/2 σε άλλο φορτηγό.' && !nx.box && nx.save === true, nx);
     ok(scn, '«Ανάθεση 2/2…» left of «Άκυρο» (Figma 2082:7735)', nx.btn === 'Ανάθεση 2/2…' && nx.btnFirst, nx);
     await shot(page, 'date-B2-conflict');
@@ -1639,8 +1640,27 @@ async function scnDate(browser, origin) {
     await page.waitForTimeout(300);
     const x = await cfRead(page);
     ok(scn, 'driver_busy RT-T203 (earlier) → «Κύκλος · TST-2104» over the red line; no «Επόμενος», no hint, no «Ανάθεση…»',
-      x.row === 'conflict' && x.name === 'Κύκλος · TST-2104' && x.red === 'rig sentinel conflict driver_busy · δεν αποθηκεύεται' && x.hint === null && x.btn === null, x);
+      x.row === 'conflict' && x.name === 'Κύκλος · TST-2104' && x.red === 'rig sentinel conflict driver_busy' && x.acc === 'Αποθήκευση έτσι κι αλλιώς' && x.btn === null, x);
     ok(scn, 'no page errors (B3)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // B5 · 086 (owner 1/11): «Αποθήκευση έτσι κι αλλιώς» = the dry run again with accept_busy, no conflict, the save
+    // carries it; a new day drops it
+    const { page, S } = await bOpen(browser, origin, { plan: { [K]: (e) => (e.body && e.body.accept_busy === true ? PV() : CF('truck_busy', 'RT-T205')) } });
+    await bClick(page, CHIP);
+    await bClick(page, `${D} [data-day="2026-10-13"]`);
+    await page.waitForTimeout(300);
+    await bClick(page, `${D} .wn5-res [data-act="accept-busy"]`);
+    await page.waitForTimeout(400);
+    const acc = await page.$eval(D, (dlg) => ({ row: !!dlg.querySelector('.wn5-res li[data-row="accepted"]'), conflict: !!dlg.querySelector('.wn5-res .wn5-conflict'),
+      save: (dlg.querySelector('[data-act="save"]') || {}).disabled })).catch((e) => ({ err: String(e) }));
+    ok(scn, '«Αποθήκευση έτσι κι αλλιώς» → a dry run with accept_busy, «Επικάλυψη … αποδεκτή», no red line, «Αποθήκευση» on', acc.row && !acc.conflict && acc.save === false, acc);
+    await bClick(page, `${D} [data-act="save"]`);
+    await page.waitForTimeout(300);
+    const calls = bCalls(S, 'PATCH', P);
+    const last = calls[calls.length - 1];
+    ok(scn, 'the save sends accept_busy:true with the dry run\'s body (no dry_run)', !!last && last.body && last.body.accept_busy === true && last.body.dry_run === undefined, calls.map((x) => x.raw));
+    ok(scn, 'no page errors (B5)', !S.pageErrors.length, S.pageErrors);
     await page.context().close();
   }
   { // B4 · any other code (a window rule with a detail): the Worker's words alone, no name, no hint, no button
@@ -1650,7 +1670,7 @@ async function scnDate(browser, origin) {
     await page.waitForTimeout(300);
     const x = await cfRead(page);
     ok(scn, 'window_order → only «rig sentinel conflict window_order · δεν αποθηκεύεται»: no name row, no hint, no button, «Αποθήκευση» disabled',
-      x.row === 'conflict' && x.name === null && x.red === 'rig sentinel conflict window_order · δεν αποθηκεύεται' && x.hint === null && x.btn === null && x.save === true, x);
+      x.row === 'conflict' && x.name === null && x.red === 'rig sentinel conflict window_order · δεν αποθηκεύεται' && x.acc === null && x.btn === null && x.save === true, x);
     ok(scn, 'no page errors (B4)', !S.pageErrors.length, S.pageErrors);
     await page.context().close();
   }
