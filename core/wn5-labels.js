@@ -60,6 +60,25 @@
     seg_stop_moved: (w) => `η στάση #${w.stop_id} περνά στο όχημα του άλλου τμήματος (#${w.from_segment_id} → #${w.to_segment_id})`,
     // 072b H-24: the handover time falls inside the stop's window — it stays with the segment of its arrival (H-9)
     seg_stop_straddles: (w) => `η ώρα της αλλαγής πέφτει μέσα στο παράθυρο της στάσης #${w.stop_id}: μένει στο τμήμα της άφιξης`,
+    // 081 (owner 31/10): a point's new window did not take its truck's stop with it, and why. 'shared' names how many
+    // other points stop there: the stop-time change moves it for all of them, with its own preview. 'windows_differ':
+    // points of the same save asked the one stop for different windows (no other point is there to count). Any other
+    // reason is a rule the move broke (owner 31/10, loose rules now): the point was saved and the stop stayed.
+    stop_kept: (w) => {
+      const n = Array.isArray(w.others) ? w.others.length : 0;
+      const head = `η στάση του φορτηγού στο ${w.rt_code || '—'} δεν άλλαξε`;
+      if (w.reason === 'executed') return head + ': έχει ήδη εκτελεστεί';
+      if (w.reason === 'handover') return head + ': ο κύκλος έχει αλλαγή οχήματος · «Αλλαγή ώρας στάσης ›»';
+      if (w.reason === 'windows_differ') return head + ': σημεία αυτής της αποθήκευσης ζητούν διαφορετική ώρα εκεί · «Αλλαγή ώρας στάσης ›»';
+      // a rule the move would break (the point was saved, the stop stayed): the rule in words, never a code; the
+      // busy detail only when it is cycle codes (in a race plan_h_finish can only name its EXCLUDE constraint)
+      if (w.reason === 'truck_busy') return head + `: το φορτηγό είναι απασχολημένο τότε${/^RT-[\w/ -]+$/.test(w.detail || '') ? ' (' + w.detail + ')' : ''}`;
+      if (w.reason === 'driver_busy') return head + `: ο οδηγός είναι απασχολημένος τότε${/^RT-[\w/ -]+$/.test(w.detail || '') ? ' (' + w.detail + ')' : ''}`;
+      if (w.reason === 'stop_order' || w.reason === 'side_order' || w.reason === 'leg_order') return head + ': η νέα ώρα χαλάει τη σειρά των στάσεων του κύκλου · «Αλλαγή ώρας στάσης ›»';
+      if (w.reason === 'payroll_locked') return head + ': η μισθοδοσία του κύκλου έχει ήδη ποσά';
+      if (w.reason !== 'shared') return head + ': η μετακίνηση δεν επιτρέπεται εδώ · «Αλλαγή ώρας στάσης ›»';
+      return head + `: εξυπηρετεί και ${n === 1 ? '1 άλλο σημείο' : n > 1 ? n + ' άλλα σημεία' : 'άλλα σημεία'} · «Αλλαγή ώρας στάσης ›» την αλλάζει για όλα`;
+    },
   });
 
   const CONSEQUENCE = Object.freeze({
@@ -90,9 +109,14 @@
     // it is reversed after the token and a new pending line is written for the new movement.
     pallets_confirmed: (c) => `επιβεβαιωμένη γραμμή παλετών · ${c.event_type === 'LOADING' ? 'φόρτωση' : c.event_type === 'DELIVERY' ? 'παράδοση' : String(c.event_type)}`
       + ` · πήραμε ${c.taken} · δώσαμε ${c.given} — αντιλογίζεται μετά την επιβεβαίωση`,
-    // 074a (F5 Ε-19): deleting an international order takes its VS bridge pieces off the v5 cycles. Ids and the
-    // cycle code only (no client, no amount), so the line says which truck loses which stop's load.
-    piece_on_rt: (c) => `βγαίνει από το ${c.code || '—'} το φορτίο της στάσης #${c.order_stop_id != null ? c.order_stop_id : '—'}`,
+    // 074a (F5 Ε-19): deleting an international order takes its VS bridge pieces off the v5 cycles. The item carries
+    // ids and the cycle code only (no client, no amount, no place, no reference). «της στάσης #6101» (live 28/10) named
+    // an internal order_stops id nobody can read, so the line names the cycle and whose load it is: this international
+    // order's, or a national order made from it (nat_order_id: the base's id, not the reference the board shows, so
+    // not printed). A place name comes only when the item carries one (c.place: a base change, proposed in the PR of
+    // 28/10) — never an id.
+    piece_on_rt: (c) => `βγαίνει από το ${c.code || '—'} `
+      + (c.place ? `το φορτίο για ${c.place}` : c.nat_order_id != null ? 'το φορτίο της εθνικής που βγήκε από αυτή την παραγγελία' : 'το φορτίο αυτής της παραγγελίας'),
   });
 
   // The category word the two-step list puts before a line (Figma Δ5 2053:8079 and H4 2125:7738: «Μισθοδοσία · …»).

@@ -232,13 +232,18 @@ function _rampV5Rec(key, o) {
   const temps = uniq(o.items.map(x => x.temperature_c).filter(v => v != null && v !== '').map(String));
   const vs = o.items.some(x => x.kind === 'vs_import' || x.kind === 'vs_export');
   const pal = Math.round(o.items.reduce((s, x) => s + (Number(x.pallets) || 0), 0) * 10) / 10;
+  // F1/F4 (owner 28/10, 080): a v5 piece may have no pallets yet (null). 'Pallets' stays the known number (the KPIs
+  // add it up); the line SAYS the unknown («12+;», «;») through _palText, never a 0 or a blank that looks counted
+  const palUnk = o.items.filter(x => x.pallets == null).length;
+  // one rule: core/wn5-logic.js (loaded before this file); without it the line still says «;», never a bare number
+  const palText = !palUnk ? '' : typeof WN5L !== 'undefined' && WN5L.palText ? WN5L.palText(pal, palUnk) : ';';
   const t = o.time ? new Date(o.time) : null;
   const isIn = o.act === 'unload';
   const far = (o.far || []).join(' / ');
   return { id: 'v5:' + key, _v5: { pending: !!o.pending }, fields: {
     'Plan Date': o.day, 'Time': t && !isNaN(t) ? t.toISOString() : '',
     'Type': isIn ? 'Παραλαβή' : 'Φόρτωση', 'Status': o.executed ? 'Done' : 'Planned',
-    'Pallets': pal, 'Supplier/Client': clients.join(' / ') || '—', 'Goods': '', 'Temperature': temps.join(' / '),
+    'Pallets': pal, '_palText': palText, 'Supplier/Client': clients.join(' / ') || '—', 'Goods': '', 'Temperature': temps.join(' / '),
     'Is Veroia Switch': vs, 'Ramp Category': vs ? 'VS Simple' : '',
     'Loading Points': isIn ? far : '', 'Delivery Points': isIn ? '' : far,
     // plate / partner and driver come as names from the board, not as facade links
@@ -564,6 +569,11 @@ function _rampDraw() {
   const inPal=inb.reduce((s,r)=>s+(r.fields['Pallets']||0),0);
   const outPal=out.reduce((s,r)=>s+(r.fields['Pallets']||0),0);
   const net=inPal-outPal;
+  // F1/F4 (080): v5 lines whose pallets are not all known (_palText): the sums are a floor and say «+;», never complete
+  const inUnk=inb.some(r=>r.fields['_palText']), outUnk=out.some(r=>r.fields['_palText']);
+  const unkTag=(u)=>u?'+;':'';
+  // the net with unknowns is not a floor: unknown IN pieces raise it, unknown OUT pieces lower it — «+;», «−;», «±;»
+  const netTag=inUnk&&outUnk?'±;':inUnk?'+;':outUnk?'−;':'';
   const total=recs.length;
   const done=recs.filter(r=>r.fields['Status']==='Done').length;
   const stockPal=RAMP.stock.reduce((s,r)=>s+(r.fields['Pallets']||0),0);
@@ -626,11 +636,11 @@ function _rampDraw() {
       <div class="ramp-kpi ramp-kpi-primary"><div class="ramp-kpi-lbl">${_i('check_circle', 11)} Πρόοδος</div>
         <div><span class="ramp-kpi-val" style="color:${total?Math.round(done/total*100)>=80?'var(--success)':'var(--accent)':'var(--text-dim)'}">${total?Math.round(done/total*100):0}%</span><span class="ramp-kpi-sub">${done}/${total}</span></div></div>
       <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('arrow_down_left', 11)} Εισερχόμενα σήμερα</div>
-        <div><span class="ramp-kpi-val" style="color:var(--panel-ok)">+${inPal}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
+        <div><span class="ramp-kpi-val" style="color:var(--panel-ok)">+${inPal}${unkTag(inUnk)}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
       <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('arrow_up_right', 11)} Εξερχόμενα σήμερα</div>
-        <div><span class="ramp-kpi-val" style="color:var(--panel-accent)">-${outPal}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
+        <div><span class="ramp-kpi-val" style="color:var(--panel-accent)">-${outPal}${unkTag(outUnk)}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
       <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('activity', 11)} Καθαρό σήμερα</div>
-        <div><span class="ramp-kpi-val" style="color:${net>=0?'var(--panel-ok)':'var(--panel-bad)'}">${net>=0?'+':''}${net}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
+        <div><span class="ramp-kpi-val" style="color:${net>=0?'var(--panel-ok)':'var(--panel-bad)'}">${net>=0?'+':''}${net}${netTag}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
       <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('package', 11)} Σύνολο αποθέματος</div>
         <div><span class="ramp-kpi-val" style="color:var(--panel-warn)">${stockPal}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
     </div>
@@ -669,7 +679,7 @@ function _rampDraw() {
           <td>${_rResolveClientStr(f['Supplier/Client']||'—')}</td>
           <td>${escapeHtml((f['Goods']||'').substring(0,25))}</td>
           <td>${escapeHtml(f['Temperature']||'')}</td>
-          <td>${escapeHtml(f['Pallets']||'')}</td>
+          <td>${escapeHtml(f['_palText']||f['Pallets']||'')}</td>
           <td>${movedTo}</td>
           <td><button class="btn btn-primary" style="padding:4px 8px;font-size:11px" onclick="confirmAction('Επαναφορά στο σήμερα;').then(ok=>{if(ok)_rampRestore('${r.id}')})">Επαναφορά</button></td>
         </tr>`;}).join('')}</tbody></table>
@@ -696,7 +706,7 @@ function _rRow(rec,num,tOpts) {
   const client=_rStripMarkers(f['Supplier/Client']||'—')||'—';
   const goods=escapeHtml(_rStripMarkers((f['Goods']||'').substring(0,35)));
   const temp=escapeHtml(f['Temperature']||f['Temperature °C']||'');
-  const pal=escapeHtml(f['Pallets']||'');
+  const pal=escapeHtml(f['_palText']||f['Pallets']||'');
   const truck=escapeHtml(_rTruck(f));
   const isIn=f['Type']==='Παραλαβή';
 
@@ -783,7 +793,7 @@ function _rTlRow(rec) {
     <td class="trn">${tlLoc||'—'}</td>
     <td class="trn">${escapeHtml((f['Goods']||'').substring(0,35))}</td>
     <td>${escapeHtml((f['Temperature']||f['Temperature °C'])?((f['Temperature']||f['Temperature °C'])+'°C'):'')}</td>
-    <td>${escapeHtml(f['Pallets']||'')}</td>
+    <td>${escapeHtml(f['_palText']||f['Pallets']||'')}</td>
     <td>${escapeHtml(_rTruck(f)||'—')}</td><td>${escapeHtml(_rDriver(f)||'—')}</td>
     <td>${statusTxt}</td></tr>`;
 }
@@ -1074,7 +1084,7 @@ function _rampExportCSV() {
         f['Status']||'',
         _rStripMarkers(_rResolveClientStr(f['Supplier/Client']||'')),
         f['Goods']||'',
-        f['Pallets']||'',
+        f['_palText']||f['Pallets']||'',
         f['Temperature']||f['Temperature °C']||'',
         _rStripMarkers(f['Loading Points']||''),
         _rStripMarkers(f['Delivery Points']||''),

@@ -95,7 +95,7 @@ test('F4α-T5: «Χωρίς κάθοδο», «Κενό γύρισμα», «Μό�
   // FE-2 (owner 28/10): the «… δεν ήρθαν (Worker)» line is gone — an absent key is the error strip (tests/wn5-logic.test.js)
   assert.ok(!/wn5-miss|δεν ήρθαν με τον πίνακα/.test(by.get('wait:4101')), 'wait:4101 still carries the waiting line');
   assert.ok(!/null/.test(by.get('wait:4101')), 'wait:4101 prints no «null»');
-  assert.ok(/Βέροια<span class="wn5-endx"> · τέλος κύκλου<\/span><\/span><span class="wi4-l2">ως Δευ 22:00/.test(by.get('rt:101')), 'rt:101 end');
+  assert.ok(/Βέροια<\/span><span class="wi4-l2">ως Δευ 22:00/.test(by.get('rt:101')), 'rt:101 end');
   // whole-frame r4: «↳» in the index column (as the ⇄ sub-row's .wn5-hand-ar), the text from the ΚΑΘΟΔΟΣ chip column
   assert.ok(/<span class="wn5-c-idx"><span class="wn5-hand-ar">↳<\/span><\/span> <span class="wn5-sub-t"><b>Φόρτωση με τοπικό<\/b> · Driver Test 11 · Δευ 12\/10 11:00–12:00 · για Oinofyta Test \(στάση 2\)/.test(by.get('rt:103')), 'rt:103 local');
   // live fix 3 (owner 28/10): a waiting row of one side names its side in the box and draws the dashed empty side
@@ -113,7 +113,8 @@ test('F4α-T5: a loading before Veroia comes first in ΦΟΡΤΩΣΗ, numbered �
   // gap and waiting sides make no loading before the hub: 0, never undefined
   for (const r of all) for (const s of [r.kath, r.anod]) if (s && (s.gap || r.key.startsWith('wait:'))) assert.strictEqual(s.vBefore, 0, `${r.key} ${s.side}: vBefore ${s.vBefore}`);
   const fl = cell(rows(c.WN5._html(m)).find((x) => keyOf(x) === 'rt:105'), 'wn5-fl');
-  assert.ok(/<span class="wi4-pt-n">1<\/span><span class="wi4-l1">Thessaloniki Test<\/span>[\s\S]*<span class="wn5-vh[^"]*">Βέροια<\/span>/.test(fl), `rt:105 ΦΟΡΤΩΣΗ: ${fl}`);
+  // the number inside the place line since 28/10 (long names: number + place are one run, cut at two lines)
+  assert.ok(/<span class="wi4-l1"><span class="wi4-pt-n">1<\/span> Thessaloniki Test<\/span>[\s\S]*<span class="wn5-vh[^"]*">Βέροια<\/span>/.test(fl), `rt:105 ΦΟΡΤΩΣΗ: ${fl}`);
 });
 
 test('F4α-T17 fidelity: a local loading on a pickup names what is loaded → Βέροια and the delivery it is for (Figma 2011:8305)', () => {

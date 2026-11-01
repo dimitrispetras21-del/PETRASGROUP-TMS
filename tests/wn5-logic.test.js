@@ -51,8 +51,9 @@ test('F4α-T4: cycle numbering «κύκλος 1» alone, «1/2» «2/2» for two
   const m = M();
   assert.deepStrictEqual(rowOf(m, 'rt:101').cycleNo, { n: 1, m: 2 });
   assert.deepStrictEqual(rowOf(m, 'rt:107').cycleNo, { n: 2, m: 2 });
-  assert.strictEqual(rowOf(m, 'rt:101').tiles[0].line2, 'Driver Test 01 · κύκλος 1/2');
-  assert.strictEqual(rowOf(m, 'rt:103').tiles[0].line2, 'Driver Test 03 · κύκλος 1');
+  // owner 31/10: the tile names the driver alone; the numbering stays data (cycleNo) for the sheet and the menu
+  assert.strictEqual(rowOf(m, 'rt:101').tiles[0].line2, 'Driver Test 01');
+  assert.strictEqual(rowOf(m, 'rt:103').tiles[0].line2, 'Driver Test 03');
   assert.strictEqual(rowOf(m, 'rt:104').cycleNo, null, 'a partner is not numbered');
   assert.deepStrictEqual([...L.cycleNumbers(fix().cycles).keys()].sort(), [101, 102, 103, 105, 106, 107]);
 });
@@ -134,10 +135,10 @@ test('F4α-T4: dim/headDim/sideDim/rowDim copied from dim/side_dim/cycle_dim; th
 
 test('F4α-T4: capacity sums load legs of the side; over = pallets − 33', () => {
   const c101 = fix().cycles.find((c) => c.rt_id === 101);
-  assert.deepStrictEqual(L.capacity(c101.stops.filter((s) => s.side === 'KATHODOS')), { pallets: 31, over: 0 });
-  assert.deepStrictEqual(L.capacity(c101.stops.filter((s) => s.side === 'ANODOS')), { pallets: 14, over: 0 });
+  assert.deepStrictEqual(L.capacity(c101.stops.filter((s) => s.side === 'KATHODOS')), { pallets: 31, unknown: 0, over: 0 });
+  assert.deepStrictEqual(L.capacity(c101.stops.filter((s) => s.side === 'ANODOS')), { pallets: 14, unknown: 0, over: 0 });
   const big = [{ legs: [{ act: 'load', pallets: 20.5 }, { act: 'load', pallets: 15.6 }, { act: 'unload', pallets: 99 }] }];
-  assert.deepStrictEqual(L.capacity(big), { pallets: 36.1, over: 3.1 });
+  assert.deepStrictEqual(L.capacity(big), { pallets: 36.1, unknown: 0, over: 3.1 });
   assert.strictEqual(rowOf(M(), 'rt:108').kath.over, 0, '33 is full, not over');
 });
 
@@ -160,7 +161,7 @@ test('F4α-T4: queue = the VS of the «ΠΡΟΣ ΑΝΑΘΕΣΗ» rows (hub[] nev
 test('F4α-T4 / B1: hub split = unloaded at Veroia by a cycle (inbound_rt_id), for_split, or a VS import with no truck (owner 28/10); never a never-assigned national; stock; overdue → red; nothing to split or hold → hub.empty', () => {
   const h = M().hub;
   assert.deepStrictEqual({ day: h.day, split: h.split.map((x) => x.pieceId), stock: h.stock.map((x) => [x.pieceId, x.overdue, x.leave_by]), pallets: h.pallets, empty: h.empty },
-    { day: TODAY, split: [4101, 4102, 4103, 4302, 4104], stock: [[4301, true, '2026-10-12']], pallets: { split: 83, stock: 13 }, empty: false });
+    { day: TODAY, split: [4101, 4102, 4103, 4302, 4104], stock: [[4301, true, '2026-10-12']], pallets: { split: 83, stock: 13, splitUnknown: 0, stockUnknown: 0 }, empty: false });
   // the Ε-41 key (not in 072): what ✈ «Σπάσιμο» sent back is «για μοίρασμα», and leaves the rows and the queue
   const b = fix();
   for (const x of b.hub) if (x.order_id === 2101) x.for_split = true;
@@ -369,4 +370,17 @@ test('075: waitSide — the hub ends first, then the order\'s own direction, els
   assert.strictEqual(L.waitSide({ kind: 'national', nat_from_location_id: 1, nat_to_location_id: 6, direction: 'ANODOS' }, 1), 'KATHODOS', 'from the hub wins over a direction');
   assert.strictEqual(L.waitSide({ kind: 'vs_export', nat_to_location_id: 1 }, 1), 'ANODOS');
   assert.strictEqual(L.waitSide({ kind: 'vs_import', at_hub: true, nat_to_location_id: 3 }, 1), 'KATHODOS');
+});
+
+// F64 (owner 31/10): one reader rule for the board and the driver sheet — the base stores «the same hour» as one
+// minute, and an arrival «ως 23:59» as 23:58–23:59; neither is printed as a window nobody agreed.
+test('F64: winText — one minute is «στις HH:MM», the day\'s last minute «ως 23:59», the whole day and a window as before', () => {
+  const W = require(path.join(ROOT, 'core/wn5-logic.js'));
+  assert.strictEqual(W.winText('08:00', '08:01', false), 'στις 08:00');
+  assert.strictEqual(W.winText('08:00', '08:00', false), '08:00–08:00');   // a 24 h window stored before F64: as it is
+  assert.strictEqual(W.winText('23:58', '23:59', false), 'ως 23:59');
+  assert.strictEqual(W.winText('00:00', '23:59', true), 'όλη η ημέρα');
+  assert.strictEqual(W.winText('06:00', '08:00', false), '06:00–08:00');
+  assert.strictEqual(W.winText('22:00', '02:00', false), '22:00–02:00');   // a night window is never an instant
+  assert.strictEqual(W.winText(null, '08:00', false), null);
 });

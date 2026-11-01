@@ -8228,6 +8228,16 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 .wi4-chev { display:inline-grid; place-items:center; color:var(--wi4-grey-2); transition:transform var(--duration-fast) var(--ease-out); }
 .wi4-dayh-sp { flex:none; width:14px; }
 .wi4-day.closed .wi4-chev { transform:rotate(-90deg); }
+/* v5 F22: a clicked leg reads the board before its form opens — the row says so at once (cursor and a lighter row),
+   so a slow read is never a click that «does nothing» */
+.wn5-row.wn5-leg-busy, .wn5-row.wn5-leg-busy * { cursor:progress; }
+.wn5-row.wn5-leg-busy > [data-leg] { opacity:.55; }
+/* F25: the «day L not read again» note is a warning, never the first thing the bar's ellipsis eats (.wi4-range
+   shrinks first) */
+.wn5-bar [data-old-view="recheck"] { flex:0 0 auto; color:var(--wi4-amber); }
+/* v5: a folded day says what it hides (owner 28/10, live: the rows «vanished»); hidden while the day is open */
+.wn5-dayhid { margin-left:4px; font-family:'DM Sans',sans-serif; font-size:11.5px; font-weight:500; letter-spacing:0; color:var(--accent-text); }
+.wn5-day:not(.closed) .wn5-dayhid { display:none; }
 /* The closed-day marker (_dayCountHTML): hidden on an open day — its rows
    carry the rails — and one 6px dot after the date on a closed one.
    Red filled, amber ring: shape + colour. No grey ring: national state no
@@ -8977,7 +8987,7 @@ body.wi4-on #wi-popover .wi-pop-save:hover { background:var(--navy-light); }
    match an element. Names are never cut (DESIGN.md #6) — the one exception, as on the Weekly International, is the
    28px queue card, whose whole line is in title (.wn5-qc-cl below). */
 :root {
-  --wn5-note-bg:   #fff7eb;   /* notices strip (Figma 2011:7745 «ΕΙΔΟΠΟΙΗΣΕΙΣ») */
+  --wn5-note-bg:   #fff7eb;   /* amber answers (warning strips); the notices strip is white since 31/10, its label keeps the ink */
   --wn5-note-line: #fad199;
   --wn5-note-ink:  #b5540a;   /* 4.9:1 on --wn5-note-bg */
   --wn5-err-line:  #fecaca;   /* refusal / error strip border (Δ12) */
@@ -9050,15 +9060,36 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 .wn5-skel > span:nth-child(3) { flex-basis:150px; } .wn5-skel > span:nth-child(4) { flex-basis:240px; } .wn5-skel > span:nth-child(6) { flex:1 1 auto; }
 /* Board grid (Figma H1 2120:7738 at 1920: one 1803px row from x=88). Twelve tracks:
    # · gap · ΚΑΘΟΔΟΣ day · ΦΟΡΤΩΣΗ · ΠΑΡΑΔΟΣΗ · ΠΑΛ. · ΑΝΑΘΕΣΗ · gap · ΑΝΟΔΟΣ day · ΦΟΡΤΩΣΗ · ΠΡΟΣ · ΠΑΛ.
-   ΑΝΑΘΕΣΗ is 266px and no Veroia-time column exists (owner 25/10: +16px taken from the ΑΝΟΔΟΣ points), so ΑΝΟΔΟΣ
-   starts 266 + 16 = 282px after ΑΝΑΘΕΣΗ. The two point columns share what is left (403.5px each at 1920 = two
-   ~178px stops + «+N»; 165px at 1440 = one stop + «+N»). Cells shrink, never overlap, and wrap names (no cut). */
-.wn5 { --wn5-kpal-w:86px; --wn5-apal-w:77px;
+   No Veroia-time column exists (owner 25/10), so ΑΝΟΔΟΣ starts ΑΝΑΘΕΣΗ + 16px after it. Cells shrink, never
+   overlap, and wrap names (no cut). Widths: the density block below (owner 31/10). */
+/* Density (owner 31/10: «ο πίνακας χάνει χώρο», the Weekly International is the reference): ΑΝΑΘΕΣΗ is the Weekly
+   International's 176px (was 266), the day columns its 70px, the pallet columns the ≤1600 widths at every size. A
+   ΦΟΡΤΩΣΗ that is only «Βέροια» + its window, and a ΠΡΟΣ that is only «Βέροια · τέλος κύκλου», are a 76px cell
+   (--wn5-vw); everything else of a side goes to its places. Each row is its own grid, so the four point tracks are
+   set per row (rules below) as shares of ONE side width, --wn5-side: what a side gets is the same in every row, and
+   ΑΝΑΘΕΣΗ and ΑΝΟΔΟΣ stay on one line down the board whatever a row's split. */
+.wn5 { --wn5-kpal-w:calc(50px + var(--wn5-kprt-gap)); --wn5-apal-w:50px;
   /* T23 fidelity (Figma 2011:9284): the ΚΑΘΟΔΟΣ printer sits between the side's «+» and ΑΝΑΘΕΣΗ, 14px clear of the
      «+» and 2px before the tile (14 + 12 + 2 = the 12px pad + this). With the old 12px pad it touched both. */
-  --wn5-kprt-gap:16px; }
+  --wn5-kprt-gap:16px;
+  --wn5-idx:64px; --wn5-g1:8px; --wn5-dw:70px; --wn5-asg-w:176px; --wn5-vw:76px;
+  /* 100% is the row's own width (resolved where the template uses it); the 16px is the gap before ΑΝΟΔΟΣ */
+  --wn5-side:max(0px, calc((100% - var(--wn5-idx) - var(--wn5-g1) - 2 * var(--wn5-dw) - var(--wn5-kpal-w) - var(--wn5-asg-w) - 16px - var(--wn5-apal-w)) / 2));
+  /* the common row: ΚΑΘΟΔΟΣ loads at Veroia only, ΑΝΟΔΟΣ ends at a place (a delivery: places on both ends) */
+  --wn5-t4:var(--wn5-vw); --wn5-t5:max(0px, calc(var(--wn5-side) - var(--wn5-vw)));
+  --wn5-t10:calc(var(--wn5-side) * .55); --wn5-t11:calc(var(--wn5-side) * .45); }
 .wn5-cols, .wn5-row, .wn5-sub {
-  display:grid; grid-template-columns:64px 8px 78px 169px minmax(0,1fr) var(--wn5-kpal-w) 266px 16px 78px minmax(0,1fr) 154px var(--wn5-apal-w); align-items:center; }
+  display:grid; grid-template-columns:var(--wn5-idx) var(--wn5-g1) var(--wn5-dw) var(--wn5-t4) var(--wn5-t5) var(--wn5-kpal-w) var(--wn5-asg-w) 16px var(--wn5-dw) var(--wn5-t10) var(--wn5-t11) var(--wn5-apal-w); align-items:center; }
+/* ΦΟΡΤΩΣΗ of ΚΑΘΟΔΟΣ with a loading besides Veroia (before or after it): the loadings get 40% of the side */
+.wn5-row:has(> .wn5-fl .wn5-pt) { --wn5-t4:calc(var(--wn5-side) * .4); --wn5-t5:calc(var(--wn5-side) * .6); }
+/* ΑΝΟΔΟΣ that ends at Veroia only (the cycle's end, or a waiting load's «τέλος κύκλου»): the 76px cell, the loadings
+   take the rest */
+.wn5-row:has(> .wn5-ato .wn5-end):not(:has(> .wn5-ato .wn5-pt:not(.wn5-end))) { --wn5-t10:max(0px, calc(var(--wn5-side) - var(--wn5-vw))); --wn5-t11:var(--wn5-vw); }
+/* The 76px Veroia cells: 6px in (not 9): «Βέροια» and «ως Τετ 12:00» fit whole. */
+.wn5-row:not(:has(> .wn5-fl .wn5-pt)) > .wn5-fl, .wn5-row:has(> .wn5-ato .wn5-end):not(:has(> .wn5-ato .wn5-pt:not(.wn5-end))) > .wn5-ato { padding:0 6px; }
+/* «όλη η ημέρα» and «ως Τετ 23:59» are 57–62px: one line in the 64px inside the cell, never broken after «Τετ» */
+.wn5-row:not(:has(> .wn5-fl .wn5-pt)) > .wn5-fl .wn5-vtime,
+.wn5-row:has(> .wn5-ato .wn5-end):not(:has(> .wn5-ato .wn5-pt:not(.wn5-end))) > .wn5-ato .wi4-l2 { white-space:nowrap; }
 .wn5 .wn5-c-idx { grid-column:1; }
 .wn5 :is(.wn5-c-kd, .wn5-kd) { grid-column:3; }
 .wn5 :is(.wn5-c-kfl, .wn5-fl) { grid-column:4; }
@@ -9075,12 +9106,20 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
   font-size:10px; font-weight:600; letter-spacing:.5px; line-height:1.2; color:var(--wi4-grey-2); align-items:end; }
 .wn5-cols > span { min-width:0; padding:0 9px; box-sizing:border-box; }
 .wn5-cols > .wn5-h-asg { padding-left:9px; }
-.wn5-h-sub { font-weight:400; letter-spacing:0; }
 /* 36px as the Figma rows (H1 2120:7738): the rule and 1px above, the 32px day + REF cell, 2px below. */
 .wn5-row { position:relative; min-height:36px; padding:1px 0 2px; box-sizing:border-box; border-top:1px solid var(--wi4-line); }
 .wn5 .wi4-day-body > :first-child { border-top:0; }
 .wn5-row > div, .wn5-sub > span { min-width:0; padding:0 9px; box-sizing:border-box; }
 .wn5-row > .wn5-asg { padding:0; display:flex; gap:4px; }
+/* F32: a ΠΡΟΣ ΑΝΑΘΕΣΗ row is dragged onto a cycle row; the row under the pointer is the drop target */
+.wn5-row[draggable="true"] { cursor:grab; }
+.wn5-row.wn5-drop { outline:2px dashed var(--wi4-blue); outline-offset:-2px; background:var(--wi4-info-bg); }
+/* pack 2 (owner 31/10): a point is dragged onto another truck's row, or onto another day's head (same truck) */
+.wn5-row .wn5-pt[draggable="true"] { cursor:grab; }
+.wn5-dayh.wn5-drop, .wn5-day.empty.wn5-drop { outline:2px dashed var(--wi4-blue); outline-offset:-2px; background:var(--wi4-info-bg); }
+/* F65 (live 31/10): a panel taller than the room scrolls inside (.wn5-dlg max-height), and «Αποθήκευση» went under a
+   six-week November. The buttons stay at the panel's foot, the content scrolls behind them. */
+.wn5-dlg > .wi4-dlg-ft { position:sticky; bottom:0; z-index:1; background:var(--surface-card); }
 .wn5 .wn5-asg .wi4-box { flex:1 1 0; max-width:none; }
 /* «ΠΡΟΣ ΑΝΑΘΕΣΗ» in the button's red ink, SemiBold (H1 / 7745): its inner .wi4-l1 (ink, 500) would paint it navy. */
 .wn5 .wi4-box.un > .wi4-l1 { color:inherit; font-weight:inherit; }
@@ -9108,41 +9147,54 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 .wn5 .wn5-ad .wi4-dc.past { border-color:var(--wi4-blue); color:var(--wi4-blue-ink); background:var(--surface-card); }
 .wn5 .wn5-row:not(.wn5-dim) .wn5-kd .wi4-dc:is(.past, .today) { border-color:var(--wi4-blue); color:var(--wi4-blue-ink); background:var(--surface-card); }
 .wn5-dc2 { font-size:10px; line-height:12px; color:var(--wi4-grey-2); white-space:nowrap; }
+/* A waiting VS names its reference under the day: the order's text, sometimes a long list. It stays inside the 70px
+   cell, cut with «…» (whole in its title), and «αργό» after it is never cut (a flex item: the gap is its space). */
+.wn5 .wn5-kref { display:flex; gap:3px; max-width:100%; }
+.wn5 .wn5-kref-t { min-width:0; overflow:hidden; text-overflow:ellipsis; }
 /* ΦΟΡΤΩΣΗ: «Βέροια» and, under it, its loading window — on every row that loads there (owner 25/10). */
 .wn5 .wn5-fl { display:flex; flex-direction:column; gap:2px; }
 .wn5-vh { display:block; font-size:12px; line-height:15px; font-weight:500; color:var(--wi4-ink); }
 /* H1 2120:8134/8150/8817: every stop's time line, Veroia's window included, is DM Sans Medium 10.5px grey-1 */
 .wn5-vtime { display:block; font-size:10.5px; line-height:13px; font-weight:500; color:var(--wi4-grey-1); }
-/* At 1920 two stops fit side by side; narrower (1440: 147px) they wrap to a second line instead of spilling. */
-.wn5 .wn5-pts { flex-wrap:wrap; row-gap:4px; }
+/* The stops of a cell stay on ONE line at every width (density, owner 31/10; ≤1600 already did): a stop shrinks and
+   its name wraps inside it, «+N» stays beside its stops. Whole stops wrapping under each other made the row 62px and
+   left «+1» alone on a line (W44 at 1920). */
+.wn5 .wn5-pts { flex-wrap:nowrap; row-gap:4px; }
 /* Stops, the end of the cycle and the «Κενό γύρισμα» slot WRAP at every width (DESIGN.md #6: a company or place name is
    never cut; plan T5: «No text-overflow anywhere», at 1440 stops wrap to a second line). The wi4 block cuts
    .wi4-l1/.wi4-l2/.wi4-ell with a visible «…» (its one truncation rule); here that rule stays only on the 28px vehicle
    tile and the queue cards, whose full text is in title. Whole-frame fix round 1: r4 had gated this to min-width 1601 for
-   36px rows at 1440, which cut names; the 36px row against DESIGN.md #6 is an owner question, nothing is cut meanwhile.
-   The points' title attributes (whole stop) stay as extras. */
+   36px rows at 1440, which cut names; the 36px row against DESIGN.md #6 is an owner question. Since 28/10 the place
+   line of a point stops at two lines (rule below, owner); the points' title attributes (whole stop) carry the rest. */
 .wn5 :is(.wn5-pts, .wn5-end) :is(.wi4-l1, .wi4-l2), .wn5 .wn5-gapbox > .wi4-ell { white-space:normal; overflow:visible; text-overflow:clip; overflow-wrap:break-word; }
 /* ΦΟΡΤΩΣΗ (120px at 1440): the number and the place flow inline, so a place that does not fit beside its number
    goes whole to the next line instead of breaking mid-word («THESSALONI/KI», DESIGN.md #6 forbids the «…» on a place).
-   The break after the number comes from the l1's leading space; break-word stays only for a word wider than the cell. */
+   The number is inside the place line (since 28/10) and a space follows it; break-word stays only for a word wider
+   than the cell. */
 .wn5 .wn5-fl .wn5-pt { display:block; }
-.wn5 .wn5-fl .wn5-pt > .wi4-pt-n { display:inline-block; vertical-align:top; }
-.wn5 .wn5-fl .wn5-pt > .wi4-pt-n + .wi4-l1 { display:inline; }
-.wn5 .wn5-fl .wn5-pt > .wi4-pt-n + .wi4-l1::before { content:' '; }
+.wn5 .wn5-fl .wn5-pt > .wi4-l1 > .wi4-pt-n { display:inline-block; vertical-align:top; }
 .wn5 .wn5-fl .wn5-pt > .wi4-l2 { display:block; }
+/* Long names (owner 28/10, live test): a place name of four lines made its row twice as tall as its neighbours and
+   pushed the board apart. Over the «never cut» above, the owner's rule for the place line of a point: at most TWO
+   lines, then «…», the whole stop (place first) in the point's title — the Weekly International's way of keeping
+   the name readable on hover. Line 2 (city · window · pallets) is never cut. In ΦΟΡΤΩΣΗ the number is inside the
+   place line (modules/weekly_natl_v5.js _flHTML), so number + place stay one run and the run is what is clamped. */
+.wn5 .wn5-pts .wn5-pt > .wi4-l1 { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; white-space:normal; }
 /* ...and the points may use the cell's right 9px gutter: at 1440 the 102px content is 2px short of «1 THESSALONIKI»
    (14 + 3 + 87), which left the number alone on its line; the next column keeps its own 9px, so text never touches. */
 .wn5 .wn5-fl .wn5-pts { margin-right:-9px; }
-/* 164px: two stops + the 34px «+N» fit the 386px of a point column at 1920 (Figma: stops 178px apart, gap included). */
-.wn5 .wn5-pt { flex:0 1 164px; }
+/* Two stops + the 34px «+N» at 1920 (Figma: stops 178px apart, gap included). Since the density change (owner 31/10) a
+   point column is wider than two 164px stops: a stop takes its own width (a long place on one line instead of
+   wrapping inside 164px beside empty room) and shrinks only when the column is full; «+N» follows its stops, never
+   pushed to the column's far end beside ΠΑΛ. Two stops share the cell evenly (each at most half, so a long name never
+   squeezes its neighbour into three lines); a stop alone keeps the whole cell. */
+.wn5 .wn5-pt { flex:0 1 auto; max-width:50%; }
+.wn5 .wn5-pt:only-child { max-width:none; }
 /* A point with no number (a waiting VS, a single stop): its name starts at x0, flush with the numbers above — in the
    wi4 grid the empty number column still kept its 4px gap. */
 .wn5 .wn5-pt > .wi4-l1:first-child { grid-column:1 / -1; }
-/* Figma H1: the place after the client is smaller than the name (10.5 against 12) — grey-2, not lighter: grey-3 is
-   never information (2.6:1). The same for «· τέλος κύκλου» after «Βέροια» in ΠΡΟΣ, Medium there (2120:8885), as its
-   «ως Πέμ 22:00» line (2120:8886). */
-.wn5-endx { font-size:10.5px; font-weight:400; color:var(--wi4-grey-2); }
-.wn5-endx, .wn5 .wn5-end .wi4-l2 { font-weight:500; }
+/* «ως Πέμ 22:00» under «Βέροια» in ΠΡΟΣ: Medium (2120:8886); «· τέλος κύκλου» before it is gone (owner 31/10). */
+.wn5 .wn5-end .wi4-l2 { font-weight:500; }
 /* «+N» (Figma H1): a 22px chip, its figure centred, in the middle of the stop. */
 .wn5 .wn5-pts .wi4-more { flex:0 0 24px; width:24px; height:22px; display:grid; place-items:center; }
 .wn5 .wn5-pt > .wi4-l2 { font-weight:500; color:var(--wi4-grey-1); }   /* before the late rule: a late window stays amber */
@@ -9183,14 +9235,11 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 .wn5 .wn5-qc-k, .wn5 .wn5-qc-n { flex:none; }
 .wn5 .wn5-qc-cl { min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
 /* Narrower than the Figma 1920 frame (1440 with the sidebar open): the fixed tracks give way so the point columns keep
-   one whole stop + «+N» (ΑΝΑΘΕΣΗ stays 266px, owner 25/10); the long column notes go, the column names stay. */
+   one whole stop + «+N»; the long column notes go, the column names stay. */
 @media (max-width:1600px) {
-  .wn5 { --wn5-kpal-w:calc(50px + var(--wn5-kprt-gap)); --wn5-apal-w:50px; }
-  .wn5-cols, .wn5-row, .wn5-sub { grid-template-columns:48px 6px 70px 120px minmax(0,1fr) var(--wn5-kpal-w) 266px 16px 70px minmax(0,1fr) 156px var(--wn5-apal-w); }
-  .wn5-h-long { display:none; }
-  /* one stop per point column here (_visPts): it takes the column */
-  .wn5 .wn5-pts { flex-wrap:nowrap; }
-  .wn5 .wn5-pt { flex:1 1 auto; }
+  .wn5 { --wn5-idx:48px; --wn5-g1:6px; }
+  /* one stop per point column here (_visPts): it may take the whole column, «+N» right after it */
+  .wn5 .wn5-pt { max-width:none; }
   /* 48px band: the number and the 26px ✈ fit with 8px in front */
   .wn5 .wn5-c-idx { padding:0 4px 0 8px; }
 }
@@ -9244,19 +9293,31 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 /* Medium, not the shared .wi4-link 600 (2069:10418) */
 .wn5-snone > .wi4-link { flex:none; margin-left:auto; font-weight:500; }
 .wn5-snone[hidden], .wn5 .wn5-cols[hidden] { display:none; }
-/* Notices (Figma 2011:7745): one amber line, «ΕΙΔΟΠΟΙΗΣΕΙΣ · n», the DB's texts (the second one paler), «Σημείωσα ✓»
-   at the end; an answer that stopped it sits in the line as a small strip. */
-.wn5-notes { display:flex; flex-wrap:wrap; align-items:center; gap:4px 8px; min-height:34px; box-sizing:border-box; margin:0 0 8px; padding:7px 12px 7px 10px;
-  border:1px solid var(--wn5-note-line); border-radius:6px; background:var(--wn5-note-bg); font-size:12px; line-height:normal; color:var(--wi4-grey-1); }
-/* 2049:7797: «ΕΙΔΟΠΟΙΗΣΕΙΣ · 2» is one run, set like the day names (Syne SemiBold 12.5px, tracking .8px) */
-.wn5-notes-h { font:600 12.5px 'Syne',sans-serif; letter-spacing:.8px; color:var(--wn5-note-ink); }
-.wn5-notes-l { flex:1 1 auto; min-width:0; }
-/* 2049:7798/7799: the newest notice Medium 12px grey-1, the others Regular 11.5px grey-2 — its «(Π.Κ. 08:12)» in the same run */
-.wn5-note, .wn5-note-by { font-size:11.5px; color:var(--wi4-grey-2); }
-.wn5-note:first-child, .wn5-note:first-child + .wn5-note-by { font-size:12px; font-weight:500; color:var(--wi4-grey-1); }
+/* Notices (owner 31/10, over Figma 2011:7745's amber line): quiet, as the ΒΕΡΟΙΑ strip — white, the board's line,
+   ONE line whatever comes: the label, the newest order's line, «+N ακόμη ▾», «Σημείωσα όλες ✓». The label keeps the
+   amber ink (something to read), nothing else is coloured. The other orders unfold under it, one line each; a line
+   that does not fit ends in «…», whole in its title. */
+.wn5-notes { display:flex; flex-wrap:wrap; align-items:center; gap:0 10px; min-height:34px; box-sizing:border-box; margin:0 0 8px; padding:0 12px 0 10px;
+  border:1px solid var(--wi4-line-2); border-radius:6px; background:var(--surface-card); font-size:12px; line-height:normal; color:var(--wi4-grey-1); }
+.wn5-notes-h { flex:none; font:600 12.5px 'Syne',sans-serif; letter-spacing:.8px; color:var(--wn5-note-ink); }
+.wn5-notes-l { flex:1 1 0; min-width:0; display:flex; height:32px; align-items:center; }
+.wn5-note { display:flex; align-items:baseline; gap:0; min-width:0; flex:1 1 auto; white-space:nowrap; font-size:12px; color:var(--wi4-grey-1); }
+.wn5-note-who { flex:none; padding:0; border:0; background:none; font:inherit; font-weight:600; color:var(--wi4-ink); }
+button.wn5-note-who { color:var(--wi4-blue-ink); cursor:pointer; }
+.wn5-note-t { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.wn5-note-by { flex:none; font-size:11px; color:var(--wi4-grey-2); }
+.wn5-note-ok { flex:none; margin-left:auto; padding-left:12px; font-weight:500; }
+.wn5-notes-more { flex:none; font-weight:500; }
+.wn5-notes-rest { flex:0 0 100%; display:flex; flex-direction:column; border-top:1px solid var(--wi4-line); }
+.wn5-notes-rest[hidden] { display:none; }
+.wn5-notes-rest > .wn5-note { height:30px; align-items:center; }
+.wn5-notes-rest > .wn5-note + .wn5-note { border-top:1px solid var(--wi4-line); }
 .wn5-notes > .wn5-strip { min-height:0; margin:0; padding:2px 8px; }
-.wn5-notes > #wn5-note-read { margin-left:auto; font-weight:500; }   /* 2049:7801: Medium, not the shared .wi4-link 600 */
-.wn5-notes > #wn5-note-read:disabled { color:var(--wi4-grey-2); cursor:default; text-decoration:none; }
+.wn5-notes > #wn5-note-read { flex:none; font-weight:500; }   /* 2049:7801: Medium, not the shared .wi4-link 600 */
+.wn5-notes :is(#wn5-note-read, .wn5-note-ok):disabled { color:var(--wi4-grey-2); cursor:default; text-decoration:none; }
+/* F50 / a notice's link: the row in hand keeps a blue outline until the next paint, and flashes once */
+.wn5 .wn5-row.wn5-focus { outline:2px solid var(--wi4-blue); outline-offset:-2px; }
+.wn5 .wn5-row.wn5-flash { background:var(--wi4-sel); transition:background .2s; }
 /* ── National v5 actions (modules/wn5_actions.js, F4α T11): result strips and dialogs. Only tokens (one value, one
    source); no ellipsis and no silent nowrap cut (critics static ratchet). The strip itself is the rule above (Δ12
    fidelity of T3/T8: refusal/error red by default, warning amber, preview blue — Ε-6); T11 adds the amber answers a
@@ -9369,6 +9430,9 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 /* blue chips keep their 1px edge; the over-capacity chip is a flat amber fill (Δ1) */
 .wn5-cap { display:inline-block; font-size:10.5px; font-weight:500; line-height:14px; padding:2px 6px; border-radius:4px; background:var(--wi4-info-bg); border:1px solid var(--wi4-info-line); color:var(--wi4-info-ink); }
 .wn5-cap.over { background:var(--wi4-amber-bg); border-color:transparent; color:var(--wi4-amber); }
+/* the Veroia-day warning (F27/F33, code review of #171): its own chip — white with an amber edge — never the capacity's
+   filled amber «υπέρβαση», so a day warning is not read as an overload */
+.wn5-hubday { display:inline-block; font-size:10.5px; font-weight:500; line-height:14px; padding:2px 6px; border-radius:4px; background:var(--surface-card); border:1px solid var(--wi4-amber); color:var(--wi4-amber); }
 .wn5-flag-red { font-size:10.5px; font-weight:500; padding:2px 6px; border-radius:4px; background:var(--wi4-red-bg); color:var(--wi4-red); }
 .wn5-rate { width:66px; height:22px; padding:0 6px; border:1.5px solid var(--wi4-blue); border-radius:4px; font:inherit; font-size:11.5px; }
 .wn5-rate::placeholder { color:var(--wi4-grey-3); }
@@ -9376,6 +9440,7 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 .wn5-dlg .wn5-nw { white-space:nowrap; }   /* the rate field and its «€» never part */
 .wn5-eur { margin-left:4px; font-size:10.5px; font-weight:400; color:var(--wi4-grey-2); }   /* Δ1 2051:7846: 4px after the field, Regular 10.5 grey-2 */
 .wn5-more { display:flex; flex-wrap:wrap; gap:8px; align-items:flex-end; padding:6px 0 8px 192px; }   /* under the middle column: 24 + 176 + 8 − 16 */
+.wn5-more[hidden] { display:none; }   /* F48: goes with its truck's line when the search hides it */
 /* Δ1 vertical rhythm (Figma 2051:7735 metadata): a 44px header (pl 14 / pr 12, the 34px filter tray at y 5, title DM Sans
    SemiBold 13), then blocks that touch — band 30, search 40 (a 287×28 field at x 12, 12px text, so the whole placeholder
    fits), group header 26 (text at y 9, 14 tall), rows 40 with only their rule between them. The body's 8px flex gap would
@@ -9435,6 +9500,8 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 .wn5-pline { display:grid; grid-template-columns:150px max-content minmax(0,1fr) auto; align-items:center; gap:8px; min-height:40px; margin:0 -16px;
   padding:3px 12px 3px 24px; box-sizing:border-box; border-bottom:1px solid var(--wi4-line); }
 .wn5-pline[hidden] { display:none; }
+/* F32: the line(s) of the load just dropped on this cycle */
+.wn5-pline.wn5-pfocus { background:var(--wi4-info-bg); box-shadow:inset 3px 0 0 var(--wi4-blue); }
 .wn5-pline.wn5-na :is(.wn5-pl-who b, .wn5-pl-when b), .wn5-pline.wn5-na .wn5-pl-ro { color:var(--wi4-grey-3); }   /* read-only: place, window and «για την ΑΝΟΔΟ» greyed, city/pallets as usual (2011:10435-10443), no opacity on the line */
 .wn5-pline .wn5-pl-who b { font-size:12px; font-weight:500; color:var(--wi4-ink); }
 .wn5-pline .wn5-pl-when { white-space:nowrap; }
@@ -9787,6 +9854,15 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5f-day:not(.has) > .wn5f-dayt { color:var(--wi4-grey-3); }
 .wn5f-day > .form-input:focus + .wn5f-dayt { display:none; }
 .wn5f-day > .form-input:disabled + .wn5f-dayt { color:var(--wi4-grey-1); }
+/* The national order form (wn5_forms.js, live 28/10): the day is typed text — the native date input under the label
+   took a click on a segment that could not be seen (the year), so typing changed nothing visible. The native input is
+   only the picker behind the calendar button. The rules above stay for the handover window (wn5_handover.js). */
+.wn5f-day > .wn5f-dayx, .wn5f-day > .wn5f-dayx:not(:focus) { padding-right:26px; color:var(--wi4-ink); }
+.wn5f-day > .wn5f-dayx:disabled { color:var(--wi4-grey-1); }
+.wn5f-day > .wn5f-dayx.bad { border-color:var(--wi4-red); color:var(--wi4-red); }
+.wn5f-day > .wn5f-dayp { position:absolute; right:0; bottom:0; width:24px; height:100%; margin:0; padding:0; border:0; opacity:0; pointer-events:none; }
+.wn5f-day > .wn5f-dayc { position:absolute; top:0; bottom:0; right:3px; width:22px; padding:0; border:0; background:none; display:flex; align-items:center; justify-content:center; color:var(--wi4-grey-2); cursor:pointer; }
+.wn5f-day > .wn5f-dayc:disabled { cursor:default; color:var(--wi4-grey-3); }
 .wn5f-add { align-self:flex-start; height:26px; padding:0 9px; box-sizing:border-box; border:1px solid var(--wi4-ctl); border-radius:5px; background:var(--surface-card); font-size:12px; color:var(--wi4-grey-1); cursor:pointer; }
 .wn5f-adds { display:flex; gap:10px; }
 .wn5f-adds > .wn5f-add[hidden] { display:none; }
@@ -9812,6 +9888,10 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5f-msg:empty { display:none; }
 .wn5f-msg { padding:6px 10px; border-radius:6px; background:var(--wi4-red-bg); font-size:12px; color:var(--wi4-red); }
 .wn5f-done { padding:6px 10px; border-radius:6px; background:var(--wi4-partner); font-weight:600; color:var(--wi4-partner-ink); }
+/* A-7: «Στο RT-… ›» inside the saved line, back to the leg the point was added from */
+.wn5f-done .wn5f-lnk { padding:0 6px; line-height:18px; }
+/* F26: what a save still lacks, in red beside its button — WN5Act's one footer reason (Δ1 / Δ4 «Λείπει: …») */
+.wn5f-ft .wn5-why { font-size:12px; font-weight:500; color:var(--wi4-red); text-align:right; }
 /* the footer (2011:10013): note, then «Άκυρο» and the accent «Αποθήκευση», both 36px */
 .wn5f > .wn5f-ft { flex:none; height:64px; margin:0; padding:0 22px; gap:10px; align-items:center; box-sizing:border-box; border-top:1px solid var(--wi4-line-2); }
 .wn5f-ft-note { margin-right:auto; font-size:11.5px; color:var(--wi4-grey-2); }
@@ -9832,6 +9912,9 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5f-shipc { font-size:11px; color:var(--wi4-grey-2); }
 .wn5f-ship[data-rm] > span:first-child { text-decoration:line-through; color:var(--wi4-grey-3); }
 .wn5f-ship[data-rm] .form-input { opacity:.5; }
+/* F30: under a riding point, what its truck does there and «Αλλαγή ώρας στάσης ›» (the day panel of that stop) */
+.wn5f-shipstop { display:flex; flex-wrap:wrap; align-items:center; gap:2px 6px; margin-top:-3px; font-size:11px; color:var(--wi4-grey-2); }
+.wn5f-shipstop .wn5f-lnk { padding:0 6px; font-size:11px; line-height:18px; }
 .wn5f-ends { display:flex; align-items:center; gap:4px; min-width:0; }
 .wn5f-ends > .wn5f-loc { flex:1 1 0; min-width:0; }
 .wn5f-arr { flex:none; color:var(--wi4-grey-2); }
@@ -9850,6 +9933,9 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5f-c.vro { border-color:var(--wi4-line-2); background:var(--wi4-chip); color:var(--wi4-grey-2); }
 .wn5f-c.nro { background:var(--wi4-chip); color:var(--wi4-grey-1); }
 .wn5f-c.until { border-width:2px; line-height:30px; }
+/* F55: a VS point's day/window opens its stop's day panel — a box that answers a click, never a dead field */
+.wn5f-cbtn { font-family:inherit; text-align:left; cursor:pointer; }
+.wn5f-cbtn:hover, .wn5f-cbtn:focus-visible { border-color:var(--accent); }
 .wn5f-cwin { display:flex; align-items:center; gap:4px; }
 .wn5f-cwin > .wn5f-c { flex:none; width:71px; }
 .wn5f-lf { display:grid; grid-template-columns:minmax(0, 1fr) 128px 100px max-content; gap:12px; align-items:end; }
@@ -9861,8 +9947,10 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5f-leg .wn5f-sum-h { font-size:12.5px; }
 /* one grid shared by every row (subgrid): the ref column is 160 (Figma 2011:9574) but grows to the longest ref, so
    a stop with 3+ references (the Veroia load of a groupage leg) stays on one line and the columns stay aligned */
-.wn5f-leg .wn5f-seq { display:grid; grid-template-columns:14px 130px 230px minmax(160px, max-content) auto; gap:4px 8px; }
+.wn5f-leg .wn5f-seq { display:grid; grid-template-columns:14px 130px 230px minmax(160px, max-content) auto auto; gap:4px 8px; }
 .wn5f-leg .wn5f-seq li { grid-column:1 / -1; grid-template-columns:subgrid; }
+/* F29: «Αλλαγή ώρας ›» at the end of each stop line, inside the line's 22px */
+.wn5f-leg .wn5f-seq .wn5f-lnk { padding:0 6px; font-size:11.5px; line-height:18px; }
 .wn5-row [data-leg] { cursor:pointer; }
 .wn5f-vsday { display:flex; align-items:flex-end; gap:8px; }
 .wn5f-vsplace { display:grid; grid-template-columns:180px minmax(0, 1fr) 150px; gap:8px; align-items:center; padding-left:12px; }
@@ -9897,22 +9985,23 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
   --wn5-seg-intermediate-ink: var(--warn);
   --wn5-seg-final-ink:        var(--accent-text);
 }
-/* Two segments: 135 + 135 with a 4px overlap = the 266px column, 28px high, the row stays 36 (H1 2120:8904); the slant
-   is 8px over 28 (16°). Three (or more): 93 / 99 / 92 with 9px overlaps, 44px high (row 48), slant 13px over 44 (H3
-   2123:7847). The overlap is the slant less the 4px gap measured along the cut. */
-.wn5-tiles { display:flex; align-items:center; width:266px; min-width:0; }
+/* Two segments: two halves with a 4px overlap = the ΑΝΑΘΕΣΗ column (90 + 90 of 176 since 31/10; 135 + 135 of 266 in
+   H1 2120:8904), 28px high, the row stays 36; the slant is 8px over 28 (16°). Three (or more): 64 / 66 / 64 with 9px
+   overlaps = 176 (93 / 99 / 92 of 266 in H3 2123:7847), 44px high (row 48), slant 13px over 44; the words are cut with
+   «…» and whole in the tile's title. The overlap is the slant less the 4px gap measured along the cut. */
+.wn5-tiles { display:flex; align-items:center; width:var(--wn5-asg-w); min-width:0; }
 .wn5-tile { --s:8px; position:relative; flex:1 1 0; min-width:0; height:28px; display:flex; flex-direction:column; justify-content:center;
   padding:0 4px 0 15px; box-sizing:border-box; border:0; background:none; text-align:left; cursor:pointer; overflow:hidden; isolation:isolate;
   font-family:'DM Sans',sans-serif; clip-path:polygon(var(--s) 0, 100% 0, 100% 100%, 0 100%); }
-.wn5-tiles.n2 .wn5-tile { flex:none; width:135px; }
+.wn5-tiles.n2 .wn5-tile { flex:none; width:calc((var(--wn5-asg-w) + 4px) / 2); }
 .wn5-tiles.n2 .wn5-tile + .wn5-tile { margin-left:-4px; }
 .wn5-tiles:not(.n2) .wn5-tile { --s:13px; height:44px; padding:0 3px 0 20px; }
 .wn5-tiles:not(.n2) .wn5-tile + .wn5-tile { margin-left:-9px; }
 .wn5-tiles.n3 .wn5-tile { flex:none; }
 .wn5-tiles:not(.n2) .wn5-tile[data-label="initial"] { padding-left:9px; }
-.wn5-tiles.n3 .wn5-tile[data-label="initial"] { width:93px; }
-.wn5-tiles.n3 .wn5-tile[data-label="intermediate"] { width:99px; }
-.wn5-tiles.n3 .wn5-tile[data-label="final"] { width:92px; padding-left:21px; }
+.wn5-tiles.n3 .wn5-tile[data-label="initial"] { width:64px; }
+.wn5-tiles.n3 .wn5-tile[data-label="intermediate"] { width:66px; }
+.wn5-tiles.n3 .wn5-tile[data-label="final"] { width:64px; padding-left:21px; }
 /* A right side that slants keeps the slant + 3px clear (Figma 2123:8287: pr 3 inside the cut body). The 3-segment
    padding above (0,3,0) outranked the slant reserve below (0,2,0), so a long driver ran under the cut and clip-path
    sliced it mid-glyph instead of the ellipsis. The bottom line meets the cut at width − s; this rule (0,4,0) holds there. */
@@ -9944,6 +10033,13 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5-tl-1 { display:flex; align-items:baseline; gap:4px; min-width:0; }
 .wn5-tiles:not(.n2) .wn5-tl-1 { flex-direction:column; align-items:flex-start; gap:0; }
 .wn5-tl-l { flex:none; font-size:10px; line-height:13px; font-weight:700; letter-spacing:.3px; white-space:nowrap; }
+/* In the 176px column (density, owner 31/10) a tile of a 2- or 3-segment cycle is 90 / ~65px. Two segments: the
+   word ΑΡΧΙΚΟ / ΤΕΛΙΚΟ beside the plate left the plate «CB013…» (measured on W44); the plate is what is worked with,
+   so the word is not drawn there: the segment is told by its edge (straight grey = ΑΡΧΙΚΟ, slanted blue = ΤΕΛΙΚΟ)
+   and the word stays in the tile's text and title. Three segments: the word is on its own line and gives way with
+   «…» before the slanted cut («ΕΝΔ…»), never sliced by the clip. */
+.wn5-tl-l { min-width:0; max-width:100%; overflow:hidden; text-overflow:ellipsis; }
+.wn5-tiles.n2 .wn5-tl-l { display:none; }
 .wn5-tile[data-label="initial"] .wn5-tl-l { color:var(--wn5-seg-initial-ink); }
 .wn5-tile[data-label="intermediate"] .wn5-tl-l { color:var(--wn5-seg-intermediate-ink); }
 .wn5-tile[data-label="final"] .wn5-tl-l { color:var(--wn5-seg-final-ink); }
@@ -10311,3 +10407,132 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .loc-scan-geo-msg { color: var(--text-mid); }
 .loc-scan-form .loc-geo-link { background: none; border: none; padding: 0; font: inherit; font-weight: 600; color: var(--accent); cursor: pointer; }
 .loc-scan-form .loc-geo-link:hover { text-decoration: underline; }
+
+/* National v5 · the assignment form = the Weekly International form (owner 28/10 + 31/10, Figma 2394:7793,
+   modules/wn5_assign.js). The .wi-pop-* classes of #wi-popover give fields and section labels; this block fits
+   them into the v5 dialog shell (WN5Act._kit.dlg: Esc, strip, send) and draws what the International popover has
+   not: the «Ημέρα και παράθυρο» rows, the line of the vehicle, the red marks of a missing field. Values from the
+   frames' metadata (600 wide, header 12/16/8, body 12/16/8 with 12 between sections, fields 32 high, radius 6). */
+.wn5-dlg.wn5a { width:600px; padding:0; border-radius:6px; border-color:var(--border); font-size:12px;
+  box-shadow:0 8px 32px rgba(0,0,0,0.18),0 2px 8px rgba(0,0,0,0.1); }
+.wn5a > .wi4-dlg-hd { justify-content:flex-start; gap:8px; padding:12px 16px 8px; border-bottom:1px solid var(--border); background:var(--surface-card); }
+.wn5a .wi4-dlg-t { font:700 14px 'Syne',sans-serif; color:var(--text); white-space:nowrap; }
+.wn5a-sub { flex:1; min-width:0; font-size:12px; color:var(--text-mid); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.wn5a-side { flex:none; padding:2px 6px; border-radius:4px; background:var(--wi4-own); font:600 10.5px 'DM Sans',sans-serif; letter-spacing:.4px; color:var(--wi4-grey-1); }
+.wn5a .wi4-dlg-x { font-size:13px; color:var(--text-dim); }
+.wn5a > .wn5-dlg-msg { margin:8px 16px 0; }
+.wn5a > .wn5-dlg-b { margin-top:0; gap:0; font-size:12px; }
+.wn5a-body { padding:12px 16px 8px; }
+.wn5a-sec { display:flex; flex-direction:column; gap:8px; }
+.wn5a-sec:first-child { gap:6px; }
+.wn5a .wi-pop-section-lbl { color:var(--text-dim); }
+.wn5a .wi-pop-row { align-items:flex-start; }
+.wn5a-band { display:flex; align-items:center; gap:8px; padding:6px 16px; background:var(--surface-sunken); border-bottom:1px solid var(--border); font-size:11.5px; font-weight:600; color:var(--wi4-grey-1); }
+.wn5a-band > span { flex:1; }
+.wn5a-only { display:inline-flex; align-items:center; gap:6px; font-weight:400; color:var(--wi4-grey-2); cursor:pointer; }
+/* one row per stop: label · «όλη η ημέρα» | ώρες… — or the two hour fields */
+.wn5a-win { display:flex; align-items:center; gap:8px; min-height:28px; }
+.wn5a-wl { flex:1; min-width:0; font-size:12px; color:var(--wi4-grey-1); }
+.wn5a-wl.bad { color:var(--danger); font-weight:500; }
+.wn5a-wv { flex:none; font-size:12px; color:var(--wi4-grey-1); }
+.wn5a-all { height:28px; padding:0 10px; border:1px solid var(--border); border-radius:6px; background:var(--surface-card); font:500 11.5px 'DM Sans',sans-serif; color:var(--wi4-grey-2); cursor:pointer; }
+.wn5a-all.on { background:var(--wn5-info-bg); border-color:var(--wn5-info-line); color:var(--accent-text); font-weight:600; }
+.wn5a-hrs { padding:0; border:0; background:none; font:500 11.5px 'DM Sans',sans-serif; color:var(--accent-text); cursor:pointer; }
+.wn5a .wn5a-hm { width:64px; flex:none; }
+.wn5a-dash { color:var(--wi4-grey-2); }
+.wn5a-werr { margin-top:-4px; font:500 11px/14px 'DM Sans',sans-serif; color:var(--danger); }
+/* fields: the International dropdown, 32 high, with the ▾ inside and a line of availability under it */
+.wn5a-f { gap:3px; }
+.wn5a-rate { flex:0 0 130px; }
+.wn5a-sd { position:relative; display:block; }
+.wn5a .wn5a-in { padding-right:22px; }
+.wn5a-mono { font-family:'DM Mono',ui-monospace,SFMono-Regular,Menlo,monospace; font-weight:500; }
+.wn5a-car { position:absolute; right:8px; top:50%; transform:translateY(-50%); font-size:11px; color:var(--text-dim); pointer-events:none; }
+.wn5a-av { min-height:14px; font:400 11px/14px 'DM Sans',sans-serif; color:var(--wi4-grey-2); }
+.wn5a-av:empty { display:none; }
+.wn5a-av.free { color:var(--ok); }
+.wn5a-av.busy { color:var(--wi4-amber); }
+.wn5a-av.bad { color:var(--danger); font-weight:500; }
+.wn5a-bad > .wi-pop-lbl { color:var(--danger); }
+.wn5a .wi-pop-inp.bad, .wn5a-bad .wi-pop-inp { border:1.5px solid var(--danger); }
+.wn5a .wi-pop-inp:disabled { color:var(--wi4-grey-2); }
+/* the list of a field: fixed under it (the popover scrolls), the look of the International .wi-sdl / .wi-sdo — its own
+   classes, because weekly_intl.js hides every .wi-sdl and takes every .wi-sdo click of the page */
+.wn5a-list { position:fixed; z-index:var(--z-top); max-height:260px; overflow-y:auto; background:var(--bg-card); border:1px solid var(--border-mid);
+  border-radius:var(--radius); box-shadow:0 6px 24px rgba(0,0,0,0.12); }
+.wn5a-o { padding:6px 10px; font-size:var(--text-xs); cursor:pointer; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.wn5a-o:hover, .wn5a-o.hi { background:var(--bg-hover); }
+/* the 561/2006 foot note: the International popover's .wi2-sd-note lives in weekly_intl.js, absent on this page */
+.wn5a-lnote { padding:4px 12px; font-size:11px; color:var(--text-dim); background:var(--surface-sunken); white-space:normal; }
+.wn5a-osub.free { color:var(--ok); }
+.wn5a-osub.dim { color:var(--wi4-grey-2); }
+.wn5a-none { padding:6px 10px; font-size:var(--text-xs); color:var(--text-dim); }
+/* the line of the vehicle: «ΚΖΗ 2108 · Δευ 12/10» and «12 → 24/33»; over 33 the number red, never a refusal (F31) */
+.wn5a-line { display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:6px; background:var(--surface-sunken); }
+.wn5a-lt { flex:1; min-width:0; font:600 12px 'DM Sans',sans-serif; color:var(--wi4-ink); }
+.wn5a-note { flex:none; font:500 11px 'DM Sans',sans-serif; color:var(--wi4-amber); }
+.wn5a-alt { flex:none; padding:0; border:0; background:none; font:500 11.5px 'DM Sans',sans-serif; color:var(--accent-text); cursor:pointer; }
+.wn5a-cap { flex:none; padding:2px 6px; border:1px solid var(--wn5-info-line); border-radius:4px; background:var(--wn5-info-bg); font:500 10.5px/14px 'DM Sans',sans-serif; color:var(--accent-text); }
+.wn5a-cap.over { border-color:var(--wi4-red-line); background:var(--wi4-red-bg); color:var(--danger); }
+/* footer: «Λείπει: …» in red beside the one dark button (#160) */
+.wn5a > .wi4-dlg-ft { align-items:center; gap:12px; margin:0; padding:12px 16px; border-top:1px solid var(--border); }
+.wn5a-miss { flex:1; min-width:0; text-align:right; font:500 12px 'DM Sans',sans-serif; color:var(--danger); }
+.wn5a .wi-pop-save { background:var(--wi4-ink); }
+.wn5a .wi-pop-save:hover { background:var(--navy-light); }
+/* «Αλλαγή οχήματος…» (Figma 2396:7888): the vehicles so far, plates and hours */
+.wn5h-erow { display:flex; align-items:center; gap:16px; min-height:36px; margin-top:8px; padding:0 14px 0 0; border-radius:6px; background:var(--surface-sunken); box-shadow:inset 3px 0 0 var(--wn5-seg-initial); }
+.wn5h-erow.next { box-shadow:inset 3px 0 0 var(--wn5-seg-final); }
+.wn5h-erow > .wn5h-pl { flex:0 0 108px; margin-left:8px; padding:4px 10px; border-radius:5px; background:var(--wi4-own); }
+.wn5h-erow.par > .wn5h-pl { background:var(--wi4-partner); font-family:'DM Sans',sans-serif; color:var(--wi4-partner-ink); }
+.wn5h-erow > span { font-size:12px; color:var(--wi4-grey-1); }
+/* National v5 · Veroia board v2 (Figma 2383:7736, owner 31/10 «εστίαση στη δημιουργία νέων φορτίων»): the list by day
+   with a red «αργό» chip, a checkbox per row, «⋯» for «Σπάσε…», and «Νέο φορτίο» on the right. */
+.wn5-hub-panel.v2 { max-height:none; }
+.wn5-hub-panel.v2 .wn5-hub-l { flex:1 1 58%; max-height:min(520px, 60vh); overflow-y:auto; }
+.wn5-hub-panel.v2 .wn5-hub-r { flex:1 1 42%; }
+.wn5-hub-late { flex:none; margin-left:8px; padding:1px 6px; border-radius:4px; background:var(--wi4-red-bg); border:1px solid var(--wi4-red-line); font-size:10.5px; font-weight:500; line-height:14px; color:var(--danger); }
+.wn5-hub-ck { flex:none; margin:0; width:14px; height:14px; accent-color:var(--wi4-blue); cursor:pointer; }
+.wn5-hub-it.on { background:var(--wn5-info-bg); }
+.wn5-hub .wn5-hub-more { padding:0 7px; font-weight:700; letter-spacing:1px; }
+.wn5-hub-pop { position:fixed; z-index:var(--z-top); min-width:160px; max-width:360px; max-height:300px; overflow-y:auto; padding:4px 0; background:var(--surface-card);
+  border:1px solid var(--wi4-line-2); border-radius:8px; box-shadow:0 8px 24px rgba(11,25,41,.14); font-family:'DM Sans',sans-serif; }
+.wn5-hub-pi { display:flex; flex-direction:column; align-items:flex-start; gap:1px; width:100%; padding:6px 12px; border:0; background:none; text-align:left; font-size:12px; color:var(--wi4-ink); cursor:pointer; }
+.wn5-hub-pi:hover { background:var(--wi4-hover); }
+.wn5-hub-pi > span { font-size:11px; color:var(--wi4-grey-2); }
+.wn5-hub-pe { padding:6px 12px; font-size:12px; color:var(--wi4-grey-2); }
+/* «Νέο φορτίο» */
+.wn5-nf { display:flex; flex-direction:column; gap:8px; padding:10px 14px 12px; font-size:12px; color:var(--wi4-grey-1); }
+.wn5-nf-hd { display:flex; align-items:center; gap:8px; }
+.wn5-nf-t, .wn5-nf-sec { font:600 10.5px 'DM Sans',sans-serif; letter-spacing:1.2px; color:var(--wi4-grey-2); }
+.wn5-nf-sec { margin-top:4px; }
+.wn5-nf-n { font-size:11.5px; font-weight:500; color:var(--accent-text); }
+.wn5-nf-empty { margin:0; }
+.wn5-nf-row { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.wn5-nf-l { font-size:12px; color:var(--wi4-grey-2); }
+.wn5-nf-day { height:28px; padding:0 8px; border:1px solid var(--wi4-ctl); border-radius:6px; background:var(--surface-card); font:500 12px 'DM Sans',sans-serif; color:var(--wi4-ink); }
+.wn5-nf .wn5a-hm { width:64px; height:28px; }
+.wn5-nf-note { align-self:flex-start; padding:2px 6px; border-radius:4px; background:var(--wn5-note-bg); border:1px solid var(--wn5-note-line); font-size:11px; font-weight:500; color:var(--wn5-note-ink); }
+.wn5-nf-it { display:flex; align-items:center; gap:8px; min-height:28px; border-bottom:1px solid var(--wi4-line); }
+.wn5-nf-it > b { font-weight:600; color:var(--wi4-ink); }
+.wn5-nf-it > span:not(.wn5-hub-sp):not(.wn5-hub-p) { font-size:11px; color:var(--wi4-grey-2); }
+.wn5-nf-x { font-size:14px; line-height:1; color:var(--wi4-grey-2); }
+.wn5-nf-add { align-self:flex-start; font-size:12px; font-weight:500; color:var(--accent-text); }
+.wn5-nf-order { padding:8px 10px; border-radius:6px; background:var(--wn5-info-bg); border:1px solid var(--wn5-info-line); font-size:11.5px; color:var(--wi4-grey-1); display:flex; flex-direction:column; gap:2px; }
+.wn5-nf-order b.ok, .wn5-nf-order span.ok { color:var(--ok); font-weight:600; }
+.wn5-nf-order b.over { color:var(--danger); font-weight:600; }
+.wn5-nf-order span.warn { color:var(--wi4-amber); font-weight:600; }
+.wn5-nf-truck { display:flex; align-items:center; gap:10px; min-height:44px; padding:4px 10px; border:1.5px solid var(--wi4-blue); border-radius:6px; background:var(--wn5-info-bg); }
+.wn5-nf-tb { display:flex; flex-direction:column; padding:3px 8px; border-radius:5px; background:var(--wi4-own); }
+.wn5-nf-tb > b { font-size:12px; color:var(--wi4-ink); }
+.wn5-nf-tb > span { font-size:11px; color:var(--wi4-grey-2); }
+.wn5-nf-av { font-size:11.5px; color:var(--ok); }
+.wn5-nf-ch { font-size:12px; font-weight:600; color:var(--accent-text); }
+.wn5-nf .wn5-nf-pick { align-self:flex-start; height:28px; }
+.wn5-nf-msg:empty { display:none; }
+.wn5-nf-ft { display:flex; align-items:center; justify-content:flex-end; gap:8px; margin-top:4px; }
+/* F51 / F61: «στο ίδιο φορτίο» | «νέο φορτίο» of a truck that already runs that day; F56: a suggested trailer / driver */
+.wn5a-opts { flex:none; display:inline-flex; gap:2px; padding:2px; border-radius:6px; background:var(--surface-card); border:1px solid var(--border); }
+.wn5a-opt { height:22px; padding:0 8px; border:0; border-radius:4px; background:none; font:500 11px 'DM Sans',sans-serif; color:var(--wi4-grey-2); cursor:pointer; }
+.wn5a-opt.on { background:var(--wi4-ink); color:var(--surface-card); }
+.wn5a-sugg .wi-pop-inp:not(:focus) { border-style:dashed; border-color:var(--wn5-info-line); background:var(--wn5-info-bg); }
+.wn5a-av.sugg { color:var(--accent-text); }

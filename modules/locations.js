@@ -460,7 +460,7 @@ function _locFormHTML(f) {
   </div>
   <div class="form-field span-2 loc-geo-row">
     <button class="loc-geo-link" id="locGeoBtn">Εύρεση συντεταγμένων</button>
-    <span class="loc-geo-caption">γεωκωδικοποίηση από Name + City + Country</span>
+    <span class="loc-geo-caption">από τη διεύθυνση, αλλιώς από όνομα + πόλη</span>
   </div>
 </div>`;
 }
@@ -504,6 +504,9 @@ async function _locSave() {
       ? await atPatch(TABLES.LOCATIONS, LOC.editingId, fields)
       : await atCreate(TABLES.LOCATIONS, fields);
     if (data.error) throw new Error(data.error.message || 'Η αποθήκευση απέτυχε');
+    // F52: the order forms' pickers see the new / renamed place without a reload — never an offline-queued one, whose
+    // temporary id no order may point at (as locScanSave below, code review)
+    if (typeof fhLocationSaved === 'function' && !data._offline && !String(data.id || '').startsWith('offline_')) fhLocationSaved(data);
     if (LOC.editingId) {
       const idx = LOC.records.findIndex(r => r.id === LOC.editingId);
       if (idx !== -1) LOC.records[idx] = data;
@@ -523,27 +526,42 @@ async function _locSave() {
   }
 }
 
+// F18 (owner 28/10): the ADDRESS first, then name + city. OpenStreetMap rarely knows a client's company name, so the
+// name search found nothing for one of the two places created in the live test and the place stayed without a pin,
+// although its street address was typed in the form. ONE rule with the scan (_locGeoTries below): the address try
+// must hit a house number, no try takes a town, road or postcode area. The person is told WHICH search matched and
+// what OpenStreetMap found, so a pin from the name is never taken for the address's, and a search that never ran
+// (network, rate limit) is never reported as «nothing found» (principle 1). The fields stay editable.
 async function _locGeocode() {
   const name    = document.getElementById('locF_name')?.value.trim();
   const city    = document.getElementById('locF_city')?.value.trim();
   const country = document.getElementById('locF_country')?.value.trim();
+  const address = document.getElementById('locF_address')?.value.trim();
   // The select now stores the ISO code (GR), not free text (Greece) — Nominatim's
   // free-text q= matches the full country name far more reliably than a bare code.
   const countryQ = country && typeof countryName === 'function' ? countryName(country, 'en') : country;
-  const q = [name, city, countryQ].filter(Boolean).join(', ');
-  if (!q) { toast('Συμπλήρωσε πρώτα όνομα ή πόλη', 'danger'); return; }
+  const tries = [
+    { by: 'τη διεύθυνση', q: address ? [address, city, countryQ] : [], house: true },
+    // without a name, «city, country» can only answer the town, which no try takes: not asked (as the scan)
+    { by: 'όνομα + πόλη', q: name ? [name, city, countryQ] : [], house: false },
+  ].filter((t) => t.q.length);
+  if (!tries.length) { toast('Συμπλήρωσε πρώτα διεύθυνση ή όνομα', 'danger'); return; }
   const btn = document.getElementById('locGeoBtn');
   if (btn) { btn.textContent = 'Αναζήτηση…'; btn.disabled = true; }
   try {
-    const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1`);
-    const d = await r.json();
-    if (d[0]) {
-      document.getElementById('locF_lat').value = parseFloat(d[0].lat).toFixed(6);
-      document.getElementById('locF_lon').value = parseFloat(d[0].lon).toFixed(6);
-      toast('Οι συντεταγμένες συμπληρώθηκαν ✓', 'success');
-    } else { toast('Δεν βρέθηκε αποτέλεσμα', 'danger'); }
-  } catch (e) { toast('Η γεωκωδικοποίηση απέτυχε', 'danger'); }
-  finally { if (btn) { btn.textContent = 'Εύρεση συντεταγμένων από όνομα + πόλη'; btn.disabled = false; } }
+    const r = await _locGeoTries(tries);
+    if (r.hit) {
+      document.getElementById('locF_lat').value = r.hit.lat.toFixed(6);
+      document.getElementById('locF_lon').value = r.hit.lon.toFixed(6);
+      // OpenStreetMap text is anybody's: escaped, toast() writes its message as HTML
+      const found = escapeHtml(r.hit.found.split(',').slice(0, 3).join(','));
+      toast(`Οι συντεταγμένες βρέθηκαν από ${r.by}${found ? ': ' + found : ''} — έλεγξέ τες στον χάρτη`, r.by === tries[0].by && tries[0].house ? 'success' : 'warn');
+    } else if (r.failed.length === tries.length) toast('Η γεωκωδικοποίηση απέτυχε', 'danger');
+    else {
+      const ran = tries.map((t) => t.by).filter((by) => !r.failed.includes(by));
+      toast(`Δεν βρέθηκε αποτέλεσμα (${ran.join(', ')})${r.failed.length ? ` · η αναζήτηση με ${r.failed.join(', ')} δεν ολοκληρώθηκε — δοκίμασε ξανά` : ''}`, 'danger');
+    }
+  } finally { if (btn) { btn.textContent = 'Εύρεση συντεταγμένων'; btn.disabled = false; } }
 }
 
 // ── New place from an order scan (T44, walkthrough item 16) ──────────────────
@@ -567,9 +585,9 @@ const _LOC_GEO_VAGUE = new Set(['city', 'town', 'village', 'hamlet', 'municipali
 
 /**
  * Nominatim lookup → {lat, lon, found} or null (found = the address
- * OpenStreetMap matched); never throws, never waits more than 4 s per try. Tries name + city + country
- * (what the form's «Εύρεση συντεταγμένων» sends), then the street address +
- * city + country: OpenStreetMap rarely knows a client's company name, but a
+ * OpenStreetMap matched); never throws, never waits more than 4 s per try. Tries name + city + country,
+ * then the street address + city + country (the form's «Εύρεση συντεταγμένων» tries the address first, F18):
+ * OpenStreetMap rarely knows a client's company name, but a
  * scanned document usually carries the address. A hit that is only a town,
  * a road or a postcode area is refused, and the address try must have a
  * house number (measured 16/10: «Odos 5, 41222, Larisa» returned the Larisa
@@ -578,23 +596,39 @@ const _LOC_GEO_VAGUE = new Set(['city', 'town', 'village', 'hamlet', 'municipali
 async function _locGeocodeQuery(name, city, country, address) {
   const countryQ = country && typeof countryName === 'function' ? countryName(country, 'en') : country;
   const tries = [
-    { q: [name, city, countryQ], house: false },
-    { q: address ? [address, city, countryQ] : [], house: true },
+    { by: 'name', q: [name, city, countryQ], house: false },
+    { by: 'address', q: address ? [address, city, countryQ] : [], house: true },
   ].filter((t) => t.q[0]);
+  return (await _locGeoTries(tries)).hit;
+}
+// The ONE try loop of both geocoders (code review 28/10: the form had its own, with another rule). tries: [{by, q,
+// house}] in order → {hit: {lat, lon, found}, by} or {hit: null, failed: [by of every try that got no answer]}.
+// A hit with a house number is an address (an OSM address node comes as class «place», type «house»); without one,
+// a town, road, postcode area or boundary is refused, and a try that wants a house (the address) refuses it too.
+async function _locGeoTries(tries) {
+  const failed = [];
+  let asked = false;
   for (const t of tries) {
+    let hit = null;
+    // Nominatim allows one request a second: the second try waits, or it is the one rate-limited
+    if (asked) await new Promise((r) => setTimeout(r, 1000));
+    asked = true;
     try {
       const q = t.q.filter(Boolean).join(', ');
       const opt = typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? { signal: AbortSignal.timeout(4000) } : {};
       const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1&addressdetails=1`, opt);
+      // a 429 / 5xx with a JSON body is a search that did not run, never «nothing found»
+      if (!r.ok) throw new Error('nominatim ' + r.status);
       const d = await r.json();
-      const hit = d && d[0];
-      if (!hit) continue;
-      if (_LOC_GEO_VAGUE.has(hit.addresstype) || hit.class === 'boundary' || hit.class === 'place' || hit.class === 'highway') continue;
-      if (t.house && !(hit.address && hit.address.house_number)) continue;
-      return { lat: +parseFloat(hit.lat).toFixed(6), lon: +parseFloat(hit.lon).toFixed(6), found: String(hit.display_name || '') };
-    } catch (e) { /* timeout, network or rate limit: try the next form, else no pin */ }
+      hit = d && d[0];
+    } catch (e) { failed.push(t.by); continue; }   // timeout, network or rate limit: the next try, else no pin
+    if (!hit) continue;
+    const house = !!(hit.address && hit.address.house_number);
+    if (t.house && !house) continue;
+    if (!house && (_LOC_GEO_VAGUE.has(hit.addresstype) || hit.class === 'boundary' || hit.class === 'place' || hit.class === 'highway')) continue;
+    return { hit: { lat: +parseFloat(hit.lat).toFixed(6), lon: +parseFloat(hit.lon).toFixed(6), found: String(hit.display_name || '') }, by: t.by };
   }
-  return null;
+  return { hit: null, failed };
 }
 
 /**
@@ -727,7 +761,7 @@ async function locScanSave(uid) {
       geo = { lat: la, lon: lo };
     }
     // The label the order form's pickers use (core/form-helpers.js fhLoadLocations).
-    const label = [name, city, typeof countryName === 'function' ? countryName(country) : country].filter(Boolean).join(', ');
+    const label = _fhLocLabel({ Name: name, City: city, Country: country });
     const same = _locScanExisting(label, address);
     if (same) { _locScanLinked(uid, ctx, same, 'Υπάρχει ήδη αυτή η τοποθεσία, συνδέθηκε με τη στάση', 'info'); return; }
     const pkey = _fhNorm(label) + '|' + _fhNorm(address);
@@ -747,9 +781,9 @@ async function locScanSave(uid) {
         }
         const item = { id: rec.id, label };
         // The pickers read this shared list; without the push the stop could
-        // not be picked in the order form until the next reload.
-        _fhLocationsArr.push(item);
-        _fhLocationsMap[rec.id] = label;
+        // not be picked in the order form until the next reload. The fields
+        // sent give the same label (core/form-helpers.js fhLocationSaved, F52).
+        fhLocationSaved({ id: rec.id, fields });
         // atCreate cleared every reference list (trucks … locations, clients);
         // the next scan matches against them, so they are read again now.
         if (typeof preloadReferenceData === 'function') {

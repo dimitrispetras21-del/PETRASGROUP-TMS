@@ -13,8 +13,8 @@
 //  5. No role gate (owner 10/10, Δ12 tile 8 «η οθόνη δεν κρύβει κουμπιά»): every role sees every button; the
 //     Worker's 403 speaks in the strip.
 //  6. Colours only through classes of assets/style.css (critics unit weekly_natl_v5: hex 0).
-//  7. Until day L the Worker answers every non-dry write 409 writes_closed (PLAN_WRITES_OPEN = false). The first
-//     such answer becomes a «ΠΡΟΕΠΙΣΚΟΠΗΣΗ» strip and locks every save button for the session (Ε-6); dry runs
+//  7. Writes are open since day L (Worker PLAN_WRITES_OPEN = true, 28/10). A 409 writes_closed (a Worker rolled back
+//     to before L) still becomes a «ΠΡΟΕΠΙΣΚΟΠΗΣΗ» strip and locks every save button for the session (Ε-6); dry runs
 //     and reads stay open.
 (function () {
   'use strict';
@@ -53,12 +53,61 @@
   // whose message (the Worker's own words, PLAN_RULE_TEXT) asks for «ανανέωσε». Read from the message, not from a
   // list of codes here: a second list of the Worker's codes would drift (principle 3).
   const _wantsReread = (x, kind) => kind === 'stale' || /ανανέωσε/i.test(String(x.message || ''));
+  // The pair the base would refuse: the cycle's live stops plus the request's new ones, sorted as 072 plan_h_reseq
+  // sorts them; the first stop that starts before an earlier one of the other side. null = in order (or no cycle).
+  function _orderPair(c, stops) {
+    if (!c || !Array.isArray(stops)) return null;
+    const all = (c.stops || []).map((s) => ({ side: s.side, loc: s.location_id, name: s.location, from: s.planned_from, to: s.planned_to, isNew: false }));
+    for (const s of stops) if (s && s.stop_id == null && s.planned_from) all.push({ side: s.side, loc: s.location_id, from: s.planned_from, to: s.planned_to, isNew: true });
+    all.sort((a, b) => (a.side === 'ANODOS') - (b.side === 'ANODOS') || new Date(a.from) - new Date(b.from));
+    let top = null;
+    for (const s of all) {
+      if (top && new Date(s.from) < new Date(top.from)) return s.side !== top.side ? [s, top] : null;
+      if (!top || new Date(s.from) > new Date(top.from)) top = s;
+    }
+    return null;
+  }
+  // the words of a pair: which stop, before which, in which cycle, and what to do
+  function _orderText(pair, code) {
+    const hub = _hubId();
+    const when = (s) => _dayShort(_ymdOf(s.from)) + ' ' + (s.to && _allDay(s.from, s.to) ? 'όλη η ημέρα' : _hm(s.from));
+    const name = (s) => '«' + (s.loc === hub ? 'Βέροια' : s.name || _placeName(s.loc)) + ' ' + when(s) + '»';
+    const [late, first] = pair;
+    const tag = (s) => (s.side === 'ANODOS' ? 'ΑΝΟΔΟΣ' : 'ΚΑΘΟΔΟΣ') + (s.isNew ? ', νέα' : '');
+    return 'Η στάση ' + name(late) + ' (' + tag(late) + ') θα ήταν πριν από τη ' + name(first) + ' (' + tag(first) + ')' + (code ? ' στο ' + code : '')
+      + ': η ΑΝΟΔΟΣ αρχίζει μετά την ΚΑΘΟΔΟ. '
+      + (late.isNew ? 'Βάλε την ' + name(late) + ' από ' + _dayShort(_ymdOf(first.from)) + ' ' + _hm(first.from) + ' και μετά, ή διάλεξε άλλον κύκλο.'
+        : first.isNew ? 'Βάλε τη ' + name(first) + ' πριν από ' + _dayShort(_ymdOf(late.from)) + ' ' + _hm(late.from) + ', ή διάλεξε άλλον κύκλο.'
+        : 'Άλλαξε την ώρα μιας από τις δύο («Αλλαγή ώρας ›»), ή διάλεξε άλλον κύκλο.');
+  }
+  // code review: the same words BEFORE the press, beside the save of Δ1 / «+» (red, the button stays on: the base is
+  // the judge, and a stale board must not block a save it would take)
+  const _orderWarn = (c, req) => { const p = req && !req.missing && req.body ? _orderPair(c, req.body.stops) : null; return p ? _orderText(p, c && c.code) : null; };
+  // F33 (owner 28/10): stop_order (071 plan_rt_problem) said as «which stop, and what to do». The Worker sends the code
+  // and the cycle's id in brackets («… σε χρονική σειρά (305)»), which named neither. The base sorts a cycle's stops
+  // ΚΑΘΟΔΟΣ first, then by planned_from (072 plan_h_reseq), so the refusal is always a stop of the ΑΝΟΔΟΣ that starts
+  // before one of the ΚΑΘΟΔΟΣ. The pair is rebuilt here from the cycle on the board plus the new stops of the request
+  // (req.body.stops); without them the text still names the cycle and the rule, never the bare id.
+  function _orderErr(e, req) {
+    if (!e || Array.isArray(e) || e.code !== 'stop_order' || e._said) return e;
+    const body = (req && req.body) || {};
+    const m = /\((\d+)\)\s*$/.exec(String(e.message || ''));
+    const rtId = _id(body.target && body.target.rt_id) || _id(m && m[1]);
+    const c = rtId ? _cycle(rtId) : null;
+    const code = c && c.code ? c.code : null;
+    const pair = _orderPair(c, body.stops);
+    const msg = pair ? _orderText(pair, code)
+      : 'Οι στάσεις ' + (code ? 'του ' + code : 'του δρομολογίου') + ' δεν θα ήταν σε χρονική σειρά: μια στάση της ΑΝΟΔΟΥ θα ήταν πριν από στάση της ΚΑΘΟΔΟΥ (η ΑΝΟΔΟΣ αρχίζει μετά την ΚΑΘΟΔΟ). '
+        + 'Άλλαξε την ημέρα ή την ώρα της, ή διάλεξε άλλον κύκλο.';
+    return Object.assign({}, e, { kind: e.kind, code: e.code, message: msg, _said: true });
+  }
 
   WN5Act.strip = function strip(hostEl, x) {
     if (!hostEl) return null;
     for (const old of hostEl.querySelectorAll(':scope > .wn5-strip')) old.remove();
     if (x == null || (Array.isArray(x) && !x.length)) return null;
     if (x && x._sessionGone) return null;            // the session flow (core/api.js) already took the page
+    x = _orderErr(x);                                // F33: a stop_order names its stop (a caller with the request names it better)
     const el = document.createElement('div');
     el.className = 'wn5-strip';
     el.setAttribute('role', 'status');
@@ -221,6 +270,11 @@
     opts = opts || {};
     let fresh = true;
     if (!opts.reloaded && typeof WN5 !== 'undefined') fresh = !!(await WN5.reload('save'));
+    // F50 (owner 31/10): the rows renumber per truck after a save, so the cycle just saved can land elsewhere on the
+    // board — it is found again by its id and shown (scrolled into view, marked, flashed once), as the Weekly
+    // International's focusRow. Only on a fresh board: on a stale one its place is the old one.
+    const rt = _id(opts.rt) || _id(out && out.ids && out.ids.rt_id);
+    if (fresh && rt && typeof WN5 !== 'undefined' && typeof WN5.focusRow === 'function') WN5.focusRow('rt:' + rt);
     const host = _boardHost();
     // after a save the over_33 line names the vehicle (Δ12 tile 7): the cycle's truck or partner, from the board just read
     if (host && out && Array.isArray(out.warnings) && out.warnings.length) WN5Act.strip(host, out.warnings.map(_savedOn));
@@ -231,6 +285,9 @@
     if (typeof toast === 'function') toast(said + intl + (fresh ? '' : ' · ο πίνακας δεν ανανεώθηκε — πάτα Ανανέωση'), fresh ? 'success' : 'warn');
   }
 
+  // F50: the cycle a request names (a «+», an assign or a move to a cycle, a PATCH of one); a new cycle's id comes in
+  // the answer (_afterSave reads ids.rt_id)
+  function _reqRt(req) { return _id(req && req.body && req.body.target && req.body.target.rt_id) || _id((/^\/plan\/rt\/(\d+)/.exec((req && req.path) || '') || [])[1]); }
   // One send of a dialog. req = { method, path, body, requestId? }.
   // opts = { slot (PlanApi.slot of a creation), onReused (pred for WN5.findAfterReuse), intl }
   async function _send(d, req, okText, opts) {
@@ -250,11 +307,13 @@
         if (hit) {
           if (opts.slot) opts.slot.confirm();
           _close(d);
-          await _afterSave({ warnings: [], notice_ids: [] }, (typeof okText === 'function' ? okText({}) : okText) + ' (είχε ήδη σταλεί)', { reloaded: true });
+          // F50 here too: the board was re-read by findAfterReuse; the cycle the request names is shown
+          const rt0 = _reqRt(req);
+          await _afterSave({ warnings: [], notice_ids: [] }, (typeof okText === 'function' ? okText({}) : okText) + ' (είχε ήδη σταλεί)', { reloaded: true, rt: rt0 });
           return hit;
         }
       }
-      WN5Act.strip(d.msg, e);
+      WN5Act.strip(d.msg, _orderErr(e, req));
       // A request_reused the board does not show (the record lies in another week, or the form was edited after a
       // plan_unknown): the SAME slot id would answer request_reused on every press — a dead end. The Worker's strip
       // says where to look; the save stays locked until the window closes (a new window = a new request_id).
@@ -264,7 +323,8 @@
     }
     if (opts.slot) opts.slot.confirm();      // a new request_id only after a confirmed 200 (replayed included)
     _close(d);
-    await _afterSave(out, okText, { intl: opts.intl });
+    const rt = _reqRt(req);
+    await _afterSave(out, okText, { intl: opts.intl, rt });
     return out;
   }
 
@@ -338,6 +398,7 @@
     ask: _askDialog,
     // a failure: inside the open two-step dialog, else on the caller's host, else on the board
     fail(s, e) {
+      e = _orderErr(e, s);
       if (_ask && !_ask.d.closed) { _ask.d.busy = false; WN5Act.strip(_ask.d.msg, e); if (e && e.kind === K().CLOSED) _lock(_ask.d); else _ask.d.refresh(); return; }
       WN5Act.strip((s && s.host) || _boardHost(), e);
     },
@@ -387,6 +448,7 @@
   };
 
   // ═══ The board root: one delegated click listener per painted root ═══
+  const DRAG = { pid: null, over: null };   // F32: the load being dragged (survives a repaint of the root)
   WN5Act.bind = function bind(root) {
     if (!root || root._wn5Bound) return;
     root._wn5Bound = true;
@@ -399,6 +461,40 @@
       ev.preventDefault(); ev.stopPropagation();
       try { fn(el, ev); } catch (e) { _log(e, 'WN5Act ' + el.getAttribute('data-act')); }
     });
+    // F32 (owner 28/10, real-user test): a ΠΡΟΣ ΑΝΑΘΕΣΗ row dragged onto a cycle row did nothing (text got selected,
+    // no message: the v5 board had no drag). Now the drop opens THAT cycle's «+» on the load's side with its line
+    // marked: one press «Πρόσθεσε» puts it there. A drop never writes by itself — the Veroia window and the warnings
+    // (stop_order, another day, capacity) are said first, as on every other way in (principle 1).
+    // the drag lives in DRAG (outside this root): the root is rebuilt on every paint, and a repaint during a drag (a
+    // reload) must not leave the drop on the new root with nothing to drop (code review)
+    const mark = (row) => { if (DRAG.over === row) return; if (DRAG.over) DRAG.over.classList.remove('wn5-drop'); DRAG.over = row; if (row) row.classList.add('wn5-drop'); };
+    root.addEventListener('dragstart', (ev) => {
+      const row = ev.target && ev.target.closest ? ev.target.closest('.wn5-row[data-piece][draggable="true"]') : null;
+      if (!row || !_live()) return;
+      DRAG.pid = _id(row.dataset.piece);
+      try { ev.dataTransfer.setData('text/plain', 'wn5-piece:' + DRAG.pid); ev.dataTransfer.effectAllowed = 'move'; } catch (_) { /* the drop reads DRAG.pid */ }
+    });
+    root.addEventListener('dragover', (ev) => {
+      if (DRAG.pid == null) return;
+      const row = ev.target.closest ? ev.target.closest('.wn5-row[data-rt]') : null;
+      mark(row);
+      if (row) { ev.preventDefault(); try { ev.dataTransfer.dropEffect = 'move'; } catch (_) { /* cosmetic */ } }
+    });
+    root.addEventListener('dragleave', (ev) => { if (DRAG.over && !DRAG.over.contains(ev.relatedTarget)) mark(null); });
+    // dragend fires on the source row; once a repaint detached it, it never reaches a root — the next dragstart resets
+    root.addEventListener('dragend', () => { DRAG.pid = null; mark(null); });
+    root.addEventListener('drop', (ev) => {
+      const pid = DRAG.pid, row = ev.target.closest ? ev.target.closest('.wn5-row[data-rt]') : null;
+      DRAG.pid = null; mark(null);
+      if (pid == null || !row || !_live()) return;
+      ev.preventDefault();
+      const it = _item(pid);
+      if (!it) { WN5Act.strip(_boardHost(), _clientErr('piece_missing', 'Η παράδοση δεν είναι πια στο board — ανανέωσε')); return; }
+      const side = _sideFor(it);
+      WN5Act.plus(_id(row.dataset.rt), side, row.querySelector('.wn5-plus[data-side="' + side + '"]') || row, { focus: pid });
+    });
+    // owner 31/10 (pack 2): a point's right-click menu (delete) and the drag of a point to another truck or day
+    if (typeof WN5Edit !== 'undefined') WN5Edit.bind(root);
   };
 
   Object.assign(KIT, { esc: _esc, log: _log, copy: _copy, state: _state, dlg: _dlg, close: _close, place: _place,
@@ -423,7 +519,8 @@
   // F1 (owner 28/10): a window of the whole Athens day (00:00–23:59, the forms' and Δ1's default for a point entered
   // without one) reads «όλη η ημέρα», never an hour someone agreed — ONE rule, WN5L.allDay (core/wn5-logic.js)
   const _allDay = (a, b) => typeof WN5L !== 'undefined' && typeof WN5L.allDay === 'function' && WN5L.allDay(a, b);
-  const _hmw = (a, b) => (_allDay(a, b) ? 'όλη η ημέρα' : _hm(a) + '–' + _hm(b));
+  // F64: the board's one text rule (WN5L.winText): one minute «στις 08:00», the day's last minute «ως 23:59»
+  const _hmw = (a, b) => (WN5L.winText(_hm(a), _hm(b), _allDay(a, b)) || _hm(a) + '–' + _hm(b));
   const _ymdOf = (iso) => { const p = _parts(iso); return p ? p.ymd : null; };
   const DOW = ['Κυρ', 'Δευ', 'Τρί', 'Τετ', 'Πέμ', 'Παρ', 'Σάβ'];
   // typed in capitals (never text-transform: the tonos stays in some browsers)
@@ -446,7 +543,15 @@
   }
   const _iso = (ymd, hm) => ymd + 'T' + hm + ':00' + _offset(ymd, hm);
   // a window that ends at or before it starts ends the next day (a 22:00–06:00 arrival)
-  const _win = (ymd, from, to) => [_iso(ymd, from), _iso(to <= from ? _addDays(ymd, 1) : ymd, to)];
+  // F64 (live 31/10, VS 644): the same hour twice is «at 08:00», that day — it read as 24 h to the next day and moved
+  // the truck. The base wants planned_to > planned_from (071 rt_stops_win): it is the minute that starts there (23:59:
+  // the minute that ends there). An end before the start still crosses midnight (a night window).
+  const _hmMin = (hm) => Number(hm.slice(0, 2)) * 60 + Number(hm.slice(3, 5));
+  const _minHm = (m) => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+  const _win = (ymd, from, to) => {
+    if (to === from) { const m = _hmMin(from); return m < 1439 ? [_iso(ymd, from), _iso(ymd, _minHm(m + 1))] : [_iso(ymd, _minHm(m - 1)), _iso(ymd, to)]; }
+    return [_iso(ymd, from), _iso(to < from ? _addDays(ymd, 1) : ymd, to)];
+  };
   // «0730», «7:30» → «07:30»; anything else → '' (the same reading as wi4_actions _hhmm)
   function _hhmm(v) {
     let s = String(v || '').trim();
@@ -455,8 +560,11 @@
     return /^([01]\d|2[0-3]):[0-5]\d$/.test(s) ? s : '';
   }
   const _t = (x) => (typeof x === 'string' && /^\d{2}:\d{2}$/.test(x) ? x : _hm(x));      // model times: HH:MM or ISO
-  const _pal = (n) => String(Math.round(Number(n) * 10) / 10).replace('.', ',');
+  // F1/F4 (owner 28/10, 080): pallets not known yet (null) read «;», a sum with unknowns «12+;» (WN5L.palText), never 0
+  const _pal = (n) => (n == null ? ';' : String(Math.round(Number(n) * 10) / 10).replace('.', ','));
   const _sum = (a) => a.reduce((s, x) => s + (typeof x === 'number' && isFinite(x) ? x : 0), 0);
+  const _unkN = (a) => a.filter((x) => x == null).length;   // how many of these pallets are not known yet
+  const _palU = (n, unk) => WN5L.palText(n, unk);
   const _clientErr = (code, message) => ({ kind: 'client', code, message });
   const _id = (v) => { const n = Number(v); return Number.isSafeInteger(n) && n > 0 ? n : null; };
   const _norm = (s) => (typeof fhSearchNorm === 'function' ? fhSearchNorm(s) : String(s || '').toLowerCase());
@@ -494,6 +602,31 @@
   }
   // the board's own rule (WN5L.waitSide: the hub ends, then 075's direction), so the window never assigns the other side
   const _sideFor = (it) => WN5L.waitSide(it, _hubId());
+  // F27: a VS piece's Veroia day through VsDates.vsNatDates (core/vs-dates.js), the one copy of the Veroia-day rule:
+  // the cross-dock as it is, the owner's ±1 only when it is empty (est). Its cross-dock here is nat_ready_day of an
+  // import / nat_due_day of an export (071 v_shipments), else the day of a known window at Veroia (Ε-26). null for a
+  // national or stock; VsDates missing is logged, never a silent fallback.
+  function _vsHubDay(it) {
+    const imp = !!it && it.kind === 'vs_import';
+    if (!it || it.is_stock || (!imp && it.kind !== 'vs_export')) return null;
+    if (typeof VsDates === 'undefined') { _log(new Error('wn5: VsDates missing (core/vs-dates.js)'), 'WN5Act vsHubDay'); return null; }
+    const cd = (imp ? it.nat_ready_day : it.nat_due_day) || _ymdOf(imp ? it.load_from : it.deliver_from) || null;
+    const r = VsDates.vsNatDates(imp ? 'Import' : 'Export', it.nat_ready_day, it.nat_due_day, cd);
+    return r && r.hub ? { day: r.hub, est: !cd } : null;
+  }
+  // F33 (owner 28/10): a national whose own end IS Veroia arrives there on its due day, else on its loading day — on
+  // or after its loading, never before. «+» put the arrival of #92 (Volos → Veroia, loading Thu 29/10) on its cycle's
+  // Wed 28/10, before the cycle's ΚΑΘΟΔΟΣ, and the base refused it (stop_order). est = no due day: the loading day is
+  // the default, said «εκτίμηση». null for a VS (_vsHubDay), stock, a national picked up at Veroia (its nat_ready_day
+  // is its supplier's day) and a to_hub drop (Veroia is not its end).
+  function _natHubDay(it, hub) {
+    if (!it || it.kind !== 'national' || it.is_stock || hub == null || it.nat_to_location_id !== hub) return null;
+    const load = _ymdOf(it.load_from) || it.nat_ready_day || null, due = it.nat_due_day || null;
+    const day = due && (!load || due >= load) ? due : load;
+    return day ? { day, est: day !== due } : null;
+  }
+  // a stop's day by the board's rule (wn5-logic _point): its stop_day, else the Athens day of planned_to
+  const _stopDay = (s) => (s ? s.stop_day || _ymdOf(s.planned_to) : null);
   // what a piece needs on the target side (plan_h_put): a stop at its position (pickup) and at its national end
   // (drop, or Veroia with to_hub). null place = the board did not send it (hub[] of 072, Ε-26).
   function _needs(it, toHub, hub) {
@@ -502,9 +635,15 @@
     // day / key: a stop with no window of its own (every VS bridge: order_stops hold dates only, 074a) is placed on
     // ITS day — the loading on nat_ready_day, the delivery on nat_due_day — with the window the user gives (B1, 28/10)
     const dLoad = it.nat_ready_day || null, dDrop = it.nat_due_day || it.nat_ready_day || null;
+    // hubDay (F27): a VS's Veroia day (_vsHubDay; hubEst = the ±1 estimate, named «εκτίμηση»); F33: a national's
+    // arrival at Veroia, its own end (_natHubDay), on its drop only. None for stock (its parent's day) nor for a
+    // national picked up at Veroia: the dialog's day stays for those.
+    const vh = _vsHubDay(it), hubDay = vh ? vh.day : null, hubEst = !!(vh && vh.est);
+    const nh = vh ? null : _natHubDay(it, hub);
     return [
-      { loc: pick, from: it.load_from || null, to: it.load_to || null, hub: pick != null && pick === hub, role: 'load', day: dLoad, key: 'load:' + pick },
-      { loc: drop, from: it.deliver_from || null, to: it.deliver_to || null, hub: drop != null && drop === hub, role: 'drop', day: dDrop, key: 'drop:' + drop },
+      { loc: pick, from: it.load_from || null, to: it.load_to || null, hub: pick != null && pick === hub, role: 'load', day: dLoad, key: 'load:' + pick, hubDay, hubEst },
+      { loc: drop, from: it.deliver_from || null, to: it.deliver_to || null, hub: drop != null && drop === hub, role: 'drop', day: dDrop, key: 'drop:' + drop,
+        hubDay: nh ? nh.day : hubDay, hubEst: nh ? nh.est : hubEst },
     ];
   }
   // B1 (live 28/10): 072 refuses a new stop without planned_from / planned_to (decision 4: the base invents no hour),
@@ -517,11 +656,34 @@
     const f = _hhmm(v.from), t = _hhmm(v.to);
     return n && n.day && f && t ? _win(n.day, f, t) : null;
   }
+  // F27 (owner 28/10): a typed Veroia window is written on a VS piece's OWN Veroia day (hubDay of _needs: its
+  // cross_dock_date), never on the dialog's day: that is the row's day in Δ1 (an export's PICKUP day), the cycle's in
+  // «+», the panel's earliest in «Σε φορτηγό ▾», and wrote VS 617 (cross-dock Fri 30/10) on Thu 29/10. F33: so is a national
+  // ending at Veroia (_natHubDay). A national picked up at Veroia, a stock remainder and a moved piece (_moveParts: its window comes from the source stop) carry no hubDay: [] → the
+  // caller's day stays.
+  const _hubDays = (needs) => [...new Set((needs || []).filter((n) => n.hub && n.hubDay).map((n) => n.hubDay))].sort();
+  // «(εκτίμηση)» after a Veroia day that came from the empty-cross-dock rule, never a bare estimated day (principle 1);
+  // only when that day IS an estimate — a real cross-dock day an estimated sibling lands on stays unmarked
+  const _hubEst = (needs, day) => ((needs || []).some((n) => n.hub && n.hubDay === day && n.hubEst) && !(needs || []).some((n) => n.hub && n.hubDay === day && !n.hubEst) ? ' (εκτίμηση)' : '');
+  const _hubDayText = (needs, day) => _dayShort(day) + _hubEst(needs, day);
+  // One Veroia stop per side (decision 6) holds one day. Pieces with two Veroia days have no right one: null, and the
+  // save stays off with the days named (_lackText) — 0 such orders live on 28/10, so this blocks nothing real.
+  function _hubDayOf(needs, fallback) {
+    const ds = _hubDays(needs);
+    return ds.length === 1 ? ds[0] : ds.length ? null : fallback || null;
+  }
   // One stop per place per side (decision 6): a live stop of the target on that side is named by stop_id; any other
   // place becomes a new stop with its pieces' window (the earliest start, the latest end of the pieces there); a NEW
   // Veroia stop takes the window the user typed (Ε-5: the base invents no hour, and neither does the screen).
   // Never seq (decision 5), never one stop_id twice. missing: 'place' | 'window' | 'hub'; lack: the needs behind them,
   // so a disabled save can name the stop it waits for (owner 28/10).
+  // F64: a piece window stored as one instant (a deadline «ως 23:59») would be a stop whose end is its start (071
+  // rt_stops_win refuses it): the minute that ends there at 23:59, else the minute that starts there — _win's rule
+  function _ownWin(from, to) {
+    const a = Date.parse(from), b = Date.parse(to);
+    if (!(Number.isFinite(a) && Number.isFinite(b)) || b !== a) return { planned_from: from, planned_to: to };
+    return _hm(to) === DAY_WIN.to ? { planned_from: new Date(b - 60000).toISOString(), planned_to: to } : { planned_from: from, planned_to: new Date(a + 60000).toISOString() };
+  }
   function _stopsFor(needs, cyc, side, hubWin, winOf) {
     const out = [], seen = new Map(), miss = new Set(), lack = [];
     for (const n of needs) {
@@ -549,7 +711,7 @@
         if (!w) { miss.add('window'); lack.push(n); continue; }
         st = { ref: 'n' + n.loc, location_id: n.loc, side, planned_from: w[0], planned_to: w[1] };
       }
-      else st = { ref: 'n' + n.loc, location_id: n.loc, side, planned_from: n.from, planned_to: n.to };
+      else st = Object.assign({ ref: 'n' + n.loc, location_id: n.loc, side }, _ownWin(n.from, n.to));
       seen.set(n.loc, st);
       out.push(st);
     }
@@ -566,10 +728,13 @@
   const _boxHTML = (x) => '<div class="wi4-box ' + x.cls + '"><span class="wi4-l1' + (x.cls === 'own' ? ' wi4-plate' : '') + '">' + _esc(x.l1) + '</span>' + (x.l2 ? '<span class="wi4-l2">' + _esc(x.l2) + '</span>' : '') + '</div>';
   const _sideOfRow = (r, side) => (r ? (side === 'ANODOS' ? r.anod : r.kath) : null);
   const _sidePal = (r, side) => { const sd = _sideOfRow(r, side); return sd && typeof sd.pallets === 'number' ? sd.pallets : 0; };
+  const _sideUnk = (r, side) => { const sd = _sideOfRow(r, side); return (sd && sd.palUnknown) || 0; };
   // F1: a Veroia window of the whole day (WN5L model: allDay) reads «όλη η ημέρα», never 00:00–23:59
   const _veroiaOf = (r, side) => { const sd = _sideOfRow(r, side); return sd && sd.veroia ? (sd.veroia.allDay ? 'όλη η ημέρα' : _t(sd.veroia.from) + '–' + _t(sd.veroia.to)) : null; };
   // over capacity is a warning, never a refusal (Δ1, Ε-17: the sum of the side's loadings, like 072 over_33)
-  const _capHTML = (n, tail) => '<span class="wn5-cap' + (n > 33 ? ' over' : '') + '">→ ' + _pal(n) + '/33' + (n > 33 ? ' · υπέρβαση ' + _pal(n - 33) : '') + (tail || '') + '</span>';
+  // unk: pieces whose pallets are not known yet — the x/33 is then a floor, said «n+;/33» with its title (F1/F4)
+  const _capHTML = (n, tail, unk) => '<span class="wn5-cap' + (n > 33 ? ' over' : '') + '"' + (unk ? ' title="παλέτες άγνωστες σε ' + unk + (unk === 1 ? ' φορτίο' : ' φορτία') + '"' : '') + '>→ '
+    + _palU(n, unk) + '/33' + (n > 33 ? ' · υπέρβαση ' + _pal(n - 33) : '') + (tail || '') + '</span>';
   const _optsHTML = (list, cur) => list.filter((x) => x.active).map((x) => '<option value="' + x.id + '"' + (x.id === cur ? ' selected' : '') + '>' + _esc(x.label) + '</option>').join('');
   // trucks with no cycle over that day; a cycle that ENDS that day frees its truck from its end time (display only:
   // the DB refuses a real overlap with truck_busy)
@@ -602,8 +767,8 @@
   }
   Object.assign(KIT, { parts: _parts, hm: _hm, hmw: _hmw, ymdOf: _ymdOf, dm: _dm, dayShort: _dayShort, addDays: _addDays, iso: _iso, win: _win, hhmm: _hhmm,
     t: _t, pal: _pal, sum: _sum, clientErr: _clientErr, id: _id, norm: _norm, cycles: _cycles, cycle: _cycle, item: _item, groupItems: _groupItems,
-    row: _row, dayRows: _dayRows, hubId: _hubId, sideFor: _sideFor, needs: _needs, stopsFor: _stopsFor, dayWin: _dayWin, cycText: _cycText, boxHTML: _boxHTML,
-    sidePal: _sidePal, veroiaOf: _veroiaOf, capHTML: _capHTML, optsHTML: _optsHTML, freeTrucks: _freeTrucks, rate: _rate, DOW_GEN, dow: _dow });
+    row: _row, dayRows: _dayRows, hubId: _hubId, vsHubDay: _vsHubDay, sideFor: _sideFor, needs: _needs, stopsFor: _stopsFor, dayWin: _dayWin, cycText: _cycText, boxHTML: _boxHTML,
+    sidePal: _sidePal, sideUnk: _sideUnk, veroiaOf: _veroiaOf, capHTML: _capHTML, optsHTML: _optsHTML, freeTrucks: _freeTrucks, rate: _rate, DOW_GEN, dow: _dow });
 
   // ═══ T12 · the assignment window Δ1 (Figma 2051:7735): one window for four entries ═══
   // The request of one candidate, from the window's state only. cand: 'rt:<id>' | 'truck:<id>' | 'partner'.
@@ -612,20 +777,6 @@
     const kind = parts[0], id = _id(parts[1]);
     // T14: «Πίσω στην αναμονή» / «Πίσω στη Βέροια» — wait takes no stops (072:1162)
     if (st.mode === 'move' && kind === 'wait') return { method: 'POST', path: '/plan/move', body: { from: st.from, target: { wait: true } } };
-    if (st.mode === 'vehicle') {
-      // only what the user chose: a key sent as null would EMPTY it (vehicle_clear_use_clear, 072:1680)
-      if (kind === 'truck' && id) {
-        const set = { trip_type: 'OWNED', truck_id: id };
-        if (st.trailer) set.trailer_id = st.trailer;
-        if (st.driver) set.driver_id = st.driver;
-        return { method: 'PATCH', path: '/plan/rt/' + st.rtId, body: { set } };
-      }
-      if (kind === 'partner' && st.partner) {
-        const r = _rate(st.rateTxt);
-        return r.ok ? { method: 'PATCH', path: '/plan/rt/' + st.rtId, body: { set: { trip_type: 'PARTNER', partner_id: st.partner, partner_rate: r.v } } } : null;
-      }
-      return null;
-    }
     let target, cyc = null;
     if (kind === 'rt' && id && st.cyc[id]) { cyc = st.cyc[id]; target = { rt_id: id, side: st.side }; }
     else if (kind === 'truck' && id) target = { new_rt: { trip_type: 'OWNED', truck_id: id, trailer_id: st.trailer || null, driver_id: st.driver || null }, side: st.side };
@@ -634,15 +785,14 @@
       if (!r.ok) return null;
       target = { new_rt: { trip_type: 'PARTNER', partner_id: st.partner, partner_rate: r.v }, side: st.side };
     } else return null;
-    const f = _hhmm(st.hubFrom), t = _hhmm(st.hubTo);
-    const r = _stopsFor(st.needs, cyc, st.side, f && t ? _win(st.day, f, t) : null, (n) => _dayWin(n, st.win));
+    const f = _hhmm(st.hubFrom), t = _hhmm(st.hubTo), hd = _hubDayOf(st.needs, st.day);
+    const r = _stopsFor(st.needs, cyc, st.side, f && t && hd ? _win(hd, f, t) : null, (n) => _dayWin(n, st.win));
     if (r.missing.length) return { missing: r.missing, lack: r.lack };
-    if (st.mode === 'move') return { method: 'POST', path: '/plan/move', body: { from: st.from, target, stops: r.stops } };
-    return { method: 'POST', path: '/plan/legs', body: st.group ? { group: st.group, target, stops: r.stops } : { pieces: st.pieces, target, stops: r.stops } };
+    return { method: 'POST', path: '/plan/move', body: { from: st.from, target, stops: r.stops } };
   }
   // The Veroia window field is asked only when a Veroia stop would have no window: a move carries the source's
   // (_stopsFor), so an asterisk over a field nothing waits for claims a requirement that does not exist (Figma 2011:9294)
-  const _hubAsked = (st) => st.mode !== 'vehicle' && st.needs.some((n) => n.hub && !(n.own && n.from && n.to));
+  const _hubAsked = (st) => st.needs.some((n) => n.hub && !(n.own && n.from && n.to));
   // Owner 28/10: a save that is off says why, in red, beside it — a grey button alone read as «it does not click»
   // (Δ1 of a VS bridge, 28/10). The reason is the data's only; an off button while sending (busy) or after a closed
   // answer (locked) has its own strip. where: 'afterend' of a row / a button, 'beforebegin' of a footer's first button.
@@ -655,10 +805,16 @@
     if (w.textContent !== text) w.textContent = text;
     return w;
   }
+  KIT.why = _why;   // the national order forms' «Λείπει: …» (wn5_forms.js, F26): one footer reason, not two
   // one missing stop in words: «παράθυρο παράδοσης <place>», «άφιξη Βέροιας», …
   function _lackText(st, n) {
     const act = n.role === 'load' ? 'φόρτωσης' : 'παράδοσης';
-    if (n.hub) return st.side === 'ANODOS' ? 'άφιξη Βέροιας' : 'παράθυρο φόρτωσης Βέροιας';
+    if (n.hub) {
+      const ds = _hubDays(st.needs);
+      // Δ1 takes a VS whole (plan_put_group): one piece at a time is the «+» of a cycle (one line per piece)
+      if (ds.length > 1) return 'μία ημέρα Βέροιας (οι παραδόσεις έχουν ' + ds.map(_dayShort).join(', ') + '): ανά παράδοση από το «+» του κύκλου';
+      return st.side === 'ANODOS' ? 'άφιξη Βέροιας' : 'παράθυρο φόρτωσης Βέροιας';
+    }
     if (n.loc == null) return 'προορισμός ' + act + ' (δεν ήρθε από τη βάση)';
     return n.day ? 'παράθυρο ' + act + ' ' + _placeName(n.loc) : 'ημέρα ' + act + ' ' + _placeName(n.loc) + ' (δεν ήρθε από τη βάση)';
   }
@@ -671,27 +827,21 @@
     if (kind === 'partner' && !st.partner) return 'Λείπει: συνεργάτης';
     if (kind === 'partner' && !_rate(st.rateTxt).ok) return 'Κόμιστρο: μόνο αριθμός (π.χ. 350 ή 350,50)';
     if (req && req.missing) return _missWords(st, req);
+    if (req && kind === 'rt') return _orderWarn(st.cyc[_id(String(cand).split(':')[1])], req);
     return req ? null : 'Δεν στέλνεται: ανανέωσε τον πίνακα';
   }
 
   // a group header: the caps label, then a lighter suffix (Figma Δ1: «ΚΥΚΛΟΙ ΤΗΣ ΔΕΥΤΕΡΑΣ 12/10 · ένωση · 4»)
   const _grpHTML = (grp, label, tail) => '<div class="wn5-grp-h" data-grp="' + grp + '">' + _esc(label) + (tail ? '<span>' + _esc(tail) + '</span>' : '') + '</div>';
   function _assignHTML(st) {
-    const vehicle = st.mode === 'vehicle';
     let h = '';
-    // «Όλο το … μαζί»: every VS (Figma Δ1 2051:7746, audit B-18 — the band said nothing for a one-piece VS or an export,
-    // and the user did not learn why a VS does not split here), and a national whose several pieces stand at Veroia.
-    // The Veroia board is the one place that splits; a one-delivery national has nothing to split.
-    const vsSrc = !!(st.group && st.group.order_id != null);
-    if (!vehicle && st.group && (vsSrc || (st.items.length > 1 && st.items.every((it) => it.at_hub)))) h += '<div class="wn5-grey">Όλο το ' + _esc(st.ref) + ' μαζί · σπάσιμο μόνο στον Πίνακα Βέροιας</div>';
-    if (vehicle) h += '<div class="wn5-grey">Ένωση με άλλο κύκλο: «Μεταφορά σε…» από τη φόρμα σκέλους (όλη η πλευρά).</div>';
     h += '<input type="search" class="wn5-dq" data-q placeholder="Αναζήτηση φορτηγού, οδηγού ή συνεργάτη" value="' + _esc(st.q) + '">';
     if (!st.ids.ok) h += '<div class="wn5-miss" data-ids-miss>Οι κατάλογοι δεν είναι διαθέσιμοι ακόμη: νέο φορτηγό και συνεργάτης ανοίγουν όταν έρθουν.</div>';
-    if (!vehicle && _stopsFor(st.needs, null, st.side, ['probe', 'probe'], (n) => _dayWin(n, st.win)).missing.length) {
+    if (_stopsFor(st.needs, null, st.side, ['probe', 'probe'], (n) => _dayWin(n, st.win)).missing.length) {
       h += '<div class="wn5-miss" data-place-miss>Η ανάθεση θέλει τον προορισμό και την ημέρα κάθε φόρτωσης και παράδοσης· για αυτή την παραγγελία δεν ήρθαν από τη βάση.</div>';
     }
     // B1: one window per stop the board brought without one (a VS bridge), on its own day, filled with the whole day
-    if (!vehicle) {
+    {
       const seenW = new Set();
       for (const n of st.needs) {
         if (n.hub || n.loc == null || (n.from && n.to) || !n.day || seenW.has(n.key)) continue;
@@ -703,16 +853,32 @@
           + '<small>όλη η ημέρα, αν δεν ξέρεις ώρα</small></div>';
       }
     }
-    // the field's hours are put on st.day (_assignReq), so it names that day, as the stop fields above name theirs
+    // the field's hours are put on the pieces' Veroia day (_assignReq, F27), so it names that day, as the stop fields
+    // above name theirs; two Veroia days are both named, and the save says it cannot pick one
     if (_hubAsked(st)) {
-      h += '<div class="wn5-hubwin"><span>' + (st.side === 'ANODOS' ? 'Άφιξη Βέροιας' : 'Παράθυρο φόρτωσης Βέροιας') + ' · ' + _esc(_dayShort(st.day)) + ' *</span>'
+      const hd = _hubDayOf(st.needs, st.day);
+      h += '<div class="wn5-hubwin"><span>' + (st.side === 'ANODOS' ? 'Άφιξη Βέροιας' : 'Παράθυρο φόρτωσης Βέροιας') + ' · ' + _esc(hd ? _hubDayText(st.needs, hd) : _hubDays(st.needs).map((d) => _hubDayText(st.needs, d)).join(' / ')) + ' *</span>'
         + '<input class="wn5-hm" data-hub="from" inputmode="numeric" placeholder="ΗΗ:ΛΛ" value="' + _esc(st.hubFrom) + '"> – '
         + '<input class="wn5-hm" data-hub="to" inputmode="numeric" placeholder="ΗΗ:ΛΛ" value="' + _esc(st.hubTo) + '">'
         + '<small>μόνο όταν γίνεται νέα στάση Βέροιας</small></div>';
     }
-    if (!vehicle) {
+    {
       // a group with no line is not drawn (Figma Δ1 shows only groups with content, audit B-21): «· 0» heads nothing
-      if (st.rows.length || st.road.length) h += _grpHTML('rt', 'ΚΥΚΛΟΙ ' + DOW_GEN[_dow(st.day)] + ' ' + _dm(st.day), ' · ένωση · ' + st.rows.length);
+      if (st.rows.length || st.road.length) h += _grpHTML('rt', 'ΚΥΚΛΟΙ ' + DOW_GEN[_dow(st.day)] + ' ' + _dm(st.day), ' · ένωση · ' + (st.rows.length + st.road.length));
+      const hdList = _hubDays(st.needs), hdRow = hdList.length === 1 ? hdList[0] : null, hubLoc = hdList.length ? _hubId() : null;
+      // F27 (code review): «Ένωση» puts the pieces in the cycle's own Veroia stop (decision 6), whatever its day — a
+      // stop of another day than the pieces' Veroia day is said beside the capacity; without one, a new Veroia stop
+      // on a day the cycle does not run stretches it there (the DB answers truck_busy if its truck is taken).
+      // Warnings, never refusals.
+      // with two Veroia days (a new stop is refused) joining an existing stop is said too: it matches one at most
+      const hubWarnOf = (c) => {
+        const hs = hubLoc != null && (c.stops || []).find((s) => s.side === st.side && s.location_id === hubLoc);
+        const hsDay = _stopDay(hs);
+        const w = hsDay ? (hsDay !== hdRow ? 'Βέροια ' + _wd(hsDay) + ', όχι ' + hdList.map(_wd).join('/') : null)
+          : hdRow && (hdRow < c.date_start || hdRow > c.date_end) ? 'Βέροια ' + _wd(hdRow) + ', ο κύκλος ' + _wd(c.date_start) + (c.date_end !== c.date_start ? '–' + _wd(c.date_end) : '') : null;
+        return w ? '<span class="wn5-hubday">' + _esc(w) + '</span> ' : '';
+      };
+      const btn = (c) => '<button type="button" class="wi4-btn sm" data-act="save" data-cand="rt:' + c.rt_id + '">' + (st.mode === 'move' ? 'Μεταφορά' : 'Ένωση') + '</button></div>';
       for (const r of st.rows) {
         const c = st.cyc[r.rtId];
         const tx = _cycText(c, r.row);
@@ -726,29 +892,43 @@
         // side), with the Veroia window and the pallets on the first (Figma Δ1 Pelagos row)
         const gap = c.trip_type === 'PARTNER' && r.row && r.row.anod && r.row.anod.gap ? r.row.anod.gap.text : null;
         const where = r.veroia ? 'Βέροια ' + r.veroia : 'χωρίς στάση Βέροιας';
-        const l1 = gap ? where + ' · ' + _pal(r.pallets) + 'π σήμερα' : where;
-        const l2 = gap || _pal(r.pallets) + 'π σήμερα';
+        const l1 = gap ? where + ' · ' + _palU(r.pallets, r.palUnk) + 'π σήμερα' : where;
+        const l2 = gap || _palU(r.pallets, r.palUnk) + 'π σήμερα';
         h += '<div class="wn5-cand" data-line="rt" data-s="' + _esc(_norm([tx.l1, tx.l2, c.code].join(' '))) + '">' + _boxHTML(tx)
           + '<span class="wn5-cand-m"><b>' + _esc(l1) + '</b><span>' + _esc(l2) + '</span></span>'
-          + '<span>' + _capHTML(r.pallets + st.pallets) + rate + '</span>'
-          + '<button type="button" class="wi4-btn sm" data-act="save" data-cand="rt:' + c.rt_id + '">' + (st.mode === 'move' ? 'Μεταφορά' : 'Ένωση') + '</button></div>';
+          + '<span>' + hubWarnOf(c) + _capHTML(r.pallets + st.pallets, '', (r.palUnk || 0) + (st.palUnk || 0)) + rate + '</span>' + btn(c);
       }
+      // F34: a cycle on the road that day, joinable. The box as on the board (its row's tile: «κύκλος n/m»); «ως Δευ
+      // 22:00» names the day, the date is in the row. Beside the capacity, «+»'s warnings (_plusChips): the cycle's
+      // Veroia stop of another day, and a load / delivery of the pieces on a day the side does not stop.
+      const hubNow = st.road.length ? _hubId() : null;
       for (const c of st.road) {
-        // the box as on the board (its row's tile: «κύκλος n/m»); «ως Δευ 22:00» names the day, the date is in the row
-        h += '<div class="wn5-cand wn5-na" data-line="road">' + _boxHTML(_cycText(c, _row(c.rt_id)))
-          + '<span class="wn5-cand-m"><b>' + _esc(_dayShort(c.date_start) + ' · στο δρόμο · Βέροια ως ' + DOW[_dow(_ymdOf(c.end_at))] + ' ' + _hm(c.end_at)) + '</b></span><span></span><span></span></div>';
+        const row = _row(c.rt_id), tx = _cycText(c, row), pal = _sidePal(row, st.side), pu = _sideUnk(row, st.side), v = _veroiaOf(row, st.side);
+        const sideDays = new Set((c.stops || []).filter((s) => s.side === st.side && s.location_id !== hubNow).map(_stopDay).filter(Boolean));
+        // code review: «… ως» names the cycle's LAST stop, where end_at is — «Βέροια» only when that stop is Veroia
+        const last = (c.stops || []).slice().sort((x, y) => new Date(x.planned_to) - new Date(y.planned_to)).pop();
+        const endAt = last ? (last.location_id === hubNow ? 'Βέροια' : last.location || _placeName(last.location_id)) : 'τέλος';
+        const own = st.needs.filter((n) => !n.hub && n.role === (st.side === 'ANODOS' ? 'load' : 'drop')).map((n) => (n.from ? _ymdOf(n.from) : n.day)).filter(Boolean);
+        const other = sideDays.size ? [...new Set(own)].filter((d) => !sideDays.has(d)).sort() : [];
+        const otherWarn = other.length ? '<span class="wn5-cap over">' + _esc((st.side === 'ANODOS' ? 'φόρτωση ' : 'παράδοση ') + other.map(_wd).join('/') + ', άλλη ημέρα') + '</span> ' : '';
+        h += '<div class="wn5-cand" data-line="road" data-s="' + _esc(_norm([tx.l1, tx.l2, c.code].join(' '))) + '">' + _boxHTML(tx)
+          + '<span class="wn5-cand-m"><b>' + _esc(_dayShort(c.date_start) + ' · στο δρόμο · ' + endAt + ' ως ' + DOW[_dow(_ymdOf(c.end_at))] + ' ' + _hm(c.end_at)) + '</b>'
+          + '<span>' + _esc((v ? 'Βέροια ' + v : 'χωρίς στάση Βέροιας') + ' · ' + _palU(pal, pu) + 'π') + '</span></span>'
+          + '<span>' + hubWarnOf(c) + otherWarn + _capHTML(pal + st.pallets, '', pu + (st.palUnk || 0)) + '</span>' + btn(c);
       }
     }
     // without the catalogue the list's size is unknown, never 0 (principle 1): the header has no count then, and the
     // line above says why
     // B-21: hidden only when the catalogue says 0 — without it the count is unknown and the header stays (line above)
-    if (st.free.length || !st.ids.ok) h += _grpHTML('free', 'ΕΛΕΥΘΕΡΑ ΦΟΡΤΗΓΑ', ' · ' + (vehicle ? 'άλλο όχημα' : 'νέος κύκλος') + (st.ids.ok ? ' · ' + st.free.length : ''));
+    // code review: trucks whose days outside the week are unknown are not called free in the header either
+    const unk = st.free.length && st.free.every((t) => t.unknown);
+    if (st.free.length || !st.ids.ok) h += _grpHTML('free', unk ? 'ΦΟΡΤΗΓΑ' : 'ΕΛΕΥΘΕΡΑ ΦΟΡΤΗΓΑ', ' · νέο φορτηγό' + (st.ids.ok ? ' · ' + st.free.length : '') + (unk ? ' · διαθεσιμότητα άγνωστη εκτός εβδομάδας' : ''));
     for (const t of st.free) {
       const key = 'truck:' + t.id;
       const next = t.next ? 'επόμενο: ' + (t.next.side ? t.next.side + ' ' : '') + _dayShort(t.next.day) : '';
       h += '<div class="wn5-cand" data-line="free" data-s="' + _esc(_norm(t.label)) + '"><div class="wi4-box own"><span class="wi4-l1 wi4-plate">' + _esc(t.label) + '</span></div>'
-        + '<span class="wn5-cand-m"><b>' + _esc(t.from ? 'ελεύθερο από ' + t.from : 'ελεύθερο') + '</b>' + (next ? '<span>' + _esc(next) + '</span>' : '') + '</span>'
-        + '<span>' + (vehicle ? '' : _capHTML(st.pallets, ' · νέος κύκλος')) + '</span>'
+        + '<span class="wn5-cand-m"><b>' + _esc(t.unknown ? 'διαθεσιμότητα ' + t.unknown.map(_dayShort).join(', ') + ' άγνωστη εκτός εβδομάδας' : t.from ? 'ελεύθερο από ' + t.from : 'ελεύθερο') + '</b>' + (next ? '<span>' + _esc(next) + '</span>' : '') + '</span>'
+        + '<span>' + _capHTML(st.pallets, ' · νέο φορτηγό', st.palUnk) + '</span>'
         + '<button type="button" class="wi4-btn sm" data-act="pick" data-cand="' + key + '"' + (st.ids.ok ? '' : ' disabled') + '>Ανάθεση</button></div>';
       if (st.pick === key) {
         h += '<div class="wn5-more" data-more="' + key + '">'
@@ -761,7 +941,7 @@
       + '<div class="wn5-cand" data-line="partner" data-s="' + _esc(_norm(st.partners.map((p) => p.label).join(' '))) + '">'
       + '<label class="wn5-field"><span>Συνεργάτης</span><select data-partner data-fh-search' + (st.ids.ok ? '' : ' disabled') + '><option value="">—</option>' + _optsHTML(st.partners, st.partner) + '</select></label>'
       + '<span class="wn5-cand-m"><span>κόμιστρο · κενό = «κόμιστρο λείπει»</span></span>'
-      + '<span>' + (vehicle ? '' : _capHTML(st.pallets, ' · δρομολόγιο συνεργάτη') + ' ') + '<span class="wn5-nw"><input class="wn5-rate" data-rate inputmode="decimal" placeholder="—" value="' + _esc(st.rateTxt) + '" aria-label="Κόμιστρο €"><span class="wn5-eur">€</span></span></span>'
+      + '<span>' + _capHTML(st.pallets, ' · δρομολόγιο συνεργάτη', st.palUnk) + ' ' + '<span class="wn5-nw"><input class="wn5-rate" data-rate inputmode="decimal" placeholder="—" value="' + _esc(st.rateTxt) + '" aria-label="Κόμιστρο €"><span class="wn5-eur">€</span></span></span>'
       + '<button type="button" class="wi4-btn sm" data-act="save" data-cand="partner">Ανάθεση</button></div>';
     if (st.mode === 'move') {
       h += '<div class="wn5-grp-h" data-grp="wait">ΑΛΛΟ</div><div class="wn5-cand" data-line="wait">'
@@ -771,90 +951,62 @@
         // «Πίσω στην αναμονή» (a load picked up elsewhere) is not in Figma: R-66.
         + '<span class="wn5-alt"><b>' + (st.allHub ? 'Πίσω στη Βέροια' : 'Πίσω στην αναμονή') + '</b>'
         + '<span>' + (st.allHub ? 'σπάσιμο μόνο εκεί' : 'γυρίζουν ΠΡΟΣ ΑΝΑΘΕΣΗ') + '</span></span>'
-        + '<span><span class="wn5-alt-p">' + _pal(st.pallets) + 'π</span></span>'
+        + '<span><span class="wn5-alt-p">' + _palU(st.pallets, st.palUnk) + 'π</span></span>'
         + '<button type="button" class="wi4-btn sm" data-act="save" data-cand="wait">Μεταφορά</button></div>';
       // the source vehicle after the move (Figma 2011:9294 «ΚΖΗ 2108 · 33 → 24/33»), from its board row; a source
       // with no row on the loaded board has no line, never a guessed load
-      if (st.src) h += '<div class="wn5-srcafter" data-src-after>' + _esc(st.src.label) + ' · ' + _pal(st.src.before) + ' → ' + _pal(st.src.before - st.pallets) + '/33</div>';
+      if (st.src) h += '<div class="wn5-srcafter" data-src-after>' + _esc(st.src.label) + ' · ' + _palU(st.src.before, st.src.unk) + ' → ' + _palU(st.src.before - st.pallets, Math.max(0, (st.src.unk || 0) - (st.palUnk || 0))) + '/33</div>';
     }
     return h;
   }
 
-  WN5Act.assign = async function assign(src, ctx) {
-    ctx = Object.assign({ entry: 'row' }, ctx || {});
-    const vehicle = !src || (!src.group && !src.pieces);
-    const st = { mode: vehicle ? 'vehicle' : 'legs', rtId: _id(ctx.rtId), side: ctx.side === 'ANODOS' ? 'ANODOS' : 'KATHODOS', day: ctx.day || null,
-      group: null, pieces: null, items: [], needs: [], pallets: 0, cyc: {}, rows: [], road: [], free: [], trailers: [], drivers: [], partners: [],
-      ids: { ok: false }, pick: null, trailer: null, driver: null, partner: null, rateTxt: '', hubFrom: '', hubTo: '', filter: 'all', q: '', meta: '', ref: '', skipRt: null, from: null, win: {} };
-    let title;
-    // the snapshot: every value a body can carry is copied now (rule 4)
-    if (vehicle) {
-      const c = _cycle(st.rtId);
-      if (!c) { WN5Act.strip(_boardHost(), _clientErr('rt_missing', 'Ο κύκλος δεν είναι στο board που φορτώθηκε — ανανέωσε')); return null; }
-      st.cyc[c.rt_id] = _copy(c);
-      const r = _row(c.rt_id);
-      st.day = st.day || (r && r.dayKey) || c.date_start;
-      const now = _cycText(c, r);
-      title = 'Ανάθεση · ' + (c.code || 'κύκλος');
-      st.meta = _dayShort(st.day) + ' · τώρα: ' + now.l1 + (now.l2 ? ' · ' + now.l2 : '');
-    } else {
-      const list = src.group ? _groupItems(src.group) : (src.pieces || []).map((p) => _item(p.piece_id)).filter(Boolean);
-      if (!list.length) { WN5Act.strip(_boardHost(), _clientErr('piece_missing', 'Η παράδοση δεν είναι πια στο board — ανανέωσε')); return null; }
-      st.items = _copy(list);
-      st.group = src.group ? _copy(src.group) : null;
-      st.pieces = src.pieces ? _copy(src.pieces) : null;
-      const take = new Map((src.pieces || []).map((p) => [p.piece_id, p]));
-      const hub = _hubId();
-      st.needs = st.items.flatMap((it) => _needs(it, !!(take.get(it.piece_id) || {}).to_hub, hub));
-      st.pallets = _sum(st.items.map((it) => { const p = take.get(it.piece_id); return p && typeof p.take_pallets === 'number' ? p.take_pallets : it.pallets; }));
-      st.day = st.day || st.items[0].nat_ready_day || null;
-      if (!ctx.side) st.side = _sideFor(st.items[0]);
-      // F7 (live 28/10): an order without a reference is named by its number («Ανάθεση · #17 → …»), never «—»
-      const i0 = st.items[0];
-      st.ref = i0.reference || (i0.nat_order_id != null ? '#' + i0.nat_order_id : i0.order_id != null ? '#' + i0.order_id : '—');
-      const vs = st.items[0].kind === 'vs_import' && st.items[0].load_from ? ' · φτάνει ' + _hm(st.items[0].load_from) : '';
-      st.meta = _dayShort(st.day) + ' · ' + st.items.length + (st.items.length === 1 ? ' παράδοση' : ' παραδόσεις') + ' · ' + _pal(st.pallets) + 'π' + vs;
-    }
-    if (!st.day) { WN5Act.strip(_boardHost(), _clientErr('day_missing', 'Η ημέρα της ανάθεσης δεν είναι γνωστή — ανανέωσε')); return null; }
-    // F12 (live 28/10): the Veroia window the order already has (its shipment's window at the hub) fills the field,
-    // still editable — never asked again. Only a window of the assignment's own day: the field's hours are put on
-    // st.day (_win), so a window of another day would move to the wrong date.
-    if (!vehicle && !st.hubFrom && !st.hubTo) {
-      const hw = (st.needs || []).find((n) => n.hub && n.from && n.to && _ymdOf(n.from) === st.day);
-      if (hw) { st.hubFrom = _hm(hw.from); st.hubTo = _hm(hw.to); }
-    }
-    await _loadCands(st);
-    if (!vehicle) {
-      // «Ανάθεση · VS-118 → Rentis +2» (Figma Δ1): the first delivery's place, then how many other deliveries. Named
-      // after the catalogue loads (the board has ids, not names, for waiting loads); a place the board did not send
-      // (072 hub[], Ε-26) or a catalogue that did not come reads «—», never the client in its place.
-      const drop = st.needs[1] || {};
-      const pl = drop.loc == null ? null : drop.hub ? { name: 'Βέροια' } : (typeof PlanIds !== 'undefined' ? PlanIds.place(drop.loc) : null);
-      title = 'Ανάθεση · ' + st.ref + ' → ' + ((pl && pl.name) || '—') + (st.items.length > 1 ? ' +' + (st.items.length - 1) : '');
-    }
-    return _picker(st, 'assign', title);
+  // «Ανάθεση» is the Weekly International form since 31/10 (owner, Figma 2394:7793): modules/wn5_assign.js. This list
+  // (_assignHTML / _picker) stays for «Μεταφορά σε…» only.
+  WN5Act.assign = function assign(src, ctx) {
+    if (typeof WN5Assign === 'undefined') { WN5Act.strip(_boardHost(), _clientErr('assign_missing', 'Η φόρμα ανάθεσης δεν φορτώθηκε — ανανέωσε τη σελίδα')); return null; }
+    return WN5Assign.open(src, ctx);
   };
 
   // The candidates of a window, snapshotted: the day's cycles (minus st.skipRt, the source of a move), the cycles
-  // still on the road that day (shown, not offered), the catalogue lists (Ε-2). Shared by Δ1 and «Μεταφορά σε…»
-  // (Δ1 note: «Ίδια λίστα στη «Μεταφορά σε…» της φόρμας σκέλους»).
+  // still on the road that day (joinable, F34), the catalogue lists (Ε-2). «Μεταφορά σε…» only since 31/10: the
+  // assignment is the form of wn5_assign.js.
   async function _loadCands(st) {
-    const vehicle = st.mode === 'vehicle';
-    if (!vehicle) {
+    {
       const ids = new Set();
       for (const r of _dayRows(st.day)) {
         const c = _cycle(r.rtId);
         if (!c || c.rt_id === st.skipRt) continue;
         ids.add(c.rt_id);
         st.cyc[c.rt_id] = _copy(c);
-        st.rows.push({ rtId: c.rt_id, row: _copy(r), pallets: _sidePal(r, st.side), veroia: _veroiaOf(r, st.side) });
+        st.rows.push({ rtId: c.rt_id, row: _copy(r), pallets: _sidePal(r, st.side), palUnk: _sideUnk(r, st.side), veroia: _veroiaOf(r, st.side) });
       }
-      st.road = _copy(_cycles().filter((c) => !ids.has(c.rt_id) && c.rt_id !== st.skipRt && c.date_start < st.day && st.day <= c.date_end));
+      // F34 (owner 28/10): a cycle still running on the day — started before it, ending that day or later, or its
+      // Veroia end that day — is joinable, as «+» joins it, with «+»'s warnings (_assignHTML). Listed but not offered,
+      // it was a dead end: Δ1 had the piece's day but not the cycle, «+» the cycle but not the day (#92 on RT-1303).
+      st.road = _copy(_cycles().filter((c) => !ids.has(c.rt_id) && c.rt_id !== st.skipRt && c.date_start < st.day
+        && (st.day <= c.date_end || _ymdOf(c.end_at) === st.day)));
+      for (const c of st.road) st.cyc[c.rt_id] = c;
     }
     st.ids = typeof PlanIds !== 'undefined' ? await PlanIds.load() : { ok: false };
     if (st.ids.ok) {
-      const own = vehicle ? st.cyc[st.rtId].truck_id : null;
-      st.free = _freeTrucks(st.day, own);
+      st.free = _freeTrucks(st.day, null);
+      // F27 (code review): a new truck's cycle runs to the Veroia day too (an export picked up Tuesday reaches Veroia
+      // Thursday), so it is offered only when free on every day from one to the other — else the DB refuses it with
+      // truck_busy after the press
+      const hd = _hubDayOf(st.needs, st.day);
+      const [a, b] = hd && hd !== st.day ? (hd < st.day ? [hd, st.day] : [st.day, hd]) : [st.day, st.day];
+      // code review of PR 171: the board holds the cycles of ONE week, so a day outside it has no cycles to read and
+      // _freeTrucks would call every truck free. Such days are named on each truck («διαθεσιμότητα … άγνωστη εκτός
+      // εβδομάδας»), never «ελεύθερο»; the base still refuses a real overlap (truck_busy).
+      const wk = (_state().board || {}).week || null;
+      const out = [];
+      for (let d = a; d <= b; d = _addDays(d, 1)) {
+        if (wk && (d < wk || d > _addDays(wk, 6))) { out.push(d); continue; }
+        if (d === st.day) continue;
+        const also = new Set(_freeTrucks(d, null).map((t) => t.id));
+        st.free = st.free.filter((t) => also.has(t.id));
+      }
+      if (out.length) for (const t of st.free) t.unknown = out;
       st.trailers = PlanIds.list('trailer'); st.drivers = PlanIds.list('driver'); st.partners = PlanIds.list('partner');
     }
   }
@@ -862,13 +1014,12 @@
   function _pickSave(d, st, cand) {
     const req = _assignReq(st, cand);
     if (!req || req.missing) return;
-    if (st.mode !== 'move') { _send(d, req, st.mode === 'vehicle' ? 'Άλλαξε το όχημα' : 'Ανατέθηκε', { intl: true }); return; }
     // a move drops legs: the two steps of S-82; a refusal before the list lands in this window (host)
     d.busy = true; _btns(d, true);
     WN5Act.twoStep({ method: req.method, path: req.path, body: req.body, kind: 'move', title: 'Μεταφορά · ' + st.what, verb: 'Μεταφορά', host: d.msg })
       .then(async (out) => {
         if (!d.closed) { d.busy = false; _btns(d, false); }
-        if (out) { _close(d); await _afterSave(out, 'Μεταφέρθηκε', { intl: true }); }
+        if (out) { _close(d); await _afterSave(out, 'Μεταφέρθηκε', { intl: true, rt: _reqRt(req) }); }
       });
   }
   function _picker(st, kind, title) {
@@ -901,6 +1052,12 @@
       }
       // a row's red «Λείπει: …» goes and comes with its row
       for (const w of d.body.querySelectorAll('.wn5-cand + .wn5-why')) w.hidden = w.previousElementSibling.hidden;
+      // F48 (live 31/10): the «Ρυμούλκα / Οδηγός» panel of a picked truck goes with its truck's line — the search
+      // left it open under a hidden line, orphaned, saving for a truck the list no longer showed
+      for (const m of d.body.querySelectorAll('.wn5-more[data-more]')) {
+        const b = d.body.querySelector('.wn5-cand[data-line="free"] [data-cand="' + m.dataset.more + '"]');
+        m.hidden = !!(b && b.closest('.wn5-cand').hidden);
+      }
     };
     d.refresh = () => {
       for (const b of d.dlg.querySelectorAll(SAVES)) {
@@ -976,11 +1133,12 @@
       const group = it.order_id != null ? { order_id: it.order_id } : (it.nat_order_id != null ? { nat_order_id: it.nat_order_id } : null);
       const dayEl = row && row.closest('.wn5-day[data-date]');
       WN5Act.assign(group ? { group } : { pieces: [{ piece_id: pid }] },
-        { day: it.nat_ready_day || (dayEl && dayEl.dataset.date) || null, side: _sideFor(it), entry: card ? 'queue' : 'row' });
+        // focus: the piece pressed, for «μόνο αυτές οι παλέτες» (F42); anchor: the form opens under what was pressed
+        { day: it.nat_ready_day || (dayEl && dayEl.dataset.date) || null, side: _sideFor(it), entry: card ? 'queue' : 'row', focus: pid, anchor: el });
       return;
     }
     const rt = _id(row && row.dataset.rt);
-    if (rt) WN5Act.assign(null, { entry: 'row', rtId: rt });
+    if (rt) WN5Act.assign(null, { entry: 'row', rtId: rt, anchor: el });
   };
 
   // ═══ T13 · «+» on a side: «Νέα παραγγελία | Από αναμονή» (Figma 2011:10022) ═══
@@ -1009,7 +1167,9 @@
   function _plusReq(st, it) {
     if (it._ro) return null;
     const f = _hhmm(st.hubFrom), t = _hhmm(st.hubTo);
-    const r = _stopsFor(_needs(it, false, st.hub), st.cyc, st.side, f && t ? _win(st.day, f, t) : null, (n) => _dayWin(n));
+    // F27: one field for every line, each line's window on its own Veroia day — never the cycle's start (st.day)
+    const needs = _needs(it, false, st.hub), hd = _hubDayOf(needs, st.day);
+    const r = _stopsFor(needs, st.cyc, st.side, f && t && hd ? _win(hd, f, t) : null, (n) => _dayWin(n));
     if (r.missing.length) return { missing: r.missing, lack: r.lack };
     const piece = { piece_id: it.piece_id };
     if (it.is_stock) {
@@ -1027,11 +1187,22 @@
   function _plusChips(st, it) {
     const anod = st.side === 'ANODOS';
     const win = _plusWin(st, it);
-    const n = st.pallets + (it.is_stock ? (_takeOf(st, it) || 0) : it.pallets);
+    const n = st.pallets + (it.is_stock ? (_takeOf(st, it) || 0) : (it.pallets == null ? 0 : it.pallets));
+    const unk = (st.palUnk || 0) + (!it.is_stock && it.pallets == null ? 1 : 0);   // F1/F4: a floor when pallets are unknown
     const warn = [];
     const day = _ymdOf(win[0]);
     const other = !!day && st.sideDays.length > 0 && !st.sideDays.includes(day);
     if (other) warn.push((anod ? 'φόρτωση ' : 'παράδοση ') + _wd(day) + ', άλλη ημέρα');
+    // F27 (code review): a VS's Veroia day (the owner's rule: its own, even when it has passed) is said when it is not
+    // the side's — a new Veroia stop off the side's days, or the cycle's existing Veroia stop of another day, which
+    // the piece joins (decision 6). A warning, never a refusal.
+    const hds = it._ro ? [] : _hubDays(_needs(it, false, st.hub));
+    if (hds.length === 1) {
+      // a side with no stops yet is judged by the cycle's own days, as Δ1's rows (code review r5)
+      const off = st.sideDays.length > 0 ? !st.sideDays.includes(hds[0]) : (hds[0] < st.cyc.date_start || hds[0] > st.cyc.date_end);
+      if (st.hubStopDay && st.hubStopDay !== hds[0]) warn.push({ hub: 'Βέροια ' + _wd(st.hubStopDay) + ', όχι ' + _wd(hds[0]) });
+      else if (!st.hubStop && off) warn.push({ hub: 'Βέροια ' + _wd(hds[0]) + ', άλλη ημέρα' });
+    }
     let late = false;
     // F1 (code review 28/10): a Veroia loading of the whole day (no hour given) has no start a VS could miss
     if (!anod && !it.is_stock && it.kind === 'vs_import' && it.load_from && st.hubWin && !_allDay(st.hubWin[0], st.hubWin[1])
@@ -1043,9 +1214,10 @@
     try {
       if (!other && typeof WN5L !== 'undefined' && win[0]) { const x = WN5L.stopRank(st.sideStops, win[0]); if (Number.isFinite(x) && x > 0) k = x; }
     } catch (e) { _log(e, 'WN5Act plus stopRank'); }
-    let h = warn.map((w) => '<span class="wn5-cap over">' + _esc(w) + '</span>').join('');
-    if (n > 33) h += _capHTML(n) + (k ? '<span class="wn5-cap">μπαίνει ' + k + 'η</span>' : '');
-    else h += _capHTML(n, k ? (late ? ' · ' : ' · μπαίνει ') + k + 'η' : '');
+    // the Veroia-day chip has its own look (.wn5-hubday, code review of PR 171): not the capacity's amber «υπέρβαση»
+    let h = warn.map((w) => (w.hub ? '<span class="wn5-hubday">' + _esc(w.hub) : '<span class="wn5-cap over">' + _esc(w)) + '</span>').join('');
+    if (n > 33) h += _capHTML(n, '', unk) + (k ? '<span class="wn5-cap">μπαίνει ' + k + 'η</span>' : '');
+    else h += _capHTML(n, k ? (late ? ' · ' : ' · μπαίνει ') + k + 'η' : '', unk);
     return h;
   }
   // why a line's «Πρόσθεσε» is off (owner 28/10, red beside it): the Veroia window is the user's field above the list;
@@ -1053,14 +1225,19 @@
   function _plusWhy(st, it, req) {
     if (req === undefined) req = _plusReq(st, it);
     if (!req) return 'Λείπει: πόσες, από 0,1 ως ' + _pal(it.pallets) + ' (ένα δεκαδικό)';
-    return req.missing ? _missWords(st, req) : null;
+    return req.missing ? _missWords(st, req) : _orderWarn(st.cyc, req);
   }
   function _plusLineHTML(st, it) {
     const anod = st.side === 'ANODOS';
     const win = _plusWin(st, it);
     // B1: a piece with no window of its own goes in on its day, whole day — said here, never a silent hour
     const wday = st.side === 'ANODOS' ? it.nat_ready_day : (it.nat_due_day || it.nat_ready_day);
-    const when = win[0] ? _wd(_ymdOf(win[0])) + ' ' + _hmw(win[0], win[1]) : wday ? _wd(wday) + ' όλη η ημέρα' : '—';
+    // F27: a line that would make a new Veroia stop names the day the field's hours go on, when it is not the line's
+    // own day already («Πέμ όλη η ημέρα · Βέροια Παρ»: an export picked up Thursday reaches Veroia Friday)
+    const hn = !it._ro && !st.hubStop ? _needs(it, false, st.hub) : [], hdays = _hubDays(hn);
+    const shown = win[0] ? _ymdOf(win[0]) : wday;    // the day the line shows (code review r5)
+    const vday = hdays.length === 1 && hdays[0] !== shown ? ' · Βέροια ' + _wd(hdays[0]) + _hubEst(hn, hdays[0]) : '';
+    const when = (win[0] ? _wd(_ymdOf(win[0])) + ' ' + _hmw(win[0], win[1]) : wday ? _wd(wday) + ' όλη η ημέρα' : '—') + vday;
     const loc = anod ? it.position_location_id : it.nat_to_location_id;
     const place = _placeName(loc), city = _placeCity(loc);
     const why = it._ro ? null : _plusWhy(st, it);
@@ -1072,7 +1249,7 @@
     const s = _norm([it.client, it.reference, place, city].join(' '));
     // col 1 = the place, as the frame (the group header names the client); the client and the reference stay in the
     // line's title and in its search text. ΑΝΟΔΟΣ adds its reference under the place (2011:10446 «Aspropyrgos · VS-140»).
-    return '<div class="wn5-pline' + (it._ro ? ' wn5-na' : '') + '" data-piece="' + it.piece_id + '" data-s="' + _esc(s) + '" title="' + _esc([it.client, it.reference].filter(Boolean).join(' · ')) + '">'
+    return '<div class="wn5-pline' + (it._ro ? ' wn5-na' : st.focus && st.focus(it) ? ' wn5-pfocus' : '') + '" data-piece="' + it.piece_id + '" data-s="' + _esc(s) + '" title="' + _esc([it.client, it.reference].filter(Boolean).join(' · ')) + '">'
       + '<span class="wn5-cand-m wn5-pl-who"><b>' + _esc(place) + '</b><span><span data-city="' + _esc(loc == null ? '' : loc) + '">' + _esc(city) + '</span>'
       + (anod && it.reference ? '<span class="wn5-pl-ref">' + _esc(it.reference) + '</span>' : '') + '</span></span>'
       + '<span class="wn5-cand-m wn5-pl-when"><b>' + _esc(when) + '</b>' + pal + '</span>'
@@ -1080,8 +1257,66 @@
       + (it._ro ? '<span class="wn5-pl-ro">για την ΑΝΟΔΟ</span>' : '<button type="button" class="wi4-btn sm" data-act="save" data-piece="' + it.piece_id + '">Πρόσθεσε</button>') + '</div>';
   }
   const _cnt = (items) => (items.length > 1 ? ' · ' + items.length : '');
+  // F53 (live 31/10): plan_board lists a waiting load only up to the Friday of the week it was asked for (072
+  // plan_board: nat_ready_day <= week + 6). A trip that runs past that Friday (Fri 30/10 → Sun 1/11) missed a VS of
+  // Sun 1/11 in its «+», while the same «+» from the next week showed it. The list is the trip's own days: the weeks
+  // after the loaded one, up to the trip's last day (its end, its side's stop days), are read once when the «+» opens
+  // and their loads ready by that day join the list. A read that fails is said with its days, never a silent gap.
+  // one week's board for the «+» (F53). No cache across openings: caching waits for the owner (PRIME DIRECTIVE); the
+  // main loader's own check (weekly_natl_v5 render) holds — an answer for another week, or without its lists, is a
+  // failed read, logged and said as such, never «nothing waiting» (code review r3/r4)
+  function _moreWeek(w) {
+    return planFetch('GET', '/plan/board?week=' + w).then((x) => {
+      const bad = !x || typeof x !== 'object' ? 'κενή απάντηση'
+        : x.week !== w ? 'η απάντηση ήταν για άλλη εβδομάδα (' + String(x.week) + ')'
+        : !Array.isArray(x.waiting) || !Array.isArray(x.hub) ? 'η απάντηση ήρθε χωρίς λίστα αναμονής' : null;
+      if (!bad) return x;
+      const e = _clientErr('board_shape', bad);
+      _log(new Error('wn5 plus: board ' + w + ': ' + bad), 'WN5Act plus more');
+      throw e;
+    });
+  }
+  async function _plusMore(st, week) {
+    const have = new Set(_allItems().map((x) => x.piece_id));
+    // one GET per week, each Saturday after the loaded one, side by side; at most 3 (a trip is days long, never weeks):
+    // days past them are said, never dropped in silence (code review)
+    const weeks = [];
+    for (let w = _addDays(week, 7); w <= st.beyond.to; w = _addDays(w, 7)) weeks.push(w);
+    const read = weeks.slice(0, 3);
+    const res = await Promise.allSettled(read.map(_moreWeek));
+    const out = [];
+    let i = 0;
+    // the weeks read in a row from the loaded one: their loads join; the first that failed and every day after it are
+    // the ones said unread (a week read after a failed one is not used, so the line never claims less than it shows)
+    for (; i < res.length && res[i].status === 'fulfilled'; i++) {
+      const b = res[i].value;
+      const items = [...((b && b.waiting) || []).map((x) => Object.assign({ at_hub: false }, x)), ...((b && b.hub) || []).map((x) => Object.assign({ at_hub: true }, x))];
+      for (const it of items) {
+        // its day: the base's ready day, else its window's (a VS without cross-dock has no nat_ready_day, code review)
+        const rd = it.nat_ready_day || _ymdOf(it.load_from) || _ymdOf(it.deliver_from);
+        if (have.has(it.piece_id) || (rd && rd > st.beyond.to)) continue;
+        have.add(it.piece_id);
+        out.push(it);
+      }
+    }
+    st.more = out;
+    if (i < res.length && res[i].reason && res[i].reason._sessionGone) { st.beyond.state = 'ok'; return; }   // the login page takes over
+    if (i < res.length) { st.beyond.state = 'failed'; st.beyond.from = read[i]; st.beyond.err = res[i].reason; }
+    else if (read.length < weeks.length) { st.beyond.state = 'cut'; st.beyond.from = weeks[read.length]; }
+    else st.beyond.state = 'ok';
+  }
+  // F53 (code review r8): the loaded week's groups keep their order and the later weeks' new groups come after them,
+  // so a line read later lands under the ones on screen (a press aimed before the redraw waits, d.settle). ONE group
+  // per head: a VS with pieces on both sides of the week, the stock, the ΑΝΟΔΟΣ requests are never said twice with
+  // half the count (code review r9); inside a group the loaded week's lines come first (the order of `all`)
   function _plusGroups(st) {
-    const all = _copy(_allItems());
+    const loaded = _plusGroupsOf(st, _copy(_allItems()));
+    if (!st.more || !st.more.length) return loaded;
+    const at = new Map(loaded.map((g, i) => [g.head, i]));
+    return _plusGroupsOf(st, _copy(_allItems().concat(st.more)))
+      .map((g, i) => [g, at.has(g.head) ? at.get(g.head) : loaded.length + i]).sort((a, b) => a[1] - b[1]).map((x) => x[0]);
+  }
+  function _plusGroupsOf(st, all) {
     const anodIt = all.filter((it) => !it.is_stock && _sideFor(it) === 'ANODOS');
     const groups = [];
     if (st.side === 'KATHODOS') {
@@ -1099,7 +1334,7 @@
           // the grey «αργό VS» chip = the base's overdue of a waiting VS (Ε-35: the flag only, no time — plan_board
           // carries none); the count only from two lines up (Figma 2011:10373 «· φτάνει 18:00 · 3π»)
           const chip = vs && items.some((x) => x.overdue === true) ? 'αργό VS' : null;
-          groups.push({ head: head(items[0]), chip, sub: arr + _cnt(items) + ' · ' + _pal(_sum(items.map((x) => x.pallets))) + 'π', items });
+          groups.push({ head: head(items[0]), chip, sub: arr + _cnt(items) + ' · ' + _palU(_sum(items.map((x) => x.pallets)), _unkN(items.map((x) => x.pallets))) + 'π', items });
         }
       };
       by((x) => (x.kind === 'vs_import' ? 'o' + x.order_id : null), (x) => (x.reference || 'VS') + ' · ' + (x.client || '—'));
@@ -1117,7 +1352,7 @@
     return groups;
   }
 
-  WN5Act.plus = function plus(rtId, side, anchorEl) {
+  WN5Act.plus = function plus(rtId, side, anchorEl, opts) {
     const c = _cycle(_id(rtId));
     if (!c) { WN5Act.strip(_boardHost(), _clientErr('rt_missing', 'Ο κύκλος δεν είναι στο board που φορτώθηκε — ανανέωσε')); return null; }
     side = side === 'ANODOS' ? 'ANODOS' : 'KATHODOS';
@@ -1128,15 +1363,33 @@
     const sideStops = _copy((c.stops || []).filter((s) => s.side === side && s.location_id !== hub));
     const hubStop = (c.stops || []).find((s) => s.side === side && s.location_id === hub) || null;
     const st = { rtId: c.rt_id, side, cyc: _copy(c), hub, day: (sd && sd.day) || (r && r.dayKey) || c.date_start,
-      pallets: _sidePal(r, side), veroia: _veroiaOf(r, side), take: {}, hubFrom: '', hubTo: '', q: '', mode: 'wait', groups: [],
+      pallets: _sidePal(r, side), palUnk: _sideUnk(r, side), veroia: _veroiaOf(r, side), take: {}, hubFrom: '', hubTo: '', q: '', mode: 'wait', groups: [],
       sideStops, sideDays: [...new Set(sideStops.map((s) => s.stop_day || _ymdOf(s.planned_from)).filter(Boolean))],
-      hubWin: hubStop && hubStop.planned_from && hubStop.planned_to ? [hubStop.planned_from, hubStop.planned_to] : null };
+      hubWin: hubStop && hubStop.planned_from && hubStop.planned_to ? [hubStop.planned_from, hubStop.planned_to] : null,
+      more: [], beyond: null };
+    // F53: the trip's last day past the loaded week's Friday → those days are read (_plusMore) once, after the draw
+    const week = (_state().board || {}).week;
+    const lastDay = [c.date_end].concat(st.sideDays).filter(Boolean).sort().pop();
+    if (week && lastDay && lastDay > _addDays(week, 6)) st.beyond = { from: _addDays(week, 7), to: lastDay, state: 'loading', err: null };
     st.groups = _plusGroups(st);
     st.hubStop = !!hubStop;
+    st.hubStopDay = _stopDay(hubStop);
+    // F32: a dropped load — its order's lines are marked, and its own Veroia window on its Veroia day fills the field
+    // (as Δ1's F12), still editable; never a window of another day (the field's hours go on the load's Veroia day)
+    const fIt = opts && opts.focus != null ? _item(_id(opts.focus)) : null;
+    const same = (x) => !!fIt && (fIt.order_id != null ? x.order_id === fIt.order_id : fIt.nat_order_id != null ? x.nat_order_id === fIt.nat_order_id : x.piece_id === fIt.piece_id);
+    st.focus = fIt ? same : null;
+    if (fIt && !hubStop) {
+      const fn = _needs(fIt, false, hub), hd = _hubDayOf(fn, st.day);
+      const hw = fn.find((n) => n.hub && n.from && n.to && _ymdOf(n.from) === hd);
+      // F64: a deadline stored as one instant («ως 23:59») is the day up to it, 00:00–23:59 — never 23:59–23:59,
+      // which read as 24 h to the next day
+      if (hw) { st.hubTo = _hm(hw.to); st.hubFrom = _hm(hw.from) === st.hubTo ? DAY_WIN.from : _hm(hw.from); }
+    }
     const box = _cycText(c, r);
     const anod = side === 'ANODOS';
     const title = anod ? 'Πρόσθεσε στην ΑΝΟΔΟ' : 'Πρόσθεσε στην ΚΑΘΟΔΟ';
-    const meta = [box.l1.split(' · ')[0], _dayShort(st.day), st.veroia ? 'φόρτωση ' + st.veroia : null, _pal(st.pallets) + '/33'].filter(Boolean).join(' · ');
+    const meta = [box.l1.split(' · ')[0], _dayShort(st.day), st.veroia ? 'φόρτωση ' + st.veroia : null, _palU(st.pallets, st.palUnk) + '/33'].filter(Boolean).join(' · ');
     // A popover (Figma 2011:10306/10447): no «×» and no footer — Esc, a click outside or another «+» close it. The
     // header holds title · meta and «Νέα παραγγελία | Από αναμονή», like Δ1 (T12): a redraw of the body keeps them.
     const d = _dlg('plus', title, { anchor: anchorEl, wide: true, pop: true });
@@ -1176,16 +1429,27 @@
         if (!anod && typeof WN5Form !== 'undefined' && typeof WN5Form.openOrder === 'function') {
           const truck = box.cls === 'un' ? null : box.l1.split(' · ')[0];
           h += '<div class="wn5-grey wn5-phint">«Νέα παραγγελία» ανοίγει τη σύντομη φόρμα με ' + _esc(_dayShort(st.day)) + ', ΚΑΘΟΔΟ'
-            + (truck ? ' και ' + _esc(truck) : '') + ' έτοιμα· Τιμή € (χωρίς ΦΠΑ) υποχρεωτική.</div>';
+            + (truck ? ' και ' + _esc(truck) : '') + ' έτοιμα· τιμή, παλέτες και παράθυρο μπαίνουν και αργότερα.</div>';
         }
         // Figma 2011:10446: the ΑΝΟΔΟΣ popover has no search (its list is the requests of one side's day)
         if (!anod) h += '<input type="search" class="wn5-dq" data-q placeholder="Αναζήτηση στην αναμονή (πελάτης, σημείο, VS)" value="' + _esc(st.q) + '">';
         if (!st.hubStop && st.groups.some((g) => g.items.some((it) => !it._ro && _needs(it, false, hub).some((n) => n.hub)))) {
           h += '<div class="wn5-hubwin"><span>' + (anod ? 'Άφιξη Βέροιας *' : 'Παράθυρο φόρτωσης Βέροιας *') + '</span>'
-            + '<input class="wn5-hm" data-hub="from" placeholder="ΗΗ:ΛΛ" value="' + _esc(st.hubFrom) + '"> – <input class="wn5-hm" data-hub="to" placeholder="ΗΗ:ΛΛ" value="' + _esc(st.hubTo) + '"></div>';
+            + '<input class="wn5-hm" data-hub="from" placeholder="ΗΗ:ΛΛ" value="' + _esc(st.hubFrom) + '"> – <input class="wn5-hm" data-hub="to" placeholder="ΗΗ:ΛΛ" value="' + _esc(st.hubTo) + '">'
+            + '<small>στην ημέρα Βέροιας κάθε φορτίου</small></div>';
         }
-        if (!st.groups.length) h += '<p class="wn5-none">Καμία παράδοση σε αναμονή για αυτό το σκέλος.</p>';
+        // «none» only when every day of the trip was read: a day not read is never said to have nothing (code review r7)
+        if (!st.groups.length && !(st.beyond && st.beyond.state !== 'ok')) h += '<p class="wn5-none">Καμία παράδοση σε αναμονή για αυτό το σκέλος.</p>';
         for (const g of st.groups) h += '<div class="wn5-grp-h">' + _esc(g.head) + (g.chip ? '<span class="wn5-grp-c">' + _esc(g.chip) + '</span>' : '') + '<span class="wn5-grp-s">' + _esc(g.sub) + '</span></div>' + g.items.map((it) => _plusLineHTML(st, it)).join('');
+        // F53: the days after the loaded week: being read, or not read (with the base's words) — never a silent gap;
+        // under the list, so its going away and the lines read later move nothing above it
+        if (st.beyond && st.beyond.state !== 'ok') {
+          const days = _dayShort(st.beyond.from) + (st.beyond.to !== st.beyond.from ? '–' + _dayShort(st.beyond.to) : '');
+          h += st.beyond.state === 'loading' ? '<p class="wn5-grey" data-beyond="loading">Αναμονή ' + _esc(days) + ': φορτώνει…</p>'
+            : '<p class="wn5-miss" data-beyond="' + st.beyond.state + '">Αναμονή ' + _esc(days) + ': δεν διαβάστηκε ('
+              + _esc(st.beyond.state === 'cut' ? 'πάνω από 3 εβδομάδες' : (st.beyond.err && st.beyond.err.message) || 'σφάλμα') + ')</p>';
+        }
+        if (!st.groups.some((g) => g.items.some((it) => !it._ro && same(it))) && fIt) h += '<p class="wn5-miss" data-focus-miss>Το φορτίο που έσυρες δεν μπαίνει σε αυτή την πλευρά από εδώ — άνοιξε την «Ανάθεση» της γραμμής του.</p>';
         // Figma 2011:10022 (ΑΝΟΔΟΣ): «ΠΡΟΡΥΘΜΙΣΗ · Άδειες παλέτες · εθνική 1 € · Άνοιγμα» — the T20 form prefilled (Ε-39).
         // Drawn only once the form exists, so no dead line before T20.
         if (anod && typeof WN5Form !== 'undefined' && typeof WN5Form.openOrder === 'function') {
@@ -1224,6 +1488,7 @@
         _close(d);
         WN5Form.openOrder({ side, day: st.day, rtId: st.rtId, veroia: sd && sd.veroia ? { from: _t(sd.veroia.from), to: _t(sd.veroia.to) } : undefined, preset: 'empties' });
       } else if (a === 'save') {
+        if (d.settle && performance.now() < d.settle) return;
         const it = byId(_id(b.dataset.piece));
         const req = it && _plusReq(st, it);
         if (req && !req.missing) _send(d, req, 'Προστέθηκε στο σκέλος', { intl: true });
@@ -1244,6 +1509,30 @@
     });
     draw();
     _gate(d);
+    if (st.beyond) {
+      // a throw outside the reads is said as a failed read too, never a «φορτώνει…» that stays (code review r2)
+      const fail = (e) => { _log(e, 'WN5Act plus more'); st.beyond.state = 'failed'; st.beyond.err = e; };
+      _plusMore(st, week).catch(fail).then(() => {
+        if (d.closed) return;
+        // the redraw keeps what was typed (st holds it) and the field the user is in
+        const a = document.activeElement;
+        const sel = a && d.body.contains(a) ? (a.matches('[data-q]') ? '[data-q]' : a.dataset.hub ? '[data-hub="' + a.dataset.hub + '"]'
+          : a.dataset.take ? '[data-take="' + a.dataset.take + '"]' : null) : null;
+        st.groups = _plusGroups(st);
+        if (st.mode !== 'wait') return;
+        const top = [d.body.scrollTop, d.dlg.scrollTop];
+        draw();
+        d.body.scrollTop = top[0]; d.dlg.scrollTop = top[1];
+        // a press aimed before the redraw is not taken for a line it now lands on (code review r8): 400 ms
+        d.settle = performance.now() + 400;
+        const back = sel && d.body.querySelector(sel);
+        if (back) { back.focus(); try { back.setSelectionRange(back.value.length, back.value.length); } catch (_) { /* search inputs */ } }
+      }).catch((e) => _log(e, 'WN5Act plus more draw'));
+    }
+    if (fIt) {
+      const ln = d.body.querySelector('.wn5-pline.wn5-pfocus');
+      if (ln && ln.scrollIntoView) ln.scrollIntoView({ block: 'nearest' });
+    }
     // the city under each place comes from the catalogue (Ε-2): filled in place when it is read, never a redraw (a
     // typed «πόσες» or search stays as it is); without the catalogue the line keeps the place alone
     if (typeof PlanIds !== 'undefined') {
@@ -1280,6 +1569,7 @@
     }
     return { needs, items };
   }
+  KIT.moveParts = _moveParts;   // the drag of a point (wn5_edit.js): one reading of «what a moved piece needs»
 
   // Where the board shows the pieces after ✈ «Σπάσιμο»: «για μοίρασμα» only when the Veroia board lists them
   // (072 has no mark for «sent to be split» yet, Ε-41: a piece without a prior drop comes back as «ΠΡΟΣ ΑΝΑΘΕΣΗ»).
@@ -1314,19 +1604,19 @@
     // goes and how much, then which load, which side, which delivery day. Never the client (the Δ1 rule of T12).
     const sideW = side === 'ANODOS' ? 'ΑΝΟΔΟΣ' : 'ΚΑΘΟΔΟΣ';
     const whole = !Array.isArray(from.piece_ids);
-    const pal = _sum(mp.items.map((x) => x.pallets));
+    const pal = _sum(mp.items.map((x) => x.pallets)), palUnk = _unkN(mp.items.map((x) => x.pallets));
     const drops = [...new Set(mp.items.map((x) => x.dropLoc))];
     const place = mp.items[0] ? (mp.items[0].dropName || _placeName(mp.items[0].dropLoc)) : '—';
     const refs = [...new Set(mp.items.map((x) => x.reference).filter(Boolean))].join(', ') || '—';
     const firstDrop = mp.items.map((x) => x.dropFrom).filter(Boolean).sort((a, b) => new Date(a) - new Date(b))[0];
-    const head = whole ? 'όλη η ' + sideW + ' · ' + _pal(pal) + 'π' : place + (drops.length > 1 ? ' +' + (drops.length - 1) : '') + ' · ' + _pal(pal) + 'π';
+    const head = whole ? 'όλη η ' + sideW + ' · ' + _palU(pal, palUnk) + 'π' : place + (drops.length > 1 ? ' +' + (drops.length - 1) : '') + ' · ' + _palU(pal, palUnk) + 'π';
     const meta = [whole ? (src.code || 'κύκλος') : refs, sideW, whole ? mp.items.length + (mp.items.length === 1 ? ' παράδοση' : ' παραδόσεις') : null,
       firstDrop ? 'παράδοση ' + _dayShort(_ymdOf(firstDrop)) : null].filter(Boolean).join(' · ');
     const what = whole ? 'όλη η ' + sideW + ' του ' + (src.code || 'κύκλου') : refs + ' · ' + place;
     const tx0 = _cycText(src, r);
-    const srcAfter = r ? { label: src.trip_type === 'PARTNER' ? tx0.l1 : (src.truck || tx0.l1), before: _sidePal(r, side) } : null;
+    const srcAfter = r ? { label: src.trip_type === 'PARTNER' ? tx0.l1 : (src.truck || tx0.l1), before: _sidePal(r, side), unk: _sideUnk(r, side) } : null;
     const st = { mode: 'move', from: _copy(from), side, day: ctx.day || (sd && sd.day) || (r && r.dayKey) || src.date_start, skipRt: src.rt_id,
-      rtId: null, group: null, pieces: null, items: _copy(mp.items), needs: _copy(mp.needs), pallets: _sum(mp.items.map((x) => x.pallets)),
+      rtId: null, group: null, pieces: null, items: _copy(mp.items), needs: _copy(mp.needs), pallets: pal, palUnk,
       allHub: mp.items.length > 0 && mp.items.every((x) => x.pickHub), cyc: {}, rows: [], road: [], free: [], trailers: [], drivers: [], partners: [],
       ids: { ok: false }, pick: null, trailer: null, driver: null, partner: null, rateTxt: '', hubFrom: '', hubTo: '', filter: 'all', q: '', ref: '',
       what, meta, src: srcAfter };
@@ -1428,7 +1718,7 @@
       what: (list) => _clearWhat(c, r, list),
     });
     // a costs_without_rt notice goes to the national desk: it shows in the notices strip after the re-read
-    if (out) await _afterSave(out, 'Καθαρίστηκε η ανάθεση', {});
+    if (out) await _afterSave(out, 'Καθαρίστηκε η ανάθεση', { rt: c.rt_id });
     return out;
   };
 
@@ -1440,6 +1730,14 @@
   // the same wall time N days later in Athens (display and explicit stops; the base shifts by an interval)
   const _shiftIso = (iso, n) => { const p = _parts(iso); return p ? _iso(_addDays(p.ymd, n), p.hm) : iso; };
   function _dateBody(st) {
+    if (st.one) {
+      // F29 (live 28/10): ONE stop of the cycle, any place — its own day and window as stops[] alone (plan_rt_update
+      // 072:1714-1723, step 1), no shift: nothing else of the side moves. The window's hours go on the chosen day.
+      const f1 = _hhmm(st.from), t1 = _hhmm(st.to), day = st.sel || st.cur;
+      if (!f1 || !t1 || (day === st.cur && f1 === st.from0 && t1 === st.to0)) return null;
+      const w = _win(day, f1, t1);
+      return { stops: [{ stop_id: st.vStop.stop_id, planned_from: w[0], planned_to: w[1] }] };
+    }
     const delta = st.sel ? _dayDiff(st.cur, st.sel) : 0;
     const f = _hhmm(st.from), t = _hhmm(st.to);
     const stops = [];
@@ -1527,9 +1825,10 @@
     const after = new Map();
     for (const s of st.sideStops) {
       const isV = !!st.vStop && s.stop_id === st.vStop.stop_id;
+      if (st.one && !isV) continue;   // F29: the one stop's line only, the others do not move
       let a = s.planned_from, b = s.planned_to;
-      if (isV && f && t) { const w = _win(st.vDay, f, t); a = w[0]; b = w[1]; }
-      if (delta) { a = _shiftIso(a, delta); b = _shiftIso(b, delta); }
+      if (isV && f && t) { const w = _win(st.one ? (st.sel || st.vDay) : st.vDay, f, t); a = w[0]; b = w[1]; }
+      if (delta && !st.one) { a = _shiftIso(a, delta); b = _shiftIso(b, delta); }
       after.set(s.stop_id, [a, b]);
       if (!kathEnd || new Date(b) > new Date(kathEnd)) kathEnd = b;
       const place = [((s.legs || [])[0] || {}).client, s.location].filter(Boolean).join(' · ');
@@ -1537,7 +1836,7 @@
       // a loading on the way (THESSALONIKI) is named, never counted as a delivery
       const no = st.num ? st.num.get(s.stop_id) : (isV ? null : ++k);
       const loads = (s.legs || []).some((l) => l.act === 'load'), unloads = (s.legs || []).some((l) => l.act === 'unload');
-      const name = isV ? (st.side === 'KATHODOS' ? 'Φόρτωση Βέροιας' : 'Βέροια · τέλος κύκλου')
+      const name = isV && !st.one ? (st.side === 'KATHODOS' ? 'Φόρτωση Βέροιας' : 'Βέροια · τέλος κύκλου')
         : no != null ? no + '  ' + place
         : (loads && !unloads ? 'Φόρτωση · ' : 'Παράδοση · ') + place;
       h += _resLi(_esc(name), _dayShort(_ymdOf(s.planned_from)), _dayShort(_ymdOf(a)) + ' · ' + _hmw(a, b), ' data-stop="' + _esc(s.stop_id) + '"');
@@ -1559,7 +1858,8 @@
       h += _resLi(_esc('Κενό γύρισμα · ' + (g.location || '—')), was, nb === g.planned_to ? null : _dayShort(_ymdOf(nb)) + ' ' + _hm(nb), ' data-row="gap"');
     }
     // the ANODOS of this cycle (Figma 2053:8070-8075): stays put unless ticked; amber when the KATHODOS now ends after it starts
-    if (delta && st.anodStops.length) {
+    // (one stop: the ANODOS never moves with it — its stops stay known, so «Κενό γύρισμα» reads the cycle as it is)
+    if (delta && st.anodStops.length && !st.one) {
       const lo = st.anodLoads.length ? st.anodLoads : st.anodStops;
       const a0 = lo.reduce((x, s) => (new Date(s.planned_from) < new Date(x) ? s.planned_from : x), lo[0].planned_from);
       const b0 = lo.reduce((x, s) => (new Date(s.planned_to) > new Date(x) ? s.planned_to : x), lo[0].planned_to);
@@ -1606,20 +1906,26 @@
       for (const v of pv.vs_day || []) h += '<p class="wn5-intl">' + _esc('ενημερώνει τη διεθνή #' + v.order_id + ' · ' + _dm(String(v.from || '').slice(0, 10)) + ' → ' + _dm(String(v.to || '').slice(0, 10))) + '</p>';
       if ((pv.warnings || []).length) h += '<ul class="wn5-cons">' + pv.warnings.map((w) => '<li data-kind="' + _esc(w && w.code) + '">' + _esc(WN5Lab.warningLine(w).text) + '</li>').join('') + '</ul>';
     } else if (!st.err) h += '<p class="wn5-none">Διαβάζει την προεπισκόπηση…</p>';
-    return h + '<p class="wn5-none wn5-res-end">Οι ώρες μένουν ίδιες· τα παράθυρα ξαναελέγχονται.</p>';
+    return h + '<p class="wn5-none wn5-res-end">' + (st.one ? 'Αλλάζει μόνο αυτή η στάση· οι άλλες στάσεις μένουν ως έχουν.' : 'Οι ώρες μένουν ίδιες· τα παράθυρα ξαναελέγχονται.') + '</p>';
   }
 
-  WN5Act.datePanel = function datePanel(rtId, side, anchorEl) {
+  // opts.stopId (F29, live 28/10): the panel for ONE stop of the side — its day and window — from the leg form; the
+  // stop times of a cycle outside Veroia could not be changed from any screen while the base took stops[] (072).
+  WN5Act.datePanel = function datePanel(rtId, side, anchorEl, opts) {
     const c = _cycle(_id(rtId));
     if (!c) { WN5Act.strip(_boardHost(), _clientErr('rt_missing', 'Ο κύκλος δεν είναι στο board που φορτώθηκε — ανανέωσε')); return null; }
     side = side === 'ANODOS' ? 'ANODOS' : 'KATHODOS';
     const hub = _hubId();
     const sideStops = _copy((c.stops || []).filter((s) => s.side === side));
     if (!sideStops.length) { WN5Act.strip(_boardHost(), _clientErr('side_empty', 'Αυτή η πλευρά δεν έχει στάσεις: το «+» βάζει πρώτο φορτίο')); return null; }
-    const vStop = sideStops.find((s) => s.location_id === hub) || null;
-    const ref = side === 'KATHODOS' && vStop ? vStop : sideStops[0];
+    const oneId = opts && opts.stopId != null ? _id(opts.stopId) : null;
+    const one = oneId ? sideStops.find((s) => s.stop_id === oneId) || null : null;
+    if (opts && opts.stopId != null && !one) { WN5Act.strip(_boardHost(), _clientErr('stop_missing', 'Η στάση δεν είναι πια στο board που φορτώθηκε — ανανέωσε')); return null; }
+    // in the one-stop panel that stop takes the Veroia stop's place: its window fields, its day on the calendar
+    const vStop = one || sideStops.find((s) => s.location_id === hub) || null;
+    const ref = one || (side === 'KATHODOS' && vStop ? vStop : sideStops[0]);
     const cur = _ymdOf(ref.planned_from);
-    const st = { rtId: c.rt_id, side, sideStops, vStop, vDay: vStop ? _ymdOf(vStop.planned_from) : null, cur, sel: null,
+    const st = { rtId: c.rt_id, side, one: !!one, sideStops, vStop, vDay: vStop ? _ymdOf(vStop.planned_from) : null, cur, sel: null,
       view: [Number(cur.slice(0, 4)), Number(cur.slice(5, 7)) - 1],
       from0: vStop ? _hm(vStop.planned_from) : '', to0: vStop ? _hm(vStop.planned_to) : '', from: '', to: '', alsoAnod: false,
       anodStops: side === 'KATHODOS' ? _copy((c.stops || []).filter((s) => s.side === 'ANODOS')) : [],
@@ -1642,7 +1948,9 @@
     st.gapStop = lastTo ? sideStops.find((s) => s.stop_id === lastTo.stopId) || null : null;
     const nDel = own ? own.length : sideStops.filter((s) => s.location_id !== hub).length;
     const head = (side === 'KATHODOS' ? 'ΚΑΘΟΔΟΣ' : 'ΑΝΟΔΟΣ') + ' · ' + box.l1.split(' · ')[0] + no + ' · ' + nDel + (nDel === 1 ? (side === 'KATHODOS' ? ' παράδοση' : ' φόρτωση') : (side === 'KATHODOS' ? ' παραδόσεις' : ' φορτώσεις'));
-    const d = _dlg('date', side === 'KATHODOS' ? 'Ημερομηνία φόρτωσης Βέροιας' : 'Ημερομηνία ΑΝΟΔΟΥ', { anchor: anchorEl });
+    const d = _dlg('date', one ? 'Ώρα στάσης · ' + (one.location_id === hub ? 'Βέροια' : one.location || '—')
+      : side === 'KATHODOS' ? 'Ημερομηνία φόρτωσης Βέροιας' : 'Ημερομηνία ΑΝΟΔΟΥ', { anchor: anchorEl });
+    if (one) d.dlg.dataset.stop = String(one.stop_id);
     // the meta under the title, across the dialog (Figma 2053:7840)
     d.dlg.querySelector('.wi4-dlg-t').insertAdjacentHTML('afterend', '<span class="wn5-dlg-meta">' + _esc(head) + '</span>');
     // «Ανάθεση n/m…» (Figma 2082:7735): only for a conflict whose next cycle is on the loaded board
@@ -1660,7 +1968,7 @@
     // re-created (someone typing an hour while a dry run is in flight keeps the field and the keystrokes; a
     // removed focused input fired blur → change → a nested redraw inside innerHTML = NotFoundError, review r1),
     // and the ΑΝΟΔΟΣ checkbox is one element moved into its row, never rebuilt. The calendar redraws on a click only.
-    d.body.innerHTML = '<div class="wn5-datep"><div><div data-cal></div>' + (vStop ? '<div class="wn5-hubwin"><span>' + (side === 'KATHODOS' ? 'Παράθυρο' : 'Άφιξη Βέροιας') + '</span>'
+    d.body.innerHTML = '<div class="wn5-datep"><div><div data-cal></div>' + (vStop ? '<div class="wn5-hubwin"><span>' + (side === 'KATHODOS' || one ? 'Παράθυρο' : 'Άφιξη Βέροιας') + '</span>'
       + '<input class="wn5-hm" data-win="from" value="' + _esc(st.from) + '"> – <input class="wn5-hm" data-win="to" value="' + _esc(st.to) + '"></div>' : '')
       + '</div><div class="wn5-datep-r"></div></div>';
     const calEl = d.body.querySelector('[data-cal]'), resEl = d.body.querySelector('.wn5-datep-r');
@@ -1752,8 +2060,12 @@
       if (ev.target.matches('[data-win]')) run();
       else if (ev.target.matches('[data-anod]')) { st.alsoAnod = ev.target.checked; run(); }
     });
+    // owner 31/10 (pack 2): a point dragged onto another day opens its own one-stop panel with that day chosen and
+    // its dry run on screen; the save stays the user's press (a drop never writes by itself)
+    const pre = one && opts && /^\d{4}-\d{2}-\d{2}$/.test(String(opts.day || '')) && opts.day !== st.cur ? opts.day : null;
+    if (pre) { st.sel = pre; st.view = [Number(pre.slice(0, 4)), Number(pre.slice(5, 7)) - 1]; }
     drawCal();
-    draw();
+    if (pre) run(); else draw();
     _gate(d);
     return d;
   };
@@ -1892,8 +2204,11 @@
     // order read «Τιμή —» / «PE —» while the base had them). The dispatcher sees the price (locked decision 23/8).
     const src = f.items.concat(f.legs.map((x) => x.l));
     const price = src.find((x) => typeof x.price === 'number');
+    // F4 (owner 28/10, 080): a price not written yet comes as price: null — «λείπει», never «—» (= the board did not say)
+    const noPrice = !price && src.some((x) => Object.prototype.hasOwnProperty.call(x, 'price') && x.price === null);
     const pe = src.find((x) => typeof x.pallet_exchange === 'boolean');
-    const pal = _sum(f.items.map((x) => x.pallets)) + _sum(f.legs.filter((x) => x.l.act === 'load').map((x) => x.l.pallets));
+    const pals = f.items.map((x) => x.pallets).concat(f.legs.filter((x) => x.l.act === 'load').map((x) => x.l.pallets));
+    const pal = _sum(pals), palUnk = _unkN(pals);
     const assigned = f.legs.length > 0;
     const side = assigned ? f.legs[0].s.side : (f.items[0] ? _sideFor(f.items[0]) : 'KATHODOS');
     const row = (k, v) => '<div class="wn5-kv"><span>' + _esc(k) + '</span><b>' + _esc(v) + '</b></div>';
@@ -1906,8 +2221,9 @@
       + '<span class="wn5-chip ' + (assigned ? 'ok' : 'un') + '">' + (assigned ? 'ΑΝΑΤΕΘΗΚΕ' : 'ΠΡΟΣ ΑΝΑΘΕΣΗ') + '</span></div>';
     let h = sec('ΣΤΟΙΧΕΙΑ', row('Πελάτης', any.client || '—')
       // absent on both the pieces and the legs = «—», never a guess
-      + row('Τιμή', price ? _pal(price.price) + ' € (χωρίς ΦΠΑ) · τιμολογείται χωριστά' : '—')
-      + row('Παλέτες', pal ? _pal(pal) : '—') + row('Θερμοκρασία', _temp(any.temperature_c)) + row('PE', pe ? (pe.pallet_exchange ? 'Ναι' : 'Όχι') : '—'));
+      + row('Τιμή', price ? _pal(price.price) + ' € (χωρίς ΦΠΑ) · τιμολογείται χωριστά' : noPrice ? 'λείπει — γράψε την από «Επεξεργασία»' : '—')
+      // F1: unknown pallets are said, never summed as 0 («;» all unknown, «12+;» some)
+      + row('Παλέτες', palUnk ? (pal ? _palU(pal, palUnk) : ';') + ' · άγνωστες σε ' + palUnk + (palUnk === 1 ? ' φορτίο' : ' φορτία') : pal ? _pal(pal) : '—') + row('Θερμοκρασία', _temp(any.temperature_c)) + row('PE', pe ? (pe.pallet_exchange ? 'Ναι' : 'Όχι') : '—'));
     // one national order has one client, already in «Πελάτης»: a stop line names the place, the day and the window,
     // never the client again (live F12, 28/10 — it read as a second place under the first)
     const stopLine = (s, l) => [s.location || '—', _dayShort(_ymdOf(s.planned_from)), _hmw(s.planned_from, s.planned_to), _pal(l.pallets) + 'π'];
@@ -1943,24 +2259,26 @@
     h += sec('ΚΥΚΛΟΣ', cy);
     // «invoiced» is not on the board: the delete list (dry run) says it when it is true
     h += sec('ΤΙΜΟΛΟΓΗΣΗ', row('Τιμολογήθηκε', '—'));
-    return { html: h, chips, ref, client: any.client || '—', pal };
+    return { html: h, chips, ref, client: any.client || '—', pal, palUnk };
   }
   // «Τι θα γίνει» rows the screen adds from the board it holds (Figma 2011:10585–10600): each vehicle's x/33 after the
   // order leaves, each stop left with no leg (plan_h_stops_sweep drops it), and each cycle that stays. The base's own
   // list follows them.
   function _deleteWhat(f, ctx, list) {
-    const out = ['σβήνεται 1 παραγγελία · ' + (ctx.client || '—') + (ctx.pal ? ' · ' + _pal(ctx.pal) + 'π' : '')];
+    const out = ['σβήνεται 1 παραγγελία · ' + (ctx.client || '—') + (ctx.pal || ctx.palUnk ? ' · ' + _palU(ctx.pal, ctx.palUnk) + 'π' : '')];
     const sides = new Map();
     for (const x of f.legs) {
       if (x.l.act !== 'load') continue;
       const k = x.c.rt_id + '|' + x.s.side;
-      const p = sides.get(k) || { c: x.c, side: x.s.side, n: 0 };
+      const p = sides.get(k) || { c: x.c, side: x.s.side, n: 0, unk: 0 };
       p.n += Number(x.l.pallets) || 0;
+      if (x.l.pallets == null) p.unk++;
       sides.set(k, p);
     }
     for (const p of sides.values()) {
       const before = _sidePal(_row(p.c.rt_id), p.side);
-      out.push((p.c.truck || p.c.partner || p.c.code || '—') + ' πάει ' + _pal(before) + ' → ' + _pal(Math.max(0, before - p.n)) + '/33');
+      const bu = _sideUnk(_row(p.c.rt_id), p.side);
+      out.push((p.c.truck || p.c.partner || p.c.code || '—') + ' πάει ' + _palU(before, bu) + ' → ' + _palU(Math.max(0, before - p.n), Math.max(0, bu - p.unk)) + '/33');
     }
     const stops = new Set();
     for (const x of f.legs) {
@@ -2004,7 +2322,7 @@
     d.dlg.addEventListener('click', (ev) => {
       const b = ev.target.closest('[data-act]');
       if (!b || b.disabled || !_live()) return;
-      if (b.dataset.act === 'delete') WN5Act.deleteOrder(no, { host: d.msg, ref: card.ref, client: card.client, pal: card.pal });
+      if (b.dataset.act === 'delete') WN5Act.deleteOrder(no, { host: d.msg, ref: card.ref, client: card.client, pal: card.pal, palUnk: card.palUnk });
       else if (b.dataset.act === 'edit') {
         _close(d);   // the card's own close (its listeners go with it) before the form takes the screen
         WN5Form.openOrder({ natOrderId: no });   // T20: edit = PATCH /plan/orders/:id, only what changed
@@ -2058,7 +2376,9 @@
     if (nat.size === 1 && !vs.size) return WN5Act.orderCard([...nat.keys()][0]);
     const d = _dlg('card', 'Παραγγελίες · ' + (c.code || 'κύκλος'));
     let h = '';
-    for (const [no, l] of nat) h += '<div class="wn5-cand" data-line="nat"><span class="wn5-cand-m"><b>' + _esc(l.reference || '#' + no) + '</b><span>' + _esc(l.client || '—') + '</span></span><span>εθνική</span><span></span>'
+    // owner 31/10: delete from the Weekly too, one press from the cycle's list (the card keeps its own)
+    for (const [no, l] of nat) h += '<div class="wn5-cand" data-line="nat"><span class="wn5-cand-m"><b>' + _esc(l.reference || '#' + no) + '</b><span>' + _esc(l.client || '—') + '</span></span><span>εθνική</span>'
+      + '<button type="button" class="wi4-btn sm wn5-danger-o" data-act="del" data-no="' + no + '">Διαγραφή</button>'
       + '<button type="button" class="wi4-btn sm" data-act="card" data-no="' + no + '">Καρτέλα</button></div>';
     for (const [, l] of vs) h += '<div class="wn5-cand" data-line="vs"><span class="wn5-cand-m"><b>' + _esc(l.reference || 'VS') + '</b><span>' + _esc(l.client || '—') + '</span></span>'
       + '<span>διεθνής παραγγελία · αλλάζει από το Weekly Διεθνών</span><span></span><span></span></div>';
@@ -2069,6 +2389,10 @@
       if (!b || !_live()) return;
       if (b.dataset.act === 'cancel') _close(d);
       else if (b.dataset.act === 'card') WN5Act.orderCard(_id(b.dataset.no));
+      else if (b.dataset.act === 'del') {
+        const no2 = _id(b.dataset.no), l = nat.get(no2) || {};
+        WN5Act.deleteOrder(no2, { host: d.msg, ref: l.reference ? '#' + l.reference : null, client: l.client || null });
+      }
     });
     return d;
   };
@@ -2092,6 +2416,9 @@
   }
   WN5Act.rtSaveBody = rtSaveBody;
 
+  // for modules/wn5_assign.js (the form of «Ανάθεση») and the Veroia board: the same day, place and order rules
+  Object.assign(KIT, { hubDayOf: _hubDayOf, hubDays: _hubDays, stopDay: _stopDay, placeName: _placeName, placeCity: _placeCity,
+    orderWarn: _orderWarn, wd: _wd, dow: _dow });
   WN5Act._kit = KIT;
   window.WN5Act = WN5Act;
 })();

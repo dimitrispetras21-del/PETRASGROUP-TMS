@@ -105,10 +105,14 @@ test('F4α-T20: loaded pallets must equal delivered pallets per order (a form li
   assert.ok(F._check(state({ orders: [o] })).some((l) => /παλέτες φόρτωσης/.test(l)));
 });
 
-test('F4α-T20: price is required, never a 0 default', () => {
-  for (const price of [null, 0, -5, NaN]) {
+// F4 (owner 28/10, 080): the price is optional — empty goes as null (the base stores NULL, «λείπει»), a written one
+// is > 0; never a 0 default (0 reads as an amount)
+test('F4α-T20 / F4: price optional — empty = null, a written price > 0, never a 0 default', () => {
+  assert.deepStrictEqual(J(F._check(state({ orders: [order({ price: null })] }))), []);
+  assert.strictEqual(J(F._body(state({ orders: [order({ price: null })] }))).orders[0].price, null);
+  for (const price of [0, -5, NaN]) {
     const lines = F._check(state({ orders: [order({ price })] }));
-    assert.ok(lines.some((l) => l.includes('Τιμή € (χωρίς ΦΠΑ) *')), `price ${price}: ${lines.join(' / ')}`);
+    assert.ok(lines.some((l) => l.includes('Τιμή € (χωρίς ΦΠΑ): αριθμός πάνω από 0, ή κενό (λείπει)')), `price ${price}: ${lines.join(' / ')}`);
   }
   assert.ok(!/price\s*:\s*0\b|price\s*\|\|\s*0/.test(grab('_body')), 'a 0 default for the price in _body');
 });
@@ -149,8 +153,26 @@ test('F4α-T20: ANODOS arrival at Veroia «ως» → deliver_from = deliver_to;
   const o = order({ loads: [row(3, '2026-10-14', '12:00', '14:00', 20)], drops: [row(1, '2026-10-14', '22:00', '22:00', 20, { until: true })] });
   const b = F._body(state({ side: 'ANODOS', orders: [o] }));
   assert.strictEqual(b.orders[0].shipments[0].deliver_from, b.orders[0].shipments[0].deliver_to);
+  // F66 (owner 31/10): a cycle with no Veroia stop on its ΑΝΟΔΟΣ («Κενό γύρισμα») is no longer refused — the stop is
+  // made on the arrival day, from the end of the order's last loading that day to the «ως» (planned_to > planned_from)
   const noStop = state({ side: 'ANODOS', target: { rt_id: 102, side: 'ANODOS' }, cycleStops: [{ stop_id: 1101, location_id: 2, side: 'ANODOS' }], orders: [o] });
-  assert.ok(F._check(noStop).some((l) => /στάση Βέροιας στην ΑΝΟΔΟ/.test(l)), F._check(noStop).join(' / '));
+  assert.deepStrictEqual(J(F._check(noStop)), []);
+  const hub = J(F._body(noStop).stops).find((x) => x.location_id === 1);
+  assert.deepStrictEqual(hub, { ref: 's2', location_id: 1, side: 'ANODOS', planned_from: '2026-10-14T14:00:00+03:00', planned_to: '2026-10-14T22:00:00+03:00' });
+  // no loading that day before the «ως»: from the day's start
+  const o2 = order({ loads: [row(3, '2026-10-13', '12:00', '14:00', 20)], drops: [row(1, '2026-10-14', '22:00', '22:00', 20, { until: true })] });
+  const hub2 = J(F._body(state({ side: 'ANODOS', target: { rt_id: 102, side: 'ANODOS' }, cycleStops: [], orders: [o2] })).stops).find((x) => x.location_id === 1);
+  assert.strictEqual(hub2.planned_from, '2026-10-14T00:00:00+03:00');
+  // the cycle's own Veroia stop, when it has one, is still used as it is
+  const withStop = state({ side: 'ANODOS', target: { rt_id: 101, side: 'ANODOS' }, cycleStops: [{ stop_id: 1005, location_id: 1, side: 'ANODOS' }], orders: [o] });
+  assert.ok(J(F._body(withStop).stops).some((x) => x.stop_id === 1005));
+});
+
+test('F64: a point typed 08:00–08:00 on a target cycle is the stop 08:00–08:01 that day, never equal ends', () => {
+  const o = order({ loads: [row(1, '2026-10-12', '16:00', '18:00', 4)], drops: [row(4, '2026-10-13', '08:00', '08:00', 4)] });
+  const st = state({ target: { rt_id: 101, side: 'KATHODOS' }, cycleStops: [{ stop_id: 1001, location_id: 1, side: 'KATHODOS' }], orders: [o] });
+  const s4 = J(F._body(st).stops).find((x) => x.location_id === 4);
+  assert.deepStrictEqual([s4.planned_from, s4.planned_to], ['2026-10-13T08:00:00+03:00', '2026-10-13T08:01:00+03:00']);
 });
 
 test('F4α-T20: request_reused — the board holds the order of the same client, reference and pallets', () => {
@@ -208,8 +230,10 @@ test('077: _editFromRead keeps every value (nulls as «empty», never as zero) a
   const e = F._editFromRead({ ok: true, op: 'plan_order_read',
     order: { nat_order_id: 84, client: 'C', price: 100, reference: null, goods: 'G', notes: null, temperature_c: null, pallet_exchange: false, direction: 'KATHODOS', pallets: 6 },
     shipments: [{ shipment_id: 9, origin_location_id: 1, dest_location_id: 2, pallets: 6, load_from: 'a', load_to: 'b', deliver_from: 'c', deliver_to: 'd', vs_locked: false, rides: true, rt_codes: ['RT-1287'] }] });
-  assert.deepStrictEqual(J(e), { full: true, nat_order_id: 84, client: 'C', price: 100, temperature_c: null, pallet_exchange: false, reference: '', goods: 'G', notes: '',
+  assert.deepStrictEqual(J(e), { full: true, nat_order_id: 84, client: 'C', price: 100, temperature_c: null, pallet_exchange: false, reference: '', goods: 'G', notes: '', invoiced: false,
     direction: 'KATHODOS', riding: true, ships: [{ shipment_id: 9, origin: 1, dest: 2, pallets: 6, load_from: 'a', load_to: 'b', deliver_from: 'c', deliver_to: 'd', rides: true, vs_locked: false, waits: false, at_hub: false, rt_codes: ['RT-1287'] }] });
+  // owner 31/10: «invoiced» only when the read says true (the price locks for every role but owner / accountant)
+  assert.strictEqual(F._editFromRead({ order: { nat_order_id: 1, invoiced: true }, shipments: [{ shipment_id: 2 }] }).invoiced, true);
   // F4 (080 to come): pallets unknown stay null, never 0
   assert.strictEqual(F._editFromRead({ order: { nat_order_id: 1 }, shipments: [{ shipment_id: 2, pallets: null }] }).ships[0].pallets, null);
   for (const bad of [null, {}, { order: {} }, { order: { nat_order_id: 1 }, shipments: [] }]) assert.strictEqual(F._editFromRead(bad), null, JSON.stringify(bad));
@@ -249,4 +273,26 @@ test('077 + F1: an untouched whole-day point sends nothing; a real minute change
   assert.deepStrictEqual(J(F._patchBody(orig, { price: 1, ships: [back], removed: [], news: [] })), {});
   assert.deepStrictEqual(J(F._patchBody(orig, { price: 1, ships: [{ ...back, deliver_to: F._iso('2026-10-31', '20:00') }], removed: [], news: [] })),
     { shipments: [{ shipment_id: 9, deliver_to: '2026-10-31T20:00:00+02:00' }] });
+});
+
+// Live 28/10: typing in a day field changed a segment the user could not see (the year: «29» → 0029). The field is
+// typed text now, read by _dayParse; a day without a year takes the year nearest to the field's own day.
+test('live 28/10: a typed day is read as the dispatcher writes it, or refused (never guessed)', () => {
+  const p = (t, ref) => F._dayParse(t, ref === undefined ? '2026-10-28' : ref);
+  for (const [t, want] of [['29/10', '2026-10-29'], ['29/10/2026', '2026-10-29'], ['29.10.26', '2026-10-29'], ['29-10', '2026-10-29'],
+    ['2910', '2026-10-29'], ['29102026', '2026-10-29'], ['2026-10-29', '2026-10-29'], ['1/11', '2026-11-01'], [' 3/11 ', '2026-11-03']]) {
+    assert.strictEqual(p(t), want, t);
+  }
+  assert.strictEqual(p(''), '', 'empty = no day');
+  assert.strictEqual(p('02/01', '2026-12-30'), '2027-01-02', 'across the new year: the nearest January');
+  assert.strictEqual(p('30/12', '2027-01-02'), '2026-12-30', 'and back');
+  for (const t of ['32/10', '29/13', '31/11', '29/02/2027', '29/10/1999', '29/10/0029', 'abc', '29/10/202', '2', '29/']) assert.strictEqual(p(t), null, t);
+  assert.strictEqual(p('29/02/2028', '2027-10-28'), '2028-02-29', 'a leap day with its year');
+  // code review: a typed year must be within a year of the field's day — «29/10/20» is a slip, never 2020
+  assert.strictEqual(p('29/10/20'), null, '2020 typed on a 2026 field');
+  assert.strictEqual(p('29/10/2028'), null, 'two years ahead');
+  assert.strictEqual(p('15/01/27'), '2027-01-15', 'next year is fine');
+  assert.strictEqual(p('15/12/2025'), '2025-12-15', 'last year is fine');
+  assert.strictEqual(F._dayParse('29/10/2030', ''), '2030-10-29', 'no reference day: any year 2000-2099 written in full');
+  assert.strictEqual(F._dayParse('29/10', ''), null, 'no year and no reference day: refused, never the clock');
 });
