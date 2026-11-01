@@ -1573,8 +1573,14 @@ function _umenuMount() {
   m.hidden = true;
   m.setAttribute('role', 'menu');
   m.innerHTML = `<div class="wi4-umenu-h">${_esc(name)}${role ? ` <span>· ${_esc(role)}</span>` : ''}</div>`
-    + '<button type="button" role="menuitem" onclick="logout()">Αποσύνδεση</button>';
+    + '<button type="button" role="menuitem" onclick="logout()">Αποσύνδεση</button>'
+    // the assistant (core/ai-chat.js): its floating button covered the ΠΑΛ. column and its «+» while scrolling (owner
+    // 1/11), so on this page it is hidden (CSS, body.wn5-top-on) and opened from here; after «Αποσύνδεση», which keeps
+    // the first place (the keyboard lands on it)
+    + (typeof _aicToggle === 'function' ? '<button type="button" role="menuitem" onclick="_aicToggle()">Νάκης · βοηθός</button>' : '');
   chip.appendChild(m);
+  // the floating button is hidden (CSS) only while this menu holds the way to the assistant
+  document.body.classList.toggle('wn5-aic-menu', typeof _aicToggle === 'function');
   chip.addEventListener('click', _umenuTog);
   chip.addEventListener('keydown', _umenuKey);
   chip.addEventListener('focusout', _umenuOut);
@@ -1582,6 +1588,7 @@ function _umenuMount() {
   _umenuChip(chip);
 }
 function _umenuUnmount() {
+  document.body.classList.remove('wn5-aic-menu');
   if (!_umenu) return;
   const chip = _umenu.parentElement;
   _umenu.remove();
