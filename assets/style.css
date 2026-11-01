@@ -9201,6 +9201,11 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 .wn5 .wn5-end .wi4-l2 { font-weight:500; }
 /* «+N» (Figma H1): a 22px chip, its figure centred, in the middle of the stop. */
 .wn5 .wn5-pts .wi4-more { flex:0 0 24px; width:24px; height:22px; display:grid; place-items:center; }
+/* «+N» with a small «Β» on its corner: the folded deliveries and the Veroia end of a ΠΡΟΣ that also delivers (1e). The
+   chip keeps its 24px, so the stop beside it keeps its room; «Β» alone when no delivery is folded. */
+.wn5 .wn5-pts .wi4-more.wn5-more-end { position:relative; }
+.wn5 .wi4-more.wn5-more-end > b + .wn5-more-v { position:absolute; top:-5px; right:-4px; font-size:9px; line-height:10px; padding:0 2px; border-radius:3px; background:var(--surface-card); }
+.wn5 .wn5-more-v { font-weight:600; color:var(--wi4-blue-ink); }
 .wn5 .wn5-pt > .wi4-l2 { font-weight:500; color:var(--wi4-grey-1); }   /* before the late rule: a late window stays amber */
 .wn5 .wn5-late .wi4-l2 { color:var(--wi4-amber); }
 /* More late stops than slots: the «+N» that holds one is amber too (a late stop is never hidden in grey). */

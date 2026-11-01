@@ -3168,7 +3168,9 @@ function truthBoard() {
     nat_ready_day: ready, nat_due_day: ready, overdue: ready < '2026-10-13', nat_to_location_id: 2, deliver_from: null, deliver_to: null }, extra || {}));
   const b = bBoard();
   b.waiting = [];
-  b.hub = [hubIm(9101, 2901, '2026-10-05', 10), hubIm(9102, 2902, '2026-10-14', 20), hubIm(9103, 2903, '2026-10-19', 5)];
+  b.hub = [hubIm(9101, 2901, '2026-10-05', 10), hubIm(9102, 2902, '2026-10-14', 20), hubIm(9103, 2903, '2026-10-19', 5),
+    // edited dates: loads Tue 20/10 (W43) but is ready only Mon 26/10 (W44) — the base sends it from W44 on
+    hubIm(9104, 2904, '2026-10-26', 4, { load_from: '2026-10-20T08:00:00+03:00', load_to: '2026-10-20T10:00:00+03:00' })];
   const MON = '2026-10-12';
   // RT-T205: ΑΝΟΔΟΣ loads at 3, delivers at 2 and at 7 (a client in the town of Veria), ends at Veroia (1)
   b.cycles.push(bCycle(205, { truck_id: 14, truck: 'TST-2108', driver_id: 34, driver: 'Driver Test 04' }, [
@@ -3181,7 +3183,11 @@ function truthBoard() {
 const truthLookups = () => { const l = clone(B_LOOKUPS); l.locations.push({ id: 7, legacy_id: 'recLOC7', name: 'MESIS TEST', address: null, city: 'Veria', phone: null, is_hub: false }); return l; };
 SCN.truth = async (browser, origin) => {
   const scn = 'truth';
-  const { page, S } = await openBoard(browser, origin, { board: truthBoard(), plan: { 'GET /plan/lookups': () => [200, truthLookups()] }, viewport: { width: 1440, height: 900 }, sidebar: 'open' });
+  // the fake reads as the live 072 does: every waiting / hub item ready by the week's Friday (coalesce(nat_ready_day, week) ≤ week + 6)
+  const friday = (sat) => { const d = new Date(sat + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + 6); return d.toISOString().slice(0, 10); };
+  const board = (e) => { const b = truthBoard(); const f = friday(e.q.week); b.week = e.q.week;
+    b.hub = b.hub.filter((h) => (h.nat_ready_day || e.q.week) <= f); b.waiting = b.waiting.filter((w) => (w.nat_ready_day || e.q.week) <= f); return [200, b]; };
+  const { page, S } = await openBoard(browser, origin, { board: truthBoard(), plan: { 'GET /plan/lookups': () => [200, truthLookups()], 'GET /plan/board': board }, viewport: { width: 1440, height: 900 }, sidebar: 'open' });
   const look = () => page.evaluate(() => {
     const days = {};
     for (const d of document.querySelectorAll('#content .wn5 .wn5-day')) days[d.dataset.date] = [...d.querySelectorAll('.wn5-row[data-piece]')].map((r) => Number(r.dataset.piece));
@@ -3201,8 +3207,9 @@ SCN.truth = async (browser, origin) => {
   // ── a later week W44: the base still sends all three; none of them is a load of W44
   const at44 = await go(44, '2026-10-24');
   const w44 = await look();
-  ok(scn, '1a W44 (later week): no load of another week on its Saturday or anywhere — main: all three on Sat 24/10', at44 && all(w44).length === 0, w44.days);
-  ok(scn, '1b W44: ΕΠΟΜΕΝΑ «κανένα» and no «για μοίρασμα» on the shelf', at44 && /κανένα/.test(w44.q || '') && !/για μοίρασμα/.test(w44.hub || ''), { q: w44.q, hub: w44.hub });
+  ok(scn, '1a W44 (later week): no load of another week anywhere; the one ready Mon 26/10 that loads Tue 20/10 (in no earlier board) stands on Sat 24/10, never on no day — main: all four on Sat 24/10',
+    at44 && JSON.stringify(w44.days['2026-10-24']) === '[9104]' && all(w44).length === 1, w44.days);
+  ok(scn, '1b W44: ΕΠΟΜΕΝΑ · 1 and «1 για μοίρασμα · 4π»', at44 && /ΕΠΟΜΕΝΑ · 1$/.test(w44.q || '') && /1 για μοίρασμα · 4π/.test(w44.hub || ''), { q: w44.q, hub: w44.hub });
   // ── W43: only the load of Mon 19/10, on Mon 19/10
   const at43 = await go(43, '2026-10-17');
   const w43 = await look();
@@ -3243,13 +3250,14 @@ SCN.truth = async (browser, origin) => {
     const hs = [...document.querySelectorAll('#content .wn5 .wn5-row[data-rt]')].filter((x) => x !== r).map((x) => x.getBoundingClientRect().height);
     const ato = r.querySelector('.wn5-ato');
     const chip = ato && ato.querySelector('.wi4-more');
-    return { h: Math.round(r.getBoundingClientRect().height), max: Math.round(Math.max(...hs)), endInAto: !!(ato && ato.querySelector('.wn5-end')), chip: chip ? chip.getAttribute('title') : null,
+    return { h: Math.round(r.getBoundingClientRect().height), max: Math.round(Math.max(...hs)), endInAto: !!(ato && ato.querySelector('.wn5-end')), chip: chip ? chip.getAttribute('title') : null, chipText: chip ? chip.textContent.replace(/\s+/g, ' ').trim() : null,
       veria: /Veria/.test(r.textContent + [...r.querySelectorAll('[title]')].map((x) => x.getAttribute('title')).join(' ')), text: ato ? ato.textContent.replace(/\s+/g, ' ').trim() : null };
   });
   ok(scn, '1e an ΑΝΟΔΟΣ with two deliveries and the Veroia end keeps a two-line row (≤ 58px, as the board\'s other rows) — main: 70px, three lines',
     !!e && e.h <= 58, e);
   ok(scn, '1e its Veroia end is in the «+N» title («Βέροια · ως …»), not a third line under the stops', !!e && !e.endInAto && /Βέροια · ως /.test(e.chip || ''), e);
   ok(scn, '1e a client in the town of Veria reads «Βέροια», never «Veria» beside «Βέροια»', !!e && !e.veria, e);
+  ok(scn, '1e the chip reads «+1 Β» (one more delivery and Veroia), never a bare «+2» that counts Veroia as a delivery', !!e && /^\+1\s*Β$/.test(e.chipText || ''), e);
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
   await page.context().close();
 };

@@ -394,6 +394,8 @@ function _waitRow(list, hubId, errors, nameOf) {
     pieceIds: ws.map((w) => w.piece_id),
     group: w0.order_id != null ? { order_id: w0.order_id } : w0.nat_order_id != null ? { nat_order_id: w0.nat_order_id } : null,
     vs: String(w0.kind || '').startsWith('vs_'), clients, refs, sortAt: w0.load_from, _parts: [...clients, ...refs],
+    // the first week whose board carries the row (072 plan_board: nat_ready_day ≤ the week's Friday; none = every week)
+    readyDay: ws.some((w) => !DAY_RE.test(String(w.nat_ready_day || ''))) ? null : ws.map((w) => w.nat_ready_day).sort()[0],
   };
 }
 
@@ -460,7 +462,10 @@ function model(board, opts) {
   const placeOf = (r) => {
     if (r.kind !== 'unassigned') return !r.dayKey || r.dayKey < week ? week : r.dayKey > last ? last : r.dayKey;
     if (r.dayKey && r.dayKey >= week && r.dayKey <= last) return r.dayKey;
-    return current && (!r.dayKey || r.dayKey < week) ? week : null;
+    if (r.dayKey && r.dayKey > last) return null;
+    // older than the week: the base sends it from its ready day's week on, so a load whose loading day is earlier than
+    // its ready day (edited dates) is in no earlier board — it stands on this Saturday, never on no day at all
+    return current || (r.readyDay != null && r.readyDay >= week) ? week : null;
   };
   const shown = new Set();
   for (const r of rows) {

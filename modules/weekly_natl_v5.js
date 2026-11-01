@@ -453,6 +453,7 @@ function _tabsFrom(w, cur) {
   if (!Number.isInteger(_tabFrom)) _tabFrom = (Number.isInteger(cur) ? cur : w) - 2;
   if (w < _tabFrom) _tabFrom = w;
   else if (w > _tabFrom + 6) _tabFrom = w - 6;
+  _tabFrom = Math.min(47, Math.max(1, _tabFrom));   // TMS weeks 1..53, as the Weekly International clamps
   return _tabFrom;
 }
 function _tabsHTML(w) {
@@ -709,12 +710,13 @@ function _anodHTML(r, m, ok) {
     return `<div class="wn5-aspan wn5-gspan"><span class="${par ? 'wn5-gaptxt' : 'wn5-gapbox'}">${txt}</span></div><div class="wn5-apal wn5-gpal">${_plusHTML(r, 'ANODOS')}</div>`;
   }
   const hd = _dc(ok && s.headDim);
-  const end = r.end ? `<span class="wn5-end${_dc(ok && r.end.dim)}"${_segAttr(r.end.segLabel)} title="${_esc(`Βέροια · ως ${_dow(L().athensDay(r.end.by))} ${L().athensTime(r.end.by)}`)}"><span class="wi4-l1">Βέροια</span><span class="wi4-l2">ως ${_esc(_dow(L().athensDay(r.end.by)))} ${_esc(L().athensTime(r.end.by))}</span></span>` : '';
+  const endBy = r.end ? `${_dow(L().athensDay(r.end.by))} ${L().athensTime(r.end.by)}` : '';
+  const end = r.end ? `<span class="wn5-end${_dc(ok && r.end.dim)}"${_segAttr(r.end.segLabel)} title="${_esc(`Βέροια · ως ${endBy}`)}"><span class="wi4-l1">Βέροια</span><span class="wi4-l2">ως ${_esc(endBy)}</span></span>` : '';
   // ΠΡΟΣ that delivers somewhere AND ends at Veroia (coordinator 1/11, 1e): the end joins the «+N» of the deliveries
   // (its line last in the title), so the row keeps one height. Beside the stops it pushed «Βέροια» to a third line
   // (70px rows, a 49px stop at 1440). Alone in ΠΡΟΣ the end keeps its own 76px cell.
   const fold = !!(r.end && s.to.some((p) => !p.hub));
-  const endTail = fold ? { title: `Βέροια · ως ${_dow(L().athensDay(r.end.by))} ${L().athensTime(r.end.by)}` } : null;
+  const endTail = fold ? { title: `Βέροια · ως ${endBy}`, stopId: r.end.stopId, segLabel: r.end.segLabel } : null;
   return `<div class="wn5-ad">${_prtHTML(r, 'ANODOS')}${_chipHTML(r, 'ANODOS', `wi4-dc ${_chipCls(s.day, m.today)}${hd}`, _dl(s.day))}</div>`
     + `<div class="wn5-afl"${_legAttr(r, 'ANODOS')}>${_ptsHTML(s.from, ok)}</div>`
     + `<div class="wn5-ato${_hx(r, s, r.end)}"${_legAttr(r, 'ANODOS')}>${_hxHTML(r, s, r.end)}${_ptsHTML(s.to, ok, null, false, endTail)}${fold ? '' : end}</div>`
@@ -749,7 +751,9 @@ function _ptsHTML(pts, ok, start, inl, tail) {
   // tail: one more line the chip holds after the folded stops (the Veroia end of a ΠΡΟΣ that also delivers, 1e)
   const lines = rest.map((i) => `${num(pts[i], i) || pts[i].n}. ${_ptFull(pts[i])}`).concat(tail ? [tail.title] : []);
   const more = lines.length
-    ? `<span class="wi4-more${restLate ? ' wn5-late' : ''}"${tail ? ' data-end="1"' : ''} title="${_esc(lines.join('\n'))}"><b>+${lines.length}</b></span>`
+    // the end is marked «Β» beside the count of the folded deliveries, never counted as one: «+1 Β» = one more stop and
+    // Veroia, «Β» alone = Veroia only (a bare «+1» read as a second delivery)
+    ? `<span class="wi4-more${restLate ? ' wn5-late' : ''}${tail ? ' wn5-more-end' : ''}"${tail ? ` data-end="1" data-stop="${_id(tail.stopId)}"${_segAttr(tail.segLabel)}` : ''} title="${_esc(lines.join('\n'))}">${rest.length ? `<b>+${rest.length}</b>` : ''}${tail ? '<span class="wn5-more-v">Β</span>' : ''}</span>`
     : '';
   return `<span class="wi4-pts wn5-pts">${idx.filter((i) => shown.has(i)).map((i) => _ptHTML(pts[i], num(pts[i], i), ok, inl)).join('')}${more}</span>`;
 }
