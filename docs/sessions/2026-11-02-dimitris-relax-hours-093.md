@@ -1,7 +1,7 @@
 # 2026-11-02 · dimitris · Εθνικά v5: 093, οι κανόνες ωρών χαλαρώνουν (Π3 της δοκιμής W50)
 
 - **Τι άλλαξε (`claude/relax-hours-093-7879f4`, πάνω στο #213):**
-  - Πέντε αρχεία `worker/migrations/drafts/093_plan_hours_relaxed*.sql`, από το `tools/build-093.mjs`.
+  - Πέντε αρχεία `worker/migrations/093_plan_hours_relaxed*.sql` (εκτελέστηκαν 2/11, εκτός drafts/), από το `tools/build-093.mjs`.
   - Το `chain_time` αρνείται μόνο φόρτωση που τελειώνει πριν αρχίσει η άφιξη.
   - Το `stop_order` ισχύει μόνο μέσα στην ίδια πλευρά· το `side_order` φεύγει.
   - Το «όλη η ημέρα» συγκρίνεται ως ημέρα.
@@ -16,3 +16,4 @@
   - rig `wn5-board` 543 ✓ (B6: `side_time` κίτρινο και αποθηκεύεται· B7: `stop_order` πριν την 093 κόκκινο· pack4 A2: ✎ «σειρά σημείων»)· όλα τα wn5 rigs GO· node 987/0· tms-auditor 508/0· `/code-review xhigh` δύο φορές.
 - **Μένει:**
   - ο owner τρέχει, μετά τις 15:00: dry run → 093 → verify· σειρά 093 → 095 (η 095 φυλάει το md5 του `plan_rt_update` μετά την 093).
+- **Εκτελέστηκε 2/11 το πρωί** (ρητή εξαίρεση owner στο «μετά τις 15:00»): dry run (μόνο md5 στο σφάλμα, όπως αναμενόταν), 093 (`rt_problem` 5b627b94…, `reseq` b02f0d47…, `side_time_trips` 0), verify (`093 in place`, changed_texts 0, new_functions 2, refused_trips 0, refused_legs 0, side_time_traces 0). Τα αρχεία βγήκαν από `drafts/`. Επόμενα: 095, μετά 096.
