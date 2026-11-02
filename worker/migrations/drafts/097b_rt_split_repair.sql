@@ -25,7 +25,8 @@
 --   With 097 in place a vehicle write on #606 or #528 merges its pair by itself. If 097b then stops at a guard
 --   ("cancelled", "do not hold exactly"), run 097_rt_split_vehicle_recheck_verify.sql first: split_pairs 0 means the
 --   repair is already done (by the trigger) - nothing to run.
--- AFTER IT: 097b_rt_split_repair_verify.sql (read-only). Reverse: 097b_rt_split_repair_rollback.sql.
+-- AFTER IT: 097_rt_split_vehicle_recheck_verify.sql (read-only, one file for 097 and 097b; expected "097b in place",
+--   split_pairs 0). Reverse: 097b_rt_split_repair_rollback.sql.
 -- THIS FILE IS ASCII ONLY. ONE DO block, then ONE read-only SELECT.
 
 DO $do$
