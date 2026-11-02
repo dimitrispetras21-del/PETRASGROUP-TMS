@@ -21,7 +21,7 @@ function load(extra) {
   const ctx = { console: { log() {}, warn() {}, error() {} }, window: win, Intl, Date, Math, JSON, Object, Array, String, Number, Map, Set, Promise, Error, RegExp, Symbol,
     setTimeout: rec('setTimeout'), setInterval: rec('setInterval'), fetch: rec('fetch'), addEventListener: rec('addEventListener'),
     document: { createElement: rec('document.createElement'), addEventListener: rec('document.addEventListener'), body: { appendChild: rec('body.appendChild') } },
-    WN5Lab: { REASON: { other: { text: 'Άλλο', group: 'other', noteRequired: true }, vehicle_breakdown: { text: 'Βλάβη φορτηγού', group: 'unplanned' } } } };
+    WN5Lab: { REASON: { other: { text: 'Άλλο', group: 'other' }, vehicle_breakdown: { text: 'Βλάβη φορτηγού', group: 'unplanned' } } } };
   Object.assign(ctx, extra);
   vm.createContext(ctx);
   vm.runInContext(SRC, ctx, { filename: FILE });
@@ -56,11 +56,13 @@ test('F4α-T25: the cycle card has no change history and reads no /audit (Ε-11 
   assert.deepStrictEqual(Object.keys(load().H).filter((k) => /hist/i.test(k)), []);
 });
 
-test('F4α-T25: «Άλλο» without a note → a form line, no body is built for the Worker (seg_other_note)', () => {
+test('095 (owner 2/11): «Άλλο» without a note and no reason at all are valid; the point stays required', () => {
   const st = { at: '2026-10-13T14:30:00+03:00', place_note: 'Θήβα', reason: 'other', reason_note: '', own: true, truck_id: 12, trailer_id: null, driver_id: 32, same_driver: false };
-  assert.ok(J(H._changeProblems(st)).includes('Με «Άλλο» η σημείωση είναι υποχρεωτική'));
-  assert.deepStrictEqual(J(H._changeProblems(Object.assign({}, st, { reason_note: 'λάστιχο' }))), []);
-  assert.ok(J(H._changeProblems(Object.assign({}, st, { place_note: '' }))).some((l) => /^Πού \*/.test(l)), 'place_note is required by 072b plan_seg_change');
+  assert.deepStrictEqual(J(H._changeProblems(st)), []);
+  assert.deepStrictEqual(J(H._changeProblems(Object.assign({}, st, { reason: '' }))), []);
+  assert.ok(!('reason' in J(H._changeBody(Object.assign({}, st, { reason: '' })))), 'no reason = no key (plan_seg_change: absent = null)');
+  assert.ok(!('reason_note' in J(H._changeBody(st))));
+  assert.ok(J(H._changeProblems(Object.assign({}, st, { place_note: '' }))).some((l) => /^Πού \*/.test(l)), 'place_note is required by plan_seg_change');
 });
 
 test('F4α-T25: the change body — exactly plan_seg_change\'s keys; same_driver sends no driver_id; partner rate optional', () => {
@@ -170,4 +172,10 @@ test('F4α-T26: conflict without needs_confirm → no save, and no inferred «no
   assert.strictEqual(A.rtSaveBody({ stops: [], dry_run: true }, ans), null);
   assert.strictEqual(A.rtSaveBody({ stops: [], dry_run: true }, Object.assign({}, ans, { preview: { conflict: null }, needs_confirm: true })), null, 'needs_confirm without a token');
   assert.strictEqual(A.rtSaveBody({ stops: [] }, null), null, 'no dry run = no save');
+});
+
+test('096: accept_busy rides in the change body only when the form set it (the overlap said, or the yes)', () => {
+  const st = { at: '2026-10-13T14:30:00+03:00', place_note: 'Θήβα', reason: '', reason_note: '', own: true, truck_id: 12, trailer_id: null, driver_id: 32, same_driver: false };
+  assert.ok(!('accept_busy' in J(H._changeBody(st))));
+  assert.strictEqual(J(H._changeBody(Object.assign({}, st, { accept_busy: true }))).accept_busy, true);
 });

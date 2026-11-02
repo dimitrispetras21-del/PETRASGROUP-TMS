@@ -308,6 +308,8 @@ function _cycleRow(c, hubId, nums, errors) {
     }
     return { stopId: s.stop_id, local_move_id: s.local_loading.local_move_id, driver: s.local_loading.driver || null,
       move_date: s.local_loading.move_date || null, time_from: s.local_loading.time_from || null, time_to: s.local_loading.time_to || null,
+      // 095 (owner 2/11): a loading may run on another day than its stop (the evening before) — the board marks it
+      otherDay: !!s.local_loading.move_date && !!athensDay(s.planned_from) && s.local_loading.move_date !== athensDay(s.planned_from),
       dim: s.dim === true, stopName: s.location || null, stopN: p ? p.n : null,
       pickup, forStops: forStops.map((f) => ({ stopId: f.stopId, name: f.names.join(', '), n: f.n })) };
   });
