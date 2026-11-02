@@ -453,7 +453,7 @@
     WN5Act.strip(_strip(d), e);
     if (e.kind === PlanApi.KIND.CLOSED) { WN5.markClosed(e); d.locked = true; }
     if (e.kind === PlanApi.KIND.LEAK || e.kind === PlanApi.KIND.UNKNOWN) d.locked = true;
-    if (d.locked) for (const a of ['back', 'save']) _q(d, `[data-act="${a}"]`).hidden = true;
+    if (d.locked && d.step === 'preview') { for (const a of ['back', 'save']) _q(d, `[data-act="${a}"]`).hidden = true; _q(d, '[data-act="close"]').hidden = false; }
   }
   // a busy truck the board could not name (or another save took it since): the explicit yes, for THIS body only
   function _offerAccept(d, code) {
