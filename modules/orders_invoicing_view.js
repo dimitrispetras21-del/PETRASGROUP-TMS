@@ -50,6 +50,7 @@ const OrdersInvoicingView = (() => {
       const load = OC.placeOf(rec, 'load'), del = OC.placeOf(rec, 'del');
       const num = OC.numLabel(rec);
       const deliv = OC.ymd(f['Delivery DateTime']);
+      const self = OC.isSelfDelivery(f);
       return {
         rec, id: rec.id, type: rec._type, f,
         state: st.key, reason: st.reason || '', noSheets: !!st.noSheets,
@@ -59,7 +60,7 @@ const OrdersInvoicingView = (() => {
         // them on the SAME rule as stateOf's price block, so a 0 € order is
         // never counted as priced while it is blocked for its price.
         price: OC.hasPrice(f) ? OC.price(f) : null,
-        self: OC.isSelfDelivery(f),
+        self,
         clientId, client,
         deliv,
         // B0 (21/10): from the order's own delivery, a lot too; none before it.
@@ -71,7 +72,7 @@ const OrdersInvoicingView = (() => {
         // lot's completion was a gate date (Round 1 O3) and the gate is gone.
         // The KPI «Παλαιότερη εκκρεμής» and the sort read it.
         when: deliv,
-        search: [client, num, f['Reference'], load.name, load.sub, del.name, del.sub, f['Invoice Number'], OC.isSelfDelivery(f) ? 'αυτοπαράδοση' : '']
+        search: [client, num, f['Reference'], load.name, load.sub, del.name, del.sub, f['Invoice Number'], self ? 'αυτοπαράδοση' : '']
           .filter(Boolean).map(fold).join(' '),
       };
     });
@@ -176,9 +177,10 @@ const OrdersInvoicingView = (() => {
     for (const it of list) {
       const k = it.clientId || '—';
       let g = m.get(k);
-      if (!g) { g = { clientId: it.clientId, client: it.client, items: [], sum: 0, unpriced: 0, oldest: -1 }; m.set(k, g); }
+      if (!g) { g = { clientId: it.clientId, client: it.client, items: [], sum: 0, unpriced: 0, selfFree: 0, oldest: -1 }; m.set(k, g); }
       g.items.push(it);
-      if (it.price !== null) g.sum += it.price; else g.unpriced++;
+      // A self delivery needs no price (101): without one it is neither summed nor «χωρίς τιμή».
+      if (it.price !== null) g.sum += it.price; else if (it.self) g.selfFree++; else g.unpriced++;
       if (isOpen(it) && it.days !== null && it.days > g.oldest) g.oldest = it.days;
       if (isOpen(it) && it.days === null && g.oldest < 0) g.oldest = 0;
     }
@@ -238,8 +240,10 @@ const OrdersInvoicingView = (() => {
   // lifecycle status, owner 23/8 locked; migration 014 CHECK would refuse it).
   const invoiceFields = (n, d) => ({ 'Invoiced': true, 'Invoice Number': n, 'Invoice Date': d });
   // «Αυτοπαράδοση» (101): invoiced with no ERP number — the base and the Worker
-  // let it through only with Self Delivery true. The date is the day she ticks it.
-  const selfFields = d => ({ 'Invoiced': true, 'Self Delivery': true, 'Invoice Date': d });
+  // let it through only with Self Delivery true, and 101's CHECK only with NO
+  // number — sent as null, so the write never depends on what the row held.
+  // The date is the day she ticks it.
+  const selfFields = d => ({ 'Invoiced': true, 'Self Delivery': true, 'Invoice Number': null, 'Invoice Date': d });
   // Invoiced off and the ERP number/date cleared — migration 043 only guards
   // the transition TO true, the Worker lets this through. A self delivery clears
   // its box IN THE SAME write: unticking it alone on an invoiced row is refused
@@ -545,8 +549,8 @@ const OrdersInvoicingView = (() => {
         if (c && c['VAT Number']) meta.push('ΑΦΜ ' + esc(c['VAT Number']));
         if (c && c['Payment Terms Days'] != null && c['Payment Terms Days'] !== '') meta.push('όροι ' + esc(c['Payment Terms Days']) + ' ημ.');
         // An unpriced order is never a 0,00 € in the sum — it is said apart.
-        const priced = g.items.length - g.unpriced;
-        const sum = (priced ? eur(g.sum) + ' €' : '') + (g.unpriced ? ` <span class="oiv-bad">${priced ? '+ ' : ''}${g.unpriced} χωρίς τιμή</span>` : '');
+        const priced = g.items.length - g.unpriced - g.selfFree;
+        const sum = (priced ? eur(g.sum) + ' €' : g.unpriced ? '' : '—') + (g.unpriced ? ` <span class="oiv-bad">${priced ? '+ ' : ''}${g.unpriced} χωρίς τιμή</span>` : '');
         const head = `<tr class="oiv-g"><td colspan="5"><b>${esc(g.client)}</b>${meta.length ? `<span class="oiv-gm">${meta.join(' · ')}</span>` : ''}</td><td colspan="2" class="r"><b>${g.items.length} · ${sum}</b></td></tr>`;
         return head + g.items.map(it => {
           const pal = it.type === 'intl' ? it.f['Total Pallets'] : it.f['Pallets'];
@@ -774,7 +778,7 @@ const OrdersInvoicingView = (() => {
       + kv('Παράδοση ' + (it.del.date ? dm(it.del.date) : ''), place(it.del))
       + kv('Ανάθεση', assignOfIt(it).html)
       + kv('Παλέτες', `${pal == null || pal === '' ? '—' : esc(pal)} · ${f['Pallet Exchange'] ? 'με ανταλλαγή' : 'χωρίς ανταλλαγή'}`)
-      + kv('Ποσό', it.price === null ? '<span class="oiv-bad">χωρίς τιμή</span>' : `<span class="oiv-amt">${eurSym(it.price)}</span>`);
+      + kv('Ποσό', it.price === null ? (it.self ? '<span class="oiv-muted">—</span>' : '<span class="oiv-bad">χωρίς τιμή</span>') : `<span class="oiv-amt">${eurSym(it.price)}</span>`);
 
     // ΕΛΕΓΧΟΙ
     const ck = (ok, text) => `<div class="oiv-ck ${ok === true ? 'ok' : ok === false ? 'bad' : 'na'}"><i>${ok === true ? '✓' : ok === false ? '✗' : '–'}</i><span>${text}</span></div>`;
@@ -791,7 +795,8 @@ const OrdersInvoicingView = (() => {
     // Not delivered yet is no fault since B0: neutral «–», never a red ✗.
     const checks = ck(delivered ? true : null, delivered ? (isLotIt(it) ? 'Παραλήφθηκε στην αποθήκη ' : 'Παραδόθηκε ') + dm(it.deliv)
         : it.deliv ? 'Παράδοση ' + dm(it.deliv) + ' · δεν έχει γίνει ακόμη' : 'Χωρίς ημερομηνία παράδοσης')
-      + ck(OC().hasPrice(f), OC().hasPrice(f) ? 'Τιμή ' + eurSym(it.price) : (canWrite() ? 'Χωρίς τιμή → γράψε τη παρακάτω' : 'Χωρίς τιμή'))
+      + (it.self && !OC().hasPrice(f) ? ck(null, 'Τιμή · δεν χρειάζεται (αυτοπαράδοση)')
+        : ck(OC().hasPrice(f), OC().hasPrice(f) ? 'Τιμή ' + eurSym(it.price) : (canWrite() ? 'Χωρίς τιμή → γράψε τη παρακάτω' : 'Χωρίς τιμή')))
       + lotCheck(it)
       + sheets;
 
@@ -821,7 +826,9 @@ const OrdersInvoicingView = (() => {
 
   // «Αυτοπαράδοση» beside the ΤΠΥ (owner 2/11/2026): one tick = invoiced, no
   // number. Offered wherever the ΤΠΥ or the price is asked for — a self
-  // delivery often has no price, and needs none (101).
+  // delivery often has no price, and needs none (101). Not on an UNPRICED stock
+  // lot: 057 freezes a lot source's price once it is invoiced, so it could
+  // never get one (code review xhigh 2/11) — its price first, then the box.
   function selfBox(it) {
     return `<label class="oiv-self"><input type="checkbox" id="oivSelf" ${S.busy ? 'disabled' : ''} onchange="OrdersInvoicingView.markSelf('${esc(it.id)}', this)">
       <span><b>Αυτοπαράδοση</b><span class="oiv-muted"> · δικό μας φορτίο, χωρίς ΤΠΥ</span></span></label>`;
@@ -886,7 +893,7 @@ const OrdersInvoicingView = (() => {
           <div class="oiv-edit"><div class="oiv-fr"><label>Τιμή €<input id="oivPrice" inputmode="decimal" autocomplete="off" value="${S.draftPrice && S.draftPrice.id === it.id ? esc(S.draftPrice.v) : ''}" placeholder="${last ? esc(OC().eur(last.price)) : 'π.χ. 1.250,00'}" onkeydown="if(event.key==='Enter'){event.preventDefault();OrdersInvoicingView.savePrice()}"></label></div>
           <div class="oiv-muted small">${esc(lastTxt)} · Enter → μετά ο ΤΠΥ</div>${err}
           <div class="oiv-btns"><button type="button" class="oiv-primary sm" id="oivPriceSave" onclick="OrdersInvoicingView.savePrice()">Καταχώριση τιμής</button></div></div>
-          <div class="oiv-self-gap">${selfBox(it)}</div></section>`;
+          ${isLotIt(it) ? '' : `<div class="oiv-self-gap">${selfBox(it)}</div>`}</section>`;
       }
     }
     return '';
@@ -971,7 +978,7 @@ const OrdersInvoicingView = (() => {
   // write — the Worker's answer decides, as savePrice does with the price.
   async function markSelf(id, box) {
     const it = itemById(id);
-    if (!it || S.busy || !canWrite() || (it.state !== 'ready' && it.state !== 'blocked')) { if (box) box.checked = false; return; }
+    if (!it || S.busy || !canWrite() || (it.state !== 'ready' && it.state !== 'blocked') || (it.state === 'blocked' && isLotIt(it))) { if (box) box.checked = false; return; }
     S.busy = true; S.formErr = '';
     if (box) box.disabled = true;
     const d = today();

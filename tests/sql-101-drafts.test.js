@@ -62,7 +62,7 @@ test('101: one md5 per fact - GEN_MD5 = verify = the dry run; the live constants
   assert.ok(!/GEN_|LIVE_[A-Z0-9]+\b/.test(dryHead + rbDryHead), 'no placeholder left');
 });
 
-test('101 grants nothing, creates no table / index / trigger, writes no order row; its two ALTERs only ADD the column', () => {
+test('101 grants nothing, creates no table / index / trigger, writes no order row; its two ALTERs only ADD the column and its CHECK', () => {
   const src = strip(read(`${P}.sql`));
   assert.ok(!/\b(GRANT|REVOKE|CASCADE)\b/.test(src));
   // statements only (c_trg_o / c_trg_n hold 043's trigger texts as strings, to compare with pg_get_triggerdef)
@@ -70,8 +70,10 @@ test('101 grants nothing, creates no table / index / trigger, writes no order ro
   assert.ok(!/\b(INSERT INTO|DELETE FROM)\b/i.test(src));
   assert.ok(!/UPDATE public\.(national_)?orders\b/i.test(src));
   const alters = src.match(/ALTER TABLE[^;]*;/g) || [];
-  assert.deepStrictEqual(alters, ['ALTER TABLE public.orders ADD COLUMN self_delivery boolean NOT NULL DEFAULT false;',
-    'ALTER TABLE public.national_orders ADD COLUMN self_delivery boolean NOT NULL DEFAULT false;']);
+  const CK = "CHECK (NOT self_delivery OR (invoiced IS TRUE AND coalesce(btrim(invoice_number), '') = ''))";
+  assert.deepStrictEqual(alters.map((a) => a.replace(/\s+/g, ' ')), [
+    `ALTER TABLE public.orders ADD COLUMN self_delivery boolean NOT NULL DEFAULT false, ADD CONSTRAINT orders_self_delivery_no_tpy ${CK};`,
+    `ALTER TABLE public.national_orders ADD COLUMN self_delivery boolean NOT NULL DEFAULT false, ADD CONSTRAINT national_orders_self_delivery_no_tpy ${CK};`]);
   // the rollback never drops a view with CASCADE (a dependent object must stop it)
   assert.ok(!/CASCADE/.test(strip(read(`${P}_rollback.sql`))));
 });

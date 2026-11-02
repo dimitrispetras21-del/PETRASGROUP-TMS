@@ -96,3 +96,23 @@ test('self delivery: an unreadable row waits (503) for a patch that names it', (
   assert.strictEqual(invoiceNeedsBefore('orders', { self_delivery: false }), true);
   assert.strictEqual(invoiceNeedsBefore('national_orders', { invoiced: true, self_delivery: true }), true);
 });
+
+// 101's CHECK, repeated as a 422 in her words: a self delivery IS an invoiced row WITHOUT a number.
+test('self delivery CHECK: never on an uninvoiced row, never beside a ΤΠΥ; invoiced off alone refused; a boolean only', () => {
+  const plain = { invoiced: false, invoice_number: null, price: 500, self_delivery: false };
+  const numbered = { invoiced: true, invoice_number: 'ΤΠΥ-7', price: 700, self_delivery: false };
+  const sd = { invoiced: true, invoice_number: null, price: null, self_delivery: true };
+  assert.match(invoiceMarkError('orders', { self_delivery: true }, plain), /αναίρεσε πρώτα/, 'uninvoiced row');
+  assert.match(invoiceMarkError('orders', { self_delivery: true }, numbered), /αναίρεσε πρώτα/, 'beside a real ΤΠΥ');
+  assert.match(invoiceMarkError('national_orders', { invoice_number: 'ΤΠΥ-8' }, sd), /αναίρεσε πρώτα/, 'a number on a self delivery');
+  assert.match(invoiceMarkError('orders', { invoiced: false }, sd), /αναίρεσε πρώτα/, 'invoiced off alone (the box would stay)');
+  assert.match(invoiceMarkError('orders', { invoiced: true, self_delivery: true, invoice_number: 'ΤΠΥ-9' }, plain), /αναίρεσε πρώτα/);
+  assert.match(invoiceMarkError('orders', { self_delivery: null }, sd), /ναι ή όχι/);
+  assert.match(invoiceMarkError('orders', { self_delivery: 'true' }, plain), /ναι ή όχι/);
+  // the screen's two writes and an ordinary edit of a self delivery still pass
+  assert.strictEqual(invoiceMarkError('orders', { invoiced: true, self_delivery: true, invoice_number: null, invoice_date: '2026-11-02' }, plain), null);
+  assert.strictEqual(invoiceMarkError('orders', { invoiced: false, invoice_number: null, invoice_date: null, self_delivery: false }, sd), null);
+  assert.strictEqual(invoiceMarkError('orders', { delivery_datetime: '2026-11-03' }, sd), null);
+  // rows read before 101 carry no self_delivery at all: unchanged behaviour
+  assert.strictEqual(invoiceMarkError('orders', { invoiced: true, invoice_number: 'ΤΠΥ-1' }, { invoiced: false, invoice_number: null, price: 100 }), null);
+});

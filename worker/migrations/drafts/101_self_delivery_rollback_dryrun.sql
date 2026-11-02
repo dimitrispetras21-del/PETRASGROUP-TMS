@@ -110,7 +110,8 @@ BEGIN
         CASE WHEN g.grantee = 0 THEN 'PUBLIC' ELSE quote_ident(pg_get_userbyid(g.grantee)) END,
         CASE WHEN g.is_grantable THEN ' WITH GRANT OPTION' ELSE '' END);
     END LOOP;
-    IF (SELECT relacl::text FROM pg_class WHERE oid = r.rel::regclass) IS DISTINCT FROM v_acl::text
+    -- a NULL ACL (never granted) comes back as the owner's default entry, which is the same rights
+    IF (SELECT coalesce(relacl, acldefault('r', relowner))::text FROM pg_class WHERE oid = r.rel::regclass) IS DISTINCT FROM coalesce(v_acl, acldefault('r', v_own))::text
        OR (SELECT relowner FROM pg_class WHERE oid = r.rel::regclass) <> v_own THEN
       RAISE EXCEPTION '101 rollback proof: % did not get its owner and rights back', r.rel;
     END IF;
@@ -138,6 +139,9 @@ BEGIN
   IF EXISTS (SELECT 1 FROM pg_attribute WHERE attname = 'self_delivery' AND NOT attisdropped
               AND attrelid IN ('public.orders'::regclass, 'public.national_orders'::regclass)) THEN
     RAISE EXCEPTION '101 rollback proof: self_delivery is still there';
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname IN ('orders_self_delivery_no_tpy', 'national_orders_self_delivery_no_tpy')) THEN
+    RAISE EXCEPTION '101 rollback proof: a self delivery CHECK is still there';
   END IF;
   SELECT count(*) INTO trg_after FROM pg_trigger t JOIN pg_class cl ON cl.oid = t.tgrelid JOIN pg_namespace ns ON ns.oid = cl.relnamespace
    WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public';

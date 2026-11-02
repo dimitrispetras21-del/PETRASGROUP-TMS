@@ -330,7 +330,7 @@ test('allocation why-map: no_partner_rate → «λείπει το κόμιστρ
 // «Αυτοπαράδοση» (owner 2/11/2026, migration 101): our own group's goods,
 // invoiced with no ERP number. Eirini ticks it by hand; nothing detects it.
 test('self delivery: the write, the undo, the state word, the search; left out of the ERP sheet', () => {
-  assert.deepStrictEqual(V.selfFields('2026-11-02'), { 'Invoiced': true, 'Self Delivery': true, 'Invoice Date': '2026-11-02' });
+  assert.deepStrictEqual(V.selfFields('2026-11-02'), { 'Invoiced': true, 'Self Delivery': true, 'Invoice Number': null, 'Invoice Date': '2026-11-02' });
   // the undo clears the box in the SAME write only for a self delivery (unticking alone is refused by 101)
   assert.deepStrictEqual(V.undoFields(true), { 'Invoiced': false, 'Invoice Number': null, 'Invoice Date': null, 'Self Delivery': false });
   assert.deepStrictEqual(V.undoFields(false), { 'Invoiced': false, 'Invoice Number': null, 'Invoice Date': null });
@@ -352,6 +352,12 @@ test('self delivery: the write, the undo, the state word, the search; left out o
   const rows = V.csvRows(V.groupByClient(V.baseList(items, PREV)), () => null);
   assert.ok(!rows.some(r => r[1] === 'OWN-1'), 'not on the ERP sheet');
   assert.ok(rows.some(r => r[1] === 'OWN-2'), 'a ready order still is');
+  // the client group: a self delivery without a price is neither summed nor «χωρίς τιμή»
+  const g = V.groupByClient(V.baseList(items, PREV)).find(x => x.items.some(it => it.id === 'iS'));
+  assert.strictEqual(g.selfFree, 1);
+  assert.ok(!g.items.some(it => it.id === 'iS' && it.price !== null));
+  const gOnly = V.groupByClient([s]);
+  assert.deepStrictEqual([gOnly[0].sum, gOnly[0].unpriced, gOnly[0].selfFree], [0, 0, 1]);
   // the duplicate-ΤΠΥ check never pairs a self delivery (no number)
   assert.deepStrictEqual(V.dupCheck(items, '', t), { same: [], other: [] });
 });

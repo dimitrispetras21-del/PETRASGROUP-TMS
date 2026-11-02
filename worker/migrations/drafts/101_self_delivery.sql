@@ -14,7 +14,10 @@
 --           national_orders_with_derived = the texts read 2/11 (md5, search_path public); B-11 / B-12 = the texts read
 --           2/11; B-54 = the live trigger count
 --   PART 1  orders.self_delivery and national_orders.self_delivery boolean NOT NULL DEFAULT false (a constant default:
---           no table rewrite); invoice_mark_guard() = live text + one hunk; the two triggers also fire on
+--           no table rewrite) with a CHECK each: a self delivery IS an invoiced row WITHOUT an ERP number
+--           (orders_self_delivery_no_tpy / national_orders_self_delivery_no_tpy - code review xhigh: without it a
+--           row could carry the box AND a real TPY, and the screens would hide that TPY and leave it off the ERP
+--           sheet); invoice_mark_guard() = live text + one hunk; the two triggers also fire on
 --           self_delivery; both views get the column LAST (CREATE OR REPLACE keeps every other column, the owner and
 --           the rights); B-11 / B-12 stop counting self deliveries
 --   PART 2  proofs, NOTICE "101 OK: ..."
@@ -22,6 +25,9 @@
 -- row):
 --   - invoiced = true with self_delivery = true: passes with no number and no price (a price may be added later).
 --   - everything else exactly as 043: no number -> refused, no price -> refused.
+--   - the CHECK: self_delivery = true only together with invoiced = true and no invoice number. So the box cannot be
+--     set on an uninvoiced row or on a row with a TPY, and invoiced = false alone on a self delivery is refused too.
+--     Measured 2/11 (SELECT): 0 uninvoiced rows hold a number, 0 rows with invoiced NULL - nothing to repair.
 --   - unticking self_delivery on an invoiced row WITHOUT a number is REFUSED (043's "no number" message). It does NOT
 --     clear invoiced by itself: a trigger that silently rewrites invoiced would be a write nobody asked for
 --     (principle 1). The screen's "Anairesi timologisis" sends invoiced = false and self_delivery = false in ONE write,
@@ -128,6 +134,11 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM monitoring.checks WHERE id = 'B-54' AND red_value = trg_before AND baseline IS NULL) THEN
     RAISE EXCEPTION '101: B-54 red_value is not the live trigger count % - a migration changed triggers without bumping it, re-measure', trg_before;
   END IF;
+  -- CREATE OR REPLACE VIEW without WITH resets a view's options (security_invoker, ...): measured none 2/11
+  IF EXISTS (SELECT 1 FROM pg_class WHERE oid IN ('public.orders_with_derived'::regclass, 'public.national_orders_with_derived'::regclass)
+              AND reloptions IS NOT NULL) THEN
+    RAISE EXCEPTION '101: a view has options (reloptions) - CREATE OR REPLACE VIEW would drop them, stop';
+  END IF;
   IF (length(v_src) - length(replace(v_src, fn_a, ''))) <> length(fn_a)
      OR (length(v_owd) - length(replace(v_owd, owd_a, ''))) <> length(owd_a)
      OR (length(v_nowd) - length(replace(v_nowd, nowd_a, ''))) <> length(nowd_a) THEN
@@ -139,8 +150,10 @@ BEGIN
   SELECT count(*) INTO v_cols_n FROM pg_attribute WHERE attrelid = 'public.national_orders_with_derived'::regclass AND attnum > 0 AND NOT attisdropped;
 
   -- ===== PART 1: CHANGES =====
-  ALTER TABLE public.orders ADD COLUMN self_delivery boolean NOT NULL DEFAULT false;
-  ALTER TABLE public.national_orders ADD COLUMN self_delivery boolean NOT NULL DEFAULT false;
+  ALTER TABLE public.orders ADD COLUMN self_delivery boolean NOT NULL DEFAULT false,
+    ADD CONSTRAINT orders_self_delivery_no_tpy CHECK (NOT self_delivery OR (invoiced IS TRUE AND coalesce(btrim(invoice_number), '') = ''));
+  ALTER TABLE public.national_orders ADD COLUMN self_delivery boolean NOT NULL DEFAULT false,
+    ADD CONSTRAINT national_orders_self_delivery_no_tpy CHECK (NOT self_delivery OR (invoiced IS TRUE AND coalesce(btrim(invoice_number), '') = ''));
   COMMENT ON COLUMN public.orders.self_delivery IS '101 (owner 2/11/2026): self delivery - our own group''s goods, no ERP transport invoice. Set by hand on the invoicing screen; with invoiced = true it needs no invoice number and no price (invoice_mark_guard).';
   COMMENT ON COLUMN public.national_orders.self_delivery IS '101 (owner 2/11/2026): self delivery - our own group''s goods, no ERP transport invoice. Set by hand on the invoicing screen; with invoiced = true it needs no invoice number and no price (invoice_mark_guard).';
 
@@ -170,6 +183,11 @@ BEGIN
          AND a.attrelid IN ('public.orders'::regclass, 'public.national_orders'::regclass)) <> 2 THEN
     RAISE EXCEPTION '101 proof: self_delivery is not boolean NOT NULL DEFAULT false on both tables';
   END IF;
+  IF (SELECT count(*) FROM pg_constraint WHERE contype = 'c' AND convalidated
+        AND ((conrelid = 'public.orders'::regclass AND conname = 'orders_self_delivery_no_tpy')
+          OR (conrelid = 'public.national_orders'::regclass AND conname = 'national_orders_self_delivery_no_tpy'))) <> 2 THEN
+    RAISE EXCEPTION '101 proof: the two CHECKs (self delivery = invoiced without a TPY) are not both there, validated';
+  END IF;
   IF EXISTS (SELECT 1 FROM public.orders WHERE self_delivery) OR EXISTS (SELECT 1 FROM public.national_orders WHERE self_delivery) THEN
     RAISE EXCEPTION '101 proof: a row is a self delivery right after 101 (expected none)';
   END IF;
@@ -196,8 +214,10 @@ BEGIN
   IF (SELECT relacl::text FROM pg_class WHERE oid = 'public.orders_with_derived'::regclass) IS DISTINCT FROM v_acl_o
      OR (SELECT relacl::text FROM pg_class WHERE oid = 'public.national_orders_with_derived'::regclass) IS DISTINCT FROM v_acl_n
      OR (SELECT relowner FROM pg_class WHERE oid = 'public.orders_with_derived'::regclass) <> v_own_o
-     OR (SELECT relowner FROM pg_class WHERE oid = 'public.national_orders_with_derived'::regclass) <> v_own_n THEN
-    RAISE EXCEPTION '101 proof: a view changed its owner or its rights';
+     OR (SELECT relowner FROM pg_class WHERE oid = 'public.national_orders_with_derived'::regclass) <> v_own_n
+     OR EXISTS (SELECT 1 FROM pg_class WHERE oid IN ('public.orders_with_derived'::regclass, 'public.national_orders_with_derived'::regclass)
+                 AND reloptions IS NOT NULL) THEN
+    RAISE EXCEPTION '101 proof: a view changed its owner, its rights or its options';
   END IF;
   IF (SELECT count(*) FROM monitoring.checks WHERE id IN ('B-11', 'B-12') AND sql_text LIKE '%NOT self_delivery%' AND ids_sql LIKE '%NOT self_delivery%') <> 2 THEN
     RAISE EXCEPTION '101 proof: B-11 / B-12 do not leave self deliveries out';
@@ -208,6 +228,6 @@ BEGIN
     RAISE EXCEPTION '101 proof: trigger count % -> % (expected unchanged, B-54)', trg_before, trg_after;
   END IF;
 
-  RAISE NOTICE '101 OK: self_delivery on orders + national_orders (default false, 0 rows), invoice_mark_guard % -> %, both triggers fire on it, both views end on it, B-11 / B-12 leave it out, triggers % unchanged',
+  RAISE NOTICE '101 OK: self_delivery on orders + national_orders (default false, 0 rows, CHECK invoiced without a TPY), invoice_mark_guard % -> %, both triggers fire on it, both views end on it, B-11 / B-12 leave it out, triggers % unchanged',
     c_fn_live, md5(v_new), trg_after;
 END $do$;

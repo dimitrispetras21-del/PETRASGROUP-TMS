@@ -3263,9 +3263,20 @@ __name(handleFacadeGetOne, "handleFacadeGetOne");
 // Unticking it on an invoiced row without a number is refused like a missing
 // number (the base does the same): it never clears Invoiced by itself — the
 // screen's undo sends Invoiced false and Self Delivery false together.
+// And 101's CHECK (*_self_delivery_no_tpy): a self delivery IS an invoiced row
+// with NO number — the box never sits on an uninvoiced row or beside a real ΤΠΥ
+// (which the screens would then hide and leave off the ERP sheet). Judged on the
+// row as it will be, before the transition test, so it holds for every write.
 function invoiceMarkError(table, patch, before) {
   if (table !== "orders" && table !== "national_orders") return null;
   if (!before) return null; // not found → the 404 below says so
+  if ("self_delivery" in patch && typeof patch.self_delivery !== "boolean") return "Η αυτοπαράδοση είναι ναι ή όχι";
+  const selfAfter = "self_delivery" in patch ? patch.self_delivery : before.self_delivery === true;
+  const invAfter = "invoiced" in patch ? patch.invoiced : before.invoiced;
+  const numAfter = "invoice_number" in patch ? patch.invoice_number : before.invoice_number;
+  if (selfAfter === true && (invAfter !== true || String(numAfter ?? "").trim())) {
+    return "Αυτοπαράδοση σημαίνει τιμολογημένη χωρίς αριθμό ΤΠΥ — αναίρεσε πρώτα την τιμολόγηση";
+  }
   const becomes = patch.invoiced === true && before.invoiced !== true;
   const edits = before.invoiced === true && patch.invoiced !== false && ("invoice_number" in patch || "price" in patch || "self_delivery" in patch);
   if (!becomes && !edits) return null;

@@ -24,7 +24,8 @@ async function errorOf(db, sql) { try { await db.exec(sql); return null; } catch
 const SRC = read('101_self_delivery.sql');
 const F = facts(SRC).consts;
 
-async function copy() {
+// grants: false = views never granted (relacl NULL), so the rollback's "rights back" meets a NULL ACL
+async function copy({ grants = true } = {}) {
   const db = await createDb({ v5: false });
   await db.exec(read('043_invoice_mark_guard.sql'));
   await db.exec(`
@@ -36,10 +37,11 @@ async function copy() {
         FROM (SELECT id, legacy_id, price, invoiced, invoice_number FROM public.orders) v JOIN public.orders o ON o.id = v.id;
     CREATE VIEW public.national_orders_with_derived AS
       SELECT id, legacy_id, price, invoiced, invoice_number, id AS order_no FROM public.national_orders n;
+    SET search_path = public;`);
+  if (grants) await db.exec(`
     GRANT SELECT ON public.orders_with_derived, public.national_orders_with_derived TO t101_reader;
     -- what Supabase does to every new relation in public (principle 5): the rollback's CREATE VIEW meets it
-    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO t101_anon;
-    SET search_path = public;`);
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO t101_anon;`);
   await db.exec(`UPDATE monitoring.checks SET red_value = (SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
     JOIN pg_namespace n ON n.oid = c.relnamespace WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND n.nspname = 'public'), baseline = NULL WHERE id = 'B-54'`);
   const owd = (await one(db, `SELECT md5(pg_get_viewdef('public.orders_with_derived'::regclass)) AS m`)).m;
@@ -48,7 +50,8 @@ async function copy() {
   const adapt = (sql) => {
     const out = sql.replace(`c_owd_live CONSTANT text := '${F.c_owd_live}'`, `c_owd_live CONSTANT text := '${owd}'`)
       .replace(`c_nowd_live CONSTANT text := '${F.c_nowd_live}'`, `c_nowd_live CONSTANT text := '${nowd}'`);
-    assert.strictEqual(out.split(owd).length + out.split(nowd).length, 4, 'the two view constants were found once each');
+    assert.strictEqual(out.split(`c_owd_live CONSTANT text := '${owd}'`).length, 2, 'c_owd_live swapped, once');
+    assert.strictEqual(out.split(`c_nowd_live CONSTANT text := '${nowd}'`).length, 2, 'c_nowd_live swapped, once');
     return out;
   };
   return { db, adapt, owd };
@@ -149,6 +152,16 @@ test('101 on the copy: before, dry run, GO, refusals, auditor, second run, rollb
       const ids = (await one(db, `SELECT ids_sql FROM monitoring.checks WHERE id = 'B-11'`)).ids_sql;
       assert.deepStrictEqual(Object.values(await one(db, ids))[0], ['rec101X']);
     });
+    await tt.test('the CHECK: a self delivery is an invoiced row WITHOUT a TPY - the box never sits beside a real number', async () => {
+      await db.exec(`INSERT INTO orders (legacy_id, price, invoiced, invoice_number) VALUES ('rec101H', 700, true, 'T-7'), ('rec101J', 700, false, NULL)`);
+      assert.match(await write(db, `UPDATE orders SET self_delivery = true WHERE legacy_id = 'rec101H'`) ?? '', /orders_self_delivery_no_tpy/, 'a numbered invoice cannot become a self delivery');
+      assert.match(await write(db, `UPDATE orders SET self_delivery = true WHERE legacy_id = 'rec101J'`) ?? '', /orders_self_delivery_no_tpy/, 'nor an uninvoiced row');
+      assert.match(await write(db, `UPDATE orders SET invoice_number = 'T-8' WHERE legacy_id = 'rec101A'`) ?? '', /orders_self_delivery_no_tpy/, 'a self delivery cannot get a number');
+      assert.match(await write(db, `UPDATE orders SET invoiced = false WHERE legacy_id = 'rec101A'`) ?? '', /orders_self_delivery_no_tpy/, 'invoiced off alone is refused (the box would stay)');
+      assert.match(await write(db, `UPDATE national_orders SET invoice_number = 'E-1' WHERE legacy_id = 'rec101C'`) ?? '', /national_orders_self_delivery_no_tpy/);
+      assert.deepStrictEqual(await row(db, 'orders', 'rec101H'), { invoiced: true, invoice_number: 'T-7', d: null, price: '700', sd: 'false' });
+      assert.strictEqual((await row(db, 'orders', 'rec101A')).sd, 'true');
+    });
     await tt.test('the screen\'s undo (invoiced, number, date, self delivery cleared in one write) passes', async () => {
       assert.strictEqual(await write(db, `UPDATE orders SET invoiced = false, invoice_number = NULL, invoice_date = NULL, self_delivery = false WHERE legacy_id = 'rec101A'`), null);
       assert.deepStrictEqual(await row(db, 'orders', 'rec101A'), { invoiced: false, invoice_number: null, d: null, price: null, sd: 'false' });
@@ -187,4 +200,17 @@ test('101 on the copy: before, dry run, GO, refusals, auditor, second run, rollb
     assert.strictEqual(await errorOf(db, adapt(SRC)), null);
     assert.strictEqual((await state(db)).fn, GEN_MD5.fn);
   });
+});
+
+test('101 and its rollback on views that were never granted (relacl NULL): the owner\'s default rights come back', async () => {
+  const { db, adapt } = await copy({ grants: false });
+  const live = await state(db);
+  assert.deepStrictEqual([live.acl_o, live.acl_n], [null, null]);
+  assert.strictEqual(await errorOf(db, adapt(SRC)), null);
+  assert.strictEqual(await errorOf(db, adapt(read('101_self_delivery_rollback.sql'))), null);
+  const s = await state(db);
+  assert.strictEqual(s.cols, 0);
+  assert.strictEqual(s.fn, live.fn);
+  const def = await one(db, `SELECT acldefault('r', relowner)::text AS d FROM pg_class WHERE oid = 'public.orders_with_derived'::regclass`);
+  assert.ok(s.acl_o === null || s.acl_o === def.d, s.acl_o);
 });

@@ -449,8 +449,8 @@ async function runSelfDelivery(browser) {
   await page.waitForSelector('#oivUndo', { timeout: 8000 });
   const p = cap.patches.slice(n0);
   assert(p.length === 1 && p[0].id === 'recO2' && p[0].table === 'orders'
-    && JSON.stringify(p[0].fields) === JSON.stringify({ Invoiced: true, 'Self Delivery': true, 'Invoice Date': TODAY }),
-    'tick → ONE PATCH {Invoiced: true, Self Delivery: true, Invoice Date: today}, no number — ' + JSON.stringify(p.map(x => x.fields)));
+    && JSON.stringify(p[0].fields) === JSON.stringify({ Invoiced: true, 'Self Delivery': true, 'Invoice Number': null, 'Invoice Date': TODAY }),
+    'tick → ONE PATCH {Invoiced: true, Self Delivery: true, Invoice Number: null, Invoice Date: today} — ' + JSON.stringify(p.map(x => x.fields)));
   assert(/Καταχωρήθηκε ως αυτοπαράδοση/.test(await txt(page, '#oivUndo')), 'undo bar «Καταχωρήθηκε ως αυτοπαράδοση»');
   assert(await tabText(page, 'ready') === 'Προς κοπή · 7' && await tabText(page, 'invoiced') === 'Τιμολογημένες · 1', 'counts: Προς κοπή 7, Τιμολογημένες 1');
   await page.screenshot({ path: shot('21-self-undo-bar') });
@@ -493,12 +493,19 @@ async function runSelfDelivery(browser) {
   await page.check('#oivSelf');
   await page.waitForSelector('#oivUndo', { timeout: 8000 });
   const b = cap.patches.slice(n2);
-  assert(b.length === 1 && b[0].id === 'recO5' && JSON.stringify(b[0].fields) === JSON.stringify({ Invoiced: true, 'Self Delivery': true, 'Invoice Date': TODAY }),
+  assert(b.length === 1 && b[0].id === 'recO5' && JSON.stringify(b[0].fields) === JSON.stringify({ Invoiced: true, 'Self Delivery': true, 'Invoice Number': null, 'Invoice Date': TODAY }),
     'no price + tick → the same PATCH, no Price asked — ' + JSON.stringify(b.map(x => x.fields)));
   assert(await tabText(page, 'blocked') === 'Μπλοκαρισμένες · 0', 'it leaves Μπλοκαρισμένες (counted as invoiced)');
   await page.click('.oiv-seg-b[data-tab="invoiced"]');
   assert(/Τιμολογημένες 3\.350,00 € 1/.test((await txt(page, '#oivKpis')).replace(/\s+/g, ' ')) === false
     && /Τιμολογημένες 0,00 € 1/.test((await txt(page, '#oivKpis')).replace(/\s+/g, ' ')), 'KPI Τιμολογημένες: 1, its missing price never summed (0,00 €)');
+  await rowOf(page, '#1240').click();
+  await page.waitForFunction(() => /#1240/.test((document.querySelector('#oivCard .oiv-ch-t') || {}).innerText || ''));
+  const c2 = await cardText(page);
+  assert(/Τιμή · δεν χρειάζεται \(αυτοπαράδοση\)/.test(c2) && !/γράψε τη παρακάτω/.test(c2) && !/χωρίς τιμή/.test(c2),
+    'self delivery without a price: «Τιμή · δεν χρειάζεται», no red «χωρίς τιμή», no «γράψε τη παρακάτω»');
+  const gh = (await page.locator('#oivBody tr.oiv-g', { hasText: 'Baltic' }).innerText()).replace(/\s+/g, ' ');
+  assert(!/χωρίς τιμή/.test(gh) && /1 · —/.test(gh), 'group header: «1 · —», not «χωρίς τιμή» — ' + gh);
   await page.screenshot({ path: shot('23-self-no-price') });
 
   assert(cap.errors.length === 0, 'self delivery: no page errors ' + JSON.stringify(cap.errors));

@@ -2,7 +2,7 @@
 -- DO NOT EDIT BY HAND. Everything 101 did, reversed: B-11 / B-12, the two triggers and invoice_mark_guard() back to
 -- their texts of 2/11 (md5-proven), both views rebuilt without self_delivery (DROP + CREATE: a view cannot lose a
 -- column in place; owner and rights put back exactly as they were), then the column dropped from orders and
--- national_orders. If another object depends on a view the DROP refuses (no CASCADE) and nothing is kept.
+-- national_orders (its CHECK goes with it). If another object depends on a view the DROP refuses (no CASCADE) and nothing is kept.
 -- ORDER: the front end reverted and the Worker rolled back FIRST (the Worker of 101 reads self_delivery from both views:
 -- after this rollback it is a 500 on every read).
 -- It STOPS (nothing changed) and names them while a live order is invoiced as a self delivery: 043 refuses those without
@@ -111,7 +111,8 @@ BEGIN
         CASE WHEN g.grantee = 0 THEN 'PUBLIC' ELSE quote_ident(pg_get_userbyid(g.grantee)) END,
         CASE WHEN g.is_grantable THEN ' WITH GRANT OPTION' ELSE '' END);
     END LOOP;
-    IF (SELECT relacl::text FROM pg_class WHERE oid = r.rel::regclass) IS DISTINCT FROM v_acl::text
+    -- a NULL ACL (never granted) comes back as the owner's default entry, which is the same rights
+    IF (SELECT coalesce(relacl, acldefault('r', relowner))::text FROM pg_class WHERE oid = r.rel::regclass) IS DISTINCT FROM coalesce(v_acl, acldefault('r', v_own))::text
        OR (SELECT relowner FROM pg_class WHERE oid = r.rel::regclass) <> v_own THEN
       RAISE EXCEPTION '101 rollback proof: % did not get its owner and rights back', r.rel;
     END IF;
@@ -139,6 +140,9 @@ BEGIN
   IF EXISTS (SELECT 1 FROM pg_attribute WHERE attname = 'self_delivery' AND NOT attisdropped
               AND attrelid IN ('public.orders'::regclass, 'public.national_orders'::regclass)) THEN
     RAISE EXCEPTION '101 rollback proof: self_delivery is still there';
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname IN ('orders_self_delivery_no_tpy', 'national_orders_self_delivery_no_tpy')) THEN
+    RAISE EXCEPTION '101 rollback proof: a self delivery CHECK is still there';
   END IF;
   SELECT count(*) INTO trg_after FROM pg_trigger t JOIN pg_class cl ON cl.oid = t.tgrelid JOIN pg_namespace ns ON ns.oid = cl.relnamespace
    WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public';
