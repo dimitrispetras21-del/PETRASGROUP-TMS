@@ -10656,6 +10656,87 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5a-av.sugg { color:var(--accent-text); }
 /* 083: «Με φορτηγό τώρα | Φορτηγό αργότερα» of «Νέο φορτίο» */
 .wn5-nf .wn5-nf-when { align-self:flex-start; }
+/* «Σύνθεση φορτίων» (owner 2/11, shared drafts 102; localStorage tms_wn5_compose until the Worker deploy): the Weekly
+   Διεθνών language — slim two-level rows, the place bold, red only as a 2px bar or small text, a row's moves on hover */
+.wn5-cmp .wn5-hub-s { font-size:12px; font-weight:500; color:var(--wi4-grey-1); }
+.wn5-cmp-late { flex:none; margin-left:6px; font-size:11.5px; font-weight:500; color:var(--danger); }
+.wn5-cmp-tab { flex:none; height:24px; padding:0 10px; border:1px solid var(--wi4-line-2); border-radius:12px; background:var(--surface-card);
+  font:600 11px 'DM Sans',sans-serif; letter-spacing:.4px; color:var(--wi4-grey-1); cursor:pointer; }
+.wn5-cmp-tab.on { border-color:var(--wi4-ink); background:var(--wi4-ink); color:var(--surface-card); }
+.wn5-cr-cols { position:sticky; top:0; z-index:1; display:flex; align-items:center; gap:10px; height:24px; padding:0 12px; background:var(--surface-card);
+  border-bottom:1px solid var(--wi4-line); font-size:10.5px; letter-spacing:.4px; color:var(--wi4-grey-2); }
+.wn5-cr-c0 { flex:none; width:20px; text-align:center; }
+.wn5-cr-c1 { flex:0 1 260px; min-width:0; }
+.wn5-cr-c2 { flex:none; min-width:150px; }
+.wn5-cmp .wn5-cr-gh { gap:8px; height:24px; font-size:11px; font-weight:600; color:var(--wi4-grey-1); background:var(--wi4-chip); }
+.wn5-cr-gh > em { font-style:normal; font-weight:500; color:var(--danger); }
+.wn5-cmp .wn5-hub-it.wn5-cr { min-height:32px; padding:2px 12px; gap:10px; }
+.wn5-cmp .wn5-hub-ck { margin:0 3px; }
+.wn5-cmp .wn5-hub-it.wn5-cr.late { box-shadow:inset 2px 0 0 var(--danger); }
+.wn5-cr-a { flex:0 1 260px; min-width:0; display:flex; flex-direction:column; line-height:15px; white-space:normal; overflow-wrap:anywhere; }
+.wn5-cr-a > b { font-size:12.5px; font-weight:600; color:var(--wi4-ink); }
+.wn5-cr-a > b > i { font-style:normal; font-weight:400; color:var(--wi4-grey-1); }
+.wn5-cr-a > span { font-size:11px; color:var(--wi4-grey-2); }
+.wn5-cr-w { flex:none; min-width:150px; display:flex; flex-direction:column; line-height:15px; font-size:11.5px; color:var(--wi4-grey-1); }
+.wn5-cr-w > em { font-style:normal; font-size:11px; color:var(--danger); }
+.wn5-cr-t { flex:none; font-size:11px; color:var(--wi4-grey-2); }
+/* a row's own moves show on the row the mouse is on, the one in focus, or a ticked one (owner 2/11: less on screen) */
+.wn5-cmp .wn5-cr-acts, .wn5-cd-acts { visibility:hidden; }
+.wn5-cmp .wn5-hub-it.wn5-cr:hover .wn5-cr-acts, .wn5-cmp .wn5-hub-it.wn5-cr:focus-within .wn5-cr-acts, .wn5-cmp .wn5-hub-it.wn5-cr.on .wn5-cr-acts,
+.wn5-cd-p:hover .wn5-cd-acts, .wn5-cd-p:focus-within .wn5-cd-acts { visibility:visible; }
+.wn5-cb-empty { margin:0; font-size:11.5px; color:var(--wi4-grey-2); }
+.wn5-cmp .wn5-cr-none { padding:8px 12px; }
+.wn5-cb-clr { font-size:11.5px; font-weight:500; color:var(--wi4-grey-1); }
+.wn5-cb-stops { margin:0; padding:0 0 0 18px; display:flex; flex-direction:column; gap:2px; font-size:12px; color:var(--wi4-grey-1); }
+.wn5-cb-stops > li > b { font-weight:600; color:var(--wi4-ink); margin-right:6px; }
+.wn5-cb-stops > li > span { font-size:11.5px; color:var(--wi4-grey-2); }
+.wn5-cb-cap { display:flex; align-items:center; gap:8px; font-size:11.5px; color:var(--wi4-grey-2); }
+.wn5-cb-cap > b { font-size:12px; color:var(--wi4-ink); }
+.wn5-cb-bar { flex:0 0 160px; height:6px; border-radius:3px; background:var(--wi4-chip); overflow:hidden; }
+.wn5-cb-bar > i { display:block; height:100%; background:var(--wi4-blue); }
+.wn5-cb-cap.over .wn5-cb-bar > i { background:var(--wi4-amber); }
+.wn5-cb-cap.over > b { color:var(--wi4-amber-ink); }
+.wn5-cb-mix { color:var(--wi4-amber-ink); font-weight:500; }
+/* a draft card «Φορτίο N»: head (day, hours, «παλιό», who changed it last), its parts, stops, the bar, «Δημιουργία» */
+.wn5-cd { display:flex; flex-direction:column; gap:6px; padding:8px 10px; border:1px solid var(--wi4-line-2); border-radius:6px; background:var(--surface-card); }
+.wn5-cd-hd { display:flex; align-items:center; gap:8px; min-height:26px; }
+.wn5-cd-n { flex:none; white-space:nowrap; font-size:12.5px; font-weight:700; color:var(--wi4-ink); }
+.wn5-cd-win { flex:none; white-space:nowrap; }
+.wn5-cd-who { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.wn5-cd-day { height:24px; padding:0 4px; border:1px solid var(--wi4-line-2); border-radius:4px; font:500 11.5px 'DM Sans',sans-serif; color:var(--wi4-ink); background:var(--surface-card); }
+.wn5-cd-win, .wn5-cd-who { font-size:11px; color:var(--wi4-grey-2); }
+/* Ε4: amber, never red — an old draft is a fact to see, not an error */
+.wn5-cd-old { flex:none; padding:1px 6px; border-radius:8px; background:var(--wi4-amber-bg); font-size:10.5px; font-weight:600; color:var(--wi4-amber-ink); }
+.wn5-cd-tools { display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:4px 0; border-top:1px solid var(--wi4-line); border-bottom:1px solid var(--wi4-line); font-size:11.5px; }
+.wn5-cd-tl { color:var(--wi4-grey-2); }
+.wn5-cd-tools .wn5a-hm { width:64px; height:24px; }
+.wn5-cd-tools .wi4-link { font-size:11.5px; font-weight:500; color:var(--accent-text); }
+.wn5-cd-tools .wn5-cd-del { color:var(--danger); }
+.wn5-cd-hist ol { margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:2px; font-size:11px; color:var(--wi4-grey-1); }
+.wn5-cd-hist li { display:flex; gap:8px; }
+.wn5-cd-hist li > b { font-weight:600; color:var(--wi4-ink); }
+.wn5-cd-ps { display:flex; flex-direction:column; }
+.wn5-cd-p { display:flex; align-items:center; gap:8px; min-height:30px; padding:2px 6px; border-bottom:1px solid var(--wi4-line); }
+/* §3.2: a thin red bar for a part that blocks «Δημιουργία», an amber one for a change that does not */
+.wn5-cd-p.blk { box-shadow:inset 2px 0 0 var(--danger); }
+.wn5-cd-p.chg { box-shadow:inset 2px 0 0 var(--wi4-amber); }
+.wn5-cd-a { min-width:0; display:flex; flex-direction:column; line-height:15px; white-space:normal; }
+.wn5-cd-a > b { font-size:12px; font-weight:600; color:var(--wi4-ink); }
+.wn5-cd-a > span { font-size:11px; color:var(--wi4-grey-2); }
+.wn5-cd-blk { font-style:normal; font-size:11px; color:var(--danger); }
+.wn5-cd-chg { font-style:normal; font-size:11px; color:var(--wi4-amber-ink); }
+.wn5-cd-ok { align-self:flex-start; font-size:11px; font-weight:600; color:var(--accent-text); }
+.wn5-cd-mv { height:22px; font:400 11px 'DM Sans',sans-serif; color:var(--wi4-grey-1); }
+.wn5-cd-add { align-self:flex-start; font-size:11.5px; font-weight:500; color:var(--accent-text); }
+.wn5-cmp .wn5-hub-r .wn5-cb { gap:10px; }
+.wn5-cmp-msg { padding:4px 8px; border-radius:4px; background:var(--wi4-red-bg); font-size:11.5px; color:var(--wi4-red-ink); }
+.wn5-cmp-msg.stale { background:var(--wi4-amber-bg); color:var(--wi4-amber-ink); }
+.wn5-cmp-code { font-family:'DM Mono',monospace; font-size:10.5px; opacity:.8; }
+.wn5-cmp-res { margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:2px; font-size:11.5px; }
+.wn5-cmp-res > .ok { color:var(--wi4-ink); }
+.wn5-cmp-res > .no { color:var(--danger); }
+/* Ε1: on the Weekly's ΠΡΟΣ ΑΝΑΘΕΣΗ, a small grey mark in the corner of the cell (no layout shift when it fills in) */
+.wn5-asg > .wn5-indraft { position:absolute; right:4px; bottom:1px; font-size:9.5px; font-weight:500; letter-spacing:.2px; color:var(--wi4-grey-2); pointer-events:none; }
 /* B-26 (087): «φεύγει ως ‹ Δευ 12/10 22:00 ›», a day stepped in place inside the field box of 2011:8744 */
 .wn5-part-d.wn5-lb { gap:6px; padding:0 2px; }
 .wn5-lb-b { width:20px; height:22px; padding:0; border:none; border-radius:4px; background:none; font:600 14px 'DM Sans',sans-serif; color:var(--wi4-grey-2); cursor:pointer; }
