@@ -519,11 +519,18 @@ async function f61({ browser, origin, ok, scn, shots }) {
   const chips = await page.evaluate((s) => [...document.querySelectorAll(`${s} .wn5a-all.on`)].map((x) => x.textContent), DLG);
   ok(scn, 'F51: the rows of that day read «από 22:00» (what is sent), never a silent 00:00', chips.length === 2 && chips.every((c) => c === 'από 22:00'), chips);
   if (shots) await page.screenshot({ path: shots + '/f61-new-after.png' });
+  // Π2 (owner 2/11): the truck and driver of the trip it came back with are said BEFORE the press, amber, by name;
+  // the save stays on and sends accept_busy from the first press (one POST, no refusal first)
+  const foot = await page.evaluate((s) => { const m = document.querySelector(s + ' [data-miss]'); return m ? { t: m.textContent, soft: m.classList.contains('wn5-soft'), color: getComputedStyle(m).color } : null; }, DLG);
+  ok(scn, 'Π2: footer «Επικάλυψη · φορτηγό και σε: … · οδηγός και σε: … Αποθηκεύεται έτσι, γράφεται στο ιστορικό.», amber',
+    !!foot && /^Επικάλυψη · φορτηγό και σε: .+ · οδηγός και σε: .+\. Αποθηκεύεται έτσι, γράφεται στο ιστορικό\.$/.test(foot.t) && foot.soft && foot.color === 'rgb(124, 45, 18)', foot);
+  const n0 = saves(S).length;
   await page.click(`${DLG} [data-act="save"]`);
   await page.waitForTimeout(500);
   let x = saves(S).pop();
   ok(scn, 'POST /plan/legs: new_rt OWNED 11 / 21 / 31, every stop of Tue from 22:00', !!x && JSON.stringify(x.body.target.new_rt) === JSON.stringify({ trip_type: 'OWNED', truck_id: 11, trailer_id: 21, driver_id: 31 })
     && x.body.stops.every((s) => s.planned_from === '2026-10-13T22:00:00+03:00'), x && x.body);
+  ok(scn, 'Π2: ONE POST, target.accept_busy = true from the first press', saves(S).length === n0 + 1 && !!x && x.body.target.accept_busy === true, x && x.body);
   await openWaiting(page, 4401);
   await pickIn(page, 'tk', '2104', 'TST-2104');
   await page.click(`${DLG} [data-act="opt"][data-i="0"]`);
@@ -533,7 +540,7 @@ async function f61({ browser, origin, ok, scn, shots }) {
   await page.click(`${DLG} [data-act="save"]`);
   await page.waitForTimeout(500);
   x = saves(S).pop();
-  ok(scn, '… POST /plan/legs into rt 101', !!x && x.body.target.rt_id === 101, x && x.body);
+  ok(scn, '… POST /plan/legs into rt 101, no accept_busy (its own trip is not an overlap)', !!x && x.body.target.rt_id === 101 && x.body.target.accept_busy === undefined, x && x.body);
   // code review: the joined trip's trailer / driver never stick to another truck unmarked
   await openWaiting(page, 4401);
   await pickIn(page, 'tk', '2104', 'TST-2104');
@@ -619,5 +626,33 @@ async function pr3b({ browser, origin, ok, scn }) {
   await page.context().close();
 }
 
-K.run({ scenarios: { own_new, own_join, only_hours, partner, accept_busy, vehicle, rate2, handover, veroia_list, veroia_new, f61, f54, veroia_later, pr3b }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],
+// 12 · Π2 (owner 2/11): the Veroia board's «Νέο φορτίο» with a driver already on a trip those days (Driver Test 01 on
+// TST-2104's RT-T101, Mon 16:00 → Tue 22:00): said in amber beside «Δημιουργία φορτίου» before the press, by truck,
+// place and day (no RT code), and ONE POST carries target.accept_busy — the panel is the one that saves
+async function veroia_busy({ browser, origin, ok, scn }) {
+  const { page, S } = await K.openApp(browser, origin, { board: hubBoard(), plan: { 'POST /plan/legs': async () => OK('plan_put_pieces', { rt_id: 903 }) } });
+  await page.click('#wn5-hub [data-hub="open"]');
+  await page.click('#wn5-hub .wn5-hub-it[data-piece="4201"] .wn5-hub-ck');
+  await page.click('#wn5-hub .wn5-nf-pick');
+  await page.waitForSelector(DLG, { timeout: 4000 });
+  await pickIn(page, 'tk', '2106', 'TST-2106');
+  await pickIn(page, 'tl', '5104', 'TRL-5104');
+  await pickIn(page, 'dr', 'Test 01', 'Driver Test 01');
+  await page.click(`${DLG} [data-act="save"]`);
+  await page.waitForTimeout(200);
+  ok(scn, '«Επιλογή» wrote nothing', !saves(S).length, saves(S).map((x) => x.path));
+  const why = await page.evaluate(() => { const m = document.querySelector('#wn5-hub [data-nfwhy]'); return m ? { t: m.textContent, soft: m.classList.contains('wn5-soft'), color: getComputedStyle(m).color } : null; });
+  const T = 'Επικάλυψη · οδηγός και σε: TST-2104 · Βέροια ως Τρί 22:00. Αποθηκεύεται έτσι, γράφεται στο ιστορικό.';
+  ok(scn, 'the panel says «' + T + '» in amber beside the save, no RT code, «Δημιουργία φορτίου» on',
+    !!why && why.t === T && why.soft && why.color === 'rgb(124, 45, 18)' && !jargon(why.t).length && !(await page.isDisabled('#wn5-hub [data-act="nf-create"]')), why);
+  await page.click('#wn5-hub [data-act="nf-create"]');
+  await page.waitForTimeout(600);
+  const w = saves(S);
+  ok(scn, 'ONE POST /plan/legs, target new_rt OWNED 13 / 22 / 31 + accept_busy: true (no refusal first)', w.length === 1 && w[0].path === '/plan/legs' && !!w[0].body
+    && JSON.stringify(w[0].body.target) === JSON.stringify({ new_rt: { trip_type: 'OWNED', truck_id: 13, trailer_id: 22, driver_id: 31 }, side: 'KATHODOS', accept_busy: true }), w.map((x) => x.raw));
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await page.context().close();
+}
+
+K.run({ scenarios: { own_new, own_join, only_hours, partner, accept_busy, vehicle, rate2, handover, veroia_list, veroia_new, f61, f54, veroia_later, pr3b, veroia_busy }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],
   go: 'the assignment form (own new / join / only / hours / F39 / partner / vehicle / F51-F61 / F54 / F56 / 089 two fees), ✈ «Αλλαγή οχήματος…» and the Veroia board v2 «Νέο φορτίο» hold' });

@@ -3150,11 +3150,25 @@ SCN.f33 = async (browser, origin) => {
     await page.fill(`${P} input[data-hub="from"]`, '08:00').catch(() => {});
     await page.fill(`${P} input[data-hub="to"]`, '10:00').catch(() => {});
     await page.waitForTimeout(200);
-    // code review: the same words BEFORE the press, red beside the line; the button stays on (the base judges)
+    // code review: the same words BEFORE the press, beside the line; the button stays on (the base judges). Π1 (W50
+    // test 2/11): amber (.wn5-soft), never the red of «Λείπει»; the rule is 086's — the Tue all-day loading ENDS
+    // (23:59) before the Wed delivery starts (00:00), so it is still said
     const pre = await bText(page, `${P} .wn5-pline[data-piece="4393"] .wn5-why`);
-    ok(scn, 'before the press: the line says «Η στάση «LARISA TEST Τρί 13/10 όλη η ημέρα» (ΑΝΟΔΟΣ, νέα) θα ήταν πριν …», «Πρόσθεσε» on; N-T392 says nothing',
-      pre.startsWith('Η στάση «LARISA TEST Τρί 13/10 όλη η ημέρα» (ΑΝΟΔΟΣ, νέα) θα ήταν πριν από τη «ATHENS TEST Τετ 14/10 όλη η ημέρα» (ΚΑΘΟΔΟΣ) στο RT-T301')
-      && (await bOff(page, `${P} [data-act="save"][data-piece="4393"]`)) === false && !(await bHas(page, `${P} .wn5-pline[data-piece="4392"] .wn5-why`)), pre);
+    const soft = await page.evaluate((s) => { const e = document.querySelector(s); return !!e && e.classList.contains('wn5-soft'); }, `${P} .wn5-pline[data-piece="4393"] .wn5-why`);
+    ok(scn, 'before the press: the line says «Η στάση «LARISA TEST Τρί 13/10 όλη η ημέρα» (ΑΝΟΔΟΣ, νέα) θα τελείωνε πριν αρχίσει …», amber, «Πρόσθεσε» on; N-T392 says nothing',
+      pre.startsWith('Η στάση «LARISA TEST Τρί 13/10 όλη η ημέρα» (ΑΝΟΔΟΣ, νέα) θα τελείωνε πριν αρχίσει η «ATHENS TEST Τετ 14/10 όλη η ημέρα» (ΚΑΘΟΔΟΣ) στο RT-T301')
+      && soft && (await bOff(page, `${P} [data-act="save"][data-piece="4393"]`)) === false && !(await bHas(page, `${P} .wn5-pline[data-piece="4392"] .wn5-why`)), { pre, soft });
+    // Π1: what 086 takes is never said — an all-day ΑΝΟΔΟΣ on the day of a ΚΑΘΟΔΟΣ with hours (ends 23:59, after
+    // 06:00), and a window that overlaps one ahead of it; only a stop that ENDS before an earlier one starts
+    const p1 = await page.evaluate(() => {
+      const k = WN5Act._kit, T = (d, hm) => d + 'T' + hm + ':00+03:00';
+      const c = { code: 'RT-X', stops: [{ side: 'KATHODOS', location_id: 4, location: 'A', planned_from: T('2026-10-13', '06:00'), planned_to: T('2026-10-13', '08:00') }] };
+      const w = (f, t) => k.orderWarn(c, { body: { stops: [{ side: 'ANODOS', location_id: 5, planned_from: f, planned_to: t }] } });
+      return { allDay: w(T('2026-10-13', '00:00'), T('2026-10-13', '23:59')), overlap: w(T('2026-10-13', '05:00'), T('2026-10-13', '07:00')),
+        endsBefore: w(T('2026-10-13', '03:00'), T('2026-10-13', '06:00')) };
+    });
+    ok(scn, 'Π1: all-day ΑΝΟΔΟΣ same day as ΚΑΘΟΔΟΣ 06:00 → nothing; overlapping 05:00–07:00 → nothing; 03:00–06:00 (ends as it starts) → said',
+      p1.allDay === null && p1.overlap === null && typeof p1.endsBefore === 'string' && p1.endsBefore.includes('θα τελείωνε πριν αρχίσει'), p1);
     await bClick(page, `${P} [data-act="save"][data-piece="4393"]`);
     await page.waitForTimeout(500);
     const t = await bText(page, `${P} .wn5-strip`);
@@ -3164,8 +3178,8 @@ SCN.f33 = async (browser, origin) => {
     // a refusal reaching a strip without the request (e.g. an order form's save) still names the cycle, never the bare id
     const t2 = await page.evaluate(() => { const h = document.createElement('div'); document.body.appendChild(h);
       WN5Act.strip(h, { kind: 'refusal', code: 'stop_order', message: 'rig sentinel stop_order (301)' }); return h.innerText; });
-    ok(scn, 'stop_order without the request: «Οι στάσεις του RT-T301 δεν θα ήταν σε χρονική σειρά … ΑΝΟΔΟΥ … ΚΑΘΟΔΟΥ»',
-      /Οι στάσεις του RT-T301 δεν θα ήταν σε χρονική σειρά: μια στάση της ΑΝΟΔΟΥ θα ήταν πριν από στάση της ΚΑΘΟΔΟΥ/.test(t2) && !t2.includes('(301)'), t2);
+    ok(scn, 'stop_order without the request: «Οι στάσεις του RT-T301 δεν θα ήταν σε χρονική σειρά … τελείωνε πριν αρχίσει … φόρτωσή της» (086: the same side too)',
+      /Οι στάσεις του RT-T301 δεν θα ήταν σε χρονική σειρά: μια στάση θα τελείωνε πριν αρχίσει η στάση πριν από αυτήν/.test(t2) && t2.includes('παράδοση πριν από τη φόρτωσή της') && !t2.includes('(301)'), t2);
     ok(scn, 'no page errors (2)', !S.pageErrors.length, S.pageErrors);
     await page.context().close();
   }
@@ -3361,6 +3375,38 @@ function truthBoard() {
   return b;
 }
 const truthLookups = () => { const l = clone(B_LOOKUPS); l.locations.push({ id: 7, legacy_id: 'recLOC7', name: 'MESIS TEST', address: null, city: 'Veria', phone: null, is_hub: false }); return l; };
+// Owner 2/11 (relaxed rules, group 5): an order saves without a price (080), and the Weekly says so — a small amber
+// «λείπει τιμή» on its point, once per order on a row. Never for an ABSENT price key (the board did not say), never for
+// a VS leg (price null by design). No «λείπει ώρα»: «όλη η ημέρα» is the normal case (owner 2/11). NO-GO on main: no
+// .wn5-noprice at all.
+SCN.gaps = async (browser, origin) => {
+  const scn = 'gaps';
+  const b = fixture();
+  const w = b.waiting.find((x) => x.piece_id === 4105);
+  Object.assign(w, { price: null, deliver_from: '2026-10-14T00:00:00+03:00', deliver_to: '2026-10-14T23:59:00+03:00' });
+  const c101 = b.cycles.find((c) => c.stops.some((st) => st.stop_id === 1001));
+  for (const st of c101.stops) for (const l of st.legs || []) l.price = l.nat_order_id === 3001 ? null : l.nat_order_id != null ? 100 : null;
+  const other = b.waiting.find((x) => x.piece_id !== 4105 && x.nat_order_id != null);
+  if (other) delete other.price;
+  const { page, S } = await openBoard(browser, origin, { board: b });
+  await page.waitForSelector('#content > .wi4.wn5[data-state="ok"]', { timeout: 8000 }).catch(() => {});
+  const look = await page.evaluate(([rt, op]) => {
+    const marks = (sel) => [...document.querySelectorAll(`${sel} .wn5-noprice`)].map((m) => m.textContent);
+    const m0 = document.querySelector('#content .wn5 .wn5-noprice');
+    return { wait: marks('#content .wn5 .wn5-row[data-piece="4105"]'), cyc: marks(`#content .wn5 .wn5-row[data-rt="${rt}"]`),
+      other: op == null ? [] : marks(`#content .wn5 .wn5-row[data-piece="${op}"]`),
+      noHour: (document.querySelector('#content .wn5') || {}).textContent.includes('λείπει ώρα'),
+      bg: m0 ? getComputedStyle(m0).backgroundColor : null, ink: m0 ? getComputedStyle(m0).color : null };
+  }, [c101.rt_id, other ? other.piece_id : null]);
+  ok(scn, 'the waiting order without price: «λείπει τιμή» once — main: none', JSON.stringify(look.wait) === JSON.stringify(['λείπει τιμή']), look.wait);
+  ok(scn, `cycle ${c101.rt_id}: one «λείπει τιμή» (order 3001, load + unload legs), none for its VS leg`, look.cyc.filter((x) => x === 'λείπει τιμή').length === 1, look.cyc);
+  ok(scn, 'a waiting order whose price key is ABSENT shows no mark', !look.other.length, look.other);
+  ok(scn, 'no «λείπει ώρα» anywhere (its whole-day delivery is the normal case, owner 2/11)', look.noHour === false, look.noHour);
+  ok(scn, 'the mark is amber (#fff7ed on #7c2d12)', look.bg === 'rgb(255, 247, 237)' && look.ink === 'rgb(124, 45, 18)', [look.bg, look.ink]);
+  if (OUT) await page.locator('#content .wn5 .wn5-row[data-piece="4105"]').screenshot({ path: path.join(OUT, 'gaps-waiting.png') }).catch(() => {});
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await page.context().close();
+};
 SCN.truth = async (browser, origin) => {
   const scn = 'truth';
   // the fake reads as the live 072 does: every waiting / hub item ready by the week's Friday (coalesce(nat_ready_day, week) ≤ week + 6)
@@ -3673,6 +3719,132 @@ SCN.pr3a = async (browser, origin) => {
     await page.evaluate(() => (document.querySelector('#content .wn5') || {}).dataset));
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
   await page.context().close();
+};
+// Π2 (owner 2/11, W50 test: every second load of the same truck on the same day was refused): a busy truck / driver is
+// said BEFORE the press, in amber, naming every other trip (place · day, never an RT code), and saved with ONE press
+// carrying accept_busy (086) — on «+», «Μεταφορά σε…», the drag of a point, the date panel and the Veroia «Σπάσε…».
+// A span outside the loaded week is said and NOT pre-accepted: the base accepts every overlap of the save.
+// Fixture: TST-2103 (truck 13, Driver Test 03) runs RT-T204 Mon–Tue and RT-T205 on Tue 16:00–23:59 (LARISA TEST).
+function p2Board() {
+  const b = bBoard();
+  b.cycles.push(bCycle(205, { truck_id: 13, truck: 'TST-2103', trailer_id: 23, trailer: 'TRL-5103', driver_id: 33, driver: 'Driver Test 03' }, [
+    bStop(2051, 'KATHODOS', 1, '2026-10-13', '16:00', '18:00', [bLeg(6051, 5151, 'load', 5)]),
+    bStop(2052, 'KATHODOS', 6, '2026-10-13', '20:00', '23:59', [bLeg(6051, 5151, 'unload', 5)])]));
+  return b;
+}
+SCN.p2 = async (browser, origin) => {
+  const scn = 'p2';
+  const T205 = 'Επικάλυψη · φορτηγό και σε: LARISA TEST ως Τρί 23:59 · οδηγός και σε: LARISA TEST ως Τρί 23:59. Αποθηκεύεται έτσι, γράφεται στο ιστορικό.';
+  const T204 = 'Επικάλυψη · φορτηγό και σε: Βέροια ως Τρί 22:00 · οδηγός και σε: Βέροια ως Τρί 22:00. Αποθηκεύεται έτσι, γράφεται στο ιστορικό.';
+  const soft = (page, sel) => page.$eval(sel, (e) => ({ t: e.innerText, soft: e.classList.contains('wn5-soft'), color: getComputedStyle(e).color })).catch(() => null);
+  const AMBER = 'rgb(124, 45, 18)';
+  const noRt = (t) => !/RT-T\d/.test(String(t || ''));
+  const dry = (cons) => [200, { ok: true, op: 'plan_move_pieces', dry_run: true, needs_confirm: cons.length > 0, confirm_token: 'tokP2', consequences: cons }];
+  const MOVED = [200, { ok: true, op: 'plan_move_pieces', dry_run: false, ids: { rt_id: 204 }, warnings: [], notice_ids: [] }];
+  { // A · «+» of RT-T205: N-T201 says RT-T204 of the same truck and driver, amber; one POST with accept_busy
+    const { page, S } = await bOpen(browser, origin, { board: p2Board(), plan: { 'POST /plan/legs': () => OK_PUT({ ids: { rt_id: 205 } }) } });
+    await page.evaluate(() => WN5Act.plus(205, 'KATHODOS', document.querySelector('#content .wn5 .wn5-row[data-rt="205"]')));
+    await page.waitForTimeout(500);
+    const P = bDlg('plus') + ' .wn5-pline[data-piece="4201"]';
+    const w = await soft(page, P + ' .wn5-why');
+    ok(scn, '«+»: the line says «' + T204 + '» in amber before the press, «Πρόσθεσε» on, no RT code',
+      !!w && w.t === T204 && w.soft && w.color === AMBER && noRt(w.t) && (await bOff(page, P + ' [data-act="save"]')) === false, w);
+    await bClick(page, P + ' [data-act="save"]');
+    await page.waitForTimeout(400);
+    const c = bCalls(S, 'POST', '/plan/legs');
+    ok(scn, '«+»: ONE POST /plan/legs, target {rt_id 205, side, accept_busy: true}', c.length === 1 && JSON.stringify(c[0].body.target) === '{"rt_id":205,"side":"KATHODOS","accept_busy":true}', c.map((x) => x.raw));
+    ok(scn, 'no page errors (A)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // B · «Μεταφορά σε…» VS-T201 of RT-T201 → RT-T204: the line names RT-T205's trip; the dry run and the save carry it
+    const { page, S } = await bOpen(browser, origin, { board: p2Board(), plan: { 'POST /plan/move': (e) => (e.body && e.body.dry_run === true ? dry([]) : MOVED) } });
+    await page.evaluate(() => { WN5Act.move({ piece_ids: [5101], rt_id: 201 }, {}); });
+    await page.waitForTimeout(400);
+    const D = bDlg('move');
+    const w = await page.$eval(`${D} [data-act="save"][data-cand="rt:204"]`, (b) => { const n = b.closest('.wn5-cand').nextElementSibling;
+      return n && n.classList.contains('wn5-why') ? { t: n.innerText, soft: n.classList.contains('wn5-soft'), color: getComputedStyle(n).color } : null; }).catch(() => null);
+    ok(scn, '«Μεταφορά σε…»: under TST-2103\'s line «' + T205 + '», amber, no RT code', !!w && w.t === T205 && w.soft && w.color === AMBER && noRt(w.t), w);
+    await bClick(page, `${D} [data-act="save"][data-cand="rt:204"]`);
+    await page.waitForTimeout(500);
+    const c = bCalls(S, 'POST', '/plan/move');
+    ok(scn, '«Μεταφορά»: the dry run and the execution both carry target.accept_busy (one press, no refusal first)',
+      c.length === 2 && c[0].body.dry_run === true && c.every((x) => x.body.target.accept_busy === true) && !('dry_run' in c[1].body), c.map((x) => x.raw));
+    ok(scn, 'no page errors (B)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // C · the drag of RT-T201's RENTIS point onto TST-2103's RT-T204: the confirmation says it, «Μεταφορά» sends it
+    const { page, S } = await bOpen(browser, origin, { board: p2Board(), plan: { 'POST /plan/move': (e) => (e.body && e.body.dry_run === true ? dry([]) : MOVED) } });
+    await page.evaluate(() => { WN5Edit.moveTo({ rtId: 201, stopId: 2002 }, 204); });
+    await page.waitForTimeout(500);
+    const w = await soft(page, `${bDlg('move')} [data-busy]`);
+    ok(scn, 'drag to a truck: the list opens with «' + T205 + '» in amber over «Τι θα γίνει»', !!w && w.t === T205 && w.soft && w.color === AMBER, w);
+    await bClick(page, `${bDlg('move')} [data-act="confirm"]`);
+    await page.waitForTimeout(500);
+    const c = bCalls(S, 'POST', '/plan/move');
+    ok(scn, 'drag: dry run + ONE confirming press, both with target.accept_busy', c.length === 2 && c.every((x) => x.body.target.accept_busy === true) && !('dry_run' in c[1].body), c.map((x) => x.raw));
+    ok(scn, 'no page errors (C)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  const D4 = bDlg('date'), CHIP = '.wn5-row[data-rt="204"] [data-act="date"][data-side="KATHODOS"]';
+  const PV = (o) => [200, { ok: true, op: 'plan_rt_update', dry_run: true, preview: Object.assign({ before: null, after: null, next_rt: null, conflict: null, vs_day: [], warnings: [] }, o || {}) }];
+  const CF = (code, detail) => PV({ conflict: { code, sqlstate: '23514', detail, message: 'rig sentinel conflict ' + code } });
+  const K = 'PATCH /plan/rt/:id';
+  { // D · the date panel (a point dragged to another day opens it): the base's truck_busy names RT-T205, the board has
+    // it whole → the dry run again with accept_busy at once, the trip in amber, «Αποθήκευση» on; one press saves
+    const { page, S } = await bOpen(browser, origin, { board: p2Board(), plan: { [K]: (e) => (e.body && e.body.dry_run !== true ? planErr(409, 'WRITES_CLOSED', 'writes_closed')
+      : e.body.accept_busy === true ? PV() : CF('truck_busy', 'RT-T205')) } });
+    await bClick(page, CHIP);
+    await bClick(page, `${D4} [data-day="2026-10-14"]`);
+    await page.waitForTimeout(600);
+    const c = bCalls(S, 'PATCH', '/plan/rt/204');
+    const x = await page.$eval(D4, (dlg) => { const li = dlg.querySelector('.wn5-res li[data-row="accepted"]'); const s = li && li.querySelector('.wn5-soft');
+      return { acc: !!li, t: s ? s.innerText : null, color: s ? getComputedStyle(s).color : null, red: !!dlg.querySelector('.wn5-res .wn5-conflict'),
+        offer: !!dlg.querySelector('[data-act="accept-busy"]'), save: (dlg.querySelector('[data-act="save"]') || {}).disabled }; }).catch((e) => ({ err: String(e) }));
+    ok(scn, 'date panel: two dry runs (the second with accept_busy), no second press asked', c.length === 2 && c[0].body.accept_busy === undefined && c[1].body.accept_busy === true, c.map((y) => y.raw));
+    ok(scn, 'date panel: «' + T205 + '» amber in the result, no red line, no «Αποθήκευση έτσι κι αλλιώς», «Αποθήκευση» on',
+      x.acc && x.t === T205 && x.color === AMBER && !x.red && !x.offer && x.save === false, x);
+    await bClick(page, `${D4} [data-act="save"]`);
+    await page.waitForTimeout(300);
+    const c2 = bCalls(S, 'PATCH', '/plan/rt/204');
+    ok(scn, 'date panel: ONE press «Αποθήκευση» sends accept_busy without dry_run', c2.length === 3 && c2[2].body.accept_busy === true && c2[2].body.dry_run === undefined, c2.map((y) => y.raw));
+    ok(scn, 'no page errors (D)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // E · a day outside the loaded week (Sat 17/10): the board cannot name every trip → today's red line and its offer
+    const { page, S } = await bOpen(browser, origin, { board: p2Board(), plan: { [K]: (e) => (e.body && e.body.accept_busy === true ? PV() : CF('truck_busy', 'RT-T205')) } });
+    await bClick(page, CHIP);
+    await bClick(page, `${D4} [data-day="2026-10-17"]`);
+    await page.waitForTimeout(600);
+    const c = bCalls(S, 'PATCH', '/plan/rt/204');
+    const x = await page.$eval(D4, (dlg) => ({ red: !!dlg.querySelector('.wn5-res .wn5-conflict'), offer: !!dlg.querySelector('[data-act="accept-busy"]'),
+      save: (dlg.querySelector('[data-act="save"]') || {}).disabled })).catch((e) => ({ err: String(e) }));
+    ok(scn, 'outside the week: one dry run, no accept_busy, the red line + «Αποθήκευση έτσι κι αλλιώς», «Αποθήκευση» off',
+      c.length === 1 && c[0].body.accept_busy === undefined && x.red && x.offer && x.save === true, { calls: c.map((y) => y.raw), x });
+    ok(scn, 'no page errors (E)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // F · Veroia «Σπάσε…» VS-T125: the part on TST-2103 names RT-T205's trip under its badge; the split sends accept_busy
+    // on that part's target only
+    const { page, S } = await bOpen(browser, origin, { board: p2Board(), plan: { 'POST /plan/pieces/split': () => [200, { ok: true, op: 'plan_split_piece', dry_run: false, ids: {}, warnings: [], notice_ids: [] }] } });
+    await page.evaluate(() => WN5Hub.split(4401));
+    await page.waitForTimeout(400);
+    const SP = bDlg('split');
+    await bPick(page, `${SP} [data-part-target][data-i="0"]`, 'rt:204');
+    await page.waitForTimeout(200);
+    await page.fill(`${SP} [data-part-pal][data-i="0"]`, '20').catch(() => {});
+    await page.fill(`${SP} [data-part-pal][data-i="1"]`, '13').catch(() => {});
+    await page.waitForTimeout(200);
+    const w = await soft(page, `${SP} .wn5-pbadge[data-i="0"] [data-busy]`);
+    ok(scn, '«Σπάσε…»: the part on TST-2103 says «' + T205 + '» in amber; the part that stays says nothing',
+      !!w && w.t === T205 && w.soft && w.color === AMBER && !(await bHas(page, `${SP} .wn5-pbadge[data-i="1"] [data-busy]`)), w);
+    await bClick(page, `${SP} [data-act="save"]`);
+    await page.waitForTimeout(400);
+    const c = bCalls(S, 'POST', '/plan/pieces/split');
+    ok(scn, '«Σπάσε»: ONE POST, parts[0].target {rt_id 204, side, accept_busy: true}, parts[1] without a target',
+      c.length === 1 && JSON.stringify(c[0].body.parts[0].target) === '{"rt_id":204,"side":"KATHODOS","accept_busy":true}' && !c[0].body.parts[1].target, c.map((x) => x.raw));
+    ok(scn, 'no page errors (F)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
 };
 // ── main ──
 (async () => {
