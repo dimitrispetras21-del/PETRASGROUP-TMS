@@ -519,11 +519,18 @@ async function f61({ browser, origin, ok, scn, shots }) {
   const chips = await page.evaluate((s) => [...document.querySelectorAll(`${s} .wn5a-all.on`)].map((x) => x.textContent), DLG);
   ok(scn, 'F51: the rows of that day read «από 22:00» (what is sent), never a silent 00:00', chips.length === 2 && chips.every((c) => c === 'από 22:00'), chips);
   if (shots) await page.screenshot({ path: shots + '/f61-new-after.png' });
+  // Π2 (owner 2/11): the truck and driver of the trip it came back with are said BEFORE the press, amber, by name;
+  // the save stays on and sends accept_busy from the first press (one POST, no refusal first)
+  const foot = await page.evaluate((s) => { const m = document.querySelector(s + ' [data-miss]'); return m ? { t: m.textContent, soft: m.classList.contains('wn5-soft'), color: getComputedStyle(m).color } : null; }, DLG);
+  ok(scn, 'Π2: footer «Επικάλυψη · φορτηγό και σε: … · οδηγός και σε: … Αποθηκεύεται έτσι, γράφεται στο ιστορικό.», amber',
+    !!foot && /^Επικάλυψη · φορτηγό και σε: .+ · οδηγός και σε: .+\. Αποθηκεύεται έτσι, γράφεται στο ιστορικό\.$/.test(foot.t) && foot.soft && foot.color === 'rgb(124, 45, 18)', foot);
+  const n0 = saves(S).length;
   await page.click(`${DLG} [data-act="save"]`);
   await page.waitForTimeout(500);
   let x = saves(S).pop();
   ok(scn, 'POST /plan/legs: new_rt OWNED 11 / 21 / 31, every stop of Tue from 22:00', !!x && JSON.stringify(x.body.target.new_rt) === JSON.stringify({ trip_type: 'OWNED', truck_id: 11, trailer_id: 21, driver_id: 31 })
     && x.body.stops.every((s) => s.planned_from === '2026-10-13T22:00:00+03:00'), x && x.body);
+  ok(scn, 'Π2: ONE POST, target.accept_busy = true from the first press', saves(S).length === n0 + 1 && !!x && x.body.target.accept_busy === true, x && x.body);
   await openWaiting(page, 4401);
   await pickIn(page, 'tk', '2104', 'TST-2104');
   await page.click(`${DLG} [data-act="opt"][data-i="0"]`);
@@ -533,7 +540,7 @@ async function f61({ browser, origin, ok, scn, shots }) {
   await page.click(`${DLG} [data-act="save"]`);
   await page.waitForTimeout(500);
   x = saves(S).pop();
-  ok(scn, '… POST /plan/legs into rt 101', !!x && x.body.target.rt_id === 101, x && x.body);
+  ok(scn, '… POST /plan/legs into rt 101, no accept_busy (its own trip is not an overlap)', !!x && x.body.target.rt_id === 101 && x.body.target.accept_busy === undefined, x && x.body);
   // code review: the joined trip's trailer / driver never stick to another truck unmarked
   await openWaiting(page, 4401);
   await pickIn(page, 'tk', '2104', 'TST-2104');
