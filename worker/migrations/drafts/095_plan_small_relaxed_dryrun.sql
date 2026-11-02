@@ -3,7 +3,7 @@
 -- undoes everything inside it (lesson 056). ASCII only.
 -- EXPECTED (the red ERROR is deliberate): NOTICE "095 OK: a local loading may run on another day ..." and then
 --   ERROR: P0001: DRY RUN 095 finished - EVERYTHING UNDONE, nothing kept. The block ran to its end  ||  095 ran:
---   problem 0f915c05ff0d83458f6fb1ad79e3c4a1, local 725c915709b53d283e2991b07ae57d39, rt_update c2cedb4ed68bcab2dd85ffbe5bc13d9c,
+--   problem 0f915c05ff0d83458f6fb1ad79e3c4a1, local 32447e628bbe27c725172ba19b9f17ea, rt_update c2cedb4ed68bcab2dd85ffbe5bc13d9c,
 --   seg_problem 5287a43951d2656fb5270059b906b1a8, seg_change 8f69e9c540c95551930688d9b3141862, seg_fix be2d212cac2351c4f363d780237af2af,
 --   pair CHECK (((reason IS NULL) OR (place_note IS NOT NULL))), b93 f
 --   Anything else (an ERROR from one of 095's guards or proofs): do NOT run 095, copy the message to the coordinator.
@@ -56,6 +56,9 @@ $h$;
   l_4b CONSTANT text := $h$  -- status is written: local_moves_before derives none for nat_loading (K-16); the day is the body's move_date,
   -- else the stop's Athens day (095)
   v_sday := (s.planned_from at time zone 'Europe/Athens')::date;
+  -- 095 (owner 2/11): at most 7 days from the stop's day, either way - a wrong year or month (2025 for 2026) is
+  -- refused, never a local driver's payroll line in another year; within the 7 days it is the dispatcher's call
+  if v_day is not null and abs(v_day - v_sday) > 7 then perform plan_h_raise('bad_input', 'move_date:7_days'); end if;
   insert into local_moves (move_kind, rt_stop_id, driver_id, truck_id, trailer_id, move_date, time_from, time_to,
                            notes, status, sequence)
   values ('nat_loading', v_stop, v_driver, v_truck, v_trailer, coalesce(v_day, v_sday),
@@ -200,7 +203,7 @@ BEGIN
   -- ===== PART 2: LIVE TEXT + HUNKS (md5 after = measured on the production-shaped PGlite copy) =====
   FOR v_g IN SELECT * FROM (VALUES
       ('public.plan_local_loading_problem(bigint)', ARRAY[k_1a], ARRAY[k_1b], '0f915c05ff0d83458f6fb1ad79e3c4a1'),
-      ('public.plan_local_loading(jsonb,text,text)', ARRAY[l_1a, l_2a, l_3a, l_4a, l_5a], ARRAY[l_1b, l_2b, l_3b, l_4b, l_5b], '725c915709b53d283e2991b07ae57d39'),
+      ('public.plan_local_loading(jsonb,text,text)', ARRAY[l_1a, l_2a, l_3a, l_4a, l_5a], ARRAY[l_1b, l_2b, l_3b, l_4b, l_5b], '32447e628bbe27c725172ba19b9f17ea'),
       ('public.plan_rt_update(jsonb,text,text)', ARRAY[u_1a, u_2a, u_3a], ARRAY[u_1b, u_2b, u_3b], 'c2cedb4ed68bcab2dd85ffbe5bc13d9c'),
       ('public.plan_seg_problem(bigint)', ARRAY[p_1a, p_2a], ARRAY[p_1b, p_2b], '5287a43951d2656fb5270059b906b1a8'),
       ('public.plan_seg_change(jsonb,text,text)', ARRAY[c_1a, c_2a], ARRAY[c_1b, c_2b], '8f69e9c540c95551930688d9b3141862'),

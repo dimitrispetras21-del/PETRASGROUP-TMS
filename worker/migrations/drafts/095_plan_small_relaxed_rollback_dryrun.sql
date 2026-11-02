@@ -53,6 +53,9 @@ $h$;
   l_4b CONSTANT text := $h$  -- status is written: local_moves_before derives none for nat_loading (K-16); the day is the body's move_date,
   -- else the stop's Athens day (095)
   v_sday := (s.planned_from at time zone 'Europe/Athens')::date;
+  -- 095 (owner 2/11): at most 7 days from the stop's day, either way - a wrong year or month (2025 for 2026) is
+  -- refused, never a local driver's payroll line in another year; within the 7 days it is the dispatcher's call
+  if v_day is not null and abs(v_day - v_sday) > 7 then perform plan_h_raise('bad_input', 'move_date:7_days'); end if;
   insert into local_moves (move_kind, rt_stop_id, driver_id, truck_id, trailer_id, move_date, time_from, time_to,
                            notes, status, sequence)
   values ('nat_loading', v_stop, v_driver, v_truck, v_trailer, coalesce(v_day, v_sday),
@@ -193,7 +196,7 @@ BEGIN
     RAISE EXCEPTION '095 rollback proof: public.plan_local_loading_problem(bigint) is not back to its live text with its rights';
   END IF;
   SELECT * INTO p FROM pg_proc WHERE oid = to_regprocedure('public.plan_local_loading(jsonb,text,text)');
-  IF md5(p.prosrc) <> '725c915709b53d283e2991b07ae57d39' THEN
+  IF md5(p.prosrc) <> '32447e628bbe27c725172ba19b9f17ea' THEN
     RAISE EXCEPTION '095 rollback: public.plan_local_loading(jsonb,text,text) is not the text 095 wrote (md5 %) - stop', md5(p.prosrc);
   END IF;
   v_new := p.prosrc;

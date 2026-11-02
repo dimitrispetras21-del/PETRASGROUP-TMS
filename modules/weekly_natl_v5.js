@@ -1124,7 +1124,8 @@ function _chgWhat(c) {
   const del = c.action === 'delete' || k.includes('deleted_at');
   switch (c.table) {
     // a stop's day or hour re-dates the cycle in the same request: that row can be the newest, and says «ημέρα / ώρα» too
-    case 'ct_round_trips': return has('partner_rate') ? 'κόμιστρο' : has(..._CHG_VEH) ? 'όχημα' : has(..._CHG_DAYS) ? 'ημέρα / ώρα' : 'δρομολόγιο';
+    // 093: the trace of an ANODOS that runs before the KATHODOS (plan_h_reseq) is the newest row of the save that made it
+    case 'ct_round_trips': return has('partner_rate') ? 'κόμιστρο' : has(..._CHG_VEH) ? 'όχημα' : has(..._CHG_DAYS) ? 'ημέρα / ώρα' : has('side_time') ? 'σειρά σημείων' : 'δρομολόγιο';
     case 'rt_vehicle_segments': return 'όχημα';
     case 'rt_stops': return c.action === 'create' ? 'νέο σημείο' : del ? 'σημείο αφαιρέθηκε' : has('planned_from', 'planned_to') ? 'ημέρα / ώρα' : has('seq') ? 'σειρά σημείων' : 'σημείο';
     case 'piece_legs': return c.action === 'create' ? 'φορτίο προστέθηκε' : del ? 'φορτίο αφαιρέθηκε' : 'φορτίο';

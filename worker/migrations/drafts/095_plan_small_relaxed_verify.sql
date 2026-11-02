@@ -10,7 +10,7 @@ SELECT CASE WHEN (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.plan_seg_c
                  = '8f69e9c540c95551930688d9b3141862' THEN '095 in place' ELSE '095 NOT APPLIED' END AS applied,
        (SELECT count(*) FROM (VALUES
           ('public.plan_local_loading_problem(bigint)', '0f915c05ff0d83458f6fb1ad79e3c4a1'),
-          ('public.plan_local_loading(jsonb,text,text)', '725c915709b53d283e2991b07ae57d39'),
+          ('public.plan_local_loading(jsonb,text,text)', '32447e628bbe27c725172ba19b9f17ea'),
           ('public.plan_rt_update(jsonb,text,text)', 'c2cedb4ed68bcab2dd85ffbe5bc13d9c'),
           ('public.plan_seg_problem(bigint)', '5287a43951d2656fb5270059b906b1a8'),
           ('public.plan_seg_change(jsonb,text,text)', '8f69e9c540c95551930688d9b3141862'),
