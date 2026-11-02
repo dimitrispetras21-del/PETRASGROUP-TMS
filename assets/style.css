@@ -10755,3 +10755,120 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 body.wn5-top-on.wn5-aic-menu .aic-btn { display:none !important; }
 body.wn5-top-on.wn5-aic-menu:has(#aic-toggle.has-alerts) .topbar .user-chip::after { content:''; position:absolute; top:6px; right:4px;
   width:8px; height:8px; border-radius:50%; background:var(--danger); border:2px solid var(--surface-card); pointer-events:none; }
+
+/* ── National v5 · «Αλλαγή στον δρόμο» (modules/wn5_road.js, behind FEATURES.WN_ROAD; owner 2/11) ─────────────────
+   Figma «Μεταφόρτωση 2/11» (2450:7735): window 2452:7735 (600, as the approved Ανάθεση form), with a part that waits
+   2453:7735 (800 = .wn5-wide: the form 520 + the read-only «Νέο φορτίο» column 280 of the Σύνθεση φορτίων panel),
+   preview 2454:7735 (the H2 rows .wn5h-erow), states 2457:7735 (.wn5-strip, warning = the amber busy line). The shell,
+   fields and buttons are the .wn5f ones; only what the frames add is here. */
+.wn5f.wn5r { width:600px; }
+.wn5f.wn5r.wn5r-wide { width:800px; }
+.wn5r .wn5r-body { flex-direction:row; gap:0; padding:0; }
+.wn5r .wn5r-main { flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:12px; padding:14px 16px; }
+.wn5r .wn5r-form { display:flex; flex-direction:column; gap:12px; }
+.wn5r .wn5r-side { margin-left:auto; font:600 10px 'DM Sans',sans-serif; letter-spacing:.6px; color:var(--wi4-grey-2); }
+.wn5r .wn5r-sec1 { display:flex; align-items:center; gap:10px; }
+.wn5r .wn5r-sides { display:inline-flex; gap:2px; margin-left:auto; padding:2px; border-radius:6px; background:var(--wi4-tabs-bg); }
+.wn5r .wn5r-sides > button { border:0; border-radius:4px; padding:2px 8px; background:none; font:600 10px 'DM Sans',sans-serif; letter-spacing:.6px; color:var(--wi4-grey-2); cursor:pointer; }
+.wn5r .wn5r-sides > button.on { background:var(--surface-card); color:var(--wi4-ink); }
+.wn5r .wn5r-r1, .wn5r .wn5r-r2 { display:flex; align-items:flex-end; gap:10px; }
+.wn5r .wn5r-where { width:244px; flex:none; }
+.wn5r .wn5r-day { width:118px; flex:none; }
+.wn5r .wn5r-hm { width:64px; flex:none; }
+.wn5r .wn5r-reason { width:244px; flex:none; }
+.wn5r .wn5r-note { flex:1 1 auto; }
+.wn5r .wn5f-f.bad .form-input { border:1.5px solid var(--wi4-red); }
+.wn5r .wn5r-allday { flex:none; height:28px; margin-bottom:3px; padding:0 10px; border:1px solid var(--wi4-ctl); border-radius:6px; background:var(--surface-card);
+  font:500 11.5px 'DM Sans',sans-serif; color:var(--wi4-grey-2); cursor:pointer; }
+.wn5r .wn5r-allday.on { border-color:var(--wi4-info-line); background:var(--wi4-info-bg); color:var(--wi4-blue-ink); }
+/* the point's list: the ✈ menu's card (.wn5-menu), its highlight #f0f9ff */
+.wn5r .wn5r-cb { position:relative; display:block; }
+.wn5r .wn5r-cb > .form-input { width:100%; }
+.wn5r .wn5r-list { position:absolute; z-index:5; top:calc(100% + 4px); left:0; width:300px; padding:6px 0; border:1px solid var(--wi4-line-2); border-radius:8px;
+  background:var(--surface-card); box-shadow:var(--wn5-pop-shadow); display:flex; flex-direction:column; }
+.wn5r .wn5r-list[hidden] { display:none; }
+.wn5r .wn5r-opt { display:flex; flex-direction:column; align-items:flex-start; gap:1px; padding:7px 12px; border:0; background:none; text-align:left; font:400 12.5px 'DM Sans',sans-serif; color:var(--wi4-ink); cursor:pointer; }
+.wn5r .wn5r-opt.on, .wn5r .wn5r-opt:hover { background:var(--wi4-sel); }
+.wn5r .wn5r-opt:last-child { border-top:1px solid var(--wi4-line-2); margin-top:4px; }
+.wn5r .wn5r-opt:only-child { border-top:0; margin-top:0; }
+.wn5r .wn5r-opt .wi4-l1 { font-size:12.5px; font-weight:400; }
+/* the loads: one grid for the head, every row and its rest line (the frame's ΠΑΛ. 64 · ΠΑΕΙ ΣΕ 270) */
+.wn5r .wn5r-lh { display:flex; align-items:center; padding-top:4px; }
+.wn5r .wn5r-sum { margin-left:auto; font-size:11px; color:var(--wi4-grey-2); }
+.wn5r .wn5r-head, .wn5r .wn5r-row { display:grid; grid-template-columns:minmax(0,1fr) 64px 270px; gap:10px; align-items:center; }
+.wn5r.wn5r-wide .wn5r-head, .wn5r.wn5r-wide .wn5r-row { grid-template-columns:minmax(0,1fr) 64px 236px; }
+.wn5r .wn5r-head { font:600 10px 'DM Sans',sans-serif; letter-spacing:.5px; color:var(--wi4-grey-2); }
+.wn5r .wn5r-all { display:flex; align-items:center; justify-content:space-between; }
+.wn5r .wn5r-all > select { border:0; background:none; padding:0; font:600 11px 'DM Sans',sans-serif; color:var(--wi4-blue-ink); cursor:pointer; text-align:right; }
+.wn5r .wn5r-ld { border-top:1px solid var(--wi4-line); padding:6px 0; }
+.wn5r .wn5r-ld:first-child { border-top:0; }
+.wn5r .wn5r-who { display:flex; align-items:center; gap:6px; min-width:0; }
+.wn5r .wn5r-n { flex:none; width:15px; height:15px; border-radius:3px; background:var(--surface-dark); color:var(--surface-card); font:700 10px/15px 'DM Sans',sans-serif; text-align:center; }
+.wn5r .wn5r-t { display:flex; flex-direction:column; min-width:0; }
+.wn5r .wn5r-t > .wi4-l1, .wn5r .wn5r-t > .wi4-l2 { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.wn5r .wn5r-pal { display:flex; align-items:center; gap:2px; height:34px; padding:0 8px; box-sizing:border-box; border:1px solid var(--wi4-ctl); border-radius:6px; background:var(--surface-card); }
+.wn5r .wn5r-pal:focus-within { border-color:var(--wi4-blue); }
+.wn5r .wn5r-pal.bad { border:1.5px solid var(--wi4-red); }
+.wn5r .wn5r-pal > .form-input { width:28px; height:auto; padding:0; border:0; background:none; font-size:12.5px; }
+.wn5r .wn5r-of { font-size:12px; color:var(--wi4-grey-2); }
+.wn5r .wn5r-go { display:flex; flex-direction:column; gap:2px; min-width:0; }
+.wn5r .wn5r-go > .form-input { width:100%; }
+.wn5r .wn5r-hint { font-size:11px; color:var(--wi4-red); }
+.wn5r .wn5r-hint:empty { display:none; }
+.wn5r .wn5r-rest { margin-top:4px; }
+.wn5r .wn5r-rest[hidden] { display:none; }
+.wn5r .wn5r-rl { padding-left:21px; font-size:11.5px; color:var(--wi4-grey-2); }
+.wn5r .wn5r-rp { height:34px; display:flex; align-items:center; padding:0 10px; box-sizing:border-box; border-radius:6px; background:var(--surface-sunken); font-size:12.5px; color:var(--wi4-ink); }
+.wn5r .wn5r-busy { margin:6px 0 0; }
+.wn5r .wn5r-none { font-size:12px; color:var(--wi4-grey-2); }
+/* the other truck's line (the Ανάθεση truck line, Figma 2414:7975) */
+.wn5r .wn5r-tl { display:flex; align-items:center; gap:8px; margin-top:8px; padding:9px 12px; border-radius:6px; background:var(--surface-sunken); font-size:12.5px; }
+.wn5r .wn5r-tl > b { font-weight:600; color:var(--wi4-ink); }
+.wn5r .wn5r-cap { margin-left:auto; padding:2px 6px; border:1px solid var(--wi4-info-line); border-radius:4px; background:var(--surface-card); font:500 11px 'DM Sans',sans-serif; color:var(--wi4-blue-ink); }
+.wn5r .wn5r-over { font-weight:700; color:var(--wi4-red); }
+/* the read-only «Νέο φορτίο» column (Σύνθεση φορτίων) */
+.wn5r .wn5r-built { flex:0 0 280px; box-sizing:border-box; padding:14px 16px; border-left:1px solid var(--wi4-line-2); background:var(--bg-row-alt);
+  display:flex; flex-direction:column; gap:10px; font-size:12px; color:var(--wi4-grey-1); }
+.wn5r .wn5r-built[hidden] { display:none; }
+.wn5r .wn5r-bs { margin:0; padding-left:16px; display:flex; flex-direction:column; gap:3px; font-size:11.5px; color:var(--wi4-grey-2); }
+.wn5r .wn5r-bs b { font-weight:600; color:var(--wi4-ink); }
+.wn5r .wn5r-bar { height:4px; width:130px; border-radius:2px; background:var(--wi4-line-3); overflow:hidden; }
+.wn5r .wn5r-bar > span { display:block; height:100%; background:var(--wi4-blue); }
+.wn5r .wn5r-bn { font-size:11.5px; color:var(--wi4-grey-2); }
+.wn5r .wn5r-bn b { font-weight:600; color:var(--wi4-ink); }
+/* preview: the H2 rows, one per truck; the new load with a dashed slot, its bar red */
+.wn5r .wn5r-prev { display:flex; flex-direction:column; gap:8px; }
+.wn5r .wn5r-prev[hidden] { display:none; }
+.wn5r .wn5r-rows { display:flex; flex-direction:column; }
+.wn5r .wn5r-erow { align-items:center; padding:6px 14px 6px 0; }
+.wn5r .wn5r-erow > .wn5h-pl { display:flex; flex-direction:column; gap:1px; }
+.wn5r .wn5r-erow > .wn5h-pl > b { font:500 12.5px 'DM Mono',monospace; color:var(--wi4-ink); }
+.wn5r .wn5r-erow > .wn5h-pl > span { font-size:10.5px; color:var(--wi4-grey-2); }
+.wn5r .wn5r-wait { box-shadow:inset 3px 0 0 var(--wi4-red); }
+.wn5r .wn5r-wait > .wn5r-slot { background:none; border:1px dashed var(--wi4-slot); }
+.wn5r .wn5r-wait > .wn5r-slot > b { font:400 12px 'DM Sans',sans-serif; color:var(--wi4-red); }
+.wn5r .wn5r-chain { display:flex; flex-direction:column; gap:2px; min-width:0; font-size:12px; color:var(--wi4-ink); }
+.wn5r .wn5r-chain b { font-weight:600; }
+.wn5r .wn5r-sub { font-size:11px; color:var(--wi4-grey-2); }
+.wn5r .wn5r-sub.wn5r-red { color:var(--wi4-red); }
+.wn5r .wn5r-g { color:var(--wi4-grey-2); }
+.wn5r .wn5r-vs { display:flex; align-items:center; justify-content:space-between; font-size:12px; color:var(--wi4-ink); }
+.wn5r .wn5r-vsl { display:flex; flex-direction:column; }
+.wn5r .wn5r-vsl > b { font-weight:500; }
+.wn5r .wn5r-vsl > .wn5r-g { font-size:10.5px; }
+.wn5r .wn5r-vs s, .wn5r .wn5r-sub s { color:var(--wi4-grey-2); }
+.wn5r .wn5r-whole { font-size:12px; color:var(--wi4-grey-1); }
+.wn5r .wn5r-drv { width:244px; }
+.wn5r .wn5r-lack { margin-right:auto; font:500 12px 'DM Sans',sans-serif; color:var(--wi4-red); }
+.wn5r .wn5r-lack:empty { visibility:hidden; }
+.wn5r .wi4-btn.pri:disabled { background:var(--wi4-line-3); border-color:var(--wi4-line-3); color:var(--wi4-grey-3); cursor:default; }
+/* fidelity round 1 (rig shots vs Figma 2452 / 2453 / 2454): the steps hide whole; the 520 form keeps one row;
+   one focus ring on the pallets box; navy primary (the approved Ανάθεση, Figma 2394:7930); the tile's second line
+   in DM Sans; the new load's slot wide enough for «φορτηγό αργότερα · 8π» */
+.wn5r .wn5r-form[hidden] { display:none; }
+.wn5r.wn5r-wide .wn5r-where, .wn5r.wn5r-wide .wn5r-reason { width:200px; }
+.wn5r.wn5r-wide .wn5r-day { width:108px; }
+.wn5r .wn5r-pal > .form-input:focus { outline:none; box-shadow:none; }
+.wn5r .wi4-btn.pri:not(:disabled) { background:var(--surface-dark); border-color:var(--surface-dark); color:var(--surface-card); }
+.wn5r .wn5r-erow > .wn5h-pl { flex-basis:136px; }
+.wn5r .wn5r-erow > .wn5h-pl > span { font-family:'DM Sans',sans-serif; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }

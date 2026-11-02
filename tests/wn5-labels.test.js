@@ -156,6 +156,21 @@ test('F4α-T24: REASON keys = CHECK seg_reason_list of 072b, 8 codes', (t) => {
   assert.deepStrictEqual(Object.keys(WN5Lab.REASON).sort(), codes);
 });
 
+// 098 (owner 2/11, «Αλλαγή στον δρόμο»): the reasons of a transfer stop = CHECK rt_stops_transfer_reason, ONE list
+const SQL_098 = ['worker/migrations/098_plan_transfer_point.sql', 'worker/migrations/drafts/098_plan_transfer_point.sql']
+  .map((f) => path.join(ROOT, f)).find((f) => fs.existsSync(f));
+test('098: ROAD_REASON keys = CHECK rt_stops_transfer_reason (the 8 of 072b + meeting + partner_handover)', (t) => {
+  if (!SQL_098) { t.todo('098 not in tree'); return; }
+  const m = /CONSTRAINT rt_stops_transfer_reason CHECK \(transfer_reason IS NULL OR transfer_reason = ANY \(ARRAY\[([\s\S]*?)\]/.exec(fs.readFileSync(SQL_098, 'utf8'));
+  assert.ok(m, 'rt_stops_transfer_reason not found in ' + SQL_098);
+  const codes = [...m[1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]).sort();
+  assert.strictEqual(codes.length, 10);
+  assert.deepStrictEqual(Object.keys(WN5Lab.ROAD_REASON).sort(), codes);
+  for (const k of Object.keys(WN5Lab.REASON)) assert.strictEqual(WN5Lab.ROAD_REASON[k], WN5Lab.REASON[k], k + ': one text, not a copy');
+  assert.strictEqual(WN5Lab.ROAD_REASON.meeting.text, 'Συνάντηση');
+  assert.strictEqual(WN5Lab.ROAD_REASON.partner_handover.text, 'Παράδοση συνεργάτη');
+});
+
 test('F4α-T24: «Βλάβη φορτηγού» here and «Βλάβη οχήματος» in 067 (daily_ops OPS_DELAY) both stay — one code, two approved texts', () => {
   assert.strictEqual(WN5Lab.REASON.vehicle_breakdown.text, 'Βλάβη φορτηγού');
   const ops = fs.readFileSync(path.join(ROOT, 'modules', 'daily_ops.js'), 'utf8');
