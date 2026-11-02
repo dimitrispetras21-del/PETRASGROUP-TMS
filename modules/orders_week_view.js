@@ -199,6 +199,8 @@ const OrdersWeekView = (() => {
     if (isVsNational(rec)) return { cls: 'dim', text: 'δεν τιμολογείται', title: 'Παλιά εθνική τύπου Veroia Switch — την τιμή τη φέρει η διεθνής παραγγελία' };
     switch (state.key) {
       case 'invoiced': {
+        // «Αυτοπαράδοση» (101, owner 2/11): invoiced, and there is no ΤΠΥ to show
+        if (OC().isSelfDelivery(rec.fields)) return { cls: 'ok', text: '✓ αυτοπαράδοση', title: 'Αυτοπαράδοση — δικό μας φορτίο, χωρίς τιμολόγιο ERP' };
         const nr = String((rec.fields || {})['Invoice Number'] || '').trim();
         return nr ? { cls: 'ok', text: '✓ ' + nr, title: 'Τιμολογήθηκε · ΤΠΥ ' + nr }
           : { cls: 'dim', text: 'τιμολογήθηκε', title: 'Τιμολογήθηκε πριν γίνει υποχρεωτικός ο αριθμός ΤΠΥ' };
@@ -283,13 +285,23 @@ const OrdersWeekView = (() => {
           claimed.set(l.rec.id, code); l.counted = true;
         }
         const guest = homeWeek !== week;
-        const anchor = guest ? (inWeek.find(l => l.dir === 'export') || inWeek[0]).rec : home.rec;
+        const anchorLeg = guest ? (inWeek.find(l => l.dir === 'export') || inWeek[0]) : home;
+        const anchor = guest ? anchorLeg.rec : home.rec;
         const moved = isMovedInto(anchor, week);
+        const day = moved ? naturalDateOf(anchor) : O.weekDateOf(guest ? anchor : home.own);
+        // The order that places the row inside its day (rowOrder): of the RT's
+        // legs in the direction that gives it its day (export, else import),
+        // on that day, the one the Weekly's rule puts FIRST — an RT with three
+        // exports is three Weekly rows, and the RT stands where its first one does.
+        const sortExp = anchorLeg.dir === 'export', sortField = sortExp ? 'Delivery DateTime' : 'Loading DateTime';
+        const sortRec = legs.filter(l => l.dir === anchorLeg.dir && live(l) && O.weekDateOf(l.own || l.rec) === day)
+          .map(l => l.own || l.rec)
+          .reduce((m, r) => (m && WI4.dayRowOrder(m.fields, r.fields, sortField) <= 0 ? m : r), null) || (guest ? anchor : home.own);
         rows.push({
-          kind: 'rt', rt, code, guest, homeWeek, legs, natLegs, moved,
+          kind: 'rt', rt, code, guest, homeWeek, legs, natLegs, moved, sortRec, sortExp,
           exp: legs.filter(l => l.dir === 'export'), imp: legs.filter(l => l.dir === 'import'),
           // A guest row opens the order it counts HERE, not the other week's export.
-          day: moved ? naturalDateOf(anchor) : O.weekDateOf(guest ? anchor : home.own), vehicleRec: home.rec, openRec: anchor,
+          day, vehicleRec: home.rec, openRec: anchor,
           counted: legs.filter(l => l.counted).map(l => l.rec),
           single: legs.length === 1,
         });
@@ -301,10 +313,26 @@ const OrdersWeekView = (() => {
       const dir = (r.fields || {})['Direction'] === 'Import' ? 'import' : 'export';
       const leg = { dir, orderId: pgIdOf(r), rec: r, week, inWeek: true, counted: true, dupOf: null, piece: false, parentMissing: false };
       return { kind: 'order', rec: r, legs: [leg], natLegs: [], exp: dir === 'export' ? [leg] : [], imp: dir === 'import' ? [leg] : [],
-        day: O.weekDateOf(r), vehicleRec: r, openRec: r, counted: [r], moved: false };
+        day: O.weekDateOf(r), vehicleRec: r, openRec: r, counted: [r], moved: false, sortRec: r, sortExp: dir === 'export' };
     });
     return { week, weekIntl, weekNatl, rows, noRt, rtFailed: !rts };
   }
+
+  // Inside a day, the Weekly International's order (owner 2/11/2026: Ειρήνη
+  // compares the two lists row by row) through ITS rule, WI4.dayRowOrder:
+  // exports first, by client (Veroia Switch last), then delivery time; then the
+  // import-only RTs the same way by loading time. A guest row (home in another
+  // week, counted here) stays last in its day, as since 13/10: the Weekly has
+  // no row for it on this day. The RT code only keeps equal rows stable.
+  function rowOrder(a, b) {
+    const ea = !!a.sortExp, eb = !!b.sortExp;
+    return (a.guest ? 1 : 0) - (b.guest ? 1 : 0)
+      || (ea === eb ? 0 : ea ? -1 : 1)
+      || WI4.dayRowOrder((a.sortRec || {}).fields, (b.sortRec || {}).fields, ea ? 'Delivery DateTime' : 'Loading DateTime')
+      || String(a.code || '').localeCompare(String(b.code || ''), 'el', { numeric: true });
+  }
+  // «ΧΩΡΙΣ RT» and «ΜΕΤΑΦΕΡΘΗΚΕ» are one list over the week: by day, then the same rule.
+  const byDayThenRow = (a, b) => String(a.day || '').localeCompare(String(b.day || '')) || rowOrder(a, b);
 
   // §01/§11: day sections Saturday → Friday, ALWAYS seven (an empty day says
   // «καμία κίνηση» — owner 13/10, for this page), then «ΜΕΤΑΦΕΡΘΗΚΕ» (§09).
@@ -319,11 +347,9 @@ const OrdersWeekView = (() => {
       else if (by.has(r.day)) by.get(r.day).push(r);
       else other.push(r);
     }
-    // Guests last in their day: the day's own RTs first, in code order.
-    const ord = (a, b) => (a.guest ? 1 : 0) - (b.guest ? 1 : 0) || String(a.code || '').localeCompare(String(b.code || ''), 'el', { numeric: true });
     return {
-      days: days.map(d => ({ day: d, rows: by.get(d).sort(ord) })),
-      moved: moved.sort((a, b) => String(a.day || '').localeCompare(String(b.day || '')) || ord(a, b)),
+      days: days.map(d => ({ day: d, rows: by.get(d).sort(rowOrder) })),
+      moved: moved.sort(byDayThenRow),
       other,
     };
   }
@@ -441,7 +467,26 @@ const OrdersWeekView = (() => {
         counted: [kat, ano].filter(s => s && s.kind === 'order' && s.inWeek).map(s => s.rec),
       });
     }
-    return rows;
+    const keyed = rows.map(r => [natOrderKey(r), r]);   // one key per row, not per comparison
+    return keyed.sort((a, b) => WN5L.rowOrder(a[0], b[0])).map(x => x[1]);
+  }
+  // The Weekly National v5's row order (owner 2/11/2026) through ITS rule,
+  // WN5L.rowOrder: by day; inside a day the rows WITH a vehicle first (the
+  // board's cycles), by time, then the ones waiting for a vehicle. The board's
+  // row is a truck (cycle), this list's is an order, and /plan/nat-state names
+  // a cycle by its RT code only, not its Veroia time: the time here is the
+  // order's loading, and the RT code / vehicle id keeps one truck's orders
+  // together. The day stays this page's own (OrdersCommon.weekDateOf).
+  function natOrderKey(r) {
+    const first = v => (Array.isArray(v) ? v[0] : v) || '';
+    let veh = '';
+    if (r.assign.kind === 'v5') {
+      const c = (r.assign.state.carriers || []).find(x => x.kind !== 'none');
+      if (c) veh = String(c.code || c.truck || c.partner || '?');
+    }
+    else if (r.assign.kind === 'load') { const f = r.assign.load.fields || {}; veh = first(f['Partner']) || first(f['Truck']) || first(f['Driver']); }
+    const f = (r.openRec && r.openRec.fields) || {};
+    return { dayKey: r.day, kind: veh ? 'cycle' : 'waiting', sortAt: f['Loading DateTime'] || '', key: veh + '|' + ((r.openRec && r.openRec.id) || '') };
   }
 
   // §12 #06 truncation, word-safe: the route is cut first and only after the
@@ -782,7 +827,7 @@ const OrdersWeekView = (() => {
         // §10: without RTs every order stands alone, so the days would all lie
         // «καμία κίνηση» — only the ΧΩΡΙΣ RT list is drawn.
         body.push(_secHead('ΧΩΡΙΣ RT', m.noRt.length + ' παραγγ.'));
-        m.noRt.slice().sort((a, b) => String(a.day).localeCompare(String(b.day))).forEach(r => body.push(rowH(r)));
+        m.noRt.slice().sort(byDayThenRow).forEach(r => body.push(rowH(r)));
       } else if (S.mode === 'vehicle') {
         for (const g of groupRows(m.rows, 'vehicle', r => vehicleOf(r.vehicleRec).key)) {
           // A partner groups by company (its plates differ per trip), so the head
@@ -803,7 +848,7 @@ const OrdersWeekView = (() => {
       }
       if (!m.rtFailed && m.noRt.length) {
         body.push('<div class="ow4-day">ΧΩΡΙΣ RT</div>');
-        m.noRt.slice().sort((a, b) => String(a.day).localeCompare(String(b.day))).forEach(r => body.push(rowH(r)));
+        m.noRt.slice().sort(byDayThenRow).forEach(r => body.push(rowH(r)));
       }
       const nExp = m.weekIntl.filter(r => r.fields['Direction'] !== 'Import').length, nImp = m.weekIntl.length - nExp;
       const home = m.rows.filter(r => !r.guest).length;
@@ -853,11 +898,21 @@ const OrdersWeekView = (() => {
       ${tAll.n || (showN && d.natlFailed) ? '' : '<p class="ow4-note">Καμία παραγγελία με ημερομηνία σε αυτή την εβδομάδα.</p>'}
       ${_footnotes(star, dag)}</section>`;
 
+    // A card open before this repaint (the clips arriving, «Ανά ημέρα/όχημα»)
+    // opens again on the fresh record — a repaint never closes it under her.
+    const wasOpen = _openCardNow();
     ctx.body.innerHTML = `<div class="ow4">
       ${_fails(d, m, scope, undated)}
       <div class="ow4-strip"><button type="button" class="ow4-arr" data-owvshift="-1" aria-label="Προηγούμενη εβδομάδα">‹</button>${strip}<button type="button" class="ow4-arr" data-owvshift="1" aria-label="Επόμενη εβδομάδα">›</button></div>
-      ${sumLine}${intlHtml}${natlHtml}${stHtml}</div>`;
+      ${sumLine}${intlHtml}${natlHtml}${stHtml}</div>${CARDS_HTML}`;
     ctx.body.onclick = _onClick;
+    if (wasOpen) {
+      // A repaint, not an opening: no slide-in (oi-slide), and she stays where she had scrolled.
+      const p = document.getElementById(wasOpen.type === 'intl' ? 'intlDetail' : 'natlDetail');
+      if (p) p.style.animation = 'none';
+      _openCard(wasOpen.type, wasOpen.id, true);
+      if (p) p.scrollTop = wasOpen.top;
+    }
     _fitAll(ctx.body);
     _watchFit(ctx.body);
   }
@@ -1144,8 +1199,67 @@ const OrdersWeekView = (() => {
     const open = e.target.closest('[data-owvopen]');
     if (open) {
       const [type, id] = open.dataset.owvopen.split(':');
-      OrdersHub.openOrder(type, id);
+      _openCard(type, id);
     }
+  }
+
+  // The order card of «Κατάλογος», opened HERE (owner 2/11/2026: «να μη φεύγει
+  // από την εβδομάδα»): the two modules' own cards (selectIntlOrder /
+  // selectNatlOrder via openIntlCardWith / openNatlCardWith), in panels with
+  // the catalog's ids that float over the board's right side — the board keeps
+  // its own scroll and sticky header. Every action in the card is the
+  // catalog's code; a save repaints this page (OrdersHub.refresh), as there.
+  const CARDS_HTML = `<div class="owv-cards oi-layout on-v2"><div class="entity-detail-panel owv-card hidden" id="intlDetail"></div><div class="entity-detail-panel owv-card hidden" id="natlDetail"></div></div>`;
+  // Which card this page opened (S.card): INTL_ORDERS / NATL_ORDERS live
+  // inside their modules' closures, never globals, so the page keeps its own.
+  // Still open = its panel is on screen and not hidden (× and Esc only hide it).
+  function _openCardNow() {
+    const c = S.card; if (!c) return null;
+    const p = document.getElementById(c.type === 'intl' ? 'intlDetail' : 'natlDetail');
+    if (!p || p.classList.contains('hidden') || !p.closest('.owv-cards')) return null;
+    return { type: c.type, id: c.id, top: p.scrollTop };
+  }
+  function _openCard(type, id, quiet) {
+    const d = S.data; if (!d) return;
+    const rec = type === 'natl' ? d.natl.find(r => r.id === id) : [...d.intl, ...(d.cancelled || [])].find(r => r.id === id);
+    if (!rec || (type === 'natl' ? typeof openNatlCardWith !== 'function' : typeof openIntlCardWith !== 'function')) {
+      // Never a dead click: an order this page did not read (or a card module
+      // that did not load) opens in «Κατάλογος», as before 2/11.
+      if (quiet) return;
+      console.warn('orders week: card not available here, opening the catalog', type, id);
+      return OrdersHub.openOrder(type, id);
+    }
+    if (typeof OrdersCatalog !== 'undefined' && OrdersCatalog.installEsc) OrdersCatalog.installEsc();
+    S.card = { type, id };
+    if (type === 'intl') {
+      if (typeof closeNatlDetail === 'function') closeNatlDetail();
+      openIntlCardWith(rec);
+      return;
+    }
+    if (typeof _oiCloseCard === 'function') _oiCloseCard();
+    // Its national load as this page read it (by Source National Order). An
+    // order of this week has its load read; another week's order is here only
+    // as a pair partner, read with its load — anything else is unknown, said
+    // as «Άγνωστη», never as «εκτός Εβδομαδιαίου».
+    const link = v => (Array.isArray(v) ? v[0] : v) || null;
+    const loads = d.natLoads;
+    const load = loads ? loads.find(l => link(l.fields['Source National Order']) === rec.id) || null : null;
+    const known = loads != null && (!!load || OC().weekStartOf(rec) === S.week);
+    openNatlCardWith(rec, { load, loadsFailed: !known });
+  }
+
+  // A card opened here saved ONE order in place («Διόρθωση», pallet sheets —
+  // OrdersCatalog.updateRecord hands it over): the week repaints from that
+  // record at once (price, ΤΠΥ, Σ), the card stays open. No re-read: the
+  // record is the one the card saved.
+  function recordChanged(type, rec) {
+    const ctx = S.ctx, d = S.data;
+    if (!rec || !d || !ctx || !ctx.isCurrent()) return;
+    const list = type === 'natl' ? d.natl : d.intl;
+    const i = list.findIndex(r => r.id === rec.id);
+    if (i < 0) return;
+    if (list[i] !== rec) { rec._type = list[i]._type; if (list[i]._v5 !== undefined && rec._v5 === undefined) rec._v5 = list[i]._v5; list[i] = rec; }
+    _paint(ctx);
   }
 
   // New strip window → new read; the header (tabs, scope) stays.
@@ -1167,7 +1281,7 @@ const OrdersWeekView = (() => {
     const m = S.model; if (!m) return;
     const O = OC(), scope = S.ctx ? S.ctx.scope : 'all';
     const stateOf = _stateFn(S.data.set);
-    const stLabel = r => { if (isVsNational(r)) return 'δεν τιμολογείται'; const s = stateOf(r); return s.key === 'invoiced' ? 'τιμολογήθηκε' : s.key === 'blocked' ? 'μπλοκαρισμένη: ' + (REASON[s.reason] || s.reason) : s.key === 'ready' ? (s.noSheets ? 'προς κοπή · λείπει δελτίο' : 'προς κοπή') : 'ακυρωμένη'; };
+    const stLabel = r => { if (isVsNational(r)) return 'δεν τιμολογείται'; const s = stateOf(r); return s.key === 'invoiced' ? (O.isSelfDelivery(r.fields) ? 'αυτοπαράδοση' : 'τιμολογήθηκε') : s.key === 'blocked' ? 'μπλοκαρισμένη: ' + (REASON[s.reason] || s.reason) : s.key === 'ready' ? (s.noSheets ? 'προς κοπή · λείπει δελτίο' : 'προς κοπή') : 'ακυρωμένη'; };
     const line = (rt, r, vrec, counts) => {
       const f = r.fields, v = vehicleOf(vrec), e = endsOf(r);
       return [O.weekLabel(m.week), O.ymd(O.weekDateOf(r)), rt, r._type === 'natl' ? (f['Direction'] === 'South→North' ? 'Άνοδος' : 'Κάθοδος') : (f['Direction'] === 'Import' ? 'Εισαγωγή' : 'Εξαγωγή'),
@@ -1196,7 +1310,7 @@ const OrdersWeekView = (() => {
     });
   }
 
-  return { render, buildWeek, totals, rtInvoicing, verdictText, tpyOf, pctVsPrev, stripWeeks, groupRows, daySections,
+  return { render, recordChanged, buildWeek, totals, rtInvoicing, verdictText, tpyOf, pctVsPrev, stripWeeks, groupRows, daySections,
     weekStatus, pairNationals, routeSplit, ordersFormula, placeText, isVsNational, naturalDateOf, pgIdOf, dayLabel, weekTitle };
 })();
 

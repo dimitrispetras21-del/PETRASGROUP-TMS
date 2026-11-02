@@ -44,6 +44,16 @@ function palText(n, unknown) {
   return unknown > 0 ? t + '+;' : t;
 }
 const _ms = (iso) => { const t = new Date(iso).getTime(); return Number.isNaN(t) ? Infinity : t; };
+// The board's row order: days by the Veroia loading day of ΚΑΘΟΔΟΣ (else the ΑΝΟΔΟΣ day); inside a day the cycles
+// first, by that time, then the loads waiting for a vehicle (Figma 2011:7745 row order). ONE rule: «Παραγγελίες ›
+// Εβδομάδα» sorts its national rows with it too, so Ειρήνη compares the two lists row by row (owner 2/11/2026).
+// Rows: { dayKey, kind: 'cycle' | other, sortAt: ISO, key }.
+function rowOrder(a, b) {
+  return String(a.dayKey || '').localeCompare(String(b.dayKey || ''))
+    || (a.kind === b.kind ? 0 : a.kind === 'cycle' ? -1 : 1)
+    || ((_ms(a.sortAt) - _ms(b.sortAt)) || 0)
+    || String(a.key).localeCompare(String(b.key));
+}
 function athensDay(iso) { if (!iso) return null; const d = new Date(iso); return Number.isNaN(d.getTime()) ? null : ATH_DAY.format(d); }
 function athensTime(iso) { if (!iso) return null; const d = new Date(iso); return Number.isNaN(d.getTime()) ? null : ATH_TIME.format(d); }
 // F1 (owner 28/10): a point entered without a window is stored as its whole Athens day, 00:00–23:59 (the order form's
@@ -160,6 +170,14 @@ function _legs(s, act) { return (s.legs || []).filter((l) => l.act === act); }
 // sends price: null by design (its price is the international's), so only nat_order_id counts. Once per order on a
 // row, on its first point drawn. No «λείπει ώρα» (owner 2/11): «όλη η ημέρα» is the normal case — hours go only where
 // the dispatcher wants them — and a note shows only when it asks for an action.
+// «PE» (owner 2/11, «θέλω να φαίνεται και το PE flag στα εθνικά»): the clients of a side whose loads carry pallet
+// exchange, from plan_board's own key (legs[] and waiting[]: vs.pallet_exchange = the national order's, or for a VS
+// piece the INTERNATIONAL order's, 071 v_shipment). null = none, never «Όχι» for a key the board did not send (hub[]
+// items have none: they are never marked).
+function _peOf(items) {
+  const on = (items || []).filter((x) => x && x.pallet_exchange === true);
+  return on.length ? { clients: [...new Set(on.map((x) => x.client).filter(Boolean))] } : null;
+}
 const _noPriceIds = (items) => [...new Set(items.filter((x) => x && x.nat_order_id != null
   && Object.prototype.hasOwnProperty.call(x, 'price') && x.price === null).map((x) => x.nat_order_id))];
 function _marks(pts) {
@@ -203,10 +221,13 @@ function _side(name, list, hubId) {
   const palUnknown = _unk(list.flatMap((s) => _legs(s, 'load')));
   return {
     side: {
-      side: name, day: dayStop.stop_day || null, toDay: name === 'KATHODOS' && to.length ? to[to.length - 1].day : null,
+      // toDay = the FIRST delivery day (owner 2/11, «Ναι, και στα Εθνικά»): the head says «→ Τρί 3/11» and a point
+      // of a later day carries its own divider «Τετ 4/11» (WI4.dayBreaks), as on the Weekly International. Until 2/11
+      // it was the LAST day, so a Tuesday delivery read as Wednesday's.
+      side: name, day: dayStop.stop_day || null, toDay: name === 'KATHODOS' && to.length ? to[0].day : null,
       veroia: v ? { stopId: v.stop_id, from: athensTime(v.planned_from), to: athensTime(v.planned_to), allDay: allDay(v.planned_from, v.planned_to) } : null, vBefore,
       headDim: dayStop.dim === true, from, to, pallets, palUnknown, over: pallets > CAP ? r1(pallets - CAP) : 0,
-      sideDim: list[0].side_dim === true, gap: null,
+      sideDim: list[0].side_dim === true, gap: null, pe: _peOf(list.flatMap((s) => s.legs || [])),
     },
     endStop: eIdx >= 0 ? list[eIdx] : null,
   };
@@ -220,7 +241,7 @@ function _gapSide(c, kath) {
     // the delivery the ΚΑΘΟΔΟΣ cell already names beside it
     text = `Κενό γύρισμα · ελεύθερο από ${_dow(last.day)}${last.to && last.to !== '23:59' ? ' ' + last.to : ''}`;
   }
-  return { side: 'ANODOS', day: null, toDay: null, veroia: null, vBefore: 0, headDim: false, from: [], to: [], pallets: 0, over: 0, sideDim: false, gap: { text } };
+  return { side: 'ANODOS', day: null, toDay: null, veroia: null, vBefore: 0, headDim: false, from: [], to: [], pallets: 0, over: 0, sideDim: false, gap: { text }, pe: null };
 }
 function _tile(s, multi) {
   const type = s.has_vehicle !== true ? 'un' : s.trip_type === 'PARTNER' ? 'par' : 'own';
@@ -400,14 +421,15 @@ function _waitRow(list, hubId, errors, nameOf) {
     byTo.get(k).push(w);
   }
   // hub: the ΑΝΟΔΟΣ ends at Veroia (the screen draws it as a cycle's end, Figma audit B-12) and due is the base's day
-  // for it (the earliest nat_due_day of the group), never an hour
+  // for it (the earliest nat_due_day of the group), never an hour. A waiting ΚΑΘΟΔΟΣ's toDay is its EARLIEST delivery
+  // day (its points come in the board's order, not by day): a point of another day carries its own divider.
   const dest = [...byTo.values()].map((g, i) => ({ stopId: null, n: i + 1, name: nameOf(g[0].nat_to_location_id), city: null, locId: _idOrNull(g[0].nat_to_location_id), clients: [], temps: [],
     from: athensTime(g[0].deliver_from), to: athensTime(g[0].deliver_to), allDay: allDay(g[0].deliver_from, g[0].deliver_to), pallets: _sum(g), palUnknown: _unk(g), dim: false, late: false, segmentId: null, segLabel: null,
     day: athensDay(g[0].deliver_from), toDay: athensDay(g[0].deliver_to), hub: hubId != null && Number(g[0].nat_to_location_id) === hubId,
     due: g.map((w) => w.nat_due_day).filter((d) => DAY_RE.test(String(d || ''))).sort()[0] || null, _np: _noPriceIds(g) }));
-  const side = { side: anodos ? 'ANODOS' : 'KATHODOS', day: loadDay, toDay: anodos || !pts.length ? null : pts[pts.length - 1].day,
+  const side = { side: anodos ? 'ANODOS' : 'KATHODOS', day: loadDay, toDay: anodos || !pts.length ? null : pts.map((p) => p.day).filter(Boolean).sort()[0] || null,
     veroia: !anodos && hubWs.length ? { stopId: null, from: athensTime(hubWs[0].load_from), to: athensTime(hubWs[0].load_to), allDay: allDay(hubWs[0].load_from, hubWs[0].load_to) } : null, vBefore: 0,
-    headDim: false, from: anodos ? pts : origin, to: anodos ? dest : pts, pallets, palUnknown, over: pallets > CAP ? r1(pallets - CAP) : 0, sideDim: false, gap: null };
+    headDim: false, from: anodos ? pts : origin, to: anodos ? dest : pts, pallets, palUnknown, over: pallets > CAP ? r1(pallets - CAP) : 0, sideDim: false, gap: null, pe: _peOf(ws) };
   _marks(side.from.concat(side.to));
   const refs = [...new Set(ws.map((w) => w.reference).filter(Boolean))];
   const clients = [...new Set(ws.map((w) => w.client).filter(Boolean))];
@@ -473,12 +495,7 @@ function model(board, opts) {
   for (const w of board.waiting) if (w.is_stock !== true) add(w, false);   // stock lives only in the Veroia board (owner rule 5, 19/10)
   for (const h of board.hub) if (_neverAssigned(h)) add(h, true);
   for (const list of groups.values()) rows.push(_waitRow(list, hubId, errors, nameOf));
-  // Days by the Veroia loading day of ΚΑΘΟΔΟΣ (else the ΑΝΟΔΟΣ day); inside a day the cycles first, by that time,
-  // then the loads waiting for a vehicle (Figma 2011:7745 row order).
-  rows.sort((a, b) => String(a.dayKey || '').localeCompare(String(b.dayKey || ''))
-    || (a.kind === b.kind ? 0 : a.kind === 'cycle' ? -1 : 1)
-    || ((_ms(a.sortAt) - _ms(b.sortAt)) || 0)
-    || String(a.key).localeCompare(String(b.key)));
+  rows.sort(rowOrder);
   const days = [];
   for (let i = 0; i < 7; i++) {
     const date = _addDays(week, i);
@@ -577,6 +594,6 @@ function handoversOf(cycle) {
   return out;
 }
 
-const WN5L = freeze({ model, waitSide, segmentsOf, stopSegments, handoversOf, searchParts, cycleNumbers, capacity, stopRank, hubFromBoard, athensDay, athensTime, allDay, winText, DAY_WIN, palText, CAP, HUB_UNKNOWN, ShapeError });
+const WN5L = freeze({ model, rowOrder, waitSide, segmentsOf, stopSegments, handoversOf, searchParts, cycleNumbers, capacity, stopRank, hubFromBoard, athensDay, athensTime, allDay, winText, DAY_WIN, palText, CAP, HUB_UNKNOWN, ShapeError });
 if (typeof module !== 'undefined') module.exports = WN5L; else window.WN5L = WN5L;
 })();

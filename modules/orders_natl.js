@@ -234,6 +234,31 @@ function natlQuickEdit(recId) {
   });
 }
 
+// «Παραγγελίες › Εβδομάδα» opens THIS card in place (owner 2/11/2026), as
+// openIntlCardWith: the week's record joins NATL_ORDERS.data, and its national
+// load as the week read it (`o.load`, null = none) joins NATL_ORDERS.loads, so
+// the card's ΑΝΑΘΕΣΗ is the catalog's rule (_onAssignment), never a guess.
+// o.loadsFailed (the week's loads read failed) = the card says «Άγνωστη».
+function openNatlCardWith(rec, o) {
+  if (!rec || !rec.id) return;
+  const opt = o || {};
+  if (!Array.isArray(NATL_ORDERS.data)) NATL_ORDERS.data = [];
+  const i = NATL_ORDERS.data.findIndex(r => r.id === rec.id);
+  if (i >= 0) NATL_ORDERS.data[i] = rec; else NATL_ORDERS.data.push(rec);
+  if (!(NATL_ORDERS.loads instanceof Map)) NATL_ORDERS.loads = new Map();
+  if (!(NATL_ORDERS.noLoad instanceof Set)) NATL_ORDERS.noLoad = new Set();
+  NATL_ORDERS.loadsFailed = !!opt.loadsFailed;
+  if (opt.load) { NATL_ORDERS.loads.set(rec.id, opt.load); NATL_ORDERS.noLoad.delete(rec.id); }
+  else {
+    NATL_ORDERS.loads.delete(rec.id);
+    // The same «missing load» test as _natlLoad: not groupage, not v5, loads read.
+    if (!opt.loadsFailed && !rec.fields['National Groupage'] && !rec._v5) NATL_ORDERS.noLoad.add(rec.id);
+    else NATL_ORDERS.noLoad.delete(rec.id);
+  }
+  _onEnsureStyles();
+  selectNatlOrder(rec.id);
+}
+
 function selectNatlOrder(recId) {
   const wasClosed = !NATL_ORDERS.selectedId;
   NATL_ORDERS.selectedId = recId;
@@ -321,7 +346,7 @@ function selectNatlOrder(recId) {
       ${_onDF('Παλέτες', f['Pallets'] != null ? escapeHtml(String(f['Pallets'])) : _ON_NA, f['Pallets'] == null)}
       ${_onDF('Θερμοκρασία', f['Temperature °C'] != null ? escapeHtml(String(f['Temperature °C'])) + ' °C' : _ON_NA, f['Temperature °C'] == null)}
       ${can('costs')!=='none' ? _onDF('Τιμή', priced ? Number(f['Price']).toLocaleString('el-GR') + ' €' : _ON_NA, !priced) : ''}
-      ${_onDF('Τιμολογήθηκε', f['Invoiced'] ? 'Ναι' : 'Όχι')}
+      ${_onDF('Τιμολογήθηκε', f['Invoiced'] ? (OrdersCommon.isSelfDelivery(f) ? 'Ναι · αυτοπαράδοση' : 'Ναι') : 'Όχι')}
     </div>
     <div class="on-sec sunken">
       <div class="on-sec-title">Διαδρομή</div>
@@ -2536,6 +2561,7 @@ window.openNatlCreate = openNatlCreate;
 window.openNatlCreateWith = async f => (await _natlAfterL()) ? _natlToBoard(null, _NATL_NEW_ON_BOARD) : _openNatlModal(null, f || {}); // 9/9: Weekly National «νέα άνοδος» prefill
 window.openNatlEdit = openNatlEdit;
 window.selectNatlOrder = selectNatlOrder;
+window.openNatlCardWith = openNatlCardWith;   // «Εβδομάδα» opens the card in place (2/11)
 window.natlQuickEdit = natlQuickEdit;
 // The card's «×» is an inline onclick, so it resolves in the global scope.
 // Without this the × threw «closeNatlDetail is not defined» (app_errors 5/9

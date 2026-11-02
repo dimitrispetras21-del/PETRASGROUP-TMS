@@ -408,6 +408,12 @@ const OrdersCatalog = (() => {
   // One order changed in place (status, pallet sheets, «Στείλε →»): rebuild
   // that row from the fresh record and repaint, keeping the card open.
   function updateRecord(type, rec) {
+    // The same card also opens over «Εβδομάδα» (owner 2/11/2026): when that is
+    // the page on screen, IT repaints — never this list, which is not there.
+    if (!(S.ctx && S.ctx.isCurrent())) {
+      if (typeof OrdersWeekView !== 'undefined' && OrdersWeekView.recordChanged) OrdersWeekView.recordChanged(type, rec);
+      return;
+    }
     const i = S.rows.findIndex(r => r.id === rec.id && r.type === type);
     if (i < 0) return;
     S.rows[i] = _row(rec, type);
@@ -537,7 +543,7 @@ const OrdersCatalog = (() => {
     const tr = S.filtered.map(r => `<tr><td>${esc(r.num)}</td><td>${esc(r.ref)}<br><small>${esc([r.dir, ...r.tags].filter(Boolean).join(' · '))}</small></td><td>${esc(_unesc(r.client))}</td>
       <td>${esc(r.load.name)}<br><small>${esc(r.load.sub)} · ${C().dm(r.load.date)}</small></td><td>${esc(r.del.name)}<br><small>${esc(r.del.sub)} · ${C().dm(r.del.date)}</small></td>
       <td class="r">${esc(r.pal || '')}</td><td>${esc(_statusWord(r))}</td><td class="r">${esc(_priceText(r) || '—')}</td>
-      <td>${r.f['Invoice Number'] ? '✓ ΤΠΥ ' + esc(r.f['Invoice Number']) : ''}</td></tr>`).join('');
+      <td>${C().isSelfDelivery(r.f) ? '✓ Αυτοπαράδοση' : r.f['Invoice Number'] ? '✓ ΤΠΥ ' + esc(r.f['Invoice Number']) : ''}</td></tr>`).join('');
     OrdersList.printOpen(`<!doctype html><html lang="el"><head><meta charset="utf-8"><title>Παραγγελίες</title><style>
       @page{size:A4 landscape;margin:12mm}body{font:10px/1.35 'DM Sans',Arial,sans-serif;color:#000}h1{font-size:15px;margin:0 0 2px}
       .s{color:#444;margin-bottom:8px}table{width:100%;border-collapse:collapse}th{font-size:8.5px;text-align:left;border-bottom:1px solid #000;padding:3px}
@@ -586,6 +592,7 @@ const OrdersCatalog = (() => {
     document.head.appendChild(st);
   }
 
-  return { render, updateRecord, open, search, filter, chip, clear, period, sort, toggleNew, newOrder, csv, print };
+  // installEsc: «Εβδομάδα» opens the same cards (owner 2/11) — one Esc listener for both views.
+  return { render, updateRecord, open, search, filter, chip, clear, period, sort, toggleNew, newOrder, csv, print, installEsc: _installEsc };
 })();
 window.OrdersCatalog = OrdersCatalog;
