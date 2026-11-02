@@ -10625,6 +10625,43 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5a-av.sugg { color:var(--accent-text); }
 /* 083: «Με φορτηγό τώρα | Φορτηγό αργότερα» of «Νέο φορτίο» */
 .wn5-nf .wn5-nf-when { align-self:flex-start; }
+/* Veroia board DESIGN VARIANTS A / B (usability 2/11 §3.5–3.8; draft for the owner's choice, localStorage
+   tms_wn5_hub_v, never on by default): the Weekly Διεθνών language — slim two-level rows, the place bold and the
+   client small, red only as a 2px bar or small text, inline actions */
+.wn5-hubv .wn5-hub-t:disabled { cursor:default; }
+.wn5-hubv .wn5-hub-s, .wn5-hubv .wn5-hub-s2 { font-size:12px; font-weight:500; color:var(--wi4-grey-1); }
+.wn5-hv-late { flex:none; margin-left:6px; font-size:11.5px; font-weight:500; color:var(--danger); }
+.wn5-hv-cols { position:sticky; top:0; z-index:1; display:flex; align-items:center; height:24px; padding:0 12px; background:var(--surface-card);
+  border-bottom:1px solid var(--wi4-line); font-size:10.5px; color:var(--wi4-grey-2); }
+.wn5-hubv .wn5-hv-gh { gap:8px; height:24px; font-size:11px; font-weight:600; color:var(--wi4-grey-1); background:var(--wi4-chip); }
+.wn5-hv-gh > em { font-style:normal; font-weight:500; color:var(--danger); }
+.wn5-hubv .wn5-hub-it.wn5-hv { min-height:32px; padding:2px 12px; gap:10px; }
+.wn5-hubv .wn5-hub-ck { margin:0 3px; }
+.wn5-hv-cols { gap:10px; letter-spacing:.4px; }
+.wn5-hv-c0 { flex:none; width:20px; text-align:center; }
+.wn5-hv-c1 { flex:0 1 240px; min-width:0; }
+.wn5-hv-c2 { flex:none; min-width:150px; }
+.wn5-hubv .wn5-hub-it.wn5-hv.late { box-shadow:inset 2px 0 0 var(--danger); }
+.wn5-hv-a { flex:0 1 240px; min-width:0; display:flex; flex-direction:column; line-height:15px; white-space:normal; overflow-wrap:anywhere; }
+.wn5-hv-a > b { font-size:12.5px; font-weight:600; color:var(--wi4-ink); }
+.wn5-hv-a > b > i { font-style:normal; font-weight:400; color:var(--wi4-grey-1); }
+.wn5-hv-a > span { font-size:11px; color:var(--wi4-grey-2); }
+.wn5-hv-w { flex:none; min-width:150px; display:flex; flex-direction:column; line-height:15px; font-size:11.5px; color:var(--wi4-grey-1); }
+.wn5-hv-w > em { font-style:normal; font-size:11px; color:var(--danger); }
+.wn5-hv-t { flex:none; font-size:11px; color:var(--wi4-grey-2); }
+.wn5-hv-lk { font-size:11.5px; font-weight:500; color:var(--accent-text); }
+.wn5-hubv .wn5-hv-go { color:var(--wi4-blue-ink); border-color:var(--wi4-blue); }
+.wn5-hv-askrow { display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:4px 12px 6px 24px; border-bottom:1px solid var(--wi4-line); background:var(--wn5-info-bg); }
+.wn5-hv-ask { flex:1 1 300px; min-width:0; font-size:11.5px; color:var(--wi4-grey-1); white-space:normal; }
+.wn5-hv-ask .wn5-soft { display:block; color:var(--wi4-amber-ink); }
+.wn5-hv-ask > b { color:var(--wi4-ink); }
+.wn5-hv-ask .over { color:var(--wi4-amber); font-weight:600; }
+.wn5-hv-tr .wn5-hv-d { font-size:12px; color:var(--wi4-ink); }
+.wn5-hv-card { display:flex; align-items:center; gap:10px; min-height:32px; border-bottom:1px solid var(--wi4-line); font-size:12px; color:var(--wi4-grey-1); }
+.wn5-hv-card > b { color:var(--wi4-ink); }
+.wn5-hv-card .over { color:var(--wi4-amber); font-weight:600; }
+.wn5-hv-free { font-size:11px; color:var(--wi4-grey-2); }
+.wn5-hv-none, .wn5-hv-hint { margin:0; font-size:11.5px; color:var(--wi4-grey-2); }
 /* B-26 (087): «φεύγει ως ‹ Δευ 12/10 22:00 ›», a day stepped in place inside the field box of 2011:8744 */
 .wn5-part-d.wn5-lb { gap:6px; padding:0 2px; }
 .wn5-lb-b { width:20px; height:22px; padding:0; border:none; border-radius:4px; background:none; font:600 14px 'DM Sans',sans-serif; color:var(--wi4-grey-2); cursor:pointer; }

@@ -179,7 +179,7 @@
     const pal = k.sum(all.map((x) => x.pallets)), unk = all.filter((x) => x.pallets == null).length;
     let h = '<div class="wn5-nf"><div class="wn5-nf-hd"><span class="wn5-nf-t">ΝΕΟ ΦΟΡΤΙΟ</span><span class="wn5-hub-sp"></span>'
       + (all.length ? '<span class="wn5-nf-n">' + k.esc(all.length + (all.length === 1 ? ' επιλεγμένο' : ' επιλεγμένα') + ' · ' + WN5L.palText(pal, unk) + 'π') + '</span>' : '') + '</div>';
-    if (!items.length) return h + '<p class="wn5-none wn5-nf-empty">—</p></div>';
+    if (!items.length) return h + '<p class="wn5-none wn5-nf-empty">' + (_variant() === 'A' ? 'Τσέκαρε φορτία αριστερά για νέο φορτίο.' : '—') + '</p></div>';
     const wk = model.week;
     const days = wk ? [0, 1, 2, 3, 4, 5, 6].map((i) => k.addDays(wk, i)) : [_nf.day];
     h += '<div class="wn5-nf-row"><span class="wn5-nf-l">Ημέρα φόρτωσης Βέροιας</span><select class="wn5-nf-day" onchange="WN5Hub.nfDay(this.value)">'
@@ -226,16 +226,178 @@
     if (p && p.req && p.req.missing && !words.length) words.push('παράθυρο Βέροιας');
     const can = !!(p && p.req && !p.req.missing && !words.length && !_nf.busy && !k.closedErr());
     // Π2 (owner 2/11): the truck / driver on another trip those days, amber beside the save, which sends accept_busy
-    const busy = !later && !words.length && !(p && p.err) && p && p.busy ? p.busy.text : '';
+    let busy = !later && !words.length && !(p && p.err) && p && p.busy ? p.busy.text : '';
+    // variants (§3.8): a truck that already stops at Veroia another day takes the load THAT day — said beside the save,
+    // amber, in place of a small note on the truck line
+    if (_variant() && !later && !words.length && ln && ln.other) busy = 'Φορτώνει ' + ln.other + ', όχι ' + k.dayShort(_nf.day) + (busy ? ' · ' + busy : '');
     h += '<div class="wn5-nf-msg" data-nfmsg></div><div class="wn5-nf-ft"><span class="wn5a-miss' + (busy ? ' wn5-soft' : '') + '" data-nfwhy>' + k.esc(p && p.err ? p.err.message : words.length ? 'Λείπει: ' + words.join(', ') : busy) + '</span>'
       + '<button type="button" class="wi4-btn" onclick="WN5Hub.nfReset()">Άκυρο</button>'
       + '<button type="button" class="wi4-btn pri wn5-nf-go" data-act="nf-create"' + (can ? '' : ' disabled') + ' onclick="WN5Hub.nfCreate()">'
       + k.esc('Δημιουργία φορτίου · ' + WN5L.palText(pal, unk) + 'π' + (p && p.label ? ' → ' + p.label : '')) + '</button></div></div>';
     return h;
   }
+  // ═══ DESIGN VARIANTS A / B (usability test 2/11 §3.5–3.8, draft for the owner's choice — NEVER on by default) ═══
+  // localStorage tms_wn5_hub_v = 'A' | 'B' switches the panel on this browser only; anything else = the live panel.
+  // A «λιτό»: the same moves, fewer words — the place bold, the client small, red only as a thin bar or small text,
+  //   the line always there, the tick named. B «μία κίνηση»: no ticks — «Φόρτωσε σε ▾» on the row lists that day's
+  //   trucks, a short confirm on the row writes; the right side shows the trucks that load at Veroia that day.
+  const _variant = () => { try { const v = localStorage.getItem('tms_wn5_hub_v'); return v === 'A' || v === 'B' ? v : ''; } catch (_) { return ''; } };
+  let _bDay = null;                     // B: the day of the truck cards (‹ ›), null = the panel's day
+  let _bAsk = null;                     // B: the row waiting for «Φόρτωσε» { pid, rtId }
+  // VS imports standing at Veroia that were never sent here (P-11: they are ΠΡΟΣ ΑΝΑΘΕΣΗ rows of the Weekly) — counted
+  // on the line, never listed twice
+  function _unsent(split) {
+    const st = WN5.state(), ids = new Set(split.map((h) => h.pieceId));
+    return ((st && st.board && st.board.hub) || []).filter((h) => h.is_stock !== true && !ids.has(h.piece_id) && h.kind === 'vs_import').length;
+  }
+  // the client and the temperature most rows share are said ONCE, in the column head; a row names them only when it
+  // differs (§3.6: the same international client on all 13 rows was the bold line)
+  function _common(model) {
+    const k = K(), hub = model.hub, all = [...(hub.split || []), ...(hub.stock || [])];
+    const mode = (xs) => { const c = new Map(); for (const x of xs) if (x) c.set(x, (c.get(x) || 0) + 1); let b = null; for (const [x, n] of c) if (!b || n > b[1]) b = [x, n]; return b && b[1] > 1 ? b[0] : null; };
+    return { client: mode(all.map((h) => h.client)), temp: mode(all.map((h) => _tempOf(k.item(h.pieceId) || {}))) };
+  }
+  function _itemV(h, isStock, V, today, com) {
+    const k = K(), raw = k.item(h.pieceId) || {}, pid = k.id(h.pieceId);
+    if (!pid) { k.log(new Error('wn5: hub item without a valid piece id ' + JSON.stringify(h.pieceId)), 'WN5Hub itemV'); return ''; }
+    const on = _nf.sel.includes(pid);
+    const late = isStock ? h.overdue === true : _late(h, today);
+    const place = _placeOf(raw), city = raw.nat_to_location_id != null ? k.placeCity(raw.nat_to_location_id) : '';
+    const when = isStock ? (h.leave_by ? 'φεύγει ως ' + k.dayShort(h.leave_by) : 'απόθεμα') : _parText(raw, h).replace(/^παρ\. /, '');
+    const t0 = _tempOf(raw), tmp = t0 && t0 !== com.temp ? t0 : '';
+    const who = h.client && h.client !== com.client ? h.client : '';
+    // B: the confirm is a line of its own under the row (the truck, its day, the load after, an overlap in amber)
+    const ask = V === 'B' && _bAsk && _bAsk.pid === pid ? _askHTML(pid) : '';
+    const acts = (V === 'A'
+      ? '<button type="button" class="wi4-btn sm wn5-hub-b" data-hub="truck" onclick="event.stopPropagation();WN5Hub._truck(' + pid + ', this)">Σε φορτηγό ▾</button>'
+        + (isStock ? '' : '<button type="button" class="wi4-btn sm wn5-hub-b wn5-hub-more" data-hub="more" aria-label="Περισσότερα" onclick="event.stopPropagation();WN5Hub.more(' + pid + ', this)">⋯</button>')
+      : '<button type="button" class="wi4-btn sm wn5-hub-b wn5-hv-go" data-hub="load" onclick="event.stopPropagation();WN5Hub.vLoad(' + pid + ', this)">Φόρτωσε σε ▾</button>'
+        + (isStock ? '' : '<button type="button" class="wi4-btn sm wn5-hub-b wn5-hub-more" data-hub="more" aria-label="Περισσότερα" onclick="event.stopPropagation();WN5Hub.more(' + pid + ', this)">⋯</button>'));
+    return '<div class="wn5-hub-it wn5-hv' + (on ? ' on' : '') + (late ? ' late' : '') + '" data-piece="' + pid + '">'
+      + (V === 'A' ? '<input type="checkbox" class="wn5-hub-ck" aria-label="Στο νέο φορτίο"' + (on ? ' checked' : '') + ' onclick="event.stopPropagation();WN5Hub.tick(' + pid + ', this.checked)">' : '')
+      + '<span class="wn5-hv-a"><b>' + k.esc(place) + (city && city !== place ? '<i> · ' + k.esc(city) + '</i>' : '') + '</b>' + (who ? '<span>' + k.esc(who) + '</span>' : '') + '</span>'
+      + '<span class="wn5-hv-w"><span>' + k.esc(when) + '</span>' + (late ? '<em>' + (isStock ? 'έπρεπε να φύγει' : 'αργό') + '</em>' : '') + '</span>'
+      + '<span class="wn5-hub-sp"></span>' + (tmp ? '<span class="wn5-hv-t">' + k.esc(tmp) + '</span>' : '')
+      + '<span class="wn5-hub-p">' + k.esc(k.pal(h.pallets)) + 'π</span><span class="wn5-hub-a">' + acts + '</span></div>'
+      + (ask ? '<div class="wn5-hv-askrow" data-ask="' + pid + '">' + ask + '</div>' : '');
+  }
+  // B: the confirm on the row — the truck, its Veroia day and hours, the load after; «Φόρτωσε» writes
+  // B: the request of «Φόρτωσε» — the truck of the row's day, the stops as «Σπάσε…» builds a part's, its overlap (Π2)
+  function _bReq(pid, rtId) {
+    const k = K(), it = k.item(pid);
+    const t = it ? _trucks(_rowDayOf(pid)).find((x) => x.rtId === rtId) : null;
+    if (!t) return null;
+    const r = k.stopsFor(k.needs(it, false, k.hubId()), t.c, 'KATHODOS', null, (n) => k.dayWin(n));
+    if (!r || r.missing.length) return { t, it, missing: true };
+    const req = { method: 'POST', path: '/plan/legs', body: { pieces: [{ piece_id: pid }], target: { rt_id: t.rtId, side: 'KATHODOS' }, stops: r.stops } };
+    return { t, it, req, busy: k.reqBusy(req, t.c) };
+  }
+  function _askHTML(pid) {
+    const k = K(), b = _bReq(pid, _bAsk.rtId);
+    if (!b) return '';
+    const after = b.t.pal + (Number(b.it.pallets) || 0);
+    return '<span class="wn5-hv-ask">→ <b>' + k.esc(k.cycText(b.t.c, b.t.r).l1.split(' · ')[0]) + '</b> ' + k.esc(_wd(b.t.r.kath.day || _rowDayOf(pid)) + ' ' + (b.t.win || '')) + ' · '
+      + '<span class="' + (after > 33 ? 'over' : '') + '">' + k.esc(WN5L.palText(after, b.t.unk) + '/33') + '</span>'
+      + (b.busy && b.busy.text ? ' <span class="wn5-soft" data-busy>' + k.esc(b.busy.text) + '</span>' : '') + '</span>'
+      + '<button type="button" class="wi4-btn sm pri" data-hub="load-go" onclick="WN5Hub.vLoadGo()">Φόρτωσε</button>'
+      + '<button type="button" class="wi4-link wn5-hv-lk" onclick="WN5Hub.vLoadNo()">Άκυρο</button>';
+  }
+  const _rowDayOf = (pid) => { const m = (WN5.state() || {}).model; return _pieceDay(K().item(pid), m); };
+  // B: the right side with nothing chosen — the trucks that load at Veroia that day, ‹ day ›
+  function _trucksHTML(model, day) {
+    const k = K(), ts = _trucks(day);
+    return '<div class="wn5-nf wn5-hv-tr"><div class="wn5-nf-hd"><span class="wn5-nf-t">ΦΟΡΤΗΓΑ ΣΤΗ ΒΕΡΟΙΑ</span><span class="wn5-hub-sp"></span>'
+      + '<button type="button" class="wn5-lb-b" aria-label="Προηγούμενη ημέρα" onclick="WN5Hub.vDay(-1)">‹</button><b class="wn5-hv-d" data-day="' + k.esc(day) + '">' + k.esc(k.dayShort(day)) + '</b>'
+      + '<button type="button" class="wn5-lb-b" aria-label="Επόμενη ημέρα" onclick="WN5Hub.vDay(1)">›</button></div>'
+      + (ts.length ? ts.map((t) => '<div class="wn5-hv-card"><b class="wn5a-mono">' + k.esc(k.cycText(t.c, t.r).l1.split(' · ')[0]) + '</b><span>' + k.esc(t.win || '') + '</span><span class="wn5-hub-sp"></span>'
+        + '<span class="' + (t.pal > 33 ? 'over' : '') + '">' + k.esc(WN5L.palText(t.pal, t.unk) + '/33') + '</span><span class="wn5-hv-free">' + k.esc(t.pal < 33 ? k.pal(33 - t.pal) + ' ελεύθερες' : 'γεμάτο') + '</span></div>').join('')
+        : '<p class="wn5-hv-none">Κανένα φορτηγό δεν φορτώνει στη Βέροια ' + k.esc(k.dayShort(day)) + '.</p>')
+      + '<p class="wn5-hv-hint">Νέο φορτηγό: «Φόρτωσε σε ▾» → «Νέο φορτίο…»</p></div>';
+  }
+  function _shelfV(model, V) {
+    const k = K(), hub = model.hub;
+    const split = hub.split || [], stock = hub.stock || [];
+    const onBoard = new Set([...split, ...stock].map((h) => h.pieceId));
+    _nf.sel = _nf.sel.filter((id) => onBoard.has(id));
+    _nf.extra = _nf.extra.filter((id) => !!k.item(id) && !k.item(id).at_hub);
+    if (!_nf.sel.length) { _nf.extra = []; _nf.choice = null; _nf.now = null; _nf.day = null; }
+    if (_bAsk && !onBoard.has(_bAsk.pid)) _bAsk = null;
+    const today = model.today || null;
+    const P = hub.pallets || {};
+    const late = split.filter((h) => _late(h, today)).length + stock.filter((h) => h.overdue === true).length;
+    const unsent = _unsent(split);
+    const n = split.length + stock.length;
+    // §3.5: the line is there whenever anything stands at Veroia — also with an empty panel (the VS not sent yet)
+    if (!n && !unsent) return '';
+    const sum = [n ? n + ' για φόρτωση · ' + WN5L.palText((P.split || 0) + (P.stock || 0), (P.splitUnknown || 0) + (P.stockUnknown || 0)) + 'π' : 'τίποτα για φόρτωση',
+      unsent ? unsent + ' ακόμη στο Weekly' : null].filter(Boolean).join(' · ');
+    const lateTxt = late ? '<span class="wn5-hv-late">' + late + (late === 1 ? ' αργό' : ' αργά') + '</span>' : '';
+    const cls = 'wn5-hub wn5-hubv v' + V;
+    if (!_open || !n) {
+      return '<div id="wn5-hub" class="' + cls + '"><button type="button" class="wn5-hub-t" data-hub="open" onclick="WN5Hub.open()"' + (n ? '' : ' disabled') + '>' + CHEV + '<span class="wn5-hub-n">ΒΕΡΟΙΑ</span></button>'
+        + '<span class="wn5-hub-s">· ' + k.esc(sum) + '</span>' + lateTxt + '<span class="wn5-hub-sp"></span>'
+        + (n ? '<button type="button" class="wi4-link wn5-hub-o" data-hub="open" onclick="WN5Hub.open()">Άνοιγμα ▸</button>' : '') + '</div>';
+    }
+    if (_nf.sel.length && !_nf.day) _nf.day = _defaultDay(model);
+    const head = (d, list) => {
+      const lt = list.filter((h) => _late(h, today)).length;
+      return '<div class="wn5-hub-gh wn5-hv-gh">' + k.esc((d === '—' ? '—' : k.dayShort(d)) + ' · ' + list.length + ' · ' + WN5L.palText(k.sum(list.map((h) => h.pallets)), list.filter((h) => h.pallets == null).length) + 'π')
+        + (lt ? '<em>' + (lt === list.length ? 'αργά' : lt + ' αργά') + '</em>' : '') + '</div>';
+    };
+    const com = _common(model);
+    // the column head: what each column is, and the client / temperature every row shares, once
+    let left = '<div class="wn5-hv-cols">' + (V === 'A' ? '<span class="wn5-hv-c0" title="τσέκαρε για νέο φορτίο">νέο</span>' : '')
+      + '<span class="wn5-hv-c1">ΠΑΡΑΛΗΠΤΗΣ' + (com.client ? ' · ' + k.esc(com.client) : '') + (com.temp ? ' · ' + k.esc(com.temp) : '') + '</span><span class="wn5-hv-c2">ΠΑΡΑΔΟΣΗ</span>'
+      + '<span class="wn5-hub-sp"></span><span>ΠΑΛ.</span></div>'
+      + _groups(model).map(([d, list]) => head(d, list) + list.map((h) => _itemV(h, false, V, today, com)).join('')).join('');
+    if (stock.length) left += '<div class="wn5-hub-gh wn5-hv-gh">' + k.esc('Απόθεμα · ' + stock.length + ' · ' + WN5L.palText(P.stock, P.stockUnknown) + 'π') + '</div>' + stock.map((h) => _itemV(h, true, V, today, com)).join('');
+    // B's truck cards open on TODAY (§3.11: the panel's «day» was the earliest late row's), within the week
+    const bd = _bDay || (today && model.week && today >= model.week && today <= k.addDays(model.week, 6) ? today : _hubDay(model));
+    const right = V === 'B' && !_nf.sel.length ? _trucksHTML(model, bd) : _nfHTML(model);
+    return '<div id="wn5-hub" class="' + cls + ' open"><div id="wn5-hub-panel" class="wn5-hub-panel v2" role="region" aria-label="Πίνακας Βέροιας">'
+      + '<div class="wn5-hub-hd"><span class="wn5-hub-g2" aria-hidden="true">▾</span><span class="wn5-hub-n">ΒΕΡΟΙΑ</span><span class="wn5-hub-s2">· ' + k.esc(sum) + '</span>' + lateTxt
+      + '<span class="wn5-hub-sp"></span><button type="button" class="wi4-btn sm wn5-hub-x" data-hub="close" onclick="WN5Hub.close()">Κλείσιμο</button></div>'
+      + '<div class="wn5-hub-g"><div class="wn5-hub-l">' + left + '</div><div class="wn5-hub-r">' + right + '</div></div></div></div>';
+  }
+  // B: «Φόρτωσε σε ▾» — that day's Veroia trucks, «Νέο φορτίο…» (the builder with this row), «Άλλη ημέρα…» (the form)
+  function vLoad(pieceId, anchor) {
+    if (!_live() || !anchor) return;
+    const k = K(), pid = k.id(pieceId);
+    if (!pid) return;
+    const day = _rowDayOf(pid), ts = _trucks(day);
+    const html = (ts.length ? ts.map((t) => '<button type="button" class="wn5-hub-pi" data-v="rt:' + t.rtId + '"><b>' + k.esc(k.cycText(t.c, t.r).l1.split(' · ')[0] + ' · Βέροια ' + k.dayShort(day) + (t.win ? ' ' + t.win : '')) + '</b><span>'
+      + k.esc(WN5L.palText(t.pal, t.unk) + '/33') + '</span></button>').join('') : '<div class="wn5-hub-pe">' + k.esc('Κανένα φορτηγό στη Βέροια ' + k.dayShort(day)) + '</div>')
+      + '<button type="button" class="wn5-hub-pi" data-v="new">Νέο φορτίο…</button><button type="button" class="wn5-hub-pi" data-v="form">Άλλη ημέρα ή συνεργάτης…</button>';
+    _popOpen(anchor, html, (v) => {
+      if (v === 'new') { _nf.sel = _nf.sel.filter((x) => x !== pid).concat(pid); _redraw(); }
+      else if (v === 'form') _truck(pid, anchor);
+      else if (/^rt:/.test(v)) { _bAsk = { pid, rtId: k.id(v.slice(3)) }; _redraw(); }
+    });
+  }
+  function vLoadNo() { if (!_live()) return; _bAsk = null; _redraw(); }
+  function vDay(n) { if (!_live()) return; const m = (WN5.state() || {}).model; if (!m) return; const cur = document.querySelector('#wn5-hub .wn5-hv-d'); const d = K().addDays(_bDay || (cur && cur.dataset.day) || _hubDay(m), n); if (m.week && (d < m.week || d > K().addDays(m.week, 6))) return; _bDay = d; _redraw(); }
+  // B: «Φόρτωσε» = ONE POST /plan/legs onto that cycle, the stops as «Σπάσε…» builds a part's (the same request shape
+  // as «Σε φορτηγό ▾»); a truck on another trip those days goes with accept_busy (Π2), said on the strip if refused
+  async function vLoadGo() {
+    if (!_live() || !_bAsk) return;
+    const k = K(), pid = _bAsk.pid, b = _bReq(pid, _bAsk.rtId);
+    if (!b) { _bAsk = null; _redraw(); return; }
+    if (b.missing) { _bAsk = null; _redraw(); _truck(pid, null); return; }   // the form says what is missing
+    const t = b.t;
+    // the overlap was on the row before the press (data-busy): it goes with accept_busy
+    const req = k.busySend(b.req, b.busy, (document.querySelector('#wn5-hub [data-busy]') || {}).textContent || '');
+    if (k.closedErr()) { WN5Act.strip(k.boardHost(), k.closedErr()); return; }
+    let out;
+    try { out = await planFetch(req.method, req.path, { body: req.body }); }
+    catch (e) { if (e && e._sessionGone) return; WN5Act.strip(k.boardHost(), e); return; }
+    _bAsk = null;
+    await k.afterSave(out, 'Φορτώθηκε σε ' + k.cycText(t.c, t.r).l1.split(' · ')[0]);
+  }
   function shelfHTML(model) {
     const k = typeof WN5Act !== 'undefined' ? K() : null;
     const hub = model && model.hub;
+    const V = k && hub ? _variant() : '';
+    if (V) return _shelfV(model, V);
     if (!k || !hub || hub.empty || (!(hub.split || []).length && !(hub.stock || []).length)) return '';   // empty = hidden
     const split = hub.split || [], stock = hub.stock || [];
     // a ticked row no longer on the board (taken, split, deleted elsewhere) leaves the new load
@@ -661,5 +823,5 @@
     return d;
   }
 
-  window.WN5Hub = { shelfHTML, open, close, split, _truck, tick, more, toPanel, nfDay, nfWin, nfHm, nfDrop, nfReset, nfLater, nfAddOpen, nfPick, nfCreate };
+  window.WN5Hub = { shelfHTML, open, close, split, _truck, tick, more, toPanel, nfDay, nfWin, nfHm, nfDrop, nfReset, nfLater, nfAddOpen, nfPick, nfCreate, vLoad, vLoadGo, vLoadNo, vDay };
 })();
