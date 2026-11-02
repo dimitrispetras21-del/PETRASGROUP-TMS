@@ -197,6 +197,11 @@
     const hm = (x) => String(Math.floor(x / 60)).padStart(2, '0') + ':' + String(x % 60).padStart(2, '0');
     return m < 1439 ? [_iso(day, from), _iso(day, hm(m + 1))] : [_iso(day, hm(m - 1)), _iso(day, to)];
   }
+  // A row's two ends as sent (owner 2/11, code review xhigh): a night window ends the next day (_toDay); the same hour
+  // twice on a window row is that minute (F64, _sameMin) — a zero-length window would read «08:00–08:00» on the board,
+  // where WN5L.winText names only a one-minute window «στις 08:00». An arrival «ως» row keeps its one instant (from =
+  // to, the deadline the Veroia readers name by its end).
+  const _ends = (r) => (r.until ? [_iso(r.day, r.from), _iso(r.day, r.to)] : _sameMin(r.day, r.from, r.to));
   function _stops(st) {
     const side = st.target.side;
     const byLoc = new Map();
@@ -206,7 +211,9 @@
     // F66 (owner 31/10): an arrival «ως» (Veroia on ΑΝΟΔΟΣ) has one time, and a new stop needs planned_to >
     // planned_from (071 rt_stops_win). A cycle with no Veroia stop on its ΑΝΟΔΟΣ («Κενό γύρισμα») gets one on the
     // arrival day: open from the end of the order's last loading that day (else the day's start) to the «ως».
-    const untilFrom = (o, d) => o.loads.filter((l) => l.day === d.day && l.to && l.to < d.to).map((l) => l.to).sort().pop() || '00:00';
+    // A loading counts on the day it ENDS (owner 2/11: a night loading 22:00–06:00 ends the next morning, code review
+    // xhigh): read on its start day, its «06:00» would open the Veroia stop before the loading even began.
+    const untilFrom = (o, d) => o.loads.filter((l) => l.to && _toDay(l.day, l.from, l.to) === d.day && l.to < d.to).map((l) => l.to).sort().pop() || '00:00';
     const rows = st.orders.flatMap((o) => o.loads.concat(o.drops.map((d) => (d.until && d.to > '00:00' ? Object.assign({}, d, { from: untilFrom(o, d) }) : d))));
     for (const r of rows.filter((x) => !x.allDay).concat(rows.filter((x) => x.allDay))) {
       // F64: the same hour twice is that minute of that day (planned_to > planned_from), as WN5Act's _win
@@ -240,11 +247,10 @@
       if (o.goods) out.goods = o.goods;
       if (o.notes) out.notes = o.notes;
       if (o.temperature_c !== null && o.temperature_c !== undefined) out.temperature_c = o.temperature_c;
-      out.shipments = _pairs(o).map(([l, d, pallets]) => ({
-        origin_location_id: l.location_id, dest_location_id: d.location_id, pallets,
-        load_from: _iso(l.day, l.from), load_to: _iso(_toDay(l.day, l.from, l.to), l.to),
-        deliver_from: _iso(d.day, d.from), deliver_to: _iso(_toDay(d.day, d.from, d.to), d.to),
-      }));
+      out.shipments = _pairs(o).map(([l, d, pallets]) => {
+        const [lf, lt] = _ends(l), [df, dt] = _ends(d);
+        return { origin_location_id: l.location_id, dest_location_id: d.location_id, pallets, load_from: lf, load_to: lt, deliver_from: df, deliver_to: dt };
+      });
       return out;
     });
     const body = { orders };
@@ -280,6 +286,14 @@
       });
       if (o.loads.length > 1 && o.drops.length > 1) out.push(n + 'ένα ζεύγος ανά γραμμή: πολλές φορτώσεις με μία παράδοση ή μία φόρτωση με πολλές παραδόσεις');
       else if (o.loads.length && o.drops.length) {
+        // owner 2/11 (code review xhigh): a night window makes «delivery before loading» easy to type (the delivery left
+        // on the loading's day); said here by row, as the edit form does, never as the base's shipments_win after the
+        // press. Only rows whose day and hours are whole (the lines above name the others).
+        const whole = (r) => DAY.test(String(r.day || '')) && HM.test(String(r.from || '')) && HM.test(String(r.to || ''));
+        _pairs(o).forEach(([l, d]) => {
+          if (!whole(l) || !whole(d)) return;
+          if (Date.parse(_ends(d)[1]) < Date.parse(_ends(l)[0])) out.push(`${n}παράδοση ${o.drops.indexOf(d) + 1}: η παράδοση πριν από τη φόρτωση ${o.loads.indexOf(l) + 1}`);
+        });
         // F1: the pallets of the shipments come from the N side (the 1×1: from either row). Known on both sides: they
         // must add up as before. The one row of the 1 side known while an N row is empty: which number is meant? Said,
         // never guessed (principle 1).
@@ -1087,8 +1101,16 @@
       const t = (k) => _hmNorm(g(k));
       // F1: both ends empty = the whole day (the create form's _rowWin); one end only stays as typed and is named
       const lw = _rowWin(false, t('lfrom'), t('lto')), dw = _rowWin(false, t('dfrom'), t('dto'));
-      return { pallets: _num(g('pal')), load_from: _iso(g('lday'), lw.from), load_to: _iso(_toDay(g('lday'), lw.from, lw.to), lw.to),
-        deliver_from: _iso(g('dday'), dw.from), deliver_to: _iso(_toDay(g('dday'), dw.from, dw.to), dw.to) };
+      // owner 2/11: a night window ends the next day (_toDay). The same hour twice is that minute (F64, as the create
+      // form), unless the point already stores exactly that instant (an arrival «ως»): read back, it is no change.
+      const o = r.dataset.ship ? f.edit.ships.find((x) => String(x.shipment_id) === r.dataset.ship) : null;
+      const ends = (day, w, sf, st) => {
+        if (w.from !== w.to) return [_iso(day, w.from), _iso(_toDay(day, w.from, w.to), w.to)];
+        const a = _iso(day, w.from);
+        return a && sf && st && _min(sf) === _min(st) && _min(sf) === _min(a) ? [a, a] : _sameMin(day, w.from, w.to);
+      };
+      const [lf, lt] = ends(g('lday'), lw, o && o.load_from, o && o.load_to), [df, dt] = ends(g('dday'), dw, o && o.deliver_from, o && o.deliver_to);
+      return { pallets: _num(g('pal')), load_from: lf, load_to: lt, deliver_from: df, deliver_to: dt };
     };
     const rec = (pid) => (document.getElementById('lv_' + pid) || {}).value || '';
     // F62 (code review xhigh): the picker keeps its last pick in lv_ while its text is typed over, so a name typed but

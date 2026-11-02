@@ -165,7 +165,8 @@ const _noPriceIds = (items) => [...new Set(items.filter((x) => x && x.nat_order_
 function _marks(pts, hubId) {
   const seen = new Set();
   for (const p of pts) {
-    p.noTime = p.allDay === true && p.hub !== true && !(hubId != null && p.locId === hubId);
+    // a week whose hub id is unknown (HUB_UNKNOWN) cannot tell Veroia's whole-day default from a client's: no mark
+    p.noTime = hubId != null && p.allDay === true && p.hub !== true && p.locId !== hubId;
     const fresh = (p._np || []).filter((id) => !seen.has(id));
     fresh.forEach((id) => seen.add(id));
     p.noPrice = fresh.length > 0;

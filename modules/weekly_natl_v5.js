@@ -975,10 +975,12 @@ function _ptsHTML(pts, ok, start, inl, max) {
   const shown = new Set([...idx.filter((i) => pts[i].late), ...idx.filter((i) => !pts[i].late && seg(i)),
     ...idx.filter((i) => !pts[i].late && !seg(i))].slice(0, vis));
   const rest = idx.filter((i) => !shown.has(i));
-  // More late stops than slots: the chip itself carries the amber, so a hidden late stop is still seen.
+  // More late stops than slots: the chip itself carries the amber, so a hidden late stop is still seen. The same for
+  // what a folded order still lacks (owner 2/11, «λείπει ώρα» / «λείπει τιμή»: code review xhigh) — never only in a title.
   const restLate = rest.some((i) => pts[i].late);
+  const restGap = rest.some((i) => pts[i].noTime || pts[i].noPrice);
   const more = rest.length
-    ? `<span class="wi4-more${restLate ? ' wn5-late' : ''}" title="${_esc(rest.map((i) => `${num(pts[i], i) || pts[i].n}. ${_ptFull(pts[i])}`).join('\n'))}"><b>+${rest.length}</b></span>`
+    ? `<span class="wi4-more${restLate ? ' wn5-late' : ''}${restGap ? ' wn5-gap' : ''}" title="${_esc(rest.map((i) => `${num(pts[i], i) || pts[i].n}. ${_ptFull(pts[i])}`).join('\n'))}"><b>+${rest.length}</b></span>`
     : '';
   return `<span class="wi4-pts wn5-pts">${idx.filter((i) => shown.has(i)).map((i) => _ptHTML(pts[i], num(pts[i], i), ok, inl)).join('')}${more}</span>`;
 }
@@ -1029,8 +1031,8 @@ function _ptHTML(p, n, ok, inl) {
   if (p.hub) {
     const by = _hubBy(p);
     return `<span class="wi4-pt wn5-pt wn5-end${p.late ? ' wn5-late' : ''}" data-stop="${_id(p.stopId)}" title="${_esc(_ptFull(p))}">`
-      + `<span class="wi4-l1">Βέροια</span>${by ? `<span class="wi4-l2">ως ${_esc(by)}</span>` : ''}`
-      + `${p.noPrice ? '<span class="wi4-l2"><span class="wn5-miss">λείπει τιμή</span></span>' : ''}</span>`;
+      // the mark shares the deadline's line: the end cell holds two lines (code review xhigh)
+      + `<span class="wi4-l1">Βέροια</span>${by || p.noPrice ? `<span class="wi4-l2">${by ? 'ως ' + _esc(by) : ''}${by && p.noPrice ? ' · ' : ''}${p.noPrice ? '<span class="wn5-miss">λείπει τιμή</span>' : ''}</span>` : ''}</span>`;
   }
   const city = _ptCity(p);
   const full = _ptFull(p);

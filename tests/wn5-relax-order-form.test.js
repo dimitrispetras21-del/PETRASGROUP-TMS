@@ -82,6 +82,33 @@ test('night: a night window across the DST change keeps each end\'s own offset (
   assert.strictEqual(sh.load_to, '2026-10-25T06:00:00+02:00');
 });
 
+test('same hour (code review xhigh): 08:00–08:00 is sent as that minute, as a stop (F64) — never a zero-length window', () => {
+  const sh = J(F._body(state({ orders: [order({ loads: [row(3, '2026-11-03', '08:00', '08:00', 6)] })] }))).orders[0].shipments[0];
+  assert.deepStrictEqual([sh.load_from, sh.load_to], ['2026-11-03T08:00:00+02:00', '2026-11-03T08:01:00+02:00']);
+  const z = J(F._body(state({ orders: [order({ loads: [row(3, '2026-11-03', '23:59', '23:59', 6)] })] }))).orders[0].shipments[0];
+  assert.deepStrictEqual([z.load_from, z.load_to], ['2026-11-03T23:58:00+02:00', '2026-11-03T23:59:00+02:00']);
+  // an arrival «ως» keeps its one instant (from = to), the deadline the Veroia readers name by its end
+  const u = J(F._body(state({ side: 'ANODOS', orders: [order({ loads: [row(3, '2026-11-03', '10:00', '12:00', 6)], drops: [row(1, '2026-11-03', '22:00', '22:00', 6, { until: true })] })] }))).orders[0].shipments[0];
+  assert.deepStrictEqual([u.deliver_from, u.deliver_to], ['2026-11-03T22:00:00+02:00', '2026-11-03T22:00:00+02:00']);
+});
+
+test('delivery before loading (code review xhigh): the create form names the row, as the edit form', () => {
+  const lines = J(F._check(state({ orders: [order({ loads: [row(3, '2026-11-03', '22:00', '06:00', 6)], drops: [row(2, '2026-11-03', '08:00', '10:00', 6)] })] })));
+  assert.deepStrictEqual(lines, ['παράδοση 1: η παράδοση πριν από τη φόρτωση 1']);
+  assert.deepStrictEqual(J(F._check(state())), [], 'the delivery the next morning after a night loading is fine');
+});
+
+test('F66 with a night loading (code review xhigh): the new Veroia stop opens when the loading ENDS (next morning), never before it starts', () => {
+  const st = state({ side: 'ANODOS', target: { rt_id: 9, side: 'ANODOS' },
+    orders: [order({ loads: [row(3, '2026-11-03', '22:00', '06:00', 6)], drops: [row(1, '2026-11-04', '10:00', '10:00', 6, { until: true })] })] });
+  const hub = J(F._body(st)).stops.find((s) => s.location_id === 1);
+  assert.deepStrictEqual([hub.planned_from, hub.planned_to], ['2026-11-04T06:00:00+02:00', '2026-11-04T10:00:00+02:00']);
+  const st2 = state({ side: 'ANODOS', target: { rt_id: 9, side: 'ANODOS' },
+    orders: [order({ loads: [row(3, '2026-11-03', '22:00', '06:00', 6)], drops: [row(1, '2026-11-03', '23:30', '23:30', 6, { until: true })] })] });
+  const hub2 = J(F._body(st2)).stops.find((s) => s.location_id === 1);
+  assert.strictEqual(hub2.planned_from, '2026-11-03T00:00:00+02:00', 'a loading that ends the next day is not «that day\'s» end');
+});
+
 test('night: a new truck stop of the «+» spans the night (071 rt_stops_win: planned_to > planned_from)', () => {
   const b = J(F._body(state({ target: { rt_id: 9, side: 'KATHODOS' } })));
   const s1 = b.stops.find((s) => s.location_id === 3);
@@ -92,7 +119,8 @@ test('night: a new truck stop of the «+» spans the night (071 rt_stops_win: pl
 test('night: the edit form holds a night window (one day field + _toDay) and still locks a window of more than a night', () => {
   const s = src('modules/wn5_forms.js');
   assert.ok(/const span = \(a, b\) => a\.day !== b\.day && b\.day !== _toDay\(a\.day, a\.hm, b\.hm\);/.test(s), 'the two-days lock does not know a night window');
-  assert.ok(s.includes("load_to: _iso(_toDay(g('lday'), lw.from, lw.to), lw.to)") && s.includes("deliver_to: _iso(_toDay(g('dday'), dw.from, dw.to), dw.to)"),
+  assert.ok(s.includes("if (w.from !== w.to) return [_iso(day, w.from), _iso(_toDay(day, w.from, w.to), w.to)];")
+    && s.includes("ends(g('lday'), lw, o && o.load_from, o && o.load_to)") && s.includes("ends(g('dday'), dw, o && o.deliver_from, o && o.deliver_to)"),
     'the edit form reads a night window back on one day');
 });
 
@@ -152,4 +180,26 @@ test('marks: the model — Veroia\'s whole day is never «λείπει ώρα»;
   assert.ok(pts.length, 'the cycle has client points');
   for (const p of pts) assert.strictEqual(p.noTime, p.locId !== 1, `${p.name}: noTime ${p.noTime}`);
   assert.ok(!('noTime' in (r.kath && r.kath.veroia ? r.kath.veroia : {})), 'the Veroia head carries no mark');
+});
+
+test('marks: a week whose hub is unknown marks no «λείπει ώρα» (Veroia\'s default cannot be told from a client\'s)', () => {
+  const fx = FIX();
+  const c101 = fx.cycles.find((c) => c.stops.some((s) => s.stop_id === 1001));
+  // no VS anywhere and no opts.hubId: the model cannot name the hub (HUB_UNKNOWN)
+  for (const s of c101.stops) {
+    s.legs = (s.legs || []).filter((l) => !String(l.kind || '').startsWith('vs_'));
+    Object.assign(s, { planned_from: s.planned_from.slice(0, 10) + 'T00:00:00+03:00', planned_to: s.planned_from.slice(0, 10) + 'T23:59:00+03:00' });
+  }
+  Object.assign(fx, { cycles: [c101], waiting: [], hub: [] });
+  const c = board();
+  const r = c.WN5L.model(fx, { today: '2026-10-13' }).days.flatMap((d) => d.rows).find((x) => x.rtId === c101.rt_id);
+  const pts = [...(r.kath ? r.kath.from.concat(r.kath.to) : []), ...r.anod.from, ...r.anod.to];
+  assert.ok(pts.some((p) => p.locId === 1), 'hub unknown: Veroia is drawn as an ordinary point');
+  assert.ok(pts.every((p) => p.noTime === false), 'hub unknown: a point was marked');
+});
+
+test('marks: a folded point that lacks something turns the «+N» chip amber (wn5-gap), as a late one', () => {
+  const s = src('modules/weekly_natl_v5.js');
+  assert.ok(/const restGap = rest\.some\(\(i\) => pts\[i\]\.noTime \|\| pts\[i\]\.noPrice\);/.test(s) && s.includes("${restGap ? ' wn5-gap' : ''}"));
+  assert.ok(/\.wi4-more\.wn5-gap b \{ color:var\(--wi4-amber-ink\); \}/.test(src('assets/style.css')));
 });
