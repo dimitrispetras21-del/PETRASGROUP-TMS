@@ -326,3 +326,41 @@ test('C2-04 (B0): the ERP CSV says «προς κοπή» for a lot still waiting
 test('allocation why-map: no_partner_rate → «λείπει το κόμιστρο συνεργάτη»', () => {
   assert.strictEqual(V.allocWhy('no_partner_rate'), 'λείπει το κόμιστρο συνεργάτη');
 });
+
+// «Αυτοπαράδοση» (owner 2/11/2026, migration 101): our own group's goods,
+// invoiced with no ERP number. Eirini ticks it by hand; nothing detects it.
+test('self delivery: the write, the undo, the state word, the search; left out of the ERP sheet', () => {
+  assert.deepStrictEqual(V.selfFields('2026-11-02'), { 'Invoiced': true, 'Self Delivery': true, 'Invoice Date': '2026-11-02' });
+  // the undo clears the box in the SAME write only for a self delivery (unticking alone is refused by 101)
+  assert.deepStrictEqual(V.undoFields(true), { 'Invoiced': false, 'Invoice Number': null, 'Invoice Date': null, 'Self Delivery': false });
+  assert.deepStrictEqual(V.undoFields(false), { 'Invoiced': false, 'Invoice Number': null, 'Invoice Date': null });
+  const set = fixture();
+  set.intl.push(intl('iS', { 'Order No': 1250, Reference: 'OWN-1', Client: ['recA'], Invoiced: true, 'Self Delivery': true, 'Invoice Date': PREV, 'Loading DateTime': d(PREV, 1), 'Delivery DateTime': d(PREV, 2) }));
+  // a box ticked on a row that is NOT invoiced says nothing (only the pair counts)
+  set.intl.push(intl('iT', { 'Order No': 1251, Reference: 'OWN-2', Client: ['recA'], Price: 900, 'Self Delivery': true, 'Loading DateTime': d(PREV, 1), 'Delivery DateTime': d(PREV, 2) }));
+  const items = V.annotate(set, (id) => CLIENTS[id] || '');
+  const s = items.find(it => it.id === 'iS'), t = items.find(it => it.id === 'iT');
+  assert.strictEqual(s.state, 'invoiced', 'counts as invoiced, with no number and no price');
+  assert.strictEqual(s.self, true);
+  assert.strictEqual(s.price, null, 'no price = «—», never a 0');
+  assert.strictEqual(V.stateWord(s), 'αυτοπαράδοση');
+  assert.strictEqual(t.self, false);
+  assert.strictEqual(t.state, 'ready');
+  assert.deepStrictEqual(V.searchFilter(items, 'αυτοπαραδοση').map(it => it.id), ['iS']);
+  const k = V.kpis(V.baseList(items, PREV));
+  assert.ok(k.invoiced >= 1);
+  const rows = V.csvRows(V.groupByClient(V.baseList(items, PREV)), () => null);
+  assert.ok(!rows.some(r => r[1] === 'OWN-1'), 'not on the ERP sheet');
+  assert.ok(rows.some(r => r[1] === 'OWN-2'), 'a ready order still is');
+  // the duplicate-ΤΠΥ check never pairs a self delivery (no number)
+  assert.deepStrictEqual(V.dupCheck(items, '', t), { same: [], other: [] });
+});
+
+test('self delivery: one rule in OrdersCommon (isSelfDelivery + the ΤΠΥ cell)', () => {
+  assert.strictEqual(OrdersCommon.isSelfDelivery({ Invoiced: true, 'Self Delivery': true }), true);
+  assert.strictEqual(OrdersCommon.isSelfDelivery({ Invoiced: false, 'Self Delivery': true }), false);
+  assert.strictEqual(OrdersCommon.isSelfDelivery({ Invoiced: true }), false);
+  global.escapeHtml = global.escapeHtml || (s => String(s));
+  assert.match(OrdersCommon.invCell({ Invoiced: true, 'Self Delivery': true, 'Invoice Date': '2026-11-02' }), /✓ Αυτοπαράδοση/);
+  assert.match(OrdersCommon.invCell({ Invoiced: true, 'Invoice Number': '0431' }), /✓ ΤΠΥ 0431/);
+});

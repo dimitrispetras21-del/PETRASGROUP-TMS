@@ -75,6 +75,10 @@ const OrdersCommon = {
 
   // ── Invoicing state (moved here from invoicing.js, rules unchanged) ──────
   isInvoiced(f) { f = f || {}; return f['Status'] === 'Invoiced' || !!f['Invoiced']; },
+  // «Αυτοπαράδοση» (owner 2/11/2026, migration 101): our own group's goods — invoiced
+  // with NO ERP transport invoice (no ΤΠΥ, maybe no price). Eirini ticks it by hand;
+  // nothing detects it. ONE rule for every screen that shows a ΤΠΥ.
+  isSelfDelivery(f) { f = f || {}; return f['Self Delivery'] === true && OrdersCommon.isInvoiced(f); },
   // National orders never get Status='Delivered' written (only daily_ops does,
   // on ORDERS): «delivered» is COMPUTED for them — delivery date passed and not
   // cancelled (owner decision, invoicing.js Φ0/Α7). Owner 28/9: a national order
@@ -209,6 +213,7 @@ const OrdersCommon = {
   invCell(f) {
     f = f || {};
     if (!OrdersCommon.isInvoiced(f)) return '<span class="oc-noinv">—</span>';
+    if (OrdersCommon.isSelfDelivery(f)) return '<span class="oc-inv" title="Αυτοπαράδοση — δικό μας φορτίο, χωρίς τιμολόγιο ERP">✓ Αυτοπαράδοση</span>';
     const n = String(f['Invoice Number'] || '').trim();
     const d = f['Invoice Date'] ? ' · ' + OrdersCommon.dm(f['Invoice Date']) : '';
     return n
