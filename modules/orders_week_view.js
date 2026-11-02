@@ -341,8 +341,7 @@ const OrdersWeekView = (() => {
   // compares the two lists row by row). First its NUMBER (WI4.weekNumbers, the
   // board's own count) — then the board's rule for what has none, WI4.dayRowOrder:
   // exports before import-only rows, Veroia Switch last, then delivery /
-  // loading time (the client key is empty in production: ORDERS has no 'Client
-  // Name' on the Worker map). A guest row (home in another week, counted here)
+  // loading time (no client sort, owner 2/11). A guest row (home in another week, counted here)
   // stays last in its day, as since 13/10. The RT code only keeps equal rows stable.
   function rowOrder(a, b) {
     const ea = !!a.sortExp, eb = !!b.sortExp;
