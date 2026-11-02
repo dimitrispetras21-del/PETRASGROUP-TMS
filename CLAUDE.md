@@ -164,6 +164,13 @@ cd worker && CLOUDFLARE_API_TOKEN=$CF_API_TOKEN npx wrangler deploy
    - κόμιστρο ΑΝΟΔΟΥ (Π-7, 089 + Worker b88e6150, ζωντανό 1/11): `seg_partner_rate_anodos: "` (`--rate2 1`)
    - αυτοπαράδοση στην τιμολόγηση (101 + Worker 7bb5003a, ζωντανό 2/11): `"Self Delivery": "self_delivery"`, **ακριβώς
      δύο φορές** (ORDERS + NATIONAL ORDERS) (`--self 1`)
+   - **εκκρεμεί deploy** (PR deploy/worker-transfer-drafts, πάνω στον 7bb5003a· θέλει 098 + 099 + 102 εκτελεσμένες):
+     «Αλλαγή στον δρόμο» (099, `POST /plan/transfer`): `rpc: "plan_transfer"`· «Σύνθεση φορτίων» (102, `/plan/drafts`):
+     `rpc: "plan_draft_realize"`. Μία σημαία για τα δύο, μετά το `--self 1`: `--road 1` → `GUARD OK (34 markers, plan=2,
+     handover=1, f3=1, f5=1, edit=1, invoiced=1, rate2=1, self=1, road=1)`· πριν από το deploy (ζωντανός 7bb5003a) `--road 0`.
+     Μόλις ανέβει: η λέξη «εκκρεμεί deploy» φεύγει, ο Worker μπαίνει εδώ με την έκδοσή του, και η εντολή «για όλα» παίρνει
+     το `--road 1`. Επείγουσα επαναφορά στον 7bb5003a: η εντολή «για όλα» παρακάτω **με `--road 0`** → `GUARD OK (34 markers … road=0)`
+     (χωρίς `--road` δεν ελέγχεται ότι οι δύο διαδρομές έφυγαν).
    Μία εντολή για όλα, πριν και μετά (από 2/11): `node worker/tools/worker-guard.mjs <bundle ή λήψη CF> --plan 2
    --handover 1 --f3 1 --f5 1 --edit 1 --invoiced 1 --rate2 1 --self 1` → `GUARD OK (32 markers, plan=2, handover=1, f3=1,
    f5=1, edit=1, invoiced=1, rate2=1, self=1)`. Επείγουσα επαναφορά στον προηγούμενο (`wrangler rollback
