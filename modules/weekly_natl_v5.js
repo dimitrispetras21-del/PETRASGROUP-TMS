@@ -1929,7 +1929,12 @@ const WN5 = {
       { id: 'sheet-all', label: 'Όλο το δρομολόγιο', run: (rtId) => WN5Sheet.print(rtId, 'ALL') }] },
     { id: 'plates', order: 70, label: 'Αντιγραφή πινακίδων', run: (rtId) => copyPlatesOf(rtId) },
     // owner 31/10 (B-13 = α, Figma 2396:7831): the way into the vehicle change (H2) for every cycle, also one never changed
-    { id: 'handover', order: 80, label: 'Αλλαγή οχήματος…', sub: '›', run: (rtId) => WN5Hand.entry(rtId) },
+    // owner 2/11 (Q2, «μοναδικό κουμπί»): with FEATURES.WN_ROAD the one entry «Αλλαγή στον δρόμο…» (modules/wn5_road.js),
+    // which becomes the 072b change by itself when the base says whole_vehicle; without it the line above, as before
+    { id: 'handover', order: 80,
+      get label() { return typeof WN5Road !== 'undefined' && WN5Road.on() ? 'Αλλαγή στον δρόμο…' : 'Αλλαγή οχήματος…'; },
+      get sub() { return typeof WN5Road !== 'undefined' && WN5Road.on() ? '' : '›'; },
+      run: (rtId) => (typeof WN5Road !== 'undefined' && WN5Road.on() ? WN5Road.open(rtId) : WN5Hand.entry(rtId)) },
     // T15: last and red (Figma 2011:8858); owner + dispatcher on the Worker, but visible to all (Δ12 tile 8)
     { id: 'clear', order: 90, label: 'Καθαρισμός ανάθεσης', sub: 'κάθοδος + άνοδος', danger: true, run: (rtId) => WN5Act.clear(rtId) },
   ],

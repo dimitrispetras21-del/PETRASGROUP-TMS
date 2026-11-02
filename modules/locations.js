@@ -947,8 +947,9 @@ async function _locDoDelete(id) {
 }
 
 // ── Fetch ───────────────────────────────────────
+// 099: the place «TRANSFER POINT» (free-text transfer points stand on it) is not a place to edit or pick here.
 async function _locFetchAll() {
-  return atGetAll(TABLES.LOCATIONS, {
+  const recs = await atGetAll(TABLES.LOCATIONS, {
     // Opening Hours / Delivery Days: η φόρμα τα γράφει και ο Worker τα χαρτογραφεί,
     // αλλά έλειπαν από ΕΔΩ — και το _locOpenEdit δίνει στη φόρμα αυτό ακριβώς το
     // cached record. Αποτέλεσμα: το input πάντα κενό ακόμη κι όταν η βάση είχε τιμή,
@@ -956,6 +957,7 @@ async function _locFetchAll() {
     fields: ['Name','Country','City','Address','Type','Latitude','Longitude',
              'Opening Hours','Delivery Days','Notes','Phone']
   }, false);
+  return recs.filter(r => !(typeof isTransferPointLoc === 'function' && isTransferPointLoc(r.id)));
 }
 
 // ── Utils ───────────────────────────────────────

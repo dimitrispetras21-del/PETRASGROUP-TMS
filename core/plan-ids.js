@@ -85,8 +85,11 @@
     return x ? { id: x.id, legacy_id: x.legacy_id, name: x.name, address: x.address == null ? null : x.address,
       city: x.city == null ? null : x.city, phone: x.phone == null ? null : x.phone } : null;
   }
+  // 099: the place «TRANSFER POINT» is never offered in a list (core/constants.js isTransferPointLoc); place() still
+  // names it, so a stop that stands on it reads.
   function list(kind) {
     return _rows(kind)
+      .filter((x) => !(kind === 'location' && typeof isTransferPointLoc === 'function' && isTransferPointLoc(x.legacy_id)))
       .map((x) => ({ id: x.id, legacy_id: x.legacy_id, label: String(LABEL[kind](x) || '—'), active: x.active !== false }))
       .sort((a, b) => a.label.localeCompare(b.label, 'el'));
   }
