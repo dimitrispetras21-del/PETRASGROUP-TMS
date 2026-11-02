@@ -388,6 +388,37 @@
     }
     return { txt: f.free, cls: 'free' };
   }
+  // Π2 (owner 2/11, W50 test): an own truck or driver already on another cycle on the request's days is said BEFORE
+  // the press, in amber, naming every such cycle, and the save carries accept_busy from the first press (one press,
+  // not a refusal and then «Αποθήκευση έτσι κι αλλιώς»). The base still judges and keeps each accepted pair with an
+  // audit row (086 plan_seg_overlap_mark). The list is by day, from the board: it may name a cycle whose hours do not
+  // clash (harmless), never fewer. A span the board does not cover (_blind) is not pre-accepted: the base accepts
+  // EVERY overlap of the save, and one we cannot name must not pass silently — there the refusal and its offer stay.
+  function _overlaps(st, r) {
+    const k = K();
+    if (st.who !== 'own' || !r || r.missing || !r.body) return null;
+    const sp = _span(st);
+    if (!sp || _blind(st)) return null;
+    const self = new Set([st.rtId, r.body.target && r.body.target.rt_id].filter((x) => x != null));
+    const hub = k.hubId();
+    const out = [];
+    for (const [key, id, who] of [['truck_id', st.truck, 'φορτηγό'], ['driver_id', st.driver, 'οδηγός']]) {
+      if (id == null) continue;
+      const cs = st.cycles.filter((c) => !self.has(c.rt_id) && _uses(c, key, id)
+        && (() => { for (let d = sp[0]; d <= sp[1]; d = k.addDays(d, 1)) if (_covers(c, d)) return true; return false; })())
+        .sort((x, y) => Date.parse(x.start_at) - Date.parse(y.start_at));
+      if (!cs.length) continue;
+      const at = (c) => {
+        const last = (c.stops || []).slice().sort((x, y) => Date.parse(x.planned_to) - Date.parse(y.planned_to)).pop();
+        const place = last ? (last.location_id === hub ? 'Βέροια' : last.location || k.placeName(last.location_id)) : '—';
+        return place + ' ως ' + k.dayShort(k.ymdOf(c.end_at)).split(' ')[0] + ' ' + k.hm(c.end_at);
+      };
+      out.push(who + ' και σε: ' + cs.map(at).join(', '));
+    }
+    return out.length ? 'Επικάλυψη · ' + out.join(' · ') + '. Αποθηκεύεται έτσι, γράφεται στο ιστορικό.' : null;
+  }
+  // the request the save sends: with accept_busy when the form already said the overlap (Π2)
+  const _sendReq = (st, r) => (_overlaps(st, r) && WN5Act.withAccept(r, { code: 'truck_busy' })) || r;
   // the last rate of a partner on the loaded week (the history of the line needs a Worker read: follow-up)
   function _lastRate(st, id) {
     const c = st.cycles.filter((x) => x.trip_type === 'PARTNER' && x.partner_id === id && x.partner_rate != null)
@@ -615,9 +646,11 @@
       const r = req(st);
       const miss = d.dlg.querySelector('[data-miss]');
       miss.textContent = pb.words.length ? 'Λείπει: ' + pb.words.join(', ') : '';
-      // the stop order the base would refuse (stop_order, 072 plan_h_reseq): said before the press, red, never a block
+      // the stop order the base would refuse (stop_order, 086): said before the press, soft (amber), never a block
       const ow = r && !r.missing && r.body && r.body.target && r.body.target.rt_id ? k.orderWarn(st.cycles.find((c) => c.rt_id === r.body.target.rt_id), r) : null;
-      if (ow && !pb.words.length) miss.textContent = ow;
+      const ov = pb.words.length ? null : _overlaps(st, r);
+      if (!pb.words.length && (ow || ov)) miss.textContent = [ow, ov].filter(Boolean).join(' ');
+      miss.classList.toggle('wn5-soft', !pb.words.length && !!(ow || ov));
       const b = d.dlg.querySelector('[data-act="save"]');
       b.textContent = saveTxt();
       b.disabled = d.locked || d.busy || !r || !!r.missing || !!pb.words.length || !changed();
@@ -782,7 +815,7 @@
         const r = req(st);
         if (!r || r.missing || problems(st).words.length) return;
         if (st.mode === 'pick') { d.picked = true; k.close(d); if (ctx.onPick) ctx.onPick(choiceOf(st)); return; }
-        k.send(d, r, st.mode === 'vehicle' ? 'Άλλαξε το όχημα' : 'Ανατέθηκε', { intl: true, current: () => req(st) });
+        k.send(d, _sendReq(st, r), st.mode === 'vehicle' ? 'Άλλαξε το όχημα' : 'Ανατέθηκε', { intl: true, current: () => req(st) });
       }
     });
     // the list follows its field when the form scrolls or the window moves, and goes when the form closes

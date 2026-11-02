@@ -3114,11 +3114,25 @@ SCN.f33 = async (browser, origin) => {
     await page.fill(`${P} input[data-hub="from"]`, '08:00').catch(() => {});
     await page.fill(`${P} input[data-hub="to"]`, '10:00').catch(() => {});
     await page.waitForTimeout(200);
-    // code review: the same words BEFORE the press, red beside the line; the button stays on (the base judges)
+    // code review: the same words BEFORE the press, beside the line; the button stays on (the base judges). Π1 (W50
+    // test 2/11): amber (.wn5-soft), never the red of «Λείπει»; the rule is 086's — the Tue all-day loading ENDS
+    // (23:59) before the Wed delivery starts (00:00), so it is still said
     const pre = await bText(page, `${P} .wn5-pline[data-piece="4393"] .wn5-why`);
-    ok(scn, 'before the press: the line says «Η στάση «LARISA TEST Τρί 13/10 όλη η ημέρα» (ΑΝΟΔΟΣ, νέα) θα ήταν πριν …», «Πρόσθεσε» on; N-T392 says nothing',
-      pre.startsWith('Η στάση «LARISA TEST Τρί 13/10 όλη η ημέρα» (ΑΝΟΔΟΣ, νέα) θα ήταν πριν από τη «ATHENS TEST Τετ 14/10 όλη η ημέρα» (ΚΑΘΟΔΟΣ) στο RT-T301')
-      && (await bOff(page, `${P} [data-act="save"][data-piece="4393"]`)) === false && !(await bHas(page, `${P} .wn5-pline[data-piece="4392"] .wn5-why`)), pre);
+    const soft = await page.evaluate((s) => { const e = document.querySelector(s); return !!e && e.classList.contains('wn5-soft'); }, `${P} .wn5-pline[data-piece="4393"] .wn5-why`);
+    ok(scn, 'before the press: the line says «Η στάση «LARISA TEST Τρί 13/10 όλη η ημέρα» (ΑΝΟΔΟΣ, νέα) θα τελείωνε πριν αρχίσει …», amber, «Πρόσθεσε» on; N-T392 says nothing',
+      pre.startsWith('Η στάση «LARISA TEST Τρί 13/10 όλη η ημέρα» (ΑΝΟΔΟΣ, νέα) θα τελείωνε πριν αρχίσει η «ATHENS TEST Τετ 14/10 όλη η ημέρα» (ΚΑΘΟΔΟΣ) στο RT-T301')
+      && soft && (await bOff(page, `${P} [data-act="save"][data-piece="4393"]`)) === false && !(await bHas(page, `${P} .wn5-pline[data-piece="4392"] .wn5-why`)), { pre, soft });
+    // Π1: what 086 takes is never said — an all-day ΑΝΟΔΟΣ on the day of a ΚΑΘΟΔΟΣ with hours (ends 23:59, after
+    // 06:00), and a window that overlaps one ahead of it; only a stop that ENDS before an earlier one starts
+    const p1 = await page.evaluate(() => {
+      const k = WN5Act._kit, T = (d, hm) => d + 'T' + hm + ':00+03:00';
+      const c = { code: 'RT-X', stops: [{ side: 'KATHODOS', location_id: 4, location: 'A', planned_from: T('2026-10-13', '06:00'), planned_to: T('2026-10-13', '08:00') }] };
+      const w = (f, t) => k.orderWarn(c, { body: { stops: [{ side: 'ANODOS', location_id: 5, planned_from: f, planned_to: t }] } });
+      return { allDay: w(T('2026-10-13', '00:00'), T('2026-10-13', '23:59')), overlap: w(T('2026-10-13', '05:00'), T('2026-10-13', '07:00')),
+        endsBefore: w(T('2026-10-13', '03:00'), T('2026-10-13', '06:00')) };
+    });
+    ok(scn, 'Π1: all-day ΑΝΟΔΟΣ same day as ΚΑΘΟΔΟΣ 06:00 → nothing; overlapping 05:00–07:00 → nothing; 03:00–06:00 (ends as it starts) → said',
+      p1.allDay === null && p1.overlap === null && typeof p1.endsBefore === 'string' && p1.endsBefore.includes('θα τελείωνε πριν αρχίσει'), p1);
     await bClick(page, `${P} [data-act="save"][data-piece="4393"]`);
     await page.waitForTimeout(500);
     const t = await bText(page, `${P} .wn5-strip`);
@@ -3128,8 +3142,8 @@ SCN.f33 = async (browser, origin) => {
     // a refusal reaching a strip without the request (e.g. an order form's save) still names the cycle, never the bare id
     const t2 = await page.evaluate(() => { const h = document.createElement('div'); document.body.appendChild(h);
       WN5Act.strip(h, { kind: 'refusal', code: 'stop_order', message: 'rig sentinel stop_order (301)' }); return h.innerText; });
-    ok(scn, 'stop_order without the request: «Οι στάσεις του RT-T301 δεν θα ήταν σε χρονική σειρά … ΑΝΟΔΟΥ … ΚΑΘΟΔΟΥ»',
-      /Οι στάσεις του RT-T301 δεν θα ήταν σε χρονική σειρά: μια στάση της ΑΝΟΔΟΥ θα ήταν πριν από στάση της ΚΑΘΟΔΟΥ/.test(t2) && !t2.includes('(301)'), t2);
+    ok(scn, 'stop_order without the request: «Οι στάσεις του RT-T301 δεν θα ήταν σε χρονική σειρά … τελείωνε πριν αρχίσει … φόρτωσή της» (086: the same side too)',
+      /Οι στάσεις του RT-T301 δεν θα ήταν σε χρονική σειρά: μια στάση θα τελείωνε πριν αρχίσει η στάση πριν από αυτήν/.test(t2) && t2.includes('παράδοση πριν από τη φόρτωσή της') && !t2.includes('(301)'), t2);
     ok(scn, 'no page errors (2)', !S.pageErrors.length, S.pageErrors);
     await page.context().close();
   }
