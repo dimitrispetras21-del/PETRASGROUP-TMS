@@ -236,6 +236,8 @@
   function shelfHTML(model) {
     const k = typeof WN5Act !== 'undefined' ? K() : null;
     const hub = model && model.hub;
+    // «Σύνθεση φορτίων» (owner 2/11, shared drafts 102): behind localStorage tms_wn5_compose, the panel is drawn by WN5Compose
+    if (k && hub && typeof WN5Compose !== 'undefined' && WN5Compose.on()) return WN5Compose.html(model);
     if (!k || !hub || hub.empty || (!(hub.split || []).length && !(hub.stock || []).length)) return '';   // empty = hidden
     const split = hub.split || [], stock = hub.stock || [];
     // a ticked row no longer on the board (taken, split, deleted elsewhere) leaves the new load
