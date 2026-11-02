@@ -244,9 +244,18 @@ begin
     perform plan_h_raise('draft_side', p_piece || ':' || d.side);
   end if;
   select draft_id into v_other from plan_draft_pieces where piece_id = p_piece and removed_at is null;
-  if v_other is not null then perform plan_h_raise('piece_in_draft', p_piece || ':' || v_other); end if;
-  insert into plan_draft_pieces (draft_id, piece_id, snap, added_by)
-  values (p_draft, p_piece, coalesce(p_snap, plan_h_draft_snap(p_piece)), p_actor) returning * into r;
+  -- ':same' = already in THIS draft (a second press), never worded as a conflict with another draft
+  if v_other is not null then
+    perform plan_h_raise('piece_in_draft', p_piece || ':' || v_other || case when v_other = p_draft then ':same' else '' end);
+  end if;
+  -- two people adding the same piece at the same moment both pass the check above: the unique index decides, and the
+  -- loser hears the same code, never a bare 23505 the Worker cannot word (principle 1)
+  begin
+    insert into plan_draft_pieces (draft_id, piece_id, snap, added_by)
+    values (p_draft, p_piece, coalesce(p_snap, plan_h_draft_snap(p_piece)), p_actor) returning * into r;
+  exception when unique_violation then
+    perform plan_h_raise('piece_in_draft', p_piece || ':race');
+  end;
   perform plan_h_audit(p_actor, p_role, 'create', 'plan_draft_pieces', r.id::text, null, to_jsonb(r));
 end
 $f$;
@@ -441,9 +450,10 @@ begin
     v_piece := (it #>> '{}')::bigint;
     select * into r from plan_draft_pieces where draft_id = d.id and piece_id = v_piece and removed_at is null for update;
     if r.id is null then perform plan_h_raise('draft_piece_missing', coalesce(v_piece::text, 'null') || ':' || d.id); end if;
-    -- a piece that no longer waits (dead, split, assigned) has no "now" to take: it is taken out, never acked
+    -- a blocking mark (dead, split, assigned, moved) is never acked away: the piece is taken out. An ack of 'moved'
+    -- would renew the position and let a KATHODOS draft realize a piece that no longer stands at its point.
     v_snap := plan_h_draft_snap(v_piece);
-    if v_snap is null or exists (select 1 from v_plan_draft_piece_state s where s.draft_piece_id = r.id and s.state in ('dead', 'split', 'assigned')) then
+    if v_snap is null or exists (select 1 from v_plan_draft_piece_state s where s.draft_piece_id = r.id and s.blocking) then
       perform plan_h_raise('draft_not_ready', v_piece || ':ack');
     end if;
     update plan_draft_pieces set snap = v_snap where id = r.id;

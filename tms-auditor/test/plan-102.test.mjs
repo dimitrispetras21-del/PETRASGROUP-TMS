@@ -65,7 +65,7 @@ test('102 on the production-shaped copy: before, dry run, GO, the rules on rows,
 
   await t.test('the dry run keeps nothing and says what it would make', async () => {
     const msg = await errorOf(db, read('102_plan_drafts_dryrun.sql'));
-    assert.ok((msg ?? '').includes(`DRY RUN 102 finished - EVERYTHING UNDONE, nothing kept. The block ran to its end  ||  102 ran: tables 2, acts 8, helpers 9, drafts 1, policies 2, triggers ${trg0 + 2}, b54 ${trg0 + 2}`), msg);
+    assert.ok((msg ?? '').includes(`DRY RUN 102 finished - EVERYTHING UNDONE, nothing kept. The block ran to its end  ||  102 ran: tables 2, acts 8, helpers 9, drafts_table 1, policies 2, triggers ${trg0 + 2}, b54 ${trg0 + 2}`), msg);
     assert.strictEqual((await one(db, `SELECT to_regclass('public.plan_drafts') AS t`)).t, null);
     assert.strictEqual(await num(db, `SELECT red_value FROM monitoring.checks WHERE id = 'B-54'`), trg0);
   });
@@ -154,6 +154,13 @@ test('102 on the production-shaped copy: before, dry run, GO, the rules on rows,
       const p1 = rd.pieces.find((x) => x.piece_id === k1);
       assert.deepStrictEqual([p1.state, p1.changed, p1.blocking, Number(p1.piece.client_id), rd.ready], ['changed', ['client_id'], false, Number(cl2), true]);
       assert.notStrictEqual(Number(p1.snap.client_id), Number(cl2));
+      // a blocking mark is never acked away: a piece 'moved' (snap position no longer its position) is refused
+      await db.exec(`UPDATE plan_draft_pieces SET snap = jsonb_set(snap, '{position_location_id}', '${south2}') WHERE piece_id = ${k2} AND removed_at IS NULL`);
+      assert.strictEqual((await readDrafts(db, hub)).drafts[0].pieces.find((x) => x.piece_id === k2).state, 'moved');
+      assert.match((await call(db, 'plan_draft_pieces', { draft_id: id, version: 1, ack: [k2] })).err ?? '', new RegExp(`draft_not_ready:${k2}:ack`));
+      await db.exec(`UPDATE plan_draft_pieces SET snap = jsonb_set(snap, '{position_location_id}', '${hub}') WHERE piece_id = ${k2} AND removed_at IS NULL`);
+      // a second press adding a piece already in this draft says ':same', not a conflict with another draft
+      assert.match((await call(db, 'plan_draft_pieces', { draft_id: id, version: 1, add: [{ piece_id: k1 }] })).err ?? '', new RegExp(`piece_in_draft:${k1}:${id}:same`));
       // "OK" renews the snap, with a trace
       assert.strictEqual((await call(db, 'plan_draft_pieces', { draft_id: id, version: 1, ack: [k1] })).err, null);
       rd = (await readDrafts(db, hub)).drafts[0];
@@ -246,7 +253,7 @@ test('102 on the production-shaped copy: before, dry run, GO, the rules on rows,
     assert.match(await errorOf(db, read('102_plan_drafts_rollback.sql')) ?? '', /1 live draft\(s\)/);
     await db.exec('ROLLBACK');
     const msg = await errorOf(db, read('102_plan_drafts_rollback_dryrun.sql'));
-    assert.ok((msg ?? '').includes(`rollback ran: tables 0, acts 0, helpers 0, drafts 0, policies 0, triggers ${trg0}, b54 ${trg0}`), msg);
+    assert.ok((msg ?? '').includes(`rollback ran: tables 0, acts 0, helpers 0, drafts_table 0, policies 0, triggers ${trg0}, b54 ${trg0}`), msg);
     assert.notStrictEqual((await one(db, `SELECT to_regclass('public.plan_drafts') AS t`)).t, null);
     assert.strictEqual(await errorOf(db, read('102_plan_drafts_rollback.sql')), null);
     const v = await one(db, read('102_plan_drafts_verify.sql'));
