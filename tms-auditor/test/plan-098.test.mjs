@@ -184,9 +184,9 @@ test('098 on the production-shaped copy (after 093, 095, 096, 097)', async (t) =
   });
 
   await t.test('a stop serves every load: one delivered at A\'s transfer stop, one starting at B\'s linked stop - both kept', async () => {
-    const r = await scenario(db, async () => {
+    const setup = async () => {
       const x = await tr(db, 'national', 'meeting', true, true, false);
-      // a national load Q of truck A that ENDS at the transfer place, and R of truck B that STARTS there
+      // a national load Q of truck A that ENDS at the transfer place, or R of truck B that STARTS there
       const end = async (from, to, rt, pk, dr) => {
         const n = (await one(db, `INSERT INTO national_orders (legacy_id, client_id, reference, price, pallets)
           VALUES ('r98Q' || nextval('t98_n'), (SELECT min(id) FROM clients), 'T98-Q', 100, 5) RETURNING id`)).id;
@@ -198,11 +198,14 @@ test('098 on the production-shaped copy (after 093, 095, 096, 097)', async (t) =
       };
       const a1 = (await one(db, `SELECT id, location_id FROM rt_stops WHERE rt_id = $1 AND seq = 1`, [x.rt_a]));
       const b2 = (await one(db, `SELECT id, location_id FROM rt_stops WHERE rt_id = $1 AND seq = 2`, [x.rt_b]));
-      await end(a1.location_id, x.larisa, x.rt_a, a1.id, x.a2);
-      await end(x.larisa, b2.location_id, x.rt_b, x.b1, b2.id);
-      return {};
-    });
-    assert.strictEqual(r.late, null);
+      return { x, a1, b2, end };
+    };
+    // each on its own, so each fix is proven alone: a delivery at A's transfer stop is not "left" ...
+    const q = await scenario(db, async () => { const k = await setup(); await k.end(k.a1.location_id, k.x.larisa, k.x.rt_a, k.a1.id, k.x.a2); return {}; });
+    assert.strictEqual(q.late, null, 'delivered at the transfer stop');
+    // ... and a load that starts at B's linked stop is a plain loading there
+    const rr = await scenario(db, async () => { const k = await setup(); await k.end(k.x.larisa, k.b2.location_id, k.x.rt_b, k.x.b1, k.b2.id); return {}; });
+    assert.strictEqual(rr.late, null, 'starts at the linked stop');
   });
 
   await t.test('transfer_left: unloaded at the point with no next truck - refused, unless the stop says "waits there"', async () => {
