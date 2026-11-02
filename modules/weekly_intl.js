@@ -660,10 +660,13 @@ async function renderWeeklyIntl(){
     const we=new Date(ws); we.setDate(ws.getDate()+6);
     const wsFmt=toLocalDate(ws), weFmt=toLocalDate(we);
     WINTL._range={ws:wsFmt,we:weFmt};
+    // ±8 days around the week: WI4.readWindow, the window «Εβδομάδα» reads the same
+    // orders through to number them as this board does (owner 2/11).
+    const win=WI4.readWindow(ws,toLocalDate);
     // Cross-week (feedback dispatcher 19/5): φόρτωσε imports ±1 εβδομάδα ώστε
     // export της W να ταιριάζει με import της W±1 — τα γειτονικά αδιάθετα
     // εμφανίζονται σε δική τους ενότητα στο τέλος, ΔΕΝ μετράνε στο tally.
-    const impFilter=`AND({Type}='International',{Direction}='Import',IS_AFTER({Loading DateTime},'${toLocalDate(new Date(ws.getTime()-8*86400000))}'),IS_BEFORE({Loading DateTime},'${toLocalDate(new Date(we.getTime()+8*86400000))}'))`;
+    const impFilter=`AND({Type}='International',{Direction}='Import',IS_AFTER({Loading DateTime},'${win.from}'),IS_BEFORE({Loading DateTime},'${win.to}'))`;
 
     let [,expOrders,impOrders] = await Promise.all([
       preloadReferenceData(),
@@ -678,7 +681,7 @@ async function renderWeeklyIntl(){
       // widening the DATE window is safe pre-deploy; filtering by
       // {Plan Week Start} in the formula itself would 422 (unmapped field,
       // CLAUDE.md facade trap) until the Worker ships it.
-      atGetAll(TABLES.ORDERS,  {filterByFormula:`AND({Type}='International',{Direction}='Export',OR(AND(IS_AFTER({Delivery DateTime},'${toLocalDate(new Date(ws.getTime()-8*86400000))}'),IS_BEFORE({Delivery DateTime},'${toLocalDate(new Date(we.getTime()+8*86400000))}')),AND(IS_AFTER({Loading DateTime},'${toLocalDate(new Date(ws.getTime()-8*86400000))}'),IS_BEFORE({Loading DateTime},'${toLocalDate(new Date(we.getTime()+8*86400000))}'))))`},false),
+      atGetAll(TABLES.ORDERS,  {filterByFormula:`AND({Type}='International',{Direction}='Export',OR(AND(IS_AFTER({Delivery DateTime},'${win.from}'),IS_BEFORE({Delivery DateTime},'${win.to}')),AND(IS_AFTER({Loading DateTime},'${win.from}'),IS_BEFORE({Loading DateTime},'${win.to}'))))`},false),
       atGetAll(TABLES.ORDERS,  {filterByFormula:impFilter},false),
     ]);
     if (loadId !== _wiLoadId) return;
@@ -770,17 +773,10 @@ async function renderWeeklyIntl(){
     // excluded if it names another week, even when the natural date would say
     // otherwise. No export gets this field written in Wave 1 (see fetch
     // comment above), so today this is a no-op for every row.
-    expOrders = expOrders.filter(r=>{
-      const pws=toLocalDate(r.fields['Plan Week Start']||'');
-      if(pws) return pws===wsFmt;
-      const eff=toLocalDate(r.fields['Delivery DateTime']||r.fields['Loading DateTime']||'');
-      return eff>=wsFmt && eff<=weFmt;
-    });
-    WINTL.data.exports = expOrders
-      .sort((a,b)=>(
-        (a.fields['Delivery DateTime']||a.fields['Loading DateTime']||'')
-        .localeCompare(b.fields['Delivery DateTime']||b.fields['Loading DateTime']||'')
-      ));
+    // The cut and its order are WI4.weekExports (core/wi4-logic.js): one source with
+    // «Παραγγελίες › Εβδομάδα», which numbers its rows as this board does (owner 2/11).
+    expOrders = WI4.weekExports(expOrders, wsFmt, weFmt, toLocalDate);
+    WINTL.data.exports = expOrders;
     WINTL.data.imports = impOrders;
     WINTL._loadedAt = new Date(); // footer «Ενημερώθηκε HH:MM»
 
@@ -846,189 +842,51 @@ async function renderWeeklyIntl(){
 
 /* ── BUILD ROWS ────────────────────────────────────────────────────── */
 function _wiBuildRows(){
-  WINTL.rows=[];WINTL._seq=0;
   const {exports,imports}=WINTL.data;
-
-  // Map import ID → import record for fast lookup
+  // The rows' STRUCTURE — one per export / import, Group ID groups collapsed
+  // into their lead (Π1 Wave 3, A1 6/9), the Matched Import ID pairs, rota legs
+  // (owner 10/8), split legs (FEATURES.ORDER_SPLIT, owner 6/9), Plan Week Start
+  // (B2, owner 6/9) — is WI4.boardRows (core/wi4-logic.js), moved there without
+  // a change: «Παραγγελίες › Εβδομάδα» builds the same rows from its own read and
+  // numbers them as this board does (owner 2/11/2026, «Α: μία κοινή πηγή»).
+  // Here only the labels of each row are added.
+  const built=WI4.boardRows(exports,imports,{
+    ws:WINTL._range?WINTL._range.ws:null, we:WINTL._range?WINTL._range.we:null, dayOf:toLocalDate,
+    split:typeof FEATURES!=='undefined'&&!!FEATURES.ORDER_SPLIT,
+  });
   const impById={};
   imports.forEach(r=>impById[r.id]=r);
-
-  for(const exp of exports){
-    const f=exp.fields;
+  const expById={};
+  exports.forEach(r=>expById[r.id]=r);
+  const label=(list,id)=>list.find(x=>x.id===id)?.label||'';
+  for(const r of built.rows){
+    const f=(r.type==='export'?expById[r.orderId]:impById[r.orderId]).fields;
     const truckId  =(f['Truck']  ||[])[0]||'';
     const trailerId=(f['Trailer']||[])[0]||'';
     const driverId =(f['Driver'] ||[])[0]||'';
     const partnerId=(f['Partner']||[])[0]||'';
-    const importId =f['Matched Import ID']||null;
-    // B2 (owner 6/9): effective week = Plan Week Start when set, else the
-    // natural date rule already used to fetch/filter `exports` above. Exports
-    // don't get a UI action to set this field in Wave 1 (only _wiImpShift does,
-    // on imports) — this flag stays false for every export today and only
-    // starts mattering once something else writes Plan Week Start on ORDERS.
-    const _pws=toLocalDate(f['Plan Week Start']||'');
-    const _eff=toLocalDate(f['Delivery DateTime']||f['Loading DateTime']||'');
-    const outOfWindow=!!(_pws&&WINTL._range&&_pws===WINTL._range.ws&&_eff&&(_eff<WINTL._range.ws||_eff>WINTL._range.we));
-
-    WINTL.rows.push({
-      outOfWindow,
-      id:          ++WINTL._seq,
-      type:        'export',
-      orderId:     exp.id,
-      orderIds:    [exp.id],
-      importId,
+    Object.assign(r,{
       truckId, trailerId, driverId, partnerId,
-      truckLabel:  WINTL.data.trucks.find(t=>t.id===truckId)?.label||'',
-      trailerLabel:WINTL.data.trailers.find(t=>t.id===trailerId)?.label||'',
-      driverLabel: WINTL.data.drivers.find(d=>d.id===driverId)?.label||'',
-      partnerLabel:WINTL.data.partners.find(p=>p.id===partnerId)?.label||'',
+      truckLabel:  label(WINTL.data.trucks,truckId),
+      trailerLabel:label(WINTL.data.trailers,trailerId),
+      driverLabel: label(WINTL.data.drivers,driverId),
+      partnerLabel:label(WINTL.data.partners,partnerId),
       partnerPlates:f['Partner Truck Plates']||'',
       partnerRate:  f['Partner Rate']?String(f['Partner Rate']):'',
       // Read back from the matched import (owner 22/10, order 585): the save
       // writes it there, but the row started empty, so the field showed blank
       // after every reload and the next save demanded it again.
-      partnerRateImp:(importId&&impById[importId]?.fields?.['Partner Rate'])?String(impById[importId].fields['Partner Rate']):'',
+      partnerRateImp:r.type==='export'&&r.importId&&impById[r.importId]?.fields?.['Partner Rate']?String(impById[r.importId].fields['Partner Rate']):'',
       saved:!!(truckId||partnerId),
     });
+    // Cross-week (feedback dispatcher 19/5): an import of W±1 is «γειτονικό»,
+    // its own section at the end, out of the tally (adj from WI4.boardRows).
+    if(r.type==='import') r.adjW=r.adj?_wiWeekOf(f['Loading DateTime']):null;
   }
-
-  // Π1 (Wave 3): rebuild persisted groups — export rows sharing a non-empty
-  // Group ID collapse back into one row after every reload.
-  {
-    const byGid={};
-    WINTL.rows.forEach(r=>{
-      if(r.type!=='export') return;
-      const gid=exports.find(e=>e.id===r.orderId)?.fields?.['Group ID'];
-      if(gid){(byGid[gid]=byGid[gid]||[]).push(r);}
-    });
-    Object.values(byGid).forEach(list=>{
-      if(list.length<2) return;
-      const [lead,...rest]=list;
-      rest.forEach(r=>{ r.orderIds.forEach(id=>{ if(!lead.orderIds.includes(id)) lead.orderIds.push(id); }); });
-      WINTL.rows=WINTL.rows.filter(r=>!rest.includes(r));
-    });
-  }
-
-  // ── ΡΟΤΑ (owner 10/8): orders με Rotation ID = σκέλη προώθησης — δεν
-  // εμφανίζονται ως δικές τους γραμμές, κρέμονται κάτω από τον γονέα («⤷»).
-  // Μπαίνουν ΚΑΝΟΝΙΚΑ στο rows[] ώστε διαθεσιμότητα οδηγών/οχημάτων και
-  // επιστροφές να μετρούν από το ΤΕΛΕΥΤΑΙΟ σκέλος.
-  // (σημείωση: τρέχει στο τέλος του _wiBuildRows — δες κάτω)
-
-  // ── IMPORT ROWS — sorted by loading date, always draggable ──
-  const importsSorted=[...imports].sort((a,b)=>(
-    (a.fields['Loading DateTime']||'').localeCompare(b.fields['Loading DateTime']||'')
-  ));
-
-  // Build matchedMap: importOrderId → exportOrderId
-  const matchedMap={};
-  exports.forEach(r=>{ const mid=r.fields['Matched Import ID']; if(mid) matchedMap[mid]=r.id; });
-
-  for(const imp of importsSorted){
-    const f=imp.fields;
-    const truckId  =(f['Truck']  ||[])[0]||'';
-    const partnerId=(f['Partner']||[])[0]||'';
-    const impTrailerId=(f['Trailer']||[])[0]||'';
-    const impDriverId =(f['Driver'] ||[])[0]||'';
-    // Cross-week: import εκτός τρέχουσας Σαβ–Παρ = «γειτονικό» — δική του
-    // ενότητα στο τέλος, εκτός tally/ομάδων ημερών.
-    // B2 (owner 6/9): «Μεταφορά εβδομάδας» writes Plan Week Start instead of
-    // moving the dates (see _wiImpShift) — an explicit Plan Week Start always
-    // wins over the natural in-range check, in EITHER direction: it can pull a
-    // naturally-adjacent row INTO this week (adj=false) or push a naturally
-    // in-range row OUT to another week (adj=true, e.g. moved forward from a
-    // week whose date window still overlaps this one). `outOfWindow` marks the
-    // "pulled in but its real day is still outside Σαβ–Παρ" case — rendered in
-    // its own trailing section (_wiAllRowsHTML) instead of a normal day slot,
-    // so the dispatcher still sees the true loading day.
-    const _ld=toLocalDate(f['Loading DateTime']||'');
-    const _pws=toLocalDate(f['Plan Week Start']||'');
-    const _inRange=!!(WINTL._range&&_ld&&_ld>=WINTL._range.ws&&_ld<=WINTL._range.we);
-    const _adj=_pws&&WINTL._range?(_pws!==WINTL._range.ws):!_inRange;
-    const outOfWindow=!!(_pws&&WINTL._range&&_pws===WINTL._range.ws&&!_inRange);
-    WINTL.rows.push({
-      adj:_adj, adjW:_adj?_wiWeekOf(f['Loading DateTime']):null, outOfWindow,
-      id:          ++WINTL._seq,
-      type:        'import',
-      orderId:     imp.id,
-      orderIds:    [imp.id],
-      importId:    null,
-      matchedTo:   matchedMap[imp.id]||null,
-      truckId,   trailerId:impTrailerId, driverId:impDriverId, partnerId,
-      truckLabel:  WINTL.data.trucks.find(t=>t.id===truckId)?.label||'',
-      trailerLabel:WINTL.data.trailers.find(t=>t.id===impTrailerId)?.label||'',
-      driverLabel: WINTL.data.drivers.find(d=>d.id===impDriverId)?.label||'',
-      partnerLabel:WINTL.data.partners.find(p=>p.id===partnerId)?.label||'',
-      partnerPlates:f['Partner Truck Plates']||'',
-      partnerRate:  f['Partner Rate']?String(f['Partner Rate']):'',
-      partnerRateImp:'',
-      saved:!!(truckId||partnerId),
-    });
-  }
-
-  // A1 (owner 6/9): import groups collapse into one row too — the block above
-  // (Π1, Wave 3) only ever matched `r.type==='export'`, so a SECOND grouped
-  // import always stayed its own row and a truck assigned on the lead never
-  // reached it (measured live: two import rows sharing a Group ID, one truck
-  // on the lead only). No `|` delivery-order suffix here — that suffix encodes
-  // DELIVERY sequence for a multi-drop export leg (_wiGrpOrder) and has no
-  // meaning for an import PICKUP group, so members sort by Loading DateTime.
-  {
-    const byGid={};
-    WINTL.rows.forEach(r=>{
-      if(r.type!=='import') return;
-      const gid=impById[r.orderId]?.fields?.['Group ID'];
-      if(gid){(byGid[gid]=byGid[gid]||[]).push(r);}
-    });
-    Object.values(byGid).forEach(list=>{
-      if(list.length<2) return;
-      const ordered=_wiGiSortRecs(list.map(r=>impById[r.orderId]||{id:r.orderId,fields:{}})).map(rec=>list.find(r=>r.orderId===rec.id));
-      const [lead,...rest]=ordered;
-      // The export may point at ANY member (the lead of an earlier render, or
-      // a member the stop order has since moved) — the group is matched if
-      // any member is, otherwise the board shows it free while the export
-      // still carries it.
-      rest.forEach(r=>{ r.orderIds.forEach(id=>{ if(!lead.orderIds.includes(id)) lead.orderIds.push(id); }); if(!lead.matchedTo&&r.matchedTo) lead.matchedTo=r.matchedTo; });
-      WINTL.rows=WINTL.rows.filter(r=>!rest.includes(r));
-    });
-  }
-
-  // Ρότα: σημείωσε τα σκέλη + ομαδοποίησέ τα ανά γονέα, με σειρά φόρτωσης
-  WINTL._legs={};
-  const _ordOf=r=>WINTL.data.exports.find(x=>x.id===(r.orderIds?.[0]||r.orderId))||WINTL.data.imports.find(x=>x.id===(r.orderIds?.[0]||r.orderId));
-  WINTL.rows.forEach(r=>{
-    const o=_ordOf(r);
-    const rot=o?.fields?.['Rotation ID'];
-    if(rot){ r.legOf=rot; (WINTL._legs[rot]=WINTL._legs[rot]||[]).push(r); }
-  });
-  Object.values(WINTL._legs).forEach(a=>a.sort((x,y)=>
-    String(_ordOf(x)?.fields?.['Loading DateTime']||'').localeCompare(String(_ordOf(y)?.fields?.['Loading DateTime']||''))));
-
-  // ── ΣΠΑΣΙΜΟ ΣΚΕΛΟΥΣ (owner 6/9, FEATURES.ORDER_SPLIT) ──────────────────
-  // A leg (its 'Parent Order' is set) is an ordinary fetched order — no extra
-  // query needed, it is already in WINTL.data.exports/imports because it has
-  // its own real dates. It renders nested under the parent's row (same
-  // mechanism as the Ρότα legs above: excluded from the top-level list,
-  // appended right after the parent in _wiAllRowsHTML), not scattered into its
-  // own day slot, because the dispatcher reads "this order" as ONE line even
-  // though it now moves in two trucks. Depth is one (migration 018 CHECK), so
-  // a leg is never itself checked for children here.
-  WINTL._splitLegs={};
-  if(typeof FEATURES!=='undefined'&&FEATURES.ORDER_SPLIT){
-    WINTL.rows.forEach(r=>{
-      if(r.orderIds&&r.orderIds.length>1) return; // groupage: split not offered on groups
-      const o=_ordOf(r);
-      const parentId=o&&getLinkedId(o.fields?.['Parent Order']);
-      if(!parentId) return;
-      r.splitLegOf=parentId;
-      r.splitLegNo=o.fields['Leg No']||null;
-      (WINTL._splitLegs[parentId]=WINTL._splitLegs[parentId]||[]).push(r);
-    });
-    Object.values(WINTL._splitLegs).forEach(a=>a.sort((x,y)=>(x.splitLegNo||0)-(y.splitLegNo||0)));
-    WINTL.rows.forEach(r=>{
-      const pid=r.orderIds?.[0]||r.orderId;
-      if(WINTL._splitLegs[pid]) r.hasSplitLegs=true;
-    });
-  }
+  WINTL.rows=built.rows;
+  WINTL._seq=built.created;
+  WINTL._legs=built.legs;
+  WINTL._splitLegs=built.splitLegs;
 }
 
 /* ── PAINT ─────────────────────────────────────────────────────────── */
@@ -3283,13 +3141,10 @@ async function _wiDropImport(e,rowId){
 // vehicle while the export still showed it matched («έμεινε μόνο του με
 // ανάθεση»). Order is the Group ID suffix (stop order, written by the segment
 // drag), then Loading DateTime, then id — never fetch order.
+// The rule itself is WI4.giSortRecs (core/wi4-logic.js): WI4.boardRows picks an
+// import group's lead with it too (owner 2/11, one source with «Εβδομάδα»).
 function _wiGiSortRecs(recs){
-  const gid=String((recs.find(r=>r?.fields?.['Group ID'])||{}).fields?.['Group ID']||'');
-  const seq=(gid.split('|')[1]||'').split(',').filter(Boolean);
-  const pos=id=>{const k=seq.indexOf(id);return k<0?99:k;};
-  return [...recs].sort((a,b)=>pos(a.id)-pos(b.id)
-    ||String(a.fields?.['Loading DateTime']||'').localeCompare(String(b.fields?.['Loading DateTime']||''))
-    ||String(a.id).localeCompare(String(b.id)));
+  return WI4.giSortRecs(recs);
 }
 const WI_EXECUTING=['In Transit','Delivered'];
 // null = the read failed (status unknown) — callers must not act on it as if
@@ -7218,10 +7073,12 @@ function _wiPieceIn(ids){
 // κομμάτια χωρίς φορτηγό» is its one home. No shelf (switch off, warehouse
 // role) = no home, so the row stays — else the piece would vanish unannounced.
 // A piece an export still points at keeps its place in that export's row.
+// The row test is WI4.shelvedRow (core/wi4-logic.js): «Εβδομάδα» leaves the same
+// rows out of its numbers (owner 2/11). Asked only while the shelf is shown.
 function _wiShelved(row){
-  if(!WINTL.data.stock||!row||row.type!=='import'||row.matchedTo||(row.orderIds||[]).length>1) return false;
+  if(!WINTL.data.stock||!row) return false;
   const rec=WINTL.data.imports.find(r=>r.id===row.orderId);
-  return !!rec&&_wiLoose(rec.fields);
+  return WI4.shelvedRow(row,rec&&rec.fields,_wiLoose);
 }
 // The top-bar Undo reverts ONE cached PATCH (core/api.js atPatch → _undoSet).
 // After a stock action — several writes that only make sense together (lock +

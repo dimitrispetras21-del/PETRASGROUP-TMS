@@ -543,3 +543,63 @@ test('self delivery: invoiced in the totals, «✓ αυτοπαράδοση» in
   const t = W.totals([sd], r => OrdersData.stateOf({ intl: [sd], natl: [], gate: {} }, r));
   assert.deepStrictEqual([t.invN, t.invSum, t.unpriced, t.openN], [1, 0, 1, 0], 'invoiced, its missing price never summed');
 });
+
+// ── The Weekly International's numbers on «Εβδομάδα» (owner 2/11/2026: «το 1 να αντιστοιχεί στο 1 του weekly») ──
+// One source: weekNumbers runs the board's own rules (WI4.readWindow / weekExports / boardRows / boardNumbers /
+// numberOf). Expected numbers below are worked out by hand from the board's rules, every edge case once.
+test('Weekly numbers: one count for both screens, every edge case (group, matched, rota, split, shelved, moved, cancelled, another week)', () => {
+  const X = [
+    o('nE1', 5001, { Direction: 'Export', 'Delivery DateTime': '2026-09-21T09:00:00Z', 'Matched Import ID': 'nI1' }),
+    o('nI1', 5002, { Direction: 'Import', 'Loading DateTime': '2026-09-21T10:00:00Z' }),                      // matched → inside E1's row
+    o('nI2', 5003, { Direction: 'Import', 'Loading DateTime': '2026-09-21T06:00:00Z' }),                      // import-only, Monday
+    o('nI3', 5004, { Direction: 'Import', 'Loading DateTime': '2026-09-21T12:00:00Z', 'Rotation ID': 'nE1' }),// rota leg under E1
+    o('nE2', 5005, { Direction: 'Export', 'Delivery DateTime': '2026-09-22T09:00:00Z', 'Group ID': 'GRP-9|nE3,nE2' }),
+    o('nE3', 5006, { Direction: 'Export', 'Delivery DateTime': '2026-09-22T09:00:00Z', 'Group ID': 'GRP-9|nE3,nE2' }),
+    o('nE4', 5007, { Direction: 'Export', 'Delivery DateTime': '2026-09-22T07:00:00Z', 'Veroia Switch': true }),   // VS last in its day
+    o('nP', 5008, { Direction: 'Export', 'Delivery DateTime': '2026-09-23T09:00:00Z' }),
+    o('nL1', 5009, { Direction: 'Export', 'Delivery DateTime': '2026-09-23T08:00:00Z', 'Parent Order': ['nP'], 'Leg No': 1 }),
+    o('nL2', 5010, { Direction: 'Export', 'Delivery DateTime': '2026-09-23T12:00:00Z', 'Parent Order': ['nP'], 'Leg No': 2 }),
+    o('nE5', 5011, { Direction: 'Export', 'Delivery DateTime': '2026-09-24T09:00:00Z', Status: 'Cancelled' }),     // the board's reads keep it
+    o('nI4', 5012, { Direction: 'Import', 'Loading DateTime': '2026-09-24T09:00:00Z', 'Stock Lot': ['recLot'] }),  // a loose piece: on the shelf
+    o('nI5', 5013, { Direction: 'Import', 'Loading DateTime': '2026-09-29T09:00:00Z', 'Plan Week Start': '2026-09-19' }),   // moved INTO this week
+    o('nI6', 5014, { Direction: 'Import', 'Loading DateTime': '2026-09-15T09:00:00Z' }),                      // another week's import
+    o('nE6', 5015, { Direction: 'Export', 'Delivery DateTime': '2026-10-20T09:00:00Z' }),                     // far outside the board's reads
+  ];
+  // the board's toLocalDate (core/utils.js): a datetime's LOCAL day (TZ = Athens above)
+  const localDay = d => { if (!d) return ''; const t = new Date(d); if (isNaN(t)) return ''; return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`; };
+  const nums = W.weekNumbers({ recs: X, wsDate: new Date('2026-09-19T00:00:00'), dayOf: localDay,
+    split: true, shelf: true, isLoose: f => !!f['Stock Lot'] && !f.Truck && !f.Partner });
+  const got = Object.fromEntries(X.map(r => [r.id, nums.get(r.id) == null ? '—' : nums.get(r.id)]));
+  assert.deepStrictEqual(got, {
+    nE1: 1, nI1: 1, nI3: 1,          // Monday: the export, its matched import and its rota leg are one row
+    nI2: 2,                          // Monday's import-only row, after the exports
+    nE2: 3, nE3: 3,                  // Tuesday: a group is one row, one number
+    nE4: 4,                          // Veroia Switch last in its day, though earlier in time
+    nP: 5, nL1: 5, nL2: 5,           // a split: the parent's number, its legs hang under it
+    nE5: 6,                          // cancelled: still a row of the board
+    nI5: 7,                          // moved into the week: after Friday («μεταφέρθηκε»)
+    nI4: '—', nI6: '—', nE6: '—',    // on the shelf · another week · outside the reads
+  });
+  // without the shelf (stock off) the loose piece is a Thursday import-only row
+  const noShelf = W.weekNumbers({ recs: X, wsDate: new Date('2026-09-19T00:00:00'), dayOf: localDay, split: true, shelf: false, isLoose: () => true });
+  assert.strictEqual(noShelf.get('nI4'), 7);
+  assert.strictEqual(noShelf.get('nI5'), 8);
+});
+
+test('leg numbers: each order line takes the number of the Weekly line that draws it; a row sorts by its smallest', () => {
+  const nums = new Map([['a', 3], ['b', 4], ['c', 7]]);
+  const leg = id => ({ rec: { id }, own: { id } });
+  assert.strictEqual(W.legNumber(leg('b'), nums), 4);
+  assert.strictEqual(W.legNumber(leg('z'), nums), null);                                   // on no line of this week
+  assert.strictEqual(W.legNumber({ own: { id: 'leg' }, rec: { id: 'c' } }, nums), 7);      // a split leg: its parent's line
+  assert.strictEqual(W.legNumber({ rec: null }, nums), null);                              // out of range: no record
+  assert.deepStrictEqual(W.rowNumbers({ legs: [leg('b'), leg('a'), leg('a'), leg('z')] }, nums), [3, 4]);
+});
+
+test('inside a day, the board number orders the rows first; rows without one follow the board rule', () => {
+  const A = { day: '2026-09-21', code: 'RT-2', nos: [5], sortExp: true, sortRec: { fields: {} } };
+  const B = { day: '2026-09-21', code: 'RT-1', nos: [2], sortExp: true, sortRec: { fields: {} } };
+  const C = { day: '2026-09-21', code: 'RT-0', nos: [], sortExp: true, sortRec: { fields: {} } };
+  const sec = W.daySections('2026-09-19', [A, C, B]);
+  assert.deepStrictEqual(sec.days.find(d => d.day === '2026-09-21').rows.map(r => r.code), ['RT-1', 'RT-2', 'RT-0']);
+});

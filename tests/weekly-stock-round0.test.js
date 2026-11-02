@@ -29,7 +29,7 @@ global.TmsWeek = require(path.join(ROOT, 'core/tms-week.js'));
 const { OrdersStock } = require(path.join(ROOT, 'core/orders-common.js'));
 
 function load() {
-  const ctx = { console, OrdersStock, getLinkedId, FEATURES: { ORDER_SPLIT: true }, WINTL: { rows: [], data: { exports: [], imports: [], stock: null } } };
+  const ctx = { console, OrdersStock, getLinkedId, WI4: require(path.join(ROOT, 'core/wi4-logic.js')), FEATURES: { ORDER_SPLIT: true }, WINTL: { rows: [], data: { exports: [], imports: [], stock: null } } };
   vm.createContext(ctx);
   const src = [
     grab(/const WI_EXECUTING=\[[^\]]*\];\n/, 'WI_EXECUTING'),

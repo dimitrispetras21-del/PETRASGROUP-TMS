@@ -29,12 +29,8 @@ const BASE_URL = process.env.PW_BASE_URL || 'http://127.0.0.1:8791/';
 const SHOTS = process.env.PW_SHOT_DIR || path.join(require('os').tmpdir(), 'orders-week-panel');
 require('fs').mkdirSync(SHOTS, { recursive: true });
 
-// The Weekly sorts by the order's own 'Client Name' text: give every order the
-// name of its linked client (as the base does).
-for (const r of P.ORDERS) {
-  const id = (r.fields.Client || [])[0];
-  if (id) r.fields['Client Name'] = P.CL[Number(id.replace('recC', ''))];
-}
+// No 'Client Name' on the orders: the live Worker map has none for ORDERS (only STOCK LOTS), so the
+// Weekly's client key is empty in production and so it is here (it was added here until 2/11).
 
 let passed = 0, failed = 0;
 const ok = (cond, msg) => { if (cond) { passed++; console.log('  ✓ ' + msg); } else { failed++; console.log('  ✗ ' + msg); } };
@@ -55,8 +51,32 @@ const weekDays = page => page.evaluate(() => {
     if (!cur || !el.classList.contains('ow4-row') || el.classList.contains('ow4-hd')) continue;
     const tag = (el.querySelector('.ow4-c-rt .ow4-l2') || {}).textContent || '';
     if (/^από /.test(tag)) continue;   // a guest: the Weekly has no row for it on this day
-    out[cur].push(el.querySelector('.ow4-c-rt .ow4-l1').textContent.trim());
+    const l1 = el.querySelector('.ow4-c-rt .ow4-l1').cloneNode(true);
+    l1.querySelectorAll('.ow4-no').forEach(x => x.remove());   // the code alone, without the board number
+    out[cur].push(l1.textContent.trim());
   }
+  return out;
+});
+// «Εβδομάδα»: every international order line, its order id and the number it shows.
+const weekNos = page => page.evaluate(() => [...document.querySelectorAll('.ow4-sec .ow4-card > .ow4-row:not(.ow4-hd):not(.ow4-nat) .ow4-sub[data-owvopen^="intl:"]')].map(el => ({
+  code: ((el.closest('.ow4-row').querySelector('.ow4-c-rt .ow4-l1') || {}).textContent || '').trim(),
+  id: el.dataset.owvopen.slice(5),
+  no: ((el.querySelector('.ow4-no') || {}).textContent || '').trim(),
+})));
+// Weekly International: order id → the number of the board row that draws it, read from the board's DOM:
+// a row with a number gives it to every order inside it and to the sub-rows (legs) under it.
+const boardNos = page => page.evaluate(() => {
+  const out = {};
+  document.querySelectorAll('section.wi4-day .wi4-day-body').forEach(body => {
+    let cur = null;
+    for (const el of body.children) {
+      const t = ((el.querySelector('.wi4-c-idx .wi4-no') || {}).textContent || '').trim();
+      if (/^\d+$/.test(t) && !el.classList.contains('wi4-subrow')) cur = +t;
+      else if (!el.classList.contains('wi4-subrow')) cur = null;
+      if (cur == null) continue;
+      [el, ...el.querySelectorAll('[data-oid]')].forEach(x => { const id = x.dataset && x.dataset.oid; if (id && !(id in out)) out[id] = cur; });
+    }
+  });
   return out;
 });
 // Weekly International: { 'YYYY-MM-DD': [order rec ids, in row order] }.
@@ -77,11 +97,13 @@ async function scnOrder(browser) {
     const u = decodeURIComponent(route.request().url());
     const ex = /\{Direction\}='Export'/.test(u), im = /\{Direction\}='Import'/.test(u);
     if (route.request().method() !== 'GET' || ex === im || /RECORD_ID/.test(u)) return route.fallback();
-    const recs = P.ORDERS.filter(r => r.fields.Direction === (ex ? 'Export' : 'Import') && r.fields.Status !== 'Cancelled');
+    // cancelled orders stay: the board's reads have no Status condition (weekly_intl.js _wiLoad)
+    const recs = P.ORDERS.filter(r => r.fields.Direction === (ex ? 'Export' : 'Import'));
     return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ records: recs }) });
   });
   await P.openWeek(page);
   const week = await weekDays(page);
+  const wNos = await weekNos(page);
   await page.screenshot({ path: path.join(SHOTS, 'week-intl.png') });
   // One day, for the owner: from its header to the next one, in each view.
   const TUE = P.day(3).slice(0, 10);
@@ -101,6 +123,19 @@ async function scnOrder(browser) {
   await page.waitForFunction(from => !!document.querySelector(`section.wi4-day[data-day="${from}"]`), P.WEEK_FROM, { timeout: 30000 });
   await page.waitForTimeout(400);
   const board = await boardDays(page);
+  const bNos = await boardNos(page);
+  // The number on «Εβδομάδα» = the board's, row by row (owner 2/11, «το 1 να αντιστοιχεί στο 1 του weekly»).
+  let numbered = 0, bad = [];
+  for (const r of wNos) {
+    const want = bNos[r.id] != null ? String(bNos[r.id]) : '—';
+    if (want !== '—') numbered++;
+    if (r.no !== want) bad.push(`${r.code} ${r.id}: shows «${r.no}», the board «${want}»`);
+  }
+  ok(!bad.length && numbered >= 12, `every order line's number = the Weekly line that draws it (${numbered} numbered of ${wNos.length})` + (bad.length ? ': ' + bad.join(' | ') : ''));
+  const boardMax = Math.max(...Object.values(bNos));
+  const shown = new Set(); wNos.forEach(r => { if (bNos[r.id] != null && r.no !== '—') shown.add(bNos[r.id]); });
+  const missing = [...new Set(Object.values(bNos))].filter(n => !shown.has(n));
+  ok(true, `board numbers 1–${boardMax}; not on «Εβδομάδα»: ${missing.length ? missing.join(', ') : 'none'} (orders without a round trip or in another section)`);
   await page.screenshot({ path: path.join(SHOTS, 'weekly-intl.png') });
   const boardPng = await page.locator(`section.wi4-day[data-day="${TUE}"]`).screenshot();
   // side by side: Weekly left, «Εβδομάδα» right, same day, same mocked week

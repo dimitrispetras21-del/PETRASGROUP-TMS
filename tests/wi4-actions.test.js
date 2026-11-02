@@ -100,12 +100,12 @@ function world(opts = {}) {
   const utils = read('core/utils.js');
   vm.runInContext(['toLocalDate', 'localToday', 'escapeHtml'].map((n) => fnFrom(utils, n)).join('\n')
     + '\nObject.assign(this,{toLocalDate,localToday,escapeHtml});', ctx);
-  for (const f of ['core/tms-week.js', 'core/data-helpers.js', 'core/orders-common.js', 'modules/preorder.js', 'core/relay.js'])
+  for (const f of ['core/tms-week.js', 'core/data-helpers.js', 'core/orders-common.js', 'modules/preorder.js', 'core/relay.js', 'core/wi4-logic.js'])
     vm.runInContext(read(f), ctx, { filename: f });
   vm.runInContext('this.TmsWeek=TmsWeek;this.OrdersStock=OrdersStock;', ctx);
   vm.runInContext(read('modules/weekly_intl.js'), ctx, { filename: 'modules/weekly_intl.js' });
   const W = ctx.WI_INTERNAL;
-  ctx.WI4 = fakeWI4();
+  ctx.WI4 = Object.assign({}, ctx.WI4, fakeWI4());   // the real board rules stay (core/wi4-logic.js)
   let active = !!opts.active;
   ctx.WIV2 = {
     _broken: false,
