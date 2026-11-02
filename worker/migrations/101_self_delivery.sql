@@ -1,5 +1,6 @@
 -- 101 - "AFTOPARADOSI" (SELF DELIVERY): AN ORDER COUNTS AS INVOICED WITHOUT AN ERP TRANSPORT INVOICE (owner 2/11/2026)
--- DRAFT. Never run by an agent. Run by the owner after 15:00 (or with his explicit yes): the dry run, this file, verify.
+-- EXECUTED 2/11/2026 ~14:30-14:47 by the owner (his explicit "now", before 15:00): verify 'before 101', dry run, this file,
+-- verify '101 in place,2,2,2,2,new,0,0,2'. Then Worker 7bb5003a (guard --self 1). Out of drafts/ (rule 5).
 --
 -- WHY: some loads carry goods that belong to our own group. No transport invoice (TPY) is issued for them in the ERP,
 -- so Eirini could never mark them invoiced: 043 (owner 21/9, "a number that is not in the ERP is a lie") refuses

@@ -27,6 +27,11 @@ const F = facts(SRC).consts;
 // grants: false = views never granted (relacl NULL), so the rollback's "rights back" meets a NULL ACL
 async function copy({ grants = true } = {}) {
   const db = await createDb({ v5: false });
+  // 101 ran 2/11: the fixture has the column and the catalog the new B-11 / B-12 texts. Back to the state 101 met
+  // (its guards: no column, the old texts) - the replace is 101's own hunk in reverse.
+  await db.exec(`ALTER TABLE public.orders DROP COLUMN self_delivery; ALTER TABLE public.national_orders DROP COLUMN self_delivery;
+    UPDATE monitoring.checks SET sql_text = replace(sql_text, '${F.chk_b}', '${F.chk_a}'), ids_sql = replace(ids_sql, '${F.chk_b}', '${F.chk_a}')
+     WHERE id IN ('B-11', 'B-12')`);
   await db.exec(read('043_invoice_mark_guard.sql'));
   await db.exec(`
     CREATE ROLE t101_reader; CREATE ROLE t101_anon;
