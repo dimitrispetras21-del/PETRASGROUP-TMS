@@ -12,7 +12,7 @@
 -- exceptions: Κανένα (spec 4: με «Άλλο» η σημείωση είναι υποχρεωτική).
 -- tolerance: 0
 -- source: DRAFT 072b (plan vehicle handover, spec 6 «λόγος other χωρίς σημείωση») · PGlite 25/10: 0 on the production copy, red with the CHECK dropped
--- enabled: yes
+-- enabled: no: 095 (owner 2/11, χαλαροί κανόνες, εκτελέστηκε 2/11): το «Άλλο» χωρίς σημείωση επιτρέπεται, το CHECK seg_other_note έφυγε· το rollback της 095 τον ξανανοίγει
 SELECT count(*) FROM rt_vehicle_segments g WHERE g.deleted_at IS NULL AND g.reason = 'other'
  AND NOT coalesce(g.reason_note ~ '[^[:space:]]', false);
 -- @ids

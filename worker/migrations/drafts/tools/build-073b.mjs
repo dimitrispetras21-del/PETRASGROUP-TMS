@@ -28,6 +28,9 @@ export const DIR = path.resolve(HERE, '..', '..');
 export const F3_IDS = ['B-78', 'B-79', 'B-80', 'B-81', 'B-82', 'B-83', 'B-84', 'B-85', 'B-86', 'B-87', 'B-88', 'B-89', 'B-90', 'B-94'];
 // 072b's checks, seeded here (handover P3-6); they read only 072b's segments, so 073's rollback does not wait on them.
 export const HANDOVER_IDS = ['B-91', 'B-92', 'B-93'];
+// 073b is EXECUTED (28/10): it stays the file that ran. A check a later migration changed in production keeps here
+// the state 073b gave it - 095 (2/11) disabled B-93 ("other" without a note is allowed); its catalog file says so now.
+const AS_RUN = Object.freeze({ 'B-93': { enabled: true, disabled_reason: null } });
 export const IDS = [...F3_IDS, ...HANDOVER_IDS];
 export const V5 = ['shipments', 'shipment_pieces', 'rt_stops', 'piece_legs', 'plan_notices'];
 export const FILES = ['073b_plan_monitoring.sql', '073b_plan_monitoring_dryrun.sql', '073b_plan_monitoring_rollback.sql'];
@@ -68,7 +71,7 @@ const num = (v) => { if (!Number.isFinite(v)) throw new Error(`not a finite numb
 export function build() {
   const { checks, errors } = loadChecks();
   if (errors.length) throw new Error('catalog lint: ' + errors.join('; '));
-  const mine = IDS.map((id) => checks.find((c) => c.id === id));
+  const mine = IDS.map((id) => checks.find((c) => c.id === id)).map((c) => (c && AS_RUN[c.id] ? { ...c, ...AS_RUN[c.id] } : c));
   if (mine.some((c) => !c)) throw new Error('missing check file: ' + IDS.filter((id, i) => !mine[i]).join(','));
   const rows = mine.map((c) => `    (${[txt(c.id), txt(c.title), `ARRAY[${c.flows.map(txt).join(',')}]::text[]`, txt(c.sql), txt(c.ids_sql),
     txt(c.entity_table), txt(c.red_op), num(c.red_value), c.baseline == null ? 'NULL' : num(c.baseline), txt(c.severity), txt(c.schedule),
