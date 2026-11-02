@@ -63,6 +63,24 @@ function v2Decide({ flag, pilot, user, optIn } = {}) {
 const POINTS_DEFAULTS = freeze({ min: 56, gap: 8, badge: 12, chip: 34, placeMin: 46, dateTick: false });
 
 /**
+ * Day breaks, ONE rule for both boards (owner 2/11: «Τρίτη 2 σημεία και 1
+ * Τετάρτη»; the Weekly National v5 reads it too, «Ναι, και στα Εθνικά»):
+ * days = each point's day (YYYY-MM-DD or empty) in drawing order, day0 = the
+ * day the cell's header already states. → for each point its day where it
+ * differs from the point before it (the last one with a day; day0 for the
+ * first), else null. An empty day neither breaks nor resets.
+ */
+function dayBreaks(days, day0) {
+  let prev = day0 || '';
+  return (Array.isArray(days) ? days : []).map((d0) => {
+    const d = d0 || '';
+    const b = d && prev && d !== prev ? d : null;
+    if (d) prev = d;
+    return b;
+  });
+}
+
+/**
  * stops = [{n, label, place, pallets, done, delayH}] in stop order;
  * widthPx = one points column, measured once per paint.
  * → {shown:[stop + {badge, tick}], more:{count, pallets, hidden, title}|null, hidePlace}
@@ -98,13 +116,7 @@ function points(stops, widthPx, opts) {
   // fall back to the plain rule — ≤4 all, 5+ first 3 — and let the next paint
   // measure.
   const measured = Number.isFinite(width) && width > 0;
-  let prev = o.day0 || '';
-  const brk = list.map((s) => {
-    const d = (s && s.day) || '';
-    const b = d && prev && d !== prev ? d : null;
-    if (d) prev = d;
-    return b;
-  });
+  const brk = dayBreaks(list.map((s) => s && s.day), o.day0);
   const allFit = (k) => k * o.min + (k - 1) * o.gap <= width;
   const chipFit = (k) => k * o.min + k * o.gap + o.chip <= width;
   let k;
@@ -621,7 +633,7 @@ const WI4 = freeze({
   // §b
   normFlag, v2Decide,
   // §d.1
-  POINTS_DEFAULTS, points,
+  POINTS_DEFAULTS, points, dayBreaks,
   // §d.2 / §d.2a
   TEXT, ACT, flags, sourceReasons,
   // §d.3

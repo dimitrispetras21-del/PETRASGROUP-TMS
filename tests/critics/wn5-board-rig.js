@@ -2474,6 +2474,43 @@ SCN.narrow = async (browser, origin) => {
   }
   ok(scn, 'no page errors', !pe.length, pe);
 };
+// Day divider (owner 2/11, «Ναι, και στα Εθνικά»): RT-T101 loads Veroia Sat 10/10 and delivers Rentis Mon 12/10, then
+// Aspropyrgos and Oinofyta Tue 13/10 (the #616 shape on a national truck). The head names the FIRST delivery day
+// («→ Δευ 12/10»; until 2/11 the last, «→ Τρί 13/10», over a Monday point), point 2 carries «Τρί 13/10» with the ink
+// line, the folded third is named on «+1»;
+// at 1440 (one point per cell) the «+2» names «Τρί». Look only: nothing is sent to /plan/*.
+SCN['twoday'] = async (browser, origin) => {
+  const scn = 'twoday';
+  const board = () => { const b = fixture(); for (const c of b.cycles) for (const st of c.stops) if ([1003, 1004].includes(st.stop_id)) st.stop_day = '2026-10-13'; return b; };
+  const read = (page) => page.evaluate(() => {
+    const r = document.querySelector('#content .wn5 .wn5-row[data-key="rt:101"]');
+    if (!r) return null;
+    const kto = r.querySelector('.wn5-kto .wn5-pts');
+    const txt = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : null);
+    return { head: txt(r.querySelector('.wn5-kd')),
+      seq: [...kto.children].flatMap((el) => el.classList.contains('wi4-more') ? ['M:' + txt(el)]
+        : [...(el.classList.contains('wi4-pt-nd') ? ['D:' + txt(el.querySelector('.wi4-pt-dd'))] : []), 'P' + (txt(el.querySelector('.wi4-pt-n')) || '')]),
+      all: document.querySelectorAll('#content .wn5 .wi4-pt-nd').length,
+      inline: [...document.querySelectorAll('#content .wn5 .wi4-pt-nd, #content .wn5 .wi4-pt-dd, #content .wn5 .wi4-more-d')].filter((el) => el.getAttribute('style')).length,
+      over: [...document.querySelectorAll('#content .wn5 .wn5-pts')].filter((el) => el.scrollWidth > el.clientWidth + 1).length };
+  });
+  const wide = await openBoard(browser, origin, { board: board() });
+  const a = await read(wide.page);
+  ok(scn, '1920: head «Σάβ 10/10 → Δευ 12/10» (the FIRST delivery day)', !!a && /^Σάβ 10\/10\s*→ Δευ 12\/10$/.test(a.head), a && a.head);
+  ok(scn, '1920: P1, then «Τρί 13/10» on P2, then «+1 Τρί»', !!a && JSON.stringify(a.seq) === JSON.stringify(['P1', 'D:Τρί 13/10', 'P2', 'M:+1Τρί']), a && a.seq);
+  ok(scn, 'one divider on the board; no inline style; no points cell overflows', !!a && a.all === 1 && a.inline === 0 && a.over === 0, a);
+  ok(scn, 'nothing sent to /plan/* but the reads', wide.S.plan.every((x) => x.m === 'GET'), wide.S.plan.map((x) => x.m + ' ' + x.path));
+  if (OUT) { const el = await wide.page.$('#content .wn5 .wn5-row[data-key="rt:101"]'); await el.scrollIntoViewIfNeeded(); await el.screenshot({ path: path.join(OUT, 'twoday-rt101-1920.png') }); }
+  const pe = [...wide.S.pageErrors];
+  await wide.page.context().close();
+  const narrow = await openBoard(browser, origin, { board: board(), viewport: { width: 1440, height: 900 } });
+  const n = await read(narrow.page);
+  ok(scn, '1440: one point, the «+2» names «Τρί»', !!n && JSON.stringify(n.seq) === JSON.stringify(['P1', 'M:+2Τρί']), n && n.seq);
+  if (OUT) { const el = await narrow.page.$('#content .wn5 .wn5-row[data-key="rt:101"]'); await el.scrollIntoViewIfNeeded(); await el.screenshot({ path: path.join(OUT, 'twoday-rt101-1440.png') }); }
+  pe.push(...narrow.S.pageErrors);
+  await narrow.page.context().close();
+  ok(scn, 'no page errors', !pe.length, pe);
+};
 // ── scenarios end (each Task adds its own above this line) ──
 
 // ── fixture check (T4): plain node, no browser ──

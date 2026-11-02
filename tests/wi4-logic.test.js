@@ -638,3 +638,10 @@ test('dayLabel / dayDiff: local days only, no DST drift', () => {
   assert.strictEqual(WI4.dayDiff('2026-10-24', '2026-10-26'), 2, 'across the 25/10 DST change');
   assert.strictEqual(WI4.dayDiff('x', '2026-10-26'), null);
 });
+
+test('dayBreaks: the one rule both boards read — another day than the point before (day0 for the first); empty days carry on', () => {
+  assert.deepStrictEqual(WI4.dayBreaks(['2026-11-04', '2026-11-04', '2026-11-05']), [null, null, '2026-11-05']);
+  assert.deepStrictEqual(WI4.dayBreaks(['2026-11-02', '2026-11-03'], '2026-11-03'), ['2026-11-02', '2026-11-03']);
+  assert.deepStrictEqual(WI4.dayBreaks(['2026-11-04', '', null, '2026-11-04'], '2026-11-04'), [null, null, null, null]);
+  assert.deepStrictEqual(WI4.dayBreaks(null), []);
+});

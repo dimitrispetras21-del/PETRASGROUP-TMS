@@ -140,3 +140,37 @@ test('F4α-T17 fidelity: a local loading on a pickup names what is loaded → Β
   // a delivery stop (rt:103, the fixture's own) keeps the T5 line
   assert.ok(/· για Oinofyta Test \(στάση 2\)/.test(by.get('rt:103')), 'rt:103 local');
 });
+
+// Day divider (owner 2/11, «Ναι, και στα Εθνικά»): RT-T101 delivers Rentis, Aspropyrgos, Oinofyta on Mon 12/10. Moved
+// to two days, the head names the FIRST delivery day and the first point of the later day carries «Τρί 13/10»; a
+// folded point of that day is named on the «+N» (the vm draws 2 points per cell, as above 1600px).
+const daysMoved = (ids, day) => { const b = JSON.parse(JSON.stringify(FIX)); for (const c of b.cycles) for (const s of c.stops) if (ids.includes(s.stop_id)) s.stop_day = day; return b; };
+const rowOf = (h, key) => rows(h).find((r) => keyOf(r) === key);
+test('day divider: the fixture as it is (one delivery day per cell) draws no divider and no day on a «+N»', () => {
+  const h = html();
+  assert.ok(!/wi4-pt-nd|wi4-pt-dd|wi4-more-d/.test(h), 'a divider on a one-day board');
+});
+test('day divider: Mon, Tue, Tue — point 2 says «Τρί 13/10», the folded third names «Τρί» on its «+1»', () => {
+  const b = daysMoved([1003, 1004], '2026-10-13');
+  const c = load();
+  const m = c.WN5L.model(b, { today: '2026-10-13' });
+  const r = m.days.flatMap((d) => d.rows).find((x) => x.key === 'rt:101');
+  assert.strictEqual(r.kath.toDay, '2026-10-12', 'toDay = the FIRST delivery day');
+  const kto = cell(rowOf(c.WN5._html(m), 'rt:101'), 'wn5-kto');
+  const pts = kto.split('<span class="wi4-pt ').slice(1);
+  assert.strictEqual(pts.length, 2, kto);
+  assert.ok(!/wi4-pt-nd/.test(pts[0]), 'point 1 (Monday) has no divider');
+  assert.ok(/^[^"]*wi4-pt-nd/.test(pts[1]) && pts[1].includes('<span class="wi4-pt-dd">Τρί 13/10</span>'), pts[1]);
+  assert.ok(/<b>\+1<\/b><span class="wi4-more-d">Τρί<\/span>/.test(kto), kto);
+});
+test('day divider: Mon, Mon, Tue — no divider on the shown two, the «+1» names «Τρί»; Tue, Mon, Mon — the head says Tue, Monday\'s point is named', () => {
+  const c = load();
+  const kto1 = cell(rowOf(c.WN5._html(c.WN5L.model(daysMoved([1004], '2026-10-13'), { today: '2026-10-13' })), 'rt:101'), 'wn5-kto');
+  assert.ok(!/wi4-pt-nd/.test(kto1) && /<b>\+1<\/b><span class="wi4-more-d">Τρί<\/span>/.test(kto1), kto1);
+  // an EARLIER later point (the #618 shape on the national board): stop order kept, the day named
+  const m2 = c.WN5L.model(daysMoved([1002], '2026-10-13'), { today: '2026-10-13' });
+  const r2 = m2.days.flatMap((d) => d.rows).find((x) => x.key === 'rt:101');
+  assert.strictEqual(r2.kath.toDay, '2026-10-13');
+  const kto2 = cell(rowOf(c.WN5._html(m2), 'rt:101'), 'wn5-kto');
+  assert.ok(kto2.includes('<span class="wi4-pt-dd">Δευ 12/10</span>'), kto2);
+});

@@ -203,7 +203,10 @@ function _side(name, list, hubId) {
   const palUnknown = _unk(list.flatMap((s) => _legs(s, 'load')));
   return {
     side: {
-      side: name, day: dayStop.stop_day || null, toDay: name === 'KATHODOS' && to.length ? to[to.length - 1].day : null,
+      // toDay = the FIRST delivery day (owner 2/11, «Ναι, και στα Εθνικά»): the head says «→ Τρί 3/11» and a point
+      // of a later day carries its own divider «Τετ 4/11» (WI4.dayBreaks), as on the Weekly International. Until 2/11
+      // it was the LAST day, so a Tuesday delivery read as Wednesday's.
+      side: name, day: dayStop.stop_day || null, toDay: name === 'KATHODOS' && to.length ? to[0].day : null,
       veroia: v ? { stopId: v.stop_id, from: athensTime(v.planned_from), to: athensTime(v.planned_to), allDay: allDay(v.planned_from, v.planned_to) } : null, vBefore,
       headDim: dayStop.dim === true, from, to, pallets, palUnknown, over: pallets > CAP ? r1(pallets - CAP) : 0,
       sideDim: list[0].side_dim === true, gap: null,
@@ -405,7 +408,7 @@ function _waitRow(list, hubId, errors, nameOf) {
     from: athensTime(g[0].deliver_from), to: athensTime(g[0].deliver_to), allDay: allDay(g[0].deliver_from, g[0].deliver_to), pallets: _sum(g), palUnknown: _unk(g), dim: false, late: false, segmentId: null, segLabel: null,
     day: athensDay(g[0].deliver_from), toDay: athensDay(g[0].deliver_to), hub: hubId != null && Number(g[0].nat_to_location_id) === hubId,
     due: g.map((w) => w.nat_due_day).filter((d) => DAY_RE.test(String(d || ''))).sort()[0] || null, _np: _noPriceIds(g) }));
-  const side = { side: anodos ? 'ANODOS' : 'KATHODOS', day: loadDay, toDay: anodos || !pts.length ? null : pts[pts.length - 1].day,
+  const side = { side: anodos ? 'ANODOS' : 'KATHODOS', day: loadDay, toDay: anodos || !pts.length ? null : pts[0].day,
     veroia: !anodos && hubWs.length ? { stopId: null, from: athensTime(hubWs[0].load_from), to: athensTime(hubWs[0].load_to), allDay: allDay(hubWs[0].load_from, hubWs[0].load_to) } : null, vBefore: 0,
     headDim: false, from: anodos ? pts : origin, to: anodos ? dest : pts, pallets, palUnknown, over: pallets > CAP ? r1(pallets - CAP) : 0, sideDim: false, gap: null };
   _marks(side.from.concat(side.to));
