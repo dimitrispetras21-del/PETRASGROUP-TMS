@@ -455,17 +455,17 @@ test('a split leg puts its RT in the LEG\'s week; the parent is counted in its o
 });
 
 // ── Row order = the Weekly boards' order (owner 2/11/2026: Ειρήνη compares row by row) ──
-test('international day: the Weekly International order (WI4.dayRowOrder) — exports by client, VS last, then time; import-only after; guests last', () => {
+test('international day: the Weekly International order (WI4.dayRowOrder) — exports, VS last, then time; import-only after; guests last', () => {
   const X = [
-    o('xZ', 3001, { Direction: 'Export', 'Client Name': 'Zeta Foods', 'Loading DateTime': '2026-09-19T08:00', 'Delivery DateTime': '2026-09-21T10:00', Price: 1 }),
-    o('xAv', 3002, { Direction: 'Export', 'Client Name': 'alfa fresh', 'Veroia Switch': true, 'Loading DateTime': '2026-09-19T08:00', 'Delivery DateTime': '2026-09-21T06:00', Price: 1 }),
-    o('xA2', 3003, { Direction: 'Export', 'Client Name': 'Alfa Fresh', 'Loading DateTime': '2026-09-19T08:00', 'Delivery DateTime': '2026-09-21T12:00', Price: 1 }),
-    o('xA1', 3004, { Direction: 'Export', 'Client Name': 'Alfa Fresh', 'Loading DateTime': '2026-09-19T08:00', 'Delivery DateTime': '2026-09-21T09:00', Price: 1 }),
-    o('xIb', 3005, { Direction: 'Import', 'Client Name': 'Beta', 'Loading DateTime': '2026-09-21T06:00', Price: 1 }),
-    o('xIa', 3006, { Direction: 'Import', 'Client Name': 'Aardvark', 'Loading DateTime': '2026-09-21T09:00', Price: 1 }),
+    o('xZ', 3001, { Direction: 'Export', 'Loading DateTime': '2026-09-19T08:00', 'Delivery DateTime': '2026-09-21T10:00', Price: 1 }),
+    o('xAv', 3002, { Direction: 'Export', 'Veroia Switch': true, 'Loading DateTime': '2026-09-19T08:00', 'Delivery DateTime': '2026-09-21T06:00', Price: 1 }),
+    o('xA2', 3003, { Direction: 'Export', 'Loading DateTime': '2026-09-19T08:00', 'Delivery DateTime': '2026-09-21T12:00', Price: 1 }),
+    o('xA1', 3004, { Direction: 'Export', 'Loading DateTime': '2026-09-19T08:00', 'Delivery DateTime': '2026-09-21T09:00', Price: 1 }),
+    o('xIb', 3005, { Direction: 'Import', 'Loading DateTime': '2026-09-21T06:00', Price: 1 }),
+    o('xIa', 3006, { Direction: 'Import', 'Loading DateTime': '2026-09-21T09:00', Price: 1 }),
     // a guest: its export is in the previous week, its import loads Monday here
-    o('xGe', 3007, { Direction: 'Export', 'Client Name': 'Aaa First', 'Loading DateTime': '2026-09-14T08:00', 'Delivery DateTime': '2026-09-16T08:00', Price: 1 }),
-    o('xGi', 3008, { Direction: 'Import', 'Client Name': 'Aaa First', 'Loading DateTime': '2026-09-21T05:00', Price: 1 }),
+    o('xGe', 3007, { Direction: 'Export', 'Loading DateTime': '2026-09-14T08:00', 'Delivery DateTime': '2026-09-16T08:00', Price: 1 }),
+    o('xGi', 3008, { Direction: 'Import', 'Loading DateTime': '2026-09-21T05:00', Price: 1 }),
   ];
   const rt = (id, legs) => ({ id, code: 'RT-' + id, date_start: '2026-09-19', status: 'open', ct_rt_legs: legs.map(([order_id, direction], i) => ({ order_id, direction, seq: i + 1 })) });
   const R = [rt(1, [[3001, 'EXPORT']]), rt(2, [[3002, 'EXPORT']]), rt(3, [[3003, 'EXPORT'], [3005, 'IMPORT']]), rt(4, [[3004, 'EXPORT']]),
@@ -473,19 +473,18 @@ test('international day: the Weekly International order (WI4.dayRowOrder) — ex
   // RT-3 carries 3005 too: a leg counted once (RT-3 first by date_start/id) — RT-5 then has nothing in the week of its own
   const m = W.buildWeek({ week: WEEK, intl: X, natl: [], rts: R });
   const mon = W.daySections(WEEK, m.rows).days.find(d => d.day === '2026-09-21');
-  assert.deepStrictEqual(mon.rows.map(r => r.code), ['RT-4', 'RT-3', 'RT-2', 'RT-1', 'RT-6', 'RT-5', 'RT-7']);
+  assert.deepStrictEqual(mon.rows.map(r => r.code), ['RT-4', 'RT-1', 'RT-3', 'RT-2', 'RT-5', 'RT-6', 'RT-7']);
   // the exports of that day in exactly the Weekly's own comparator order
   const weekly = X.slice(0, 4).sort((a, b) => WI4.dayRowOrder(a.fields, b.fields, 'Delivery DateTime')).map(r => r.id);
-  assert.deepStrictEqual(weekly, ['xA1', 'xA2', 'xAv', 'xZ']);
+  assert.deepStrictEqual(weekly, ['xA1', 'xZ', 'xA2', 'xAv']);
   assert.deepStrictEqual(mon.rows.slice(0, 4).map(r => r.sortRec.id), weekly);
   assert.strictEqual(mon.rows[6].guest, true);
 });
 
-test('WI4.dayRowOrder is the Weekly International comparator (client upper-case, VS last, then the field)', () => {
+test('WI4.dayRowOrder is the Weekly International comparator (VS last, then the field; no client key, owner 2/11)', () => {
   const f = (c, vs, t) => ({ 'Client Name': c, 'Veroia Switch': vs, 'Delivery DateTime': t });
-  assert.ok(WI4.dayRowOrder(f('alfa', false, '2026-09-21T12:00'), f('BETA', false, '2026-09-21T06:00'), 'Delivery DateTime') < 0);
-  assert.ok(WI4.dayRowOrder(f('Alfa', true, '2026-09-21T06:00'), f('ALFA', false, '2026-09-21T12:00'), 'Delivery DateTime') > 0);
-  assert.ok(WI4.dayRowOrder(f('Alfa', false, '2026-09-21T06:00'), f('ALFA', false, '2026-09-21T12:00'), 'Delivery DateTime') < 0);
+  assert.ok(WI4.dayRowOrder(f('Zeta', false, '2026-09-21T06:00'), f('Alfa', false, '2026-09-21T12:00'), 'Delivery DateTime') < 0, 'time, never the client');
+  assert.ok(WI4.dayRowOrder(f('', true, '2026-09-21T06:00'), f('', false, '2026-09-21T12:00'), 'Delivery DateTime') > 0, 'VS last');
   assert.strictEqual(WI4.dayRowOrder(null, undefined, 'Delivery DateTime'), 0);
 });
 
@@ -518,10 +517,10 @@ test('WN5L.model sorts with the shared rowOrder (one rule for the board and «Ε
 
 test('an RT with several exports stands where its FIRST Weekly row stands (the leg the rule puts first, that day)', () => {
   const X = [
-    o('mZ', 4001, { Direction: 'Export', 'Client Name': 'Zeta', 'Delivery DateTime': '2026-09-22T08:00', Price: 1 }),
-    o('mA', 4002, { Direction: 'Export', 'Client Name': 'Alfa', 'Delivery DateTime': '2026-09-22T09:00', Price: 1 }),
-    o('mK', 4003, { Direction: 'Export', 'Client Name': 'Kappa', 'Delivery DateTime': '2026-09-22T07:00', Price: 1 }),
-    o('mB', 4004, { Direction: 'Export', 'Client Name': 'Beta', 'Delivery DateTime': '2026-09-23T07:00', Price: 1 }),   // another day: not a candidate
+    o('mZ', 4001, { Direction: 'Export', 'Delivery DateTime': '2026-09-22T08:00', Price: 1 }),
+    o('mA', 4002, { Direction: 'Export', 'Delivery DateTime': '2026-09-22T09:00', Price: 1 }),
+    o('mK', 4003, { Direction: 'Export', 'Delivery DateTime': '2026-09-22T07:00', Price: 1 }),
+    o('mB', 4004, { Direction: 'Export', 'Delivery DateTime': '2026-09-23T07:00', Price: 1 }),   // another day: not a candidate
   ];
   const R = [
     { id: 1, code: 'RT-1', date_start: '2026-09-21', status: 'open', ct_rt_legs: [{ order_id: 4001, direction: 'EXPORT', seq: 1 }, { order_id: 4002, direction: 'EXPORT', seq: 2 }, { order_id: 4004, direction: 'EXPORT', seq: 3 }] },
@@ -529,8 +528,8 @@ test('an RT with several exports stands where its FIRST Weekly row stands (the l
   ];
   const m = W.buildWeek({ week: WEEK, intl: X, natl: [], rts: R });
   const tue = W.daySections(WEEK, m.rows).days.find(d => d.day === '2026-09-22');
-  assert.deepStrictEqual(tue.rows.map(r => r.code), ['RT-1', 'RT-2']);   // Alfa (RT-1's 2nd leg) < Kappa
-  assert.strictEqual(tue.rows[0].sortRec.id, 'mA');
+  assert.deepStrictEqual(tue.rows.map(r => r.code), ['RT-2', 'RT-1']);   // mK 07:00 < RT-1's first line mZ 08:00
+  assert.strictEqual(tue.rows[1].sortRec.id, 'mZ');
 });
 
 // «Αυτοπαράδοση» (owner 2/11/2026, migration 101): counted as invoiced, labelled, no ΤΠΥ invented.

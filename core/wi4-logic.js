@@ -40,15 +40,15 @@ function dayLabel(d) {
 }
 
 // The order of the rows inside one day of the board, on two ORDERS `fields`:
-// client A→Z (Greek collation), Veroia Switch last, then `field` — 'Delivery
-// DateTime' for exports, 'Loading DateTime' for import-only rows. ONE rule:
-// «Παραγγελίες › Εβδομάδα» reads it too, so Ειρήνη compares the two lists row
-// by row (owner 2/11/2026). 'Client Summary' is not on the Worker map today
-// (always empty), kept as it was.
-const clientKey = (f) => String((f || {})['Client Name'] || (f || {})['Client Summary'] || '').toUpperCase();
+// Veroia Switch last, then `field` — 'Delivery DateTime' for exports, 'Loading
+// DateTime' for import-only rows. ONE rule: «Παραγγελίες › Εβδομάδα» reads it
+// too, so Ειρήνη compares the two lists row by row (owner 2/11/2026). There is
+// no client key (owner 2/11, «Όχι, μένει ως έχει»): the old one read 'Client
+// Name' / 'Client Summary', which the Worker's ORDERS map never returns, so it
+// was always empty — removed, the board's order byte-identical before / after.
 function dayRowOrder(fa, fb, field) {
   const a = fa || {}, b = fb || {};
-  return clientKey(a).localeCompare(clientKey(b), 'el') || ((a['Veroia Switch'] ? 1 : 0) - (b['Veroia Switch'] ? 1 : 0))
+  return ((a['Veroia Switch'] ? 1 : 0) - (b['Veroia Switch'] ? 1 : 0))
     || String(a[field] || '').localeCompare(String(b[field] || ''));
 }
 
