@@ -44,7 +44,8 @@
 -- only (the local loading's day): ORDER 093 -> 095 (095's guard is 093's text; run before 093, it stops at once).
 -- RUN: after 093. 095_plan_small_relaxed_dryrun.sql, then this file, then 095_plan_small_relaxed_verify.sql.
 -- REVERSE: 095_plan_small_relaxed_rollback.sql (it STOPS and lists the cycles if a handover without a reason, or an
--- "other" without a note, is in the base: the old CHECKs could not be rebuilt over them).
+-- "other" without a note, is in the base: the old CHECKs could not be rebuilt over them). ROLLBACK ORDER 095 -> 093:
+-- once 095 has run, 093's rollback stops at its own guard on plan_rt_update (it expects 093's text) - reverse 095 first.
 DO $do$
 DECLARE
   -- the hunks: (anchor in the live text, replacement); each anchor is in the live text exactly once

@@ -21,7 +21,7 @@ function load(extra) {
   const ctx = { console: { log() {}, warn() {}, error() {} }, window: win, Intl, Date, Math, JSON, Object, Array, String, Number, Map, Set, Promise, Error, RegExp, Symbol,
     setTimeout: rec('setTimeout'), setInterval: rec('setInterval'), fetch: rec('fetch'), addEventListener: rec('addEventListener'),
     document: { createElement: rec('document.createElement'), addEventListener: rec('document.addEventListener'), body: { appendChild: rec('body.appendChild') } },
-    WN5Lab: { REASON: { other: { text: 'Άλλο', group: 'other', noteRequired: true }, vehicle_breakdown: { text: 'Βλάβη φορτηγού', group: 'unplanned' } } } };
+    WN5Lab: { REASON: { other: { text: 'Άλλο', group: 'other' }, vehicle_breakdown: { text: 'Βλάβη φορτηγού', group: 'unplanned' } } } };
   Object.assign(ctx, extra);
   vm.createContext(ctx);
   vm.runInContext(SRC, ctx, { filename: FILE });

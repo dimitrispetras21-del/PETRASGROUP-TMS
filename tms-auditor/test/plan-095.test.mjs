@@ -240,6 +240,30 @@ test('095 on the production-shaped copy (2/11, after 093): a local loading on an
     assert.strictEqual(r.d2, day, 'the stop moved one day, the loading too: still the evening before');
   });
 
+  await t.test('GO: explicit stop windows - another stop moved leaves the loading; its own stop moved takes it by the same days', async () => {
+    const r = await scenario(db, async () => {
+      const rt = await cycle(db, 'G4b', day);
+      const lm = await local(db, rt, { move_date: eve });
+      const id = lm.r.ids.local_move_id;
+      const st = (await db.query(`SELECT id, planned_from, planned_to, id = t95_pick($1) AS pick FROM rt_stops
+        WHERE rt_id = $1 AND deleted_at IS NULL ORDER BY seq`, [rt])).rows;
+      const plus = (x, h) => new Date(Date.parse(x) + h * 3600e3).toISOString();
+      const drop = st.find((x) => !x.pick);
+      // the Veroia drop one hour later, the same day: the loading's stop did not move
+      const a = await call(db, 'plan_rt_update', { rt_id: rt, stops: [{ stop_id: drop.id, planned_from: plus(drop.planned_from, 1), planned_to: plus(drop.planned_to, 1) }] });
+      const d1 = await lmDay(db, id);
+      // both stops one day later: the loading's stop moved one day
+      const st2 = (await db.query(`SELECT id, planned_from, planned_to FROM rt_stops WHERE rt_id = $1 AND deleted_at IS NULL ORDER BY seq`, [rt])).rows;
+      const b = await call(db, 'plan_rt_update', { rt_id: rt, stops: st2.map((x) => ({ stop_id: x.id, planned_from: plus(x.planned_from, 24), planned_to: plus(x.planned_to, 24) })) });
+      return { a, b, d1, d2: await lmDay(db, id) };
+    });
+    assert.strictEqual(r.a.err, null);
+    assert.strictEqual(r.b.err, null);
+    assert.strictEqual(r.late, null);
+    assert.strictEqual(r.d1, eve, 'another stop moved: the loading keeps its day');
+    assert.strictEqual(r.d2, day, 'its stop moved one day: the loading too, still the evening before');
+  });
+
   await t.test('GO: a loading on its stop\'s day still follows it to the new day (as before 095)', async () => {
     const r = await scenario(db, async () => {
       const rt = await cycle(db, 'G5', day);

@@ -230,7 +230,7 @@
       t.textContent = has ? _dlab(v) : 'ηη/μμ';
     });
   }
-  const _unmark = (d) => d.el.querySelectorAll('.wn5f-f.bad:not([data-note])').forEach((f) => f.classList.remove('bad'));
+  const _unmark = (d) => d.el.querySelectorAll('.wn5f-f.bad').forEach((f) => f.classList.remove('bad'));
   async function _board() { try { return await WN5.findAfterReuse((b) => b); } catch (e) { _log(e, 'WN5Hand board'); return null; } }
   const _list = (kind) => { try { return PlanIds.list(kind).filter((x) => x.active !== false); } catch (_) { return []; } };
   // The fix form opens on the segment's own vehicle: when that id is not in the active list (an inactive vehicle, or

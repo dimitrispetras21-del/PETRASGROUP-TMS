@@ -2276,7 +2276,13 @@
         st.stop = _id(el.value);
         // a day the user did not set follows the stop picked (the base's own default)
         if (!st.day) d.body.querySelector('[data-day]').value = _localStopDay(st) || '';
-      } else if (el.matches('[data-day]')) st.day = /^\d{4}-\d{2}-\d{2}$/.test(el.value) ? el.value : null;
+      } else if (el.matches('[data-day]')) {
+        // only a day other than the stop's is the user's own (it then stays when the stop changes); the stop's day or
+        // an emptied field is «the stop's day», shown as such
+        const sd = _localStopDay(st);
+        st.day = /^\d{4}-\d{2}-\d{2}$/.test(el.value) && el.value !== sd ? el.value : null;
+        if (!st.day) el.value = sd || '';
+      }
       else if (el.matches('[data-driver]')) st.driver = _id(el.value);
       else if (el.matches('[data-truck]')) st.truck = _id(el.value);
       else if (el.matches('[data-trailer]')) st.trailer = _id(el.value);

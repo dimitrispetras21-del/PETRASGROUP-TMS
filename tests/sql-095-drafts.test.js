@@ -76,3 +76,22 @@ test('095 touches none of the functions of 093 / 094, creates nothing, grants no
   assert.strictEqual(alters.length, 1);
   assert.match(alters[0], /rt_vehicle_segments DROP CONSTRAINT seg_change_pair, DROP CONSTRAINT seg_other_note,\s+ADD CONSTRAINT seg_change_pair CHECK \(reason IS NULL OR place_note IS NOT NULL\);/);
 });
+
+// 093 -> 095 (coordinator 2/11): 095 guards plan_rt_update on the text 093 writes. Once 093 is in the tree, its own
+// PART 2 md5 for plan_rt_update must be 095's PART 0 guard - a later edit of 093's hunk fails here, not at 15:00.
+test('095 guards plan_rt_update on the md5 093 generates (once 093 is in the tree)', (t) => {
+  const f93 = ['093_plan_hours_relaxed.sql'].map((f) => [path.join(DRAFTS, f), path.join(ROOT, 'worker/migrations', f)])
+    .flat().find((f) => fs.existsSync(f));
+  const src = read(`${P}.sql`);
+  const part0 = src.slice(src.indexOf('===== PART 0'), src.indexOf('===== PART 1'));
+  const guard = /'public\.plan_rt_update\(jsonb,text,text\)', '([0-9a-f]{32})'\)/.exec(part0);
+  assert.ok(guard, 'PART 0 guards plan_rt_update');
+  const stub = fs.readFileSync(path.join(ROOT, 'tms-auditor/test/prod-shaped-093.mjs'), 'utf8');
+  assert.ok(stub.includes(`'${guard[1]}'`), 'the PGlite copy of 093 ends on the same md5');
+  if (!f93) { t.todo('093 not in the tree yet: prod-shaped-093.mjs applies its one hunk'); return; }
+  const s93 = fs.readFileSync(f93, 'utf8');
+  const p2 = s93.slice(s93.indexOf('===== PART 2'), s93.indexOf('===== PART 3'));
+  const gen = /'public\.plan_rt_update\(jsonb,text,text\)', ARRAY\[[a-z0-9_, ]+\], ARRAY\[[a-z0-9_, ]+\], '([0-9a-f]{32})'\)/.exec(p2);
+  assert.ok(gen, '093 patches plan_rt_update in its PART 2');
+  assert.strictEqual(guard[1], gen[1], '093 changed its plan_rt_update text: rebuild 095 (PART 0, prod-shaped-093, build-095.mjs)');
+});

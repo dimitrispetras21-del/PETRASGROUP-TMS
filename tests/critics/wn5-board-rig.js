@@ -1854,6 +1854,13 @@ async function scnLocal(browser, origin) {
     ok(scn, '095: «Ημέρα» = the picked stop\'s Athens day by default, no amber line', /^\d{4}-\d{2}-\d{2}$/.test(stopDay)
       && await page.$eval(`${D} [data-dayw]`, (e) => e.hidden).catch(() => false), stopDay);
     const eve = new Date(Date.parse(stopDay + 'T00:00:00Z') - 864e5).toISOString().slice(0, 10);
+    // code review xhigh: the stop's own day or an emptied field is «the stop's day» (shown, not the user's own)
+    await bPick(page, `${D} input[data-day]`, eve);
+    await bPick(page, `${D} input[data-day]`, stopDay);
+    const back = [await page.$eval(`${D} input[data-day]`, (e) => e.value).catch(() => ''), await page.$eval(`${D} [data-dayw]`, (e) => e.hidden).catch(() => false)];
+    await bPick(page, `${D} input[data-day]`, '');
+    const empty = await page.$eval(`${D} input[data-day]`, (e) => e.value).catch(() => '');
+    ok(scn, '095: back to the stop\'s day → no amber; an emptied field shows the stop\'s day again', back[0] === stopDay && back[1] === true && empty === stopDay, { back, empty });
     await bPick(page, `${D} input[data-day]`, eve);
     const amber = await bText(page, `${D} [data-dayw]`);
     ok(scn, '095: the evening before → amber «Άλλη ημέρα από τη στάση (…)», the save stays on', /^Άλλη ημέρα από τη στάση \(/.test(amber)
