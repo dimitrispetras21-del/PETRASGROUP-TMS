@@ -12,6 +12,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
+- dimitris · `claude/wi4-two-day-divider-3ee01b` · Weekly Διεθνών v4: διαχωριστικό ημέρας στα σημεία όταν οι παραδόσεις πιάνουν δύο ημέρες (#616), η γραμμή μένει στην 1η ημέρα· μόνο front end, ?v= / SW_VERSION 1793690100· εκκρεμούν ερωτήσεις owner για #618 και Εθνικών v5 (`docs/sessions/2026-11-02-dimitris-wi4-two-day-divider.md`)
 - dimitris · `feat/relax-order-form-094` · Εθνικά v5 χαλαροί κανόνες ομάδα 5: νυχτερινό παράθυρο στη φόρμα, «λείπει τιμή» στο Εβδομαδιαίο· καμία migration (η βάση ήδη τα δεχόταν)· μόνο front end, ?v= / SW_VERSION 1793680001 (`docs/sessions/2026-11-02-dimitris-relax-order-form-094.md`)
 - dimitris · `test/w50-sotiris-sim` · Εθνικά v5: δοκιμή χρήσης ως Σωτήρης (νύχτα 2/11), μόνο ως την προεπισκόπηση, καμία εγγραφή· ευρήματα Πίνακα Βέροιας, ανάθεσης και κανόνα ωρών, προτάσεις Π1–Π3 (`docs/sessions/2026-11-02-dimitris-w50-usability-night.md`)
 - dimitris · `claude/relax-hours-093-7879f4` · Εθνικά v5: 093 προσχέδιο, οι κανόνες ωρών χαλαρώνουν (chain_time / stop_order μόνο ό,τι δεν οδηγείται, «όλη η ημέρα» = ημέρα, ΑΝΟΔΟΣ πριν ΚΑΘΟΔΟ = `side_time` + ίχνος)· πάνελ «Αλλαγή ώρας» αποθηκεύει με κίτρινη προειδοποίηση· πάνω στο #213· ?v= / SW_VERSION 1793660000 (`docs/sessions/2026-11-02-dimitris-relax-hours-093.md`)

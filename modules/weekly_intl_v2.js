@@ -744,10 +744,27 @@ function _ptsHTML(side) {
   const group = (side.stops || []).some((s) => s && s.drag);
   // pre/late: the leg's PREORDER / LATE reason. They ride on the first /
   // last SHOWN point, so a point folded behind «+N» never hides the word.
-  const d = { stops: side.stops || [], dateTick: !!side.dateTick, showPal: !!side.showPal, group, pre: side.pre || null, late: side.late || null };
+  const d = { stops: side.stops || [], dateTick: !!side.dateTick, showPal: !!side.showPal, group, pre: side.pre || null, late: side.late || null, days: side.days || '' };
   _pts.set(k, d);
-  const r = L().points(d.stops, _ptsW || 0, { dateTick: d.dateTick });
+  const r = _ptsFit(d);
   return `<div class="wi4-pts${r.hidePlace ? ' wi4-noplace' : ''}" data-pk="${k}">${_ptsInner(r, d)}</div>${group || r.more ? '' : (side.xfold || '')}`;
+}
+// Day dividers (owner 2/11): only on the end that dates the row (an export's
+// deliveries, an import's loadings), so «Τρί 2 σημεία, Τετ 1» sits on Tuesday
+// with «Τετ 4/11» before the third. d.days = the day the row sits on (the
+// field _compute groups by), so a first point on another day is named too
+// (#618: points sorted by date put Monday first on a Tuesday row). Stop days
+// in Athens time (_day), never the raw UTC slice.
+function _ptsFit(d) {
+  const stops = d.days ? d.stops.map((s) => Object.assign({}, s, { day: _day(s.dt) })) : d.stops;
+  return L().points(stops, _ptsW || 0, { dateTick: d.dateTick, day0: d.days || '' });
+}
+// The day _compute files a row under: an export by Delivery (else Loading)
+// DateTime, an import by Loading DateTime. Only for the end that dates the row.
+function _rowDayOf(f, kind) {
+  const exp = f['Direction'] === 'Export';
+  if ((kind === 'load') === exp) return '';
+  return _day(exp ? (f['Delivery DateTime'] || f['Loading DateTime']) : f['Loading DateTime']) || '';
 }
 // «+N» (Nick 14/10): the tooltip said «Όλα τα σημεία» but listed only the
 // hidden points, and a groupage's panel held only those. Both now give the
@@ -794,7 +811,10 @@ function _ptsInner(r, d) {
   const noPal = !!r.more;
   let h = r.shown.map((s, i) => _ptHTML(Object.assign({}, s, { pre: i === 0 ? d.pre : null, late: i === last ? d.late : null, noPal }), d)).join('');
   if (r.more) {
-    h += `<button type="button" class="wi4-more" aria-label="${_esc(_routeTitle(d))}" onclick="event.stopPropagation();WIV2._more(this)"><b>+${r.more.count}</b></button>`;
+    // A new day behind «+N» is still told (points() more.brk): the chip names the day, with the divider
+    // line only when the first hidden point starts it; the popup lists every point's day.
+    const mb = r.more.brk, md = mb ? _dayLabel(mb.day) : '';
+    h += `<button type="button" class="wi4-more${mb && mb.edge ? ' wi4-more-nd' : ''}" aria-label="${_esc(_routeTitle(d) + (md ? '\n' + (mb.edge ? 'Από εδώ: ' : 'Και ') + md : ''))}" onclick="event.stopPropagation();WIV2._more(this)"><b>+${r.more.count}</b>${md ? `<span class="wi4-more-d">${_esc(md.split(' ')[0])}</span>` : ''}</button>`;
     h += `<div class="wk3-xfold wi4-rfold${d.group ? ' wi4-fold' : ''}">${_routeTable(d)}</div>`;
   }
   return h;
@@ -809,14 +829,17 @@ function _ptHTML(s, d) {
   // column is narrow (T98: every first stop reads alike).
   const palN = d.showPal && !s.noPal && s.pallets != null ? s.pallets + 'π' : '';
   const place = s.place || '';
+  // The first point of another day (points() brk, owner 2/11): its day leads line 2, whole, the place
+  // is cut after it; the ink line on its left edge is the divider (.wi4-pt-nd).
+  const dayN = s.brk ? _dayLabel(s.brk) : '';
   // With no place the ✓ goes before the name, never alone on an empty line 2.
   // Line 2 is place and pallets only: the VS date warning («φτάνει …») left
   // with DATE_MISMATCH (owner 11/10 21:20, one synchronized VS date).
-  const tickL1 = tick && !place && !palN;
+  const tickL1 = tick && !place && !palN && !dayN;
   let l2;
-  if (place || palN) {
-    const full = [place, palN].filter(Boolean).join(' ');
-    l2 = `<span class="wi4-l2 wi4-l2f${palN ? ' wi4-l2p' : ''}" title="${_esc(full)}">${tick}${place ? `<span class="wi4-ell wi4-pt-pl">${_esc(place)}</span>` : ''}${palN ? `<span class="wi4-pt-pal">${_esc(palN)}</span>` : ''}</span>`;
+  if (place || palN || dayN) {
+    const full = [dayN, place, palN].filter(Boolean).join(' ');
+    l2 = `<span class="wi4-l2 wi4-l2f${palN ? ' wi4-l2p' : ''}" title="${_esc(full)}">${tick}${dayN ? `<span class="wi4-pt-dd">${_esc(dayN)}</span>` : ''}${place ? `<span class="wi4-ell wi4-pt-pl">${_esc(place)}</span>` : ''}${palN ? `<span class="wi4-pt-pal">${_esc(palN)}</span>` : ''}</span>`;
   } else l2 = '';
   // A word beside the name (PRE before it; +Nω / καθυστέρηση after it): line 1
   // turns into a flex row so the NAME is cut, never the word.
@@ -835,7 +858,7 @@ function _ptHTML(s, d) {
   // fires. No `wk3-seg` class: it is a global layout rule (§a.7).
   // A point done on its own (its stop stamped by the Ημερήσιο, or its side by
   // Status) fades alone: the other points of the leg stay bold (owner 21/10).
-  const xd = s.done && !s.cx ? ' wi4-xd-pt' : '';
+  const xd = (s.done && !s.cx ? ' wi4-xd-pt' : '') + (dayN ? ' wi4-pt-nd' : '');
   if (s.badge == null) return `<div class="wi4-pt${xd}" style="display:block"${click}${drag}>${l1}${l2}</div>`;
   return `<div class="wi4-pt${xd}"${click}${drag}><span class="wi4-pt-n">${_esc(s.badge)}</span>${l1}${l2}</div>`;
 }
@@ -876,7 +899,7 @@ function _sideOf(recs, kind, opt) {
     if (byDate) pts.sort((a, b) => String(a.dt || '9').slice(0, 10).localeCompare(String(b.dt || '9').slice(0, 10)) || a.mi - b.mi || a.si - b.si);
     const stops = pts.map((s, i) => ({ n: i + 1, label: s.label, place: s.place, pallets: s.pallets, done: s.done, cx: s.cx, oid: s.oid, drag: s.drag, dt: s.dt }));
     const arr = pts.map((s) => ({ n: s.label, dt: s.dt }));
-    return { stops, dateTick: kind === 'load', showPal: true, xfold: I.moreStops(arr.map((x) => x.n).join(', '), arr, kind) };
+    return { stops, dateTick: kind === 'load', showPal: true, days: _rowDayOf((recs[0] && recs[0].fields) || {}, kind), xfold: I.moreStops(arr.map((x) => x.n).join(', '), arr, kind) };
   }
   const r = recs[0], f = (r && r.fields) || {};
   const st = I.stFlags(f);
@@ -894,7 +917,7 @@ function _sideOf(recs, kind, opt) {
     return { n: i + 1, label: nm.title, place: one ? nm.placeC : nm.place, pallets: null, done: (kind === 'load' ? st.loaded : st.delivered) || !!x.c,
       cx: f['Status'] === 'Cancelled', oid: r && r.id, lot: i === 0 ? lot : '', dt: x.dt || '' };
   });
-  return { stops, dateTick: kind === 'load', showPal: false, xfold: I.moreStops(I.placeStr(f, kind), kind === 'load' ? f._stopsL : f._stopsD, kind) };
+  return { stops, dateTick: kind === 'load', showPal: false, days: _rowDayOf(f, kind), xfold: I.moreStops(I.placeStr(f, kind), kind === 'load' ? f._stopsL : f._stopsD, kind) };
 }
 // docIds: the orders the paperclip covers (a groupage passes all its members);
 // left out, it is the order itself plus, for a split leg, its parent (C6, 14/10).
@@ -2118,7 +2141,7 @@ function _layout(force) {
 function _fillPts(el) {
   const d = _pts.get(el.dataset.pk);
   if (!d) return;
-  const r = L().points(d.stops, _ptsW || 0, { dateTick: d.dateTick });
+  const r = _ptsFit(d);
   el.innerHTML = _ptsInner(r, d);
   el.classList.toggle('wi4-noplace', !!r.hidePlace);
 }

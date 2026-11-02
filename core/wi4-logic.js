@@ -74,6 +74,19 @@ const POINTS_DEFAULTS = freeze({ min: 56, gap: 8, badge: 12, chip: 34, placeMin:
  * five shows 2 points + «+3» (Figma 1097:2895). It also means a 4-stop column
  * at 200–207px shows 2 + «+2», not the «3 + +1» the §d.1 prose estimated
  * (3 points + chip need 226px). Reported to the coordinator, not bent here.
+ *
+ * Day breaks (owner 2/11): a stop may carry `day` (YYYY-MM-DD). A stop whose
+ * day differs from the stop before it (the last one with a day; for the first
+ * stop, opts.day0 = the day the row sits on) gets brk = its day, else null; the renderer draws the divider INSIDE that point (no width of
+ * its own: a 40px divider pushed #616's third point behind «+1» at 1920, the
+ * one point the owner asked to see), so the fit rule is unchanged. Any
+ * different day counts, an EARLIER one too (#618: stop 2 a day before stop 1;
+ * the points come sorted by date, _wk3Arr, owner 10/8, so its Monday point is
+ * first on a row that sits on Tuesday and day0 names it). A new day
+ * behind «+N» is told by the chip: more.brk = {day, edge}, edge = the FIRST
+ * hidden stop starts it (the divider line then stands on the chip), else it
+ * starts inside the fold (the chip names the day without the line, which would
+ * claim every hidden stop is that day).
  */
 function points(stops, widthPx, opts) {
   const o = Object.assign({}, POINTS_DEFAULTS, opts || {});
@@ -85,6 +98,13 @@ function points(stops, widthPx, opts) {
   // fall back to the plain rule — ≤4 all, 5+ first 3 — and let the next paint
   // measure.
   const measured = Number.isFinite(width) && width > 0;
+  let prev = o.day0 || '';
+  const brk = list.map((s) => {
+    const d = (s && s.day) || '';
+    const b = d && prev && d !== prev ? d : null;
+    if (d) prev = d;
+    return b;
+  });
   const allFit = (k) => k * o.min + (k - 1) * o.gap <= width;
   const chipFit = (k) => k * o.min + k * o.gap + o.chip <= width;
   let k;
@@ -104,6 +124,7 @@ function points(stops, widthPx, opts) {
     pallets: hidden.reduce((s, x) => s + (Number(x && x.pallets) || 0), 0),
     hidden,
     title: hidden.map((x) => [x && x.label, x && x.place].filter(Boolean).join(' · ')).join('\n'),
+    brk: (() => { const i = brk.slice(k).findIndex(Boolean); return i < 0 ? null : { day: brk[k + i], edge: i === 0 }; })(),
   } : null;
   let hidePlace = false;
   if (measured) {
@@ -116,6 +137,7 @@ function points(stops, widthPx, opts) {
     badge: single ? null : (s && s.n != null ? s.n : i + 1),
     // Rule 5: one stop + a date chip that already carries the ✓ → no second ✓.
     tick: !!(s && s.done) && !(single && o.dateTick),
+    brk: brk[i],
   }));
   return { shown, more, hidePlace };
 }
