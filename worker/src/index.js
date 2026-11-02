@@ -3423,12 +3423,14 @@ const PLAN_RULE_TEXT = {
   piece_dead: "Το φορτίο ή η αποστολή του έχει σβηστεί — ανανέωσε τη σελίδα",
   pieces_sum: "Τα κομμάτια δεν αθροίζουν στις παλέτες της αποστολής",
   piece_parent: "Το κομμάτι δεν κρέμεται από ζωντανό κομμάτι της ίδιας αποστολής",
-  split_not_at_hub: "Ένα φορτίο σπάει μόνο στη Βέροια",
+  // 098 (owner 2/11): a load splits at Veroia or within «Αλλαγή στον δρόμο», at its stop - one menu entry
+  split_not_at_hub: "Ένα φορτίο σπάει μόνο στη Βέροια ή μέσα σε «Αλλαγή στον δρόμο»",
   rt_not_v2: "Το δρομολόγιο είναι του παλιού Εβδομαδιαίου — δεν παίρνει στάσεις του νέου",
   rt_cancelled: "Το δρομολόγιο έχει ακυρωθεί — διάλεξε άλλο ή νέο",
   leg_stop_dead: "Η στάση της κίνησης έχει σβηστεί — ανανέωσε τη σελίδα",
   leg_order: "Η φόρτωση γίνεται πριν από την εκφόρτωση στο ίδιο δρομολόγιο",
-  leg_place: "Το φορτίο ταξιδεύει μόνο από την αφετηρία του, μέσω Βέροιας, στον προορισμό του",
+  // 098: or through the point of an «Αλλαγή στον δρόμο» (unloaded at a stop with a reason, loaded at the stop that names it)
+  leg_place: "Το φορτίο ταξιδεύει μόνο από την αφετηρία του, μέσω Βέροιας ή σημείου «Αλλαγή στον δρόμο», στον προορισμό του",
   chain: "Η φόρτωση γίνεται εκεί όπου ξεφορτώθηκε το φορτίο την προηγούμενη φορά",
   chain_time: "Η φόρτωση είναι πριν φτάσει το φορτίο εκεί — άλλαξε την ώρα",
   stop_seq: "Δύο στάσεις του δρομολογίου έχουν την ίδια σειρά — ανανέωσε τη σελίδα",
@@ -3459,7 +3461,9 @@ const PLAN_RULE_TEXT = {
   piece_split: "Το φορτίο έχει σπάσει — διάλεξε ένα από τα κομμάτια του",
   not_stock: "Ποσότητα παίρνεις μόνο από φορτίο που περιμένει στη Βέροια",
   parts_sum: "Τα μέρη δεν αθροίζουν στις παλέτες του φορτίου",
-  not_at_hub: "Το φορτίο δεν βρίσκεται στη Βέροια — σπάει μόνο εκεί",
+  // 098: plan_split_piece splits at Veroia or at the transfer stop where the load was just unloaded; on the road the
+  // split is part of the transfer itself (owner 2/11, one entry)
+  not_at_hub: "Το φορτίο δεν βρίσκεται στη Βέροια — εκεί σπάει· στον δρόμο σπάει μέσα από «Αλλαγή στον δρόμο»",
   group_empty: "Η ομάδα δεν έχει φορτίο σε αναμονή",
   same_rt: "Το φορτίο είναι ήδη σε αυτό το δρομολόγιο",
   rt_gone: "Το δρομολόγιο δεν υπάρχει ή έχει ακυρωθεί — ανανέωσε τη σελίδα",
@@ -3514,7 +3518,25 @@ const PLAN_RULE_TEXT = {
   // bridge that could not re-cut its pieces after a change of the international order
   legacy_frozen: "Το παλιό μοντέλο εθνικών έκλεισε την ημέρα μετάβασης· νέα εθνικά μόνο από το Εβδομαδιαίο Εθνικών",
   bad_cutover_day: "Η ημέρα μετάβασης πρέπει να είναι Σάββατο στο μέλλον — ενημέρωσε τον Δημήτρη",
-  bridge_recut: "Η αλλαγή της διεθνούς δεν περνά στα φορτία του Εβδομαδιαίου Εθνικών (τα κομμάτια δεν ξανακόβονται) — δες τη στάση στο Εβδομαδιαίο Εθνικών και ξαναδοκίμασε"
+  bridge_recut: "Η αλλαγή της διεθνούς δεν περνά στα φορτία του Εβδομαδιαίου Εθνικών (τα κομμάτια δεν ξανακόβονται) — δες τη στάση στο Εβδομαδιαίο Εθνικών και ξαναδοκίμασε",
+  // 098 + 099 — «Αλλαγή στον δρόμο» (owner 2/11, one menu entry; design PR #233): the COMMIT rules of the transfer
+  // stop (098) and plan_transfer's own refusals (099). The DB detail in brackets is the piece or the place id.
+  transfer_chain: "Φορτίο που ξεφορτώθηκε σε «Αλλαγή στον δρόμο» φορτώνεται μόνο από το φορτηγό που το παραλαμβάνει εκεί — ανανέωσε τη σελίδα",
+  transfer_left: "Ένα φορτίο έμεινε στο σημείο της αλλαγής χωρίς φορτηγό — διάλεξε φορτηγό ή «περιμένει εκεί»",
+  transfer_at_hub: "Στη Βέροια τα φορτία σπάνε και ανατίθενται από τον Πίνακα Βέροιας, όχι με «Αλλαγή στον δρόμο»",
+  transfer_not_on_board: "Το φορτίο δεν είναι πάνω στο φορτηγό τις ώρες που δόθηκαν για «Αλλαγή στον δρόμο» — διάλεξε ώρα μέσα στη διαδρομή του",
+  transfer_next_leg: "Το φορτίο έχει ήδη επόμενο φορτηγό από εκεί που ξεφορτώνει — άλλαξε πρώτα εκείνη την ανάθεση και μετά κάνε «Αλλαγή στον δρόμο»",
+  // 102 — shared draft loads («Σύνθεση φορτίων», owner 2/11, design PR #236). draft_stale's detail = the draft and its
+  // version now; piece_in_draft's = the piece and the draft that holds it, «:same» (this draft) or «:race» (another
+  // person at the same moment): the screen words the draft from the detail («είναι ήδη στο Φορτίο 3»)
+  draft_gone: "Το πρόχειρο δεν υπάρχει πια (σβήστηκε ή έγινε φορτίο) — ανανέωσε τη σελίδα",
+  draft_stale: "Το πρόχειρο άλλαξε από άλλον — ξαναφόρτωσε τη σελίδα· τίποτα δεν γράφτηκε",
+  draft_side: "Το φορτίο δεν ταιριάζει στο πρόχειρο: άλλη πλευρά (ΚΑΘΟΔΟΣ / ΑΝΟΔΟΣ) ή άλλο σημείο",
+  draft_empty: "Το πρόχειρο δεν έχει φορτία — πρόσθεσε πρώτα φορτία",
+  draft_pieces: "Τα φορτία του αιτήματος δεν είναι ακριβώς αυτά του πρόχειρου — ανανέωσε τη σελίδα",
+  draft_not_ready: "Ένα φορτίο του πρόχειρου σβήστηκε, έσπασε, ανατέθηκε ή μετακινήθηκε — βγάλ' το πρώτα από το πρόχειρο",
+  draft_piece_missing: "Το φορτίο δεν είναι πια σε αυτό το πρόχειρο — ανανέωσε τη σελίδα",
+  piece_in_draft: "Το φορτίο είναι ήδη σε πρόχειρο — ανανέωσε τη σελίδα"
 };
 const PLAN_CHECK_TEXT = {
   // 071 CHECKs on ct_round_trips (+ partner_needs_partner, live before 071:
@@ -3575,7 +3597,20 @@ const PLAN_CHECK_TEXT = {
   seg_change_pair: "Η αλλαγή οχήματος θέλει σημείο και λόγο μαζί",
   seg_place_text: "Γράψε το σημείο της αλλαγής (π.χ. «Λαμία»)",
   seg_other_note: "Με λόγο «Άλλο» η σημείωση είναι υποχρεωτική",
-  seg_del: "Η αφαίρεση τμήματος θέλει λόγο και χρήστη"
+  seg_del: "Η αφαίρεση τμήματος θέλει λόγο και χρήστη",
+  // 098 / 099 CHECKs on rt_stops (the transfer stop). The reason's VALUE is 098's CHECK (one list), so an unknown
+  // reason sent to POST /plan/transfer reaches the screen here
+  rt_stops_transfer_reason: "Άγνωστος λόγος για «Αλλαγή στον δρόμο» — διάλεξε από τη λίστα",
+  rt_stops_transfer_note: "Η σημείωση ανήκει σε στάση «Αλλαγή στον δρόμο» και δεν είναι κενή",
+  rt_stops_transfer_waits: "Το «περιμένει εκεί» ανήκει σε στάση «Αλλαγή στον δρόμο»",
+  rt_stops_transfer_place: "Γράψε το σημείο της αλλαγής (π.χ. «Λαμία, πρατήριο»)",
+  // 102 CHECKs on plan_drafts / plan_draft_pieces
+  plan_drafts_win: "Οι ώρες του πρόχειρου είναι από–έως με διαφορετικές ώρες, ή καμία (όλη η ημέρα)",
+  plan_drafts_vehicle: "Το πρόχειρο έχει δικό μας φορτηγό ή συνεργάτη, όχι και τα δύο",
+  plan_drafts_real: "Το «έγινε φορτίο» του πρόχειρου γράφει ώρα, χρήστη και δρομολόγιο μαζί — ανανέωσε τη σελίδα",
+  plan_drafts_del: "Η διαγραφή πρόχειρου γράφει ώρα, χρήστη και λόγο μαζί",
+  plan_drafts_end: "Ένα πρόχειρο ή σβήνεται ή γίνεται φορτίο, όχι και τα δύο — ανανέωσε τη σελίδα",
+  plan_draft_pieces_rm: "Η αφαίρεση φορτίου από πρόχειρο γράφει ώρα, χρήστη και λόγο μαζί"
 };
 // 071/071b constraints that are the race floor under a 072 refusal of their own: they answer that refusal's code
 // and text, whichever layer refused first (072's pre-check, the constraint at COMMIT, or the plan_rt_update dry
@@ -3583,7 +3618,10 @@ const PLAN_CHECK_TEXT = {
 const PLAN_CONSTRAINT_CODE = {
   rt_v2_truck_once: "truck_busy",
   rt_v2_driver_once: "driver_busy",
-  local_moves_nat_loading_once: "local_exists"
+  local_moves_nat_loading_once: "local_exists",
+  // 102: one live draft per piece. plan_h_draft_add already catches the index as piece_in_draft «:race»; this is the
+  // floor for any other path that would meet it
+  plan_draft_pieces_one: "piece_in_draft"
 };
 function stockRuleError(e) {
   const pg = e && e.pg;
@@ -5889,11 +5927,18 @@ var PLAN_PERMS = {
   // role, read only (the only money in them is the partner rate, decision 41).
   // GET orders (077, live test 28/10 F13): the edit form reads the one order it
   // edits before it opens - every role that may PATCH it may read it.
-  owner: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], activity: ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["GET", "POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "rt-clear": ["POST"], delete: ["POST"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"], "segment-remove": ["POST"] },
-  dispatcher: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], activity: ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["GET", "POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "rt-clear": ["POST"], delete: ["POST"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"], "segment-remove": ["POST"] },
-  management: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], activity: ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["GET", "POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"] },
-  accountant: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], activity: ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["GET", "POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"] },
-  warehouse: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], activity: ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["GET", "POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"] }
+  // transfer (099, «Αλλαγή στον δρόμο», owner 2/11): a board act like the move
+  // and the handover it replaces in one entry - every role (decision 41); it
+  // removes no order and no cycle (only stops left without a leg, as a move).
+  // drafts (102, «Σύνθεση φορτίων», owner 2/11, E3): read, create, change and
+  // delete a draft - every role that writes on the board; a draft is not a
+  // trip, and its delete is soft with a trace. Its realize is the act of
+  // POST /plan/legs on the draft's pieces: resource legs, as /plan/legs.
+  owner: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], activity: ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["GET", "POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "rt-clear": ["POST"], delete: ["POST"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"], "segment-remove": ["POST"], transfer: ["POST"], drafts: ["GET", "POST", "PATCH"] },
+  dispatcher: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], activity: ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["GET", "POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "rt-clear": ["POST"], delete: ["POST"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"], "segment-remove": ["POST"], transfer: ["POST"], drafts: ["GET", "POST", "PATCH"] },
+  management: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], activity: ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["GET", "POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"], transfer: ["POST"], drafts: ["GET", "POST", "PATCH"] },
+  accountant: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], activity: ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["GET", "POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"], transfer: ["POST"], drafts: ["GET", "POST", "PATCH"] },
+  warehouse: { board: ["GET"], "vs-state": ["GET"], "nat-state": ["GET"], activity: ["GET"], config: ["GET"], lookups: ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["GET", "POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"], transfer: ["POST"], drafts: ["GET", "POST", "PATCH"] }
 };
 function planCan(role, resource, method) {
   const r = PLAN_PERMS[role];
@@ -6011,8 +6056,8 @@ function legacyRowRefusal(table, role, rows, origin, env) {
 }
 __name(legacyRowRefusal, "legacyRowRefusal");
 // One row per route: method + path → resource (PLAN_PERMS) + RPC. `dryRun`
-// marks the seven RPCs that take {"dry_run": true} and write nothing then
-// (072's four, 072b's three);
+// marks the eight RPCs that take {"dry_run": true} and write nothing then
+// (072's four, 072b's three, 099's plan_transfer);
 // ONLY those pass the closed switch with it — any other RPC would ignore the
 // flag and write (plan_orders_create has no dry run).
 // `migration`: the migration that brings the RPC, when it is not 072 (the 503
@@ -6055,7 +6100,22 @@ var PLAN_ROUTES = [
   // none. The first row is the deploy guard marker (worker-guard --handover).
   { method: "POST", re: /^\/plan\/rt\/(\d+)\/handover$/, resource: "handover", rpc: "plan_seg_change", idKey: "rt_id", dryRun: true, migration: "072b" },
   { method: "PATCH", re: /^\/plan\/segments\/(\d+)$/, resource: "segment", rpc: "plan_seg_fix", idKey: "segment_id", dryRun: true, migration: "072b" },
-  { method: "POST", re: /^\/plan\/segments\/(\d+)\/remove$/, resource: "segment-remove", rpc: "plan_seg_remove", idKey: "segment_id", dryRun: true, migration: "072b" }
+  { method: "POST", re: /^\/plan\/segments\/(\d+)\/remove$/, resource: "segment-remove", rpc: "plan_seg_remove", idKey: "segment_id", dryRun: true, migration: "072b" },
+  // 099 — «Αλλαγή στον δρόμο» (owner 2/11): ONE act at a point, in one transaction; its dry run is the screen's
+  // preview (whole_vehicle = the base says when it is the 072b vehicle change instead). The save creates stops, legs
+  // and pieces: request_id in the body (decision 44, the DB replays it). Deploy guard marker (worker-guard --road).
+  { method: "POST", re: /^\/plan\/transfer$/, resource: "transfer", rpc: "plan_transfer", dryRun: true, migration: "099" },
+  // 102 — shared draft loads («Σύνθεση φορτίων», owner 2/11). A write carries the version it read (draft_stale
+  // otherwise); create and realize carry a request_id. No dry run: a draft is not a trip. The realize row is the
+  // deploy guard marker (worker-guard --road); it is the act of /plan/legs, so it is resource legs.
+  { method: "GET", re: /^\/plan\/drafts$/, resource: "drafts", rpc: "plan_drafts_read", read: planDraftsArgs, migration: "102" },
+  { method: "GET", re: /^\/plan\/drafts\/(\d+)\/history$/, resource: "drafts", rpc: "plan_draft_history", read: planDraftHistoryArgs, migration: "102" },
+  { method: "POST", re: /^\/plan\/drafts$/, resource: "drafts", rpc: "plan_draft_create", migration: "102" },
+  { method: "POST", re: /^\/plan\/drafts\/move$/, resource: "drafts", rpc: "plan_draft_move", migration: "102" },
+  { method: "PATCH", re: /^\/plan\/drafts\/(\d+)$/, resource: "drafts", rpc: "plan_draft_update", idKey: "draft_id", migration: "102" },
+  { method: "POST", re: /^\/plan\/drafts\/(\d+)\/pieces$/, resource: "drafts", rpc: "plan_draft_pieces", idKey: "draft_id", migration: "102" },
+  { method: "POST", re: /^\/plan\/drafts\/(\d+)\/delete$/, resource: "drafts", rpc: "plan_draft_delete", idKey: "draft_id", migration: "102" },
+  { method: "POST", re: /^\/plan\/drafts\/(\d+)\/realize$/, resource: "legs", rpc: "plan_draft_realize", idKey: "draft_id", migration: "102" }
 ];
 // Reads: the query string → RPC args, or a 400 before any DB call.
 // The week is a TMS week: Saturday to Friday (TmsWeek), named by its Saturday.
@@ -6122,6 +6182,25 @@ function planLookupsArgs(url, caller) {
   return { args: { p_role: caller.role } };
 }
 __name(planLookupsArgs, "planLookupsArgs");
+// GET /plan/drafts[?point=<id>]: no point = every live draft (the Weekly's «σε πρόχειρο» mark, owner E1). Any other key,
+// or a point that is not a positive id, is a 400 before any DB call: a mistyped key would otherwise read every draft
+// as if asked (αρχή 1).
+function planDraftsArgs(url, caller) {
+  const keys = [...url.searchParams.keys()];
+  const point = url.searchParams.get("point");
+  if (keys.some((k) => k !== "point") || keys.length > 1 || (point !== null && !/^[1-9]\d{0,14}$/.test(point))) {
+    return { error: "point: θετικός ακέραιος (τοποθεσία), ή χωρίς point για όλα τα πρόχειρα", code: "bad_point" };
+  }
+  return { args: { p_point: point === null ? null : Number(point), p_role: caller.role } };
+}
+__name(planDraftsArgs, "planDraftsArgs");
+// GET /plan/drafts/:id/history: the path's id, the rule of planOrderReadArgs
+function planDraftHistoryArgs(url, caller, match) {
+  const id = match && match[1];
+  if (!/^[1-9]\d{0,14}$/.test(id || "")) return { error: "draft_id: θετικός ακέραιος", code: "bad_draft_id" };
+  return { args: { p_draft: Number(id), p_role: caller.role } };
+}
+__name(planDraftHistoryArgs, "planDraftHistoryArgs");
 // GET /plan/config: FE-1 changes behaviour only when this says day L has come, so an answer it cannot read is
 // a loud 500 (plan_failed), never a {cutover_day: null} that would read as «not yet» (αρχή 1). writes_open is the
 // switch of THIS deployed Worker, not a DB value: deploy 2 flips it, and the screen sees which Worker answers.

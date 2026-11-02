@@ -87,6 +87,9 @@ test('deploy guard markers: the older ones and var PLAN_PERMS = { exactly once; 
   assert.equal(count('{0,49}$/'), 1, 'VD /costs/rt order_ids (decision 29)');
   // the vehicle handover (072b): its route row is the deploy marker (worker-guard --handover 1)
   assert.equal(count('rpc: "plan_seg_change"'), 1, 'handover route marker');
+  // «Αλλαγή στον δρόμο» (099) and «Σύνθεση φορτίων» (102), owner 2/11: one route row each (worker-guard --road 1)
+  assert.equal(count('rpc: "plan_transfer"'), 1, 'transfer route marker');
+  assert.equal(count('rpc: "plan_draft_realize"'), 1, 'draft realize route marker');
 });
 
 // Closed until day L (decision 22); F5 deploy 2 flips this one line (plan W7). Which value is right for a bundle is the

@@ -400,7 +400,10 @@ const PERMS = {
 // The planned owner-only pilot (Q-9) was skipped by the owner when the cutover moved to 28/10 (PR #122 closed).
 // Rollback = 'pilot' (WN_V5_USERS keeps the owner: v5 for the owner alone, and as with WI_V2 a ?wn5=1 browser) or 'off',
 // + config.js ?v= and SW_VERSION; 'off' overrides every opt-in.
-const FEATURES = { ORDER_SPLIT: true, GROUP_TILES: true, STOCK_LOTS: true, WI_V2: 'on', WI_PRESENCE: false, WN_V5: 'on' };
+// WN_ROAD (owner 2/11, «Αλλαγή στον δρόμο», modules/wn5_road.js): false until the Worker with POST /plan/transfer
+// (PR #239) and the SQL 098 / 099 are live; then true + config.js ?v= and SW_VERSION. false = the ✈ and right-click
+// menus as before (✈ «Αλλαγή οχήματος…»).
+const FEATURES = { ORDER_SPLIT: true, GROUP_TILES: true, STOCK_LOTS: true, WI_V2: 'on', WI_PRESENCE: false, WN_V5: 'on', WN_ROAD: false };
 // Pilot usernames for FEATURES.WI_V2 === 'pilot' (PLAN §2.1). Empty = nobody.
 const WI_V2_USERS = [];
 // Pilot usernames for FEATURES.WN_V5 === 'pilot' (Ε-1): only a name the owner gives. Empty = nobody.

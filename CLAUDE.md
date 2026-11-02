@@ -164,15 +164,21 @@ cd worker && CLOUDFLARE_API_TOKEN=$CF_API_TOKEN npx wrangler deploy
    - κόμιστρο ΑΝΟΔΟΥ (Π-7, 089 + Worker b88e6150, ζωντανό 1/11): `seg_partner_rate_anodos: "` (`--rate2 1`)
    - αυτοπαράδοση στην τιμολόγηση (101 + Worker 7bb5003a, ζωντανό 2/11): `"Self Delivery": "self_delivery"`, **ακριβώς
      δύο φορές** (ORDERS + NATIONAL ORDERS) (`--self 1`)
-   Μία εντολή για όλα, πριν και μετά (από 2/11): `node worker/tools/worker-guard.mjs <bundle ή λήψη CF> --plan 2
-   --handover 1 --f3 1 --f5 1 --edit 1 --invoiced 1 --rate2 1 --self 1` → `GUARD OK (32 markers, plan=2, handover=1, f3=1,
-   f5=1, edit=1, invoiced=1, rate2=1, self=1)`. Επείγουσα επαναφορά στον προηγούμενο (`wrangler rollback
-   b88e6150-661e-4241-b49d-838862269063`, 1/11, χωρίς την 101): `--self 0` → `GUARD OK (32 markers … self=0)`. Η 101 στη βάση
-   μένει (ο b88e6150 δεν διαβάζει τη στήλη), **αλλά πρώτα revert του front end**: με τον παλιό Worker το κουτάκι παίρνει
-   422 και η αναίρεση μιας αυτοπαράδοσης 500 (το label πέφτει σιωπηλά, το CHECK αρνείται). Η προ-προηγούμενη έκδοση
-   (`wrangler rollback 6b7a04f4-3006-44c8-88df-04875a4260ee`, 28/10, χωρίς τα κείμενα 085/089· οι 085/089 στη βάση μένουν,
-   οι αρνήσεις τους φαίνονται ως κωδικός): `--invoiced 0 --rate2 0` (χωρίς `--self`). Οι παλαιότερες γραμμές παρακάτω
-   ισχύουν για επαναφορά σε εκείνες τις εκδόσεις.
+   - «Αλλαγή στον δρόμο» (098 + 099, `POST /plan/transfer`) και «Σύνθεση φορτίων» (102, `/plan/drafts`), Worker
+     b329ff91, ζωντανό 2/11: `rpc: "plan_transfer"` και `rpc: "plan_draft_realize"` (`--road 1`)
+   Μία εντολή για όλα, πριν και μετά (από 2/11 βράδυ): `node worker/tools/worker-guard.mjs <bundle ή λήψη CF> --plan 2
+   --handover 1 --f3 1 --f5 1 --edit 1 --invoiced 1 --rate2 1 --self 1 --road 1` → `GUARD OK (34 markers, plan=2, handover=1,
+   f3=1, f5=1, edit=1, invoiced=1, rate2=1, self=1, road=1)`. Επείγουσα επαναφορά στον προηγούμενο (`wrangler rollback
+   7bb5003a-9657-45ff-a128-85787ed35c34`, 2/11, η αυτοπαράδοση χωρίς τις δύο διαδρομές): `--road 0` → `GUARD OK (34 markers …
+   road=0)`· χωρίς `--road` δεν ελέγχεται ότι οι διαδρομές έφυγαν. Οι 098 / 099 / 102 στη βάση μένουν (ο 7bb5003a δεν τις
+   καλεί)· οι νέες διαδρομές απαντούν 404 `no_route`, και πρώτα κλείνουν οι σημαίες `WN_ROAD` / σύνθεσης στο front end.
+   Μετά από μια «Αλλαγή στον δρόμο», μια επόμενη κίνηση εκείνου του φορτίου μπορεί να απαντήσει `transfer_chain` /
+   `transfer_left` ως **κωδικό** χωρίς ελληνικό κείμενο. Η προ-προηγούμενη (`wrangler rollback
+   b88e6150-661e-4241-b49d-838862269063`, 1/11, χωρίς την 101): `--self 0` (χωρίς `--road`) → `GUARD OK (32 markers … self=0)`.
+   Η 101 στη βάση μένει, **αλλά πρώτα revert του front end**: με εκείνον τον Worker το κουτάκι αυτοπαράδοσης παίρνει 422 και
+   η αναίρεσή της 500. Ακόμη παλαιότερα (`wrangler rollback 6b7a04f4-3006-44c8-88df-04875a4260ee`, 28/10, χωρίς τα κείμενα
+   085/089· οι 085/089 στη βάση μένουν, οι αρνήσεις τους φαίνονται ως κωδικός): `--invoiced 0 --rate2 0` (χωρίς `--self`).
+   Οι παλαιότερες γραμμές παρακάτω ισχύουν για επαναφορά σε εκείνες τις εκδόσεις.
    Η παλιά μορφή: `node worker/tools/worker-guard.mjs <bundle ή λήψη CF> --plan 1 --handover 1 --f3 1`
    (ξετυλίγει το multipart· `GUARD OK (20 markers, plan=1, handover=1, f3=1)`). Χωρίς `--handover`, ή με όρισμα που
    δεν ξέρει, το εργαλείο σταματά με exit 2, ποτέ «OK». Το `--f3` είναι **προαιρετικό** στο εργαλείο: χωρίς αυτό
