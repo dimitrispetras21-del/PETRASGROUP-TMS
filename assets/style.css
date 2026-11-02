@@ -10466,7 +10466,17 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
   .ow4-hd { position:static; }
   .ow4-row { break-inside:avoid; }
   .ow4-row[data-owvopen]:hover { background:none; }
+  .owv-cards { display:none; }
 }
+/* «Εβδομάδα»: the catalog's order card, opened in place (owner 2/11/2026). It
+   floats over the right side — the same frame as the Weekly's read-only card
+   (.oi-ro-float) — so the board keeps its page scroll and sticky header; a
+   flex layout would cut the board to a fixed height. Three classes: wins over
+   the cards' own .oi-layout / .on-v2 panel rules injected later at runtime. */
+.owv-cards .entity-detail-panel.owv-card { position:fixed; top:0; right:0; height:100vh; width:480px; max-width:100vw;
+  z-index:1200; display:flex; flex-direction:column; overflow-y:auto; overflow-x:hidden; background:var(--bg-card);
+  border-left:1px solid var(--border); box-shadow:-8px 0 24px rgba(11,25,41,.12); }
+.owv-cards .entity-detail-panel.owv-card.hidden { display:none; }
 
 /* New place from an order scan (T44, modules/locations.js locScanNewHTML): an
    inline block under an unmatched stop of the scan preview, not a modal (the

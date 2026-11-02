@@ -408,6 +408,12 @@ const OrdersCatalog = (() => {
   // One order changed in place (status, pallet sheets, «Στείλε →»): rebuild
   // that row from the fresh record and repaint, keeping the card open.
   function updateRecord(type, rec) {
+    // The same card also opens over «Εβδομάδα» (owner 2/11/2026): when that is
+    // the page on screen, IT repaints — never this list, which is not there.
+    if (!(S.ctx && S.ctx.isCurrent())) {
+      if (typeof OrdersWeekView !== 'undefined' && OrdersWeekView.recordChanged) OrdersWeekView.recordChanged(type, rec);
+      return;
+    }
     const i = S.rows.findIndex(r => r.id === rec.id && r.type === type);
     if (i < 0) return;
     S.rows[i] = _row(rec, type);
@@ -586,6 +592,7 @@ const OrdersCatalog = (() => {
     document.head.appendChild(st);
   }
 
-  return { render, updateRecord, open, search, filter, chip, clear, period, sort, toggleNew, newOrder, csv, print };
+  // installEsc: «Εβδομάδα» opens the same cards (owner 2/11) — one Esc listener for both views.
+  return { render, updateRecord, open, search, filter, chip, clear, period, sort, toggleNew, newOrder, csv, print, installEsc: _installEsc };
 })();
 window.OrdersCatalog = OrdersCatalog;
