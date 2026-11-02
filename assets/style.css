@@ -9681,6 +9681,8 @@ button.wn5-note-who { color:var(--wi4-blue-ink); cursor:pointer; }
 /* ↳ sub-row text (2011:8302–8305): 10.5px grey-1, «Φόρτωση με τοπικό» SemiBold. Only the local line: .wn5-miss shares .wn5-sub-t. */
 .wn5 .wn5-sub[data-key^="local:"] > .wn5-sub-t { font-size:10.5px; line-height:14px; color:var(--wi4-grey-1); }
 .wn5 .wn5-sub[data-key^="local:"] > .wn5-sub-t b { font-weight:600; }
+/* 095 (owner 2/11): a loading on another day than its stop — allowed, said in amber */
+.wn5 .wn5-sub[data-key^="local:"] > .wn5-sub-t .wn5-oday { color:var(--wi4-amber-ink); font-weight:600; }
 /* «Ακύρωση» on the ↳ line: no frame draws it — the wn5 link precedent (.wn5-snone > .wi4-link, Medium), the row's 10.5px, its 5px gap */
 .wn5 .wn5-sub-x { margin-left:5px; font-size:10.5px; font-weight:500; }
 /* the window has no frame: the time row of the sibling Δ4 shell (2011:9265) — label 11.5 grey-2, inputs 64×28 ctl r5 px8 12.5 ink, «–» 12 grey-2 */
@@ -10256,13 +10258,10 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
    position) so no class can drop the image; its size is not inline. */
 .wn5h .fh-cb-input:disabled { background-size:0 0; cursor:default; }
 .wn5h-mono .form-input { font-family:'DM Mono',ui-monospace,SFMono-Regular,Menlo,monospace; font-weight:500; }
-.wn5h-ferr { font-size:11px; color:var(--wi4-badge-ink); }
-/* the «Άλλο» line on one line (2122:7868): the note field is the row's narrow 4th one, so the line keeps its own width
-   and runs left under «Λόγος» from the field's right edge instead of wrapping in 104px */
-.wn5h-note .wn5h-ferr { align-self:flex-end; width:max-content; white-space:nowrap; }
 .wn5h-hint { font-size:11px; color:var(--wi4-grey-2); white-space:nowrap; }   /* «ελεύθερο ως …» 2122:7781 */
 .wn5h-hint:empty { display:none; }
-.wn5h-ferr:empty { display:none; }
+/* 096: the overlap of the new truck / driver, said before the press (the Π2 amber line of every save) */
+.wn5h-busy { font-size:12px; color:var(--wi4-amber-ink); margin:-4px 0 8px; }
 .wn5h-row1, .wn5h-vrow { display:flex; align-items:flex-start; gap:12px; }
 .wn5h-vrow[hidden] { display:none; }
 .wn5h-vrow > .wn5f-f, .wn5h-row1 > .wn5f-f:not(.wn5h-note) { flex:none; }
