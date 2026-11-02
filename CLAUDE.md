@@ -169,7 +169,8 @@ cd worker && CLOUDFLARE_API_TOKEN=$CF_API_TOKEN npx wrangler deploy
      `rpc: "plan_draft_realize"`. Μία σημαία για τα δύο, μετά το `--self 1`: `--road 1` → `GUARD OK (34 markers, plan=2,
      handover=1, f3=1, f5=1, edit=1, invoiced=1, rate2=1, self=1, road=1)`· πριν από το deploy (ζωντανός 7bb5003a) `--road 0`.
      Μόλις ανέβει: η λέξη «εκκρεμεί deploy» φεύγει, ο Worker μπαίνει εδώ με την έκδοσή του, και η εντολή «για όλα» παίρνει
-     το `--road 1`. Επείγουσα επαναφορά στον 7bb5003a: η εντολή «για όλα» όπως είναι παρακάτω (χωρίς `--road`).
+     το `--road 1`. Επείγουσα επαναφορά στον 7bb5003a: η εντολή «για όλα» παρακάτω **με `--road 0`** → `GUARD OK (34 markers … road=0)`
+     (χωρίς `--road` δεν ελέγχεται ότι οι δύο διαδρομές έφυγαν).
    Μία εντολή για όλα, πριν και μετά (από 2/11): `node worker/tools/worker-guard.mjs <bundle ή λήψη CF> --plan 2
    --handover 1 --f3 1 --f5 1 --edit 1 --invoiced 1 --rate2 1 --self 1` → `GUARD OK (32 markers, plan=2, handover=1, f3=1,
    f5=1, edit=1, invoiced=1, rate2=1, self=1)`. Επείγουσα επαναφορά στον προηγούμενο (`wrangler rollback

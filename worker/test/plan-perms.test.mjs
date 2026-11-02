@@ -149,6 +149,19 @@ const ROAD_PATHS = [['GET', '/plan/drafts'], ['GET', '/plan/drafts/7/history'], 
   ['POST', '/plan/drafts/7/pieces', { version: 1, add: [] }], ['POST', '/plan/drafts/7/delete', { version: 1 }],
   ['POST', '/plan/drafts/7/realize', { version: 1, legs: {}, request_id: 'r' }]];
 
+// design §5 (owner 2/11): the realize of a draft IS the act of POST /plan/legs, so it is that resource - a later change
+// to who may assign (legs) reaches it too; the other draft routes are resource drafts, the transfer its own
+test('POST /plan/drafts/:id/realize is resource legs; every other draft route drafts; the transfer transfer', () => {
+  const routes = src.match(/var PLAN_ROUTES = \[[\s\S]*?\n\];\n/)[0];
+  const res = (fn) => (new RegExp(`resource: "([a-z-]+)", rpc: "${fn}"`).exec(routes) || [])[1];
+  assert.equal(res('plan_draft_realize'), 'legs');
+  assert.equal(res('plan_put_pieces') || (/re: \/\^\\\/plan\\\/legs\$\/, resource: "legs"/.test(routes) ? 'legs' : null), 'legs');
+  for (const fn of ['plan_drafts_read', 'plan_draft_history', 'plan_draft_create', 'plan_draft_move', 'plan_draft_update', 'plan_draft_pieces', 'plan_draft_delete']) {
+    assert.equal(res(fn), 'drafts', fn);
+  }
+  assert.equal(res('plan_transfer'), 'transfer');
+});
+
 test('every refused (role, route) → 403 in the /plan/* shape, before any DB call', async () => {
   let refused = 0;
   for (const [res, byMethod] of Object.entries(EXPECT)) {
