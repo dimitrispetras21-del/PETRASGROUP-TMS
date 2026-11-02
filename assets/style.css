@@ -9244,6 +9244,11 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 /* More late stops than slots: the «+N» that holds one is amber too (a late stop is never hidden in grey). */
 .wn5 .wn5-pts .wi4-more.wn5-late b { color:var(--wi4-amber); }
 .wn5 .wn5-missing { color:var(--wi4-amber-ink); }
+/* owner 2/11: an order saved without its price («λείπει τιμή»), a small amber mark on its point. Its own class:
+   .wn5-miss is taken (the Ε-26 line, the Veroia panel and dialog warnings; code review high). */
+.wn5 .wn5-noprice { padding:0 3px; border-radius:3px; background:var(--wi4-amber-bg); color:var(--wi4-amber-ink); font-weight:600; white-space:nowrap; }
+.wn5 .wn5-pts .wi4-more.wn5-gap { background:var(--wi4-amber-bg); }
+.wn5 .wn5-pts .wi4-more.wn5-gap b { color:var(--wi4-amber-ink); }
 .wn5-none { color:var(--wi4-grey-3); }
 /* 2b (coordinator 1/11): an empty side is light text, not a dashed box across the row that reads as a field */
 .wn5-gapbox { display:flex; align-items:center; min-height:24px; padding:2px 9px; box-sizing:border-box; font-size:11.5px; color:var(--wi4-grey-3); }
@@ -9439,6 +9444,8 @@ button.wn5-note-who { color:var(--wi4-blue-ink); cursor:pointer; }
 .wn5-dlg .wn5-miss { color:var(--wi4-amber-ink); }
 /* owner 28/10: why a save is off, in red beside it — never a silent grey button (wn5_actions.js _why) */
 .wn5-dlg .wn5-why { color:var(--wi4-red); font-weight:500; }
+/* W50 test 2/11: a warning the base may take (stop order, a busy truck) is amber, not the red of «Λείπει» */
+.wn5-dlg .wn5-why.wn5-soft, .wn5a-miss.wn5-soft { color:var(--wi4-amber-ink); font-weight:400; }
 .wn5-dlg .wn5-cand + .wn5-why { margin:0 -16px; padding:2px 12px 4px 24px; font-size:12px; text-align:right; }
 .wn5-dlg .wn5-more > .wn5-why, .wn5-dlg .wi4-dlg-ft > .wn5-why { align-self:center; font-size:12px; text-align:right; }
 .wn5-dlg .wn5-dq { width:290px; max-width:100%; height:28px; padding:0 8px; border:1px solid var(--wi4-line-2); border-radius:6px; font:inherit; }
