@@ -63,7 +63,8 @@ async function viaAuditor(db, files) {
   const checks = files.map(([id, text]) => {
     const { check, errs } = parseCheck(`${id}.sql`, text);
     assert.deepEqual(errs, [], `${id}: the repo lint (load.mjs): ${errs.join('; ')}`);
-    return check;
+    // the checks as 072b / 073b put them in: 095 (2/11) disabled B-93 later; its text is what is proven here
+    return check.id === 'B-93' ? { ...check, enabled: true, disabled_reason: null } : check;
   });
   for (const c of checks) {
     await db.query('SELECT monitoring.check_sql_guard($1)', [c.sql]);
