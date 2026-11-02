@@ -2352,6 +2352,8 @@
     if (st.day && sd && st.day !== sd) body.move_date = st.day;
     return body;
   }
+  // owner 2/11: the base refuses a local loading more than 7 days from its stop (095 plan_local_loading, move_date:7_days)
+  const LOCAL_DAY_MAX = 7;
   // the Athens day of the stop picked in the form (the day the base writes when the body names none)
   const _localStopDay = (st) => { const s = (st.stops || []).find((x) => x.stop_id === st.stop); return s ? _ymdOf(s.planned_from) : null; };
   WN5Act.local = async function local(rtStopId, rtId) {
@@ -2387,15 +2389,18 @@
       const b = d.dlg.querySelector('[data-act="save"]');
       // a typed time that is not HH:MM keeps the button off: it would be stored as text (072 time_from is free text)
       const badTime = (st.from && !_hhmm(st.from)) || (st.to && !_hhmm(st.to));
-      if (b) b.disabled = d.locked || d.busy || !st.ids.ok || !st.stop || !st.driver || !st.truck || !!badTime;
-      // 095 (owner 2/11): another day than the stop's is allowed (loaded the evening before) and said, amber, never refused
+      // 095 (owner 2/11): another day than the stop's is allowed (loaded the evening before) and said, amber; more than
+      // 7 days from it is refused by the base (a wrong year or month), so it is said here and the save stays off
       const sd = _localStopDay(st), dw = d.body.querySelector('[data-dayw]');
       const other = !!(st.day && sd && st.day !== sd);
-      dw.hidden = !other;
-      dw.textContent = other ? 'Άλλη ημέρα από τη στάση (' + _dayShort(sd) + ')' : '';
+      const far = other && Math.abs(_dayDiff(sd, st.day)) > LOCAL_DAY_MAX;
+      if (b) b.disabled = d.locked || d.busy || !st.ids.ok || !st.stop || !st.driver || !st.truck || !!badTime || far;
+      dw.hidden = !other || far;
+      dw.textContent = other && !far ? 'Άλλη ημέρα από τη στάση (' + _dayShort(sd) + ')' : '';
       const lack = st.ids.ok ? [!st.stop && 'στάση', !st.driver && 'οδηγός', !st.truck && 'φορτηγό'].filter(Boolean) : [];
       _why(d.ft.querySelector('[data-act="cancel"]'), 'beforebegin', !st.ids.ok ? 'Λείπουν οι κατάλογοι: δεν φορτώθηκαν, κλείσε και ξανάνοιξε'
-        : lack.length ? 'Λείπει: ' + lack.join(', ') : badTime ? 'Ώρα: σε μορφή ΗΗ:ΛΛ' : null);
+        : lack.length ? 'Λείπει: ' + lack.join(', ') : badTime ? 'Ώρα: σε μορφή ΗΗ:ΛΛ'
+        : far ? 'Ημέρα: έως ' + LOCAL_DAY_MAX + ' ημέρες από τη στάση (' + _dayShort(sd) + ')' : null);
     };
     d.dlg.addEventListener('change', (ev) => {
       const el = ev.target;

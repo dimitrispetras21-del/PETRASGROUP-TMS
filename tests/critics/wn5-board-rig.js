@@ -1902,6 +1902,12 @@ async function scnLocal(browser, origin) {
     const empty = await page.$eval(`${D} input[data-day]`, (e) => e.value).catch(() => '');
     ok(scn, '095: back to the stop\'s day → no amber; an emptied field is left alone while typed, shows the stop\'s day on leaving it',
       back[0] === stopDay && back[1] === true && typing === '' && empty === stopDay, { back, typing, empty });
+    // owner 2/11: more than 7 days from the stop (a wrong year) → said in red before the press, the save off
+    const far = new Date(Date.parse(stopDay + 'T00:00:00Z') - 8 * 864e5).toISOString().slice(0, 10);
+    await bPick(page, `${D} input[data-day]`, far);
+    const farWhy = await bText(page, `${D} .wn5-why`);
+    ok(scn, '095: 8 days from the stop → «Ημέρα: έως 7 ημέρες από τη στάση (…)», the save off, no amber line', /^Ημέρα: έως 7 ημέρες από τη στάση \(/.test(farWhy)
+      && (await bOff(page, `${D} [data-act="save"]`)) === true && await page.$eval(`${D} [data-dayw]`, (e) => e.hidden).catch(() => false), farWhy);
     await bPick(page, `${D} input[data-day]`, eve);
     const amber = await bText(page, `${D} [data-dayw]`);
     ok(scn, '095: the evening before → amber «Άλλη ημέρα από τη στάση (…)», the save stays on', /^Άλλη ημέρα από τη στάση \(/.test(amber)

@@ -223,6 +223,30 @@ test('095 on the production-shaped copy (2/11, after 093): a local loading on an
     assert.strictEqual(r.late, null);
   });
 
+  await t.test('owner 2/11: at most 7 days from the stop either way - 7 kept (with the warning), 8 or a wrong year refused', async () => {
+    const at = async (k) => (await one(db, `SELECT ($1::date + $2::int)::text AS d`, [day, k])).d;
+    for (const k of [-7, 7]) {
+      const r = await scenario(db, async () => {
+        const rt = await cycle(db, 'B' + (k + 10), day);
+        const lm = await local(db, rt, { move_date: await at(k) });
+        return { lm, d: lm.r ? await lmDay(db, lm.r.ids.local_move_id) : null };
+      });
+      assert.strictEqual(r.lm.err, null, `${k} days`);
+      assert.strictEqual(r.d, await at(k));
+      assert.strictEqual(r.lm.r.warnings[0].code, 'local_loading_other_day');
+      assert.strictEqual(r.late, null);
+    }
+    for (const k of [-8, 8, -365]) {
+      const r = await scenario(db, async () => {
+        const rt = await cycle(db, 'X' + (k + 400), day);
+        const lm = await local(db, rt, { move_date: await at(k) });
+        return { lm, n: await num(db, `SELECT count(*) FROM local_moves lm JOIN rt_stops s ON s.id = lm.rt_stop_id WHERE s.rt_id = $1`, [rt]) };
+      });
+      assert.match(r.lm.err ?? '', /bad_input:move_date:7_days/, `${k} days`);
+      assert.strictEqual(r.n, 0, 'nothing written');
+    }
+  });
+
   await t.test('GO: plan_rt_update - a vehicle change keeps the loading\'s day; a shift of the side moves it by the same days', async () => {
     const r = await scenario(db, async () => {
       const rt = await cycle(db, 'G4', day);
