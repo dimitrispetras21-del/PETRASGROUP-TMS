@@ -5,3 +5,4 @@
 - **Αποφασίστηκε:** η μεταφόρτωση ενώνει ακριβείς στάσεις, όχι τόπους· ο τόπος του σημείου-κειμένου πάει στο 099 (`docs/DECISION_LOG.md` 2/11).
 - **Απόδειξη:** PGlite `tms-auditor/test/plan-098.test.mjs` 15/15 (NO-GO στα ζωντανά, GO για εθνική και VS, αρνήσεις, σπάσιμο, επαναφορά)· `tests/sql-098-drafts.test.js` 5/5.
 - **Μένει:** ο owner τρέχει dry run → 098 → verify μετά τις 15:00· το 099 ξεκινά μετά την εκτέλεση της 098, με go του συντονιστή.
+- **Εκτελέστηκε 2/11 (owner, μετά τις 15:00):** dry run → `098 ran: leg 2f70aa1b…, shipment 6afcc505…, split f1993aeb…, rt_update 2ed8efd0…, carriers 59be1a67…, transfer columns 4`· 098 → `2f70aa1b…, 4`· verify → `098 in place`, changed_texts 0, transfer_columns 4, transfer_stops 0, linked_stops 0, waiting_at_point 0, shipments_refused 0, b54_matches true. Τα 5 αρχεία βγήκαν από το `drafts/` (κανόνας 5).
