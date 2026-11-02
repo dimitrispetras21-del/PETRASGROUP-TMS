@@ -667,6 +667,24 @@ async function scnNight({ browser, origin, ok, scn }) {
   ok(scn, 'the end 02:00 → 03:00: deliver_to 03:00 on Fri 16/10 (the next day), nothing else', p.length === 1
     && JSON.stringify(sent) === JSON.stringify({ shipments: [{ shipment_id: 5201, deliver_to: '2026-10-16T03:00:00+03:00' }] }), p.map((x) => x.body));
   await closeClean(p3.page, p3.S, ok, scn);
+
+  // the same hour twice (code review xhigh r1/r2): typed on a point = that minute (F64); a point STORED as an instant (an
+  // arrival «ως», from = to) stays an instant, also when its day moves — never «ως 22:01»
+  const o4 = K.orders();
+  Object.assign(o4[3101].shipments[0], { deliver_from: '2026-10-15T19:00:00+00:00', deliver_to: '2026-10-15T19:00:00+00:00' });   // 22:00 = 22:00 Athens
+  const p4 = await K.openApp(browser, origin, { orders: o4, plan: { 'PATCH /plan/orders/3101': UPD_OK(3101) } });
+  await openForm(p4.page, { natOrderId: 3101 });
+  await p4.page.evaluate((d) => { const x = document.querySelector(`${d} [data-ship="5201"] [data-f="dday"]`); x.value = '2026-10-16'; x.dispatchEvent(new Event('change', { bubbles: true })); }, DLG);
+  await p4.page.fill(`${DLG} [data-ship="5201"] [data-f="lfrom"]`, '09:00');
+  await p4.page.fill(`${DLG} [data-ship="5201"] [data-f="lto"]`, '09:00');
+  await save(p4.page);
+  await p4.page.waitForTimeout(1000);
+  p = K.planOf(p4.S, 'PATCH', '/plan/orders/3101');
+  const sh4 = p[0] && p[0].body.shipments && p[0].body.shipments[0];
+  ok(scn, 'stored instant 22:00 moved to Fri: deliver 22:00 = 22:00 (an instant); loading typed 09:00 / 09:00 = 09:00–09:01', !!sh4
+    && sh4.deliver_from === '2026-10-16T22:00:00+03:00' && sh4.deliver_to === '2026-10-16T22:00:00+03:00'
+    && sh4.load_from === '2026-10-14T09:00:00+03:00' && sh4.load_to === '2026-10-14T09:01:00+03:00', p.map((x) => x.body));
+  await closeClean(p4.page, p4.S, ok, scn);
 }
 async function scnEditReadFail({ browser, origin, ok, scn }) {
   const { page, S } = await K.openApp(browser, origin, { plan: { 'GET /plan/orders/3101': () => K.planErr(503, 'SCHEMA_BEHIND', 'schema_behind') } });

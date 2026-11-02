@@ -790,7 +790,7 @@
       // a row of the N side its own shipment's (_pairs takes that row's own pallets)
       const palOf = (r, single) => (prs && single ? _palAgg(sp) : _palAgg([r.pallets]));
       for (const [act, rows, single] of [['φόρτωση', o.loads, nl === 1], ['παράδοση', o.drops, nd === 1]]) for (const r of rows)
-        if (DAY.test(r.day) && HM.test(r.to)) seq.push(Object.assign({ k: r.day + 'T' + (r.until ? r.to : r.from || r.to), when: r.until && !r.allDay ? `ως ${_dow(r.day)} ${r.to}` : r.allDay ? `${_dow(r.day)} όλη η ημέρα` : `${_dow(r.day)} ${r.from}–${r.to}`, act, place: r.hub ? 'Βέροια' : r.label, clients: [o.client || '—'] }, palOf(r, single)));
+        if (DAY.test(r.day) && HM.test(r.to)) seq.push(Object.assign({ k: r.day + 'T' + (r.until ? r.to : r.from || r.to), when: r.until && !r.allDay ? `ως ${_dow(r.day)} ${r.to}` : r.allDay ? `${_dow(r.day)} όλη η ημέρα` : r.from === r.to ? `${_dow(r.day)} στις ${r.from}` : `${_dow(r.day)} ${r.from}–${r.to}`, act, place: r.hub ? 'Βέροια' : r.label, clients: [o.client || '—'] }, palOf(r, single)));
     });
     seq.sort((a, b) => (a.k < b.k ? -1 : a.k > b.k ? 1 : 0));
     // Figma 2011:9940: orders at the same place in the same window are ONE stop line («Zeta, Kappa · 20π»)
@@ -1102,12 +1102,13 @@
       // F1: both ends empty = the whole day (the create form's _rowWin); one end only stays as typed and is named
       const lw = _rowWin(false, t('lfrom'), t('lto')), dw = _rowWin(false, t('dfrom'), t('dto'));
       // owner 2/11: a night window ends the next day (_toDay). The same hour twice is that minute (F64, as the create
-      // form), unless the point already stores exactly that instant (an arrival «ως»): read back, it is no change.
+      // form), unless the point is stored as an instant (an arrival «ως», from = to): it stays an instant, read back
+      // unchanged or moved to another day / hour (code review xhigh r2: «ως 22:00» never becomes «ως 22:01»).
       const o = r.dataset.ship ? f.edit.ships.find((x) => String(x.shipment_id) === r.dataset.ship) : null;
       const ends = (day, w, sf, st) => {
         if (w.from !== w.to) return [_iso(day, w.from), _iso(_toDay(day, w.from, w.to), w.to)];
         const a = _iso(day, w.from);
-        return a && sf && st && _min(sf) === _min(st) && _min(sf) === _min(a) ? [a, a] : _sameMin(day, w.from, w.to);
+        return a && sf && st && _min(sf) === _min(st) ? [a, a] : _sameMin(day, w.from, w.to);
       };
       const [lf, lt] = ends(g('lday'), lw, o && o.load_from, o && o.load_to), [df, dt] = ends(g('dday'), dw, o && o.deliver_from, o && o.deliver_to);
       return { pallets: _num(g('pal')), load_from: lf, load_to: lt, deliver_from: df, deliver_to: dt };
