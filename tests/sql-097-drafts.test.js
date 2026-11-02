@@ -27,7 +27,8 @@ const A = '097_rt_split_vehicle_recheck', B = '097b_rt_split_repair';
 const DO_FILES = [`${A}.sql`, `${A}_dryrun.sql`, `${A}_rollback.sql`, `${A}_rollback_dryrun.sql`,
   `${B}.sql`, `${B}_dryrun.sql`, `${B}_rollback.sql`, `${B}_rollback_dryrun.sql`];
 const BUILDER = path.join(DRAFTS, 'tools/build-097.mjs');
-const TRIGGER_MD5 = /md5\(pg_get_triggerdef\(oid\)\) = '([0-9a-f]{32})'/;
+// the md5 compared on the line that reads pg_get_triggerdef (verify strips a schema qualifier first)
+const triggerMd5 = (src) => /pg_get_triggerdef\(oid\).*'([0-9a-f]{32})'/.exec(src)[1];
 
 test('097: every file is there, ASCII only; one DO block per writing file; verify only reads', () => {
   for (const f of [...DO_FILES, `${A}_verify.sql`]) {
@@ -44,9 +45,9 @@ test('097: the builder has no drift (four dry runs)', () => {
 });
 
 test('097: one md5 per fact - the trigger 097 proves is the one the rollback drops and verify reads', () => {
-  const m = TRIGGER_MD5.exec(read(`${A}.sql`))[1];
-  assert.strictEqual(TRIGGER_MD5.exec(read(`${A}_rollback.sql`))[1], m);
-  assert.strictEqual(TRIGGER_MD5.exec(read(`${A}_verify.sql`))[1], m);
+  const m = triggerMd5(read(`${A}.sql`));
+  assert.strictEqual(triggerMd5(read(`${A}_rollback.sql`)), m);
+  assert.strictEqual(triggerMd5(read(`${A}_verify.sql`)), m);
   assert.ok(!/GEN_/.test(read(`${A}.sql`)), 'no placeholder left');
 });
 
@@ -56,8 +57,8 @@ test('097 creates one trigger that calls rt_link_split as it is; 097b writes onl
   assert.match(src, /CREATE TRIGGER rt_y_link_split_vehicle\s+AFTER UPDATE OF truck_id, partner_id, is_partner_trip ON public\.orders[\s\S]*?EXECUTE FUNCTION public\.rt_link_split\(\);/);
   assert.ok(!/CREATE (OR REPLACE )?(TABLE|FUNCTION|VIEW|INDEX)\b/.test(src));
   assert.ok(!/\b(GRANT|REVOKE|ALTER)\b/.test(src));
-  // the name sorts after rt_sync_from_order (013 puts the vehicle on the round trip first) and before rt_z_*
-  assert.ok('rt_sync_from_order' < 'rt_y_link_split_vehicle' && 'rt_y_link_split_vehicle' < 'rt_z_auto_close_order');
+  // the firing order is proven inside 097's block (names between rt_sync_from_order and rt_z_auto_close_order)
+  assert.match(src, /ARRAY\['rt_sync_from_order', 'rt_y_link_split_vehicle', 'rt_z_auto_close_order'\]/);
   const rep = strip(read(`${B}.sql`));
   assert.ok(!/\b(INSERT|UPDATE|DELETE)\b/.test(rep.replace(/FOR UPDATE/g, '')), '097b writes only through rt_merge');
   assert.match(rep, /PERFORM rt_merge\(k\.id, d\.id,/);

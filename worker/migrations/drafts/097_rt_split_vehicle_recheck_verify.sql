@@ -7,7 +7,9 @@
 -- Before 097b: split_pairs 2, pairs "525>528 RT-1240/RT-1242, 602>606 RT-1278/RT-1283".
 -- THIS FILE IS ASCII ONLY.
 SELECT CASE WHEN EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid = 'public.orders'::regclass AND tgname = 'rt_y_link_split_vehicle'
-                          AND tgenabled = 'O' AND md5(pg_get_triggerdef(oid)) = 'b1db54c1bcc73d086bc6cfa06a3e677e')
+                          AND tgenabled = 'O'
+                          -- 097 measured the text with search_path public: drop a schema qualifier so any session reads the same
+                          AND md5(replace(pg_get_triggerdef(oid), 'FUNCTION public.rt_link_split()', 'FUNCTION rt_link_split()')) = 'b1db54c1bcc73d086bc6cfa06a3e677e')
             THEN '097 in place' ELSE '097 NOT APPLIED' END AS rule,
        (SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace ns ON ns.oid = c.relnamespace
          WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public') AS public_triggers,

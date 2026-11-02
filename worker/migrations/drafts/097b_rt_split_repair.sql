@@ -19,7 +19,12 @@
 -- WHEN: after 097 (the cause first), after 15:00, after the owner's explicit yes in chat.
 -- BEFORE IT: 097b_rt_split_repair_dryrun.sql - this same block, generated from this file, undone.
 -- EXPECTED: NOTICE "097b OK: 2 pairs merged ..." and ONE result row "097b OK | 0" (split pairs left).
+--   The count of split pairs left and B-77 are REPORTED, not required: a pair 097b does not name (a new split, or a
+--   pair on two trucks that 033 keeps apart on purpose) must not block the repair of these two.
 --   A red error = nothing changed (one DO block): stop, copy the panel.
+--   With 097 in place a vehicle write on #606 or #528 merges its pair by itself. If 097b then stops at a guard
+--   ("cancelled", "do not hold exactly"), run 097_rt_split_vehicle_recheck_verify.sql first: split_pairs 0 means the
+--   repair is already done (by the trigger) - nothing to run.
 -- AFTER IT: 097b_rt_split_repair_verify.sql (read-only). Reverse: 097b_rt_split_repair_rollback.sql.
 -- THIS FILE IS ASCII ONLY. ONE DO block, then ONE read-only SELECT.
 
@@ -50,10 +55,17 @@ BEGIN
        OR e.matched_import_id IS DISTINCT FROM i.legacy_id THEN
       RAISE EXCEPTION '097b: pair % - export #% is no longer matched to import #% (or one is deleted) - re-measure', p, e.id, i.id;
     END IF;
-    IF k.status = 'cancelled' OR d.status = 'cancelled' OR k.model <> 1 OR d.model <> 1
+    IF k.status = 'cancelled' OR d.status = 'cancelled' OR k.model IS DISTINCT FROM 1 OR d.model IS DISTINCT FROM 1
        OR k.trip_type <> 'OWNED' OR d.trip_type <> 'OWNED' OR k.truck_id IS DISTINCT FROM d.truck_id
        OR k.truck_id IS DISTINCT FROM e.truck_id OR d.truck_id IS DISTINCT FROM i.truck_id THEN
       RAISE EXCEPTION '097b: pair % - % / % are not two live own-fleet round trips on the same truck as their orders - re-measure', p, k.code, d.code;
+    END IF;
+    -- rt_merge moves the leg with an UPDATE (rt_sync_legs syncs on INSERT only): the kept round trip's driver and
+    -- trailer stay, so the import must already run with them, else its order would disagree with its round trip
+    -- and the trip be paid to the kept driver (measured 2/11: driver 44 / trailer 23 and driver 52 / trailer 35)
+    IF k.driver_id IS DISTINCT FROM d.driver_id OR k.trailer_id IS DISTINCT FROM d.trailer_id
+       OR i.driver_id IS DISTINCT FROM k.driver_id OR i.trailer_id IS DISTINCT FROM k.trailer_id THEN
+      RAISE EXCEPTION '097b: pair % - % / % (or import #%) have another driver or trailer: a person must decide who drove - stop', p, k.code, d.code, i.id;
     END IF;
     IF (SELECT count(*) FROM ct_rt_legs WHERE rt_id = k.id) <> 1
        OR NOT EXISTS (SELECT 1 FROM ct_rt_legs WHERE rt_id = k.id AND order_id = e.id AND direction = 'EXPORT')
@@ -95,13 +107,13 @@ BEGIN
     done := done + 1;
   END LOOP;
 
-  -- 3. NOTHING LEFT: no export whose matched import sits on another live round trip; B-77 (as tms_check_runner) 0
+  -- 3. WHAT IS LEFT, reported (not required): exports whose matched import sits on another live round trip, and
+  --    B-77 as run_checks runs it (tms_check_runner). The proofs above already hold for the two named pairs.
   SELECT count(*) INTO n FROM orders ex
     JOIN orders im ON im.legacy_id = ex.matched_import_id AND im.deleted_at IS NULL
     JOIN ct_rt_legs le ON le.order_id = ex.id JOIN ct_round_trips re ON re.id = le.rt_id AND re.status <> 'cancelled'
     JOIN ct_rt_legs li ON li.order_id = im.id JOIN ct_round_trips ri ON ri.id = li.rt_id AND ri.status <> 'cancelled'
    WHERE ex.deleted_at IS NULL AND ex.direction = 'Export' AND re.id <> ri.id;
-  IF n <> 0 THEN RAISE EXCEPTION '097b proof: % split pairs left after the repair', n; END IF;
   FOR r IN SELECT sql_text FROM monitoring.checks WHERE id = 'B-77' AND enabled LOOP
     PERFORM monitoring.check_sql_guard(r.sql_text);
     PERFORM set_config('statement_timeout', '10000', true);
@@ -110,10 +122,9 @@ BEGIN
     RESET ROLE;
     b77 := v;
   END LOOP;
-  IF b77 IS DISTINCT FROM 0 THEN RAISE EXCEPTION '097b proof: B-77 = % after the repair (expected 0)', b77; END IF;
 
-  RAISE NOTICE '097b OK: % pairs merged into the export''s round trip (cost lines kept, the import''s round trip cancelled, its empty payroll line soft-deleted); split pairs left %, B-77 %',
-    done, n, b77;
+  RAISE NOTICE '097b OK: % pairs merged into the export''s round trip (cost lines kept, the import''s round trip cancelled, its empty payroll line soft-deleted); split pairs left % (0 expected; any other = a pair 097b does not name: copy the NOTICE), B-77 %',
+    done, n, coalesce(b77::text, 'disabled');
 END $do$;
 
 -- The result row (read-only). If the block above failed, the editor stops before this line.

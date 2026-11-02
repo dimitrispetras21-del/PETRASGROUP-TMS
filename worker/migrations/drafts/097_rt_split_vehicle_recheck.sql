@@ -29,6 +29,10 @@
 -- and dl_sync_from_rt soft-deletes that one's empty payroll line. Any other shape = 037's "split" audit row, no
 -- merge (a pair on two trucks stays two trips: 033's own rule). B-54 (count of public triggers) moves by one.
 -- Nothing is repaired here: the two existing pairs are 097b, a separate file.
+-- KNOWN LIMIT (037's, unchanged; code review 2/11, owner to decide): the merge compares trucks only and keeps the
+-- older round trip's driver and trailer. An import given the export's truck with ANOTHER driver ends on the export's
+-- round trip with its own driver on the order: B-06 (round trip vehicle/driver <> order) and B-05 (two drivers on one
+-- round trip) show it within the hour - P2, so no push (see B-77 above).
 --
 -- WHEN: after 15:00 (the team works 05:30-14:30), after the owner's explicit yes in chat.
 -- BEFORE IT: 097_rt_split_vehicle_recheck_dryrun.sql - this same block, generated from this file, undone.

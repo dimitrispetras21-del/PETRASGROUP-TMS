@@ -109,6 +109,7 @@ test('097: the dry run keeps nothing, the source applies once, a second run refu
   assert.strictEqual((await one(db, `SELECT count(*)::int AS c FROM pg_trigger WHERE tgname = 'rt_y_link_split_vehicle'`)).c, 0);
   await db.exec(read('097_rt_split_vehicle_recheck.sql'));
   assert.strictEqual(Number((await one(db, `SELECT red_value FROM monitoring.checks WHERE id = 'B-54'`)).red_value), trg + 1);
+  assert.strictEqual((await one(db, read('097_rt_split_vehicle_recheck_verify.sql'))).rule, '097 in place', 'verify reads the trigger 097 made');
   assert.match(await errorOf(db, read('097_rt_split_vehicle_recheck.sql')), /097: already applied/);
   assert.match(await errorOf(db, read('097_rt_split_vehicle_recheck_rollback_dryrun.sql')), /DRY RUN 097 ROLLBACK finished.*trigger rt_y_link_split_vehicle no/);
   await db.exec(read('097_rt_split_vehicle_recheck_rollback.sql'));
@@ -162,6 +163,23 @@ test('097b: both shapes go back to the export\'s round trip, cost lines kept, st
   await db.exec(rb.split('\n\nSELECT CASE')[0]);
   for (const p of ps) { assert.strictEqual(await rtOf(db, p.i.id), p.b); assert.strictEqual(await livePay(db, p.b), 1); }
   assert.deepStrictEqual(await st(), ['closed', 'planned', 'closed', 'closed'], 'back to the production shapes');
+});
+
+test('097b repairs its two pairs even when another split pair exists (two trucks): reported, not blocking', async () => {
+  const db = await copy();
+  const ps = await shapes(db);
+  const other = await incident(db, { importTruck: () => truck(db) });                // 033 keeps it two trips on purpose
+  await db.exec(withIds(read('097b_rt_split_repair.sql'), ps).split('\n-- The result row')[0]);
+  for (const p of ps) assert.strictEqual(await rtOf(db, p.i.id), p.a);
+  assert.notStrictEqual(await rtOf(db, other.i.id), other.a, 'the pair 097b does not name is left alone');
+});
+
+test('097b refuses when the import runs another driver than the kept round trip', async () => {
+  const db = await copy();
+  const ps = await shapes(db);
+  await db.query(`UPDATE orders SET driver_id = $2 WHERE id = $1`, [ps[0].i.id, await driver(db)]);
+  assert.match(await errorOf(db, withIds(read('097b_rt_split_repair.sql'), ps)), /another driver or trailer/);
+  assert.strictEqual(await rtOf(db, ps[0].i.id), ps[0].b);
 });
 
 test('097b refuses when the import\'s round trip got money since 2/11', async () => {

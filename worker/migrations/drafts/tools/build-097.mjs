@@ -11,9 +11,10 @@ import { fileURLToPath } from 'node:url';
 import { buildDryRun } from './build-073-dryrun.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-// drafts/ until the owner runs them, then one up (CLAUDE.md rule 5): the builder stays here
+// drafts/ until the owner runs them, then one up (CLAUDE.md rule 5): the builder stays here. Per FILE, not per
+// migration: 097 (the rule) and 097b (the repair) are approved and executed apart, so one can leave drafts/ first.
 const DRAFTS = path.resolve(HERE, '..');
-export const DIR = fs.existsSync(path.join(DRAFTS, '097_rt_split_vehicle_recheck.sql')) ? DRAFTS : path.resolve(DRAFTS, '..');
+export const dirOf = (f) => (fs.existsSync(path.join(DRAFTS, f)) ? DRAFTS : path.resolve(DRAFTS, '..'));
 
 const TRIGGERS = `(SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace ns ON ns.oid = c.relnamespace
       WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public')`;
@@ -53,13 +54,13 @@ export const PAIRS = [
     epilogue: '  ' + REPAIR.replace('__WHO__', 'rollback ran') },
 ];
 
-export const buildAll = (dir = DIR) => PAIRS.map((p) => ({ ...p, out: buildDryRun(fs.readFileSync(path.join(dir, p.source), 'utf8'), p) }));
+export const buildAll = () => PAIRS.map((p) => ({ ...p, out: buildDryRun(fs.readFileSync(path.join(dirOf(p.source), p.source), 'utf8'), p) }));
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const check = process.argv.includes('--check');
   let drift = 0;
   for (const p of buildAll()) {
-    const target = path.join(DIR, p.target);
+    const target = path.join(dirOf(p.source), p.target);   // a dry run sits beside its source
     if (check) {
       if (!fs.existsSync(target) || fs.readFileSync(target, 'utf8') !== p.out) { console.error('drift: ' + p.target); drift++; }
     } else fs.writeFileSync(target, p.out);
