@@ -25,7 +25,8 @@ const { chromium } = require(path.join(MAIN_REPO, 'node_modules', 'playwright'))
 const { gotoPage } = require(path.join(MAIN_REPO, 'tests', 'critics', 'auth.js'));
 
 const BASE_URL = process.env.PW_BASE_URL || 'http://127.0.0.1:8791/';
-const SHOTS = process.env.PW_SHOT_DIR || path.join(__dirname, '..', '..', '.rig-shots', 'orders-week-panel');
+// Never inside the clone (public repo): the OS temp folder unless PW_SHOT_DIR says otherwise.
+const SHOTS = process.env.PW_SHOT_DIR || path.join(require('os').tmpdir(), 'orders-week-panel');
 require('fs').mkdirSync(SHOTS, { recursive: true });
 
 // The Weekly sorts by the order's own 'Client Name' text: give every order the
@@ -161,6 +162,14 @@ async function scnCard(browser) {
   ok(s1.fixed === 'fixed' && s1.right, 'the card floats over the board, flush right (position ' + s1.fixed + ')');
   ok(s1.natlHidden, 'the national panel stays closed');
   await page.screenshot({ path: path.join(SHOTS, 'card-intl-over-week.png') });
+  // a repaint of the week («Ανά όχημα» and back) keeps the card open, without a new slide-in
+  for (const mode of ['vehicle', 'day']) {
+    // the toggle sits under the open card (it floats over the right side): clicked through the DOM
+    await page.evaluate(m => document.querySelector(`[data-owvmode="${m}"]`).click(), mode);
+    await page.waitForTimeout(250);
+    const st = await page.evaluate(() => { const p = document.getElementById('intlDetail'); return { open: !!p && !p.classList.contains('hidden'), anim: p ? p.style.animationName : '' }; });
+    ok(st.open && st.anim === 'none', `«${mode === 'vehicle' ? 'Ανά όχημα' : 'Ανά ημέρα'}» repaint: the card stays open, no slide-in (${JSON.stringify(st)})`);
+  }
 
   // «Διόρθωση» → one PATCH on ORDERS, the week repaints, the card stays
   const before = await row().locator('.ow4-l .ow4-n').first().textContent();
@@ -178,6 +187,7 @@ async function scnCard(browser) {
     && Object.keys(patches[0].body.fields).length === 1, 'PATCH ORDERS/recO1248 {Price: 3700} only: ' + JSON.stringify(patches[0] && patches[0].body));
   ok(/3\.650,00/.test(before) && /3\.700,00/.test(after), `the week repainted the amount: ${before.trim()} → ${after.trim()}`);
   ok(await page.locator('.owv-cards #intlDetail:not(.hidden)').count() === 1, 'the card is still open after the save');
+  ok(await page.evaluate(() => document.getElementById('intlDetail').style.animationName === 'none'), 'the repaint did not slide the card in again');
   await page.screenshot({ path: path.join(SHOTS, 'card-after-correction.png') });
 
   // a national row → #natlDetail, the international card closes; ΑΝΑΘΕΣΗ from the week's load

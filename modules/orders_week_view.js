@@ -465,7 +465,8 @@ const OrdersWeekView = (() => {
         counted: [kat, ano].filter(s => s && s.kind === 'order' && s.inWeek).map(s => s.rec),
       });
     }
-    return rows.sort((a, b) => WN5L.rowOrder(natOrderKey(a), natOrderKey(b)));
+    const keyed = rows.map(r => [natOrderKey(r), r]);   // one key per row, not per comparison
+    return keyed.sort((a, b) => WN5L.rowOrder(a[0], b[0])).map(x => x[1]);
   }
   // The Weekly National v5's row order (owner 2/11/2026) through ITS rule,
   // WN5L.rowOrder: by day; inside a day the rows WITH a vehicle first (the
@@ -903,7 +904,13 @@ const OrdersWeekView = (() => {
       <div class="ow4-strip"><button type="button" class="ow4-arr" data-owvshift="-1" aria-label="Προηγούμενη εβδομάδα">‹</button>${strip}<button type="button" class="ow4-arr" data-owvshift="1" aria-label="Επόμενη εβδομάδα">›</button></div>
       ${sumLine}${intlHtml}${natlHtml}${stHtml}</div>${CARDS_HTML}`;
     ctx.body.onclick = _onClick;
-    if (wasOpen) _openCard(wasOpen.type, wasOpen.id, true);
+    if (wasOpen) {
+      // A repaint, not an opening: no slide-in (oi-slide), and she stays where she had scrolled.
+      const p = document.getElementById(wasOpen.type === 'intl' ? 'intlDetail' : 'natlDetail');
+      if (p) p.style.animation = 'none';
+      _openCard(wasOpen.type, wasOpen.id, true);
+      if (p) p.scrollTop = wasOpen.top;
+    }
     _fitAll(ctx.body);
     _watchFit(ctx.body);
   }
@@ -1201,14 +1208,14 @@ const OrdersWeekView = (() => {
   // its own scroll and sticky header. Every action in the card is the
   // catalog's code; a save repaints this page (OrdersHub.refresh), as there.
   const CARDS_HTML = `<div class="owv-cards oi-layout on-v2"><div class="entity-detail-panel owv-card hidden" id="intlDetail"></div><div class="entity-detail-panel owv-card hidden" id="natlDetail"></div></div>`;
+  // Which card this page opened (S.card): INTL_ORDERS / NATL_ORDERS live
+  // inside their modules' closures, never globals, so the page keeps its own.
+  // Still open = its panel is on screen and not hidden (× and Esc only hide it).
   function _openCardNow() {
-    for (const [type, pid] of [['intl', 'intlDetail'], ['natl', 'natlDetail']]) {
-      const p = document.getElementById(pid);
-      if (!p || p.classList.contains('hidden') || !p.closest('.owv-cards')) continue;
-      const id = type === 'intl' ? (typeof INTL_ORDERS !== 'undefined' && INTL_ORDERS.selectedId) : (typeof NATL_ORDERS !== 'undefined' && NATL_ORDERS.selectedId);
-      if (id) return { type, id };
-    }
-    return null;
+    const c = S.card; if (!c) return null;
+    const p = document.getElementById(c.type === 'intl' ? 'intlDetail' : 'natlDetail');
+    if (!p || p.classList.contains('hidden') || !p.closest('.owv-cards')) return null;
+    return { type: c.type, id: c.id, top: p.scrollTop };
   }
   function _openCard(type, id, quiet) {
     const d = S.data; if (!d) return;
@@ -1221,6 +1228,7 @@ const OrdersWeekView = (() => {
       return OrdersHub.openOrder(type, id);
     }
     if (typeof OrdersCatalog !== 'undefined' && OrdersCatalog.installEsc) OrdersCatalog.installEsc();
+    S.card = { type, id };
     if (type === 'intl') {
       if (typeof closeNatlDetail === 'function') closeNatlDetail();
       openIntlCardWith(rec);
