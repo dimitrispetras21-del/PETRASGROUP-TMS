@@ -7076,9 +7076,8 @@ function _wiPieceIn(ids){
 // The row test is WI4.shelvedRow (core/wi4-logic.js): «Εβδομάδα» leaves the same
 // rows out of its numbers (owner 2/11). Asked only while the shelf is shown.
 function _wiShelved(row){
-  if(!WINTL.data.stock||!row) return false;
-  const rec=WINTL.data.imports.find(r=>r.id===row.orderId);
-  return WI4.shelvedRow(row,rec&&rec.fields,_wiLoose);
+  if(!WINTL.data.stock) return false;
+  return WI4.shelvedRow(row,r=>(WINTL.data.imports.find(x=>x.id===r.orderId)||{}).fields,_wiLoose);
 }
 // The top-bar Undo reverts ONE cached PATCH (core/api.js atPatch → _undoSet).
 // After a stock action — several writes that only make sense together (lock +

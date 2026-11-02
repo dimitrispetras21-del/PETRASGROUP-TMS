@@ -105,7 +105,8 @@ function world(opts = {}) {
   vm.runInContext('this.TmsWeek=TmsWeek;this.OrdersStock=OrdersStock;', ctx);
   vm.runInContext(read('modules/weekly_intl.js'), ctx, { filename: 'modules/weekly_intl.js' });
   const W = ctx.WI_INTERNAL;
-  ctx.WI4 = Object.assign({}, ctx.WI4, fakeWI4());   // the real board rules stay (core/wi4-logic.js)
+  // the fake, plus only the real board-row rules _wiBuildRows / _wiShelved need (core/wi4-logic.js)
+  ctx.WI4 = Object.assign(fakeWI4(), { readWindow: ctx.WI4.readWindow, weekExports: ctx.WI4.weekExports, giSortRecs: ctx.WI4.giSortRecs, boardRows: ctx.WI4.boardRows, shelvedRow: ctx.WI4.shelvedRow });
   let active = !!opts.active;
   ctx.WIV2 = {
     _broken: false,

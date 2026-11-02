@@ -346,7 +346,7 @@ const OrdersWeekView = (() => {
     const byId = new Map([...exps, ...imps].map(r => [r.id, r]));
     const fOf = row => f(byId.get((row.orderIds && row.orderIds[0]) || row.orderId) || {});
     const nb = W.boardNumbers(built.rows, { ws, dayOf, fOf,
-      shelved: row => !!o.shelf && W.shelvedRow(row, (byId.get(row.orderId) || {}).fields, o.isLoose) });
+      shelved: row => !!o.shelf && W.shelvedRow(row, r => (byId.get(r.orderId) || {}).fields, o.isLoose) });
     return W.numberOf(built, nb.no);
   }
   // The board number of one leg (an order line of this page): the leg's own

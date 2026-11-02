@@ -3302,7 +3302,11 @@ async function scnFallback(browser, origin) {
     // normFlag/v2Decide are spared: they decide active() (whether v4 is asked
     // at all), and a throw there only makes active() false; the scenario is a
     // PAINT that throws once v4 has been chosen.
-    const spare = new Set(['normFlag', 'v2Decide']);
+    // Since 2/11 the board's row STRUCTURE lives in WI4 too (boardRows & co, owner
+    // «Α: μία κοινή πηγή»): the old board builds its rows with it, as it built them
+    // with the same code inside weekly_intl.js before. Spared: a failure there breaks
+    // BOTH boards, as it always did; the scenario is v4's own paint failing.
+    const spare = new Set(['normFlag', 'v2Decide', 'readWindow', 'weekExports', 'giSortRecs', 'boardRows', 'shelvedRow']);
     window.WI4 = new Proxy(real, { get(t, k) { const v = t[k]; return typeof v === 'function' && !spare.has(k) ? () => { throw new Error('rig: forced paint failure'); } : v; } });
     const le0 = window.__ev.filter(e => e.k === 'logError').length;
     // _wiPaint lives inside the old module's closure (not on window); the

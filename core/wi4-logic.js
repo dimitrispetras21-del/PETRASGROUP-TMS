@@ -60,7 +60,8 @@ function dayRowOrder(fa, fb, field) {
 // here from those two files without a change of behaviour: same rows, same order, same numbers.
 // Records in, plain objects out; a datetime's day comes from the caller's dayOf (toLocalDate,
 // the LOCAL day), the week is ws / we 'YYYY-MM-DD'.
-const _linkId = (v) => (Array.isArray(v) ? v[0] : v) || null;
+// getLinkedId (core/data-helpers.js), the rule the board used: a link array's first id, or the string itself.
+const _linkId = (v) => { if (!v) return null; if (Array.isArray(v)) return (v[0] && v[0].id) || v[0] || null; return typeof v === 'string' ? v : null; };
 const _addDay = (d, n) => {
   const t = new Date(Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10) + n));
   return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(t.getUTCDate()).padStart(2, '0')}`;
@@ -125,11 +126,13 @@ function boardRows(exports, imports, o) {
       const gid = ((exports || []).find((e) => e.id === r.orderId) || {}).fields?.['Group ID'];
       if (gid) (byGid[gid] = byGid[gid] || []).push(r);
     });
+    // Π1 (Wave 3): export rows sharing a Group ID collapse back into one row after every reload.
     Object.values(byGid).forEach((list) => {
       if (list.length < 2) return;
       const [lead, ...rest] = list;
       rest.forEach((r) => { r.orderIds.forEach((id) => { if (!lead.orderIds.includes(id)) lead.orderIds.push(id); }); });
-      for (const r of rest) rows.splice(rows.indexOf(r), 1);
+      const gone = new Set(rest);
+      for (let i = rows.length - 1; i >= 0; i--) if (gone.has(rows[i])) rows.splice(i, 1);
     });
   }
   const matchedMap = {};
@@ -151,21 +154,30 @@ function boardRows(exports, imports, o) {
       const gid = impById[r.orderId]?.fields?.['Group ID'];
       if (gid) (byGid[gid] = byGid[gid] || []).push(r);
     });
+    // A1 (owner 6/9): import groups collapse too — a second grouped import row once stayed alone and a truck
+    // assigned on the lead never reached it. The export may point at ANY member (the lead of an earlier render, or
+    // one the stop order has since moved): the group is matched if any member is, else the board shows it free
+    // while the export still carries it.
     Object.values(byGid).forEach((list) => {
       if (list.length < 2) return;
       const ordered = giSortRecs(list.map((r) => impById[r.orderId] || { id: r.orderId, fields: {} })).map((rec) => list.find((r) => r.orderId === rec.id));
       const [lead, ...rest] = ordered;
       rest.forEach((r) => { r.orderIds.forEach((id) => { if (!lead.orderIds.includes(id)) lead.orderIds.push(id); }); if (!lead.matchedTo && r.matchedTo) lead.matchedTo = r.matchedTo; });
-      for (const r of rest) rows.splice(rows.indexOf(r), 1);
+      const gone = new Set(rest);
+      for (let i = rows.length - 1; i >= 0; i--) if (gone.has(rows[i])) rows.splice(i, 1);
     });
   }
   const recOf = (r) => { const id = (r.orderIds && r.orderIds[0]) || r.orderId; return (exports || []).find((x) => x.id === id) || (imports || []).find((x) => x.id === id); };
+  // Rota (owner 10/8): orders with a Rotation ID are forwarding legs — no row of their own, they hang under their
+  // parent («⤷»), yet stay in rows so driver / vehicle availability and returns count from the LAST leg.
   const legs = {};
   rows.forEach((r) => {
     const rot = recOf(r)?.fields?.['Rotation ID'];
     if (rot) { r.legOf = rot; (legs[rot] = legs[rot] || []).push(r); }
   });
   Object.values(legs).forEach((a) => a.sort((x, y) => String(recOf(x)?.fields?.['Loading DateTime'] || '').localeCompare(String(recOf(y)?.fields?.['Loading DateTime'] || ''))));
+  // Split (owner 6/9, FEATURES.ORDER_SPLIT): a leg renders nested under its parent's row, because the dispatcher
+  // reads «this order» as ONE line though it moves in two trucks. Depth is one (migration 018 CHECK).
   const splitLegs = {};
   if (opt.split) {
     rows.forEach((r) => {
@@ -185,9 +197,11 @@ function boardRows(exports, imports, o) {
 
 // An import row standing on the stock shelf instead of a day (Φ1): unmatched, alone, and its
 // order a loose piece. The board asks it only while it shows the shelf (stock on, not warehouse).
-function shelvedRow(row, fields, isLoose) {
+// fieldsOf(row) → its order's fields; asked only after the cheap tests.
+function shelvedRow(row, fieldsOf, isLoose) {
   if (!row || row.type !== 'import' || row.matchedTo || (row.orderIds || []).length > 1) return false;
-  return !!fields && !!isLoose(fields);
+  const f = fieldsOf(row);
+  return !!f && !!isLoose(f);
 }
 
 // The board's days and its numbers (§e numbering): exports by DELIVERY day (loading day without
