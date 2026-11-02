@@ -10624,6 +10624,11 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5-nf-l { font-size:12px; color:var(--wi4-grey-2); }
 .wn5-nf-day { height:28px; padding:0 8px; border:1px solid var(--wi4-ctl); border-radius:6px; background:var(--surface-card); font:500 12px 'DM Sans',sans-serif; color:var(--wi4-ink); }
 .wn5-nf .wn5a-hm { width:64px; height:28px; }
+/* usability 2/11 §3.3–3.4: an hour still missing is marked; a button that cannot be pressed reads so (navy = it works) */
+.wn5-nf .wn5a-hm.bad { border:1px dashed var(--danger); }   /* a dashed box = still to fill (the Weekly Διεθνών's «missing») */
+.wn5-hub .wi4-btn:disabled, .wn5-hub .wi4-btn:disabled:hover, .wn5-dlg[data-wn5="split"] .wi4-btn.pri:disabled {
+  opacity:1; border-color:var(--wi4-line-2); background:var(--wi4-line-2); color:var(--wi4-grey-3); cursor:default; }
+.wn5-dlg[data-wn5="split"] .wn5-split-none { margin:0 0 6px; color:var(--wi4-grey-1); }
 .wn5-nf-note { align-self:flex-start; padding:2px 6px; border-radius:4px; background:var(--wn5-note-bg); border:1px solid var(--wn5-note-line); font-size:11px; font-weight:500; color:var(--wn5-note-ink); }
 .wn5-nf-it { display:flex; align-items:center; gap:8px; min-height:28px; border-bottom:1px solid var(--wi4-line); }
 .wn5-nf-it > b { font-weight:600; color:var(--wi4-ink); }
