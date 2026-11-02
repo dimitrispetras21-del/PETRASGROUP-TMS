@@ -213,7 +213,8 @@
     return null;
   }
   // the request a save sends: with accept_busy only when the overlap is pre-accepted AND the screen shows those words
-  // now (shown: the text beside the save at the press; a board read since the line was drawn never widens it)
+  // now (shown: the text beside the save at the press, '' when none; a board read since the line was drawn never
+  // widens it). shown left out only where the caller draws o.text itself in the same step (the drag's two-step list).
   function _busySend(req, o, shown) {
     if (!o || !o.accept || (shown !== undefined && !String(shown || '').includes(o.text))) return req;
     return _withAccept(req, { code: 'truck_busy' }) || req;
@@ -1708,7 +1709,8 @@
         const it = byId(_id(b.dataset.piece));
         const req = it && _plusReq(st, it);
         // Π2: with accept_busy when the line shows the overlap now (one press)
-        const shown = (b.closest('.wn5-pline') && b.closest('.wn5-pline').querySelector('.wn5-why') || {}).textContent;
+        // no line drawn = nothing shown: '' never pre-accepts (undefined would skip the check, code review high)
+        const shown = (b.closest('.wn5-pline') && b.closest('.wn5-pline').querySelector('.wn5-why') || {}).textContent || '';
         if (req && !req.missing) _send(d, _busySend(req, _reqBusy(req, st.cyc), shown), 'Προστέθηκε στο σκέλος', { intl: true, current: () => { const it2 = byId(_id(b.dataset.piece)); return it2 && _plusReq(st, it2); } });
       }
     });

@@ -398,7 +398,7 @@
     // the acceptance holds only for the load it was given on: a selection changed since then sends without it
     const again = req0 ? WN5Act.withAccept(p.req, { code: 'truck_busy' }) : null;
     // Π2: an overlap the footer shows now goes with the first press (accept_busy)
-    const shown = (document.querySelector('#wn5-hub [data-nfwhy]') || {}).textContent;
+    const shown = (document.querySelector('#wn5-hub [data-nfwhy]') || {}).textContent || '';   // no footer = nothing shown
     const req = again && JSON.stringify(again.body) === JSON.stringify(req0.body) ? req0 : k.busySend(p.req, p.busy, shown);
     try {
       out = await planFetch(req.method, req.path, { body: req.body });
