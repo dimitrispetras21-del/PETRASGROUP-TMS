@@ -12,6 +12,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
+- dimitris · `claude/relax-hours-093-7879f4` · Εθνικά v5: 093 προσχέδιο, οι κανόνες ωρών χαλαρώνουν (chain_time / stop_order μόνο ό,τι δεν οδηγείται, «όλη η ημέρα» = ημέρα, ΑΝΟΔΟΣ πριν ΚΑΘΟΔΟ = `side_time` + ίχνος)· πάνελ «Αλλαγή ώρας» αποθηκεύει με κίτρινη προειδοποίηση· πάνω στο #213· ?v= / SW_VERSION 1793660000 (`docs/sessions/2026-11-02-dimitris-relax-hours-093.md`)
 - dimitris · `fix/wn5-anodos-one-point-room` · Εθνικά v5: έλεγχος ζωντανού Weekly 1/11 (#207–#209 + αυτό: ευθυγράμμιση προορισμού, «1 σημείο +N», βοηθός στο μενού avatar, κομμένα 21→5)· επόμενο: «Αποθήκευση έτσι κι αλλιώς» (086) (`docs/sessions/2026-11-01-dimitris-weekly-live-check.md`)
 - dimitris · `chore/083-092-executed` · Εθνικά v5: 083–092 ΕΚΤΕΛΕΣΜΕΝΕΣ 1/11 + Worker b88e6150 (085/089)· αρχεία εκτός drafts/· μένουν: SQL `waiting_weeks` ±6 εβδομάδες, οθόνη «Αποθήκευση έτσι κι αλλιώς» (086), 090b (`docs/sessions/2026-11-01-dimitris-083-092-executed.md`)
 - dimitris · `feat/wn5-to-ten-pr3` · Εθνικά v5 Weekly τρίτο PR (3a–3g, F5, F48, F62, B-10, F65, F2, ✈, σταθερή διάταξη, Π-23), πάνω στο #202· μόνο front end, ?v= / SW_VERSION 1793500300 (`docs/sessions/2026-11-01-dimitris-wn5-pr3.md`)

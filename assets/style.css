@@ -9649,6 +9649,8 @@ button.wn5-note-who { color:var(--wi4-blue-ink); cursor:pointer; }
 .wn5-datep-r .wn5-cons { display:flex; flex-direction:column; gap:4px; padding-left:0; list-style:none; }
 .wn5-datep-r .wn5-cons li { display:flex; gap:8px; margin:0; }
 .wn5-datep-r .wn5-cons li > span { min-width:0; }
+/* 093 (owner 2/11): a preview's warnings save - amber, not the red of a conflict (wn5_actions.js _dateResHTML) */
+.wn5-datep-r .wn5-cons-warn li { color:var(--wi4-amber-ink); }
 .wn5-datep-r .wn5-cons li::before { content:'•'; flex:none; }
 .wn5-datep-r .wn5-nw { white-space:nowrap; }
 .wn5-intl { color:var(--wi4-amber-ink); }

@@ -1674,6 +1674,44 @@ async function scnDate(browser, origin) {
     ok(scn, 'no page errors (B4)', !S.pageErrors.length, S.pageErrors);
     await page.context().close();
   }
+  { // B6 · 093 (owner 2/11): what the base only WARNS about saves - side_time (an ANODOS before the KATHODOS) comes as a
+    // warning of the preview, amber, «Αποθήκευση» on with an amber word beside it; the save sends the dry run's body.
+    // Before 093 the base refuses the same change (conflict stop_order): still red, still no save (B7).
+    const SIDE = { code: 'side_time', rt_id: 204, pairs: 1, anodos: { stop_id: 2035, location: 'ANODOS TEST', day: '2026-10-13' },
+      kathodos: { stop_id: 2031, location: 'VEROIA TEST', day: '2026-10-14' } };
+    const { page, S } = await bOpen(browser, origin, { plan: { [K]: (e) => (e.body && e.body.dry_run === true ? PV({ warnings: [SIDE] }) : planErr(409, 'WRITES_CLOSED', 'writes_closed')) } });
+    await bClick(page, CHIP);
+    await bClick(page, `${D} [data-day="2026-10-13"]`);
+    await page.waitForTimeout(300);
+    const w = await page.$eval(D, (dlg) => {
+      const li = dlg.querySelector('.wn5-datep-r .wn5-cons-warn li[data-kind="side_time"]');
+      const why = dlg.querySelector('.wi4-dlg-ft .wn5-why');
+      return { text: li ? li.innerText : null, color: li ? getComputedStyle(li).color : null, red: !!dlg.querySelector('.wn5-conflict'),
+        why: why ? why.innerText : null, soft: !!why && why.classList.contains('wn5-soft'), whyColor: why ? getComputedStyle(why).color : null };
+    }).catch((e) => ({ err: String(e) }));
+    ok(scn, 'side_time → the amber line «Η ΑΝΟΔΟΣ (ANODOS TEST 13/10) γίνεται πριν από την ΚΑΘΟΔΟ (VEROIA TEST 14/10) · αποθηκεύεται, γράφεται στο ιστορικό», no red',
+      w.text === 'Η ΑΝΟΔΟΣ (ANODOS TEST 13/10) γίνεται πριν από την ΚΑΘΟΔΟ (VEROIA TEST 14/10) · αποθηκεύεται, γράφεται στο ιστορικό'
+      && w.color === 'rgb(124, 45, 18)' && !w.red, w);
+    ok(scn, '«Αποθήκευση» on, «Αποθηκεύεται με προειδοποίηση · δες δεξιά» beside it in amber (never «Δεν αποθηκεύεται»)',
+      (await bOff(page, `${D} [data-act="save"]`)) === false && w.why === 'Αποθηκεύεται με προειδοποίηση · δες δεξιά' && w.soft && w.whyColor === 'rgb(124, 45, 18)', w);
+    await bClick(page, `${D} [data-act="save"]`);
+    const c = bCalls(S, 'PATCH', P);
+    ok(scn, 'the save sends the dry run\'s body without dry_run', c.length === 2 && c[1].raw === '{"shift":{"side":"KATHODOS","delta":"1 days"}}', c.map((x) => x.raw));
+    ok(scn, 'no page errors (B6)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // B7 · the same change on a base without 093: conflict stop_order, the Worker's words, no save
+    const { page, S } = await bOpen(browser, origin, { plan: { [K]: () => CF('stop_order', null) } });
+    await bClick(page, CHIP);
+    await bClick(page, `${D} [data-day="2026-10-13"]`);
+    await page.waitForTimeout(300);
+    const x = await cfRead(page);
+    const why = await bText(page, `${D} .wi4-dlg-ft .wn5-why`);
+    ok(scn, 'stop_order (before 093) → red «rig sentinel conflict stop_order · δεν αποθηκεύεται», «Αποθήκευση» disabled, «Δεν αποθηκεύεται: σύγκρουση, δες δεξιά»',
+      x.red === 'rig sentinel conflict stop_order · δεν αποθηκεύεται' && x.save === true && why === 'Δεν αποθηκεύεται: σύγκρουση, δες δεξιά', { x, why });
+    ok(scn, 'no page errors (B7)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
   { // E · own cycle without ANODOS, with a local loading (RT-T201): «↳ Φόρτωση με τοπικό» under its stop, «Κενό γύρισμα»
     const board = bBoard();
     board.cycles[0].stops[2].local_loading = { local_move_id: 7101, driver: 'Driver Test 05', move_date: '2026-10-12', time_from: '11:00:00', time_to: '12:00:00' };

@@ -1897,7 +1897,10 @@
   // still out, refused (its strip) or a conflict (its line on the right)
   function _dateWhy(st, body) {
     if (_dateBadWin(st)) return 'Λείπει: παράθυρο σε μορφή ΗΗ:ΛΛ';
-    if (body && st.okFor === JSON.stringify(body) && rtSaveBody(st.dryBody, st.dryAnswer)) return null;
+    // a preview with warnings saves (093: the base keeps them, with a trace): said beside the save, amber ({ warn })
+    if (body && st.okFor === JSON.stringify(body) && rtSaveBody(st.dryBody, st.dryAnswer)) {
+      return st.preview && (st.preview.warnings || []).length ? { warn: 'Αποθηκεύεται με προειδοποίηση · δες δεξιά' } : null;
+    }
     if (!body) return 'Λείπει: άλλη ημέρα ή νέο παράθυρο';
     if (st.err) return 'Δεν αποθηκεύεται: δες το μήνυμα πάνω';
     if (st.preview && st.preview.conflict) return 'Δεν αποθηκεύεται: σύγκρουση, δες δεξιά';
@@ -2045,7 +2048,9 @@
     }
     if (pv) {
       for (const v of pv.vs_day || []) h += '<p class="wn5-intl">' + _esc('ενημερώνει τη διεθνή #' + v.order_id + ' · ' + _dm(String(v.from || '').slice(0, 10)) + ' → ' + _dm(String(v.to || '').slice(0, 10))) + '</p>';
-      if ((pv.warnings || []).length) h += '<ul class="wn5-cons">' + pv.warnings.map((w) => '<li data-kind="' + _esc(w && w.code) + '">' + _esc(WN5Lab.warningLine(w).text) + '</li>').join('') + '</ul>';
+      // 093 (owner 2/11): what the base only warns about (side_time: an ANODOS before the KATHODOS) saves; amber, never
+      // the red of a conflict, which stays the only thing that keeps «Αποθήκευση» off
+      if ((pv.warnings || []).length) h += '<ul class="wn5-cons wn5-cons-warn">' + pv.warnings.map((w) => '<li data-kind="' + _esc(w && w.code) + '">' + _esc(WN5Lab.warningLine(w).text) + '</li>').join('') + '</ul>';
     } else if (!st.err) h += '<p class="wn5-none">Διαβάζει την προεπισκόπηση…</p>';
     return h + '<p class="wn5-none wn5-res-end">' + (st.one ? 'Αλλάζει μόνο αυτή η στάση· οι άλλες στάσεις μένουν ως έχουν.' : 'Οι ώρες μένουν ίδιες· τα παράθυρα ξαναελέγχονται.') + '</p>';
   }
