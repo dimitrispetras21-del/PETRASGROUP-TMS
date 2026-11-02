@@ -976,9 +976,9 @@ function _ptsHTML(pts, ok, start, inl, max) {
     ...idx.filter((i) => !pts[i].late && !seg(i))].slice(0, vis));
   const rest = idx.filter((i) => !shown.has(i));
   // More late stops than slots: the chip itself carries the amber, so a hidden late stop is still seen. The same for
-  // what a folded order still lacks (owner 2/11, «λείπει ώρα» / «λείπει τιμή»: code review xhigh) — never only in a title.
+  // a folded order without its price (owner 2/11, «λείπει τιμή»: code review xhigh) — never only in a title.
   const restLate = rest.some((i) => pts[i].late);
-  const restGap = rest.some((i) => pts[i].noTime || pts[i].noPrice);
+  const restGap = rest.some((i) => pts[i].noPrice);
   const more = rest.length
     ? `<span class="wi4-more${restLate ? ' wn5-late' : ''}${restGap ? ' wn5-gap' : ''}" title="${_esc(rest.map((i) => `${num(pts[i], i) || pts[i].n}. ${_ptFull(pts[i])}`).join('\n'))}"><b>+${rest.length}</b></span>`
     : '';
@@ -1015,14 +1015,11 @@ function _ptCity(p) {
 // B-12: the deadline of an ΑΝΟΔΟΣ ending at Veroia — the window's END (its own day: a window can cross midnight), else
 // the base's due day; never an hour the base did not give
 const _hubBy = (p) => (p.to && (p.toDay || p.day) ? `${_dow(p.toDay || p.day)} ${p.to}` : p.due ? _dl(p.due) : '');
-// Owner 2/11 (loose rules: save first, complete later): what the order still lacks, in amber (WN5L _marks). The title
-// keeps «όλη η ημέρα» (what the truck is planned for); the row's line says «λείπει ώρα» in its place, so the cell
-// grows by nothing and the gap is the word read first.
-const _missTxt = (p) => [p.noTime ? 'λείπει ώρα' : '', p.noPrice ? 'λείπει τιμή' : ''].filter(Boolean).join(' · ');
+// Owner 2/11 (loose rules: save first, complete later): an order saved without its price says so, in amber (WN5L _marks).
 function _ptFull(p) {
   if (p.hub) return `Βέροια${_hubBy(p) ? ' · ως ' + _hubBy(p) : ''} · ${_pal(p.pallets, p.palUnknown)}${p.noPrice ? ' · λείπει τιμή' : ''}`;   // the same words in title and «+N»
   const city = _ptCity(p), who = _ptWho(p);
-  return `${p.name}${city ? ', ' + city : ''} · ${_winTxt(p.from, p.to, p.allDay)} · ${_pal(p.pallets, p.palUnknown)}${_tempTxt(p) ? ' · ' + _tempTxt(p) : ''}${who ? ' · ' + who : ''}${_missTxt(p) ? ' · ' + _missTxt(p) : ''}`;
+  return `${p.name}${city ? ', ' + city : ''} · ${_winTxt(p.from, p.to, p.allDay)} · ${_pal(p.pallets, p.palUnknown)}${_tempTxt(p) ? ' · ' + _tempTxt(p) : ''}${who ? ' · ' + who : ''}${p.noPrice ? ' · λείπει τιμή' : ''}`;
 }
 function _ptHTML(p, n, ok, inl) {
   // Figma audit B-12 (H1): a load waiting for its ΑΝΟΔΟΣ that ends at Veroia reads as a cycle's end (r.end): «Βέροια
@@ -1036,8 +1033,8 @@ function _ptHTML(p, n, ok, inl) {
   }
   const city = _ptCity(p);
   const full = _ptFull(p);
-  const pw = p.noTime ? '' : WN5L.winText(p.from, p.to, p.allDay);
-  const miss = (p.noTime ? '<span class="wn5-miss">λείπει ώρα</span> · ' : '') + (p.noPrice ? '<span class="wn5-miss">λείπει τιμή</span> · ' : '');
+  const pw = WN5L.winText(p.from, p.to, p.allDay);
+  const miss = p.noPrice ? '<span class="wn5-miss">λείπει τιμή</span> · ' : '';
   return `<span class="wi4-pt wn5-pt${p.late ? ' wn5-late' : ''}${_dc(ok && p.dim && !p.late)}" data-stop="${_id(p.stopId)}"${_segAttr(p.segLabel)} title="${_esc(full)}">`
     + (n == null ? `<span class="wi4-l1">${_esc(p.name)}</span>`
       : inl ? `<span class="wi4-l1"><span class="wi4-pt-n">${n}</span> ${_esc(p.name)}</span>`

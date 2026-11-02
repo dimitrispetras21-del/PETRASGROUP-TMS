@@ -3325,10 +3325,10 @@ function truthBoard() {
   return b;
 }
 const truthLookups = () => { const l = clone(B_LOOKUPS); l.locations.push({ id: 7, legacy_id: 'recLOC7', name: 'MESIS TEST', address: null, city: 'Veria', phone: null, is_hub: false }); return l; };
-// Owner 2/11 (relaxed rules, group 5): an order saves without a price (080) or an hour (the whole day, F1), and the
-// Weekly says what it still lacks — a small amber «λείπει τιμή» / «λείπει ώρα» on its point, once per order on a row.
-// Never for an ABSENT price key (the board did not say), never for a VS leg (price null by design), never Veroia's
-// whole day (its one default). NO-GO on main: no .wn5-miss at all.
+// Owner 2/11 (relaxed rules, group 5): an order saves without a price (080), and the Weekly says so — a small amber
+// «λείπει τιμή» on its point, once per order on a row. Never for an ABSENT price key (the board did not say), never for
+// a VS leg (price null by design). No «λείπει ώρα»: «όλη η ημέρα» is the normal case (owner 2/11). NO-GO on main: no
+// .wn5-miss at all.
 SCN.gaps = async (browser, origin) => {
   const scn = 'gaps';
   const b = fixture();
@@ -3345,14 +3345,13 @@ SCN.gaps = async (browser, origin) => {
     const m0 = document.querySelector('#content .wn5 .wn5-miss');
     return { wait: marks('#content .wn5 .wn5-row[data-piece="4105"]'), cyc: marks(`#content .wn5 .wn5-row[data-rt="${rt}"]`),
       other: op == null ? [] : marks(`#content .wn5 .wn5-row[data-piece="${op}"]`),
-      // Veroia's window (.wn5-vtime beside «Βέροια») and a cycle end at Veroia (.wn5-end) never say «λείπει ώρα»
-      veroia: [...document.querySelectorAll('#content .wn5 .wn5-vtime, #content .wn5 .wn5-end')].filter((x) => /λείπει ώρα/.test(x.textContent)).length,
+      noHour: (document.querySelector('#content .wn5') || {}).textContent.includes('λείπει ώρα'),
       bg: m0 ? getComputedStyle(m0).backgroundColor : null, ink: m0 ? getComputedStyle(m0).color : null };
   }, [c101.rt_id, other ? other.piece_id : null]);
-  ok(scn, 'the waiting order without price and hour: «λείπει τιμή» once, «λείπει ώρα» once — main: none', JSON.stringify(look.wait.slice().sort()) === JSON.stringify(['λείπει τιμή', 'λείπει ώρα']), look.wait);
+  ok(scn, 'the waiting order without price: «λείπει τιμή» once — main: none', JSON.stringify(look.wait) === JSON.stringify(['λείπει τιμή']), look.wait);
   ok(scn, `cycle ${c101.rt_id}: one «λείπει τιμή» (order 3001, load + unload legs), none for its VS leg`, look.cyc.filter((x) => x === 'λείπει τιμή').length === 1, look.cyc);
   ok(scn, 'a waiting order whose price key is ABSENT shows no mark', !look.other.length, look.other);
-  ok(scn, 'no mark under Veroia', look.veroia === 0, look.veroia);
+  ok(scn, 'no «λείπει ώρα» anywhere (its whole-day delivery is the normal case, owner 2/11)', look.noHour === false, look.noHour);
   ok(scn, 'the mark is amber (#fff7ed on #7c2d12)', look.bg === 'rgb(255, 247, 237)' && look.ink === 'rgb(124, 45, 18)', [look.bg, look.ink]);
   if (OUT) await page.locator('#content .wn5 .wn5-row[data-piece="4105"]').screenshot({ path: path.join(OUT, 'gaps-waiting.png') }).catch(() => {});
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);

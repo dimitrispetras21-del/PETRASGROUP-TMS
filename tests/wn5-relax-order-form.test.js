@@ -3,10 +3,9 @@
 //   1. A night window (22:00–06:00) is accepted as ending the NEXT day, as the assignment form Δ1 reads it — the form
 //      refused it with «το «έως» πρέπει να είναι μετά το «από»». 071 shipments_win / rt_stops_win only ask that the end
 //      is not before the start, which a next-day end is.
-//   2. An order saved without a price (080) or without an hour (F1, the whole day) says so on the Weekly: a small amber
-//      «λείπει τιμή» / «λείπει ώρα» on its point, so nothing is forgotten. An ABSENT price key is «the board did not
-//      say» and never «missing» (facade trap 2 / 074); a VS sends price: null by design and is never marked; Veroia's
-//      whole day is its one default (owner 1/11) and is never «λείπει ώρα».
+//   2. An order saved without a price (080) says so on the Weekly: a small amber «λείπει τιμή» on its point, so nothing
+//      is forgotten. An ABSENT price key is «the board did not say» and never «missing» (facade trap 2 / 074); a VS
+//      sends price: null by design and is never marked. No «λείπει ώρα» (owner 2/11): «όλη η ημέρα» is the normal case.
 // The REAL modules run in a vm. NO-GO on plain main (TMS_ROOT=<git archive origin/main>): _toDay is missing, the night
 // window is refused, the board has no mark.
 const { test } = require('node:test');
@@ -129,7 +128,7 @@ const FIX = () => JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/wn5-
 const rowChunk = (h, attr) => h.split('<div class="wn5-row').find((s) => s.includes(attr)) || '';
 const count = (s, w) => s.split(w).length - 1;
 
-test('marks: a waiting national order with price null and a whole-day delivery says «λείπει τιμή» and «λείπει ώρα» once', () => {
+test('marks: a waiting national order with price null says «λείπει τιμή» once; its whole-day delivery stays «όλη η ημέρα», no «λείπει ώρα»', () => {
   const fx = FIX();
   const w = fx.waiting.find((x) => x.piece_id === 4105);
   Object.assign(w, { price: null, deliver_from: '2026-10-14T00:00:00+03:00', deliver_to: '2026-10-14T23:59:00+03:00' });
@@ -137,8 +136,8 @@ test('marks: a waiting national order with price null and a whole-day delivery s
   const chunk = rowChunk(c.WN5._html(c.WN5L.model(fx, { today: '2026-10-13' })), 'data-piece="4105"');
   assert.ok(chunk, 'the waiting row of piece 4105 is drawn');
   assert.strictEqual(count(chunk, '<span class="wn5-miss">λείπει τιμή</span>'), 1, chunk);
-  assert.strictEqual(count(chunk, '<span class="wn5-miss">λείπει ώρα</span>'), 1, chunk);
-  assert.ok(/title="[^"]*όλη η ημέρα[^"]*λείπει ώρα/.test(chunk), 'the point\'s title keeps «όλη η ημέρα» and names the gap');
+  assert.ok(!chunk.includes('λείπει ώρα'), 'owner 2/11: the whole day is the normal case, never «λείπει ώρα»');
+  assert.ok(chunk.includes('όλη η ημέρα'), 'the whole-day point still reads «όλη η ημέρα»');
   assert.ok(/title="[^"]*λείπει τιμή/.test(chunk), 'a point\'s title names the missing price');
 });
 
@@ -170,36 +169,8 @@ test('marks: a cycle — one «λείπει τιμή» per national order (load 
   assert.ok(!rowChunk(c2.WN5._html(c2.WN5L.model(fx, { today: '2026-10-13' })), `data-rt="${c101.rt_id}"`).includes('λείπει τιμή'), 'a VS price null was marked');
 });
 
-test('marks: the model — Veroia\'s whole day is never «λείπει ώρα»; a client\'s whole day is', () => {
-  const fx = FIX();
-  const c101 = fx.cycles.find((c) => c.stops.some((s) => s.stop_id === 1001));
-  for (const s of c101.stops) Object.assign(s, { planned_from: s.planned_from.slice(0, 10) + 'T00:00:00+03:00', planned_to: s.planned_from.slice(0, 10) + 'T23:59:00+03:00' });
-  const c = board();
-  const r = c.WN5L.model(fx, { today: '2026-10-13' }).days.flatMap((d) => d.rows).find((x) => x.rtId === c101.rt_id);
-  const pts = [...(r.kath ? r.kath.from.concat(r.kath.to) : []), ...r.anod.from, ...r.anod.to];
-  assert.ok(pts.length, 'the cycle has client points');
-  for (const p of pts) assert.strictEqual(p.noTime, p.locId !== 1, `${p.name}: noTime ${p.noTime}`);
-  assert.ok(!('noTime' in (r.kath && r.kath.veroia ? r.kath.veroia : {})), 'the Veroia head carries no mark');
-});
-
-test('marks: a week whose hub is unknown marks no «λείπει ώρα» (Veroia\'s default cannot be told from a client\'s)', () => {
-  const fx = FIX();
-  const c101 = fx.cycles.find((c) => c.stops.some((s) => s.stop_id === 1001));
-  // no VS anywhere and no opts.hubId: the model cannot name the hub (HUB_UNKNOWN)
-  for (const s of c101.stops) {
-    s.legs = (s.legs || []).filter((l) => !String(l.kind || '').startsWith('vs_'));
-    Object.assign(s, { planned_from: s.planned_from.slice(0, 10) + 'T00:00:00+03:00', planned_to: s.planned_from.slice(0, 10) + 'T23:59:00+03:00' });
-  }
-  Object.assign(fx, { cycles: [c101], waiting: [], hub: [] });
-  const c = board();
-  const r = c.WN5L.model(fx, { today: '2026-10-13' }).days.flatMap((d) => d.rows).find((x) => x.rtId === c101.rt_id);
-  const pts = [...(r.kath ? r.kath.from.concat(r.kath.to) : []), ...r.anod.from, ...r.anod.to];
-  assert.ok(pts.some((p) => p.locId === 1), 'hub unknown: Veroia is drawn as an ordinary point');
-  assert.ok(pts.every((p) => p.noTime === false), 'hub unknown: a point was marked');
-});
-
-test('marks: a folded point that lacks something turns the «+N» chip amber (wn5-gap), as a late one', () => {
+test('marks: a folded point without its price turns the «+N» chip amber (wn5-gap), as a late one', () => {
   const s = src('modules/weekly_natl_v5.js');
-  assert.ok(/const restGap = rest\.some\(\(i\) => pts\[i\]\.noTime \|\| pts\[i\]\.noPrice\);/.test(s) && s.includes("${restGap ? ' wn5-gap' : ''}"));
+  assert.ok(/const restGap = rest\.some\(\(i\) => pts\[i\]\.noPrice\);/.test(s) && s.includes("${restGap ? ' wn5-gap' : ''}"));
   assert.ok(/\.wi4-more\.wn5-gap b \{ color:var\(--wi4-amber-ink\); \}/.test(src('assets/style.css')));
 });

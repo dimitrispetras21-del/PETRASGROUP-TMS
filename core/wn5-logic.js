@@ -158,15 +158,13 @@ function _legs(s, act) { return (s.legs || []).filter((l) => l.act === act); }
 // is said on the board, so nothing is forgotten. «λείπει τιμή»: a NATIONAL order whose price came as null (080 keeps a
 // missing price NULL, plan_board sends the key) — an absent key is «the board did not say», never «missing», and a VS
 // sends price: null by design (its price is the international's), so only nat_order_id counts. Once per order on a
-// row, on its first point drawn. «λείπει ώρα»: a client point of the whole day (the form's empty window, allDay) —
-// never Veroia, whose whole day is its one default (owner 1/11).
+// row, on its first point drawn. No «λείπει ώρα» (owner 2/11): «όλη η ημέρα» is the normal case — hours go only where
+// the dispatcher wants them — and a note shows only when it asks for an action.
 const _noPriceIds = (items) => [...new Set(items.filter((x) => x && x.nat_order_id != null
   && Object.prototype.hasOwnProperty.call(x, 'price') && x.price === null).map((x) => x.nat_order_id))];
-function _marks(pts, hubId) {
+function _marks(pts) {
   const seen = new Set();
   for (const p of pts) {
-    // a week whose hub id is unknown (HUB_UNKNOWN) cannot tell Veroia's whole-day default from a client's: no mark
-    p.noTime = hubId != null && p.allDay === true && p.hub !== true && p.locId !== hubId;
     const fresh = (p._np || []).filter((id) => !seen.has(id));
     fresh.forEach((id) => seen.add(id));
     p.noPrice = fresh.length > 0;
@@ -270,7 +268,7 @@ function _cycleRow(c, hubId, nums, errors) {
   const seg = segmentsOf(c);
   const tiles = seg.segments.map((s) => _tile(s, seg.source === 'segments' && seg.segments.length > 1));
   const pts = [...(kath ? kath.from.concat(kath.to) : []), ...anod.from, ...anod.to];
-  _marks(pts, hubId);
+  _marks(pts);
   // H-9 (072b): each point's segment from stop_ids alone; the Veroia loading head and the cycle end are stops too
   // (Figma H1 2120:8921 draws the segment line under «Βέροια · τέλος κύκλου» as well).
   const segs = stopSegments(c);
@@ -408,7 +406,7 @@ function _waitRow(list, hubId, errors, nameOf) {
   const side = { side: anodos ? 'ANODOS' : 'KATHODOS', day: loadDay, toDay: anodos || !pts.length ? null : pts[pts.length - 1].day,
     veroia: !anodos && hubWs.length ? { stopId: null, from: athensTime(hubWs[0].load_from), to: athensTime(hubWs[0].load_to), allDay: allDay(hubWs[0].load_from, hubWs[0].load_to) } : null, vBefore: 0,
     headDim: false, from: anodos ? pts : origin, to: anodos ? dest : pts, pallets, palUnknown, over: pallets > CAP ? r1(pallets - CAP) : 0, sideDim: false, gap: null };
-  _marks(side.from.concat(side.to), hubId);
+  _marks(side.from.concat(side.to));
   const refs = [...new Set(ws.map((w) => w.reference).filter(Boolean))];
   const clients = [...new Set(ws.map((w) => w.client).filter(Boolean))];
   // Day L (F5 FE-2, owner 28/10): no more «… δεν ήρθαν (Worker)» line under ΠΡΟΣ ΑΝΑΘΕΣΗ. 074a sends the window
