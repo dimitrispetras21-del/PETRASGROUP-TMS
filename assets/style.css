@@ -7603,7 +7603,7 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
                · rails .wi4-r-red (solid) .wi4-r-amb (dashed) · .wi4-dim .wi4-focus .wi4-hl .wi4-mhl
      leg       .wi4-leg · .wi4-l-date .wi4-l-from .wi4-l-arr .wi4-l-to .wi4-l-pal .wi4-l-span
                · text .wi4-l1 .wi4-l2 .wi4-ell .wi4-ref .wi4-t-red/.wi4-t-amb/.wi4-t-blue/.wi4-t-g2
-     points    .wi4-pts(.wi4-noplace) .wi4-pt .wi4-pt-n .wi4-more .wi4-ok .wi4-delay
+     points    .wi4-pts(.wi4-noplace) .wi4-pt .wi4-pt-n .wi4-more(.wi4-more-nd) .wi4-more-d .wi4-pt-nd .wi4-pt-dd .wi4-ok .wi4-delay
                · line 2 .wi4-l2f(.wi4-l2p) .wi4-pt-pl .wi4-pt-pal
      chips     .wi4-dc(.today/.next/.est/.done/.past/.red) .wi4-pal(.over/.unk) .wi4-pal-ic .wi4-pe .wi4-att
      assign    .wi4-asg .wi4-box(.own/.par/.un/.split) .wi4-plate .wi4-plane .wi4-prt (+ .wk3-prt hook)
@@ -8516,6 +8516,17 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 .wi4-more:hover { background:var(--wi4-line-2); }
 /* Figma More 1097:2913: «+3» SemiBold 12 / 15, centred in the 28px chip. */
 .wi4-more b { display:block; font-size:12px; font-weight:600; line-height:15px; color:var(--wi4-ink); }
+/* Day divider (owner 2/11): the first point of another day in the end that dates
+   the row (#616: Τετ, Τετ | Πέμ 5/11) gets an ink line on its left edge and its
+   day leading line 2, whole (the place is cut after it). No width of its own: a
+   divider beside the points pushed #616's third point behind «+1» at 1920, so the
+   fit rule (core/wi4-logic.js points) is unchanged. The line, not a colour, says
+   «another day»: red stays for problems. Behind «+N» the chip names the day
+   (.wi4-more-d), with the line only when the first hidden point starts it. */
+.wi4 .wi4-pt.wi4-pt-nd { box-sizing:border-box; padding-left:6px; border-left:1px solid var(--wi4-ink); }
+.wi4 .wi4-l2f > .wi4-pt-dd { flex:none; font-weight:700; color:var(--wi4-ink); }
+.wi4-more.wi4-more-nd { box-shadow:inset 1px 0 0 var(--wi4-ink); }
+.wi4-more-d { display:block; font-size:9.5px; font-weight:600; line-height:11px; color:var(--wi4-grey-1); }
 /* ✓ carries meaning («done»): a graphic at ≥3:1 (grey-2), not the icon grey.
    A visible gap before the day («✓ Σάβ 3/10», board). */
 .wi4-ok { display:inline-flex; vertical-align:-1px; margin-right:4px; color:var(--wi4-grey-2); }
@@ -9241,6 +9252,16 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 .wn5 .wn5-pts .wi4-more b { font-size:11px; font-weight:500; color:var(--wi4-grey-1); }
 .wn5 .wn5-pt > .wi4-l2 { font-weight:500; color:var(--wi4-grey-1); }   /* before the late rule: a late window stays amber */
 .wn5 .wn5-late .wi4-l2 { color:var(--wi4-amber); }
+/* Day divider on the national board (owner 2/11, «Ναι, και στα Εθνικά»): the same marks as the Weekly International
+   (.wi4-pt-nd: the ink line on the point's left edge, from the .wi4 root), the day first on line 2 in ink even on a
+   late (amber) line; a «+N» that folds a point of another day grows to two lines and names the day. */
+.wn5 .wn5-pt > .wi4-l2 > .wi4-pt-dd { font-weight:700; color:var(--wi4-ink); }
+.wn5 .wn5-pts .wi4-more:has(.wi4-more-d) { height:auto; min-height:22px; padding:2px 0; align-content:center; }
+.wn5 .wn5-pts .wi4-more .wi4-more-d { font-size:9px; line-height:10px; }
+/* «PE» on the national board (owner 2/11): the Weekly International's chip, stacked over the pallets so the 50px ΠΑΛ.
+   cell keeps its «+»; two 13–14px lines fit the row's two lines. */
+.wn5 .wn5-palst { display:inline-flex; flex-direction:column; align-items:flex-end; gap:1px; }
+.wn5 .wn5-palst > .wi4-pe { padding:0; font-size:8px; line-height:11px; letter-spacing:0; }   /* ≤ the width of «31»: the cell's 38px hold it and the «+» */
 /* More late stops than slots: the «+N» that holds one is amber too (a late stop is never hidden in grey). */
 .wn5 .wn5-pts .wi4-more.wn5-late b { color:var(--wi4-amber); }
 .wn5 .wn5-missing { color:var(--wi4-amber-ink); }
