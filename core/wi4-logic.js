@@ -238,6 +238,37 @@ function boardNumbers(rows, o) {
   return { days, no };
 }
 
+// The Weekly International's number of every order of a week, from ANY page's own read of
+// ORDERS (owner 2/11/2026: «Παραγγελίες › Εβδομάδα» shows it, the pallets weekly view will):
+// the board's own rules above on those records, cut as the board reads them — the two reads
+// ±8 days around the week (readWindow; the Worker's IS_AFTER / IS_BEFORE = strictly after
+// `from` 00:00 UTC, strictly before `to` 00:00 UTC, with the database in UTC), cancelled
+// orders too (the board's reads keep them), in the Worker's read order (by id: a group's lead
+// depends on it). Not a second count. o = { recs (international ORDERS records), wsDate (the
+// Saturday, a LOCAL Date at midnight), dayOf (toLocalDate), split (FEATURES.ORDER_SPLIT),
+// shelf (the board shows its stock shelf: stock on, not the warehouse role), isLoose
+// (WI_INTERNAL.loose) }. → Map(order rec id → n); an order missing from it is on no numbered
+// line of that week's board («—» on screen).
+function weekNumbers(o) {
+  const dayOf = o.dayOf, wsD = o.wsDate;
+  const weD = new Date(wsD); weD.setDate(wsD.getDate() + 6);
+  const ws = dayOf(wsD), we = dayOf(weD), win = readWindow(wsD, dayOf);
+  const lo = Date.parse(win.from + 'T00:00:00Z'), hi = Date.parse(win.to + 'T00:00:00Z');
+  const inWin = (v) => { const t = Date.parse(v || ''); return !Number.isNaN(t) && t > lo && t < hi; };
+  const f = (r) => r.fields || {};
+  // the Postgres id ('Order ID', else the view's 'Order No'): the Worker reads by it
+  const pg = (r) => { const v = f(r)['Order ID'] != null && f(r)['Order ID'] !== '' ? f(r)['Order ID'] : f(r)['Order No']; const n = Number(v); return v != null && v !== '' && Number.isFinite(n) ? n : Infinity; };
+  const recs = (o.recs || []).filter((r) => f(r).Type === 'International').sort((a, b) => pg(a) - pg(b));
+  const exps = weekExports(recs.filter((r) => f(r).Direction === 'Export' && (inWin(f(r)['Delivery DateTime']) || inWin(f(r)['Loading DateTime']))), ws, we, dayOf);
+  const imps = recs.filter((r) => f(r).Direction === 'Import' && inWin(f(r)['Loading DateTime']));
+  const built = boardRows(exps, imps, { ws, we, dayOf, split: !!o.split });
+  const byId = new Map([...exps, ...imps].map((r) => [r.id, r]));
+  const fOf = (row) => f(byId.get((row.orderIds && row.orderIds[0]) || row.orderId) || {});
+  const nb = boardNumbers(built.rows, { ws, dayOf, fOf,
+    shelved: (row) => !!o.shelf && shelvedRow(row, (r) => (byId.get(r.orderId) || {}).fields, o.isLoose) });
+  return numberOf(built, nb.no);
+}
+
 // order id → the number of the board row that carries it: the row's orders (a group), its matched
 // import (and that import's group), the rota legs under it, a split's legs. An order on no
 // numbered row (another week's import, a shelved piece, a leg whose row is not numbered) is absent:
@@ -864,7 +895,7 @@ const WI4 = freeze({
   // shared helpers
   dayDiff, dayLabel, dayRowOrder,
   // board rows and numbers (one source with «Παραγγελίες › Εβδομάδα», owner 2/11)
-  readWindow, weekExports, giSortRecs, boardRows, shelvedRow, boardNumbers, numberOf,
+  readWindow, weekExports, giSortRecs, boardRows, shelvedRow, boardNumbers, numberOf, weekNumbers,
 });
 
 if (typeof module !== 'undefined') module.exports = WI4; else window.WI4 = WI4;

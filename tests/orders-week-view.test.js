@@ -544,7 +544,7 @@ test('self delivery: invoiced in the totals, «✓ αυτοπαράδοση» in
 });
 
 // ── The Weekly International's numbers on «Εβδομάδα» (owner 2/11/2026: «το 1 να αντιστοιχεί στο 1 του weekly») ──
-// One source: weekNumbers runs the board's own rules (WI4.readWindow / weekExports / boardRows / boardNumbers /
+// One source: WI4.weekNumbers (core/wi4-logic.js) runs the board's own rules (WI4.readWindow / weekExports / boardRows / boardNumbers /
 // numberOf). Expected numbers below are worked out by hand from the board's rules, every edge case once.
 test('Weekly numbers: one count for both screens, every edge case (group, matched, rota, split, shelved, moved, cancelled, another week)', () => {
   const X = [
@@ -566,7 +566,7 @@ test('Weekly numbers: one count for both screens, every edge case (group, matche
   ];
   // the board's toLocalDate (core/utils.js): a datetime's LOCAL day (TZ = Athens above)
   const localDay = d => { if (!d) return ''; const t = new Date(d); if (isNaN(t)) return ''; return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`; };
-  const nums = W.weekNumbers({ recs: X, wsDate: new Date('2026-09-19T00:00:00'), dayOf: localDay,
+  const nums = WI4.weekNumbers({ recs: X, wsDate: new Date('2026-09-19T00:00:00'), dayOf: localDay,
     split: true, shelf: true, isLoose: f => !!f['Stock Lot'] && !f.Truck && !f.Partner });
   const got = Object.fromEntries(X.map(r => [r.id, nums.get(r.id) == null ? '—' : nums.get(r.id)]));
   assert.deepStrictEqual(got, {
@@ -580,7 +580,7 @@ test('Weekly numbers: one count for both screens, every edge case (group, matche
     nI4: '—', nI6: '—', nE6: '—',    // on the shelf · another week · outside the reads
   });
   // without the shelf (stock off) the loose piece is a Thursday import-only row
-  const noShelf = W.weekNumbers({ recs: X, wsDate: new Date('2026-09-19T00:00:00'), dayOf: localDay, split: true, shelf: false, isLoose: () => true });
+  const noShelf = WI4.weekNumbers({ recs: X, wsDate: new Date('2026-09-19T00:00:00'), dayOf: localDay, split: true, shelf: false, isLoose: () => true });
   assert.strictEqual(noShelf.get('nI4'), 7);
   assert.strictEqual(noShelf.get('nI5'), 8);
 });

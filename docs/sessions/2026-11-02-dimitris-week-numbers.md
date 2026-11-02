@@ -3,8 +3,8 @@
 Branch `feat/owv-week-numbers` (owner 2/11: «το 1 να αντιστοιχεί στο 1 του weekly»· απόφαση «Α: μία κοινή πηγή»).
 
 - **Μία πηγή:** η δομή των γραμμών του Weekly Διεθνών και η αρίθμησή του βγήκαν στο `core/wi4-logic.js`, χωρίς αλλαγή συμπεριφοράς:
-  - `readWindow`, `weekExports`, `giSortRecs`, `boardRows`, `shelvedRow`, `boardNumbers`, `numberOf`·
-  - το Weekly (`_wiLoad`, `_wiBuildRows`, `_compute`) και η «Εβδομάδα» (`weekNumbers`) τις καλούν· η εβδομαδιαία των παλετών θα τις διαβάσει αργότερα.
+  - `readWindow`, `weekExports`, `giSortRecs`, `boardRows`, `shelvedRow`, `boardNumbers`, `numberOf`, `weekNumbers`·
+  - το Weekly (`_wiLoad`, `_wiBuildRows`, `_compute`) και η «Εβδομάδα» τις καλούν μέσω του `WI4.weekNumbers`, που ζει στο core ώστε να το καλεί και η εβδομαδιαία των παλετών χωρίς το module των παραγγελιών· η εβδομαδιαία των παλετών θα τις διαβάσει αργότερα.
 - **Οθόνη:** κάθε γραμμή παραγγελίας της «Εβδομάδας» δείχνει τον αριθμό της γραμμής του Weekly που τη ζωγραφίζει, «—» με εξήγηση αν δεν είναι γραμμή εκείνης της εβδομάδας. Μέσα στην ημέρα η σειρά είναι πρώτα κατά αριθμό. Τα εθνικά δεν αριθμούνται ακόμη: περιμένουμε την απάντηση του owner.
 - **Απόδειξη:**
   - board byte-ίδιο πριν/μετά (`wi4-board-rig numbers`, 3 εβδομάδες × 2 παραλλαγές, HTML του `#wi-rows`)·

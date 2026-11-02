@@ -319,36 +319,9 @@ const OrdersWeekView = (() => {
   }
 
   // The Weekly International's number of every order of the week (owner
-  // 2/11/2026: «θέλω να έχει αρίθμηση, την ίδια με weekly· το 1 να αντιστοιχεί
-  // στο 1 του weekly»). Not a second count: this page runs the board's OWN rules
-  // (core/wi4-logic.js — readWindow, weekExports, boardRows, boardNumbers,
-  // numberOf, the functions weekly_intl.js / weekly_intl_v2.js build and number
-  // the board with) on the orders it read, cut as the board reads them: the two
-  // reads ±8 days around the week (the Worker's IS_AFTER / IS_BEFORE = strictly
-  // after `from` 00:00 UTC, strictly before `to` 00:00 UTC), cancelled orders
-  // too (the board's reads keep them), in the Worker's read order (by id: a
-  // group's lead depends on it). o = { recs, wsDate (the Saturday, a LOCAL Date
-  // at midnight), dayOf, split (FEATURES.ORDER_SPLIT), shelf (the board shows
-  // its stock shelf), isLoose }. → Map(order rec id → n); an order missing from
-  // it is on no numbered row of that week's board.
-  function weekNumbers(o) {
-    const W = WI4, dayOf = o.dayOf, wsD = o.wsDate;
-    const weD = new Date(wsD); weD.setDate(wsD.getDate() + 6);
-    const ws = dayOf(wsD), we = dayOf(weD), win = W.readWindow(wsD, dayOf);
-    const lo = Date.parse(win.from + 'T00:00:00Z'), hi = Date.parse(win.to + 'T00:00:00Z');
-    const inWin = v => { const t = Date.parse(v || ''); return !isNaN(t) && t > lo && t < hi; };
-    const pg = r => { const n = Number(pgIdOf(r)); return Number.isFinite(n) ? n : Infinity; };
-    const f = r => r.fields || {};
-    const recs = (o.recs || []).filter(r => f(r).Type === 'International').sort((a, b) => pg(a) - pg(b));
-    const exps = W.weekExports(recs.filter(r => f(r).Direction === 'Export' && (inWin(f(r)['Delivery DateTime']) || inWin(f(r)['Loading DateTime']))), ws, we, dayOf);
-    const imps = recs.filter(r => f(r).Direction === 'Import' && inWin(f(r)['Loading DateTime']));
-    const built = W.boardRows(exps, imps, { ws, we, dayOf, split: !!o.split });
-    const byId = new Map([...exps, ...imps].map(r => [r.id, r]));
-    const fOf = row => f(byId.get((row.orderIds && row.orderIds[0]) || row.orderId) || {});
-    const nb = W.boardNumbers(built.rows, { ws, dayOf, fOf,
-      shelved: row => !!o.shelf && W.shelvedRow(row, r => (byId.get(r.orderId) || {}).fields, o.isLoose) });
-    return W.numberOf(built, nb.no);
-  }
+  // 2/11/2026: «το 1 να αντιστοιχεί στο 1 του weekly»): WI4.weekNumbers
+  // (core/wi4-logic.js) — the board's own rules on this page's read, the ONE
+  // source the pallets weekly view reads too. Not a second count.
   // The board number of one leg (an order line of this page): the leg's own
   // order, else the order it counts (a split leg's parent). null = on no
   // numbered row of this week's board (another week's leg, a shelved piece).
@@ -365,7 +338,7 @@ const OrdersWeekView = (() => {
   }
 
   // Inside a day, the Weekly International's order (owner 2/11/2026: Ειρήνη
-  // compares the two lists row by row). First its NUMBER (weekNumbers, the
+  // compares the two lists row by row). First its NUMBER (WI4.weekNumbers, the
   // board's own count) — then the board's rule for what has none, WI4.dayRowOrder:
   // exports before import-only rows, Veroia Switch last, then delivery /
   // loading time (the client key is empty in production: ORDERS has no 'Client
@@ -1307,7 +1280,7 @@ const OrdersWeekView = (() => {
   // The board's numbers of this read; an error is said on the row («—» with why), never a 0.
   function _numbers(d) {
     try {
-      return weekNumbers({ recs: [...d.intl, ...(d.cancelled || [])], wsDate: new Date(S.week + 'T00:00:00'), dayOf: toLocalDate,
+      return WI4.weekNumbers({ recs: [...d.intl, ...(d.cancelled || [])], wsDate: new Date(S.week + 'T00:00:00'), dayOf: toLocalDate,
         split: typeof FEATURES !== 'undefined' && !!FEATURES.ORDER_SPLIT,
         // The board shows its stock shelf when stock is on (this page is never the warehouse's)
         shelf: typeof OrdersStock !== 'undefined' && OrdersStock.on(),
@@ -1386,7 +1359,7 @@ const OrdersWeekView = (() => {
     });
   }
 
-  return { render, recordChanged, buildWeek, weekNumbers, rowNumbers, legNumber, totals, rtInvoicing, verdictText, tpyOf, pctVsPrev, stripWeeks, groupRows, daySections,
+  return { render, recordChanged, buildWeek, rowNumbers, legNumber, totals, rtInvoicing, verdictText, tpyOf, pctVsPrev, stripWeeks, groupRows, daySections,
     weekStatus, pairNationals, routeSplit, ordersFormula, placeText, isVsNational, naturalDateOf, pgIdOf, dayLabel, weekTitle };
 })();
 
