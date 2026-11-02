@@ -173,3 +173,9 @@ test('F4α-T26: conflict without needs_confirm → no save, and no inferred «no
   assert.strictEqual(A.rtSaveBody({ stops: [], dry_run: true }, Object.assign({}, ans, { preview: { conflict: null }, needs_confirm: true })), null, 'needs_confirm without a token');
   assert.strictEqual(A.rtSaveBody({ stops: [] }, null), null, 'no dry run = no save');
 });
+
+test('096: accept_busy rides in the change body only when the form set it (the overlap said, or the yes)', () => {
+  const st = { at: '2026-10-13T14:30:00+03:00', place_note: 'Θήβα', reason: '', reason_note: '', own: true, truck_id: 12, trailer_id: null, driver_id: 32, same_driver: false };
+  assert.ok(!('accept_busy' in J(H._changeBody(st))));
+  assert.strictEqual(J(H._changeBody(Object.assign({}, st, { accept_busy: true }))).accept_busy, true);
+});

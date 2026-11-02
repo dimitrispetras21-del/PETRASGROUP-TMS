@@ -776,7 +776,100 @@ async function scnPrevRate({ browser, origin, ok, scn }) {
   ok(scn, 'fix: no page or console errors', !p2.S.pageErrors.length && !appConsole(p2.S).length, p2.S.pageErrors.concat(appConsole(p2.S)));
   await p2.page.context().close();
 }
-const SCN = { 'prev-rate': scnPrevRate, tiles: scnTiles, card: scnCard, change: scnChange, fix: scnFix, h7: scnH7, fid: scnFid, remove: scnRemove, 'rt-token': scnRtToken, 'clear-seg': scnClearSeg, 'sheet-seg': scnSheetSeg, narrow: scnNarrow };
+// 096 (coordinator 2/11, the Π2 rule of #218): a truck / driver already on another trip of the board on the days of the
+// change is said in amber BEFORE the press, naming that trip, and the dry run and the save carry accept_busy (one press).
+// A busy truck the board cannot name (the dry run's truck_busy) keeps the refusal, with «Αποθήκευση έτσι κι αλλιώς».
+async function scnBusy({ browser, origin, ok, scn }) {
+  const okBody = (b) => (b.dry_run === true ? dryOk(b) : [200, { ok: true, op: 'plan_seg_change', dry_run: false, ids: { rt_id: 101 }, warnings: [], notice_ids: [] }]);
+  { // A · RT-T102 (truck 12, driver 32) on Tuesday too: the change of RT-T101 to them on Tue 03:00 is said and accepted
+    const b = oneSegWeek();
+    const t2 = b.cycles.find((c) => c.rt_id === 102);
+    Object.assign(t2, { start_at: '2026-10-13T10:00:00+03:00', date_start: '2026-10-13' });
+    const { page, S } = await K.openApp(browser, origin, { board: b, plan: { 'POST /plan/rt/101/handover': (e) => okBody(e.body) } });
+    if (!(await guard(page, ok, scn, 'WN5Hand'))) return;
+    await page.evaluate(() => WN5Hand.change(101));
+    await page.waitForSelector(HDLG, { timeout: 6000 }).catch(() => {});
+    await fillChange(page, CH);
+    await page.waitForTimeout(1200);
+    const line = await K.text(page, `${HDLG} [data-busy]`);
+    ok(scn, '096: amber line before the press, naming the other trip for the truck and the driver', /^Επικάλυψη · φορτηγό και σε: .*· οδηγός και σε: .*Αποθηκεύεται έτσι, γράφεται στο ιστορικό\.$/.test(line)
+      && await page.evaluate((d) => getComputedStyle(document.querySelector(`${d} [data-busy]`)).color !== getComputedStyle(document.querySelector(`${d} .wn5f-body`)).color, HDLG), line);
+    const dry = posts(S).filter((x) => x.body.dry_run === true);
+    ok(scn, '096: the dry run carries accept_busy: true', dry.length === 1 && dry[0].body.accept_busy === true, dry.map((x) => x.body));
+    await page.click(`${HDLG} [data-act="save"]`).catch(() => {});
+    await page.waitForTimeout(1000);
+    const ex = posts(S).filter((x) => x.body.dry_run !== true);
+    ok(scn, '096: one press saves, with accept_busy and the request_id', ex.length === 1 && ex[0].body.accept_busy === true && K.UUID4.test(ex[0].body.request_id || ''), ex.map((x) => x.body));
+    ok(scn, 'no page or console errors (A)', !S.pageErrors.length && !appConsole(S).length, S.pageErrors.concat(appConsole(S)));
+    await page.context().close();
+  }
+  { // B · the board sees no overlap, the base does (another week): the dry run's truck_busy and its offer, then one yes
+    const conflict = [200, { ok: true, op: 'plan_seg_change', dry_run: true, preview: { segments: null, warnings: [],
+      conflict: { code: 'truck_busy', detail: 'RT-T9', message: 'rig sentinel truck_busy' } } }];
+    const { page, S } = await K.openApp(browser, origin, { board: oneSegWeek(), plan: { 'POST /plan/rt/101/handover': (e) => (e.body.dry_run === true && !e.body.accept_busy ? conflict : okBody(e.body)) } });
+    await page.evaluate(() => WN5Hand.change(101));
+    await page.waitForSelector(HDLG, { timeout: 6000 }).catch(() => {});
+    await fillChange(page, CH);
+    await page.waitForTimeout(1200);
+    ok(scn, '096: no amber line when the board names nothing', !(await K.text(page, `${HDLG} [data-busy]`)));
+    const offer = await K.count(page, `${HDLG} [data-err] [data-act="accept-busy-send"]`);
+    ok(scn, '096: the refusal stays with «Αποθήκευση έτσι κι αλλιώς», the save off', offer === 1 && /rig sentinel truck_busy/.test(await K.text(page, `${HDLG} [data-err]`))
+      && await page.evaluate((d) => document.querySelector(`${d} [data-act="save"]`).disabled, HDLG));
+    await page.click(`${HDLG} [data-act="accept-busy-send"]`).catch(() => {});
+    await page.waitForTimeout(1200);
+    const dry = posts(S).filter((x) => x.body.dry_run === true);
+    ok(scn, '096: the yes → the same body again with accept_busy (a new dry run), the save on', dry.length === 2 && !dry[0].body.accept_busy && dry[1].body.accept_busy === true
+      && JSON.stringify(Object.assign({}, dry[1].body, { accept_busy: undefined })) === JSON.stringify(dry[0].body)
+      && await page.evaluate((d) => !document.querySelector(`${d} [data-act="save"]`).disabled, HDLG), dry.map((x) => x.body));
+    // an edit after the yes makes another body: the yes is gone with it
+    await page.evaluate(() => { const el = document.getElementById('wn5h-place'); el.value = 'Λαμία 2'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+    await page.waitForTimeout(1200);
+    const dry2 = posts(S).filter((x) => x.body.dry_run === true);
+    ok(scn, '096: an edit after the yes drops it (the next dry run has no accept_busy, the offer again)', dry2.length === 3 && !dry2[2].body.accept_busy
+      && await K.count(page, `${HDLG} [data-err] [data-act="accept-busy-send"]`) === 1, dry2.map((x) => x.body));
+    await page.context().close();
+  }
+  { // D · the dry run passed, the save is refused truck_busy (another save took the truck in between): the refusal
+    // strip with the offer; the yes → a dry run with accept_busy, then one press
+    let n = 0;
+    const { page, S } = await K.openApp(browser, origin, { board: oneSegWeek(), plan: { 'POST /plan/rt/101/handover': (e) => (e.body.dry_run === true ? dryOk(e.body)
+      : (++n === 1 ? K.planErr(422, 'PLAN_RULE', 'truck_busy') : [200, { ok: true, op: 'plan_seg_change', dry_run: false, ids: { rt_id: 101 }, warnings: [], notice_ids: [] }])) } });
+    await page.evaluate(() => WN5Hand.change(101));
+    await page.waitForSelector(HDLG, { timeout: 6000 }).catch(() => {});
+    await fillChange(page, CH);
+    await page.waitForTimeout(1200);
+    await page.click(`${HDLG} [data-act="save"]`).catch(() => {});
+    await page.waitForTimeout(800);
+    ok(scn, '096: a save refused truck_busy → the Worker words in the strip, with «Αποθήκευση έτσι κι αλλιώς»', await K.count(page, `${HDLG} [data-strip] [data-act="accept-busy-send"]`) === 1
+      && /rig sentinel truck_busy/.test(await K.text(page, `${HDLG} [data-strip]`)));
+    await page.click(`${HDLG} [data-act="accept-busy-send"]`).catch(() => {});
+    await page.waitForTimeout(1200);
+    await page.click(`${HDLG} [data-act="save"]`).catch(() => {});
+    await page.waitForTimeout(800);
+    const ex = posts(S).filter((x) => x.body.dry_run !== true);
+    ok(scn, '096: after the yes, one press saves with accept_busy (the same request_id)', ex.length === 2 && !ex[0].body.accept_busy && ex[1].body.accept_busy === true
+      && ex[0].body.request_id === ex[1].body.request_id, ex.map((x) => x.body));
+    await page.context().close();
+  }
+  { // C · the correction of RT-T101's segment to truck 12, which RT-T102 uses on Tuesday too: said, and accept_busy
+    const b = oneSegWeek();
+    Object.assign(b.cycles.find((c) => c.rt_id === 102), { start_at: '2026-10-13T10:00:00+03:00', date_start: '2026-10-13' });
+    const FX = '.wi4-dlg[data-wn5="fix"]';
+    const { page, S } = await K.openApp(browser, origin, { board: b, plan: { 'PATCH /plan/segments/1010': (e) => (e.body.dry_run === true
+      ? [200, { ok: true, op: 'plan_seg_fix', dry_run: true, preview: { segments: [], warnings: [], conflict: null } }]
+      : [200, { ok: true, op: 'plan_seg_fix', dry_run: false, ids: {}, warnings: [], notice_ids: [] }]) } });
+    await page.evaluate(() => WN5Hand.fix(1010));
+    await page.waitForSelector(FX, { timeout: 6000 }).catch(() => {});
+    await page.evaluate(() => { const el = document.getElementById('wn5h-truck'); el.value = '12'; el.dispatchEvent(new Event('change', { bubbles: true })); });
+    await page.waitForTimeout(1200);
+    const line = await K.text(page, `${FX} [data-busy]`);
+    const fd = K.planOf(S, 'PATCH', '/plan/segments/1010');
+    ok(scn, '096 fix: a new truck on another trip of those days → amber, and {set:{truck_id:12}, accept_busy:true}', /^Επικάλυψη · φορτηγό και σε: /.test(line)
+      && fd.length === 1 && JSON.stringify(fd[0].body) === JSON.stringify({ set: { truck_id: 12 }, accept_busy: true, dry_run: true }), { line, bodies: fd.map((x) => x.body) });
+    await page.context().close();
+  }
+}
+const SCN = { busy: scnBusy, 'prev-rate': scnPrevRate, tiles: scnTiles, card: scnCard, change: scnChange, fix: scnFix, h7: scnH7, fid: scnFid, remove: scnRemove, 'rt-token': scnRtToken, 'clear-seg': scnClearSeg, 'sheet-seg': scnSheetSeg, narrow: scnNarrow };
 module.exports = { seg, handWeek, ROW, HAND, guard, appConsole, SCN };
 if (require.main === module) {
   // The tiles scenario's fixture carries reason «zzz» on purpose: its one logError line is asserted there (count 1).
