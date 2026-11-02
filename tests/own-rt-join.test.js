@@ -78,6 +78,7 @@ function world({ rts = [], role = 'owner', lines = {}, rtListFails = false, legD
   const ctx = {
     console: { log() {}, info() {}, warn() {}, error() {} }, JSON, Math, Date, Promise, Array, Object, Set, Map, Error, Number, String,
     OrdersStock, OrdersCommon, getLinkedId,
+    WI4: require(path.join(ROOT, 'core/wi4-logic.js')),   // _wiBuildRows / _wiShelved read the shared board rules
     localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
     PROXY_URL: 'https://w.invalid',
     TABLES: { ORDERS: 'tblO' },

@@ -40,16 +40,251 @@ function dayLabel(d) {
 }
 
 // The order of the rows inside one day of the board, on two ORDERS `fields`:
-// client A→Z (Greek collation), Veroia Switch last, then `field` — 'Delivery
-// DateTime' for exports, 'Loading DateTime' for import-only rows. ONE rule:
-// «Παραγγελίες › Εβδομάδα» reads it too, so Ειρήνη compares the two lists row
-// by row (owner 2/11/2026). 'Client Summary' is not on the Worker map today
-// (always empty), kept as it was.
-const clientKey = (f) => String((f || {})['Client Name'] || (f || {})['Client Summary'] || '').toUpperCase();
+// Veroia Switch last, then `field` — 'Delivery DateTime' for exports, 'Loading
+// DateTime' for import-only rows. ONE rule: «Παραγγελίες › Εβδομάδα» reads it
+// too, so Ειρήνη compares the two lists row by row (owner 2/11/2026). There is
+// no client key (owner 2/11, «Όχι, μένει ως έχει»): the old one read 'Client
+// Name' / 'Client Summary', which the Worker's ORDERS map never returns, so it
+// was always empty — removed, the board's order byte-identical before / after.
 function dayRowOrder(fa, fb, field) {
   const a = fa || {}, b = fb || {};
-  return clientKey(a).localeCompare(clientKey(b), 'el') || ((a['Veroia Switch'] ? 1 : 0) - (b['Veroia Switch'] ? 1 : 0))
+  return ((a['Veroia Switch'] ? 1 : 0) - (b['Veroia Switch'] ? 1 : 0))
     || String(a[field] || '').localeCompare(String(b[field] || ''));
+}
+
+// ─── Board rows and their numbers: ONE source (owner 2/11/2026, «Α: μία κοινή πηγή») ───
+// The Weekly International builds its rows (weekly_intl.js _wiBuildRows) and numbers them
+// (weekly_intl_v2.js _compute) through the functions below, and «Παραγγελίες › Εβδομάδα» runs
+// the SAME functions on its own read, so a load carries the same number on both screens
+// («το 1 να αντιστοιχεί στο 1 του weekly»; the pallets weekly view will read it too). Moved
+// here from those two files without a change of behaviour: same rows, same order, same numbers.
+// Records in, plain objects out; a datetime's day comes from the caller's dayOf (toLocalDate,
+// the LOCAL day), the week is ws / we 'YYYY-MM-DD'.
+// getLinkedId (core/data-helpers.js), the rule the board used: a link array's first id, or the string itself.
+const _linkId = (v) => { if (!v) return null; if (Array.isArray(v)) return (v[0] && v[0].id) || v[0] || null; return typeof v === 'string' ? v : null; };
+const _addDay = (d, n) => {
+  const t = new Date(Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10) + n));
+  return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(t.getUTCDate()).padStart(2, '0')}`;
+};
+
+// The board's two reads reach 8 days around its week (Cross-week, dispatcher 19/5; B2, owner 6/9):
+// the from / to its IS_AFTER / IS_BEFORE carry. wsDate = the week's Saturday as a LOCAL Date at
+// midnight (Date arithmetic as the load always did it, so a DST week ends where it always ended).
+function readWindow(wsDate, dayOf) {
+  const we = new Date(wsDate); we.setDate(wsDate.getDate() + 6);
+  return { from: dayOf(new Date(wsDate.getTime() - 8 * 86400000)), to: dayOf(new Date(we.getTime() + 8 * 86400000)) };
+}
+
+// The week's exports in board order (the load's own cut, B2 owner 6/9): a Plan Week Start decides
+// alone, in either direction; else the delivery day (the loading day when there is none) must fall
+// in ws–we. Then by that datetime as text; equal ones keep the read order (the Worker reads by id).
+function weekExports(recs, ws, we, dayOf) {
+  const eff = (f) => f['Delivery DateTime'] || f['Loading DateTime'] || '';
+  return (recs || []).filter((r) => {
+    const f = r.fields || {};
+    const pws = dayOf(f['Plan Week Start'] || '');
+    if (pws) return pws === ws;
+    const d = dayOf(eff(f));
+    return d >= ws && d <= we;
+  }).sort((a, b) => eff(a.fields || {}).localeCompare(eff(b.fields || {})));
+}
+
+// An import group's order (A1, owner 6/9): the Group ID suffix (stop order), then Loading
+// DateTime, then id — never the read order, which flipped the group's lead between renders.
+function giSortRecs(recs) {
+  const gid = String((recs.find((r) => r && r.fields && r.fields['Group ID']) || {}).fields?.['Group ID'] || '');
+  const seq = (gid.split('|')[1] || '').split(',').filter(Boolean);
+  const pos = (id) => { const k = seq.indexOf(id); return k < 0 ? 99 : k; };
+  return [...recs].sort((a, b) => pos(a.id) - pos(b.id)
+    || String(a.fields?.['Loading DateTime'] || '').localeCompare(String(b.fields?.['Loading DateTime'] || ''))
+    || String(a.id).localeCompare(String(b.id)));
+}
+
+// The board's rows of one week, structure only (the screen adds its labels): one row per export,
+// then per import (by loading datetime); rows sharing a Group ID collapse into their lead (exports:
+// the first; imports: giSortRecs); an import named by an export's Matched Import ID is matched to it;
+// orders with a Rotation ID are rota legs; with FEATURES.ORDER_SPLIT, an order with a Parent Order
+// is that parent's split leg. id = the row's creation number (the board's row id; ids of collapsed
+// members stay used). → { rows, legs: {rot: [rows]}, splitLegs: {parent: [rows]}, created }
+function boardRows(exports, imports, o) {
+  const opt = o || {}, ws = opt.ws || null, we = opt.we || null, dayOf = opt.dayOf;
+  let seq = 0;
+  const rows = [];
+  const impById = {};
+  (imports || []).forEach((r) => { impById[r.id] = r; });
+  for (const exp of exports || []) {
+    const f = exp.fields || {};
+    const pws = dayOf(f['Plan Week Start'] || '');
+    const eff = dayOf(f['Delivery DateTime'] || f['Loading DateTime'] || '');
+    const outOfWindow = !!(pws && ws && pws === ws && eff && (eff < ws || eff > we));
+    rows.push({ id: ++seq, type: 'export', orderId: exp.id, orderIds: [exp.id], importId: f['Matched Import ID'] || null, outOfWindow });
+  }
+  {
+    const byGid = {};
+    rows.forEach((r) => {
+      if (r.type !== 'export') return;
+      const gid = ((exports || []).find((e) => e.id === r.orderId) || {}).fields?.['Group ID'];
+      if (gid) (byGid[gid] = byGid[gid] || []).push(r);
+    });
+    // Π1 (Wave 3): export rows sharing a Group ID collapse back into one row after every reload.
+    Object.values(byGid).forEach((list) => {
+      if (list.length < 2) return;
+      const [lead, ...rest] = list;
+      rest.forEach((r) => { r.orderIds.forEach((id) => { if (!lead.orderIds.includes(id)) lead.orderIds.push(id); }); });
+      const gone = new Set(rest);
+      for (let i = rows.length - 1; i >= 0; i--) if (gone.has(rows[i])) rows.splice(i, 1);
+    });
+  }
+  const matchedMap = {};
+  (exports || []).forEach((r) => { const mid = (r.fields || {})['Matched Import ID']; if (mid) matchedMap[mid] = r.id; });
+  const importsSorted = [...(imports || [])].sort((a, b) => ((a.fields || {})['Loading DateTime'] || '').localeCompare((b.fields || {})['Loading DateTime'] || ''));
+  for (const imp of importsSorted) {
+    const f = imp.fields || {};
+    const ld = dayOf(f['Loading DateTime'] || '');
+    const pws = dayOf(f['Plan Week Start'] || '');
+    const inRange = !!(ws && ld && ld >= ws && ld <= we);
+    const adj = pws && ws ? pws !== ws : !inRange;
+    const outOfWindow = !!(pws && ws && pws === ws && !inRange);
+    rows.push({ id: ++seq, type: 'import', orderId: imp.id, orderIds: [imp.id], importId: null, matchedTo: matchedMap[imp.id] || null, adj, outOfWindow });
+  }
+  {
+    const byGid = {};
+    rows.forEach((r) => {
+      if (r.type !== 'import') return;
+      const gid = impById[r.orderId]?.fields?.['Group ID'];
+      if (gid) (byGid[gid] = byGid[gid] || []).push(r);
+    });
+    // A1 (owner 6/9): import groups collapse too — a second grouped import row once stayed alone and a truck
+    // assigned on the lead never reached it. The export may point at ANY member (the lead of an earlier render, or
+    // one the stop order has since moved): the group is matched if any member is, else the board shows it free
+    // while the export still carries it.
+    Object.values(byGid).forEach((list) => {
+      if (list.length < 2) return;
+      const ordered = giSortRecs(list.map((r) => impById[r.orderId] || { id: r.orderId, fields: {} })).map((rec) => list.find((r) => r.orderId === rec.id));
+      const [lead, ...rest] = ordered;
+      rest.forEach((r) => { r.orderIds.forEach((id) => { if (!lead.orderIds.includes(id)) lead.orderIds.push(id); }); if (!lead.matchedTo && r.matchedTo) lead.matchedTo = r.matchedTo; });
+      const gone = new Set(rest);
+      for (let i = rows.length - 1; i >= 0; i--) if (gone.has(rows[i])) rows.splice(i, 1);
+    });
+  }
+  const recOf = (r) => { const id = (r.orderIds && r.orderIds[0]) || r.orderId; return (exports || []).find((x) => x.id === id) || (imports || []).find((x) => x.id === id); };
+  // Rota (owner 10/8): orders with a Rotation ID are forwarding legs — no row of their own, they hang under their
+  // parent («⤷»), yet stay in rows so driver / vehicle availability and returns count from the LAST leg.
+  const legs = {};
+  rows.forEach((r) => {
+    const rot = recOf(r)?.fields?.['Rotation ID'];
+    if (rot) { r.legOf = rot; (legs[rot] = legs[rot] || []).push(r); }
+  });
+  Object.values(legs).forEach((a) => a.sort((x, y) => String(recOf(x)?.fields?.['Loading DateTime'] || '').localeCompare(String(recOf(y)?.fields?.['Loading DateTime'] || ''))));
+  // Split (owner 6/9, FEATURES.ORDER_SPLIT): a leg renders nested under its parent's row, because the dispatcher
+  // reads «this order» as ONE line though it moves in two trucks. Depth is one (migration 018 CHECK).
+  const splitLegs = {};
+  if (opt.split) {
+    rows.forEach((r) => {
+      if (r.orderIds && r.orderIds.length > 1) return;   // groupage: split not offered on groups
+      const rec = recOf(r);
+      const parentId = rec && _linkId(rec.fields?.['Parent Order']);
+      if (!parentId) return;
+      r.splitLegOf = parentId;
+      r.splitLegNo = rec.fields['Leg No'] || null;
+      (splitLegs[parentId] = splitLegs[parentId] || []).push(r);
+    });
+    Object.values(splitLegs).forEach((a) => a.sort((x, y) => (x.splitLegNo || 0) - (y.splitLegNo || 0)));
+    rows.forEach((r) => { const pid = (r.orderIds && r.orderIds[0]) || r.orderId; if (splitLegs[pid]) r.hasSplitLegs = true; });
+  }
+  return { rows, legs, splitLegs, created: seq };
+}
+
+// An import row standing on the stock shelf instead of a day (Φ1): unmatched, alone, and its
+// order a loose piece. The board asks it only while it shows the shelf (stock on, not warehouse).
+// fieldsOf(row) → its order's fields; asked only after the cheap tests.
+function shelvedRow(row, fieldsOf, isLoose) {
+  if (!row || row.type !== 'import' || row.matchedTo || (row.orderIds || []).length > 1) return false;
+  const f = fieldsOf(row);
+  return !!f && !!isLoose(f);
+}
+
+// The board's days and its numbers (§e numbering): exports by DELIVERY day (loading day without
+// one), import-only rows by LOADING day; the week's seven days first (seeded from ws), then the
+// «μεταφέρθηκε» days (outOfWindow) after Friday; inside a day the exports, then the import-only
+// rows, each by dayRowOrder (the «μεταφέρθηκε» days by their datetime alone). Numbers run 1, 2, 3 …
+// over the whole week in that order. Left out, as on the board: rota and split legs (they hang
+// under their row), imports of another week (adj), imports drawn inside their export (matchedTo),
+// shelved imports. o = { ws, dayOf, fOf(row) → the row's first order's fields, shelved(row) }.
+// → { days: [{ date, extra, exps, imps }], no: Map(row → n) }
+function boardNumbers(rows, o) {
+  const opt = o || {}, fOf = opt.fOf, dayOf = opt.dayOf, shelved = opt.shelved || (() => false);
+  const expRows = (rows || []).filter((r) => r.type === 'export' && !r.legOf && !r.splitLegOf);
+  const impRows = (rows || []).filter((r) => r.type === 'import' && !r.legOf && !r.adj && !r.splitLegOf && !shelved(r));
+  const groups = {}, extra = {};
+  if (opt.ws) { let d = opt.ws; for (let i = 0; i < 7; i++) { groups[d] = { date: d, exps: [], imps: [] }; d = _addDay(d, 1); } }
+  expRows.forEach((r) => { const k = dayOf(fOf(r)['Delivery DateTime'] || fOf(r)['Loading DateTime']); const b = r.outOfWindow ? extra : groups; (b[k] = b[k] || { date: k, exps: [], imps: [] }).exps.push(r); });
+  impRows.forEach((r) => { const k = dayOf(fOf(r)['Loading DateTime']); const b = r.outOfWindow ? extra : groups; (b[k] = b[k] || { date: k, exps: [], imps: [] }).imps.push(r); });
+  const byDate = (a, b) => (a.date || '~').localeCompare(b.date || '~');
+  const byText = (field) => (a, b) => String(fOf(a)[field] || '').localeCompare(String(fOf(b)[field] || ''));
+  const byRule = (field) => (a, b) => dayRowOrder(fOf(a), fOf(b), field);
+  const days = [], no = new Map();
+  let n = 0;
+  const take = (g, isExtra) => {
+    const imps = g.imps.filter((r) => !r.matchedTo);   // a matched import lives inside its export row
+    g.exps.sort(isExtra ? byText('Delivery DateTime') : byRule('Delivery DateTime'));
+    imps.sort(isExtra ? byText('Loading DateTime') : byRule('Loading DateTime'));
+    g.exps.forEach((r) => no.set(r, ++n));
+    imps.forEach((r) => no.set(r, ++n));
+    days.push({ date: g.date, extra: isExtra, exps: g.exps, imps });
+  };
+  Object.values(groups).sort(byDate).forEach((g) => take(g, false));
+  Object.values(extra).sort(byDate).forEach((g) => take(g, true));
+  return { days, no };
+}
+
+// The Weekly International's number of every order of a week, from ANY page's own read of
+// ORDERS (owner 2/11/2026: «Παραγγελίες › Εβδομάδα» shows it, the pallets weekly view will):
+// the board's own rules above on those records, cut as the board reads them — the two reads
+// ±8 days around the week (readWindow; the Worker's IS_AFTER / IS_BEFORE = strictly after
+// `from` 00:00 UTC, strictly before `to` 00:00 UTC, with the database in UTC), cancelled
+// orders too (the board's reads keep them), in the Worker's read order (by id: a group's lead
+// depends on it). Not a second count. o = { recs (international ORDERS records), wsDate (the
+// Saturday, a LOCAL Date at midnight), dayOf (toLocalDate), split (FEATURES.ORDER_SPLIT),
+// shelf (the board shows its stock shelf: stock on, not the warehouse role), isLoose
+// (WI_INTERNAL.loose) }. → Map(order rec id → n); an order missing from it is on no numbered
+// line of that week's board («—» on screen).
+function weekNumbers(o) {
+  const dayOf = o.dayOf, wsD = o.wsDate;
+  const weD = new Date(wsD); weD.setDate(wsD.getDate() + 6);
+  const ws = dayOf(wsD), we = dayOf(weD), win = readWindow(wsD, dayOf);
+  const lo = Date.parse(win.from + 'T00:00:00Z'), hi = Date.parse(win.to + 'T00:00:00Z');
+  const inWin = (v) => { const t = Date.parse(v || ''); return !Number.isNaN(t) && t > lo && t < hi; };
+  const f = (r) => r.fields || {};
+  // the Postgres id ('Order ID', else the view's 'Order No'): the Worker reads by it
+  const pg = (r) => { const v = f(r)['Order ID'] != null && f(r)['Order ID'] !== '' ? f(r)['Order ID'] : f(r)['Order No']; const n = Number(v); return v != null && v !== '' && Number.isFinite(n) ? n : Infinity; };
+  const recs = (o.recs || []).filter((r) => f(r).Type === 'International').sort((a, b) => pg(a) - pg(b));
+  const exps = weekExports(recs.filter((r) => f(r).Direction === 'Export' && (inWin(f(r)['Delivery DateTime']) || inWin(f(r)['Loading DateTime']))), ws, we, dayOf);
+  const imps = recs.filter((r) => f(r).Direction === 'Import' && inWin(f(r)['Loading DateTime']));
+  const built = boardRows(exps, imps, { ws, we, dayOf, split: !!o.split });
+  const byId = new Map([...exps, ...imps].map((r) => [r.id, r]));
+  const fOf = (row) => f(byId.get((row.orderIds && row.orderIds[0]) || row.orderId) || {});
+  const nb = boardNumbers(built.rows, { ws, dayOf, fOf,
+    shelved: (row) => !!o.shelf && shelvedRow(row, (r) => (byId.get(r.orderId) || {}).fields, o.isLoose) });
+  return numberOf(built, nb.no);
+}
+
+// order id → the number of the board row that carries it: the row's orders (a group), its matched
+// import (and that import's group), the rota legs under it, a split's legs. An order on no
+// numbered row (another week's import, a shelved piece, a leg whose row is not numbered) is absent:
+// the caller says «—», never a guess. built = boardRows(...), no = boardNumbers(...).no
+function numberOf(built, no) {
+  const out = new Map();
+  const impRowOf = (oid) => built.rows.find((r) => r.type === 'import' && (r.orderId === oid || (r.orderIds || []).includes(oid))) || null;
+  for (const [row, n] of no) {
+    const ids = new Set([...(row.orderIds || []), row.orderId]);
+    if (row.importId) { const ir = impRowOf(row.importId); (ir ? ir.orderIds : [row.importId]).forEach((id) => ids.add(id)); }
+    [...ids].forEach((pid) => (built.legs[pid] || []).forEach((lr) => (lr.orderIds || [lr.orderId]).forEach((id) => ids.add(id))));
+    const pid = (row.orderIds && row.orderIds[0]) || row.orderId;
+    (built.splitLegs[pid] || []).forEach((lr) => (lr.orderIds || [lr.orderId]).forEach((id) => ids.add(id)));
+    ids.forEach((id) => { if (id && !out.has(id)) out.set(id, n); });
+  }
+  return out;
 }
 
 // ─── §b Flag decision ──────────────────────────────────────────────────
@@ -659,6 +894,8 @@ const WI4 = freeze({
   menuSection, MENU_ICON,
   // shared helpers
   dayDiff, dayLabel, dayRowOrder,
+  // board rows and numbers (one source with «Παραγγελίες › Εβδομάδα», owner 2/11)
+  readWindow, weekExports, giSortRecs, boardRows, shelvedRow, boardNumbers, numberOf, weekNumbers,
 });
 
 if (typeof module !== 'undefined') module.exports = WI4; else window.WI4 = WI4;

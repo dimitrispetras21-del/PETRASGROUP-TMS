@@ -318,15 +318,36 @@ const OrdersWeekView = (() => {
     return { week, weekIntl, weekNatl, rows, noRt, rtFailed: !rts };
   }
 
+  // The Weekly International's number of every order of the week (owner
+  // 2/11/2026: «το 1 να αντιστοιχεί στο 1 του weekly»): WI4.weekNumbers
+  // (core/wi4-logic.js) — the board's own rules on this page's read, the ONE
+  // source the pallets weekly view reads too. Not a second count.
+  // The board number of one leg (an order line of this page): the leg's own
+  // order, else the order it counts (a split leg's parent). null = on no
+  // numbered row of this week's board (another week's leg, a shelved piece).
+  function legNumber(l, nums) {
+    const own = l.own && nums.get(l.own.id);
+    if (own != null) return own;
+    const rec = l.rec && nums.get(l.rec.id);
+    return rec != null ? rec : null;
+  }
+  // A row's board numbers, ascending: the Weekly draws one line per number, so
+  // a round trip with two exports and an import may stand on three of them.
+  function rowNumbers(row, nums) {
+    return [...new Set((row.legs || []).map(l => legNumber(l, nums)).filter(n => n != null))].sort((a, b) => a - b);
+  }
+
   // Inside a day, the Weekly International's order (owner 2/11/2026: Ειρήνη
-  // compares the two lists row by row) through ITS rule, WI4.dayRowOrder:
-  // exports first, by client (Veroia Switch last), then delivery time; then the
-  // import-only RTs the same way by loading time. A guest row (home in another
-  // week, counted here) stays last in its day, as since 13/10: the Weekly has
-  // no row for it on this day. The RT code only keeps equal rows stable.
+  // compares the two lists row by row). First its NUMBER (WI4.weekNumbers, the
+  // board's own count) — then the board's rule for what has none, WI4.dayRowOrder:
+  // exports before import-only rows, Veroia Switch last, then delivery /
+  // loading time (no client sort, owner 2/11). A guest row (home in another week, counted here)
+  // stays last in its day, as since 13/10. The RT code only keeps equal rows stable.
   function rowOrder(a, b) {
     const ea = !!a.sortExp, eb = !!b.sortExp;
+    const na = a.nos && a.nos.length ? a.nos[0] : Infinity, nb = b.nos && b.nos.length ? b.nos[0] : Infinity;
     return (a.guest ? 1 : 0) - (b.guest ? 1 : 0)
+      || (na === nb ? 0 : na < nb ? -1 : 1)
       || (ea === eb ? 0 : ea ? -1 : 1)
       || WI4.dayRowOrder((a.sortRec || {}).fields, (b.sortRec || {}).fields, ea ? 'Delivery DateTime' : 'Loading DateTime')
       || String(a.code || '').localeCompare(String(b.code || ''), 'el', { numeric: true });
@@ -771,6 +792,13 @@ const OrdersWeekView = (() => {
     const O = OC(), d = S.data, scope = ctx.scope;
     const stateOf = _stateFn(d.set);
     const m = buildWeek({ week: S.week, intl: d.intl, natl: d.natl, rts: d.rts, cancelled: d.cancelled });
+    // The board's numbers (null = they could not be worked out: every row says «—», never a guess).
+    const nums = scope !== 'natl' ? _numbers(d) : null;
+    for (const r of [...m.rows, ...m.noRt]) {
+      r.nos = nums ? rowNumbers(r, nums) : [];
+      // Each order line shows the number of the Weekly line that draws it (owner 2/11: compared line by line).
+      for (const l of r.legs) l.no = nums ? legNumber(l, nums) : 'failed';
+    }
     const natRows = scope !== 'intl' && !d.natlFailed
       ? pairNationals({ week: S.week, natl: d.natl, loads: d.natLoads, intl: d.intl }) : [];
     S.model = m; S.natRows = natRows;
@@ -1083,7 +1111,7 @@ const OrdersWeekView = (() => {
         : `${esc(dayShort(e.load) || '—')} <span class="ow4-ar">→</span> ${esc(dayShort(e.del) || '—')}`;
       // data-tail: the words after the destination's first one — _fitRow shows
       // as many WHOLE words of it as fit, never a partial word or code.
-      cells.route = `<div class="ow4-l1 ow4-route" title="${esc(full)}" data-tail="${esc(split.tail.trim())}"><span class="ow4-rh">${fromHtml}${headRest.replace('→', '<span class="ow4-ar">→</span>')}</span><span class="ow4-rt">${esc(split.tail.trim())}</span>${nBox(e.nTo)}</div><div class="ow4-l2 ow4-ell">${dates}</div>`;
+      cells.route = `<div class="ow4-l1 ow4-route" title="${esc(full)}" data-tail="${esc(split.tail.trim())}">${l.no === undefined ? '' : _noHtml(l.no)}<span class="ow4-rh">${fromHtml}${headRest.replace('→', '<span class="ow4-ar">→</span>')}</span><span class="ow4-rt">${esc(split.tail.trim())}</span>${nBox(e.nTo)}</div><div class="ow4-l2 ow4-ell">${dates}</div>`;
       const cl = clientRaw(f) || '—';
       const refs = [O.numLabel(l.rec), f['Reference'], f['Veroia Switch'] ? 'VS' : ''].filter(Boolean).join(' · ');
       cells.client = `<div class="ow4-l1 ow4-ell ow4-cl1" title="${esc(cl)}">${esc(cl)}</div><div class="ow4-l2 ow4-ell ow4-cl2" title="${esc(refs)}">${O.docClip(l.rec, l.rec && l.rec._type)}${esc(refs)}</div>`;
@@ -1248,6 +1276,26 @@ const OrdersWeekView = (() => {
     openNatlCardWith(rec, { load, loadsFailed: !known });
   }
 
+  // The board's numbers of this read; an error is said on the row («—» with why), never a 0.
+  function _numbers(d) {
+    try {
+      return WI4.weekNumbers({ recs: [...d.intl, ...(d.cancelled || [])], wsDate: new Date(S.week + 'T00:00:00'), dayOf: toLocalDate,
+        split: typeof FEATURES !== 'undefined' && !!FEATURES.ORDER_SPLIT,
+        // The board shows its stock shelf when stock is on (this page is never the warehouse's)
+        shelf: typeof OrdersStock !== 'undefined' && OrdersStock.on(),
+        isLoose: f => window.WI_INTERNAL.loose(f) });
+    } catch (e) {
+      console.error('orders week: Weekly numbers', e);
+      return null;
+    }
+  }
+  // undefined = a national line (not numbered yet) · 'failed' · null = no line there · n
+  function _noHtml(no) {
+    if (no === 'failed') return '<span class="ow4-no ow4-d" title="Η αρίθμηση του Εβδομαδιαίου Διεθνών δεν υπολογίστηκε">—</span>';
+    if (no == null) return '<span class="ow4-no ow4-d" title="Χωρίς αριθμό: δεν είναι γραμμή του Εβδομαδιαίου Διεθνών αυτής της εβδομάδας">—</span>';
+    return `<span class="ow4-no" title="Αριθμός γραμμής στο Εβδομαδιαίο Διεθνών">${esc(no)}</span>`;
+  }
+
   // A card opened here saved ONE order in place («Διόρθωση», pallet sheets —
   // OrdersCatalog.updateRecord hands it over): the week repaints from that
   // record at once (price, ΤΠΥ, Σ), the card stays open. No re-read: the
@@ -1310,7 +1358,7 @@ const OrdersWeekView = (() => {
     });
   }
 
-  return { render, recordChanged, buildWeek, totals, rtInvoicing, verdictText, tpyOf, pctVsPrev, stripWeeks, groupRows, daySections,
+  return { render, recordChanged, buildWeek, rowNumbers, legNumber, totals, rtInvoicing, verdictText, tpyOf, pctVsPrev, stripWeeks, groupRows, daySections,
     weekStatus, pairNationals, routeSplit, ordersFormula, placeText, isVsNational, naturalDateOf, pgIdOf, dayLabel, weekTitle };
 })();
 

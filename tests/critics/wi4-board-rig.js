@@ -687,6 +687,57 @@ async function scnV1(browser, origin) {
   await page.context().close();
 }
 
+// «numbers» (owner 2/11, «Α: μία κοινή πηγή»): the board's rows, legs, numbers and drawn rows of
+// three weeks and two variants of the fixture, as data. With WI4_DUMP=<file> it writes them, so the
+// same run on another tree (WI4_TREE) proves the move of the row structure and the numbering to
+// core/wi4-logic.js changed nothing: same rows, same ids, same numbers, the same #wi-rows HTML.
+async function scnNumbers(browser, origin) {
+  const scn = 'numbers';
+  const out = {};
+  const variants = {
+    fixture: null,
+    // groups whose members tie on the date (the lead = the read order), a matched import, more groups
+    edges: (db) => {
+      const O = db[T.ORDERS];
+      const exps = O.filter((r) => r.fields.Direction === 'Export' && !r.fields['Group ID'] && !r.fields['Parent Order'] && !r.fields['Rotation ID']);
+      const imps = O.filter((r) => r.fields.Direction === 'Import' && !r.fields['Group ID'] && !r.fields['Parent Order'] && !r.fields['Rotation ID']);
+      if (exps.length >= 4) { [exps[2], exps[3]].forEach((r) => { r.fields['Group ID'] = 'GRP-RIG|' + exps[3].id + ',' + exps[2].id; r.fields['Delivery DateTime'] = exps[2].fields['Delivery DateTime']; }); }
+      if (imps.length >= 3) { [imps[1], imps[2]].forEach((r) => { r.fields['Group ID'] = 'GI-RIG|' + imps[2].id + ',' + imps[1].id; }); }
+      if (exps.length >= 6 && imps.length) exps[5].fields['Matched Import ID'] = imps[0].id;
+    },
+  };
+  for (const [vname, mutate] of Object.entries(variants)) {
+    const { page } = await openBoard(browser, origin, mutate ? { mutate } : {});
+    const dump = () => page.evaluate(() => {
+      const D = window.WI_INTERNAL.WINTL;
+      const ids = (a) => (a || []).map((r) => r.id);
+      return {
+        seq: D._seq,
+        rows: (D.rows || []).map((r) => [r.id, r.type, r.orderId, (r.orderIds || []).join(','), r.importId || null, r.matchedTo || null, !!r.adj, r.adjW || null,
+          !!r.outOfWindow, r.legOf || null, r.splitLegOf || null, r.splitLegNo || null, !!r.hasSplitLegs, r.truckId, r.trailerId, r.driverId, r.partnerId,
+          r.truckLabel, r.trailerLabel, r.driverLabel, r.partnerLabel, r.partnerPlates, r.partnerRate, r.partnerRateImp, r.saved]),
+        legs: Object.fromEntries(Object.entries(D._legs || {}).map(([k, a]) => [k, ids(a)])),
+        splitLegs: Object.fromEntries(Object.entries(D._splitLegs || {}).map(([k, a]) => [k, ids(a)])),
+        rowNo: D._rowNo,
+        html: (document.querySelector('#content .wi4 #wi-rows') || {}).innerHTML || '',
+      };
+    });
+    const weeks = {};
+    weeks.w41 = await dump();
+    for (const [label, dir, back] of [['w40', 'Προηγούμενη εβδομάδα', 'Επόμενη εβδομάδα'], ['w42', 'Επόμενη εβδομάδα', 'Προηγούμενη εβδομάδα']]) {
+      await page.click(`button[aria-label="${dir}"]`);
+      await page.waitForTimeout(1500);
+      weeks[label] = await dump();
+      await page.click(`button[aria-label="${back}"]`);
+      await page.waitForTimeout(1500);
+    }
+    out[vname] = weeks;
+    ok(scn, `${vname}: rows and numbers drawn (W41 ${weeks.w41.rows.length} rows, ${Object.keys(weeks.w41.rowNo || {}).length} numbers)`, weeks.w41.rows.length > 0 && Object.keys(weeks.w41.rowNo || {}).length > 0);
+    await page.context().close();
+  }
+  if (process.env.WI4_DUMP) { fs.writeFileSync(process.env.WI4_DUMP, JSON.stringify(out, null, 1)); console.log('numbers: written ' + process.env.WI4_DUMP); }
+}
+
 async function scnPaint(browser, origin) {
   const scn = 'paint';
   const { page, S } = await openBoard(browser, origin);
@@ -3251,7 +3302,11 @@ async function scnFallback(browser, origin) {
     // normFlag/v2Decide are spared: they decide active() (whether v4 is asked
     // at all), and a throw there only makes active() false; the scenario is a
     // PAINT that throws once v4 has been chosen.
-    const spare = new Set(['normFlag', 'v2Decide']);
+    // Since 2/11 the board's row STRUCTURE lives in WI4 too (boardRows & co, owner
+    // «Α: μία κοινή πηγή»): the old board builds its rows with it, as it built them
+    // with the same code inside weekly_intl.js before. Spared: a failure there breaks
+    // BOTH boards, as it always did; the scenario is v4's own paint failing.
+    const spare = new Set(['normFlag', 'v2Decide', 'readWindow', 'weekExports', 'giSortRecs', 'boardRows', 'shelvedRow']);
     window.WI4 = new Proxy(real, { get(t, k) { const v = t[k]; return typeof v === 'function' && !spare.has(k) ? () => { throw new Error('rig: forced paint failure'); } : v; } });
     const le0 = window.__ev.filter(e => e.k === 'logError').length;
     // _wiPaint lives inside the old module's closure (not on window); the
@@ -4584,7 +4639,7 @@ async function scnVs(browser, origin) {
       date: scnDate, keys: scnKeys, search: scnSearch, savefail: scnSaveFail, presence: scnPresence, conflict: scnConflict, fallback: scnFallback, styles: scnStyles,
       twins: scnTwins, queue: scnQueue, unread: scnUnread,
       print: scnPrint, shift: scnShift, late: scnLate, offline: scnOffline, quiet: scnQuiet, natmissing: scnNatMissing, done: scnDone, twoday: scnTwoDay, w1440: scnW1440, parity: scnParity,
-      vs: scnVs, v5: scnV5, v5err: scnV5Err, vsnote: scnVsNote, vsform: scnVsForm, del428: scnDel428 };
+      vs: scnVs, v5: scnV5, v5err: scnV5Err, vsnote: scnVsNote, vsform: scnVsForm, del428: scnDel428, numbers: scnNumbers };
     // A watchdog per scenario: one missing locator or one write that never
     // settles fails THAT scenario, closes its pages, and the run goes on.
     const WATCHDOG_MS = 360000;

@@ -10376,6 +10376,12 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .ow4-row[data-owvopen]:hover { background:var(--wi4-hover); }
 .ow4-blk { box-shadow:inset 2px 0 0 var(--danger); }
 .ow4-c-rt { padding:9px 4px 7px 10px; min-width:0; overflow:hidden; }
+/* The number of the Weekly International line that draws this order (owner 2/11/2026, «το 1 να
+   αντιστοιχεί στο 1 του weekly»): the board's own count, in its ink and weight, at the start of
+   each order line. */
+/* padding, not margin: the route's fit (_fitSide) measures each part's box + its LEFT margin only. */
+.ow4-no { display:inline-block; min-width:24px; padding-right:6px; box-sizing:border-box; font-weight:700; color:var(--wi4-ink, var(--text)); font-variant-numeric:tabular-nums; }
+.ow4-no.ow4-d { font-weight:400; }
 .ow4-c-rt .ow4-l2 { overflow:hidden; text-overflow:ellipsis; }
 .ow4-side { display:flex; flex-direction:column; min-width:0; }
 .ow4-sub { display:grid; align-items:start; column-gap:var(--ow4-gap); min-height:48px; box-sizing:border-box; padding:9px 10px 7px; }
