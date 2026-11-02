@@ -1968,12 +1968,14 @@
         : no != null ? no + '  ' + place
         : (loads && !unloads ? 'Φόρτωση · ' : 'Παράδοση · ') + place;
       h += _resLi(_esc(name), _dayShort(_ymdOf(s.planned_from)), _dayShort(_ymdOf(a)) + ' · ' + _hmw(a, b), ' data-stop="' + _esc(s.stop_id) + '"');
-      // «↳ Φόρτωση με τοπικό» under the stop it serves (Figma 2069:8573). 072 moves its day to the stop's new
-      // Athens day (plan_rt_update step 3, local_loading_day): «δεν αλλάζει» only when that day is its own day.
+      // «↳ Φόρτωση με τοπικό» under the stop it serves (Figma 2069:8573). plan_rt_update step 3 (095, owner 2/11)
+      // moves its day by the days its stop moves, so a loading the evening before stays the evening before:
+      // «δεν αλλάζει» only when the stop keeps its day.
       const ll = s.local_loading;
       if (ll) {
         const time = [ll.time_from, ll.time_to].filter(Boolean).map((x) => String(x).slice(0, 5)).join('–');
-        const newDay = _ymdOf(a);
+        const d0 = _ymdOf(s.planned_from), d1 = _ymdOf(a);
+        const newDay = ll.move_date && d0 && d1 ? _addDays(ll.move_date, _dayDiff(d0, d1)) : null;
         const old = (ll.move_date ? _dayShort(ll.move_date) : '—') + (time ? ' ' + time : '');
         h += '<li class="wn5-res-loc" data-local="' + _esc(ll.local_move_id) + '"><div class="wn5-res-n">↳ Φόρτωση με τοπικό · <b>' + _esc(ll.driver || 'χωρίς οδηγό') + '</b></div>'
           + '<div class="wn5-res-s">' + _esc(old) + (ll.move_date && newDay && newDay !== ll.move_date ? ' → <b>' + _esc(_dayShort(newDay)) + '</b>' : ' · δεν αλλάζει') + '</div></li>';
@@ -2218,8 +2220,13 @@
     if (f) body.time_from = f;
     if (t) body.time_to = t;
     if (String(st.notes || '').trim()) body.notes = String(st.notes).trim();
+    // 095 (owner 2/11): the loading's own day only when it is not its stop's (the base's default) — e.g. the evening before
+    const sd = _localStopDay(st);
+    if (st.day && sd && st.day !== sd) body.move_date = st.day;
     return body;
   }
+  // the Athens day of the stop picked in the form (the day the base writes when the body names none)
+  const _localStopDay = (st) => { const s = (st.stops || []).find((x) => x.stop_id === st.stop); return s ? _ymdOf(s.planned_from) : null; };
   WN5Act.local = async function local(rtStopId, rtId) {
     const sid = _id(rtStopId);
     let c = rtId ? _cycle(_id(rtId)) : null;
@@ -2227,7 +2234,7 @@
     if (!c) { WN5Act.strip(_boardHost(), _clientErr('rt_missing', 'Ο κύκλος δεν είναι στο board που φορτώθηκε — ανανέωσε')); return null; }
     const stops = _copy(_localStops(c, _hubId()));
     const st = { rtId: c.rt_id, stop: stops.some((s) => s.stop_id === sid) ? sid : null, driver: null, truck: null, trailer: null,
-      from: '', to: '', notes: '', ids: { ok: false },
+      from: '', to: '', notes: '', ids: { ok: false }, stops, day: null,
       // one id per open creation window (decision 44): kept in this closure only, minted now, renewed after a 200
       slot: PlanApi.slot() };
     st.ids = typeof PlanIds !== 'undefined' ? await PlanIds.load() : { ok: false };
@@ -2243,22 +2250,33 @@
       + '<label class="wn5-field"><span>Οδηγός *</span><select data-driver data-fh-search><option value="">—</option>' + _optsHTML(lists.d, null) + '</select></label>'
       + '<label class="wn5-field"><span>Φορτηγό *</span><select data-truck data-fh-search><option value="">—</option>' + _optsHTML(lists.t, null) + '</select></label>'
       + '<label class="wn5-field"><span>Ρυμούλκα</span><select data-trailer data-fh-search><option value="">—</option>' + _optsHTML(lists.r, null) + '</select></label>'
+      + '<label class="wn5-field"><span>Ημέρα</span><input type="date" data-day value="' + _esc(_localStopDay(st) || '') + '"></label>'
+      + '<div class="wn5-miss" data-dayw hidden></div>'
       + '<div class="wn5-hubwin"><span>Ώρα</span><input class="wn5-hm" data-time="from" placeholder="ΗΗ:ΛΛ"> – <input class="wn5-hm" data-time="to" placeholder="ΗΗ:ΛΛ"></div>'
       + '<label class="wn5-field"><span>Σημειώσεις</span><textarea data-notes rows="2"></textarea></label>'
-      + '<p class="wn5-none">Η ημέρα της φόρτωσης είναι η ημέρα της στάσης· η σειρά του κύκλου δεν αλλάζει, φαίνεται η ↳ υποσημείωση.</p>';
+      + '<p class="wn5-none">Η σειρά του κύκλου δεν αλλάζει· φαίνεται η ↳ υποσημείωση.</p>';
     if (typeof fhSelectSearchIn === 'function') fhSelectSearchIn(d.body);
     d.refresh = () => {
       const b = d.dlg.querySelector('[data-act="save"]');
       // a typed time that is not HH:MM keeps the button off: it would be stored as text (072 time_from is free text)
       const badTime = (st.from && !_hhmm(st.from)) || (st.to && !_hhmm(st.to));
       if (b) b.disabled = d.locked || d.busy || !st.ids.ok || !st.stop || !st.driver || !st.truck || !!badTime;
+      // 095 (owner 2/11): another day than the stop's is allowed (loaded the evening before) and said, amber, never refused
+      const sd = _localStopDay(st), dw = d.body.querySelector('[data-dayw]');
+      const other = !!(st.day && sd && st.day !== sd);
+      dw.hidden = !other;
+      dw.textContent = other ? 'Άλλη ημέρα από τη στάση (' + _dayShort(sd) + ')' : '';
       const lack = st.ids.ok ? [!st.stop && 'στάση', !st.driver && 'οδηγός', !st.truck && 'φορτηγό'].filter(Boolean) : [];
       _why(d.ft.querySelector('[data-act="cancel"]'), 'beforebegin', !st.ids.ok ? 'Λείπουν οι κατάλογοι: δεν φορτώθηκαν, κλείσε και ξανάνοιξε'
         : lack.length ? 'Λείπει: ' + lack.join(', ') : badTime ? 'Ώρα: σε μορφή ΗΗ:ΛΛ' : null);
     };
     d.dlg.addEventListener('change', (ev) => {
       const el = ev.target;
-      if (el.matches('[data-stop]')) st.stop = _id(el.value);
+      if (el.matches('[data-stop]')) {
+        st.stop = _id(el.value);
+        // a day the user did not set follows the stop picked (the base's own default)
+        if (!st.day) d.body.querySelector('[data-day]').value = _localStopDay(st) || '';
+      } else if (el.matches('[data-day]')) st.day = /^\d{4}-\d{2}-\d{2}$/.test(el.value) ? el.value : null;
       else if (el.matches('[data-driver]')) st.driver = _id(el.value);
       else if (el.matches('[data-truck]')) st.truck = _id(el.value);
       else if (el.matches('[data-trailer]')) st.trailer = _id(el.value);

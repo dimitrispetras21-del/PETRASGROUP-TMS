@@ -1261,7 +1261,8 @@ function _localHTML(r, lm, ok) {
     // «↳» in the 48px index column, as the ⇄ sub-row's (.wn5-hand-ar, Figma 2011:7745 / H1): the text then starts at the
     // ΚΑΘΟΔΟΣ chip column. The space between the two cells is no grid item; it keeps «↳ Φόρτωση» in the row's text.
     + '<span class="wn5-c-idx"><span class="wn5-hand-ar">↳</span></span> '
-    + `<span class="wn5-sub-t"><b>Φόρτωση με τοπικό</b> · ${_esc(lm.driver || 'χωρίς οδηγό')} · ${_esc(_dl(lm.move_date))}${time ? ' ' + _esc(time) : ''}`
+    // 095: a day other than the stop's (loaded the evening before) is allowed and marked amber, never refused
+    + `<span class="wn5-sub-t"><b>Φόρτωση με τοπικό</b> · ${_esc(lm.driver || 'χωρίς οδηγό')} · ${lm.otherDay ? `<span class="wn5-oday" title="Άλλη ημέρα από τη στάση">${_esc(_dl(lm.move_date))}</span>` : _esc(_dl(lm.move_date))}${time ? ' ' + _esc(time) : ''}`
     + (lm.pickup
       // a pickup (Figma 2011:8305): what is loaded there → Βέροια, then the delivery it is for (none named when the
       // leg unloads at Veroia or off this cycle — never the pickup's own place after «για»)

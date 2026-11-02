@@ -100,7 +100,8 @@ test('F4α-T5: «Χωρίς κάθοδο», «Κενό γύρισμα», «Μό�
   assert.ok(!/null/.test(by.get('wait:4101')), 'wait:4101 prints no «null»');
   assert.ok(/Βέροια<\/span><span class="wi4-l2">ως Δευ 22:00/.test(by.get('rt:101')), 'rt:101 end');
   // whole-frame r4: «↳» in the index column (as the ⇄ sub-row's .wn5-hand-ar), the text from the ΚΑΘΟΔΟΣ chip column
-  assert.ok(/<span class="wn5-c-idx"><span class="wn5-hand-ar">↳<\/span><\/span> <span class="wn5-sub-t"><b>Φόρτωση με τοπικό<\/b> · Driver Test 11 · Δευ 12\/10 11:00–12:00 · για Oinofyta Test \(στάση 2\)/.test(by.get('rt:103')), 'rt:103 local');
+  // 095 (owner 2/11): the fixture's loading is the evening before its stop (Mon 12/10, stop Tue 13/10) — amber, allowed
+  assert.ok(/<span class="wn5-c-idx"><span class="wn5-hand-ar">↳<\/span><\/span> <span class="wn5-sub-t"><b>Φόρτωση με τοπικό<\/b> · Driver Test 11 · <span class="wn5-oday" title="Άλλη ημέρα από τη στάση">Δευ 12\/10<\/span> 11:00–12:00 · για Oinofyta Test \(στάση 2\)/.test(by.get('rt:103')), 'rt:103 local');
   // step 2a/2b (coordinator 1/11, critics r1): the quiet «ΠΡΟΣ ΑΝΑΘΕΣΗ» mark (no side line), no rail (a late load says «αργό»), the
   // empty side drawn as nothing on a waiting row
   const w4101 = by.get('wait:4101');
@@ -130,7 +131,11 @@ test('F4α-T17 fidelity: a local loading on a pickup names what is loaded → Β
     move_date: '2026-10-12', time_from: '11:00:00', time_to: '12:00:00' };
   const by = new Map(rows(html(board)).map((r) => [keyOf(r), r]));
   const r = by.get('rt:105');
-  assert.ok(/<span class="wn5-hand-ar">↳<\/span><\/span> <span class="wn5-sub-t"><b>Φόρτωση με τοπικό<\/b> · Driver Test 11 · Δευ 12\/10 11:00–12:00 · ΠΕΛΑΤΗΣ Δ, Thessaloniki Test → Βέροια · 6π · για ΠΕΛΑΤΗΣ Δ \(στάση 2\)/.test(r), 'rt:105 local: ' + r);
+  // 095: on its stop's own day (Wed 14/10) the date is plain, no amber mark
+  c105.stops.find((s) => s.stop_id === 1401).local_loading.move_date = '2026-10-14';
+  const same = new Map(rows(html(board)).map((x) => [keyOf(x), x])).get('rt:105');
+  assert.ok(/<b>Φόρτωση με τοπικό<\/b> · Driver Test 11 · Τετ 14\/10 11:00–12:00/.test(same) && !/wn5-oday/.test(same), 'rt:105 same day: ' + same);
+  assert.ok(/<span class="wn5-hand-ar">↳<\/span><\/span> <span class="wn5-sub-t"><b>Φόρτωση με τοπικό<\/b> · Driver Test 11 · <span class="wn5-oday" title="Άλλη ημέρα από τη στάση">Δευ 12\/10<\/span> 11:00–12:00 · ΠΕΛΑΤΗΣ Δ, Thessaloniki Test → Βέροια · 6π · για ΠΕΛΑΤΗΣ Δ \(στάση 2\)/.test(r), 'rt:105 local: ' + r);
   assert.ok(!/για Thessaloniki Test/.test(r), 'the pickup place is named after «για»');
   // a delivery stop (rt:103, the fixture's own) keeps the T5 line
   assert.ok(/· για Oinofyta Test \(στάση 2\)/.test(by.get('rt:103')), 'rt:103 local');

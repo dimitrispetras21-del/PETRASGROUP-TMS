@@ -5,9 +5,10 @@
 //   - change = POST /plan/rt/:id/handover: a dry run first (the preview of the segments, warnings, conflict), then
 //     the execution with ONE request_id per open form (PlanApi.slot) — never on the dry run (required except on it);
 //   - fix = PATCH /plan/segments/:id {set, dry_run?}: only what changed, no request_id;
-//   - reasons = WN5Lab.REASON (H-19); «Άλλο» needs its note (seg_other_note): the save stays off without it;
-//   - «Πού» (place_note) is required by plan_seg_change whatever the reason (bad_input without it) — Figma H2 marks
-//     it required only with «Άλλο»; the screen follows the base;
+//   - reasons = WN5Lab.REASON (H-19); 095 (owner 2/11, relaxed rules): the reason is optional (none = «—») and
+//     «Άλλο» needs no note;
+//   - «Πού» (place_note) stays required by plan_seg_change (bad_input without it): without it the change says
+//     nothing on the card, the board or the removal dialog;
 //   - every refusal is error.message (H7 texts are the Worker's, principle 3); writes_closed → the preview strip
 //     and a disabled save, the dry run stays open (H7 tile 4, Ε-6);
 //   - in lists the segment mark is a straight line (R-55): the slant lives on the board tiles only;
@@ -21,7 +22,6 @@
   const DAY = /^\d{4}-\d{2}-\d{2}$/;
   const HM = /^([01]\d|2[0-3]):[0-5]\d$/;
   const SEG_GR = Object.freeze({ initial: 'ΑΡΧΙΚΟ', intermediate: 'ΕΝΔΙΑΜΕΣΟ', final: 'ΤΕΛΙΚΟ' });
-  const OTHER_NOTE = 'Με «Άλλο» η σημείωση είναι υποχρεωτική';
   const RATE_BAD = 'Κόμιστρο €: αριθμός 0 ή πάνω';
   const PREV_BAD = 'Κόμιστρο προηγούμενου €: αριθμός 0 ή πάνω';
   const _rateBad = (r) => r !== null && r !== undefined && !(Number.isFinite(r) && r >= 0);
@@ -51,15 +51,13 @@
   // A time typed in the 72px field (Figma 2122:7753): the native time input is 12-hour in el-GR and cut at that
   // width, so it is a text field like the order form's; «1430», «14.30», «9:00» → «14:30» / «09:00».
   const _hm = (v) => { const t = String(v == null ? '' : v).trim(); const m = /^(\d{1,2})[:.]?(\d{2})$/.exec(t); if (!m) return t; const o = `${m[1].padStart(2, '0')}:${m[2]}`; return HM.test(o) ? o : t; };
-  const _reasonText = (code) => (code ? WN5Lab.reasonLine(code).text : '');
+  const _reasonText = (code) => WN5Lab.reasonLine(code).text;
 
   // ── pure part (tests/wn5-handover.test.js) ─────────────────────────────────────────────────────────────────
   function _changeProblems(st) {
     const out = [];
     if (!st.at) out.push('Πότε *: ημέρα και ώρα');
     if (!st.place_note) out.push('Πού *: γράψε το σημείο της αλλαγής');
-    if (!st.reason) out.push('Λόγος *: διάλεξε λόγο');
-    else if (WN5Lab.REASON[st.reason] && WN5Lab.REASON[st.reason].noteRequired && !st.reason_note) out.push(OTHER_NOTE);
     if (st.own) {
       if (!Number.isSafeInteger(st.truck_id)) out.push('Φορτηγό *: διάλεξε φορτηγό');
       if (!st.same_driver && !Number.isSafeInteger(st.driver_id)) out.push('Οδηγός *: διάλεξε οδηγό');
@@ -72,7 +70,8 @@
   }
   // Exactly plan_seg_change's keys (072b: rt_id from the path, request_id and dry_run added by planFetch).
   function _changeBody(st) {
-    const body = { at: st.at, place_note: st.place_note, reason: st.reason };
+    const body = { at: st.at, place_note: st.place_note };
+    if (st.reason) body.reason = st.reason;   // 095: optional, absent = no reason
     if (st.reason_note) body.reason_note = st.reason_note;
     if (st.own) {
       const v = { trip_type: 'OWNED', truck_id: st.truck_id };
@@ -221,14 +220,6 @@
   }
   const _strip = (d) => d.el.querySelector('[data-strip]');
   const _lines = (d, ls) => { d.el.querySelector('[data-err]').innerHTML = ls.map((l) => `<div>${_esc(l)}</div>`).join(''); };
-  // The «Άλλο» line sits under the note field, which turns red (Figma 2122:7868), not in the form's line box.
-  function _otherNote(d, on) {
-    const f = d.el.querySelector('[data-note]');
-    if (!f) return;
-    f.classList.toggle('bad', on);
-    f.querySelector('[data-ferr]').textContent = on ? OTHER_NOTE : '';
-    f.querySelector('[data-notel]').textContent = on ? 'Σημείωση *' : 'Σημείωση';
-  }
   // Lines that must outlive the next refresh (a conflict of the preview, «not deployed»): kept per body key.
   const _kept = (d, key) => (d.prev && d.prev.key === key && d.prev.conflict ? [d.prev.conflict.message || '(' + (d.prev.conflict.code || 'σύγκρουση') + ')'] : [])
     .concat(d.note && d.note.key === key ? d.note.lines : []);
@@ -363,14 +354,14 @@
     const grp = (g, head) => `<optgroup label="${head}">` + Object.keys(R).filter((k) => R[k].group === g).map((k) => `<option value="${k}"${k === cur ? ' selected' : ''}>${_esc(R[k].text)}</option>`).join('') + '</optgroup>';
     return '<option value=""></option>' + grp('unplanned', 'ΑΠΡΟΒΛΕΠΤΟ') + grp('planned', 'ΠΡΟΓΡΑΜΜΑΤΙΣΜΕΝΟ') + Object.keys(R).filter((k) => R[k].group === 'other').map((k) => `<option value="${k}"${k === cur ? ' selected' : ''}>${_esc(R[k].text)}</option>`).join('');
   }
-  // Πότε * · Πού * · Λόγος * · Σημείωση (Figma 2122:7745 + the 072b reason_note the plan adds)
+  // Πότε * · Πού * · Λόγος · Σημείωση (Figma 2122:7745 + the 072b reason_note the plan adds; the reason optional, 095)
   function _whenRowHTML(p, place, reason, note) {
     return `<div class="wn5h-row1">`
       + `<label class="wn5f-f wn5h-when"><span>Πότε *</span><span class="wn5h-wwin"><span class="wn5f-day"><input class="form-input" type="date" id="wn5h-day" value="${_esc(p.day)}" aria-label="Ημέρα"><span class="wn5f-dayt" aria-hidden="true"></span></span>`
       + `<input class="form-input wn5h-hm" type="text" id="wn5h-hm" inputmode="numeric" maxlength="5" placeholder="ΗΗ:ΛΛ" autocomplete="off" value="${_esc(p.hm)}" aria-label="Ώρα"></span></label>`
       + `<label class="wn5f-f wn5h-place"><span>Πού *</span><input class="form-input" id="wn5h-place" placeholder="σημείωση" value="${_esc(place)}"></label>`
-      + `<label class="wn5f-f wn5h-reason"><span>Λόγος *</span><select class="form-input" id="wn5h-reason">${_reasonOptions(reason)}</select></label>`
-      + `<label class="wn5f-f wn5h-note" data-note><span data-notel>Σημείωση</span><input class="form-input" id="wn5h-note" value="${_esc(note)}"><span class="wn5h-ferr" data-ferr></span></label></div>`;
+      + `<label class="wn5f-f wn5h-reason"><span>Λόγος</span><select class="form-input" id="wn5h-reason">${_reasonOptions(reason)}</select></label>`
+      + `<label class="wn5f-f wn5h-note" data-note><span>Σημείωση</span><input class="form-input" id="wn5h-note" value="${_esc(note)}"></label></div>`;
   }
   function _readChange(d) {
     const v = (id) => (d.el.querySelector('#' + id) || {}).value || '';
@@ -416,9 +407,8 @@
     if (pf) pf.classList.toggle('bad', probs.includes(PREV_BAD));
     const key = probs.length ? null : JSON.stringify(_changeBody(st));
     if (!d.prev || d.prev.key !== key) _dropPreview(d);   // any change after the dry run drops its preview
-    _otherNote(d, probs.includes(OTHER_NOTE));
-    // the «required» lines stay quiet (the save is off); the «Άλλο» line sits under its field; the rest say themselves
-    _lines(d, probs.filter((l) => l !== OTHER_NOTE && !/^(Πότε|Πού|Λόγος|Φορτηγό|Οδηγός|Συνεργάτης) \*/.test(l)).concat(_kept(d, key)));
+    // the «required» lines stay quiet (the save is off); the rest say themselves
+    _lines(d, probs.filter((l) => !/^(Πότε|Πού|Φορτηγό|Οδηγός|Συνεργάτης) \*/.test(l)).concat(_kept(d, key)));
     _setSave(d, !!key && !!d.prev && !d.prev.conflict && !d.locked && !d.busy && !d.done);
     if (d.timer) clearTimeout(d.timer);
     // a dry run that failed is not re-sent by itself for the same body (no automatic retry of /plan, decision 44)
@@ -653,8 +643,7 @@
       if (!probs.length && _prevChanged(ps)) fb.prev_partner_rate = ps.prev_rate;
       const key = Object.keys(set).length || 'prev_partner_rate' in fb ? JSON.stringify(fb) : null;
       if (!d.prev || d.prev.key !== key) _dropPreview(d);
-      _otherNote(d, probs.includes(OTHER_NOTE));
-      _lines(d, probs.filter((l) => l !== OTHER_NOTE && !/^(Πότε|Πού|Λόγος) \*/.test(l)).concat(_kept(d, key)));
+      _lines(d, probs.filter((l) => !/^(Πότε|Πού) \*/.test(l)).concat(_kept(d, key)));
       _setSave(d, !!key && !!d.prev && !d.prev.conflict && !d.locked && !d.busy && !d.done);
       if (d.locked) d.el.querySelectorAll('.wn5f-ft [data-act="cancel"]').forEach((b) => { b.textContent = 'Κλείσιμο'; b.classList.add('wn5h-close'); });
       if (d.timer) clearTimeout(d.timer);

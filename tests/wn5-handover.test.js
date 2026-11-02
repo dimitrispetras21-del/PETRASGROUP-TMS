@@ -56,11 +56,13 @@ test('F4α-T25: the cycle card has no change history and reads no /audit (Ε-11 
   assert.deepStrictEqual(Object.keys(load().H).filter((k) => /hist/i.test(k)), []);
 });
 
-test('F4α-T25: «Άλλο» without a note → a form line, no body is built for the Worker (seg_other_note)', () => {
+test('095 (owner 2/11): «Άλλο» without a note and no reason at all are valid; the point stays required', () => {
   const st = { at: '2026-10-13T14:30:00+03:00', place_note: 'Θήβα', reason: 'other', reason_note: '', own: true, truck_id: 12, trailer_id: null, driver_id: 32, same_driver: false };
-  assert.ok(J(H._changeProblems(st)).includes('Με «Άλλο» η σημείωση είναι υποχρεωτική'));
-  assert.deepStrictEqual(J(H._changeProblems(Object.assign({}, st, { reason_note: 'λάστιχο' }))), []);
-  assert.ok(J(H._changeProblems(Object.assign({}, st, { place_note: '' }))).some((l) => /^Πού \*/.test(l)), 'place_note is required by 072b plan_seg_change');
+  assert.deepStrictEqual(J(H._changeProblems(st)), []);
+  assert.deepStrictEqual(J(H._changeProblems(Object.assign({}, st, { reason: '' }))), []);
+  assert.ok(!('reason' in J(H._changeBody(Object.assign({}, st, { reason: '' })))), 'no reason = no key (plan_seg_change: absent = null)');
+  assert.ok(!('reason_note' in J(H._changeBody(st))));
+  assert.ok(J(H._changeProblems(Object.assign({}, st, { place_note: '' }))).some((l) => /^Πού \*/.test(l)), 'place_note is required by plan_seg_change');
 });
 
 test('F4α-T25: the change body — exactly plan_seg_change\'s keys; same_driver sends no driver_id; partner rate optional', () => {

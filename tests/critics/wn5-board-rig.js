@@ -1687,8 +1687,10 @@ async function scnDate(browser, origin) {
       return { loc: two(loc), prev: loc && loc.previousElementSibling ? loc.previousElementSibling.dataset.stop : null,
         locPad: loc ? getComputedStyle(loc).paddingLeft : '', gap: two(dlg.querySelector('.wn5-res li[data-row="gap"]')), anod: !!dlg.querySelector('.wn5-res li[data-row="anod"]') };
     }).catch((x) => ({ err: String(x) }));
-    ok(scn, '«↳ Φόρτωση με τοπικό · Driver Test 05» under stop 2003, indented 14px; 072 moves its day with the stop → «Δευ 12/10 11:00–12:00 → Τετ 14/10»',
-      !!e.loc && e.loc[0] === '↳ Φόρτωση με τοπικό · Driver Test 05' && e.loc[1] === 'Δευ 12/10 11:00–12:00 → Τετ 14/10' && e.prev === '2003' && e.locPad === '14px', e);
+    // 095 (owner 2/11): the fixture's loading is the evening before its stop (Mon 12/10, stop Tue 13/10); the stop moves
+    // one day and the loading with it, keeping that distance (plan_rt_update step 3) → Tue 13/10, never snapped to Wed
+    ok(scn, '«↳ Φόρτωση με τοπικό · Driver Test 05» under stop 2003, indented 14px; it moves by the stop\'s days → «Δευ 12/10 11:00–12:00 → Τρί 13/10»',
+      !!e.loc && e.loc[0] === '↳ Φόρτωση με τοπικό · Driver Test 05' && e.loc[1] === 'Δευ 12/10 11:00–12:00 → Τρί 13/10' && e.prev === '2003' && e.locPad === '14px', e);
     ok(scn, '«Κενό γύρισμα · ASPROPYRGOS TEST» / «ελεύθερο από Τρί 13/10 09:00 → Τετ 14/10 09:00»; no ANODOS row',
       !!e.gap && e.gap[0] === 'Κενό γύρισμα · ASPROPYRGOS TEST' && e.gap[1] === 'ελεύθερο από Τρί 13/10 09:00 → Τετ 14/10 09:00' && !e.anod, e);
     await shot(page, 'date-E-201-local');
@@ -1839,6 +1841,30 @@ async function scnLocal(browser, origin) {
     const ev = await bEv(page);
     ok(scn, 'already:true → «ήταν ήδη ακυρωμένη»; the local payroll warning on the board', ev.some((e) => e.startsWith('toast') && e.includes('ήταν ήδη ακυρωμένη'))
       && (await bText(page, '#content .wn5-acthost .wn5-strip[data-kind="warning"]')).includes('τοπικού οδηγού'), ev);
+    await page.context().close();
+  }
+  { // D · 095 (owner 2/11): the loading's own day — the stop's by default (no key sent), another day allowed: amber,
+    // move_date in the body, the base's warning local_loading_other_day said on the board
+    const { page, S } = await bOpen(browser, origin, { plan: { ['POST ' + P]: (e) => [200, { ok: true, op: 'plan_local_loading', dry_run: false,
+      already: false, ids: { local_move_id: 7003, rt_id: 204 }, notice_ids: [],
+      warnings: e.body.move_date ? [{ code: 'local_loading_other_day', local_move_id: 7003, move_date: e.body.move_date, stop_day: '2026-10-13' }] : [] }] } });
+    await bMenu(page, 204, 'local');
+    await fillForm(page);
+    const stopDay = await page.$eval(`${D} input[data-day]`, (e) => e.value).catch(() => '');
+    ok(scn, '095: «Ημέρα» = the picked stop\'s Athens day by default, no amber line', /^\d{4}-\d{2}-\d{2}$/.test(stopDay)
+      && await page.$eval(`${D} [data-dayw]`, (e) => e.hidden).catch(() => false), stopDay);
+    const eve = new Date(Date.parse(stopDay + 'T00:00:00Z') - 864e5).toISOString().slice(0, 10);
+    await bPick(page, `${D} input[data-day]`, eve);
+    const amber = await bText(page, `${D} [data-dayw]`);
+    ok(scn, '095: the evening before → amber «Άλλη ημέρα από τη στάση (…)», the save stays on', /^Άλλη ημέρα από τη στάση \(/.test(amber)
+      && (await bOff(page, `${D} [data-act="save"]`)) === false, amber);
+    await bClick(page, `${D} [data-act="save"]`);
+    await page.waitForTimeout(600);
+    const c = bCalls(S, 'POST', P);
+    ok(scn, '095: the body carries move_date = that day (the key only when it differs)', c.length === 1 && c[0].body.move_date === eve
+      && noId(c[0]) === JSON.stringify({ rt_stop_id: 2033, driver_id: 34, truck_id: 15, time_from: '11:00', time_to: '12:00', move_date: eve }), c.map((x) => x.raw));
+    ok(scn, '095: the warning local_loading_other_day is said on the board', /Η φόρτωση με τοπικό γράφτηκε .* η στάση είναι 13\/10/
+      .test(await bText(page, '#content .wn5-acthost .wn5-strip[data-kind="warning"]')), await bText(page, '#content .wn5-acthost .wn5-strip[data-kind="warning"]'));
     await page.context().close();
   }
 }

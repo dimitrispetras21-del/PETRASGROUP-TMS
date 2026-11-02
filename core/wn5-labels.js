@@ -59,6 +59,8 @@
       + ({ executed: 'η στάση του έγινε', truck_busy: 'είναι απασχολημένο τότε', driver_busy: 'ο οδηγός είναι απασχολημένος τότε',
            need_token: 'έχει αλλαγή οχήματος', leg_order: 'οι στάσεις του δεν το επιτρέπουν' }[w.reason] || 'δεν μετακινείται'),
     vs_order_column_missing: () => 'Οι παλέτες γράφτηκαν· η διεθνής παραγγελία δεν έχει πεδίο για αυτό το σημείο — έλεγξέ τη',
+    // 095 (owner 2/11): a local loading kept on another day than its stop (loaded the evening before) — allowed, said
+    local_loading_other_day: (w) => 'Η φόρτωση με τοπικό γράφτηκε ' + day(w.move_date) + ', η στάση είναι ' + day(w.stop_day),
     // 072b: a stop that the new vehicle now executes (the driver sheet and the payroll days follow it)
     seg_stop_moved: (w) => `η στάση #${w.stop_id} περνά στο όχημα του άλλου τμήματος (#${w.from_segment_id} → #${w.to_segment_id})`,
     // 072b H-24: the handover time falls inside the stop's window — it stays with the segment of its arrival (H-9)
@@ -139,8 +141,8 @@
   // H-19 / R-18 (072b): the eight reasons of a vehicle handover, the CHECK seg_reason_list of 072b. The screen's
   // ONLY copy of them, drift-tested against the SQL (tests/wn5-labels.test.js). «Βλάβη φορτηγού» here and
   // «Βλάβη οχήματος» in the Daily (067, OPS_DELAY) are two approved texts for the same code (HPLAN:121): keep both.
-  // group = the two headings of the H2 list (ΑΠΡΟΒΛΕΠΤΟ / ΠΡΟΓΡΑΜΜΑΤΙΣΜΕΝΟ) and «Άλλο», whose note is mandatory
-  // (CHECK seg_other_note).
+  // group = the two headings of the H2 list (ΑΠΡΟΒΛΕΠΤΟ / ΠΡΟΓΡΑΜΜΑΤΙΣΜΕΝΟ) and «Άλλο». 095 (owner 2/11): the reason
+  // is optional and «Άλλο» needs no note (CHECK seg_other_note dropped).
   const REASON = Object.freeze({
     vehicle_breakdown: Object.freeze({ text: 'Βλάβη φορτηγού', group: 'unplanned' }),
     reefer_breakdown: Object.freeze({ text: 'Βλάβη ψυγείου', group: 'unplanned' }),
@@ -149,10 +151,11 @@
     driver_unavailable: Object.freeze({ text: 'Κώλυμα οδηγού (ασθένεια κ.λπ.)', group: 'unplanned' }),
     planned_driver: Object.freeze({ text: 'Προγραμματισμένη αλλαγή οδηγού', group: 'planned' }),
     planned_truck: Object.freeze({ text: 'Προγραμματισμένη αλλαγή φορτηγού', group: 'planned' }),
-    other: Object.freeze({ text: 'Άλλο', group: 'other', noteRequired: true }),
+    other: Object.freeze({ text: 'Άλλο', group: 'other' }),
   });
-  // An unknown code is said, never dropped (principle 1); the caller logs it once.
+  // An unknown code is said, never dropped (principle 1); the caller logs it once. No reason (095) is «—».
   function reasonLine(code) {
+    if (code === null || code === undefined || code === '') return { text: '—', unknown: false };
     const r = Object.prototype.hasOwnProperty.call(REASON, code) ? REASON[code] : null;
     return r ? { text: r.text, unknown: false } : { text: 'άλλος λόγος · ' + String(code), unknown: true };
   }
