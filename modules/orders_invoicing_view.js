@@ -11,6 +11,10 @@
 // red «δελτίο → Αλεξία» check, so the slip is still chased after the invoice.
 // Owner 21/10/2026 (B0): every order — a stock lot too — is «προς κοπή» from
 // its registration; the delivery is shown on the card, it no longer gates.
+// Owner 2/11/2026 (migration 101): «Αυτοπαράδοση» — our own group's goods, no
+// ERP transport invoice. A box beside the ΤΠΥ: ticking it marks the order
+// invoiced with no number (and no price needed). Eirini's choice per order;
+// nothing detects it. It is left out of the «Φύλλο ERP» (nothing to type there).
 //
 // Data: OrdersData.loadInvoicingSet() — the SAME records and the SAME states as
 // the page counters, so a tab badge can never disagree with this list.
@@ -46,6 +50,7 @@ const OrdersInvoicingView = (() => {
       const load = OC.placeOf(rec, 'load'), del = OC.placeOf(rec, 'del');
       const num = OC.numLabel(rec);
       const deliv = OC.ymd(f['Delivery DateTime']);
+      const self = OC.isSelfDelivery(f);
       return {
         rec, id: rec.id, type: rec._type, f,
         state: st.key, reason: st.reason || '', noSheets: !!st.noSheets,
@@ -55,6 +60,7 @@ const OrdersInvoicingView = (() => {
         // them on the SAME rule as stateOf's price block, so a 0 € order is
         // never counted as priced while it is blocked for its price.
         price: OC.hasPrice(f) ? OC.price(f) : null,
+        self,
         clientId, client,
         deliv,
         // B0 (21/10): from the order's own delivery, a lot too; none before it.
@@ -66,7 +72,7 @@ const OrdersInvoicingView = (() => {
         // lot's completion was a gate date (Round 1 O3) and the gate is gone.
         // The KPI «Παλαιότερη εκκρεμής» and the sort read it.
         when: deliv,
-        search: [client, num, f['Reference'], load.name, load.sub, del.name, del.sub, f['Invoice Number']]
+        search: [client, num, f['Reference'], load.name, load.sub, del.name, del.sub, f['Invoice Number'], self ? 'αυτοπαράδοση' : '']
           .filter(Boolean).map(fold).join(' '),
       };
     });
@@ -171,9 +177,10 @@ const OrdersInvoicingView = (() => {
     for (const it of list) {
       const k = it.clientId || '—';
       let g = m.get(k);
-      if (!g) { g = { clientId: it.clientId, client: it.client, items: [], sum: 0, unpriced: 0, oldest: -1 }; m.set(k, g); }
+      if (!g) { g = { clientId: it.clientId, client: it.client, items: [], sum: 0, unpriced: 0, selfFree: 0, oldest: -1 }; m.set(k, g); }
       g.items.push(it);
-      if (it.price !== null) g.sum += it.price; else g.unpriced++;
+      // A self delivery needs no price (101): without one it is neither summed nor «χωρίς τιμή».
+      if (it.price !== null) g.sum += it.price; else if (it.self) g.selfFree++; else g.unpriced++;
       if (isOpen(it) && it.days !== null && it.days > g.oldest) g.oldest = it.days;
       if (isOpen(it) && it.days === null && g.oldest < 0) g.oldest = 0;
     }
@@ -232,9 +239,17 @@ const OrdersInvoicingView = (() => {
   // The three fields — nothing else (no Status: «Invoiced» is a checkbox, not a
   // lifecycle status, owner 23/8 locked; migration 014 CHECK would refuse it).
   const invoiceFields = (n, d) => ({ 'Invoiced': true, 'Invoice Number': n, 'Invoice Date': d });
+  // «Αυτοπαράδοση» (101): invoiced with no ERP number — the base and the Worker
+  // let it through only with Self Delivery true, and 101's CHECK only with NO
+  // number — sent as null, so the write never depends on what the row held.
+  // The date is the day she ticks it.
+  const selfFields = d => ({ 'Invoiced': true, 'Self Delivery': true, 'Invoice Number': null, 'Invoice Date': d });
   // Invoiced off and the ERP number/date cleared — migration 043 only guards
-  // the transition TO true, the Worker lets this through.
-  const undoFields = () => ({ 'Invoiced': false, 'Invoice Number': null, 'Invoice Date': null });
+  // the transition TO true, the Worker lets this through. A self delivery clears
+  // its box IN THE SAME write: unticking it alone on an invoiced row is refused
+  // (101 — it never clears Invoiced by itself). Only then is the label sent, so
+  // an ordinary undo never depends on it.
+  const undoFields = self => Object.assign({ 'Invoiced': false, 'Invoice Number': null, 'Invoice Date': null }, self ? { 'Self Delivery': false } : {});
 
   // ERP address in one line: «Via Emilia 12, 41121 Modena, IT».
   function addressLine(c) {
@@ -247,9 +262,11 @@ const OrdersInvoicingView = (() => {
   // C2-04: the last column «Κατάσταση», the words of the print (stateWord):
   // «προς κοπή», «χωρίς τιμή» or the ΤΠΥ. Last, so no column moves for
   // whoever reads the file by position.
+  // A self delivery (101) is not on it: no ERP invoice is ever typed for it.
   function csvRows(groups, clientInfo) {
     const rows = [['ΑΡ.', 'Αναφορά', 'Πελάτης', 'ΑΦΜ', 'Διεύθυνση', 'Φόρτωση', 'Παράδοση', 'Ημ. παράδοσης', 'Παλέτες', 'Ποσό', 'ΤΠΥ', 'Ημ. ΤΠΥ', 'Κατάσταση']];
     for (const g of groups) for (const it of g.items) {
+      if (it.self) continue;
       const c = (it.clientId && clientInfo(it.clientId)) || null;
       rows.push([
         it.num, it.ref, it.client,
@@ -283,7 +300,7 @@ const OrdersInvoicingView = (() => {
 
   // One state word per row — the ERP print and the ERP CSV (C2-04) say the same.
   function stateWord(it) {
-    return it.state === 'invoiced' ? 'ΤΠΥ ' + (it.f['Invoice Number'] || '—')
+    return it.state === 'invoiced' ? (it.self ? 'αυτοπαράδοση' : 'ΤΠΥ ' + (it.f['Invoice Number'] || '—'))
       : it.state === 'blocked' ? 'χωρίς τιμή'
       : it.noSheets ? 'προς κοπή · λείπει δελτίο' : 'προς κοπή';
   }
@@ -297,7 +314,7 @@ const OrdersInvoicingView = (() => {
   }
 
   const pure = { annotate, scopeFilter, weekStats, defaultWeek, stripWeeks, weekWord, baseList, tabCounts, tabFilter,
-    searchFilter, groupByClient, kpis, dupCheck, nextReady, dateCheck, invoiceFields, undoFields, addressLine, csvRows,
+    searchFilter, groupByClient, kpis, dupCheck, nextReady, dateCheck, invoiceFields, selfFields, undoFields, addressLine, csvRows,
     metricsOf, dirWord, stockText, erpDelivery, allocWhy, stateWord };
   if (typeof document === 'undefined') return { pure };
 
@@ -532,8 +549,8 @@ const OrdersInvoicingView = (() => {
         if (c && c['VAT Number']) meta.push('ΑΦΜ ' + esc(c['VAT Number']));
         if (c && c['Payment Terms Days'] != null && c['Payment Terms Days'] !== '') meta.push('όροι ' + esc(c['Payment Terms Days']) + ' ημ.');
         // An unpriced order is never a 0,00 € in the sum — it is said apart.
-        const priced = g.items.length - g.unpriced;
-        const sum = (priced ? eur(g.sum) + ' €' : '') + (g.unpriced ? ` <span class="oiv-bad">${priced ? '+ ' : ''}${g.unpriced} χωρίς τιμή</span>` : '');
+        const priced = g.items.length - g.unpriced - g.selfFree;
+        const sum = (priced ? eur(g.sum) + ' €' : g.unpriced ? '' : '—') + (g.unpriced ? ` <span class="oiv-bad">${priced ? '+ ' : ''}${g.unpriced} χωρίς τιμή</span>` : '');
         const head = `<tr class="oiv-g"><td colspan="5"><b>${esc(g.client)}</b>${meta.length ? `<span class="oiv-gm">${meta.join(' · ')}</span>` : ''}</td><td colspan="2" class="r"><b>${g.items.length} · ${sum}</b></td></tr>`;
         return head + g.items.map(it => {
           const pal = it.type === 'intl' ? it.f['Total Pallets'] : it.f['Pallets'];
@@ -741,7 +758,7 @@ const OrdersInvoicingView = (() => {
       : delivered ? (isLotIt(it) ? 'Στην αποθήκη ' : 'Παραδόθηκε ') + dm(it.deliv)
       : it.deliv ? 'Παράδοση ' + dm(it.deliv) : 'Χωρίς ημερομηνία παράδοσης';
     const whereHtml = `<span><i class="oiv-dot ${delivered || lotComplete ? 'ok' : 'hollow'}"></i>${where}</span>`;
-    if (it.state === 'invoiced') status = `<span><i class="oiv-dot ok"></i>Τιμολογήθηκε ${f['Invoice Date'] ? dm(f['Invoice Date']) : ''}</span><span><i class="oiv-dot hollow"></i>${f['Invoice Number'] ? 'ΤΠΥ ' + esc(f['Invoice Number']) : 'χωρίς αριθμό'}</span>` + wait;
+    if (it.state === 'invoiced') status = `<span><i class="oiv-dot ok"></i>Τιμολογήθηκε ${f['Invoice Date'] ? dm(f['Invoice Date']) : ''}</span><span><i class="oiv-dot hollow"></i>${it.self ? 'Αυτοπαράδοση' : f['Invoice Number'] ? 'ΤΠΥ ' + esc(f['Invoice Number']) : 'χωρίς αριθμό'}</span>` + wait;
     else if (it.state === 'blocked') status = whereHtml + '<span><i class="oiv-dot bad"></i>χωρίς τιμή</span>' + wait;
     else status = whereHtml + `<span><i class="oiv-dot hollow"></i>προς κοπή${it.days !== null ? ' · ' + it.days + (it.days === 1 ? ' ημέρα' : ' ημέρες') : ''}</span>`
       + wait + (it.noSheets ? '<span><i class="oiv-dot bad"></i>δελτίο → Αλεξία</span>' : '');
@@ -761,7 +778,7 @@ const OrdersInvoicingView = (() => {
       + kv('Παράδοση ' + (it.del.date ? dm(it.del.date) : ''), place(it.del))
       + kv('Ανάθεση', assignOfIt(it).html)
       + kv('Παλέτες', `${pal == null || pal === '' ? '—' : esc(pal)} · ${f['Pallet Exchange'] ? 'με ανταλλαγή' : 'χωρίς ανταλλαγή'}`)
-      + kv('Ποσό', it.price === null ? '<span class="oiv-bad">χωρίς τιμή</span>' : `<span class="oiv-amt">${eurSym(it.price)}</span>`);
+      + kv('Ποσό', it.price === null ? (it.self ? '<span class="oiv-muted">—</span>' : '<span class="oiv-bad">χωρίς τιμή</span>') : `<span class="oiv-amt">${eurSym(it.price)}</span>`);
 
     // ΕΛΕΓΧΟΙ
     const ck = (ok, text) => `<div class="oiv-ck ${ok === true ? 'ok' : ok === false ? 'bad' : 'na'}"><i>${ok === true ? '✓' : ok === false ? '✗' : '–'}</i><span>${text}</span></div>`;
@@ -778,7 +795,8 @@ const OrdersInvoicingView = (() => {
     // Not delivered yet is no fault since B0: neutral «–», never a red ✗.
     const checks = ck(delivered ? true : null, delivered ? (isLotIt(it) ? 'Παραλήφθηκε στην αποθήκη ' : 'Παραδόθηκε ') + dm(it.deliv)
         : it.deliv ? 'Παράδοση ' + dm(it.deliv) + ' · δεν έχει γίνει ακόμη' : 'Χωρίς ημερομηνία παράδοσης')
-      + ck(OC().hasPrice(f), OC().hasPrice(f) ? 'Τιμή ' + eurSym(it.price) : (canWrite() ? 'Χωρίς τιμή → γράψε τη παρακάτω' : 'Χωρίς τιμή'))
+      + (it.self && !OC().hasPrice(f) ? ck(null, 'Τιμή · δεν χρειάζεται (αυτοπαράδοση)')
+        : ck(OC().hasPrice(f), OC().hasPrice(f) ? 'Τιμή ' + eurSym(it.price) : (canWrite() ? 'Χωρίς τιμή → γράψε τη παρακάτω' : 'Χωρίς τιμή')))
       + lotCheck(it)
       + sheets;
 
@@ -806,6 +824,16 @@ const OrdersInvoicingView = (() => {
     if (errEl) errEl.scrollIntoView({ block: 'nearest' });
   }
 
+  // «Αυτοπαράδοση» beside the ΤΠΥ (owner 2/11/2026): one tick = invoiced, no
+  // number. Offered wherever the ΤΠΥ or the price is asked for — a self
+  // delivery often has no price, and needs none (101). Not on an UNPRICED stock
+  // lot: 057 freezes a lot source's price once it is invoiced, so it could
+  // never get one (code review xhigh 2/11) — its price first, then the box.
+  function selfBox(it) {
+    return `<label class="oiv-self"><input type="checkbox" id="oivSelf" ${S.busy ? 'disabled' : ''} onchange="OrdersInvoicingView.markSelf('${esc(it.id)}', this)">
+      <span><b>Αυτοπαράδοση</b><span class="oiv-muted"> · δικό μας φορτίο, χωρίς ΤΠΥ</span></span></label>`;
+  }
+
   function actionBlock(it, ready) {
     const f = it.f, dm = OC().dm;
     const err = S.formErr ? `<div class="oiv-err" role="alert">${esc(S.formErr)}</div>` : '';
@@ -819,9 +847,21 @@ const OrdersInvoicingView = (() => {
           <label>Ημερομηνία<input id="oivDate" type="date" value="${esc(dr ? dr.d : today())}" max="${today()}" oninput="OrdersInvoicingView.formInput()" onkeydown="OrdersInvoicingView.formKey(event)"></label>
         </div>
         <div class="oiv-hint" id="oivHint"></div>
+        ${selfBox(it)}
         ${err}
         <button type="button" id="oivSave" class="oiv-primary" disabled onclick="OrdersInvoicingView.submit()">Καταχώριση <kbd>Enter</kbd></button>
         ${nx ? `<div class="oiv-next"><span>Επόμενη</span><span>${esc(nx.num)} · ${esc(nx.ref || '—')} · ${OC().eurSym(nx.price)}</span></div>` : ''}
+      </section>`;
+    }
+    if (it.state === 'invoiced' && it.self) {
+      // No ΤΠΥ to correct: a self delivery that turns out to need an invoice is
+      // undone here, then invoiced with its number like any order.
+      const w = canWrite();
+      return `<section><div class="oiv-sh"><span>Αυτοπαράδοση</span></div>
+        ${kv('Τιμολόγιο ERP', '<span class="oiv-muted">κανένα — δικό μας φορτίο</span>')}
+        ${kv('Ημερομηνία', f['Invoice Date'] ? esc(dm(f['Invoice Date'])) : '—')}
+        ${kv('Ποσό', OC().eurSym(it.price))}
+        ${w ? `${err}<button type="button" class="oiv-danger-link" onclick="OrdersInvoicingView.undoInvoice('${esc(it.id)}', true)">Αναίρεση τιμολόγησης</button><div class="oiv-muted small">επαναφέρει «προς κοπή» · η αυτοπαράδοση και η ημερομηνία σβήνουν</div>` : ''}
       </section>`;
     }
     if (it.state === 'invoiced') {
@@ -852,7 +892,8 @@ const OrdersInvoicingView = (() => {
         return `<section><div class="oiv-sh"><span>Τιμή</span></div>
           <div class="oiv-edit"><div class="oiv-fr"><label>Τιμή €<input id="oivPrice" inputmode="decimal" autocomplete="off" value="${S.draftPrice && S.draftPrice.id === it.id ? esc(S.draftPrice.v) : ''}" placeholder="${last ? esc(OC().eur(last.price)) : 'π.χ. 1.250,00'}" onkeydown="if(event.key==='Enter'){event.preventDefault();OrdersInvoicingView.savePrice()}"></label></div>
           <div class="oiv-muted small">${esc(lastTxt)} · Enter → μετά ο ΤΠΥ</div>${err}
-          <div class="oiv-btns"><button type="button" class="oiv-primary sm" id="oivPriceSave" onclick="OrdersInvoicingView.savePrice()">Καταχώριση τιμής</button></div></div></section>`;
+          <div class="oiv-btns"><button type="button" class="oiv-primary sm" id="oivPriceSave" onclick="OrdersInvoicingView.savePrice()">Καταχώριση τιμής</button></div></div>
+          ${isLotIt(it) ? '' : `<div class="oiv-self-gap">${selfBox(it)}</div>`}</section>`;
       }
     }
     return '';
@@ -932,15 +973,53 @@ const OrdersInvoicingView = (() => {
     return true;
   }
 
+  // «Αυτοπαράδοση» (101). The record that comes back must SAY it: an unmapped
+  // label is a 200 on the facade (trap #1), so the screen never trusts its own
+  // write — the Worker's answer decides, as savePrice does with the price.
+  async function markSelf(id, box) {
+    const it = itemById(id);
+    if (!it || S.busy || !canWrite() || (it.state !== 'ready' && it.state !== 'blocked') || (it.state === 'blocked' && isLotIt(it))) { if (box) box.checked = false; return; }
+    S.busy = true; S.formErr = '';
+    if (box) box.disabled = true;
+    const d = today();
+    const fields = selfFields(d);
+    try {
+      const res = await atPatch(tableOf(it), it.id, fields);
+      if (res && res._offline) throw new Error('Εκτός σύνδεσης — δεν γράφτηκε ακόμη');
+      const back = (res && res.fields) || {};
+      if (back['Self Delivery'] !== true || back['Invoiced'] !== true) throw new Error('ο διακομιστής δεν επιβεβαίωσε την αυτοπαράδοση');
+    } catch (e) {
+      // The Worker/101 refusal (422) or a 403 — in the card, where she looks.
+      // The set may have changed on the server: re-read it next time.
+      S.busy = false; S.formErr = 'Δεν καταχωρήθηκε ως αυτοπαράδοση: ' + ((e && e.message) || 'άγνωστο σφάλμα');
+      OrdersData.invalidate();
+      if (S.ctx.isCurrent()) paintCard();
+      return false;
+    }
+    S.busy = false; S.draft = null; S.draftPrice = null;
+    Object.assign(it.rec.fields, fields);
+    afterWrite();
+    const v = view();
+    const nx = nextReady(v.groups, it.id, it.clientId);
+    S.selId = nx ? nx.id : it.id; S.closed = false;
+    if (S.ctx.isCurrent()) paintParts();
+    if (S.ctx.isCurrent()) showUndo(it, null, d);
+    return true;
+  }
+
   async function undoInvoice(id, ask) {
     if (!canWrite() || S.busy) return;
     const it = itemById(id); if (!it) return;
+    const self = OC().isSelfDelivery(it.rec.fields);
     const num = it.f['Invoice Number'] || '—';
-    if (ask && !(await confirmAction(`Αναίρεση τιμολόγησης της ${it.num} (ΤΠΥ ${num});\nΗ παραγγελία ξαναγίνεται «προς κοπή», ο αριθμός και η ημερομηνία σβήνουν. Το τιμολόγιο στο ERP ΔΕΝ ακυρώνεται από εδώ.`,
+    const what = self ? 'αυτοπαράδοση' : 'ΤΠΥ ' + num;
+    if (ask && !(await confirmAction(self
+      ? `Αναίρεση τιμολόγησης της ${it.num} (αυτοπαράδοση);\nΗ παραγγελία ξαναγίνεται «προς κοπή», η αυτοπαράδοση και η ημερομηνία σβήνουν.`
+      : `Αναίρεση τιμολόγησης της ${it.num} (ΤΠΥ ${num});\nΗ παραγγελία ξαναγίνεται «προς κοπή», ο αριθμός και η ημερομηνία σβήνουν. Το τιμολόγιο στο ERP ΔΕΝ ακυρώνεται από εδώ.`,
       { title: 'Αναίρεση τιμολόγησης', confirmLabel: 'Αναίρεση', danger: true }))) return;
     S.busy = true; S.formErr = '';
     try {
-      await atPatch(tableOf(it), it.id, undoFields());
+      await atPatch(tableOf(it), it.id, undoFields(self));
     } catch (e) {
       S.busy = false; S.formErr = (e && e.message) || 'Η αναίρεση απέτυχε';
       if (S.selId === it.id && S.ctx.isCurrent()) paintCard();
@@ -950,12 +1029,13 @@ const OrdersInvoicingView = (() => {
     it.rec.fields['Invoiced'] = false;
     delete it.rec.fields['Invoice Number'];
     delete it.rec.fields['Invoice Date'];
+    if (self) it.rec.fields['Self Delivery'] = false;
     hideUndo();
     afterWrite();
     S.selId = it.id; S.closed = false;
     if (S.tab === 'invoiced') S.tab = 'ready';
     if (S.ctx.isCurrent()) paintParts();
-    toast(`Η τιμολόγηση ${escapeHtml(it.num)} (ΤΠΥ ${escapeHtml(num)}) αναιρέθηκε — είναι ξανά προς κοπή`, 'warn');
+    toast(`Η τιμολόγηση ${escapeHtml(it.num)} (${escapeHtml(what)}) αναιρέθηκε — είναι ξανά προς κοπή`, 'warn');
   }
 
   function startEdit() { S.edit = S.selId; S.formErr = ''; paintCard(); const el = document.getElementById('oivEditNum'); if (el) { el.focus(); el.select(); } }
@@ -1028,7 +1108,7 @@ const OrdersInvoicingView = (() => {
     const bar = document.createElement('div');
     bar.id = 'oivUndo'; bar.className = 'oiv-undo'; bar.setAttribute('role', 'status');
     let left = 10;
-    bar.innerHTML = `<div><div class="t">Καταχωρήθηκε ΤΠΥ ${esc(num)}</div><div class="s">${esc(it.num)} · ${esc(it.client)} · ${esc(OC().dm(d))}</div></div>
+    bar.innerHTML = `<div><div class="t">${num == null ? 'Καταχωρήθηκε ως αυτοπαράδοση' : 'Καταχωρήθηκε ΤΠΥ ' + esc(num)}</div><div class="s">${esc(it.num)} · ${esc(it.client)} · ${esc(OC().dm(d))}</div></div>
       ${canWrite() ? `<button type="button" onclick="OrdersInvoicingView.undoInvoice('${esc(it.id)}', false)">Αναίρεση</button>` : ''}<span class="c">${left}″</span>`;
     document.body.appendChild(bar);
     const tick = setInterval(() => {
@@ -1078,7 +1158,9 @@ const OrdersInvoicingView = (() => {
     const v = view();
     if (!v.list.length) { toast('Η λίστα είναι άδεια — τίποτα για εξαγωγή', 'warn'); return; }
     const tag = S.sel === 'open' ? 'anoixtes' : S.sel;
-    OrdersList.csvDownload(csvRows(v.groups, info), `fyllo-erp_${tag}_${S.tab}.csv`);
+    const rows = csvRows(v.groups, info);
+    if (rows.length === 1) { toast('Μόνο αυτοπαραδόσεις στη λίστα — τίποτα για το ERP', 'warn'); return; }
+    OrdersList.csvDownload(rows, `fyllo-erp_${tag}_${S.tab}.csv`);
   }
   // A4, black on white: the print window has no style.css, so the few token
   // values it needs are copied across (same approach as invoicing.js
@@ -1221,6 +1303,11 @@ const OrdersInvoicingView = (() => {
 .oiv-fr input:focus,.oiv-full textarea:focus{outline:0;border:1.5px solid var(--surface-dark)}
 .oiv-fr input.bad{border-color:var(--danger)}
 .oiv-hint{font-size:11.5px;line-height:1.45;margin:6px 0 10px;min-height:16px}
+.oiv-self{display:flex;align-items:center;gap:8px;margin:0 0 12px;font-size:12.5px;color:var(--text);cursor:pointer}
+.oiv-self input{width:16px;height:16px;margin:0;accent-color:var(--surface-dark);cursor:pointer;flex-shrink:0}
+.oiv-self input:disabled{cursor:not-allowed}
+.oiv-self b{font-weight:600}
+.oiv-self-gap{margin-top:12px}
 .oiv-bad{color:var(--danger)}
 .oiv-warn{color:var(--warn)}
 .oiv-err{background:var(--danger-bg);color:var(--danger);border:1px solid var(--danger);border-radius:6px;padding:8px 10px;font-size:12.5px;margin-bottom:10px}
@@ -1252,7 +1339,7 @@ const OrdersInvoicingView = (() => {
   }
 
   const api = { pure, render, select, close, setTab, pickWeek, shift, search, formInput, formKey, submit, undoInvoice,
-    startEdit, cancelEdit, saveEdit, savePrice, copyErp, exportCsv, print, closeRemainder, reopenLot };
+    startEdit, cancelEdit, saveEdit, savePrice, markSelf, copyErp, exportCsv, print, closeRemainder, reopenLot };
   return api;
 })();
 

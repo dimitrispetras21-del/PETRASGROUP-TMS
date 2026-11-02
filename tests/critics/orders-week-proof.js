@@ -165,6 +165,11 @@ function installMocks(page, log, opts = {}) {
   const json = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
   // Anything else on the Worker: an empty answer, never the live backend.
   page.route('**/petras-tms-backend-staging.petrasgroup.workers.dev/**', route => json(route, { records: [] }));
+  // National v5 (F5): day L as the Worker says it — 'before' (cutover_day null),
+  // so nothing asks /plan/nat-state. Without it the catch-all's {records:[]}
+  // reads as an unknown config shape: a console error and a «v5» strip on
+  // every scenario (rig rot since 28/10, not the view).
+  page.route('**/plan/config', route => json(route, { cutover_day: null, opened_at: null, writes_open: false }));
   page.route(`**/${T.ORDERS}**`, route => {
     const u = decodeURIComponent(route.request().url());
     log.push(u);
@@ -384,7 +389,10 @@ async function runDispatcher(browser) {
   await page.context().close();
 }
 
-(async () => {
+// The same synthetic week and mocks serve tests/critics/orders-week-panel-rig.js
+// (order + card in place, 2/11/2026) — required, this file runs nothing.
+module.exports = { T, CL, ORDERS, NAT, NL, RTS, WEEK_FROM, WEEK_TO, day, installMocks, newPage, openWeek, snap, realErrors };
+if (require.main === module) (async () => {
   console.log('Στόχος: ' + BASE_URL + ' · εβδομάδα ' + WEEK_FROM + ' – ' + WEEK_TO);
   console.log(`Αναμενόμενα: Διεθνή ${eur(EXP_I.sum)} = ${eur(EXP_I.inv)} + ${eur(EXP_I.open)} · Εθνικά ${eur(EXP_N.sum)} = ${eur(EXP_N.inv)} + ${eur(EXP_N.open)} · Σύνολο ${eur(EXP_ALL.sum)}`);
   const browser = await chromium.launch();

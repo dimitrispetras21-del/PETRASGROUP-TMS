@@ -301,6 +301,21 @@ function intlQuickEdit(recId) {
   OrderQuickEdit.open(TABLES.ORDERS, rec, r => { _intlRepaintOne(r); if (INTL_ORDERS.selectedId === r.id) selectIntlOrder(r.id); });
 }
 
+// «Παραγγελίες › Εβδομάδα» opens THIS card in place (owner 2/11/2026: Ειρήνη
+// must not leave the week). The card and its actions (Επεξεργασία, Διόρθωση,
+// δελτία) look the order up in INTL_ORDERS.data, which only the catalog fills:
+// the week's own fresh record goes in there (replacing an older copy), so the
+// same card runs, not a second one (principle 3). The next catalog load
+// replaces the whole list anyway.
+function openIntlCardWith(rec) {
+  if (!rec || !rec.id) return;
+  if (!Array.isArray(INTL_ORDERS.data)) INTL_ORDERS.data = [];
+  const i = INTL_ORDERS.data.findIndex(r => r.id === rec.id);
+  if (i >= 0) INTL_ORDERS.data[i] = rec; else INTL_ORDERS.data.push(rec);
+  _oiEnsureStyles();
+  selectIntlOrder(rec.id);
+}
+
 // ─── Detail Panel (card, Figma 204:1395 · pattern w2-location-card 230:821) ──
 function selectIntlOrder(recId) {
   INTL_ORDERS.selectedId = recId;
@@ -448,7 +463,7 @@ function _oiCardHtml(rec, opts) {
         // stayed «Όχι» for ever, even after the lot's ΤΠΥ.
         ? kv('Τιμολογήθηκε', 'με την παρτίδα ' + escapeHtml(OrdersStock.lotNumLabel(f)), 'miss')
         : kv('Τιμολογήθηκε', f['Invoiced']
-        ? ['Ναι', f['Invoice Number'] ? 'ΤΠΥ ' + escapeHtml(f['Invoice Number']) : '', f['Invoice Date'] ? new Date(f['Invoice Date']).toLocaleDateString('el-GR') : ''].filter(Boolean).join(' · ')
+        ? ['Ναι', OrdersCommon.isSelfDelivery(f) ? 'αυτοπαράδοση' : f['Invoice Number'] ? 'ΤΠΥ ' + escapeHtml(f['Invoice Number']) : '', f['Invoice Date'] ? new Date(f['Invoice Date']).toLocaleDateString('el-GR') : ''].filter(Boolean).join(' · ')
         : 'Όχι')}
     </div>
     <div class="oi-sect oi-sect-alt"><div class="oi-sect-t">Διαδρομή</div>${route}</div>
@@ -4024,6 +4039,7 @@ window._oiWhPick = _oiWhPick;
 window._oiWhTyped = _oiWhTyped;
 window.duplicateIntlOrder = duplicateIntlOrder;
 window.selectIntlOrder = selectIntlOrder;
+window.openIntlCardWith = openIntlCardWith;   // «Εβδομάδα» opens the card in place (2/11)
 window.intlQuickEdit = intlQuickEdit;
 window._oiCloseCard = _oiCloseCard;
 window.openIntlReadOnlyCard = openIntlReadOnlyCard;
