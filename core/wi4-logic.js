@@ -39,6 +39,19 @@ function dayLabel(d) {
   return `${GR_DOW[t.getUTCDay()]} ${t.getUTCDate()}/${t.getUTCMonth() + 1}`;
 }
 
+// The order of the rows inside one day of the board, on two ORDERS `fields`:
+// client A→Z (Greek collation), Veroia Switch last, then `field` — 'Delivery
+// DateTime' for exports, 'Loading DateTime' for import-only rows. ONE rule:
+// «Παραγγελίες › Εβδομάδα» reads it too, so Ειρήνη compares the two lists row
+// by row (owner 2/11/2026). 'Client Summary' is not on the Worker map today
+// (always empty), kept as it was.
+const clientKey = (f) => String((f || {})['Client Name'] || (f || {})['Client Summary'] || '').toUpperCase();
+function dayRowOrder(fa, fb, field) {
+  const a = fa || {}, b = fb || {};
+  return clientKey(a).localeCompare(clientKey(b), 'el') || ((a['Veroia Switch'] ? 1 : 0) - (b['Veroia Switch'] ? 1 : 0))
+    || String(a[field] || '').localeCompare(String(b[field] || ''));
+}
+
 // ─── §b Flag decision ──────────────────────────────────────────────────
 // Three states. Anything else — a typo, `true`, undefined, a stale cached
 // config.js without the key — reads as 'off' (principle 5: unknown = closed).
@@ -645,7 +658,7 @@ const WI4 = freeze({
   // §e.9
   menuSection, MENU_ICON,
   // shared helpers
-  dayDiff, dayLabel,
+  dayDiff, dayLabel, dayRowOrder,
 });
 
 if (typeof module !== 'undefined') module.exports = WI4; else window.WI4 = WI4;

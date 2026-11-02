@@ -44,6 +44,16 @@ function palText(n, unknown) {
   return unknown > 0 ? t + '+;' : t;
 }
 const _ms = (iso) => { const t = new Date(iso).getTime(); return Number.isNaN(t) ? Infinity : t; };
+// The board's row order: days by the Veroia loading day of ΚΑΘΟΔΟΣ (else the ΑΝΟΔΟΣ day); inside a day the cycles
+// first, by that time, then the loads waiting for a vehicle (Figma 2011:7745 row order). ONE rule: «Παραγγελίες ›
+// Εβδομάδα» sorts its national rows with it too, so Ειρήνη compares the two lists row by row (owner 2/11/2026).
+// Rows: { dayKey, kind: 'cycle' | other, sortAt: ISO, key }.
+function rowOrder(a, b) {
+  return String(a.dayKey || '').localeCompare(String(b.dayKey || ''))
+    || (a.kind === b.kind ? 0 : a.kind === 'cycle' ? -1 : 1)
+    || ((_ms(a.sortAt) - _ms(b.sortAt)) || 0)
+    || String(a.key).localeCompare(String(b.key));
+}
 function athensDay(iso) { if (!iso) return null; const d = new Date(iso); return Number.isNaN(d.getTime()) ? null : ATH_DAY.format(d); }
 function athensTime(iso) { if (!iso) return null; const d = new Date(iso); return Number.isNaN(d.getTime()) ? null : ATH_TIME.format(d); }
 // F1 (owner 28/10): a point entered without a window is stored as its whole Athens day, 00:00–23:59 (the order form's
@@ -485,12 +495,7 @@ function model(board, opts) {
   for (const w of board.waiting) if (w.is_stock !== true) add(w, false);   // stock lives only in the Veroia board (owner rule 5, 19/10)
   for (const h of board.hub) if (_neverAssigned(h)) add(h, true);
   for (const list of groups.values()) rows.push(_waitRow(list, hubId, errors, nameOf));
-  // Days by the Veroia loading day of ΚΑΘΟΔΟΣ (else the ΑΝΟΔΟΣ day); inside a day the cycles first, by that time,
-  // then the loads waiting for a vehicle (Figma 2011:7745 row order).
-  rows.sort((a, b) => String(a.dayKey || '').localeCompare(String(b.dayKey || ''))
-    || (a.kind === b.kind ? 0 : a.kind === 'cycle' ? -1 : 1)
-    || ((_ms(a.sortAt) - _ms(b.sortAt)) || 0)
-    || String(a.key).localeCompare(String(b.key)));
+  rows.sort(rowOrder);
   const days = [];
   for (let i = 0; i < 7; i++) {
     const date = _addDays(week, i);
@@ -589,6 +594,6 @@ function handoversOf(cycle) {
   return out;
 }
 
-const WN5L = freeze({ model, waitSide, segmentsOf, stopSegments, handoversOf, searchParts, cycleNumbers, capacity, stopRank, hubFromBoard, athensDay, athensTime, allDay, winText, DAY_WIN, palText, CAP, HUB_UNKNOWN, ShapeError });
+const WN5L = freeze({ model, rowOrder, waitSide, segmentsOf, stopSegments, handoversOf, searchParts, cycleNumbers, capacity, stopRank, hubFromBoard, athensDay, athensTime, allDay, winText, DAY_WIN, palText, CAP, HUB_UNKNOWN, ShapeError });
 if (typeof module !== 'undefined') module.exports = WN5L; else window.WN5L = WN5L;
 })();
