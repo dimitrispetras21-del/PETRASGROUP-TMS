@@ -154,12 +154,31 @@ function searchParts(row) {
 }
 
 function _legs(s, act) { return (s.legs || []).filter((l) => l.act === act); }
+// Owner 2/11 (loose rules now: an order saves without a price or an hour, and is completed later): what it still lacks
+// is said on the board, so nothing is forgotten. «λείπει τιμή»: a NATIONAL order whose price came as null (080 keeps a
+// missing price NULL, plan_board sends the key) — an absent key is «the board did not say», never «missing», and a VS
+// sends price: null by design (its price is the international's), so only nat_order_id counts. Once per order on a
+// row, on its first point drawn. «λείπει ώρα»: a client point of the whole day (the form's empty window, allDay) —
+// never Veroia, whose whole day is its one default (owner 1/11).
+const _noPriceIds = (items) => [...new Set(items.filter((x) => x && x.nat_order_id != null
+  && Object.prototype.hasOwnProperty.call(x, 'price') && x.price === null).map((x) => x.nat_order_id))];
+function _marks(pts, hubId) {
+  const seen = new Set();
+  for (const p of pts) {
+    p.noTime = p.allDay === true && p.hub !== true && !(hubId != null && p.locId === hubId);
+    const fresh = (p._np || []).filter((id) => !seen.has(id));
+    fresh.forEach((id) => seen.add(id));
+    p.noPrice = fresh.length > 0;
+    delete p._np;
+  }
+}
 function _point(s, pallets, legs, unknown) {
   // locId: the screen names the place's city from the catalogue (owner 28/10: place + city, as the Weekly International)
   return { stopId: s.stop_id, n: 0, name: s.location || '—', city: null, locId: s.location_id == null ? null : Number(s.location_id),
     clients: [...new Set((s.legs || []).map((l) => l.client).filter(Boolean))], temps: _temps(legs),
     from: athensTime(s.planned_from), to: athensTime(s.planned_to), allDay: allDay(s.planned_from, s.planned_to), pallets, palUnknown: unknown || 0,
-    dim: s.dim === true, late: s.has_late === true, segmentId: null, segLabel: null, day: s.stop_day || athensDay(s.planned_to) };
+    dim: s.dim === true, late: s.has_late === true, segmentId: null, segLabel: null, day: s.stop_day || athensDay(s.planned_to),
+    _np: _noPriceIds(legs) };
 }
 // One side of a cycle. KATHODOS: the hub stop is the Veroia loading (its window shows under «Βέροια», on the side,
 // never on the vehicle tile: owner 25/10); ANODOS: the last hub stop closes the cycle («Βέροια · τέλος κύκλου»).
@@ -250,6 +269,7 @@ function _cycleRow(c, hubId, nums, errors) {
   const seg = segmentsOf(c);
   const tiles = seg.segments.map((s) => _tile(s, seg.source === 'segments' && seg.segments.length > 1));
   const pts = [...(kath ? kath.from.concat(kath.to) : []), ...anod.from, ...anod.to];
+  _marks(pts, hubId);
   // H-9 (072b): each point's segment from stop_ids alone; the Veroia loading head and the cycle end are stops too
   // (Figma H1 2120:8921 draws the segment line under «Βέροια · τέλος κύκλου» as well).
   const segs = stopSegments(c);
@@ -357,7 +377,7 @@ function _waitRow(list, hubId, errors, nameOf) {
     from: athensTime(anodos ? w.load_from : w.deliver_from), to: athensTime(anodos ? w.load_to : w.deliver_to),
     allDay: anodos ? allDay(w.load_from, w.load_to) : allDay(w.deliver_from, w.deliver_to), pallets: r1(w.pallets), palUnknown: w.pallets == null ? 1 : 0,
     // late is the row's (2f): one «αργό» beside the day, never every stop of a waiting VS in amber
-    dim: false, late: false, segmentId: null, segLabel: null, day: athensDay(anodos ? w.load_from : w.deliver_from) }));
+    dim: false, late: false, segmentId: null, segLabel: null, day: athensDay(anodos ? w.load_from : w.deliver_from), _np: _noPriceIds([w]) }));
   const pallets = _sum(ws), palUnknown = _unk(ws);
   const loadDay = ws.map(_loadDay).filter(Boolean).sort()[0] || null;
   // A ΚΑΘΟΔΟΣ load that starts outside the hub: one loading point per place (nat_from), named by the catalogue.
@@ -369,7 +389,7 @@ function _waitRow(list, hubId, errors, nameOf) {
   }
   const origin = [...byFrom.values()].map((g, i) => ({ stopId: null, n: i + 1, name: nameOf(g[0].nat_from_location_id), city: null, locId: _idOrNull(g[0].nat_from_location_id), clients: [], temps: _temps(g),
     from: athensTime(g[0].load_from), to: athensTime(g[0].load_to), allDay: allDay(g[0].load_from, g[0].load_to),
-    pallets: _sum(g), palUnknown: _unk(g), dim: false, late: false, segmentId: null, segLabel: null, day: _loadDay(g[0]) }));
+    pallets: _sum(g), palUnknown: _unk(g), dim: false, late: false, segmentId: null, segLabel: null, day: _loadDay(g[0]), _np: _noPriceIds(g) }));
   // ΠΡΟΣ of an ΑΝΟΔΟΣ: where the loads go (nat_to), one point per place — «Βέροια» for the hub (a vs_export), never
   // an empty cell for a destination the board knows.
   const byTo = new Map();
@@ -383,10 +403,11 @@ function _waitRow(list, hubId, errors, nameOf) {
   const dest = [...byTo.values()].map((g, i) => ({ stopId: null, n: i + 1, name: nameOf(g[0].nat_to_location_id), city: null, locId: _idOrNull(g[0].nat_to_location_id), clients: [], temps: [],
     from: athensTime(g[0].deliver_from), to: athensTime(g[0].deliver_to), allDay: allDay(g[0].deliver_from, g[0].deliver_to), pallets: _sum(g), palUnknown: _unk(g), dim: false, late: false, segmentId: null, segLabel: null,
     day: athensDay(g[0].deliver_from), toDay: athensDay(g[0].deliver_to), hub: hubId != null && Number(g[0].nat_to_location_id) === hubId,
-    due: g.map((w) => w.nat_due_day).filter((d) => DAY_RE.test(String(d || ''))).sort()[0] || null }));
+    due: g.map((w) => w.nat_due_day).filter((d) => DAY_RE.test(String(d || ''))).sort()[0] || null, _np: _noPriceIds(g) }));
   const side = { side: anodos ? 'ANODOS' : 'KATHODOS', day: loadDay, toDay: anodos || !pts.length ? null : pts[pts.length - 1].day,
     veroia: !anodos && hubWs.length ? { stopId: null, from: athensTime(hubWs[0].load_from), to: athensTime(hubWs[0].load_to), allDay: allDay(hubWs[0].load_from, hubWs[0].load_to) } : null, vBefore: 0,
     headDim: false, from: anodos ? pts : origin, to: anodos ? dest : pts, pallets, palUnknown, over: pallets > CAP ? r1(pallets - CAP) : 0, sideDim: false, gap: null };
+  _marks(side.from.concat(side.to), hubId);
   const refs = [...new Set(ws.map((w) => w.reference).filter(Boolean))];
   const clients = [...new Set(ws.map((w) => w.client).filter(Boolean))];
   // Day L (F5 FE-2, owner 28/10): no more «… δεν ήρθαν (Worker)» line under ΠΡΟΣ ΑΝΑΘΕΣΗ. 074a sends the window

@@ -1013,10 +1013,14 @@ function _ptCity(p) {
 // B-12: the deadline of an ΑΝΟΔΟΣ ending at Veroia — the window's END (its own day: a window can cross midnight), else
 // the base's due day; never an hour the base did not give
 const _hubBy = (p) => (p.to && (p.toDay || p.day) ? `${_dow(p.toDay || p.day)} ${p.to}` : p.due ? _dl(p.due) : '');
+// Owner 2/11 (loose rules: save first, complete later): what the order still lacks, in amber (WN5L _marks). The title
+// keeps «όλη η ημέρα» (what the truck is planned for); the row's line says «λείπει ώρα» in its place, so the cell
+// grows by nothing and the gap is the word read first.
+const _missTxt = (p) => [p.noTime ? 'λείπει ώρα' : '', p.noPrice ? 'λείπει τιμή' : ''].filter(Boolean).join(' · ');
 function _ptFull(p) {
-  if (p.hub) return `Βέροια${_hubBy(p) ? ' · ως ' + _hubBy(p) : ''} · ${_pal(p.pallets, p.palUnknown)}`;   // the same words in title and «+N»
+  if (p.hub) return `Βέροια${_hubBy(p) ? ' · ως ' + _hubBy(p) : ''} · ${_pal(p.pallets, p.palUnknown)}${p.noPrice ? ' · λείπει τιμή' : ''}`;   // the same words in title and «+N»
   const city = _ptCity(p), who = _ptWho(p);
-  return `${p.name}${city ? ', ' + city : ''} · ${_winTxt(p.from, p.to, p.allDay)} · ${_pal(p.pallets, p.palUnknown)}${_tempTxt(p) ? ' · ' + _tempTxt(p) : ''}${who ? ' · ' + who : ''}`;
+  return `${p.name}${city ? ', ' + city : ''} · ${_winTxt(p.from, p.to, p.allDay)} · ${_pal(p.pallets, p.palUnknown)}${_tempTxt(p) ? ' · ' + _tempTxt(p) : ''}${who ? ' · ' + who : ''}${_missTxt(p) ? ' · ' + _missTxt(p) : ''}`;
 }
 function _ptHTML(p, n, ok, inl) {
   // Figma audit B-12 (H1): a load waiting for its ΑΝΟΔΟΣ that ends at Veroia reads as a cycle's end (r.end): «Βέροια
@@ -1025,17 +1029,19 @@ function _ptHTML(p, n, ok, inl) {
   if (p.hub) {
     const by = _hubBy(p);
     return `<span class="wi4-pt wn5-pt wn5-end${p.late ? ' wn5-late' : ''}" data-stop="${_id(p.stopId)}" title="${_esc(_ptFull(p))}">`
-      + `<span class="wi4-l1">Βέροια</span>${by ? `<span class="wi4-l2">ως ${_esc(by)}</span>` : ''}</span>`;
+      + `<span class="wi4-l1">Βέροια</span>${by ? `<span class="wi4-l2">ως ${_esc(by)}</span>` : ''}`
+      + `${p.noPrice ? '<span class="wi4-l2"><span class="wn5-miss">λείπει τιμή</span></span>' : ''}</span>`;
   }
   const city = _ptCity(p);
   const full = _ptFull(p);
-  const pw = WN5L.winText(p.from, p.to, p.allDay);
+  const pw = p.noTime ? '' : WN5L.winText(p.from, p.to, p.allDay);
+  const miss = (p.noTime ? '<span class="wn5-miss">λείπει ώρα</span> · ' : '') + (p.noPrice ? '<span class="wn5-miss">λείπει τιμή</span> · ' : '');
   return `<span class="wi4-pt wn5-pt${p.late ? ' wn5-late' : ''}${_dc(ok && p.dim && !p.late)}" data-stop="${_id(p.stopId)}"${_segAttr(p.segLabel)} title="${_esc(full)}">`
     + (n == null ? `<span class="wi4-l1">${_esc(p.name)}</span>`
       : inl ? `<span class="wi4-l1"><span class="wi4-pt-n">${n}</span> ${_esc(p.name)}</span>`
         : `<span class="wi4-pt-n">${n}</span><span class="wi4-l1">${_esc(p.name)}</span>`)
     // 2d: a part the board does not know is left out of the line, never «· — ·»
-    + `<span class="wi4-l2${p.late ? ' wi4-t-amb' : ''}">${city ? `<span class="wn5-pcity">${_esc(city)}</span> · ` : ''}${pw ? _esc(pw) + ' · ' : ''}${_esc(_pal(p.pallets, p.palUnknown))}${_tempTxt(p) ? `<span class="wn5-temp"> · ${_esc(_tempTxt(p))}</span>` : ''}</span></span>`;
+    + `<span class="wi4-l2${p.late ? ' wi4-t-amb' : ''}">${city ? `<span class="wn5-pcity">${_esc(city)}</span> · ` : ''}${pw ? _esc(pw) + ' · ' : ''}${miss}${_esc(_pal(p.pallets, p.palUnknown))}${_tempTxt(p) ? `<span class="wn5-temp"> · ${_esc(_tempTxt(p))}</span>` : ''}</span></span>`;
 }
 // The day chip of a side. On a cycle row it is a button: T16, it opens the date panel Δ4 of its side
 // (Figma 2011:8858 / 2053:7837). The classes stay those of T5/T6 (dim, «σήμερα»); other rows keep a plain chip.

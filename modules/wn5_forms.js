@@ -64,6 +64,14 @@
     const a = Math.abs(off);
     return `${day}T${hm}:00${off < 0 ? '-' : '+'}${String(Math.floor(a / 60)).padStart(2, '0')}:${String(a % 60).padStart(2, '0')}`;
   }
+  // Night window (owner 2/11, relaxed rules): an «έως» before its «από» ends the NEXT day (22:00–06:00), as the
+  // assignment form Δ1 reads it (WN5Act _win). 071 shipments_win / rt_stops_win only ask that the end is not before the
+  // start, which a next-day end is; the base keeps planned_to's day as the stop's day (v_rt_stop_state.stop_day). The
+  // same hour twice stays that instant on its day (a new truck stop makes it the minute: _sameMin). Pure: Date.UTC.
+  function _toDay(day, from, to) {
+    if (!DAY.test(String(day || '')) || !HM.test(String(from || '')) || !HM.test(String(to || '')) || to >= from) return day;
+    return new Date(Date.UTC(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10) + 1)).toISOString().slice(0, 10);
+  }
   let _partFmt = null;
   function _parts(iso) {
     const ms = Date.parse(String(iso || ''));
@@ -184,7 +192,7 @@
   // F64 (live 31/10): «08:00–08:00» is the minute that starts at 08:00 (23:59: the one that ends there) — the base
   // refuses a stop whose end is its start (071 rt_stops_win); the same rule as WN5Act's _win, never a day later
   function _sameMin(day, from, to) {
-    if (from !== to || !/^\d{2}:\d{2}$/.test(String(from))) return [_iso(day, from), _iso(day, to)];
+    if (from !== to || !/^\d{2}:\d{2}$/.test(String(from))) return [_iso(day, from), _iso(_toDay(day, from, to), to)];
     const m = Number(from.slice(0, 2)) * 60 + Number(from.slice(3, 5));
     const hm = (x) => String(Math.floor(x / 60)).padStart(2, '0') + ':' + String(x % 60).padStart(2, '0');
     return m < 1439 ? [_iso(day, from), _iso(day, hm(m + 1))] : [_iso(day, hm(m - 1)), _iso(day, to)];
@@ -234,8 +242,8 @@
       if (o.temperature_c !== null && o.temperature_c !== undefined) out.temperature_c = o.temperature_c;
       out.shipments = _pairs(o).map(([l, d, pallets]) => ({
         origin_location_id: l.location_id, dest_location_id: d.location_id, pallets,
-        load_from: _iso(l.day, l.from), load_to: _iso(l.day, l.to),
-        deliver_from: _iso(d.day, d.from), deliver_to: _iso(d.day, d.to),
+        load_from: _iso(l.day, l.from), load_to: _iso(_toDay(l.day, l.from, l.to), l.to),
+        deliver_from: _iso(d.day, d.from), deliver_to: _iso(_toDay(d.day, d.from, d.to), d.to),
       }));
       return out;
     });
@@ -266,7 +274,7 @@
         if (!HM.test(String(r.from || '')) || !HM.test(String(r.to || ''))) {
           out.push(w + (r.until ? 'άφιξη ως: ΗΗ:ΛΛ, ή κενό (όλη η ημέρα)' : 'παράθυρο: ΗΗ:ΛΛ και στα δύο άκρα, ή κανένα (όλη η ημέρα)'));
         }
-        else if (!r.until && r.from >= r.to) out.push(w + 'το «έως» πρέπει να είναι μετά το «από»');
+        // owner 2/11: no «έως before από» refusal — an earlier «έως» is a night window ending the next day (_toDay)
         // F1 (080): pallets are optional — empty = not known yet (NULL, the board writes «;»)
         if (r.pallets !== null && !(Number.isFinite(r.pallets) && r.pallets > 0 && _dec1(r.pallets))) out.push(w + 'παλέτες: αριθμός πάνω από 0 (ένα δεκαδικό), ή κενό (άγνωστες)');
       });
@@ -963,8 +971,10 @@
     // is the international's (decision 21, vs_locked).
     const lf = t(s.load_from), lt = t(s.load_to), df = t(s.deliver_from), dt = t(s.deliver_to);
     // a window over midnight cannot be held by one day field per side: read back it would land on the first day and a
-    // save would shorten it without a word (code review 28/10). Shown, never sent; the board changes it.
-    const twoDays = lf.day !== lt.day || df.day !== dt.day;
+    // save would shorten it without a word (code review 28/10). Shown, never sent; the board changes it. A night window
+    // (owner 2/11: the end on the next day, earlier on the clock) IS held: the day field is its start, _toDay its end.
+    const span = (a, b) => a.day !== b.day && b.day !== _toDay(a.day, a.hm, b.hm);
+    const twoDays = span(lf, lt) || span(df, dt);
     // live F23 (28/10): a point whose pieces stand at Veroia, planned no further (077 waits + at_hub), keeps its dates
     // and pallets editable as a waiting row; the route then starts at Veroia, where it stands
     const hubWait = s.at_hub && s.waits;
@@ -1077,8 +1087,8 @@
       const t = (k) => _hmNorm(g(k));
       // F1: both ends empty = the whole day (the create form's _rowWin); one end only stays as typed and is named
       const lw = _rowWin(false, t('lfrom'), t('lto')), dw = _rowWin(false, t('dfrom'), t('dto'));
-      return { pallets: _num(g('pal')), load_from: _iso(g('lday'), lw.from), load_to: _iso(g('lday'), lw.to),
-        deliver_from: _iso(g('dday'), dw.from), deliver_to: _iso(g('dday'), dw.to) };
+      return { pallets: _num(g('pal')), load_from: _iso(g('lday'), lw.from), load_to: _iso(_toDay(g('lday'), lw.from, lw.to), lw.to),
+        deliver_from: _iso(g('dday'), dw.from), deliver_to: _iso(_toDay(g('dday'), dw.from, dw.to), dw.to) };
     };
     const rec = (pid) => (document.getElementById('lv_' + pid) || {}).value || '';
     // F62 (code review xhigh): the picker keeps its last pick in lv_ while its text is typed over, so a name typed but
@@ -1129,7 +1139,7 @@
       }
       if (s.palOnly) return;   // its windows are the cycle's: never read, never sent
       if (!s.load_from || !s.load_to || !s.deliver_from || !s.deliver_to) out.push(w + 'ημέρα, και παράθυρο: ΗΗ:ΛΛ και στα δύο άκρα, ή κανένα (όλη η ημέρα)');
-      else if (Date.parse(s.load_from) > Date.parse(s.load_to) || Date.parse(s.deliver_from) > Date.parse(s.deliver_to)) out.push(w + 'το «έως» πρέπει να είναι μετά το «από»');
+      // owner 2/11: an «έως» before the «από» is a night window (_toDay), never refused
       else if (Date.parse(s.load_from) > Date.parse(s.deliver_to)) out.push(w + 'η παράδοση πριν από τη φόρτωση');
     };
     // an existing point is named by its route, so a line says WHICH row (code review high)
@@ -1908,5 +1918,5 @@
       'Ίδιος προορισμός — η διεθνής δεν άλλαξε', 'vs-place', `[data-vs]:has([data-osid="${orderStopId}"]) [data-vsok]`);
   }
 
-  window.WN5Form = Object.freeze({ openOrder, openLeg, vsDay, vsPlace, locDrop, newLoc, _locDropNoHub, _body, _check, _patchBody, _editFromRead, _findOrders, _iso, _parts, _legModel, _rowWin, _dayParse });
+  window.WN5Form = Object.freeze({ openOrder, openLeg, vsDay, vsPlace, locDrop, newLoc, _locDropNoHub, _body, _check, _patchBody, _editFromRead, _findOrders, _iso, _parts, _legModel, _rowWin, _dayParse, _toDay });
 })();

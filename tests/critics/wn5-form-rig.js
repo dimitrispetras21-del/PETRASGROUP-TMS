@@ -2,7 +2,7 @@
 // fake /plan/* (S.plan: method, path, body, count, order) and by what the page shows; never by a toast. Synthetic
 // week of tests/critics/wn5-rig-kit.js. The default answer of every non-dry write is 409 writes_closed, as deployed
 // until day L; scenarios script their own answers with sentinel messages.
-// Usage: node tests/critics/wn5-form-rig.js [order nowin nopp groupage unknown reused replayed edit edit-ride edit-follow edit-add edit-remove edit-read-fail edit-twoday veroia-edit day-type leg leg-anodos stop-time miss leg-add … pr3b]
+// Usage: node tests/critics/wn5-form-rig.js [order nowin nopp groupage unknown reused replayed edit edit-ride edit-follow edit-add edit-remove edit-read-fail edit-twoday night veroia-edit day-type leg leg-anodos stop-time miss leg-add … pr3b]
 //        WN5_TREE=<git archive origin/main> node tests/critics/wn5-form-rig.js   (plain-main proof: NO-GO, exit 1)
 // Exit: 0 green · 1 a check failed · 2 unknown scenario.
 'use strict';
@@ -590,17 +590,18 @@ async function scnEditRemove({ browser, origin, ok, scn }) {
   ok(scn, 'after the save «+ σημείο παράδοσης» adds nothing', await K.count(page, `${DLG} [data-newship]`) === 0);
   await closeClean(page, S, ok, scn);
 }
-// a stored window over midnight cannot sit in one day field per side: shown, never sent (it would come back shortened)
+// a stored window over MORE than a night cannot sit in one day field per side: shown, never sent (it would come back
+// shortened). Owner 2/11: a night window (the end on the next day, earlier on the clock) is held — see scnNight.
 async function scnEditTwoDay({ browser, origin, ok, scn }) {
   const orders = K.orders();
-  Object.assign(orders[3101].shipments[0], { deliver_from: '2026-10-15T19:00:00+00:00', deliver_to: '2026-10-15T23:00:00+00:00' });   // 22:00 → 02:00 Athens
+  Object.assign(orders[3101].shipments[0], { deliver_from: '2026-10-15T19:00:00+00:00', deliver_to: '2026-10-16T23:00:00+00:00' });   // Πέμ 22:00 → Σάβ 02:00 Athens
   orders[3101].shipments.push(Object.assign({}, K.orders()[3101].shipments[0], { shipment_id: 5204, dest_location_id: 4, pallets: 2 }));
   const { page, S } = await K.openApp(browser, origin, { orders, plan: { 'PATCH /plan/orders/3101': UPD_OK(3101) } });
   if (!(await guard(page, ok, scn))) return;
   await openForm(page, { natOrderId: 3101 });
   const row = await page.evaluate((d) => { const r = document.querySelector(`${d} [data-ship="5201"]`);
     return r && { ro: r.hasAttribute('data-ro'), dis: [...r.querySelectorAll('input')].every((x) => x.disabled), txt: r.textContent }; }, DLG);
-  ok(scn, 'a delivery window 22:00 → 02:00: the point is shown read-only with the reason', !!row && row.ro && row.dis && /παράθυρο σε δύο ημέρες/.test(row.txt), row);
+  ok(scn, 'a delivery window Thu 22:00 → Sat 02:00: the point is shown read-only with the reason', !!row && row.ro && row.dis && /παράθυρο σε δύο ημέρες/.test(row.txt), row);
   // still removable (077 allows it): × marks it, its fields stay disabled, ↺ keeps them disabled
   await page.click(`${DLG} [data-ship="5201"] [data-act="del-ship"]`);
   await page.click(`${DLG} [data-ship="5201"] [data-act="del-ship"]`);
@@ -615,6 +616,57 @@ async function scnEditTwoDay({ browser, origin, ok, scn }) {
   ok(scn, 'notes + the removal of the two-day point: never its window, the other point absent', p.length === 1
     && JSON.stringify(sent) === JSON.stringify({ set: { notes: 'αλλαγή' }, shipments: [{ shipment_id: 5201, remove: true }] }), p.map((x) => x.body));
   await closeClean(page, S, ok, scn);
+}
+// Owner 2/11 (relaxed rules, group 5): a night window 22:00–06:00 is accepted as ending the NEXT day, as the assignment
+// form Δ1 reads it — the form refused it with «το «έως» πρέπει να είναι μετά το «από»». In the create form the body
+// carries the next-day end; in the edit form a stored night window (22:00 → 02:00) is editable on one day field, an
+// untouched save sends no window, a changed end goes back on the next day. NO-GO on main: the refusal line, no POST,
+// and the stored night point read-only («παράθυρο σε δύο ημέρες»).
+async function scnNight({ browser, origin, ok, scn }) {
+  const { page, S } = await K.openApp(browser, origin);
+  if (!(await guard(page, ok, scn))) return;
+  await openForm(page, {});
+  await fillOrder(page, 0, Object.assign({}, ORDER_A, { loads: [r(ASP, '2026-10-14', '22:00', '06:00', 6)], drops: [r(ATH, '2026-10-15', '08:00', '10:00', 6)] }));
+  await save(page);
+  await page.waitForTimeout(1500);
+  const err = await K.text(page, `${DLG} [data-err]`);
+  ok(scn, 'no «το «έως» πρέπει να είναι μετά το «από»» line', !/μετά το «από»/.test(err), err);
+  const posts = K.planOf(S, 'POST', '/plan/orders');
+  const sh = posts[0] && posts[0].body && posts[0].body.orders && posts[0].body.orders[0].shipments[0];
+  ok(scn, 'one POST, loading 22:00 Wed → 06:00 Thu (the next day), the delivery as typed', posts.length === 1 && !!sh
+    && sh.load_from === '2026-10-14T22:00:00+03:00' && sh.load_to === '2026-10-15T06:00:00+03:00'
+    && sh.deliver_from === '2026-10-15T08:00:00+03:00' && sh.deliver_to === '2026-10-15T10:00:00+03:00', sh || posts.length);
+  await page.context().close();
+
+  const orders = K.orders();
+  Object.assign(orders[3101].shipments[0], { deliver_from: '2026-10-15T19:00:00+00:00', deliver_to: '2026-10-15T23:00:00+00:00' });   // 22:00 → 02:00 Athens
+  const p2 = await K.openApp(browser, origin, { orders, plan: { 'PATCH /plan/orders/3101': UPD_OK(3101) } });
+  await openForm(p2.page, { natOrderId: 3101 });
+  const row = await p2.page.evaluate((d) => { const x = document.querySelector(`${d} [data-ship="5201"]`);
+    const v = (k) => x.querySelector(`[data-f="${k}"]`);
+    return x && { ro: x.hasAttribute('data-ro'), live: !v('dfrom').disabled && !v('dto').disabled, day: v('dday').value, f: v('dfrom').value, t: v('dto').value, txt: x.textContent }; }, DLG);
+  ok(scn, 'a stored night delivery 22:00 → 02:00: editable, day Thu 15/10, 22:00 / 02:00, no «δύο ημέρες»', !!row && !row.ro && row.live
+    && row.day === '2026-10-15' && row.f === '22:00' && row.t === '02:00' && !/δύο ημέρες/.test(row.txt), row);
+  await p2.page.fill(`${DLG} [data-f="notes"]`, 'αλλαγή');
+  await save(p2.page);
+  await p2.page.waitForTimeout(1000);
+  let p = K.planOf(p2.S, 'PATCH', '/plan/orders/3101');
+  let sent = p[0] ? Object.assign({}, p[0].body) : null;
+  if (sent) delete sent.request_id;
+  ok(scn, 'notes only: the night window read back is no change (no shipments in the PATCH)', p.length === 1 && JSON.stringify(sent) === JSON.stringify({ set: { notes: 'αλλαγή' } }), p.map((x) => x.body));
+  await p2.page.context().close();
+
+  const p3 = await K.openApp(browser, origin, { orders, plan: { 'PATCH /plan/orders/3101': UPD_OK(3101) } });
+  await openForm(p3.page, { natOrderId: 3101 });
+  await p3.page.fill(`${DLG} [data-ship="5201"] [data-f="dto"]`, '03:00');
+  await save(p3.page);
+  await p3.page.waitForTimeout(1000);
+  p = K.planOf(p3.S, 'PATCH', '/plan/orders/3101');
+  sent = p[0] ? Object.assign({}, p[0].body) : null;
+  if (sent) delete sent.request_id;
+  ok(scn, 'the end 02:00 → 03:00: deliver_to 03:00 on Fri 16/10 (the next day), nothing else', p.length === 1
+    && JSON.stringify(sent) === JSON.stringify({ shipments: [{ shipment_id: 5201, deliver_to: '2026-10-16T03:00:00+03:00' }] }), p.map((x) => x.body));
+  await closeClean(p3.page, p3.S, ok, scn);
 }
 async function scnEditReadFail({ browser, origin, ok, scn }) {
   const { page, S } = await K.openApp(browser, origin, { plan: { 'GET /plan/orders/3101': () => K.planErr(503, 'SCHEMA_BEHIND', 'schema_behind') } });
@@ -1147,7 +1199,7 @@ async function scnPr3b({ browser, origin, ok, scn }) {
 }
 
 K.run({
-  scenarios: { order: scnOrder, nowin: scnNoWin, nopp: scnNoPP, groupage: scnGroupage, unknown: scnUnknown, reused: scnReused, replayed: scnReplayed, edit: scnEdit, 'edit-ride': scnEditRide, 'edit-follow': scnEditFollow, 'edit-add': scnEditAdd, 'edit-remove': scnEditRemove, 'edit-read-fail': scnEditReadFail, 'edit-twoday': scnEditTwoDay, 'veroia-edit': scnVeroiaEdit, 'day-type': scnDayType, leg: scnLeg, 'leg-anodos': scnLegAnodos, 'stop-time': scnStopTime, miss: scnMiss, 'leg-add': scnLegAdd, vs: scnVs, f44: scnF44, pr3b: scnPr3b },
+  scenarios: { order: scnOrder, nowin: scnNoWin, nopp: scnNoPP, groupage: scnGroupage, unknown: scnUnknown, reused: scnReused, replayed: scnReplayed, edit: scnEdit, 'edit-ride': scnEditRide, 'edit-follow': scnEditFollow, 'edit-add': scnEditAdd, 'edit-remove': scnEditRemove, 'edit-read-fail': scnEditReadFail, 'edit-twoday': scnEditTwoDay, night: scnNight, 'veroia-edit': scnVeroiaEdit, 'day-type': scnDayType, leg: scnLeg, 'leg-anodos': scnLegAnodos, 'stop-time': scnStopTime, miss: scnMiss, 'leg-add': scnLegAdd, vs: scnVs, f44: scnF44, pr3b: scnPr3b },
   globals: ['WN5Form'],
   go: 'the v5 order forms send one body per press, from the form only, with one request_id per open form',
 }).catch((e) => { console.error(e); process.exit(1); });
