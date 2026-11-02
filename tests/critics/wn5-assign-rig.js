@@ -654,5 +654,106 @@ async function veroia_busy({ browser, origin, ok, scn }) {
   await page.context().close();
 }
 
-K.run({ scenarios: { own_new, own_join, only_hours, partner, accept_busy, vehicle, rate2, handover, veroia_list, veroia_new, f61, f54, veroia_later, pr3b, veroia_busy }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],
+// 13 · the Veroia board bugs of the usability test (docs/national-v5/usability-test-2026-11-02.md §3, items 1–4):
+// «Σπάσε…» on the load's own day (not the panel's first), the day beside the hours, «κανένα φορτηγό» said; the list
+// keeps its place on a tick; the hour fields of «Νέο φορτίο» keep the focus and a press right after typing is not
+// eaten; «Λείπει» says a word once and marks the empty fields; a disabled «Δημιουργία φορτίου» does not look navy.
+// The week: hubBoard without the late VS-T202 (the panel's first day is then Mon 12/10, RT-T101's Veroia day) + a VS
+// ready Wed 14/10 (VS-T204) and RT-T103, which loads at Veroia on Wed 14/10 + 14 more VS rows (the list scrolls).
+function fixBoard() {
+  const b = hubBoard();
+  b.hub = b.hub.filter((h) => h.piece_id !== 4203);
+  b.hub.push(Object.assign({}, VS_BASE, { piece_id: 4204, shipment_id: 5304, order_id: 2204, reference: 'VS-T204', pallets: 20, nat_to_location_id: 4,
+    nat_ready_day: '2026-10-14', nat_due_day: '2026-10-15', for_split: true }));
+  for (let i = 0; i < 14; i++) b.hub.push(Object.assign({}, VS_BASE, { piece_id: 4210 + i, shipment_id: 5310 + i, order_id: 2210 + i, reference: 'VS-T2' + (10 + i),
+    pallets: 2, nat_to_location_id: 2 + (i % 4), nat_ready_day: '2026-10-15', nat_due_day: '2026-10-16', for_split: true }));
+  b.cycles.push({ rt_id: 103, code: 'RT-T103', trip_type: 'OWNED', truck_id: 13, truck: 'TST-2106', trailer_id: 22, trailer: 'TRL-5104', driver_id: 33, driver: 'Driver Test 03',
+    partner_id: null, partner: null, partner_rate: null, start_at: '2026-10-14T16:00:00+03:00', end_at: '2026-10-15T09:00:00+03:00',
+    date_start: '2026-10-14', date_end: '2026-10-15', ended: false,
+    stops: [K.stop(1201, 1, 'KATHODOS', 1, '2026-10-14T16:00:00+03:00', '2026-10-14T18:00:00+03:00', []),
+      K.stop(1202, 2, 'KATHODOS', 4, '2026-10-15T07:00:00+03:00', '2026-10-15T09:00:00+03:00', [])] });
+  return b;
+}
+async function veroia_fixes({ browser, origin, ok, scn, shots }) {
+  const { page, S } = await K.openApp(browser, origin, { board: fixBoard() });
+  await page.click('#wn5-hub [data-hub="open"]');
+  const SP = '.wn5-dlg[data-wn5="split"]';
+  const opts = () => page.$$eval(`${SP} select[data-part-target][data-i="0"] option`, (os) => os.map((o) => o.textContent)).catch(() => []);
+  // 1 · VS-T204 loads at Veroia Wed 14/10: RT-T103 of that day, its day beside its hours — never RT-T101 of Mon 12/10
+  await page.click('#wn5-hub .wn5-hub-it[data-piece="4204"] [data-hub="more"]');
+  await page.click('.wn5-hub-pop [data-v="split"]');
+  await page.waitForSelector(SP, { timeout: 3000 }).catch(() => {});
+  let o = await opts();
+  ok(scn, '1 · «Σπάσε…» of a load of Wed 14/10 offers the truck of Wed 14/10 with its day «TST-2106 · Βέροια Τετ 14/10 16:00–18:00», not Mon\'s TST-2104',
+    JSON.stringify(o) === JSON.stringify(['— διάλεξε —', 'μένει στη Βέροια', 'TST-2106 · Βέροια Τετ 14/10 16:00–18:00']), o);
+  if (shots) await page.screenshot({ path: shots + '/fix-split-own-day.png' });
+  await page.click(`${SP} [data-act="cancel"]`).catch(() => {});
+  await page.waitForTimeout(150);
+  // a load of Thu 15/10: no truck loads at Veroia that day → said, never an empty list
+  await page.click('#wn5-hub .wn5-hub-it[data-piece="4210"] [data-hub="more"]');
+  await page.click('.wn5-hub-pop [data-v="split"]');
+  await page.waitForSelector(SP, { timeout: 3000 }).catch(() => {});
+  o = await opts();
+  const none = await page.$eval(`${SP} .wn5-split-none`, (e) => e.textContent).catch(() => null);
+  ok(scn, '1 · a load of Thu 15/10, when no truck loads at Veroia: «Κανένα φορτηγό δεν φορτώνει στη Βέροια Πέμ 15/10», only «μένει στη Βέροια»',
+    JSON.stringify(o) === JSON.stringify(['— διάλεξε —', 'μένει στη Βέροια']) && none === 'Κανένα φορτηγό δεν φορτώνει στη Βέροια Πέμ 15/10', { o, none });
+  await page.click(`${SP} [data-act="cancel"]`).catch(() => {});
+  await page.waitForTimeout(150);
+  // 2 · a tick keeps the list where it was (16 rows: the list scrolls inside)
+  const sc = await page.evaluate(() => {
+    const l = document.querySelector('#wn5-hub .wn5-hub-l');
+    l.scrollTop = 300;
+    const before = l.scrollTop;
+    document.querySelector('#wn5-hub .wn5-hub-it[data-piece="4220"] .wn5-hub-ck').click();
+    const n = document.querySelector('#wn5-hub .wn5-hub-l');
+    return { before, after: n.scrollTop, ticked: !!document.querySelector('#wn5-hub .wn5-hub-it[data-piece="4220"] .wn5-hub-ck:checked'), max: n.scrollHeight - n.clientHeight };
+  });
+  ok(scn, '2 · a tick deep in the list keeps its place (scrollTop 300 → 300), the row ticked', sc.before === 300 && sc.after === 300 && sc.ticked, sc);
+  // 4 · a disabled «Δημιουργία φορτίου» is grey, never the navy of a button that works
+  const look = await page.evaluate(() => {
+    const b = document.querySelector('#wn5-hub [data-act="nf-create"]');
+    const probe = document.createElement('span'); probe.style.color = 'var(--wi4-ink)'; document.body.appendChild(probe);
+    const navy = getComputedStyle(probe).color; probe.remove();
+    return b ? { off: b.disabled, bg: getComputedStyle(b).backgroundColor, navy } : null;
+  });
+  ok(scn, '4 · a disabled «Δημιουργία φορτίου» is not navy', !!look && look.off && look.bg !== look.navy, look);
+  // pick a truck (the form writes nothing), then «ώρες…» with empty fields
+  await page.evaluate(() => document.querySelector('#wn5-hub .wn5-hub-it[data-piece="4220"] .wn5-hub-ck').click());   // untick 4220
+  await page.click('#wn5-hub .wn5-hub-it[data-piece="4201"] .wn5-hub-ck');
+  await page.click('#wn5-hub .wn5-nf-pick');
+  await page.waitForSelector(DLG, { timeout: 4000 });
+  await pickIn(page, 'tk', '2108', 'TST-2108');
+  await pickIn(page, 'tl', '5104', 'TRL-5104');
+  await pickIn(page, 'dr', 'Test 02', 'Driver Test 02');
+  await page.click(`${DLG} [data-act="save"]`);
+  await page.waitForTimeout(150);
+  await page.click('#wn5-hub .wn5-nf .wn5a-hrs');
+  const miss = await page.evaluate(() => ({ why: (document.querySelector('#wn5-hub [data-nfwhy]') || {}).textContent,
+    bad: [...document.querySelectorAll('#wn5-hub [data-nfhm]')].map((i) => i.classList.contains('bad')) }));
+  ok(scn, '3 · «Λείπει: παράθυρο Βέροιας» once, both empty hour fields marked', miss.why === 'Λείπει: παράθυρο Βέροιας' && JSON.stringify(miss.bad) === '[true,true]', miss);
+  // 2 · the hour fields keep the focus: type, Tab, type — never a redraw under the caret
+  await page.focus('#wn5-hub [data-nfhm="from"]');
+  await page.keyboard.type('1600');
+  await page.keyboard.press('Tab');
+  const foc = await page.evaluate(() => { const a = document.activeElement; return a && a.dataset ? a.dataset.nfhm || a.tagName : null; });
+  await page.keyboard.type('1800');
+  const vals = await page.evaluate(() => [...document.querySelectorAll('#wn5-hub [data-nfhm]')].map((i) => i.value + (i.classList.contains('bad') ? '!' : '')));
+  ok(scn, '2 · «ώρες»: 1600, Tab, 1800 typed without a click → the focus moves to «έως», both values kept, «από» normalised and unmarked',
+    foc === 'to' && JSON.stringify(vals) === JSON.stringify(['16:00', '1800']), { foc, vals });
+  // a press on «Αλλαγή ▾» right after typing (no Tab) is not eaten: the assignment form opens
+  await page.click('#wn5-hub .wn5-nf-ch');
+  const opened = await page.waitForSelector(DLG, { timeout: 2000 }).then(() => true, () => false);
+  ok(scn, '2 · a press on «Αλλαγή ▾» right after typing «έως» opens the form (the press is not eaten)', opened);
+  if (opened) await page.click(`${DLG} [data-act="save"]`).catch(() => {});
+  await page.waitForTimeout(150);
+  const fin = await page.evaluate(() => ({ why: (document.querySelector('#wn5-hub [data-nfwhy]') || {}).textContent,
+    off: (document.querySelector('#wn5-hub [data-act="nf-create"]') || {}).disabled, vals: [...document.querySelectorAll('#wn5-hub [data-nfhm]')].map((i) => i.value) }));
+  ok(scn, '2 · the window 16:00–18:00 stays and «Δημιουργία φορτίου» is on', JSON.stringify(fin.vals) === '["16:00","18:00"]' && fin.off === false, fin);
+  if (shots) await page.screenshot({ path: shots + '/fix-new-load.png' });
+  ok(scn, 'nothing written', !saves(S).length, saves(S).map((x) => x.path));
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await page.context().close();
+}
+
+K.run({ scenarios: { own_new, own_join, only_hours, partner, accept_busy, vehicle, rate2, handover, veroia_list, veroia_new, f61, f54, veroia_later, pr3b, veroia_busy, veroia_fixes }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],
   go: 'the assignment form (own new / join / only / hours / F39 / partner / vehicle / F51-F61 / F54 / F56 / 089 two fees), ✈ «Αλλαγή οχήματος…» and the Veroia board v2 «Νέο φορτίο» hold' });

@@ -430,9 +430,8 @@ function _compute() {
   expRows.forEach((r) => { const k = _day(fOf(r)['Delivery DateTime'] || fOf(r)['Loading DateTime']); const b = r.outOfWindow ? extra : groups; (b[k] = b[k] || { date: k, exps: [], imps: [] }).exps.push(r); });
   impRows.forEach((r) => { const k = _day(fOf(r)['Loading DateTime']); const b = r.outOfWindow ? extra : groups; (b[k] = b[k] || { date: k, exps: [], imps: [] }).imps.push(r); });
   const byDate = (a, b) => (a.date || '~').localeCompare(b.date || '~');
-  const cKey = (f) => String(f['Client Name'] || f['Client Summary'] || '').toUpperCase();
-  const sorter = (field) => (a, b) => { const fa = fOf(a), fb = fOf(b);
-    return cKey(fa).localeCompare(cKey(fb), 'el') || ((fa['Veroia Switch'] ? 1 : 0) - (fb['Veroia Switch'] ? 1 : 0)) || String(fa[field] || '').localeCompare(String(fb[field] || '')); };
+  // WI4.dayRowOrder: the one rule, shared with «Παραγγελίες › Εβδομάδα».
+  const sorter = (field) => (a, b) => lg.dayRowOrder(fOf(a), fOf(b), field);
 
   const days = [];
   const entries = [];
