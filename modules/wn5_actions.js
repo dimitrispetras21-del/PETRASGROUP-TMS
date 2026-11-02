@@ -101,7 +101,7 @@
     all.sort((a, b) => (a.side === 'ANODOS') - (b.side === 'ANODOS') || new Date(a.from) - new Date(b.from));
     let top = null;
     for (const s of all) {
-      if (top && new Date(s.to || s.from) <= new Date(top.from)) return s.side !== top.side ? [s, top] : null;
+      if (top && (s.to ? new Date(s.to) <= new Date(top.from) : new Date(s.from) < new Date(top.from))) return s.side !== top.side ? [s, top] : null;
       if (!top || new Date(s.from) > new Date(top.from)) top = s;
     }
     return null;

@@ -162,6 +162,15 @@
   const _covers = (c, d) => (c.date_start <= d && d <= c.date_end) || K().ymdOf(c.end_at) === d;
   const _segs = (c) => { try { return typeof WN5L !== 'undefined' ? WN5L.segmentsOf(c).segments : [c]; } catch (e) { return [c]; } };
   const _uses = (c, key, id) => id != null && (c[key] === id || _segs(c).some((g) => g[key] === id));
+  const _onSpan = (c, sp) => { for (let d = sp[0]; d <= sp[1]; d = K().addDays(d, 1)) if (_covers(c, d)) return true; return false; };
+  // where a cycle ends, in words: «Larisa ως Τρί 23:59» (its last stop, the hub as «Βέροια»)
+  const _endAt = (c, day) => {
+    const k = K(), hub = k.hubId();
+    const last = (c.stops || []).slice().sort((x, y) => Date.parse(x.planned_to) - Date.parse(y.planned_to)).pop();
+    const at = last ? (last.location_id === hub ? 'Βέροια' : last.location || k.placeName(last.location_id)) : '—';
+    const endDay = k.ymdOf(c.end_at);
+    return at + ' ως ' + (endDay === day ? '' : k.dayShort(endDay).split(' ')[0] + ' ') + k.hm(c.end_at);
+  };
   // the live cycles of a vehicle that run on day d, the earliest first (two the same day = «άλλο ›», never a silent pick)
   function _cands(st, who, id, d) {
     if (id == null || !d) return [];
@@ -365,21 +374,17 @@
     const D = _dayD(st);
     const sp = _span(st);
     if (!sp) return null;
-    const a = sp[0], b = sp[1];
+    const a = sp[0];
     if (_blind(st)) return { txt: '—', cls: '' };
     const mine = st.cycles.filter((c) => c.rt_id !== st.rtId && _uses(c, key, id));
-    const on = mine.filter((c) => { for (let d = a; d <= b; d = k.addDays(d, 1)) if (_covers(c, d)) return true; return false; })
-      .sort((x, y) => Date.parse(x.start_at) - Date.parse(y.start_at));
+    const on = mine.filter((c) => _onSpan(c, sp)).sort((x, y) => Date.parse(x.start_at) - Date.parse(y.start_at));
     if (on.length) {
       const c = on[0];
       const hubLoc = k.hubId();
       const hs = (c.stops || []).find((s) => s.side === st.side && s.location_id === hubLoc);
       const sp = st.sidePal[c.rt_id] || { pal: 0, unk: 0 };
       if (hs && k.stopDay(hs) === D) return { txt: 'Βέροια ' + k.hmw(hs.planned_from, hs.planned_to) + ' · ' + WN5L.palText(sp.pal, sp.unk) + 'π', cls: 'dim' };
-      const last = (c.stops || []).slice().sort((x, y) => Date.parse(x.planned_to) - Date.parse(y.planned_to)).pop();
-      const at = last ? (last.location_id === hubLoc ? 'Βέροια' : last.location || k.placeName(last.location_id)) : '—';
-      const endDay = k.ymdOf(c.end_at);
-      return { txt: at + ' ως ' + (endDay === D ? '' : k.dayShort(endDay).split(' ')[0] + ' ') + k.hm(c.end_at), cls: 'busy' };
+      return { txt: _endAt(c, D), cls: 'busy' };
     }
     // a driver back on day X leaves on X+2 (561/2006, the International popover's rule); before that he is not free
     if (f.kind === 'driver') {
@@ -392,33 +397,29 @@
   // the press, in amber, naming every such cycle, and the save carries accept_busy from the first press (one press,
   // not a refusal and then «Αποθήκευση έτσι κι αλλιώς»). The base still judges and keeps each accepted pair with an
   // audit row (086 plan_seg_overlap_mark). The list is by day, from the board: it may name a cycle whose hours do not
-  // clash (harmless), never fewer. A span the board does not cover (_blind) is not pre-accepted: the base accepts
-  // EVERY overlap of the save, and one we cannot name must not pass silently — there the refusal and its offer stay.
+  // clash (harmless), never fewer. Said but NOT pre-accepted (code review high): a span the board does not cover
+  // (_blind) — the base accepts EVERY overlap of the save, and one we cannot name must not pass silently — and the
+  // pick mode, which writes nothing (its caller saves). There the refusal and its offer stay.
+  // null = no overlap on the board; else { text, accept }.
   function _overlaps(st, r) {
     const k = K();
     if (st.who !== 'own' || !r || r.missing || !r.body) return null;
     const sp = _span(st);
-    if (!sp || _blind(st)) return null;
+    if (!sp) return null;
     const self = new Set([st.rtId, r.body.target && r.body.target.rt_id].filter((x) => x != null));
-    const hub = k.hubId();
     const out = [];
     for (const [key, id, who] of [['truck_id', st.truck, 'φορτηγό'], ['driver_id', st.driver, 'οδηγός']]) {
       if (id == null) continue;
-      const cs = st.cycles.filter((c) => !self.has(c.rt_id) && _uses(c, key, id)
-        && (() => { for (let d = sp[0]; d <= sp[1]; d = k.addDays(d, 1)) if (_covers(c, d)) return true; return false; })())
+      const cs = st.cycles.filter((c) => !self.has(c.rt_id) && _uses(c, key, id) && _onSpan(c, sp))
         .sort((x, y) => Date.parse(x.start_at) - Date.parse(y.start_at));
-      if (!cs.length) continue;
-      const at = (c) => {
-        const last = (c.stops || []).slice().sort((x, y) => Date.parse(x.planned_to) - Date.parse(y.planned_to)).pop();
-        const place = last ? (last.location_id === hub ? 'Βέροια' : last.location || k.placeName(last.location_id)) : '—';
-        return place + ' ως ' + k.dayShort(k.ymdOf(c.end_at)).split(' ')[0] + ' ' + k.hm(c.end_at);
-      };
-      out.push(who + ' και σε: ' + cs.map(at).join(', '));
+      if (cs.length) out.push(who + ' και σε: ' + cs.map((c) => _endAt(c, null)).join(', '));
     }
-    return out.length ? 'Επικάλυψη · ' + out.join(' · ') + '. Αποθηκεύεται έτσι, γράφεται στο ιστορικό.' : null;
+    if (!out.length) return null;
+    const accept = st.mode !== 'pick' && !_blind(st);
+    return { accept, text: 'Επικάλυψη · ' + out.join(' · ') + (accept ? '. Αποθηκεύεται έτσι, γράφεται στο ιστορικό.' : '.') };
   }
   // the request the save sends: with accept_busy when the form already said the overlap (Π2)
-  const _sendReq = (st, r) => (_overlaps(st, r) && WN5Act.withAccept(r, { code: 'truck_busy' })) || r;
+  const _sendReq = (st, r) => { const o = _overlaps(st, r); return (o && o.accept && WN5Act.withAccept(r, { code: 'truck_busy' })) || r; };
   // the last rate of a partner on the loaded week (the history of the line needs a Worker read: follow-up)
   function _lastRate(st, id) {
     const c = st.cycles.filter((x) => x.trip_type === 'PARTNER' && x.partner_id === id && x.partner_rate != null)
@@ -648,7 +649,7 @@
       miss.textContent = pb.words.length ? 'Λείπει: ' + pb.words.join(', ') : '';
       // the stop order the base would refuse (stop_order, 086): said before the press, soft (amber), never a block
       const ow = r && !r.missing && r.body && r.body.target && r.body.target.rt_id ? k.orderWarn(st.cycles.find((c) => c.rt_id === r.body.target.rt_id), r) : null;
-      const ov = pb.words.length ? null : _overlaps(st, r);
+      const ov = pb.words.length ? null : (_overlaps(st, r) || {}).text;
       if (!pb.words.length && (ow || ov)) miss.textContent = [ow, ov].filter(Boolean).join(' ');
       miss.classList.toggle('wn5-soft', !pb.words.length && !!(ow || ov));
       const b = d.dlg.querySelector('[data-act="save"]');
