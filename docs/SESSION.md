@@ -12,6 +12,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
+- dimitris · `docs/pallets-weekly-design` · Παλέτες › Εβδομάδα: σχέδιο Figma N19–N22 ΕΓΚΡΙΘΗΚΕ (owner 2/11)· κώδικας μετά την κοινή αρίθμηση του Weekly, μαζί με Υ3 / Υ4 (`docs/sessions/2026-11-02-dimitris-pallets-weekly-design.md`)
 - dimitris · `feat/wn5-road-change` · Εθνικά v5: «Αλλαγή στον δρόμο», κομμάτι 5 (οθόνες): `modules/wn5_road.js` πίσω από `FEATURES.WN_ROAD` (false ως το deploy του #239)· ✈ «Αλλαγή στον δρόμο…» + δεξί κλικ «… από εδώ…», παράθυρο, προεπισκόπηση, whole_vehicle → 072b, ο τόπος TRANSFER POINT εκτός λιστών· rig 49/49· στοιβαγμένο στο #239· ?v= / SW_VERSION 1793820000 (`docs/sessions/2026-11-02-dimitris-road-change-screens.md`)
 - dimitris · `deploy/worker-transfer-drafts` · Εθνικά v5: ΕΝΑΣ Worker για `POST /plan/transfer` (099) + `/plan/drafts` (102), πάνω στον 7bb5003a· φρουρός `--road 1` (34 σημάδια)· client λίστες + ?v= / SW_VERSION 1793810000· deploy από τον owner μετά τις 098 → 099 → 102 (`docs/sessions/2026-11-02-dimitris-worker-transfer-drafts.md`)
 - dimitris · `feat/compose-drafts-102` · Εθνικά v5: 102 προσχέδιο, πρόχειρα φορτία στη βάση («Σύνθεση φορτίων», σχέδιο #236)· PGlite + build tests πράσινα· εκτέλεση από τον owner μετά τις 15:00· διαδρομές Worker στην αλυσίδα με το `/plan/transfer` (συντονιστής)· καμία αλλαγή οθόνης (`docs/sessions/2026-11-02-dimitris-compose-drafts-102.md`)
