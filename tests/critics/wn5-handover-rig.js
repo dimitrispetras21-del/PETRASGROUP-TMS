@@ -829,6 +829,28 @@ async function scnBusy({ browser, origin, ok, scn }) {
       && await K.count(page, `${HDLG} [data-err] [data-act="accept-busy-send"]`) === 1, dry2.map((x) => x.body));
     await page.context().close();
   }
+  { // D · the dry run passed, the save is refused truck_busy (another save took the truck in between): the refusal and
+    // the offer on the form, the save off; the yes → a dry run with accept_busy, then one press
+    let n = 0;
+    const { page, S } = await K.openApp(browser, origin, { board: oneSegWeek(), plan: { 'POST /plan/rt/101/handover': (e) => (e.body.dry_run === true ? dryOk(e.body)
+      : (++n === 1 ? K.planErr(422, 'PLAN_RULE', 'truck_busy') : [200, { ok: true, op: 'plan_seg_change', dry_run: false, ids: { rt_id: 101 }, warnings: [], notice_ids: [] }])) } });
+    await page.evaluate(() => WN5Hand.change(101));
+    await page.waitForSelector(HDLG, { timeout: 6000 }).catch(() => {});
+    await fillChange(page, CH);
+    await page.waitForTimeout(1200);
+    await page.click(`${HDLG} [data-act="save"]`).catch(() => {});
+    await page.waitForTimeout(800);
+    ok(scn, '096: a save refused truck_busy → the offer on the form, the save off', await K.count(page, `${HDLG} [data-err] [data-act="accept-busy-send"]`) === 1
+      && await page.evaluate((d) => document.querySelector(`${d} [data-act="save"]`).disabled, HDLG));
+    await page.click(`${HDLG} [data-act="accept-busy-send"]`).catch(() => {});
+    await page.waitForTimeout(1200);
+    await page.click(`${HDLG} [data-act="save"]`).catch(() => {});
+    await page.waitForTimeout(800);
+    const ex = posts(S).filter((x) => x.body.dry_run !== true);
+    ok(scn, '096: after the yes, one press saves with accept_busy (the same request_id)', ex.length === 2 && !ex[0].body.accept_busy && ex[1].body.accept_busy === true
+      && ex[0].body.request_id === ex[1].body.request_id, ex.map((x) => x.body));
+    await page.context().close();
+  }
   { // C · the correction of RT-T101's segment to truck 12, which RT-T102 uses on Tuesday too: said, and accept_busy
     const b = oneSegWeek();
     Object.assign(b.cycles.find((c) => c.rt_id === 102), { start_at: '2026-10-13T10:00:00+03:00', date_start: '2026-10-13' });
