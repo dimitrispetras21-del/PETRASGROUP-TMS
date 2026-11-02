@@ -1337,12 +1337,14 @@ const OrdersWeekView = (() => {
     const recs = ids => ids.map(id => b.byId.get(id)).filter(Boolean);
     const partnerOf = row => { const p = ((b.byId.get(row.orderIds[0]) || {}).fields || {})['Partner']; return !!(Array.isArray(p) ? p[0] : p); };
     const seen = new Set(), out = [];
+    let elsewhere = 0;   // legs on another week's board: their paper is there, said in the overlay
     for (const l of r.legs || []) {
       const br = rowOf(l.own && l.own.id) || rowOf(l.rec && l.rec.id);
       if (br && !seen.has(br)) { seen.add(br); out.push(br); }
+      else if (!br && l.rec) elsewhere++;
     }
     out.sort((a, c) => (a.type === 'export' ? 0 : 1) - (c.type === 'export' ? 0 : 1));
-    return out.map(br => {
+    const docs = out.map(br => {
       const imp = br.type === 'import', leg = imp ? 'import' : 'export';
       const group = br.orderIds.length > 1;
       const exp = imp ? rows.find(x => x.type === 'export' && x.importId && br.orderIds.includes(x.importId)) : null;
@@ -1353,6 +1355,8 @@ const OrdersWeekView = (() => {
       const what = (imp ? 'Εισαγωγή' : 'Εξαγωγή') + (group ? ` · ομάδα ${br.orderIds.length}` : '');
       return { query, title: `${what} — ${hasP ? 'Φύλλο Συνεργάτη' : 'Φύλλο Οδηγού'}` };
     });
+    docs.elsewhere = elsewhere;
+    return docs;
   }
   const DOCS_HTML = '<div class="owv-docs hidden" id="owvDocs" role="dialog" aria-modal="false" aria-label="Έγγραφα ανάθεσης"></div>';
   function _openDocs(i) {
@@ -1360,11 +1364,15 @@ const OrdersWeekView = (() => {
     if (!r || !box) return;
     const docs = _rowDocs(r);
     if (!docs.length) return;
+    // one panel on the right at a time: the order card gives way to the documents
+    if (typeof _oiCloseCard === 'function') _oiCloseCard();
+    if (typeof closeNatlDetail === 'function') closeNatlDetail();
+    const away = docs.elsewhere ? `<div class="owv-doc-t">${docs.elsewhere} ${docs.elsewhere === 1 ? 'σκέλος είναι' : 'σκέλη είναι'} σε άλλη εβδομάδα — το έγγραφό ${docs.elsewhere === 1 ? 'του' : 'τους'} είναι στο Εβδομαδιαίο εκείνης της εβδομάδας</div>` : '';
     // print.html alone in each frame (never a second app): noprint=1 keeps its own print dialog for its
     // «Print / PDF» button, so the paper is read here and printed from its own bar.
     box.innerHTML = `<div class="owv-docs-h"><b>Έγγραφα ανάθεσης</b><span>${esc(r.code || OC().numLabel(r.rec || {}))}</span>
       <button type="button" class="owv-docs-x" data-owvdocs="close" title="Κλείσιμο (Esc)" aria-label="Κλείσιμο">×</button></div>
-      <div class="owv-docs-b">${docs.map(d => `<section class="owv-doc"><div class="owv-doc-t">${esc(d.title)}</div>
+      <div class="owv-docs-b">${away}${docs.map(d => `<section class="owv-doc"><div class="owv-doc-t">${esc(d.title)}</div>
         <iframe class="owv-doc-f" title="${esc(d.title)}" src="print.html?${esc(d.query)}&noprint=1"></iframe></section>`).join('')}</div>`;
     box.classList.remove('hidden');
   }
