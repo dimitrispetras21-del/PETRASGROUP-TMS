@@ -794,8 +794,10 @@ const OrdersWeekView = (() => {
     const m = buildWeek({ week: S.week, intl: d.intl, natl: d.natl, rts: d.rts, cancelled: d.cancelled });
     // The board's numbers (null = they could not be worked out: every row says «—», never a guess).
     const nums = scope !== 'natl' ? _numbers(d) : null;
-    for (const r of [...m.rows, ...m.noRt]) {
+    S.rowsAll = [...m.rows, ...m.noRt];
+    for (const [i, r] of S.rowsAll.entries()) {
       r.nos = nums ? rowNumbers(r, nums) : [];
+      r.docI = i;
       // Each order line shows the number of the Weekly line that draws it (owner 2/11: compared line by line).
       for (const l of r.legs) l.no = nums ? legNumber(l, nums) : 'failed';
     }
@@ -932,8 +934,10 @@ const OrdersWeekView = (() => {
     ctx.body.innerHTML = `<div class="ow4">
       ${_fails(d, m, scope, undated)}
       <div class="ow4-strip"><button type="button" class="ow4-arr" data-owvshift="-1" aria-label="Προηγούμενη εβδομάδα">‹</button>${strip}<button type="button" class="ow4-arr" data-owvshift="1" aria-label="Επόμενη εβδομάδα">›</button></div>
-      ${sumLine}${intlHtml}${natlHtml}${stHtml}</div>${CARDS_HTML}`;
+      ${sumLine}${intlHtml}${natlHtml}${stHtml}</div>${CARDS_HTML}${DOCS_HTML}`;
     ctx.body.onclick = _onClick;
+    // ΑΝΑΘΕΣΗ is a button for the keyboard too (role=button, tabindex 0)
+    ctx.body.onkeydown = e => { const d = (e.key === 'Enter' || e.key === ' ') && e.target.closest && e.target.closest('[data-owvdoc]'); if (d) { e.preventDefault(); _installDocsEsc(); _openDocs(Number(d.dataset.owvdoc)); } };
     if (wasOpen) {
       // A repaint, not an opening: no slide-in (oi-slide), and she stays where she had scrolled.
       const p = document.getElementById(wasOpen.type === 'intl' ? 'intlDetail' : 'natlDetail');
@@ -1147,12 +1151,14 @@ const OrdersWeekView = (() => {
   }
   const _emptySide = text => `<div class="ow4-sub ow4-none"><div class="ow4-c">${text}</div></div>`;
 
-  function _assignHtml(v, verdict, sumHtml, extra) {
+  function _assignHtml(v, verdict, sumHtml, extra, docI) {
     let top;
     if (v.kind === 'own' || (v.kind === 'partner' && v.plate)) top = `<span class="ow4-plate">${esc(v.plate)}</span> <span class="ow4-who ow4-ell" title="${esc(v.who)}">${esc(v.who)}</span>`;
     else if (v.kind === 'partner') top = `<span class="ow4-who ow4-ell" title="${esc(v.who)}">${esc(v.who)}</span>`;
     else top = `<span class="${v.text === '—' ? 'ow4-d' : 'ow4-asg-pa'}">${esc(v.text)}</span>`;
-    return `<div class="ow4-asg"><div class="ow4-l1 ow4-veh">${extra || top}</div>
+    // A click on ΑΝΑΘΕΣΗ shows the load's assignment document (_openDocs); the order card stays on the order.
+    const doc = docI != null ? ` data-owvdoc="${docI}" role="button" tabindex="0" title="Έγγραφο ανάθεσης"` : '';
+    return `<div class="ow4-asg${doc ? ' ow4-asg-doc' : ''}"${doc}><div class="ow4-l1 ow4-veh">${extra || top}</div>
       <div class="ow4-asg-b"><span class="ow4-vd" title="${esc(verdict)}" data-full="${esc(verdict)}">${esc(verdict)}</span><span class="ow4-sig">${sumHtml}</span></div></div>`;
   }
   function _sumHtml(recs, mk) {
@@ -1191,7 +1197,7 @@ const OrdersWeekView = (() => {
     return `<div class="ow4-row${blk ? ' ow4-blk' : ''}" data-owvopen="intl:${esc(r.openRec.id)}">
       <div class="ow4-c-rt"><div class="ow4-l1">${isRt ? esc(r.code) : '<span class="ow4-d">—</span>'}</div>${tag ? `<div class="ow4-l2">${esc(tag)}</div>` : ''}</div>
       <div class="ow4-side ow4-l">${exp}</div>
-      ${_assignHtml(v, verdictText(verdict, n), _sumHtml(r.counted, mk))}
+      ${_assignHtml(v, verdictText(verdict, n), _sumHtml(r.counted, mk), '', _rowDocs(r).length ? r.docI : null)}
       <div class="ow4-side ow4-r">${imp}</div></div>`;
   }
 
@@ -1239,6 +1245,9 @@ const OrdersWeekView = (() => {
     if (e.target.closest('[data-owvretry]')) { S.force = true; return _rerender(); }
     const go = e.target.closest('[data-owvgo]');
     if (go) return OrdersHub.setView(go.dataset.owvgo);
+    if (e.target.closest('[data-owvdocs="close"]')) return _closeDocs();
+    const doc = e.target.closest('[data-owvdoc]');
+    if (doc) { _installDocsEsc(); return _openDocs(Number(doc.dataset.owvdoc)); }
     const open = e.target.closest('[data-owvopen]');
     if (open) {
       const [type, id] = open.dataset.owvopen.split(':');
@@ -1293,16 +1302,82 @@ const OrdersWeekView = (() => {
 
   // The board's numbers of this read; an error is said on the row («—» with why), never a 0.
   function _numbers(d) {
+    S.board = null;
     try {
-      return WI4.weekNumbers({ recs: [...d.intl, ...(d.cancelled || [])], wsDate: new Date(S.week + 'T00:00:00'), dayOf: toLocalDate,
+      // the board's rows of this week (WI4.weekBoard): its numbers, and the line whose document ΑΝΑΘΕΣΗ shows
+      S.board = WI4.weekBoard({ recs: [...d.intl, ...(d.cancelled || [])], wsDate: new Date(S.week + 'T00:00:00'), dayOf: toLocalDate,
         split: typeof FEATURES !== 'undefined' && !!FEATURES.ORDER_SPLIT,
         // The board shows its stock shelf when stock is on (this page is never the warehouse's)
         shelf: typeof OrdersStock !== 'undefined' && OrdersStock.on(),
         isLoose: f => window.WI_INTERNAL.loose(f) });
+      return WI4.numberOf(S.board.built, S.board.no);
     } catch (e) {
       console.error('orders week: Weekly numbers', e);
+      S.board = null;
       return null;
     }
+  }
+
+  // ── ΑΝΑΘΕΣΗ → the assignment document (owner 2/11/2026: «μόνο το έγγραφο της
+  // ανάθεσης να δω»). The SAME paper the Weekly International prints for that
+  // load — print.html, the one renderer (driver or partner sheet, a group's
+  // packet) — shown read-only over the week; nothing here saves. Which paper:
+  // the board's own rule of its assignment cell (weekly_intl_v2.js, the ⎙
+  // beside the pill): an export prints itself, a group as a packet in its stop
+  // order (WI_INTERNAL.grpOrder = _wiGrpOrder); an import-only row prints
+  // itself; a matched import prints itself with the EXPORT row's sheet, or its
+  // import group's packet with that group's sheet. Partner sheet when the row
+  // has a partner (owner 9/8). Export first, then import. Old / v5 nationals:
+  // not here yet (their sheet needs the v5 board: a later step).
+  function _rowDocs(r) {
+    const b = S.board;
+    if (!b || typeof printSheetQuery !== 'function' || !window.WI_INTERNAL) return [];
+    const rows = b.built.rows;
+    const rowOf = id => (id && rows.find(x => (x.orderIds || []).includes(id))) || null;
+    const recs = ids => ids.map(id => b.byId.get(id)).filter(Boolean);
+    const partnerOf = row => { const p = ((b.byId.get(row.orderIds[0]) || {}).fields || {})['Partner']; return !!(Array.isArray(p) ? p[0] : p); };
+    const seen = new Set(), out = [];
+    for (const l of r.legs || []) {
+      const br = rowOf(l.own && l.own.id) || rowOf(l.rec && l.rec.id);
+      if (br && !seen.has(br)) { seen.add(br); out.push(br); }
+    }
+    out.sort((a, c) => (a.type === 'export' ? 0 : 1) - (c.type === 'export' ? 0 : 1));
+    return out.map(br => {
+      const imp = br.type === 'import', leg = imp ? 'import' : 'export';
+      const group = br.orderIds.length > 1;
+      const exp = imp ? rows.find(x => x.type === 'export' && x.importId && br.orderIds.includes(x.importId)) : null;
+      const hasP = imp && !group && exp ? partnerOf(exp) : partnerOf(br);
+      const ids = group ? WI_INTERNAL.grpOrder(recs(br.orderIds), imp ? 'Loading DateTime' : undefined).map(e => e.id) : [br.orderIds[0]];
+      const query = group ? `orderIds=${(ids.length ? ids : br.orderIds).join(',')}&leg=${leg}&sheet=${hasP ? 'partner' : 'driver'}`
+        : printSheetQuery(br.orderIds[0], leg, hasP);
+      const what = (imp ? 'Εισαγωγή' : 'Εξαγωγή') + (group ? ` · ομάδα ${br.orderIds.length}` : '');
+      return { query, title: `${what} — ${hasP ? 'Φύλλο Συνεργάτη' : 'Φύλλο Οδηγού'}` };
+    });
+  }
+  const DOCS_HTML = '<div class="owv-docs hidden" id="owvDocs" role="dialog" aria-modal="false" aria-label="Έγγραφα ανάθεσης"></div>';
+  function _openDocs(i) {
+    const r = (S.rowsAll || [])[i], box = document.getElementById('owvDocs');
+    if (!r || !box) return;
+    const docs = _rowDocs(r);
+    if (!docs.length) return;
+    // print.html alone in each frame (never a second app): noprint=1 keeps its own print dialog for its
+    // «Print / PDF» button, so the paper is read here and printed from its own bar.
+    box.innerHTML = `<div class="owv-docs-h"><b>Έγγραφα ανάθεσης</b><span>${esc(r.code || OC().numLabel(r.rec || {}))}</span>
+      <button type="button" class="owv-docs-x" data-owvdocs="close" title="Κλείσιμο (Esc)" aria-label="Κλείσιμο">×</button></div>
+      <div class="owv-docs-b">${docs.map(d => `<section class="owv-doc"><div class="owv-doc-t">${esc(d.title)}</div>
+        <iframe class="owv-doc-f" title="${esc(d.title)}" src="print.html?${esc(d.query)}&noprint=1"></iframe></section>`).join('')}</div>`;
+    box.classList.remove('hidden');
+  }
+  function _closeDocs() {
+    const box = document.getElementById('owvDocs');
+    if (box && !box.classList.contains('hidden')) { box.classList.add('hidden'); box.innerHTML = ''; return true; }
+    return false;
+  }
+  // Esc closes the documents first (one listener for the page's life, as the cards' Esc).
+  let _docsEsc = false;
+  function _installDocsEsc() {
+    if (_docsEsc) return; _docsEsc = true;
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && _closeDocs()) e.stopImmediatePropagation(); }, true);
   }
   // undefined = a national line (not numbered yet) · 'failed' · null = no line there · n
   function _noHtml(no) {
