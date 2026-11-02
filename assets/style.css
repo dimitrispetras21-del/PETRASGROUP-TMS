@@ -10247,6 +10247,9 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5h-mono .form-input { font-family:'DM Mono',ui-monospace,SFMono-Regular,Menlo,monospace; font-weight:500; }
 .wn5h-hint { font-size:11px; color:var(--wi4-grey-2); white-space:nowrap; }   /* «ελεύθερο ως …» 2122:7781 */
 .wn5h-hint:empty { display:none; }
+/* 096: the overlap of the new truck / driver, said before the press (the Π2 amber line of every save) */
+.wn5h-busy { font-size:12px; color:var(--wi4-amber-ink); margin:-4px 0 8px; }
+.wn5h-busy[hidden] { display:none; }
 .wn5h-row1, .wn5h-vrow { display:flex; align-items:flex-start; gap:12px; }
 .wn5h-vrow[hidden] { display:none; }
 .wn5h-vrow > .wn5f-f, .wn5h-row1 > .wn5f-f:not(.wn5h-note) { flex:none; }
