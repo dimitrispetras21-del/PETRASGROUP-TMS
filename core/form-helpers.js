@@ -27,8 +27,10 @@ function _fhLocLabel(f) {
 }
 
 // The picker lines of a LOCATIONS read, sorted: one rule for the first read and the background re-read.
+// 099's «TRANSFER POINT» (the place of every free-text transfer point) is never a place to pick (core/constants.js).
 function _fhLocItems(records) {
-  return records.map(r => ({ id: r.id, label: _fhLocLabel(r.fields) })).sort((a, b) => a.label.localeCompare(b.label));
+  return records.filter(r => !(typeof isTransferPointLoc === 'function' && isTransferPointLoc(r.id)))
+    .map(r => ({ id: r.id, label: _fhLocLabel(r.fields) })).sort((a, b) => a.label.localeCompare(b.label));
 }
 
 /**
