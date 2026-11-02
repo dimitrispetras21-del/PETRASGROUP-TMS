@@ -159,18 +159,12 @@
   };
   // a day of the span outside the loaded week: what the vehicle does then is not on the board (code review of #171)
   const _blind = (st) => { const sp = _span(st); if (!sp) return false; for (let d = sp[0]; d <= sp[1]; d = K().addDays(d, 1)) if (!_inWeek(st, d)) return true; return false; };
-  const _covers = (c, d) => (c.date_start <= d && d <= c.date_end) || K().ymdOf(c.end_at) === d;
-  const _segs = (c) => { try { return typeof WN5L !== 'undefined' ? WN5L.segmentsOf(c).segments : [c]; } catch (e) { return [c]; } };
-  const _uses = (c, key, id) => id != null && (c[key] === id || _segs(c).some((g) => g[key] === id));
+  // one reading of «a cycle runs on day d / uses that vehicle / ends there» with every other save (wn5_actions.js Π2)
+  const _covers = (c, d) => K().coversDay(c, d);
+  const _uses = (c, key, id) => K().usesId(c, key, id);
   const _onSpan = (c, sp) => { for (let d = sp[0]; d <= sp[1]; d = K().addDays(d, 1)) if (_covers(c, d)) return true; return false; };
   // where a cycle ends, in words: «Larisa ως Τρί 23:59» (its last stop, the hub as «Βέροια»)
-  const _endAt = (c, day) => {
-    const k = K(), hub = k.hubId();
-    const last = (c.stops || []).slice().sort((x, y) => Date.parse(x.planned_to) - Date.parse(y.planned_to)).pop();
-    const at = last ? (last.location_id === hub ? 'Βέροια' : last.location || k.placeName(last.location_id)) : '—';
-    const endDay = k.ymdOf(c.end_at);
-    return at + ' ως ' + (endDay === day ? '' : k.dayShort(endDay).split(' ')[0] + ' ') + k.hm(c.end_at);
-  };
+  const _endAt = (c, day) => K().endAt(c, day);
   // the live cycles of a vehicle that run on day d, the earliest first (two the same day = «άλλο ›», never a silent pick)
   function _cands(st, who, id, d) {
     if (id == null || !d) return [];
@@ -399,23 +393,13 @@
   // audit row (086 plan_seg_overlap_mark). The list is by day, from the board: it may name a cycle whose hours do not
   // clash (harmless), never fewer. Said but NOT pre-accepted (code review high): a span the board does not cover
   // (_blind) — the base accepts EVERY overlap of the save, and one we cannot name must not pass silently — and the
-  // pick mode, which writes nothing (its caller saves). There the refusal and its offer stay.
+  // pick mode, which writes nothing (its caller saves; saves = true: the caller that does, forChoice). There the refusal
+  // and its offer stay. The rule and the words are the kit's (K().busyOf), one for every save.
   // null = no overlap on the board; else { text, accept }.
-  function _overlaps(st, r) {
+  function _overlaps(st, r, saves) {
     if (st.who !== 'own' || !r || r.missing || !r.body) return null;
-    const sp = _span(st);
-    if (!sp) return null;
-    const self = new Set([st.rtId, r.body.target && r.body.target.rt_id].filter((x) => x != null));
-    const out = [];
-    for (const [key, id, who] of [['truck_id', st.truck, 'φορτηγό'], ['driver_id', st.driver, 'οδηγός']]) {
-      if (id == null) continue;
-      const cs = st.cycles.filter((c) => !self.has(c.rt_id) && _uses(c, key, id) && _onSpan(c, sp))
-        .sort((x, y) => Date.parse(x.start_at) - Date.parse(y.start_at));
-      if (cs.length) out.push(who + ' και σε: ' + cs.map((c) => _endAt(c, null)).join(', '));
-    }
-    if (!out.length) return null;
-    const accept = st.mode !== 'pick' && !_blind(st);
-    return { accept, text: 'Επικάλυψη · ' + out.join(' · ') + (accept ? '. Αποθηκεύεται έτσι, γράφεται στο ιστορικό.' : '.') };
+    return K().busyOf({ trucks: [st.truck], drivers: [st.driver], days: _span(st), self: [st.rtId, r.body.target && r.body.target.rt_id],
+      cycles: st.cycles, week: st.week, accept: !!saves || st.mode !== 'pick' });
   }
   // the request the save sends: with accept_busy when the form already said the overlap (Π2)
   const _sendReq = (st, r) => { const o = _overlaps(st, r); return (o && o.accept && WN5Act.withAccept(r, { code: 'truck_busy' })) || r; };
@@ -860,7 +844,9 @@
   function forChoice(pieces, ctx, choice) {
     const st = build({ pieces }, Object.assign({}, ctx, { pick: true, choice, live: true }));
     if (st.err) return { err: st.err };
-    return { req: req(st), line: line(st), problems: problems(st), label: st.who ? _label(st.who === 'own' ? 'tk' : 'pt', st.who === 'own' ? st.truck : st.partner) : '',
+    const r = req(st);
+    // busy: what the Veroia board says beside its «Δημιουργία φορτίου» and sends with it (Π2: it is the one that saves)
+    return { req: r, busy: _overlaps(st, r, true), line: line(st), problems: problems(st), label: st.who ? _label(st.who === 'own' ? 'tk' : 'pt', st.who === 'own' ? st.truck : st.partner) : '',
       sub: st.who === 'own' ? [_label('tl', st.trailer), _label('dr', st.driver)].filter(Boolean).join(' · ') : '' };
   }
 
