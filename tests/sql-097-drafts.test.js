@@ -56,14 +56,18 @@ test('097: one md5 per fact - old = the guard and the rollback\'s end; new = pro
   assert.ok(read(`${P}_rollback_dryrun.sql`).includes(`= '${old}' THEN 'yes'`));
 });
 
-test('097: one definition of "a VS leg off Veroia" - the source\'s PART 0 = the builder\'s', () => {
+test('097: one definition of "a VS leg off Veroia" - the source\'s PART 0 = the builder\'s, joins and all', async () => {
+  const { OFF } = await import(BUILDER);
   const norm = (s) => s.replace(/\s+/g, ' ').trim();
-  const where = `WHERE (ps.kind = 'vs_import' AND pk.location_id IS DISTINCT FROM hub.id)
-      OR (ps.kind = 'vs_export' AND dr.location_id IS DISTINCT FROM hub.id)`;
+  // the builder's subquery from its FROM to its WHERE's end (its own "(SELECT count(*)" and closing ")" aside)
+  const body = norm(OFF).slice(norm(OFF).indexOf('FROM public.v_piece_state ps'), -1);
+  assert.match(body, /^FROM public\.v_piece_state ps .* AND l\.deleted_at IS NULL .* LEFT JOIN public\.locations hub ON hub\.is_hub WHERE /);
   const src = read(`${P}.sql`);
   const part0 = src.slice(src.indexOf('===== PART 0'), src.indexOf('===== PART 1'));
-  assert.ok(norm(part0).includes(norm(where)), 'PART 0 counts the off-Veroia legs');
-  for (const f of [`${P}_rollback.sql`, `${P}_verify.sql`]) assert.ok(norm(read(f)).includes(norm(where)), f);
+  assert.ok(norm(part0).includes(`INTO v_off ${body};`), 'PART 0 counts the off-Veroia legs with the builder\'s query');
+  for (const f of [`${P}_rollback.sql`, `${P}_verify.sql`, `${P}_dryrun.sql`, `${P}_rollback_dryrun.sql`]) {
+    assert.ok(norm(read(f)).includes(body), f);
+  }
 });
 
 test('097 replaces v_vs_state only, with 071\'s columns in 071\'s order; the rollback holds 071\'s text', () => {

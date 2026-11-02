@@ -39,7 +39,7 @@ export function view071() {
 
 const VIEW_MD5 = `md5(pg_get_viewdef('public.v_vs_state'::regclass, true))`;
 // one definition of "a VS leg whose counted stop is not Veroia" (the source's PART 0, the rollback's guard, verify)
-const OFF = `(SELECT count(*) FROM public.v_piece_state ps
+export const OFF = `(SELECT count(*) FROM public.v_piece_state ps
       JOIN public.piece_legs l ON l.piece_id = ps.piece_id AND l.deleted_at IS NULL
       JOIN public.rt_stops pk ON pk.id = l.pickup_stop_id
       JOIN public.rt_stops dr ON dr.id = l.drop_stop_id

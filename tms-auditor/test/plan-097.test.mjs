@@ -108,9 +108,10 @@ async function scenario(db, steps) {
   } finally { await db.exec('ROLLBACK'); }
 }
 
-// the two transfers of Mon 7/12 -> Tue 8/12, read from the view and from the follow
+// the two transfers of Mon 7/12 -> Tue 8/12, read from the view and from the follow. The export's international starts
+// on a THIRD day (Thu 10/12), so the follow must write - neither the transfer day nor the Veroia day is there by chance
 async function transfers(db) {
-  const ex = await one(db, `SELECT t97_transfer(t97_vs('Export', DATE '2026-12-08'), DATE '2026-12-07') AS x`);
+  const ex = await one(db, `SELECT t97_transfer(t97_vs('Export', DATE '2026-12-10'), DATE '2026-12-07') AS x`);
   const im = await one(db, `SELECT t97_transfer(t97_vs('Import', DATE '2026-12-07'), DATE '2026-12-07') AS x`);
   const state = async (x) => one(db, `SELECT first_hub_day::text AS first, carriers FROM v_vs_state WHERE order_id = $1`, [x.order_id]);
   const exState = await state(ex.x), imState = await state(im.x);
@@ -151,6 +152,23 @@ test('097 on the production-shaped copy (after 093, 095, 096)', async (t) => {
     assert.deepStrictEqual(hubDays(r.imState, r.im), { A: '2026-12-07', B: '2026-12-08' });
     // and today the base refuses the rows anyway (leg_place): why 097 changes nothing today
     assert.match(r.late ?? '', /leg_place/);
+  });
+
+  await t.test('097\'s guards: another live text, a view on top of it, the rollback before 097 - each stops, nothing kept', async () => {
+    // another text of the view than 071's (max instead of min): 097 names its md5 and stops
+    const other = await scenario(db, async () => {
+      const v = (await one(db, `SELECT pg_get_viewdef('public.v_vs_state'::regclass, true) AS d`)).d;
+      await db.exec(`CREATE OR REPLACE VIEW public.v_vs_state WITH (security_invoker = true) AS ${v.replace('min(', 'max(')}`);
+      return { err: await errorOf(db, read(`${P}.sql`)) };
+    });
+    assert.match(other.err ?? '', /097: v_vs_state is not 071's view \(md5 [0-9a-f]{32}\) - stop, re-measure/);
+    const dep = await scenario(db, async () => {
+      await db.exec(`CREATE VIEW public.t97_dep AS SELECT order_id FROM public.v_vs_state`);
+      return { err: await errorOf(db, read(`${P}.sql`)) };
+    });
+    assert.match(dep.err ?? '', /097: a view now depends on v_vs_state/);
+    assert.match(await errorOf(db, read(`${P}_rollback.sql`)) ?? '', /097 rollback: v_vs_state is not 097's view/);
+    assert.strictEqual((await one(db, VIEW_MD5)).m, old);
   });
 
   await t.test('097 dry run keeps nothing and gives the counts: 2 VS orders, 0 legs off Veroia', async () => {
