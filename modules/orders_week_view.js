@@ -966,40 +966,55 @@ const OrdersWeekView = (() => {
     el.textContent = acc ? acc + '…' : (ell <= avail ? '…' : '');
     return true;
   }
+  // ONE route width per side of a card (owner 2/11/2026, «δεν υπάρχει καλή
+  // ευθυγράμμιση»): the header, every row and every sub-row share it, so each
+  // column starts on the same x down the card. It is the widest route that still
+  // leaves every client whole (never above the shared split's share unless a
+  // route needs it), and never below the widest whole-word floor («from → first
+  // word of the destination»): a longer route then cuts its tail by whole words,
+  // a longer client cuts with «…» and its title. When even the floors do not fit,
+  // the card scrolls sideways (_fitCard) — a word is never cut.
   function _fitSide(card, side) {
-    const subs = [...card.querySelectorAll(`.ow4-row:not(.ow4-hd) .ow4-${side} .ow4-sub:not(.ow4-none)`)];
+    const all = [...card.querySelectorAll(`.ow4-row .ow4-${side} .ow4-sub:not(.ow4-none)`)];
+    const subs = all.filter(sub => !sub.closest('.ow4-hd'));
     if (!subs.length) return 0;
     const s0 = subs[0], cs = getComputedStyle(s0), kids = s0.children;
     const gap = parseFloat(cs.columnGap) || 0;
     const inner = s0.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
     const fixed = side === 'l' ? kids[2].offsetWidth + kids[3].offsetWidth : kids[0].offsetWidth + kids[1].offsetWidth;
     const A = inner - fixed - 3 * gap;                       // route + client + their gap
-    const R = Math.floor((A - gap) * (side === 'l' ? 1 / 2.1 : 0.9 / 2.05));   // the shared split (header)
-    let need = 0;
+    const R = Math.floor((A - gap) * (side === 'l' ? 1 / 2.1 : 0.9 / 2.05));   // the shared split
+    const first = t => String(t || '').trim().split(/\s+/)[0] || '';
+    const rows = [];
+    let fullMax = 0, floorMax = 0, cMax = 0, cFloorMax = 0;
     for (const sub of subs) {
       const route = sub.querySelector('.ow4-route'), cl1 = sub.querySelector('.ow4-cl1'), cl2 = sub.querySelector('.ow4-cl2');
       if (!route || !cl1) continue;
       const tailEl = route.querySelector('.ow4-rt'), tail = route.dataset.tail || '';
+      // measured on the whole tail: a previous fit may have cut it
+      if (tail) tailEl.textContent = tail;
       let fixedR = 0;
       for (const ch of route.children) if (ch !== tailEl) fixedR += ch.getBoundingClientRect().width + (parseFloat(getComputedStyle(ch).marginLeft) || 0);
       const tcs = getComputedStyle(tailEl), tf = _fontOf(tailEl), mL = parseFloat(tcs.marginLeft) || 0;
       const full = Math.ceil(fixedR + (tail ? mL + _tw(tf, tail) : 0)) + 1;
       const floor = Math.ceil(fixedR + (tail ? mL + _tw(tf, '…') : 0)) + 1;
       const cf = _fontOf(cl1), c = Math.ceil(_tw(cf, cl1.textContent)) + 1;
-      const first = t => String(t || '').trim().split(/\s+/)[0] || '';
       const cFloor = Math.ceil(Math.max(_tw(cf, first(cl1.textContent) + '…'), cl2 ? _tw(_fontOf(cl2), first(cl2.textContent) + '…') : 0)) + 1;
-      let w;
-      if (full + gap + c <= A) w = Math.min(Math.max(R, full), A - gap - c);
-      else w = Math.max(floor, A - gap - c);
-      if (A - gap - w < cFloor) need = Math.max(need, w + gap + cFloor - A);
-      sub.style.setProperty('--ow4-rw', Math.floor(w) + 'px');
-      const cut = tail ? _fitWords(tailEl, tail, w - fixedR - mL - 1) : false;
-      // For the reader and the critics' rig: was the route shortened?
-      // 'floor' = the route is already down to its whole-word floor and the
-      // client is still cut: rule (a) outranks (b), nothing more can give.
-      route.dataset.cut = cut ? 'tail' : (A - gap - w < c && w <= floor ? 'floor' : '');
+      rows.push({ route, tailEl, tail, fixedR, mL, floor, c });
+      fullMax = Math.max(fullMax, full); floorMax = Math.max(floorMax, floor);
+      cMax = Math.max(cMax, c); cFloorMax = Math.max(cFloorMax, cFloor);
     }
-    return need;
+    if (!rows.length) return 0;
+    const w = Math.floor(Math.max(floorMax, Math.min(Math.max(R, fullMax), A - gap - cMax, Math.max(R, A - gap - cFloorMax))));
+    for (const sub of all) sub.style.setProperty('--ow4-rw', w + 'px');
+    for (const r of rows) {
+      const cut = r.tail ? _fitWords(r.tailEl, r.tail, w - r.fixedR - r.mL - 1) : false;
+      // For the reader and the critics' rig: was the route shortened? 'floor' =
+      // the route is down to its whole-word floor and the client is still cut:
+      // rule (a) outranks (b), nothing more can give.
+      r.route.dataset.cut = cut ? 'tail' : (A - gap - w < r.c && w <= r.floor ? 'floor' : '');
+    }
+    return Math.max(0, w + gap + cFloorMax - A);
   }
   function _fitCard(card) {
     card.classList.remove('ow4-scroll');

@@ -10385,9 +10385,9 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .ow4-c-rt .ow4-l2 { overflow:hidden; text-overflow:ellipsis; }
 .ow4-side { display:flex; flex-direction:column; min-width:0; }
 .ow4-sub { display:grid; align-items:start; column-gap:var(--ow4-gap); min-height:48px; box-sizing:border-box; padding:9px 10px 7px; }
-/* --ow4-rw (route width) is set per row by _fitSide; unset (header, print
-   before a fit) the shared split applies. Declared here, on the row grid, so
-   the per-row value is the one read. */
+/* --ow4-rw (route width) is ONE value per side of a card, set by _fitSide on the
+   header and every row and sub-row alike (owner 2/11, one column template); unset
+   (print before a fit) the shared split applies. Declared here, on the row grid. */
 .ow4-l .ow4-sub { grid-template-columns:var(--ow4-rw, minmax(0,1fr)) minmax(0,1.1fr) var(--ow4-tpy) var(--ow4-amt); }
 .ow4-r .ow4-sub { grid-template-columns:var(--ow4-tpy) var(--ow4-amt) minmax(0,1.15fr) var(--ow4-rw, minmax(0,.9fr)); }
 .ow4-sub + .ow4-sub { border-top:1px solid var(--wi4-line); }

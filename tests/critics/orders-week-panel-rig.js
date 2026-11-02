@@ -249,10 +249,48 @@ async function scnCard(browser) {
   await page.context().close();
 }
 
+// «align» (owner 2/11, «δεν υπάρχει καλή ευθυγράμμιση»): ONE column template per side — every row and
+// sub-row of a card starts each column (route, client, ΤΠΥ, amount) where the header does (±1px), at three
+// widths, «Ανά ημέρα» and «Ανά όχημα», international and national cards.
+async function scnAlign(browser) {
+  console.log('\n[align] every column starts where its header does');
+  const page = await P.newPage(browser, 'owner');
+  await P.openWeek(page);
+  const measure = () => page.evaluate(() => {
+    const out = [];
+    document.querySelectorAll('.ow4-sec .ow4-card').forEach((card, ci) => {
+      for (const side of ['l', 'r']) {
+        const head = card.querySelector(`.ow4-hd .ow4-${side} .ow4-sub`);
+        if (!head) continue;
+        const hx = [...head.children].map(c => Math.round(c.getBoundingClientRect().left));
+        card.querySelectorAll(`.ow4-row:not(.ow4-hd) .ow4-${side} .ow4-sub:not(.ow4-none)`).forEach(sub => {
+          const x = [...sub.children].map(c => Math.round(c.getBoundingClientRect().left));
+          const off = x.map((v, i) => v - hx[i]).filter(d => Math.abs(d) > 1);
+          if (off.length) out.push(`card ${ci} ${side}: ${((sub.closest('.ow4-row').querySelector('.ow4-c-rt .ow4-l1') || {}).textContent || '').trim()} cols ${JSON.stringify(x)} vs header ${JSON.stringify(hx)}`);
+        });
+      }
+    });
+    return { bad: out, subs: document.querySelectorAll('.ow4-sec .ow4-row:not(.ow4-hd) .ow4-sub:not(.ow4-none)').length };
+  });
+  for (const w of [1280, 1440, 1920]) {
+    for (const mode of ['day', 'vehicle']) {
+      await page.setViewportSize({ width: w, height: 960 });
+      await page.evaluate(m => { const b = document.querySelector(`[data-owvmode="${m}"]`); if (b) b.click(); }, mode);
+      await page.waitForTimeout(500);
+      const r = await measure();
+      ok(!r.bad.length && r.subs > 10, `${w}px «${mode === 'day' ? 'Ανά ημέρα' : 'Ανά όχημα'}»: ${r.subs} order lines, every column on the header's x` + (r.bad.length ? ` — ${r.bad.length} off: ` + r.bad.slice(0, 3).join(' | ') : ''));
+      if (mode === 'day') await page.screenshot({ path: path.join(SHOTS, `align-${w}.png`), fullPage: false });
+    }
+  }
+  ok(P.realErrors(page).length === 0, 'align: 0 page/console errors ' + JSON.stringify(P.realErrors(page)).slice(0, 300));
+  await page.context().close();
+}
+
 (async () => {
   console.log('Στόχος: ' + BASE_URL + ' · εβδομάδα ' + P.WEEK_FROM + ' – ' + P.WEEK_TO);
   const browser = await chromium.launch();
   try {
+    await scnAlign(browser);
     await scnOrder(browser);
     await scnCard(browser);
   } catch (e) {
