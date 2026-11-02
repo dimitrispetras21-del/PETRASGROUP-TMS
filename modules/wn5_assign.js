@@ -552,6 +552,13 @@
     const rateLbl = 'Κόμιστρο ' + (rateSide === 'BOTH' ? '' : rateSide === 'ANODOS' ? 'ΑΝΟΔΟΥ ' : 'ΚΑΘΟΔΟΥ ') + '€';
     const rateAv = rateBad || _sumAv(st);
     const bad2 = pb.fields.rate2, av2 = bad2 || pb.soft.rate2 || '';
+    // «Σύνθεση φορτίων» draft (owner 2/11, localStorage tms_wn5_compose): the partner section folds until it is asked for
+    if (typeof WN5Compose !== 'undefined' && WN5Compose.on() && st.who !== 'partner' && !st.showPar && st.mode !== 'vehicle') {
+      h += '<div class="wn5a-sec wn5a-par-fold"><button type="button" class="wi4-link" data-act="show-par">+ Συνεργάτης</button></div>';
+      if (st.mode !== 'vehicle') h += _lineHTML(st);
+      h += '</div>';
+      return h;
+    }
     h += '<div class="wn5a-sec"><div class="wi-pop-section-lbl">ΣΥΝΕΡΓΑΤΗΣ</div><div class="wi-pop-row">' + _fieldHTML(st, 'pt', pb)
       + '<div class="wi-pop-field wn5a-f wn5a-rate' + (rateBad ? ' wn5a-bad' : '') + '" data-f="rate"><span class="wi-pop-lbl">' + rateLbl + '</span>'
       + '<input class="wi-pop-inp" data-rate inputmode="decimal" placeholder="0.00" value="' + _e(rateVal) + '"' + (joinPar ? ' disabled' : '') + ' aria-label="' + rateLbl + '">'
@@ -794,6 +801,7 @@
       if (a === 'all') { st.win[b.dataset.row] = { all: true, from: '', to: '' }; draw(); }
       else if (a === 'hours') { st.win[b.dataset.row] = { all: false, from: '', to: '' }; draw(); const el = d.body.querySelector('[data-hm="from"][data-row="' + b.dataset.row + '"]'); if (el) el.focus(); }
       else if (a === 'opt') { st.opt = Number(b.dataset.i); _vehicleOf(); draw(); }
+      else if (a === 'show-par') { st.showPar = true; draw(); const el = d.body.querySelector('[data-in="pt"]'); if (el) el.focus(); }
       else if (a === 'clear') { if (!d.busy) WN5Act.clear(st.rtId); }
       else if (a === 'save') {
         const r = req(st);
