@@ -109,6 +109,9 @@ async function installMocks(page, cap) {
         return json(r, { error: msg }, 422);
       }
       const rec = list.find(x => x.id === (m && m[1]));
+      // cap.dropSelf: the facade of a Worker WITHOUT the 101 map row — the label is dropped and the write answers 200
+      // (trap #1). Not applied to the fixture: nothing was written.
+      if (cap.dropSelf) { cap.dropSelf = false; const f = Object.assign({}, rec ? rec.fields : {}); return json(r, { id: m ? m[1] : null, fields: f }); }
       if (rec) for (const [k, v] of Object.entries(body.fields || {})) { if (v === null) delete rec.fields[k]; else rec.fields[k] = v; }
       return json(r, { id: m ? m[1] : null, fields: rec ? rec.fields : body.fields });
     }
@@ -413,6 +416,105 @@ async function runOwner(browser) {
   await page.context().close();
 }
 
+// «Αυτοπαράδοση» (owner 2/11/2026, migration 101): the box beside the ΤΠΥ. The proof is the PATCH body and what the
+// screen does with the Worker's answer — never a toast.
+async function runSelfDelivery(browser) {
+  const page = await newPage(browser, 'accountant');
+  const cap = page._cap;
+  console.log('\n[accountant] «Αυτοπαράδοση» (101)');
+  await openView(page);
+  await rowOf(page, '#1233').click();
+  await page.waitForSelector('#oivNum');
+  assert(await page.locator('#oivCard .oiv-form #oivSelf').count() === 1 && /Αυτοπαράδοση · δικό μας φορτίο, χωρίς ΤΠΥ/.test(await txt(page, '#oivCard .oiv-self')),
+    'ready card: the box «Αυτοπαράδοση» under the ΤΠΥ box');
+  await page.screenshot({ path: shot('20-self-box') });
+
+  // the facade without the 101 row: 200 but the label is gone → said in the card, nothing counted as invoiced
+  cap.dropSelf = true;
+  await page.check('#oivSelf');
+  await page.waitForSelector('#oivCard .oiv-err', { timeout: 8000 });
+  assert(/Δεν καταχωρήθηκε ως αυτοπαράδοση: ο διακομιστής δεν επιβεβαίωσε/.test(await txt(page, '#oivCard .oiv-err')), 'an answer without «Self Delivery» → error in the card');
+  assert(await page.locator('#oivUndo').count() === 0 && await tabText(page, 'invoiced') === 'Τιμολογημένες · 0', '… no undo bar, nothing counted as invoiced');
+  assert(await page.locator('#oivSelf').isChecked() === false, '… the box is unticked again');
+
+  // a refusal of the base (422) → its words in the card
+  cap.fail422 = 'Δεν σημαίνεται τιμολογημένη χωρίς αριθμό τιμολογίου (ΤΠΥ) του ERP';
+  await page.check('#oivSelf');
+  await page.waitForFunction(() => /χωρίς αριθμό τιμολογίου/.test((document.querySelector('#oivCard .oiv-err') || {}).innerText || ''), null, { timeout: 8000 });
+  assert(await page.locator('#oivUndo').count() === 0 && await tabText(page, 'ready') === 'Προς κοπή · 8', '422 → the Worker words in the card, counts unchanged');
+
+  // the real write
+  const n0 = cap.patches.length;
+  await page.check('#oivSelf');
+  await page.waitForSelector('#oivUndo', { timeout: 8000 });
+  const p = cap.patches.slice(n0);
+  assert(p.length === 1 && p[0].id === 'recO2' && p[0].table === 'orders'
+    && JSON.stringify(p[0].fields) === JSON.stringify({ Invoiced: true, 'Self Delivery': true, 'Invoice Number': null, 'Invoice Date': TODAY }),
+    'tick → ONE PATCH {Invoiced: true, Self Delivery: true, Invoice Number: null, Invoice Date: today} — ' + JSON.stringify(p.map(x => x.fields)));
+  assert(/Καταχωρήθηκε ως αυτοπαράδοση/.test(await txt(page, '#oivUndo')), 'undo bar «Καταχωρήθηκε ως αυτοπαράδοση»');
+  assert(await tabText(page, 'ready') === 'Προς κοπή · 7' && await tabText(page, 'invoiced') === 'Τιμολογημένες · 1', 'counts: Προς κοπή 7, Τιμολογημένες 1');
+  await page.screenshot({ path: shot('21-self-undo-bar') });
+
+  // row and card say it, where the ΤΠΥ would be; no «Διόρθωση ΤΠΥ»
+  await page.click('.oiv-seg-b[data-tab="invoiced"]');
+  await rowOf(page, '#1233').click();
+  await page.waitForFunction(() => /#1233/.test((document.querySelector('#oivCard .oiv-ch-t') || {}).innerText || ''));
+  const card = await cardText(page);
+  assert(/✓ Αυτοπαράδοση/.test(await rowOf(page, '#1233').innerText()), 'invoiced row: «✓ Αυτοπαράδοση» in ΚΑΤΑΣΤΑΣΗ');
+  assert(/Τιμολογήθηκε/.test(card) && /Αυτοπαράδοση/.test(card) && /κανένα — δικό μας φορτίο/.test(card) && !/Διόρθωση ΤΠΥ/.test(card) && /Αναίρεση τιμολόγησης/.test(card),
+    'card: Αυτοπαράδοση, «κανένα — δικό μας φορτίο», no Διόρθωση ΤΠΥ, Αναίρεση there');
+  await page.screenshot({ path: shot('22-self-card') });
+
+  // the ERP sheet leaves it out
+  await page.click('.oiv-seg-b[data-tab="all"]');
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#ohActions button:has-text("Φύλλο ERP")')]);
+  const csv = fs.readFileSync(await dl.path(), 'utf8');
+  assert(!csv.includes('6100118264') && csv.includes('6100118259'), 'Φύλλο ERP: the self delivery is not on it, its neighbour is');
+
+  // the undo from the card: ONE write that clears the box too
+  await page.click('.oiv-seg-b[data-tab="invoiced"]');
+  await rowOf(page, '#1233').click();
+  await page.click('.oiv-danger-link');
+  await page.waitForSelector('#_cfaOk');
+  assert(/αυτοπαράδοση/.test(await txt(page, '#modalOverlay')), 'undo confirm says «αυτοπαράδοση», not a ΤΠΥ');
+  const n1 = cap.patches.length;
+  await page.click('#_cfaOk');
+  await page.waitForFunction(() => /Προς κοπή · 8/.test((document.querySelector('.oiv-seg-b[data-tab="ready"]') || {}).innerText || ''), null, { timeout: 8000 });
+  const u = cap.patches.slice(n1);
+  assert(u.length === 1 && JSON.stringify(u[0].fields) === JSON.stringify({ Invoiced: false, 'Invoice Number': null, 'Invoice Date': null, 'Self Delivery': false }),
+    'Αναίρεση → ONE PATCH clearing Invoiced, number, date AND Self Delivery — ' + JSON.stringify(u.map(x => x.fields)));
+
+  // no price: the box is under the price box, and needs no price (a national order too)
+  await page.click('.oiv-seg-b[data-tab="blocked"]');
+  await rowOf(page, '#1240').click();
+  await page.waitForSelector('#oivPrice');
+  assert(await page.locator('#oivCard #oivSelf').count() === 1, 'price-blocked card: the box is there too');
+  const n2 = cap.patches.length;
+  await page.check('#oivSelf');
+  await page.waitForSelector('#oivUndo', { timeout: 8000 });
+  const b = cap.patches.slice(n2);
+  assert(b.length === 1 && b[0].id === 'recO5' && JSON.stringify(b[0].fields) === JSON.stringify({ Invoiced: true, 'Self Delivery': true, 'Invoice Number': null, 'Invoice Date': TODAY }),
+    'no price + tick → the same PATCH, no Price asked — ' + JSON.stringify(b.map(x => x.fields)));
+  assert(await tabText(page, 'blocked') === 'Μπλοκαρισμένες · 0', 'it leaves Μπλοκαρισμένες (counted as invoiced)');
+  await page.click('.oiv-seg-b[data-tab="invoiced"]');
+  assert(/Τιμολογημένες 3\.350,00 € 1/.test((await txt(page, '#oivKpis')).replace(/\s+/g, ' ')) === false
+    && /Τιμολογημένες 0,00 € 1/.test((await txt(page, '#oivKpis')).replace(/\s+/g, ' ')), 'KPI Τιμολογημένες: 1, its missing price never summed (0,00 €)');
+  await rowOf(page, '#1240').click();
+  await page.waitForFunction(() => /#1240/.test((document.querySelector('#oivCard .oiv-ch-t') || {}).innerText || ''));
+  const c2 = await cardText(page);
+  assert(/Τιμή · δεν χρειάζεται \(αυτοπαράδοση\)/.test(c2) && !/γράψε τη παρακάτω/.test(c2) && !/χωρίς τιμή/.test(c2),
+    'self delivery without a price: «Τιμή · δεν χρειάζεται», no red «χωρίς τιμή», no «γράψε τη παρακάτω»');
+  const gh = (await page.locator('#oivBody tr.oiv-g', { hasText: 'Baltic' }).innerText()).replace(/\s+/g, ' ');
+  assert(!/χωρίς τιμή/.test(gh) && /1 · —/.test(gh), 'group header: «1 · —», not «χωρίς τιμή» — ' + gh);
+  await page.screenshot({ path: shot('23-self-no-price') });
+
+  assert(cap.errors.length === 0, 'self delivery: no page errors ' + JSON.stringify(cap.errors));
+  // HAR aborts (net::ERR_FAILED) are filtered as in runAccountant; /plan/config is not mocked in this rig (as on main)
+  const bad = cap.console.filter(t => !/Failed to load resource: net::ERR_FAILED/.test(t) && !/plan\/config/.test(t) && !/status of 422/.test(t) && !/_atRetry 422/.test(t));
+  assert(bad.length === 0, 'self delivery: no console errors but HAR aborts, /plan/config and the deliberate 422 — ' + JSON.stringify(bad).slice(0, 400));
+  await page.context().close();
+}
+
 (async () => {
   console.log('Στόχος: ' + BASE_URL + ' · σήμερα ' + TODAY + ' · εβδομάδες ' + PREV2 + ' / ' + PREV + ' / ' + CUR);
   const browser = await chromium.launch();
@@ -420,6 +522,7 @@ async function runOwner(browser) {
     await runAccountant(browser);
     await runDispatcher(browser);
     await runOwner(browser);
+    await runSelfDelivery(browser);
   } catch (e) {
     failed++;
     console.log('  ✗ ΚΑΤΑΡΡΕΥΣΗ: ' + (e && e.stack || e));
