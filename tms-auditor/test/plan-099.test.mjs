@@ -311,6 +311,7 @@ test('099 on the production-shaped copy (after 093, 095, 096, 097, 098)', async 
       [base({ loads: [{ piece_id: pc, pallets: 12, go: 'wait', rest: 'wait' }] }), /parts_sum/],
       [base({ loads: [{ piece_id: pc, go: 'wait' }], color: 'red' }), /bad_input:p\.color/],
       [base({ reason: 'coffee', loads: [{ piece_id: pc, go: 'wait' }] }), /rt_stops_transfer_reason/],
+      [base({ loads: [{ piece_id: pc, pallets: 6, go: 'stay', rest: 'stay' }] }), /bad_input:loads:nothing leaves/],
       [base({ loads: [{ piece_id: pc, go: 0 }], trucks: [{ target: { rt_id: rtA, side: 'ANODOS' } }] }), /bad_input:trucks:same trip/],
       [base({ loads: [{ piece_id: pc, pallets: 6, go: 0, rest: 1 }], trucks: [toB, toB] }), /bad_input:trucks:same trip/],
       [{ ...base({ loads: [{ piece_id: pc, go: 'wait' }] }), request_id: undefined }, /request_missing/],

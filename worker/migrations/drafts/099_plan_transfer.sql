@@ -39,7 +39,7 @@
 -- REVERSE: 099_plan_transfer_rollback.sql BEFORE 098's rollback (refused while a transfer exists).
 DO $do$
 DECLARE
-  m_fn CONSTANT text := '95d5798992bf88a8813f39203aac8289';
+  m_fn CONSTANT text := 'ed9931c57b6e18a2a6963a5408df5d07';
   v_g record; v_trg0 int; v_trg1 int; v_loc bigint;
 BEGIN
   PERFORM set_config('lock_timeout', '5s', true);
@@ -121,7 +121,7 @@ declare
   v_legs bigint[] := '{}'; v_new bigint[] := '{}'; v_pcs bigint[] := '{}'; v_drops bigint[] := '{}'; v_rts bigint[] := '{}';
   v_seen bigint[] := '{}'; v_go_to jsonb := '{}'; v_wait boolean := false; v_self boolean := false;
   v_warn jsonb := '[]'; v_notices bigint[] := '{}'; v_orders bigint[]; v_cd0 jsonb; v_cd1 jsonb; v_whole boolean;
-  v_old jsonb; v_res jsonb; v_max0 bigint; v_hint text; v_msg text; v_det text; v_cname text; v_state text; v_code text;
+  v_old jsonb; v_res jsonb; v_max0 bigint; v_gone bigint[] := '{}'; v_hint text; v_msg text; v_det text; v_cname text; v_state text; v_code text;
 begin
   -- "Change on the road" (owner 2/11): at a point - a catalogue place or a text - for a reason, truck A hands loads
   -- (whole, or a part) to another truck, keeps a rest, or leaves them waiting there. One act, one transaction: the
@@ -283,6 +283,9 @@ begin
         end if;
       end loop;
     end loop;
+    -- nothing that changes truck or waits is not a transfer (code review xhigh 2/11: a split whose parts all stay on A
+    -- would write a transfer that never happened)
+    if not v_wait and v_go_to = '{}'::jsonb then perform plan_h_raise('bad_input', 'loads:nothing leaves'); end if;
     -- 3. A's stop says what it is: "waits there" (decision 2), and names itself when a rest loads again on A
     if v_wait or v_self then
       select to_jsonb(s) into v_old from rt_stops s where s.id = v_stop;
@@ -315,7 +318,7 @@ begin
       v_rts := v_rts || (v_tgt->>'rt_id')::bigint;
     end loop;
     -- 5. A's stops that lost every leg go (decision 4); A's order; the international follows its Veroia stop (097)
-    perform plan_h_stops_sweep(v_drops, 'transfer', p_actor, p_role);
+    v_gone := plan_h_stops_sweep(v_drops, 'transfer', p_actor, p_role);
     perform plan_h_reseq(v_rt, p_actor, p_role);
     v_notices := v_notices || plan_h_vs_follow(v_pcs, p_actor, p_role);
     v_warn := v_warn || plan_h_side_warn(v_rt);
@@ -343,10 +346,10 @@ begin
                                'place', lo.name, 'text', s.transfer_place, 'side', s.side, 'planned_from', s.planned_from,
                                'planned_to', s.planned_to, 'transfer_reason', s.transfer_reason,
                                'transfer_from_stop_id', s.transfer_from_stop_id, 'transfer_waits', s.transfer_waits,
-                               'new', s.id > v_max0 and s.deleted_at is null, 'removed', s.deleted_at = now())
+                               'new', s.id > v_max0 and s.deleted_at is null, 'removed', s.id = any (v_gone))
                                order by s.deleted_at is not null, s.seq, s.id), '[]'::jsonb)
                         from rt_stops s join locations lo on lo.id = s.location_id
-                       where s.rt_id = c.id and (s.deleted_at is null or s.deleted_at = now())))
+                       where s.rt_id = c.id and (s.deleted_at is null or s.id = any (v_gone))))
                      order by c.id <> v_rt, c.id), '[]'::jsonb)
                      from ct_round_trips c where c.id = v_rt or c.id = any (v_rts)),
         'vs_day', (select coalesce(jsonb_agg(jsonb_build_object('order_id', k::bigint, 'from', v_cd0->>k, 'to', v_cd1->>k)

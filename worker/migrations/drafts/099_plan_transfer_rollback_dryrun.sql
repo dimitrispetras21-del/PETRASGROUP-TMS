@@ -10,7 +10,7 @@ BEGIN
   -- ===== 099_plan_transfer_rollback.sql, verbatim =====
 BEGIN
   PERFORM set_config('lock_timeout', '5s', true);
-  IF (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure('public.plan_transfer(jsonb,text,text)')) IS DISTINCT FROM '95d5798992bf88a8813f39203aac8289' THEN
+  IF (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure('public.plan_transfer(jsonb,text,text)')) IS DISTINCT FROM 'ed9931c57b6e18a2a6963a5408df5d07' THEN
     RAISE EXCEPTION '099 rollback: plan_transfer is not the text 099 wrote (md5 %) - nothing to undo, or it changed since', (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure('public.plan_transfer(jsonb,text,text)'));
   END IF;
   IF EXISTS (SELECT 1 FROM public.rt_stops WHERE transfer_reason IS NOT NULL OR transfer_from_stop_id IS NOT NULL
