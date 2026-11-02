@@ -97,7 +97,7 @@ function requestRpcs(sql) {
 
 // F4α-T1, widened by T25 (072b): the same drift rule over 072 AND the executed 072b. DRY_ROUTES = the PLAN_ROUTES
 // rows with dryRun:true; REQUEST_ROUTES = the routes whose RPC accepts request_id in its plan_h_keys list.
-test('F4α-T25: DRY_ROUTES / REQUEST_ROUTES = PLAN_ROUTES dryRun rows / the request_id RPCs of 072 + 072b + 077', (t) => {
+test('F4α-T25: DRY_ROUTES / REQUEST_ROUTES = PLAN_ROUTES dryRun rows / the request_id RPCs of 072 + 072b + 077 + 099 + 102', (t) => {
   const F072B = path.join(ROOT, 'worker/migrations/072b_plan_vehicle_segments.sql');
   if (!fs.existsSync(F072B) || !/resource: "handover"/.test(SRC)) { t.todo('072b not in tree (SQL or Worker routes)'); return; }
   const s = planSandbox(() => { throw new Error('no fetch here'); });
@@ -111,7 +111,13 @@ test('F4α-T25: DRY_ROUTES / REQUEST_ROUTES = PLAN_ROUTES dryRun rows / the requ
   assert.ok(F077, '077 not in tree: the client lists PATCH /plan/orders/:id as a request_id route');
   const h077 = /h_2b CONSTANT text := \$h\$([\s\S]*?)\$h\$;/.exec(fs.readFileSync(F077, 'utf8'));
   assert.ok(h077 && /plan_h_keys\(p, array\[[^\]]*'request_id'[^\]]*\], 'p'\)/.test(h077[1]), '077 h_2b: plan_order_update takes request_id');
-  const rpcs = requestRpcs(SQL + '\n' + fs.readFileSync(F072B, 'utf8') + '\nCREATE FUNCTION public.plan_order_update(\n' + h077[1]);
-  assert.deepStrictEqual(rpcs, ['plan_local_loading', 'plan_order_update', 'plan_orders_create', 'plan_seg_change', 'plan_split_piece'], '072 / 072b / 077 has a request_id RPC the client does not know');
+  // 099 / 102 (owner 2/11, one Worker chain): plan_transfer, plan_draft_create, plan_draft_realize take request_id. In
+  // drafts/ until they run, then executed: either path, never skipped (the client lists their routes)
+  const road = ['099_plan_transfer.sql', '102_plan_drafts.sql'].map((n) => ['drafts/' + n, n].map((f) => path.join(ROOT, 'worker/migrations', f)).find((f) => fs.existsSync(f)));
+  assert.ok(road.every(Boolean), '099 / 102 not in tree: the client lists POST /plan/transfer, /plan/drafts and /plan/drafts/:id/realize as request_id routes');
+  const rpcs = requestRpcs(SQL + '\n' + fs.readFileSync(F072B, 'utf8') + '\nCREATE FUNCTION public.plan_order_update(\n' + h077[1]
+    + road.map((f) => '\n' + fs.readFileSync(f, 'utf8')).join(''));
+  assert.deepStrictEqual(rpcs, ['plan_draft_create', 'plan_draft_realize', 'plan_local_loading', 'plan_order_update', 'plan_orders_create', 'plan_seg_change',
+    'plan_split_piece', 'plan_transfer'], '072 / 072b / 077 / 099 / 102 has a request_id RPC the client does not know');
   assert.deepStrictEqual([...client.req].sort(), rpcs.map((fn) => { const r = routes.find((x) => x.rpc === fn); assert.ok(r, fn + ' has no route'); return `${r.method} ${r.path}`; }).sort());
 });

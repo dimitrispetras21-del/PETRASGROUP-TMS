@@ -12,6 +12,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
+- dimitris · `deploy/worker-transfer-drafts` · Εθνικά v5: ΕΝΑΣ Worker για `POST /plan/transfer` (099) + `/plan/drafts` (102), πάνω στον 7bb5003a· φρουρός `--road 1` (34 σημάδια)· client λίστες + ?v= / SW_VERSION 1793810000· deploy από τον owner μετά τις 098 → 099 → 102 (`docs/sessions/2026-11-02-dimitris-worker-transfer-drafts.md`)
 - dimitris · `feat/compose-drafts-102` · Εθνικά v5: 102 προσχέδιο, πρόχειρα φορτία στη βάση («Σύνθεση φορτίων», σχέδιο #236)· PGlite + build tests πράσινα· εκτέλεση από τον owner μετά τις 15:00· διαδρομές Worker στην αλυσίδα με το `/plan/transfer` (συντονιστής)· καμία αλλαγή οθόνης (`docs/sessions/2026-11-02-dimitris-compose-drafts-102.md`)
 - dimitris · `feat/owv-week-order-panel` · «Παραγγελίες › Εβδομάδα»: σειρά γραμμών = Weekly Διεθνών / Εθνικών v5 (κοινός κανόνας `WI4.dayRowOrder` / `WN5L.rowOrder`), καρτέλα παραγγελίας ανοίγει πάνω στην εβδομάδα· μόνο front end, ?v= / SW_VERSION 1793780000 (`docs/sessions/2026-11-02-dimitris-week-order-panel.md`)
 - dimitris · `docs/transfer-figma` · Εθνικά v5: μεταφόρτωση σε οποιοδήποτε σημείο, κομμάτι 4: σχέδιο Figma (σελίδα «Μεταφόρτωση 2/11», 6 καρέ, κριτές 9/9), μόνο σχέδιο· οι 3 ερωτήσεις απαντήθηκαν (owner 2/11)· επόμενο το κομμάτι 5 (οθόνες) (`docs/sessions/2026-11-02-dimitris-transfer-figma.md`)

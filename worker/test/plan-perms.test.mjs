@@ -51,7 +51,12 @@ const EXPECT = {
   // removal is delete-type (41 (b) names it): owner + dispatcher, its dry run too (decision 26)
   handover: { POST: ROLES },
   segment: { PATCH: ROLES },
-  'segment-remove': { POST: DESK }
+  'segment-remove': { POST: DESK },
+  // 099 «Αλλαγή στον δρόμο» (owner 2/11): a board act, every role (decision 41) - not delete-type
+  transfer: { POST: ROLES },
+  // 102 «Σύνθεση φορτίων» (owner 2/11, E3): read, create, change and delete a draft - every role that writes on the
+  // board; its realize is resource legs (above), as POST /plan/legs
+  drafts: { GET: ROLES, POST: ROLES, PATCH: ROLES }
 };
 
 test('PLAN_PERMS equals the plan\'s table, cell by cell (nothing more, nothing less)', () => {
@@ -132,8 +137,17 @@ const REQ = {
   'local-loading POST': ['POST', '/plan/local-loading', { rt_stop_id: 1, driver_id: 2, truck_id: 3 }],
   'handover POST': ['POST', '/plan/rt/5/handover', { at: '2026-10-27T14:30:00+02:00', dry_run: true }],
   'segment PATCH': ['PATCH', '/plan/segments/9', { set: {}, dry_run: true }],
-  'segment-remove POST': ['POST', '/plan/segments/9/remove', { dry_run: true }]
+  'segment-remove POST': ['POST', '/plan/segments/9/remove', { dry_run: true }],
+  'transfer POST': ['POST', '/plan/transfer', { rt_id: 5, dry_run: true }],
+  'drafts GET': ['GET', '/plan/drafts?point=3'],
+  'drafts POST': ['POST', '/plan/drafts', { side: 'KATHODOS', point_location_id: 3, day: '2026-11-04', request_id: 'r' }],
+  'drafts PATCH': ['PATCH', '/plan/drafts/7', { version: 1, day: '2026-11-05' }]
 };
+// every route of the two families is refused to an unknown role and needs a token (the table test above covers the
+// resource / method cells; these are the remaining paths of the same resources)
+const ROAD_PATHS = [['GET', '/plan/drafts'], ['GET', '/plan/drafts/7/history'], ['POST', '/plan/drafts/move', { piece_ids: [4] }],
+  ['POST', '/plan/drafts/7/pieces', { version: 1, add: [] }], ['POST', '/plan/drafts/7/delete', { version: 1 }],
+  ['POST', '/plan/drafts/7/realize', { version: 1, legs: {}, request_id: 'r' }]];
 
 test('every refused (role, route) → 403 in the /plan/* shape, before any DB call', async () => {
   let refused = 0;
@@ -154,7 +168,7 @@ test('every refused (role, route) → 403 in the /plan/* shape, before any DB ca
 });
 
 test('an unknown role (forged or stale JWT role) is refused everywhere', async () => {
-  for (const [verb, p, body] of Object.values(REQ)) {
+  for (const [verb, p, body] of [...Object.values(REQ), ...ROAD_PATHS]) {
     calls.length = 0;
     const r = await call('driver', verb, p, body);
     assert.equal(r.status, 403, `${verb} ${p}`);
@@ -163,7 +177,7 @@ test('an unknown role (forged or stale JWT role) is refused everywhere', async (
 });
 
 test('no token / a token signed with another secret → 401 before anything; unknown path → 404 after auth', async () => {
-  for (const [verb, p, body] of Object.values(REQ)) {
+  for (const [verb, p, body] of [...Object.values(REQ), ...ROAD_PATHS]) {
     let r = await send(verb, p, { body });
     assert.equal(r.status, 401, `${verb} ${p}`);
     assert.deepEqual(r.json.error, { type: 'AUTH', code: 'unauthorized', message: 'Η σύνδεση έληξε — συνδέσου ξανά' });
@@ -175,7 +189,9 @@ test('no token / a token signed with another secret → 401 before anything; unk
     assert.equal(r.json.error.type, 'AUTH');
   }
   assert.equal((await send('GET', '/plan/nope')).status, 401, 'auth comes first');
-  for (const [verb, p] of [['GET', '/plan/nope'], ['POST', '/plan/rt'], ['DELETE', '/plan/orders/17'], ['GET', '/plan/orders'], ['POST', '/plan/restore']]) {
+  // the drafts have no DELETE (a delete is POST .../delete, soft) and the transfer no GET / PATCH
+  for (const [verb, p] of [['GET', '/plan/nope'], ['POST', '/plan/rt'], ['DELETE', '/plan/orders/17'], ['GET', '/plan/orders'], ['POST', '/plan/restore'],
+    ['DELETE', '/plan/drafts/7'], ['GET', '/plan/transfer'], ['PATCH', '/plan/transfer'], ['POST', '/plan/drafts/7'], ['GET', '/plan/drafts/x/history']]) {
     const r = await call('owner', verb, p);
     assert.equal(r.status, 404, `${verb} ${p}`);
     assert.equal(r.json.error.type, 'NOT_FOUND');
