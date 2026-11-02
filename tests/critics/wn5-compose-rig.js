@@ -346,15 +346,33 @@ async function draftsScn({ browser, origin, ok, scn, shots }) {
   w = writes(S);
   ok(scn, '×: ONE POST /plan/drafts/16/pieces {version 2, remove [4801]}; 4801 back on the list', w.length === 1 && JSON.stringify(w[0].body) === '{"version":2,"remove":[4801]}'
     && !!(await K.count(page, '#wn5-hub .wn5-cr[data-piece="4801"]')), w.map((x) => x.raw));
-  // the day of a draft, any day (beyond the week too)
+  // drag: the row of the list back onto the card (add)
+  S.plan.length = 0;
+  await page.dragAndDrop('#wn5-hub .wn5-cr[data-piece="4801"]', card(16));
+  await page.waitForTimeout(500);
+  w = writes(S);
+  ok(scn, 'drag a row onto a card: ONE POST /plan/drafts/16/pieces {version 3, add [4801]}', w.length === 1 && JSON.stringify(w[0].body) === '{"version":3,"add":[{"piece_id":4801}]}', w.map((x) => x.raw));
+  // the day of a draft, any day (beyond the week too); a year being typed digit by digit sends nothing
+  await page.evaluate((s) => { const el = document.querySelector(s); el.value = '0202-10-19'; el.dispatchEvent(new Event('change')); }, `${card(16)} .wn5-cd-day`);
+  await page.waitForTimeout(300);
+  ok(scn, 'a half-typed year (0202) sends nothing', !writes(S).slice(1).length, writes(S).map((x) => x.raw));
   S.plan.length = 0;
   await page.fill(`${card(16)} .wn5-cd-day`, '2026-10-19');
   await page.dispatchEvent(`${card(16)} .wn5-cd-day`, 'change');
   await page.waitForTimeout(500);
   w = writes(S);
-  ok(scn, 'day: ONE PATCH /plan/drafts/16 {version 3, day 2026-10-19} (next week: a draft is built days ahead)', w.length === 1 && w[0].m === 'PATCH' && JSON.stringify(w[0].body) === '{"version":3,"day":"2026-10-19"}', w.map((x) => x.raw));
-  // history: who / when / what, read from the base
+  ok(scn, 'day: ONE PATCH /plan/drafts/16 {version 4, day 2026-10-19} (next week: a draft is built days ahead)', w.length === 1 && w[0].m === 'PATCH' && JSON.stringify(w[0].body) === '{"version":4,"day":"2026-10-19"}', w.map((x) => x.raw));
+  // hours: «⋯» → from / to → «Αποθήκευση ωρών»
   await page.click(`${card(16)} [data-cd="tools"]`);
+  S.plan.length = 0;
+  await page.fill(`${card(16)} [data-cw="from"]`, '08:00');
+  await page.fill(`${card(16)} [data-cw="to"]`, '1200');
+  await page.click(`${card(16)} [data-cd="win"]`);
+  await page.waitForTimeout(500);
+  w = writes(S);
+  ok(scn, 'hours: ONE PATCH /plan/drafts/16 {version 5, win {08:00, 12:00}}; the card says «08:00–12:00»', w.length === 1 && JSON.stringify(w[0].body) === '{"version":5,"win":{"from":"08:00","to":"12:00"}}'
+    && (await txt(page, `${card(16)} .wn5-cd-win`)) === '08:00–12:00', w.map((x) => x.raw));
+  // history: who / when / what, read from the base
   await page.click(`${card(16)} [data-cd="hist"]`);
   await page.waitForTimeout(400);
   const hist = await txt(page, `${card(16)} .wn5-cd-hist`);
@@ -367,8 +385,8 @@ async function draftsScn({ browser, origin, ok, scn, shots }) {
   await page.click(`${card(16)} [data-cd="delete"]`);
   await page.waitForTimeout(500);
   w = writes(S);
-  ok(scn, `Ε3 «Διαγραφή» → «${sure}» → ONE POST /plan/drafts/16/delete {version 4}; the card gone, the draft soft-deleted in the base`,
-    sure === 'Σίγουρα; Διαγραφή' && w.length === 1 && w[0].path === '/plan/drafts/16/delete' && JSON.stringify(w[0].body) === '{"version":4}'
+  ok(scn, `Ε3 «Διαγραφή» → «${sure}» → ONE POST /plan/drafts/16/delete {version 6}; the card gone, the draft soft-deleted in the base`,
+    sure === 'Σίγουρα; Διαγραφή' && w.length === 1 && w[0].path === '/plan/drafts/16/delete' && JSON.stringify(w[0].body) === '{"version":6}'
     && !(await K.count(page, card(16))) && DB.drafts.find((d) => d.draft_id === 16).end === 'deleted', w.map((x) => x.raw));
 
   // «Δημιουργία όλων»: one realize per ready draft, in order, its own request_id; 13 refused by the base (piece_busy)

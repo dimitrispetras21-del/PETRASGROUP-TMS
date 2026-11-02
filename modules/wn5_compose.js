@@ -31,7 +31,7 @@
   // sel: ticked rows of the left list (not in any draft). slots: one request_id per creation (create per side,
   // realize per draft), kept until a confirmed 200 (core/plan-api.js slot rule). Memory only.
   const S = { open: false, side: 'KATHODOS', sel: { KATHODOS: [], ANODOS: [] }, busy: false,
-    rd: { st: 'idle', drafts: [], today: null, err: null, board: null, failAt: 0 },
+    rd: { st: 'idle', drafts: [], today: null, err: null, board: null, failAt: 0, set: new Set() },
     msg: null, res: null, tools: null, hist: {}, del: null, drag: null, slots: new Map() };
   let _rseq = 0;
 
@@ -55,15 +55,19 @@
       err = K().clientErr('bad_answer', 'Η απάντηση των πρόχειρων δεν διαβάζεται — ενημέρωσε τον Δημήτρη');
       K().log(new Error('wn5: GET /plan/drafts answered without drafts[]'), 'WN5Compose read');
     }
-    if (err) S.rd = { st: 'err', drafts: [], today: null, err, board: b, failAt: Date.now() };
-    else S.rd = { st: 'ok', drafts: ans.drafts.filter((d) => d && K().id(d.draft_id)), today: ans.today || null, err: null, board: b, failAt: 0 };
+    if (err) S.rd = { st: 'err', drafts: [], today: null, err, board: b, failAt: Date.now(), set: new Set() };
+    else {
+      const ds = ans.drafts.filter((d) => d && K().id(d.draft_id));
+      S.rd = { st: 'ok', drafts: ds, today: ans.today || null, err: null, board: b, failAt: 0, set: new Set(ds.flatMap((d) => (d.pieces || []).map((p) => p.piece_id))) };
+    }
+    S.hist = {};                                     // a history open before this read is older than it: asked again
     _fill();
     _redraw();
   }
   const _ok = () => S.rd.st === 'ok';
   const _find = (id) => S.rd.drafts.find((d) => d.draft_id === id) || null;
   // the parts of every live draft, every point (one live draft per part: 102 plan_draft_pieces_one)
-  function _inSet() { const s = new Set(); for (const d of S.rd.drafts) for (const p of d.pieces || []) s.add(p.piece_id); return s; }
+  const _inSet = () => S.rd.set;
 
   // ═══ Ε1 (owner 2/11): a part in a draft stays a ΠΡΟΣ ΑΝΑΘΕΣΗ row of the Weekly, with a small grey «σε πρόχειρο» ═══
   // Drawn hidden and filled in place when the read lands (_fill): the drafts read never repaints the board, so a menu
@@ -138,7 +142,7 @@
     const t0 = _tempOf(raw), tmp = t0 && t0 !== com.temp ? t0 : '';
     const more = side === 'KATHODOS' && !raw.is_stock && pt === k.hubId()
       ? '<button type="button" class="wi4-btn sm wn5-hub-b wn5-hub-more" data-hub="more" aria-label="Περισσότερα" onclick="event.stopPropagation();WN5Hub.more(' + pid + ', this)">⋯</button>' : '';
-    return '<div class="wn5-hub-it wn5-cr' + (onv ? ' on' : '') + (late ? ' late' : '') + '" data-piece="' + pid + '" draggable="true" ondragstart="WN5Compose.drag(event, ' + pid + ', 0)">'
+    return '<div class="wn5-hub-it wn5-cr' + (onv ? ' on' : '') + (late ? ' late' : '') + '" data-piece="' + pid + '" draggable="true" ondragstart="WN5Compose.drag(event, ' + pid + ', 0)" ondragend="WN5Compose.dragEnd()">'
       + '<input type="checkbox" class="wn5-hub-ck" aria-label="Στο πρόχειρο φορτίο"' + (onv ? ' checked' : '') + ' onclick="event.stopPropagation();WN5Compose.tick(' + pid + ', this.checked)">'
       + '<span class="wn5-cr-a"><b>' + k.esc(name) + (city && city !== name ? '<i> · ' + k.esc(city) + '</i>' : '') + '</b>' + (sub ? '<span>' + k.esc(sub) + '</span>' : '') + '</span>'
       + '<span class="wn5-cr-w"><span>' + k.esc(when) + '</span>' + (late ? '<em>' + (raw.is_stock ? 'έπρεπε να φύγει' : 'αργό') + '</em>' : '') + '</span>'
@@ -174,7 +178,14 @@
   }
   // the realize request of a draft, or null while a part blocks or nothing is in it. Whole parts, no to_hub (Ε2): the
   // base refuses anything else (102 plan_draft_realize).
+  let _memo = null;                                // html(): one engine call per draft per drawing
   function _plan(d) {
+    if (_memo && _memo.has(d)) return _memo.get(d);
+    const p = _plan0(d);
+    if (_memo) _memo.set(d, p);
+    return p;
+  }
+  function _plan0(d) {
     const ps = d.pieces || [];
     if (!ps.length || ps.some((p) => p.blocking || !p.piece) || typeof WN5Assign === 'undefined') return null;
     return _withParts(d, () => WN5Assign.forChoice(ps.map((p) => ({ piece_id: p.piece_id })), _ctxOf(d), _choiceOf(d)));
@@ -231,7 +242,7 @@
     const mv = others.length ? '<select class="wn5-cd-mv" aria-label="Μετακίνηση σε άλλο πρόχειρο" onchange="WN5Compose.moveTo(' + id + ', ' + pid + ', this.value)"><option value="">→</option>'
       + others.map((o) => '<option value="' + o.draft_id + '">' + k.esc('→ ' + _label(o)) + '</option>').join('') + '</select>' : '';
     const pal = p.piece ? n.pallets : s.pallets;
-    return '<div class="wn5-cd-p' + cls + '" data-piece="' + pid + '" draggable="true" ondragstart="WN5Compose.drag(event, ' + pid + ', ' + id + ')">'
+    return '<div class="wn5-cd-p' + cls + '" data-piece="' + pid + '" draggable="true" ondragstart="WN5Compose.drag(event, ' + pid + ', ' + id + ')" ondragend="WN5Compose.dragEnd()">'
       + '<span class="wn5-cd-a"><b>' + k.esc(_place(loc)) + '</b>' + (sub ? '<span>' + k.esc(sub) + '</span>' : '') + mark + '</span>'
       + '<span class="wn5-hub-sp"></span><span class="wn5-hub-p">' + k.esc(k.pal(pal)) + 'π</span>'
       + '<span class="wn5-cd-acts">' + mv + '<button type="button" class="wi4-btn sm wn5-hub-b" data-cd="remove" aria-label="Αφαίρεση από το πρόχειρο" title="Αφαίρεση (πίσω στη λίστα)" onclick="WN5Compose.remove(' + id + ', ' + pid + ')">×</button></span></div>';
@@ -337,6 +348,8 @@
         + '<button type="button" class="wi4-link" data-cmp="reread" onclick="WN5Compose.reread()">Ξαναδιάβασε</button></div>';
     }
     if (!_ok()) return h + '<p class="wn5-cb-empty">Τα πρόχειρα διαβάζονται…</p></div>';
+    // the drafts of the panel are those of its point: with no point known, «κανένα πρόχειρο» would be a lie
+    if (_pt() == null) return h + _msgHTML({ text: 'Η Βέροια δεν είναι γνωστή ακόμη (ο κατάλογος δεν φορτώθηκε) — τα πρόχειρα δεν δείχνονται· ανανέωσε', code: 'hub_unknown' }) + '</div>';
     const ds = _drafts(side);
     if (S.msg && (S.msg.id == null || !ds.some((d) => d.draft_id === S.msg.id))) h += _msgHTML(S.msg);
     h += ds.length ? ds.map((d) => _cardHTML(d, side, sel)).join('')
@@ -360,6 +373,10 @@
 
   // ═══ the panel ═══
   function html(model) {
+    _memo = new Map();
+    try { return _html(model); } finally { _memo = null; }
+  }
+  function _html(model) {
     _kick();
     const k = K(), pt = _pt(), today = model.today || null;
     const rows = { KATHODOS: _rows(model, pt, 'KATHODOS'), ANODOS: _rows(model, pt, 'ANODOS') };
@@ -435,7 +452,9 @@
   // is on screen is the base's (someone else may have written meanwhile). A creation carries its slot's request_id:
   // the same id after a lost answer (the base replays it), a new one only after a confirmed 200.
   async function _write(d, method, path, body, slotKey) {
-    if (!_live() || S.busy) return null;
+    if (!_live()) return null;
+    // another write is on its way: the control the user just changed goes back to what the base holds (never shown as saved)
+    if (S.busy) { _redraw(); return null; }
     const k = K();
     if (k.closedErr()) { S.msg = Object.assign({ id: d ? d.draft_id : null }, _words(k.closedErr())); _redraw(); return null; }
     const slot = slotKey ? (S.slots.get(slotKey) || S.slots.set(slotKey, PlanApi.slot()).get(slotKey)) : null;
@@ -480,7 +499,7 @@
   // «+ φορτίο»: a new draft on the side, with the ticked parts (or empty)
   async function create(ids) {
     // the drafts must be read first: a part already in a draft is not on the list only after that read
-    if (!_live() || !_ok()) return;
+    if (!_live() || !_ok() || _pt() == null) return;
     const st = WN5.state(), sd = S.side, sel = Array.isArray(ids) ? ids : S.sel[sd].slice();
     if (!st || !st.model) return;
     const body = { side: sd, point_location_id: _pt(), day: _defDay(st.model, sd, sel) };
@@ -514,6 +533,10 @@
     const d = _draftOf(id);
     if (!_live() || !d) return;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(v)) || v === d.day) { _redraw(); return; }
+    // a date input fires change at each typed digit of the year (0002, 0020, 0202, 2026): a year far from today is a
+    // day still being typed — nothing is sent and the input is left alone until it is a real day
+    const y = Number(String(S.rd.today || K().state().board.week || v).slice(0, 4));
+    if (Math.abs(Number(v.slice(0, 4)) - y) > 1) return;
     _write(d, 'PATCH', '/plan/drafts/' + d.draft_id, { version: d.version, day: v });
   }
   function setWin(id, all) {
@@ -538,7 +561,13 @@
       const now = _draftOf(id);
       if (!c || !now || !_live()) return;
       const v = c.who === 'partner' ? { partner_id: c.partner } : c.who === 'own' ? Object.assign({ truck_id: c.truck }, c.trailer ? { trailer_id: c.trailer } : {}, c.driver ? { driver_id: c.driver } : {}) : null;
-      _write(now, 'PATCH', '/plan/drafts/' + now.draft_id, { version: now.version, vehicle: v });
+      _write(now, 'PATCH', '/plan/drafts/' + now.draft_id, { version: now.version, vehicle: v }).then((out) => {
+        // 102 keeps the vehicle INTENT only: a partner's rate typed in the form is not kept — said, never dropped silently
+        if (out && c.who === 'partner' && String(c.rateTxt || '').trim()) {
+          S.msg = { id: now.draft_id, kind: 'stale', code: '', text: 'Το κόμιστρο (' + c.rateTxt + ' €) δεν κρατιέται στο πρόχειρο — γράψ’ το στο Weekly μετά τη «Δημιουργία»' };
+          _redraw();
+        }
+      });
     });
   }
   async function history(id) {
@@ -548,7 +577,7 @@
     S.hist[d.draft_id] = { loading: true };
     _redraw();
     try { const a = await planFetch('GET', '/plan/drafts/' + d.draft_id + '/history'); S.hist[d.draft_id] = { rows: (a && a.rows) || [] }; }
-    catch (e) { if (e && e._sessionGone) return; S.hist[d.draft_id] = { err: e }; }
+    catch (e) { if (e && e._sessionGone) { delete S.hist[d.draft_id]; return; } S.hist[d.draft_id] = { err: e }; }
     _redraw();
   }
   function del(id) {
@@ -606,6 +635,8 @@
     S.drag = { pid: K().id(pid), from: K().id(from) };
     try { ev.dataTransfer.setData('text/plain', String(pid)); ev.dataTransfer.effectAllowed = 'move'; } catch (_) { /* no dataTransfer: the click path stays */ }
   }
+  // a drag let go outside any target leaves nothing behind for a later drop (of text, a file) to act on
+  function dragEnd() { S.drag = null; }
   function over(ev) { if (S.drag && _live()) ev.preventDefault(); }
   function drop(ev, to) {
     if (!_live() || !S.drag) return;
@@ -628,5 +659,5 @@
   }
 
   window.WN5Compose = Object.freeze({ on, html, markHTML, open, close, setSide, tick, reset, reread, tools, create, addTo, remove, ack, moveTo,
-    setDay, setWin, noTruck, pick, history, del, realize, realizeAll, drag, over, drop, truck });
+    setDay, setWin, noTruck, pick, history, del, realize, realizeAll, drag, dragEnd, over, drop, truck });
 })();
