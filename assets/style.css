@@ -9258,6 +9258,10 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 .wn5 .wn5-pt > .wi4-l2 > .wi4-pt-dd { font-weight:700; color:var(--wi4-ink); }
 .wn5 .wn5-pts .wi4-more:has(.wi4-more-d) { height:auto; min-height:22px; padding:2px 0; align-content:center; }
 .wn5 .wn5-pts .wi4-more .wi4-more-d { font-size:9px; line-height:10px; }
+/* «PE» on the national board (owner 2/11): the Weekly International's chip, stacked over the pallets so the 50px ΠΑΛ.
+   cell keeps its «+»; two 13–14px lines fit the row's two lines. */
+.wn5 .wn5-palst { display:inline-flex; flex-direction:column; align-items:flex-end; gap:1px; }
+.wn5 .wn5-palst > .wi4-pe { padding:0; font-size:8px; line-height:11px; letter-spacing:0; }   /* ≤ the width of «31»: the cell's 38px hold it and the «+» */
 /* More late stops than slots: the «+N» that holds one is amber too (a late stop is never hidden in grey). */
 .wn5 .wn5-pts .wi4-more.wn5-late b { color:var(--wi4-amber); }
 .wn5 .wn5-missing { color:var(--wi4-amber-ink); }

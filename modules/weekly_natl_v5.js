@@ -1201,7 +1201,12 @@ function _palHTML(s) {
   // F1/F4: a side with pieces of unknown pallets reads «12+;», titled how many — the x/33 is a floor, never «OK»
   const unk = s.palUnknown || 0;
   const title = [s.over ? `υπέρβαση ${_pal(s.over)}` : '', unk ? `παλέτες άγνωστες σε ${unk} ${unk === 1 ? 'φορτίο' : 'φορτία'}` : ''].filter(Boolean).join(' · ');
-  return `<span class="wi4-pal${s.over ? ' over' : ''}${unk ? ' unk' : ''}"${title ? ` title="${_esc(title)}"` : ''}>${_esc(WN5L.palText(s.pallets, unk))}</span>`;
+  const pal = `<span class="wi4-pal${s.over ? ' over' : ''}${unk ? ' unk' : ''}"${title ? ` title="${_esc(title)}"` : ''}>${_esc(WN5L.palText(s.pallets, unk))}</span>`;
+  // «PE» (owner 2/11): the Weekly International's own chip (.wi4-pe), over the pallets in the 50px ΠΑΛ. cell (beside
+  // them it pushed the «+» out); titled with the clients whose loads exchange pallets (WN5L side.pe).
+  if (!s.pe) return pal;
+  const who = s.pe.clients.length ? ' · ' + s.pe.clients.join(', ') : '';
+  return `<span class="wn5-palst"><span class="wi4-pe" title="${_esc('Ανταλλαγή παλετών' + who)}">PE</span>${pal}</span>`;
 }
 // 072b tiles (Figma H1 2120:7738, H3 2123:7735, Ε5 2140:7810): one tile per segment, side by side, no «/». The
 // ΑΡΧΙΚΟ keeps a straight 3px line at the column's edge; every next tile has a slanted left side in its colour (CSS).

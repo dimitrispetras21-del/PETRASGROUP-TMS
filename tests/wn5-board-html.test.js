@@ -182,3 +182,30 @@ test('day divider: an ΑΝΟΔΟΣ cell (one point) names a folded loading of an
   const afl0 = cell(rowOf(c.WN5._html(c.WN5L.model(FIX, { today: '2026-10-13' })), 'rt:101'), 'wn5-afl');
   assert.ok(!/wi4-more-d/.test(afl0), afl0);
 });
+
+// «PE» (owner 2/11, «θέλω να φαίνεται και το PE flag στα εθνικά»): the side's ΠΑΛ. cell carries the Weekly
+// International's chip when a load of that side exchanges pallets — plan_board's own key on legs[] / waiting[]
+// (a national order's, or a VS piece's INTERNATIONAL order's). The fixture's legs predate the key (074a): absent = no
+// chip, never «Όχι»; its one waiting load N-T020 has pallet_exchange: true.
+const withPe = (pred, val) => { const b = JSON.parse(JSON.stringify(FIX)); for (const c of b.cycles) for (const s of c.stops) for (const l of s.legs || []) if (pred(c, s, l)) l.pallet_exchange = val; return b; };
+test('PE: a VS leg with pallet exchange marks its ΚΑΘΟΔΟΣ ΠΑΛ. cell, titled with the client; the ΑΝΟΔΟΣ stays clean', () => {
+  const c = load();
+  const m = c.WN5L.model(withPe((cy, s, l) => cy.rt_id === 101 && l.kind === 'vs_import', true), { today: '2026-10-13' });
+  const r = m.days.flatMap((d) => d.rows).find((x) => x.key === 'rt:101');
+  assert.deepStrictEqual(r.kath.pe && Array.from(r.kath.pe.clients), ['ΠΕΛΑΤΗΣ Β']);
+  assert.strictEqual(r.anod.pe, null);
+  const row = rowOf(c.WN5._html(m), 'rt:101');
+  assert.ok(cell(row, 'wn5-kpal').includes('<span class="wn5-palst"><span class="wi4-pe" title="Ανταλλαγή παλετών · ΠΕΛΑΤΗΣ Β">PE</span>'), cell(row, 'wn5-kpal'));
+  assert.ok(!/wi4-pe/.test(cell(row, 'wn5-apal')), cell(row, 'wn5-apal'));
+});
+test('PE: false or absent on every leg = no chip on any cycle; the waiting load with pallet_exchange: true has it', () => {
+  const c = load();
+  for (const b of [FIX, withPe(() => true, false)]) {
+    const h = c.WN5._html(c.WN5L.model(b, { today: '2026-10-13' }));
+    for (const r of rows(h).filter((x) => /data-key="rt:/.test(x))) assert.ok(!/wi4-pe/.test(r), keyOf(r));
+  }
+  const m = c.WN5L.model(FIX, { today: '2026-10-13' });
+  const w = m.days.flatMap((d) => d.rows).filter((x) => x.kind !== 'cycle' && ((x.kath && x.kath.pe) || (x.anod && x.anod.pe)));
+  assert.strictEqual(w.length, 1, 'one waiting row with PE (N-T020)');
+  assert.ok(/class="wi4-pe" title="Ανταλλαγή παλετών · ΠΕΛΑΤΗΣ Ζ">PE</.test(rowOf(c.WN5._html(m), w[0].key)));
+});
