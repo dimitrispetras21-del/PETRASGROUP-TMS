@@ -905,7 +905,7 @@ function _kathHTML(r, m, ok) {
   const refInFl = !!(s.veroia && !WN5L.winText(s.veroia.from, s.veroia.to, s.veroia.allDay));
   return `<div class="wn5-kd">${lateK ? `<span class="wi4-dc red" title="αργό">${_esc(_dl(s.day))}</span>` : _chipHTML(r, 'KATHODOS', `wi4-dc ${_chipCls(s.day, m.today)}${hd}`, _dl(s.day))}${toDay}${refInFl ? '' : vsRef}</div>`
     + `<div class="wn5-fl"${_legAttr(r, 'KATHODOS')}>${_flHTML(s, ok, hd, refInFl ? vsRef : '')}</div>`
-    + `<div class="wn5-kto${_hx(r, s, null)}"${_legAttr(r, 'KATHODOS')}>${_hxHTML(r, s, null)}${_ptsHTML(s.to, ok)}</div>`
+    + `<div class="wn5-kto${_hx(r, s, null)}"${_legAttr(r, 'KATHODOS')}>${_hxHTML(r, s, null)}${_ptsHTML(s.to, ok, null, false, null, s.toDay)}</div>`
     + `<div class="wn5-kpal"${_legAttr(r, 'KATHODOS')}>${_palHTML(s)}${_plusHTML(r, 'KATHODOS')}${_prtHTML(r, 'KATHODOS')}</div>`;
 }
 function _anodHTML(r, m, ok) {
@@ -941,8 +941,8 @@ function _anodHTML(r, m, ok) {
   return `<div class="wn5-ad">${_prtHTML(r, 'ANODOS')}${lateA ? `<span class="wi4-dc red" title="αργό">${_esc(_dl(s.day))}</span>` : _chipHTML(r, 'ANODOS', `wi4-dc ${_chipCls(s.day, m.today)}${hd}`, _dl(s.day))}</div>`
     // ΑΝΟΔΟΣ: one point whole, the rest «+N» (owner 1/11): two points shared 55% / 45% of the side and both were cut
     // («EFTHIMIOS PAN. – KORI…», «13π · +…»); the «+N» names them all in its title, a late one never folded first
-    + `<div class="wn5-afl"${_legAttr(r, 'ANODOS')}>${_ptsHTML(s.from, ok, null, false, 1)}</div>`
-    + `<div class="wn5-ato${_hx(r, s, r.end)}"${_legAttr(r, 'ANODOS')}>${_hxHTML(r, s, r.end)}${_ptsHTML(s.to, ok, null, false, 1)}${end}</div>`
+    + `<div class="wn5-afl"${_legAttr(r, 'ANODOS')}>${_ptsHTML(s.from, ok, null, false, 1, s.day)}</div>`
+    + `<div class="wn5-ato${_hx(r, s, r.end)}"${_legAttr(r, 'ANODOS')}>${_hxHTML(r, s, r.end)}${_ptsHTML(s.to, ok, null, false, 1, s.day)}${end}</div>`
     + `<div class="wn5-apal"${_legAttr(r, 'ANODOS')}>${_palHTML(s)}${_plusHTML(r, 'ANODOS')}</div>`;
 }
 // ΦΟΡΤΩΣΗ of ΚΑΘΟΔΟΣ: «Βέροια» and its window stay together (owner 25/10); a loading the cycle makes BEFORE Veroia
@@ -952,16 +952,20 @@ function _anodHTML(r, m, ok) {
 // The number sits INSIDE the place line here (inl): the two flow as one run, so a place that does not fit beside its
 // number goes whole to the next line, and that run is the box cut at two lines (long names, owner 28/10).
 function _flHTML(s, ok, hd, vsRef) {
-  if (!s.veroia) return _ptsHTML(s.from, ok, null, true);
+  if (!s.veroia) return _ptsHTML(s.from, ok, null, true, null, s.day);
   // 2d: no window known → «Βέροια» alone, never «Βέροια —»; a waiting VS puts its reference there (vsRef)
   const vw = WN5L.winText(s.veroia.from, s.veroia.to, s.veroia.allDay);
   const vh = `<span class="wn5-vh${hd}">Βέροια</span>${vw ? `<span class="wn5-vtime${hd}"${_segAttr(s.veroia.segLabel)}>${_esc(vw)}</span>` : vsRef || ''}${_vsDayMark(s.veroia.stopId)}`;
   const k = Math.min(s.vBefore || 0, s.from.length);
-  return _ptsHTML(s.from.slice(0, k), ok, 1, true) + vh + _ptsHTML(s.from.slice(k), ok, k + 2, true);
+  return _ptsHTML(s.from.slice(0, k), ok, 1, true, null, s.day) + vh + _ptsHTML(s.from.slice(k), ok, k + 2, true, null, s.day);
 }
 // start (a number) = number the points from it, boxes always shown (a cell that also has «Βέροια»); else WN5L's n and
 // no box on a lone point (wi4 rule 6). Every point is place + city (owner 28/10), so no cell is «place only» any more.
-function _ptsHTML(pts, ok, start, inl, max) {
+// day0 (owner 2/11, «Ναι, και στα Εθνικά»): the day the cell's head already states (a ΚΑΘΟΔΟΣ's deliveries: toDay, the
+// FIRST delivery day; every other cell: the side's day). A shown point of another day than the one before it gets the
+// divider «Τετ 4/11» (WI4.dayBreaks, the Weekly International's own rule), over the SHOWN order: a break that fell on
+// a folded point still lands on the next shown one. A folded point of another day than day0 is named on the «+N».
+function _ptsHTML(pts, ok, start, inl, max, day0) {
   if (!pts.length) return '';
   const num = start == null ? (p) => (pts.length === 1 ? null : p.n) : (p, i) => start + i;
   const vis = max != null ? Math.min(max, _visPts()) : _visPts();
@@ -979,10 +983,14 @@ function _ptsHTML(pts, ok, start, inl, max) {
   // a folded order without its price (owner 2/11, «λείπει τιμή»: code review xhigh) — never only in a title.
   const restLate = rest.some((i) => pts[i].late);
   const restGap = rest.some((i) => pts[i].noPrice);
+  const ri = rest.find((i) => pts[i].day && day0 && pts[i].day !== day0 && !pts[i].hub);
+  const restDay = ri === undefined ? '' : pts[ri].day;
   const more = rest.length
-    ? `<span class="wi4-more${restLate ? ' wn5-late' : ''}${restGap ? ' wn5-gap' : ''}" title="${_esc(rest.map((i) => `${num(pts[i], i) || pts[i].n}. ${_ptFull(pts[i])}`).join('\n'))}"><b>+${rest.length}</b></span>`
+    ? `<span class="wi4-more${restLate ? ' wn5-late' : ''}${restGap ? ' wn5-gap' : ''}" title="${_esc(rest.map((i) => `${num(pts[i], i) || pts[i].n}. ${_ptFull(pts[i])}`).join('\n'))}"><b>+${rest.length}</b>${restDay ? `<span class="wi4-more-d">${_esc(_dow(restDay))}</span>` : ''}</span>`
     : '';
-  return `<span class="wi4-pts wn5-pts">${idx.filter((i) => shown.has(i)).map((i) => _ptHTML(pts[i], num(pts[i], i), ok, inl)).join('')}${more}</span>`;
+  const sh = idx.filter((i) => shown.has(i));
+  const brk = typeof WI4 !== 'undefined' && WI4.dayBreaks ? WI4.dayBreaks(sh.map((i) => (pts[i].hub ? '' : pts[i].day)), day0) : [];
+  return `<span class="wi4-pts wn5-pts">${sh.map((i, j) => _ptHTML(pts[i], num(pts[i], i), ok, inl, brk[j])).join('')}${more}</span>`;
 }
 // Who, then where (Figma H1 «Omega Market · Rentis»): the client in bold, the place in grey. Two runs that break
 // between them, the «·» staying on the first line («ΠΕΛΑΤΗΣ Δ ·» / «Aspropyrgos»), never inside a name that fits. A waiting load's point
@@ -1021,7 +1029,7 @@ function _ptFull(p) {
   const city = _ptCity(p), who = _ptWho(p);
   return `${p.name}${city ? ', ' + city : ''} · ${_winTxt(p.from, p.to, p.allDay)} · ${_pal(p.pallets, p.palUnknown)}${_tempTxt(p) ? ' · ' + _tempTxt(p) : ''}${who ? ' · ' + who : ''}${p.noPrice ? ' · λείπει τιμή' : ''}`;
 }
-function _ptHTML(p, n, ok, inl) {
+function _ptHTML(p, n, ok, inl, brk) {
   // Figma audit B-12 (H1): a load waiting for its ΑΝΟΔΟΣ that ends at Veroia reads as a cycle's end (r.end): «Βέροια
   // · τέλος κύκλου», then its deadline; no city «Veroia» under «Βέροια». The deadline is the window's end when the
   // board has one, else the base's due DAY (nat_due_day) — no hour is invented for it.
@@ -1035,12 +1043,14 @@ function _ptHTML(p, n, ok, inl) {
   const full = _ptFull(p);
   const pw = WN5L.winText(p.from, p.to, p.allDay);
   const miss = p.noPrice ? '<span class="wn5-noprice">λείπει τιμή</span> · ' : '';
-  return `<span class="wi4-pt wn5-pt${p.late ? ' wn5-late' : ''}${_dc(ok && p.dim && !p.late)}" data-stop="${_id(p.stopId)}"${_segAttr(p.segLabel)} title="${_esc(full)}">`
+  // The first point of another day (_ptsHTML brk): its day leads line 2, the ink line on its left is the divider.
+  const dd = brk ? `<span class="wi4-pt-dd">${_esc(_dl(brk))}</span> · ` : '';
+  return `<span class="wi4-pt wn5-pt${brk ? ' wi4-pt-nd' : ''}${p.late ? ' wn5-late' : ''}${_dc(ok && p.dim && !p.late)}" data-stop="${_id(p.stopId)}"${_segAttr(p.segLabel)} title="${_esc(full)}">`
     + (n == null ? `<span class="wi4-l1">${_esc(p.name)}</span>`
       : inl ? `<span class="wi4-l1"><span class="wi4-pt-n">${n}</span> ${_esc(p.name)}</span>`
         : `<span class="wi4-pt-n">${n}</span><span class="wi4-l1">${_esc(p.name)}</span>`)
     // 2d: a part the board does not know is left out of the line, never «· — ·»
-    + `<span class="wi4-l2${p.late ? ' wi4-t-amb' : ''}">${city ? `<span class="wn5-pcity">${_esc(city)}</span> · ` : ''}${pw ? _esc(pw) + ' · ' : ''}${miss}${_esc(_pal(p.pallets, p.palUnknown))}${_tempTxt(p) ? `<span class="wn5-temp"> · ${_esc(_tempTxt(p))}</span>` : ''}</span></span>`;
+    + `<span class="wi4-l2${p.late ? ' wi4-t-amb' : ''}">${dd}${city ? `<span class="wn5-pcity">${_esc(city)}</span> · ` : ''}${pw ? _esc(pw) + ' · ' : ''}${miss}${_esc(_pal(p.pallets, p.palUnknown))}${_tempTxt(p) ? `<span class="wn5-temp"> · ${_esc(_tempTxt(p))}</span>` : ''}</span></span>`;
 }
 // The day chip of a side. On a cycle row it is a button: T16, it opens the date panel Δ4 of its side
 // (Figma 2011:8858 / 2053:7837). The classes stay those of T5/T6 (dim, «σήμερα»); other rows keep a plain chip.
@@ -1191,7 +1201,12 @@ function _palHTML(s) {
   // F1/F4: a side with pieces of unknown pallets reads «12+;», titled how many — the x/33 is a floor, never «OK»
   const unk = s.palUnknown || 0;
   const title = [s.over ? `υπέρβαση ${_pal(s.over)}` : '', unk ? `παλέτες άγνωστες σε ${unk} ${unk === 1 ? 'φορτίο' : 'φορτία'}` : ''].filter(Boolean).join(' · ');
-  return `<span class="wi4-pal${s.over ? ' over' : ''}${unk ? ' unk' : ''}"${title ? ` title="${_esc(title)}"` : ''}>${_esc(WN5L.palText(s.pallets, unk))}</span>`;
+  const pal = `<span class="wi4-pal${s.over ? ' over' : ''}${unk ? ' unk' : ''}"${title ? ` title="${_esc(title)}"` : ''}>${_esc(WN5L.palText(s.pallets, unk))}</span>`;
+  // «PE» (owner 2/11): the Weekly International's own chip (.wi4-pe), over the pallets in the 50px ΠΑΛ. cell (beside
+  // them it pushed the «+» out); titled with the clients whose loads exchange pallets (WN5L side.pe).
+  if (!s.pe) return pal;
+  const who = s.pe.clients.length ? ' · ' + s.pe.clients.join(', ') : '';
+  return `<span class="wn5-palst"><span class="wi4-pe" title="${_esc('Ανταλλαγή παλετών' + who)}">PE</span>${pal}</span>`;
 }
 // 072b tiles (Figma H1 2120:7738, H3 2123:7735, Ε5 2140:7810): one tile per segment, side by side, no «/». The
 // ΑΡΧΙΚΟ keeps a straight 3px line at the column's edge; every next tile has a slanted left side in its colour (CSS).

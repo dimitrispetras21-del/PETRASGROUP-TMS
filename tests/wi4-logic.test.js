@@ -107,6 +107,42 @@ test('points: 5 and 9 stops — first 3 + «+(n−3)», shrunk when 3 + chip do 
   assert.strictEqual(tiny.more.count, 8);
 });
 
+// Day dividers (owner 2/11): #616 = Wed, Wed, Thu → a divider before point 3.
+const dayed = (days) => stops(days.length).map((s, i) => Object.assign(s, { day: days[i] }));
+test('points: brk on the first stop of another day; the fit is unchanged (the divider has no width)', () => {
+  const r = WI4.points(dayed(['2026-11-04', '2026-11-04', '2026-11-05']), 400);
+  assert.deepStrictEqual(r.shown.map((s) => s.brk), [null, null, '2026-11-05']);
+  assert.strictEqual(r.more, null);
+  // 3·56 + 2·8 = 184: all three still show, the third point is not pushed behind «+1».
+  assert.strictEqual(WI4.points(dayed(['2026-11-04', '2026-11-04', '2026-11-05']), 184).shown.length, 3);
+  const tight = WI4.points(dayed(['2026-11-04', '2026-11-04', '2026-11-05']), 183);
+  assert.strictEqual(tight.shown.length, 2);
+  // The new day is the first hidden stop: the divider line stands on the chip.
+  assert.deepStrictEqual(tight.more.brk, { day: '2026-11-05', edge: true });
+  // One day only, or no days at all: no divider, the old fit unchanged.
+  assert.deepStrictEqual(WI4.points(dayed(['2026-11-04', '2026-11-04', '2026-11-04']), 184).shown.map((s) => s.brk), [null, null, null]);
+  assert.strictEqual(WI4.points(stops(3), 184).shown.length, 3);
+});
+test('points: an EARLIER day also breaks; day0 = the row\'s day names a first stop on another day (#618)', () => {
+  const r = WI4.points(dayed(['2026-11-03', '2026-11-02']), 400);
+  assert.deepStrictEqual(r.shown.map((s) => [s.n, s.brk]), [[1, null], [2, '2026-11-02']]);
+  // #618 as the board draws it: sorted by date (Mon, Tue) on a row that sits on Tuesday.
+  const b = WI4.points(dayed(['2026-11-02', '2026-11-03']), 400, { day0: '2026-11-03' });
+  assert.deepStrictEqual(b.shown.map((s) => s.brk), ['2026-11-02', '2026-11-03']);
+  // #616 on its own day: day0 changes nothing.
+  const c = WI4.points(dayed(['2026-11-04', '2026-11-04', '2026-11-05']), 400, { day0: '2026-11-04' });
+  assert.deepStrictEqual(c.shown.map((s) => s.brk), [null, null, '2026-11-05']);
+});
+test('points: a new day inside the fold is told by the chip, without the divider line', () => {
+  const r = WI4.points(dayed(['2026-10-09', '2026-10-09', '2026-10-09', '2026-10-09', '2026-10-10']), 226);
+  assert.strictEqual(r.shown.length, 3);
+  assert.ok(r.shown.every((s) => !s.brk));
+  assert.deepStrictEqual(r.more.brk, { day: '2026-10-10', edge: false });
+  // A stop without a day neither breaks nor resets: the day before it carries on.
+  const gap = WI4.points(dayed(['2026-11-04', '', '2026-11-04', '2026-11-05']), 400);
+  assert.deepStrictEqual(gap.shown.map((s) => s.brk), [null, null, null, '2026-11-05']);
+});
+
 test('points: places hide when a point keeps less than badge + 46px', () => {
   // 3 stops at 186px: all fit (184), each point gets (186−16)/3 = 56.7px,
   // 56.7 − 12 < 46 → the place hides, the label keeps the width.
@@ -601,4 +637,11 @@ test('dayLabel / dayDiff: local days only, no DST drift', () => {
   assert.strictEqual(WI4.dayLabel('2026-10-06T06:00:00Z'), '', 'a datetime is not a day');
   assert.strictEqual(WI4.dayDiff('2026-10-24', '2026-10-26'), 2, 'across the 25/10 DST change');
   assert.strictEqual(WI4.dayDiff('x', '2026-10-26'), null);
+});
+
+test('dayBreaks: the one rule both boards read — another day than the point before (day0 for the first); empty days carry on', () => {
+  assert.deepStrictEqual(WI4.dayBreaks(['2026-11-04', '2026-11-04', '2026-11-05']), [null, null, '2026-11-05']);
+  assert.deepStrictEqual(WI4.dayBreaks(['2026-11-02', '2026-11-03'], '2026-11-03'), ['2026-11-02', '2026-11-03']);
+  assert.deepStrictEqual(WI4.dayBreaks(['2026-11-04', '', null, '2026-11-04'], '2026-11-04'), [null, null, null, null]);
+  assert.deepStrictEqual(WI4.dayBreaks(null), []);
 });
