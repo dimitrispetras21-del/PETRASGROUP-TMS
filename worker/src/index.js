@@ -1416,6 +1416,11 @@ var TABLES = {
       "High Risk Flag": "high_risk_flag",
       "National Order Created": "national_order_created",
       Invoiced: "invoiced",
+      // «Αυτοπαράδοση» (owner 2/11/2026, migration 101): our own group's goods, no ERP transport invoice —
+      // Eirini ticks it by hand on «Προς τιμολόγηση»; with Invoiced it needs no invoice number and no price
+      // (invoiceMarkError + the 043/101 trigger). Column + view column come from 101: deploy ONLY AFTER 101
+      // ran (every read selects the mapped columns from orders_with_derived — before 101 a 500).
+      "Self Delivery": "self_delivery",
       "National Groupage": "national_groupage",
       "Is Partner Trip": "is_partner_trip",
       "Pallet Sheet 1 Uploaded": "pallet_sheet_1_uploaded",
@@ -1691,6 +1696,9 @@ var TABLES = {
       Invoiced: "invoiced",
       "Invoice Number": "invoice_number",
       "Invoice Date": "invoice_date",
+      // «Αυτοπαράδοση» (owner 2/11/2026, migration 101) — as ORDERS; read from national_orders_with_derived,
+      // which gains the column in 101: deploy ONLY AFTER 101 ran.
+      "Self Delivery": "self_delivery",
       "Partner Truck Plates": "partner_truck_plates",
       "Groupage ID": "groupage_id",
       "Matched Order ID": "matched_order_id",
@@ -3249,12 +3257,31 @@ __name(handleFacadeGetOne, "handleFacadeGetOne");
 // 500 from Postgres. Fires only when a row BECOMES invoiced, or when an
 // invoiced row's number/price is edited — never on the two 21/8 rows that
 // were marked without a number (§7.1.9, owner decision pending).
+// ONE exception (owner 2/11/2026, migration 101): a self delivery — our own
+// group's goods, no ERP transport invoice — is invoiced with no number and no
+// price. Eirini decides it per order by hand; nothing here detects it.
+// Unticking it on an invoiced row without a number is refused like a missing
+// number (the base does the same): it never clears Invoiced by itself — the
+// screen's undo sends Invoiced false and Self Delivery false together.
+// And 101's CHECK (*_self_delivery_no_tpy): a self delivery IS an invoiced row
+// with NO number — the box never sits on an uninvoiced row or beside a real ΤΠΥ
+// (which the screens would then hide and leave off the ERP sheet). Judged on the
+// row as it will be, before the transition test, so it holds for every write.
 function invoiceMarkError(table, patch, before) {
   if (table !== "orders" && table !== "national_orders") return null;
   if (!before) return null; // not found → the 404 below says so
+  if ("self_delivery" in patch && typeof patch.self_delivery !== "boolean") return "Η αυτοπαράδοση είναι ναι ή όχι";
+  const selfAfter = "self_delivery" in patch ? patch.self_delivery : before.self_delivery === true;
+  const invAfter = "invoiced" in patch ? patch.invoiced : before.invoiced;
+  const numAfter = "invoice_number" in patch ? patch.invoice_number : before.invoice_number;
+  if (selfAfter === true && (invAfter !== true || String(numAfter ?? "").trim())) {
+    return "Αυτοπαράδοση σημαίνει τιμολογημένη χωρίς αριθμό ΤΠΥ — αναίρεσε πρώτα την τιμολόγηση";
+  }
   const becomes = patch.invoiced === true && before.invoiced !== true;
-  const edits = before.invoiced === true && patch.invoiced !== false && ("invoice_number" in patch || "price" in patch);
+  const edits = before.invoiced === true && patch.invoiced !== false && ("invoice_number" in patch || "price" in patch || "self_delivery" in patch);
   if (!becomes && !edits) return null;
+  const self = "self_delivery" in patch ? patch.self_delivery : before.self_delivery;
+  if (self === true) return null;
   const number = "invoice_number" in patch ? patch.invoice_number : before.invoice_number;
   const price = "price" in patch ? patch.price : before.price;
   if (!String(number ?? "").trim()) return "Δεν σημαίνεται τιμολογημένη χωρίς αριθμό τιμολογίου (ΤΠΥ) του ERP";
@@ -3270,7 +3297,8 @@ __name(invoiceMarkError, "invoiceMarkError");
 // prices daily, and the 043 trigger guards an invoiced row's price itself.
 function invoiceNeedsBefore(table, patch) {
   if (table !== "orders" && table !== "national_orders") return false;
-  return patch.invoiced === true || "invoice_number" in patch;
+  // self_delivery (101): unticking it on an invoiced row is judged on the row as it was, like the number
+  return patch.invoiced === true || "invoice_number" in patch || "self_delivery" in patch;
 }
 __name(invoiceNeedsBefore, "invoiceNeedsBefore");
 // STOCK LOTS (migration 057, owner 3–4/10/2026): DB refusals → Greek 422.
@@ -5898,7 +5926,8 @@ var LEGACY_CLOSED_AFTER_L = {
   consolidated_loads: { POST: [], PATCH: ["owner"], DELETE: ["owner"] },
   national_orders: {
     POST: [],
-    PATCH: { owner: "*", accountant: ["Invoiced", "Invoice Number", "Invoice Date", "Price"], dispatcher: ["Price", "Reference", "Notes"] },
+    // "Self Delivery" (101, owner 2/11/2026): part of the invoicing screen's write, so the accountant keeps it with the three
+    PATCH: { owner: "*", accountant: ["Invoiced", "Invoice Number", "Invoice Date", "Price", "Self Delivery"], dispatcher: ["Price", "Reference", "Notes"] },
     DELETE: []
   },
   local_moves: { closedKind: "local" },
