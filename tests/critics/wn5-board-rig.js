@@ -1859,8 +1859,11 @@ async function scnLocal(browser, origin) {
     await bPick(page, `${D} input[data-day]`, stopDay);
     const back = [await page.$eval(`${D} input[data-day]`, (e) => e.value).catch(() => ''), await page.$eval(`${D} [data-dayw]`, (e) => e.hidden).catch(() => false)];
     await bPick(page, `${D} input[data-day]`, '');
+    const typing = await page.$eval(`${D} input[data-day]`, (e) => e.value).catch(() => null);
+    await page.$eval(`${D} input[data-day]`, (e) => e.dispatchEvent(new FocusEvent('focusout', { bubbles: true }))).catch(() => {});
     const empty = await page.$eval(`${D} input[data-day]`, (e) => e.value).catch(() => '');
-    ok(scn, '095: back to the stop\'s day → no amber; an emptied field shows the stop\'s day again', back[0] === stopDay && back[1] === true && empty === stopDay, { back, empty });
+    ok(scn, '095: back to the stop\'s day → no amber; an emptied field is left alone while typed, shows the stop\'s day on leaving it',
+      back[0] === stopDay && back[1] === true && typing === '' && empty === stopDay, { back, typing, empty });
     await bPick(page, `${D} input[data-day]`, eve);
     const amber = await bText(page, `${D} [data-dayw]`);
     ok(scn, '095: the evening before → amber «Άλλη ημέρα από τη στάση (…)», the save stays on', /^Άλλη ημέρα από τη στάση \(/.test(amber)

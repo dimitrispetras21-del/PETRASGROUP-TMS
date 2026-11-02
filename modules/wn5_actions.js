@@ -2274,20 +2274,23 @@
       const el = ev.target;
       if (el.matches('[data-stop]')) {
         st.stop = _id(el.value);
-        // a day the user did not set follows the stop picked (the base's own default)
+        // a day the user did not set follows the stop picked (the base's own default); a day typed before the stop
+        // that turns out to be the stop's own is the default too
+        if (st.day && st.day === _localStopDay(st)) st.day = null;
         if (!st.day) d.body.querySelector('[data-day]').value = _localStopDay(st) || '';
       } else if (el.matches('[data-day]')) {
         // only a day other than the stop's is the user's own (it then stays when the stop changes); the stop's day or
-        // an emptied field is «the stop's day», shown as such
-        const sd = _localStopDay(st);
-        st.day = /^\d{4}-\d{2}-\d{2}$/.test(el.value) && el.value !== sd ? el.value : null;
-        if (!st.day) el.value = sd || '';
+        // an emptied field is «the stop's day» (the field shows it again on leaving it, never while it is typed)
+        st.day = /^\d{4}-\d{2}-\d{2}$/.test(el.value) && el.value !== _localStopDay(st) ? el.value : null;
       }
       else if (el.matches('[data-driver]')) st.driver = _id(el.value);
       else if (el.matches('[data-truck]')) st.truck = _id(el.value);
       else if (el.matches('[data-trailer]')) st.trailer = _id(el.value);
       else return;
       d.refresh();
+    });
+    d.dlg.addEventListener('focusout', (ev) => {
+      if (ev.target.matches('[data-day]') && !st.day) ev.target.value = _localStopDay(st) || '';
     });
     d.dlg.addEventListener('input', (ev) => {
       const el = ev.target;
