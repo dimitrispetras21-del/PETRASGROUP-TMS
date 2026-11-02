@@ -402,7 +402,6 @@
   // pick mode, which writes nothing (its caller saves). There the refusal and its offer stay.
   // null = no overlap on the board; else { text, accept }.
   function _overlaps(st, r) {
-    const k = K();
     if (st.who !== 'own' || !r || r.missing || !r.body) return null;
     const sp = _span(st);
     if (!sp) return null;
