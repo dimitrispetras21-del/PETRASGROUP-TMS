@@ -12,6 +12,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
+- dimitris · `docs/transfer-figma` · Εθνικά v5: μεταφόρτωση σε οποιοδήποτε σημείο, κομμάτι 4: σχέδιο Figma (σελίδα «Μεταφόρτωση 2/11», 6 καρέ, κριτές 9/9), μόνο σχέδιο· οι 3 ερωτήσεις απαντήθηκαν (owner 2/11)· επόμενο το κομμάτι 5 (οθόνες) (`docs/sessions/2026-11-02-dimitris-transfer-figma.md`)
 - dimitris · `claude/rt-membership-root` · RT: η ρίζα του «σε ποιο δρομολόγιο ανήκει μια παραγγελία» (μετά το Dragan): μέτρηση 11 τρόπων, 3 γραφείς ανά γεγονός, πρόταση Γ (έλεγχοι) → Α (ένας κανόνας στη βάση)· μόνο έγγραφο, περιμένει απόφαση owner (`docs/rt-membership/2026-11-02-root-cause.md`)
 - dimitris · `feat/self-delivery-101` · «Αυτοπαράδοση» στην τιμολόγηση (owner 2/11), PR #235: **101 ΕΚΤΕΛΕΣΜΕΝΗ + Worker 7bb5003a ζωντανός 2/11 ~14:47** (φρουρός `--self 1`, 32 σημάδια· επαναφορά b88e6150), αρχεία εκτός drafts/, B-11/B-12 στον κατάλογο· μένει το merge (front end + sync πηγής Worker), ?v= / SW_VERSION 1793750000 (`docs/sessions/2026-11-02-dimitris-self-delivery.md`)
 - dimitris · `claude/rt-split-matched-import-ee6d7a` · RT: εξαγωγή + ταιριασμένη εισαγωγή σε δύο RT (Dragan/Voitsberg): 097 (trigger) + 097b (επισκευή 2 ζευγών) ΕΚΤΕΛΕΣΜΕΝΕΣ 2/11 ~11:30 (owner), αρχεία εκτός drafts/, B-54 = 61 και στον κατάλογο· ανοιχτό: B-77 σε P1 / monitoring χωρίς ειδοποιήσεις (`docs/sessions/2026-11-02-dimitris-rt-split-matched-import.md`)
