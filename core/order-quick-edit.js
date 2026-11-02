@@ -35,7 +35,8 @@ const OrderQuickEdit = (() => {
   // would split the TMS from the issued invoice with no warning (the base lets
   // it through, the number is there). Price is locked; the rest stays open.
   const invoiced = f => !!(f && (f['Invoiced'] === true || (typeof OrdersCommon !== 'undefined' && OrdersCommon.isInvoiced && OrdersCommon.isInvoiced(f))));
-  const locked = (f, k) => k === 'Price' && invoiced(f);
+  // A self delivery (101) has no ERP invoice to contradict: its price stays open.
+  const locked = (f, k) => k === 'Price' && invoiced(f) && !(typeof OrdersCommon !== 'undefined' && OrdersCommon.isSelfDelivery && OrdersCommon.isSelfDelivery(f));
 
   function open(table, rec, onSaved) {
     if (!allowed()) return;
