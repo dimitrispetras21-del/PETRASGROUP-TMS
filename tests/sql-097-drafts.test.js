@@ -13,6 +13,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
+const { pathToFileURL } = require('node:url');
 
 const ROOT = path.join(__dirname, '..');
 const DRAFTS = path.join(ROOT, 'worker/migrations/drafts');
@@ -57,7 +58,7 @@ test('097: one md5 per fact - old = the guard and the rollback\'s end; new = pro
 });
 
 test('097: one definition of "a VS leg off Veroia" - the source\'s PART 0 = the builder\'s, joins and all', async () => {
-  const { OFF } = await import(BUILDER);
+  const { OFF } = await import(pathToFileURL(BUILDER).href);
   const norm = (s) => s.replace(/\s+/g, ' ').trim();
   // the builder's subquery from its FROM to its WHERE's end (its own "(SELECT count(*)" and closing ")" aside)
   const body = norm(OFF).slice(norm(OFF).indexOf('FROM public.v_piece_state ps'), -1);
