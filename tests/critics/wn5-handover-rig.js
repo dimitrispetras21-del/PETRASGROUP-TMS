@@ -829,8 +829,8 @@ async function scnBusy({ browser, origin, ok, scn }) {
       && await K.count(page, `${HDLG} [data-err] [data-act="accept-busy-send"]`) === 1, dry2.map((x) => x.body));
     await page.context().close();
   }
-  { // D · the dry run passed, the save is refused truck_busy (another save took the truck in between): the refusal and
-    // the offer on the form, the save off; the yes → a dry run with accept_busy, then one press
+  { // D · the dry run passed, the save is refused truck_busy (another save took the truck in between): the refusal
+    // strip with the offer; the yes → a dry run with accept_busy, then one press
     let n = 0;
     const { page, S } = await K.openApp(browser, origin, { board: oneSegWeek(), plan: { 'POST /plan/rt/101/handover': (e) => (e.body.dry_run === true ? dryOk(e.body)
       : (++n === 1 ? K.planErr(422, 'PLAN_RULE', 'truck_busy') : [200, { ok: true, op: 'plan_seg_change', dry_run: false, ids: { rt_id: 101 }, warnings: [], notice_ids: [] }])) } });
@@ -840,8 +840,8 @@ async function scnBusy({ browser, origin, ok, scn }) {
     await page.waitForTimeout(1200);
     await page.click(`${HDLG} [data-act="save"]`).catch(() => {});
     await page.waitForTimeout(800);
-    ok(scn, '096: a save refused truck_busy → the offer on the form, the save off', await K.count(page, `${HDLG} [data-err] [data-act="accept-busy-send"]`) === 1
-      && await page.evaluate((d) => document.querySelector(`${d} [data-act="save"]`).disabled, HDLG));
+    ok(scn, '096: a save refused truck_busy → the Worker words in the strip, with «Αποθήκευση έτσι κι αλλιώς»', await K.count(page, `${HDLG} [data-strip] [data-act="accept-busy-send"]`) === 1
+      && /rig sentinel truck_busy/.test(await K.text(page, `${HDLG} [data-strip]`)));
     await page.click(`${HDLG} [data-act="accept-busy-send"]`).catch(() => {});
     await page.waitForTimeout(1200);
     await page.click(`${HDLG} [data-act="save"]`).catch(() => {});

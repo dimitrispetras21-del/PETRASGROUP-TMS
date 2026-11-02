@@ -195,11 +195,12 @@
   // The dry run refused a busy truck / driver the board could not name in advance: the explicit yes, for THIS body
   // only (k0 = the body without the flag; any edit makes another body, and the yes is gone with it)
   // A save refused truck_busy / driver_busy (another save took the vehicle between the dry run and the press): the
-  // same answer as the dry run's - the refusal on the form and the offer - never a dead end until an edit
-  function _busyAtSave(d, e) {
+  // refusal strip keeps the Worker's words (H7) and carries «Αποθήκευση έτσι κι αλλιώς», as on every other save's strip
+  // (086) - never a dead end until an edit. The yes runs the dry run again for the same body with accept_busy.
+  function _busyAtSave(d, e, k0, rerun) {
     if (!e || !BUSY.includes(e.code) || !d.prev || JSON.parse(d.prev.key).accept_busy === true) return;
-    d.prev.conflict = { code: e.code, message: e.message };
-    WN5Act.strip(_strip(d), null);
+    const s = _strip(d) && _strip(d).querySelector('.wn5-strip');
+    if (s) WN5Act.acceptBtn(s, () => { d.acceptFor = k0; rerun(); });
   }
   function _acceptOffer(d, key, accepted, k0, rerun) {
     if (!key || accepted || !d.prev || d.prev.key !== key || !d.prev.conflict || !BUSY.includes(d.prev.conflict.code)) return;
@@ -557,7 +558,7 @@
         d.locked = true;
       }
       _failure(d, e, d.prev && d.prev.key);
-      _busyAtSave(d, e);
+      _busyAtSave(d, e, _readChange(d).k0, () => _changeRefresh(d));
       _reList(d, e);
     } finally {
       d.busy = false;
@@ -694,6 +695,7 @@
         ? _busyLine(d, ['truck_id' in set || moved ? st.truck_id : null], ['driver_id' in set || moved ? st.driver_id : null],
           set.at || g.from_at || c.start_at, g.to_at || c.end_at) : null;
       const k0 = JSON.stringify(fb);
+      d.k0 = k0;
       const accepted = !!(busy && busy.accept) || (d.acceptFor != null && d.acceptFor === k0);
       if (accepted) fb.accept_busy = true;
       const key = Object.keys(set).length || 'prev_partner_rate' in fb ? JSON.stringify(fb) : null;
@@ -727,7 +729,7 @@
         if (d.prev.token) body.confirm_token = d.prev.token;   // the previous rate's list line was on screen (one step)
         const ans = await planFetch('PATCH', `/plan/segments/${segmentId}`, { body });   // no request_id: a fix creates nothing
         _done(d, 'Η διόρθωση γράφτηκε', ans.warnings);
-      } catch (e) { _failure(d, e, d.prev && d.prev.key); _busyAtSave(d, e); _reList(d, e); }
+      } catch (e) { _failure(d, e, d.prev && d.prev.key); _busyAtSave(d, e, d.k0, refresh); _reList(d, e); }
       finally { d.busy = false; if (!d.done) refresh(); }
     });
     const edit = () => { _unmark(d); refresh(); };
