@@ -50,6 +50,16 @@
     if (d && model.week) { const last = k.addDays(model.week, 6); if (d < model.week) d = model.week; else if (d > last) d = last; }
     return d;
   }
+  // F27: a piece's own Veroia day, the one «Σε φορτηγό ▾» opens on — a VS's cross-dock (vsHubDay), stock the day this
+  // panel gives stock (its own hub.stock entry: overdue, leave_by), a national at Veroia none on the board (its
+  // nat_ready_day is its supplier's, code review r3) → the panel's day, as before
+  function _pieceDay(it, model) {
+    const k = K(), hub = model && model.hub;
+    const se = it && it.is_stock && hub ? (hub.stock || []).find((h) => h.pieceId === it.piece_id) : null;
+    const vh = it && !it.is_stock ? k.vsHubDay(it) : null;
+    const own = it ? (it.is_stock ? _stockDay(se || it, hub) : vh ? vh.day : null) : null;
+    return own || (hub ? _hubDay(model) : null);
+  }
   // the cycles of the hub's day that load at Veroia (their KATHODOS has a Veroia stop)
   function _trucks(day) {
     const k = K();
@@ -177,8 +187,9 @@
       + '<span class="wn5-nf-l">Παράθυρο</span>'
       + (_nf.win.all
         ? '<button type="button" class="wn5a-all on" onclick="WN5Hub.nfWin(true)">όλη η ημέρα</button><button type="button" class="wn5a-hrs" onclick="WN5Hub.nfWin(false)">ώρες…</button>'
-        : '<input class="wi-pop-inp wn5a-hm" data-nfhm="from" inputmode="numeric" maxlength="5" placeholder="ΗΗ:ΛΛ" value="' + k.esc(_nf.win.from) + '" onchange="WN5Hub.nfHm(\'from\', this.value)" aria-label="από">'
-          + '<span class="wn5a-dash">–</span><input class="wi-pop-inp wn5a-hm" data-nfhm="to" inputmode="numeric" maxlength="5" placeholder="ΗΗ:ΛΛ" value="' + k.esc(_nf.win.to) + '" onchange="WN5Hub.nfHm(\'to\', this.value)" aria-label="έως">'
+        // an hour that is not «ΗΗ:ΛΛ» yet (empty too) is marked, as the «Λείπει» beside the save says (§3.3)
+        : '<input class="wi-pop-inp wn5a-hm' + (k.hhmm(_nf.win.from) ? '' : ' bad') + '" data-nfhm="from" inputmode="numeric" maxlength="5" placeholder="ΗΗ:ΛΛ" value="' + k.esc(_nf.win.from) + '" oninput="WN5Hub.nfHm(\'from\', this.value)" onchange="WN5Hub.nfHm(\'from\', this.value, this)" aria-label="από">'
+          + '<span class="wn5a-dash">–</span><input class="wi-pop-inp wn5a-hm' + (k.hhmm(_nf.win.to) ? '' : ' bad') + '" data-nfhm="to" inputmode="numeric" maxlength="5" placeholder="ΗΗ:ΛΛ" value="' + k.esc(_nf.win.to) + '" oninput="WN5Hub.nfHm(\'to\', this.value)" onchange="WN5Hub.nfHm(\'to\', this.value, this)" aria-label="έως">'
           + '<button type="button" class="wn5a-all" onclick="WN5Hub.nfWin(true)">όλη η ημέρα</button>')
       + '</div>';
     // a delivery due before the Veroia day leaves late: said, never refused (the user decides)
@@ -211,7 +222,8 @@
         + '<button type="button" class="wi4-link wn5-nf-ch" onclick="WN5Hub.nfPick(this)">Αλλαγή ▾</button></div>';
     } else if (!later) h += '<button type="button" class="wi4-btn sm wn5-nf-pick" onclick="WN5Hub.nfPick(this)">Φορτηγό ή συνεργάτης ▾</button>';
     const words = !p ? (_nf.choice ? [] : ['φορτηγό']) : p.err ? [p.err.message] : (p.problems ? p.problems.words : []);
-    if (p && p.req && p.req.missing) words.push('παράθυρο Βέροιας');
+    // the form's own words already name what is missing; this one only when they say nothing (§3.3: it was said twice)
+    if (p && p.req && p.req.missing && !words.length) words.push('παράθυρο Βέροιας');
     const can = !!(p && p.req && !p.req.missing && !words.length && !_nf.busy && !k.closedErr());
     // Π2 (owner 2/11): the truck / driver on another trip those days, amber beside the save, which sends accept_busy
     const busy = !later && !words.length && !(p && p.err) && p && p.busy ? p.busy.text : '';
@@ -263,10 +275,53 @@
       + '<button type="button" class="wi4-btn sm wn5-hub-x" data-hub="close" onclick="WN5Hub.close()">Κλείσιμο</button></div>'
       + '<div class="wn5-hub-g"><div class="wn5-hub-l">' + left + '</div><div class="wn5-hub-r">' + _nfHTML(model) + '</div></div></div></div>';
   }
+  // A redraw replaces the panel: the list keeps where it was scrolled and the field or box in focus gets it back
+  // (usability test 2/11 §3.2: with 13 rows every tick jumped to the top)
+  function _focusKey(a) {
+    if (!a || !a.closest) return null;
+    if (a.dataset.nfhm) return '[data-nfhm="' + a.dataset.nfhm + '"]';
+    if (a.classList.contains('wn5-nf-day')) return '.wn5-nf-day';
+    const row = a.closest('.wn5-hub-it[data-piece]');
+    return row && a.classList.contains('wn5-hub-ck') ? '.wn5-hub-it[data-piece="' + row.dataset.piece + '"] .wn5-hub-ck' : null;
+  }
   function _redraw() {
     const el = document.getElementById('wn5-hub');
     const st = WN5.state();
-    if (el && st && st.model) el.outerHTML = shelfHTML(st.model);
+    if (!el || !st || !st.model) return;
+    const l = el.querySelector('.wn5-hub-l'), top = l ? l.scrollTop : 0;
+    const fk = el.contains(document.activeElement) ? _focusKey(document.activeElement) : null;
+    el.outerHTML = shelfHTML(st.model);
+    const n = document.getElementById('wn5-hub');
+    const nl = n && n.querySelector('.wn5-hub-l');
+    if (nl) nl.scrollTop = top;
+    const f = fk && n ? n.querySelector(fk) : null;
+    if (f) { f.focus({ preventScroll: true }); try { f.setSelectionRange(f.value.length, f.value.length); } catch (_) { /* a checkbox */ } }
+  }
+  // Hours typed in «Νέο φορτίο»: the panel is patched around the fields, never redrawn — they keep focus and caret,
+  // and a press right after typing is not eaten by a redraw (§3.2; the assignment form's rule, wn5_assign.js draw).
+  // Only the hour row, the strip of a refusal and the footer stay; the footer's text and button are set in place.
+  function _nfPatch() {
+    const nf = document.querySelector('#wn5-hub .wn5-nf');
+    const st = WN5.state();
+    if (!nf || !st || !st.model) return;
+    const tmp = document.createElement('div');
+    tmp.innerHTML = _nfHTML(st.model);
+    const nn = tmp.firstElementChild;
+    const q = (root, s) => root && root.querySelector(':scope > ' + s);
+    const row = q(nf, '.wn5-nf-row'), msg = q(nf, '[data-nfmsg]'), ft = q(nf, '.wn5-nf-ft');
+    const row2 = q(nn, '.wn5-nf-row'), msg2 = q(nn, '[data-nfmsg]'), ft2 = q(nn, '.wn5-nf-ft');
+    if (!row || !msg || !ft || !row2 || !msg2 || !ft2) { _redraw(); return; }
+    for (const c of [...nf.children]) if (c !== row && c !== msg && c !== ft) c.remove();
+    // a refusal was about the request before the change: it no longer holds (the full redraw cleared it too)
+    msg.innerHTML = '';
+    const kids = [...nn.children];
+    for (const c of kids.slice(0, kids.indexOf(row2))) row.before(c);
+    for (const c of kids.slice(kids.indexOf(row2) + 1, kids.indexOf(msg2))) msg.before(c);
+    for (const i of row.querySelectorAll('[data-nfhm]')) { const j = row2.querySelector('[data-nfhm="' + i.dataset.nfhm + '"]'); if (j) i.classList.toggle('bad', j.classList.contains('bad')); }
+    const why = ft.querySelector('[data-nfwhy]'), why2 = ft2.querySelector('[data-nfwhy]');
+    if (why && why2) { why.className = why2.className; why.textContent = why2.textContent; }
+    const go = ft.querySelector('[data-act="nf-create"]'), go2 = ft2.querySelector('[data-act="nf-create"]');
+    if (go && go2) { go.disabled = go2.disabled; go.textContent = go2.textContent; }
   }
   function open() { if (!_live()) return; _open = true; _redraw(); }
   function close() { if (!_live()) return; _open = false; _redraw(); }
@@ -281,12 +336,24 @@
     _redraw();
   }
   function nfDay(v) { if (!_live() || !/^\d{4}-\d{2}-\d{2}$/.test(String(v))) return; _nf.day = v; _redraw(); }
-  function nfWin(all) { if (!_live()) return; _nf.win = all ? { all: true, from: '', to: '' } : { all: false, from: _nf.win.from || '', to: _nf.win.to || '' }; _redraw(); }
-  function nfHm(which, v) {
+  function nfWin(all) {
     if (!_live()) return;
-    const hm = K().hhmm(v);
-    _nf.win[which === 'to' ? 'to' : 'from'] = hm || String(v || '');
+    _nf.win = all ? { all: true, from: '', to: '' } : { all: false, from: _nf.win.from || '', to: _nf.win.to || '' };
     _redraw();
+    // «ώρες…»: the caret goes to «από», as in the assignment form
+    const f = all ? null : document.querySelector('#wn5-hub [data-nfhm="from"]');
+    if (f) f.focus();
+  }
+  // a keystroke (input) or leaving the field (change, el: «1600» → «16:00» in the field) — patched, never redrawn.
+  // Leaving changes nothing the keystrokes did not already: no patch then, so the press that took the focus (on
+  // «Αλλαγή ▾», «Δημιουργία φορτίου») lands on the element it went down on.
+  function nfHm(which, v, el) {
+    if (!_live()) return;
+    const hm = K().hhmm(v), key = which === 'to' ? 'to' : 'from', val = hm || String(v || '');
+    if (el && hm) el.value = hm;
+    if (_nf.win[key] === val) return;
+    _nf.win[key] = val;
+    _nfPatch();
   }
   function nfDrop(pieceId) {
     if (!_live()) return;
@@ -425,14 +492,9 @@
     // ready on Wednesday to Sunday's trucks. The piece's day is a VS's cross-dock day (WN5Act._kit.vsHubDay, as Δ1 writes it);
     // stock has the day this panel gives stock (_stockDay; its nat_ready_day is its parent's); a national at Veroia has
     // no Veroia day on the board (its nat_ready_day is its supplier's, code review r3), so the panel's day, as before.
-    const it = k.item(k.id(pieceId));
-    const hub = st && st.model && st.model.hub;
-    const vh = it ? k.vsHubDay(it) : null;
     // a stock piece's day from the panel's own stock entry (hub.stock: overdue, leave_by), the line the user pressed —
-    // one reading of it for the panel and for Δ1 (code review of PR 171)
-    const se = it && it.is_stock && hub ? (hub.stock || []).find((h) => h.pieceId === it.piece_id) : null;
-    const own = it ? (it.is_stock ? _stockDay(se || it, hub) : vh ? vh.day : null) : null;
-    const day = own || (hub ? _hubDay(st.model) : null);
+    // one reading of it for the panel and for Δ1 (code review of PR 171): _pieceDay
+    const day = _pieceDay(k.item(k.id(pieceId)), st && st.model);
     return WN5Act.assign({ pieces: [{ piece_id: k.id(pieceId) }] }, { entry: 'hub', day, side: 'KATHODOS', anchor: anchor || null });
   }
 
@@ -468,12 +530,17 @@
     // F1 (080): a piece whose pallets are not known yet does not split (the base refuses it: parts_sum … pallets
     // unknown) — said here, before a dialog whose sum could never close
     if (it.pallets == null) { WN5Act.strip(k.boardHost(), k.clientErr('pallets_unknown', 'Οι παλέτες του φορτίου δεν είναι γνωστές — γράψε τες πρώτα στην παραγγελία (Καρτέλα → Επεξεργασία), μετά σπάσε')); return null; }
-    const hubSt = WN5.state();
-    const day = hubSt && hubSt.model && hubSt.model.hub ? _hubDay(hubSt.model) : it.nat_ready_day;
+    // the trucks of the PIECE's Veroia day, the one rule of «Σε φορτηγό ▾» (_pieceDay), never the panel's first day:
+    // that is the earliest of every row, and offered trucks that had loaded days before (usability test 2/11 §3.1).
+    // Clamped to the loaded week, the only days whose cycles the board has.
+    const m = (WN5.state() || {}).model;
+    let day = _pieceDay(it, m) || it.nat_ready_day;
+    if (m && m.week && day) { const last = k.addDays(m.week, 6); if (day < m.week) day = m.week; else if (day > last) day = last; }
     const hubId = k.hubId();
-    // the snapshot (rule 4): the piece, its needs, the day's Veroia cycles with their delivery stops
-    const st = { pieceId: pid, total: it.pallets, item: k.copy(it), needs: k.needs(it, false, hubId),
-      trucks: _trucks(day).map((t) => ({ rtId: t.rtId, cyc: k.copy(t.c), label: k.cycText(t.c, t.r).l1.split(' · ')[0] + (t.win ? ' · ' + t.win : ''), pal: t.pal, unk: t.unk || 0,
+    // the snapshot (rule 4): the piece, its needs, the day's Veroia cycles with their delivery stops; the label says
+    // the day beside the hours, so «14:00–23:59» never reads as today
+    const st = { pieceId: pid, total: it.pallets, item: k.copy(it), needs: k.needs(it, false, hubId), day,
+      trucks: _trucks(day).map((t) => ({ rtId: t.rtId, cyc: k.copy(t.c), label: k.cycText(t.c, t.r).l1.split(' · ')[0] + ' · Βέροια ' + k.dayShort(day) + (t.win ? ' ' + t.win : ''), pal: t.pal, unk: t.unk || 0,
         sideStops: k.copy((t.c.stops || []).filter((s) => s.side === 'KATHODOS' && s.location_id !== hubId)) })),
       parts: [{ t: '', rt: null, pal: '', stops: null }, { t: 'stay', rt: null, pal: '', stops: null }],
       slot: PlanApi.slot() };
@@ -528,6 +595,8 @@
     };
     const draw = () => {
       d.body.innerHTML = '<p class="wn5-split-i">Πού πάει κάθε μέρος· το άθροισμα πρέπει να είναι ' + k.esc(k.pal(st.total)) + '.</p>'
+        // no truck loads at Veroia that day: said, never an empty list that reads as «not loaded yet» (principle 1)
+        + (st.trucks.length ? '' : '<p class="wn5-split-i wn5-split-none">' + k.esc('Κανένα φορτηγό δεν φορτώνει στη Βέροια ' + (st.day ? k.dayShort(st.day) : '—')) + '</p>')
         + st.parts.map(partHTML).join('') + '<div class="wn5-split-f"><button type="button" class="wi4-link" data-act="more">+ ακόμη ένα μέρος</button><span class="wn5-hub-sp"></span>' + sumHTML() + '</div>';
       d.refresh();
     };
