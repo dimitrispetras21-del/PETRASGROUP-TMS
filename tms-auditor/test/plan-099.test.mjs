@@ -82,6 +82,27 @@ begin
   perform set_config('plan.writer', '', true);
   set constraints all deferred;
   return (r->'ids'->>'rt_id')::bigint;
+end $t$;
+-- p_piece onto trip p_rt (a new trip of p_truck when p_rt is null) from p_from_loc (p_h1) to p_to_loc (p_h2) on 7/12
+CREATE FUNCTION t99_put_at(p_piece bigint, p_rt bigint, p_truck bigint, p_from_loc bigint, p_h1 int, p_to_loc bigint, p_h2 int)
+  RETURNS bigint LANGUAGE plpgsql AS $t$
+declare r jsonb;
+begin
+  r := plan_put_pieces(jsonb_build_object(
+         'pieces', jsonb_build_array(jsonb_build_object('piece_id', p_piece, 'pickup', 'p', 'drop', 'd')),
+         'target', case when p_rt is null then jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', p_truck), 'side', 'ANODOS')
+                        else jsonb_build_object('rt_id', p_rt, 'side', 'ANODOS') end,
+         'stops', jsonb_build_array(
+           jsonb_build_object('ref', 'p', 'location_id', p_from_loc, 'side', 'ANODOS',
+             'planned_from', ('2026-12-07'::date + make_time(p_h1, 0, 0)) at time zone 'Europe/Athens',
+             'planned_to', ('2026-12-07'::date + make_time(p_h1 + 1, 0, 0)) at time zone 'Europe/Athens'),
+           jsonb_build_object('ref', 'd', 'location_id', p_to_loc, 'side', 'ANODOS',
+             'planned_from', ('2026-12-07'::date + make_time(p_h2, 0, 0)) at time zone 'Europe/Athens',
+             'planned_to', ('2026-12-07'::date + make_time(p_h2 + 1, 0, 0)) at time zone 'Europe/Athens'))),
+       'test:099', 'dispatcher');
+  perform set_config('plan.writer', '', true);
+  set constraints all deferred;
+  return (r->'ids'->>'rt_id')::bigint;
 end $t$;`;
 
 async function scenario(db, steps) {
@@ -228,6 +249,55 @@ test('099 on the production-shaped copy (after 093, 095, 096, 097, 098)', async 
     assert.strictEqual(r.cd1, '2026-12-08');
   });
 
+  await t.test('via Veroia: a load A was taking to Veroia goes on with B to Veroia, not to its end (to_hub)', async () => {
+    const r = await scenario(db, async () => {
+      const p2 = N((await one(db, `SELECT t99_national($1, $2, 4) id`, [g, e])).id);
+      const rA2 = N((await one(db, `SELECT t99_put_at($1, NULL, t99_truck(), $2, 8, $3, 18) id`, [p2, g, hub])).id);
+      const ans = await transfer(db, base({ rt_id: rA2, loads: [{ piece_id: p2, go: 0 }], trucks: [{ target: { rt_id: rtB, side: 'ANODOS' },
+        stops: [{ ref: 'd', location_id: hub, side: 'ANODOS', planned_from: at(16), planned_to: at(17) }] }] }));
+      const st = await one(db, `SELECT at_hub, waiting FROM v_piece_state WHERE piece_id = $1`, [p2]);
+      return { ans, st };
+    });
+    assert.strictEqual(r.ans.ok, true);
+    assert.deepStrictEqual(r.st, { at_hub: true, waiting: true });
+  });
+
+  await t.test('a load already planned on from Veroia: refused by name (transfer_next_leg), nothing kept', async () => {
+    const err = await scenario(db, async () => {
+      const p2 = N((await one(db, `SELECT t99_national($1, $2, 4) id`, [g, e])).id);
+      const rA2 = N((await one(db, `SELECT t99_put_at($1, NULL, t99_truck(), $2, 8, $3, 12) id`, [p2, g, hub])).id);
+      await one(db, `SELECT t99_put_at($1, NULL, t99_truck(), $2, 15, $3, 18) id`, [p2, hub, e]);
+      return errTransfer(db, base({ rt_id: rA2, planned_from: at(10), planned_to: at(11), loads: [{ piece_id: p2, go: 'wait' }] }));
+    });
+    assert.match(err ?? '', /transfer_next_leg/);
+  });
+
+  await t.test('two trucks in one act: 6 to B, the rest 4 to a new truck C - each its own stop at the point, linked', async () => {
+    const r = await scenario(db, async () => {
+      const truck = N((await one(db, `SELECT t99_truck() id`)).id);
+      const ans = await transfer(db, base({ loads: [{ piece_id: pc, pallets: 6, go: 0, rest: 1 }], trucks: [toB, {
+        target: { new_rt: { trip_type: 'OWNED', truck_id: truck }, side: 'ANODOS' },
+        stops: [{ ref: 'd', location_id: e, side: 'ANODOS', planned_from: at(16), planned_to: at(17) }] }] }));
+      const links = await all(db, `SELECT rt_id FROM rt_stops WHERE transfer_from_stop_id = $1 AND deleted_at IS NULL ORDER BY rt_id`, [ans.ids.stop_id]);
+      return { ans, links };
+    });
+    assert.strictEqual(r.ans.ids.rt_ids.length, 2);
+    assert.deepStrictEqual(r.links.map((x2) => N(x2.rt_id)).sort((a, b) => a - b), r.ans.ids.rt_ids.map(N).sort((a, b) => a - b));
+  });
+
+  await t.test('whole_vehicle is false when A loads something else after the point (a vehicle change would move it)', async () => {
+    const r = await scenario(db, async () => {
+      const later = N((await one(db, `SELECT t99_national($1, $2, 2) id`, [x, y])).id);
+      await one(db, `SELECT t99_put_at($1, $2, NULL, $3, 15, $4, 17) id`, [later, rtA, x, y]);
+      const truck = N((await one(db, `SELECT t99_truck() id`)).id);
+      return transfer(db, base({ dry_run: true, loads: [{ piece_id: pc, go: 0 }], trucks: [{
+        target: { new_rt: { trip_type: 'OWNED', truck_id: truck }, side: 'ANODOS' },
+        stops: [{ ref: 'd', location_id: e, side: 'ANODOS', planned_from: at(16), planned_to: at(17) }] }] }));
+    });
+    assert.strictEqual(r.preview.conflict, null, JSON.stringify(r.preview.conflict));
+    assert.strictEqual(r.preview.whole_vehicle, false);
+  });
+
   await t.test('refused, nothing kept: no reason, the hub as point, a load not on board, a whole "stay", an unused truck, bad shapes', async () => {
     const cases = [
       [base({ reason: undefined, loads: [{ piece_id: pc, go: 'wait' }] }), /bad_input:reason/],
@@ -241,6 +311,8 @@ test('099 on the production-shaped copy (after 093, 095, 096, 097, 098)', async 
       [base({ loads: [{ piece_id: pc, pallets: 12, go: 'wait', rest: 'wait' }] }), /parts_sum/],
       [base({ loads: [{ piece_id: pc, go: 'wait' }], color: 'red' }), /bad_input:p\.color/],
       [base({ reason: 'coffee', loads: [{ piece_id: pc, go: 'wait' }] }), /rt_stops_transfer_reason/],
+      [base({ loads: [{ piece_id: pc, go: 0 }], trucks: [{ target: { rt_id: rtA, side: 'ANODOS' } }] }), /bad_input:trucks:same trip/],
+      [base({ loads: [{ piece_id: pc, pallets: 6, go: 0, rest: 1 }], trucks: [toB, toB] }), /bad_input:trucks:same trip/],
       [{ ...base({ loads: [{ piece_id: pc, go: 'wait' }] }), request_id: undefined }, /request_missing/],
     ];
     const before = await one(db, COUNTS);

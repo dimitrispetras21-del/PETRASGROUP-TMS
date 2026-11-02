@@ -4,7 +4,7 @@
 --   transfers 0, waiting_at_point 0, text_points 0, b54_matches true.
 --   After the Worker and the screens: transfers = the points where a truck handed loads over; waiting_at_point = those
 --   that say "waits there"; text_points = those written as free text.
-SELECT CASE WHEN (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure('public.plan_transfer(jsonb,text,text)')) = 'd254e712e7b3f5ef0914afb94228f80e' THEN '099 in place' ELSE '099 NOT APPLIED' END AS applied,
+SELECT CASE WHEN (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure('public.plan_transfer(jsonb,text,text)')) = '95d5798992bf88a8813f39203aac8289' THEN '099 in place' ELSE '099 NOT APPLIED' END AS applied,
        (SELECT proacl::text = '{postgres=X/postgres,service_role=X/postgres}' FROM pg_proc WHERE oid = to_regprocedure('public.plan_transfer(jsonb,text,text)')) AS rights,
        (SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'rt_stops'
       AND column_name = 'transfer_place') AS transfer_place,

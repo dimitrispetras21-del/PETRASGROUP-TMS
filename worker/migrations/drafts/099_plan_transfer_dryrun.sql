@@ -4,7 +4,7 @@
 -- EXPECTED (the red ERROR is deliberate): NOTICE "099 OK: plan_transfer (service_role only), rt_stops.transfer_place,
 --   the place TRANSFER POINT (id <N>); triggers <T>" and then
 --   ERROR: P0001: DRY RUN 099 finished - EVERYTHING UNDONE, nothing kept. The block ran to its end  ||  099 ran:
---   plan_transfer d254e712e7b3f5ef0914afb94228f80e, transfer_place 1, transfer point 1
+--   plan_transfer 95d5798992bf88a8813f39203aac8289, transfer_place 1, transfer point 1
 --   Anything else (an ERROR from one of 099's guards or proofs, e.g. "098 first"): do NOT run 099, copy the message to
 --   the coordinator.
 
@@ -14,7 +14,7 @@ DECLARE
 BEGIN
   -- ===== 099_plan_transfer.sql, verbatim =====
 DECLARE
-  m_fn CONSTANT text := 'd254e712e7b3f5ef0914afb94228f80e';
+  m_fn CONSTANT text := '95d5798992bf88a8813f39203aac8289';
   v_g record; v_trg0 int; v_trg1 int; v_loc bigint;
 BEGIN
   PERFORM set_config('lock_timeout', '5s', true);
@@ -96,7 +96,7 @@ declare
   v_legs bigint[] := '{}'; v_new bigint[] := '{}'; v_pcs bigint[] := '{}'; v_drops bigint[] := '{}'; v_rts bigint[] := '{}';
   v_seen bigint[] := '{}'; v_go_to jsonb := '{}'; v_wait boolean := false; v_self boolean := false;
   v_warn jsonb := '[]'; v_notices bigint[] := '{}'; v_orders bigint[]; v_cd0 jsonb; v_cd1 jsonb; v_whole boolean;
-  v_old jsonb; v_res jsonb; v_hint text; v_msg text; v_det text; v_cname text; v_state text; v_code text;
+  v_old jsonb; v_res jsonb; v_max0 bigint; v_hint text; v_msg text; v_det text; v_cname text; v_state text; v_code text;
 begin
   -- "Change on the road" (owner 2/11): at a point - a catalogue place or a text - for a reason, truck A hands loads
   -- (whole, or a part) to another truck, keeps a rest, or leaves them waiting there. One act, one transaction: the
@@ -168,6 +168,16 @@ begin
    where sp.id in (select (q->>'piece_id')::bigint from jsonb_array_elements(p->'loads') q where jsonb_typeof(q) = 'object')
      and s.order_id is not null;
   select coalesce(jsonb_object_agg(o.id::text, o.cross_dock_date), '{}') into v_cd0 from orders o where o.id = any (v_orders);
+  -- a truck of the act is another trip, each once (code review xhigh 2/11): A itself, or one trip twice, would write
+  -- a second transfer stop at the same point
+  if exists (select 1 from jsonb_array_elements(coalesce(p->'trucks', '[]')) q
+              where jsonb_typeof(q) = 'object' and jsonb_typeof(q->'target') = 'object' and q->'target' ? 'rt_id'
+              group by (q->'target'->>'rt_id')::bigint
+             having (q->'target'->>'rt_id')::bigint = v_rt or count(*) > 1) then
+    perform plan_h_raise('bad_input', 'trucks:same trip');
+  end if;
+  -- the preview's "new" stops: written by this act (ids after this one), whatever else the transaction did
+  select coalesce(max(id), 0) into v_max0 from rt_stops;
 
   begin
     -- 1. A's stop at the point: the reason, the note, the text; who and when are its audit rows
@@ -190,6 +200,11 @@ begin
       select q.* into l from piece_legs q where q.piece_id = v_pid and q.rt_id = v_rt and q.deleted_at is null
        order by q.leg_no desc limit 1;
       if l.id is null then perform plan_h_raise('transfer_not_on_board', v_pid::text); end if;
+      -- a load already planned on from where A unloads it (another truck after Veroia) keeps that plan: moving it is
+      -- its own act, refused here by name instead of as transfer_chain at the end (code review xhigh 2/11)
+      if exists (select 1 from piece_legs q where q.piece_id = v_pid and q.deleted_at is null and q.leg_no > l.leg_no) then
+        perform plan_h_raise('transfer_next_leg', v_pid::text);
+      end if;
       select * into pk from rt_stops where id = l.pickup_stop_id;
       select * into dr from rt_stops where id = l.drop_stop_id;
       -- on board at the point: loaded before it starts, unloaded after it ends
@@ -215,11 +230,11 @@ begin
         perform plan_h_audit(p_actor, p_role, 'create', 'shipment_pieces', c1.id::text, null, to_jsonb(c1));
         perform plan_h_audit(p_actor, p_role, 'create', 'shipment_pieces', c2.id::text, null, to_jsonb(c2));
         v_new := v_new || c1.id || c2.id;
-        v_parts := jsonb_build_array(jsonb_build_object('piece', c1.id, 'go', ld->'go', 'drop', l.drop_stop_id, 'part', true),
-                                     jsonb_build_object('piece', c2.id, 'go', ld->'rest', 'drop', l.drop_stop_id, 'part', true));
+        v_parts := jsonb_build_array(jsonb_build_object('piece', c1.id, 'go', ld->'go', 'part', true),
+                                     jsonb_build_object('piece', c2.id, 'go', ld->'rest', 'part', true));
       else
         if ld ? 'rest' then perform plan_h_raise('bad_input', 'load.rest'); end if;
-        v_parts := jsonb_build_array(jsonb_build_object('piece', v_pid, 'go', ld->'go', 'drop', l.drop_stop_id, 'part', false));
+        v_parts := jsonb_build_array(jsonb_build_object('piece', v_pid, 'go', ld->'go', 'part', false));
       end if;
       for x in select value from jsonb_array_elements(v_parts) loop
         v_piece := (x->>'piece')::bigint;
@@ -230,11 +245,14 @@ begin
         elsif v_go = '"stay"'::jsonb then
           -- a load that stays whole on A is not a transfer (nothing would change but its stop)
           if not (x->>'part')::boolean then perform plan_h_raise('bad_input', 'load.go:stay'); end if;
-          v_legs := v_legs || plan_h_leg_add(v_piece, v_rt, v_stop, (x->>'drop')::bigint, p_actor, p_role, null);
+          v_legs := v_legs || plan_h_leg_add(v_piece, v_rt, v_stop, l.drop_stop_id, p_actor, p_role, null);
           v_self := true;
         elsif jsonb_typeof(v_go) = 'number' and (v_go::text) ~ '^[0-9]+$' and (v_go::text)::int < v_n then
           v_go_to := jsonb_set(v_go_to, array[v_go::text],
-                               coalesce(v_go_to->(v_go::text), '[]'::jsonb) || jsonb_build_array(jsonb_build_object('piece_id', v_piece, 'pickup', 'transfer')));
+                               coalesce(v_go_to->(v_go::text), '[]'::jsonb) || jsonb_build_array(jsonb_build_object('piece_id', v_piece,
+                                 'pickup', 'transfer',
+                                 -- the other truck goes on to where A was going: the load's end, or Veroia (code review xhigh 2/11)
+                                 'to_hub', dr.location_id is not distinct from v_hub)));
         else
           perform plan_h_raise('bad_input', 'load.go');
         end if;
@@ -276,13 +294,13 @@ begin
     perform plan_h_reseq(v_rt, p_actor, p_role);
     v_notices := v_notices || plan_h_vs_follow(v_pcs, p_actor, p_role);
     v_warn := v_warn || plan_h_side_warn(v_rt);
-    -- whole_vehicle: every load A carries past the point goes whole to ONE new vehicle - the screen saves this as the
-    -- vehicle change of 072b (owner 2/11, one entry); the base says when, the screen decides nothing alone
+    -- whole_vehicle: every load A still has after the point - on board past it, or loaded later - went whole to ONE
+    -- new vehicle: the screen saves this as the vehicle change of 072b (owner 2/11, one entry), which moves the later
+    -- loadings too; the base says when, the screen decides nothing alone (code review xhigh 2/11: later loadings count)
     v_whole := v_n = 1 and cardinality(v_new) = 0 and not v_wait and not v_self
       and (p->'trucks'->0->'target') ? 'new_rt'
-      and not exists (select 1 from piece_legs q join rt_stops a on a.id = q.pickup_stop_id join rt_stops b on b.id = q.drop_stop_id
-                       where q.rt_id = v_rt and q.deleted_at is null and q.drop_stop_id <> v_stop
-                         and a.planned_from <= v_from and b.planned_to >= v_to);
+      and not exists (select 1 from piece_legs q join rt_stops b on b.id = q.drop_stop_id
+                       where q.rt_id = v_rt and q.deleted_at is null and q.drop_stop_id <> v_stop and b.planned_to >= v_to);
     select coalesce(jsonb_object_agg(o.id::text, o.cross_dock_date), '{}') into v_cd1 from orders o where o.id = any (v_orders);
     if not v_dry then
       v_ans := plan_h_ok('plan_transfer',
@@ -300,7 +318,7 @@ begin
                                'place', lo.name, 'text', s.transfer_place, 'side', s.side, 'planned_from', s.planned_from,
                                'planned_to', s.planned_to, 'transfer_reason', s.transfer_reason,
                                'transfer_from_stop_id', s.transfer_from_stop_id, 'transfer_waits', s.transfer_waits,
-                               'new', s.created_at = now() and s.deleted_at is null, 'removed', s.deleted_at = now())
+                               'new', s.id > v_max0 and s.deleted_at is null, 'removed', s.deleted_at = now())
                                order by s.deleted_at is not null, s.seq, s.id), '[]'::jsonb)
                         from rt_stops s join locations lo on lo.id = s.location_id
                        where s.rt_id = c.id and (s.deleted_at is null or s.deleted_at = now())))
