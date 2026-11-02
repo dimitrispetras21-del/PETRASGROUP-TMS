@@ -183,6 +183,28 @@ test('098 on the production-shaped copy (after 093, 095, 096, 097)', async (t) =
     assert.match(r.late ?? '', /transfer_chain/);
   });
 
+  await t.test('a stop serves every load: one delivered at A\'s transfer stop, one starting at B\'s linked stop - both kept', async () => {
+    const r = await scenario(db, async () => {
+      const x = await tr(db, 'national', 'meeting', true, true, false);
+      // a national load Q of truck A that ENDS at the transfer place, and R of truck B that STARTS there
+      const end = async (from, to, rt, pk, dr) => {
+        const n = (await one(db, `INSERT INTO national_orders (legacy_id, client_id, reference, price, pallets)
+          VALUES ('r98Q' || nextval('t98_n'), (SELECT min(id) FROM clients), 'T98-Q', 100, 5) RETURNING id`)).id;
+        const sh = (await one(db, `INSERT INTO shipments (nat_order_id, origin_location_id, dest_location_id, pallets, load_from,
+          load_to, deliver_from, deliver_to, created_by) SELECT $1, $2, $3, 5, a.planned_from, a.planned_to, d.planned_from, d.planned_to,
+          'test:098' FROM rt_stops a, rt_stops d WHERE a.id = $4 AND d.id = $5 RETURNING id`, [n, from, to, pk, dr])).id;
+        const pc = (await one(db, `INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES ($1, 5, 'test:098') RETURNING id`, [sh])).id;
+        await db.query(`SELECT t98_leg($1, 1, $2, $3, $4)`, [pc, rt, pk, dr]);
+      };
+      const a1 = (await one(db, `SELECT id, location_id FROM rt_stops WHERE rt_id = $1 AND seq = 1`, [x.rt_a]));
+      const b2 = (await one(db, `SELECT id, location_id FROM rt_stops WHERE rt_id = $1 AND seq = 2`, [x.rt_b]));
+      await end(a1.location_id, x.larisa, x.rt_a, a1.id, x.a2);
+      await end(x.larisa, b2.location_id, x.rt_b, x.b1, b2.id);
+      return {};
+    });
+    assert.strictEqual(r.late, null);
+  });
+
   await t.test('transfer_left: unloaded at the point with no next truck - refused, unless the stop says "waits there"', async () => {
     assert.match((await scenario(db, () => tr(db, 'national', 'vehicle_breakdown', false, false, false))).late ?? '', /transfer_left/);
     assert.strictEqual((await scenario(db, () => tr(db, 'national', 'vehicle_breakdown', false, false, true))).late, null);
@@ -238,14 +260,16 @@ test('098 on the production-shaped copy (after 093, 095, 096, 097)', async (t) =
       const x = await tr(db, 'Export', 'meeting', true, true, false);
       const st = await one(db, `SELECT first_hub_day::text d FROM v_vs_state WHERE order_id = $1`, [x.order_id]);
       const ans = (await one(db, `SELECT plan_vs_state(ARRAY[$1::bigint]) a`, [x.order_id])).a[String(x.order_id)];
-      const pre = await errorOf(db, `SELECT plan_rt_update(jsonb_build_object('rt_id', ${x.rt_a}::bigint, 'dry_run', true,
-        'shift', jsonb_build_object('side', 'ANODOS', 'delta', '1 hour')), 'test:098', 'dispatcher')`);
+      const pre = (await one(db, `SELECT plan_rt_update(jsonb_build_object('rt_id', $1::bigint, 'dry_run', true,
+        'shift', jsonb_build_object('side', 'ANODOS', 'delta', '1 hour')), 'test:098', 'dispatcher') a`, [x.rt_a])).a;
       return { st, ans, pre, x };
     });
     assert.strictEqual(r.late, null);
     assert.strictEqual(r.st.d, '2026-12-08');
     assert.deepStrictEqual(r.ans.carriers.map((c) => c.hub_day ?? null), ['2026-12-08', null]);
-    assert.strictEqual(r.pre, null, 'plan_rt_update runs on 098\'s text');
+    // plan_rt_update runs on 098's text: a preview, and no Veroia day of the international moves with truck A
+    assert.strictEqual(r.pre.dry_run, true);
+    assert.deepStrictEqual(r.pre.preview?.vs_day ?? [], []);
   });
 
   await t.test('plan_h_vs_carriers: a cycle with and without a Veroia day is listed once (with its day)', async () => {

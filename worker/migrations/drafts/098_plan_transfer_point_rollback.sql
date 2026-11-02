@@ -26,11 +26,14 @@ $h$;
   l_2a CONSTANT text := $h$  if pk.location_id is distinct from start_loc then return 'chain:' || p_leg; end if;
 $h$;
   l_2b CONSTANT text := $h$  if pk.location_id is distinct from start_loc then return 'chain:' || p_leg; end if;
-  -- 098: a transfer joins two exact STOPS, not two places (free-text points share one catalogue place): unloaded at a
-  -- transfer stop, it is loaded only at a stop that names that stop; a stop that names a transfer stop loads only what
-  -- that stop unloaded
-  if (prev.transfer_reason is not null or pk.transfer_from_stop_id is not null)
-     and (prev.transfer_reason is null or pk.transfer_from_stop_id is distinct from prev.id) then
+  -- 098: a transfer joins two exact STOPS, not two places (free-text points share one catalogue place). Unloaded at a
+  -- transfer stop, a load is loaded only at a stop that names that stop; loaded off its own route (not its national
+  -- start, not Veroia) at a stop that names a transfer stop, only when it was unloaded at that very stop. A load that
+  -- merely starts at a linked stop (its own origin, another load of the same truck) is a plain loading there (code
+  -- review xhigh 2/11: a stop serves every load, the link speaks only for the transferred one).
+  if (prev.transfer_reason is not null and pk.transfer_from_stop_id is distinct from prev.id)
+     or (pk.location_id is distinct from vs.nat_from_location_id and pk.location_id is distinct from hub_id
+         and pk.transfer_from_stop_id is not null and prev.transfer_reason is null) then
     return 'transfer_chain:' || p_leg;
   end if;
 $h$;
@@ -44,16 +47,18 @@ $h$;
   select id into hub_id from locations where is_hub;
   select pp.piece_id into bad from v_piece_pos pp
    where pp.shipment_id = p_sh and pp.is_split and pp.position_location_id is distinct from hub_id
-     and not exists (select 1 from rt_stops ts where ts.id = pp.last_drop_stop_id and ts.transfer_reason is not null)
+     and not exists (select 1 from rt_stops ts where ts.id = pp.last_drop_stop_id and ts.transfer_reason is not null
+                       and ts.deleted_at is null)
    limit 1;
   if bad is not null then return 'split_not_at_hub:' || bad; end if;
   -- 098 (decisions 2 and 3): a load, or a part of it, left at a transfer stop with no next truck waits there only when
-  -- the stop says so (the red "waits at <place> since <day>"); otherwise every part takes a truck in the same act
+  -- the stop says so (the red "waits at <place> since <day>"); otherwise every part takes a truck in the same act. A
+  -- load whose national END is that place is delivered, not left (code review xhigh 2/11). Its last drop being that
+  -- stop already says no later leg took it.
   select pp.piece_id into bad from v_piece_pos pp join rt_stops ts on ts.id = pp.last_drop_stop_id
+    join v_shipments vsh on vsh.shipment_id = pp.shipment_id
    where pp.shipment_id = p_sh and not pp.is_split and ts.transfer_reason is not null and not ts.transfer_waits
-     and ts.deleted_at is null
-     and not exists (select 1 from piece_legs nl join rt_stops np on np.id = nl.pickup_stop_id
-                      where nl.piece_id = pp.piece_id and nl.deleted_at is null and np.transfer_from_stop_id = ts.id)
+     and ts.deleted_at is null and pp.position_location_id is distinct from vsh.nat_to_location_id
    limit 1;
   if bad is not null then return 'transfer_left:' || bad; end if;
 $h$;
@@ -111,7 +116,7 @@ BEGIN
   END IF;
   SELECT * INTO p FROM pg_proc WHERE oid = to_regprocedure('public.plan_leg_problem(bigint)');
   SELECT lanname INTO v_lang FROM pg_language WHERE oid = p.prolang;
-  IF md5(p.prosrc) <> 'ddf1435c484dabe4ef63578bc5f3ba8b' THEN
+  IF md5(p.prosrc) <> '2f70aa1b84ad7fc2cba76756e28c4289' THEN
     RAISE EXCEPTION '098 rollback: public.plan_leg_problem(bigint) is not the text 098 wrote (md5 %) - stop', md5(p.prosrc);
   END IF;
   v_new := p.prosrc;
@@ -134,7 +139,7 @@ BEGIN
   END IF;
   SELECT * INTO p FROM pg_proc WHERE oid = to_regprocedure('public.plan_shipment_problem(bigint)');
   SELECT lanname INTO v_lang FROM pg_language WHERE oid = p.prolang;
-  IF md5(p.prosrc) <> '6f5e6544ba6334b9c9701123e9cf600a' THEN
+  IF md5(p.prosrc) <> '6afcc505725de48444c04deb770f72c4' THEN
     RAISE EXCEPTION '098 rollback: public.plan_shipment_problem(bigint) is not the text 098 wrote (md5 %) - stop', md5(p.prosrc);
   END IF;
   v_new := p.prosrc;

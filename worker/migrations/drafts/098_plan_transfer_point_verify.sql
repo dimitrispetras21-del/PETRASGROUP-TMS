@@ -5,10 +5,10 @@
 --   After 099 is in use: transfer_stops = the points where a truck handed a load over (each with its reason);
 --   linked_stops = the loadings there (another truck's, or the same truck's for a part it keeps); waiting_at_point =
 --   transfer stops that say "waits there".
-SELECT CASE WHEN (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.plan_leg_problem(bigint)'::regprocedure) = 'ddf1435c484dabe4ef63578bc5f3ba8b' THEN '098 in place' ELSE '098 NOT APPLIED' END AS applied,
+SELECT CASE WHEN (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.plan_leg_problem(bigint)'::regprocedure) = '2f70aa1b84ad7fc2cba76756e28c4289' THEN '098 in place' ELSE '098 NOT APPLIED' END AS applied,
        (SELECT count(*) FROM (VALUES
-          ('public.plan_leg_problem(bigint)', 'ddf1435c484dabe4ef63578bc5f3ba8b'),
-          ('public.plan_shipment_problem(bigint)', '6f5e6544ba6334b9c9701123e9cf600a'),
+          ('public.plan_leg_problem(bigint)', '2f70aa1b84ad7fc2cba76756e28c4289'),
+          ('public.plan_shipment_problem(bigint)', '6afcc505725de48444c04deb770f72c4'),
           ('public.plan_split_piece(jsonb,text,text)', 'f1993aeb0344b24e8abad84d8f92603d'),
           ('public.plan_rt_update(jsonb,text,text)', '2ed8efd0606344e2e3bca7efb933d4a6'),
           ('public.plan_h_vs_carriers(bigint,jsonb)', '59be1a67e0e2dbb3886c0686dca62a6d')) v(sig, m)

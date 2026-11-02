@@ -81,3 +81,15 @@ test('098 adds the four columns, three CHECKs, one index; patches only its five 
   // the rollback drops exactly those columns
   assert.match(read(`${P}_rollback.sql`), /DROP COLUMN transfer_reason, DROP COLUMN transfer_note, DROP COLUMN transfer_waits, DROP COLUMN transfer_from_stop_id;/);
 });
+
+test('098: the Veroia condition is ONE text in its three places (plan_rt_update x2, plan_h_vs_carriers), 097\'s rule', () => {
+  const src = read(`${P}.sql`);
+  const hunk = (k) => (new RegExp(`^  ${k} CONSTANT text := \\$h\\$([\\s\\S]*?)\\$h\\$;$`, 'm').exec(src) || [])[1];
+  const cond = /and \(case when ps\.kind = 'vs_import' then pk\.location_id else dr\.location_id end\) = \(select ([a-z]+)\.id from locations \1 where \1\.is_hub\)/;
+  for (const k of ['u_1b', 'u_2b', 'c_1b']) assert.match(hunk(k) ?? '', cond, k);
+  // 097's view: the same stop - the loading of an import, the delivery of an export - and AT Veroia
+  const s97 = ['097_plan_vs_state_hub_only.sql'].map((f) => [path.join(DRAFTS, f), path.join(ROOT, 'worker/migrations', f)]).flat().find((f) => fs.existsSync(f));
+  const v = fs.readFileSync(s97, 'utf8');
+  assert.match(v, /ps\.kind = 'vs_import' AND pk\.location_id = hub\.id/);
+  assert.match(v, /ps\.kind = 'vs_export' AND dr\.location_id = hub\.id/);
+});
