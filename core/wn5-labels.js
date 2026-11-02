@@ -58,6 +58,14 @@
     vs_truck_kept: (w) => (w.truck || 'Το φορτηγό') + ' μένει στη Βέροια ' + day(w.day) + ' — '
       + ({ executed: 'η στάση του έγινε', truck_busy: 'είναι απασχολημένο τότε', driver_busy: 'ο οδηγός είναι απασχολημένος τότε',
            need_token: 'έχει αλλαγή οχήματος', leg_order: 'οι στάσεις του δεν το επιτρέπουν' }[w.reason] || 'δεν μετακινείται'),
+    // 093 (owner 2/11, "we relax the rules"): an ANODOS of the trip runs before one of its KATHODOS - the base saves it
+    // and writes it in the history; day = each stop's Athens day, the day of its planned_to (a night window 22:00-06:00
+    // lives on its morning; the base sends it)
+    side_time: (w) => {
+      const a = w.anodos || {}, k = w.kathodos || {};
+      return 'Η ΑΝΟΔΟΣ (' + (a.location || '—') + ' ' + day(a.day) + ') γίνεται πριν από την ΚΑΘΟΔΟ (' + (k.location || '—') + ' '
+        + day(k.day) + ') · αποθηκεύεται, γράφεται στο ιστορικό';
+    },
     vs_order_column_missing: () => 'Οι παλέτες γράφτηκαν· η διεθνής παραγγελία δεν έχει πεδίο για αυτό το σημείο — έλεγξέ τη',
     // 072b: a stop that the new vehicle now executes (the driver sheet and the payroll days follow it)
     seg_stop_moved: (w) => `η στάση #${w.stop_id} περνά στο όχημα του άλλου τμήματος (#${w.from_segment_id} → #${w.to_segment_id})`,
