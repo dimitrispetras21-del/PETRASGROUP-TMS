@@ -3328,7 +3328,7 @@ const truthLookups = () => { const l = clone(B_LOOKUPS); l.locations.push({ id: 
 // Owner 2/11 (relaxed rules, group 5): an order saves without a price (080), and the Weekly says so — a small amber
 // «λείπει τιμή» on its point, once per order on a row. Never for an ABSENT price key (the board did not say), never for
 // a VS leg (price null by design). No «λείπει ώρα»: «όλη η ημέρα» is the normal case (owner 2/11). NO-GO on main: no
-// .wn5-miss at all.
+// .wn5-noprice at all.
 SCN.gaps = async (browser, origin) => {
   const scn = 'gaps';
   const b = fixture();
@@ -3341,8 +3341,8 @@ SCN.gaps = async (browser, origin) => {
   const { page, S } = await openBoard(browser, origin, { board: b });
   await page.waitForSelector('#content > .wi4.wn5[data-state="ok"]', { timeout: 8000 }).catch(() => {});
   const look = await page.evaluate(([rt, op]) => {
-    const marks = (sel) => [...document.querySelectorAll(`${sel} .wn5-miss`)].map((m) => m.textContent);
-    const m0 = document.querySelector('#content .wn5 .wn5-miss');
+    const marks = (sel) => [...document.querySelectorAll(`${sel} .wn5-noprice`)].map((m) => m.textContent);
+    const m0 = document.querySelector('#content .wn5 .wn5-noprice');
     return { wait: marks('#content .wn5 .wn5-row[data-piece="4105"]'), cyc: marks(`#content .wn5 .wn5-row[data-rt="${rt}"]`),
       other: op == null ? [] : marks(`#content .wn5 .wn5-row[data-piece="${op}"]`),
       noHour: (document.querySelector('#content .wn5') || {}).textContent.includes('λείπει ώρα'),

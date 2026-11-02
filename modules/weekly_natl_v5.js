@@ -1029,12 +1029,12 @@ function _ptHTML(p, n, ok, inl) {
     const by = _hubBy(p);
     return `<span class="wi4-pt wn5-pt wn5-end${p.late ? ' wn5-late' : ''}" data-stop="${_id(p.stopId)}" title="${_esc(_ptFull(p))}">`
       // the mark shares the deadline's line: the end cell holds two lines (code review xhigh)
-      + `<span class="wi4-l1">Βέροια</span>${by || p.noPrice ? `<span class="wi4-l2">${by ? 'ως ' + _esc(by) : ''}${by && p.noPrice ? ' · ' : ''}${p.noPrice ? '<span class="wn5-miss">λείπει τιμή</span>' : ''}</span>` : ''}</span>`;
+      + `<span class="wi4-l1">Βέροια</span>${by || p.noPrice ? `<span class="wi4-l2">${by ? 'ως ' + _esc(by) : ''}${by && p.noPrice ? ' · ' : ''}${p.noPrice ? '<span class="wn5-noprice">λείπει τιμή</span>' : ''}</span>` : ''}</span>`;
   }
   const city = _ptCity(p);
   const full = _ptFull(p);
   const pw = WN5L.winText(p.from, p.to, p.allDay);
-  const miss = p.noPrice ? '<span class="wn5-miss">λείπει τιμή</span> · ' : '';
+  const miss = p.noPrice ? '<span class="wn5-noprice">λείπει τιμή</span> · ' : '';
   return `<span class="wi4-pt wn5-pt${p.late ? ' wn5-late' : ''}${_dc(ok && p.dim && !p.late)}" data-stop="${_id(p.stopId)}"${_segAttr(p.segLabel)} title="${_esc(full)}">`
     + (n == null ? `<span class="wi4-l1">${_esc(p.name)}</span>`
       : inl ? `<span class="wi4-l1"><span class="wi4-pt-n">${n}</span> ${_esc(p.name)}</span>`

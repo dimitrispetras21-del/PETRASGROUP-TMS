@@ -135,7 +135,7 @@ test('marks: a waiting national order with price null says «λείπει τιμ
   const c = board();
   const chunk = rowChunk(c.WN5._html(c.WN5L.model(fx, { today: '2026-10-13' })), 'data-piece="4105"');
   assert.ok(chunk, 'the waiting row of piece 4105 is drawn');
-  assert.strictEqual(count(chunk, '<span class="wn5-miss">λείπει τιμή</span>'), 1, chunk);
+  assert.strictEqual(count(chunk, '<span class="wn5-noprice">λείπει τιμή</span>'), 1, chunk);
   assert.ok(!chunk.includes('λείπει ώρα'), 'owner 2/11: the whole day is the normal case, never «λείπει ώρα»');
   assert.ok(chunk.includes('όλη η ημέρα'), 'the whole-day point still reads «όλη η ημέρα»');
   assert.ok(/title="[^"]*λείπει τιμή/.test(chunk), 'a point\'s title names the missing price');
@@ -147,10 +147,10 @@ test('marks: an ABSENT price key, a written price and an hour are never marked (
   delete w.price;
   const c = board();
   const h = c.WN5._html(c.WN5L.model(fx, { today: '2026-10-13' }));
-  assert.ok(!rowChunk(h, 'data-piece="4105"').includes('wn5-miss'));
+  assert.ok(!rowChunk(h, 'data-piece="4105"').includes('wn5-noprice'));
   const fx2 = FIX();   // price 450, hours 08:00–10:00 / 14:00–16:00
   const c2 = board();
-  assert.ok(!c2.WN5._html(c2.WN5L.model(fx2, { today: '2026-10-13' })).includes('wn5-miss'), 'the fixture week (prices and hours) shows a mark');
+  assert.ok(!c2.WN5._html(c2.WN5L.model(fx2, { today: '2026-10-13' })).includes('wn5-noprice'), 'the fixture week (prices and hours) shows a mark');
 });
 
 test('marks: a cycle — one «λείπει τιμή» per national order (load + unload legs), never for a VS leg with price null', () => {
