@@ -5,9 +5,10 @@
 //   - change = POST /plan/rt/:id/handover: a dry run first (the preview of the segments, warnings, conflict), then
 //     the execution with ONE request_id per open form (PlanApi.slot) — never on the dry run (required except on it);
 //   - fix = PATCH /plan/segments/:id {set, dry_run?}: only what changed, no request_id;
-//   - reasons = WN5Lab.REASON (H-19); «Άλλο» needs its note (seg_other_note): the save stays off without it;
-//   - «Πού» (place_note) is required by plan_seg_change whatever the reason (bad_input without it) — Figma H2 marks
-//     it required only with «Άλλο»; the screen follows the base;
+//   - reasons = WN5Lab.REASON (H-19); 095 (owner 2/11, relaxed rules): the reason is optional (none = «—») and
+//     «Άλλο» needs no note;
+//   - «Πού» (place_note) stays required by plan_seg_change (bad_input without it): without it the change says
+//     nothing on the card, the board or the removal dialog;
 //   - every refusal is error.message (H7 texts are the Worker's, principle 3); writes_closed → the preview strip
 //     and a disabled save, the dry run stays open (H7 tile 4, Ε-6);
 //   - in lists the segment mark is a straight line (R-55): the slant lives on the board tiles only;
@@ -21,7 +22,6 @@
   const DAY = /^\d{4}-\d{2}-\d{2}$/;
   const HM = /^([01]\d|2[0-3]):[0-5]\d$/;
   const SEG_GR = Object.freeze({ initial: 'ΑΡΧΙΚΟ', intermediate: 'ΕΝΔΙΑΜΕΣΟ', final: 'ΤΕΛΙΚΟ' });
-  const OTHER_NOTE = 'Με «Άλλο» η σημείωση είναι υποχρεωτική';
   const RATE_BAD = 'Κόμιστρο €: αριθμός 0 ή πάνω';
   const PREV_BAD = 'Κόμιστρο προηγούμενου €: αριθμός 0 ή πάνω';
   const _rateBad = (r) => r !== null && r !== undefined && !(Number.isFinite(r) && r >= 0);
@@ -51,15 +51,13 @@
   // A time typed in the 72px field (Figma 2122:7753): the native time input is 12-hour in el-GR and cut at that
   // width, so it is a text field like the order form's; «1430», «14.30», «9:00» → «14:30» / «09:00».
   const _hm = (v) => { const t = String(v == null ? '' : v).trim(); const m = /^(\d{1,2})[:.]?(\d{2})$/.exec(t); if (!m) return t; const o = `${m[1].padStart(2, '0')}:${m[2]}`; return HM.test(o) ? o : t; };
-  const _reasonText = (code) => (code ? WN5Lab.reasonLine(code).text : '');
+  const _reasonText = (code) => WN5Lab.reasonLine(code).text;
 
   // ── pure part (tests/wn5-handover.test.js) ─────────────────────────────────────────────────────────────────
   function _changeProblems(st) {
     const out = [];
     if (!st.at) out.push('Πότε *: ημέρα και ώρα');
     if (!st.place_note) out.push('Πού *: γράψε το σημείο της αλλαγής');
-    if (!st.reason) out.push('Λόγος *: διάλεξε λόγο');
-    else if (WN5Lab.REASON[st.reason] && WN5Lab.REASON[st.reason].noteRequired && !st.reason_note) out.push(OTHER_NOTE);
     if (st.own) {
       if (!Number.isSafeInteger(st.truck_id)) out.push('Φορτηγό *: διάλεξε φορτηγό');
       if (!st.same_driver && !Number.isSafeInteger(st.driver_id)) out.push('Οδηγός *: διάλεξε οδηγό');
@@ -72,7 +70,9 @@
   }
   // Exactly plan_seg_change's keys (072b: rt_id from the path, request_id and dry_run added by planFetch).
   function _changeBody(st) {
-    const body = { at: st.at, place_note: st.place_note, reason: st.reason };
+    const body = { at: st.at, place_note: st.place_note };
+    if (st.reason) body.reason = st.reason;   // 095: optional, absent = no reason
+    if (st.accept_busy) body.accept_busy = true;   // 096: the overlap the form said (or the yes to the dry run's)
     if (st.reason_note) body.reason_note = st.reason_note;
     if (st.own) {
       const v = { trip_type: 'OWNED', truck_id: st.truck_id };
@@ -170,6 +170,42 @@
     }
     return iso;
   }
+  // 096 (coordinator 2/11, the Π2 rule of every other save, PR 218): an own truck or driver already on another trip of
+  // the board on the days of the change is said BEFORE the press, in amber, naming every such trip (the kit's busyOf,
+  // one rule and one text for every save), and the change carries accept_busy from the first press. Said but NOT
+  // pre-accepted when a day of the span is outside the loaded week: the base accepts EVERY overlap of the save, and
+  // one the screen cannot name must not pass silently - there the dry run's truck_busy / driver_busy stays, with
+  // «Αποθήκευση έτσι κι αλλιώς» (_acceptOffer). null = nothing on the board.
+  const BUSY = Object.freeze(['truck_busy', 'driver_busy']);
+  function _busyLine(d, trucks, drivers, fromIso, toIso) {
+    const k = typeof WN5Act !== 'undefined' ? WN5Act._kit : null;
+    const a = _parts(fromIso), b = _parts(toIso);
+    if (!k || typeof k.busyOf !== 'function' || !a || !b) return null;
+    const ids = (xs) => xs.filter((x) => Number.isSafeInteger(x));
+    if (!ids(trucks).length && !ids(drivers).length) return null;
+    return k.busyOf({ trucks: ids(trucks), drivers: ids(drivers), days: [a.day, b.day], self: [d.cycle && d.cycle.rt_id],
+      cycles: (d.board && d.board.cycles) || [], week: d.board ? d.board.week : undefined, accept: true });
+  }
+  function _busyShow(d, o) {
+    const el = d.el.querySelector('[data-busy]');
+    if (!el) return;
+    el.hidden = !o;
+    el.textContent = o ? o.text : '';
+  }
+  // The dry run refused a busy truck / driver the board could not name in advance: the explicit yes, for THIS body
+  // only (k0 = the body without the flag; any edit makes another body, and the yes is gone with it)
+  // A save refused truck_busy / driver_busy (another save took the vehicle between the dry run and the press): the
+  // refusal strip keeps the Worker's words (H7) and carries «Αποθήκευση έτσι κι αλλιώς», as on every other save's strip
+  // (086) - never a dead end until an edit. The yes runs the dry run again for the same body with accept_busy.
+  function _busyAtSave(d, e, k0, rerun) {
+    if (!e || !BUSY.includes(e.code) || !d.prev || JSON.parse(d.prev.key).accept_busy === true) return;
+    const s = _strip(d) && _strip(d).querySelector('.wn5-strip');
+    if (s) WN5Act.acceptBtn(s, () => { d.acceptFor = k0; rerun(); });
+  }
+  function _acceptOffer(d, key, accepted, k0, rerun) {
+    if (!key || accepted || !d.prev || d.prev.key !== key || !d.prev.conflict || !BUSY.includes(d.prev.conflict.code)) return;
+    WN5Act.acceptBtn(d.el.querySelector('[data-err]'), () => { d.acceptFor = k0; rerun(); });
+  }
   // The hub as the board names it: the catalogue's id (PlanIds.hub) when loaded, else the one WN5L reads from the
   // week's VS legs — the same rule as weekly_natl_v5.js + WN5L.model, so the card and the board never disagree on
   // «Βέροια» (fidelity T25: PlanIds.hub() alone is null until GET /plan/lookups exists).
@@ -221,14 +257,6 @@
   }
   const _strip = (d) => d.el.querySelector('[data-strip]');
   const _lines = (d, ls) => { d.el.querySelector('[data-err]').innerHTML = ls.map((l) => `<div>${_esc(l)}</div>`).join(''); };
-  // The «Άλλο» line sits under the note field, which turns red (Figma 2122:7868), not in the form's line box.
-  function _otherNote(d, on) {
-    const f = d.el.querySelector('[data-note]');
-    if (!f) return;
-    f.classList.toggle('bad', on);
-    f.querySelector('[data-ferr]').textContent = on ? OTHER_NOTE : '';
-    f.querySelector('[data-notel]').textContent = on ? 'Σημείωση *' : 'Σημείωση';
-  }
   // Lines that must outlive the next refresh (a conflict of the preview, «not deployed»): kept per body key.
   const _kept = (d, key) => (d.prev && d.prev.key === key && d.prev.conflict ? [d.prev.conflict.message || '(' + (d.prev.conflict.code || 'σύγκρουση') + ')'] : [])
     .concat(d.note && d.note.key === key ? d.note.lines : []);
@@ -239,7 +267,7 @@
       t.textContent = has ? _dlab(v) : 'ηη/μμ';
     });
   }
-  const _unmark = (d) => d.el.querySelectorAll('.wn5f-f.bad:not([data-note])').forEach((f) => f.classList.remove('bad'));
+  const _unmark = (d) => d.el.querySelectorAll('.wn5f-f.bad').forEach((f) => f.classList.remove('bad'));
   async function _board() { try { return await WN5.findAfterReuse((b) => b); } catch (e) { _log(e, 'WN5Hand board'); return null; } }
   const _list = (kind) => { try { return PlanIds.list(kind).filter((x) => x.active !== false); } catch (_) { return []; } };
   // The fix form opens on the segment's own vehicle: when that id is not in the active list (an inactive vehicle, or
@@ -363,14 +391,14 @@
     const grp = (g, head) => `<optgroup label="${head}">` + Object.keys(R).filter((k) => R[k].group === g).map((k) => `<option value="${k}"${k === cur ? ' selected' : ''}>${_esc(R[k].text)}</option>`).join('') + '</optgroup>';
     return '<option value=""></option>' + grp('unplanned', 'ΑΠΡΟΒΛΕΠΤΟ') + grp('planned', 'ΠΡΟΓΡΑΜΜΑΤΙΣΜΕΝΟ') + Object.keys(R).filter((k) => R[k].group === 'other').map((k) => `<option value="${k}"${k === cur ? ' selected' : ''}>${_esc(R[k].text)}</option>`).join('');
   }
-  // Πότε * · Πού * · Λόγος * · Σημείωση (Figma 2122:7745 + the 072b reason_note the plan adds)
+  // Πότε * · Πού * · Λόγος · Σημείωση (Figma 2122:7745 + the 072b reason_note the plan adds; the reason optional, 095)
   function _whenRowHTML(p, place, reason, note) {
     return `<div class="wn5h-row1">`
       + `<label class="wn5f-f wn5h-when"><span>Πότε *</span><span class="wn5h-wwin"><span class="wn5f-day"><input class="form-input" type="date" id="wn5h-day" value="${_esc(p.day)}" aria-label="Ημέρα"><span class="wn5f-dayt" aria-hidden="true"></span></span>`
       + `<input class="form-input wn5h-hm" type="text" id="wn5h-hm" inputmode="numeric" maxlength="5" placeholder="ΗΗ:ΛΛ" autocomplete="off" value="${_esc(p.hm)}" aria-label="Ώρα"></span></label>`
       + `<label class="wn5f-f wn5h-place"><span>Πού *</span><input class="form-input" id="wn5h-place" placeholder="σημείωση" value="${_esc(place)}"></label>`
-      + `<label class="wn5f-f wn5h-reason"><span>Λόγος *</span><select class="form-input" id="wn5h-reason">${_reasonOptions(reason)}</select></label>`
-      + `<label class="wn5f-f wn5h-note" data-note><span data-notel>Σημείωση</span><input class="form-input" id="wn5h-note" value="${_esc(note)}"><span class="wn5h-ferr" data-ferr></span></label></div>`;
+      + `<label class="wn5f-f wn5h-reason"><span>Λόγος</span><select class="form-input" id="wn5h-reason">${_reasonOptions(reason)}</select></label>`
+      + `<label class="wn5f-f wn5h-note" data-note><span>Σημείωση</span><input class="form-input" id="wn5h-note" value="${_esc(note)}"></label></div>`;
   }
   function _readChange(d) {
     const v = (id) => (d.el.querySelector('#' + id) || {}).value || '';
@@ -380,10 +408,16 @@
     // the previous partner's rate: only partner → partner, read from the segment this time cuts
     const g = d.own ? null : _cutSeg(d.cycle, at);
     const prev = !!g && g.trip_type === 'PARTNER';
-    return { at, place_note: v('wn5h-place').trim(), reason: v('wn5h-reason'),
+    const st = { at, place_note: v('wn5h-place').trim(), reason: v('wn5h-reason'),
       reason_note: v('wn5h-note').trim(), own: d.own, truck_id: num('wn5h-truck'), trailer_id: num('wn5h-trailer'), driver_id: num('wn5h-driver'),
       same_driver: !!(d.el.querySelector('#wn5h-same') || {}).checked, partner_id: num('wn5h-partner'), partner_rate: _num(v('wn5h-rate')),
       prev_shown: prev, prev_from: prev ? (g.partner_rate == null ? null : Number(g.partner_rate)) : null, prev_rate: prev ? _num(v('wn5h-prate')) : null };
+    // 096: the new vehicle from the change to the end of the segment it cuts (the same driver goes on: no new overlap)
+    const cut = d.own && at ? _cutSeg(d.cycle, at) : null;
+    st.busy = d.own && at ? _busyLine(d, [st.truck_id], [st.same_driver ? null : st.driver_id], at, (cut && cut.to_at) || (d.cycle && d.cycle.end_at)) : null;
+    st.k0 = JSON.stringify(_changeBody(st));
+    st.accept_busy = !!(st.busy && st.busy.accept) || (d.acceptFor != null && d.acceptFor === st.k0);
+    return st;
   }
   // Figma 2122:7800: «Μετά την αλλαγή · n τμήματα», borderless white rows on the grey block, a ⇄ line between two
   // segments «<place> · <day hh:mm> · <reason>» (the next segment's start).
@@ -416,9 +450,10 @@
     if (pf) pf.classList.toggle('bad', probs.includes(PREV_BAD));
     const key = probs.length ? null : JSON.stringify(_changeBody(st));
     if (!d.prev || d.prev.key !== key) _dropPreview(d);   // any change after the dry run drops its preview
-    _otherNote(d, probs.includes(OTHER_NOTE));
-    // the «required» lines stay quiet (the save is off); the «Άλλο» line sits under its field; the rest say themselves
-    _lines(d, probs.filter((l) => l !== OTHER_NOTE && !/^(Πότε|Πού|Λόγος|Φορτηγό|Οδηγός|Συνεργάτης) \*/.test(l)).concat(_kept(d, key)));
+    // the «required» lines stay quiet (the save is off); the rest say themselves
+    _lines(d, probs.filter((l) => !/^(Πότε|Πού|Φορτηγό|Οδηγός|Συνεργάτης) \*/.test(l)).concat(_kept(d, key)));
+    _busyShow(d, probs.length ? null : st.busy);
+    _acceptOffer(d, key, st.accept_busy, st.k0, () => _changeRefresh(d));
     _setSave(d, !!key && !!d.prev && !d.prev.conflict && !d.locked && !d.busy && !d.done);
     if (d.timer) clearTimeout(d.timer);
     // a dry run that failed is not re-sent by itself for the same body (no automatic retry of /plan, decision 44)
@@ -523,6 +558,7 @@
         d.locked = true;
       }
       _failure(d, e, d.prev && d.prev.key);
+      _busyAtSave(d, e, _readChange(d).k0, () => _changeRefresh(d));
       _reList(d, e);
     } finally {
       d.busy = false;
@@ -563,6 +599,7 @@
       + `<button type="button" class="on" role="radio" aria-checked="true" data-vmode="own">Δικό μας</button><button type="button" role="radio" aria-checked="false" data-vmode="partner">Συνεργάτης</button></div>`
       + `<div class="wn5h-vrow" data-own>${_vehFields(true, {})}`
       + `<label class="wn5h-same"><input type="checkbox" role="switch" class="wn5h-sw" id="wn5h-same"${now.driver ? '' : ' disabled'}><span>ίδιος οδηγός (${_esc(now.driver || '—')})</span></label></div>`
+      + `<div class="wn5h-busy" data-busy hidden></div>`
       + `<div class="wn5h-vrow wn5h-prow" data-par hidden>${_vehFields(false, {})}${_prevRateHTML()}</div>`
       + `<div data-strip></div><div data-preview></div>`;
     // head: the current vehicle (truck only, or the partner) · driver · the cycle window (Figma 2122:7739)
@@ -613,9 +650,10 @@
     // the first segment starts with the cycle: no time, point or reason of its own (Figma 2130:7809)
     const html = (first ? '' : _whenRowHTML(p, g.place_note || '', g.reason, g.reason_note || ''))
       + `<div class="wn5h-vrow${g.trip_type === 'PARTNER' ? ' wn5h-prow' : ''}">${_vehFields(g.trip_type !== 'PARTNER', g)}${pv ? _prevRateHTML() : ''}</div>`
-      + `<div data-strip></div><div data-preview></div>`;
+      + `<div class="wn5h-busy" data-busy hidden></div><div data-strip></div><div data-preview></div>`;
     const d = _open('fix', `Διόρθωση τμήματος ${SEG_GR[g.label] || ''} · ${_esc(c.code || 'RT-' + c.rt_id)}`, `· ${_when(g.from_at)} → ${_when(g.to_at)}`, html, '', 'Αποθήκευση');
     d.cycle = c;
+    d.board = board;
     d.hub = _hubOf(board);
     if (pv) _prevRateSync(d, pv);
     if (typeof fhSelectSearchIn === 'function') fhSelectSearchIn(d.el);
@@ -651,10 +689,20 @@
       const set = probs.length ? {} : _fixSet(g, st);
       const fb = { set };
       if (!probs.length && _prevChanged(ps)) fb.prev_partner_rate = ps.prev_rate;
+      // 096: an own vehicle or time that changes - the segment's span with the new truck / driver (Π2 rule)
+      const moved = 'at' in set;
+      const busy = Object.keys(set).length && g.trip_type !== 'PARTNER' && (set.trip_type || 'OWNED') === 'OWNED'
+        ? _busyLine(d, ['truck_id' in set || moved ? st.truck_id : null], ['driver_id' in set || moved ? st.driver_id : null],
+          set.at || g.from_at || c.start_at, g.to_at || c.end_at) : null;
+      const k0 = JSON.stringify(fb);
+      d.k0 = k0;
+      const accepted = !!(busy && busy.accept) || (d.acceptFor != null && d.acceptFor === k0);
+      if (accepted) fb.accept_busy = true;
       const key = Object.keys(set).length || 'prev_partner_rate' in fb ? JSON.stringify(fb) : null;
       if (!d.prev || d.prev.key !== key) _dropPreview(d);
-      _otherNote(d, probs.includes(OTHER_NOTE));
-      _lines(d, probs.filter((l) => l !== OTHER_NOTE && !/^(Πότε|Πού|Λόγος) \*/.test(l)).concat(_kept(d, key)));
+      _lines(d, probs.filter((l) => !/^(Πότε|Πού) \*/.test(l)).concat(_kept(d, key)));
+      _busyShow(d, busy);
+      _acceptOffer(d, key, accepted, k0, refresh);
       _setSave(d, !!key && !!d.prev && !d.prev.conflict && !d.locked && !d.busy && !d.done);
       if (d.locked) d.el.querySelectorAll('.wn5f-ft [data-act="cancel"]').forEach((b) => { b.textContent = 'Κλείσιμο'; b.classList.add('wn5h-close'); });
       if (d.timer) clearTimeout(d.timer);
@@ -681,7 +729,7 @@
         if (d.prev.token) body.confirm_token = d.prev.token;   // the previous rate's list line was on screen (one step)
         const ans = await planFetch('PATCH', `/plan/segments/${segmentId}`, { body });   // no request_id: a fix creates nothing
         _done(d, 'Η διόρθωση γράφτηκε', ans.warnings);
-      } catch (e) { _failure(d, e, d.prev && d.prev.key); _reList(d, e); }
+      } catch (e) { _failure(d, e, d.prev && d.prev.key); _busyAtSave(d, e, d.k0, refresh); _reList(d, e); }
       finally { d.busy = false; if (!d.done) refresh(); }
     });
     const edit = () => { _unmark(d); refresh(); };
