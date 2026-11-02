@@ -90,7 +90,10 @@
   // list of codes here: a second list of the Worker's codes would drift (principle 3).
   const _wantsReread = (x, kind) => kind === 'stale' || /ανανέωσε/i.test(String(x.message || ''));
   // The pair the base would refuse: the cycle's live stops plus the request's new ones, sorted as 072 plan_h_reseq
-  // sorts them; the first stop that starts before an earlier one of the other side. null = in order (or no cycle).
+  // sorts them; the first stop that ENDS before an earlier one starts (086 stop_order: overlapping windows are a plan,
+  // only an order no truck can drive is refused). So an all-day stop (to 23:59) never trips on a stop of its own day;
+  // before 086 this said «starts before», and the screen asked in red for hours the base never asked (W50 test 2/11).
+  // null = in order (or no cycle).
   function _orderPair(c, stops) {
     if (!c || !Array.isArray(stops)) return null;
     const all = (c.stops || []).map((s) => ({ side: s.side, loc: s.location_id, name: s.location, from: s.planned_from, to: s.planned_to, isNew: false }));
@@ -98,7 +101,7 @@
     all.sort((a, b) => (a.side === 'ANODOS') - (b.side === 'ANODOS') || new Date(a.from) - new Date(b.from));
     let top = null;
     for (const s of all) {
-      if (top && new Date(s.from) < new Date(top.from)) return s.side !== top.side ? [s, top] : null;
+      if (top && (s.to ? new Date(s.to) <= new Date(top.from) : new Date(s.from) < new Date(top.from))) return s.side !== top.side ? [s, top] : null;
       if (!top || new Date(s.from) > new Date(top.from)) top = s;
     }
     return null;
@@ -110,19 +113,21 @@
     const name = (s) => '«' + (s.loc === hub ? 'Βέροια' : s.name || _placeName(s.loc)) + ' ' + when(s) + '»';
     const [late, first] = pair;
     const tag = (s) => (s.side === 'ANODOS' ? 'ΑΝΟΔΟΣ' : 'ΚΑΘΟΔΟΣ') + (s.isNew ? ', νέα' : '');
-    return 'Η στάση ' + name(late) + ' (' + tag(late) + ') θα ήταν πριν από τη ' + name(first) + ' (' + tag(first) + ')' + (code ? ' στο ' + code : '')
-      + ': η ΑΝΟΔΟΣ αρχίζει μετά την ΚΑΘΟΔΟ. '
+    return 'Η στάση ' + name(late) + ' (' + tag(late) + ') θα τελείωνε πριν αρχίσει η ' + name(first) + ' (' + tag(first) + ')' + (code ? ' στο ' + code : '')
+      + ': η ΑΝΟΔΟΣ γίνεται μετά την ΚΑΘΟΔΟ. '
       + (late.isNew ? 'Βάλε την ' + name(late) + ' από ' + _dayShort(_ymdOf(first.from)) + ' ' + _hm(first.from) + ' και μετά, ή διάλεξε άλλον κύκλο.'
-        : first.isNew ? 'Βάλε τη ' + name(first) + ' πριν από ' + _dayShort(_ymdOf(late.from)) + ' ' + _hm(late.from) + ', ή διάλεξε άλλον κύκλο.'
+        : first.isNew ? 'Βάλε τη ' + name(first) + ' να αρχίζει πριν από ' + _dayShort(_ymdOf(late.to || late.from)) + ' ' + _hm(late.to || late.from) + ', ή διάλεξε άλλον κύκλο.'
         : 'Άλλαξε την ώρα μιας από τις δύο («Αλλαγή ώρας ›»), ή διάλεξε άλλον κύκλο.');
   }
-  // code review: the same words BEFORE the press, beside the save of Δ1 / «+» (red, the button stays on: the base is
-  // the judge, and a stale board must not block a save it would take)
+  // code review: the same words BEFORE the press, beside the save of Δ1 / «+» (the button stays on: the base is the
+  // judge, and a stale board must not block a save it would take). Soft, not the red of a missing field (W50 test 2/11:
+  // in red it read as a refusal): the callers get { warn } and _why paints it amber.
   const _orderWarn = (c, req) => { const p = req && !req.missing && req.body ? _orderPair(c, req.body.stops) : null; return p ? _orderText(p, c && c.code) : null; };
+  const _soft = (t) => (t ? { warn: t } : null);
   // F33 (owner 28/10): stop_order (071 plan_rt_problem) said as «which stop, and what to do». The Worker sends the code
   // and the cycle's id in brackets («… σε χρονική σειρά (305)»), which named neither. The base sorts a cycle's stops
-  // ΚΑΘΟΔΟΣ first, then by planned_from (072 plan_h_reseq), so the refusal is always a stop of the ΑΝΟΔΟΣ that starts
-  // before one of the ΚΑΘΟΔΟΣ. The pair is rebuilt here from the cycle on the board plus the new stops of the request
+  // ΚΑΘΟΔΟΣ first, then by planned_from (072 plan_h_reseq); since 086 it refuses a stop that ENDS before one ahead of it
+  // starts, and that one may be of the same side (a drop moved after its own pickup, 086 plan_h_reseq). The pair is rebuilt here from the cycle on the board plus the new stops of the request
   // (req.body.stops); without them the text still names the cycle and the rule, never the bare id.
   function _orderErr(e, req) {
     if (!e || Array.isArray(e) || e.code !== 'stop_order' || e._said) return e;
@@ -133,8 +138,8 @@
     const code = c && c.code ? c.code : null;
     const pair = _orderPair(c, body.stops);
     const msg = pair ? _orderText(pair, code)
-      : 'Οι στάσεις ' + (code ? 'του ' + code : 'του δρομολογίου') + ' δεν θα ήταν σε χρονική σειρά: μια στάση της ΑΝΟΔΟΥ θα ήταν πριν από στάση της ΚΑΘΟΔΟΥ (η ΑΝΟΔΟΣ αρχίζει μετά την ΚΑΘΟΔΟ). '
-        + 'Άλλαξε την ημέρα ή την ώρα της, ή διάλεξε άλλον κύκλο.';
+      : 'Οι στάσεις ' + (code ? 'του ' + code : 'του δρομολογίου') + ' δεν θα ήταν σε χρονική σειρά: μια στάση θα τελείωνε πριν αρχίσει η στάση πριν από αυτήν '
+        + '(μια ΑΝΟΔΟΣ πριν από την ΚΑΘΟΔΟ, ή μια παράδοση πριν από τη φόρτωσή της). Άλλαξε την ημέρα ή την ώρα της, ή διάλεξε άλλον κύκλο.';
     return Object.assign({}, e, { kind: e.kind, code: e.code, message: msg, _said: true });
   }
 
@@ -913,11 +918,14 @@
   // answer (locked) has its own strip. where: 'afterend' of a row / a button, 'beforebegin' of a footer's first button.
   function _why(anchor, where, text) {
     if (!anchor) return null;
+    const soft = !!(text && typeof text === 'object');   // { warn }: a warning, the save stays on (_orderWarn)
+    if (soft) text = text.warn;
     const sib = where === 'beforebegin' ? anchor.previousElementSibling : anchor.nextElementSibling;
     let w = sib && sib.classList.contains('wn5-why') ? sib : null;
     if (!text) { if (w) w.remove(); return null; }
     if (!w) { w = document.createElement(where === 'beforebegin' ? 'span' : 'div'); w.className = 'wn5-why'; anchor.insertAdjacentElement(where, w); }
     if (w.textContent !== text) w.textContent = text;
+    w.classList.toggle('wn5-soft', soft);
     return w;
   }
   KIT.why = _why;   // the national order forms' «Λείπει: …» (wn5_forms.js, F26): one footer reason, not two
@@ -942,7 +950,7 @@
     if (kind === 'partner' && !st.partner) return 'Λείπει: συνεργάτης';
     if (kind === 'partner' && !_rate(st.rateTxt).ok) return 'Κόμιστρο: μόνο αριθμός (π.χ. 350 ή 350,50)';
     if (req && req.missing) return _missWords(st, req);
-    if (req && kind === 'rt') return _orderWarn(st.cyc[_id(String(cand).split(':')[1])], req);
+    if (req && kind === 'rt') return _soft(_orderWarn(st.cyc[_id(String(cand).split(':')[1])], req));
     return req ? null : 'Δεν στέλνεται: ανανέωσε τον πίνακα';
   }
 
@@ -1346,7 +1354,7 @@
   function _plusWhy(st, it, req) {
     if (req === undefined) req = _plusReq(st, it);
     if (!req) return 'Λείπει: πόσες, από 0,1 ως ' + _pal(it.pallets) + ' (ένα δεκαδικό)';
-    return req.missing ? _missWords(st, req) : _orderWarn(st.cyc, req);
+    return req.missing ? _missWords(st, req) : _soft(_orderWarn(st.cyc, req));
   }
   function _plusLineHTML(st, it) {
     const anod = st.side === 'ANODOS';
@@ -1362,7 +1370,7 @@
     const loc = anod ? it.position_location_id : it.nat_to_location_id;
     const place = _placeName(loc), city = _placeCity(loc);
     const why = it._ro ? null : _plusWhy(st, it);
-    const miss = why ? '<span class="wn5-miss wn5-why">' + _esc(why) + '</span>' : '';
+    const miss = why ? '<span class="wn5-miss wn5-why' + (why.warn ? ' wn5-soft' : '') + '">' + _esc(why.warn || why) + '</span>' : '';
     const pal = it.is_stock
       ? '<span class="' + (it.overdue ? 'wn5-late' : 'wn5-leave') + '">' + _esc(_pal(it.pallets) + 'π · ' + _leaveBy(it, st.day)) + '</span>'
       : '<span>' + _esc(_pal(it.pallets)) + 'π</span>';
@@ -1535,7 +1543,8 @@
         if (!text) { if (m) m.remove(); }
         else if (cap) {
           if (!m) { m = document.createElement('span'); m.className = 'wn5-miss wn5-why'; cap.appendChild(m); }
-          m.textContent = text;
+          m.textContent = text.warn || text;
+          m.classList.toggle('wn5-soft', !!text.warn);
         }
       }
     };
