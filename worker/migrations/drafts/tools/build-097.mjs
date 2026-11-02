@@ -21,7 +21,7 @@ const SPLIT = `(SELECT count(*) FROM public.orders ex
       JOIN public.orders im ON im.legacy_id = ex.matched_import_id AND im.deleted_at IS NULL
       JOIN public.ct_rt_legs le ON le.order_id = ex.id JOIN public.ct_round_trips re ON re.id = le.rt_id AND re.status <> 'cancelled'
       JOIN public.ct_rt_legs li ON li.order_id = im.id JOIN public.ct_round_trips ri ON ri.id = li.rt_id AND ri.status <> 'cancelled'
-     WHERE ex.deleted_at IS NULL AND re.id <> ri.id)`;
+     WHERE ex.deleted_at IS NULL AND ex.direction = 'Export' AND re.id <> ri.id)`;
 const RULE = `res := format('%s: trigger rt_y_link_split_vehicle %s, public triggers %s, B-54 %s',
     '__WHO__', CASE WHEN EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'rt_y_link_split_vehicle') THEN 'yes' ELSE 'no' END,
     ${TRIGGERS}, (SELECT red_value FROM monitoring.checks WHERE id = 'B-54'));`;

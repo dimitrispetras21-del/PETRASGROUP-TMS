@@ -1,6 +1,8 @@
 -- 097 / 097b VERIFY (read-only, any time). One row: is the vehicle trigger in place, does B-54 equal the trigger
--- count, how many exports have their matched import on another live round trip (the detection query of 2/11: it
--- counts closed + closed pairs too, which B-77 leaves out on purpose), which pairs, and is 097b in place.
+-- count, how many EXPORTS have their matched import on another live round trip (the detection query of 2/11: it
+-- counts closed + closed pairs too, which B-77 leaves out on purpose; an import whose stale matched_import_id points
+-- at another import - #268 -> #302, August, two trucks - is not an export and is left out), which pairs, and is 097b
+-- in place.
 -- Expected after 097 + 097b: 097 in place | T | T | 0 | (none) | 097b in place.
 -- Before 097b: split_pairs 2, pairs "525>528 RT-1240/RT-1242, 602>606 RT-1278/RT-1283".
 -- THIS FILE IS ASCII ONLY.
@@ -21,4 +23,4 @@ FROM (SELECT count(*) AS n,
         JOIN orders im ON im.legacy_id = ex.matched_import_id AND im.deleted_at IS NULL
         JOIN ct_rt_legs le ON le.order_id = ex.id JOIN ct_round_trips re ON re.id = le.rt_id AND re.status <> 'cancelled'
         JOIN ct_rt_legs li ON li.order_id = im.id JOIN ct_round_trips ri ON ri.id = li.rt_id AND ri.status <> 'cancelled'
-       WHERE ex.deleted_at IS NULL AND re.id <> ri.id) s;
+       WHERE ex.deleted_at IS NULL AND ex.direction = 'Export' AND re.id <> ri.id) s;

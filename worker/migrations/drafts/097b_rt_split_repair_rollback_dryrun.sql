@@ -52,7 +52,7 @@ BEGIN
     JOIN orders im ON im.legacy_id = ex.matched_import_id AND im.deleted_at IS NULL
     JOIN ct_rt_legs le ON le.order_id = ex.id JOIN ct_round_trips re ON re.id = le.rt_id AND re.status <> 'cancelled'
     JOIN ct_rt_legs li ON li.order_id = im.id JOIN ct_round_trips ri ON ri.id = li.rt_id AND ri.status <> 'cancelled'
-   WHERE ex.deleted_at IS NULL AND re.id <> ri.id;
+   WHERE ex.deleted_at IS NULL AND ex.direction = 'Export' AND re.id <> ri.id;
   RAISE NOTICE '097b ROLLBACK OK: % pairs split back as measured 2/11; split pairs now %', done, n;
 END;
   -- ===== what it did =====
@@ -61,7 +61,7 @@ END;
       JOIN public.orders im ON im.legacy_id = ex.matched_import_id AND im.deleted_at IS NULL
       JOIN public.ct_rt_legs le ON le.order_id = ex.id JOIN public.ct_round_trips re ON re.id = le.rt_id AND re.status <> 'cancelled'
       JOIN public.ct_rt_legs li ON li.order_id = im.id JOIN public.ct_round_trips ri ON ri.id = li.rt_id AND ri.status <> 'cancelled'
-     WHERE ex.deleted_at IS NULL AND re.id <> ri.id),
+     WHERE ex.deleted_at IS NULL AND ex.direction = 'Export' AND re.id <> ri.id),
     (SELECT status FROM public.ct_round_trips WHERE id = 285), (SELECT status FROM public.ct_round_trips WHERE id = 244));
   RAISE EXCEPTION 'DRY RUN 097b ROLLBACK finished - EVERYTHING UNDONE, nothing kept. The block ran to its end  ||  %', res;
 END
