@@ -174,3 +174,11 @@ test('day divider: Mon, Mon, Tue — no divider on the shown two, the «+1» nam
   const kto2 = cell(rowOf(c.WN5._html(m2), 'rt:101'), 'wn5-kto');
   assert.ok(kto2.includes('<span class="wi4-pt-dd">Δευ 12/10</span>'), kto2);
 });
+test('day divider: an ΑΝΟΔΟΣ cell (one point) names a folded loading of another day on its «+1»', () => {
+  const c = load();
+  // RT-T101 ΑΝΟΔΟΣ: Aspropyrgos and Rentis on Mon 12/10; Rentis moved to Tue
+  const afl = cell(rowOf(c.WN5._html(c.WN5L.model(daysMoved([1006], '2026-10-13'), { today: '2026-10-13' })), 'rt:101'), 'wn5-afl');
+  assert.ok(/<b>\+1<\/b><span class="wi4-more-d">Τρί<\/span>/.test(afl) && !/wi4-pt-nd/.test(afl), afl);
+  const afl0 = cell(rowOf(c.WN5._html(c.WN5L.model(FIX, { today: '2026-10-13' })), 'rt:101'), 'wn5-afl');
+  assert.ok(!/wi4-more-d/.test(afl0), afl0);
+});

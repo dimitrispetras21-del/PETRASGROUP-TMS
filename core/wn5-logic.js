@@ -403,12 +403,13 @@ function _waitRow(list, hubId, errors, nameOf) {
     byTo.get(k).push(w);
   }
   // hub: the ΑΝΟΔΟΣ ends at Veroia (the screen draws it as a cycle's end, Figma audit B-12) and due is the base's day
-  // for it (the earliest nat_due_day of the group), never an hour
+  // for it (the earliest nat_due_day of the group), never an hour. A waiting ΚΑΘΟΔΟΣ's toDay is its EARLIEST delivery
+  // day (its points come in the board's order, not by day): a point of another day carries its own divider.
   const dest = [...byTo.values()].map((g, i) => ({ stopId: null, n: i + 1, name: nameOf(g[0].nat_to_location_id), city: null, locId: _idOrNull(g[0].nat_to_location_id), clients: [], temps: [],
     from: athensTime(g[0].deliver_from), to: athensTime(g[0].deliver_to), allDay: allDay(g[0].deliver_from, g[0].deliver_to), pallets: _sum(g), palUnknown: _unk(g), dim: false, late: false, segmentId: null, segLabel: null,
     day: athensDay(g[0].deliver_from), toDay: athensDay(g[0].deliver_to), hub: hubId != null && Number(g[0].nat_to_location_id) === hubId,
     due: g.map((w) => w.nat_due_day).filter((d) => DAY_RE.test(String(d || ''))).sort()[0] || null, _np: _noPriceIds(g) }));
-  const side = { side: anodos ? 'ANODOS' : 'KATHODOS', day: loadDay, toDay: anodos || !pts.length ? null : pts[0].day,
+  const side = { side: anodos ? 'ANODOS' : 'KATHODOS', day: loadDay, toDay: anodos || !pts.length ? null : pts.map((p) => p.day).filter(Boolean).sort()[0] || null,
     veroia: !anodos && hubWs.length ? { stopId: null, from: athensTime(hubWs[0].load_from), to: athensTime(hubWs[0].load_to), allDay: allDay(hubWs[0].load_from, hubWs[0].load_to) } : null, vBefore: 0,
     headDim: false, from: anodos ? pts : origin, to: anodos ? dest : pts, pallets, palUnknown, over: pallets > CAP ? r1(pallets - CAP) : 0, sideDim: false, gap: null };
   _marks(side.from.concat(side.to));
