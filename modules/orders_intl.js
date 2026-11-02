@@ -463,7 +463,7 @@ function _oiCardHtml(rec, opts) {
         // stayed «Όχι» for ever, even after the lot's ΤΠΥ.
         ? kv('Τιμολογήθηκε', 'με την παρτίδα ' + escapeHtml(OrdersStock.lotNumLabel(f)), 'miss')
         : kv('Τιμολογήθηκε', f['Invoiced']
-        ? ['Ναι', f['Invoice Number'] ? 'ΤΠΥ ' + escapeHtml(f['Invoice Number']) : '', f['Invoice Date'] ? new Date(f['Invoice Date']).toLocaleDateString('el-GR') : ''].filter(Boolean).join(' · ')
+        ? ['Ναι', OrdersCommon.isSelfDelivery(f) ? 'αυτοπαράδοση' : f['Invoice Number'] ? 'ΤΠΥ ' + escapeHtml(f['Invoice Number']) : '', f['Invoice Date'] ? new Date(f['Invoice Date']).toLocaleDateString('el-GR') : ''].filter(Boolean).join(' · ')
         : 'Όχι')}
     </div>
     <div class="oi-sect oi-sect-alt"><div class="oi-sect-t">Διαδρομή</div>${route}</div>

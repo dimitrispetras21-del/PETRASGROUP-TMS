@@ -199,6 +199,8 @@ const OrdersWeekView = (() => {
     if (isVsNational(rec)) return { cls: 'dim', text: 'δεν τιμολογείται', title: 'Παλιά εθνική τύπου Veroia Switch — την τιμή τη φέρει η διεθνής παραγγελία' };
     switch (state.key) {
       case 'invoiced': {
+        // «Αυτοπαράδοση» (101, owner 2/11): invoiced, and there is no ΤΠΥ to show
+        if (OC().isSelfDelivery(rec.fields)) return { cls: 'ok', text: '✓ αυτοπαράδοση', title: 'Αυτοπαράδοση — δικό μας φορτίο, χωρίς τιμολόγιο ERP' };
         const nr = String((rec.fields || {})['Invoice Number'] || '').trim();
         return nr ? { cls: 'ok', text: '✓ ' + nr, title: 'Τιμολογήθηκε · ΤΠΥ ' + nr }
           : { cls: 'dim', text: 'τιμολογήθηκε', title: 'Τιμολογήθηκε πριν γίνει υποχρεωτικός ο αριθμός ΤΠΥ' };
@@ -1279,7 +1281,7 @@ const OrdersWeekView = (() => {
     const m = S.model; if (!m) return;
     const O = OC(), scope = S.ctx ? S.ctx.scope : 'all';
     const stateOf = _stateFn(S.data.set);
-    const stLabel = r => { if (isVsNational(r)) return 'δεν τιμολογείται'; const s = stateOf(r); return s.key === 'invoiced' ? 'τιμολογήθηκε' : s.key === 'blocked' ? 'μπλοκαρισμένη: ' + (REASON[s.reason] || s.reason) : s.key === 'ready' ? (s.noSheets ? 'προς κοπή · λείπει δελτίο' : 'προς κοπή') : 'ακυρωμένη'; };
+    const stLabel = r => { if (isVsNational(r)) return 'δεν τιμολογείται'; const s = stateOf(r); return s.key === 'invoiced' ? (O.isSelfDelivery(r.fields) ? 'αυτοπαράδοση' : 'τιμολογήθηκε') : s.key === 'blocked' ? 'μπλοκαρισμένη: ' + (REASON[s.reason] || s.reason) : s.key === 'ready' ? (s.noSheets ? 'προς κοπή · λείπει δελτίο' : 'προς κοπή') : 'ακυρωμένη'; };
     const line = (rt, r, vrec, counts) => {
       const f = r.fields, v = vehicleOf(vrec), e = endsOf(r);
       return [O.weekLabel(m.week), O.ymd(O.weekDateOf(r)), rt, r._type === 'natl' ? (f['Direction'] === 'South→North' ? 'Άνοδος' : 'Κάθοδος') : (f['Direction'] === 'Import' ? 'Εισαγωγή' : 'Εξαγωγή'),

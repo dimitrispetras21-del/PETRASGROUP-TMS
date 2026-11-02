@@ -107,11 +107,15 @@ test('deploy 2 (day L): the Q-10 table, cell by cell — 422 legacy_closed befor
   assert.ok(refused >= 10, `refused cells: ${refused}`);
 });
 
-test('day L, national_orders PATCH per label: the accountant\'s invoicing three + Price, the dispatcher\'s Price / Reference / Notes; one label outside = the whole write refused, naming it', async () => {
+test('day L, national_orders PATCH per label: the accountant\'s invoicing three + Price + Self Delivery, the dispatcher\'s Price / Reference / Notes; one label outside = the whole write refused, naming it', async () => {
   const NO = T.NO;
-  const KEEP = { accountant: ['Invoiced', 'Invoice Number', 'Invoice Date', 'Price'], dispatcher: ['Price', 'Reference', 'Notes'] };
+  const KEEP = { accountant: ['Invoiced', 'Invoice Number', 'Invoice Date', 'Price', 'Self Delivery'], dispatcher: ['Price', 'Reference', 'Notes'] };
   const cases = [
     ['accountant', { Invoiced: true, 'Invoice Number': 'ΤΠΥ-1', 'Invoice Date': '2026-11-02' }, true],
+    // «Αυτοπαράδοση» (101, owner 2/11): the invoicing screen's other write, and its undo
+    ['accountant', { Invoiced: true, 'Self Delivery': true, 'Invoice Date': '2026-11-02' }, true],
+    ['accountant', { Invoiced: false, 'Invoice Number': null, 'Invoice Date': null, 'Self Delivery': false }, true],
+    ['dispatcher', { 'Self Delivery': true }, false],
     ['accountant', { Price: 300 }, true],
     ['accountant', { Invoiced: true, Status: 'Delivered' }, false],
     ['dispatcher', { Price: 300, Reference: 'R-1', Notes: 'n' }, true],

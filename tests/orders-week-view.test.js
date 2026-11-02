@@ -532,3 +532,14 @@ test('an RT with several exports stands where its FIRST Weekly row stands (the l
   assert.deepStrictEqual(tue.rows.map(r => r.code), ['RT-1', 'RT-2']);   // Alfa (RT-1's 2nd leg) < Kappa
   assert.strictEqual(tue.rows[0].sortRec.id, 'mA');
 });
+
+// «Αυτοπαράδοση» (owner 2/11/2026, migration 101): counted as invoiced, labelled, no ΤΠΥ invented.
+test('self delivery: invoiced in the totals, «✓ αυτοπαράδοση» in the ΤΠΥ cell', () => {
+  const sd = o('recSD', 1299, { Direction: 'Export', 'Loading DateTime': '2026-09-22T08:00', 'Delivery DateTime': '2026-09-24T08:00', Status: 'Delivered', Invoiced: true, 'Self Delivery': true });
+  const st = OrdersData.stateOf({ intl: [sd], natl: [], gate: {} }, sd);
+  assert.strictEqual(st.key, 'invoiced');
+  const cell = W.tpyOf(sd, st);
+  assert.deepStrictEqual([cell.cls, cell.text], ['ok', '✓ αυτοπαράδοση']);
+  const t = W.totals([sd], r => OrdersData.stateOf({ intl: [sd], natl: [], gate: {} }, r));
+  assert.deepStrictEqual([t.invN, t.invSum, t.unpriced, t.openN], [1, 0, 1, 0], 'invoiced, its missing price never summed');
+});

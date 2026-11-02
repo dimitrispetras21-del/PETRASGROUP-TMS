@@ -346,7 +346,7 @@ function selectNatlOrder(recId) {
       ${_onDF('Παλέτες', f['Pallets'] != null ? escapeHtml(String(f['Pallets'])) : _ON_NA, f['Pallets'] == null)}
       ${_onDF('Θερμοκρασία', f['Temperature °C'] != null ? escapeHtml(String(f['Temperature °C'])) + ' °C' : _ON_NA, f['Temperature °C'] == null)}
       ${can('costs')!=='none' ? _onDF('Τιμή', priced ? Number(f['Price']).toLocaleString('el-GR') + ' €' : _ON_NA, !priced) : ''}
-      ${_onDF('Τιμολογήθηκε', f['Invoiced'] ? 'Ναι' : 'Όχι')}
+      ${_onDF('Τιμολογήθηκε', f['Invoiced'] ? (OrdersCommon.isSelfDelivery(f) ? 'Ναι · αυτοπαράδοση' : 'Ναι') : 'Όχι')}
     </div>
     <div class="on-sec sunken">
       <div class="on-sec-title">Διαδρομή</div>

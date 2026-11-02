@@ -13,6 +13,6 @@
 -- tolerance: 
 -- source: 02b Β-12 · 22/9 = 0
 -- enabled: yes
-SELECT count(*) FROM orders WHERE deleted_at IS NULL AND invoiced AND coalesce(price,0)<=0;
+SELECT count(*) FROM orders WHERE deleted_at IS NULL AND invoiced AND NOT self_delivery AND coalesce(price,0)<=0;
 -- @ids
-SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM (SELECT legacy_id AS x FROM orders WHERE deleted_at IS NULL AND invoiced AND coalesce(price,0)<=0 LIMIT 50) s;
+SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM (SELECT legacy_id AS x FROM orders WHERE deleted_at IS NULL AND invoiced AND NOT self_delivery AND coalesce(price,0)<=0 LIMIT 50) s;
