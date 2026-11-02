@@ -173,6 +173,7 @@ async function scnTransfer({ browser, origin, ok, scn, shots }) {
     && await page.evaluate((s) => [...document.querySelectorAll(s + ' [data-preview] s')].some((x) => x.textContent === 'Βέροια'), DLG), pv);
   ok(scn, 'preview: the new trip of TST-2106 and the new load «φορτηγό αργότερα · 8π … στο προς ανάθεση»', pv.includes('TST-2106') && pv.includes('φορτηγό αργότερα · 8π') && pv.includes('περιμένει στη Λαμία από Τρί 13/10 · στο προς ανάθεση'), pv);
   ok(scn, 'no «Διεθνής» block when no Veroia day moves', !/ΔΙΕΘΝΗΣ/.test(pv), pv);
+  ok(scn, 'the new trip is named by its plate, never its RT code (owner 31/10)', !/RT-T/.test(pv), pv);
   await shot(page, shots, 'road-3-preview');
   await page.click(`${DLG} [data-act="save"]`);
   await page.waitForFunction((s) => !document.querySelector(s + ' [data-done]').hidden, DLG, { timeout: 5000 }).catch(() => {});

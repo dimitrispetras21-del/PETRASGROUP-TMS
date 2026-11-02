@@ -24,7 +24,7 @@
   const HM = /^([01]\d|2[0-3]):[0-5]\d$/;
   const SIDE_GR = Object.freeze({ KATHODOS: 'ΚΑΘΟΔΟΣ', ANODOS: 'ΑΝΟΔΟΣ' });
   const BUSY = Object.freeze(['truck_busy', 'driver_busy']);
-  const _esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  const _esc = (s) => K().esc(s);
   const _log = (e, where) => { try { if (typeof logError === 'function') logError(e, where); } catch (_) { /* the screen keeps its own line */ } };
   const _on = () => typeof FEATURES !== 'undefined' && FEATURES.WN_ROAD === true;
   // «1430», «14.30», «9:00» → «14:30» / «09:00» (the handover window's rule)
@@ -293,16 +293,18 @@
   // A host is written only when its words change: a refresh between the press and the release (the time field's
   // «change» on the mousedown that leaves it) would otherwise replace the button under the pointer and lose the click.
   function _busyLines(d, st) {
-    const want = new Map();
+    // one strip per busy truck (every truck whose overlap is accepted is said), under the first load sent to it
+    const said = new Set(), at = new Map();
     for (const r of st.rows) for (const v of [r.go, _split(r) ? r.rest : null]) {
       const bz = v && d.busyOf[v];
-      if (!bz || [...want.values()].some((x) => x.v === v)) continue;
-      want.set(r.piece_id, { v, html: `<div class="wn5-strip wn5r-busy" data-kind="warning"><b>ΑΠΑΣΧΟΛΗΜΕΝΟ</b><span>${_esc(bz.text)}</span>`
-        + '<button type="button" class="wi4-btn sm" data-act="time">Αλλαγή ώρας</button></div>' });
+      if (!bz || said.has(v)) continue;
+      said.add(v);
+      at.set(r.piece_id, (at.get(r.piece_id) || '') + `<div class="wn5-strip wn5r-busy" data-kind="warning"><b>ΑΠΑΣΧΟΛΗΜΕΝΟ</b><span>${_esc(bz.text)}</span>`
+        + '<button type="button" class="wi4-btn sm" data-act="time">Αλλαγή ώρας</button></div>');
     }
     for (const ld of d.loads) {
       const host = _q(d, `.wn5r-ld[data-piece="${ld.piece_id}"] [data-busyrow]`);
-      const html = want.has(ld.piece_id) ? want.get(ld.piece_id).html : '';
+      const html = at.get(ld.piece_id) || '';
       if (host && host.innerHTML !== html) host.innerHTML = html;
     }
   }
@@ -376,11 +378,14 @@
       if (r.bad) continue;
       if (_split(r)) { if (_goes(r.go)) out += r.part; if (_goes(r.rest)) out += r.total - r.part; } else if (r.go !== 'keep') out += r.total || 0;
     }
-    const named = (rtId) => d.choices.find((o) => o.rt && o.rt.rt_id === rtId);
-    const newTk = d.choices.filter((o) => o.group === 'free' && st.rows.some((r) => r.go === o.v || (_split(r) && r.rest === o.v)));
+    // a new trip is not on the board yet: the base creates them in the order of body.trucks and lists them by id, so
+    // the k-th trip not on the board is the k-th new truck of the body (owner 31/10: plates, never an RT code)
+    const newIds = (d.prev && d.prev.body.trucks || []).filter((t) => t.target.new_rt).map((t) => t.target.new_rt.truck_id);
+    const plateOf = (id) => ((d.choices.find((o) => o.group === 'free' && o.truckId === id) || {}).name || 'νέο φορτηγό');
+    let nth = 0;
     const rows = (Array.isArray(p.trucks) ? p.trucks : []).map((t) => {
       const c = k.cycle(t.rt_id), mine = t.rt_id === d.rtId;
-      const plate = c ? _truckLabel(c) : (newTk.length === 1 ? newTk[0].name : (named(t.rt_id) || {}).name || t.code || 'νέο φορτηγό');
+      const plate = c ? _truckLabel(c) : plateOf(newIds[nth++]);
       const live = (t.stops || []).filter((s) => !s.removed), gone = (t.stops || []).filter((s) => s.removed);
       const chain = live.map((s) => {
         const tx = !!s.transfer_reason || s.transfer_from_stop_id != null;
@@ -447,7 +452,8 @@
     if (typeof PlanError === 'undefined' || !(e instanceof PlanError)) { _log(e, 'WN5Road'); WN5Act.strip(_strip(d), _err('WN5R_failed', 'Δεν έγινε: ' + String((e && e.message) || e), {})); return; }
     WN5Act.strip(_strip(d), e);
     if (e.kind === PlanApi.KIND.CLOSED) { WN5.markClosed(e); d.locked = true; }
-    if (e.kind === PlanApi.KIND.LEAK) d.locked = true;
+    if (e.kind === PlanApi.KIND.LEAK || e.kind === PlanApi.KIND.UNKNOWN) d.locked = true;
+    if (d.locked) for (const a of ['back', 'save']) _q(d, `[data-act="${a}"]`).hidden = true;
   }
   // a busy truck the board could not name (or another save took it since): the explicit yes, for THIS body only
   function _offerAccept(d, code) {
@@ -524,7 +530,7 @@
         ? await planFetch('POST', `/plan/rt/${d.rtId}/handover`, { body: d.prev.hand.token ? Object.assign({}, d.prev.hand.body, { confirm_token: d.prev.hand.token }) : d.prev.hand.body, requestId: d.slot.id })
         : await planFetch('POST', '/plan/transfer', { body: d.prev.body, requestId: d.slot.id });
       d.slot.confirm();
-      _done(d, (whole ? 'Η αλλαγή οχήματος γράφτηκε' : 'Η αλλαγή στον δρόμο γράφτηκε') + (ans && ans.replayed ? ' · το πρώτο πάτημα είχε ήδη αποθηκευτεί' : ''), ans && ans.warnings);
+      _done(d, (whole ? 'Η αλλαγή οχήματος γράφτηκε' : 'Η αλλαγή στον δρόμο γράφτηκε') + (ans && ans.replayed ? ' · το πρώτο πάτημα είχε ήδη αποθηκευτεί' : ''), ans && ans.warnings, whole ? 'handover' : 'save');
     } catch (e) {
       _failure(d, e);
       _offerAccept(d, e && e.code);
@@ -533,7 +539,7 @@
       if (!d.done) _saveState(d);
     }
   }
-  function _done(d, line, warnings) {
+  function _done(d, line, warnings, reason) {
     d.done = true;
     const el = _q(d, '[data-done]');
     el.hidden = false;
@@ -544,7 +550,8 @@
     c.hidden = false;
     c.focus();
     const rt = d.rtId;
-    Promise.resolve(WN5.reload('transfer')).then((fresh) => { if (fresh && rt && typeof WN5.focusRow === 'function') WN5.focusRow('rt:' + rt); });
+    // a reason of SAVE_RELOADS: a read that fails after a confirmed save says the rows are old (F11, principle 1)
+    Promise.resolve(WN5.reload(reason)).then((fresh) => { if (fresh && rt && typeof WN5.focusRow === 'function') WN5.focusRow('rt:' + rt); });
   }
 
   // ── open ────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -651,7 +658,7 @@
     });
     box.addEventListener('focusout', (ev) => {
       if (ev.target.matches('[data-hm]') && ev.target.value) { ev.target.value = _hm(ev.target.value); _refresh(d); }
-      if (ev.target.matches('[data-where]')) setTimeout(() => { if (_d === d && !box.contains(document.activeElement)) _q(d, '[data-list]').hidden = true; }, 150);
+      if (ev.target.matches('[data-where]')) setTimeout(() => { if (_d === d && !_q(d, '.wn5r-cb').contains(document.activeElement)) _q(d, '[data-list]').hidden = true; }, 150);
     });
     _refresh(d);
     _q(d, '[data-where]').focus();
