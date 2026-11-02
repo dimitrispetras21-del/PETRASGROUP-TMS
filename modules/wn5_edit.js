@@ -69,6 +69,8 @@
     const items = [];
     const pcs = _piecesAt(ctx);
     if (ctx.s && pcs.length) items.push({ id: 'move', label: 'Μεταφορά σε άλλο φορτηγό…', run: () => WN5Act.move({ rt_id: ctx.rtId, piece_ids: pcs }) });
+    // owner 2/11 (Q2): the same window as the ✈ «Αλλαγή στον δρόμο…», opened on this stop (its side, day, loads first)
+    if (ctx.s && pcs.length && typeof WN5Road !== 'undefined' && WN5Road.on()) items.push({ id: 'road', label: 'Αλλαγή στον δρόμο από εδώ…', run: () => WN5Road.open(ctx.rtId, { stopId: ctx.stopId }) });
     const many = ords.length > 1;
     for (const o of ords) items.push({ id: 'del-pt:' + o.no, label: 'Διαγραφή σημείου' + (many ? ' · ' + o.ref : ''), danger: true, run: () => deletePoint(ctx, o.no) });
     for (const o of ords) items.push({ id: 'del-ord:' + o.no, label: 'Διαγραφή παραγγελίας' + (many ? ' · ' + o.ref : ''), danger: true,
