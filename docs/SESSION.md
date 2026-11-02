@@ -12,6 +12,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
+- dimitris · `feat/owv-week-numbers` · «Παραγγελίες › Εβδομάδα»: αρίθμηση = του Weekly Διεθνών από ΜΙΑ πηγή (`core/wi4-logic.js` boardRows / boardNumbers, owner «Α»)· board byte-ίδιο· εθνικά αναμένουν τον owner· ?v= / SW_VERSION 1793850000 (`docs/sessions/2026-11-02-dimitris-week-numbers.md`)
 - dimitris · `docs/pallets-weekly-design` · Παλέτες › Εβδομάδα: σχέδιο Figma N19–N22 ΕΓΚΡΙΘΗΚΕ (owner 2/11)· κώδικας μετά την κοινή αρίθμηση του Weekly, μαζί με Υ3 / Υ4 (`docs/sessions/2026-11-02-dimitris-pallets-weekly-design.md`)
 - dimitris · `feat/wn5-road-change` · Εθνικά v5: «Αλλαγή στον δρόμο», κομμάτι 5 (οθόνες): `modules/wn5_road.js` πίσω από `FEATURES.WN_ROAD` (false ως το deploy του #239)· ✈ «Αλλαγή στον δρόμο…» + δεξί κλικ «… από εδώ…», παράθυρο, προεπισκόπηση, whole_vehicle → 072b, ο τόπος TRANSFER POINT εκτός λιστών· rig 49/49· στοιβαγμένο στο #239· ?v= / SW_VERSION 1793820000 (`docs/sessions/2026-11-02-dimitris-road-change-screens.md`)
 - dimitris · `feat/wn5-compose-drafts` · Εθνικά v5: οθόνη «Σύνθεση φορτίων» πάνω στα κοινά πρόχειρα (`/plan/drafts`, 102 + #239): κάρτες «Φορτίο 1…N», «Δημιουργία όλων» ανά πρόχειρο, «σε πρόχειρο» στο Weekly (Ε1), χωρίς `to_hub` (Ε2)· πίσω από `localStorage.tms_wn5_compose` ως το deploy· στοιβαγμένο στο #239 (πρώτα εκείνο), ?v= / SW_VERSION 1793830000· κλείνει το #231 (`docs/sessions/2026-11-02-dimitris-compose-screen.md`)

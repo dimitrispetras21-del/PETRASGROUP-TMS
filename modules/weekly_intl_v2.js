@@ -422,20 +422,14 @@ function _compute() {
   const rows = D.rows || [];
   const fOf = (r) => ((D.data.exports.find((x) => x.id === (r.orderIds || [])[0]) || D.data.imports.find((x) => x.id === r.orderId)) || {}).fields || {};
   // Grouping = today's _wiAllRowsHTML rules: exports by DELIVERY day, imports
-  // by LOADING day, Σαβ–Παρ seeded, «μεταφέρθηκε» sections after Friday.
-  const expRows = rows.filter((r) => r.type === 'export' && !r.legOf && !r.splitLegOf);
-  const impRows = rows.filter((r) => r.type === 'import' && !r.legOf && !r.adj && !r.splitLegOf && !I.shelved(r));
-  const groups = {}, extra = {};
-  if (D._range) { let d = D._range.ws; for (let i = 0; i < 7; i++) { groups[d] = { date: d, exps: [], imps: [] }; d = _addDays(d, 1); } }
-  expRows.forEach((r) => { const k = _day(fOf(r)['Delivery DateTime'] || fOf(r)['Loading DateTime']); const b = r.outOfWindow ? extra : groups; (b[k] = b[k] || { date: k, exps: [], imps: [] }).exps.push(r); });
-  impRows.forEach((r) => { const k = _day(fOf(r)['Loading DateTime']); const b = r.outOfWindow ? extra : groups; (b[k] = b[k] || { date: k, exps: [], imps: [] }).imps.push(r); });
-  const byDate = (a, b) => (a.date || '~').localeCompare(b.date || '~');
-  // WI4.dayRowOrder: the one rule, shared with «Παραγγελίες › Εβδομάδα».
-  const sorter = (field) => (a, b) => lg.dayRowOrder(fOf(a), fOf(b), field);
+  // by LOADING day, Σαβ–Παρ seeded, «μεταφέρθηκε» sections after Friday — and
+  // the order inside a day and the row numbers: all WI4.boardNumbers
+  // (core/wi4-logic.js), the ONE source «Παραγγελίες › Εβδομάδα» numbers its
+  // rows from too (owner 2/11/2026, «Α: μία κοινή πηγή»).
+  const nb = lg.boardNumbers(rows, { ws: D._range ? D._range.ws : null, dayOf: _day, fOf, shelved: (r) => I.shelved(r) });
 
   const days = [];
   const entries = [];
-  let no = 0;
   D._rowNo = {};
   const pushFacts = (e, row, oid) => { _rowFacts(row, oid).forEach((x) => e.facts.push(x)); };
   // Ghosts (§e.14, _unconfirmed): an import drawn under an export by a match
@@ -499,13 +493,13 @@ function _compute() {
     // A day whose only load is a ghost is not «Καμία κίνηση»: the table has a load there.
     const day = { date: g.date, extra: isExtra, today: g.date === today, entries: [], empty: !g.exps.length && !showImps.length && !ghostRows.length };
     if (isExtra && day.empty) return;
-    g.exps.sort(isExtra ? (a, b) => String(fOf(a)['Delivery DateTime'] || '').localeCompare(String(fOf(b)['Delivery DateTime'] || '')) : sorter('Delivery DateTime'));
-    showImps.sort(isExtra ? (a, b) => String(fOf(a)['Loading DateTime'] || '').localeCompare(String(fOf(b)['Loading DateTime'] || '')) : sorter('Loading DateTime'));
-    // Numbering is continuous per week, exports and import-only rows together
-    // (§e numbering); WINTL._rowNo is kept so any old reader stays right.
+    // Sorted and numbered by WI4.boardNumbers: continuous per week, exports and
+    // import-only rows together (§e numbering); WINTL._rowNo is kept so any old
+    // reader stays right.
     const add = (row, t) => {
       const oid = (row.orderIds || [])[0] || row.orderId;
-      no++; D._rowNo[oid] = String(no);
+      const no = nb.no.get(row);
+      D._rowNo[oid] = String(no);
       if (row.hasSplitLegs) {
         const e = { t: 'split', row, no, day, facts: [] };
         day.entries.push(e); entries.push(e);
@@ -531,8 +525,7 @@ function _compute() {
     });
     days.push(day);
   };
-  Object.values(groups).sort(byDate).forEach((g) => fill(g, false));
-  Object.values(extra).sort(byDate).forEach((g) => fill(g, true));
+  nb.days.forEach((g) => fill(g, g.extra));
 
   // Day counts and header words (§d.3).
   for (const day of days) {

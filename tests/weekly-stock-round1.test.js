@@ -42,7 +42,7 @@ const isLooseD1 = f => OrdersStock.isPiece(f) && !getLinkedId(f['Truck']) && !ge
 function load(parts, extra) {
   const OS = Object.create(OrdersStock);
   if (extra && extra.newIsLoose) OS.isLoose = isLooseD1;
-  const ctx = Object.assign({ console, OrdersStock: OS, OrdersCommon, getLinkedId, localToday: () => TODAY,
+  const ctx = Object.assign({ console, OrdersStock: OS, OrdersCommon, getLinkedId, WI4: require(path.join(ROOT, 'core/wi4-logic.js')), localToday: () => TODAY,
     toLocalDate: v => (v ? new Date(v).toLocaleDateString('sv-SE', { timeZone: 'Europe/Athens' }) : ''),
     escapeHtml: s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'),
     TABLES: { ORDERS: 'tblORDERS' },
