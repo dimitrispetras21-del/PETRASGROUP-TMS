@@ -1,0 +1,127 @@
+-- 097b: the two matched pairs that sit on two round trips each go back to ONE round trip (the export's).
+--
+-- WHY: see 097 (the cause, measured 2/11/2026). Production 2/11 holds exactly two exports whose matched import
+-- sits on another live round trip (097_rt_split_vehicle_recheck_verify.sql, "split_pairs"):
+--   export #602 RT-1278 (closed, truck 2, Dragan) <-> import #606 RT-1283 (planned, truck 2): Voitsberg, the one
+--     the owner saw in "Orders > Week". Accounting already entered the whole trip's expenses (25-30/10, 14 lines)
+--     on RT-1278 on 2/11 morning; RT-1283 has 0 cost lines and one payroll line with no amounts.
+--   export #525 RT-1240 (closed, truck 8) <-> import #528 RT-1242 (closed, truck 8): mid-October, both delivered.
+--     RT-1240 has 12 cost lines and the payroll line with the cash; RT-1242 has 0 cost lines and one payroll
+--     line with no amounts.
+-- WHAT: for each pair, the existing rt_merge(keep = the export's round trip, drop = the import's) - the same
+-- function 037 calls for this shape: the import's leg moves to the export's round trip (after its last leg), the
+-- drop's cost lines follow (0 here), the drop round trip is CANCELLED with a note, never deleted (its code stays
+-- in history), dl_sync_from_rt soft-deletes its empty payroll line, and the kept round trip takes its dates
+-- from both legs (rt_recompute) and reopens when a leg is not yet delivered (#606 is In Transit: RT-1278 ->
+-- planned, 25/10 -> 3/11; RT-1240 stays closed, 14/10 -> 19/10). No order is written; no amount is changed.
+-- Every guard below is the state measured 2/11; a different state = stop, nothing done.
+--
+-- WHEN: after 097 (the cause first), after 15:00, after the owner's explicit yes in chat.
+-- BEFORE IT: 097b_rt_split_repair_dryrun.sql - this same block, generated from this file, undone.
+-- EXPECTED: NOTICE "097b OK: 2 pairs merged ..." and ONE result row "097b OK | 0" (split pairs left).
+--   A red error = nothing changed (one DO block): stop, copy the panel.
+-- AFTER IT: 097b_rt_split_repair_verify.sql (read-only). Reverse: 097b_rt_split_repair_rollback.sql.
+-- THIS FILE IS ASCII ONLY. ONE DO block, then ONE read-only SELECT.
+
+DO $do$
+DECLARE
+  -- THE PAIRS (production ids, measured 2/11). keep = the export's round trip, drop = the import's.
+  pairs CONSTANT jsonb := '[{"keep":280,"drop":285,"exp":602,"imp":606},{"keep":242,"drop":244,"exp":525,"imp":528}]';
+  p jsonb; k ct_round_trips%rowtype; d ct_round_trips%rowtype; e orders%rowtype; i orders%rowtype;
+  n int; lines_n bigint; lines_sum numeric; done int := 0; r record; v numeric; b77 numeric; want text;
+BEGIN
+  PERFORM set_config('search_path', 'public, extensions', true);
+  PERFORM set_config('lock_timeout', '5s', true);
+  IF to_regprocedure('public.rt_merge(bigint,bigint,text)') IS NULL
+     OR (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.rt_merge(bigint,bigint,text)'::regprocedure) <> '41d629e48ba519c458848a9572b346c8' THEN
+    RAISE EXCEPTION '097b: rt_merge is not the text measured 2/11 - re-measure';
+  END IF;
+
+  FOR p IN SELECT * FROM jsonb_array_elements(pairs) LOOP
+    SELECT * INTO k FROM ct_round_trips WHERE id = (p->>'keep')::bigint FOR UPDATE;
+    SELECT * INTO d FROM ct_round_trips WHERE id = (p->>'drop')::bigint FOR UPDATE;
+    SELECT * INTO e FROM orders WHERE id = (p->>'exp')::bigint;
+    SELECT * INTO i FROM orders WHERE id = (p->>'imp')::bigint;
+    -- 0. GUARDS: the state measured 2/11, pair by pair
+    IF k.id IS NULL OR d.id IS NULL OR e.id IS NULL OR i.id IS NULL THEN
+      RAISE EXCEPTION '097b: pair % - a round trip or an order is missing', p;
+    END IF;
+    IF e.deleted_at IS NOT NULL OR i.deleted_at IS NOT NULL OR e.direction <> 'Export' OR i.direction <> 'Import'
+       OR e.matched_import_id IS DISTINCT FROM i.legacy_id THEN
+      RAISE EXCEPTION '097b: pair % - export #% is no longer matched to import #% (or one is deleted) - re-measure', p, e.id, i.id;
+    END IF;
+    IF k.status = 'cancelled' OR d.status = 'cancelled' OR k.model <> 1 OR d.model <> 1
+       OR k.trip_type <> 'OWNED' OR d.trip_type <> 'OWNED' OR k.truck_id IS DISTINCT FROM d.truck_id
+       OR k.truck_id IS DISTINCT FROM e.truck_id OR d.truck_id IS DISTINCT FROM i.truck_id THEN
+      RAISE EXCEPTION '097b: pair % - % / % are not two live own-fleet round trips on the same truck as their orders - re-measure', p, k.code, d.code;
+    END IF;
+    IF (SELECT count(*) FROM ct_rt_legs WHERE rt_id = k.id) <> 1
+       OR NOT EXISTS (SELECT 1 FROM ct_rt_legs WHERE rt_id = k.id AND order_id = e.id AND direction = 'EXPORT')
+       OR (SELECT count(*) FROM ct_rt_legs WHERE rt_id = d.id) <> 1
+       OR NOT EXISTS (SELECT 1 FROM ct_rt_legs WHERE rt_id = d.id AND order_id = i.id AND direction = 'IMPORT') THEN
+      RAISE EXCEPTION '097b: pair % - % / % do not hold exactly the export leg / the import leg - re-measure', p, k.code, d.code;
+    END IF;
+    IF EXISTS (SELECT 1 FROM ct_cost_lines WHERE rt_id = d.id)
+       OR EXISTS (SELECT 1 FROM dl_entries WHERE rt_id = d.id AND deleted_at IS NULL
+                    AND (trip_value IS NOT NULL OR advance IS NOT NULL OR expenses IS NOT NULL OR amount IS NOT NULL)) THEN
+      RAISE EXCEPTION '097b: pair % - % now has cost lines or a payroll amount: a person must decide where the money goes - stop', p, d.code;
+    END IF;
+    SELECT count(*), coalesce(sum(net), 0) INTO lines_n, lines_sum FROM ct_cost_lines WHERE rt_id = k.id;
+
+    -- 1. THE REPAIR: 037's own merge
+    PERFORM rt_merge(k.id, d.id, '097b: matched pair split because the link came before the import''s truck (owner 2/11/2026)');
+
+    -- 2. PROOFS for this pair
+    IF NOT EXISTS (SELECT 1 FROM ct_rt_legs WHERE order_id = i.id AND rt_id = k.id AND direction = 'IMPORT')
+       OR NOT EXISTS (SELECT 1 FROM ct_rt_legs WHERE order_id = e.id AND rt_id = k.id)
+       OR EXISTS (SELECT 1 FROM ct_rt_legs WHERE rt_id = d.id)
+       OR (SELECT status FROM ct_round_trips WHERE id = d.id) <> 'cancelled'
+       OR (SELECT status FROM ct_round_trips WHERE id = k.id) = 'cancelled'
+       OR EXISTS (SELECT 1 FROM dl_entries WHERE rt_id = d.id AND deleted_at IS NULL) THEN
+      RAISE EXCEPTION '097b proof: pair % - the import is not on % with its export, or % is not cancelled with no live payroll line', p, k.code, d.code;
+    END IF;
+    SELECT count(*) INTO n FROM ct_cost_lines WHERE rt_id = k.id;
+    IF n <> lines_n OR (SELECT coalesce(sum(net), 0) FROM ct_cost_lines WHERE rt_id = k.id) <> lines_sum THEN
+      RAISE EXCEPTION '097b proof: pair % - the cost lines of % moved (% -> %)', p, k.code, lines_n, n;
+    END IF;
+    -- the kept round trip stays as it was when both legs are delivered, else rt_merge reopened it
+    want := CASE WHEN i.status = 'Delivered' AND e.status = 'Delivered' THEN k.status ELSE 'planned' END;
+    IF (SELECT status FROM ct_round_trips WHERE id = k.id) <> want THEN
+      RAISE EXCEPTION '097b proof: pair % - % status is not what its legs say (%)', p, k.code, want;
+    END IF;
+    IF (SELECT count(*) FROM orders WHERE id IN (e.id, i.id) AND truck_id IS NOT DISTINCT FROM k.truck_id AND deleted_at IS NULL) <> 2 THEN
+      RAISE EXCEPTION '097b proof: pair % - an order lost its truck', p;
+    END IF;
+    done := done + 1;
+  END LOOP;
+
+  -- 3. NOTHING LEFT: no export whose matched import sits on another live round trip; B-77 (as tms_check_runner) 0
+  SELECT count(*) INTO n FROM orders ex
+    JOIN orders im ON im.legacy_id = ex.matched_import_id AND im.deleted_at IS NULL
+    JOIN ct_rt_legs le ON le.order_id = ex.id JOIN ct_round_trips re ON re.id = le.rt_id AND re.status <> 'cancelled'
+    JOIN ct_rt_legs li ON li.order_id = im.id JOIN ct_round_trips ri ON ri.id = li.rt_id AND ri.status <> 'cancelled'
+   WHERE ex.deleted_at IS NULL AND re.id <> ri.id;
+  IF n <> 0 THEN RAISE EXCEPTION '097b proof: % split pairs left after the repair', n; END IF;
+  FOR r IN SELECT sql_text FROM monitoring.checks WHERE id = 'B-77' AND enabled LOOP
+    PERFORM monitoring.check_sql_guard(r.sql_text);
+    PERFORM set_config('statement_timeout', '10000', true);
+    SET LOCAL ROLE tms_check_runner;
+    EXECUTE r.sql_text INTO v;
+    RESET ROLE;
+    b77 := v;
+  END LOOP;
+  IF b77 IS DISTINCT FROM 0 THEN RAISE EXCEPTION '097b proof: B-77 = % after the repair (expected 0)', b77; END IF;
+
+  RAISE NOTICE '097b OK: % pairs merged into the export''s round trip (cost lines kept, the import''s round trip cancelled, its empty payroll line soft-deleted); split pairs left %, B-77 %',
+    done, n, b77;
+END $do$;
+
+-- The result row (read-only). If the block above failed, the editor stops before this line.
+SELECT CASE WHEN (SELECT count(*) FROM ct_round_trips WHERE id IN (285, 244) AND status = 'cancelled') = 2
+             AND (SELECT count(*) FROM ct_rt_legs WHERE (order_id, rt_id) IN ((606, 280), (528, 242))) = 2
+            THEN '097b OK' ELSE '097b NOT APPLIED' END AS result,
+       (SELECT count(*) FROM orders ex
+          JOIN orders im ON im.legacy_id = ex.matched_import_id AND im.deleted_at IS NULL
+          JOIN ct_rt_legs le ON le.order_id = ex.id JOIN ct_round_trips re ON re.id = le.rt_id AND re.status <> 'cancelled'
+          JOIN ct_rt_legs li ON li.order_id = im.id JOIN ct_round_trips ri ON ri.id = li.rt_id AND ri.status <> 'cancelled'
+         WHERE ex.deleted_at IS NULL AND re.id <> ri.id) AS split_pairs_left;
