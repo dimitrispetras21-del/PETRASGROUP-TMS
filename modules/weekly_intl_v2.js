@@ -761,6 +761,9 @@ function _ptsFit(d) {
 }
 // The day _compute files a row under: an export by Delivery (else Loading)
 // DateTime, an import by Loading DateTime. Only for the end that dates the row.
+// A groupage is filed by its PRIMARY order (_compute fOf = orderIds[0]), not by
+// the first of _memberRecs, which grpOrder sorts by date: callers pass
+// opt.primary to _sideOf (code review 2/11).
 function _rowDayOf(f, kind) {
   const exp = f['Direction'] === 'Export';
   if ((kind === 'load') === exp) return '';
@@ -899,7 +902,7 @@ function _sideOf(recs, kind, opt) {
     if (byDate) pts.sort((a, b) => String(a.dt || '9').slice(0, 10).localeCompare(String(b.dt || '9').slice(0, 10)) || a.mi - b.mi || a.si - b.si);
     const stops = pts.map((s, i) => ({ n: i + 1, label: s.label, place: s.place, pallets: s.pallets, done: s.done, cx: s.cx, oid: s.oid, drag: s.drag, dt: s.dt }));
     const arr = pts.map((s) => ({ n: s.label, dt: s.dt }));
-    return { stops, dateTick: kind === 'load', showPal: true, days: _rowDayOf((recs[0] && recs[0].fields) || {}, kind), xfold: I.moreStops(arr.map((x) => x.n).join(', '), arr, kind) };
+    return { stops, dateTick: kind === 'load', showPal: true, days: _rowDayOf(((o.primary && recs.find((r) => r && r.id === o.primary)) || recs[0] || {}).fields || {}, kind), xfold: I.moreStops(arr.map((x) => x.n).join(', '), arr, kind) };
   }
   const r = recs[0], f = (r && r.fields) || {};
   const st = I.stFlags(f);
@@ -1003,13 +1006,13 @@ function _impLegHTML(host, imp, today, rs) {
   const st = I.stFlags(f);
   const isGroup = members.length > 1;
   const dragRow = isGroup && _gtOn() && g ? g.id : null;
-  const from = _sideOf(members, 'load', { dragRowId: dragRow });
+  const from = _sideOf(members, 'load', { dragRowId: dragRow, primary: imp.id });
   let to;
   if (!isGroup && f['Veroia Switch']) {
     // The lot badge moved out of the pallets track to the delivery point
     // (_sideOf); a VS import's delivery point is this one.
     to = { stops: [{ n: 1, label: 'Βέροια', place: 'μετά εθνικό: ' + _lastStop(f, 'del').title, done: st.delivered, oid: imp.id, lot: I.lotBadge(f) }], dateTick: false };
-  } else to = _sideOf(members, 'del', { dragRowId: dragRow });
+  } else to = _sideOf(members, 'del', { dragRowId: dragRow, primary: imp.id });
   let pal = _palHTML(members.map((r) => r.fields || {}), isGroup ? null : imp.id, isGroup ? members : null);
   // Whole matched group to another export (§f): today's grip string. Shown on
   // row hover / focus only (.wi4-grip, Figma sheet 14 1065:2257 «Εμφανίζεται
@@ -1214,9 +1217,9 @@ function _expRowHTML(e, today) {
     from = { stops: [{ n: 1, label: 'Βέροια', place: 'από ' + [o.title, o.city].filter(Boolean).join(', '), done: st.loaded, oid: pid }], dateTick: true };
   } else {
     chip = { oid: pid, field: 'Loading DateTime', day: _day(pf['Loading DateTime']), done: st.loaded, noTruck, what: 'Ημερομηνία φόρτωσης' };
-    from = _sideOf(exps, 'load', { dragRowId: isGroup && _gtOn() ? row.id : null });
+    from = _sideOf(exps, 'load', { dragRowId: isGroup && _gtOn() ? row.id : null, primary: (row.orderIds || [])[0] });
   }
-  const to = _sideOf(exps, 'del', { dragRowId: isGroup && _gtOn() ? row.id : null });
+  const to = _sideOf(exps, 'del', { dragRowId: isGroup && _gtOn() ? row.id : null, primary: (row.orderIds || [])[0] });
   // (a) a groupage shows «N φορτία» where ΑΝΑΦ. goes.
   const ref = isGroup ? _plural(exps.length, 'load') : (pf['Reference'] || '');
   // Import side: not saved · matched load · not read · empty return · partner only · open slot.
