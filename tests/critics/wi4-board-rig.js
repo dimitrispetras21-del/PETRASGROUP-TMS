@@ -40,7 +40,8 @@
 //   queue (card buttons after a row-id shift, Q, Print / WhatsApp) ·
 //   fix round 3: print (view role, share menu) · shift (a save fails across a
 //   re-read) · late (relays empty / national while a popover is open) ·
-//   offline · quiet (a group member fails) · natmissing · done (executed = dimmed) · w1440 ·
+//   offline · quiet (a group member fails) · natmissing · done (executed = dimmed) ·
+//   twoday (two delivery days: row on the first, divider before the other day) · w1440 ·
 //   vs (WP-A of the Weekly National v4 plan: one Veroia day — assignment,
 //   form, drop order by place, loud failures, Pallet Exchange)
 // Exit: 0 all green · 1 a check failed · 2 usage · 3 NOT READY (v4 inactive).
@@ -3667,6 +3668,68 @@ async function scnNatMissing(browser, origin) {
   await page.context().close();
 }
 
+// Two delivery days in one export (owner 2/11): the row sits on its FIRST
+// delivery day (Delivery DateTime = stop 1, orders_intl.js), and a divider with
+// the other day's short name stands before the first point of that day. Live
+// shapes copied onto invented orders: #616 (Wed, Wed, Thu) → E018; #618 (stop 2
+// a day EARLIER than stop 1) → E017; a fold that hides the new day → E019 (4
+// stops) and E020 (9).
+async function scnTwoDay(browser, origin) {
+  const scn = 'twoday';
+  const stop = (db, oid, n, iso) => { db[T.ORDER_STOPS].find(x => (x.fields['Parent Order'] || [])[0] === oid && x.fields['Stop Type'] === 'Unloading' && x.fields['Stop Number'] === n).fields.DateTime = iso; };
+  const { page } = await openBoard(browser, origin, { mutate: db => {
+    stop(db, 'recWiE018', 3, '2026-10-09T13:00:00.000Z');   // Thu 8/10, Thu 8/10, Fri 9/10
+    stop(db, 'recWiE017', 2, '2026-10-07T12:00:00.000Z');   // Thu 8/10, then Wed 7/10
+    stop(db, 'recWiE019', 4, '2026-10-10T08:00:00.000Z');   // Fri ×3, Sat 10/10 (the 4th point: shown or folded)
+    stop(db, 'recWiE020', 8, '2026-10-10T11:00:00.000Z');   // Fri ×7, Sat ×2: always behind «+6»
+    stop(db, 'recWiE020', 9, '2026-10-10T12:00:00.000Z');
+  } });
+  const read = () => page.evaluate(([js]) => {
+    const row = eval(js);
+    const cell = (oid) => row(oid).querySelector('.wi4-c-exp .wi4-l-to .wi4-pts');
+    // The children of the delivery cell in order, as the reader meets them.
+    const txt = (el) => el.textContent.replace(/\s+/g, ' ').trim();
+    // A divider (the ink line on a point or on the chip) reads 'D:<its day>' before that point / chip.
+    const seq = (oid) => [...cell(oid).children].flatMap(el => el.classList.contains('wi4-more')
+      ? [...(el.classList.contains('wi4-more-nd') ? ['D:' + txt(el.querySelector('.wi4-more-d'))] : []), 'M:' + txt(el)]
+      : el.classList.contains('wi4-pt') ? [...(el.classList.contains('wi4-pt-nd') ? ['D:' + txt(el.querySelector('.wi4-pt-dd'))] : []), 'P' + ((el.querySelector('.wi4-pt-n') || {}).textContent || '')] : []);
+    const day = (oid) => { const s = row(oid).closest('.wi4-day'); return s ? s.dataset.day : null; };
+    return {
+      e18: { seq: seq('recWiE018'), day: day('recWiE018') }, e17: { seq: seq('recWiE017'), day: day('recWiE017') },
+      e19: { seq: seq('recWiE019'), day: day('recWiE019') }, e20: { seq: seq('recWiE020') }, e03: { seq: seq('recWiE003') },
+      // The divider is drawn by classes, never by an inline colour (wi4 ratchet).
+      inline: [...document.querySelectorAll('#content .wi4 .wi4-pt-nd, #content .wi4 .wi4-pt-dd, #content .wi4 .wi4-more-d')].filter(el => el.getAttribute('style')).length,
+      // The day leads line 2 whole: never cut, whatever the place.
+      cut: [...document.querySelectorAll('#content .wi4 .wi4-pt-dd')].filter(el => el.scrollWidth > el.clientWidth + 1 || el.getBoundingClientRect().right > el.closest('.wi4-pt').getBoundingClientRect().right + 1).length,
+      over: [...document.querySelectorAll('#content .wi4 .wi4-l-to .wi4-pts')].filter(el => el.scrollWidth > el.clientWidth + 1).length,
+    };
+  }, [ROW_JS]);
+  const r = await read();
+  ok(scn, '#616 shape: the row sits on its FIRST delivery day (Thu 8/10)', r.e18.day === '2026-10-08', r.e18);
+  ok(scn, '#616 shape: points 1, 2, then the divider «Παρ 9/10», then point 3', JSON.stringify(r.e18.seq) === JSON.stringify(['P1', 'P2', 'D:Παρ 9/10', 'P3']), r.e18.seq);
+  // Points come sorted by date (_wk3Arr, owner 10/8): the Wednesday stop is point 1 on a row filed under
+  // Thursday (stop 1's day), so point 1 is named «Τετ 7/10» and point 2 «Πέμ 8/10».
+  ok(scn, '#618 shape: row on stop 1\'s day (Thu); the earlier Wednesday point first, both points name their day', JSON.stringify(r.e17.seq) === JSON.stringify(['D:Τετ 7/10', 'P1', 'D:Πέμ 8/10', 'P2']) && r.e17.day === '2026-10-08', r.e17);
+  const e19told = r.e19.seq.includes('D:Σάβ 10/10') || r.e19.seq.some(x => x.startsWith('M:') && /Σάβ/.test(x));
+  ok(scn, 'E019: the Saturday point is told on the row, shown or folded', e19told && r.e19.day === '2026-10-09', r.e19.seq);
+  ok(scn, 'E020: «+6» hides Fri and Sat points: the chip says «Σάβ», no divider claims «all after this is Saturday»',
+    r.e20.seq.some(x => x.startsWith('M:') && /Σάβ/.test(x)) && !r.e20.seq.some(x => x.startsWith('D:')), r.e20.seq);
+  ok(scn, 'one-day multi-stop (E003): no divider, no day on its chip', !r.e03.seq.some(x => x.startsWith('D:') || /Σάβ|Παρ|Πέμ/.test(x)), r.e03.seq);
+  ok(scn, 'no inline style on a divider or a chip day; no delivery cell overflows; no day cut', r.inline === 0 && r.over === 0 && r.cut === 0, r);
+  // The «+N» popup of E020 keeps its «Ημέρα» column (the days differ).
+  await page.evaluate(([js]) => { eval(js)('recWiE020').querySelector('.wi4-c-exp .wi4-l-to .wi4-more').click(); }, [ROW_JS]);
+  const pop = await page.evaluate(() => { const t = document.querySelector('.open .wi4-rtab'); return t ? [...t.querySelectorAll('th')].map(x => x.textContent) : null; });
+  ok(scn, 'E020 «+N» popup lists each point\'s day', !!pop && pop.includes('Ημέρα'), pop);
+  await page.keyboard.press('Escape').catch(() => {});
+  if (OUT) {
+    for (const oid of ['recWiE018', 'recWiE017', 'recWiE020']) {
+      // Centred: a row near the bottom sits under the fixed keys strip.
+      const el = await page.evaluateHandle(([js, id]) => { const r = eval(js)(id); r.scrollIntoView({ block: 'center' }); return r; }, [ROW_JS, oid]);
+      await el.asElement().screenshot({ path: path.join(OUT, 'twoday-' + oid + '.png') });
+    }
+  }
+  await page.context().close();
+}
 // Executed = dimmed (owner 21/10, Figma 2022:7736 / rule 2024:8134): what the
 // Ημερήσιο marked done fades to 40%, read from Status alone. Judged on computed
 // opacity — the EFFECTIVE one (product up to the board), so a double fade or a
@@ -4520,7 +4583,7 @@ async function scnVs(browser, origin) {
     const S = { paint: scnPaint, invariants: scnInvariants, relay: scnRelay, scans: scnScans, unknown: scnUnknown, drops: scnDrops, join: scnJoin, menu: scnMenu,
       date: scnDate, keys: scnKeys, search: scnSearch, savefail: scnSaveFail, presence: scnPresence, conflict: scnConflict, fallback: scnFallback, styles: scnStyles,
       twins: scnTwins, queue: scnQueue, unread: scnUnread,
-      print: scnPrint, shift: scnShift, late: scnLate, offline: scnOffline, quiet: scnQuiet, natmissing: scnNatMissing, done: scnDone, w1440: scnW1440, parity: scnParity,
+      print: scnPrint, shift: scnShift, late: scnLate, offline: scnOffline, quiet: scnQuiet, natmissing: scnNatMissing, done: scnDone, twoday: scnTwoDay, w1440: scnW1440, parity: scnParity,
       vs: scnVs, v5: scnV5, v5err: scnV5Err, vsnote: scnVsNote, vsform: scnVsForm, del428: scnDel428 };
     // A watchdog per scenario: one missing locator or one write that never
     // settles fails THAT scenario, closes its pages, and the run goes on.

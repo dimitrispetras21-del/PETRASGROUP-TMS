@@ -2474,6 +2474,74 @@ SCN.narrow = async (browser, origin) => {
   }
   ok(scn, 'no page errors', !pe.length, pe);
 };
+// Day divider (owner 2/11, «Ναι, και στα Εθνικά»): RT-T101 loads Veroia Sat 10/10 and delivers Rentis Mon 12/10, then
+// Aspropyrgos and Oinofyta Tue 13/10 (the #616 shape on a national truck). The head names the FIRST delivery day
+// («→ Δευ 12/10»; until 2/11 the last, «→ Τρί 13/10», over a Monday point), point 2 carries «Τρί 13/10» with the ink
+// line, the folded third is named on «+1»;
+// at 1440 (one point per cell) the «+2» names «Τρί». Look only: nothing is sent to /plan/*.
+SCN['twoday'] = async (browser, origin) => {
+  const scn = 'twoday';
+  const board = () => { const b = fixture(); for (const c of b.cycles) for (const st of c.stops) if ([1003, 1004].includes(st.stop_id)) st.stop_day = '2026-10-13'; return b; };
+  const read = (page) => page.evaluate(() => {
+    const r = document.querySelector('#content .wn5 .wn5-row[data-key="rt:101"]');
+    if (!r) return null;
+    const kto = r.querySelector('.wn5-kto .wn5-pts');
+    const txt = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : null);
+    return { head: txt(r.querySelector('.wn5-kd')),
+      seq: [...kto.children].flatMap((el) => el.classList.contains('wi4-more') ? ['M:' + txt(el)]
+        : [...(el.classList.contains('wi4-pt-nd') ? ['D:' + txt(el.querySelector('.wi4-pt-dd'))] : []), 'P' + (txt(el.querySelector('.wi4-pt-n')) || '')]),
+      all: document.querySelectorAll('#content .wn5 .wi4-pt-nd').length,
+      inline: [...document.querySelectorAll('#content .wn5 .wi4-pt-nd, #content .wn5 .wi4-pt-dd, #content .wn5 .wi4-more-d')].filter((el) => el.getAttribute('style')).length,
+      over: [...document.querySelectorAll('#content .wn5 .wn5-pts')].filter((el) => el.scrollWidth > el.clientWidth + 1).length };
+  });
+  const wide = await openBoard(browser, origin, { board: board() });
+  const a = await read(wide.page);
+  ok(scn, '1920: head «Σάβ 10/10 → Δευ 12/10» (the FIRST delivery day)', !!a && /^Σάβ 10\/10\s*→ Δευ 12\/10$/.test(a.head), a && a.head);
+  ok(scn, '1920: P1, then «Τρί 13/10» on P2, then «+1 Τρί»', !!a && JSON.stringify(a.seq) === JSON.stringify(['P1', 'D:Τρί 13/10', 'P2', 'M:+1Τρί']), a && a.seq);
+  ok(scn, 'one divider on the board; no inline style; no points cell overflows', !!a && a.all === 1 && a.inline === 0 && a.over === 0, a);
+  ok(scn, 'nothing sent to /plan/* but the reads', wide.S.plan.every((x) => x.m === 'GET'), wide.S.plan.map((x) => x.m + ' ' + x.path));
+  if (OUT) { const el = await wide.page.$('#content .wn5 .wn5-row[data-key="rt:101"]'); await el.scrollIntoViewIfNeeded(); await el.screenshot({ path: path.join(OUT, 'twoday-rt101-1920.png') }); }
+  const pe = [...wide.S.pageErrors];
+  await wide.page.context().close();
+  const narrow = await openBoard(browser, origin, { board: board(), viewport: { width: 1440, height: 900 } });
+  const n = await read(narrow.page);
+  ok(scn, '1440: one point, the «+2» names «Τρί»', !!n && JSON.stringify(n.seq) === JSON.stringify(['P1', 'M:+2Τρί']), n && n.seq);
+  if (OUT) { const el = await narrow.page.$('#content .wn5 .wn5-row[data-key="rt:101"]'); await el.scrollIntoViewIfNeeded(); await el.screenshot({ path: path.join(OUT, 'twoday-rt101-1440.png') }); }
+  pe.push(...narrow.S.pageErrors);
+  await narrow.page.context().close();
+  ok(scn, 'no page errors', !pe.length, pe);
+};
+// «PE» (owner 2/11, «θέλω να φαίνεται και το PE flag στα εθνικά»): RT-T101's VS piece (ΠΕΛΑΤΗΣ Β) exchanges pallets
+// (plan_board legs[].pallet_exchange, the international order's for a VS): «PE» over the ΚΑΘΟΔΟΣ pallets, the «+»
+// still in the 50px cell, nothing cut; the ΑΝΟΔΟΣ without it. At 1440 as well. Look only: nothing sent but reads.
+SCN['pe'] = async (browser, origin) => {
+  const scn = 'pe';
+  const board = () => { const b = fixture(); for (const c of b.cycles) for (const st of c.stops) for (const l of st.legs || []) if (c.rt_id === 101 && l.kind === 'vs_import') l.pallet_exchange = true; return b; };
+  const pe = [];
+  for (const vp of [null, { width: 1440, height: 900 }]) {
+    const { page, S } = await openBoard(browser, origin, Object.assign({ board: board() }, vp ? { viewport: vp } : {}));
+    const r = await page.evaluate(() => {
+      const row = document.querySelector('#content .wn5 .wn5-row[data-key="rt:101"]');
+      const k = row && row.querySelector('.wn5-kpal'), a = row && row.querySelector('.wn5-apal');
+      const chip = k && k.querySelector('.wi4-pe'), plus = k && k.querySelector('.wn5-plus');
+      const kb = k && k.getBoundingClientRect(), cb = chip && chip.getBoundingClientRect(), pb = plus && plus.getBoundingClientRect();
+      return { chip: chip ? chip.textContent : null, title: chip ? chip.title : null, inA: !!(a && a.querySelector('.wi4-pe')),
+        inside: !!(kb && cb && cb.left >= kb.left - 0.5 && cb.right <= kb.right + 0.5 && cb.top >= kb.top - 0.5 && cb.bottom <= kb.bottom + 0.5),
+        plusIn: !pb || (pb.right <= kb.right + 0.5 && pb.left >= kb.left - 0.5), over: k ? k.scrollWidth > k.clientWidth + 1 : null,
+        kb: kb && [kb.left, kb.top, kb.right, kb.bottom].map(Math.round), cb: cb && [cb.left, cb.top, cb.right, cb.bottom].map(Math.round),
+        rb: row && (() => { const x = row.getBoundingClientRect(); return [x.top, x.bottom].map(Math.round); })(),
+        boards: document.querySelectorAll('#content .wn5 .wn5-row[data-key^="rt:"] .wi4-pe').length };
+    });
+    const w = vp ? '1440' : '1920';
+    ok(scn, `${w}: «PE» in the ΚΑΘΟΔΟΣ ΠΑΛ. cell, titled «Ανταλλαγή παλετών · ΠΕΛΑΤΗΣ Β»; none on the ΑΝΟΔΟΣ`, r.chip === 'PE' && r.title === 'Ανταλλαγή παλετών · ΠΕΛΑΤΗΣ Β' && !r.inA, r);
+    ok(scn, `${w}: the chip and the «+» inside the cell, nothing overflows; one cycle marked`, r.inside && r.plusIn && r.over === false && r.boards === 1, r);
+    ok(scn, `${w}: nothing sent but reads`, S.plan.every((x) => x.m === 'GET'), S.plan.map((x) => x.m + ' ' + x.path));
+    if (OUT) { fs.mkdirSync(OUT, { recursive: true }); const el = await page.$('#content .wn5 .wn5-row[data-key="rt:101"]'); await el.scrollIntoViewIfNeeded(); await el.screenshot({ path: path.join(OUT, `pe-rt101-${w}.png`) }); }
+    pe.push(...S.pageErrors);
+    await page.context().close();
+  }
+  ok(scn, 'no page errors', !pe.length, pe);
+};
 // ── scenarios end (each Task adds its own above this line) ──
 
 // ── fixture check (T4): plain node, no browser ──

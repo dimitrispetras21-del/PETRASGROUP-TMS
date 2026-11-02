@@ -11,6 +11,7 @@ global.OrdersList = require('../core/orders-list.js');
 const { OrdersCommon, OrdersData } = require('../core/orders-common.js');
 global.OrdersCommon = OrdersCommon;
 global.OrdersData = OrdersData;
+global.WN5L = require('../core/wn5-logic.js');   // «Εβδομάδα» sorts its national rows with the board's rule
 global.escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const W = require('../modules/orders_week_view.js');
 
