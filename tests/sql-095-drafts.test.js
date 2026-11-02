@@ -95,3 +95,13 @@ test('095 guards plan_rt_update on the md5 093 generates (once 093 is in the tre
   assert.ok(gen, '093 patches plan_rt_update in its PART 2');
   assert.strictEqual(guard[1], gen[1], '093 changed its plan_rt_update text: rebuild 095 (PART 0, prod-shaped-093, build-095.mjs)');
 });
+
+// owner 2/11: ONE limit for a local loading's day - the base's refusal (095 plan_local_loading) and the form's line
+// before the press (wn5_actions.js LOCAL_DAY_MAX) must say the same number, or the form lets through what the base refuses
+test('095: the 7-day limit of the base = the form\'s LOCAL_DAY_MAX', () => {
+  const sql = /abs\(v_day - v_sday\) > (\d+) then perform plan_h_raise\('bad_input', 'move_date:\1_days'\)/.exec(read(`${P}.sql`));
+  assert.ok(sql, 'the base refuses move_date:N_days beyond N days');
+  const fe = /const LOCAL_DAY_MAX = (\d+);/.exec(fs.readFileSync(path.join(ROOT, 'modules/wn5_actions.js'), 'utf8'));
+  assert.ok(fe, 'the form names LOCAL_DAY_MAX');
+  assert.strictEqual(fe[1], sql[1]);
+});
