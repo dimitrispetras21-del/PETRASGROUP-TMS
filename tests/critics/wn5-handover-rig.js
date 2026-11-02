@@ -189,12 +189,19 @@ async function scnChange({ browser, origin, ok, scn }) {
   await page.evaluate(() => WN5Hand.change(101));
   await page.waitForSelector(HDLG, { timeout: 6000 }).catch(() => {});
   ok(scn, 'the reasons list: ΑΠΡΟΒΛΕΠΤΟ / ΠΡΟΓΡΑΜΜΑΤΙΣΜΕΝΟ / Άλλο (H2)', await page.evaluate(() => [...document.querySelectorAll('#wn5h-reason optgroup')].map((g) => g.label).join() === 'ΑΠΡΟΒΛΕΠΤΟ,ΠΡΟΓΡΑΜΜΑΤΙΣΜΕΝΟ' && !!document.querySelector('#wn5h-reason option[value="other"]')));
+  // 095 (owner 2/11, relaxed rules): «Άλλο» needs no note and the reason is optional — both are previewed like any body
+  ok(scn, '095: «Λόγος» carries no «*» (the reason is optional)', (await K.text(page, `${HDLG} .wn5h-reason > span`)) === 'Λόγος');
   await fillChange(page, Object.assign({}, CH, { reason: 'other', note: '' }));
-  await page.waitForTimeout(900);
-  // the line sits under the note field, which turns red (Figma 2122:7868), not in the form's line box
-  ok(scn, '«Άλλο» without its note: the line under the note field, no dry run sent, save disabled', /Με «Άλλο» η σημείωση είναι υποχρεωτική/.test(await K.text(page, `${HDLG} [data-note] [data-ferr]`))
-    && await page.evaluate((d) => document.querySelector(`${d} [data-note]`).classList.contains('bad'), HDLG) && posts(S).length === 0
-    && await page.evaluate((d) => document.querySelector(`${d} [data-act="save"]`).disabled, HDLG));
+  await page.waitForTimeout(1200);
+  const dOther = posts(S).filter((x) => x.body.dry_run === true);
+  ok(scn, '095: «Άλλο» without a note → one dry run with reason other and no reason_note, no form line', dOther.length === 1
+    && dOther[0].body.reason === 'other' && !('reason_note' in dOther[0].body) && !(await K.text(page, `${HDLG} [data-err]`)), dOther.map((x) => x.body));
+  await fillChange(page, Object.assign({}, CH, { reason: '' }));
+  await page.waitForTimeout(1200);
+  const dNone = posts(S).filter((x) => x.body.dry_run === true);
+  ok(scn, '095: no reason → one more dry run whose body has no reason key', dNone.length === 2 && !('reason' in dNone[1].body), dNone.map((x) => x.body));
+  ok(scn, '095: the preview ⇄ line says «—» for no reason', (await K.text(page, `${HDLG} [data-preview]`)).includes('Λαμία · Τρί 03:00 · —'), await K.text(page, `${HDLG} [data-preview]`));
+  S.plan.length = 0;   // the dry runs below are counted from here, as before 095
   await fillChange(page, CH);
   await page.waitForTimeout(1200);
   const dry = posts(S).filter((x) => x.body.dry_run === true);
@@ -405,11 +412,10 @@ async function scnFid({ browser, origin, ok, scn }) {
   ok(scn, 'preview stops are not cut', ps.length === 2 && ps.every((c) => !c), ps);
   await page.evaluate(() => { const r = document.getElementById('wn5h-reason'); r.value = 'other'; r.dispatchEvent(new Event('change', { bubbles: true })); });
   await page.waitForTimeout(300);
-  ok(scn, '«Άλλο» without a note: the old preview is gone (no «Βλάβη φορτηγού» left on screen), the save off',
-    !(await prevText()) && await page.evaluate((d) => document.querySelector(`${d} [data-act="save"]`).disabled, HDLG), await prevText());
-  const fe = await page.evaluate((d) => { const e = document.querySelector(`${d} [data-note] [data-ferr]`), b = document.querySelector(`${d} .wn5f-body`).getBoundingClientRect(), r = e.getBoundingClientRect();
-    return { h: Math.round(r.height), inside: r.left >= b.left && r.right <= b.right + 0.5, lh: parseFloat(getComputedStyle(e).lineHeight) || 0 }; }, HDLG);
-  ok(scn, 'the «Άλλο» line is ONE line and stays inside the form body', fe.h > 0 && fe.h <= 16 && fe.inside, fe);
+  ok(scn, 'another reason: the old preview is gone at once (no «Βλάβη φορτηγού» left on screen), the save off until the new one',
+    !/Βλάβη φορτηγού/.test(await prevText()) && await page.evaluate((d) => document.querySelector(`${d} [data-act="save"]`).disabled, HDLG), await prevText());
+  await page.waitForTimeout(1200);
+  ok(scn, '095: «Άλλο» without a note gets its own preview', (await prevText()).includes('Λαμία · Τρί 03:00 · Άλλο'), await prevText());
   await page.evaluate(() => { const r = document.getElementById('wn5h-reason'); r.value = 'vehicle_breakdown'; r.dispatchEvent(new Event('change', { bubbles: true })); });
   await page.waitForTimeout(1200);
   ok(scn, 'the same body again → a preview again', /^Μετά την αλλαγή/.test(await prevText()));
