@@ -142,7 +142,7 @@ BEGIN
     FROM public.rt_stops s JOIN public.ct_round_trips r ON r.id = s.rt_id
    WHERE r.model = 2 AND r.status <> 'cancelled' AND s.deleted_at IS NULL;
   SELECT count(*) INTO v_legs FROM public.piece_legs l JOIN public.ct_round_trips r ON r.id = l.rt_id
-   WHERE r.model = 2 AND l.deleted_at IS NULL;
+   WHERE r.model = 2 AND r.status <> 'cancelled' AND l.deleted_at IS NULL;
   -- the live trips only (cancelled ones are never written again; the counts above are the same population)
   v_rt0 := ARRAY(SELECT r.id FROM public.ct_round_trips r WHERE r.model = 2 AND r.status <> 'cancelled'
                    AND public.plan_rt_problem(r.id) IS NOT NULL ORDER BY r.id);

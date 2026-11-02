@@ -13,6 +13,6 @@
   - PGlite `plan-093` 14/14·
   - `sql-093-drafts` 4/4·
   - `wn5-labels` 18/18·
-  - rig `wn5-board date` GO (B6: `side_time` κίτρινο και αποθηκεύεται· B7: `stop_order` πριν την 093 κόκκινο).
+  - rig `wn5-board` 543 ✓ (B6: `side_time` κίτρινο και αποθηκεύεται· B7: `stop_order` πριν την 093 κόκκινο· pack4 A2: ✎ «σειρά σημείων»)· όλα τα wn5 rigs GO· node 987/0· tms-auditor 508/0· `/code-review xhigh` δύο φορές.
 - **Μένει:**
   - ο owner τρέχει, μετά τις 15:00: dry run → 093 → verify· σειρά 093 → 095 (η 095 φυλάει το md5 του `plan_rt_update` μετά την 093).
