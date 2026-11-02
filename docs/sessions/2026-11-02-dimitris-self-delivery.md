@@ -1,0 +1,7 @@
+# 2026-11-02 · dimitris · «Αυτοπαράδοση» στην τιμολόγηση (101 + Worker + οθόνη)
+
+- **Τι άλλαξε (`feat/self-delivery-101`, PR #235):** προσχέδιο 101 (+ dry run, rollback, rollback dry run από `build-101.mjs`, verify): στήλη `self_delivery` σε `orders` / `national_orders`, εξαίρεση στον φρουρό 043 μόνο όταν `self_delivery = true`, triggers και όψεις `*_with_derived` με τη στήλη, B-11 / B-12 χωρίς αυτοπαραδόσεις. Worker: «Self Delivery» στους δύο χάρτες, ίδια εξαίρεση στο `invoiceMarkError`, σημάδι φρουρού `--self` (32). Οθόνη: κουτάκι «Αυτοπαράδοση» κάτω από τον ΤΠΥ (και στην κάρτα «χωρίς τιμή»), «✓ Αυτοπαράδοση» όπου θα ήταν ο ΤΠΥ, εκτός «Φύλλου ERP», «Εβδομάδα» τη μετρά τιμολογημένη. `?v=` / `SW_VERSION` 1793750000.
+- **Αποφασίστηκε:** το ξε-τσεκάρισμα μόνο του απορρίπτεται, δεν καθαρίζει μόνο του το `invoiced` (DECISION_LOG 2/11). Καμία αλλαγή ρόλου.
+- **Απόδειξη:** PGlite 13/13, drafts 5/5, Worker 426/426, node 1028/1028, rig 19/19. Verify παραγωγής (SELECT): `before 101`, B-11 = 2.
+- **Σειρά εκτέλεσης (αυστηρή):** 101 (dry run → 101 → verify) → Worker deploy από αυτό το branch (φρουρός `--self 1`) → merge front end. Worker πριν την 101 = 500 σε κάθε ανάγνωση παραγγελιών.
+- **Μένει:** εκτέλεση από τον owner, μετά ένα πραγματικό τικ + SELECT (`self_delivery`, `invoiced`, `invoice_date`)· στο PR «εκτελέστηκε»: αρχεία εκτός `drafts/`, B-11/B-12 στον κατάλογο + seed + fixture, σημάδι `--self` στη λίστα φρουρού του CLAUDE.md, sync της πηγής Worker στο main.
