@@ -12,6 +12,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
+- dimitris · `feat/transfer-097-vs-state` · Εθνικά v5: μεταφόρτωση σε οποιοδήποτε σημείο, κομμάτι 1: 097 προσχέδιο (η ημέρα Βέροιας ενός VS μόνο από στάση στη Βέροια) + πλάνο κομματιών 098–100· εκτέλεση από τον owner μετά τις 15:00· τα επόμενα με go του συντονιστή (`docs/sessions/2026-11-02-dimitris-transfer-any-point.md`)
 - dimitris · `feat/relax-handover-busy-096` · Εθνικά v5: 096 προσχέδιο (αλλαγή οχήματος / διόρθωση τμήματος με `accept_busy`, πορτοκαλί γραμμή επικάλυψης, ένα πάτημα), πάνω στο #217· ?v= / SW_VERSION 1793700000· εκτέλεση μετά την 095 (`docs/sessions/2026-11-02-dimitris-handover-busy-096.md`)
 - dimitris · `feat/relax-small-095` · Εθνικά v5: χαλαροί κανόνες ομάδα 6: 095 προσχέδιο (τοπική φόρτωση άλλη ημέρα με προειδοποίηση, αλλαγή οχήματος χωρίς λόγο, «Άλλο» χωρίς σημείωση, B-93 off) + οθόνη, ?v= / SW_VERSION 1793690000· εκτέλεση από τον owner μετά τις 15:00, μετά την 093 (`docs/sessions/2026-11-02-dimitris-relax-small-095.md`)
 - dimitris · `feat/relax-order-form-094` · Εθνικά v5 χαλαροί κανόνες ομάδα 5: νυχτερινό παράθυρο στη φόρμα, «λείπει τιμή» στο Εβδομαδιαίο· καμία migration (η βάση ήδη τα δεχόταν)· μόνο front end, ?v= / SW_VERSION 1793680001 (`docs/sessions/2026-11-02-dimitris-relax-order-form-094.md`)
