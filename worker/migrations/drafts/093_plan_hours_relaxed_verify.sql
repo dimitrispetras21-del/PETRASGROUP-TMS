@@ -9,7 +9,7 @@ SELECT CASE WHEN (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.plan_rt_pr
                  = '5b627b94204f1c17ba021364157b337b' THEN '093 in place' ELSE '093 NOT APPLIED' END AS applied,
        (SELECT count(*) FROM (VALUES
           ('public.plan_rt_problem(bigint)', '5b627b94204f1c17ba021364157b337b'),
-          ('public.plan_leg_problem(bigint)', 'fd416369383af06a3e19786708cd1257'),
+          ('public.plan_leg_problem(bigint)', 'a1092d96c0a6b5d5c6d7f0c8f5513f28'),
           ('public.plan_h_reseq(bigint,text,text)', 'b02f0d47d0f35cf539131f5e8378bad3'),
           ('public.plan_rt_update(jsonb,text,text)', '70476c188bab027722ceab6c81c6702c'),
           ('public.plan_h_put(jsonb,jsonb,text,text,bigint[])', '3b86b9a173e94a7cd45bb4fb53d9b387'),
@@ -20,7 +20,7 @@ SELECT CASE WHEN (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.plan_rt_pr
           AND NOT has_function_privilege('service_role', oid, 'EXECUTE')
           AND NOT has_function_privilege('anon', oid, 'EXECUTE')
           AND NOT has_function_privilege('authenticated', oid, 'EXECUTE')) AS new_functions,
-       (SELECT count(*) FROM public.ct_round_trips r WHERE r.model = 2 AND public.plan_rt_problem(r.id) IS NOT NULL) AS refused_trips,
+       (SELECT count(*) FROM public.ct_round_trips r WHERE r.model = 2 AND r.status <> 'cancelled' AND public.plan_rt_problem(r.id) IS NOT NULL) AS refused_trips,
        (SELECT count(*) FROM public.piece_legs l JOIN public.ct_round_trips r ON r.id = l.rt_id
-         WHERE r.model = 2 AND l.deleted_at IS NULL AND public.plan_leg_problem(l.id) IS NOT NULL) AS refused_legs,
+         WHERE r.model = 2 AND r.status <> 'cancelled' AND l.deleted_at IS NULL AND public.plan_leg_problem(l.id) IS NOT NULL) AS refused_legs,
        (SELECT count(*) FROM public.audit_log WHERE table_name = 'ct_round_trips' AND after_data ? 'side_time') AS side_time_traces;

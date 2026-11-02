@@ -37,7 +37,8 @@ $h$;
 $h$;
   c_1b CONSTANT text := $h$  -- 093 (owner 2/11): it cannot be loaded when its loading ENDS before its arrival STARTS - an order no truck can
   -- drive. Overlapping windows are a plan: an all-day loading at Veroia on the day of a 16:00 arrival there (00:00 <
-  -- 16:00) was refused. An all-day window is compared as a day (plan_h_before).
+  -- 16:00) was refused. An all-day window is compared as a day (plan_h_before). Only refusals go: a loading that ends
+  -- before the arrival starts also started before it (CHECK rt_stops_win, planned_to > planned_from).
   if prev.id is not null and plan_h_before(pk.planned_from, pk.planned_to, prev.planned_from, prev.planned_to) then
     return 'chain_time:' || p_leg;
   end if;
@@ -126,7 +127,7 @@ BEGIN
     RAISE EXCEPTION '093 rollback proof: public.plan_rt_problem(bigint) is not back to its live text with its rights';
   END IF;
   SELECT * INTO p FROM pg_proc WHERE oid = to_regprocedure('public.plan_leg_problem(bigint)');
-  IF md5(p.prosrc) <> 'fd416369383af06a3e19786708cd1257' THEN
+  IF md5(p.prosrc) <> 'a1092d96c0a6b5d5c6d7f0c8f5513f28' THEN
     RAISE EXCEPTION '093 rollback: public.plan_leg_problem(bigint) is not the text 093 wrote (md5 %) - stop', md5(p.prosrc);
   END IF;
   v_new := p.prosrc;
@@ -235,12 +236,13 @@ BEGIN
      OR (SELECT proacl::text FROM pg_proc WHERE oid = p.oid) IS DISTINCT FROM p.proacl::text THEN
     RAISE EXCEPTION '093 rollback proof: public.plan_move_pieces(jsonb,text,text) is not back to its live text with its rights';
   END IF;
-  -- the restored rules on every live v5 row: a trip or leg only 093 allowed stops the rollback (all of it undone)
+  -- the restored rules on every live v5 row: a trip or leg only 093 allowed stops the rollback (all of it undone).
+  -- Cancelled trips are never written again, so they never block it (code review 2/11)
   SELECT string_agg(r.code || ' ' || public.plan_rt_problem(r.id), ', ' ORDER BY r.id) INTO v_rts
-    FROM public.ct_round_trips r WHERE r.model = 2 AND public.plan_rt_problem(r.id) IS NOT NULL;
+    FROM public.ct_round_trips r WHERE r.model = 2 AND r.status <> 'cancelled' AND public.plan_rt_problem(r.id) IS NOT NULL;
   SELECT string_agg(r.code || ' ' || public.plan_leg_problem(l.id), ', ' ORDER BY l.id) INTO v_legs
     FROM public.piece_legs l JOIN public.ct_round_trips r ON r.id = l.rt_id
-   WHERE r.model = 2 AND l.deleted_at IS NULL AND public.plan_leg_problem(l.id) IS NOT NULL;
+   WHERE r.model = 2 AND r.status <> 'cancelled' AND l.deleted_at IS NULL AND public.plan_leg_problem(l.id) IS NOT NULL;
   IF v_rts IS NOT NULL OR v_legs IS NOT NULL THEN
     RAISE EXCEPTION '093 rollback: the restored rules refuse live rows that 093 allowed - trips: %; legs: % - stop, nothing changed (move them first)',
       coalesce(v_rts, 'none'), coalesce(v_legs, 'none');

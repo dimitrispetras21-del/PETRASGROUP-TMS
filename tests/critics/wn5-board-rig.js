@@ -2194,6 +2194,17 @@ SCN.pack4 = async (browser, origin) => {
     ok(scn, 'no page errors (A)', !S.pageErrors.length, S.pageErrors);
     await page.context().close();
   }
+  { // A2 · 093 (code review 2/11): the newest row of a save can be the side_time trace (plan_h_reseq) - it reads
+    // «σειρά σημείων», never the bare «δρομολόγιο»
+    const b = p4Board(true);
+    b.cycles[0].last_change = { at: '2026-10-13T05:40:00Z', role: 'dispatcher', table: 'ct_round_trips', action: 'update', keys: ['side_time'] };
+    const { page, S } = await bOpen(browser, origin, { board: b });
+    const chg = await page.$eval('.wn5 .wn5-row[data-rt] .wn5-chg', (e) => e.title).catch(() => null);
+    ok(scn, '093: ✎ of a side_time trace «Τελευταία αλλαγή 13/10 08:40 · δρομολόγηση · σειρά σημείων»',
+      chg === 'Τελευταία αλλαγή 13/10 08:40 · δρομολόγηση · σειρά σημείων', chg);
+    ok(scn, 'no page errors (A2)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
   { // B · 087: badges, ✎, ✈ of a VS at Veroia, «← Weekly» on the panel
     const { page, S } = await bOpen(browser, origin, { board: p4Board(true), plan: {
       ['POST ' + M]: (e) => [200, { ok: true, op: 'plan_move_pieces', ids: { piece_ids: e.body.from.piece_ids, hub: e.body.target.hub }, warnings: [], notice_ids: [] }] } });

@@ -104,12 +104,13 @@ ${f.hunks}  v_h record; v_new text; p pg_proc%rowtype; v_rts text; v_legs text;
 BEGIN
   PERFORM set_config('lock_timeout', '5s', true);
 ${blocks}
-  -- the restored rules on every live v5 row: a trip or leg only 093 allowed stops the rollback (all of it undone)
+  -- the restored rules on every live v5 row: a trip or leg only 093 allowed stops the rollback (all of it undone).
+  -- Cancelled trips are never written again, so they never block it (code review 2/11)
   SELECT string_agg(r.code || ' ' || public.plan_rt_problem(r.id), ', ' ORDER BY r.id) INTO v_rts
-    FROM public.ct_round_trips r WHERE r.model = 2 AND public.plan_rt_problem(r.id) IS NOT NULL;
+    FROM public.ct_round_trips r WHERE r.model = 2 AND r.status <> 'cancelled' AND public.plan_rt_problem(r.id) IS NOT NULL;
   SELECT string_agg(r.code || ' ' || public.plan_leg_problem(l.id), ', ' ORDER BY l.id) INTO v_legs
     FROM public.piece_legs l JOIN public.ct_round_trips r ON r.id = l.rt_id
-   WHERE r.model = 2 AND l.deleted_at IS NULL AND public.plan_leg_problem(l.id) IS NOT NULL;
+   WHERE r.model = 2 AND r.status <> 'cancelled' AND l.deleted_at IS NULL AND public.plan_leg_problem(l.id) IS NOT NULL;
   IF v_rts IS NOT NULL OR v_legs IS NOT NULL THEN
     RAISE EXCEPTION '093 rollback: the restored rules refuse live rows that 093 allowed - trips: %; legs: % - stop, nothing changed (move them first)',
       coalesce(v_rts, 'none'), coalesce(v_legs, 'none');

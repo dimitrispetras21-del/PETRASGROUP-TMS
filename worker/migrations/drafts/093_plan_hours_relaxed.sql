@@ -12,7 +12,7 @@
 --   side_order (plan_rt_problem, 071): an ANODOS stop ahead of a KATHODOS stop in seq (reseq never writes it).
 -- WHAT, in ONE DO block (ASCII only):
 --   PART 0  guards: day L set; the LIVE texts of plan_rt_problem, plan_leg_problem, plan_h_reseq, plan_rt_update,
---           plan_h_put and plan_move_pieces (md5 of prosrc = production 2/11, SELECT 2/11: 086 / 072 / 086 / 089 / 072 /
+--           plan_h_put and plan_move_pieces (md5 of prosrc = production 2/11, SELECT 2/11: 086 / 072 / 086 / 089 / 080 /
 --           087 wrote them); plan_h_before and
 --           plan_h_side_warn not there yet. BEFORE: the live v5 trips and legs the live rules refuse today.
 --   PART 1  two new internal functions (no role calls them; the rights of 086's helpers):
@@ -78,7 +78,8 @@ $h$;
 $h$;
   c_1b CONSTANT text := $h$  -- 093 (owner 2/11): it cannot be loaded when its loading ENDS before its arrival STARTS - an order no truck can
   -- drive. Overlapping windows are a plan: an all-day loading at Veroia on the day of a 16:00 arrival there (00:00 <
-  -- 16:00) was refused. An all-day window is compared as a day (plan_h_before).
+  -- 16:00) was refused. An all-day window is compared as a day (plan_h_before). Only refusals go: a loading that ends
+  -- before the arrival starts also started before it (CHECK rt_stops_win, planned_to > planned_from).
   if prev.id is not null and plan_h_before(pk.planned_from, pk.planned_to, prev.planned_from, prev.planned_to) then
     return 'chain_time:' || p_leg;
   end if;
@@ -177,9 +178,11 @@ BEGIN
    WHERE r.model = 2 AND r.status <> 'cancelled' AND s.deleted_at IS NULL;
   SELECT count(*) INTO v_legs FROM public.piece_legs l JOIN public.ct_round_trips r ON r.id = l.rt_id
    WHERE r.model = 2 AND l.deleted_at IS NULL;
-  v_rt0 := ARRAY(SELECT r.id FROM public.ct_round_trips r WHERE r.model = 2 AND public.plan_rt_problem(r.id) IS NOT NULL ORDER BY r.id);
+  -- the live trips only (cancelled ones are never written again; the counts above are the same population)
+  v_rt0 := ARRAY(SELECT r.id FROM public.ct_round_trips r WHERE r.model = 2 AND r.status <> 'cancelled'
+                   AND public.plan_rt_problem(r.id) IS NOT NULL ORDER BY r.id);
   v_leg0 := ARRAY(SELECT l.id FROM public.piece_legs l JOIN public.ct_round_trips r ON r.id = l.rt_id
-                   WHERE r.model = 2 AND l.deleted_at IS NULL AND public.plan_leg_problem(l.id) IS NOT NULL ORDER BY l.id);
+                   WHERE r.model = 2 AND r.status <> 'cancelled' AND l.deleted_at IS NULL AND public.plan_leg_problem(l.id) IS NOT NULL ORDER BY l.id);
 
   -- ===== PART 1: TWO NEW INTERNAL FUNCTIONS =====
   -- Window a ends before window b starts. All day = 00:00 to 23:59 (or later) of ONE Athens day, the form's "whole day"
@@ -225,7 +228,7 @@ $f$;
   -- ===== PART 2: LIVE TEXT + HUNKS (md5 after = measured on the production-shaped PGlite copy) =====
   FOR v_g IN SELECT * FROM (VALUES
       ('public.plan_rt_problem(bigint)', ARRAY[o_1a], ARRAY[o_1b], '5b627b94204f1c17ba021364157b337b'),
-      ('public.plan_leg_problem(bigint)', ARRAY[c_1a], ARRAY[c_1b], 'fd416369383af06a3e19786708cd1257'),
+      ('public.plan_leg_problem(bigint)', ARRAY[c_1a], ARRAY[c_1b], 'a1092d96c0a6b5d5c6d7f0c8f5513f28'),
       ('public.plan_h_reseq(bigint,text,text)', ARRAY[r_1a, r_2a, r_3a], ARRAY[r_1b, r_2b, r_3b], 'b02f0d47d0f35cf539131f5e8378bad3'),
       ('public.plan_rt_update(jsonb,text,text)', ARRAY[u_1a], ARRAY[u_1b], '70476c188bab027722ceab6c81c6702c'),
       ('public.plan_h_put(jsonb,jsonb,text,text,bigint[])', ARRAY[p_1a], ARRAY[p_1b], '3b86b9a173e94a7cd45bb4fb53d9b387'),
@@ -285,9 +288,10 @@ $f$;
     RAISE EXCEPTION '093 proof: plan_h_before does not compare an all-day window as a day';
   END IF;
   -- AFTER: the new rules refuse no live row the live rules accepted (they only take refusals away)
-  v_rt1 := ARRAY(SELECT r.id FROM public.ct_round_trips r WHERE r.model = 2 AND public.plan_rt_problem(r.id) IS NOT NULL ORDER BY r.id);
+  v_rt1 := ARRAY(SELECT r.id FROM public.ct_round_trips r WHERE r.model = 2 AND r.status <> 'cancelled'
+                   AND public.plan_rt_problem(r.id) IS NOT NULL ORDER BY r.id);
   v_leg1 := ARRAY(SELECT l.id FROM public.piece_legs l JOIN public.ct_round_trips r ON r.id = l.rt_id
-                   WHERE r.model = 2 AND l.deleted_at IS NULL AND public.plan_leg_problem(l.id) IS NOT NULL ORDER BY l.id);
+                   WHERE r.model = 2 AND r.status <> 'cancelled' AND l.deleted_at IS NULL AND public.plan_leg_problem(l.id) IS NOT NULL ORDER BY l.id);
   IF NOT (v_rt1 <@ v_rt0) OR NOT (v_leg1 <@ v_leg0) THEN
     RAISE EXCEPTION '093 proof: the new rules refuse trips % / legs % the live rules accepted', v_rt1, v_leg1;
   END IF;

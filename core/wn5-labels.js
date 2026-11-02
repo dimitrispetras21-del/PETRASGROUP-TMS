@@ -59,7 +59,8 @@
       + ({ executed: 'η στάση του έγινε', truck_busy: 'είναι απασχολημένο τότε', driver_busy: 'ο οδηγός είναι απασχολημένος τότε',
            need_token: 'έχει αλλαγή οχήματος', leg_order: 'οι στάσεις του δεν το επιτρέπουν' }[w.reason] || 'δεν μετακινείται'),
     // 093 (owner 2/11, "we relax the rules"): an ANODOS of the trip runs before one of its KATHODOS - the base saves it
-    // and writes it in the history; day = the Athens day the ANODOS ends / the KATHODOS starts (the base sends it)
+    // and writes it in the history; day = each stop's Athens day, the day of its planned_to (a night window 22:00-06:00
+    // lives on its morning; the base sends it)
     side_time: (w) => {
       const a = w.anodos || {}, k = w.kathodos || {};
       return 'Η ΑΝΟΔΟΣ (' + (a.location || '—') + ' ' + day(a.day) + ') γίνεται πριν από την ΚΑΘΟΔΟ (' + (k.location || '—') + ' '

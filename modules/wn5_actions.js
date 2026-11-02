@@ -93,7 +93,10 @@
   // sorts them; the first stop that ENDS before an earlier one starts (086 stop_order: overlapping windows are a plan,
   // only an order no truck can drive is refused). So an all-day stop (to 23:59) never trips on a stop of its own day;
   // before 086 this said «starts before», and the screen asked in red for hours the base never asked (W50 test 2/11).
-  // null = in order (or no cycle).
+  // null = in order (or no cycle). 093 (code review 2/11): «ends before» is the base's plan_h_before - an all-day
+  // window compared as a day, never by its minutes (one rule with the base, principle 3).
+  const _endsBefore = (a, b) => (_allDay(a.from, a.to) || (b.to && _allDay(b.from, b.to))
+    ? _ymdOf(a.to) < _ymdOf(b.from) : new Date(a.to) <= new Date(b.from));
   function _orderPair(c, stops) {
     if (!c || !Array.isArray(stops)) return null;
     const all = (c.stops || []).map((s) => ({ side: s.side, loc: s.location_id, name: s.location, from: s.planned_from, to: s.planned_to, isNew: false }));
@@ -101,7 +104,7 @@
     all.sort((a, b) => (a.side === 'ANODOS') - (b.side === 'ANODOS') || new Date(a.from) - new Date(b.from));
     let top = null;
     for (const s of all) {
-      if (top && (s.to ? new Date(s.to) <= new Date(top.from) : new Date(s.from) < new Date(top.from))) return s.side !== top.side ? [s, top] : null;
+      if (top && (s.to ? _endsBefore(s, top) : new Date(s.from) < new Date(top.from))) return s.side !== top.side ? [s, top] : null;
       if (!top || new Date(s.from) > new Date(top.from)) top = s;
     }
     return null;
