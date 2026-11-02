@@ -98,6 +98,11 @@ test('101 on the copy: before, dry run, GO, refusals, auditor, second run, rollb
     await db.exec('ROLLBACK');
   });
 
+  await t.test('verify before 101 says so (it runs before the column exists)', async () => {
+    const v = await one(db, read('101_self_delivery_verify.sql'));
+    assert.deepStrictEqual([v.applied, Number(v.columns), Number(v.checks), v.b11_b12], ['before 101', 0, 0, 'old']);
+  });
+
   await t.test('the dry run keeps nothing and names the md5 it ends on', async () => {
     const msg = await errorOf(db, adapt(read('101_self_delivery_dryrun.sql')));
     assert.match(msg ?? '', /DRY RUN 101 finished - EVERYTHING UNDONE, nothing kept\. The block ran to its end {2}\|\| {2}101 ran: columns 2, guard /, msg);
@@ -118,6 +123,10 @@ test('101 on the copy: before, dry run, GO, refusals, auditor, second run, rollb
       WHERE c.relname IN ('orders_with_derived', 'national_orders_with_derived') AND a.attnum = (SELECT max(attnum) FROM pg_attribute x WHERE x.attrelid = a.attrelid) ORDER BY 1`);
     assert.deepStrictEqual(last.rows.map((r) => `${r.relname}.${r.attname}:${r.ty}`), ['national_orders_with_derived.self_delivery:boolean', 'orders_with_derived.self_delivery:boolean']);
     assert.match(await errorOf(db, adapt(SRC)) ?? '', /101: self_delivery already exists - 101 ran/, 'a second run stops');
+    // verify (read only) on the copy: the stand-in views do not change what it reads
+    const v = await one(db, read('101_self_delivery_verify.sql'));
+    assert.deepStrictEqual([v.applied, Number(v.columns), Number(v.checks), Number(v.triggers_on_self), Number(v.views_end_on_it), v.b11_b12],
+      ['101 in place', 2, 2, 2, 2, 'new']);
   });
 
   await t.test('GO and the refusals after 101 (one transaction, rolled back)', async (tt) => {
