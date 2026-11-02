@@ -13,7 +13,7 @@
 -- tolerance: 
 -- source: 02b Β-11 · 22/9 = 2 (ιστορικό)
 -- enabled: yes
-SELECT (SELECT count(*) FROM orders WHERE deleted_at IS NULL AND invoiced AND coalesce(btrim(invoice_number),'')='')
-     + (SELECT count(*) FROM national_orders WHERE deleted_at IS NULL AND invoiced AND coalesce(btrim(invoice_number),'')='');
+SELECT (SELECT count(*) FROM orders WHERE deleted_at IS NULL AND invoiced AND NOT self_delivery AND coalesce(btrim(invoice_number),'')='')
+     + (SELECT count(*) FROM national_orders WHERE deleted_at IS NULL AND invoiced AND NOT self_delivery AND coalesce(btrim(invoice_number),'')='');
 -- @ids
-SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM (SELECT legacy_id AS x FROM orders WHERE deleted_at IS NULL AND invoiced AND coalesce(btrim(invoice_number),'')='' LIMIT 50) s;
+SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM (SELECT legacy_id AS x FROM orders WHERE deleted_at IS NULL AND invoiced AND NOT self_delivery AND coalesce(btrim(invoice_number),'')='' LIMIT 50) s;
