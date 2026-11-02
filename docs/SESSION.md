@@ -12,6 +12,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
+- dimitris · `claude/rt-membership-root` · RT: η ρίζα του «σε ποιο δρομολόγιο ανήκει μια παραγγελία» (μετά το Dragan): μέτρηση 11 τρόπων, 3 γραφείς ανά γεγονός, πρόταση Γ (έλεγχοι) → Α (ένας κανόνας στη βάση)· μόνο έγγραφο, περιμένει απόφαση owner (`docs/rt-membership/2026-11-02-root-cause.md`)
 - dimitris · `feat/transfer-098-point` · Εθνικά v5: μεταφόρτωση σε οποιοδήποτε σημείο: 097 ΕΚΤΕΛΕΣΜΕΝΗ 2/11 (25 VS, 0 αλλαγές, αρχεία εκτός drafts/)· σε εξέλιξη το 098 (στάση μεταφόρτωσης και κανόνες)· 099 μετά την εκτέλεση της 098 (`docs/sessions/2026-11-02-dimitris-transfer-any-point.md`)
 - dimitris · `feat/relax-handover-busy-096` · Εθνικά v5: 096 προσχέδιο (αλλαγή οχήματος / διόρθωση τμήματος με `accept_busy`, πορτοκαλί γραμμή επικάλυψης, ένα πάτημα), πάνω στο #217· ?v= / SW_VERSION 1793700000· ΕΚΤΕΛΕΣΜΕΝΗ 2/11, #219 merged, αρχεία εκτός drafts/ (`docs/sessions/2026-11-02-dimitris-handover-busy-096.md`)
 - dimitris · `feat/relax-small-095` · Εθνικά v5: χαλαροί κανόνες ομάδα 6: 095 προσχέδιο (τοπική φόρτωση άλλη ημέρα με προειδοποίηση, αλλαγή οχήματος χωρίς λόγο, «Άλλο» χωρίς σημείωση, B-93 off) + οθόνη, ?v= / SW_VERSION 1793690000· ΕΚΤΕΛΕΣΜΕΝΗ 2/11, #217 merged, αρχεία εκτός drafts/ (`docs/sessions/2026-11-02-dimitris-relax-small-095.md`)
