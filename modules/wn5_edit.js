@@ -232,7 +232,11 @@
     const place = _place(s, hub);
     const pal = mp.items.reduce((a, x) => a + (x.pallets == null ? 0 : Number(x.pallets)), 0), unk = mp.items.filter((x) => x.pallets == null).length;
     const dr = k.row(dstRtId), before = k.sidePal(dr, side), bu = k.sideUnk(dr, side);
-    const out = await WN5Act.twoStep({ method: 'POST', path: '/plan/move', body: { from: { rt_id: src.rtId, piece_ids: pcs }, target: { rt_id: dstRtId, side }, stops: r.stops },
+    // Π2 (owner 2/11): the other trips of the truck / driver on those days, amber in the list below; the press that
+    // confirms the list sends accept_busy (one press). A span outside the loaded week is said only (k.busyOf).
+    const req0 = { method: 'POST', path: '/plan/move', body: { from: { rt_id: src.rtId, piece_ids: pcs }, target: { rt_id: dstRtId, side }, stops: r.stops } };
+    const bz = k.reqBusy(req0, dst), req = k.busySend(req0, bz);
+    const out = await WN5Act.twoStep({ method: req.method, path: req.path, body: req.body, warn: bz ? bz.text : null,
       kind: 'move', verb: 'Μεταφορά', ask: true, title: 'Μεταφορά · ' + place + ' · ' + _palT(pal, unk) + 'π', host,
       okText: 'Μεταφέρθηκε: ' + place + ' → ' + _truck(dst), intl: true,   // an accepted re-run (086) says the same
       what: () => [_truck(c) + ' → ' + _truck(dst), _truck(dst) + ' · ' + _palT(before, bu) + ' → ' + _palT(before + pal, bu + unk) + '/33' + (before + pal > 33 ? ' · υπέρβαση' : '')] });

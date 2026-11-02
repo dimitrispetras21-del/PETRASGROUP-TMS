@@ -213,7 +213,9 @@
     const words = !p ? (_nf.choice ? [] : ['φορτηγό']) : p.err ? [p.err.message] : (p.problems ? p.problems.words : []);
     if (p && p.req && p.req.missing) words.push('παράθυρο Βέροιας');
     const can = !!(p && p.req && !p.req.missing && !words.length && !_nf.busy && !k.closedErr());
-    h += '<div class="wn5-nf-msg" data-nfmsg></div><div class="wn5-nf-ft"><span class="wn5a-miss">' + k.esc(p && p.err ? p.err.message : words.length ? 'Λείπει: ' + words.join(', ') : '') + '</span>'
+    // Π2 (owner 2/11): the truck / driver on another trip those days, amber beside the save, which sends accept_busy
+    const busy = !later && !words.length && !(p && p.err) && p && p.busy ? p.busy.text : '';
+    h += '<div class="wn5-nf-msg" data-nfmsg></div><div class="wn5-nf-ft"><span class="wn5a-miss' + (busy ? ' wn5-soft' : '') + '" data-nfwhy>' + k.esc(p && p.err ? p.err.message : words.length ? 'Λείπει: ' + words.join(', ') : busy) + '</span>'
       + '<button type="button" class="wi4-btn" onclick="WN5Hub.nfReset()">Άκυρο</button>'
       + '<button type="button" class="wi4-btn pri wn5-nf-go" data-act="nf-create"' + (can ? '' : ' disabled') + ' onclick="WN5Hub.nfCreate()">'
       + k.esc('Δημιουργία φορτίου · ' + WN5L.palText(pal, unk) + 'π' + (p && p.label ? ' → ' + p.label : '')) + '</button></div></div>';
@@ -395,7 +397,9 @@
     let out;
     // the acceptance holds only for the load it was given on: a selection changed since then sends without it
     const again = req0 ? WN5Act.withAccept(p.req, { code: 'truck_busy' }) : null;
-    const req = again && JSON.stringify(again.body) === JSON.stringify(req0.body) ? req0 : p.req;
+    // Π2: an overlap the footer shows now goes with the first press (accept_busy)
+    const shown = (document.querySelector('#wn5-hub [data-nfwhy]') || {}).textContent;
+    const req = again && JSON.stringify(again.body) === JSON.stringify(req0.body) ? req0 : k.busySend(p.req, p.busy, shown);
     try {
       out = await planFetch(req.method, req.path, { body: req.body });
     } catch (e) {
@@ -437,7 +441,8 @@
   function _splitBody(st) {
     return { piece_id: st.pieceId, parts: st.parts.map((p) => {
       const o = { pallets: _valid(p.pal) };
-      if (p.rt) { o.target = { rt_id: p.rt, side: 'KATHODOS' }; o.stops = p.stops; }
+      // Π2: a part whose truck is on another trip those days — said on its line when it was chosen — carries accept_busy
+      if (p.rt) { o.target = { rt_id: p.rt, side: 'KATHODOS' }; o.stops = p.stops; if (p.busy && p.busy.accept) o.target.accept_busy = true; }
       // B-26 (088): a part that stays leaves by the day shown, ALWAYS sent: the shown day is the written day, and the
       // base's default (nat_due_day − 1) is never re-decided here (principle 3). Needs 088 live: before it, bad_input.
       else if (p.t === 'stay' && p.day) o.leave_by = p.day;
@@ -498,7 +503,8 @@
         try { if (typeof WN5L !== 'undefined' && st.item.deliver_from) rank = WN5L.stopRank(tr.sideStops, st.item.deliver_from); } catch (e) { k.log(e, 'WN5Hub split stopRank'); }
         return '<span class="wn5-cap' + (after > 33 ? ' over' : '') + '">' + k.esc(WN5L.palText(tr.pal, tr.unk) + ' → ' + WN5L.palText(after, tr.unk) + '/33' + (after > 33 ? ' · υπέρβαση ' + k.pal(after - 33) : '') + (rank > 0 ? ' · μπαίνει ' + rank + 'η' : '')) + '</span>'
           + (p.stops ? (st.needs.some((n) => n.role === 'drop' && !n.hub && !(n.from && n.to) && n.day) ? ' <span class="wn5-part-u">παράδοση ' + k.esc(k.dayShort(st.needs.find((n) => n.role === 'drop').day)) + ' όλη η ημέρα</span>' : '')
-            : ' <span class="wn5-miss">λείπει ο προορισμός από τη βάση</span>');
+            : ' <span class="wn5-miss">λείπει ο προορισμός από τη βάση</span>')
+          + (p.busy ? ' <span class="wn5-why wn5-soft" data-busy>' + k.esc(p.busy.text) + '</span>' : '');
       }
       if (p.t !== 'stay') return '';
       if (!p.day) return '<span class="wn5-part-u">μένει απόθεμα</span>';
@@ -545,6 +551,8 @@
       // B1: a delivery with no window of its own (a VS bridge) goes on its day, whole day — the badge says it
       const r = tr ? k.stopsFor(st.needs, tr.cyc, 'KATHODOS', null, (n) => k.dayWin(n)) : null;
       p.stops = r && !r.missing.length ? r.stops : null;
+      // Π2: the truck's other trips on those days, read once at the choice (the line shows it, the save sends it)
+      p.busy = tr && p.stops ? k.reqBusy({ method: 'POST', path: '/plan/legs', body: { target: { rt_id: p.rt, side: 'KATHODOS' }, stops: p.stops } }, tr.cyc) : null;
       draw();
     });
     d.dlg.addEventListener('input', (ev) => {
