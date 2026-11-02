@@ -12,7 +12,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
-- dimitris · `claude/rt-sync-v6-plan` · RT: απόλυτο sync v6, ΣΧΕΔΙΟ r3 (ουρά + καταναλωτής, ενέργειες μίας κίνησης, Φάση 0)· 3 γύροι ελεγκτών· PR #234· περιμένει ερωτήσεις owner N10 κ.ά., καμία εκτέλεση (`docs/rt-sync-v6/PLAN.md`)
+- dimitris · `claude/rt-sync-v6-plan` · RT: απόλυτο sync v6, ΣΧΕΔΙΟ r4 (ουρά + καταναλωτής, ενέργειες μίας κίνησης, Φάση 0)· 3 γύροι ελεγκτών + code-review max· PR #234· περιμένει ερωτήσεις owner N10 κ.ά., καμία εκτέλεση (`docs/rt-sync-v6/PLAN.md`)
 - dimitris · `claude/rt-split-matched-import-ee6d7a` · RT: εξαγωγή + ταιριασμένη εισαγωγή σε δύο RT (Dragan/Voitsberg): 097 (trigger) + 097b (επισκευή 2 ζευγών) ΕΚΤΕΛΕΣΜΕΝΕΣ 2/11 ~11:30 (owner), αρχεία εκτός drafts/, B-54 = 61 και στον κατάλογο· ανοιχτό: B-77 σε P1 / monitoring χωρίς ειδοποιήσεις (`docs/sessions/2026-11-02-dimitris-rt-split-matched-import.md`)
 - dimitris · `feat/transfer-098-point` · Εθνικά v5: μεταφόρτωση σε οποιοδήποτε σημείο: 097 ΕΚΤΕΛΕΣΜΕΝΗ 2/11 (25 VS, 0 αλλαγές, αρχεία εκτός drafts/)· σε εξέλιξη το 098 (στάση μεταφόρτωσης και κανόνες)· 099 μετά την εκτέλεση της 098 (`docs/sessions/2026-11-02-dimitris-transfer-any-point.md`)
 - dimitris · `feat/relax-handover-busy-096` · Εθνικά v5: 096 προσχέδιο (αλλαγή οχήματος / διόρθωση τμήματος με `accept_busy`, πορτοκαλί γραμμή επικάλυψης, ένα πάτημα), πάνω στο #217· ?v= / SW_VERSION 1793700000· ΕΚΤΕΛΕΣΜΕΝΗ 2/11, #219 merged, αρχεία εκτός drafts/ (`docs/sessions/2026-11-02-dimitris-handover-busy-096.md`)
