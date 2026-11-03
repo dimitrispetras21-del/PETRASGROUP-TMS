@@ -400,9 +400,8 @@ const PERMS = {
 // The planned owner-only pilot (Q-9) was skipped by the owner when the cutover moved to 28/10 (PR #122 closed).
 // Rollback = 'pilot' (WN_V5_USERS keeps the owner: v5 for the owner alone, and as with WI_V2 a ?wn5=1 browser) or 'off',
 // + config.js ?v= and SW_VERSION; 'off' overrides every opt-in.
-// WN_ROAD (owner 2/11, «Αλλαγή στον δρόμο», modules/wn5_road.js): false until the Worker with POST /plan/transfer
-// (PR #239) and the SQL 098 / 099 are live; then true + config.js ?v= and SW_VERSION. false = the ✈ and right-click
-// menus as before (✈ «Αλλαγή οχήματος…»).
+// WN_ROAD (owner 2/11, «Αλλαγή στον δρόμο», modules/wn5_road.js): the Worker b329ff91 (POST /plan/transfer) and the
+// SQL 098 / 099 are live since 2/11. false = the ✈ and right-click menus as before (✈ «Αλλαγή οχήματος…»).
 // WN_COMPOSE («Σύνθεση φορτίων», modules/wn5_compose.js): false = the Veroia board as before (a browser with
 // localStorage tms_wn5_compose = '1' still opts in). Both: 'pilot' (owner 3/11) = only the users of WN_V5_USERS,
 // for one real test each before everyone; then true. Read through featureOn(), one rule for both.

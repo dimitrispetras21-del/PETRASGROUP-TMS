@@ -236,7 +236,7 @@
   function shelfHTML(model) {
     const k = typeof WN5Act !== 'undefined' ? K() : null;
     const hub = model && model.hub;
-    // «Σύνθεση φορτίων» (owner 2/11, shared drafts 102): behind localStorage tms_wn5_compose, the panel is drawn by WN5Compose
+    // «Σύνθεση φορτίων» (owner 2/11, shared drafts 102): behind WN5Compose.on() (featureOn('WN_COMPOSE') or the tms_wn5_compose opt-in), the panel is drawn by WN5Compose
     if (k && hub && typeof WN5Compose !== 'undefined' && WN5Compose.on()) return WN5Compose.html(model);
     if (!k || !hub || hub.empty || (!(hub.split || []).length && !(hub.stock || []).length)) return '';   // empty = hidden
     const split = hub.split || [], stock = hub.stock || [];
