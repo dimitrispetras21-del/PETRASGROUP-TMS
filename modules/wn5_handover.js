@@ -148,42 +148,21 @@
     }
     return names.length ? `Μισθοδοσία: ${names.length} ${names.length === 1 ? 'γραμμή' : 'γραμμές'} (${names.join(', ')})` : '';
   }
-  // «ελεύθερο ως …» under the picked truck / driver (Figma 2122:7781, 2122:7795): what the board's week knows of that
-  // vehicle after the change time — the start of its next use in another cycle, capped at this cycle's end (the new
-  // segment runs to it). The lookups carry no availability; the week's cycles do. null = no time yet, or already in use
-  // at that time: then the dry run's truck_busy / driver_busy says it, in the Worker's words, not a guess here.
-  function _freeUntil(board, rtId, key, id, at, endAt) {
-    if (!Number.isSafeInteger(id) || !at || !endAt) return null;
-    const t = Date.parse(at);
-    let until = Date.parse(endAt), iso = endAt;
-    if (!(t < until)) return null;
-    for (const c of (board && board.cycles) || []) {
-      if (c.rt_id === rtId) continue;
-      let segs;
-      try { segs = WN5L.segmentsOf(c).segments; } catch (_) { continue; }   // a bad shape is the board's own line
-      for (const g of segs) {
-        if (g[key] !== id) continue;
-        const fromIso = g.from_at || c.start_at, a = Date.parse(fromIso), b = Date.parse(g.to_at || c.end_at);
-        if (a <= t && t < b) return null;
-        if (a > t && a < until) { until = a; iso = fromIso; }
-      }
-    }
-    return iso;
-  }
-  // 096 (coordinator 2/11, the Π2 rule of every other save, PR 218): an own truck or driver already on another trip of
-  // the board on the days of the change is said BEFORE the press, in amber, naming every such trip (the kit's busyOf,
-  // one rule and one text for every save), and the change carries accept_busy from the first press. Said but NOT
+  // 096 (coordinator 2/11, the Π2 rule of every other save, PR 218) + owner 3/11: an own truck, trailer or driver
+  // already on another trip of the board the same calendar day as the change is said BEFORE the press, in amber, by
+  // name, day and places (the kit's busyOf, one rule and one text for every save), and the change carries accept_busy
+  // from the first press. No hours: the «ελεύθερο ως Τρί 20:00» under the truck / driver is gone (owner 3/11). Said but NOT
   // pre-accepted when a day of the span is outside the loaded week: the base accepts EVERY overlap of the save, and
   // one the screen cannot name must not pass silently - there the dry run's truck_busy / driver_busy stays, with
   // «Αποθήκευση έτσι κι αλλιώς» (_acceptOffer). null = nothing on the board.
   const BUSY = Object.freeze(['truck_busy', 'driver_busy']);
-  function _busyLine(d, trucks, drivers, fromIso, toIso) {
+  function _busyLine(d, trucks, trailers, drivers, fromIso, toIso) {
     const k = typeof WN5Act !== 'undefined' ? WN5Act._kit : null;
     const a = _parts(fromIso), b = _parts(toIso);
     if (!k || typeof k.busyOf !== 'function' || !a || !b) return null;
     const ids = (xs) => xs.filter((x) => Number.isSafeInteger(x));
-    if (!ids(trucks).length && !ids(drivers).length) return null;
-    return k.busyOf({ trucks: ids(trucks), drivers: ids(drivers), days: [a.day, b.day], self: [d.cycle && d.cycle.rt_id],
+    if (!ids(trucks).length && !ids(trailers).length && !ids(drivers).length) return null;
+    return k.busyOf({ trucks: ids(trucks), trailers: ids(trailers), drivers: ids(drivers), days: [a.day, b.day], self: [d.cycle && d.cycle.rt_id],
       cycles: (d.board && d.board.cycles) || [], week: d.board ? d.board.week : undefined, accept: true });
   }
   function _busyShow(d, o) {
@@ -414,7 +393,7 @@
       prev_shown: prev, prev_from: prev ? (g.partner_rate == null ? null : Number(g.partner_rate)) : null, prev_rate: prev ? _num(v('wn5h-prate')) : null };
     // 096: the new vehicle from the change to the end of the segment it cuts (the same driver goes on: no new overlap)
     const cut = d.own && at ? _cutSeg(d.cycle, at) : null;
-    st.busy = d.own && at ? _busyLine(d, [st.truck_id], [st.same_driver ? null : st.driver_id], at, (cut && cut.to_at) || (d.cycle && d.cycle.end_at)) : null;
+    st.busy = d.own && at ? _busyLine(d, [st.truck_id], [st.trailer_id], [st.same_driver ? null : st.driver_id], at, (cut && cut.to_at) || (d.cycle && d.cycle.end_at)) : null;
     st.k0 = JSON.stringify(_changeBody(st));
     st.accept_busy = !!(st.busy && st.busy.accept) || (d.acceptFor != null && d.acceptFor === st.k0);
     return st;
@@ -444,7 +423,6 @@
     _dayText(d);
     _prevRateSync(d, d.own ? null : _cutSeg(d.cycle, _readChange(d).at));   // before the read: its prefill is part of the state
     const st = _readChange(d);
-    _hints(d, st);
     const probs = _changeProblems(st);
     const pf = d.el.querySelector('[data-prate]');
     if (pf) pf.classList.toggle('bad', probs.includes(PREV_BAD));
@@ -488,14 +466,6 @@
     }
     drv.disabled = on;
   }
-  function _hints(d, st) {
-    const set = (k, txt) => { const h = d.el.querySelector(`[data-hint="${k}"]`); if (h) h.textContent = txt; };
-    const end = d.cycle && d.cycle.end_at;
-    const tr = d.own && st.at ? _freeUntil(d.board, d.rtId, 'truck_id', st.truck_id, st.at, end) : null;
-    const dr = d.own && st.at && !st.same_driver ? _freeUntil(d.board, d.rtId, 'driver_id', st.driver_id, st.at, end) : null;
-    set('truck', tr ? 'ελεύθερο ως ' + _when(tr) : '');
-    set('driver', dr ? 'ελεύθερος ως ' + _when(dr) : '');
-  }
   async function _preview(d, key) {
     if (_d !== d) return;
     const body = JSON.parse(key);
@@ -509,7 +479,8 @@
       d.prev = { key, conflict: p.conflict || null, token: tk.token };
       d.el.querySelector('[data-preview]').innerHTML = (p.segments ? _previewHTML(p, d.cycle, d.hub) : '') + _consHTML(tk.cons);
       // after stale_confirm / need_token the Worker's «the list changed» stays above the NEW list until the next edit
-      if (Array.isArray(p.warnings) && p.warnings.length) WN5Act.strip(_strip(d), p.warnings); else if (!d.locked && !relist) WN5Act.strip(_strip(d), null);
+      const pw = WN5Act.formWarnings(p.warnings);   // owner 3/11: no stop text (seg_stop_*)
+      if (pw.length) WN5Act.strip(_strip(d), pw); else if (!d.locked && !relist) WN5Act.strip(_strip(d), null);
     } catch (e) {
       if (_d !== d) return;
       d.failedKey = key;
@@ -570,7 +541,8 @@
     const el = d.el.querySelector('[data-done]');
     el.hidden = false;
     el.textContent = line;
-    if (Array.isArray(warnings) && warnings.length) WN5Act.strip(_strip(d), warnings); else WN5Act.strip(_strip(d), null);
+    const ws = WN5Act.formWarnings(warnings);
+    WN5Act.strip(_strip(d), ws.length ? ws : null);
     const s = d.el.querySelector('[data-act="save"]');
     if (s) s.hidden = true;
     d.el.querySelectorAll('.wn5f-ft [data-act="cancel"]').forEach((b) => { b.textContent = 'Κλείσιμο'; b.classList.add('wn5h-close'); });
@@ -581,9 +553,9 @@
   function _vehFields(own, sel) {
     // Figma 2122:7774: Φορτηγό * 170 · Ρυμούλκα 130 · Οδηγός * 180 (plates in DM Mono); partner 150 + rate 96
     return own
-      ? `<label class="wn5f-f wn5h-truck wn5h-mono"><span>Φορτηγό *</span><select class="form-input" id="wn5h-truck" data-fh-search>${_opts('truck', sel.truck_id, '', sel.truck)}</select><span class="wn5h-hint" data-hint="truck"></span></label>`
+      ? `<label class="wn5f-f wn5h-truck wn5h-mono"><span>Φορτηγό *</span><select class="form-input" id="wn5h-truck" data-fh-search>${_opts('truck', sel.truck_id, '', sel.truck)}</select></label>`
         + `<label class="wn5f-f wn5h-trailer wn5h-mono"><span>Ρυμούλκα</span><select class="form-input" id="wn5h-trailer" data-fh-search>${_opts('trailer', sel.trailer_id, '—', sel.trailer)}</select></label>`
-        + `<label class="wn5f-f wn5h-driver"><span>Οδηγός *</span><select class="form-input" id="wn5h-driver" data-fh-search>${_opts('driver', sel.driver_id, '', sel.driver)}</select><span class="wn5h-hint" data-hint="driver"></span></label>`
+        + `<label class="wn5f-f wn5h-driver"><span>Οδηγός *</span><select class="form-input" id="wn5h-driver" data-fh-search>${_opts('driver', sel.driver_id, '', sel.driver)}</select></label>`
       : `<label class="wn5f-f wn5h-partner"><span>Συνεργάτης *</span><select class="form-input" id="wn5h-partner" data-fh-search>${_opts('partner', sel.partner_id, '', sel.partner)}</select></label>`
         + `<label class="wn5f-f wn5h-rate"><span>Κόμιστρο €</span><input class="form-input" id="wn5h-rate" inputmode="decimal" value="${sel.partner_rate == null ? '' : _esc(sel.partner_rate)}"></label>`;
   }
@@ -692,7 +664,7 @@
       // 096: an own vehicle or time that changes - the segment's span with the new truck / driver (Π2 rule)
       const moved = 'at' in set;
       const busy = Object.keys(set).length && g.trip_type !== 'PARTNER' && (set.trip_type || 'OWNED') === 'OWNED'
-        ? _busyLine(d, ['truck_id' in set || moved ? st.truck_id : null], ['driver_id' in set || moved ? st.driver_id : null],
+        ? _busyLine(d, ['truck_id' in set || moved ? st.truck_id : null], ['trailer_id' in set || moved ? st.trailer_id : null], ['driver_id' in set || moved ? st.driver_id : null],
           set.at || g.from_at || c.start_at, g.to_at || c.end_at) : null;
       const k0 = JSON.stringify(fb);
       d.k0 = k0;
@@ -796,5 +768,5 @@
     return ans;
   }
 
-  window.WN5Hand = Object.freeze({ cycleCard, entry, change, fix, remove, _changeBody, _changeProblems, _fixSet, _payrollLine, _freeUntil, _cutSeg });
+  window.WN5Hand = Object.freeze({ cycleCard, entry, change, fix, remove, _changeBody, _changeProblems, _fixSet, _payrollLine, _cutSeg });
 })();
