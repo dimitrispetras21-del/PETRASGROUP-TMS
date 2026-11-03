@@ -13,8 +13,9 @@
 //   - each load: its pallets (fewer = the split, decision 3, the rest on its own line) and «Πάει σε»: a truck on the
 //     road that day, a free own truck (a new trip), «Νέο φορτίο · φορτηγό αργότερα» (it waits at the point, decision 2,
 //     the words of the «Σύνθεση φορτίων» panel), or «μένει στο <truck>» (the default: the load is not sent).
-//   - busy (Π2): another trip of a chosen truck on those days is said in amber BEFORE the press and that truck's
-//     target carries accept_busy from the first press (one press); a day outside the loaded week is said only.
+//   - busy (Π2, owner 3/11): the one warning — a chosen truck, its trailer or its driver on another trip the same
+//     calendar day, said in amber by name, day and places BEFORE the press; that truck's target carries accept_busy
+//     from the first press (one press); a day outside the loaded week is said only. No hours, no stop text.
 //   - every refusal is the Worker's message (WN5Act.strip); the screen's own lines carry a code WN5R_* and facts.
 //   - nothing at load: listeners exist only while the window is open.
 (function () {
@@ -236,7 +237,7 @@
       const r = k.stopsFor(needs, ch.rt || null, st.side, null, null);
       const days = [st.day, lds.map((ld) => k.ymdOf(ld.drop.planned_to)).filter(Boolean).sort().pop() || st.day].sort();
       const bz = ch.truckId != null && DAY.test(st.day || '')
-        ? k.busyOf({ trucks: [ch.truckId], drivers: ch.rt ? [ch.rt.driver_id] : [], days, self: ch.rt ? [ch.rt.rt_id] : [], accept: true }) : null;
+        ? k.busyOf({ trucks: [ch.truckId], trailers: ch.rt ? [ch.rt.trailer_id] : [], drivers: ch.rt ? [ch.rt.driver_id] : [], days, self: ch.rt ? [ch.rt.rt_id] : [], accept: true }) : null;
       if (bz) d.busyOf[v] = bz;
       if (bz && bz.accept) target.accept_busy = true;
       out[v] = { target, stops: r.stops, missing: r.missing };
@@ -288,8 +289,8 @@
     d.dst = dst;
     _q(d, '[data-act="next"]').disabled = !d.ready || d.busy;
   }
-  // Π2: one amber strip under the first load that goes to a busy truck, with «Αλλαγή ώρας» (it opens the time field:
-  // the screen never guesses an arrival time; Figma 2457:7735 α)
+  // Π2: one amber strip under the first load that goes to a busy truck. Owner 3/11: same day only, so a new hour
+  // never clears it — the «Αλλαγή ώρας» button of Figma 2457:7735 α is gone with the hours
   // A host is written only when its words change: a refresh between the press and the release (the time field's
   // «change» on the mousedown that leaves it) would otherwise replace the button under the pointer and lose the click.
   function _busyLines(d, st) {
@@ -299,8 +300,7 @@
       const bz = v && d.busyOf[v];
       if (!bz || said.has(v)) continue;
       said.add(v);
-      at.set(r.piece_id, (at.get(r.piece_id) || '') + `<div class="wn5-strip wn5r-busy" data-kind="warning"><b>ΑΠΑΣΧΟΛΗΜΕΝΟ</b><span>${_esc(bz.text)}</span>`
-        + '<button type="button" class="wi4-btn sm" data-act="time">Αλλαγή ώρας</button></div>');
+      at.set(r.piece_id, (at.get(r.piece_id) || '') + `<div class="wn5-strip wn5r-busy" data-kind="warning"><b>ΑΠΑΣΧΟΛΗΜΕΝΟ</b><span>${_esc(bz.text)}</span></div>`);
     }
     for (const ld of d.loads) {
       const host = _q(d, `.wn5r-ld[data-piece="${ld.piece_id}"] [data-busyrow]`);
@@ -479,7 +479,8 @@
         WN5Act.strip(_strip(d), _err(p.conflict.code || 'WN5R_conflict', p.conflict.message || '(' + (p.conflict.code || 'σύγκρουση') + ')', p.conflict));
         _offerAccept(d, p.conflict.code);
       } else {
-        if (Array.isArray(p.warnings) && p.warnings.length) WN5Act.strip(_strip(d), p.warnings);
+        const pw = WN5Act.formWarnings(p.warnings);   // owner 3/11: no stop text, no x/33 line (the truck lines say it)
+        if (pw.length) WN5Act.strip(_strip(d), pw);
         if (p.whole_vehicle === true) await _handDry(d);
       }
     } catch (e) {
@@ -544,7 +545,8 @@
     const el = _q(d, '[data-done]');
     el.hidden = false;
     el.textContent = line;
-    WN5Act.strip(_strip(d), Array.isArray(warnings) && warnings.length ? warnings : null);
+    const ws = WN5Act.formWarnings(warnings);
+    WN5Act.strip(_strip(d), ws.length ? ws : null);
     for (const a of ['save', 'back']) _q(d, `[data-act="${a}"]`).hidden = true;
     const c = _q(d, '[data-act="close"]');
     c.hidden = false;
@@ -641,7 +643,6 @@
       if (a === 'next' && !t.disabled) { _next(d); return; }
       if (a === 'back') { _setStep(d, 'form'); return; }
       if (a === 'save' && !t.disabled) { _save(d); return; }
-      if (a === 'time') { if (d.allDay) _q(d, '[data-allday]').click(); const h = _q(d, '[data-hm]'); h.focus(); h.select(); }
     });
     box.addEventListener('input', (ev) => {
       if (ev.target.matches('[data-where]')) { d.point = null; _listShow(d); }

@@ -192,9 +192,8 @@
           + '<span class="wn5a-dash">–</span><input class="wi-pop-inp wn5a-hm' + (k.hhmm(_nf.win.to) ? '' : ' bad') + '" data-nfhm="to" inputmode="numeric" maxlength="5" placeholder="ΗΗ:ΛΛ" value="' + k.esc(_nf.win.to) + '" oninput="WN5Hub.nfHm(\'to\', this.value)" onchange="WN5Hub.nfHm(\'to\', this.value, this)" aria-label="έως">'
           + '<button type="button" class="wn5a-all" onclick="WN5Hub.nfWin(true)">όλη η ημέρα</button>')
       + '</div>';
-    // a delivery due before the Veroia day leaves late: said, never refused (the user decides)
-    const lateDue = items.map((x) => x.nat_due_day).filter((d) => d && _nf.day && d < _nf.day).sort();
-    if (lateDue.length) h += '<div class="wn5-nf-note">' + k.esc(lateDue.length + (lateDue.length === 1 ? ' παράδοση είναι για ' : ' παραδόσεις είναι για ') + k.dayShort(lateDue[0]) + ' · θα φύγ' + (lateDue.length === 1 ? 'ει' : 'ουν') + ' αργά') + '</div>';
+    // owner 3/11 («λιγότερα»): a delivery due before the Veroia day is no longer said here («… θα φύγουν αργά»): the
+    // one warning of the board's forms is the busy truck / trailer / driver of the same day (beside the save)
     const line = (x, place) => '<div class="wn5-nf-it"><b>' + k.esc(x.client || '—') + '</b><span>' + k.esc(place + ' · ' + (x.reference || '—')) + '</span><span class="wn5-hub-sp"></span>'
       + '<span class="wn5-hub-p">' + k.esc(k.pal(x.pallets)) + 'π</span><button type="button" class="wi4-link wn5-nf-x" aria-label="Αφαίρεση" onclick="WN5Hub.nfDrop(' + x.piece_id + ')">×</button></div>';
     h += '<div class="wn5-nf-sec">ΠΑΡΑΔΟΣΕΙΣ ΑΠΟ ΒΕΡΟΙΑ · ' + items.length + '</div>' + items.map((x) => line(x, _placeOf(x))).join('');
