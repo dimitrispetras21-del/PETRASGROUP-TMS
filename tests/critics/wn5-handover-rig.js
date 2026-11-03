@@ -400,11 +400,12 @@ async function scnFid({ browser, origin, ok, scn }) {
   const prevText = () => K.text(page, `${HDLG} [data-preview]`);
   const hint = (k) => page.evaluate((s) => { const h = document.querySelector(s); return h ? [h.textContent, h.offsetParent !== null] : null; }, `${HDLG} [data-hint="${k}"]`);
   await page.evaluate(() => { const el = document.getElementById('wn5h-day'); el.value = '2026-10-13'; el.dispatchEvent(new Event('change', { bubbles: true })); const h = document.getElementById('wn5h-hm'); h.value = '03:00'; h.dispatchEvent(new Event('change', { bubbles: true })); });
-  ok(scn, 'no hint before a vehicle is picked', JSON.stringify(await hint('truck')) === '["",false]' && JSON.stringify(await hint('driver')) === '["",false]', [await hint('truck'), await hint('driver')]);
+  // owner 3/11 («λιγότερα»): no hours under the truck / driver — the «ελεύθερο ως Τρί 22:00» hints are gone
+  ok(scn, 'owner 3/11: no «ελεύθερο ως …» hint before a vehicle is picked', (await hint('truck')) === null && (await hint('driver')) === null, [await hint('truck'), await hint('driver')]);
   await fillChange(page, CH);
   await page.waitForTimeout(1200);
-  ok(scn, 'hints from the week: «ελεύθερο ως Τρί 22:00» / «ελεύθερος ως Τρί 22:00» (RT-T102 uses them only from Τετ 10:00)',
-    JSON.stringify(await hint('truck')) === '["ελεύθερο ως Τρί 22:00",true]' && JSON.stringify(await hint('driver')) === '["ελεύθερος ως Τρί 22:00",true]', [await hint('truck'), await hint('driver')]);
+  ok(scn, 'owner 3/11: none after the pick either (RT-T102 uses them only from Τετ: the next day, nothing said)',
+    (await hint('truck')) === null && (await hint('driver')) === null && !/ελεύθερ/.test(await K.text(page, HDLG)) && !(await K.text(page, `${HDLG} [data-busy]`)), await K.text(page, HDLG));
   const p1 = await prevText();
   ok(scn, 'preview foot «Μισθοδοσία: 2 γραμμές (Driver Test 01, Driver Test 02)»', p1.includes('Μισθοδοσία: 2 γραμμές (Driver Test 01, Driver Test 02)'), p1);
   ok(scn, 'preview ⇄ line names the reason of this body', p1.includes('Λαμία · Τρί 03:00 · Βλάβη φορτηγού'), p1);
@@ -431,7 +432,7 @@ async function scnFid({ browser, origin, ok, scn }) {
   await page.waitForTimeout(300);
   const on = await drv();
   ok(scn, '«ίδιος οδηγός» ON: the disabled driver control shows «Driver Test 01», as the switch label', on.v === '31' && on.dis && on.shown === 'Driver Test 01'
-    && (await K.text(page, `${HDLG} .wn5h-same`)).includes('Driver Test 01') && JSON.stringify(await hint('driver')) === '["",false]', [on, await hint('driver')]);
+    && (await K.text(page, `${HDLG} .wn5h-same`)).includes('Driver Test 01'), on);
   await page.waitForTimeout(1000);
   const sameDry = posts(S).filter((x) => x.body.dry_run === true).pop();
   ok(scn, '«ίδιος οδηγός» ON: the dry run sends same_driver and no driver_id', !!sameDry && sameDry.body.same_driver === true && !('driver_id' in sameDry.body.vehicle), sameDry && sameDry.body);
@@ -441,24 +442,6 @@ async function scnFid({ browser, origin, ok, scn }) {
   ok(scn, '«ίδιος οδηγός» OFF: the pick «Driver Test 02» comes back, enabled', off.v === '32' && !off.dis && off.shown === 'Driver Test 02', off);
   ok(scn, 'fidelity: no page or console errors', !S.pageErrors.length && !appConsole(S).length, S.pageErrors.concat(appConsole(S)));
   await page.context().close();
-
-  // RT-T102 moved to Τρί 20:00 with the same truck and driver: «ελεύθερο ως Τρί 20:00»; at Τρί 21:00 it is in use → no
-  // hint (the dry run's truck_busy speaks, not a guess here).
-  const bw = oneSegWeek();
-  Object.assign(bw.cycles[1], { start_at: '2026-10-13T20:00:00+03:00' });
-  Object.assign(bw.cycles[1].segments[0], { from_at: '2026-10-13T20:00:00+03:00' });
-  const pw = await K.openApp(browser, origin, { board: bw, plan: { 'POST /plan/rt/101/handover': (e) => dryOk(e.body) } });
-  await pw.page.evaluate(() => WN5Hand.change(101));
-  await pw.page.waitForSelector(HDLG, { timeout: 6000 }).catch(() => {});
-  await fillChange(pw.page, CH);
-  await pw.page.waitForTimeout(300);
-  const h1 = await pw.page.evaluate((d) => document.querySelector(`${d} [data-hint="truck"]`).textContent, HDLG);
-  await fillChange(pw.page, Object.assign({}, CH, { hm: '21:00' }));
-  await pw.page.waitForTimeout(300);
-  const h2 = await pw.page.evaluate((d) => [document.querySelector(`${d} [data-hint="truck"]`).textContent, document.querySelector(`${d} [data-hint="driver"]`).textContent], HDLG);
-  ok(scn, 'next use in the week: «ελεύθερο ως Τρί 20:00»; in use at the change time → no hint', h1 === 'ελεύθερο ως Τρί 20:00' && h2.join('|') === '|', [h1, h2]);
-  ok(scn, 'hints: no page or console errors', !pw.S.pageErrors.length && !appConsole(pw.S).length, pw.S.pageErrors.concat(appConsole(pw.S)));
-  await pw.page.context().close();
 }
 
 // T26 — removal (conflict first, then the shared two-step), the plan_rt_update token, clear with segments.
@@ -785,6 +768,7 @@ async function scnBusy({ browser, origin, ok, scn }) {
     const b = oneSegWeek();
     const t2 = b.cycles.find((c) => c.rt_id === 102);
     Object.assign(t2, { start_at: '2026-10-13T10:00:00+03:00', date_start: '2026-10-13' });
+    Object.assign(t2.segments[0], { from_at: t2.start_at });   // the segment is the trip's own (072b): it moves with it
     const { page, S } = await K.openApp(browser, origin, { board: b, plan: { 'POST /plan/rt/101/handover': (e) => okBody(e.body) } });
     if (!(await guard(page, ok, scn, 'WN5Hand'))) return;
     await page.evaluate(() => WN5Hand.change(101));
@@ -792,7 +776,9 @@ async function scnBusy({ browser, origin, ok, scn }) {
     await fillChange(page, CH);
     await page.waitForTimeout(1200);
     const line = await K.text(page, `${HDLG} [data-busy]`);
-    ok(scn, '096: amber line before the press, naming the other trip for the truck and the driver', /^Επικάλυψη · φορτηγό και σε: .*· οδηγός και σε: .*Αποθηκεύεται έτσι, γράφεται στο ιστορικό\.$/.test(line)
+    // owner 3/11: the truck, the trailer («θάλαμος») and the driver by name, the day and the trip's places, no hours
+    ok(scn, '096 + owner 3/11: amber line before the press «TST-2108 / θάλαμος TRL-5104 / Driver Test 02 είναι σε άλλο δρομολόγιο Τρί 13/10 · Athens → Βέροια.»',
+      line === 'TST-2108 / θάλαμος TRL-5104 / Driver Test 02 είναι σε άλλο δρομολόγιο Τρί 13/10 · Athens → Βέροια.'
       && await page.evaluate((d) => getComputedStyle(document.querySelector(`${d} [data-busy]`)).color !== getComputedStyle(document.querySelector(`${d} .wn5f-body`)).color, HDLG), line);
     const dry = posts(S).filter((x) => x.body.dry_run === true);
     ok(scn, '096: the dry run carries accept_busy: true', dry.length === 1 && dry[0].body.accept_busy === true, dry.map((x) => x.body));
@@ -853,7 +839,9 @@ async function scnBusy({ browser, origin, ok, scn }) {
   }
   { // C · the correction of RT-T101's segment to truck 12, which RT-T102 uses on Tuesday too: said, and accept_busy
     const b = oneSegWeek();
-    Object.assign(b.cycles.find((c) => c.rt_id === 102), { start_at: '2026-10-13T10:00:00+03:00', date_start: '2026-10-13' });
+    const t2 = b.cycles.find((c) => c.rt_id === 102);
+    Object.assign(t2, { start_at: '2026-10-13T10:00:00+03:00', date_start: '2026-10-13' });
+    Object.assign(t2.segments[0], { from_at: t2.start_at });   // the segment is the trip's own (072b): it moves with it
     const FX = '.wi4-dlg[data-wn5="fix"]';
     const { page, S } = await K.openApp(browser, origin, { board: b, plan: { 'PATCH /plan/segments/1010': (e) => (e.body.dry_run === true
       ? [200, { ok: true, op: 'plan_seg_fix', dry_run: true, preview: { segments: [], warnings: [], conflict: null } }]
@@ -864,12 +852,40 @@ async function scnBusy({ browser, origin, ok, scn }) {
     await page.waitForTimeout(1200);
     const line = await K.text(page, `${FX} [data-busy]`);
     const fd = K.planOf(S, 'PATCH', '/plan/segments/1010');
-    ok(scn, '096 fix: a new truck on another trip of those days → amber, and {set:{truck_id:12}, accept_busy:true}', /^Επικάλυψη · φορτηγό και σε: /.test(line)
+    ok(scn, '096 fix: a new truck on another trip the same day → amber «TST-2108 είναι σε άλλο δρομολόγιο …», and {set:{truck_id:12}, accept_busy:true}',
+      /^TST-2108 είναι σε άλλο δρομολόγιο Δευ 12\/10, Τρί 13\/10 · .+\.$|^TST-2108 είναι σε άλλο δρομολόγιο Τρί 13\/10 · .+\.$/.test(line)
       && fd.length === 1 && JSON.stringify(fd[0].body) === JSON.stringify({ set: { truck_id: 12 }, accept_busy: true, dry_run: true }), { line, bodies: fd.map((x) => x.body) });
     await page.context().close();
   }
 }
-const SCN = { busy: scnBusy, 'prev-rate': scnPrevRate, tiles: scnTiles, card: scnCard, change: scnChange, fix: scnFix, h7: scnH7, fid: scnFid, remove: scnRemove, 'rt-token': scnRtToken, 'clear-seg': scnClearSeg, 'sheet-seg': scnSheetSeg, narrow: scnNarrow };
+// owner 3/11 (bigger forms): «Αλλαγή οχήματος» at 1440×900 and 1280×800 with its longest content — the form, the
+// same-day busy line and the dry run's preview — opens whole: inside the window, nothing scrolls in it. --shots.
+async function scnFit({ browser, origin, ok, scn, shots }) {
+  for (const vp of K.FIT_VIEWPORTS) {
+    const tag = vp.width + 'x' + vp.height;
+    const b = oneSegWeek();
+    const t2 = b.cycles.find((c) => c.rt_id === 102);
+    Object.assign(t2, { start_at: '2026-10-13T10:00:00+03:00', date_start: '2026-10-13' });
+    Object.assign(t2.segments[0], { from_at: t2.start_at });
+    // the longest preview: four vehicles (a cycle that already had a change, then this one)
+    const dry4 = (body) => { const r = dryOk(body); const g = r[1].preview.segments;
+      g.splice(1, 0, seg(1012, 'intermediate', '2026-10-12T20:00:00+03:00', '2026-10-12T23:00:00+03:00', { truck_id: 13, truck: 'TST-2106', place_note: 'Κατερίνη', reason: 'vehicle_breakdown', stop_ids: [] }),
+        seg(1013, 'intermediate', '2026-10-12T23:00:00+03:00', body.at, { place_note: 'Λάρισα', reason: 'vehicle_breakdown', stop_ids: [] })); return r; };
+    const { page } = await K.openApp(browser, origin, { board: b, viewport: vp, plan: { 'POST /plan/rt/101/handover': (e) => dry4(e.body) } });
+    if (!(await guard(page, ok, scn, 'WN5Hand'))) return;
+    await page.evaluate(() => WN5Hand.change(101));
+    await page.waitForSelector(HDLG, { timeout: 6000 }).catch(() => {});
+    await fillChange(page, CH);
+    await page.waitForTimeout(1200);
+    const f = await K.fitOf(page, HDLG);
+    ok(scn, tag + ' «Αλλαγή οχήματος» with the busy line and the preview: inside the window, nothing scrolls in it', K.fits(f), f);
+    ok(scn, tag + ' the busy line and the four rows of the preview are on screen, the window wider than the 860 of before',
+      !!(await K.text(page, `${HDLG} [data-busy]`)) && (await K.count(page, `${HDLG} [data-preview] .wn5h-hx`)) === 3 && !!f && f.w > 860, f);
+    if (shots) await page.screenshot({ path: require('path').join(shots, 'handover-' + tag + '.png') });
+    await page.context().close();
+  }
+}
+const SCN = { fit: scnFit, busy: scnBusy, 'prev-rate': scnPrevRate, tiles: scnTiles, card: scnCard, change: scnChange, fix: scnFix, h7: scnH7, fid: scnFid, remove: scnRemove, 'rt-token': scnRtToken, 'clear-seg': scnClearSeg, 'sheet-seg': scnSheetSeg, narrow: scnNarrow };
 module.exports = { seg, handWeek, ROW, HAND, guard, appConsole, SCN };
 if (require.main === module) {
   // The tiles scenario's fixture carries reason «zzz» on purpose: its one logError line is asserted there (count 1).
