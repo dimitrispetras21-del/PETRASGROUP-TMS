@@ -1377,7 +1377,7 @@ const OrdersWeekView = (() => {
     if (e.mode === 'amt' || it.state === 'blocked') {
       const what = O.isSelfDelivery(f) ? 'αυτοπαράδοση' : 'ΤΠΥ ' + (f['Invoice Number'] || '—');
       if (io.priceLocked(f)) {
-        return head('Τιμή') + `<div class="owv-ed-m">Τιμολογημένη (${esc(what)}): την τιμή την αλλάζει μόνο ο owner ή το λογιστήριο.</div>${err}`;
+        return head('Τιμή') + `<div class="owv-ed-m">${esc(io.priceLockText(f))} (${esc(what)}).</div>${err}<div class="owv-ed-foot">${undo}</div>`;
       }
       const blocked = it.state === 'blocked', inv = it.state === 'invoiced';
       const last = blocked && typeof OrdersNoPrice !== 'undefined' && OrdersNoPrice.lastPriceHint ? OrdersNoPrice.lastPriceHint(rec, OrdersData.all(S.data.set)) : null;

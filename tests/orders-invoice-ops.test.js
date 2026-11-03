@@ -66,6 +66,11 @@ test('an invoiced order\'s price: owner and accountant only (owner 3/11) — the
   }
   global.ROLE = 'dispatcher';
   assert.strictEqual(IO.priceLocked({ Price: 5 }), false, 'not invoiced: never locked');
+  // a stock LOT's price freezes with its invoice for everyone (the base: lot_invoiced) — no box she would type in vain
+  global.ROLE = 'accountant';
+  assert.strictEqual(IO.priceLocked(Object.assign({ 'Own Stock Lot': true }, inv)), true, 'invoiced lot: locked for the accountant too');
+  assert.match(IO.priceLockText(Object.assign({ 'Own Stock Lot': true }, inv)), /Η παρτίδα τιμολογήθηκε/);
+  assert.strictEqual(IO.priceLocked({ 'Own Stock Lot': true, Price: 5 }), false, 'a lot not invoiced: open');
   delete global.ROLE;
 });
 

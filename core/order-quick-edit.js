@@ -40,7 +40,13 @@ const OrderQuickEdit = (() => {
   // The screens ask before (InvoiceOps.confirmPrice); this form, itself a modal that a confirm dialog would
   // replace, says it in the note under the price box, before «Αποθήκευση».
   const PRICE_ROLES = Object.freeze(['owner', 'accountant']);
-  const priceLocked = f => invoiced(f) && !PRICE_ROLES.includes(typeof ROLE !== 'undefined' ? ROLE : '');
+  // A stock LOT's price freezes with its invoice for every role (OWNER-Q4 4/10, the base's lot_invoiced; the
+  // full form makes it read-only too): nobody is offered a box the base always refuses.
+  const isLotSrc = f => typeof OrdersStock !== 'undefined' && !!OrdersStock.isLot && OrdersStock.isLot(f);
+  const priceLocked = f => invoiced(f) && (isLotSrc(f) || !PRICE_ROLES.includes(typeof ROLE !== 'undefined' ? ROLE : ''));
+  // Why it is locked, in the words the screens show (the lot's are the base's own).
+  const priceLockText = f => (isLotSrc(f) ? 'Η παρτίδα τιμολογήθηκε — η τιμή δεν αλλάζει· αναίρεσε πρώτα το τιμολόγιο'
+    : 'Τιμολογημένη — την τιμή την αλλάζει μόνο ο owner ή το λογιστήριο');
   const locked = (f, k) => k === 'Price' && priceLocked(f);
 
   function open(table, rec, onSaved) {
@@ -53,7 +59,7 @@ const OrderQuickEdit = (() => {
         ? `<textarea class="form-input" id="${id}" rows="3">${v}</textarea>`
         : `<input class="form-input" id="${id}" type="${x.type}"${x.type === 'number' ? ' min="0" step="0.01"' : ''}${locked(f, x.key) ? ' disabled' : ''} value="${v}">`;
       const why = x.key !== 'Price' || !invoiced(f) ? ''
-        : locked(f, x.key) ? '<div class="oi-note">Τιμολογημένη — την τιμή την αλλάζει μόνο ο owner ή το λογιστήριο.</div>'
+        : locked(f, x.key) ? `<div class="oi-note">${escapeHtml(priceLockText(f))}.</div>`
         : `<div class="oi-note">Τιμολογημένη (${escapeHtml(f['Self Delivery'] === true ? 'αυτοπαράδοση' : 'ΤΠΥ ' + (f['Invoice Number'] || '—'))}) — αλλαγή τιμής εδώ δεν αλλάζει το τιμολόγιο στο ERP.</div>`;
       return `<div class="form-field"><label class="form-label" for="${id}">${x.label}</label>${input}${why}</div>`;
     }).join('')
@@ -114,6 +120,6 @@ const OrderQuickEdit = (() => {
 
   // priceLocked: the ONE rule «an invoiced order's price does not change» — «Εβδομάδα» asks it through
   // InvoiceOps (modules/orders_invoice_ops.js, owner 3/11/2026), so the two never disagree.
-  return { can: allowed, open, save, changes, FIELDS, PRICE_ROLES, priceLocked: f => priceLocked(f || {}) };
+  return { can: allowed, open, save, changes, FIELDS, PRICE_ROLES, priceLocked: f => priceLocked(f || {}), priceLockText: f => priceLockText(f || {}) };
 })();
 if (typeof module !== 'undefined') module.exports = OrderQuickEdit;

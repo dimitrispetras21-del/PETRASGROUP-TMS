@@ -83,6 +83,7 @@ const InvoiceOps = (() => {
   // copied. Without it every invoiced price stays locked (never an unpriced
   // one — that would say «τιμολογημένη» of an order that is not).
   const priceLocked = f => (typeof OrderQuickEdit !== 'undefined' && OrderQuickEdit.priceLocked ? OrderQuickEdit.priceLocked(f) : OrdersCommon.isInvoiced(f));
+  const priceLockText = f => (typeof OrderQuickEdit !== 'undefined' && OrderQuickEdit.priceLockText ? OrderQuickEdit.priceLockText(f) : 'Τιμολογημένη — η τιμή δεν αλλάζει από εδώ');
   // Owner + accountant (config.js costs:'full', «Προς τιμολόγηση» since 28/9);
   // the Worker checks the role again on PATCH.
   const canWrite = () => typeof can === 'function' && can('costs') === 'full';
@@ -157,7 +158,7 @@ const InvoiceOps = (() => {
     { title: 'Αλλαγή τιμής τιμολογημένης', confirmLabel: 'Αλλαγή τιμής', danger: true });
   };
 
-  return { normTpy, dupCheck, dateCheck, tpyHints, invoiceFields, selfFields, undoFields, tpyFields, isLot, selfAllowed, priceLocked, canWrite, tableOf,
+  return { normTpy, dupCheck, dateCheck, tpyHints, invoiceFields, selfFields, undoFields, tpyFields, isLot, selfAllowed, priceLocked, priceLockText, canWrite, tableOf,
     writeInvoice, writeSelf, writeUndo, writeTpy, writePrice, confirmDup, confirmEdit, confirmUndo, confirmPrice };
 })();
 

@@ -986,7 +986,7 @@ const OrdersInvoicingView = (() => {
       if (S.selId === it.id && S.ctx.isCurrent()) paintCard();
       return;
     }
-    S.busy = false;
+    S.busy = false; S.editPrice = null;
     it.rec.fields['Invoiced'] = false;
     delete it.rec.fields['Invoice Number'];
     delete it.rec.fields['Invoice Date'];
@@ -1101,9 +1101,9 @@ const OrdersInvoicingView = (() => {
   function select(id) { S.selId = id; S.closed = false; S.edit = null; S.editPrice = null; S.formErr = ''; S.draft = null; S.reopenErr = null;
     document.querySelectorAll('#oivBody tr.oiv-r').forEach(tr => tr.classList.toggle('on', tr.dataset.id === id));
     paintCard(); }
-  function close() { S.selId = null; S.closed = true; paintCard(); document.querySelectorAll('#oivBody tr.oiv-r.on').forEach(tr => tr.classList.remove('on')); }
-  function setTab(t) { S.tab = t; S.selId = null; S.closed = false; S.formErr = ''; paintParts(); }
-  function pickWeek(w) { S.sel = w; S.selId = null; S.closed = false; S.formErr = ''; if (w === 'open' && S.tab === 'invoiced') S.tab = 'ready'; paintParts(); }
+  function close() { S.selId = null; S.closed = true; S.editPrice = null; paintCard(); document.querySelectorAll('#oivBody tr.oiv-r.on').forEach(tr => tr.classList.remove('on')); }
+  function setTab(t) { S.tab = t; S.selId = null; S.closed = false; S.formErr = ''; S.editPrice = null; paintParts(); }
+  function pickWeek(w) { S.sel = w; S.selId = null; S.closed = false; S.formErr = ''; S.editPrice = null; if (w === 'open' && S.tab === 'invoiced') S.tab = 'ready'; paintParts(); }
   function shift(dir) {
     const cur = OC().weekStartOfYmd(today());
     const next = OC().addDays(S.stripEnd, 7 * dir);
