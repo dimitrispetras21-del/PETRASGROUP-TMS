@@ -851,9 +851,13 @@ async function scnPaint(browser, origin) {
     const txt = (oid, sel) => { const r = row(oid); const e = r && r.querySelector(sel); return e ? e.textContent.trim() : null; };
     const outsideChip = [...document.querySelectorAll('#content .wi4 .wi4-row .wi4-leg')].flatMap(leg => {
       const w = document.createTreeWalker(leg, NodeFilter.SHOW_TEXT); const hits = []; let n;
-      while ((n = w.nextNode())) if (/\b\d{1,2}\/\d{1,2}\b/.test(n.nodeValue) && !n.parentElement.closest('.wi4-dc, .wi4-gap, .wi4-noexp')) hits.push(n.nodeValue.trim());
+      while ((n = w.nextNode())) if (/\b\d{1,2}\/\d{1,2}\b/.test(n.nodeValue) && !n.parentElement.closest('.wi4-dc, .wi4-gap, .wi4-noexp, .wi4-pt-dd')) hits.push(n.nodeValue.trim());
       return hits;
     });
+    // Owner 3/11: an import leg carries a delivery chip, the loading chip's twin (.wi4-l-dd .wi4-dc, 70px).
+    const impLegs = [...document.querySelectorAll('#content .wi4 .wi4-row .wi4-c-imp .wi4-leg')];
+    const impDays = impLegs.map(l => { const c = l.querySelector(':scope > .wi4-l-dd > .wi4-dc'); const c0 = l.querySelector(':scope > .wi4-l-date > .wi4-dc');
+      return c && c0 && c.getBoundingClientRect().width === c0.getBoundingClientRect().width && c.getBoundingClientRect().height === c0.getBoundingClientRect().height ? c.textContent.trim() : null; });
     const done = row('recWiE001') && row('recWiE001').querySelector('.wi4-c-exp .wi4-dc.done');
     const doneBorder = done ? getComputedStyle(done) : null;
     // Row chips only: the queue band's cards carry a red chip for a NO_TRUCK
@@ -863,14 +867,15 @@ async function scnPaint(browser, origin) {
     const lastSep = [...document.querySelectorAll('#content .wi4 .wi4-day-body')].map(b => b.lastElementChild && getComputedStyle(b.lastElementChild).borderBottomWidth);
     return { grpRef: txt('recWiE011', '.wi4-c-exp .wi4-ref'), impRef: txt('recWiE001', '.wi4-c-imp .wi4-ref'), outsideChip,
       done: !!done, doneFrame: doneBorder && doneBorder.borderTopStyle !== 'none' && !/rgba\(0, 0, 0, 0\)|transparent/.test(doneBorder.borderTopColor),
-      redChipRows, plates, ink: token('--wi4-ink'), lastSep,
+      redChipRows, plates, ink: token('--wi4-ink'), lastSep, impDays,
       pe: !!(row('recWiE001') && row('recWiE001').querySelector('.wi4-l-pal .wi4-pe')) };
   }, [ROW_JS, TOKEN_JS]);
   ok(scn, '(a) a groupage shows «3 φορτία» in place of ΑΝΑΦ.', /3 φορτία/.test(d.grpRef || ''), d.grpRef);
   ok(scn, '(b) ΑΝΑΦ. also under the matched import\'s date', /REF-I001/.test(d.impRef || ''), d.impRef);
   // Owner 11/10 21:20: the VS date warning («φτάνει …») left with DATE_MISMATCH,
-  // so no date at all sits outside a chip.
-  ok(scn, '(c) no date outside a chip — no VS warning (DATE_MISMATCH gone, owner 11/10 21:20), the place line never carries one', d.outsideChip.length === 0, d.outsideChip);
+  // so no date sits outside a chip but a new day's divider (.wi4-pt-dd, owner 2/11).
+  ok(scn, '(c) no date outside a chip but a point\'s day name — no VS warning (DATE_MISMATCH gone, owner 11/10 21:20)', d.outsideChip.length === 0, d.outsideChip);
+  ok(scn, '(c2) every import leg has a delivery chip the size of its loading chip (owner 3/11)', d.impDays.length > 0 && d.impDays.every(x => x && /\d{1,2}\/\d{1,2}$|^—$/.test(x)), d.impDays);
   ok(scn, '(d) a done date is plain grey (no frame); red chips only on rows without a truck', d.done && !d.doneFrame && d.redChipRows.every(Boolean), d);
   ok(scn, '(e) own-fleet plates dark: --wi4-ink (WP3 vocabulary)', d.plates.length > 3 && d.plates.every(c => c === d.ink), { plates: [...new Set(d.plates)], ink: d.ink });
   ok(scn, '(f) no separator under the last row of a day', d.lastSep.length >= 6 && d.lastSep.every(w => w === '0px'), d.lastSep);
@@ -2413,7 +2418,10 @@ async function scnDate(browser, origin) {
   await openDatePanel(page, 'recWiE003');
   ok('date.nonVS', 'a plain order\'s chip opens «Ημερομηνία φόρτωσης»', ((await panelInfo(page)) || {}).title === 'Ημερομηνία φόρτωσης', await panelInfo(page));
   ok('date.nonVS', 'no «Βέροια» on a non-VS order', !((await panelInfo(page)) || { segs: ['Βέροια'] }).segs.includes('Βέροια'));
-  // Moved-row trace (§e #15): E003 delivery Thu → Fri.
+  // Moved-row trace (§e #15): E003 delivery Thu → Fri. The base moves the stops with the order
+  // (order_dates_follow), and the row is filed by its earliest stop (WI4.rowDt, owner 3/11): without
+  // the fake's copy of that trigger the stops stay on Thursday and so would the row.
+  S.vs = true;
   S.log = [];
   await page.locator('.wi4-datep .wi4-seg button', { hasText: 'Εκφόρτωση' }).click(); await page.waitForTimeout(100);
   await page.keyboard.press('ArrowRight'); await page.locator('.wi4-datep .wi4-datep-ft .wi4-btn.pri').click();
@@ -3305,8 +3313,9 @@ async function scnFallback(browser, origin) {
     // Since 2/11 the board's row STRUCTURE lives in WI4 too (boardRows & co, owner
     // «Α: μία κοινή πηγή»): the old board builds its rows with it, as it built them
     // with the same code inside weekly_intl.js before. Spared: a failure there breaks
-    // BOTH boards, as it always did; the scenario is v4's own paint failing.
-    const spare = new Set(['normFlag', 'v2Decide', 'readWindow', 'weekExports', 'giSortRecs', 'boardRows', 'shelvedRow']);
+    // BOTH boards, as it always did; the scenario is v4's own paint failing. rowDt (owner 3/11) dates
+    // those rows, and the old board's «γειτονικό» week label reads it.
+    const spare = new Set(['normFlag', 'v2Decide', 'readWindow', 'weekExports', 'giSortRecs', 'boardRows', 'shelvedRow', 'rowDt']);
     window.WI4 = new Proxy(real, { get(t, k) { const v = t[k]; return typeof v === 'function' && !spare.has(k) ? () => { throw new Error('rig: forced paint failure'); } : v; } });
     const le0 = window.__ev.filter(e => e.k === 'logError').length;
     // _wiPaint lives inside the old module's closure (not on window); the
@@ -3762,9 +3771,9 @@ async function scnTwoDay(browser, origin) {
   const r = await read();
   ok(scn, '#616 shape: the row sits on its FIRST delivery day (Thu 8/10)', r.e18.day === '2026-10-08', r.e18);
   ok(scn, '#616 shape: points 1, 2, then the divider «Παρ 9/10», then point 3', JSON.stringify(r.e18.seq) === JSON.stringify(['P1', 'P2', 'D:Παρ 9/10', 'P3']), r.e18.seq);
-  // Points come sorted by date (_wk3Arr, owner 10/8): the Wednesday stop is point 1 on a row filed under
-  // Thursday (stop 1's day), so point 1 is named «Τετ 7/10» and point 2 «Πέμ 8/10».
-  ok(scn, '#618 shape: row on stop 1\'s day (Thu); the earlier Wednesday point first, both points name their day', JSON.stringify(r.e17.seq) === JSON.stringify(['D:Τετ 7/10', 'P1', 'D:Πέμ 8/10', 'P2']) && r.e17.day === '2026-10-08', r.e17);
+  // The row sits on its EARLIEST delivery (WI4.rowDt, owner 3/11 «στην ημέρα του νωριτέρου»), not stop 1's
+  // day: the Wednesday stop is point 1 on a Wednesday row, and only Thursday's point 2 gets its divider.
+  ok(scn, '#618 shape: row on the earliest stop\'s day (Wed); point 1, then the divider «Πέμ 8/10», then point 2', JSON.stringify(r.e17.seq) === JSON.stringify(['P1', 'D:Πέμ 8/10', 'P2']) && r.e17.day === '2026-10-07', r.e17);
   const e19told = r.e19.seq.includes('D:Σάβ 10/10') || r.e19.seq.some(x => x.startsWith('M:') && /Σάβ/.test(x));
   ok(scn, 'E019: the Saturday point is told on the row, shown or folded', e19told && r.e19.day === '2026-10-09', r.e19.seq);
   ok(scn, 'E020: «+6» hides Fri and Sat points: the chip says «Σάβ», no divider claims «all after this is Saturday»',
@@ -4028,12 +4037,14 @@ async function scnW1440(browser, origin) {
     rf.length === 2 && rf.every(x => x.flex && x.st.every(s => s.whole) && x.diff.length >= 1 && /^άλλο φορτηγό /.test(x.diff[0].t) && x.diff[0].whole) && rf.some(x => x.st.length), rf);
   // «→ ΑΠΟΘΗΚΗ» ≤1600 is a 22px icon chip (lot-badge-eats-name-1440): the
   // warehouse name keeps ≥56px (rules 985:1117), the chip stays in its column.
+  // Not in an import leg with its delivery chip (.wi4-leg-dd): owner 3/11 chose «ίδιο κουτάκι παντού»
+  // knowing the names are cut at 1440; the chip in its column and the title still hold there.
   const pc = () => page.evaluate(() => {
     const R = e => e.getBoundingClientRect(), vis = e => e.getClientRects().length > 0;
     const lots = [...document.querySelectorAll('#content .wi4 #wi-rows .wi4-pt .wi4-l1f > .wi-b-lot')].filter(vis).map(b => {
       const nm = b.parentElement.querySelector(':scope > .wi4-ell'), to = b.closest('.wi4-l-to'), cs = getComputedStyle(b);
       return { name: nm ? Math.round(R(nm).width * 10) / 10 : 0, w: Math.round(R(b).width), fs: cs.fontSize, inCol: !!to && R(b).left >= R(to).left - 0.5 && R(b).right <= R(to).right + 0.5,
-        bg: cs.backgroundColor, bd: cs.borderTopColor, r: cs.borderTopLeftRadius, h: Math.round(R(b).height), title: !!b.title };
+        bg: cs.backgroundColor, bd: cs.borderTopColor, r: cs.borderTopLeftRadius, h: Math.round(R(b).height), title: !!b.title, dd: !!b.closest('.wi4-leg-dd') };
     });
     // The paperclip 4px after PE, in grey-2 (pallets-track-clip-gap, Figma 1097:2878).
     const clips = [...document.querySelectorAll('#content .wi4 #wi-rows .wi4-l-pal')].filter(vis).map(p => {
@@ -4048,7 +4059,7 @@ async function scnW1440(browser, origin) {
     return { lots, clips, places };
   });
   const p14 = await pc();
-  ok(scn, '1440: every lot point\'s warehouse name ≥56px; the badge a 22px chip inside its delivery column, its title kept', p14.lots.length >= 1 && p14.lots.every(l => l.name >= 56 && l.w === 22 && l.inCol && l.title), p14.lots);
+  ok(scn, '1440: every lot point\'s warehouse name ≥56px; the badge a 22px chip inside its delivery column, its title kept', p14.lots.length >= 1 && p14.lots.every(l => (l.name >= 56 || l.dd) && l.w === 22 && l.inCol && l.title), p14.lots);
   ok(scn, 'the lot badge is PE\'s family: white fill, the #e2e8f0 line, radius 3, 17px', p14.lots.every(l => l.bg === 'rgb(255, 255, 255)' && l.bd === 'rgb(226, 232, 240)' && l.r === '3px' && l.h === 17), p14.lots);
   ok(scn, '1440: the paperclip sits 4±1px after PE, rgb(91, 107, 127), 12px', p14.clips.length >= 1 && p14.clips.every(c => Math.abs(c.dx - 4) <= 1 && c.c === 'rgb(91, 107, 127)' && c.w === 12), p14.clips);
   ok(scn, 'single-stop place lines with a country read «City, CC»', p14.places.length >= 3 && p14.places.every(t => /, [A-Z]{2}$/.test(t)), p14.places);

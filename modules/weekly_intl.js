@@ -881,7 +881,8 @@ function _wiBuildRows(){
     });
     // Cross-week (feedback dispatcher 19/5): an import of W±1 is «γειτονικό»,
     // its own section at the end, out of the tally (adj from WI4.boardRows).
-    if(r.type==='import') r.adjW=r.adj?_wiWeekOf(f['Loading DateTime']):null;
+    // adj follows WI4.rowDt (the earliest loading, owner 3/11): its week label must too.
+    if(r.type==='import') r.adjW=r.adj?_wiWeekOf(WI4.rowDt(f,'import',toLocalDate)):null;
   }
   WINTL.rows=built.rows;
   WINTL._seq=built.created;

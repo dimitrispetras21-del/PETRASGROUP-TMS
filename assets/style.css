@@ -7601,7 +7601,7 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
      rows      .wi4-row .wi4-subrow .wi4-splithd .wi4-msg .wi4-trace · columns .wi4-c-idx
                .wi4-c-fl .wi4-c-exp .wi4-c-asg .wi4-c-imp .wi4-c-fr .wi4-c-span
                · rails .wi4-r-red (solid) .wi4-r-amb (dashed) · .wi4-dim .wi4-focus .wi4-hl .wi4-mhl
-     leg       .wi4-leg · .wi4-l-date .wi4-l-from .wi4-l-arr .wi4-l-to .wi4-l-pal .wi4-l-span
+     leg       .wi4-leg(.wi4-leg-dd) · .wi4-l-date .wi4-l-from .wi4-l-arr .wi4-l-dd .wi4-l-to .wi4-l-pal .wi4-l-span
                · text .wi4-l1 .wi4-l2 .wi4-ell .wi4-ref .wi4-t-red/.wi4-t-amb/.wi4-t-blue/.wi4-t-g2
      points    .wi4-pts(.wi4-noplace) .wi4-pt .wi4-pt-n .wi4-more(.wi4-more-nd) .wi4-more-d .wi4-pt-nd .wi4-pt-dd .wi4-ok .wi4-delay
                · line 2 .wi4-l2f(.wi4-l2p) .wi4-pt-pl .wi4-pt-pal
@@ -8445,13 +8445,13 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 /* Chip + ΑΝΑΦ. under it = 16 + 12 = 28px inside the locked 32px row (review
    11/10: 18 + 13 = 31px and the ref touched the next row's border). The
    chip keeps 18px everywhere else (queue cards). */
-.wi4-l-date .wi4-dc { height:16px; line-height:14px; }
+:is(.wi4-l-date, .wi4-l-dd) .wi4-dc { height:16px; line-height:14px; }
 /* Every row chip is the 70px DateChip (Figma 898:12 / 898:14: w70, px 6,
    centred): sized to its text (51–61px) the date column looked ragged, and
    the done chip's padding 0 put its ✓ on the cell edge. Rows only — the
    queue's chips keep their own size. */
-.wi4-l-date .wi4-dc { width:70px; justify-content:center; padding:0 6px; box-sizing:border-box; }
-.wi4-l-date .wi4-dc.done { padding:0 6px; }
+:is(.wi4-l-date, .wi4-l-dd) .wi4-dc { width:70px; justify-content:center; padding:0 6px; box-sizing:border-box; }
+:is(.wi4-l-date, .wi4-l-dd) .wi4-dc.done { padding:0 6px; }
 /* ΑΝΑΦ. = Regular 10 / 11, 6px in (Figma 1097:2662): the text starts under
    the chip's text, not its frame. Stack 16 + 11 = 27 ≤ 28. */
 .wi4-l-date .wi4-ref { padding-left:6px; font-size:10px; line-height:11px; }
@@ -8460,6 +8460,16 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 .wi4-l-to   { grid-column:7; position:relative; min-width:0; }
 .wi4-l-pal  { grid-column:9; display:flex; align-items:center; justify-content:flex-end; gap:4px; }
 .wi4-l-span { grid-column:1 / -1; min-width:0; }
+/* An import's delivery chip (owner 3/11, the loading chip's twin): its own 70px column after the
+   arrow; the two points columns share what is left (_layout measures them apart, _ptsWn). */
+.wi4-leg.wi4-leg-dd { grid-template-columns:70px 8px minmax(0,1fr) 8px 13px 8px 70px 8px minmax(0,1fr) 8px 72px; }
+.wi4-leg-dd > .wi4-l-dd  { grid-column:7; min-width:0; display:flex; align-items:center; }
+.wi4-leg-dd > .wi4-l-to  { grid-column:9; }
+.wi4-leg-dd > .wi4-l-pal { grid-column:11; }
+/* Owner 3/11 «ίδιο κουτάκι παντού»: at 1440 a points column of such a leg is under one point + «+N»
+   (56 + 8 + 34px), so the point gives way (its name cut, the whole name in its title and the «+N»
+   table) rather than push «+N» onto the delivery chip. */
+.wi4-leg-dd .wi4-pts > .wi4-pt { min-width:0; }
 .wi4-l1 { display:block; font-size:12px; font-weight:500; line-height:14px; color:var(--wi4-ink); }
 .wi4-l2 { display:block; font-size:10.5px; line-height:13px; color:var(--wi4-grey-2); }
 .wi4-ref { font-size:10.5px; line-height:13px; color:var(--wi4-grey-2); }
