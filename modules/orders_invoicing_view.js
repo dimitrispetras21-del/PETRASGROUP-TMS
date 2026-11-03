@@ -32,7 +32,9 @@ const OrdersInvoicingView = (() => {
   const DIR_WORD = { 'Export': 'Εξαγωγή', 'Import': 'Εισαγωγή', 'North→South': 'Κάθοδος', 'South→North': 'Άνοδος' };
   const dirWord = f => DIR_WORD[(f || {})['Direction']] || '';
   const linkId = v => (Array.isArray(v) ? v[0] : (typeof v === 'string' ? v : null)) || null;
-  const normTpy = s => String(s == null ? '' : s).trim().toLowerCase();
+  // The invoicing rules and writes: modules/orders_invoice_ops.js, ONE copy shared with «Εβδομάδα» (owner 3/11/2026).
+  const IO = typeof InvoiceOps !== 'undefined' ? InvoiceOps : require('./orders_invoice_ops.js');
+  const { dupCheck, dateCheck, invoiceFields, selfFields, undoFields } = IO;
   // Search ignores case AND accents: Greek is typed without τόνος more often
   // than with it («γαλακτοκομικη» must find «Γαλακτοκομική»).
   const fold = s => String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -203,20 +205,6 @@ const OrdersInvoicingView = (() => {
     }
     return k;
   }
-  // Is this ΤΠΥ already on another invoiced order of the loaded set? Same
-  // client = normal (one ERP invoice often covers several orders); another
-  // client = almost certainly a typo, so the write asks first.
-  function dupCheck(items, number, self) {
-    const n = normTpy(number);
-    const out = { same: [], other: [] };
-    if (!n) return out;
-    for (const it of items) {
-      if (it.id === self.id || it.state !== 'invoiced') continue;
-      if (normTpy(it.f['Invoice Number']) !== n) continue;
-      (it.clientId && it.clientId === self.clientId ? out.same : out.other).push(it);
-    }
-    return out;
-  }
   // After an invoice: the next ready order of the SAME client (the ERP invoice
   // is usually still open on her screen), else the next ready order below.
   function nextReady(groups, doneId, clientId) {
@@ -227,30 +215,6 @@ const OrdersInvoicingView = (() => {
     const after = groups.slice(gi + 1).flatMap(g => g.items).find(it => it.state === 'ready');
     return after || flat.find(it => it.state === 'ready' && it.id !== doneId) || null;
   }
-  // Date rules of the ERP invoice: after today = error (an invoice cannot be
-  // issued tomorrow). Before the delivery is normal since B0 (owner 21/10/2026:
-  // invoiced from registration) — the old «πριν την παράδοση — σίγουρα;» would
-  // now fire on most invoices, and a warning that always fires is never read.
-  function dateCheck(dateYmd, todayYmd) {
-    if (!dateYmd || !/^\d{4}-\d{2}-\d{2}$/.test(dateYmd)) return { error: 'συμπλήρωσε ημερομηνία' };
-    if (dateYmd > todayYmd) return { error: 'μετά τη σημερινή (' + OrdersCommon.dm(todayYmd) + ')' };
-    return {};
-  }
-  // The three fields — nothing else (no Status: «Invoiced» is a checkbox, not a
-  // lifecycle status, owner 23/8 locked; migration 014 CHECK would refuse it).
-  const invoiceFields = (n, d) => ({ 'Invoiced': true, 'Invoice Number': n, 'Invoice Date': d });
-  // «Αυτοπαράδοση» (101): invoiced with no ERP number — the base and the Worker
-  // let it through only with Self Delivery true, and 101's CHECK only with NO
-  // number — sent as null, so the write never depends on what the row held.
-  // The date is the day she ticks it.
-  const selfFields = d => ({ 'Invoiced': true, 'Self Delivery': true, 'Invoice Number': null, 'Invoice Date': d });
-  // Invoiced off and the ERP number/date cleared — migration 043 only guards
-  // the transition TO true, the Worker lets this through. A self delivery clears
-  // its box IN THE SAME write: unticking it alone on an invoiced row is refused
-  // (101 — it never clears Invoiced by itself). Only then is the label sent, so
-  // an ordinary undo never depends on it.
-  const undoFields = self => Object.assign({ 'Invoiced': false, 'Invoice Number': null, 'Invoice Date': null }, self ? { 'Self Delivery': false } : {});
-
   // ERP address in one line: «Via Emilia 12, 41121 Modena, IT».
   function addressLine(c) {
     if (!c) return '';
@@ -334,10 +298,9 @@ const OrdersInvoicingView = (() => {
   };
   const esc = s => escapeHtml(String(s == null ? '' : s));
   const OC = () => OrdersCommon;
-  const canWrite = () => typeof can === 'function' && can('costs') === 'full';
+  const canWrite = IO.canWrite;
   const isOwner = () => typeof ROLE !== 'undefined' && ROLE === 'owner';
   const today = () => OrdersCommon.today();
-  const tableOf = it => (it.type === 'intl' ? TABLES.ORDERS : TABLES.NAT_ORDERS);
   const itemById = id => S.all.find(it => it.id === id) || null;
   const info = id => S.clientInfo.get(id) || null;
 
@@ -579,7 +542,7 @@ const OrdersInvoicingView = (() => {
   // copies into the ERP) and, for the owner only, the revenue split per RT.
   // Both are read on demand for the selected lot and repaint only their own
   // section; a failed read says so in red — never an empty list.
-  const isLotIt = it => it.type === 'intl' && typeof OrdersStock !== 'undefined' && OrdersStock.isLot(it.f);
+  const isLotIt = IO.isLot;
   const lotRecOf = it => OrdersStock.lotRecOfLot(it.f);
 
   const lotOf = it => (S.set && S.set.stock ? S.set.stock.get(lotRecOf(it)) : null) || null;
@@ -824,11 +787,7 @@ const OrdersInvoicingView = (() => {
     if (errEl) errEl.scrollIntoView({ block: 'nearest' });
   }
 
-  // «Αυτοπαράδοση» beside the ΤΠΥ (owner 2/11/2026): one tick = invoiced, no
-  // number. Offered wherever the ΤΠΥ or the price is asked for — a self
-  // delivery often has no price, and needs none (101). Not on an UNPRICED stock
-  // lot: 057 freezes a lot source's price once it is invoiced, so it could
-  // never get one (code review xhigh 2/11) — its price first, then the box.
+  // «Αυτοπαράδοση» beside the ΤΠΥ (owner 2/11/2026) — where it is offered: IO.selfAllowed.
   function selfBox(it) {
     return `<label class="oiv-self"><input type="checkbox" id="oivSelf" ${S.busy ? 'disabled' : ''} onchange="OrdersInvoicingView.markSelf('${esc(it.id)}', this)">
       <span><b>Αυτοπαράδοση</b><span class="oiv-muted"> · δικό μας φορτίο, χωρίς ΤΠΥ</span></span></label>`;
@@ -907,13 +866,8 @@ const OrdersInvoicingView = (() => {
     const n = numEl.value.trim();
     const dc = dateCheck(dateEl.value, today());
     const dup = dupCheck(S.all, n, it);
-    const lines = [];
-    if (dc.error) lines.push(`<span class="oiv-bad">Ημερομηνία ${esc(dc.error)}</span>`);
-    else lines.push('<span class="oiv-muted">σήμερα ή παλαιότερη</span>');
-    if (dup.other.length) lines.push(`<span class="oiv-warn">Ο ΤΠΥ ${esc(n)} υπάρχει ήδη στην ${esc(dup.other[0].num)} άλλου πελάτη (${esc(dup.other[0].client)})</span>`);
-    else if (dup.same.length) lines.push(`<span class="oiv-muted">Ο ίδιος ΤΠΥ καλύπτει ήδη ${dup.same.map(x => esc(x.num)).join(', ')} του ίδιου πελάτη — ένα τιμολόγιο για πολλές παραγγελίες</span>`);
     dateEl.classList.toggle('bad', !!dc.error);
-    hint.innerHTML = lines.join('<br>');
+    hint.innerHTML = IO.tpyHints(n, dc, dup).map(h => `<span class="oiv-${h.kind}">${esc(h.text)}</span>`).join('<br>');
     btn.disabled = S.busy || !n || !!dc.error;
   }
   function formKey(e) { if (e.key === 'Enter') { e.preventDefault(); submit(); } }
@@ -940,8 +894,7 @@ const OrdersInvoicingView = (() => {
     const dup = dupCheck(S.all, num, it);
     if (dup.other.length) {
       const o = dup.other[0];
-      const ok = await confirmAction(`Ο ΤΠΥ ${num} υπάρχει ήδη στην ${o.num} άλλου πελάτη (${o.client}).\nΈνα τιμολόγιο ERP δεν αφορά δύο πελάτες — έλεγξε τον αριθμό. Καταχώριση παρ' όλα αυτά;`,
-        { title: 'Ο ΤΠΥ υπάρχει ήδη', confirmLabel: 'Καταχώριση', danger: true });
+      const ok = await IO.confirmDup(o, num);
       if (!ok) { const el = document.getElementById('oivNum'); if (el) el.focus(); return; }
     }
     await writeInvoice(it, num, d);
@@ -952,7 +905,7 @@ const OrdersInvoicingView = (() => {
     const btn = document.getElementById('oivSave'); if (btn) { btn.disabled = true; btn.textContent = 'Καταχώριση…'; }
     const fields = invoiceFields(num, d);
     try {
-      await atPatch(tableOf(it), it.id, fields);
+      await IO.writeInvoice(it, num, d);
     } catch (e) {
       // The Worker/043 refusal (422, Greek text) or a 403 — shown in the card
       // where she is looking; core/api.js has already raised the red toast.
@@ -978,16 +931,13 @@ const OrdersInvoicingView = (() => {
   // write — the Worker's answer decides, as savePrice does with the price.
   async function markSelf(id, box) {
     const it = itemById(id);
-    if (!it || S.busy || !canWrite() || (it.state !== 'ready' && it.state !== 'blocked') || (it.state === 'blocked' && isLotIt(it))) { if (box) box.checked = false; return; }
+    if (!it || S.busy || !canWrite() || !IO.selfAllowed(it)) { if (box) box.checked = false; return; }
     S.busy = true; S.formErr = '';
     if (box) box.disabled = true;
     const d = today();
     const fields = selfFields(d);
     try {
-      const res = await atPatch(tableOf(it), it.id, fields);
-      if (res && res._offline) throw new Error('Εκτός σύνδεσης — δεν γράφτηκε ακόμη');
-      const back = (res && res.fields) || {};
-      if (back['Self Delivery'] !== true || back['Invoiced'] !== true) throw new Error('ο διακομιστής δεν επιβεβαίωσε την αυτοπαράδοση');
+      await IO.writeSelf(it, d);
     } catch (e) {
       // The Worker/101 refusal (422) or a 403 — in the card, where she looks.
       // The set may have changed on the server: re-read it next time.
@@ -1013,13 +963,10 @@ const OrdersInvoicingView = (() => {
     const self = OC().isSelfDelivery(it.rec.fields);
     const num = it.f['Invoice Number'] || '—';
     const what = self ? 'αυτοπαράδοση' : 'ΤΠΥ ' + num;
-    if (ask && !(await confirmAction(self
-      ? `Αναίρεση τιμολόγησης της ${it.num} (αυτοπαράδοση);\nΗ παραγγελία ξαναγίνεται «προς κοπή», η αυτοπαράδοση και η ημερομηνία σβήνουν.`
-      : `Αναίρεση τιμολόγησης της ${it.num} (ΤΠΥ ${num});\nΗ παραγγελία ξαναγίνεται «προς κοπή», ο αριθμός και η ημερομηνία σβήνουν. Το τιμολόγιο στο ERP ΔΕΝ ακυρώνεται από εδώ.`,
-      { title: 'Αναίρεση τιμολόγησης', confirmLabel: 'Αναίρεση', danger: true }))) return;
+    if (ask && !(await IO.confirmUndo(it, self))) return;
     S.busy = true; S.formErr = '';
     try {
-      await atPatch(tableOf(it), it.id, undoFields(self));
+      await IO.writeUndo(it, self);
     } catch (e) {
       S.busy = false; S.formErr = (e && e.message) || 'Η αναίρεση απέτυχε';
       if (S.selId === it.id && S.ctx.isCurrent()) paintCard();
@@ -1047,13 +994,12 @@ const OrdersInvoicingView = (() => {
     if (!num) { S.formErr = 'Συμπλήρωσε τον αριθμό ΤΠΥ του ERP'; paintCard(); return; }
     const dc = dateCheck(d, today());
     if (dc.error) { S.formErr = 'Ημερομηνία ' + dc.error; paintCard(); return; }
-    const old = it.f['Invoice Number'] || '—';
-    if (!(await confirmAction(`Η παραγγελία ${it.num} είναι ήδη τιμολογημένη.\nΟ αριθμός ${old} θα αντικατασταθεί από ${num}.`, { title: 'Διόρθωση ΤΠΥ', confirmLabel: 'Διόρθωση' }))) return;
+    if (!(await IO.confirmEdit(it, num))) return;
     const dup = dupCheck(S.all, num, it);
-    if (dup.other.length && !(await confirmAction(`Ο ΤΠΥ ${num} υπάρχει ήδη στην ${dup.other[0].num} άλλου πελάτη (${dup.other[0].client}). Διόρθωση παρ' όλα αυτά;`, { title: 'Ο ΤΠΥ υπάρχει ήδη', confirmLabel: 'Διόρθωση', danger: true }))) return;
+    if (dup.other.length && !(await IO.confirmDup(dup.other[0], num, true))) return;
     S.busy = true;
-    const fields = { 'Invoice Number': num, 'Invoice Date': d };
-    try { await atPatch(tableOf(it), it.id, fields); }
+    const fields = IO.tpyFields(num, d);
+    try { await IO.writeTpy(it, num, d); }
     catch (e) { S.busy = false; S.formErr = (e && e.message) || 'Η διόρθωση απέτυχε'; if (S.ctx.isCurrent()) paintCard(); return; }
     S.busy = false; S.edit = null; S.formErr = '';
     Object.assign(it.rec.fields, fields);
@@ -1076,11 +1022,7 @@ const OrdersInvoicingView = (() => {
     S.busy = true; S.formErr = '';
     const btn = document.getElementById('oivPriceSave'); if (btn) { btn.disabled = true; btn.textContent = 'Αποθήκευση…'; }
     try {
-      const res = await atPatch(tableOf(it), it.id, { 'Price': n });
-      if (res && res._offline) throw new Error('Εκτός σύνδεσης — η τιμή δεν γράφτηκε ακόμη');
-      const back = OC().price(res && res.fields);
-      if (!(back > 0)) throw new Error('ο διακομιστής δεν επέστρεψε την τιμή');
-      if (Math.abs(back - n) > 0.005) throw new Error(`γράφτηκε ${OC().eur(back)} αντί για ${OC().eur(n)}`);
+      const back = await IO.writePrice(it, n);
       it.rec.fields['Price'] = back;
       S.draftPrice = null;
       if (typeof OrdersNoPrice !== 'undefined' && OrdersNoPrice.noteFilled) OrdersNoPrice.noteFilled(it.type, it.id, back);

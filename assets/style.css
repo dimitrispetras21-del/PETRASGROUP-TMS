@@ -10529,6 +10529,35 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .owv-doc-t { font-weight:700; font-size:12px; letter-spacing:.4px; text-transform:uppercase; color:var(--text-mid); margin:0 0 6px; }
 .owv-doc-f { display:block; width:100%; height:1180px; border:1px solid var(--border); border-radius:6px; background:#fff; }
 @media print { .owv-docs { display:none; } }
+/* «Εβδομάδα»: ΤΠΥ / ΠΟΣΟ open the invoicing editor under the order line (owner 3/11, Eirini's main table).
+   Under the line, not a floating panel: it scrolls with the board and never covers the next line's ΤΠΥ. */
+.ow4-edc { cursor:pointer; border-radius:4px; }
+.ow4-edc:hover, .ow4-edc:focus-visible { background:var(--accent-light); box-shadow:inset 0 0 0 1px var(--accent-glow); outline:none; }
+.ow4-ed-on { background:var(--accent-light); }
+.owv-ed { margin:2px 6px 8px; padding:10px 12px; background:var(--bg-card); border:1px solid var(--accent); border-radius:8px;
+  box-shadow:0 6px 18px rgba(11,25,41,.10); font-size:12.5px; cursor:default; text-align:left; direction:ltr; }
+.owv-ed-h { display:flex; align-items:center; gap:8px; margin-bottom:8px; min-width:0; }
+.owv-ed-h b { font-family:'Syne',sans-serif; font-size:12px; letter-spacing:.4px; text-transform:uppercase; white-space:nowrap; }
+.owv-ed-h span { color:var(--text-mid); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.owv-ed-x { margin-left:auto; background:none; border:none; color:var(--text-mid); font-size:18px; line-height:1; cursor:pointer; }
+.owv-ed-r { display:flex; flex-wrap:wrap; align-items:flex-end; gap:8px; }
+.owv-ed-r label { display:flex; flex-direction:column; gap:3px; font-size:11px; color:var(--text-mid); }
+.owv-ed-in { height:30px; width:140px; padding:0 8px; border:1px solid var(--border); border-radius:6px; font:inherit; font-size:13px; color:var(--text); background:var(--bg-card); }
+.owv-ed-in:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-glow); }
+.owv-ed-in.bad { border-color:var(--danger); }
+.owv-ed-save { height:30px; padding:0 12px; border:none; border-radius:6px; background:var(--accent); color:#fff; font-weight:600; font-size:12.5px; cursor:pointer; white-space:nowrap; }
+.owv-ed-save:hover { background:var(--accent-hover); }
+.owv-ed-save[disabled], .owv-ed-undo[disabled] { opacity:.55; cursor:default; }
+.owv-ed-save kbd { font:inherit; font-size:10.5px; opacity:.75; margin-left:4px; }
+.owv-ed-hint { margin-top:6px; font-size:11.5px; line-height:1.5; }
+.owv-ed-m, .owv-ed-muted { color:var(--text-mid); }
+.owv-ed-warn { color:#B45309; font-weight:600; }
+.owv-ed-bad, .owv-ed-err { color:var(--danger); font-weight:600; }
+.owv-ed-err { margin-top:6px; }
+.owv-ed-self { display:flex; align-items:center; gap:6px; margin-top:8px; cursor:pointer; }
+.owv-ed-foot { display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin-top:8px; }
+.owv-ed-undo { background:none; border:none; padding:0; color:var(--danger); text-decoration:underline; font:inherit; cursor:pointer; }
+@media print { .owv-ed { display:none !important; } .ow4-ed-on { background:none; } }
 
 /* New place from an order scan (T44, modules/locations.js locScanNewHTML): an
    inline block under an unmatched stop of the scan preview, not a modal (the

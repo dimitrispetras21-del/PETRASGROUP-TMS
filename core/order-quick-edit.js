@@ -105,6 +105,8 @@ const OrderQuickEdit = (() => {
     if (typeof done.onSaved === 'function') done.onSaved(done.rec);
   }
 
-  return { can: allowed, open, save, changes, FIELDS };
+  // priceLocked: the ONE rule «an invoiced order's price does not change» — «Εβδομάδα» asks it through
+  // InvoiceOps (modules/orders_invoice_ops.js, owner 3/11/2026), so the two never disagree.
+  return { can: allowed, open, save, changes, FIELDS, priceLocked: f => locked(f || {}, 'Price') };
 })();
 if (typeof module !== 'undefined') module.exports = OrderQuickEdit;
