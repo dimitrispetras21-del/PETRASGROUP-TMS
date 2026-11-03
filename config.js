@@ -403,11 +403,22 @@ const PERMS = {
 // WN_ROAD (owner 2/11, «Αλλαγή στον δρόμο», modules/wn5_road.js): false until the Worker with POST /plan/transfer
 // (PR #239) and the SQL 098 / 099 are live; then true + config.js ?v= and SW_VERSION. false = the ✈ and right-click
 // menus as before (✈ «Αλλαγή οχήματος…»).
-const FEATURES = { ORDER_SPLIT: true, GROUP_TILES: true, STOCK_LOTS: true, WI_V2: 'on', WI_PRESENCE: false, WN_V5: 'on', WN_ROAD: false };
+// WN_COMPOSE («Σύνθεση φορτίων», modules/wn5_compose.js): false = the Veroia board as before (a browser with
+// localStorage tms_wn5_compose = '1' still opts in). Both: 'pilot' (owner 3/11) = only the users of WN_V5_USERS,
+// for one real test each before everyone; then true. Read through featureOn(), one rule for both.
+const FEATURES = { ORDER_SPLIT: true, GROUP_TILES: true, STOCK_LOTS: true, WI_V2: 'on', WI_PRESENCE: false, WN_V5: 'on', WN_ROAD: 'pilot', WN_COMPOSE: 'pilot' };
 // Pilot usernames for FEATURES.WI_V2 === 'pilot' (PLAN §2.1). Empty = nobody.
 const WI_V2_USERS = [];
 // Pilot usernames for FEATURES.WN_V5 === 'pilot' (Ε-1): only a name the owner gives. Empty = nobody.
 const WN_V5_USERS = ['dimitris'];
+// true → on; 'pilot' → on only for a user of WN_V5_USERS (read at call time: `user` is set after login); anything
+// else → off (principle 5: an unknown value stays closed).
+function featureOn(name) {
+  const v = typeof FEATURES !== 'undefined' && FEATURES ? FEATURES[name] : undefined;
+  if (v === true) return true;
+  if (v !== 'pilot') return false;
+  try { return typeof user !== 'undefined' && !!user && WN_V5_USERS.includes(user.username); } catch (_) { return false; }
+}
 // Presence beat pacing in ms (§g.4): every 5 s while the user is active, 30 s
 // once idle for 2 minutes. The Worker's next_ms can only slow it down, and the
 // client never beats faster than every 2.5 s whatever these say.
