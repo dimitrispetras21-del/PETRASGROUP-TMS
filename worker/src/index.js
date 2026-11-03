@@ -3417,6 +3417,18 @@ const RELAY_CHECK_TEXT = {
 // test/plan-contract.test.mjs reads 071, 071b, 072 and 072b and fails on a code or a
 // constraint without a text here, and on a key here with no counterpart there
 // (αρχή 8). Texts only — editing a text never changes what is allowed.
+// 104 refusals (plw_h_raise). already / gone answer 409 (someone else acted first), the rest 422.
+const PLW_RULE_TEXT = {
+  role: "Μόνο το λογιστήριο και ο owner σημειώνουν μια εβδομάδα ως ελεγμένη.",
+  week: "Η εβδομάδα πρέπει να ξεκινά Σάββατο.",
+  no_moves: "Η εβδομάδα στάλθηκε χωρίς κινήσεις ενώ δεν είναι άδεια — ανανέωσε τη σελίδα.",
+  bad_ids: "Κάποιες κινήσεις της εβδομάδας δεν υπάρχουν πια — ανανέωσε τη σελίδα.",
+  already: "Η εβδομάδα είναι ήδη ελεγμένη — ανανέωσε τη σελίδα.",
+  gone: "Το σημάδι αναιρέθηκε ή αντικαταστάθηκε στο μεταξύ — ανανέωσε τη σελίδα."
+};
+const PLW_CONFLICT = ["already", "gone"];
+// The marker of the worker guard (--wchk): ONE object naming the three 104 acts.
+var PLW_RPC = { check: "pl_week_check", uncheck: "pl_week_uncheck", changes: "pl_week_check_changes" };
 const PLAN_RULE_TEXT = {
   // 071 — deferred COMMIT rules (plan_chk) and the two direct raises
   pieces_alive: "Η αποστολή σβήστηκε αλλά έχει ακόμη ζωντανά κομμάτια — ανανέωσε τη σελίδα",
@@ -3639,6 +3651,11 @@ function stockRuleError(e) {
       code: rc,
       message: Object.prototype.hasOwnProperty.call(RELAY_RULE_TEXT, rc) ? RELAY_RULE_TEXT[rc] : `Η τοπική κίνηση δεν αποθηκεύτηκε (${rc || "χωρίς κωδικό"}): ${message}`
     };
+  }
+  // 'plw:' (104, the week's «Ελέγχθηκε» mark): the hint is the marker, as for 'plan:'.
+  if (hint.startsWith("plw:")) {
+    const wc = hint.slice("plw:".length).trim();
+    return { type: "PALLET_WEEK_RULE", code: wc, message: Object.prototype.hasOwnProperty.call(PLW_RULE_TEXT, wc) ? PLW_RULE_TEXT[wc] : `Το σημάδι της εβδομάδας δεν γράφτηκε (${wc || "χωρίς κωδικό"}): ${message}` };
   }
   // 'plan:' (071/072): same rule — the hint is the marker, whatever SQLSTATE.
   // It must come BEFORE the 23514 branch: plan_chk raises with 23514 and a
@@ -6849,14 +6866,16 @@ __name(handleDocs, "handleDocs");
 // taken/given ΠΑΝΤΑ από τη δική μας σκοπιά (taken = πήραμε εμείς).
 var PL_EVENT_TYPES = ["LOADING", "DELIVERY", "PARTNER_PICKUP", "PARTNER_DROPOFF", "RETURN_OUT", "RETURN_IN", "ADJUSTMENT"];
 var PL_PERMS = {
-  owner:      { movements: ["GET", "POST", "PATCH", "DELETE"], confirm: ["POST"], reverse: ["POST"], sheets: ["GET", "POST"], balances: ["GET"], lookups: ["GET"] },
-  dispatcher: { movements: ["GET", "POST", "PATCH", "DELETE"], confirm: ["POST"], reverse: ["POST"], sheets: ["GET", "POST"], balances: ["GET"], lookups: ["GET"] },
-  warehouse:  { movements: ["GET", "POST", "PATCH"], confirm: ["POST"], sheets: ["GET", "POST"], balances: ["GET"], lookups: ["GET"] },
+  // "week-checks" (104, the «Ελέγχθηκε» mark of the week, owner 2/11): owner + accountant mark / undo, every other
+  // pallets role reads it. No DELETE for anyone: an undo is a PATCH and the table refuses a hard delete.
+  owner:      { movements: ["GET", "POST", "PATCH", "DELETE"], confirm: ["POST"], reverse: ["POST"], sheets: ["GET", "POST"], balances: ["GET"], lookups: ["GET"], "week-checks": ["GET", "POST", "PATCH"] },
+  dispatcher: { movements: ["GET", "POST", "PATCH", "DELETE"], confirm: ["POST"], reverse: ["POST"], sheets: ["GET", "POST"], balances: ["GET"], lookups: ["GET"], "week-checks": ["GET"] },
+  warehouse:  { movements: ["GET", "POST", "PATCH"], confirm: ["POST"], sheets: ["GET", "POST"], balances: ["GET"], lookups: ["GET"], "week-checks": ["GET"] },
   // accountant DELETE (7/9/2026, Alexia go-live audit): she owns the pallet
   // ledger and the panel shows «Διαγραφή εκκρεμούς» on every pending movement;
   // without DELETE that button is a 403. Safe to grant: the handler below
   // refuses anything but pending (409), confirmed movements are only reversed.
-  accountant: { movements: ["GET", "POST", "PATCH", "DELETE"], confirm: ["POST"], reverse: ["POST"], sheets: ["GET", "POST"], balances: ["GET"], lookups: ["GET"] },
+  accountant: { movements: ["GET", "POST", "PATCH", "DELETE"], confirm: ["POST"], reverse: ["POST"], sheets: ["GET", "POST"], balances: ["GET"], lookups: ["GET"], "week-checks": ["GET", "POST", "PATCH"] },
   // MARKED CHANGE (owner 24/8/2026) — the ONLY deviation from the parked
   // source: management also reads the movements ledger (read-only).
   // Parked had balances+gate only.
@@ -6866,7 +6885,7 @@ var PL_PERMS = {
   // Promise.all([movements, lookups]) ένα 403 στο δεύτερο έριχνε ΟΛΗ τη
   // σελίδα Ισοζυγίου σε «Σφάλμα φόρτωσης» — ενώ τα άλλα τρία αιτήματα είχαν
   // απαντήσει κανονικά. Μόνο GET: το management δεν γράφει κινήσεις.
-  management: { movements: ["GET"], balances: ["GET"], gate: ["GET"], lookups: ["GET"] }
+  management: { movements: ["GET"], balances: ["GET"], gate: ["GET"], lookups: ["GET"], "week-checks": ["GET"] }
 };
 // Το gate είναι read-only «λείπει δελτίο;» — το χρειάζεται όποιος βλέπει
 // τιμολόγηση, γι' αυτό δίνεται σε όλους τους ρόλους παρακάτω.
@@ -7407,6 +7426,65 @@ async function handlePallets(request, url, origin, env) {
       if (!sg.ok) return jsonError("Sign failed", 500, origin, env);
       const data = await sg.json();
       return jsonOk({ url: `${env.SUPABASE_URL}/storage/v1${data.signedURL}` }, origin, env);
+    }
+    // ---- /pallets/week-checks (104): the week's «Ελέγχθηκε» mark ----
+    //   GET   ?from=YYYY-MM-DD&to=YYYY-MM-DD   every mark of those weeks, live and undone (the history)
+    //   GET   /:id/changes?ids=1,2,3           what changed since the mark (ids = the movements the week shows now)
+    //   POST  {week_start, movement_ids, missing_stop_ids, empty_week, again}
+    //   PATCH /:id                             undo
+    // The actor and role are the caller's (JWT), never the body. The rules live in the 104 functions (principle 4);
+    // their refusals come back Greek through stockRuleError, 409 when someone else acted first.
+    if (resource === "week-checks") {
+      const plwFail = (e) => {
+        const rule = stockRuleError(e);
+        if (rule && rule.type === "PALLET_WEEK_RULE") {
+          return jsonOk({ error: { type: rule.type, code: rule.code, message: rule.message } }, origin, env, PLW_CONFLICT.includes(rule.code) ? 409 : 422);
+        }
+        throw e;
+      };
+      const isDay = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d || "");
+      const idList = (v) => String(v || "").split(",").map((x) => x.trim()).filter(Boolean);
+      if (method === "GET" && !recId) {
+        const from = url.searchParams.get("from"), to = url.searchParams.get("to");
+        if (!isDay(from) || !isDay(to)) return jsonError("from + to required (YYYY-MM-DD)", 400, origin, env);
+        const p = new URLSearchParams();
+        p.set("select", "id,week_start,checked_by,checked_role,checked_at,undone_by,undone_at");
+        p.append("week_start", `gte.${from}`);
+        p.append("week_start", `lte.${to}`);
+        p.set("order", "checked_at.desc");
+        const { rows } = await dbSelectRaw(env, "pl_week_checks", p);
+        return jsonOk({ records: rows }, origin, env);
+      }
+      if (method === "GET" && recId && action === "changes") {
+        const ids = idList(url.searchParams.get("ids"));
+        if (!/^\d+$/.test(recId) || ids.some((x) => !/^\d+$/.test(x))) return jsonError("Invalid id", 400, origin, env);
+        try {
+          const out = await dbRpc(env, PLW_RPC.changes, { p: { id: Number(recId), movement_ids: ids.map(Number) }, p_actor: caller.sub, p_role: caller.role });
+          return jsonOk(out, origin, env);
+        } catch (e) { return plwFail(e); }
+      }
+      if (method === "POST" && !recId) {
+        const body = await request.json().catch(() => null);
+        if (!body || typeof body !== "object") return jsonError("Invalid JSON", 400, origin, env);
+        const p = {
+          week_start: body.week_start,
+          movement_ids: Array.isArray(body.movement_ids) ? body.movement_ids : [],
+          missing_stop_ids: Array.isArray(body.missing_stop_ids) ? body.missing_stop_ids : [],
+          empty_week: body.empty_week === true,
+          again: body.again === true
+        };
+        try {
+          const out = await dbRpc(env, PLW_RPC.check, { p, p_actor: caller.sub, p_role: caller.role });
+          return jsonOk({ record: out }, origin, env);
+        } catch (e) { return plwFail(e); }
+      }
+      if (method === "PATCH" && recId && !action) {
+        if (!/^\d+$/.test(recId)) return jsonError("Invalid id", 400, origin, env);
+        try {
+          const out = await dbRpc(env, PLW_RPC.uncheck, { p: { id: Number(recId) }, p_actor: caller.sub, p_role: caller.role });
+          return jsonOk({ record: out }, origin, env);
+        } catch (e) { return plwFail(e); }
+      }
     }
     return jsonError("Not found", 404, origin, env);
   } catch (e) {
