@@ -5919,3 +5919,21 @@ SELECT μετά την εκτέλεση: #525 και #528 στο RT-1240 (closed
 - node tests pallet-feed / pallet-ledger / orders-week-view: όλα πράσινα.
 
 **Ποιος:** owner 2–3/11, μέσω συντονιστή· agent.
+
+### 2026-11-03 · Παλέτες › Εβδομάδα · 104 ΕΚΤΕΛΕΣΤΗΚΕ και ο Worker ανέβηκε (3/11, ~22:30)
+**Επιλογή:** owner 3/11 («Ναι, απόψε»). Το έτρεξε από το πρόχειρο, ένα βήμα τη φορά, με τον συντονιστή.
+- **Dry run:** «104 DRY RUN OK - nothing kept (triggers 63 -> 64)».
+- **104:** «104 OK, 1, 3, 64, 64».
+- **Verify:** «104 in place, 3, 3, 1, 0, true, true, 0, 0».
+- **Worker:** ανέβηκε ο 0563b45a-0eb0-4331-9658-671372e17f0f, από το `feat/pallets-week-checks` στο b8422dfa, που περιέχει τη ζωντανή πηγή 3bb76f7b.
+  - Πριν: ζωντανός ο b329ff91, φρουρός `--road 1 --wchk 0` → GUARD OK (35).
+  - Μετά, στη λήψη CF: `--wchk 1` → GUARD OK (35).
+  - Secrets και τα τρία: ANTHROPIC_API_KEY, JWT_SECRET, SUPABASE_SERVICE_KEY.
+  - Χωρίς token: `/pallets/week-checks` 401, `/costs/rt` 401, `/auth/login` {} 400.
+  - Επαναφορά: `wrangler rollback b329ff91-5453-4262-a521-3e9ecd6eb09c`· η 104 μένει, και το «Ελέγχθηκε» κρύβεται μόνο του.
+- **Τα αρχεία του 104** βγήκαν από το `drafts/` (`worker/migrations/104_pl_week_checks*.sql`). Το σημάδι `var PLW_RPC = {` μπήκε στον φρουρό του CLAUDE.md.
+
+**Εναλλακτικές:** καμία· η σειρά ήταν η προβλεπόμενη (dry run → 104 → verify → deploy).
+**Απόδειξη:** τα αποτελέσματα πάνω, όπως τα επικόλλησε ο owner.
+**Μένει:** το πρώτο πραγματικό σημάδι της Αλεξίας. Ελέγχεται με SELECT στο `pl_week_checks` (1 γραμμή, `undone_at` null) και στο `audit_log` (`create`, `pl_week_checks`).
+**Ποιος:** owner 3/11 (εκτέλεση), συντονιστής (deploy), agent (καταγραφή).
