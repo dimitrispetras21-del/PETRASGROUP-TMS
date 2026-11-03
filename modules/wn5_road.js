@@ -1,8 +1,8 @@
 // modules/wn5_road.js — National v5, «Αλλαγή στον δρόμο» (transfer at any point, piece 5; owner 2/11 «ξεκίνα»).
 // Figma KO7l2AfucR3HJEDIg1Yptr, page «Μεταφόρτωση 2/11» (2450:7735): entry 2451:7737, window 2452:7735 / 2453:7735,
 // preview 2454:7735, states 2457:7735 (docs/national-v5/transfer-figma-2026-11-02.md). One global: WN5Road.
-// Behind FEATURES.WN_ROAD (off until the Worker with POST /plan/transfer, PR #239, is deployed): with it off the ✈ and
-// right-click menus stay as they are and nothing here runs.
+// Behind featureOn('WN_ROAD') (config.js: 'pilot' = the owner alone for the first real test, 3/11; then true): with it
+// off the ✈ and right-click menus stay as they are and nothing here runs.
 // Rules:
 //   - ONE act, POST /plan/transfer (099): «Συνέχεια ›» is its dry run (the preview of frame 4), «Αποθήκευση» its save
 //     with ONE request_id per open window (PlanApi.slot), never on a dry run (decision 44).
@@ -27,7 +27,7 @@
   const BUSY = Object.freeze(['truck_busy', 'driver_busy']);
   const _esc = (s) => K().esc(s);
   const _log = (e, where) => { try { if (typeof logError === 'function') logError(e, where); } catch (_) { /* the screen keeps its own line */ } };
-  const _on = () => typeof FEATURES !== 'undefined' && FEATURES.WN_ROAD === true;
+  const _on = () => typeof featureOn === 'function' && featureOn('WN_ROAD');
   // «1430», «14.30», «9:00» → «14:30» / «09:00» (the handover window's rule)
   const _hm = (v) => { const t = String(v == null ? '' : v).trim(); const m = /^(\d{1,2})[:.]?(\d{2})$/.exec(t); if (!m) return t; const o = `${m[1].padStart(2, '0')}:${m[2]}`; return HM.test(o) ? o : t; };
   const _pal = (n) => (n == null ? '—' : String(Math.round(Number(n) * 10) / 10).replace('.', ','));

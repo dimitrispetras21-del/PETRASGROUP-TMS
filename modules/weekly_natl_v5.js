@@ -1932,7 +1932,7 @@ const WN5 = {
       { id: 'sheet-all', label: 'Όλο το δρομολόγιο', run: (rtId) => WN5Sheet.print(rtId, 'ALL') }] },
     { id: 'plates', order: 70, label: 'Αντιγραφή πινακίδων', run: (rtId) => copyPlatesOf(rtId) },
     // owner 31/10 (B-13 = α, Figma 2396:7831): the way into the vehicle change (H2) for every cycle, also one never changed
-    // owner 2/11 (Q2, «μοναδικό κουμπί»): with FEATURES.WN_ROAD the one entry «Αλλαγή στον δρόμο…» (modules/wn5_road.js),
+    // owner 2/11 (Q2, «μοναδικό κουμπί»): with WN5Road.on() (featureOn('WN_ROAD')) the one entry «Αλλαγή στον δρόμο…» (modules/wn5_road.js),
     // which becomes the 072b change by itself when the base says whole_vehicle; without it the line above, as before
     { id: 'handover', order: 80,
       get label() { return typeof WN5Road !== 'undefined' && WN5Road.on() ? 'Αλλαγή στον δρόμο…' : 'Αλλαγή οχήματος…'; },
