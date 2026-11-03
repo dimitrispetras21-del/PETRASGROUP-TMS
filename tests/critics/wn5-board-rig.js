@@ -3989,7 +3989,16 @@ SCN.busy3 = async (browser, origin) => {
         next: ask([trip(903, [91, 81, 71], WED)], { trucks: [91], trailers: [81], drivers: [71] }),
         before: ask([trip(904, [91, 81, 71], '2026-10-12')], { trucks: [91], trailers: [81], drivers: [71] }),
         segTue: ask([hand], { trucks: [92], drivers: [72] }), segWed: txt(ask([hand], { trucks: [92], drivers: [72], days: [WED, WED] })),
-        self: ask([one], { trucks: [91], self: [901] }), partner: ask([Object.assign(trip(905, [91, null, null], TUE), { trip_type: 'PARTNER' })], { trucks: [91] }),
+        self: ask([one], { trucks: [91], self: [901] }),
+        partner: ask([Object.assign(trip(905, [null, null, null], TUE), { trip_type: 'PARTNER', partner_id: 51 })], { trucks: [91], drivers: [71] }),
+        // code review high 3/11: a trip that began with a partner keeps trip_type PARTNER on its row (072b copies the
+        // first segment); its second segment drives our TST-9091 on Tuesday — named
+        pfirst: txt(ask([Object.assign(trip(907, [null, null, null], TUE), { trip_type: 'PARTNER', partner_id: 51, segments: [
+          { segment_id: 3, trip_type: 'PARTNER', truck_id: null, trailer_id: null, driver_id: null, partner_id: 51, from_at: T(TUE, '06:00'), to_at: T(TUE, '10:00') },
+          { segment_id: 4, trip_type: 'OWNED', truck_id: 91, truck: 'TST-9091', trailer_id: null, driver_id: 71, driver: 'Driver Nine 71', from_at: T(TUE, '10:00'), to_at: T(TUE, '18:00') }] })],
+          { trucks: [91], drivers: [71] })),
+        // a vehicle whose name neither the board nor the catalogue has is still said, in a plain word, never dropped
+        noname: txt(ask([Object.assign(trip(908, [99, null, null], TUE), { truck: null })], { trucks: [99] })),
         inWeek: (ask([one], { trucks: [91] }) || {}).accept, blind: (ask([trip(906, [91, 81, 71], '2026-10-17')], { trucks: [91], days: ['2026-10-17', '2026-10-17'] }) || {}).accept,
       };
     });
@@ -4002,6 +4011,8 @@ SCN.busy3 = async (browser, origin) => {
     ok(scn, 'a handover: the truck of the Wednesday segment is not busy on Tuesday; on Wednesday it is, by its own name', r.segTue === null
       && r.segWed === 'TST-9092 / Driver Nine 72 είναι σε άλλο δρομολόγιο Τετ 14/10 · Test city 2 → Test city 5.', { segTue: r.segTue, segWed: r.segWed });
     ok(scn, 'the save\'s own trip and a partner trip are never named', r.self === null && r.partner === null, { self: r.self, partner: r.partner });
+    ok(scn, 'a trip begun with a partner whose second segment drives TST-9091: named «TST-9091 / Driver Nine 71' + R + '»', r.pfirst === 'TST-9091 / Driver Nine 71' + R, r.pfirst);
+    ok(scn, 'no name on the board or in the catalogue: «το φορτηγό' + R + '», never dropped, never an id', r.noname === 'το φορτηγό' + R, r.noname);
     ok(scn, 'in the loaded week: pre-accepted (one press); a day outside it: said, NOT pre-accepted', r.inWeek === true && r.blind === false, r);
     ok(scn, 'no hours, no RT code in any line', [r.driver, r.truck, r.trailer, r.two, r.segWed].every((t) => !!t && !/\d\d:\d\d|RT-|Επικάλυψη/.test(t)), r);
     ok(scn, 'no page errors (rule)', !S.pageErrors.length, S.pageErrors);

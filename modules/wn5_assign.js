@@ -368,13 +368,16 @@
     if (_blind(st)) return { txt: '—', cls: '' };
     const bz = k.busyOf({ [f.kind + 's']: [id], days: days || _busyDays(st), self: [st.rtId], cycles: st.cycles, week: st.week, accept: false });
     if (bz) {
-      const t = bz.trips[0], c = t.c;
+      const c = bz.trips[0].c;
       const hubLoc = k.hubId();
       const hs = (c.stops || []).find((s) => s.side === st.side && s.location_id === hubLoc);
       const sp = st.sidePal[c.rt_id] || { pal: 0, unk: 0 };
       // a trip at Veroia that day is the one this load joins (F51): its window and pallets, not a warning
       if (hs && k.stopDay(hs) === D) return { txt: 'Βέροια ' + k.hmw(hs.planned_from, hs.planned_to) + ' · ' + WN5L.palText(sp.pal, sp.unk) + 'π', cls: 'dim' };
-      return { txt: 'άλλο δρομολόγιο' + (t.route ? ' · ' + t.route : ''), cls: 'busy' };
+      // the trip this form joins is not «another» trip (code review high 3/11): its trailer and driver are copied
+      const tg = st.mode === 'vehicle' || st.who !== 'own' ? null : _target(st);
+      const t = bz.trips.find((x) => !(tg && tg.cyc && x.c.rt_id === tg.cyc.rt_id));
+      if (t) return { txt: 'άλλο δρομολόγιο' + (t.route ? ' · ' + t.route : ''), cls: 'busy' };
     }
     return { txt: f.free, cls: 'free' };
   }

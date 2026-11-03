@@ -134,12 +134,17 @@
     const hi = g && g.to_at ? _ymdOf(g.to_at) : [c.date_end, _ymdOf(c.end_at)].filter(Boolean).sort().pop();
     return [lo, hi];
   };
-  // a vehicle's or a driver's name: the board's (the trip or its segment), else the catalogue's; never an id
-  const BUSY_KINDS = Object.freeze([['truck_id', 'truck', 'truck', ''], ['trailer_id', 'trailer', 'trailer', 'θάλαμος '], ['driver_id', 'driver', 'driver', '']]);
-  function _nameOf(kind, id, g, c) {
+  // a vehicle's or a driver's name: the board's (the trip or its segment), else the catalogue's (read once per call:
+  // PlanIds.list maps and sorts it), else a plain word — never an id, and never a trip left out for want of a name
+  const BUSY_KINDS = Object.freeze([['truck_id', 'truck', 'το φορτηγό', ''], ['trailer_id', 'trailer', 'ο θάλαμος', 'θάλαμος '], ['driver_id', 'driver', 'ο οδηγός', '']]);
+  function _nameOf(kind, id, g, c, cat) {
     const n = (g && g[kind]) || (c && c[kind + '_id'] === id && c[kind]);
     if (n) return String(n);
-    try { const x = typeof PlanIds !== 'undefined' ? PlanIds.list(kind).find((v) => v.id === id) : null; return x && x.label && x.label !== '—' ? x.label : ''; } catch (e) { return ''; }
+    try {
+      if (!cat[kind]) cat[kind] = new Map((typeof PlanIds !== 'undefined' ? PlanIds.list(kind) : []).map((v) => [v.id, v.label]));
+      const x = cat[kind].get(id);
+      return x && x !== '—' ? x : '';
+    } catch (e) { return ''; }
   }
   // a trip's places in words, on the days named (else its whole route): «Larisa → Athens», the hub as «Βέροια»; the
   // city when the catalogue has it (the place's name otherwise)
@@ -159,24 +164,26 @@
     const [a, b] = o.days;
     const self = new Set((o.self || []).filter((x) => x != null));
     const ask = { truck_id: o.trucks, trailer_id: o.trailers, driver_id: o.drivers };
-    const trips = [];
+    const trips = [], cat = {};
+    // a trip's own segments decide (072b): a cycle that began with a partner keeps trip_type PARTNER on its row while
+    // a later segment drives our truck, so the trip is never skipped by its row's type — a partner segment has no ids
     for (const c of (o.cycles || _cycles()).slice().sort((x, y) => Date.parse(x.start_at) - Date.parse(y.start_at))) {
-      if (self.has(c.rt_id) || c.trip_type === 'PARTNER') continue;
+      if (self.has(c.rt_id)) continue;
       const names = [], days = new Set();
-      for (const [key, kind, , pre] of BUSY_KINDS) {
+      for (const [key, kind, word, pre] of BUSY_KINDS) {
         for (const id of [...new Set((ask[key] || []).filter((x) => x != null))]) {
           const segs = _segsOf(c).filter((g) => g[key] === id);
-          if (!segs.length && c[key] === id) segs.push(null);
           let hit = false;
           for (const g of segs) {
             const [lo, hi] = _segDays(c, g);
             for (let d = a; d <= b; d = _addDays(d, 1)) if (lo && hi && lo <= d && d <= hi) { days.add(d); hit = true; }
           }
-          const n = hit ? _nameOf(kind, id, segs.find(Boolean), c) : '';
-          if (hit && n && !names.includes(pre + n)) names.push(pre + n);
+          const nm = hit ? _nameOf(kind, id, segs[0], c, cat) : '';
+          const n = hit ? (nm ? pre + nm : word) : '';
+          if (n && !names.includes(n)) names.push(n);
         }
       }
-      if (!days.size || !names.length) continue;
+      if (!days.size) continue;
       const ds = [...days].sort();
       trips.push({ c, days: ds, route: _route(c, ds), names });
     }
@@ -388,16 +395,13 @@
   // Owner 1/11: «Υπέρβαση Χπ … — αποθηκεύτηκε» stood above every save of a full truck and did not say whether it was a
   // problem. Over 33 is allowed (F49, a warning, never a refusal) and the truck's row already says it, in its red /
   // amber pallet figure, so after a save it is quiet: only on the row. Before a save (the two-step preview, the x/33
-  // chips of Δ1 / «+») it is still said. Owner 3/11 («λιγότερα»): side_time (093, an ΑΝΟΔΟΣ before the ΚΑΘΟΔΟΣ) is
-  // quiet after a save as well: no form warns about the order of stops any more, and the base keeps its trace in
-  // audit_log (093 plan_h_reseq); the «Αλλαγή ώρας» preview still names it before its save. Every other warning of the
-  // answer is shown as before.
-  const SAVED_QUIET = Object.freeze(['over_33', 'side_time']);
-  WN5Act.savedWarnings = (ws) => (Array.isArray(ws) ? ws.filter((w) => !(w && SAVED_QUIET.includes(w.code))) : []);
-  // owner 3/11: the vehicle forms (Αλλαγή οχήματος, Αλλαγή στον δρόμο) say no stop text either: which stop goes to
-  // which vehicle (072b seg_stop_moved / seg_stop_straddles, named by #id) stays out of their preview and done line;
-  // the x/33 of a truck is its own red number there, never a line
-  const FORM_QUIET = Object.freeze(['seg_stop_moved', 'seg_stop_straddles']);
+  // chips of Δ1 / «+») it is still said. Every other warning of the answer is shown as before.
+  WN5Act.savedWarnings = (ws) => (Array.isArray(ws) ? ws.filter((w) => !(w && w.code === 'over_33')) : []);
+  // Owner 3/11 («λιγότερα»): the forms of the board (Ανάθεση, «+», Αλλαγή οχήματος, Αλλαγή στον δρόμο, Νέο φορτίο)
+  // say no stop text: side_time (093, an ΑΝΟΔΟΣ before the ΚΑΘΟΔΟΣ — the base keeps its trace in audit_log) and which
+  // stop goes to which vehicle (072b seg_stop_moved / seg_stop_straddles, named by #id) stay out of their preview and
+  // done line; the x/33 of a truck is its own red number there, never a line. The order forms keep savedWarnings.
+  const FORM_QUIET = Object.freeze(['side_time', 'seg_stop_moved', 'seg_stop_straddles']);
   WN5Act.formWarnings = (ws) => WN5Act.savedWarnings(ws).filter((w) => !(w && FORM_QUIET.includes(w.code)));
   async function _afterSave(out, okText, opts) {
     opts = opts || {};
@@ -409,7 +413,7 @@
     const rt = _id(opts.rt) || _id(out && out.ids && out.ids.rt_id);
     if (fresh && rt && typeof WN5 !== 'undefined' && typeof WN5.focusRow === 'function') WN5.focusRow('rt:' + rt);
     const host = _boardHost();
-    const ws = WN5Act.savedWarnings(out && out.warnings);
+    const ws = WN5Act.formWarnings(out && out.warnings);   // the board's own saves: the forms' rule (owner 3/11)
     if (host && ws.length) WN5Act.strip(host, ws);
     const intl = opts.intl && out && Array.isArray(out.notice_ids) && out.notice_ids.length ? ' · ενημερώθηκε και ο υπεύθυνος διεθνών' : '';
     // okText may read the answer (e.g. already:true of a cancel says «ήταν ήδη ακυρωμένη»)
