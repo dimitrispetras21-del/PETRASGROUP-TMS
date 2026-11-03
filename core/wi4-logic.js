@@ -249,7 +249,13 @@ function boardNumbers(rows, o) {
 // shelf (the board shows its stock shelf: stock on, not the warehouse role), isLoose
 // (WI_INTERNAL.loose) }. → Map(order rec id → n); an order missing from it is on no numbered
 // line of that week's board («—» on screen).
+// weekBoard: the same, keeping the board's rows (built) and its read (byId) — «Εβδομάδα» finds the board line of an
+// order with it, to show that line's assignment document (owner 2/11, «μόνο το έγγραφο της ανάθεσης να δω»).
 function weekNumbers(o) {
+  const b = weekBoard(o);
+  return numberOf(b.built, b.no);
+}
+function weekBoard(o) {
   const dayOf = o.dayOf, wsD = o.wsDate;
   const weD = new Date(wsD); weD.setDate(wsD.getDate() + 6);
   const ws = dayOf(wsD), we = dayOf(weD), win = readWindow(wsD, dayOf);
@@ -266,7 +272,7 @@ function weekNumbers(o) {
   const fOf = (row) => f(byId.get((row.orderIds && row.orderIds[0]) || row.orderId) || {});
   const nb = boardNumbers(built.rows, { ws, dayOf, fOf,
     shelved: (row) => !!o.shelf && shelvedRow(row, (r) => (byId.get(r.orderId) || {}).fields, o.isLoose) });
-  return numberOf(built, nb.no);
+  return { built, no: nb.no, byId };
 }
 
 // order id → the number of the board row that carries it: the row's orders (a group), its matched
@@ -895,7 +901,7 @@ const WI4 = freeze({
   // shared helpers
   dayDiff, dayLabel, dayRowOrder,
   // board rows and numbers (one source with «Παραγγελίες › Εβδομάδα», owner 2/11)
-  readWindow, weekExports, giSortRecs, boardRows, shelvedRow, boardNumbers, numberOf, weekNumbers,
+  readWindow, weekExports, giSortRecs, boardRows, shelvedRow, boardNumbers, numberOf, weekNumbers, weekBoard,
 });
 
 if (typeof module !== 'undefined') module.exports = WI4; else window.WI4 = WI4;
