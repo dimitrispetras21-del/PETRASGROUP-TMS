@@ -374,7 +374,8 @@
   // receiving truck's stop points to it (transfer_from_stop_id). So that stop takes A's words, never the catalogue
   // name «TRANSFER POINT (free text)» (owner test 3/11). words: stop_id → words of the stops of this preview.
   const _stopName = (d, s, words) => (s.text ? s.text
-    : (s.transfer_from_stop_id != null && words && words[s.transfer_from_stop_id]) ? words[s.transfer_from_stop_id]
+    : (s.transfer_from_stop_id != null && ((words && words[s.transfer_from_stop_id]) || (d.point && d.point.text)))
+      ? ((words && words[s.transfer_from_stop_id]) || d.point.text)
       : (s.location_id === d.hub ? 'Βέροια' : (s.place || K().placeName(s.location_id))));
   function _previewHTML(d, p) {
     const k = K(), st = d.st;
