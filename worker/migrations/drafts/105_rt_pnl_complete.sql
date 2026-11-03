@@ -25,10 +25,21 @@
 --   * view ct_v_rt_cost_cat: cost lines per round trip x category x toll country (the paper's "tolls per country",
 --     owner 3/11) - count, net, vat;
 --   * view ct_v_rt_complete: per round trip (not cancelled) done (closed / complete), missing text[] of
---     fuel | tolls | driver | partner_rate | price, complete = nothing missing. Measured 3/11 (SELECT only): closed own
+--     fuel | tolls | driver | partner_rate | price | trip_type (a type that is neither OWNED nor PARTNER is never
+--     "complete": born closed), complete = nothing missing. Measured 3/11 (SELECT only): closed own
 --     trips 14 of 158 complete (124 without a driver value), closed partner trips 33 of 35;
---   * rights, born closed (principle 5): the three new views SELECT to service_role and tms_check_runner only;
---     PUBLIC / anon / authenticated nothing. ct_v_rt_revenue keeps its rights (CREATE OR REPLACE).
+--   * rights, born closed (principle 5): the three new views SELECT to service_role and tms_check_runner and nothing
+--     else (Supabase's default ALL is revoked from every API role first); PUBLIC / anon / authenticated nothing.
+--     ct_v_rt_revenue keeps its rights (CREATE OR REPLACE).
+-- KNOWN LIMITS (said, not hidden; code review xhigh 3/11):
+--   * one line of a category = the category is there (as the Expenses screen): a partial fuel is not detected;
+--   * partner rate: "missing" when the whole planned and invoiced partner cost is 0 (model 1) or on
+--     partner_rate_missing (model 2) - a partner trip with a rate on ONE of its orders is complete (0 such trips 3/11);
+--   * an old (model 1) national load whose national order has no price adds 0 and is not flagged "price" (old
+--     nationals are without value, owner 28/10);
+--   * ct_v_rt_cost_cat is the cost LINES only: cost_net also holds the driver's value and expenses, wear and the planned
+--     partner rate - the paper adds them from ct_v_rt_pnl and must prove its total = cost_net (the Worker / print PR);
+--   * leg_id is ct_rt_legs.id (source 'leg'); a v5 line carries its plan leg in v5_leg_id.
 -- NOT HERE: the Worker route and the screens that read ct_v_rt_complete (their own PRs, after this ran).
 -- REVERSE: 105_rt_pnl_complete_rollback.sql (ct_v_rt_revenue back to its text of 3/11, md5 below).
 -- EXPECTED: NOTICE "105 OK: ..." (the round trips, the revenue and P&L fingerprints unchanged, the complete count).
@@ -38,7 +49,7 @@ DECLARE
   -- md5(pg_get_viewdef('public.ct_v_rt_revenue', true)) on 3/11/2026: the text 105 was written against
   c_rev_live CONSTANT text := '4b6fd9a9674d57d87c303d6500940f36';
   v_rev0 text; v_rev1 text; v_pnl0 text; v_pnl1 text; v_trg0 bigint; v_trg1 bigint;
-  v_rts bigint; v_cmp bigint; v_ok bigint; v_diff bigint;
+  v_rts bigint; v_cmp bigint; v_ok bigint;
 BEGIN
   PERFORM set_config('lock_timeout', '5s', true);
   PERFORM set_config('search_path', 'public', true);
@@ -59,10 +70,10 @@ BEGIN
   IF (SELECT count(*) FROM pg_roles WHERE rolname IN ('anon', 'authenticated', 'service_role', 'tms_check_runner')) <> 4 THEN
     RAISE EXCEPTION '105: an API or auditor role is missing - stop';
   END IF;
-  SELECT md5(string_agg(concat_ws('|', rt_id, revenue, revenue_intl, revenue_natl, revenue_missing), ';' ORDER BY rt_id))
+  SELECT md5(string_agg(format('%s|%s|%s|%s|%s', rt_id, revenue, revenue_intl, revenue_natl, revenue_missing), ';' ORDER BY rt_id))
     INTO v_rev0 FROM public.ct_v_rt_revenue;
-  SELECT md5(string_agg(concat_ws('|', id, revenue, revenue_intl, revenue_natl, cost_net, cost_vat, profit_worst, profit_ex_vat,
-      margin_worst_pct, v5_revenue_missing), ';' ORDER BY id))
+  SELECT md5(string_agg(format('%s|%s|%s|%s|%s|%s|%s|%s|%s|%s', id, revenue, revenue_intl, revenue_natl, cost_net, cost_vat, profit_worst,
+      profit_ex_vat, margin_worst_pct, v5_revenue_missing), ';' ORDER BY id))
     INTO v_pnl0 FROM public.ct_v_rt_pnl;
   SELECT count(*) INTO v_trg0 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace ns ON ns.oid = c.relnamespace
    WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public';
@@ -166,6 +177,7 @@ BEGIN
  SELECT legs.rt_id,
     'leg'::text AS source,
     legs.leg_id,
+    NULL::bigint AS v5_leg_id,
     legs.order_id,
     legs.nat_load_id,
     NULL::bigint AS nat_order_id,
@@ -187,7 +199,8 @@ BEGIN
 UNION ALL
  SELECT x.rt_id,
     'v5'::text AS source,
-    x.leg_id,
+    NULL::bigint AS leg_id,
+    x.leg_id AS v5_leg_id,
     x.order_id,
     NULL::bigint AS nat_load_id,
     x.nat_order_id,
@@ -252,29 +265,26 @@ $v$;
                 CASE WHEN pn.trip_type = 'OWNED'::text AND NOT COALESCE(cl.tolls, false) THEN 'tolls'::text ELSE NULL::text END,
                 CASE WHEN pn.trip_type = 'OWNED'::text AND pn.dl_trip_value IS NULL THEN 'driver'::text ELSE NULL::text END,
                 CASE WHEN pn.trip_type = 'PARTNER'::text AND (pn.partner_rate_missing OR (rt.model IS DISTINCT FROM 2 AND pn.partner_planned = 0::numeric AND pn.partner_invoiced = 0::numeric)) THEN 'partner_rate'::text ELSE NULL::text END,
-                CASE WHEN pn.v5_revenue_missing OR np.rt_id IS NOT NULL THEN 'price'::text ELSE NULL::text END], NULL::text) AS missing) m
+                CASE WHEN pn.v5_revenue_missing OR np.rt_id IS NOT NULL THEN 'price'::text ELSE NULL::text END,
+                CASE WHEN pn.trip_type IS NULL OR (pn.trip_type <> ALL (ARRAY['OWNED'::text, 'PARTNER'::text])) THEN 'trip_type'::text ELSE NULL::text END], NULL::text) AS missing) m
 $v$;
 
   -- ===== PART 5: RIGHTS, BORN CLOSED =====
-  EXECUTE 'REVOKE ALL ON public.ct_v_rt_revenue_legs, public.ct_v_rt_cost_cat, public.ct_v_rt_complete FROM PUBLIC, anon, authenticated';
+  -- Supabase's default privileges give ALL on a new relation to anon, authenticated AND service_role: revoke all of it
+  EXECUTE 'REVOKE ALL ON public.ct_v_rt_revenue_legs, public.ct_v_rt_cost_cat, public.ct_v_rt_complete FROM PUBLIC, anon, authenticated, service_role, tms_check_runner';
   EXECUTE 'GRANT SELECT ON public.ct_v_rt_revenue_legs, public.ct_v_rt_cost_cat, public.ct_v_rt_complete TO service_role, tms_check_runner';
 
   -- ===== PART 6: PROOFS (any failure undoes everything) =====
-  SELECT md5(string_agg(concat_ws('|', rt_id, revenue, revenue_intl, revenue_natl, revenue_missing), ';' ORDER BY rt_id))
+  SELECT md5(string_agg(format('%s|%s|%s|%s|%s', rt_id, revenue, revenue_intl, revenue_natl, revenue_missing), ';' ORDER BY rt_id))
     INTO v_rev1 FROM public.ct_v_rt_revenue;
   IF v_rev1 IS DISTINCT FROM v_rev0 THEN
     RAISE EXCEPTION '105 proof: ct_v_rt_revenue changed (% -> %) - the per-load view is not the same rule', v_rev0, v_rev1;
   END IF;
-  SELECT md5(string_agg(concat_ws('|', id, revenue, revenue_intl, revenue_natl, cost_net, cost_vat, profit_worst, profit_ex_vat,
-      margin_worst_pct, v5_revenue_missing), ';' ORDER BY id))
+  SELECT md5(string_agg(format('%s|%s|%s|%s|%s|%s|%s|%s|%s|%s', id, revenue, revenue_intl, revenue_natl, cost_net, cost_vat, profit_worst,
+      profit_ex_vat, margin_worst_pct, v5_revenue_missing), ';' ORDER BY id))
     INTO v_pnl1 FROM public.ct_v_rt_pnl;
   IF v_pnl1 IS DISTINCT FROM v_pnl0 THEN
     RAISE EXCEPTION '105 proof: ct_v_rt_pnl changed (% -> %)', v_pnl0, v_pnl1;
-  END IF;
-  SELECT count(*) INTO v_diff FROM (SELECT rt_id, sum(rev_intl + rev_natl) s FROM public.ct_v_rt_revenue_legs GROUP BY rt_id) a
-    JOIN public.ct_v_rt_revenue r USING (rt_id) WHERE COALESCE(a.s, 0) <> r.revenue;
-  IF v_diff <> 0 THEN
-    RAISE EXCEPTION '105 proof: % round trips whose loads do not add up to their revenue', v_diff;
   END IF;
   SELECT count(*) INTO v_rts FROM public.ct_v_rt_pnl;
   SELECT count(*), count(*) FILTER (WHERE complete) INTO v_cmp, v_ok FROM public.ct_v_rt_complete;
@@ -282,16 +292,17 @@ $v$;
     RAISE EXCEPTION '105 proof: ct_v_rt_complete has % rows for % round trips (expected one each)', v_cmp, v_rts;
   END IF;
   IF EXISTS (SELECT 1 FROM public.ct_v_rt_complete WHERE complete <> (cardinality(missing) = 0)
-             OR NOT (missing <@ ARRAY['fuel', 'tolls', 'driver', 'partner_rate', 'price'])) THEN
-    RAISE EXCEPTION '105 proof: ct_v_rt_complete names a missing item outside its five words';
+             OR NOT (missing <@ ARRAY['fuel', 'tolls', 'driver', 'partner_rate', 'price', 'trip_type'])) THEN
+    RAISE EXCEPTION '105 proof: ct_v_rt_complete names a missing item outside its six words';
   END IF;
   IF EXISTS (SELECT 1 FROM unnest(ARRAY['public.ct_v_rt_revenue_legs', 'public.ct_v_rt_cost_cat', 'public.ct_v_rt_complete']) v(rel)
              CROSS JOIN unnest(ARRAY['anon', 'authenticated']) r(role)
              WHERE has_table_privilege(r.role, v.rel, 'SELECT'))
      OR EXISTS (SELECT 1 FROM unnest(ARRAY['public.ct_v_rt_revenue_legs', 'public.ct_v_rt_cost_cat', 'public.ct_v_rt_complete']) v(rel)
              CROSS JOIN unnest(ARRAY['service_role', 'tms_check_runner']) r(role)
-             WHERE NOT has_table_privilege(r.role, v.rel, 'SELECT')) THEN
-    RAISE EXCEPTION '105 proof: the rights of a new view are not service_role + tms_check_runner only';
+             WHERE NOT has_table_privilege(r.role, v.rel, 'SELECT')
+                OR has_table_privilege(r.role, v.rel, 'INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')) THEN
+    RAISE EXCEPTION '105 proof: the rights of a new view are not SELECT to service_role + tms_check_runner only';
   END IF;
   SELECT count(*) INTO v_trg1 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace ns ON ns.oid = c.relnamespace
    WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public';

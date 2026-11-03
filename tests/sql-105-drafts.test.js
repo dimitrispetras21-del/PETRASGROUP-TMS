@@ -41,11 +41,18 @@ test('105: every file is there, ASCII only; one DO block per writing file; verif
     assert.deepStrictEqual(bad, [], `${f}: non-ASCII lines`);
   }
   for (const f of DO_FILES) assert.strictEqual((strip(read(f)).match(/^DO \$/gm) || []).length, 1, f);
-  assert.ok(!/\b(insert|update|delete|create|alter|drop|grant|revoke|truncate|comment)\b/i.test(strip(read(`${P}_verify.sql`))));
+  // string literals out first: the privilege names it asks has_table_privilege about are words, not statements
+  assert.ok(!/\b(insert|update|delete|create|alter|drop|grant|revoke|truncate|comment)\b/i.test(strip(read(`${P}_verify.sql`)).replace(/'[^']*'/g, "''")));
 });
 
 test('105: the builder has no drift (dry run and rollback dry run)', () => {
   assert.match(execFileSync(process.execPath, [path.join(DRAFTS, 'tools/build-105.mjs'), '--check']).toString(), /0 drift/);
+});
+
+test('105: the rollback takes back only 105\'s own text of ct_v_rt_revenue', () => {
+  const rb = strip(read(`${P}_rollback.sql`));
+  assert.match(rb, /v_def !~ 'FROM \(public\\\.\)\?ct_v_rt_revenue_legs/);
+  assert.ok(rb.indexOf("v_def !~") < rb.indexOf("EXECUTE 'DROP VIEW"), 'the guard runs before anything is dropped');
 });
 
 test('105: one md5 for ct_v_rt_revenue of 3/11 - and the rollback restores exactly that text', () => {
@@ -74,12 +81,14 @@ test('105: ct_v_rt_revenue = the sum of its loads (same five columns); the loads
 
 test('105: born closed - the new views to service_role + tms_check_runner only; no table / trigger / function / row', () => {
   const src = strip(read(`${P}.sql`));
-  assert.match(src, /REVOKE ALL ON public\.ct_v_rt_revenue_legs, public\.ct_v_rt_cost_cat, public\.ct_v_rt_complete FROM PUBLIC, anon, authenticated/);
+  assert.match(src, /REVOKE ALL ON public\.ct_v_rt_revenue_legs, public\.ct_v_rt_cost_cat, public\.ct_v_rt_complete FROM PUBLIC, anon, authenticated, service_role, tms_check_runner'/);
+  assert.match(src, /OR has_table_privilege\(r\.role, v\.rel, 'INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER'\)/, 'the proof refuses any right but SELECT');
+  assert.ok(!/concat_ws/.test(src), 'fingerprints keep NULL positions (format, not concat_ws)');
   assert.match(src, /GRANT SELECT ON public\.ct_v_rt_revenue_legs, public\.ct_v_rt_cost_cat, public\.ct_v_rt_complete TO service_role, tms_check_runner'/);
   assert.ok(!/GRANT [^']*\b(anon|authenticated)\b/.test(src));
   assert.ok(!/\bCREATE (TABLE|TRIGGER|FUNCTION|OR REPLACE FUNCTION|INDEX)\b/i.test(src));
   assert.ok(!/\b(INSERT INTO|UPDATE public\.|DELETE FROM)\b/i.test(src));
   const cmp = viewText(read(`${P}.sql`), 'ct_v_rt_complete');
-  for (const w of ['fuel', 'tolls', 'driver', 'partner_rate', 'price']) assert.ok(cmp.includes(`'${w}'::text`), w);
+  for (const w of ['fuel', 'tolls', 'driver', 'partner_rate', 'price', 'trip_type']) assert.ok(cmp.includes(`'${w}'::text`), w);
   assert.match(cmp, /ARRAY\['fuel'::text, 'reefer_fuel'::text\]/, 'fuel = truck or reefer (the Expenses screen\'s group)');
 });

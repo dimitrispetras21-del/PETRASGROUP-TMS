@@ -6,7 +6,7 @@
 -- WHEN: AFTER 15:00 (the team works 05:30-14:30), BEFORE 105_rt_pnl_complete.sql.
 -- EXPECTED (the red ERROR is deliberate): a NOTICE "105 OK: ..." and then
 --   ERROR: P0001: DRY RUN 105 finished - EVERYTHING UNDONE, nothing kept. The block ran to its end  ||  105 ran:
---   views 3, round trips <as today>, complete <n>, loads that do not add up 0
+--   views 3, round trips <as today>, complete <n>, ct_v_rt_revenue md5 <105's text, kept for the record>
 --   Anything else (an ERROR from one of 105's guards or proofs): do NOT run 105, copy the message to the coordinator.
 
 DO $dry$
@@ -18,7 +18,7 @@ DECLARE
   -- md5(pg_get_viewdef('public.ct_v_rt_revenue', true)) on 3/11/2026: the text 105 was written against
   c_rev_live CONSTANT text := '4b6fd9a9674d57d87c303d6500940f36';
   v_rev0 text; v_rev1 text; v_pnl0 text; v_pnl1 text; v_trg0 bigint; v_trg1 bigint;
-  v_rts bigint; v_cmp bigint; v_ok bigint; v_diff bigint;
+  v_rts bigint; v_cmp bigint; v_ok bigint;
 BEGIN
   PERFORM set_config('lock_timeout', '5s', true);
   PERFORM set_config('search_path', 'public', true);
@@ -39,10 +39,10 @@ BEGIN
   IF (SELECT count(*) FROM pg_roles WHERE rolname IN ('anon', 'authenticated', 'service_role', 'tms_check_runner')) <> 4 THEN
     RAISE EXCEPTION '105: an API or auditor role is missing - stop';
   END IF;
-  SELECT md5(string_agg(concat_ws('|', rt_id, revenue, revenue_intl, revenue_natl, revenue_missing), ';' ORDER BY rt_id))
+  SELECT md5(string_agg(format('%s|%s|%s|%s|%s', rt_id, revenue, revenue_intl, revenue_natl, revenue_missing), ';' ORDER BY rt_id))
     INTO v_rev0 FROM public.ct_v_rt_revenue;
-  SELECT md5(string_agg(concat_ws('|', id, revenue, revenue_intl, revenue_natl, cost_net, cost_vat, profit_worst, profit_ex_vat,
-      margin_worst_pct, v5_revenue_missing), ';' ORDER BY id))
+  SELECT md5(string_agg(format('%s|%s|%s|%s|%s|%s|%s|%s|%s|%s', id, revenue, revenue_intl, revenue_natl, cost_net, cost_vat, profit_worst,
+      profit_ex_vat, margin_worst_pct, v5_revenue_missing), ';' ORDER BY id))
     INTO v_pnl0 FROM public.ct_v_rt_pnl;
   SELECT count(*) INTO v_trg0 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace ns ON ns.oid = c.relnamespace
    WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public';
@@ -146,6 +146,7 @@ BEGIN
  SELECT legs.rt_id,
     'leg'::text AS source,
     legs.leg_id,
+    NULL::bigint AS v5_leg_id,
     legs.order_id,
     legs.nat_load_id,
     NULL::bigint AS nat_order_id,
@@ -167,7 +168,8 @@ BEGIN
 UNION ALL
  SELECT x.rt_id,
     'v5'::text AS source,
-    x.leg_id,
+    NULL::bigint AS leg_id,
+    x.leg_id AS v5_leg_id,
     x.order_id,
     NULL::bigint AS nat_load_id,
     x.nat_order_id,
@@ -232,29 +234,26 @@ $v$;
                 CASE WHEN pn.trip_type = 'OWNED'::text AND NOT COALESCE(cl.tolls, false) THEN 'tolls'::text ELSE NULL::text END,
                 CASE WHEN pn.trip_type = 'OWNED'::text AND pn.dl_trip_value IS NULL THEN 'driver'::text ELSE NULL::text END,
                 CASE WHEN pn.trip_type = 'PARTNER'::text AND (pn.partner_rate_missing OR (rt.model IS DISTINCT FROM 2 AND pn.partner_planned = 0::numeric AND pn.partner_invoiced = 0::numeric)) THEN 'partner_rate'::text ELSE NULL::text END,
-                CASE WHEN pn.v5_revenue_missing OR np.rt_id IS NOT NULL THEN 'price'::text ELSE NULL::text END], NULL::text) AS missing) m
+                CASE WHEN pn.v5_revenue_missing OR np.rt_id IS NOT NULL THEN 'price'::text ELSE NULL::text END,
+                CASE WHEN pn.trip_type IS NULL OR (pn.trip_type <> ALL (ARRAY['OWNED'::text, 'PARTNER'::text])) THEN 'trip_type'::text ELSE NULL::text END], NULL::text) AS missing) m
 $v$;
 
   -- ===== PART 5: RIGHTS, BORN CLOSED =====
-  EXECUTE 'REVOKE ALL ON public.ct_v_rt_revenue_legs, public.ct_v_rt_cost_cat, public.ct_v_rt_complete FROM PUBLIC, anon, authenticated';
+  -- Supabase's default privileges give ALL on a new relation to anon, authenticated AND service_role: revoke all of it
+  EXECUTE 'REVOKE ALL ON public.ct_v_rt_revenue_legs, public.ct_v_rt_cost_cat, public.ct_v_rt_complete FROM PUBLIC, anon, authenticated, service_role, tms_check_runner';
   EXECUTE 'GRANT SELECT ON public.ct_v_rt_revenue_legs, public.ct_v_rt_cost_cat, public.ct_v_rt_complete TO service_role, tms_check_runner';
 
   -- ===== PART 6: PROOFS (any failure undoes everything) =====
-  SELECT md5(string_agg(concat_ws('|', rt_id, revenue, revenue_intl, revenue_natl, revenue_missing), ';' ORDER BY rt_id))
+  SELECT md5(string_agg(format('%s|%s|%s|%s|%s', rt_id, revenue, revenue_intl, revenue_natl, revenue_missing), ';' ORDER BY rt_id))
     INTO v_rev1 FROM public.ct_v_rt_revenue;
   IF v_rev1 IS DISTINCT FROM v_rev0 THEN
     RAISE EXCEPTION '105 proof: ct_v_rt_revenue changed (% -> %) - the per-load view is not the same rule', v_rev0, v_rev1;
   END IF;
-  SELECT md5(string_agg(concat_ws('|', id, revenue, revenue_intl, revenue_natl, cost_net, cost_vat, profit_worst, profit_ex_vat,
-      margin_worst_pct, v5_revenue_missing), ';' ORDER BY id))
+  SELECT md5(string_agg(format('%s|%s|%s|%s|%s|%s|%s|%s|%s|%s', id, revenue, revenue_intl, revenue_natl, cost_net, cost_vat, profit_worst,
+      profit_ex_vat, margin_worst_pct, v5_revenue_missing), ';' ORDER BY id))
     INTO v_pnl1 FROM public.ct_v_rt_pnl;
   IF v_pnl1 IS DISTINCT FROM v_pnl0 THEN
     RAISE EXCEPTION '105 proof: ct_v_rt_pnl changed (% -> %)', v_pnl0, v_pnl1;
-  END IF;
-  SELECT count(*) INTO v_diff FROM (SELECT rt_id, sum(rev_intl + rev_natl) s FROM public.ct_v_rt_revenue_legs GROUP BY rt_id) a
-    JOIN public.ct_v_rt_revenue r USING (rt_id) WHERE COALESCE(a.s, 0) <> r.revenue;
-  IF v_diff <> 0 THEN
-    RAISE EXCEPTION '105 proof: % round trips whose loads do not add up to their revenue', v_diff;
   END IF;
   SELECT count(*) INTO v_rts FROM public.ct_v_rt_pnl;
   SELECT count(*), count(*) FILTER (WHERE complete) INTO v_cmp, v_ok FROM public.ct_v_rt_complete;
@@ -262,16 +261,17 @@ $v$;
     RAISE EXCEPTION '105 proof: ct_v_rt_complete has % rows for % round trips (expected one each)', v_cmp, v_rts;
   END IF;
   IF EXISTS (SELECT 1 FROM public.ct_v_rt_complete WHERE complete <> (cardinality(missing) = 0)
-             OR NOT (missing <@ ARRAY['fuel', 'tolls', 'driver', 'partner_rate', 'price'])) THEN
-    RAISE EXCEPTION '105 proof: ct_v_rt_complete names a missing item outside its five words';
+             OR NOT (missing <@ ARRAY['fuel', 'tolls', 'driver', 'partner_rate', 'price', 'trip_type'])) THEN
+    RAISE EXCEPTION '105 proof: ct_v_rt_complete names a missing item outside its six words';
   END IF;
   IF EXISTS (SELECT 1 FROM unnest(ARRAY['public.ct_v_rt_revenue_legs', 'public.ct_v_rt_cost_cat', 'public.ct_v_rt_complete']) v(rel)
              CROSS JOIN unnest(ARRAY['anon', 'authenticated']) r(role)
              WHERE has_table_privilege(r.role, v.rel, 'SELECT'))
      OR EXISTS (SELECT 1 FROM unnest(ARRAY['public.ct_v_rt_revenue_legs', 'public.ct_v_rt_cost_cat', 'public.ct_v_rt_complete']) v(rel)
              CROSS JOIN unnest(ARRAY['service_role', 'tms_check_runner']) r(role)
-             WHERE NOT has_table_privilege(r.role, v.rel, 'SELECT')) THEN
-    RAISE EXCEPTION '105 proof: the rights of a new view are not service_role + tms_check_runner only';
+             WHERE NOT has_table_privilege(r.role, v.rel, 'SELECT')
+                OR has_table_privilege(r.role, v.rel, 'INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')) THEN
+    RAISE EXCEPTION '105 proof: the rights of a new view are not SELECT to service_role + tms_check_runner only';
   END IF;
   SELECT count(*) INTO v_trg1 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace ns ON ns.oid = c.relnamespace
    WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public';
@@ -282,13 +282,12 @@ $v$;
   RAISE NOTICE '105 OK: % round trips, revenue % and P&L % unchanged, % complete, triggers %', v_rts, v_rev1, v_pnl1, v_ok, v_trg1;
 END;
   -- ===== what it did =====
-  res := format('105 ran: views %s, round trips %s, complete %s, loads that do not add up %s',
+  res := format('105 ran: views %s, round trips %s, complete %s, ct_v_rt_revenue md5 %s',
     (SELECT count(*) FROM pg_class WHERE oid IN (to_regclass('public.ct_v_rt_revenue_legs'), to_regclass('public.ct_v_rt_cost_cat'),
       to_regclass('public.ct_v_rt_complete'))),
     (SELECT count(*) FROM public.ct_v_rt_pnl),
     (SELECT count(*) FILTER (WHERE complete) FROM public.ct_v_rt_complete),
-    (SELECT count(*) FROM (SELECT rt_id, sum(rev_intl + rev_natl) s FROM public.ct_v_rt_revenue_legs GROUP BY rt_id) a
-      JOIN public.ct_v_rt_revenue r USING (rt_id) WHERE COALESCE(a.s, 0) <> r.revenue));
+    md5(pg_get_viewdef('public.ct_v_rt_revenue'::regclass, true)));
   RAISE EXCEPTION 'DRY RUN 105 finished - EVERYTHING UNDONE, nothing kept. The block ran to its end  ||  %', res;
 END
 $dry$;

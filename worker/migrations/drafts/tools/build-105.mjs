@@ -14,13 +14,12 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 // drafts/ until the owner runs them, then one up (CLAUDE.md rule 5)
 const dirOf = (f) => [path.resolve(HERE, '..'), path.resolve(HERE, '..', '..')].find((d) => fs.existsSync(path.join(d, f)));
 const SOURCE = '105_rt_pnl_complete.sql', ROLLBACK = '105_rt_pnl_complete_rollback.sql';
-const READ = `  res := format('105 ran: views %s, round trips %s, complete %s, loads that do not add up %s',
+const READ = `  res := format('105 ran: views %s, round trips %s, complete %s, ct_v_rt_revenue md5 %s',
     (SELECT count(*) FROM pg_class WHERE oid IN (to_regclass('public.ct_v_rt_revenue_legs'), to_regclass('public.ct_v_rt_cost_cat'),
       to_regclass('public.ct_v_rt_complete'))),
     (SELECT count(*) FROM public.ct_v_rt_pnl),
     (SELECT count(*) FILTER (WHERE complete) FROM public.ct_v_rt_complete),
-    (SELECT count(*) FROM (SELECT rt_id, sum(rev_intl + rev_natl) s FROM public.ct_v_rt_revenue_legs GROUP BY rt_id) a
-      JOIN public.ct_v_rt_revenue r USING (rt_id) WHERE COALESCE(a.s, 0) <> r.revenue));`;
+    md5(pg_get_viewdef('public.ct_v_rt_revenue'::regclass, true)));`;
 const RB_READ = `  res := format('105 rollback ran: 105 views left %s, ct_v_rt_revenue md5 %s',
     (SELECT count(*) FROM pg_class WHERE oid IN (to_regclass('public.ct_v_rt_revenue_legs'), to_regclass('public.ct_v_rt_cost_cat'),
       to_regclass('public.ct_v_rt_complete'))),
@@ -35,7 +34,7 @@ export const DRY = {
 -- WHEN: AFTER 15:00 (the team works 05:30-14:30), BEFORE ${SOURCE}.
 -- EXPECTED (the red ERROR is deliberate): a NOTICE "105 OK: ..." and then
 --   ERROR: P0001: DRY RUN 105 finished - EVERYTHING UNDONE, nothing kept. The block ran to its end  ||  105 ran:
---   views 3, round trips <as today>, complete <n>, loads that do not add up 0
+--   views 3, round trips <as today>, complete <n>, ct_v_rt_revenue md5 <105's text, kept for the record>
 --   Anything else (an ERROR from one of 105's guards or proofs): do NOT run 105, copy the message to the coordinator.`,
 };
 export const RB_DRY = {

@@ -9,7 +9,7 @@ DO $do$
 DECLARE
   -- md5(pg_get_viewdef('public.ct_v_rt_revenue', true)) on 3/11/2026, before 105 (the same constant as 105's)
   c_rev_live CONSTANT text := '4b6fd9a9674d57d87c303d6500940f36';
-  v_rev0 text; v_rev1 text; v_pnl0 text; v_pnl1 text;
+  v_rev0 text; v_rev1 text; v_pnl0 text; v_pnl1 text; v_def text;
 BEGIN
   PERFORM set_config('lock_timeout', '5s', true);
   PERFORM set_config('search_path', 'public', true);
@@ -19,10 +19,18 @@ BEGIN
   IF md5(pg_get_viewdef('public.ct_v_rt_revenue'::regclass, true)) = c_rev_live THEN
     RAISE EXCEPTION '105 rollback: ct_v_rt_revenue is already its text of 3/11 - stop, ask the coordinator';
   END IF;
-  SELECT md5(string_agg(concat_ws('|', rt_id, revenue, revenue_intl, revenue_natl, revenue_missing), ';' ORDER BY rt_id))
+  -- Only 105's text is taken back: ONE source (the per-load view) and a GROUP BY. A later migration that changed
+  -- ct_v_rt_revenue again would be overwritten silently - refused instead.
+  v_def := pg_get_viewdef('public.ct_v_rt_revenue'::regclass, true);
+  IF v_def !~ 'FROM (public\.)?ct_v_rt_revenue_legs\s+GROUP BY rt_id;?\s*$'
+     OR (length(v_def) - length(replace(v_def, 'FROM ', ''))) / 5 <> 1 THEN
+    RAISE EXCEPTION '105 rollback: ct_v_rt_revenue is not the text 105 wrote (md5 %) - a later change is on it, stop',
+      md5(v_def);
+  END IF;
+  SELECT md5(string_agg(format('%s|%s|%s|%s|%s', rt_id, revenue, revenue_intl, revenue_natl, revenue_missing), ';' ORDER BY rt_id))
     INTO v_rev0 FROM public.ct_v_rt_revenue;
-  SELECT md5(string_agg(concat_ws('|', id, revenue, revenue_intl, revenue_natl, cost_net, cost_vat, profit_worst, profit_ex_vat,
-      margin_worst_pct, v5_revenue_missing), ';' ORDER BY id))
+  SELECT md5(string_agg(format('%s|%s|%s|%s|%s|%s|%s|%s|%s|%s', id, revenue, revenue_intl, revenue_natl, cost_net, cost_vat, profit_worst,
+      profit_ex_vat, margin_worst_pct, v5_revenue_missing), ';' ORDER BY id))
     INTO v_pnl0 FROM public.ct_v_rt_pnl;
 
   EXECUTE 'DROP VIEW public.ct_v_rt_complete';
@@ -140,10 +148,10 @@ $v$;
     RAISE EXCEPTION '105 rollback proof: ct_v_rt_revenue is not back to its text of 3/11 (md5 %)',
       md5(pg_get_viewdef('public.ct_v_rt_revenue'::regclass, true));
   END IF;
-  SELECT md5(string_agg(concat_ws('|', rt_id, revenue, revenue_intl, revenue_natl, revenue_missing), ';' ORDER BY rt_id))
+  SELECT md5(string_agg(format('%s|%s|%s|%s|%s', rt_id, revenue, revenue_intl, revenue_natl, revenue_missing), ';' ORDER BY rt_id))
     INTO v_rev1 FROM public.ct_v_rt_revenue;
-  SELECT md5(string_agg(concat_ws('|', id, revenue, revenue_intl, revenue_natl, cost_net, cost_vat, profit_worst, profit_ex_vat,
-      margin_worst_pct, v5_revenue_missing), ';' ORDER BY id))
+  SELECT md5(string_agg(format('%s|%s|%s|%s|%s|%s|%s|%s|%s|%s', id, revenue, revenue_intl, revenue_natl, cost_net, cost_vat, profit_worst,
+      profit_ex_vat, margin_worst_pct, v5_revenue_missing), ';' ORDER BY id))
     INTO v_pnl1 FROM public.ct_v_rt_pnl;
   IF v_rev1 IS DISTINCT FROM v_rev0 OR v_pnl1 IS DISTINCT FROM v_pnl0 THEN
     RAISE EXCEPTION '105 rollback proof: revenue % -> % or P&L % -> % changed', v_rev0, v_rev1, v_pnl0, v_pnl1;
