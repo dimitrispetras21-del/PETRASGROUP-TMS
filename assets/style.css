@@ -10537,6 +10537,54 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .owv-doc-t { font-weight:700; font-size:12px; letter-spacing:.4px; text-transform:uppercase; color:var(--text-mid); margin:0 0 6px; }
 .owv-doc-f { display:block; width:100%; height:1180px; border:1px solid var(--border); border-radius:6px; background:#fff; }
 @media print { .owv-docs { display:none; } }
+/* «Εβδομάδα τιμολόγησης» on paper (owner 3/11/2026, Figma 2543:7735): A4
+   portrait in the payroll print's formal look (601:1011). Built by
+   OrdersWeekView.printDoc into #owvPrint; hidden on screen, and while printing
+   (body.owv-printing) the only thing on the page. A named page, so the Weekly's
+   landscape @page above does not apply to it. Fixed colours: paper is always light. */
+#owvPrint { display:none; }
+@page owvp { size: A4 portrait; margin: 11mm 11mm 12mm; }
+@media print {
+  body.owv-printing > *:not(#owvPrint) { display:none !important; }
+  body.owv-printing #owvPrint { display:block; page: owvp; }
+}
+.owvp { font-family:'DM Sans',sans-serif; color:#111; font-size:9.5px; line-height:1.35; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+.owvp-hd { display:flex; justify-content:space-between; align-items:flex-start; }
+.owvp-hd > div { display:flex; flex-direction:column; gap:3px; }
+.owvp-brand { font-family:'Syne',sans-serif; font-weight:700; font-size:14px; letter-spacing:1px; }
+.owvp-hd span { font-size:10px; color:#64748b; }
+.owvp-tag { text-align:right; align-items:flex-end; }
+.owvp-tag b { font-size:9px; font-weight:600; letter-spacing:.4px; color:#64748b; }
+.owvp-t { font-family:'Syne',sans-serif; font-weight:700; font-size:18px; margin:12px 0 8px; padding-bottom:8px; border-bottom:1.5px solid #111; }
+.owvp-t span { font-family:'DM Sans',sans-serif; font-weight:400; font-size:11px; color:#64748b; margin-left:12px; }
+.owvp-tb, .owvp-st { width:100%; border-collapse:collapse; table-layout:fixed; }
+.owvp-tb col.c-no { width:26px; } .owvp-tb col.c-day { width:64px; } .owvp-tb col.c-ord { width:48px; }
+.owvp-tb col.c-rt { width:138px; } .owvp-tb col.c-inv { width:104px; } .owvp-tb col.c-amt { width:64px; }
+.owvp-tb col.c-mk { width:12px; } .owvp-tb col.c-sum { width:78px; } .owvp-tb col.c-box { width:16px; }
+.owvp th { font-size:8px; font-weight:600; letter-spacing:.3px; text-align:left; padding:0 6px 5px 0; border-bottom:1.5px solid #111; }
+.owvp td { padding:3px 6px 3px 0; border-bottom:1px solid #cbd5e1; vertical-align:top; overflow-wrap:anywhere; }
+.owvp tr { break-inside:avoid; }
+.owvp .n { text-align:right; font-variant-numeric:tabular-nums; }
+.owvp td.nw { white-space:nowrap; overflow-wrap:normal; }
+.owvp td.mk { padding-right:0; }
+.owvp .g, .owvp td.box { color:#64748b; }
+.owvp-dot { font-style:normal; color:#b91c1c; }
+.owvp-sec td { padding:8px 0 3px; font-size:8.5px; font-weight:600; letter-spacing:.6px; }
+.owvp-trip td { background:#f1f5f9; font-weight:600; padding:4px 6px 4px 0; border-bottom:none; break-after:avoid; }
+.owvp-trip td:first-child { padding-left:3px; }
+.owvp-trip td.n { font-weight:700; }
+.owvp-o.off td { color:#94a3b8; }
+.owvp-sub td { border-top:1.5px solid #111; border-bottom:none; font-weight:600; padding:5px 6px 5px 0; }
+.owvp-st { margin-top:14px; }
+.owvp-st th, .owvp-st td { font-size:10px; padding:4px 6px 4px 0; }
+.owvp-st thead th { font-size:8px; }
+.owvp-st tbody th { font-weight:400; border-bottom:1px solid #cbd5e1; }
+.owvp-st tr.tot th, .owvp-st tr.tot td { border-top:3px solid #111; border-bottom:none; font-weight:700; font-size:10.5px; padding-top:6px; }
+.owvp-st td.mk { width:24px; }
+.owvp-count { margin:5px 0 0; font-size:9px; color:#64748b; }
+.owvp-foot { margin-top:10px; }
+.owvp-foot p { margin:0 0 3px; font-size:8.5px; color:#64748b; }
+.owvp-ft { margin-top:16px; padding-top:7px; border-top:1px solid #cbd5e1; font-size:9px; color:#64748b; }
 /* «Εβδομάδα»: ΤΠΥ / ΠΟΣΟ open the invoicing editor under the order line (owner 3/11, Eirini's main table).
    Under the line, not a floating panel: it scrolls with the board and never covers the next line's ΤΠΥ. */
 .ow4-edc { cursor:pointer; border-radius:4px; }
