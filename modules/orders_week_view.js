@@ -665,7 +665,8 @@ const OrdersWeekView = (() => {
     cancelled.forEach(r => { r._type = 'intl'; });
     // The Weekly files a load under its EARLIEST delivery / loading stop (WI4.rowDt, owner 3/11/2026),
     // so its numbers need the stops' dates of this week's orders (the board's own ±8-day window), in
-    // the shape the Weekly builds them ([{dt}]). A failed read is said: the numbers then follow stop 1.
+    // the shape the Weekly builds them ([{dt}]), and like it only stops with a place (weekly_intl.js
+    // _wiInjectStopSummaries keeps a stop by its location). A failed read is said: the numbers then follow stop 1.
     const stopDates = new Map();
     let stopsFailed = false;
     if (wantIntl && typeof WI4 !== 'undefined') {
@@ -673,17 +674,19 @@ const OrdersWeekView = (() => {
       const near = r => ['Loading DateTime', 'Delivery DateTime'].some(k => { const v = String(r.fields[k] || '').slice(0, 10); return v && v >= win.from && v <= win.to; });
       const ids = [...intl, ...cancelled].filter(near).flatMap(r => r.fields['ORDER STOPS'] || []);
       try {
+        const batches = [];
         for (let i = 0; i < ids.length; i += 90) {
           const f = `OR(${ids.slice(i, i + 90).map(id => `RECORD_ID()="${id}"`).join(',')})`;
-          (await atGetAll(TABLES.ORDER_STOPS, { filterByFormula: f, fields: [F.STOP_PARENT_ORDER, F.STOP_TYPE, F.STOP_DATETIME] }, false)).forEach(sr => {
-            const p = sr.fields[F.STOP_PARENT_ORDER], pid = Array.isArray(p) ? p[0] : p;
-            const t = sr.fields[F.STOP_TYPE], dt = sr.fields[F.STOP_DATETIME];
-            if (!pid || !dt || (t !== 'Loading' && t !== 'Unloading')) return;
-            const e = stopDates.get(pid) || { L: [], D: [] };
-            e[t === 'Loading' ? 'L' : 'D'].push({ dt });
-            stopDates.set(pid, e);
-          });
+          batches.push(atGetAll(TABLES.ORDER_STOPS, { filterByFormula: f, fields: [F.STOP_PARENT_ORDER, F.STOP_TYPE, F.STOP_DATETIME, F.STOP_LOCATION] }, false));
         }
+        (await Promise.all(batches)).flat().forEach(sr => {
+          const p = sr.fields[F.STOP_PARENT_ORDER], pid = Array.isArray(p) ? p[0] : p;
+          const t = sr.fields[F.STOP_TYPE], dt = sr.fields[F.STOP_DATETIME], loc = sr.fields[F.STOP_LOCATION];
+          if (!pid || !dt || !(Array.isArray(loc) ? loc[0] : loc) || (t !== 'Loading' && t !== 'Unloading')) return;
+          const e = stopDates.get(pid) || { L: [], D: [] };
+          e[t === 'Loading' ? 'L' : 'D'].push({ dt });
+          stopDates.set(pid, e);
+        });
       } catch (e) { console.error('orders week: stop dates', e); stopsFailed = true; }
     }
     const natl = (natlRes.r || []).filter(live); natl.forEach(r => { r._type = 'natl'; });

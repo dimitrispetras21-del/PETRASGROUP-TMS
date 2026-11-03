@@ -364,7 +364,7 @@ function factsOf(row) {
   const st = I.stFlags(pf);
   const vs = !!pf['Veroia Switch'];
   // An import's truck is needed at its EARLIEST loading, the day its row sits on (WI4.rowDt, owner 3/11).
-  let loadDate = _day(isImp ? L().rowDt(pf, 'import') : pf['Loading DateTime']);
+  let loadDate = _day(isImp ? L().rowDt(pf, 'import', _day) : pf['Loading DateTime']);
   // A VS export's truck loads at Βέροια: «how near» is the cross-dock day.
   if (!isImp && vs) { const v = I.vsCd(pf, 'exp'); if (v && v.iso) loadDate = v.iso; }
   const delDate = _day(lastF['Delivery DateTime']);
@@ -443,7 +443,7 @@ function _compute() {
   rows.filter((r) => r.type === 'export' && r.importId && !r.hasSplitLegs && _unconfirmed(r)).forEach((r) => {
     const ir = rows.find((x) => x.type === 'import' && (x.orderIds || [x.orderId]).includes(r.importId));
     if (!ir || ir.adj || I.shelved(ir)) return;
-    const k = _day(lg.rowDt(fOf(ir), 'import'));
+    const k = _day(lg.rowDt(fOf(ir), 'import', _day));
     (ghosts[k] = ghosts[k] || []).push(ir);
   });
   const rotaOf = (row, parent, day) => {
@@ -766,7 +766,7 @@ function _rowDayOf(f, kind) {
   const exp = f['Direction'] === 'Export';
   if (kind === 'del' && !exp) return _day(f['Delivery DateTime']) || '';
   if ((kind === 'load') === exp) return '';
-  return _day(L().rowDt(f, exp ? 'export' : 'import')) || '';
+  return _day(L().rowDt(f, exp ? 'export' : 'import', _day)) || '';
 }
 // «+N» (Nick 14/10): the tooltip said «Όλα τα σημεία» but listed only the
 // hidden points, and a groupage's panel held only those. Both now give the
@@ -2150,7 +2150,8 @@ function _layout(force) {
   const probeN = root.querySelector('#wi-rows .wi4-day:not(.closed) .wi4-row .wi4-leg-dd .wi4-l-from');
   const w = probe ? probe.clientWidth : 0, wn = probeN ? probeN.clientWidth : 0;
   if (!w && !wn) return;
-  if (!force && w === (_ptsW || 0) && wn === (_ptsWn || 0)) return;
+  // Only a width measured now counts: a kind of leg not on screen keeps its last width.
+  if (!force && (!w || w === _ptsW) && (!wn || wn === _ptsWn)) return;
   _ptsW = w || _ptsW; _ptsWn = wn || _ptsWn;
   root.querySelectorAll('.wi4-pts[data-pk]').forEach(_fillPts);
 }
