@@ -37,10 +37,19 @@ const PalletsWeek = (() => {
     }
     return OC().weekStartOfYmd(m.movement_date);
   }
+  // order pg id → its live LOADING / DELIVERY movements; rebuilt when the movements are (re)read, never per cell
+  let _idx = null, _idxOf = null;
   function movesOf(rec) {
     const pg = pgOf(rec); if (!pg) return { L: [], D: [] };
-    const all = PLV.movements.filter(m => live(m) && String(m.order_id) === pg);
-    return { L: all.filter(m => m.event_type === 'LOADING'), D: all.filter(m => m.event_type === 'DELIVERY') };
+    if (_idxOf !== PLV.movements) {
+      _idx = new Map(); _idxOf = PLV.movements;
+      for (const m of PLV.movements) {
+        if (!live(m) || m.order_id == null || (m.event_type !== 'LOADING' && m.event_type !== 'DELIVERY')) continue;
+        const k = String(m.order_id), e = _idx.get(k) || { L: [], D: [] };
+        e[m.event_type === 'LOADING' ? 'L' : 'D'].push(m); _idx.set(k, e);
+      }
+    }
+    return _idx.get(pg) || { L: [], D: [] };
   }
   function endStat(list) {
     const c = list.filter(m => m.status === 'confirmed'), p = list.filter(m => m.status === 'pending');
@@ -48,7 +57,7 @@ const PalletsWeek = (() => {
     return { n: list.length, nc: c.length, np: p.length, ct: sum(c, 'taken'), cg: sum(c, 'given'), pt: sum(p, 'taken'), pg: sum(p, 'given'), c, p };
   }
   // Stops of an end that should have a movement and have none — only for a delivered order with exchange (the
-  // design's «λείπει καταγραφή»: loading stops with a place, delivery stops with pallets). null = stops not read.
+  // design's «λείπει καταγραφή»: loading stops, delivery stops with pallets). null = stops not read.
   function missingOf(rec, end, mv) {
     if (!isPE(rec) || (rec.fields || {})['Status'] !== 'Delivered') return 0;
     if (!S.stops) return null;
@@ -58,19 +67,19 @@ const PalletsWeek = (() => {
   }
   async function loadStops(recs) {
     const ids = recs.flatMap(r => r.fields['ORDER STOPS'] || []);
-    const out = new Map();
+    const out = new Map(), batches = [];
     for (let i = 0; i < ids.length; i += 90) {
       const f = `OR(${ids.slice(i, i + 90).map(id => `RECORD_ID()="${id}"`).join(',')})`;
-      (await atGetAll(TABLES.ORDER_STOPS, { filterByFormula: f, fields: [F.STOP_PARENT_ORDER, F.STOP_TYPE, F.STOP_PALLETS, F.STOP_LOCATION] }, false))
-        .forEach(s => {
-          const p = s.fields[F.STOP_PARENT_ORDER], pid = Array.isArray(p) ? p[0] : p; if (!pid) return;
-          const e = out.get(pid) || { L: 0, D: 0 };
-          const loc = s.fields[F.STOP_LOCATION], hasLoc = !!(Array.isArray(loc) ? loc[0] : loc);
-          if (s.fields[F.STOP_TYPE] === 'Loading' && hasLoc) e.L++;
-          if (s.fields[F.STOP_TYPE] === 'Unloading' && (parseInt(s.fields[F.STOP_PALLETS], 10) || 0) > 0) e.D++;
-          out.set(pid, e);
-        });
+      batches.push(atGetAll(TABLES.ORDER_STOPS, { filterByFormula: f, fields: [F.STOP_PARENT_ORDER, F.STOP_TYPE, F.STOP_PALLETS] }, false));
     }
+    // The count follows what the feeders write (plOrderGate's stops): every loading stop, every delivery stop with pallets.
+    (await Promise.all(batches)).flat().forEach(s => {
+      const p = s.fields[F.STOP_PARENT_ORDER], pid = Array.isArray(p) ? p[0] : p; if (!pid) return;
+      const e = out.get(pid) || { L: 0, D: 0 };
+      if (s.fields[F.STOP_TYPE] === 'Loading') e.L++;
+      if (s.fields[F.STOP_TYPE] === 'Unloading' && (parseInt(s.fields[F.STOP_PALLETS], 10) || 0) > 0) e.D++;
+      out.set(pid, e);
+    });
     // an order read with no stop row is a known zero, not «unknown»
     recs.forEach(r => { if (!out.has(r.id)) out.set(r.id, { L: 0, D: 0 }); });
     return out;
@@ -123,17 +132,22 @@ const PalletsWeek = (() => {
     return t;
   }
 
+  // A load lands only on the week it was asked for: two ‹ › clicks in flight never let the older answer overwrite
+  // the newer week (the page would then wait on «Φόρτωση» for a week it no longer shows).
   async function load(force) {
-    S.loadErr = null;
-    const d = await OWV().load(S.week, 'intl', force);
-    S.data = d;
-    S.built = OWV().buildWeek({ week: S.week, intl: d.intl, natl: [], rts: d.rts, cancelled: d.cancelled, stopDates: d.stopDates });
-    try { S.board = OWV().boardOf(d, S.week); S.nums = WI4.numberOf(S.board.built, S.board.no); }
-    catch (e) { console.error('pallets week: Weekly numbers', e); S.board = null; S.nums = null; }
+    const week = S.week;
+    const d = await OWV().load(week, 'intl', force);
+    const built = OWV().buildWeek({ week, intl: d.intl, natl: [], rts: d.rts, cancelled: d.cancelled, stopDates: d.stopDates });
+    let board = null, nums = null;
+    try { board = OWV().boardOf(d, week); nums = WI4.numberOf(board.built, board.no); }
+    catch (e) { console.error('pallets week: Weekly numbers', e); }
     const pe = d.intl.filter(r => isPE(r) && (r.fields || {})['Status'] === 'Delivered');
-    try { S.stops = await loadStops(pe); S.stopsFailed = false; }
-    catch (e) { console.error('pallets week: stops', e); S.stops = null; S.stopsFailed = true; }
+    let stops = null, stopsFailed = false;
+    try { stops = await loadStops(pe); } catch (e) { console.error('pallets week: stops', e); stopsFailed = true; }
+    if (week !== S.week) return false;
+    Object.assign(S, { loadErr: null, data: d, built, board, nums, stops, stopsFailed });
     await loadChecks();
+    return week === S.week;
   }
 
   // ── cells ────────────────────────────────────────────────
@@ -379,7 +393,8 @@ const PalletsWeek = (() => {
     const peWeek = new Set(weekOrders(w).filter(isPE).map(pgOf).filter(Boolean));
     for (const m of PLV.movements) {
       if (!live(m) || m.counterparty_type !== 'CLIENT' || m.client_id == null) continue;
-      const mw = moveWeek(m);
+      // the week's own orders decide «this week» (S.data); the ledger's order map only places the OTHER weeks
+      const mw = m.order_id != null && peWeek.has(String(m.order_id)) ? w : moveWeek(m);
       if (mw == null) { noWeek.set(m.client_id, (noWeek.get(m.client_id) || 0) + 1); continue; }
       const e = by.get(m.client_id) || { orders: new Set(), taken: 0, given: 0, pending: 0, later: 0, inWeek: false };
       if (mw === w && m.order_id != null && peWeek.has(String(m.order_id))) {
@@ -403,14 +418,15 @@ const PalletsWeek = (() => {
       ${rows.map(r => `<tr><td>${esc(r.name)}</td><td>${r.orders.size}</td><td>${r.taken}</td><td>${r.given}</td><td>${sgn(r.delta)}</td><td>${r.pending}</td>
         <td>${sgn(r.end)}${r.nw ? ` <span class="plw-g" title="${r.nw} κινήσεις χωρίς εβδομάδα: η παραγγελία τους δεν διαβάστηκε">+${r.nw} χωρίς εβδομάδα</span>` : ''}</td><td>${sgn(r.today)}</td></tr>`).join('')}
       </tbody><tfoot><tr><td>Σύνολο εβδομάδας</td><td>${tot.o}</td><td>${tot.t}</td><td>${tot.g}</td><td>${sgn(tot.g - tot.t)}</td><td>${tot.p}</td><td></td><td></td></tr></tfoot></table>
-      ${PLV.cut ? `<div class="plw-foot">${_plvCutNote(PLV.cut, true)}</div>` : ''}</div>`;
+      ${PLV.cut ? `<div class="plw-foot">${_plvCutNote(PLV.cut, true)}</div>` : ''}
+      ${PLV.enrichFail ? '<div class="plw-foot" style="color:var(--warn)">⚠ οι παραγγελίες του Ισοζυγίου δεν διαβάστηκαν: το «Τέλος εβδ.» μετρά μόνο αυτή την εβδομάδα — οι κινήσεις των άλλων εβδομάδων είναι «χωρίς εβδομάδα»</div>' : ''}</div>`;
   }
   function driversHtml() {
     const wkPg = new Set(weekOrders(S.week).map(pgOf).filter(Boolean));
     const by = new Map();
     for (const m of PLV.movements) {
       if (m.status !== 'confirmed' || m.event_type !== 'DELIVERY' || !(+m.given > +m.taken) || String(m.movement_date) < SINCE) continue;
-      const o = (PLV.orderById || {})[m.order_id];
+      const o = (PLV.orderById || {})[m.order_id] || (S.data ? S.data.intl.find(r => pgOf(r) === String(m.order_id)) : null);
       const did = o ? getLinkedId(o.fields['Driver']) : null;
       const d = did ? getRefDrivers().find(x => x.id === did) : null;
       const name = d ? d.fields['Full Name'] : 'χωρίς οδηγό';
@@ -427,7 +443,8 @@ const PalletsWeek = (() => {
     return `<div class="plw-sec"><div class="plw-sech"><b>Δεν γύρισαν ανά οδηγό</b> <span class="plw-g">οριστικές παραδόσεις με δώσαμε &gt; πήραμε · από τις κινήσεις, καμία νέα καταχώρηση</span></div>
       <table class="plw-tbl plw-num"><thead><tr><th>ΟΔΗΓΟΣ ΠΑΡΑΓΓΕΛΙΑΣ</th><th>ΕΒΔ. ΠΑΡΑΔΟΣΕΙΣ</th><th>ΕΒΔ. ΠΑΛΕΤΕΣ</th><th>ΑΠΟ 10/8 ΠΑΡΑΔ.</th><th>ΑΠΟ 10/8 ΠΑΛΕΤΕΣ</th></tr></thead><tbody>
       ${rows.map(([n, e]) => `<tr><td>${esc(n)}</td><td>${z(e.wn)}</td><td>${z(e.wp)}</td><td>${e.an}</td><td>${e.ap}</td></tr>`).join('')}
-      </tbody><tfoot><tr><td>Σύνολο</td><td>${t.wn}</td><td>${t.wp}</td><td>${t.an}</td><td>${t.ap}</td></tr></tfoot></table></div>`;
+      </tbody><tfoot><tr><td>Σύνολο</td><td>${t.wn}</td><td>${t.wp}</td><td>${t.an}</td><td>${t.ap}</td></tr></tfoot></table>
+      ${PLV.enrichFail ? '<div class="plw-foot" style="color:var(--warn)">⚠ οι παραγγελίες του Ισοζυγίου δεν διαβάστηκαν: όσες δεν είναι σε αυτή την εβδομάδα φαίνονται «χωρίς οδηγό»</div>' : ''}</div>`;
   }
   function othersHtml() {
     const w = S.week;
@@ -623,7 +640,7 @@ const PalletsWeek = (() => {
     S.data = force ? null : S.data;
     draw();
     const want = S.week;
-    try { await load(force); } catch (e) { console.error('pallets week: load', e); S.loadErr = _plvErrMsg(e); }
+    try { await load(force); } catch (e) { console.error('pallets week: load', e); if (want === S.week) S.loadErr = _plvErrMsg(e); }
     if (want === S.week) draw();
   }
   async function render(root) {
