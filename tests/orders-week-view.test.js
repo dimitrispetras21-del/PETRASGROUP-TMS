@@ -620,3 +620,69 @@ test('a load with stops on two days sits on the earlier one, as on the Weekly (o
   // without stop dates: the order's own day, as before
   assert.strictEqual(model.rows.find(r => r.code === 'RT-1181').day, '2026-09-21');
 });
+
+// ── The printed «Εβδομάδα τιμολόγησης» (owner 3/11/2026, Figma 2543:7735) ──
+// printDoc draws the model the screen painted; these check it never counts on its own.
+global.escapeHtml = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const eurOf = v => OrdersCommon.eur(v);
+function printModel(extra) {
+  const m = W.buildWeek({ week: WEEK, intl: INTL, natl: NATL, rts: RTS });
+  let i = 1;
+  for (const r of [...m.rows, ...m.noRt]) r.nos = [i++];
+  const natRows = W.pairNationals({ week: WEEK, natl: NATL, loads: [], intl: INTL });
+  const tI = W.totals(m.weekIntl, stateOf), tN = W.totals(m.weekNatl, stateOf), tAll = W.totals([...m.weekIntl, ...m.weekNatl], stateOf);
+  return Object.assign({ week: WEEK, m, natRows, tI, tN, tAll, star: [], dag: tAll.unpricedRecs.slice(), stateOf,
+    fails: [], numsOk: true, showI: true, showN: true, stopDates: null }, extra || {});
+}
+
+test('print: every round trip is one block with the screen\'s Σ, in the Weekly order', () => {
+  const P = printModel(), doc = W.printDoc(P, { printed: 'x' });
+  assert.ok(doc.ok);
+  const seq = W.printSequence(WEEK, P.m);
+  const sec = W.daySections(WEEK, P.m.rows);
+  assert.deepStrictEqual(seq.slice(0, P.m.rows.length).map(r => r.code), [...sec.days.flatMap(x => x.rows), ...sec.moved, ...sec.other].map(r => r.code), 'the screen\'s «Ανά ημέρα» order');
+  assert.deepStrictEqual(seq.slice(P.m.rows.length).map(r => r.rec.id), ['recN6'], '«χωρίς δρομολόγιο» last');
+  assert.strictEqual(seq.length, P.m.rows.length + P.m.noRt.length, 'no row dropped');
+  const trips = doc.html.split('<tr class="owvp-trip">').slice(1);
+  assert.strictEqual(trips.length, seq.length + P.natRows.length, 'one block per trip (+ national pairs)');
+  seq.forEach((r, k) => {
+    const s = W.rowSum(r.counted), mk = W.rowMarks(r);
+    const want = (s > 0 ? eurOf(s) : '—') + (mk.s ? ' *' : '') + (mk.g ? ' †' : '');
+    assert.ok(trips[k].includes(`<td class="n nw">${want}</td>`), `${r.code || 'χωρίς'}: Σ ${want}`);
+  });
+  assert.ok(!/RT-\d/.test(doc.html), 'no RT codes on paper («Δρομολόγιο», owner 2/11)');
+});
+
+test('print: the statement and the count line are totals(), the screen\'s numbers', () => {
+  const P = printModel(), doc = W.printDoc(P, {}), t = P.tAll;
+  assert.ok(doc.html.includes(`<tr class="tot"><th>Σύνολο εβδομάδας</th><td class="n">${eurOf(t.sum)}</td>`));
+  assert.ok(doc.html.includes(`<td class="n">${eurOf(t.invSum)}</td><td class="n">${eurOf(t.openSum)}</td></tr></tbody>`));
+  assert.ok(doc.html.includes(`Παραγγελίες: ${t.invN} τιμολογημένες + ${t.readyN} προς κοπή + ${t.blockedN} χωρίς τιμή = ${t.n}`));
+  assert.strictEqual(t.invN + t.readyN + t.blockedN, t.n, 'the count line adds up');
+  // the grey next-week import is shown, never summed (recI2 2.000)
+  assert.ok(/owvp-o off[^]*?2\.000,00/.test(doc.html));
+});
+
+test('print: a failed read prints nothing and says what failed (Δ3)', () => {
+  const doc = W.printDoc(printModel({ fails: [{ head: 'Δεν διαβάστηκαν τα δρομολόγια (RT).' }] }), {});
+  assert.strictEqual(doc.ok, false);
+  assert.strictEqual(doc.html, '');
+  assert.deepStrictEqual(doc.refused, ['Δεν διαβάστηκαν τα δρομολόγια (RT).']);
+});
+
+test('print: invoice words — number · date, self-delivery, «χωρίς δελτίο»; ☐ only where she must act', () => {
+  const sd = o('recSD', 1300, { Direction: 'Export', 'Delivery DateTime': '2026-09-22T08:00', Price: 900, Invoiced: true, 'Self Delivery': true });
+  const ns = o('recNS', 1301, { Direction: 'Export', 'Delivery DateTime': '2026-09-22T09:00', Price: 700, Status: 'Delivered' });
+  const st = r => r.id === 'recNS' ? { key: 'ready', noSheets: true } : stateOf(r);
+  const m = W.buildWeek({ week: WEEK, intl: [...INTL, sd, ns], natl: [], rts: RTS });
+  const tAll = W.totals(m.weekIntl, st);
+  assert.strictEqual(tAll.readyNoSheets, 1);
+  const doc = W.printDoc({ week: WEEK, m, natRows: [], tI: tAll, tN: W.totals([], st), tAll, star: [], dag: tAll.unpricedRecs, stateOf: st,
+    fails: [], numsOk: false, showI: true, showN: false, stopDates: null }, {});
+  const line = id => doc.html.split('<tr class="owvp-o').find(x => x.includes(id)) || '';
+  assert.ok(line('#1300').includes('αυτοπαράδοση') && !line('#1300').includes('☐'));
+  assert.ok(line('#1301').includes('προς κοπή · χωρίς δελτίο') && line('#1301').includes('☐'));
+  assert.ok(line('#1214').includes('0431') && !line('#1214').includes('☐'), 'invoiced: its number, no box');
+  assert.ok(doc.html.includes('(η 1 χωρίς δελτίο παλετών)'));
+  assert.ok(doc.html.includes('Η αρίθμηση του Weekly δεν διαβάστηκε'), 'numbers failed: said, never guessed');
+});
