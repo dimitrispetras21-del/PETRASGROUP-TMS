@@ -1,6 +1,6 @@
 // modules/wn5_compose.js — National v5: «Σύνθεση φορτίων» on the SHARED draft loads of the base (102 + Worker #239,
-// owner 2/11 «Ναι, ξεκίνα»), behind localStorage tms_wn5_compose = '1' (this browser only; never on by default) until
-// the Worker routes are deployed. It replaces the Veroia board's drawing while on (WN5Hub.shelfHTML hands over), and
+// owner 2/11 «Ναι, ξεκίνα»), behind featureOn('WN_COMPOSE') (config.js: 'pilot' = the owner alone, 3/11; then true) or a
+// browser with localStorage tms_wn5_compose = '1'. It replaces the Veroia board's drawing while on (WN5Hub.shelfHTML hands over), and
 // gives the Weekly its «σε πρόχειρο» mark (markHTML, owner Ε1). Design: docs/national-v5/compose-drafts-design-2026-11-02.md.
 //
 // Why (owner 2/11): the Veroia board REBUILDS loads from parts, most often before anyone knows the truck. The user
@@ -24,7 +24,10 @@
   const SIDE_GR = { KATHODOS: 'ΚΑΘΟΔΟΣ', ANODOS: 'ΑΝΟΔΟΣ' };
   // 102 v_plan_draft_piece_state: the four states that block «Δημιουργία» until the part is taken out
   const BLOCK_GR = { dead: 'σβήστηκε', split: 'σπάστηκε', assigned: 'ανατέθηκε αλλού', moved: 'άλλαξε θέση' };
-  function on() { try { return localStorage.getItem('tms_wn5_compose') === '1'; } catch (_) { return false; } }
+  function on() {
+    if (typeof featureOn === 'function' && featureOn('WN_COMPOSE')) return true;
+    try { return localStorage.getItem('tms_wn5_compose') === '1'; } catch (_) { return false; }
+  }
 
   // rd: the last GET /plan/drafts (every point: the panel filters its own, the Weekly marks need all, Ε1). board: the
   // board object it was read for — a new board read (every save, ↻, another week) reads the drafts again.
