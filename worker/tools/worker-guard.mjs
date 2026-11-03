@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Worker deploy guard (CLAUDE.md «Ο WORKER»: the three + one marker per live
 // feature: stock lots, local moves, stop delay, presence, temperature per CMR,
-// the VD /costs/rt filters, national v5, its vehicle handover, its F3, its F5 (day L), the order edit, 085, 089, 101 and the road (099 + 102), counted in CONTENT, never by byte equality: wrangler re-bundles
+// the VD /costs/rt filters, national v5, its vehicle handover, its F3, its F5 (day L), the order edit, 085, 089, 101, the road (099 + 102) and the pallets week mark (104), counted in CONTENT, never by byte equality: wrangler re-bundles
 // the source, and the CF API returns the live script as multipart with a
 // random boundary per request — two downloads of the same version «differ».
 //
@@ -53,13 +53,16 @@
 //            POST /plan/transfer, «Αλλαγή στον δρόμο») and rpc: "plan_draft_realize" (102, /plan/drafts, «Σύνθεση
 //            φορτίων») - each route row exactly once. 0 = before that deploy (none of them), 1 = after it; 1 needs
 //            --self 1 (built on 101's Worker 7bb5003a). Without it: as before.
+//   --wchk   optional, only after --road (104, the pallets week's «Ελέγχθηκε» mark, /pallets/week-checks): the one object
+//            naming its three acts, `var PLW_RPC = {` - exactly once. 0 = before that deploy, 1 = after it; 1 needs
+//            --road 1 (built on b329ff91, one chain). Without it: as before.
 // Prints one line per marker and exits 1 on the first STOP condition — no
 // partial «OK» (αρχή 1).
 import { readFileSync } from 'node:fs';
 
 const args = process.argv.slice(2);
 const [file, flag, planArg, hflag, handoverArg, f3Flag, f3Arg, f5Flag, f5Arg, editFlag, editArg, invFlag, invArg, r2Flag, r2Arg, sdFlag, sdArg, rdFlag, rdArg, wcFlag, wcArg] = args;
-// exactly these five, seven with --f3, nine with --f3 and --f5, eleven with --edit after them, thirteen with --invoiced, fifteen with --rate2, seventeen with --self, nineteen with --road: an extra flag (e.g. a later phase's before its guard
+// exactly these five, seven with --f3, nine with --f3 and --f5, eleven with --edit after them, thirteen with --invoiced, fifteen with --rate2, seventeen with --self, nineteen with --road, twenty-one with --wchk: an extra flag (e.g. a later phase's before its guard
 // knows it) would be ignored and the tool would print OK without checking it - a usage error instead (code review
 // xhigh 26/10, principle 1)
 if (![5, 7, 9, 11, 13, 15, 17, 19, 21].includes(args.length) || !file || flag !== '--plan' || !['0', '1', '2'].includes(planArg) || hflag !== '--handover'

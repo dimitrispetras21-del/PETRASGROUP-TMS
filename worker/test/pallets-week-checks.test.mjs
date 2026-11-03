@@ -108,4 +108,6 @@ test('GET reads the table for a range of weeks, without the snapshot', async () 
   assert.doesNotMatch(sp.get('select'), /snap/);
   assert.deepEqual(sp.getAll('week_start'), ['gte.2026-10-03', 'lte.2026-10-31']);
   assert.equal((await call('GET', '?from=2026-10-03')).status, 400);
+  assert.equal((await call('GET', '?from=2026-02-30&to=2026-03-06')).status, 400);
+  assert.equal((await call('GET', '?from=2026-13-01&to=2026-12-31')).status, 400);
 });

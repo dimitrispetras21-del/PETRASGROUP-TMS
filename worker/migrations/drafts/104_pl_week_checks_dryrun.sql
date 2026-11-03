@@ -7,7 +7,7 @@ DECLARE
   v_sig text; v_trg0 int; v_trg1 int; v_k bigint;
   c_acts CONSTANT text[] := ARRAY['public.pl_week_check(jsonb,text,text)', 'public.pl_week_uncheck(jsonb,text,text)',
     'public.pl_week_check_changes(jsonb,text,text)'];
-  c_helpers CONSTANT text[] := ARRAY['public.plw_h_raise(text,text)', 'public.plw_h_json(jsonb)'];
+  c_helpers CONSTANT text[] := ARRAY['public.plw_h_raise(text,text)', 'public.plw_h_json(jsonb)', 'public.plw_h_no_delete()'];
 BEGIN
   PERFORM set_config('lock_timeout', '5s', true);
   PERFORM set_config('search_path', 'public', true);
@@ -16,9 +16,8 @@ BEGIN
   IF to_regclass('public.pl_week_checks') IS NOT NULL THEN
     RAISE EXCEPTION '104: pl_week_checks already exists - 104 has run, nothing to do';
   END IF;
-  IF to_regprocedure('public.plan_h_audit(text,text,text,text,text,jsonb,jsonb)') IS NULL
-     OR to_regprocedure('public.plan_draft_no_delete()') IS NULL THEN
-    RAISE EXCEPTION '104: plan_h_audit (072) or plan_draft_no_delete (102) is missing - stop';
+  IF to_regprocedure('public.plan_h_audit(text,text,text,text,text,jsonb,jsonb)') IS NULL THEN
+    RAISE EXCEPTION '104: plan_h_audit (072) is missing - stop';
   END IF;
   IF to_regclass('public.pl_movements') IS NULL OR to_regclass('public.audit_log') IS NULL OR to_regclass('public.app_errors') IS NULL THEN
     RAISE EXCEPTION '104: pl_movements / audit_log / app_errors missing - stop';
@@ -47,10 +46,17 @@ BEGIN
   );
   CREATE UNIQUE INDEX pl_week_checks_live ON public.pl_week_checks (week_start) WHERE undone_at IS NULL;
   CREATE INDEX pl_week_checks_week ON public.pl_week_checks (week_start, checked_at DESC);
-  CREATE TRIGGER pl_week_checks_no_delete BEFORE DELETE ON public.pl_week_checks
-    FOR EACH ROW EXECUTE FUNCTION public.plan_draft_no_delete();
 
   -- ===== PART 2: CLOSED HELPERS =====
+  CREATE FUNCTION public.plw_h_no_delete() RETURNS trigger
+    LANGUAGE plpgsql SET search_path = public AS $f$
+  begin
+    -- An undo is undone_at, never a delete: the marks are the accountant's history (soft delete only).
+    raise exception 'plw rule broken: hard_delete:%', tg_table_name using errcode = '23514', hint = 'plw:hard_delete';
+  end $f$;
+  CREATE TRIGGER pl_week_checks_no_delete BEFORE DELETE ON public.pl_week_checks
+    FOR EACH ROW EXECUTE FUNCTION public.plw_h_no_delete();
+
   CREATE FUNCTION public.plw_h_raise(p_code text, p_detail text) RETURNS void
     LANGUAGE plpgsql SET search_path = public AS $f$
   begin
@@ -72,6 +78,7 @@ BEGIN
     LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
   DECLARE
     v_week date; v_ids bigint[]; v_n int; v_found int; v_live pl_week_checks%ROWTYPE; v_new pl_week_checks%ROWTYPE; v_moves jsonb;
+    v_stops bigint[];
   BEGIN
     -- Principle 4: the role rule lives here too, not only in the Worker's PL_PERMS.
     IF p_role IS NULL OR p_role NOT IN ('owner', 'accountant') THEN PERFORM plw_h_raise('role', p_role); END IF;
@@ -83,6 +90,13 @@ BEGIN
     SELECT coalesce(array_agg(DISTINCT x::bigint), '{}') INTO v_ids
       FROM jsonb_array_elements_text(coalesce(p -> 'movement_ids', '[]'::jsonb)) x WHERE x ~ '^[0-9]{1,18}$';
     IF v_n <> cardinality(v_ids) THEN PERFORM plw_h_raise('bad_ids', 'not numeric or repeated'); END IF;
+    -- the stop ids of "leipei katagrafi" come from the browser: kept only as a list of distinct numbers
+    IF jsonb_typeof(coalesce(p -> 'missing_stop_ids', '[]'::jsonb)) <> 'array' THEN PERFORM plw_h_raise('bad_ids', 'stops not a list'); END IF;
+    SELECT coalesce(array_agg(DISTINCT x::bigint ORDER BY x::bigint), '{}') INTO v_stops
+      FROM jsonb_array_elements_text(coalesce(p -> 'missing_stop_ids', '[]'::jsonb)) x WHERE x ~ '^[0-9]{1,18}$';
+    IF jsonb_array_length(coalesce(p -> 'missing_stop_ids', '[]'::jsonb)) <> cardinality(v_stops) THEN
+      PERFORM plw_h_raise('bad_ids', 'stops not numeric or repeated');
+    END IF;
     -- An empty list is accepted only when the screen says the week is empty: a browser bug must not store half a
     -- snapshot in silence.
     IF v_n = 0 AND coalesce((p ->> 'empty_week')::boolean, false) IS NOT TRUE THEN
@@ -103,10 +117,16 @@ BEGIN
         (SELECT to_jsonb(c) FROM pl_week_checks c WHERE c.id = v_live.id));
     END IF;
 
-    INSERT INTO pl_week_checks (week_start, checked_by, checked_role, snap)
-    VALUES (v_week, p_actor, p_role, jsonb_build_object('moves', v_moves,
-            'missing_stops', coalesce(p -> 'missing_stop_ids', '[]'::jsonb), 'missing_from', 'browser'))
-    RETURNING * INTO v_new;
+    -- Two marks of the same week at the same moment both pass the FOR UPDATE above (no row to lock yet); the unique
+    -- index stops the second, which must answer "already" (409), never a 500.
+    BEGIN
+      INSERT INTO pl_week_checks (week_start, checked_by, checked_role, snap)
+      VALUES (v_week, p_actor, p_role, jsonb_build_object('moves', v_moves,
+              'missing_stops', to_jsonb(v_stops), 'missing_from', 'browser'))
+      RETURNING * INTO v_new;
+    EXCEPTION WHEN unique_violation THEN
+      PERFORM plw_h_raise('already', v_week::text);
+    END;
     PERFORM plan_h_audit(p_actor, p_role, 'create', 'pl_week_checks', v_new.id::text, NULL, to_jsonb(v_new));
     RETURN (to_jsonb(v_new) - 'snap') || jsonb_build_object('moves', v_found);
   END $f$;
@@ -252,6 +272,6 @@ BEGIN
   IF v_k <> 1 THEN RAISE EXCEPTION '104: B-54 not updated (% rows)', v_k; END IF;
 
   RAISE EXCEPTION '104 DRY RUN OK - nothing kept (triggers % -> %)', v_trg0, v_trg1;
-  RAISE NOTICE '104 OK: pl_week_checks (born closed, 0 rows), 3 acts, 2 closed helpers, 1 policy; triggers % -> %, B-54 = %',
+  RAISE NOTICE '104 OK: pl_week_checks (born closed, 0 rows), 3 acts, 3 closed helpers, 1 policy; triggers % -> %, B-54 = %',
     v_trg0, v_trg1, v_trg1;
 END $do$;

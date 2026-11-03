@@ -1,12 +1,12 @@
 -- 104 VERIFY - read-only, ONE row. Run after 104_pl_week_checks.sql (and any time after). ASCII.
--- EXPECTED after 104: applied = '104 in place', acts 3, helpers 2, policies 1, open_to_api 0, live_index true,
+-- EXPECTED after 104: applied = '104 in place', acts 3, helpers 3, policies 1, open_to_api 0, live_index true,
 --   b54_equals_triggers true, marks <how many marks exist>, live_marks <how many weeks are checked now>.
 -- Before 104: applied = 'before 104' and zeros.
 SELECT CASE WHEN to_regclass('public.pl_week_checks') IS NOT NULL AND to_regprocedure('public.pl_week_check(jsonb,text,text)') IS NOT NULL
             THEN '104 in place' ELSE 'before 104' END AS applied,
        (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace
           AND proname IN ('pl_week_check', 'pl_week_uncheck', 'pl_week_check_changes') AND prosecdef) AS acts,
-       (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname IN ('plw_h_raise', 'plw_h_json')) AS helpers,
+       (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname IN ('plw_h_raise', 'plw_h_json', 'plw_h_no_delete')) AS helpers,
        (SELECT count(*) FROM pg_policies WHERE schemaname = 'public' AND tablename = 'pl_week_checks' AND policyname = 'monitor_read') AS policies,
        (SELECT count(*) FROM pg_class c WHERE c.relnamespace = 'public'::regnamespace AND c.relname = 'pl_week_checks'
           AND (has_table_privilege('anon', c.oid, 'SELECT') OR has_table_privilege('authenticated', c.oid, 'SELECT')

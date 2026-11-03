@@ -1,4 +1,4 @@
--- 104 ROLLBACK - removes pl_week_checks and its 3 acts + 2 helpers; B-54 back by one. ASCII, ONE DO block.
+-- 104 ROLLBACK - removes pl_week_checks and its 3 acts + 3 helpers; B-54 back by one. ASCII, ONE DO block.
 -- It REFUSES while any mark exists: a mark is the accountant's record of a checked week (history), never thrown away
 -- by a rollback. To roll back with marks, the owner decides first what happens to them.
 -- Before it, the front end must not call /pallets/week-checks (the mark hides itself when the route answers 404 / 500,
@@ -20,6 +20,7 @@ BEGIN
   DROP TABLE public.pl_week_checks;   -- its trigger, index and policy go with it
   DROP FUNCTION public.plw_h_json(jsonb);
   DROP FUNCTION public.plw_h_raise(text, text);
+  DROP FUNCTION public.plw_h_no_delete();   -- after the table: its trigger went with it
   SELECT count(*) INTO v_trg1 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace ns ON ns.oid = c.relnamespace
    WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public';
   IF v_trg1 <> v_trg0 - 1 THEN RAISE EXCEPTION '104 rollback: trigger count % -> % (expected -1)', v_trg0, v_trg1; END IF;
