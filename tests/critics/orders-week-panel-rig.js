@@ -376,7 +376,7 @@ async function scnDocs(browser) {
 async function scnInvoice(browser) {
   console.log('\n[invoice] ΤΠΥ / αυτοπαράδοση / τιμή / αναίρεση from the week (owner 3/11)');
   const page = await P.newPage(browser, 'accountant');
-  const cap = { patches: [], fail: null };
+  const cap = { patches: [], fail: null, guarded: [] };
   const H = { 'access-control-allow-origin': '*' };
   for (const [tbl, list, name] of [[P.T.ORDERS, P.ORDERS, 'orders'], [P.T.NAT_ORDERS, P.NAT, 'national_orders']]) {
     // Registered after installMocks: a PATCH is recorded and answered as the Worker does (null = column emptied).
@@ -388,6 +388,21 @@ async function scnInvoice(browser) {
       cap.patches.push({ table: name, id: rid, fields: body.fields });
       if (cap.fail) { const m = cap.fail; cap.fail = null; return route.fulfill({ status: 422, contentType: 'application/json', headers: H, body: JSON.stringify({ error: m }) }); }
       const rec = list.find(r => r.id === rid);
+      // The base's invoice_mark_guard (043 / 101), as read LIVE on 3/11 (SELECT prosrc): a write that keeps or
+      // makes a row invoiced and touches its number, price or self delivery passes only as a self delivery, or
+      // with a ΤΠΥ and a price > 0. Every write of this scenario goes through it, as in production.
+      const guard = (before, patch) => {
+        const after = Object.assign({}, before, patch);
+        const touched = ['Invoice Number', 'Price', 'Self Delivery'].some(k => k in patch && patch[k] !== before[k]);
+        if (after.Invoiced !== true || !(before.Invoiced !== true || touched)) return null;
+        if (after['Self Delivery'] === true) return null;
+        if (!String(after['Invoice Number'] || '').trim()) return 'Δεν σημαίνεται τιμολογημένη χωρίς αριθμό τιμολογίου (ΤΠΥ) του ERP';
+        if (!(Number(after.Price) > 0)) return 'Δεν σημαίνεται τιμολογημένη χωρίς τιμή';
+        return null;
+      };
+      const g = rec ? guard(rec.fields, body.fields || {}) : null;
+      cap.guarded.push({ id: rid, refused: g });
+      if (g) return route.fulfill({ status: 422, contentType: 'application/json', headers: H, body: JSON.stringify({ error: g }) });
       if (rec) for (const [k, v] of Object.entries(body.fields || {})) { if (v === null) delete rec.fields[k]; else rec.fields[k] = v; }
       return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ id: rid, fields: rec ? rec.fields : body.fields }) });
     });
@@ -480,18 +495,59 @@ async function scnInvoice(browser) {
   ok(last().id === 'recO1255' && body(last()) === JSON.stringify({ Price: 2950 }), 'correction → PATCH {Price: 2950}: ' + body(last()));
   ok(/2\.950,00/.test(await txt('recO1255', 'amt')), 'the line repaints 2.950,00');
 
-  // 5 · an invoiced order's price is locked (the «Διόρθωση» rule); undo first, then the price opens
-  const n5 = cap.patches.length;
+  // 5 · an invoiced order's price changes (owner 3/11, «Όχι, να αλλάζει»): owner / accountant, asked first
   await cell('recO1244', 'amt').click();
+  await page.waitForSelector('#owvEd [data-owvedin="price"]');
+  const ed5 = await page.locator('#owvEd').textContent();
+  ok(/Τιμολογημένη \(ΤΠΥ 0463\)/.test(ed5) && /το τιμολόγιο στο ERP δεν αλλάζει από εδώ/.test(ed5), 'invoiced #1244: the price box says «Τιμολογημένη (ΤΠΥ 0463) · το τιμολόγιο στο ERP δεν αλλάζει από εδώ»');
+  await page.screenshot({ path: path.join(SHOTS, 'invoice-price-invoiced.png') });
+  const n5 = cap.patches.length;
+  await page.fill('#owvEd [data-owvedin="price"]', '1200');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#_cfaCancel', { state: 'visible' });
+  const q5 = await page.locator('#modalOverlay').textContent();
+  ok(/Αλλαγή τιμής της #1244 \(ΤΠΥ 0463\)/.test(q5) && /Το τιμολόγιο στο ERP ΔΕΝ αλλάζει από εδώ/.test(q5), 'Enter → asked first, in the undo\'s words: «' + q5.replace(/\s+/g, ' ').trim().slice(0, 140) + '»');
+  await page.click('#_cfaCancel'); await page.waitForTimeout(200);
+  ok(cap.patches.length === n5 && await page.locator('#owvEd').count() === 1, 'cancel → no PATCH, the editor stays');
+  const st0 = await page.locator('.ow4-st').textContent();
+  await page.keyboard.press('Enter');
+  await confirmOk(/ERP ΔΕΝ αλλάζει/);
+  await edGone();
+  ok(last().id === 'recO1244' && body(last()) === JSON.stringify({ Price: 1200 }), 'invoiced price → ONE PATCH {Price: 1200}: ' + body(last()));
+  ok(cap.guarded[cap.guarded.length - 1].refused === null, 'the base guard 043 lets it through (ΤΠΥ 0463 + price > 0)');
+  ok(/1\.200,00/.test(await txt('recO1244', 'amt')) && /✓ 0463/.test(await txt('recO1244', 'tpy')), 'the line repaints 1.200,00 and stays ✓ 0463');
+  ok((await page.locator('.ow4-st').textContent()) !== st0, 'the week\'s statement repaints from the Worker\'s answer');
+  // undo, from the ΤΠΥ editor
+  await cell('recO1244', 'tpy').click();
   await page.waitForSelector('#owvEd [data-owvedact="undo"]');
-  ok(await page.locator('#owvEd [data-owvedin="price"]').count() === 0 && /δεν αλλάζει από εδώ/.test(await page.locator('#owvEd').textContent()), 'invoiced #1244: no price box, «δεν αλλάζει από εδώ»');
-  ok(cap.patches.length === n5, 'no PATCH from opening it');
   await page.click('#owvEd [data-owvedact="undo"]');
   await confirmOk(/ΤΠΥ 0463/);
-  await page.waitForSelector('#owvEd [data-owvedin="price"]', { timeout: 10000 });
+  // the correction form already has a ΤΠΥ box: wait for the LINE, repainted from the Worker's answer
+  await page.waitForFunction(() => /προς κοπή/.test((document.querySelector('.ow4-sub[data-owvopen="intl:recO1244"] [data-owved="tpy"]') || {}).textContent || ''), null, { timeout: 10000 });
   ok(last().id === 'recO1244' && body(last()) === JSON.stringify({ Invoiced: false, 'Invoice Number': null, 'Invoice Date': null }), 'undo → PATCH {Invoiced: false, Invoice Number: null, Invoice Date: null}: ' + body(last()));
-  ok(/προς κοπή/.test(await txt('recO1244', 'tpy')), 'the line: «προς κοπή»; the price box is open now');
+  ok(await page.locator('#owvEd [data-owvedin="num"]').inputValue() === '', 'the new ΤΠΥ box under it is empty');
+  const t1244 = await txt('recO1244', 'tpy');
+  ok(/προς κοπή/.test(t1244), 'the line: «προς κοπή»; the ΤΠΥ box is open under it — «' + t1244 + '»');
   await page.keyboard.press('Escape');
+
+  // 5b · a self delivery's price (101: invoiced, no ΤΠΥ) — the base's exception lets it through
+  await cell('recO1255', 'tpy').click();
+  await page.waitForSelector('#owvEd [data-owvedact="self"]');
+  await page.click('#owvEd [data-owvedact="self"]');
+  await edGone();
+  await cell('recO1255', 'amt').click();
+  await page.waitForSelector('#owvEd [data-owvedin="price"]');
+  ok(/Τιμολογημένη \(αυτοπαράδοση\)/.test(await page.locator('#owvEd').textContent()), 'self delivery #1255: «Τιμολογημένη (αυτοπαράδοση)»');
+  await page.fill('#owvEd [data-owvedin="price"]', '3000');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#_cfaOk', { state: 'visible' });
+  const q5b = await page.locator('#modalOverlay').textContent();
+  ok(/Αλλαγή τιμής της #1255 \(αυτοπαράδοση\)/.test(q5b) && !/ERP ΔΕΝ αλλάζει/.test(q5b), 'asked, without the ERP sentence (there is no ERP invoice)');
+  await page.click('#_cfaOk');
+  await edGone();
+  ok(last().id === 'recO1255' && body(last()) === JSON.stringify({ Price: 3000 }), 'self delivery price → PATCH {Price: 3000}: ' + body(last()));
+  ok(cap.guarded[cap.guarded.length - 1].refused === null, 'the base guard 101 lets it through (self delivery, no ΤΠΥ)');
+  ok(/3\.000,00/.test(await txt('recO1255', 'amt')) && /αυτοπαράδοση/.test(await txt('recO1255', 'tpy')), 'the line repaints 3.000,00 · αυτοπαράδοση');
 
   // 6 · ΤΠΥ correction on an invoiced order: number and date only
   await cell('recO1238', 'tpy').click();
@@ -543,7 +599,8 @@ async function scnInvoice(browser) {
   ok(await page.locator('#owvEd').count() === 0, 'another view and back: the editor left open is not mounted again');
   ok(await page.locator('[data-owved]').count() > 0, 'and the cells still open it');
   const total = cap.patches.length;
-  ok(total === 9, `${total} PATCHes in all — one per write, none from opening, cancelling or a wrong price`);
+  ok(total === 12, `${total} PATCHes in all — one per write, none from opening, cancelling or a wrong price`);
+  ok(cap.guarded.filter(x => x.refused).length === 0, 'the base guard refused none of the screen\'s writes (the 422 was the scenario\'s own)');
   ok(P.realErrors(page, /422|Δεν σημαίνεται/).length === 0, 'invoice: 0 page/console errors but the deliberate 422 ' + JSON.stringify(P.realErrors(page, /422|Δεν σημαίνεται/)).slice(0, 300));
   await page.context().close();
 

@@ -78,13 +78,10 @@ const InvoiceOps = (() => {
   // never get one (code review xhigh 2/11) — its price first, then the box.
   const selfAllowed = it => it.state === 'ready' || (it.state === 'blocked' && !isLot(it));
 
-  // An invoiced order's price is the ERP invoice's amount: it does not change
-  // (a self delivery's does — it has no ERP invoice). The rule is the
-  // accountant's «Διόρθωση» (core/order-quick-edit.js, 20/10), asked, never
-  // copied; without it every INVOICED price stays locked (never an unpriced
-  // one — that would say «τιμολογημένη» of an order that is not). To correct it: «Αναίρεση
-  // τιμολόγησης», the price, the ΤΠΥ again — as in «Προς τιμολόγηση», which
-  // offers no price box on an invoiced order either.
+  // Who may change an INVOICED order's price (owner 3/11/2026: owner and
+  // accountant, as 085): the rule of core/order-quick-edit.js, asked, never
+  // copied. Without it every invoiced price stays locked (never an unpriced
+  // one — that would say «τιμολογημένη» of an order that is not).
   const priceLocked = f => (typeof OrderQuickEdit !== 'undefined' && OrderQuickEdit.priceLocked ? OrderQuickEdit.priceLocked(f) : OrdersCommon.isInvoiced(f));
   // Owner + accountant (config.js costs:'full', «Προς τιμολόγηση» since 28/9);
   // the Worker checks the role again on PATCH.
@@ -147,8 +144,21 @@ const InvoiceOps = (() => {
     : `Αναίρεση τιμολόγησης της ${it.num} (ΤΠΥ ${it.f['Invoice Number'] || '—'});\nΗ παραγγελία ξαναγίνεται «προς κοπή», ο αριθμός και η ημερομηνία σβήνουν. Το τιμολόγιο στο ERP ΔΕΝ ακυρώνεται από εδώ.`,
   { title: 'Αναίρεση τιμολόγησης', confirmLabel: 'Αναίρεση', danger: true });
 
+  // An INVOICED order's price (owner 3/11): asked before, in the words of the
+  // undo — the ERP invoice already carries the old amount and does not change
+  // from here. A self delivery has no ERP invoice: that sentence is left out.
+  // `it` needs only { num, f } (the card's «Διόρθωση» asks it too).
+  const confirmPrice = (it, n) => {
+    const f = it.f || {}, self = OrdersCommon.isSelfDelivery(f);
+    const old = OrdersCommon.hasPrice(f) ? OrdersCommon.eurSym(OrdersCommon.price(f)) : '—';
+    return confirmAction(self
+      ? `Αλλαγή τιμής της ${it.num} (αυτοπαράδοση);\nΗ τιμή ${old} γίνεται ${OrdersCommon.eurSym(n)}. Δεν υπάρχει τιμολόγιο ERP για αυτή την παραγγελία.`
+      : `Αλλαγή τιμής της ${it.num} (ΤΠΥ ${f['Invoice Number'] || '—'});\nΗ παραγγελία είναι τιμολογημένη: η τιμή ${old} γίνεται ${OrdersCommon.eurSym(n)}. Το τιμολόγιο στο ERP ΔΕΝ αλλάζει από εδώ.`,
+    { title: 'Αλλαγή τιμής τιμολογημένης', confirmLabel: 'Αλλαγή τιμής', danger: true });
+  };
+
   return { normTpy, dupCheck, dateCheck, tpyHints, invoiceFields, selfFields, undoFields, tpyFields, isLot, selfAllowed, priceLocked, canWrite, tableOf,
-    writeInvoice, writeSelf, writeUndo, writeTpy, writePrice, confirmDup, confirmEdit, confirmUndo };
+    writeInvoice, writeSelf, writeUndo, writeTpy, writePrice, confirmDup, confirmEdit, confirmUndo, confirmPrice };
 })();
 
 if (typeof window !== 'undefined') window.InvoiceOps = InvoiceOps;

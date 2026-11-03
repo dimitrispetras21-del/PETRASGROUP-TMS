@@ -1375,13 +1375,15 @@ const OrdersWeekView = (() => {
     const tpyRow = (num, d, label) => `<div class="owv-ed-r"><label>Αριθμός (ΤΠΥ)<input class="owv-ed-in" data-owvedin="num" autocomplete="off" value="${val('num', num)}"${dis}></label>`
       + `<label>Ημερομηνία<input class="owv-ed-in" data-owvedin="date" type="date" max="${today}" value="${val('date', d)}"${dis}></label>${save(label)}</div>`;
     if (e.mode === 'amt' || it.state === 'blocked') {
+      const what = O.isSelfDelivery(f) ? 'αυτοπαράδοση' : 'ΤΠΥ ' + (f['Invoice Number'] || '—');
       if (io.priceLocked(f)) {
-        return head('Τιμή') + `<div class="owv-ed-m">Τιμολογημένη (ΤΠΥ ${esc(f['Invoice Number'] || '—')}): η τιμή είναι του τιμολογίου ERP και δεν αλλάζει από εδώ. Για διόρθωση: πρώτα αναίρεση τιμολόγησης, μετά η τιμή και ξανά ο ΤΠΥ.</div>${err}<div class="owv-ed-foot">${undo}</div>`;
+        return head('Τιμή') + `<div class="owv-ed-m">Τιμολογημένη (${esc(what)}): την τιμή την αλλάζει μόνο ο owner ή το λογιστήριο.</div>${err}`;
       }
-      const blocked = it.state === 'blocked';
+      const blocked = it.state === 'blocked', inv = it.state === 'invoiced';
       const last = blocked && typeof OrdersNoPrice !== 'undefined' && OrdersNoPrice.lastPriceHint ? OrdersNoPrice.lastPriceHint(rec, OrdersData.all(S.data.set)) : null;
-      const hint = blocked ? (last ? 'τελευταία τιμή ίδιας διαδρομής ' + O.eurSym(last.price) : 'πρώτη φορά αυτή η διαδρομή') + ' · Enter → μετά ο ΤΠΥ' : 'Enter αποθηκεύει';
-      return head(blocked ? 'Χωρίς τιμή · πρώτα η τιμή' : 'Τιμή')
+      const hint = blocked ? (last ? 'τελευταία τιμή ίδιας διαδρομής ' + O.eurSym(last.price) : 'πρώτη φορά αυτή η διαδρομή') + ' · Enter → μετά ο ΤΠΥ'
+        : inv ? `Τιμολογημένη (${what})${O.isSelfDelivery(f) ? '' : ' · το τιμολόγιο στο ERP δεν αλλάζει από εδώ'} · Enter ρωτά πριν γράψει` : 'Enter αποθηκεύει';
+      return head(blocked ? 'Χωρίς τιμή · πρώτα η τιμή' : inv ? 'Τιμή τιμολογημένης' : 'Τιμή')
         + `<div class="owv-ed-r"><label>Τιμή €<input class="owv-ed-in" data-owvedin="price" inputmode="decimal" autocomplete="off" value="${val('price', O.hasPrice(f) ? O.eur(O.price(f)) : '')}" placeholder="${last ? esc(O.eur(last.price)) : 'π.χ. 1.250,00'}"${dis}></label>${save(blocked ? 'Καταχώριση τιμής' : 'Διόρθωση τιμής')}</div>`
         + `<div class="owv-ed-hint owv-ed-m">${esc(hint)}</div>${blocked ? selfBox : ''}${err}`;
     }
@@ -1545,6 +1547,8 @@ const OrdersWeekView = (() => {
     if (n === null) return _edErr('Γράψε ποσό μεγαλύτερο του 0 — π.χ. 950 ή 1.250,00');
     if (OrdersCommon.hasPrice(it.f) && Math.abs(OrdersCommon.price(it.f) - n) < 0.005) return _edClose();
     const wasBlocked = it.state === 'blocked';
+    // Owner 3/11/2026: an invoiced order's price changes — asked before, never after.
+    if (it.state === 'invoiced' && !(await io.confirmPrice(it, n))) return _edFocus();
     const fields = await _edWrite(rec, async () => ({ 'Price': await io.writePrice(it, n) }));
     if (!fields) return;
     if (wasBlocked && typeof OrdersNoPrice !== 'undefined' && OrdersNoPrice.noteFilled) OrdersNoPrice.noteFilled(it.type, it.id, fields['Price']);

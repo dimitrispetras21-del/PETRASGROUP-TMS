@@ -53,14 +53,33 @@ test('«Αυτοπαράδοση» is offered on ready, and on an unpriced order
   assert.strictEqual(IO.selfAllowed(it('A', 'intl', {}, 'invoiced')), false);
 });
 
-test('the price of an invoiced order is locked — the accountant\'s «Διόρθωση» rule, asked, never copied', () => {
+test('an invoiced order\'s price: owner and accountant only (owner 3/11) — the «Διόρθωση» rule, asked, never copied', () => {
   delete global.OrderQuickEdit;
   assert.strictEqual(IO.priceLocked({ Invoiced: true, 'Self Delivery': true, Price: 1 }), true, 'without the rule: every invoiced price locked (fail closed)');
   assert.strictEqual(IO.priceLocked({}), false, 'without the rule: an unpriced, uninvoiced order is never called invoiced');
   global.OrderQuickEdit = require('../core/order-quick-edit.js');
-  assert.strictEqual(IO.priceLocked({ Invoiced: true, 'Invoice Number': '1', Price: 5 }), true);
-  assert.strictEqual(IO.priceLocked({ Invoiced: true, 'Self Delivery': true, Price: 5 }), false, 'a self delivery has no ERP invoice');
-  assert.strictEqual(IO.priceLocked({ Price: 5 }), false);
+  const inv = { Invoiced: true, 'Invoice Number': '1', Price: 5 }, self = { Invoiced: true, 'Self Delivery': true, Price: 5 };
+  for (const r of ['owner', 'accountant']) { global.ROLE = r; assert.strictEqual(IO.priceLocked(inv), false, r); assert.strictEqual(IO.priceLocked(self), false, r + ' self'); }
+  for (const r of ['dispatcher', 'management', 'warehouse', undefined]) {
+    if (r) global.ROLE = r; else delete global.ROLE;
+    assert.strictEqual(IO.priceLocked(inv), true, String(r)); assert.strictEqual(IO.priceLocked(self), true, String(r) + ' self');
+  }
+  global.ROLE = 'dispatcher';
+  assert.strictEqual(IO.priceLocked({ Price: 5 }), false, 'not invoiced: never locked');
+  delete global.ROLE;
+});
+
+test('the question before an invoiced price changes: ΤΠΥ and «το τιμολόγιο στο ERP ΔΕΝ αλλάζει», a self delivery without it', async () => {
+  const asked = [];
+  global.confirmAction = async (msg, opts) => { asked.push({ msg, opts }); return true; };
+  await IO.confirmPrice({ num: '#1244', f: { Invoiced: true, 'Invoice Number': '0463', Price: 1150 } }, 1200);
+  await IO.confirmPrice({ num: '#1255', f: { Invoiced: true, 'Self Delivery': true, Price: 2950 } }, 3000);
+  assert.match(asked[0].msg, /Αλλαγή τιμής της #1244 \(ΤΠΥ 0463\)/);
+  assert.match(asked[0].msg, /1\.150,00 € γίνεται 1\.200,00 €/);
+  assert.match(asked[0].msg, /Το τιμολόγιο στο ERP ΔΕΝ αλλάζει από εδώ/);
+  assert.match(asked[1].msg, /\(αυτοπαράδοση\)/);
+  assert.doesNotMatch(asked[1].msg, /ΔΕΝ αλλάζει/);
+  assert.strictEqual(asked[0].opts.danger, true);
 });
 
 test('who may write: owner and accountant (costs full), nobody else', () => {

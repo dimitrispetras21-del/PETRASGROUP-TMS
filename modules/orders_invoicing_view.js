@@ -288,6 +288,7 @@ const OrdersInvoicingView = (() => {
     sel: '', stripEnd: '', tab: 'ready', q: '',
     selId: null, closed: false,
     busy: false, formErr: '', edit: null,
+    editPrice: null,        // id whose invoiced price is being corrected (owner 3/11)
     draft: null,            // {id, num, d} kept across a refused write so she does not retype
     draftPrice: null,       // {id, v} the same for the card's price box (21/10)
     clientInfo: new Map(), clientsFailed: false,
@@ -787,6 +788,19 @@ const OrdersInvoicingView = (() => {
     if (errEl) errEl.scrollIntoView({ block: 'nearest' });
   }
 
+  // «Ποσό» of an invoiced order, with «Διόρθωση τιμής» for whoever IO.priceLocked lets
+  // (owner 3/11/2026: owner and accountant). The same price box and words as «Εβδομάδα».
+  function priceRow(it, err) {
+    const w = canWrite() && !IO.priceLocked(it.f);
+    if (!(w && S.editPrice === it.id)) {
+      return kv('Ποσό', OC().eurSym(it.price) + (w && S.edit !== it.id ? ' <button type="button" class="oiv-link" onclick="OrdersInvoicingView.startPrice()">Διόρθωση τιμής</button>' : ''));
+    }
+    const dr = S.draftPrice && S.draftPrice.id === it.id ? S.draftPrice.v : (it.price === null ? '' : OC().eur(it.price));
+    return `<div class="oiv-edit"><div class="oiv-fr"><label>Νέα τιμή €<input id="oivPriceFix" inputmode="decimal" autocomplete="off" value="${esc(dr)}" onkeydown="if(event.key==='Enter'){event.preventDefault();OrdersInvoicingView.savePriceFix()}"></label></div>
+      <div class="oiv-muted small">${it.self ? 'αυτοπαράδοση — χωρίς τιμολόγιο ERP' : 'το τιμολόγιο στο ERP δεν αλλάζει από εδώ'}</div>${err}
+      <div class="oiv-btns"><button type="button" class="btn btn-ghost btn-sm" onclick="OrdersInvoicingView.cancelPrice()">Άκυρο</button><button type="button" class="oiv-primary sm" id="oivPriceFixSave" onclick="OrdersInvoicingView.savePriceFix()">Διόρθωση τιμής</button></div></div>`;
+  }
+
   // «Αυτοπαράδοση» beside the ΤΠΥ (owner 2/11/2026) — where it is offered: IO.selfAllowed.
   function selfBox(it) {
     return `<label class="oiv-self"><input type="checkbox" id="oivSelf" ${S.busy ? 'disabled' : ''} onchange="OrdersInvoicingView.markSelf('${esc(it.id)}', this)">
@@ -819,18 +833,18 @@ const OrdersInvoicingView = (() => {
       return `<section><div class="oiv-sh"><span>Αυτοπαράδοση</span></div>
         ${kv('Τιμολόγιο ERP', '<span class="oiv-muted">κανένα — δικό μας φορτίο</span>')}
         ${kv('Ημερομηνία', f['Invoice Date'] ? esc(dm(f['Invoice Date'])) : '—')}
-        ${kv('Ποσό', OC().eurSym(it.price))}
-        ${w ? `${err}<button type="button" class="oiv-danger-link" onclick="OrdersInvoicingView.undoInvoice('${esc(it.id)}', true)">Αναίρεση τιμολόγησης</button><div class="oiv-muted small">επαναφέρει «προς κοπή» · η αυτοπαράδοση και η ημερομηνία σβήνουν</div>` : ''}
+        ${priceRow(it, err)}
+        ${w && S.editPrice !== it.id ? `${err}<button type="button" class="oiv-danger-link" onclick="OrdersInvoicingView.undoInvoice('${esc(it.id)}', true)">Αναίρεση τιμολόγησης</button><div class="oiv-muted small">επαναφέρει «προς κοπή» · η αυτοπαράδοση και η ημερομηνία σβήνουν</div>` : ''}
       </section>`;
     }
     if (it.state === 'invoiced') {
       const w = canWrite();
-      const editing = w && S.edit === it.id;
+      const editing = w && (S.edit === it.id || S.editPrice === it.id);
       return `<section><div class="oiv-sh"><span>Τιμολόγιο ERP</span>${w && !editing ? '<button type="button" class="oiv-link" onclick="OrdersInvoicingView.startEdit()">Διόρθωση ΤΠΥ</button>' : ''}</div>
         ${kv('Αριθμός (ΤΠΥ)', f['Invoice Number'] ? esc(f['Invoice Number']) : '<span class="oiv-muted">χωρίς αριθμό (πριν γίνει υποχρεωτικός)</span>')}
         ${kv('Ημερομηνία', f['Invoice Date'] ? esc(dm(f['Invoice Date'])) : '—')}
-        ${kv('Ποσό', OC().eurSym(it.price))}
-        ${editing ? `<div class="oiv-edit"><div class="oiv-fr">
+        ${priceRow(it, err)}
+        ${w && S.edit === it.id ? `<div class="oiv-edit"><div class="oiv-fr">
             <label>Νέος αριθμός (ΤΠΥ)<input id="oivEditNum" autocomplete="off" value="${esc(f['Invoice Number'] || '')}" onkeydown="if(event.key==='Enter')OrdersInvoicingView.saveEdit()"></label>
             <label>Ημερομηνία<input id="oivEditDate" type="date" max="${today()}" value="${esc(OC().ymd(f['Invoice Date']) || today())}"></label></div>
             ${err}
@@ -985,7 +999,26 @@ const OrdersInvoicingView = (() => {
     toast(`Η τιμολόγηση ${escapeHtml(it.num)} (${escapeHtml(what)}) αναιρέθηκε — είναι ξανά προς κοπή`, 'warn');
   }
 
-  function startEdit() { S.edit = S.selId; S.formErr = ''; paintCard(); const el = document.getElementById('oivEditNum'); if (el) { el.focus(); el.select(); } }
+  function startPrice() { S.editPrice = S.selId; S.edit = null; S.formErr = ''; S.draftPrice = null; paintCard(); const el = document.getElementById('oivPriceFix'); if (el) { el.focus(); el.select(); } }
+  function cancelPrice() { S.editPrice = null; S.formErr = ''; S.draftPrice = null; paintCard(); }
+  // An invoiced order's price (owner 3/11/2026): parsed, asked, written and read back by InvoiceOps.
+  async function savePriceFix() {
+    const it = itemById(S.editPrice);
+    if (!it || S.busy || !canWrite() || it.state !== 'invoiced' || IO.priceLocked(it.f)) return;
+    const el = document.getElementById('oivPriceFix');
+    S.draftPrice = { id: it.id, v: el ? el.value : '' };
+    const n = typeof OrdersNoPrice !== 'undefined' ? OrdersNoPrice.parsePrice(el ? el.value : '') : null;
+    if (n === null) { S.formErr = 'Γράψε ποσό μεγαλύτερο του 0 — π.χ. 950 ή 1.250,00'; paintCard(); return; }
+    if (it.price !== null && Math.abs(it.price - n) < 0.005) return cancelPrice();
+    if (!(await IO.confirmPrice(it, n))) return;
+    S.busy = true; S.formErr = '';
+    try { it.rec.fields['Price'] = await IO.writePrice(it, n); }
+    catch (e) { S.busy = false; S.formErr = 'Δεν αποθηκεύτηκε: ' + ((e && e.message) || 'άγνωστο σφάλμα'); if (S.ctx.isCurrent()) paintCard(); return; }
+    S.busy = false; S.editPrice = null; S.draftPrice = null;
+    afterWrite();
+    if (S.ctx.isCurrent()) paintParts();
+  }
+  function startEdit() { S.editPrice = null; S.edit = S.selId; S.formErr = ''; paintCard(); const el = document.getElementById('oivEditNum'); if (el) { el.focus(); el.select(); } }
   function cancelEdit() { S.edit = null; S.formErr = ''; paintCard(); }
   async function saveEdit() {
     const it = itemById(S.edit); if (!it || S.busy || !canWrite()) return;
@@ -1065,7 +1098,7 @@ const OrdersInvoicingView = (() => {
   }
 
   // ── Interactions ────────────────────────────────────────────────────────
-  function select(id) { S.selId = id; S.closed = false; S.edit = null; S.formErr = ''; S.draft = null; S.reopenErr = null;
+  function select(id) { S.selId = id; S.closed = false; S.edit = null; S.editPrice = null; S.formErr = ''; S.draft = null; S.reopenErr = null;
     document.querySelectorAll('#oivBody tr.oiv-r').forEach(tr => tr.classList.toggle('on', tr.dataset.id === id));
     paintCard(); }
   function close() { S.selId = null; S.closed = true; paintCard(); document.querySelectorAll('#oivBody tr.oiv-r.on').forEach(tr => tr.classList.remove('on')); }
@@ -1281,7 +1314,7 @@ const OrdersInvoicingView = (() => {
   }
 
   const api = { pure, render, select, close, setTab, pickWeek, shift, search, formInput, formKey, submit, undoInvoice,
-    startEdit, cancelEdit, saveEdit, savePrice, markSelf, copyErp, exportCsv, print, closeRemainder, reopenLot };
+    startEdit, cancelEdit, saveEdit, savePrice, startPrice, cancelPrice, savePriceFix, markSelf, copyErp, exportCsv, print, closeRemainder, reopenLot };
   return api;
 })();
 
