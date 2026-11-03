@@ -12,6 +12,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
+- dimitris · `fix/dkv-import-drop` · Εισαγωγή DKV: το σύρσιμο του ZIP δεν έφτανε ποτέ στο TMS (ο browser κατέβαζε το αρχείο)· όλη η σελίδα δέχεται σύρσιμο, ένα ZIP τη φορά· εκκρεμούν 30/9 + 15/10 ×2 (Αλεξία)· ?v= / SW_VERSION 1793890000 (`docs/sessions/2026-11-03-dimitris-dkv-import-drop.md`)
 - dimitris · `fix/wi4-import-delivery-date` · Weekly Διεθνών: κουτάκι ημερομηνίας παράδοσης στην εισαγωγή (ίδιο με της φόρτωσης)· η γραμμή στη νωρίτερη ημέρα στάσεων (`WI4.rowDt`, απαντά το #618)· η «Εβδομάδα» διαβάζει τις ημερομηνίες στάσεων: ίδια αρίθμηση και ίδια (νωρίτερη) ημέρα· μόνο front end, ?v= / SW_VERSION 1793880000 (`docs/sessions/2026-11-03-dimitris-wi4-import-delivery-date.md`)
 - dimitris · `feat/owv-week-assign` · «Παραγγελίες › Εβδομάδα»: κλικ στην ΑΝΑΘΕΣΗ = το έγγραφο της ανάθεσης (το `print.html` του Weekly, μόνο ανάγνωση)· εθνικά επόμενο βήμα· ?v= / SW_VERSION 1793870000 (`docs/sessions/2026-11-02-dimitris-week-assign-doc.md`)
 - dimitris · `fix/owv-week-align` · «Παραγγελίες › Εβδομάδα»: μία στοίχιση στηλών (ένα πλάτος διαδρομής ανά πλευρά, κεφαλίδα + γραμμές + υπο-γραμμές)· πάνω στο #244· ?v= / SW_VERSION 1793860000 (`docs/sessions/2026-11-02-dimitris-week-align.md`)
