@@ -12,7 +12,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
-- dimitris · `docs/prints-pnl-week-design` · Εκτυπώσεις (owner 3/11): αποτέλεσμα δρομολογίου, εβδομάδα δρομολογίων, εβδομάδα τιμολόγησης· ΜΟΝΟ σχέδιο Figma (`2518:7735`) + χάρτης δεδομένων με μετρήσεις, 4 ερωτήσεις owner· κώδικας μετά την έγκριση (`docs/sessions/2026-11-03-dimitris-prints-design.md`)
+- dimitris · `docs/prints-pnl-week-design` · Εκτυπώσεις (owner 3/11): αποτέλεσμα δρομολογίου, εβδομάδα δρομολογίων, εβδομάδα τιμολόγησης· ΜΟΝΟ σχέδιο Figma (`2518:7735`) + χάρτης δεδομένων με μετρήσεις, PR #252· οι 5 ερωτήσεις απαντήθηκαν 3/11· κώδικας μετά την έγκριση των καρέ (`docs/sessions/2026-11-03-dimitris-prints-design.md`)
 - dimitris · `fix/wi4-import-delivery-date` · Weekly Διεθνών: κουτάκι ημερομηνίας παράδοσης στην εισαγωγή (ίδιο με της φόρτωσης)· η γραμμή στη νωρίτερη ημέρα στάσεων (`WI4.rowDt`, απαντά το #618)· η «Εβδομάδα» διαβάζει τις ημερομηνίες στάσεων: ίδια αρίθμηση και ίδια (νωρίτερη) ημέρα· μόνο front end, ?v= / SW_VERSION 1793880000 (`docs/sessions/2026-11-03-dimitris-wi4-import-delivery-date.md`)
 - dimitris · `feat/owv-week-assign` · «Παραγγελίες › Εβδομάδα»: κλικ στην ΑΝΑΘΕΣΗ = το έγγραφο της ανάθεσης (το `print.html` του Weekly, μόνο ανάγνωση)· εθνικά επόμενο βήμα· ?v= / SW_VERSION 1793870000 (`docs/sessions/2026-11-02-dimitris-week-assign-doc.md`)
 - dimitris · `fix/owv-week-align` · «Παραγγελίες › Εβδομάδα»: μία στοίχιση στηλών (ένα πλάτος διαδρομής ανά πλευρά, κεφαλίδα + γραμμές + υπο-γραμμές)· πάνω στο #244· ?v= / SW_VERSION 1793860000 (`docs/sessions/2026-11-02-dimitris-week-align.md`)
