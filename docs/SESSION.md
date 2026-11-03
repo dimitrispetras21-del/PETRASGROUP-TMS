@@ -12,7 +12,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
-- dimitris · `claude/rt-sync-v6-plan` · RT: απόλυτο sync v6, ΣΧΕΔΙΟ r5 (ουρά + καταναλωτής, ενέργειες μίας κίνησης, Φάση 0)· 3 γύροι ελεγκτών + 2 code-review max· PR #234· περιμένει ερωτήσεις owner N10 κ.ά., καμία εκτέλεση (`docs/rt-sync-v6/PLAN.md`)
+- dimitris · `claude/rt-sync-v6-plan` · RT: απόλυτο sync v6, ΣΧΕΔΙΟ r6 (ουρά + καταναλωτής, ενέργειες μίας κίνησης, Φάση 0)· 3 γύροι ελεγκτών + 3 code-review max· PR #234· περιμένει ερωτήσεις owner (πρώτη N5), καμία εκτέλεση (`docs/rt-sync-v6/PLAN.md`)
 - dimitris · `feat/compose-drafts-102` · Εθνικά v5: 102 προσχέδιο, πρόχειρα φορτία στη βάση («Σύνθεση φορτίων», σχέδιο #236)· PGlite + build tests πράσινα· εκτέλεση από τον owner μετά τις 15:00· διαδρομές Worker στην αλυσίδα με το `/plan/transfer` (συντονιστής)· καμία αλλαγή οθόνης (`docs/sessions/2026-11-02-dimitris-compose-drafts-102.md`)
 - dimitris · `feat/owv-week-order-panel` · «Παραγγελίες › Εβδομάδα»: σειρά γραμμών = Weekly Διεθνών / Εθνικών v5 (κοινός κανόνας `WI4.dayRowOrder` / `WN5L.rowOrder`), καρτέλα παραγγελίας ανοίγει πάνω στην εβδομάδα· μόνο front end, ?v= / SW_VERSION 1793780000 (`docs/sessions/2026-11-02-dimitris-week-order-panel.md`)
 - dimitris · `docs/transfer-figma` · Εθνικά v5: μεταφόρτωση σε οποιοδήποτε σημείο, κομμάτι 4: σχέδιο Figma (σελίδα «Μεταφόρτωση 2/11», 6 καρέ, κριτές 9/9), μόνο σχέδιο· οι 3 ερωτήσεις απαντήθηκαν (owner 2/11)· επόμενο το κομμάτι 5 (οθόνες) (`docs/sessions/2026-11-02-dimitris-transfer-figma.md`)
