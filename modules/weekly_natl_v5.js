@@ -1267,7 +1267,10 @@ function _boxHTML(t, r) {
   // the side it assigns, «ΑΝΟΔΟΣ →» / «← ΚΑΘΟΔΟΣ» (owner 28/10, live fix 3): the ΑΝΑΘΕΣΗ column is shared (H1 grid).
   // 2a (coordinator 1/11, critics r1): a quiet grey mark, as the Weekly International's empty assignment, late or not;
   // the red is the late load's own word «αργό», once. The side it assigns is the one with content — no «← ΚΑΘΟΔΟΣ» line.
-  if (t.type === 'un') return '<button type="button" class="wi4-box un" data-act="assign" title="Ανάθεση οχήματος"><span class="wi4-l1">ΠΡΟΣ ΑΝΑΘΕΣΗ</span></button>';
+  // Ε1 (owner 2/11): a part in a draft of «Σύνθεση φορτίων» stays this row, with a small grey «σε πρόχειρο» (filled
+  // by WN5Compose from GET /plan/drafts; '' while its flag is off)
+  if (t.type === 'un') return '<button type="button" class="wi4-box un" data-act="assign" title="Ανάθεση οχήματος"><span class="wi4-l1">ΠΡΟΣ ΑΝΑΘΕΣΗ</span></button>'
+    + (typeof WN5Compose !== 'undefined' ? WN5Compose.markHTML(r && r.pieceIds) : '');
   // The tile is 28px high: a long name is cut by the wi4 rule with a visible «…» and stays whole in title. A tile with
   // nothing under the name (a partner without a plate, 2i) gives the name both lines.
   if (!t.line2) return `<span class="wi4-box ${t.type} wn5-box1"><span class="wi4-l1" title="${_esc(t.line1)}">${_esc(t.line1)}</span></span>`;
@@ -1929,7 +1932,12 @@ const WN5 = {
       { id: 'sheet-all', label: 'Όλο το δρομολόγιο', run: (rtId) => WN5Sheet.print(rtId, 'ALL') }] },
     { id: 'plates', order: 70, label: 'Αντιγραφή πινακίδων', run: (rtId) => copyPlatesOf(rtId) },
     // owner 31/10 (B-13 = α, Figma 2396:7831): the way into the vehicle change (H2) for every cycle, also one never changed
-    { id: 'handover', order: 80, label: 'Αλλαγή οχήματος…', sub: '›', run: (rtId) => WN5Hand.entry(rtId) },
+    // owner 2/11 (Q2, «μοναδικό κουμπί»): with FEATURES.WN_ROAD the one entry «Αλλαγή στον δρόμο…» (modules/wn5_road.js),
+    // which becomes the 072b change by itself when the base says whole_vehicle; without it the line above, as before
+    { id: 'handover', order: 80,
+      get label() { return typeof WN5Road !== 'undefined' && WN5Road.on() ? 'Αλλαγή στον δρόμο…' : 'Αλλαγή οχήματος…'; },
+      get sub() { return typeof WN5Road !== 'undefined' && WN5Road.on() ? '' : '›'; },
+      run: (rtId) => (typeof WN5Road !== 'undefined' && WN5Road.on() ? WN5Road.open(rtId) : WN5Hand.entry(rtId)) },
     // T15: last and red (Figma 2011:8858); owner + dispatcher on the Worker, but visible to all (Δ12 tile 8)
     { id: 'clear', order: 90, label: 'Καθαρισμός ανάθεσης', sub: 'κάθοδος + άνοδος', danger: true, run: (rtId) => WN5Act.clear(rtId) },
   ],

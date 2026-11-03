@@ -129,3 +129,9 @@ const STATUS_BADGE = {
   'Loaded':     'badge-green',
   'Confirmed':  'badge-blue',
 };
+
+// -- 099 «Αλλαγή στον δρόμο» (owner 2/11) ---------
+// The one catalogue place every free-text transfer point stands on (locations.legacy_id, = the facade record id).
+// Not a place to pick: every place list leaves it out (pickers, «Τοποθεσίες», the v5 catalogue). One test of it.
+const TRANSFER_POINT_LEGACY = 'v5_transfer_point';
+function isTransferPointLoc(legacyId) { return legacyId === TRANSFER_POINT_LEGACY; }

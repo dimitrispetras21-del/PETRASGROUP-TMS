@@ -124,7 +124,19 @@ test('F4α-T1: requestId only on REQUEST_ROUTES (else client_request_route, zero
   assert.deepStrictEqual(JSON.parse(s.run('JSON.stringify(PlanApi.DRY_ROUTES)')),
     ['POST /plan/move', 'PATCH /plan/rt/:id', 'POST /plan/rt/:id/clear', 'POST /plan/delete',
       // T25: the three 072b routes (live 26/10); their drift to PLAN_ROUTES is held by tests/wn5-plan-api-worker.test.mjs
-      'POST /plan/rt/:id/handover', 'PATCH /plan/segments/:id', 'POST /plan/segments/:id/remove']);
+      'POST /plan/rt/:id/handover', 'PATCH /plan/segments/:id', 'POST /plan/segments/:id/remove',
+      // 099 «Αλλαγή στον δρόμο» (owner 2/11): its preview; the same drift test holds it to PLAN_ROUTES
+      'POST /plan/transfer']);
+  // a draft route has no dry run (102: a draft is not a trip) - the client refuses one before any fetch
+  const d = planSandbox(() => json(200, { ok: true }));
+  const r = await outcome(d, "planFetch('POST', '/plan/drafts/7/delete', { body: { version: 1 }, dry: true })");
+  assert.strictEqual(r.code, 'client_dry_route');
+  assert.strictEqual(d.plan().length, 0);
+  // the draft's creation and its realize take the request_id (102 plan_h_replay); its other writes do not
+  await outcome(d, `planFetch('POST', '/plan/drafts/7/realize', { body: { version: 1, legs: {} }, requestId: '${RID}' })`);
+  assert.strictEqual(JSON.parse(d.plan()[0].body).request_id, RID);
+  const p = await outcome(d, `planFetch('POST', '/plan/drafts/7/pieces', { body: { version: 1, add: [] }, requestId: '${RID}' })`);
+  assert.strictEqual(p.code, 'client_request_route');
   assert.strictEqual(s.run("PlanApi.routeOf('patch', '/plan/rt/123?x=1')"), 'PATCH /plan/rt/:id');
 });
 

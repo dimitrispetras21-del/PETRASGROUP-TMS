@@ -100,12 +100,13 @@ function world(opts = {}) {
   const utils = read('core/utils.js');
   vm.runInContext(['toLocalDate', 'localToday', 'escapeHtml'].map((n) => fnFrom(utils, n)).join('\n')
     + '\nObject.assign(this,{toLocalDate,localToday,escapeHtml});', ctx);
-  for (const f of ['core/tms-week.js', 'core/data-helpers.js', 'core/orders-common.js', 'modules/preorder.js', 'core/relay.js'])
+  for (const f of ['core/tms-week.js', 'core/data-helpers.js', 'core/orders-common.js', 'modules/preorder.js', 'core/relay.js', 'core/wi4-logic.js'])
     vm.runInContext(read(f), ctx, { filename: f });
   vm.runInContext('this.TmsWeek=TmsWeek;this.OrdersStock=OrdersStock;', ctx);
   vm.runInContext(read('modules/weekly_intl.js'), ctx, { filename: 'modules/weekly_intl.js' });
   const W = ctx.WI_INTERNAL;
-  ctx.WI4 = fakeWI4();
+  // the fake, plus only the real board-row rules _wiBuildRows / _wiShelved need (core/wi4-logic.js)
+  ctx.WI4 = Object.assign(fakeWI4(), { readWindow: ctx.WI4.readWindow, weekExports: ctx.WI4.weekExports, giSortRecs: ctx.WI4.giSortRecs, boardRows: ctx.WI4.boardRows, shelvedRow: ctx.WI4.shelvedRow });
   let active = !!opts.active;
   ctx.WIV2 = {
     _broken: false,

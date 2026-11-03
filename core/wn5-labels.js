@@ -167,8 +167,15 @@
     const r = Object.prototype.hasOwnProperty.call(REASON, code) ? REASON[code] : null;
     return r ? { text: r.text, unknown: false } : { text: 'άλλος λόγος · ' + String(code), unknown: true };
   }
+  // 098 (owner 2/11, «Αλλαγή στον δρόμο»): the reasons of a transfer stop = the eight of 072b + two planned ones
+  // (CHECK rt_stops_transfer_reason of 098, the one list; pinned by tests/wn5-labels.test.js). Separate from REASON:
+  // the 072b handover keeps refusing these two (seg_reason_list), so a whole-vehicle save sends them as a note.
+  const ROAD_REASON = Object.freeze(Object.assign({}, REASON, {
+    meeting: Object.freeze({ text: 'Συνάντηση', group: 'planned' }),
+    partner_handover: Object.freeze({ text: 'Παράδοση συνεργάτη', group: 'planned' }),
+  }));
 
-  const WN5Lab = Object.freeze({ WARNING, CONSEQUENCE, CATEGORY, REASON, warningLine, consequenceLine, reasonLine });
+  const WN5Lab = Object.freeze({ WARNING, CONSEQUENCE, CATEGORY, REASON, ROAD_REASON, warningLine, consequenceLine, reasonLine });
   if (typeof module !== 'undefined' && module.exports) module.exports = WN5Lab;
   else root.WN5Lab = WN5Lab;
 })(typeof window !== 'undefined' ? window : this);
