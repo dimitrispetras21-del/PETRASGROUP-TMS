@@ -602,3 +602,21 @@ test('inside a day, the board number orders the rows first; rows without one fol
   const sec = W.daySections('2026-09-19', [A, C, B]);
   assert.deepStrictEqual(sec.days.find(d => d.day === '2026-09-21').rows.map(r => r.code), ['RT-1', 'RT-2', 'RT-0']);
 });
+
+test('a load with stops on two days sits on the earlier one, as on the Weekly (owner 3/11); never in another week', () => {
+  // recE1 delivers Mon 21/9 (stop 1); a second delivery Sun 20/9 → Sunday. recN6 (no RT) delivers Tue 22/9; a
+  // second delivery Fri 18/9 (the week before) → stays Tuesday: the week is the invoicing one (weekDateOf).
+  // recI3 loads Mon 21/9; a second loading Sat 19/9 → Saturday.
+  const stopDates = new Map([
+    ['recE1', { L: [], D: [{ dt: '2026-09-21' }, { dt: '2026-09-20' }] }],
+    ['recN6', { L: [], D: [{ dt: '2026-09-22' }, { dt: '2026-09-18' }] }],
+    ['recI3', { L: [{ dt: '2026-09-21' }, { dt: '2026-09-19' }], D: [] }],
+  ]);
+  const m = W.buildWeek({ week: WEEK, intl: INTL, natl: NATL, rts: RTS, stopDates });
+  assert.strictEqual(m.rows.find(r => r.code === 'RT-1181').day, '2026-09-20');
+  assert.strictEqual(m.rows.find(r => r.code === 'RT-1185').day, '2026-09-19');
+  assert.strictEqual(m.noRt.find(r => r.rec.id === 'recN6').day, '2026-09-22');
+  assert.deepStrictEqual(m.weekIntl.map(r => r.id).sort(), model.weekIntl.map(r => r.id).sort(), 'the week does not change');
+  // without stop dates: the order's own day, as before
+  assert.strictEqual(model.rows.find(r => r.code === 'RT-1181').day, '2026-09-21');
+});
