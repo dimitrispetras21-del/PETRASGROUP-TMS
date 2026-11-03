@@ -1833,7 +1833,7 @@ const OrdersWeekView = (() => {
       if (l.parentMissing) return { t: 'αρχική εκτός ανάγνωσης', off: true };
       if (l.dupOf) return { t: 'μετρά σε άλλη γραμμή', off: true };
       if (isVsNational(l.rec)) return { t: p, off: true };
-      if (!l.inWeek) { if (has) star.push(`${clientRaw(f) || O.numLabel(l.rec)} ${O.numLabel(l.rec)} ${p} (${weekMark(l.week)})`); return { t: p, off: true, wk: weekMark(l.week) }; }
+      if (!l.inWeek) { if (has) star.push([clientRaw(f), O.numLabel(l.rec), p, `(${weekMark(l.week)})`].filter(Boolean).join(' ')); return { t: p, off: true, wk: weekMark(l.week) }; }
       return { t: p, dag: !has };
     };
     const order = l => {
@@ -1931,7 +1931,7 @@ const OrdersWeekView = (() => {
     let el = document.getElementById('owvPrint');
     if (!el) { el = document.createElement('div'); el.id = 'owvPrint'; document.body.appendChild(el); }
     el.innerHTML = doc.html;
-    const done = () => { document.body.classList.remove('owv-printing'); window.removeEventListener('afterprint', done); };
+    const done = () => { document.body.classList.remove('owv-printing'); el.innerHTML = ''; window.removeEventListener('afterprint', done); };
     window.addEventListener('afterprint', done);
     document.body.classList.add('owv-printing');
     window.print();
