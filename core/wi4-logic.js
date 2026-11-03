@@ -67,6 +67,23 @@ const _addDay = (d, n) => {
   return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(t.getUTCDate()).padStart(2, '0')}`;
 };
 
+// The datetime a board row is filed by (owner 3/11/2026, «στην ημέρα του νωριτέρου»): an export by
+// its EARLIEST delivery (its loading when it has none), an import by its EARLIEST loading. The
+// order's own field is not that: the form writes stop 1's (orders_intl.js), and stops may be dated
+// out of number order (#618: stop 2 a day before stop 1). The stops' dates come from the page's
+// read of ORDER STOPS (f._stopsD / f._stopsL, [{dt}]); without them it is the field, as before.
+// A tie keeps the field. type = the row's type, 'export' | 'import'.
+function rowDt(f0, type) {
+  const f = f0 || {};
+  const exp = type === 'export';
+  let best = (exp ? f['Delivery DateTime'] : f['Loading DateTime']) || '';
+  ((exp ? f._stopsD : f._stopsL) || []).forEach((s) => {
+    const d = s && s.dt ? String(s.dt) : '';
+    if (d && (!best || d.slice(0, 10) < String(best).slice(0, 10))) best = d;
+  });
+  return best || (exp ? f['Loading DateTime'] || '' : '');
+}
+
 // The board's two reads reach 8 days around its week (Cross-week, dispatcher 19/5; B2, owner 6/9):
 // the from / to its IS_AFTER / IS_BEFORE carry. wsDate = the week's Saturday as a LOCAL Date at
 // midnight (Date arithmetic as the load always did it, so a DST week ends where it always ended).
@@ -76,10 +93,11 @@ function readWindow(wsDate, dayOf) {
 }
 
 // The week's exports in board order (the load's own cut, B2 owner 6/9): a Plan Week Start decides
-// alone, in either direction; else the delivery day (the loading day when there is none) must fall
-// in ws–we. Then by that datetime as text; equal ones keep the read order (the Worker reads by id).
+// alone, in either direction; else the delivery day (rowDt: the earliest; the loading day when there
+// is none) must fall in ws–we. Then by that datetime as text; equal ones keep the read order (the
+// Worker reads by id).
 function weekExports(recs, ws, we, dayOf) {
-  const eff = (f) => f['Delivery DateTime'] || f['Loading DateTime'] || '';
+  const eff = (f) => rowDt(f, 'export');
   return (recs || []).filter((r) => {
     const f = r.fields || {};
     const pws = dayOf(f['Plan Week Start'] || '');
@@ -115,7 +133,7 @@ function boardRows(exports, imports, o) {
   for (const exp of exports || []) {
     const f = exp.fields || {};
     const pws = dayOf(f['Plan Week Start'] || '');
-    const eff = dayOf(f['Delivery DateTime'] || f['Loading DateTime'] || '');
+    const eff = dayOf(rowDt(f, 'export'));
     const outOfWindow = !!(pws && ws && pws === ws && eff && (eff < ws || eff > we));
     rows.push({ id: ++seq, type: 'export', orderId: exp.id, orderIds: [exp.id], importId: f['Matched Import ID'] || null, outOfWindow });
   }
@@ -137,10 +155,10 @@ function boardRows(exports, imports, o) {
   }
   const matchedMap = {};
   (exports || []).forEach((r) => { const mid = (r.fields || {})['Matched Import ID']; if (mid) matchedMap[mid] = r.id; });
-  const importsSorted = [...(imports || [])].sort((a, b) => ((a.fields || {})['Loading DateTime'] || '').localeCompare((b.fields || {})['Loading DateTime'] || ''));
+  const importsSorted = [...(imports || [])].sort((a, b) => rowDt(a.fields, 'import').localeCompare(rowDt(b.fields, 'import')));
   for (const imp of importsSorted) {
     const f = imp.fields || {};
-    const ld = dayOf(f['Loading DateTime'] || '');
+    const ld = dayOf(rowDt(f, 'import'));
     const pws = dayOf(f['Plan Week Start'] || '');
     const inRange = !!(ws && ld && ld >= ws && ld <= we);
     const adj = pws && ws ? pws !== ws : !inRange;
@@ -218,11 +236,13 @@ function boardNumbers(rows, o) {
   const impRows = (rows || []).filter((r) => r.type === 'import' && !r.legOf && !r.adj && !r.splitLegOf && !shelved(r));
   const groups = {}, extra = {};
   if (opt.ws) { let d = opt.ws; for (let i = 0; i < 7; i++) { groups[d] = { date: d, exps: [], imps: [] }; d = _addDay(d, 1); } }
-  expRows.forEach((r) => { const k = dayOf(fOf(r)['Delivery DateTime'] || fOf(r)['Loading DateTime']); const b = r.outOfWindow ? extra : groups; (b[k] = b[k] || { date: k, exps: [], imps: [] }).exps.push(r); });
-  impRows.forEach((r) => { const k = dayOf(fOf(r)['Loading DateTime']); const b = r.outOfWindow ? extra : groups; (b[k] = b[k] || { date: k, exps: [], imps: [] }).imps.push(r); });
+  expRows.forEach((r) => { const k = dayOf(rowDt(fOf(r), 'export')); const b = r.outOfWindow ? extra : groups; (b[k] = b[k] || { date: k, exps: [], imps: [] }).exps.push(r); });
+  impRows.forEach((r) => { const k = dayOf(rowDt(fOf(r), 'import')); const b = r.outOfWindow ? extra : groups; (b[k] = b[k] || { date: k, exps: [], imps: [] }).imps.push(r); });
   const byDate = (a, b) => (a.date || '~').localeCompare(b.date || '~');
-  const byText = (field) => (a, b) => String(fOf(a)[field] || '').localeCompare(String(fOf(b)[field] || ''));
-  const byRule = (field) => (a, b) => dayRowOrder(fOf(a), fOf(b), field);
+  // Inside a day, by the same datetime the row is filed by (rowDt), in place of the field.
+  const keyed = (r, field) => Object.assign({}, fOf(r), { [field]: rowDt(fOf(r), field === 'Delivery DateTime' ? 'export' : 'import') });
+  const byText = (field) => (a, b) => String(keyed(a, field)[field] || '').localeCompare(String(keyed(b, field)[field] || ''));
+  const byRule = (field) => (a, b) => dayRowOrder(keyed(a, field), keyed(b, field), field);
   const days = [], no = new Map();
   let n = 0;
   const take = (g, isExtra) => {
@@ -899,7 +919,7 @@ const WI4 = freeze({
   // §e.9
   menuSection, MENU_ICON,
   // shared helpers
-  dayDiff, dayLabel, dayRowOrder,
+  dayDiff, dayLabel, dayRowOrder, rowDt,
   // board rows and numbers (one source with «Παραγγελίες › Εβδομάδα», owner 2/11)
   readWindow, weekExports, giSortRecs, boardRows, shelvedRow, boardNumbers, numberOf, weekNumbers, weekBoard,
 });

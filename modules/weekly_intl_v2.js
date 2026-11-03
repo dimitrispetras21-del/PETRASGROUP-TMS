@@ -118,6 +118,7 @@ const STATUS_OPTS = [['', 'Όλες'], ['pending', 'Χωρίς ανάθεση'],
 let _pk = 0;                 // points-node key counter
 const _pts = new Map();      // pk → {stops, dateTick, showPal}
 let _ptsW = null;            // last measured width of one points column
+let _ptsWn = null;           // the same in a leg with a delivery chip (.wi4-leg-dd), narrower
 let _m = null;               // last computed model
 let _queue = [];             // ordered queue items the band and the panel read
 let _qi = [];                // search index: [{row, blob}] by data-qi
@@ -362,7 +363,8 @@ function factsOf(row) {
   const isImp = row.type === 'import';
   const st = I.stFlags(pf);
   const vs = !!pf['Veroia Switch'];
-  let loadDate = _day(pf['Loading DateTime']);
+  // An import's truck is needed at its EARLIEST loading, the day its row sits on (WI4.rowDt, owner 3/11).
+  let loadDate = _day(isImp ? L().rowDt(pf, 'import') : pf['Loading DateTime']);
   // A VS export's truck loads at Βέροια: «how near» is the cross-dock day.
   if (!isImp && vs) { const v = I.vsCd(pf, 'exp'); if (v && v.iso) loadDate = v.iso; }
   const delDate = _day(lastF['Delivery DateTime']);
@@ -441,7 +443,7 @@ function _compute() {
   rows.filter((r) => r.type === 'export' && r.importId && !r.hasSplitLegs && _unconfirmed(r)).forEach((r) => {
     const ir = rows.find((x) => x.type === 'import' && (x.orderIds || [x.orderId]).includes(r.importId));
     if (!ir || ir.adj || I.shelved(ir)) return;
-    const k = _day(fOf(ir)['Loading DateTime']);
+    const k = _day(lg.rowDt(fOf(ir), 'import'));
     (ghosts[k] = ghosts[k] || []).push(ir);
   });
   const rotaOf = (row, parent, day) => {
@@ -736,7 +738,7 @@ function _ptsHTML(side) {
   const group = (side.stops || []).some((s) => s && s.drag);
   // pre/late: the leg's PREORDER / LATE reason. They ride on the first /
   // last SHOWN point, so a point folded behind «+N» never hides the word.
-  const d = { stops: side.stops || [], dateTick: !!side.dateTick, showPal: !!side.showPal, group, pre: side.pre || null, late: side.late || null, days: side.days || '' };
+  const d = { stops: side.stops || [], dateTick: !!side.dateTick, showPal: !!side.showPal, group, pre: side.pre || null, late: side.late || null, days: side.days || '', narrow: !!side.narrow };
   _pts.set(k, d);
   const r = _ptsFit(d);
   return `<div class="wi4-pts${r.hidePlace ? ' wi4-noplace' : ''}" data-pk="${k}">${_ptsInner(r, d)}</div>${group || r.more ? '' : (side.xfold || '')}`;
@@ -747,19 +749,24 @@ function _ptsHTML(side) {
 // field _compute groups by), so a first point on another day is named too
 // (#618: points sorted by date put Monday first on a Tuesday row). Stop days
 // in Athens time (_day), never the raw UTC slice.
+// d.narrow: a leg with a delivery chip (an import's, _legHTML chipD) has narrower
+// points columns, measured on their own (_layout).
 function _ptsFit(d) {
   const stops = d.days ? d.stops.map((s) => Object.assign({}, s, { day: _day(s.dt) })) : d.stops;
-  return L().points(stops, _ptsW || 0, { dateTick: d.dateTick, day0: d.days || '' });
+  return L().points(stops, (d.narrow && _ptsWn) || _ptsW || 0, { dateTick: d.dateTick, day0: d.days || '' });
 }
-// The day _compute files a row under: an export by Delivery (else Loading)
-// DateTime, an import by Loading DateTime. Only for the end that dates the row.
+// The day _compute files a row under: WI4.rowDt, an export by its earliest
+// delivery (else its loading), an import by its earliest loading (owner 3/11).
+// Only for the end that dates the row, and for an import's deliveries the day
+// of their own chip (Delivery DateTime, owner 3/11), so another day is divided.
 // A groupage is filed by its PRIMARY order (_compute fOf = orderIds[0]), not by
 // the first of _memberRecs, which grpOrder sorts by date: callers pass
 // opt.primary to _sideOf (code review 2/11).
 function _rowDayOf(f, kind) {
   const exp = f['Direction'] === 'Export';
+  if (kind === 'del' && !exp) return _day(f['Delivery DateTime']) || '';
   if ((kind === 'load') === exp) return '';
-  return _day(exp ? (f['Delivery DateTime'] || f['Loading DateTime']) : f['Loading DateTime']) || '';
+  return _day(L().rowDt(f, exp ? 'export' : 'import')) || '';
 }
 // «+N» (Nick 14/10): the tooltip said «Όλα τα σημεία» but listed only the
 // hidden points, and a groupage's panel held only those. Both now give the
@@ -973,10 +980,15 @@ function _legHTML(s, today) {
   const rs = s.rs || {};
   if (rs.PREORDER) s.from = Object.assign({}, s.from, { pre: 'Pre-order χωρίς μετατροπή — λεπτομέρειες αργότερα' });
   if (rs.LATE) s.to = Object.assign({}, s.to, { late: 'Καθυστέρηση παράδοσης' });
-  return `<div class="wi4-leg${s.xd ? ' wi4-xd-' + s.xd : ''}"${click}>` +
+  // s.chipD: an import's delivery date (owner 3/11, «το ίδιο κουτάκι» as the loading one), its own
+  // 70px column before the deliveries; both points columns narrow (d.narrow, measured in _layout).
+  const dc = !!s.chipD;
+  if (dc) { s.from = Object.assign({}, s.from, { narrow: true }); s.to = Object.assign({}, s.to, { narrow: true }); }
+  return `<div class="wi4-leg${dc ? ' wi4-leg-dd' : ''}${s.xd ? ' wi4-xd-' + s.xd : ''}"${click}>` +
     `<div class="wi4-l-date">${_chipHTML(s.chip, today)}${s.ref ? _refHTML(s.ref) : ''}</div>` +
     `<div class="wi4-l-from">${_ptsHTML(s.from)}</div>` +
     `<span class="wi4-l-arr" aria-hidden="true">${ARROW}</span>` +
+    (dc ? `<div class="wi4-l-dd">${_chipHTML(s.chipD, today)}</div>` : '') +
     `<div class="wi4-l-to">${_ptsHTML(s.to)}</div>` +
     `<div class="wi4-l-pal">${s.pal || ''}</div></div>`;
 }
@@ -986,6 +998,12 @@ function _impMembers(imp) {
   const I = W(), D = _D();
   const g = I.impGroupRowOf(imp.id);
   return { g, members: g && (g.orderIds || []).length > 1 ? I.grpOrder(g.orderIds.map((id) => D.data.imports.find((r) => r.id === id)).filter(Boolean), 'Loading DateTime') : [imp] };
+}
+// An import's delivery chip (owner 3/11): the same chip and date panel as the loading one. A VS
+// import delivers at Βέροια, so its chip is the Veroia day, an estimate marked «≈» as on the export.
+function _impDelChip(oid, f, st) {
+  if (f['Veroia Switch']) { const v = W().vsCd(f, 'imp') || {}; return { oid, field: 'VS CD Date', day: v.iso, est: v.est, done: st.delivered, noTruck: false, what: 'Ημερομηνία παράδοσης στη Βέροια' }; }
+  return { oid, field: 'Delivery DateTime', day: _day(f['Delivery DateTime']), done: st.delivered, noTruck: false, what: 'Ημερομηνία παράδοσης εισαγωγής' };
 }
 // One import load (matched in an export row, or an import-only row's own).
 // rs = the reasons of the import's own fact (_rsOf). → {html, xd}: the export
@@ -1015,6 +1033,7 @@ function _impLegHTML(host, imp, today, rs) {
   const xd = _xdOf(from, to, rs);
   return { xd, html: _legHTML({
     chip: { oid: lead.id, field: 'Loading DateTime', day: _day(f['Loading DateTime']), done: st.loaded, noTruck: !host.saved, what: 'Ημερομηνία φόρτωσης εισαγωγής' },
+    chipD: _impDelChip(lead.id, f, st),
     ref: isGroup ? _plural(members.length, 'load') : (f['Reference'] || ''),
     from, to, pal, rs, xd, click: _q(lead.id) ? `WI_INTERNAL.edit('${_q(lead.id)}')` : '',
   }, today) };
@@ -1389,6 +1408,7 @@ function _legRowHTML(e, today) {
   const from = _sideOf([r], 'load'), to = _sideOf([r], 'del');
   const leg = _legHTML({
     chip: { oid, field: 'Loading DateTime', day: _day(f['Loading DateTime']), done: st.loaded, noTruck: false, what: 'Ημερομηνία φόρτωσης σκέλους' },
+    chipD: isImp ? _impDelChip(oid, f, st) : null,
     ref: f['Reference'] || '', from, to, pal: _palHTML([f], oid), rs, xd: _xdOf(from, to, rs),
   }, today);
   // The tag sits in the OTHER column, leaning towards the assignment cell.
@@ -2126,11 +2146,12 @@ function _blobOf(e) {
 // only the points nodes are re-rendered when the width changed.
 function _layout(force) {
   const root = _root(); if (!root) return;
-  const probe = root.querySelector('#wi-rows .wi4-day:not(.closed) .wi4-row .wi4-l-from');
-  const w = probe ? probe.clientWidth : 0;
-  if (!w) return;
-  if (!force && w === _ptsW) return;
-  _ptsW = w;
+  const probe = root.querySelector('#wi-rows .wi4-day:not(.closed) .wi4-row .wi4-leg:not(.wi4-leg-dd) .wi4-l-from');
+  const probeN = root.querySelector('#wi-rows .wi4-day:not(.closed) .wi4-row .wi4-leg-dd .wi4-l-from');
+  const w = probe ? probe.clientWidth : 0, wn = probeN ? probeN.clientWidth : 0;
+  if (!w && !wn) return;
+  if (!force && w === (_ptsW || 0) && wn === (_ptsWn || 0)) return;
+  _ptsW = w || _ptsW; _ptsWn = wn || _ptsWn;
   root.querySelectorAll('.wi4-pts[data-pk]').forEach(_fillPts);
 }
 function _fillPts(el) {

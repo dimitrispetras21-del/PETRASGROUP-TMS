@@ -663,6 +663,29 @@ const OrdersWeekView = (() => {
     }
     intl.forEach(r => { r._type = 'intl'; });
     cancelled.forEach(r => { r._type = 'intl'; });
+    // The Weekly files a load under its EARLIEST delivery / loading stop (WI4.rowDt, owner 3/11/2026),
+    // so its numbers need the stops' dates of this week's orders (the board's own ±8-day window), in
+    // the shape the Weekly builds them ([{dt}]). A failed read is said: the numbers then follow stop 1.
+    const stopDates = new Map();
+    let stopsFailed = false;
+    if (wantIntl && typeof WI4 !== 'undefined') {
+      const win = WI4.readWindow(new Date(week + 'T00:00:00'), toLocalDate);
+      const near = r => ['Loading DateTime', 'Delivery DateTime'].some(k => { const v = String(r.fields[k] || '').slice(0, 10); return v && v >= win.from && v <= win.to; });
+      const ids = [...intl, ...cancelled].filter(near).flatMap(r => r.fields['ORDER STOPS'] || []);
+      try {
+        for (let i = 0; i < ids.length; i += 90) {
+          const f = `OR(${ids.slice(i, i + 90).map(id => `RECORD_ID()="${id}"`).join(',')})`;
+          (await atGetAll(TABLES.ORDER_STOPS, { filterByFormula: f, fields: [F.STOP_PARENT_ORDER, F.STOP_TYPE, F.STOP_DATETIME] }, false)).forEach(sr => {
+            const p = sr.fields[F.STOP_PARENT_ORDER], pid = Array.isArray(p) ? p[0] : p;
+            const t = sr.fields[F.STOP_TYPE], dt = sr.fields[F.STOP_DATETIME];
+            if (!pid || !dt || (t !== 'Loading' && t !== 'Unloading')) return;
+            const e = stopDates.get(pid) || { L: [], D: [] };
+            e[t === 'Loading' ? 'L' : 'D'].push({ dt });
+            stopDates.set(pid, e);
+          });
+        }
+      } catch (e) { console.error('orders week: stop dates', e); stopsFailed = true; }
+    }
     const natl = (natlRes.r || []).filter(live); natl.forEach(r => { r._type = 'natl'; });
     // Without the invoicing set the slip gate is unknown → the per-order sheet
     // flags decide (OrdersData.sheetsOk fallback) and a strip says so.
@@ -675,7 +698,7 @@ const OrdersWeekView = (() => {
     return {
       week, strip, intl, cancelled, natl, natlFailed: !natlRes.ok, rts: rtRes.ok ? (rtRes.r.records || []) : null,
       rtCapped: rtRes.ok && (rtRes.r.records || []).length >= 500,
-      set, setFailed: !setRes.ok, gateFailed: !!set.gateFailed, parentsFailed, refFailed: !refRes.ok,
+      set, setFailed: !setRes.ok, gateFailed: !!set.gateFailed, parentsFailed, refFailed: !refRes.ok, stopDates, stopsFailed,
       natLoads: loadsRes.ok ? loadsRes.loads : null, v5Failed: v5Res.failed,
     };
   }
@@ -776,6 +799,7 @@ const OrdersWeekView = (() => {
     if (scope !== 'intl' && !d.natlFailed && d.v5Failed) add('Δεν διαβάστηκε η κατάσταση των εθνικών v5.', 'Η ανάθεση εθνικών χωρίς φορτίο γράφει «—», όχι «εκτός φορτίου»· το «παραδόθηκε» τους ακολουθεί την ημερομηνία παράδοσης.');
     if (scope !== 'intl' && !d.natlFailed && d.natLoads == null) add('Δεν διαβάστηκαν τα φορτία εθνικών.', 'Η ανάθεση εθνικών γράφει «—», όχι «εκτός φορτίου»· το ζευγάρι κάθοδος–άνοδος δεν σχεδιάζεται.');
     if (d.setFailed || d.gateFailed) add('Δεν απάντησε ο έλεγχος δελτίων.', 'Ισχύουν οι σημάνσεις δελτίων της ίδιας της παραγγελίας.');
+    if (scope !== 'natl' && d.stopsFailed) add('Δεν διαβάστηκαν οι ημερομηνίες των στάσεων.', 'Η αρίθμηση ακολουθεί την 1η στάση· σε φορτία με στάσεις σε πολλές ημέρες μπορεί να διαφέρει από το Weekly.');
     if (scope !== 'natl' && d.parentsFailed) add('Δεν διαβάστηκαν οι αρχικές των σπασμένων.', 'Τα σκέλη τους γράφουν «αρχική εκτός ανάγνωσης» και δεν αθροίζονται.');
     if (d.set && d.set.stockFailed) add('Δεν διαβάστηκαν οι παρτίδες.', 'Τα κομμάτια δεν αθροίζονται· η παρτίδα φαίνεται μπλοκαρισμένη χωρίς έλεγχο.');
     if (d.refFailed) add('Δεν διαβάστηκαν οχήματα, οδηγοί και συνεργάτες.', 'Η ΑΝΑΘΕΣΗ μπορεί να γράφει «—» ή σκέτο «συνεργάτης»· τα ποσά δεν επηρεάζονται.');
@@ -1305,7 +1329,9 @@ const OrdersWeekView = (() => {
     S.board = null;
     try {
       // the board's rows of this week (WI4.weekBoard): its numbers, and the line whose document ΑΝΑΘΕΣΗ shows
-      S.board = WI4.weekBoard({ recs: [...d.intl, ...(d.cancelled || [])], wsDate: new Date(S.week + 'T00:00:00'), dayOf: toLocalDate,
+      // the stops' dates ride on copies (WI4.rowDt reads _stopsL / _stopsD): the records the cards open stay as read
+      const withStops = r => { const e = d.stopDates && d.stopDates.get(r.id); return e ? Object.assign({}, r, { fields: Object.assign({}, r.fields, e.L.length ? { _stopsL: e.L } : {}, e.D.length ? { _stopsD: e.D } : {}) }) : r; };
+      S.board = WI4.weekBoard({ recs: [...d.intl, ...(d.cancelled || [])].map(withStops), wsDate: new Date(S.week + 'T00:00:00'), dayOf: toLocalDate,
         split: typeof FEATURES !== 'undefined' && !!FEATURES.ORDER_SPLIT,
         // The board shows its stock shelf when stock is on (this page is never the warehouse's)
         shelf: typeof OrdersStock !== 'undefined' && OrdersStock.on(),

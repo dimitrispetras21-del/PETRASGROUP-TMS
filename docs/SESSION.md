@@ -12,6 +12,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
+- dimitris · `fix/wi4-import-delivery-date` · Weekly Διεθνών: κουτάκι ημερομηνίας παράδοσης στην εισαγωγή (ίδιο με της φόρτωσης)· η γραμμή στη νωρίτερη ημέρα στάσεων (`WI4.rowDt`, απαντά το #618)· η «Εβδομάδα» διαβάζει τις ημερομηνίες στάσεων για ίδια αρίθμηση· μόνο front end, ?v= / SW_VERSION 1793880000 (`docs/sessions/2026-11-03-dimitris-wi4-import-delivery-date.md`)
 - dimitris · `feat/owv-week-assign` · «Παραγγελίες › Εβδομάδα»: κλικ στην ΑΝΑΘΕΣΗ = το έγγραφο της ανάθεσης (το `print.html` του Weekly, μόνο ανάγνωση)· εθνικά επόμενο βήμα· ?v= / SW_VERSION 1793870000 (`docs/sessions/2026-11-02-dimitris-week-assign-doc.md`)
 - dimitris · `fix/owv-week-align` · «Παραγγελίες › Εβδομάδα»: μία στοίχιση στηλών (ένα πλάτος διαδρομής ανά πλευρά, κεφαλίδα + γραμμές + υπο-γραμμές)· πάνω στο #244· ?v= / SW_VERSION 1793860000 (`docs/sessions/2026-11-02-dimitris-week-align.md`)
 - dimitris · `feat/owv-week-numbers` · «Παραγγελίες › Εβδομάδα»: αρίθμηση = του Weekly Διεθνών από ΜΙΑ πηγή (`core/wi4-logic.js` boardRows / boardNumbers, owner «Α»)· board byte-ίδιο· εθνικά αναμένουν τον owner· ?v= / SW_VERSION 1793850000 (`docs/sessions/2026-11-02-dimitris-week-numbers.md`)
