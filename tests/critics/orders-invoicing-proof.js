@@ -323,6 +323,24 @@ async function runAccountant(browser) {
   const pc = cap.patches[cap.patches.length - 1];
   assert(pc.id === 'recO7' && JSON.stringify(Object.keys(pc.fields)) === JSON.stringify(['Invoice Number', 'Invoice Date']) && pc.fields['Invoice Number'] === '0432', 'Διόρθωση ΤΠΥ → PATCH {Invoice Number, Invoice Date}');
 
+  // «Διόρθωση τιμής» of an invoiced order (owner 3/11, «Όχι, να αλλάζει»: owner / accountant, asked first)
+  await page.click('.oiv-link:has-text("Διόρθωση τιμής")');
+  await page.waitForSelector('#oivPriceFix');
+  assert(await page.inputValue('#oivPriceFix') === '3.200,00' && /το τιμολόγιο στο ERP δεν αλλάζει από εδώ/.test(await cardText(page)), 'invoiced card: «Διόρθωση τιμής» opens the box at 3.200,00, «το τιμολόγιο στο ERP δεν αλλάζει από εδώ»');
+  const np = cap.patches.length;
+  await page.fill('#oivPriceFix', '3300');
+  await page.press('#oivPriceFix', 'Enter');
+  await page.waitForSelector('#_cfaCancel', { state: 'visible' });
+  assert(/Αλλαγή τιμής της #1214 \(ΤΠΥ 0432\)/.test(await page.locator('#modalOverlay').innerText()) && /ERP ΔΕΝ αλλάζει/.test(await page.locator('#modalOverlay').innerText()), 'Enter → the same question as «Εβδομάδα» (ΤΠΥ, ERP ΔΕΝ αλλάζει)');
+  await page.click('#_cfaCancel'); await page.waitForTimeout(200);
+  assert(cap.patches.length === np, 'cancel → no PATCH');
+  await page.press('#oivPriceFix', 'Enter');
+  await page.waitForSelector('#_cfaOk', { state: 'visible' }); await page.click('#_cfaOk');
+  await page.waitForFunction(() => /3\.300,00/.test((document.getElementById('oivCard') || {}).innerText || ''), null, { timeout: 5000 });
+  const pp3 = cap.patches[cap.patches.length - 1];
+  assert(cap.patches.length === np + 1 && pp3.id === 'recO7' && JSON.stringify(pp3.fields) === JSON.stringify({ Price: 3300 }), 'invoiced price → ONE PATCH {Price: 3300}: ' + JSON.stringify(pp3.fields));
+  assert(/ΤΠΥ 0432/.test(await cardText(page)) && await page.locator('#oivPriceFix').count() === 0, 'the card repaints 3.300,00, still ΤΠΥ 0432');
+
   // all open
   await page.click('.oiv-allopen');
   await page.click('.oiv-seg-b[data-tab="ready"]');

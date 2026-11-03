@@ -80,6 +80,7 @@ const APP_SHELL = [
   '/PETRASGROUP-TMS/core/order-quick-edit.js',
   '/PETRASGROUP-TMS/modules/orders_hub.js',
   '/PETRASGROUP-TMS/modules/orders_catalog.js',
+  '/PETRASGROUP-TMS/modules/orders_invoice_ops.js',
   '/PETRASGROUP-TMS/modules/orders_invoicing_view.js',
   '/PETRASGROUP-TMS/modules/orders_week_view.js',
   '/PETRASGROUP-TMS/modules/orders_noprice_view.js',
