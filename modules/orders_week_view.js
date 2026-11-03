@@ -1657,17 +1657,22 @@ const OrdersWeekView = (() => {
   }
 
   // The board's numbers of this read; an error is said on the row («—» with why), never a 0.
+  // The board of a week of load(): its rows and numbers (WI4.weekBoard), for this page and for the pallets weekly
+  // view (PalletsWeek), which reads the same load and must number and print exactly as here — one source.
+  function boardOf(d, week) {
+    // the board's rows of this week (WI4.weekBoard): its numbers, and the line whose document ΑΝΑΘΕΣΗ shows
+    // the stops' dates ride on copies (WI4.rowDt reads _stopsL / _stopsD): the records the cards open stay as read
+    const withStops = r => { const e = d.stopDates && d.stopDates.get(r.id); return e ? Object.assign({}, r, { fields: Object.assign({}, r.fields, e.L.length ? { _stopsL: e.L } : {}, e.D.length ? { _stopsD: e.D } : {}) }) : r; };
+    return WI4.weekBoard({ recs: [...d.intl, ...(d.cancelled || [])].map(withStops), wsDate: new Date(week + 'T00:00:00'), dayOf: toLocalDate,
+      split: typeof FEATURES !== 'undefined' && !!FEATURES.ORDER_SPLIT,
+      // The board shows its stock shelf when stock is on (this page is never the warehouse's)
+      shelf: typeof OrdersStock !== 'undefined' && OrdersStock.on(),
+      isLoose: f => window.WI_INTERNAL.loose(f) });
+  }
   function _numbers(d) {
     S.board = null;
     try {
-      // the board's rows of this week (WI4.weekBoard): its numbers, and the line whose document ΑΝΑΘΕΣΗ shows
-      // the stops' dates ride on copies (WI4.rowDt reads _stopsL / _stopsD): the records the cards open stay as read
-      const withStops = r => { const e = d.stopDates && d.stopDates.get(r.id); return e ? Object.assign({}, r, { fields: Object.assign({}, r.fields, e.L.length ? { _stopsL: e.L } : {}, e.D.length ? { _stopsD: e.D } : {}) }) : r; };
-      S.board = WI4.weekBoard({ recs: [...d.intl, ...(d.cancelled || [])].map(withStops), wsDate: new Date(S.week + 'T00:00:00'), dayOf: toLocalDate,
-        split: typeof FEATURES !== 'undefined' && !!FEATURES.ORDER_SPLIT,
-        // The board shows its stock shelf when stock is on (this page is never the warehouse's)
-        shelf: typeof OrdersStock !== 'undefined' && OrdersStock.on(),
-        isLoose: f => window.WI_INTERNAL.loose(f) });
+      S.board = boardOf(d, S.week);
       return WI4.numberOf(S.board.built, S.board.no);
     } catch (e) {
       console.error('orders week: Weekly numbers', e);
@@ -1687,8 +1692,8 @@ const OrdersWeekView = (() => {
   // import group's packet with that group's sheet. Partner sheet when the row
   // has a partner (owner 9/8). Export first, then import. Old / v5 nationals:
   // not here yet (their sheet needs the v5 board: a later step).
-  function _rowDocs(r) {
-    const b = S.board;
+  function _rowDocs(r) { return rowDocsOf(S.board, r); }
+  function rowDocsOf(b, r) {
     if (!b || typeof printSheetQuery !== 'function' || !window.WI_INTERNAL) return [];
     const rows = b.built.rows;
     const rowOf = id => (id && rows.find(x => (x.orderIds || []).includes(id))) || null;
@@ -1727,14 +1732,18 @@ const OrdersWeekView = (() => {
     _edClose();
     if (typeof _oiCloseCard === 'function') _oiCloseCard();
     if (typeof closeNatlDetail === 'function') closeNatlDetail();
+    box.innerHTML = docsInner(r, docs);
+    box.classList.remove('hidden');
+  }
+  // The overlay's content (this page and the pallets weekly view): one way to show the assignment papers.
+  function docsInner(r, docs) {
     const away = docs.elsewhere ? `<div class="owv-doc-t">${docs.elsewhere} ${docs.elsewhere === 1 ? 'σκέλος είναι' : 'σκέλη είναι'} σε άλλη εβδομάδα — το έγγραφό ${docs.elsewhere === 1 ? 'του' : 'τους'} είναι στο Εβδομαδιαίο εκείνης της εβδομάδας</div>` : '';
     // print.html alone in each frame (never a second app): noprint=1 keeps its own print dialog for its
     // «Print / PDF» button, so the paper is read here and printed from its own bar.
-    box.innerHTML = `<div class="owv-docs-h"><b>Έγγραφα ανάθεσης</b><span>${esc(r.code || OC().numLabel(r.rec || {}))}</span>
+    return `<div class="owv-docs-h"><b>Έγγραφα ανάθεσης</b><span>${esc(r.code || OC().numLabel(r.rec || {}))}</span>
       <button type="button" class="owv-docs-x" data-owvdocs="close" title="Κλείσιμο (Esc)" aria-label="Κλείσιμο">×</button></div>
       <div class="owv-docs-b">${away}${docs.map(d => `<section class="owv-doc"><div class="owv-doc-t">${esc(d.title)}</div>
         <iframe class="owv-doc-f" title="${esc(d.title)}" src="print.html?${esc(d.query)}&noprint=1"></iframe></section>`).join('')}</div>`;
-    box.classList.remove('hidden');
   }
   function _closeDocs() {
     const box = document.getElementById('owvDocs');
@@ -1971,7 +1980,9 @@ const OrdersWeekView = (() => {
   }
 
   return { render, recordChanged, buildWeek, rowNumbers, legNumber, totals, rowMarks, natMarks, rowSum, printSequence, printDoc, rtInvoicing, verdictText, tpyOf, pctVsPrev, stripWeeks, groupRows, daySections,
-    weekStatus, pairNationals, routeSplit, ordersFormula, placeText, isVsNational, naturalDateOf, pgIdOf, dayLabel, weekTitle };
+    weekStatus, pairNationals, routeSplit, ordersFormula, placeText, isVsNational, naturalDateOf, pgIdOf, dayLabel, weekTitle,
+    // the pallets weekly view (modules/pallets_week.js) reads the same week through these, never a copy
+    load, boardOf, rowDocsOf, docsInner, endsOf, vehicleOf, dayShort, dayFull, clientRaw, isSplitLeg };
 })();
 
 if (typeof window !== 'undefined') window.OrdersWeekView = OrdersWeekView;
