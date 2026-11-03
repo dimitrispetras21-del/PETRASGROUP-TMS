@@ -370,7 +370,13 @@
 
   // ── preview (frame 4) ───────────────────────────────────────────────────────────────────────────────────────
   // inside the window the point is said whole (owner 2/11, Q1: «όλο το κείμενο όταν ανοίγει»)
-  const _stopName = (d, s) => (s.text ? s.text : (s.location_id === d.hub ? 'Βέροια' : (s.place || K().placeName(s.location_id))));
+  // 099 keeps a free-text point's words on A's stop only (transfer_place; the CHECK ties it to the reason); the
+  // receiving truck's stop points to it (transfer_from_stop_id). So that stop takes A's words, never the catalogue
+  // name «TRANSFER POINT (free text)» (owner test 3/11). words: stop_id → words of the stops of this preview.
+  const _stopName = (d, s, words) => (s.text ? s.text
+    : (s.transfer_from_stop_id != null && ((words && words[s.transfer_from_stop_id]) || (d.point && d.point.text)))
+      ? ((words && words[s.transfer_from_stop_id]) || d.point.text)
+      : (s.location_id === d.hub ? 'Βέροια' : (s.place || K().placeName(s.location_id))));
   function _previewHTML(d, p) {
     const k = K(), st = d.st;
     let out = 0;
@@ -383,20 +389,22 @@
     const newIds = (d.prev && d.prev.body.trucks || []).filter((t) => t.target.new_rt).map((t) => t.target.new_rt.truck_id);
     const plateOf = (id) => ((d.choices.find((o) => o.group === 'free' && o.truckId === id) || {}).name || 'νέο φορτηγό');
     let nth = 0;
+    const words = {};
+    for (const t of (Array.isArray(p.trucks) ? p.trucks : [])) for (const s of (t.stops || [])) if (s.text) words[s.stop_id] = s.text;
     const rows = (Array.isArray(p.trucks) ? p.trucks : []).map((t) => {
       const c = k.cycle(t.rt_id), mine = t.rt_id === d.rtId;
       const plate = c ? _truckLabel(c) : plateOf(newIds[nth++]);
       const live = (t.stops || []).filter((s) => !s.removed), gone = (t.stops || []).filter((s) => s.removed);
       const chain = live.map((s) => {
         const tx = !!s.transfer_reason || s.transfer_from_stop_id != null;
-        const nm = _esc(_stopName(d, s));
+        const nm = _esc(_stopName(d, s, words));
         if (!s.new) return nm;
         const when = s.planned_from ? k.dayShort(k.ymdOf(s.planned_from)) + (WN5L.allDay(s.planned_from, s.planned_to) ? '' : ' ' + k.hm(s.planned_from)) : '';
         return `<b>${tx ? '⇄ ' : ''}${nm}</b>${tx && when ? `<span class="wn5r-g"> · ${_esc(when)}</span>` : ''}`;
       }).join('<span class="wn5r-g"> → </span>');
       const sub = (mine ? 'ξεφορτώνει ' + _pal(out) + 'π' : 'φορτώνει') + (gone.length ? ' · ' : '');
       return `<div class="wn5h-erow wn5r-erow${mine ? '' : ' next'}"><span class="wn5h-pl"><b>${_esc(plate)}</b><span>${_esc(c ? _who(c) : 'νέο δρομολόγιο')}</span></span>`
-        + `<span class="wn5r-chain"><span>${chain || '—'}</span><span class="wn5r-sub">${_esc(sub)}${gone.map((s) => `<s>${_esc(_stopName(d, s))}</s>`).join(' ')}</span></span></div>`;
+        + `<span class="wn5r-chain"><span>${chain || '—'}</span><span class="wn5r-sub">${_esc(sub)}${gone.map((s) => `<s>${_esc(_stopName(d, s, words))}</s>`).join(' ')}</span></span></div>`;
     }).join('');
     const since = 'περιμένει στη ' + _pointShort(d) + ' από ' + k.dayShort(st.day) + ' · στο προς ανάθεση';
     const waits = (Array.isArray(p.waiting) ? p.waiting : []).map((w) => `<div class="wn5h-erow wn5r-erow wn5r-wait"><span class="wn5h-pl wn5r-slot"><b>Νέο φορτίο</b><span>φορτηγό αργότερα · ${_esc(_pal(w.pallets))}π</span></span>`
