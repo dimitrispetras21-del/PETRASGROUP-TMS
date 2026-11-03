@@ -1205,9 +1205,9 @@ const OrdersWeekView = (() => {
     const c = [`<div class="ow4-c">${cells.route}</div>`, `<div class="ow4-c">${cells.client}</div>`,
       `<div class="ow4-c${ed ? ' ow4-edc' : ''}"${edAttr('tpy', 'ΤΠΥ · αυτοπαράδοση')}>${cells.tpy}</div>`,
       `<div class="ow4-c ow4-n${ed ? ' ow4-edc' : ''}"${edAttr('amt', 'Τιμή')}>${cells.amt}</div>`];
-    return `<div class="ow4-sub${off}"${open}>${(side === 'l' ? c : c.reverse()).join('')}</div>`;
+    return `<div class="ow4-sub trip-part${off}"${open}>${(side === 'l' ? c : c.reverse()).join('')}</div>`;
   }
-  const _emptySide = text => `<div class="ow4-sub ow4-none"><div class="ow4-c">${text}</div></div>`;
+  const _emptySide = text => `<div class="ow4-sub trip-part ow4-none"><div class="ow4-c">${text}</div></div>`;
 
   function _assignHtml(v, verdict, sumHtml, extra, docI) {
     let top;
@@ -1252,7 +1252,8 @@ const OrdersWeekView = (() => {
     const tag = !isRt ? (rtFailed ? '' : 'χωρίς RT') : r.guest ? 'από ' + O.dm(r.homeWeek) : r.moved ? 'μεταφορά' : v.kind === 'partner' ? 'συνεργάτης'
       : r.exp.length > 1 || r.imp.length > 1 ? 'groupage' : '';
     const blk = verdict.kind === 'blocked';   // the price: the one block since B0
-    return `<div class="ow4-row${blk ? ' ow4-blk' : ''}" data-owvopen="intl:${esc(r.openRec.id)}">
+    // trip-row / trip-part: the heavier rule between two round trips (assets/style.css, owner 3/11)
+    return `<div class="ow4-row trip-row${blk ? ' ow4-blk' : ''}" data-owvopen="intl:${esc(r.openRec.id)}">
       <div class="ow4-c-rt"><div class="ow4-l1">${isRt ? esc(r.code) : '<span class="ow4-d">—</span>'}</div>${tag ? `<div class="ow4-l2">${esc(tag)}</div>` : ''}</div>
       <div class="ow4-side ow4-l">${exp}</div>
       ${_assignHtml(v, verdictText(verdict, n), _sumHtml(r.counted, mk), '', _rowDocs(r).length ? r.docI : null)}
@@ -1286,7 +1287,7 @@ const OrdersWeekView = (() => {
     const mk = { s: [r.kat, r.ano].some(s => s && s.kind === 'order' && !s.inWeek && O.hasPrice(s.rec.fields)),
       g: r.counted.some(x => !isVsNational(x) && !O.hasPrice(x.fields)) };
     const blk = verdict.kind === 'blocked';   // the price: the one block since B0
-    return `<div class="ow4-row ow4-nat${blk ? ' ow4-blk' : ''}" data-owvopen="natl:${esc(r.openRec.id)}">
+    return `<div class="ow4-row trip-row ow4-nat${blk ? ' ow4-blk' : ''}" data-owvopen="natl:${esc(r.openRec.id)}">
       <div class="ow4-c-rt"><div class="ow4-l1">${esc(dayShort(r.day) || '—')}</div>${v.kind === 'partner' ? '<div class="ow4-l2">συνεργάτης</div>' : ''}</div>
       <div class="ow4-side ow4-l">${side(r.kat, 'l')}</div>
       ${_assignHtml(v, verdictText(verdict, n), _sumHtml(r.counted, mk), extra)}

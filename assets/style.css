@@ -10401,6 +10401,15 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .ow4-l .ow4-sub { grid-template-columns:var(--ow4-rw, minmax(0,1fr)) minmax(0,1.1fr) var(--ow4-tpy) var(--ow4-amt); }
 .ow4-r .ow4-sub { grid-template-columns:var(--ow4-tpy) var(--ow4-amt) minmax(0,1.15fr) var(--ow4-rw, minmax(0,.9fr)); }
 .ow4-sub + .ow4-sub { border-top:1px solid var(--wi4-line); }
+/* One round trip = one block (owner 3/11/2026: «δεν μου είναι εύκολα με το μάτι διακριτή η αλλαγή RT … πιο έντονη
+   τη διαχωριστική γραμμή ανάμεσα σε 2 RT»). The rule BETWEEN two trips is heavier than the line between the orders
+   inside one trip, which turns dashed and lighter. Two reusable classes, not «ow4-»: .trip-row on each trip's row,
+   .trip-part on each order line inside it — the pallets weekly view takes the same two. Two trips' rows only: the
+   first row under a day header keeps the thin line, the header already separates it. Declared after
+   .ow4-sub + .ow4-sub so the dashed line wins at equal specificity. */
+:root { --trip-sep:#cbd5e1; --trip-sep-in:#e3e7ed; }
+.trip-row + .trip-row { border-top:2px solid var(--trip-sep); }
+.trip-part + .trip-part { border-top:1px dashed var(--trip-sep-in); }
 .ow4-sub.ow4-none { display:block; }
 .ow4-c { min-width:0; overflow:hidden; }
 .ow4-n { text-align:right; }
