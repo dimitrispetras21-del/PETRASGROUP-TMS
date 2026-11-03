@@ -1027,7 +1027,10 @@ function _dpWriteArgs(st) {
 
 function _dpGroupDay(f) {
   const isImp = String(f['Direction'] || '') === 'Import';
-  return _dayOf('Loading DateTime', isImp ? f['Loading DateTime'] : f['Delivery DateTime']) || '';
+  // The day the row sits on: WI4.rowDt, its earliest stop (owner 3/11), as _compute files it.
+  const lg = L();
+  const v = typeof lg.rowDt === 'function' ? lg.rowDt(f, isImp ? 'import' : 'export') : (isImp ? f['Loading DateTime'] : f['Delivery DateTime']);
+  return _dayOf('Loading DateTime', v) || '';
 }
 
 function datePanel(orderId, field, anchorEl) {

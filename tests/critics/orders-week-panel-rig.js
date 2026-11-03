@@ -88,19 +88,21 @@ const boardDays = page => page.evaluate(() => {
   return out;
 });
 
+// The Weekly reads exports and imports apart ({Direction}='Export' / 'Import'); the shared mock answers every
+// ORDERS read with all orders, which would draw each export twice (once as an «import»).
+const boardReads = page => page.route(`**/${P.T.ORDERS}**`, route => {
+  const u = decodeURIComponent(route.request().url());
+  const ex = /\{Direction\}='Export'/.test(u), im = /\{Direction\}='Import'/.test(u);
+  if (route.request().method() !== 'GET' || ex === im || /RECORD_ID/.test(u)) return route.fallback();
+  // cancelled orders stay: the board's reads have no Status condition (weekly_intl.js _wiLoad)
+  const recs = P.ORDERS.filter(r => r.fields.Direction === (ex ? 'Export' : 'Import'));
+  return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ records: recs }) });
+});
+
 async function scnOrder(browser) {
   console.log('\n[order] «Εβδομάδα» = Weekly International, day by day');
   const page = await P.newPage(browser, 'owner');
-  // The Weekly reads exports and imports apart ({Direction}='Export' / 'Import'); the shared
-  // mock answers every ORDERS read with all orders, which would draw each export twice.
-  await page.route(`**/${P.T.ORDERS}**`, route => {
-    const u = decodeURIComponent(route.request().url());
-    const ex = /\{Direction\}='Export'/.test(u), im = /\{Direction\}='Import'/.test(u);
-    if (route.request().method() !== 'GET' || ex === im || /RECORD_ID/.test(u)) return route.fallback();
-    // cancelled orders stay: the board's reads have no Status condition (weekly_intl.js _wiLoad)
-    const recs = P.ORDERS.filter(r => r.fields.Direction === (ex ? 'Export' : 'Import'));
-    return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ records: recs }) });
-  });
+  await boardReads(page);
   await P.openWeek(page);
   const week = await weekDays(page);
   const wNos = await weekNos(page);
@@ -249,10 +251,129 @@ async function scnCard(browser) {
   await page.context().close();
 }
 
+// «align» (owner 2/11, «δεν υπάρχει καλή ευθυγράμμιση»): ONE column template per side — every row and
+// sub-row of a card starts each column (route, client, ΤΠΥ, amount) where the header does (±1px), at three
+// widths, «Ανά ημέρα» and «Ανά όχημα», international and national cards.
+async function scnAlign(browser) {
+  console.log('\n[align] every column starts where its header does');
+  const page = await P.newPage(browser, 'owner');
+  await P.openWeek(page);
+  const measure = () => page.evaluate(() => {
+    const out = [];
+    document.querySelectorAll('.ow4-sec .ow4-card').forEach((card, ci) => {
+      for (const side of ['l', 'r']) {
+        const head = card.querySelector(`.ow4-hd .ow4-${side} .ow4-sub`);
+        if (!head) continue;
+        const hx = [...head.children].map(c => Math.round(c.getBoundingClientRect().left));
+        card.querySelectorAll(`.ow4-row:not(.ow4-hd) .ow4-${side} .ow4-sub:not(.ow4-none)`).forEach(sub => {
+          const x = [...sub.children].map(c => Math.round(c.getBoundingClientRect().left));
+          const off = x.map((v, i) => v - hx[i]).filter(d => Math.abs(d) > 1);
+          if (off.length) out.push(`card ${ci} ${side}: ${((sub.closest('.ow4-row').querySelector('.ow4-c-rt .ow4-l1') || {}).textContent || '').trim()} cols ${JSON.stringify(x)} vs header ${JSON.stringify(hx)}`);
+        });
+      }
+    });
+    return { bad: out, subs: document.querySelectorAll('.ow4-sec .ow4-row:not(.ow4-hd) .ow4-sub:not(.ow4-none)').length };
+  });
+  for (const w of [1280, 1440, 1920]) {
+    for (const mode of ['day', 'vehicle']) {
+      await page.setViewportSize({ width: w, height: 960 });
+      await page.evaluate(m => { const b = document.querySelector(`[data-owvmode="${m}"]`); if (b) b.click(); }, mode);
+      await page.waitForTimeout(500);
+      const r = await measure();
+      ok(!r.bad.length && r.subs > 10, `${w}px «${mode === 'day' ? 'Ανά ημέρα' : 'Ανά όχημα'}»: ${r.subs} order lines, every column on the header's x` + (r.bad.length ? ` — ${r.bad.length} off: ` + r.bad.slice(0, 3).join(' | ') : ''));
+      if (mode === 'day') await page.screenshot({ path: path.join(SHOTS, `align-${w}.png`), fullPage: false });
+    }
+  }
+  ok(P.realErrors(page).length === 0, 'align: 0 page/console errors ' + JSON.stringify(P.realErrors(page)).slice(0, 300));
+  await page.context().close();
+}
+
+// «docs» (owner 2/11, «μόνο το έγγραφο της ανάθεσης να δω»): a click on ΑΝΑΘΕΣΗ shows THE paper the Weekly prints
+// for that load — print.html with the same query, one frame per leg, read-only, over the week. Judged against the
+// Weekly's own printers (window.open captured), never against the code under test.
+async function scnDocs(browser) {
+  console.log('\n[docs] ΑΝΑΘΕΣΗ → the same assignment document as the Weekly');
+  const page = await P.newPage(browser, 'owner');
+  await boardReads(page);
+  // print.html reads one order at a time (/v0/<base>/<table>/<rec>): answered from the same synthetic week
+  await page.route(/\/v0\/[^/]+\/tblgHlNmLBH3JTdIM\/rec[A-Za-z0-9]+/, route => {
+    const id = route.request().url().split('/').pop().split('?')[0];
+    const r = P.ORDERS.find(x => x.id === id);
+    return route.fulfill({ status: r ? 200 : 404, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(r || { error: 'NOT_FOUND' }) });
+  });
+  await P.openWeek(page);
+  const queries = {};
+  const strip = q => q.replace(/&noprint=1$/, '');
+  for (const code of ['RT-1204', 'RT-1202', 'RT-1203']) {
+    const row = page.locator('.ow4-row', { has: page.locator('.ow4-c-rt .ow4-l1', { hasText: code }) });
+    await row.locator('.ow4-asg').click();
+    await page.waitForSelector('#owvDocs:not(.hidden) iframe', { timeout: 10000 });
+    await page.waitForTimeout(1500);
+    const st = await page.evaluate(() => ({
+      srcs: [...document.querySelectorAll('#owvDocs iframe')].map(f => f.getAttribute('src')),
+      titles: [...document.querySelectorAll('#owvDocs .owv-doc-t')].map(t => t.textContent.trim()),
+      card: !document.getElementById('intlDetail').classList.contains('hidden'),
+    }));
+    queries[code] = st.srcs.map(s => strip(s.replace(/^print\.html\?/, '')));
+    ok(st.srcs.length > 0 && st.srcs.every(s => /^print\.html\?.*&noprint=1$/.test(s)), `${code}: ${st.srcs.length} document(s), print.html only, never printing by itself — ${st.titles.join(' | ')}`);
+    ok(!st.card, `${code}: a click on ΑΝΑΘΕΣΗ does not open the order card`);
+    if (code === 'RT-1204') {
+      const frames = page.frames().map(f => f.url());
+      ok(!frames.some(u => /app\.html/.test(u) && u !== page.url()), 'no second app.html in the frames: ' + frames.filter(u => u !== page.url()).map(u => u.replace(/^.*\//, '')).join(', '));
+      const fr = page.frames().find(f => /print\.html/.test(f.url()));
+      const txt = fr ? await fr.locator('body').innerText().catch(() => '') : '';
+      ok(/PO-4471|1248/.test(txt), 'the frame shows order #1248\'s sheet (' + txt.replace(/\s+/g, ' ').slice(0, 80) + '…)');
+      await page.screenshot({ path: path.join(SHOTS, 'docs-week-RT-1204.png') });
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(200);
+      ok(await page.locator('#owvDocs.hidden').count() === 1 && await page.locator('.ow4 .ow4-state').count() === 1, 'Esc closes the documents; the week is as it was');
+    } else {
+      await page.click('#owvDocs [data-owvdocs="close"]');
+      ok(await page.locator('#owvDocs.hidden').count() === 1, `${code}: × closes the documents`);
+    }
+  }
+  // The Weekly's own printers for the same loads: window.open captured, nothing opened.
+  await gotoPage(page, 'weekly_intl', BASE_URL);
+  await page.waitForSelector('section.wi4-day', { timeout: 30000 });
+  await page.click('button[aria-label="Προηγούμενη εβδομάδα"]');
+  await page.waitForFunction(from => !!document.querySelector(`section.wi4-day[data-day="${from}"]`), P.WEEK_FROM, { timeout: 30000 });
+  await page.waitForTimeout(400);
+  const board = await page.evaluate(() => {
+    const got = [];
+    window.open = (u) => { got.push(String(u).replace(/^.*print\.html\?/, '')); return null; };
+    const out = {};
+    for (const oid of ['recO1248', 'recO1243', 'recO1244', 'recO1245', 'recO1247']) {
+      const row = document.querySelector(`.wi4-row[data-oid="${oid}"]`);
+      if (!row) { out[oid] = null; continue; }
+      got.length = 0;
+      row.querySelectorAll('.wi4-prt').forEach(b => b.click());
+      out[oid] = got.slice();
+    }
+    return out;
+  });
+  const want = { 'RT-1204': [...board.recO1248], 'RT-1202': [...board.recO1243],
+    'RT-1203': [...board.recO1244, ...board.recO1245, ...board.recO1247].filter(q => /leg=export/.test(q)) };
+  for (const [code, qs] of Object.entries(queries)) {
+    const exp = queries[code].filter(q => /leg=export/.test(q)), boardExp = (want[code] || []).filter(q => /leg=export/.test(q));
+    ok(exp.length > 0 && JSON.stringify(exp) === JSON.stringify(boardExp), `${code}: export paper(s) = the Weekly's printer ${JSON.stringify(boardExp)} (week: ${JSON.stringify(exp)})`);
+  }
+  ok(queries['RT-1202'].every(q => /sheet=partner/.test(q)) && want['RT-1202'].every(q => /sheet=partner/.test(q)), 'RT-1202 (partner): «Φύλλο Συνεργάτη» on both screens, as the Weekly decides (owner 9/8)');
+  // a screenshot of the same paper as the Weekly's printer opens it (local copy of print.html, no print dialog)
+  const pp = await page.context().newPage();
+  await pp.goto(BASE_URL + 'print.html?' + want['RT-1204'].filter(q => /leg=export/.test(q))[0] + '&noprint=1');
+  await pp.waitForTimeout(1500);
+  await pp.screenshot({ path: path.join(SHOTS, 'docs-weekly-RT-1204.png') });
+  await pp.close();
+  ok(P.realErrors(page).length === 0, 'docs: 0 page/console errors ' + JSON.stringify(P.realErrors(page)).slice(0, 300));
+  await page.context().close();
+}
+
 (async () => {
   console.log('Στόχος: ' + BASE_URL + ' · εβδομάδα ' + P.WEEK_FROM + ' – ' + P.WEEK_TO);
   const browser = await chromium.launch();
   try {
+    await scnDocs(browser);
+    await scnAlign(browser);
     await scnOrder(browser);
     await scnCard(browser);
   } catch (e) {

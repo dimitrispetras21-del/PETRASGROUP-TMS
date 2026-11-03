@@ -96,6 +96,19 @@ const OrdersWeekView = (() => {
     if (!f['Plan Week Start']) return OC().weekDateOf(rec);
     return OC().weekDateOf(Object.assign({}, rec, { fields: Object.assign({}, f, { 'Plan Week Start': null }) }));
   }
+  // The day a row sits on (owner 3/11/2026, «και στην Εβδομάδα»): the Weekly's own rule, WI4.rowDt,
+  // an international order's EARLIEST delivery (export) / loading (import) stop, from the week's stop
+  // dates (load → stopDates). The WEEK stays OrdersCommon.weekDateOf's, the one «Προς τιμολόγηση»
+  // totals by: an earliest stop in the week before keeps the order's own day here (the Weekly then
+  // shows it a week earlier, the only place the two differ). Without stops: weekDateOf, as before.
+  function rowDayOf(rec, stopDates) {
+    const O = OC(), base = O.weekDateOf(rec), f = rec.fields || {};
+    const e = stopDates && stopDates.get(rec.id);
+    if (!e || !base || rec._type === 'natl' || f['Plan Week Start'] || typeof WI4 === 'undefined') return base;
+    const dir = f['Direction'] === 'Import' ? 'import' : 'export';
+    const d = O.ymd(WI4.rowDt(Object.assign({}, f, { _stopsL: e.L, _stopsD: e.D }), dir, typeof toLocalDate === 'function' ? toLocalDate : undefined));
+    return d && O.weekStartOfYmd(d) === O.weekStartOfYmd(base) ? d : base;
+  }
   // §09: moved by hand into this week (the import shift writes Plan Week Start).
   const isMovedInto = (rec, week) => !!(rec && (rec.fields || {})['Plan Week Start'])
     && OC().weekStartOfYmd(naturalDateOf(rec)) !== week;
@@ -218,8 +231,9 @@ const OrdersWeekView = (() => {
   // `cancelled` = cancelled international orders of the window (never counted):
   // an RT leg or a split parent that points at one says «ακυρωμένη» instead of
   // the false «εκτός εύρους» / «αρχική εκτός ανάγνωσης».
-  function buildWeek({ week, intl, natl, rts, cancelled }) {
+  function buildWeek({ week, intl, natl, rts, cancelled, stopDates }) {
     const O = OC();
+    const dayOf = r => rowDayOf(r, stopDates);
     const wk = r => O.weekStartOf(r);
     const weekIntl = intl.filter(r => !isSplitLeg(r) && !isPiece(r) && wk(r) === week);
     const weekNatl = natl.filter(r => wk(r) === week);
@@ -288,13 +302,13 @@ const OrdersWeekView = (() => {
         const anchorLeg = guest ? (inWeek.find(l => l.dir === 'export') || inWeek[0]) : home;
         const anchor = guest ? anchorLeg.rec : home.rec;
         const moved = isMovedInto(anchor, week);
-        const day = moved ? naturalDateOf(anchor) : O.weekDateOf(guest ? anchor : home.own);
+        const day = moved ? naturalDateOf(anchor) : dayOf(guest ? anchor : home.own);
         // The order that places the row inside its day (rowOrder): of the RT's
         // legs in the direction that gives it its day (export, else import),
         // on that day, the one the Weekly's rule puts FIRST — an RT with three
         // exports is three Weekly rows, and the RT stands where its first one does.
         const sortExp = anchorLeg.dir === 'export', sortField = sortExp ? 'Delivery DateTime' : 'Loading DateTime';
-        const sortRec = legs.filter(l => l.dir === anchorLeg.dir && live(l) && O.weekDateOf(l.own || l.rec) === day)
+        const sortRec = legs.filter(l => l.dir === anchorLeg.dir && live(l) && dayOf(l.own || l.rec) === day)
           .map(l => l.own || l.rec)
           .reduce((m, r) => (m && WI4.dayRowOrder(m.fields, r.fields, sortField) <= 0 ? m : r), null) || (guest ? anchor : home.own);
         rows.push({
@@ -313,7 +327,7 @@ const OrdersWeekView = (() => {
       const dir = (r.fields || {})['Direction'] === 'Import' ? 'import' : 'export';
       const leg = { dir, orderId: pgIdOf(r), rec: r, week, inWeek: true, counted: true, dupOf: null, piece: false, parentMissing: false };
       return { kind: 'order', rec: r, legs: [leg], natLegs: [], exp: dir === 'export' ? [leg] : [], imp: dir === 'import' ? [leg] : [],
-        day: O.weekDateOf(r), vehicleRec: r, openRec: r, counted: [r], moved: false, sortRec: r, sortExp: dir === 'export' };
+        day: dayOf(r), vehicleRec: r, openRec: r, counted: [r], moved: false, sortRec: r, sortExp: dir === 'export' };
     });
     return { week, weekIntl, weekNatl, rows, noRt, rtFailed: !rts };
   }
@@ -663,6 +677,32 @@ const OrdersWeekView = (() => {
     }
     intl.forEach(r => { r._type = 'intl'; });
     cancelled.forEach(r => { r._type = 'intl'; });
+    // The Weekly files a load under its EARLIEST delivery / loading stop (WI4.rowDt, owner 3/11/2026),
+    // so its numbers need the stops' dates of this week's orders (the board's own ±8-day window), in
+    // the shape the Weekly builds them ([{dt}]), and like it only stops with a place (weekly_intl.js
+    // _wiInjectStopSummaries keeps a stop by its location). A failed read is said: the numbers then follow stop 1.
+    const stopDates = new Map();
+    let stopsFailed = false;
+    if (wantIntl && typeof WI4 !== 'undefined') {
+      const win = WI4.readWindow(new Date(week + 'T00:00:00'), toLocalDate);
+      const near = r => ['Loading DateTime', 'Delivery DateTime'].some(k => { const v = String(r.fields[k] || '').slice(0, 10); return v && v >= win.from && v <= win.to; });
+      const ids = [...intl, ...cancelled].filter(near).flatMap(r => r.fields['ORDER STOPS'] || []);
+      try {
+        const batches = [];
+        for (let i = 0; i < ids.length; i += 90) {
+          const f = `OR(${ids.slice(i, i + 90).map(id => `RECORD_ID()="${id}"`).join(',')})`;
+          batches.push(atGetAll(TABLES.ORDER_STOPS, { filterByFormula: f, fields: [F.STOP_PARENT_ORDER, F.STOP_TYPE, F.STOP_DATETIME, F.STOP_LOCATION] }, false));
+        }
+        (await Promise.all(batches)).flat().forEach(sr => {
+          const p = sr.fields[F.STOP_PARENT_ORDER], pid = Array.isArray(p) ? p[0] : p;
+          const t = sr.fields[F.STOP_TYPE], dt = sr.fields[F.STOP_DATETIME], loc = sr.fields[F.STOP_LOCATION];
+          if (!pid || !dt || !(Array.isArray(loc) ? loc[0] : loc) || (t !== 'Loading' && t !== 'Unloading')) return;
+          const e = stopDates.get(pid) || { L: [], D: [] };
+          e[t === 'Loading' ? 'L' : 'D'].push({ dt });
+          stopDates.set(pid, e);
+        });
+      } catch (e) { console.error('orders week: stop dates', e); stopsFailed = true; }
+    }
     const natl = (natlRes.r || []).filter(live); natl.forEach(r => { r._type = 'natl'; });
     // Without the invoicing set the slip gate is unknown → the per-order sheet
     // flags decide (OrdersData.sheetsOk fallback) and a strip says so.
@@ -675,7 +715,7 @@ const OrdersWeekView = (() => {
     return {
       week, strip, intl, cancelled, natl, natlFailed: !natlRes.ok, rts: rtRes.ok ? (rtRes.r.records || []) : null,
       rtCapped: rtRes.ok && (rtRes.r.records || []).length >= 500,
-      set, setFailed: !setRes.ok, gateFailed: !!set.gateFailed, parentsFailed, refFailed: !refRes.ok,
+      set, setFailed: !setRes.ok, gateFailed: !!set.gateFailed, parentsFailed, refFailed: !refRes.ok, stopDates, stopsFailed,
       natLoads: loadsRes.ok ? loadsRes.loads : null, v5Failed: v5Res.failed,
     };
   }
@@ -776,6 +816,7 @@ const OrdersWeekView = (() => {
     if (scope !== 'intl' && !d.natlFailed && d.v5Failed) add('Δεν διαβάστηκε η κατάσταση των εθνικών v5.', 'Η ανάθεση εθνικών χωρίς φορτίο γράφει «—», όχι «εκτός φορτίου»· το «παραδόθηκε» τους ακολουθεί την ημερομηνία παράδοσης.');
     if (scope !== 'intl' && !d.natlFailed && d.natLoads == null) add('Δεν διαβάστηκαν τα φορτία εθνικών.', 'Η ανάθεση εθνικών γράφει «—», όχι «εκτός φορτίου»· το ζευγάρι κάθοδος–άνοδος δεν σχεδιάζεται.');
     if (d.setFailed || d.gateFailed) add('Δεν απάντησε ο έλεγχος δελτίων.', 'Ισχύουν οι σημάνσεις δελτίων της ίδιας της παραγγελίας.');
+    if (scope !== 'natl' && d.stopsFailed) add('Δεν διαβάστηκαν οι ημερομηνίες των στάσεων.', 'Η αρίθμηση ακολουθεί την 1η στάση· σε φορτία με στάσεις σε πολλές ημέρες μπορεί να διαφέρει από το Weekly.');
     if (scope !== 'natl' && d.parentsFailed) add('Δεν διαβάστηκαν οι αρχικές των σπασμένων.', 'Τα σκέλη τους γράφουν «αρχική εκτός ανάγνωσης» και δεν αθροίζονται.');
     if (d.set && d.set.stockFailed) add('Δεν διαβάστηκαν οι παρτίδες.', 'Τα κομμάτια δεν αθροίζονται· η παρτίδα φαίνεται μπλοκαρισμένη χωρίς έλεγχο.');
     if (d.refFailed) add('Δεν διαβάστηκαν οχήματα, οδηγοί και συνεργάτες.', 'Η ΑΝΑΘΕΣΗ μπορεί να γράφει «—» ή σκέτο «συνεργάτης»· τα ποσά δεν επηρεάζονται.');
@@ -791,11 +832,13 @@ const OrdersWeekView = (() => {
   function _paint(ctx) {
     const O = OC(), d = S.data, scope = ctx.scope;
     const stateOf = _stateFn(d.set);
-    const m = buildWeek({ week: S.week, intl: d.intl, natl: d.natl, rts: d.rts, cancelled: d.cancelled });
+    const m = buildWeek({ week: S.week, intl: d.intl, natl: d.natl, rts: d.rts, cancelled: d.cancelled, stopDates: d.stopDates });
     // The board's numbers (null = they could not be worked out: every row says «—», never a guess).
     const nums = scope !== 'natl' ? _numbers(d) : null;
-    for (const r of [...m.rows, ...m.noRt]) {
+    S.rowsAll = [...m.rows, ...m.noRt];
+    for (const [i, r] of S.rowsAll.entries()) {
       r.nos = nums ? rowNumbers(r, nums) : [];
+      r.docI = i;
       // Each order line shows the number of the Weekly line that draws it (owner 2/11: compared line by line).
       for (const l of r.legs) l.no = nums ? legNumber(l, nums) : 'failed';
     }
@@ -932,8 +975,10 @@ const OrdersWeekView = (() => {
     ctx.body.innerHTML = `<div class="ow4">
       ${_fails(d, m, scope, undated)}
       <div class="ow4-strip"><button type="button" class="ow4-arr" data-owvshift="-1" aria-label="Προηγούμενη εβδομάδα">‹</button>${strip}<button type="button" class="ow4-arr" data-owvshift="1" aria-label="Επόμενη εβδομάδα">›</button></div>
-      ${sumLine}${intlHtml}${natlHtml}${stHtml}</div>${CARDS_HTML}`;
+      ${sumLine}${intlHtml}${natlHtml}${stHtml}</div>${CARDS_HTML}${DOCS_HTML}`;
     ctx.body.onclick = _onClick;
+    // ΑΝΑΘΕΣΗ is a button for the keyboard too (role=button, tabindex 0)
+    ctx.body.onkeydown = e => { const d = (e.key === 'Enter' || e.key === ' ') && e.target.closest && e.target.closest('[data-owvdoc]'); if (d) { e.preventDefault(); _installDocsEsc(); _openDocs(Number(d.dataset.owvdoc)); } };
     if (wasOpen) {
       // A repaint, not an opening: no slide-in (oi-slide), and she stays where she had scrolled.
       const p = document.getElementById(wasOpen.type === 'intl' ? 'intlDetail' : 'natlDetail');
@@ -966,40 +1011,55 @@ const OrdersWeekView = (() => {
     el.textContent = acc ? acc + '…' : (ell <= avail ? '…' : '');
     return true;
   }
+  // ONE route width per side of a card (owner 2/11/2026, «δεν υπάρχει καλή
+  // ευθυγράμμιση»): the header, every row and every sub-row share it, so each
+  // column starts on the same x down the card. It is the widest route that still
+  // leaves every client whole (never above the shared split's share unless a
+  // route needs it), and never below the widest whole-word floor («from → first
+  // word of the destination»): a longer route then cuts its tail by whole words,
+  // a longer client cuts with «…» and its title. When even the floors do not fit,
+  // the card scrolls sideways (_fitCard) — a word is never cut.
   function _fitSide(card, side) {
-    const subs = [...card.querySelectorAll(`.ow4-row:not(.ow4-hd) .ow4-${side} .ow4-sub:not(.ow4-none)`)];
+    const all = [...card.querySelectorAll(`.ow4-row .ow4-${side} .ow4-sub:not(.ow4-none)`)];
+    const subs = all.filter(sub => !sub.closest('.ow4-hd'));
     if (!subs.length) return 0;
     const s0 = subs[0], cs = getComputedStyle(s0), kids = s0.children;
     const gap = parseFloat(cs.columnGap) || 0;
     const inner = s0.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
     const fixed = side === 'l' ? kids[2].offsetWidth + kids[3].offsetWidth : kids[0].offsetWidth + kids[1].offsetWidth;
     const A = inner - fixed - 3 * gap;                       // route + client + their gap
-    const R = Math.floor((A - gap) * (side === 'l' ? 1 / 2.1 : 0.9 / 2.05));   // the shared split (header)
-    let need = 0;
+    const R = Math.floor((A - gap) * (side === 'l' ? 1 / 2.1 : 0.9 / 2.05));   // the shared split
+    const first = t => String(t || '').trim().split(/\s+/)[0] || '';
+    const rows = [];
+    let fullMax = 0, floorMax = 0, cMax = 0, cFloorMax = 0;
     for (const sub of subs) {
       const route = sub.querySelector('.ow4-route'), cl1 = sub.querySelector('.ow4-cl1'), cl2 = sub.querySelector('.ow4-cl2');
       if (!route || !cl1) continue;
       const tailEl = route.querySelector('.ow4-rt'), tail = route.dataset.tail || '';
+      // measured on the whole tail: a previous fit may have cut it
+      if (tail) tailEl.textContent = tail;
       let fixedR = 0;
       for (const ch of route.children) if (ch !== tailEl) fixedR += ch.getBoundingClientRect().width + (parseFloat(getComputedStyle(ch).marginLeft) || 0);
       const tcs = getComputedStyle(tailEl), tf = _fontOf(tailEl), mL = parseFloat(tcs.marginLeft) || 0;
       const full = Math.ceil(fixedR + (tail ? mL + _tw(tf, tail) : 0)) + 1;
       const floor = Math.ceil(fixedR + (tail ? mL + _tw(tf, '…') : 0)) + 1;
       const cf = _fontOf(cl1), c = Math.ceil(_tw(cf, cl1.textContent)) + 1;
-      const first = t => String(t || '').trim().split(/\s+/)[0] || '';
       const cFloor = Math.ceil(Math.max(_tw(cf, first(cl1.textContent) + '…'), cl2 ? _tw(_fontOf(cl2), first(cl2.textContent) + '…') : 0)) + 1;
-      let w;
-      if (full + gap + c <= A) w = Math.min(Math.max(R, full), A - gap - c);
-      else w = Math.max(floor, A - gap - c);
-      if (A - gap - w < cFloor) need = Math.max(need, w + gap + cFloor - A);
-      sub.style.setProperty('--ow4-rw', Math.floor(w) + 'px');
-      const cut = tail ? _fitWords(tailEl, tail, w - fixedR - mL - 1) : false;
-      // For the reader and the critics' rig: was the route shortened?
-      // 'floor' = the route is already down to its whole-word floor and the
-      // client is still cut: rule (a) outranks (b), nothing more can give.
-      route.dataset.cut = cut ? 'tail' : (A - gap - w < c && w <= floor ? 'floor' : '');
+      rows.push({ route, tailEl, tail, fixedR, mL, floor, c });
+      fullMax = Math.max(fullMax, full); floorMax = Math.max(floorMax, floor);
+      cMax = Math.max(cMax, c); cFloorMax = Math.max(cFloorMax, cFloor);
     }
-    return need;
+    if (!rows.length) return 0;
+    const w = Math.floor(Math.max(floorMax, Math.min(Math.max(R, fullMax), A - gap - cMax, Math.max(R, A - gap - cFloorMax))));
+    for (const sub of all) sub.style.setProperty('--ow4-rw', w + 'px');
+    for (const r of rows) {
+      const cut = r.tail ? _fitWords(r.tailEl, r.tail, w - r.fixedR - r.mL - 1) : false;
+      // For the reader and the critics' rig: was the route shortened? 'floor' =
+      // the route is down to its whole-word floor and the client is still cut:
+      // rule (a) outranks (b), nothing more can give.
+      r.route.dataset.cut = cut ? 'tail' : (A - gap - w < r.c && w <= r.floor ? 'floor' : '');
+    }
+    return Math.max(0, w + gap + cFloorMax - A);
   }
   function _fitCard(card) {
     card.classList.remove('ow4-scroll');
@@ -1132,12 +1192,14 @@ const OrdersWeekView = (() => {
   }
   const _emptySide = text => `<div class="ow4-sub ow4-none"><div class="ow4-c">${text}</div></div>`;
 
-  function _assignHtml(v, verdict, sumHtml, extra) {
+  function _assignHtml(v, verdict, sumHtml, extra, docI) {
     let top;
     if (v.kind === 'own' || (v.kind === 'partner' && v.plate)) top = `<span class="ow4-plate">${esc(v.plate)}</span> <span class="ow4-who ow4-ell" title="${esc(v.who)}">${esc(v.who)}</span>`;
     else if (v.kind === 'partner') top = `<span class="ow4-who ow4-ell" title="${esc(v.who)}">${esc(v.who)}</span>`;
     else top = `<span class="${v.text === '—' ? 'ow4-d' : 'ow4-asg-pa'}">${esc(v.text)}</span>`;
-    return `<div class="ow4-asg"><div class="ow4-l1 ow4-veh">${extra || top}</div>
+    // A click on ΑΝΑΘΕΣΗ shows the load's assignment document (_openDocs); the order card stays on the order.
+    const doc = docI != null ? ` data-owvdoc="${docI}" role="button" tabindex="0" title="Έγγραφο ανάθεσης"` : '';
+    return `<div class="ow4-asg${doc ? ' ow4-asg-doc' : ''}"${doc}><div class="ow4-l1 ow4-veh">${extra || top}</div>
       <div class="ow4-asg-b"><span class="ow4-vd" title="${esc(verdict)}" data-full="${esc(verdict)}">${esc(verdict)}</span><span class="ow4-sig">${sumHtml}</span></div></div>`;
   }
   function _sumHtml(recs, mk) {
@@ -1176,7 +1238,7 @@ const OrdersWeekView = (() => {
     return `<div class="ow4-row${blk ? ' ow4-blk' : ''}" data-owvopen="intl:${esc(r.openRec.id)}">
       <div class="ow4-c-rt"><div class="ow4-l1">${isRt ? esc(r.code) : '<span class="ow4-d">—</span>'}</div>${tag ? `<div class="ow4-l2">${esc(tag)}</div>` : ''}</div>
       <div class="ow4-side ow4-l">${exp}</div>
-      ${_assignHtml(v, verdictText(verdict, n), _sumHtml(r.counted, mk))}
+      ${_assignHtml(v, verdictText(verdict, n), _sumHtml(r.counted, mk), '', _rowDocs(r).length ? r.docI : null)}
       <div class="ow4-side ow4-r">${imp}</div></div>`;
   }
 
@@ -1224,6 +1286,9 @@ const OrdersWeekView = (() => {
     if (e.target.closest('[data-owvretry]')) { S.force = true; return _rerender(); }
     const go = e.target.closest('[data-owvgo]');
     if (go) return OrdersHub.setView(go.dataset.owvgo);
+    if (e.target.closest('[data-owvdocs="close"]')) return _closeDocs();
+    const doc = e.target.closest('[data-owvdoc]');
+    if (doc) { _installDocsEsc(); return _openDocs(Number(doc.dataset.owvdoc)); }
     const open = e.target.closest('[data-owvopen]');
     if (open) {
       const [type, id] = open.dataset.owvopen.split(':');
@@ -1278,16 +1343,92 @@ const OrdersWeekView = (() => {
 
   // The board's numbers of this read; an error is said on the row («—» with why), never a 0.
   function _numbers(d) {
+    S.board = null;
     try {
-      return WI4.weekNumbers({ recs: [...d.intl, ...(d.cancelled || [])], wsDate: new Date(S.week + 'T00:00:00'), dayOf: toLocalDate,
+      // the board's rows of this week (WI4.weekBoard): its numbers, and the line whose document ΑΝΑΘΕΣΗ shows
+      // the stops' dates ride on copies (WI4.rowDt reads _stopsL / _stopsD): the records the cards open stay as read
+      const withStops = r => { const e = d.stopDates && d.stopDates.get(r.id); return e ? Object.assign({}, r, { fields: Object.assign({}, r.fields, e.L.length ? { _stopsL: e.L } : {}, e.D.length ? { _stopsD: e.D } : {}) }) : r; };
+      S.board = WI4.weekBoard({ recs: [...d.intl, ...(d.cancelled || [])].map(withStops), wsDate: new Date(S.week + 'T00:00:00'), dayOf: toLocalDate,
         split: typeof FEATURES !== 'undefined' && !!FEATURES.ORDER_SPLIT,
         // The board shows its stock shelf when stock is on (this page is never the warehouse's)
         shelf: typeof OrdersStock !== 'undefined' && OrdersStock.on(),
         isLoose: f => window.WI_INTERNAL.loose(f) });
+      return WI4.numberOf(S.board.built, S.board.no);
     } catch (e) {
       console.error('orders week: Weekly numbers', e);
+      S.board = null;
       return null;
     }
+  }
+
+  // ── ΑΝΑΘΕΣΗ → the assignment document (owner 2/11/2026: «μόνο το έγγραφο της
+  // ανάθεσης να δω»). The SAME paper the Weekly International prints for that
+  // load — print.html, the one renderer (driver or partner sheet, a group's
+  // packet) — shown read-only over the week; nothing here saves. Which paper:
+  // the board's own rule of its assignment cell (weekly_intl_v2.js, the ⎙
+  // beside the pill): an export prints itself, a group as a packet in its stop
+  // order (WI_INTERNAL.grpOrder = _wiGrpOrder); an import-only row prints
+  // itself; a matched import prints itself with the EXPORT row's sheet, or its
+  // import group's packet with that group's sheet. Partner sheet when the row
+  // has a partner (owner 9/8). Export first, then import. Old / v5 nationals:
+  // not here yet (their sheet needs the v5 board: a later step).
+  function _rowDocs(r) {
+    const b = S.board;
+    if (!b || typeof printSheetQuery !== 'function' || !window.WI_INTERNAL) return [];
+    const rows = b.built.rows;
+    const rowOf = id => (id && rows.find(x => (x.orderIds || []).includes(id))) || null;
+    const recs = ids => ids.map(id => b.byId.get(id)).filter(Boolean);
+    const partnerOf = row => { const p = ((b.byId.get(row.orderIds[0]) || {}).fields || {})['Partner']; return !!(Array.isArray(p) ? p[0] : p); };
+    const seen = new Set(), out = [];
+    let elsewhere = 0;   // legs on another week's board: their paper is there, said in the overlay
+    for (const l of r.legs || []) {
+      const br = rowOf(l.own && l.own.id) || rowOf(l.rec && l.rec.id);
+      if (br && !seen.has(br)) { seen.add(br); out.push(br); }
+      else if (!br && l.rec) elsewhere++;
+    }
+    out.sort((a, c) => (a.type === 'export' ? 0 : 1) - (c.type === 'export' ? 0 : 1));
+    const docs = out.map(br => {
+      const imp = br.type === 'import', leg = imp ? 'import' : 'export';
+      const group = br.orderIds.length > 1;
+      const exp = imp ? rows.find(x => x.type === 'export' && x.importId && br.orderIds.includes(x.importId)) : null;
+      const hasP = imp && !group && exp ? partnerOf(exp) : partnerOf(br);
+      const ids = group ? WI_INTERNAL.grpOrder(recs(br.orderIds), imp ? 'Loading DateTime' : undefined).map(e => e.id) : [br.orderIds[0]];
+      const query = group ? `orderIds=${(ids.length ? ids : br.orderIds).join(',')}&leg=${leg}&sheet=${hasP ? 'partner' : 'driver'}`
+        : printSheetQuery(br.orderIds[0], leg, hasP);
+      const what = (imp ? 'Εισαγωγή' : 'Εξαγωγή') + (group ? ` · ομάδα ${br.orderIds.length}` : '');
+      return { query, title: `${what} — ${hasP ? 'Φύλλο Συνεργάτη' : 'Φύλλο Οδηγού'}` };
+    });
+    docs.elsewhere = elsewhere;
+    return docs;
+  }
+  const DOCS_HTML = '<div class="owv-docs hidden" id="owvDocs" role="dialog" aria-modal="false" aria-label="Έγγραφα ανάθεσης"></div>';
+  function _openDocs(i) {
+    const r = (S.rowsAll || [])[i], box = document.getElementById('owvDocs');
+    if (!r || !box) return;
+    const docs = _rowDocs(r);
+    if (!docs.length) return;
+    // one panel on the right at a time: the order card gives way to the documents
+    if (typeof _oiCloseCard === 'function') _oiCloseCard();
+    if (typeof closeNatlDetail === 'function') closeNatlDetail();
+    const away = docs.elsewhere ? `<div class="owv-doc-t">${docs.elsewhere} ${docs.elsewhere === 1 ? 'σκέλος είναι' : 'σκέλη είναι'} σε άλλη εβδομάδα — το έγγραφό ${docs.elsewhere === 1 ? 'του' : 'τους'} είναι στο Εβδομαδιαίο εκείνης της εβδομάδας</div>` : '';
+    // print.html alone in each frame (never a second app): noprint=1 keeps its own print dialog for its
+    // «Print / PDF» button, so the paper is read here and printed from its own bar.
+    box.innerHTML = `<div class="owv-docs-h"><b>Έγγραφα ανάθεσης</b><span>${esc(r.code || OC().numLabel(r.rec || {}))}</span>
+      <button type="button" class="owv-docs-x" data-owvdocs="close" title="Κλείσιμο (Esc)" aria-label="Κλείσιμο">×</button></div>
+      <div class="owv-docs-b">${away}${docs.map(d => `<section class="owv-doc"><div class="owv-doc-t">${esc(d.title)}</div>
+        <iframe class="owv-doc-f" title="${esc(d.title)}" src="print.html?${esc(d.query)}&noprint=1"></iframe></section>`).join('')}</div>`;
+    box.classList.remove('hidden');
+  }
+  function _closeDocs() {
+    const box = document.getElementById('owvDocs');
+    if (box && !box.classList.contains('hidden')) { box.classList.add('hidden'); box.innerHTML = ''; return true; }
+    return false;
+  }
+  // Esc closes the documents first (one listener for the page's life, as the cards' Esc).
+  let _docsEsc = false;
+  function _installDocsEsc() {
+    if (_docsEsc) return; _docsEsc = true;
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && _closeDocs()) e.stopImmediatePropagation(); }, true);
   }
   // undefined = a national line (not numbered yet) · 'failed' · null = no line there · n
   function _noHtml(no) {
@@ -1332,7 +1473,7 @@ const OrdersWeekView = (() => {
     const stLabel = r => { if (isVsNational(r)) return 'δεν τιμολογείται'; const s = stateOf(r); return s.key === 'invoiced' ? (O.isSelfDelivery(r.fields) ? 'αυτοπαράδοση' : 'τιμολογήθηκε') : s.key === 'blocked' ? 'μπλοκαρισμένη: ' + (REASON[s.reason] || s.reason) : s.key === 'ready' ? (s.noSheets ? 'προς κοπή · λείπει δελτίο' : 'προς κοπή') : 'ακυρωμένη'; };
     const line = (rt, r, vrec, counts) => {
       const f = r.fields, v = vehicleOf(vrec), e = endsOf(r);
-      return [O.weekLabel(m.week), O.ymd(O.weekDateOf(r)), rt, r._type === 'natl' ? (f['Direction'] === 'South→North' ? 'Άνοδος' : 'Κάθοδος') : (f['Direction'] === 'Import' ? 'Εισαγωγή' : 'Εξαγωγή'),
+      return [O.weekLabel(m.week), O.ymd(rowDayOf(r, S.data && S.data.stopDates)), rt, r._type === 'natl' ? (f['Direction'] === 'South→North' ? 'Άνοδος' : 'Κάθοδος') : (f['Direction'] === 'Import' ? 'Εισαγωγή' : 'Εξαγωγή'),
         O.numLabel(r), f['Reference'] || '', clientRaw(f), `${e.from} → ${e.to}`, v.plate || v.text, v.who,
         O.hasPrice(f) ? String(O.price(f)).replace('.', ',') : '', counts ? 'ναι' : 'όχι', stLabel(r), String(f['Invoice Number'] || '')];
     };

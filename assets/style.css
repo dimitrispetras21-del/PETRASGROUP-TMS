@@ -7601,7 +7601,7 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
      rows      .wi4-row .wi4-subrow .wi4-splithd .wi4-msg .wi4-trace · columns .wi4-c-idx
                .wi4-c-fl .wi4-c-exp .wi4-c-asg .wi4-c-imp .wi4-c-fr .wi4-c-span
                · rails .wi4-r-red (solid) .wi4-r-amb (dashed) · .wi4-dim .wi4-focus .wi4-hl .wi4-mhl
-     leg       .wi4-leg · .wi4-l-date .wi4-l-from .wi4-l-arr .wi4-l-to .wi4-l-pal .wi4-l-span
+     leg       .wi4-leg(.wi4-leg-dd) · .wi4-l-date .wi4-l-from .wi4-l-arr .wi4-l-dd .wi4-l-to .wi4-l-pal .wi4-l-span
                · text .wi4-l1 .wi4-l2 .wi4-ell .wi4-ref .wi4-t-red/.wi4-t-amb/.wi4-t-blue/.wi4-t-g2
      points    .wi4-pts(.wi4-noplace) .wi4-pt .wi4-pt-n .wi4-more(.wi4-more-nd) .wi4-more-d .wi4-pt-nd .wi4-pt-dd .wi4-ok .wi4-delay
                · line 2 .wi4-l2f(.wi4-l2p) .wi4-pt-pl .wi4-pt-pal
@@ -8445,13 +8445,13 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 /* Chip + ΑΝΑΦ. under it = 16 + 12 = 28px inside the locked 32px row (review
    11/10: 18 + 13 = 31px and the ref touched the next row's border). The
    chip keeps 18px everywhere else (queue cards). */
-.wi4-l-date .wi4-dc { height:16px; line-height:14px; }
+:is(.wi4-l-date, .wi4-l-dd) .wi4-dc { height:16px; line-height:14px; }
 /* Every row chip is the 70px DateChip (Figma 898:12 / 898:14: w70, px 6,
    centred): sized to its text (51–61px) the date column looked ragged, and
    the done chip's padding 0 put its ✓ on the cell edge. Rows only — the
    queue's chips keep their own size. */
-.wi4-l-date .wi4-dc { width:70px; justify-content:center; padding:0 6px; box-sizing:border-box; }
-.wi4-l-date .wi4-dc.done { padding:0 6px; }
+:is(.wi4-l-date, .wi4-l-dd) .wi4-dc { width:70px; justify-content:center; padding:0 6px; box-sizing:border-box; }
+:is(.wi4-l-date, .wi4-l-dd) .wi4-dc.done { padding:0 6px; }
 /* ΑΝΑΦ. = Regular 10 / 11, 6px in (Figma 1097:2662): the text starts under
    the chip's text, not its frame. Stack 16 + 11 = 27 ≤ 28. */
 .wi4-l-date .wi4-ref { padding-left:6px; font-size:10px; line-height:11px; }
@@ -8460,6 +8460,16 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 .wi4-l-to   { grid-column:7; position:relative; min-width:0; }
 .wi4-l-pal  { grid-column:9; display:flex; align-items:center; justify-content:flex-end; gap:4px; }
 .wi4-l-span { grid-column:1 / -1; min-width:0; }
+/* An import's delivery chip (owner 3/11, the loading chip's twin): its own 70px column after the
+   arrow; the two points columns share what is left (_layout measures them apart, _ptsWn). */
+.wi4-leg.wi4-leg-dd { grid-template-columns:70px 8px minmax(0,1fr) 8px 13px 8px 70px 8px minmax(0,1fr) 8px 72px; }
+.wi4-leg-dd > .wi4-l-dd  { grid-column:7; min-width:0; display:flex; align-items:center; }
+.wi4-leg-dd > .wi4-l-to  { grid-column:9; }
+.wi4-leg-dd > .wi4-l-pal { grid-column:11; }
+/* Owner 3/11 «ίδιο κουτάκι παντού»: at 1440 a points column of such a leg is under one point + «+N»
+   (56 + 8 + 34px), so the point gives way (its name cut, the whole name in its title and the «+N»
+   table) rather than push «+N» onto the delivery chip. */
+.wi4-leg-dd .wi4-pts > .wi4-pt { min-width:0; }
 .wi4-l1 { display:block; font-size:12px; font-weight:500; line-height:14px; color:var(--wi4-ink); }
 .wi4-l2 { display:block; font-size:10.5px; line-height:13px; color:var(--wi4-grey-2); }
 .wi4-ref { font-size:10.5px; line-height:13px; color:var(--wi4-grey-2); }
@@ -10385,9 +10395,9 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .ow4-c-rt .ow4-l2 { overflow:hidden; text-overflow:ellipsis; }
 .ow4-side { display:flex; flex-direction:column; min-width:0; }
 .ow4-sub { display:grid; align-items:start; column-gap:var(--ow4-gap); min-height:48px; box-sizing:border-box; padding:9px 10px 7px; }
-/* --ow4-rw (route width) is set per row by _fitSide; unset (header, print
-   before a fit) the shared split applies. Declared here, on the row grid, so
-   the per-row value is the one read. */
+/* --ow4-rw (route width) is ONE value per side of a card, set by _fitSide on the
+   header and every row and sub-row alike (owner 2/11, one column template); unset
+   (print before a fit) the shared split applies. Declared here, on the row grid. */
 .ow4-l .ow4-sub { grid-template-columns:var(--ow4-rw, minmax(0,1fr)) minmax(0,1.1fr) var(--ow4-tpy) var(--ow4-amt); }
 .ow4-r .ow4-sub { grid-template-columns:var(--ow4-tpy) var(--ow4-amt) minmax(0,1.15fr) var(--ow4-rw, minmax(0,.9fr)); }
 .ow4-sub + .ow4-sub { border-top:1px solid var(--wi4-line); }
@@ -10503,6 +10513,22 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
   z-index:1200; display:flex; flex-direction:column; overflow-y:auto; overflow-x:hidden; background:var(--bg-card);
   border-left:1px solid var(--border); box-shadow:-8px 0 24px rgba(11,25,41,.12); }
 .owv-cards .entity-detail-panel.owv-card.hidden { display:none; }
+/* «Εβδομάδα»: ΑΝΑΘΕΣΗ opens the load's assignment document (owner 2/11, «μόνο το έγγραφο της ανάθεσης να
+   δω»): print.html itself in a frame per leg, read-only, over the week's right side as the order card. */
+.ow4-asg-doc { cursor:pointer; }
+.ow4-asg-doc:hover, .ow4-asg-doc:focus-visible { background:var(--wi4-hover, var(--surface-sunken)); outline:none; }
+.owv-docs { position:fixed; top:0; right:0; height:100vh; width:min(880px, 100vw); z-index:1200; display:flex; flex-direction:column;
+  background:var(--bg-card); border-left:1px solid var(--border); box-shadow:-8px 0 24px rgba(11,25,41,.12); }
+.owv-docs.hidden { display:none; }
+.owv-docs-h { display:flex; align-items:center; gap:12px; padding:14px 20px; background:var(--surface-dark); color:var(--text-on-dark); flex-shrink:0; }
+.owv-docs-h b { font-family:'Syne',sans-serif; font-size:16px; letter-spacing:.5px; }
+.owv-docs-h span { opacity:.8; font-size:13px; }
+.owv-docs-x { margin-left:auto; background:none; border:none; color:inherit; font-size:22px; line-height:1; cursor:pointer; }
+.owv-docs-b { flex:1; overflow-y:auto; padding:12px 16px 24px; background:var(--bg); }
+.owv-doc + .owv-doc { margin-top:16px; }
+.owv-doc-t { font-weight:700; font-size:12px; letter-spacing:.4px; text-transform:uppercase; color:var(--text-mid); margin:0 0 6px; }
+.owv-doc-f { display:block; width:100%; height:1180px; border:1px solid var(--border); border-radius:6px; background:#fff; }
+@media print { .owv-docs { display:none; } }
 
 /* New place from an order scan (T44, modules/locations.js locScanNewHTML): an
    inline block under an unmatched stop of the scan preview, not a modal (the

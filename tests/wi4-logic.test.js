@@ -645,3 +645,36 @@ test('dayBreaks: the one rule both boards read — another day than the point be
   assert.deepStrictEqual(WI4.dayBreaks(['2026-11-04', '', null, '2026-11-04'], '2026-11-04'), [null, null, null, null]);
   assert.deepStrictEqual(WI4.dayBreaks(null), []);
 });
+
+test('rowDt: a row is filed by its EARLIEST delivery (export) / loading (import) stop (owner 3/11)', () => {
+  // #618 shape: stop 1 Tue (the field), stop 2 Mon → Monday
+  const exp = { 'Delivery DateTime': '2026-11-03', 'Loading DateTime': '2026-10-30', _stopsD: [{ dt: '2026-11-03' }, { dt: '2026-11-02' }] };
+  assert.strictEqual(WI4.rowDt(exp, 'export'), '2026-11-02');
+  assert.strictEqual(WI4.rowDt(Object.assign({}, exp, { _stopsD: undefined }), 'export'), '2026-11-03', 'no stops read: the field, as before');
+  assert.strictEqual(WI4.rowDt({ 'Loading DateTime': '2026-10-30' }, 'export'), '2026-10-30', 'an export without a delivery: its loading');
+  // the loading stops do not move an export; the delivery stops do not move an import
+  assert.strictEqual(WI4.rowDt(Object.assign({}, exp, { _stopsL: [{ dt: '2026-10-01' }] }), 'export'), '2026-11-02');
+  const imp = { 'Loading DateTime': '2026-11-04', 'Delivery DateTime': '2026-11-06', _stopsL: [{ dt: '2026-11-04' }, { dt: '2026-11-03' }], _stopsD: [{ dt: '2026-11-01' }] };
+  assert.strictEqual(WI4.rowDt(imp, 'import'), '2026-11-03');
+  assert.strictEqual(WI4.rowDt({ 'Loading DateTime': '2026-11-04T08:00:00Z', _stopsL: [{ dt: '2026-11-04' }] }, 'import'), '2026-11-04T08:00:00Z', 'a tie keeps the field');
+  assert.strictEqual(WI4.rowDt(null, 'import'), '');
+});
+
+test('boardNumbers / weekBoard: a load with stops on two days sits on the earlier one', () => {
+  const dayOf = (v) => String(v || '').slice(0, 10);
+  const rec = (id, f) => ({ id, fields: Object.assign({ Type: 'International', 'Order ID': id.slice(3) }, f) });
+  const recs = [
+    rec('rec1', { Direction: 'Export', 'Loading DateTime': '2026-10-30', 'Delivery DateTime': '2026-11-03' }),
+    rec('rec2', { Direction: 'Export', 'Loading DateTime': '2026-10-30', 'Delivery DateTime': '2026-11-03', _stopsD: [{ dt: '2026-11-03' }, { dt: '2026-11-02' }] }),
+    rec('rec3', { Direction: 'Import', 'Loading DateTime': '2026-11-05', _stopsL: [{ dt: '2026-11-05' }, { dt: '2026-11-04' }] }),
+  ];
+  const b = WI4.weekBoard({ recs, wsDate: new Date(2026, 9, 31), dayOf: (v) => (v instanceof Date ? `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, '0')}-${String(v.getDate()).padStart(2, '0')}` : dayOf(v)) });
+  const nb = WI4.boardNumbers(b.built.rows, { ws: '2026-10-31', dayOf, fOf: (r) => b.byId.get(r.orderId).fields });
+  const dayOfRow = (oid) => nb.days.find((d) => d.exps.concat(d.imps).some((r) => r.orderId === oid)).date;
+  assert.strictEqual(dayOfRow('rec1'), '2026-11-03');
+  assert.strictEqual(dayOfRow('rec2'), '2026-11-02', 'Monday stop wins over stop 1 on Tuesday');
+  assert.strictEqual(dayOfRow('rec3'), '2026-11-04');
+  // numbers follow the days: Monday's export before Tuesday's
+  const no = WI4.numberOf(b.built, b.no);
+  assert.ok(no.get('rec2') < no.get('rec1'));
+});
