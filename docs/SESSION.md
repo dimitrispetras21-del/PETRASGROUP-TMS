@@ -12,7 +12,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
-- dimitris · `claude/rt-sync-v6-plan` · RT: απόλυτο sync v6, ΣΧΕΔΙΟ r8 (ουρά + καταναλωτής, ενέργειες μίας κίνησης, Φάση 0)· N0 «ναι» 3/11· γύρος 8 σε εξέλιξη· PR #234· επόμενη ερώτηση owner N5, καμία εκτέλεση (`docs/rt-sync-v6/PLAN.md`)
+- dimitris · `claude/rt-sync-v6-plan` · RT: απόλυτο sync v6, ΣΧΕΔΙΟ r9 (ουρά + καταναλωτής, ενέργειες μίας κίνησης, Φάση 0)· N0 «ναι» 3/11· 8 γύροι ελέγχου· PR #234· επόμενη ερώτηση owner N0β, καμία εκτέλεση (`docs/rt-sync-v6/PLAN.md`)
 - dimitris · `fix/wi4-import-delivery-date` · Weekly Διεθνών: κουτάκι ημερομηνίας παράδοσης στην εισαγωγή (ίδιο με της φόρτωσης)· η γραμμή στη νωρίτερη ημέρα στάσεων (`WI4.rowDt`, απαντά το #618)· η «Εβδομάδα» διαβάζει τις ημερομηνίες στάσεων: ίδια αρίθμηση και ίδια (νωρίτερη) ημέρα· μόνο front end, ?v= / SW_VERSION 1793880000 (`docs/sessions/2026-11-03-dimitris-wi4-import-delivery-date.md`)
 - dimitris · `feat/owv-week-assign` · «Παραγγελίες › Εβδομάδα»: κλικ στην ΑΝΑΘΕΣΗ = το έγγραφο της ανάθεσης (το `print.html` του Weekly, μόνο ανάγνωση)· εθνικά επόμενο βήμα· ?v= / SW_VERSION 1793870000 (`docs/sessions/2026-11-02-dimitris-week-assign-doc.md`)
 - dimitris · `fix/owv-week-align` · «Παραγγελίες › Εβδομάδα»: μία στοίχιση στηλών (ένα πλάτος διαδρομής ανά πλευρά, κεφαλίδα + γραμμές + υπο-γραμμές)· πάνω στο #244· ?v= / SW_VERSION 1793860000 (`docs/sessions/2026-11-02-dimitris-week-align.md`)
