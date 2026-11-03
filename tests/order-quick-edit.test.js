@@ -24,7 +24,17 @@ test('only changed fields are sent; dates compare by day; blank clears', () => {
   assert.deepStrictEqual(Q.changes(f, k => (k === 'Price' ? '0' : k.endsWith('DateTime') ? String(f[k]).slice(0, 10) : f[k])), {});
 });
 
-test('an invoiced order: the price is locked, the other fields still go out', () => {
+test('an invoiced order: owner 3/11 — its price changes, for owner and accountant only (as 085)', () => {
   const f = { Invoiced: true, 'Invoice Number': '0431', Price: 3200, Reference: 'R-1' };
-  assert.deepStrictEqual(Q.changes(f, k => ({ Price: '3500', Reference: 'R-2' })[k] ?? ''), { Reference: 'R-2' });
+  const typed = k => ({ Price: '3500', Reference: 'R-2' })[k] ?? '';
+  assert.deepStrictEqual(Q.changes(f, typed), { Price: 3500, Reference: 'R-2' }, 'accountant: the price goes out');
+  assert.deepStrictEqual(Q.PRICE_ROLES, ['owner', 'accountant']);
+  for (const r of ['dispatcher', 'management', 'warehouse']) {
+    global.ROLE = r;
+    assert.strictEqual(Q.priceLocked(f), true, r + ': locked');
+    assert.deepStrictEqual(Q.changes(f, typed), { Reference: 'R-2' }, r + ': the other fields still go out');
+  }
+  global.ROLE = 'owner'; assert.strictEqual(Q.priceLocked(f), false);
+  global.ROLE = 'accountant';
+  assert.strictEqual(Q.priceLocked({ Price: 3200 }), false, 'not invoiced: never locked');
 });
