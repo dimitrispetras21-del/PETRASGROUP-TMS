@@ -55,7 +55,8 @@ test('«Αυτοπαράδοση» is offered on ready, and on an unpriced order
 
 test('the price of an invoiced order is locked — the accountant\'s «Διόρθωση» rule, asked, never copied', () => {
   delete global.OrderQuickEdit;
-  assert.strictEqual(IO.priceLocked({ Price: 1 }), true, 'without the rule: locked (fail closed)');
+  assert.strictEqual(IO.priceLocked({ Invoiced: true, 'Self Delivery': true, Price: 1 }), true, 'without the rule: every invoiced price locked (fail closed)');
+  assert.strictEqual(IO.priceLocked({}), false, 'without the rule: an unpriced, uninvoiced order is never called invoiced');
   global.OrderQuickEdit = require('../core/order-quick-edit.js');
   assert.strictEqual(IO.priceLocked({ Invoiced: true, 'Invoice Number': '1', Price: 5 }), true);
   assert.strictEqual(IO.priceLocked({ Invoiced: true, 'Self Delivery': true, Price: 5 }), false, 'a self delivery has no ERP invoice');

@@ -81,10 +81,11 @@ const InvoiceOps = (() => {
   // An invoiced order's price is the ERP invoice's amount: it does not change
   // (a self delivery's does — it has no ERP invoice). The rule is the
   // accountant's «Διόρθωση» (core/order-quick-edit.js, 20/10), asked, never
-  // copied; without it the price stays locked. To correct it: «Αναίρεση
+  // copied; without it every INVOICED price stays locked (never an unpriced
+  // one — that would say «τιμολογημένη» of an order that is not). To correct it: «Αναίρεση
   // τιμολόγησης», the price, the ΤΠΥ again — as in «Προς τιμολόγηση», which
   // offers no price box on an invoiced order either.
-  const priceLocked = f => (typeof OrderQuickEdit !== 'undefined' && OrderQuickEdit.priceLocked ? OrderQuickEdit.priceLocked(f) : true);
+  const priceLocked = f => (typeof OrderQuickEdit !== 'undefined' && OrderQuickEdit.priceLocked ? OrderQuickEdit.priceLocked(f) : OrdersCommon.isInvoiced(f));
   // Owner + accountant (config.js costs:'full', «Προς τιμολόγηση» since 28/9);
   // the Worker checks the role again on PATCH.
   const canWrite = () => typeof can === 'function' && can('costs') === 'full';

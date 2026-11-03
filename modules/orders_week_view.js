@@ -754,6 +754,8 @@ const OrdersWeekView = (() => {
     // A ‹ › click can land after the user moved to another view: never paint
     // (or hang handlers) on a frame that is no longer ours.
     if (!ctx.isCurrent()) return;
+    // A new frame (another view and back, another week) never brings back an editor left open on the old one.
+    if (S.ctx !== ctx || !S.data || S.data.week !== S.week) S.ed = null;
     S.ctx = ctx;
     if (!(typeof can === 'function' && can('costs') !== 'none')) { ctx.body.innerHTML = ''; return; }
     OC().ensureStyles();
@@ -1488,8 +1490,10 @@ const OrdersWeekView = (() => {
     catch (err) {
       const msg = 'Δεν γράφτηκε: ' + ((err && err.message) || 'άγνωστο σφάλμα');
       OrdersData.invalidate();
-      if (S.ed === e && document.getElementById('owvEd')) { e.busy = false; e.err = msg; _edRender(); _edFocus(); }
-      else if (typeof toast === 'function') toast(msg, 'error');
+      if (S.ed === e && document.getElementById('owvEd')) { e.busy = false; e.err = msg; _edRender(); _edFocus(); return null; }
+      // The editor is gone (another view, another week): said here, and it never comes back disabled.
+      if (S.ed === e) S.ed = null;
+      if (typeof toast === 'function') toast(msg, 'error');
       return null;
     }
     _edApply(rec, fields);

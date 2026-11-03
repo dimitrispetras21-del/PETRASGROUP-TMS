@@ -532,6 +532,16 @@ async function scnInvoice(browser) {
   await page.waitForSelector('.owv-cards #intlDetail:not(.hidden)', { timeout: 10000 });
   ok(await page.locator('#owvEd').count() === 0, 'a click on the client opens the order card, the editor closes');
   await page.keyboard.press('Escape');
+  // an editor left open never comes back from another view (code review high: stale / stuck editor)
+  await cell('recO1248', 'tpy').click();
+  await page.waitForSelector('#owvEd');
+  await page.evaluate(() => OrdersHub.setView('invoicing'));
+  await page.waitForTimeout(800);
+  await page.evaluate(() => OrdersHub.setView('week'));
+  await page.waitForSelector('.ow4 .ow4-state', { timeout: 30000 });
+  await page.waitForTimeout(300);
+  ok(await page.locator('#owvEd').count() === 0, 'another view and back: the editor left open is not mounted again');
+  ok(await page.locator('[data-owved]').count() > 0, 'and the cells still open it');
   const total = cap.patches.length;
   ok(total === 9, `${total} PATCHes in all — one per write, none from opening, cancelling or a wrong price`);
   ok(P.realErrors(page, /422|Δεν σημαίνεται/).length === 0, 'invoice: 0 page/console errors but the deliberate 422 ' + JSON.stringify(P.realErrors(page, /422|Δεν σημαίνεται/)).slice(0, 300));
