@@ -15,7 +15,11 @@ const FILE = 'modules/wn5_road.js';
 const SRC = fs.readFileSync(path.join(ROOT, FILE), 'utf8');
 const LAB = require(path.join(ROOT, 'core/wn5-labels.js'));
 const J = (x) => JSON.parse(JSON.stringify(x));
-function load(features) {
+// config.js featureOn (the flag rule shared with wn5_compose.js), taken as source so the test reads the real rule
+const CFG = fs.readFileSync(path.join(ROOT, 'config.js'), 'utf8');
+const FEATURE_ON = /function featureOn\(name\) \{[\s\S]*?\n\}/.exec(CFG)[0];
+const PILOT = /const WN_V5_USERS = [^;]*;/.exec(CFG)[0];
+function load(features, user) {
   const acts = [];
   const rec = (w) => () => { acts.push(w); return 0; };
   const win = { addEventListener: rec('window.addEventListener') };
@@ -23,7 +27,9 @@ function load(features) {
     setTimeout: rec('setTimeout'), fetch: rec('fetch'), addEventListener: rec('addEventListener'),
     document: { createElement: rec('document.createElement'), body: { appendChild: rec('body.appendChild') } }, WN5Lab: LAB };
   if (features) ctx.FEATURES = features;
+  if (user) ctx.user = user;
   vm.createContext(ctx);
+  vm.runInContext(PILOT.replace('const ', 'var ') + '\n' + FEATURE_ON, ctx, { filename: 'config.js' });
   vm.runInContext(SRC, ctx, { filename: FILE });
   return { acts, added: Object.keys(win).filter((k) => k !== 'addEventListener'), R: win.WN5Road };
 }
@@ -50,11 +56,14 @@ test('wn5_road.js adds exactly WN5Road and acts zero times at load', () => {
   assert.deepStrictEqual(r.acts, []);
 });
 
-test('the flag: off (absent or false) = WN5Road.on() false; only FEATURES.WN_ROAD === true opens', () => {
+test('the flag: off (absent or false) = WN5Road.on() false; true opens; \'pilot\' opens only for WN_V5_USERS', () => {
   assert.strictEqual(load().R.on(), false);
   assert.strictEqual(load({ WN_ROAD: false }).R.on(), false);
   assert.strictEqual(load({ WN_ROAD: 'on' }).R.on(), false);
   assert.strictEqual(load({ WN_ROAD: true }).R.on(), true);
+  assert.strictEqual(load({ WN_ROAD: 'pilot' }, { username: 'dimitris' }).R.on(), true);
+  assert.strictEqual(load({ WN_ROAD: 'pilot' }, { username: 'sotiris' }).R.on(), false);
+  assert.strictEqual(load({ WN_ROAD: 'pilot' }).R.on(), false);
 });
 
 test('loadsOf: the loads A carries on a side, in loading order, with their drop (hub = Veroia)', () => {

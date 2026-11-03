@@ -76,7 +76,8 @@ async function own_new({ browser, origin, ok, scn, shots }) {
   ok(scn, 'pick truck TST-2106 from the list', await pickIn(page, 'tk', '2106', 'TST-2106'));
   const tk = await field(page, 'tk');
   ok(scn, 'the truck field holds the plate, «✓ ελεύθερο» under it', tk.val === 'TST-2106' && /✓ ελεύθερο/.test(tk.av), tk);
-  ok(scn, 'pick trailer TRL-5104', await pickIn(page, 'tl', '5104', 'TRL-5104'));
+  // owner 3/11: TRL-5102 runs RT-T101 Mon–Tue, the load is Wed–Thu — a trip of the day before says nothing
+  ok(scn, 'pick trailer TRL-5102', await pickIn(page, 'tl', '5102', 'TRL-5102'));
   ok(scn, 'pick driver Driver Test 03', await pickIn(page, 'dr', 'Test 03', 'Driver Test 03'));
   const l = await lineOf(page);
   ok(scn, 'one line: «TST-2106 · ελεύθερο» and «0 → 8/33»', l && l.txt === 'TST-2106 · ελεύθερο' && l.cap === '0 → 8/33' && !l.over, l);
@@ -88,9 +89,9 @@ async function own_new({ browser, origin, ok, scn, shots }) {
   const w = saves(S);
   ok(scn, 'exactly one write: POST /plan/legs', w.length === 1 && w[0].m === 'POST' && w[0].path === '/plan/legs', w.map((x) => x.m + ' ' + x.path));
   const body = w[0] && w[0].body;
-  ok(scn, 'body: the order whole (group), target new_rt OWNED 13 / trailer 22 / driver 33, side KATHODOS',
-    body && body.group && body.group.nat_order_id === 3101 && body.target.side === 'KATHODOS'
-    && JSON.stringify(body.target.new_rt) === JSON.stringify({ trip_type: 'OWNED', truck_id: 13, trailer_id: 22, driver_id: 33 }), body);
+  ok(scn, 'body: the order whole (group), target new_rt OWNED 13 / trailer 21 / driver 33, side KATHODOS, no accept_busy (nothing said)',
+    body && body.group && body.group.nat_order_id === 3101 && body.target.side === 'KATHODOS' && !('accept_busy' in body.target)
+    && JSON.stringify(body.target.new_rt) === JSON.stringify({ trip_type: 'OWNED', truck_id: 13, trailer_id: 21, driver_id: 33 }), body);
   ok(scn, 'stops: the order\'s own windows, new stops (location_id), never a seq', body && body.stops.length === 2 && body.stops.every((s) => s.location_id && s.planned_from && s.planned_to && !('seq' in s)), body && body.stops);
   ok(scn, 'after the 200: the form closed and the board was read again', !(await K.count(page, DLG)) && K.planOf(S, 'GET', '/plan/board').length >= 2);
   await page.context().close();
@@ -453,7 +454,8 @@ async function veroia_new({ browser, origin, ok, scn, shots }) {
   ok(scn, 'no «κύκλος» on the panel (the Figma heading «…ΣΤΟΝ ΙΔΙΟ ΚΥΚΛΟ» reads «…ΣΤΟ ΙΔΙΟ ΦΟΡΤΗΓΟ»)', !jargon(t).length && /ΑΛΛΕΣ ΦΟΡΤΩΣΕΙΣ ΣΤΟ ΙΔΙΟ ΦΟΡΤΗΓΟ/.test(t), jargon(t));
   await page.selectOption('#wn5-hub .wn5-nf-day', '2026-10-14');
   t = await nfText(page);
-  ok(scn, 'a Veroia day after the deliveries\' day says it, short: «2 παραδόσεις είναι για Τρί 13/10 · θα φύγουν αργά»', /2 παραδόσεις είναι για Τρί 13\/10 · θα φύγουν αργά/.test(t), t);
+  // owner 3/11 («λιγότερα»): a Veroia day after the deliveries' day is no longer a warning on the panel
+  ok(scn, 'owner 3/11: a Veroia day after the deliveries\' day says nothing («θα φύγουν αργά» is gone)', !/αργά/.test(t), t);
   await page.selectOption('#wn5-hub .wn5-nf-day', '2026-10-12');
   await page.click('#wn5-hub .wn5-nf .wn5a-hrs');
   await page.fill('#wn5-hub [data-nfhm="from"]', '1600');
@@ -519,11 +521,12 @@ async function f61({ browser, origin, ok, scn, shots }) {
   const chips = await page.evaluate((s) => [...document.querySelectorAll(`${s} .wn5a-all.on`)].map((x) => x.textContent), DLG);
   ok(scn, 'F51: the rows of that day read «από 22:00» (what is sent), never a silent 00:00', chips.length === 2 && chips.every((c) => c === 'από 22:00'), chips);
   if (shots) await page.screenshot({ path: shots + '/f61-new-after.png' });
-  // Π2 (owner 2/11): the truck and driver of the trip it came back with are said BEFORE the press, amber, by name;
-  // the save stays on and sends accept_busy from the first press (one POST, no refusal first)
+  // Π2 (owner 2/11) + owner 3/11: the truck, trailer and driver of the trip it came back with the same day are said
+  // BEFORE the press, amber, by name, day and places (no hours); the save stays on and sends accept_busy from the
+  // first press (one POST, no refusal first)
   const foot = await page.evaluate((s) => { const m = document.querySelector(s + ' [data-miss]'); return m ? { t: m.textContent, soft: m.classList.contains('wn5-soft'), color: getComputedStyle(m).color } : null; }, DLG);
-  ok(scn, 'Π2: footer «Επικάλυψη · φορτηγό και σε: … · οδηγός και σε: … Αποθηκεύεται έτσι, γράφεται στο ιστορικό.», amber',
-    !!foot && /^Επικάλυψη · φορτηγό και σε: .+ · οδηγός και σε: .+\. Αποθηκεύεται έτσι, γράφεται στο ιστορικό\.$/.test(foot.t) && foot.soft && foot.color === 'rgb(124, 45, 18)', foot);
+  ok(scn, 'Π2: footer «TST-2104 / θάλαμος TRL-5102 / Driver Test 01 είναι σε άλλο δρομολόγιο Τρί 13/10 · Athens → Βέροια.», amber',
+    !!foot && foot.t === 'TST-2104 / θάλαμος TRL-5102 / Driver Test 01 είναι σε άλλο δρομολόγιο Τρί 13/10 · Athens → Βέροια.' && foot.soft && foot.color === 'rgb(124, 45, 18)', foot);
   const n0 = saves(S).length;
   await page.click(`${DLG} [data-act="save"]`);
   await page.waitForTimeout(500);
@@ -626,9 +629,10 @@ async function pr3b({ browser, origin, ok, scn }) {
   await page.context().close();
 }
 
-// 12 · Π2 (owner 2/11): the Veroia board's «Νέο φορτίο» with a driver already on a trip those days (Driver Test 01 on
-// TST-2104's RT-T101, Mon 16:00 → Tue 22:00): said in amber beside «Δημιουργία φορτίου» before the press, by truck,
-// place and day (no RT code), and ONE POST carries target.accept_busy — the panel is the one that saves
+// 12 · Π2 (owner 2/11) + owner 3/11: the Veroia board's «Νέο φορτίο» with a driver already on a trip the same day
+// (Driver Test 01 on TST-2104's RT-T101, Mon 16:00 → Tue 22:00; the new load runs Tue): said in amber beside
+// «Δημιουργία φορτίου» before the press, by name, day and places (no RT code, no hours, never Monday: the row's day is
+// not the trip's), and ONE POST carries target.accept_busy — the panel is the one that saves
 async function veroia_busy({ browser, origin, ok, scn }) {
   const { page, S } = await K.openApp(browser, origin, { board: hubBoard(), plan: { 'POST /plan/legs': async () => OK('plan_put_pieces', { rt_id: 903 }) } });
   await page.click('#wn5-hub [data-hub="open"]');
@@ -642,7 +646,7 @@ async function veroia_busy({ browser, origin, ok, scn }) {
   await page.waitForTimeout(200);
   ok(scn, '«Επιλογή» wrote nothing', !saves(S).length, saves(S).map((x) => x.path));
   const why = await page.evaluate(() => { const m = document.querySelector('#wn5-hub [data-nfwhy]'); return m ? { t: m.textContent, soft: m.classList.contains('wn5-soft'), color: getComputedStyle(m).color } : null; });
-  const T = 'Επικάλυψη · οδηγός και σε: TST-2104 · Βέροια ως Τρί 22:00. Αποθηκεύεται έτσι, γράφεται στο ιστορικό.';
+  const T = 'Driver Test 01 είναι σε άλλο δρομολόγιο Τρί 13/10 · Athens → Βέροια.';
   ok(scn, 'the panel says «' + T + '» in amber beside the save, no RT code, «Δημιουργία φορτίου» on',
     !!why && why.t === T && why.soft && why.color === 'rgb(124, 45, 18)' && !jargon(why.t).length && !(await page.isDisabled('#wn5-hub [data-act="nf-create"]')), why);
   await page.click('#wn5-hub [data-act="nf-create"]');
@@ -755,5 +759,96 @@ async function veroia_fixes({ browser, origin, ok, scn, shots }) {
   await page.context().close();
 }
 
-K.run({ scenarios: { own_new, own_join, only_hours, partner, accept_busy, vehicle, rate2, handover, veroia_list, veroia_new, f61, f54, veroia_later, pr3b, veroia_busy, veroia_fixes }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],
+// 15 · owner 3/11 («λιγότερα»): the ONE warning of the form — the driver, the truck or the trailer («θάλαμος») on another
+// trip the SAME calendar day, by name, day and places, amber beside the save, which stays on and sends accept_busy
+// from the first press. A trip of another day says nothing and sends nothing. The kit week: RT-T102 = TST-2108 /
+// TRL-5104 / Driver Test 02 on Wed 14/10 (Athens → Βέροια); RT-T101 = TST-2104 / TRL-5102 / Driver Test 01 Mon–Tue.
+// N-T101 (4101) loads Wed 14/10; N-T401 (4401, added here) loads Tue 13/10.
+async function busy3({ browser, origin, ok, scn }) {
+  const AMBER = 'rgb(124, 45, 18)';
+  const tue = () => { const b = board(); b.waiting.push({ piece_id: 4401, shipment_id: 5501, kind: 'national', order_id: null, nat_order_id: 3401, order_stop_id: null, pallets: 6, leave_by: null,
+    position_location_id: 2, nat_from_location_id: 2, nat_to_location_id: 4, nat_ready_day: '2026-10-13', nat_due_day: '2026-10-13', overdue: false,
+    is_stock: false, client_id: 41, client: 'ΠΕΛΑΤΗΣ Α', reference: 'N-T401', temperature_c: 4, pallet_exchange: false, direction: 'KATHODOS',
+    load_from: null, load_to: null, deliver_from: null, deliver_to: null, price: null }); return b; };
+  const footOf = (page) => page.evaluate((s) => { const m = document.querySelector(s + ' [data-miss]'); return m ? { t: m.textContent, soft: m.classList.contains('wn5-soft'), color: getComputedStyle(m).color } : null; }, DLG);
+  const plain = (t) => !/\d\d:\d\d|RT-|κύκλ|Επικάλυψη/.test(String(t || ''));
+  async function one(piece, picks, o) {
+    const { page, S } = await K.openApp(browser, origin, { board: o && o.board || board(), plan: { 'POST /plan/legs': async () => OK('plan_put_group', { rt_id: 905 }) } });
+    await openWaiting(page, piece);
+    await pickIn(page, 'tk', picks[0], picks[0].length === 4 ? 'TST-' + picks[0] : picks[0]);
+    if (o && o.opt) { await page.click(`${DLG} [data-act="opt"]:has-text("${o.opt}")`).catch(() => {}); await page.waitForTimeout(100); }
+    await pickIn(page, 'tl', picks[1], 'TRL-' + picks[1]);
+    await pickIn(page, 'dr', picks[2], 'Driver ' + picks[2]);
+    const f = await footOf(page), tl = await field(page, 'tl'), dr = await field(page, 'dr'), tk = await field(page, 'tk');
+    const off = await page.isDisabled(`${DLG} [data-act="save"]`);
+    await page.click(`${DLG} [data-act="save"]`).catch(() => {});
+    await page.waitForTimeout(500);
+    const w = saves(S);
+    await page.context().close();
+    return { f, off, w, av: { tk: tk && tk.av, tl: tl && tl.av, dr: dr && dr.av }, errs: S.pageErrors };
+  }
+  let r = await one(4101, ['2106', '5104', 'Test 03']);
+  const TL = 'θάλαμος TRL-5104 είναι σε άλλο δρομολόγιο Τετ 14/10 · Athens → Βέροια.';
+  ok(scn, 'trailer the same day: «' + TL + '» amber beside the save, the save on', !!r.f && r.f.t === TL && r.f.soft && r.f.color === AMBER && !r.off && plain(r.f.t), r.f);
+  ok(scn, 'trailer the same day: under the field «άλλο δρομολόγιο · Athens → Βέροια» (no hours)', /^άλλο δρομολόγιο · Athens → Βέροια/.test(r.av.tl || ''), r.av);
+  ok(scn, 'trailer the same day: ONE POST /plan/legs, target.accept_busy = true from the first press', r.w.length === 1 && r.w[0].body.target.accept_busy === true, r.w.map((x) => x.raw));
+  r = await one(4101, ['2106', '5102', 'Test 02']);
+  const DR = 'Driver Test 02 είναι σε άλλο δρομολόγιο Τετ 14/10 · Athens → Βέροια.';
+  ok(scn, 'driver the same day: «' + DR + '» amber, the save on, ONE POST with accept_busy', !!r.f && r.f.t === DR && r.f.soft && !r.off && plain(r.f.t)
+    && r.w.length === 1 && r.w[0].body.target.accept_busy === true, { f: r.f, w: r.w.map((x) => x.raw) });
+  r = await one(4101, ['2108', '5102', 'Test 03'], { opt: 'νέο φορτίο' });
+  const TK = 'TST-2108 είναι σε άλλο δρομολόγιο Τετ 14/10 · Athens → Βέροια.';
+  ok(scn, 'truck the same day (a new load, not its trip): «' + TK + '» amber, ONE POST new_rt 12 with accept_busy', !!r.f && r.f.t === TK && r.f.soft && !r.off
+    && r.w.length === 1 && !!r.w[0].body.target.new_rt && r.w[0].body.target.new_rt.truck_id === 12 && r.w[0].body.target.accept_busy === true, { f: r.f, w: r.w.map((x) => x.raw) });
+  r = await one(4401, ['2106', '5104', 'Test 02'], { board: tue() });
+  ok(scn, 'busy only the NEXT day (TRL-5104 / Driver Test 02 on Wed, the load Tue): nothing said, «✓», one POST without accept_busy',
+    !!r.f && !r.f.t && !r.f.soft && !r.off && /✓/.test(r.av.tl || '') && /✓/.test(r.av.dr || '') && r.w.length === 1 && !('accept_busy' in r.w[0].body.target), { f: r.f, av: r.av, w: r.w.map((x) => x.raw) });
+  r = await one(4101, ['2106', '5102', 'Test 01']);
+  ok(scn, 'busy only the day BEFORE (TRL-5102 / Driver Test 01 Mon–Tue, the load Wed): nothing said, no «Χ+2», one POST without accept_busy',
+    !!r.f && !r.f.t && !/Χ\+2/.test(r.av.dr || '') && r.w.length === 1 && !('accept_busy' in r.w[0].body.target), { f: r.f, av: r.av });
+  ok(scn, 'no page errors', !r.errs.length, r.errs);
+}
+
+// 16 · owner 3/11 (bigger forms): at a laptop height (1440×900, 1280×800) the form opens whole — inside the window,
+// nothing scrolls inside it — with its longest content: a VS of two deliveries (three day rows) and a same-day trailer
+// line beside the save; the Veroia board's «Νέο φορτίο» picks its truck in the same form. --shots: the screenshots.
+async function fit({ browser, origin, ok, scn, shots }) {
+  for (const vp of K.FIT_VIEWPORTS) {
+    const tag = vp.width + 'x' + vp.height;
+    {
+      const { page } = await K.openApp(browser, origin, { board: board(), viewport: vp });
+      await openWaiting(page, 4201);
+      await pickIn(page, 'tk', '2106', 'TST-2106');
+      await pickIn(page, 'tl', '5104', 'TRL-5104');
+      await pickIn(page, 'dr', 'Test 03', 'Driver Test 03');
+      await page.waitForTimeout(150);
+      const f = await K.fitOf(page, DLG);
+      ok(scn, tag + ' «Ανάθεση»: inside the window, nothing scrolls in it', K.fits(f), f);
+      ok(scn, tag + ' «Ανάθεση»: wider than the 600px of before', !!f && f.w > 600, f);
+      if (shots) await page.screenshot({ path: shots + '/assign-' + tag + '.png' });
+      await page.context().close();
+    }
+    {
+      const { page } = await K.openApp(browser, origin, { board: hubBoard(), viewport: vp });
+      await page.click('#wn5-hub [data-hub="open"]');
+      await page.click('#wn5-hub .wn5-hub-it[data-piece="4201"] .wn5-hub-ck');
+      await page.click('#wn5-hub .wn5-hub-it[data-piece="4202"] .wn5-hub-ck');
+      await page.click('#wn5-hub .wn5-nf-pick');
+      await page.waitForSelector(DLG, { timeout: 4000 });
+      await pickIn(page, 'tk', '2106', 'TST-2106');
+      await pickIn(page, 'tl', '5104', 'TRL-5104');
+      await pickIn(page, 'dr', 'Test 01', 'Driver Test 01');
+      await page.waitForTimeout(150);
+      const f = await K.fitOf(page, DLG);
+      ok(scn, tag + ' «Νέο φορτίο» → the truck form: inside the window, nothing scrolls in it', K.fits(f), f);
+      if (shots) await page.screenshot({ path: shots + '/veroia-pick-' + tag + '.png' });
+      await page.click(`${DLG} [data-act="save"]`);
+      await page.waitForTimeout(200);
+      if (shots) await page.screenshot({ path: shots + '/veroia-panel-' + tag + '.png' });
+      await page.context().close();
+    }
+  }
+}
+
+K.run({ scenarios: { own_new, own_join, only_hours, partner, accept_busy, vehicle, rate2, handover, veroia_list, veroia_new, f61, f54, veroia_later, pr3b, veroia_busy, veroia_fixes, busy3, fit }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],
   go: 'the assignment form (own new / join / only / hours / F39 / partner / vehicle / F51-F61 / F54 / F56 / 089 two fees), ✈ «Αλλαγή οχήματος…» and the Veroia board v2 «Νέο φορτίο» hold' });

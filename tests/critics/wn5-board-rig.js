@@ -1076,7 +1076,8 @@ async function scnPlus(browser, origin) {
     ok(scn, 'groups per VS, ΕΘΝ, «ΑΠΟΘΕΜΑ ΒΕΡΟΙΑΣ», «ΑΙΤΗΜΑΤΑ ΑΝΟΔΟΥ»', txt.includes('VS-T118 · ΠΕΛΑΤΗΣ Β') && txt.includes('VS-T125 · ΠΕΛΑΤΗΣ Η')
       && txt.includes('ΕΘΝ · ΠΕΛΑΤΗΣ ΣΤ') && txt.includes('ΑΠΟΘΕΜΑ ΒΕΡΟΙΑΣ') && txt.includes('ΑΙΤΗΜΑΤΑ ΑΝΟΔΟΥ'), txt.slice(0, 800));
     const l4101 = await bText(page, `${D} .wn5-pline[data-piece="4101"]`);
-    ok(scn, 'a line says «→ 36/33 · υπέρβαση 3» and «μπαίνει kη»', l4101.includes('→ 36/33 · υπέρβαση 3') && /μπαίνει \d+η/.test(l4101), l4101);
+    // owner 3/11 («λιγότερα»): no stop rank «μπαίνει kη» in the forms any more
+    ok(scn, 'a line says «→ 36/33 · υπέρβαση 3», no «μπαίνει kη» (owner 3/11)', l4101.includes('→ 36/33 · υπέρβαση 3') && !/μπαίνει/.test(l4101), l4101);
     ok(scn, '«πόσες» only on stock lines (2), never on an arriving load', (await page.$$(`${D} [data-take]`)).length === 2 && !(await bHas(page, `${D} .wn5-pline[data-piece="4101"] [data-take]`)));
     ok(scn, 'ΑΙΤΗΜΑΤΑ ΑΝΟΔΟΥ in the KATHODOS «+» have no «Πρόσθεσε»', (await bHas(page, `${D} .wn5-pline[data-piece="4202"]`)) && !(await bHas(page, `${D} .wn5-pline[data-piece="4202"] [data-act="save"]`)));
     ok(scn, 'no truck to choose (S-68): no select, no candidate in the popover', !(await bHas(page, `${D} select`)) && !(await bHas(page, `${D} [data-cand]`)));
@@ -2980,11 +2981,12 @@ SCN['f1-allday'] = async (browser, origin) => {
     ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
     await page.context().close();
   }
-  { // control: a timed window that starts after the arrival is late (the check can see a real warning)
+  { // owner 3/11 («λιγότερα»): a timed window that starts after the arrival says nothing either — no hours warning in
+    // the forms; the line still draws (its x/33)
     const { page, S } = await bOpen(browser, origin, { board: board('13:00', '18:00') });
     await bClick(page, K201);
     const l = await bText(page, `${D} .wn5-pline[data-piece="4101"]`);
-    ok(scn, 'control: Veroia 13:00–18:00, arrival 14:00 → «φτάνει 14:00 · φόρτωση 13:00–18:00»', l.includes('φτάνει 14:00 · φόρτωση 13:00–18:00'), l);
+    ok(scn, 'owner 3/11: Veroia 13:00–18:00, arrival 14:00 → no «φτάνει 14:00 · φόρτωση …», the x/33 still there', !!l && !l.includes('φτάνει') && /\/33/.test(l), l);
     ok(scn, 'control: no page errors', !S.pageErrors.length, S.pageErrors);
     await page.context().close();
   }
@@ -3266,43 +3268,30 @@ SCN.f33 = async (browser, origin) => {
     ok(scn, 'no page errors (1)', !S.pageErrors.length, S.pageErrors);
     await page.context().close();
   }
-  { // 2 · F33: the base's stop_order «(301)» is said as which stop and what to do, from the request the screen sent
+  { // 2 · owner 3/11 («λιγότερα»): no stop-order warning BEFORE the press (Π1 «θα τελείωνε πριν αρχίσει» is gone — since
+    // 093 the base takes the ΑΝΟΔΟΣ before the ΚΑΘΟΔΟΣ); a stop_order the base still refuses (an order no truck can
+    // drive) is said in words after the press, without «(301)», a trip code or an id
     const { page, S } = await bOpen(browser, origin, { board: f33Board(), plan: refuse });
     await page.evaluate(() => WN5Act.plus(301, 'ANODOS', document.querySelector('#content .wn5 .wn5-row[data-rt="301"]')));
     await page.waitForTimeout(400);
     await page.fill(`${P} input[data-hub="from"]`, '08:00').catch(() => {});
     await page.fill(`${P} input[data-hub="to"]`, '10:00').catch(() => {});
     await page.waitForTimeout(200);
-    // code review: the same words BEFORE the press, beside the line; the button stays on (the base judges). Π1 (W50
-    // test 2/11): amber (.wn5-soft), never the red of «Λείπει»; the rule is 086's — the Tue all-day loading ENDS
-    // (23:59) before the Wed delivery starts (00:00), so it is still said
     const pre = await bText(page, `${P} .wn5-pline[data-piece="4393"] .wn5-why`);
-    const soft = await page.evaluate((s) => { const e = document.querySelector(s); return !!e && e.classList.contains('wn5-soft'); }, `${P} .wn5-pline[data-piece="4393"] .wn5-why`);
-    ok(scn, 'before the press: the line says «Η στάση «LARISA TEST Τρί 13/10 όλη η ημέρα» (ΑΝΟΔΟΣ, νέα) θα τελείωνε πριν αρχίσει …», amber, «Πρόσθεσε» on; N-T392 says nothing',
-      pre.startsWith('Η στάση «LARISA TEST Τρί 13/10 όλη η ημέρα» (ΑΝΟΔΟΣ, νέα) θα τελείωνε πριν αρχίσει η «ATHENS TEST Τετ 14/10 όλη η ημέρα» (ΚΑΘΟΔΟΣ) στο RT-T301')
-      && soft && (await bOff(page, `${P} [data-act="save"][data-piece="4393"]`)) === false && !(await bHas(page, `${P} .wn5-pline[data-piece="4392"] .wn5-why`)), { pre, soft });
-    // Π1: what 086 takes is never said — an all-day ΑΝΟΔΟΣ on the day of a ΚΑΘΟΔΟΣ with hours (ends 23:59, after
-    // 06:00), and a window that overlaps one ahead of it; only a stop that ENDS before an earlier one starts
-    const p1 = await page.evaluate(() => {
-      const k = WN5Act._kit, T = (d, hm) => d + 'T' + hm + ':00+03:00';
-      const c = { code: 'RT-X', stops: [{ side: 'KATHODOS', location_id: 4, location: 'A', planned_from: T('2026-10-13', '06:00'), planned_to: T('2026-10-13', '08:00') }] };
-      const w = (f, t) => k.orderWarn(c, { body: { stops: [{ side: 'ANODOS', location_id: 5, planned_from: f, planned_to: t }] } });
-      return { allDay: w(T('2026-10-13', '00:00'), T('2026-10-13', '23:59')), overlap: w(T('2026-10-13', '05:00'), T('2026-10-13', '07:00')),
-        endsBefore: w(T('2026-10-13', '03:00'), T('2026-10-13', '06:00')) };
-    });
-    ok(scn, 'Π1: all-day ΑΝΟΔΟΣ same day as ΚΑΘΟΔΟΣ 06:00 → nothing; overlapping 05:00–07:00 → nothing; 03:00–06:00 (ends as it starts) → said',
-      p1.allDay === null && p1.overlap === null && typeof p1.endsBefore === 'string' && p1.endsBefore.includes('θα τελείωνε πριν αρχίσει'), p1);
+    ok(scn, 'owner 3/11: before the press N-T393 (ΑΝΟΔΟΣ Tue, before the ΚΑΘΟΔΟΣ Wed) says nothing, «Πρόσθεσε» on; N-T392 says nothing',
+      !pre && (await bOff(page, `${P} [data-act="save"][data-piece="4393"]`)) === false && !(await bHas(page, `${P} .wn5-pline[data-piece="4392"] .wn5-why`)), pre);
+    ok(scn, 'owner 3/11: the Π1 rule is gone from the kit (no orderWarn)', await page.evaluate(() => typeof WN5Act._kit.orderWarn === 'undefined'));
     await bClick(page, `${P} [data-act="save"][data-piece="4393"]`);
     await page.waitForTimeout(500);
     const t = await bText(page, `${P} .wn5-strip`);
-    ok(scn, 'stop_order: «Η στάση «LARISA TEST Τρί 13/10 όλη η ημέρα» (ΑΝΟΔΟΣ, νέα) … πριν από τη «ATHENS TEST Τετ 14/10 όλη η ημέρα» (ΚΑΘΟΔΟΣ) στο RT-T301» — main: the sentinel «(301)»',
-      t.includes('«LARISA TEST Τρί 13/10 όλη η ημέρα» (ΑΝΟΔΟΣ, νέα)') && t.includes('«ATHENS TEST Τετ 14/10 όλη η ημέρα» (ΚΑΘΟΔΟΣ) στο RT-T301') && !t.includes('(301)'), t);
-    ok(scn, '… and what to do: «Βάλε την … από Τετ 14/10 00:00 και μετά, ή διάλεξε άλλον κύκλο.»', /Βάλε την «LARISA TEST Τρί 13\/10 όλη η ημέρα» από Τετ 14\/10 00:00 και μετά, ή διάλεξε άλλον κύκλο\./.test(t), t);
-    // a refusal reaching a strip without the request (e.g. an order form's save) still names the cycle, never the bare id
+    ok(scn, 'stop_order after the press: «Οι στάσεις του δρομολογίου δεν θα ήταν σε χρονική σειρά … διάλεξε άλλο φορτηγό.», no «(301)», no RT code — main: the stop and the cycle code',
+      /Οι στάσεις του δρομολογίου δεν θα ήταν σε χρονική σειρά: μια στάση θα τελείωνε πριν αρχίσει η στάση πριν από αυτήν/.test(t) && /διάλεξε άλλο φορτηγό\./.test(t)
+      && !t.includes('(301)') && !/RT-|κύκλ/.test(t), t);
+    // a refusal reaching a strip without the request (e.g. an order form's save): the same words
     const t2 = await page.evaluate(() => { const h = document.createElement('div'); document.body.appendChild(h);
       WN5Act.strip(h, { kind: 'refusal', code: 'stop_order', message: 'rig sentinel stop_order (301)' }); return h.innerText; });
-    ok(scn, 'stop_order without the request: «Οι στάσεις του RT-T301 δεν θα ήταν σε χρονική σειρά … τελείωνε πριν αρχίσει … φόρτωσή της» (086: the same side too)',
-      /Οι στάσεις του RT-T301 δεν θα ήταν σε χρονική σειρά: μια στάση θα τελείωνε πριν αρχίσει η στάση πριν από αυτήν/.test(t2) && t2.includes('παράδοση πριν από τη φόρτωσή της') && !t2.includes('(301)'), t2);
+    ok(scn, 'stop_order without the request: the same words, «παράδοση πριν από τη φόρτωσή της», never the bare id',
+      /Οι στάσεις του δρομολογίου δεν θα ήταν σε χρονική σειρά/.test(t2) && t2.includes('παράδοση πριν από τη φόρτωσή της') && !t2.includes('(301)') && !/RT-/.test(t2), t2);
     ok(scn, 'no page errors (2)', !S.pageErrors.length, S.pageErrors);
     await page.context().close();
   }
@@ -3844,7 +3833,9 @@ SCN.pr3a = async (browser, origin) => {
   await page.context().close();
 };
 // Π2 (owner 2/11, W50 test: every second load of the same truck on the same day was refused): a busy truck / driver is
-// said BEFORE the press, in amber, naming every other trip (place · day, never an RT code), and saved with ONE press
+// said BEFORE the press, in amber, naming every other trip (owner 3/11: the truck / trailer / driver by name, the day
+// and the trip's places — «TST-2103 / θάλαμος TRL-5103 / Driver Test 03 είναι σε άλλο δρομολόγιο Τρί 13/10 · …»,
+// never an RT code, never an hour), and saved with ONE press
 // carrying accept_busy (086) — on «+», «Μεταφορά σε…», the drag of a point, the date panel and the Veroia «Σπάσε…».
 // A span outside the loaded week is said and NOT pre-accepted: the base accepts every overlap of the save.
 // Fixture: TST-2103 (truck 13, Driver Test 03) runs RT-T204 Mon–Tue and RT-T205 on Tue 16:00–23:59 (LARISA TEST).
@@ -3857,8 +3848,9 @@ function p2Board() {
 }
 SCN.p2 = async (browser, origin) => {
   const scn = 'p2';
-  const T205 = 'Επικάλυψη · φορτηγό και σε: LARISA TEST ως Τρί 23:59 · οδηγός και σε: LARISA TEST ως Τρί 23:59. Αποθηκεύεται έτσι, γράφεται στο ιστορικό.';
-  const T204 = 'Επικάλυψη · φορτηγό και σε: Βέροια ως Τρί 22:00 · οδηγός και σε: Βέροια ως Τρί 22:00. Αποθηκεύεται έτσι, γράφεται στο ιστορικό.';
+  const T205 = 'TST-2103 / θάλαμος TRL-5103 / Driver Test 03 είναι σε άλλο δρομολόγιο Τρί 13/10 · Βέροια → Test city 6.';
+  // the «+» load of N-T201 loads on Monday: the trip is stretched to Mon, so RT-T204 is said on both its days
+  const T204 = 'TST-2103 / θάλαμος TRL-5103 / Driver Test 03 είναι σε άλλο δρομολόγιο Δευ 12/10, Τρί 13/10 · Test city 5 → Βέροια.';
   const soft = (page, sel) => page.$eval(sel, (e) => ({ t: e.innerText, soft: e.classList.contains('wn5-soft'), color: getComputedStyle(e).color })).catch(() => null);
   const AMBER = 'rgb(124, 45, 18)';
   const noRt = (t) => !/RT-T\d/.test(String(t || ''));
@@ -3966,6 +3958,83 @@ SCN.p2 = async (browser, origin) => {
     ok(scn, '«Σπάσε»: ONE POST, parts[0].target {rt_id 204, side, accept_busy: true}, parts[1] without a target',
       c.length === 1 && JSON.stringify(c[0].body.parts[0].target) === '{"rt_id":204,"side":"KATHODOS","accept_busy":true}' && !c[0].body.parts[1].target, c.map((x) => x.raw));
     ok(scn, 'no page errors (F)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+};
+// owner 3/11 («λιγότερα»): ONE warning in the forms of the board — the driver, the truck or the trailer («θάλαμος») on
+// another trip the SAME calendar day, by name, the day and that trip's places, no hours, no RT code. The kit's rule
+// (WN5Act._kit.busyOf) on synthetic trips: each kind alone, two on one trip, a trip of the next day (nothing), the day
+// of a handover segment (the vehicle of the second segment is not busy the first day), a day outside the loaded week
+// (said, not pre-accepted). Then the «+» of a trip whose trailer runs another trip that day: amber, one POST.
+SCN.busy3 = async (browser, origin) => {
+  const scn = 'busy3';
+  {
+    const { page, S } = await bOpen(browser, origin, { board: p2Board() });
+    const r = await page.evaluate(() => {
+      const k = WN5Act._kit, T = (d, hm) => d + 'T' + hm + ':00+03:00', TUE = '2026-10-13', WED = '2026-10-14';
+      const st = (loc, name, d, a, b) => ({ side: 'KATHODOS', location_id: loc, location: name, planned_from: T(d, a), planned_to: T(d, b) });
+      const trip = (id, v, d, o) => Object.assign({ rt_id: id, trip_type: 'OWNED', truck_id: v[0], truck: 'TST-90' + v[0], trailer_id: v[1], trailer: v[1] ? 'TRL-80' + v[1] : null,
+        driver_id: v[2], driver: 'Driver Nine ' + v[2], start_at: T(d, '06:00'), end_at: T(d, '18:00'), date_start: d, date_end: d,
+        stops: [st(2, 'RENTIS TEST', d, '06:00', '08:00'), st(5, 'LARISA TEST', d, '16:00', '18:00')] }, o || {});
+      const ask = (cs, o) => k.busyOf(Object.assign({ days: [TUE, TUE], cycles: cs, week: '2026-10-10' }, o));
+      const one = trip(901, [91, 81, 71], TUE);
+      // a Tue–Wed trip whose truck changes on Wed 06:00 (072b): truck 92 drives only on Wed
+      const hand = trip(902, [93, 83, 73], TUE, { end_at: T(WED, '18:00'), date_end: WED, segments: [
+        { segment_id: 1, truck_id: 93, truck: 'TST-9093', trailer_id: 83, trailer: 'TRL-8083', driver_id: 73, driver: 'Driver Nine 73', from_at: T(TUE, '06:00'), to_at: T(WED, '06:00') },
+        { segment_id: 2, truck_id: 92, truck: 'TST-9092', trailer_id: 83, trailer: 'TRL-8083', driver_id: 72, driver: 'Driver Nine 72', from_at: T(WED, '06:00'), to_at: T(WED, '18:00') }] });
+      const txt = (x) => (x ? x.text : null);
+      return {
+        driver: txt(ask([one], { drivers: [71] })), truck: txt(ask([one], { trucks: [91] })), trailer: txt(ask([one], { trailers: [81] })),
+        two: txt(ask([one], { trucks: [91], trailers: [81], drivers: [77] })),
+        next: ask([trip(903, [91, 81, 71], WED)], { trucks: [91], trailers: [81], drivers: [71] }),
+        before: ask([trip(904, [91, 81, 71], '2026-10-12')], { trucks: [91], trailers: [81], drivers: [71] }),
+        segTue: ask([hand], { trucks: [92], drivers: [72] }), segWed: txt(ask([hand], { trucks: [92], drivers: [72], days: [WED, WED] })),
+        self: ask([one], { trucks: [91], self: [901] }),
+        partner: ask([Object.assign(trip(905, [null, null, null], TUE), { trip_type: 'PARTNER', partner_id: 51 })], { trucks: [91], drivers: [71] }),
+        // code review high 3/11: a trip that began with a partner keeps trip_type PARTNER on its row (072b copies the
+        // first segment); its second segment drives our TST-9091 on Tuesday — named
+        pfirst: txt(ask([Object.assign(trip(907, [null, null, null], TUE), { trip_type: 'PARTNER', partner_id: 51, segments: [
+          { segment_id: 3, trip_type: 'PARTNER', truck_id: null, trailer_id: null, driver_id: null, partner_id: 51, from_at: T(TUE, '06:00'), to_at: T(TUE, '10:00') },
+          { segment_id: 4, trip_type: 'OWNED', truck_id: 91, truck: 'TST-9091', trailer_id: null, driver_id: 71, driver: 'Driver Nine 71', from_at: T(TUE, '10:00'), to_at: T(TUE, '18:00') }] })],
+          { trucks: [91], drivers: [71] })),
+        // a vehicle whose name neither the board nor the catalogue has is still said, in a plain word, never dropped
+        noname: txt(ask([Object.assign(trip(908, [99, null, null], TUE), { truck: null })], { trucks: [99] })),
+        inWeek: (ask([one], { trucks: [91] }) || {}).accept, blind: (ask([trip(906, [91, 81, 71], '2026-10-17')], { trucks: [91], days: ['2026-10-17', '2026-10-17'] }) || {}).accept,
+      };
+    });
+    const R = ' είναι σε άλλο δρομολόγιο Τρί 13/10 · Test city 2 → Test city 5.';
+    ok(scn, 'driver the same day: «Driver Nine 71' + R + '»', r.driver === 'Driver Nine 71' + R, r.driver);
+    ok(scn, 'truck the same day: «TST-9091' + R + '»', r.truck === 'TST-9091' + R, r.truck);
+    ok(scn, 'trailer the same day: «θάλαμος TRL-8081' + R + '»', r.trailer === 'θάλαμος TRL-8081' + R, r.trailer);
+    ok(scn, 'truck and trailer on one trip: one sentence «TST-9091 / θάλαμος TRL-8081' + R + '» (a free driver unnamed)', r.two === 'TST-9091 / θάλαμος TRL-8081' + R, r.two);
+    ok(scn, 'busy only the NEXT day, or only the day BEFORE: nothing (null)', r.next === null && r.before === null, { next: r.next, before: r.before });
+    ok(scn, 'a handover: the truck of the Wednesday segment is not busy on Tuesday; on Wednesday it is, by its own name', r.segTue === null
+      && r.segWed === 'TST-9092 / Driver Nine 72 είναι σε άλλο δρομολόγιο Τετ 14/10 · Test city 2 → Test city 5.', { segTue: r.segTue, segWed: r.segWed });
+    ok(scn, 'the save\'s own trip and a partner trip are never named', r.self === null && r.partner === null, { self: r.self, partner: r.partner });
+    ok(scn, 'a trip begun with a partner whose second segment drives TST-9091: named «TST-9091 / Driver Nine 71' + R + '»', r.pfirst === 'TST-9091 / Driver Nine 71' + R, r.pfirst);
+    ok(scn, 'no name on the board or in the catalogue: «το φορτηγό' + R + '», never dropped, never an id', r.noname === 'το φορτηγό' + R, r.noname);
+    ok(scn, 'in the loaded week: pre-accepted (one press); a day outside it: said, NOT pre-accepted', r.inWeek === true && r.blind === false, r);
+    ok(scn, 'no hours, no RT code in any line', [r.driver, r.truck, r.trailer, r.two, r.segWed].every((t) => !!t && !/\d\d:\d\d|RT-|Επικάλυψη/.test(t)), r);
+    ok(scn, 'no page errors (rule)', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // «+» of RT-T206 (TST-2116 / TRL-5103 / Driver Test 06, Tue): its trailer runs RT-T205 the same Tuesday
+    const b = p2Board();
+    b.cycles.push(bCycle(206, { truck_id: 16, truck: 'TST-2116', trailer_id: 23, trailer: 'TRL-5103', driver_id: 36, driver: 'Driver Test 06' }, [
+      bStop(2061, 'KATHODOS', 1, '2026-10-13', '06:00', '08:00', [bLeg(6061, 5161, 'load', 4)]),
+      bStop(2062, 'KATHODOS', 2, '2026-10-13', '10:00', '12:00', [bLeg(6061, 5161, 'unload', 4)])]));
+    const { page, S } = await bOpen(browser, origin, { board: b, plan: { 'POST /plan/legs': () => OK_PUT({ ids: { rt_id: 206 } }) } });
+    await page.evaluate(() => WN5Act.plus(206, 'KATHODOS', document.querySelector('#content .wn5 .wn5-row[data-rt="206"]')));
+    await page.waitForTimeout(500);
+    const P = bDlg('plus') + ' .wn5-pline[data-piece="4201"]';
+    const w = await page.$eval(P + ' .wn5-why', (e) => ({ t: e.innerText, soft: e.classList.contains('wn5-soft') })).catch(() => null);
+    ok(scn, '«+»: the trailer alone is named, amber: «θάλαμος TRL-5103 είναι σε άλλο δρομολόγιο …» (never the truck or driver of RT-T205), «Πρόσθεσε» on',
+      !!w && w.soft && /^θάλαμος TRL-5103 είναι σε άλλο δρομολόγιο /.test(w.t) && !/TST-2103|Driver Test 03|\d\d:\d\d|RT-/.test(w.t) && (await bOff(page, P + ' [data-act="save"]')) === false, w);
+    await bClick(page, P + ' [data-act="save"]');
+    await page.waitForTimeout(400);
+    const c = bCalls(S, 'POST', '/plan/legs');
+    ok(scn, '«+»: ONE POST /plan/legs with accept_busy (harmless for a trailer: the base judges trucks and drivers)', c.length === 1 && c[0].body.target.accept_busy === true, c.map((x) => x.raw));
+    ok(scn, 'no page errors («+»)', !S.pageErrors.length, S.pageErrors);
     await page.context().close();
   }
 };

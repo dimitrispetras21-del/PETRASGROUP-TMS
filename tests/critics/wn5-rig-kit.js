@@ -239,6 +239,19 @@ const has = (page, g) => page.evaluate((x) => typeof window[x] !== 'undefined', 
 const count = (page, sel) => page.evaluate((s) => document.querySelectorAll(s).length, sel);
 const text = (page, sel) => page.evaluate((s) => { const el = document.querySelector(s); return el ? el.textContent.replace(/\s+/g, ' ').trim() : ''; }, sel);
 const planOf = (S, m, p) => S.plan.filter((x) => x.m === m && (p instanceof RegExp ? p.test(x.path) : x.path === p));
+// owner 3/11 (bigger forms, no vertical scroll at a laptop height ≥ 800px): a window's box against the viewport and
+// every element inside it that scrolls vertically now (overflow-y auto / scroll with more content than room)
+const FIT_VIEWPORTS = Object.freeze([{ width: 1440, height: 900 }, { width: 1280, height: 800 }]);
+const fitOf = (page, sel) => page.evaluate((s) => {
+  const d = document.querySelector(s);
+  if (!d) return null;
+  const r = d.getBoundingClientRect();
+  const scroll = [d, ...d.querySelectorAll('*')].filter((e) => /(auto|scroll)/.test(getComputedStyle(e).overflowY) && e.scrollHeight > e.clientHeight + 1)
+    .map((e) => (e.className && typeof e.className === 'string' ? e.className.split(' ')[0] : e.tagName) + ' ' + e.scrollHeight + '>' + e.clientHeight);
+  return { w: Math.round(r.width), h: Math.round(r.height), top: Math.round(r.top), bottom: Math.round(r.bottom), left: Math.round(r.left), right: Math.round(r.right),
+    vw: innerWidth, vh: innerHeight, scroll, page: document.documentElement.scrollHeight > innerHeight + 1 && getComputedStyle(document.body).overflowY !== 'hidden' ? 'page' : '' };
+}, sel);
+const fits = (f) => !!f && f.top >= 0 && f.bottom <= f.vh && f.left >= 0 && f.right <= f.vw && !f.scroll.length;
 
 async function preflight(browser, origin, ok, globals) {
   const scn = 'preflight';
@@ -305,4 +318,4 @@ async function run(opts) {
 }
 
 module.exports = { WT, TREE, HOST, NOW, UUID4, LOOKUPS, FACADE_LOCS, week, orders, leg, stop, clone, routeOf, planErr, sleep,
-  openApp, has, count, text, planOf, run };
+  openApp, has, count, text, planOf, run, FIT_VIEWPORTS, fitOf, fits };
