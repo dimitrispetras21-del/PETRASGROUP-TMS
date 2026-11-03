@@ -55,6 +55,78 @@ function _plClientRec(fields) {
   return Array.isArray(c) ? c[0] : (c || null);
 }
 
+// The order-level gates of a stop movement, ONE check for the two feeders and the pallets weekly view (a stop
+// written from the week must obey exactly what the feeders obey, never a second copy of the rules):
+//   split_leg   - a leg of a split order is not a second exchange with the client (Wave 3, FEATURES.ORDER_SPLIT);
+//   no_exchange - no «Pallet Exchange», nothing to write;
+//   lot         - a stock LOT's delivery is the warehouse intake, not a client delivery (its loading stays allowed).
+function plOrderGate(rec, source, eventType) {
+  if (source === 'intl' && typeof FEATURES !== 'undefined' && FEATURES.ORDER_SPLIT && getLinkedId(rec.fields['Parent Order'])) return 'split_leg';
+  if (!rec.fields['Pallet Exchange']) return 'no_exchange';
+  if (eventType === 'DELIVERY' && typeof OrdersStock !== 'undefined' && OrdersStock.isLot(rec.fields)) return 'lot';
+  return null;
+}
+
+// ONE stop's movement, the body the feeders run per stop (and the weekly view for the one stop that has none).
+// date = the movement's date: the feeders pass what they always did, the week the stop's own date.
+async function _plStopLoading(s, clientRec, orderId, date) {
+  const existing = await plFetch('/pallets/movements?order_stop_rec=' + encodeURIComponent(s.id));
+  const cur = (existing.records || [])[0];
+  if (cur) return { cur, created: null };
+  const pallets = parseInt(s.fields[F.STOP_PALLETS], 10) || 0;
+  const created = await plFetch('/pallets/movements', { method: 'POST', body: {
+    movement_date: date,
+    counterparty_type: 'CLIENT',
+    client_rec: clientRec,
+    location_rec: (s.fields[F.STOP_LOCATION] || [])[0] || null,
+    event_type: 'LOADING',
+    taken: pallets, given: 0,
+    order_stop_rec: s.id, order_rec: orderId
+  }});
+  return { cur: null, created: created && created.record ? created.record : null };
+}
+async function _plStopDelivery(s, clientRec, orderId, date) {
+  const existing = await plFetch('/pallets/movements?order_stop_rec=' + encodeURIComponent(s.id));
+  if ((existing.records || []).length) return 'existed'; // ήδη γραμμένη
+  const pallets = parseInt(s.fields[F.STOP_PALLETS], 10) || 0;
+  if (!pallets) return 'skipped';
+  await plFetch('/pallets/movements', { method: 'POST', body: {
+    movement_date: date,
+    counterparty_type: 'CLIENT',
+    client_rec: clientRec,
+    location_rec: (s.fields[F.STOP_LOCATION] || [])[0] || null,
+    event_type: 'DELIVERY',
+    taken: pallets, given: pallets,
+    order_stop_rec: s.id, order_rec: orderId,
+    confirm: true
+  }});
+  return 'created';
+}
+
+// «Λείπει καταγραφή» from the pallets weekly view (owner 3/11): write ONLY the stops of one end that have no
+// movement, through the feeders' own per-stop core and gates — never a re-run of the whole order (plOnOrderSaved
+// would also re-PATCH every pending loading back to the stop's pallets and delete orphans). Dated by the stop, not
+// today. Unlike the feeders it does NOT swallow a failure (_plSafe): the week says it on the row (principle 1).
+const PL_GATE_TEXT = { split_leg: 'σκέλος σπασμένης παραγγελίας: γράφεται στην αρχική', no_exchange: 'η παραγγελία δεν έχει ανταλλαγή παλετών',
+  lot: 'παρτίδα αποθέματος: η παράδοση είναι παραλαβή αποθήκης' };
+async function plRecordStops(orderId, eventType) {
+  const { rec, stops } = await _plLoadOrder(orderId, 'intl');
+  if (!rec) throw new Error('η παραγγελία δεν βρέθηκε');
+  const gate = plOrderGate(rec, 'intl', eventType);
+  if (gate) { const e = new Error(PL_GATE_TEXT[gate]); e.plGate = gate; throw e; }
+  const clientRec = _plClientRec(rec.fields);
+  const out = { created: 0, existed: 0, skipped: 0 };
+  for (const s of stops) {
+    if (s.fields[F.STOP_TYPE] !== (eventType === 'LOADING' ? 'Loading' : 'Unloading')) continue;
+    const date = _plDate(s.fields[F.STOP_DATETIME]);
+    if (eventType === 'LOADING') {
+      const r = await _plStopLoading(s, clientRec, orderId, date);
+      out[r.cur ? 'existed' : 'created']++;
+    } else out[await _plStopDelivery(s, clientRec, orderId, date)]++;
+  }
+  return out;
+}
+
 // ── Feeder §3.1: αποθήκευση order → pending LOADING ανά στάση φόρτωσης ──
 async function plOnOrderSaved(orderId, source) {
   return _plSafe('δημιουργία εκκρεμών φόρτωσης', async () => {
@@ -64,26 +136,17 @@ async function plOnOrderSaved(orderId, source) {
     // to the client — the pallet ledger tracks exchange against the PARENT's
     // client only, or a hand-over would double the balance for one shipment.
     // No-op while the flag is off (nothing ever has Parent Order set).
-    if (source === 'intl' && typeof FEATURES !== 'undefined' && FEATURES.ORDER_SPLIT && getLinkedId(rec.fields['Parent Order'])) return;
-    if (!rec.fields['Pallet Exchange']) return plOnExchangeOff(orderId, source);
+    const gate = plOrderGate(rec, source, 'LOADING');
+    if (gate === 'split_leg') return;
+    if (gate === 'no_exchange') return plOnExchangeOff(orderId, source);
     const clientRec = _plClientRec(rec.fields);
     const claimed = new Set();
     for (const s of stops) {
       if (s.fields[F.STOP_TYPE] !== 'Loading') continue;
-      const existing = await plFetch('/pallets/movements?order_stop_rec=' + encodeURIComponent(s.id));
-      const cur = (existing.records || [])[0];
       const pallets = parseInt(s.fields[F.STOP_PALLETS], 10) || 0;
+      const { cur, created } = await _plStopLoading(s, clientRec, orderId, _plDate(s.fields[F.STOP_DATETIME]));
       if (!cur) {
-        const created = await plFetch('/pallets/movements', { method: 'POST', body: {
-          movement_date: _plDate(s.fields[F.STOP_DATETIME]),
-          counterparty_type: 'CLIENT',
-          client_rec: clientRec,
-          location_rec: (s.fields[F.STOP_LOCATION] || [])[0] || null,
-          event_type: 'LOADING',
-          taken: pallets, given: 0,
-          order_stop_rec: s.id, order_rec: orderId
-        }});
-        if (created && created.record) claimed.add(created.record.id);
+        if (created) claimed.add(created.id);
       } else {
         claimed.add(cur.id);
         if (cur.status === 'pending' && cur.taken !== pallets) {
@@ -109,8 +172,8 @@ async function plOnDelivered(orderId) {
     const { rec, stops } = await _plLoadOrder(orderId, 'intl');
     if (!rec) return;
     // Wave 3: see plOnOrderSaved — a leg's delivery isn't a second client delivery.
-    if (typeof FEATURES !== 'undefined' && FEATURES.ORDER_SPLIT && getLinkedId(rec.fields['Parent Order'])) return;
-    if (!rec.fields['Pallet Exchange']) return;
+    const gate = plOrderGate(rec, 'intl', 'DELIVERY');
+    if (gate === 'split_leg' || gate === 'no_exchange') return;
     // A stock LOT's «Delivered» is the warehouse intake, not a client
     // delivery: no client DELIVERY (a confirmed 33/33 «client exchange at
     // Αποθήκη Χ» would be false, impact map C-03 / PL-02). Ε5: the client
@@ -121,20 +184,7 @@ async function plOnDelivered(orderId) {
     const clientRec = _plClientRec(rec.fields);
     for (const s of stops) {
       if (s.fields[F.STOP_TYPE] !== 'Unloading') continue;
-      const existing = await plFetch('/pallets/movements?order_stop_rec=' + encodeURIComponent(s.id));
-      if ((existing.records || []).length) continue; // ήδη γραμμένη
-      const pallets = parseInt(s.fields[F.STOP_PALLETS], 10) || 0;
-      if (!pallets) continue;
-      await plFetch('/pallets/movements', { method: 'POST', body: {
-        movement_date: _plToday(),
-        counterparty_type: 'CLIENT',
-        client_rec: clientRec,
-        location_rec: (s.fields[F.STOP_LOCATION] || [])[0] || null,
-        event_type: 'DELIVERY',
-        taken: pallets, given: pallets,
-        order_stop_rec: s.id, order_rec: orderId,
-        confirm: true
-      }});
+      await _plStopDelivery(s, clientRec, orderId, _plToday());
     }
   });
 }
@@ -331,6 +381,7 @@ async function plOnOrderDeleted(orderId, source) {
 window.plFetch = plFetch;
 window.plOnOrderSaved = plOnOrderSaved;
 window.plOnDelivered = plOnDelivered;
+window.plRecordStops = plRecordStops;
 window.plOnLotIntakeUndone = plOnLotIntakeUndone;
 window.plOnIntlPartnerAssigned = plOnIntlPartnerAssigned;
 window.plOnExchangeOff = plOnExchangeOff;

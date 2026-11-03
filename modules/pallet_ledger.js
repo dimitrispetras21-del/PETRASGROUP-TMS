@@ -372,7 +372,8 @@ function _plvBalanceTable(kind) {
   </table></div>`;
 }
 
-const PLV_TABS = [['pending', 'Εκκρεμείς'], ['noreturn', 'Χωρίς πλήρη επιστροφή'], ['all', 'Όλες οι κινήσεις'], ['clients', 'Πελάτες'], ['partners', 'Συνεργάτες']];
+// «Εβδομάδα» (owner 2–3/11/2026): the week as the Weekly draws it, with each end's exchange (modules/pallets_week.js).
+const PLV_TABS = [['pending', 'Εκκρεμείς'], ['week', 'Εβδομάδα'], ['noreturn', 'Χωρίς πλήρη επιστροφή'], ['all', 'Όλες οι κινήσεις'], ['clients', 'Πελάτες'], ['partners', 'Συνεργάτες']];
 
 function _plvTabsHtml() {
   const pend = PLV.movements.filter(m => m.status === 'pending').length;
@@ -383,7 +384,7 @@ function _plvTabsHtml() {
   // where they are. Balance tabs count open lines; null = not loaded = enabled.
   const balCount = k => PLV.balances[k] ? PLV.balances[k].filter(b => b.balance !== 0 || b.pending_count > 0).length : 1;
   const counts = { pending: pend, noreturn: nr, all: PLV.movements.filter(m => m.status !== 'reversed').length,
-    clients: balCount('clients'), partners: balCount('partners') };
+    clients: balCount('clients'), partners: balCount('partners'), week: 1 };
   return `<div class="plv-tabs">${PLV_TABS.map(([id, lbl]) => {
     // «Εκκρεμείς (N)»: ίδια μορφή με το συμβόλαιο (pallets.json) — ο κριτής
     // #1 σβήνει τα ψηφία και συγκρίνει το «Εκκρεμείς ()».
@@ -504,6 +505,13 @@ const _PLV_STYLE = `<style>
 
 function _plvDraw() {
   const c = document.getElementById('content');
+  if (PLV.tab === 'week' && typeof PalletsWeek !== 'undefined') {
+    // The week draws itself (its own read: the Weekly's orders and trips); this page gives it the title and the tabs.
+    c.innerHTML = `${_PLV_STYLE}<div class="plv-page"><div class="plv-top"><h1 class="plv-h1">Ισοζύγιο Παλετών</h1>${_plvTabsHtml()}</div>
+      <div id="plwRoot" style="margin-top:8px"></div></div><div id="plvModal"></div>`;
+    PalletsWeek.render(document.getElementById('plwRoot'));
+    return;
+  }
   const isBalanceTab = PLV.tab === 'clients' || PLV.tab === 'partners';
   const hasCards = PLV.tab === 'pending' || PLV.tab === 'noreturn';
   const rows = isBalanceTab ? [] : _plvRows();
@@ -1062,7 +1070,10 @@ async function _plvUploadIfAny() {
   if(_plvBlockReadOnly()) return;
   const fi = document.getElementById('plvFile');
   if (!fi || !fi.files || !fi.files[0]) return null;
-  const file = fi.files[0];
+  return plvUploadSheet(fi.files[0]);
+}
+// The sheet upload itself (this page and the pallets weekly view): the file in, the stored path out.
+async function plvUploadSheet(file) {
   const b64 = await new Promise((ok, err) => {
     const r = new FileReader();
     r.onload = () => ok(String(r.result).split(',')[1]);
@@ -1086,10 +1097,7 @@ async function plvDoConfirm(id) {
       return;
     }
     const path = await _plvUploadIfAny();
-    const patch = { taken, given, sheet_source: path ? 'UPLOAD' : 'MANUAL' };
-    if (path) patch.sheet_url = path;
-    await plFetch('/pallets/movements/' + id, { method: 'PATCH', body: patch });
-    await plFetch('/pallets/movements/' + id + '/confirm', { method: 'POST' });
+    await plvConfirmCore(id, { taken, given, sheetPath: path });
     toast('Κίνηση επιβεβαιώθηκε ✓');
     if (PLV.wizQueue && PLV.wizQueue.length > 1) {
       // Wizard: ελαφρύ refresh μόνο της λίστας και αμέσως η επόμενη — τα
@@ -1105,6 +1113,41 @@ async function plvDoConfirm(id) {
   // Σε αποτυχία: το μήνυμα του Worker εμφανίζεται, το modal ΜΕΝΕΙ στην
   // τρέχουσα κίνηση — ο wizard δεν προσπερνά ποτέ σιωπηλά (αρχή 1).
   finally { PLV.busy = false; }
+}
+
+// The two writes of a confirmation, in ONE place (this page's modal and the pallets weekly view's quick entry,
+// owner 3/11: «ίδια φιλοσοφία», no second copy of a write). Values in, the Worker's answers out. A failure says
+// which step did not happen (err.plvStep): after a PATCH that went through, the movement already holds the new
+// numbers while it is still pending — the caller re-reads, never assumes.
+async function plvConfirmCore(id, { taken, given, sheetPath }) {
+  const patch = { taken, given, sheet_source: sheetPath ? 'UPLOAD' : 'MANUAL' };
+  if (sheetPath) patch.sheet_url = sheetPath;
+  let patched;
+  try { patched = await plFetch('/pallets/movements/' + id, { method: 'PATCH', body: patch }); }
+  catch (e) { e.plvStep = 'values'; throw e; }
+  try { return { patched, confirmed: await plFetch('/pallets/movements/' + id + '/confirm', { method: 'POST' }) }; }
+  catch (e) { e.plvStep = 'confirm'; throw e; }
+}
+// The delivery exchange correction (reverse + a confirmed replacement with the real «taken»), ONE place. DELIVERY
+// only, as the page has always written it: event_type and «given» come from the delivery being corrected.
+async function plvFixCore(m, { realTaken, note }) {
+  let res;
+  try {
+    res = await plFetch('/pallets/movements/' + m.id + '/reverse', { method: 'POST', body: {
+      reason: 'Διόρθωση ανταλλαγής παράδοσης' + (note ? ' — ' + note : ''),
+      replacement: {
+        movement_date: m.movement_date, counterparty_type: m.counterparty_type,
+        client_id: m.client_id, partner_id: m.partner_id, location_id: m.location_id,
+        event_type: 'DELIVERY', taken: realTaken, given: m.given,
+        order_stop_id: m.order_stop_id, order_id: m.order_id, notes: note
+      }
+    }});
+  } catch (e) { e.plvStep = 'reverse'; throw e; }
+  if (res.replacement) {
+    try { await plFetch('/pallets/movements/' + res.replacement.id + '/confirm', { method: 'POST' }); }
+    catch (e) { e.plvStep = 'confirm'; throw e; }
+  }
+  return res;
 }
 
 /* ── Πλαϊνό πάνελ κίνησης (2.2): όλη η ταυτότητα σε ένα slide-in ── */
@@ -1208,16 +1251,7 @@ async function plvDoFix(id) {
     const m = PLV.movements.find(x => x.id === id);
     const realTaken = parseInt(document.getElementById('plvRealTaken').value, 10) || 0;
     const note = document.getElementById('plvFixNote').value || '';
-    const res = await plFetch('/pallets/movements/' + id + '/reverse', { method: 'POST', body: {
-      reason: 'Διόρθωση ανταλλαγής παράδοσης' + (note ? ' — ' + note : ''),
-      replacement: {
-        movement_date: m.movement_date, counterparty_type: m.counterparty_type,
-        client_id: m.client_id, partner_id: m.partner_id, location_id: m.location_id,
-        event_type: 'DELIVERY', taken: realTaken, given: m.given,
-        order_stop_id: m.order_stop_id, order_id: m.order_id, notes: note
-      }
-    }});
-    if (res.replacement) await plFetch('/pallets/movements/' + res.replacement.id + '/confirm', { method: 'POST' });
+    await plvFixCore(m, { realTaken, note });
     toast('Διόρθωση καταχωρήθηκε ✓');
     plvCloseModal(); await renderPalletLedger();
   } catch (e) { showErrorToast('Αποτυχία διόρθωσης: ' + _plvErrMsg(e), 'error'); }
@@ -1390,5 +1424,6 @@ window.plvFilter = plvFilter; window.plvExportCSV = plvExportCSV; window.plvClea
 window.plvGroupBy = plvGroupBy; window.plvToggleGroup = plvToggleGroup;
 window.plvDrill = plvDrill; window.plvStmtCSV = plvStmtCSV; window._plvDraw = _plvDraw;
 window.plvFilePicked = plvFilePicked; window.plvFileDropped = plvFileDropped;
+window.plvConfirmCore = plvConfirmCore; window.plvFixCore = plvFixCore; window.plvUploadSheet = plvUploadSheet;
 // Τα inline oninput/onmousedown/onblur του typeahead τρέχουν σε global scope.
 window.plvAcSearch = plvAcSearch; window.plvAcPick = plvAcPick; window.plvAcBlur = plvAcBlur;
