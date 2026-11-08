@@ -142,6 +142,23 @@ test('no exact count in the answer: a loud error, never a guessed «complete»',
   assert.ok(r.status >= 500, 'status ' + r.status);
 });
 
+// One count rule with /costs/pnl (dbExactCount, 8/11): a range without digits after the slash was Number("") = 0 here,
+// an exact count of 0, so the ledger could read «complete». Pinned on this route too, not only on /costs/pnl.
+test('a range without a total («0-9/», «0-9/*», «0-9/ »): a loud error, never read as 0', async () => {
+  const real = globalThis.fetch;
+  for (const range of ['0-9/', '0-9/*', '0-9/ ']) {
+    table = mk(10);
+    globalThis.fetch = async (u, init) => {
+      const res = await real(u, init);
+      const h = new Headers(res.headers); if (h.has('content-range')) h.set('content-range', range);
+      return new Response(await res.text(), { status: res.status, headers: h });
+    };
+    const r = await get();
+    globalThis.fetch = real;
+    assert.ok(r.status >= 500, `${range}: status ${r.status}`);
+  }
+});
+
 test('exactly at the cap (9 990): all rows, not truncated', async () => {
   table = mk(9990);
   const r = await get();

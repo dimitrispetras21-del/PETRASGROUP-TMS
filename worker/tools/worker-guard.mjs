@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Worker deploy guard (CLAUDE.md «Ο WORKER»: the three + one marker per live
 // feature: stock lots, local moves, stop delay, presence, temperature per CMR,
-// the VD /costs/rt filters, national v5, its vehicle handover, its F3, its F5 (day L), the order edit, 085, 089, 101, the road (099 + 102), the pallets week mark (104) and the P&L cap (/costs/pnl), counted in CONTENT, never by byte equality: wrangler re-bundles
+// the VD /costs/rt filters, national v5, its vehicle handover, its F3, its F5 (day L), the order edit, 085, 089, 101, the road (099 + 102), the pallets week mark (104) and the P&L read of every RT (/costs/pnl), counted in CONTENT, never by byte equality: wrangler re-bundles
 // the source, and the CF API returns the live script as multipart with a
 // random boundary per request — two downloads of the same version «differ».
 //
@@ -56,9 +56,9 @@
 //   --wchk   optional, only after --road (104, the pallets week's «Ελέγχθηκε» mark, /pallets/week-checks): the one object
 //            naming its three acts, `var PLW_RPC = {` - exactly once. 0 = before that deploy, 1 = after it; 1 needs
 //            --road 1 (built on b329ff91, one chain). Without it: as before.
-//   --pnl    optional, only after --wchk (GET /costs/pnl says when it is cut: one read of PNL_CAP + exact count,
-//            records/truncated/cap/total): `const PNL_CAP = 999;` - exactly once. 0 = before that deploy (0563b45a has
-//            none: «limit 300» in silence), 1 = after it; 1 needs --wchk 1 (built on 0563b45a, one chain). Without it:
+//   --pnl    optional, only after --wchk (GET /costs/pnl reads every RT, owner 8/11: keyset pages to the exact
+//            count, records/truncated/total): `const PNL_PAGE = 1e3;` (1e3: esbuild writes 1000 so) - exactly once. 0 = before that deploy (0563b45a
+//            has none: «limit 300» in silence), 1 = after it; 1 needs --wchk 1 (built on 0563b45a, one chain). Without it:
 //            as before.
 // Prints one line per marker and exits 1 on the first STOP condition — no
 // partial «OK» (αρχή 1).
@@ -201,9 +201,9 @@ if (wchk !== null) {
 }
 const pnl = pnFlag === undefined ? null : Number(pnArg);
 if (pnl !== null) {
-  // /costs/pnl says when it is cut (records/truncated/cap/total): the cap constant, exactly once; none before that
-  // deploy (the old route was a silent «limit 300»)
-  rows.push(['const PNL_CAP = 999; (/costs/pnl, records/truncated/cap/total)', count('const PNL_CAP = 999;'), (n) => (pnl === 1 ? n === 1 : n === 0)]);
+  // /costs/pnl reads every RT in pages to the exact count (records/truncated/total): the page constant, exactly once;
+  // none before that deploy (the old route was a silent «limit 300»)
+  rows.push(['const PNL_PAGE = 1e3; (/costs/pnl, every RT, records/truncated/total)', count('const PNL_PAGE = 1e3;'), (n) => (pnl === 1 ? n === 1 : n === 0)]);
 }
 let ok = true;
 for (const [name, n, good] of rows) {

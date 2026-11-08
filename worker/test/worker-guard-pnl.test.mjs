@@ -1,4 +1,4 @@
-// worker/tools/worker-guard.mjs --pnl (GET /costs/pnl says when it is cut): the marker is `const PNL_CAP = 999;`,
+// worker/tools/worker-guard.mjs --pnl (GET /costs/pnl reads every RT, owner 8/11): the marker is `const PNL_PAGE = 1e3;`,
 // exactly once. --pnl 0 before that deploy (0563b45a has the silent «limit 300»), --pnl 1 after it; only after
 // --wchk 1 (one chain on 0563b45a).
 import { test } from 'node:test';
@@ -21,8 +21,8 @@ const run = (file, ...args) => {
 const PLAN = /\nvar PLAN_WRITES_OPEN = true;\n/.test(src) ? '2' : '1';
 const BASE = ['--plan', PLAN, '--handover', '1', '--f3', '1', '--f5', '1', '--edit', '1', '--invoiced', '1', '--rate2', '1', '--self', '1', '--road', '1', '--wchk', '1'];
 const SRC = write('index.js', src);
-const BEFORE = write('before.js', src.replace('const PNL_CAP = 999;', 'const PNL_LIMIT = 300;'));
-const TWICE = write('twice.js', src + '\nconst PNL_CAP = 999;\n');
+const BEFORE = write('before.js', src.replace('const PNL_PAGE = 1e3;', 'const PNL_LIMIT = 300;'));
+const TWICE = write('twice.js', src + '\nconst PNL_PAGE = 1e3;\n');
 
 test('this source: --pnl 1 → GUARD OK (36 markers, …, wchk=1, pnl=1); --pnl 0 stops on the marker', () => {
   let r = run(SRC, ...BASE, '--pnl', '1');

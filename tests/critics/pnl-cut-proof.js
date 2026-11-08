@@ -1,6 +1,7 @@
-// Proof rig — P&L list cut (28/10): GET /costs/pnl was one read of «limit 300» with nothing said. The new Worker
-// answers { records, truncated, cap, total }; the old one cuts at 300 silently. The page must say a cut on the
-// banner (the totals miss the cut RTs) with EITHER Worker live, and say nothing for a whole list. Opens the real
+// Proof rig — P&L reads every RT (owner 8/11): GET /costs/pnl was one read of «limit 300» with nothing said. The new
+// Worker pages to the exact count and answers { records, truncated, total }; the old one cuts at 300 silently. The page
+// must say a failed read on the banner (the totals miss those RTs) with EITHER Worker live, and nothing for a whole
+// list - however long (no cap, no «near the cap» note). Opens the real
 // screen with /costs/* served by facades; synthetic data only.
 //
 // Run from the MAIN repo root:
@@ -49,24 +50,24 @@ async function open(browser, pnlBody, shot) {
 
 (async () => {
   const browser = await chromium.launch();
-  console.log('\n── new Worker, whole list (198 of 198)');
-  { const r = await open(browser, { records: list(198), truncated: false, cap: 999, total: 198 }, 'pnl-cut-01-whole.png');
+  console.log('\n── new Worker, whole list (248 of 248)');
+  { const r = await open(browser, { records: list(248), truncated: false, total: 248 }, 'pnl-cut-01-whole.png');
     ok(r.cut === null, 'no cut note'); ok(!r.S.errors.length, 'no page errors: ' + r.S.errors.join(' ')); }
-  console.log('\n── new Worker, truncated (999 of 1200)');
-  { const r = await open(browser, { records: list(999), truncated: true, cap: 999, total: 1200 }, 'pnl-cut-02-truncated.png');
-    ok(/Φορτώθηκαν 999 από 1200 δρομολόγια: τα υπόλοιπα λείπουν από τη λίστα ΚΑΙ από τα σύνολα/.test(r.cut || ''), 'banner says: «' + r.cut + '»');
+  console.log('\n── new Worker, long whole list (1 500 of 1 500): no cap, no note');
+  { const r = await open(browser, { records: list(1500), truncated: false, total: 1500 }, 'pnl-cut-02-long.png');
+    ok(r.cut === null, 'no cut note'); ok(!r.S.errors.length, 'no page errors'); }
+  console.log('\n── new Worker, failed read (247 of 248)');
+  { const r = await open(browser, { records: list(247), truncated: true, total: 248 }, 'pnl-cut-03-truncated.png');
+    ok(/Η ανάγνωση δεν ολοκληρώθηκε: φορτώθηκαν 247 από 248 δρομολόγια\. Τα υπόλοιπα λείπουν από τη λίστα ΚΑΙ από τα σύνολα/.test(r.cut || ''), 'banner says: «' + r.cut + '»');
     ok(!r.S.errors.length, 'no page errors'); }
-  console.log('\n── new Worker, near the cap (900 of 900)');
-  { const r = await open(browser, { records: list(900), truncated: false, cap: 999, total: 900 }, 'pnl-cut-03-near.png');
-    ok(/900 δρομολόγια, κοντά στο όριο των 999/.test(r.cut || ''), 'banner says: «' + r.cut + '»'); }
   console.log('\n── old Worker, 300 without «truncated»');
   { const r = await open(browser, { records: list(300) }, 'pnl-cut-04-old-300.png');
-    ok(/Φορτώθηκαν 300 δρομολόγια: /.test(r.cut || ''), 'banner says: «' + r.cut + '»'); }
+    ok(/φορτώθηκαν 300 δρομολόγια\. /.test(r.cut || ''), 'banner says: «' + r.cut + '»'); }
   console.log('\n── old Worker, 198 without «truncated» (today, before the deploy)');
   { const r = await open(browser, { records: list(198) });
     ok(r.cut === null, 'no cut note'); }
   console.log('\n── empty list, count says 198');
-  { const r = await open(browser, { records: [], truncated: true, cap: 999, total: 198 }, 'pnl-cut-05-empty-but-not.png');
+  { const r = await open(browser, { records: [], truncated: true, total: 198 }, 'pnl-cut-05-empty-but-not.png');
     ok(/κενό ενώ υπάρχουν 198 δρομολόγια/.test(r.fail || ''), 'error card, not onboarding: «' + r.fail + '»'); }
   await browser.close();
   console.log(`\n${pass} pass / ${fail} fail`);

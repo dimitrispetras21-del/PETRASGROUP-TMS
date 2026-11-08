@@ -5248,31 +5248,44 @@ async function handleCosts(request, url, origin, env) {
     }
     // ---- GET /costs/pnl  (ΑΠΟΤΕΛΕΣΜΑΤΑ — ΜΟΝΟ OWNER, spec §10.2.11) ----
     if (resource === "pnl" && method === "GET") {
-      // It was one read of «limit 300» with nothing said (measured 28/10: 198 RTs, ~20 new a week before the national
-      // cycles of day L; 8/11: 248, 18 in 7 days), so by late November the P&L would have lost RTs from the list AND
-      // from the totals in silence. Same answer as /pallets/movements (#134): records + truncated + cap, every time.
-      // NOT the paged read of #134: ct_v_rt_pnl recomputes every RT's revenue and costs on each read (the filter is
-      // not pushed into the aggregates; EXPLAIN 28/10 estimates ~10^9 rows), takes seconds for 198 RTs and its exact
-      // count ran past the statement timeout. Pages would repeat that whole cost per page. So one read of PNL_CAP
-      // rows, and the exact count from ct_round_trips with the view's own WHERE (status <> cancelled) and the same
-      // filters - an index read. Fewer rows than the count (the cap, a lower db-max-rows, an RT the view's joins
-      // drop) is truncated and said; a stale count (an RT cancelled between the two reads) can only alarm, never hide.
-      const PNL_CAP = 999;
+      // It was one read of «limit 300» with nothing said (8/11: 248 RTs, 18 in 7 days, so it would have cut around
+      // 22-29/11, from the list AND the totals). Owner 8/11: no cap, every RT reachable («θέλω να έχω πρόσβαση σε όλα»).
+      // So the view is read in keyset pages (id.desc, id < last) until the exact count is reached; the count comes from
+      // ct_round_trips with the view's own WHERE (status <> cancelled) and the same filters - an index read, never
+      // count=exact on the view (it ran past the statement timeout on 28/10).
+      // PNL_PAGE = PostgREST's db-max-rows (1000), so one read until 1000 RTs - as before. Each later page recomputes
+      // the view (the filter is not pushed into its aggregates): measured 8/11 a whole read of the view took ~0.25 s
+      // for 248 RTs, so pages cost ~that much each past 1000. A page shorter than asked is the end only once the count
+      // is reached (a lower db-max-rows shortens every page); an empty page always ends. Fewer rows than the count
+      // (an RT the view's joins drop, an RT cancelled between the reads, PNL_MAX_PAGES) is truncated: said on the
+      // banner and logged, never a silent short list (principle 1).
+      // 1e3, not 1000: esbuild (wrangler) rewrites 1000 as 1e3, and the guard marker must read the same in the
+      // source, the dry-run bundle and the CF download
+      const PNL_PAGE = 1e3;
+      const PNL_MAX_PAGES = 50;
       const q = url.searchParams;
       const filters = [];
       if (q.get("from")) filters.push(["date_start", `gte.${q.get("from")}`]);
       if (q.get("to")) filters.push(["date_start", `lte.${q.get("to")}`]);
       if (q.get("scope")) filters.push(["scope", `eq.${q.get("scope")}`]);
       if (q.get("truck_id")) filters.push(["truck_id", `eq.${q.get("truck_id")}`]);
-      // Newest first, so a cut drops the oldest RTs; the screen sorts on its own (costs.js), the order is only the cut.
-      const params = new URLSearchParams([["select", "*"], ["order", "id.desc"], ["limit", String(PNL_CAP)], ...filters]);
+      const page = (last) => new URLSearchParams([["select", "*"], ["order", "id.desc"], ["limit", String(PNL_PAGE)],
+        ...filters, ...(last == null ? [] : [["id", `lt.${last}`]])]);
       const countParams = new URLSearchParams([["select", "id"], ["status", "neq.cancelled"], ["limit", "1"], ...filters]);
-      const [{ rows }, { contentRange }] = await Promise.all([
-        dbSelectRaw(env, "ct_v_rt_pnl", params),
+      const [first, { contentRange }] = await Promise.all([
+        dbSelectRaw(env, "ct_v_rt_pnl", page(null)),
         dbSelectRaw(env, "ct_round_trips", countParams, { Prefer: "count=exact" })
       ]);
       const total = dbExactCount(contentRange, "ct_round_trips");
-      return jsonOk({ records: rows, truncated: rows.length < total, cap: PNL_CAP, total }, origin, env);
+      const rows = [...first.rows];
+      let got = first.rows.length, pages = 1;
+      while (got > 0 && !(got < PNL_PAGE && rows.length >= total) && pages < PNL_MAX_PAGES) {
+        const { rows: next } = await dbSelectRaw(env, "ct_v_rt_pnl", page(rows[rows.length - 1].id));
+        rows.push(...next); got = next.length; pages++;
+      }
+      const truncated = rows.length < total;
+      if (truncated) console.error(`[costs/pnl] read ${rows.length} of ${total} RTs in ${pages} page(s)`);
+      return jsonOk({ records: rows, truncated, total }, origin, env);
     }
     // ---- GET /costs/pallet-gate — ποιες διαδρομές partner περιμένουν δελτίο ----
     // Το PnL τους είναι ελλιπές όσο λείπει: οι χαμένες παλέτες είναι κόστος.

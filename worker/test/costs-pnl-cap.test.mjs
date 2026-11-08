@@ -1,8 +1,8 @@
-// GET /costs/pnl says when it is cut (28/10). It was one read of «limit 300» with nothing said: 198 RTs on 28/10 and
-// ~20 a week, so the P&L would have lost RTs from the list and the totals in silence. Same answer as
-// /pallets/movements (#134): records + truncated + cap (+ total). NOT paged: ct_v_rt_pnl recomputes every RT on each
-// read, so it is one read of 999 and the exact count comes from ct_round_trips (an index read), never from the view.
-// The fake PostgREST honours limit, order, the four filters, status=neq.cancelled, count=exact and db-max-rows.
+// GET /costs/pnl reads EVERY RT (owner 8/11: «θέλω να έχω πρόσβαση σε όλα»). It was one read of «limit 300» with
+// nothing said: 248 RTs on 8/11, 18 a week, so the P&L would have lost RTs from the list and the totals in silence.
+// The view is read in keyset pages (id.desc, id < last) to the exact count, which comes from ct_round_trips (an
+// index read), never from the view. Fewer rows than the count = truncated, said, never a short list in silence.
+// The fake PostgREST honours limit, order, id=lt., the four filters, status=neq.cancelled, count=exact and db-max-rows.
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -33,23 +33,24 @@ async function get(q = '', role = 'owner') {
 }
 
 let MAX_ROWS; // PostgREST db-max-rows
-let rts; let calls; let dropFromView; let noCount; let badRange;
+let rts; let calls; let dropFromView; let noCount; let badRange; let onPage;
 const realFetch = globalThis.fetch;
 const realError = console.error;
 const match = (sp, r) => ['date_start', 'scope', 'truck_id'].every((col) => sp.getAll(col).every((f) => {
   const [op, v] = f.split(/\.(.*)/s);
   const x = String(r[col]);
   return op === 'eq' ? x === v : op === 'gte' ? x >= v : op === 'lte' ? x <= v : assert.fail('op ' + op);
-}));
+})) && sp.getAll('id').every((f) => (/^lt\.\d+$/.test(f) ? r.id < Number(f.slice(3)) : assert.fail('id ' + f)));
 beforeEach(() => {
   console.error = () => {};
-  calls = []; MAX_ROWS = 1000; dropFromView = () => false; noCount = false; badRange = null;
+  calls = []; MAX_ROWS = 1000; dropFromView = () => false; noCount = false; badRange = null; onPage = () => {};
   globalThis.fetch = async (url, init = {}) => {
     const u = new URL(url);
     const name = u.pathname.replace(/^\/rest\/v1\//, '');
     const sp = u.searchParams;
     const prefer = (init.headers || {}).Prefer;
     calls.push({ name, ...Object.fromEntries(sp), prefer });
+    if (name === 'ct_v_rt_pnl') onPage(calls.filter((c) => c.name === 'ct_v_rt_pnl').length); // a write between pages
     const live = rts.filter((r) => r.status !== 'cancelled' && match(sp, r));
     const headers = { 'content-type': 'application/json' };
     if (name === 'ct_round_trips') {
@@ -70,24 +71,19 @@ afterEach(() => { globalThis.fetch = realFetch; console.error = realError; });
 const mk = (n, extra = () => ({})) => Array.from({ length: n }, (_, i) => ({ id: i + 1, status: 'closed',
   scope: i % 4 ? 'INTL' : 'NATL', truck_id: 1 + (i % 3), date_start: `2026-${String(8 + Math.floor(i * 3 / n)).padStart(2, '0')}-15`, ...extra(i) }));
 
-test('198 RTs today: one read of the view, all of them, truncated false, cap and total said', async () => {
-  rts = mk(198);
+const views = () => calls.filter((c) => c.name === 'ct_v_rt_pnl');
+
+test('248 RTs today: ONE read of the view, all of them, truncated false, total said', async () => {
+  rts = mk(248);
   const r = await get();
   assert.equal(r.status, 200);
-  assert.equal(r.json.records.length, 198);
+  assert.equal(r.json.records.length, 248);
   assert.equal(r.json.truncated, false);
-  assert.equal(r.json.cap, 999);
-  assert.equal(r.json.total, 198);
-  const views = calls.filter((c) => c.name === 'ct_v_rt_pnl');
-  assert.equal(views.length, 1, 'never pages: each read recomputes every RT');
-  assert.equal(views[0].limit, '999');
-});
-
-test('past 300 (the old cut): every RT, nothing said', async () => {
-  rts = mk(450);
-  const r = await get();
-  assert.equal(r.json.records.length, 450);
-  assert.equal(r.json.truncated, false);
+  assert.equal(r.json.total, 248);
+  assert.equal('cap' in r.json, false, 'no cap (owner 8/11)');
+  assert.equal(views().length, 1, 'under one page: the view is computed once, as before');
+  assert.equal(views()[0].limit, '1000');
+  assert.equal(views()[0].id, undefined, 'the first page has no keyset bound');
 });
 
 test('cancelled RTs are neither rows nor counted: not a false cut', async () => {
@@ -98,52 +94,85 @@ test('cancelled RTs are neither rows nor counted: not a false cut', async () => 
   assert.equal(r.json.truncated, false);
 });
 
-test('past the cap: the newest 999, truncated, total said', async () => {
-  rts = mk(1200);
+test('2 500 RTs: every one, in keyset pages (id < last), none twice, newest first', async () => {
+  rts = mk(2500);
   const r = await get();
-  assert.equal(r.json.records.length, 999);
-  assert.equal(r.json.truncated, true);
-  assert.equal(r.json.total, 1200);
-  assert.equal(r.json.records[0].id, 1200, 'newest first, so the cut drops the oldest');
-  assert.equal(Math.min(...r.json.records.map((x) => x.id)), 202);
+  assert.equal(r.json.records.length, 2500);
+  assert.equal(r.json.truncated, false);
+  assert.equal(new Set(r.json.records.map((x) => x.id)).size, 2500);
+  assert.equal(r.json.records[0].id, 2500);
+  assert.deepEqual(views().map((c) => c.id), [undefined, 'lt.1501', 'lt.501']);
 });
 
-test('exactly the cap: not truncated', async () => {
-  rts = mk(999);
+test('exactly 1 000 and 2 000: all, one extra (empty) page to see the end', async () => {
+  for (const n of [1000, 2000]) {
+    rts = mk(n); calls = [];
+    const r = await get();
+    assert.equal(r.json.records.length, n);
+    assert.equal(r.json.truncated, false);
+    assert.equal(views().length, n / 1000 + 1);
+  }
+});
+
+test('db-max-rows lowered to 300: every page short, read on to the count, all RTs', async () => {
+  MAX_ROWS = 300;
+  rts = mk(700);
   const r = await get();
-  assert.equal(r.json.records.length, 999);
+  assert.equal(r.json.records.length, 700);
+  assert.equal(r.json.truncated, false);
+  assert.equal(views().length, 3);
+});
+
+test('an RT the view\'s joins drop: truncated, said and logged, never a quiet short list', async () => {
+  rts = mk(248);
+  dropFromView = (x) => x.id === 77;
+  const logged = []; console.error = (m) => logged.push(String(m));
+  const r = await get();
+  assert.equal(r.json.records.length, 247);
+  assert.equal(r.json.total, 248);
+  assert.equal(r.json.truncated, true);
+  assert.equal(views().length, 2, 'a short page below the count reads on, the empty one ends');
+  assert.ok(logged.some((m) => /read 247 of 248/.test(m)), logged.join('|'));
+});
+
+test('an RT created while the pages are read (count taken before): all read, not a cut', async () => {
+  rts = mk(1500);
+  onPage = (n) => { if (n === 2) rts.push({ id: 1501, status: 'closed', scope: 'INTL', truck_id: 1, date_start: '2026-10-15' }); };
+  const r = await get();
+  assert.ok(r.json.records.length >= 1500);
+  for (let id = 1; id <= 1500; id++) assert.ok(r.json.records.some((x) => x.id === id), 'missing ' + id);
   assert.equal(r.json.truncated, false);
 });
 
-test('db-max-rows lowered to 500: a cut below the cap is still said, never quiet', async () => {
-  MAX_ROWS = 500;
-  rts = mk(700);
+test('an RT cancelled between the count and the read: truncated (loud), never hidden', async () => {
+  rts = mk(1500);
+  onPage = (n) => { if (n === 2) rts.find((x) => x.id === 10).status = 'cancelled'; };
   const r = await get();
-  assert.equal(r.json.records.length, 500);
+  assert.equal(r.json.records.length, 1499);
   assert.equal(r.json.truncated, true);
-  assert.equal(r.json.total, 700);
 });
 
-test('an RT the view\'s joins drop is said (truncated), not hidden', async () => {
-  rts = mk(198);
-  dropFromView = (x) => x.id === 77;
+test('a runaway read stops at PNL_MAX_PAGES and says truncated', async () => {
+  MAX_ROWS = 10;
+  rts = mk(1000);
   const r = await get();
-  assert.equal(r.json.records.length, 197);
+  assert.equal(views().length, 50);
+  assert.equal(r.json.records.length, 500);
   assert.equal(r.json.truncated, true);
+  assert.equal(r.json.total, 1000);
 });
 
 test('filters go to BOTH reads, so the count is the same set', async () => {
-  rts = mk(400);
+  rts = mk(4000);
   const r = await get('?from=2026-09-01&to=2026-09-30&scope=INTL&truck_id=2');
   const want = rts.filter((x) => x.date_start >= '2026-09-01' && x.date_start <= '2026-09-30' && x.scope === 'INTL' && x.truck_id === 2).length;
   assert.ok(want > 0);
   assert.equal(r.json.records.length, want);
   assert.equal(r.json.total, want);
   assert.equal(r.json.truncated, false);
-  for (const name of ['ct_v_rt_pnl', 'ct_round_trips']) {
-    const c = calls.find((x) => x.name === name);
-    assert.equal(c.scope, 'eq.INTL', name);
-    assert.equal(c.truck_id, 'eq.2', name);
+  for (const c of calls) {
+    assert.equal(c.scope, 'eq.INTL', c.name);
+    assert.equal(c.truck_id, 'eq.2', c.name);
   }
 });
 

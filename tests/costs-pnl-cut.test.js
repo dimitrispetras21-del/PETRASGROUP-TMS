@@ -1,6 +1,6 @@
 // node --test tests/costs-pnl-cut.test.js
-// The P&L says when its list is cut (28/10): the Worker answers truncated + cap + total; the old Worker cut at 300
-// without saying it. Runs the REAL ctPnlCut / ctPnlCutNote / ctReload from modules/costs.js in a vm.
+// The P&L reads every RT (owner 8/11): the Worker pages to the exact count and answers truncated + total
+// («truncated» = a failed read, never a limit); the old Worker cut at 300 without saying it. Runs the REAL ctPnlCut / ctPnlCutNote / ctReload from modules/costs.js in a vm.
 const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
@@ -21,48 +21,40 @@ function load(pnlAnswer) {
 }
 const rows = (n) => Array.from({ length: n }, (_, i) => ({ id: i + 1 }));
 
-test('new Worker, whole list: no note', () => {
+test('new Worker, whole list - however long: no note (no cap, no «near the cap»)', () => {
   const { ctx } = load();
-  assert.strictEqual(ctx.ctPnlCut({ records: rows(198), truncated: false, cap: 999, total: 198 }), null);
+  for (const n of [248, 999, 1500]) assert.strictEqual(ctx.ctPnlCut({ records: rows(n), truncated: false, total: n }), null, String(n));
   assert.strictEqual(ctx.ctPnlCutNote(null), '');
 });
 
-test('new Worker, truncated: said with how many of how many, and that the totals miss them', () => {
+test('new Worker, truncated (a failed read): said with how many of how many, and that the totals miss them', () => {
   const { ctx } = load();
-  const cut = ctx.ctPnlCut({ records: rows(999), truncated: true, cap: 999, total: 1200 });
-  assert.deepStrictEqual({ ...cut }, { n: 999, cap: 999, total: 1200, cut: true });
-  assert.match(ctx.ctPnlCutNote(cut), /Φορτώθηκαν 999 από 1200 δρομολόγια: .*λείπουν από τη λίστα ΚΑΙ από τα σύνολα/);
-});
-
-test('new Worker, near the cap (90%): said before it cuts', () => {
-  const { ctx } = load();
-  const cut = ctx.ctPnlCut({ records: rows(900), truncated: false, cap: 999, total: 900 });
-  assert.strictEqual(cut.cut, false);
-  assert.match(ctx.ctPnlCutNote(cut), /900 δρομολόγια, κοντά στο όριο των 999/);
-  assert.strictEqual(ctx.ctPnlCut({ records: rows(899), truncated: false, cap: 999, total: 899 }), null);
+  const cut = ctx.ctPnlCut({ records: rows(247), truncated: true, total: 248 });
+  assert.deepStrictEqual({ ...cut }, { n: 247, total: 248 });
+  assert.match(ctx.ctPnlCutNote(cut), /Η ανάγνωση δεν ολοκληρώθηκε: φορτώθηκαν 247 από 248 δρομολόγια\. .*λείπουν από τη λίστα ΚΑΙ από τα σύνολα/);
 });
 
 test('old Worker (no «truncated»): 300 RTs read as cut, fewer not', () => {
   const { ctx } = load();
   const cut = ctx.ctPnlCut({ records: rows(300) });
-  assert.strictEqual(cut.cut, true);
-  assert.match(ctx.ctPnlCutNote(cut), /Φορτώθηκαν 300 δρομολόγια: /);
+  assert.deepStrictEqual({ ...cut }, { n: 300, total: null });
+  assert.match(ctx.ctPnlCutNote(cut), /φορτώθηκαν 300 δρομολόγια\. /);
   assert.strictEqual(ctx.ctPnlCut({ records: rows(299) }), null);
   assert.strictEqual(ctx.ctPnlCut({}), null);
 });
 
 test('ctReload keeps the cut for the banner, and resets it on the next load', async () => {
-  const a = load({ records: rows(999), truncated: true, cap: 999, total: 1200 });
+  const a = load({ records: rows(999), truncated: true, total: 1200 });
   await a.ctx.ctReload();
   assert.strictEqual(a.ctx._ct.loadFailed, false);
   assert.strictEqual(a.ctx._ct.pnlCut.total, 1200);
-  a.ctx.ctFetch = async (p) => (p === '/costs/pnl' ? { records: rows(5), truncated: false, cap: 999, total: 5 } : { records: [] });
+  a.ctx.ctFetch = async (p) => (p === '/costs/pnl' ? { records: rows(5), truncated: false, total: 5 } : { records: [] });
   await a.ctx.ctReload();
   assert.strictEqual(a.ctx._ct.pnlCut, null);
 });
 
 test('an empty list the count says is not empty: the error card, never the «first RT» onboarding', async () => {
-  const { ctx, els } = load({ records: [], truncated: true, cap: 999, total: 198 });
+  const { ctx, els } = load({ records: [], truncated: true, total: 198 });
   await ctx.ctReload();
   assert.strictEqual(ctx._ct.loadFailed, true);
   assert.match(ctx._ct.loadError, /κενό ενώ υπάρχουν 198 δρομολόγια/);
@@ -70,7 +62,7 @@ test('an empty list the count says is not empty: the error card, never the «fir
 });
 
 test('really empty (total 0): no error, the onboarding stays possible', async () => {
-  const { ctx } = load({ records: [], truncated: false, cap: 999, total: 0 });
+  const { ctx } = load({ records: [], truncated: false, total: 0 });
   await ctx.ctReload();
   assert.strictEqual(ctx._ct.loadFailed, false);
   assert.strictEqual(ctx._ct.pnlCut, null);
