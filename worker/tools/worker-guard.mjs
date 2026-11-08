@@ -5,7 +5,7 @@
 // the source, and the CF API returns the live script as multipart with a
 // random boundary per request — two downloads of the same version «differ».
 //
-// Usage:  node worker/tools/worker-guard.mjs <file> --plan 0|1|2 --handover 0|1 [--f3 0|1 [--f5 0|1 [--edit 0|1 [--invoiced 0|1 [--rate2 0|1 [--self 0|1 [--road 0|1 [--wchk 0|1 [--dkv 0|1 [--pnlp 0|1]]]]]]]]]]
+// Usage:  node worker/tools/worker-guard.mjs <file> --plan 0|1|2 --handover 0|1 [--f3 0|1 [--f5 0|1 [--edit 0|1 [--invoiced 0|1 [--rate2 0|1 [--self 0|1 [--road 0|1 [--wchk 0|1 [--dkv 0|1 [--pnlp 0|1 [--pmiss 0|1]]]]]]]]]]]
 //   <file>   worker/src/index.js, a `wrangler deploy --dry-run --outdir` bundle,
 //            or the raw CF API download (multipart is unwrapped here)
 //   --plan   the national v5 marker and its writes switch: 0 = before F2 is
@@ -64,16 +64,21 @@
 //   --pnlp   optional, only after --dkv (the P&L papers, owner 3/11/2026: GET /costs/pnl-paper, owner only): the
 //            route's own line `resource === "pnl-paper"` - exactly once. 0 = before that deploy, 1 = after it; 1 needs
 //            --dkv 1 (built on 24d38435, one chain). Without it: as before.
+//   --pmiss  optional, only after --pnlp (pallets U4, 107: GET /pallets/missing, POST /pallets/no-exchange, the
+//            movement history GET /pallets/movements/:id/history and the city / stop-pallets embeds of U3): the act's
+//            object `var PLN_RPC = {`, the list route `resource === "missing"` and the history line
+//            `action === "history"` - each exactly once. 0 = before that deploy, 1 = after it; 1 needs --pnlp 1 (built
+//            on 0190cc37, one chain). Without it: as before.
 // Prints one line per marker and exits 1 on the first STOP condition — no
 // partial «OK» (αρχή 1).
 import { readFileSync } from 'node:fs';
 
 const args = process.argv.slice(2);
-const [file, flag, planArg, hflag, handoverArg, f3Flag, f3Arg, f5Flag, f5Arg, editFlag, editArg, invFlag, invArg, r2Flag, r2Arg, sdFlag, sdArg, rdFlag, rdArg, wcFlag, wcArg, dkFlag, dkArg, ppFlag, ppArg] = args;
-// exactly these five, seven with --f3, nine with --f3 and --f5, eleven with --edit after them, thirteen with --invoiced, fifteen with --rate2, seventeen with --self, nineteen with --road, twenty-one with --wchk, twenty-three with --dkv, twenty-five with --pnlp: an extra flag (e.g. a later phase's before its guard
+const [file, flag, planArg, hflag, handoverArg, f3Flag, f3Arg, f5Flag, f5Arg, editFlag, editArg, invFlag, invArg, r2Flag, r2Arg, sdFlag, sdArg, rdFlag, rdArg, wcFlag, wcArg, dkFlag, dkArg, ppFlag, ppArg, pmFlag, pmArg] = args;
+// exactly these five, seven with --f3, nine with --f3 and --f5, eleven with --edit after them, thirteen with --invoiced, fifteen with --rate2, seventeen with --self, nineteen with --road, twenty-one with --wchk, twenty-three with --dkv, twenty-five with --pnlp, twenty-seven with --pmiss: an extra flag (e.g. a later phase's before its guard
 // knows it) would be ignored and the tool would print OK without checking it - a usage error instead (code review
 // xhigh 26/10, principle 1)
-if (![5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25].includes(args.length) || !file || flag !== '--plan' || !['0', '1', '2'].includes(planArg) || hflag !== '--handover'
+if (![5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27].includes(args.length) || !file || flag !== '--plan' || !['0', '1', '2'].includes(planArg) || hflag !== '--handover'
     || !['0', '1'].includes(handoverArg) || (planArg === '0' && handoverArg === '1')
     || (args.length >= 7 && (f3Flag !== '--f3' || !['0', '1'].includes(f3Arg) || (f3Arg === '1' && handoverArg !== '1')))
     || (args.length >= 9 && (f5Flag !== '--f5' || !['0', '1'].includes(f5Arg) || (f5Arg === '1' && f3Arg !== '1')))
@@ -84,9 +89,10 @@ if (![5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25].includes(args.length) || !file ||
     || (args.length >= 19 && (rdFlag !== '--road' || !['0', '1'].includes(rdArg) || (rdArg === '1' && sdArg !== '1')))
     || (args.length >= 21 && (wcFlag !== '--wchk' || !['0', '1'].includes(wcArg) || (wcArg === '1' && rdArg !== '1')))
     || (args.length >= 23 && (dkFlag !== '--dkv' || !['0', '1'].includes(dkArg) || (dkArg === '1' && wcArg !== '1')))
-    || (args.length === 25 && (ppFlag !== '--pnlp' || !['0', '1'].includes(ppArg) || (ppArg === '1' && dkArg !== '1')))
+    || (args.length >= 25 && (ppFlag !== '--pnlp' || !['0', '1'].includes(ppArg) || (ppArg === '1' && dkArg !== '1')))
+    || (args.length === 27 && (pmFlag !== '--pmiss' || !['0', '1'].includes(pmArg) || (pmArg === '1' && ppArg !== '1')))
     || (planArg === '2' && (args.length < 9 || handoverArg !== '1' || f3Arg !== '1' || f5Arg !== '1'))) {
-  console.error('usage: node worker/tools/worker-guard.mjs <file> --plan 0|1|2 --handover 0|1 [--f3 0|1 [--f5 0|1 [--edit 0|1 [--invoiced 0|1 [--rate2 0|1 [--self 0|1 [--road 0|1 [--wchk 0|1 [--dkv 0|1 [--pnlp 0|1]]]]]]]]]] (handover 1 needs plan 1 or 2, f3 1 needs handover 1, f5 1 needs f3 1, edit 1 needs f5 1, invoiced 1 needs edit 1, rate2 1 needs invoiced 1, self 1 needs rate2 1, road 1 needs self 1, wchk 1 needs road 1, dkv 1 needs wchk 1, pnlp 1 needs dkv 1, plan 2 needs handover 1 f3 1 f5 1)');
+  console.error('usage: node worker/tools/worker-guard.mjs <file> --plan 0|1|2 --handover 0|1 [--f3 0|1 [--f5 0|1 [--edit 0|1 [--invoiced 0|1 [--rate2 0|1 [--self 0|1 [--road 0|1 [--wchk 0|1 [--dkv 0|1 [--pnlp 0|1 [--pmiss 0|1]]]]]]]]]]] (handover 1 needs plan 1 or 2, f3 1 needs handover 1, f5 1 needs f3 1, edit 1 needs f5 1, invoiced 1 needs edit 1, rate2 1 needs invoiced 1, self 1 needs rate2 1, road 1 needs self 1, wchk 1 needs road 1, dkv 1 needs wchk 1, pnlp 1 needs dkv 1, pmiss 1 needs pnlp 1, plan 2 needs handover 1 f3 1 f5 1)');
   process.exit(2);
 }
 const plan = Number(planArg);
@@ -217,11 +223,18 @@ if (pnlp !== null) {
   // the P&L papers (owner 3/11/2026): GET /costs/pnl-paper, its route line exactly once
   rows.push(['resource === "pnl-paper" (χαρτιά αποτελέσματος, /costs/pnl-paper)', count('resource === "pnl-paper"'), (n) => (pnlp === 1 ? n === 1 : n === 0)]);
 }
+const pmiss = pmFlag === undefined ? null : Number(pmArg);
+if (pmiss !== null) {
+  // pallets U4 (107): the no-exchange act's object, the missing-delivery route, the movement history - each exactly once
+  rows.push(['var PLN_RPC = { (107, «Χωρίς ανταλλαγή»)', count('var PLN_RPC = {'), (n) => (pmiss === 1 ? n === 1 : n === 0)]);
+  rows.push(['resource === "missing" (107, «Λείπει παράδοση»)', count('resource === "missing"'), (n) => (pmiss === 1 ? n === 1 : n === 0)]);
+  rows.push(['action === "history" (ιστορικό κίνησης παλετών)', count('action === "history"'), (n) => (pmiss === 1 ? n === 1 : n === 0)]);
+}
 let ok = true;
 for (const [name, n, good] of rows) {
   const pass = good(n);
   ok = ok && pass;
   console.log(`${pass ? 'OK  ' : 'STOP'}  ${name} = ${n}`);
 }
-console.log(ok ? `GUARD OK (${rows.length} markers, plan=${plan}, handover=${handover}${f3 !== null ? `, f3=${f3}` : ''}${f5 !== null ? `, f5=${f5}` : ''}${edit !== null ? `, edit=${edit}` : ''}${invoiced !== null ? `, invoiced=${invoiced}` : ''}${rate2 !== null ? `, rate2=${rate2}` : ''}${self !== null ? `, self=${self}` : ''}${road !== null ? `, road=${road}` : ''}${wchk !== null ? `, wchk=${wchk}` : ''}${dkv !== null ? `, dkv=${dkv}` : ''}${pnlp !== null ? `, pnlp=${pnlp}` : ''}) ${file}` : `GUARD STOP — do not deploy / roll back (${file})`);
+console.log(ok ? `GUARD OK (${rows.length} markers, plan=${plan}, handover=${handover}${f3 !== null ? `, f3=${f3}` : ''}${f5 !== null ? `, f5=${f5}` : ''}${edit !== null ? `, edit=${edit}` : ''}${invoiced !== null ? `, invoiced=${invoiced}` : ''}${rate2 !== null ? `, rate2=${rate2}` : ''}${self !== null ? `, self=${self}` : ''}${road !== null ? `, road=${road}` : ''}${wchk !== null ? `, wchk=${wchk}` : ''}${dkv !== null ? `, dkv=${dkv}` : ''}${pnlp !== null ? `, pnlp=${pnlp}` : ''}${pmiss !== null ? `, pmiss=${pmiss}` : ''}) ${file}` : `GUARD STOP — do not deploy / roll back (${file})`);
 process.exit(ok ? 0 : 1);

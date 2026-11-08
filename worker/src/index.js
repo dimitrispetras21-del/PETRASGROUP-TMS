@@ -3429,6 +3429,24 @@ const PLW_RULE_TEXT = {
 const PLW_CONFLICT = ["already", "gone"];
 // The marker of the worker guard (--wchk): ONE object naming the three 104 acts.
 var PLW_RPC = { check: "pl_week_check", uncheck: "pl_week_uncheck", changes: "pl_week_check_changes" };
+// 107 refusals (pln_h_raise, the «Χωρίς ανταλλαγή» act of the pallets missing-delivery list, owner 28/10). already /
+// gone answer 409 (someone acted first), the rest 422. Texts only: what is allowed lives in pl_no_exchange.
+const PLN_RULE_TEXT = {
+  role: "Μόνο το λογιστήριο και ο owner γράφουν «Χωρίς ανταλλαγή».",
+  reason: "Γράψε αιτιολογία: καταγράφεται με το όνομά σου και ο δρομολογητής τη βλέπει στην παραγγελία.",
+  bad_ids: "Λείπει η παραγγελία ή η στάση — ανανέωσε τη σελίδα.",
+  gone: "Η παραγγελία δεν υπάρχει πια — ανανέωσε τη σελίδα.",
+  not_delivered: "Η παραγγελία δεν είναι παραδομένη: την ανταλλαγή την αλλάζει ο δρομολογητής στην παραγγελία.",
+  already: "Η παραγγελία είναι ήδη χωρίς ανταλλαγή — ανανέωσε τη σελίδα.",
+  split_leg: "Σκέλος σπασμένης παραγγελίας: η ανταλλαγή αλλάζει στην αρχική παραγγελία.",
+  lot: "Παρτίδα αποθήκης: δεν έχει παράδοση σε πελάτη.",
+  stop: "Η στάση δεν είναι στάση παράδοσης αυτής της παραγγελίας — ανανέωσε τη σελίδα.",
+  multi: "Η παραγγελία έχει πολλές στάσεις παράδοσης: η ανταλλαγή αλλάζει από τον δρομολογητή στην παραγγελία.",
+  nat_leg: "Η παραγγελία έχει εθνικό σκέλος: η ανταλλαγή αλλάζει μόνο από την παραγγελία (απόφαση owner εκκρεμεί)."
+};
+const PLN_CONFLICT = ["already", "gone"];
+// The marker of the worker guard (--pmiss): ONE object naming the 107 act.
+var PLN_RPC = { noExchange: "pl_no_exchange" };
 const PLAN_RULE_TEXT = {
   // 071 — deferred COMMIT rules (plan_chk) and the two direct raises
   pieces_alive: "Η αποστολή σβήστηκε αλλά έχει ακόμη ζωντανά κομμάτια — ανανέωσε τη σελίδα",
@@ -3656,6 +3674,11 @@ function stockRuleError(e) {
   if (hint.startsWith("plw:")) {
     const wc = hint.slice("plw:".length).trim();
     return { type: "PALLET_WEEK_RULE", code: wc, message: Object.prototype.hasOwnProperty.call(PLW_RULE_TEXT, wc) ? PLW_RULE_TEXT[wc] : `Το σημάδι της εβδομάδας δεν γράφτηκε (${wc || "χωρίς κωδικό"}): ${message}` };
+  }
+  // 'pln:' (107, «Χωρίς ανταλλαγή» of the pallets missing-delivery list): the hint is the marker, as for 'plw:'.
+  if (hint.startsWith("pln:")) {
+    const nc = hint.slice("pln:".length).trim();
+    return { type: "PALLET_NOEX_RULE", code: nc, message: Object.prototype.hasOwnProperty.call(PLN_RULE_TEXT, nc) ? PLN_RULE_TEXT[nc] : `Το «Χωρίς ανταλλαγή» δεν γράφτηκε (${nc || "χωρίς κωδικό"}): ${message}` };
   }
   // 'plan:' (071/072): same rule — the hint is the marker, whatever SQLSTATE.
   // It must come BEFORE the 23514 branch: plan_chk raises with 23514 and a
@@ -6960,14 +6983,17 @@ var PL_EVENT_TYPES = ["LOADING", "DELIVERY", "PARTNER_PICKUP", "PARTNER_DROPOFF"
 var PL_PERMS = {
   // "week-checks" (104, the «Ελέγχθηκε» mark of the week, owner 2/11): owner + accountant mark / undo, every other
   // pallets role reads it. No DELETE for anyone: an undo is a PATCH and the table refuses a hard delete.
-  owner:      { movements: ["GET", "POST", "PATCH", "DELETE"], confirm: ["POST"], reverse: ["POST"], sheets: ["GET", "POST"], balances: ["GET"], lookups: ["GET"], "week-checks": ["GET", "POST", "PATCH"] },
+  // "missing" + "no-exchange" (107, owner 28/10 E5.2): the missing-delivery list is read by owner, accountant and
+  // management (management without buttons); «Χωρίς ανταλλαγή» only by owner and accountant (also in pl_no_exchange).
+  // dispatcher and warehouse: neither (the FE hides the list and its counter for them — the same rule, said twice).
+  owner:      { movements: ["GET", "POST", "PATCH", "DELETE"], confirm: ["POST"], reverse: ["POST"], sheets: ["GET", "POST"], balances: ["GET"], lookups: ["GET"], "week-checks": ["GET", "POST", "PATCH"], missing: ["GET"], "no-exchange": ["POST"] },
   dispatcher: { movements: ["GET", "POST", "PATCH", "DELETE"], confirm: ["POST"], reverse: ["POST"], sheets: ["GET", "POST"], balances: ["GET"], lookups: ["GET"], "week-checks": ["GET"] },
   warehouse:  { movements: ["GET", "POST", "PATCH"], confirm: ["POST"], sheets: ["GET", "POST"], balances: ["GET"], lookups: ["GET"], "week-checks": ["GET"] },
   // accountant DELETE (7/9/2026, Alexia go-live audit): she owns the pallet
   // ledger and the panel shows «Διαγραφή εκκρεμούς» on every pending movement;
   // without DELETE that button is a 403. Safe to grant: the handler below
   // refuses anything but pending (409), confirmed movements are only reversed.
-  accountant: { movements: ["GET", "POST", "PATCH", "DELETE"], confirm: ["POST"], reverse: ["POST"], sheets: ["GET", "POST"], balances: ["GET"], lookups: ["GET"], "week-checks": ["GET", "POST", "PATCH"] },
+  accountant: { movements: ["GET", "POST", "PATCH", "DELETE"], confirm: ["POST"], reverse: ["POST"], sheets: ["GET", "POST"], balances: ["GET"], lookups: ["GET"], "week-checks": ["GET", "POST", "PATCH"], missing: ["GET"], "no-exchange": ["POST"] },
   // MARKED CHANGE (owner 24/8/2026) — the ONLY deviation from the parked
   // source: management also reads the movements ledger (read-only).
   // Parked had balances+gate only.
@@ -6977,7 +7003,7 @@ var PL_PERMS = {
   // Promise.all([movements, lookups]) ένα 403 στο δεύτερο έριχνε ΟΛΗ τη
   // σελίδα Ισοζυγίου σε «Σφάλμα φόρτωσης» — ενώ τα άλλα τρία αιτήματα είχαν
   // απαντήσει κανονικά. Μόνο GET: το management δεν γράφει κινήσεις.
-  management: { movements: ["GET"], balances: ["GET"], gate: ["GET"], lookups: ["GET"], "week-checks": ["GET"] }
+  management: { movements: ["GET"], balances: ["GET"], gate: ["GET"], lookups: ["GET"], "week-checks": ["GET"], missing: ["GET"] }
 };
 // Το gate είναι read-only «λείπει δελτίο;» — το χρειάζεται όποιος βλέπει
 // τιμολόγηση, γι' αυτό δίνεται σε όλους τους ρόλους παρακάτω.
@@ -7131,7 +7157,9 @@ async function handlePallets(request, url, origin, env) {
       // εμφανίζονταν ως «Πελάτης #1314» (12/8). Με το embedding το όνομα έρχεται
       // μαζί με την κίνηση και η λίστα παύει να εξαρτάται από το όριο.
       // Μονή FK ανά πίνακα (003_pallets_schema) → κανένα ambiguous embed.
-      params.set("select", "*,clients(company_name),partners(company_name),locations(name)");
+      // + the point's city / country and the stop's pallets / exchanged (Υ3 redesign N01/N11h/N12: «Stubenberg, AT»,
+      // «30 παλ. · 22 με ανταλλαγή»). One FK each (pl_movements_location_id_fkey, pl_movements_order_stop_id_fkey).
+      params.set("select", "*,clients(company_name),partners(company_name),locations(name,city,country),order_stops(pallets,pallets_exchanged)");
       params.set("order", "movement_date.desc,id.desc");
       if (q.get("status")) params.append("status", `eq.${q.get("status")}`);
       if (q.get("counterparty_type")) params.append("counterparty_type", `eq.${q.get("counterparty_type")}`);
@@ -7208,6 +7236,54 @@ async function handlePallets(request, url, origin, env) {
         }
       }
       return jsonOk({ records: rows, truncated, cap: PL_MOV_MAX }, origin, env);
+    }
+    // ---- GET /pallets/movements/:id/history — who changed what (Υ3 panel N11h / N18, owner 28/10 E5.3) ----
+    // The audit_log rows of ONE movement, oldest first, as {action, changed_by, role, changed_at, before, after}.
+    // Same roles as the page (the movements GET right), not AUDIT_READERS: the accountant reads her own trail.
+    // audit() stores JSON.stringify(...) in the jsonb columns (a jsonb string), plan_h_audit an object: both read.
+    if (resource === "movements" && method === "GET" && recId && action === "history") {
+      if (!/^\d+$/.test(recId)) return jsonError("Invalid id", 400, origin, env);
+      const p = new URLSearchParams();
+      p.set("select", "actor,role,action,before_data,after_data,created_at");
+      p.set("table_name", "eq.pl_movements");
+      p.set("record_id", `eq.${recId}`);
+      p.set("order", "created_at.asc,id.asc");
+      p.set("limit", "500");
+      const { rows } = await dbSelectRaw(env, "audit_log", p);
+      const j = (x) => { if (typeof x !== "string") return x ?? null; try { return JSON.parse(x); } catch (_) { return null; } };
+      return jsonOk({ records: rows.map((r) => ({ action: r.action, changed_by: r.actor, role: r.role, changed_at: r.created_at,
+        before: j(r.before_data), after: j(r.after_data) })), truncated: rows.length >= 500 }, origin, env);
+    }
+    // ---- GET /pallets/missing — «Λείπει παράδοση» (107 pl_v_missing_delivery, the ONE definition) ----
+    // Newest delivery first. A list cut at the cap says so (truncated), never shown as complete (principle 1).
+    if (resource === "missing" && method === "GET" && !recId) {
+      const PL_MISS_CAP = 2000;
+      const p = new URLSearchParams();
+      p.set("select", "*");
+      p.set("order", "delivered_on.desc.nullslast,order_id.desc,order_stop_id.asc");
+      p.set("limit", String(PL_MISS_CAP));
+      const { rows } = await dbSelectRaw(env, "pl_v_missing_delivery", p);
+      return jsonOk({ records: rows, truncated: rows.length >= PL_MISS_CAP, cap: PL_MISS_CAP }, origin, env);
+    }
+    // ---- POST /pallets/no-exchange {order_id, order_stop_id, reason} — «Χωρίς ανταλλαγή» (107, owner 28/10) ----
+    // ONE act in the base: pending movements deleted, orders.pallet_exchange = false (the invoicing gate opens for
+    // that order), audit rows written in the same transaction (a failed trace fails the act). The actor and role are
+    // the JWT's, never the body. A narrow route: the accountant never gets a general PATCH on orders.
+    if (resource === "no-exchange" && method === "POST" && !recId) {
+      const body = await request.json().catch(() => null);
+      if (!body || typeof body !== "object") return jsonError("Invalid JSON", 400, origin, env);
+      const p = { order_id: body.order_id, order_stop_id: body.order_stop_id, reason: typeof body.reason === "string" ? body.reason : "" };
+      try {
+        const out = await dbRpc(env, PLN_RPC.noExchange, { p, p_actor: caller.sub, p_role: caller.role });
+        return jsonOk({ record: out }, origin, env);
+      } catch (e) {
+        const rule = stockRuleError(e);
+        if (rule && rule.type === "PALLET_NOEX_RULE") {
+          // the Greek text as «error» (core/pallet-feed.js plFetch reads it as the message), the code beside it
+          return jsonOk({ error: rule.message, code: rule.code }, origin, env, PLN_CONFLICT.includes(rule.code) ? 409 : 422);
+        }
+        throw e;
+      }
     }
     // ---- POST /pallets/movements (χειροκίνητη κίνηση ή feeder Φ2) ----
     // Default: pending. Με body.confirm===true γράφεται κατευθείαν confirmed
