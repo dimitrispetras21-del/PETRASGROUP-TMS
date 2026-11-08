@@ -436,6 +436,17 @@
    "expect": {
     "loaded": true
    }
+  },
+  "rota_cross_week": {
+   "h2": "rota leg in another week than its parent (owner 8/11/2026, #644 → #677)",
+   "ids": [
+    "recWiE090",
+    "recWiE091"
+   ],
+   "expect": {
+    "W42": "E090 numbered, «συνέχεια: Σάβ 17/10 →» under it",
+    "W43": "E091 its own ↳ row on Sat 17/10, «σκέλος της #9190 (εβδ. 10/10)», no number, no UNSEEN strip"
+   }
   }
  },
  "tables": {
@@ -2068,6 +2079,81 @@
       "recWiS0130",
       "recWiS0131"
      ]
+    }
+   },
+   {
+    "id": "recWiE090",
+    "fields": {
+     "Type": "International",
+     "Direction": "Export",
+     "Status": "Assigned",
+     "Client": [
+      "recWiC003"
+     ],
+     "Reference": "REF-E090",
+     "Order No": 9190,
+     "Total Pallets": 18,
+     "Temperature °C": 2,
+     "Loading DateTime": "2026-10-13T04:00:00.000Z",
+     "Delivery DateTime": "2026-10-15T12:00:00.000Z",
+     "Loading Location 1": [
+      "recWiL002"
+     ],
+     "Unloading Location 1": [
+      "recWiL012"
+     ],
+     "Truck": [
+      "recWiT003"
+     ],
+     "Driver": [
+      "recWiD003"
+     ],
+     "Trailer": [
+      "recWiR003"
+     ],
+     "ORDER STOPS": [
+      "recWiS0900",
+      "recWiS0901"
+     ],
+     "Week Number": 42
+    }
+   },
+   {
+    "id": "recWiE091",
+    "fields": {
+     "Type": "International",
+     "Direction": "Export",
+     "Status": "Assigned",
+     "Client": [
+      "recWiC003"
+     ],
+     "Reference": "REF-E091",
+     "Order No": 9191,
+     "Total Pallets": 18,
+     "Temperature °C": 2,
+     "Loading DateTime": "2026-10-17T05:00:00.000Z",
+     "Delivery DateTime": "2026-10-17T15:00:00.000Z",
+     "Loading Location 1": [
+      "recWiL012"
+     ],
+     "Unloading Location 1": [
+      "recWiL003"
+     ],
+     "Truck": [
+      "recWiT003"
+     ],
+     "Driver": [
+      "recWiD003"
+     ],
+     "Trailer": [
+      "recWiR003"
+     ],
+     "ORDER STOPS": [
+      "recWiS0902",
+      "recWiS0903"
+     ],
+     "Rotation ID": "recWiE090",
+     "Week Number": 43
     }
    }
   ],
@@ -3904,6 +3990,62 @@
       "recWiL004"
      ],
      "DateTime": "2026-10-12T07:00:00.000Z"
+    }
+   },
+   {
+    "id": "recWiS0900",
+    "fields": {
+     "Parent Order": [
+      "recWiE090"
+     ],
+     "Stop Type": "Loading",
+     "Stop Number": 1,
+     "Location": [
+      "recWiL002"
+     ],
+     "DateTime": "2026-10-13T04:00:00.000Z"
+    }
+   },
+   {
+    "id": "recWiS0901",
+    "fields": {
+     "Parent Order": [
+      "recWiE090"
+     ],
+     "Stop Type": "Unloading",
+     "Stop Number": 1,
+     "Location": [
+      "recWiL012"
+     ],
+     "DateTime": "2026-10-15T12:00:00.000Z"
+    }
+   },
+   {
+    "id": "recWiS0902",
+    "fields": {
+     "Parent Order": [
+      "recWiE091"
+     ],
+     "Stop Type": "Loading",
+     "Stop Number": 1,
+     "Location": [
+      "recWiL012"
+     ],
+     "DateTime": "2026-10-17T05:00:00.000Z"
+    }
+   },
+   {
+    "id": "recWiS0903",
+    "fields": {
+     "Parent Order": [
+      "recWiE091"
+     ],
+     "Stop Type": "Unloading",
+     "Stop Number": 1,
+     "Location": [
+      "recWiL003"
+     ],
+     "DateTime": "2026-10-17T15:00:00.000Z"
     }
    }
   ],
