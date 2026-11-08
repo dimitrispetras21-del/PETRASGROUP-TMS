@@ -150,10 +150,14 @@ function boardRows(exports, imports, o) {
       if (gid) (byGid[gid] = byGid[gid] || []).push(r);
     });
     // Π1 (Wave 3): export rows sharing a Group ID collapse back into one row after every reload.
+    // The lead takes the match of ANY member when it has none (owner 8/11/2026, order 643): the match
+    // may sit on a member only (GRP-Gl7rxx4W: three exports, Matched Import ID on the third). The
+    // import is then «matched» (matchedTo below) and left out of the free imports, so with the lead's
+    // own match alone it was drawn nowhere. The mirror of A1 on the import side below.
     Object.values(byGid).forEach((list) => {
       if (list.length < 2) return;
       const [lead, ...rest] = list;
-      rest.forEach((r) => { r.orderIds.forEach((id) => { if (!lead.orderIds.includes(id)) lead.orderIds.push(id); }); });
+      rest.forEach((r) => { r.orderIds.forEach((id) => { if (!lead.orderIds.includes(id)) lead.orderIds.push(id); }); if (!lead.importId && r.importId) lead.importId = r.importId; });
       const gone = new Set(rest);
       for (let i = rows.length - 1; i >= 0; i--) if (gone.has(rows[i])) rows.splice(i, 1);
     });
@@ -320,6 +324,28 @@ function numberOf(built, no) {
     (built.splitLegs[pid] || []).forEach((lr) => (lr.orderIds || [lr.orderId]).forEach((id) => ids.add(id)));
     ids.forEach((id) => { if (id && !out.has(id)) out.set(id, n); });
   }
+  return out;
+}
+
+// Principle 1 (owner 8/11/2026, order 643): every order the board loaded for its week is DRAWN
+// somewhere — a numbered row, a group member, a matched import inside its export, a rota or split
+// leg under its row (numberOf), or a free import on the stock shelf. An order on none of them is
+// returned, so the board says so in one strip instead of losing it in silence. Imports of another
+// week (adj) are left out: their own week's board draws them. built = boardRows(...),
+// no = boardNumbers(...).no, o = { shelved(row) } as given to boardNumbers.
+// → [order rec id], in row order; [] when everything is drawn.
+function unseenOrders(built, no, o) {
+  const shelved = (o && o.shelved) || (() => false);
+  const rows = (built && built.rows) || [];
+  const seen = numberOf(built, no);
+  const shelf = new Map();
+  rows.forEach((r) => { if (r.type === 'import' && !r.matchedTo && !r.legOf && !r.splitLegOf && !r.adj && shelved(r)) shelf.set(r, 0); });
+  if (shelf.size) numberOf(built, shelf).forEach((_, id) => seen.set(id, 0));
+  const out = [];
+  rows.forEach((r) => {
+    if (r.adj) return;
+    (r.orderIds || [r.orderId]).forEach((id) => { if (id && !seen.has(id) && !out.includes(id)) out.push(id); });
+  });
   return out;
 }
 
@@ -931,7 +957,7 @@ const WI4 = freeze({
   // shared helpers
   dayDiff, dayLabel, dayRowOrder, rowDt,
   // board rows and numbers (one source with «Παραγγελίες › Εβδομάδα», owner 2/11)
-  readWindow, weekExports, giSortRecs, boardRows, shelvedRow, boardNumbers, numberOf, weekNumbers, weekBoard,
+  readWindow, weekExports, giSortRecs, boardRows, shelvedRow, boardNumbers, numberOf, unseenOrders, weekNumbers, weekBoard,
 });
 
 if (typeof module !== 'undefined') module.exports = WI4; else window.WI4 = WI4;

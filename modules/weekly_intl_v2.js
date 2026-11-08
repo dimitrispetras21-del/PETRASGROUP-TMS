@@ -636,7 +636,11 @@ function _compute() {
   // (3). reportPageMetrics keeps the old numbers (identity, §a.5).
   const expDrawn = rows.filter((r) => r.type === 'export' && !r.legOf && !r.splitLegOf).length;
   const impDrawn = (typeof I.boardImpRows === 'function' ? I.boardImpRows() : impRows).filter((r) => !r.splitLegOf).length;
-  return { days, entries, queue, xwCount: xw.length, loading: !!loading, today, expDrawn, impDrawn };
+  // Principle 1 (owner 8/11/2026, order 643): a loaded order this board draws nowhere is said in
+  // one strip, never lost in silence (WI4.unseenOrders: the same rows and numbers as above).
+  const unseen = typeof lg.unseenOrders === 'function'
+    ? lg.unseenOrders({ rows, legs: D._legs || {}, splitLegs: D._splitLegs || {} }, nb.no, { shelved: (r) => I.shelved(r) }) : [];
+  return { days, entries, queue, xwCount: xw.length, loading: !!loading, today, expDrawn, impDrawn, unseen };
 }
 function _xwItems(today) {
   if (!_xw || _xw.state !== 'ok') return [];
@@ -1792,6 +1796,24 @@ function _relayBannerHTML() {
   // Same words as _wiPaint's banner (contract #6/#7, DESIGN.md Α7).
   return `<div class="wi4-banner" role="alert"><span>Οι τοπικές παραδόσεις/φορτώσεις δεν φορτώθηκαν — δεν σημαίνει ότι δεν υπάρχουν (${_esc(D.relay.err || 'σφάλμα ανάγνωσης')}). Οι παραγγελίες δεν επηρεάζονται· το «…με τοπικό οδηγό» μένει κλειστό ώσπου να φορτωθούν.</span><button type="button" class="wi4-link" onclick="WI_INTERNAL.relayReload()">↻ Ξαναδοκίμασε</button></div>`;
 }
+// «N παραγγελίες δεν φαίνονται στον πίνακα: #643» (owner 8/11/2026): every order the week loaded
+// that no row, member, matched import, leg or shelf draws (m.unseen). Each number opens its card.
+// Written to the error log too, once per week and list, so it is heard without anyone looking.
+const _unseenLogged = new Set();   // week:ids already written, so a week switch never writes it twice
+function _unseenBannerHTML(m) {
+  const ids = (m && m.unseen) || [];
+  if (!ids.length) return '';
+  const D = _D(), sig = (D.week || '') + ':' + ids.join(',');
+  if (!_unseenLogged.has(sig)) { _unseenLogged.add(sig); _logErr(new Error('orders drawn nowhere on the board: ' + ids.join(', ')), 'wi4: unseen orders W' + (D.week || '?')); }
+  const links = ids.map((oid) => {
+    const no = _f(oid)['Order No'];
+    const t = no != null && no !== '' ? '#' + no : _loadLabel(oid);
+    const q = _q(oid);
+    return q ? `<button type="button" class="wi4-link" onclick="WI_INTERNAL.edit('${q}')">${_esc(t)}</button>` : _esc(t);
+  }).join(', ');
+  const n = ids.length;
+  return `<div class="wi4-banner" role="alert" data-r="UNSEEN"><span>${n} ${n === 1 ? 'παραγγελία δεν φαίνεται' : 'παραγγελίες δεν φαίνονται'} στον πίνακα: ${links}</span></div>`;
+}
 // Save failure line (§e.14). The old text after the client/route prefix is
 // kept verbatim (its «#N» wording is Φ9 debt, §j.8).
 // ONE short line (sheet 14 #5): «Δεν αποθηκεύτηκε — <τι> έμεινε όπως ήταν ·
@@ -2040,7 +2062,7 @@ function _paint() {
   // #content, the §a.7 contract): inside it they inherited v4's 12px type and
   // ink, and the old popover/panels changed size with no design (11/10).
   content.innerHTML = `<div class="wi4${fl}${fr}" data-week="${D.week}"><style>${I.css}</style>` +
-    _barHTML(m) + _relayBannerHTML() + _qbandHTML(m) + _shelfWrapHTML() + _colsHTML(m) +
+    _barHTML(m) + _relayBannerHTML() + _unseenBannerHTML(m) + _qbandHTML(m) + _shelfWrapHTML() + _colsHTML(m) +
     `<div id="wi-rows">${rowsHTML}</div></div>` +
     '<div id="wi-ctx"></div><div id="wi-popover"></div><div id="wi-panel" class="wi-panel"></div>';
   window._wiDragging = null;   // as _wiPaint: a repaint ends any drag
