@@ -1887,12 +1887,21 @@ const OrdersWeekView = (() => {
   function _weekBoards(d) {
     return [d && d.v5Board, ...((d && d.v5Away && d.v5Away.boards) || []).map(x => x.board)].filter(Boolean);
   }
+  // → null when the card is not this page's (the caller then says where the leg lives); else { leg, note }:
+  // leg found; or the week's board read and the leg on none of the boards (before day L it lives in national_loads)
+  // = a grey note; or the board not read = leg null, no note → the diagram's red «δεν διαβάστηκε».
+  function _natLegOf(d, rec) {
+    const boards = _weekBoards(d);
+    const leg = boards.length ? RouteDiagramAdapters.natLegFromBoard(boards, pgIdOf(rec)) : null;
+    if (leg) return { leg, note: null };
+    return { leg: null, note: d.v5Board && !d.v5BoardFailed ? 'εκτελεστής: εκτός Εβδομαδιαίου v5' : null };
+  }
   function natLegFor(rec) {
     const ctx = S.ctx, d = S.data, c = S.card;
     if (!rec || !ctx || !ctx.isCurrent() || !d || !c || c.type !== 'intl' || c.id !== rec.id) return null;
     const p = document.getElementById('intlDetail');
     if (!p || !p.closest('.owv-cards') || typeof RouteDiagramAdapters === 'undefined') return null;
-    return RouteDiagramAdapters.natLegFromBoard(_weekBoards(d), pgIdOf(rec));
+    return _natLegOf(d, rec);
   }
   const RT_STOP_FIELDS = () => [F.STOP_PARENT_ORDER, F.STOP_NUMBER, F.STOP_TYPE, F.STOP_LOCATION, F.STOP_DATETIME, F.STOP_PALLETS, 'Completed At'];
   // The orders the RT's truck carries, in RT order (/costs/rt legs[].seq): a split leg as itself (its own stops),
@@ -1936,9 +1945,9 @@ const OrdersWeekView = (() => {
     const unread = r.legs.filter(l => !l.rec).length;
     let html;
     try {
-      const boards = _weekBoards(S.data), A = RouteDiagramAdapters;
-      const items = recs.map(x => ({ rec: x, stops: st.by.get(x.id) || [],
-        ctx: { natLeg: x.fields['Veroia Switch'] ? A.natLegFromBoard(boards, pgIdOf(x)) : null } }));
+      const A = RouteDiagramAdapters;
+      const items = recs.map(x => { const nl = x.fields['Veroia Switch'] ? _natLegOf(S.data, x) : { leg: null, note: null };
+        return { rec: x, stops: st.by.get(x.id) || [], ctx: { natLeg: nl.leg, natLegNote: nl.note } }; });
       html = RouteDiagram.render(A.facadeRt(items, { today: A.athensDay(new Date().toISOString()), locMeta: id => OC()._locMeta(id) }));
     } catch (e) { console.error('orders week: RT route diagram', e); html = _rtMsg('Η διαδρομή του δρομολογίου δεν σχεδιάστηκε.', true); }
     return html + (unread ? _rtMsg(`${unread === 1 ? '1 παραγγελία' : unread + ' παραγγελίες'} του δρομολογίου εκτός ανάγνωσης: δεν σχεδιάζ${unread === 1 ? 'εται' : 'ονται'}.`, true) : '');

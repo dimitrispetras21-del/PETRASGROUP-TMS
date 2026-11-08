@@ -340,15 +340,17 @@ function selectIntlOrder(recId) {
 }
 
 // The card's «Διαδρομή» as the shared diagram (core/route-diagram.js). A VS order's national leg is known only
-// where a v5 board was read: «Παραγγελίες › Εβδομάδα» answers through OrdersWeekView.natLegFor; elsewhere (Κατάλογος,
-// the read-only card) it is null and the diagram says «εκτελεστής: δεν διαβάστηκε», never «χωρίς ανάθεση».
+// where a v5 board was read: «Παραγγελίες › Εβδομάδα» answers through OrdersWeekView.natLegFor. Elsewhere
+// (Κατάλογος, the read-only card) no board is read on purpose, so the section says where the leg lives, in grey —
+// not the red «δεν διαβάστηκε», which is kept for a read that was tried and failed (principle 1).
 // A shape the diagram refuses (InputError) or a missing script costs the diagram only: said in red, with the
 // plain stop list under it, so the card still shows its stops.
 function _oiRouteDiagram(rec, stops, listHtml) {
   try {
-    const natLeg = typeof OrdersWeekView !== 'undefined' && OrdersWeekView.natLegFor ? OrdersWeekView.natLegFor(rec) : null;
+    const w = typeof OrdersWeekView !== 'undefined' && OrdersWeekView.natLegFor ? OrdersWeekView.natLegFor(rec) : null;
+    const nl = w || { leg: null, note: 'εκτελεστής: στο Εβδομαδιαίο Εθνικών' };
     return RouteDiagram.render(RouteDiagramAdapters.facadeOrder(rec, stops || [], {
-      today: RouteDiagramAdapters.athensDay(new Date().toISOString()), locMeta: id => OrdersCommon._locMeta(id), natLeg }));
+      today: RouteDiagramAdapters.athensDay(new Date().toISOString()), locMeta: id => OrdersCommon._locMeta(id), natLeg: nl.leg, natLegNote: nl.note }));
   } catch (e) {
     console.error('orders_intl: route diagram', e);
     return `<div class="rd"><div class="rd-note" data-tone="red">Η διαδρομή δεν σχεδιάστηκε.</div></div>${listHtml}`;
