@@ -3461,7 +3461,13 @@ async function _wiSaveImportMatch(rowId,impId){
   // own. Call it directly: with N1 (worker/src/rt-rules.mjs) it attaches the
   // import's leg to the export's existing RT instead of leaving it single-leg
   // (measured 5/9: 9 of 46 matched pairs stuck that way). Non-blocking.
-  if(!matchFailed && typeof rtOnOrderSaved === 'function'){
+  // Only with a vehicle on the export (owner 8/11 #10, match before the
+  // assignment): without one there is no trip to attach to — the base makes
+  // none either (033) — and rtOnOrderSaved would read the export as «lost its
+  // vehicle» and cancel the IMPORT's waiting trip it gathers (rt-feed !exec
+  // branch; rt-sync v6 PLAN: a waiting trip is never cancelled). The later
+  // assignment (_wiSaveFromPopover) writes both orders and runs it then.
+  if(!matchFailed && (row.truckId||row.partnerId) && typeof rtOnOrderSaved === 'function'){
     for(const orderId of row.orderIds){
       rtOnOrderSaved(orderId).catch(e => console.warn('[wi match] rt sync:', e && e.message));
     }
@@ -3506,6 +3512,14 @@ async function _wiRemoveImport(rowId){
   }
   _wiSync('wi-sync-'+rowId, ok?'ok':'err',
     ok?'Αφαιρέθηκε':'Η αφαίρεση ΔΕΝ γράφτηκε στη βάση — κάνε Ανανέωση',oid0); // T3
+  // An export with no vehicle passed none on (owner 8/11 #10: a match may come
+  // before the assignment, _wiSaveImportMatch inherits only from a vehicle):
+  // the import's vehicle, if any, is its own and stays (before 8/11 this wiped
+  // it). _wiClear empties the matched import with the export; if the export
+  // lost its vehicle elsewhere (the order form), an inherited one may remain:
+  // the import then stands on its own row with that truck, in sight to change
+  // — never erased unseen (principle 1).
+  if(ok&&!(row.truckId||row.partnerId)){ toast('Το ταίριασμα αφαιρέθηκε ✓'); if(typeof atClearCache==='function') atClearCache(TABLES.ORDERS); return true; }
   if(ok){
     // Ξεταίριασμα = το import δεν ταξιδεύει πια με αυτό το όχημα (owner 13/8):
     // καθαρίζεται η κληρονομημένη ανάθεσή του για να μην μείνει ορφανή.

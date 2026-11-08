@@ -1299,6 +1299,7 @@ function _expRowHTML(e, today) {
   }
   else if (row.saved && !hasPartner) impInner = _gapHTML(row, e, today);
   else if (row.saved && hasPartner) impInner = '<span class="wi4-void">Μόνο εξαγωγή · συνεργάτης</span>';
+  else if (!row.hasSplitLegs && !W().lotHeld(row)) impInner = _openImpHTML(row);
   else impInner = '<span class="wi4-void" title="Σύρε εισαγωγή εδώ για ταίριασμα"></span>';
   // The import cell is the drop target (§f): empty = match, a load = join.
   // data-unconfirmed: it draws the table, not the row (CSS, tools, the rig).
@@ -1370,6 +1371,19 @@ function _gapHTML(row, e, today) {
     // The plus is the 12px icon, not a typed «+ » (Figma 1097:2685).
     `<button type="button" class="wi4-gap-act" onclick="event.stopPropagation();WI_INTERNAL.newImport(${row.id})">${_ico('plus', 12)}Νέα εισαγωγή</button>` +
     `<span class="wi2-gapstk" data-row="${row.id}">${W().stockGapLink(row)}</span></div>`;
+}
+// The import cell of an export with NO vehicle yet (owner 8/11 #10: «να
+// μπορούμε να κάνουμε match και χωρίς να υπάρχει ανάθεση»). The drop already
+// matched here (_wiSaveImportMatch has no vehicle rule), but the cell was
+// blank, so it read as «not allowed». Grey, not a flag: the missing vehicle
+// is said once, by ΠΡΟΣ ΑΝΑΘΕΣΗ / NO_TRUCK — no second warning for the same
+// fact. The later assignment writes the vehicle onto the matched import too
+// (_wiSaveFromPopover), and the trip is formed then. No stock link: a piece
+// rides only an own truck, unknown until the assignment.
+function _openImpHTML(row) {
+  return `<div class="wi4-gap wi4-gap-open" title="${_esc('Χωρίς εισαγωγή — σύρε εισαγωγή εδώ ή δημιούργησε νέα. Ταιριάζει και πριν την ανάθεση· το όχημα περνά και στην εισαγωγή με την ανάθεση.')}">` +
+    '<span>Χωρίς εισαγωγή</span>' +
+    `<button type="button" class="wi4-gap-act" onclick="event.stopPropagation();WI_INTERNAL.newImport(${row.id})">${_ico('plus', 12)}Νέα εισαγωγή</button></div>`;
 }
 function _impRowHTML(e, today) {
   const I = W(), D = _D(), row = e.row;

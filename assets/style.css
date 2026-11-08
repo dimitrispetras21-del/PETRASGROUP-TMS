@@ -8734,6 +8734,10 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
    (the row's menu keeps «+ Κομμάτι από απόθεμα…»). */
 @media (max-width:1600px) { .wi4 .wi4-gap .wi2-gapstk { display:none; } }
 .wi4-gap-act:hover { text-decoration:underline; }
+/* An export with no vehicle yet takes a match too (owner 8/11 #10): the same
+   slot, grey — not a flag (ΠΡΟΣ ΑΝΑΘΕΣΗ already says what is missing). */
+.wi4-gap.wi4-gap-open { color:var(--wi4-grey-2); }
+.wi4-gap.wi4-gap-open > span:first-child { font-weight:400; }
 .wi4-void { font-size:10.5px; color:var(--wi4-grey-2); }
 .wi4-noexp { height:24px; display:flex; align-items:center; gap:8px; padding:0 10px; border:1px dashed var(--wi4-slot); border-radius:5px; font-size:12px; color:var(--wi4-grey-1); }
 /* «Χωρίς εξαγωγή» Medium in ink, «· αυτή την εβδομάδα» quiet (Figma 1097:3555). */
