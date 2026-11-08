@@ -75,7 +75,7 @@ async function renderPalletLedger() {
   }
   // Enrichment outside the try above: its failure never empties the page — rows show without the order's
   // fields and the bar of N16 Γ says what search cannot find meanwhile.
-  await _plvEnrich();
+  await Promise.all([_plvEnrich(), _plvLoadMissing()]);
   if (PLV.card) return plvDrill(PLV.card.kind, PLV.card.id);
   _plvDraw();
 }
@@ -274,6 +274,7 @@ function _plvMoveRows() {
   return _plvQ(r);
 }
 function _plvRows() {
+  if (PLV.tab === 'action' && PLV.act === 'missing') return _plvQ(PLV.missing || []);
   if (PLV.tab === 'action') return _plvQ(PLV.act === 'noreturn' ? _plvNoRet() : PLV.movements.filter(m => m.status === 'pending'));
   if (PLV.tab === 'moves') return _plvMoveRows();
   return [];
@@ -682,12 +683,217 @@ function _plvBalanceHtml() {
     <div class="plv-foot">${isC ? 'Μόνο οριστικές κινήσεις· οι εκκρεμείς μετρούν χωριστά.' : 'Ο συνεργάτης είναι απευθείας αντισυμβαλλόμενος. Θετικό = μας χρωστά.'} Κλικ στη γραμμή = καρτέλα.${PLV.cut && PLV.cut.cut ? ' «Τελευταία κίνηση» από τις κινήσεις που φορτώθηκαν.' : ''}</div>`;
 }
 
+/* ── Λείπει παράδοση (Υ4, N02 / N02m / N13 / N13b / N13c; owner 27/10 answer 4b, 28/10 E5.1–E5.2) ──
+   The list is the base's ONE definition (107 pl_v_missing_delivery, GET /pallets/missing): a delivered order with
+   exchange whose unloading stop has no live delivery. The accountant closes each stop with «Συμπλήρωση» (the real
+   numbers from the sheet, POST /pallets/movements, the same write as «Νέα κίνηση») or «Χωρίς ανταλλαγή» (POST
+   /pallets/no-exchange: one act in the base with its trace; it also opens the invoicing gate for that order).
+   Roles = the Worker's PL_PERMS «missing» / «no-exchange», said here once more (the same rule twice on purpose: a
+   button the Worker refuses would be a 403, a list it refuses would not load): read owner / accountant / management,
+   write owner / accountant. Dispatcher and warehouse see neither the list nor its counter. */
+const PLV_MISS = { read: ['owner', 'accountant', 'management'], write: ['owner', 'accountant'] };
+function _plvRole() { try { return typeof user !== 'undefined' && user ? user.role : null; } catch (_) { return null; } }
+function _plvMissRead() { return PLV_MISS.read.includes(_plvRole()); }
+function _plvMissWrite() { return PLV_MISS.write.includes(_plvRole()); }
+// One read per page load. Until 107 + its Worker are live the route answers 404: the list and its counter are not
+// drawn at all (no dead entry, as «Ελέγχθηκε» on the week). Any other failure is said in the view, never «0».
+async function _plvLoadMissing() {
+  PLV.missing = null; PLV.missErr = null; PLV.missCut = false;
+  if (!_plvMissRead()) return;
+  try {
+    const r = await plFetch('/pallets/missing');
+    PLV.missCut = !!r.truncated;
+    // shaped as a movement, so the page's own columns, search and order enrichment read it unchanged
+    PLV.missing = (r.records || []).map(x => ({ id: 's' + x.order_stop_id, stop_id: x.order_stop_id, order_id: x.order_id,
+      counterparty_type: 'CLIENT', client_id: x.client_id, clients: { company_name: x.client_name || ('Πελάτης #' + x.client_id) },
+      location_id: x.location_id, locations: { name: x.location_name || '', city: x.location_city, country: x.location_country },
+      order_stops: { pallets: x.pallets, pallets_exchanged: null }, movement_date: x.delivered_on || x.stop_date,
+      unloading_stops: x.unloading_stops, has_nat_leg: !!x.has_nat_leg, taken: 0, given: 0, status: 'missing' }));
+  } catch (e) {
+    if (/^not found$|no_route/i.test(String(e && e.message))) return;
+    PLV.missErr = _plvErrMsg(e);
+  }
+}
+function _plvMissShown() { return _plvMissRead() && (Array.isArray(PLV.missing) || !!PLV.missErr); }
+function _plvMissFind(stopId) { return (PLV.missing || []).find(x => x.stop_id === stopId); }
+// «Χωρίς ανταλλαγή» is refused for an order with two or more delivery stops (which of them had none is the
+// dispatcher's answer) and for an order with a national v5 leg (owner decision pending): the reason, said.
+function _plvMissNoExWhy(r) {
+  if (r.unloading_stops > 1) return `Η ${_plvNo(r)} έχει ${r.unloading_stops} στάσεις παράδοσης: η ανταλλαγή αλλάζει από τον δρομολογητή στην παραγγελία.`;
+  if (r.has_nat_leg) return `Η ${_plvNo(r)} έχει εθνικό σκέλος: η ανταλλαγή αλλάζει μόνο από την παραγγελία.`;
+  return '';
+}
+function _plvMissCols() {
+  const C = PLV_COL, w = _plvMissWrite();
+  const box = (key, h) => _plvC(key, h, '6%', () => w ? '<span class="plv-box-e"></span>' : '<span class="plv-dim">—</span>', null, 'plv-num');
+  // the two buttons need ~230px (N02): the point and the vehicle give the room, in this list only
+  return [C.aa(), C.no(), C.date('Παράδοση'), C.pal(), { ...C.loc(), w: '17%' }, { ...C.veh(), w: '12%' }, box('tk', 'Πήραμε'), box('gv', 'Δώσαμε'),
+    _plvC('act', '', '23%', r => !w ? '' : `<span class="plv-macts"><button class="plv-go" ${_plvMissNoExWhy(r) ? 'disabled' : ''} onclick="event.stopPropagation();plvMissNoEx(${r.stop_id})">Χωρίς ανταλλαγή</button><button class="plv-go" onclick="event.stopPropagation();plvMissFill(${r.stop_id})">Συμπλήρωση</button></span>`, null, 'plv-r-act')];
+}
+function _plvMissingHtml() {
+  if (PLV.missErr) return `<div class="plv-card plv-fail"><b>Η λίστα «Λείπει παράδοση» δεν φορτώθηκε</b><div class="plv-mid">Δεν σημαίνει ότι δεν λείπει τίποτα (${escapeHtml(PLV.missErr)}).</div><button class="plv-a" onclick="renderPalletLedger()">Ξαναδοκίμασε</button></div>`;
+  const rows = _plvRows();
+  if (!rows.length) return PLV.q.trim() ? _plvNoMatch()
+    : _plvEmptyCard('<b class="plv-okt">✓ Καμία παραδομένη παραγγελία με ανταλλαγή χωρίς κίνηση παράδοσης</b>', 'Κάθε στάση παράδοσης έχει κίνηση.');
+  const cols = _plvMissCols(), w = _plvMissWrite();
+  const groups = _plvPartyGroups(rows);
+  const shown = PLV.more || PLV.q.trim() ? groups : groups.slice(0, 3);
+  const seenWhy = new Set();
+  let html = (PLV.missCut ? '<div class="plv-warn">⚠ Η λίστα κόπηκε στο όριο του διακομιστή: λείπουν κι άλλες στάσεις από όσες βλέπεις.</div>' : '') + _plvHeadTbl(cols), i = 1;
+  shown.forEach(G => {
+    html += _plvGroupHead(G, ` · ${G.rows.length} ${G.rows.length === 1 ? 'στάση' : 'στάσεις'}`);
+    if (_plvIsOpen(G.key)) {
+      html += `<div class="plv-box"><table class="plv-t">${_plvColgroup(cols)}${G.rows.map((r, k) => {
+        const why = w ? _plvMissNoExWhy(r) : '';
+        const line = why && !seenWhy.has(r.order_id) ? (seenWhy.add(r.order_id), `<tr class="plv-why"><td></td><td colspan="${cols.length - 1}">ⓘ ${escapeHtml(why)}</td></tr>`) : '';
+        return `<tr class="plv-r" tabindex="0" data-stop="${r.stop_id}"${w ? ` onclick="if(!event.target.closest('button'))plvMissFill(${r.stop_id})" onkeydown="if(event.key==='Enter'&&!event.target.closest('button')){event.preventDefault();plvMissFill(${r.stop_id})}"` : ''}>${cols.map(c => `<td class="${c.cls}">${c.cell(r, i + k)}</td>`).join('')}</tr>${line}`;
+      }).join('')}</table></div>`;
+    }
+    i += G.rows.length;
+  });
+  const rest = groups.slice(shown.length);
+  if (rest.length) {
+    const n = _plvSum(rest, G => G.rows.length);
+    html += `<div class="plv-more" onclick="plvMore()">${_plvChev(false)}<span>${rest.length} ακόμη ${rest.length === 1 ? 'πελάτης' : 'πελάτες'} · ${n} ${n === 1 ? 'στάση' : 'στάσεις'}</span><button class="plv-a">Εμφάνιση όλων</button></div>`;
+  }
+  return html + `<div class="plv-foot">${w ? 'Κάθε στάση κλείνει με «Συμπλήρωση» (νούμερα από το δελτίο ή το CMR) ή με «Χωρίς ανταλλαγή», όταν η παραγγελία δεν είχε τελικά ανταλλαγή.' : 'Μόνο ανάγνωση για τον ρόλο σου.'}</div>`;
+}
+// «παραδόθηκε 28/09/2026» in the forms' sub line (N13)
+function _plvMissSub(r) {
+  const l = [_plvLoc(r), _plvPlace(r).replace(', ', ' ')].filter(Boolean).join(', ');
+  return [_plvNo(r), l, r.movement_date ? 'παραδόθηκε ' + _plvFmtDate(r.movement_date) : '', _plvName(r)].filter(Boolean).map(escapeHtml).join(' · ');
+}
+
+/* «Συμπλήρωση παράδοσης» (N13 / N13b): both numbers typed by her from the sheet or the CMR, none filled for her
+   (owner 27/10: «να τις συμπληρώσει η ίδια με τα πραγματικά νούμερα»). One confirmed DELIVERY on that stop: the
+   page's own POST /pallets/movements; a second one is refused by the base (pl_mov_stop_once, said in Greek). */
+function plvMissFill(stopId) {
+  if (!_plvMissWrite()) return;
+  const r = _plvMissFind(stopId);
+  if (!r) return;
+  const v = _plvVeh(r), why = _plvMissNoExWhy(r);
+  const info = _plvKv('Παλέτες στάσης', r.order_stops.pallets) + (r.unloading_stops > 1 ? _plvKv('Στάσεις παράδοσης', r.unloading_stops) : '')
+    + (v.plate || v.who ? _plvKv('Όχημα · οδηγός', escapeHtml([v.plate, v.who].filter(Boolean).join(' · '))) : '');
+  _plvOpenShell(_plvShell({
+    title: 'Συμπλήρωση παράδοσης',
+    subs: [_plvMissSub(r)],
+    body: _plvSect('Στοιχεία', info) + _plvSect('Καταχώρηση', `<div class="plv-form">
+        <div class="plv-grid2">
+          ${_plvField('Πήραμε (άδειες)', `<input id="plvMfTaken" type="number" min="0" placeholder="" oninput="plvMissFillLive(${stopId})">`)}
+          ${_plvField('Δώσαμε (γεμάτες)', `<input id="plvMfGiven" type="number" min="0" placeholder="" oninput="plvMissFillLive(${stopId})">`)}
+        </div>
+        <span class="plv-hint">Από το δελτίο ή το CMR. Κανένα από τα δύο δεν συμπληρώνεται μόνο του.</span>
+        ${_plvField('Δελτίο', _plvDropzone())}
+        ${_plvField('Σημείωση', '<input id="plvMfNote" type="text" placeholder="π.χ. ο παραλήπτης έδωσε τις μισές">')}
+        <div id="plvAfter" class="plv-after" hidden><span>Μετά την καταχώρηση</span><b></b></div>
+        ${why ? `<div class="plv-hint">ⓘ «Χωρίς ανταλλαγή» δεν γίνεται εδώ: ${escapeHtml(why)}</div>` : ''}
+        <div id="plvErr"></div>
+        <button id="plvMfGo" class="plv-btn plv-btn-p plv-go-wide" disabled onclick="plvMissFillDo(${stopId})">Καταχώρηση</button>
+      </div>`),
+    actions: [_plvLink('plvCloseModal()', 'Άκυρο'), why ? '' : _plvLink(`plvCloseModal();plvMissNoEx(${stopId})`, 'Χωρίς ανταλλαγή')]
+  }), true);
+  setTimeout(() => { const i = document.getElementById('plvMfTaken'); if (i) i.focus(); }, 0);
+}
+function _plvMfVals() {
+  const t = (document.getElementById('plvMfTaken') || {}).value, g = (document.getElementById('plvMfGiven') || {}).value;
+  return { t, g, ok: t !== '' && g !== '' && +t >= 0 && +g >= 0 && Number.isInteger(+t) && Number.isInteger(+g) && +t + +g > 0 };
+}
+function plvMissFillLive(stopId) {
+  const r = _plvMissFind(stopId), x = _plvMfVals();
+  const b = document.getElementById('plvMfGo');
+  if (b) b.disabled = !x.ok;
+  const a = document.getElementById('plvAfter');
+  if (a && r) { const t = x.ok ? _plvAfter(r, (+x.g) - (+x.t)) : ''; a.hidden = !t; a.querySelector('b').innerHTML = t; }
+}
+async function plvMissFillDo(stopId) {
+  if (!_plvMissWrite() || PLV.busy) return;
+  const r = _plvMissFind(stopId), x = _plvMfVals();
+  if (!r || !x.ok) return;
+  PLV.busy = true;
+  try {
+    let path = null;
+    try { path = await _plvUploadIfAny(); } catch (e) { e.plvStep = 'upload'; throw e; }
+    const body = { movement_date: String(r.movement_date).slice(0, 10), counterparty_type: 'CLIENT', client_id: r.client_id,
+      event_type: 'DELIVERY', taken: +x.t, given: +x.g, order_stop_id: r.stop_id, order_id: r.order_id,
+      notes: ((document.getElementById('plvMfNote') || {}).value || '').trim() || null,
+      sheet_source: path ? 'UPLOAD' : 'MANUAL', confirm: true };
+    if (r.location_id) body.location_id = r.location_id;
+    if (path) body.sheet_url = path;
+    await plFetch('/pallets/movements', { method: 'POST', body });
+    toast(`Καταχωρήθηκε η παράδοση: ${_plvNo(r)} · πήραμε ${x.t} · δώσαμε ${x.g}`);
+    plvCloseModal(); await renderPalletLedger();
+  } catch (e) {
+    const box = document.getElementById('plvErr');
+    const t = `Η παράδοση της ${escapeHtml(_plvNo(r))} δεν καταχωρήθηκε${e.plvStep === 'upload' ? ' (το δελτίο δεν ανέβηκε)' : ''}: ${escapeHtml(_plvErrMsg(e))}`;
+    if (box) box.innerHTML = `<div class="plv-err"><span>${t}</span></div>`; else showErrorToast(t, 'error');
+  } finally { PLV.busy = false; }
+}
+
+/* «Χωρίς ανταλλαγή» (N13c, owner 28/10): before it writes, what goes (the order's pending movements) and what stays
+   (its confirmed ones, which leave only with a reversal she ticks), and that the invoicing gate opens. The act is the
+   base's (POST /pallets/no-exchange); a ticked reversal of the loading runs after it, through the page's /reverse. */
+function plvMissNoEx(stopId) {
+  if (!_plvMissWrite()) return;
+  const r = _plvMissFind(stopId);
+  if (!r || _plvMissNoExWhy(r)) return;
+  const pend = PLV.movements.filter(m => m.order_id === r.order_id && m.status === 'pending');
+  const conf = PLV.movements.filter(m => m.order_id === r.order_id && m.status === 'confirmed');
+  const loads = conf.filter(m => m.event_type === 'LOADING');
+  const line = m => `<div class="plv-hrow"><b>${escapeHtml([PLV_EVENT_GR[m.event_type] || m.event_type, _plvFmtDate(m.movement_date), _plvLoc(m)].filter(Boolean).join(' · '))} · πήραμε ${m.taken}${m.given ? ' · δώσαμε ' + m.given : ''}</b>${m.status === 'confirmed' ? `<span>${m.sheet_url ? 'Επιβεβαιώθηκε από δελτίο' : 'Επιβεβαιώθηκε'}. ${m.event_type === 'LOADING' ? 'Φεύγει μόνο αν επιλέξεις αντιλογισμό.' : 'Μένει.'}</span>` : ''}</div>`;
+  const bal = _plvBalOfMove(r);
+  const revDelta = -_plvSum(loads, m => m.given - m.taken);
+  _plvOpenShell(_plvShell({
+    title: 'Χωρίς ανταλλαγή',
+    subs: [escapeHtml([_plvNo(r), _plvName(r)].join(' · '))],
+    body: _plvSect('', '<p class="plv-ptext">Η παραγγελία γράφεται «χωρίς ανταλλαγή παλετών» και η στάση φεύγει από τη λίστα.</p>')
+      + _plvSect('Σβήνονται (εκκρεμείς της παραγγελίας)', pend.length ? pend.map(line).join('') : '<div class="plv-mid">Καμία</div>', true)
+      + _plvSect('Μένουν στο υπόλοιπο (οριστικές)', (conf.length ? conf.map(line).join('') : '<div class="plv-mid">Καμία</div>')
+        + (loads.length ? `<label class="plv-chk"><input type="checkbox" id="plvNxRev"> Αντιλογισμός και της φόρτωσης${bal != null ? ` (μετά: ${_plvSigned(bal)} → ${_plvSigned(bal + revDelta)})` : ''}</label>` : ''), true)
+      + _plvSect('', `<div class="plv-form">
+        <div class="plv-dup"><b>Η παραγγελία ανοίγει για τιμολόγηση χωρίς δελτίο παλετών.</b></div>
+        ${_plvField('Αιτιολογία', `<input id="plvNxReason" type="text" placeholder="π.χ. ο πελάτης δεν κάνει ανταλλαγή σε αυτή τη γραμμή" oninput="document.getElementById('plvNxGo').disabled=this.value.trim().length<3">`, 'Καταγράφεται ποιος και πότε, με την αιτιολογία· ο δρομολογητής το βλέπει στην παραγγελία.')}
+        <div id="plvErr"></div>
+        <button id="plvNxGo" class="plv-btn plv-btn-p plv-go-wide" disabled onclick="plvMissNoExDo(${stopId})">Χωρίς ανταλλαγή</button>
+      </div>`),
+    actions: [_plvLink('plvCloseModal()', 'Άκυρο')]
+  }), true);
+  setTimeout(() => { const i = document.getElementById('plvNxReason'); if (i) i.focus(); }, 0);
+}
+async function plvMissNoExDo(stopId) {
+  if (!_plvMissWrite() || PLV.busy) return;
+  const r = _plvMissFind(stopId);
+  const reason = ((document.getElementById('plvNxReason') || {}).value || '').trim();
+  if (!r || reason.length < 3) return;
+  const rev = !!(document.getElementById('plvNxRev') || {}).checked;
+  const loads = rev ? PLV.movements.filter(m => m.order_id === r.order_id && m.status === 'confirmed' && m.event_type === 'LOADING') : [];
+  PLV.busy = true;
+  try {
+    try { await plFetch('/pallets/no-exchange', { method: 'POST', body: { order_id: r.order_id, order_stop_id: r.stop_id, reason } }); }
+    catch (e) {
+      const box = document.getElementById('plvErr');
+      const t = `Το «Χωρίς ανταλλαγή» της ${escapeHtml(_plvNo(r))} δεν γράφτηκε: ${escapeHtml(_plvErrMsg(e))}`;
+      if (box) box.innerHTML = `<div class="plv-err"><span>${t}</span></div>`; else showErrorToast(t, 'error');
+      return;
+    }
+    // the switch is written (with its trace); a reversal that fails now is said with what DID happen
+    const failed = [];
+    for (const m of loads) {
+      try { await plFetch('/pallets/movements/' + m.id + '/reverse', { method: 'POST', body: { reason: 'Χωρίς ανταλλαγή — ' + reason } }); }
+      catch (e) { failed.push(`${_plvFmtDate(m.movement_date)} (${_plvErrMsg(e)})`); }
+    }
+    if (failed.length) showErrorToast(`Η ${_plvNo(r)} γράφτηκε χωρίς ανταλλαγή, αλλά ο αντιλογισμός της φόρτωσης δεν έγινε: ${failed.join('· ')}. Κάν' τον από το πάνελ της κίνησης.`, 'error', 12000);
+    else toast(`Η ${_plvNo(r)} γράφτηκε χωρίς ανταλλαγή${loads.length ? ' · η φόρτωση αντιλογίστηκε' : ''} ✓`);
+    plvCloseModal(); await renderPalletLedger();
+  } finally { PLV.busy = false; }
+}
+
 /* ── The page: one bar (title · tabs · Εξαγωγή · Νέα κίνηση, N01), the «Θέλουν δράση» line, then the view.
    The app's own top bar (bell, avatar) stays above it: moving the bar into it is the Weekly's mount, a shell change
    not asked here. ── */
 const PLV_TABS = [['action', 'Προς ενέργεια'], ['week', 'Εβδομάδα'], ['moves', 'Κινήσεις'], ['bal', 'Υπόλοιπα']];
 function _plvSubtitle() {
   if (PLV.card || PLV.loadErr) return '';
+  if (PLV.tab === 'action' && PLV.act === 'missing') { const n = (PLV.missing || []).length; return `${n} ${n === 1 ? 'στάση' : 'στάσεις'}`; }
   if (PLV.tab === 'action') return PLV.act === 'noreturn' ? `${_plvNoReturnCount()} ${_plvNoReturnCount() === 1 ? 'παράδοση' : 'παραδόσεις'}` : `έως σήμερα ${_plvFmtDate(_plvToday())}`;
   if (PLV.tab === 'moves') return `${_plvRows().length} από ${PLV.movements.filter(_plvLive).length} κινήσεις`;
   if (PLV.tab === 'bal') return 'οριστικές κινήσεις';
@@ -711,7 +917,7 @@ function _plvNeedHtml() {
   };
   const t = _plvClientTotals();
   const right = PLV.tab === 'bal' && !PLV.card ? '' : `<span class="plv-need-r"><b>Πελάτες</b> <span class="plv-mid">μας οφείλουν</span> <b>${t.owed}</b> <span class="plv-dot">·</span> <span class="plv-mid">οφείλουμε</span> <b>${t.owe}</b> <span class="plv-dot">·</span> <span class="plv-mid">καθαρό</span> <b>${_plvSigned(t.net)}</b></span>`;
-  return `<div class="plv-need"><span class="plv-need-l">Θέλουν δράση</span>${it('pending', 'Εκκρεμείς', due)}<span class="plv-dot">·</span>${it('noreturn', 'Χωρίς πλήρη επιστροφή', nr)}${right}</div>`;
+  return `<div class="plv-need"><span class="plv-need-l">Θέλουν δράση</span>${it('pending', 'Εκκρεμείς', due)}<span class="plv-dot">·</span>${_plvMissShown() ? (PLV.missErr ? it('missing', 'Λείπει παράδοση', '⚠') : it('missing', 'Λείπει παράδοση', PLV.missing.length)) + '<span class="plv-dot">·</span>' : ''}${it('noreturn', 'Χωρίς πλήρη επιστροφή', nr)}${right}</div>`;
 }
 // Bars under the line: read-only role (N16 Ε), the order details that did not come (N16 Γ), a cut list (Υ1).
 function _plvNoticesHtml() {
@@ -732,6 +938,10 @@ function _plvCountHtml() {
     const d = _plvPendDue().length, s = _plvPendSched().length;
     const dq = _plvQ(_plvPendDue()).length;
     return `Νεότερο πρώτα · ${PLV.q.trim() ? `${dq} από ` : ''}${d} έως σήμερα${s ? ` · ${s} ${s === 1 ? 'προγραμματισμένη' : 'προγραμματισμένες'}` : ''}`;
+  }
+  if (PLV.tab === 'action' && PLV.act === 'missing') {
+    const all = PLV.missing || [], n = _plvRows().length, o = new Set(all.map(x => x.order_id)).size;
+    return `Νεότερο πρώτα · ${PLV.q.trim() ? `${n} από ` : ''}${all.length} ${all.length === 1 ? 'στάση' : 'στάσεις'} σε ${o} ${o === 1 ? 'παραγγελία' : 'παραγγελίες'}`;
   }
   if (PLV.tab === 'action') { const n = _plvRows().length, t = _plvNoReturnCount(); return `Νεότερο πρώτα · ${PLV.q.trim() ? `${n} από ` : ''}${t} ${t === 1 ? 'παράδοση' : 'παραδόσεις'}`; }
   return 'Νεότερο πρώτα';
@@ -757,6 +967,7 @@ function _plvToolbarHtml() {
   return '';
 }
 function _plvBodyHtml() {
+  if (PLV.tab === 'action' && PLV.act === 'missing') return _plvMissShown() ? _plvMissingHtml() : _plvPendingHtml();
   if (PLV.tab === 'action') return PLV.act === 'noreturn' ? _plvNoReturnHtml() : _plvPendingHtml();
   if (PLV.tab === 'moves') return _plvMovesHtml();
   if (PLV.tab === 'bal') return _plvBalanceHtml();
@@ -825,6 +1036,14 @@ function _plvCsvSave(head, body, fname, cut, inCard) {
 }
 function plvExportCSV() {
   let rows, view;
+  if (PLV.tab === 'action' && PLV.act === 'missing') {
+    rows = _plvPartyGroups(_plvRows()).flatMap(G => G.rows);
+    if (!rows.length) { toast('Καμία στάση για εξαγωγή', 'error'); return; }
+    const cols = [PLV_COL.no(), PLV_COL.ref(), PLV_COL.party('Πελάτης'), PLV_COL.date('Παράδοση'), PLV_COL.pal(), PLV_COL.loc(), PLV_COL.veh()];
+    _plvCsvSave(cols.map(c => c.h).concat(['Στάσεις παράδοσης']), rows.map(r => cols.map(c => c.csv(r)).concat([r.unloading_stops]).map(_plvCsvEsc).join(',')),
+      'leipei-paradosi-' + _plvToday() + '.csv', null);
+    return;
+  }
   if (PLV.tab === 'action' && PLV.act === 'pending') { rows = _plvFlatRows().concat(_plvQ(_plvPendSched())); view = 'pending'; }
   else if (PLV.tab === 'action') { rows = _plvPartyGroups(_plvRows()).flatMap(G => G.rows); view = 'noreturn'; }
   else { rows = PLV.groupBy === 'none' ? _plvRows() : _plvMoveGroups(_plvRows()).flatMap(G => G.rows); view = 'moves'; }
@@ -1768,6 +1987,11 @@ const _PLV_STYLE = `<style>
   .plv-form{display:flex;flex-direction:column;gap:12px;margin-top:4px}
   .plv-mcnt{color:var(--text-on-dark);font-weight:600}
   .plv-go-wide{width:100%;justify-content:center;height:36px}
+  .plv-box-e{display:inline-block;width:44px;height:20px;border:1px dashed var(--border);border-radius:4px;vertical-align:middle}
+  .plv-macts{display:inline-flex;gap:8px}
+  .plv-go:disabled{color:var(--text-dim);cursor:not-allowed}
+  .plv-why td{height:auto!important;padding:0 8px 8px!important;border-top:0!important;font-size:var(--text-sm);color:var(--text-mid)}
+  .plv-chk{display:flex;gap:8px;align-items:center;margin-top:8px;cursor:pointer}
   .plv-after-k span{display:block;color:var(--text-mid);font-size:12px}.plv-after-k b{font-weight:600}
   .plv-grid2{display:flex;gap:20px}.plv-grid2>*{flex:1 1 0;min-width:0}
   .plv-g21>*:last-child{flex:0 0 176px}
@@ -1803,7 +2027,8 @@ const _PLV_STYLE = `<style>
 </style>`;
 
 window.renderPalletLedger = renderPalletLedger;
-window.plvTab = plvTab; window.plvAct = plvAct; window.plvBalKind = plvBalKind;
+window.plvTab = plvTab; window.plvAct = plvAct;
+window.plvMissFill = plvMissFill; window.plvMissFillLive = plvMissFillLive; window.plvMissFillDo = plvMissFillDo; window.plvMissNoEx = plvMissNoEx; window.plvMissNoExDo = plvMissNoExDo; window.plvBalKind = plvBalKind;
 window.plvOpenConfirm = plvOpenConfirm; window.plvCloseModal = plvCloseModal; window.plvConfirmLive = plvConfirmLive;
 window.plvDoConfirm = plvDoConfirm; window.plvFixDelivery = plvFixDelivery; window.plvDoFix = plvDoFix; window.plvFixLive = plvFixLive;
 window.plvZeroCheck = plvZeroCheck;
