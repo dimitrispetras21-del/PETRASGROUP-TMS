@@ -688,7 +688,8 @@ function localPanel(m) {
         dim: lm.dim === true });
     }
     for (const h of r.handovers || []) {
-      if (!h.note || String(h.note).trim() !== LOCAL_DELIVERY_NOTE) continue;
+      // the note the window pre-fills; a dispatcher may add to it («… Δευτέρα»), so it is its START that counts
+      if (!h.note || !String(h.note).trim().startsWith(LOCAL_DELIVERY_NOTE)) continue;
       add(athensDay(h.at), { kind: 'deliver', rtId: r.rtId, id: h.segmentId, driver: h.tripType === 'PARTNER' ? (h.partner || 'Συνεργάτης') : (h.driver || 'χωρίς οδηγό'),
         vehicle: h.tripType === 'PARTNER' ? null : h.truck, side: null, at: athensTime(h.at) || '',
         what: `${h.place_note || '—'} → παράδοση`, why: truck ? `το ${truck} ελεύθερο από ${athensTime(h.at) || ''}`.trim() : '', dim: false });

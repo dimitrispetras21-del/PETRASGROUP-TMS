@@ -2525,7 +2525,7 @@ SCN['rota-locals'] = async (browser, origin) => {
     const t = await bText(page, `${D} .wi4-dlg-t`);
     ok(scn, 'B the window says «⤷ Επόμενο φορτίο · ίδιο φορτηγό · Κάθοδος»', t.includes('⤷ Επόμενο φορτίο · ίδιο φορτηγό · Κάθοδος'), t);
     const lines = await page.$$eval(`${D} [data-act="save"][data-piece]`, (bs) => bs.map((b) => b.dataset.piece + ':' + b.textContent.trim())).catch(() => []);
-    ok(scn, 'B the national loads waiting (both directions), each with «Σύνδεση»; no VS, no stock', lines.includes('4201:Σύνδεση') && lines.every((x) => /^420\d:Σύνδεση$/.test(x)), lines);
+    ok(scn, 'B the national loads waiting, each with «Σύνδεση»; no VS, no stock, none to / from Veroia (4202 → Βέροια out)', lines.includes('4201:Σύνδεση') && !lines.some((x) => x.startsWith('4202')) && lines.every((x) => /^420\d:Σύνδεση$/.test(x)), lines);
     ok(scn, 'B no «Νέα παραγγελία | Από αναμονή» switch', !(await bHas(page, `${D} .wn5-seg`)));
     await bClick(page, `${D} [data-act="save"][data-piece="4201"]`);
     await page.waitForTimeout(400);
@@ -2556,6 +2556,15 @@ SCN['rota-locals'] = async (browser, origin) => {
     ok(scn, 'D the change window titled «Παράδοση με τοπικό · Κάθοδος», at the first delivery (LARISA, Tue), note pre-filled', !!f && /Παράδοση με τοπικό · Κάθοδος/.test(f.t)
       && f.place === 'LARISA TEST' && f.day === '2026-10-13' && f.note === 'Παράδοση με τοπικό', f);
     ok(scn, 'D opening writes nothing', !S.plan.some((x) => x.m !== 'GET'), S.plan.filter((x) => x.m !== 'GET').map((x) => x.m + ' ' + x.path));
+    await page.context().close();
+  }
+  { // D2 · «Παράδοση με τοπικό › Άνοδος» on a cycle whose ΑΝΟΔΟΣ only ends at Veroia: said, no form, nothing sent
+    const { page, S } = await bOpen(browser, origin, { board: bBoard() });
+    await bMenu(page, 203, 'local-deliv-a');
+    await page.waitForTimeout(300);
+    const ev = await bEv(page);
+    ok(scn, 'D2 ΑΝΟΔΟΣ without a delivery outside Veroia → «δεν έχει παράδοση στην άνοδο», no window', ev.some((e) => e.startsWith('toast') && e.includes('δεν έχει παράδοση στην άνοδο'))
+      && !(await bHas(page, '.wn5h-handover')) && !S.plan.some((x) => x.m !== 'GET'), ev);
     await page.context().close();
   }
   { // E · «ΤΟΠΙΚΑ» under the board: every day of the week, the local driver of Monday with his loading

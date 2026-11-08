@@ -533,3 +533,18 @@ test('owner 8/11: «ΤΟΠΙΚΑ» — a local loading and a «Παράδοση 
   assert.strictEqual(p[1].drivers[0].vehicle, 'TST-9');
   assert.match(p[1].drivers[0].moves[0].why, /TST-1 · TRL-1 ελεύθερο από 15:00/);
 });
+
+test('owner 8/11: a rota on the ΑΝΟΔΟΣ — delivered north, then another pickup before Veroia', () => {
+  const b = fix();
+  const c = b.cycles.find((x) => x.rt_id === 101);
+  const leg = (act, legId, pieceId, pallets) => Object.assign(JSON.parse(JSON.stringify(c.stops[1].legs[0])), { act, leg_id: legId, piece_id: pieceId, pallets, client: 'ROTA A', nat_order_id: 9101 });
+  const st = (id, loc, legs) => Object.assign(JSON.parse(JSON.stringify(c.stops[4])), { stop_id: id, location_id: loc, location: 'Q' + loc, legs });
+  // ΑΝΟΔΟΣ: 1005 load 4011, 1006 load 4012 … then a delivery of 4011 at loc 6 (not Veroia), a new pickup at 6, its drop at 5
+  const end = c.stops.find((s) => s.stop_id === 1007);
+  const drop4011 = Object.assign(JSON.parse(JSON.stringify(end.legs.find((l) => l.leg_id === 5004))), {});
+  end.legs = end.legs.filter((l) => l.leg_id !== 5004);
+  c.stops.splice(6, 0, st(1101, 6, [drop4011, leg('load', 5911, 4911, 5)]), st(1102, 5, [leg('unload', 5911, 4911, 5)]));
+  c.stops.forEach((s, i) => { s.seq = i + 1; });
+  const r = M(b).days.flatMap((d) => d.rows).find((x) => x.rtId === 101);
+  assert.deepStrictEqual(r.rota.map((x) => [x.legId, x.side, x.pallets]), [[5911, 'ANODOS', 5]]);
+});

@@ -1429,8 +1429,9 @@
   // load, the «φτάνει 16:00 · φόρτωση …» hours and the stop's rank «μπαίνει 3η» are gone; the one warning is the busy
   // driver / truck / trailer of the same day, beside «Πρόσθεσε» (_plusWhy).
   function _plusChips(st, it) {
-    const n = st.pallets + (it.is_stock ? (_takeOf(st, it) || 0) : (it.pallets == null ? 0 : it.pallets));
-    const unk = (st.palUnk || 0) + (!it.is_stock && it.pallets == null ? 1 : 0);   // F1/F4: a floor when pallets are unknown
+    // a rota load is never on the truck with the side's loads (WN5L _rotaSplit): its x/33 is its own (code review high)
+    const n = (st.rota ? 0 : st.pallets) + (it.is_stock ? (_takeOf(st, it) || 0) : (it.pallets == null ? 0 : it.pallets));
+    const unk = (st.rota ? 0 : (st.palUnk || 0)) + (!it.is_stock && it.pallets == null ? 1 : 0);   // F1/F4: a floor when pallets are unknown
     const warn = [];
     // F27 (code review): a VS's Veroia day (the owner's rule: its own, even when it has passed) is said when it is not
     // the side's — a new Veroia stop off the side's days, or the cycle's existing Veroia stop of another day, which
@@ -1553,6 +1554,8 @@
     let cut = 0;
     for (const it of all) {
       if (it.is_stock || it.at_hub || it.kind !== 'national') continue;
+      // «άσε τη Βέροια» (owner 8/11): a load that leaves from or goes to Veroia is not a rota (code review high)
+      if (st.hub != null && (it.nat_from_location_id === st.hub || it.nat_to_location_id === st.hub || it.position_location_id === st.hub)) continue;
       const d = dayOf(it);
       if (st.rotaFrom && d && d < st.rotaFrom) { cut++; continue; }
       cand.push(Object.assign(it, { _ro: false }));
