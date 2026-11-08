@@ -105,6 +105,9 @@
   background: var(--surface-dark, #0B1929); color: var(--text-on-dark, #fff); }
 .wn5-rdp-h b, .rdc-h b { font-family: 'Syne', sans-serif; font-size: 16px; letter-spacing: .5px; }
 .wn5-rdp-h span, .rdc-h span { opacity: .8; font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Owner 8/11: in the 400px column a long driver name cut the days («29/1…»). The head text wraps instead of being
+   cut — the days are the part that says when; a second line costs less than a lost date. */
+.rdc-h span { white-space: normal; overflow: visible; flex: 1 1 0; }
 .wn5-rdp-x, .rdc-x { margin-left: auto; background: none; border: none; color: inherit; font-size: 22px; line-height: 1; cursor: pointer; }
 .wn5-rdp-b, .rdc-b { flex: 1; overflow-y: auto; padding: 16px 20px 24px; }
 @media print { .wn5-rdp, .rdc { display: none; } }
