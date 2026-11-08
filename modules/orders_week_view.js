@@ -942,6 +942,7 @@ const OrdersWeekView = (() => {
       if (!ctx.isCurrent()) return;
     }
     S.data = data;
+    S.rtRoute = new Map();   // the RT routes of the cards (_rtLoad): read once per load of the week
     _paint(ctx);
     OC().whenDocs(() => { if (ctx.isCurrent()) _paint(ctx); });
   }
@@ -1169,7 +1170,7 @@ const OrdersWeekView = (() => {
       // A repaint, not an opening: no slide-in (oi-slide), and she stays where she had scrolled.
       const p = document.getElementById(wasOpen.type === 'intl' ? 'intlDetail' : 'natlDetail');
       if (p) p.style.animation = 'none';
-      _openCard(wasOpen.type, wasOpen.id, true);
+      _openCard(wasOpen.type, wasOpen.id, true, wasOpen.rt);
       if (p) p.scrollTop = wasOpen.top;
     }
     _fitAll(ctx.body);
@@ -1428,7 +1429,8 @@ const OrdersWeekView = (() => {
       : r.exp.length > 1 || r.imp.length > 1 ? 'groupage' : '';
     const blk = verdict.kind === 'blocked';   // the price: the one block since B0
     // trip-row / trip-part: the heavier rule between two round trips (assets/style.css, owner 3/11)
-    return `<div class="ow4-row trip-row${blk ? ' ow4-blk' : ''}" data-owvopen="intl:${esc(r.openRec.id)}">
+    // data-owvrt: the card opened from this row shows the whole RT's route under the order's (_rtMountCard)
+    return `<div class="ow4-row trip-row${blk ? ' ow4-blk' : ''}" data-owvopen="intl:${esc(r.openRec.id)}"${isRt ? ` data-owvrt="${esc(r.code)}"` : ''}>
       <div class="ow4-c-rt"><div class="ow4-l1">${isRt ? esc(r.code) : '<span class="ow4-d">—</span>'}</div>${tag ? `<div class="ow4-l2">${esc(tag)}</div>` : ''}</div>
       <div class="ow4-side ow4-l">${exp}</div>
       ${_assignHtml(v, verdictText(verdict, n), _sumHtml(r.counted, mk), '', _rowDocs(r).length ? r.docI : null)}
@@ -1495,7 +1497,8 @@ const OrdersWeekView = (() => {
     const open = e.target.closest('[data-owvopen]');
     if (open) {
       const [type, id] = open.dataset.owvopen.split(':');
-      _openCard(type, id);
+      const rtEl = open.closest('[data-owvrt]');
+      _openCard(type, id, false, rtEl ? rtEl.dataset.owvrt : null);
     }
   }
 
@@ -1812,6 +1815,7 @@ const OrdersWeekView = (() => {
     const ctx = S.ctx, c = S.card;
     if (!panel || !panel.closest('.owv-cards') || !ctx || !ctx.isCurrent() || !c) return;
     if ((panel.id === 'natlDetail' ? 'natl' : 'intl') !== c.type) return;
+    if (c.type === 'intl') _rtMountCard(panel);
     const e = S.ed;
     if (e && e.busy && !(e.where === 'card' && e.type === c.type && e.id === c.id)) return;   // a line's write in flight
     if (!ctx.body.querySelector(`${_edSel(c.type, c.id)} [data-owved]`)) { if (e && e.where === 'card' && !e.busy) _edClose(); return; }
@@ -1836,9 +1840,9 @@ const OrdersWeekView = (() => {
     const c = S.card; if (!c) return null;
     const p = document.getElementById(c.type === 'intl' ? 'intlDetail' : 'natlDetail');
     if (!p || p.classList.contains('hidden') || !p.closest('.owv-cards')) return null;
-    return { type: c.type, id: c.id, top: p.scrollTop };
+    return { type: c.type, id: c.id, rt: c.rt || null, top: p.scrollTop };
   }
-  function _openCard(type, id, quiet) {
+  function _openCard(type, id, quiet, rt) {
     const d = S.data; if (!d) return;
     const rec = type === 'natl' ? d.natl.find(r => r.id === id) : [...d.intl, ...(d.cancelled || [])].find(r => r.id === id);
     if (!rec || (type === 'natl' ? typeof openNatlCardWith !== 'function' : typeof openIntlCardWith !== 'function')) {
@@ -1853,7 +1857,7 @@ const OrdersWeekView = (() => {
     // back as if it were current. A repaint (quiet), or a click on the line of the card already open, keeps it.
     const shown = _openCardNow();
     if (!quiet && S.ed && S.ed.where === 'card' && !S.ed.busy && !(shown && shown.type === type && shown.id === id)) _edClose();
-    S.card = { type, id };
+    S.card = { type, id, rt: rt || null };
     if (type === 'intl') {
       if (typeof closeNatlDetail === 'function') closeNatlDetail();
       openIntlCardWith(rec);
@@ -1869,6 +1873,97 @@ const OrdersWeekView = (() => {
     const load = loads ? loads.find(l => link(l.fields['Source National Order']) === rec.id) || null : null;
     const known = loads != null && (!!load || OC().weekStartOf(rec) === S.week);
     openNatlCardWith(rec, { load, loadsFailed: !known });
+  }
+
+  // ── The route diagram in the card (owner 8/11/2026: «μέσα στην κάρτα της κάθε παραγγελίας ξεχωριστά και στο RT
+  // όταν είναι στο εβδομάδα»; core/route-diagram.js, the one component of the three week screens).
+  // The order's own «Διαδρομή» is the card's (orders_intl.js _oiRouteDiagram); this page adds two things only it has:
+  //  · natLegFor: a VS order's national leg from the v5 boards this load already holds (the week's board and the
+  //    away weeks' boards, _v5Away). No board (before L, scope «Διεθνή», a failed read) = null, and the diagram
+  //    says «εκτελεστής: δεν διαβάστηκε», never «χωρίς ανάθεση» (principle 1). No new read for it.
+  //  · «Δρομολόγιο RT-…»: a section under «Διαδρομή» when the card was opened from an RT row of two or more orders
+  //    (one order: its own diagram IS the RT's). Its stops are read once per RT per load (S.rtRoute): load()'s
+  //    stop read carries only the four date fields, and only for the window's orders.
+  function _weekBoards(d) {
+    return [d && d.v5Board, ...((d && d.v5Away && d.v5Away.boards) || []).map(x => x.board)].filter(Boolean);
+  }
+  // → null when the card is not this page's (the caller then says where the leg lives); else { leg, note }:
+  // leg found; or the week's board read and the leg on none of the boards (before day L it lives in national_loads)
+  // = a grey note; or the board not read = leg null, no note → the diagram's red «δεν διαβάστηκε».
+  function _natLegOf(d, rec) {
+    const boards = _weekBoards(d);
+    const leg = boards.length ? RouteDiagramAdapters.natLegFromBoard(boards, pgIdOf(rec)) : null;
+    if (leg) return { leg, note: null };
+    // an away week's board that failed may hold the leg: then no note, the red «δεν διαβάστηκε» stays
+    const allRead = !!d.v5Board && !d.v5BoardFailed && !((d.v5Away && d.v5Away.failed) || []).length;
+    return { leg: null, note: allRead ? 'εκτελεστής: εκτός Εβδομαδιαίου v5' : null };
+  }
+  function natLegFor(rec) {
+    const ctx = S.ctx, d = S.data, c = S.card;
+    if (!rec || !ctx || !ctx.isCurrent() || !d || !c || c.type !== 'intl' || c.id !== rec.id) return null;
+    const p = document.getElementById('intlDetail');
+    if (!p || !p.closest('.owv-cards') || typeof RouteDiagramAdapters === 'undefined') return null;
+    return _natLegOf(d, rec);
+  }
+  const RT_STOP_FIELDS = () => [F.STOP_PARENT_ORDER, F.STOP_NUMBER, F.STOP_TYPE, F.STOP_LOCATION, F.STOP_DATETIME, F.STOP_PALLETS, 'Completed At'];
+  // The orders the RT's truck carries, in RT order (/costs/rt legs[].seq): a split leg as itself (its own stops),
+  // never a cancelled order; one record once.
+  function _rtRecs(r) {
+    const seen = new Set();
+    return r.legs.filter(l => l.rec && !l.cancelled).map(l => l.own || l.rec).filter(x => !seen.has(x.id) && seen.add(x.id));
+  }
+  async function _rtLoad(code, recs) {
+    const cache = S.rtRoute;
+    cache.set(code, { loading: true });
+    let st;
+    try {
+      const ids = [...new Set(recs.flatMap(x => x.fields['ORDER STOPS'] || []))];
+      const batches = [];
+      for (let i = 0; i < ids.length; i += 90) {
+        batches.push(atGetAll(TABLES.ORDER_STOPS, { filterByFormula: `OR(${ids.slice(i, i + 90).map(id => `RECORD_ID()="${id}"`).join(',')})`, fields: RT_STOP_FIELDS() }, false));
+      }
+      const by = new Map();
+      (await Promise.all(batches)).flat().forEach(sr => {
+        const p = sr.fields[F.STOP_PARENT_ORDER], pid = Array.isArray(p) ? p[0] : p;
+        if (!by.has(pid)) by.set(pid, []);
+        by.get(pid).push(sr);
+      });
+      st = { by };
+    } catch (e) { console.error('orders week: RT route', e); st = { err: true }; }
+    if (cache !== S.rtRoute) return;   // another week or a reload started meanwhile
+    cache.set(code, st);
+    const c = _openCardNow();
+    if (c && c.type === 'intl' && c.rt === code) _rtMountCard(document.getElementById('intlDetail'));
+  }
+  const _rtMsg = (txt, red) => `<div class="rd">${red ? '<div class="rd-note" data-tone="red">' : '<div class="rd-empty">'}${esc(txt)}</div></div>`;
+  function _rtRouteHtml(r) {
+    const recs = _rtRecs(r);
+    if (!S.rtRoute) S.rtRoute = new Map();
+    const st = S.rtRoute.get(r.code);
+    if (!st) { _rtLoad(r.code, recs); return _rtMsg('Φόρτωση διαδρομής…'); }
+    if (st.loading) return _rtMsg('Φόρτωση διαδρομής…');
+    if (st.err) return _rtMsg('Η διαδρομή του δρομολογίου δεν διαβάστηκε.', true);
+    // an order of the RT outside this page's read is not drawn: said, never a shorter route that looks whole
+    const unread = r.legs.filter(l => !l.rec).length;
+    let html;
+    try {
+      const A = RouteDiagramAdapters;
+      const items = recs.map(x => { const nl = x.fields['Veroia Switch'] ? _natLegOf(S.data, x) : { leg: null, note: null };
+        return { rec: x, stops: st.by.get(x.id) || [], ctx: { natLeg: nl.leg, natLegNote: nl.note } }; });
+      html = RouteDiagram.render(A.facadeRt(items, { today: A.athensDay(new Date().toISOString()), locMeta: id => OC()._locMeta(id) }));
+    } catch (e) { console.error('orders week: RT route diagram', e); html = _rtMsg('Η διαδρομή του δρομολογίου δεν σχεδιάστηκε.', true); }
+    return html + (unread ? _rtMsg(`${unread === 1 ? '1 παραγγελία' : unread + ' παραγγελίες'} του δρομολογίου εκτός ανάγνωσης: δεν σχεδιάζ${unread === 1 ? 'εται' : 'ονται'}.`, true) : '');
+  }
+  function _rtMountCard(panel) {
+    if (!panel) return;
+    const old = panel.querySelector('.owv-card-rt');
+    if (old) old.remove();
+    const c = S.card;
+    const r = c && c.type === 'intl' && c.rt ? (S.rowsAll || []).find(x => x.kind === 'rt' && x.code === c.rt) : null;
+    if (!r || r.legs.length < 2) return;
+    const anchor = panel.querySelector('[data-oi-sect="route"]');
+    if (!anchor) return;
+    anchor.insertAdjacentHTML('afterend', `<div class="oi-sect owv-card-rt"><div class="oi-sect-t">Δρομολόγιο ${esc(r.code)}</div>${_rtRouteHtml(r)}</div>`);
   }
 
   // The board's numbers of this read; an error is said on the row («—» with why), never a 0.
@@ -2225,7 +2320,7 @@ const OrdersWeekView = (() => {
     });
   }
 
-  return { render, recordChanged, cardPainted, buildWeek, rowNumbers, legNumber, totals, rowMarks, natMarks, rowSum, printSequence, printDoc, rtInvoicing, verdictText, tpyOf, pctVsPrev, stripWeeks, groupRows, daySections,
+  return { render, recordChanged, cardPainted, natLegFor, buildWeek, rowNumbers, legNumber, totals, rowMarks, natMarks, rowSum, printSequence, printDoc, rtInvoicing, verdictText, tpyOf, pctVsPrev, stripWeeks, groupRows, daySections,
     weekStatus, pairNationals, numberNationals, natNumberOrder, natNoText, routeSplit, ordersFormula, placeText, isVsNational, naturalDateOf, pgIdOf, dayLabel, weekTitle,
     // the pallets weekly view (modules/pallets_week.js) reads the same week through these, never a copy
     load, boardOf, rowDocsOf, docsInner, endsOf, vehicleOf, dayShort, dayFull, clientRaw, isSplitLeg };
