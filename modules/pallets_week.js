@@ -548,12 +548,15 @@ const PalletsWeek = (() => {
   // ── the route diagram of the panel's order (owner 8/11 #5, core/route-diagram.js — one component for the
   // three week screens). Read when the panel opens, once per order per load: loadStops reads only the counting
   // fields, and only of delivered PE orders, so it cannot feed the diagram.
-  // A VS order's national leg comes from this week's v5 board; a board that cannot be read = null, and the
-  // diagram then says «εκτελεστής: δεν διαβάστηκε» (never «χωρίς ανάθεση», principle 1).
-  function weekBoard() {
-    if (!S.v5 || S.v5.week !== S.week) {
-      S.v5 = { week: S.week, p: planFetch('GET', '/plan/board?week=' + S.week, { designed: ['no_route'] })
-        .then(b => (b && b.week === S.v5.week ? b : null)).catch(() => null) };
+  // A VS order's national leg comes from the v5 boards of this week and its two neighbours (the leg can be planned
+  // in the week before or after the order's week, as orders_week_view's v5Earlier knows). No board readable = null,
+  // and the diagram then says «εκτελεστής: δεν διαβάστηκε» (never «χωρίς ανάθεση», principle 1).
+  function weekBoards() {
+    const week = S.week;
+    if (!S.v5 || S.v5.week !== week) {
+      const at = n => { const x = new Date(week + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+      const one = w => planFetch('GET', '/plan/board?week=' + w, { designed: ['no_route'] }).then(b => (b && b.week === w ? b : null)).catch(() => null);
+      S.v5 = { week, p: Promise.all([at(-7), week, at(7)].map(one)).then(bs => bs.filter(Boolean)) };
     }
     return S.v5.p;
   }
@@ -564,7 +567,8 @@ const PalletsWeek = (() => {
     try {
       const stops = ids.length ? await atGetAll(TABLES.ORDER_STOPS, { filterByFormula: `OR(${ids.map(id => `RECORD_ID()="${id}"`).join(',')})`,
         fields: [F.STOP_NUMBER, F.STOP_TYPE, F.STOP_LOCATION, F.STOP_DATETIME, F.STOP_PALLETS, 'Completed At'] }, false) : [];
-      const natLeg = (rec.fields || {})['Veroia Switch'] ? RouteDiagramAdapters.natLegFromBoard(await weekBoard(), pgOf(rec)) : null;
+      let natLeg = null;
+      if ((rec.fields || {})['Veroia Switch']) { const bs = await weekBoards(); natLeg = bs.length ? RouteDiagramAdapters.natLegFromBoard(bs, pgOf(rec)) : null; }
       st = { stops, natLeg };
     } catch (e) { console.error('pallets week: route', e); st = { err: true }; }
     if (route !== S.route) return;   // a reload or another week started meanwhile
@@ -577,8 +581,11 @@ const PalletsWeek = (() => {
     if (!st) { loadRoute(rec); return '<div class="plw-g">φόρτωση διαδρομής…</div>'; }
     if (st.loading) return '<div class="plw-g">φόρτωση διαδρομής…</div>';
     if (st.err) return '<div class="plw-red">Η διαδρομή δεν διαβάστηκε.</div>';
-    return RouteDiagram.render(RouteDiagramAdapters.facadeOrder(rec, st.stops, {
-      today: RouteDiagramAdapters.athensDay(new Date().toISOString()), locMeta: id => OC()._locMeta(id), natLeg: st.natLeg }));
+    // a shape the diagram refuses (InputError) costs the diagram only, never the panel or the page
+    try {
+      return RouteDiagram.render(RouteDiagramAdapters.facadeOrder(rec, st.stops, {
+        today: RouteDiagramAdapters.athensDay(new Date().toISOString()), locMeta: id => OC()._locMeta(id), natLeg: st.natLeg }));
+    } catch (e) { console.error('pallets week: route diagram', e); return '<div class="plw-red">Η διαδρομή δεν σχεδιάστηκε.</div>'; }
   }
 
   // ── the order panel (design N28): the order's movements with the same quick entry ──
