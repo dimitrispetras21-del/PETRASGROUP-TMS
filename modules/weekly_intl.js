@@ -3475,9 +3475,6 @@ async function _wiSaveImportMatch(rowId,impId){
   }
 }
 
-// Returns true only when the unmatch fully landed (match cleared AND every
-// cleared member left its round trip) — a re-match must not write a new
-// vehicle onto a member that still sits on the old trip (review 4/10, P3-3).
 // Did the export group pass anything on to its matched import (owner 8/11
 // #10)? true = a member has a vehicle (it was inherited), or a member's trip
 // holds a leg of the import (a cleared trip keeps its legs, _wiClear): the
@@ -3499,6 +3496,9 @@ async function _wiExpPassedOn(expIds,impIds){
   }
   return false;
 }
+// Returns true only when the unmatch fully landed (match cleared AND every
+// cleared member left its round trip) — a re-match must not write a new
+// vehicle onto a member that still sits on the old trip (review 4/10, P3-3).
 async function _wiRemoveImport(rowId){
   const row=WINTL.rows.find(r=>r.id===rowId);
   if(!row){ toast('Η γραμμή δεν βρέθηκε','warn'); return false; }
