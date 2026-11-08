@@ -4404,7 +4404,9 @@ var COSTS_PERMS = {
   // PATCH (contract round 2, owner 4/10/2026) writes the lot's «Χρέωση
   // αποθήκης» — money that feeds that same allocation, so the same owner-only
   // row. Opening it to the accountant later is this one line, nothing else.
-  owner: { settings: ["GET", "PATCH"], rt: ["GET", "POST", "PATCH", "DELETE"], lines: ["GET", "POST", "PATCH", "DELETE"], pnl: ["GET"], "pallet-gate": ["GET"], lookups: ["GET"], ledger: ["GET", "POST", "PATCH"], import: ["GET", "POST"], "stock-lots": ["GET", "PATCH"] },
+  // pnl-paper (owner 3/11/2026, answer 1: «μόνο εγώ»): the P&L papers read the
+  // same money as pnl — owner only, no other role gets the row.
+  owner: { settings: ["GET", "PATCH"], rt: ["GET", "POST", "PATCH", "DELETE"], lines: ["GET", "POST", "PATCH", "DELETE"], pnl: ["GET"], "pnl-paper": ["GET"], "pallet-gate": ["GET"], lookups: ["GET"], ledger: ["GET", "POST", "PATCH"], import: ["GET", "POST"], "stock-lots": ["GET", "PATCH"] },
   // lines PATCH/DELETE (owner 7/9/2026, spec docs/superpowers/specs/2026-09-07-trip-expenses-design.md):
   // the accountant screen «Έξοδα Δρομολογίων» lets her fix her own typo and
   // route a parked («Χωρίς δρομολόγιο») receipt to the right trip — both go
@@ -5249,6 +5251,93 @@ async function handleCosts(request, url, origin, env) {
       if (q.get("truck_id")) params.append("truck_id", `eq.${q.get("truck_id")}`);
       const { rows } = await dbSelectRaw(env, "ct_v_rt_pnl", params);
       return jsonOk({ records: rows }, origin, env);
+    }
+    // ---- GET /costs/pnl-paper?rt=<id> | ?from=<date>&to=<date>  (P&L PAPERS — OWNER ONLY) ----
+    // The two approved P&L prints (owner 3/11/2026, Figma 2542:7735 one trip, 2537:7735 a week;
+    // docs/design/prints-pnl-week-2026-11-03.md). The 105 views as they are, raw: the paper adds
+    // nothing of its own, it lays the rows out and proves its totals against ct_v_rt_pnl (a total
+    // that does not match = no paper, said on the page). A failed read is a 500, never an empty
+    // paper: «nothing to print» and «could not read» must not look alike (principle 1).
+    // ct_v_rt_revenue_legs is read for ONE trip only: it costs seconds of planning (105 header).
+    if (resource === "pnl-paper" && method === "GET") {
+      const q = url.searchParams;
+      const rt = q.get("rt"), from = q.get("from"), to = q.get("to");
+      // a real calendar day: V8's Date.parse rolls 2026-02-30 into March, so the day must round-trip
+      const isDate = (s) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(Date.parse(s))
+        && new Date(s + "T00:00:00Z").toISOString().slice(0, 10) === s;
+      const single = rt !== null;
+      if (single ? !/^\d{1,12}$/.test(rt) : !(isDate(from) && isDate(to) && from <= to)) {
+        return jsonError("Μη έγκυρο δρομολόγιο ή εβδομάδα", 400, origin, env);
+      }
+      // a week paper is a week: more than 31 days is a mistake in the link, not a longer paper
+      if (!single && (Date.parse(to) - Date.parse(from)) / 864e5 > 31) {
+        return jsonError("Μη έγκυρο δρομολόγιο ή εβδομάδα", 400, origin, env);
+      }
+      const P = (o) => new URLSearchParams(o);
+      const inIds = (ids) => `in.(${ids.join(",")})`;
+      // PostgREST stops a read at db-max-rows (1000 on Supabase) without saying so: a list that long may be
+      // cut, and a cut list would make the paper refuse for the wrong reason (or worse) — a failed read instead
+      const lists = (all) => all.map((r) => {
+        if (!r || !Array.isArray(r.rows)) throw new Error("pnl-paper: a read is not a list");
+        if (r.rows.length >= 1000) throw new Error("pnl-paper: a read reached the row cap");
+        return r.rows;
+      });
+      const none = Promise.resolve({ rows: [] });
+      const PNL_PAPER_LIMIT = 120;
+      try {
+        const pnlParams = single ? P({ select: "*", id: `eq.${rt}` })
+          : P({ select: "*", order: "date_start.asc,id.asc", limit: String(PNL_PAPER_LIMIT + 1) });
+        if (!single) { pnlParams.append("date_start", `gte.${from}`); pnlParams.append("date_start", `lte.${to}`); }
+        const [pnlRows] = lists([await dbSelectRaw(env, "ct_v_rt_pnl", pnlParams)]);
+        if (single && pnlRows.length !== 1) return jsonError("Το δρομολόγιο δεν βρέθηκε", 404, origin, env);
+        // more trips than the paper reads = said, never a shorter paper that looks whole
+        const truncated = pnlRows.length > PNL_PAPER_LIMIT;
+        const trips = pnlRows.slice(0, PNL_PAPER_LIMIT);
+        if (!trips.length) {
+          return jsonOk({ trips, complete: [], cost_cat: [], costs: [], rts: [], partner_cost: [], legs: [], revenue_legs: [], v5_lines: [],
+            orders: [], nat_loads: [], nat_orders: [], clients: [], locations: [], truncated }, origin, env);
+        }
+        const ids = inIds(trips.map((t) => Number(t.id)));
+        // v5 trips (model 2) have no ct_rt_legs: their loads are the v5 revenue lines (light; the week paper's
+        // «from → to» of a national trip comes from them, the trip paper reads them inside revenue_legs)
+        const [complete, costCat, costs, rts, partnerCost, legs, revenueLegs, v5Lines] = lists(await Promise.all([
+          dbSelectRaw(env, "ct_v_rt_complete", P({ select: "*", rt_id: ids })),
+          dbSelectRaw(env, "ct_v_rt_cost_cat", P({ select: "*", rt_id: ids, order: "rt_id.asc,category.asc,toll_country.asc.nullslast" })),
+          dbSelectRaw(env, "ct_v_rt_costs", P({ select: "rt_id,lines_net,vat,wear,dl_trip_value,dl_expenses,partner_planned,partner_invoiced", rt_id: ids })),
+          dbSelectRaw(env, "ct_round_trips", P({ select: "id,model", id: ids })),
+          dbSelectRaw(env, "ct_v_rt_partner_cost", P({ select: "rt_id,cost", rt_id: ids })),
+          dbSelectRaw(env, "ct_rt_legs", P({ select: "id,rt_id,seq,direction,order_id,nat_load_id", rt_id: ids, order: "rt_id.asc,seq.asc.nullslast,id.asc" })),
+          single ? dbSelectRaw(env, "ct_v_rt_revenue_legs", P({ select: "*", rt_id: ids, order: "source.asc,leg_id.asc.nullslast,v5_leg_id.asc.nullslast" })) : none,
+          single ? none : dbSelectRaw(env, "ct_v_v5_revenue", P({ select: "rt_id,nat_order_id,leg_id", rt_id: ids, order: "rt_id.asc,leg_id.asc.nullslast" }))
+        ]));
+        // What the loads are (client, from → to, pallets, days): only the rows the legs name
+        const uniq = (vals) => [...new Set(vals.filter((v) => v != null))];
+        const orderIds = uniq([...legs.map((l) => l.order_id), ...revenueLegs.map((l) => l.order_id)]);
+        const natLoadIds = uniq(legs.map((l) => l.nat_load_id));
+        const natOrderIds = uniq([...revenueLegs, ...v5Lines].map((l) => l.nat_order_id));
+        const ORDER_COLS = "id,reference,direction,client_id,parent_order_id,leg_no,loading_datetime,delivery_datetime,loading_location_1_id,unloading_location_1_id,"
+          + Array.from({ length: 10 }, (_, i) => `loading_pallets_${i + 1}`).join(",");
+        const [orders, natLoads, natOrders] = lists(await Promise.all([
+          orderIds.length ? dbSelectRaw(env, "orders", P({ select: ORDER_COLS, id: inIds(orderIds) })) : none,
+          natLoadIds.length ? dbSelectRaw(env, "national_loads", P({ select: "id,direction,client,total_pallets,loading_datetime,delivery_datetime,pickup_location_1_id,delivery_location_1_id", id: inIds(natLoadIds) })) : none,
+          natOrderIds.length ? dbSelectRaw(env, "national_orders", P({ select: "id,direction,client_id,pallets,loading_datetime,delivery_datetime,pickup_location_1_id,delivery_location_1_id", id: inIds(natOrderIds) })) : none
+        ]));
+        const clientIds = uniq([...orders, ...natOrders].map((o) => o.client_id));
+        const locIds = uniq([
+          ...orders.flatMap((o) => [o.loading_location_1_id, o.unloading_location_1_id]),
+          ...natLoads.flatMap((n) => [n.pickup_location_1_id, n.delivery_location_1_id]),
+          ...natOrders.flatMap((n) => [n.pickup_location_1_id, n.delivery_location_1_id])
+        ]);
+        const [clients, locations] = lists(await Promise.all([
+          clientIds.length ? dbSelectRaw(env, "clients", P({ select: "id,company_name", id: inIds(clientIds) })) : none,
+          locIds.length ? dbSelectRaw(env, "locations", P({ select: "id,name,city,country", id: inIds(locIds) })) : none
+        ]));
+        return jsonOk({ trips, complete, cost_cat: costCat, costs, rts, partner_cost: partnerCost, legs, revenue_legs: revenueLegs,
+          v5_lines: v5Lines, orders, nat_loads: natLoads, nat_orders: natOrders, clients, locations, truncated }, origin, env);
+      } catch (e) {
+        console.error("COSTS pnl-paper read", e.message);
+        return jsonError("Τα στοιχεία του χαρτιού δεν διαβάστηκαν", 500, origin, env);
+      }
     }
     // ---- GET /costs/pallet-gate — ποιες διαδρομές partner περιμένουν δελτίο ----
     // Το PnL τους είναι ελλιπές όσο λείπει: οι χαμένες παλέτες είναι κόστος.
