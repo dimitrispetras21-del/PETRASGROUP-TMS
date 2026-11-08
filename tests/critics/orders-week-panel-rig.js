@@ -580,7 +580,7 @@ async function scnInvoice(browser) {
   ok(await page.locator('#owvEd [data-owvedin="date"]').inputValue() === today, 'date = today, as in «Προς τιμολόγηση»');
   await page.keyboard.type('0461');
   await page.waitForTimeout(150);
-  ok(/0461 υπάρχει ήδη στην .+ άλλου πελάτη/.test(await page.locator('#owvEdHint').textContent()), 'live line under the box: «υπάρχει ήδη … άλλου πελάτη»');
+  ok(/0461 υπάρχει ήδη σε παραγγελία άλλου πελάτη: /.test(await page.locator('#owvEdHint').textContent()), 'live line under the box: «υπάρχει ήδη … άλλου πελάτη»');
   await page.screenshot({ path: path.join(SHOTS, 'invoice-tpy-dup.png') });
   await page.keyboard.press('Enter');
   await page.waitForSelector('#_cfaCancel', { state: 'visible' });
@@ -653,7 +653,7 @@ async function scnInvoice(browser) {
   await page.keyboard.press('Enter');
   await page.waitForSelector('#_cfaCancel', { state: 'visible' });
   const q5 = await page.locator('#modalOverlay').textContent();
-  ok(/Αλλαγή τιμής της #1244 \(ΤΠΥ 0463\)/.test(q5) && /Το τιμολόγιο στο ERP ΔΕΝ αλλάζει από εδώ/.test(q5), 'Enter → asked first, in the undo\'s words: «' + q5.replace(/\s+/g, ' ').trim().slice(0, 140) + '»');
+  ok(/Αλλαγή τιμής της παραγγελίας [^#(]+ \(ΤΠΥ 0463\)/.test(q5) && /Το τιμολόγιο στο ERP ΔΕΝ αλλάζει από εδώ/.test(q5), 'Enter → asked first, in the undo\'s words: «' + q5.replace(/\s+/g, ' ').trim().slice(0, 140) + '»');
   await page.click('#_cfaCancel'); await page.waitForTimeout(200);
   ok(cap.patches.length === n5 && await page.locator('#owvEd').count() === 1, 'cancel → no PATCH, the editor stays');
   const st0 = await page.locator('.ow4-st').textContent();
@@ -689,7 +689,7 @@ async function scnInvoice(browser) {
   await page.keyboard.press('Enter');
   await page.waitForSelector('#_cfaOk', { state: 'visible' });
   const q5b = await page.locator('#modalOverlay').textContent();
-  ok(/Αλλαγή τιμής της #1255 \(αυτοπαράδοση\)/.test(q5b) && !/ERP ΔΕΝ αλλάζει/.test(q5b), 'asked, without the ERP sentence (there is no ERP invoice)');
+  ok(/Αλλαγή τιμής της παραγγελίας [^#(]+ \(αυτοπαράδοση\)/.test(q5b) && !/ERP ΔΕΝ αλλάζει/.test(q5b), 'asked, without the ERP sentence (there is no ERP invoice)');
   await page.click('#_cfaOk');
   await edGone();
   ok(last().id === 'recO1255' && body(last()) === JSON.stringify({ Price: 3000 }), 'self delivery price → PATCH {Price: 3000}: ' + body(last()));

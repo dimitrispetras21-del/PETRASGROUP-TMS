@@ -946,5 +946,39 @@ async function sotiris_hub_after({ browser, origin, ok, scn }) {
   await page.context().close();
 }
 
-K.run({ scenarios: { own_new, own_join, only_hours, partner, accept_busy, vehicle, rate2, handover, veroia_list, veroia_new, f61, f54, veroia_later, pr3b, veroia_busy, veroia_fixes, busy3, fit, sotiris_late, sotiris_warn, sotiris_esc, sotiris_hub_after }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],
+// 110 (Sotiris report 8/11, item 7): a vehicle change carries expect_change = the trip's last change as the board
+// showed it (087 last_change.at), only with FEATURES.WN_EXPECT on (before 110 the base refuses the key); another
+// person's change since then (409 rt_changed) is said in words that ask for «ανανέωσε», and nothing more is sent.
+async function rt_expect({ browser, origin, ok, scn }) {
+  const AT = '2026-10-12T08:15:00.123456+00:00';
+  const b = board();
+  b.cycles.find((c) => c.rt_id === 101).last_change = { at: AT, role: 'dispatcher', table: 'rt_stops', action: 'update', keys: ['planned_from'] };
+  let n = 0;
+  const { page, S } = await K.openApp(browser, origin, { board: b, plan: { 'PATCH /plan/rt/101': async () => {
+    n += 1; return n === 1 ? OK('plan_rt_update') : [409, { error: { type: 'PLAN_RULE', code: 'rt_changed', message: 'rig sentinel plan rule broken: rt_changed:accountant 2026-10-12T09:40:00.5+00:00' } }]; } } });
+  // flag off (the default until 110 runs): no key
+  await page.evaluate(() => WN5Act.assign(null, { entry: 'menu', rtId: 101 }));
+  await page.waitForSelector(DLG, { timeout: 4000 });
+  await pickIn(page, 'dr', 'Test 02', 'Driver Test 02');
+  await page.click(`${DLG} [data-act="save"]`);
+  await page.waitForTimeout(500);
+  let w = saves(S);
+  ok(scn, 'WN_EXPECT off: the PATCH has no expect_change (a base before 110 would refuse it)', w.length === 1 && !('expect_change' in w[0].body), w.map((x) => x.raw));
+  // flag on: the key, as the board showed it when the form opened
+  await page.evaluate(() => { FEATURES.WN_EXPECT = true; });
+  await page.evaluate(() => WN5Act.assign(null, { entry: 'menu', rtId: 101 }));
+  await page.waitForSelector(DLG, { timeout: 4000 });
+  await pickIn(page, 'dr', 'Test 03', 'Driver Test 03');
+  await page.click(`${DLG} [data-act="save"]`);
+  await page.waitForTimeout(500);
+  w = saves(S);
+  ok(scn, 'WN_EXPECT on: the PATCH carries expect_change = the board\'s last_change.at', w.length === 2 && w[1].body.expect_change === AT, w.map((x) => x.raw));
+  const msg = await page.evaluate((s) => { const d = document.querySelector(s); return d ? d.textContent.replace(/\s+/g, ' ') : ''; }, DLG);
+  ok(scn, '409 rt_changed: the form stays, says who and when («άλλαξε στο μεταξύ από το λογιστήριο Δευ 12/10 12:40 … ανανέωσε και ξανάνοιξε»), nothing written', /άλλαξε στο μεταξύ από το λογιστήριο Δευ 12\/10 12:40/.test(msg) && /ανανέωσε και ξανάνοιξε/.test(msg) && saves(S).length === 2, msg.slice(0, 300));
+  const f = await foot(page);
+  ok(scn, 'the save is locked (a retry from this form would be refused again)', f && f.off, f);
+  await page.context().close();
+}
+
+K.run({ scenarios: { own_new, own_join, only_hours, partner, accept_busy, vehicle, rate2, handover, veroia_list, veroia_new, f61, f54, veroia_later, pr3b, veroia_busy, veroia_fixes, busy3, fit, sotiris_late, sotiris_warn, sotiris_esc, sotiris_hub_after, rt_expect }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],
   go: 'the assignment form (own new / join / only / hours / F39 / partner / vehicle / F51-F61 / F54 / F56 / 089 two fees), ✈ «Αλλαγή οχήματος…» and the Veroia board v2 «Νέο φορτίο» hold' });

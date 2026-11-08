@@ -482,9 +482,10 @@ const OrdersNoPrice = (() => {
       _sessionItems().push({ recordId: id, table: tableOfType(type), price: back, actor: _username(), at: new Date().toISOString() });
       OrdersData.invalidate();
       OrdersHub.refreshBadges();
-      const lbl = _esc(_label(rec));
+      // In words, never «#1229» (owner 8/11, core/plain-ref.js): client, route, load day.
+      const lbl = _esc(PlainRef.orderOf(rec) || 'παραγγελία');
       // B0 (21/10): a priced order — a lot too — is «προς κοπή» at once.
-      toast(`Η τιμή καταχωρήθηκε — η ${lbl} πέρασε στα Προς τιμολόγηση`);
+      toast(`Η τιμή καταχωρήθηκε — η παραγγελία ${lbl} πέρασε στα Προς τιμολόγηση`);
       _repaintFromState();
     } catch (e) {
       input.disabled = false;

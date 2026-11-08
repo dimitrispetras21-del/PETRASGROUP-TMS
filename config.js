@@ -410,7 +410,10 @@ const PERMS = {
 // WN_COMPOSE («Σύνθεση φορτίων», modules/wn5_compose.js): false = the Veroia board as before (a browser with
 // localStorage tms_wn5_compose = '1' still opts in). Both: 'pilot' (owner 3/11) = only the users of WN_V5_USERS,
 // for one real test each before everyone; then true. Read through featureOn(), one rule for both.
-const FEATURES = { ORDER_SPLIT: true, GROUP_TILES: true, STOCK_LOTS: true, WI_V2: 'on', WI_PRESENCE: false, WN_V5: 'on', WN_ROAD: 'pilot', WN_COMPOSE: 'pilot' };
+// WN_EXPECT (110, Sotiris report 8/11 item 7): a change of a trip (vehicle, rate, day) sends expect_change, the newest
+// change by a person the board showed; another person's change since then is refused (rt_changed), never overwritten
+// in silence. Before 110 runs the base refuses an unknown key (bad_input): true only once 110 is executed.
+const FEATURES = { ORDER_SPLIT: true, GROUP_TILES: true, STOCK_LOTS: true, WI_V2: 'on', WI_PRESENCE: false, WN_V5: 'on', WN_ROAD: 'pilot', WN_COMPOSE: 'pilot', WN_EXPECT: false };
 // Pilot usernames for FEATURES.WI_V2 === 'pilot' (PLAN §2.1). Empty = nobody.
 const WI_V2_USERS = [];
 // Pilot usernames for FEATURES.WN_V5 === 'pilot' (Ε-1): only a name the owner gives. Empty = nobody.

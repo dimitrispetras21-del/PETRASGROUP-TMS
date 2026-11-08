@@ -266,11 +266,11 @@ async function runAccountant(browser) {
   await rowOf(page, '#1228').click();
   await page.waitForSelector('#oivNum');
   await page.fill('#oivNum', '0431'); await page.dispatchEvent('#oivNum', 'input');
-  assert(/υπάρχει ήδη στην #1214 άλλου πελάτη/.test(await txt(page, '#oivHint')), 'ΤΠΥ of another client → warning under the field');
+  assert(/υπάρχει ήδη σε παραγγελία άλλου πελάτη: /.test(await txt(page, '#oivHint')) && !/#1214/.test(await txt(page, '#oivHint')), 'ΤΠΥ of another client → warning under the field, the order in words (owner 8/11)');
   const before = cap.patches.length;
   await page.press('#oivNum', 'Enter');
   await page.waitForSelector('#_cfaOk', { timeout: 5000 });
-  assert(/#1214 άλλου πελάτη/.test(await txt(page, '#modalOverlay')), 'confirm dialog names the other order');
+  assert(/σε παραγγελία άλλου πελάτη: /.test(await txt(page, '#modalOverlay')) && !/#1214/.test(await txt(page, '#modalOverlay')), 'confirm dialog names the other order, in words');
   await page.click('#_cfaCancel');
   await page.waitForTimeout(200);
   assert(cap.patches.length === before, 'cancel → no PATCH');
@@ -331,7 +331,7 @@ async function runAccountant(browser) {
   await page.fill('#oivPriceFix', '3300');
   await page.press('#oivPriceFix', 'Enter');
   await page.waitForSelector('#_cfaCancel', { state: 'visible' });
-  assert(/Αλλαγή τιμής της #1214 \(ΤΠΥ 0432\)/.test(await page.locator('#modalOverlay').innerText()) && /ERP ΔΕΝ αλλάζει/.test(await page.locator('#modalOverlay').innerText()), 'Enter → the same question as «Εβδομάδα» (ΤΠΥ, ERP ΔΕΝ αλλάζει)');
+  assert(/Αλλαγή τιμής της παραγγελίας [^#]+ \(ΤΠΥ 0432\)/.test(await page.locator('#modalOverlay').innerText()) && /ERP ΔΕΝ αλλάζει/.test(await page.locator('#modalOverlay').innerText()), 'Enter → the same question as «Εβδομάδα» (ΤΠΥ, ERP ΔΕΝ αλλάζει)');
   await page.click('#_cfaCancel'); await page.waitForTimeout(200);
   assert(cap.patches.length === np, 'cancel → no PATCH');
   await page.press('#oivPriceFix', 'Enter');

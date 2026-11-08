@@ -1237,7 +1237,7 @@ async function runLotEdit(browser) {
   ok(delBody.split('Η διαγραφή δεν έγινε — δεν άλλαξε τίποτα').length - 1 === 1, 'D2: one context line «Η διαγραφή δεν έγινε — δεν άλλαξε τίποτα» under the refusal');
   // O9 (critic-1 C1-07): the confirm said NAT_LOADS/RAMP/«ΔΕΝ ΑΝΑΙΡΕΙΤΑΙ» for a 16p piece
   const dq = (cap.dialogs || [])[0] || '';
-  ok(/^Διαγραφή κομματιού #1301 — οι 16p γυρίζουν στην παρτίδα #1300\./.test(dq) && !/NAT_LOADS|ΔΕΝ ΑΝΑΙΡΕΙΤΑΙ/.test(dq), 'O9: the piece\'s confirm says what it is — ' + JSON.stringify(dq));
+  ok(/^Διαγραφή κομματιού [^#\n]+ — οι 16p γυρίζουν στην παρτίδα από την οποία βγήκε\./.test(dq) && !/NAT_LOADS|ΔΕΝ ΑΝΑΙΡΕΙΤΑΙ/.test(dq), 'O9: the piece\'s confirm says what it is — ' + JSON.stringify(dq));
   const ctxs = await page.evaluate(() => window.__logCtx);
   ok(ctxs.filter(c => /_atRetry 422/.test(c)).length === 1 && !ctxs.some(c => /deleteIntlOrder/.test(c)), 'AU-07: one app_errors row (_atRetry), none from deleteIntlOrder — ' + JSON.stringify(ctxs));
   ok(cap.deletes.filter(d => d.table === 'orders').length === nOrdDel + 1, 'one DELETE sent, nothing after it (no cascade)');
@@ -1248,7 +1248,7 @@ async function runLotEdit(browser) {
   const nDel2 = cap.deletes.length;
   await page.evaluate(() => deleteIntlOrder('recLotSrc'));
   const lq = (cap.dialogs || [])[0] || '';
-  ok(/^Διαγραφή παρτίδας #1300 \(33p\) — το απόθεμα φεύγει μαζί της/.test(lq) && cap.deletes.length === nDel2, 'O9: the lot\'s confirm says what it is; «Άκυρο» sends nothing — ' + JSON.stringify(lq));
+  ok(/^Διαγραφή παρτίδας [^#\n]+ \(33p\) — το απόθεμα φεύγει μαζί της/.test(lq) && cap.deletes.length === nDel2, 'O9: the lot\'s confirm says what it is; «Άκυρο» sends nothing — ' + JSON.stringify(lq));
   cap.dismissDialog = false;
 
   ok(cap.errors.length === 0, 'no page errors / native dialogs — ' + cap.errors.join(' | '));

@@ -27,6 +27,9 @@ const wiSrc = [
   fn(WI, /async function _wiExecutingLive\(oid\)\{[\s\S]*?\n\}\n/, '_wiExecutingLive'),
   fn(WI, /async function _wiLiveOrders\(ids\)\{[\s\S]*?\n\}\n/, '_wiLiveOrders'),
   fn(WI, /function _wiExecConfirmText\(execs,what,closedOk\)\{[\s\S]*?\n\}\n/, '_wiExecConfirmText'),
+  // owner 8/11 (core/plain-ref.js): the confirm and the toasts name orders/trips in words.
+  fn(WI, /function _wiOrdTxt\(r,fb\)\{[^\n]*\n/, '_wiOrdTxt'),
+  fn(WI, /async function _wiRtTxt\(rt\)\{[^\n]*\n/, '_wiRtTxt'),
   fn(WI, /async function _wiClear\(rowId\)\{[\s\S]*?\n\}\n/, '_wiClear'),
 ].join('\n');
 async function runWiClear(statusById, row) {
@@ -42,6 +45,7 @@ async function runWiClear(statusById, row) {
     atGetOne: stubGetOne(statusById),
     atSafePatch: async (_t, id, f) => { patches.push({ id, f }); return { id, fields: f }; },
     logError: () => {}, plOnIntlPartnerAssigned: () => {}, _wiSync: () => {}, toast: () => {},
+    PlainRef: require(path.join(__dirname, '..', 'core/plain-ref.js')), _fhLocationsMap: {}, escapeHtml: s => String(s),
     _wiDeletePartnerAssignments: async () => {}, renderWeeklyIntl: async () => {},
   };
   vm.runInNewContext(wiSrc + '\nthis._wiClear=_wiClear;this._wiExecutingLive=_wiExecutingLive;', ctx);

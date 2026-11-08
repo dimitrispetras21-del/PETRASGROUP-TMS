@@ -39,6 +39,10 @@ const wiSrc = [
   grab(/async function _wiDissolveClearMember\(oid\)\{[\s\S]*?\n\}\n/, '_wiDissolveClearMember'),
   grab(/async function _wiCancelGroupMember\(rowId,orderId,isImportSide(?:,ask)?\)\{[\s\S]*?\n\}\n/, '_wiCancelGroupMember'),
   grab(/async function _wiDoSplit\(rowId\)\{[\s\S]*?\n\}\n/, '_wiDoSplit'),
+  // owner 8/11 (core/plain-ref.js): the messages name orders/trips in words, through these.
+  grab(/function _wiOrdTxt\(r,fb\)\{[^\n]*\n/, '_wiOrdTxt', true),
+  grab(/async function _wiRtTxt\(rt\)\{[^\n]*\n/, '_wiRtTxt', true),
+  grab(/function _wiErrList\(list,recs\)\{[^\n]*\n/, '_wiErrList', true),
 ].join('\n');
 
 // One round trip RT1 = export E (truck T1, driver D1) + its imports. The model
@@ -78,6 +82,7 @@ function world({ imports = ['I'], exportsOnRt = ['E'], failLeg = null, lookupThr
       return { id, fields };
     },
     getLinkedId: v => (Array.isArray(v) ? v[0] || null : v || null),
+    PlainRef: require(path.join(__dirname, '..', 'core/plain-ref.js')), _fhLocationsMap: {}, escapeHtml: s => String(s),
     rtFindForOrder: async id => { if (lookupThrows) throw new Error('network'); return { pg: id, rt: legs.has(id) ? { id: 1, code: 'RT-1' } : null }; }, // «before» lookup
     // «after» lookup (_wiRtOf): the order itself, then trips in a date window
     atGetOne: async (_t, id) => ({ id, fields: Object.assign(noOrderNo ? {} : { 'Order No': pgOf(id) }, orders[id] && orders[id].truck ? { Truck: [orders[id].truck] } : {}, { 'Loading DateTime': '2026-09-28T06:00:00Z', 'Delivery DateTime': '2026-09-30T06:00:00Z' }) }),
@@ -237,7 +242,7 @@ test('«Σπάσιμο σκέλους» on a CLOSED trip stops before any leg is
   await w.ctx._wiDoSplit(1);
   assert.strictEqual(created, 0, 'a leg was created');
   assert.strictEqual(w.orders.E.truck, 'T1');
-  assert.ok(w.log.some(x => x.toast && /κλειστός — το σπάσιμο δεν ξεκίνησε/.test(x.toast)));
+  assert.ok(w.log.some(x => x.toast && /^Το δρομολόγιο είναι κλειστό — το σπάσιμο δεν ξεκίνησε/.test(x.toast)));
 });
 
 test('lookup: one date only opens the window 60 days back; no date at all clears nothing', async () => {

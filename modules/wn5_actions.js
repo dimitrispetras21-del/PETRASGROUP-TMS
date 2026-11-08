@@ -94,7 +94,22 @@
   // ΑΝΟΔΟΣ before the ΚΑΘΟΔΟΣ is no refusal. Owner 3/11 («λιγότερα»): the forms no longer warn about the order of
   // stops BEFORE the press (the Π1 line «θα τελείωνε πριν αρχίσει» is gone), so only this refusal is left, said
   // without a trip code or an id («(305)» named nothing).
+  // 110 (item 7): the newest change by a person on trip c as the board showed it (087 last_change.at; null = none yet),
+  // for expect_change. undefined = not sent (FEATURES.WN_EXPECT off: a base before 110 refuses the key).
+  const ROLE_GR = Object.freeze({ owner: 'τον owner', dispatcher: 'dispatcher', management: 'τη διοίκηση', accountant: 'το λογιστήριο', warehouse: 'την αποθήκη' });
+  const _expectOf = (c) => (typeof featureOn === 'function' && featureOn('WN_EXPECT') && c ? ((c.last_change && c.last_change.at) || null) : undefined);
+  const _withExpect = (body, exp) => (exp === undefined || !body ? body : Object.assign({}, body, { expect_change: exp }));
   function _orderErr(e) {
+    // 110: another person changed the trip since the board was read — said in words that ask for «ανανέωσε» (the
+    // strip's «Ανανέωση ↻», _wantsReread); the base's detail is a role and a time, ASCII
+    if (e && !Array.isArray(e) && e.code === 'rt_changed' && !e._said) {
+      // who and when, from the base's detail «rt_changed:<role> <time>» (the Worker passes it inside its message)
+      const m = /rt_changed:\s*([a-z]*)\s+(\d{4}-\d{2}-\d{2}T[0-9:.]+(?:Z|[+-]\d{2}:?\d{2}))/.exec(String(e.message || ''));
+      const role = m && ROLE_GR[m[1]] ? ROLE_GR[m[1]] : 'άλλον χρήστη';
+      const when = m ? ' ' + _dayShort(_ymdOf(m[2])) + ' ' + _hm(m[2]) : '';
+      // the form keeps what it saw when it opened, so a retry here would be refused again: close it, then reopen
+      return Object.assign({}, e, { message: 'Το δρομολόγιο άλλαξε στο μεταξύ από ' + role + when + '. Κλείσε, ανανέωσε και ξανάνοιξε· δεν γράφτηκε τίποτα', _said: true });
+    }
     if (!e || Array.isArray(e) || e.code !== 'stop_order' || e._said) return e;
     const msg = 'Οι στάσεις του δρομολογίου δεν θα ήταν σε χρονική σειρά: μια στάση θα τελείωνε πριν αρχίσει η στάση πριν από αυτήν '
       + '(μια παράδοση πριν από τη φόρτωσή της). Άλλαξε την ημέρα ή την ώρα της, ή διάλεξε άλλο φορτηγό.';
@@ -520,7 +535,7 @@
       // A request_reused the board does not show (the record lies in another week, or the form was edited after a
       // plan_unknown): the SAME slot id would answer request_reused on every press — a dead end. The Worker's strip
       // says where to look; the save stays locked until the window closes (a new window = a new request_id).
-      if (e && (e.kind === K().CLOSED || e.kind === K().REUSED)) _lock(d); else _btns(d, false);
+      if (e && (e.kind === K().CLOSED || e.kind === K().REUSED || e.code === 'rt_changed')) _lock(d); else _btns(d, false);
       if (opts.onFail) { try { opts.onFail(e); } catch (e2) { _log(e2, 'WN5Act send onFail'); } }
       return null;
     }
@@ -720,6 +735,7 @@
     if (typeof WN5Edit !== 'undefined') WN5Edit.bind(root);
   };
 
+  Object.assign(KIT, { expectOf: _expectOf, withExpect: _withExpect });
   Object.assign(KIT, { esc: _esc, log: _log, copy: _copy, state: _state, dlg: _dlg, close: _close, place: _place,
     lock: _lock, btns: _btns, gate: _gate, send: _send, afterSave: _afterSave, boardHost: _boardHost, closedErr: _closedErr });
 
@@ -1417,7 +1433,7 @@
         const rt = _id(b.dataset.rt);
         const inp = rt && d.dlg.querySelector('[data-rate-rt="' + rt + '"]');
         const r = _rate(inp && inp.value);
-        if (rt && r.ok && r.v !== null) _send(d, { method: 'PATCH', path: '/plan/rt/' + rt, body: { set: { partner_rate: r.v } } }, 'Γράφτηκε το κόμιστρο');
+        if (rt && r.ok && r.v !== null) _send(d, { method: 'PATCH', path: '/plan/rt/' + rt, body: _withExpect({ set: { partner_rate: r.v } }, _expectOf(_cycle(rt))) }, 'Γράφτηκε το κόμιστρο');
       }
     });
     d.dlg.addEventListener('input', (ev) => {
@@ -2123,6 +2139,7 @@
   function _dateBody(st) {
     const b = _dateBody0(st);
     if (b && st.accept) b.accept_busy = true;
+    if (b && st.expect !== undefined) b.expect_change = st.expect;   // 110: as the board showed it when the panel opened
     return b;
   }
   function _dateBody0(st) {
@@ -2345,7 +2362,7 @@
     const vStop = one || sideStops.find((s) => s.location_id === hub) || null;
     const ref = one || (side === 'KATHODOS' && vStop ? vStop : sideStops[0]);
     const cur = _ymdOf(ref.planned_from);
-    const st = { rtId: c.rt_id, side, one: !!one, sideStops, vStop, vDay: vStop ? _ymdOf(vStop.planned_from) : null, cur, sel: null,
+    const st = { rtId: c.rt_id, side, one: !!one, sideStops, vStop, vDay: vStop ? _ymdOf(vStop.planned_from) : null, cur, sel: null, expect: _expectOf(c),
       view: [Number(cur.slice(0, 4)), Number(cur.slice(5, 7)) - 1],
       from0: vStop ? _hm(vStop.planned_from) : '', to0: vStop ? _hm(vStop.planned_to) : '', from: '', to: '', alsoAnod: false,
       anodStops: side === 'KATHODOS' ? _copy((c.stops || []).filter((s) => s.side === 'ANODOS')) : [],
