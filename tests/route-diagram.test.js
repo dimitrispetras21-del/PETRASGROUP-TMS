@@ -293,6 +293,18 @@ test('states: VS without a cross-dock stop, and a national leg the host did not 
   assert.ok(!noLeg.sections[1].rows.some((r) => r.kind === 'executor'), 'no bar claims an executor nobody read');
 });
 
+test('states: boards read but the leg on none of them = the host\'s grey note, never the red read failure', () => {
+  const ad = require('../core/route-diagram-adapters.js');
+  const rec = { id: 'recX', fields: { 'Order No': 9, Direction: 'Import', 'Veroia Switch': true, Truck: ['recT'] } };
+  const stops = [
+    { fields: { 'Stop Type': 'Loading', 'Stop Number': 1, DateTime: '2026-09-01T08:00:00Z' } },
+    { fields: { 'Stop Type': 'Cross-dock', 'Stop Number': 2, DateTime: '2026-09-03T08:00:00Z' } },
+    { fields: { 'Stop Type': 'Unloading', 'Stop Number': 3, DateTime: '2026-09-04T08:00:00Z' } },
+  ];
+  const m = RD.build(ad.facadeOrder(rec, stops, { today: '2026-11-08', natLeg: null, natLegNote: 'εκτελεστής: εκτός Εβδομαδιαίου v5' }));
+  eq([m.sections[1].aside, m.sections[1].asideTone], ['εκτελεστής: εκτός Εβδομαδιαίου v5', null]);
+});
+
 test('escaping: every text from data comes out escaped, in names, meta, notes, chips, asides, executors and kv', () => {
   const x = '<img src=x onerror=alert(1)>"\'&';
   const h = RD.render({ today: '2026-10-26', sections: [{ title: x, chip: x, aside: x, executor: { desk: 'intl', kind: 'own', text: x }, rows: [
