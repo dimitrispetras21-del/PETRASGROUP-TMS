@@ -380,7 +380,7 @@
     let el = d.dlg.querySelector(':scope > .wn5-dlg-ask');
     if (!on) { if (el) el.remove(); return; }
     if (!el) { el = document.createElement('div'); el.className = 'wn5-dlg-ask'; el.setAttribute('role', 'status'); d.dlg.insertBefore(el, d.ft); }
-    el.textContent = 'Δεν αποθηκεύτηκε. Πάτα ξανά Esc για κλείσιμο χωρίς αποθήκευση.';
+    el.textContent = 'Δεν αποθηκεύτηκε. Πάτα ξανά για κλείσιμο χωρίς αποθήκευση.';   // Esc, × or the backdrop: any of them closes now
   }
   function _dlgUserClose(d) {
     if (!d || d.busy || d.closed) return;
