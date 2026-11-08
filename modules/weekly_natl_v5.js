@@ -1366,7 +1366,14 @@ function rowMenu(ev, rtId) {
     if (b.getAttribute('aria-haspopup') === 'menu') { _subToggle(el, id); return; }   // a «›» line opens its submenu
     const it = _menuFind(items, id);
     _closeMenu();
-    if (it && typeof it.run === 'function') { try { it.run(Number(rtId), e); } catch (err) { _logErr(err, 'weekly natl v5: menu ' + it.id); } }
+    // ✈ audit 8/11: a line that throws before its window opens went to the error log only, the click did nothing.
+    // It is said too (principle 1); the async lines' rejections are said by the app's own handler (app.html).
+    if (it && typeof it.run === 'function') {
+      try { it.run(Number(rtId), e); } catch (err) {
+        _logErr(err, 'weekly natl v5: menu ' + it.id);
+        if (typeof toast === 'function') toast(`«${it.label}» δεν άνοιξε: ${String((err && err.message) || err)}`, 'danger');
+      }
+    }
   });
   // → opens the submenu of a «›» line, ← closes it and goes back to its line (Figma 2011:8858). Stopped here, so the
   // week never moves under an open menu (core/ui.js also checks role=menu).
