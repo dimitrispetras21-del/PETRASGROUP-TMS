@@ -93,14 +93,21 @@
 
 /* Weekly National v5 ✈ «Διαδρομή» (modules/weekly_natl_v5.js routeOpen, owner 8/11): the diagram of one row in a light
    panel on the right, the frame of the Orders week card (480px, .owv-cards .owv-card) and its navy head (.owv-docs-h).
-   Below the v5 windows (--z-top) so a window opened from the board stands over it; above the board's sticky bars. */
-.wn5-rdp { position: fixed; top: 0; right: 0; height: 100vh; width: 480px; max-width: 100vw; z-index: var(--z-overlay, 9000);
+   Below the v5 windows (--z-top) so a window opened from the board stands over it; above the board's sticky bars.
+   .rdc = the same panel as the 400px column beside the order card of «Παραγγελίες › Εβδομάδα» / the order panel of
+   «Παλέτες › Εβδομάδα» (core/route-diagram-column.js, owner 8/11): one look for the three screens. Its z-index is
+   its card's, set by the host. */
+.wn5-rdp, .rdc { position: fixed; top: 0; right: 0; height: 100vh; width: 480px; max-width: 100vw; z-index: var(--z-overlay, 9000);
   display: flex; flex-direction: column; background: var(--bg-card, #fff); border-left: 1px solid var(--border, #E2E8F0);
   box-shadow: -8px 0 24px rgba(11,25,41,.12); }
-.wn5-rdp-h { display: flex; align-items: baseline; gap: 12px; padding: 14px 20px; flex-shrink: 0;
+.rdc { width: 400px; box-sizing: border-box; }
+.wn5-rdp-h, .rdc-h { display: flex; align-items: baseline; gap: 12px; padding: 14px 20px; flex-shrink: 0;
   background: var(--surface-dark, #0B1929); color: var(--text-on-dark, #fff); }
-.wn5-rdp-h b { font-family: 'Syne', sans-serif; font-size: 16px; letter-spacing: .5px; }
-.wn5-rdp-h span { opacity: .8; font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wn5-rdp-x { margin-left: auto; background: none; border: none; color: inherit; font-size: 22px; line-height: 1; cursor: pointer; }
-.wn5-rdp-b { flex: 1; overflow-y: auto; padding: 16px 20px 24px; }
-@media print { .wn5-rdp { display: none; } }
+.wn5-rdp-h b, .rdc-h b { font-family: 'Syne', sans-serif; font-size: 16px; letter-spacing: .5px; }
+.wn5-rdp-h span, .rdc-h span { opacity: .8; font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Owner 8/11: in the 400px column a long driver name cut the days («29/1…»). The head text wraps instead of being
+   cut — the days are the part that says when; a second line costs less than a lost date. */
+.rdc-h span { white-space: normal; overflow: visible; flex: 1 1 0; }
+.wn5-rdp-x, .rdc-x { margin-left: auto; background: none; border: none; color: inherit; font-size: 22px; line-height: 1; cursor: pointer; }
+.wn5-rdp-b, .rdc-b { flex: 1; overflow-y: auto; padding: 16px 20px 24px; }
+@media print { .wn5-rdp, .rdc { display: none; } }
