@@ -2489,7 +2489,8 @@ function rotaBoard() {
     bStop(2038, 'KATHODOS', 2, TUE, '15:00', '16:00', [bLeg(6037, 5137, 'unload', 12, leg)]));
   c.stops.forEach((x, i) => { x.seq = i + 1; });
   const s33 = c.stops.find((x) => x.stop_id === 2033);
-  s33.local_loading = { local_move_id: 7701, driver_id: 61, driver: 'Local Test 1', move_date: '2026-10-12', time_from: '09:00', time_to: '10:00' };
+  // truck / truck_id: what plan_board says from migration 110 (owner 8/11: the local driver with his truck)
+  s33.local_loading = { local_move_id: 7701, driver_id: 61, driver: 'Local Test 1', move_date: '2026-10-12', time_from: '09:00', time_to: '10:00', truck_id: 19, truck: 'TST-LOC1' };
   return b;
 }
 SCN['rota-locals'] = async (browser, origin) => {
@@ -2633,6 +2634,7 @@ SCN['rota-locals'] = async (browser, origin) => {
       return el ? { rows: el.querySelectorAll('.wn5-loc-row').length, text: el.innerText, none: el.querySelectorAll('.wn5-loc-none').length } : null;
     }).catch(() => null);
     ok(scn, 'E the panel is under the board with 7 days, 6 of them «κανένας τοπικός»', !!p && p.rows === 7 && p.none === 6, p && { rows: p.rows, none: p.none });
+    ok(scn, 'E the local driver with his truck «TST-LOC1 · τοπικός» (migration 110)', !!p && /TST-LOC1 · τοπικός/.test(p.text), p && p.text);
     ok(scn, 'E Monday: Local Test 1 · ① Φόρτωση 09:00–10:00 · THESSALONIKI → Βέροια · κάθοδος', !!p && /Local Test 1/.test(p.text) && /Φόρτωση/.test(p.text) && /09:00–10:00/.test(p.text) && /THESSALONIKI TEST → Βέροια/.test(p.text), p && p.text);
     await bClick(page, '#content .wn5-locals [data-act="local-cancel"][data-lm="7701"]');
     await page.waitForTimeout(300);
