@@ -373,7 +373,7 @@ async function scnDocs(browser) {
 // «natv5» (owner 8/11/2026): after day L the national rows carry the Weekly National v5's number of their truck
 // (the number the board paints for that rt_id), «—» with the reason otherwise, and a click on their ΑΝΑΘΕΣΗ shows
 // the board's driver sheet of that truck and side in a frame — nothing printed, nothing copied, no second app.
-// The board is tests/fixtures/wn5-week.json (rows 1…8 = RT-T101…T108, one per rt_id in board order) served for the
+// The board is tests/fixtures/wn5-week.json (rows numbered in board order — by delivery day since owner 8/11, RT-T108 is next week's) served for the
 // asked week; /plan/nat-state names the trucks by RT code, as 074a does.
 async function scnNatV5(browser) {
   console.log('\n[natv5] Εθνικά v5: αριθμός του Εβδομαδιαίου Εθνικών + φύλλο οδηγού στην ΑΝΑΘΕΣΗ');
@@ -411,15 +411,19 @@ async function scnNatV5(browser) {
   });
   await P.openWeek(page);
   await page.waitForSelector('.ow4-row.ow4-nat', { timeout: 15000 });
-  ok(asked.length >= 1 && asked.every(w => w === P.WEEK_FROM), `the week's v5 board is read for the week on screen (${JSON.stringify(asked)})`);
+  // + the next week's board, once: RT-T108 loads Friday and delivers Saturday, so it is a truck of the next week
+  // (owner 8/11, rows by delivery day) and its number «n · W» comes from that board
+  const nextWk = new Date(Date.parse(P.WEEK_FROM + 'T00:00:00Z') + 7 * 864e5).toISOString().slice(0, 10);
+  ok(asked.includes(P.WEEK_FROM) && asked.every(w => w === P.WEEK_FROM || w === nextWk) && asked.filter(w => w === nextWk).length === 1,
+    `the week's v5 board is read for the week on screen, and the next week's once for its away truck (${JSON.stringify(asked)})`);
   const natNo = async (client) => page.evaluate((cl) => {
     const row = [...document.querySelectorAll('.ow4-row.ow4-nat')].find(r => r.textContent.includes(cl));
     const no = row && row.querySelector('.ow4-no');
     return row ? { no: no ? no.textContent.trim() : null, title: no ? no.getAttribute('title') : null, doc: !!row.querySelector('[data-owvnatdoc]') } : null;
   }, client);
   const a = await natNo('Ορεινά Γαλακτοκομικά'), b = await natNo('4500131302'), w = await natNo('Ελαιώνας Μεσογείου'), old = await natNo('Αρκαδικά Κηπευτικά');
-  ok(a && a.no === '6' && /Εθνικών/.test(a.title) && a.doc, `#427 on RT-T106 = row 6 of the board (${JSON.stringify(a)})`);
-  ok(b && b.no === '2 · 4' && b.doc, `#430 split on RT-T102 + RT-T104 = «2 · 4» (${JSON.stringify(b)})`);
+  ok(a && a.no === '5' && /Εθνικών/.test(a.title) && a.doc, `#427 on RT-T106 = row 5 of the board (owner 8/11: rows by delivery day) (${JSON.stringify(a)})`);
+  ok(b && b.no === '3 · 4' && b.doc, `#430 split on RT-T102 + RT-T104 = «3 · 4» (${JSON.stringify(b)})`);
   ok(w && w.no === '—' && /περιμένει όχημα/.test(w.title) && !w.doc, `#429 waiting = «—», «περιμένει όχημα», no document (${JSON.stringify(w)})`);
   ok(old && old.no === '—' && /παλιού μοντέλου/.test(old.title), `#431 (old model) = «—» with its reason (${JSON.stringify(old)})`);
   // the numbered rows of a day come in number order
@@ -500,7 +504,7 @@ async function scnNatV5Carry(browser) {
     const no = row && row.querySelector('.ow4-no');
     return row ? { no: no ? no.textContent.trim() : null, title: no ? no.getAttribute('title') : null, doc: !!row.querySelector('[data-owvnatdoc]') } : null;
   });
-  ok(a && a.no === `6 · W${wPrev}` && /προηγούμενη εβδομάδα/.test(a.title) && a.doc, `#427 (continuation of RT-T106) = «6 · W${wPrev}», its sheet opens (${JSON.stringify(a)})`);
+  ok(a && a.no === `5 · W${wPrev}` && /γραμμή άλλης εβδομάδας/.test(a.title) && a.doc, `#427 (RT-T106, a truck of W${wPrev}) = «5 · W${wPrev}», its sheet opens (${JSON.stringify(a)})`);
   ok(P.realErrors(page).length === 0, 'natv5carry: 0 page/console errors ' + JSON.stringify(P.realErrors(page)).slice(0, 300));
   await page.context().close();
 }

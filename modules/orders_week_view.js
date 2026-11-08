@@ -575,16 +575,17 @@ const OrdersWeekView = (() => {
         const n = nb.nums.get(cy.rt_id);
         if (n != null) { r.nos.push(n); continue; }
         if (!nb.carried.has(cy.rt_id)) continue;
-        // a continuation: the number of its own week's board, with that week (owner 8/11/2026: «12 · W44»)
+        // a truck of another week (earlier or later, WN5L away): the number of its own week's board, with that week
+        // (owner 8/11/2026: «12 · W44», «15 · W45»)
         const a = nb.away && nb.away.get(cy.rt_id);
         if (a && !a.failed) { const t = a.n + (a.w ? ' · W' + a.w : ''); if (!r.away.includes(t)) r.away.push(t); }
         else if (a && a.failed) awayFailed = a.w;
         else carried = true;
       }
       r.nos = [...new Set(r.nos)].sort((a, b) => a - b);
-      if (!r.nos.length && r.away.length) r.noWhy = 'Το φορτηγό ξεκίνησε την προηγούμενη εβδομάδα: ο αριθμός του στο Εβδομαδιαίο Εθνικών εκείνης';
-      else if (!r.nos.length) r.noWhy = awayFailed != null ? `Χωρίς αριθμό εδώ: το φορτηγό συνεχίζει από τη W${awayFailed} και το Εβδομαδιαίο εκείνης δεν διαβάστηκε`
-        : carried ? 'Χωρίς αριθμό εδώ: το φορτηγό συνεχίζει από την προηγούμενη εβδομάδα — ο αριθμός του είναι στο Εβδομαδιαίο εκείνης'
+      if (!r.nos.length && r.away.length) r.noWhy = 'Το φορτηγό είναι γραμμή άλλης εβδομάδας: ο αριθμός του στο Εβδομαδιαίο Εθνικών εκείνης';
+      else if (!r.nos.length) r.noWhy = awayFailed != null ? `Χωρίς αριθμό εδώ: το φορτηγό είναι γραμμή της W${awayFailed} και το Εβδομαδιαίο εκείνης δεν διαβάστηκε`
+        : carried ? 'Χωρίς αριθμό εδώ: το φορτηγό είναι γραμμή άλλης εβδομάδας — ο αριθμός του είναι στο Εβδομαδιαίο εκείνης'
         : 'Χωρίς αριθμό: το φορτηγό δεν είναι γραμμή του Εβδομαδιαίου Εθνικών αυτής της εβδομάδας';
     }
     return rows;
@@ -612,19 +613,21 @@ const OrdersWeekView = (() => {
     if (!d.v5Board) return null;
     try {
       if (typeof WN5 === 'undefined' || typeof WN5.modelOf !== 'function') throw new Error('WN5.modelOf missing (modules/weekly_natl_v5.js)');
-      const vm = WN5.modelOf(d.v5Board), O = OC();
+      const vm = WN5.modelOf(d.v5Board);
       const carried = new Set(), carriedWeek = new Map();
-      for (const day of vm.days) for (const r of day.rows) if (r.carried) { carried.add(r.rtId); carriedWeek.set(r.rtId, O.weekStartOfYmd(r.dayKey)); }
-      // a continuation's number on its own week's board (owner 8/11: «12 · W44»); away: rt_id → { n, w } | { failed, w }
-      const away = new Map(), ev = d.v5Earlier || { boards: [], failed: [] };
+      // a truck of another week (WN5L away: its week is the board's own rule, WN5L.weekOf)
+      for (const day of vm.days) for (const r of day.rows) if (r.away) { carried.add(r.rtId); carriedWeek.set(r.rtId, r.away.week); }
+      // its number on its own week's board (owner 8/11: «12 · W44»); away: rt_id → { n, w } | { failed, w }
+      const away = new Map(), ev = d.v5Away || { boards: [], failed: [] };
       const wNo = w => (typeof TmsWeek !== 'undefined' ? TmsWeek.numOf(new Date(w + 'T12:00:00')) : null);
+      const models = new Map();
       for (const { week, board } of ev.boards) {
-        // an earlier board that cannot be drawn costs only its continuations' numbers, never this week's
-        let nums;
-        try { nums = WN5L.boardNumbers(WN5.modelOf(board)); }
-        catch (e) { if (typeof logError === 'function') logError(e, 'orders week: earlier board numbers'); ev.failed.push(week); continue; }
-        for (const rt of carried) if (carriedWeek.get(rt) === week && nums.has(rt)) away.set(rt, { n: nums.get(rt), w: wNo(week) });
+        // another week's board that cannot be drawn costs only its rows' numbers, never this week's
+        try { models.set(week, WN5.modelOf(board)); }
+        catch (e) { if (typeof logError === 'function') logError(e, 'orders week: away board numbers'); ev.failed.push(week); }
       }
+      // WN5L.awayNumbers: the rule the board's own «15 · W45» reads (one source)
+      for (const [rt, a] of WN5L.awayNumbers(vm, models)) away.set(rt, { n: a.n, w: wNo(a.week) });
       for (const rt of carried) if (!away.has(rt) && ev.failed.includes(carriedWeek.get(rt))) away.set(rt, { failed: true, w: wNo(carriedWeek.get(rt)) });
       return { nums: WN5L.boardNumbers(vm), byCode: new Map((d.v5Board.cycles || []).filter(c => c.code).map(c => [c.code, c])), carried, away };
     } catch (e) {
@@ -823,13 +826,13 @@ const OrdersWeekView = (() => {
       natlRes.ok && wantNatl ? OrdersCommon.natV5Attach(natl) : Promise.resolve({ failed: false }),
       natlRes.ok && wantNatl ? _v5Board(week) : Promise.resolve({ ok: true, board: null }),
     ]);
-    const earlier = boardRes.board ? await _v5Earlier(boardRes.board, week) : { boards: [], failed: [] };
+    const away = boardRes.board ? await _v5Away(boardRes.board) : { boards: [], failed: [] };
     return {
       week, strip, intl, cancelled, natl, natlFailed: !natlRes.ok, rts: rtRes.ok ? (rtRes.r.records || []) : null,
       rtCapped: rtRes.ok && (rtRes.r.records || []).length >= 500,
       set, setFailed: !setRes.ok, gateFailed: !!set.gateFailed, parentsFailed, refFailed: !refRes.ok, stopDates, stopsFailed,
       natLoads: loadsRes.ok ? loadsRes.loads : null, v5Failed: v5Res.failed,
-      v5Board: boardRes.board, v5BoardFailed: !boardRes.ok, v5Earlier: earlier,
+      v5Board: boardRes.board, v5BoardFailed: !boardRes.ok, v5Away: away,
     };
   }
 
@@ -854,15 +857,14 @@ const OrdersWeekView = (() => {
     }
   }
 
-  // The boards of the earlier weeks where this week's continuations belong (owner 8/11/2026: «12 · W44»): a truck
-  // that started the week before is a «συνέχεια» line here, its number is on THAT week's board. One read per such week
-  // (usually one), only when the week has continuations. → { boards: [{ week, board }], failed: [week] }.
-  async function _v5Earlier(board, week) {
+  // The boards of the other weeks where this week's away trucks belong (owner 8/11/2026: «12 · W44», «15 · W45»): a
+  // truck whose day is in another week (earlier or later) is numbered on THAT week's board. One read per such week
+  // (usually one), only when the week has such trucks. → { boards: [{ week, board }], failed: [week] }.
+  async function _v5Away(board) {
     const out = { boards: [], failed: [] };
     let weeks;
     try {
-      const vm = WN5.modelOf(board), O = OC();
-      weeks = [...new Set(vm.days.flatMap(d => d.rows).filter(r => r.carried && r.dayKey).map(r => O.weekStartOfYmd(r.dayKey)))].filter(w => w && w < week);
+      weeks = WN5L.awayWeeks(WN5.modelOf(board));
     } catch (e) { return out; }   // the week's own numbers say «failed» through _natBoard: no second report
     for (const w of weeks) {
       try {
@@ -870,7 +872,7 @@ const OrdersWeekView = (() => {
         if (!b || typeof b !== 'object' || b.week !== w) throw new Error('board: answer for week ' + String(b && b.week) + ', not ' + w);
         out.boards.push({ week: w, board: b });
       } catch (e) {
-        if (!(e && (e.name === 'PlanError' || e._sessionGone)) && typeof logError === 'function') logError(e, 'orders week: earlier v5 board');
+        if (!(e && (e.name === 'PlanError' || e._sessionGone)) && typeof logError === 'function') logError(e, 'orders week: away v5 board');
         out.failed.push(w);
       }
     }

@@ -690,122 +690,19 @@ SCN.search = async (browser, origin) => {
   await page.context().close();
 };
 
-// Notices strip: the DB's text as it is; «Σημείωσα ✓» = one POST per notice, body {}, never twice; writes closed until
-// day L (409) → the Worker's message, the notices stay, the button off; 422 notice_gone → its message + a re-read.
+// Owner 8/11 («φεύγει πεδίο ειδοποιήσεων από εθνικών weekly»): the board draws no notices strip and sends no
+// «Σημείωσα», whatever notices the base sends with the week (it sends the unread ones with every board).
 SCN.notices = async (browser, origin) => {
   const scn = 'notices';
-  const strip = (page) => page.evaluate(() => {
-    const n = document.getElementById('wn5-notices');
-    // owner 31/10: one line per order / truck (data-ids), its words in .wn5-note-t after the name
-    return n ? { notes: [...n.querySelectorAll('.wn5-note[data-ids]')].map((e) => [e.getAttribute('data-ids'), (e.querySelector('.wn5-note-t') || e).textContent.trim()]),
-      head: (n.querySelector('.wn5-notes-h') || { textContent: '' }).textContent.trim(),
-      // T11: the strip is WN5Act.strip's (a heading word + .wn5-strip-t); the text checked is the Worker's message
-      err: [...n.querySelectorAll('.wn5-strip')].map((e) => [e.getAttribute('data-kind'), (e.querySelector('.wn5-strip-t') || e).textContent.trim()]),
-      off: !!(document.getElementById('wn5-note-read') || {}).disabled } : null;
-  });
-  const reads = (S) => S.plan.filter((x) => x.m === 'POST' && /^\/plan\/notices\/\d+\/read$/.test(x.path));
-  const press = (page) => page.evaluate(() => { const b = document.getElementById('wn5-note-read'); if (b) b.click(); return !!b; });
-  // A: the texts as they came; «Σημείωσα ✓» marks both, then the board comes back without them.
-  const okAnswer = (e, S) => { const id = Number(e.path.split('/')[3]); S.board.notices = S.board.notices.filter((n) => n.id !== id);
-    return [200, { ok: true, op: 'plan_notice_read', dry_run: false, already: false, read_at: '2026-10-13T09:30:00+03:00', read_by: 'demo_dispatcher', ids: { notice_id: id }, warnings: [], notice_ids: [] }]; };
-  const a = await openBoard(browser, origin, { board: fixture(), plan: { 'POST /plan/notices/:id/read': okAnswer } });
-  const s0 = await strip(a.page);
-  ok(scn, '«ΕΙΔΟΠΟΙΗΣΕΙΣ · 2» and each text of a kind the screen does not know = the board message as it is (sentinel)', !!s0 && s0.head === 'ΕΙΔΟΠΟΙΗΣΕΙΣ · 2'
-    && JSON.stringify(s0.notes) === JSON.stringify([['9002', '· rig sentinel notice 9002'], ['9001', '· rig sentinel notice 9001']]), s0);
-  const before = boardReads(a.S).length;
-  await press(a.page);
-  const gone = await until(a.page, () => !document.getElementById('wn5-notices') && document.querySelector('#content .wn5').dataset.state === 'ok');
-  ok(scn, '«Σημείωσα ✓» → one POST per notice, body {}, nothing else', JSON.stringify(reads(a.S).map((x) => [x.path, x.raw])) === JSON.stringify([['/plan/notices/9002/read', '{}'], ['/plan/notices/9001/read', '{}']]), reads(a.S).map((x) => [x.path, x.raw]));
-  ok(scn, '200 → the board is read again and the strip is gone', gone && boardReads(a.S).length === before + 1, { gone, reads: boardReads(a.S).length - before });
-  ok(scn, 'no page errors (A)', !a.S.pageErrors.length, a.S.pageErrors);
-  await shot(a.page, 'notices-read');
-  await a.page.context().close();
-  // B: writes closed until day L (the default answer of the fake = production until L).
-  const one = fixture(); one.notices = one.notices.slice(0, 1);
-  const b = await openBoard(browser, origin, { board: one });
-  await press(b.page);
-  await until(b.page, () => !!document.querySelector('#wn5-notices .wn5-strip'));
-  const s1 = await strip(b.page);
-  ok(scn, '409 writes_closed → one POST, the Worker message in the strip, the notice stays', reads(b.S).length === 1 && !!s1
-    && JSON.stringify(s1.err) === JSON.stringify([['preview', 'rig sentinel writes_closed']]) && s1.notes.length === 1, { posts: reads(b.S).length, s1 });
-  const place = await b.page.evaluate(() => { const x = document.querySelector('#wn5-notices > .wn5-strip');
-    return x ? { head: (x.querySelector('.wn5-strip-h') || { textContent: '' }).textContent, next: x.nextElementSibling && x.nextElementSibling.id } : null; });
-  ok(scn, 'the 409 is the Ε-6 preview strip of WN5Act.strip («ΠΡΟΕΠΙΣΚΟΠΗΣΗ»), in its T8 place just before «Σημείωσα ✓»', !!place && place.head === 'ΠΡΟΕΠΙΣΚΟΠΗΣΗ' && place.next === 'wn5-note-read', place);
-  ok(scn, 'after writes_closed the button is off and WN5 knows writes are closed', !!s1 && s1.off && (await b.page.evaluate(() => WN5.snapshot().writesClosed)), s1);
-  await press(b.page);
-  await b.page.waitForTimeout(500);
-  ok(scn, 'a second press sends nothing', reads(b.S).length === 1, reads(b.S).length);
-  await shot(b.page, 'notices-closed');
-  await b.page.context().close();
-  // C: notice_gone (someone else got there first) → its message, a re-read, what is left stays.
-  const goneAnswer = (e, S) => { const id = Number(e.path.split('/')[3]); S.board.notices = S.board.notices.filter((n) => n.id !== id); return planErr(422, 'PLAN_RULE', 'notice_gone'); };
-  const c = await openBoard(browser, origin, { board: fixture(), plan: { 'POST /plan/notices/:id/read': goneAnswer } });
-  const cb = boardReads(c.S).length;
-  await press(c.page);
-  await until(c.page, () => !!document.querySelector('#wn5-notices .wn5-strip'));
-  const s2 = await strip(c.page);
-  ok(scn, '422 notice_gone → one POST, its message, the board re-read, the other notice still there', reads(c.S).length === 1 && boardReads(c.S).length === cb + 1 && !!s2
-    && JSON.stringify(s2.err) === JSON.stringify([['refusal', 'rig sentinel notice_gone']]) && JSON.stringify(s2.notes.map((x) => x[0])) === '["9001"]', { posts: reads(c.S).length, s2 });
-  await c.page.context().close();
-  // D: no notices → no strip at all.
-  const none = fixture(); none.notices = [];
-  const d = await openBoard(browser, origin, { board: none });
-  ok(scn, 'notices: [] → no #wn5-notices', !(await d.page.$('#wn5-notices')) && !!(await d.page.$('#content .wn5[data-state="ok"]')));
-  ok(scn, 'no page errors (B–D)', !b.S.pageErrors.length && !c.S.pageErrors.length && !d.S.pageErrors.length, [b.S.pageErrors, c.S.pageErrors, d.S.pageErrors]);
-  await d.page.context().close();
-};
-
-// Notices, owner 31/10: one quiet line whatever comes; grouped by order; the order a link to its row; known kinds in
-// short words of the screen (no «κύκλος» / RT code / «κομμάτια» / «(trigger:…)»), an unknown kind the base's words less
-// the trigger tag; «+N ακόμη ▾» counts what is folded; «Σημείωσα» per order = only that order's ids; «Σημείωσα όλες» = all.
-SCN['notices-group'] = async (browser, origin) => {
-  const scn = 'notices-group';
-  const N = (id, kind, message, o, at) => ({ id, to_desk: 'natl', kind, message, order_id: o, nat_order_id: null, rt_id: null,
-    created_at: `2026-10-13T${at}:00+03:00`, created_by: 'trigger:plan_bridge_sync', read_at: null, read_by: null });
   const board = fixture();
-  board.notices = [
-    N(9104, 'zz_new_kind', 'rig sentinel zz (trigger:plan_bridge_sync)', null, '09:20'),
-    N(9102, 'vs_place_changed', 'Ο διεθνών άλλαξε τον προορισμό της VS VS-T102: ΠΕΛΑΤΗΣ Α → Place New Test', 2002, '09:15'),
-    N(9101, 'vs_day_moved_kept', 'Ο διεθνών άλλαξε την ημέρα της VS VS-T102: τα κομμάτια ΕΜΕΙΝΑΝ στον κύκλο τους (RT-1001), έλεγξε τις ώρες', 2002, '09:10'),
-    N(9103, 'vs_withdrawn', 'Η VS VS-T999 βγήκε από τα εθνικά (trigger:plan_bridge_sync): τα κομμάτια της αποσύρθηκαν', 9999, '09:05'),
-  ];
-  const okAnswer = (e, S) => { const id = Number(e.path.split('/')[3]); S.board.notices = S.board.notices.filter((n) => n.id !== id);
-    return [200, { ok: true, op: 'plan_notice_read', dry_run: false, already: false, read_at: NOW, read_by: 'demo_dispatcher', ids: { notice_id: id }, warnings: [], notice_ids: [] }]; };
-  const { page, S } = await openBoard(browser, origin, { board, plan: { 'POST /plan/notices/:id/read': okAnswer } });
-  const st = () => page.evaluate(() => {
-    const n = document.getElementById('wn5-notices'); if (!n) return null;
-    const line = (e) => ({ ids: e.dataset.ids, who: (e.querySelector('.wn5-note-who') || { textContent: '' }).textContent.trim(), link: !!e.querySelector('button.wn5-note-who'),
-      t: (e.querySelector('.wn5-note-t') || { textContent: '' }).textContent.trim(), vis: e.getClientRects().length > 0 });
-    const rest = n.querySelector('.wn5-notes-rest');
-    return { head: n.querySelector('.wn5-notes-h').textContent.trim(), h: Math.round(n.getBoundingClientRect().height), lines: [...n.querySelectorAll('.wn5-note')].map(line),
-      more: (n.querySelector('.wn5-notes-more') || { textContent: '' }).textContent.trim(), restHidden: !rest || rest.hidden, all: (document.getElementById('wn5-note-read') || {}).textContent,
-      text: n.innerText + ' ' + [...n.querySelectorAll('[title]')].map((e) => e.title).join(' '), bg: getComputedStyle(n).backgroundColor };
-  });
-  const a = await st();
-  ok(scn, 'count = the notices (4), groups = orders (3): one line shown, «+2 ακόμη ▾», the rest folded, 34px high', !!a && a.head === 'ΕΙΔΟΠΟΙΗΣΕΙΣ · 4'
-    && a.lines.length === 3 && a.lines.filter((l) => l.vis).length === 1 && a.more === '+2 ακόμη ▾' && a.restHidden && a.h <= 35 && a.all === 'Σημείωσα όλες ✓', a);
-  ok(scn, 'white strip, not the amber block', !!a && a.bg === 'rgb(255, 255, 255)', a && a.bg);
-  const g = (x) => a && a.lines.find((l) => l.ids === x);
-  ok(scn, 'an unknown kind: the base\'s words less «(trigger:…)»', !!g('9104') && g('9104').t === 'rig sentinel zz' && g('9104').who === '', g('9104'));
-  ok(scn, 'two notices of VS-T102 = ONE line «VS-T102 · νέος προορισμός: Place New Test · ημέρα άλλαξε · …», a link (its row is on the board)',
-    !!g('9102,9101') && g('9102,9101').who === 'VS-T102' && g('9102,9101').link && g('9102,9101').t === '· νέος προορισμός: Place New Test · ημέρα άλλαξε · έμεινε στο φορτηγό του · έλεγξε ώρες', a && a.lines);
-  ok(scn, 'an order not on this week: named from the base\'s message, no link', !!g('9103') && g('9103').who === 'VS-T999' && !g('9103').link && g('9103').t === '· βγήκε από τα εθνικά', g('9103'));
-  ok(scn, 'no «κύκλ», «RT-», «κομμάτ», «σκέλ», «trigger» in the strip, its titles included', !!a && !/κύκλ|RT-|κομμάτ|σκέλ|trigger/i.test(a.text), a && a.text);
-  await page.click('#wn5-notices .wn5-notes-more');
-  const b = await st();
-  ok(scn, '«+2 ακόμη ▾» unfolds the other lines, «λιγότερες ▴»', !!b && !b.restHidden && b.lines.every((l) => l.vis) && b.more === 'λιγότερες ▴', b);
-  await shot(page, 'notices-group-open');
-  await page.evaluate(() => { const e = [...document.querySelectorAll('#wn5-notices .wn5-note')].find((x) => x.dataset.ids === '9102,9101'); e.querySelector('button.wn5-note-who').click(); });
-  await page.waitForTimeout(400);
-  const fl = await page.evaluate(() => [...document.querySelectorAll('#content .wn5-row.wn5-flash')].map((e) => e.dataset.key));
-  ok(scn, 'the link marks the order\'s row (rt:102, the cycle that carries VS-T102)', JSON.stringify(fl) === '["rt:102"]', fl);
-  const posts = () => S.plan.filter((x) => x.m === 'POST' && /^\/plan\/notices\/\d+\/read$/.test(x.path)).map((x) => x.path.split('/')[3]);
-  await page.evaluate(() => { const e = [...document.querySelectorAll('#wn5-notices .wn5-note')].find((x) => x.dataset.ids === '9102,9101'); e.querySelector('.wn5-note-ok').click(); });
-  await until(page, () => { const n = document.getElementById('wn5-notices'); return n && /ΕΙΔΟΠΟΙΗΣΕΙΣ · 2/.test(n.textContent); });
-  ok(scn, '«Σημείωσα» of one order = its two ids only, then the board is read again: 2 left', JSON.stringify(posts()) === '["9102","9101"]' && /ΕΙΔΟΠΟΙΗΣΕΙΣ · 2/.test((await st() || {}).head || ''), posts());
-  await page.click('#wn5-note-read');
-  await until(page, () => !document.getElementById('wn5-notices'));
-  ok(scn, '«Σημείωσα όλες ✓» = the rest, then no strip', JSON.stringify(posts()) === '["9102","9101","9104","9103"]' && !(await page.$('#wn5-notices')), posts());
+  board.notices = [{ id: 9101, to_desk: 'natl', kind: 'vs_day_moved_kept', message: 'rig sentinel notice 1', order_id: 2002, nat_order_id: null, rt_id: null,
+    created_at: '2026-10-13T09:10:00+03:00', created_by: 'trigger:plan_bridge_sync', read_at: null, read_by: null }];
+  const { page, S } = await openBoard(browser, origin, { board });
+  const st = await page.evaluate(() => ({ strip: !!document.getElementById('wn5-notices'), head: /ΕΙΔΟΠΟΙΗΣΕΙΣ/.test(document.querySelector('#content .wn5').textContent),
+    sentinel: /rig sentinel notice/.test(document.querySelector('#content .wn5').textContent), state: document.querySelector('#content .wn5').dataset.state }));
+  ok(scn, 'a board with an unread notice: no strip, no «ΕΙΔΟΠΟΙΗΣΕΙΣ», no notice text on the board — main: the strip',
+    st.state === 'ok' && !st.strip && !st.head && !st.sentinel, st);
+  ok(scn, 'no POST /plan/notices/…/read', !S.plan.some((x) => x.m === 'POST' && /^\/plan\/notices\//.test(x.path)), S.plan.filter((x) => x.m === 'POST'));
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
   await page.context().close();
 };
@@ -830,10 +727,15 @@ SCN.strips = async (browser, origin) => {
   });
   ok(scn, 'stale on the board: «ΔΕΝ ΑΠΟΘΗΚΕΥΤΗΚΕ» (every 422 of Δ12), the Worker message as it came', !!st && st.kind === 'stale' && st.head === 'ΔΕΝ ΑΠΟΘΗΚΕΥΤΗΚΕ' && st.msg === 'rig sentinel stale_confirm', st);
   ok(scn, 'stale: «Ανανέωση ↻» at the strip\'s right end, Medium (2069:9518)', !!st && st.act === 'Ανανέωση ↻' && st.reload && st.atEnd && st.actW === '500', st);
-  const r0 = boardReads(a.S).length;
+  // the week on screen only: since owner 8/11 a read of the board is followed by one read of each OTHER week whose truck
+  // stands here whole (the fixture's RT-T108 delivers Sat 17/10 — next week's, «n · W43»)
+  const wkReads = (w) => boardReads(a.S).filter((x) => x.q && x.q.week === w).length;
+  const r0 = wkReads(WEEK), n0 = wkReads('2026-10-17');
   const pressed = await a.page.evaluate(() => { const x = document.querySelector('.wn5-acthost .wn5-strip-act'); if (x) x.click(); return !!x; });
   const gone = pressed && await until(a.page, () => !document.querySelector('.wn5-acthost .wn5-strip') && document.querySelector('#content .wn5').dataset.state === 'ok');
-  ok(scn, '«Ανανέωση ↻» re-reads the board once, the strip goes', gone && boardReads(a.S).length === r0 + 1, { pressed, gone, reads: boardReads(a.S).length - r0 });
+  await a.page.waitForTimeout(300);
+  ok(scn, '«Ανανέωση ↻» re-reads the board once (and its away week once), the strip goes', gone && wkReads(WEEK) === r0 + 1 && wkReads('2026-10-17') === n0 + 1,
+    { pressed, gone, reads: wkReads(WEEK) - r0, away: wkReads('2026-10-17') - n0 });
   // B: the strip's type and the ways on, drawn by WN5Act.strip on a host of the board
   const sb = await a.page.evaluate(() => {
     const host = WN5Act._kit.boardHost();
@@ -2237,14 +2139,14 @@ SCN.pack4 = async (browser, origin) => {
     ok(scn, 'no page errors (A)', !S.pageErrors.length, S.pageErrors);
     await page.context().close();
   }
-  { // A2 · 093 (code review 2/11): the newest row of a save can be the side_time trace (plan_h_reseq) - it reads
-    // «σειρά σημείων», never the bare «δρομολόγιο»
+  { // A2 · owner 8/11 («θέλω να φύγει το μολύβι, να μην υπάρχει καθόλου στα εθνικά»): a cycle the base says was changed
+    // after its assignment (087 last_change) draws no ✎ — and no «Τελευταία αλλαγή» anywhere on the board
     const b = p4Board(true);
     b.cycles[0].last_change = { at: '2026-10-13T05:40:00Z', role: 'dispatcher', table: 'ct_round_trips', action: 'update', keys: ['side_time'] };
     const { page, S } = await bOpen(browser, origin, { board: b });
-    const chg = await page.$eval('.wn5 .wn5-row[data-rt] .wn5-chg', (e) => e.title).catch(() => null);
-    ok(scn, '093: ✎ of a side_time trace «Τελευταία αλλαγή 13/10 08:40 · δρομολόγηση · σειρά σημείων»',
-      chg === 'Τελευταία αλλαγή 13/10 08:40 · δρομολόγηση · σειρά σημείων', chg);
+    const st = await page.evaluate(() => ({ chg: document.querySelectorAll('.wn5 .wn5-chg').length, pen: /✎/.test(document.querySelector('#content .wn5').innerHTML),
+      last: !!document.querySelector('#content .wn5 [title^="Τελευταία αλλαγή"]') }));
+    ok(scn, 'owner 8/11: no ✎ on a cycle with last_change, no «Τελευταία αλλαγή» title — main: ✎', st.chg === 0 && !st.pen && !st.last, st);
     ok(scn, 'no page errors (A2)', !S.pageErrors.length, S.pageErrors);
     await page.context().close();
   }
@@ -2256,10 +2158,7 @@ SCN.pack4 = async (browser, origin) => {
     ok(scn, 'A-3: W42 «3», W43 «1», the others bare (Figma «W43 ①»)', JSON.stringify(badges) === '[["40",""],["41",""],["42","3"],["43","1"],["44",""],["45",""],["46",""]]', badges);
     const tip = await page.$eval('.wn5 .wi4-tab[data-w="42"]', (b) => b.title).catch(() => null);
     ok(scn, 'A-3: the badge says what it counts in its title', tip === '3 παραγγελίες χωρίς φορτηγό', tip);
-    const chg = await page.$eval('.wn5 .wn5-row[data-rt] .wn5-chg', (e) => e.title).catch(() => null);
-    ok(scn, 'P-16: ✎ «Τελευταία αλλαγή 13/10 08:40 · δρομολόγηση · ημέρα / ώρα» (Athens time, a role, never a name)',
-      chg === 'Τελευταία αλλαγή 13/10 08:40 · δρομολόγηση · ημέρα / ώρα', chg);
-    ok(scn, 'P-16: one ✎ (only the changed cycle)', (await page.$$('.wn5 .wn5-chg')).length === 1);
+    ok(scn, 'owner 8/11: no ✎ (P-16 removed) with 087\'s last_change on the board', (await page.$$('.wn5 .wn5-chg')).length === 0);
     // P-11 (β): the ✈ of VS-T118's ΠΡΟΣ ΑΝΑΘΕΣΗ row → «Στον Πίνακα Βέροιας» → target {hub: true} for its 3 pieces
     await bClick(page, '.wn5-row[data-key="wait:4101"] [data-act="to-panel"]');
     const pop = await bText(page, '.wn5-hub-pop');
@@ -3640,8 +3539,10 @@ SCN.calm = async (browser, origin) => {
     };
   });
   const un = v.un;
-  ok(scn, '2a «ΠΡΟΣ ΑΝΑΘΕΣΗ» is quiet grey text on every waiting row (outline only on hover), no «← ΚΑΘΟΔΟΣ» line — main: a 2px solid red box with the side',
-    un.length > 0 && un.every((x) => x.dashed !== 'dashed' && !x.side && x.ink === x.grey), un);
+  // owner 8/11 («το πεδίο ανάθεσης στο εθνικών να είναι κόκκινο όπως στο διεθνών»): the Weekly International's red box
+  // (.wi4-box.un: --wi4-red-ink on --wi4-red-bg, 2px solid) — it replaces 2a's quiet grey (1/11)
+  ok(scn, 'owner 8/11: «ΠΡΟΣ ΑΝΑΘΕΣΗ» is the red box of the Weekly International on every waiting row, no «← ΚΑΘΟΔΟΣ» line — main: quiet grey text',
+    un.length > 0 && un.every((x) => x.dashed === 'solid' && !x.side && x.ink === 'rgb(127, 29, 29)'), un);
   ok(scn, '2a no red rail on a waiting row; a late one is its red day chip («αργό»), once — main: every waiting row red', un.some((x) => x.late) && un.every((x) => !x.rail), un.map((x) => [x.p, x.late, x.rail]));
   ok(scn, '2b a waiting row draws nothing on its empty side — main: a dashed «Χωρίς άνοδο» box / «—»', un.every((x) => !x.gap), un.map((x) => [x.p, x.gap]));
   ok(scn, '2b on a cycle the empty side is text without a box, its «+» quieter (.55) at rest — seen without the mouse (Sotiris report 8/11, item 12) — main: dashed boxes, «+» at .45',
@@ -3782,28 +3683,26 @@ SCN.pr3a = async (browser, origin) => {
   extra = false;
   ok(scn, 'stable layout: a save that re-draws the board with one more row above keeps the row under the pointer at the same height (±1px) — main: it slides down a row',
     top0 != null && !!st && st.added && Math.abs(st.top - top0) <= 1, { before: top0, after: st });
-  // ── 3e: notices only in the week they concern (or, naming no row, in the current week)
-  const notes = () => page.evaluate(() => { const n = document.getElementById('wn5-notices'); return n ? n.querySelectorAll('.wn5-note').length : 0; });
-  const n42 = await notes();
-  // ── 3d: the cycle of Fri 16/10 → Sat 17/10
-  const d42 = await page.evaluate(() => { const r = document.querySelector('#content .wn5 .wn5-row[data-rt="220"]'); return r ? (r.querySelector('.wi4-no') || {}).textContent : null; });
+  // ── owner 8/11 (replaces 3d): the cycle of Fri 16/10 → Sat 17/10 is W42's (its ΚΑΘΟΔΟΣ delivers in W42) and stands in
+  // W43 WHOLE, marked with its W42 number («15 · W45»), the week a link back to its row
+  const d42 = await page.evaluate(() => { const r = document.querySelector('#content .wn5 .wn5-row[data-rt="220"]'); return r ? { n: (r.querySelector('.wi4-no') || {}).textContent, away: r.classList.contains('wn5-away') } : null; });
   const at43 = await go(43, '2026-10-17');
-  const n43 = await notes();
+  await until(page, () => { const e = document.querySelector('#content .wn5 .wn5-row[data-rt="220"] .wn5-awno .wi4-no'); return !!e && e.textContent !== '…'; }, null, 5000);
   const d43 = await page.evaluate(() => {
-    const c = document.querySelector('#content .wn5 [data-carry="220"]');
-    return { row: !!document.querySelector('#content .wn5 .wn5-row[data-rt="220"]'), carry: c ? c.textContent.replace(/\s+/g, ' ').trim() : null,
-      h: c ? Math.round(c.getBoundingClientRect().height) : null };
+    const r = document.querySelector('#content .wn5 .wn5-row[data-rt="220"]');
+    return r ? { away: r.classList.contains('wn5-away'), n: (r.querySelector('.wn5-awno .wi4-no') || {}).textContent, w: (r.querySelector('.wn5-awk') || {}).textContent,
+      title: (r.querySelector('.wn5-awno') || { title: '' }).title, kto: !!r.querySelector('.wn5-kto'), ato: !!r.querySelector('.wn5-ato'), h: Math.round(r.getBoundingClientRect().height),
+      carryLine: !!document.querySelector('#content .wn5 [data-carry]') } : null;
   });
-  ok(scn, '3d a cycle that loads Fri 16/10 and returns Sat 17/10: its numbered row in W42, in W43 one thin «συνέχεια από W42» line with its truck and no number of its own — main: a second full row, numbered again',
-    at43 && /^\d+$/.test(d42 || '') && !d43.row && /^↳ συνέχεια από W42 · TST-2208/.test(d43.carry || '') && d43.h <= 30, { d42, d43 });
-  await page.evaluate(() => { const b = document.querySelector('#content .wn5 [data-carry="220"] .wn5-carry-go'); if (b) b.click(); });
+  ok(scn, 'owner 8/11: W42 numbers the cycle of Fri 16/10 → Sat 17/10; W43 draws it WHOLE, marked «<n> · W42», no thin «συνέχεια» line — main: one thin line, no number',
+    at43 && !!d42 && /^\d+$/.test(d42.n || '') && !d42.away && !!d43 && d43.away && d43.n === d42.n && d43.w === 'W42' && d43.kto && d43.ato && d43.h >= 40 && !d43.carryLine
+      && d43.title === `Φορτηγό της W42: ο αριθμός του εκεί είναι ${d42.n}`, { d42, d43 });
+  await page.evaluate(() => { const b = document.querySelector('#content .wn5 .wn5-row[data-rt="220"] .wn5-awk'); if (b) b.click(); });
   const back = await okWeek('2026-10-10');
   await page.waitForTimeout(200);
   const foc = await page.evaluate(() => { const r = document.querySelector('#content .wn5 .wn5-row[data-rt="220"]'); const sc = document.getElementById('content');
     if (!r) return null; const g = r.getBoundingClientRect(), s = sc.getBoundingClientRect(); return { focus: r.classList.contains('wn5-focus'), seen: g.top >= s.top && g.bottom <= s.bottom }; });
-  ok(scn, '3d the «συνέχεια» line goes to its week and shows the row — main: no line to press', back && !!foc && foc.focus && foc.seen, foc);
-  ok(scn, '3e notices in the week they concern: W42 (current) shows both (one of its row, one of no row); W43 shows none — main: both on every week',
-    n42 === 2 && n43 === 0, { n42, n43 });
+  ok(scn, 'owner 8/11: «W42» on the marked row goes to W42 and shows the row there — main: the thin line\'s link', back && !!foc && foc.focus && foc.seen, foc);
   // ── 3b: a past week reads normally
   const at41 = await go(41, '2026-10-03');
   const b41 = await page.evaluate(() => ({ dim: document.querySelectorAll('#content .wn5 .wn5-dim').length, rows: document.querySelectorAll('#content .wn5 .wn5-row').length }));

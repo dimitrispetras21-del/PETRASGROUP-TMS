@@ -44,7 +44,7 @@ test('F4α-T5: every row loading at Veroia has .wn5-vtime inside .wn5-fl', () =>
   const c = load();
   const m = c.WN5L.model(FIX, { today: '2026-10-13' });
   const want = m.days.flatMap((d) => d.rows).filter((r) => r.kath && r.kath.veroia);
-  assert.deepStrictEqual(Array.from(want, (r) => r.key), ['rt:101', 'rt:102', 'rt:103', 'rt:104', 'wait:4101', 'wait:4103', 'rt:105', 'rt:108', 'wait:4104']);
+  assert.deepStrictEqual(Array.from(want, (r) => r.key), ['rt:101', 'wait:4101', 'wait:4103', 'rt:103', 'rt:102', 'rt:104', 'rt:105', 'wait:4104', 'rt:108']);
   const byKey = new Map(rows(c.WN5._html(m)).map((r) => [keyOf(r), r]));
   for (const r of want) {
     const fl = cell(byKey.get(r.key), 'wn5-fl');

@@ -129,10 +129,10 @@ test('F4α-T11: a required field goes into the execution body only (the reason o
   assert.deepStrictEqual(s.calls[1].body, { nat_order_id: 3111, reason: 'λάθος καταχώρηση', confirm_token: 'tokD' });
 });
 
-test('F4α-T11: weekly_natl_v5.js hands its root to WN5Act.bind, exposes WN5.state and shows the notices error through WN5Act.strip', () => {
+test('F4α-T11: weekly_natl_v5.js hands its root to WN5Act.bind and exposes WN5.state (no notices strip: owner 8/11)', () => {
   const src = fs.readFileSync(path.join(ROOT, 'modules', 'weekly_natl_v5.js'), 'utf8');
   assert.match(src, /WN5Act\.bind\(/, 'the painted root is never handed to WN5Act.bind');
   assert.match(src, /WN5Act\.closeAll\(/, 'leaving the page leaves a dialog open');
   assert.match(src, /\bstate\s*(?::|\()/, 'WN5.state() is missing');
-  assert.match(src, /WN5Act\.strip\(/, 'the notices strip still writes its own error line (T8 → T11)');
+  assert.doesNotMatch(src, /wn5-notices|\/plan\/notices/, 'owner 8/11 («φεύγει πεδίο ειδοποιήσεων από εθνικών weekly»): no notices strip, no «Σημείωσα»');
 });

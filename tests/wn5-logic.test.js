@@ -32,15 +32,19 @@ const M = (b = fix()) => L.model(b, { today: TODAY });
 const rowOf = (m, key) => m.days.flatMap((d) => d.rows).find((r) => r.key === key);
 const dayOf = (m, key) => (m.days.find((d) => d.rows.some((r) => r.key === key)) || {}).date;
 
-test("F4α-T4: rows sorted by the Veroia loading day of KATHODOS; ANODOS-only cycle on its ANODOS day with 'Χωρίς κάθοδο'", () => {
+test("owner 8/11: ΚΑΘΟΔΟΣ by its first delivery day, a row without ΚΑΘΟΔΟΣ by its ΑΝΟΔΟΣ loading day; 'Χωρίς κάθοδο'", () => {
   const m = M();
   assert.deepStrictEqual(m.days.map((d) => d.head), ['ΣΑΒΒΑΤΟ 10/10', 'ΚΥΡΙΑΚΗ 11/10', 'ΔΕΥΤΕΡΑ 12/10', 'ΤΡΙΤΗ 13/10', 'ΤΕΤΑΡΤΗ 14/10', 'ΠΕΜΠΤΗ 15/10', 'ΠΑΡΑΣΚΕΥΗ 16/10']);
+  // inside a day: cycles first by that delivery's time, then the loads waiting for a vehicle; RT-108 loads Fri 16/10
+  // and delivers Sat 17/10 — next week's row, drawn whole at the bottom of this Friday (away 'to')
   assert.deepStrictEqual(m.days.map((d) => d.rows.map((r) => r.key)), [
-    ['rt:101'], [], ['rt:102', 'rt:103', 'rt:104', 'wait:4101', 'wait:4103'], [],
-    ['rt:105', 'rt:106', 'wait:4105'], ['rt:107'], ['rt:108', 'wait:4104']]);
+    [], [], ['rt:101', 'wait:4101', 'wait:4103'], ['rt:103', 'rt:102', 'rt:104'],
+    ['rt:106', 'wait:4105'], ['rt:105', 'rt:107'], ['wait:4104', 'rt:108']]);
   assert.strictEqual(rowOf(m, 'rt:106').kath, null, 'an ANODOS-only cycle has no ΚΑΘΟΔΟΣ («Χωρίς κάθοδο»)');
-  assert.strictEqual(rowOf(m, 'rt:105').dayKey, '2026-10-14', 'the Veroia loading day, not the first (Thessaloniki) stop');
-  assert.deepStrictEqual(m.days.map((d) => d.empty), [false, true, false, true, false, false, false]);
+  assert.strictEqual(rowOf(m, 'rt:106').dayKey, rowOf(m, 'rt:106').anod.day, 'without ΚΑΘΟΔΟΣ: the ΑΝΟΔΟΣ loading day');
+  assert.deepStrictEqual([rowOf(m, 'rt:105').kath.day, rowOf(m, 'rt:105').dayKey], ['2026-10-14', '2026-10-15'],
+    'the first delivery day, not the Veroia loading day (Wed 14/10) as until 8/11');
+  assert.deepStrictEqual(m.days.map((d) => d.empty), [true, true, false, false, false, false, false]);
   // VS-T133 comes without nat_ready_day (orders.cross_dock_date empty, a live 072 state): the day before its
   // nat_due_day (owner rule for an import VS, 23/8), never the week's Saturday
   assert.strictEqual(fix().hub.find((h) => h.piece_id === 4104).nat_ready_day, null);
@@ -113,7 +117,7 @@ test("F4α-T4 / F5 FE-2: a VS no truck took (hub[]) → row kind 'unassigned', r
   const m4 = M(b4), r4 = rowOf(m4, 'wait:4191');
   assert.ok(r4 && !rowOf(m4, 'wait:4192'), 'one row for the order');
   assert.deepStrictEqual({ veroia: r4.kath.veroia, from: r4.kath.from.map((p) => [p.name, p.from, p.to, p.pallets]), pieces: r4.pieceIds, group: r4.group, pallets: r4.kath.pallets, day: r4.dayKey },
-    { veroia: { stopId: null, from: null, to: null, allDay: false }, from: [['—', '08:00', '10:00', 7]], pieces: [4191, 4192], group: { nat_order_id: 3291 }, pallets: 12, day: '2026-10-12' });
+    { veroia: { stopId: null, from: null, to: null, allDay: false }, from: [['—', '08:00', '10:00', 7]], pieces: [4191, 4192], group: { nat_order_id: 3291 }, pallets: 12, day: '2026-10-14' });
 });
 
 test('F4α-T4: dim/headDim/sideDim/rowDim copied from dim/side_dim/cycle_dim; the model computes no date rule', () => {
@@ -402,4 +406,81 @@ test('boardNumbers (owner 2/11, 8/11): the board order of its cycle rows, 1…N;
   assert.ok(!n2.has(first.rtId));
   assert.strictEqual(n2.get(cycles[1].rtId), 1);
   assert.strictEqual(L.boardNumbers(null).size, 0);
+});
+
+// Owner 8/11: «επίσης όπως το διεθνών, θέλω να εμφανίζεται η ημέρα παράδοσης των ΑΝΟΔΩΝ» — the ΑΝΟΔΟΣ side names its
+// delivery day (its first delivery, else its arrival at Veroia), as the ΚΑΘΟΔΟΣ «→».
+test('owner 8/11: ΑΝΟΔΟΣ toDay = its first delivery, else the Veroia arrival; a waiting ΑΝΟΔΟΣ its delivery / due day', () => {
+  const m = M();
+  const r102 = rowOf(m, 'rt:102'), r101 = rowOf(m, 'rt:101');
+  assert.strictEqual(r102.anod.toDay, '2026-10-14');
+  assert.strictEqual(r101.anod.to.length, 0);
+  assert.strictEqual(r101.anod.toDay, L.athensDay(r101.end.by), 'no delivery: the cycle end at Veroia');
+  // a waiting vs_export (ΑΝΟΔΟΣ to Veroia) with no window: the base's due day, never null when the board knows it
+  const b = fix();
+  const hub = L.hubFromBoard(b);
+  b.waiting.push(Object.assign({}, b.waiting[0], { piece_id: 4199, shipment_id: 4299, kind: 'vs_export', order_id: 2199, nat_order_id: null,
+    reference: 'VS-T199', nat_to_location_id: hub, load_from: '2026-10-13T06:00:00+03:00', load_to: '2026-10-13T08:00:00+03:00',
+    deliver_from: null, deliver_to: null, nat_ready_day: '2026-10-13', nat_due_day: '2026-10-15' }));
+  const r = rowOf(M(b), 'wait:4199');
+  assert.deepStrictEqual([r.kath, r.anod.day, r.anod.toDay, r.dayKey], [null, '2026-10-13', '2026-10-15', '2026-10-13'],
+    'a waiting ΑΝΟΔΟΣ: its loading day for the row, its due day as the delivery');
+});
+
+// Owner 8/11: «τα φορτία άλλης εβδομάδας που όμως έχουν συνέχεια στην άλλη, θέλω να εμφανίζονται και στην άλλη ολόκληρα
+// όμως με ένα διακριτικό» + «15 · W45»: a cycle of another week is a whole row here (away), numbered in its own week.
+test('owner 8/11: a cycle of another week is a whole away row, first day (earlier) or last day (later); numbered there', () => {
+  const m = M();
+  const r108 = rowOf(m, 'rt:108');
+  assert.deepStrictEqual([r108.carried, r108.away, dayOf(m, 'rt:108')], [true, { week: '2026-10-17', dir: 'to' }, '2026-10-16']);
+  assert.ok(!L.boardNumbers(m).has(108), 'not numbered in this week');
+  assert.deepStrictEqual(L.awayWeeks(m), ['2026-10-17']);
+  // the next week's board: RT-108 is its own row there, numbered 1 (its first row)
+  const b2 = fix(); b2.week = '2026-10-17';
+  const m2 = L.model(b2, { today: TODAY });
+  assert.strictEqual(rowOf(m2, 'rt:108').away, null);
+  assert.ok(m2.days[0].rows.some((r) => r.key === 'rt:108'), 'Sat 17/10: its delivery day');
+  const n = L.boardNumbers(m2).get(108);
+  assert.ok(Number.isInteger(n));
+  assert.deepStrictEqual([...L.awayNumbers(m, new Map([['2026-10-17', m2]]))], [[108, { n, week: '2026-10-17' }]]);
+  assert.deepStrictEqual([...L.awayNumbers(m, new Map())], [], 'a week not read: no number (the screen says why)');
+  // in that week the rows of 10/10–16/10 are earlier-week rows, drawn whole at the top of its Saturday
+  const sat = m2.days[0].rows;
+  const fromRows = sat.filter((r) => r.away && r.away.dir === 'from').map((r) => r.key);
+  assert.ok(fromRows.length > 0 && fromRows.every((k, i) => sat[i].key === k), 'the earlier weeks\' rows stand first: ' + sat.map((r) => r.key));
+  assert.ok(fromRows.every((k) => rowOf(m2, k).away.week === '2026-10-10'));
+});
+
+test('weekOf: the TMS week (Saturday) of a day', () => {
+  assert.deepStrictEqual(['2026-10-31', '2026-11-01', '2026-11-06', '2026-11-07', '2026-10-30', 'x'].map(L.weekOf),
+    ['2026-10-31', '2026-10-31', '2026-10-31', '2026-11-07', '2026-10-24', null]);
+});
+
+// Code review high 8/11: a waiting ΚΑΘΟΔΟΣ loaded this week and delivered next week stays on this week (its last day),
+// as on its delivery day next week; a load of next week only is not here. loadDayOf = the day the screens of «which
+// trucks work that day» read (not the board's delivery-day dayKey).
+test('code review 8/11: a waiting load delivered after the week stands on the last day of the week it loads in', () => {
+  const b = fix();
+  const w0 = b.waiting.find((w) => w.kind === 'national') || b.waiting[0];
+  b.waiting.push(Object.assign({}, w0, { piece_id: 4198, shipment_id: 4298, nat_order_id: 3298, order_id: null, reference: 'N-T098',
+    load_from: '2026-10-16T06:00:00+03:00', load_to: '2026-10-16T08:00:00+03:00', deliver_from: '2026-10-19T06:00:00+03:00', deliver_to: '2026-10-19T08:00:00+03:00',
+    nat_ready_day: '2026-10-16', nat_due_day: '2026-10-19', direction: 'KATHODOS' }));
+  b.waiting.push(Object.assign({}, w0, { piece_id: 4197, shipment_id: 4297, nat_order_id: 3297, order_id: null, reference: 'N-T097',
+    load_from: '2026-10-19T06:00:00+03:00', load_to: '2026-10-19T08:00:00+03:00', deliver_from: '2026-10-20T06:00:00+03:00', deliver_to: '2026-10-20T08:00:00+03:00',
+    nat_ready_day: '2026-10-16', nat_due_day: '2026-10-20', direction: 'KATHODOS' }));
+  const m = M(b);
+  const r = rowOf(m, 'wait:4198');
+  assert.ok(r && r.kath, 'the Friday loading for Monday is on this week');
+  assert.deepStrictEqual([r.dayKey, L.loadDayOf(r), dayOf(m, 'wait:4198')], ['2026-10-19', '2026-10-16', '2026-10-16']);
+  assert.strictEqual(rowOf(m, 'wait:4197'), undefined, 'a load that loads next week is not here');
+  // re-review: one that loaded BEFORE the week and is delivered after it is on the current week's Saturday only (1a),
+  // never on the Friday of every week in between
+  const b2 = fix();
+  b2.waiting.push(Object.assign({}, w0, { piece_id: 4196, shipment_id: 4296, nat_order_id: 3296, order_id: null, reference: 'N-T096',
+    load_from: '2026-10-05T06:00:00+03:00', load_to: '2026-10-05T08:00:00+03:00', deliver_from: '2026-10-26T06:00:00+03:00', deliver_to: '2026-10-26T08:00:00+03:00',
+    nat_ready_day: '2026-10-05', nat_due_day: '2026-10-26', direction: 'KATHODOS' }));
+  assert.strictEqual(dayOf(M(b2), 'wait:4196'), '2026-10-10', 'current week: carried to its Saturday');
+  assert.strictEqual(dayOf(L.model(b2, { today: '2026-10-25' }), 'wait:4196'), undefined, 'another week: not here');
+  assert.strictEqual(L.loadDayOf(rowOf(m, 'rt:105')), '2026-10-14', 'a cycle: its ΚΑΘΟΔΟΣ (Veroia) day');
+  assert.strictEqual(L.loadDayOf(rowOf(m, 'rt:106')), rowOf(m, 'rt:106').anod.day, 'without ΚΑΘΟΔΟΣ: its ΑΝΟΔΟΣ day');
 });
