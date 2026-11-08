@@ -691,6 +691,42 @@ async function scnV1(browser, origin) {
 // three weeks and two variants of the fixture, as data. With WI4_DUMP=<file> it writes them, so the
 // same run on another tree (WI4_TREE) proves the move of the row structure and the numbering to
 // core/wi4-logic.js changed nothing: same rows, same ids, same numbers, the same #wi-rows HTML.
+// Owner 8/11/2026 (#644 Thu 5/11 → its rota leg #677 Sat 7/11): a leg dated in another week than its parent
+// stands in ITS OWN week (own ↳ row on its day, no number, «σκέλος της #N (εβδ. d/m)»), the parent's week names
+// it «συνέχεια», and no order of either week is drawn nowhere (no UNSEEN strip). Fixture: E090 W42 → E091 W43.
+async function scnRotaWeek(browser, origin) {
+  const scn = 'rotaweek';
+  const { page, S } = await openBoard(browser, origin);
+  const unseen = () => page.evaluate(() => { const b = document.querySelector('#content .wi4 [data-r="UNSEEN"]'); return b ? b.textContent : null; });
+  ok(scn, 'W41: no order drawn nowhere (no UNSEEN strip)', (await unseen()) === null, await unseen());
+  await page.evaluate(() => { WINTL.week = 42; return WI_INTERNAL.renderWeeklyIntl(); }); await settle(page, S);
+  const w42 = await page.evaluate(() => {
+    const row = document.querySelector('#content .wi4 .wi4-row[data-oid="recWiE090"]');
+    const sub = row && row.nextElementSibling;
+    return { row: !!row, idx: row ? (row.querySelector('.wi4-c-idx') || {}).textContent.trim() : null, sub: sub ? sub.textContent.replace(/\s+/g, ' ').trim() : null,
+      leg: !!document.querySelector('#content .wi4 [data-oid="recWiE091"]') };
+  });
+  ok(scn, 'W42: the parent E090 is a numbered row', w42.row && /^\d+$/.test(w42.idx || ''), w42);
+  ok(scn, 'W42: «συνέχεια: Σάβ 17/10 →» right under it', /συνέχεια: Σάβ 17\/10 →/.test(w42.sub || ''), w42);
+  ok(scn, 'W42: the leg itself is not drawn here (it stands in its own week)', !w42.leg, w42);
+  ok(scn, 'W42: no UNSEEN strip', (await unseen()) === null, await unseen());
+  if (OUT) { await page.locator('#content .wi4 .wi4-row[data-oid="recWiE090"]').scrollIntoViewIfNeeded(); await shot(page, 'rotaweek-W42-parent'); }
+  await page.evaluate(() => { WINTL.week = 43; return WI_INTERNAL.renderWeeklyIntl(); }); await settle(page, S);
+  const w43 = await page.evaluate(() => {
+    const el = document.querySelector('#content .wi4 .wi4-sub-leg[data-oid="recWiE091"]');
+    const day = el && el.closest('.wi4-day');
+    return { el: !!el, day: day && day.dataset.day, idx: el ? el.querySelector('.wi4-c-idx').textContent.trim() : null,
+      tag: el ? (el.querySelector('.wi4-sub-leg-t') || {}).textContent : null };
+  });
+  ok(scn, 'W43: E091 is its own leg row on Saturday 17/10', w43.el && w43.day === '2026-10-17', w43);
+  ok(scn, 'W43: no number, «↳» like every leg', w43.idx === '↳', w43);
+  ok(scn, 'W43: it names truck · driver and its parent «σκέλος της #9190 (εβδ. 10/10)»', /TST-\d+ · Driver Test \d{2} · σκέλος της #9190 \(εβδ\. 10\/10\)/.test(w43.tag || ''), w43);
+  ok(scn, 'W43: no UNSEEN strip', (await unseen()) === null, await unseen());
+  if (OUT) { await page.locator('#content .wi4 .wi4-sub-leg[data-oid="recWiE091"]').scrollIntoViewIfNeeded(); await shot(page, 'rotaweek-W43-leg'); }
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await page.context().close();
+}
+
 async function scnNumbers(browser, origin) {
   const scn = 'numbers';
   const out = {};
@@ -4650,7 +4686,7 @@ async function scnVs(browser, origin) {
       date: scnDate, keys: scnKeys, search: scnSearch, savefail: scnSaveFail, presence: scnPresence, conflict: scnConflict, fallback: scnFallback, styles: scnStyles,
       twins: scnTwins, queue: scnQueue, unread: scnUnread,
       print: scnPrint, shift: scnShift, late: scnLate, offline: scnOffline, quiet: scnQuiet, natmissing: scnNatMissing, done: scnDone, twoday: scnTwoDay, w1440: scnW1440, parity: scnParity,
-      vs: scnVs, v5: scnV5, v5err: scnV5Err, vsnote: scnVsNote, vsform: scnVsForm, del428: scnDel428, numbers: scnNumbers };
+      vs: scnVs, v5: scnV5, v5err: scnV5Err, vsnote: scnVsNote, vsform: scnVsForm, del428: scnDel428, numbers: scnNumbers, rotaweek: scnRotaWeek };
     // A watchdog per scenario: one missing locator or one write that never
     // settles fails THAT scenario, closes its pages, and the run goes on.
     const WATCHDOG_MS = 360000;
