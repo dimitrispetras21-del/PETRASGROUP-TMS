@@ -32,6 +32,8 @@ const wiSrc = [
   grab(/function _wiExecConfirmText\(execs,what,closedOk\)\{[\s\S]*?\n\}\n/, '_wiExecConfirmText', true),
   // _wiRemoveImport clears the import GROUP's row through it (review 8/11/2026)
   grab(/function _wiImpGroupRowOf\(oid\)\{[\s\S]*?\n\}\n/, '_wiImpGroupRowOf', true),
+  // owner 8/11 #10: decides whether the export group passed anything on (absent in older copies)
+  grab(/async function _wiExpPassedOn\(expIds,impIds\)\{[\s\S]*?\n\}\n/, '_wiExpPassedOn', true),
   grab(/async function _wiRemoveImport\(rowId\)\{[\s\S]*?\n\}\n/, '_wiRemoveImport'),
   grab(/async function _wiDissolveClearMember\(oid\)\{[\s\S]*?\n\}\n/, '_wiDissolveClearMember'),
   grab(/async function _wiCancelGroupMember\(rowId,orderId,isImportSide(?:,ask)?\)\{[\s\S]*?\n\}\n/, '_wiCancelGroupMember'),
@@ -97,7 +99,8 @@ function world({ imports = ['I'], exportsOnRt = ['E'], failLeg = null, lookupThr
     atPatch: async (t, id, f) => ctx.atSafePatch(t, id, f), rtOnOrderSaved: async () => {},
   };
   ctx.WINTL.rows = [
-    { id: 1, type: 'export', orderIds: exportsOnRt.slice(), importId: imports[0] },
+    // truckId as the board builds it (_wiBuildRows): every export here rides T1.
+    { id: 1, type: 'export', orderIds: exportsOnRt.slice(), importId: imports[0], truckId: 'T1' },
     { id: 2, type: 'import', orderId: imports[0], orderIds: imports.slice(), matchedTo: 1 },
   ];
   vm.runInNewContext(wiSrc + '\nObject.assign(this,{_wiRemoveImport,_wiDissolveClearMember,_wiCancelGroupMember,_wiDoSplit});', ctx);

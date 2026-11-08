@@ -3040,7 +3040,6 @@ async function _wiUnmatchRow(rowId){
 // την άνοιξε (owner 3/9). Δεν γράφεται τίποτα εδώ: κρατάμε ΠΟΙΟ export περιμένει
 // και το ταίριασμα εκτελείται μόνο αν η φόρμα όντως δημιουργήσει εγγραφή.
 function _wiNewImport(rowId){
-  if(_wiBlockReadOnly()) return;   // the same gate as «+ Νέα παραγγελία» (_wiNewOrder)
   const row=WINTL.rows.find(r=>r.id===rowId);
   if(!row) return;
   if(row.importId){ toast('Η γραμμή έχει ήδη ταιριασμένη εισαγωγή','warn'); return; }
