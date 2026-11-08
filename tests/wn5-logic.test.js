@@ -387,3 +387,19 @@ test('F64: winText — one minute is «στις HH:MM», the day\'s last minute 
   assert.strictEqual(W.winText('22:00', '02:00', false), '22:00–02:00');   // a night window is never an instant
   assert.strictEqual(W.winText(null, '08:00', false), null);
 });
+
+test('boardNumbers (owner 2/11, 8/11): the board order of its cycle rows, 1…N; waiting and carried rows have none', () => {
+  const m = M();
+  const nums = L.boardNumbers(m);
+  const cycles = m.days.flatMap((d) => d.rows).filter((r) => r.kind === 'cycle' && !r.carried);
+  assert.deepStrictEqual([...nums.values()], cycles.map((_, i) => i + 1), 'continuous from 1 in board order');
+  assert.deepStrictEqual([...nums.keys()], cycles.map((r) => r.rtId));
+  for (const r of m.days.flatMap((d) => d.rows)) if (r.kind !== 'cycle') assert.ok(!nums.has(r.rtId), 'a waiting row has no number');
+  // a cycle carried from the week before is numbered there, not here (3d)
+  const first = cycles[0];
+  first.carried = true;
+  const n2 = L.boardNumbers(m);
+  assert.ok(!n2.has(first.rtId));
+  assert.strictEqual(n2.get(cycles[1].rtId), 1);
+  assert.strictEqual(L.boardNumbers(null).size, 0);
+});

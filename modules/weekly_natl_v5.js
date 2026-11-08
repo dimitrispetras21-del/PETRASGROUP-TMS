@@ -453,6 +453,17 @@ function _fail(e) {
     setTimeout(gone, 3000);
   } catch (_) { /* the old board is on screen either way */ }
 }
+function _modelOpts() {
+  const hubId = typeof PlanIds !== 'undefined' && typeof PlanIds.hub === 'function' ? PlanIds.hub() : null;
+  const mo = { today: _today() };
+  if (hubId != null) mo.hubId = hubId;
+  if (_idsOk && typeof PlanIds !== 'undefined' && typeof PlanIds.place === 'function') mo.place = (id) => PlanIds.place(id);
+  return mo;
+}
+// The model of a board JSON read by another page, with the board's own options (hub, today): «Παραγγελίες ›
+// Εβδομάδα» numbers its nationals from it (WN5L.boardNumbers), so its rows and numbers are the board's, never a copy.
+// Throws WN5L.ShapeError on a malformed board, as _paint does.
+function modelOf(board) { return L().model(board, _modelOpts()); }
 function _paint() {
   const content = document.getElementById('content');
   if (!content) throw new Error('#content missing');
@@ -462,11 +473,7 @@ function _paint() {
   // The 072 board names no hub stop: the catalogue's hub id (PlanIds.hub(), T12) when it is loaded, else WN5L reads
   // it from base facts (Ε-27). A hub[] row is at Veroia either way (071 at_hub). Neither → WN5L.HUB_UNKNOWN in
   // m.errors, which _shapeHTML shows and _logShape logs once (Ε-44): never Veroia as an ordinary stop in silence.
-  const hubId = typeof PlanIds !== 'undefined' && typeof PlanIds.hub === 'function' ? PlanIds.hub() : null;
-  const mo = { today: _today() };
-  if (hubId != null) mo.hubId = hubId;
-  if (_idsOk && typeof PlanIds !== 'undefined' && typeof PlanIds.place === 'function') mo.place = (id) => PlanIds.place(id);
-  _m = _board ? lg.model(_board, mo) : null;
+  _m = _board ? lg.model(_board, _modelOpts()) : null;
   _closeMenu();
   // the page opened again (from another page, or back from the old board) is a week opening too (3a)
   if (!content.querySelector(':scope > .wn5')) _toToday = true;
@@ -711,7 +718,8 @@ function _logShape(m) {
 
 // ═══ Board body ═══
 function _boardHTML(m, known) {
-  const no = { n: 0 };
+  // the row numbers: WN5L.boardNumbers, the one count «Παραγγελίες › Εβδομάδα» shows too (owner 2/11)
+  const no = L().boardNumbers(m);
   // 3c: a week before day L. Empty (as it always is: its national work is in the old model) = the one line instead of
   // the board; with rows (a v5 load dated before L) the rows are drawn under it, never hidden.
   const preL = known && _preL(m.week);
@@ -850,7 +858,7 @@ const _winTxt = (f, t, all) => WN5L.winText(f, t, all) || '—';
 const _win = (f, t, all) => _esc(_winTxt(f, t, all));
 function _rowHTML(r, m, no) {
   if (r.carried) return _carryHTML(r, m);
-  const n = r.kind === 'cycle' ? ++no.n : null;
+  const n = r.kind === 'cycle' ? no.get(r.rtId) : null;
   const ok = _dimOk(r, m);
   // 2a: a waiting load has no rail (its one red is the word «αργό», critics r1: rail + word + chip said it three
   // times); a cycle keeps WN5L's rail
@@ -1894,6 +1902,7 @@ const WN5 = {
   paint,
   reload,
   findAfterReuse,
+  modelOf,
   snapshot,
   state,
   markClosed,
