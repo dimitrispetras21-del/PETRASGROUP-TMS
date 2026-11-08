@@ -9553,9 +9553,14 @@ button.wn5-note-who { color:var(--wi4-blue-ink); cursor:pointer; }
    ink at rest. The «+N» chip is the quieter one now (below). */
 .wn5-plus { opacity:1; }
 .wn5-row:hover .wn5-plus, .wn5-plus:focus-visible { opacity:1; }
-/* the «+» of an empty side shows on hover only (2b), where a pointer can hover */
-@media (hover:hover) { .wn5-row:not(:hover) .wn5-gpal .wn5-plus:not(:focus-visible) { opacity:0; } }
+/* the «+» of an empty side was shown on hover only (2b); the Sotiris report 8/11 (item 12) found it only by chance with
+   the mouse. It stays at rest, quieter than a side with work (2b's calm), and full on the row's hover / focus. */
+@media (hover:hover) { .wn5-row:not(:hover) .wn5-gpal .wn5-plus:not(:focus-visible) { opacity:.55; } }
 .wn5-row:hover .wn5-plus { border-color:var(--wi4-blue); background:var(--wi4-info-bg); }
+/* Sotiris report 8/11 (item 7): while the board is re-read after a save (wn5_actions.js _afterSave) its old rows take no
+   click — the piece just assigned still shows «ΠΡΟΣ ΑΝΑΘΕΣΗ» there for 2-4 s */
+#content.wn5-reloading > .wn5 { pointer-events:none; }
+#content.wn5-reloading > .wn5 .wn5-row { opacity:.55; transition:opacity .15s; }
 /* «27 [+]» on one line (Figma 2011:10089/10140/10217/10299): every «+» of a side sits at one x, 12px in from the
    side's right edge (691 of 721), whatever the count — so the cell is right-aligned and the count abuts the «+». A count
    that started at the left padding pushed the «+» right by its own width (a gap side's «+» ended past the row edge).
@@ -9985,6 +9990,7 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 /* the footer (2011:10013): note, then «Άκυρο» and the accent «Αποθήκευση», both 36px */
 .wn5f > .wn5f-ft { flex:none; height:64px; margin:0; padding:0 22px; gap:10px; align-items:center; box-sizing:border-box; border-top:1px solid var(--wi4-line-2); }
 .wn5f-ft-note { margin-right:auto; font-size:11.5px; color:var(--wi4-grey-2); }
+.wn5f-ft-note.wn5f-ask { color:var(--danger, #B91C1C); font-weight:600; }
 .wn5f-ft .wi4-btn { height:36px; border-radius:6px; font-size:13px; }
 .wn5f-ft .wi4-btn:not(.pri) { padding:0 14px; font-weight:500; color:var(--wi4-grey-1); }
 .wn5f-ft .wi4-btn.pri { padding:0 16px; font-weight:600; border-color:var(--accent); background:var(--accent); color:var(--surface-card); }

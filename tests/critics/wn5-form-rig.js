@@ -76,7 +76,7 @@ async function scnOrder({ browser, origin, ok, scn }) {
   ok(scn, 'label «Τιμή € (χωρίς ΦΠΑ)» without «*»', txt.includes('Τιμή € (χωρίς ΦΠΑ)') && !txt.includes('Τιμή € (χωρίς ΦΠΑ) *'), txt.slice(0, 200));
   // F1 (owner 28/10): the window is optional — the head says what an empty one is, no «*»
   ok(scn, 'windows «Παράθυρο από – έως · κενό: όλη η ημέρα»', txt.includes('Παράθυρο από – έως · κενό: όλη η ημέρα') && !txt.includes('Παράθυρο από – έως *'));
-  ok(scn, 'truck optional: «Φορτηγό (προαιρετικό)» with «— ΠΡΟΣ ΑΝΑΘΕΣΗ»', txt.includes('Φορτηγό (προαιρετικό)') && txt.includes('ΠΡΟΣ ΑΝΑΘΕΣΗ'));
+  ok(scn, 'truck optional: «Σε φορτηγό της εβδομάδας (προαιρετικό)» with «— ΠΡΟΣ ΑΝΑΘΕΣΗ» (item 12, 8/11)', txt.includes('Σε φορτηγό της εβδομάδας (προαιρετικό)') && txt.includes('ΠΡΟΣ ΑΝΑΘΕΣΗ'));
   // fidelity T20 (Figma 2011:9641/9704): an empty day reads as a whole hint, never Chrome's cut «dd/mm/yy»
   // live fix 28/10: the day is typed text (.wn5f-dayx); empty, its placeholder is the hint
   const dayE = await page.evaluate((d) => [...document.querySelectorAll(`${d} .wn5f-day`)].map((w) => { const x = w.querySelector('.wn5f-dayx'); return x && !x.value ? x.placeholder : x && x.value; }), DLG);
@@ -472,8 +472,8 @@ async function scnEditRide({ browser, origin, ok, scn }) {
     !!row && !row.ro && row.live.every(Boolean) && /σε κύκλο RT-T101/.test(row.txt) && !row.x, row);
   const stop = await page.evaluate((d) => { const x = document.querySelector(`${d} [data-shipstop="5202"]`);
     return x && { t: x.textContent.replace(/\s+/g, ' '), b: [...x.querySelectorAll('[data-act="stop-time"]')].map((b) => b.dataset.stop + ':' + b.dataset.side) }; }, DLG);
-  ok(scn, 'under it the truck\'s stops: «RT-T101 · φόρτωση Δευ 12/10 16:00–18:00» and «RT-T101 · παράδοση Τρί 13/10 07:00–09:00», each with «Αλλαγή ώρας στάσης ›»',
-    !!stop && stop.t.includes('RT-T101 · φόρτωση Δευ 12/10 16:00–18:00') && stop.t.includes('RT-T101 · παράδοση Τρί 13/10 07:00–09:00')
+  ok(scn, 'under it the truck\'s stops by the truck, never its RT code (item 12, 8/11): «TST-2104 · Driver Test 01 · φόρτωση Δευ 12/10 16:00–18:00» and «… · παράδοση Τρί 13/10 07:00–09:00», each with «Αλλαγή ώρας στάσης ›»',
+    !!stop && stop.t.includes('TST-2104 · Driver Test 01 · φόρτωση Δευ 12/10 16:00–18:00') && stop.t.includes('TST-2104 · Driver Test 01 · παράδοση Τρί 13/10 07:00–09:00') && !/RT-T/.test(stop.t)
     && JSON.stringify(stop.b) === JSON.stringify(['1001:KATHODOS', '1003:KATHODOS']), stop);
   // 081: the note claims neither «follows» nor «does not» (the base decides, and before 081 runs it never follows)
   ok(scn, 'the form says before the save that the line after it tells whether the truck\'s stop changed', /Μετά την αποθήκευση γράφεται αν άλλαξε και η στάση του φορτηγού/.test(await K.text(page, `${DLG} [data-ridenote]`)));
@@ -522,14 +522,14 @@ async function scnEditFollow({ browser, origin, ok, scn }) {
   await page.waitForTimeout(1000);
   ok(scn, 'one PATCH /plan/orders/3001', K.planOf(S, 'PATCH', '/plan/orders/3001').length === 1);
   const done = await K.text(page, `${DLG} [data-done]`);
-  ok(scn, 'saved: «η στάση του φορτηγού ακολούθησε (RT-T101)», and never «δεν άλλαξε» in the line', /Αποθηκεύτηκε/.test(done)
-    && /η στάση του φορτηγού ακολούθησε \(RT-T101\)/.test(done) && !/δεν άλλαξε/.test(done), done);
+  ok(scn, 'saved: «η στάση του φορτηγού ακολούθησε» (no RT code, item 12), and never «δεν άλλαξε» in the line', /Αποθηκεύτηκε/.test(done)
+    && /η στάση του φορτηγού ακολούθησε/.test(done) && !/RT-T/.test(done) && !/δεν άλλαξε/.test(done), done);
   const row = await page.evaluate((d) => { const x = document.querySelector(`${d} [data-shipstop="5202"]`); return x ? x.textContent.replace(/\s+/g, ' ') : ''; }, DLG);
-  ok(scn, 'the stop row under the point shows the moved stop where it is now: «RT-T101 · παράδοση Τετ 14/10 07:00–09:00»; the loading row as it was',
-    row.includes('RT-T101 · παράδοση Τετ 14/10 07:00–09:00') && row.includes('RT-T101 · φόρτωση Δευ 12/10 16:00–18:00') && !row.includes('Τρί 13/10'), row);
+  ok(scn, 'the stop row under the point shows the moved stop where it is now: «TST-2104 · Driver Test 01 · παράδοση Τετ 14/10 07:00–09:00»; the loading row as it was',
+    row.includes('TST-2104 · Driver Test 01 · παράδοση Τετ 14/10 07:00–09:00') && row.includes('TST-2104 · Driver Test 01 · φόρτωση Δευ 12/10 16:00–18:00') && !row.includes('Τρί 13/10'), row);
   const strip = await K.text(page, `${DLG} .wn5-strip[data-kind="warning"]`);
   ok(scn, 'the kept shared stop in the warning strip: RT-T101, 1 other point, «Αλλαγή ώρας στάσης ›» changes it for all',
-    /η στάση του φορτηγού στο RT-T101 δεν άλλαξε: εξυπηρετεί και 1 άλλο σημείο · «Αλλαγή ώρας στάσης ›» την αλλάζει για όλα/.test(strip), strip);
+    /η στάση του φορτηγού δεν άλλαξε: εξυπηρετεί και 1 άλλο σημείο · «Αλλαγή ώρας στάσης ›» την αλλάζει για όλα/.test(strip), strip);
   await closeClean(page, S, ok, scn);
 }
 
@@ -1016,7 +1016,7 @@ async function scnLegAdd({ browser, origin, ok, scn }) {
   ok(scn, 'one PATCH: exactly one new point (no shipment_id), 2 pallets', p.length === 1 && p[0].body.shipments.length === 1 && !('shipment_id' in p[0].body.shipments[0])
     && p[0].body.shipments[0].pallets === 2, p.map((x) => x.body));
   const done = await K.text(page, `${DLG} [data-done]`);
-  ok(scn, 'saved: «ΠΡΟΣ ΑΝΑΘΕΣΗ» and the way back «Στο RT-T101 · ΚΑΘΟΔΟΣ ›»', /ΠΡΟΣ ΑΝΑΘΕΣΗ/.test(done) && done.includes('Στο RT-T101 · ΚΑΘΟΔΟΣ ›'), done);
+  ok(scn, 'saved: «ΠΡΟΣ ΑΝΑΘΕΣΗ» and the way back «Στο TST-2104 · Driver Test 01 · ΚΑΘΟΔΟΣ ›» (no RT code, item 12)', /ΠΡΟΣ ΑΝΑΘΕΣΗ/.test(done) && done.includes('Στο TST-2104 · Driver Test 01 · ΚΑΘΟΔΟΣ ›'), done);
   await page.click(`${DLG} [data-act="to-leg"]`);
   await page.waitForSelector('.wi4-dlg[data-wn5="plus"]', { timeout: 6000 }).catch(() => {});
   ok(scn, '«Στο RT-T101 ›» → the form closes and the «+» of RT-T101 ΚΑΘΟΔΟΣ opens (its waiting list: one press «Πρόσθεσε»)', await K.count(page, DLG) === 0
@@ -1216,8 +1216,39 @@ async function scnPr3b({ browser, origin, ok, scn }) {
   }
 }
 
+// Sotiris report 8/11 (item 8): Esc / «Άκυρο» closed a filled form at once. An untouched form closes at the first press;
+// a typed one says «Δεν αποθηκεύτηκε…» beside the buttons and closes at the second; typing again asks again.
+async function scnEscAsk({ browser, origin, ok, scn }) {
+  const { page, S } = await K.openApp(browser, origin);
+  if (!(await guard(page, ok, scn))) return;
+  await openForm(page, {});
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(100);
+  ok(scn, 'an untouched form closes at the first Esc', await K.count(page, DLG) === 0);
+  await openForm(page, {});
+  const priceSel = `${DLG} input[data-f="price"]`;
+  await page.click(priceSel);
+  await page.keyboard.type('450');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(100);
+  const note = await K.text(page, `${DLG} .wn5f-ft-note`);
+  ok(scn, 'a typed form stays open at Esc and says it was not saved', await K.count(page, DLG) === 1 && /Δεν αποθηκεύτηκε/.test(note), note);
+  await page.click(priceSel);
+  await page.keyboard.type('0');
+  await page.waitForTimeout(50);
+  const note2 = await K.text(page, `${DLG} .wn5f-ft-note`);
+  ok(scn, 'typing again takes the question back (the next Esc asks again)', !/Δεν αποθηκεύτηκε/.test(note2), note2);
+  await page.click(`${DLG} .wn5f-ft [data-act="cancel"]`);
+  await page.waitForTimeout(80);
+  ok(scn, '«Άκυρο» asks too', await K.count(page, DLG) === 1 && /Δεν αποθηκεύτηκε/.test(await K.text(page, `${DLG} .wn5f-ft-note`)));
+  await page.click(`${DLG} .wn5f-ft [data-act="cancel"]`);
+  await page.waitForTimeout(80);
+  ok(scn, 'the second «Άκυρο» closes, nothing written', await K.count(page, DLG) === 0 && !S.plan.some((x) => x.m !== 'GET'), S.plan.filter((x) => x.m !== 'GET').map((x) => x.path));
+  await closeClean(page, S, ok, scn);
+}
+
 K.run({
-  scenarios: { order: scnOrder, nowin: scnNoWin, nopp: scnNoPP, groupage: scnGroupage, unknown: scnUnknown, reused: scnReused, replayed: scnReplayed, edit: scnEdit, 'edit-ride': scnEditRide, 'edit-follow': scnEditFollow, 'edit-add': scnEditAdd, 'edit-remove': scnEditRemove, 'edit-read-fail': scnEditReadFail, 'edit-twoday': scnEditTwoDay, night: scnNight, 'veroia-edit': scnVeroiaEdit, 'day-type': scnDayType, leg: scnLeg, 'leg-anodos': scnLegAnodos, 'stop-time': scnStopTime, miss: scnMiss, 'leg-add': scnLegAdd, vs: scnVs, f44: scnF44, pr3b: scnPr3b },
+  scenarios: { order: scnOrder, nowin: scnNoWin, nopp: scnNoPP, groupage: scnGroupage, unknown: scnUnknown, reused: scnReused, replayed: scnReplayed, edit: scnEdit, 'edit-ride': scnEditRide, 'edit-follow': scnEditFollow, 'edit-add': scnEditAdd, 'edit-remove': scnEditRemove, 'edit-read-fail': scnEditReadFail, 'edit-twoday': scnEditTwoDay, night: scnNight, 'veroia-edit': scnVeroiaEdit, 'day-type': scnDayType, leg: scnLeg, 'leg-anodos': scnLegAnodos, 'stop-time': scnStopTime, miss: scnMiss, 'leg-add': scnLegAdd, vs: scnVs, f44: scnF44, pr3b: scnPr3b, 'esc-ask': scnEscAsk },
   globals: ['WN5Form'],
   go: 'the v5 order forms send one body per press, from the form only, with one request_id per open form',
 }).catch((e) => { console.error(e); process.exit(1); });
