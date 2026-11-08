@@ -50,7 +50,8 @@ function world({ imports = ['I'], exportsOnRt = ['E'], failLeg = null, lookupThr
   const orders = {}; const legs = new Set([...(exportOnTrip ? exportsOnRt : []), ...imports]);
   for (const id of [...exportsOnRt, ...imports]) orders[id] = { truck: 'T1', driver: 'D1', group: imports.length > 1 && imports.includes(id) ? 'GI-X|' + imports[0] : null };
   for (const id of exportsOnRt) if (!exportTruck) { orders[id].truck = null; orders[id].driver = null; }
-  const rt = { id: 1, code: 'RT-1', truck: 'T1', driver: 'D1', payroll: 'live' };
+  // A trip whose export lost its vehicle by «Καθαρισμός ανάθεσης» waits with none (_wiClear).
+  const rt = exportTruck ? { id: 1, code: 'RT-1', truck: 'T1', driver: 'D1', payroll: 'live' } : { id: 1, code: 'RT-1', truck: null, driver: null, payroll: 'live' };
   const log = [], rtQueries = [];
   const pgOf = id => Object.keys(orders).indexOf(id) + 1;   // «Order No» = orders.id
   const rtSync = (id) => {                       // rt_sync_from_order + dl_sync_from_rt
