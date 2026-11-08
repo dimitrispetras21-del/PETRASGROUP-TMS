@@ -2385,7 +2385,7 @@
       // ✈ audit 8/11: a cycle with no ΚΑΘΟΔΟΣ at all (only ΑΝΟΔΟΣ) was told «does not load outside Veroia», which is
       // false for it; the two empty cases are said apart (the offer itself stays ΚΑΘΟΔΟΣ only, _localStops above)
       + (stops.length ? '' : '<p class="wn5-none">' + ((c.stops || []).some((s) => s.side === 'KATHODOS')
-        ? 'Ο κύκλος δεν φορτώνει έξω από τη Βέροια.'
+        ? 'Το δρομολόγιο δεν φορτώνει έξω από τη Βέροια.'
         : 'Το δρομολόγιο δεν έχει κάθοδο: η φόρτωση με τοπικό είναι για τις φορτώσεις της καθόδου.') + '</p>')
       + '<label class="wn5-field"><span>Οδηγός *</span><select data-driver data-fh-search><option value="">—</option>' + _optsHTML(lists.d, null) + '</select></label>'
       + '<label class="wn5-field"><span>Φορτηγό *</span><select data-truck data-fh-search><option value="">—</option>' + _optsHTML(lists.t, null) + '</select></label>'
