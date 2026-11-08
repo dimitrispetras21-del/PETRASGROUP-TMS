@@ -105,12 +105,12 @@ test('one DB-rule mapper still: no planRuleError / planRuleResponse beside stock
   assert.equal((src.match(/^function \w+RuleResponse\(/gm) || []).length, 1);
 });
 
-test('"Via Hub" is an ORDER STOPS label for via_hub — once, nowhere else — closed to every facade write, before and after day L (finding 8; F5 Q-6)', () => {
+test('"Via Hub" is an ORDER STOPS label for via_hub — once, nowhere else — and since 111 an input (owner 8/11): no dbOnly closure left anywhere', () => {
   assert.equal(TABLES.tblaeY5QOHAS1gyE8.fields['Via Hub'], 'via_hub');
   assert.equal(count('"Via Hub": "via_hub"'), 1);
-  assert.deepEqual(TABLES.tblaeY5QOHAS1gyE8.dbOnly, ['Via Hub']);
-  // only the DB writes it (074 plan_bridge_sync): the refusal does NOT read the /plan/* switch
-  assert.match(src, /function refuseReadOnly\(cfg, fieldsList, origin, env\) \{\n {2}if \(cfg\.dbOnly\) \{/);
-  for (const [id, cfg] of Object.entries(TABLES)) if (cfg.dbOnly) assert.equal(id, 'tblaeY5QOHAS1gyE8', `${id} dbOnly`);
+  for (const [id, cfg] of Object.entries(TABLES)) assert.equal(cfg.dbOnly, undefined, `${id} dbOnly`);
+  assert.equal(count('dbOnly'), 0, 'the closure is gone with its last label (principle 8)');
+  assert.equal(TABLES.tblaeY5QOHAS1gyE8.fields['Time From'], 'time_from');
+  assert.equal(TABLES.tblaeY5QOHAS1gyE8.fields['Time To'], 'time_to');
   assert.equal(count('closedUntilPlan'), 0, 'the old name would say it opens on day L');
 });
