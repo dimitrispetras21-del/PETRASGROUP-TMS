@@ -1507,11 +1507,14 @@ const _rdMsg = (txt) => `<div class="rd"><div class="rd-note" data-tone="red">${
 function _rdBodyHTML(rtId) {
   const c = _cycleOf(rtId);
   if (!c) return _rdMsg('Το φορτηγό δεν είναι πια σε αυτή την εβδομάδα — η διαδρομή δεν σχεδιάζεται.');
+  // a stale app.html without core/route-diagram.js (service worker mid-update) lands in the catch below: said in
+  // the panel like any other failure, never an uncaught error behind a menu line that opens nothing
   try {
     return RouteDiagram.render(RouteDiagramAdapters.boardCycle(c, _rdCtx()));
   } catch (e) {
+    // the cause goes to the log; the dispatcher reads plain words (owner 31/10)
     _logErr(e, 'weekly natl v5: route diagram');
-    return _rdMsg('Η διαδρομή δεν σχεδιάστηκε: ' + String((e && e.message) || e));
+    return _rdMsg('Η διαδρομή δεν σχεδιάστηκε.');
   }
 }
 // truck · driver (or the partner) · its days — never a code (owner 31/10, 8/11)
@@ -1524,7 +1527,6 @@ function _rdSub(rtId) {
 }
 function routeOpen(rtId) {
   if (!active() || !ID_RE.test(String(rtId))) return false;
-  if (typeof RouteDiagram === 'undefined' || typeof RouteDiagramAdapters === 'undefined') throw new Error('core/route-diagram.js not loaded');
   _rdClose();
   _rdRt = Number(rtId);
   const el = document.createElement('aside');
