@@ -6044,3 +6044,14 @@ SELECT μετά την εκτέλεση: #525 και #528 στο RT-1240 (closed
 - Αύξηση του χρονικού ορίου του editor. Απορρίφθηκε: το λεπτό CPU με κλείδωμα θα έμενε.
 **Απόδειξη:** EXPLAIN στο live (8/11, μόνο ανάγνωση)· PGlite `tms-auditor/test/plan-105.test.mjs` 10/10 (dry run ~50 ms έναντι 803 ms του παλιού στο ίδιο αντίγραφο)· `tests/sql-105-drafts.test.js` 8/8.
 **Ποιος:** συντονιστής 8/11 (εντολή: «the whole block runs in a few seconds»)· agent (σχέδιο, μέτρηση, προσχέδιο). Τίποτα δεν εκτελέστηκε.
+
+### 2026-11-08 · P&L · 105 εκτελέστηκε
+**Τι:** τρεις νέες όψεις (`ct_v_rt_revenue_legs`, `ct_v_rt_cost_cat`, `ct_v_rt_complete`), δικαιώματα μόνο SELECT σε `service_role` + `tms_check_runner`· η `ct_v_rt_revenue` δεν άλλαξε.
+**Εκτέλεση:** owner, Κυριακή 8/11 ~14:00, από την κορυφή `c130a980` του PR #257.
+- Πρώτη προσπάθεια: ο editor ξανάτρεξε το παλιό dry run από παλιά καρτέλα, κόπηκε με «Failed to fetch» και δεν κράτησε τίποτα (ελέγχθηκε).
+- Dry run: «DRY RUN 105 finished - EVERYTHING UNDONE … views 3, round trips 257, complete 54, ct_v_rt_revenue md5 4b6fd9a9674d57d87c303d6500940f36».
+- 105: «105 οκ».
+- Verify: 3 όψεις, η όψη εσόδων με το κείμενο της 3/11, 0 δικαιώματα σε anon / authenticated, 0 εγγραφές, 257 γραμμές = 257 δρομολόγια· `loads_diff` 0· πλήρη: ιδιόκτητα κλειστά 14 / 166 (132 χωρίς αξία οδηγού), συνεργατών κλειστά 35 / 37.
+**Επαναφορά:** `worker/migrations/105_rt_pnl_complete_rollback.sql`, με το dry run του πρώτα. Σβήνει μόνο τις τρεις όψεις, και μόνο όσο έχουν το κείμενο που υπέγραψαν.
+**Ποιος:** owner (εκτέλεση), συντονιστής (verify), agent (προσχέδιο, τεστ, καταγραφή).
+
