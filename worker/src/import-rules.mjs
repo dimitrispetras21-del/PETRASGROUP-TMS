@@ -740,8 +740,10 @@ export function reconcile(lines, summaryDocs, meta) {
   // not that there is nothing to book. Ungated, the 15/09/2026 statement
   // (doc 3) went through with its ES and HR invoices unread: 730,06 € that DKV
   // collects never reached the expenses, and every check said «συμφωνεί».
+  const unreadSeen = new Set();
   for (const d of summaryDocs || []) {
-    if (!d || !d.doc_no || byDoc.has(d.doc_no)) continue;
+    if (!d || !d.doc_no || byDoc.has(d.doc_no) || unreadSeen.has(d.doc_no)) continue;
+    unreadSeen.add(d.doc_no);
     const summary_total = typeof d.total_eur === 'number' ? d.total_eur : null;
     const docOk = summary_total !== null && Math.abs(summary_total) <= 0.01;
     if (!docOk) ok = false;

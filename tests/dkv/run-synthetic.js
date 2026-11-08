@@ -473,6 +473,30 @@ assertEqual(DkvParser.VERSION, '1.3.0', 'parser VERSION bumped for the 8/11 L/UN
   assertEqual(fr.errors.unparsed.length, 0, 'no unparsed rows, the TIS recap is not «unknown»');
 }
 
+// (11) 8/11 code review: take-back without a vehicle, RC currency column, second summary, correction rule scope.
+{
+  const fr2 = DkvParser.parseDkv([{ name: '9999999_2026-10-15_FR_E-INVOICE_99-000000001-006.pdf', text: [
+    'Invoice number: 99/000000001/006', 'Invoice date: 15.10.2026', 'VEHICLE: XX1234 CARD NO.: 1000000.0000000001',
+    '15.09.2026 TIS PL EXAMPLE 1300001 4 Décompte F DKV BOX E 0903 PC 1 100,00 83,33 100,00 83,33 3,00 86,33 17,27 103,60',
+    'TIS PL – Déduction de l´acompte sur les transactions 005G PC -1 -80,00 -80,00 -16,00 -96,00',
+  ].join('\n') }]);
+  const t = fr2.lines.find((l) => l.product_code === '005G');
+  assert(!!t && t.plate === null, 'take-back after a VEHICLE section carries no plate (the advance was customer-level)');
+  const noDate = DkvParser.parseDkv([{ name: '9999999_2026-10-15_FR_E-INVOICE_99-000000001-006.pdf', text: [
+    'Invoice number: 99/000000001/006', 'TIS PL – Déduction de l´acompte sur les transactions 005G PC -1 -80,00 -80,00 -16,00 -96,00',
+  ].join('\n') }]);
+  assert(noDate.errors.unparsed.some((e) => e.reason === 'deduction-without-invoice-date'), 'take-back without an invoice date is reported, never dropped');
+  const rc = DkvParser.parseTransactionLine('05.10.2026 EXAMPLE STATION 1000001 DIESEL 0009 EUR L 50,000 1,50 75,00 75,00', { docType: 'reverse_charge', country: 'XX', currency: 'EUR', vehicle: null, ticketNo: null });
+  assert(!!rc && rc.unit === 'L' && rc.product_code === '0009', 'reverse charge: L after the Currency column is the unit');
+  const two = DkvParser.parseDkv([
+    { name: '9999999_2026-10-15_E-SUMMARY_99-000000001-000.pdf', text: 'Greece Invoice 99/000000001/001 EUR 10,00 10,00 0,00 EUR\n» 10,00' },
+    { name: '9999999_2026-10-15_E-SUMMARY_99-000000001-999.pdf', text: 'nothing here' },
+  ]);
+  assertEqual((two.summary.docs || []).length, 1, 'a second summary never replaces the one with rows');
+  assert(two.errors.unparsed.some((e) => e.reason === 'second-summary'), 'a second summary is reported');
+  assertEqual(DkvParser.extractDocNo(['Reason: see terms', 'Invoice number: 99/000000001/987'], '9999999_2026-09-30_AT_E-INVOICE_99-000000002-001.pdf'), '99/000000001/987', 'a «Reason:» on an INVOICE does not switch doc_no to the filename');
+}
+
 // ── report ──────────────────────────────────────────────────────────
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

@@ -236,7 +236,7 @@
     // FR «E-Summary TIS PL» is DKV's informative per-operator recap of the FR
     // invoice (its own text: «for informative purposes only»), not the
     // statement's E-SUMMARY. Read as a summary it replaced the real one with
-    // zero rows and every document of 4100137826 15/10/2026 «had no summary».
+    // zero rows and every document of one 15/10/2026 statement «had no summary».
     if (/E-Summary TIS/i.test(name)) return 'tis_summary';
     if (/E-SUMMARY/i.test(name)) return 'summary';
     if (/List of passages/i.test(name)) return 'passages';
@@ -246,6 +246,7 @@
     if (/E-INVOICE/i.test(name)) return 'invoice';
     // Fallback for an unexpected filename: sniff the extracted text.
     const text = lines.join('\n');
+    if (/E-Summary TIS/i.test(text)) return 'tis_summary';
     if (/E-SUMMARY/i.test(text)) return 'summary';
     if (/List of passages/i.test(text)) return 'passages';
     if (/Reverse Charge/i.test(text)) return 'reverse_charge';
@@ -282,8 +283,11 @@
     // own — its own is in the filename («…_26-655015688-004.pdf»), and that
     // is the one the E-SUMMARY lists. Reading the text gave both corrections
     // the July number, so they summed together and matched no summary row.
+    // Only a STATEMENT whose «Invoice number:» sits under a «Reason:» line is a
+    // correction: an AT/BG invoice's own number legitimately differs from its
+    // filename, so a stray «Reason:» footnote there must not switch the source.
     const fm = /_(\d{2})-(\d+)-(\d{3})\.pdf$/i.exec(name || '');
-    if (fm && /Reason:/i.test(text)) return fm[1] + '/' + fm[2] + '/' + fm[3];
+    if (fm && /E-STATEMENT/i.test(name) && /Reason:[^]*?Invoice number:/i.test(text)) return fm[1] + '/' + fm[2] + '/' + fm[3];
     let m = /Invoice number:\s*(\S+)/.exec(text);
     if (m) return m[1];
     m = /Document number:\s*(\S+)/.exec(text);
@@ -344,7 +348,9 @@
     let unitIdx = -1;
     for (let i = 1; i < tokens.length; i++) {
       if (UNIT_TOKENS.has(tokens[i])) { unitIdx = i; break; }
-      if (SHORT_UNIT_TOKENS.has(tokens[i]) && PRODUCT_CODE_RE.test(tokens[i - 1]) && parseNum(tokens[i + 1] || '') !== null) { unitIdx = i; break; }
+      // (a reverse-charge doc puts a Currency column between code and unit — same skip as below)
+      const before = CURRENCY_CODES.has(tokens[i - 1]) ? tokens[i - 2] : tokens[i - 1];
+      if (SHORT_UNIT_TOKENS.has(tokens[i]) && PRODUCT_CODE_RE.test(before || '') && parseNum(tokens[i + 1] || '') !== null) { unitIdx = i; break; }
     }
     if (unitIdx === -1 || unitIdx + 2 > tokens.length) return null; // not a parseable transaction row
 
@@ -565,11 +571,16 @@
       // 005G PC -1 -146,66 -146,66 -29,34 -176,00». The row has no date (it
       // sits in the per-service recap), so it was skipped and the invoice read
       // 193,23 instead of its 17,23: the advance (15/09, line 005G +175,99)
-      // would have been paid twice. Booked on the invoice date, negative.
-      if (DEDUCTION_RE.test(line) && invoiceDate) {
-        const parsed = parseTransactionLine(invoiceDate.split('-').reverse().join('.') + ' ' + line, ctx);
+      // would have been paid twice. Booked on the invoice date, negative, with
+      // NO vehicle: the advance it cancels was customer-level, and the recap
+      // follows the per-vehicle sections, so ctx.vehicle is just the last one.
+      // A dated row is left to the ordinary path below (it keeps its own date).
+      if (DEDUCTION_RE.test(line) && !DATE_RE.test(line.split(/\s+/)[0] || '')) {
+        const parsed = invoiceDate
+          ? parseTransactionLine(invoiceDate.split('-').reverse().join('.') + ' ' + line, Object.assign({}, ctx, { vehicle: null }))
+          : null;
         if (parsed) outLines.push(parsed);
-        else errors.push({ reason: 'unrecognized-transaction-line', line });
+        else errors.push({ reason: invoiceDate ? 'unrecognized-transaction-line' : 'deduction-without-invoice-date', line });
         continue;
       }
       if (DATE_RE.test((line.split(/\s+/)[0] || ''))) {
@@ -955,7 +966,16 @@
       result.docs.push(docEntry);
 
       if (docType === 'summary') {
-        result.summary = parseSummary(lines);
+        // One statement = one E-SUMMARY. A second file read as a summary used to
+        // replace the first silently (the FR TIS recap, 15/10/2026): keep the
+        // one that has rows and say so, never pick by file order.
+        const sm = parseSummary(lines);
+        if (result.summary) {
+          result.errors.unparsed.push({ doc: f.name, doc_no: docNo, reason: 'second-summary' });
+          if ((sm.docs || []).length > (result.summary.docs || []).length) result.summary = sm;
+        } else {
+          result.summary = sm;
+        }
         continue;
       }
       // Informative only: its amounts are the FR invoice's own lines, which
