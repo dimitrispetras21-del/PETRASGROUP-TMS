@@ -12,6 +12,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
+- dimitris · `docs/wn5-tools-audit` · Εθνικά v5, αλλαγές owner 8/11 #8/#6/#7: έλεγχος ✈ (9 γραμμές ως τη βάση, κάθοδος/άνοδος, rig 1289 ✓ / 0 ✗, 3 κενά οθόνης με go συντονιστή μετά το wn5-cleanup)· μελέτη πάνελ τοπικών + ρότας, ερωτήσεις owner πριν το Figma (`docs/national-v5/plane-menu-audit-2026-11-08.md`, `docs/sessions/2026-11-08-dimitris-wn5-tools.md`)
 - dimitris · `feat/pallets-y6` · Παλέτες Υ6 (μόνο τροφοδότης): η εκκρεμής φόρτωση γράφει «πήραμε» = `Pallets Exchanged` της στάσης όταν έχει τιμή (κενό = όλες, όπως πριν· 0 = καμία κίνηση), ίδιος κανόνας στην «Εβδομάδα»· η φόρμα που το γράφει = η νέα φόρμα διεθνών (owner 8/11)· σήμερα 0/812 στάσεις με τιμή (`docs/sessions/2026-11-08-dimitris-pallets-y6-feeder.md`)
 - dimitris · `feat/pallets-y5` · Παλέτες Υ5: κίνηση παράδοσης από τη βάση (**108 ΕΚΤΕΛΕΣΜΕΝΟ 8/11** + ο browser σταματά να γράφει DELIVERY)· **#267 + #268 MERGED 8/11** (`docs/sessions/2026-11-08-dimitris-pallets-y5.md`)
 - dimitris · `feat/pallets-y4` (PR #267) · Παλέτες Υ4: «Λείπει παράδοση» + «Χωρίς ανταλλαγή» (107 **ΕΚΤΕΛΕΣΜΕΝΟ 8/11** + **Worker 32e0ca75 ΖΩΝΤΑΝΟΣ 8/11** + οθόνη)· περιμένει merge (`docs/sessions/2026-11-08-dimitris-pallets-y4.md`)
