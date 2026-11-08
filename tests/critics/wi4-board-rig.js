@@ -1712,6 +1712,24 @@ async function scnUnassigned(browser, origin) {
     ok(scn, 'no page errors', !res.on.errs.length && !res.off.errs.length, { v1: res.off.errs, v4: res.on.errs });
   }
   {
+    // E003 waits alone on a trip of its own (cleared earlier, no vehicle); the
+    // own-truck import I007 was matched after that and rides its own trip. The
+    // unmatch must leave I007's truck and trip alone (review 8/11).
+    const scn = 'unassigned.unmatchOwnTrip';
+    const mutate = db => { db[T.ORDERS].find(r => r.id === 'recWiE003').fields['Matched Import ID'] = 'recWiI007'; };
+    const rts = [{ id: 78, code: 'RT-E', status: 'open', ct_rt_legs: [{ order_id: 9103, direction: 'EXPORT' }] },
+      { id: 79, code: 'RT-I', status: 'open', ct_rt_legs: [{ order_id: 9135, direction: 'IMPORT' }] }];
+    const res = await twin(browser, origin, scn, async (page, S) => { S.rts = rts; return page.evaluate(() => {
+      const r = WINTL.rows.find(x => x.type === 'export' && (x.orderIds || []).includes('recWiE003'));
+      return r && r.importId === 'recWiI007' ? _wiRemoveImport(r.id).then(v => ({ ok: true, v })) : { ok: false, importId: r && r.importId };
+    }); }, null, { mutate });
+    ok(scn, 'the unmatch reports success on both boards', res.off.r.ok && res.on.r.ok && res.off.r.v === true && res.on.r.v === true, { v1: res.off.r, v4: res.on.r });
+    ok(scn, 'nothing sent to /costs: I007 stays on its own trip', [res.on.S, res.off.S].every(S => !S.costs.some(c => !/^GET /.test(c))), { v1: res.off.S.costs, v4: res.on.S.costs });
+    ok(scn, 'the table says so: match cleared, I007 keeps T014', !fld(res.on.S, 'recWiE003', 'Matched Import ID') && link(fld(res.on.S, 'recWiI007', 'Truck')) === 'recWiT014'
+      && JSON.stringify(res.on.w) === JSON.stringify(res.off.w), { v1: res.off.w, v4: res.on.w });
+    ok(scn, 'no page errors', !res.on.errs.length && !res.off.errs.length, { v1: res.off.errs, v4: res.on.errs });
+  }
+  {
     // The export lost its vehicle by «Καθαρισμός ανάθεσης» of a whole trip:
     // the trip stays with both legs, no vehicle (_wiClear). The unmatch must
     // take the import's leg off it (today's full path), or the next assignment
