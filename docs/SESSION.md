@@ -12,6 +12,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
+- dimitris · `feat/pallets-y3-page` · Παλέτες Υ3: νέα σελίδα στα frames N01–N18 (redesign 28/10), μόνο front end· rig 60/60· Worker του Υ4 θα δώσει πόλη / χώρα, παλέτες στάσης, ιστορικό (`docs/sessions/2026-11-08-dimitris-pallets-y3-page.md`)
 - dimitris · `feat/105-rt-pnl-complete` · **105 ΕΚΤΕΛΕΣΜΕΝΗ 8/11 ~14:00 (owner)**: τρεις όψεις (`ct_v_rt_revenue_legs`, `ct_v_rt_cost_cat`, `ct_v_rt_complete`), η `ct_v_rt_revenue` δεν άλλαξε· verify: 257 = 257, loads_diff 0· αρχεία έξω από `drafts/`· **μην την ξανατρέξεις**· επόμενα: χαρτιά P&L (δρομολόγιο + εβδομάδα) πάνω στην `ct_v_rt_complete` (`docs/sessions/2026-11-03-dimitris-105-rt-pnl-complete.md`)
 - dimitris · `feat/owv-week-print` · «Παραγγελίες › Εβδομάδα»: **#256 MERGED 3/11** · εκτύπωση εβδομάδας τιμολόγησης A4 όρθιο, ανά δρομολόγιο (σχέδιο Γ εγκεκριμένο 3/11, PR #252)· αποδίδει το μοντέλο της οθόνης, χωρίς δεύτερο υπολογισμό· μόνο front end, ?v= / SW_VERSION 1793960000 (`docs/sessions/2026-11-03-dimitris-week-print.md`)
 - dimitris · `fix/dkv-parser-new-lines` · Εισαγωγή DKV: parser 1.3.0 (L/UN, γαλλικό TIS, έκπτωση προκαταβολής, διορθωτικά) + πύλη E-SUMMARY για έγγραφο χωρίς γραμμές· Worker deploy από τον owner (`--dkv 1`, 37 σημάδια)· εκκρεμούν τα 6 ZIP 30/9–31/10 και τα 730,06 € του 15/09· ?v= / SW_VERSION 1794030000 (`docs/sessions/2026-11-08-dimitris-dkv-parser-1-3.md`)
