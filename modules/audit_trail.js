@@ -312,6 +312,10 @@ const _AUDIT_FIELD = {
   read_at:                  'Διαβάστηκε',
   read_by:                  'Διαβάστηκε από',
   via_hub:                  'Μέσω Βέροιας',
+  // 111 (the new international form, owner 8/11) + U6: the window and the exchange of a point
+  time_from:                'Ώρα από',
+  time_to:                  'Ώρα έως',
+  pallets_exchanged:        'Με ανταλλαγή',
 };
 function _auditFieldLabel(f) {
   return _AUDIT_FIELD[f] || String(f);
