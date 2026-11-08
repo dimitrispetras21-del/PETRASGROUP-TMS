@@ -209,7 +209,7 @@ function _gather(orderId) {
   // the normal menu — exactly what _wiCtx / _wiImpCtx / _wiMatchedImpCtx do.
   const sections = [];
   let expUsedNormal = false, impUsedNormal = false;
-  if (row.legOf) {
+  if (row.legOf || row.crossLeg) {   // a leg in its own week too (owner 8/11/2026): the same leg menu
     const html = I.preCtxItems({ orderIds: [orderId] }) || I.legCtxItems(orderId);
     sections.push({ kind: 'leg', title: 'ΣΚΕΛΟΣ ΡΟΤΑΣ', sub: _routeLine(orderId), oids: [orderId], items: _parseItems(html, 'leg'), subs: [] });
   } else if (row.hasSplitLegs) {

@@ -100,6 +100,7 @@ function eiStyles() {
   .ei-title{font-family:'Syne',sans-serif;font-size:20px;font-weight:700}
   .ei-upload-zone{margin:24px;padding:48px 24px;border:2px dashed var(--border);border-radius:8px;text-align:center;cursor:pointer;color:var(--text-mid)}
   .ei-upload-zone.busy{cursor:default}
+  .ei-upload-zone.over{border-color:var(--accent);color:var(--accent)}
   .ei-upload-text{font-size:14px;font-weight:600;color:var(--text)}
   .ei-upload-hint{font-size:12px;color:var(--text-dim);margin-top:6px}
   .ei-progress-bar{width:240px;height:6px;border-radius:3px;background:var(--surface-sunken);margin:12px auto 0;overflow:hidden}
@@ -237,7 +238,12 @@ function eiUploadHtml() {
     ? ('Διαβάζω ' + _ei.progress.done + '/' + (_ei.progress.total || '?') + '…')
     : (_ei.step === 'uploading' ? 'Αποστολή…' : null);
   const pct = _ei.progress.total ? Math.round(_ei.progress.done / _ei.progress.total * 100) : 0;
-  return `<div class="ei-page">
+  // The zone says «Σύρε το ZIP εδώ» but had no drop handler: a dragged ZIP
+  // made the browser download/open the file and nothing reached the TMS — no
+  // request, no draft, no message (Alexia 3/11, 30/9 + 15/10 statements). The
+  // whole page takes the drop, not only the zone, so a near miss on the margin
+  // or the error box never falls back to the browser's download either.
+  return `<div class="ei-page" ondragover="eiDragOver(event, ${busy})" ondragleave="eiDragLeave(event)" ondrop="eiDrop(event, ${busy})">
     <div class="ei-head"><button class="ei-back" onclick="eiCancel()">← Έξοδα Δρομολογίων</button><span class="ei-title">Εισαγωγή DKV</span></div>
     ${_ei.error ? showError(_ei.error) : ''}
     <div class="ei-upload-zone${busy ? ' busy' : ''}" ${busy ? '' : 'onclick="document.getElementById(\'eiFileInput\').click()"'}>
@@ -246,6 +252,41 @@ function eiUploadHtml() {
       ${label ? `<div class="ei-progress-bar"><div class="ei-progress-fill" style="width:${pct}%"></div></div>` : '<div class="ei-upload-hint">.ZIP από την DKV — μηνιαία παραστατικά</div>'}
     </div>
   </div>`;
+}
+
+function eiDragOver(ev, busy) {
+  ev.preventDefault();
+  const z = document.querySelector('.ei-upload-zone');
+  if (z && !busy) z.classList.add('over');
+}
+function eiDragLeave(ev) {
+  // dragleave also fires when the pointer moves onto a child element — only
+  // a real exit from the page clears the highlight (no flicker over the text).
+  if (ev.currentTarget.contains(ev.relatedTarget)) return;
+  const z = document.querySelector('.ei-upload-zone');
+  if (z) z.classList.remove('over');
+}
+// One ZIP per drop: each statement is its own preview + commit, and a
+// silently skipped second ZIP would read as «imported» (four were pending on
+// 3/11). A dropped folder or PDF never reaches JSZip's raw English error —
+// the click path's accept=".zip" does not apply to a drop.
+function eiDrop(ev, busy) {
+  ev.preventDefault();
+  eiDragLeave({ currentTarget: ev.currentTarget, relatedTarget: null });
+  if (busy) return;
+  const files = Array.from((ev.dataTransfer && ev.dataTransfer.files) || []);
+  if (!files.length) return;
+  if (files.length > 1) {
+    _ei.error = 'Ένα ZIP τη φορά — έριξες ' + files.length + ' αρχεία. Κάθε ZIP της DKV καταχωρείται χωριστά· σύρε το πρώτο, και μετά το επόμενο.';
+    eiRenderShell();
+    return;
+  }
+  if (!/\.zip$/i.test(files[0].name)) {
+    _ei.error = 'Το «' + files[0].name + '» δεν είναι ZIP. Σύρε το ZIP όπως ήρθε στο mail της DKV, όχι φάκελο ή μεμονωμένο PDF.';
+    eiRenderShell();
+    return;
+  }
+  eiHandleZipFile(files[0]);
 }
 
 async function eiHandleZipFile(file) {
