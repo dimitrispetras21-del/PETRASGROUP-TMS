@@ -1,5 +1,8 @@
 -- 112 - NATIONAL v5: THE BOARD NAMES THE LOCAL DRIVER'S TRUCK OF A LOCAL LOADING (owner 8/11, TOPIKA panel, #286).
--- DRAFT. Not executed. RUN after 15:00 by the owner: 112_plan_board_local_truck_dryrun.sql, then this file, then
+-- EXECUTED 8/11/2026 by the owner: dry run "112 DRY RUN OK ... (0 in this week) - nothing kept", board_md5
+-- 6ee19458d60e62de1492fa72edec36c8, verify md5_ok / worker_exec = true. Do NOT run again. The NEXT change to
+-- plan_board guards on md5 6ee19458d60e62de1492fa72edec36c8 (this text), not on 109's.
+-- Was: DRAFT. RUN after 15:00 by the owner: 112_plan_board_local_truck_dryrun.sql, then this file, then
 -- 112_plan_board_local_truck_verify.sql. REVERSE: 112_plan_board_local_truck_rollback.sql.
 -- The approved Figma (2607:7793, frame 3) names the local driver with his truck ("<plate> - topikos"); plan_board's
 -- stops[].local_loading carried the driver only (072:2399-2406, unchanged by 109), although local_moves keeps the
