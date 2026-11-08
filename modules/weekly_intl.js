@@ -3040,6 +3040,7 @@ async function _wiUnmatchRow(rowId){
 // την άνοιξε (owner 3/9). Δεν γράφεται τίποτα εδώ: κρατάμε ΠΟΙΟ export περιμένει
 // και το ταίριασμα εκτελείται μόνο αν η φόρμα όντως δημιουργήσει εγγραφή.
 function _wiNewImport(rowId){
+  if(_wiBlockReadOnly()) return;   // the same gate as «+ Νέα παραγγελία» (_wiNewOrder)
   const row=WINTL.rows.find(r=>r.id===rowId);
   if(!row) return;
   if(row.importId){ toast('Η γραμμή έχει ήδη ταιριασμένη εισαγωγή','warn'); return; }
@@ -3461,13 +3462,40 @@ async function _wiSaveImportMatch(rowId,impId){
   // own. Call it directly: with N1 (worker/src/rt-rules.mjs) it attaches the
   // import's leg to the export's existing RT instead of leaving it single-leg
   // (measured 5/9: 9 of 46 matched pairs stuck that way). Non-blocking.
-  if(!matchFailed && typeof rtOnOrderSaved === 'function'){
+  // Only with a vehicle on the export (owner 8/11 #10, match before the
+  // assignment): without one there is no trip to attach to — the base makes
+  // none either (033) — and rtOnOrderSaved would read the export as «lost its
+  // vehicle» and cancel the IMPORT's waiting trip it gathers (rt-feed !exec
+  // branch; rt-sync v6 PLAN: a waiting trip is never cancelled). The later
+  // assignment (_wiSaveFromPopover) writes both orders and runs it then.
+  if(!matchFailed && (row.truckId||row.partnerId) && typeof rtOnOrderSaved === 'function'){
     for(const orderId of row.orderIds){
       rtOnOrderSaved(orderId).catch(e => console.warn('[wi match] rt sync:', e && e.message));
     }
   }
 }
 
+// Did the export group pass anything on to its matched import (owner 8/11
+// #10)? true = a member has a vehicle (it was inherited), or a member's trip
+// holds a leg of the import (a cleared trip keeps its legs, _wiClear): the
+// unmatch then takes the full path — the leg leaves, the vehicle is cleared.
+// false = no member has a vehicle and none rides with the import: the
+// import's own vehicle and trip stay. Every member read live (the board row
+// may be stale). Any failed read → true, today's path, whose own reads
+// (_wiRtLeave) refuse and say so rather than clear on a guess.
+async function _wiExpPassedOn(expIds,impIds){
+  const pgs=(impIds||[]).map(id=>Number(_wiRecOf(id)?.fields?.['Order No']));
+  for(const oid of expIds||[]){
+    const at=await _wiRtOf(oid);
+    if(!at.ok||!at.f) return true;
+    if(getLinkedId(at.f['Truck'])||getLinkedId(at.f['Partner'])) return true;
+    if(at.rt){
+      const legs=new Set((at.rt.ct_rt_legs||[]).map(l=>Number(l.order_id)));
+      if(pgs.some(pg=>!pg||legs.has(pg))) return true;   // an import with no number read = not sure
+    }
+  }
+  return false;
+}
 // Returns true only when the unmatch fully landed (match cleared AND every
 // cleared member left its round trip) — a re-match must not write a new
 // vehicle onto a member that still sits on the old trip (review 4/10, P3-3).
@@ -3506,6 +3534,11 @@ async function _wiRemoveImport(rowId){
   }
   _wiSync('wi-sync-'+rowId, ok?'ok':'err',
     ok?'Αφαιρέθηκε':'Η αφαίρεση ΔΕΝ γράφτηκε στη βάση — κάνε Ανανέωση',oid0); // T3
+  // A match may come before the assignment (owner 8/11 #10): when the export
+  // group passed nothing on (_wiExpPassedOn), the import's own vehicle and
+  // trip stay — before 8/11 this wiped them as if inherited.
+  const giAll = ok ? await _wiGiGroup(impId) : null;
+  const ownImp = ok && !(row.truckId||row.partnerId) && !(await _wiExpPassedOn(row.orderIds, giAll.members));
   if(ok){
     // Ξεταίριασμα = το import δεν ταξιδεύει πια με αυτό το όχημα (owner 13/8):
     // καθαρίζεται η κληρονομημένη ανάθεσή του για να μην μείνει ορφανή.
@@ -3519,7 +3552,7 @@ async function _wiRemoveImport(rowId){
     // never a subset — read back is skipped here (same as the pre-existing
     // single-id clear) since this is a best-effort inherit-cleanup, not the
     // authoritative match write above.
-    const giGroup = await _wiGiGroup(impId);
+    const giGroup = ownImp ? { members: [] } : giAll;   // ownImp: see above
     const clearErrors=[], keptExecuting=[];
     for(const memberId of giGroup.members){
       try{
@@ -5250,7 +5283,7 @@ async function _wiRtOf(orderId){
   catch(e){ return {ok:false,msg:'ο γύρος δεν διαβάστηκε ('+((e&&e.message)||e)+')'}; }
   if(((r&&r.records)||[]).length>=500) return {ok:false,msg:'πολλοί γύροι στο διάστημα — η αναζήτηση δεν είναι βέβαιη'};
   const rt=((r&&r.records)||[]).find(t=>t.status!=='cancelled'&&(t.ct_rt_legs||[]).some(l=>Number(l.order_id)===pg))||null;
-  return {ok:true,pg,rt};
+  return {ok:true,pg,rt,f};   // f: the order as read here (_wiExpPassedOn decides on it)
 }
 // Take one order's leg OFF its round trip, BEFORE anything clears that order's
 // vehicle (live 30/9, RT-1193). The live trigger rt_sync_from_order copies an

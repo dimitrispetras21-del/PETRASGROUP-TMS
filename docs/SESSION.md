@@ -12,6 +12,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
+- dimitris · `feat/wi4-match-unassigned` · Weekly Διεθνών: ταίριασμα και χωρίς ανάθεση (owner 8/11 #10)· μόνο front end: κελί «Χωρίς εισαγωγή · + Νέα εισαγωγή» στην «ΠΡΟΣ ΑΝΑΘΕΣΗ», κανένα `rtOnOrderSaved` χωρίς όχημα, η αφαίρεση κρατά το δικό φορτηγό της εισαγωγής· rig `unassigned` 28/28 (5 ✗ στο main)· `/code-review high` ×4
 - dimitris · `feat/route-diagram` · Διάγραμμα διαδρομής (owner 8/11 #4/#5): ένα κοινό `core/route-diagram.js` για τις τρεις οθόνες· πρώτο το πάνελ «Παλέτες › Εβδομάδα»· Παραγγελίες μετά το #271, Εθνικών μετά #271 + wn5-tools· ?v= / SW_VERSION 1794220000 (`docs/sessions/2026-11-08-dimitris-diagram.md`)
 - dimitris · `feat/wn5-cleanup` · Εβδομαδιαίο Εθνικών v5, 5 σημεία owner 8/11: σειρά (ΚΑΘΟΔΟΣ στην ημέρα παράδοσης, ΑΝΟΔΟΣ στη φόρτωση, «→ παράδοση» της ΑΝΟΔΟΥ), φορτηγό άλλης εβδομάδας ολόκληρο με «15 · W45» (και στην «Εβδομάδα»), χωρίς ✎, χωρίς ειδοποιήσεις, κόκκινο «ΠΡΟΣ ΑΝΑΘΕΣΗ»· μόνο front end, ?v= / SW_VERSION 1794210000 (`docs/sessions/2026-11-08-dimitris-wn5-cleanup.md`)
 - dimitris · `docs/wn5-tools-audit` · Εθνικά v5, αλλαγές owner 8/11 #8/#6/#7: έλεγχος ✈ (9 γραμμές ως τη βάση, κάθοδος/άνοδος, rig 1289 ✓ / 0 ✗, 3 κενά οθόνης με go συντονιστή μετά το wn5-cleanup)· μελέτη πάνελ τοπικών + ρότας, ερωτήσεις owner πριν το Figma (`docs/national-v5/plane-menu-audit-2026-11-08.md`, `docs/sessions/2026-11-08-dimitris-wn5-tools.md`)
