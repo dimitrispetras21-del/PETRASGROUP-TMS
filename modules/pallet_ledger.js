@@ -1057,6 +1057,7 @@ function _plvFind(id) { return PLV.movements.find(x => x.id === id) || (PLV.card
    content stays. ── */
 function _plvShell(o) {
   if (typeof _oiEnsureStyles === 'function') _oiEnsureStyles();
+  else if (!PLV._noShellCss) { PLV._noShellCss = true; console.error('[pallets] the TMS panel CSS is missing: orders_intl.js did not export _oiEnsureStyles — panels draw unstyled'); }
   const subs = (o.subs || []).filter(Boolean).map(x => `<div class="oi-card-sub">${x}</div>`).join('');
   const chips = (o.chips || []).filter(Boolean);
   const acts = (o.actions || []).filter(Boolean);
@@ -1070,8 +1071,10 @@ function _plvShell(o) {
 const _plvKv = (k, v, cls) => `<div class="oi-kv"><span class="k">${k}</span><span class="v${cls ? ' ' + cls : ''}">${v}</span></div>`;
 const _plvSect = (t, inner, alt) => `<div class="oi-sect${alt ? ' oi-sect-alt' : ''}">${t ? `<div class="oi-sect-t">${t}</div>` : ''}${inner}</div>`;
 const _plvLink = (fn, t, danger) => `<button type="button" class="oi-link${danger ? ' oi-link-danger' : ''}" onclick="${fn}">${t}</button>`;
-function _plvOpenShell(html) {
-  document.getElementById('plvModal').innerHTML = html;
+// A FORM (confirm, fix, new movement) keeps a scrim behind it, as the modals had: without it a click or Enter on a
+// list row replaced the form and lost what was typed (review 8/11). The movement panel is a card: no scrim.
+function _plvOpenShell(html, form) {
+  document.getElementById('plvModal').innerHTML = (form ? '<div class="plv-scrim" onclick="plvWizClose()"></div>' : '') + html;
   document.addEventListener('keydown', _plvEsc);
 }
 const PLV_STATUS_CHIP = { pending: 'Εκκρεμής', confirmed: 'Οριστική', reversed: 'Αντιλογισμένη' };
@@ -1111,7 +1114,7 @@ function plvOpenConfirm(id, inWiz) {
         <button id="plvConfirmGo" class="plv-btn plv-btn-p plv-go-wide" data-id="${m.id}" ${zero ? 'disabled' : ''} onclick="plvDoConfirm(${m.id})">${hasNext ? 'Επιβεβαίωση και επόμενη' : 'Επιβεβαίωση'} <span class="plv-kbd plv-kbd-d">↵</span></button>
       </div>`),
     actions: [q.length > 1 && pos >= 0 ? _plvLink(`plvWizAdvance(${m.id})`, 'Παράλειψη →') : '', _plvLink('plvWizClose()', 'Κλείσιμο')]
-  }));
+  }), true);
   setTimeout(() => { const g = document.getElementById(m.taken ? 'plvGiven' : 'plvTaken'); if (g) { g.focus(); g.select(); } }, 0);
 }
 // Live: the zero lock and the balance after (N12).
@@ -1438,7 +1441,7 @@ function plvFixDelivery(id) {
         <button class="plv-btn plv-btn-p plv-go-wide" onclick="plvDoFix(${m.id})">Καταχώρηση διόρθωσης</button>
       </div>`),
     actions: [_plvLink('plvCloseModal()', 'Άκυρο')]
-  }));
+  }), true);
   setTimeout(() => { const i = document.getElementById('plvRealTaken'); if (i) { i.focus(); i.select(); } }, 0);
 }
 function plvFixLive(id) {
@@ -1557,7 +1560,7 @@ function plvNewMovement() {
         <button class="plv-btn plv-btn-p plv-go-wide" onclick="plvDoCreate()">Καταχώρηση</button>
       </div>`),
     actions: [_plvLink('plvCloseModal()', 'Άκυρο')]
-  }));
+  }), true);
 }
 function plvNmType(t) {
   PLV._nmType = t;
@@ -1760,6 +1763,8 @@ const _PLV_STYLE = `<style>
   /* Forms inside the TMS panel (the shell itself is orders_intl.js _oiCss + .oi-ro-float): only what the shell
      does not have — inputs, the drop zone, the «μετά» box, the error, the type tiles. */
   .plv-shell{display:flex;flex-direction:column;font-size:var(--text-body)}
+  /* the scrim behind a form: the same rgba as the app's overlays (no token), under the shell's 1200 */
+  .plv-scrim{position:fixed;inset:0;background:rgba(11,25,41,.35);z-index:1199}
   .plv-form{display:flex;flex-direction:column;gap:12px;margin-top:4px}
   .plv-mcnt{color:var(--text-on-dark);font-weight:600}
   .plv-go-wide{width:100%;justify-content:center;height:36px}

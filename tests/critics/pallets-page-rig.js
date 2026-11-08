@@ -163,6 +163,7 @@ async function runAction(browser) {
   const mt = await page.locator('.plv-shell').textContent();   // the title is upper-cased by the shell's CSS
   ok(/Επιβεβαίωση φόρτωσης/.test(mt) && /\d+ από 7/.test(mt), 'Enter → «Επιβεβαίωση φόρτωσης», counter «N από 7»');
   ok(/Παλέτες στάσης\s*30/.test(mt), 'info: «Παλέτες στάσης 30»');
+  ok(await page.locator('#plvModal .plv-scrim').count() === 1, 'a form keeps a scrim: a row behind cannot replace it');
   await page.fill('#plvGiven', '5');
   const bal10 = balOf('client_id', 10);
   const after = await page.locator('#plvAfter').innerText();
