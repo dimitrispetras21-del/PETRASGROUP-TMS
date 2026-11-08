@@ -277,6 +277,11 @@ const F = {
   STOP_PALLET_SHEET_OK: 'Pallet Sheet OK',
   STOP_PALLETS_LOADED:  'Pallets Loaded',
   STOP_PALLETS_EXCHANGED:'Pallets Exchanged',
+  // 111 (owner 8/11, the new international form): the optional window of a point (HH:MM, empty = all day) and the
+  // desk's «μέσω Βέροιας» per point (empty = follows the VS, false = direct). Deploy order: 111 → Worker → screens.
+  STOP_TIME_FROM:       'Time From',
+  STOP_TIME_TO:         'Time To',
+  STOP_VIA_HUB:         'Via Hub',
 
   // ── PARTNER_ASSIGN ───────────────────────────────────────────────
   PA_PARTNER:       'Partner',

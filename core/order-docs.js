@@ -595,12 +595,14 @@ function _showUploadFailedBanner(orderId, file, source, err, opts) {
 let _odF = { seq: 0, orderId: null, label: '', items: [], inflight: new Set(), listError: '' };
 
 /** Markup for the form field. Call formMount(orderId) after openModal(). */
-function formFieldHtml() {
+// opts.label: the button's words (the international form says «Εντολή πελάτη», owner 8/11); default as before.
+function formFieldHtml(opts) {
   _odEnsureStyles();
   const clip = typeof icon === 'function' ? icon('paperclip', 14) : '';
+  const label = (opts && opts.label) || 'Επισύναψη αρχείου…';
   return `<div class="od-form">
     <div class="od-form-head">
-      <button type="button" class="btn btn-secondary btn-sm od-form-pick" id="odFormPick" onclick="OrderDocs._formPick()">${clip}<span>Επισύναψη αρχείου…</span></button>
+      <button type="button" class="btn btn-secondary btn-sm od-form-pick" id="odFormPick" onclick="OrderDocs._formPick()">${clip}<span>${escapeHtml(label)}</span></button>
       <span class="od-form-hint" id="odFormHint"></span>
     </div>
     <div class="od-form-list" id="odFormList"></div>

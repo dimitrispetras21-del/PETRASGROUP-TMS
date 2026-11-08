@@ -161,6 +161,81 @@ div.oi-locked{display:flex;align-items:center;font-size:13px}
 .oi-banner small.oi-charge-dim{color:var(--text-mid);font-weight:400}
 .oi-banner small.oi-charge-warn{color:var(--warn);font-weight:600}
 .oi-charge-u{font-size:13px;color:var(--text-mid)}
+/* ── The new international form (owner 8/11, Figma 2590:7735 Φ1–Φ6): the language of the Weekly «Ανάθεση» form
+   (wn5f: 34px controls, DM Sans labels 12px, section heads 10.5px spaced, one summary line on the sunken surface).
+   Tokens only (no hex): the wi4 palette of :root. ── */
+.modal.modal--oi2{width:880px;max-width:96vw}
+.oi2{display:flex;flex-direction:column;gap:12px;font-size:13px;color:var(--wi4-ink)}
+.oi2-sec{display:flex;align-items:center;gap:14px;margin-top:6px;font:600 10.5px 'DM Sans',sans-serif;letter-spacing:1.2px;text-transform:uppercase;color:var(--wi4-grey-3)}
+.oi2-sec .oi-lot-ck{font:400 12.5px 'DM Sans',sans-serif;letter-spacing:0;text-transform:none;color:var(--wi4-grey-1)}
+.oi2-f{display:flex;flex-direction:column;gap:5px;min-width:0;font-size:12px;color:var(--wi4-grey-1)}
+.oi2 .form-input{height:34px;padding:0 10px;box-sizing:border-box;border:1px solid var(--wi4-ctl);border-radius:6px;background:var(--surface-card);font-size:13px;color:var(--wi4-ink)}
+.oi2 .form-input:disabled{background:var(--wi4-chip);color:var(--wi4-grey-1)}
+.oi2 .oi2-num{text-align:right;font-variant-numeric:tabular-nums}
+.oi2-r3{display:grid;grid-template-columns:minmax(0,300px) minmax(0,240px) 150px;gap:12px;align-items:start}
+.oi2-cargo{display:grid;grid-template-columns:minmax(110px,1fr) 72px 72px max-content max-content max-content;gap:10px;align-items:start}
+.oi2-seg{display:inline-flex;align-items:stretch;height:34px;padding:3px;gap:2px;box-sizing:border-box;border-radius:7px;background:var(--wi4-chip);width:max-content}
+.oi2-seg button,.oi2-seg label{display:inline-flex;align-items:center;padding:0 9px;border:none;border-radius:5px;background:none;font:500 12.5px 'DM Sans',sans-serif;color:var(--wi4-grey-1);cursor:pointer}
+.oi2-seg label input{position:absolute;opacity:0;pointer-events:none;width:0;height:0}
+.oi2-seg button.on,.oi2-seg label.on{background:var(--surface-card);color:var(--wi4-ink);font-weight:600;box-shadow:var(--shadow-sm,0 1px 2px rgba(16,24,40,.08))}
+.oi2-seg.locked button,.oi2-seg.locked label{cursor:default;color:var(--wi4-grey-3)}
+.oi2-seg.locked button.on,.oi2-seg.locked label.on{color:var(--wi4-grey-1)}
+.oi2-seg.oi-req-bad,.oi2-seg[style*="border-color"]{outline:1.5px solid var(--wi4-red)}
+.oi2-hint{font-size:11px;line-height:1.3;color:var(--wi4-grey-2)}
+.oi2-hint:empty{display:none}
+/* the CHEP / Industrial lock note is said in the summary («χωρίς ανταλλαγή (CHEP)»); only a missing answer shows here */
+#oi2 #f_PalletExchHint:not([data-err]){display:none}
+.oi2 .oi-temp-head{display:flex;align-items:center;gap:8px;justify-content:flex-start}
+.oi2 .oi-cmr-tick{font-size:11px;color:var(--wi4-grey-2);gap:4px}
+.oi2 .oi-cmr-tick input{width:12px;height:12px}
+.oi2-prefill{display:flex;align-items:center;gap:8px}
+.oi2-prefill[hidden]{display:none}
+.oi2-chip{display:inline-flex;align-items:center;height:22px;padding:0 7px;border:1px solid var(--wi4-ctl);border-radius:4px;background:var(--wi4-chip);font-size:11.5px;color:var(--wi4-grey-1)}
+.oi2-link{border:none;background:none;padding:0;font:500 12.5px 'DM Sans',sans-serif;color:var(--accent);cursor:pointer}
+.oi2-pts{display:flex;flex-direction:column;gap:8px}
+.oi2-rows{display:flex;flex-direction:column;gap:8px}
+.oi2-th,.oi2-stop{display:grid;grid-template-columns:minmax(0,1fr) 128px 150px 60px 64px 40px 22px;gap:8px;align-items:center}
+.oi2-th{font-size:11px;color:var(--wi4-grey-2)}
+.oi2-th .r{text-align:right}
+.oi2-c-loc{position:relative;min-width:0}
+.oi2-c-loc .oi-loc-msg{position:absolute;left:0;top:100%;white-space:nowrap}
+.oi2-c-ex,.oi2-c-vs{display:flex;align-items:center;justify-content:center;gap:4px;visibility:hidden}
+.oi2-c-ex input[type=checkbox],.oi2-c-vs input[type=checkbox],.oi2-vshead input{width:15px;height:15px;margin:0;accent-color:var(--accent)}
+.oi2.ex-col .oi2-c-ex,.oi2.ex-fix .oi2-c-ex{visibility:visible}
+.oi2 .oi2-exn{display:none;width:58px}
+.oi2.ex-fix #oi2sec_l .oi2-exn{display:block}
+.oi2.ex-fix #oi2sec_l .oi2-c-ex input[type=checkbox]{display:none}
+.oi2.ex-fix:not(.ex-col) #oi2sec_u .oi2-c-ex{visibility:hidden}
+.oi2-pts.vs-col .oi2-c-vs{visibility:visible}
+.oi2-vshead{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--wi4-grey-2);cursor:pointer}
+.oi2-hrs{position:relative;min-width:0}
+.oi2-hrs-all{width:100%;height:34px;display:flex;align-items:center;justify-content:space-between;gap:6px;padding:0 10px;box-sizing:border-box;border:1px solid var(--wi4-ctl);border-radius:6px;background:var(--surface-card);font:400 12.5px 'DM Sans',sans-serif;color:var(--wi4-grey-2);cursor:pointer}
+.oi2-hrs-win{display:none;align-items:center;gap:3px}
+.oi2-hrs.open .oi2-hrs-all{display:none}
+.oi2-hrs.open .oi2-hrs-win{display:flex}
+.oi2 .oi2-hm{flex:1 1 0;min-width:0;padding:0 4px;font-variant-numeric:tabular-nums}
+.oi2-dash{font-size:13px;color:var(--wi4-grey-2)}
+.oi2-rm{height:34px;padding:0;border:none;background:none;font-size:16px;color:var(--wi4-grey-3);cursor:pointer}
+.oi2-add{align-self:flex-start;border:none;background:none;padding:0;font:500 12.5px 'DM Sans',sans-serif;color:var(--accent);cursor:pointer}
+.oi2-sum{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:12px 14px;border-radius:8px;background:var(--surface-sunken);font-size:12.5px;color:var(--wi4-grey-1)}
+.oi2-sum b{font-weight:700;color:var(--wi4-ink)}
+.oi2-sum .warn{color:var(--wi4-amber)}
+.oi2-dot{color:var(--wi4-grey-3)}
+.oi2-vschip{display:inline-flex;align-items:center;height:22px;padding:0 8px;border:1px solid var(--wi4-info-line);border-radius:4px;font-size:11.5px;color:var(--accent)}
+.oi2-notes{display:grid;grid-template-columns:minmax(0,1fr) max-content max-content;gap:12px;align-items:end}
+.oi2 textarea.oi2-ta{height:auto;min-height:34px;padding:7px 10px;resize:vertical;line-height:1.4}
+.oi2-docs .od-form-head{display:flex;align-items:center;gap:8px;height:34px}
+.oi2-docs .od-form-pick{border:none;background:none;padding:0;color:var(--accent);font:500 12.5px 'DM Sans',sans-serif;box-shadow:none}
+.oi2-ck{display:inline-flex;align-items:center;gap:6px;height:34px;font-size:12.5px;color:var(--wi4-grey-1);cursor:pointer}
+.oi2-ck input{width:14px;height:14px;margin:0}
+.oi2 .oi-lot{margin:0}
+#modalTitle:has(> .oi2-hpdf),#modalTitle:has(> .oi2-hsub){display:flex;align-items:center;flex:1;min-width:0;margin-right:12px}
+#modalTitle .oi2-hsub{margin-left:12px;font:400 12.5px 'DM Sans',sans-serif;color:var(--wi4-grey-2)}
+#modalTitle .oi2-hsub.chip{padding:2px 7px;border:1px solid var(--wi4-info-line);border-radius:4px;font-size:11.5px;color:var(--accent)}
+#modalTitle .oi2-hpdf{margin-left:auto;height:28px;padding:0 10px;border:1px solid var(--wi4-info-line);border-radius:5px;background:var(--surface-card);font:500 12px 'DM Sans',sans-serif;color:var(--accent);cursor:pointer}
+#modalFooter .oi2-dup{margin-right:auto}
+#modalFooter .oi2-save{background:var(--surface-dark);border-color:var(--surface-dark);color:var(--surface-card);font-weight:600}
+#modalFooter .oi2-save:hover{background:var(--wi4-ink)}
 `; }
 
 // ─── Main ───────────────────────────────────────
@@ -547,30 +622,151 @@ function _clientSelect(id, currentId, currentLabel) { return fhClientSelect(id, 
 // stop 2-10: 'Loading DateTime 2-10' / 'Unloading DateTime 1-10'
 // stopId: the ORDER STOPS record the row came from ('' for a new row). stopsSave matches by it, so removing a
 // middle row never hands its record to the row after it (F5 plan, Task F; the v5 bridge keys on order_stop_id).
-function _stopRow(type, i, locId, palVal, dtVal, stopId) {
-  const req   = i===1 ? ' *' : '';
+// New form (owner 8/11, change 13; Figma 2590:7735 Φ1–Φ6): one column of points per section, one head row
+// (σημείο · ημέρα · ώρα · παλέτες · ανταλλαγή · VS). The field ids are the old ones (ls_/lv_ via fhLocSelect,
+// pal_, dt_, sid_), so the save, the lot rules and the scan prefill read them as before. New per point:
+//   tf_/tt_  the optional window (111 time_from / time_to, owner 8/11 «μη υποχρεωτικό»): empty = all day;
+//   ex_      the exchange tick (round 4: «Ναι» in ΦΟΡΤΙΟ ticks every point; ✓ = Pallets Exchanged empty = all,
+//            ✗ = 0); exn_ the rare correction number of a loading point (Φ4 β, «διόρθωση…»);
+//   vh_      «μέσω Βέροιας» on a national-side point (111 via_hub: the desk's choice per point).
+// data-o* hold what the stop had when the form opened: the save sends a new-label value only when it changed, so an
+// unchanged order never names a column a Worker or a base without 111 does not know.
+// extra = { tf, tt, ex, vh } of a stored stop (all optional).
+function _stopRow(type, i, locId, palVal, dtVal, stopId, extra) {
+  const x = extra || {};
+  const esc = v => escapeHtml(v == null ? '' : String(v));
   // ✕ μόνο στα i>1 (owner 12/8): το πρώτο σημείο είναι υποχρεωτικό — αν δεν
   // το θες, αλλάζεις την τιμή του, δεν το σβήνεις. Ο spacer κρατά τη στοίχιση.
   const rm = i > 1
-    ? `<button type="button" title="Αφαίρεση στάσης" onclick="_removeStop('${type}',${i})"
-        style="height:38px;border:none;background:none;color:var(--text-mid);font-size:18px;cursor:pointer;padding:0">×</button>`
-    : '<div></div>';
-  return `<div id="stoprow_${type}_${i}" style="display:grid;grid-template-columns:1fr 100px 130px 24px;gap:8px;margin-bottom:8px;align-items:end">
-    <div>
-      <label class="form-label" style="font-size:11px">Τοποθεσία ${i}${req}</label>
-      ${_locSelect(type+'_'+i, locId)}
+    ? `<button type="button" class="oi2-rm" title="Αφαίρεση στάσης" onclick="_removeStop('${type}',${i})">×</button>`
+    : '<span></span>';
+  const tf = x.tf ? String(x.tf).slice(0, 5) : '', tt = x.tt ? String(x.tt).slice(0, 5) : '';
+  const hasHrs = !!(tf || tt);
+  // a stored exchange: null/'' = every pallet (ticked), 0 = none (unticked), 1..n = the correction number
+  const exStored = x.ex == null || x.ex === '' ? null : Number(x.ex);
+  const exTick = exStored !== 0;
+  const exNum = exStored != null && exStored > 0 ? String(exStored) : '';
+  const vhStored = x.vh === true ? 'true' : x.vh === false ? 'false' : '';
+  return `<div class="oi2-stop" id="stoprow_${type}_${i}" data-oex="${exStored == null ? '' : exStored}" data-ovh="${vhStored}">
+    <div class="oi2-c-loc">${_locSelect(type + '_' + i, locId)}</div>
+    <input class="form-input" type="date" id="dt_${type}_${i}" value="${dtVal || ''}" aria-label="Ημέρα">
+    <div class="oi2-hrs${hasHrs ? ' open' : ''}" id="hrs_${type}_${i}">
+      <button type="button" class="oi2-hrs-all" onclick="_oiHrsOpen('${type}',${i})"><span>όλη η ημέρα</span><span class="oi2-link">ώρες…</span></button>
+      <span class="oi2-hrs-win">
+        <input class="form-input oi2-hm" ${_OI_HM} id="tf_${type}_${i}" value="${esc(tf)}" data-o="${esc(tf)}" aria-label="Ώρα από">
+        <span class="oi2-dash">–</span>
+        <input class="form-input oi2-hm" ${_OI_HM} id="tt_${type}_${i}" value="${esc(tt)}" data-o="${esc(tt)}" aria-label="Ώρα έως">
+      </span>
     </div>
-    <div>
-      <label class="form-label" style="font-size:11px">Παλέτες${req}</label>
-      <input class="form-input" type="number" id="pal_${type}_${i}" value="${palVal||''}" placeholder="0" min="0">
-    </div>
-    <div>
-      <label class="form-label" style="font-size:11px">Ημερομηνία${req}</label>
-      <input class="form-input" type="date" id="dt_${type}_${i}" value="${dtVal||''}">
-      <input type="hidden" id="sid_${type}_${i}" value="${escapeHtml(stopId||'')}">
-    </div>
+    <input class="form-input oi2-num" type="number" id="pal_${type}_${i}" value="${palVal || ''}" placeholder="0" min="0" aria-label="Παλέτες">
+    <span class="oi2-c-ex"><input type="checkbox" id="ex_${type}_${i}" ${exTick ? 'checked' : ''} onchange="_oiBalanceUpdate()" aria-label="Με ανταλλαγή">${type === 'l'
+      ? `<input class="form-input oi2-num oi2-exn" type="number" min="0" id="exn_${type}_${i}" value="${esc(exNum)}" placeholder="όλες" aria-label="Με ανταλλαγή (αριθμός)" oninput="_oiBalanceUpdate()">` : ''}</span>
+    <span class="oi2-c-vs"><input type="checkbox" id="vh_${type}_${i}" ${x.vh === false ? '' : 'checked'} onchange="_oiVsSync()" aria-label="Μέσω Βέροιας"></span>
     ${rm}
+    <input type="hidden" id="sid_${type}_${i}" value="${esc(stopId)}">
   </div>`;
+}
+// A typed hour, as the national forms read it (wn5_forms.js _hmNorm): «6:30», «630», «6.30» → «06:30». Text, not
+// <input type=time>: a Greek Chrome draws that one with π.μ./μ.μ.; the base keeps 'HH:MM' (111 CHECK).
+const _OI_HM = 'type="text" inputmode="numeric" maxlength="5" placeholder="ΩΩ:ΛΛ" autocomplete="off" onblur="this.value=_oiHm(this.value)"';
+const _OI_HM_RE = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
+function _oiHm(v) {
+  const s = String(v == null ? '' : v).trim();
+  const m = /^(\d{1,2})[:.]?(\d{2})$/.exec(s);
+  if (!m) return s;
+  const out = `${m[1].padStart(2, '0')}:${m[2]}`;
+  return _OI_HM_RE.test(out) ? out : s;
+}
+// «ώρες…» (Φ1): the all-day cell opens the two times; an hour is never required.
+function _oiHrsOpen(type, i) {
+  const c = document.getElementById(`hrs_${type}_${i}`); if (!c) return;
+  c.classList.add('open');
+  document.getElementById(`tf_${type}_${i}`)?.focus();
+}
+// The national side of the order (where the VS ticks live): an import's deliveries, an export's loadings.
+function _oiNatSide() {
+  const d = document.getElementById('f_Direction')?.value;
+  return d === 'Import' ? 'u' : d === 'Export' ? 'l' : '';
+}
+// The per-point columns (round 4): «ανταλλαγή» shows with exchange «Ναι» on an order of more than one loading or
+// delivery point (Φ2); a one-to-one order is the whole load (Φ1, «όλες με ανταλλαγή · διόρθωση…»). VS shows on
+// the national side, never on a lot (OWNER-Q1).
+function _oiRows(type) { return [...document.querySelectorAll(`#stops_${type} .oi2-stop`)]; }
+function _oiCols() {
+  const form = document.getElementById('oi2'); if (!form) return;
+  const pe = peRead('f') === true;
+  const many = _oiRows('l').length > 1 || _oiRows('u').length > 1;
+  form.classList.toggle('ex-col', pe && many);
+  form.classList.toggle('ex-fix', pe && form.dataset.exfix === '1');
+  const nat = _oiNatSide(), novs = form.classList.contains('novs');
+  for (const t of ['l', 'u']) document.getElementById('oi2sec_' + t)?.classList.toggle('vs-col', !novs && nat === t);
+  const lbl = document.getElementById('oiVsLbl'), dest = document.getElementById(nat ? 'oi2vsh_' + nat : 'oi2vshHold');
+  if (lbl && dest && lbl.parentElement !== dest) dest.appendChild(lbl);
+}
+// The VS head tick (Φ2): the column's aggregate — all ticked = checked, some = «–», none = off. It IS the order's
+// «Veroia Switch» (f_VeroiaSwitch, read by the save and by the lot rule _oiLotVs). A click ticks / unticks all.
+function _oiVsSync() {
+  const head = document.getElementById('f_VeroiaSwitch'); if (!head) return;
+  const t = _oiNatSide();
+  const boxes = t ? _oiRows(t).map(r => r.querySelector('.oi2-c-vs input')).filter(Boolean) : [];
+  const on = boxes.filter(b => b.checked).length;
+  head.checked = on > 0;
+  head.indeterminate = on > 0 && on < boxes.length;
+  _oiBalanceUpdate();
+}
+function _oiVsHead() {
+  const head = document.getElementById('f_VeroiaSwitch'); if (!head) return;
+  const t = _oiNatSide();
+  const want = head.checked;
+  if (t) _oiRows(t).forEach(r => { const b = r.querySelector('.oi2-c-vs input'); if (b) b.checked = want; });
+  _oiVsSync();
+}
+// Exchange «Ναι» / «Όχι» (round 4): «Ναι» ticks every point, loading and delivery; the dispatcher then unticks the
+// loading without exchange and the deliveries where no pallets come back. «Όχι» = nothing per point.
+function _oiExAll() {
+  const pe = peRead('f') === true;
+  for (const t of ['l', 'u']) _oiRows(t).forEach(r => { const b = r.querySelector('.oi2-c-ex input[type=checkbox]'); if (b) b.checked = pe; });
+  if (!pe) _oiExFix(false);
+  _oiCols(); _oiBalanceUpdate();
+}
+// «διόρθωση…» (Φ4 β, the rare case): one number per loading point; «όλες ξανά» closes it and empties the numbers.
+function _oiExFix(open) {
+  const form = document.getElementById('oi2'); if (!form) return;
+  form.dataset.exfix = open ? '1' : '';
+  if (!open) _oiRows('l').forEach(r => { const n = r.querySelector('.oi2-exn'); if (n) n.value = ''; });
+  _oiCols(); _oiBalanceUpdate();
+}
+// The direction, reefer, pallet type and exchange are buttons (Φ1). Each writes the hidden input the save reads
+// (f_Direction, f_ReeferMode, f_PalletType) or checks the PE radio (peRead / peSyncPalletType / peMarkMissing keep
+// working on name="f_PalletExch").
+function _oiSegHtml(id, opts, value, disabled, title) {
+  return `<span class="oi2-seg${disabled ? ' locked' : ''}" id="${id}Seg"${title ? ` title="${escapeHtml(title)}"` : ''}>${opts.map(([v, l]) =>
+    `<button type="button" data-v="${escapeHtml(v)}" class="${value === v ? 'on' : ''}"${disabled ? ' disabled' : ''} onclick="_oiSegPick('${id}',this)">${l}</button>`).join('')}</span>
+    <input type="hidden" id="${id}" value="${escapeHtml(value || '')}"${disabled ? ' disabled' : ''}>`;
+}
+function _oiSegPick(id, btn) {
+  const seg = document.getElementById(id + 'Seg'), inp = document.getElementById(id);
+  if (!seg || !inp || btn.disabled) return;
+  seg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === btn));
+  inp.value = btn.dataset.v;
+  seg.classList.remove('oi-req-bad');
+  seg.parentElement?.querySelector('.oi-req-msg')?.remove();
+  if (id === 'f_PalletType') { peSyncPalletType('f', inp.value); _oiPeSeg(); _oiExAll(); }
+  if (id === 'f_Direction') { _oiCols(); _oiVsSync(); }
+  if (id === 'f_ReeferMode') _oiBalanceUpdate();
+}
+// PE as two buttons over the shared radios (core/form-helpers.js): the radios stay the source peRead reads.
+function _oiPeHtml(f, isEdit) {
+  const v = f['Pallet Exchange'];
+  const orig = isEdit && v === true ? 'yes' : isEdit && v === false ? 'no' : '';
+  return `<span class="oi2-seg" id="f_PalletExch" data-orig="${orig}">${[['yes', 'Ναι'], ['no', 'Όχι']].map(([val, l]) =>
+    `<label class="${orig === val ? 'on' : ''}"><input type="radio" name="f_PalletExch" value="${val}" ${orig === val ? 'checked' : ''} onchange="pePicked('f');_oiPeSeg();_oiExAll()">${l}</label>`).join('')}</span>
+    <div id="f_PalletExchHint" class="oi2-hint"></div>`;
+}
+function _oiPeSeg() {
+  const box = document.getElementById('f_PalletExch'); if (!box) return;
+  box.querySelectorAll('label').forEach(l => { const r = l.querySelector('input'); l.classList.toggle('on', !!(r && r.checked)); });
+  box.classList.toggle('locked', !!box.dataset.locked);
 }
 
 // ─── Modal ──────────────────────────────────────
@@ -608,7 +804,9 @@ function _oiCheckSoftRequired() {
     if (!el || (r.skip && r.skip())) continue;
     if (String(el.value == null ? '' : el.value).trim() !== '') continue;
     missing.push(r.label);
-    el.classList.add('oi-req-bad');
+    // the reefer and the pallet type are buttons over a hidden input (new form): the buttons are marked
+    const mark = document.getElementById(r.id + 'Seg') || el;
+    mark.classList.add('oi-req-bad');
     const msg = document.createElement('div');
     msg.className = 'oi-req-msg';
     msg.textContent = 'Υποχρεωτικό — δεν συμπληρώθηκε';
@@ -645,7 +843,7 @@ function _oiTempCmr() {
     if (el.value === '' && el.dataset.prev) el.value = el.dataset.prev;
     delete el.dataset.prev;
   }
-  if (lbl) lbl.textContent = 'Θερμοκρασία °C' + (cb.checked ? '' : ' *');
+  if (lbl) lbl.textContent = '°C';
 }
 
 // A location typed but never picked from the list has text and no id — the
@@ -803,7 +1001,8 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill, _piece) 
         const locArr = sf[F.STOP_LOCATION];
         const locId = Array.isArray(locArr) ? locArr[0] : '';
         const dt = sf[F.STOP_DATETIME] ? toLocalDate(sf[F.STOP_DATETIME]) : '';
-        html += _stopRow(type, i + 1, locId, sf[F.STOP_PALLETS], dt, stopsOfType[i].id);
+        html += _stopRow(type, i + 1, locId, sf[F.STOP_PALLETS], dt, stopsOfType[i].id,
+          { tf: sf[F.STOP_TIME_FROM], tt: sf[F.STOP_TIME_TO], ex: sf[F.STOP_PALLETS_EXCHANGED], vh: sf[F.STOP_VIA_HUB] });
       }
     } else {
       // New order or no stops — single empty row
@@ -817,135 +1016,111 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill, _piece) 
   // numbered order, as before (the base column is NOT NULL, 065).
   const _cmr = f['Temp Per CMR'] === true;
   const _tempNum = f['Temperature °C'] != null ? String(f['Temperature °C']) : '';
-  const opt = (arr, cur) => arr.map(o=>{const v=Array.isArray(o)?o[0]:o, l=Array.isArray(o)?o[1]:o; return `<option value="${v}" ${f[cur]===v?'selected':''}>${l}</option>`;}).join('');
+  // 'Euro' removed (coordinator 15/9): an order still holding it shows no button pressed and the save skips the field.
+  const _ptype = ['EUR', 'CHEP', 'Industrial'].includes(f['Pallet Type']) ? f['Pallet Type'] : '';
+  const _reefer = ['Continuous', 'Start-Stop', 'No temp'].includes(f['Refrigerator Mode']) ? f['Refrigerator Mode'] : '';
+  const _price = _isPiece
+    ? `<div class="form-input oi-locked" title="Τιμολογείται η παρτίδα — το κομμάτι δεν έχει δική του τιμή">στην παρτίδα ${escapeHtml(_oiPieceLotLabel(SK, f))}</div>`
+    // The lot's PRICE locks with the client invoice (DB: 422 lot_invoiced on a price change) — read-only here, so
+    // nobody types what the base refuses. Its warehouse charge stays open (OWNER-Q4b). Ordinary orders unchanged.
+    : SK.mode === 'lotEdit' && f['Invoiced']
+      ? `<input class="form-input oi2-num oi-locked" type="number" id="f_Price" value="${f['Price'] || ''}" readonly title="Τιμολογήθηκε">`
+      : `<input class="form-input oi2-num" type="number" id="f_Price" value="${f['Price'] || ''}">`;
+  const _pe = _isPiece
+    ? `<div class="form-input oi-locked" title="Η ανταλλαγή παλετών μετρά μία φορά, στη φόρτωση της παρτίδας από τον πελάτη">Όχι · στην παρτίδα</div>`
+    : _oiPeHtml(f, isEdit);
+  const _th = (t) => `<div class="oi2-th"><span>${t === 'u' && SK.wasLot ? 'Αποθήκη' : 'Σημείο'}</span><span>Ημέρα</span><span>Ώρα</span><span class="r">Παλέτες</span>
+      <span class="oi2-c-ex">ανταλλαγή</span><span class="oi2-c-vs" id="oi2vsh_${t}"></span><span></span></div>`;
 
+  // Two things of the body below, said here (not as HTML comments inside the template):
+  //   «📎 Εντολή πελάτη» (oi2-docs) = the old «Ανάθεση πελάτη», renamed (owner 8/11): the client order is attached in
+  //     the form, not only from the card after the save (dispatcher 7/10, core/order-docs.js);
+  //   the VS head tick (oiVsLbl) is moved by _oiCols into the head row of the national side (the deliveries of an
+  //     import, the loadings of an export). It is the order «Veroia Switch»; the points under it are the choice per
+  //     point (111).
   let body = `
-    <div class="form-grid cols-3">
-      <!-- Owner 11/8: Brand/Type αφαιρέθηκαν — δεδομένα Petras Group / International -->
-      <!-- Figma 165:676: πρώτη γραμμή σε 3 στήλες (Κατεύθυνση/Πελάτης/Τιμή) -->
-      <div class="form-field">
-        <label class="form-label">Κατεύθυνση *</label>
-        <select class="form-select" id="f_Direction"${_isPiece ? ' disabled title="Κομμάτι από απόθεμα = εισαγωγή από την αποθήκη"' : ''}><option value="">— Επιλογή —</option>
-          ${opt([['Export','Εξαγωγή'],['Import','Εισαγωγή']],'Direction')}</select>
-      </div>
-      <div class="form-field" onfocusout="_oiWhWarn()">
-        <label class="form-label">Πελάτης *</label>
+  <div class="oi2" id="oi2">
+    <div class="oi2-sec">Πελάτης</div>
+    <div class="oi2-f">
+      <span>Κατεύθυνση</span>
+      ${_oiSegHtml('f_Direction', [['Export', 'ΕΞΑΓΩΓΗ'], ['Import', 'ΕΙΣΑΓΩΓΗ']], f['Direction'] || '', _isPiece, _isPiece ? 'Κομμάτι από απόθεμα = εισαγωγή από την αποθήκη' : '')}
+    </div>
+    <div class="oi2-r3">
+      <div class="oi2-f" onfocusout="_oiWhWarn();_oiPrefillCheck()">
+        <span>Πελάτης</span>
         ${_clientSelect('client', clientId, clientLabel)}
+        <div class="oi2-prefill" id="oiPrefill" hidden></div>
       </div>
-      ${_isPiece ? `<div class="form-field">
-        <label class="form-label">Τιμή (€)</label>
-        <div class="form-input oi-locked" title="Τιμολογείται η παρτίδα — το κομμάτι δεν έχει δική του τιμή">στην παρτίδα ${escapeHtml(_oiPieceLotLabel(SK, f))}</div>
-      </div>` : `<div class="form-field">
-        <label class="form-label">Τιμή (€) *</label>
-        ${SK.mode === 'lotEdit' && f['Invoiced']
-          // The lot's PRICE locks with the client invoice (DB: 422 lot_invoiced on a
-          // price change) — read-only here, so nobody types what the base refuses.
-          // Its warehouse charge stays open (OWNER-Q4b). Ordinary orders unchanged.
-          ? `<input class="form-input oi-locked" type="number" id="f_Price" value="${f['Price']||''}" readonly title="Τιμολογήθηκε">`
-          : `<input class="form-input" type="number" id="f_Price" value="${f['Price']||''}">`}
-      </div>`}
+      <div class="oi2-f"><span>Reference</span>
+        <input class="form-input" type="text" id="f_Reference" value="${escapeHtml(f['Reference'] || '')}" placeholder="π.χ. αριθμός πελάτη"></div>
+      <div class="oi2-f"><span>Τιμή € · καθαρή</span>${_price}</div>
     </div>
-    <div class="form-grid">
-      <div class="form-field">
-        <label class="form-label">Reference</label>
-        <input class="form-input" type="text" id="f_Reference" value="${escapeHtml(f['Reference']||'')}" placeholder="π.χ. 3813">
-      </div>
-      <div class="form-field">
-        <label class="form-label">Εμπόρευμα</label>
-        <input class="form-input" type="text" id="f_Goods" value="${escapeHtml(f['Goods']||'')}" placeholder="π.χ. Φρέσκα λαχανικά">
-      </div>
-      <div class="form-field">
-        <label class="form-label">Μικτό βάρος (kg)</label>
-        <input class="form-input" type="number" id="f_GrossWeight" value="${f['Gross Weight kg']||''}">
-      </div>
-      <div class="form-field">
-        <!-- «Κατά CMR» (owner 7/10): in the label row, not beside the input —
-             the «Υποχρεωτικό» note of _oiCheckSoftRequired goes right after
+
+    <div class="oi2-sec">Φορτίο</div>
+    <div class="oi2-cargo">
+      <div class="oi2-f"><span>Εμπόρευμα</span>
+        <input class="form-input" type="text" id="f_Goods" value="${escapeHtml(f['Goods'] || '')}" placeholder="π.χ. Φρέσκα λαχανικά"></div>
+      <div class="oi2-f"><span>Βάρος kg</span>
+        <input class="form-input oi2-num" type="number" id="f_GrossWeight" value="${f['Gross Weight kg'] || ''}"></div>
+      <div class="oi2-f">
+        <!-- «Κατά CMR» (owner 7/10): in the label row — the «Υποχρεωτικό» note of _oiCheckSoftRequired goes right after
              the input and must stay under it. -->
-        <div class="oi-temp-head">
-          <label class="form-label" id="f_TempLbl" for="f_Temp">Θερμοκρασία °C${_cmr ? '' : ' *'}</label>
+        <span class="oi-temp-head"><span id="f_TempLbl">°C</span>
           <label class="oi-cmr-tick" title="Η θερμοκρασία είναι αυτή που γράφει το CMR — χωρίς αριθμό εδώ">
-            <input type="checkbox" id="f_TempCmr" ${_cmr ? 'checked' : ''} onchange="_oiTempCmr()"> Κατά CMR</label>
-        </div>
-        <input class="form-input" type="number" id="f_Temp" value="${_cmr ? '' : escapeHtml(_tempNum)}"${_cmr ? ` disabled placeholder="όπως γράφει το CMR" data-prev="${escapeHtml(_tempNum)}"` : ''}>
+            <input type="checkbox" id="f_TempCmr" ${_cmr ? 'checked' : ''} onchange="_oiTempCmr()"> CMR</label></span>
+        <input class="form-input oi2-num" type="number" id="f_Temp" value="${_cmr ? '' : escapeHtml(_tempNum)}"${_cmr ? ` disabled placeholder="όπως στο CMR" data-prev="${escapeHtml(_tempNum)}"` : ''}>
       </div>
-      <div class="form-field">
-        <label class="form-label">Λειτουργία ψυκτικού *</label>
-        <select class="form-select" id="f_ReeferMode"><option value="">— Επιλογή —</option>
-          ${opt([['Continuous','Συνεχής (Continuous)'],['Start-Stop','Start-Stop'],['No temp','Χωρίς ψύξη']],'Refrigerator Mode')}</select>
-      </div>
-      <div class="form-field">
-        <label class="form-label">Τύπος παλέτας *</label>
-        <!-- 'Euro' removed (coordinator 15/9, Παντελής: «EUR και Euro — ποιο
-             είναι για ευρωπαλέτες;»): one value, 'EUR' (148 rows vs 1 'Euro',
-             fixed by the owner's SQL). An order still holding 'Euro' shows
-             «— Επιλογή —» here and the save skips the field — nothing erased. -->
-        <select class="form-select" id="f_PalletType" onchange="peSyncPalletType('f',this.value)"><option value="">— Επιλογή —</option>
-          ${opt(['EUR','CHEP','Industrial'],'Pallet Type')}</select>
-      </div>
-      ${_isPiece ? `<div class="form-field">
-        <label class="form-label">Ανταλλαγή παλετών (PE)</label>
-        <div class="form-input oi-locked" title="Η ανταλλαγή παλετών μετρά μία φορά, στη φόρτωση της παρτίδας από τον πελάτη">όχι — μετρά στη φόρτωση της παρτίδας</div>
-      </div>` : peChoiceHtml('f', f, isEdit)}
-    </div>
-    <div style="display:flex;gap:24px;margin:16px 0;flex-wrap:wrap">
-      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-        <input type="checkbox" id="f_HighRisk" ${f['High Risk Flag']?'checked':''} style="width:15px;height:15px">
-        ⚠ Υψηλό ρίσκο</label>
-      <label id="oiVsLbl" style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-        <input type="checkbox" id="f_VeroiaSwitch" ${f['Veroia Switch']?'checked':''} style="width:15px;height:15px">
-        Veroia Switch</label>
-      ${_oiLotTickHtml(SK)}
-      <!-- Hidden, not removed (4/10, before the first national dispatcher): ticked
-           on a Veroia Switch order it deleted the national leg with its truck and
-           queued it where nobody works, under «συγχρονίστηκε ✓» (0/253 use it).
-           The input stays so the save keeps the stored value — removing it would
-           write false and run the «groupage OFF» cleanup on every edit. -->
-      <label style="display:none">
-        <input type="checkbox" id="f_Groupage" ${f['National Groupage']?'checked':''}>
-        National Groupage</label>
+      <div class="oi2-f"><span>Ψυκτικό</span>${_oiSegHtml('f_ReeferMode', [['Continuous', 'Συνεχής'], ['Start-Stop', 'Start-Stop'], ['No temp', 'Χωρίς']], _reefer)}</div>
+      <div class="oi2-f"><span>Παλέτα</span>${_oiSegHtml('f_PalletType', [['EUR', 'EUR'], ['CHEP', 'CHEP'], ['Industrial', 'Industrial']], _ptype)}</div>
+      <div class="oi2-f"><span>Ανταλλαγή</span>${_pe}</div>
     </div>
 
-    ${_oiLotSectionHtml(SK)}
-    <div style="padding-top:16px;border-top:1px solid var(--border)">
-      <div class="detail-section-title" style="margin-bottom:12px">Στάσεις φόρτωσης</div>
-      <div id="stops_l" oninput="_oiLotPallets();_oiBalanceUpdate();_oiWhWarn()" onfocusout="_oiWhWarn()">${buildStopRows('l')}</div>
-      <button type="button" class="btn btn-ghost" id="btn_addL"
-        style="font-size:12px;padding:4px 12px" onclick="_addStop('l')"
-        ${cntL>=10?'style="display:none"':''}>+ Προσθήκη στάσης φόρτωσης</button>
-    </div>
+    <section class="oi2-pts" id="oi2sec_l">
+      <div class="oi2-sec">Φόρτωση</div>
+      ${_th('l')}
+      <div id="stops_l" class="oi2-rows" oninput="_oiLotPallets();_oiBalanceUpdate();_oiWhWarn()" onfocusout="_oiWhWarn()">${buildStopRows('l')}</div>
+      <button type="button" class="oi2-add" id="btn_addL" onclick="_addStop('l')"${cntL >= 10 ? ' style="display:none"' : ''}>+ σημείο φόρτωσης</button>
+    </section>
 
-    <div style="padding-top:16px;border-top:1px solid var(--border);margin-top:24px">
-      <div class="detail-section-title" style="margin-bottom:12px">Στάσεις παράδοσης</div>
-      <div id="stops_u" oninput="_oiBalanceUpdate()">${buildStopRows('u')}</div>
-      <button type="button" class="btn btn-ghost" id="btn_addU"
-        style="font-size:12px;padding:4px 12px" onclick="_addStop('u')"
-        ${cntU>=10?'style="display:none"':''}>+ Προσθήκη στάσης παράδοσης</button>
-      <div id="oiBalance" class="oi-balance"></div>
-    </div>
+    <section class="oi2-pts" id="oi2sec_u">
+      <div class="oi2-sec">Παράδοση ${_oiLotTickHtml(SK)}</div>
+      ${_oiLotSectionHtml(SK)}
+      ${_th('u')}
+      <div id="stops_u" class="oi2-rows" oninput="_oiBalanceUpdate()">${buildStopRows('u')}</div>
+      <button type="button" class="oi2-add" id="btn_addU" onclick="_addStop('u')"${cntU >= 10 ? ' style="display:none"' : ''}>+ σημείο παράδοσης</button>
+    </section>
 
-    <div style="padding-top:16px;border-top:1px solid var(--border);margin-top:24px">
-      <div class="form-field span-2">
-        <label class="form-label">Σημειώσεις</label>
-        <textarea class="form-textarea" id="f_Notes" rows="3" placeholder="Ειδικές οδηγίες, απαιτήσεις ρυμούλκας, επαφές…" style="width:100%;resize:vertical;min-height:60px">${escapeHtml(f['Notes']||'')}</textarea>
-      </div>
-      ${typeof OrderDocs !== 'undefined' ? `<!-- Dispatcher 7/10 (Παντελής): the client's assignment is attached here, in
-           the form, not only from the card after the save (core/order-docs.js). -->
-      <div class="form-field span-2" style="margin-top:12px">
-        <label class="form-label">Ανάθεση πελάτη (PDF ή φωτογραφία)</label>
-        ${OrderDocs.formFieldHtml()}
-      </div>` : ''}
-    </div>`;
+    <div id="oiBalance" class="oi2-sum"></div>
+
+    <div class="oi2-notes">
+      <div class="oi2-f"><span>Σημειώσεις</span>
+        <textarea class="form-input oi2-ta" id="f_Notes" rows="1" placeholder="Ειδικές οδηγίες, απαιτήσεις ρυμούλκας, επαφές…">${escapeHtml(f['Notes'] || '')}</textarea></div>
+      ${typeof OrderDocs !== 'undefined' ? `<div class="oi2-docs">${OrderDocs.formFieldHtml({ label: 'Εντολή πελάτη' })}</div>` : ''}
+      <label class="oi2-ck"><input type="checkbox" id="f_HighRisk" ${f['High Risk Flag'] ? 'checked' : ''}> υψηλό ρίσκο</label>
+    </div>
+    <span hidden id="oi2vshHold"><label id="oiVsLbl" class="oi2-vshead" title="Μέσω Βέροιας — κλικ: όλα τα σημεία">
+      <input type="checkbox" id="f_VeroiaSwitch" ${f['Veroia Switch'] ? 'checked' : ''} onchange="_oiVsHead()"> VS</label></span>
+    <!-- Hidden, not removed (4/10, before the first national dispatcher): ticked on a Veroia Switch order it deleted
+         the national leg with its truck and queued it where nobody works, under «συγχρονίστηκε ✓» (0/253 use it).
+         The input stays so the save keeps the stored value — removing it would write false and run the «groupage
+         OFF» cleanup on every edit. -->
+    <label style="display:none"><input type="checkbox" id="f_Groupage" ${f['National Groupage'] ? 'checked' : ''}> National Groupage</label>
+  </div>`;
 
   // G-29: «Παράλειψη →» belongs to the scan queue's own forms — a piece form
   // opened from the Weekly in the middle of a queue would otherwise skip a scan.
   const footer = `
-    ${isEdit&&SK.mode!=='pieceEdit'?`<button class="btn btn-ghost" title="Νέα παραγγελία με ίδια στοιχεία — αλλάζεις μόνο ημερομηνίες (π.χ. LABIDINO Δευ/Τετ/Παρ)" onclick="duplicateIntlOrder('${recId}')">Διπλασιασμός</button>`:''}
-    ${(!isEdit&&SK.mode!=='pieceNew'&&window._scanQueue&&window._scanQueue.length)?`<button class="btn btn-ghost" title="Προσπέρασε αυτό το σκαν χωρίς αποθήκευση" onclick="closeModal();_scanQueueNext()">Παράλειψη → (${window._scanQueue.length} ακόμη)</button>`:''}
+    ${isEdit && SK.mode !== 'pieceEdit' ? `<button class="btn btn-ghost oi2-dup" title="Νέα παραγγελία με ίδια στοιχεία — αλλάζεις μόνο ημερομηνίες (π.χ. LABIDINO Δευ/Τετ/Παρ)" onclick="duplicateIntlOrder('${recId}')">Διπλασιασμός</button>` : ''}
+    ${(!isEdit && SK.mode !== 'pieceNew' && window._scanQueue && window._scanQueue.length) ? `<button class="btn btn-ghost" title="Προσπέρασε αυτό το σκαν χωρίς αποθήκευση" onclick="closeModal();_scanQueueNext()">Παράλειψη → (${window._scanQueue.length} ακόμη)</button>` : ''}
     <button class="btn btn-ghost" onclick="closeModal()">Άκυρο</button>
-    <button class="btn btn-success" id="btnSubmit" onclick="submitIntlOrder('${recId||''}')">Αποθήκευση</button>`;
+    <button class="btn oi2-save" id="btnSubmit" onclick="submitIntlOrder('${recId || ''}')">Αποθήκευση</button>`;
 
-  document.getElementById('modal').style.maxWidth = '760px';
+  // 880px (Figma 878): a class, removed when the overlay closes (as the national form's modal--wide), so the next
+  // modal of any module opens at its own width. The inline max-width another form left (the scan: 520px) is cleared.
+  const _modalEl = document.getElementById('modal');
+  _modalEl.style.maxWidth = '';
+  _modalEl.classList.add('modal--oi2');
+  _oiWatchModalClose();
   _oiEnsureStyles();  // the form opens from the Weekly too, before this page has rendered
   _oiReqAck = '';     // Δ6: each opened form earns its own acknowledgement
   if (INTL_ORDERS._stopsFail === recId && recId) {
@@ -956,18 +1131,40 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill, _piece) 
   }
   if (INTL_ORDERS._preConvert) body = preorderConvertBand(f) + body;
   body = _oiStockBandHtml(SK, f) + body;
-  const _title = SK.mode === 'pieceNew' ? _oiPieceTitle(SK)
+  const _title = SK.mode === 'pieceNew' ? 'Κομμάτι από απόθεμα'
     : SK.mode === 'pieceEdit' ? 'Επεξεργασία κομματιού από απόθεμα'
-    : INTL_ORDERS._preConvert ? 'Μετατροπή pre-order σε παραγγελία' : isEdit ? 'Επεξεργασία παραγγελίας' : 'Νέα διεθνής παραγγελία';
+    : INTL_ORDERS._preConvert ? 'Μετατροπή pre-order σε παραγγελία'
+    : isEdit ? (f['Order No'] ? 'Παραγγελία #' + f['Order No'] : 'Επεξεργασία παραγγελίας') : 'Νέα παραγγελία';
   openModal(_title, body, footer);
+  // The head line (Φ1 / Φ2 / Φ6): a grey «where → where · day» on an order, the lot chip on a piece, «Από PDF» on a
+  // new order. Children of #modalTitle, so the next openModal (textContent) removes them — nothing leaks into
+  // another form.
+  const _hdr = document.getElementById('modalTitle');
+  if (_hdr) {
+    const sub = SK.mode === 'pieceNew' ? _oiPieceTitle(SK).replace(/^Κομμάτι από απόθεμα · /, '')
+      : isEdit ? await _oiRouteLine(_loadStops, _unloadStops) : '';
+    if (sub) _hdr.insertAdjacentHTML('beforeend', `<span class="oi2-hsub${SK.mode === 'pieceNew' ? ' chip' : ''}">${escapeHtml(sub)}</span>`);
+    if (!isEdit && SK.mode === 'none' && !INTL_ORDERS._preConvert && typeof openIntlScan === 'function') {
+      _hdr.insertAdjacentHTML('beforeend', `<button type="button" class="oi2-hpdf" onclick="_oiFromPdf()" title="Η σάρωση της εντολής του πελάτη γεμίζει τα πεδία· τίποτα δεν γράφεται πριν την Αποθήκευση">Από PDF</button>`);
+    }
+  }
   if (typeof OrderDocs !== 'undefined') OrderDocs.formMount(recId || null, recId ? (f['Order No'] ? '#' + f['Order No'] : (f['Reference'] || '')) : '');
   peSyncPalletType('f', document.getElementById('f_PalletType')?.value || '');
+  _oiPeSeg();
   // A pre-order has no ORDER STOPS, so stop 1 opened with an empty date and the
   // day already agreed with the client would have to be typed again.
   if (INTL_ORDERS._preConvert && f['Loading DateTime']) {
     const dl = document.getElementById('dt_l_1');
     if (dl && !dl.value) dl.value = toLocalDate(f['Loading DateTime']);
   }
+  // The points of an order WITHOUT VS start unticked; with VS, each point as stored (empty = follows = ticked).
+  if (!f['Veroia Switch']) for (const t of ['l', 'u']) _oiRows(t).forEach(r => { const b = r.querySelector('.oi2-c-vs input'); if (b) b.checked = false; });
+  // A stored correction number opens «διόρθωση…» as it was left.
+  const _oi2 = document.getElementById('oi2');
+  if (_oi2 && _oiRows('l').some(r => r.querySelector('.oi2-exn')?.value)) _oi2.dataset.exfix = '1';
+  INTL_ORDERS._prefill = { client: clientId || '', from: null, off: isEdit || SK.mode !== 'none' || !!_scanPrefill };
+  _oiCols();
+  _oiVsSync();
   _oiStockAfterOpen(SK);
   _oiBalanceUpdate();
   // R1: what the form held when it opened — a lot mark of an existing order is
@@ -975,18 +1172,176 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill, _piece) 
   INTL_ORDERS._formSnap = _oiMarkExisting(SK) ? _oiFormSnap() : null;
 }
 
-// Display-only pallet balance (Figma 165:676). Mirrors the existing
-// non-blocking warning at submit; it blocks nothing and writes nothing —
-// gating «Αποθήκευση» on it is NOT approved (ΑΝΟΙΧΤΟ, παρτίδα 3). 33 = the
-// truck capacity the scan preview already checks against.
+let _oiModalObs = null;
+function _oiWatchModalClose() {
+  if (_oiModalObs) return;
+  const overlay = document.getElementById('modalOverlay'), modal = document.getElementById('modal');
+  if (!overlay || !modal) return;
+  _oiModalObs = new MutationObserver(() => { if (!overlay.classList.contains('open')) modal.classList.remove('modal--oi2'); });
+  _oiModalObs.observe(overlay, { attributes: true, attributeFilter: ['class'] });
+}
+
+// «Stubenberg → Αθήνα · Τρί 14/10» (Φ2 head): the first loading's and first delivery's city (else name), the
+// loading day.
+async function _oiRouteLine(loads, unloads) {
+  let recs = [];
+  try { recs = await fhLocationRecords(); } catch (e) { console.warn('orders intl: route line', e); }
+  const city = st => {
+    const id = getLinkedId(st && st.fields && st.fields[F.STOP_LOCATION]);
+    if (!id) return '';
+    const r = recs.find(o => o.id === id);
+    return (r && r.fields && (r.fields['City'] || r.fields['Name'])) || '';
+  };
+  const a = city(loads[0]), b = city(unloads[0]);
+  const d = loads[0] && loads[0].fields[F.STOP_DATETIME] ? toLocalDate(loads[0].fields[F.STOP_DATETIME]) : '';
+  const day = d ? new Date(d + 'T12:00:00').toLocaleDateString('el-GR', { weekday: 'short', day: 'numeric', month: 'numeric' }).replace(',', '') : '';
+  return [a && b ? `${a} → ${b}` : (a || b), day].filter(Boolean).join(' · ');
+}
+
+// «Από PDF» (Φ1, θ): the scan that exists, in the head. A form already typed in asks first (the scan opens in this
+// same window and would replace it).
+function _oiFromPdf() {
+  const typed = [...document.querySelectorAll('#modalBody input:not([type=hidden]):not([type=checkbox]):not([type=radio]), #modalBody textarea')]
+    .some(e => String(e.value || '').trim() !== '');
+  if (typed && !confirm('Η φόρμα έχει ήδη στοιχεία. Να ανοίξει η σάρωση στη θέση της;')) return;
+  openIntlScan();
+}
+
+// Speed (Φ1): picking the client of a NEW order fills, from that client's last order, the first loading point, °C,
+// the reefer and the pallet type — only the ones still empty, with «αναίρεση». Never on an edit, a piece or a scan
+// (they bring their own). Runs when the client field is left (its list answers mousedown, so the pick lands first).
+async function _oiPrefillCheck() {
+  const P = INTL_ORDERS._prefill;
+  if (!P || P.off) return;
+  const cid = document.getElementById('lv_client')?.value || '';
+  if (!cid || cid === P.client) return;
+  P.client = cid;
+  const box = document.getElementById('oiPrefill');
+  let last = null;
+  try {
+    const recs = await atGetAll(TABLES.ORDERS, {
+      filterByFormula: `FIND("${cid}",ARRAYJOIN({Client},","))>0`,
+      fields: ['Order No', 'Loading DateTime', 'Temperature °C', 'Temp Per CMR', 'Refrigerator Mode', 'Pallet Type', 'Ops Status', 'Parent Order', 'Stock Lot', 'Status'],
+      sort: [{ field: 'Loading DateTime', direction: 'desc' }],
+    }, false);
+    last = (recs || []).find(r => {
+      const g = r.fields || {};
+      return g['Status'] !== 'Cancelled' && g['Ops Status'] !== 'Provisional' && !getLinkedId(g['Parent Order']) && !getLinkedId(g['Stock Lot']);
+    }) || null;
+  } catch (e) {
+    // Said in place, never a blank: the dispatcher types the fields as before.
+    if (box && document.getElementById('lv_client')?.value === cid) { box.hidden = false; box.innerHTML = '<span class="oi2-hint">Η τελευταία παραγγελία του πελάτη δεν διαβάστηκε — συμπλήρωσε τα πεδία</span>'; }
+    return;
+  }
+  if (!last || document.getElementById('lv_client')?.value !== cid) return;
+  let loc = '';
+  try {
+    const st = await stopsLoad(last.id, F.STOP_PARENT_ORDER);
+    const l1 = st.filter(s => s.fields[F.STOP_TYPE] === 'Loading').sort((a, b) => (a.fields[F.STOP_NUMBER] || 0) - (b.fields[F.STOP_NUMBER] || 0))[0];
+    loc = getLinkedId(l1 && l1.fields[F.STOP_LOCATION]) || '';
+  } catch (e) { console.warn('orders intl prefill: stops', e); }
+  if (document.getElementById('lv_client')?.value !== cid) return;
+  const g = last.fields || {}, undo = {};
+  const lv = document.getElementById('lv_l_1'), ls = document.getElementById('ls_l_1');
+  if (loc && lv && !lv.value && ls && !ls.value.trim() && !ls.readOnly) {
+    undo.loc = true; fhPickLinked('l_1', loc, _fhLocationsMap[loc] || '');
+  }
+  const t = document.getElementById('f_Temp'), cmr = document.getElementById('f_TempCmr');
+  if (g['Temp Per CMR'] === true && cmr && !cmr.checked && t && t.value === '') { undo.cmr = true; cmr.checked = true; _oiTempCmr(); }
+  else if (g['Temperature °C'] != null && t && !t.disabled && t.value === '') { undo.temp = true; t.value = String(g['Temperature °C']); }
+  for (const [id, label] of [['f_ReeferMode', 'Refrigerator Mode'], ['f_PalletType', 'Pallet Type']]) {
+    const inp = document.getElementById(id);
+    const btn = [...document.querySelectorAll(`#${id}Seg button`)].find(b => b.dataset.v === String(g[label] || ''));
+    if (inp && !inp.value && btn) { undo[id] = true; _oiSegPick(id, btn); }
+  }
+  if (!Object.keys(undo).length) return;
+  P.from = undo;
+  if (box) {
+    box.hidden = false;
+    box.innerHTML = `<span class="oi2-chip">από #${escapeHtml(String(g['Order No'] || '—'))}</span><button type="button" class="oi2-link" onclick="_oiPrefillUndo()">αναίρεση</button>`;
+  }
+  _oiBalanceUpdate();
+}
+function _oiPrefillUndo() {
+  const P = INTL_ORDERS._prefill, u = P && P.from;
+  if (!u) return;
+  if (u.loc) { const s = document.getElementById('ls_l_1'), v = document.getElementById('lv_l_1'); if (s) s.value = ''; if (v) v.value = ''; }
+  if (u.cmr) { const c = document.getElementById('f_TempCmr'); if (c) { c.checked = false; _oiTempCmr(); } }
+  if (u.temp) { const t = document.getElementById('f_Temp'); if (t) t.value = ''; }
+  for (const id of ['f_ReeferMode', 'f_PalletType']) {
+    if (!u[id]) continue;
+    const inp = document.getElementById(id); if (inp) inp.value = '';
+    document.querySelectorAll(`#${id}Seg button`).forEach(b => b.classList.remove('on'));
+    if (id === 'f_PalletType') { peSyncPalletType('f', ''); _oiPeSeg(); _oiExAll(); }
+  }
+  P.from = null;
+  const box = document.getElementById('oiPrefill'); if (box) { box.hidden = true; box.innerHTML = ''; }
+  _oiBalanceUpdate();
+}
+
+// The one summary line (Φ1–Φ6, Φ4 β2 / γ): pallets loaded → delivered, the exchange, the Veroia day and its pallets,
+// the truck fill. Display only — it blocks nothing and writes nothing (owner 31/10: warnings, not refusals).
+// 33 = the truck capacity the scan preview already checks against.
 function _oiBalanceUpdate() {
   const el = document.getElementById('oiBalance'); if (!el) return;
-  const sum = t => Array.from({ length: 10 }, (_, i) => parseFloat(document.getElementById(`pal_${t}_${i+1}`)?.value) || 0).reduce((a, b) => a + b, 0);
-  const L = sum('l'), U = sum('u');
-  const parts = [];
-  if (L > 0 && U > 0 && L !== U) parts.push(`<span class="oi-bal oi-bal-bad">Ισοζύγιο: φόρτωση ${L} ≠ παράδοση ${U} — ${L > U ? 'λείπουν' : 'περισσεύουν'} ${Math.abs(L - U)} παλέτες</span>`);
-  if (L > 0) parts.push(`<span class="oi-bal ${L > 33 ? 'oi-bal-bad' : 'oi-bal-warn'}">Γέμισμα φορτηγού ${L}/33</span>`);
-  el.innerHTML = parts.join('');
+  const rows = t => _oiRows(t).map(r => ({ r, pal: parseFloat(r.querySelector('[id^="pal_"]')?.value) || 0 }));
+  const L = rows('l'), U = rows('u');
+  const sL = L.reduce((a, x) => a + x.pal, 0), sU = U.reduce((a, x) => a + x.pal, 0);
+  const lot = !!document.getElementById('f_StockLot')?.checked;
+  const parts = [`<b>${sL} → ${sU} ${lot ? 'αποθήκη' : 'παλέτες'}</b>`];
+  if (sL > 0 && sU > 0 && sL !== sU) parts.push(`<span class="warn">${sL > sU ? 'λείπουν' : 'περισσεύουν'} ${Math.abs(sL - sU)} στην παράδοση</span>`);
+  const form = document.getElementById('oi2');
+  const pe = peRead('f');
+  const box = document.getElementById('f_PalletExch');
+  if (pe === true && form) {
+    const fix = form.classList.contains('ex-fix'), col = form.classList.contains('ex-col');
+    if (col || fix) {
+      // per point: the correction number of a loading point when «διόρθωση…» is open, else its pallets when ticked
+      // (a one-to-one order has no tick column: every pallet)
+      const exOf = (list, t) => list.reduce((a, x) => {
+        const n = t === 'l' && fix ? x.r.querySelector('.oi2-exn')?.value : '';
+        if (n !== '' && n != null) return a + (parseFloat(n) || 0);
+        return a + (!col || x.r.querySelector('.oi2-c-ex input[type=checkbox]')?.checked ? x.pal : 0);
+      }, 0);
+      const eL = exOf(L, 'l'), eU = exOf(U, 'u');
+      if (!col) parts.push(`<b>${eL} από ${sL} με ανταλλαγή</b>`);   // Φ4 β: a one-to-one order, the loading's number
+      else parts.push(eL === eU
+        ? `<span>ανταλλαγή: φόρτωση ${eL} · παράδοση ${eU} ✓</span>`
+        : `<span class="warn">ανταλλαγή: φόρτωση ${eL} · παράδοση ${eU}</span>`);
+      // Φ2: with a column per point, «διόρθωση…» is not offered (the ticks are the answer); open, it closes here
+      if (fix) parts.push(`<button type="button" class="oi2-link" onclick="_oiExFix(false)">όλες ξανά</button>`);
+    } else {
+      parts.push('<span>όλες με ανταλλαγή</span>', `<button type="button" class="oi2-link" onclick="_oiExFix(true)">διόρθωση…</button>`);
+    }
+  } else if (pe === false) {
+    const pt = document.getElementById('f_PalletType')?.value;
+    parts.push(`<span>χωρίς ανταλλαγή${box && box.dataset.locked && pt ? ` (${escapeHtml(pt)})` : ''}</span>`);
+  }
+  // The Veroia day (WP-A: the order's stored day, else the estimate the save would send) and the pallets that go
+  // through it = the points ticked VS (owner 8/11: the cross-dock stop = the sum of the VS points).
+  const vs = document.getElementById('f_VeroiaSwitch');
+  const nat = _oiNatSide();
+  if (vs && vs.checked && nat && !lot) {
+    const vsPal = (nat === 'l' ? L : U).filter(x => x.r.querySelector('.oi2-c-vs input')?.checked).reduce((a, x) => a + x.pal, 0);
+    const day = _oiVsDay();
+    parts.push(`<span class="oi2-vschip">Βέροια${day ? ' ' + escapeHtml(day) : ''} · ${vsPal} παλέτες</span>`);
+  }
+  if (sL > 33) parts.push(`<span class="warn">γέμισμα φορτηγού ${sL}/33</span>`);
+  el.innerHTML = parts.join('<span class="oi2-dot">·</span>');
+}
+// The day shown in the Veroia chip: the estimate the save would send (Export = loading + 1, Import = delivery − 1,
+// VsDates.vsCdOnSave), else the stored cross-dock of an existing VS order — never written from here.
+function _oiVsDay() {
+  try {
+    const dir = document.getElementById('f_Direction')?.value;
+    const ld = document.getElementById('dt_l_1')?.value || '', ud = document.getElementById('dt_u_1')?.value || '';
+    const lf = INTL_ORDERS._loadedFields;
+    const rule = typeof VsDates !== 'undefined' ? VsDates.vsCdOnSave(lf, { vs: true, dir, loading: ld || null, delivery: ud || null }) : null;
+    // the Worker returns the day as «VS CD Date» only: one reader (VsDates.cdOf), never the write label
+    const stored = typeof VsDates !== 'undefined' ? (VsDates.cdOf(lf) || '') : '';
+    const d = rule && rule.send && rule.cd ? rule.cd : stored;
+    return d ? new Date(d + 'T12:00:00').toLocaleDateString('el-GR', { weekday: 'short', day: 'numeric', month: 'numeric' }).replace(',', '') : '';
+  } catch (e) { return ''; }
 }
 
 function _addStop(type) {
@@ -998,9 +1353,14 @@ function _addStop(type) {
   const wrap = document.getElementById('stops_'+type);
   const div  = document.createElement('div');
   div.innerHTML = _stopRow(type, next, '', '', '');
-  wrap.appendChild(div.firstElementChild);
+  const row = div.firstElementChild;
+  wrap.appendChild(row);
+  // A new point takes the order's choices: the exchange answer, and VS when the order has it.
+  const ex = row.querySelector('.oi2-c-ex input[type=checkbox]'); if (ex) ex.checked = peRead('f') === true;
+  const vh = row.querySelector('.oi2-c-vs input'); if (vh) vh.checked = !!document.getElementById('f_VeroiaSwitch')?.checked;
   if (next >= 10) document.getElementById('btn_add'+(type==='l'?'L':'U')).style.display='none';
-  _oiBalanceUpdate();
+  _oiCols();
+  _oiVsSync();
 }
 
 // Owner 12/8: «αν κατά λάθος προσθέσω ένα έξτρα, δεν υπάρχει επιλογή να το
@@ -1011,7 +1371,8 @@ function _removeStop(type, i) {
   document.getElementById(`stoprow_${type}_${i}`)?.remove();
   const btn = document.getElementById('btn_add'+(type==='l'?'L':'U'));
   if (btn) btn.style.display = '';
-  _oiBalanceUpdate();
+  _oiCols();
+  _oiVsSync();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1336,7 +1697,7 @@ async function _oiChargeSave() {
 function _oiLotTickHtml(SK) {
   if (!SK || !SK.section) return '';
   const why = SK.markWhy || '';   // R1: disabled on an existing order without the lot's shape
-  return `<label class="oi-lot-ck${why ? ' oi-lot-ck-off' : ''}" title="${escapeHtml(why || 'Παρτίδα σε αποθήκη — απόθεμα που βγαίνει σε κομμάτια')}"><input type="checkbox" id="f_StockLot" ${SK.wasLot ? 'checked' : ''}${why ? ' disabled' : ''} onchange="_oiLotToggle()"> Παρτίδα</label>`;
+  return `<label class="oi-lot-ck${why ? ' oi-lot-ck-off' : ''}" title="${escapeHtml(why || 'Παρτίδα σε αποθήκη — απόθεμα που βγαίνει σε κομμάτια')}"><input type="checkbox" id="f_StockLot" ${SK.wasLot ? 'checked' : ''}${why ? ' disabled' : ''} onchange="_oiLotToggle()"> σε απόθεμα</label>`;
 }
 function _oiLotSectionHtml(SK) {
   if (!SK || !SK.section) return '';
@@ -1520,6 +1881,10 @@ function _oiLotVs(lot) {
     if (cb._oiPrev !== undefined) { cb.checked = cb._oiPrev; delete cb._oiPrev; }
     lbl.style.display = '';
   }
+  // the per-point ticks go with the head (new form): no VS column on a lot
+  document.getElementById('oi2')?.classList.toggle('novs', !!lot);
+  _oiCols();
+  _oiBalanceUpdate();
 }
 
 // G-14: the legs of an existing order (no_split counts a PARENT as well as a
@@ -2463,6 +2828,47 @@ async function submitIntlOrder(recId) {
     // Όλα τα 1..10 ελέγχονται και επαναριθμούνται (owner 12/8): η αφαίρεση
     // ενδιάμεσης γραμμής (✕) αφήνει κενό δείκτη — ένα break εδώ θα ΕΧΑΝΕ
     // σιωπηλά όλα τα σημεία μετά το κενό.
+    // The new form's per-point values (111, owner 8/11). Each is sent only when it differs from what the stop held
+    // when the form opened (data-o / data-oex / data-ovh), and a NEW stop sends only a value it has (never a null):
+    // an order whose points did not change never names a column that a Worker or a base without 111 lacks.
+    //   hours        'HH:MM' or null (all day) — never required;
+    //   exchange     null = every pallet (ticked, or a one-to-one order), 0 = none (unticked), n = the correction
+    //                number of a loading point (Φ4 β); an order without exchange holds nothing per point (null);
+    //   «μέσω Βέροιας»  on the national side of a VS order: false = direct (unticked), null = follows the VS
+    //                (ticked: 111's NULL already means «through Veroia», so true is never needed); anywhere else null.
+    const _nat = _oiNatSide();
+    const _oiForm = document.getElementById('oi2');
+    const _exCol = !!_oiForm?.classList.contains('ex-col'), _exFix = !!_oiForm?.classList.contains('ex-fix');
+    const _exBad = [];
+    const _stopExtras = (t, i, sid, pallets) => {
+      const row = document.getElementById(`stoprow_${t}_${i}`), out = {};
+      if (!row) return out;
+      const put = (k, v, o) => { if (sid ? v !== o : v != null) out[k] = v; };
+      const hm = id => {
+        const v = _oiHm(document.getElementById(id)?.value || '');
+        if (v && !_OI_HM_RE.test(v)) _exBad.push(`Ώρα «${v}» στη ${t === 'l' ? 'φόρτωση' : 'παράδοση'} ${i}: σε μορφή ΩΩ:ΛΛ (π.χ. 07:00)`);
+        return v || null;
+      };
+      const oh = id => document.getElementById(id)?.dataset.o || null;
+      put('timeFrom', hm(`tf_${t}_${i}`), oh(`tf_${t}_${i}`));
+      put('timeTo', hm(`tt_${t}_${i}`), oh(`tt_${t}_${i}`));
+      let ex = null;
+      if (_pe === true) {
+        const n = t === 'l' && _exFix ? (document.getElementById(`exn_${t}_${i}`)?.value || '') : '';
+        if (n !== '') {
+          ex = Number(n);
+          // Φ4 β: «Έως 30, όσες της στάσης» — a whole number 0..pallets, else the base would count every pallet
+          if (!Number.isInteger(ex) || ex < 0 || ex > pallets) _exBad.push(`Με ανταλλαγή στη φόρτωση ${i}: έως ${pallets}, όσες της στάσης`);
+        } else if (_exCol && !document.getElementById(`ex_${t}_${i}`)?.checked) ex = 0;
+      }
+      put('palletsExchanged', ex, row.dataset.oex === '' ? null : Number(row.dataset.oex));
+      const vsPoint = _vs && t === _nat;
+      const ticked = vsPoint && !!document.getElementById(`vh_${t}_${i}`)?.checked;
+      put('viaHub', vsPoint && !ticked ? false : null, row.dataset.ovh === 'false' ? false : row.dataset.ovh === 'true' ? true : null);
+      // the Cross-dock stop below counts the ticked points; not a stop field (_stopObjToFields never copies it)
+      out._vsPoint = ticked;
+      return out;
+    };
     const _formStops = [];
     let _seqL = 0;
     for (let i = 1; i <= 10; i++) {
@@ -2470,7 +2876,7 @@ async function submitIntlOrder(recId) {
       const pal   = document.getElementById('pal_l_'+i)?.value;
       const dt    = document.getElementById('dt_l_'+i)?.value;
       const sid   = document.getElementById('sid_l_'+i)?.value || null;
-      if (locId) _formStops.push({ recordId: sid, stopNumber: ++_seqL, stopType: 'Loading', locationId: locId, pallets: parseFloat(pal) || 0, dateTime: dt || null, clientId: clientId || null, ref: _stopRef || null, goods: _stopGoods || null, temp: _stopTemp ? parseFloat(_stopTemp) : null });
+      if (locId) _formStops.push({ recordId: sid, stopNumber: ++_seqL, stopType: 'Loading', locationId: locId, pallets: parseFloat(pal) || 0, dateTime: dt || null, clientId: clientId || null, ref: _stopRef || null, goods: _stopGoods || null, temp: _stopTemp ? parseFloat(_stopTemp) : null, ..._stopExtras('l', i, sid, parseFloat(pal) || 0) });
     }
     let _seqU = 0;
     for (let i = 1; i <= 10; i++) {
@@ -2478,12 +2884,13 @@ async function submitIntlOrder(recId) {
       const pal   = document.getElementById('pal_u_'+i)?.value;
       const dt    = document.getElementById('dt_u_'+i)?.value;
       const sid   = document.getElementById('sid_u_'+i)?.value || null;
-      if (locId) _formStops.push({ recordId: sid, stopNumber: ++_seqU, stopType: 'Unloading', locationId: locId, pallets: parseFloat(pal) || 0, dateTime: dt || null, clientId: clientId || null, ref: _stopRef || null, goods: _stopGoods || null, temp: _stopTemp ? parseFloat(_stopTemp) : null });
+      if (locId) _formStops.push({ recordId: sid, stopNumber: ++_seqU, stopType: 'Unloading', locationId: locId, pallets: parseFloat(pal) || 0, dateTime: dt || null, clientId: clientId || null, ref: _stopRef || null, goods: _stopGoods || null, temp: _stopTemp ? parseFloat(_stopTemp) : null, ..._stopExtras('u', i, sid, parseFloat(pal) || 0) });
     }
 
     // Auto-create Cross-dock stop for Veroia Switch orders
     if (_vs) {
-      const _cdPal = _formStops.filter(s => s.stopType === 'Loading').reduce((sum, s) => sum + (s.pallets || 0), 0);
+      // its pallets = the points that go through Veroia (owner 8/11: VS per point; before 111 every loading point)
+      const _cdPal = _formStops.filter(s => s._vsPoint).reduce((sum, s) => sum + (s.pallets || 0), 0);
       // The Veroia day (WP-A, VsDates.vsCdOnSave): the estimate (Export =
       // Loading +1, Import = Delivery −1) only on a new order, VS just on, an
       // empty cross-dock or a direction change. An existing VS order with a
@@ -2569,6 +2976,7 @@ async function submitIntlOrder(recId) {
       if (Number.isFinite(uPal) && uPal < 0) { _vErrors.push(`Delivery ${i}: pallets cannot be negative`); break; }
     }
 
+    _vErrors.push(..._exBad);
     if (_vErrors.length) {
       showErrorToast(_vErrors.join(' | '), 'warn', 8000);
       throw new Error('validation');
@@ -4056,6 +4464,18 @@ window._oiLotApply = _oiLotApply;
 window._oiLotPallets = _oiLotPallets;
 window._oiWhWarn = _oiWhWarn;   // PR-17: inline handlers of the loading stops
 window._oiTempCmr = _oiTempCmr; // «Κατά CMR» tick (owner 7/10): inline onchange
+// The new form (owner 8/11): its inline handlers
+window._oiHrsOpen = _oiHrsOpen;
+window._oiVsSync = _oiVsSync;
+window._oiVsHead = _oiVsHead;
+window._oiExAll = _oiExAll;
+window._oiExFix = _oiExFix;
+window._oiSegPick = _oiSegPick;
+window._oiPeSeg = _oiPeSeg;
+window._oiPrefillCheck = _oiPrefillCheck;
+window._oiPrefillUndo = _oiPrefillUndo;
+window._oiFromPdf = _oiFromPdf;
+window._oiHm = _oiHm;
 window._oiLotReopen = _oiLotReopen;   // O1: «Άνοιγμα ξανά» in the lot band
 window._oiChargeSave = _oiChargeSave;     // round 2 #1: the owner's «Χρέωση αποθήκης»
 window._oiChargeDirty = _oiChargeDirty;

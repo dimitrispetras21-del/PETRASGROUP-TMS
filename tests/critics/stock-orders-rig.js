@@ -283,9 +283,11 @@ async function pickWarehouse(page, q, name) {
 const waitText = (page, re, t = 8000) => page.waitForFunction(s => new RegExp(s).test(document.body.innerText), re.source, { timeout: t });
 
 async function fillCommon(page) {
+  // the new form is 880px: the app toast (bottom right) can sit over its right edge for a few seconds
+  await page.evaluate(() => document.getElementById('toast')?.remove());
   await page.fill('#f_Temp', '2');
-  await page.selectOption('#f_ReeferMode', 'Continuous');
-  await page.selectOption('#f_PalletType', 'EUR');
+  await page.click('#f_ReeferModeSeg button[data-v="Continuous"]');
+  await page.click('#f_PalletTypeSeg button[data-v="EUR"]');
 }
 
 async function runCatalog(browser) {
@@ -381,8 +383,8 @@ async function runForm(browser) {
   ok(cap.pwReads === pw0, 'G-31: opening a new form reads no Partner-Warehouse list (' + (cap.pwReads - pw0) + ')');
   ok(!(await page.isVisible('#oiWhWarn')), 'PR-17: no warning on an empty form');
   // O6 (critic-5 S5-03): the lot is one tick «Παρτίδα» in the flags row; no grey box on a new order
-  const tick = await page.evaluate(() => { const cb = document.getElementById('f_StockLot'), hr = document.getElementById('f_HighRisk'); return { label: cb.closest('label').textContent.trim(), sameRow: cb.closest('label').parentElement === hr.closest('label').parentElement }; });
-  ok(tick.label === 'Παρτίδα' && tick.sameRow, 'O6: «Παρτίδα» is one checkbox next to «⚠ Υψηλό ρίσκο» — ' + JSON.stringify(tick));
+  const tick = await page.evaluate(() => { const cb = document.getElementById('f_StockLot'); return { label: cb.closest('label').textContent.trim(), sameRow: !!cb.closest('#oi2sec_u .oi2-sec') }; });
+  ok(tick.label === 'σε απόθεμα' && tick.sameRow, 'O6 → new form (owner 8/11): «σε απόθεμα» is one checkbox in the ΠΑΡΑΔΟΣΗ head — ' + JSON.stringify(tick));
   ok(!(await page.isVisible('#oiLotBox')) && !(await page.isVisible('#f_StockWhS')), 'O6: no lot box / warehouse field until ticked');
   const lots0 = cap.openLotReads || 0;
   await page.fill('#ls_l_1', 'Budapest');
@@ -481,21 +483,21 @@ async function runFormKeeps(browser) {
   const state = () => page.evaluate(() => {
     const b = document.getElementById('btnSubmit');
     return { open: document.getElementById('modalOverlay').classList.contains('open'), form: !!document.getElementById('f_Reference'),
-      btn: b ? b.textContent.trim() + (b.disabled ? ' (disabled)' : '') : 'gone', title: document.getElementById('modalTitle').textContent };
+      btn: b ? b.textContent.trim() + (b.disabled ? ' (disabled)' : '') : 'gone', title: document.getElementById('modalTitle').firstChild.textContent };   // the new form's head also holds «Από PDF»
   });
   const orderPosts = () => cap.posts.filter(p => p.table === 'orders');
   const clearToasts = () => page.evaluate(() => { const c = document.getElementById('tms-toast-container'); if (c) c.innerHTML = ''; });
   const fill = async (ref, unload) => {
     await page.evaluate(() => openIntlCreate());
     await page.waitForSelector('#f_StockLot', { timeout: 8000 });
-    await page.selectOption('#f_Direction', 'Export');
+    await page.click('#f_DirectionSeg button[data-v="Export"]');
     await page.evaluate(() => fhPickLinked('client', 'recCliA', 'Πελάτης Α'));
     await page.fill('#f_Reference', ref);
     await page.fill('#f_Goods', 'Φρέσκα λαχανικά');
     await page.fill('#f_Price', '1800');
     await page.fill('#f_GrossWeight', '21000');
     await fillCommon(page);
-    await page.check('input[name="f_PalletExch"][value="no"]');
+    await page.click('#f_PalletExch label:has(input[value="no"])');
     await page.evaluate(() => fhPickLinked('l_1', 'recLocGR1', 'Pack House A'));
     await page.fill('#pal_l_1', '33');
     await page.fill('#dt_l_1', addDays(TODAY, 1));
@@ -513,14 +515,14 @@ async function runFormKeeps(browser) {
   await page.click('#btnSubmit');
   await page.waitForTimeout(800);
   const sA = await state();
-  ok(sA.open && sA.form && sA.title === 'Νέα διεθνής παραγγελία' && sA.btn === 'Αποθήκευση', 'A: unpicked location → the order form is still open, «Αποθήκευση» enabled — ' + JSON.stringify(sA));
+  ok(sA.open && sA.form && sA.title === 'Νέα παραγγελία' && sA.btn === 'Αποθήκευση', 'A: unpicked location → the order form is still open, «Αποθήκευση» enabled — ' + JSON.stringify(sA));
   const afterA = await snap();
   const lostA = Object.keys(before).filter(k => before[k] !== afterA[k]);
   ok(Object.keys(before).length > 20 && !lostA.length, 'A: every field still holds what was typed (' + Object.keys(before).length + ' fields, changed: ' + JSON.stringify(lostA) + ')');
   ok(orderPosts().length === 0, 'A: nothing was sent (' + orderPosts().length + ' order POST)');
   const inl = await page.evaluate(() => {
     const s = document.getElementById('ls_u_1');
-    return { bad: s.classList.contains('oi-loc-bad'), label: s.parentElement.parentElement.querySelector('.form-label').textContent.trim(),
+    return { bad: s.classList.contains('oi-loc-bad'), label: (s.closest('.oi2-c-loc').querySelector('.oi-loc-msg') || { textContent: '' }).textContent.trim(),
       focus: document.activeElement && document.activeElement.id, marks: document.querySelectorAll('#modal .oi-loc-bad').length,
       inView: (() => { const r = s.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; })() };
   });
@@ -628,12 +630,12 @@ async function runAssignUpload(browser) {
   const fill = async ref => {
     await page.evaluate(() => openIntlCreate());
     await page.waitForSelector('#odFormPick', { timeout: 8000 });
-    await page.selectOption('#f_Direction', 'Export');
+    await page.click('#f_DirectionSeg button[data-v="Export"]');
     await page.evaluate(() => fhPickLinked('client', 'recCliA', 'Πελάτης Α'));
     await page.fill('#f_Reference', ref);
     await page.fill('#f_Price', '1800');
     await fillCommon(page);
-    await page.check('input[name="f_PalletExch"][value="no"]');
+    await page.click('#f_PalletExch label:has(input[value="no"])');
     await page.evaluate(() => fhPickLinked('l_1', 'recLocGR1', 'Pack House A'));
     await page.fill('#pal_l_1', '33');
     await page.fill('#dt_l_1', addDays(TODAY, 1));
@@ -648,12 +650,12 @@ async function runAssignUpload(browser) {
   await fill('TEST-ASSIGN-1');
   const field = await page.evaluate(() => {
     const n = document.getElementById('f_Notes'), pick = document.getElementById('odFormPick');
-    const lab = pick.closest('.form-field').querySelector('.form-label').textContent.trim();
-    return { label: lab, sameSection: n.closest('div[style*="border-top"]') === pick.closest('div[style*="border-top"]'), below: pick.getBoundingClientRect().top > n.getBoundingClientRect().bottom,
+    const lab = pick.textContent.trim();
+    return { label: lab, sameSection: n.closest('.oi2-notes') === pick.closest('.oi2-notes'), below: pick.getBoundingClientRect().left > n.getBoundingClientRect().right,
       hint: document.getElementById('odFormHint').textContent };
   });
-  ok(field.label === 'Ανάθεση πελάτη (PDF ή φωτογραφία)' && field.sameSection && field.below && /μόλις αποθηκευτεί/.test(field.hint),
-    '1: the field sits under «Σημειώσεις», same section, says it uploads once the order is saved — ' + JSON.stringify(field));
+  ok(field.label === 'Εντολή πελάτη' && field.sameSection && field.below && /μόλις αποθηκευτεί/.test(field.hint),
+    '1: «📎 Εντολή πελάτη» (owner 8/11) sits beside «Σημειώσεις», same row, says it uploads once the order is saved — ' + JSON.stringify(field));
   await attach('anathesi-pelati.pdf');
   const r1 = await rows();
   ok(r1.length === 1 && r1[0].state === 'pending' && /anathesi-pelati\.pdf/.test(r1[0].text) && /θα ανέβει με την Αποθήκευση/.test(r1[0].text) && cap.uploads.length === 0,
@@ -859,11 +861,11 @@ async function runLotCreate(browser) {
   await page.evaluate(() => openIntlCreate());
   await page.waitForSelector('#f_StockLot', { timeout: 8000 });
   ok(!(await page.isVisible('#f_StockWhS')), 'lot box: warehouse field hidden until ticked');
-  await page.selectOption('#f_Direction', 'Export');
+  await page.click('#f_DirectionSeg button[data-v="Export"]');
   await page.evaluate(() => fhPickLinked('client', 'recCliA', 'Πελάτης Α'));
   await page.fill('#f_Price', '3300');
   await fillCommon(page);
-  await page.check('input[name="f_PalletExch"][value="no"]');
+  await page.click('#f_PalletExch label:has(input[value="no"])');
   await page.evaluate(() => fhPickLinked('l_1', 'recLocGR1', 'Pack House A'));
   await page.fill('#pal_l_1', '33'); await page.dispatchEvent('#pal_l_1', 'input');
   await page.fill('#dt_l_1', addDays(TODAY, 1));
@@ -984,7 +986,7 @@ async function runPiece(browser) {
   }, [lot13, ld, dd]);
   await page.waitForSelector('#pal_l_1', { timeout: 8000 });
   await page.waitForFunction(() => /Κομμάτι από απόθεμα/.test(document.getElementById('modalTitle').textContent));
-  ok(/Κομμάτι από απόθεμα · Αποθήκη Χ · διαθέσιμα 13p/.test(await page.locator('#modalTitle').innerText()), 'title «Κομμάτι από απόθεμα · Αποθήκη Χ · διαθέσιμα 13p»');
+  ok(/Κομμάτι από απόθεμα\s*Αποθήκη Χ · διαθέσιμα 13p/.test(await page.locator('#modalTitle').innerText()), 'title «Κομμάτι από απόθεμα» + the lot chip «Αποθήκη Χ · διαθέσιμα 13p» (new form, Φ6)');
   ok(await page.locator('#f_Price').count() === 0 && /στην παρτίδα #1300/.test(await page.locator('#modalBody').innerText()), 'no price input; «στην παρτίδα #1300»');
   ok(await page.locator('input[name="f_PalletExch"]').count() === 0, 'no PE choice');
   ok(await page.locator('#f_StockLot').count() === 0, 'no lot box on a piece');
@@ -1925,14 +1927,14 @@ async function runTempCmr(browser) {
   const fill = async ref => {   // a complete new order — the temperature is the stage's
     await page.evaluate(() => openIntlCreate());
     await page.waitForSelector('#f_TempCmr', { timeout: 8000 });
-    await page.selectOption('#f_Direction', 'Export');
+    await page.click('#f_DirectionSeg button[data-v="Export"]');
     await page.evaluate(() => fhPickLinked('client', 'recCliA', 'Πελάτης Α'));
     await page.fill('#f_Reference', ref);
     await page.fill('#f_Goods', 'Μήλα');
     await page.fill('#f_Price', '1800');
-    await page.selectOption('#f_ReeferMode', 'Continuous');
-    await page.selectOption('#f_PalletType', 'EUR');
-    await page.check('input[name="f_PalletExch"][value="no"]');
+    await page.click('#f_ReeferModeSeg button[data-v="Continuous"]');
+    await page.click('#f_PalletTypeSeg button[data-v="EUR"]');
+    await page.click('#f_PalletExch label:has(input[value="no"])');
     await page.evaluate(() => fhPickLinked('l_1', 'recLocGR1', 'Pack House A'));
     await page.fill('#pal_l_1', '33');
     await page.fill('#dt_l_1', addDays(TODAY, 1));
@@ -1944,11 +1946,11 @@ async function runTempCmr(browser) {
   // ── A. tick → no number required → ONE press saves, 'Temp Per CMR' true, no number ──
   await fill('TEST-CMR-1');
   let t = await tState();
-  ok(!t.checked && !t.disabled && t.label === 'Θερμοκρασία °C *', 'A: a new form — «Κατά CMR» unticked, the number open and starred — ' + JSON.stringify(t));
+  ok(!t.checked && !t.disabled && t.label === '°C', 'A: a new form (owner 8/11: no stars, the button says what is missing) — «Κατά CMR» unticked, the number open — ' + JSON.stringify(t));
   await page.fill('#f_Temp', '3');
   await page.check('#f_TempCmr');
   t = await tState();
-  ok(t.disabled && t.value === '' && t.label === 'Θερμοκρασία °C', 'A: ticked → the number is emptied and locked, no star — ' + JSON.stringify(t));
+  ok(t.disabled && t.value === '' && t.label === '°C', 'A: ticked → the number is emptied and locked — ' + JSON.stringify(t));
   await page.evaluate(() => document.getElementById('f_TempCmr').scrollIntoView({ block: 'center' }));
   await page.screenshot({ path: shot('16-temp-cmr-ticked') });
   await clearToasts();
@@ -1965,7 +1967,7 @@ async function runTempCmr(browser) {
   await page.check('#f_TempCmr');
   await page.uncheck('#f_TempCmr');
   t = await tState();
-  ok(!t.disabled && t.value === '' && t.label === 'Θερμοκρασία °C *', 'B: unticked → open and starred again — ' + JSON.stringify(t));
+  ok(!t.disabled && t.value === '' && t.label === '°C', 'B: unticked → open again — ' + JSON.stringify(t));
   const nB = orderPosts().length;
   await clearToasts();
   await page.click('#btnSubmit');
@@ -2003,7 +2005,7 @@ async function runTempCmr(browser) {
   await page.evaluate(f => openIntlEditWith('recOpen', JSON.parse(JSON.stringify(f))), cmrF);
   await page.waitForSelector('#f_TempCmr', { timeout: 8000 });
   t = await tState();
-  ok(t.checked && t.disabled && t.value === '' && t.label === 'Θερμοκρασία °C', 'D: a CMR order opens ticked, the number locked and empty (the leftover 2 is not shown) — ' + JSON.stringify(t));
+  ok(t.checked && t.disabled && t.value === '' && t.label === '°C', 'D: a CMR order opens ticked, the number locked and empty (the leftover 2 is not shown) — ' + JSON.stringify(t));
   await page.uncheck('#f_TempCmr');
   t = await tState();
   ok(!t.disabled && t.value === '2', 'D: untick gives back the stored 2 — ' + JSON.stringify(t));
