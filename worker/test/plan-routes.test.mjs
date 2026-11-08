@@ -785,6 +785,22 @@ test('facade PATCH ORDER STOPS refused by a plan: rule (bridge stop, 071) → 42
   r = await call('dispatcher', 'PATCH', `${STOPS}/recSTOP1`, { fields: { 'Time From': '8:00' } });
   assert.equal(r.status, 422, r.text);
   assert.equal(r.json.error.message, 'Ώρα σε μορφή ΩΩ:ΛΛ (π.χ. 07:00)');
+  // the roles are as before 111: whoever may PATCH a stop may write it (the accountant too - she already PATCHes
+  // orders, Veroia Switch included)
+  r = await call('accountant', 'PATCH', `${STOPS}/recSTOP1`, { fields: { 'Pallets Exchanged': 3, 'Via Hub': false } });
+  assert.equal(r.status, 200, r.text);
+  // a Worker on a base without 111: said by name (111_missing), never a bare 500
+  routes.length = 0;
+  on('GET', 'order_stops', (u) => (u.searchParams.get('select') === '*' ? json([{ id: 31, legacy_id: 'recSTOP1', pallets: 20, via_hub: null }]) : null));
+  on('PATCH', 'order_stops', (u, b) => (b.time_from !== undefined
+    ? pgError(400, { code: 'PGRST204', hint: null, details: null, message: "Could not find the 'time_from' column of 'order_stops' in the schema cache" })
+    : pgError(400, { code: '23502', hint: null, details: null, message: 'null value in column "via_hub" of relation "order_stops" violates not-null constraint' })));
+  for (const fields of [{ 'Time From': '08:00' }, { 'Via Hub': null }]) {
+    r = await call('dispatcher', 'PATCH', `${STOPS}/recSTOP1`, { fields });
+    assert.equal(r.status, 422, r.text);
+    assert.equal(r.json.error.code, '111_missing', JSON.stringify(fields));
+    assert.match(r.json.error.message, /migration 111/);
+  }
   // and it is still read by every path (NULL = the field is absent, facade trap 2)
   r = await call('dispatcher', 'GET', `${STOPS}/recSTOP1`);
   assert.equal(r.status, 200, r.text);

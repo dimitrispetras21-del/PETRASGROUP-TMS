@@ -1794,12 +1794,13 @@ var TABLES = {
       // input: NULL = follows the VS (every national-side stop), true =
       // through Veroia, false = direct; the bridge (074 plan_h_bridge_wanted)
       // reads it and never writes it. Deploy this Worker ONLY AFTER 111 ran:
-      // before it the column is NOT NULL and the bridge overwrites the choice.
+      // before it the column is NOT NULL and the bridge overwrites the choice
+      // (a write meeting a base without 111 is answered 422 111_missing).
       "Via Hub": "via_hub",
       // 111 (owner 8/11: «μη υποχρεωτικό»): an optional window per stop, text
       // HH:MM (CHECK order_stops_time_*_fmt, as local_moves 060); empty = all
-      // day, from > to = a night window. Without 111 the columns do not exist
-      // and every write naming them fails loud (500), never a silent drop.
+      // day, from > to = a night window. Without 111 the columns do not exist:
+      // a write naming them is refused 422 111_missing, never a silent drop.
       "Time From": "time_from",
       "Time To": "time_to"
     },
@@ -3688,6 +3689,11 @@ function stockRuleError(e) {
       return { type: "PLAN_RULE", code: pc, message: `Ο κανόνας ${pc || "χωρίς κωδικό"} δεν τηρήθηκε: ${message}` };
     }
     return { type: "PLAN_RULE", code: pc, message: detail ? `${PLAN_RULE_TEXT[pc]} (${detail})` : PLAN_RULE_TEXT[pc] };
+  }
+  // 111 not run yet (or rolled back) under this Worker: its hour columns are unknown (PGRST204 / 42703) or via_hub is
+  // still NOT NULL (23502 on a «Via Hub» cleared to null). Said by name, never «Failed to update record» (principle 1).
+  if ((/^(PGRST204|42703)$/.test(code) && /time_from|time_to/.test(message)) || (code === "23502" && /"via_hub"/.test(message))) {
+    return { type: "SCHEMA_BEHIND", code: "111_missing", message: "Η βάση δεν έχει ακόμη το migration 111 (ώρες και «μέσω Βέροιας» ανά στάση) — ο Worker μπήκε πριν από το SQL· τίποτα δεν γράφτηκε, ενημέρωσε τον Δημήτρη (111_missing)" };
   }
   if (code === "23514") {
     // 'stock:' (057) only under 23514, as 057's stock_raise sends it — a
