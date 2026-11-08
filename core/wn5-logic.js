@@ -701,9 +701,11 @@ function localPanel(m) {
   for (const [day, items] of [...days.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
     const by = new Map();
     for (const it of items.sort((a, b) => String(a.at).localeCompare(String(b.at)))) {
-      if (!by.has(it.driver)) by.set(it.driver, { driver: it.driver, vehicle: it.vehicle, moves: [] });
+      if (!by.has(it.driver)) by.set(it.driver, { driver: it.driver, vehicle: null, plates: [], moves: [] });
       const g = by.get(it.driver);
-      if (!g.vehicle && it.vehicle) g.vehicle = it.vehicle;
+      // every plate the driver uses that day, in time order (code review xhigh: two trucks read as one)
+      if (it.vehicle && !g.plates.includes(it.vehicle)) g.plates.push(it.vehicle);
+      g.vehicle = g.plates.length ? g.plates.join(' / ') : null;
       g.moves.push(it);
     }
     out.push({ day, drivers: [...by.values()] });

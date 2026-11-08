@@ -563,3 +563,13 @@ test('migration 112 (owner 8/11): «ΤΟΠΙΚΑ» names the local driver\'s tru
   const g2 = L.localPanel(M(b)).flatMap((d) => d.drivers).find((x) => x.driver === 'Loc C');
   assert.strictEqual(g2.vehicle, null);
 });
+
+test('«ΤΟΠΙΚΑ»: a local driver with two trucks on one day shows both plates, in time order', () => {
+  const m = { days: [{ rows: [
+    { kind: 'cycle', rtId: 7, tiles: [{ line1: 'TST-1' }], handovers: [], local: [
+      { local_move_id: 1, driver: 'Loc D', move_date: '2026-10-12', time_from: '06:00', side: 'KATHODOS', truck: 'TST-A', pickup: null, forStops: [] },
+      { local_move_id: 2, driver: 'Loc D', move_date: '2026-10-12', time_from: '14:00', side: 'ANODOS', truck: 'TST-B', pickup: null, forStops: [] }] }] }] };
+  const g = L.localPanel(m)[0].drivers[0];
+  assert.strictEqual(g.vehicle, 'TST-A / TST-B');
+  assert.strictEqual(g.moves.length, 2);
+});
