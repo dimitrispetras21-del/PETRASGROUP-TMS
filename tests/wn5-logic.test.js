@@ -549,7 +549,7 @@ test('owner 8/11: a rota on the ΑΝΟΔΟΣ — delivered north, then another p
   assert.deepStrictEqual(r.rota.map((x) => [x.legId, x.side, x.pallets]), [[5911, 'ANODOS', 5]]);
 });
 
-test('migration 110 (owner 8/11): «ΤΟΠΙΚΑ» names the local driver\'s truck of a loading when the board carries it', () => {
+test('migration 112 (owner 8/11): «ΤΟΠΙΚΑ» names the local driver\'s truck of a loading when the board carries it', () => {
   const b = fix();
   const c = b.cycles.find((x) => x.rt_id === 101);
   const st = c.stops.find((s) => s.stop_id === 1005);
@@ -558,7 +558,7 @@ test('migration 110 (owner 8/11): «ΤΟΠΙΚΑ» names the local driver\'s tru
   const g = L.localPanel(m).flatMap((d) => d.drivers).find((x) => x.driver === 'Loc C');
   assert.ok(g, 'the loading is in the panel');
   assert.strictEqual(g.vehicle, 'TST-LOC');
-  // before 110 the key is absent: no plate, never a guess
+  // before 112 the key is absent: no plate, never a guess
   delete st.local_loading.truck;
   const g2 = L.localPanel(M(b)).flatMap((d) => d.drivers).find((x) => x.driver === 'Loc C');
   assert.strictEqual(g2.vehicle, null);

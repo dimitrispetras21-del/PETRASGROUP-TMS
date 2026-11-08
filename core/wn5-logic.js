@@ -360,7 +360,7 @@ function _cycleRow(c, hubId, nums, errors) {
       if (!f) forStops.push(f = { stopId: t.stop_id, names: [], n: tp.n });
       if (!f.names.includes(name)) f.names.push(name);
     }
-    // truck: the local driver's plate (migration 110, owner 8/11); absent before it — the panel then says «τοπικός» alone
+    // truck: the local driver's plate (migration 112, owner 8/11); absent before it — the panel then says «τοπικός» alone
     return { stopId: s.stop_id, side: s.side, local_move_id: s.local_loading.local_move_id, driver: s.local_loading.driver || null,
       truck: s.local_loading.truck || null,
       move_date: s.local_loading.move_date || null, time_from: s.local_loading.time_from || null, time_to: s.local_loading.time_to || null,
