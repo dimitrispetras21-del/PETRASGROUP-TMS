@@ -96,13 +96,19 @@
   // without a trip code or an id («(305)» named nothing).
   // 110 (item 7): the newest change by a person on trip c as the board showed it (087 last_change.at; null = none yet),
   // for expect_change. undefined = not sent (FEATURES.WN_EXPECT off: a base before 110 refuses the key).
+  const ROLE_GR = Object.freeze({ owner: 'τον owner', dispatcher: 'dispatcher', management: 'τη διοίκηση', accountant: 'το λογιστήριο', warehouse: 'την αποθήκη' });
   const _expectOf = (c) => (typeof featureOn === 'function' && featureOn('WN_EXPECT') && c ? ((c.last_change && c.last_change.at) || null) : undefined);
   const _withExpect = (body, exp) => (exp === undefined || !body ? body : Object.assign({}, body, { expect_change: exp }));
   function _orderErr(e) {
     // 110: another person changed the trip since the board was read — said in words that ask for «ανανέωσε» (the
     // strip's «Ανανέωση ↻», _wantsReread); the base's detail is a role and a time, ASCII
     if (e && !Array.isArray(e) && e.code === 'rt_changed' && !e._said) {
-      return Object.assign({}, e, { message: 'Το δρομολόγιο άλλαξε στο μεταξύ από άλλον χρήστη — ανανέωσε και ξαναδοκίμασε· δεν γράφτηκε τίποτα', _said: true });
+      // who and when, from the base's detail «rt_changed:<role> <time>» (the Worker passes it inside its message)
+      const m = /rt_changed:\s*([a-z]*)\s+(\d{4}-\d{2}-\d{2}T[0-9:.]+(?:Z|[+-]\d{2}:?\d{2}))/.exec(String(e.message || ''));
+      const role = m && ROLE_GR[m[1]] ? ROLE_GR[m[1]] : 'άλλον χρήστη';
+      const when = m ? ' ' + _dayShort(_ymdOf(m[2])) + ' ' + _hm(m[2]) : '';
+      // the form keeps what it saw when it opened, so a retry here would be refused again: close it, then reopen
+      return Object.assign({}, e, { message: 'Το δρομολόγιο άλλαξε στο μεταξύ από ' + role + when + '. Κλείσε, ανανέωσε και ξανάνοιξε· δεν γράφτηκε τίποτα', _said: true });
     }
     if (!e || Array.isArray(e) || e.code !== 'stop_order' || e._said) return e;
     const msg = 'Οι στάσεις του δρομολογίου δεν θα ήταν σε χρονική σειρά: μια στάση θα τελείωνε πριν αρχίσει η στάση πριν από αυτήν '
@@ -529,7 +535,7 @@
       // A request_reused the board does not show (the record lies in another week, or the form was edited after a
       // plan_unknown): the SAME slot id would answer request_reused on every press — a dead end. The Worker's strip
       // says where to look; the save stays locked until the window closes (a new window = a new request_id).
-      if (e && (e.kind === K().CLOSED || e.kind === K().REUSED)) _lock(d); else _btns(d, false);
+      if (e && (e.kind === K().CLOSED || e.kind === K().REUSED || e.code === 'rt_changed')) _lock(d); else _btns(d, false);
       if (opts.onFail) { try { opts.onFail(e); } catch (e2) { _log(e2, 'WN5Act send onFail'); } }
       return null;
     }

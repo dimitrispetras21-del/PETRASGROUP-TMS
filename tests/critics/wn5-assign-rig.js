@@ -955,7 +955,7 @@ async function rt_expect({ browser, origin, ok, scn }) {
   b.cycles.find((c) => c.rt_id === 101).last_change = { at: AT, role: 'dispatcher', table: 'rt_stops', action: 'update', keys: ['planned_from'] };
   let n = 0;
   const { page, S } = await K.openApp(browser, origin, { board: b, plan: { 'PATCH /plan/rt/101': async () => {
-    n += 1; return n === 1 ? OK('plan_rt_update') : [409, { error: { type: 'PLAN_RULE', code: 'rt_changed', message: 'rig sentinel rt_changed' } }]; } } });
+    n += 1; return n === 1 ? OK('plan_rt_update') : [409, { error: { type: 'PLAN_RULE', code: 'rt_changed', message: 'rig sentinel plan rule broken: rt_changed:accountant 2026-10-12T09:40:00.5+00:00' } }]; } } });
   // flag off (the default until 110 runs): no key
   await page.evaluate(() => WN5Act.assign(null, { entry: 'menu', rtId: 101 }));
   await page.waitForSelector(DLG, { timeout: 4000 });
@@ -974,7 +974,9 @@ async function rt_expect({ browser, origin, ok, scn }) {
   w = saves(S);
   ok(scn, 'WN_EXPECT on: the PATCH carries expect_change = the board\'s last_change.at', w.length === 2 && w[1].body.expect_change === AT, w.map((x) => x.raw));
   const msg = await page.evaluate((s) => { const d = document.querySelector(s); return d ? d.textContent.replace(/\s+/g, ' ') : ''; }, DLG);
-  ok(scn, '409 rt_changed: the form stays, says «άλλαξε στο μεταξύ … ανανέωσε», nothing written', /άλλαξε στο μεταξύ/.test(msg) && /ανανέωσε/.test(msg) && saves(S).length === 2, msg.slice(0, 300));
+  ok(scn, '409 rt_changed: the form stays, says who and when («άλλαξε στο μεταξύ από το λογιστήριο Δευ 12/10 12:40 … ανανέωσε και ξανάνοιξε»), nothing written', /άλλαξε στο μεταξύ από το λογιστήριο Δευ 12\/10 12:40/.test(msg) && /ανανέωσε και ξανάνοιξε/.test(msg) && saves(S).length === 2, msg.slice(0, 300));
+  const f = await foot(page);
+  ok(scn, 'the save is locked (a retry from this form would be refused again)', f && f.off, f);
   await page.context().close();
 }
 
