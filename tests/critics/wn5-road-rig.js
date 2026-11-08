@@ -35,7 +35,7 @@ function preview(o) {
       { stop_id: 1201, seq: 5, location_id: 9, place: TP.name, text: 'Λαμία, πάρκινγκ', side: 'ANODOS', planned_from: TS('15:00'), planned_to: TS('15:01'), transfer_reason: 'vehicle_breakdown', transfer_from_stop_id: null, transfer_waits: true, new: true, removed: false },
       { stop_id: 1005, seq: 6, location_id: 1, place: 'ΒΕΡΟΙΑ TEST', text: null, side: 'ANODOS', planned_from: TS('20:00'), planned_to: TS('22:00'), transfer_reason: null, transfer_from_stop_id: null, transfer_waits: false, new: false, removed: true }] },
     { rt_id: 104, code: 'RT-T104', stops: [
-      { stop_id: 1202, seq: 1, location_id: 9, place: TP.name, text: 'Λαμία, πάρκινγκ', side: 'ANODOS', planned_from: TS('15:00'), planned_to: TS('15:01'), transfer_reason: null, transfer_from_stop_id: 1201, transfer_waits: false, new: true, removed: false },
+      { stop_id: 1202, seq: 1, location_id: 9, place: TP.name, text: null, side: 'ANODOS', planned_from: TS('15:00'), planned_to: TS('15:01'), transfer_reason: null, transfer_from_stop_id: 1201, transfer_waits: false, new: true, removed: false },
       { stop_id: 1203, seq: 2, location_id: 1, place: 'ΒΕΡΟΙΑ TEST', text: null, side: 'ANODOS', planned_from: TS('20:00'), planned_to: TS('22:00'), transfer_reason: null, transfer_from_stop_id: null, transfer_waits: false, new: true, removed: false }] }],
     vs_day: [], waiting: [{ piece_id: 9002, pallets: 8 }], whole_vehicle: false, warnings: [], conflict: null }, o);
 }
@@ -172,6 +172,9 @@ async function scnTransfer({ browser, origin, ok, scn, shots }) {
   ok(scn, 'preview: A gets «⇄ Λαμία, πάρκινγκ» (whole text inside the window), Veroia struck', /ΤΙ ΘΑ ΓΙΝΕΙ/.test(pv) && pv.includes('⇄ Λαμία, πάρκινγκ · Τρί 13/10 15:00')
     && await page.evaluate((s) => [...document.querySelectorAll(s + ' [data-preview] s')].some((x) => x.textContent === 'Βέροια'), DLG), pv);
   ok(scn, 'preview: the new trip of TST-2106 and the new load «φορτηγό αργότερα · 8π … στο προς ανάθεση»', pv.includes('TST-2106') && pv.includes('φορτηγό αργότερα · 8π') && pv.includes('περιμένει στη Λαμία από Τρί 13/10 · στο προς ανάθεση'), pv);
+  // 099 answers B's stop with text null (transfer_place lives on A's stop): B takes A's words (owner test 3/11)
+  ok(scn, 'preview: the receiving truck says «⇄ Λαμία, πάρκινγκ», never 099\'s «TRANSFER POINT»', !/TRANSFER POINT/.test(pv)
+    && (pv.match(/⇄ Λαμία, πάρκινγκ/g) || []).length === 2, pv);
   ok(scn, 'no «Διεθνής» block when no Veroia day moves', !/ΔΙΕΘΝΗΣ/.test(pv), pv);
   ok(scn, 'the new trip is named by its plate, never its RT code (owner 31/10)', !/RT-T/.test(pv), pv);
   await shot(page, shots, 'road-3-preview');
