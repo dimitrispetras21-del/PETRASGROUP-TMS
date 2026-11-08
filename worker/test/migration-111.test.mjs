@@ -180,6 +180,16 @@ test('PGlite: live bridge + 107 + 108, then 111: dry run, apply, every case, rol
   assert.equal(await notes(['recut', 'unplan']), before, 'no recut / unplan for a load leaving the board');
   await db.exec(`UPDATE order_stops SET pallets = 10 WHERE id = 12`);
   assert.equal(await notes(['recut']), 1, 'a bridged stop still recuts');
+  // an executed bridge kept on a direct stop still follows its stop
+  await db.exec(`UPDATE order_stops SET via_hub = NULL WHERE id = 13`);
+  await db.exec(`UPDATE shipments SET executed = true WHERE order_stop_id = 13 AND deleted_at IS NULL`);
+  await db.exec(`UPDATE order_stops SET via_hub = false WHERE id = 13`);
+  assert.equal(await bridged(13), 1, 'executed: kept, with a notice');
+  await db.exec(`UPDATE order_stops SET pallets = 7 WHERE id = 13`);
+  assert.equal(await notes(['recut']), 2, 'the kept bridge is recut');
+  await db.exec(`UPDATE shipments SET executed = false WHERE order_stop_id = 13; UPDATE order_stops SET via_hub = NULL WHERE id = 13`);
+  await db.exec(`UPDATE order_stops SET via_hub = false, pallets = 8 WHERE id = 13`);
+  assert.equal(await bridged(13), 0);
   assert.equal(await bridged(12), 1, 'the other stop never moves');
   await db.exec(`UPDATE order_stops SET via_hub = true WHERE id = 13`);
   assert.equal(await bridged(13), 1, 'through Veroia: bridged again');

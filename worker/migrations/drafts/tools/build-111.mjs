@@ -73,10 +73,11 @@ export function newBodies() {
     + "  if (tg_op = 'INSERT' or old.order_id is not distinct from new.order_id)\n", 'on_stop');
   onStop = once(onStop,
     "    if v_sh is not null and new.order_id is not distinct from old.order_id and new.deleted_at is null then\n",
-    "    -- 111: a write that also takes the stop out of Veroia (via_hub false) retires the bridge in the sync below:\n"
-    + "    -- no place / recut / unplan (and no notice) for a load that is leaving the board\n"
+    "    -- 111: a write that takes the stop out of Veroia (via_hub to false) retires the bridge in the sync below: no\n"
+    + "    -- place / recut / unplan (and no notice) for a load leaving the board. A bridge already kept direct (executed)\n"
+    + "    -- still follows its stop.\n"
     + "    if v_sh is not null and new.order_id is not distinct from old.order_id and new.deleted_at is null\n"
-    + "       and new.via_hub is distinct from false then\n", 'on_stop bridge edits');
+    + "       and not (new.via_hub is false and old.via_hub is distinct from false) then\n", 'on_stop bridge edits');
   let delivery = once(o.delivery,
     "    FOR v_s IN SELECT id, location_id, round(pallets)::int AS pallets, datetime FROM order_stops\n",
     "    -- 111: the pallets with exchange of the stop (the form's tick, owner 8/11): NULL = every pallet, as before; a whole\n"
@@ -143,11 +144,12 @@ const TRIGGER_OLD = "  CREATE TRIGGER plan_bridge_on_stop AFTER INSERT OR UPDATE
 const HHMM = "'^([01][0-9]|2[0-3]):[0-5][0-9]$'";
 
 const GUARDS = () => `  -- ===== PART 0: GUARDS (nothing written before them) =====
-  IF (SELECT prosrc FROM pg_proc WHERE oid = to_regprocedure('public.plan_h_bridge_wanted(bigint)')) LIKE '%-- 111:%' THEN
-    RAISE EXCEPTION '111: the bridge already reads the desk''s choice - 111 has run, nothing to do';
-  END IF;
   IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'order_stops' AND column_name IN ('time_from', 'time_to')) THEN
-    RAISE EXCEPTION '111: order_stops.time_from / time_to exist while the bridge is the old one - a rollback kept the hours: copy them, drop the two columns and their CHECKs, then run 111 again';
+    -- the bridge body tells the two apart: still 074's text = a rollback kept the hours; anything else = 111 ran
+    IF (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure('public.plan_h_bridge_wanted(bigint)')) = '${LIVE.wanted.md5}' THEN
+      RAISE EXCEPTION '111: order_stops.time_from / time_to exist while the bridge is 074''s - a rollback kept the hours: copy them, drop the two columns and their CHECKs, then run 111 again';
+    END IF;
+    RAISE EXCEPTION '111: order_stops.time_from / time_to already exist - 111 has run, nothing to do';
   END IF;
   -- the LIVE texts 111 replaces, as 074 / 107 / 108 left them (md5 measured on production 8/11 by SELECT): a body
   -- changed since is not overwritten blind

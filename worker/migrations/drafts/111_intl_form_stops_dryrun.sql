@@ -41,11 +41,12 @@ BEGIN
   PERFORM set_config('search_path', 'public', true);
 
   -- ===== PART 0: GUARDS (nothing written before them) =====
-  IF (SELECT prosrc FROM pg_proc WHERE oid = to_regprocedure('public.plan_h_bridge_wanted(bigint)')) LIKE '%-- 111:%' THEN
-    RAISE EXCEPTION '111: the bridge already reads the desk''s choice - 111 has run, nothing to do';
-  END IF;
   IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'order_stops' AND column_name IN ('time_from', 'time_to')) THEN
-    RAISE EXCEPTION '111: order_stops.time_from / time_to exist while the bridge is the old one - a rollback kept the hours: copy them, drop the two columns and their CHECKs, then run 111 again';
+    -- the bridge body tells the two apart: still 074's text = a rollback kept the hours; anything else = 111 ran
+    IF (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure('public.plan_h_bridge_wanted(bigint)')) = 'b53c50f4398f90c43bf9912b41a94271' THEN
+      RAISE EXCEPTION '111: order_stops.time_from / time_to exist while the bridge is 074''s - a rollback kept the hours: copy them, drop the two columns and their CHECKs, then run 111 again';
+    END IF;
+    RAISE EXCEPTION '111: order_stops.time_from / time_to already exist - 111 has run, nothing to do';
   END IF;
   -- the LIVE texts 111 replaces, as 074 / 107 / 108 left them (md5 measured on production 8/11 by SELECT): a body
   -- changed since is not overwritten blind
@@ -167,10 +168,11 @@ begin
   end if;
   if tg_op = 'UPDATE' then
     select id into v_sh from shipments where order_stop_id = new.id and deleted_at is null;
-    -- 111: a write that also takes the stop out of Veroia (via_hub false) retires the bridge in the sync below:
-    -- no place / recut / unplan (and no notice) for a load that is leaving the board
+    -- 111: a write that takes the stop out of Veroia (via_hub to false) retires the bridge in the sync below: no
+    -- place / recut / unplan (and no notice) for a load leaving the board. A bridge already kept direct (executed)
+    -- still follows its stop.
     if v_sh is not null and new.order_id is not distinct from old.order_id and new.deleted_at is null
-       and new.via_hub is distinct from false then
+       and not (new.via_hub is false and old.via_hub is distinct from false) then
       if old.location_id is distinct from new.location_id and current_setting('plan.writer', true) is distinct from 'natl' then
         perform plan_h_bridge_place(new.id, old.location_id, new.location_id, 'trigger:plan_bridge_sync', 'system');
       end if;
