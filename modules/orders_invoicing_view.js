@@ -996,7 +996,7 @@ const OrdersInvoicingView = (() => {
     S.selId = it.id; S.closed = false;
     if (S.tab === 'invoiced') S.tab = 'ready';
     if (S.ctx.isCurrent()) paintParts();
-    toast(`Η τιμολόγηση ${escapeHtml(it.num)} (${escapeHtml(what)}) αναιρέθηκε — είναι ξανά προς κοπή`, 'warn');
+    toast(`Η τιμολόγηση της παραγγελίας ${escapeHtml(IO.words(it))} (${escapeHtml(what)}) αναιρέθηκε — είναι ξανά προς κοπή`, 'warn');
   }
 
   function startPrice() { S.editPrice = S.selId; S.edit = null; S.formErr = ''; S.draftPrice = null; paintCard(); const el = document.getElementById('oivPriceFix'); if (el) { el.focus(); el.select(); } }
@@ -1038,7 +1038,7 @@ const OrdersInvoicingView = (() => {
     Object.assign(it.rec.fields, fields);
     afterWrite();
     if (S.ctx.isCurrent()) paintParts();
-    toast(`Ο ΤΠΥ της ${escapeHtml(it.num)} διορθώθηκε σε ${escapeHtml(num)}`);
+    toast(`Ο ΤΠΥ της παραγγελίας ${escapeHtml(IO.words(it))} διορθώθηκε σε ${escapeHtml(num)}`);
   }
 
   // Price from the card (owner 21/10/2026). Same rules as «Χωρίς τιμή» save():
@@ -1083,7 +1083,7 @@ const OrdersInvoicingView = (() => {
     const bar = document.createElement('div');
     bar.id = 'oivUndo'; bar.className = 'oiv-undo'; bar.setAttribute('role', 'status');
     let left = 10;
-    bar.innerHTML = `<div><div class="t">${num == null ? 'Καταχωρήθηκε ως αυτοπαράδοση' : 'Καταχωρήθηκε ΤΠΥ ' + esc(num)}</div><div class="s">${esc(it.num)} · ${esc(it.client)} · ${esc(OC().dm(d))}</div></div>
+    bar.innerHTML = `<div><div class="t">${num == null ? 'Καταχωρήθηκε ως αυτοπαράδοση' : 'Καταχωρήθηκε ΤΠΥ ' + esc(num)}</div><div class="s">${esc(IO.words(it))} · ${esc(OC().dm(d))}</div></div>
       ${canWrite() ? `<button type="button" onclick="OrdersInvoicingView.undoInvoice('${esc(it.id)}', false)">Αναίρεση</button>` : ''}<span class="c">${left}″</span>`;
     document.body.appendChild(bar);
     const tick = setInterval(() => {

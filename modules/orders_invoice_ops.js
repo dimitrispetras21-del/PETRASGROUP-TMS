@@ -134,32 +134,44 @@ const InvoiceOps = (() => {
   }
 
   // ── The questions asked before a write (same words wherever she writes) ──
+  // An order is named in words, never by its number (owner 8/11, core/plain-ref.js):
+  // an annotated item carries client / load / del; a bare {num, f} (the week
+  // view's card) is read through PlainRef.orderOf. One rule for the questions
+  // here and the toasts of the invoicing view.
+  function words(it) {
+    const P = (typeof PlainRef !== 'undefined' && PlainRef) || (typeof require === 'function' ? require('../core/plain-ref.js') : null);
+    if (!it || !P) return 'χωρίς στοιχεία';
+    const t = it.client !== undefined
+      ? P.order({ client: it.client === '—' ? '' : it.client, from: it.load && it.load.name, to: it.del && it.del.name })
+      : P.orderOf(it.f || {}, { day: false });
+    return t || 'χωρίς στοιχεία';
+  }
   const confirmDup = (o, num, edit) => confirmAction(edit
-    ? `Ο ΤΠΥ ${num} υπάρχει ήδη στην ${o.num} άλλου πελάτη (${o.client}). Διόρθωση παρ' όλα αυτά;`
-    : `Ο ΤΠΥ ${num} υπάρχει ήδη στην ${o.num} άλλου πελάτη (${o.client}).\nΈνα τιμολόγιο ERP δεν αφορά δύο πελάτες — έλεγξε τον αριθμό. Καταχώριση παρ' όλα αυτά;`,
+    ? `Ο ΤΠΥ ${num} υπάρχει ήδη σε παραγγελία άλλου πελάτη: ${words(o)}. Διόρθωση παρ' όλα αυτά;`
+    : `Ο ΤΠΥ ${num} υπάρχει ήδη σε παραγγελία άλλου πελάτη: ${words(o)}.\nΈνα τιμολόγιο ERP δεν αφορά δύο πελάτες — έλεγξε τον αριθμό. Καταχώριση παρ' όλα αυτά;`,
   { title: 'Ο ΤΠΥ υπάρχει ήδη', confirmLabel: edit ? 'Διόρθωση' : 'Καταχώριση', danger: true });
-  const confirmEdit = (it, num) => confirmAction(`Η παραγγελία ${it.num} είναι ήδη τιμολογημένη.\nΟ αριθμός ${it.f['Invoice Number'] || '—'} θα αντικατασταθεί από ${num}.`,
+  const confirmEdit = (it, num) => confirmAction(`Η παραγγελία ${words(it)} είναι ήδη τιμολογημένη.\nΟ αριθμός ${it.f['Invoice Number'] || '—'} θα αντικατασταθεί από ${num}.`,
     { title: 'Διόρθωση ΤΠΥ', confirmLabel: 'Διόρθωση' });
   const confirmUndo = (it, self) => confirmAction(self
-    ? `Αναίρεση τιμολόγησης της ${it.num} (αυτοπαράδοση);\nΗ παραγγελία ξαναγίνεται «προς κοπή», η αυτοπαράδοση και η ημερομηνία σβήνουν.`
-    : `Αναίρεση τιμολόγησης της ${it.num} (ΤΠΥ ${it.f['Invoice Number'] || '—'});\nΗ παραγγελία ξαναγίνεται «προς κοπή», ο αριθμός και η ημερομηνία σβήνουν. Το τιμολόγιο στο ERP ΔΕΝ ακυρώνεται από εδώ.`,
+    ? `Αναίρεση τιμολόγησης της παραγγελίας ${words(it)} (αυτοπαράδοση);\nΗ παραγγελία ξαναγίνεται «προς κοπή», η αυτοπαράδοση και η ημερομηνία σβήνουν.`
+    : `Αναίρεση τιμολόγησης της παραγγελίας ${words(it)} (ΤΠΥ ${it.f['Invoice Number'] || '—'});\nΗ παραγγελία ξαναγίνεται «προς κοπή», ο αριθμός και η ημερομηνία σβήνουν. Το τιμολόγιο στο ERP ΔΕΝ ακυρώνεται από εδώ.`,
   { title: 'Αναίρεση τιμολόγησης', confirmLabel: 'Αναίρεση', danger: true });
 
   // An INVOICED order's price (owner 3/11): asked before, in the words of the
   // undo — the ERP invoice already carries the old amount and does not change
   // from here. A self delivery has no ERP invoice: that sentence is left out.
-  // `it` needs only { num, f } (the card's «Διόρθωση» asks it too).
+  // `it` needs only { f } (the card's «Διόρθωση» asks it too).
   const confirmPrice = (it, n) => {
     const f = it.f || {}, self = OrdersCommon.isSelfDelivery(f);
     const old = OrdersCommon.hasPrice(f) ? OrdersCommon.eurSym(OrdersCommon.price(f)) : '—';
     return confirmAction(self
-      ? `Αλλαγή τιμής της ${it.num} (αυτοπαράδοση);\nΗ τιμή ${old} γίνεται ${OrdersCommon.eurSym(n)}. Δεν υπάρχει τιμολόγιο ERP για αυτή την παραγγελία.`
-      : `Αλλαγή τιμής της ${it.num} (ΤΠΥ ${f['Invoice Number'] || '—'});\nΗ παραγγελία είναι τιμολογημένη: η τιμή ${old} γίνεται ${OrdersCommon.eurSym(n)}. Το τιμολόγιο στο ERP ΔΕΝ αλλάζει από εδώ.`,
+      ? `Αλλαγή τιμής της παραγγελίας ${words(it)} (αυτοπαράδοση);\nΗ τιμή ${old} γίνεται ${OrdersCommon.eurSym(n)}. Δεν υπάρχει τιμολόγιο ERP για αυτή την παραγγελία.`
+      : `Αλλαγή τιμής της παραγγελίας ${words(it)} (ΤΠΥ ${f['Invoice Number'] || '—'});\nΗ παραγγελία είναι τιμολογημένη: η τιμή ${old} γίνεται ${OrdersCommon.eurSym(n)}. Το τιμολόγιο στο ERP ΔΕΝ αλλάζει από εδώ.`,
     { title: 'Αλλαγή τιμής τιμολογημένης', confirmLabel: 'Αλλαγή τιμής', danger: true });
   };
 
   return { normTpy, dupCheck, dateCheck, tpyHints, invoiceFields, selfFields, undoFields, tpyFields, isLot, selfAllowed, priceLocked, priceLockText, canWrite, tableOf,
-    writeInvoice, writeSelf, writeUndo, writeTpy, writePrice, confirmDup, confirmEdit, confirmUndo, confirmPrice };
+    writeInvoice, writeSelf, writeUndo, writeTpy, writePrice, confirmDup, confirmEdit, confirmUndo, confirmPrice, words };
 })();
 
 if (typeof window !== 'undefined') window.InvoiceOps = InvoiceOps;

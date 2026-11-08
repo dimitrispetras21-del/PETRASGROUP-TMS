@@ -100,7 +100,7 @@ function world(opts = {}) {
   const utils = read('core/utils.js');
   vm.runInContext(['toLocalDate', 'localToday', 'escapeHtml'].map((n) => fnFrom(utils, n)).join('\n')
     + '\nObject.assign(this,{toLocalDate,localToday,escapeHtml});', ctx);
-  for (const f of ['core/tms-week.js', 'core/data-helpers.js', 'core/orders-common.js', 'modules/preorder.js', 'core/relay.js', 'core/wi4-logic.js'])
+  for (const f of ['core/tms-week.js', 'core/data-helpers.js', 'core/orders-common.js', 'modules/preorder.js', 'core/relay.js', 'core/wi4-logic.js', 'core/plain-ref.js'])
     vm.runInContext(read(f), ctx, { filename: f });
   vm.runInContext('this.TmsWeek=TmsWeek;this.OrdersStock=OrdersStock;', ctx);
   vm.runInContext(read('modules/weekly_intl.js'), ctx, { filename: 'modules/weekly_intl.js' });

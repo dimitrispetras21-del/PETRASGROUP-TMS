@@ -38,16 +38,20 @@ const plain = o => JSON.parse(JSON.stringify(o));   // vm objects carry another 
 vm.runInThisContext(fs.readFileSync(path.join(ROOT, 'core/data-helpers.js'), 'utf8'));
 const { OrdersStock, OrdersCommon } = require(path.join(ROOT, 'core/orders-common.js'));
 
+// owner 8/11 (core/plain-ref.js): every message names an order by client + route,
+// a load by its vehicle + clients — these helpers ride along in every world.
+const PLAIN = [one('_wiOrdTxt'), one('_wiCliTxt'), one('_wiErrList'), many('_wiJoinVeh')].join('\n');
 function load(parts, extra) {
-  const ctx = Object.assign({ console, OrdersStock, OrdersCommon, getLinkedId,
+  const ctx = Object.assign({ console, OrdersStock, OrdersCommon, getLinkedId, orderClientName, PlainRef: require(path.join(ROOT, 'core/plain-ref.js')), _fhLocationsMap: {},
     WINTL: { rows: [], data: { exports: [], imports: [], trucks: [], partners: [], stock: null } } }, (extra && extra.ctx) || {});
   vm.createContext(ctx);
   const names = parts.map(p => p.name).filter(Boolean);
-  vm.runInContext(parts.map(p => p.src).join('\n') + '\nObject.assign(this,{' + names.join(',') + '});', ctx);
+  vm.runInContext(PLAIN + '\n' + parts.map(p => p.src).join('\n') + '\nObject.assign(this,{' + names.join(',') + '});', ctx);
   return ctx;
 }
 const F = (name, kind) => ({ name, src: (kind || many)(name) });
-const rec = (id, f) => ({ id, fields: Object.assign({ Type: 'International', Direction: 'Import', Status: 'Pending' }, f) });
+// 'Client Name' K<Reference>: the messages say the client, never the Reference (owner 8/11)
+const rec = (id, f) => ({ id, fields: Object.assign({ Type: 'International', Direction: 'Import', Status: 'Pending' }, f && f.Reference ? { 'Client Name': 'K' + f.Reference } : {}, f) });
 const impRow = (id, ids, extra) => Object.assign({ id, type: 'import', orderId: ids[0], orderIds: ids, matchedTo: null, truckId: '', partnerId: '' }, extra || {});
 
 const PAL33 = () => [{ src: line(/const WI_PAL_CAP=\d+;\n/, 'WI_PAL_CAP') }, F('_wiPalOver', one), F('_wiRecsPals', one)];
@@ -55,9 +59,9 @@ const PAL33 = () => [{ src: line(/const WI_PAL_CAP=\d+;\n/, 'WI_PAL_CAP') }, F('
 test('PAL: the sum the dispatcher reads — load, joiner, total against 33', () => {
   const c = load([...PAL33(), F('_wiJoinPalText')]);
   const L = [rec('recI461', { Reference: '461', 'Total Pallets': 12 }), rec('recI463', { Reference: '463', 'Total Pallets': 12 })];
-  assert.strictEqual(c._wiJoinPalText(L, [rec('recI471', { Reference: '471', 'Total Pallets': 10 })]), '461+463 = 24 π. + 471 = 10 π. = 34 > 33');
-  assert.strictEqual(c._wiJoinPalText(L, [rec('recI470', { Reference: '470', 'Total Pallets': 8 })]), '461+463 = 24 π. + 470 = 8 π. = 32 ≤ 33');
-  assert.strictEqual(c._wiJoinPalText([rec('recA', { 'Total Pallets': 33 })], [rec('recB', {})]), 'recA = 33 π. + recB = 0 π. = 33 ≤ 33', 'no Reference → the id; no pallets → 0');
+  assert.strictEqual(c._wiJoinPalText(L, [rec('recI471', { Reference: '471', 'Total Pallets': 10 })]), 'K461, K463 = 24 π. + K471 = 10 π. = 34 > 33');
+  assert.strictEqual(c._wiJoinPalText(L, [rec('recI470', { Reference: '470', 'Total Pallets': 8 })]), 'K461, K463 = 24 π. + K470 = 8 π. = 32 ≤ 33');
+  assert.strictEqual(c._wiJoinPalText([rec('recA', { 'Total Pallets': 33 })], [rec('recB', {})]), 'χωρίς πελάτη = 33 π. + χωρίς πελάτη = 0 π. = 33 ≤ 33', 'no client → «χωρίς πελάτη», never the id; no pallets → 0');
 });
 
 test('ASG: what an order is assigned to, in words — any of truck, partner, trailer, driver', () => {
@@ -73,7 +77,7 @@ test('ASG: what an order is assigned to, in words — any of truck, partner, tra
   assert.strictEqual(c._wiAssignLbl({ Truck: ['recTX'] }), 'φορτηγό', 'an unknown (inactive) truck still counts');
   assert.strictEqual(c._wiAssignLbl({ Truck: [], Partner: [] }), '', 'empty links = nothing');
   assert.strictEqual(c._wiAssignedText(rec('recI473', { Reference: '473', Truck: ['recT27'] })),
-    'Η #473 έχει ήδη ανάθεση (φορτηγό TRK-27) — πρώτα «Καθαρισμός ανάθεσης» στην #473, μετά πρόσθεσέ τη στο φορτίο');
+    'Η K473 έχει ήδη ανάθεση (φορτηγό TRK-27) — πρώτα «Καθαρισμός ανάθεσης» σε αυτήν, μετά πρόσθεσέ τη στο φορτίο');
 });
 
 test('ASG: _wiImpGroup — at most one side assigned, and that side is the load; both = the menu\'s row is the load', async () => {
@@ -170,18 +174,18 @@ test('CHK: an import that fits joins; every refusal says why, with the numbers',
   const E27 = R(1), L = R(2);
   assert.strictEqual(c._wiJoinCheck(L, R(3), E27), '', '470 (8p) into 461+463 (24p) on TRK-27 → fits (32)');
   assert.strictEqual(c._wiJoinCheck(L, R(4), E27), '', '471 (10p) into 24p → 34: past 33 is asked by the action, never refused here (owner 9/10)');
-  const ASG = (n, what) => `Η #${n} έχει ήδη ανάθεση (${what}) — πρώτα «Καθαρισμός ανάθεσης» στην #${n}, μετά πρόσθεσέ τη στο φορτίο`;
+  const ASG = (n, what) => `Η K${n} έχει ήδη ανάθεση (${what}) — πρώτα «Καθαρισμός ανάθεσης» σε αυτήν, μετά πρόσθεσέ τη στο φορτίο`;
   assert.strictEqual(c._wiJoinCheck(L, R(5), E27), ASG('472', 'φορτηγό TRK-31'), 'another truck');
   assert.strictEqual(c._wiJoinCheck(L, R(11), E27), ASG('473', 'φορτηγό TRK-27'), 'the load\'s OWN truck too (P1: it already has its own RT)');
   assert.strictEqual(c._wiJoinCheck(L, R(12), E27), ASG('474', 'οδηγός Driver 9'), 'a driver alone');
   assert.strictEqual(c._wiJoinCheck(L, R(13), E27), ASG('475', 'συνεργάτης Partner One'), 'a partner');
-  assert.strictEqual(c._wiJoinCheck(L, R(14), E27), 'Η #476 είναι ακυρωμένη — ακυρωμένη παραγγελία δεν μπαίνει σε φορτίο', 'Cancelled is never revived');
-  assert.strictEqual(c._wiJoinCheck(R(16), R(3), R(16)), 'Το φορτίο χωρίς όχημα (478+479 · 6 π.) έχει ακυρωμένη παραγγελία (#478) — δεν δέχεται εισαγωγή', 'a Cancelled load member');
-  assert.strictEqual(c._wiJoinCheck(L, R(15), E27), 'Η εισαγωγή 477 είναι σκέλος προώθησης (ρότα) — δεν μπαίνει σε groupage', 'a rota leg, on every path');
-  assert.strictEqual(c._wiJoinCheck(R(15), R(3), R(15)), 'Το φορτίο χωρίς όχημα (477 · 3 π.) είναι σκέλος προώθησης (ρότα) — δεν δέχεται groupage', 'a rota leg as the load');
-  assert.match(c._wiJoinCheck(L, R(6), E27), /^Η εισαγωγή 480 είναι ήδη στο φορτίο της εξαγωγής E30 \(TRK-31\) — πρώτα «Αφαίρεση ταιριάσματος» εκεί$/);
+  assert.strictEqual(c._wiJoinCheck(L, R(14), E27), 'Η K476 είναι ακυρωμένη — ακυρωμένη παραγγελία δεν μπαίνει σε φορτίο', 'Cancelled is never revived');
+  assert.strictEqual(c._wiJoinCheck(R(16), R(3), R(16)), 'Το φορτίο χωρίς όχημα (K478, K479 · 6 π.) έχει ακυρωμένη παραγγελία (K478) — δεν δέχεται εισαγωγή', 'a Cancelled load member');
+  assert.strictEqual(c._wiJoinCheck(L, R(15), E27), 'Η εισαγωγή K477 είναι σκέλος προώθησης (ρότα) — δεν μπαίνει σε groupage', 'a rota leg, on every path');
+  assert.strictEqual(c._wiJoinCheck(R(15), R(3), R(15)), 'Το φορτίο χωρίς όχημα (K477 · 3 π.) είναι σκέλος προώθησης (ρότα) — δεν δέχεται groupage', 'a rota leg as the load');
+  assert.match(c._wiJoinCheck(L, R(6), E27), /^Η εισαγωγή K480 είναι ήδη στο φορτίο της εξαγωγής KE30 \(TRK-31\) — πρώτα «Αφαίρεση ταιριάσματος» εκεί$/);
   assert.match(c._wiJoinCheck(L, R(8), E27), /κομμάτι αποθέματος — μπαίνει σε φορτηγό μόνο με «\+ Κομμάτι από απόθεμα…»/);
-  assert.match(c._wiJoinCheck(L, R(9), E27), /^Η εισαγωγή LT είναι παρτίδα — πάει στην αποθήκη/);
+  assert.match(c._wiJoinCheck(L, R(9), E27), /^Η εισαγωγή KLT είναι παρτίδα — πάει στην αποθήκη/);
   assert.match(c._wiJoinCheck(L, R(10), E27), /σκέλος σπασμένης παραγγελίας — δεν μπαίνει σε groupage/);
   // a load with no vehicle and an assigned joiner: the same one rule
   const bare = { id: 99, type: 'export', orderIds: ['recE27'], truckId: '', partnerId: '' };
@@ -205,7 +209,7 @@ test('P33: one constant, one question with the numbers, the red sum, the toast t
   const L = [rec('recI461', { Reference: '461', 'Total Pallets': 12 }), rec('recI463', { Reference: '463', 'Total Pallets': 12 })];
   const X = [rec('recI471', { Reference: '471', 'Total Pallets': 11 })], S = [rec('recI470', { Reference: '470', 'Total Pallets': 8 })];
   assert.strictEqual(c._wiPalCandNote(L, S), '', 'within 33: no note');
-  assert.strictEqual(c._wiPalCandNote(L, X), '<br><small class="wi-stk-warn">461+463 = 24 π. + 471 = 11 π. = 35 &gt; 33</small>', 'past 33: the sum, amber');
+  assert.strictEqual(c._wiPalCandNote(L, X), '<br><small class="wi-stk-warn">K461, K463 = 24 π. + K471 = 11 π. = 35 &gt; 33</small>', 'past 33: the sum, amber');
   // within 33: nothing asked
   assert.strictEqual(await c._wiPalConfirm(L, [S]), true);
   assert.strictEqual(asked.length, 0, 'within 33 nothing is asked');
@@ -213,7 +217,7 @@ test('P33: one constant, one question with the numbers, the red sum, the toast t
   answer = false;
   assert.strictEqual(await c._wiPalConfirm(L, [X]), false, 'cancel = false: the caller writes nothing');
   assert.strictEqual(asked.length, 1);
-  assert.strictEqual(asked[0][0], 'Σύνολο 24 + 11 = 35 παλέτες — πάνω από 33. Να μπει;\n\n461+463 = 24 π. + 471 = 11 π. = 35 > 33');
+  assert.strictEqual(asked[0][0], 'Σύνολο 24 + 11 = 35 παλέτες — πάνω από 33. Να μπει;\n\nK461, K463 = 24 π. + K471 = 11 π. = 35 > 33');
   assert.deepStrictEqual(asked[0][1], { title: 'Πάνω από 33 παλέτες', confirmLabel: 'Να μπει' });
   answer = true;
   assert.strictEqual(await c._wiPalConfirm(L, [X]), 'over', '«Να μπει» = over (passed on as palOk)');

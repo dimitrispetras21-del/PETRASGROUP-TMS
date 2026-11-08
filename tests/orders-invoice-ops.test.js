@@ -77,12 +77,13 @@ test('an invoiced order\'s price: owner and accountant only (owner 3/11) — the
 test('the question before an invoiced price changes: ΤΠΥ and «το τιμολόγιο στο ERP ΔΕΝ αλλάζει», a self delivery without it', async () => {
   const asked = [];
   global.confirmAction = async (msg, opts) => { asked.push({ msg, opts }); return true; };
-  await IO.confirmPrice({ num: '#1244', f: { Invoiced: true, 'Invoice Number': '0463', Price: 1150 } }, 1200);
+  await IO.confirmPrice({ num: '#1244', f: { Invoiced: true, 'Invoice Number': '0463', Price: 1150, 'Client Name': 'ΦΑΓΕ', 'Loading Summary': 'Veria', 'Delivery Summary': 'Graz' } }, 1200);
   await IO.confirmPrice({ num: '#1255', f: { Invoiced: true, 'Self Delivery': true, Price: 2950 } }, 3000);
-  assert.match(asked[0].msg, /Αλλαγή τιμής της #1244 \(ΤΠΥ 0463\)/);
+  assert.match(asked[0].msg, /Αλλαγή τιμής της παραγγελίας ΦΑΓΕ, Veria → Graz \(ΤΠΥ 0463\)/);   // owner 8/11: in words, never «#1244»
+  assert.doesNotMatch(asked[0].msg + asked[1].msg, /#12/);
   assert.match(asked[0].msg, /1\.150,00 € γίνεται 1\.200,00 €/);
   assert.match(asked[0].msg, /Το τιμολόγιο στο ERP ΔΕΝ αλλάζει από εδώ/);
-  assert.match(asked[1].msg, /\(αυτοπαράδοση\)/);
+  assert.match(asked[1].msg, /Αλλαγή τιμής της παραγγελίας χωρίς στοιχεία \(αυτοπαράδοση\)/);
   assert.doesNotMatch(asked[1].msg, /ΔΕΝ αλλάζει/);
   assert.strictEqual(asked[0].opts.danger, true);
 });

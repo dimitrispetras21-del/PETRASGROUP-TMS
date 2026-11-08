@@ -94,6 +94,20 @@ async function _rtFind(pgIds) {
 const _rtClosed = rt => rt && (rt.status === 'closed' || rt.status === 'complete');
 const _rtWarn = (msg) => { if (typeof showErrorToast === 'function') showErrorToast(msg, 'warn', 9000); };
 
+// Owner 8/11, messages without codes (core/plain-ref.js): a warning names a trip
+// «το δρομολόγιο ΚΖΗ-1234 · Σαρίδης Γ. · Δευ 2/11» and an order by client + route,
+// never «RT-1543» / «#Ref». The code stays in console and logError only.
+const _rtTripName = (rt, lk) => {
+  const n = typeof PlainRef !== 'undefined' && rt ? PlainRef.tripOf(rt, lk) : '';
+  return n ? 'το δρομολόγιο ' + n : 'το δρομολόγιο';
+};
+async function _rtTripNameOf(rt) {
+  let lk = null;
+  try { lk = await _rtLookups(); } catch (_) { lk = null; }
+  return _rtTripName(rt, lk);
+}
+const _rtOrderName = (f) => (typeof PlainRef !== 'undefined' && PlainRef.orderOf(f || {}, { day: false })) || 'χωρίς στοιχεία';
+
 // ── A group split across round trips (live 7/10, GI-MUV7FNKE: RT-1217 + RT-1220) ──
 // The Worker refuses POST /costs/rt with 409 «legs already belong to different
 // round trips: <ids>» when the legs it is sent already sit on two live round
@@ -107,14 +121,22 @@ const _rtWarn = (msg) => { if (typeof showErrorToast === 'function') showErrorTo
 // _rtSafe exactly as before.
 const _RT_SPLIT = /legs already belong to different round trips/;
 
-// The 409 names round-trip ids; people know codes (RT-1217). Mapped through the
-// bare /costs/rt list (newest 200 of everyone — a live split is recent). An id
-// the list cannot place is shown as «RT id N», never dropped.
+// The 409 names round-trip ids. Mapped through the bare /costs/rt list (newest
+// 200 of everyone — a live split is recent): codes for the log (RT-1217), and
+// for the banner the trips in words (owner 8/11: «ΚΖΗ-1234 · Σαρίδης Γ. · Δευ
+// 2/11»). An id the list cannot place is «RT id N» in the log and «ένα
+// δρομολόγιο που δεν διαβάστηκε» on the banner — counted, never dropped.
 async function _rtSplitCodes(ids) {
-  const codeById = {};
-  try { ((await plFetch('/costs/rt')).records || []).forEach(r => { codeById[r.id] = r.code; }); }
+  const byId = {};
+  try { ((await plFetch('/costs/rt')).records || []).forEach(r => { byId[r.id] = r; }); }
   catch (e) { console.warn('[rt-feed] split: round-trip codes not read —', e && e.message); }
-  return ids.map(id => codeById[id] || ('RT id ' + id));
+  let lk = null;
+  try { lk = await _rtLookups(); } catch (_) { lk = null; }
+  const name = r => (typeof PlainRef !== 'undefined' && PlainRef.tripOf(r, lk)) || 'χωρίς όχημα';
+  return {
+    codes: ids.map(id => (byId[id] && byId[id].code) || ('RT id ' + id)),
+    names: ids.map(id => (byId[id] ? name(byId[id]) : 'ένα δρομολόγιο που δεν διαβάστηκε')),
+  };
 }
 
 // Own fixed column at the top: toasts sit bottom-right (showErrorToast evicts
@@ -161,10 +183,10 @@ async function _rtPost(body, key) {
     // Sorted: the Worker lists ids in DB row order, and the banner key and text
     // must not change between two syncs of the same split.
     const ids = ((String(e.message).split(':')[1] || '').match(/\d+/g) || []).map(Number).sort((a, b) => a - b);
-    const codes = await _rtSplitCodes(ids);
+    const { codes, names } = await _rtSplitCodes(ids);
     const n = codes.length;
     const message = 'Η ομάδα είναι μοιρασμένη σε ' + (({ 2: 'δύο', 3: 'τρία' })[n] || n || 'περισσότερα από ένα')
-      + ' δρομολόγια' + (n ? ': ' + codes.join(', ') : '') + ' — ζήτα συγχώνευση από τον owner';
+      + ' δρομολόγια' + (n ? ': ' + names.join(' και ') : '') + ' — ζήτα συγχώνευση από τον owner';
     _RT.split[key] = { codes, message };
     console.warn('[rt-feed] split group', key, e.message);
     if (typeof logError === 'function') logError(e, 'rt-feed: ομάδα σε ' + (codes.join(', ') || 'πολλά δρομολόγια') + ' (' + key + ')');
@@ -353,15 +375,17 @@ function _rtHeldLegs(rt, orders, pgRec) {
     if (no) byPg[no] = o;
   });
   Object.keys(pgRec || {}).forEach(pg => { if (byId[pgRec[pg]]) byPg[pg] = byId[pgRec[pg]]; });
-  const withVehicle = [], unread = [];
+  // withVehicle: the orders in words (the message), withVehicleIds: the same
+  // orders by record id (who is holding — never compared by the words).
+  const withVehicle = [], withVehicleIds = [], unread = [];
   for (const l of (rt && rt.ct_rt_legs) || []) {
     const o = l.order_id != null ? byPg[l.order_id] : null;
     if (!o) { unread.push(l.order_id != null ? '#' + l.order_id : 'εθνικό φορτίο ' + l.nat_load_id); continue; }
     const f = o.fields || {};
     if (f['Status'] === 'Cancelled') continue;
-    if (['Truck', 'Trailer', 'Driver', 'Partner'].some(k => linked(f[k]))) withVehicle.push(String(f['Reference'] || o.id));
+    if (['Truck', 'Trailer', 'Driver', 'Partner'].some(k => linked(f[k]))) { withVehicle.push(_rtOrderName(f)); withVehicleIds.push(o.id); }
   }
-  return { withVehicle, unread };
+  return { withVehicle, withVehicleIds, unread };
 }
 
 // Exposed for callers that need an order's round trip without re-implementing
@@ -468,8 +492,8 @@ async function rtOnOrderSaved(orderId) {
     // δεν ακυρώνεται ποτέ αυτόματα (πραγματικό οικονομικό ιστορικό) — φωνή, όχι
     // γράψιμο, όπως και στα RT με γραμμές κόστους παρακάτω.
     if (_rtClosed(rt) && (gone || !exec)) {
-      _rtWarn('P&L: η ' + (f['Reference'] || orderId) + (gone ? ' ακυρώθηκε' : ' έχασε την ανάθεση') +
-              ' αλλά το ' + rt.code + ' είναι κλεισμένο — δες το στο TRIP PnL');
+      _rtWarn('P&L: η παραγγελία ' + _rtOrderName(f) + (gone ? ' ακυρώθηκε' : ' έχασε την ανάθεση') +
+              ' αλλά ' + (await _rtTripNameOf(rt)) + ' είναι κλεισμένο — δες το στο TRIP PnL');
       return;
     }
 
@@ -477,15 +501,15 @@ async function rtOnOrderSaved(orderId) {
       if (rt) {
         // Before the cost-line read: a dispatcher gets 403 there, which used
         // to turn this exact case into the vague _rtSafe toast (see _rtHeldLegs).
-        const { withVehicle, unread } = _rtHeldLegs(rt, Object.values(seqById), pgRec);
+        const { withVehicle, withVehicleIds, unread } = _rtHeldLegs(rt, Object.values(seqById), pgRec);
         if (withVehicle.length || unread.length) {
-          const ref = String(f['Reference'] || orderId);
           // The order itself may be the one holding (truck cleared, driver kept):
           // then the «ενώ…» clause would name it twice.
-          const message = 'P&L: το ' + rt.code + ' ΔΕΝ ακυρώθηκε — ' + (withVehicle.length
-            ? (withVehicle.length > 1 ? 'οι ' + withVehicle.join(', ') + ' έχουν' : 'η ' + withVehicle[0] + ' έχει') + ' ακόμη όχημα ή οδηγό'
-              + (withVehicle.includes(ref) ? '' : ', ενώ η ' + ref + (gone ? ' ακυρώθηκε' : ' είναι χωρίς φορτηγό'))
-            : 'έχει σκέλη που δεν διαβάστηκαν (' + unread.join(', ') + ')') + ' · δες το στο TRIP PnL';
+          const list = typeof PlainRef !== 'undefined' ? PlainRef.list(withVehicle) : withVehicle.join(', ');
+          const message = 'P&L: ' + (await _rtTripNameOf(rt)) + ' ΔΕΝ ακυρώθηκε — ' + (withVehicle.length
+            ? (withVehicle.length > 1 ? 'οι παραγγελίες ' + list + ' έχουν' : 'η παραγγελία ' + withVehicle[0] + ' έχει') + ' ακόμη όχημα ή οδηγό'
+              + (withVehicleIds.includes(orderId) ? '' : ', ενώ η παραγγελία ' + _rtOrderName(f) + (gone ? ' ακυρώθηκε' : ' είναι χωρίς φορτηγό'))
+            : (unread.length > 1 ? 'έχει ' + unread.length + ' σκέλη που δεν διαβάστηκαν' : 'έχει ένα σκέλος που δεν διαβάστηκε')) + ' · δες το στο TRIP PnL';
           // Recorded for the caller (rtHeldFor): _wiRotAdd reverts its rota
           // instead of a «✓» over a trip it just failed to settle.
           _RT.held[splitKey] = { code: rt.code, message };
@@ -497,7 +521,7 @@ async function rtOnOrderSaved(orderId) {
         const lines = await plFetch('/costs/lines?rt_id=' + rt.id);
         if ((lines.records || []).length) {
           // Ποτέ ορφανά κόστη: μένει και φωνάζει.
-          _rtWarn('P&L: το ' + rt.code + ' έχει κόστη αλλά η παραγγελία ' + (gone ? 'ακυρώθηκε' : 'έχασε την ανάθεση') + ' — θέλει χέρι στο TRIP PnL');
+          _rtWarn('P&L: ' + (await _rtTripNameOf(rt)) + ' έχει κόστη αλλά η παραγγελία ' + _rtOrderName(f) + ' ' + (gone ? 'ακυρώθηκε' : 'έχασε την ανάθεση') + ' — θέλει χέρι στο TRIP PnL');
         } else {
           await plFetch('/costs/rt/' + rt.id, { method: 'PATCH', body: { status: 'cancelled' } });
         }
@@ -531,7 +555,7 @@ async function rtOnOrderSaved(orderId) {
       // υπαρκτό και res.legs είναι ΟΛΑ τα σκέλη του, όχι μόνο τα καινούρια.
       if (!res.attached && rtRef && (res.legs || []).length < body.legs.length) {
         await plFetch('/costs/rt/' + rtRef.id, { method: 'PATCH', body: { status: 'cancelled' } });
-        _rtWarn('P&L: το ' + rtRef.code + ' δημιουργήθηκε χωρίς σκέλη και ακυρώθηκε — δες μετρητή συμφωνίας');
+        _rtWarn('P&L: ' + _rtTripName(rtRef, lk) + ' δημιουργήθηκε χωρίς σκέλη και ακυρώθηκε — δες μετρητή συμφωνίας');
         return;
       }
       // Partner rate: NOT written here any more (owner 7/9, migration 021). The
@@ -581,9 +605,9 @@ async function rtOnOrderSaved(orderId) {
         }, splitKey);
         if (!attachRes) return; // split group — already named by _rtPost, not «δεν πήρε το σκέλος»
         if (attachRes && attachRes.attached && attachRes.record) rtRef = attachRes.record;
-        else _rtWarn('P&L: το ' + rt.code + ' δεν πήρε το σκέλος αυτόματα — δες το στο TRIP PnL');
+        else _rtWarn('P&L: ' + _rtTripName(rt, lk) + ' δεν πήρε το σκέλος αυτόματα — δες το στο TRIP PnL');
       }
-      if ((partnerTrip ? 'PARTNER' : 'OWNED') !== rt.trip_type) _rtWarn('P&L: αλλαγή ιδιόκτητο↔συνεργάτης στο ' + rt.code + ' δεν συγχρονίζεται αυτόματα — δες το στο TRIP PnL');
+      if ((partnerTrip ? 'PARTNER' : 'OWNED') !== rt.trip_type) _rtWarn('P&L: αλλαγή ιδιόκτητο↔συνεργάτης στο ' + _rtTripName(rt, lk).replace(/^το /, '') + ' δεν συγχρονίζεται αυτόματα — δες το στο TRIP PnL');
     }
     // ΤΟ ΚΛΕΙΣΙΜΟ ΕΦΥΓΕ ΑΠΟ ΕΔΩ (owner 22/9, migration 046 rt_auto_close).
     // Ήταν: «solo export → Delivered του export· ζεύγος → Delivered του import»,
@@ -624,7 +648,7 @@ async function rtOnOrderDeleted(orderId) {
       }
       throw e;
     }
-    if ((lines.records || []).length) _rtWarn('P&L: το ' + rt.code + ' έχει κόστη αλλά η παραγγελία διαγράφηκε — θέλει χέρι στο TRIP PnL');
+    if ((lines.records || []).length) _rtWarn('P&L: ' + (await _rtTripNameOf(rt)) + ' έχει κόστη αλλά η παραγγελία διαγράφηκε — θέλει χέρι στο TRIP PnL');
     else await plFetch('/costs/rt/' + rt.id, { method: 'PATCH', body: { status: 'cancelled' } });
   });
 }
@@ -633,7 +657,8 @@ window.rtOnOrderSaved = rtOnOrderSaved;
 window.rtOnOrderDeleted = rtOnOrderDeleted;
 window.rtLegsForOrder = rtLegsForOrder;
 window.rtFindForOrder = rtFindForOrder;
-// Why the last rtOnOrderSaved(orderId) could not attach: { codes, message } when
+// Why the last rtOnOrderSaved(orderId) could not attach: { codes, message } (codes
+// for the log; message in words, owner 8/11) when
 // the Worker refused it as a split group, else null (weekly_intl.js _wiRotAdd).
 window.rtSplitFor = orderId => _RT.split[orderId] || null;
 // Why the last rtOnOrderSaved(orderId) left a trip it meant to cancel:
