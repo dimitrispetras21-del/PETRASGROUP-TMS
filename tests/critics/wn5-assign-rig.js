@@ -892,12 +892,14 @@ async function sotiris_warn({ browser, origin, ok, scn }) {
   ok(scn, 'pick truck TST-2106 (on an international trip Wed–Fri)', await pickIn(page, 'tk', '2106', 'TST-2106'));
   const tk = await field(page, 'tk');
   ok(scn, 'item 4: the truck is «άλλο δρομολόγιο · διεθνές», never «✓ ελεύθερο»', /άλλο δρομολόγιο · διεθνές/.test(tk.av) && !/ελεύθερο/.test(tk.av), tk);
+  const ln = await lineOf(page);
+  ok(scn, 'item 4 (screenshot 8/11): the line under the fields says the same, never «TST-2106 · ελεύθερο»', !!ln && /TST-2106 · άλλο δρομολόγιο · διεθνές/.test(ln.txt), ln);
   await pickIn(page, 'tl', '5102', 'TRL-5102');
   let f = await foot(page);
-  ok(scn, 'items 4 + 5: amber beside the save — the international trip by name and «χωρίς οδηγό» — the save stays on', !f.off && /TST-2106 είναι σε άλλο δρομολόγιο/.test(f.miss) && /διεθνές/.test(f.miss) && /χωρίς οδηγό/.test(f.miss), f);
+  ok(scn, 'items 4 + 5: amber beside the save — the international trip by name and «χωρίς οδηγό» — the save stays on', !f.off && /TST-2106 είναι σε άλλο δρομολόγιο/.test(f.miss) && /διεθνές/.test(f.miss) && /[Χχ]ωρίς οδηγό/.test(f.miss) && !/\. ·/.test(f.miss), f);
   await pickIn(page, 'dr', 'Test 03', 'Driver Test 03');
   f = await foot(page);
-  ok(scn, 'item 5: a driver picked — «χωρίς οδηγό» gone', !/χωρίς οδηγό/.test(f.miss), f);
+  ok(scn, 'item 5: a driver picked — «χωρίς οδηγό» gone', !/[Χχ]ωρίς οδηγό/.test(f.miss), f);
   await page.click(`${DLG} [data-act="save"]`);
   await page.waitForTimeout(400);
   const busy = await page.evaluate(() => { const c = document.getElementById('content'); const r = document.querySelector('#content .wn5-row'); return { cls: c.classList.contains('wn5-reloading'), aria: c.getAttribute('aria-busy'), pe: r ? getComputedStyle(document.querySelector('#content > .wn5')).pointerEvents : null }; });
@@ -928,5 +930,19 @@ async function sotiris_esc({ browser, origin, ok, scn }) {
   await page.context().close();
 }
 
-K.run({ scenarios: { own_new, own_join, only_hours, partner, accept_busy, vehicle, rate2, handover, veroia_list, veroia_new, f61, f54, veroia_later, pr3b, veroia_busy, veroia_fixes, busy3, fit, sotiris_late, sotiris_warn, sotiris_esc }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],
+// screenshot 8/11 (item 6 on the Veroia board): TST-2104 is back at Veroia Tue 22:00, so a new load of Tue starts there —
+// the form's «Φόρτωση · Βέροια» row says «από 22:00» (what req sends), never «όλη η ημέρα»
+async function sotiris_hub_after({ browser, origin, ok, scn }) {
+  const { page } = await K.openApp(browser, origin, { board: hubBoard() });
+  await page.click('#wn5-hub [data-hub="open"]');
+  await page.click('#wn5-hub .wn5-hub-it[data-piece="4203"] .wn5-hub-ck');
+  await page.click('#wn5-hub .wn5-nf-pick');
+  await page.waitForSelector(DLG, { timeout: 4000 });
+  await pickIn(page, 'tk', '2104', 'TST-2104');
+  const t = await dlgText(page);
+  ok(scn, 'the Veroia row of a new load after the 22:00 return reads «από 22:00»', /Φόρτωση · Βέροια · Τρί 13\/10 ?από 22:00/.test(t) && /ελεύθερο από 22:00/.test(t), t);
+  await page.context().close();
+}
+
+K.run({ scenarios: { own_new, own_join, only_hours, partner, accept_busy, vehicle, rate2, handover, veroia_list, veroia_new, f61, f54, veroia_later, pr3b, veroia_busy, veroia_fixes, busy3, fit, sotiris_late, sotiris_warn, sotiris_esc, sotiris_hub_after }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],
   go: 'the assignment form (own new / join / only / hours / F39 / partner / vehicle / F51-F61 / F54 / F56 / 089 two fees), ✈ «Αλλαγή οχήματος…» and the Veroia board v2 «Νέο φορτίο» hold' });
