@@ -11,7 +11,7 @@
 --   PART 2  proofs: the generated text with its old rights, the Worker keeps EXECUTE
 -- No table, no column, no trigger, no row written. No Worker change: PATCH /plan/rt/:id forwards the body as it is;
 -- the Worker has no Greek text for rt_changed yet (the screen says it, wn5_actions.js _orderErr; the text goes into
--- PLAN_RULE_TEXT with the next Worker deploy, 111).
+-- PLAN_RULE_TEXT with the next Worker deploy of the chain).
 -- The front end sends the key only with FEATURES.WN_EXPECT = true (config.js): before 110 the base refuses an unknown
 -- key (bad_input). Order: 110 executed -> WN_EXPECT true.
 -- RUN: after 15:00 or with the owner's explicit yes: 110_plan_rt_expect_change_dryrun.sql, then this file, then
