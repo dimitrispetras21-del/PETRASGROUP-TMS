@@ -138,8 +138,9 @@ const InvoiceOps = (() => {
   // an annotated item carries client / load / del; a bare {num, f} (the week
   // view's card) is read through PlainRef.orderOf. One rule for the questions
   // here and the toasts of the invoicing view.
+  const _P = () => (typeof PlainRef !== 'undefined' && PlainRef) || (typeof require === 'function' ? require('../core/plain-ref.js') : null);
   function words(it) {
-    const P = (typeof PlainRef !== 'undefined' && PlainRef) || (typeof require === 'function' ? require('../core/plain-ref.js') : null);
+    const P = _P();
     if (!it || !P) return 'χωρίς στοιχεία';
     const t = it.client !== undefined
       ? P.order({ client: it.client === '—' ? '' : it.client, from: it.load && it.load.name, to: it.del && it.del.name })
@@ -148,7 +149,7 @@ const InvoiceOps = (() => {
   }
   // Same client: only the routes («Βέροια → Graz, Larisa → Wien»), the client is said once.
   function routes(items) {
-    const P = (typeof PlainRef !== 'undefined' && PlainRef) || (typeof require === 'function' ? require('../core/plain-ref.js') : null);
+    const P = _P();
     return (items || []).map(it => (P && P.order({ from: it.load && it.load.name, to: it.del && it.del.name })) || 'χωρίς διαδρομή').join(', ');
   }
   const confirmDup = (o, num, edit) => confirmAction(edit

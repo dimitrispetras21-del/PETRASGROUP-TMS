@@ -517,7 +517,8 @@ async function rtOnOrderSaved(orderId) {
           // instead of a «✓» over a trip it just failed to settle.
           _RT.held[splitKey] = { code: rt.code, message };
           console.warn('[rt-feed] cancel refused', rt.code, message);
-          if (typeof logError === 'function') logError(new Error(message), 'rt-feed: ακύρωση ' + rt.code + ' σταμάτησε (' + splitKey + ')');
+          if (typeof logError === 'function') logError(new Error(message), 'rt-feed: ακύρωση ' + rt.code + ' σταμάτησε (' + splitKey + ')'
+            + (unread.length ? ' · σκέλη που δεν διαβάστηκαν: ' + unread.join(', ') : ''));   // the ids stay in the log, out of the message
           _rtWarn(message);
           return;
         }

@@ -3675,7 +3675,7 @@ async function _oiDeleteConfirmText(recId) {
   if (!f || typeof OrdersStock === 'undefined') return generic;
   const num = words || 'χωρίς στοιχεία';
   const pal = Number(f['Total Pallets']) || 0;
-  if (OrdersStock.isPiece(f)) return `Διαγραφή κομματιού ${num} — οι ${pal}p γυρίζουν στην παρτίδα ${OrdersStock.lotNumLabel(f)}.\n\nΣυνέχεια;`;
+  if (OrdersStock.isPiece(f)) return `Διαγραφή κομματιού ${num} — οι ${pal}p γυρίζουν στην παρτίδα από την οποία βγήκε.\n\nΣυνέχεια;`;
   if (OrdersStock.isLot(f)) return `Διαγραφή παρτίδας ${num} (${pal}p) — το απόθεμα φεύγει μαζί της. Η βάση την αρνείται αν έχουν βγει κομμάτια ή αν τιμολογήθηκε.\n\nΣυνέχεια;`;
   return generic;
 }

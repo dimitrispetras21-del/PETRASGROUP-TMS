@@ -5378,7 +5378,8 @@ async function _wiOwnRtFree(recs){
     for(const r of rs){
       const at=await _wiRtOf(r.id);
       if(!at.ok) return {ok:false,wrote:true,msg:`Η ${ref(r)} βγήκε από το ${code}, αλλά ο έλεγχος δεν διαβάστηκε (${at.msg})`};
-      if(at.rt) return {ok:false,wrote:true,msg:`Η ${ref(r)} βγήκε από το ${code}, αλλά φαίνεται ακόμη στο ${await _wiRtTxt(at.rt)}`};
+      // Same truck and day = the same words: then «άλλο» says it is another trip (review 8/11), the code only for the log.
+      if(at.rt){ const t2=await _wiRtTxt(at.rt); return {ok:false,wrote:true,msg:`Η ${ref(r)} βγήκε από το ${code}, αλλά φαίνεται ακόμη ${at.rt.id===rt.id?'σε αυτό':t2===code?'σε άλλο '+t2:'στο '+t2}`}; }
     }
     freed.push(`${rs.length>1?'οι':'η'} ${PlainRef.list(rs.map(ref))} ${rs.length>1?'βγήκαν':'βγήκε'} από το άδειο ${code}`);
   }
@@ -6148,7 +6149,8 @@ function _wiAssignLbl(f){
 // location map (fhLoadLocations). fb: the text when nothing is known.
 function _wiOrdTxt(r,fb){ return PlainRef.orderOf(r,{day:false,loc:id=>_fhLocationsMap[id]||''})||(fb!=null?fb:'παραγγελία χωρίς στοιχεία'); }
 // «ΦΑΓΕ, Lidl» — a load's members by client (one load: the route would repeat).
-function _wiCliTxt(recs){ return (recs||[]).map(r=>String(orderClientName(r&&r.fields)||'').trim()||'χωρίς πελάτη').join(', '); }
+// The same client twice is counted («ΦΑΓΕ ×2, Lidl»): «ΦΑΓΕ, ΦΑΓΕ» said nothing (review 8/11).
+function _wiCliTxt(recs){ const n=new Map(); (recs||[]).forEach(r=>{ const c=String(orderClientName(r&&r.fields)||'').trim()||'χωρίς πελάτη'; n.set(c,(n.get(c)||0)+1); }); return [...n].map(([c,k])=>k>1?c+' ×'+k:c).join(', '); }
 // «δρομολόγιο ΚΖΗ-1234 · Σαρίδης Γ. · Δευ 2/11», or just «δρομολόγιο» — the
 // caller puts the article. Lookups cached by rt-feed; a failed read = fewer words.
 async function _wiRtTxt(rt){ let lk=null; try{ lk=await _rtLookups(); }catch(_){ lk=null; } const n=PlainRef.tripOf(rt,lk); return n?'δρομολόγιο '+n:'δρομολόγιο'; }

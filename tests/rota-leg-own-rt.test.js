@@ -401,7 +401,7 @@ test('the re-read still finds the leg on its trip (DELETE said 200): no rota wri
   const w = await world({ rts: [solo()], legDelete: 'noop' });
   await w.ctx._wiRotAdd(1, 'rec467');
   assert.ok(!w.calls.includes('PATCH order rec467'), 'Rotation ID written on a trip that did not let go');
-  assert.deepStrictEqual(w.toasts.map(t => t.m), ['Η Beta, Graz → Wien βγήκε από το δρομολόγιο Δευ 5/10, αλλά φαίνεται ακόμη στο δρομολόγιο Δευ 5/10 · η ρότα ΔΕΝ γράφτηκε']);
+  assert.deepStrictEqual(w.toasts.map(t => t.m), ['Η Beta, Graz → Wien βγήκε από το δρομολόγιο Δευ 5/10, αλλά φαίνεται ακόμη σε αυτό · η ρότα ΔΕΝ γράφτηκε']);
   assert.strictEqual(w.logged.length, 1);
 });
 
