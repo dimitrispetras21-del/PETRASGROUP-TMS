@@ -138,7 +138,7 @@ test('the guard markers of --pmiss are in the source exactly once each', async (
 
 test('every 107 refusal code has a Greek text, and every text a code (principle 8)', async () => {
   const fs = await import('node:fs');
-  const sql = fs.readFileSync(path.resolve(HERE, '../migrations/drafts/107_pl_missing_delivery.sql'), 'utf8');
+  const sql = fs.readFileSync(path.resolve(HERE, '../migrations/107_pl_missing_delivery.sql'), 'utf8');
   const codes = [...new Set([...sql.matchAll(/pln_h_raise\('([a-z_]+)'/g)].map((m) => m[1]))].sort();
   const src = fs.readFileSync(path.resolve(HERE, '../src/index.js'), 'utf8');
   const block = src.slice(src.indexOf('const PLN_RULE_TEXT = {'), src.indexOf('const PLN_CONFLICT'));

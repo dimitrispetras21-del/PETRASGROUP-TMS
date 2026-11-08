@@ -10,7 +10,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build107Dryrun } from '../migrations/drafts/tools/build-107-dryrun.mjs';
 
-const D = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../migrations/drafts');
+// 107 ran 8/11 (owner): its files left drafts/ (CLAUDE.md, rule 5); the dry-run builder stays in drafts/tools
+const D = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../migrations');
 const read = (f) => fs.readFileSync(path.join(D, f), 'utf8');
 
 test('the dry run is 107 verbatim plus the checked act and the deliberate error', () => {
