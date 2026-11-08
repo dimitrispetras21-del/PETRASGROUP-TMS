@@ -102,6 +102,7 @@ function boardCycle(cycle, ctx) {
 // stops : ORDER STOPS records { fields: { 'Stop Type', 'Stop Number', DateTime, Location, Pallets, 'Completed At' } }
 // ctx   : { today, locMeta(locRecId) → {name, city, cc} | null,
 //           natLeg?: { ref: 'NL 158', kind: 'own'|'partner'|'none' }   the national leg of a VS order, if the host read it
+//           natLegNote?: text   boards read, leg on none of them (grey aside instead of the red «δεν διαβάστηκε»)
 //           legs?: [{ rec, stops }]                                     split legs (Δ5) in leg order, if any
 //           temp?: '4°', stockOut?: text, stockIn?: text }
 function _stopRow(s, ctx) {
@@ -168,7 +169,9 @@ function facadeOrder(rec, stops, ctx) {
   const nat = { title: 'ΕΘΝΙΚΟ ΣΚΕΛΟΣ', chip: nl && nl.ref ? nl.ref : null, rows: natRows.map(_clean),
     executor: nl ? { desk: 'natl', kind: nl.kind } : null };
   // the host did not read the national leg: its executor is unknown, said in the heading (principle 1)
-  if (!nl) { nat.aside = 'εκτελεστής: δεν διαβάστηκε'; nat.asideTone = 'red'; }
+  // ctx.natLegNote: the host DID read its boards and the leg is on none of them (an order before day L, whose leg
+  // lives in national_loads, or one planned further away) — said in grey in its own words, never as a read failure
+  if (!nl) { nat.aside = c.natLegNote ? String(c.natLegNote) : 'εκτελεστής: δεν διαβάστηκε'; nat.asideTone = c.natLegNote ? null : 'red'; }
   const intlSec = { title, chip: _no(rec), aside, done, rows: intlRows.map(_clean), executor: intlEx };
   return { today: c.today, sections: imp ? [intlSec, nat] : [nat, intlSec], empty: 'Η παραγγελία δεν έχει στάσεις.' };
 }
