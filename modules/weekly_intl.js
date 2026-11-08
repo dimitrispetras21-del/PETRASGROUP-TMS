@@ -5378,7 +5378,7 @@ async function _wiOwnRtFree(recs){
     for(const r of rs){
       const at=await _wiRtOf(r.id);
       if(!at.ok) return {ok:false,wrote:true,msg:`Η ${ref(r)} βγήκε από το ${code}, αλλά ο έλεγχος δεν διαβάστηκε (${at.msg})`};
-      // Same truck and day = the same words: then «άλλο» says it is another trip (review 8/11), the code only for the log.
+      // Same truck and day = the same words: then «άλλο» says it is another trip (review 8/11).
       if(at.rt){ const t2=await _wiRtTxt(at.rt); return {ok:false,wrote:true,msg:`Η ${ref(r)} βγήκε από το ${code}, αλλά φαίνεται ακόμη ${at.rt.id===rt.id?'σε αυτό':t2===code?'σε άλλο '+t2:'στο '+t2}`}; }
     }
     freed.push(`${rs.length>1?'οι':'η'} ${PlainRef.list(rs.map(ref))} ${rs.length>1?'βγήκαν':'βγήκε'} από το άδειο ${code}`);
