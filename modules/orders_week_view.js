@@ -588,6 +588,8 @@ const OrdersWeekView = (() => {
     return rows.map((r, i) => [r, i]).sort((a, b) => String(a[0].day || '').localeCompare(String(b[0].day || ''))
       || (first(a[0]) === first(b[0]) ? 0 : first(a[0]) < first(b[0]) ? -1 : 1) || a[1] - b[1]).map(x => x[0]);
   }
+  // Once per load (the board is the load's; a repaint after a save reuses it).
+  function _natBoardOnce(d) { if (!('_natNb' in d)) d._natNb = _natBoard(d); return d._natNb; }
   // The board's numbers for numberNationals, from the week's v5 board read by load(). null before L.
   function _natBoard(d) {
     if (d.v5BoardFailed) return 'failed';
@@ -925,7 +927,8 @@ const OrdersWeekView = (() => {
     if (scope !== 'natl' && m.rtFailed) add('Δεν διαβάστηκαν τα δρομολόγια (RT).', 'Κάθε διεθνής φαίνεται στο «ΧΩΡΙΣ RT» με το ποσό της· τα σύνολα μένουν σωστά.');
     if (scope !== 'intl' && d.natlFailed) add('Δεν διαβάστηκαν οι εθνικές.', 'Η ενότητα Εθνικές γράφει «—», όχι 0· ο τζίρος δείχνει μόνο τα διεθνή, με σήμανση «χωρίς εθνικά».');
     if (scope !== 'intl' && !d.natlFailed && d.v5Failed) add('Δεν διαβάστηκε η κατάσταση των εθνικών v5.', 'Η ανάθεση εθνικών χωρίς φορτίο γράφει «—», όχι «εκτός φορτίου»· το «παραδόθηκε» τους ακολουθεί την ημερομηνία παράδοσης.');
-    if (scope !== 'intl' && !d.natlFailed && d.v5BoardFailed) add('Δεν διαβάστηκε το Εβδομαδιαίο Εθνικών.', 'Οι εθνικές v5 γράφουν «—» στον αριθμό και το έγγραφο ανάθεσής τους δεν ανοίγει από εδώ.');
+    // no board (failed, or a Worker without /plan/board) while the week has v5 nationals: said here, never only in a tooltip
+    if (scope !== 'intl' && !d.natlFailed && (d.v5BoardFailed || (!d.v5Board && d.natl.some(r => r._v5 && typeof r._v5 === 'object')))) add('Δεν διαβάστηκε το Εβδομαδιαίο Εθνικών.', 'Οι εθνικές v5 γράφουν «—» στον αριθμό και το έγγραφο ανάθεσής τους δεν ανοίγει από εδώ.');
     if (scope !== 'intl' && !d.natlFailed && d.natLoads == null) add('Δεν διαβάστηκαν τα φορτία εθνικών.', 'Η ανάθεση εθνικών γράφει «—», όχι «εκτός φορτίου»· το ζευγάρι κάθοδος–άνοδος δεν σχεδιάζεται.');
     if (d.setFailed || d.gateFailed) add('Δεν απάντησε ο έλεγχος δελτίων.', 'Ισχύουν οι σημάνσεις δελτίων της ίδιας της παραγγελίας.');
     if (scope !== 'natl' && d.stopsFailed) add('Δεν διαβάστηκαν οι ημερομηνίες των στάσεων.', 'Η αρίθμηση ακολουθεί την 1η στάση· σε φορτία με στάσεις σε πολλές ημέρες μπορεί να διαφέρει από το Weekly.');
@@ -959,7 +962,7 @@ const OrdersWeekView = (() => {
       for (const l of r.legs) l.no = nums ? legNumber(l, nums) : 'failed';
     }
     const natRows = scope !== 'intl' && !d.natlFailed
-      ? natNumberOrder(numberNationals(pairNationals({ week: S.week, natl: d.natl, loads: d.natLoads, intl: d.intl }), _natBoard(d))) : [];
+      ? natNumberOrder(numberNationals(pairNationals({ week: S.week, natl: d.natl, loads: d.natLoads, intl: d.intl }), _natBoardOnce(d))) : [];
     natRows.forEach((r, i) => { r.docI = i; });
     S.model = m; S.natRows = natRows;
     const inScope = r => scope === 'all' || r._type === scope;
