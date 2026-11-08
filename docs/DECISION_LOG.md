@@ -6177,3 +6177,9 @@ SELECT μετά την εκτέλεση: #525 και #528 στο RT-1240 (closed
 **Εναλλακτικές:** να θεωρηθούν αρκετά τα tests. Απορρίφθηκε: έλεγχαν το πεδίο και το αίτημα, όχι τη γραμμή που διαβάζει ο dispatcher.
 **Απόδειξη:** `tests/critics/wn5-sotiris-shots.js` (πριν = main πριν από το #278, μετά = branch)· σελίδα owner «Σωτήρης 8/11: πριν και μετά»· rig `sotiris_warn` / `sotiris_hub_after`.
 **Ποιος:** owner (εκτέλεση 109, κανόνας screenshot), agent.
+
+### 2026-11-08 · Εθνικά v5 · 112 ΕΚΤΕΛΕΣΜΕΝΗ: το πάνελ «ΤΟΠΙΚΑ» λέει και το φορτηγό του τοπικού
+**Επιλογή:** το `plan_board` δίνει `truck_id` / `truck` (πινακίδα) στο `stops[].local_loading`, με ένα κομμάτι πάνω στο ζωντανό κείμενο (πρότυπο 109, φρουροί md5). Το εκτέλεσε ο owner 8/11, βήμα-βήμα: dry run «112 DRY RUN OK … (0 in this week) - nothing kept» → εκτέλεση, board_md5 `6ee19458d60e62de1492fa72edec36c8` → verify `md5_ok = true`, `worker_exec = true`. Επαληθεύτηκε μετά με SELECT. Το front end (#292) δείχνει «<πινακίδα> · τοπικός» και δούλευε σωστά και πριν από την εκτέλεση («τοπικός» μόνο).
+**Εναλλακτικές:** νέα ανάγνωση `locals[]` για όλη την εβδομάδα (και φορτώσεις άλλης ημέρας). Αναβλήθηκε: θέλει μεγαλύτερη αλλαγή, και ζωντανές `nat_loading` = 0 σήμερα. Δεύτερο facade GET στο `local_moves`: απορρίφθηκε (δύο μορφές id για την ίδια γραμμή, αρχή 3).
+**Απόδειξη:** `worker/migrations/112_plan_board_local_truck*.sql`, `worker/test/migration-112.test.mjs`, rig `rota-locals` E («TST-LOC1 · τοπικός»), `tests/wn5-logic.test.js`. **Η επόμενη αλλαγή στο `plan_board` μετρά πάνω στο md5 `6ee19458d60e62de1492fa72edec36c8`**, όχι στο `1fcb789b…` της 109.
+**Ποιος:** owner (εκτέλεση 112), agent.

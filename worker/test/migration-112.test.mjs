@@ -9,7 +9,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const D = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../migrations/drafts');
+// 112 ran 8/11 (owner): its files left drafts/ (CLAUDE.md, rule 5)
+const D = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../migrations');
 const read = (f) => fs.readFileSync(path.join(D, f), 'utf8');
 const RUN = read('112_plan_board_local_truck.sql');
 const DRY = read('112_plan_board_local_truck_dryrun.sql');
