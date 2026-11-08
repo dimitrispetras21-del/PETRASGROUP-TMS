@@ -4030,12 +4030,14 @@ async function _scanOpen(matched, data) {
   // picks them up via the new _scanPrefill path in _openModal.
   const ls = matched.loadStops || [];
   const ds = matched.delStops || [];
-  // The new form's hours (111, owner 8/11): scan v2 reads each stop's «time» («08:00» or «08:00-12:00»). Two times =
-  // from–to; one = from; anything else stays out (the slot is still in the notes the scan writes).
+  // The new form's hours (111, owner 8/11): scan v2 reads each stop's «time» («08:00», «08:00-12:00», «0700-1100»).
+  // Two times = from–to; one = from, or «to» when the word says a deadline («bis», «until», «έως», «latest», «by»);
+  // anything else stays out (the slot is still in the notes the scan writes). The field holds only the time.
   const hrs = s => {
-    const m = String((s && s.time) || '').match(/\d{1,2}[:.]\d{2}/g) || [];
-    const a = m[0] ? _oiHm(m[0]) : '', b = m[1] ? _oiHm(m[1]) : '';
-    return { [F.STOP_TIME_FROM]: _OI_HM_RE.test(a) ? a : null, [F.STOP_TIME_TO]: _OI_HM_RE.test(b) ? b : null };
+    const txt = String((s && s.time) || '');
+    const m = (txt.match(/\b\d{1,2}[:.]?\d{2}\b/g) || []).map(_oiHm).filter(v => _OI_HM_RE.test(v));
+    const until = m.length === 1 && /\b(bis|until|till|by|latest|sp[aä]testens|before)\b|έως|μέχρι|<|≤/i.test(txt);
+    return { [F.STOP_TIME_FROM]: until ? null : (m[0] || null), [F.STOP_TIME_TO]: until ? m[0] : (m[1] || null) };
   };
   const loadStops = ls.map((s, i) => ({
     fields: Object.assign({
