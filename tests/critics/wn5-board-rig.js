@@ -2206,9 +2206,9 @@ async function scnSheet(browser, origin) {
   page.context().on('page', (p) => { p.on('pageerror', (e) => popErr.push(String(e).slice(0, 300))); p.on('console', (m) => { if (m.type() === 'error' && !/^Failed to load resource/.test(m.text())) popErr.push(m.text().slice(0, 300)); }); });
   if (!ok(scn, 'WN5Sheet present', await KC.has(page, 'WN5Sheet'))) { await page.context().close(); return; }
   // T23 adds the last ✈ line: from here the menu is the whole approved list of Figma 2011:8858, in its order, one
-  // line per item («›» lines with their submenus, the same label never twice)
+  // line per item («›» lines with their submenus, the same label never twice); «Διαδρομή» after it (owner 8/11, change 4)
   const labels = await page.evaluate(() => (WN5._menuItems ? WN5._menuItems(101) : []).map((x) => x.label + (x.children.length ? ' › ' + x.children.join(' · ') : ''))).catch(() => []);
-  ok(scn, '✈ labels = Figma 2011:8858, in order', JSON.stringify(labels) === JSON.stringify(['Άνοιγμα παραγγελιών', 'Ανάθεση / αλλαγή φορτηγού ή συνεργάτη',
+  ok(scn, '✈ labels = Figma 2011:8858, in order', JSON.stringify(labels) === JSON.stringify(['Άνοιγμα παραγγελιών', 'Διαδρομή', 'Ανάθεση / αλλαγή φορτηγού ή συνεργάτη',
     'Νέα παραγγελία σε αυτό το δρομολόγιο › Κάθοδος · Άνοδος', 'Φόρτωση με τοπικό', 'Σπάσιμο παραγγελιών', 'Εκτύπωση / WhatsApp › Κάθοδος · Άνοδος · Όλο το δρομολόγιο',
     'Αντιγραφή πινακίδων', 'Αλλαγή οχήματος…', 'Καθαρισμός ανάθεσης']), labels);
   // fidelity T23 (Figma 2011:9284): the ΚΑΘΟΔΟΣ printer stands clear of the «+» (a write control) and of the ΑΝΑΘΕΣΗ
@@ -3965,6 +3965,54 @@ SCN.busy3 = async (browser, origin) => {
     ok(scn, 'no page errors («+»)', !S.pageErrors.length, S.pageErrors);
     await page.context().close();
   }
+};
+// owner 8/11 (change 4): ✈ «Διαδρομή» opens the shared route diagram of the row (core/route-diagram.js, boardCycle)
+// in a 480px panel, from the board already read — no new /plan/* call. TST-2103's week (RT-T204) gets a vehicle
+// change on Tuesday 08:00 at LARISA TEST (072b segments): its six points, the ⇄ row between them, ΑΡΧΙΚΟ / ΤΕΛΙΚΟ.
+// TST-2106 (RT-T201) loads a VS at Veroia: the Cross-dock row. A repaint keeps the panel; Esc closes it.
+SCN.route = async (browser, origin) => {
+  const scn = 'route';
+  const b = bBoard();
+  const c204 = b.cycles.find((c) => c.rt_id === 204);
+  c204.segments = [
+    { segment_id: 41, label: 'initial', trip_type: 'OWNED', truck_id: 13, truck: 'TST-2103', driver_id: 33, driver: 'Driver Test 03', has_vehicle: true,
+      stop_ids: [2033, 2031, 2032], from_at: bT('2026-10-12', '10:00') },
+    { segment_id: 42, label: 'final', trip_type: 'OWNED', truck_id: 14, truck: 'TST-2108', driver_id: 34, driver: 'Driver Test 04', has_vehicle: true,
+      stop_ids: [2034, 2035, 2036], from_at: bT('2026-10-13', '08:00'), place_note: 'LARISA TEST', reason: 'planned_truck' }];
+  const { page, S } = await bOpen(browser, origin, { board: b });
+  const reads0 = S.plan.length;
+  const P = 'body > .wn5-rdp[role="dialog"]';
+  ok(scn, '✈ has «Διαδρομή» right after «Άνοιγμα παραγγελιών»', await bMenu(page, 204, 'route'));
+  await page.waitForSelector(`${P} .rd`, { timeout: 5000 }).catch(() => {});
+  const r = await page.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    if (!el) return null;
+    const rows = [...el.querySelectorAll('.rd-row')];
+    return { w: Math.round(el.getBoundingClientRect().width), sub: el.querySelector('[data-rd-sub]').textContent,
+      stops: rows.filter((x) => x.dataset.dot !== 'handover').map((x) => x.querySelector('.rd-name').textContent),
+      hand: rows.filter((x) => x.dataset.dot === 'handover').map((x) => x.innerText.replace(/\s+/g, ' ').trim()),
+      at: rows.findIndex((x) => x.dataset.dot === 'handover'), segs: [...el.querySelectorAll('.rd-tag[data-seg]')].map((x) => x.textContent),
+      text: el.innerText, red: !!el.querySelector('.rd-note[data-tone="red"]') };
+  }, P);
+  ok(scn, 'a 480px panel «Διαδρομή · TST-2103 · Driver Test 03 · Δευ 12/10 → Τρί 13/10»', !!r && r.w === 480 && r.sub === 'TST-2103 · Driver Test 03 · Δευ 12/10 → Τρί 13/10', r && { w: r.w, sub: r.sub });
+  ok(scn, 'its six points in the board\'s order', !!r && JSON.stringify(r.stops) === JSON.stringify(['THESSALONIKI TEST', 'ΒΕΡΟΙΑ TEST', 'LARISA TEST', 'ATHENS TEST', 'ASPROPYRGOS TEST', 'ΒΕΡΟΙΑ TEST']), r && r.stops);
+  ok(scn, 'ONE ⇄ row, after the last point of ΑΡΧΙΚΟ (LARISA TEST), naming the place', !!r && r.hand.length === 1 && r.at === 3 && /LARISA TEST/.test(r.hand[0]), r && { hand: r.hand, at: r.at });
+  ok(scn, 'ΑΡΧΙΚΟ / ΤΕΛΙΚΟ tags on the points', !!r && r.segs.includes('ΑΡΧΙΚΟ') && r.segs.includes('ΤΕΛΙΚΟ'), r && r.segs);
+  ok(scn, 'no «κύκλος», no RT code, no red line', !!r && !/κύκλ|RT-/i.test(r.text) && !r.red, r && r.text);
+  ok(scn, 'no new /plan/* call: drawn from the board already read', S.plan.length === reads0, S.plan.slice(reads0).map((x) => x.m + ' ' + x.path));
+  await shot(page, 'route-1-handover');
+  await page.evaluate(() => WN5.paint());
+  await page.waitForTimeout(200);
+  const after = await page.$$eval(`${P} .rd-row`, (x) => x.length).catch(() => 0);
+  ok(scn, 'a repaint of the board keeps the panel, redrawn (7 rows)', after === 7, after);
+  await page.keyboard.press('Escape');
+  ok(scn, 'Esc closes it', !(await bHas(page, P)));
+  ok(scn, 'TST-2106 (a VS loaded at Veroia): the Cross-dock row', await bMenu(page, 201, 'route') && await page.waitForSelector(`${P} .rd-vs`, { timeout: 4000 }).then(() => true, () => false));
+  await shot(page, 'route-2-crossdock');
+  await page.click(`${P} .wn5-rdp-x`).catch(() => {});
+  ok(scn, '× closes it', !(await bHas(page, P)));
+  ok(scn, 'no page errors (route)', !S.pageErrors.length, S.pageErrors);
+  await page.context().close();
 };
 // ── main ──
 (async () => {
