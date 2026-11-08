@@ -364,7 +364,7 @@
           : `Το δρομολόγιο δεν έχει ${p === 'ANODOS' ? 'άνοδο' : 'κάθοδο'}: δεν βγαίνει φύλλο.`, 'warn');
         return false;
       }
-      _last ={ rtId, part: p, segmentId, lines: ls, meta: ctx.meta };   // whatsapp(rtId, part) answers for the last sheet built
+      _last = { rtId, part: p, segmentId, lines: ls, meta: ctx.meta };   // whatsapp(rtId, part) answers for the last sheet built
       if (typeof _printWeekShell === 'function') _printWeekShell(`Φύλλο οδηγού · ${ctx.cycle.code || 'RT-' + rtId}`, html(ls, ctx.meta, _tokens()));
       await _copy(text(ls, ctx.meta));
       return true;
