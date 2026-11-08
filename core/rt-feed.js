@@ -132,11 +132,14 @@ async function _rtSplitCodes(ids) {
   catch (e) { console.warn('[rt-feed] split: round-trip codes not read —', e && e.message); }
   let lk = null;
   try { lk = await _rtLookups(); } catch (_) { lk = null; }
-  const name = r => (typeof PlainRef !== 'undefined' && PlainRef.tripOf(r, lk)) || 'χωρίς όχημα';
-  return {
-    codes: ids.map(id => (byId[id] && byId[id].code) || ('RT id ' + id)),
-    names: ids.map(id => (byId[id] ? name(byId[id]) : 'ένα δρομολόγιο που δεν διαβάστηκε')),
-  };
+  const name = r => (typeof PlainRef !== 'undefined' && PlainRef.tripOf(r, lk, { span: true })) || 'χωρίς όχημα';
+  const codes = ids.map(id => (byId[id] && byId[id].code) || ('RT id ' + id));
+  const names = ids.map(id => (byId[id] ? name(byId[id]) : 'ένα δρομολόγιο που δεν διαβάστηκε'));
+  // A split group's trips are usually the SAME truck on the same days (7/10:
+  // both TRK · 5/10–7/10), so the words alone cannot tell the two apart for the
+  // merge: only then the code follows the words, in brackets (secondary place,
+  // the rule of 8/11 allows it for search).
+  return { codes, names: names.map((n, i) => (names.indexOf(n) !== names.lastIndexOf(n) && byId[ids[i]] ? n + ' (' + codes[i] + ')' : n)) };
 }
 
 // Own fixed column at the top: toasts sit bottom-right (showErrorToast evicts

@@ -1,4 +1,5 @@
 -- 109 - NATIONAL v5: THE BOARD NAMES THE INTERNATIONAL TRIPS OF OUR TRUCKS (Sotiris report 8/11, item 4).
+-- EXECUTED 8/11/2026 by the owner: dry run "34 for this week", board_md5 1fcb789ba0cf08aea836c3aa98270610, verify md5_ok / worker_exec / intl_trips=34. Do NOT run again.
 -- An own truck on an international trip (model 1) put on a national v5 trip read "free" (eleftero) in every form of the board:
 -- plan_board returns the v5 (model 2) trips only, and the base's same-truck note (072 plan_h_v1_warn, v1_same_truck)
 -- reached the screen only from the time panel's dry run or after the save. Measured 8/11 (SELECT): IAZ8302 RT-1401
