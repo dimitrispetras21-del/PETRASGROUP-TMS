@@ -755,36 +755,40 @@ test('PATCH /costs/rt/:id on a v5 cycle (model 2) → 409 in Greek, no PATCH; a 
   assert.equal(auditRows().length, 1);
 });
 
-test('facade PATCH ORDER STOPS refused by a plan: rule (bridge stop, 071) → 422; «Via Hub» closed to every screen before AND after day L (F5, Q-6)', async () => {
+test('facade PATCH ORDER STOPS refused by a plan: rule (bridge stop, 071) → 422; since 111 «Via Hub» and the stop hours are the desk\'s inputs (owner 8/11)', async () => {
   const STOPS = '/v0/appTEST/tblaeY5QOHAS1gyE8';
-  on('GET', 'order_stops', (u) => (u.searchParams.get('select') === '*' ? json([{ id: 31, legacy_id: 'recSTOP1', pallets: 20, via_hub: false }]) : null));
-  on('PATCH', 'order_stops', (u, b) => (b.via_hub !== undefined
-    ? pgError(400, { code: '23514', hint: null, details: null, message: 'new row for relation "order_stops" violates check constraint "order_stops_via_hub_intl"' })
-    : planReject('pieces_sum', '12:19<>20')));
+  on('GET', 'order_stops', (u) => (u.searchParams.get('select') === '*' ? json([{ id: 31, legacy_id: 'recSTOP1', pallets: 20, via_hub: null }]) : null));
+  on('PATCH', 'order_stops', (u, b) => {
+    if (b.pallets === 19) return planReject('pieces_sum', '12:19<>20');
+    if (b.via_hub === true && b.notes === 'national') return pgError(400, { code: '23514', hint: null, details: null, message: 'new row for relation "order_stops" violates check constraint "order_stops_via_hub_intl"' });
+    if (b.time_from === '8:00') return pgError(400, { code: '23514', hint: null, details: null, message: 'new row for relation "order_stops" violates check constraint "order_stops_time_from_fmt"' });
+    return json([{ id: 31, legacy_id: 'recSTOP1', pallets: 20, ...b }]);
+  });
   let r = await call('dispatcher', 'PATCH', `${STOPS}/recSTOP1`, { fields: { Pallets: 19 } });
   assert.equal(r.status, 422, r.text);
   assert.deepEqual(r.json, { error: { type: 'PLAN_RULE', code: 'pieces_sum', message: 'Τα κομμάτια δεν αθροίζουν στις παλέτες της αποστολής (12:19<>20)' } });
-  // finding 8 (αρχή 5) and Q-6 (owner 28/10): a write naming «Via Hub» — alone, beside another field, single or
-  // batch — is refused before any DB call, never dropped with a 200; only the DB writes it (074 plan_bridge_sync),
-  // so the /plan/* switch (day L) does not open it either
-  for (const send of [call, callOpen]) {
-    for (const [method, p, body] of [['PATCH', `${STOPS}/recSTOP1`, { fields: { 'Via Hub': true } }],
-      ['PATCH', `${STOPS}/recSTOP1`, { fields: { Pallets: 19, 'Via Hub': false } }],
-      ['PATCH', STOPS, { records: [{ id: 'recSTOP1', fields: { 'Via Hub': true } }] }],
-      ['POST', STOPS, { fields: { 'Via Hub': true } }]]) {
-      calls.length = 0;
-      r = await send('owner', method, p, body);
-      assert.equal(r.status, 400, `${method} ${JSON.stringify(body)}: ${r.text}`);
-      assert.deepEqual(r.json.error, { type: 'BAD_REQUEST', code: 'db_only',
-        message: '«Via Hub»: το γράφει μόνο η βάση (γέφυρα VS του Εβδομαδιαίου Εθνικών) — δεν αλλάζει από οθόνη' });
-      assert.equal(calls.filter((c) => c.method !== 'GET').length, 0, 'nothing written');
-    }
+  // 111: «Via Hub» true / false / null and «Time From» / «Time To» reach the row as written (never dropped with a 200)
+  for (const [fields, want] of [[{ 'Via Hub': true }, { via_hub: true }], [{ 'Via Hub': false }, { via_hub: false }],
+    [{ 'Via Hub': null }, { via_hub: null }], [{ 'Time From': '08:00', 'Time To': '14:30' }, { time_from: '08:00', time_to: '14:30' }],
+    [{ 'Time From': null, 'Time To': null }, { time_from: null, time_to: null }]]) {
+    calls.length = 0;
+    r = await call('dispatcher', 'PATCH', `${STOPS}/recSTOP1`, { fields });
+    assert.equal(r.status, 200, `${JSON.stringify(fields)}: ${r.text}`);
+    const w = calls.find((c) => c.method === 'PATCH');
+    assert.ok(w, 'a PATCH reached the base');
+    for (const [col, v] of Object.entries(want)) assert.equal(w.body[col], v, `${col} written as sent`);
   }
-  // and it is still read by every path
+  // the base's refusals reach the screen in Greek, named: a tick on a national stop, an hour not HH:MM
+  r = await call('dispatcher', 'PATCH', `${STOPS}/recSTOP1`, { fields: { 'Via Hub': true, Notes: 'national' } });
+  assert.equal(r.status, 422, r.text);
+  assert.equal(r.json.error.message, 'Το «μέσω Βέροιας» υπάρχει μόνο σε στάση διεθνούς παραγγελίας');
+  r = await call('dispatcher', 'PATCH', `${STOPS}/recSTOP1`, { fields: { 'Time From': '8:00' } });
+  assert.equal(r.status, 422, r.text);
+  assert.equal(r.json.error.message, 'Ώρα σε μορφή ΩΩ:ΛΛ (π.χ. 07:00)');
+  // and it is still read by every path (NULL = the field is absent, facade trap 2)
   r = await call('dispatcher', 'GET', `${STOPS}/recSTOP1`);
   assert.equal(r.status, 200, r.text);
-  assert.equal(r.json.fields['Via Hub'], false, 'read as the DB holds it');
-  assert.equal(auditRows().length, 0);
+  assert.ok(!('Via Hub' in r.json.fields), 'NULL is not a field');
 });
 
 // ───────────────────── K1 review r1: what a write's failure says ─────────────────────

@@ -1789,17 +1789,20 @@ var TABLES = {
       // external/other) — READ-ONLY, see readOnly below.
       "Delay Responsibility": "delay_responsibility",
       // 071 (F1 Interfaces, decision 27): «through Veroia» on an INTERNATIONAL
-      // stop — default false, CHECK order_stops_via_hub_intl; 074 fills it on
-      // day L. Mapped now so the column is never written-and-dropped (trap 1);
-      // 072's rollback does not count it as a v5 row.
-      "Via Hub": "via_hub"
+      // stop, CHECK order_stops_via_hub_intl. Since 111 (owner 8/11, the new
+      // international form, F4b) it is the desk's choice per stop and an
+      // input: NULL = follows the VS (every national-side stop), true =
+      // through Veroia, false = direct; the bridge (074 plan_h_bridge_wanted)
+      // reads it and never writes it. Deploy this Worker ONLY AFTER 111 ran:
+      // before it the column is NOT NULL and the bridge overwrites the choice.
+      "Via Hub": "via_hub",
+      // 111 (owner 8/11: «μη υποχρεωτικό»): an optional window per stop, text
+      // HH:MM (CHECK order_stops_time_*_fmt, as local_moves 060); empty = all
+      // day, from > to = a night window. Without 111 the columns do not exist
+      // and every write naming them fails loud (500), never a silent drop.
+      "Time From": "time_from",
+      "Time To": "time_to"
     },
-    // Born closed (review of PR #90, finding 8; αρχή 5), and closed for good since F5 (owner 28/10, Q-6): «Via
-    // Hub» is read by every path, but only the DB writes it (074 plan_bridge_sync: true on the national side of
-    // a VS in v5, false elsewhere). A facade write naming it is refused (400 db_only, named, no DB call) before
-    // AND after day L — the /plan/* switch does not open it. It becomes an input only with the per-stop box of
-    // the International panel (F4b), in its own change. No screen writes it today (grep 26/10: none).
-    dbOnly: ["Via Hub"],
     // Labels the base computes. Mapped in `fields` so every read path (select,
     // filter, sort, the PATCH answer the screen reads back) carries them with
     // no extra request; `fields` is also the write allow-list, so a write
@@ -2725,16 +2728,6 @@ __name(authorizeWrite, "authorizeWrite");
 // is refused as a whole, before any database call, naming the label — the
 // caller fixes its request instead of reading «saved» over a half-applied one.
 function refuseReadOnly(cfg, fieldsList, origin, env) {
-  if (cfg.dbOnly) {
-    const shut = [];
-    for (const f of fieldsList) {
-      if (!f || typeof f !== "object") continue;
-      for (const label of cfg.dbOnly) if (Object.prototype.hasOwnProperty.call(f, label) && !shut.includes(label)) shut.push(label);
-    }
-    if (shut.length) {
-      return jsonOk({ error: { type: "BAD_REQUEST", code: "db_only", message: `${shut.map((l) => `«${l}»`).join(", ")}: το γράφει μόνο η βάση (γέφυρα VS του Εβδομαδιαίου Εθνικών) — δεν αλλάζει από οθόνη` } }, origin, env, 400);
-    }
-  }
   if (!cfg.readOnly) return null;
   const hit = [];
   for (const f of fieldsList) {
@@ -3609,6 +3602,9 @@ const PLAN_CHECK_TEXT = {
   plan_notices_read_pair: "Το «διαβάστηκε» γράφει ώρα και χρήστη μαζί",
   // order_stops / local_moves (071 additions on live tables)
   order_stops_via_hub_intl: "Το «μέσω Βέροιας» υπάρχει μόνο σε στάση διεθνούς παραγγελίας",
+  // 111: the optional window of a stop
+  order_stops_time_from_fmt: "Ώρα σε μορφή ΩΩ:ΛΛ (π.χ. 07:00)",
+  order_stops_time_to_fmt: "Ώρα σε μορφή ΩΩ:ΛΛ (π.χ. 07:00)",
   local_moves_nat_loading: "Η τοπική φόρτωση εθνικών θέλει στάση και οδηγό, και είναι μόνο «ανατέθηκε» ή «ακυρώθηκε»",
   // 071 unique indexes (23505); local_moves_nat_loading_once answers local_exists instead
   piece_legs_live_no: "Το φορτίο έχει ήδη ζωντανή κίνηση με αυτόν τον αριθμό — ανανέωσε τη σελίδα",
