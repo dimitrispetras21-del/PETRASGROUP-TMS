@@ -1,4 +1,5 @@
--- 106 - export groupage: every live member carries the group's ONE matched import (DRAFT, NOT EXECUTED).
+-- 106 - export groupage: every live member carries the group's ONE matched import. EXECUTED 8/11/2026 ~13:15 by the
+--   owner (dry run, source, verify: see docs/DECISION_LOG.md). Do not run again: the guards refuse a second run.
 -- WHY: owner decision 8/11 (docs/rt-sync-v6/PLAN.md, B2 "export groupage match"). The Weekly reads the match from
 --   one member, so a group where only some members carry it can hide the import from the board (case #643 /
 --   GRP-Gl7rxx4W, 8/11). Measured over all export groupages 8/11: 16 groups, 0 with two different imports.
