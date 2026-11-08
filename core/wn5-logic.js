@@ -594,6 +594,18 @@ function handoversOf(cycle) {
   return out;
 }
 
-const WN5L = freeze({ model, rowOrder, waitSide, segmentsOf, stopSegments, handoversOf, searchParts, cycleNumbers, capacity, stopRank, hubFromBoard, athensDay, athensTime, allDay, winText, DAY_WIN, palText, CAP, HUB_UNKNOWN, ShapeError });
+// The board's row numbers (owner 2/11/2026: «το 1 να αντιστοιχεί στο 1» — and for the nationals «ο αριθμός του
+// φορτηγού από το board v5»): rt_id → n, in the order the board draws its rows (days, then each day's rows). Only a
+// cycle row of the week counts: a load waiting for a vehicle has no number, and a cycle carried from an earlier week
+// (3d) is numbered in THAT week, not here. ONE count: the board (weekly_natl_v5.js) paints these numbers and
+// «Παραγγελίες › Εβδομάδα» shows them, so the two can never number one truck differently.
+function boardNumbers(m) {
+  const out = new Map();
+  let n = 0;
+  for (const d of (m && m.days) || []) for (const r of d.rows) if (r.kind === 'cycle' && !r.carried) out.set(r.rtId, ++n);
+  return out;
+}
+
+const WN5L = freeze({ model, boardNumbers, rowOrder, waitSide, segmentsOf, stopSegments, handoversOf, searchParts, cycleNumbers, capacity, stopRank, hubFromBoard, athensDay, athensTime, allDay, winText, DAY_WIN, palText, CAP, HUB_UNKNOWN, ShapeError });
 if (typeof module !== 'undefined') module.exports = WN5L; else window.WN5L = WN5L;
 })();

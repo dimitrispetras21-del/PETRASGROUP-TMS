@@ -370,6 +370,141 @@ async function scnDocs(browser) {
   await page.context().close();
 }
 
+// «natv5» (owner 8/11/2026): after day L the national rows carry the Weekly National v5's number of their truck
+// (the number the board paints for that rt_id), «—» with the reason otherwise, and a click on their ΑΝΑΘΕΣΗ shows
+// the board's driver sheet of that truck and side in a frame — nothing printed, nothing copied, no second app.
+// The board is tests/fixtures/wn5-week.json (rows 1…8 = RT-T101…T108, one per rt_id in board order) served for the
+// asked week; /plan/nat-state names the trucks by RT code, as 074a does.
+async function scnNatV5(browser) {
+  console.log('\n[natv5] Εθνικά v5: αριθμός του Εβδομαδιαίου Εθνικών + φύλλο οδηγού στην ΑΝΑΘΕΣΗ');
+  const page = await P.newPage(browser, 'owner');
+  await boardReads(page);
+  // the fixture's days moved to the rig's week (its week is 10/10): every ISO day + the same number of days
+  const raw = require('fs').readFileSync(path.join(__dirname, '..', 'fixtures', 'wn5-week.json'), 'utf8');
+  const shift = Math.round((Date.parse(P.WEEK_FROM + 'T00:00:00Z') - Date.parse(JSON.parse(raw).week + 'T00:00:00Z')) / 864e5);
+  const fix = JSON.parse(raw.replace(/\b(20\d\d-\d\d-\d\d)/g, (d) => new Date(Date.parse(d + 'T00:00:00Z') + shift * 864e5).toISOString().slice(0, 10)));
+  const json = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
+  const asked = [];
+  await page.route('**/plan/config', route => json(route, { cutover_day: '2026-08-01', opened_at: '2026-08-01T05:00:00Z', writes_open: true }));
+  const car = (kind, code, side, truck) => ({ kind, truck: truck || null, trailer: null, driver: kind === 'owned' ? 'Driver Test' : null, partner: kind === 'partner' ? 'Partner Test' : null, code, side, day: null });
+  const ST = {
+    427: [car('owned', 'RT-T106', 'KATHODOS', 'TST-2108')],
+    430: [car('owned', 'RT-T102', 'KATHODOS', 'TST-2106'), car('partner', 'RT-T104', 'ANODOS')],   // split at Veroia
+    429: [],                                                                                        // waits for a vehicle
+  };
+  await page.route(/\/plan\/nat-state/, route => {
+    const ids = (new URL(route.request().url()).searchParams.get('nat_order_ids') || '').split(',').filter(Boolean);
+    const out = {};
+    for (const id of ids) out[id] = ST[id] ? { n_pieces: 1, n_executed: 0, executed: false, planned: ST[id].length > 0, late: false, hub_side: 'KATHODOS', carriers: ST[id] } : 'missing';
+    return json(route, out);
+  });
+  await page.route(/\/plan\/board\?/, route => {
+    const wk = new URL(route.request().url()).searchParams.get('week');
+    asked.push(wk);
+    return json(route, Object.assign({}, fix, { week: wk }));
+  });
+  await page.route(/\/plan\/lookups/, route => json(route, { locations: [1, 2, 3, 4, 5, 6, 7, 8].map(k => ({ id: k, legacy_id: k === 1 ? 'recJucKOhC1zh4IP3' : 'recDEF' + k,
+    name: k === 1 ? 'ΒΕΡΟΙΑ TEST' : 'Place Test ' + k, address: 'Street ' + k, city: null, phone: '2100000000', is_hub: k === 1 })), clients: [], trucks: [], trailers: [], drivers: [], partners: [] }));
+  await page.addInitScript(() => {
+    window.__copied = 0; window.__printed = 0;
+    try { Object.defineProperty(navigator, 'clipboard', { value: { writeText: () => { window.__copied++; return Promise.resolve(); } } }); } catch (_) {}
+  });
+  await P.openWeek(page);
+  await page.waitForSelector('.ow4-row.ow4-nat', { timeout: 15000 });
+  ok(asked.length >= 1 && asked.every(w => w === P.WEEK_FROM), `the week's v5 board is read for the week on screen (${JSON.stringify(asked)})`);
+  const natNo = async (client) => page.evaluate((cl) => {
+    const row = [...document.querySelectorAll('.ow4-row.ow4-nat')].find(r => r.textContent.includes(cl));
+    const no = row && row.querySelector('.ow4-no');
+    return row ? { no: no ? no.textContent.trim() : null, title: no ? no.getAttribute('title') : null, doc: !!row.querySelector('[data-owvnatdoc]') } : null;
+  }, client);
+  const a = await natNo('Ορεινά Γαλακτοκομικά'), b = await natNo('4500131302'), w = await natNo('Ελαιώνας Μεσογείου'), old = await natNo('Αρκαδικά Κηπευτικά');
+  ok(a && a.no === '6' && /Εθνικών/.test(a.title) && a.doc, `#427 on RT-T106 = row 6 of the board (${JSON.stringify(a)})`);
+  ok(b && b.no === '2 · 4' && b.doc, `#430 split on RT-T102 + RT-T104 = «2 · 4» (${JSON.stringify(b)})`);
+  ok(w && w.no === '—' && /περιμένει όχημα/.test(w.title) && !w.doc, `#429 waiting = «—», «περιμένει όχημα», no document (${JSON.stringify(w)})`);
+  ok(old && old.no === '—' && /παλιού μοντέλου/.test(old.title), `#431 (old model) = «—» with its reason (${JSON.stringify(old)})`);
+  // the numbered rows of a day come in number order
+  const order = await page.evaluate(() => [...document.querySelectorAll('.ow4-row.ow4-nat .ow4-no')].map(n => n.textContent.trim()).filter(t => t !== '—'));
+  ok(order.length >= 2, 'national numbers on screen: ' + order.join(', '));
+
+  // ΑΝΑΘΕΣΗ of #430 → two sheets (Κάθοδος RT-T102, Άνοδος RT-T104), each a frame of the board's sheet
+  const row = page.locator('.ow4-row.ow4-nat', { hasText: '4500131302' }).first();
+  await row.locator('.ow4-asg').click();
+  await page.waitForFunction(() => document.querySelectorAll('#owvDocs:not(.hidden) iframe').length === 2, null, { timeout: 10000 });
+  await page.waitForTimeout(500);
+  const st = await page.evaluate(() => ({
+    titles: [...document.querySelectorAll('#owvDocs .owv-doc-t')].map(t => t.textContent.trim()),
+    srcs: [...document.querySelectorAll('#owvDocs iframe')].map(f => f.getAttribute('src')),
+    head: (document.querySelector('#owvDocs .owv-docs-h span') || {}).textContent,
+    card: !document.getElementById('natlDetail') || !document.getElementById('natlDetail').classList.contains('hidden'),
+    copied: window.__copied,
+  }));
+  ok(/Κάθοδος — Φύλλο Οδηγού · RT-T102/.test(st.titles[0]) && /Άνοδος — Φύλλο Οδηγού · RT-T104/.test(st.titles[1]), 'titles: ' + st.titles.join(' | '));
+  ok(st.srcs.every(s => s === null), 'the frames are the sheet itself (srcdoc), never print.html or a second app');
+  ok(st.head === 'RT-T102 · RT-T104', 'header names both trucks: ' + st.head);
+  ok(st.copied === 0, 'nothing copied (the board\'s ⎙ copies the WhatsApp text; here it is read-only)');
+  const fr = page.frames().filter(f => f !== page.mainFrame());
+  const txt = await Promise.all(fr.map(f => f.locator('body').innerText().catch(() => '')));
+  ok(txt.length === 2 && /TST-2106/.test(txt[0]) && /ΚΑΘΟΔΟΣ|Κάθοδος/i.test(txt[0]), 'frame 1 = the driver sheet of RT-T102 ΚΑΘΟΔΟΣ (' + (txt[0] || '').replace(/\s+/g, ' ').slice(0, 90) + '…)');
+  ok(/ΣΥΝΕΡΓΑΤΗΣ/.test(txt[1] || ''), 'frame 2 = the partner\'s sheet of RT-T104 (' + (txt[1] || '').replace(/\s+/g, ' ').slice(0, 90) + '…)');
+  await page.screenshot({ path: path.join(SHOTS, 'natv5-docs.png') });
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(200);
+  ok(await page.locator('#owvDocs.hidden').count() === 1, 'Esc closes the documents');
+  // Enter on the ΑΝΑΘΕΣΗ of #427 opens its one sheet
+  await page.locator('.ow4-row.ow4-nat', { hasText: 'Ορεινά Γαλακτοκομικά' }).first().locator('[data-owvnatdoc]').focus();
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.querySelectorAll('#owvDocs:not(.hidden) iframe').length === 1, null, { timeout: 10000 });
+  ok(/RT-T106/.test(await page.locator('#owvDocs .owv-doc-t').first().textContent()), 'Enter opens #427\'s sheet (RT-T106)');
+  await page.click('#owvDocs [data-owvdocs="close"]');
+  await page.screenshot({ path: path.join(SHOTS, 'natv5-week.png'), fullPage: true });
+  ok(P.realErrors(page).length === 0, 'natv5: 0 page/console errors ' + JSON.stringify(P.realErrors(page)).slice(0, 300));
+  await page.context().close();
+}
+
+// «natv5carry» (owner 8/11/2026: «12 · W44»): every truck of the week's board started the week before (the fixture's
+// days sit in the previous week), so on this week's board each is a continuation without a number. The previous
+// week's board numbers them: #427 on RT-T106 reads «6 · W<prev>», and the sheet still opens from this week's board.
+async function scnNatV5Carry(browser) {
+  console.log('\n[natv5carry] Εθνικά v5: συνέχεια = ο αριθμός της εβδομάδας του φορτηγού');
+  const page = await P.newPage(browser, 'owner');
+  await boardReads(page);
+  const raw = require('fs').readFileSync(path.join(__dirname, '..', 'fixtures', 'wn5-week.json'), 'utf8');
+  const day = (iso, d) => new Date(Date.parse(iso + 'T00:00:00Z') + d * 864e5).toISOString().slice(0, 10);
+  const prev = day(P.WEEK_FROM, -7);
+  const shift = Math.round((Date.parse(prev + 'T00:00:00Z') - Date.parse(JSON.parse(raw).week + 'T00:00:00Z')) / 864e5);
+  const fixPrev = JSON.parse(raw.replace(/\b(20\d\d-\d\d-\d\d)/g, (d) => day(d, shift)));
+  const json = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
+  const asked = [];
+  await page.route('**/plan/config', route => json(route, { cutover_day: '2026-08-01', opened_at: '2026-08-01T05:00:00Z', writes_open: true }));
+  await page.route(/\/plan\/nat-state/, route => {
+    const ids = (new URL(route.request().url()).searchParams.get('nat_order_ids') || '').split(',').filter(Boolean);
+    const out = {};
+    for (const id of ids) out[id] = id === '427' ? { n_pieces: 1, n_executed: 0, executed: false, planned: true, late: false, hub_side: 'KATHODOS',
+      carriers: [{ kind: 'owned', truck: 'TST-2108', trailer: null, driver: 'Driver Test', partner: null, code: 'RT-T106', side: 'ANODOS', day: null }] } : 'missing';
+    return json(route, out);
+  });
+  // the week on screen: the same cycles (days of the previous week) → all continuations; the previous week: its own
+  await page.route(/\/plan\/board\?/, route => {
+    const wk = new URL(route.request().url()).searchParams.get('week');
+    asked.push(wk);
+    return json(route, Object.assign({}, fixPrev, { week: wk }));
+  });
+  await page.route(/\/plan\/lookups/, route => json(route, { locations: [1, 2, 3, 4, 5, 6, 7, 8].map(k => ({ id: k, legacy_id: k === 1 ? 'recJucKOhC1zh4IP3' : 'recDEF' + k,
+    name: k === 1 ? 'ΒΕΡΟΙΑ TEST' : 'Place Test ' + k, address: 'Street ' + k, city: null, phone: '2100000000', is_hub: k === 1 })), clients: [], trucks: [], trailers: [], drivers: [], partners: [] }));
+  await P.openWeek(page);
+  await page.waitForSelector('.ow4-row.ow4-nat', { timeout: 15000 });
+  ok(asked.includes(P.WEEK_FROM) && asked.includes(prev), `both boards read: this week and the continuations' week (${JSON.stringify(asked)})`);
+  const wPrev = await page.evaluate(w => TmsWeek.numOf(new Date(w + 'T12:00:00')), prev);
+  const a = await page.evaluate(() => {
+    const row = [...document.querySelectorAll('.ow4-row.ow4-nat')].find(r => r.textContent.includes('Ορεινά Γαλακτοκομικά'));
+    const no = row && row.querySelector('.ow4-no');
+    return row ? { no: no ? no.textContent.trim() : null, title: no ? no.getAttribute('title') : null, doc: !!row.querySelector('[data-owvnatdoc]') } : null;
+  });
+  ok(a && a.no === `6 · W${wPrev}` && /προηγούμενη εβδομάδα/.test(a.title) && a.doc, `#427 (continuation of RT-T106) = «6 · W${wPrev}», its sheet opens (${JSON.stringify(a)})`);
+  ok(P.realErrors(page).length === 0, 'natv5carry: 0 page/console errors ' + JSON.stringify(P.realErrors(page)).slice(0, 300));
+  await page.context().close();
+}
+
 // «invoice» (owner 3/11, Eirini's main table): ΤΠΥ, «Αυτοπαράδοση», price entry, price correction, ΤΠΥ
 // correction and undo from the week's ΤΠΥ / ΠΟΣΟ cells. The proof is the PATCH BODY (the same fields as
 // «Προς τιμολόγηση»), then the line the week repaints from the record the mock Worker returned.
@@ -619,6 +754,8 @@ async function scnInvoice(browser) {
   const browser = await chromium.launch();
   try {
     await scnDocs(browser);
+    await scnNatV5(browser);
+    await scnNatV5Carry(browser);
     await scnAlign(browser);
     await scnOrder(browser);
     await scnCard(browser);
