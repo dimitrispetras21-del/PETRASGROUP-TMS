@@ -31,9 +31,10 @@
 --     (a split order's second leg carries no price by design). Its expressions are COPIED verbatim from
 --     ct_v_rt_revenue of 3/11 (md5 below; tests/fixtures/ct_v_rt_revenue-2026-11-03.sql). Making ct_v_rt_revenue read
 --     this view instead (one source) is NOT done here: it would lock the live view and was measured too costly to
---     prove inside a block. Until then the copy is guarded three times: this block refuses if ct_v_rt_revenue is not
---     the 3/11 text; preflight and verify prove the sums on every round trip; and the paper (Worker PR) must check
---     sum(loads) = ct_v_rt_pnl.revenue for the trip it prints and refuse to print otherwise;
+--     prove inside a block. Until then the copy is guarded four times: this block refuses if ct_v_rt_revenue is not
+--     the 3/11 text; preflight and verify prove the sums on every round trip; the build fails on a later migration
+--     that changes ct_v_rt_revenue without this view (tests/sql-105-drafts.test.js); and the paper (Worker PR) must
+--     check sum(loads) = ct_v_rt_pnl.revenue for the trip it prints and refuse to print otherwise;
 --   * view ct_v_rt_cost_cat: cost lines per round trip x category x toll country (the paper's "tolls per country",
 --     owner 3/11) - count, net, vat;
 --   * view ct_v_rt_complete: per round trip (not cancelled) done (closed / complete), missing text[] of

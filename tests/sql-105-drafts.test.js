@@ -135,7 +135,9 @@ test('105 after it runs: a migration that changes ct_v_rt_revenue must change th
   // ct_v_rt_revenue_legs is a COPY of ct_v_rt_revenue's expressions (DECISION_LOG 8/11): the build catches a later
   // migration that moves one without the other, the day it is written (principle 6), not on the paper weeks later.
   const files = [...fs.readdirSync(DRAFTS).map((f) => path.join(DRAFTS, f)), ...fs.readdirSync(path.join(ROOT, 'worker/migrations')).map((f) => path.join(ROOT, 'worker/migrations', f))]
-    .filter((f) => /\.sql$/.test(f) && parseInt(path.basename(f), 10) > 105 && !/_(dryrun|rollback_dryrun|verify|preflight)\.sql$/.test(f));
+    // after 105: a higher number, or 105 with a letter (105a_, 105b_ ... as 057b / 071a); 105_ itself is this migration
+    .filter((f) => /\.sql$/.test(f) && !/_(dryrun|verify|preflight)\.sql$/.test(f))
+    .filter((f) => { const m = /^(\d+)([a-z]?)_/.exec(path.basename(f)); return m && (+m[1] > 105 || (+m[1] === 105 && m[2] !== '')); });
   const bad = files.filter((f) => {
     const t = strip(fs.readFileSync(f, 'utf8'));
     return /VIEW (public\.)?ct_v_rt_revenue\s+AS\b/i.test(t) && !/VIEW (public\.)?ct_v_rt_revenue_legs\s+AS\b/i.test(t);
