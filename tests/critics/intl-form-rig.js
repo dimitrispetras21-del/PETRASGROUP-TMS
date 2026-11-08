@@ -317,7 +317,7 @@ async function run() {
   // a v2 result as scanV2Extract returns it, after _scanPreview matched the points (the same objects carry _locId)
   await page.evaluate(([ld, dd]) => {
     const L = [{ type: 'loading', location_name: 'Farm A', location_id: 'recLA', city: 'Stubenberg', country: 'AT', date: ld, time: '07:00-11:30', pallets: 20, _locId: 'recLA', _locLabel: 'Farm A' },
-      { type: 'loading', location_name: 'Farm B', location_id: 'recLB', city: 'Ried', country: 'AT', date: ld, time: '', pallets: 13, _locId: 'recLB', _locLabel: 'Farm B' }];
+      { type: 'loading', location_name: 'Farm B', location_id: 'recLB', city: 'Ried', country: 'AT', date: ld, time: 'bis 1530', pallets: 13, _locId: 'recLB', _locLabel: 'Farm B' }];
     const D = [{ type: 'delivery', location_name: 'Foods Three', location_id: 'recG3', city: 'Athens', country: 'GR', date: dd, time: '6.00', pallets: null, _locId: 'recG3', _locLabel: 'Foods Three' }];
     window._scanResult = { matched: { clientId: 'recCliA', clientLabel: 'Πελάτης Α', loadStops: L, delStops: D },
       data: { client_name: 'Πελάτης Α', reference: 'SCAN-77', goods: 'Μήλα', gross_weight_kg: 21300, pallets: 33, pallet_type: 'EUR', temperature_c: 2,
@@ -333,13 +333,13 @@ async function run() {
     p1: document.getElementById('pal_l_1').value, p2: document.getElementById('pal_l_2').value, pu: document.getElementById('pal_u_1').value,
     dl: document.getElementById('dt_l_1').value, du: document.getElementById('dt_u_1').value,
     tf1: document.getElementById('tf_l_1').value, tt1: document.getElementById('tt_l_1').value, open1: document.getElementById('hrs_l_1').classList.contains('open'),
-    tf2: document.getElementById('tf_l_2').value, tfu: document.getElementById('tf_u_1').value, ttu: document.getElementById('tt_u_1').value,
+    tf2: document.getElementById('tf_l_2').value, tt2: document.getElementById('tt_l_2').value, tfu: document.getElementById('tf_u_1').value, ttu: document.getElementById('tt_u_1').value,
     prefill: !document.getElementById('oiPrefill').hidden }));
   ok(sf.dir === 'Import' && sf.cli === 'recCliA' && sf.cliLbl === 'Πελάτης Α' && sf.ref === 'SCAN-77' && sf.price === '3100' && sf.goods === 'Μήλα' && sf.gw === '21300'
     && sf.temp === '2' && sf.reefer === 'Continuous' && sf.pt === 'EUR' && sf.notes === 'slot 07:00', 'scan → form: direction, client, reference, price, goods, weight, °C, reefer, pallet type, notes — ' + JSON.stringify(sf));
   ok(sf.l1 === 'recLA' && sf.l2 === 'recLB' && sf.u1 === 'recG3' && sf.p1 === '20' && sf.p2 === '13' && sf.pu === '33' && sf.dl === addDays(TODAY, 1) && sf.du === addDays(TODAY, 3),
     'scan → form: points, pallets (the one delivery = the loading sum), days');
-  ok(sf.open1 && sf.tf1 === '07:00' && sf.tt1 === '11:30' && sf.tf2 === '' && sf.tfu === '06:00' && sf.ttu === '', 'scan → form: the stop time goes to the hours («07:00-11:30» → 07:00–11:30, «6.00» → from 06:00, none → all day)');
+  ok(sf.open1 && sf.tf1 === '07:00' && sf.tt1 === '11:30' && sf.tf2 === '' && sf.tt2 === '15:30' && sf.tfu === '06:00' && sf.ttu === '', 'scan → form: the stop time goes to the hours («07:00-11:30» → 07:00–11:30, «bis 1530» → until 15:30, «6.00» → from 06:00)');
   ok(!sf.prefill && (cap.lastReads || 0) === readsBefore, 'a scan never runs the last-order prefill');
   await page.screenshot({ path: shot('scan'), clip: await modalClip(page) });
   await page.click('#f_PalletExch label:has(input[value="yes"])');   // the scan does not answer the exchange: the form asks (as before)
@@ -351,7 +351,7 @@ async function run() {
   const sl1 = cap.stopCreates.find(s => (s.Location || [])[0] === 'recLA') || {}, sl2 = cap.stopCreates.find(s => (s.Location || [])[0] === 'recLB') || {}, su = cap.stopCreates.find(s => (s.Location || [])[0] === 'recG3') || {};
   ok(sl1.Pallets === 20 && sl1['Time From'] === '07:00' && sl1['Time To'] === '11:30' && sl1.DateTime === addDays(TODAY, 1) && sl1['Stop Type'] === 'Loading' && sl1['Stop Number'] === 1,
     'scan → ORDER STOPS: loading 1 with 07:00–11:30 — ' + JSON.stringify(sl1));
-  ok(sl2.Pallets === 13 && !('Time From' in sl2) && !('Via Hub' in sl2) && !('Pallets Exchanged' in sl2), 'scan → ORDER STOPS: loading 2 all day, no new label');
+  ok(sl2.Pallets === 13 && !('Time From' in sl2) && sl2['Time To'] === '15:30' && !('Via Hub' in sl2) && !('Pallets Exchanged' in sl2), 'scan → ORDER STOPS: loading 2 until 15:30, nothing else new');
   ok(su.Pallets === 33 && su['Time From'] === '06:00' && !('Time To' in su) && su.DateTime === addDays(TODAY, 3), 'scan → ORDER STOPS: the delivery 33 pallets, from 06:00');
   ok(!(await page.evaluate(() => document.body.innerText.includes('ΔΕΝ κρατήθηκαν'))), 'the scanned hours read back');
 
