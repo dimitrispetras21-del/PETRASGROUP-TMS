@@ -93,6 +93,23 @@ test('a CONFIRMED loading is never touched, whatever the form now says', async (
   assert.deepStrictEqual(w.net.filter(c => c.m !== 'GET'), []);
 });
 
+test('more than the stop\'s pallets, a fraction or a negative is never trusted: all pallets, and it is SAID', async () => {
+  for (const bad of [40, 10.5, -5]) {
+    const w = world([stop('recS1', { 'Pallets Exchanged': bad })]);
+    await w.ctx.plOnOrderSaved('recORD1', 'intl');
+    assert.deepStrictEqual(posts(w.net).map(b => b.taken), [30], String(bad));
+    assert.strictEqual(w.toasts.length, 1, String(bad));
+    assert.match(w.toasts[0], /με ανταλλαγή \(-?[\d.]+\) δεν ταιριάζουν με τις 30/);
+  }
+});
+
+test('plRecordStops (the week\'s «Λείπει καταγραφή»): a set 0 is skipped, the others are written with their exchanged pallets', async () => {
+  const w = world([stop('recS1', { 'Pallets Exchanged': 0 }), stop('recS2', { 'Pallets Exchanged': 12 })]);
+  const out = await w.ctx.plRecordStops('recORD1', 'LOADING');
+  assert.deepStrictEqual({ ...out }, { created: 1, existed: 0, skipped: 1 });
+  assert.deepStrictEqual(posts(w.net).map(b => [b.order_stop_rec, b.taken]), [['recS2', 12]]);
+});
+
 test('the «no exchange here» rule: only a set 0 — empty, missing or a number > 0 is not', () => {
   const { ctx } = world([]);
   const f = v => ctx._plNoExchangeStop(stop('x', v === undefined ? {} : { 'Pallets Exchanged': v }));
