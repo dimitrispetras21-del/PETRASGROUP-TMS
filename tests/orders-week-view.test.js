@@ -705,7 +705,7 @@ test('numberNationals: the v5 board number by carrier code; waiting / old / carr
   assert.deepStrictEqual(rows.map((r) => r.nos), [[2], [1, 3], [], [], [], []]);
   assert.deepStrictEqual(rows[1].sheets, [{ rtId: 11, side: 'ANODOS', code: 'RT-1' }, { rtId: 13, side: 'KATHODOS', code: 'RT-3' }]);
   assert.match(rows[2].noWhy, /περιμένει όχημα/);
-  assert.match(rows[3].noWhy, /προηγούμενη εβδομάδα/);
+  assert.match(rows[3].noWhy, /γραμμή άλλης εβδομάδας/);
   assert.strictEqual(rows[3].sheets.length, 1, 'a carried truck still has its sheet');
   assert.match(rows[4].noWhy, /δεν είναι γραμμή/);
   assert.strictEqual(rows[4].sheets.length, 0);
@@ -727,9 +727,9 @@ test('numberNationals: a continuation takes its own week\'s number «12 · W44»
     carried: new Set([14, 15]), away: new Map([[14, { n: 12, w: 44 }], [15, { failed: true, w: 44 }]]) };
   const rows = W.numberNationals([v5('RT-4'), v5('RT-5'), v5('RT-1')], nb);
   assert.deepStrictEqual(rows.map(W.natNoText), ['12 · W44', null, '1']);
-  assert.match(rows[0].noWhy, /προηγούμενη εβδομάδα/);
+  assert.match(rows[0].noWhy, /γραμμή άλλης εβδομάδας/);
   assert.strictEqual(rows[0].sheets.length, 1, 'its sheet still opens (the truck is on this week\'s board as a continuation)');
-  assert.match(rows[1].noWhy, /W44 και το Εβδομαδιαίο εκείνης δεν διαβάστηκε/);
+  assert.match(rows[1].noWhy, /γραμμή της W44 και το Εβδομαδιαίο εκείνης δεν διαβάστηκε/);
   // order inside the day: this week's numbers first, continuations after
   assert.deepStrictEqual(W.natNumberOrder(rows).map(W.natNoText), ['1', '12 · W44', null]);
 });

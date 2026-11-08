@@ -62,7 +62,7 @@
       if (!c) { st.err = k.clientErr('rt_missing', 'Δεν είναι στον πίνακα που φορτώθηκε — ανανέωσε'); return st; }
       st.cur = c;
       const r = k.row(c.rt_id);
-      st.day = st.day || (r && r.dayKey) || c.date_start;
+      st.day = st.day || WN5L.loadDayOf(r) || c.date_start;
       if (c.trip_type === 'PARTNER' && c.partner_id != null) { st.who = 'partner'; st.partner = c.partner_id; st.rateTxt = c.partner_rate == null ? '' : String(c.partner_rate); }
       else if (c.truck_id != null) { st.who = 'own'; st.truck = c.truck_id; st.trailer = c.trailer_id || null; st.driver = c.driver_id || null; }
       _splitOf(st, c);

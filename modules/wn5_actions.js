@@ -753,10 +753,21 @@
     for (const d of (m && m.days) || []) for (const r of d.rows || []) if (r.rtId === rtId) return r;
     return null;
   }
+  // The cycles that LOAD on a day (their ΚΑΘΟΔΟΣ day, else their ΑΝΟΔΟΣ one; one earlier / later than the week counts
+  // on its first / last day), in board order. Not the board's day section: since owner 8/11 a ΚΑΘΟΔΟΣ row stands on its
+  // DELIVERY day, and «ΚΥΚΛΟΙ ΤΗΣ ΔΕΥΤΕΡΑΣ» of «Μεταφορά σε…» would then lose the trucks loading Monday for Tuesday.
   function _dayRows(ymd) {
     const m = _state().model;
-    const d = m && (m.days || []).find((x) => x.date === ymd);
-    return d ? (d.rows || []).filter((r) => r.kind === 'cycle' && r.rtId != null) : [];
+    if (!m || !Array.isArray(m.days) || !m.days.length) return [];
+    const first = m.days[0].date, last = m.days[m.days.length - 1].date;
+    const out = [];
+    for (const d of m.days) for (const r of d.rows || []) {
+      if (r.kind !== 'cycle' || r.rtId == null) continue;
+      const k0 = WN5L.loadDayOf(r);
+      const k = !k0 || k0 < first ? first : k0 > last ? last : k0;
+      if (k === ymd) out.push(r);
+    }
+    return out;
   }
   // the hub's location id: the Veroia stop the model names, else the catalogue (PlanIds.hub)
   function _hubId() {
@@ -1576,7 +1587,7 @@
     // the snapshot (rule 4): the cycle, the side's capacity, the waiting pieces as they are now
     const sideStops = _copy((c.stops || []).filter((s) => s.side === side && s.location_id !== hub));
     const hubStop = (c.stops || []).find((s) => s.side === side && s.location_id === hub) || null;
-    const st = { rtId: c.rt_id, side, cyc: _copy(c), hub, day: (sd && sd.day) || (r && r.dayKey) || c.date_start,
+    const st = { rtId: c.rt_id, side, cyc: _copy(c), hub, day: (sd && sd.day) || WN5L.loadDayOf(r) || c.date_start,
       pallets: _sidePal(r, side), palUnk: _sideUnk(r, side), veroia: _veroiaOf(r, side), take: {}, hubFrom: '', hubTo: '', q: '', mode: 'wait', groups: [],
       sideStops, sideDays: [...new Set(sideStops.map((s) => s.stop_day || _ymdOf(s.planned_from)).filter(Boolean))],
       hubWin: hubStop && hubStop.planned_from && hubStop.planned_to ? [hubStop.planned_from, hubStop.planned_to] : null,
@@ -1833,7 +1844,7 @@
     const what = whole ? 'όλη η ' + sideW + ' του ' + (src.code || 'κύκλου') : refs + ' · ' + place;
     const tx0 = _cycText(src, r);
     const srcAfter = r ? { label: src.trip_type === 'PARTNER' ? tx0.l1 : (src.truck || tx0.l1), before: _sidePal(r, side), unk: _sideUnk(r, side) } : null;
-    const st = { mode: 'move', from: _copy(from), side, day: ctx.day || (sd && sd.day) || (r && r.dayKey) || src.date_start, skipRt: src.rt_id,
+    const st = { mode: 'move', from: _copy(from), side, day: ctx.day || (sd && sd.day) || WN5L.loadDayOf(r) || src.date_start, skipRt: src.rt_id,
       rtId: null, group: null, pieces: null, items: _copy(mp.items), needs: _copy(mp.needs), pallets: pal, palUnk,
       allHub: mp.items.length > 0 && mp.items.every((x) => x.pickHub), cyc: {}, rows: [], road: [], free: [], trailers: [], drivers: [], partners: [],
       ids: { ok: false }, pick: null, trailer: null, driver: null, partner: null, rateTxt: '', hubFrom: '', hubTo: '', filter: 'all', q: '', ref: '',
