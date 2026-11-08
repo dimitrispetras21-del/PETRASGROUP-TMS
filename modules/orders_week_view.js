@@ -548,6 +548,92 @@ const OrdersWeekView = (() => {
     return { dayKey: r.day, kind: veh ? 'cycle' : 'waiting', sortAt: f['Loading DateTime'] || '', key: veh + '|' + ((r.openRec && r.openRec.id) || '') };
   }
 
+  // The Weekly National v5's numbers on this page's national rows (owner 8/11/2026, after the internationals: «ο
+  // αριθμός του φορτηγού από το board v5, «—» για όσα περιμένουν όχημα»). The number is the board's own
+  // (WN5L.boardNumbers on WN5.modelOf of the week's board), found through the order's carrier: /plan/nat-state names
+  // a cycle by its RT code, the board by rt_id and code. A split at Veroia (two trucks) has two numbers. Never a
+  // guess: no line on this week's board is «—» with the reason. Each carrier on the board is also a driver sheet the
+  // ΑΝΑΘΕΣΗ opens (r.sheets). Pure: rows (pairNationals) and nb →
+  //   nb = null (no v5 board: before L) | 'failed' (not read) | { nums: Map rt_id → n, byCode: Map code → cycle,
+  //   carried: Set rt_id, away: Map rt_id → { n, w } | { failed, w } (a continuation's number on its own week's board) }.
+  // Sets on each row: nos (this week's numbers ascending | 'failed'), away (['12 · W44'], continuations), noWhy (the
+  // reason of «—», or what an away number means), sheets [{ rtId, side, code }].
+  function numberNationals(rows, nb) {
+    for (const r of rows) {
+      r.nos = []; r.noWhy = null; r.sheets = []; r.away = [];
+      if (r.assign.kind !== 'v5') { r.noWhy = 'Χωρίς αριθμό: εθνική του παλιού μοντέλου — δεν είναι γραμμή του Εβδομαδιαίου Εθνικών v5'; continue; }
+      if (nb === 'failed' || !nb) { r.nos = 'failed'; continue; }
+      const cs = (r.assign.state.carriers || []).filter(c => c.kind !== 'none');
+      if (!cs.length) { r.noWhy = 'Χωρίς αριθμό: περιμένει όχημα'; continue; }
+      let carried = false, awayFailed = null;
+      const seen = new Set();
+      for (const c of cs) {
+        const cy = c.code ? nb.byCode.get(c.code) : null;
+        if (!cy) continue;
+        const k = cy.rt_id + '|' + c.side;
+        if (!seen.has(k)) { seen.add(k); r.sheets.push({ rtId: cy.rt_id, side: c.side, code: c.code }); }
+        const n = nb.nums.get(cy.rt_id);
+        if (n != null) { r.nos.push(n); continue; }
+        if (!nb.carried.has(cy.rt_id)) continue;
+        // a continuation: the number of its own week's board, with that week (owner 8/11/2026: «12 · W44»)
+        const a = nb.away && nb.away.get(cy.rt_id);
+        if (a && !a.failed) { const t = a.n + (a.w ? ' · W' + a.w : ''); if (!r.away.includes(t)) r.away.push(t); }
+        else if (a && a.failed) awayFailed = a.w;
+        else carried = true;
+      }
+      r.nos = [...new Set(r.nos)].sort((a, b) => a - b);
+      if (!r.nos.length && r.away.length) r.noWhy = 'Το φορτηγό ξεκίνησε την προηγούμενη εβδομάδα: ο αριθμός του στο Εβδομαδιαίο Εθνικών εκείνης';
+      else if (!r.nos.length) r.noWhy = awayFailed != null ? `Χωρίς αριθμό εδώ: το φορτηγό συνεχίζει από τη W${awayFailed} και το Εβδομαδιαίο εκείνης δεν διαβάστηκε`
+        : carried ? 'Χωρίς αριθμό εδώ: το φορτηγό συνεχίζει από την προηγούμενη εβδομάδα — ο αριθμός του είναι στο Εβδομαδιαίο εκείνης'
+        : 'Χωρίς αριθμό: το φορτηγό δεν είναι γραμμή του Εβδομαδιαίου Εθνικών αυτής της εβδομάδας';
+    }
+    return rows;
+  }
+  // The number text of a national row (screen and print): this week's numbers, else the continuations' «12 · W44».
+  // null = «—» (noWhy says why) · 'failed'.
+  function natNoText(r) {
+    if (r.nos === 'failed') return 'failed';
+    const parts = [...(r.nos && r.nos.length ? [r.nos.join(' · ')] : []), ...(r.away || [])];
+    return parts.length ? parts.join(', ') : null;
+  }
+  // Inside a day, the numbered rows first by their number — the board's own order of its trucks — then the rest in
+  // the order they had (WN5L.rowOrder through natOrderKey): the two lists are compared row by row, as the
+  // internationals (rowOrder above). Stable: equal keys keep their order.
+  function natNumberOrder(rows) {
+    const first = r => (Array.isArray(r.nos) && r.nos.length ? r.nos[0] : Infinity);
+    return rows.map((r, i) => [r, i]).sort((a, b) => String(a[0].day || '').localeCompare(String(b[0].day || ''))
+      || (first(a[0]) === first(b[0]) ? 0 : first(a[0]) < first(b[0]) ? -1 : 1) || a[1] - b[1]).map(x => x[0]);
+  }
+  // Once per load (the board is the load's; a repaint after a save reuses it).
+  function _natBoardOnce(d) { if (!('_natNb' in d)) d._natNb = _natBoard(d); return d._natNb; }
+  // The board's numbers for numberNationals, from the week's v5 board read by load(). null before L.
+  function _natBoard(d) {
+    if (d.v5BoardFailed) return 'failed';
+    if (!d.v5Board) return null;
+    try {
+      if (typeof WN5 === 'undefined' || typeof WN5.modelOf !== 'function') throw new Error('WN5.modelOf missing (modules/weekly_natl_v5.js)');
+      const vm = WN5.modelOf(d.v5Board), O = OC();
+      const carried = new Set(), carriedWeek = new Map();
+      for (const day of vm.days) for (const r of day.rows) if (r.carried) { carried.add(r.rtId); carriedWeek.set(r.rtId, O.weekStartOfYmd(r.dayKey)); }
+      // a continuation's number on its own week's board (owner 8/11: «12 · W44»); away: rt_id → { n, w } | { failed, w }
+      const away = new Map(), ev = d.v5Earlier || { boards: [], failed: [] };
+      const wNo = w => (typeof TmsWeek !== 'undefined' ? TmsWeek.numOf(new Date(w + 'T12:00:00')) : null);
+      for (const { week, board } of ev.boards) {
+        // an earlier board that cannot be drawn costs only its continuations' numbers, never this week's
+        let nums;
+        try { nums = WN5L.boardNumbers(WN5.modelOf(board)); }
+        catch (e) { if (typeof logError === 'function') logError(e, 'orders week: earlier board numbers'); ev.failed.push(week); continue; }
+        for (const rt of carried) if (carriedWeek.get(rt) === week && nums.has(rt)) away.set(rt, { n: nums.get(rt), w: wNo(week) });
+      }
+      for (const rt of carried) if (!away.has(rt) && ev.failed.includes(carriedWeek.get(rt))) away.set(rt, { failed: true, w: wNo(carriedWeek.get(rt)) });
+      return { nums: WN5L.boardNumbers(vm), byCode: new Map((d.v5Board.cycles || []).filter(c => c.code).map(c => [c.code, c])), carried, away };
+    } catch (e) {
+      console.error('orders week: Weekly National numbers', e);
+      if (typeof logError === 'function') logError(e, 'orders week: Weekly National numbers');
+      return 'failed';
+    }
+  }
+
   // §12 #06 truncation, word-safe: the route is cut first and only after the
   // destination's FIRST word — «Rotterdam NL → Amsterdam…», never «→ A…».
   // head never shrinks, tail takes the ellipsis.
@@ -732,16 +818,63 @@ const OrdersWeekView = (() => {
     // flags decide (OrdersData.sheetsOk fallback) and a strip says so.
     const set = setRes.ok ? setRes.r : { gate: {}, gateFailed: true, intl: [], natl: [] };
     // F5 Ε3/Ε5: the v5 state of the window's national orders, beside their loads (before L: no request).
-    const [loadsRes, v5Res] = await Promise.all([
+    const [loadsRes, v5Res, boardRes] = await Promise.all([
       natlRes.ok && wantNatl ? _natLoads(natl.filter(r => O.weekStartOf(r) === week)) : Promise.resolve({ ok: true, loads: [] }),
       natlRes.ok && wantNatl ? OrdersCommon.natV5Attach(natl) : Promise.resolve({ failed: false }),
+      natlRes.ok && wantNatl ? _v5Board(week) : Promise.resolve({ ok: true, board: null }),
     ]);
+    const earlier = boardRes.board ? await _v5Earlier(boardRes.board, week) : { boards: [], failed: [] };
     return {
       week, strip, intl, cancelled, natl, natlFailed: !natlRes.ok, rts: rtRes.ok ? (rtRes.r.records || []) : null,
       rtCapped: rtRes.ok && (rtRes.r.records || []).length >= 500,
       set, setFailed: !setRes.ok, gateFailed: !!set.gateFailed, parentsFailed, refFailed: !refRes.ok, stopDates, stopsFailed,
       natLoads: loadsRes.ok ? loadsRes.loads : null, v5Failed: v5Res.failed,
+      v5Board: boardRes.board, v5BoardFailed: !boardRes.ok, v5Earlier: earlier,
     };
+  }
+
+  // The Weekly National v5 board of the week (GET /plan/board, the board's own read), for the numbers of the national
+  // rows and their assignment documents (owner 8/11). Before L there is no v5 board: no request. The catalogue
+  // (PlanIds) is loaded beside it: its hub is the board's own model option, and the driver sheet needs it.
+  // → { ok, board } — board null = no v5 board (before L / route not deployed); ok false = the read failed.
+  async function _v5Board(week) {
+    try {
+      if (await OrdersCommon._planState() === 'before') return { ok: true, board: null };
+      const [b] = await Promise.all([
+        planFetch('GET', '/plan/board?week=' + week, { designed: ['no_route'] }),
+        typeof PlanIds !== 'undefined' ? PlanIds.load().catch(() => null) : null,
+      ]);
+      if (!b || typeof b !== 'object' || b.week !== week) throw new Error('board: answer for week ' + String(b && b.week) + ', not ' + week);
+      return { ok: true, board: b };
+    } catch (e) {
+      if (e && e.code === 'no_route') return { ok: true, board: null };
+      // planFetch logs its own errors and a lost session once (core/api.js); only a fault of this reader is logged here
+      if (!(e && (e.name === 'PlanError' || e._sessionGone)) && typeof logError === 'function') logError(e, 'orders week: v5 board');
+      return { ok: false, board: null };
+    }
+  }
+
+  // The boards of the earlier weeks where this week's continuations belong (owner 8/11/2026: «12 · W44»): a truck
+  // that started the week before is a «συνέχεια» line here, its number is on THAT week's board. One read per such week
+  // (usually one), only when the week has continuations. → { boards: [{ week, board }], failed: [week] }.
+  async function _v5Earlier(board, week) {
+    const out = { boards: [], failed: [] };
+    let weeks;
+    try {
+      const vm = WN5.modelOf(board), O = OC();
+      weeks = [...new Set(vm.days.flatMap(d => d.rows).filter(r => r.carried && r.dayKey).map(r => O.weekStartOfYmd(r.dayKey)))].filter(w => w && w < week);
+    } catch (e) { return out; }   // the week's own numbers say «failed» through _natBoard: no second report
+    for (const w of weeks) {
+      try {
+        const b = await planFetch('GET', '/plan/board?week=' + w);
+        if (!b || typeof b !== 'object' || b.week !== w) throw new Error('board: answer for week ' + String(b && b.week) + ', not ' + w);
+        out.boards.push({ week: w, board: b });
+      } catch (e) {
+        if (!(e && (e.name === 'PlanError' || e._sessionGone)) && typeof logError === 'function') logError(e, 'orders week: earlier v5 board');
+        out.failed.push(w);
+      }
+    }
+    return out;
   }
 
   // NATIONAL LOADS of the week's national orders + the loads paired with them
@@ -845,6 +978,8 @@ const OrdersWeekView = (() => {
     if (scope !== 'natl' && m.rtFailed) add('Δεν διαβάστηκαν τα δρομολόγια (RT).', 'Κάθε διεθνής φαίνεται στο «ΧΩΡΙΣ RT» με το ποσό της· τα σύνολα μένουν σωστά.');
     if (scope !== 'intl' && d.natlFailed) add('Δεν διαβάστηκαν οι εθνικές.', 'Η ενότητα Εθνικές γράφει «—», όχι 0· ο τζίρος δείχνει μόνο τα διεθνή, με σήμανση «χωρίς εθνικά».');
     if (scope !== 'intl' && !d.natlFailed && d.v5Failed) add('Δεν διαβάστηκε η κατάσταση των εθνικών v5.', 'Η ανάθεση εθνικών χωρίς φορτίο γράφει «—», όχι «εκτός φορτίου»· το «παραδόθηκε» τους ακολουθεί την ημερομηνία παράδοσης.');
+    // no board (failed, or a Worker without /plan/board) while the week has v5 nationals: said here, never only in a tooltip
+    if (scope !== 'intl' && !d.natlFailed && (d.v5BoardFailed || (!d.v5Board && d.natl.some(r => r._v5 && typeof r._v5 === 'object')))) add('Δεν διαβάστηκε το Εβδομαδιαίο Εθνικών.', 'Οι εθνικές v5 γράφουν «—» στον αριθμό και το έγγραφο ανάθεσής τους δεν ανοίγει από εδώ.');
     if (scope !== 'intl' && !d.natlFailed && d.natLoads == null) add('Δεν διαβάστηκαν τα φορτία εθνικών.', 'Η ανάθεση εθνικών γράφει «—», όχι «εκτός φορτίου»· το ζευγάρι κάθοδος–άνοδος δεν σχεδιάζεται.');
     if (d.setFailed || d.gateFailed) add('Δεν απάντησε ο έλεγχος δελτίων.', 'Ισχύουν οι σημάνσεις δελτίων της ίδιας της παραγγελίας.');
     if (scope !== 'natl' && d.stopsFailed) add('Δεν διαβάστηκαν οι ημερομηνίες των στάσεων.', 'Η αρίθμηση ακολουθεί την 1η στάση· σε φορτία με στάσεις σε πολλές ημέρες μπορεί να διαφέρει από το Weekly.');
@@ -878,7 +1013,8 @@ const OrdersWeekView = (() => {
       for (const l of r.legs) l.no = nums ? legNumber(l, nums) : 'failed';
     }
     const natRows = scope !== 'intl' && !d.natlFailed
-      ? pairNationals({ week: S.week, natl: d.natl, loads: d.natLoads, intl: d.intl }) : [];
+      ? natNumberOrder(numberNationals(pairNationals({ week: S.week, natl: d.natl, loads: d.natLoads, intl: d.intl }), _natBoardOnce(d))) : [];
+    natRows.forEach((r, i) => { r.docI = i; });
     S.model = m; S.natRows = natRows;
     const inScope = r => scope === 'all' || r._type === scope;
     const showI = scope !== 'natl', showN = scope !== 'intl';
@@ -1023,6 +1159,8 @@ const OrdersWeekView = (() => {
       if (c) { e.preventDefault(); return _edOpen(c); }
       const d = e.target.closest('[data-owvdoc]');
       if (d) { e.preventDefault(); _installDocsEsc(); _openDocs(Number(d.dataset.owvdoc)); }
+      const nd = e.target.closest('[data-owvnatdoc]');
+      if (nd) { e.preventDefault(); _installDocsEsc(); _openNatDocs(Number(nd.dataset.owvnatdoc)); }
     };
     if (wasOpen) {
       // A repaint, not an opening: no slide-in (oi-slide), and she stays where she had scrolled.
@@ -1217,7 +1355,7 @@ const OrdersWeekView = (() => {
         : `${esc(dayShort(e.load) || '—')} <span class="ow4-ar">→</span> ${esc(dayShort(e.del) || '—')}`;
       // data-tail: the words after the destination's first one — _fitRow shows
       // as many WHOLE words of it as fit, never a partial word or code.
-      cells.route = `<div class="ow4-l1 ow4-route" title="${esc(full)}" data-tail="${esc(split.tail.trim())}">${l.no === undefined ? '' : _noHtml(l.no)}<span class="ow4-rh">${fromHtml}${headRest.replace('→', '<span class="ow4-ar">→</span>')}</span><span class="ow4-rt">${esc(split.tail.trim())}</span>${nBox(e.nTo)}</div><div class="ow4-l2 ow4-ell">${dates}</div>`;
+      cells.route = `<div class="ow4-l1 ow4-route" title="${esc(full)}" data-tail="${esc(split.tail.trim())}">${l.no === undefined ? '' : _noHtml(l.no, l.noWhy, l.natNo)}<span class="ow4-rh">${fromHtml}${headRest.replace('→', '<span class="ow4-ar">→</span>')}</span><span class="ow4-rt">${esc(split.tail.trim())}</span>${nBox(e.nTo)}</div><div class="ow4-l2 ow4-ell">${dates}</div>`;
       const cl = clientRaw(f) || '—';
       const refs = [O.numLabel(l.rec), f['Reference'], f['Veroia Switch'] ? 'VS' : ''].filter(Boolean).join(' · ');
       cells.client = `<div class="ow4-l1 ow4-ell ow4-cl1" title="${esc(cl)}">${esc(cl)}</div><div class="ow4-l2 ow4-ell ow4-cl2" title="${esc(refs)}">${O.docClip(l.rec, l.rec && l.rec._type)}${esc(refs)}</div>`;
@@ -1242,13 +1380,14 @@ const OrdersWeekView = (() => {
   }
   const _emptySide = text => `<div class="ow4-sub trip-part ow4-none"><div class="ow4-c">${text}</div></div>`;
 
-  function _assignHtml(v, verdict, sumHtml, extra, docI) {
+  function _assignHtml(v, verdict, sumHtml, extra, docI, docAttr) {
     let top;
     if (v.kind === 'own' || (v.kind === 'partner' && v.plate)) top = `<span class="ow4-plate">${esc(v.plate)}</span> <span class="ow4-who ow4-ell" title="${esc(v.who)}">${esc(v.who)}</span>`;
     else if (v.kind === 'partner') top = `<span class="ow4-who ow4-ell" title="${esc(v.who)}">${esc(v.who)}</span>`;
     else top = `<span class="${v.text === '—' ? 'ow4-d' : 'ow4-asg-pa'}">${esc(v.text)}</span>`;
     // A click on ΑΝΑΘΕΣΗ shows the load's assignment document (_openDocs); the order card stays on the order.
-    const doc = docI != null ? ` data-owvdoc="${docI}" role="button" tabindex="0" title="Έγγραφο ανάθεσης"` : '';
+    // docAttr: owvdoc (an international row, print.html) | owvnatdoc (a v5 national row, the driver sheet)
+    const doc = docI != null ? ` data-${docAttr || 'owvdoc'}="${docI}" role="button" tabindex="0" title="Έγγραφο ανάθεσης"` : '';
     return `<div class="ow4-asg${doc ? ' ow4-asg-doc' : ''}"${doc}><div class="ow4-l1 ow4-veh">${extra || top}</div>
       <div class="ow4-asg-b"><span class="ow4-vd" title="${esc(verdict)}" data-full="${esc(verdict)}">${esc(verdict)}</span><span class="ow4-sig">${sumHtml}</span></div></div>`;
   }
@@ -1303,7 +1442,9 @@ const OrdersWeekView = (() => {
       if (s.kind === 'grp') return _emptySide(`<span class="ow4-g">${word} · μέσω ομαδοποίησης</span>`);
       if (s.kind === 'claimed') return _emptySide(`<span class="ow4-g">${word} · ${esc(O.numLabel(s.rec))} σε άλλη γραμμή</span>`);
       if (s.kind === 'unread') return _emptySide(`<span class="ow4-d" title="Το ζευγάρι υπάρχει αλλά η παραγγελία του δεν διαβάστηκε">${word} · εκτός εύρους</span>`);
-      const leg = { rec: s.rec, inWeek: s.inWeek, week: s.week, piece: false, dupOf: null, parentMissing: false };
+      // the row's number on its order lines, as the internationals' (numberNationals: the Weekly National's)
+      const no = natNoText(r);
+      const leg = { rec: s.rec, inWeek: s.inWeek, week: s.week, piece: false, dupOf: null, parentMissing: false, no, noWhy: r.noWhy, natNo: true };
       return _legCells(leg, which, stateOf, which === 'l' && s.inWeek);
     };
     let v, extra = '';
@@ -1322,7 +1463,7 @@ const OrdersWeekView = (() => {
     return `<div class="ow4-row trip-row ow4-nat${blk ? ' ow4-blk' : ''}" data-owvopen="natl:${esc(r.openRec.id)}">
       <div class="ow4-c-rt"><div class="ow4-l1">${esc(dayShort(r.day) || '—')}</div>${v.kind === 'partner' ? '<div class="ow4-l2">συνεργάτης</div>' : ''}</div>
       <div class="ow4-side ow4-l">${side(r.kat, 'l')}</div>
-      ${_assignHtml(v, verdictText(verdict, n), _sumHtml(r.counted, mk), extra)}
+      ${_assignHtml(v, verdictText(verdict, n), _sumHtml(r.counted, mk), extra, r.sheets && r.sheets.length ? r.docI : null, 'owvnatdoc')}
       <div class="ow4-side ow4-r">${side(r.ano, 'r')}</div></div>`;
   }
 
@@ -1343,6 +1484,10 @@ const OrdersWeekView = (() => {
     if (e.target.closest('[data-owvdocs="close"]')) return _closeDocs();
     const doc = e.target.closest('[data-owvdoc]');
     if (doc) { _installDocsEsc(); return _openDocs(Number(doc.dataset.owvdoc)); }
+    const natDoc = e.target.closest('[data-owvnatdoc]');
+    if (natDoc) { _installDocsEsc(); return _openNatDocs(Number(natDoc.dataset.owvnatdoc)); }
+    const prt = e.target.closest('[data-owvdocprint]');
+    if (prt) { const f = prt.closest('.owv-doc') && prt.closest('.owv-doc').querySelector('iframe'); if (f && f.contentWindow) f.contentWindow.print(); return; }
     const open = e.target.closest('[data-owvopen]');
     if (open) {
       const [type, id] = open.dataset.owvopen.split(':');
@@ -1745,6 +1890,34 @@ const OrdersWeekView = (() => {
       <div class="owv-docs-b">${away}${docs.map(d => `<section class="owv-doc"><div class="owv-doc-t">${esc(d.title)}</div>
         <iframe class="owv-doc-f" title="${esc(d.title)}" src="print.html?${esc(d.query)}&noprint=1"></iframe></section>`).join('')}</div>`;
   }
+  // ΑΝΑΘΕΣΗ of a v5 national row (owner 8/11/2026): the driver sheet the Weekly National prints for that truck and
+  // side (WN5Sheet.sheetDoc: the board's ⎙ lines and html), one frame per carrier (a split at Veroia = two), from the
+  // week's board this page read — the Weekly National is never run. Read-only; the frame prints itself from its
+  // «Εκτύπωση». A sheet that cannot be built says why (WN5Sheet's toast) and its frame says «δεν βγήκε».
+  let _natDocsSeq = 0;
+  async function _openNatDocs(i) {
+    const r = (S.natRows || [])[i], box = document.getElementById('owvDocs');
+    if (!r || !box || !r.sheets || !r.sheets.length || !S.data || !S.data.v5Board) return;
+    if (S.ed && S.ed.busy) return;
+    _edClose();
+    if (typeof _oiCloseCard === 'function') _oiCloseCard();
+    if (typeof closeNatlDetail === 'function') closeNatlDetail();
+    const seq = ++_natDocsSeq, board = S.data.v5Board;
+    const word = sd => (sd === 'ANODOS' ? 'Άνοδος' : 'Κάθοδος');
+    const head = `<div class="owv-docs-h"><b>Έγγραφα ανάθεσης</b><span>${esc(r.sheets.map(x => x.code).filter((c, k, a) => a.indexOf(c) === k).join(' · '))}</span>
+      <button type="button" class="owv-docs-x" data-owvdocs="close" title="Κλείσιμο (Esc)" aria-label="Κλείσιμο">×</button></div>`;
+    box.innerHTML = head + '<div class="owv-docs-b"><div class="owv-doc-t">…</div></div>';
+    box.classList.remove('hidden');
+    const docs = await Promise.all(r.sheets.map(x => (typeof WN5Sheet !== 'undefined' && typeof WN5Sheet.sheetDoc === 'function'
+      ? WN5Sheet.sheetDoc(x.rtId, x.side, board) : Promise.resolve(null))));
+    if (seq !== _natDocsSeq || box.classList.contains('hidden')) return;   // closed, or another row opened meanwhile
+    box.innerHTML = head + `<div class="owv-docs-b">${r.sheets.map((x, k) => {
+      const dd = docs[k], t = `${word(x.side)} — Φύλλο Οδηγού · ${x.code}`;
+      if (!dd) return `<section class="owv-doc"><div class="owv-doc-t">${esc(t)} · δεν βγήκε</div></section>`;
+      return `<section class="owv-doc"><div class="owv-doc-t">${esc(t)} · <button type="button" class="wi4-link" data-owvdocprint="1">Εκτύπωση</button></div>
+        <iframe class="owv-doc-f" title="${esc(t)}" srcdoc="${esc(dd.html)}"></iframe></section>`;
+    }).join('')}</div>`;
+  }
   function _closeDocs() {
     const box = document.getElementById('owvDocs');
     if (box && !box.classList.contains('hidden')) { box.classList.add('hidden'); box.innerHTML = ''; return true; }
@@ -1756,11 +1929,13 @@ const OrdersWeekView = (() => {
     if (_docsEsc) return; _docsEsc = true;
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && _closeDocs()) e.stopImmediatePropagation(); }, true);
   }
-  // undefined = a national line (not numbered yet) · 'failed' · null = no line there · n
-  function _noHtml(no) {
-    if (no === 'failed') return '<span class="ow4-no ow4-d" title="Η αρίθμηση του Εβδομαδιαίου Διεθνών δεν υπολογίστηκε">—</span>';
-    if (no == null) return '<span class="ow4-no ow4-d" title="Χωρίς αριθμό: δεν είναι γραμμή του Εβδομαδιαίου Διεθνών αυτής της εβδομάδας">—</span>';
-    return `<span class="ow4-no" title="Αριθμός γραμμής στο Εβδομαδιαίο Διεθνών">${esc(no)}</span>`;
+  // undefined = no number box · 'failed' · null = no line there (why: the reason) · n
+  // natl: the number is the Weekly National v5's (numberNationals), else the Weekly International's
+  function _noHtml(no, why, natl) {
+    const board = natl ? 'Εθνικών' : 'Διεθνών';
+    if (no === 'failed') return `<span class="ow4-no ow4-d" title="Η αρίθμηση του Εβδομαδιαίου ${board} δεν υπολογίστηκε">—</span>`;
+    if (no == null) return `<span class="ow4-no ow4-d" title="${esc(why || `Χωρίς αριθμό: δεν είναι γραμμή του Εβδομαδιαίου ${board} αυτής της εβδομάδας`)}">—</span>`;
+    return `<span class="ow4-no" title="${esc(why || `Αριθμός γραμμής στο Εβδομαδιαίο ${board}`)}">${esc(no)}</span>`;
   }
 
   // A card opened here saved ONE order in place («Διόρθωση», pallet sheets —
@@ -1885,7 +2060,8 @@ const OrdersWeekView = (() => {
         if (r.assign.kind === 'load') who = whoOf(vehicleOf(r.assign.load));
         else if (r.assign.kind === 'v5') who = whoOf(vehicleOfV5(r.assign.state));
         else who = r.assign.kind === 'grp' ? 'μέσω ομαδοποίησης' : r.assign.kind === 'out' ? 'εκτός φορτίου' : '—';
-        body.push(trip(dayShort(r.day) || '—', who, '', sumText(r.counted, natMarks(r))));
+        const nt = natNoText(r), no = nt && nt !== 'failed' ? nt + ' · ' : '';
+        body.push(trip(no + (dayShort(r.day) || '—'), who, '', sumText(r.counted, natMarks(r))));
         for (const s of [r.kat, r.ano]) {
           if (!s) continue;
           const word = s.dir === 'up' ? 'Άνοδος' : 'Κάθοδος';
@@ -1980,7 +2156,7 @@ const OrdersWeekView = (() => {
   }
 
   return { render, recordChanged, buildWeek, rowNumbers, legNumber, totals, rowMarks, natMarks, rowSum, printSequence, printDoc, rtInvoicing, verdictText, tpyOf, pctVsPrev, stripWeeks, groupRows, daySections,
-    weekStatus, pairNationals, routeSplit, ordersFormula, placeText, isVsNational, naturalDateOf, pgIdOf, dayLabel, weekTitle,
+    weekStatus, pairNationals, numberNationals, natNumberOrder, natNoText, routeSplit, ordersFormula, placeText, isVsNational, naturalDateOf, pgIdOf, dayLabel, weekTitle,
     // the pallets weekly view (modules/pallets_week.js) reads the same week through these, never a copy
     load, boardOf, rowDocsOf, docsInner, endsOf, vehicleOf, dayShort, dayFull, clientRaw, isSplitLeg };
 })();

@@ -377,7 +377,9 @@ function factsOf(row) {
   // A failed match/unmatch counts what the table holds (§e.14, _unconfirmed).
   const hasReturn = _unconfirmed(row) ? !!_srvMatch(row) : !!row.importId;
   return {
-    kind: row.legOf ? 'leg' : row.hasSplitLegs ? 'split' : isImp ? 'import' : 'export',
+    kind: row.legOf || row.crossLeg ? 'leg' : row.hasSplitLegs ? 'split' : isImp ? 'import' : 'export',
+    // A leg in its own week (owner 8/11/2026): its truck works that day, so the day counts it.
+    xweek: !!row.crossLeg,
     saved: !!row.saved, partner: !!row.partnerId,
     loadDate, delDate,
     returnDate: delDate, returnPlace: ret.placeC || ret.title || '', hasReturn,
@@ -493,7 +495,8 @@ function _compute() {
     const showImps = g.imps.filter((r) => !r.matchedTo);   // matched imports live inside their export row
     const ghostRows = ghosts[g.date] || [];
     // A day whose only load is a ghost is not «Καμία κίνηση»: the table has a load there.
-    const day = { date: g.date, extra: isExtra, today: g.date === today, entries: [], empty: !g.exps.length && !showImps.length && !ghostRows.length };
+    const xlegs = g.legs || [];   // legs of another week's parent (WI4.boardNumbers): their own day, «↳», no number
+    const day = { date: g.date, extra: isExtra, today: g.date === today, entries: [], empty: !g.exps.length && !showImps.length && !ghostRows.length && !xlegs.length };
     if (isExtra && day.empty) return;
     // Sorted and numbered by WI4.boardNumbers: continuous per week, exports and
     // import-only rows together (§e numbering); WINTL._rowNo is kept so any old
@@ -516,11 +519,19 @@ function _compute() {
         pushFacts(e, row, oid);
         day.entries.push(e); entries.push(e);
         rotaOf(row, row, day);
+        // its rota legs dated in another week: one «συνέχεια» line, the legs stand in their own week
+        if (row.contLegs && row.contLegs.length) { const c = { t: 'cont', row, parent: row, day, facts: [] }; day.entries.push(c); entries.push(c); }
       }
       relaysOf(row, row, day);
     };
     g.exps.forEach((r) => add(r, 'exp'));
     showImps.forEach((r) => add(r, 'imp'));
+    xlegs.forEach((lr) => {
+      const oid = (lr.orderIds || [])[0] || lr.orderId;
+      const e = { t: 'leg', row: lr, parent: null, day, facts: [{ oid, f: factsOf(lr), row: lr }] };
+      day.entries.push(e); entries.push(e);
+      relaysOf(lr, lr, day);
+    });
     ghostRows.forEach((ir) => {
       const e = { t: 'ghost', row: ir, day, facts: [{ oid: ir.orderId, f: factsOf(Object.assign({}, ir, { matchedTo: null })), row: ir }] };
       day.entries.push(e); entries.push(e);
@@ -535,7 +546,7 @@ function _compute() {
     day.entries.forEach((e) => e.facts.forEach((x) => fl.push(x.f)));
     day.facts = fl;
     const c = lg.dayCounts(fl, today);
-    c.trucks = fl.filter((f) => (f.kind === 'export' || f.kind === 'import') && !f._matched).length;
+    c.trucks = fl.filter((f) => (f.kind === 'export' || f.kind === 'import' || f.xweek) && !f._matched).length;
     day.counts = c;
     day.levels = {};
     // Worst level per code: the header word takes the colour of its worst case.
@@ -634,9 +645,13 @@ function _compute() {
   // Column-header counts = the rows the board NUMBERS: a split order is one
   // row (its legs are ↳1/↳2), where the shared metric counts parent + legs
   // (3). reportPageMetrics keeps the old numbers (identity, §a.5).
-  const expDrawn = rows.filter((r) => r.type === 'export' && !r.legOf && !r.splitLegOf).length;
+  const expDrawn = rows.filter((r) => r.type === 'export' && !r.legOf && !r.splitLegOf && !r.crossLeg).length;   // an own-week leg is not numbered
   const impDrawn = (typeof I.boardImpRows === 'function' ? I.boardImpRows() : impRows).filter((r) => !r.splitLegOf).length;
-  return { days, entries, queue, xwCount: xw.length, loading: !!loading, today, expDrawn, impDrawn };
+  // Principle 1 (owner 8/11/2026, order 643): a loaded order this board draws nowhere is said in
+  // one strip, never lost in silence (WI4.unseenOrders: the same rows and numbers as above).
+  const unseen = typeof lg.unseenOrders === 'function'
+    ? lg.unseenOrders({ rows, legs: D._legs || {}, splitLegs: D._splitLegs || {} }, nb.no, { shelved: (r) => I.shelved(r) }) : [];
+  return { days, entries, queue, xwCount: xw.length, loading: !!loading, today, expDrawn, impDrawn, unseen };
 }
 function _xwItems(today) {
   if (!_xw || _xw.state !== 'ok') return [];
@@ -1414,7 +1429,11 @@ function _legRowHTML(e, today) {
   // The tag sits in the OTHER column, leaning towards the assignment cell.
   // One run, «ίδιο φορτηγό» in the label's own weight (Figma 1097:3052): not
   // a .wi4-tag, whose uppercase would shout «ΙΔΙΟ ΦΟΡΤΗΓΟ».
-  const tag = `<span class="wi4-ell wi4-sub-leg-t" style="display:block;text-align:${isImp ? 'right' : 'left'}" title="ΣΚΕΛΟΣ ΡΟΤΑΣ · ίδιο φορτηγό — σκέλος ρότας, το ίδιο φορτηγό">ΣΚΕΛΟΣ ΡΟΤΑΣ · ίδιο φορτηγό</span>`;
+  // In its own week (lr.crossLeg, owner 8/11/2026) there is no parent row above it: the tag names the
+  // truck · driver and the parent, «σκέλος της #644 (εβδ. 31/10)».
+  const tagText = lr.crossLeg ? _xLegTag(lr) : 'ΣΚΕΛΟΣ ΡΟΤΑΣ · ίδιο φορτηγό';
+  const tagTip = lr.crossLeg ? tagText + ' — σκέλος ρότας· η αρχική παραγγελία είναι σε άλλη εβδομάδα' : 'ΣΚΕΛΟΣ ΡΟΤΑΣ · ίδιο φορτηγό — σκέλος ρότας, το ίδιο φορτηγό';
+  const tag = `<span class="wi4-ell wi4-sub-leg-t" style="display:block;text-align:${isImp ? 'right' : 'left'}" title="${_esc(tagTip)}">${_esc(tagText)}</span>`;
   const lvl = _levelOf(e.facts, today);
   const unlink = q ? `<button type="button" class="wi4-unlink" title="Ακύρωση προώθησης — αποσύνδεση σκέλους από τη ρότα" onclick="event.stopPropagation();WI_INTERNAL.rotUnlink(event,'${q}')">× αποσύνδεση</button>` : '';
   // The leg's own printer (owner 28/10: «δεν μπορώ να εκτυπώσω / στείλω WhatsApp»
@@ -1431,6 +1450,8 @@ function _legRowHTML(e, today) {
     : '';
   // A leg rides its RT's truck: a same-day clash is said here, by the unlink.
   const sd = rs.SAME_DAY ? `<span class="wi4-flag amb" data-r="SAME_DAY" title="${_esc(rs.SAME_DAY.text)}">ίδια μέρα</span>` : '';
+  // In its own week (crossLeg) the leg's missing truck is counted by its day (WI4.flags xweek): named here too.
+  const nt = rs.NO_TRUCK ? `<span class="wi4-flag" data-r="NO_TRUCK" title="${_esc(rs.NO_TRUCK.text)}">χωρίς φορτηγό</span>` : '';
   // A VS leg has a national leg like any VS row: drawn in its column, so a
   // missing carrier the header counts is also named here.
   const nat = f['Veroia Switch'] ? (isImp ? _natHTML(oid, _lastStop(f, 'del').title, _day(f['Delivery DateTime']))
@@ -1441,8 +1462,32 @@ function _legRowHTML(e, today) {
   return `<div class="wi4-subrow wi4-sub-leg${_rail(lvl)}" data-row-id="${lr.id}" data-oid="${q}" data-qi="${e.qi}"${q ? ` onclick="WI_INTERNAL.edit('${q}')" oncontextmenu="WI4Actions.openRowMenu(event,'${q}')"` : ''}>` +
     `<div class="wi4-c-idx"><span class="wi4-legidx"${why ? ` title="${_esc(why)}"` : ''}>↳</span></div><div class="wi4-c-fl">${isImp ? '' : nat}</div>` +
     `<div class="wi4-c-exp">${isImp ? tag : leg}</div>` +
-    `<div class="wi4-c-asg"><div class="wi4-asg">${isImp ? '' : prt}${sd}${unlink}${isImp ? prt : ''}</div></div>` +
+    `<div class="wi4-c-asg"><div class="wi4-asg">${isImp ? '' : prt}${nt}${sd}${unlink}${isImp ? prt : ''}</div></div>` +
     `<div class="wi4-c-imp">${isImp ? leg : tag}</div><div class="wi4-c-fr">${isImp ? nat : ''}</div></div>`;
+}
+// A leg in its own week: «CB8425XT · Simeon Gavrilov · σκέλος της #644 (εβδ. 31/10)». The parent is read
+// from the board's window (WINTL.data.away); unread, its id is not guessed: «σκέλος ρότας άλλης εβδομάδας».
+function _xLegTag(lr) {
+  const D = _D();
+  const p = ((D.data && D.data.away) || []).find((x) => x.id === lr.crossLeg);
+  const pf = (p && p.fields) || {};
+  const ws = p && typeof TmsWeek !== 'undefined' ? TmsWeek.startOfDate(_day(L().rowDt(pf, pf['Direction'] === 'Import' ? 'import' : 'export', _day))) : null;
+  const who = [lr.truckLabel || (lr.partnerLabel ? lr.partnerLabel : ''), lr.driverLabel].filter(Boolean).join(' · ');
+  const of = p && pf['Order No'] != null ? 'σκέλος της #' + pf['Order No'] + (ws ? ' (εβδ. ' + _dm(ws) + ')' : '') : 'σκέλος ρότας άλλης εβδομάδας';
+  return [who, of].filter(Boolean).join(' · ');
+}
+// «συνέχεια: Σάβ 7/11 →» under a row whose rota legs are dated in another week (row.contLegs, owner
+// 8/11/2026). One 24px note line; each date opens that leg's card. The leg itself stands in its own week.
+function _contHTML(e) {
+  const row = e.row;
+  const links = (row.contLegs || []).map((c) => {
+    const q = _q(c.id), t = (_dayLabel(_day(c.dt)) || '—') + ' →';
+    return q ? `<button type="button" class="wi4-link" onclick="event.stopPropagation();WI_INTERNAL.edit('${q}')">${_esc(t)}</button>` : _esc(t);
+  }).join(', ');
+  return `<div class="wi4-subrow" data-row-id="${row.id}" data-qi="${e.qi}">` +
+    `<div class="wi4-c-idx"><span class="wi4-legidx">↳</span></div><div class="wi4-c-fl"></div>` +
+    `<div class="wi4-c-exp"><span class="wi4-ell wi4-sub-leg-t" title="Σκέλος ρότας σε άλλη εβδομάδα: φαίνεται στη δική του ημέρα">συνέχεια: ${links}</span></div>` +
+    '<div class="wi4-c-asg"></div><div class="wi4-c-imp"></div><div class="wi4-c-fr"></div></div>';
 }
 // Local driver (§e #11): «ΤΟΠΙΚΗ ΦΟΡΤΩΣΗ · Οδηγός · Σάβ 3/10 05:00» in the
 // export column, «ΤΟΠΙΚΗ ΠΑΡΑΔΟΣΗ · … · άλλο φορτηγό ΧΥΖ» in the import
@@ -1513,6 +1558,7 @@ function _entryHTML(e, today) {
     case 'imp': return _impRowHTML(e, today);
     case 'split': return _splitHTML(e);
     case 'leg': return _legRowHTML(e, today);
+    case 'cont': return _contHTML(e);
     case 'relay': return _relayRowHTML(e, today);
     // A failed match's import, still free in the table: drawn in its own day
     // (review 11/10 — counted there but never drawn, the day lied).
@@ -1792,6 +1838,24 @@ function _relayBannerHTML() {
   // Same words as _wiPaint's banner (contract #6/#7, DESIGN.md Α7).
   return `<div class="wi4-banner" role="alert"><span>Οι τοπικές παραδόσεις/φορτώσεις δεν φορτώθηκαν — δεν σημαίνει ότι δεν υπάρχουν (${_esc(D.relay.err || 'σφάλμα ανάγνωσης')}). Οι παραγγελίες δεν επηρεάζονται· το «…με τοπικό οδηγό» μένει κλειστό ώσπου να φορτωθούν.</span><button type="button" class="wi4-link" onclick="WI_INTERNAL.relayReload()">↻ Ξαναδοκίμασε</button></div>`;
 }
+// «N παραγγελίες δεν φαίνονται στον πίνακα: #643» (owner 8/11/2026): every order the week loaded
+// that no row, member, matched import, leg or shelf draws (m.unseen). Each number opens its card.
+// Written to the error log too, once per week and list, so it is heard without anyone looking.
+const _unseenLogged = new Set();   // week:ids already written, so a week switch never writes it twice
+function _unseenBannerHTML(m) {
+  const ids = (m && m.unseen) || [];
+  if (!ids.length) return '';
+  const D = _D(), sig = (D.week || '') + ':' + ids.join(',');
+  if (!_unseenLogged.has(sig)) { _unseenLogged.add(sig); _logErr(new Error('orders drawn nowhere on the board: ' + ids.join(', ')), 'wi4: unseen orders W' + (D.week || '?')); }
+  const links = ids.map((oid) => {
+    const no = _f(oid)['Order No'];
+    const t = no != null && no !== '' ? '#' + no : _loadLabel(oid);
+    const q = _q(oid);
+    return q ? `<button type="button" class="wi4-link" onclick="WI_INTERNAL.edit('${q}')">${_esc(t)}</button>` : _esc(t);
+  }).join(', ');
+  const n = ids.length;
+  return `<div class="wi4-banner" role="alert" data-r="UNSEEN"><span>${n} ${n === 1 ? 'παραγγελία δεν φαίνεται' : 'παραγγελίες δεν φαίνονται'} στον πίνακα: ${links}</span></div>`;
+}
 // Save failure line (§e.14). The old text after the client/route prefix is
 // kept verbatim (its «#N» wording is Φ9 debt, §j.8).
 // ONE short line (sheet 14 #5): «Δεν αποθηκεύτηκε — <τι> έμεινε όπως ήταν ·
@@ -2040,7 +2104,7 @@ function _paint() {
   // #content, the §a.7 contract): inside it they inherited v4's 12px type and
   // ink, and the old popover/panels changed size with no design (11/10).
   content.innerHTML = `<div class="wi4${fl}${fr}" data-week="${D.week}"><style>${I.css}</style>` +
-    _barHTML(m) + _relayBannerHTML() + _qbandHTML(m) + _shelfWrapHTML() + _colsHTML(m) +
+    _barHTML(m) + _relayBannerHTML() + _unseenBannerHTML(m) + _qbandHTML(m) + _shelfWrapHTML() + _colsHTML(m) +
     `<div id="wi-rows">${rowsHTML}</div></div>` +
     '<div id="wi-ctx"></div><div id="wi-popover"></div><div id="wi-panel" class="wi-panel"></div>';
   window._wiDragging = null;   // as _wiPaint: a repaint ends any drag
