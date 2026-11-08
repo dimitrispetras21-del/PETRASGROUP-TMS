@@ -88,7 +88,7 @@ const f098 = () => readOne(['drafts/098_plan_transfer_point.sql', '098_plan_tran
 const f099 = () => readOne(['drafts/099_plan_transfer.sql', '099_plan_transfer.sql'],
   'copy it from the SQL branch: git checkout origin/feat/transfer-099-act -- worker/migrations/drafts/099_plan_transfer.sql');
 const f102 = () => readOne(['drafts/102_plan_drafts.sql', '102_plan_drafts.sql'], 'it is on main since #238');
-const f111 = () => readOne(['drafts/111_intl_form_stops.sql', '111_intl_form_stops.sql'], 'the Worker of the new international form is built on it (PR #289)');
+const f111 = () => readOne(['111_intl_form_stops.sql', 'drafts/111_intl_form_stops.sql'], 'it ran 8/11 and is on main');
 // 074 may still be in review when deploy 1 goes (it runs on day L): null when no copy is on this branch
 const f074 = () => ['drafts/074_plan_cutover.sql', '074_plan_cutover.sql'].map((n) => path.join(MIG, n)).filter((f) => existsSync(f))
   .map((file) => ({ file, sql: readFileSync(file, 'utf8') }))[0] || null;
