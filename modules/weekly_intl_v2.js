@@ -1299,7 +1299,8 @@ function _expRowHTML(e, today) {
   }
   else if (row.saved && !hasPartner) impInner = _gapHTML(row, e, today);
   else if (row.saved && hasPartner) impInner = '<span class="wi4-void">Μόνο εξαγωγή · συνεργάτης</span>';
-  else if (!row.hasSplitLegs && !W().lotHeld(row)) impInner = _openImpHTML(row);
+  // Not on a pre-order: it has its own path (convert first, _wiPreCtx).
+  else if (!row.hasSplitLegs && !W().lotHeld(row) && !(exps.length <= 1 && _isPre(pf))) impInner = _openImpHTML(row);
   else impInner = '<span class="wi4-void" title="Σύρε εισαγωγή εδώ για ταίριασμα"></span>';
   // The import cell is the drop target (§f): empty = match, a load = join.
   // data-unconfirmed: it draws the table, not the row (CSS, tools, the rig).

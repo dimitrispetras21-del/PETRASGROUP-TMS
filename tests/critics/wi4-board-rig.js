@@ -338,7 +338,8 @@ async function openBoard(browser, origin, opts = {}) {
     try {
       if (u.pathname.startsWith('/plan/') || u.pathname === '/pallets/gate') return planAnswer(route, S, u, json);
       // The P&L feed's calls (/costs/*), kept apart: scenario `unassigned` asserts none leave.
-      if (!mm && u.pathname.startsWith('/costs/')) (S.costs = S.costs || []).push(m + ' ' + u.pathname);
+      if (!mm && u.pathname.startsWith('/costs/')) (S.costs = S.costs || []).push(m + ' ' + u.pathname + u.search);
+      if (!mm && m === 'GET' && u.pathname === '/costs/rt' && S.rts) return json(route, { records: S.rts });   // a scenario's live trips
       if (!mm) return json(route, m === 'GET' ? { records: [] } : { ok: true });
       const tbl = db[tid] || (db[tid] = []);
       if (m === 'GET') {
@@ -1706,7 +1707,25 @@ async function scnUnassigned(browser, origin) {
     ok(scn, 'v4 writes = v1 writes (table, record, fields)', JSON.stringify(res.on.w) === JSON.stringify(res.off.w), { v1: res.off.w, v4: res.on.w });
     ok(scn, 'the table says so: match cleared, I007 keeps its own truck T014 and status', !fld(res.on.S, 'recWiE003', 'Matched Import ID') &&
       link(fld(res.on.S, 'recWiI007', 'Truck')) === 'recWiT014' && fld(res.on.S, 'recWiI007', 'Status') === 'Assigned', res.on.w);
-    ok(scn, 'no P&L call (/costs/*)', !res.on.S.costs.length && !res.off.S.costs.length, { v1: res.off.S.costs, v4: res.on.S.costs });
+    const sent = S => S.costs.filter(c => !/^GET /.test(c));
+    ok(scn, 'P&L: the export\'s trip only read (no trip → nothing sent to /costs)', !sent(res.on.S).length && !sent(res.off.S).length && res.on.S.costs.some(c => /^GET \/costs\/rt\?/.test(c)), { v1: res.off.S.costs, v4: res.on.S.costs });
+    ok(scn, 'no page errors', !res.on.errs.length && !res.off.errs.length, { v1: res.off.errs, v4: res.on.errs });
+  }
+  {
+    // The export lost its vehicle by «Καθαρισμός ανάθεσης» of a whole trip:
+    // the trip stays with both legs, no vehicle (_wiClear). The unmatch must
+    // take the import's leg off it (today's full path), or the next assignment
+    // of E003 copies its truck onto I004 (rt_sync_from_order).
+    const scn = 'unassigned.unmatchTrip';
+    const mutate = db => { db[T.ORDERS].find(r => r.id === 'recWiE003').fields['Matched Import ID'] = 'recWiI004'; };
+    const rts = [{ id: 77, code: 'RT-TEST', status: 'open', ct_rt_legs: [{ order_id: 9103, direction: 'EXPORT' }, { order_id: 9132, direction: 'IMPORT' }] }];
+    const res = await twin(browser, origin, scn, async (page, S) => { S.rts = rts; return page.evaluate(() => {
+      const r = WINTL.rows.find(x => x.type === 'export' && (x.orderIds || []).includes('recWiE003'));
+      return r && r.importId === 'recWiI004' ? _wiRemoveImport(r.id).then(v => ({ ok: true, v })) : { ok: false, importId: r && r.importId };
+    }); }, null, { mutate });
+    ok(scn, 'E003 drawn matched to I004 on both boards, the unmatch reports success', res.off.r.ok && res.on.r.ok && res.off.r.v === true && res.on.r.v === true, { v1: res.off.r, v4: res.on.r });
+    ok(scn, 'the import\'s leg leaves the export\'s waiting trip (DELETE …/legs?order_id=9132)', [res.on.S, res.off.S].every(S => S.costs.includes('DELETE /costs/rt/77/legs?order_id=9132')), { v1: res.off.S.costs, v4: res.on.S.costs });
+    ok(scn, 'v4 writes = v1 writes; the match cleared', JSON.stringify(res.on.w) === JSON.stringify(res.off.w) && !fld(res.on.S, 'recWiE003', 'Matched Import ID'), { v1: res.off.w, v4: res.on.w });
     ok(scn, 'no page errors', !res.on.errs.length && !res.off.errs.length, { v1: res.off.errs, v4: res.on.errs });
   }
 }

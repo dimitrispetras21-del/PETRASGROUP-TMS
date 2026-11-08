@@ -3040,6 +3040,7 @@ async function _wiUnmatchRow(rowId){
 // την άνοιξε (owner 3/9). Δεν γράφεται τίποτα εδώ: κρατάμε ΠΟΙΟ export περιμένει
 // και το ταίριασμα εκτελείται μόνο αν η φόρμα όντως δημιουργήσει εγγραφή.
 function _wiNewImport(rowId){
+  if(_wiBlockReadOnly()) return;   // the same gate as «+ Νέα παραγγελία» (_wiNewOrder)
   const row=WINTL.rows.find(r=>r.id===rowId);
   if(!row) return;
   if(row.importId){ toast('Η γραμμή έχει ήδη ταιριασμένη εισαγωγή','warn'); return; }
@@ -3512,14 +3513,20 @@ async function _wiRemoveImport(rowId){
   }
   _wiSync('wi-sync-'+rowId, ok?'ok':'err',
     ok?'Αφαιρέθηκε':'Η αφαίρεση ΔΕΝ γράφτηκε στη βάση — κάνε Ανανέωση',oid0); // T3
-  // An export with no vehicle passed none on (owner 8/11 #10: a match may come
-  // before the assignment, _wiSaveImportMatch inherits only from a vehicle):
-  // the import's vehicle, if any, is its own and stays (before 8/11 this wiped
-  // it). _wiClear empties the matched import with the export; if the export
-  // lost its vehicle elsewhere (the order form), an inherited one may remain:
-  // the import then stands on its own row with that truck, in sight to change
-  // — never erased unseen (principle 1).
-  if(ok&&!(row.truckId||row.partnerId)){ toast('Το ταίριασμα αφαιρέθηκε ✓'); if(typeof atClearCache==='function') atClearCache(TABLES.ORDERS); return true; }
+  // An export with no vehicle and on no trip passed nothing on (owner 8/11 #10:
+  // a match may come before the assignment, _wiSaveImportMatch inherits only
+  // from a vehicle): the import's vehicle, if any, is its own and stays —
+  // before 8/11 this wiped it. Decided on readings, never on the board row
+  // alone (another user may have assigned the export since this week loaded):
+  // the export read live, and its trip (_wiRtOf). An export still on a trip —
+  // a cleared one keeps its legs, the import's among them (_wiClear) — takes
+  // the full path below: the import's leg must leave that trip, or the next
+  // assignment copies its vehicle onto an import it no longer carries.
+  let ownImp=false;
+  if(ok&&!(row.truckId||row.partnerId)){
+    let ef=null; try{ ef=(await atGetOne(TABLES.ORDERS,oid0))?.fields||null; }catch(_){ ef=null; }
+    if(ef&&!getLinkedId(ef['Truck'])&&!getLinkedId(ef['Partner'])){ const at=await _wiRtOf(oid0); ownImp=!!(at.ok&&!at.rt); }
+  }
   if(ok){
     // Ξεταίριασμα = το import δεν ταξιδεύει πια με αυτό το όχημα (owner 13/8):
     // καθαρίζεται η κληρονομημένη ανάθεσή του για να μην μείνει ορφανή.
@@ -3533,7 +3540,7 @@ async function _wiRemoveImport(rowId){
     // never a subset — read back is skipped here (same as the pre-existing
     // single-id clear) since this is a best-effort inherit-cleanup, not the
     // authoritative match write above.
-    const giGroup = await _wiGiGroup(impId);
+    const giGroup = ownImp ? { members: [] } : await _wiGiGroup(impId);   // ownImp: see above
     const clearErrors=[], keptExecuting=[];
     for(const memberId of giGroup.members){
       try{
