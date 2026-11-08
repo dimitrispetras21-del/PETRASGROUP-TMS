@@ -4030,26 +4030,35 @@ async function _scanOpen(matched, data) {
   // picks them up via the new _scanPrefill path in _openModal.
   const ls = matched.loadStops || [];
   const ds = matched.delStops || [];
+  // The new form's hours (111, owner 8/11): scan v2 reads each stop's «time» («08:00», «08:00-12:00», «0700-1100»).
+  // Two times = from–to; one = from, or «to» when the word says a deadline («bis», «until», «έως», «latest», «by»);
+  // anything else stays out (the slot is still in the notes the scan writes). The field holds only the time.
+  const hrs = s => {
+    const txt = String((s && s.time) || '');
+    const m = (txt.match(/\b\d{1,2}[:.]?\d{2}\b/g) || []).map(_oiHm).filter(v => _OI_HM_RE.test(v));
+    const until = m.length === 1 && /\b(bis|until|till|by|latest|sp[aä]testens|before)\b|έως|μέχρι|<|≤/i.test(txt);
+    return { [F.STOP_TIME_FROM]: until ? null : (m[0] || null), [F.STOP_TIME_TO]: until ? m[0] : (m[1] || null) };
+  };
   const loadStops = ls.map((s, i) => ({
-    fields: {
+    fields: Object.assign({
       [F.STOP_NUMBER]:   i + 1,
       [F.STOP_TYPE]:     'Loading',
       [F.STOP_LOCATION]: s._locId ? [s._locId] : null,
       [F.STOP_PALLETS]:  s.pallets != null ? s.pallets : 0,
       [F.STOP_DATETIME]: s.date || data.loading_date || '',
-    },
+    }, hrs(s)),
   }));
   const unloadStops = ds.map((s, i) => {
     // For deliveries, sum up loading pallets if no per-stop pallets specified
     const totalLoadingPallets = ls.reduce((sum, x) => sum + (x.pallets || 0), 0) || data.pallets || 0;
     return {
-      fields: {
+      fields: Object.assign({
         [F.STOP_NUMBER]:   i + 1,
         [F.STOP_TYPE]:     'Unloading',
         [F.STOP_LOCATION]: s._locId ? [s._locId] : null,
         [F.STOP_PALLETS]:  s.pallets != null ? s.pallets : (ds.length === 1 ? totalLoadingPallets : 0),
         [F.STOP_DATETIME]: s.date || data.delivery_date || '',
-      },
+      }, hrs(s)),
     };
   });
 
