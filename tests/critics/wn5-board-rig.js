@@ -100,6 +100,9 @@ async function openBoard(browser, origin, opts = {}) {
     const re = /WN_V5:\s*(?:false|true|'(?:off|pilot|on)')/;
     if (re.test(body)) body = body.replace(re, `WN_V5: '${opts.flag || 'on'}'`);
     else S.preflight.push('FEATURES.WN_V5 not found in config.js');
+    // 110: the date panel's bodies are pinned as before the key; expect_change has its own scenario (wn5-assign-rig
+    // rt_expect, the same rule as wn5-rig-kit.js). opts.expect = true serves the repo's value.
+    if (!opts.expect) body = body.replace(/WN_EXPECT:\s*(?:true|false|'pilot')/, 'WN_EXPECT: false');
     await route.fulfill({ status: 200, contentType: 'text/javascript; charset=utf-8', body });
   });
   const json = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json',

@@ -1,4 +1,5 @@
 -- 110 - NATIONAL v5: A TRIP CHANGED BY SOMEONE ELSE IS NOT OVERWRITTEN IN SILENCE (Sotiris report 8/11, item 7).
+-- EXECUTED 8/11/2026 by the owner: dry run OK, rt_update_md5 b005474aae99761ea71473d085ffc053, verify md5_ok / worker_exec / takes_key = true. Do NOT run again.
 -- Two dispatchers on the same trip (vehicle change, partner rate, a stop's day / window): today the last save wins with
 -- no word (wn5-tools audit 8/11, docs/national-v5/plane-menu-audit-2026-11-08.md). plan_rt_update takes an optional
 -- key expect_change = the newest change by a person the screen saw (087 plan_h_last_change(rt).at, null = none yet).
