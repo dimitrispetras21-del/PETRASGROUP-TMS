@@ -719,3 +719,17 @@ test('numberNationals: the v5 board number by carrier code; waiting / old / carr
     { day: '2026-10-25', nos: [9], id: 'd' }, { day: '2026-10-26', nos: 'failed', id: 'e' }]);
   assert.deepStrictEqual(ord.map((r) => r.id), ['d', 'c', 'b', 'a', 'e']);
 });
+
+// Owner 8/11/2026: a continuation shows its own week's number, «12 · W44».
+test('numberNationals: a continuation takes its own week\'s number «12 · W44»; that board unread = «—» saying so', () => {
+  const v5 = (code) => ({ assign: { kind: 'v5', state: { carriers: [{ kind: 'owned', code, side: 'ANODOS' }] } }, day: '2026-10-31' });
+  const nb = { nums: new Map([[11, 1]]), byCode: new Map([['RT-1', { rt_id: 11 }], ['RT-4', { rt_id: 14 }], ['RT-5', { rt_id: 15 }]]),
+    carried: new Set([14, 15]), away: new Map([[14, { n: 12, w: 44 }], [15, { failed: true, w: 44 }]]) };
+  const rows = W.numberNationals([v5('RT-4'), v5('RT-5'), v5('RT-1')], nb);
+  assert.deepStrictEqual(rows.map(W.natNoText), ['12 · W44', null, '1']);
+  assert.match(rows[0].noWhy, /προηγούμενη εβδομάδα/);
+  assert.strictEqual(rows[0].sheets.length, 1, 'its sheet still opens (the truck is on this week\'s board as a continuation)');
+  assert.match(rows[1].noWhy, /W44 και το Εβδομαδιαίο εκείνης δεν διαβάστηκε/);
+  // order inside the day: this week's numbers first, continuations after
+  assert.deepStrictEqual(W.natNumberOrder(rows).map(W.natNoText), ['1', '12 · W44', null]);
+});

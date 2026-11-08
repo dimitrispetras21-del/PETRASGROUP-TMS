@@ -461,6 +461,50 @@ async function scnNatV5(browser) {
   await page.context().close();
 }
 
+// «natv5carry» (owner 8/11/2026: «12 · W44»): every truck of the week's board started the week before (the fixture's
+// days sit in the previous week), so on this week's board each is a continuation without a number. The previous
+// week's board numbers them: #427 on RT-T106 reads «6 · W<prev>», and the sheet still opens from this week's board.
+async function scnNatV5Carry(browser) {
+  console.log('\n[natv5carry] Εθνικά v5: συνέχεια = ο αριθμός της εβδομάδας του φορτηγού');
+  const page = await P.newPage(browser, 'owner');
+  await boardReads(page);
+  const raw = require('fs').readFileSync(path.join(__dirname, '..', 'fixtures', 'wn5-week.json'), 'utf8');
+  const day = (iso, d) => new Date(Date.parse(iso + 'T00:00:00Z') + d * 864e5).toISOString().slice(0, 10);
+  const prev = day(P.WEEK_FROM, -7);
+  const shift = Math.round((Date.parse(prev + 'T00:00:00Z') - Date.parse(JSON.parse(raw).week + 'T00:00:00Z')) / 864e5);
+  const fixPrev = JSON.parse(raw.replace(/\b(20\d\d-\d\d-\d\d)/g, (d) => day(d, shift)));
+  const json = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
+  const asked = [];
+  await page.route('**/plan/config', route => json(route, { cutover_day: '2026-08-01', opened_at: '2026-08-01T05:00:00Z', writes_open: true }));
+  await page.route(/\/plan\/nat-state/, route => {
+    const ids = (new URL(route.request().url()).searchParams.get('nat_order_ids') || '').split(',').filter(Boolean);
+    const out = {};
+    for (const id of ids) out[id] = id === '427' ? { n_pieces: 1, n_executed: 0, executed: false, planned: true, late: false, hub_side: 'KATHODOS',
+      carriers: [{ kind: 'owned', truck: 'TST-2108', trailer: null, driver: 'Driver Test', partner: null, code: 'RT-T106', side: 'ANODOS', day: null }] } : 'missing';
+    return json(route, out);
+  });
+  // the week on screen: the same cycles (days of the previous week) → all continuations; the previous week: its own
+  await page.route(/\/plan\/board\?/, route => {
+    const wk = new URL(route.request().url()).searchParams.get('week');
+    asked.push(wk);
+    return json(route, Object.assign({}, fixPrev, { week: wk }));
+  });
+  await page.route(/\/plan\/lookups/, route => json(route, { locations: [1, 2, 3, 4, 5, 6, 7, 8].map(k => ({ id: k, legacy_id: k === 1 ? 'recJucKOhC1zh4IP3' : 'recDEF' + k,
+    name: k === 1 ? 'ΒΕΡΟΙΑ TEST' : 'Place Test ' + k, address: 'Street ' + k, city: null, phone: '2100000000', is_hub: k === 1 })), clients: [], trucks: [], trailers: [], drivers: [], partners: [] }));
+  await P.openWeek(page);
+  await page.waitForSelector('.ow4-row.ow4-nat', { timeout: 15000 });
+  ok(asked.includes(P.WEEK_FROM) && asked.includes(prev), `both boards read: this week and the continuations' week (${JSON.stringify(asked)})`);
+  const wPrev = await page.evaluate(w => TmsWeek.numOf(new Date(w + 'T12:00:00')), prev);
+  const a = await page.evaluate(() => {
+    const row = [...document.querySelectorAll('.ow4-row.ow4-nat')].find(r => r.textContent.includes('Ορεινά Γαλακτοκομικά'));
+    const no = row && row.querySelector('.ow4-no');
+    return row ? { no: no ? no.textContent.trim() : null, title: no ? no.getAttribute('title') : null, doc: !!row.querySelector('[data-owvnatdoc]') } : null;
+  });
+  ok(a && a.no === `6 · W${wPrev}` && /προηγούμενη εβδομάδα/.test(a.title) && a.doc, `#427 (continuation of RT-T106) = «6 · W${wPrev}», its sheet opens (${JSON.stringify(a)})`);
+  ok(P.realErrors(page).length === 0, 'natv5carry: 0 page/console errors ' + JSON.stringify(P.realErrors(page)).slice(0, 300));
+  await page.context().close();
+}
+
 // «invoice» (owner 3/11, Eirini's main table): ΤΠΥ, «Αυτοπαράδοση», price entry, price correction, ΤΠΥ
 // correction and undo from the week's ΤΠΥ / ΠΟΣΟ cells. The proof is the PATCH BODY (the same fields as
 // «Προς τιμολόγηση»), then the line the week repaints from the record the mock Worker returned.
@@ -711,6 +755,7 @@ async function scnInvoice(browser) {
   try {
     await scnDocs(browser);
     await scnNatV5(browser);
+    await scnNatV5Carry(browser);
     await scnAlign(browser);
     await scnOrder(browser);
     await scnCard(browser);
