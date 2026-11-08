@@ -724,7 +724,7 @@ async function scnRotaWeek(browser, origin) {
   });
   ok(scn, 'W43: E091 is its own leg row on Saturday 17/10', w43.el && w43.day === '2026-10-17', w43);
   ok(scn, 'W43: no number, «↳» like every leg', w43.idx === '↳', w43);
-  ok(scn, 'W43: it names truck · driver and its parent «σκέλος της #9190 (εβδ. 10/10)»', /TST-\d+ · Driver Test \d{2} · σκέλος της #9190 \(εβδ\. 10\/10\)/.test(w43.tag || ''), w43);
+  ok(scn, 'W43: it names truck · driver and its parent in words «σκέλος της ΠΕΛΑΤΗΣ Γ, Beta Market → Mu Hub (εβδ. 10/10)»', /TST-\d+ · Driver Test \d{2} · σκέλος της ΠΕΛΑΤΗΣ Γ, Beta Market → Mu Hub \(εβδ\. 10\/10\)/.test(w43.tag || ''), w43);
   ok(scn, 'W43: no UNSEEN strip', (await unseen()) === null, await unseen());
   if (OUT) { await page.locator('#content .wi4 .wi4-sub-leg[data-oid="recWiE091"]').scrollIntoViewIfNeeded(); await shot(page, 'rotaweek-W43-leg'); }
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
@@ -2970,11 +2970,11 @@ async function savefailBoard(page, scn, r6) {
   // WRITTEN — no match, an own truck: «Κενό γύρισμα» with its EMPTY_RETURN —
   // and the failure is said once, by the line under the row.
   ok(scn, 'E006\'s import cell draws what the TABLE holds: «Κενό γύρισμα» (data-r EMPTY_RETURN), no failure words inside it, still the drop target', b.unc === '1' && /Κενό γύρισμα/.test(b.gap) && b.gapR === 'EMPTY_RETURN' && !/αποθηκεύτηκε/.test(b.cell) && !b.leg && b.drop, b);
-  ok(scn, 'the failure is the ONE line under E006 and names REF-I004', /Δεν αποθηκεύτηκε/.test(b.msg) && /REF-I004/.test(b.msg), b.msg);
+  ok(scn, 'the failure is the ONE line under E006 and names I004 in words (owner 8/11: never its Reference)', /Δεν αποθηκεύτηκε/.test(b.msg) && /ΠΕΛΑΤΗΣ Ο → Delta Cash/.test(b.msg) && !/REF-I004/.test(b.msg), b.msg);
   // «+ Νέα εισαγωγή» would be refused there (_wiNewImport: row.importId is
   // the failed I004), and the stock panel would count I004 on the truck.
   ok(scn, 'the unconfirmed slot offers no «+ Νέα εισαγωγή» / stock link (both would act on the unsaved match)', !b.act && !b.stk, b);
-  ok(scn, 'I004 is a 24px ghost line in its own loading day, naming its NO_TRUCK', /REF-I004/.test(b.ghost) && b.ghostR.includes('NO_TRUCK') && !!b.ghostDay && b.ghostH === 24, b);
+  ok(scn, 'I004 is a 24px ghost line in its own loading day, naming its NO_TRUCK', /ΠΕΛΑΤΗΣ Ο → Delta Cash/.test(b.ghost) && b.ghostR.includes('NO_TRUCK') && !!b.ghostDay && b.ghostH === 24, b);
   const named = await reasonsNamed(page);
   ok(scn, 'per day after the failure: every reason the header counts is named on exactly that many rows', named.bad.length === 0, named.bad);
   const agree = await dayAgree(page);
@@ -3006,7 +3006,7 @@ async function scnSaveFail(browser, origin) {
     ok(scn, 'a 24px line under E006 «Δεν αποθηκεύτηκε …»', /Δεν αποθηκεύτηκε/.test(r.msg) && r.msgH === 24, r);
     // ONE message (sheet 14 #5): it names what stayed as it was — from the
     // table — and no generic toast stacks on top (review 11/10: four).
-    ok(scn, 'the line names what stayed as it was: «η εισαγωγή REF-I004 μένει χωρίς φορτηγό»', /REF-I004 μένει χωρίς φορτηγό/.test(r.msg), r.msg);
+    ok(scn, 'the line names what stayed as it was: «η εισαγωγή ΠΕΛΑΤΗΣ Ο → Delta Cash μένει χωρίς φορτηγό»', /η εισαγωγή ΠΕΛΑΤΗΣ Ο → Delta Cash μένει χωρίς φορτηγό/.test(r.msg), r.msg);
     const toasts = (await evs(page)).filter(e => e.k === 'toast' || e.k === 'errtoast' || e.k === 'reportError').map(e => e.a[0]);
     ok(scn, 'no stacked toast for the failed match: no «Σφάλμα server», no «Save failed», no «Το ταίριασμα δεν γράφτηκε»', !toasts.some(t => /Σφάλμα server|Save failed|ταίριασμα δεν γράφτηκε/.test(String(t))), toasts);
     // The counts follow the TABLE, not the optimistic paint (review 11/10:

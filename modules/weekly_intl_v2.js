@@ -1319,10 +1319,12 @@ function _expRowHTML(e, today) {
     impCell +
     `<div class="wi4-c-fr">${fr}</div></div>`;
 }
-// «REF-I004» — how a failure names an import (here and in _ghostHTML).
+// «ΦΑΓΕ → Βέροια» — how a failure names an import (here and in _ghostHTML): the
+// row's own words (_loadLabel), never its Reference (owner 8/11, messages
+// without codes: core/plain-ref.js).
 function _impRef(id) {
-  const f = _f(id);
-  return f['Reference'] ? String(f['Reference']) : (W().clientName(f) || 'η εισαγωγή');
+  const t = _loadLabel(id);
+  return t && t !== '—' ? t : 'εισαγωγή χωρίς στοιχεία';
 }
 // The import cell of a failed match/unmatch whose TABLE still holds another
 // match (srv). That import is counted where the optimistic rows draw it, not
@@ -1333,8 +1335,8 @@ function _impRef(id) {
 // target (§f).
 function _notSavedHTML(row, srv) {
   const txt = row.importId
-    ? `δεν αποθηκεύτηκε — η ${_impRef(row.importId)} είναι ακόμη ελεύθερη · μένει η ${_impRef(srv)}`
-    : `δεν αποθηκεύτηκε — η ${_impRef(srv)} μένει ταιριασμένη εδώ`;
+    ? `δεν αποθηκεύτηκε — η εισαγωγή ${_impRef(row.importId)} είναι ακόμη ελεύθερη · μένει η ${_impRef(srv)}`
+    : `δεν αποθηκεύτηκε — η εισαγωγή ${_impRef(srv)} μένει ταιριασμένη εδώ`;
   // The words lead the title: cut on a narrow screen, they stay readable.
   return `<span class="wi4-ns wi4-t-g2" title="${_esc(txt + ' · το κελί δείχνει ό,τι είναι γραμμένο στη βάση')}">${_ico('alert_circle', 11)}<span class="wi4-ell">${_esc(txt)}</span></span>`;
 }
@@ -1348,7 +1350,7 @@ function _ghostHTML(e, today) {
   const words = Object.values(rs).map((r) => `<span class="${r.level === 'red' ? 'wi4-t-red' : 'wi4-t-amb'}" data-r="${_esc(r.code)}">${_esc(GHOST_WORDS[r.code] || r.text)}</span>`);
   const exp = ((_D().rows) || []).find((r) => r.type === 'export' && r.importId && (ir.orderIds || [ir.orderId]).includes(r.importId) && _unconfirmed(r));
   const expOid = exp ? ((exp.orderIds || [])[0] || exp.orderId) : '';
-  const head = [_impRef(ir.orderId), W().clientName(_f(ir.orderId)) || ''].filter(Boolean).join(' · ');
+  const head = _impRef(ir.orderId);   // the client is already in the words
   const tail = 'η ένωση' + (expOid ? ' με ' + _loadLabel(expOid) : '') + ' δεν αποθηκεύτηκε';
   const go = _q(expOid) ? ` onclick="event.stopPropagation();WIV2.focusRow('${_q(expOid)}')"` : '';
   // In the IMPORT column, where the import would be drawn.
@@ -1480,7 +1482,8 @@ function _legRowHTML(e, today) {
     `<div class="wi4-c-asg"><div class="wi4-asg">${isImp ? '' : prt}${nt}${sd}${unlink}${isImp ? prt : ''}</div></div>` +
     `<div class="wi4-c-imp">${isImp ? leg : tag}</div><div class="wi4-c-fr">${isImp ? nat : ''}</div></div>`;
 }
-// A leg in its own week: «CB8425XT · Simeon Gavrilov · σκέλος της #644 (εβδ. 31/10)». The parent is read
+// A leg in its own week: «CB8425XT · Simeon Gavrilov · σκέλος της ΦΑΓΕ, Βέροια → Graz (εβδ. 31/10)» — the
+// parent in words, never «#644» (owner 8/11, core/plain-ref.js). The parent is read
 // from the board's window (WINTL.data.away); unread, its id is not guessed: «σκέλος ρότας άλλης εβδομάδας».
 function _xLegTag(lr) {
   const D = _D();
@@ -1488,7 +1491,8 @@ function _xLegTag(lr) {
   const pf = (p && p.fields) || {};
   const ws = p && typeof TmsWeek !== 'undefined' ? TmsWeek.startOfDate(_day(L().rowDt(pf, pf['Direction'] === 'Import' ? 'import' : 'export', _day))) : null;
   const who = [lr.truckLabel || (lr.partnerLabel ? lr.partnerLabel : ''), lr.driverLabel].filter(Boolean).join(' · ');
-  const of = p && pf['Order No'] != null ? 'σκέλος της #' + pf['Order No'] + (ws ? ' (εβδ. ' + _dm(ws) + ')' : '') : 'σκέλος ρότας άλλης εβδομάδας';
+  const pw = p ? PlainRef.orderOf(pf, { day: false }) : '';
+  const of = pw ? 'σκέλος της ' + pw + (ws ? ' (εβδ. ' + _dm(ws) + ')' : '') : 'σκέλος ρότας άλλης εβδομάδας';
   return [who, of].filter(Boolean).join(' · ');
 }
 // «συνέχεια: Σάβ 7/11 →» under a row whose rota legs are dated in another week (row.contLegs, owner
@@ -1863,10 +1867,12 @@ function _unseenBannerHTML(m) {
   const D = _D(), sig = (D.week || '') + ':' + ids.join(',');
   if (!_unseenLogged.has(sig)) { _unseenLogged.add(sig); _logErr(new Error('orders drawn nowhere on the board: ' + ids.join(', ')), 'wi4: unseen orders W' + (D.week || '?')); }
   const links = ids.map((oid) => {
+    // In words (owner 8/11); the number only in the tooltip, for search.
     const no = _f(oid)['Order No'];
-    const t = no != null && no !== '' ? '#' + no : _loadLabel(oid);
+    const t = _loadLabel(oid) !== '—' ? _loadLabel(oid) : 'παραγγελία χωρίς στοιχεία';
+    const tip = no != null && no !== '' ? ` title="#${_esc(no)}"` : '';
     const q = _q(oid);
-    return q ? `<button type="button" class="wi4-link" onclick="WI_INTERNAL.edit('${q}')">${_esc(t)}</button>` : _esc(t);
+    return q ? `<button type="button" class="wi4-link"${tip} onclick="WI_INTERNAL.edit('${q}')">${_esc(t)}</button>` : `<span${tip}>${_esc(t)}</span>`;
   }).join(', ');
   const n = ids.length;
   return `<div class="wi4-banner" role="alert" data-r="UNSEEN"><span>${n} ${n === 1 ? 'παραγγελία δεν φαίνεται' : 'παραγγελίες δεν φαίνονται'} στον πίνακα: ${links}</span></div>`;
@@ -1891,8 +1897,8 @@ function _msgText(oid) {
   const D = _D(), row = (D.rows || []).find((x) => ((x.orderIds || [])[0] || x.orderId) === oid);
   const s = (D._syncLog || {})[oid] || {};
   if (row && _unconfirmed(row) && row.importId) {
-    const f = _f(row.importId), ir = (D.rows || []).find((x) => x.type === 'import' && (x.orderIds || [x.orderId]).includes(row.importId));
-    const who = f['Reference'] ? 'η εισαγωγή ' + f['Reference'] : 'η εισαγωγή ' + (W().clientName(f) || '');
+    const ir = (D.rows || []).find((x) => x.type === 'import' && (x.orderIds || [x.orderId]).includes(row.importId));
+    const who = 'η εισαγωγή ' + _impRef(row.importId);
     return 'Δεν αποθηκεύτηκε — ' + who + (ir && !ir.saved ? ' μένει χωρίς φορτηγό' : ' έμεινε χωρίς ταίριασμα');
   }
   const msg = String(s.msg || '');

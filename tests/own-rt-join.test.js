@@ -41,6 +41,8 @@ const WI_PARTS = [
   line(/const WI_EXECUTING=\[[^\]]*\];\n/, 'WI_EXECUTING'), line(/const WI_PAL_CAP=\d+;\n/, 'WI_PAL_CAP'),
   one('_wiPalOver'), one('_wiRecsPals'), one('_wiPalNote'), one('_wiIsPiece'), one('_wiIsLot'), one('_wiRecOf'), one('_wiVehOfF'),
   many('_wiLotHeld'), many('_wiImpGroupRowOf'), many('_wiPieceIn'), many('_wiGrpOrder'), many('_wiGiSortRecs'), many('_wiLoadRecs'),
+  // owner 8/11 (core/plain-ref.js): the messages name orders and trips in words, through these.
+  one('_wiOrdTxt'), one('_wiCliTxt'), one('_wiErrList'), line(/async function _wiRtTxt\(rt\)\{[^\n]*\n/, '_wiRtTxt'), many('_wiJoinVeh'),
   many('_wiJoinPalText'), many('_wiAssignLbl'), many('_wiAssignedText'), many('_wiVehLbl'), many('_wiJoinLoadLbl'), many('_wiJoinWho'),
   many('_wiJoinCheck'), many('_wiInhOf'), many('_wiRefuse'),
   asyncMany('_wiJoinReadLoad'), asyncMany('_wiImpJoin'),
@@ -48,7 +50,9 @@ const WI_PARTS = [
 ].join('\n');
 
 const LOAD = 'GI-MUX|recI461,recI463';
+const CLIENT = { 461: 'ΦΑΓΕ', 463: 'Lidl', 470: 'Alfa', IE: 'Beta', IF: 'Gamma' };
 const imp = (id, no, ref, pal, extra = {}) => ({ Type: 'International', Direction: 'Import', Status: 'Pending', Reference: ref, 'Order No': no,
+  'Client Name': CLIENT[ref], 'Loading Summary': 'Verona', 'Delivery Summary': 'Βέροια',
   'Total Pallets': pal, 'Loading DateTime': '2026-10-08T08:00:00', 'Delivery DateTime': '2026-10-12T10:00:00', ...extra });
 // ledger_entry: what GET /costs/rt carries for the trip's live payroll line (null = none).
 const trip = (id, code, pgs, extra = {}) => ({ id, code, status: 'planned', trip_type: 'OWNED', truck_id: null, driver_id: null,
@@ -73,11 +77,11 @@ function world({ rts = [], role = 'owner', lines = {}, rtListFails = false, legD
   const board = () => ({
     exports: [copy('recE27')],
     imports: ['recI461', 'recI463', 'recI470', 'recIE', 'recIF'].map(copy),
-    trucks: [{ id: 'recT27', label: 'TRK-27' }], partners: [], trailers: [], drivers: [{ id: 'recD27', label: 'Driver 27' }], stock: null,
+    trucks: [{ id: 'recT27', label: 'TRK-27' }], partners: [], trailers: [], drivers: [{ id: 'recD27', label: 'Παπαδόπουλος Γιώργος' }], stock: null,
   });
   const ctx = {
     console: { log() {}, info() {}, warn() {}, error() {} }, JSON, Math, Date, Promise, Array, Object, Set, Map, Error, Number, String,
-    OrdersStock, OrdersCommon, getLinkedId,
+    OrdersStock, OrdersCommon, getLinkedId, orderClientName, PlainRef: require(path.join(ROOT, 'core/plain-ref.js')), _fhLocationsMap: {},
     WI4: require(path.join(ROOT, 'core/wi4-logic.js')),   // _wiBuildRows / _wiShelved read the shared board rules
     localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
     PROXY_URL: 'https://w.invalid',
@@ -151,7 +155,10 @@ function world({ rts = [], role = 'owner', lines = {}, rtListFails = false, legD
 
 const join470 = w => w.ctx._wiImpJoin('recI461', 'recE27', 'recI470');
 const joinTwo = w => w.ctx._wiImpJoin('recI461', 'recE27', 'recIE');
-const INTO = 'φορτίο TRK-27 (461+463 · 24 π.)';
+// owner 8/11: a load by its vehicle + its members' clients, an order by client + route, a trip by its day here (no lookups in this world)
+const INTO = 'φορτίο TRK-27 · Παπαδόπουλος Γ. (ΦΑΓΕ, Lidl · 24 π.)';
+const IN_OK = 'μπήκε στο TRK-27 · Παπαδόπουλος Γ., μαζί με ΦΑΓΕ, Lidl · 24 π. ✓';
+const A470 = 'Alfa, Verona → Βέροια', TRIP = 'δρομολόγιο Πέμ 8/10';
 const joined = (w, id) => w.orders[id]['Group ID'] === LOAD && JSON.stringify(w.orders[id].Truck) === '["recT27"]';
 function refusedClean(w, text) {
   assert.deepStrictEqual(w.writes(), [], 'something was written: ' + w.writes().join(', '));
@@ -168,7 +175,7 @@ test('(a) 470 on no trip of its own: one PATCH, the load\'s Group ID + truck —
   assert.deepStrictEqual(w.writes(), ['PATCH order recI470']);
   assert.ok(joined(w, 'recI470'));
   assert.ok(!w.calls.some(c => c.includes('/costs/lines')));
-  assert.deepStrictEqual(w.toasts.map(t => t.m), ['Η εισαγωγή 470 μπήκε στο ' + INTO + ' ✓']);
+  assert.deepStrictEqual(w.toasts.map(t => t.m), ['Η εισαγωγή ' + A470 + ' ' + IN_OK]);
   assert.deepStrictEqual(w.logged, []);
   assert.deepStrictEqual(w.rtSaved, ['recE27'], 'the export\'s trip is synced after the join');
 });
@@ -182,7 +189,7 @@ test('(b) 470 alone on its empty RT-1300 (after «Καθαρισμός ανάθ�
   assert.ok(w.calls.slice(del + 1, patch).some(c => c.startsWith('GET /costs/rt?')), 'no re-read between the DELETE and the write');
   assert.strictEqual(w.rts[0].status, 'cancelled', 'the empty trip is cancelled (the DB, 013)');
   assert.ok(joined(w, 'recI470'));
-  assert.deepStrictEqual(w.toasts.map(t => t.m), ['Η εισαγωγή 470 μπήκε στο ' + INTO + ' ✓ · η #470 βγήκε από το άδειο RT-1300']);
+  assert.deepStrictEqual(w.toasts.map(t => t.m), ['Η εισαγωγή ' + A470 + ' ' + IN_OK + ' · η ' + A470 + ' βγήκε από το άδειο ' + TRIP]);
   assert.deepStrictEqual(w.logged, []);
   assert.deepStrictEqual(w.errToasts, []);
 });
@@ -195,13 +202,13 @@ test('(b) a two-member import on ONE shared empty trip: both legs leave, the tri
   assert.ok(Math.max(d1, d2) < w.calls.indexOf('PATCH order recIE'), 'a member was written before both legs left');
   assert.strictEqual(w.rts[0].status, 'cancelled');
   assert.ok(joined(w, 'recIE') && joined(w, 'recIF'));
-  assert.deepStrictEqual(w.toasts.map(t => t.m), ['Οι εισαγωγές IE+IF μπήκαν στο φορτίο TRK-27 (461+463 · 24 π.) ✓ · οι #IE, #IF βγήκαν από το άδειο RT-1400']);
+  assert.deepStrictEqual(w.toasts.map(t => t.m), ['Οι εισαγωγές Beta, Verona → Βέροια και Gamma, Verona → Βέροια μπήκαν στο TRK-27 · Παπαδόπουλος Γ., μαζί με ΦΑΓΕ, Lidl · 24 π. ✓ · οι Beta, Verona → Βέροια και Gamma, Verona → Βέροια βγήκαν από το άδειο ' + TRIP]);
 });
 
 test('(c) every trip is judged before the first leg leaves: IE on an empty trip, IF on a trip with costs — refused, IE\'s trip untouched', async () => {
   const w = world({ rts: [trip(400, 'RT-1400', [601]), trip(401, 'RT-1401', [602])], lines: { 401: 2 } });
   assert.strictEqual(await joinTwo(w), false);
-  refusedClean(w, 'Η #IF είναι ακόμη στο δρομολόγιο RT-1401, που έχει έξοδα — ζήτα από τον owner να το ακυρώσει · δεν γράφτηκε τίποτα');
+  refusedClean(w, 'Η Gamma, Verona → Βέροια είναι ακόμη στο ' + TRIP + ', που έχει έξοδα — ζήτα από τον owner να το ακυρώσει · δεν γράφτηκε τίποτα');
   assert.deepStrictEqual(w.rts.map(r => r.status), ['planned', 'planned']);
 });
 
@@ -215,7 +222,7 @@ for (const [name, opts, why] of [
   test('(c) ' + name + ': refused, nothing written, said and logged once', async () => {
     const w = world(opts);
     assert.strictEqual(await join470(w), false);
-    refusedClean(w, 'Η #470 είναι ακόμη στο δρομολόγιο RT-1300' + why + ' · δεν γράφτηκε τίποτα');
+    refusedClean(w, 'Η ' + A470 + ' είναι ακόμη στο ' + TRIP + why + ' · δεν γράφτηκε τίποτα');
     assert.strictEqual(w.rts[0].status, opts.rts[0].status, 'the trip changed');
     assert.ok(!w.orders.recI470['Group ID'], '470 was given a group');
   });
@@ -224,14 +231,14 @@ for (const [name, opts, why] of [
 test('read failure: the trips cannot be read — refused, nothing written (never a guess)', async () => {
   const w = world({ rtListFails: true });
   assert.strictEqual(await join470(w), false);
-  refusedClean(w, 'Ο γύρος της #470 δεν διαβάστηκε (ο γύρος δεν διαβάστηκε (boom)) · δεν γράφτηκε τίποτα');
+  refusedClean(w, 'Ο γύρος της παραγγελίας ' + A470 + ' δεν διαβάστηκε (ο γύρος δεν διαβάστηκε (boom)) · δεν γράφτηκε τίποτα');
 });
 
 test('a leg DELETE refused after another member already left: stopped, said what DID happen, no member written', async () => {
   const w = world({ rts: [trip(400, 'RT-1400', [601, 602])], legDelete: pg => (pg === 602 ? 403 : 'ok') });
   assert.strictEqual(await joinTwo(w), false);
   assert.ok(!w.calls.some(c => c.startsWith('PATCH order')), 'a member was written: ' + w.calls.join(', '));
-  const text = 'η #IE βγήκε από το RT-1400 · Η #IF ΔΕΝ βγήκε από το RT-1400 (χωρίς δικαίωμα αφαίρεσης σκέλους γύρου) · η ένταξη στο ' + INTO + ' δεν έγινε';
+  const text = 'η Beta, Verona → Βέροια βγήκε από το ' + TRIP + ' · Η Gamma, Verona → Βέροια ΔΕΝ βγήκε από το ' + TRIP + ' (χωρίς δικαίωμα αφαίρεσης σκέλους γύρου) · η ένταξη στο ' + INTO + ' δεν έγινε';
   assert.deepStrictEqual(w.reports, [text]);
   assert.strictEqual(w.logged.length, 1);
   assert.deepStrictEqual(w.syncs[w.syncs.length - 1], ['wi-sync-1', 'err', text]);
