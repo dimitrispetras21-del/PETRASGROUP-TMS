@@ -3692,7 +3692,8 @@ function stockRuleError(e) {
   }
   // 111 not run yet (or rolled back) under this Worker: its hour columns are unknown (PGRST204 / 42703) or via_hub is
   // still NOT NULL (23502 on a «Via Hub» cleared to null). Said by name, never «Failed to update record» (principle 1).
-  if ((/^(PGRST204|42703)$/.test(code) && /time_from|time_to/.test(message)) || (code === "23502" && /"via_hub"/.test(message))) {
+  // Tied to order_stops by name: LOCAL MOVES has time_from / time_to too, and its errors are not 111's.
+  if (/order_stops/.test(message) && ((/^(PGRST204|42703)$/.test(code) && /time_from|time_to/.test(message)) || (code === "23502" && /"via_hub"/.test(message)))) {
     return { type: "SCHEMA_BEHIND", code: "111_missing", message: "Η βάση δεν έχει ακόμη το migration 111 (ώρες και «μέσω Βέροιας» ανά στάση) — ο Worker μπήκε πριν από το SQL· τίποτα δεν γράφτηκε, ενημέρωσε τον Δημήτρη (111_missing)" };
   }
   if (code === "23514") {

@@ -382,6 +382,16 @@ test('every 071 CHECK and UNIQUE is mapped to Greek or classified; every PLAN_CH
     assert.deepEqual(r, { type: 'PLAN_RULE', code: name, message: W.PLAN_CHECK_TEXT[name] }, name);
     assert.match(r.message, greek, `${name} text is Greek`);
   }
+  // a base without 111 under this Worker: named for order_stops only (LOCAL MOVES has its own time_from / time_to)
+  for (const pg of [{ code: 'PGRST204', message: "Could not find the 'time_from' column of 'order_stops' in the schema cache" },
+    { code: '42703', message: 'column "time_to" of relation "order_stops" does not exist' },
+    { code: '23502', message: 'null value in column "via_hub" of relation "order_stops" violates not-null constraint' }]) {
+    assert.equal(W.stockRuleError({ pg }).code, '111_missing', pg.message);
+  }
+  for (const pg of [{ code: '42703', message: 'column "time_from" of relation "local_moves" does not exist' },
+    { code: '23502', message: 'null value in column "pallets" of relation "order_stops" violates not-null constraint' }]) {
+    assert.equal(W.stockRuleError({ pg }), null, pg.message);
+  }
   const known = new Set([...checks, ...uniques, ...LIVE_PRE_071, ...checks072b, ...checks089, ...checksRoad, ...checks111]);
   const dead = Object.keys(W.PLAN_CHECK_TEXT).filter((k) => !known.has(k));
   assert.deepEqual(dead, [], 'PLAN_CHECK_TEXT keys with no constraint in 071, 072b, 089, 098, 099, 102, 111 or live before 071');
