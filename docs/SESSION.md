@@ -12,7 +12,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
-- dimitris · `feat/pallets-y4` (PR #267) · Παλέτες Υ4: «Λείπει παράδοση» + «Χωρίς ανταλλαγή» (107 **ΕΚΤΕΛΕΣΜΕΝΟ 8/11** + Worker + οθόνη)· ο Worker δεν έχει ανέβει (`docs/sessions/2026-11-08-dimitris-pallets-y4.md`)
+- dimitris · `feat/pallets-y4` (PR #267) · Παλέτες Υ4: «Λείπει παράδοση» + «Χωρίς ανταλλαγή» (107 **ΕΚΤΕΛΕΣΜΕΝΟ 8/11** + **Worker 32e0ca75 ΖΩΝΤΑΝΟΣ 8/11** + οθόνη)· περιμένει merge (`docs/sessions/2026-11-08-dimitris-pallets-y4.md`)
 - dimitris · `feat/pallets-y3-page` · **#266 MERGED 8/11** · Παλέτες Υ3: νέα σελίδα στα frames N01–N18 (redesign 28/10), μόνο front end· rig 62/62· `/code-review high` 9 ευρήματα διορθωμένα· Worker του Υ4 θα δώσει πόλη / χώρα, παλέτες στάσης, ιστορικό (`docs/sessions/2026-11-08-dimitris-pallets-y3-page.md`)
 - dimitris · `feat/105-rt-pnl-complete` · **105 ΕΚΤΕΛΕΣΜΕΝΗ 8/11 ~14:00 (owner)**: τρεις όψεις (`ct_v_rt_revenue_legs`, `ct_v_rt_cost_cat`, `ct_v_rt_complete`), η `ct_v_rt_revenue` δεν άλλαξε· verify: 257 = 257, loads_diff 0· αρχεία έξω από `drafts/`· **μην την ξανατρέξεις**· επόμενα: χαρτιά P&L (δρομολόγιο + εβδομάδα) πάνω στην `ct_v_rt_complete` (`docs/sessions/2026-11-03-dimitris-105-rt-pnl-complete.md`)
 - dimitris · `feat/owv-week-print` · «Παραγγελίες › Εβδομάδα»: **#256 MERGED 3/11** · εκτύπωση εβδομάδας τιμολόγησης A4 όρθιο, ανά δρομολόγιο (σχέδιο Γ εγκεκριμένο 3/11, PR #252)· αποδίδει το μοντέλο της οθόνης, χωρίς δεύτερο υπολογισμό· μόνο front end, ?v= / SW_VERSION 1793960000 (`docs/sessions/2026-11-03-dimitris-week-print.md`)

@@ -6079,3 +6079,9 @@ SELECT μετά την εκτέλεση: #525 και #528 στο RT-1240 (closed
 **Απόδειξη:** PGlite `worker/test/migration-107.test.mjs` (dry run, 12 αρνήσεις, πράξη + ίχνος, rollback)· μέτρηση live 8/11: 49 στάσεις, ερώτηση 58 ms.
 **Ποιος:** owner (κανόνες 27–28/10), agent (σχεδίαση, κώδικας, τεστ). **Εκτέλεση 107: owner 8/11** (dry run 49 / 155 ms / τίποτα κρατημένο· verify «107 in place»).
 **Ανοιχτό (owner):** ο δρομολογητής δεν βλέπει ακόμη το ίχνος στην καρτέλα της παραγγελίας (το `/audit` είναι μόνο για owner / management).
+
+### 2026-11-08 · Παλέτες · Υ4: Worker 32e0ca75 ζωντανός
+**Τι:** `GET /pallets/missing`, `POST /pallets/no-exchange`, `GET /pallets/movements/:id/history` και τα embeds πόλης / παλετών στάσης της λίστας κινήσεων, πάνω στην πηγή του 0190cc37 (μία αλυσίδα).
+**Deploy:** owner, 8/11 βράδυ, από το worktree του PR #267, μετά την εκτέλεση του 107. Φρουρός: πριν στη λήψη CF `… --pnlp 1 --pmiss 0` → GUARD OK (41)· στο bundle `--pmiss 1` → GUARD OK (41)· μετά στη λήψη CF `--pmiss 1` → GUARD OK (41). Secrets άθικτα· χωρίς token 401 στις δύο νέες διαδρομές.
+**Επαναφορά:** `wrangler rollback 0190cc37-d34b-42e5-90d8-8519dfb9f7f1`, φρουρός με `--pmiss 0` (το 107 μένει· ο παλιός Worker δεν το διαβάζει, η λίστα της οθόνης κρύβεται μόνη της με το 404).
+**Ποιος:** owner (deploy), agent (κώδικας, φρουρός, καταγραφή).
