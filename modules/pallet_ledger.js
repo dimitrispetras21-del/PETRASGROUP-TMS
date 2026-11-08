@@ -176,7 +176,16 @@ const PLV_EVENT_GR = {
 };
 
 // Order's fields per row (Reference, vehicle, driver, week) — from _plvEnrich; empty until it comes, never «—».
+// Cached per movement object and per enrichment (each row reads it 3–5 times; a new enrichment = a new map).
+const _plvExtras = new WeakMap();
 function _plvRowExtras(m) {
+  const hit = _plvExtras.get(m);
+  if (hit && hit.of === PLV.orderById) return hit.v;
+  const v = _plvRowExtrasRaw(m);
+  _plvExtras.set(m, { of: PLV.orderById, v });
+  return v;
+}
+function _plvRowExtrasRaw(m) {
   const o = (PLV.orderById || {})[m.order_id];
   if (!o) return { ref: '', carrier: '', plate: '', partner: '', driver: '', week: null };
   const f = o.fields;
@@ -321,14 +330,16 @@ function plvPeriod(v) {
 function plvGroupBy(mode) { PLV.groupBy = mode; PLV.open = {}; _plvDraw(); }
 function plvAct(a) { PLV.tab = 'action'; PLV.act = a; PLV.card = null; PLV.more = false; _plvDraw(); }
 function plvBalKind(k) { PLV.balKind = k; PLV.zeroOpen = false; _plvDraw(); }
-function plvToggle(key) { PLV.open[key] = !_plvIsOpen(key); _plvRedrawBody(); }
+function plvToggle(key) { PLV.open[_plvOpenKey(key)] = !_plvIsOpen(key); _plvRedrawBody(); }
+// Fold state per view: closing Berger in Εκκρεμείς must not hide Berger in Κινήσεις.
+function _plvOpenKey(key) { return (PLV.tab === 'action' ? PLV.act : PLV.tab + PLV.groupBy) + ':' + key; }
 function plvMore() { PLV.more = !PLV.more; _plvRedrawBody(); }
 function plvSched() { PLV.sched = !PLV.sched; _plvRedrawBody(); }
 function plvZero() { PLV.zeroOpen = !PLV.zeroOpen; _plvRedrawBody(); }
 function _plvRedrawBody() { const b = document.getElementById('plvBody'); if (b) b.innerHTML = _plvBodyHtml(); else _plvDraw(); }
 // Groups start open (the accountant must see rows without a click, Figma 2/9); what the user closes stays closed
 // while she stays on the page; an active search opens every group.
-function _plvIsOpen(key) { return PLV.q ? true : PLV.open[key] !== undefined ? PLV.open[key] : true; }
+function _plvIsOpen(key) { const k = _plvOpenKey(key); return PLV.q ? true : PLV.open[k] !== undefined ? PLV.open[k] : true; }
 
 const PLV_TAB_ALIAS = { pending: ['action', 'pending'], noreturn: ['action', 'noreturn'], all: ['moves'], clients: ['bal', 'clients'], partners: ['bal', 'partners'] };
 function plvTab(t) {
@@ -623,7 +634,9 @@ function _plvBalanceHtml() {
   const isC = kind === 'clients';
   const idKey = isC ? 'client_id' : 'partner_id', nameKey = isC ? 'client_name' : 'partner_name';
   const all = _plvBalOpen(kind);
-  const open = all.filter(b => b.balance !== 0).sort((a, b) => b.balance - a.balance || String(a[nameKey]).localeCompare(b[nameKey]));
+  // N07: who owes us, largest first, then whom we owe, largest first (718 before 2).
+  const open = all.filter(b => b.balance !== 0).sort((a, b) => (b.balance > 0) - (a.balance > 0)
+    || Math.abs(b.balance) - Math.abs(a.balance) || String(a[nameKey]).localeCompare(b[nameKey]));
   const zero = all.filter(b => b.balance === 0);
   const owed = open.filter(b => b.balance > 0), owe = open.filter(b => b.balance < 0);
   const sOwed = _plvSum(owed, b => b.balance), sOwe = -_plvSum(owe, b => b.balance), net = sOwed - sOwe;
@@ -685,7 +698,7 @@ function _plvHeadHtml() {
   const nw = _plvCanNew() ? '<button class="plv-btn plv-btn-p" onclick="plvNewMovement()">+ Νέα κίνηση</button>' : '';
   return `<div class="plv-hd">
     <div class="plv-ttl"><h1>Παλέτες</h1><span class="plv-sub">${escapeHtml(_plvSubtitle())}</span></div>
-    <nav class="plv-nav">${PLV_TABS.map(([id, l]) => `<button class="${PLV.tab === id && !PLV.card ? 'on' : PLV.tab === id ? 'on' : ''}" onclick="plvTab('${id}')">${l}</button>`).join('')}</nav>
+    <nav class="plv-nav">${PLV_TABS.map(([id, l]) => `<button class="${PLV.tab === id ? 'on' : ''}" onclick="plvTab('${id}')">${l}</button>`).join('')}</nav>
     <div class="plv-hact">${exp}${nw}</div>
   </div>`;
 }
@@ -818,9 +831,11 @@ function plvExportCSV() {
   if (!rows.length) { toast('Καμία κίνηση για εξαγωγή', 'error'); return; }
   // The screen's columns, plus the party where the screen says it in the group header, and the PM code and status
   // (the accountant's sheets refer to them).
+  // Reference and the note stay columns of their own in the file (P1 16/9): on screen they sit under the number.
   const cols = _plvCols(view, rows).filter(c => c.csv);
-  const extra = cols.some(c => c.key === 'party') ? [] : [PLV_COL.party()];
-  const all = cols.slice(0, 2).concat(extra, cols.slice(2).filter(c => c.key !== 'st'));
+  const has = k => cols.some(c => c.key === k);
+  const all = cols.slice(0, 2).concat([PLV_COL.ref()], has('party') ? [] : [PLV_COL.party()],
+    cols.slice(2).filter(c => c.key !== 'st'), has('note') ? [] : [PLV_COL.note()]);
   const head = all.map(c => c.h).concat(['Κωδικός', 'Κατάσταση']);
   const body = rows.map((m, k) => all.map(c => c.csv(m, k + 1)).concat([m.code, _plvStatus(m)]).map(_plvCsvEsc).join(','));
   _plvCsvSave(head, body, 'paletes-' + _plvToday() + '.csv', PLV.cut, false);
@@ -1168,11 +1183,16 @@ async function plvDoConfirm(id) {
     try { path = await _plvUploadIfAny(); } catch (e) { e.plvStep = 'upload'; throw e; }
     await plvConfirmCore(id, { taken, given, sheetPath: path });
     toast(`Επιβεβαιώθηκε: ${_plvLabel(m)} · πήραμε ${taken} · δώσαμε ${given}`);
-    if (PLV.wizQueue && PLV.wizQueue.length > 1) {
-      // Wizard: a light refresh of the list only, then the next one; balances reload once, at the end.
-      const mv = await plFetch('/pallets/movements');
+    // The wizard goes on only for a movement of its queue: a scheduled row, or one opened from the card or the
+    // panel, is not in it, and «next» would open an unrelated first row (review 8/11).
+    if (PLV.wizQueue && PLV.wizQueue.length > 1 && PLV.wizQueue.includes(id)) {
+      // Wizard: the list and the balances (the next modal's «μετά» starts from them), then the next one.
+      const [mv, bc, bp] = await Promise.all([plFetch('/pallets/movements'),
+        plFetch('/pallets/balances?type=clients'), plFetch('/pallets/balances?type=partners')]);
       PLV.movements = mv.records || [];
       PLV.cut = _plvCut(mv);
+      PLV.balances.clients = bc.records || [];
+      PLV.balances.partners = bp.records || [];
       plvWizAdvance(id);
     } else {
       plvCloseModal(); await renderPalletLedger();
@@ -1225,7 +1245,8 @@ function plvOpenPanel(id) {
   const sheet = m.sheet_url
     ? `<a href="#" onclick="plvViewSheet('${escapeHtml(String(m.sheet_url).replace(/'/g, ''))}');return false">Προβολή δελτίου</a>`
     : m.sheet_source === 'MANUAL' && m.status === 'confirmed' ? 'χειροκίνητη (χωρίς αρχείο)' : '<span class="plv-mid">δεν έχει ανέβει</span>';
-  const origin = m.order_stop_id && m.order_id ? 'από την παραγγελία' : m.piece_leg_id != null ? 'από τον προγραμματισμό εθνικών' : 'χειροκίνητα';
+  const origin = m.order_stop_id && m.order_id ? 'από την παραγγελία' : m.cons_load_id ? 'από το δρομολόγιο #' + m.cons_load_id
+    : m.piece_leg_id != null ? 'από τον προγραμματισμό εθνικών' : 'χειροκίνητα';
   const write = _plvCanWrite();
   let after = '', actions = '';
   if (m.status === 'pending') {
@@ -1264,7 +1285,7 @@ function plvOpenPanel(id) {
         </div>
         ${after ? `<div class="plv-after"><span>Μετά την επιβεβαίωση</span><b>${after}</b></div>` : ''}
         ${rev}
-        <div class="plv-hlbl">Ιστορικό</div><div id="plvHist" class="plv-hist"><span class="plv-mid">Φόρτωση ιστορικού…</span></div>
+        <div class="plv-hlbl">Ιστορικό</div><div id="plvHist" class="plv-hist" data-mid="${m.id}"><span class="plv-mid">Φόρτωση ιστορικού…</span></div>
       </div>
       ${actions ? `<div class="plv-pfoot">${actions}</div>` : ''}
     </div>
@@ -1316,13 +1337,15 @@ function _plvHistLine(m, rec) {
 function _plvFieldLine(what, who, at) {
   return `<div class="plv-hrow"><b>${what}</b><span>${escapeHtml([_plvUserName(who), _plvFmtTime(at), 'από την κίνηση'].filter(Boolean).join(' · '))}</span></div>`;
 }
+// The panel still open for THIS movement: opening another one meanwhile must not receive this answer.
+function _plvHistBox(m) { const b = document.getElementById('plvHist'); return b && b.dataset.mid === String(m.id) ? b : null; }
 async function _plvHistory(m) {
   const box = document.getElementById('plvHist');
   if (!box) return;
   let res;
   try { res = await plFetch('/pallets/movements/' + m.id + '/history'); }
   catch (e) {
-    const b2 = document.getElementById('plvHist');
+    const b2 = _plvHistBox(m);
     if (!b2) return;
     if (/^not found$|no_route/i.test(String(e && e.message))) {
       // The route is not live yet (Υ4 Worker): who and when from the movement, said so.
@@ -1334,7 +1357,7 @@ async function _plvHistory(m) {
     }
     return;
   }
-  const b2 = document.getElementById('plvHist');
+  const b2 = _plvHistBox(m);
   if (!b2) return;
   const recs = (res.records || []).slice().sort((a, b) => String(b.changed_at).localeCompare(String(a.changed_at)));
   if (!recs.length) {

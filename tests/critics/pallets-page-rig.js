@@ -198,6 +198,22 @@ async function runConfirmFail(browser) {
   }
 }
 
+async function runSched(browser) {
+  console.log('\n— confirming a scheduled movement does not jump into the wizard (review 8/11)');
+  seed();
+  const page = await newPage(browser, 'accountant');
+  await open(page);
+  await page.locator('.plv-more', { hasText: 'Προγραμματισμένες' }).click();
+  await row(page, 3).focus();
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.plv-modal');
+  ok(await page.locator('.plv-mcnt').count() === 0, 'no «N από M» counter for a movement outside the queue');
+  await page.locator('#plvConfirmGo').click();
+  await page.waitForTimeout(800);
+  ok(MOVES.find(m => m.id === 3).status === 'confirmed' && await page.locator('.plv-modal').count() === 0, 'PM-3 confirmed, the modal closed (no unrelated next row)');
+  await page.close();
+}
+
 async function runViews(browser) {
   console.log('\n— Χωρίς πλήρη επιστροφή (N03), Κινήσεις (N04/N05), Υπόλοιπα (N07), καρτέλα (N09)');
   seed();
@@ -363,7 +379,7 @@ async function runRoles(browser) {
 (async () => {
   console.log('Στόχος: ' + BASE_URL);
   const browser = await chromium.launch();
-  try { await runAction(browser); await runConfirmFail(browser); await runViews(browser); await runPanel(browser); await runNew(browser); await runRoles(browser); }
+  try { await runAction(browser); await runConfirmFail(browser); await runSched(browser); await runViews(browser); await runPanel(browser); await runNew(browser); await runRoles(browser); }
   catch (e) { failed++; console.log('  ✗ ΚΑΤΑΡΡΕΥΣΗ: ' + (e && e.stack || e)); }
   finally { await browser.close(); }
   console.log(`\n${passed}/${passed + failed} assertions · screenshots → ${SHOTS}`);
