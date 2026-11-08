@@ -1894,7 +1894,9 @@ const OrdersWeekView = (() => {
     const boards = _weekBoards(d);
     const leg = boards.length ? RouteDiagramAdapters.natLegFromBoard(boards, pgIdOf(rec)) : null;
     if (leg) return { leg, note: null };
-    return { leg: null, note: d.v5Board && !d.v5BoardFailed ? 'εκτελεστής: εκτός Εβδομαδιαίου v5' : null };
+    // an away week's board that failed may hold the leg: then no note, the red «δεν διαβάστηκε» stays
+    const allRead = !!d.v5Board && !d.v5BoardFailed && !((d.v5Away && d.v5Away.failed) || []).length;
+    return { leg: null, note: allRead ? 'εκτελεστής: εκτός Εβδομαδιαίου v5' : null };
   }
   function natLegFor(rec) {
     const ctx = S.ctx, d = S.data, c = S.card;
