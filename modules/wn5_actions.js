@@ -2382,7 +2382,11 @@
     d.body.innerHTML = (st.ids.ok ? '' : '<div class="wn5-miss" data-ids-miss>Οι κατάλογοι δεν είναι διαθέσιμοι ακόμη: οδηγός και φορτηγό διαλέγονται όταν έρθουν.</div>')
       + '<label class="wn5-field"><span>Στάση *</span><select data-stop><option value="">—</option>'
       + stops.map((s) => '<option value="' + s.stop_id + '"' + (s.stop_id === st.stop ? ' selected' : '') + '>' + _esc(stopLabel(s)) + '</option>').join('') + '</select></label>'
-      + (stops.length ? '' : '<p class="wn5-none">Ο κύκλος δεν φορτώνει έξω από τη Βέροια.</p>')
+      // ✈ audit 8/11: a cycle with no ΚΑΘΟΔΟΣ at all (only ΑΝΟΔΟΣ) was told «does not load outside Veroia», which is
+      // false for it; the two empty cases are said apart (the offer itself stays ΚΑΘΟΔΟΣ only, _localStops above)
+      + (stops.length ? '' : '<p class="wn5-none">' + ((c.stops || []).some((s) => s.side === 'KATHODOS')
+        ? 'Το δρομολόγιο δεν φορτώνει έξω από τη Βέροια.'
+        : 'Το δρομολόγιο δεν έχει κάθοδο: η φόρτωση με τοπικό είναι για τις φορτώσεις της καθόδου.') + '</p>')
       + '<label class="wn5-field"><span>Οδηγός *</span><select data-driver data-fh-search><option value="">—</option>' + _optsHTML(lists.d, null) + '</select></label>'
       + '<label class="wn5-field"><span>Φορτηγό *</span><select data-truck data-fh-search><option value="">—</option>' + _optsHTML(lists.t, null) + '</select></label>'
       + '<label class="wn5-field"><span>Ρυμούλκα</span><select data-trailer data-fh-search><option value="">—</option>' + _optsHTML(lists.r, null) + '</select></label>'
