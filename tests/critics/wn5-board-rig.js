@@ -2475,6 +2475,7 @@ SCN['plane-gaps'] = async (browser, origin) => {
 // Owner 8/11 (Figma 2607:7793, approved): the rota, both sides of the local tools, the local delivery, the «ΤΟΠΙΚΑ» panel.
 // The rota board: cycle 204 gets a ΚΑΘΟΔΟΣ load picked up AFTER its deliveries (ASPROPYRGOS Tue 12:00 → RENTIS Tue
 // 15:00, 12π, another client): by the base's order (seq) it is a rota leg. One local loading on 2033 (Mon) feeds the panel.
+const bDlgSel = (kind) => `.wi4-dlg[role="dialog"][data-wn5="${kind}"]`;
 function rotaBoard() {
   const b = bBoard();
   const c = b.cycles.find((x) => x.rt_id === 204);
@@ -2490,6 +2491,41 @@ function rotaBoard() {
 }
 SCN['rota-locals'] = async (browser, origin) => {
   const scn = 'rota-locals';
+  // --shots <dir>: the app in the states of the approved frames (Figma 2607:7793), at 1440 like the frames, for the
+  // owner's side-by-side comparison (owner 8/11: «screenshot και σύγκριση … εντοπίζοντας τις διαφορές»)
+  const V1440 = { width: 1440, height: 900 };
+  const shot = async (page, name, sel, pad) => {
+    if (!OUT) return;
+    fs.mkdirSync(OUT, { recursive: true });
+    const boxes = await page.$$eval(sel, (els) => els.map((e) => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom]; })).catch(() => []);
+    if (!boxes.length) return;
+    const p = pad || 8;
+    const x0 = Math.max(0, Math.min(...boxes.map((b) => b[0])) - p), y0 = Math.max(0, Math.min(...boxes.map((b) => b[1])) - p);
+    const x1 = Math.max(...boxes.map((b) => b[2])) + p, y1 = Math.max(...boxes.map((b) => b[3])) + p;
+    await page.screenshot({ path: path.join(OUT, name + '-1440.png'), clip: { x: x0, y: y0, width: x1 - x0, height: y1 - y0 } });
+  };
+  if (OUT) { // the shots: menu with the rota line, the rota window, the row with its legs, the panel, the local delivery
+    const { page } = await bOpen(browser, origin, { board: rotaBoard(), viewport: V1440 });
+    await page.$eval('.wn5-row[data-rt="204"]', (e) => e.scrollIntoView({ block: 'center' })).catch(() => {});
+    await page.waitForTimeout(200);
+    await shot(page, '2-row-rota', '.wn5-row[data-rt="204"], .wn5-sub.wn5-rota', 6);
+    await bClick(page, '.wn5-row[data-rt="204"] .wi4-plane');
+    await bClick(page, '#wn5-menu [data-item="rota"]');
+    await shot(page, '1a-menu', '#wn5-menu, #wn5-menu [data-sub="rota"]:not([hidden])', 6);
+    await page.keyboard.press('Escape').catch(() => {});
+    await page.evaluate(() => { const m = document.getElementById('wn5-menu'); if (m) m.remove(); });
+    await page.evaluate(() => WN5Act.plus(204, 'KATHODOS', null, { rota: true }));
+    await page.waitForTimeout(300);
+    await shot(page, '1b-rota-window', bDlgSel('plus'), 4);
+    await page.evaluate(() => { try { WN5Act.closeAll(); } catch (_) {} });
+    await page.$eval('#content .wn5-locals', (e) => e.scrollIntoView({ block: 'center' })).catch(() => {});
+    await page.waitForTimeout(200);
+    await shot(page, '3a-locals-panel', '#content .wn5-locals', 4);
+    await page.evaluate(() => WN5.MENU_ITEMS.find((x) => x.id === 'local-deliv').children[0].run(204));
+    await page.waitForSelector('.wn5h-handover', { timeout: 4000 }).catch(() => {});
+    await shot(page, '3b-local-delivery-window', '.wn5h-handover', 4);
+    await page.context().close();
+  }
   { // A · the rota leg is a line inside its truck's row; the side's pallets stay without it; right-click → unlink (dry run)
     const { page, S } = await bOpen(browser, origin, { board: rotaBoard() });
     const R = '.wn5-row[data-rt="204"]';
@@ -2503,6 +2539,21 @@ SCN['rota-locals'] = async (browser, origin) => {
     }, [R, L]).catch(() => null);
     ok(scn, 'A rota leg = its own line right under the truck row (inside it), no ✈, no number', !!g && g.next && !g.plane && !g.idx.trim(), g);
     ok(scn, 'A the line names pickup → delivery and its own 12π', !!g && /ASPROPYRGOS/.test(g.text) && /RENTIS/.test(g.text) && /12/.test(g.text), g && g.text);
+    // owner 8/11 («η ρότα να μπαίνει προς τα μέσα»): the leg's day chip and its places start right of the row's own
+    const geoAt = (vw) => page.setViewportSize({ width: vw, height: vw === 1920 ? 1080 : 900 }).then(() => page.waitForTimeout(150)).then(() => page.evaluate(([R, L]) => {
+      const x = (sel) => { const e = document.querySelector(sel); return e ? Math.round(e.getBoundingClientRect().left) : null; };
+      const cs = (sel) => { const e = document.querySelector(sel); return e ? getComputedStyle(e).paddingLeft : null; };
+      const w = (sel) => { const e = document.querySelector(sel); return e ? Math.round(e.getBoundingClientRect().right) : null; };
+      return { rowChip: x(R + ' .wn5-kd .wi4-dc'), legChip: x(L + ' .wn5-kd .wi4-dc'), rowPt: x(R + ' .wn5-kto .wn5-pt'), legPt: x(L + ' .wn5-kto .wn5-pt'),
+        legChipEnd: w(L + ' .wn5-kd .wi4-dc'), legFl: x(L + ' > .wn5-fl'), legFlPt: x(L + ' .wn5-fl .wn5-pt'), rowFl: x(R + ' > .wn5-fl'), rowKd: x(R + ' > .wn5-kd'), legKd: x(L + ' > .wn5-kd'),
+        padKd: cs(L + ' > .wn5-kd'), padKto: cs(L + ' > .wn5-kto'), padFl: cs(L + ' > .wn5-fl') };
+    }, [R, L])).catch(() => null);
+    for (const vw of [1920, 1440]) {
+      const geo = await geoAt(vw);
+      ok(scn, `A @${vw} the leg is indented inward: its chip and its delivery start right of the row's, and the chip never touches the pickup`, !!geo && geo.legChip > geo.rowChip && geo.legPt > geo.rowPt && geo.legFlPt >= geo.legChipEnd + 8, geo);
+    }
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.waitForTimeout(400);   // the board repaints on a resize: the line is taken after it settles
     ok(scn, 'A the side keeps its own pallets (16, never 28 with the rota)', !!g && g.kpal.trim() === '16' && !/RENTIS/.test(g.rowText), g && { kpal: g.kpal });
     const box = await page.$(L);
     if (box) await box.click({ button: 'right' }).catch(() => {});
@@ -2527,6 +2578,11 @@ SCN['rota-locals'] = async (browser, origin) => {
     const lines = await page.$$eval(`${D} [data-act="save"][data-piece]`, (bs) => bs.map((b) => b.dataset.piece + ':' + b.textContent.trim())).catch(() => []);
     ok(scn, 'B the national loads waiting, each with «Σύνδεση»; no VS, no stock, none to / from Veroia (4202 → Βέροια out)', lines.includes('4201:Σύνδεση') && !lines.some((x) => x.startsWith('4202')) && lines.every((x) => /^420\d:Σύνδεση$/.test(x)), lines);
     ok(scn, 'B no «Νέα παραγγελία | Από αναμονή» switch', !(await bHas(page, `${D} .wn5-seg`)));
+    // 4201 loads Mon 11:00, before 204's last delivery (ATHENS Tue 10:00): in the list, said in amber (Figma 2607:8466)
+    const early = await bText(page, `${D} .wn5-pline[data-piece="4201"] [data-rota-early]`);
+    ok(scn, 'B a load picked up before the truck\'s last delivery: listed, amber «φορτώνει πριν την παράδοση … · επιτρέπεται»', /φορτώνει πριν την παράδοση του φορτηγού \(Τρί 13\/10 10:00\) · επιτρέπεται/.test(early), early);
+    const line = await bText(page, `${D} .wn5-pline[data-piece="4201"]`);
+    ok(scn, 'B the line reads pickup → delivery, client, day hh:mm, pallets (Figma 2607:8466)', /THESSALONIKI TEST → ATHENS TEST/.test(line) && /ΠΕΛΑΤΗΣ ΣΤ/.test(line) && /11:00/.test(line) && /6π/.test(line), line);
     await bClick(page, `${D} [data-act="save"][data-piece="4201"]`);
     await page.waitForTimeout(400);
     const legs = bCalls(S, 'POST', '/plan/legs');

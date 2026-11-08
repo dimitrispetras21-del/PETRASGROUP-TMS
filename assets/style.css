@@ -9305,8 +9305,8 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
    the row's, written once. */
 .wn5-sub.wn5-rota { border-top:0; min-height:40px; cursor:pointer; }
 .wn5-sub.wn5-rota > span:not(.wn5-c-idx) { display:flex; align-items:center; min-width:0; }
-.wn5-sub.wn5-rota > :is(.wn5-kd, .wn5-ad) { flex-direction:column; align-items:flex-start; justify-content:center; }
-.wn5-sub.wn5-rota > :is(.wn5-fl, .wn5-afl, .wn5-kto, .wn5-ato) { padding-left:25px; }
+.wn5-sub.wn5-rota > :is(.wn5-kd, .wn5-ad) { flex-direction:column; align-items:flex-start; justify-content:center; padding-left:12px; padding-right:0; }
+.wn5-sub.wn5-rota > :is(.wn5-fl, .wn5-afl, .wn5-kto, .wn5-ato) { padding-left:34px; align-items:flex-start; justify-content:center; }
 .wn5-sub.wn5-rota:hover { background:var(--wi4-info-bg); }
 /* «ΤΟΠΙΚΑ» under the board (owner 8/11, Figma 2607:8131): a white card, one line per day, the local driver, his moves */
 .wn5-locals { margin:14px 0 24px; background:var(--surface-card); border:1px solid var(--wi4-line); border-radius:8px; font-size:12px; color:var(--wi4-ink); }

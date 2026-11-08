@@ -794,7 +794,8 @@ function _localsHTML(m) {
         + '</span>').join('') + '</span></div>').join('');
   };
   return `<details class="wn5-locals" open><summary><span class="wn5-loc-h">ΤΟΠΙΚΑ</span><span class="wn5-loc-sub">οδηγός × ημέρα · ${n} ${n === 1 ? 'κίνηση' : 'κινήσεις'}`
-    + ' · φόρτωση της προηγούμενης βραδιάς για δρομολόγιο άλλης εβδομάδας φαίνεται στην εβδομάδα του δρομολογίου</span></summary>'
+    + (typeof TmsWeek !== 'undefined' && TmsWeek.numOf(m.week) ? ' · W' + _esc(String(TmsWeek.numOf(m.week))) : '')
+    + ' · κίνηση για δρομολόγιο άλλης εβδομάδας: στην εβδομάδα εκείνη</span></summary>'
     + days.map(dayHTML).join('') + '</details>';
 }
 function _addDay(ymd, n) { const [y, mo, d] = ymd.split('-').map(Number); return new Date(Date.UTC(y, mo - 1, d + n)).toISOString().slice(0, 10); }
@@ -1913,17 +1914,17 @@ const WN5 = {
     // International — a load of another client the same truck takes after its deliveries, on either side. It is the
     // side's «+» window in its rota mode (WN5Act.plus opts.rota): the same body to POST /plan/legs, so nothing new is
     // written; the leg then shows inside the row (WN5L _rotaSplit, _rotaHTML).
-    { id: 'rota', order: 35, label: '⤷ Επόμενο φορτίο με το ίδιο φορτηγό', children: [
+    { id: 'rota', order: 35, label: '⤷ Επόμενο φορτίο με το ίδιο φορτηγό', sub: 'κάθοδος · άνοδος', children: [
       { id: 'rota-k', label: 'Κάθοδος', run: (rtId) => WN5Act.plus(rtId, 'KATHODOS', null, { rota: true }) },
       { id: 'rota-a', label: 'Άνοδος', run: (rtId) => WN5Act.plus(rtId, 'ANODOS', null, { rota: true }) }] },
     // T17: the stop is chosen inside the window (its day is the stop's day, 072:2283). Owner 8/11: both sides.
-    { id: 'local', order: 40, label: 'Φόρτωση με τοπικό', children: [
+    { id: 'local', order: 40, label: 'Φόρτωση με τοπικό', sub: 'κάθοδος · άνοδος', children: [
       { id: 'local-k', label: 'Κάθοδος', run: (rtId) => WN5Act.local(null, rtId, 'KATHODOS') },
       { id: 'local-a', label: 'Άνοδος', run: (rtId) => WN5Act.local(null, rtId, 'ANODOS') }] },
     // Owner 8/11 (Figma 2607:8131, the driver who stayed at the destination till Monday): a local driver delivers so
     // the truck leaves. It is the existing vehicle change (072b) from the delivery point, pre-filled; the local is
     // paid as a trip, the national truck is free from that hour. No new write path.
-    { id: 'local-deliv', order: 45, label: 'Παράδοση με τοπικό', children: [
+    { id: 'local-deliv', order: 45, label: 'Παράδοση με τοπικό', sub: 'κάθοδος · άνοδος', children: [
       { id: 'local-deliv-k', label: 'Κάθοδος', run: (rtId) => localDelivery(rtId, 'KATHODOS') },
       { id: 'local-deliv-a', label: 'Άνοδος', run: (rtId) => localDelivery(rtId, 'ANODOS') }] },
     // T14: the KATHODOS deliveries go back to Veroia for splitting (S-69, Figma 2011:8858 note)

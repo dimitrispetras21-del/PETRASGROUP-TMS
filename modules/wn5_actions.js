@@ -1453,7 +1453,29 @@
     if (!req) return 'Λείπει: πόσες, από 0,1 ως ' + _pal(it.pallets) + ' (ένα δεκαδικό)';
     return req.missing ? _missWords(st, req) : _softOf((_reqBusy(req, st.cyc) || {}).text);
   }
+  // A rota line (Figma 2607:8466, screenshot comparison 8/11): «day hh:mm · pickup → delivery» over «client · Nπ», as
+  // the Weekly International's rota panel — the two places, since the load is picked up on the truck's way, not at
+  // Veroia; no x/33 chip (its pallets are its own, WN5L _rotaSplit).
+  function _rotaLineHTML(st, it) {
+    const from = it.nat_from_location_id != null ? it.nat_from_location_id : it.position_location_id;
+    const to = it.nat_to_location_id;
+    const day = _ymdOf(it.load_from) || it.nat_ready_day;
+    const when = it.load_from ? _wd(_ymdOf(it.load_from)) + ' ' + _hmw(it.load_from, it.load_to) : day ? _wd(day) + ' όλη η ημέρα' : '—';
+    const why = _plusWhy(st, it);
+    // Figma 2607:8466: a load picked up before the truck's last delivery is allowed and said in amber (relaxed rules,
+    // owner 31/10), never left out — the day before is in the list by the International's own rule
+    const early = st.rotaAt && it.load_from && (_ymdOf(it.load_from) + ' ' + _hm(it.load_from)) < st.rotaAt
+      ? '<span class="wn5-miss wn5-soft wn5-rearly" data-rota-early>φορτώνει πριν την παράδοση του φορτηγού (' + _esc(st.rotaAtTxt) + ') · επιτρέπεται</span>' : '';
+    const miss = (why ? '<span class="wn5-miss wn5-why' + (why.warn ? ' wn5-soft' : '') + '">' + _esc(why.warn || why) + '</span>' : '') + early;
+    const s = _norm([it.client, it.reference, _placeName(from), _placeName(to)].join(' '));
+    return '<div class="wn5-pline wn5-rline" data-piece="' + it.piece_id + '" data-s="' + _esc(s) + '" title="' + _esc([it.client, it.reference].filter(Boolean).join(' · ')) + '">'
+      + '<span class="wn5-cand-m wn5-pl-who"><b>' + _esc(_placeName(from) + ' → ' + _placeName(to)) + '</b><span>' + _esc(it.client || '—') + '</span></span>'
+      + '<span class="wn5-cand-m wn5-pl-when"><b>' + _esc(when) + '</b><span>' + _esc(_pal(it.pallets)) + 'π</span></span>'
+      + '<span class="wn5-pcap">' + miss + '</span>'
+      + '<button type="button" class="wi4-btn sm" data-act="save" data-piece="' + it.piece_id + '">Σύνδεση</button></div>';
+  }
   function _plusLineHTML(st, it) {
+    if (st.rota) return _rotaLineHTML(st, it);
     const anod = st.side === 'ANODOS';
     const win = _plusWin(st, it);
     // B1: a piece with no window of its own goes in on its day, whole day — said here, never a silent hour
@@ -1623,6 +1645,10 @@
     st.rota = !!(opts && opts.rota);
     const lastDel = sd && !sd.gap && sd.to && sd.to.length ? sd.to[sd.to.length - 1].day : null;
     st.rotaFrom = st.rota && lastDel ? _addDays(lastDel, -1) : null;
+    // the last delivery as «YYYY-MM-DD HH:MM» Athens (WN5L points carry day + from): a candidate loading earlier is amber
+    const lastD = st.rota && sd && !sd.gap && sd.to && sd.to.length ? sd.to[sd.to.length - 1] : null;
+    st.rotaAt = lastD && lastD.day ? lastD.day + ' ' + (lastD.from || '00:00') : null;
+    st.rotaAtTxt = lastD && lastD.day ? _dayShort(lastD.day) + (lastD.from ? ' ' + lastD.from : '') : '';
     st.groups = _plusGroups(st);
     st.hubStop = !!hubStop;
     st.hubStopDay = _stopDay(hubStop);
@@ -1641,7 +1667,10 @@
     const box = _cycText(c, r);
     const anod = side === 'ANODOS';
     const title = st.rota ? '⤷ Επόμενο φορτίο · ίδιο φορτηγό · ' + (anod ? 'Άνοδος' : 'Κάθοδος') : anod ? 'Πρόσθεσε στην ΑΝΟΔΟ' : 'Πρόσθεσε στην ΚΑΘΟΔΟ';
-    const meta = [box.l1.split(' · ')[0], _dayShort(st.day), st.veroia ? 'φόρτωση ' + st.veroia : null, _palU(st.pallets, st.palUnk) + '/33'].filter(Boolean).join(' · ');
+    // rota: the truck and where it is free — its last delivery of the side (Figma 2607:8466), no Veroia window or x/33
+    const lastPt = st.rota && sd && !sd.gap && sd.to && sd.to.length ? sd.to[sd.to.length - 1] : null;
+    const meta = st.rota ? [box.l1.split(' · ')[0], lastPt ? 'τελευταία παράδοση ' + _dayShort(lastPt.day) + ' · ' + (lastPt.name || '—') : null].filter(Boolean).join(' · ')
+      : [box.l1.split(' · ')[0], _dayShort(st.day), st.veroia ? 'φόρτωση ' + st.veroia : null, _palU(st.pallets, st.palUnk) + '/33'].filter(Boolean).join(' · ');
     // A popover (Figma 2011:10306/10447): no «×» and no footer — Esc, a click outside or another «+» close it. The
     // header holds title · meta and «Νέα παραγγελία | Από αναμονή», like Δ1 (T12): a redraw of the body keeps them.
     const d = _dlg('plus', title, { anchor: anchorEl, wide: true, pop: true });
