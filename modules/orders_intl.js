@@ -4030,26 +4030,33 @@ async function _scanOpen(matched, data) {
   // picks them up via the new _scanPrefill path in _openModal.
   const ls = matched.loadStops || [];
   const ds = matched.delStops || [];
+  // The new form's hours (111, owner 8/11): scan v2 reads each stop's «time» («08:00» or «08:00-12:00»). Two times =
+  // from–to; one = from; anything else stays out (the slot is still in the notes the scan writes).
+  const hrs = s => {
+    const m = String((s && s.time) || '').match(/\d{1,2}[:.]\d{2}/g) || [];
+    const a = m[0] ? _oiHm(m[0]) : '', b = m[1] ? _oiHm(m[1]) : '';
+    return { [F.STOP_TIME_FROM]: _OI_HM_RE.test(a) ? a : null, [F.STOP_TIME_TO]: _OI_HM_RE.test(b) ? b : null };
+  };
   const loadStops = ls.map((s, i) => ({
-    fields: {
+    fields: Object.assign({
       [F.STOP_NUMBER]:   i + 1,
       [F.STOP_TYPE]:     'Loading',
       [F.STOP_LOCATION]: s._locId ? [s._locId] : null,
       [F.STOP_PALLETS]:  s.pallets != null ? s.pallets : 0,
       [F.STOP_DATETIME]: s.date || data.loading_date || '',
-    },
+    }, hrs(s)),
   }));
   const unloadStops = ds.map((s, i) => {
     // For deliveries, sum up loading pallets if no per-stop pallets specified
     const totalLoadingPallets = ls.reduce((sum, x) => sum + (x.pallets || 0), 0) || data.pallets || 0;
     return {
-      fields: {
+      fields: Object.assign({
         [F.STOP_NUMBER]:   i + 1,
         [F.STOP_TYPE]:     'Unloading',
         [F.STOP_LOCATION]: s._locId ? [s._locId] : null,
         [F.STOP_PALLETS]:  s.pallets != null ? s.pallets : (ds.length === 1 ? totalLoadingPallets : 0),
         [F.STOP_DATETIME]: s.date || data.delivery_date || '',
-      },
+      }, hrs(s)),
     };
   });
 
