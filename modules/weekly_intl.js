@@ -88,7 +88,7 @@ function _wiApplyFilter() {
 // too: an assigned import pre-order lives inside its truck's export row
 // (owner 28/9, order 394).
 function _wi2QuickMatch(row, qk) {
-  if (row.legOf || qk !== 'pre') return true;
+  if ((row.legOf||row.crossLeg) || qk !== 'pre') return true;
   return [...(row.orderIds || [row.orderId]), row.importId].filter(Boolean).some(id => isPreorder((WINTL.data.exports.find(r => r.id === id) || WINTL.data.imports.find(r => r.id === id))?.fields));
 }
 function _wi2Quick(qk) { WINTL.quick = (WINTL.quick === qk) ? '' : qk; _wiApplyFilter(); }
@@ -775,6 +775,9 @@ async function renderWeeklyIntl(){
     // comment above), so today this is a no-op for every row.
     // The cut and its order are WI4.weekExports (core/wi4-logic.js): one source with
     // «Παραγγελίες › Εβδομάδα», which numbers its rows as this board does (owner 2/11).
+    // The window's exports dated in another week (owner 8/11/2026): a rota leg among them is named
+    // «συνέχεια» under its parent here (WI4.boardRows opt.away), while it stands in its own week.
+    WINTL.data.away = expOrders;
     expOrders = WI4.weekExports(expOrders, wsFmt, weFmt, toLocalDate);
     WINTL.data.exports = expOrders;
     WINTL.data.imports = impOrders;
@@ -852,7 +855,7 @@ function _wiBuildRows(){
   // Here only the labels of each row are added.
   const built=WI4.boardRows(exports,imports,{
     ws:WINTL._range?WINTL._range.ws:null, we:WINTL._range?WINTL._range.we:null, dayOf:toLocalDate,
-    split:typeof FEATURES!=='undefined'&&!!FEATURES.ORDER_SPLIT,
+    split:typeof FEATURES!=='undefined'&&!!FEATURES.ORDER_SPLIT, away:WINTL.data.away||[],
   });
   const impById={};
   imports.forEach(r=>impById[r.id]=r);
@@ -973,7 +976,7 @@ function _wk3Gaps(){
 // least one is drawn — clearing the filter would show it; otherwise no filter
 // is to blame and the toast must not send the user to clear one.
 function _wiPendingExps(){
-  return WINTL.rows.filter(r=>r.type==='export'&&!r.legOf&&!r.hasSplitLegs&&!r.saved);
+  return WINTL.rows.filter(r=>r.type==='export'&&!(r.legOf||r.crossLeg)&&!r.hasSplitLegs&&!r.saved);
 }
 function _wiJumpFirstPendingExp(){
   const cands=_wiPendingExps();
@@ -994,7 +997,7 @@ function _wiJumpFirstPendingExp(){
 // lot, loose piece and GI member, so one week had two import counts). Loose
 // pieces are counted by the shelf, not here (_wiShelved, B-19).
 function _wiBoardImpRows(){
-  return WINTL.rows.filter(r=>r.type==='import'&&!r.adj&&!r.legOf&&!_wiShelved(r));
+  return WINTL.rows.filter(r=>r.type==='import'&&!r.adj&&!(r.legOf||r.crossLeg)&&!_wiShelved(r));
 }
 // The counters and side effects at the top of every paint, extracted so the v4
 // renderer reports the SAME metrics and reads the SAME busy map (TECH_DESIGN
@@ -1002,7 +1005,7 @@ function _wiBoardImpRows(){
 // first, then WINTL._busy — the identity rig compares both.
 function _wiPaintMetrics(){
   const {rows,week}=WINTL;
-  const expRows=rows.filter(r=>r.type==='export'&&!r.legOf);
+  const expRows=rows.filter(r=>r.type==='export'&&!(r.legOf||r.crossLeg));
   const impRows=_wiBoardImpRows();
   const expN=expRows.length, impN=impRows.length;
   const assigned=expRows.filter(r=>r.saved).length;
@@ -1895,7 +1898,9 @@ function _wk3MoreStops(str,arr,kind){
 }
 function _wk3Edit(orderId){
   if(!orderId) return;
-  const rec=WINTL.data.exports.find(r=>r.id===orderId)||WINTL.data.imports.find(r=>r.id===orderId);
+  // …or one of the window's other-week exports (a rota leg's «συνέχεια» / its parent, owner 8/11/2026):
+  // a click on them must open them, never do nothing.
+  const rec=WINTL.data.exports.find(r=>r.id===orderId)||WINTL.data.imports.find(r=>r.id===orderId)||(WINTL.data.away||[]).find(r=>r.id===orderId);
   if(rec&&typeof openIntlEditWith==='function') openIntlEditWith(orderId, rec.fields);
 }
 // Πρόοδος φορτίου (demo εγκεκριμένο 10/8, χωρίς τελείες): πράσινη ημ/νία ✓
@@ -4371,7 +4376,7 @@ function _wiRotParents(row,stats){
   const excludeIds=new Set([...(row.orderIds||[]),oid,row.importId,row.matchedTo].filter(Boolean));
   const out=[];
   for(const r of WINTL.rows){
-    if(r.id===row.id||r.legOf||r.adj) continue;
+    if(r.id===row.id||(r.legOf||r.crossLeg)||r.adj) continue;
     if(!(r.truckId||r.partnerId)) continue;
     const pOid=r.type==='import'?r.orderId:r.orderIds?.[0];
     if(!pOid||excludeIds.has(pOid)) continue;
@@ -4593,7 +4598,7 @@ function _wiPanelJoinLoad(expRowId){
   const base=_wiRowPals(lr), lrecs=_wiLoadRecs(lr);
   const ef=(_wiRecOf(er.orderIds[0])||{fields:{}}).fields;
   const del=String(ef['Delivery DateTime']||ef['Loading DateTime']||'');
-  const cands=WINTL.rows.filter(r=>r.type==='import'&&!r.matchedTo&&!r.legOf&&!_wiStockSkip(r)&&!_wiShelved(r)&&!_wiLotHeld(r)&&!_wiPieceIn(r.orderIds).length)
+  const cands=WINTL.rows.filter(r=>r.type==='import'&&!r.matchedTo&&!(r.legOf||r.crossLeg)&&!_wiStockSkip(r)&&!_wiShelved(r)&&!_wiLotHeld(r)&&!_wiPieceIn(r.orderIds).length)
     .map(r=>{ const rr=_wiLoadRecs(r), f=(rr[0]||{fields:{}}).fields, ld=String(f['Loading DateTime']||'');
       return {r,rr,why:_wiJoinCheck(lr,r,er),pals:_wiRowPals(r),
         gap:(ld&&del)?Math.abs(new Date(ld)-new Date(del)):Infinity,
@@ -4776,7 +4781,7 @@ function _wiPreCtx(e,row,isImp){
 function _wiSplitCtxItems(row,rowId,btn){
   if(typeof FEATURES==='undefined'||!FEATURES.ORDER_SPLIT) return '';
   if(row.orderIds&&row.orderIds.length>1) return ''; // groupage: not offered
-  if(row.legOf||row.splitLegOf) return ''; // a leg is never split/rejoined itself
+  if((row.legOf||row.crossLeg)||row.splitLegOf) return ''; // a leg is never split/rejoined itself
   // No leading separator (owner 7/9): the flat menu draws ONE separator, right
   // before the destructive group at the bottom — this item sits inline with
   // the rest, in the canonical order the redesign brief gives.
@@ -5185,7 +5190,7 @@ function _wiRotCands(parentRow,stats){
   const excludeIds=new Set([...(parentRow.orderIds||[]),pOid,parentRow.importId,parentRow.matchedTo].filter(Boolean));
   const cands=[];
   for(const r of WINTL.rows){
-    if(r.id===parentRow.id||r.legOf||r.adj) continue;
+    if(r.id===parentRow.id||(r.legOf||r.crossLeg)||r.adj) continue;
     const oid=r.type==='import'?r.orderId:r.orderIds?.[0];
     if(!oid||excludeIds.has(oid)) continue;
     const o=WINTL.data.exports.find(x=>x.id===oid)||WINTL.data.imports.find(x=>x.id===oid);
@@ -5526,7 +5531,7 @@ function _wiLegCtxItems(legOid){
   // Print / WhatsApp for the leg itself (owner 28/10: a rota leg could not be
   // printed or shared from the v4 board). A leg is a row of its own, so the
   // load rows' _wiMenuPrint prints it unchanged (single order, its direction).
-  const legRow=WINTL.rows.find(r=>r.legOf&&(r.orderIds||[r.orderId]).includes(legOid));
+  const legRow=WINTL.rows.find(r=>(r.legOf||r.crossLeg)&&(r.orderIds||[r.orderId]).includes(legOid));
   if(legRow) html+=_wiCtxBtn('Εκτύπωση…',`_wiMenuPrint(${legRow.id},${legRow.type==='import'?'true':'false'})`);
   html+='<div class="wi-ctx-sep"></div>';
   html+=_wiCtxBtn('Ακύρωση προώθησης',`_wiPanelConfirmUnlink('${legOid}')`,true);
@@ -6159,8 +6164,8 @@ function _wiJoinCheck(loadRow,xRow,vehRow){
   if(xc) return `Η #${ref(xc)} είναι ακυρωμένη — ακυρωμένη παραγγελία δεν μπαίνει σε φορτίο`;
   const lc=lr.find(r=>r.fields&&r.fields['Status']==='Cancelled');
   if(lc) return `Το ${into} έχει ακυρωμένη παραγγελία (#${ref(lc)}) — δεν δέχεται εισαγωγή`;
-  if(xRow.legOf) return `${who} είναι σκέλος προώθησης (ρότα) — δεν μπαίνει σε groupage`;
-  if(loadRow.legOf) return `Το ${into} είναι σκέλος προώθησης (ρότα) — δεν δέχεται groupage`;
+  if((xRow.legOf||xRow.crossLeg)) return `${who} είναι σκέλος προώθησης (ρότα) — δεν μπαίνει σε groupage`;
+  if((loadRow.legOf||loadRow.crossLeg)) return `Το ${into} είναι σκέλος προώθησης (ρότα) — δεν δέχεται groupage`;
   if(_wiLotHeld(xRow)) return `${who} είναι παρτίδα — πάει στην αποθήκη, δεν μπαίνει σε φορτίο φορτηγού`;
   if(_wiLotHeld(loadRow)) return `Το ${into} είναι παρτίδα για την αποθήκη — δεν δέχεται άλλη εισαγωγή`;
   if(_wiPieceIn(xIds).length) return many
@@ -7531,7 +7536,7 @@ async function _wiStockLooseOpen(anchor){
 // (_wiStockCtxItem). Filled again by _wiShelfPaint: the shelf is read after
 // the board's first paint.
 function _wiStockGapLink(row){
-  if(!_wiStockOn()||!OrdersStock.canWrite()||!row||!row.truckId||row.partnerId||row.splitLegOf||row.hasSplitLegs||row.legOf) return '';
+  if(!_wiStockOn()||!OrdersStock.canWrite()||!row||!row.truckId||row.partnerId||row.splitLegOf||row.hasSplitLegs||(row.legOf||row.crossLeg)) return '';
   const st=WINTL.data.stock;
   if(!st||st.status!=='ok'||!(st.lots||[]).some(l=>+(l.fields?.['Remaining Pallets']||0)>0&&!l.fields?.['Ops Status'])) return '';
   return `<button type="button" class="wi2-gapstk-b" onclick="event.stopPropagation();_wiStockPanel(${row.id})" title="Κομμάτι από παρτίδα σε αποθήκη, σε αυτό το φορτηγό">ή κομμάτι από ΑΠΟΘΕΜΑ</button>`;
@@ -7544,7 +7549,7 @@ function _wiStockGapLinksRefresh(){
 // on a partner row; on a row with no truck yet it shows, disabled, why.
 function _wiStockCtxItem(row){
   if(!_wiStockOn()||!OrdersStock.canWrite()||!row) return '';
-  if(row.partnerId||row.splitLegOf||row.hasSplitLegs||row.legOf) return '';
+  if(row.partnerId||row.splitLegOf||row.hasSplitLegs||(row.legOf||row.crossLeg)) return '';
   // A lot's row, or a piece still waiting in the warehouse, is not a truck.
   const lead=_wiRecOf(row.orderIds?.[0]||row.orderId);
   if(lead&&(_wiIsLot(lead.fields)||(_wiIsPiece(lead.fields)&&!row.truckId))) return '';
