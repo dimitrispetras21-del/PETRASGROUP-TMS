@@ -339,6 +339,22 @@ function selectIntlOrder(recId) {
   }
 }
 
+// The card's «Διαδρομή» as the shared diagram (core/route-diagram.js). A VS order's national leg is known only
+// where a v5 board was read: «Παραγγελίες › Εβδομάδα» answers through OrdersWeekView.natLegFor; elsewhere (Κατάλογος,
+// the read-only card) it is null and the diagram says «εκτελεστής: δεν διαβάστηκε», never «χωρίς ανάθεση».
+// A shape the diagram refuses (InputError) or a missing script costs the diagram only: said in red, with the
+// plain stop list under it, so the card still shows its stops.
+function _oiRouteDiagram(rec, stops, listHtml) {
+  try {
+    const natLeg = typeof OrdersWeekView !== 'undefined' && OrdersWeekView.natLegFor ? OrdersWeekView.natLegFor(rec) : null;
+    return RouteDiagram.render(RouteDiagramAdapters.facadeOrder(rec, stops || [], {
+      today: RouteDiagramAdapters.athensDay(new Date().toISOString()), locMeta: id => OrdersCommon._locMeta(id), natLeg }));
+  } catch (e) {
+    console.error('orders_intl: route diagram', e);
+    return `<div class="rd"><div class="rd-note" data-tone="red">Η διαδρομή δεν σχεδιάστηκε.</div></div>${listHtml}`;
+  }
+}
+
 function _oiCardHtml(rec, opts) {
   const f = rec.fields, recId = rec.id;
   // readOnly (Weekly Εθνικών → VS load, owner 14/9): forced no-edit even for
@@ -408,6 +424,9 @@ function _oiCardHtml(rec, opts) {
   let route = _oiStops(recId, 'Loading').map(s => stopRow(s, 'Φόρτωση')).join('')
             + _oiStops(recId, 'Unloading').map(s => stopRow(s, 'Παράδοση')).join('');
   const stopsKnown = window._intlStopsByOrder && window._intlStopsByOrder[recId];
+  // The vertical route diagram (owner 8/11: «μέσα στην κάρτα της κάθε παραγγελίας»), from the stops this card
+  // already read (_oiLoadCardStops reads every mapped field: Stop Number, Pallets, Completed At included).
+  if (route) route = _oiRouteDiagram(rec, stopsKnown, route);
   if (!route && !readOnly && !stopsKnown) {
     // The card opened before its stops arrived (_oiLoadCardStops repaints),
     // or they failed — said here, not shown as an order without stops.
@@ -470,7 +489,7 @@ function _oiCardHtml(rec, opts) {
         ? ['Ναι', OrdersCommon.isSelfDelivery(f) ? 'αυτοπαράδοση' : f['Invoice Number'] ? 'ΤΠΥ ' + escapeHtml(f['Invoice Number']) : '', f['Invoice Date'] ? new Date(f['Invoice Date']).toLocaleDateString('el-GR') : ''].filter(Boolean).join(' · ')
         : 'Όχι')}
     </div>
-    <div class="oi-sect oi-sect-alt"><div class="oi-sect-t">Διαδρομή</div>${route}</div>
+    <div class="oi-sect oi-sect-alt" data-oi-sect="route"><div class="oi-sect-t">Διαδρομή</div>${route}</div>
     ${pe ? `<div class="oi-sect"><div class="oi-sect-t">Δελτία παλετών</div>
       ${kv('Δελτίο 1', f['Pallet Sheet 1 Uploaded'] ? 'καταχωρημένο' : 'εκκρεμεί', f['Pallet Sheet 1 Uploaded'] ? '' : 'warn')}
       ${vs ? kv('Δελτίο 2 (cross-dock)', f['Pallet Sheet 2 Uploaded'] ? 'καταχωρημένο' : 'εκκρεμεί', f['Pallet Sheet 2 Uploaded'] ? '' : 'warn') : ''}

@@ -920,6 +920,76 @@ async function scnCardInv(browser) {
   await mg.context().close();
 }
 
+// [route] the route diagram (owner 8/11: «μέσα στην κάρτα της κάθε παραγγελίας ξεχωριστά και στο RT όταν είναι
+// στο εβδομάδα»): the card's «Διαδρομή» is the diagram of the order's own stops, and a card opened from an RT of two
+// or more orders adds «Δρομολόγιο RT-…» with every order of the RT, in RT order. Invented stops for RT-1201
+// (#1241 export, #1246 import); ORDER STOPS answered by id, as the Worker filters them.
+async function scnRoute(browser) {
+  console.log('\n[route] the route diagram in the order card and for its RT');
+  const page = await P.newPage(browser, 'owner');
+  const SID = { recO1241: ['recS1', 'recS2'], recO1246: ['recS3', 'recS4'] };
+  const loc = n => ['recL' + n];   // the proof's LOCS: 0 Naoussa · 1 München · 2 Verona · 3 Veroia
+  const stop = (id, parent, no, type, k, locN, pal) => ({ id, fields: { 'Parent Order': [parent], 'Stop Number': no, 'Stop Type': type,
+    DateTime: P.day(k), Location: loc(locN), Pallets: pal } });
+  const STOPS = [stop('recS1', 'recO1241', 1, 'Loading', -2, 0, 33), stop('recS2', 'recO1241', 2, 'Unloading', 2, 1, 33),
+    stop('recS3', 'recO1246', 1, 'Loading', 3, 2, 26), stop('recS4', 'recO1246', 2, 'Unloading', 5, 3, 26)];
+  const reads = [];
+  for (const [rid, ids] of Object.entries(SID)) P.ORDERS.find(r => r.id === rid).fields['ORDER STOPS'] = ids;
+  await page.route('**/tblaeY5QOHAS1gyE8**', route => {
+    const u = decodeURIComponent(route.request().url());
+    const ids = [...u.matchAll(/RECORD_ID\(\)="(rec[A-Za-z0-9]+)"/g)].map(m => m[1]);
+    reads.push(u);
+    return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' },
+      body: JSON.stringify({ records: STOPS.filter(x => ids.includes(x.id)) }) });
+  });
+  try {
+    await P.openWeek(page);
+    const row = code => page.locator('.ow4-row', { has: page.locator('.ow4-c-rt .ow4-l1', { hasText: code }) });
+    await row('RT-1201').locator('.ow4-c-rt').click();
+    await page.waitForSelector('.owv-cards #intlDetail [data-oi-sect="route"] .rd .rd-sec', { timeout: 10000 });
+    await page.waitForSelector('.owv-cards #intlDetail .owv-card-rt .rd .rd-sec', { timeout: 10000 });
+    await page.waitForTimeout(600);
+    const st = await page.evaluate(() => {
+      const p = document.getElementById('intlDetail');
+      const sec = el => [...el.querySelectorAll('.rd-sec')].map(s => s.querySelector('.rd-sh').textContent.replace(/\s+/g, ' ').trim());
+      const own = p.querySelector('[data-oi-sect="route"]'), rt = p.querySelector('.owv-card-rt');
+      return { own: sec(own), ownRows: own.querySelectorAll('.rd-row').length, rtTitle: rt.querySelector('.oi-sect-t').textContent,
+        rt: sec(rt), rtRows: rt.querySelectorAll('.rd-row').length, after: own.nextElementSibling === rt,
+        red: [...p.querySelectorAll('.rd-note[data-tone="red"]')].map(x => x.textContent) };
+    });
+    ok(st.own.length === 1 && /ΕΞΑΓΩΓΗ/.test(st.own[0]) && /#1241/.test(st.own[0]) && st.ownRows >= 2,
+      'the card\'s «Διαδρομή» is the diagram of #1241: ' + JSON.stringify(st.own) + ', ' + st.ownRows + ' rows');
+    ok(/Δρομολόγιο RT-1201/.test(st.rtTitle) && st.after, '«Δρομολόγιο RT-1201» right under «Διαδρομή»');
+    ok(st.rt.length === 2 && /ΕΞΑΓΩΓΗ.*#1241/.test(st.rt[0]) && /ΕΙΣΑΓΩΓΗ.*#1246/.test(st.rt[1]) && st.rtRows >= 4,
+      'the RT diagram draws #1241 then #1246, in RT order: ' + JSON.stringify(st.rt) + ', ' + st.rtRows + ' rows');
+    ok(!st.red.length, 'no red failure line: ' + JSON.stringify(st.red));
+    const rtReads = reads.filter(u => /Completed At/.test(u) && /recS3/.test(u) && /recS1/.test(u));
+    ok(rtReads.length === 1, `the RT's stops read ONCE, both orders together (${rtReads.length})`);
+    await page.evaluate(() => document.querySelector('#intlDetail [data-oi-sect="route"]').scrollIntoView({ block: 'start' }));
+    await page.screenshot({ path: path.join(SHOTS, 'route-card-order.png') });
+    await page.evaluate(() => document.querySelector('#intlDetail .owv-card-rt').scrollIntoView({ block: 'start' }));
+    await page.screenshot({ path: path.join(SHOTS, 'route-card-rt.png') });
+    // a repaint of the week keeps the RT section, without reading its stops again
+    await page.evaluate(() => document.querySelector('[data-owvmode="vehicle"]').click());
+    await page.waitForTimeout(300);
+    ok(await page.locator('#intlDetail .owv-card-rt .rd-sec').count() === 2
+      && reads.filter(u => /Completed At/.test(u) && /recS3/.test(u)).length === 1, 'a repaint keeps «Δρομολόγιο RT-1201», no second read');
+    await page.evaluate(() => document.querySelector('[data-owvmode="day"]').click());
+    await page.waitForTimeout(300);
+    // a one-order RT: its order's diagram IS the RT's, no second section
+    await page.keyboard.press('Escape');
+    await row('RT-1204').locator('.ow4-c-rt').click();
+    await page.waitForSelector('.owv-cards #intlDetail:not(.hidden) [data-oi-sect="route"]', { timeout: 10000 });
+    await page.waitForTimeout(300);
+    ok(await page.locator('#intlDetail .owv-card-rt').count() === 0, 'RT-1204 (one order): no «Δρομολόγιο» section');
+    const errs = P.realErrors ? P.realErrors(page) : page._errors;
+    ok(!errs.length, 'no page / console errors: ' + JSON.stringify(errs).slice(0, 300));
+  } finally {
+    for (const rid of Object.keys(SID)) delete P.ORDERS.find(r => r.id === rid).fields['ORDER STOPS'];
+    await page.context().close();
+  }
+}
+
 (async () => {
   console.log('Στόχος: ' + BASE_URL + ' · εβδομάδα ' + P.WEEK_FROM + ' – ' + P.WEEK_TO);
   const browser = await chromium.launch();
@@ -933,6 +1003,7 @@ async function scnCardInv(browser) {
     // last: it writes into the shared fixture (P.ORDERS / P.NAT)
     await scnInvoice(browser);
     await scnCardInv(browser);
+    await scnRoute(browser);
   } catch (e) {
     failed++;
     console.log('  ✗ ΚΑΤΑΡΡΕΥΣΗ: ' + (e && e.stack || e));
