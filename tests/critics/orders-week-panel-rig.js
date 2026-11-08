@@ -924,6 +924,9 @@ async function scnCardInv(browser) {
 // στο εβδομάδα»): the card's «Διαδρομή» is the diagram of the order's own stops, and a card opened from an RT of two
 // or more orders adds «Δρομολόγιο RT-…» with every order of the RT, in RT order. Invented stops for RT-1201
 // (#1241 export, #1246 import); ORDER STOPS answered by id, as the Worker filters them.
+// From 1600px wide (owner 8/11, «Ναι, φτιάξτο») the diagram is a 400px column at the right edge beside the card
+// (core/route-diagram-column.js): the RT's when opened from an RT of two or more orders, never twice. PW_COL_DIR =
+// where the column screenshots go (orders-col.png, orders-narrow.png).
 async function scnRoute(browser) {
   console.log('\n[route] the route diagram in the order card and for its RT');
   const page = await P.newPage(browser, 'owner');
@@ -982,6 +985,80 @@ async function scnRoute(browser) {
     await page.waitForSelector('.owv-cards #intlDetail:not(.hidden) [data-oi-sect="route"]', { timeout: 10000 });
     await page.waitForTimeout(300);
     ok(await page.locator('#intlDetail .owv-card-rt').count() === 0, 'RT-1204 (one order): no «Δρομολόγιο» section');
+    ok(await page.locator('.rdc').count() === 0, 'below 1600px wide: no route column, the diagram stays in the card');
+    await page.keyboard.press('Escape');
+
+    // ── the column (owner 8/11 «Ναι, φτιάξτο»): from 1600px the diagram leaves the card for a 400px column at the
+    // right edge, the card sits next to it (right 400), and the card draws neither «Διαδρομή» nor the RT section
+    const geo = () => page.evaluate(() => {
+      const p = document.getElementById('intlDetail'), col = document.querySelector('.owv-cards > .rdc');
+      const vis = el => !!el && el.getClientRects().length > 0;
+      const r = el => { const b = el.getBoundingClientRect(); return { l: Math.round(b.left), r: Math.round(b.right), w: Math.round(b.width), t: Math.round(b.top), h: Math.round(b.height) }; };
+      const sec = el => [...el.querySelectorAll('.rd-sec')].map(x => x.querySelector('.rd-sh').textContent.replace(/\s+/g, ' ').trim());
+      return { open: vis(p), card: vis(p) ? r(p) : null, col: vis(col) ? r(col) : null, head: col ? col.querySelector('.rdc-h').textContent.replace(/\s+/g, ' ').trim() : '',
+        colSecs: col ? sec(col) : [], colRows: col ? col.querySelectorAll('.rd-row').length : 0,
+        cardRd: [...p.querySelectorAll('.rd')].filter(vis).length, routeSect: vis(p.querySelector('[data-oi-sect="route"]')), rtSect: !!p.querySelector('.owv-card-rt'),
+        red: col ? [...col.querySelectorAll('.rd-note[data-tone="red"]')].map(x => x.textContent) : [] };
+    });
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await row('RT-1201').locator('.ow4-c-rt').click();
+    await page.waitForSelector('.owv-cards > .rdc .rd .rd-sec', { timeout: 10000 });
+    await page.waitForTimeout(500);
+    let g = await geo();
+    ok(!!g.col && g.col.r === 1920 && g.col.w === 400 && g.col.t === 0 && g.col.h === 1080, 'the column: 400px, full height, at the right edge ' + JSON.stringify(g.col));
+    ok(!!g.card && g.card.r === 1520 && g.card.w === 480, 'the card sits right next to it (its right edge at 1920 − 400) ' + JSON.stringify(g.card));
+    ok(g.colSecs.length === 2 && /ΕΞΑΓΩΓΗ.*#1241/.test(g.colSecs[0]) && /ΕΙΣΑΓΩΓΗ.*#1246/.test(g.colSecs[1]) && g.colRows >= 4,
+      'opened from RT-1201 (two orders): the column draws the whole RT, #1241 then #1246 ' + JSON.stringify(g.colSecs));
+    ok(g.cardRd === 0 && !g.routeSect && !g.rtSect, 'no duplicate: the card shows neither «Διαδρομή» nor «Δρομολόγιο RT-…» ' + JSON.stringify({ rd: g.cardRd, route: g.routeSect, rt: g.rtSect }));
+    ok(/^Διαδρομή/.test(g.head) && !/RT-/.test(g.head) && /\d+\/\d+/.test(g.head), 'the head: «Διαδρομή · …» with the days, no bare RT code: «' + g.head.replace('×', '').trim() + '»');
+    ok(!g.red.length, 'no red failure line in the column: ' + JSON.stringify(g.red));
+    ok(reads.filter(u => /Completed At/.test(u) && /recS3/.test(u)).length === 1, 'no new read for the column (the RT\'s stops still read once)');
+    const colShot = process.env.PW_COL_DIR;
+    if (colShot) { require('fs').mkdirSync(colShot, { recursive: true }); await page.screenshot({ path: path.join(colShot, 'orders-col.png') }); }
+    // the column's own × closes only the column: the diagram goes back inside the card, the card back to the edge
+    await page.locator('.owv-cards > .rdc .rdc-x').click();
+    await page.waitForTimeout(300);
+    g = await geo();
+    ok(!g.col && g.open && g.card.r === 1920 && g.routeSect && g.rtSect, 'column × → only the column closes; «Διαδρομή» and «Δρομολόγιο RT-1201» back in the card at the edge ' + JSON.stringify(g.card));
+    // Esc closes the card AND its column
+    await row('RT-1201').locator('.ow4-c-rt').click();
+    await page.waitForSelector('.owv-cards > .rdc .rd .rd-sec', { timeout: 10000 });
+    ok(!!(await geo()).col, 'a new click on the row opens the card with its column again');
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
+    g = await geo();
+    ok(!g.open && !g.col, 'Esc closes the card and the column with it');
+    // a one-order RT at 1920: the column draws that order's own diagram; the card has none
+    // (its order has no ORDER STOPS in the mock: the card's «Διαδρομή» is its legacy summary, moved as it is)
+    await row('RT-1204').locator('.ow4-c-rt').click();
+    await page.waitForSelector('.owv-cards > .rdc', { timeout: 10000 });
+    await page.waitForTimeout(500);
+    g = await geo();
+    const body1204 = (await page.locator('.owv-cards > .rdc .rdc-b').textContent()).replace(/\s+/g, ' ').trim();
+    ok(!!g.col && /Φόρτωση/.test(body1204) && !g.routeSect && !g.rtSect && g.cardRd === 0, 'RT-1204 (one order): the column shows its order\'s «Διαδρομή», the card none: «' + body1204.slice(0, 80) + '»');
+    // the card's × closes both
+    await page.locator('#intlDetail .oi-close').click();
+    await page.waitForTimeout(300);
+    g = await geo();
+    ok(!g.open && !g.col, 'the card\'s × closes the card and the column');
+    // narrower than 1600 with the card open: re-evaluated on resize, the diagram back inside
+    await row('RT-1201').locator('.ow4-c-rt').click();
+    await page.waitForSelector('.owv-cards > .rdc .rd .rd-sec', { timeout: 10000 });
+    await page.setViewportSize({ width: 1440, height: 1080 });
+    await page.waitForTimeout(400);
+    g = await geo();
+    ok(!g.col && g.open && g.card.r === 1440 && g.routeSect && g.rtSect && g.cardRd === 2, 'resized to 1440: no column, both sections back inside the card at the edge ' + JSON.stringify({ card: g.card, rd: g.cardRd }));
+    if (colShot) await page.screenshot({ path: path.join(colShot, 'orders-narrow.png') });
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.waitForTimeout(400);
+    ok(!!(await geo()).col, 'resized back to 1920: the column comes back');
+    await page.keyboard.press('Escape');
+    // «Κατάλογος»: its card is not the week's — no column, its «Διαδρομή» stays inside
+    await page.evaluate(() => OrdersHub.openOrder('intl', 'recO1241'));
+    await page.waitForSelector('#intlDetail:not(.hidden) [data-oi-sect="route"]', { timeout: 15000 }).catch(() => {});
+    await page.waitForTimeout(600);
+    ok(await page.locator('.rdc').count() === 0 && await page.locator('#intlDetail [data-oi-sect="route"]').isVisible().catch(() => false),
+      '«Κατάλογος» card at 1920: no column, «Διαδρομή» inside as before');
     const errs = P.realErrors ? P.realErrors(page) : page._errors;
     ok(!errs.length, 'no page / console errors: ' + JSON.stringify(errs).slice(0, 300));
   } finally {

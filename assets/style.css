@@ -9300,6 +9300,36 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 /* «↳ Φόρτωση με τοπικό» (Figma row 3): a 28px sub-row, text from the ΚΑΘΟΔΟΣ day column to the end. */
 .wn5-sub { min-height:28px; border-top:1px solid var(--wi4-line); }
 .wn5-sub-t { grid-column:3 / -1; font-size:11px; color:var(--wi4-grey-2); }
+/* Rota leg (owner 8/11, Figma 2607:7796): a line INSIDE its truck's row — no separator above it, indented 16px inward
+   under the side's columns (it never sticks out left of the row it belongs to), its own pallets; the ΑΝΑΘΕΣΗ cell is
+   the row's, written once. */
+.wn5-sub.wn5-rota { border-top:0; min-height:40px; cursor:pointer; }
+.wn5-sub.wn5-rota > span:not(.wn5-c-idx) { display:flex; align-items:center; min-width:0; }
+.wn5-sub.wn5-rota > :is(.wn5-kd, .wn5-ad) { flex-direction:column; align-items:flex-start; justify-content:center; padding-left:12px; padding-right:0; }
+.wn5-sub.wn5-rota > :is(.wn5-fl, .wn5-afl, .wn5-kto, .wn5-ato) { padding-left:34px; align-items:flex-start; justify-content:center; }
+.wn5-sub.wn5-rota:hover { background:var(--wi4-info-bg); }
+/* «ΤΟΠΙΚΑ» under the board (owner 8/11, Figma 2607:8131): a white card, one line per day, the local driver, his moves */
+.wn5-locals { margin:14px 0 24px; background:var(--surface-card); border:1px solid var(--wi4-line); border-radius:8px; font-size:12px; color:var(--wi4-ink); }
+.wn5-locals > summary { display:flex; align-items:baseline; gap:10px; padding:10px 16px; cursor:pointer; list-style:none; }
+.wn5-locals > summary::-webkit-details-marker { display:none; }
+.wn5-locals > summary::before { content:'∨'; font-size:11px; color:var(--wi4-grey-2); }
+.wn5-locals:not([open]) > summary::before { content:'›'; }
+.wn5-loc-h { font-size:11px; font-weight:600; letter-spacing:.5px; }
+.wn5-loc-sub { font-size:10.5px; color:var(--wi4-grey-2); }
+.wn5-loc-row { display:grid; grid-template-columns:150px 180px 1fr; align-items:center; gap:0 12px; padding:8px 16px; border-top:1px solid var(--wi4-line); }
+.wn5-loc-day { font-size:10.5px; font-weight:600; letter-spacing:.3px; color:var(--wi4-grey-2); text-transform:uppercase; }
+.wn5-loc-day.on { color:var(--wi4-blue-ink); }
+.wn5-loc-none { grid-column:2 / -1; font-size:10.5px; color:var(--wi4-grey-2); }
+.wn5-loc-who { display:flex; flex-direction:column; min-width:0; }
+.wn5-loc-who .wi4-l1 { font-weight:500; }
+.wn5-loc-who .wi4-l2 { font-size:10.5px; color:var(--wi4-grey-2); }
+.wn5-loc-moves { display:flex; flex-direction:column; gap:4px; min-width:0; }
+.wn5-loc-mv { display:flex; align-items:center; gap:8px; min-width:0; }
+.wn5-loc-n { font-weight:600; color:var(--wi4-blue-ink); }
+.wn5-loc-k { padding:1px 6px; border-radius:4px; font-size:10px; font-weight:600; background:var(--wi4-info-bg); color:var(--wi4-blue-ink); }
+.wn5-loc-k.deliver { background:#ECFAF1; color:#166534; }
+.wn5-loc-w { font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+.wn5-loc-y { font-size:10.5px; color:var(--wi4-grey-2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; flex:1; }
 .wn5-sub-t b { font-weight:500; color:inherit; }
 /* The «destination did not come» line of a waiting VS (plan T5, Ε-26) belongs to its row: no rule between them, the
    red rail runs on through it (Figma H1: one continuous bar over the waiting VS rows), 22px, small grey text. */
