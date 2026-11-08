@@ -436,6 +436,7 @@ export function buildAll() {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  for (const [f, t] of Object.entries(buildAll())) fs.writeFileSync(path.join(MIG, 'drafts', f), t);
-  console.log('111 written to drafts/');
+  // 111 ran 8/11 (owner; verify «111 in place», B-95 0, B-99 0): its files are in migrations/, out of drafts/ (rule 5)
+  for (const [f, t] of Object.entries(buildAll())) fs.writeFileSync(path.join(MIG, f), t);
+  console.log('111 written to migrations/');
 }
