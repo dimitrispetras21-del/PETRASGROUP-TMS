@@ -473,6 +473,14 @@ test('code review 8/11: a waiting load delivered after the week stands on the la
   assert.ok(r && r.kath, 'the Friday loading for Monday is on this week');
   assert.deepStrictEqual([r.dayKey, L.loadDayOf(r), dayOf(m, 'wait:4198')], ['2026-10-19', '2026-10-16', '2026-10-16']);
   assert.strictEqual(rowOf(m, 'wait:4197'), undefined, 'a load that loads next week is not here');
+  // re-review: one that loaded BEFORE the week and is delivered after it is on the current week's Saturday only (1a),
+  // never on the Friday of every week in between
+  const b2 = fix();
+  b2.waiting.push(Object.assign({}, w0, { piece_id: 4196, shipment_id: 4296, nat_order_id: 3296, order_id: null, reference: 'N-T096',
+    load_from: '2026-10-05T06:00:00+03:00', load_to: '2026-10-05T08:00:00+03:00', deliver_from: '2026-10-26T06:00:00+03:00', deliver_to: '2026-10-26T08:00:00+03:00',
+    nat_ready_day: '2026-10-05', nat_due_day: '2026-10-26', direction: 'KATHODOS' }));
+  assert.strictEqual(dayOf(M(b2), 'wait:4196'), '2026-10-10', 'current week: carried to its Saturday');
+  assert.strictEqual(dayOf(L.model(b2, { today: '2026-10-25' }), 'wait:4196'), undefined, 'another week: not here');
   assert.strictEqual(L.loadDayOf(rowOf(m, 'rt:105')), '2026-10-14', 'a cycle: its ΚΑΘΟΔΟΣ (Veroia) day');
   assert.strictEqual(L.loadDayOf(rowOf(m, 'rt:106')), rowOf(m, 'rt:106').anod.day, 'without ΚΑΘΟΔΟΣ: its ΑΝΟΔΟΣ day');
 });

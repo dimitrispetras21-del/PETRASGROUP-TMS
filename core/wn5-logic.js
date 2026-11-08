@@ -525,10 +525,15 @@ function model(board, opts) {
   const placeOf = (r) => {
     if (r.kind !== 'unassigned') return !r.dayKey || r.dayKey < week ? week : r.dayKey > last ? last : r.dayKey;
     if (r.dayKey && r.dayKey >= week && r.dayKey <= last) return r.dayKey;
-    // delivered after the week: on its delivery day in that week, and here on the last day when it loads in this week
-    // or before (code review high 8/11: a Friday loading for Monday must not leave the week it is loaded in — the tab
-    // badge, the base's ready-week count, still counts it here)
-    if (r.dayKey && r.dayKey > last) { const ld = loadDayOf(r); return ld && ld <= last ? last : null; }
+    // delivered after the week: on its delivery day in that week, and here on the last day when it LOADS in this week
+    // (code review high 8/11: a Friday loading for Monday must not leave the week it is loaded in — the tab badge, the
+    // base's ready-week count, still counts it here). One that loaded before this week falls to the rule below, so it is
+    // never on the Friday of every week until its delivery (re-review 8/11, the 1a trap).
+    if (r.dayKey && r.dayKey > last) {
+      const ld = loadDayOf(r);
+      if (ld && ld >= week && ld <= last) return last;
+      if (!ld || ld > last) return null;
+    }
     // older than the week: the base sends it from its ready day's week on, so a load whose loading day is earlier than
     // its ready day (edited dates) is in no earlier board — it stands on this Saturday, never on no day at all
     return current || (r.readyDay != null && r.readyDay >= week) ? week : null;
