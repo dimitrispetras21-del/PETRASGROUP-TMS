@@ -9,11 +9,12 @@ export function build107Dryrun(main) {
    WHERE unloading_stops = 1 AND NOT has_nat_leg ORDER BY delivered_on DESC, order_stop_id LIMIT 1;
   IF v_oid IS NOT NULL THEN
     SELECT count(*) INTO v_pend FROM public.pl_movements WHERE order_id = v_oid AND status = 'pending';
-    SELECT count(*) INTO v_audit0 FROM public.audit_log;
+    -- only this act's rows: other sessions' audit rows committed meanwhile are seen too (READ COMMITTED)
+    SELECT count(*) INTO v_audit0 FROM public.audit_log WHERE actor = 'dryrun-107';
     v_res := public.pl_no_exchange(jsonb_build_object('order_id', v_oid, 'order_stop_id', v_sid, 'reason', 'dry run 107'), 'dryrun-107', 'owner');
     IF (SELECT pallet_exchange FROM public.orders WHERE id = v_oid) IS NOT FALSE THEN RAISE EXCEPTION '107 DRY RUN FAILED: exchange still on'; END IF;
     IF EXISTS (SELECT 1 FROM public.pl_movements WHERE order_id = v_oid AND status = 'pending') THEN RAISE EXCEPTION '107 DRY RUN FAILED: pending left'; END IF;
-    IF (SELECT count(*) FROM public.audit_log) - v_audit0 <> v_pend + 1 THEN RAISE EXCEPTION '107 DRY RUN FAILED: audit rows % expected %', (SELECT count(*) FROM public.audit_log) - v_audit0, v_pend + 1; END IF;
+    IF (SELECT count(*) FROM public.audit_log WHERE actor = 'dryrun-107') - v_audit0 <> v_pend + 1 THEN RAISE EXCEPTION '107 DRY RUN FAILED: audit rows % expected %', (SELECT count(*) FROM public.audit_log WHERE actor = 'dryrun-107') - v_audit0, v_pend + 1; END IF;
     IF EXISTS (SELECT 1 FROM public.pl_v_missing_delivery WHERE order_stop_id = v_sid) THEN RAISE EXCEPTION '107 DRY RUN FAILED: stop still listed'; END IF;
   END IF;
   RAISE EXCEPTION 'DRY RUN 107 finished: % stops listed, act checked on order % (% pending deleted), % ms - NOTHING kept',

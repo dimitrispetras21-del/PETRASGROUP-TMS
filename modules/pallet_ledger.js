@@ -809,11 +809,20 @@ async function plvMissFillDo(stopId) {
   if (!_plvMissWrite() || PLV.busy) return;
   const r = _plvMissFind(stopId), x = _plvMfVals();
   if (!r || !x.ok) return;
+  // A row without a delivery day or a client cannot become a movement (the Worker would answer 500 / an English 400):
+  // said here, with where to fix it.
+  const day = /^\d{4}-\d{2}-\d{2}/.test(String(r.movement_date || '')) ? String(r.movement_date).slice(0, 10) : null;
+  if (!day || !r.client_id) {
+    const box = document.getElementById('plvErr');
+    const t = `Η ${escapeHtml(_plvNo(r))} δεν έχει ${!day ? 'ημερομηνία παράδοσης' : 'πελάτη'}: συμπλήρωσέ την πρώτα στην παραγγελία.`;
+    if (box) box.innerHTML = `<div class="plv-err"><span>${t}</span></div>`; else showErrorToast(t, 'error');
+    return;
+  }
   PLV.busy = true;
   try {
     let path = null;
     try { path = await _plvUploadIfAny(); } catch (e) { e.plvStep = 'upload'; throw e; }
-    const body = { movement_date: String(r.movement_date).slice(0, 10), counterparty_type: 'CLIENT', client_id: r.client_id,
+    const body = { movement_date: day, counterparty_type: 'CLIENT', client_id: r.client_id,
       event_type: 'DELIVERY', taken: +x.t, given: +x.g, order_stop_id: r.stop_id, order_id: r.order_id,
       notes: ((document.getElementById('plvMfNote') || {}).value || '').trim() || null,
       sheet_source: path ? 'UPLOAD' : 'MANUAL', confirm: true };
@@ -977,6 +986,8 @@ function _plvBodyHtml() {
 function _plvDraw() {
   const c = document.getElementById('content');
   PLV.card = null;
+  // the missing-delivery view needs its list: if it is no longer shown (route back to 404, rights), back to Εκκρεμείς
+  if (PLV.tab === 'action' && PLV.act === 'missing' && !_plvMissShown()) PLV.act = 'pending';
   _plvKeysOn();
   if (PLV.tab === 'week' && typeof PalletsWeek !== 'undefined') {
     // The week draws itself (its own read: the Weekly's orders and trips); this page gives it the bar.

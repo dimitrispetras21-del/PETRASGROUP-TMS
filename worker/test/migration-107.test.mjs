@@ -27,7 +27,7 @@ const SCHEMA = `
   CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role; CREATE ROLE tms_check_runner;
   CREATE TABLE clients (id bigint PRIMARY KEY, company_name text);
   CREATE TABLE locations (id bigint PRIMARY KEY, name text, city text, country text);
-  CREATE TABLE orders (id bigint PRIMARY KEY, status text, pallet_exchange boolean, parent_order_id bigint, deleted_at timestamptz,
+  CREATE TABLE orders (id bigint PRIMARY KEY, legacy_id text, status text, pallet_exchange boolean, parent_order_id bigint, deleted_at timestamptz,
     client_id bigint, direction text, delivery_datetime date, actual_delivery_date date);
   CREATE TABLE order_stops (id bigint PRIMARY KEY, order_id bigint, stop_type text, pallets numeric, datetime date, location_id bigint, deleted_at timestamptz);
   CREATE TABLE stock_lots (id bigint PRIMARY KEY, order_id bigint, deleted_at timestamptz);
@@ -93,19 +93,21 @@ test('PGlite: dry run, apply, refusals, the act, re-apply, rollback, apply again
     [{ order_id: 4, order_stop_id: 41, reason: 'no exchange' }, 'accountant', 'split_leg'],
     [{ order_id: 5, order_stop_id: 51, reason: 'no exchange' }, 'accountant', 'lot'],
     [{ order_id: 9, order_stop_id: 91, reason: 'no exchange' }, 'accountant', 'already'],
-    [{ order_id: 1, order_stop_id: 11, reason: 'no exchange' }, 'accountant', 'stop']]) {
+    [{ order_id: 1, order_stop_id: 11, reason: 'no exchange' }, 'accountant', 'stop'],
+    [{ order_id: 3, order_stop_id: 31, reason: 'no exchange' }, 'accountant', 'done']]) {
     const r = await act(p, role);
     assert.match(String(r), new RegExp('pln rule broken: ' + code + ':'), JSON.stringify(p) + ' → ' + r);
   }
   assert.equal((await one(`SELECT count(*)::int n FROM audit_log`)).n, 0, 'a refusal writes nothing');
 
+  await db.exec(`UPDATE orders SET legacy_id = 'recO1' WHERE id = 1`);
   const ok = await act({ order_id: 1, order_stop_id: 12, reason: 'client keeps no empties' });
   assert.deepEqual(ok.deleted.map(Number), [100]);
   assert.deepEqual(ok.confirmed_kept.map(Number), [101]);
   assert.equal((await one(`SELECT pallet_exchange FROM orders WHERE id = 1`)).pallet_exchange, false);
   assert.equal((await one(`SELECT count(*)::int n FROM pl_movements WHERE order_id = 1 AND status = 'pending'`)).n, 0);
   const tr = (await db.query(`SELECT actor, action, table_name, record_id, after_data FROM audit_log ORDER BY id`)).rows;
-  assert.deepEqual(tr.map((r) => `${r.action}:${r.table_name}:${r.record_id}`), ['delete:pl_movements:100', 'update:orders:1']);
+  assert.deepEqual(tr.map((r) => `${r.action}:${r.table_name}:${r.record_id}`), ['delete:pl_movements:100', 'update:orders:recO1']);
   assert.equal(tr[1].actor, 'demo');
   assert.equal(tr[1].after_data.reason, 'client keeps no empties');
   assert.equal(tr[1].after_data.invoice_gate, 'open');
@@ -117,6 +119,7 @@ test('PGlite: dry run, apply, refusals, the act, re-apply, rollback, apply again
   assert.equal(v.anon_select, false);
   assert.equal(v.auth_execute, false);
   assert.equal(v.runner_select, true);
+  assert.equal(v.runner_reads_bases, false, 'the stub runner reads no base table: said, not hidden');
   assert.equal(await runs(read('107_pl_missing_delivery_rollback.sql')), 'ok');
   assert.equal((await one(`SELECT to_regclass('public.pl_v_missing_delivery')::text v`)).v, null);
   assert.equal((await one(`SELECT pallet_exchange FROM orders WHERE id = 1`)).pallet_exchange, false, 'rollback keeps the writes made');

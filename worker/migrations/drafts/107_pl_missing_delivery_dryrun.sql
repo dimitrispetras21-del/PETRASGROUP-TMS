@@ -25,7 +25,7 @@
 --     audit fails the act: no switch without a trace (the Worker's audit() never fails a request, so it cannot
 --     carry this rule). Confirmed movements stay; reversing a confirmed loading is the existing /reverse.
 --   * helper pln_h_raise: refusals as SQLSTATE 23514, HINT 'pln:<code>' (the Worker's Greek texts in PLN_RULE_TEXT):
---     role, reason, bad_ids, gone, not_delivered, already, split_leg, lot, stop, multi, nat_leg.
+--     role, reason, bad_ids, gone, not_delivered, already, split_leg, lot, stop, done, multi, nat_leg.
 -- BORN CLOSED: the view SELECT only to service_role and tms_check_runner; the act EXECUTE only to service_role.
 -- RUNTIME: no table rewrite, no lock but the one order row the act touches; lock_timeout 5s, statement_timeout 60s.
 -- REVERSE: 107_pl_missing_delivery_rollback.sql (drops the view and the two functions; writes made stay).
@@ -111,6 +111,10 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM order_stops WHERE id = v_sid AND order_id = v_oid AND stop_type = 'Unloading' AND deleted_at IS NULL) THEN
       PERFORM pln_h_raise('stop', v_sid::text);
     END IF;
+    -- The stop must still be missing: from a stale list the switch would contradict a delivery written meanwhile.
+    IF EXISTS (SELECT 1 FROM pl_movements WHERE order_stop_id = v_sid AND event_type = 'DELIVERY' AND status <> 'reversed') THEN
+      PERFORM pln_h_raise('done', v_sid::text);
+    END IF;
     -- One delivery stop only (owner 28/10): with two or more, which of them had no exchange is the dispatcher's
     -- answer in the order, not the accountant's switch of the whole order.
     SELECT count(*) INTO v_n FROM order_stops
@@ -128,7 +132,9 @@ BEGIN
     END LOOP;
 
     UPDATE orders SET pallet_exchange = false WHERE id = v_oid;
-    PERFORM plan_h_audit(p_actor, p_role, 'update', 'orders', v_oid::text,
+    -- record_id = the facade's id of the order (legacy_id), as the facade's own audit rows of orders: the switch
+    -- sits in the same chain and the same search of the Audit Trail as every other change of that order.
+    PERFORM plan_h_audit(p_actor, p_role, 'update', 'orders', coalesce(v_o.legacy_id, v_oid::text),
       jsonb_build_object('pallet_exchange', true),
       jsonb_build_object('pallet_exchange', false, 'reason', v_reason, 'order_stop_id', v_sid,
                          'source', 'pallets/no-exchange', 'invoice_gate', 'open', 'deleted_pending', v_del));
@@ -150,11 +156,12 @@ BEGIN
    WHERE unloading_stops = 1 AND NOT has_nat_leg ORDER BY delivered_on DESC, order_stop_id LIMIT 1;
   IF v_oid IS NOT NULL THEN
     SELECT count(*) INTO v_pend FROM public.pl_movements WHERE order_id = v_oid AND status = 'pending';
-    SELECT count(*) INTO v_audit0 FROM public.audit_log;
+    -- only this act's rows: other sessions' audit rows committed meanwhile are seen too (READ COMMITTED)
+    SELECT count(*) INTO v_audit0 FROM public.audit_log WHERE actor = 'dryrun-107';
     v_res := public.pl_no_exchange(jsonb_build_object('order_id', v_oid, 'order_stop_id', v_sid, 'reason', 'dry run 107'), 'dryrun-107', 'owner');
     IF (SELECT pallet_exchange FROM public.orders WHERE id = v_oid) IS NOT FALSE THEN RAISE EXCEPTION '107 DRY RUN FAILED: exchange still on'; END IF;
     IF EXISTS (SELECT 1 FROM public.pl_movements WHERE order_id = v_oid AND status = 'pending') THEN RAISE EXCEPTION '107 DRY RUN FAILED: pending left'; END IF;
-    IF (SELECT count(*) FROM public.audit_log) - v_audit0 <> v_pend + 1 THEN RAISE EXCEPTION '107 DRY RUN FAILED: audit rows % expected %', (SELECT count(*) FROM public.audit_log) - v_audit0, v_pend + 1; END IF;
+    IF (SELECT count(*) FROM public.audit_log WHERE actor = 'dryrun-107') - v_audit0 <> v_pend + 1 THEN RAISE EXCEPTION '107 DRY RUN FAILED: audit rows % expected %', (SELECT count(*) FROM public.audit_log WHERE actor = 'dryrun-107') - v_audit0, v_pend + 1; END IF;
     IF EXISTS (SELECT 1 FROM public.pl_v_missing_delivery WHERE order_stop_id = v_sid) THEN RAISE EXCEPTION '107 DRY RUN FAILED: stop still listed'; END IF;
   END IF;
   RAISE EXCEPTION 'DRY RUN 107 finished: % stops listed, act checked on order % (% pending deleted), % ms - NOTHING kept',
