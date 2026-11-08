@@ -619,7 +619,10 @@ const OrdersWeekView = (() => {
       const away = new Map(), ev = d.v5Earlier || { boards: [], failed: [] };
       const wNo = w => (typeof TmsWeek !== 'undefined' ? TmsWeek.numOf(new Date(w + 'T12:00:00')) : null);
       for (const { week, board } of ev.boards) {
-        const nums = WN5L.boardNumbers(WN5.modelOf(board));
+        // an earlier board that cannot be drawn costs only its continuations' numbers, never this week's
+        let nums;
+        try { nums = WN5L.boardNumbers(WN5.modelOf(board)); }
+        catch (e) { if (typeof logError === 'function') logError(e, 'orders week: earlier board numbers'); ev.failed.push(week); continue; }
         for (const rt of carried) if (carriedWeek.get(rt) === week && nums.has(rt)) away.set(rt, { n: nums.get(rt), w: wNo(week) });
       }
       for (const rt of carried) if (!away.has(rt) && ev.failed.includes(carriedWeek.get(rt))) away.set(rt, { failed: true, w: wNo(carriedWeek.get(rt)) });
