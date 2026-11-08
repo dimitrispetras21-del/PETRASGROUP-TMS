@@ -13,7 +13,7 @@ import { buildAll, oldBodies, OLD_CHECKS, LIVE_VIEW_MD5 } from '../migrations/dr
 
 const M = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../migrations');
 const read = (f) => fs.readFileSync(path.join(M, f), 'utf8');
-const d = (f) => 'drafts/' + f;   // 111 is a draft until the owner runs it (CLAUDE.md, rule 5)
+const d = (f) => f;   // 111 ran 8/11 (owner): its files left drafts/ (CLAUDE.md, rule 5)
 
 test('the four 111 files are the builder output', () => {
   for (const [f, t] of Object.entries(buildAll())) assert.equal(read(d(f)), t, f);
