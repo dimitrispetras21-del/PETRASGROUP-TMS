@@ -1726,10 +1726,12 @@
     st.rota = !!(opts && opts.rota);
     const lastDel = sd && !sd.gap && sd.to && sd.to.length ? sd.to[sd.to.length - 1].day : null;
     st.rotaFrom = st.rota && lastDel ? _addDays(lastDel, -1) : null;
-    // the last delivery as «YYYY-MM-DD HH:MM» Athens (WN5L points carry day + from): a candidate loading earlier is amber
+    // the END of the last delivery's window as «YYYY-MM-DD HH:MM» Athens (WN5L points carry day + from/to; an all-day
+    // window ends 23:59): a candidate loading before the truck is done delivering is amber (code review high: the
+    // window's start missed every same-day pickup before an all-day delivery)
     const lastD = st.rota && sd && !sd.gap && sd.to && sd.to.length ? sd.to[sd.to.length - 1] : null;
-    st.rotaAt = lastD && lastD.day ? lastD.day + ' ' + (lastD.from || '00:00') : null;
-    st.rotaAtTxt = lastD && lastD.day ? _dayShort(lastD.day) + (lastD.from ? ' ' + lastD.from : '') : '';
+    st.rotaAt = lastD && lastD.day ? lastD.day + ' ' + (lastD.to || '23:59') : null;
+    st.rotaAtTxt = lastD && lastD.day ? _dayShort(lastD.day) + (lastD.to && lastD.to !== '23:59' ? ' ως ' + lastD.to : '') : '';
     st.groups = _plusGroups(st);
     st.hubStop = !!hubStop;
     st.hubStopDay = _stopDay(hubStop);

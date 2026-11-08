@@ -2581,9 +2581,9 @@ SCN['rota-locals'] = async (browser, origin) => {
     const lines = await page.$$eval(`${D} [data-act="save"][data-piece]`, (bs) => bs.map((b) => b.dataset.piece + ':' + b.textContent.trim())).catch(() => []);
     ok(scn, 'B the national loads waiting, each with «Σύνδεση»; no VS, no stock, none to / from Veroia (4202 → Βέροια out)', lines.includes('4201:Σύνδεση') && !lines.some((x) => x.startsWith('4202')) && lines.every((x) => /^420\d:Σύνδεση$/.test(x)), lines);
     ok(scn, 'B no «Νέα παραγγελία | Από αναμονή» switch', !(await bHas(page, `${D} .wn5-seg`)));
-    // 4201 loads Mon 11:00, before 204's last delivery (ATHENS Tue 10:00): in the list, said in amber (Figma 2607:8466)
+    // 4201 loads Mon 11:00, before 204's last delivery ends (ATHENS Tue 10:00–12:00): in the list, said in amber (Figma 2607:8466)
     const early = await bText(page, `${D} .wn5-pline[data-piece="4201"] [data-rota-early]`);
-    ok(scn, 'B a load picked up before the truck\'s last delivery: listed, amber «φορτώνει πριν την παράδοση … · επιτρέπεται»', /φορτώνει πριν την παράδοση του φορτηγού \(Τρί 13\/10 10:00\) · επιτρέπεται/.test(early), early);
+    ok(scn, 'B a load picked up before the truck\'s last delivery: listed, amber «φορτώνει πριν την παράδοση … · επιτρέπεται»', /φορτώνει πριν την παράδοση του φορτηγού \(Τρί 13\/10 ως 12:00\) · επιτρέπεται/.test(early), early);
     const line = await bText(page, `${D} .wn5-pline[data-piece="4201"]`);
     ok(scn, 'B the line reads pickup → delivery, client, day hh:mm, pallets (Figma 2607:8466)', /THESSALONIKI TEST → ATHENS TEST/.test(line) && /ΠΕΛΑΤΗΣ ΣΤ/.test(line) && /11:00/.test(line) && /6π/.test(line), line);
     await bClick(page, `${D} [data-act="save"][data-piece="4201"]`);
