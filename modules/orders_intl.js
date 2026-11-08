@@ -725,7 +725,12 @@ function _oiVsHead() {
 // loading without exchange and the deliveries where no pallets come back. «Όχι» = nothing per point.
 function _oiExAll() {
   const pe = peRead('f') === true;
-  for (const t of ['l', 'u']) _oiRows(t).forEach(r => { const b = r.querySelector('.oi2-c-ex input[type=checkbox]'); if (b) b.checked = pe; });
+  // «Όχι» keeps what each point had, so a misclick back to «Ναι» gives the stored choices back instead of ticking all
+  for (const t of ['l', 'u']) _oiRows(t).forEach(r => {
+    const b = r.querySelector('.oi2-c-ex input[type=checkbox]'); if (!b) return;
+    if (!pe) { if (b.dataset.prev === undefined) b.dataset.prev = b.checked ? '1' : '0'; b.checked = false; }
+    else { b.checked = b.dataset.prev === undefined ? true : b.dataset.prev === '1'; delete b.dataset.prev; }
+  });
   if (!pe) _oiExFix(false);
   _oiCols(); _oiBalanceUpdate();
 }
@@ -1218,9 +1223,11 @@ async function _oiPrefillCheck() {
   P.client = cid;
   const box = document.getElementById('oiPrefill');
   let last = null;
+  // the last 120 days only: one page for any client, not every order it ever had
+  const since = new Date(Date.now() - 120 * 864e5).toISOString().slice(0, 10);
   try {
     const recs = await atGetAll(TABLES.ORDERS, {
-      filterByFormula: `FIND("${cid}",ARRAYJOIN({Client},","))>0`,
+      filterByFormula: `AND(FIND("${cid}",ARRAYJOIN({Client},","))>0,IS_AFTER({Loading DateTime},'${since}'))`,
       fields: ['Order No', 'Loading DateTime', 'Temperature °C', 'Temp Per CMR', 'Refrigerator Mode', 'Pallet Type', 'Ops Status', 'Parent Order', 'Stock Lot', 'Status'],
       sort: [{ field: 'Loading DateTime', direction: 'desc' }],
     }, false);
@@ -1229,6 +1236,7 @@ async function _oiPrefillCheck() {
       return g['Status'] !== 'Cancelled' && g['Ops Status'] !== 'Provisional' && !getLinkedId(g['Parent Order']) && !getLinkedId(g['Stock Lot']);
     }) || null;
   } catch (e) {
+    P.client = '';   // the next time the field is left, it is tried again
     // Said in place, never a blank: the dispatcher types the fields as before.
     if (box && document.getElementById('lv_client')?.value === cid) { box.hidden = false; box.innerHTML = '<span class="oi2-hint">Η τελευταία παραγγελία του πελάτη δεν διαβάστηκε — συμπλήρωσε τα πεδία</span>'; }
     return;
@@ -3218,6 +3226,20 @@ async function submitIntlOrder(recId) {
     // ── Save ORDER_STOPS (primary write for stop data) ──
     if (_formStops.length) {
       await stopsSave(savedOrderId, _formStops, F.STOP_PARENT_ORDER);
+      // 111 hours: a Worker without the labels answers 200 and drops them (facade trap 1). When this save sent an hour,
+      // the stops are read back and a lost one is said (principle 2: the table, not the toast).
+      const _hrsSent = _formStops.filter(s => s.timeFrom || s.timeTo);
+      if (_hrsSent.length && !result?._offline) {
+        try {
+          const back = await stopsLoad(savedOrderId, F.STOP_PARENT_ORDER);
+          const lost = _hrsSent.filter(s => !back.some(b => b.fields[F.STOP_TYPE] === s.stopType && Number(b.fields[F.STOP_NUMBER]) === s.stopNumber
+            && String(b.fields[F.STOP_TIME_FROM] || '').slice(0, 5) === String(s.timeFrom || '') && String(b.fields[F.STOP_TIME_TO] || '').slice(0, 5) === String(s.timeTo || '')));
+          if (lost.length) {
+            showErrorToast('Η παραγγελία αποθηκεύτηκε, αλλά οι ώρες ' + lost.length + ' σημείων ΔΕΝ κρατήθηκαν από τον διακομιστή — ενημέρωσε τον διαχειριστή (111)', 'error', 15000);
+            if (typeof logError === 'function') logError(new Error('stop hours not read back (' + lost.length + ')'), 'submitIntlOrder hours ' + savedOrderId);
+          }
+        } catch (e) { console.warn('orders intl: hours read-back', e); }
+      }
     }
 
     // Παλέτες Φ2: εκκρεμείς LOADING ανά στάση (idempotent, μη-μπλοκάρον)

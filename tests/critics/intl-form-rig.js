@@ -88,7 +88,14 @@ async function newPage(browser) {
     const b = q.postDataJSON() || {};
     const recs = b.records || [{ id: (q.url().match(/\/(rec[A-Za-z0-9]+)/) || [])[1], fields: b.fields }];
     (m === 'POST' ? cap.stopCreates : cap.stopPatches).push(...recs.map(x => Object.assign({ id: x.id }, x.fields)));
-    return json(r, { records: recs.map((x, i) => ({ id: x.id || 'recNS' + (++cap.seq) + i, fields: x.fields })) });
+    const out = recs.map((x, i) => ({ id: x.id || 'recNS' + (++cap.seq) + i, fields: x.fields }));
+    // the base as the read-back sees it: a created stop joins its order; cap.dropHours = a Worker without the 111 labels
+    if (m === 'POST') for (const s of out) {
+      const f = Object.assign({}, s.fields); if (cap.dropHours) { delete f['Time From']; delete f['Time To']; }
+      cap.fx.stops.push({ id: s.id, fields: f });
+      const o = cap.fx.orders.find(x => x.id === (f['Parent Order'] || [])[0]); if (o) o.fields['ORDER STOPS'] = (o.fields['ORDER STOPS'] || []).concat([s.id]);
+    }
+    return json(r, { records: out });
   });
   await page.route(`**/${ORDERS}**`, async r => {
     const q = r.request(), m = q.method(), url = decodeURIComponent(q.url());
@@ -176,6 +183,7 @@ async function run() {
   ok(u1 && u1['Time From'] === '06:00' && u1['Time To'] === '10:00', 'ORDER STOPS: the delivery carries 06:00 – 10:00');
   ok(l1 && !('Time From' in l1) && !('Via Hub' in l1) && !('Pallets Exchanged' in l1), 'a new stop with nothing to say names no new label (all day, every pallet, no VS)');
   ok(!cap.stopCreates.some(s => s['Stop Type'] === 'Cross-dock'), 'no VS = no Veroia stop');
+  ok(!(await page.evaluate(() => document.body.innerText.includes('ΔΕΝ κρατήθηκαν'))), 'the hours read back: no warning');
 
   console.log('\nΦ2 · import with VS, 2 loadings, 4 deliveries');
   cap.stopCreates.length = 0;
@@ -279,6 +287,29 @@ async function run() {
   await save(page, cap);
   const lf = cap.stopCreates.find(s => s['Stop Type'] === 'Loading') || {};
   ok(lf['Pallets Exchanged'] === 10, 'Pallets Exchanged 10 on the loading — ' + lf['Pallets Exchanged']);
+
+  console.log('\nan old Worker drops the hours');
+  cap.dropHours = true;
+  await openNew(page);
+  await seg(page, 'f_Direction', 'Import');
+  await pick(page, 'client', 'recCliA', 'Πελάτης Α');
+  await page.fill('#f_Temp', '2'); await page.fill('#f_Price', '1000');
+  await seg(page, 'f_ReeferMode', 'Continuous'); await seg(page, 'f_PalletType', 'EUR');
+  await page.click('#f_PalletExch label:has(input[value="no"])');
+  await pick(page, 'l_1', 'recLA', 'Farm A'); await page.fill('#dt_l_1', addDays(TODAY, 1)); await page.fill('#pal_l_1', '30');
+  await pick(page, 'u_1', 'recSE', 'Buyer Five'); await page.fill('#dt_u_1', addDays(TODAY, 3)); await page.fill('#pal_u_1', '30');
+  await page.click('#hrs_u_1 .oi2-hrs-all'); await page.fill('#tf_u_1', '05:00');
+  await save(page, cap);
+  ok(await page.evaluate(() => document.body.innerText.includes('ΔΕΝ κρατήθηκαν')), 'hours the server did not keep are said loudly (read-back, principle 2)');
+  cap.dropHours = false;
+
+  console.log('\n«Ναι» → «Όχι» → «Ναι» keeps the per-point choices');
+  await page.evaluate(() => openIntlEditWith('recEd', window.__rigFx));
+  await page.waitForSelector('#oi2 #stoprow_u_2', { timeout: 15000 });
+  await page.click('#f_PalletExch label:has(input[value="no"])');
+  await page.click('#f_PalletExch label:has(input[value="yes"])');
+  ok(!(await page.$eval('#ex_u_1', e => e.checked)) && await page.$eval('#ex_u_2', e => e.checked), 'a misclick on «Όχι» and back gives the stored choices back (stop 1 still without exchange)');
+  await page.evaluate(() => closeModal());
 
   console.log('\n«σε απόθεμα»');
   await openNew(page);
