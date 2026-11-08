@@ -371,6 +371,8 @@ function selectNatlOrder(recId) {
         <button type="button" class="on-act danger" title="Διαγραφή με cascade — αφαιρεί NL/GL/CL/Ramp/Παλέτες" onclick="deleteNatlOrder('${recId}')">Διαγραφή</button>
       </div>
     </div>` : ''}`;
+  // «Εβδομάδα» mounts its «Τιμολόγηση» section in this card on every paint (owner 8/11); no-op elsewhere.
+  if (typeof OrdersWeekView !== 'undefined' && OrdersWeekView.cardPainted) OrdersWeekView.cardPainted(panel);
 }
 
 /* ═══ Φ3β — GROUPAGE: μία καταχώρηση, πολλοί πελάτες (Γ1) ═════════════

@@ -1151,7 +1151,8 @@ const OrdersWeekView = (() => {
       <div class="ow4-strip"><button type="button" class="ow4-arr" data-owvshift="-1" aria-label="Προηγούμενη εβδομάδα">‹</button>${strip}<button type="button" class="ow4-arr" data-owvshift="1" aria-label="Επόμενη εβδομάδα">›</button></div>
       ${sumLine}${intlHtml}${natlHtml}${stHtml}</div>${CARDS_HTML}${DOCS_HTML}`;
     ctx.body.onclick = _onClick;
-    ctx.body.oninput = e => { if (e.target.closest && e.target.closest('#owvEd')) _edHint(); };
+    // What she types is kept as she types: the card repaints its whole panel when its stops arrive.
+    ctx.body.oninput = e => { if (e.target.closest && e.target.closest('#owvEd')) { _edKeep(); _edHint(); } };
     // ΑΝΑΘΕΣΗ, ΤΠΥ and ΠΟΣΟ are buttons for the keyboard too (role=button, tabindex 0); Enter in the editor saves
     ctx.body.onkeydown = e => {
       if (!e.target.closest) return;
@@ -1473,7 +1474,8 @@ const OrdersWeekView = (() => {
     if (e.target.closest('#owvEd')) { const a = e.target.closest('[data-owvedact]'); if (a) _edAct(a); return; }
     const edc = e.target.closest('[data-owved]');
     if (edc) return _edOpen(edc);
-    if (S.ed && !S.ed.busy) _edClose();
+    // The card's «Τιμολόγηση» lives as long as its card (× / Esc / another order), never closed by a click elsewhere.
+    if (S.ed && !S.ed.busy && S.ed.where !== 'card') _edClose();
     const shift = e.target.closest('[data-owvshift]');
     if (shift) { S.week = OC().addDays(S.week, 7 * Number(shift.dataset.owvshift)); return _rerender(); }
     const wk = e.target.closest('[data-owvweek]');
@@ -1546,7 +1548,17 @@ const OrdersWeekView = (() => {
     const dis = e.busy ? ' disabled' : '';
     const val = (k, dflt) => esc(dr[k] != null ? dr[k] : dflt);
     const who = [it.num, it.client !== '—' ? it.client : ''].filter(Boolean).join(' · ');
-    const head = t => `<div class="owv-ed-h"><b>${esc(t)}</b><span title="${esc(who)}">${esc(who)}</span><button type="button" class="owv-ed-x" data-owvedact="close" title="Κλείσιμο (Esc)" aria-label="Κλείσιμο">×</button></div>`;
+    // In the card the order is already the card's title, and the card's × / Esc close both: no «who», no ×.
+    // The cells choose ΤΠΥ or ΠΟΣΟ by where she clicked; the card has one place, so it offers both — except
+    // before the price, when only the price can be written (owner 21/10: the price, then the ΤΠΥ).
+    const modeSw = () => {
+      if (it.state === 'blocked') return '';
+      const cur = e.mode === 'amt' ? 'amt' : 'tpy';
+      const b = (m, t) => `<button type="button" class="owv-ed-tab" data-owvedact="mode:${m}" aria-pressed="${cur === m}"${dis}>${t}</button>`;
+      return `<span class="owv-ed-sw" role="group" aria-label="Τι διορθώνεις">${b('tpy', 'Τιμολόγιο')}${b('amt', 'Τιμή')}</span>`;
+    };
+    const head = t => e.where === 'card' ? `<div class="owv-ed-h"><b>${esc(t)}</b>${modeSw()}</div>`
+      : `<div class="owv-ed-h"><b>${esc(t)}</b><span title="${esc(who)}">${esc(who)}</span><button type="button" class="owv-ed-x" data-owvedact="close" title="Κλείσιμο (Esc)" aria-label="Κλείσιμο">×</button></div>`;
     const err = e.err ? `<div class="owv-ed-err" role="alert">${esc(e.err)}</div>` : '';
     const save = t => `<button type="button" class="owv-ed-save" data-owvedact="save"${dis}>${e.busy ? 'Αποθήκευση…' : esc(t)} <kbd>Enter</kbd></button>`;
     const undo = `<button type="button" class="owv-ed-undo" data-owvedact="undo"${dis}>Αναίρεση τιμολόγησης</button>`;
@@ -1592,6 +1604,11 @@ const OrdersWeekView = (() => {
     hint.innerHTML = io.tpyHints(n, dc, dup).map(h => `<span class="owv-ed-${h.kind}">${esc(h.text)}</span>`).join('<br>');
   }
   function _edVal(k) { const i = document.querySelector(`#owvEd [data-owvedin="${k}"]`); return i ? i.value : ''; }
+  // On screen = mounted and not inside a closed card (× / Esc only hide the card): a refusal said in a hidden
+  // box would be silence.
+  function _edShown() { const b = document.getElementById('owvEd'); return !!(b && !b.closest('.hidden')); }
+  // The box goes with its card section when it lives in the card (an empty «Τιμολόγηση» is never left behind).
+  function _edBoxOut() { const b = document.getElementById('owvEd'); if (b) (b.closest('.owv-card-inv') || b).remove(); }
   // What is typed survives a repaint (the clips arriving, a refusal) — she never retypes.
   function _edKeep() {
     const e = S.ed, box = document.getElementById('owvEd');
@@ -1615,7 +1632,14 @@ const OrdersWeekView = (() => {
   }
   function _edMount() {
     const e = S.ed, body = S.ctx && S.ctx.body;
-    const old = document.getElementById('owvEd'); if (old) old.remove();
+    if (e && e.where === 'card') {
+      // A repaint reopens the card (and cardPainted mounts it); a card closed meanwhile takes its section along.
+      const c = _openCardNow();
+      if (!c || c.type !== e.type || c.id !== e.id) _edClose();
+      else if (!document.getElementById('owvEd')) _edMountCard(document.getElementById(e.type === 'intl' ? 'intlDetail' : 'natlDetail'));
+      return;
+    }
+    _edBoxOut();
     if (!e || !body) return;
     const subs = [...body.querySelectorAll(_edSel(e.type, e.id))];
     const sub = subs[e.k] || subs[0];
@@ -1645,7 +1669,7 @@ const OrdersWeekView = (() => {
   function _edClose() {
     if (!S.ed) return false;
     S.ed = null;
-    const b = document.getElementById('owvEd'); if (b) b.remove();
+    _edBoxOut();
     document.querySelectorAll('.ow4-ed-on').forEach(x => x.classList.remove('ow4-ed-on'));
     return true;
   }
@@ -1656,7 +1680,8 @@ const OrdersWeekView = (() => {
   function _installEdEsc() {
     if (_edEscOn) return; _edEscOn = true;
     document.addEventListener('keydown', ev => {
-      if (ev.key !== 'Escape' || !S.ed || !document.getElementById('owvEd') || _modalOpen()) return;
+      // In the card, Esc is the card's own (it closes the card, and the section with it).
+      if (ev.key !== 'Escape' || !S.ed || S.ed.where === 'card' || !document.getElementById('owvEd') || _modalOpen()) return;
       ev.preventDefault(); ev.stopImmediatePropagation();
       if (!S.ed.busy) _edClose();
     }, true);
@@ -1672,7 +1697,7 @@ const OrdersWeekView = (() => {
     catch (err) {
       const msg = 'Δεν γράφτηκε: ' + ((err && err.message) || 'άγνωστο σφάλμα');
       OrdersData.invalidate();
-      if (S.ed === e && document.getElementById('owvEd')) { e.busy = false; e.err = msg; _edRender(); _edFocus(); return null; }
+      if (S.ed === e && _edShown()) { e.busy = false; e.err = msg; _edRender(); _edFocus(); return null; }
       // The editor is gone (another view, another week): said here, and it never comes back disabled.
       if (S.ed === e) S.ed = null;
       if (typeof toast === 'function') toast(msg, 'error');
@@ -1687,7 +1712,7 @@ const OrdersWeekView = (() => {
   // After a write: the line repaints from the record (the editor stays open in `next` mode, or closes).
   // The old box goes first: what was typed in it is written, never carried into the next form.
   function _edDone(next) {
-    if (S.ed && next) { S.ed.mode = next; const b = document.getElementById('owvEd'); if (b) b.remove(); } else _edClose();
+    if (S.ed && next) { S.ed.mode = next; S.ed.focus = true; _edBoxOut(); } else _edClose();
     if (S.ctx && S.ctx.isCurrent()) _paint(S.ctx);
   }
 
@@ -1756,6 +1781,45 @@ const OrdersWeekView = (() => {
     if (act === 'save') return _edSave();
     if (act === 'undo') return _edUndo();
     if (act === 'self') return _edSelf(a);
+    if (act.startsWith('mode:') && S.ed && !S.ed.busy) {
+      // Another form: what was typed in this one is not carried over (as after a write, _edDone).
+      Object.assign(S.ed, { mode: act.slice(5), draft: null, err: '' });
+      _edRender(); _edFocus();
+    }
+  }
+
+  // ── «Τιμολόγηση» in the order card (owner 8/11/2026, change 12: «ΠΑΝΕΛ σε εβδομαδιαία Παραγγελιών … να
+  // σημειώνεται ΤΠΥ, τιμή και αυτοπαράδοση»; asked with pictures: «Και στο πλαϊνό πάνελ», the cells stay).
+  // The SAME editor as the cells — S.ed with where:'card', _edHtml, _edSave / _edPrice / _edSelf / _edUndo,
+  // InvoiceOps — mounted as a section of the card instead of under a line: no second form, no second rule.
+  // Offered exactly where the week's line offers its ΤΠΥ / ΠΟΣΟ cells (data-owved, _editable): same roles, same
+  // orders. The card repaints itself (its stops arrive, «Διόρθωση», the week's repaint) and each repaint calls
+  // cardPainted (orders_intl.js / orders_natl.js), so the section is never lost under her.
+  function _edMountCard(panel) {
+    const e = S.ed;
+    if (!panel || !e) return;
+    _edBoxOut();
+    const intl = panel.id === 'intlDetail';
+    const anchor = panel.querySelector(intl ? '.oi-sect' : '.on-sec');   // after «Στοιχεία» (Τιμή · Τιμολογήθηκε)
+    if (!anchor || !_edRec(e)) { _edClose(); return; }
+    anchor.insertAdjacentHTML('afterend', `<div class="${intl ? 'oi-sect' : 'on-sec'} owv-card-inv"><div class="${intl ? 'oi-sect-t' : 'on-sec-title'}">Τιμολόγηση</div>`
+      + `<div class="owv-ed owv-ed-card" id="owvEd" role="group" aria-label="Τιμολόγηση παραγγελίας">${_edHtml()}</div></div>`);
+    _edHint();
+    // Opening a card to read it never moves the caret into a box; after the price, the ΤΠΥ box takes it (21/10).
+    if (e.focus && !e.busy) { e.focus = false; _edFocus(); }
+  }
+  function cardPainted(panel) {
+    const ctx = S.ctx, c = S.card;
+    if (!panel || !panel.closest('.owv-cards') || !ctx || !ctx.isCurrent() || !c) return;
+    if ((panel.id === 'natlDetail' ? 'natl' : 'intl') !== c.type) return;
+    const e = S.ed;
+    if (e && e.busy && !(e.where === 'card' && e.type === c.type && e.id === c.id)) return;   // a line's write in flight
+    if (!ctx.body.querySelector(`${_edSel(c.type, c.id)} [data-owved]`)) { if (e && e.where === 'card' && !e.busy) _edClose(); return; }
+    if (!(e && e.where === 'card' && e.type === c.type && e.id === c.id)) {
+      _edClose();   // a line's editor gives way: one thing open at a time
+      S.ed = { type: c.type, id: c.id, k: 0, mode: null, where: 'card', draft: null, err: '', busy: false, items: null };
+    }
+    _edMountCard(panel);
   }
 
   // The order card of «Κατάλογος», opened HERE (owner 2/11/2026: «να μη φεύγει
@@ -1785,6 +1849,10 @@ const OrdersWeekView = (() => {
       return OrdersHub.openOrder(type, id);
     }
     if (typeof OrdersCatalog !== 'undefined' && OrdersCatalog.installEsc) OrdersCatalog.installEsc();
+    // A click opens a card afresh: a section left from a card closed earlier (its refusal, its draft) never comes
+    // back as if it were current. A repaint (quiet), or a click on the line of the card already open, keeps it.
+    const shown = _openCardNow();
+    if (!quiet && S.ed && S.ed.where === 'card' && !S.ed.busy && !(shown && shown.type === type && shown.id === id)) _edClose();
     S.card = { type, id };
     if (type === 'intl') {
       if (typeof closeNatlDetail === 'function') closeNatlDetail();
@@ -2157,7 +2225,7 @@ const OrdersWeekView = (() => {
     });
   }
 
-  return { render, recordChanged, buildWeek, rowNumbers, legNumber, totals, rowMarks, natMarks, rowSum, printSequence, printDoc, rtInvoicing, verdictText, tpyOf, pctVsPrev, stripWeeks, groupRows, daySections,
+  return { render, recordChanged, cardPainted, buildWeek, rowNumbers, legNumber, totals, rowMarks, natMarks, rowSum, printSequence, printDoc, rtInvoicing, verdictText, tpyOf, pctVsPrev, stripWeeks, groupRows, daySections,
     weekStatus, pairNationals, numberNationals, natNumberOrder, natNoText, routeSplit, ordersFormula, placeText, isVsNational, naturalDateOf, pgIdOf, dayLabel, weekTitle,
     // the pallets weekly view (modules/pallets_week.js) reads the same week through these, never a copy
     load, boardOf, rowDocsOf, docsInner, endsOf, vehicleOf, dayShort, dayFull, clientRaw, isSplitLeg };
