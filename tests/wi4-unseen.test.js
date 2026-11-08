@@ -89,8 +89,76 @@ test('quiet for the places the board already has: free import, shelf, rota leg, 
   assert.deepStrictEqual(WI4.unseenOrders(built, nb.no), ['recShelf']);
 });
 
-test('a rota leg whose parent is not on this board is named (it hangs under nothing)', () => {
-  const leg = { id: 'recLeg', fields: { Type: 'International', Direction: 'Export', 'Rotation ID': 'recGone', 'Loading DateTime': '2026-11-04T08:00:00', 'Delivery DateTime': '2026-11-05T08:00:00' } };
-  const { built, nb } = build([leg], []);
-  assert.deepStrictEqual(WI4.unseenOrders(built, nb.no), ['recLeg']);
+// Owner 8/11/2026 («οκ πάμε στην πρόταση»): a rota leg dated in another week than its parent is drawn in
+// ITS OWN week (its own day, no number, «↳»); the parent's week names it as «συνέχεια». Live shape:
+// #644 ΦΑΓΕ → STEF Italia, delivery Thu 5/11 (week 31/10); its leg #677 Campagnolo → Frutura, Sat 7/11.
+const rota = () => ({
+  p644: { id: 'recx7q0YLzrCboPqj', fields: { 'Order No': 644, Type: 'International', Direction: 'Export', 'Matched Import ID': 'recImp644',
+    'Loading DateTime': '2026-11-03', 'Delivery DateTime': '2026-11-05' } },
+  l677: { id: 'recjRBBpcfExyTzFD', fields: { 'Order No': 677, Type: 'International', Direction: 'Export', 'Rotation ID': 'recx7q0YLzrCboPqj',
+    'Loading DateTime': '2026-11-07', 'Delivery DateTime': '2026-11-07' } },
+});
+const boardOf = (ws, we, exps, imps, away) => {
+  const built = WI4.boardRows(exps, imps, { ws, we, dayOf, away });
+  const byId = new Map([...exps, ...imps].map((r) => [r.id, r]));
+  const fOf = (row) => (byId.get((row.orderIds && row.orderIds[0]) || row.orderId) || {}).fields || {};
+  return { built, nb: WI4.boardNumbers(built.rows, { ws, dayOf, fOf }) };
+};
+
+test('#677 in its own week (7/11): its own leg row on Saturday, no number, the alarm quiet', () => {
+  const { p644, l677 } = rota();
+  const { built, nb } = boardOf('2026-11-07', '2026-11-13', [l677], [], [p644]);
+  const r = built.rows.find((x) => x.orderId === l677.id);
+  assert.strictEqual(r.crossLeg, p644.id, 'it names its parent');
+  assert.strictEqual(r.legOf, undefined, 'it hangs under nothing');
+  assert.deepStrictEqual(built.legs, {});
+  const sat = nb.days.find((d) => d.date === '2026-11-07');
+  assert.deepStrictEqual(sat.legs, [r]);
+  assert.strictEqual(sat.exps.length, 0, 'not a numbered export row');
+  assert.strictEqual(nb.no.has(r), false, 'no number: «↳», like every leg');
+  assert.strictEqual(WI4.numberOf(built, nb.no).has(l677.id), false);
+  assert.deepStrictEqual(WI4.unseenOrders(built, nb.no), []);
+});
+
+test('#644 in its week (31/10): numbered as before, and «συνέχεια» names #677 on Saturday 7/11', () => {
+  const { p644, l677 } = rota();
+  const { built, nb } = boardOf(WS, WE, [p644], [], [l677]);
+  const r = built.rows.find((x) => x.orderId === p644.id);
+  assert.deepStrictEqual(r.contLegs, [{ id: l677.id, dt: '2026-11-07' }]);
+  assert.strictEqual(nb.no.get(r), 1);
+  assert.deepStrictEqual(WI4.unseenOrders(built, nb.no), []);
+  // without the window's other records there is nothing to name: no guess
+  assert.strictEqual(boardOf(WS, WE, [p644], [], undefined).built.rows[0].contLegs, undefined);
+});
+
+test('a leg in its parent\'s week stays exactly as before: under the parent, no row, no «συνέχεια»', () => {
+  const { p644, l677 } = rota();
+  l677.fields['Loading DateTime'] = l677.fields['Delivery DateTime'] = '2026-11-06';
+  const { built, nb } = boardOf(WS, WE, [p644, l677], [], []);
+  const leg = built.rows.find((x) => x.orderId === l677.id);
+  assert.strictEqual(leg.legOf, p644.id);
+  assert.strictEqual(leg.crossLeg, undefined);
+  assert.deepStrictEqual(built.legs[p644.id], [leg]);
+  assert.strictEqual(built.rows.find((x) => x.orderId === p644.id).contLegs, undefined);
+  assert.ok(nb.days.every((d) => !d.legs.length));
+  assert.strictEqual(WI4.numberOf(built, nb.no).get(l677.id), 1, 'it shares its parent\'s number, as today');
+});
+
+test('the parent carried as a matched import still holds its leg (no false own-week row)', () => {
+  const exp = { id: 'recE', fields: { Type: 'International', Direction: 'Export', 'Matched Import ID': 'recI', 'Delivery DateTime': '2026-11-04' } };
+  const imp = { id: 'recI', fields: { Type: 'International', Direction: 'Import', 'Loading DateTime': '2026-11-05' } };
+  const leg = { id: 'recL', fields: { Type: 'International', Direction: 'Export', 'Rotation ID': 'recI', 'Delivery DateTime': '2026-11-06' } };
+  const { built, nb } = boardOf(WS, WE, [exp, leg], [imp], []);
+  assert.strictEqual(built.rows.find((x) => x.orderId === 'recL').legOf, 'recI');
+  assert.deepStrictEqual(WI4.unseenOrders(built, nb.no), []);
+});
+
+test('a leg in its own week without a truck is said there (NO_TRUCK), a leg under its parent stays silent', () => {
+  const T0 = '2026-11-06';
+  const own = WI4.flags({ kind: 'leg', xweek: true, saved: false, partner: false, loadDate: '2026-11-07' }, T0);
+  assert.ok(own.reasons.some((r) => r.code === 'NO_TRUCK'));
+  const under = WI4.flags({ kind: 'leg', saved: false, partner: false, loadDate: '2026-11-07' }, T0);
+  assert.ok(!under.reasons.some((r) => r.code === 'NO_TRUCK'));
+  const assigned = WI4.flags({ kind: 'leg', xweek: true, saved: true, partner: false, loadDate: '2026-11-07' }, T0);
+  assert.ok(!assigned.reasons.some((r) => r.code === 'NO_TRUCK'));
 });
