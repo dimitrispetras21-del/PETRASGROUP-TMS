@@ -686,3 +686,36 @@ test('print: invoice words — number · date, self-delivery, «χωρίς δε�
   assert.ok(doc.html.includes('(η 1 χωρίς δελτίο παλετών)'));
   assert.ok(doc.html.includes('Η αρίθμηση του Weekly δεν διαβάστηκε'), 'numbers failed: said, never guessed');
 });
+
+// Owner 8/11/2026: the national rows carry the Weekly National v5's number of their truck, «—» with the reason
+// otherwise, and the trucks on the board are the driver sheets the ΑΝΑΘΕΣΗ opens.
+test('numberNationals: the v5 board number by carrier code; waiting / old / carried / elsewhere = «—» with why', () => {
+  const v5 = (carriers) => ({ assign: { kind: 'v5', state: { carriers } }, day: '2026-10-26' });
+  const rows = [
+    v5([{ kind: 'owned', code: 'RT-2', side: 'KATHODOS' }]),
+    v5([{ kind: 'owned', code: 'RT-1', side: 'ANODOS' }, { kind: 'partner', code: 'RT-3', side: 'KATHODOS' }]),   // split at Veroia
+    v5([{ kind: 'none', code: 'RT-9', side: 'ANODOS' }]),                     // waiting for a vehicle
+    v5([{ kind: 'owned', code: 'RT-4', side: 'KATHODOS' }]),                  // carried from last week
+    v5([{ kind: 'owned', code: 'RT-77', side: 'KATHODOS' }]),                 // not on this week's board
+    { assign: { kind: 'load', load: {} }, day: '2026-10-26' },               // the old model
+  ];
+  const cy = (rt_id, code) => ({ rt_id, code });
+  const nb = { nums: new Map([[11, 1], [12, 2], [13, 3]]), byCode: new Map([['RT-1', cy(11, 'RT-1')], ['RT-2', cy(12, 'RT-2')], ['RT-3', cy(13, 'RT-3')], ['RT-4', cy(14, 'RT-4')]]), carried: new Set([14]) };
+  W.numberNationals(rows, nb);
+  assert.deepStrictEqual(rows.map((r) => r.nos), [[2], [1, 3], [], [], [], []]);
+  assert.deepStrictEqual(rows[1].sheets, [{ rtId: 11, side: 'ANODOS', code: 'RT-1' }, { rtId: 13, side: 'KATHODOS', code: 'RT-3' }]);
+  assert.match(rows[2].noWhy, /περιμένει όχημα/);
+  assert.match(rows[3].noWhy, /προηγούμενη εβδομάδα/);
+  assert.strictEqual(rows[3].sheets.length, 1, 'a carried truck still has its sheet');
+  assert.match(rows[4].noWhy, /δεν είναι γραμμή/);
+  assert.strictEqual(rows[4].sheets.length, 0);
+  assert.match(rows[5].noWhy, /παλιού μοντέλου/);
+  // the board not read: every v5 row says so, never a number; an old row keeps its own reason
+  const f = W.numberNationals([v5([{ kind: 'owned', code: 'RT-2', side: 'KATHODOS' }]), { assign: { kind: 'out' } }], 'failed');
+  assert.deepStrictEqual(f.map((r) => r.nos), ['failed', []]);
+  // inside a day: numbered first by number, the rest keep their order; days stay apart
+  const ord = W.natNumberOrder([
+    { day: '2026-10-26', nos: [] , id: 'a' }, { day: '2026-10-26', nos: [3], id: 'b' }, { day: '2026-10-26', nos: [1], id: 'c' },
+    { day: '2026-10-25', nos: [9], id: 'd' }, { day: '2026-10-26', nos: 'failed', id: 'e' }]);
+  assert.deepStrictEqual(ord.map((r) => r.id), ['d', 'c', 'b', 'a', 'e']);
+});
