@@ -328,7 +328,7 @@
     const words = !ps.length ? ['φορτία'] : blk ? [blk + (blk === 1 ? ' φορτίο να βγει' : ' φορτία να βγουν')]
       : p && p.err ? [p.err.message] : p && p.problems ? p.problems.words.slice() : [];
     if (p && p.req && p.req.missing && !words.length) words.push('ημέρα ή τόπος');
-    const soft = !words.length && p && p.busy ? p.busy.text : '';
+    const soft = !words.length && p ? (p.soft || (p.busy ? p.busy.text : '')) : '';   // + «χωρίς οδηγό» (item 5, 8/11)
     const to = p && p.label ? ' → ' + p.label : ' → προς ανάθεση';
     const can = okp && d.ready === true && !S.busy && !k.closedErr();
     h += (S.msg && S.msg.id === id ? _msgHTML(S.msg) : '')

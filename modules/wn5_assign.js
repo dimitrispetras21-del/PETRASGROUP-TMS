@@ -57,6 +57,8 @@
     st.week = b.week || null;
     // the form snapshots (two presses, the same bytes); forChoice is re-read at each redraw and copies nothing
     st.cycles = ctx.live ? k.cycles() : k.copy(k.cycles());
+    // 109 (item 4): the international trips of the same board, held with its cycles (null = a base before 109)
+    st.intl = Array.isArray(b.intl_trips) ? (ctx.live ? b.intl_trips : k.copy(b.intl_trips)) : null;
     if (vehicle) {
       const c = st.cycles.find((x) => x.rt_id === st.rtId);
       if (!c) { st.err = k.clientErr('rt_missing', 'Δεν είναι στον πίνακα που φορτώθηκε — ανανέωσε'); return st; }
@@ -235,6 +237,16 @@
   // ═══ «Ημέρα και παράθυρο»: one row per stop of the request (decision 6: one stop per place per side) ═══
   // fixed = a window that already exists (the target cycle's stop at that place, the order's own window, the Veroia
   // board's Veroia stop); else the row is the user's: «όλη η ημέρα» by default, «ώρες…» to type them.
+  // item 1 (Sotiris report 8/11): a delivery with no window of its own never goes before its pickup — the form says
+  // the day the request sends (wn5_actions _stopsFor raises it the same way), never the international's passed day
+  function _dropDay(st, n, cyc, hd) {
+    const k = K();
+    if (!n || n.hub || n.role !== 'drop' || (n.from && n.to) || !n.day) return n ? n.day : null;
+    const pk = st.needs.find((m) => m.role === 'load' && m.loc != null && m.loc === n.pickLoc);
+    const pex = pk && cyc ? (cyc.stops || []).find((s) => s.side === st.side && s.location_id === pk.loc) : null;
+    const pd = !pk ? null : pex ? k.stopDay(pex) : pk.hub ? (st.hub ? st.hub.day : hd) : (pk.from && pk.to ? k.ymdOf(pk.from) : pk.day);
+    return pd && pd > n.day ? pd : n.day;
+  }
   function _rows(st, cyc) {
     const k = K();
     const hubLoc = st.needs.some((n) => n.hub) ? k.hubId() : null;
@@ -244,7 +256,7 @@
       const key = n.hub ? 'hub' : n.key;
       if (seen.has(key)) continue;
       seen.add(key);
-      const day = n.hub ? (st.hub ? st.hub.day : hd) : n.day;
+      const day = n.hub ? (st.hub ? st.hub.day : hd) : _dropDay(st, n, cyc, hd);
       const verb = n.role === 'load' ? 'Φόρτωση' : (n.hub ? 'Άφιξη' : 'Παράδοση');
       const ex = n.loc != null && cyc ? (cyc.stops || []).find((s) => s.side === st.side && s.location_id === n.loc) : null;
       const pl = n.hub ? 'Βέροια' : _place(n.loc);
@@ -317,6 +329,20 @@
     const hubWin = st.hub ? (k.hhmm(st.hub.from) && k.hhmm(st.hub.to) ? k.win(st.hub.day, k.hhmm(st.hub.from), k.hhmm(st.hub.to)) : null) : _winOf(st, 'hub', hd, tg.after);
     const r = k.stopsFor(st.needs, tg.cyc, st.side, hubWin, (n) => _winOf(st, n.key, n.day, tg.after));
     if (r.missing.length) return { missing: r.missing, lack: r.lack };
+    // Sotiris report 8/11 (item 6): «νέο φορτίο μετά την …» of a truck that arrives at 12:00 was written from 00:00 of
+    // that day, over its previous trip — _winOf moved only the rows of this form; the Veroia board's window (st.hub),
+    // the saved drafts' and an order's own whole-day window came in as 00:00–23:59, and the base starts a cycle at its
+    // earliest stop (072 plan_rt_create). Every whole-day stop of that day now starts at the previous trip's end.
+    // Typed hours stay as typed: an overlap the user chose is the base's busy rule to judge and say.
+    if (!tg.cyc && tg.after && tg.after.iso) {
+      const endT = Date.parse(tg.after.iso);
+      for (const s of r.stops) {
+        if (!s.planned_from || !s.planned_to || !WN5L.allDay(s.planned_from, s.planned_to)) continue;
+        if (k.ymdOf(s.planned_from) !== tg.after.day) continue;
+        const a = Date.parse(s.planned_from), b = Date.parse(s.planned_to);
+        if (Number.isFinite(endT) && a < endT && endT < b) s.planned_from = new Date(endT).toISOString();
+      }
+    }
     const sel = _sel(st);
     const body = st.only || !st.group
       ? { pieces: st.only ? sel.map((it) => ({ piece_id: it.piece_id })) : st.pieces, target, stops: r.stops }
@@ -366,7 +392,7 @@
     const sp = _span(st);
     if (!sp) return null;
     if (_blind(st)) return { txt: '—', cls: '' };
-    const bz = k.busyOf({ [f.kind + 's']: [id], days: days || _busyDays(st), self: [st.rtId], cycles: st.cycles, week: st.week, accept: false });
+    const bz = k.busyOf({ [f.kind + 's']: [id], days: days || _busyDays(st), self: [st.rtId], cycles: st.cycles, intl: st.intl, week: st.week, accept: false });
     if (bz) {
       const c = bz.trips[0].c;
       const hubLoc = k.hubId();
@@ -404,8 +430,20 @@
   function _overlaps(st, r, saves) {
     if (st.who !== 'own' || !r || r.missing || !r.body) return null;
     return K().busyOf({ trucks: [st.truck], trailers: [st.trailer], drivers: [st.driver], days: _busyDays(st, r), self: [st.rtId, r.body.target && r.body.target.rt_id],
-      cycles: st.cycles, week: st.week, accept: !!saves || st.mode !== 'pick' });
+      cycles: st.cycles, intl: st.intl, week: st.week, accept: !!saves || st.mode !== 'pick' });
   }
+  // Sotiris report 8/11 (item 5): an own truck saved with no driver went through without a word. Relaxed rules (owner
+  // 31/10): allowed, said in amber beside the save. A vehicle change keeps the cycle's driver when none is picked
+  // (req: no driver_id key), so there it is said only when the cycle has none either.
+  const NO_DRIVER = 'χωρίς οδηγό · ο οδηγός μπαίνει αργότερα';
+  function _noDriver(st) {
+    if (st.who !== 'own' || st.truck == null || st.driver) return false;
+    if (st.mode !== 'vehicle') return true;
+    const c = (st.cycles || []).find((x) => x.rt_id === st.rtId);
+    return !(c && c.driver_id != null);
+  }
+  // the amber line beside the save: the busy vehicle (Π2) and the missing driver, one line
+  const _softText = (st, ov) => [ov, _noDriver(st) ? NO_DRIVER : null].filter(Boolean).join(' · ');
   // the request the save sends: with accept_busy when the form already said the overlap (Π2)
   const _sendReq = (st, r) => { const o = _overlaps(st, r); return (o && o.accept && WN5Act.withAccept(r, { code: 'truck_busy' })) || r; };
   // the last rate of a partner on the loaded week (the history of the line needs a Worker read: follow-up)
@@ -579,7 +617,8 @@
       return k.dayShort(st.day) + ' · ' + now;
     }
     const load = st.needs.find((n) => n.role === 'load'), drop = st.needs.find((n) => n.role === 'drop');
-    const end = (n) => (n ? (n.hub ? 'Βέροια' : _place(n.loc)) + ' ' + (n.hub ? k.dayShort(st.hub ? st.hub.day : _hd(st) || n.day) : k.dayShort(n.day)) : '—');
+    const tg = _target(st);
+    const end = (n) => (n ? (n.hub ? 'Βέροια' : _place(n.loc)) + ' ' + (n.hub ? k.dayShort(st.hub ? st.hub.day : _hd(st) || n.day) : k.dayShort(_dropDay(st, n, tg && tg.cyc, _hd(st)))) : '—');
     const more = _sel(st).length > 1 ? ' +' + (_sel(st).length - 1) : '';
     return st.ref + ' · ' + end(load) + ' → ' + end(drop) + more + ' · ' + WN5L.palText(st.pallets, st.palUnk) + 'π';
   }
@@ -641,7 +680,7 @@
       miss.textContent = pb.words.length ? 'Λείπει: ' + pb.words.join(', ') : '';
       // owner 3/11: the one warning, the busy driver / truck / trailer of the same day (amber, the save stays on); the
       // order of the stops is no longer said before the press (Π1 is gone: the base refuses only an impossible order)
-      const ov = pb.words.length ? null : (_overlaps(st, r) || {}).text;
+      const ov = pb.words.length ? null : _softText(st, (_overlaps(st, r) || {}).text);
       if (ov) miss.textContent = ov;
       miss.classList.toggle('wn5-soft', !!ov);
       const b = d.dlg.querySelector('[data-act="save"]');
@@ -854,7 +893,8 @@
     if (st.err) return { err: st.err };
     const r = req(st);
     // busy: what the Veroia board says beside its «Δημιουργία φορτίου» and sends with it (Π2: it is the one that saves)
-    return { req: r, busy: _overlaps(st, r, true), line: line(st), problems: problems(st), label: st.who ? _label(st.who === 'own' ? 'tk' : 'pt', st.who === 'own' ? st.truck : st.partner) : '',
+    const busy = _overlaps(st, r, true);
+    return { req: r, busy, soft: _softText(st, busy && busy.text), line: line(st), problems: problems(st), label: st.who ? _label(st.who === 'own' ? 'tk' : 'pt', st.who === 'own' ? st.truck : st.partner) : '',
       sub: st.who === 'own' ? [_label('tl', st.trailer), _label('dr', st.driver)].filter(Boolean).join(' · ') : '' };
   }
 
