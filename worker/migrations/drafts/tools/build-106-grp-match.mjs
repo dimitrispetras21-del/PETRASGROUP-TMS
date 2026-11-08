@@ -7,6 +7,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const DRAFTS = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+// drafts/ until the owner runs a file, then one up (CLAUDE.md rule 5): 106 ran 8/11, so its files are one up now
+export const dirOf = (f) => (fs.existsSync(path.join(DRAFTS, f)) ? DRAFTS : path.resolve(DRAFTS, '..'));
 const SPECS = [
   { src: '106_grp_match_converge.sql', out: '106_grp_match_converge_dryrun.sql', tag: 'DRY RUN 106',
     notice: "  RAISE NOTICE '106 OK: #% matched to #% (%), round trip % unchanged, partly matched groups 0', member_id, imp_id, imp_legacy, rt;",
@@ -40,8 +42,8 @@ export { SPECS, DRAFTS };
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
   for (const spec of SPECS) {
-    const out = build(spec, fs.readFileSync(path.join(DRAFTS, spec.src), 'utf8'));
-    fs.writeFileSync(path.join(DRAFTS, spec.out), out);
+    const out = build(spec, fs.readFileSync(path.join(dirOf(spec.src), spec.src), 'utf8'));
+    fs.writeFileSync(path.join(dirOf(spec.out), spec.out), out);
     console.log('wrote', spec.out);
   }
 }
