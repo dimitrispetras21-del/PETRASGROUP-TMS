@@ -1848,8 +1848,9 @@ const OrdersWeekView = (() => {
     }
     if (typeof OrdersCatalog !== 'undefined' && OrdersCatalog.installEsc) OrdersCatalog.installEsc();
     // A click opens a card afresh: a section left from a card closed earlier (its refusal, its draft) never comes
-    // back as if it were current. A repaint (quiet) keeps it.
-    if (!quiet && S.ed && S.ed.where === 'card' && !S.ed.busy) _edClose();
+    // back as if it were current. A repaint (quiet), or a click on the line of the card already open, keeps it.
+    const shown = _openCardNow();
+    if (!quiet && S.ed && S.ed.where === 'card' && !S.ed.busy && !(shown && shown.type === type && shown.id === id)) _edClose();
     S.card = { type, id };
     if (type === 'intl') {
       if (typeof closeNatlDetail === 'function') closeNatlDetail();

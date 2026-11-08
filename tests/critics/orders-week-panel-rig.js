@@ -848,6 +848,9 @@ async function scnCardInv(browser) {
   await page.evaluate(() => selectIntlOrder('recO1243'));
   await page.waitForSelector(`${sec('recO1243')} [data-owvedin="num"]`);
   ok(await page.locator('#owvEd [data-owvedin="num"]').inputValue() === 'KEEP-1', 'the card repaints: the section is back and «KEEP-1» is still typed');
+  await page.locator(`${sub('recO1243')} .ow4-c:not(.ow4-edc)`).first().click();
+  await page.waitForTimeout(300);
+  ok(await page.locator('#owvEd [data-owvedin="num"]').inputValue() === 'KEEP-1', 'a click on the line of the card already open: «KEEP-1» still typed');
 
   // 7 · a refusal stays in the card, the typed number kept
   cap.fail = 'Δεν σημαίνεται τιμολογημένη χωρίς τιμή';
