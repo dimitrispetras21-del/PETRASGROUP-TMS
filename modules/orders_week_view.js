@@ -1815,7 +1815,7 @@ const OrdersWeekView = (() => {
     const ctx = S.ctx, c = S.card;
     if (!panel || !panel.closest('.owv-cards') || !ctx || !ctx.isCurrent() || !c) return;
     if ((panel.id === 'natlDetail' ? 'natl' : 'intl') !== c.type) return;
-    if (c.type === 'intl') _rtMountCard(panel);
+    if (c.type === 'intl') _routePlace(panel);
     const e = S.ed;
     if (e && e.busy && !(e.where === 'card' && e.type === c.type && e.id === c.id)) return;   // a line's write in flight
     if (!ctx.body.querySelector(`${_edSel(c.type, c.id)} [data-owved]`)) { if (e && e.where === 'card' && !e.busy) _edClose(); return; }
@@ -1857,6 +1857,8 @@ const OrdersWeekView = (() => {
     // back as if it were current. A repaint (quiet), or a click on the line of the card already open, keeps it.
     const shown = _openCardNow();
     if (!quiet && S.ed && S.ed.where === 'card' && !S.ed.busy && !(shown && shown.type === type && shown.id === id)) _edClose();
+    // the route column's × lasts for the card it closed: a click opens the next card with its column (a repaint keeps it)
+    if (!quiet) S.colOff = false;
     S.card = { type, id, rt: rt || null };
     if (type === 'intl') {
       if (typeof closeNatlDetail === 'function') closeNatlDetail();
@@ -1933,7 +1935,7 @@ const OrdersWeekView = (() => {
     if (cache !== S.rtRoute) return;   // another week or a reload started meanwhile
     cache.set(code, st);
     const c = _openCardNow();
-    if (c && c.type === 'intl' && c.rt === code) _rtMountCard(document.getElementById('intlDetail'));
+    if (c && c.type === 'intl' && c.rt === code) _routePlace(document.getElementById('intlDetail'));
   }
   const _rtMsg = (txt, red) => `<div class="rd">${red ? '<div class="rd-note" data-tone="red">' : '<div class="rd-empty">'}${esc(txt)}</div></div>`;
   function _rtRouteHtml(r) {
@@ -1964,6 +1966,48 @@ const OrdersWeekView = (() => {
     const anchor = panel.querySelector('[data-oi-sect="route"]');
     if (!anchor) return;
     anchor.insertAdjacentHTML('afterend', `<div class="oi-sect owv-card-rt"><div class="oi-sect-t">Δρομολόγιο ${esc(r.code)}</div>${_rtRouteHtml(r)}</div>`);
+  }
+  // The diagram in its own column (owner 8/11/2026, on the mock over the live app: «Ναι, φτιάξτο»), at the right edge
+  // with the card next to it (core/route-diagram-column.js, shared with «Παλέτες › Εβδομάδα»). The column holds the
+  // whole RT when the card was opened from an RT of two or more orders, else the order's own «Διαδρομή» — and the
+  // card then shows neither, so the route is never drawn twice. Below 1600px, or after the column's own ×, the card
+  // keeps both sections as before (_rtMountCard). The card draws its own «Διαδρομή» (orders_intl.js, shared with
+  // «Κατάλογος»): here it is only hidden and copied, so «Κατάλογος» and the card's code stay as they are.
+  // No new read: the card's stops (_oiLoadCardStops) and the RT's (S.rtRoute) — a failure is said in the column.
+  function _routePlace(panel) {
+    const RC = typeof RouteDiagramColumn !== 'undefined' ? RouteDiagramColumn : null;
+    const box = panel && panel.closest('.owv-cards');
+    if (!panel || !box) return;
+    const sect = panel.querySelector('[data-oi-sect="route"]');
+    if (RC) RC.onWideChange('orders-week', () => { const c = _openCardNow(); if (c && c.type === 'intl') _routePlace(document.getElementById('intlDetail')); });
+    if (!RC || !sect || S.colOff || !RC.wide()) {
+      if (RC) RC.close(box);
+      if (sect) sect.style.display = '';
+      return _rtMountCard(panel);
+    }
+    const old = panel.querySelector('.owv-card-rt');
+    if (old) old.remove();
+    const c = S.card, d = S.data;
+    const r = c && c.type === 'intl' && c.rt ? (S.rowsAll || []).find(x => x.kind === 'rt' && x.code === c.rt) : null;
+    const rt = r && r.legs.length >= 2 ? r : null;
+    const rec = c && d ? [...d.intl, ...(d.cancelled || [])].find(x => x.id === c.id) : null;
+    let body, stops;
+    if (rt) {
+      body = _rtRouteHtml(rt);
+      const st = S.rtRoute && S.rtRoute.get(rt.code);
+      stops = st && st.by ? _rtRecs(rt).flatMap(x => st.by.get(x.id) || []) : [];
+    } else {
+      const cp = sect.cloneNode(true);
+      const t = cp.querySelector('.oi-sect-t');
+      if (t) t.remove();
+      body = cp.innerHTML;
+      stops = (rec && window._intlStopsByOrder && window._intlStopsByOrder[rec.id]) || [];
+    }
+    // the head: the RT row's vehicle (the one the week shows), else the order's own fields
+    const v = vehicleOf(r ? r.vehicleRec : rec);
+    sect.style.display = 'none';
+    RC.open(box, { anchor: panel, z: 1200, body, sub: RC.sub(v.kind === 'none' ? [] : [v.plate, v.who], stops),
+      onClose: () => { S.colOff = true; _routePlace(panel); } });
   }
 
   // The board's numbers of this read; an error is said on the row («—» with why), never a 0.
