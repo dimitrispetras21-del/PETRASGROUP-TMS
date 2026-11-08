@@ -70,13 +70,15 @@ const PalletsWeek = (() => {
     const out = new Map(), batches = [];
     for (let i = 0; i < ids.length; i += 90) {
       const f = `OR(${ids.slice(i, i + 90).map(id => `RECORD_ID()="${id}"`).join(',')})`;
-      batches.push(atGetAll(TABLES.ORDER_STOPS, { filterByFormula: f, fields: [F.STOP_PARENT_ORDER, F.STOP_TYPE, F.STOP_PALLETS] }, false));
+      batches.push(atGetAll(TABLES.ORDER_STOPS, { filterByFormula: f, fields: [F.STOP_PARENT_ORDER, F.STOP_TYPE, F.STOP_PALLETS, F.STOP_PALLETS_EXCHANGED] }, false));
     }
-    // The count follows what the feeders write (plOrderGate's stops): every loading stop, every delivery stop with pallets.
+    // The count follows what the feeders write (plOrderGate's stops): every loading stop except one whose
+    // «Pallets Exchanged» is a set 0 (_plNoExchangeStop, core/pallet-feed.js — the same rule, never a copy),
+    // every delivery stop with pallets.
     (await Promise.all(batches)).flat().forEach(s => {
       const p = s.fields[F.STOP_PARENT_ORDER], pid = Array.isArray(p) ? p[0] : p; if (!pid) return;
       const e = out.get(pid) || { L: 0, D: 0 };
-      if (s.fields[F.STOP_TYPE] === 'Loading') e.L++;
+      if (s.fields[F.STOP_TYPE] === 'Loading' && !_plNoExchangeStop(s)) e.L++;
       if (s.fields[F.STOP_TYPE] === 'Unloading' && (parseInt(s.fields[F.STOP_PALLETS], 10) || 0) > 0) e.D++;
       out.set(pid, e);
     });

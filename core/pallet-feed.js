@@ -69,11 +69,25 @@ function plOrderGate(rec, source, eventType) {
 
 // ONE stop's movement, the body the feeders run per stop (and the weekly view for the one stop that has none).
 // date = the movement's date: the feeders pass what they always did, the week the stop's own date.
+// What we take back at a loading stop (owner 27/10 + 8/11: «30 παλέτες, οι 10 με ανταλλαγή» — the accountant
+// expects a sheet for those 10 only). The stop's «Pallets Exchanged» (order_stops.pallets_exchanged, written by the
+// order form) when it is set; empty = every pallet of the stop, exactly as before; a set 0 = no exchange at this stop.
+// ONE rule for the loading feeder, plRecordStops and the pallets weekly view's count (pallets_week.js loadStops).
+function _plLoadTaken(s) {
+  const pallets = parseInt(s.fields[F.STOP_PALLETS], 10) || 0;
+  const ex = s.fields[F.STOP_PALLETS_EXCHANGED];
+  if (ex == null || ex === '') return pallets;
+  const n = parseInt(ex, 10);
+  return Number.isFinite(n) && n >= 0 ? n : pallets;
+}
+function _plNoExchangeStop(s) { const ex = s.fields[F.STOP_PALLETS_EXCHANGED]; return ex != null && ex !== '' && parseInt(ex, 10) === 0; }
 async function _plStopLoading(s, clientRec, orderId, date) {
   const existing = await plFetch('/pallets/movements?order_stop_rec=' + encodeURIComponent(s.id));
   const cur = (existing.records || [])[0];
   if (cur) return { cur, created: null };
-  const pallets = parseInt(s.fields[F.STOP_PALLETS], 10) || 0;
+  // a stop the form says has no exchange gets no pending loading (nothing to confirm, no sheet expected)
+  if (_plNoExchangeStop(s)) return { cur: null, created: null };
+  const pallets = _plLoadTaken(s);
   const created = await plFetch('/pallets/movements', { method: 'POST', body: {
     movement_date: date,
     counterparty_type: 'CLIENT',
@@ -120,6 +134,7 @@ async function plRecordStops(orderId, eventType) {
     if (s.fields[F.STOP_TYPE] !== (eventType === 'LOADING' ? 'Loading' : 'Unloading')) continue;
     const date = _plDate(s.fields[F.STOP_DATETIME]);
     if (eventType === 'LOADING') {
+      if (_plNoExchangeStop(s)) { out.skipped++; continue; }
       const r = await _plStopLoading(s, clientRec, orderId, date);
       out[r.cur ? 'existed' : 'created']++;
     } else out[await _plStopDelivery(s, clientRec, orderId, date)]++;
@@ -143,7 +158,9 @@ async function plOnOrderSaved(orderId, source) {
     const claimed = new Set();
     for (const s of stops) {
       if (s.fields[F.STOP_TYPE] !== 'Loading') continue;
-      const pallets = parseInt(s.fields[F.STOP_PALLETS], 10) || 0;
+      // a stop switched to «no exchange» is not claimed: its pending loading goes with the orphans below
+      if (_plNoExchangeStop(s)) continue;
+      const pallets = _plLoadTaken(s);
       const { cur, created } = await _plStopLoading(s, clientRec, orderId, _plDate(s.fields[F.STOP_DATETIME]));
       if (!cur) {
         if (created) claimed.add(created.id);

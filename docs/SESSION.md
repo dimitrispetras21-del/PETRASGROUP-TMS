@@ -12,7 +12,8 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
-- dimitris · `feat/pallets-y5` · Παλέτες Υ5: κίνηση παράδοσης από τη βάση (**108 ΕΚΤΕΛΕΣΜΕΝΟ 8/11** + ο browser σταματά να γράφει DELIVERY)· PR #268 πάνω στο #267· merge: πρώτα #267, μετά #268 (`docs/sessions/2026-11-08-dimitris-pallets-y5.md`)
+- dimitris · `feat/pallets-y6` · Παλέτες Υ6 (μόνο τροφοδότης): η εκκρεμής φόρτωση γράφει «πήραμε» = `Pallets Exchanged` της στάσης όταν έχει τιμή (κενό = όλες, όπως πριν· 0 = καμία κίνηση), ίδιος κανόνας στην «Εβδομάδα»· η φόρμα που το γράφει = η νέα φόρμα διεθνών (owner 8/11)· σήμερα 0/812 στάσεις με τιμή (`docs/sessions/2026-11-08-dimitris-pallets-y6-feeder.md`)
+- dimitris · `feat/pallets-y5` · Παλέτες Υ5: κίνηση παράδοσης από τη βάση (**108 ΕΚΤΕΛΕΣΜΕΝΟ 8/11** + ο browser σταματά να γράφει DELIVERY)· **#267 + #268 MERGED 8/11** (`docs/sessions/2026-11-08-dimitris-pallets-y5.md`)
 - dimitris · `feat/pallets-y4` (PR #267) · Παλέτες Υ4: «Λείπει παράδοση» + «Χωρίς ανταλλαγή» (107 **ΕΚΤΕΛΕΣΜΕΝΟ 8/11** + **Worker 32e0ca75 ΖΩΝΤΑΝΟΣ 8/11** + οθόνη)· περιμένει merge (`docs/sessions/2026-11-08-dimitris-pallets-y4.md`)
 - dimitris · `feat/pallets-y3-page` · **#266 MERGED 8/11** · Παλέτες Υ3: νέα σελίδα στα frames N01–N18 (redesign 28/10), μόνο front end· rig 62/62· `/code-review high` 9 ευρήματα διορθωμένα· Worker του Υ4 θα δώσει πόλη / χώρα, παλέτες στάσης, ιστορικό (`docs/sessions/2026-11-08-dimitris-pallets-y3-page.md`)
 - dimitris · `feat/105-rt-pnl-complete` · **105 ΕΚΤΕΛΕΣΜΕΝΗ 8/11 ~14:00 (owner)**: τρεις όψεις (`ct_v_rt_revenue_legs`, `ct_v_rt_cost_cat`, `ct_v_rt_complete`), η `ct_v_rt_revenue` δεν άλλαξε· verify: 257 = 257, loads_diff 0· αρχεία έξω από `drafts/`· **μην την ξανατρέξεις**· επόμενα: χαρτιά P&L (δρομολόγιο + εβδομάδα) πάνω στην `ct_v_rt_complete` (`docs/sessions/2026-11-03-dimitris-105-rt-pnl-complete.md`)
