@@ -966,6 +966,7 @@ function ctGroupedTripsHtml(sorted) {
         <span class="ct-wktoggle">${open ? '▾' : '▸'}</span>
         <span class="ct-wklabel">${ctEsc(label)}</span>
         <span class="ct-wkn">${g.trips.length} ${g.trips.length === 1 ? 'δρομολόγιο' : 'δρομολόγια'}</span>
+        ${g.info ? `<button class="ct-btn ct-wkprint" onclick="event.stopPropagation();ctPrintWeek('${g.info.start}','${g.info.end}')">Εκτύπωση</button>` : ''}
         <span class="ct-wksum">
           <span class="ct-wksumi"><span class="l">Έσοδα</span><b class="ct-mono">${ctEur(tot.rev)}</b>${tot.revMissing ? `<span class="ct-eqq" title="${CT_REV_MISSING_WHY}">+ ${tot.revMissing} ${CT_REV_MISSING}</span>` : ''}</span>
           <span class="ct-wksumi"><span class="l">Κόστη</span><b class="ct-mono">${ctEur(tot.cost)}</b></span>
@@ -1090,6 +1091,7 @@ async function ctOpenPanel(id) {
     </div>${ctWhyLine(t, lines)}</div>`}
     <div class="ct-psec">
       <button class="ct-btn ct-primary" onclick="ctOpenEntry(${t.id})">Καταχώρηση κόστους</button>
+      <button class="ct-btn" onclick="ctPrintTrip(${t.id})">Εκτύπωση αποτελέσματος</button>
       <div style="font-size:11px;color:var(--text-mid);margin-top:8px">${t.status === 'closed' || t.status === 'complete' ? 'Το δρομολόγιο έχει ολοκληρωθεί — δέχεται κανονικά κόστη: τα τιμολόγια έρχονται και εβδομάδες μετά.' : 'ΦΠΑ 24% = καθαρό × 0,24 · 0 για reverse charge εξωτερικού.'}</div></div>
     <div class="ct-psec"><h3>Έσοδα (αυτόματα από τα σκέλη)</h3>
       ${(rt.ct_rt_legs || []).map(l => l.nat_load_id
@@ -1106,6 +1108,14 @@ async function ctOpenPanel(id) {
       <div class="ct-lrow"><span>${CT_CATEGORY_LABELS[l.category] || l.category}${l.note ? ' · <span style="color:var(--text-mid)">' + ctEsc(l.note) + '</span>' : ''}</span>
       <span class="ct-mono">${ctEur(l.net)}${Number(l.vat) ? ' <span style="color:var(--text-mid)">+' + ctEur(l.vat) + ' ΦΠΑ</span>' : ''}</span></div>`).join('')}</div>` : ''}`;
 }
+
+// The two P&L papers (owner 3/11/2026, approved frames Α1 / Β): their own page,
+// print_payroll.html's pattern — NOT /print/pdf (it keys its cache on the query
+// alone, without the role, and this paper is owner only). The page reads
+// GET /costs/pnl-paper itself; nothing is computed here.
+function ctPrintTrip(rtId) { window.open('print_pnl.html?rt=' + encodeURIComponent(rtId), '_blank'); }
+// The week = Saturday → Friday by the trip's first day (ctWeekOf), as the week headers
+function ctPrintWeek(from, to) { window.open('print_pnl.html?from=' + encodeURIComponent(from) + '&to=' + encodeURIComponent(to), '_blank'); }
 
 // Καταχώρηση κόστους — ΜΙΑ φόρμα, δύο πόρτες (round 2, owner 7/9 night): πριν
 // υπήρχαν ΤΡΙΑ σημεία με το ίδιο σχήμα εδώ (ctPostCostLine/ctQuickAdd του
@@ -1390,6 +1400,7 @@ function ctStyles() { return `<style>
 .ct-split{margin-left:4px;font-weight:500}
 .ct-modal{position:fixed;top:50%;left:50%;width:600px;max-width:94vw;max-height:90vh;overflow-y:auto;background:var(--surface-card);border-radius:6px;box-shadow:var(--shadow-md);z-index:calc(var(--z-overlay,9000) + 2);transform:translate(-50%,-46%) scale(.97);opacity:0;pointer-events:none;transition:all .15s}
 .ct-modal.open{transform:translate(-50%,-50%) scale(1);opacity:1;pointer-events:auto}
+.ct-wkprint{height:24px;font-size:12px;padding:0 10px;margin-left:4px}
 .ct-mhead{background:var(--surface-dark);color:var(--text-on-dark);padding:12px 24px;font-family:'Syne',sans-serif;font-weight:700;font-size:18px}
 .ct-mbody{padding:16px 24px}
 .ct-fgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}

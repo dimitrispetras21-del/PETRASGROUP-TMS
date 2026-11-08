@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+<meta charset="UTF-8">
+<title>Petras Group — Αποτέλεσμα, Εκτύπωση</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* The two P&L papers (owner 3/11/2026, Figma 2542:7735 one trip · A4 portrait,
+   2537:7735 a week · A4 landscape). The same frame as print_payroll.html: the
+   browser's «Εκτύπωση / PDF» bar, one black line under the title, grey words,
+   heavy line over the totals. Owner only: the Worker answers 403 to any other
+   role, and this page says so. Data and rules: modules/pnl_paper.js. */
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'DM Sans',sans-serif;font-size:11px;color:#111827;background:#fff;line-height:1.45;
+  -webkit-print-color-adjust:exact;print-color-adjust:exact}
+#loading{display:flex;align-items:center;justify-content:center;height:90vh;font-size:13px;color:#6B7280;gap:10px}
+.spin{width:18px;height:18px;border:2px solid #E5E7EB;border-top-color:#0B1929;border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.pbar{position:fixed;top:0;left:0;right:0;z-index:99;background:#0B1929;padding:10px 24px;display:flex;align-items:center;
+  justify-content:space-between;border-bottom:2px solid #172C45}
+.pbar-left{display:flex;align-items:center;gap:14px}
+.pbar-logo{font-family:'Syne',sans-serif;font-size:15px;font-weight:800;letter-spacing:.5px;color:#fff}
+.pbar-logo span{color:#8B95A1}
+.pbar-div{width:1px;height:16px;background:rgba(255,255,255,.15)}
+.pbar-title{font-size:11px;color:rgba(196,207,219,.7);letter-spacing:.3px}
+.pbar-btn{background:#6B7280;color:#fff;border:none;padding:7px 20px;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;
+  font-family:'DM Sans',sans-serif;letter-spacing:.4px}
+.pbar-btn:hover{background:#4B5563}
+.pbar-btn:disabled{opacity:.4;cursor:not-allowed}
+.pbar-spacer{height:46px}
+#doc{display:none;padding:36px 44px;max-width:900px;margin:0 auto}
+#doc.land{max-width:1180px}
+
+.pp-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px}
+.pp-brand{font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:#0B1929;letter-spacing:.6px}
+.pp-sub{font-size:10px;color:#6B7280;margin-top:2px}
+.pp-tag{text-align:right;font-size:9.5px;color:#6B7280;line-height:1.6}
+.pp-tag div:first-child{font-style:italic}
+.pp-title{font-family:'Syne',sans-serif;font-size:21px;font-weight:600;color:#0B1929;padding-bottom:12px;border-bottom:1.5px solid #0B1929;margin-bottom:14px}
+.pp-meta{display:grid;grid-template-columns:1fr 1fr;column-gap:40px;row-gap:6px;margin-bottom:18px}
+.pp-meta>div{display:flex;gap:12px;align-items:baseline}
+.pp-meta .k{font-size:8.5px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#64748B;min-width:84px;flex-shrink:0}
+.pp-meta .v{font-size:11.5px;color:#111827}
+.pp-meta .v.b{font-weight:700}
+.pp-h2{font-size:11.5px;font-weight:700;color:#0B1929;margin:12px 0 4px}
+table.pp-t{width:100%;border-collapse:collapse;font-size:10.5px}
+.pp-t th{text-align:left;font-size:8px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:#111827;border-bottom:1.5px solid #0B1929;padding:5px 6px}
+.pp-t td{padding:3.5px 6px;border-bottom:1px solid #E5E7EB;font-variant-numeric:tabular-nums;vertical-align:top}
+.pp-t th.r,.pp-t td.r{text-align:right}
+.pp-t td.nw{white-space:nowrap}
+.pp-t td.b,.pp-t tr.pp-bold td{font-weight:700}
+.pp-t tr.pp-subrow td{color:#64748B;font-size:9.5px;padding-top:2px;padding-bottom:2px}
+.pp-t td.pp-ind{padding-left:20px}
+.pp-t tfoot tr.pp-tot td{border-top:3px solid #0B1929;border-bottom:1px solid #E5E7EB;font-weight:800;color:#0B1929;padding-top:8px}
+.pp-t tfoot tr.pp-missrow td{color:#92400E;font-size:9.5px;border-bottom:1px solid #E5E7EB}
+.pp-t tfoot tr.pp-fullrow td{font-weight:700;border-bottom:1.5px solid #0B1929}
+.pp-week td,.pp-week th{padding-left:5px;padding-right:5px}
+.pp-word{color:#64748B;font-size:9.5px}
+.pp-miss{color:#92400E;font-weight:600}
+.pp-res{margin-top:6px}
+.pp-rrow{display:flex;justify-content:space-between;padding:3.5px 0;border-bottom:1px solid #E5E7EB;font-variant-numeric:tabular-nums}
+.pp-rrow.pp-final{border-top:3px solid #0B1929;border-bottom:none;font-weight:800;color:#0B1929;font-size:12.5px;padding-top:9px}
+.pp-rrow.pp-final span:last-child{font-size:15px}
+.pp-rrow.pp-word{border-bottom:none;color:#64748B}
+.pp-missline{color:#92400E;font-weight:600;margin-top:4px}
+.pp-foot{font-size:9px;color:#64748B;margin:10px 0 16px;line-height:1.5}
+.pp-printed{display:flex;justify-content:space-between;font-size:9px;color:#64748B;border-top:1px solid #CBD5E1;padding-top:6px;margin-top:24px}
+.pp-refused{max-width:640px;margin:60px auto;font-size:12.5px;color:#7F1D1D;background:#FEF2F2;border:1px solid #FCA5A5;border-radius:8px;padding:18px 22px;line-height:1.55}
+.pp-refused-t{font-weight:800;font-size:14px;margin-bottom:6px}
+.pp-refused ul{margin:10px 0 0 18px}
+#err{display:none;max-width:560px;margin:80px auto;text-align:center;font-size:13px;color:#7F1D1D;background:#FEE2E2;border:1px solid #FCA5A5;border-radius:8px;padding:18px 22px}
+
+@media print{
+  .pbar,.pbar-spacer,.pp-printed{display:none}
+  #doc{padding:0;max-width:none}
+  .pp-t tr{break-inside:avoid}
+  .pp-res,.pp-foot{break-inside:avoid}
+}
+</style>
+<!-- the @page rule (size, printed-by, «Σελίδα x από y») is written per paper by the script below -->
+<style id="ppPage"></style>
+</head>
+<body>
+<div class="pbar"><div class="pbar-left">
+  <span class="pbar-logo">PETRAS<span> GROUP</span></span>
+  <div class="pbar-div"></div>
+  <span class="pbar-title" id="ppBarTitle">Αποτέλεσμα — Εκτύπωση</span>
+</div><div><button class="pbar-btn" id="ppPrintBtn" onclick="window.print()" disabled>Εκτύπωση / PDF</button></div></div>
+<div class="pbar-spacer"></div>
+
+<div id="loading"><div class="spin"></div>Φόρτωση…</div>
+<div id="err"></div>
+<div id="doc"></div>
+
+<script src="config.js"></script>
+<script src="core/countries.js"></script>
+<script src="modules/costs.js?v=1794040000"></script>
+<script src="modules/pnl_paper.js?v=1794040000"></script>
+<script>
+'use strict';
+const params = new URLSearchParams(window.location.search);
+const rtParam = params.get('rt');
+const fromParam = params.get('from'), toParam = params.get('to');
+const noprint = params.get('noprint') === '1';
+
+function ppUser() {
+  try { return JSON.parse(localStorage.getItem('tms_user') || '{}') || {}; } catch (e) { return {}; }
+}
+function nowText() {
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+// Its own fetch, the print_payroll.html pattern: this page does not load core/api.js
+async function ppFetch(path) {
+  const jwt = localStorage.getItem('tms_jwt');
+  let res;
+  try {
+    res = await fetch(PROXY_URL + path, { headers: jwt ? { Authorization: 'Bearer ' + jwt } : {} });
+  } catch (e) {
+    throw new Error('Δεν υπήρξε απάντηση από τον διακομιστή (δίκτυο ή διακομιστής εκτός).');
+  }
+  const data = await res.json().catch(() => null);
+  if (res.status === 403) {
+    // The owner meets 403 only from a Worker older than this page (no «pnl-paper» row
+    // in its COSTS_PERMS): that is «not deployed yet», not «not yours».
+    throw new Error(ppUser().role === 'owner'
+      ? 'Ο διακομιστής δεν έχει ακόμη την εκτύπωση αποτελέσματος (χρειάζεται ενημέρωση του διακομιστή).'
+      : 'Το αποτέλεσμα δρομολογίων το βλέπει μόνο ο ιδιοκτήτης.');
+  }
+  if (!res.ok) throw new Error('HTTP ' + res.status + (data && data.error ? ' — ' + data.error : ''));
+  if (data === null) throw new Error('Μη αναγνώσιμη απάντηση διακομιστή (HTTP ' + res.status + ').');
+  return data;
+}
+function cssStr(s) { return '"' + String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/[\r\n]/g, ' ') + '"'; }
+// A4 portrait or landscape, with «Εκτυπώθηκε … από …» and «Σελίδα x από y» on every page
+function setPage(landscape) {
+  const printed = 'Εκτυπώθηκε ' + nowText() + ' από ' + (ppUser().name || '—');
+  document.getElementById('ppPage').textContent =
+    '@page{size:A4 ' + (landscape ? 'landscape' : 'portrait') + ';margin:12mm 12mm 14mm;'
+    + '@bottom-left{content:' + cssStr(printed) + ';font:9px "DM Sans",sans-serif;color:#64748B}'
+    + '@bottom-right{content:"Σελίδα " counter(page) " από " counter(pages);font:9px "DM Sans",sans-serif;color:#64748B}}';
+  return printed;
+}
+function showErr(msg) {
+  document.getElementById('loading').style.display = 'none';
+  const el = document.getElementById('err');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+function render(html, landscape, printable) {
+  document.getElementById('loading').style.display = 'none';
+  const docEl = document.getElementById('doc');
+  const printed = setPage(landscape);
+  docEl.className = landscape ? 'land' : '';
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  // on screen only (print shows the same line in the page margin, with the page numbers)
+  docEl.innerHTML = html + (printable ? '<div class="pp-printed"><span>' + esc(printed) + '</span><span>A4 ' + (landscape ? 'οριζόντιο' : 'όρθιο') + '</span></div>' : '');
+  docEl.style.display = 'block';
+  // a refused paper cannot be printed from the bar either
+  document.getElementById('ppPrintBtn').disabled = !printable;
+  if (printable && !noprint) setTimeout(() => window.print(), 500);
+}
+
+async function main() {
+  if (!localStorage.getItem('tms_jwt')) {
+    showErr('Δεν υπάρχει ενεργή σύνδεση. Ανοίξτε την εφαρμογή TMS, συνδεθείτε, και ξαναπατήστε την εκτύπωση από εκεί.');
+    return;
+  }
+  const week = rtParam == null;
+  if (week ? !(fromParam && toParam) : !/^\d+$/.test(rtParam)) { showErr('Λείπει το δρομολόγιο ή η εβδομάδα της εκτύπωσης.'); return; }
+  document.getElementById('ppBarTitle').textContent = week ? 'Αποτέλεσμα δρομολογίων εβδομάδας — Εκτύπωση' : 'Αποτέλεσμα δρομολογίου — Εκτύπωση';
+  try {
+    const q = week ? '?from=' + encodeURIComponent(fromParam) + '&to=' + encodeURIComponent(toParam) : '?rt=' + encodeURIComponent(rtParam);
+    const [lookups, data] = await Promise.all([ppFetch('/costs/lookups'), ppFetch('/costs/pnl-paper' + q)]);
+    if (week) {
+      const m = pnlWeekModel(data, lookups);
+      if (!m.ok) { render(pnlRefusedHtml('Αποτέλεσμα δρομολογίων εβδομάδας', m.refused), true, false); return; }
+      render(pnlWeekHtml(m, fromParam, toParam), true, true);
+    } else {
+      const m = pnlTripModel(data, lookups);
+      if (!m.ok) { render(pnlRefusedHtml('Αποτέλεσμα δρομολογίου', m.refused), false, false); return; }
+      render(pnlTripHtml(m), false, true);
+    }
+  } catch (e) {
+    showErr('Το χαρτί δεν βγήκε: ' + (e && e.message ? e.message : e));
+  }
+}
+main();
+</script>
+</body>
+</html>
