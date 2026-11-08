@@ -114,7 +114,7 @@ async function newPage(browser, role, opts = {}) {
 }
 async function openTab(page) {
   await gotoPage(page, 'pallet_ledger', BASE_URL);
-  await page.waitForSelector('.plv-tab', { timeout: 30000 });
+  await page.waitForSelector('.plv-nav', { timeout: 30000 });   // the page's bar (Υ3 redesign; .plv-tab before)
   await page.evaluate(() => plvTab('week'));
   // the view opens on this week; the mocked orders are in the last complete one (orders-week-proof's W0)
   try { await page.waitForSelector('.plw-strip', { timeout: 30000 }); }

@@ -4043,6 +4043,8 @@ window.openIntlCardWith = openIntlCardWith;   // «Εβδομάδα» opens the 
 window.intlQuickEdit = intlQuickEdit;
 window._oiCloseCard = _oiCloseCard;
 window.openIntlReadOnlyCard = openIntlReadOnlyCard;
+// The TMS panel's CSS (the order card shell), shared: the pallets page draws its panels in this same shell (owner 8/11)
+window._oiEnsureStyles = _oiEnsureStyles;
 window._oiBalanceUpdate = _oiBalanceUpdate;
 window.submitIntlOrder = submitIntlOrder;
 window._addStop = _addStop;
