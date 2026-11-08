@@ -169,7 +169,8 @@ cd worker && CLOUDFLARE_API_TOKEN=$CF_API_TOKEN npx wrangler deploy
    - «Ελέγχθηκε» της εβδομάδας παλετών (104 `pl_week_checks` + `/pallets/week-checks`, Worker 0563b45a, ζωντανό 3/11):
      `var PLW_RPC = {`, ακριβώς μία φορά (`--wchk 1`)
    - εισαγωγή DKV: parser 1.3.0 (μονάδες L/UN, γαλλικό TIS, έκπτωση προκαταβολής, αριθμός διορθωτικού) και η πύλη
-     E-SUMMARY που κόβει γραμμή χωρίς γραμμές (Worker 12d9914b πάνω στον 0563b45a, ζωντανό 8/11 12:44): `no_lines: true`
+     E-SUMMARY που κόβει γραμμή χωρίς γραμμές, και η «Καταχώρηση» που ξαναδουλεύει (Worker 24d38435 πάνω στον 0563b45a, ζωντανό
+     8/11 13:06· ο 12d9914b της 12:44 είχε ακόμη το σφάλμα του commit): `no_lines: true`
      και `SHORT_UNIT_TOKENS.has(`, το καθένα ακριβώς μία φορά (`--dkv 1`). Υπάρχουν **μόνο στο bundle / στη λήψη CF**
      (ο wrangler πακετάρει `worker/src/import-rules.mjs` και `core/dkv-parser.js`)· στο `src/index.js` μόνο του = STOP.
      ⚠ 8/11 12:39 ανέβηκε κατά λάθος ο 9608bb1c από τον κύριο φάκελο, που ήταν σε παλιό branch (19 σημάδια STOP: χωρίς F5,
