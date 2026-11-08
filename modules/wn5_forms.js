@@ -411,11 +411,11 @@
     document.body.appendChild(back);
     f.el = box;
     f.back = back;
-    f.onKey = (ev) => { if (ev.key === 'Escape' && !f.busy) { ev.preventDefault(); ev.stopPropagation(); _close(f); } };
+    f.onKey = (ev) => { if (ev.key === 'Escape' && !f.busy) { ev.preventDefault(); ev.stopPropagation(); _userClose(f); } };
     window.addEventListener('keydown', f.onKey, true);
     box.addEventListener('click', (ev) => _onClick(f, ev));
-    box.addEventListener('input', (ev) => { _dayInput(ev.target); _refresh(f); });
-    box.addEventListener('change', (ev) => { _dayInput(ev.target); _refresh(f); });
+    box.addEventListener('input', (ev) => { _typed(f, ev); _dayInput(ev.target); _refresh(f); });
+    box.addEventListener('change', (ev) => { _typed(f, ev); _dayInput(ev.target); _refresh(f); });
     box.addEventListener('focusin', (ev) => { if (ev.target.classList && ev.target.classList.contains('wn5f-dayx')) _dayEdit(ev.target); });
     // the click that FOCUSES a day keeps the whole day selected (its mouseup would drop the selection for a caret): the
     // keys replace the day, never append to it. Marked at that mousedown only, so a later click (or a Tab focus) is
@@ -454,6 +454,43 @@
     window.removeEventListener('keydown', f.onKey, true);
     if (f.back && f.back.parentNode) f.back.parentNode.removeChild(f.back);
     if (_f === f) _f = null;
+  }
+  // Sotiris report 8/11 (item 8): Esc / «Άκυρο» / × closed a filled form at once and what was typed was lost. A close by
+  // the user now asks first when the form holds unsaved work: the first press says so beside the buttons, the second
+  // closes (no second modal over the form: the shared #modalOverlay sits under the v5 overlays). Only the user's own
+  // typing counts (isTrusted): what the form fills itself (last rate, a prefill) is not «work». Closes made by the code
+  // (another form opens, the page leaves, a move from the leg form) are not asked: they are the user's own next step.
+  function _typed(f, ev) {
+    if (!ev || !ev.isTrusted) return;
+    f.touched = true;
+    if (f.askClose) { f.askClose = false; _askLine(f, null); }
+  }
+  function _unsaved(f) {
+    if (f.done) return false;
+    try {
+      if (f.kind === 'leg') return _legDirty(f);
+      if (f.edit) return _editDirty(f);
+    } catch (e) { _log(e, 'WN5Form unsaved'); return true; }   // unsure = ask, never lose in silence
+    return !!f.touched;
+  }
+  function _askLine(f, text) {
+    const ft = f.el && f.el.querySelector('.wn5f-ft-note');
+    if (!ft) return;
+    if (ft.dataset.foot === undefined) ft.dataset.foot = ft.innerHTML;
+    if (text) { ft.textContent = text; ft.classList.add('wn5f-ask'); }
+    else { ft.innerHTML = ft.dataset.foot; ft.classList.remove('wn5f-ask'); }
+  }
+  function _userClose(f) {
+    if (!f || f.busy) return;
+    if (!f.askClose && _unsaved(f)) {
+      // the focus moves first: leaving a typed field fires its «change», which would take the question back (_typed)
+      const c = f.el.querySelector('.wn5f-ft [data-act="cancel"]');
+      if (c) { try { c.focus(); } catch (_) { /* focus is a convenience */ } }
+      f.askClose = true;
+      _askLine(f, 'Δεν αποθηκεύτηκε. Πάτα ξανά «Άκυρο» (ή Esc) για κλείσιμο χωρίς αποθήκευση.');
+      return;
+    }
+    _close(f);
   }
   const _strip = (f) => f.el.querySelector('[data-strip]');
   function _lines(f, lines) {
@@ -540,8 +577,10 @@
       if (p && !p.disabled) { try { p.showPicker(); } catch (e) { _log(e, 'WN5Form day picker'); } }
       return;
     }
-    if (a === 'cancel') { if (!f.busy) _close(f); return; }
-    if (a === 'save') { if (!t.disabled) f.onSave(f); return; }
+    if (a === 'cancel') { _userClose(f); return; }
+    if (ev.isTrusted && a !== 'save' && a !== 'day-pick') _typed(f, ev);   // a row added / removed is work too
+    // a press of «Αποθήκευση» takes back a pending «πάτα ξανά για κλείσιμο»: a refused save never leaves Esc armed
+    if (a === 'save') { if (f.askClose) { f.askClose = false; _askLine(f, null); } if (!t.disabled) f.onSave(f); return; }
     if (a === 'add-order') { _addOrder(f); return _refresh(f); }
     if (a === 'add-empties') { _addEmpties(f); return _refresh(f); }
     if (a === 'del-order') { t.closest('.wn5f-ord').remove(); _renumber(f); return _refresh(f); }
@@ -606,7 +645,7 @@
       + `<option value="KATHODOS">${DIR_GR.KATHODOS}</option><option value="ANODOS">${DIR_GR.ANODOS}</option></select></label>`
       + `<label class="wn5f-f"><span data-vdayl>Ημ. φόρτωσης Βέροιας *</span>${_dayHTML('id="wn5f-vday"', '', '', true)}</label>`
       + `<label class="wn5f-f"><span data-vwinl>Παράθυρο φόρτωσης Βέροιας</span><span class="wn5f-win"><span class="wn5f-from" data-vfromw><input ${HM_INPUT} id="wn5f-vfrom" aria-label="από"><span class="wn5f-dash">–</span></span><input ${HM_INPUT} id="wn5f-vto" aria-label="έως"></span></label>`
-      + `<label class="wn5f-f"><span>Φορτηγό (προαιρετικό)</span><select class="form-input" id="wn5f-tgt">${opts}</select></label></div>`
+      + `<label class="wn5f-f"><span>Σε φορτηγό της εβδομάδας (προαιρετικό)</span><select class="form-input" id="wn5f-tgt">${opts}</select></label></div>`
       + `<div class="wn5f-sec">ΤΥΠΟΣ ΚΑΤΑΧΩΡΗΣΗΣ</div><div class="wn5f-modes">`
       + `<button type="button" class="wn5f-mode" data-mode="normal"><span class="wn5f-mode-t"><i class="wn5f-radio" aria-hidden="true"></i>Κανονικό φορτίο</span><span class="wn5f-mode-s">Ένας πελάτης — 1 παραγγελία</span></button>`
       + `<button type="button" class="wn5f-mode" data-mode="groupage"><span class="wn5f-mode-t"><i class="wn5f-radio" aria-hidden="true"></i>Groupage</span><span class="wn5f-mode-s">Πολλές παραγγελίες, ένα φορτηγό</span></button></div>`
@@ -952,6 +991,10 @@
     };
   }
   const _placeName = (id) => { const p = typeof PlanIds !== 'undefined' ? PlanIds.place(id) : null; return p ? p.name : '#' + id; };
+  // Sotiris report 8/11 (item 12) and the owner's rule (31/10, wn5_assign.js rule 1): a trip is named on the screen by
+  // who drives it — plate · driver, or the partner — never by its RT code; with its first day where a list holds many.
+  const _cycWho = (c) => (c.trip_type === 'PARTNER' ? (c.partner || 'Συνεργάτης') : [c.truck, c.driver].filter(Boolean).join(' · ')) || 'χωρίς όχημα';
+  const _cycName = (c) => _cycWho(c) + (c.date_start ? ' · ' + _dlab(c.date_start) : '');
   const _editDay = (k, v, ro) => _dayHTML(`data-f="${k}"`, v, ro, false);
   // F30 (owner 28/10): the truck's stops of a riding point, from the board as loaded (WN5.state, read-only, no fetch):
   // the loading at the point's origin and the delivery at its destination, by the order's legs. Empty when the order's
@@ -962,11 +1005,11 @@
     for (const c of (w && w.board && w.board.cycles) || []) for (const x of c.stops || []) for (const l of x.legs || []) {
       if (l.nat_order_id !== natOrderId) continue;
       const k = l.act === 'load' && x.location_id === s.origin ? 'load' : l.act === 'unload' && x.location_id === s.dest ? 'drop' : null;
-      if (k && !out.some((o) => o.stop_id === x.stop_id)) out.push({ k, rt_id: c.rt_id, code: c.code || 'RT-' + c.rt_id, side: x.side, stop_id: x.stop_id, from: x.planned_from, to: x.planned_to });
+      if (k && !out.some((o) => o.stop_id === x.stop_id)) out.push({ k, rt_id: c.rt_id, code: _cycWho(c), side: x.side, stop_id: x.stop_id, from: x.planned_from, to: x.planned_to });
     }
     return out.sort((a, b) => (a.k === b.k ? 0 : a.k === 'load' ? -1 : 1));
   }
-  // «Φορτηγό RT-1293 · φόρτωση Δευ 26/10 όλη η ημέρα [Αλλαγή ώρας στάσης ›] · παράδοση …»: what the truck does there, and
+  // «ΚΖΗ 2108 · Σωτήρης · φόρτωση Δευ 26/10 όλη η ημέρα [Αλλαγή ώρας στάσης ›] · παράδοση …»: what the truck does there, and
   // the way to move it (F29, the day panel of that one stop). The order's own window changes in the row above.
   // one text for a ride stop, drawn here and redrawn after a save that moved it (081)
   const _rideText = (code, k, from, to) => `${code} · ${k === 'load' ? 'φόρτωση' : 'παράδοση'} ${_dlab((_parts(from) || {}).day)} ${_hmw(from, to)}`;
@@ -1249,8 +1292,7 @@
       // strip by _done). Before 081 runs the answer has no stops_moved: the line below says the stop did not change.
       const follow = ans && ans.ids && Array.isArray(ans.ids.stops_moved) ? ans.ids.stops_moved : null;
       if (follow && follow.length) {
-        const codes = [...new Set(follow.map((x) => x.rt_code).filter(Boolean))];
-        f.el.querySelector('[data-done]').textContent += ` · η στάση του φορτηγού ακολούθησε${codes.length ? ' (' + codes.join(', ') + ')' : ''}`;
+        f.el.querySelector('[data-done]').textContent += ' · η στάση του φορτηγού ακολούθησε';   // no RT code (item 12)
         // the stop rows under the point show the stop where it is now, not the board as it was before the save
         for (const m of follow) {
           const a = m && m.after;
@@ -1278,7 +1320,7 @@
         // A-7: opened from a leg («+ σημείο» of the leg form): the way back to that leg, one press away
         const leg = f.p.leg;
         if (leg && Number.isSafeInteger(leg.rtId)) {
-          f.el.querySelector('[data-done]').insertAdjacentHTML('beforeend', ` <button type="button" class="wn5f-lnk" data-act="to-leg">Στο ${_esc(leg.code || 'RT-' + leg.rtId)} · ${SIDE_GR[leg.side] || ''} ›</button>`);
+          f.el.querySelector('[data-done]').insertAdjacentHTML('beforeend', ` <button type="button" class="wn5f-lnk" data-act="to-leg">Στο ${_esc(leg.name || 'φορτηγό')} · ${SIDE_GR[leg.side] || ''} ›</button>`);
         }
       }
     } catch (e) { await _failed(f, e, null); }
@@ -1369,9 +1411,9 @@
     const f = { kind: 'order', p, seq: 0, busy: false, done: false, locked: false, mode: 'normal', cycleStops: {}, cycles: [], dayDefault: p.day || '' };
     for (const c of (board && board.cycles) || []) {
       f.cycleStops[c.rt_id] = (c.stops || []).map((s) => ({ stop_id: s.stop_id, location_id: s.location_id, side: s.side }));
-      const who = c.trip_type === 'PARTNER' ? (c.partner || 'Συνεργάτης') : [c.truck, c.driver].filter(Boolean).join(' · ');
-      f.cycles.push({ rt_id: c.rt_id, label: `${c.code || 'RT-' + c.rt_id} · ${who || 'χωρίς όχημα'}` });
+      f.cycles.push({ rt_id: c.rt_id, label: _cycName(c) });
     }
+    f.cycles.sort((a, b) => a.label.localeCompare(b.label, 'el'));
     f.onSave = _saveOrder;
     f.onRefresh = _orderRefresh;
     f.slot = PlanApi.slot();   // ONE id for this open form (decision 44)
@@ -1712,7 +1754,7 @@
     if (a === 'add-point') {
       const nat = Number(t.dataset.nat);
       _close(f);
-      openOrder({ natOrderId: nat, addShip: t.dataset.k, leg: { rtId: rt, side: f.side, code: f.cyc.code || null } });
+      openOrder({ natOrderId: nat, addShip: t.dataset.k, leg: { rtId: rt, side: f.side, code: f.cyc.code || null, name: _cycWho(f.cyc) } });
       return;
     }
     if (a === 'leg-add-order') { _close(f); openOrder({ side: f.side, day: f.m.day || '', rtId: rt }); return; }
@@ -1841,11 +1883,11 @@
 
   // ── VS day / destination (T22) ─────────────────────────────────────────────────────────────────────────────
   // The places list without the hub: Veroia is never a VS destination after Veroia (072 plan_vs_set_place).
-  // Same filter rule as fhLocDrop (form-helpers.js: _fhNorm over the label), only the hub left out.
+  // Same filter rule as fhLocDrop (form-helpers.js fhLocMatch: every word, one spelling), only the hub left out.
   function _locDropNoHub(id, q) {
     const hub = _hubRec();
-    const nq = typeof _fhNorm === 'function' ? _fhNorm(String(q || '').trim()) : String(q || '').trim().toLowerCase();
-    const pool = _fhLocationsArr.filter((o) => o.id !== hub && (!nq || (o._n || (o._n = _fhNorm(o.label))).includes(nq))).slice(0, 25);
+    const words = fhLocWords(q);
+    const pool = _fhLocationsArr.filter((o) => o.id !== hub && fhLocMatch(o, words)).slice(0, 25);
     fhShowDrop('ls_' + id + '_d', id, pool);
   }
   // The outcome line of a VS change, from the answer: a notice means the international desk was told; none means

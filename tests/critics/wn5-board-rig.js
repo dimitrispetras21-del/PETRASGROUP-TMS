@@ -1197,8 +1197,8 @@ async function scnMove(browser, origin) {
     ok(scn, 'the dry run: {from, target RT-T204 KATHODOS, stops from the source\'s places} + dry_run:true', c.length === 1 && c[0].body.dry_run === true && strip(c[0].body) === JSON.stringify(BODY), c.map((x) => x.raw));
     // T11 draws two lists (Δ5: «Παραστατικά που υπάρχουν» = payroll, «Τι θα γίνει» = the cancelled cycle): read both
     const list = await page.$$eval(`${D} .wn5-cons`, (els) => els.map((e) => e.innerText).join('\n')).catch(() => '');
-    ok(scn, 'the list says «το δρομολόγιο RT-T201 θα σβηστεί» and «γραμμή μισθοδοσίας με ποσό (Οκτώβριος)», no amount for the dispatcher',
-      list.includes('το δρομολόγιο RT-T201 θα σβηστεί') && list.includes('γραμμή μισθοδοσίας με ποσό (Οκτώβριος)') && !(await bText(page, D)).includes('€'), list);
+    ok(scn, 'the list says «το δρομολόγιο · TST-2106 · TRL-5101 · Driver Test 02 · θα σβηστεί» (by the truck, item 12) and «γραμμή μισθοδοσίας με ποσό (Οκτώβριος)», no amount for the dispatcher',
+      list.includes('το δρομολόγιο · TST-2106 · TRL-5101 · Driver Test 02 · θα σβηστεί') && !/RT-T/.test(list) && list.includes('γραμμή μισθοδοσίας με ποσό (Οκτώβριος)') && !(await bText(page, D)).includes('€'), list);
     await bClick(page, `${D} [data-act="confirm"]`);
     const c2 = bCalls(S, 'POST', '/plan/move');
     ok(scn, '«Μεταφορά» sends the same body + confirm_token, without dry_run', c2.length === 2 && !('dry_run' in c2[1].body) && c2[1].body.confirm_token === 'tokM1' && strip(c2[1].body) === strip(c2[0].body), c2.map((x) => x.raw));
@@ -1320,8 +1320,8 @@ async function scnMove(browser, origin) {
       return { meta: m.innerText, cut: m.scrollWidth > m.clientWidth, below: r(m).top >= r(t).bottom - 0.5, left: Math.round(r(m).left) === Math.round(r(t).left),
         segRow: !!seg && r(seg).bottom <= r(m).top + 0.5, st: [cs.fontSize, cs.color].join('|') };
     }).catch((e) => ({ err: String(e) }));
-    ok(scn, 'fidelity r2: whole side meta «RT-T204 · ΚΑΘΟΔΟΣ · 2 παραδόσεις · παράδοση Τρί 13/10» on its own row under the title, not cut, 11px',
-      h.meta === 'RT-T204 · ΚΑΘΟΔΟΣ · 2 παραδόσεις · παράδοση Τρί 13/10' && !h.cut && h.below && h.left && h.segRow && /^11px\|/.test(h.st || ''), h);
+    ok(scn, 'fidelity r2: whole side meta «TST-2103 · TRL-5103 · Driver Test 03 · ΚΑΘΟΔΟΣ · 2 παραδόσεις · παράδοση Τρί 13/10» (by the truck, item 12) on its own row under the title, not cut, 11px',
+      h.meta === 'TST-2103 · TRL-5103 · Driver Test 03 · ΚΑΘΟΔΟΣ · 2 παραδόσεις · παράδοση Τρί 13/10' && !h.cut && h.below && h.left && h.segRow && /^11px\|/.test(h.st || ''), h);
     await shot(page, 'move-h-side-1440');
     await page.context().close();
   }
@@ -1918,7 +1918,7 @@ async function scnDelete(browser, origin) {
     await o2.page.waitForTimeout(200);
     await bClick(o2.page, `${C} [data-act="delete"]`);
     const t2 = await bText(o2.page, D);
-    ok(scn, 'fidelity: with rt_cancelled for RT-T204 → «θα σβηστεί», no «ο κύκλος μένει»', t2.includes('RT-T204 θα σβηστεί') && !t2.includes('ο κύκλος μένει'), t2.slice(0, 600));
+    ok(scn, 'fidelity: with rt_cancelled for RT-T204 → «θα σβηστεί», no «ο κύκλος μένει»', t2.includes('το δρομολόγιο · TST-2103 · TRL-5103 · Driver Test 03 · θα σβηστεί') && !/RT-T/.test(t2) && !t2.includes('ο κύκλος μένει'), t2.slice(0, 600));
     await o2.page.context().close();
   }
 }
@@ -3574,8 +3574,8 @@ SCN.calm = async (browser, origin) => {
     un.length > 0 && un.every((x) => x.dashed === 'solid' && !x.side && x.ink === 'rgb(127, 29, 29)'), un);
   ok(scn, '2a no red rail on a waiting row; a late one is its red day chip («αργό»), once — main: every waiting row red', un.some((x) => x.late) && un.every((x) => !x.rail), un.map((x) => [x.p, x.late, x.rail]));
   ok(scn, '2b a waiting row draws nothing on its empty side — main: a dashed «Χωρίς άνοδο» box / «—»', un.every((x) => !x.gap), un.map((x) => [x.p, x.gap]));
-  ok(scn, '2b on a cycle the empty side is text without a box, its «+» hidden until hover — main: dashed boxes, «+» at .45',
-    v.cycGap.length > 0 && v.cycGap.every((st) => st === 'none') && v.gapPlus.length > 0 && v.gapPlus.every((o) => o === '0'), { cycGap: v.cycGap, gapPlus: v.gapPlus });
+  ok(scn, '2b on a cycle the empty side is text without a box, its «+» quieter (.55) at rest — seen without the mouse (Sotiris report 8/11, item 12) — main: dashed boxes, «+» at .45',
+    v.cycGap.length > 0 && v.cycGap.every((st) => st === 'none') && v.gapPlus.length > 0 && v.gapPlus.every((o) => o === '0.55'), { cycGap: v.cycGap, gapPlus: v.gapPlus });
   ok(scn, '2c one day-chip look for every day but today (blue outline) and a late load (red) — main: three looks', v.looks.length === 1 && v.todayChips.length > 0, { looks: v.looks, today: v.todayChips });
   ok(scn, '2d no «—» standing for a missing value in a waiting row\'s cells — main: «Βέροια —», «· — ·»', un.every((x) => !x.dash), un.map((x) => [x.p, x.dash]));
   ok(scn, '2d a cycle\'s Veroia end at the day\'s end reads the day alone (no «ως … 23:59»)', v.ends.length > 0 && v.ends.every((t) => !/23:59/.test(t)), v.ends);
