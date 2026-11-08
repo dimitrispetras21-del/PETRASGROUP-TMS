@@ -567,9 +567,15 @@ const PalletsWeek = (() => {
     try {
       const stops = ids.length ? await atGetAll(TABLES.ORDER_STOPS, { filterByFormula: `OR(${ids.map(id => `RECORD_ID()="${id}"`).join(',')})`,
         fields: [F.STOP_NUMBER, F.STOP_TYPE, F.STOP_LOCATION, F.STOP_DATETIME, F.STOP_PALLETS, 'Completed At'] }, false) : [];
-      let natLeg = null;
-      if ((rec.fields || {})['Veroia Switch']) { const bs = await weekBoards(); natLeg = bs.length ? RouteDiagramAdapters.natLegFromBoard(bs, pgOf(rec)) : null; }
-      st = { stops, natLeg };
+      let natLeg = null, natLegNote = null;
+      if ((rec.fields || {})['Veroia Switch']) {
+        const bs = await weekBoards();
+        natLeg = bs.length ? RouteDiagramAdapters.natLegFromBoard(bs, pgOf(rec)) : null;
+        // all three boards read and the leg on none of them (before day L its leg lives in national_loads): not a
+        // read failure. One board unread = the leg may be on it, so the red «δεν διαβάστηκε» stays.
+        if (bs.length === 3 && !natLeg) natLegNote = 'εκτελεστής: εκτός Εβδομαδιαίου v5';
+      }
+      st = { stops, natLeg, natLegNote };
     } catch (e) { console.error('pallets week: route', e); st = { err: true }; }
     if (route !== S.route) return;   // a reload or another week started meanwhile
     route.set(rec.id, st);
@@ -584,7 +590,7 @@ const PalletsWeek = (() => {
     // a shape the diagram refuses (InputError) costs the diagram only, never the panel or the page
     try {
       return RouteDiagram.render(RouteDiagramAdapters.facadeOrder(rec, st.stops, {
-        today: RouteDiagramAdapters.athensDay(new Date().toISOString()), locMeta: id => OC()._locMeta(id), natLeg: st.natLeg }));
+        today: RouteDiagramAdapters.athensDay(new Date().toISOString()), locMeta: id => OC()._locMeta(id), natLeg: st.natLeg, natLegNote: st.natLegNote }));
     } catch (e) { console.error('pallets week: route diagram', e); return '<div class="plw-red">Η διαδρομή δεν σχεδιάστηκε.</div>'; }
   }
 
