@@ -46,7 +46,7 @@ test('a cut list says so inside the exported CSV too (list and card)', () => {
     URL: { createObjectURL: () => 'blob:x', revokeObjectURL() {} } });
   ctx.document = { getElementById: () => null, createElement: () => ({ click() {} }) };
   ctx.fhSearchNorm = (v) => String(v || '').toLowerCase();
-  ctx.PLV.tab = 'all'; ctx.PLV.q = ''; ctx.PLV.from = ''; ctx.PLV.to = '';
+  ctx.PLV.tab = 'moves'; ctx.PLV.groupBy = 'none'; ctx.PLV.q = ''; ctx.PLV.from = ''; ctx.PLV.to = ''; ctx.PLV.period = 'all';
   ctx.PLV.movements = [{ id: 1, order_id: 7, code: 'PM-1', movement_date: '2026-10-01', status: 'confirmed', event_type: 'LOADING', taken: 1, given: 0 }];
   ctx.PLV.cut = { n: 300, cap: 300, cut: true };
   ctx.plvExportCSV();
@@ -54,7 +54,8 @@ test('a cut list says so inside the exported CSV too (list and card)', () => {
   ctx.PLV.cut = null;
   ctx.plvExportCSV();
   assert.doesNotMatch(files.pop(), /⚠/);
-  ctx.PLV._stmt = { name: 'A', rows: [{ m: ctx.PLV.movements[0], run: 1 }], cut: { n: 300, cap: 300, cut: true } };
+  // Υ3: the card is PLV.card (its own read of the party's movements)
+  ctx.PLV.card = { kind: 'clients', id: 1, name: 'A', moves: ctx.PLV.movements, quad: null, cut: { n: 300, cap: 300, cut: true } };
   ctx.plvStmtCSV();
   assert.match(files.pop(), /\n"⚠ εμφανίζονται οι 300 νεότερες κινήσεις: το τρεχούμενο δεν ξεκινά/);
 });

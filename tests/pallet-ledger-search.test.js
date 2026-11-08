@@ -34,7 +34,7 @@ vm.runInContext(FH.match(/const _FH_EL = \{[^}]*\};/)[0] + '\n' + grab(FH, '_fhN
   + '\n' + grab(FH, 'fhSearchBlob') + '\nthis.fhSearchNorm = fhSearchNorm; this.fhSearchBlob = fhSearchBlob;', ctx);
 vm.runInContext(read('core/tms-week.js') + '\nthis.TmsWeek = TmsWeek;', ctx);
 vm.runInContext(read('modules/pallet_ledger.js') + '\nthis.PLV = PLV; this._plvRows = _plvRows; this._plvNo = _plvNo;'
-  + ' this._plvMovementRow = _plvMovementRow;', ctx);
+  + ' this.PLV_COL = PLV_COL;', ctx);
 
 const mv = (id, order_id, date, extra = {}) => ({ id, code: 'PM-' + (1000 + id), order_id, movement_date: date,
   status: 'confirmed', event_type: 'LOADING', counterparty_type: 'CLIENT', client_id: 1,
@@ -52,13 +52,15 @@ ctx.PLV.orderById = {
   7: { fields: { 'Week Number': 43, Driver: ['recD1'], Truck: ['recT1'] } },
   8: { fields: { 'Week Number': 42 } },
 };
-ctx.PLV.tab = 'all';
+ctx.PLV.tab = 'moves';   // «Κινήσεις» since the Υ3 redesign (the old tab id «all» opens it through plvTab)
 const ids = (q) => { ctx.PLV.q = q; return ctx._plvRows().map((m) => m.id).sort(); };
 
 test('the number column is #order_id, empty only without an order', () => {
   assert.strictEqual(ctx._plvNo(MOVES[0]), '#385');
   assert.strictEqual(ctx._plvNo(MOVES[4]), '');
-  assert.ok(ctx._plvMovementRow(MOVES[0], false).includes('<td class="plv-ref plv-no">#385</td>'));
+  // Υ3: the «Αρ.» column is one definition for the screen and the CSV (PLV_COL.no)
+  assert.ok(ctx.PLV_COL.no().cell(MOVES[0]).includes('<b class="plv-no">#385</b>'));
+  assert.strictEqual(ctx.PLV_COL.no().csv(MOVES[0]), '#385');
 });
 
 test('«#385» is that order exactly; a bare 385 stays a substring', () => {
