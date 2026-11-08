@@ -245,7 +245,7 @@ function _week(n, home) {
   window.WNATL.week = v;
   window.renderWeeklyNatl();
 }
-function _onWeekChange() { _toToday = true; _closedDays.clear(); _qAll = false; _qRaw = ''; _sIdx = 0; _stale = null; }
+function _onWeekChange() { _toToday = true; _closedDays.clear(); _qAll = false; _qRaw = ''; _sIdx = 0; _stale = null; _rdClose(); }
 
 // ═══ Load ═══
 // Π-23 (owner 28/10): a reload opened the current week, not the one the dispatcher was on. The tab keeps its week in
@@ -526,6 +526,7 @@ function _paint() {
   _fitUpd();
   _fitAfterFonts();
   _place(content, anchor);
+  _rdFill();   // an open «Διαδρομή» follows the board just painted
 }
 // Where the board stands after a paint. A week just opened: the row an away row's «W45» pointed to, else today's
 // day in the current week (3a: the days already passed took the top half of the screen), else the week's top. A
@@ -1470,6 +1471,88 @@ function copyPlatesOf(rtId) {
   return typeof copyPlates === 'function' ? copyPlates(text) : false;
 }
 
+// ═══ ✈ «Διαδρομή»: the shared route diagram of one row (owner 8/11, change 4) ═══
+// The same vertical diagram as «Παραγγελίες › Εβδομάδα» and «Παλέτες › Εβδομάδα» (core/route-diagram.js, adapter
+// boardCycle; docs/route-diagram/DESIGN.md §4), drawn from the board this screen already read (GET /plan/board):
+// no new read, nothing to save in it. A light panel on the right, as the Orders week card (480px; × and Esc close),
+// so the board's rows stay as they are. A repaint of the board (a save, ↻) redraws it from the new board, so it never
+// shows a route the base has changed since; a row gone from the week is said in red, never an old drawing.
+let _rdRt = null;
+function _rdCtx() {
+  const A = RouteDiagramAdapters;
+  const ctx = { today: A.athensDay(new Date().toISOString()) };
+  // the hub as the board's model takes it (_modelOpts, else the base facts): without it the Veroia stop of a VS would
+  // draw as an ordinary stop, not «Cross-dock · Βέροια»
+  const mo = _modelOpts();
+  const hub = mo.hubId != null ? mo.hubId : (_board ? L().hubFromBoard(_board, []) : null);
+  if (hub != null) ctx.hubId = hub;
+  // The board names no city or country. Both from catalogues the screen already holds: the city from GET /plan/lookups
+  // (PlanIds.place), the country from the reference LOCATIONS through the place's legacy id (OrdersCommon._locMeta).
+  // Not loaded → the function is not given and the diagram prints no country: never «χώρα;» from a read that failed.
+  if (_idsOk && typeof PlanIds !== 'undefined' && typeof PlanIds.place === 'function') {
+    ctx.cityOf = (id) => { const p = PlanIds.place(Number(id)); return p && p.city ? p.city : null; };
+    if (typeof OrdersCommon !== 'undefined' && !OrdersCommon.locationsFailed && typeof OrdersCommon._locMeta === 'function') {
+      ctx.countryOf = (id) => {
+        const p = PlanIds.place(Number(id));
+        const lm = p && p.legacy_id ? OrdersCommon._locMeta(p.legacy_id) : null;
+        // no reference record for it (no name): unknown, not missing — undefined prints nothing
+        if (!lm || !lm.name) return undefined;
+        return lm.cc || null;
+      };
+    }
+  }
+  return ctx;
+}
+const _rdMsg = (txt) => `<div class="rd"><div class="rd-note" data-tone="red">${_esc(txt)}</div></div>`;
+function _rdBodyHTML(rtId) {
+  const c = _cycleOf(rtId);
+  if (!c) return _rdMsg('Το φορτηγό δεν είναι πια σε αυτή την εβδομάδα — η διαδρομή δεν σχεδιάζεται.');
+  // a stale app.html without core/route-diagram.js (service worker mid-update) lands in the catch below: said in
+  // the panel like any other failure, never an uncaught error behind a menu line that opens nothing
+  try {
+    return RouteDiagram.render(RouteDiagramAdapters.boardCycle(c, _rdCtx()));
+  } catch (e) {
+    // the cause goes to the log; the dispatcher reads plain words (owner 31/10)
+    _logErr(e, 'weekly natl v5: route diagram');
+    return _rdMsg('Η διαδρομή δεν σχεδιάστηκε.');
+  }
+}
+// truck · driver (or the partner) · its days — never a code (owner 31/10, 8/11)
+function _rdSub(rtId) {
+  const c = _cycleOf(rtId);
+  if (!c) return '';
+  const who = [c.truck, c.driver].filter(Boolean).join(' · ') || c.partner || 'Χωρίς ανάθεση';
+  const days = c.date_start ? _dl(c.date_start) + (c.date_end && c.date_end !== c.date_start ? ' → ' + _dl(c.date_end) : '') : '';
+  return [who, days].filter(Boolean).join(' · ');
+}
+function routeOpen(rtId) {
+  if (!active() || !ID_RE.test(String(rtId))) return false;
+  _rdClose();
+  _rdRt = Number(rtId);
+  const el = document.createElement('aside');
+  el.className = 'wn5-rdp';
+  el.setAttribute('data-wn5-overlay', 'route');   // _cleanup removes it when the board leaves
+  el.setAttribute('role', 'dialog');               // core/ui.js: ←/→ never move the week under it
+  el.setAttribute('aria-label', 'Διαδρομή');
+  el.innerHTML = '<div class="wn5-rdp-h"><b>Διαδρομή</b><span data-rd-sub></span>'
+    + '<button type="button" class="wn5-rdp-x" aria-label="Κλείσιμο">×</button></div><div class="wn5-rdp-b" data-rd-body></div>';
+  el.querySelector('.wn5-rdp-x').addEventListener('click', _rdClose);
+  document.body.appendChild(el);
+  _rdFill();
+  el.querySelector('.wn5-rdp-x').focus();
+  return true;
+}
+function _rdFill() {
+  const el = document.querySelector('body > .wn5-rdp');
+  if (!el || _rdRt == null) return;
+  el.querySelector('[data-rd-sub]').textContent = _rdSub(_rdRt);
+  el.querySelector('[data-rd-body]').innerHTML = _rdBodyHTML(_rdRt);
+}
+function _rdClose() {
+  _rdRt = null;
+  try { document.querySelectorAll('body > .wn5-rdp').forEach((x) => x.remove()); } catch (_) {}
+}
+
 // ═══ Session hooks (installed once, at the first paint; every one starts with the v5 guard) ═══
 function _install() {
   if (_installed) return;
@@ -1501,6 +1584,12 @@ function _install() {
 function _onKey(e) {
   if (!active() || !document.querySelector('#content .wn5')) return;
   if (e.key === 'Escape' && document.getElementById('wn5-menu')) { _closeMenu(); e.preventDefault(); e.stopPropagation(); return; }
+  // Esc closes the «Διαδρομή» panel only when no window stands over it: a v5 window's own Esc is that window's. Only a
+  // window on screen counts (the app's #modal stays in the page, hidden, with role=dialog aria-modal).
+  const over = () => [...document.querySelectorAll('[role="dialog"][aria-modal="true"], [role="alertdialog"]')].some((x) => x.getClientRects().length > 0);
+  if (e.key === 'Escape' && document.querySelector('body > .wn5-rdp') && !over()) {
+    _rdClose(); e.preventDefault(); e.stopPropagation(); return;
+  }
   // «/» focuses the search, as on the Weekly International — never while typing in a field.
   if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey
       && !(e.target && e.target.closest && e.target.closest('input, textarea, select, [contenteditable="true"]'))) {
@@ -1783,10 +1872,13 @@ const WN5 = {
   _cpy,
   _orderCard,
   orderCardBtn,
+  routeOpen,
   MENU_ITEMS: [
     // T18: the orders of the cycle with their number (Figma 2011:8858 «Άνοιγμα παραγγελιών 4»); delete lives in the
     // order card only (owner 19/10)
     { id: 'orders', order: 10, label: 'Άνοιγμα παραγγελιών', count: (rtId) => WN5Act.cycleOrderCount(rtId), run: (rtId) => WN5Act.cycleOrders(rtId) },
+    // owner 8/11 (change 4): the row's route as the shared diagram, read-only, beside the orders it shows
+    { id: 'route', order: 15, label: 'Διαδρομή', run: (rtId) => routeOpen(rtId) },
     // T12: the same Δ1 window as the red box and ΕΠΟΜΕΝΑ; on a cycle it changes the vehicle (PATCH /plan/rt/:id)
     { id: 'assign', order: 20, label: 'Ανάθεση / αλλαγή φορτηγού ή συνεργάτη', run: (rtId) => WN5Act.assign(null, { entry: 'menu', rtId }) },
     // T20: the same short form as the «+» of a leg (S-45): target = this cycle's side, day/Veroia from the cycle
