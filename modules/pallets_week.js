@@ -20,7 +20,7 @@ const PalletsWeek = (() => {
   const REASONS = ['δεν είχαν άδειες', 'τις άφησε σε άλλο σημείο', 'γύρισαν με το φορτηγό', 'άλλο'];
   const S = { week: null, data: null, built: null, board: null, nums: null, rows: [], stops: null, stopsFailed: false,
     filter: null, all: false, q: '', ed: null, panel: null, checks: null, checksLive: false, changes: null,
-    showChanges: false, busy: false, loadErr: null, root: null, route: new Map(), v5: null };
+    showChanges: false, busy: false, loadErr: null, root: null, route: new Map(), v5: null, colOff: null };
   const canWrite = () => typeof can !== 'function' || can('costs') === 'full' || can('orders') === 'full';
   const canCheck = () => typeof ROLE !== 'undefined' && (ROLE === 'owner' || ROLE === 'accountant');
 
@@ -533,9 +533,14 @@ const PalletsWeek = (() => {
     if (S.loadErr) { root.innerHTML = `<div class="plv-fail"><b>Η εβδομάδα δεν φορτώθηκε</b> Δεν σημαίνει ότι δεν υπάρχουν κινήσεις. Αιτία: ${esc(S.loadErr)} <div style="margin-top:12px"><button class="plv-btn-ghost" data-plwgo="retry">Ξαναδοκίμασε</button></div></div>`; return; }
     if (!S.data || S.data.week !== S.week) { root.innerHTML = '<div class="plv-empty">Φόρτωση εβδομάδας…</div>'; return; }
     const t = weekStats(S.week);
+    if (!S.panel) S.colOff = null;   // the column's × lasts for the panel it closed
+    // the column lives in root and the line below rebuilds root: keep where it was scrolled (a confirm or an edit
+    // in the panel must not throw a long route back to its top)
+    const rdBody = root.querySelector(':scope > .rdc [data-rdc-body]'), rdTop = rdBody ? rdBody.scrollTop : 0;
     root.innerHTML = `${_PLW_STYLE}<div class="plw">${stripHtml()}${summaryHtml(t)}${changesHtml()}${tableHtml()}${othersHtml()}${statementHtml()}${driversHtml()}
       <div class="plw-foot">Π = πήραμε · Δ = δώσαμε · ◦ γκρι = εκκρεμής, δεν μετρά · 0 αχνό = γνωστό μηδέν · +◦N κάτω από τιμή = το εκκρεμές μέρος · −N κάτω από το Π = δεν γύρισαν N · ✓ = ανταλλαγή ολοκληρώθηκε · + στα υπόλοιπα = μας χρωστά · Τέλος εβδ. = όπως φαίνεται σήμερα</div>
       </div><div class="owv-docs hidden" id="plwDocs" role="dialog" aria-label="Έγγραφα ανάθεσης"></div>${panelHtml()}`;
+    placeColumn(rdTop);
     OC().whenDocs(() => { if (S.root && S.root.isConnected) draw(); });
     // Enter → the next pending of the week (design N27): the first pending cell in the order the week shows them.
     if (S._next) {
@@ -594,6 +599,27 @@ const PalletsWeek = (() => {
     } catch (e) { console.error('pallets week: route diagram', e); return '<div class="plw-red">Η διαδρομή δεν σχεδιάστηκε.</div>'; }
   }
 
+  // The diagram in its own column beside the panel (owner 8/11/2026, «Ναι, φτιάξτο» on the mock over the live app;
+  // core/route-diagram-column.js, the same column as «Παραγγελίες › Εβδομάδα»): from 1600px wide the panel's
+  // ΔΙΑΔΡΟΜΗ leaves the panel for a 400px column at the right edge and the panel sits next to it. Narrower, or after
+  // the column's own ×, the section stays in the panel as before. Same read and same failure lines (routeHtml).
+  const RC = () => (typeof RouteDiagramColumn !== 'undefined' ? RouteDiagramColumn : null);
+  function colOn() { const rc = RC(); return !!(rc && S.panel && S.colOff !== S.panel && rc.wide()); }
+  function placeColumn(top) {
+    const rc = RC(), root = S.root;
+    if (!rc || !root) return;
+    rc.onWideChange('pallets-week', () => { if (S.root && S.root.isConnected && S.panel) draw(); });
+    const l = S.panel && legByRef(S.panel), panel = root.querySelector('.plw-panel');
+    if (!colOn() || !l || !l.rec || !panel) { rc.close(root); return; }
+    const rec = l.rec, row = S.rows[+S.panel.split('.')[0]], st = S.route.get(rec.id);
+    // the head: the week row's vehicle (as the row shows it), else the order's own fields
+    const v = OWV().vehicleOf((row && row.vehicleRec) || rec);
+    const col = rc.open(root, { anchor: panel, z: 50, body: routeHtml(rec), sub: rc.sub(v.kind === 'none' ? [] : [v.plate, v.who], (st && st.stops) || []),
+      onClose: () => { S.colOff = S.panel; draw(); } });
+    const b = col && col.querySelector('[data-rdc-body]');
+    if (b && top) b.scrollTop = top;
+  }
+
   // ── the order panel (design N28): the order's movements with the same quick entry ──
   function panelHtml() {
     if (!S.panel) return '';
@@ -614,7 +640,7 @@ const PalletsWeek = (() => {
     const hasDoc = S.board && row && OWV().rowDocsOf(S.board, row).length;
     return `<div class="plw-panel" role="dialog" aria-label="Παλέτες παραγγελίας"><div class="plw-ph"><b>${esc(OC().numLabel(rec))} · ${esc(OWV().clientRaw(rec.fields) || '')}</b> ${OC().docClip(rec, 'intl')}<button class="plw-x" data-plwpanel="close" title="Κλείσιμο (Esc)">×</button></div>
       <div class="plw-pb"><div class="plw-ptitle">ΚΙΝΗΣΕΙΣ</div>${rowsH}${miss ? `<div class="plw-pmiss">${miss}</div>${recEd}` : ''}
-      <div class="plw-ptitle">ΔΙΑΔΡΟΜΗ</div>${routeHtml(rec)}
+      ${colOn() ? '' : `<div class="plw-ptitle">ΔΙΑΔΡΟΜΗ</div>${routeHtml(rec)}`}
       <div class="plw-ptitle">ΕΝΕΡΓΕΙΕΣ</div><div class="plw-pacts"><button class="plw-link" data-plwpanel="card">Καρτέλα παραγγελίας</button>${hasDoc ? ' · <button class="plw-link" data-plwpanel="doc">Έγγραφο ανάθεσης</button>' : ''}</div></div></div>`;
   }
 
