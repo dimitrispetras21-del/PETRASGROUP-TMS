@@ -237,6 +237,42 @@ function _side(name, list, hubId) {
     endStop: eIdx >= 0 ? list[eIdx] : null,
   };
 }
+// Owner 8/11 («ρότα προώθησης … είναι ένα πραγματικό φορτίο, άρα κανονικό leg· το δρομολόγιο αποτελείται από τρία,
+// τέσσερα, πέντε leg»; «όπως στα διεθνή, άσε τη Βέροια»): a load the truck picks up AFTER it has delivered another
+// load on the same side is a rota leg — the same truck takes another client's load on the way. The base already
+// keeps it in the cycle (POST /plan/legs, by seq); nothing stores «rota», so it is read from the base's own stop order
+// (seq), the one order the driver sheet also prints. Veroia stops never count (the hub is not a rota). A rota leg
+// leaves the side's ΦΟΡΤΩΣΗ / ΠΑΡΑΔΟΣΗ cells and its pallets (they are never on the truck together with the side's,
+// so the x/33 stays true) and is drawn as its own line inside the row (WN5 _rotaHTML, Figma 2607:7796).
+function _rotaSplit(name, list, hubId) {
+  const isHub = (s) => hubId != null && Number(s.location_id) === hubId;
+  const unloadAt = new Map();
+  list.forEach((s, i) => { for (const l of _legs(s, 'unload')) unloadAt.set(l.leg_id, i); });
+  const rota = [];
+  const ids = new Set();
+  list.forEach((s, i) => {
+    if (isHub(s)) return;
+    for (const l of _legs(s, 'load')) {
+      const u = unloadAt.get(l.leg_id);
+      if (u === undefined || u <= i || isHub(list[u])) continue;
+      // another load delivered (not at Veroia) at or before this pickup, by the base's order
+      const after = list.slice(0, i + 1).some((x) => !isHub(x) && _legs(x, 'unload').some((v) => v.leg_id !== l.leg_id && !ids.has(v.leg_id)));
+      if (!after) continue;
+      ids.add(l.leg_id);
+      const t = list[u];
+      const unl = _legs(t, 'unload').filter((v) => v.leg_id === l.leg_id);
+      const from = _point(s, _sum([l]), [l], _unk([l]));
+      const to = _point(t, _sum(unl), unl, _unk(unl));
+      rota.push({ legId: l.leg_id, pieceId: l.piece_id, natOrderId: l.nat_order_id == null ? null : l.nat_order_id,
+        client: l.client || null, reference: l.reference || null, side: name, from, to,
+        pallets: _sum([l]), palUnknown: _unk([l]), day: from.day, toDay: to.day });
+    }
+  });
+  if (!ids.size) return { list, rota };
+  const kept = list.map((s) => ((s.legs || []).some((l) => ids.has(l.leg_id)) ? Object.assign({}, s, { legs: s.legs.filter((l) => !ids.has(l.leg_id)) }) : s))
+    .filter((s, i) => isHub(s) || (s.legs || []).length || !(list[i].legs || []).length);
+  return { list: kept, rota };
+}
 function _gapSide(c, kath) {
   let text = 'Κενό γύρισμα';
   if (c.trip_type === 'PARTNER') text = 'Μόνο κάθοδος · συνεργάτης';
@@ -286,14 +322,16 @@ function _cycleRow(c, hubId, nums, errors) {
     if (!by[s.side]) { errors.push(`${name}: η στάση ${s.stop_id} έχει άγνωστη πλευρά «${s.side}» — δεν σχεδιάστηκε`); continue; }
     by[s.side].push(s);
   }
-  const K = by.KATHODOS.length ? _side('KATHODOS', by.KATHODOS, hubId) : null;
-  const A = by.ANODOS.length ? _side('ANODOS', by.ANODOS, hubId) : null;
+  const rK = _rotaSplit('KATHODOS', by.KATHODOS, hubId), rA = _rotaSplit('ANODOS', by.ANODOS, hubId);
+  const K = rK.list.length ? _side('KATHODOS', rK.list, hubId) : null;
+  const A = rA.list.length ? _side('ANODOS', rA.list, hubId) : null;
+  const rota = rK.rota.concat(rA.rota);
   const kath = K ? K.side : null;
   const anod = A ? A.side : _gapSide(c, kath);
   const no = nums.get(c.rt_id) || null;
   const seg = segmentsOf(c);
   const tiles = seg.segments.map((s) => _tile(s, seg.source === 'segments' && seg.segments.length > 1));
-  const pts = [...(kath ? kath.from.concat(kath.to) : []), ...anod.from, ...anod.to];
+  const pts = [...(kath ? kath.from.concat(kath.to) : []), ...anod.from, ...anod.to, ...rota.flatMap((x) => [x.from, x.to])];
   _marks(pts);
   // H-9 (072b): each point's segment from stop_ids alone; the Veroia loading head and the cycle end are stops too
   // (Figma H1 2120:8921 draws the segment line under «Βέροια · τέλος κύκλου» as well).
@@ -322,7 +360,7 @@ function _cycleRow(c, hubId, nums, errors) {
       if (!f) forStops.push(f = { stopId: t.stop_id, names: [], n: tp.n });
       if (!f.names.includes(name)) f.names.push(name);
     }
-    return { stopId: s.stop_id, local_move_id: s.local_loading.local_move_id, driver: s.local_loading.driver || null,
+    return { stopId: s.stop_id, side: s.side, local_move_id: s.local_loading.local_move_id, driver: s.local_loading.driver || null,
       move_date: s.local_loading.move_date || null, time_from: s.local_loading.time_from || null, time_to: s.local_loading.time_to || null,
       // 095 (owner 2/11): a loading may run on another day than its stop (the evening before) — the board marks it
       otherDay: !!s.local_loading.move_date && !!athensDay(s.planned_from) && s.local_loading.move_date !== athensDay(s.planned_from),
@@ -343,7 +381,7 @@ function _cycleRow(c, hubId, nums, errors) {
     kath, anod, tiles, segSource: seg.source, cycleNo: no,
     end: A && A.endStop ? { place: 'Βέροια', by: A.endStop.planned_to, stopId: A.endStop.stop_id, dim: A.endStop.dim === true,
       ...(segOf(A.endStop.stop_id) ? { segLabel: segOf(A.endStop.stop_id).label } : {}) } : null,
-    local, handovers: handoversOf(c),
+    local, handovers: handoversOf(c), rota,
     late: stops.some((s) => s.has_late === true),
     rail: tiles.some((t) => t.type === 'un') ? 'red' : null,
     rowDim: stops.length > 0 && stops[0].cycle_dim === true,
@@ -614,7 +652,9 @@ function handoversOf(cycle) {
     let after = null;
     for (let j = i; j < segments.length && after === null; j++) after = first(segments[j].stop_ids || []);
     const g = segments[i];
-    out.push({ at: g.from_at, place_note: g.place_note, reason: g.reason, segmentId: g.segment_id, label: g.label || null, beforeStopId: before, afterStopId: after });
+    // who takes over (the new segment's vehicle) and its note: the local panel names «Παράδοση με τοπικό» by them
+    out.push({ at: g.from_at, place_note: g.place_note, reason: g.reason, segmentId: g.segment_id, label: g.label || null, beforeStopId: before, afterStopId: after,
+      note: g.reason_note || null, driver: g.driver || null, truck: g.truck || null, partner: g.partner || null, tripType: g.trip_type || null });
   }
   return out;
 }
@@ -624,6 +664,51 @@ function handoversOf(cycle) {
 // cycle row of the week counts: a load waiting for a vehicle has no number, and a cycle of another week (away) is
 // numbered in THAT week, not here. ONE count: the board (weekly_natl_v5.js) paints these numbers and «Παραγγελίες ›
 // Εβδομάδα» shows them, so the two can never number one truck differently.
+// The local panel «ΤΟΠΙΚΑ» (owner 8/11, Figma 2607:8131): the week's local moves by day, then by local driver, each
+// driver's moves ①② in time order. Two kinds, both from what the board already carries (no new read):
+//  · Φόρτωση = a local loading of a stop (stops[].local_loading, 072 + 095), with what is picked up and for whom;
+//  · Παράδοση = a vehicle change (072b) made from ✈ «Παράδοση με τοπικό», known by its note («Παράδοση με τοπικό»,
+//    pre-filled by that window): the local takes the load over from that point and the national truck is free.
+// A loading whose day falls outside the board's week, on a cycle the board does not read, is not here: the panel
+// says so under its head (the board reads only the cycles of the week).
+const LOCAL_DELIVERY_NOTE = 'Παράδοση με τοπικό';
+function localPanel(m) {
+  const days = new Map();
+  const add = (day, it) => { if (!day) return; if (!days.has(day)) days.set(day, []); days.get(day).push(it); };
+  const seen = new Set();
+  for (const d of (m && m.days) || []) for (const r of d.rows || []) {
+    if (r.kind !== 'cycle' || seen.has(r.rtId)) continue;
+    seen.add(r.rtId);
+    const truck = (r.tiles && r.tiles[0] && r.tiles[0].line1) || null;
+    for (const lm of r.local || []) {
+      add(lm.move_date || null, { kind: 'load', rtId: r.rtId, id: lm.local_move_id, driver: lm.driver || 'χωρίς οδηγό', vehicle: null, side: lm.side || 'KATHODOS',
+        at: [lm.time_from, lm.time_to].filter(Boolean).map((t) => String(t).slice(0, 5)).join('–'),
+        what: lm.pickup ? `${lm.pickup.who ? lm.pickup.who + ', ' : ''}${lm.pickup.place} → Βέροια · ${palText(lm.pickup.pallets, lm.pickup.palUnknown)}π` : (lm.stopName || '—'),
+        why: (lm.forStops && lm.forStops.length ? 'για ' + lm.forStops.map((f) => f.name).join(', ') : '') + (truck ? (lm.forStops && lm.forStops.length ? ' · ' : '') + 'με ' + truck : ''),
+        dim: lm.dim === true });
+    }
+    for (const h of r.handovers || []) {
+      // the note the window pre-fills; a dispatcher may add to it («… Δευτέρα»), so it is its START that counts
+      if (!h.note || !String(h.note).trim().startsWith(LOCAL_DELIVERY_NOTE)) continue;
+      add(athensDay(h.at), { kind: 'deliver', rtId: r.rtId, id: h.segmentId, driver: h.tripType === 'PARTNER' ? (h.partner || 'Συνεργάτης') : (h.driver || 'χωρίς οδηγό'),
+        vehicle: h.tripType === 'PARTNER' ? null : h.truck, side: null, at: athensTime(h.at) || '',
+        what: `${h.place_note || '—'} → παράδοση`, why: truck ? `το ${truck} ελεύθερο από ${athensTime(h.at) || ''}`.trim() : '', dim: false });
+    }
+  }
+  const out = [];
+  for (const [day, items] of [...days.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const by = new Map();
+    for (const it of items.sort((a, b) => String(a.at).localeCompare(String(b.at)))) {
+      if (!by.has(it.driver)) by.set(it.driver, { driver: it.driver, vehicle: it.vehicle, moves: [] });
+      const g = by.get(it.driver);
+      if (!g.vehicle && it.vehicle) g.vehicle = it.vehicle;
+      g.moves.push(it);
+    }
+    out.push({ day, drivers: [...by.values()] });
+  }
+  return out;
+}
+
 function boardNumbers(m) {
   const out = new Map();
   let n = 0;
@@ -659,6 +744,6 @@ function awayNumbers(m, models) {
   return out;
 }
 
-const WN5L = freeze({ model, boardNumbers, loadDayOf, weekOf, awayWeeks, awayNumbers, rowOrder, waitSide, segmentsOf, stopSegments, handoversOf, searchParts, cycleNumbers, capacity, stopRank, hubFromBoard, athensDay, athensTime, allDay, winText, DAY_WIN, palText, CAP, HUB_UNKNOWN, ShapeError });
+const WN5L = freeze({ model, boardNumbers, localPanel, LOCAL_DELIVERY_NOTE, loadDayOf, weekOf, awayWeeks, awayNumbers, rowOrder, waitSide, segmentsOf, stopSegments, handoversOf, searchParts, cycleNumbers, capacity, stopRank, hubFromBoard, athensDay, athensTime, allDay, winText, DAY_WIN, palText, CAP, HUB_UNKNOWN, ShapeError });
 if (typeof module !== 'undefined') module.exports = WN5L; else window.WN5L = WN5L;
 })();

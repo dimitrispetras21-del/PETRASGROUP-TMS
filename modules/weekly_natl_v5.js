@@ -765,8 +765,41 @@ function _boardHTML(m, known) {
     + (known && typeof WN5Hub !== 'undefined' && typeof WN5Hub.shelfHTML === 'function' ? WN5Hub.shelfHTML(m) : '')
     // Δ12 (empty / loading / error frames): no column heads over a board with no row — they head nothing.
     + (m.days.some((d) => d.rows.length) ? _colsHTML() : '')
-    + `<div id="wn5-rows">${m.days.map((d) => _dayHTML(d, m, known, no)).join('')}</div>`;
+    + `<div id="wn5-rows">${m.days.map((d) => _dayHTML(d, m, known, no)).join('')}</div>`
+    + (known ? _localsHTML(m) : '');
 }
+// «ΤΟΠΙΚΑ» under the board (owner 8/11, Figma 2607:8131 approved; the v4 board's «ΤΟΠΙΚΕΣ» section back): one line per
+// day of the week, one local driver per line, his moves ①② in time order — Φόρτωση (a local loading) or Παράδοση
+// (✈ «Παράδοση με τοπικό», a vehicle change). The words are WN5L.localPanel's; every day is drawn (days always open,
+// owner 12/10), an empty one says «κανένας τοπικός». A move's button acts on THAT move: «Ακύρωση» of a loading
+// (the T17 cancel), «Άνοιγμα» of a delivery (the cycle card where the change lives).
+function _localsHTML(m) {
+  if (!m || !m.week) return '';
+  const days = [];
+  for (let i = 0; i < 7; i++) days.push(_addDay(m.week, i));
+  const byDay = new Map(L().localPanel(m).map((x) => [x.day, x]));
+  const n = [...byDay.values()].filter((x) => days.includes(x.day)).reduce((a, x) => a + x.drivers.reduce((b, g) => b + g.moves.length, 0), 0);
+  const circ = (i) => String.fromCharCode(0x2460 + Math.min(i, 19));
+  const dayHTML = (day) => {
+    const x = byDay.get(day);
+    const head = `<span class="wn5-loc-day${x ? ' on' : ''}">${_esc(_dl(day))}</span>`;
+    if (!x) return `<div class="wn5-loc-row">${head}<span class="wn5-loc-none">κανένας τοπικός</span></div>`;
+    return x.drivers.map((g, gi) => `<div class="wn5-loc-row">${gi ? '<span class="wn5-loc-day"></span>' : head}`
+      + `<span class="wn5-loc-who"><span class="wi4-l1">${_esc(g.driver)}</span><span class="wi4-l2">${_esc(g.vehicle ? g.vehicle + ' · τοπικός' : 'τοπικός')}</span></span>`
+      + '<span class="wn5-loc-moves">' + g.moves.map((mv, i) => `<span class="wn5-loc-mv${mv.dim ? ' wn5-dim' : ''}"><b class="wn5-loc-n">${circ(i)}</b>`
+        + `<span class="wn5-loc-k ${mv.kind}">${mv.kind === 'load' ? 'Φόρτωση' : 'Παράδοση'}</span>`
+        + `<span class="wn5-loc-w">${_esc([mv.at, mv.what].filter(Boolean).join(' · '))}</span>`
+        + `<span class="wn5-loc-y">${_esc([mv.side ? (mv.side === 'ANODOS' ? 'άνοδος' : 'κάθοδος') : '', mv.why].filter(Boolean).join(' · '))}</span>`
+        + (mv.kind === 'load' ? `<button type="button" class="wi4-link" data-act="local-cancel" data-lm="${_id(mv.id)}">Ακύρωση</button>`
+          : `<button type="button" class="wi4-link" onclick="WN5Hand.cycleCard(${_id(mv.rtId)})">Άνοιγμα</button>`)
+        + '</span>').join('') + '</span></div>').join('');
+  };
+  return `<details class="wn5-locals" open><summary><span class="wn5-loc-h">ΤΟΠΙΚΑ</span><span class="wn5-loc-sub">οδηγός × ημέρα · ${n} ${n === 1 ? 'κίνηση' : 'κινήσεις'}`
+    + (typeof TmsWeek !== 'undefined' && TmsWeek.numOf(m.week) ? ' · W' + _esc(String(TmsWeek.numOf(m.week))) : '')
+    + ' · κίνηση για δρομολόγιο άλλης εβδομάδας: στην εβδομάδα εκείνη</span></summary>'
+    + days.map(dayHTML).join('') + '</details>';
+}
+function _addDay(ymd, n) { const [y, mo, d] = ymd.split('-').map(Number); return new Date(Date.UTC(y, mo - 1, d + n)).toISOString().slice(0, 10); }
 function _qbandHTML(m, known) {
   const search = _searchHTML(known);
   if (!known) return `<div class="wi4-q wn5-q">${search}<div class="wi4-q-hd"><span>ΕΠΟΜΕΝΑ · ${_state === 'loading' ? '…' : '—'}</span></div></div>`;
@@ -915,9 +948,78 @@ function _rowHTML(r, m, no) {
     + `<div class="wn5-asg">${r.segSource === 'segments' && r.tiles.length > 1 ? _tilesHTML(r) : r.tiles.map((t) => _boxHTML(t, r)).join('')}${_cpyHTML(r)}</div>`
     + _anodHTML(r, m, ok)
     + '</div>';
+  for (const x of r.rota || []) h += _rotaHTML(r, x, ok, m);
   h += _handRowHTML(r, ok);
   for (const lm of r.local) h += _localHTML(r, lm, ok);
   return h;
+}
+// A rota leg (owner 8/11, Figma 2607:7796): a real load of another client that the same truck carries after a
+// delivery of its side, so it is a line INSIDE the truck's row — no number, no ✈, the assignment written once (the
+// row's: «ίδιος οδηγός, ίδιο όχημα»), indented under its side's columns: day → day, pickup → delivery, its own
+// pallets. Click = the order card; right-click = «Αποσύνδεση από το δρομολόγιο» (WN5.rotaMenu). WN5L decides what is
+// a rota leg (base's stop order); this only draws it.
+function _rotaHTML(r, x, ok, m) {
+  const k = x.side === 'KATHODOS';
+  const today = m && m.today;
+  const toDay = x.toDay && x.toDay !== x.day ? `<span class="wn5-dc2">→ ${_esc(_dl(x.toDay))}</span>` : '';
+  const pal = _palHTML({ pallets: x.pallets, palUnknown: x.palUnknown, over: 0, pe: null });
+  const title = `Σκέλος ρότας · ίδιο φορτηγό${x.client ? ' · ' + x.client : ''} — κλικ: καρτέλα παραγγελίας · δεξί κλικ: αποσύνδεση`;
+  return `<div class="wn5-sub wn5-rota wn5-rota-${k ? 'k' : 'a'}${_dc(ok && r.rowDim)}" data-qi="${_esc(r.key)}" data-key="rota:${_id(x.legId)}" data-rt="${_id(r.rtId)}"`
+    + ` data-leg-id="${_id(x.legId)}" title="${_esc(title)}" onclick="WN5.rotaOpen(event, ${_id(r.rtId)}, ${_id(x.legId)})" oncontextmenu="WN5.rotaMenu(event, ${_id(r.rtId)}, ${_id(x.legId)})">`
+    + '<span class="wn5-c-idx"></span>'
+    + `<span class="wn5-${k ? 'kd' : 'ad'} wn5-rota-d"><span class="wi4-dc ${_chipCls(x.day, today)}">${_esc(_dl(x.day))}</span>${toDay}</span>`
+    + `<span class="wn5-${k ? 'fl' : 'afl'}">${_ptHTML(x.from, null, ok, false)}</span>`
+    + `<span class="wn5-${k ? 'kto' : 'ato'}">${_ptHTML(x.to, null, ok, false)}</span>`
+    + `<span class="wn5-${k ? 'kpal' : 'apal'}">${pal}</span>`
+    + '</div>';
+}
+function _rotaOf(rtId, legId) {
+  const r = _rowOf(rtId);
+  return r && (r.rota || []).find((x) => x.legId === legId) || null;
+}
+// Click on a rota line: its order card (the same one «Άνοιγμα παραγγελιών» opens); a leg without a national order
+// (a VS) says where it changes instead of doing nothing.
+function rotaOpen(ev, rtId, legId) {
+  try { if (ev && ev.stopPropagation) ev.stopPropagation(); } catch (_) {}
+  const x = _rotaOf(rtId, legId);
+  if (!x) return;
+  if (x.natOrderId != null) { _orderCard(ev, x.natOrderId); return; }
+  if (typeof toast === 'function') toast('Το σκέλος είναι παραγγελία του Εβδομαδιαίου Διεθνών: αλλάζει εκεί.', 'warn');
+}
+// Right-click on a rota line: «Καρτέλα παραγγελίας» · «Αποσύνδεση από το δρομολόγιο». The unlink is the existing
+// move back to waiting (POST /plan/move, dry run → «τι θα γίνει» → confirm), for this load only.
+function rotaMenu(ev, rtId, legId) {
+  try { if (ev && ev.preventDefault) ev.preventDefault(); if (ev && ev.stopPropagation) ev.stopPropagation(); } catch (_) {}
+  _closeMenu();
+  const x = _rotaOf(rtId, legId);
+  if (!x || !active()) return;
+  const el = document.createElement('div');
+  el.id = 'wn5-menu';
+  el.className = 'wn5-menu';
+  el.setAttribute('role', 'menu');
+  el.setAttribute('data-wn5-overlay', 'menu');
+  el.innerHTML = `<div class="wn5-m-hd"><span class="wi4-l1">Σκέλος ρότας · ίδιο φορτηγό</span><span class="wi4-l2">${_esc([x.client, x.from.name + ' → ' + x.to.name].filter(Boolean).join(' · '))}</span></div>`
+    + '<button type="button" role="menuitem" class="wn5-m-i" data-item="card"><span class="wi4-l1">Καρτέλα παραγγελίας</span></button>'
+    + '<div class="wn5-m-sep" role="separator"></div>'
+    + '<button type="button" role="menuitem" class="wn5-m-i danger" data-item="unlink"><span class="wi4-l1">Αποσύνδεση από το δρομολόγιο</span><span class="wi4-l2">→ ΕΠΟΜΕΝΑ</span></button>';
+  document.body.appendChild(el);
+  el.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-item]');
+    if (!b) return;
+    _closeMenu();
+    try {
+      if (b.getAttribute('data-item') === 'card') rotaOpen(e, rtId, legId);
+      else WN5Act.move({ piece_ids: [x.pieceId], rt_id: rtId, side: x.side }, { direct: 'unlink' });
+    } catch (err) {
+      _logErr(err, 'weekly natl v5: rota menu');
+      if (typeof toast === 'function') toast('Η ενέργεια δεν άνοιξε: ' + String((err && err.message) || err), 'danger');
+    }
+  });
+  const px = ev && Number.isFinite(ev.clientX) ? ev.clientX : 120, py = ev && Number.isFinite(ev.clientY) ? ev.clientY : 120;
+  el.style.left = Math.max(8, Math.min(px, window.innerWidth - el.offsetWidth - 8)) + 'px';
+  el.style.top = Math.max(8, Math.min(py, window.innerHeight - el.offsetHeight - 8)) + 'px';
+  const first = el.querySelector('[role="menuitem"]');
+  if (first) first.focus();
 }
 function _kathHTML(r, m, ok) {
   const s = r.kath;
@@ -1466,6 +1568,19 @@ function _platesOf(rtId) {
   const c = _cycleOf(rtId);
   return c && typeof platesText === 'function' ? platesText(c.truck, c.trailer, null) : '';
 }
+// ✈ «Παράδοση με τοπικό › Κάθοδος | Άνοδος»: the vehicle change opened at the side's first delivery (its place and
+// day), titled for what it is. A side without a delivery is said, never an empty form.
+function localDelivery(rtId, side) {
+  const r = _rowOf(rtId);
+  const s = r && (side === 'ANODOS' ? r.anod : r.kath);
+  const p = s && !s.gap && s.to && s.to.length ? s.to[0] : null;
+  const sideW = side === 'ANODOS' ? 'Άνοδος' : 'Κάθοδος';
+  if (!p) {
+    if (typeof toast === 'function') toast(`Το δρομολόγιο δεν έχει παράδοση στην ${side === 'ANODOS' ? 'άνοδο' : 'κάθοδο'}.`, 'warn');
+    return false;
+  }
+  return WN5Hand.change(Number(rtId), { title: 'Παράδοση με τοπικό · ' + sideW, day: p.day || '', place: p.name || '', note: 'Παράδοση με τοπικό' });
+}
 function copyPlatesOf(rtId) {
   const text = _platesOf(rtId);
   return typeof copyPlates === 'function' ? copyPlates(text) : false;
@@ -1863,6 +1978,8 @@ const WN5 = {
   markClosed,
   weekParam,
   rowMenu,
+  rotaOpen,
+  rotaMenu,
   copyPlates: copyPlatesOf,
   search,
   searchFocus,
@@ -1885,8 +2002,23 @@ const WN5 = {
     { id: 'new-order', order: 30, label: 'Νέα παραγγελία σε αυτό το δρομολόγιο', children: [
       { id: 'new-order-k', label: 'Κάθοδος', run: (rtId) => WN5Form.openOrder({ side: 'KATHODOS', rtId }) },
       { id: 'new-order-a', label: 'Άνοδος', run: (rtId) => WN5Form.openOrder({ side: 'ANODOS', rtId }) }] },
-    // T17: the stop is chosen inside the window (its day is the stop's day, 072:2283)
-    { id: 'local', order: 40, label: 'Φόρτωση με τοπικό', sub: 'οδηγός · ημέρα · στάση ›', run: (rtId) => WN5Act.local(null, rtId) },
+    // Owner 8/11 (Figma 2607:8466, approved): «⤷ Επόμενο φορτίο με το ίδιο φορτηγό ›» = the rota of the Weekly
+    // International — a load of another client the same truck takes after its deliveries, on either side. It is the
+    // side's «+» window in its rota mode (WN5Act.plus opts.rota): the same body to POST /plan/legs, so nothing new is
+    // written; the leg then shows inside the row (WN5L _rotaSplit, _rotaHTML).
+    { id: 'rota', order: 35, label: '⤷ Επόμενο φορτίο με το ίδιο φορτηγό', sub: 'κάθοδος · άνοδος', children: [
+      { id: 'rota-k', label: 'Κάθοδος', run: (rtId) => WN5Act.plus(rtId, 'KATHODOS', null, { rota: true }) },
+      { id: 'rota-a', label: 'Άνοδος', run: (rtId) => WN5Act.plus(rtId, 'ANODOS', null, { rota: true }) }] },
+    // T17: the stop is chosen inside the window (its day is the stop's day, 072:2283). Owner 8/11: both sides.
+    { id: 'local', order: 40, label: 'Φόρτωση με τοπικό', sub: 'κάθοδος · άνοδος', children: [
+      { id: 'local-k', label: 'Κάθοδος', run: (rtId) => WN5Act.local(null, rtId, 'KATHODOS') },
+      { id: 'local-a', label: 'Άνοδος', run: (rtId) => WN5Act.local(null, rtId, 'ANODOS') }] },
+    // Owner 8/11 (Figma 2607:8131, the driver who stayed at the destination till Monday): a local driver delivers so
+    // the truck leaves. It is the existing vehicle change (072b) from the delivery point, pre-filled; the local is
+    // paid as a trip, the national truck is free from that hour. No new write path.
+    { id: 'local-deliv', order: 45, label: 'Παράδοση με τοπικό', sub: 'κάθοδος · άνοδος', children: [
+      { id: 'local-deliv-k', label: 'Κάθοδος', run: (rtId) => localDelivery(rtId, 'KATHODOS') },
+      { id: 'local-deliv-a', label: 'Άνοδος', run: (rtId) => localDelivery(rtId, 'ANODOS') }] },
     // T14: the KATHODOS deliveries go back to Veroia for splitting (S-69, Figma 2011:8858 note)
     { id: 'split-hub', order: 50, label: 'Σπάσιμο παραγγελιών', sub: '→ Βέροια', run: (rtId) => WN5Act.move({ rt_id: rtId, side: 'KATHODOS' }, { direct: 'wait' }) },
     // T23: one click = the A4 to print + the same as a WhatsApp text in the clipboard (Figma 2011:10998).
