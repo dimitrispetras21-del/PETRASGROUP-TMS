@@ -57,7 +57,12 @@ export function toCostLineRow(ln) {
   // w11 (owner 21/9, θέμα 9): an aggregated line keeps its members in
   // `details` (jsonb, migration 038) — per passage / per fee source — so the
   // frame can open «11 διελεύσεις ▸» without the table holding 11 rows.
-  if (Array.isArray(ln.details) && ln.details.length) row.details = ln.details;
+  // ALWAYS the key, null when there are no members: the commit posts every row in
+  // ONE PostgREST insert, and PostgREST refuses a batch whose objects do not all
+  // carry the same keys (400, «All object keys must match»). With `details` only
+  // on the aggregated rows, every DKV commit since 21/9 answered «Insert failed»
+  // and no statement could be booked (drafts 4/5 of Sept, found 8/11/2026).
+  row.details = Array.isArray(ln.details) && ln.details.length ? ln.details : null;
   // A line that reaches the table without a euro amount or a date would be the
   // «green toast, wrong data» failure — refuse it by name instead.
   const missing = [];

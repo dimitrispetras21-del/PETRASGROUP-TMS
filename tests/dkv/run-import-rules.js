@@ -44,6 +44,13 @@ async function main() {
   } = mod;
   const DkvParser = require('../../core/dkv-parser.js');
 
+  // ── toCostLineRow: every row has the SAME keys (one PostgREST batch insert, 8/11) ──
+  {
+    const plain = toCostLineRow({ doc_no: 'D1', seq: 0, category: 'fuel', service_date: '2026-10-01', net: 10, vat: 2, gross: 12, currency: 'EUR' }).row;
+    const agg = toCostLineRow({ doc_no: 'D1', seq: 1, category: 'tolls', service_date: '2026-10-01', net: 5, vat: 1, gross: 6, currency: 'EUR', details: [{ d: 1 }] }).row;
+    assertEqual(Object.keys(plain).sort().join(','), Object.keys(agg).sort().join(','), 'toCostLineRow: a plain row and an aggregated row carry the same keys (PostgREST batch)');
+    assertEqual(plain.details, null, 'toCostLineRow: details is null, not absent, without members');
+  }
   // ── toCostLineRow: Cyrillic litre unit «л.» (BG invoice) → liters (owner 14/9) ──
   {
     const base = { doc_no: 'D9', net: 10, vat: 2, currency: 'EUR', service_date: '2026-08-22', plate: 'XX1234', country: 'BG' };
