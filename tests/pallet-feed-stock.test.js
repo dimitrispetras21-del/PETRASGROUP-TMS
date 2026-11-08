@@ -124,13 +124,13 @@ test('Q6: re-saving a lot\'s partner assignment never deletes its pending intake
   assert.deepStrictEqual(net.filter(c => c.m !== 'GET'), [], JSON.stringify(net));
 });
 
-test('an ordinary order with pallet exchange still gets its confirmed DELIVERY', async () => {
-  const { ctx, net } = world({ id: 'recORD1', fields: { 'Pallet Exchange': true, Client: ['recCLIA'] } });
+// 108 (U5, owner 27/10 answer 4a): the client DELIVERY is the base's (pl_delivery_from_order), in the save's own
+// transaction; the browser writing it too could only race it on pl_mov_stop_once.
+test('an ordinary order with pallet exchange: the browser writes NO delivery (the base does, 108)', async () => {
+  const { ctx, net, toasts } = world({ id: 'recORD1', fields: { 'Pallet Exchange': true, Client: ['recCLIA'] } });
   await ctx.plOnDelivered('recORD1');
-  const post = net.filter(c => c.m === 'POST');
-  assert.strictEqual(post.length, 1);
-  assert.strictEqual(post[0].body.event_type, 'DELIVERY');
-  assert.strictEqual(post[0].body.taken, 33);
+  assert.strictEqual(net.filter(c => c.m === 'POST').length, 0, JSON.stringify(net));
+  assert.deepStrictEqual(toasts, []);
 });
 
 // ── Round 3 (fix list X1–X3) ────────────────────────────────────────────────
@@ -141,8 +141,9 @@ test('X1 (R2-1 / S5-09): the own-truck line names the lot and pallets, one prefi
   const own = world({ id: 'recLOT1', fields: { 'Pallet Exchange': true, Client: ['recCLIA'], 'Own Stock Lot': 'recSTOCKLOT1', ...NO } });
   await own.ctx.plOnDelivered('recLOT1');
   assert.deepStrictEqual(own.toasts, ['warn: Παλέτες αποθήκης #312 (33p): χωρίς συνεργάτη — καταχώρησέ τις στο Ισοζύγιο']);
-  const fail = world({ id: 'recORD1', fields: { 'Pallet Exchange': true, Client: ['recCLIA'] } }, { rows: [], failPost: { times: 1 } });
-  await fail.ctx.plOnDelivered('recORD1');
+  // a feeder failure: since 108 the browser's only Delivered write is the lot intake
+  const fail = world({ id: 'recLOT1', fields: { ...LOT_P, ...NO } }, { rows: [], failPost: { times: 1, lands: false } });
+  await fail.ctx.plOnDelivered('recLOT1');
   assert.strictEqual(fail.toasts.length, 1, JSON.stringify(fail.toasts));
   assert.deepStrictEqual([own.durations[0], fail.durations[0]], [PALLET_TOAST_MS, PALLET_TOAST_MS], 'one weight for one instruction');
 });

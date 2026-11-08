@@ -78,6 +78,15 @@ async function newPage(browser, role, opts = {}) {
     if (p === 'balances/clients/10') return json(route, { records: [{ location_name: 'Kaufland', balance: 10 }, { location_name: 'Obst Hof GmbH', balance: -17 }] });
     if (p.startsWith('balances')) return json(route, { records: balances(u.searchParams.get('type')) });
     if (p.startsWith('week-checks')) return json(route, { error: 'Not found' }, 404);
+    // Υ4: the 107 list (opts.missing: rows | 404) and «Χωρίς ανταλλαγή»; a write takes the stop off the list, as the view would
+    if (p === 'missing') return opts.missing === 404 ? json(route, { error: 'Not found' }, 404) : json(route, { records: opts.missing || [], truncated: false, cap: 2000 });
+    if (p === 'no-exchange' && m === 'POST') {
+      if (opts.noexRefuse) return json(route, { error: 'Η παραγγελία έχει πολλές στάσεις παράδοσης: η ανταλλαγή αλλάζει από τον δρομολογητή στην παραγγελία.', code: 'multi' }, 422);
+      const del = MOVES.filter(x => x.order_id === body.order_id && x.status === 'pending').map(x => x.id);
+      MOVES = MOVES.filter(x => !del.includes(x.id));
+      opts.missing = (opts.missing || []).filter(x => x.order_id !== body.order_id);
+      return json(route, { record: { order_id: body.order_id, deleted: del, confirmed_kept: [] } });
+    }
     const hm = p.match(/^movements\/(\d+)\/history$/);
     if (hm) {
       if (opts.history === 'fail') return json(route, { error: 'boom' }, 500);
@@ -91,7 +100,9 @@ async function newPage(browser, role, opts = {}) {
     }
     if (p === 'movements' && m === 'POST') {
       const rec = Object.assign({ id: nextId++, code: 'PM-' + nextId, status: body.confirm ? 'confirmed' : 'pending' }, body);
-      MOVES.push(rec); return json(route, { record: rec });
+      MOVES.push(rec);
+      if (Array.isArray(opts.missing)) opts.missing = opts.missing.filter(x => x.order_stop_id !== body.order_stop_id);
+      return json(route, { record: rec });
     }
     const mm = p.match(/^movements\/(\d+)(?:\/(confirm|reverse))?$/);
     if (mm) {
@@ -379,10 +390,94 @@ async function runRoles(browser) {
   await page.close();
 }
 
+const MISS = () => [
+  { order_stop_id: 901, order_id: 1243, client_id: 10, client_name: 'Berger Obst KG', location_id: 800, location_name: 'Kaufland', location_city: 'Plovdiv', location_country: 'BG', pallets: 16, delivered_on: iso(-9), unloading_stops: 1, has_nat_leg: false },
+  { order_stop_id: 902, order_id: 1244, client_id: 11, client_name: 'Nordfrisch GmbH', location_id: 700, location_name: 'Zeeland Coldstore', location_city: 'Vlissingen', location_country: 'NL', pallets: 5, delivered_on: iso(-4), unloading_stops: 2, has_nat_leg: false },
+  { order_stop_id: 903, order_id: 1244, client_id: 11, client_name: 'Nordfrisch GmbH', location_id: 701, location_name: 'Lidl', location_city: 'Graz', location_country: 'AT', pallets: 4, delivered_on: iso(-4), unloading_stops: 2, has_nat_leg: false }];
+async function runMissing(browser) {
+  console.log('\n— Υ4: «Λείπει παράδοση» (N02), «Συμπλήρωση» (N13), «Χωρίς ανταλλαγή» (N13c), ρόλοι (N02m)');
+  seed();
+  let opts = { missing: MISS() };
+  let page = await newPage(browser, 'accountant', opts);
+  await open(page);
+  ok(/Λείπει παράδοση\s*3/.test(await page.locator('.plv-need').innerText()), '«Θέλουν δράση»: «Λείπει παράδοση 3»');
+  await page.evaluate(() => plvAct('missing'));
+  await page.waitForTimeout(150);
+  ok(/3 στάσεις σε 2 παραγγελίες/.test(await page.locator('#plvCount').innerText()), 'counter «3 στάσεις σε 2 παραγγελίες»');
+  const b = await body(page);
+  ok(/έχει 2 στάσεις παράδοσης/.test(b) && (b.match(/έχει 2 στάσεις παράδοσης/g) || []).length === 1, 'the reason line, once per order (N02)');
+  ok(await page.locator('tr[data-stop="902"] button', { hasText: 'Χωρίς ανταλλαγή' }).isDisabled(), '«Χωρίς ανταλλαγή» disabled with 2 delivery stops');
+  ok(!(await page.locator('tr[data-stop="901"] button', { hasText: 'Χωρίς ανταλλαγή' }).isDisabled()), '… enabled with one');
+  await shot(page, 'n02');
+  page._writes.length = 0;
+  await page.locator('tr[data-stop="901"] button', { hasText: 'Συμπλήρωση' }).click();
+  await page.waitForSelector('.plv-shell #plvMfTaken');
+  ok(await page.locator('#plvMfGo').isDisabled(), 'Καταχώρηση locked while the numbers are empty (none filled for her)');
+  await page.fill('#plvMfTaken', '6');
+  await page.fill('#plvMfGiven', '16');
+  ok(!(await page.locator('#plvMfGo').isDisabled()) && /Μετά την καταχώρηση/.test(await page.locator('.plv-shell').innerText()), 'both typed → enabled, «Μετά την καταχώρηση»');
+  await shot(page, 'n13');
+  await page.locator('#plvMfGo').click();
+  await page.waitForTimeout(800);
+  const w = page._writes.find(x => x.m === 'POST' && x.p === 'movements');
+  ok(w && w.body.event_type === 'DELIVERY' && w.body.taken === 6 && w.body.given === 16 && w.body.order_stop_id === 901 && w.body.order_id === 1243
+    && w.body.client_id === 10 && w.body.location_id === 800 && w.body.confirm === true && w.body.movement_date === iso(-9), 'POST movements {DELIVERY 6/16, stop 901, order 1243, confirm} — ' + JSON.stringify(w && w.body));
+  ok(/Λείπει παράδοση\s*2/.test(await page.locator('.plv-need').innerText()), 'the stop left the list (2)');
+  await page.close();
+  // «Χωρίς ανταλλαγή»: what goes (the pending loading PM-3 of #1243), the gate line, reason required, the act
+  seed(); opts = { missing: MISS() };
+  page = await newPage(browser, 'accountant', opts);
+  await open(page);
+  await page.evaluate(() => plvAct('missing'));
+  await page.locator('tr[data-stop="901"] button', { hasText: 'Χωρίς ανταλλαγή' }).click();
+  await page.waitForSelector('.plv-shell #plvNxReason');
+  const nx = await page.locator('.plv-shell').innerText();
+  ok(/Φόρτωση · .* · πήραμε 8/.test(nx) && /ανοίγει για τιμολόγηση χωρίς δελτίο παλετών/.test(nx), 'N13c: the pending loading that goes + «ανοίγει για τιμολόγηση»');
+  ok(await page.locator('#plvNxGo').isDisabled(), 'locked until a reason');
+  await page.fill('#plvNxReason', 'ο πελάτης δεν κάνει ανταλλαγή');
+  await shot(page, 'n13c');
+  page._writes.length = 0;
+  await page.locator('#plvNxGo').click();
+  await page.waitForTimeout(800);
+  const nw = page._writes.find(x => x.p === 'no-exchange');
+  ok(nw && nw.body.order_id === 1243 && nw.body.order_stop_id === 901 && nw.body.reason === 'ο πελάτης δεν κάνει ανταλλαγή' && Object.keys(nw.body).length === 3, 'POST no-exchange {order_id, order_stop_id, reason} — ' + JSON.stringify(nw && nw.body));
+  ok(!MOVES.some(m => m.id === 3) && /Λείπει παράδοση\s*2/.test(await page.locator('.plv-need').innerText()), 'table (mock): the pending loading gone, the stop off the list');
+  await page.close();
+  seed();
+  page = await newPage(browser, 'owner', { missing: MISS(), noexRefuse: true, expectFail: true });
+  await open(page);
+  await page.evaluate(() => plvAct('missing'));
+  await page.locator('tr[data-stop="901"] button', { hasText: 'Χωρίς ανταλλαγή' }).click();
+  await page.fill('#plvNxReason', 'δοκιμή άρνησης');
+  await page.locator('#plvNxGo').click();
+  await page.waitForSelector('.plv-shell .plv-err', { timeout: 5000 });
+  ok(/δεν γράφτηκε: Η παραγγελία έχει πολλές στάσεις παράδοσης/.test(await page.locator('.plv-shell .plv-err').innerText()), 'a refusal is said in the panel, in Greek');
+  await page.close();
+  // roles: management reads without buttons (N02m); a dispatcher does not see the list; 404 hides it
+  seed();
+  page = await newPage(browser, 'management', { missing: MISS() });
+  await open(page);
+  await page.evaluate(() => plvAct('missing'));
+  await page.waitForTimeout(150);
+  ok(await page.locator('#plvBody tr[data-stop]').count() === 3 && await page.locator('#plvBody .plv-go').count() === 0 && /Μόνο ανάγνωση για τον ρόλο σου/.test(await body(page)), 'management: the list, no buttons (N02m)');
+  await page.close();
+  seed();
+  page = await newPage(browser, 'dispatcher', { missing: MISS() });
+  await open(page);
+  ok(!/Λείπει παράδοση/.test(await page.locator('.plv-need').innerText()), 'dispatcher: no «Λείπει παράδοση» and no counter');
+  ok(!page._writes.length, 'nothing written by opening the page');
+  await page.close();
+  seed();
+  page = await newPage(browser, 'accountant', { missing: 404, expectFail: true });
+  await open(page);
+  ok(!/Λείπει παράδοση/.test(await page.locator('.plv-need').innerText()), 'route not live (404): no entry at all, never a dead one');
+  await page.close();
+}
+
 (async () => {
   console.log('Στόχος: ' + BASE_URL);
   const browser = await chromium.launch();
-  try { await runAction(browser); await runConfirmFail(browser); await runSched(browser); await runViews(browser); await runPanel(browser); await runNew(browser); await runRoles(browser); }
+  try { await runAction(browser); await runConfirmFail(browser); await runSched(browser); await runViews(browser); await runPanel(browser); await runNew(browser); await runRoles(browser); await runMissing(browser); }
   catch (e) { failed++; console.log('  ✗ ΚΑΤΑΡΡΕΥΣΗ: ' + (e && e.stack || e)); }
   finally { await browser.close(); }
   console.log(`\n${passed}/${passed + failed} assertions · screenshots → ${SHOTS}`);

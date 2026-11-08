@@ -181,11 +181,10 @@ async function plOnDelivered(orderId) {
     // Its own label (critic-1 R2-8): «απέτυχε εγγραφές παράδοσης» read as a
     // failed CLIENT delivery, for a warehouse intake.
     if (OrdersStock.isLot(rec.fields)) return _plSafe('κίνηση παλετών αποθήκης', () => _plLotIntake(rec, stops, orderId));
-    const clientRec = _plClientRec(rec.fields);
-    for (const s of stops) {
-      if (s.fields[F.STOP_TYPE] !== 'Unloading') continue;
-      await _plStopDelivery(s, clientRec, orderId, _plToday());
-    }
+    // The client DELIVERY is written by the base since 108 (pl_delivery_from_order, owner 27/10 answer 4a): on every
+    // path into «Delivered with exchange», in the same transaction as the save, once per stop. A second writer here
+    // would race it on pl_mov_stop_once and could only fail; the browser keeps the lot intake above, which is not a
+    // client delivery. A delivery the base could not write (no client) stays in «Λείπει παράδοση».
   });
 }
 
