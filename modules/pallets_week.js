@@ -534,10 +534,13 @@ const PalletsWeek = (() => {
     if (!S.data || S.data.week !== S.week) { root.innerHTML = '<div class="plv-empty">Φόρτωση εβδομάδας…</div>'; return; }
     const t = weekStats(S.week);
     if (!S.panel) S.colOff = null;   // the column's × lasts for the panel it closed
+    // the column lives in root and the line below rebuilds root: keep where it was scrolled (a confirm or an edit
+    // in the panel must not throw a long route back to its top)
+    const rdBody = root.querySelector(':scope > .rdc [data-rdc-body]'), rdTop = rdBody ? rdBody.scrollTop : 0;
     root.innerHTML = `${_PLW_STYLE}<div class="plw">${stripHtml()}${summaryHtml(t)}${changesHtml()}${tableHtml()}${othersHtml()}${statementHtml()}${driversHtml()}
       <div class="plw-foot">Π = πήραμε · Δ = δώσαμε · ◦ γκρι = εκκρεμής, δεν μετρά · 0 αχνό = γνωστό μηδέν · +◦N κάτω από τιμή = το εκκρεμές μέρος · −N κάτω από το Π = δεν γύρισαν N · ✓ = ανταλλαγή ολοκληρώθηκε · + στα υπόλοιπα = μας χρωστά · Τέλος εβδ. = όπως φαίνεται σήμερα</div>
       </div><div class="owv-docs hidden" id="plwDocs" role="dialog" aria-label="Έγγραφα ανάθεσης"></div>${panelHtml()}`;
-    placeColumn();
+    placeColumn(rdTop);
     OC().whenDocs(() => { if (S.root && S.root.isConnected) draw(); });
     // Enter → the next pending of the week (design N27): the first pending cell in the order the week shows them.
     if (S._next) {
@@ -602,7 +605,7 @@ const PalletsWeek = (() => {
   // the column's own ×, the section stays in the panel as before. Same read and same failure lines (routeHtml).
   const RC = () => (typeof RouteDiagramColumn !== 'undefined' ? RouteDiagramColumn : null);
   function colOn() { const rc = RC(); return !!(rc && S.panel && S.colOff !== S.panel && rc.wide()); }
-  function placeColumn() {
+  function placeColumn(top) {
     const rc = RC(), root = S.root;
     if (!rc || !root) return;
     rc.onWideChange('pallets-week', () => { if (S.root && S.root.isConnected && S.panel) draw(); });
@@ -611,8 +614,10 @@ const PalletsWeek = (() => {
     const rec = l.rec, row = S.rows[+S.panel.split('.')[0]], st = S.route.get(rec.id);
     // the head: the week row's vehicle (as the row shows it), else the order's own fields
     const v = OWV().vehicleOf((row && row.vehicleRec) || rec);
-    rc.open(root, { anchor: panel, z: 50, body: routeHtml(rec), sub: rc.sub(v.kind === 'none' ? [] : [v.plate, v.who], (st && st.stops) || []),
+    const col = rc.open(root, { anchor: panel, z: 50, body: routeHtml(rec), sub: rc.sub(v.kind === 'none' ? [] : [v.plate, v.who], (st && st.stops) || []),
       onClose: () => { S.colOff = S.panel; draw(); } });
+    const b = col && col.querySelector('[data-rdc-body]');
+    if (b && top) b.scrollTop = top;
   }
 
   // ── the order panel (design N28): the order's movements with the same quick entry ──
