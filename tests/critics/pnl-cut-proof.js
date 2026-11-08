@@ -62,7 +62,7 @@ async function open(browser, pnlBody, shot) {
     ok(!r.S.errors.length, 'no page errors'); }
   console.log('\n── old Worker, 300 without «truncated»');
   { const r = await open(browser, { records: list(300) }, 'pnl-cut-04-old-300.png');
-    ok(/φορτώθηκαν 300 δρομολόγια\. /.test(r.cut || ''), 'banner says: «' + r.cut + '»'); }
+    ok(/Φορτώθηκαν μόνο 300 δρομολόγια: ο Worker που τρέχει κόβει στα 300/.test(r.cut || ''), 'banner says: «' + r.cut + '»'); }
   console.log('\n── old Worker, 198 without «truncated» (today, before the deploy)');
   { const r = await open(browser, { records: list(198) });
     ok(r.cut === null, 'no cut note'); }

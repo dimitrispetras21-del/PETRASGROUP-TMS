@@ -1,4 +1,4 @@
-// GET /costs/pnl reads EVERY RT (owner 8/11: «θέλω να έχω πρόσβαση σε όλα»). It was one read of «limit 300» with
+// GET /costs/pnl reads EVERY RT (file was costs-pnl-cap.test.mjs until the owner dropped the cap, 8/11) (owner 8/11: «θέλω να έχω πρόσβαση σε όλα»). It was one read of «limit 300» with
 // nothing said: 248 RTs on 8/11, 18 a week, so the P&L would have lost RTs from the list and the totals in silence.
 // The view is read in keyset pages (id.desc, id < last) to the exact count, which comes from ct_round_trips (an
 // index read), never from the view. Fewer rows than the count = truncated, said, never a short list in silence.
@@ -56,8 +56,11 @@ beforeEach(() => {
     if (name === 'ct_round_trips') {
       assert.equal(sp.get('status'), 'neq.cancelled', 'the count uses the view\'s own WHERE');
       assert.equal(prefer, 'count=exact');
-      const out = live.slice(0, Number(sp.get('limit'))).map((r) => ({ id: r.id }));
-      if (!noCount) headers['content-range'] = badRange ?? (out.length ? `0-${out.length - 1}/${live.length}` : `*/${live.length}`);
+      assert.equal(sp.get('order'), 'id.desc', 'the count read also takes the highest id');
+      // an RT made «after the count» (afterCount) is not in the count's snapshot
+      const counted = live.filter((r) => !r.afterCount).sort((a, b) => b.id - a.id);
+      const out = counted.slice(0, Number(sp.get('limit'))).map((r) => ({ id: r.id }));
+      if (!noCount) headers['content-range'] = badRange ?? (out.length ? `0-${out.length - 1}/${counted.length}` : `*/${counted.length}`);
       return new Response(JSON.stringify(out), { status: out.length ? 206 : 200, headers });
     }
     assert.equal(name, 'ct_v_rt_pnl');
@@ -142,6 +145,31 @@ test('an RT created while the pages are read (count taken before): all read, not
   assert.ok(r.json.records.length >= 1500);
   for (let id = 1; id <= 1500; id++) assert.ok(r.json.records.some((x) => x.id === id), 'missing ' + id);
   assert.equal(r.json.truncated, false);
+});
+
+test('db-max-rows 500 and an RT created after the count, before page 1: never a silent short list', async () => {
+  MAX_ROWS = 500;
+  rts = mk(500).concat([{ id: 501, status: 'closed', scope: 'INTL', truck_id: 1, date_start: '2026-10-15', afterCount: true }]);
+  const r = await get();
+  assert.equal(r.json.total, 500);
+  assert.equal(r.json.records.length, 500);
+  for (let id = 1; id <= 500; id++) assert.ok(r.json.records.some((x) => x.id === id), 'missing ' + id);
+  assert.equal(r.json.records.some((x) => x.id === 501), false, 'newer than the count: the next load shows it');
+  assert.equal(r.json.truncated, false);
+});
+
+test('a count without its highest id: a loud error', async () => {
+  rts = mk(10);
+  const real = globalThis.fetch;
+  const fake = globalThis.fetch;
+  globalThis.fetch = async (u, init) => {
+    const res = await fake(u, init);
+    if (!String(u).includes('/ct_round_trips?')) return res;
+    return new Response('[]', { status: 206, headers: { 'content-range': '0-0/10' } });
+  };
+  const r = await get();
+  globalThis.fetch = real;
+  assert.ok(r.status >= 500, 'status ' + r.status);
 });
 
 test('an RT cancelled between the count and the read: truncated (loud), never hidden', async () => {

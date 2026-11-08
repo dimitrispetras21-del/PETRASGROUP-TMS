@@ -405,8 +405,11 @@ function ctPnlCut(res) {
 }
 function ctPnlCutNote(cut) {
   if (!cut) return '';
-  const of = cut.total != null ? ' από ' + cut.total : '';
-  return `<div class="ct-note ct-nwarn" id="ctPnlCut">${icon('warning', 13)} Η ανάγνωση δεν ολοκληρώθηκε: φορτώθηκαν ${cut.n}${of} δρομολόγια. Τα υπόλοιπα λείπουν από τη λίστα ΚΑΙ από τα σύνολα (έσοδα, κόστη, καθαρό). Δοκίμασε «Ανανέωση».</div>`;
+  // The old Worker's cut (no total) is a fixed limit a reload cannot clear: say that, not «try again».
+  const txt = cut.total != null
+    ? `Η ανάγνωση δεν ολοκληρώθηκε: φορτώθηκαν ${cut.n} από ${cut.total} δρομολόγια. Τα υπόλοιπα λείπουν από τη λίστα ΚΑΙ από τα σύνολα (έσοδα, κόστη, καθαρό). Δοκίμασε «Ανανέωση».`
+    : `Φορτώθηκαν μόνο ${cut.n} δρομολόγια: ο Worker που τρέχει κόβει στα 300. Τα υπόλοιπα λείπουν από τη λίστα ΚΑΙ από τα σύνολα (έσοδα, κόστη, καθαρό).`;
+  return `<div class="ct-note ct-nwarn" id="ctPnlCut">${icon('warning', 13)} ${txt}</div>`;
 }
 function ctErrorCard() {
   return `<div class="ct-empty ct-fail">Τα /costs/* δεν απάντησαν: <b>${ctEsc(_ct.loadError)}</b><br>

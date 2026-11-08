@@ -5256,9 +5256,11 @@ async function handleCosts(request, url, origin, env) {
       // PNL_PAGE = PostgREST's db-max-rows (1000), so one read until 1000 RTs - as before. Each later page recomputes
       // the view (the filter is not pushed into its aggregates): measured 8/11 a whole read of the view took ~0.25 s
       // for 248 RTs, so pages cost ~that much each past 1000. A page shorter than asked is the end only once the count
-      // is reached (a lower db-max-rows shortens every page); an empty page always ends. Fewer rows than the count
-      // (an RT the view's joins drop, an RT cancelled between the reads, PNL_MAX_PAGES) is truncated: said on the
-      // banner and logged, never a silent short list (principle 1).
+      // is reached (a lower db-max-rows shortens every page); an empty page always ends. The count read also takes the
+      // highest id (ct_round_trips.id is GENERATED ALWAYS AS IDENTITY, in creation order): rows above it were created
+      // after the count and are left for the next load, so a new RT can never make the rows reach the count before
+      // the oldest RT is read. Fewer rows than the count (an RT the view's joins drop, an RT cancelled between the
+      // reads, PNL_MAX_PAGES) is truncated: said on the banner and logged, never a silent short list (principle 1).
       // 1e3, not 1000: esbuild (wrangler) rewrites 1000 as 1e3, and the guard marker must read the same in the
       // source, the dry-run bundle and the CF download
       const PNL_PAGE = 1e3;
@@ -5271,17 +5273,21 @@ async function handleCosts(request, url, origin, env) {
       if (q.get("truck_id")) filters.push(["truck_id", `eq.${q.get("truck_id")}`]);
       const page = (last) => new URLSearchParams([["select", "*"], ["order", "id.desc"], ["limit", String(PNL_PAGE)],
         ...filters, ...(last == null ? [] : [["id", `lt.${last}`]])]);
-      const countParams = new URLSearchParams([["select", "id"], ["status", "neq.cancelled"], ["limit", "1"], ...filters]);
-      const [first, { contentRange }] = await Promise.all([
+      const countParams = new URLSearchParams([["select", "id"], ["status", "neq.cancelled"], ["order", "id.desc"],
+        ["limit", "1"], ...filters]);
+      const [first, counted] = await Promise.all([
         dbSelectRaw(env, "ct_v_rt_pnl", page(null)),
         dbSelectRaw(env, "ct_round_trips", countParams, { Prefer: "count=exact" })
       ]);
-      const total = dbExactCount(contentRange, "ct_round_trips");
-      const rows = [...first.rows];
-      let got = first.rows.length, pages = 1;
+      const total = dbExactCount(counted.contentRange, "ct_round_trips");
+      const maxId = total > 0 ? Number(counted.rows[0] && counted.rows[0].id) : -Infinity;
+      if (Number.isNaN(maxId)) throw new Error(`ct_round_trips: count ${total} without its highest id`);
+      const rows = first.rows.filter((r) => r.id <= maxId);
+      let got = first.rows.length, last = got ? first.rows[got - 1].id : null, pages = 1;
       while (got > 0 && !(got < PNL_PAGE && rows.length >= total) && pages < PNL_MAX_PAGES) {
-        const { rows: next } = await dbSelectRaw(env, "ct_v_rt_pnl", page(rows[rows.length - 1].id));
-        rows.push(...next); got = next.length; pages++;
+        const { rows: next } = await dbSelectRaw(env, "ct_v_rt_pnl", page(last));
+        rows.push(...next.filter((r) => r.id <= maxId));
+        got = next.length; last = got ? next[got - 1].id : last; pages++;
       }
       const truncated = rows.length < total;
       if (truncated) console.error(`[costs/pnl] read ${rows.length} of ${total} RTs in ${pages} page(s)`);
