@@ -72,7 +72,11 @@ test('F4α-T11: amounts appear only when the key is in the consequence; «γρα
   assert.strictEqual(L.consequenceLine({ kind: 'costs', rt_id: 101, pay_source: 'DKV', count: 1, amount: 186.4 }).text, '1 γραμμή DKV · 186,40 €');
   assert.strictEqual(L.consequenceLine({ kind: 'invoiced', nat_order_id: 3111 }).text, 'τιμολογήθηκε: το ERP κάνει το πιστωτικό');
   assert.strictEqual(L.consequenceLine({ kind: 'invoiced', nat_order_id: 3111, invoice_number: 'T-77' }).text, 'τιμολογήθηκε (T-77): το ERP κάνει το πιστωτικό');
-  assert.strictEqual(L.consequenceLine({ kind: 'rt_cancelled', rt_id: 101, code: 'RT-T101' }).text, 'το δρομολόγιο RT-T101 θα σβηστεί');
+  // Sotiris report 8/11 (item 12): never the RT code; the board's name when the page gives one (setNamer)
+  assert.strictEqual(L.consequenceLine({ kind: 'rt_cancelled', rt_id: 101, code: 'RT-T101' }).text, 'το δρομολόγιο θα σβηστεί');
+  L.setNamer((id) => (id === 101 ? 'ΚΖΗ 2108 · Παπαδόπουλος' : null));
+  assert.strictEqual(L.consequenceLine({ kind: 'rt_cancelled', rt_id: 101, code: 'RT-T101' }).text, 'το δρομολόγιο · ΚΖΗ 2108 · Παπαδόπουλος · θα σβηστεί');
+  L.setNamer(null);
   assert.strictEqual(L.warningLine({ code: 'over_33', rt_id: 101, side: 'KATHODOS', pallets: 54 }).text, 'Υπέρβαση 21π στην ΚΑΘΟΔΟ · 54/33');
   // after a save over_33 is not a line any more (owner 1/11, WN5Act.savedWarnings): a saved_on key changes nothing
   assert.strictEqual(L.warningLine({ code: 'over_33', rt_id: 101, side: 'KATHODOS', pallets: 54, saved_on: 'TST-2106' }).text, 'Υπέρβαση 21π στην ΚΑΘΟΔΟ · 54/33');
@@ -97,16 +101,24 @@ test('F4α-T11: no line says «πληρωμένη» (S-85)', () => {
 test('F5 + live 28/10: piece_on_rt names the cycle and whose load it is — never an internal stop id; no money key', () => {
   // live 28/10: «το φορτίο της στάσης #6101» named an order_stops id nobody can read (NO-GO on main)
   const vs = L.consequenceLine({ kind: 'piece_on_rt', leg_id: 9, piece_id: 4101, rt_id: 201, code: 'RT-T201', order_stop_id: 6101 });
-  assert.deepStrictEqual(vs, { text: 'βγαίνει από το RT-T201 το φορτίο αυτής της παραγγελίας', unknown: false });
+  assert.deepStrictEqual(vs, { text: 'βγαίνει από το φορτηγό το φορτίο αυτής της παραγγελίας', unknown: false });
   assert.ok(!/#6101|στάσης #/.test(vs.text), vs.text);
   // a national order made from the deleted one: said, never by the base's internal id
   const nat = L.consequenceLine({ kind: 'piece_on_rt', rt_id: 201, code: 'RT-T201', order_stop_id: null, nat_order_id: 5231 }).text;
-  assert.strictEqual(nat, 'βγαίνει από το RT-T201 το φορτίο της εθνικής που βγήκε από αυτή την παραγγελία');
+  assert.strictEqual(nat, 'βγαίνει από το φορτηγό το φορτίο της εθνικής που βγήκε από αυτή την παραγγελία');
   assert.ok(!/5231/.test(nat), nat);
   // a place, only when the base sends one (proposal in the PR of 28/10)
   assert.strictEqual(L.consequenceLine({ kind: 'piece_on_rt', code: 'RT-T201', order_stop_id: 6101, place: 'LARISA TEST' }).text,
-    'βγαίνει από το RT-T201 το φορτίο για LARISA TEST');
-  assert.strictEqual(L.consequenceLine({ kind: 'piece_on_rt', rt_id: 201 }).text, 'βγαίνει από το — το φορτίο αυτής της παραγγελίας');
+    'βγαίνει από το φορτηγό το φορτίο για LARISA TEST');
+  assert.strictEqual(L.consequenceLine({ kind: 'piece_on_rt', rt_id: 201 }).text, 'βγαίνει από το φορτηγό το φορτίο αυτής της παραγγελίας');
+  // with the board's name (setNamer, wn5_actions.js): the truck, never the code (item 12, 8/11)
+  L.setNamer((id) => (id === 201 ? 'IAZ 8302 · Μισιρλής' : null));
+  assert.strictEqual(L.consequenceLine({ kind: 'piece_on_rt', rt_id: 201, code: 'RT-T201', order_stop_id: 6101 }).text, 'βγαίνει από το IAZ 8302 · Μισιρλής το φορτίο αυτής της παραγγελίας');
+  L.setNamer(null);
+  // no line of any code or kind shows an RT code
+  const full = { rt_id: 1, code: 'RT-1', rt_code: 'RT-1', detail: 'RT-2', reason: 'truck_busy', side: 'ANODOS', pallets: 40, first_hub_day: '2026-10-12' };
+  for (const t of [...Object.keys(L.CONSEQUENCE).map((k) => L.consequenceLine(Object.assign({ kind: k }, full)).text),
+    ...Object.keys(L.WARNING).map((k) => L.warningLine(Object.assign({}, full, { code: k })).text)]) assert.ok(!/RT-\d/.test(t), t);
 });
 
 test('F4α-T11: unknown kind / code → {unknown:true}, never dropped (S-52, Ε-21)', () => {
@@ -251,14 +263,15 @@ test('F4α-T28: a payroll line names the driver\'s segment when 073 sends segmen
 test('081: stop_kept says why the truck stop stayed - never «0 άλλα σημεία», never a code', () => {
   const t = (w) => L.warningLine(Object.assign({ code: 'stop_kept', rt_code: 'RT-1' }, w));
   assert.deepStrictEqual(t({ reason: 'shared', others: [{ shipment_id: 2 }] }),
-    { text: 'η στάση του φορτηγού στο RT-1 δεν άλλαξε: εξυπηρετεί και 1 άλλο σημείο · «Αλλαγή ώρας στάσης ›» την αλλάζει για όλα', unknown: false });
+    { text: 'η στάση του φορτηγού δεν άλλαξε: εξυπηρετεί και 1 άλλο σημείο · «Αλλαγή ώρας στάσης ›» την αλλάζει για όλα', unknown: false });
   assert.match(t({ reason: 'shared', others: [{}, {}] }).text, /εξυπηρετεί και 2 άλλα σημεία/);
   assert.match(t({ reason: 'windows_differ', others: [] }).text, /ζητούν διαφορετική ώρα/);
   assert.match(t({ reason: 'executed' }).text, /έχει ήδη εκτελεστεί$/);
   assert.match(t({ reason: 'handover' }).text, /αλλαγή οχήματος/);
-  assert.strictEqual(t({ reason: 'truck_busy', detail: 'RT-1/RT-2' }).text, 'η στάση του φορτηγού στο RT-1 δεν άλλαξε: το φορτηγό είναι απασχολημένο τότε (RT-1/RT-2)');
+  // item 12 (8/11): the cycle codes of the detail are not shown either
+  assert.strictEqual(t({ reason: 'truck_busy', detail: 'RT-1/RT-2' }).text, 'η στάση του φορτηγού δεν άλλαξε: το φορτηγό είναι απασχολημένο τότε');
   assert.match(t({ reason: 'stop_order' }).text, /σειρά των στάσεων/);
-  assert.strictEqual(t({ reason: 'truck_busy', detail: 'rt_v2_truck_once' }).text, 'η στάση του φορτηγού στο RT-1 δεν άλλαξε: το φορτηγό είναι απασχολημένο τότε');
+  assert.strictEqual(t({ reason: 'truck_busy', detail: 'rt_v2_truck_once' }).text, 'η στάση του φορτηγού δεν άλλαξε: το φορτηγό είναι απασχολημένο τότε');
   assert.match(t({ reason: 'some_new_rule' }).text, /η μετακίνηση δεν επιτρέπεται εδώ/);
   for (const r of ['shared', 'windows_differ', 'executed', 'handover', 'truck_busy', 'driver_busy', 'stop_order', 'payroll_locked', 'x_rule'])
     assert.ok(!/\b0 άλλα|stop_kept|x_rule|undefined/.test(t({ reason: r, others: [] }).text), r);

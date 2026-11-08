@@ -850,5 +850,83 @@ async function fit({ browser, origin, ok, scn, shots }) {
   }
 }
 
-K.run({ scenarios: { own_new, own_join, only_hours, partner, accept_busy, vehicle, rate2, handover, veroia_list, veroia_new, f61, f54, veroia_later, pr3b, veroia_busy, veroia_fixes, busy3, fit }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],
+// Sotiris report 8/11, item 1: a VS piece left at Veroia past its delivery day (4203: due Mon 12/10, overdue) goes on a
+// new load of today Tue 13/10. Before: its delivery was sent on 12/10, before the Veroia pickup of 13/10, and the base
+// refused it (093 stop_order). Now its delivery goes on the pickup day; the international is not touched.
+async function sotiris_late({ browser, origin, ok, scn }) {
+  const { page, S } = await K.openApp(browser, origin, { board: hubBoard(), plan: { 'POST /plan/legs': async () => OK('plan_put_pieces', { rt_id: 903 }) } });
+  await page.click('#wn5-hub [data-hub="open"]');
+  await page.click('#wn5-hub .wn5-hub-it[data-piece="4203"] .wn5-hub-ck');
+  ok(scn, 'the Veroia day is today Tue 13/10 (a late row leaves today at the earliest)', (await page.evaluate(() => document.querySelector('#wn5-hub .wn5-nf-day').value)) === '2026-10-13');
+  await page.click('#wn5-hub .wn5-nf-pick');
+  await page.waitForSelector(DLG, { timeout: 4000 });
+  await pickIn(page, 'tk', '2106', 'TST-2106');
+  await pickIn(page, 'tl', '5104', 'TRL-5104');
+  await pickIn(page, 'dr', 'Test 03', 'Driver Test 03');
+  const f0 = await dlgText(page);
+  ok(scn, 'the form (header and delivery row) says the day it sends: Τρί 13/10, never the passed Δευ 12/10', /Παράδοση · [^·]+ · Τρί 13\/10/.test(f0) && !/Δευ 12\/10/.test(f0), f0);
+  await page.click(`${DLG} [data-act="save"]`);
+  await page.waitForTimeout(150);
+  await page.click('#wn5-hub [data-act="nf-create"]');
+  await page.waitForTimeout(600);
+  const w = saves(S);
+  const st = (w[0] && w[0].body && w[0].body.stops) || [];
+  const drop = st.find((x) => x.location_id === 2) || {};
+  const hub = st.find((x) => x.location_id === 1) || {};
+  ok(scn, 'ONE write; the Veroia pickup Tue 13/10 and the delivery Tue 13/10 whole day (not Mon 12/10)', w.length === 1 && /^2026-10-13/.test(hub.planned_from || '')
+    && drop.planned_from === '2026-10-13T00:00:00+03:00' && drop.planned_to === '2026-10-13T23:59:00+03:00', st);
+  ok(scn, 'no key the base does not know on a stop (late_from stays on the screen)', st.every((x) => Object.keys(x).every((k) => ['ref', 'stop_id', 'location_id', 'side', 'planned_from', 'planned_to'].includes(k))), st);
+  ok(scn, 'nothing written to the international (no orders / order_stops request)', !S.plan.some((x) => /orders|order_stops/.test(x.path)), S.plan.map((x) => x.path));
+  await page.context().close();
+}
+
+// Sotiris report 8/11, items 4 / 5 / 7: an own truck on an INTERNATIONAL trip those days (109 intl_trips) is not
+// «ελεύθερο»; a save without a driver is said in amber; the board takes no click while it is re-read after the save.
+async function sotiris_warn({ browser, origin, ok, scn }) {
+  const b = board({ intl_trips: [{ rt_id: 9001, truck_id: 13, truck: 'TST-2106', date_start: '2026-10-14', date_end: '2026-10-16' }] });
+  let n = 0;
+  const { page, S } = await K.openApp(browser, origin, { board: b, plan: {
+    'POST /plan/legs': async () => OK('plan_put_group', { rt_id: 901 }),
+    'GET /plan/board': async () => { n += 1; if (n > 1) await K.sleep(1200); return [200, b]; } } });
+  await openWaiting(page, 4101);
+  ok(scn, 'pick truck TST-2106 (on an international trip Wed–Fri)', await pickIn(page, 'tk', '2106', 'TST-2106'));
+  const tk = await field(page, 'tk');
+  ok(scn, 'item 4: the truck is «άλλο δρομολόγιο · διεθνές», never «✓ ελεύθερο»', /άλλο δρομολόγιο · διεθνές/.test(tk.av) && !/ελεύθερο/.test(tk.av), tk);
+  await pickIn(page, 'tl', '5102', 'TRL-5102');
+  let f = await foot(page);
+  ok(scn, 'items 4 + 5: amber beside the save — the international trip by name and «χωρίς οδηγό» — the save stays on', !f.off && /TST-2106 είναι σε άλλο δρομολόγιο/.test(f.miss) && /διεθνές/.test(f.miss) && /χωρίς οδηγό/.test(f.miss), f);
+  await pickIn(page, 'dr', 'Test 03', 'Driver Test 03');
+  f = await foot(page);
+  ok(scn, 'item 5: a driver picked — «χωρίς οδηγό» gone', !/χωρίς οδηγό/.test(f.miss), f);
+  await page.click(`${DLG} [data-act="save"]`);
+  await page.waitForTimeout(400);
+  const busy = await page.evaluate(() => { const c = document.getElementById('content'); const r = document.querySelector('#content .wn5-row'); return { cls: c.classList.contains('wn5-reloading'), aria: c.getAttribute('aria-busy'), pe: r ? getComputedStyle(document.querySelector('#content > .wn5')).pointerEvents : null }; });
+  ok(scn, 'item 7: while the board is re-read the old rows take no click (#content.wn5-reloading, aria-busy, pointer-events none)', busy.cls && busy.aria === 'true' && busy.pe === 'none', busy);
+  await page.waitForTimeout(1500);
+  const after = await page.evaluate(() => document.getElementById('content').classList.contains('wn5-reloading'));
+  ok(scn, 'item 7: the mark leaves once the re-read lands', !after && n >= 2, { after, reads: n });
+  await page.context().close();
+}
+
+// Sotiris report 8/11, item 8 on the board's dialogs: Esc over typed work asks once, the second Esc closes; untouched
+// = closes at once; nothing is written either way.
+async function sotiris_esc({ browser, origin, ok, scn }) {
+  const { page, S } = await K.openApp(browser, origin, { board: board() });
+  await openWaiting(page, 4101);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(100);
+  ok(scn, 'an untouched assignment form closes at the first Esc', !(await K.count(page, DLG)));
+  await openWaiting(page, 4101);
+  await pickIn(page, 'tk', '2106', 'TST-2106');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(100);
+  const ask = await page.evaluate((s) => { const a = document.querySelector(s + ' > .wn5-dlg-ask'); return a ? a.textContent : null; }, DLG);
+  ok(scn, 'typed: the first Esc keeps the form and says «Δεν αποθηκεύτηκε…»', (await K.count(page, DLG)) === 1 && /Δεν αποθηκεύτηκε/.test(ask || ''), ask);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(100);
+  ok(scn, 'the second Esc closes it, nothing written', !(await K.count(page, DLG)) && !saves(S).length, saves(S).map((x) => x.path));
+  await page.context().close();
+}
+
+K.run({ scenarios: { own_new, own_join, only_hours, partner, accept_busy, vehicle, rate2, handover, veroia_list, veroia_new, f61, f54, veroia_later, pr3b, veroia_busy, veroia_fixes, busy3, fit, sotiris_late, sotiris_warn, sotiris_esc }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],
   go: 'the assignment form (own new / join / only / hours / F39 / partner / vehicle / F51-F61 / F54 / F56 / 089 two fees), ✈ «Αλλαγή οχήματος…» and the Veroia board v2 «Νέο φορτίο» hold' });

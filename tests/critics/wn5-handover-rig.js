@@ -161,7 +161,7 @@ async function scnCard({ browser, origin, ok, scn }) {
     await page.evaluate(() => WN5Hand.cycleCard(101));
     await page.waitForSelector('.wi4-dlg[data-wn5="cycle"]', { timeout: 6000 }).catch(() => {});
     const t = await K.text(page, '.wi4-dlg[data-wn5="cycle"] .wi4-dlg-hd');
-    ok(scn, `${role}: «Κύκλος RT-T101 · … · 2 τμήματα»`, t.includes('Κύκλος RT-T101') && t.includes('2 τμήματα'), t);
+    ok(scn, `${role}: «Αλλαγή οχήματος · TST-2104 · Driver Test 01 · … · 2 τμήματα» (no RT code, item 12)`, t.includes('Αλλαγή οχήματος · TST-2104 · Driver Test 01') && t.includes('2 τμήματα') && !/RT-T/.test(t), t);
     const rows = await page.evaluate(() => [...document.querySelectorAll('.wi4-dlg[data-wn5="cycle"] .wn5h-seg')].map((r) => [r.dataset.label, getComputedStyle(r).clipPath, r.querySelectorAll('[data-act="fix"]').length, r.querySelectorAll('[data-act="remove"]').length]));
     ok(scn, `${role}: ΤΜΗΜΑΤΑ = ΑΡΧΙΚΟ + ΤΕΛΙΚΟ, «Διόρθωση» on both, «Αφαίρεση» on all but the first`, JSON.stringify(rows.map((r) => [r[0], r[2], r[3]])) === JSON.stringify([['initial', 1, 0], ['final', 1, 1]]), rows);
     ok(scn, `${role}: a straight line in the list, no slant (R-55)`, rows.every((r) => r[1] === 'none'), rows.map((r) => r[1]));
@@ -469,7 +469,7 @@ async function scnRemove({ browser, origin, ok, scn }) {
     what: [...document.querySelectorAll(`${D} .wn5-cons li[data-row="what"]`)].map((x) => x.textContent),
     tok: (document.querySelector(`${D} .wn5-dlg-b > p.wn5-tok:last-child`) || {}).textContent || '',
     verb: (document.querySelector(`${D} [data-act="confirm"].wn5-danger`) || {}).textContent || '' }), RDLG);
-  ok(scn, 'H4 title «Αφαίρεση αλλαγής · RT-T101 · Λαμία Τρί 03:00;»', h4.t === 'Αφαίρεση αλλαγής · RT-T101 · Λαμία Τρί 03:00;', h4.t);
+  ok(scn, 'H4 title «Αφαίρεση αλλαγής · TST-2104 · Driver Test 01 · Λαμία Τρί 03:00;» (item 12)', h4.t === 'Αφαίρεση αλλαγής · TST-2104 · Driver Test 01 · Λαμία Τρί 03:00;', h4.t);
   ok(scn, 'H4 «Τι θα γίνει»: segment out, previous vehicle again to the end, payroll, DKV without notice, loads stay',
     JSON.stringify(h4.what) === JSON.stringify(['ΤΕΛΙΚΟ (TST-2108 · Driver Test 02) → αφαιρείται', 'TST-2104 · Driver Test 01 → ξανά ως Τρί 22:00',
       'η μισθοδοσία του Driver Test 02 σβήνεται', 'DKV: οι 2 γραμμές μένουν χωρίς δρομολόγιο', 'φορτία και στάσεις δεν αλλάζουν']), h4.what);
@@ -565,7 +565,7 @@ async function scnClearSeg({ browser, origin, ok, scn }) {
   const g = await page.evaluate((D) => ({ t: (document.querySelector(`${D} .wi4-dlg-t`) || {}).textContent || '', body: (document.querySelector(`${D} .wn5-dlg-b`) || {}).textContent || '',
     what: [...document.querySelectorAll(`${D} .wn5-cons li[data-row="what"]`)].map((x) => x.textContent), tok: !!document.querySelector(`${D} p.wn5-tok`),
     card: !!document.querySelector('.wi4-dlg[data-wn5="cycle"]') }), D);
-  ok(scn, 'H6: the card gives way to the shared clear dialog «Καθαρισμός ανάθεσης · RT-T101;»', !g.card && g.t === 'Καθαρισμός ανάθεσης · RT-T101;', g.t);
+  ok(scn, 'H6: the card gives way to the shared clear dialog «Καθαρισμός ανάθεσης · TST-2104 · TRL-5102 · Driver Test 01;» (item 12)', !g.card && g.t === 'Καθαρισμός ανάθεσης · TST-2104 · TRL-5102 · Driver Test 01;', g.t);
   ok(scn, '«σβήνονται και τα 2 τμήματα (ΑΡΧΙΚΟ, ΤΕΛΙΚΟ)», «ο κύκλος μένει με ένα τμήμα χωρίς ανάθεση», 2 payroll lines, DKV notice, loads stay',
     JSON.stringify(g.what) === JSON.stringify(['σβήνονται και τα 2 τμήματα (ΑΡΧΙΚΟ, ΤΕΛΙΚΟ)', 'ο κύκλος μένει με ένα τμήμα χωρίς ανάθεση', 'οι 2 γραμμές μισθοδοσίας σβήνονται',
       'DKV: οι 2 γραμμές μένουν χωρίς δρομολόγιο → ειδοποίηση', 'φορτία και στάσεις δεν αλλάζουν']), g.what);

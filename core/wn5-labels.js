@@ -7,7 +7,8 @@
 // (plan_h_strip_amounts, 072:381). A line shows an amount ONLY when the key is present in the item — the screen never
 // checks a role (owner 23/10, decision 41; no role gate on screens, owner 10/10).
 // No line says «πληρωμένη» (decision 10, S-85): the base cannot know what was paid, so the list names the month.
-// Pure: no DOM, no clock. UMD like core/wi4-logic.js: require() in node tests, window.WN5Lab in the page.
+// Pure: no DOM, no clock — one piece of state only, the trip namer a page may set (setNamer, item 12 8/11): without it
+// every line is the same for every caller. UMD like core/wi4-logic.js: require() in node tests, window.WN5Lab in the page.
 (function (root) {
   'use strict';
   const SIDE_ACC = Object.freeze({ KATHODOS: 'ΚΑΘΟΔΟ', ANODOS: 'ΑΝΟΔΟ' });
@@ -17,6 +18,15 @@
   function pal(n) { const v = num(n); return v === null ? '—' : String(Math.round(v * 10) / 10).replace('.', ','); }
   // The month as Figma H4/H6 write it (approval 25/10, Σ8): «γραμμή μισθοδοσίας με ποσό (Οκτώβριος)».
   const MONTHS = Object.freeze(['Ιανουάριος', 'Φεβρουάριος', 'Μάρτιος', 'Απρίλιος', 'Μάιος', 'Ιούνιος', 'Ιούλιος', 'Αύγουστος', 'Σεπτέμβριος', 'Οκτώβριος', 'Νοέμβριος', 'Δεκέμβριος']);
+  // Sotiris report 8/11 (item 12), owner rule 31/10: a trip is never named by its RT code on the screen. The Worker
+  // names one by rt_id / code only; the page that holds the board gives the name (plate · driver, the partner) with
+  // setNamer(fn(rt_id, code) → text | null). Without a name the line says «το δρομολόγιο» / «το φορτηγό», never the code.
+  let _namer = null;
+  function rtName(id, code) {
+    try { const n = _namer ? _namer(id == null ? null : Number(id), code || null) : null; return n ? String(n) : null; }
+    catch (_) { return null; }
+  }
+  function setNamer(fn) { _namer = typeof fn === 'function' ? fn : null; }
   function month(m) { const x = /^(\d{4})-(\d{2})$/.exec(String(m || '')); return x && MONTHS[Number(x[2]) - 1] ? MONTHS[Number(x[2]) - 1] : '—'; }
   function day(d) { const x = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(d || '')); return x ? x[3] + '/' + x[2] : '—'; }
   function eur(n) {
@@ -50,7 +60,7 @@
       return 'Υπέρβαση ' + pal(w.pallets - c) + 'π στην ' + side(w.side) + ' · ' + pal(w.pallets) + '/' + c;
     },
     mixed_temp: (w) => 'Μεικτές θερμοκρασίες στην ' + side(w.side) + ' · διαφορά ' + pal(w.delta_c) + ' °C',
-    v1_same_truck: (w) => 'Το ίδιο φορτηγό έχει τις ίδιες ημέρες και δρομολόγιο του παλιού Εβδομαδιαίου (' + (w.rt_code || '—') + ')',
+    v1_same_truck: () => 'Το ίδιο φορτηγό είναι σε διεθνές δρομολόγιο τις ίδιες ημέρες',
     local_payroll_review: () => 'Η γραμμή μισθοδοσίας του τοπικού οδηγού με ποσό πάει για έλεγχο στο λογιστήριο',
     vs_day_differs: (w) => 'Η ημέρα του VS διαφέρει από την πρώτη ημέρα του στη Βέροια (' + day(w.first_hub_day) + ')',
     // 092: the pallets were written, but the international order has no column of that point (its stop number is not 1-10)
@@ -79,14 +89,15 @@
     // reason is a rule the move broke (owner 31/10, loose rules now): the point was saved and the stop stayed.
     stop_kept: (w) => {
       const n = Array.isArray(w.others) ? w.others.length : 0;
-      const head = `η στάση του φορτηγού στο ${w.rt_code || '—'} δεν άλλαξε`;
+      const nm = rtName(w.rt_id, w.rt_code);
+      const head = `η στάση του φορτηγού${nm ? ' (' + nm + ')' : ''} δεν άλλαξε`;
       if (w.reason === 'executed') return head + ': έχει ήδη εκτελεστεί';
       if (w.reason === 'handover') return head + ': ο κύκλος έχει αλλαγή οχήματος · «Αλλαγή ώρας στάσης ›»';
       if (w.reason === 'windows_differ') return head + ': σημεία αυτής της αποθήκευσης ζητούν διαφορετική ώρα εκεί · «Αλλαγή ώρας στάσης ›»';
       // a rule the move would break (the point was saved, the stop stayed): the rule in words, never a code; the
       // busy detail only when it is cycle codes (in a race plan_h_finish can only name its EXCLUDE constraint)
-      if (w.reason === 'truck_busy') return head + `: το φορτηγό είναι απασχολημένο τότε${/^RT-[\w/ -]+$/.test(w.detail || '') ? ' (' + w.detail + ')' : ''}`;
-      if (w.reason === 'driver_busy') return head + `: ο οδηγός είναι απασχολημένος τότε${/^RT-[\w/ -]+$/.test(w.detail || '') ? ' (' + w.detail + ')' : ''}`;
+      if (w.reason === 'truck_busy') return head + ': το φορτηγό είναι απασχολημένο τότε';   // detail = RT codes: not shown (item 12)
+      if (w.reason === 'driver_busy') return head + ': ο οδηγός είναι απασχολημένος τότε';
       if (w.reason === 'stop_order' || w.reason === 'side_order' || w.reason === 'leg_order') return head + ': η νέα ώρα χαλάει τη σειρά των στάσεων του κύκλου · «Αλλαγή ώρας στάσης ›»';
       if (w.reason === 'payroll_locked') return head + ': η μισθοδοσία του κύκλου έχει ήδη ποσά';
       if (w.reason !== 'shared') return head + ': η μετακίνηση δεν επιτρέπεται εδώ · «Αλλαγή ώρας στάσης ›»';
@@ -104,10 +115,10 @@
       return has(c, 'amount') && eur(c.amount) ? head + ' · ' + eur(c.amount) : head;
     },
     executed_leg: (c) => 'διόρθωση: η παράδοση της ' + day(c.stop_day) + ' έχει ήδη γίνει',
-    later_leg: (c) => 'φεύγει μαζί και το επόμενο σκέλος στο ' + (c.code || '—'),
+    later_leg: (c) => { const n = rtName(c.rt_id, c.code); return 'φεύγει μαζί και το επόμενο σκέλος' + (n ? ' · ' + n : ''); },
     local_loading: (c) => 'ακυρώνεται η φόρτωση με τοπικό της ' + day(c.move_date),
     local_payroll: (c) => 'γραμμή μισθοδοσίας τοπικού με ποσό (' + month(c.month) + ')' + amounts(c) + ' · πάει για έλεγχο στο λογιστήριο',
-    rt_cancelled: (c) => 'το δρομολόγιο ' + (c.code || '—') + ' θα σβηστεί',
+    rt_cancelled: (c) => { const n = rtName(c.rt_id, c.code); return 'το δρομολόγιο' + (n ? ' · ' + n + ' ·' : '') + ' θα σβηστεί'; },
     // invoice_number is a money key: a dispatcher's item never has it (S-87)
     invoiced: (c) => (has(c, 'invoice_number') ? 'τιμολογήθηκε (' + c.invoice_number + '): ' : 'τιμολογήθηκε: ') + 'το ERP κάνει το πιστωτικό',
     // 072b (👤7 = β): Move, Delete and plan_rt_update that narrow a cycle past a handover remove it after the token
@@ -128,7 +139,7 @@
     // order's, or a national order made from it (nat_order_id: the base's id, not the reference the board shows, so
     // not printed). A place name comes only when the item carries one (c.place: a base change, proposed in the PR of
     // 28/10) — never an id.
-    piece_on_rt: (c) => `βγαίνει από το ${c.code || '—'} `
+    piece_on_rt: (c) => `βγαίνει από ${(() => { const n = rtName(c.rt_id, c.code); return n ? 'το ' + n : 'το φορτηγό'; })()} `
       + (c.place ? `το φορτίο για ${c.place}` : c.nat_order_id != null ? 'το φορτίο της εθνικής που βγήκε από αυτή την παραγγελία' : 'το φορτίο αυτής της παραγγελίας'),
   });
 
@@ -175,7 +186,7 @@
     partner_handover: Object.freeze({ text: 'Παράδοση συνεργάτη', group: 'planned' }),
   }));
 
-  const WN5Lab = Object.freeze({ WARNING, CONSEQUENCE, CATEGORY, REASON, ROAD_REASON, warningLine, consequenceLine, reasonLine });
+  const WN5Lab = Object.freeze({ WARNING, CONSEQUENCE, CATEGORY, REASON, ROAD_REASON, warningLine, consequenceLine, reasonLine, setNamer });
   if (typeof module !== 'undefined' && module.exports) module.exports = WN5Lab;
   else root.WN5Lab = WN5Lab;
 })(typeof window !== 'undefined' ? window : this);
