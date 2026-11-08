@@ -57,6 +57,8 @@
     st.week = b.week || null;
     // the form snapshots (two presses, the same bytes); forChoice is re-read at each redraw and copies nothing
     st.cycles = ctx.live ? k.cycles() : k.copy(k.cycles());
+    // 109 (item 4): the international trips of the same board, held with its cycles (null = a base before 109)
+    st.intl = Array.isArray(b.intl_trips) ? (ctx.live ? b.intl_trips : k.copy(b.intl_trips)) : null;
     if (vehicle) {
       const c = st.cycles.find((x) => x.rt_id === st.rtId);
       if (!c) { st.err = k.clientErr('rt_missing', 'Δεν είναι στον πίνακα που φορτώθηκε — ανανέωσε'); return st; }
@@ -242,7 +244,7 @@
     if (!n || n.hub || n.role !== 'drop' || (n.from && n.to) || !n.day) return n ? n.day : null;
     const pk = st.needs.find((m) => m.role === 'load' && m.loc != null && m.loc === n.pickLoc);
     const pex = pk && cyc ? (cyc.stops || []).find((s) => s.side === st.side && s.location_id === pk.loc) : null;
-    const pd = !pk ? null : pex ? k.stopDay(pex) : pk.hub ? (st.hub ? st.hub.day : hd) : pk.day;
+    const pd = !pk ? null : pex ? k.stopDay(pex) : pk.hub ? (st.hub ? st.hub.day : hd) : (pk.from && pk.to ? k.ymdOf(pk.from) : pk.day);
     return pd && pd > n.day ? pd : n.day;
   }
   function _rows(st, cyc) {
@@ -390,7 +392,7 @@
     const sp = _span(st);
     if (!sp) return null;
     if (_blind(st)) return { txt: '—', cls: '' };
-    const bz = k.busyOf({ [f.kind + 's']: [id], days: days || _busyDays(st), self: [st.rtId], cycles: st.cycles, week: st.week, accept: false });
+    const bz = k.busyOf({ [f.kind + 's']: [id], days: days || _busyDays(st), self: [st.rtId], cycles: st.cycles, intl: st.intl, week: st.week, accept: false });
     if (bz) {
       const c = bz.trips[0].c;
       const hubLoc = k.hubId();
@@ -428,7 +430,7 @@
   function _overlaps(st, r, saves) {
     if (st.who !== 'own' || !r || r.missing || !r.body) return null;
     return K().busyOf({ trucks: [st.truck], trailers: [st.trailer], drivers: [st.driver], days: _busyDays(st, r), self: [st.rtId, r.body.target && r.body.target.rt_id],
-      cycles: st.cycles, week: st.week, accept: !!saves || st.mode !== 'pick' });
+      cycles: st.cycles, intl: st.intl, week: st.week, accept: !!saves || st.mode !== 'pick' });
   }
   // Sotiris report 8/11 (item 5): an own truck saved with no driver went through without a word. Relaxed rules (owner
   // 31/10): allowed, said in amber beside the save. A vehicle change keeps the cycle's driver when none is picked

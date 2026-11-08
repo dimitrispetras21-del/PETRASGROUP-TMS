@@ -579,7 +579,8 @@
     }
     if (a === 'cancel') { _userClose(f); return; }
     if (ev.isTrusted && a !== 'save' && a !== 'day-pick') _typed(f, ev);   // a row added / removed is work too
-    if (a === 'save') { if (!t.disabled) f.onSave(f); return; }
+    // a press of «Αποθήκευση» takes back a pending «πάτα ξανά για κλείσιμο»: a refused save never leaves Esc armed
+    if (a === 'save') { if (f.askClose) { f.askClose = false; _askLine(f, null); } if (!t.disabled) f.onSave(f); return; }
     if (a === 'add-order') { _addOrder(f); return _refresh(f); }
     if (a === 'add-empties') { _addEmpties(f); return _refresh(f); }
     if (a === 'del-order') { t.closest('.wn5f-ord').remove(); _renumber(f); return _refresh(f); }
@@ -1885,8 +1886,8 @@
   // Same filter rule as fhLocDrop (form-helpers.js fhLocMatch: every word, one spelling), only the hub left out.
   function _locDropNoHub(id, q) {
     const hub = _hubRec();
-    const nq = String(q || '').trim();
-    const pool = _fhLocationsArr.filter((o) => o.id !== hub && (!nq || fhLocMatch(o, nq))).slice(0, 25);
+    const words = fhLocWords(q);
+    const pool = _fhLocationsArr.filter((o) => o.id !== hub && fhLocMatch(o, words)).slice(0, 25);
     fhShowDrop('ls_' + id + '_d', id, pool);
   }
   // The outcome line of a VS change, from the answer: a notice means the international desk was told; none means

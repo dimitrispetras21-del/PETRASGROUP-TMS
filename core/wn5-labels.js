@@ -7,7 +7,8 @@
 // (plan_h_strip_amounts, 072:381). A line shows an amount ONLY when the key is present in the item — the screen never
 // checks a role (owner 23/10, decision 41; no role gate on screens, owner 10/10).
 // No line says «πληρωμένη» (decision 10, S-85): the base cannot know what was paid, so the list names the month.
-// Pure: no DOM, no clock. UMD like core/wi4-logic.js: require() in node tests, window.WN5Lab in the page.
+// Pure: no DOM, no clock — one piece of state only, the trip namer a page may set (setNamer, item 12 8/11): without it
+// every line is the same for every caller. UMD like core/wi4-logic.js: require() in node tests, window.WN5Lab in the page.
 (function (root) {
   'use strict';
   const SIDE_ACC = Object.freeze({ KATHODOS: 'ΚΑΘΟΔΟ', ANODOS: 'ΑΝΟΔΟ' });

@@ -528,8 +528,8 @@ async function scnEditFollow({ browser, origin, ok, scn }) {
   ok(scn, 'the stop row under the point shows the moved stop where it is now: «TST-2104 · Driver Test 01 · παράδοση Τετ 14/10 07:00–09:00»; the loading row as it was',
     row.includes('TST-2104 · Driver Test 01 · παράδοση Τετ 14/10 07:00–09:00') && row.includes('TST-2104 · Driver Test 01 · φόρτωση Δευ 12/10 16:00–18:00') && !row.includes('Τρί 13/10'), row);
   const strip = await K.text(page, `${DLG} .wn5-strip[data-kind="warning"]`);
-  ok(scn, 'the kept shared stop in the warning strip: RT-T101, 1 other point, «Αλλαγή ώρας στάσης ›» changes it for all',
-    /η στάση του φορτηγού δεν άλλαξε: εξυπηρετεί και 1 άλλο σημείο · «Αλλαγή ώρας στάσης ›» την αλλάζει για όλα/.test(strip), strip);
+  ok(scn, 'the kept shared stop in the warning strip: the truck by name (never RT-T101, item 12), 1 other point, «Αλλαγή ώρας στάσης ›» changes it for all',
+    /η στάση του φορτηγού \(TST-2104 · TRL-5102 · Driver Test 01\) δεν άλλαξε: εξυπηρετεί και 1 άλλο σημείο · «Αλλαγή ώρας στάσης ›» την αλλάζει για όλα/.test(strip) && !/RT-T/.test(strip), strip);
   await closeClean(page, S, ok, scn);
 }
 

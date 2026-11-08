@@ -157,7 +157,8 @@
     return !ws.length ? '' : ws.length === 1 ? ws[0] : ws[0] + ' → ' + ws[ws.length - 1];
   }
   // o = { trucks, trailers, drivers (ids), days: [first, last], self (trip ids that are the save's own), cycles
-  // (default: the board), week (default: the board's), accept (false: said only — a form that writes nothing) }
+  // (default: the board), intl (the international trips, default: the board's intl_trips), week (default: the
+  // board's), accept (false: said only — a form that writes nothing) }
   // → null (nothing on the board) | { text, accept, rts (the trips named), trips: [{ c, days, route, names }] }
   function _busyOf(o) {
     if (!o || !o.days || !o.days[0] || !o.days[1]) return null;
@@ -192,7 +193,7 @@
     // (072 plan_h_v1_warn, v1_same_truck) came only from the time panel's dry run or after the save. The board's
     // intl_trips (109) are the same trips by the same rule (its day span, an open trip on its first day): a truck
     // only (the base keeps no trailer / driver of an international trip there). No list (a base before 109) = as before.
-    const intl = (_state().board || {}).intl_trips;
+    const intl = o.intl !== undefined ? o.intl : (_state().board || {}).intl_trips;   // a form's own copy first, as o.cycles
     if (Array.isArray(intl)) for (const id of [...new Set((o.trucks || []).filter((x) => x != null))]) {
       for (const t of intl) {
         if (t.truck_id !== id || self.has(t.rt_id)) continue;
@@ -350,12 +351,22 @@
     const d = { kind, back, dlg, msg: dlg.querySelector('.wn5-dlg-msg'), body: dlg.querySelector('.wn5-dlg-b'),
       ft: dlg.querySelector('.wi4-dlg-ft'), anchor: opts.anchor || null, end: opts.end || null, fit: !!opts.fit, busy: false, locked: false, closed: false,
       onClose: opts.onClose || null, refresh: null };
-    // Esc and a click outside close it, never in the middle of a send (its answer must land somewhere)
-    d.onKey = (ev) => { if (ev.key === 'Escape' && !d.busy) { ev.preventDefault(); ev.stopPropagation(); _close(d); } };
+    // Esc and a click outside close it, never in the middle of a send (its answer must land somewhere).
+    // Sotiris report 8/11 (item 8): and never at once over typed work — the first press says so, the second closes
+    // (_dlgUserClose). The dialog's own «Άκυρο» is a deliberate press and still closes.
+    d.onKey = (ev) => { if (ev.key === 'Escape' && !d.busy) { ev.preventDefault(); ev.stopPropagation(); _dlgUserClose(d); } };
     window.addEventListener('keydown', d.onKey, true);
-    back.addEventListener('mousedown', (ev) => { if (ev.target === back && !d.busy) _close(d); });
+    back.addEventListener('mousedown', (ev) => { if (ev.target === back && !d.busy) _dlgUserClose(d); });
     const x = dlg.querySelector('.wi4-dlg-x');
-    if (x) x.addEventListener('click', () => { if (!d.busy) _close(d); });
+    if (x) x.addEventListener('click', () => { if (!d.busy) _dlgUserClose(d); });
+    // what the user typed (isTrusted 'input': a select and a checkbox fire it too); a search / filter box is no work
+    dlg.addEventListener('input', (ev) => {
+      if (!ev.isTrusted || d.closed) return;
+      const el = ev.target;
+      if (el && el.matches && el.matches('[type="search"], [role="searchbox"]')) return;
+      d.touched = true;
+      if (d.askClose) { d.askClose = false; _dlgAsk(d, false); }
+    }, true);
     // A popover that grows after it was placed (a refusal strip, a redraw) is placed again, so its foot never ends
     // below the window (T13: the 422 strip pushed a fixed popover 34px past a 900px viewport)
     // It watches the content (strip + body), not the popover: _place sets the popover's own max-height, and watching
@@ -363,6 +374,18 @@
     if (d.anchor && typeof ResizeObserver === 'function') { d.ro = new ResizeObserver(() => { if (!d.closed) _place(d); }); d.ro.observe(d.msg); d.ro.observe(d.body); }
     _cur = d;
     return d;
+  }
+  // item 8 (8/11): the one line «Δεν αποθηκεύτηκε…» above the foot of a dialog with typed work, asked once
+  function _dlgAsk(d, on) {
+    let el = d.dlg.querySelector(':scope > .wn5-dlg-ask');
+    if (!on) { if (el) el.remove(); return; }
+    if (!el) { el = document.createElement('div'); el.className = 'wn5-dlg-ask'; el.setAttribute('role', 'status'); d.dlg.insertBefore(el, d.ft); }
+    el.textContent = 'Δεν αποθηκεύτηκε. Πάτα ξανά Esc για κλείσιμο χωρίς αποθήκευση.';
+  }
+  function _dlgUserClose(d) {
+    if (!d || d.busy || d.closed) return;
+    if (d.touched && !d.askClose) { d.askClose = true; _dlgAsk(d, true); return; }
+    _close(d);
   }
   // A popover sits under its anchor and inside the window; called after the content is in.
   // Taller than the room under the row, it keeps its top under the row and scrolls inside (.wn5-dlg overflow-y),
@@ -455,6 +478,7 @@
   async function _send(d, req, okText, opts) {
     opts = opts || {};
     if (_closed) { _gate(d); return null; }
+    if (d.askClose) { d.askClose = false; _dlgAsk(d, false); }   // a send takes back «πάτα ξανά Esc» (item 8)
     d.busy = true; _btns(d, true);
     let out;
     try {
@@ -948,8 +972,6 @@
     }
     return { stops: out, missing: [...miss], lack, late };
   }
-  // «παράδοση Τετ 28/10 · η διεθνής έλεγε Τρί 27/10» — what a late delivery's day became (item 1), '' when none
-  const _lateText = (r) => ((r && r.late) || []).map((x) => 'παράδοση ' + _dayShort(x.day) + ' · η διεθνής έλεγε ' + _dayShort(x.due)).filter((v, i, a) => a.indexOf(v) === i).join(' · ');
   function _cycText(c, r) {
     const t = r && r.tiles && r.tiles[0];
     const par = c.trip_type === 'PARTNER';

@@ -280,17 +280,23 @@ function fhLocFold(s) {
     .replace(/mp/g, 'b').replace(/nt/g, 'd').replace(/g[kg]|ng/g, 'g').replace(/[ck]h/g, 'h').replace(/ph/g, 'f')
     .replace(/ou/g, 'u').replace(/ei|oi|ee|y/g, 'i').replace(/([a-z])\1+/g, '$1').replace(/\s+/g, ' ').trim();
 }
-// every word of the query is in the label (fhLocFold on both); an empty query matches all
+// The query's words, read once per keystroke (not once per place): each as typed (_fhNorm) and folded (fhLocFold).
+function fhLocWords(q) {
+  return _fhNorm(String(q || '')).split(' ').filter(Boolean).map(w => ({ n: w, f: fhLocFold(w) }));
+}
+// every word of the query is in the label, as typed OR folded: as typed keeps a half-typed word («Vero» → Veroia,
+// «Ken» → Kentro, whose folds «veria» / «kedro» it does not hold yet), folded finds the other spelling. Empty = all.
 function fhLocMatch(o, q) {
-  const words = (typeof q === 'string' ? fhLocFold(q) : '').split(' ').filter(Boolean);
+  const words = Array.isArray(q) ? q : fhLocWords(q);
   if (!words.length) return true;
-  const n = o._f || (o._f = fhLocFold(o.label));
-  return words.every(w => n.includes(w));
+  const n = o._n || (o._n = _fhNorm(o.label));
+  const f = o._f || (o._f = fhLocFold(o.label));
+  return words.every(w => n.includes(w.n) || (!!w.f && f.includes(w.f)) || !w.f);
 }
 function fhLocDrop(id, q) {
-  const nq = String(q || '').trim();
-  const pool = nq
-    ? _fhLocationsArr.filter(o => fhLocMatch(o, nq)).slice(0, 25)
+  const words = fhLocWords(q);
+  const pool = words.length
+    ? _fhLocationsArr.filter(o => fhLocMatch(o, words)).slice(0, 25)
     : _fhLocationsArr.slice(0, 25);
   fhShowDrop('ls_' + id + '_d', id, pool);
 }
@@ -307,7 +313,7 @@ function _fhTranslit(s) {
   };
   return String(s || '').split(/(\s+)/).map(w => /^\s+$/.test(w) ? w : one(w)).join('');
 }
-if (typeof window !== 'undefined') { window._fhNorm = _fhNorm; window._fhTranslit = _fhTranslit; window.fhLocFold = fhLocFold; window.fhLocMatch = fhLocMatch; }
+if (typeof window !== 'undefined') { window._fhNorm = _fhNorm; window._fhTranslit = _fhTranslit; window.fhLocFold = fhLocFold; window.fhLocMatch = fhLocMatch; window.fhLocWords = fhLocWords; }
 
 /**
  * Show client dropdown with async search

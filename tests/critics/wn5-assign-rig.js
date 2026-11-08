@@ -908,5 +908,25 @@ async function sotiris_warn({ browser, origin, ok, scn }) {
   await page.context().close();
 }
 
-K.run({ scenarios: { own_new, own_join, only_hours, partner, accept_busy, vehicle, rate2, handover, veroia_list, veroia_new, f61, f54, veroia_later, pr3b, veroia_busy, veroia_fixes, busy3, fit, sotiris_late, sotiris_warn }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],
+// Sotiris report 8/11, item 8 on the board's dialogs: Esc over typed work asks once, the second Esc closes; untouched
+// = closes at once; nothing is written either way.
+async function sotiris_esc({ browser, origin, ok, scn }) {
+  const { page, S } = await K.openApp(browser, origin, { board: board() });
+  await openWaiting(page, 4101);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(100);
+  ok(scn, 'an untouched assignment form closes at the first Esc', !(await K.count(page, DLG)));
+  await openWaiting(page, 4101);
+  await pickIn(page, 'tk', '2106', 'TST-2106');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(100);
+  const ask = await page.evaluate((s) => { const a = document.querySelector(s + ' > .wn5-dlg-ask'); return a ? a.textContent : null; }, DLG);
+  ok(scn, 'typed: the first Esc keeps the form and says «Δεν αποθηκεύτηκε…»', (await K.count(page, DLG)) === 1 && /Δεν αποθηκεύτηκε/.test(ask || ''), ask);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(100);
+  ok(scn, 'the second Esc closes it, nothing written', !(await K.count(page, DLG)) && !saves(S).length, saves(S).map((x) => x.path));
+  await page.context().close();
+}
+
+K.run({ scenarios: { own_new, own_join, only_hours, partner, accept_busy, vehicle, rate2, handover, veroia_list, veroia_new, f61, f54, veroia_later, pr3b, veroia_busy, veroia_fixes, busy3, fit, sotiris_late, sotiris_warn, sotiris_esc }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],
   go: 'the assignment form (own new / join / only / hours / F39 / partner / vehicle / F51-F61 / F54 / F56 / 089 two fees), ✈ «Αλλαγή οχήματος…» and the Veroia board v2 «Νέο φορτίο» hold' });
