@@ -1068,12 +1068,15 @@ async function scnPlus(browser, origin) {
       if (!d || !row || !q) return null;
       const dr = d.getBoundingClientRect(), rr = row.getBoundingClientRect(), hd = d.querySelector('.wi4-dlg-hd').getBoundingClientRect();
       const cs = getComputedStyle(q);
-      return { top: dr.top, bottom: dr.bottom, rowBottom: rr.bottom, scrolls: d.scrollHeight > d.clientHeight, hdTop: hd.top, vh: innerHeight,
+      return { top: dr.top, bottom: dr.bottom, rowBottom: rr.bottom, scrolls: d.scrollHeight > d.clientHeight, whole: d.scrollHeight <= d.clientHeight + 1, hdTop: hd.top, vh: innerHeight,
         room: q.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight),
         band: (d.querySelector('.wn5-pnote') || {}).textContent || '' };
     }, [D, K201]).catch(() => null);
-    ok(scn, 'the tall KATHODOS popover opens under RT-T201 (never over the row), inside the window, its body scrolls', !!g
-      && g.top >= g.rowBottom && g.top <= g.rowBottom + 8 && g.bottom <= g.vh && g.scrolls, g);
+    // inside the window: whole when the room under the row holds it, else its body scrolls. Since the «ΤΟΠΙΚΑ» panel
+    // (owner 8/11) the page is taller, the click scrolls RT-T201 up and the popover can fit whole — both are right; a
+    // popover cut by the window edge never is.
+    ok(scn, 'the tall KATHODOS popover opens under RT-T201 (never over the row), inside the window, whole or its body scrolls', !!g
+      && g.top >= g.rowBottom && g.top <= g.rowBottom + 8 && g.bottom <= g.vh && (g.scrolls || g.whole), g);
     await page.$eval(D, (d) => { d.scrollTop = 200; }).catch(() => {});
     const hdTop = await page.$eval(`${D} .wi4-dlg-hd`, (h) => h.getBoundingClientRect().top).catch(() => null);
     ok(scn, 'scrolled, the header (title · segmented) stays at the top of the popover', !!g && hdTop != null && Math.abs(hdTop - g.top) <= 2, { hdTop, top: g && g.top });
