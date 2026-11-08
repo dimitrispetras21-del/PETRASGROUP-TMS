@@ -28,7 +28,7 @@ const SCHEMA = `
   CREATE SCHEMA monitoring; CREATE TABLE monitoring.checks (id text PRIMARY KEY, red_value text, baseline text);
   CREATE TABLE clients (id bigint PRIMARY KEY, company_name text);
   CREATE TABLE locations (id bigint PRIMARY KEY, name text, city text, country text);
-  CREATE TABLE orders (id bigint PRIMARY KEY, legacy_id text, status text, pallet_exchange boolean, parent_order_id bigint, deleted_at timestamptz,
+  CREATE TABLE orders (id bigint PRIMARY KEY, legacy_id text, stock_lot_id bigint, status text, pallet_exchange boolean, parent_order_id bigint, deleted_at timestamptz,
     client_id bigint, direction text, delivery_datetime date, actual_delivery_date date);
   CREATE TABLE order_stops (id bigint PRIMARY KEY, order_id bigint, stop_type text, pallets numeric, datetime date, location_id bigint, deleted_at timestamptz);
   CREATE TABLE stock_lots (id bigint PRIMARY KEY, order_id bigint, deleted_at timestamptz);
@@ -54,13 +54,14 @@ const SCHEMA = `
     (1,'Delivered',true,null,1,'Export','2026-10-20'), (2,'Delivered',true,null,1,'Export','2026-10-21'), (3,'Delivered',true,null,1,'Export','2026-10-22'),
     (4,'Delivered',true,2,1,'Export','2026-10-22'), (5,'Delivered',true,null,1,'Import','2026-10-23'), (6,'In Transit',true,null,1,'Export','2026-10-24'),
     (7,'Delivered',true,null,1,'Import','2026-10-25'), (8,'Delivered',true,null,1,'Export','2026-10-26'), (9,'Delivered',false,null,1,'Export','2026-10-27'),
-    (10,'Delivered',false,null,null,'Export','2026-10-28');
+    (10,'Delivered',false,null,null,'Export','2026-10-28'), (11,'Delivered',true,null,null,'Export','2026-10-29');
   INSERT INTO order_stops VALUES
     (11,1,'Loading',30,'2026-10-18',1,null), (12,1,'Unloading',30,'2026-10-20',1,null),
     (21,2,'Unloading',10,'2026-10-21',1,null), (22,2,'Unloading',5,'2026-10-21',1,null),
     (31,3,'Unloading',8,'2026-10-22',1,null), (41,4,'Unloading',8,'2026-10-22',1,null), (51,5,'Unloading',8,'2026-10-23',1,null),
     (61,6,'Unloading',8,'2026-10-24',1,null), (62,6,'Unloading',0,'2026-10-24',1,null), (71,7,'Unloading',8,'2026-10-25',1,null),
-    (81,8,'Unloading',8,'2026-10-26',1,null), (91,9,'Unloading',7,'2026-10-27',1,null), (101,10,'Unloading',8,'2026-10-28',1,null);
+    (81,8,'Unloading',8,'2026-10-26',1,null), (91,9,'Unloading',7,'2026-10-27',1,null), (101,10,'Unloading',8,'2026-10-28',1,null),
+    (111,11,'Unloading',8,'2026-10-29',1,null);
   INSERT INTO stock_lots VALUES (1, 5, null);
   INSERT INTO shipments VALUES (1, 7, null);
   INSERT INTO pl_movements (id, movement_date, counterparty_type, client_id, event_type, taken, given, order_stop_id, order_id, status) VALUES
@@ -75,11 +76,11 @@ test('PGlite: 107, then 108: dry run, apply, every case, rollback, apply again',
   const dels = (oid) => n(`SELECT count(*) n FROM pl_movements WHERE order_id = ${oid} AND event_type = 'DELIVERY' AND status = 'confirmed'`);
   const trig = () => n(`SELECT count(*) n FROM audit_log WHERE actor = 'system' AND after_data ->> 'source' = 'trigger:108'`);
   assert.equal(await runs(read('107_pl_missing_delivery.sql')), 'ok');
-  assert.equal(await n(`SELECT count(*) n FROM pl_v_missing_delivery`), 5, '107 lists 12, 21, 22, 71, 81');
+  assert.equal(await n(`SELECT count(*) n FROM pl_v_missing_delivery`), 6, '107 lists 12, 21, 22, 71, 81 + 111 (clientless, the newest)');
 
   // dry run: re-save of the 4 listed orders writes 0; the transition of the newest listed order (o8, stop 81) writes 1
   const dry = await runs(read(d('108_pl_delivery_trigger_dryrun.sql')));
-  assert.match(dry, /DRY RUN 108 finished: re-save of 4 listed orders wrote 0; transition of order 8 wrote 1 deliveries \(audit 1\); triggers 0 -> 2/, dry);
+  assert.match(dry, /DRY RUN 108 finished: re-save of 5 listed orders wrote 0; transition of order 8 wrote 1 deliveries \(audit 1\); triggers 0 -> 2/, dry);
   assert.equal(await n(`SELECT count(*) n FROM pg_trigger WHERE tgname LIKE 'pl_delivery_from_%'`), 0, 'dry run kept a trigger');
   assert.equal(await n(`SELECT count(*) n FROM pl_movements WHERE created_by = 'system'`), 0, 'dry run kept a movement');
   assert.equal((await db.query(`SELECT red_value FROM monitoring.checks WHERE id = 'B-54'`)).rows[0].red_value, '0');
@@ -108,8 +109,8 @@ test('PGlite: 107, then 108: dry run, apply, every case, rollback, apply again',
   await db.exec(`INSERT INTO order_stops VALUES (82, 8, 'Unloading', 3, '2026-10-26', 1, null)`);
   assert.deepEqual((await db.query(`SELECT order_stop_id::int s FROM pl_movements WHERE order_id = 8 AND status = 'confirmed'`)).rows.map((r) => r.s), [82]);
   assert.equal(await trig(), 3, 'three rows by the trigger, three audit rows (61, 91, 82)');
-  assert.deepEqual((await db.query(`SELECT order_stop_id::int s FROM pl_v_missing_delivery ORDER BY 1`)).rows.map((r) => r.s), [12, 21, 22, 71, 81, 101],
-    'the old listed stops untouched (12, 21, 22, 71, 81) + the clientless order, said in the list (101)');
+  assert.deepEqual((await db.query(`SELECT order_stop_id::int s FROM pl_v_missing_delivery ORDER BY 1`)).rows.map((r) => r.s), [12, 21, 22, 71, 81, 101, 111],
+    'the old listed stops untouched (12, 21, 22, 71, 81, 111) + the clientless order, said in the list (101)');
 
   const v = (await db.query(read(d('108_pl_delivery_trigger_verify.sql')))).rows[0];
   assert.equal(v.result, '108 in place'); assert.equal(v.b54_matches, true); assert.equal(v.anon_execute, false);

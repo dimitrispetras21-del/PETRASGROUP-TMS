@@ -82,7 +82,8 @@ BEGIN
     IF v_o.client_id IS NULL THEN RETURN 0; END IF;
     v_day := (now() AT TIME ZONE 'Europe/Athens')::date;
     FOR v_s IN SELECT id, location_id, round(pallets)::int AS pallets, datetime FROM order_stops
-                WHERE order_id = p_order AND stop_type = 'Unloading' AND deleted_at IS NULL AND coalesce(pallets, 0) >= 1
+                -- whole pallets as 107's list shows them (round): a stop the list calls "0 pal." is not written
+                WHERE order_id = p_order AND stop_type = 'Unloading' AND deleted_at IS NULL AND round(coalesce(pallets, 0)) >= 1
                   AND (p_stop IS NULL OR id = p_stop)
                 ORDER BY id LOOP
       v_new := NULL;

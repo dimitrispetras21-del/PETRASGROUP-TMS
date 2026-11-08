@@ -83,7 +83,8 @@ BEGIN
     IF v_o.client_id IS NULL THEN RETURN 0; END IF;
     v_day := (now() AT TIME ZONE 'Europe/Athens')::date;
     FOR v_s IN SELECT id, location_id, round(pallets)::int AS pallets, datetime FROM order_stops
-                WHERE order_id = p_order AND stop_type = 'Unloading' AND deleted_at IS NULL AND coalesce(pallets, 0) >= 1
+                -- whole pallets as 107's list shows them (round): a stop the list calls "0 pal." is not written
+                WHERE order_id = p_order AND stop_type = 'Unloading' AND deleted_at IS NULL AND round(coalesce(pallets, 0)) >= 1
                   AND (p_stop IS NULL OR id = p_stop)
                 ORDER BY id LOOP
       v_new := NULL;
@@ -147,11 +148,16 @@ BEGIN
 
   -- DRY RUN ONLY: the proofs, then everything is undone.
   SELECT count(*), count(DISTINCT order_id) INTO v_m0, v_ord0 FROM public.pl_v_missing_delivery;
-  UPDATE public.orders SET pallet_exchange = pallet_exchange WHERE id IN (SELECT order_id FROM public.pl_v_missing_delivery);
+  -- stock pieces left out: stock_guard_orders may refuse any update of them, which would say nothing about 108
+  UPDATE public.orders SET pallet_exchange = pallet_exchange WHERE id IN (SELECT order_id FROM public.pl_v_missing_delivery) AND stock_lot_id IS NULL;
   SELECT count(*) INTO v_m1 FROM public.pl_v_missing_delivery;
   SELECT count(*) INTO v_a1 FROM public.audit_log WHERE actor = 'system' AND after_data ->> 'source' = 'trigger:108';
   IF v_m1 <> v_m0 OR v_a1 <> 0 THEN RAISE EXCEPTION '108 DRY RUN FAILED: a re-save wrote (missing % -> %, audit %)', v_m0, v_m1, v_a1; END IF;
-  SELECT order_id INTO v_oid FROM public.pl_v_missing_delivery ORDER BY delivered_on DESC, order_stop_id LIMIT 1;
+  -- a candidate the writer must write: with a client, every listed stop at least one whole pallet, not a stock piece
+  SELECT v.order_id INTO v_oid FROM public.pl_v_missing_delivery v JOIN public.orders o ON o.id = v.order_id
+   WHERE v.client_id IS NOT NULL AND o.stock_lot_id IS NULL
+     AND NOT EXISTS (SELECT 1 FROM public.pl_v_missing_delivery x WHERE x.order_id = v.order_id AND x.pallets < 1)
+   ORDER BY v.delivered_on DESC, v.order_stop_id LIMIT 1;
   IF v_oid IS NOT NULL THEN
     SELECT count(*) INTO v_stops FROM public.pl_v_missing_delivery WHERE order_id = v_oid;
     UPDATE public.orders SET pallet_exchange = false WHERE id = v_oid;
