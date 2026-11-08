@@ -42,6 +42,7 @@ const SCHEMA = `
     deleted_at timestamptz, deleted_reason text, deleted_by text, executed boolean NOT NULL DEFAULT false);
   CREATE TABLE shipment_pieces (id bigint PRIMARY KEY DEFAULT nextval('sh_seq'), shipment_id bigint, pallets numeric, created_by text,
     deleted_at timestamptz, deleted_reason text, deleted_by text);
+  CREATE TABLE piece_legs (id bigint PRIMARY KEY DEFAULT nextval('sh_seq'), piece_id bigint, deleted_at timestamptz);
   CREATE TABLE national_loads (id bigint PRIMARY KEY, legacy_id text, source_order_id bigint, source_type text, truck_id bigint,
     partner_id bigint, status text, deleted_at timestamptz);
   CREATE TABLE plan_cutover_log (kind text, table_name text, row_id bigint, reason text, before_data jsonb);
@@ -77,9 +78,9 @@ const SCHEMA = `
     update shipments set deleted_at = now(), deleted_reason = p_reason where id = p_sh and deleted_at is null;
   end $f$;
   CREATE FUNCTION plan_h_bridge_place(bigint, bigint, bigint, text, text) RETURNS void LANGUAGE sql AS $f$ select $f$;
-  CREATE FUNCTION plan_h_bridge_recut(bigint, text, text, text) RETURNS void LANGUAGE sql AS $f$ select $f$;
-  CREATE FUNCTION plan_h_bridge_unplan(bigint, bigint, text, text, text) RETURNS void LANGUAGE sql AS $f$ select $f$;
-  INSERT INTO monitoring.checks (id, red_value) VALUES ('B-54', '1');   -- the live stop trigger below
+  CREATE FUNCTION plan_h_bridge_recut(bigint, text, text, text) RETURNS void LANGUAGE sql AS $f$ insert into notices values ('recut', null, null) $f$;
+  CREATE FUNCTION plan_h_bridge_unplan(bigint, bigint, text, text, text) RETURNS void LANGUAGE sql AS $f$ insert into notices values ('unplan', null, $1) $f$;
+  INSERT INTO monitoring.checks (id, red_value) VALUES ('B-54', '2');   -- the live order + stop triggers below
   INSERT INTO clients VALUES (1, 'Demo Client');
   INSERT INTO locations VALUES (1, 'Demo Point', 'Demo City', 'AT');
   -- o1 import VS in v5: 11 loading, 12 / 13 national side, 14 with 0 pallets · o2 export, not VS
@@ -94,9 +95,29 @@ const SCHEMA = `
     (34, 3, 'Unloading', 8, '2026-11-05', 1);`;
 
 // 074's three bodies as they are live (the builder finds them by md5), with the stop trigger of today
+// the live order trigger of 074 (pg_get_functiondef on production 8/11)
+const ON_ORDER = `
+begin
+  if plan_cutover_day() is null then return null; end if;
+  -- the common case first: an order that is not a VS and never was bridged is not the bridge's
+  if new.veroia_switch is not true and (tg_op = 'INSERT' or old.veroia_switch is not true)
+     and not exists (select 1 from shipments s where s.order_id = new.id and s.deleted_at is null) then
+    return null;
+  end if;
+  if tg_op = 'UPDATE' and old.cross_dock_date is distinct from new.cross_dock_date
+     and current_setting('plan.writer', true) is distinct from 'natl' then
+    perform plan_h_bridge_unplan(new.id, null, 'trigger:plan_bridge_sync', 'trigger:plan_bridge_sync', 'system');
+  end if;
+  perform plan_bridge_sync(new.id, 'trigger:plan_bridge_sync');
+  return null;
+end
+`;
 function liveBridge() {
   const o = oldBodies();
   return `
+  CREATE FUNCTION plan_bridge_on_order() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$${ON_ORDER}$f$;
+  CREATE TRIGGER plan_bridge_on_order AFTER INSERT OR UPDATE OF veroia_switch, cross_dock_date, deleted_at, status, direction
+    ON orders FOR EACH ROW EXECUTE FUNCTION plan_bridge_on_order();
   CREATE FUNCTION plan_h_bridge_wanted(p_stop bigint) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $f$${o.wanted}$f$;
   CREATE FUNCTION plan_bridge_sync(p_order bigint, p_why text) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$${o.sync}$f$;
   CREATE FUNCTION plan_bridge_on_stop() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$${o.onStop}$f$;
@@ -123,6 +144,8 @@ test('PGlite: live bridge + 107 + 108, then 111: dry run, apply, every case, rol
   }
   // the bridge as it is live: o1's two national-side stops with pallets are bridged and via_hub is echoed on them
   await db.exec(`SELECT plan_bridge_sync(1, 'seed')`);
+  // stop 12's piece is already on a national truck (a live leg): the dry run must prove on stop 13, never on it
+  await db.exec(`INSERT INTO piece_legs (piece_id) SELECT sp.id FROM shipment_pieces sp JOIN shipments b ON b.id = sp.shipment_id WHERE b.order_stop_id = 12`);
   assert.deepEqual(await liveBridges(), [12, 13]);
   assert.deepEqual(await ids(`SELECT id i FROM order_stops WHERE via_hub ORDER BY 1`), [12, 13]);
   assert.equal(await check('B-95'), 0); assert.equal(await check('B-99'), 0);
@@ -133,12 +156,12 @@ test('PGlite: live bridge + 107 + 108, then 111: dry run, apply, every case, rol
   const files = buildAll();
   await db.exec(`CREATE OR REPLACE FUNCTION plan_h_bridge_wanted(p_stop bigint) RETURNS boolean LANGUAGE sql STABLE AS $f$ select false $f$`);
   assert.match(await runs(files['111_intl_form_stops.sql']), /plan_h_bridge_wanted\(bigint\) is not the text 111 was written against/);
-  assert.equal(await runs(liveBridge().split('CREATE FUNCTION plan_h_bridge_wanted').join('CREATE OR REPLACE FUNCTION plan_h_bridge_wanted').split('CREATE TRIGGER')[0]
-    .replace(/CREATE FUNCTION plan_bridge_sync[\s\S]*$/, '')), 'ok');
+  assert.equal(await runs(`CREATE OR REPLACE FUNCTION plan_h_bridge_wanted(p_stop bigint) RETURNS boolean LANGUAGE sql STABLE
+    SECURITY DEFINER SET search_path = public AS $f$${oldBodies().wanted}$f$`), 'ok', 'the live body back');
 
   // dry run: o1's stop 12 direct and back; delivery proof skipped (nothing listed yet); NOTHING kept
   const dry = await runs(local(files['111_intl_form_stops_dryrun.sql']));
-  assert.match(dry, /DRY RUN 111 finished: via_hub 2 true \+ 8 false -> NULL; B-95 0, B-99 0, shipments 2 = 2; stop 12 of order 1 direct and back \(bridges 2 -> 1 -> 2\); delivery stop none/, dry);
+  assert.match(dry, /DRY RUN 111 finished: via_hub 2 true \+ 8 false -> NULL; B-95 0, B-99 0, shipments 2 = 2; stop 13 of order 1 direct and back \(bridges 2 -> 1 -> 2\); delivery stop none/, dry);
   assert.equal(await n(`SELECT count(*) n FROM information_schema.columns WHERE table_name = 'order_stops' AND column_name = 'time_from'`), 0, 'dry run kept a column');
   assert.equal(await n(`SELECT count(*) n FROM order_stops WHERE via_hub`), 2, 'dry run kept the reset');
   assert.deepEqual(await liveBridges(), [12, 13]);
@@ -150,8 +173,13 @@ test('PGlite: live bridge + 107 + 108, then 111: dry run, apply, every case, rol
   assert.match(await runs(local(files['111_intl_form_stops.sql'])), /111 has run/);
 
   // (b) the desk's choice, stop by stop, each on its own
-  await db.exec(`UPDATE order_stops SET via_hub = false WHERE id = 13`);
+  const notes = (kinds) => n(`SELECT count(*) n FROM notices WHERE kind IN (${kinds.map((k) => `'${k}'`).join(', ')})`);
+  const before = await notes(['recut', 'unplan']);
+  await db.exec(`UPDATE order_stops SET via_hub = false, pallets = 9, datetime = '2026-11-13' WHERE id = 13`);
   assert.equal(await bridged(13), 0, 'direct: no bridge');
+  assert.equal(await notes(['recut', 'unplan']), before, 'no recut / unplan for a load leaving the board');
+  await db.exec(`UPDATE order_stops SET pallets = 10 WHERE id = 12`);
+  assert.equal(await notes(['recut']), 1, 'a bridged stop still recuts');
   assert.equal(await bridged(12), 1, 'the other stop never moves');
   await db.exec(`UPDATE order_stops SET via_hub = true WHERE id = 13`);
   assert.equal(await bridged(13), 1, 'through Veroia: bridged again');
@@ -162,10 +190,9 @@ test('PGlite: live bridge + 107 + 108, then 111: dry run, apply, every case, rol
   assert.equal(await check('B-95'), 0);
   assert.equal(await check('B-99'), 1, 'B-99 says the tick on the wrong side (stop 11)');
   await db.exec(`UPDATE order_stops SET via_hub = NULL WHERE id = 11`);
-  // (the order trigger of 074 is not in this copy: it calls the sync, as here)
-  await db.exec(`UPDATE orders SET veroia_switch = false WHERE id = 1; SELECT plan_bridge_sync(1, 'vs off')`);
+  await db.exec(`UPDATE orders SET veroia_switch = false WHERE id = 1`);
   assert.equal(await n(`SELECT count(*) n FROM shipments WHERE order_id = 1 AND deleted_at IS NULL`), 0, 'VS off: every bridge goes');
-  await db.exec(`UPDATE orders SET veroia_switch = true WHERE id = 1; SELECT plan_bridge_sync(1, 'vs on')`);
+  await db.exec(`UPDATE orders SET veroia_switch = true WHERE id = 1`);
   assert.deepEqual(await liveBridges(), [12, 13, 15], 'VS on again: the choices hold');
   assert.equal(await check('B-95'), 0); assert.equal(await check('B-99'), 0);
 
@@ -204,9 +231,9 @@ test('PGlite: live bridge + 107 + 108, then 111: dry run, apply, every case, rol
   assert.equal(await check('B-95'), 0); assert.equal(await check('B-99'), 0);
   assert.equal((await rows(files['111_intl_form_stops_verify.sql']))[0].result, '111 NOT in place');
 
-  // with the hour columns kept, 111 refuses to run twice; once they are gone, 111 runs again and its rollback drops
-  // the empty columns
-  assert.match(await runs(local(files['111_intl_form_stops.sql'])), /111 has run/);
+  // with the hour columns kept, 111 says so (never «has run»); once they are gone, 111 runs again and its rollback
+  // drops the empty columns
+  assert.match(await runs(local(files['111_intl_form_stops.sql'])), /a rollback kept the hours/);
   await db.exec(`ALTER TABLE order_stops DROP CONSTRAINT order_stops_time_from_fmt, DROP CONSTRAINT order_stops_time_to_fmt, DROP COLUMN time_from, DROP COLUMN time_to`);
   assert.equal(await runs(local(files['111_intl_form_stops.sql'])), 'ok', '111 runs again');
   assert.equal(await runs(files['111_intl_form_stops_rollback.sql']), 'ok');

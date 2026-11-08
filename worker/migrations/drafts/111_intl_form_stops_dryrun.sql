@@ -41,8 +41,11 @@ BEGIN
   PERFORM set_config('search_path', 'public', true);
 
   -- ===== PART 0: GUARDS (nothing written before them) =====
+  IF (SELECT prosrc FROM pg_proc WHERE oid = to_regprocedure('public.plan_h_bridge_wanted(bigint)')) LIKE '%-- 111:%' THEN
+    RAISE EXCEPTION '111: the bridge already reads the desk''s choice - 111 has run, nothing to do';
+  END IF;
   IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'order_stops' AND column_name IN ('time_from', 'time_to')) THEN
-    RAISE EXCEPTION '111: order_stops.time_from / time_to already exist - 111 has run, nothing to do';
+    RAISE EXCEPTION '111: order_stops.time_from / time_to exist while the bridge is the old one - a rollback kept the hours: copy them, drop the two columns and their CHECKs, then run 111 again';
   END IF;
   -- the LIVE texts 111 replaces, as 074 / 107 / 108 left them (md5 measured on production 8/11 by SELECT): a body
   -- changed since is not overwritten blind
@@ -164,7 +167,10 @@ begin
   end if;
   if tg_op = 'UPDATE' then
     select id into v_sh from shipments where order_stop_id = new.id and deleted_at is null;
-    if v_sh is not null and new.order_id is not distinct from old.order_id and new.deleted_at is null then
+    -- 111: a write that also takes the stop out of Veroia (via_hub false) retires the bridge in the sync below:
+    -- no place / recut / unplan (and no notice) for a load that is leaving the board
+    if v_sh is not null and new.order_id is not distinct from old.order_id and new.deleted_at is null
+       and new.via_hub is distinct from false then
       if old.location_id is distinct from new.location_id and current_setting('plan.writer', true) is distinct from 'natl' then
         perform plan_h_bridge_place(new.id, old.location_id, new.location_id, 'trigger:plan_bridge_sync', 'system');
       end if;
@@ -288,6 +294,9 @@ $f$;
   -- DRY RUN ONLY: the proofs, then everything is undone.
   SELECT s.id, s.order_id INTO v_stop, v_oid FROM public.order_stops s JOIN public.shipments b ON b.order_stop_id = s.id AND b.deleted_at IS NULL
    WHERE NOT public.plan_h_bridge_executed(b.id)
+     -- a bridge with no live leg: the proof says nothing about a planned load (its drop rules are 074's, not 111's)
+     AND NOT EXISTS (SELECT 1 FROM public.shipment_pieces sp JOIN public.piece_legs l ON l.piece_id = sp.id
+                      WHERE sp.shipment_id = b.id AND sp.deleted_at IS NULL AND l.deleted_at IS NULL)
      AND (SELECT count(*) FROM public.shipments b2 WHERE b2.order_id = s.order_id AND b2.deleted_at IS NULL) >= 2
    ORDER BY s.order_id DESC, s.id LIMIT 1;
   IF v_stop IS NOT NULL THEN
