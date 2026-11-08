@@ -1479,7 +1479,7 @@
       + (anod && it.reference ? '<span class="wn5-pl-ref">' + _esc(it.reference) + '</span>' : '') + '</span></span>'
       + '<span class="wn5-cand-m wn5-pl-when"><b>' + _esc(when) + '</b>' + pal + '</span>'
       + '<span class="wn5-pcap">' + (it._ro ? '' : '<span class="wn5-pchips">' + _plusChips(st, it) + '</span>' + take) + miss + '</span>'
-      + (it._ro ? '<span class="wn5-pl-ro">για την ΑΝΟΔΟ</span>' : '<button type="button" class="wi4-btn sm" data-act="save" data-piece="' + it.piece_id + '">Πρόσθεσε</button>') + '</div>';
+      + (it._ro ? '<span class="wn5-pl-ro">για την ΑΝΟΔΟ</span>' : '<button type="button" class="wi4-btn sm" data-act="save" data-piece="' + it.piece_id + '">' + (st.rota ? 'Σύνδεση' : 'Πρόσθεσε') + '</button>') + '</div>';
   }
   const _cnt = (items) => (items.length > 1 ? ' · ' + items.length : '');
   // F53 (live 31/10): plan_board lists a waiting load only up to the Friday of the week it was asked for (072
@@ -1535,11 +1535,31 @@
   // per head: a VS with pieces on both sides of the week, the stock, the ΑΝΟΔΟΣ requests are never said twice with
   // half the count (code review r9); inside a group the loaded week's lines come first (the order of `all`)
   function _plusGroups(st) {
+    if (st.rota) return _rotaGroups(st, _copy(_allItems().concat(st.more || [])));
     const loaded = _plusGroupsOf(st, _copy(_allItems()));
     if (!st.more || !st.more.length) return loaded;
     const at = new Map(loaded.map((g, i) => [g.head, i]));
     return _plusGroupsOf(st, _copy(_allItems().concat(st.more)))
       .map((g, i) => [g, at.has(g.head) ? at.get(g.head) : loaded.length + i]).sort((a, b) => a[1] - b[1]).map((x) => x[0]);
+  }
+  // Rota mode of the «+» window (owner 8/11, ✈ «⤷ Επόμενο φορτίο με το ίδιο φορτηγό ›», as _wiRotCands of the
+  // Weekly International): the national loads waiting for a vehicle that load from the day before the side's last
+  // delivery on, by loading time, of either direction (the truck takes them on its way, whatever the order's own side —
+  // so no read-only «για την ΑΝΟΔΟ» line). VS and Veroia stock are not a rota (owner: «άσε τη Βέροια»). What the list
+  // left out by date is counted and said under it (st.rotaCut), never a silent «none».
+  function _rotaGroups(st, all) {
+    const dayOf = (it) => _ymdOf(it.load_from) || it.nat_ready_day || null;
+    const cand = [];
+    let cut = 0;
+    for (const it of all) {
+      if (it.is_stock || it.at_hub || it.kind !== 'national') continue;
+      const d = dayOf(it);
+      if (st.rotaFrom && d && d < st.rotaFrom) { cut++; continue; }
+      cand.push(Object.assign(it, { _ro: false }));
+    }
+    cand.sort((a, b) => String(a.load_from || dayOf(a) || '').localeCompare(String(b.load_from || dayOf(b) || '')));
+    st.rotaCut = cut;
+    return cand.length ? [{ head: 'ΕΘΝΙΚΑ ΣΕ ΑΝΑΜΟΝΗ · ΙΔΙΟ ΦΟΡΤΗΓΟ', sub: _cnt(cand) + (st.rotaFrom ? ' · φορτώνουν από ' + _dayShort(st.rotaFrom) : ''), items: cand }] : [];
   }
   function _plusGroupsOf(st, all) {
     const anodIt = all.filter((it) => !it.is_stock && _sideFor(it) === 'ANODOS');
@@ -1596,6 +1616,10 @@
     const week = (_state().board || {}).week;
     const lastDay = [c.date_end].concat(st.sideDays).filter(Boolean).sort().pop();
     if (week && lastDay && lastDay > _addDays(week, 6)) st.beyond = { from: _addDays(week, 7), to: lastDay, state: 'loading', err: null };
+    // rota mode (owner 8/11): from the day before the side's last delivery, as the Weekly International's _wiRotCands
+    st.rota = !!(opts && opts.rota);
+    const lastDel = sd && !sd.gap && sd.to && sd.to.length ? sd.to[sd.to.length - 1].day : null;
+    st.rotaFrom = st.rota && lastDel ? _addDays(lastDel, -1) : null;
     st.groups = _plusGroups(st);
     st.hubStop = !!hubStop;
     st.hubStopDay = _stopDay(hubStop);
@@ -1613,7 +1637,7 @@
     }
     const box = _cycText(c, r);
     const anod = side === 'ANODOS';
-    const title = anod ? 'Πρόσθεσε στην ΑΝΟΔΟ' : 'Πρόσθεσε στην ΚΑΘΟΔΟ';
+    const title = st.rota ? '⤷ Επόμενο φορτίο · ίδιο φορτηγό · ' + (anod ? 'Άνοδος' : 'Κάθοδος') : anod ? 'Πρόσθεσε στην ΑΝΟΔΟ' : 'Πρόσθεσε στην ΚΑΘΟΔΟ';
     const meta = [box.l1.split(' · ')[0], _dayShort(st.day), st.veroia ? 'φόρτωση ' + st.veroia : null, _palU(st.pallets, st.palUnk) + '/33'].filter(Boolean).join(' · ');
     // A popover (Figma 2011:10306/10447): no «×» and no footer — Esc, a click outside or another «+» close it. The
     // header holds title · meta and «Νέα παραγγελία | Από αναμονή», like Δ1 (T12): a redraw of the body keeps them.
@@ -1621,8 +1645,9 @@
     d.dlg.classList.add('wn5-plusdlg');
     if (anod) d.dlg.classList.add('wn5-plus-a');
     d.dlg.querySelector('.wi4-dlg-t').insertAdjacentHTML('afterend', '<span class="wn5-dlg-meta">· ' + _esc(meta) + '</span>'
-      + '<span class="wn5-seg" role="group"><button type="button" data-act="seg" data-v="new">Νέα παραγγελία</button>'
-      + '<button type="button" data-act="seg" data-v="wait" class="on">Από αναμονή</button></span>');
+      // the rota picks from waiting loads only: no «Νέα παραγγελία | Από αναμονή» switch
+      + (st.rota ? '' : '<span class="wn5-seg" role="group"><button type="button" data-act="seg" data-v="new">Νέα παραγγελία</button>'
+      + '<button type="button" data-act="seg" data-v="wait" class="on">Από αναμονή</button></span>'));
     const filter = () => {
       const q = st.q ? _norm(st.q) : '';
       for (const ln of d.body.querySelectorAll('.wn5-pline')) ln.hidden = !!q && !String(ln.dataset.s || '').includes(q);
@@ -1652,20 +1677,20 @@
       } else {
         // Figma 2011:10315/10316 (ΚΑΘΟΔΟΣ only; the ΑΝΟΔΟΣ frame 10446 has no hint): what «Νέα παραγγελία» pre-fills.
         // Drawn only once the form exists, as the ΠΡΟΡΥΘΜΙΣΗ; an unassigned cycle has no truck to name, so it is left out.
-        if (!anod && typeof WN5Form !== 'undefined' && typeof WN5Form.openOrder === 'function') {
+        if (!anod && !st.rota && typeof WN5Form !== 'undefined' && typeof WN5Form.openOrder === 'function') {
           const truck = box.cls === 'un' ? null : box.l1.split(' · ')[0];
           h += '<div class="wn5-grey wn5-phint">«Νέα παραγγελία» ανοίγει τη σύντομη φόρμα με ' + _esc(_dayShort(st.day)) + ', ΚΑΘΟΔΟ'
             + (truck ? ' και ' + _esc(truck) : '') + ' έτοιμα· τιμή, παλέτες και παράθυρο μπαίνουν και αργότερα.</div>';
         }
         // Figma 2011:10446: the ΑΝΟΔΟΣ popover has no search (its list is the requests of one side's day)
-        if (!anod) h += '<input type="search" class="wn5-dq" data-q placeholder="Αναζήτηση στην αναμονή (πελάτης, σημείο, VS)" value="' + _esc(st.q) + '">';
+        if (!anod || st.rota) h += '<input type="search" class="wn5-dq" data-q placeholder="Αναζήτηση στην αναμονή (πελάτης, σημείο, VS)" value="' + _esc(st.q) + '">';
         if (!st.hubStop && st.groups.some((g) => g.items.some((it) => !it._ro && _needs(it, false, hub).some((n) => n.hub)))) {
           h += '<div class="wn5-hubwin"><span>' + (anod ? 'Άφιξη Βέροιας' : 'Παράθυρο φόρτωσης Βέροιας') + '</span>'
             + '<input class="wn5-hm" data-hub="from" placeholder="ΗΗ:ΛΛ" value="' + _esc(st.hubFrom) + '"> – <input class="wn5-hm" data-hub="to" placeholder="ΗΗ:ΛΛ" value="' + _esc(st.hubTo) + '">'
             + '<small>κενό: όλη η ημέρα · στην ημέρα Βέροιας κάθε φορτίου</small></div>';
         }
         // «none» only when every day of the trip was read: a day not read is never said to have nothing (code review r7)
-        if (!st.groups.length && !(st.beyond && st.beyond.state !== 'ok')) h += '<p class="wn5-none">Καμία παράδοση σε αναμονή για αυτό το σκέλος.</p>';
+        if (!st.groups.length && !(st.beyond && st.beyond.state !== 'ok')) h += '<p class="wn5-none">' + (st.rota ? 'Κανένα εθνικό φορτίο σε αναμονή' + (st.rotaFrom ? ' από ' + _esc(_dayShort(st.rotaFrom)) + ' και μετά' : '') + '.' : 'Καμία παράδοση σε αναμονή για αυτό το σκέλος.') + '</p>';
         for (const g of st.groups) h += '<div class="wn5-grp-h">' + _esc(g.head) + (g.chip ? '<span class="wn5-grp-c">' + _esc(g.chip) + '</span>' : '') + '<span class="wn5-grp-s">' + _esc(g.sub) + '</span></div>' + g.items.map((it) => _plusLineHTML(st, it)).join('');
         // F53: the days after the loaded week: being read, or not read (with the base's words) — never a silent gap;
         // under the list, so its going away and the lines read later move nothing above it
@@ -1678,7 +1703,9 @@
         if (!st.groups.some((g) => g.items.some((it) => !it._ro && same(it))) && fIt) h += '<p class="wn5-miss" data-focus-miss>Το φορτίο που έσυρες δεν μπαίνει σε αυτή την πλευρά από εδώ — άνοιξε την «Ανάθεση» της γραμμής του.</p>';
         // Figma 2011:10022 (ΑΝΟΔΟΣ): «ΠΡΟΡΥΘΜΙΣΗ · Άδειες παλέτες · εθνική 1 € · Άνοιγμα» — the T20 form prefilled (Ε-39).
         // Drawn only once the form exists, so no dead line before T20.
-        if (anod && typeof WN5Form !== 'undefined' && typeof WN5Form.openOrder === 'function') {
+        // what the rota list left out by date, said (never a silent «none»: the Weekly International's own rule)
+        if (st.rota && st.rotaCut) h += '<p class="wn5-grey" data-rota-cut>Εκτός λίστας: ' + st.rotaCut + ' που φορτώνουν πριν τις ' + _esc(_dayShort(st.rotaFrom)) + '</p>';
+        if (anod && !st.rota && typeof WN5Form !== 'undefined' && typeof WN5Form.openOrder === 'function') {
           // one line from the row's 24px inset (2011:10488): label · sub, then «Άνοιγμα» at the right — not the Δ1
           // candidate grid, whose empty 176px box column pushed the text 200px in and stacked it
           h += '<div class="wn5-grp-h">ΠΡΟΡΥΘΜΙΣΗ</div><div class="wn5-cand wn5-preset" data-line="preset"><span class="wn5-preset-m"><b>Άδειες παλέτες · εθνική 1 €</b>'
@@ -1687,7 +1714,7 @@
         // the closing grey band of the ΚΑΘΟΔΟΣ frame (2011:10444); the ΑΝΟΔΟΣ frame has none (it has no stock)
         // Approved copy of 2011:10445; «(π.χ. …)» names the first arriving VS of this list (none → left out, never invented).
         // The T21 sentence («Αλλαγές ή αφαίρεση: κλικ στο σκέλος → φόρμα σκέλους.») joins with the leg form.
-        if (!anod) {
+        if (!anod && !st.rota) {
           const vsEx = st.groups.find((g) => g.items.some((it) => it.kind === 'vs_import' && it.reference));
           const eg = vsEx ? ' (π.χ. ' + vsEx.items.find((it) => it.kind === 'vs_import' && it.reference).reference + ')' : '';
           h += '<p class="wn5-grey wn5-pnote">Προειδοποίηση, όχι άρνηση. Ποσότητα («πόσες») μόνο για απόθεμα που είναι ήδη στη Βέροια (owner 21/10): το υπόλοιπο μένει απόθεμα. Φορτίο που φτάνει' + _esc(eg) + ' μπαίνει ολόκληρο· για σπάσιμο → Πίνακας Βέροιας «Σπάσε…».</p>';
@@ -1868,6 +1895,20 @@
       const out = await WN5Act.twoStep({ method: req.method, path: req.path, body: req.body, kind: 'move',
         title: 'Σπάσιμο παραγγελιών → Βέροια · ' + (src.code || ''), verb: 'Μεταφορά', host: ctx.host });
       // the words follow the re-read board (_afterSave reloads first), never the promise of the menu line
+      if (out) await _afterSave(out, () => _whereBack(pieceIds), { intl: true });
+      return out;
+    }
+    if (ctx.direct === 'unlink') {
+      // a rota leg (owner 8/11, WN5.rotaMenu «Αποσύνδεση από το δρομολόγιο»): this load back to waiting (ΕΠΟΜΕΝΑ),
+      // where it stands — the same «ΑΛΛΟ» body and two steps as above, without the split's «all at Veroia» rule (a
+      // rota load is picked up at its own place by design). Nothing to send = said, never a silent nothing.
+      if (!mp.items.length) {
+        WN5Act.strip(ctx.host || _boardHost(), _clientErr('nothing_to_unlink', 'Το σκέλος δεν βρέθηκε στο δρομολόγιο που φορτώθηκε — ανανέωσε'));
+        return null;
+      }
+      const req = _assignReq(st, 'wait');
+      const out = await WN5Act.twoStep({ method: req.method, path: req.path, body: req.body, kind: 'move',
+        title: 'Αποσύνδεση από το δρομολόγιο · ' + what, verb: 'Αποσύνδεση', host: ctx.host });
       if (out) await _afterSave(out, () => _whereBack(pieceIds), { intl: true });
       return out;
     }
@@ -2341,11 +2382,13 @@
   ACTS.date = (el) => { const row = el.closest('.wn5-row[data-rt]'); WN5Act.datePanel(_id(row && row.dataset.rt), el.dataset.side, el); };
 
   // ═══ T17 · «Φόρτωση με τοπικό» (decision 44): request_id on the creation, never on the cancel ═══
-  // the stops a local driver can load: the cycle's ΚΑΘΟΔΟΣ pickups outside Veroia (Veroia is loaded by the cycle's
-  // truck). The ΑΝΟΔΟΣ pickups are the truck's own work in the south (Figma 2011:7745 row 3: «… → Βέροια · για
-  // <delivery>»); 072 takes any stop, so this is the screen's offer only — owner question in the T17 ledger.
-  function _localStops(c, hub) {
-    return (c.stops || []).filter((s) => s.side === 'KATHODOS' && s.location_id !== hub && (s.legs || []).some((l) => l.act === 'load'));
+  // the stops a local driver can load: the cycle's pickups outside Veroia (Veroia is loaded by the cycle's truck), of
+  // ONE side. Owner 8/11 (Figma 2607:8466, «καλύπτει και τα 2 leg»): the ✈ line opens Κάθοδος / Άνοδος — until then
+  // only the ΚΑΘΟΔΟΣ was offered; 072 / 095 always took any pickup (plan_local_loading_problem: a load leg at the
+  // stop), so the ΑΝΟΔΟΣ is the screen's change only. No side = ΚΑΘΟΔΟΣ, as before (callers without one).
+  function _localStops(c, hub, side) {
+    const sd = side === 'ANODOS' ? 'ANODOS' : 'KATHODOS';
+    return (c.stops || []).filter((s) => s.side === sd && s.location_id !== hub && (s.legs || []).some((l) => l.act === 'load'));
   }
   function _localBody(st) {
     const body = { rt_stop_id: st.stop, driver_id: st.driver, truck_id: st.truck };
@@ -2363,30 +2406,31 @@
   const LOCAL_DAY_MAX = 7;
   // the Athens day of the stop picked in the form (the day the base writes when the body names none)
   const _localStopDay = (st) => { const s = (st.stops || []).find((x) => x.stop_id === st.stop); return s ? _ymdOf(s.planned_from) : null; };
-  WN5Act.local = async function local(rtStopId, rtId) {
+  WN5Act.local = async function local(rtStopId, rtId, side) {
     const sid = _id(rtStopId);
     let c = rtId ? _cycle(_id(rtId)) : null;
     if (!c && sid) c = _cycles().find((x) => (x.stops || []).some((s) => s.stop_id === sid)) || null;
     if (!c) { WN5Act.strip(_boardHost(), _clientErr('rt_missing', 'Ο κύκλος δεν είναι στο board που φορτώθηκε — ανανέωσε')); return null; }
-    const stops = _copy(_localStops(c, _hubId()));
+    const sStop = sid ? (c.stops || []).find((s) => s.stop_id === sid) : null;
+    const sd = side === 'ANODOS' || (!side && sStop && sStop.side === 'ANODOS') ? 'ANODOS' : 'KATHODOS';
+    const stops = _copy(_localStops(c, _hubId(), sd));
     const st = { rtId: c.rt_id, stop: stops.some((s) => s.stop_id === sid) ? sid : null, driver: null, truck: null, trailer: null,
       from: '', to: '', notes: '', ids: { ok: false }, stops, day: null,
       // one id per open creation window (decision 44): kept in this closure only, minted now, renewed after a 200
       slot: PlanApi.slot() };
     st.ids = typeof PlanIds !== 'undefined' ? await PlanIds.load() : { ok: false };
     const lists = st.ids.ok ? { d: PlanIds.list('driver'), t: PlanIds.list('truck'), r: PlanIds.list('trailer') } : { d: [], t: [], r: [] };
-    const d = _dlg('local', 'Φόρτωση με τοπικό · ' + (c.code || 'κύκλος'), { onClose: () => st.slot.close() });
+    const d = _dlg('local', 'Φόρτωση με τοπικό · ' + (sd === 'ANODOS' ? 'Άνοδος' : 'Κάθοδος'), { onClose: () => st.slot.close() });
     d.ft.innerHTML = '<button type="button" class="wi4-btn" data-act="cancel">Άκυρο</button><button type="button" class="wi4-btn pri" data-act="save">Αποθήκευση</button>';
     const stopLabel = (s) => _dayShort(_ymdOf(s.planned_from)) + ' · ' + _hmw(s.planned_from, s.planned_to) + ' · ' + (s.location || '—')
       + ' · ' + [...new Set((s.legs || []).filter((l) => l.act === 'load').map((l) => l.client))].join(', ');
     d.body.innerHTML = (st.ids.ok ? '' : '<div class="wn5-miss" data-ids-miss>Οι κατάλογοι δεν είναι διαθέσιμοι ακόμη: οδηγός και φορτηγό διαλέγονται όταν έρθουν.</div>')
       + '<label class="wn5-field"><span>Στάση *</span><select data-stop><option value="">—</option>'
       + stops.map((s) => '<option value="' + s.stop_id + '"' + (s.stop_id === st.stop ? ' selected' : '') + '>' + _esc(stopLabel(s)) + '</option>').join('') + '</select></label>'
-      // ✈ audit 8/11: a cycle with no ΚΑΘΟΔΟΣ at all (only ΑΝΟΔΟΣ) was told «does not load outside Veroia», which is
-      // false for it; the two empty cases are said apart (the offer itself stays ΚΑΘΟΔΟΣ only, _localStops above)
-      + (stops.length ? '' : '<p class="wn5-none">' + ((c.stops || []).some((s) => s.side === 'KATHODOS')
-        ? 'Το δρομολόγιο δεν φορτώνει έξω από τη Βέροια.'
-        : 'Το δρομολόγιο δεν έχει κάθοδο: η φόρτωση με τοπικό είναι για τις φορτώσεις της καθόδου.') + '</p>')
+      // ✈ audit 8/11: the two empty cases said apart — the side does not exist, or it loads only at Veroia
+      + (stops.length ? '' : '<p class="wn5-none">' + ((c.stops || []).some((s) => s.side === sd)
+        ? `Η ${sd === 'ANODOS' ? 'άνοδος' : 'κάθοδος'} του δρομολογίου δεν φορτώνει έξω από τη Βέροια.`
+        : `Το δρομολόγιο δεν έχει ${sd === 'ANODOS' ? 'άνοδο' : 'κάθοδο'}.`) + '</p>')
       + '<label class="wn5-field"><span>Οδηγός *</span><select data-driver data-fh-search><option value="">—</option>' + _optsHTML(lists.d, null) + '</select></label>'
       + '<label class="wn5-field"><span>Φορτηγό *</span><select data-truck data-fh-search><option value="">—</option>' + _optsHTML(lists.t, null) + '</select></label>'
       + '<label class="wn5-field"><span>Ρυμούλκα</span><select data-trailer data-fh-search><option value="">—</option>' + _optsHTML(lists.r, null) + '</select></label>'

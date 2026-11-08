@@ -559,14 +559,18 @@
       : `<label class="wn5f-f wn5h-partner"><span>Συνεργάτης *</span><select class="form-input" id="wn5h-partner" data-fh-search>${_opts('partner', sel.partner_id, '', sel.partner)}</select></label>`
         + `<label class="wn5f-f wn5h-rate"><span>Κόμιστρο €</span><input class="form-input" id="wn5h-rate" inputmode="decimal" value="${sel.partner_rate == null ? '' : _esc(sel.partner_rate)}"></label>`;
   }
-  async function change(rtId) {
+  // pre (owner 8/11, ✈ «Παράδοση με τοπικό ›», Figma 2607:8131): the same change, opened with «Πότε / Πού / Σημείωση»
+  // filled from the delivery the local driver takes over — still editable, nothing is sent until «Αλλαγή οχήματος».
+  // The local is then the vehicle from that point, paid as a trip (owner 8/11), and the national truck is free.
+  async function change(rtId, pre) {
     const board = await _board();
     const c = board && (board.cycles || []).find((x) => x.rt_id === rtId);
     if (!c) { if (typeof toast === 'function') toast('Ο κύκλος δεν βρέθηκε στην εβδομάδα που φαίνεται — ανανέωσε', 'warn'); return false; }
     const ids = await PlanIds.load();
     const segs = WN5L.segmentsOf(c).segments;
     const now = segs[segs.length - 1] || {};
-    const html = _whenRowHTML({ day: '', hm: '' }, '', '', '')
+    const p0 = pre || {};
+    const html = _whenRowHTML({ day: p0.day || '', hm: p0.hm || '' }, p0.place || '', '', p0.note || '')
       + `<div class="wn5f-sec" data-from>ΝΕΟ ΟΧΗΜΑ</div><div class="wn5h-tog" role="radiogroup">`
       + `<button type="button" class="on" role="radio" aria-checked="true" data-vmode="own">Δικό μας</button><button type="button" role="radio" aria-checked="false" data-vmode="partner">Συνεργάτης</button></div>`
       + `<div class="wn5h-vrow" data-own>${_vehFields(true, {})}`
@@ -576,7 +580,7 @@
       + `<div data-strip></div><div data-preview></div>`;
     // head: the current vehicle (truck only, or the partner) · driver · the cycle window (Figma 2122:7739)
     const cur = now.trip_type === 'PARTNER' ? (now.partner || 'Συνεργάτης') : (now.truck || 'χωρίς φορτηγό');
-    const d = _open('handover', 'Αλλαγή οχήματος', `${[cur, now.driver].filter(Boolean).map(_esc).join(' · ')} · ${_days(c)}`,
+    const d = _open('handover', p0.title || 'Αλλαγή οχήματος', `${[cur, now.driver].filter(Boolean).map(_esc).join(' · ')} · ${_days(c)}`,
       html, '', 'Αλλαγή οχήματος');
     d.rtId = rtId;
     d.cycle = c;

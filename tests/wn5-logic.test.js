@@ -330,7 +330,9 @@ test('F4α-T24: a stop is coloured only from segments[].stop_ids (a stop in no s
   assert.strictEqual(WN5L_T24.stopSegments(one).size, 0, 'one segment = exactly today: no label (R-59)');
 });
 test('F4α-T24: the handover sits between the last stop of the segment before and the first stop after', () => {
-  assert.deepStrictEqual(WN5L_T24.handoversOf(segCycle()), [{ at: '2026-10-13T14:30:00+03:00', place_note: 'Λαμία', reason: 'vehicle_breakdown', segmentId: 71, label: 'final', beforeStopId: 1, afterStopId: 2 }]);
+  assert.deepStrictEqual(WN5L_T24.handoversOf(segCycle()), [{ at: '2026-10-13T14:30:00+03:00', place_note: 'Λαμία', reason: 'vehicle_breakdown', segmentId: 71, label: 'final', beforeStopId: 1, afterStopId: 2,
+    // owner 8/11: who takes over and the note (the «ΤΟΠΙΚΑ» panel names «Παράδοση με τοπικό» by them)
+    note: null, driver: 'Driver Test 02', truck: 'TST-2', partner: null, tripType: 'OWNED' }]);
   const no = segCycle(); delete no.segments;
   assert.deepStrictEqual(WN5L_T24.handoversOf(no), []);
 });
@@ -483,4 +485,51 @@ test('code review 8/11: a waiting load delivered after the week stands on the la
   assert.strictEqual(dayOf(L.model(b2, { today: '2026-10-25' }), 'wait:4196'), undefined, 'another week: not here');
   assert.strictEqual(L.loadDayOf(rowOf(m, 'rt:105')), '2026-10-14', 'a cycle: its ΚΑΘΟΔΟΣ (Veroia) day');
   assert.strictEqual(L.loadDayOf(rowOf(m, 'rt:106')), rowOf(m, 'rt:106').anod.day, 'without ΚΑΘΟΔΟΣ: its ΑΝΟΔΟΣ day');
+});
+
+// Owner 8/11 (rota = a real load, a normal leg; Figma 2607:7796): a load picked up AFTER another delivery of the same
+// side (base's seq) leaves the side's cells and pallets and is row.rota[]; a delivery and a pickup at ONE stop counts
+// (the truck delivers and reloads there); Veroia is never a rota; nothing changes for a cycle without one.
+test('owner 8/11: rota legs by the base\'s stop order — out of the side, its own line and pallets', () => {
+  const b = fix();
+  const c = b.cycles.find((x) => x.rt_id === 101);
+  const base = M(fix()).days.flatMap((d) => d.rows).find((r) => r.rtId === 101);
+  assert.deepStrictEqual(base.rota, [], 'no rota on the plain fixture');
+  const mk = (id, loc, legs) => Object.assign(JSON.parse(JSON.stringify(c.stops[1])), { stop_id: id, location_id: loc, location: 'P' + loc, legs });
+  const leg = (act, legId, pieceId, pallets) => Object.assign(JSON.parse(JSON.stringify(c.stops[1].legs[0])), { act, leg_id: legId, piece_id: pieceId, pallets, client: 'ROTA C', nat_order_id: 9001 });
+  // pickup at the 2nd delivery's own stop (1003, deliver + reload), delivered at a new stop before the ΑΝΟΔΟΣ
+  c.stops.find((s) => s.stop_id === 1003).legs.push(leg('load', 5901, 4901, 7));
+  c.stops.splice(4, 0, mk(1099, 5, [leg('unload', 5901, 4901, 7)]));
+  c.stops.forEach((s, i) => { s.seq = i + 1; });
+  const r = M(b).days.flatMap((d) => d.rows).find((x) => x.rtId === 101);
+  assert.strictEqual(r.rota.length, 1);
+  assert.strictEqual(r.rota[0].legId, 5901);
+  assert.strictEqual(r.rota[0].side, 'KATHODOS');
+  assert.strictEqual(r.rota[0].pallets, 7);
+  assert.strictEqual(r.rota[0].natOrderId, 9001);
+  assert.strictEqual(r.kath.pallets, base.kath.pallets, 'the side keeps its own pallets');
+  assert.deepStrictEqual(r.kath.to.map((p) => p.stopId), base.kath.to.map((p) => p.stopId), 'the side\'s deliveries are unchanged');
+  // a pickup BEFORE every delivery (a milk run's first load) is not a rota
+  const b2 = fix();
+  const c2 = b2.cycles.find((x) => x.rt_id === 101);
+  c2.stops.find((s) => s.stop_id === 1002).legs.unshift(leg('load', 5902, 4902, 3));
+  c2.stops.find((s) => s.stop_id === 1004).legs.push(leg('unload', 5902, 4902, 3));
+  const r2 = M(b2).days.flatMap((d) => d.rows).find((x) => x.rtId === 101);
+  assert.strictEqual(r2.rota.length, 1, 'loaded at the 1st delivery stop = after a delivery there: a rota');
+});
+
+test('owner 8/11: «ΤΟΠΙΚΑ» — a local loading and a «Παράδοση με τοπικό» change by day and driver', () => {
+  const m = { days: [{ rows: [
+    { kind: 'cycle', rtId: 7, tiles: [{ line1: 'TST-1 · TRL-1' }], local: [{ local_move_id: 70, driver: 'Loc A', move_date: '2026-10-12', time_from: '09:00', time_to: null,
+      side: 'ANODOS', pickup: { who: 'C1', place: 'P1', pallets: 4, palUnknown: 0 }, forStops: [], dim: false }],
+    handovers: [{ at: '2026-10-13T15:00:00+03:00', place_note: 'Λαμία', note: 'Παράδοση με τοπικό', driver: 'Loc B', truck: 'TST-9', tripType: 'OWNED', segmentId: 5 },
+      { at: '2026-10-13T16:00:00+03:00', place_note: 'X', note: 'βλάβη', driver: 'Other', truck: 'TST-8', tripType: 'OWNED', segmentId: 6 }] }] }] };
+  const p = L.localPanel(m);
+  assert.deepStrictEqual(p.map((x) => x.day), ['2026-10-12', '2026-10-13']);
+  assert.strictEqual(p[0].drivers[0].moves[0].kind, 'load');
+  assert.strictEqual(p[0].drivers[0].moves[0].side, 'ANODOS');
+  assert.strictEqual(p[1].drivers.length, 1, 'only the change made as «Παράδοση με τοπικό», never a breakdown change');
+  assert.strictEqual(p[1].drivers[0].driver, 'Loc B');
+  assert.strictEqual(p[1].drivers[0].vehicle, 'TST-9');
+  assert.match(p[1].drivers[0].moves[0].why, /TST-1 · TRL-1 ελεύθερο από 15:00/);
 });

@@ -1725,7 +1725,7 @@ async function scnLocal(browser, origin) {
     let n = 0;
     const { page, S } = await bOpen(browser, origin, { plan: { ['POST ' + P]: () => (++n === 1 ? planErr(500, 'SERVER', 'plan_unknown')
       : [200, { ok: true, op: 'plan_local_loading', dry_run: false, already: false, replayed: true, ids: { local_move_id: 7001, rt_id: 204 }, warnings: [], notice_ids: [] }]) } });
-    await bMenu(page, 204, 'local');
+    await bMenu(page, 204, 'local-k');
     const opts = await page.$$eval(`${D} select[data-stop] option`, (os) => os.map((o) => o.value).filter(Boolean)).catch(() => []);
     ok(scn, 'the ✈ item opens .wi4-dlg[data-wn5=local]; the stops offered = the cycle\'s loads outside Veroia (Thessaloniki)', JSON.stringify(opts) === '["2033"]', opts);
     ok(scn, '«Αποθήκευση» disabled until stop, driver and truck are chosen', (await bOff(page, `${D} [data-act="save"]`)) === true);
@@ -1749,12 +1749,12 @@ async function scnLocal(browser, origin) {
   }
   { // B · a refusal is the Worker's words; closing the window drops the id, the next window has a new one
     const { page, S } = await bOpen(browser, origin, { plan: { ['POST ' + P]: () => planErr(422, 'PLAN_RULE', 'driver_busy') } });
-    await bMenu(page, 204, 'local');
+    await bMenu(page, 204, 'local-k');
     await fillForm(page);
     await bClick(page, `${D} [data-act="save"]`);
     ok(scn, '422 driver_busy → refusal strip with the Worker text', (await bText(page, `${D} .wn5-strip[data-kind="refusal"]`)).includes('rig sentinel driver_busy'));
     await bClick(page, `${D} [data-act="cancel"]`);
-    await bMenu(page, 204, 'local');
+    await bMenu(page, 204, 'local-k');
     await fillForm(page);
     await bClick(page, `${D} [data-act="save"]`);
     const c = bCalls(S, 'POST', P);
@@ -1789,7 +1789,7 @@ async function scnLocal(browser, origin) {
     const { page, S } = await bOpen(browser, origin, { plan: { ['POST ' + P]: (e) => [200, { ok: true, op: 'plan_local_loading', dry_run: false,
       already: false, ids: { local_move_id: 7003, rt_id: 204 }, notice_ids: [],
       warnings: e.body.move_date ? [{ code: 'local_loading_other_day', local_move_id: 7003, move_date: e.body.move_date, stop_day: '2026-10-13' }] : [] }] } });
-    await bMenu(page, 204, 'local');
+    await bMenu(page, 204, 'local-k');
     await fillForm(page);
     const stopDay = await page.$eval(`${D} input[data-day]`, (e) => e.value).catch(() => '');
     ok(scn, '095: «Ημέρα» = the picked stop\'s Athens day by default, no amber line', /^\d{4}-\d{2}-\d{2}$/.test(stopDay)
@@ -2208,8 +2208,9 @@ async function scnSheet(browser, origin) {
   // T23 adds the last ✈ line: from here the menu is the whole approved list of Figma 2011:8858, in its order, one
   // line per item («›» lines with their submenus, the same label never twice)
   const labels = await page.evaluate(() => (WN5._menuItems ? WN5._menuItems(101) : []).map((x) => x.label + (x.children.length ? ' › ' + x.children.join(' · ') : ''))).catch(() => []);
-  ok(scn, '✈ labels = Figma 2011:8858, in order', JSON.stringify(labels) === JSON.stringify(['Άνοιγμα παραγγελιών', 'Ανάθεση / αλλαγή φορτηγού ή συνεργάτη',
-    'Νέα παραγγελία σε αυτό το δρομολόγιο › Κάθοδος · Άνοδος', 'Φόρτωση με τοπικό', 'Σπάσιμο παραγγελιών', 'Εκτύπωση / WhatsApp › Κάθοδος · Άνοδος · Όλο το δρομολόγιο',
+  ok(scn, '✈ labels = Figma 2011:8858 + 2607:8466 (owner 8/11), in order', JSON.stringify(labels) === JSON.stringify(['Άνοιγμα παραγγελιών', 'Ανάθεση / αλλαγή φορτηγού ή συνεργάτη',
+    'Νέα παραγγελία σε αυτό το δρομολόγιο › Κάθοδος · Άνοδος', '⤷ Επόμενο φορτίο με το ίδιο φορτηγό › Κάθοδος · Άνοδος',
+    'Φόρτωση με τοπικό › Κάθοδος · Άνοδος', 'Παράδοση με τοπικό › Κάθοδος · Άνοδος', 'Σπάσιμο παραγγελιών', 'Εκτύπωση / WhatsApp › Κάθοδος · Άνοδος · Όλο το δρομολόγιο',
     'Αντιγραφή πινακίδων', 'Αλλαγή οχήματος…', 'Καθαρισμός ανάθεσης']), labels);
   // fidelity T23 (Figma 2011:9284): the ΚΑΘΟΔΟΣ printer stands clear of the «+» (a write control) and of the ΑΝΑΘΕΣΗ
   // tile — 14px / 2px in Figma; it touched both (0 / 0) at 1440 and 1920. Geometry only: opacity does not move it.
@@ -2450,7 +2451,7 @@ SCN['plane-gaps'] = async (browser, origin) => {
   // the sheet's kit (as scnSheet): the fixture week with the catalogues, so Veroia resolves and the print path is reached
   const { page, S } = await KC.openApp(browser, origin, { clipboard: true, board: fixture() });
   await page.context().route((u) => !u.href.startsWith(origin) && !u.href.includes(KC.HOST) && !u.href.startsWith('about:'), (route) => route.abort());
-  await bMenu(page, 106, 'local');
+  await bMenu(page, 106, 'local-k');
   await page.waitForSelector(`${bDlg('local')} .wn5-none`, { timeout: 3000 }).catch(() => {});
   const none = await bText(page, `${bDlg('local')} .wn5-none`);
   ok(scn, '(1) ΑΝΟΔΟΣ-only: «δεν έχει κάθοδο», never «δεν φορτώνει έξω από τη Βέροια»', none.includes('δεν έχει κάθοδο') && !none.includes('έξω από τη Βέροια'), none);
@@ -2470,6 +2471,111 @@ SCN['plane-gaps'] = async (browser, origin) => {
   ok(scn, 'read only: no /plan write', !S.plan.some((x) => x.m !== 'GET'), S.plan.filter((x) => x.m !== 'GET').map((x) => x.m + ' ' + x.path));
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
   await page.context().close();
+};
+// Owner 8/11 (Figma 2607:7793, approved): the rota, both sides of the local tools, the local delivery, the «ΤΟΠΙΚΑ» panel.
+// The rota board: cycle 204 gets a ΚΑΘΟΔΟΣ load picked up AFTER its deliveries (ASPROPYRGOS Tue 12:00 → RENTIS Tue
+// 15:00, 12π, another client): by the base's order (seq) it is a rota leg. One local loading on 2033 (Mon) feeds the panel.
+function rotaBoard() {
+  const b = bBoard();
+  const c = b.cycles.find((x) => x.rt_id === 204);
+  const TUE = '2026-10-13';
+  const leg = { nat_order_id: 3137, reference: 'N-T137', client: 'ΠΕΛΑΤΗΣ Ρ', client_id: 49 };
+  const at = c.stops.findIndex((x) => x.stop_id === 2034) + 1;
+  c.stops.splice(at, 0, bStop(2037, 'KATHODOS', 3, TUE, '12:00', '13:00', [bLeg(6037, 5137, 'load', 12, leg)]),
+    bStop(2038, 'KATHODOS', 2, TUE, '15:00', '16:00', [bLeg(6037, 5137, 'unload', 12, leg)]));
+  c.stops.forEach((x, i) => { x.seq = i + 1; });
+  const s33 = c.stops.find((x) => x.stop_id === 2033);
+  s33.local_loading = { local_move_id: 7701, driver_id: 61, driver: 'Local Test 1', move_date: '2026-10-12', time_from: '09:00', time_to: '10:00' };
+  return b;
+}
+SCN['rota-locals'] = async (browser, origin) => {
+  const scn = 'rota-locals';
+  { // A · the rota leg is a line inside its truck's row; the side's pallets stay without it; right-click → unlink (dry run)
+    const { page, S } = await bOpen(browser, origin, { board: rotaBoard() });
+    const R = '.wn5-row[data-rt="204"]';
+    const L = '.wn5-sub.wn5-rota[data-leg-id="6037"]';
+    const g = await page.evaluate(([R, L]) => {
+      const row = document.querySelector(R), leg = document.querySelector(L);
+      if (!row || !leg) return null;
+      let n = row.nextElementSibling;
+      return { next: n === leg, text: leg.innerText, plane: !!leg.querySelector('.wi4-plane'), idx: (leg.querySelector('.wn5-c-idx') || {}).innerText || '',
+        kpal: (row.querySelector('.wn5-kpal .wi4-pal') || {}).innerText || '', rowText: row.innerText };
+    }, [R, L]).catch(() => null);
+    ok(scn, 'A rota leg = its own line right under the truck row (inside it), no ✈, no number', !!g && g.next && !g.plane && !g.idx.trim(), g);
+    ok(scn, 'A the line names pickup → delivery and its own 12π', !!g && /ASPROPYRGOS/.test(g.text) && /RENTIS/.test(g.text) && /12/.test(g.text), g && g.text);
+    ok(scn, 'A the side keeps its own pallets (16, never 28 with the rota)', !!g && g.kpal.trim() === '16' && !/RENTIS/.test(g.rowText), g && { kpal: g.kpal });
+    const box = await page.$(L);
+    if (box) await box.click({ button: 'right' }).catch(() => {});
+    await page.waitForTimeout(200);
+    const items = await page.$$eval('#wn5-menu [data-item]', (bs) => bs.map((b) => b.getAttribute('data-item'))).catch(() => []);
+    ok(scn, 'A right-click → «Καρτέλα παραγγελίας» · «Αποσύνδεση από το δρομολόγιο»', JSON.stringify(items) === '["card","unlink"]', items);
+    await bClick(page, '#wn5-menu [data-item="unlink"]');
+    await page.waitForTimeout(500);
+    const mv = bCalls(S, 'POST', '/plan/move');
+    ok(scn, 'A «Αποσύνδεση» = POST /plan/move dry run of this load only, back to waiting', mv.length >= 1 && mv[0].body.dry_run === true
+      && JSON.stringify(mv[0].body.from && mv[0].body.from.piece_ids) === '[5137]' && mv[0].body.target && mv[0].body.target.wait === true, mv.map((x) => x.raw));
+    ok(scn, 'A no page errors', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  { // B · ✈ «⤷ Επόμενο φορτίο › Κάθοδος» = the «+» window in rota mode; «Σύνδεση» sends the «+» body
+    const { page, S } = await bOpen(browser, origin, { board: bBoard() });
+    await bMenu(page, 204, 'rota-k');
+    const D = bDlg('plus');
+    await page.waitForSelector(D, { timeout: 3000 }).catch(() => {});
+    const t = await bText(page, `${D} .wi4-dlg-t`);
+    ok(scn, 'B the window says «⤷ Επόμενο φορτίο · ίδιο φορτηγό · Κάθοδος»', t.includes('⤷ Επόμενο φορτίο · ίδιο φορτηγό · Κάθοδος'), t);
+    const lines = await page.$$eval(`${D} [data-act="save"][data-piece]`, (bs) => bs.map((b) => b.dataset.piece + ':' + b.textContent.trim())).catch(() => []);
+    ok(scn, 'B the national loads waiting (both directions), each with «Σύνδεση»; no VS, no stock', lines.includes('4201:Σύνδεση') && lines.every((x) => /^420\d:Σύνδεση$/.test(x)), lines);
+    ok(scn, 'B no «Νέα παραγγελία | Από αναμονή» switch', !(await bHas(page, `${D} .wn5-seg`)));
+    await bClick(page, `${D} [data-act="save"][data-piece="4201"]`);
+    await page.waitForTimeout(400);
+    const legs = bCalls(S, 'POST', '/plan/legs');
+    ok(scn, 'B «Σύνδεση» = POST /plan/legs {pieces:[4201], target:{rt_id:204, side:KATHODOS}}', legs.length >= 1
+      && JSON.stringify(legs[0].body.pieces) === '[{"piece_id":4201}]' && legs[0].body.target.rt_id === 204 && legs[0].body.target.side === 'KATHODOS', legs.map((x) => x.raw));
+    await page.context().close();
+  }
+  { // C · «Φόρτωση με τοπικό › Άνοδος» offers the ΑΝΟΔΟΣ pickups (owner 8/11: both legs)
+    const { page } = await bOpen(browser, origin, { board: bBoard() });
+    await bMenu(page, 204, 'local-a');
+    const D = bDlg('local');
+    await page.waitForSelector(D, { timeout: 3000 }).catch(() => {});
+    const opts = await page.$$eval(`${D} select[data-stop] option`, (os) => os.map((o) => o.value).filter(Boolean)).catch(() => []);
+    const t = await bText(page, `${D} .wi4-dlg-t`);
+    ok(scn, 'C «Φόρτωση με τοπικό · Άνοδος» offers the ΑΝΟΔΟΣ pickup outside Veroia (ASPROPYRGOS, 2035)', JSON.stringify(opts) === '["2035"]' && t.includes('Άνοδος'), { opts, t });
+    await page.context().close();
+  }
+  { // D · «Παράδοση με τοπικό › Κάθοδος» = the vehicle change, opened at the first delivery, nothing sent
+    const { page, S } = await bOpen(browser, origin, { board: bBoard() });
+    await bMenu(page, 204, 'local-deliv-k');
+    await page.waitForSelector('.wn5h-handover', { timeout: 4000 }).catch(() => {});
+    const f = await page.evaluate(() => {
+      const d = document.querySelector('.wn5h-handover');
+      return d ? { t: (d.querySelector('.wi4-dlg-t') || {}).innerText, place: (d.querySelector('#wn5h-place') || {}).value, day: (d.querySelector('#wn5h-day') || {}).value,
+        note: (d.querySelector('#wn5h-note') || {}).value } : null;
+    }).catch(() => null);
+    ok(scn, 'D the change window titled «Παράδοση με τοπικό · Κάθοδος», at the first delivery (LARISA, Tue), note pre-filled', !!f && /Παράδοση με τοπικό · Κάθοδος/.test(f.t)
+      && f.place === 'LARISA TEST' && f.day === '2026-10-13' && f.note === 'Παράδοση με τοπικό', f);
+    ok(scn, 'D opening writes nothing', !S.plan.some((x) => x.m !== 'GET'), S.plan.filter((x) => x.m !== 'GET').map((x) => x.m + ' ' + x.path));
+    await page.context().close();
+  }
+  { // E · «ΤΟΠΙΚΑ» under the board: every day of the week, the local driver of Monday with his loading
+    const { page, S } = await bOpen(browser, origin, { board: rotaBoard() });
+    const p = await page.evaluate(() => {
+      const el = document.querySelector('#content .wn5-locals');
+      return el ? { rows: el.querySelectorAll('.wn5-loc-row').length, text: el.innerText, none: el.querySelectorAll('.wn5-loc-none').length } : null;
+    }).catch(() => null);
+    ok(scn, 'E the panel is under the board with 7 days, 6 of them «κανένας τοπικός»', !!p && p.rows === 7 && p.none === 6, p && { rows: p.rows, none: p.none });
+    ok(scn, 'E Monday: Local Test 1 · ① Φόρτωση 09:00–10:00 · THESSALONIKI → Βέροια · κάθοδος', !!p && /Local Test 1/.test(p.text) && /Φόρτωση/.test(p.text) && /09:00–10:00/.test(p.text) && /THESSALONIKI TEST → Βέροια/.test(p.text), p && p.text);
+    await bClick(page, '#content .wn5-locals [data-act="local-cancel"][data-lm="7701"]');
+    await page.waitForTimeout(300);
+    const cd = await bText(page, `${bDlg('local')} .wi4-dlg-t`);
+    ok(scn, 'E «Ακύρωση» in the panel opens the T17 confirm first, nothing sent yet', /Ακύρωση φόρτωσης με τοπικό/.test(cd) && !S.plan.some((x) => x.m !== 'GET'), cd);
+    await bClick(page, `${bDlg('local')} [data-act="confirm"]`);
+    await page.waitForTimeout(400);
+    ok(scn, 'E … then the cancel of THAT loading (a /plan write for 7701)', S.plan.some((x) => x.m === 'POST' && /local/.test(x.path) && x.raw.includes('7701')), S.plan.filter((x) => x.m !== 'GET').map((x) => x.m + ' ' + x.path + ' ' + x.raw));
+    ok(scn, 'E no page errors', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
 };
 // ── scenarios end (each Task adds its own above this line) ──
 
