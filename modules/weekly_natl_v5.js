@@ -314,7 +314,9 @@ async function render() {
 async function _awayKick(seq) {
   const board = _board, m = _m;
   const weeks = m ? L().awayWeeks(m) : [];
-  _away = { for: board, nums: new Map(), failed: new Set(), pending: new Set(weeks) };
+  // st: this read's own state — a later read replaces _away, and a late answer of this one must not touch that one
+  const st = { for: board, nums: new Map(), failed: new Set(), pending: new Set(weeks) };
+  _away = st;
   if (!weeks.length) return;
   const models = new Map();
   await Promise.all(weeks.map(async (w) => {
@@ -324,12 +326,12 @@ async function _awayKick(seq) {
       models.set(w, modelOf(b));
     } catch (e) {
       if (!(e && (e.name === 'PlanError' || e._sessionGone))) _logErr(e, 'weekly natl v5: away board ' + w);
-      _away.failed.add(w);
+      st.failed.add(w);
     }
   }));
-  if (seq !== _seq || !active() || _board !== board || _away.for !== board) return;
-  _away.nums = L().awayNumbers(m, models);
-  _away.pending = new Set();
+  if (seq !== _seq || !active() || _board !== board || _away !== st) return;
+  st.nums = L().awayNumbers(m, models);
+  st.pending = new Set();
   _awayFill();
 }
 function _awayFill() {
@@ -1322,7 +1324,11 @@ function _awayNoHTML(r) {
       : wait ? `Φορτηγό της ${wl}: ο αριθμός του διαβάζεται`
         : `Φορτηγό της ${wl}: δεν βρέθηκε αριθμός στο Εβδομαδιαίο εκείνης`;
   const n = a ? String(a.n) : failed ? '?' : wait ? '…' : '—';
-  const go = w ? `<button type="button" class="wn5-awk" title="${_esc(t + ' — άνοιγμα της ' + wl)}" onclick="WN5._goRow(${w}, '${_esc(r.key)}')">${_esc(wl)}</button>`
+  // the press moves by whole weeks from the week on screen (WNATL.week has no year: «W1» seen from W52 is week 53,
+  // the January the strip walks into — never W1 of this year; code review high 8/11)
+  const step = _m && DAY_RE.test(String(_m.week)) ? Math.round((Date.parse(r.away.week + 'T12:00:00Z') - Date.parse(_m.week + 'T12:00:00Z')) / 6048e5) : null;
+  const to = step != null && window.WNATL && Number.isInteger(window.WNATL.week) ? window.WNATL.week + step : null;
+  const go = w && to != null && to >= 1 ? `<button type="button" class="wn5-awk" title="${_esc(t + ' — άνοιγμα της ' + wl)}" onclick="WN5._goRow(${to}, '${_esc(r.key)}')">${_esc(wl)}</button>`
     : `<span class="wn5-awk">${_esc(wl)}</span>`;
   return `<span class="wn5-awno" title="${_esc(t)}"><span class="wi4-no">${_esc(n)}</span>${go}</span>`;
 }

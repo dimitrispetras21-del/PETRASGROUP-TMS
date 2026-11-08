@@ -455,3 +455,24 @@ test('weekOf: the TMS week (Saturday) of a day', () => {
   assert.deepStrictEqual(['2026-10-31', '2026-11-01', '2026-11-06', '2026-11-07', '2026-10-30', 'x'].map(L.weekOf),
     ['2026-10-31', '2026-10-31', '2026-10-31', '2026-11-07', '2026-10-24', null]);
 });
+
+// Code review high 8/11: a waiting ΚΑΘΟΔΟΣ loaded this week and delivered next week stays on this week (its last day),
+// as on its delivery day next week; a load of next week only is not here. loadDayOf = the day the screens of «which
+// trucks work that day» read (not the board's delivery-day dayKey).
+test('code review 8/11: a waiting load delivered after the week stands on the last day of the week it loads in', () => {
+  const b = fix();
+  const w0 = b.waiting.find((w) => w.kind === 'national') || b.waiting[0];
+  b.waiting.push(Object.assign({}, w0, { piece_id: 4198, shipment_id: 4298, nat_order_id: 3298, order_id: null, reference: 'N-T098',
+    load_from: '2026-10-16T06:00:00+03:00', load_to: '2026-10-16T08:00:00+03:00', deliver_from: '2026-10-19T06:00:00+03:00', deliver_to: '2026-10-19T08:00:00+03:00',
+    nat_ready_day: '2026-10-16', nat_due_day: '2026-10-19', direction: 'KATHODOS' }));
+  b.waiting.push(Object.assign({}, w0, { piece_id: 4197, shipment_id: 4297, nat_order_id: 3297, order_id: null, reference: 'N-T097',
+    load_from: '2026-10-19T06:00:00+03:00', load_to: '2026-10-19T08:00:00+03:00', deliver_from: '2026-10-20T06:00:00+03:00', deliver_to: '2026-10-20T08:00:00+03:00',
+    nat_ready_day: '2026-10-16', nat_due_day: '2026-10-20', direction: 'KATHODOS' }));
+  const m = M(b);
+  const r = rowOf(m, 'wait:4198');
+  assert.ok(r && r.kath, 'the Friday loading for Monday is on this week');
+  assert.deepStrictEqual([r.dayKey, L.loadDayOf(r), dayOf(m, 'wait:4198')], ['2026-10-19', '2026-10-16', '2026-10-16']);
+  assert.strictEqual(rowOf(m, 'wait:4197'), undefined, 'a load that loads next week is not here');
+  assert.strictEqual(L.loadDayOf(rowOf(m, 'rt:105')), '2026-10-14', 'a cycle: its ΚΑΘΟΔΟΣ (Veroia) day');
+  assert.strictEqual(L.loadDayOf(rowOf(m, 'rt:106')), rowOf(m, 'rt:106').anod.day, 'without ΚΑΘΟΔΟΣ: its ΑΝΟΔΟΣ day');
+});

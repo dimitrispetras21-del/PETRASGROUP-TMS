@@ -763,7 +763,7 @@
     const out = [];
     for (const d of m.days) for (const r of d.rows || []) {
       if (r.kind !== 'cycle' || r.rtId == null) continue;
-      const k0 = (r.kath && r.kath.day) || (r.anod && r.anod.day) || null;
+      const k0 = WN5L.loadDayOf(r);
       const k = !k0 || k0 < first ? first : k0 > last ? last : k0;
       if (k === ymd) out.push(r);
     }
@@ -1587,7 +1587,7 @@
     // the snapshot (rule 4): the cycle, the side's capacity, the waiting pieces as they are now
     const sideStops = _copy((c.stops || []).filter((s) => s.side === side && s.location_id !== hub));
     const hubStop = (c.stops || []).find((s) => s.side === side && s.location_id === hub) || null;
-    const st = { rtId: c.rt_id, side, cyc: _copy(c), hub, day: (sd && sd.day) || (r && r.dayKey) || c.date_start,
+    const st = { rtId: c.rt_id, side, cyc: _copy(c), hub, day: (sd && sd.day) || WN5L.loadDayOf(r) || c.date_start,
       pallets: _sidePal(r, side), palUnk: _sideUnk(r, side), veroia: _veroiaOf(r, side), take: {}, hubFrom: '', hubTo: '', q: '', mode: 'wait', groups: [],
       sideStops, sideDays: [...new Set(sideStops.map((s) => s.stop_day || _ymdOf(s.planned_from)).filter(Boolean))],
       hubWin: hubStop && hubStop.planned_from && hubStop.planned_to ? [hubStop.planned_from, hubStop.planned_to] : null,
@@ -1844,7 +1844,7 @@
     const what = whole ? 'όλη η ' + sideW + ' του ' + (src.code || 'κύκλου') : refs + ' · ' + place;
     const tx0 = _cycText(src, r);
     const srcAfter = r ? { label: src.trip_type === 'PARTNER' ? tx0.l1 : (src.truck || tx0.l1), before: _sidePal(r, side), unk: _sideUnk(r, side) } : null;
-    const st = { mode: 'move', from: _copy(from), side, day: ctx.day || (sd && sd.day) || (r && r.dayKey) || src.date_start, skipRt: src.rt_id,
+    const st = { mode: 'move', from: _copy(from), side, day: ctx.day || (sd && sd.day) || WN5L.loadDayOf(r) || src.date_start, skipRt: src.rt_id,
       rtId: null, group: null, pieces: null, items: _copy(mp.items), needs: _copy(mp.needs), pallets: pal, palUnk,
       allHub: mp.items.length > 0 && mp.items.every((x) => x.pickHub), cyc: {}, rows: [], road: [], free: [], trailers: [], drivers: [], partners: [],
       ids: { ok: false }, pick: null, trailer: null, driver: null, partner: null, rateTxt: '', hubFrom: '', hubTo: '', filter: 'all', q: '', ref: '',

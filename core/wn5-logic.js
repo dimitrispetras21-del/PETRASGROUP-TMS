@@ -525,7 +525,10 @@ function model(board, opts) {
   const placeOf = (r) => {
     if (r.kind !== 'unassigned') return !r.dayKey || r.dayKey < week ? week : r.dayKey > last ? last : r.dayKey;
     if (r.dayKey && r.dayKey >= week && r.dayKey <= last) return r.dayKey;
-    if (r.dayKey && r.dayKey > last) return null;
+    // delivered after the week: on its delivery day in that week, and here on the last day when it loads in this week
+    // or before (code review high 8/11: a Friday loading for Monday must not leave the week it is loaded in — the tab
+    // badge, the base's ready-week count, still counts it here)
+    if (r.dayKey && r.dayKey > last) { const ld = loadDayOf(r); return ld && ld <= last ? last : null; }
     // older than the week: the base sends it from its ready day's week on, so a load whose loading day is earlier than
     // its ready day (edited dates) is in no earlier board — it stands on this Saturday, never on no day at all
     return current || (r.readyDay != null && r.readyDay >= week) ? week : null;
@@ -622,6 +625,10 @@ function boardNumbers(m) {
   for (const d of (m && m.days) || []) for (const r of d.rows) if (r.kind === 'cycle' && !r.carried) out.set(r.rtId, ++n);
   return out;
 }
+// The day a row LOADS (its ΚΑΘΟΔΟΣ day, else its ΑΝΟΔΟΣ one): the row's day until 8/11, and still the day of the
+// screens that ask «which trucks work that day» (the «+» / «Μεταφορά σε…» list, the assignment form), while dayKey
+// became the delivery day for the board's order (code review high 8/11).
+function loadDayOf(r) { return (r && ((r.kath && r.kath.day) || (r.anod && r.anod.day))) || null; }
 // The TMS week (its Saturday) of a day: the board's own week unit (plan_board ?week=<Saturday>).
 function weekOf(day) {
   if (!DAY_RE.test(String(day || ''))) return null;
@@ -647,6 +654,6 @@ function awayNumbers(m, models) {
   return out;
 }
 
-const WN5L = freeze({ model, boardNumbers, weekOf, awayWeeks, awayNumbers, rowOrder, waitSide, segmentsOf, stopSegments, handoversOf, searchParts, cycleNumbers, capacity, stopRank, hubFromBoard, athensDay, athensTime, allDay, winText, DAY_WIN, palText, CAP, HUB_UNKNOWN, ShapeError });
+const WN5L = freeze({ model, boardNumbers, loadDayOf, weekOf, awayWeeks, awayNumbers, rowOrder, waitSide, segmentsOf, stopSegments, handoversOf, searchParts, cycleNumbers, capacity, stopRank, hubFromBoard, athensDay, athensTime, allDay, winText, DAY_WIN, palText, CAP, HUB_UNKNOWN, ShapeError });
 if (typeof module !== 'undefined') module.exports = WN5L; else window.WN5L = WN5L;
 })();

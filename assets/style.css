@@ -10035,7 +10035,7 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5 .wn5-awk { padding:0 3px; border:1px solid var(--wi4-blue); border-radius:3px; background:var(--surface-card); font:600 9.5px/12px 'DM Sans',sans-serif;
   letter-spacing:.2px; color:var(--wi4-blue-ink); cursor:pointer; }
 .wn5 .wn5-awk:is(:hover, :focus-visible) { background:var(--wi4-info-bg); }
-span.wn5-awk { cursor:default; }
+.wn5 span.wn5-awk { cursor:default; }
 /* 3c: a week before day L — one quiet line in the middle of the board, its button beside it */
 .wn5-prel { display:flex; align-items:center; justify-content:center; gap:12px; min-height:240px; font-size:13px; color:var(--wi4-grey-1); }
 .wn5f-vsday { display:flex; align-items:flex-end; gap:8px; }

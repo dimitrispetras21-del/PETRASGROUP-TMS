@@ -618,7 +618,7 @@ const OrdersWeekView = (() => {
       // a truck of another week (WN5L away: its week is the board's own rule, WN5L.weekOf)
       for (const day of vm.days) for (const r of day.rows) if (r.away) { carried.add(r.rtId); carriedWeek.set(r.rtId, r.away.week); }
       // its number on its own week's board (owner 8/11: «12 · W44»); away: rt_id → { n, w } | { failed, w }
-      const away = new Map(), ev = d.v5Earlier || { boards: [], failed: [] };
+      const away = new Map(), ev = d.v5Away || { boards: [], failed: [] };
       const wNo = w => (typeof TmsWeek !== 'undefined' ? TmsWeek.numOf(new Date(w + 'T12:00:00')) : null);
       const models = new Map();
       for (const { week, board } of ev.boards) {
@@ -826,13 +826,13 @@ const OrdersWeekView = (() => {
       natlRes.ok && wantNatl ? OrdersCommon.natV5Attach(natl) : Promise.resolve({ failed: false }),
       natlRes.ok && wantNatl ? _v5Board(week) : Promise.resolve({ ok: true, board: null }),
     ]);
-    const earlier = boardRes.board ? await _v5Earlier(boardRes.board, week) : { boards: [], failed: [] };
+    const away = boardRes.board ? await _v5Away(boardRes.board) : { boards: [], failed: [] };
     return {
       week, strip, intl, cancelled, natl, natlFailed: !natlRes.ok, rts: rtRes.ok ? (rtRes.r.records || []) : null,
       rtCapped: rtRes.ok && (rtRes.r.records || []).length >= 500,
       set, setFailed: !setRes.ok, gateFailed: !!set.gateFailed, parentsFailed, refFailed: !refRes.ok, stopDates, stopsFailed,
       natLoads: loadsRes.ok ? loadsRes.loads : null, v5Failed: v5Res.failed,
-      v5Board: boardRes.board, v5BoardFailed: !boardRes.ok, v5Earlier: earlier,
+      v5Board: boardRes.board, v5BoardFailed: !boardRes.ok, v5Away: away,
     };
   }
 
@@ -860,11 +860,11 @@ const OrdersWeekView = (() => {
   // The boards of the other weeks where this week's away trucks belong (owner 8/11/2026: «12 · W44», «15 · W45»): a
   // truck whose day is in another week (earlier or later) is numbered on THAT week's board. One read per such week
   // (usually one), only when the week has such trucks. → { boards: [{ week, board }], failed: [week] }.
-  async function _v5Earlier(board, week) {
+  async function _v5Away(board) {
     const out = { boards: [], failed: [] };
     let weeks;
     try {
-      weeks = WN5L.awayWeeks(WN5.modelOf(board)).filter(w => w !== week);
+      weeks = WN5L.awayWeeks(WN5.modelOf(board));
     } catch (e) { return out; }   // the week's own numbers say «failed» through _natBoard: no second report
     for (const w of weeks) {
       try {
@@ -872,7 +872,7 @@ const OrdersWeekView = (() => {
         if (!b || typeof b !== 'object' || b.week !== w) throw new Error('board: answer for week ' + String(b && b.week) + ', not ' + w);
         out.boards.push({ week: w, board: b });
       } catch (e) {
-        if (!(e && (e.name === 'PlanError' || e._sessionGone)) && typeof logError === 'function') logError(e, 'orders week: earlier v5 board');
+        if (!(e && (e.name === 'PlanError' || e._sessionGone)) && typeof logError === 'function') logError(e, 'orders week: away v5 board');
         out.failed.push(w);
       }
     }
