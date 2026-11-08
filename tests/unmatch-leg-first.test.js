@@ -33,6 +33,7 @@ const wiSrc = [
   // _wiRemoveImport clears the import GROUP's row through it (review 8/11/2026)
   grab(/function _wiImpGroupRowOf\(oid\)\{[\s\S]*?\n\}\n/, '_wiImpGroupRowOf', true),
   // owner 8/11 #10: decides whether the export group passed anything on (absent in older copies)
+  grab(/function _wiRecOf\(id\)\{[^\n]*\n/, '_wiRecOf', true),
   grab(/async function _wiExpPassedOn\(expIds,impIds\)\{[\s\S]*?\n\}\n/, '_wiExpPassedOn', true),
   grab(/async function _wiRemoveImport\(rowId\)\{[\s\S]*?\n\}\n/, '_wiRemoveImport'),
   grab(/async function _wiDissolveClearMember\(oid\)\{[\s\S]*?\n\}\n/, '_wiDissolveClearMember'),
@@ -43,9 +44,12 @@ const wiSrc = [
 // One round trip RT1 = export E (truck T1, driver D1) + its imports. The model
 // applies rt_sync_from_order / dl_sync_from_rt to every PATCH that touches a
 // vehicle, exactly in the order the browser sends them.
-function world({ imports = ['I'], exportsOnRt = ['E'], failLeg = null, lookupThrows = false, rtStatus = 'planned', noOrderNo = false } = {}) {
-  const orders = {}; const legs = new Set([...exportsOnRt, ...imports]);
+function world({ imports = ['I'], exportsOnRt = ['E'], failLeg = null, lookupThrows = false, rtStatus = 'planned', noOrderNo = false, exportTruck = 'T1', exportOnTrip = true } = {}) {
+  // exportTruck null = an export with no vehicle (owner 8/11 #10: matched before the assignment);
+  // exportOnTrip false = it rides no trip, so the import's trip is its own.
+  const orders = {}; const legs = new Set([...(exportOnTrip ? exportsOnRt : []), ...imports]);
   for (const id of [...exportsOnRt, ...imports]) orders[id] = { truck: 'T1', driver: 'D1', group: imports.length > 1 && imports.includes(id) ? 'GI-X|' + imports[0] : null };
+  for (const id of exportsOnRt) if (!exportTruck) { orders[id].truck = null; orders[id].driver = null; }
   const rt = { id: 1, code: 'RT-1', truck: 'T1', driver: 'D1', payroll: 'live' };
   const log = [], rtQueries = [];
   const pgOf = id => Object.keys(orders).indexOf(id) + 1;   // «Order No» = orders.id
@@ -61,7 +65,7 @@ function world({ imports = ['I'], exportsOnRt = ['E'], failLeg = null, lookupThr
   const ctx = {
     console: { log() {}, warn() {}, error() {} },
     TABLES: { ORDERS: 'O' },
-    WINTL: { rows: [], data: { exports: exportsOnRt.map(id => ({ id, fields: {} })), imports: imports.map(id => ({ id, fields: { 'Group ID': orders[id].group } })) }, _seq: 100, ui: {} },
+    WINTL: { rows: [], data: { exports: exportsOnRt.map(id => ({ id, fields: {} })), imports: imports.map(id => ({ id, fields: { 'Group ID': orders[id].group, 'Order No': pgOf(id) } })) }, _seq: 100, ui: {} },
     atSafePatch: async (_t, id, f) => {
       log.push({ id, f: Object.keys(f) });
       const o = orders[id];
@@ -75,7 +79,7 @@ function world({ imports = ['I'], exportsOnRt = ['E'], failLeg = null, lookupThr
     getLinkedId: v => (Array.isArray(v) ? v[0] || null : v || null),
     rtFindForOrder: async id => { if (lookupThrows) throw new Error('network'); return { pg: id, rt: legs.has(id) ? { id: 1, code: 'RT-1' } : null }; }, // «before» lookup
     // «after» lookup (_wiRtOf): the order itself, then trips in a date window
-    atGetOne: async (_t, id) => ({ id, fields: Object.assign(noOrderNo ? {} : { 'Order No': pgOf(id) }, { 'Loading DateTime': '2026-09-28T06:00:00Z', 'Delivery DateTime': '2026-09-30T06:00:00Z' }) }),
+    atGetOne: async (_t, id) => ({ id, fields: Object.assign(noOrderNo ? {} : { 'Order No': pgOf(id) }, orders[id] && orders[id].truck ? { Truck: [orders[id].truck] } : {}, { 'Loading DateTime': '2026-09-28T06:00:00Z', 'Delivery DateTime': '2026-09-30T06:00:00Z' }) }),
     plFetch: async (url) => { rtQueries.push(url); if (lookupThrows) throw new Error('network');
       return { records: [{ id: 1, code: 'RT-1', status: rtStatus, ct_rt_legs: [...legs].map(o => ({ order_id: pgOf(o) })) }] }; },
     _wiRtLegDelete: async (_rtId, pg) => { const id = typeof pg === 'number' ? Object.keys(orders)[pg - 1] : pg;
@@ -100,7 +104,7 @@ function world({ imports = ['I'], exportsOnRt = ['E'], failLeg = null, lookupThr
   };
   ctx.WINTL.rows = [
     // truckId as the board builds it (_wiBuildRows): every export here rides T1.
-    { id: 1, type: 'export', orderIds: exportsOnRt.slice(), importId: imports[0], truckId: 'T1' },
+    { id: 1, type: 'export', orderIds: exportsOnRt.slice(), importId: imports[0], truckId: exportTruck || '' },
     { id: 2, type: 'import', orderId: imports[0], orderIds: imports.slice(), matchedTo: 1 },
   ];
   vm.runInNewContext(wiSrc + '\nObject.assign(this,{_wiRemoveImport,_wiDissolveClearMember,_wiCancelGroupMember,_wiDoSplit});', ctx);
@@ -116,6 +120,25 @@ test('«×» unmatch of a lone import: the export keeps its truck and the driver
   assert.strictEqual(w.rt.payroll, 'live', 'payroll line deleted');
   assert.strictEqual(w.orders.I.truck, null, 'import still assigned');
   assert.ok(!w.legs.has('I'), 'import leg still on the round trip');
+});
+
+test('«×» unmatch, export with no vehicle and on no trip (owner 8/11 #10): the import keeps its own truck and trip', async () => {
+  const w = world({ exportTruck: null, exportOnTrip: false });
+  const ok = await w.ctx._wiRemoveImport(1);
+  await new Promise(r => setTimeout(r, 10));
+  assert.strictEqual(ok, true);
+  assert.strictEqual(w.orders.I.truck, 'T1', 'the import\'s own truck was wiped');
+  assert.ok(w.legs.has('I'), 'the import left its own trip');
+  assert.ok(!w.log.some(x => x.id === 'I'), 'something was written on the import');
+});
+
+test('«×» unmatch, export with no vehicle still on a trip holding the import: the leg leaves, then the vehicle (today\'s path)', async () => {
+  const w = world({ exportTruck: null, exportOnTrip: true });
+  const ok = await w.ctx._wiRemoveImport(1);
+  await new Promise(r => setTimeout(r, 10));
+  assert.strictEqual(ok, true);
+  assert.ok(!w.legs.has('I'), 'the import\'s leg stayed on the export\'s trip');
+  assert.strictEqual(w.orders.I.truck, null, 'the inherited vehicle stayed');
 });
 
 test('«×» unmatch of an import GROUP: every member leaves first, the export is untouched', async () => {
