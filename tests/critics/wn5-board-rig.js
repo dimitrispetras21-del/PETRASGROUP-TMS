@@ -1200,8 +1200,8 @@ async function scnMove(browser, origin) {
     ok(scn, 'the dry run: {from, target RT-T204 KATHODOS, stops from the source\'s places} + dry_run:true', c.length === 1 && c[0].body.dry_run === true && strip(c[0].body) === JSON.stringify(BODY), c.map((x) => x.raw));
     // T11 draws two lists (Δ5: «Παραστατικά που υπάρχουν» = payroll, «Τι θα γίνει» = the cancelled cycle): read both
     const list = await page.$$eval(`${D} .wn5-cons`, (els) => els.map((e) => e.innerText).join('\n')).catch(() => '');
-    ok(scn, 'the list says «το δρομολόγιο RT-T201 θα σβηστεί» and «γραμμή μισθοδοσίας με ποσό (Οκτώβριος)», no amount for the dispatcher',
-      list.includes('το δρομολόγιο RT-T201 θα σβηστεί') && list.includes('γραμμή μισθοδοσίας με ποσό (Οκτώβριος)') && !(await bText(page, D)).includes('€'), list);
+    ok(scn, 'the list says «το δρομολόγιο · TST-2106 · TRL-5101 · Driver Test 02 · θα σβηστεί» (by the truck, item 12) and «γραμμή μισθοδοσίας με ποσό (Οκτώβριος)», no amount for the dispatcher',
+      list.includes('το δρομολόγιο · TST-2106 · TRL-5101 · Driver Test 02 · θα σβηστεί') && !/RT-T/.test(list) && list.includes('γραμμή μισθοδοσίας με ποσό (Οκτώβριος)') && !(await bText(page, D)).includes('€'), list);
     await bClick(page, `${D} [data-act="confirm"]`);
     const c2 = bCalls(S, 'POST', '/plan/move');
     ok(scn, '«Μεταφορά» sends the same body + confirm_token, without dry_run', c2.length === 2 && !('dry_run' in c2[1].body) && c2[1].body.confirm_token === 'tokM1' && strip(c2[1].body) === strip(c2[0].body), c2.map((x) => x.raw));
@@ -1323,8 +1323,8 @@ async function scnMove(browser, origin) {
       return { meta: m.innerText, cut: m.scrollWidth > m.clientWidth, below: r(m).top >= r(t).bottom - 0.5, left: Math.round(r(m).left) === Math.round(r(t).left),
         segRow: !!seg && r(seg).bottom <= r(m).top + 0.5, st: [cs.fontSize, cs.color].join('|') };
     }).catch((e) => ({ err: String(e) }));
-    ok(scn, 'fidelity r2: whole side meta «RT-T204 · ΚΑΘΟΔΟΣ · 2 παραδόσεις · παράδοση Τρί 13/10» on its own row under the title, not cut, 11px',
-      h.meta === 'RT-T204 · ΚΑΘΟΔΟΣ · 2 παραδόσεις · παράδοση Τρί 13/10' && !h.cut && h.below && h.left && h.segRow && /^11px\|/.test(h.st || ''), h);
+    ok(scn, 'fidelity r2: whole side meta «TST-2103 · TRL-5103 · Driver Test 03 · ΚΑΘΟΔΟΣ · 2 παραδόσεις · παράδοση Τρί 13/10» (by the truck, item 12) on its own row under the title, not cut, 11px',
+      h.meta === 'TST-2103 · TRL-5103 · Driver Test 03 · ΚΑΘΟΔΟΣ · 2 παραδόσεις · παράδοση Τρί 13/10' && !h.cut && h.below && h.left && h.segRow && /^11px\|/.test(h.st || ''), h);
     await shot(page, 'move-h-side-1440');
     await page.context().close();
   }
@@ -1921,7 +1921,7 @@ async function scnDelete(browser, origin) {
     await o2.page.waitForTimeout(200);
     await bClick(o2.page, `${C} [data-act="delete"]`);
     const t2 = await bText(o2.page, D);
-    ok(scn, 'fidelity: with rt_cancelled for RT-T204 → «θα σβηστεί», no «ο κύκλος μένει»', t2.includes('RT-T204 θα σβηστεί') && !t2.includes('ο κύκλος μένει'), t2.slice(0, 600));
+    ok(scn, 'fidelity: with rt_cancelled for RT-T204 → «θα σβηστεί», no «ο κύκλος μένει»', t2.includes('το δρομολόγιο · TST-2103 · TRL-5103 · Driver Test 03 · θα σβηστεί') && !/RT-T/.test(t2) && !t2.includes('ο κύκλος μένει'), t2.slice(0, 600));
     await o2.page.context().close();
   }
 }
@@ -2209,9 +2209,9 @@ async function scnSheet(browser, origin) {
   page.context().on('page', (p) => { p.on('pageerror', (e) => popErr.push(String(e).slice(0, 300))); p.on('console', (m) => { if (m.type() === 'error' && !/^Failed to load resource/.test(m.text())) popErr.push(m.text().slice(0, 300)); }); });
   if (!ok(scn, 'WN5Sheet present', await KC.has(page, 'WN5Sheet'))) { await page.context().close(); return; }
   // T23 adds the last ✈ line: from here the menu is the whole approved list of Figma 2011:8858, in its order, one
-  // line per item («›» lines with their submenus, the same label never twice)
+  // line per item («›» lines with their submenus, the same label never twice); «Διαδρομή» after it (owner 8/11, change 4)
   const labels = await page.evaluate(() => (WN5._menuItems ? WN5._menuItems(101) : []).map((x) => x.label + (x.children.length ? ' › ' + x.children.join(' · ') : ''))).catch(() => []);
-  ok(scn, '✈ labels = Figma 2011:8858 + 2607:8466 (owner 8/11), in order', JSON.stringify(labels) === JSON.stringify(['Άνοιγμα παραγγελιών', 'Ανάθεση / αλλαγή φορτηγού ή συνεργάτη',
+  ok(scn, '✈ labels = Figma 2011:8858 + «Διαδρομή» (#282) + 2607:8466 (owner 8/11), in order', JSON.stringify(labels) === JSON.stringify(['Άνοιγμα παραγγελιών', 'Διαδρομή', 'Ανάθεση / αλλαγή φορτηγού ή συνεργάτη',
     'Νέα παραγγελία σε αυτό το δρομολόγιο › Κάθοδος · Άνοδος', '⤷ Επόμενο φορτίο με το ίδιο φορτηγό › Κάθοδος · Άνοδος',
     'Φόρτωση με τοπικό › Κάθοδος · Άνοδος', 'Παράδοση με τοπικό › Κάθοδος · Άνοδος', 'Σπάσιμο παραγγελιών', 'Εκτύπωση / WhatsApp › Κάθοδος · Άνοδος · Όλο το δρομολόγιο',
     'Αντιγραφή πινακίδων', 'Αλλαγή οχήματος…', 'Καθαρισμός ανάθεσης']), labels);
@@ -3748,8 +3748,8 @@ SCN.calm = async (browser, origin) => {
     un.length > 0 && un.every((x) => x.dashed === 'solid' && !x.side && x.ink === 'rgb(127, 29, 29)'), un);
   ok(scn, '2a no red rail on a waiting row; a late one is its red day chip («αργό»), once — main: every waiting row red', un.some((x) => x.late) && un.every((x) => !x.rail), un.map((x) => [x.p, x.late, x.rail]));
   ok(scn, '2b a waiting row draws nothing on its empty side — main: a dashed «Χωρίς άνοδο» box / «—»', un.every((x) => !x.gap), un.map((x) => [x.p, x.gap]));
-  ok(scn, '2b on a cycle the empty side is text without a box, its «+» hidden until hover — main: dashed boxes, «+» at .45',
-    v.cycGap.length > 0 && v.cycGap.every((st) => st === 'none') && v.gapPlus.length > 0 && v.gapPlus.every((o) => o === '0'), { cycGap: v.cycGap, gapPlus: v.gapPlus });
+  ok(scn, '2b on a cycle the empty side is text without a box, its «+» quieter (.55) at rest — seen without the mouse (Sotiris report 8/11, item 12) — main: dashed boxes, «+» at .45',
+    v.cycGap.length > 0 && v.cycGap.every((st) => st === 'none') && v.gapPlus.length > 0 && v.gapPlus.every((o) => o === '0.55'), { cycGap: v.cycGap, gapPlus: v.gapPlus });
   ok(scn, '2c one day-chip look for every day but today (blue outline) and a late load (red) — main: three looks', v.looks.length === 1 && v.todayChips.length > 0, { looks: v.looks, today: v.todayChips });
   ok(scn, '2d no «—» standing for a missing value in a waiting row\'s cells — main: «Βέροια —», «· — ·»', un.every((x) => !x.dash), un.map((x) => [x.p, x.dash]));
   ok(scn, '2d a cycle\'s Veroia end at the day\'s end reads the day alone (no «ως … 23:59»)', v.ends.length > 0 && v.ends.every((t) => !/23:59/.test(t)), v.ends);
@@ -4139,6 +4139,54 @@ SCN.busy3 = async (browser, origin) => {
     ok(scn, 'no page errors («+»)', !S.pageErrors.length, S.pageErrors);
     await page.context().close();
   }
+};
+// owner 8/11 (change 4): ✈ «Διαδρομή» opens the shared route diagram of the row (core/route-diagram.js, boardCycle)
+// in a 480px panel, from the board already read — no new /plan/* call. TST-2103's week (RT-T204) gets a vehicle
+// change on Tuesday 08:00 at LARISA TEST (072b segments): its six points, the ⇄ row between them, ΑΡΧΙΚΟ / ΤΕΛΙΚΟ.
+// TST-2106 (RT-T201) loads a VS at Veroia: the Cross-dock row. A repaint keeps the panel; Esc closes it.
+SCN.route = async (browser, origin) => {
+  const scn = 'route';
+  const b = bBoard();
+  const c204 = b.cycles.find((c) => c.rt_id === 204);
+  c204.segments = [
+    { segment_id: 41, label: 'initial', trip_type: 'OWNED', truck_id: 13, truck: 'TST-2103', driver_id: 33, driver: 'Driver Test 03', has_vehicle: true,
+      stop_ids: [2033, 2031, 2032], from_at: bT('2026-10-12', '10:00') },
+    { segment_id: 42, label: 'final', trip_type: 'OWNED', truck_id: 14, truck: 'TST-2108', driver_id: 34, driver: 'Driver Test 04', has_vehicle: true,
+      stop_ids: [2034, 2035, 2036], from_at: bT('2026-10-13', '08:00'), place_note: 'LARISA TEST', reason: 'planned_truck' }];
+  const { page, S } = await bOpen(browser, origin, { board: b });
+  const reads0 = S.plan.length;
+  const P = 'body > .wn5-rdp[role="dialog"]';
+  ok(scn, '✈ has «Διαδρομή» right after «Άνοιγμα παραγγελιών»', await bMenu(page, 204, 'route'));
+  await page.waitForSelector(`${P} .rd`, { timeout: 5000 }).catch(() => {});
+  const r = await page.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    if (!el) return null;
+    const rows = [...el.querySelectorAll('.rd-row')];
+    return { w: Math.round(el.getBoundingClientRect().width), sub: el.querySelector('[data-rd-sub]').textContent,
+      stops: rows.filter((x) => x.dataset.dot !== 'handover').map((x) => x.querySelector('.rd-name').textContent),
+      hand: rows.filter((x) => x.dataset.dot === 'handover').map((x) => x.innerText.replace(/\s+/g, ' ').trim()),
+      at: rows.findIndex((x) => x.dataset.dot === 'handover'), segs: [...el.querySelectorAll('.rd-tag[data-seg]')].map((x) => x.textContent),
+      text: el.innerText, red: !!el.querySelector('.rd-note[data-tone="red"]') };
+  }, P);
+  ok(scn, 'a 480px panel «Διαδρομή · TST-2103 · Driver Test 03 · Δευ 12/10 → Τρί 13/10»', !!r && r.w === 480 && r.sub === 'TST-2103 · Driver Test 03 · Δευ 12/10 → Τρί 13/10', r && { w: r.w, sub: r.sub });
+  ok(scn, 'its six points in the board\'s order', !!r && JSON.stringify(r.stops) === JSON.stringify(['THESSALONIKI TEST', 'ΒΕΡΟΙΑ TEST', 'LARISA TEST', 'ATHENS TEST', 'ASPROPYRGOS TEST', 'ΒΕΡΟΙΑ TEST']), r && r.stops);
+  ok(scn, 'ONE ⇄ row, after the last point of ΑΡΧΙΚΟ (LARISA TEST), naming the place', !!r && r.hand.length === 1 && r.at === 3 && /LARISA TEST/.test(r.hand[0]), r && { hand: r.hand, at: r.at });
+  ok(scn, 'ΑΡΧΙΚΟ / ΤΕΛΙΚΟ tags on the points', !!r && r.segs.includes('ΑΡΧΙΚΟ') && r.segs.includes('ΤΕΛΙΚΟ'), r && r.segs);
+  ok(scn, 'no «κύκλος», no RT code, no red line', !!r && !/κύκλ|RT-/i.test(r.text) && !r.red, r && r.text);
+  ok(scn, 'no new /plan/* call: drawn from the board already read', S.plan.length === reads0, S.plan.slice(reads0).map((x) => x.m + ' ' + x.path));
+  await shot(page, 'route-1-handover');
+  await page.evaluate(() => WN5.paint());
+  await page.waitForTimeout(200);
+  const after = await page.$$eval(`${P} .rd-row`, (x) => x.length).catch(() => 0);
+  ok(scn, 'a repaint of the board keeps the panel, redrawn (7 rows)', after === 7, after);
+  await page.keyboard.press('Escape');
+  ok(scn, 'Esc closes it', !(await bHas(page, P)));
+  ok(scn, 'TST-2106 (a VS loaded at Veroia): the Cross-dock row', await bMenu(page, 201, 'route') && await page.waitForSelector(`${P} .rd-vs`, { timeout: 4000 }).then(() => true, () => false));
+  await shot(page, 'route-2-crossdock');
+  await page.click(`${P} .wn5-rdp-x`).catch(() => {});
+  ok(scn, '× closes it', !(await bHas(page, P)));
+  ok(scn, 'no page errors (route)', !S.pageErrors.length, S.pageErrors);
+  await page.context().close();
 };
 // ── main ──
 (async () => {
