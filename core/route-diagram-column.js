@@ -37,7 +37,9 @@ function sub(vehicle, stops) {
   const dm = (ymd) => Number(ymd.slice(8, 10)) + '/' + Number(ymd.slice(5, 7));
   const days = (stops || []).map((s) => s && s.fields && s.fields.DateTime)
     .filter((v) => v && !Number.isNaN(new Date(v).getTime())).map((v) => ATH_DAY.format(new Date(v))).sort();
-  const span = days.length ? dm(days[0]) + (days[days.length - 1] !== days[0] ? ' → ' + dm(days[days.length - 1]) : '') : '';
+  // non-breaking around «→»: when the head wraps (assets/route-diagram.css .rdc-h span), the days move to the next
+  // line whole, never «29/10» on one line and «→ 5/11» on the next (owner 8/11)
+  const span = days.length ? dm(days[0]) + (days[days.length - 1] !== days[0] ? '\u00a0→\u00a0' + dm(days[days.length - 1]) : '') : '';
   // '—' is how the week screen writes a vehicle with no plate: not a fact for the head
   return [...(vehicle || []).map((x) => String(x || '').trim()).filter((x) => x && x !== '—'), span].filter(Boolean).join(' · ');
 }
