@@ -12,6 +12,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
+- dimitris · `fix/dkv-parser-new-lines` · Εισαγωγή DKV: parser 1.3.0 (L/UN, γαλλικό TIS, έκπτωση προκαταβολής, διορθωτικά) + πύλη E-SUMMARY για έγγραφο χωρίς γραμμές· Worker deploy από τον owner (`--dkv 1`, 37 σημάδια)· εκκρεμούν τα 6 ZIP 30/9–31/10 και τα 730,06 € του 15/09· ?v= / SW_VERSION 1794010000 (`docs/sessions/2026-11-08-dimitris-dkv-parser-1-3.md`)
 - dimitris · `fix/wi4-group-match-visible` · Weekly Διεθνών: η γραμμή ομάδας εξαγωγών παίρνει το ταίριασμα οποιουδήποτε μέλους (#643)· λωρίδα «N παραγγελίες δεν φαίνονται στον πίνακα» (`WI4.unseenOrders`, owner 8/11)· μόνο front end, ?v= / SW_VERSION 1794000000 (`docs/sessions/2026-11-08-dimitris-wi4-group-match-visible.md`)
 - dimitris · `fix/dkv-import-drop` · Εισαγωγή DKV: το σύρσιμο του ZIP δεν έφτανε ποτέ στο TMS (ο browser κατέβαζε το αρχείο)· όλη η σελίδα δέχεται σύρσιμο, ένα ZIP τη φορά· εκκρεμούν 30/9 + 15/10 ×2 (Αλεξία, 8/11 ακόμη 0)· ?v= / SW_VERSION 1793970000 (`docs/sessions/2026-11-03-dimitris-dkv-import-drop.md`)
 - dimitris · `feat/owv-week-print` · «Παραγγελίες › Εβδομάδα»: εκτύπωση εβδομάδας τιμολόγησης A4 όρθιο, ανά δρομολόγιο (σχέδιο Γ εγκεκριμένο 3/11, PR #252)· αποδίδει το μοντέλο της οθόνης, χωρίς δεύτερο υπολογισμό· μόνο front end, ?v= / SW_VERSION 1793960000 (`docs/sessions/2026-11-03-dimitris-week-print.md`)

@@ -734,6 +734,19 @@ export function reconcile(lines, summaryDocs, meta) {
     if (!docOk) ok = false;
     per_doc.push({ doc_no, parsed_gross, summary_total, diff, ok: docOk });
   }
+  // The other direction: an E-SUMMARY row whose document gave no line at all.
+  // These rows are only ever Invoice / Statement / Reverse Charge (passages
+  // lists have no summary row), so «no lines» means the parser read nothing,
+  // not that there is nothing to book. Ungated, the 15/09/2026 statement
+  // (doc 3) went through with its ES and HR invoices unread: 730,06 € that DKV
+  // collects never reached the expenses, and every check said «συμφωνεί».
+  for (const d of summaryDocs || []) {
+    if (!d || !d.doc_no || byDoc.has(d.doc_no)) continue;
+    const summary_total = typeof d.total_eur === 'number' ? d.total_eur : null;
+    const docOk = summary_total !== null && Math.abs(summary_total) <= 0.01;
+    if (!docOk) ok = false;
+    per_doc.push({ doc_no: d.doc_no, parsed_gross: 0, summary_total, diff: summary_total !== null ? round2(-summary_total) : null, ok: docOk, no_lines: true });
+  }
   if (!meta) return { ok, per_doc };
 
   const summary = meta.summary || {};

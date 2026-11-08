@@ -251,9 +251,15 @@ async function main() {
   const rec6 = reconcile([{ doc_no: 'D1', gross: 2500, currency: 'CZK', gross_eur: 100 }], [{ doc_no: 'D1', total_eur: 100 }]);
   assertEqual(rec6.ok, true, 'reconcile: uses gross_eur (not native gross) for non-EUR lines');
 
-  // passages are simply never passed in — caller only sends invoice/statement/reverse_charge lines
-  const rec7 = reconcile([{ doc_no: 'D1', gross: 10 }], [{ doc_no: 'D1', total_eur: 10 }, { doc_no: 'D_PASSAGES', total_eur: 500 }]);
-  assertEqual(rec7.per_doc.length, 1, 'reconcile: a summary doc with no matching lines (e.g. a passages doc) is never gated — only doc_nos present in `lines` are checked');
+  // An E-SUMMARY row lists only Invoice / Statement / Reverse Charge documents
+  // (never a passages list), so a row whose document produced no lines is an
+  // unread document — 8/11/2026: the 15/09 statement lost 730,06 € this way.
+  const rec7 = reconcile([{ doc_no: 'D1', gross: 10 }], [{ doc_no: 'D1', total_eur: 10 }, { doc_no: 'D_UNREAD', total_eur: 699.56 }]);
+  assertEqual(rec7.ok, false, 'reconcile: a summary row whose document gave no lines fails the gate');
+  const rec7row = rec7.per_doc.find((d) => d.doc_no === 'D_UNREAD');
+  assertEqual(!!rec7row && rec7row.no_lines === true && rec7row.diff === -699.56 && rec7row.ok === false, true, 'reconcile: the unread document is listed with no_lines and its whole amount as the difference');
+  const rec7z = reconcile([{ doc_no: 'D1', gross: 10 }], [{ doc_no: 'D1', total_eur: 10 }, { doc_no: 'D_ZERO', total_eur: 0 }]);
+  assertEqual(rec7z.ok, true, 'reconcile: a 0,00 summary row with no lines is fine (nothing to book)');
 
   // ── sumGrossEur ───────────────────────────────────────────────────────
   assertEqual(sumGrossEur([{ gross: 10 }, { gross: 5.5 }]), 15.5, 'sumGrossEur: plain sum');

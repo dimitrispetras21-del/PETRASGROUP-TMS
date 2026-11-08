@@ -413,7 +413,7 @@ assertEqual(DkvParser.categoryForProduct('0096'), 'other', 'category 0096 lubric
 assertEqual(DkvParser.categoryForProduct('0088'), 'other', 'category 0088 parking (HU) → other (owner 17/9)');
 assert(!!DkvParser.PRODUCT_CATEGORY['0096'] && !!DkvParser.PRODUCT_CATEGORY['0088'], 'seed map: lubricants/parking are seeded, so they are never flagged «unknown»');
 assertEqual(DkvParser.toIsoDate('26.09.26'), '2026-09-26', 'toIsoDate: 2-digit year (HR passages)');
-assertEqual(DkvParser.VERSION, '1.2.0', 'parser VERSION bumped for the w9 rule changes');
+assertEqual(DkvParser.VERSION, '1.3.0', 'parser VERSION bumped for the 8/11 L/UN units, TIS recap, advance take-back and correction doc numbers');
 
 // Foreign currency: vat_eur is the remainder gross_eur − net_eur, so net_eur +
 // vat_eur == gross_eur EXACTLY on every line (accountant critic 17/9: two
@@ -428,6 +428,49 @@ assertEqual(DkvParser.VERSION, '1.2.0', 'parser VERSION bumped for the w9 rule c
     assertClose(fx.vat_eur, 66.58, 'foreign line: vat_eur = gross_eur − net_eur (remainder), not round2(vat × fx) = 66,57');
     assertEqual(Math.round((fx.net_eur + fx.vat_eur) * 100), Math.round(fx.gross_eur * 100), 'foreign line: net_eur + vat_eur == gross_eur exactly');
   }
+}
+
+// (10) 8/11/2026 — the Sept–Oct statements (synthetic copies of the real shapes).
+{
+  const ctx = { docType: 'invoice', country: 'XX', currency: 'EUR', vehicle: null, ticketNo: null };
+  // HR/RS fuel in «L» (three prices + six amounts, with and without a time column).
+  const hr = DkvParser.parseTransactionLine('03.10.2026 EXAMPLE STATION 7000001 1300000001 15:27 DIZEL 0009 L 100,000 1,8600 1,4880 186,00 148,80 3,72 152,52 38,13 190,65', ctx);
+  assert(!!hr && hr.unit === 'L' && hr.product_code === '0009', 'unit L after a product code is the litre unit (HR fuel)');
+  if (hr) { assertClose(hr.quantity, 100, 'L line: quantity'); assertClose(hr.net, 152.52, 'L line: net'); assertClose(hr.vat, 38.13, 'L line: vat'); assertClose(hr.gross, 190.65, 'L line: gross'); assertEqual(hr.category, 'fuel', 'L line: 0009 → fuel'); }
+  const hr2 = DkvParser.parseTransactionLine('25.09.2026 EXAMPLE STATION 7000002 14730 ADBLUE 0016 L 10,000 3,4900 2,7921 34,90 27,92 0,87 28,79 7,20 35,99', ctx);
+  assert(!!hr2 && hr2.unit === 'L' && hr2.category === 'adblue', 'L line without a time column parses (AdBlue)');
+  // ES «UN» (unidad).
+  const es = DkvParser.parseTransactionLine('27.10.2026 EXAMPLE PARKING 2800001 4148 servicio de aparcami 0088 UN 1 24,00 19,83 24,00 19,83 1,08 20,91 4,39 25,30', ctx);
+  assert(!!es && es.unit === 'UN', 'unit UN after a product code is a unit (ES)');
+  if (es) assertClose(es.gross, 25.3, 'UN line: gross');
+  // A standalone «L» inside the station name is NOT the unit (no product code before it).
+  const nameL = DkvParser.parseTransactionLine('12.10.2026 L STATION 1234567 DIZEL 0009 LTR 100,00 1,50 150,00 120,00 30,00 150,00', ctx);
+  assert(!!nameL && nameL.unit === 'LTR' && nameL.product_code === '0009', 'a station word «L» is not taken for the unit');
+  // FR TIS PL recap is informative, never the E-SUMMARY.
+  assertEqual(DkvParser.detectDocType('9999999_2026-10-15_FR_E-Summary TIS PL_99-000000001-006.pdf', []), 'tis_summary', 'FR «E-Summary TIS PL» → tis_summary, not summary');
+  assertEqual(DkvParser.detectDocType('9999999_2026-10-15_E-SUMMARY_99-000000001-000.pdf', []), 'summary', 'the real E-SUMMARY stays summary');
+  // Correction statement: own number from the filename, not the referenced invoice.
+  assertEqual(DkvParser.extractDocNo(['E-STATEMENT OF ACCOUNT', 'Reason: INCORRECT INVOICING', 'Invoice number: 99/000000007/006 Invoice date: 31.07.2026'], '9999999_2026-09-30_XX_E-STATEMENT OF ACCOUNT_99-000000009-004.pdf'), '99/000000009/004', 'correction statement: doc_no from the filename');
+  assertEqual(DkvParser.extractDocNo(['Invoice number: 99/000000001/987'], '9999999_2026-09-30_AT_E-INVOICE_99-000000001-987.pdf'), '99/000000001/987', 'ordinary invoice: doc_no from its text as before');
+  // FR advance take-back: dateless row, booked negative on the invoice date.
+  const fr = DkvParser.parseDkv([
+    { name: '9999999_2026-10-15_FR_E-INVOICE_99-000000001-006.pdf', text: [
+      'Invoice number: 99/000000001/006', 'Invoice date: 15.10.2026', 'Monnaie: EUR',
+      '15.09.2026 TIS PL EXAMPLE 1300001 4 Décompte F DKV BOX E 0903 PC 1 100,00 83,33 100,00 83,33 3,00 86,33 17,27 103,60',
+      '» TOTAL: 1 100,00 83,33 3,00 86,33 17,27 103,60',
+      'TIS PL – Déduction de l´acompte sur les transactions 005G PC -1 -80,00 -80,00 -16,00 -96,00',
+      'brutes facturé le 15.09.2026',
+      'Décompte F DKV BOX EUROPE 0903 PC 1 100,00 83,33 3,00 86,33 17,27 103,60',
+    ].join('\n') },
+    { name: '9999999_2026-10-15_FR_E-Summary TIS PL_99-000000001-006.pdf', text: 'E-Summary TIS PL\nTotal 83,33 0,00 83,33 16,67 100,00' },
+  ]);
+  const ded = fr.lines.find((l) => l.product_code === '005G');
+  assert(!!ded, 'FR advance take-back row becomes a line');
+  if (ded) { assertClose(ded.gross, -96, 'take-back: negative gross'); assertClose(ded.net, -80, 'take-back: negative net'); assertClose(ded.vat, -16, 'take-back: negative vat'); assertEqual(ded.service_date, '2026-10-15', 'take-back: on the invoice date'); }
+  assertEqual(fr.lines.filter((l) => l.product_code === '0903').length, 1, 'the per-service recap row (no date, no «Déduction») is not booked again');
+  assertClose(fr.lines.reduce((a, l) => a + l.gross, 0), 7.6, 'FR invoice nets to 103,60 − 96,00 = 7,60');
+  assertEqual(fr.summary, null, 'the TIS recap never becomes the summary');
+  assertEqual(fr.errors.unparsed.length, 0, 'no unparsed rows, the TIS recap is not «unknown»');
 }
 
 // ── report ──────────────────────────────────────────────────────────
