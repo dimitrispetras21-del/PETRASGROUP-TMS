@@ -1,4 +1,5 @@
-// GET /costs/pnl reads EVERY RT (file was costs-pnl-cap.test.mjs until the owner dropped the cap, 8/11) (owner 8/11: «θέλω να έχω πρόσβαση σε όλα»). It was one read of «limit 300» with
+// (this file was costs-pnl-cap.test.mjs until the owner dropped the cap)
+// GET /costs/pnl reads EVERY RT (owner 8/11: «θέλω να έχω πρόσβαση σε όλα»). It was one read of «limit 300» with
 // nothing said: 248 RTs on 8/11, 18 a week, so the P&L would have lost RTs from the list and the totals in silence.
 // The view is read in keyset pages (id.desc, id < last) to the exact count, which comes from ct_round_trips (an
 // index read), never from the view. Fewer rows than the count = truncated, said, never a short list in silence.
@@ -160,15 +161,13 @@ test('db-max-rows 500 and an RT created after the count, before page 1: never a 
 
 test('a count without its highest id: a loud error', async () => {
   rts = mk(10);
-  const real = globalThis.fetch;
-  const fake = globalThis.fetch;
+  const fake = globalThis.fetch; // beforeEach's fake PostgREST; afterEach puts the real fetch back
   globalThis.fetch = async (u, init) => {
     const res = await fake(u, init);
     if (!String(u).includes('/ct_round_trips?')) return res;
     return new Response('[]', { status: 206, headers: { 'content-range': '0-0/10' } });
   };
   const r = await get();
-  globalThis.fetch = real;
   assert.ok(r.status >= 500, 'status ' + r.status);
 });
 

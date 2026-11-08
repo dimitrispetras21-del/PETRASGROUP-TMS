@@ -5259,7 +5259,10 @@ async function handleCosts(request, url, origin, env) {
       // is reached (a lower db-max-rows shortens every page); an empty page always ends. The count read also takes the
       // highest id (ct_round_trips.id is GENERATED ALWAYS AS IDENTITY, in creation order): rows above it were created
       // after the count and are left for the next load, so a new RT can never make the rows reach the count before
-      // the oldest RT is read. Fewer rows than the count (an RT the view's joins drop, an RT cancelled between the
+      // the oldest RT is read. Left open: identity ids are handed out in order but committed in any order, so an RT
+      // whose transaction commits just after the count lands inside the bound; with db-max-rows below PNL_PAGE (every
+      // page short) that could end the read one row early. db-max-rows is 1000 = PNL_PAGE, so a short page is the
+      // real end; lowering it needs this rule revisited. Fewer rows than the count (an RT the view's joins drop, an RT cancelled between the
       // reads, PNL_MAX_PAGES) is truncated: said on the banner and logged, never a silent short list (principle 1).
       // 1e3, not 1000: esbuild (wrangler) rewrites 1000 as 1e3, and the guard marker must read the same in the
       // source, the dry-run bundle and the CF download

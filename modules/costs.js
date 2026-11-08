@@ -408,7 +408,8 @@ function ctPnlCutNote(cut) {
   // The old Worker's cut (no total) is a fixed limit a reload cannot clear: say that, not «try again».
   const txt = cut.total != null
     ? `Η ανάγνωση δεν ολοκληρώθηκε: φορτώθηκαν ${cut.n} από ${cut.total} δρομολόγια. Τα υπόλοιπα λείπουν από τη λίστα ΚΑΙ από τα σύνολα (έσοδα, κόστη, καθαρό). Δοκίμασε «Ανανέωση».`
-    : `Φορτώθηκαν μόνο ${cut.n} δρομολόγια: ο Worker που τρέχει κόβει στα 300. Τα υπόλοιπα λείπουν από τη λίστα ΚΑΙ από τα σύνολα (έσοδα, κόστη, καθαρό).`;
+    // «ίσως»: 300 is also what exactly 300 RTs look like, the old Worker cannot tell them apart
+    : `Φορτώθηκαν μόνο ${cut.n} δρομολόγια: ο Worker που τρέχει κόβει στα 300, οπότε ίσως λείπουν δρομολόγια από τη λίστα ΚΑΙ από τα σύνολα (έσοδα, κόστη, καθαρό).`;
   return `<div class="ct-note ct-nwarn" id="ctPnlCut">${icon('warning', 13)} ${txt}</div>`;
 }
 function ctErrorCard() {

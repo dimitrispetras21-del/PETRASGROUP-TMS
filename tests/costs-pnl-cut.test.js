@@ -38,7 +38,7 @@ test('old Worker (no «truncated»): 300 RTs read as cut, fewer not', () => {
   const { ctx } = load();
   const cut = ctx.ctPnlCut({ records: rows(300) });
   assert.deepStrictEqual({ ...cut }, { n: 300, total: null });
-  assert.match(ctx.ctPnlCutNote(cut), /Φορτώθηκαν μόνο 300 δρομολόγια: ο Worker που τρέχει κόβει στα 300/);
+  assert.match(ctx.ctPnlCutNote(cut), /Φορτώθηκαν μόνο 300 δρομολόγια: ο Worker που τρέχει κόβει στα 300, οπότε ίσως λείπουν/);
   assert.doesNotMatch(ctx.ctPnlCutNote(cut), /Ανανέωση/, 'a reload cannot clear a fixed limit');
   assert.strictEqual(ctx.ctPnlCut({ records: rows(299) }), null);
   assert.strictEqual(ctx.ctPnlCut({}), null);
