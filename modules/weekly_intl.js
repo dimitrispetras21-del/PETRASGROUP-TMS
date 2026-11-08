@@ -3474,8 +3474,10 @@ async function _wiRemoveImport(rowId){
   const oid0=(row.orderIds&&row.orderIds[0])||row.orderId;   // the slot's order, at the start (P1, _wiSync)
   row.importId=null;
 
-  // Update import row UI
-  const impRow=WINTL.rows.find(r=>r.type==='import'&&r.orderId===impId);
+  // Update import row UI. The match may name ANY member of an import group (A1): the
+  // group's row, not only a row whose own id it is — else the group kept a stale
+  // matchedTo and was drawn nowhere until the re-read (review 8/11/2026).
+  const impRow=_wiImpGroupRowOf(impId);
   if(impRow) impRow.matchedTo=null;
 
   _wiPaint();
