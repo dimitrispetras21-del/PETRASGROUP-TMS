@@ -42,7 +42,7 @@ export function build108Dryrun(main) {
 if (import.meta.url === `file://${process.argv[1]}`) {
   const fs = await import('node:fs');
   const path = await import('node:path');
-  const dir = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+  const dir = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../..');   // 108 ran 8/11: its files are in migrations/
   fs.writeFileSync(path.join(dir, '108_pl_delivery_trigger_dryrun.sql'), build108Dryrun(fs.readFileSync(path.join(dir, '108_pl_delivery_trigger.sql'), 'utf8')));
   console.log('108 dry run written');
 }

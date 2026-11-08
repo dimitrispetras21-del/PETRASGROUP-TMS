@@ -12,7 +12,7 @@ import { build108Dryrun } from '../migrations/drafts/tools/build-108-dryrun.mjs'
 
 const M = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../migrations');
 const read = (f) => fs.readFileSync(path.join(M, f), 'utf8');
-const d = (f) => 'drafts/' + f;
+const d = (f) => f;   // 108 ran 8/11 (owner): its files left drafts/ (CLAUDE.md, rule 5)
 
 test('the dry run is 108 verbatim plus the proofs and the deliberate error', () => {
   assert.equal(read(d('108_pl_delivery_trigger_dryrun.sql')), build108Dryrun(read(d('108_pl_delivery_trigger.sql'))));
