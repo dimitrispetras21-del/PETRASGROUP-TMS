@@ -792,7 +792,7 @@ function _plvKeysOn() {
     const i = document.getElementById('plvQ');
     const a = document.activeElement;
     if (!i || (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable))) return;
-    if (document.querySelector('#plvModal .plv-overlay')) return;
+    if (document.querySelector('#plvModal .plv-shell')) return;
     e.preventDefault(); i.focus();
   });
 }
@@ -1050,6 +1050,32 @@ function _plvSubLine(m) {
 }
 function _plvFind(id) { return PLV.movements.find(x => x.id === id) || (PLV.card && PLV.card.moves ? PLV.card.moves.find(x => x.id === id) : null); }
 
+/* ── The TMS panel (owner 8/11: «τα πάνελ τα κάνουμε όπως το στυλ πάνελ του TMS»). Every panel and form of this page
+   is the order card's shell: the same classes as _oiCardHtml (navy head, chips, sections, ΕΝΕΡΓΕΙΕΣ as links) on the
+   same floating host (.entity-detail-panel.oi-ro-float, 480px, assets/style.css), styled by orders_intl.js
+   _oiEnsureStyles. One shell, no second copy of its CSS. The 28/10 frames' own panel (420px) gives way; their
+   content stays. ── */
+function _plvShell(o) {
+  if (typeof _oiEnsureStyles === 'function') _oiEnsureStyles();
+  const subs = (o.subs || []).filter(Boolean).map(x => `<div class="oi-card-sub">${x}</div>`).join('');
+  const chips = (o.chips || []).filter(Boolean);
+  const acts = (o.actions || []).filter(Boolean);
+  return `<div class="entity-detail-panel oi-ro-float plv-shell" role="dialog" aria-label="${escapeHtml(o.title)}"${o.attrs || ''}>
+    <div class="oi-card-head"><div class="oi-card-title"><span>${escapeHtml(o.title)}</span><button type="button" class="oi-close" title="Κλείσιμο (Esc)" onclick="${o.close || 'plvCloseModal()'}">×</button></div>
+      ${subs}${chips.length ? `<div class="oi-chips">${chips.map(c => `<span class="oi-chip${c.cls ? ' ' + c.cls : ''}">${escapeHtml(c.t)}</span>`).join('')}</div>` : ''}</div>
+    ${o.body}
+    ${acts.length ? `<div class="oi-sect plv-acts-sect"><div class="oi-sect-t">Ενέργειες</div><div class="oi-links">${acts.join('<span class="oi-sep">·</span>')}</div></div>` : ''}
+  </div>`;
+}
+const _plvKv = (k, v, cls) => `<div class="oi-kv"><span class="k">${k}</span><span class="v${cls ? ' ' + cls : ''}">${v}</span></div>`;
+const _plvSect = (t, inner, alt) => `<div class="oi-sect${alt ? ' oi-sect-alt' : ''}">${t ? `<div class="oi-sect-t">${t}</div>` : ''}${inner}</div>`;
+const _plvLink = (fn, t, danger) => `<button type="button" class="oi-link${danger ? ' oi-link-danger' : ''}" onclick="${fn}">${t}</button>`;
+function _plvOpenShell(html) {
+  document.getElementById('plvModal').innerHTML = html;
+  document.addEventListener('keydown', _plvEsc);
+}
+const PLV_STATUS_CHIP = { pending: 'Εκκρεμής', confirmed: 'Οριστική', reversed: 'Αντιλογισμένη' };
+
 /* ── Επιβεβαίωση (N12) ── */
 const PLV_CONFIRM_T = { LOADING: 'Επιβεβαίωση φόρτωσης', DELIVERY: 'Επιβεβαίωση παράδοσης' };
 function plvOpenConfirm(id, inWiz) {
@@ -1065,16 +1091,15 @@ function plvOpenConfirm(id, inWiz) {
   // The Worker's rule (taken+given>0, except ADJUSTMENT) also here: the button locks while 0/0 and says why.
   const zero = m.event_type !== 'ADJUSTMENT' && m.taken + m.given === 0;
   const s = _plvStop(m), v = _plvVeh(m);
-  const info = [s ? ['Παλέτες στάσης', s.pal] : null, s && s.ex != null ? ['Με ανταλλαγή', s.ex] : null,
-    v.plate || v.who ? ['Όχημα · οδηγός', [v.plate, v.who].filter(Boolean).join(' · ')] : null].filter(Boolean);
+  const info = (s ? _plvKv('Παλέτες στάσης', s.pal) : '') + (s && s.ex != null ? _plvKv('Με ανταλλαγή', s.ex) : '')
+    + (v.plate || v.who ? _plvKv('Όχημα · οδηγός', escapeHtml([v.plate, v.who].filter(Boolean).join(' · '))) : '');
   const after = _plvAfter(m, m.given - m.taken);
-  document.getElementById('plvModal').innerHTML = `
-  <div class="plv-overlay" onclick="if(event.target===this)plvWizClose()">
-    <div class="plv-modal plv-sm" onkeydown="if(event.key==='Enter'&&!event.target.closest('button')){event.preventDefault();plvDoConfirm(${m.id})}">
-      <div class="plv-mhead"><h3>${PLV_CONFIRM_T[m.event_type] || 'Επιβεβαίωση κίνησης'}</h3>${q.length > 1 && pos >= 0 ? `<span class="plv-mid plv-mcnt">${pos + 1} από ${q.length}</span>` : ''}<span class="plv-mclose" onclick="plvWizClose()" title="Κλείσιμο (Esc)">✕</span></div>
-      <div class="plv-msub">${_plvSubLine(m)}</div>
-      <div class="plv-mbody">
-        ${info.length ? `<div class="plv-info">${info.map(([l, x]) => `<div><span>${l}</span><b>${escapeHtml(String(x))}</b></div>`).join('')}</div>` : ''}
+  _plvOpenShell(_plvShell({
+    title: PLV_CONFIRM_T[m.event_type] || 'Επιβεβαίωση κίνησης',
+    close: 'plvWizClose()',
+    attrs: ` onkeydown="if(event.key==='Enter'&&!event.target.closest('button')){event.preventDefault();plvDoConfirm(${m.id})}"`,
+    subs: [_plvSubLine(m), q.length > 1 && pos >= 0 ? `<span class="plv-mcnt">${pos + 1} από ${q.length}</span>` : ''],
+    body: (info ? _plvSect('Στοιχεία', info) : '') + _plvSect('Καταχώρηση', `<div class="plv-form">
         <div class="plv-grid2">
           ${_plvField('Πήραμε', `<input id="plvTaken" type="number" min="0" value="${m.taken}" oninput="plvConfirmLive(${m.id})">`)}
           ${_plvField('Δώσαμε', `<input id="plvGiven" type="number" min="0" value="${m.given}" oninput="plvConfirmLive(${m.id})">`)}
@@ -1083,15 +1108,10 @@ function plvOpenConfirm(id, inWiz) {
         ${_plvField('Δελτίο', _plvDropzone(), 'Χωρίς δελτίο: η επιβεβαίωση την κάνει οριστική, με πηγή «χειροκίνητη».')}
         <div id="plvAfter" class="plv-after"${after ? '' : ' hidden'}><span>Μετά την επιβεβαίωση</span><b>${after}</b></div>
         <div id="plvErr"></div>
-      </div>
-      <div class="plv-mfoot">
-        ${q.length > 1 && pos >= 0 ? `<button class="plv-btn" onclick="plvWizAdvance(${m.id})" title="Προσπέρασε χωρίς επιβεβαίωση">Παράλειψη →</button>` : ''}
-        <span class="plv-sp"></span>
-        <button id="plvConfirmGo" class="plv-btn plv-btn-p" data-id="${m.id}" ${zero ? 'disabled' : ''} onclick="plvDoConfirm(${m.id})">${hasNext ? 'Επιβεβαίωση και επόμενη' : 'Επιβεβαίωση'} <span class="plv-kbd plv-kbd-d">↵</span></button>
-      </div>
-    </div>
-  </div>`;
-  document.addEventListener('keydown', _plvEsc);
+        <button id="plvConfirmGo" class="plv-btn plv-btn-p plv-go-wide" data-id="${m.id}" ${zero ? 'disabled' : ''} onclick="plvDoConfirm(${m.id})">${hasNext ? 'Επιβεβαίωση και επόμενη' : 'Επιβεβαίωση'} <span class="plv-kbd plv-kbd-d">↵</span></button>
+      </div>`),
+    actions: [q.length > 1 && pos >= 0 ? _plvLink(`plvWizAdvance(${m.id})`, 'Παράλειψη →') : '', _plvLink('plvWizClose()', 'Κλείσιμο')]
+  }));
   setTimeout(() => { const g = document.getElementById(m.taken ? 'plvGiven' : 'plvTaken'); if (g) { g.focus(); g.select(); } }, 0);
 }
 // Live: the zero lock and the balance after (N12).
@@ -1240,57 +1260,49 @@ async function plvFixCore(m, { realTaken, note }) {
 function plvOpenPanel(id) {
   const m = _plvFind(id);
   if (!m) return;
-  const row = (l, v) => `<div class="plv-prow"><span>${l}</span><span>${v}</span></div>`;
   const s = _plvStop(m), v = _plvVeh(m);
   const sheet = m.sheet_url
-    ? `<a href="#" onclick="plvViewSheet('${escapeHtml(String(m.sheet_url).replace(/'/g, ''))}');return false">Προβολή δελτίου</a>`
-    : m.sheet_source === 'MANUAL' && m.status === 'confirmed' ? 'χειροκίνητη (χωρίς αρχείο)' : '<span class="plv-mid">δεν έχει ανέβει</span>';
+    ? `<a href="#" class="oi-link" onclick="plvViewSheet('${escapeHtml(String(m.sheet_url).replace(/'/g, ''))}');return false">Προβολή δελτίου</a>`
+    : m.sheet_source === 'MANUAL' && m.status === 'confirmed' ? 'χειροκίνητη (χωρίς αρχείο)' : 'δεν έχει ανέβει';
+  const sheetCls = m.sheet_url || (m.sheet_source === 'MANUAL' && m.status === 'confirmed') ? '' : 'miss';
   const origin = m.order_stop_id && m.order_id ? 'από την παραγγελία' : m.cons_load_id ? 'από το δρομολόγιο #' + m.cons_load_id
     : m.piece_leg_id != null ? 'από τον προγραμματισμό εθνικών' : 'χειροκίνητα';
   const write = _plvCanWrite();
-  let after = '', actions = '';
+  const zeroQ = m.taken + m.given === 0 && m.event_type !== 'ADJUSTMENT';
+  let after = '', afterT = 'Μετά την επιβεβαίωση', rev = '';
+  const actions = [];
   if (m.status === 'pending') {
     after = _plvAfter(m, m.given - m.taken);
-    if (write) actions = `<button class="plv-btn plv-btn-p plv-wide" onclick="plvCloseModal();plvOpenConfirm(${m.id})">${m.taken + m.given === 0 && m.event_type !== 'ADJUSTMENT' ? 'Διόρθωση ποσοτήτων' : 'Επιβεβαίωση'} <span class="plv-kbd plv-kbd-d">Enter</span></button>
-      <span class="plv-sp"></span><button class="plv-a plv-red" onclick="plvPanelDelete(${m.id})">Διαγραφή εκκρεμούς</button>`;
+    if (write) actions.push(_plvLink(`plvCloseModal();plvOpenConfirm(${m.id})`, zeroQ ? 'Διόρθωση ποσοτήτων' : 'Επιβεβαίωση'), _plvLink(`plvPanelDelete(${m.id})`, 'Διαγραφή εκκρεμούς', true));
   } else if (m.status === 'confirmed' && m.event_type === 'DELIVERY') {
-    if (write) actions = `<button class="plv-btn plv-btn-p" onclick="plvCloseModal();plvFixDelivery(${m.id})">Διόρθωση ανταλλαγής</button>`;
+    if (write) actions.push(_plvLink(`plvCloseModal();plvFixDelivery(${m.id})`, 'Διόρθωση ανταλλαγής'));
   } else if (m.status === 'confirmed' && write) {
-    const a2 = _plvAfter(m, -(m.given - m.taken));
-    actions = `<button class="plv-a plv-red" onclick="plvPanelReverse(${m.id})">Αντιλογισμός</button><span class="plv-sp"></span>${a2 ? `<span class="plv-mid">Μετά: ${a2}</span>` : ''}`;
+    after = _plvAfter(m, -(m.given - m.taken)); afterT = 'Μετά τον αντιλογισμό';
+    rev = _plvSect('Αντιλογισμός', `<p class="plv-ptext">Οι οριστικές δεν αλλάζουν και δεν σβήνονται. Ο αντιλογισμός τη βγάζει από το υπόλοιπο, την κρατά στο ιστορικό, και μπορείς να γράψεις τη σωστή.</p>
+      <div class="plv-form">${_plvField('Αιτιολογία', '<input id="plvRevReason" type="text">', 'Υποχρεωτική')}</div>`);
+    actions.push(_plvLink(`plvPanelReverse(${m.id})`, 'Αντιλογισμός', true));
   }
-  const rev = m.status === 'confirmed' && m.event_type !== 'DELIVERY' && write ? `
-      <p class="plv-ptext">Οι οριστικές δεν αλλάζουν και δεν σβήνονται. Ο αντιλογισμός τη βγάζει από το υπόλοιπο, την κρατά στο ιστορικό, και μπορείς να γράψεις τη σωστή.</p>
-      ${_plvField('Αιτιολογία', '<input id="plvRevReason" type="text">', 'Υποχρεωτική')}` : '';
-  const title = _plvLoc(m) || _plvName(m);
-  document.getElementById('plvModal').innerHTML = `
-  <div class="plv-overlay plv-ov-side" onclick="if(event.target===this)plvCloseModal()">
-    <div class="plv-panel">
-      <div class="plv-pbody">
-        <div class="plv-pk"><b>${escapeHtml(_plvNo(m) || m.code || '')}</b> <span class="plv-mid">${escapeHtml(PLV_EVENT_GR[m.event_type] || m.event_type)} · ${_plvStatus(m)}</span><span class="plv-sp"></span><span class="plv-mclose" onclick="plvCloseModal()" title="Κλείσιμο (Esc)">✕</span></div>
-        <h3>${escapeHtml(title)}</h3>
-        <div class="plv-mid">${[_plvPlace(m), _plvLoc(m) ? _plvName(m) : ''].filter(Boolean).map(escapeHtml).join(' · ')}</div>
-        <div class="plv-prows">
-          ${row('Ημερομηνία', _plvFmtDate(m.movement_date))}
-          ${s ? row('Παλέτες στάσης', `${s.pal}${s.ex != null ? ' · με ανταλλαγή ' + s.ex : ''}`) : ''}
-          ${row('Πήραμε', `<b>${m.taken}</b>`)}
-          ${row('Δώσαμε', `<b>${m.given}</b>`)}
-          ${v.plate || v.who ? row('Όχημα · οδηγός', escapeHtml([v.plate, v.who].filter(Boolean).join(' · '))) : ''}
-          ${row('Δελτίο', sheet)}
-          ${row('Δημιουργία', `${origin}${m.created_at ? ' · ' + _plvFmtDate(m.created_at) : ''}`)}
-          ${m.confirmed_at ? row('Επιβεβαίωση', _plvFmtDate(m.confirmed_at)) : ''}
-          ${m.reason ? row('Αιτιολογία', escapeHtml(m.reason)) : ''}
-          ${m.notes ? row('Σημείωση', escapeHtml(m.notes)) : ''}
-          ${row('Κωδικός', `<span class="plv-mid">${escapeHtml(m.code || '')}</span>`)}
-        </div>
-        ${after ? `<div class="plv-after"><span>Μετά την επιβεβαίωση</span><b>${after}</b></div>` : ''}
-        ${rev}
-        <div class="plv-hlbl">Ιστορικό</div><div id="plvHist" class="plv-hist" data-mid="${m.id}"><span class="plv-mid">Φόρτωση ιστορικού…</span></div>
-      </div>
-      ${actions ? `<div class="plv-pfoot">${actions}</div>` : ''}
-    </div>
-  </div>`;
-  document.addEventListener('keydown', _plvEsc);
+  const info = _plvKv('Ημερομηνία', _plvFmtDate(m.movement_date))
+    + (s ? _plvKv('Παλέτες στάσης', `${s.pal}${s.ex != null ? ' · με ανταλλαγή ' + s.ex : ''}`) : '')
+    + _plvKv('Πήραμε', m.taken) + _plvKv('Δώσαμε', m.given)
+    + (v.plate || v.who ? _plvKv('Όχημα · οδηγός', escapeHtml([v.plate, v.who].filter(Boolean).join(' · '))) : '')
+    + _plvKv('Δελτίο', sheet, sheetCls)
+    + _plvKv('Δημιουργία', `${origin}${m.created_at ? ' · ' + _plvFmtDate(m.created_at) : ''}`)
+    + (m.confirmed_at ? _plvKv('Επιβεβαίωση', _plvFmtDate(m.confirmed_at)) : '')
+    + (m.reason ? _plvKv('Αιτιολογία', escapeHtml(m.reason)) : '')
+    + (m.notes ? _plvKv('Σημείωση', escapeHtml(m.notes)) : '')
+    + _plvKv('Κωδικός', escapeHtml(m.code || ''), 'miss');
+  _plvOpenShell(_plvShell({
+    title: _plvLoc(m) || _plvName(m),
+    subs: [escapeHtml([_plvNo(m), PLV_EVENT_GR[m.event_type] || m.event_type].filter(Boolean).join(' · ')),
+      escapeHtml([_plvPlace(m), _plvLoc(m) ? _plvName(m) : ''].filter(Boolean).join(' · '))],
+    chips: [{ t: String(m.movement_date) > _plvToday() && m.status === 'pending' ? 'Προγραμματισμένη' : PLV_STATUS_CHIP[m.status] || m.status }],
+    body: _plvSect('Στοιχεία', info)
+      + (after ? _plvSect('', `<div class="plv-after-k"><span>${afterT}</span><b>${after}</b></div>`, true) : '')
+      + rev
+      + _plvSect('Ιστορικό', `<div id="plvHist" class="plv-hist" data-mid="${m.id}"><span class="plv-mid">Φόρτωση ιστορικού…</span></div>`),
+    actions
+  }));
   _plvHistory(m);
 }
 
@@ -1412,27 +1424,21 @@ function plvFixDelivery(id) {
   if (_plvBlockReadOnly()) return;
   const m = _plvFind(id);
   if (!m) return;
-  document.getElementById('plvModal').innerHTML = `
-  <div class="plv-overlay" onclick="if(event.target===this)plvCloseModal()">
-    <div class="plv-modal plv-sm">
-      <div class="plv-mhead"><h3>Διόρθωση παράδοσης</h3><span class="plv-mclose" onclick="plvCloseModal()" title="Κλείσιμο (Esc)">✕</span></div>
-      <div class="plv-msub">${_plvSubLine(m)}</div>
-      <div class="plv-mbody">
-        <div class="plv-after"><span>${m.order_stop_id ? 'Γράφτηκε αυτόματα' : 'Καταγράφηκε'}</span><b>πήραμε ${m.taken} · δώσαμε ${m.given}</b></div>
+  _plvOpenShell(_plvShell({
+    title: 'Διόρθωση παράδοσης',
+    subs: [_plvSubLine(m)],
+    body: _plvSect('Στοιχεία', _plvKv(m.order_stop_id ? 'Γράφτηκε αυτόματα' : 'Καταγράφηκε', `πήραμε ${m.taken} · δώσαμε ${m.given}`))
+      + _plvSect('Διόρθωση', `<div class="plv-form">
         <div class="plv-grid2">
           ${_plvField('Πήραμε πραγματικά', `<input id="plvRealTaken" type="number" min="0" value="${m.taken}" oninput="plvFixLive(${m.id})">`)}
           ${_plvField('Δώσαμε', `<input type="number" value="${m.given}" disabled>`)}
         </div>
         ${_plvField('Τι έγινε', '<input id="plvFixNote" type="text" placeholder="π.χ. δεν είχαν άδειες">')}
         <div id="plvAfter" class="plv-after" hidden><span>Μετά τη διόρθωση</span><b></b></div>
-      </div>
-      <div class="plv-mfoot">
-        <button class="plv-btn" onclick="plvCloseModal()">Άκυρο</button><span class="plv-sp"></span>
-        <button class="plv-btn plv-btn-p" onclick="plvDoFix(${m.id})">Καταχώρηση διόρθωσης</button>
-      </div>
-    </div>
-  </div>`;
-  document.addEventListener('keydown', _plvEsc);
+        <button class="plv-btn plv-btn-p plv-go-wide" onclick="plvDoFix(${m.id})">Καταχώρηση διόρθωσης</button>
+      </div>`),
+    actions: [_plvLink('plvCloseModal()', 'Άκυρο')]
+  }));
   setTimeout(() => { const i = document.getElementById('plvRealTaken'); if (i) { i.focus(); i.select(); } }, 0);
 }
 function plvFixLive(id) {
@@ -1529,18 +1535,15 @@ function plvNewMovement() {
           <div class="plv-ac" id="plvAcList_${field}" style="display:none"></div>
         </div>`;
   const types = PLV_NM_TYPES.concat(_plvIsOwner() ? [['ADJUSTMENT', 'Τακτοποίηση', 'χαμένες, συμβιβασμός']] : []);
-  document.getElementById('plvModal').innerHTML = `
-  <div class="plv-overlay" onclick="if(event.target===this)plvCloseModal()">
-    <div class="plv-modal">
-      <div class="plv-mhead"><h3>Νέα κίνηση</h3><span class="plv-mclose" onclick="plvCloseModal()" title="Κλείσιμο (Esc)">✕</span></div>
-      <div class="plv-mbody">
-        <div class="plv-f"><span>Είδος</span><div class="plv-types" id="plvNmTypes">${types.map(([v, a, b]) =>
+  _plvOpenShell(_plvShell({
+    title: 'Νέα κίνηση',
+    subs: ['Χωρίς δελτίο μένει εκκρεμής· με δελτίο γίνεται οριστική.'],
+    body: _plvSect('Είδος', `<div class="plv-types" id="plvNmTypes">${types.map(([v, a, b]) =>
           `<button type="button" data-t="${v}" class="${v === PLV._nmType ? 'on' : ''}" onclick="plvNmType('${v}')"><b>${a}</b><small>${b}</small></button>`).join('')}</div>
-          ${_plvIsOwner() ? '' : '<span class="plv-hint">🔒 Τακτοποίηση (χαμένες παλέτες, συμβιβασμός): μόνο ο ιδιοκτήτης</span>'}</div>
-        <div class="plv-grid2 plv-g21">
-          ${_plvField('Πελάτης ή συνεργάτης', ac('plvNmParty', 'party', '2+ γράμματα'))}
-          ${_plvField('Ημερομηνία', `<input id="plvNmDate" type="date" value="${_plvToday()}" min="2020-01-01" max="2030-12-31" onchange="_plvNmLive()">`)}
-        </div>
+          ${_plvIsOwner() ? '' : '<div class="plv-hint" style="margin-top:6px">🔒 Τακτοποίηση (χαμένες παλέτες, συμβιβασμός): μόνο ο ιδιοκτήτης</div>'}`)
+      + _plvSect('Στοιχεία', `<div class="plv-form">
+        ${_plvField('Πελάτης ή συνεργάτης', ac('plvNmParty', 'party', '2+ γράμματα'))}
+        ${_plvField('Ημερομηνία', `<input id="plvNmDate" type="date" value="${_plvToday()}" min="2020-01-01" max="2030-12-31" onchange="_plvNmLive()">`)}
         ${_plvField('Σημείο (προαιρετικό)', ac('plvNmLoc', 'locations', '2+ γράμματα'))}
         <div id="plvNmDup"></div>
         <div class="plv-grid2">
@@ -1550,16 +1553,11 @@ function plvNewMovement() {
         <div id="plvNmReasonW" hidden>${_plvField('Αιτιολογία', '<input id="plvNmReason" type="text">', 'Υποχρεωτική για την τακτοποίηση')}</div>
         ${_plvField('Σημείωση', '<input id="plvNmNote" type="text">')}
         ${_plvField('Δελτίο', _plvDropzone())}
-      </div>
-      <div class="plv-mfoot">
-        <span class="plv-mid plv-nmfoot">Χωρίς δελτίο μένει εκκρεμής.<br><span id="plvNmAfter"></span></span>
-        <span class="plv-sp"></span>
-        <button class="plv-btn" onclick="plvCloseModal()">Άκυρο</button>
-        <button class="plv-btn plv-btn-p" onclick="plvDoCreate()">Καταχώρηση</button>
-      </div>
-    </div>
-  </div>`;
-  document.addEventListener('keydown', _plvEsc);
+        <div class="plv-hint" id="plvNmAfter"></div>
+        <button class="plv-btn plv-btn-p plv-go-wide" onclick="plvDoCreate()">Καταχώρηση</button>
+      </div>`),
+    actions: [_plvLink('plvCloseModal()', 'Άκυρο')]
+  }));
 }
 function plvNmType(t) {
   PLV._nmType = t;
@@ -1759,19 +1757,13 @@ const _PLV_STYLE = `<style>
   .plv-ch h2{font-family:Syne;font-size:22px;font-weight:700;margin:0}
   .plv-back{width:32px;height:32px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-card);font-size:20px;line-height:1;cursor:pointer;color:var(--text)}
   .plv-cbal .plv-big{font-size:26px;margin:0 4px}
-  /* Overlays. The scrim has no token: the same rgba the app's own overlays use. */
-  .plv-overlay{position:fixed;inset:0;background:rgba(11,25,41,.45);display:flex;align-items:center;justify-content:center;z-index:var(--z-overlay,1000)}
-  .plv-ov-side{display:block}
-  .plv-modal{background:var(--surface-card);color:var(--text);border-radius:8px;box-shadow:var(--shadow-md);width:min(600px,94vw);max-height:92vh;overflow:auto}
-  .plv-modal.plv-sm{width:min(520px,94vw)}
-  .plv-mhead{display:flex;align-items:center;gap:12px;padding:24px 24px 0}
-  .plv-mhead h3{font-family:Syne;font-size:18px;font-weight:700;margin:0;flex:1}
-  .plv-mcnt{font-size:var(--text-body)}
-  .plv-mclose{cursor:pointer;font-size:var(--text-base);color:var(--text-mid);line-height:1}
-  .plv-msub{padding:6px 24px 0;color:var(--text-mid)}
-  .plv-mbody{padding:16px 24px 20px;display:flex;flex-direction:column;gap:14px}
-  .plv-info{display:flex;gap:28px;padding:10px 12px;background:var(--surface-sunken);border-radius:var(--radius)}
-  .plv-info span{display:block;color:var(--text-mid)}.plv-info b{font-weight:600}
+  /* Forms inside the TMS panel (the shell itself is orders_intl.js _oiCss + .oi-ro-float): only what the shell
+     does not have — inputs, the drop zone, the «μετά» box, the error, the type tiles. */
+  .plv-shell{display:flex;flex-direction:column;font-size:var(--text-body)}
+  .plv-form{display:flex;flex-direction:column;gap:12px;margin-top:4px}
+  .plv-mcnt{color:var(--text-on-dark);font-weight:600}
+  .plv-go-wide{width:100%;justify-content:center;height:36px}
+  .plv-after-k span{display:block;color:var(--text-mid);font-size:12px}.plv-after-k b{font-weight:600}
   .plv-grid2{display:flex;gap:20px}.plv-grid2>*{flex:1 1 0;min-width:0}
   .plv-g21>*:last-child{flex:0 0 176px}
   .plv-f{display:flex;flex-direction:column;gap:6px}
@@ -1789,29 +1781,18 @@ const _PLV_STYLE = `<style>
   .plv-note{font-size:var(--text-sm);color:var(--warn);margin:0}
   .plv-err{display:flex;gap:16px;align-items:center;padding:10px 14px;border:1px solid var(--border);border-left:3px solid var(--danger);border-radius:var(--radius);color:var(--danger)}
   .plv-err span{flex:1}
-  .plv-mfoot{display:flex;align-items:center;gap:12px;padding:16px 24px 20px;border-top:1px solid var(--border)}
-  .plv-nmfoot{font-size:var(--text-sm)}
   .plv-types{display:flex;gap:4px;padding:4px;background:var(--surface-sunken);border-radius:var(--radius)}
   .plv-types button{flex:1;text-align:left;padding:6px 10px;border:1px solid transparent;border-radius:4px;background:none;font:inherit;cursor:pointer;color:var(--text-mid)}
   .plv-types button.on{background:var(--surface-card);border-color:var(--border);color:var(--text)}
   .plv-types b{display:block;font-weight:600;font-size:var(--text-body)}.plv-types small{font-size:var(--text-xs);color:var(--text-mid)}
   .plv-dup{padding:10px 14px;background:var(--warn-bg);border:1px solid var(--warn-border);border-left:3px solid var(--warn);border-radius:var(--radius);color:var(--warn)}
   .plv-dup b{display:block;font-weight:600}
-  .plv-panel{position:absolute;top:0;right:0;bottom:0;width:min(420px,94vw);background:var(--surface-card);color:var(--text);box-shadow:var(--shadow-md);display:flex;flex-direction:column}
-  .plv-pbody{flex:1;overflow:auto;padding:20px 24px}
-  .plv-pk{display:flex;align-items:center;gap:8px}
-  .plv-panel h3{font-family:Syne;font-size:18px;font-weight:700;margin:10px 0 4px}
-  .plv-prows{margin:16px 0}
-  .plv-prow{display:flex;justify-content:space-between;gap:12px;height:34px;align-items:center;border-bottom:1px solid var(--border)}
-  .plv-prow span:first-child{color:var(--text-mid);white-space:nowrap}.plv-prow span:last-child{text-align:right}
   .plv-ptext{margin:12px 0;color:var(--text)}
-  .plv-hlbl{margin:20px 0 6px;font-size:var(--text-xs);font-weight:700;letter-spacing:.06em;text-transform:uppercase}
-  .plv-hrow{padding:8px 0;border-bottom:1px solid var(--border)}
+  .plv-hrow{padding:6px 0;border-bottom:1px solid var(--border);font-size:13px}
   .plv-hrow b{display:block;font-weight:500}.plv-hrow span{color:var(--text-mid);font-size:var(--text-sm)}
   .plv-hnote{margin-top:10px;color:var(--text-mid);font-size:var(--text-sm)}
   .plv-hfail{display:flex;flex-direction:column;gap:6px;padding:12px 16px;border-left:3px solid var(--danger)}
   .plv-hfail span{color:var(--text-mid)}
-  .plv-pfoot{display:flex;align-items:center;gap:12px;padding:20px 24px;border-top:1px solid var(--border)}
   .plv-ac{position:absolute;left:0;right:0;top:100%;z-index:20;background:var(--surface-card);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);max-height:210px;overflow:auto;box-shadow:var(--shadow-md)}
   .plv-ac>div{padding:8px 12px;cursor:pointer}.plv-ac>div:hover{background:var(--surface-sunken)}
 </style>`;

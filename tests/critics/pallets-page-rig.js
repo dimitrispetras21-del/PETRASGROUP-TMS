@@ -159,8 +159,8 @@ async function runAction(browser) {
   page._writes.length = 0;
   await row(page, 2).focus();
   await page.keyboard.press('Enter');
-  await page.waitForSelector('.plv-modal', { timeout: 5000 });
-  const mt = await page.locator('.plv-modal').innerText();
+  await page.waitForSelector('.plv-shell', { timeout: 5000 });
+  const mt = await page.locator('.plv-shell').textContent();   // the title is upper-cased by the shell's CSS
   ok(/Επιβεβαίωση φόρτωσης/.test(mt) && /\d+ από 7/.test(mt), 'Enter → «Επιβεβαίωση φόρτωσης», counter «N από 7»');
   ok(/Παλέτες στάσης\s*30/.test(mt), 'info: «Παλέτες στάσης 30»');
   await page.fill('#plvGiven', '5');
@@ -173,7 +173,7 @@ async function runAction(browser) {
   const pw = page._writes.find(w => w.m === 'PATCH' && w.p === 'movements/2'), cw = page._writes.find(w => w.p === 'movements/2/confirm');
   ok(pw && pw.body.taken === 29 && pw.body.given === 5 && pw.body.sheet_source === 'MANUAL', 'PATCH movements/2 {taken:29, given:5, sheet_source:MANUAL} — ' + JSON.stringify(pw && pw.body));
   ok(!!cw && MOVES.find(m => m.id === 2).status === 'confirmed', 'POST movements/2/confirm → table (mock): confirmed');
-  ok(await page.locator('.plv-modal').count() === 1 && /από/.test(await page.locator('.plv-mcnt').innerText().catch(() => '')), 'the wizard moved on to the next pending');
+  ok(await page.locator('.plv-shell').count() === 1 && /από/.test(await page.locator('.plv-mcnt').innerText().catch(() => '')), 'the wizard moved on to the next pending');
   await page.keyboard.press('Escape');
   const errs = page._errors.filter(e => !/status of 404/.test(e));
   ok(errs.length === 0 && page._bad.length === 0, 'no console / page errors' + (errs.length || page._bad.length ? ': ' + [...errs, ...page._bad].join(' | ') : ''));
@@ -188,7 +188,7 @@ async function runConfirmFail(browser) {
     await open(page);
     await row(page, 2).hover();   // the row's button shows on hover / focus (N01)
     await page.locator('#plvBody tr[data-id="2"] .plv-go').click();
-    await page.waitForSelector('.plv-modal');
+    await page.waitForSelector('.plv-shell');
     await page.locator('#plvConfirmGo').click();
     await page.waitForSelector('.plv-err', { timeout: 5000 });
     const t = await page.locator('.plv-err').innerText();
@@ -206,11 +206,11 @@ async function runSched(browser) {
   await page.locator('.plv-more', { hasText: 'Προγραμματισμένες' }).click();
   await row(page, 3).focus();
   await page.keyboard.press('Enter');
-  await page.waitForSelector('.plv-modal');
+  await page.waitForSelector('.plv-shell');
   ok(await page.locator('.plv-mcnt').count() === 0, 'no «N από M» counter for a movement outside the queue');
   await page.locator('#plvConfirmGo').click();
   await page.waitForTimeout(800);
-  ok(MOVES.find(m => m.id === 3).status === 'confirmed' && await page.locator('.plv-modal').count() === 0, 'PM-3 confirmed, the modal closed (no unrelated next row)');
+  ok(MOVES.find(m => m.id === 3).status === 'confirmed' && await page.locator('.plv-shell').count() === 0, 'PM-3 confirmed, the modal closed (no unrelated next row)');
   await page.close();
 }
 
@@ -275,30 +275,32 @@ async function runPanel(browser) {
   await open(page);
   await page.evaluate(() => plvTab('moves'));
   await row(page, 11).click();
-  await page.waitForSelector('.plv-panel');
+  await page.waitForSelector('.plv-shell');
   await page.waitForFunction(() => !/Φόρτωση ιστορικού/.test(document.getElementById('plvHist').innerText));
   const h = await page.locator('#plvHist').innerText();
+  ok(await page.locator('.plv-shell.entity-detail-panel.oi-ro-float .oi-card-head .oi-card-title').count() === 1
+    && Math.round((await page.locator('.plv-shell').boundingBox()).width) === 480, 'the panel is the TMS shell (oi-card-head on .oi-ro-float, 480px)');
   ok(/Από τα στοιχεία της κίνησης/.test(h) && /Επιβεβαίωση/.test(h) && /D\. Accountant/.test(h), '/history 404 → who/when from the movement (N18 Δ): ' + h.replace(/\s+/g, ' ').slice(0, 140));
   page._writes.length = 0;
-  await page.locator('.plv-pfoot .plv-a', { hasText: 'Αντιλογισμός' }).click();
+  await page.locator('.plv-shell .oi-link', { hasText: 'Αντιλογισμός' }).click();
   await page.waitForTimeout(200);
   ok(page._writes.length === 0, 'reverse without a reason writes nothing');
   await page.fill('#plvRevReason', 'λάθος πελάτης');
-  await page.locator('.plv-pfoot .plv-a', { hasText: 'Αντιλογισμός' }).click();
+  await page.locator('.plv-shell .oi-link', { hasText: 'Αντιλογισμός' }).click();
   await page.waitForTimeout(600);
   const rv = page._writes.find(w => w.p === 'movements/11/reverse');
   ok(rv && rv.body.reason === 'λάθος πελάτης' && !rv.body.replacement && MOVES.find(m => m.id === 11).status === 'reversed', 'POST movements/11/reverse {reason} → table (mock): reversed');
   await page.evaluate(() => plvTab('moves'));
   await row(page, 10).click();
-  await page.waitForSelector('.plv-panel');
-  await page.locator('.plv-pfoot button', { hasText: 'Διόρθωση ανταλλαγής' }).click();
+  await page.waitForSelector('.plv-shell');
+  await page.locator('.plv-shell .oi-link', { hasText: 'Διόρθωση ανταλλαγής' }).click();
   await page.waitForSelector('#plvRealTaken');
   await page.fill('#plvRealTaken', '6');
   await page.fill('#plvFixNote', 'δεν είχαν άδειες');
-  ok(/Μετά τη διόρθωση/.test(await page.locator('.plv-modal').innerText()), 'N14a: «Μετά τη διόρθωση» shows');
+  ok(/Μετά τη διόρθωση/.test(await page.locator('.plv-shell').innerText()), 'N14a: «Μετά τη διόρθωση» shows');
   await shot(page, 'n14a');
   page._writes.length = 0;
-  await page.locator('.plv-modal button', { hasText: 'Καταχώρηση διόρθωσης' }).click();
+  await page.locator('.plv-shell button', { hasText: 'Καταχώρηση διόρθωσης' }).click();
   await page.waitForTimeout(800);
   const fx = page._writes.find(w => w.p === 'movements/10/reverse');
   const r = fx && fx.body.replacement;
@@ -312,12 +314,12 @@ async function runPanel(browser) {
     { action: 'update', changed_by: 'demo_accountant', changed_at: '2026-10-24T07:12:00Z', before: { taken: 30, given: 0 }, after: { taken: 22, given: 5 } }] });
   await open(page);
   await row(page, 2).click();
-  await page.waitForSelector('.plv-panel');
+  await page.waitForSelector('.plv-shell');
   await page.waitForFunction(() => !/Φόρτωση ιστορικού/.test(document.getElementById('plvHist').innerText));
   const h2 = await page.locator('#plvHist').innerText();
   ok(/Πήραμε 30 → 22 · Δώσαμε 0 → 5/.test(h2) && /από την παραγγελία #1246/.test(h2) && /Οι τρέχουσες τιμές \(Πήραμε 29 · Δώσαμε 0\)/.test(h2),
     'N11h lines + «από την παραγγελία #1246» + N18 ΣΤ (current values without a line): ' + h2.replace(/\s+/g, ' ').slice(0, 160));
-  ok(/Μετά την επιβεβαίωση/.test(await page.locator('.plv-panel').innerText()), 'pending panel: «Μετά την επιβεβαίωση»');
+  ok(/Μετά την επιβεβαίωση/.test(await page.locator('.plv-shell').innerText()), 'pending panel: «Μετά την επιβεβαίωση»');
   await shot(page, 'n11h');
   await page.close();
   seed();
@@ -336,7 +338,7 @@ async function runNew(browser) {
   await open(page);
   await page.locator('.plv-hact button', { hasText: 'Νέα κίνηση' }).click();
   await page.waitForSelector('#plvNmTypes');
-  ok(await page.locator('#plvNmTypes button').count() === 4 && /μόνο ο ιδιοκτήτης/.test(await page.locator('.plv-modal').innerText()), '4 types + the owner-only lock line (accountant)');
+  ok(await page.locator('#plvNmTypes button').count() === 4 && /μόνο ο ιδιοκτήτης/.test(await page.locator('.plv-shell').innerText()), '4 types + the owner-only lock line (accountant)');
   await page.fill('#plvAcQ_plvNmParty', 'Berger');
   await page.waitForSelector('#plvAcList_plvNmParty div');
   await page.locator('#plvAcList_plvNmParty div').first().dispatchEvent('mousedown');
@@ -349,7 +351,7 @@ async function runNew(browser) {
   ok(/Μετά την επιβεβαίωση/.test(await page.locator('#plvNmAfter').innerText()), 'footer: «Μετά την επιβεβαίωση»');
   await shot(page, 'n15');
   page._writes.length = 0;
-  await page.locator('.plv-modal button', { hasText: 'Καταχώρηση' }).click();
+  await page.locator('.plv-shell button.plv-btn-p', { hasText: 'Καταχώρηση' }).click();
   await page.waitForTimeout(700);
   const w = page._writes.find(x => x.m === 'POST' && x.p === 'movements');
   ok(w && w.body.event_type === 'RETURN_OUT' && w.body.client_id === 10 && w.body.location_id === 607 && w.body.given === 5 && w.body.taken === 0 && w.body.confirm === false && w.body.sheet_source === 'MANUAL',
@@ -367,8 +369,8 @@ async function runRoles(browser) {
   ok(/Μόνο ανάγνωση για τον ρόλο σου/.test(await page.locator('.plv-ro').innerText()), 'the read-only line');
   await row(page, 2).focus();
   await page.keyboard.press('Enter');
-  await page.waitForSelector('.plv-panel');
-  ok(await page.locator('.plv-pfoot').count() === 0, 'Enter opens the panel, with no action');
+  await page.waitForSelector('.plv-shell');
+  ok(await page.locator('.plv-shell .plv-acts-sect').count() === 0, 'Enter opens the panel, with no action');
   await page.keyboard.press('Escape');
   await page.evaluate(() => plvTab('week'));
   await page.waitForTimeout(500);
