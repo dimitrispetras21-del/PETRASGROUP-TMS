@@ -191,6 +191,27 @@ test('week paper: the columns per trip, «λείπει» / blank / «—», the 
   assert.ok(!/RT-\d/.test(t));
 });
 
+test('week paper: a «λείπει» cell shows what IS written under it, so the row still adds up to its ΚΟΣΤΗ', () => {
+  const d = week();
+  d.costs[2] = { ...d.costs[2], dl_expenses: 70 };
+  d.trips[2] = { ...d.trips[2], cost_net: 370 };
+  const m = pnlWeekModel(d, LK);
+  assert.strictEqual(m.ok, true, JSON.stringify(m.refused));
+  assert.strictEqual(m.rows[2].driver, 'miss');
+  assert.strictEqual(m.rows[2].missAmt.driver, 70);
+  assert.match(text(pnlWeekHtml(m, '2026-10-17', '2026-10-23')), /20–23\/10 ΑΒΓ1002 · Παράδειγμα Ν\. — 4\.000,00 λείπει 300,00 λείπει 70,00/);
+});
+
+test('trip paper: the loads in the trip\'s order (seq), whatever order the legs were attached; a nameless leg with money still has a row', () => {
+  const d = ownTrip();
+  d.legs = [{ id: 10, rt_id: 1, seq: 2, order_id: 100 }, { id: 11, rt_id: 1, seq: 1, order_id: 101 }];
+  d.revenue_legs.push({ rt_id: 1, source: 'leg', leg_id: 99, order_id: null, nat_load_id: null, rev_intl: 50, rev_natl: 0 });
+  d.trips[0] = { ...d.trips[0], revenue: 5650 };
+  const m = pnlTripModel(d, LK);
+  assert.strictEqual(m.ok, true, JSON.stringify(m.refused));
+  assert.deepStrictEqual(m.rev.filter((r) => !r.sub).map((r) => r.load.split(' ·')[0]).join('|'), 'Εισαγωγή|Εξαγωγή|Φορτίο χωρίς στοιχεία');
+});
+
 test('week paper refuses: a cut week, a trip whose costs do not add up (named by truck and day)', () => {
   let d = week(); d.truncated = true;
   assert.match(pnlWeekModel(d, LK).refused.join(' '), /περισσότερα δρομολόγια από όσα διαβάζει το χαρτί/);

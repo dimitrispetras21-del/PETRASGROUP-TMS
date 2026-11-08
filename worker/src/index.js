@@ -5262,7 +5262,9 @@ async function handleCosts(request, url, origin, env) {
     if (resource === "pnl-paper" && method === "GET") {
       const q = url.searchParams;
       const rt = q.get("rt"), from = q.get("from"), to = q.get("to");
-      const isDate = (s) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(Date.parse(s));
+      // a real calendar day: V8's Date.parse rolls 2026-02-30 into March, so the day must round-trip
+      const isDate = (s) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(Date.parse(s))
+        && new Date(s + "T00:00:00Z").toISOString().slice(0, 10) === s;
       const single = rt !== null;
       if (single ? !/^\d{1,12}$/.test(rt) : !(isDate(from) && isDate(to) && from <= to)) {
         return jsonError("Μη έγκυρο δρομολόγιο ή εβδομάδα", 400, origin, env);
@@ -5273,8 +5275,11 @@ async function handleCosts(request, url, origin, env) {
       }
       const P = (o) => new URLSearchParams(o);
       const inIds = (ids) => `in.(${ids.join(",")})`;
+      // PostgREST stops a read at db-max-rows (1000 on Supabase) without saying so: a list that long may be
+      // cut, and a cut list would make the paper refuse for the wrong reason (or worse) — a failed read instead
       const lists = (all) => all.map((r) => {
         if (!r || !Array.isArray(r.rows)) throw new Error("pnl-paper: a read is not a list");
+        if (r.rows.length >= 1000) throw new Error("pnl-paper: a read reached the row cap");
         return r.rows;
       });
       const none = Promise.resolve({ rows: [] });

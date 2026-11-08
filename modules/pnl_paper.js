@@ -188,7 +188,16 @@ function pnlTripModel(data, lookups) {
   // Revenue: one row per load, the Veroia Switch money on its own row (design §4.2)
   const rev = [];
   let revSum = 0, priceMissing = false;
-  (ix.revLegs[t.id] || []).forEach(l => {
+  // the trip's own order (ct_rt_legs.seq), the v5 lines after: never the order the legs were attached in
+  const seqOf = {};
+  (ix.legs[t.id] || []).forEach(l => { seqOf[l.id] = l.seq; });
+  const rank = l => l.source === 'v5' ? [1, Number(l.v5_leg_id) || 0, 0]
+    : [0, seqOf[l.leg_id] != null ? Number(seqOf[l.leg_id]) : 1e9, Number(l.leg_id) || 0];
+  const revLegs = (ix.revLegs[t.id] || []).slice().sort((a, b) => {
+    const x = rank(a), y = rank(b);
+    return x[0] - y[0] || x[1] - y[1] || x[2] - y[2];
+  });
+  revLegs.forEach(l => {
     revSum += Number(l.rev_intl || 0) + Number(l.rev_natl || 0);
     if (l.source === 'v5') {
       const n = ix.natOrders[l.nat_order_id] || {};
@@ -219,7 +228,11 @@ function pnlTripModel(data, lookups) {
         client: n.client || '', pallets: pnlpNum(n.total_pallets) ? Number(n.total_pallets) : null,
         amount: price !== 0 ? price : null, dag: false, note: price === 0 && vs === 0 ? 'χωρίς αξία' : '' });
       if (vs !== 0) rev.push({ sub: true, load: 'Έσοδο Βέροιας (εσωτερική μεταφορά)', amount: vs });
+      return;
     }
+    // a leg row that names no load (a trip without legs) carries 0; if it ever carries money, it is shown
+    const amount = Number(l.rev_intl || 0) + Number(l.rev_natl || 0);
+    if (amount !== 0) rev.push({ days: '—', load: 'Φορτίο χωρίς στοιχεία', client: '', pallets: null, amount, dag: false });
   });
   if (pnlpCents(revSum) !== pnlpCents(t.revenue)) refused.push(`${name}: τα φορτία αθροίζουν ${pnlpAmt(revSum)} αντί για ${pnlpAmt(t.revenue)} έσοδα`);
 
@@ -288,8 +301,11 @@ function pnlWeekModel(data, lookups) {
     const driverWritten = pnlpNum(m.driverValue) || (pnlpNum(m.driverExp) && Number(m.driverExp) !== 0);
     const complete = !!cmp.complete && missing.size === 0;
     const drv = pnlpDriver(lookups, t.driver_id);
+    // what IS written under a «λείπει» (driver expenses without the value; a v5 partner trip with one segment
+    // unrated): shown under the word, so the row's cells still add up to its ΚΟΣΤΗ
+    const missAmt = { driver: missing.has('driver') ? driver : 0, partner: missing.has('partner_rate') ? m.partner : 0 };
     return {
-      t, owned, complete,
+      t, owned, complete, missAmt,
       days: pnlpSpan(t.date_start, t.date_end),
       who: owned ? (pnlpTruck(lookups, t.truck_id) || '—') + (drv ? ' · ' + drv : '') : (pnlpPartner(lookups, t.partner_id) || '—') + ' · συνεργάτης',
       route: pnlpRoute(t, ix),
@@ -329,8 +345,8 @@ function pnlpWeekTag(dateStr) {
   return w ? 'Εβδομάδα ' + pnlpDM(w.start) + ' – ' + pnlpDMY(w.end) : '';
 }
 const PNLP_MISS = '<span class="pp-miss">λείπει</span>';
-function pnlpCell(v) {
-  if (v === 'miss') return '<td class="r">' + PNLP_MISS + '</td>';
+function pnlpCell(v, written) {
+  if (v === 'miss') return '<td class="r">' + PNLP_MISS + (written ? '<br><span class="pp-word">' + pnlpAmt(written) + '</span>' : '') + '</td>';
   if (v === undefined) return '<td class="r"></td>';
   return '<td class="r">' + pnlpAmt(v) + '</td>';
 }
@@ -393,7 +409,7 @@ function pnlTripHtml(m) {
 function pnlWeekHtml(m, from, to) {
   const body = m.rows.map((r, i) => '<tr><td>' + (i + 1) + '</td><td class="nw">' + pnlpEsc(r.days) + '</td><td>' + pnlpEsc(r.who) + '</td><td>' + pnlpEsc(r.route) + '</td>'
     + '<td class="r">' + pnlpAmt(r.revenue) + (r.dag ? '†' : '') + '</td>'
-    + pnlpCell(r.fuel) + pnlpCell(r.tolls) + pnlpCell(r.driver) + pnlpCell(r.partner) + pnlpCell(r.other)
+    + pnlpCell(r.fuel) + pnlpCell(r.tolls) + pnlpCell(r.driver, r.missAmt.driver) + pnlpCell(r.partner, r.missAmt.partner) + pnlpCell(r.other)
     + '<td class="r">' + pnlpAmt(r.cost) + '</td><td class="r">' + (r.vat ? pnlpAmt(r.vat) : '—') + '</td>'
     + '<td class="r b">' + (r.complete ? pnlpAmt(r.result) : '—') + '</td><td class="r">' + (r.complete ? pnlpPct(r.margin) : '—') + '</td></tr>').join('')
     || '<tr><td colspan="14" class="pp-word">Κανένα δρομολόγιο με έναρξη αυτή την εβδομάδα</td></tr>';

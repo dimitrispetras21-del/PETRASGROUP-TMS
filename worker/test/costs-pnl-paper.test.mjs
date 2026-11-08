@@ -128,7 +128,7 @@ test('every other role → 403 before any read (owner 3/11: «μόνο εγώ»)
 });
 
 test('a bad link → 400 «Μη έγκυρο δρομολόγιο ή εβδομάδα», before any read', async () => {
-  for (const q of ['', '?rt=abc', '?rt=7;drop', '?from=2026-10-17', '?from=2026-10-23&to=2026-10-17', '?from=2026-10-01&to=2026-11-20', '?from=17/10/2026&to=23/10/2026', '?from=2026-13-40&to=2026-13-41']) {
+  for (const q of ['', '?rt=abc', '?rt=7;drop', '?from=2026-10-17', '?from=2026-10-23&to=2026-10-17', '?from=2026-10-01&to=2026-11-20', '?from=17/10/2026&to=23/10/2026', '?from=2026-13-40&to=2026-13-41', '?from=2026-02-30&to=2026-03-05']) {
     calls = [];
     const r = await call('owner', q);
     assert.equal(r.status, 400, q);
@@ -153,5 +153,8 @@ test('any failed read → 500 «Τα στοιχεία του χαρτιού δε
   }
   // a 200 that is not a list (an edge page, a proxy) is a failed read too
   overrides = { ct_v_rt_cost_cat: () => json({ not: 'a list' }) };
+  assert.equal((await call('owner', '?rt=7')).status, 500);
+  // a list at PostgREST's row cap (1000) may be cut without a word: a failed read, never a paper on it
+  overrides = { ct_v_rt_cost_cat: () => json(Array.from({ length: 1000 }, () => TABLE_ROWS.ct_v_rt_cost_cat[0])) };
   assert.equal((await call('owner', '?rt=7')).status, 500);
 });
