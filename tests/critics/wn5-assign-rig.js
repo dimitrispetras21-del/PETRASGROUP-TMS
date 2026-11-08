@@ -883,7 +883,9 @@ async function sotiris_late({ browser, origin, ok, scn }) {
 // Sotiris report 8/11, items 4 / 5 / 7: an own truck on an INTERNATIONAL trip those days (109 intl_trips) is not
 // «ελεύθερο»; a save without a driver is said in amber; the board takes no click while it is re-read after the save.
 async function sotiris_warn({ browser, origin, ok, scn }) {
-  const b = board({ intl_trips: [{ rt_id: 9001, truck_id: 13, truck: 'TST-2106', date_start: '2026-10-14', date_end: '2026-10-16' }] });
+  // two international trips of the same truck overlapping on Thu 15/10 (live 8/11, IAZ8302): ONE sentence, days joined
+  const b = board({ intl_trips: [{ rt_id: 9001, truck_id: 13, truck: 'TST-2106', date_start: '2026-10-14', date_end: '2026-10-15' },
+    { rt_id: 9002, truck_id: 13, truck: 'TST-2106', date_start: '2026-10-15', date_end: '2026-10-16' }] });
   let n = 0;
   const { page, S } = await K.openApp(browser, origin, { board: b, plan: {
     'POST /plan/legs': async () => OK('plan_put_group', { rt_id: 901 }),
@@ -896,7 +898,7 @@ async function sotiris_warn({ browser, origin, ok, scn }) {
   ok(scn, 'item 4 (screenshot 8/11): the line under the fields says the same, never «TST-2106 · ελεύθερο»', !!ln && /TST-2106 · άλλο δρομολόγιο · διεθνές/.test(ln.txt), ln);
   await pickIn(page, 'tl', '5102', 'TRL-5102');
   let f = await foot(page);
-  ok(scn, 'items 4 + 5: amber beside the save — the international trip by name and «χωρίς οδηγό» — the save stays on', !f.off && /TST-2106 είναι σε άλλο δρομολόγιο/.test(f.miss) && /διεθνές/.test(f.miss) && /[Χχ]ωρίς οδηγό/.test(f.miss) && !/\. ·/.test(f.miss), f);
+  ok(scn, 'items 4 + 5: amber beside the save — the international trip by name and «χωρίς οδηγό» — the save stays on', !f.off && /TST-2106 είναι σε άλλο δρομολόγιο/.test(f.miss) && /διεθνές/.test(f.miss) && /[Χχ]ωρίς οδηγό/.test(f.miss) && !/\. ·/.test(f.miss) && (f.miss.match(/είναι σε άλλο δρομολόγιο/g) || []).length === 1, f);
   await pickIn(page, 'dr', 'Test 03', 'Driver Test 03');
   f = await foot(page);
   ok(scn, 'item 5: a driver picked — «χωρίς οδηγό» gone', !/[Χχ]ωρίς οδηγό/.test(f.miss), f);

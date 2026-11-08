@@ -194,15 +194,19 @@
     // intl_trips (109) are the same trips by the same rule (its day span, an open trip on its first day): a truck
     // only (the base keeps no trailer / driver of an international trip there). No list (a base before 109) = as before.
     const intl = o.intl !== undefined ? o.intl : (_state().board || {}).intl_trips;   // a form's own copy first, as o.cycles
+    // one line per truck: two international trips of the same truck on the same days (live 8/11: IAZ8302 9/11) said
+    // the same sentence twice — their days are joined into one
     if (Array.isArray(intl)) for (const id of [...new Set((o.trucks || []).filter((x) => x != null))]) {
+      const days = new Set();
+      let first = null;
       for (const t of intl) {
         if (t.truck_id !== id || self.has(t.rt_id)) continue;
-        const lo = t.date_start, hi = t.date_end || t.date_start, days = [];
-        for (let d = a; d <= b; d = _addDays(d, 1)) if (lo && lo <= d && d <= hi) days.push(d);
-        if (!days.length) continue;
-        const nm = _nameOf('truck', id, null, { truck_id: t.truck_id, truck: t.truck }, cat);
-        trips.push({ c: { rt_id: t.rt_id, intl: true, stops: [] }, days, route: 'διεθνές', names: [nm || 'το φορτηγό'] });
+        const lo = t.date_start, hi = t.date_end || t.date_start;
+        for (let d = a; d <= b; d = _addDays(d, 1)) if (lo && lo <= d && d <= hi) { days.add(d); first = first || t; }
       }
+      if (!first) continue;
+      const nm = _nameOf('truck', id, null, { truck_id: first.truck_id, truck: first.truck }, cat);
+      trips.push({ c: { rt_id: first.rt_id, intl: true, stops: [] }, days: [...days].sort(), route: 'διεθνές', names: [nm || 'το φορτηγό'] });
     }
     if (!trips.length) return null;
     const wk = o.week !== undefined ? o.week : (_state().board || {}).week;
@@ -949,7 +953,7 @@
       }
       else if (!n.from || !n.to) {
         // Sotiris report 8/11 (item 1): a delivery with no window of its own goes on its day (nat_due_day: the day of
-        // the international's delivery stop). A VS piece that waited at Veroia past that day (#553/#554/#555, due
+        // the international's delivery stop). A VS piece that waited at Veroia past that day (internationals 553/554/555, due
         // 27/10, left 28/10–3/11) was sent «picked up at Veroia 28/10, delivered 27/10» and the base refused it rightly
         // (093 stop_order: a delivery before its own loading). The delivery goes on its loading day at the earliest —
         // the day the truck takes it, said on the form (lateFrom) — and the international is not touched: editing it
