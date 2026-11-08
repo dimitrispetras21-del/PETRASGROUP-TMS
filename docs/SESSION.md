@@ -12,6 +12,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
+- dimitris · `feat/week-panels-ops` · «Παραγγελίες › Εβδομάδα»: «Τιμολόγηση» (ΤΠΥ / τιμή / αυτοπαράδοση / αναίρεση) και στο πλαϊνό πάνελ της παραγγελίας, ίδιος editor με τα κελιά (owner 8/11, αλλαγή 12)· Παλέτες › Εβδομάδα χωρίς αλλαγή (owner)· μόνο front end, ?v= / SW_VERSION 1794190000 (`docs/sessions/2026-11-08-dimitris-week-panels.md`)
 - dimitris · `feat/pallets-y6` · Παλέτες Υ6 (μόνο τροφοδότης): η εκκρεμής φόρτωση γράφει «πήραμε» = `Pallets Exchanged` της στάσης όταν έχει τιμή (κενό = όλες, όπως πριν· 0 = καμία κίνηση), ίδιος κανόνας στην «Εβδομάδα»· η φόρμα που το γράφει = η νέα φόρμα διεθνών (owner 8/11)· σήμερα 0/812 στάσεις με τιμή (`docs/sessions/2026-11-08-dimitris-pallets-y6-feeder.md`)
 - dimitris · `feat/pallets-y5` · Παλέτες Υ5: κίνηση παράδοσης από τη βάση (**108 ΕΚΤΕΛΕΣΜΕΝΟ 8/11** + ο browser σταματά να γράφει DELIVERY)· **#267 + #268 MERGED 8/11** (`docs/sessions/2026-11-08-dimitris-pallets-y5.md`)
 - dimitris · `feat/pallets-y4` (PR #267) · Παλέτες Υ4: «Λείπει παράδοση» + «Χωρίς ανταλλαγή» (107 **ΕΚΤΕΛΕΣΜΕΝΟ 8/11** + **Worker 32e0ca75 ΖΩΝΤΑΝΟΣ 8/11** + οθόνη)· περιμένει merge (`docs/sessions/2026-11-08-dimitris-pallets-y4.md`)

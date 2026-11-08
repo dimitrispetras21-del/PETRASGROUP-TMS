@@ -266,6 +266,8 @@ async function _oiLoadCardStops(rec) {
   const top = panel.scrollTop;
   panel.innerHTML = _oiCardHtml(rec);
   panel.scrollTop = top;
+  // «Εβδομάδα» mounts its «Τιμολόγηση» section in this card on every paint (owner 8/11); no-op elsewhere.
+  if (typeof OrdersWeekView !== 'undefined' && OrdersWeekView.cardPainted) OrdersWeekView.cardPainted(panel);
 }
 
 // Loader for the catalog: period = '60' | '180' | 'all' (same select as before).
@@ -329,6 +331,8 @@ function selectIntlOrder(recId) {
   panel.classList.remove('hidden');
   panel.innerHTML = _oiCardHtml(rec);
   panel.scrollTop = 0;
+  // «Εβδομάδα» mounts its «Τιμολόγηση» section in this card on every paint (owner 8/11); no-op elsewhere.
+  if (typeof OrdersWeekView !== 'undefined' && OrdersWeekView.cardPainted) OrdersWeekView.cardPainted(panel);
   if (!window._intlStopsByOrder || !window._intlStopsByOrder[recId]) {
     window._intlStopsByOrder = window._intlStopsByOrder || {}; window._intlStopsFailed = window._intlStopsFailed || {};
     _oiLoadCardStops(rec);
