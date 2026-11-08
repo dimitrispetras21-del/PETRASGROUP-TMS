@@ -1605,6 +1605,8 @@ const OrdersWeekView = (() => {
   // On screen = mounted and not inside a closed card (× / Esc only hide the card): a refusal said in a hidden
   // box would be silence.
   function _edShown() { const b = document.getElementById('owvEd'); return !!(b && !b.closest('.hidden')); }
+  // The box goes with its card section when it lives in the card (an empty «Τιμολόγηση» is never left behind).
+  function _edBoxOut() { const b = document.getElementById('owvEd'); if (b) (b.closest('.owv-card-inv') || b).remove(); }
   // What is typed survives a repaint (the clips arriving, a refusal) — she never retypes.
   function _edKeep() {
     const e = S.ed, box = document.getElementById('owvEd');
@@ -1631,11 +1633,11 @@ const OrdersWeekView = (() => {
     if (e && e.where === 'card') {
       // A repaint reopens the card (and cardPainted mounts it); a card closed meanwhile takes its section along.
       const c = _openCardNow();
-      if (!c || c.type !== e.type || c.id !== e.id) S.ed = null;
+      if (!c || c.type !== e.type || c.id !== e.id) _edClose();
       else if (!document.getElementById('owvEd')) _edMountCard(document.getElementById(e.type === 'intl' ? 'intlDetail' : 'natlDetail'));
       return;
     }
-    const old = document.getElementById('owvEd'); if (old) (old.closest('.owv-card-inv') || old).remove();
+    _edBoxOut();
     if (!e || !body) return;
     const subs = [...body.querySelectorAll(_edSel(e.type, e.id))];
     const sub = subs[e.k] || subs[0];
@@ -1665,7 +1667,7 @@ const OrdersWeekView = (() => {
   function _edClose() {
     if (!S.ed) return false;
     S.ed = null;
-    const b = document.getElementById('owvEd'); if (b) (b.closest('.owv-card-inv') || b).remove();
+    _edBoxOut();
     document.querySelectorAll('.ow4-ed-on').forEach(x => x.classList.remove('ow4-ed-on'));
     return true;
   }
@@ -1708,7 +1710,7 @@ const OrdersWeekView = (() => {
   // After a write: the line repaints from the record (the editor stays open in `next` mode, or closes).
   // The old box goes first: what was typed in it is written, never carried into the next form.
   function _edDone(next) {
-    if (S.ed && next) { S.ed.mode = next; S.ed.focus = true; const b = document.getElementById('owvEd'); if (b) (b.closest('.owv-card-inv') || b).remove(); } else _edClose();
+    if (S.ed && next) { S.ed.mode = next; S.ed.focus = true; _edBoxOut(); } else _edClose();
     if (S.ctx && S.ctx.isCurrent()) _paint(S.ctx);
   }
 
@@ -1794,10 +1796,10 @@ const OrdersWeekView = (() => {
   function _edMountCard(panel) {
     const e = S.ed;
     if (!panel || !e) return;
-    const old = document.getElementById('owvEd'); if (old) (old.closest('.owv-card-inv') || old).remove();
+    _edBoxOut();
     const intl = panel.id === 'intlDetail';
     const anchor = panel.querySelector(intl ? '.oi-sect' : '.on-sec');   // after «Στοιχεία» (Τιμή · Τιμολογήθηκε)
-    if (!anchor || !_edRec(e)) { S.ed = null; return; }
+    if (!anchor || !_edRec(e)) { _edClose(); return; }
     anchor.insertAdjacentHTML('afterend', `<div class="${intl ? 'oi-sect' : 'on-sec'} owv-card-inv"><div class="${intl ? 'oi-sect-t' : 'on-sec-title'}">Τιμολόγηση</div>`
       + `<div class="owv-ed owv-ed-card" id="owvEd" role="group" aria-label="Τιμολόγηση παραγγελίας">${_edHtml()}</div></div>`);
     _edHint();
@@ -1810,7 +1812,7 @@ const OrdersWeekView = (() => {
     if ((panel.id === 'natlDetail' ? 'natl' : 'intl') !== c.type) return;
     const e = S.ed;
     if (e && e.busy && !(e.where === 'card' && e.type === c.type && e.id === c.id)) return;   // a line's write in flight
-    if (!ctx.body.querySelector(`${_edSel(c.type, c.id)} [data-owved]`)) { if (e && e.where === 'card') S.ed = null; return; }
+    if (!ctx.body.querySelector(`${_edSel(c.type, c.id)} [data-owved]`)) { if (e && e.where === 'card' && !e.busy) _edClose(); return; }
     if (!(e && e.where === 'card' && e.type === c.type && e.id === c.id)) {
       _edClose();   // a line's editor gives way: one thing open at a time
       S.ed = { type: c.type, id: c.id, k: 0, mode: null, where: 'card', draft: null, err: '', busy: false, items: null };
@@ -1845,6 +1847,9 @@ const OrdersWeekView = (() => {
       return OrdersHub.openOrder(type, id);
     }
     if (typeof OrdersCatalog !== 'undefined' && OrdersCatalog.installEsc) OrdersCatalog.installEsc();
+    // A click opens a card afresh: a section left from a card closed earlier (its refusal, its draft) never comes
+    // back as if it were current. A repaint (quiet) keeps it.
+    if (!quiet && S.ed && S.ed.where === 'card' && !S.ed.busy) _edClose();
     S.card = { type, id };
     if (type === 'intl') {
       if (typeof closeNatlDetail === 'function') closeNatlDetail();

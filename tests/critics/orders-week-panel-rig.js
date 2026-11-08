@@ -508,13 +508,14 @@ async function scnNatV5Carry(browser) {
 // The Worker's PATCH on ORDERS / NATIONAL ORDERS, as «invoice» and «cardinv» need it: recorded, answered with the
 // record (null = column emptied), behind the base's invoice_mark_guard (043 / 101). cap.fail = the next PATCH's 422.
 async function invoiceMocks(page) {
-  const cap = { patches: [], fail: null, guarded: [] };
+  const cap = { patches: [], fail: null, guarded: [], slow: 0 };
   const H = { 'access-control-allow-origin': '*' };
   for (const [tbl, list, name] of [[P.T.ORDERS, P.ORDERS, 'orders'], [P.T.NAT_ORDERS, P.NAT, 'national_orders']]) {
     // Registered after installMocks: a PATCH is recorded and answered as the Worker does (null = column emptied).
-    await page.route(`**/${tbl}/rec**`, route => {
+    await page.route(`**/${tbl}/rec**`, async route => {
       const req = route.request();
       if (req.method() !== 'PATCH') return route.fallback();
+      if (cap.slow) { const ms = cap.slow; cap.slow = 0; await new Promise(r => setTimeout(r, ms)); }   // a write still in flight
       const rid = req.url().split('/').pop().split('?')[0];
       const body = req.postDataJSON();
       cap.patches.push({ table: name, id: rid, fields: body.fields });
@@ -856,6 +857,22 @@ async function scnCardInv(browser) {
   ok(last().id === 'recO1243' && /Δεν γράφτηκε/.test(errT), '422 → «Δεν γράφτηκε: …» in the card: «' + errT.trim() + '»');
   ok(/προς κοπή/.test(await txt('recO1243', 'tpy')) && await page.locator('#owvEd [data-owvedin="num"]').inputValue() === 'KEEP-1', 'the line stays «προς κοπή», «KEEP-1» still typed');
   await page.screenshot({ path: path.join(SHOTS, 'cardinv-refused.png') });
+  // closed and opened again by a click: the old refusal is not shown as current (code review high 8/11)
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(200);
+  await open('recO1243');
+  ok(await page.locator(`${sec('recO1243')} .owv-ed-err`).count() === 0 && await page.locator('#owvEd [data-owvedin="num"]').inputValue() === '', 'Esc, then the card again: no old «Δεν γράφτηκε», an empty ΤΠΥ box');
+
+  // 7b · a refusal arriving after the card was closed is said (toast), never into the hidden card
+  cap.fail = 'Δεν σημαίνεται τιμολογημένη χωρίς τιμή'; cap.slow = 900;
+  await page.fill('#owvEd [data-owvedin="num"]', 'LATE-1');
+  await page.press('#owvEd [data-owvedin="num"]', 'Enter');
+  await page.waitForTimeout(150);
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => /Δεν γράφτηκε/.test((document.getElementById('toast') || {}).textContent || ''), null, { timeout: 10000 });
+  ok(last().id === 'recO1243' && await page.locator('.owv-cards #intlDetail.hidden').count() === 1, 'card closed mid-write → the 422 is said in a toast «Δεν γράφτηκε: …»');
+  await open('recO1243');
+  ok(await page.locator(`${sec('recO1243')} .owv-ed-err`).count() === 0 && await page.locator(`${sec('recO1243')} .owv-ed-save[disabled]`).count() === 0, 'opened again: not stuck «Αποθήκευση…», no stale refusal');
 
   // 8 · Esc is the card's: card and section close together; a ΤΠΥ cell still opens the line's editor
   await page.keyboard.press('Escape');
@@ -881,8 +898,8 @@ async function scnCardInv(browser) {
   await page.waitForTimeout(400);
   ok(await page.locator('.owv-card-inv').count() === 0, 'old VS national #440: no «Τιμολόγηση» in its card (the international order carries the price)');
   const n = cap.patches.length - n0;
-  // price, ΤΠΥ, invoiced price, undo, self delivery, the refused one (422), the national ΤΠΥ
-  ok(n === 7, `${n} PATCHes from the card — one per write, none from opening, switching, repainting or Esc`);
+  // price, ΤΠΥ, invoiced price, undo, self delivery, the two refused ones (422), the national ΤΠΥ
+  ok(n === 8, `${n} PATCHes from the card — one per write, none from opening, switching, repainting or Esc`);
   ok(cap.guarded.filter(x => x.refused).length === 0, 'the base guard refused none of the card\'s writes (the 422 was the scenario\'s own)');
   ok(P.realErrors(page, /422|Δεν σημαίνεται/).length === 0, 'cardinv: 0 page/console errors but the deliberate 422 ' + JSON.stringify(P.realErrors(page, /422|Δεν σημαίνεται/)).slice(0, 300));
   await page.context().close();
