@@ -584,7 +584,8 @@
         continue;
       }
       if (DATE_RE.test((line.split(/\s+/)[0] || ''))) {
-        const parsed = parseTransactionLine(line, ctx);
+        // a dated take-back keeps its own date but, like the dateless one, no vehicle
+        const parsed = parseTransactionLine(line, DEDUCTION_RE.test(line) ? Object.assign({}, ctx, { vehicle: null }) : ctx);
         if (parsed) {
           outLines.push(parsed);
         } else {

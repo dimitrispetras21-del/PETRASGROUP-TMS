@@ -260,6 +260,8 @@ async function main() {
   assertEqual(!!rec7row && rec7row.no_lines === true && rec7row.diff === -699.56 && rec7row.ok === false, true, 'reconcile: the unread document is listed with no_lines and its whole amount as the difference');
   const rec7z = reconcile([{ doc_no: 'D1', gross: 10 }], [{ doc_no: 'D1', total_eur: 10 }, { doc_no: 'D_ZERO', total_eur: 0 }]);
   assertEqual(rec7z.ok, true, 'reconcile: a 0,00 summary row with no lines is fine (nothing to book)');
+  const rec7d = reconcile([{ doc_no: 'D1', gross: 10 }], [{ doc_no: 'D1', total_eur: 10 }, { doc_no: 'D_UNREAD', total_eur: 5 }, { doc_no: 'D_UNREAD', total_eur: 5 }]);
+  assertEqual(rec7d.per_doc.filter((d) => d.doc_no === 'D_UNREAD').length, 1, 'reconcile: an unread doc_no repeated in the E-SUMMARY is listed once');
 
   // ── sumGrossEur ───────────────────────────────────────────────────────
   assertEqual(sumGrossEur([{ gross: 10 }, { gross: 5.5 }]), 15.5, 'sumGrossEur: plain sum');

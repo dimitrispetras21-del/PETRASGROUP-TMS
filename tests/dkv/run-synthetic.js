@@ -497,6 +497,16 @@ assertEqual(DkvParser.VERSION, '1.3.0', 'parser VERSION bumped for the 8/11 L/UN
   assertEqual(DkvParser.extractDocNo(['Reason: see terms', 'Invoice number: 99/000000001/987'], '9999999_2026-09-30_AT_E-INVOICE_99-000000002-001.pdf'), '99/000000001/987', 'a «Reason:» on an INVOICE does not switch doc_no to the filename');
 }
 
+// (12) 8/11 code review r2: a dated take-back keeps its own date, never a vehicle.
+{
+  const fr3 = DkvParser.parseDkv([{ name: '9999999_2026-10-15_FR_E-INVOICE_99-000000001-006.pdf', text: [
+    'Invoice number: 99/000000001/006', 'Invoice date: 15.10.2026', 'VEHICLE: XX1234 CARD NO.: 1000000.0000000001',
+    '15.09.2026 TIS PL Déduction de l´acompte 005G PC -1 -80,00 -80,00 -16,00 -96,00',
+  ].join('\n') }]);
+  const d3 = fr3.lines.find((l) => l.product_code === '005G');
+  assert(!!d3 && d3.service_date === '2026-09-15' && d3.plate === null, 'dated take-back: own date, no vehicle');
+}
+
 // ── report ──────────────────────────────────────────────────────────
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);
