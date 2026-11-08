@@ -57,7 +57,12 @@ export function toCostLineRow(ln) {
   // w11 (owner 21/9, θέμα 9): an aggregated line keeps its members in
   // `details` (jsonb, migration 038) — per passage / per fee source — so the
   // frame can open «11 διελεύσεις ▸» without the table holding 11 rows.
-  if (Array.isArray(ln.details) && ln.details.length) row.details = ln.details;
+  // ALWAYS the key, null when there are no members: the commit posts every row in
+  // ONE PostgREST insert, and PostgREST refuses a batch whose objects do not all
+  // carry the same keys (400, «All object keys must match»). With `details` only
+  // on the aggregated rows, every DKV commit since 21/9 answered «Insert failed»
+  // and no statement could be booked (drafts 4/5 of Sept, found 8/11/2026).
+  row.details = Array.isArray(ln.details) && ln.details.length ? ln.details : null;
   // A line that reaches the table without a euro amount or a date would be the
   // «green toast, wrong data» failure — refuse it by name instead.
   const missing = [];
@@ -733,6 +738,21 @@ export function reconcile(lines, summaryDocs, meta) {
     const docOk = summary_total != null && Math.abs(diff) <= 0.01;
     if (!docOk) ok = false;
     per_doc.push({ doc_no, parsed_gross, summary_total, diff, ok: docOk });
+  }
+  // The other direction: an E-SUMMARY row whose document gave no line at all.
+  // These rows are only ever Invoice / Statement / Reverse Charge (passages
+  // lists have no summary row), so «no lines» means the parser read nothing,
+  // not that there is nothing to book. Ungated, the 15/09/2026 statement
+  // (doc 3) went through with its ES and HR invoices unread: 730,06 € that DKV
+  // collects never reached the expenses, and every check said «συμφωνεί».
+  const unreadSeen = new Set();
+  for (const d of summaryDocs || []) {
+    if (!d || !d.doc_no || byDoc.has(d.doc_no) || unreadSeen.has(d.doc_no)) continue;
+    unreadSeen.add(d.doc_no);
+    const summary_total = typeof d.total_eur === 'number' ? d.total_eur : null;
+    const docOk = summary_total !== null && Math.abs(summary_total) <= 0.01;
+    if (!docOk) ok = false;
+    per_doc.push({ doc_no: d.doc_no, parsed_gross: 0, summary_total, diff: summary_total !== null ? round2(-summary_total) : null, ok: docOk, no_lines: true });
   }
   if (!meta) return { ok, per_doc };
 
