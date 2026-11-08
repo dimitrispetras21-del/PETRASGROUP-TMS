@@ -571,8 +571,9 @@ const PalletsWeek = (() => {
       if ((rec.fields || {})['Veroia Switch']) {
         const bs = await weekBoards();
         natLeg = bs.length ? RouteDiagramAdapters.natLegFromBoard(bs, pgOf(rec)) : null;
-        // boards read, leg on none of them (before day L its leg lives in national_loads): not a read failure
-        if (bs.length && !natLeg) natLegNote = 'εκτελεστής: εκτός Εβδομαδιαίου v5';
+        // all three boards read and the leg on none of them (before day L its leg lives in national_loads): not a
+        // read failure. One board unread = the leg may be on it, so the red «δεν διαβάστηκε» stays.
+        if (bs.length === 3 && !natLeg) natLegNote = 'εκτελεστής: εκτός Εβδομαδιαίου v5';
       }
       st = { stops, natLeg, natLegNote };
     } catch (e) { console.error('pallets week: route', e); st = { err: true }; }
