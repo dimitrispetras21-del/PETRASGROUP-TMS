@@ -63,6 +63,7 @@
       const c = st.cycles.find((x) => x.rt_id === st.rtId);
       if (!c) { st.err = k.clientErr('rt_missing', 'Δεν είναι στον πίνακα που φορτώθηκε — ανανέωσε'); return st; }
       st.cur = c;
+      st.expect = k.expectOf(c);   // 110 (item 7): the change this form saw, held from the open, never refreshed under it
       const r = k.row(c.rt_id);
       st.day = st.day || WN5L.loadDayOf(r) || c.date_start;
       if (c.trip_type === 'PARTNER' && c.partner_id != null) { st.who = 'partner'; st.partner = c.partner_id; st.rateTxt = c.partner_rate == null ? '' : String(c.partner_rate); }
@@ -306,15 +307,15 @@
         // only what the user chose: a key sent as null would EMPTY it (vehicle_clear_use_clear, 072)
         if (st.trailer) set.trailer_id = st.trailer;
         if (st.driver) set.driver_id = st.driver;
-        return { method: 'PATCH', path: '/plan/rt/' + st.rtId, body: { set } };
+        return { method: 'PATCH', path: '/plan/rt/' + st.rtId, body: k.withExpect({ set }, st.expect) };
       }
       if (st.who === 'partner' && st.partner && st.split) {
         const s = _split(st);
-        return s.ok ? { method: 'PATCH', path: '/plan/rt/' + st.rtId, body: { set: Object.assign({ trip_type: 'PARTNER', partner_id: st.partner }, s.keys) } } : null;
+        return s.ok ? { method: 'PATCH', path: '/plan/rt/' + st.rtId, body: k.withExpect({ set: Object.assign({ trip_type: 'PARTNER', partner_id: st.partner }, s.keys) }, st.expect) } : null;
       }
       if (st.who === 'partner' && st.partner) {
         const r = k.rate(st.rateTxt);
-        return r.ok ? { method: 'PATCH', path: '/plan/rt/' + st.rtId, body: { set: { trip_type: 'PARTNER', partner_id: st.partner, partner_rate: r.v } } } : null;
+        return r.ok ? { method: 'PATCH', path: '/plan/rt/' + st.rtId, body: k.withExpect({ set: { trip_type: 'PARTNER', partner_id: st.partner, partner_rate: r.v } }, st.expect) } : null;
       }
       return null;
     }

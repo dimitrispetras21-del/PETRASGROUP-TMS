@@ -41,9 +41,11 @@ const asyncFn = (name, optional) => grab(new RegExp('async function ' + name + '
 const fn = name => grab(new RegExp('(?:^|\\n)function ' + name + '\\([^)]*\\)\\{[\\s\\S]*?\\n\\}\\n'), name);
 // _wiRotLegBare / _wiOwnRtFree are new: optional, so the «before» run fails on behaviour, not on a missing name.
 const WI_PARTS = [asyncFn('_wiRotAdd'), asyncFn('_wiRotLegBare', true), asyncFn('_wiOwnRtFree', true), asyncFn('_wiRtOf'),
-  asyncFn('_wiRtLeave'), asyncFn('_wiRtLegDelete'), fn('_wiAssignLbl'), fn('_wiRefuse')].join('\n');
+  asyncFn('_wiRtLeave'), asyncFn('_wiRtLegDelete'), fn('_wiAssignLbl'), fn('_wiRefuse'),
+  // the words of every message (owner 8/11, core/plain-ref.js)
+  grab(/function _wiOrdTxt\(r,fb\)\{[^\n]*\n/, '_wiOrdTxt'), grab(/async function _wiRtTxt\(rt\)\{[^\n]*\n/, '_wiRtTxt')].join('\n');
 
-const OWN_REFUSAL = 'Η #R467 έχει ήδη δική της ανάθεση (φορτηγό TRK-13) — πρώτα «Καθαρισμός ανάθεσης» στην #R467, μετά βάλ\' τη ρότα';
+const OWN_REFUSAL = 'Η Beta, Graz → Wien έχει ήδη δική της ανάθεση (φορτηγό TRK-13) — πρώτα «Καθαρισμός ανάθεσης» σε αυτήν, μετά βάλ\' τη ρότα';
 
 let rules;
 // parentVeh: the parent's vehicle (null = unassigned). leg: the leg's fields.
@@ -56,8 +58,8 @@ async function world({ parentVeh = null, leg = {}, rts = [], role = 'owner', rtL
   rules = rules || await import(pathToFileURL(path.join(ROOT, 'worker/src/rt-rules.mjs')).href);
   const when = { 'Loading DateTime': '2026-10-05T06:00:00Z', 'Delivery DateTime': '2026-10-07T06:00:00Z' };
   const orders = {
-    rec438: { Reference: 'R438', 'Order No': 438, Direction: 'Export', Status: parentVeh ? 'Assigned' : 'Pending', ...(parentVeh || {}), ...when },
-    rec467: { Reference: 'R467', 'Order No': 467, Direction: 'Export', Status: 'Pending', ...when, 'Loading DateTime': '2026-10-07T06:00:00Z', 'Delivery DateTime': '2026-10-09T06:00:00Z', ...leg },
+    rec438: { Reference: 'R438', 'Order No': 438, 'Client Name': 'Alfa', 'Loading Summary': 'Veria', 'Delivery Summary': 'Graz', Direction: 'Export', Status: parentVeh ? 'Assigned' : 'Pending', ...(parentVeh || {}), ...when },
+    rec467: { Reference: 'R467', 'Order No': 467, 'Client Name': 'Beta', 'Loading Summary': 'Graz', 'Delivery Summary': 'Wien', Direction: 'Export', Status: 'Pending', ...when, 'Loading DateTime': '2026-10-07T06:00:00Z', 'Delivery DateTime': '2026-10-09T06:00:00Z', ...leg },
     ...extraOrders,
   };
   const pgOf = id => Number(id.replace('rec', ''));
@@ -87,6 +89,7 @@ async function world({ parentVeh = null, leg = {}, rts = [], role = 'owner', rtL
     toast: (m, k) => wiToasts.push({ m, k: k || 'success' }),
     reportError: (m) => reports.push(m),
     escapeHtml: s => String(s),
+    PlainRef: require('../core/plain-ref.js'), _fhLocationsMap: {}, orderClientName: f => (f && f['Client Name']) || '',
     renderWeeklyIntl: async () => {},
     WINTL: {
       rows: [{ id: 1, type: 'export', orderIds: ['rec438'], truckId: parentVeh ? (parentVeh.Truck || [])[0] || '' : '', driverId: parentVeh ? (parentVeh.Driver || [])[0] || '' : '' }],
@@ -199,14 +202,14 @@ test('a driver alone counts as an assignment', async () => {
   const w = await world({ leg: { Driver: ['recD16'] } });
   await w.ctx._wiRotAdd(1, 'rec467');
   assert.deepStrictEqual(w.writes(), []);
-  assert.deepStrictEqual(w.toasts.map(t => t.m), ['Η #R467 έχει ήδη δική της ανάθεση (οδηγός Driver 16) — πρώτα «Καθαρισμός ανάθεσης» στην #R467, μετά βάλ\' τη ρότα']);
+  assert.deepStrictEqual(w.toasts.map(t => t.m), ['Η Beta, Graz → Wien έχει ήδη δική της ανάθεση (οδηγός Driver 16) — πρώτα «Καθαρισμός ανάθεσης» σε αυτήν, μετά βάλ\' τη ρότα']);
 });
 
 test('no vehicle but still on its own live round trip (what «Καθαρισμός ανάθεσης» leaves on a solo trip), as a DISPATCHER: refused, the trip named — its cost lines cannot be read', async () => {
   const w = await world({ parentVeh: { Truck: ['recT13'] }, role: 'dispatcher', rts: [rt(301, 'RT-1217', [438]), rt(300, 'RT-1300', [467], { truck_id: null, driver_id: null })] });
   await w.ctx._wiRotAdd(1, 'rec467');
   assert.deepStrictEqual(w.writes(), []);
-  assert.deepStrictEqual(w.toasts.map(t => t.m), ['Η #R467 είναι ακόμη στο δρομολόγιο RT-1300 και ο ρόλος σου δεν βλέπει αν έχει έξοδα — ζήτα από τον owner να το ακυρώσει · η ρότα ΔΕΝ γράφτηκε']);
+  assert.deepStrictEqual(w.toasts.map(t => t.m), ['Η Beta, Graz → Wien είναι ακόμη στο δρομολόγιο Δευ 5/10 και ο ρόλος σου δεν βλέπει αν έχει έξοδα — ζήτα από τον owner να το ακυρώσει · η ρότα ΔΕΝ γράφτηκε']);
   assert.strictEqual(w.logged.length, 1);
 });
 
@@ -215,7 +218,7 @@ test('the leg\'s round trip cannot be read: refused, nothing written (never a gu
   await w.ctx._wiRotAdd(1, 'rec467');
   assert.deepStrictEqual(w.writes(), []);
   assert.strictEqual(w.toasts.length, 1);
-  assert.match(w.toasts[0].m, /^Ο γύρος της #R467 δεν διαβάστηκε \(ο γύρος δεν διαβάστηκε \(boom\)\) · η ρότα ΔΕΝ γράφτηκε$/);
+  assert.match(w.toasts[0].m, /^Ο γύρος της παραγγελίας Beta, Graz → Wien δεν διαβάστηκε \(ο γύρος δεν διαβάστηκε \(boom\)\) · η ρότα ΔΕΝ γράφτηκε$/);
 });
 
 test('a BARE leg onto an assigned parent still goes in: rota written, attached to RT-1217, «✓»', async () => {
@@ -245,7 +248,7 @@ test('rt-feed: the parent\'s sync never cancels a trip a leg of which still has 
   assert.ok(!w.calls.some(c => c.startsWith('PATCH /costs/rt/')), 'a round trip was patched');
   assert.ok(!w.calls.some(c => c.includes('/costs/lines')), 'cost lines read on a trip that is not going to be cancelled');
   assert.strictEqual(w.logged.length, 1, 'not logged once: ' + JSON.stringify(w.logged));
-  const msg = 'P&L: το RT-1300 ΔΕΝ ακυρώθηκε — η R467 έχει ακόμη όχημα ή οδηγό, ενώ η R438 είναι χωρίς φορτηγό · δες το στο TRIP PnL';
+  const msg = 'P&L: το δρομολόγιο TRK-13 · Driver 1. · Δευ 5/10 ΔΕΝ ακυρώθηκε — η παραγγελία Beta, Graz → Wien έχει ακόμη όχημα ή οδηγό, ενώ η παραγγελία Alfa, Veria → Graz είναι χωρίς φορτηγό · δες το στο TRIP PnL';
   assert.strictEqual(w.logged[0].msg, msg);
   assert.deepStrictEqual(w.toasts.map(t => t.m), [msg]);
   assert.strictEqual(w.ctx.rtHeldFor('rec438').message, msg);
@@ -263,7 +266,7 @@ test('rt-feed: a leg it did not read (outside the gathered group) is not proof o
   const w = await world({ rts: [rt(300, 'RT-1300', [438, 999])] });
   await w.ctx.rtOnOrderSaved('rec438');
   assert.strictEqual(w.rts[0].status, 'planned');
-  assert.deepStrictEqual(w.toasts.map(t => t.m), ['P&L: το RT-1300 ΔΕΝ ακυρώθηκε — έχει σκέλη που δεν διαβάστηκαν (#999) · δες το στο TRIP PnL']);
+  assert.deepStrictEqual(w.toasts.map(t => t.m), ['P&L: το δρομολόγιο TRK-13 · Driver 1. · Δευ 5/10 ΔΕΝ ακυρώθηκε — έχει ένα σκέλος που δεν διαβάστηκε · δες το στο TRIP PnL']);
   assert.strictEqual(w.logged.length, 1);
 });
 
@@ -282,7 +285,7 @@ test('rt-feed: truck cleared but driver kept — the order holds its own trip, n
   const w = await world({ parentVeh: { Driver: ['recD16'] }, rts: [rt(300, 'RT-1300', [438], { truck_id: null })] });
   await w.ctx.rtOnOrderSaved('rec438');
   assert.strictEqual(w.rts[0].status, 'planned');
-  assert.deepStrictEqual(w.toasts.map(t => t.m), ['P&L: το RT-1300 ΔΕΝ ακυρώθηκε — η R438 έχει ακόμη όχημα ή οδηγό · δες το στο TRIP PnL']);
+  assert.deepStrictEqual(w.toasts.map(t => t.m), ['P&L: το δρομολόγιο Driver 1. · Δευ 5/10 ΔΕΝ ακυρώθηκε — η παραγγελία Alfa, Veria → Graz έχει ακόμη όχημα ή οδηγό · δες το στο TRIP PnL']);
 });
 
 test('rt-feed: a Cancelled leg-mate that still carries its truck does not hold the trip', async () => {
@@ -298,13 +301,13 @@ test('_wiRotAdd: a race past the board check (the leg got a truck meanwhile) —
   assert.strictEqual(w.rts[0].status, 'planned', 'RT-1300 cancelled');
   assert.strictEqual(w.orders.rec467['Rotation ID'], '', 'Rotation ID not reverted');
   assert.deepStrictEqual(green(w), []);
-  assert.deepStrictEqual(w.wiToasts, [{ m: 'P&L: το RT-1300 ΔΕΝ ακυρώθηκε — η R467 έχει ακόμη όχημα ή οδηγό, ενώ η R438 είναι χωρίς φορτηγό · δες το στο TRIP PnL · η ρότα ΔΕΝ γράφτηκε', k: 'warn' }]);
+  assert.deepStrictEqual(w.wiToasts, [{ m: 'P&L: το δρομολόγιο TRK-13 · Driver 1. · Δευ 5/10 ΔΕΝ ακυρώθηκε — η παραγγελία Beta, Graz → Wien έχει ακόμη όχημα ή οδηγό, ενώ η παραγγελία Alfa, Veria → Graz είναι χωρίς φορτηγό · δες το στο TRIP PnL · η ρότα ΔΕΝ γράφτηκε', k: 'warn' }]);
 });
 
 // ── (3) the leg's own EMPTY trip leaves first (fix/own-rt-join-rota) ─────
 
 const solo = (extra = {}) => rt(300, 'RT-1300', [467], { truck_id: null, driver_id: null, ...extra });
-const REFUSE = why => `Η #R467 είναι ακόμη στο δρομολόγιο RT-1300${why} · η ρότα ΔΕΝ γράφτηκε`;
+const REFUSE = why => `Η Beta, Graz → Wien είναι ακόμη στο δρομολόγιο Δευ 5/10${why} · η ρότα ΔΕΝ γράφτηκε`;
 const refusedClean = (w, text) => {
   assert.deepStrictEqual(w.writes(), [], 'something was written: ' + w.writes().join(', '));
   assert.strictEqual(w.orders.rec467['Rotation ID'], undefined);
@@ -324,7 +327,7 @@ test('(b) owner, parent on RT-1217: the leg leaves its empty RT-1300 FIRST, re-r
   assert.strictEqual(w.rts[1].status, 'cancelled', 'the empty trip is cancelled (the DB, 013)');
   assert.deepStrictEqual(w.rts[0].ct_rt_legs.map(l => l.order_id), [438, 467], 'the leg is on the parent\'s trip');
   assert.strictEqual(w.orders.rec467['Rotation ID'], 'rec438');
-  assert.deepStrictEqual(w.wiToasts, [{ m: '⤷ Σκέλος συνδέθηκε στη ρότα ✓ · η #R467 βγήκε από το άδειο RT-1300', k: 'success' }]);
+  assert.deepStrictEqual(w.wiToasts, [{ m: '⤷ Σκέλος συνδέθηκε στη ρότα ✓ · η Beta, Graz → Wien βγήκε από το άδειο δρομολόγιο Δευ 5/10', k: 'success' }]);
   assert.deepStrictEqual(w.toasts, []);
   assert.deepStrictEqual(w.logged, []);
   assert.ok(!w.calls.some(c => c === 'PATCH /costs/rt/300'), 'the empty trip was cancelled by hand, not by the DB');
@@ -335,7 +338,7 @@ test('(b) owner, parent unassigned: the empty trip goes, the rota is written, no
   await w.ctx._wiRotAdd(1, 'rec467');
   assert.strictEqual(w.rts[0].status, 'cancelled');
   assert.strictEqual(w.orders.rec467['Rotation ID'], 'rec438');
-  assert.deepStrictEqual(w.wiToasts.map(t => t.m), ['⤷ Σκέλος συνδέθηκε στη ρότα ✓ · η #R467 βγήκε από το άδειο RT-1300']);
+  assert.deepStrictEqual(w.wiToasts.map(t => t.m), ['⤷ Σκέλος συνδέθηκε στη ρότα ✓ · η Beta, Graz → Wien βγήκε από το άδειο δρομολόγιο Δευ 5/10']);
   assert.ok(!w.calls.some(c => c.startsWith('POST /costs/rt') || c.startsWith('PATCH /costs/rt/')), w.calls.join(', '));
 });
 
@@ -375,14 +378,14 @@ test('(c) the trip is closed: refused before any DELETE (the Worker would 409 it
 test('read failure: the cost lines cannot be read (500) — refused, nothing written', async () => {
   const w = await world({ rts: [solo()], linesFail: true });
   await w.ctx._wiRotAdd(1, 'rec467');
-  refusedClean(w, 'Τα έξοδα του RT-1300 δεν διαβάστηκαν (boom) · η ρότα ΔΕΝ γράφτηκε');
+  refusedClean(w, 'Τα έξοδα για το δρομολόγιο Δευ 5/10 δεν διαβάστηκαν (boom) · η ρότα ΔΕΝ γράφτηκε');
 });
 
 test('read failure: /costs/rt carries no payroll field (an older Worker) — refused, never read as «none»', async () => {
   const r = solo(); delete r.ledger_entry;
   const w = await world({ rts: [r] });
   await w.ctx._wiRotAdd(1, 'rec467');
-  refusedClean(w, 'Η μισθοδοσία του RT-1300 δεν διαβάστηκε · η ρότα ΔΕΝ γράφτηκε');
+  refusedClean(w, 'Η μισθοδοσία για το δρομολόγιο Δευ 5/10 δεν διαβάστηκε · η ρότα ΔΕΝ γράφτηκε');
 });
 
 test('the leg DELETE is refused (403): nothing else written, the reason said once', async () => {
@@ -390,7 +393,7 @@ test('the leg DELETE is refused (403): nothing else written, the reason said onc
   await w.ctx._wiRotAdd(1, 'rec467');
   assert.deepStrictEqual(w.writes(), ['DELETE /costs/rt/300/legs?order_id=467']);
   assert.strictEqual(w.orders.rec467['Rotation ID'], undefined);
-  assert.deepStrictEqual(w.toasts.map(t => t.m), ['Η #R467 ΔΕΝ βγήκε από το RT-1300 (χωρίς δικαίωμα αφαίρεσης σκέλους γύρου) · η ρότα ΔΕΝ γράφτηκε']);
+  assert.deepStrictEqual(w.toasts.map(t => t.m), ['Η Beta, Graz → Wien ΔΕΝ βγήκε από το δρομολόγιο Δευ 5/10 (χωρίς δικαίωμα αφαίρεσης σκέλους γύρου) · η ρότα ΔΕΝ γράφτηκε']);
   assert.strictEqual(w.logged.length, 1);
 });
 
@@ -398,7 +401,7 @@ test('the re-read still finds the leg on its trip (DELETE said 200): no rota wri
   const w = await world({ rts: [solo()], legDelete: 'noop' });
   await w.ctx._wiRotAdd(1, 'rec467');
   assert.ok(!w.calls.includes('PATCH order rec467'), 'Rotation ID written on a trip that did not let go');
-  assert.deepStrictEqual(w.toasts.map(t => t.m), ['Η #R467 βγήκε από το RT-1300, αλλά φαίνεται ακόμη στο δρομολόγιο RT-1300 · η ρότα ΔΕΝ γράφτηκε']);
+  assert.deepStrictEqual(w.toasts.map(t => t.m), ['Η Beta, Graz → Wien βγήκε από το δρομολόγιο Δευ 5/10, αλλά φαίνεται ακόμη σε αυτό · η ρότα ΔΕΝ γράφτηκε']);
   assert.strictEqual(w.logged.length, 1);
 });
 
@@ -408,7 +411,7 @@ test('the re-read fails: no rota written (the leg left, the proof did not come)'
   await w.ctx._wiRotAdd(1, 'rec467');
   assert.ok(w.calls.includes('DELETE /costs/rt/300/legs?order_id=467'));
   assert.ok(!w.calls.includes('PATCH order rec467'));
-  assert.deepStrictEqual(w.toasts.map(t => t.m), ['Η #R467 βγήκε από το RT-1300, αλλά ο έλεγχος δεν διαβάστηκε (ο γύρος δεν διαβάστηκε (boom)) · η ρότα ΔΕΝ γράφτηκε']);
+  assert.deepStrictEqual(w.toasts.map(t => t.m), ['Η Beta, Graz → Wien βγήκε από το δρομολόγιο Δευ 5/10, αλλά ο έλεγχος δεν διαβάστηκε (ο γύρος δεν διαβάστηκε (boom)) · η ρότα ΔΕΝ γράφτηκε']);
 });
 
 test('(a) no trip at all: no cost or payroll read, no DELETE — as before', async () => {

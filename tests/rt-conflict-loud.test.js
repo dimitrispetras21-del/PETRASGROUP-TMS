@@ -39,9 +39,12 @@ const ROT_HELPERS = [
   opt(/async function _wiOwnRtFree\([^)]*\)\{[\s\S]*?\n\}\n/), opt(/async function _wiRtLeave\([^)]*\)\{[\s\S]*?\n\}\n/),
   opt(/async function _wiRtLegDelete\([^)]*\)\{[\s\S]*?\n\}\n/),
   opt(/\nfunction _wiAssignLbl\([^)]*\)\{[\s\S]*?\n\}\n/), opt(/\nfunction _wiRefuse\([^)]*\)\{[\s\S]*?\n\}\n/),
+  // the words of every message (owner 8/11, core/plain-ref.js)
+  opt(/function _wiOrdTxt\(r,fb\)\{[^\n]*\n/), opt(/async function _wiRtTxt\(rt\)\{[^\n]*\n/),
 ].join('\n');
 
-const SPLIT_MSG = 'Η ομάδα είναι μοιρασμένη σε δύο δρομολόγια: RT-1217, RT-1220 — ζήτα συγχώνευση από τον owner';
+// In words (owner 8/11); the two trips are the same truck on the same days, so the code follows each, in brackets.
+const SPLIT_MSG = 'Η ομάδα είναι μοιρασμένη σε δύο δρομολόγια: TRK-13 · Driver 1. · 5/10–7/10 (RT-1217) και TRK-13 · Driver 1. · 5/10–7/10 (RT-1220) — ζήτα συγχώνευση από τον owner';
 
 // Just enough DOM for a banner: create, append, find by id, remove.
 class El {
@@ -98,6 +101,7 @@ async function world({ listOmits = [], postFails = null } = {}) {
     logError: (e, where) => logged.push({ msg: e && e.message, where }),
     toast: (m, k) => wiToasts.push({ m, k: k || 'success' }),
     reportError: (m) => reports.push(m),
+    PlainRef: require('../core/plain-ref.js'), _fhLocationsMap: {}, orderClientName: f => (f && f['Client Name']) || '',
     escapeHtml: s => String(s),
     renderWeeklyIntl: async () => {},
     WINTL: { rows: [{ id: 1, type: 'export', orderIds: ['rec438'], truckId: 'recT13', driverId: 'recD16' }], data: { trucks: [], drivers: [], partners: [], trailers: [] } },
@@ -185,7 +189,7 @@ test('an id the /costs/rt list cannot place is still named, never dropped', asyn
   await w.ctx.rtOnOrderSaved('rec438');
   const b = w.banners();
   assert.strictEqual(b.length, 1);
-  assert.ok(b[0].textContent.includes('Η ομάδα είναι μοιρασμένη σε δύο δρομολόγια: RT-1217, RT id 304 — ζήτα συγχώνευση από τον owner'), b[0].textContent);
+  assert.ok(b[0].textContent.includes('Η ομάδα είναι μοιρασμένη σε δύο δρομολόγια: TRK-13 · Driver 1. · 5/10–7/10 και ένα δρομολόγιο που δεν διαβάστηκε — ζήτα συγχώνευση από τον owner'), b[0].textContent);
 });
 
 test('every other POST failure keeps the generic _rtSafe toast — no banner, no recorded cause', async () => {
@@ -237,6 +241,7 @@ test('_wiRotAdd without a split keeps its own message for any other non-attach',
   w.ctx.rtFindForOrder = async id => ({ pg: 1, rt: id === 'rec467' ? null : { id: 301, code: 'RT-1217', status: 'planned' } });
   await w.ctx._wiRotAdd(1, 'rec467');
   assert.strictEqual(w.orders.rec467['Rotation ID'], '');
-  assert.deepStrictEqual(w.wiToasts, [{ m: 'Το σκέλος δεν μπήκε στο δρομολόγιο RT-1217 · η ρότα ΔΕΝ γράφτηκε', k: 'warn' }]);
+  // the mocked trip carries no truck / day: no words, and never the code
+  assert.deepStrictEqual(w.wiToasts, [{ m: 'Το σκέλος δεν μπήκε στο δρομολόγιο · η ρότα ΔΕΝ γράφτηκε', k: 'warn' }]);
   assert.strictEqual(w.banners().length, 0);
 });

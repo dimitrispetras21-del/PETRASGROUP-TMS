@@ -418,8 +418,13 @@ async function f63({ browser, origin, ok, scn, shots }) {
   ok(scn, 'the truck\'s row (rt:101) is marked, flashes and is in view', JSON.stringify(fl.keys) === '["rt:101"]' && fl.flash && fl.inView, fl);
   const ts = await toasts(page);
   ok(scn, 'a toast says it was added', ts.some((x) => /^Προστέθηκε/.test(x)), ts);
-  const pts = await page.$$eval('#content .wn5-row[data-rt="101"] .wn5-pt[data-stop]', (xs) => xs.map((x) => x.dataset.stop)).catch(() => []);
-  ok(scn, 'the board shows the new points (stop 1006 or 1007) without «Ανανέωση»', pts.includes('1006') || pts.includes('1007'), pts);
+  // since #286 (owner 8/11, rota = a real leg): this load is picked up Wed AFTER the truck's Tue deliveries, so it is a
+  // rota leg — drawn as its own line inside the truck's row (.wn5-sub.wn5-rota[data-rt]), not among the side's points.
+  // Either place proves the board was read again and drew it without «Ανανέωση».
+  const pts = await page.$$eval('#content :is(.wn5-row, .wn5-sub.wn5-rota)[data-rt="101"] .wn5-pt[data-stop]', (xs) => xs.map((x) => x.dataset.stop)).catch(() => []);
+  ok(scn, 'the board shows the new points (stop 1006 or 1007) without «Ανανέωση» — in the row or its rota line', pts.includes('1006') || pts.includes('1007'), pts);
+  const rota = await page.$$eval('#content .wn5-sub.wn5-rota[data-rt="101"]', (xs) => xs.length).catch(() => 0);
+  ok(scn, 'a pickup after the truck\'s deliveries is its rota line (#286)', rota === 1, rota);
   ok(scn, 'the popover closed', await K.count(page, dlg('plus')) === 0);
   await shot(page, shots, 'pack2-f63-after-add-1440');
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);

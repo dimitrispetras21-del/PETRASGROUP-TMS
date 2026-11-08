@@ -138,6 +138,13 @@ function _stopObjToFields(s, orderId, parentField) {
   if (s.ref)        fields[F.STOP_REF] = s.ref;
   if (s.goods)      fields[F.STOP_GOODS] = s.goods;
   if (s.notes)      fields[F.STOP_NOTES] = s.notes;
+  // The international form's per-point values (111, owner 8/11). Sent only when the caller PUT the property on the
+  // stop - the caller decides what changed - and then as given, null included: an empty value must clear the
+  // column, and dropping it here (as the lines above do for an empty value) would leave the old one standing.
+  // Every other caller (national forms, scan) never sets them, so nothing changes for them.
+  for (const [k, label] of [['timeFrom', F.STOP_TIME_FROM], ['timeTo', F.STOP_TIME_TO], ['viaHub', F.STOP_VIA_HUB], ['palletsExchanged', F.STOP_PALLETS_EXCHANGED]]) {
+    if (Object.prototype.hasOwnProperty.call(s, k)) fields[label] = s[k];
+  }
   return fields;
 }
 
