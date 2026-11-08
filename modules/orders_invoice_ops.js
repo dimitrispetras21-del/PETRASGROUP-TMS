@@ -49,8 +49,8 @@ const InvoiceOps = (() => {
   // each view maps to its own class; the text is raw (the view escapes it).
   function tpyHints(n, dc, dup) {
     const out = [dc.error ? { kind: 'bad', text: 'Ημερομηνία ' + dc.error } : { kind: 'muted', text: 'σήμερα ή παλαιότερη' }];
-    if (dup.other.length) out.push({ kind: 'warn', text: `Ο ΤΠΥ ${n} υπάρχει ήδη στην ${dup.other[0].num} άλλου πελάτη (${dup.other[0].client})` });
-    else if (dup.same.length) out.push({ kind: 'muted', text: `Ο ίδιος ΤΠΥ καλύπτει ήδη ${dup.same.map(x => x.num).join(', ')} του ίδιου πελάτη — ένα τιμολόγιο για πολλές παραγγελίες` });
+    if (dup.other.length) out.push({ kind: 'warn', text: `Ο ΤΠΥ ${n} υπάρχει ήδη σε παραγγελία άλλου πελάτη: ${words(dup.other[0])}` });
+    else if (dup.same.length) out.push({ kind: 'muted', text: `Ο ίδιος ΤΠΥ καλύπτει ήδη ${dup.same.length === 1 ? 'μία παραγγελία' : dup.same.length + ' παραγγελίες'} του ίδιου πελάτη (${routes(dup.same)}) — ένα τιμολόγιο για πολλές παραγγελίες` });
     return out;
   }
   // The three fields — nothing else (no Status: «Invoiced» is a checkbox, not a
@@ -145,6 +145,11 @@ const InvoiceOps = (() => {
       ? P.order({ client: it.client === '—' ? '' : it.client, from: it.load && it.load.name, to: it.del && it.del.name })
       : P.orderOf(it.f || {}, { day: false });
     return t || 'χωρίς στοιχεία';
+  }
+  // Same client: only the routes («Βέροια → Graz, Larisa → Wien»), the client is said once.
+  function routes(items) {
+    const P = (typeof PlainRef !== 'undefined' && PlainRef) || (typeof require === 'function' ? require('../core/plain-ref.js') : null);
+    return (items || []).map(it => (P && P.order({ from: it.load && it.load.name, to: it.del && it.del.name })) || 'χωρίς διαδρομή').join(', ');
   }
   const confirmDup = (o, num, edit) => confirmAction(edit
     ? `Ο ΤΠΥ ${num} υπάρχει ήδη σε παραγγελία άλλου πελάτη: ${words(o)}. Διόρθωση παρ' όλα αυτά;`

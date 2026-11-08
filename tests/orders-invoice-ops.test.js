@@ -41,7 +41,10 @@ test('date, duplicate ΤΠΥ and the words under the box', () => {
   assert.deepStrictEqual([dup.same.map(x => x.id), dup.other.map(x => x.id)], [['B'], ['C']]);
   const h = IO.tpyHints('0434', {}, dup);
   assert.deepStrictEqual(h.map(x => x.kind), ['muted', 'warn']);
-  assert.match(h[1].text, /υπάρχει ήδη στην #C άλλου πελάτη \(Other\)/);
+  assert.match(h[1].text, /υπάρχει ήδη σε παραγγελία άλλου πελάτη: Other$/);   // in words, never «#C» (owner 8/11)
+  // same client only: counted, the routes in words
+  const hs = IO.tpyHints('0434', {}, { same: [{ load: { name: 'Veria' }, del: { name: 'Graz' } }], other: [] });
+  assert.match(hs[hs.length - 1].text, /καλύπτει ήδη μία παραγγελία του ίδιου πελάτη \(Veria → Graz\)/);
   assert.strictEqual(IO.tpyHints('9', { error: 'x' }, { same: [], other: [] })[0].kind, 'bad');
 });
 

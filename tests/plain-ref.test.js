@@ -75,7 +75,9 @@ test('orderOf: an ORDERS record, with the page lookups; never the Reference or t
     assert.strictEqual(t, 'ΦΑΓΕ, Βέροια → München +1 · Δευ 2/11');
     assert.ok(!t.includes('ΦΑΓ-118') && !CODE.test(t));
     assert.strictEqual(P.orderOf(rec, { day: false }), 'ΦΑΓΕ, Βέροια → München +1');
-    // a page's own location map for Location 1, used only when the Summary is empty
+    // the board's «Name, City, Country» stop summary: the name only
+  assert.strictEqual(P.orderOf({ 'Client Name': 'Γ', 'Loading Summary': 'Beta Market, Berlin, Γερμανία', 'Delivery Summary': 'Mu Hub, Brno, Τσεχία' }), 'Γ, Beta Market → Mu Hub');
+  // a page's own location map for Location 1, used only when the Summary is empty
     assert.strictEqual(P.orderOf({ 'Client Name': 'ΦΑΓΕ', 'Loading Location 1': ['recL9'], 'Delivery Summary': 'Graz' }, { loc: (id) => (id === 'recL9' ? 'Veria X' : '') }), 'ΦΑΓΕ, Veria X → Graz');
   } finally { delete globalThis.orderClientName; }
   // no lookups at all: the order's own Client Name, the locations through getRefLocations

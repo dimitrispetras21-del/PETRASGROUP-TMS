@@ -94,10 +94,14 @@ function list(texts, max) {
 const g = (name) => (typeof globalThis !== 'undefined' && typeof globalThis[name] === 'function' ? globalThis[name] : null);
 function _try(fn, ...a) { try { return fn ? s(fn(...a)) : ''; } catch (_) { return ''; } }
 // The first point of a summary («"Verona" / "Modena"» → «Verona +1»): the
-// Worker serves Loading/Delivery Summary as quoted names joined with «/».
+// Worker serves Loading/Delivery Summary as quoted names joined with «/», and
+// the board's stop summaries as «Name, City, Country» — only the name is kept
+// (the title the board shows, weekly_intl_v2 _splitName), so a message stays one line.
 function _firstOf(summary) {
   const parts = s(summary).replace(/["']+/g, '').split('/').map(s).filter(Boolean);
-  return parts.length ? parts[0] + (parts.length > 1 ? ` +${parts.length - 1}` : '') : '';
+  if (!parts.length) return '';
+  const name = s(parts[0].split(',')[0]) || parts[0];
+  return name + (parts.length > 1 ? ` +${parts.length - 1}` : '');
 }
 function _locName(linkVal, loc) {
   const id = Array.isArray(linkVal) ? (linkVal[0] && (linkVal[0].id || linkVal[0])) : linkVal;
