@@ -1,8 +1,8 @@
 // modules/wn5_road.js — National v5, «Αλλαγή στον δρόμο» (transfer at any point, piece 5; owner 2/11 «ξεκίνα»).
 // Figma KO7l2AfucR3HJEDIg1Yptr, page «Μεταφόρτωση 2/11» (2450:7735): entry 2451:7737, window 2452:7735 / 2453:7735,
 // preview 2454:7735, states 2457:7735 (docs/national-v5/transfer-figma-2026-11-02.md). One global: WN5Road.
-// Behind FEATURES.WN_ROAD (off until the Worker with POST /plan/transfer, PR #239, is deployed): with it off the ✈ and
-// right-click menus stay as they are and nothing here runs.
+// Behind featureOn('WN_ROAD') (config.js: 'pilot' = the owner alone for the first real test, 3/11; then true): with it
+// off the ✈ and right-click menus stay as they are and nothing here runs.
 // Rules:
 //   - ONE act, POST /plan/transfer (099): «Συνέχεια ›» is its dry run (the preview of frame 4), «Αποθήκευση» its save
 //     with ONE request_id per open window (PlanApi.slot), never on a dry run (decision 44).
@@ -13,8 +13,9 @@
 //   - each load: its pallets (fewer = the split, decision 3, the rest on its own line) and «Πάει σε»: a truck on the
 //     road that day, a free own truck (a new trip), «Νέο φορτίο · φορτηγό αργότερα» (it waits at the point, decision 2,
 //     the words of the «Σύνθεση φορτίων» panel), or «μένει στο <truck>» (the default: the load is not sent).
-//   - busy (Π2): another trip of a chosen truck on those days is said in amber BEFORE the press and that truck's
-//     target carries accept_busy from the first press (one press); a day outside the loaded week is said only.
+//   - busy (Π2, owner 3/11): the one warning — a chosen truck, its trailer or its driver on another trip the same
+//     calendar day, said in amber by name, day and places BEFORE the press; that truck's target carries accept_busy
+//     from the first press (one press); a day outside the loaded week is said only. No hours, no stop text.
 //   - every refusal is the Worker's message (WN5Act.strip); the screen's own lines carry a code WN5R_* and facts.
 //   - nothing at load: listeners exist only while the window is open.
 (function () {
@@ -26,7 +27,7 @@
   const BUSY = Object.freeze(['truck_busy', 'driver_busy']);
   const _esc = (s) => K().esc(s);
   const _log = (e, where) => { try { if (typeof logError === 'function') logError(e, where); } catch (_) { /* the screen keeps its own line */ } };
-  const _on = () => typeof FEATURES !== 'undefined' && FEATURES.WN_ROAD === true;
+  const _on = () => typeof featureOn === 'function' && featureOn('WN_ROAD');
   // «1430», «14.30», «9:00» → «14:30» / «09:00» (the handover window's rule)
   const _hm = (v) => { const t = String(v == null ? '' : v).trim(); const m = /^(\d{1,2})[:.]?(\d{2})$/.exec(t); if (!m) return t; const o = `${m[1].padStart(2, '0')}:${m[2]}`; return HM.test(o) ? o : t; };
   const _pal = (n) => (n == null ? '—' : String(Math.round(Number(n) * 10) / 10).replace('.', ','));
@@ -236,7 +237,7 @@
       const r = k.stopsFor(needs, ch.rt || null, st.side, null, null);
       const days = [st.day, lds.map((ld) => k.ymdOf(ld.drop.planned_to)).filter(Boolean).sort().pop() || st.day].sort();
       const bz = ch.truckId != null && DAY.test(st.day || '')
-        ? k.busyOf({ trucks: [ch.truckId], drivers: ch.rt ? [ch.rt.driver_id] : [], days, self: ch.rt ? [ch.rt.rt_id] : [], accept: true }) : null;
+        ? k.busyOf({ trucks: [ch.truckId], trailers: ch.rt ? [ch.rt.trailer_id] : [], drivers: ch.rt ? [ch.rt.driver_id] : [], days, self: ch.rt ? [ch.rt.rt_id] : [], accept: true }) : null;
       if (bz) d.busyOf[v] = bz;
       if (bz && bz.accept) target.accept_busy = true;
       out[v] = { target, stops: r.stops, missing: r.missing };
@@ -288,8 +289,8 @@
     d.dst = dst;
     _q(d, '[data-act="next"]').disabled = !d.ready || d.busy;
   }
-  // Π2: one amber strip under the first load that goes to a busy truck, with «Αλλαγή ώρας» (it opens the time field:
-  // the screen never guesses an arrival time; Figma 2457:7735 α)
+  // Π2: one amber strip under the first load that goes to a busy truck. Owner 3/11: same day only, so a new hour
+  // never clears it — the «Αλλαγή ώρας» button of Figma 2457:7735 α is gone with the hours
   // A host is written only when its words change: a refresh between the press and the release (the time field's
   // «change» on the mousedown that leaves it) would otherwise replace the button under the pointer and lose the click.
   function _busyLines(d, st) {
@@ -299,8 +300,7 @@
       const bz = v && d.busyOf[v];
       if (!bz || said.has(v)) continue;
       said.add(v);
-      at.set(r.piece_id, (at.get(r.piece_id) || '') + `<div class="wn5-strip wn5r-busy" data-kind="warning"><b>ΑΠΑΣΧΟΛΗΜΕΝΟ</b><span>${_esc(bz.text)}</span>`
-        + '<button type="button" class="wi4-btn sm" data-act="time">Αλλαγή ώρας</button></div>');
+      at.set(r.piece_id, (at.get(r.piece_id) || '') + `<div class="wn5-strip wn5r-busy" data-kind="warning"><b>ΑΠΑΣΧΟΛΗΜΕΝΟ</b><span>${_esc(bz.text)}</span></div>`);
     }
     for (const ld of d.loads) {
       const host = _q(d, `.wn5r-ld[data-piece="${ld.piece_id}"] [data-busyrow]`);
@@ -370,7 +370,13 @@
 
   // ── preview (frame 4) ───────────────────────────────────────────────────────────────────────────────────────
   // inside the window the point is said whole (owner 2/11, Q1: «όλο το κείμενο όταν ανοίγει»)
-  const _stopName = (d, s) => (s.text ? s.text : (s.location_id === d.hub ? 'Βέροια' : (s.place || K().placeName(s.location_id))));
+  // 099 keeps a free-text point's words on A's stop only (transfer_place; the CHECK ties it to the reason); the
+  // receiving truck's stop points to it (transfer_from_stop_id). So that stop takes A's words, never the catalogue
+  // name «TRANSFER POINT (free text)» (owner test 3/11). words: stop_id → words of the stops of this preview.
+  const _stopName = (d, s, words) => (s.text ? s.text
+    : (s.transfer_from_stop_id != null && ((words && words[s.transfer_from_stop_id]) || (d.point && d.point.text)))
+      ? ((words && words[s.transfer_from_stop_id]) || d.point.text)
+      : (s.location_id === d.hub ? 'Βέροια' : (s.place || K().placeName(s.location_id))));
   function _previewHTML(d, p) {
     const k = K(), st = d.st;
     let out = 0;
@@ -383,20 +389,22 @@
     const newIds = (d.prev && d.prev.body.trucks || []).filter((t) => t.target.new_rt).map((t) => t.target.new_rt.truck_id);
     const plateOf = (id) => ((d.choices.find((o) => o.group === 'free' && o.truckId === id) || {}).name || 'νέο φορτηγό');
     let nth = 0;
+    const words = {};
+    for (const t of (Array.isArray(p.trucks) ? p.trucks : [])) for (const s of (t.stops || [])) if (s.text) words[s.stop_id] = s.text;
     const rows = (Array.isArray(p.trucks) ? p.trucks : []).map((t) => {
       const c = k.cycle(t.rt_id), mine = t.rt_id === d.rtId;
       const plate = c ? _truckLabel(c) : plateOf(newIds[nth++]);
       const live = (t.stops || []).filter((s) => !s.removed), gone = (t.stops || []).filter((s) => s.removed);
       const chain = live.map((s) => {
         const tx = !!s.transfer_reason || s.transfer_from_stop_id != null;
-        const nm = _esc(_stopName(d, s));
+        const nm = _esc(_stopName(d, s, words));
         if (!s.new) return nm;
         const when = s.planned_from ? k.dayShort(k.ymdOf(s.planned_from)) + (WN5L.allDay(s.planned_from, s.planned_to) ? '' : ' ' + k.hm(s.planned_from)) : '';
         return `<b>${tx ? '⇄ ' : ''}${nm}</b>${tx && when ? `<span class="wn5r-g"> · ${_esc(when)}</span>` : ''}`;
       }).join('<span class="wn5r-g"> → </span>');
       const sub = (mine ? 'ξεφορτώνει ' + _pal(out) + 'π' : 'φορτώνει') + (gone.length ? ' · ' : '');
       return `<div class="wn5h-erow wn5r-erow${mine ? '' : ' next'}"><span class="wn5h-pl"><b>${_esc(plate)}</b><span>${_esc(c ? _who(c) : 'νέο δρομολόγιο')}</span></span>`
-        + `<span class="wn5r-chain"><span>${chain || '—'}</span><span class="wn5r-sub">${_esc(sub)}${gone.map((s) => `<s>${_esc(_stopName(d, s))}</s>`).join(' ')}</span></span></div>`;
+        + `<span class="wn5r-chain"><span>${chain || '—'}</span><span class="wn5r-sub">${_esc(sub)}${gone.map((s) => `<s>${_esc(_stopName(d, s, words))}</s>`).join(' ')}</span></span></div>`;
     }).join('');
     const since = 'περιμένει στη ' + _pointShort(d) + ' από ' + k.dayShort(st.day) + ' · στο προς ανάθεση';
     const waits = (Array.isArray(p.waiting) ? p.waiting : []).map((w) => `<div class="wn5h-erow wn5r-erow wn5r-wait"><span class="wn5h-pl wn5r-slot"><b>Νέο φορτίο</b><span>φορτηγό αργότερα · ${_esc(_pal(w.pallets))}π</span></span>`
@@ -479,7 +487,8 @@
         WN5Act.strip(_strip(d), _err(p.conflict.code || 'WN5R_conflict', p.conflict.message || '(' + (p.conflict.code || 'σύγκρουση') + ')', p.conflict));
         _offerAccept(d, p.conflict.code);
       } else {
-        if (Array.isArray(p.warnings) && p.warnings.length) WN5Act.strip(_strip(d), p.warnings);
+        const pw = WN5Act.formWarnings(p.warnings);   // owner 3/11: no stop text, no x/33 line (the truck lines say it)
+        if (pw.length) WN5Act.strip(_strip(d), pw);
         if (p.whole_vehicle === true) await _handDry(d);
       }
     } catch (e) {
@@ -544,7 +553,8 @@
     const el = _q(d, '[data-done]');
     el.hidden = false;
     el.textContent = line;
-    WN5Act.strip(_strip(d), Array.isArray(warnings) && warnings.length ? warnings : null);
+    const ws = WN5Act.formWarnings(warnings);
+    WN5Act.strip(_strip(d), ws.length ? ws : null);
     for (const a of ['save', 'back']) _q(d, `[data-act="${a}"]`).hidden = true;
     const c = _q(d, '[data-act="close"]');
     c.hidden = false;
@@ -641,7 +651,6 @@
       if (a === 'next' && !t.disabled) { _next(d); return; }
       if (a === 'back') { _setStep(d, 'form'); return; }
       if (a === 'save' && !t.disabled) { _save(d); return; }
-      if (a === 'time') { if (d.allDay) _q(d, '[data-allday]').click(); const h = _q(d, '[data-hm]'); h.focus(); h.select(); }
     });
     box.addEventListener('input', (ev) => {
       if (ev.target.matches('[data-where]')) { d.point = null; _listShow(d); }

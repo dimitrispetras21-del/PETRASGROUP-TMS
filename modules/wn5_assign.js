@@ -35,8 +35,6 @@
   });
   const PICK = 'διάλεξε από τη λίστα';
   const HOURS = 'γράψε ώρες ή «όλη η ημέρα»';
-  // the 561/2006 note at the foot of the driver list, as the International popover has it
-  const DRV_NOTE = '561/2006: επιστροφή Χ → επόμενη αναχώρηση Χ+2';
   // PlanIds.list maps and sorts the whole catalogue on each call: read once per form (build() empties it), never per
   // option or keystroke (code review high)
   let _lists = {};
@@ -162,9 +160,6 @@
   // one reading of «a cycle runs on day d / uses that vehicle / ends there» with every other save (wn5_actions.js Π2)
   const _covers = (c, d) => K().coversDay(c, d);
   const _uses = (c, key, id) => K().usesId(c, key, id);
-  const _onSpan = (c, sp) => { for (let d = sp[0]; d <= sp[1]; d = K().addDays(d, 1)) if (_covers(c, d)) return true; return false; };
-  // where a cycle ends, in words: «Larisa ως Τρί 23:59» (its last stop, the hub as «Βέροια»)
-  const _endAt = (c, day) => K().endAt(c, day);
   // the live cycles of a vehicle that run on day d, the earliest first (two the same day = «άλλο ›», never a silent pick)
   function _cands(st, who, id, d) {
     if (id == null || !d) return [];
@@ -359,46 +354,56 @@
     return out;
   }
 
-  // ═══ availability of a vehicle on the request's days (Figma 1: «Σίνδος ως 13:00», «✓ ελεύθερο») ═══
+  // ═══ availability of a vehicle on the request's days («άλλο δρομολόγιο · Larisa → Athens», «✓ ελεύθερο») ═══
   // From the loaded week only: a day outside it reads «—», never «ελεύθερο» (principle 1, doc «Τι θέλει SQL ή Worker»).
-  function avail(st, px, id) {
+  // Owner 3/11 («λιγότερα»): the same rule and the same days as the line beside the save (K().busyOf): another trip on
+  // the same calendar day, by its places, no hours. The 561/2006 «από Πεμ (Χ+2)» of a driver who came back the day
+  // before is gone with it: a trip of another day is never a warning in these forms.
+  function avail(st, px, id, days) {
     const k = K(), f = FIELDS[px];
     if (id == null || px === 'pt') return null;
-    const key = f.kind + '_id';
     const D = _dayD(st);
     const sp = _span(st);
     if (!sp) return null;
-    const a = sp[0];
     if (_blind(st)) return { txt: '—', cls: '' };
-    const mine = st.cycles.filter((c) => c.rt_id !== st.rtId && _uses(c, key, id));
-    const on = mine.filter((c) => _onSpan(c, sp)).sort((x, y) => Date.parse(x.start_at) - Date.parse(y.start_at));
-    if (on.length) {
-      const c = on[0];
+    const bz = k.busyOf({ [f.kind + 's']: [id], days: days || _busyDays(st), self: [st.rtId], cycles: st.cycles, week: st.week, accept: false });
+    if (bz) {
+      const c = bz.trips[0].c;
       const hubLoc = k.hubId();
       const hs = (c.stops || []).find((s) => s.side === st.side && s.location_id === hubLoc);
       const sp = st.sidePal[c.rt_id] || { pal: 0, unk: 0 };
+      // a trip at Veroia that day is the one this load joins (F51): its window and pallets, not a warning
       if (hs && k.stopDay(hs) === D) return { txt: 'Βέροια ' + k.hmw(hs.planned_from, hs.planned_to) + ' · ' + WN5L.palText(sp.pal, sp.unk) + 'π', cls: 'dim' };
-      return { txt: _endAt(c, D), cls: 'busy' };
-    }
-    // a driver back on day X leaves on X+2 (561/2006, the International popover's rule); before that he is not free
-    if (f.kind === 'driver') {
-      const back = mine.map((c) => k.ymdOf(c.end_at)).filter((e) => e && e < a).sort().pop();
-      if (back && k.addDays(back, 2) > a) return { txt: 'από ' + k.dayShort(k.addDays(back, 2)) + ' (Χ+2)', cls: 'busy' };
+      // the trip this form joins is not «another» trip (code review high 3/11): its trailer and driver are copied
+      const tg = st.mode === 'vehicle' || st.who !== 'own' ? null : _target(st);
+      const t = bz.trips.find((x) => !(tg && tg.cyc && x.c.rt_id === tg.cyc.rt_id));
+      if (t) return { txt: 'άλλο δρομολόγιο' + (t.route ? ' · ' + t.route : ''), cls: 'busy' };
     }
     return { txt: f.free, cls: 'free' };
   }
-  // Π2 (owner 2/11, W50 test): an own truck or driver already on another cycle on the request's days is said BEFORE
-  // the press, in amber, naming every such cycle, and the save carries accept_busy from the first press (one press,
-  // not a refusal and then «Αποθήκευση έτσι κι αλλιώς»). The base still judges and keeps each accepted pair with an
-  // audit row (086 plan_seg_overlap_mark). The list is by day, from the board: it may name a cycle whose hours do not
-  // clash (harmless), never fewer. Said but NOT pre-accepted (code review high): a span the board does not cover
+  // Π2 (owner 2/11, W50 test) + owner 3/11: an own truck, trailer or driver already on another trip the same calendar
+  // day is said BEFORE the press, in amber, by name, day and places, and the save carries accept_busy from the first
+  // press (one press, not a refusal and then «Αποθήκευση έτσι κι αλλιώς»). The base still judges the hours of a truck
+  // or a driver and keeps each accepted pair with an audit row (086 plan_seg_overlap_mark); a trailer it does not
+  // judge. The list is by day, from the board: it may name a trip whose hours do not clash, never fewer. Said but NOT
+  // pre-accepted (code review high): a span the board does not cover
   // (_blind) — the base accepts EVERY overlap of the save, and one we cannot name must not pass silently — and the
   // pick mode, which writes nothing (its caller saves; saves = true: the caller that does, forChoice). There the refusal
   // and its offer stay. The rule and the words are the kit's (K().busyOf), one for every save.
   // null = no overlap on the board; else { text, accept }.
+  // owner 3/11: the days a busy vehicle is judged on are the days the save puts the trip on — its new stops' days (the
+  // kit's stopDays: a joined trip stretched to them, as the base stretches it), never the row's day alone (a VS whose
+  // row is Monday and whose truck runs Tuesday is judged on Tuesday). Without stops (a vehicle change, nothing picked
+  // yet) the form's span.
+  function _busyDays(st, r) {
+    if (r === undefined) r = req(st);
+    const b = r && !r.missing && r.body;
+    const tg = b && b.target && b.target.rt_id != null ? st.cycles.find((c) => c.rt_id === b.target.rt_id) : null;
+    return (b && Array.isArray(b.stops) && K().stopDays(b.stops, tg)) || _span(st);
+  }
   function _overlaps(st, r, saves) {
     if (st.who !== 'own' || !r || r.missing || !r.body) return null;
-    return K().busyOf({ trucks: [st.truck], drivers: [st.driver], days: _span(st), self: [st.rtId, r.body.target && r.body.target.rt_id],
+    return K().busyOf({ trucks: [st.truck], trailers: [st.trailer], drivers: [st.driver], days: _busyDays(st, r), self: [st.rtId, r.body.target && r.body.target.rt_id],
       cycles: st.cycles, week: st.week, accept: !!saves || st.mode !== 'pick' });
   }
   // the request the save sends: with accept_busy when the form already said the overlap (Π2)
@@ -541,8 +546,9 @@
       h += '<div class="wn5a-band"><span>' + _e(st.ref + ' · ' + st.items.length + ' παραδόσεις · ' + WN5L.palText(k.sum(st.items.map((x) => x.pallets)), st.items.filter((x) => x.pallets == null).length) + 'π') + '</span>'
         + '<label class="wn5a-only"><input type="checkbox" data-only' + (st.only ? ' checked' : '') + '><span>μόνο αυτές οι παλέτες</span></label></div>';
     }
-    h += '<div class="wi-pop-body wn5a-body">';
-    if (st.mode !== 'vehicle') h += _rowsHTML(st, pb, tg && tg.cyc, tg && tg.after);
+    // owner 3/11 (bigger forms, no scroll at a laptop height): the day rows on the left, who executes on the right
+    const rows = st.mode !== 'vehicle' ? _rowsHTML(st, pb, tg && tg.cyc, tg && tg.after) : '';
+    h += '<div class="wi-pop-body wn5a-body' + (rows ? ' wn5a-two' : '') + '">' + (rows ? '<div class="wn5a-col">' + rows + '</div><div class="wn5a-col">' : '');
     h += '<div class="wn5a-sec"><div class="wi-pop-section-lbl">ΔΙΚΟΣ ΣΤΟΛΟΣ</div><div class="wi-pop-row">'
       + _fieldHTML(st, 'tk', pb) + _fieldHTML(st, 'tl', pb, joinOwn) + _fieldHTML(st, 'dr', pb, joinOwn) + '</div></div>';
     const rateBad = pb.fields.rate;
@@ -561,7 +567,7 @@
         + '<span class="wn5a-av' + (av2 ? ' bad' : '') + '">' + _e(av2) + '</span></div>' : '')
       + '</div>' + _routeRatesHTML(st) + '</div>';
     if (st.mode !== 'vehicle') h += _lineHTML(st);
-    h += '</div>';
+    h += (rows ? '</div>' : '') + '</div>';
     return h;
   }
   // the order and its way in the header (Figma: «#2041 · Βέροια Δευ 12/10 → Lambda Pack, Larisa Τρί 13/10 · 12π»)
@@ -583,8 +589,10 @@
     const k = K();
     if (typeof PlanIds === 'undefined') return [];
     const nq = q ? k.norm(q) : '';
+    const so = Object.assign({}, st, { who: 'own' });
+    const days = px === 'pt' ? null : _busyDays(so);   // once per list, not per option
     return _list(FIELDS[px].kind).filter((x) => x.active && (!nq || k.norm(x.label).includes(nq))).slice(0, 60).map((x) => {
-      const a = px === 'pt' ? null : avail(Object.assign({}, st, { who: 'own' }), px, x.id);
+      const a = px === 'pt' ? null : avail(so, px, x.id, days);
       const sub = px === 'pt' ? _lastRate(st, x.id) : (a ? a.txt : '');
       return { id: x.id, label: x.label, sub, cls: a ? a.cls : '', warn: _warn(px, x.id) };
     });
@@ -594,15 +602,16 @@
       + '<span class="' + (FIELDS[px].mono ? 'wn5a-mono' : '') + '">' + _e(o.label) + '</span>'
       + (o.sub ? '<div class="wi-sdo-sub wn5a-osub ' + o.cls + '">' + _e(o.sub) + '</div>' : '')
       + (o.warn.length ? '<div class="wi-sdo-sub wi-sdo-warn">' + _e(o.warn.join(' · ')) + '</div>' : '') + '</div>').join('')
-      + (opts.length ? '' : '<div class="wn5a-none">—</div>')
-      + (px === 'dr' ? '<div class="wn5a-lnote">' + _e(DRV_NOTE) + '</div>' : '');
+      + (opts.length ? '' : '<div class="wn5a-none">—</div>');
   }
 
   // ═══ one open form ═══
   // ctx.onPick (pick mode): the «Επιλογή» button hands the choice to the caller and writes nothing.
   function _form(st, ctx) {
     const k = K();
-    const d = k.dlg('assign', 'Ανάθεση', { anchor: ctx.anchor || null, onClose: () => { _dropList(); if (ctx.onCancel && !d.picked) ctx.onCancel(); } });
+    // owner 3/11: a centred window that uses the height of the screen, never a popover under the row (it scrolled
+    // inside as soon as the row was low on the screen)
+    const d = k.dlg('assign', 'Ανάθεση', { onClose: () => { _dropList(); if (ctx.onCancel && !d.picked) ctx.onCancel(); } });
     d.dlg.classList.add('wn5a');
     const hd = d.dlg.querySelector('.wi4-dlg-hd');
     hd.querySelector('.wi4-dlg-t').insertAdjacentHTML('afterend', '<span class="wn5a-sub">' + _e(_sub(st)) + '</span>'
@@ -630,11 +639,11 @@
       const r = req(st);
       const miss = d.dlg.querySelector('[data-miss]');
       miss.textContent = pb.words.length ? 'Λείπει: ' + pb.words.join(', ') : '';
-      // the stop order the base would refuse (stop_order, 086): said before the press, soft (amber), never a block
-      const ow = r && !r.missing && r.body && r.body.target && r.body.target.rt_id ? k.orderWarn(st.cycles.find((c) => c.rt_id === r.body.target.rt_id), r) : null;
+      // owner 3/11: the one warning, the busy driver / truck / trailer of the same day (amber, the save stays on); the
+      // order of the stops is no longer said before the press (Π1 is gone: the base refuses only an impossible order)
       const ov = pb.words.length ? null : (_overlaps(st, r) || {}).text;
-      if (!pb.words.length && (ow || ov)) miss.textContent = [ow, ov].filter(Boolean).join(' ');
-      miss.classList.toggle('wn5-soft', !pb.words.length && !!(ow || ov));
+      if (ov) miss.textContent = ov;
+      miss.classList.toggle('wn5-soft', !!ov);
       const b = d.dlg.querySelector('[data-act="save"]');
       b.textContent = saveTxt();
       b.disabled = d.locked || d.busy || !r || !!r.missing || !!pb.words.length || !changed();
@@ -805,7 +814,6 @@
     // the list follows its field when the form scrolls or the window moves, and goes when the form closes
     d.dlg.addEventListener('scroll', () => _dropList(), true);
     draw();
-    if (ctx.anchor) k.place(d);
     k.gate(d);
     d.st = st;
     return d;

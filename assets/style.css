@@ -10204,7 +10204,8 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
   --wn5h-dlg-shadow:  0 12px 32px rgba(15,23,41,.18);  /* H2 modal 2122:7738 */
 }
 .wn5f.wn5h-cycle { width:940px; box-shadow:var(--wn5h-card-shadow); }
-.wn5f.wn5h-handover, .wn5f.wn5h-fix { width:860px; box-shadow:var(--wn5h-dlg-shadow); }
+/* owner 3/11 (bigger forms): 1040 wide (was 860) — the vehicle row and the preview's stops on one line each */
+.wn5f.wn5h-handover, .wn5f.wn5h-fix { width:min(1040px, calc(100vw - 48px)); box-shadow:var(--wn5h-dlg-shadow); }
 /* H4's refusal before any list (conflict, failed dry run): the H4 width and shadow (2125:7738), no «×», one «Κλείσιμο» */
 .wn5f.wn5h-remove { width:600px; box-shadow:var(--wn5-dlg-shadow); }
 .wn5f.wn5h-remove > .wn5f-hd > .wi4-dlg-x { display:none; }
@@ -10278,8 +10279,6 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
    position) so no class can drop the image; its size is not inline. */
 .wn5h .fh-cb-input:disabled { background-size:0 0; cursor:default; }
 .wn5h-mono .form-input { font-family:'DM Mono',ui-monospace,SFMono-Regular,Menlo,monospace; font-weight:500; }
-.wn5h-hint { font-size:11px; color:var(--wi4-grey-2); white-space:nowrap; }   /* «ελεύθερο ως …» 2122:7781 */
-.wn5h-hint:empty { display:none; }
 /* 096: the overlap of the new truck / driver, said before the press (the Π2 amber line of every save) */
 .wn5h-busy { font-size:12px; color:var(--wi4-amber-ink); margin:-4px 0 8px; }
 .wn5h-row1, .wn5h-vrow { display:flex; align-items:flex-start; gap:12px; }
@@ -10401,6 +10400,15 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .ow4-l .ow4-sub { grid-template-columns:var(--ow4-rw, minmax(0,1fr)) minmax(0,1.1fr) var(--ow4-tpy) var(--ow4-amt); }
 .ow4-r .ow4-sub { grid-template-columns:var(--ow4-tpy) var(--ow4-amt) minmax(0,1.15fr) var(--ow4-rw, minmax(0,.9fr)); }
 .ow4-sub + .ow4-sub { border-top:1px solid var(--wi4-line); }
+/* One round trip = one block (owner 3/11/2026: «δεν μου είναι εύκολα με το μάτι διακριτή η αλλαγή RT … πιο έντονη
+   τη διαχωριστική γραμμή ανάμεσα σε 2 RT»). The rule BETWEEN two trips is heavier than the line between the orders
+   inside one trip, which turns dashed and lighter. Two reusable classes, not «ow4-»: .trip-row on each trip's row,
+   .trip-part on each order line inside it — the pallets weekly view takes the same two. Two trips' rows only: the
+   first row under a day header keeps the thin line, the header already separates it. Declared after
+   .ow4-sub + .ow4-sub so the dashed line wins at equal specificity. */
+:root { --trip-sep:#cbd5e1; --trip-sep-in:#e3e7ed; }
+.trip-row + .trip-row { border-top:2px solid var(--trip-sep); }
+.trip-part + .trip-part { border-top:1px dashed var(--trip-sep-in); }
 .ow4-sub.ow4-none { display:block; }
 .ow4-c { min-width:0; overflow:hidden; }
 .ow4-n { text-align:right; }
@@ -10529,6 +10537,83 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .owv-doc-t { font-weight:700; font-size:12px; letter-spacing:.4px; text-transform:uppercase; color:var(--text-mid); margin:0 0 6px; }
 .owv-doc-f { display:block; width:100%; height:1180px; border:1px solid var(--border); border-radius:6px; background:#fff; }
 @media print { .owv-docs { display:none; } }
+/* «Εβδομάδα τιμολόγησης» on paper (owner 3/11/2026, Figma 2543:7735): A4
+   portrait in the payroll print's formal look (601:1011). Built by
+   OrdersWeekView.printDoc into #owvPrint; hidden on screen, and while printing
+   (body.owv-printing) the only thing on the page. A named page, so the Weekly's
+   landscape @page above does not apply to it. Fixed colours: paper is always light. */
+#owvPrint { display:none; }
+@page owvp { size: A4 portrait; margin: 11mm 11mm 12mm; }
+@media print {
+  body.owv-printing > *:not(#owvPrint) { display:none !important; }
+  body.owv-printing #owvPrint { display:block; page: owvp; }
+}
+.owvp { font-family:'DM Sans',sans-serif; color:#111; font-size:9.5px; line-height:1.35; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+.owvp-hd { display:flex; justify-content:space-between; align-items:flex-start; }
+.owvp-hd > div { display:flex; flex-direction:column; gap:3px; }
+.owvp-brand { font-family:'Syne',sans-serif; font-weight:700; font-size:14px; letter-spacing:1px; }
+.owvp-hd span { font-size:10px; color:#64748b; }
+.owvp-tag { text-align:right; align-items:flex-end; }
+.owvp-tag b { font-size:9px; font-weight:600; letter-spacing:.4px; color:#64748b; }
+.owvp-t { font-family:'Syne',sans-serif; font-weight:700; font-size:18px; margin:12px 0 8px; padding-bottom:8px; border-bottom:1.5px solid #111; }
+.owvp-t span { font-family:'DM Sans',sans-serif; font-weight:400; font-size:11px; color:#64748b; margin-left:12px; }
+.owvp-tb, .owvp-st { width:100%; border-collapse:collapse; table-layout:fixed; }
+.owvp-tb col.c-no { width:26px; } .owvp-tb col.c-day { width:64px; } .owvp-tb col.c-ord { width:48px; }
+.owvp-tb col.c-rt { width:138px; } .owvp-tb col.c-inv { width:104px; } .owvp-tb col.c-amt { width:64px; }
+.owvp-tb col.c-mk { width:12px; } .owvp-tb col.c-sum { width:78px; } .owvp-tb col.c-box { width:16px; }
+.owvp th { font-size:8px; font-weight:600; letter-spacing:.3px; text-align:left; padding:0 6px 5px 0; border-bottom:1.5px solid #111; }
+.owvp td { padding:3px 6px 3px 0; border-bottom:1px solid #cbd5e1; vertical-align:top; overflow-wrap:anywhere; }
+.owvp tr { break-inside:avoid; }
+.owvp .n { text-align:right; font-variant-numeric:tabular-nums; }
+.owvp td.nw { white-space:nowrap; overflow-wrap:normal; }
+.owvp td.mk { padding-right:0; }
+.owvp .g, .owvp td.box { color:#64748b; }
+.owvp-dot { font-style:normal; color:#b91c1c; }
+.owvp-sec td { padding:8px 0 3px; font-size:8.5px; font-weight:600; letter-spacing:.6px; }
+.owvp-trip td { background:#f1f5f9; font-weight:600; padding:4px 6px 4px 0; border-bottom:none; break-after:avoid; }
+.owvp-trip td:first-child { padding-left:3px; }
+.owvp-trip td.n { font-weight:700; }
+.owvp-o.off td { color:#94a3b8; }
+.owvp-sub td { border-top:1.5px solid #111; border-bottom:none; font-weight:600; padding:5px 6px 5px 0; }
+.owvp-st { margin-top:14px; }
+.owvp-st th, .owvp-st td { font-size:10px; padding:4px 6px 4px 0; }
+.owvp-st thead th { font-size:8px; }
+.owvp-st tbody th { font-weight:400; border-bottom:1px solid #cbd5e1; }
+.owvp-st tr.tot th, .owvp-st tr.tot td { border-top:3px solid #111; border-bottom:none; font-weight:700; font-size:10.5px; padding-top:6px; }
+.owvp-st td.mk { width:24px; }
+.owvp-count { margin:5px 0 0; font-size:9px; color:#64748b; }
+.owvp-foot { margin-top:10px; }
+.owvp-foot p { margin:0 0 3px; font-size:8.5px; color:#64748b; }
+.owvp-ft { margin-top:16px; padding-top:7px; border-top:1px solid #cbd5e1; font-size:9px; color:#64748b; }
+/* «Εβδομάδα»: ΤΠΥ / ΠΟΣΟ open the invoicing editor under the order line (owner 3/11, Eirini's main table).
+   Under the line, not a floating panel: it scrolls with the board and never covers the next line's ΤΠΥ. */
+.ow4-edc { cursor:pointer; border-radius:4px; }
+.ow4-edc:hover, .ow4-edc:focus-visible { background:var(--accent-light); box-shadow:inset 0 0 0 1px var(--accent-glow); outline:none; }
+.ow4-ed-on { background:var(--accent-light); }
+.owv-ed { margin:2px 6px 8px; padding:10px 12px; background:var(--bg-card); border:1px solid var(--accent); border-radius:8px;
+  box-shadow:0 6px 18px rgba(11,25,41,.10); font-size:12.5px; cursor:default; text-align:left; direction:ltr; }
+.owv-ed-h { display:flex; align-items:center; gap:8px; margin-bottom:8px; min-width:0; }
+.owv-ed-h b { font-family:'Syne',sans-serif; font-size:12px; letter-spacing:.4px; text-transform:uppercase; white-space:nowrap; }
+.owv-ed-h span { color:var(--text-mid); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.owv-ed-x { margin-left:auto; background:none; border:none; color:var(--text-mid); font-size:18px; line-height:1; cursor:pointer; }
+.owv-ed-r { display:flex; flex-wrap:wrap; align-items:flex-end; gap:8px; }
+.owv-ed-r label { display:flex; flex-direction:column; gap:3px; font-size:11px; color:var(--text-mid); }
+.owv-ed-in { height:30px; width:140px; padding:0 8px; border:1px solid var(--border); border-radius:6px; font:inherit; font-size:13px; color:var(--text); background:var(--bg-card); }
+.owv-ed-in:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-glow); }
+.owv-ed-in.bad { border-color:var(--danger); }
+.owv-ed-save { height:30px; padding:0 12px; border:none; border-radius:6px; background:var(--accent); color:#fff; font-weight:600; font-size:12.5px; cursor:pointer; white-space:nowrap; }
+.owv-ed-save:hover { background:var(--accent-hover); }
+.owv-ed-save[disabled], .owv-ed-undo[disabled] { opacity:.55; cursor:default; }
+.owv-ed-save kbd { font:inherit; font-size:10.5px; opacity:.75; margin-left:4px; }
+.owv-ed-hint { margin-top:6px; font-size:11.5px; line-height:1.5; }
+.owv-ed-m, .owv-ed-muted { color:var(--text-mid); }
+.owv-ed-warn { color:#B45309; font-weight:600; }
+.owv-ed-bad, .owv-ed-err { color:var(--danger); font-weight:600; }
+.owv-ed-err { margin-top:6px; }
+.owv-ed-self { display:flex; align-items:center; gap:6px; margin-top:8px; cursor:pointer; }
+.owv-ed-foot { display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin-top:8px; }
+.owv-ed-undo { background:none; border:none; padding:0; color:var(--danger); text-decoration:underline; font:inherit; cursor:pointer; }
+@media print { .owv-ed { display:none !important; } .ow4-ed-on { background:none; } }
 
 /* New place from an order scan (T44, modules/locations.js locScanNewHTML): an
    inline block under an unmatched stop of the scan preview, not a modal (the
@@ -10558,7 +10643,9 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
    them into the v5 dialog shell (WN5Act._kit.dlg: Esc, strip, send) and draws what the International popover has
    not: the «Ημέρα και παράθυρο» rows, the line of the vehicle, the red marks of a missing field. Values from the
    frames' metadata (600 wide, header 12/16/8, body 12/16/8 with 12 between sections, fields 32 high, radius 6). */
-.wn5-dlg.wn5a { width:600px; padding:0; border-radius:6px; border-color:var(--border); font-size:12px;
+/* owner 3/11 (bigger forms, no vertical scroll at a laptop height ≥ 800px): a centred window up to 960 wide, the
+   day rows on the left and who executes on the right (.wn5a-two), the screen's height for the rest */
+.wn5-dlg.wn5a { width:min(960px, calc(100vw - 48px)); max-height:calc(100vh - 32px); padding:0; border-radius:6px; border-color:var(--border); font-size:12px;
   box-shadow:0 8px 32px rgba(0,0,0,0.18),0 2px 8px rgba(0,0,0,0.1); }
 .wn5a > .wi4-dlg-hd { justify-content:flex-start; gap:8px; padding:12px 16px 8px; border-bottom:1px solid var(--border); background:var(--surface-card); }
 .wn5a .wi4-dlg-t { font:700 14px 'Syne',sans-serif; color:var(--text); white-space:nowrap; }
@@ -10568,6 +10655,8 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5a > .wn5-dlg-msg { margin:8px 16px 0; }
 .wn5a > .wn5-dlg-b { margin-top:0; gap:0; font-size:12px; }
 .wn5a-body { padding:12px 16px 8px; }
+.wn5a-body.wn5a-two { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.2fr); column-gap:28px; align-items:start; padding:16px 20px 12px; }
+.wn5a-col { display:flex; flex-direction:column; gap:12px; min-width:0; }
 .wn5a-sec { display:flex; flex-direction:column; gap:8px; }
 .wn5a-sec:first-child { gap:6px; }
 .wn5a .wi-pop-section-lbl { color:var(--text-dim); }
@@ -10607,8 +10696,6 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
   border-radius:var(--radius); box-shadow:0 6px 24px rgba(0,0,0,0.12); }
 .wn5a-o { padding:6px 10px; font-size:var(--text-xs); cursor:pointer; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .wn5a-o:hover, .wn5a-o.hi { background:var(--bg-hover); }
-/* the 561/2006 foot note: the International popover's .wi2-sd-note lives in weekly_intl.js, absent on this page */
-.wn5a-lnote { padding:4px 12px; font-size:11px; color:var(--text-dim); background:var(--surface-sunken); white-space:normal; }
 .wn5a-osub.free { color:var(--ok); }
 .wn5a-osub.dim { color:var(--wi4-grey-2); }
 .wn5a-none { padding:6px 10px; font-size:var(--text-xs); color:var(--text-dim); }
@@ -10661,7 +10748,6 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5-hub .wi4-btn:disabled, .wn5-hub .wi4-btn:disabled:hover, .wn5-dlg[data-wn5="split"] .wi4-btn.pri:disabled {
   opacity:1; border-color:var(--wi4-line-2); background:var(--wi4-line-2); color:var(--wi4-grey-3); cursor:default; }
 .wn5-dlg[data-wn5="split"] .wn5-split-none { margin:0 0 6px; color:var(--wi4-grey-1); }
-.wn5-nf-note { align-self:flex-start; padding:2px 6px; border-radius:4px; background:var(--wn5-note-bg); border:1px solid var(--wn5-note-line); font-size:11px; font-weight:500; color:var(--wn5-note-ink); }
 .wn5-nf-it { display:flex; align-items:center; gap:8px; min-height:28px; border-bottom:1px solid var(--wi4-line); }
 .wn5-nf-it > b { font-weight:600; color:var(--wi4-ink); }
 .wn5-nf-it > span:not(.wn5-hub-sp):not(.wn5-hub-p) { font-size:11px; color:var(--wi4-grey-2); }
@@ -10680,6 +10766,9 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5-nf .wn5-nf-pick { align-self:flex-start; height:28px; }
 .wn5-nf-msg:empty { display:none; }
 .wn5-nf-ft { display:flex; align-items:center; justify-content:flex-end; gap:8px; margin-top:4px; }
+/* owner 3/11: the busy line (names, day, places) takes its own line above «Άκυρο | Δημιουργία φορτίου», never three narrow lines */
+.wn5-nf-ft { flex-wrap:wrap; }
+.wn5-nf-ft > .wn5a-miss.wn5-soft { flex:1 0 100%; text-align:right; }
 /* F51 / F61: «στο ίδιο φορτίο» | «νέο φορτίο» of a truck that already runs that day; F56: a suggested trailer / driver */
 .wn5a-opts { flex:none; display:inline-flex; gap:2px; padding:2px; border-radius:6px; background:var(--surface-card); border:1px solid var(--border); }
 .wn5a-opt { height:22px; padding:0 8px; border:0; border-radius:4px; background:none; font:500 11px 'DM Sans',sans-serif; color:var(--wi4-grey-2); cursor:pointer; }
@@ -10793,8 +10882,9 @@ body.wn5-top-on.wn5-aic-menu:has(#aic-toggle.has-alerts) .topbar .user-chip::aft
    2453:7735 (800 = .wn5-wide: the form 520 + the read-only «Νέο φορτίο» column 280 of the Σύνθεση φορτίων panel),
    preview 2454:7735 (the H2 rows .wn5h-erow), states 2457:7735 (.wn5-strip, warning = the amber busy line). The shell,
    fields and buttons are the .wn5f ones; only what the frames add is here. */
-.wn5f.wn5r { width:600px; }
-.wn5f.wn5r.wn5r-wide { width:800px; }
+/* owner 3/11 (bigger forms): 760 / 1060 wide (was 600 / 800), the «Πάει σε» column 320 so no choice is cut */
+.wn5f.wn5r { width:min(760px, calc(100vw - 48px)); }
+.wn5f.wn5r.wn5r-wide { width:min(1060px, calc(100vw - 48px)); }
 .wn5r .wn5r-body { flex-direction:row; gap:0; padding:0; }
 .wn5r .wn5r-main { flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:12px; padding:14px 16px; }
 .wn5r .wn5r-form { display:flex; flex-direction:column; gap:12px; }
@@ -10827,8 +10917,7 @@ body.wn5-top-on.wn5-aic-menu:has(#aic-toggle.has-alerts) .topbar .user-chip::aft
 /* the loads: one grid for the head, every row and its rest line (the frame's ΠΑΛ. 64 · ΠΑΕΙ ΣΕ 270) */
 .wn5r .wn5r-lh { display:flex; align-items:center; padding-top:4px; }
 .wn5r .wn5r-sum { margin-left:auto; font-size:11px; color:var(--wi4-grey-2); }
-.wn5r .wn5r-head, .wn5r .wn5r-row { display:grid; grid-template-columns:minmax(0,1fr) 64px 270px; gap:10px; align-items:center; }
-.wn5r.wn5r-wide .wn5r-head, .wn5r.wn5r-wide .wn5r-row { grid-template-columns:minmax(0,1fr) 64px 236px; }
+.wn5r .wn5r-head, .wn5r .wn5r-row { display:grid; grid-template-columns:minmax(0,1fr) 64px 320px; gap:10px; align-items:center; }
 .wn5r .wn5r-head { font:600 10px 'DM Sans',sans-serif; letter-spacing:.5px; color:var(--wi4-grey-2); }
 .wn5r .wn5r-all { display:flex; align-items:center; justify-content:space-between; }
 .wn5r .wn5r-all > select { border:0; background:none; padding:0; font:600 11px 'DM Sans',sans-serif; color:var(--wi4-blue-ink); cursor:pointer; text-align:right; }
@@ -10859,7 +10948,7 @@ body.wn5-top-on.wn5-aic-menu:has(#aic-toggle.has-alerts) .topbar .user-chip::aft
 .wn5r .wn5r-cap { margin-left:auto; padding:2px 6px; border:1px solid var(--wi4-info-line); border-radius:4px; background:var(--surface-card); font:500 11px 'DM Sans',sans-serif; color:var(--wi4-blue-ink); }
 .wn5r .wn5r-over { font-weight:700; color:var(--wi4-red); }
 /* the read-only «Νέο φορτίο» column (Σύνθεση φορτίων) */
-.wn5r .wn5r-built { flex:0 0 280px; box-sizing:border-box; padding:14px 16px; border-left:1px solid var(--wi4-line-2); background:var(--bg-row-alt);
+.wn5r .wn5r-built { flex:0 0 300px; box-sizing:border-box; padding:14px 16px; border-left:1px solid var(--wi4-line-2); background:var(--bg-row-alt);
   display:flex; flex-direction:column; gap:10px; font-size:12px; color:var(--wi4-grey-1); }
 .wn5r .wn5r-built[hidden] { display:none; }
 .wn5r .wn5r-bs { margin:0; padding-left:16px; display:flex; flex-direction:column; gap:3px; font-size:11.5px; color:var(--wi4-grey-2); }
@@ -10898,8 +10987,6 @@ body.wn5-top-on.wn5-aic-menu:has(#aic-toggle.has-alerts) .topbar .user-chip::aft
    one focus ring on the pallets box; navy primary (the approved Ανάθεση, Figma 2394:7930); the tile's second line
    in DM Sans; the new load's slot wide enough for «φορτηγό αργότερα · 8π» */
 .wn5r .wn5r-form[hidden] { display:none; }
-.wn5r.wn5r-wide .wn5r-where, .wn5r.wn5r-wide .wn5r-reason { width:200px; }
-.wn5r.wn5r-wide .wn5r-day { width:108px; }
 .wn5r .wn5r-pal > .form-input:focus { outline:none; box-shadow:none; }
 .wn5r .wi4-btn.pri:not(:disabled) { background:var(--surface-dark); border-color:var(--surface-dark); color:var(--surface-card); }
 .wn5r .wn5r-erow > .wn5h-pl { flex-basis:136px; }

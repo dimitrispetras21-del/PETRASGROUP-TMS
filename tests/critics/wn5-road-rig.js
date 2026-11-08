@@ -35,7 +35,7 @@ function preview(o) {
       { stop_id: 1201, seq: 5, location_id: 9, place: TP.name, text: 'Λαμία, πάρκινγκ', side: 'ANODOS', planned_from: TS('15:00'), planned_to: TS('15:01'), transfer_reason: 'vehicle_breakdown', transfer_from_stop_id: null, transfer_waits: true, new: true, removed: false },
       { stop_id: 1005, seq: 6, location_id: 1, place: 'ΒΕΡΟΙΑ TEST', text: null, side: 'ANODOS', planned_from: TS('20:00'), planned_to: TS('22:00'), transfer_reason: null, transfer_from_stop_id: null, transfer_waits: false, new: false, removed: true }] },
     { rt_id: 104, code: 'RT-T104', stops: [
-      { stop_id: 1202, seq: 1, location_id: 9, place: TP.name, text: 'Λαμία, πάρκινγκ', side: 'ANODOS', planned_from: TS('15:00'), planned_to: TS('15:01'), transfer_reason: null, transfer_from_stop_id: 1201, transfer_waits: false, new: true, removed: false },
+      { stop_id: 1202, seq: 1, location_id: 9, place: TP.name, text: null, side: 'ANODOS', planned_from: TS('15:00'), planned_to: TS('15:01'), transfer_reason: null, transfer_from_stop_id: 1201, transfer_waits: false, new: true, removed: false },
       { stop_id: 1203, seq: 2, location_id: 1, place: 'ΒΕΡΟΙΑ TEST', text: null, side: 'ANODOS', planned_from: TS('20:00'), planned_to: TS('22:00'), transfer_reason: null, transfer_from_stop_id: null, transfer_waits: false, new: true, removed: false }] }],
     vs_day: [], waiting: [{ piece_id: 9002, pallets: 8 }], whole_vehicle: false, warnings: [], conflict: null }, o);
 }
@@ -104,7 +104,7 @@ async function scnEntry({ browser, origin, ok, scn, shots }) {
   await page.click('#wn5-menu [data-item="handover"]');
   await page.waitForSelector(DLG, { timeout: 5000 }).catch(() => {});
   const h = await page.evaluate((s) => { const d = document.querySelector(s); return d ? { t: d.querySelector('.wi4-dlg-t').textContent, w: Math.round(d.getBoundingClientRect().width), side: d.querySelector('[data-sidecap]').textContent } : null; }, DLG);
-  ok(scn, 'the window «Αλλαγή στον δρόμο», 600 wide, its side in caps', !!h && h.t === 'Αλλαγή στον δρόμο' && h.w === 600 && /^(ΚΑΘΟΔΟΣ|ΑΝΟΔΟΣ)$/.test(h.side), h);
+  ok(scn, 'the window «Αλλαγή στον δρόμο», its side in caps', !!h && h.t === 'Αλλαγή στον δρόμο' && /^(ΚΑΘΟΔΟΣ|ΑΝΟΔΟΣ)$/.test(h.side), h);
   ok(scn, 'no «κύκλος», no RT code on the window', !/κύκλ|RT-/i.test(await K.text(page, DLG)), await K.text(page, DLG));
   await shot(page, shots, 'road-1-empty');
   const lack = await K.text(page, `${DLG} [data-lack]`);
@@ -156,7 +156,7 @@ async function scnTransfer({ browser, origin, ok, scn, shots }) {
   }, DLG);
   ok(scn, 'fewer pallets = the split: «↳ υπόλοιπο 8» with its own «Πάει σε»', f.rest && f.restPal === '8', f);
   ok(scn, 'the rest «Νέο φορτίο · φορτηγό αργότερα»: the red «περιμένει στη Λαμία από Τρί 13/10» (text up to the first comma, owner Q1)', f.hint === 'περιμένει στη Λαμία από Τρί 13/10', f.hint);
-  ok(scn, 'the read-only «Νέο φορτίο» column (Σύνθεση φορτίων): 800 wide, from Λαμία, 8/33', f.w === 800 && !!f.built && f.built.includes('ΝΕΟ ΦΟΡΤΙΟ · ΑΝΟΔΟΣ') && f.built.includes('Φεύγει από Λαμία') && f.built.includes('8/33'), f);
+  ok(scn, 'the read-only «Νέο φορτίο» column (Σύνθεση φορτίων): 1060 wide (owner 3/11, was 800), from Λαμία, 8/33', f.w === 1060 && !!f.built && f.built.includes('ΝΕΟ ΦΟΡΤΙΟ · ΑΝΟΔΟΣ') && f.built.includes('Φεύγει από Λαμία') && f.built.includes('8/33'), f);
   ok(scn, 'the other truck\'s line «TST-2106 · Τρί 13/10 · 0 → 12/33»', /TST-2106 · Τρί 13\/10\s*0 → 12\/33/.test(f.tl || ''), f.tl);
   ok(scn, 'ready: no «Λείπει», «Συνέχεια ›» on', f.lack === '' && f.next, f);
   await shot(page, shots, 'road-2-split-wait');
@@ -172,6 +172,9 @@ async function scnTransfer({ browser, origin, ok, scn, shots }) {
   ok(scn, 'preview: A gets «⇄ Λαμία, πάρκινγκ» (whole text inside the window), Veroia struck', /ΤΙ ΘΑ ΓΙΝΕΙ/.test(pv) && pv.includes('⇄ Λαμία, πάρκινγκ · Τρί 13/10 15:00')
     && await page.evaluate((s) => [...document.querySelectorAll(s + ' [data-preview] s')].some((x) => x.textContent === 'Βέροια'), DLG), pv);
   ok(scn, 'preview: the new trip of TST-2106 and the new load «φορτηγό αργότερα · 8π … στο προς ανάθεση»', pv.includes('TST-2106') && pv.includes('φορτηγό αργότερα · 8π') && pv.includes('περιμένει στη Λαμία από Τρί 13/10 · στο προς ανάθεση'), pv);
+  // 099 answers B's stop with text null (transfer_place lives on A's stop): B takes A's words (owner test 3/11)
+  ok(scn, 'preview: the receiving truck says «⇄ Λαμία, πάρκινγκ», never 099\'s «TRANSFER POINT»', !/TRANSFER POINT/.test(pv)
+    && (pv.match(/⇄ Λαμία, πάρκινγκ/g) || []).length === 2, pv);
   ok(scn, 'no «Διεθνής» block when no Veroia day moves', !/ΔΙΕΘΝΗΣ/.test(pv), pv);
   ok(scn, 'the new trip is named by its plate, never its RT code (owner 31/10)', !/RT-T/.test(pv), pv);
   await shot(page, shots, 'road-3-preview');
@@ -237,25 +240,68 @@ async function scnRefusal({ browser, origin, ok, scn }) {
   await page.context().close();
 }
 
+// owner 3/11 («λιγότερα»): the one warning is the busy truck / trailer / driver of the SAME calendar day, by name, day
+// and places, no hours (the «Αλλαγή ώρας» of the strip is gone: a new hour never clears a same-day trip); a trip of the
+// next day says nothing and sends no accept_busy
 async function scnBusy({ browser, origin, ok, scn, shots }) {
-  const { page, S } = await openRoad(browser, origin, { app: { board: busyWeek() } });
-  await openWin(page);
-  await fill(page, { go: 'tk:13' });
-  const g = await page.evaluate((s) => { const st = document.querySelector(s + ' .wn5r-busy'); return st ? { kind: st.dataset.kind, text: st.textContent.replace(/\s+/g, ' ').trim(), btn: !!st.querySelector('[data-act="time"]') } : null; }, DLG);
-  ok(scn, 'busy said BEFORE the press: the amber strip (warning) naming the other trip, with «Αλλαγή ώρας»', !!g && g.kind === 'warning' && /ΑΠΑΣΧΟΛΗΜΕΝΟ/.test(g.text) && g.text.includes('φορτηγό και σε') && g.btn, g);
-  await shot(page, shots, 'road-6-busy');
-  await page.click(`${DLG} .wn5r-busy [data-act="time"]`);
-  const foc = await page.evaluate((s) => ({ hm: document.activeElement === document.querySelector(s + ' [data-hm]'), at: document.activeElement ? document.activeElement.outerHTML.slice(0, 120) : null }), DLG);
-  ok(scn, '«Αλλαγή ώρας» opens the time field (the screen guesses no arrival)', foc.hm, foc);
-  await page.click(`${DLG} [data-act="next"]`);
-  await page.waitForFunction((s) => !document.querySelector(s + ' [data-preview]').hidden, DLG, { timeout: 5000 }).catch(() => {});
-  const b = (posts(S, '/plan/transfer')[0] || {}).body || {};
-  ok(scn, 'one press: accept_busy inside THAT truck\'s target, not on the body', !!b.trucks && b.trucks[0].target.accept_busy === true && !('accept_busy' in b), b);
-  await page.context().close();
+  {
+    const { page, S } = await openRoad(browser, origin, { app: { board: busyWeek() } });
+    await openWin(page);
+    await fill(page, { go: 'tk:13' });
+    const g = await page.evaluate((s) => { const st = document.querySelector(s + ' .wn5r-busy'); return st ? { kind: st.dataset.kind, text: st.textContent.replace(/\s+/g, ' ').trim(), btn: !!st.querySelector('button') } : null; }, DLG);
+    ok(scn, 'same day: the amber strip «ΑΠΑΣΧΟΛΗΜΕΝΟ TST-2106 είναι σε άλλο δρομολόγιο Τρί 13/10 · Athens → Βέροια.» BEFORE the press, no hours, no button',
+      !!g && g.kind === 'warning' && g.text === 'ΑΠΑΣΧΟΛΗΜΕΝΟTST-2106 είναι σε άλλο δρομολόγιο Τρί 13/10 · Athens → Βέροια.' && !/\d\d:\d\d|RT-/.test(g.text) && !g.btn, g);
+    await shot(page, shots, 'road-6-busy');
+    await page.click(`${DLG} [data-act="next"]`);
+    await page.waitForFunction((s) => !document.querySelector(s + ' [data-preview]').hidden, DLG, { timeout: 5000 }).catch(() => {});
+    const b = (posts(S, '/plan/transfer')[0] || {}).body || {};
+    ok(scn, 'one press: accept_busy inside THAT truck\'s target, not on the body', !!b.trucks && b.trucks[0].target.accept_busy === true && !('accept_busy' in b), b);
+    await page.context().close();
+  }
+  { // the same short trip of TST-2106 on Wednesday (the next day): nothing said, nothing accepted
+    const wk = busyWeek();
+    const t = wk.cycles.find((c) => c.rt_id === 103);
+    const wed = (x) => x.replace('2026-10-13', '2026-10-14');
+    Object.assign(t, { start_at: wed(t.start_at), end_at: wed(t.end_at), date_start: '2026-10-14', date_end: '2026-10-14' });
+    for (const st of t.stops) Object.assign(st, { planned_from: wed(st.planned_from), planned_to: wed(st.planned_to), stop_day: '2026-10-14' });
+    const { page, S } = await openRoad(browser, origin, { app: { board: wk } });
+    await openWin(page);
+    await fill(page, { go: 'tk:13' });
+    ok(scn, 'next day only: no strip', !(await K.count(page, `${DLG} .wn5r-busy`)));
+    await page.click(`${DLG} [data-act="next"]`);
+    await page.waitForFunction((s) => !document.querySelector(s + ' [data-preview]').hidden, DLG, { timeout: 5000 }).catch(() => {});
+    const b = (posts(S, '/plan/transfer')[0] || {}).body || {};
+    ok(scn, 'next day only: the target carries no accept_busy', !!b.trucks && b.trucks.length === 1 && !('accept_busy' in b.trucks[0].target), b);
+    await page.context().close();
+  }
+}
+
+// owner 3/11 (bigger forms): «Αλλαγή στον δρόμο» at 1440×900 and 1280×800 — the form with a same-day busy strip, then
+// its preview — opens whole: inside the window, nothing scrolls in it. --shots: the screenshots.
+async function scnFit({ browser, origin, ok, scn, shots }) {
+  for (const vp of K.FIT_VIEWPORTS) {
+    const tag = vp.width + 'x' + vp.height;
+    const { page } = await openRoad(browser, origin, { app: { board: busyWeek(), viewport: vp } });
+    await openWin(page);
+    await fill(page, { pal: 12, go: 'tk:13', rest: 'wait' });
+    await page.waitForTimeout(150);
+    let f = await K.fitOf(page, DLG);
+    ok(scn, tag + ' the form (a split load, a busy truck): inside the window, nothing scrolls in it', K.fits(f), f);
+    ok(scn, tag + ' the form is wider than the 800 of before (the «Νέο φορτίο» column open)', !!f && f.w > 800, f);
+    const cut = await page.evaluate((s) => [...document.querySelectorAll(s + ' [data-go], ' + s + ' [data-restgo]')].map((x) => x.scrollWidth > x.clientWidth + 1 || x.getBoundingClientRect().width < 300), DLG);
+    ok(scn, tag + ' «Πάει σε» is ≥ 300 wide (no choice cut, «Νέο φορτίο · φορτηγό αργότερα» whole)', cut.length >= 2 && cut.every((c) => !c), cut);
+    await shot(page, shots, 'road-form-' + tag);
+    await page.click(`${DLG} [data-act="next"]`);
+    await page.waitForFunction((s) => !document.querySelector(s + ' [data-preview]').hidden, DLG, { timeout: 5000 }).catch(() => {});
+    f = await K.fitOf(page, DLG);
+    ok(scn, tag + ' the preview: inside the window, nothing scrolls in it', K.fits(f), f);
+    await shot(page, shots, 'road-preview-' + tag);
+    await page.context().close();
+  }
 }
 
 K.run({
-  scenarios: { flag_off: scnFlagOff, entry: scnEntry, lists: scnLists, transfer: scnTransfer, whole: scnWhole, conflict: scnConflict, refusal: scnRefusal, busy: scnBusy },
+  scenarios: { flag_off: scnFlagOff, entry: scnEntry, lists: scnLists, transfer: scnTransfer, whole: scnWhole, conflict: scnConflict, refusal: scnRefusal, busy: scnBusy, fit: scnFit },
   globals: ['WN5Road', 'WN5Act', 'WN5'],
   go: '«Αλλαγή στον δρόμο» — flag off as before; ✈ / right-click entry; place lists; transfer dry run + save; whole vehicle via 072b; conflict, refusal, busy',
 });

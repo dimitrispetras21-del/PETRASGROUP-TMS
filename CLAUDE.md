@@ -166,9 +166,15 @@ cd worker && CLOUDFLARE_API_TOKEN=$CF_API_TOKEN npx wrangler deploy
      δύο φορές** (ORDERS + NATIONAL ORDERS) (`--self 1`)
    - «Αλλαγή στον δρόμο» (098 + 099, `POST /plan/transfer`) και «Σύνθεση φορτίων» (102, `/plan/drafts`), Worker
      b329ff91, ζωντανό 2/11: `rpc: "plan_transfer"` και `rpc: "plan_draft_realize"` (`--road 1`)
-   Μία εντολή για όλα, πριν και μετά (από 2/11 βράδυ): `node worker/tools/worker-guard.mjs <bundle ή λήψη CF> --plan 2
-   --handover 1 --f3 1 --f5 1 --edit 1 --invoiced 1 --rate2 1 --self 1 --road 1` → `GUARD OK (34 markers, plan=2, handover=1,
-   f3=1, f5=1, edit=1, invoiced=1, rate2=1, self=1, road=1)`. Επείγουσα επαναφορά στον προηγούμενο (`wrangler rollback
+   - «Ελέγχθηκε» της εβδομάδας παλετών (104 `pl_week_checks` + `/pallets/week-checks`, Worker 0563b45a, ζωντανό 3/11):
+     `var PLW_RPC = {`, ακριβώς μία φορά (`--wchk 1`)
+   Μία εντολή για όλα, πριν και μετά (από 3/11 βράδυ): `node worker/tools/worker-guard.mjs <bundle ή λήψη CF> --plan 2
+   --handover 1 --f3 1 --f5 1 --edit 1 --invoiced 1 --rate2 1 --self 1 --road 1 --wchk 1` → `GUARD OK (35 markers, plan=2,
+   handover=1, f3=1, f5=1, edit=1, invoiced=1, rate2=1, self=1, road=1, wchk=1)`. Επείγουσα επαναφορά στον προηγούμενο
+   (`wrangler rollback b329ff91-5453-4262-a521-3e9ecd6eb09c`, 2/11, χωρίς `/pallets/week-checks`): `--wchk 0` → `GUARD OK (35
+   markers … wchk=0)`. Η 104 στη βάση μένει (ο b329ff91 δεν την καλεί)· η διαδρομή απαντά 404 και η καρτέλα «Εβδομάδα» κρύβει
+   μόνη της το «Ελέγχθηκε» (κανένα revert του front end). Πριν από τον b329ff91 (2/11, `--road 1`, 34 markers):
+   οι γραμμές που ακολουθούν. Επείγουσα επαναφορά ακόμη πιο πίσω (`wrangler rollback
    7bb5003a-9657-45ff-a128-85787ed35c34`, 2/11, η αυτοπαράδοση χωρίς τις δύο διαδρομές): `--road 0` → `GUARD OK (34 markers …
    road=0)`· χωρίς `--road` δεν ελέγχεται ότι οι διαδρομές έφυγαν. Οι 098 / 099 / 102 στη βάση μένουν (ο 7bb5003a δεν τις
    καλεί)· οι νέες διαδρομές απαντούν 404 `no_route`, και πρώτα κλείνουν οι σημαίες `WN_ROAD` / σύνθεσης στο front end.

@@ -134,7 +134,7 @@ const OrdersWeekView = (() => {
   // Reconciles by construction: sum (priced) = invSum + openSum.
   function totals(recs, stateOf) {
     const t = { n: 0, sum: 0, unpriced: 0, unpricedRecs: [], invN: 0, invSum: 0, openN: 0, openSum: 0,
-      readyN: 0, readySum: 0,
+      readyN: 0, readySum: 0, readyNoSheets: 0,
       blockedN: 0, blocked: { price: 0 }, blockedSum: { price: 0 }, oldest: null };
     for (const r of recs) {
       if (isVsNational(r)) continue;
@@ -146,7 +146,10 @@ const OrdersWeekView = (() => {
       const s = stateOf(r);
       if (s.key === 'invoiced') { t.invN++; t.invSum += p; continue; }
       t.openN++; t.openSum += p;
-      if (s.key === 'ready') { t.readyN++; t.readySum += p; }
+      // readyNoSheets: «προς κοπή» with a pallet slip missing (stateOf's noSheets,
+      // never a block since 20/10) — counted here so the printed count line
+      // (owner 3/11) is this function's, never a second count.
+      if (s.key === 'ready') { t.readyN++; t.readySum += p; if (s.noSheets) t.readyNoSheets++; }
       else if (s.key === 'blocked') {
         t.blockedN++;
         t.blocked[s.reason] = (t.blocked[s.reason] || 0) + 1;
@@ -162,6 +165,27 @@ const OrdersWeekView = (() => {
     }
     return t;
   }
+
+  // The footnote marks of one row's Σ: «*» a priced order of the row that is
+  // counted in another week, «†» an order of the row with no price. One rule for
+  // the screen's Σ RT and the printed Σ δρομολογίου.
+  function rowMarks(row) {
+    const O = OC();
+    let s = false, g = false;
+    for (const l of row.legs || []) if (l.rec && !l.inWeek && !l.piece && !l.parentMissing && !l.cancelled && O.hasPrice(l.rec.fields)) s = true;
+    for (const r of row.counted || []) if (!isVsNational(r) && !O.hasPrice(r.fields)) g = true;
+    return { s, g };
+  }
+
+  // The same marks for a national pair (pairNationals row): its two sides.
+  function natMarks(r) {
+    const O = OC();
+    return { s: [r.kat, r.ano].some(s => s && s.kind === 'order' && !s.inWeek && O.hasPrice(s.rec.fields)),
+      g: (r.counted || []).some(x => !isVsNational(x) && !O.hasPrice(x.fields)) };
+  }
+  // The turnover a row's Σ shows (only the sum: the state is not needed) — the
+  // screen's Σ RT and the printed Σ δρομολογίου read this one function.
+  const rowSum = recs => totals(recs, () => ({})).sum;
 
   // % vs the previous week — only when the previous week had a turnover
   // (a +∞% or a «−100%» on an empty week is noise, not news).
@@ -754,6 +778,8 @@ const OrdersWeekView = (() => {
     // A ‹ › click can land after the user moved to another view: never paint
     // (or hang handlers) on a frame that is no longer ours.
     if (!ctx.isCurrent()) return;
+    // A new frame (another view and back, another week) never brings back an editor left open on the old one.
+    if (S.ctx !== ctx || !S.data || S.data.week !== S.week) S.ed = null;
     S.ctx = ctx;
     if (!(typeof can === 'function' && can('costs') !== 'none')) { ctx.body.innerHTML = ''; return; }
     OC().ensureStyles();
@@ -763,9 +789,11 @@ const OrdersWeekView = (() => {
     // Nationals have no RT: the grouping toggle means nothing on their own.
     if (ctx.scope !== 'natl') _paintModeToggle(ctx);
     const actions = document.getElementById('ohActions');
-    if (actions) actions.onclick = e => { const b = e.target.closest('[data-owv]'); if (!b) return; if (b.dataset.owv === 'print') window.print(); else _csv(); };
+    if (actions) actions.onclick = e => { const b = e.target.closest('[data-owv]'); if (!b) return; if (b.dataset.owv === 'print') _print(); else _csv(); };
 
     const force = S.force; S.force = false;
+    // Until this week is painted the paper has nothing true to print (never last week's).
+    S.print = null;
     const data = await load(S.week, ctx.scope, force);
     if (!ctx.isCurrent()) return;
     const ids = new Set();
@@ -807,7 +835,10 @@ const OrdersWeekView = (() => {
 
   // §10 — one white strip per failed read: what did not load · what that
   // means for the numbers · retry. Red dot = the totals may be incomplete.
-  function _fails(d, m, scope, undatedN) {
+  // The failed reads as data — the screen draws them as strips (_fails), the
+  // printed week refuses to print while any is there (owner 3/11, state Δ3:
+  // never a paper with half numbers). One list, so the two never disagree.
+  function _failList(d, m, scope) {
     const out = [];
     const add = (head, body, link) => out.push({ head, body, link });
     if (scope !== 'natl' && d.rtCapped) add('Τα δρομολόγια έφτασαν το όριο ανάγνωσης (500).', 'Κάποια παλαιότερα μπορεί να λείπουν — οι παραγγελίες τους φαίνονται στο «ΧΩΡΙΣ RT», με σωστά ποσά.');
@@ -821,6 +852,10 @@ const OrdersWeekView = (() => {
     if (d.set && d.set.stockFailed) add('Δεν διαβάστηκαν οι παρτίδες.', 'Τα κομμάτια δεν αθροίζονται· η παρτίδα φαίνεται μπλοκαρισμένη χωρίς έλεγχο.');
     if (d.refFailed) add('Δεν διαβάστηκαν οχήματα, οδηγοί και συνεργάτες.', 'Η ΑΝΑΘΕΣΗ μπορεί να γράφει «—» ή σκέτο «συνεργάτης»· τα ποσά δεν επηρεάζονται.');
     if (d.clientsFailed) add('Δεν διαβάστηκαν τα ονόματα πελατών.', 'Η στήλη ΠΕΛΑΤΗΣ γράφει «—» όπου λείπει όνομα· τα ποσά δεν επηρεάζονται.');
+    return out;
+  }
+  function _fails(d, m, scope, undatedN) {
+    const out = _failList(d, m, scope);
     const html = out.map(x => `<div class="ow4-fail" role="alert"><span class="ow4-dot"></span><b>${esc(x.head)}</b> <span>${esc(x.body)}</span><button type="button" class="ow4-link" data-owvretry="1">Ξαναδοκιμή</button></div>`);
     if (undatedN) {
       // Grey dot: a fact, not a failure — such an order belongs to no week.
@@ -880,12 +915,7 @@ const OrdersWeekView = (() => {
 
     // ── footnote marks ──
     const star = [], dag = [];
-    const markOf = row => {
-      let s = false, g = false;
-      for (const l of row.legs || []) if (l.rec && !l.inWeek && !l.piece && !l.parentMissing && !l.cancelled && O.hasPrice(l.rec.fields)) s = true;
-      for (const r of row.counted) if (!isVsNational(r) && !O.hasPrice(r.fields)) g = true;
-      return { s, g };
-    };
+    const markOf = rowMarks;
 
     // ── international board ──
     let intlHtml = '';
@@ -969,16 +999,31 @@ const OrdersWeekView = (() => {
       ${tAll.n || (showN && d.natlFailed) ? '' : '<p class="ow4-note">Καμία παραγγελία με ημερομηνία σε αυτή την εβδομάδα.</p>'}
       ${_footnotes(star, dag)}</section>`;
 
+    // What the printed week draws (owner 3/11, printDoc): THIS paint's model,
+    // numbers, totals and marks — the paper never reads or counts again.
+    S.print = { week: S.week, m, natRows, tI, tN, tAll, star: star.slice(), dag: dag.slice(), stateOf,
+      fails: _failList(d, m, scope), numsOk: !!nums, showI, showN, stopDates: d.stopDates };
+
     // A card open before this repaint (the clips arriving, «Ανά ημέρα/όχημα»)
     // opens again on the fresh record — a repaint never closes it under her.
     const wasOpen = _openCardNow();
+    _edKeep();
     ctx.body.innerHTML = `<div class="ow4">
       ${_fails(d, m, scope, undated)}
       <div class="ow4-strip"><button type="button" class="ow4-arr" data-owvshift="-1" aria-label="Προηγούμενη εβδομάδα">‹</button>${strip}<button type="button" class="ow4-arr" data-owvshift="1" aria-label="Επόμενη εβδομάδα">›</button></div>
       ${sumLine}${intlHtml}${natlHtml}${stHtml}</div>${CARDS_HTML}${DOCS_HTML}`;
     ctx.body.onclick = _onClick;
-    // ΑΝΑΘΕΣΗ is a button for the keyboard too (role=button, tabindex 0)
-    ctx.body.onkeydown = e => { const d = (e.key === 'Enter' || e.key === ' ') && e.target.closest && e.target.closest('[data-owvdoc]'); if (d) { e.preventDefault(); _installDocsEsc(); _openDocs(Number(d.dataset.owvdoc)); } };
+    ctx.body.oninput = e => { if (e.target.closest && e.target.closest('#owvEd')) _edHint(); };
+    // ΑΝΑΘΕΣΗ, ΤΠΥ and ΠΟΣΟ are buttons for the keyboard too (role=button, tabindex 0); Enter in the editor saves
+    ctx.body.onkeydown = e => {
+      if (!e.target.closest) return;
+      if (e.key === 'Enter' && e.target.closest('#owvEd')) { if (e.target.matches('input:not([type=checkbox])')) { e.preventDefault(); _edSave(); } return; }
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const c = e.target.closest('[data-owved]');
+      if (c) { e.preventDefault(); return _edOpen(c); }
+      const d = e.target.closest('[data-owvdoc]');
+      if (d) { e.preventDefault(); _installDocsEsc(); _openDocs(Number(d.dataset.owvdoc)); }
+    };
     if (wasOpen) {
       // A repaint, not an opening: no slide-in (oi-slide), and she stays where she had scrolled.
       const p = document.getElementById(wasOpen.type === 'intl' ? 'intlDetail' : 'natlDetail');
@@ -988,6 +1033,7 @@ const OrdersWeekView = (() => {
     }
     _fitAll(ctx.body);
     _watchFit(ctx.body);
+    _edMount();
   }
 
   // ── Fitting (§12 #06 / #09; owner rule: never less than one whole word) ──
@@ -1187,10 +1233,14 @@ const OrdersWeekView = (() => {
     }
     const off = l.rec && (!l.inWeek || l.piece || l.dupOf || l.parentMissing || l.cancelled) ? ' ow4-off' : '';
     const open = l.rec ? ` data-owvopen="${l.rec._type === 'natl' ? 'natl' : 'intl'}:${esc(l.rec.id)}"` : '';
-    const c = [`<div class="ow4-c">${cells.route}</div>`, `<div class="ow4-c">${cells.client}</div>`, `<div class="ow4-c">${cells.tpy}</div>`, `<div class="ow4-c ow4-n">${cells.amt}</div>`];
-    return `<div class="ow4-sub${off}"${open}>${(side === 'l' ? c : c.reverse()).join('')}</div>`;
+    // ΤΠΥ / ΠΟΣΟ open the invoicing editor under this line (_edOpen) for whoever may invoice
+    const ed = _editable(l), edAttr = (m, t) => (ed ? ` data-owved="${m}" role="button" tabindex="0" title="${t}"` : '');
+    const c = [`<div class="ow4-c">${cells.route}</div>`, `<div class="ow4-c">${cells.client}</div>`,
+      `<div class="ow4-c${ed ? ' ow4-edc' : ''}"${edAttr('tpy', 'ΤΠΥ · αυτοπαράδοση')}>${cells.tpy}</div>`,
+      `<div class="ow4-c ow4-n${ed ? ' ow4-edc' : ''}"${edAttr('amt', 'Τιμή')}>${cells.amt}</div>`];
+    return `<div class="ow4-sub trip-part${off}"${open}>${(side === 'l' ? c : c.reverse()).join('')}</div>`;
   }
-  const _emptySide = text => `<div class="ow4-sub ow4-none"><div class="ow4-c">${text}</div></div>`;
+  const _emptySide = text => `<div class="ow4-sub trip-part ow4-none"><div class="ow4-c">${text}</div></div>`;
 
   function _assignHtml(v, verdict, sumHtml, extra, docI) {
     let top;
@@ -1204,9 +1254,9 @@ const OrdersWeekView = (() => {
   }
   function _sumHtml(recs, mk) {
     // Only the turnover (sum, unpriced) is read here: the state is not needed.
-    const O = OC(), t = totals(recs, () => ({}));
+    const O = OC(), sum = rowSum(recs);
     const marks = mk && (mk.s || mk.g) ? `<sup class="ow4-mk">${mk.s ? '*' : ''}${mk.g ? '†' : ''}</sup>` : '';
-    return (t.sum > 0 ? O.eur(t.sum) : '—') + marks;
+    return (sum > 0 ? O.eur(sum) : '—') + marks;
   }
 
   function _rtRowHtml(r, stateOf, mk, rtFailed) {
@@ -1235,7 +1285,8 @@ const OrdersWeekView = (() => {
     const tag = !isRt ? (rtFailed ? '' : 'χωρίς RT') : r.guest ? 'από ' + O.dm(r.homeWeek) : r.moved ? 'μεταφορά' : v.kind === 'partner' ? 'συνεργάτης'
       : r.exp.length > 1 || r.imp.length > 1 ? 'groupage' : '';
     const blk = verdict.kind === 'blocked';   // the price: the one block since B0
-    return `<div class="ow4-row${blk ? ' ow4-blk' : ''}" data-owvopen="intl:${esc(r.openRec.id)}">
+    // trip-row / trip-part: the heavier rule between two round trips (assets/style.css, owner 3/11)
+    return `<div class="ow4-row trip-row${blk ? ' ow4-blk' : ''}" data-owvopen="intl:${esc(r.openRec.id)}">
       <div class="ow4-c-rt"><div class="ow4-l1">${isRt ? esc(r.code) : '<span class="ow4-d">—</span>'}</div>${tag ? `<div class="ow4-l2">${esc(tag)}</div>` : ''}</div>
       <div class="ow4-side ow4-l">${exp}</div>
       ${_assignHtml(v, verdictText(verdict, n), _sumHtml(r.counted, mk), '', _rowDocs(r).length ? r.docI : null)}
@@ -1266,10 +1317,9 @@ const OrdersWeekView = (() => {
     }
     const verdict = rtInvoicing(r.counted, stateOf);
     const n = r.counted.filter(x => !isVsNational(x)).length;
-    const mk = { s: [r.kat, r.ano].some(s => s && s.kind === 'order' && !s.inWeek && O.hasPrice(s.rec.fields)),
-      g: r.counted.some(x => !isVsNational(x) && !O.hasPrice(x.fields)) };
+    const mk = natMarks(r);
     const blk = verdict.kind === 'blocked';   // the price: the one block since B0
-    return `<div class="ow4-row ow4-nat${blk ? ' ow4-blk' : ''}" data-owvopen="natl:${esc(r.openRec.id)}">
+    return `<div class="ow4-row trip-row ow4-nat${blk ? ' ow4-blk' : ''}" data-owvopen="natl:${esc(r.openRec.id)}">
       <div class="ow4-c-rt"><div class="ow4-l1">${esc(dayShort(r.day) || '—')}</div>${v.kind === 'partner' ? '<div class="ow4-l2">συνεργάτης</div>' : ''}</div>
       <div class="ow4-side ow4-l">${side(r.kat, 'l')}</div>
       ${_assignHtml(v, verdictText(verdict, n), _sumHtml(r.counted, mk), extra)}
@@ -1277,6 +1327,10 @@ const OrdersWeekView = (() => {
   }
 
   function _onClick(e) {
+    if (e.target.closest('#owvEd')) { const a = e.target.closest('[data-owvedact]'); if (a) _edAct(a); return; }
+    const edc = e.target.closest('[data-owved]');
+    if (edc) return _edOpen(edc);
+    if (S.ed && !S.ed.busy) _edClose();
     const shift = e.target.closest('[data-owvshift]');
     if (shift) { S.week = OC().addDays(S.week, 7 * Number(shift.dataset.owvshift)); return _rerender(); }
     const wk = e.target.closest('[data-owvweek]');
@@ -1294,6 +1348,267 @@ const OrdersWeekView = (() => {
       const [type, id] = open.dataset.owvopen.split(':');
       _openCard(type, id);
     }
+  }
+
+  // ── Invoicing from the week (owner 3/11/2026, Eirini's main table: «να μπορεί να συμπληρώνει ΤΠΥ και
+  // αυτοπαράδοση και διόρθωση τιμής … μέσω από την εβδομάδα», «να μην αλλάζει πολλές σελίδες»).
+  // A click on an order's ΤΠΥ or ΠΟΣΟ opens a small editor under that line; Enter saves, Esc closes. Every
+  // rule and every write is «Προς τιμολόγηση»'s (InvoiceOps, modules/orders_invoice_ops.js): who may write,
+  // the fields, the date and duplicate-ΤΠΥ checks, «Αυτοπαράδοση», the locked price of an invoiced order,
+  // the proof in the record the Worker returns; the row object is that view's own (annotate). A refusal
+  // stays in the editor, under the line; a success IS the line, repainted from the record the Worker returned.
+  const IO = () => (typeof InvoiceOps !== 'undefined' ? InvoiceOps : null);
+  const ED_SET_FAILED = 'Η λίστα τιμολόγησης δεν φόρτωσε, οπότε ο έλεγχος διπλού ΤΠΥ δεν γίνεται — ο ΤΠΥ δεν γράφεται από εδώ. Ξαναδοκίμασε.';
+  // An order line that carries its own invoicing: not a split leg (its parent does), a stock piece (its lot),
+  // a cancelled or unread one, or an old VS national (the international order carries the price).
+  function _editable(l) {
+    return !!(l.rec && !l.cancelled && !l.piece && !l.parentMissing && !l.dupOf && !isSplitLeg(l.rec) && !isVsNational(l.rec)
+      && IO() && IO().canWrite() && typeof OrdersInvoicingView !== 'undefined');
+  }
+  const _edSel = (type, id) => `.ow4-sub[data-owvopen="${type}:${id}"]`;
+  function _edRec(e) { const d = S.data; return (d && e ? (e.type === 'natl' ? d.natl : d.intl).find(r => r.id === e.id) : null) || null; }
+  function _clientName(id) {
+    const r = (typeof getRefClients === 'function' ? getRefClients() : []).find(x => x.id === id);
+    if (r && r.fields['Company Name']) return String(r.fields['Company Name']);
+    return typeof _fhClientsMap !== 'undefined' && _fhClientsMap[id] ? String(_fhClientsMap[id]) : '';
+  }
+  // «Προς τιμολόγηση»'s row object (state, number, client) of the week's own record.
+  function _edItem(rec) {
+    const one = Object.assign({}, S.data.set, { intl: rec._type === 'intl' ? [rec] : [], natl: rec._type === 'natl' ? [rec] : [] });
+    return OrdersInvoicingView.pure.annotate(one, _clientName)[0];
+  }
+  // The whole invoicing set, for the duplicate-ΤΠΥ check (as «Προς τιμολόγηση» checks it): once per editor.
+  function _edItems() {
+    const e = S.ed;
+    if (!e.items) e.items = OrdersInvoicingView.pure.annotate(S.data.set, _clientName);
+    return e.items;
+  }
+  // The week's record and the set's copy of it carry what the Worker answered (null = the column emptied).
+  function _edApply(rec, fields) {
+    const set = S.data.set, list = set && (rec._type === 'natl' ? set.natl : set.intl);
+    const twin = list ? list.find(r => r.id === rec.id) : null;
+    for (const r of twin && twin !== rec ? [rec, twin] : [rec]) {
+      for (const [k, v] of Object.entries(fields)) { if (v === null) delete r.fields[k]; else r.fields[k] = v; }
+    }
+  }
+
+  function _edHtml() {
+    const e = S.ed, rec = _edRec(e);
+    if (!rec) return '';
+    const O = OC(), io = IO(), it = _edItem(rec), f = it.f, dr = e.draft || {}, today = O.today();
+    const dis = e.busy ? ' disabled' : '';
+    const val = (k, dflt) => esc(dr[k] != null ? dr[k] : dflt);
+    const who = [it.num, it.client !== '—' ? it.client : ''].filter(Boolean).join(' · ');
+    const head = t => `<div class="owv-ed-h"><b>${esc(t)}</b><span title="${esc(who)}">${esc(who)}</span><button type="button" class="owv-ed-x" data-owvedact="close" title="Κλείσιμο (Esc)" aria-label="Κλείσιμο">×</button></div>`;
+    const err = e.err ? `<div class="owv-ed-err" role="alert">${esc(e.err)}</div>` : '';
+    const save = t => `<button type="button" class="owv-ed-save" data-owvedact="save"${dis}>${e.busy ? 'Αποθήκευση…' : esc(t)} <kbd>Enter</kbd></button>`;
+    const undo = `<button type="button" class="owv-ed-undo" data-owvedact="undo"${dis}>Αναίρεση τιμολόγησης</button>`;
+    const selfBox = io.selfAllowed(it) ? `<label class="owv-ed-self"><input type="checkbox" data-owvedact="self"${dis}><b>Αυτοπαράδοση</b><span class="owv-ed-m">· δικό μας φορτίο, χωρίς ΤΠΥ</span></label>` : '';
+    const tpyRow = (num, d, label) => `<div class="owv-ed-r"><label>Αριθμός (ΤΠΥ)<input class="owv-ed-in" data-owvedin="num" autocomplete="off" value="${val('num', num)}"${dis}></label>`
+      + `<label>Ημερομηνία<input class="owv-ed-in" data-owvedin="date" type="date" max="${today}" value="${val('date', d)}"${dis}></label>${save(label)}</div>`;
+    if (e.mode === 'amt' || it.state === 'blocked') {
+      const what = O.isSelfDelivery(f) ? 'αυτοπαράδοση' : 'ΤΠΥ ' + (f['Invoice Number'] || '—');
+      if (io.priceLocked(f)) {
+        return head('Τιμή') + `<div class="owv-ed-m">${esc(io.priceLockText(f))} (${esc(what)}).</div>${err}<div class="owv-ed-foot">${undo}</div>`;
+      }
+      const blocked = it.state === 'blocked', inv = it.state === 'invoiced';
+      const last = blocked && typeof OrdersNoPrice !== 'undefined' && OrdersNoPrice.lastPriceHint ? OrdersNoPrice.lastPriceHint(rec, OrdersData.all(S.data.set)) : null;
+      const hint = blocked ? (last ? 'τελευταία τιμή ίδιας διαδρομής ' + O.eurSym(last.price) : 'πρώτη φορά αυτή η διαδρομή') + ' · Enter → μετά ο ΤΠΥ'
+        : inv ? `Τιμολογημένη (${what})${O.isSelfDelivery(f) ? '' : ' · το τιμολόγιο στο ERP δεν αλλάζει από εδώ'} · Enter ρωτά πριν γράψει` : 'Enter αποθηκεύει';
+      return head(blocked ? 'Χωρίς τιμή · πρώτα η τιμή' : inv ? 'Τιμή τιμολογημένης' : 'Τιμή')
+        + `<div class="owv-ed-r"><label>Τιμή €<input class="owv-ed-in" data-owvedin="price" inputmode="decimal" autocomplete="off" value="${val('price', O.hasPrice(f) ? O.eur(O.price(f)) : '')}" placeholder="${last ? esc(O.eur(last.price)) : 'π.χ. 1.250,00'}"${dis}></label>${save(blocked ? 'Καταχώριση τιμής' : 'Διόρθωση τιμής')}</div>`
+        + `<div class="owv-ed-hint owv-ed-m">${esc(hint)}</div>${blocked ? selfBox : ''}${err}`;
+    }
+    if (it.state === 'ready') {
+      if (S.data.setFailed) return head('Τιμολόγιο ERP') + `<div class="owv-ed-m">${esc(ED_SET_FAILED)}</div>${selfBox}${err}`;
+      return head('Τιμολόγιο ERP') + tpyRow('', today, 'Καταχώριση') + '<div class="owv-ed-hint" id="owvEdHint"></div>' + selfBox + err;
+    }
+    if (it.state === 'invoiced' && O.isSelfDelivery(f)) {
+      return head('Αυτοπαράδοση') + `<div class="owv-ed-m">Χωρίς τιμολόγιο ERP — δικό μας φορτίο · ${esc(f['Invoice Date'] ? O.dm(f['Invoice Date']) : '—')}</div>${err}<div class="owv-ed-foot">${undo}</div>`;
+    }
+    if (it.state === 'invoiced') {
+      return head('Τιμολόγιο ERP · διόρθωση') + tpyRow(f['Invoice Number'] || '', O.ymd(f['Invoice Date']) || today, 'Διόρθωση ΤΠΥ') + err
+        + `<div class="owv-ed-foot">${undo}<span class="owv-ed-m">το τιμολόγιο στο ERP δεν ακυρώνεται από εδώ</span></div>`;
+    }
+    return '';
+  }
+
+  // Live lines under a new ΤΠΥ — no repaint, so the caret stays where it is.
+  function _edHint() {
+    const e = S.ed, box = document.getElementById('owvEd'), hint = document.getElementById('owvEdHint');
+    const rec = _edRec(e);
+    if (!box || !hint || !rec) return;
+    const io = IO(), it = _edItem(rec), n = _edVal('num').trim(), dEl = box.querySelector('[data-owvedin="date"]');
+    const dc = io.dateCheck(dEl ? dEl.value : '', OC().today());
+    const dup = io.dupCheck(_edItems(), n, it);
+    if (dEl) dEl.classList.toggle('bad', !!dc.error);
+    hint.innerHTML = io.tpyHints(n, dc, dup).map(h => `<span class="owv-ed-${h.kind}">${esc(h.text)}</span>`).join('<br>');
+  }
+  function _edVal(k) { const i = document.querySelector(`#owvEd [data-owvedin="${k}"]`); return i ? i.value : ''; }
+  // What is typed survives a repaint (the clips arriving, a refusal) — she never retypes.
+  function _edKeep() {
+    const e = S.ed, box = document.getElementById('owvEd');
+    if (!e || !box) return;
+    const dr = {};
+    box.querySelectorAll('[data-owvedin]').forEach(i => { dr[i.dataset.owvedin] = i.value; });
+    if (Object.keys(dr).length) e.draft = dr;
+  }
+  function _edFocus() {
+    const b = document.getElementById('owvEd');
+    const i = b && (b.querySelector('input.owv-ed-in:not([disabled])') || b.querySelector('button:not([disabled]):not(.owv-ed-x)'));
+    if (!i) return;
+    i.focus();
+    if (i.select && i.type !== 'date') i.select();
+  }
+  function _edRender() {
+    const box = document.getElementById('owvEd');
+    if (!box) return;
+    box.innerHTML = _edHtml();
+    _edHint();
+  }
+  function _edMount() {
+    const e = S.ed, body = S.ctx && S.ctx.body;
+    const old = document.getElementById('owvEd'); if (old) old.remove();
+    if (!e || !body) return;
+    const subs = [...body.querySelectorAll(_edSel(e.type, e.id))];
+    const sub = subs[e.k] || subs[0];
+    if (!sub || !sub.querySelector('[data-owved]') || !_edRec(e)) { S.ed = null; return; }
+    sub.classList.add('ow4-ed-on');
+    sub.insertAdjacentHTML('afterend', `<div class="owv-ed" id="owvEd" role="group" aria-label="Τιμολόγηση παραγγελίας">${_edHtml()}</div>`);
+    _edHint();
+    if (!e.busy) _edFocus();
+  }
+  function _edOpen(cell) {
+    if (S.ed && S.ed.busy) return;
+    const sub = cell.closest('.ow4-sub');
+    if (!sub || !sub.dataset.owvopen || !S.ctx) return;
+    const [type, id] = sub.dataset.owvopen.split(':');
+    const k = [...S.ctx.body.querySelectorAll(_edSel(type, id))].indexOf(sub);
+    const mode = cell.dataset.owved;
+    if (S.ed && S.ed.type === type && S.ed.id === id && S.ed.k === k && S.ed.mode === mode) return _edFocus();
+    // one thing open at a time: the documents and the order card give way to the editor
+    _edClose();
+    _closeDocs();
+    if (typeof _oiCloseCard === 'function') _oiCloseCard();
+    if (typeof closeNatlDetail === 'function') closeNatlDetail();
+    _installEdEsc();
+    S.ed = { type, id, k, mode, draft: null, err: '', busy: false, items: null };
+    _edMount();
+  }
+  function _edClose() {
+    if (!S.ed) return false;
+    S.ed = null;
+    const b = document.getElementById('owvEd'); if (b) b.remove();
+    document.querySelectorAll('.ow4-ed-on').forEach(x => x.classList.remove('ow4-ed-on'));
+    return true;
+  }
+  function _edErr(msg) { _edKeep(); S.ed.err = msg; _edRender(); _edFocus(); }
+  // A confirm dialog owns Esc while it is open (core/ui.js confirmAction).
+  const _modalOpen = () => { const o = document.getElementById('modalOverlay'); return !!(o && o.classList.contains('open')); };
+  let _edEscOn = false;
+  function _installEdEsc() {
+    if (_edEscOn) return; _edEscOn = true;
+    document.addEventListener('keydown', ev => {
+      if (ev.key !== 'Escape' || !S.ed || !document.getElementById('owvEd') || _modalOpen()) return;
+      ev.preventDefault(); ev.stopImmediatePropagation();
+      if (!S.ed.busy) _edClose();
+    }, true);
+  }
+
+  // One write. A refusal (the Worker / 043 / 101 / 057 text, a 403) or a record that does not say what was sent
+  // stays in the editor; if the editor is gone by then, a red toast says it — never silence.
+  async function _edWrite(rec, fn) {
+    const e = S.ed;
+    e.busy = true; e.err = ''; _edRender();
+    let fields;
+    try { fields = await fn(); }
+    catch (err) {
+      const msg = 'Δεν γράφτηκε: ' + ((err && err.message) || 'άγνωστο σφάλμα');
+      OrdersData.invalidate();
+      if (S.ed === e && document.getElementById('owvEd')) { e.busy = false; e.err = msg; _edRender(); _edFocus(); return null; }
+      // The editor is gone (another view, another week): said here, and it never comes back disabled.
+      if (S.ed === e) S.ed = null;
+      if (typeof toast === 'function') toast(msg, 'error');
+      return null;
+    }
+    _edApply(rec, fields);
+    OrdersData.invalidate();
+    if (typeof OrdersHub !== 'undefined' && OrdersHub.refreshBadges) OrdersHub.refreshBadges();
+    if (S.ed === e) { e.busy = false; e.draft = null; e.items = null; e.err = ''; }
+    return fields;
+  }
+  // After a write: the line repaints from the record (the editor stays open in `next` mode, or closes).
+  // The old box goes first: what was typed in it is written, never carried into the next form.
+  function _edDone(next) {
+    if (S.ed && next) { S.ed.mode = next; const b = document.getElementById('owvEd'); if (b) b.remove(); } else _edClose();
+    if (S.ctx && S.ctx.isCurrent()) _paint(S.ctx);
+  }
+
+  async function _edSave() {
+    const e = S.ed;
+    if (!e || e.busy) return;
+    const rec = _edRec(e);
+    if (!rec) return _edClose();
+    _edKeep();
+    const io = IO(), it = _edItem(rec), dr = e.draft || {};
+    if ('price' in dr) return _edPrice(rec, it, dr.price);
+    if (!('num' in dr)) return;
+    const num = String(dr.num || '').trim(), d = dr.date || '';
+    if (!num) return _edErr('Συμπλήρωσε τον αριθμό ΤΠΥ του ERP');
+    const dc = io.dateCheck(d, OC().today());
+    if (dc.error) return _edErr('Ημερομηνία ' + dc.error);
+    if (S.data.setFailed) return _edErr(ED_SET_FAILED);
+    if (it.state === 'ready') {
+      const dup = io.dupCheck(_edItems(), num, it);
+      if (dup.other.length && !(await io.confirmDup(dup.other[0], num))) return _edFocus();
+      if (await _edWrite(rec, () => io.writeInvoice(it, num, d))) _edDone(null);
+      return;
+    }
+    if (it.state !== 'invoiced' || OrdersCommon.isSelfDelivery(it.f)) return;
+    // «Διόρθωση ΤΠΥ»: nothing changed = nothing written
+    if (num === String(it.f['Invoice Number'] || '') && d === OC().ymd(it.f['Invoice Date'])) return _edClose();
+    if (!(await io.confirmEdit(it, num))) return _edFocus();
+    const dup = io.dupCheck(_edItems(), num, it);
+    if (dup.other.length && !(await io.confirmDup(dup.other[0], num, true))) return _edFocus();
+    if (await _edWrite(rec, () => io.writeTpy(it, num, d))) _edDone(null);
+  }
+  async function _edPrice(rec, it, raw) {
+    const io = IO();
+    if (io.priceLocked(it.f)) return;
+    const n = typeof OrdersNoPrice !== 'undefined' ? OrdersNoPrice.parsePrice(raw) : null;
+    if (n === null) return _edErr('Γράψε ποσό μεγαλύτερο του 0 — π.χ. 950 ή 1.250,00');
+    if (OrdersCommon.hasPrice(it.f) && Math.abs(OrdersCommon.price(it.f) - n) < 0.005) return _edClose();
+    const wasBlocked = it.state === 'blocked';
+    // Owner 3/11/2026: an invoiced order's price changes — asked before, never after.
+    if (it.state === 'invoiced' && !(await io.confirmPrice(it, n))) return _edFocus();
+    const fields = await _edWrite(rec, async () => ({ 'Price': await io.writePrice(it, n) }));
+    if (!fields) return;
+    if (wasBlocked && typeof OrdersNoPrice !== 'undefined' && OrdersNoPrice.noteFilled) OrdersNoPrice.noteFilled(it.type, it.id, fields['Price']);
+    // Owner 21/10/2026: the price, then the ΤΠΥ — its box opens in the same place.
+    _edDone(wasBlocked && _edItem(rec).state === 'ready' ? 'tpy' : null);
+  }
+  async function _edSelf(box) {
+    const e = S.ed, rec = _edRec(e), io = IO();
+    if (!rec || !e || e.busy || !box.checked) { box.checked = false; return; }
+    const it = _edItem(rec);
+    if (!io.selfAllowed(it)) { box.checked = false; return; }
+    if (await _edWrite(rec, () => io.writeSelf(it, OC().today()))) _edDone(null);
+  }
+  async function _edUndo() {
+    const e = S.ed, rec = _edRec(e);
+    if (!rec || !e || e.busy) return;
+    const io = IO(), it = _edItem(rec), self = OrdersCommon.isSelfDelivery(rec.fields);
+    if (it.state !== 'invoiced') return;
+    if (!(await io.confirmUndo(it, self))) return _edFocus();
+    // Undone, the editor stays where she was: the ΤΠΥ box again, or the price (now open).
+    if (await _edWrite(rec, () => io.writeUndo(it, self))) _edDone(e.mode);
+  }
+  function _edAct(a) {
+    const act = a.dataset.owvedact;
+    if (act === 'close') { if (!S.ed || !S.ed.busy) _edClose(); return; }
+    if (act === 'save') return _edSave();
+    if (act === 'undo') return _edUndo();
+    if (act === 'self') return _edSelf(a);
   }
 
   // The order card of «Κατάλογος», opened HERE (owner 2/11/2026: «να μη φεύγει
@@ -1342,17 +1657,22 @@ const OrdersWeekView = (() => {
   }
 
   // The board's numbers of this read; an error is said on the row («—» with why), never a 0.
+  // The board of a week of load(): its rows and numbers (WI4.weekBoard), for this page and for the pallets weekly
+  // view (PalletsWeek), which reads the same load and must number and print exactly as here — one source.
+  function boardOf(d, week) {
+    // the board's rows of this week (WI4.weekBoard): its numbers, and the line whose document ΑΝΑΘΕΣΗ shows
+    // the stops' dates ride on copies (WI4.rowDt reads _stopsL / _stopsD): the records the cards open stay as read
+    const withStops = r => { const e = d.stopDates && d.stopDates.get(r.id); return e ? Object.assign({}, r, { fields: Object.assign({}, r.fields, e.L.length ? { _stopsL: e.L } : {}, e.D.length ? { _stopsD: e.D } : {}) }) : r; };
+    return WI4.weekBoard({ recs: [...d.intl, ...(d.cancelled || [])].map(withStops), wsDate: new Date(week + 'T00:00:00'), dayOf: toLocalDate,
+      split: typeof FEATURES !== 'undefined' && !!FEATURES.ORDER_SPLIT,
+      // The board shows its stock shelf when stock is on (this page is never the warehouse's)
+      shelf: typeof OrdersStock !== 'undefined' && OrdersStock.on(),
+      isLoose: f => window.WI_INTERNAL.loose(f) });
+  }
   function _numbers(d) {
     S.board = null;
     try {
-      // the board's rows of this week (WI4.weekBoard): its numbers, and the line whose document ΑΝΑΘΕΣΗ shows
-      // the stops' dates ride on copies (WI4.rowDt reads _stopsL / _stopsD): the records the cards open stay as read
-      const withStops = r => { const e = d.stopDates && d.stopDates.get(r.id); return e ? Object.assign({}, r, { fields: Object.assign({}, r.fields, e.L.length ? { _stopsL: e.L } : {}, e.D.length ? { _stopsD: e.D } : {}) }) : r; };
-      S.board = WI4.weekBoard({ recs: [...d.intl, ...(d.cancelled || [])].map(withStops), wsDate: new Date(S.week + 'T00:00:00'), dayOf: toLocalDate,
-        split: typeof FEATURES !== 'undefined' && !!FEATURES.ORDER_SPLIT,
-        // The board shows its stock shelf when stock is on (this page is never the warehouse's)
-        shelf: typeof OrdersStock !== 'undefined' && OrdersStock.on(),
-        isLoose: f => window.WI_INTERNAL.loose(f) });
+      S.board = boardOf(d, S.week);
       return WI4.numberOf(S.board.built, S.board.no);
     } catch (e) {
       console.error('orders week: Weekly numbers', e);
@@ -1372,8 +1692,8 @@ const OrdersWeekView = (() => {
   // import group's packet with that group's sheet. Partner sheet when the row
   // has a partner (owner 9/8). Export first, then import. Old / v5 nationals:
   // not here yet (their sheet needs the v5 board: a later step).
-  function _rowDocs(r) {
-    const b = S.board;
+  function _rowDocs(r) { return rowDocsOf(S.board, r); }
+  function rowDocsOf(b, r) {
     if (!b || typeof printSheetQuery !== 'function' || !window.WI_INTERNAL) return [];
     const rows = b.built.rows;
     const rowOf = id => (id && rows.find(x => (x.orderIds || []).includes(id))) || null;
@@ -1408,16 +1728,22 @@ const OrdersWeekView = (() => {
     const docs = _rowDocs(r);
     if (!docs.length) return;
     // one panel on the right at a time: the order card gives way to the documents
+    if (S.ed && S.ed.busy) return;
+    _edClose();
     if (typeof _oiCloseCard === 'function') _oiCloseCard();
     if (typeof closeNatlDetail === 'function') closeNatlDetail();
+    box.innerHTML = docsInner(r, docs);
+    box.classList.remove('hidden');
+  }
+  // The overlay's content (this page and the pallets weekly view): one way to show the assignment papers.
+  function docsInner(r, docs) {
     const away = docs.elsewhere ? `<div class="owv-doc-t">${docs.elsewhere} ${docs.elsewhere === 1 ? 'σκέλος είναι' : 'σκέλη είναι'} σε άλλη εβδομάδα — το έγγραφό ${docs.elsewhere === 1 ? 'του' : 'τους'} είναι στο Εβδομαδιαίο εκείνης της εβδομάδας</div>` : '';
     // print.html alone in each frame (never a second app): noprint=1 keeps its own print dialog for its
     // «Print / PDF» button, so the paper is read here and printed from its own bar.
-    box.innerHTML = `<div class="owv-docs-h"><b>Έγγραφα ανάθεσης</b><span>${esc(r.code || OC().numLabel(r.rec || {}))}</span>
+    return `<div class="owv-docs-h"><b>Έγγραφα ανάθεσης</b><span>${esc(r.code || OC().numLabel(r.rec || {}))}</span>
       <button type="button" class="owv-docs-x" data-owvdocs="close" title="Κλείσιμο (Esc)" aria-label="Κλείσιμο">×</button></div>
       <div class="owv-docs-b">${away}${docs.map(d => `<section class="owv-doc"><div class="owv-doc-t">${esc(d.title)}</div>
         <iframe class="owv-doc-f" title="${esc(d.title)}" src="print.html?${esc(d.query)}&noprint=1"></iframe></section>`).join('')}</div>`;
-    box.classList.remove('hidden');
   }
   function _closeDocs() {
     const box = document.getElementById('owvDocs');
@@ -1466,6 +1792,160 @@ const OrdersWeekView = (() => {
 
   // CSV: one line per order shown, NET amounts (owner 13/10), with «Μετρά εδώ»
   // (§04): a grey leg of another week is listed but counted in its own week.
+  // ══ «Εβδομάδα τιμολόγησης» on paper (owner 3/11/2026, Figma 2543:7735) ═════
+  // A4 portrait, one block per round trip with its Σ, one line per order under
+  // it. It draws S.print — the rows, Weekly numbers, sums, invoicing words and
+  // statement the screen has just painted — and computes nothing of its own.
+  // Rejected by the owner (3/11): the landscape copy of the screen's mirrored
+  // rows, and a bare order list with no trips («να φαίνεται το κάθε round trip»).
+
+  // The international rows in the screen's «Ανά ημέρα» order (daySections, then
+  // «μεταφέρθηκε», no date, «χωρίς δρομολόγιο») — the Weekly's order, whatever
+  // grouping the screen shows at the moment.
+  function printSequence(week, m) {
+    if (m.rtFailed) return m.noRt.slice().sort(byDayThenRow);
+    const sec = daySections(week, m.rows);
+    return [...sec.days.flatMap(x => x.rows), ...sec.moved, ...sec.other, ...m.noRt.slice().sort(byDayThenRow)];
+  }
+
+  // → { ok, html, refused[] }. ok false = a read failed: nothing is printed
+  // (state Δ3 — never a paper with half numbers), refused names what failed.
+  function printDoc(P, meta) {
+    const O = OC();
+    meta = meta || {};
+    const yr = String(P.week).slice(0, 4);
+    const top = `<header class="owvp-hd"><div><b class="owvp-brand">PETRAS GROUP</b><span>Λογιστήριο · Παραγγελίες › Εβδομάδα</span></div>`
+      + `<div class="owvp-tag"><b>Εσωτερικό έγγραφο</b><span>${esc(meta.printed || '')}</span></div></header>`
+      + `<h1 class="owvp-t">Εβδομάδα τιμολόγησης <span>${esc(dayShort(P.week))} – ${esc(dayShort(O.addDays(P.week, 6)))}/${esc(yr)} · καθαρά ποσά, χωρίς ΦΠΑ</span></h1>`;
+    if (P.fails && P.fails.length) return { ok: false, refused: P.fails.map(x => x.head), html: '' };
+
+    const star = [];
+    // The invoice cell: number · date, «αυτοπαράδοση», or the stateOf word (B0:
+    // a missing pallet slip never blocks — «προς κοπή · χωρίς δελτίο», as the CSV).
+    const invCell = rec => {
+      if (isVsNational(rec)) return { cls: 'g', text: 'δεν τιμολογείται', done: true };
+      const st = P.stateOf(rec), f = rec.fields || {};
+      if (st.key === 'invoiced') {
+        if (O.isSelfDelivery(f)) return { cls: 'g', text: 'αυτοπαράδοση', done: true };
+        const nr = String(f['Invoice Number'] || '').trim();
+        return { cls: 'g', text: nr ? nr + (f['Invoice Date'] ? ' · ' + O.dm(f['Invoice Date']) : '') : 'τιμολογήθηκε', done: true };
+      }
+      if (st.key === 'ready') return { cls: '', text: st.noSheets ? 'προς κοπή · χωρίς δελτίο' : 'προς κοπή' };
+      const tp = tpyOf(rec, st);
+      return { cls: tp.cls === 'bad' ? 'bad' : 'g', text: tp.text, done: st.key === 'cancelled' };
+    };
+    // The amount, with the screen's rules (_legCells): what is not counted here is grey and says why.
+    const amtOf = l => {
+      const f = l.rec.fields || {}, has = O.hasPrice(f), p = has ? O.eur(O.price(f)) : '—';
+      if (l.cancelled) return { t: 'ακυρωμένη', off: true };
+      if (l.piece) return { t: 'στην παρτίδα ' + OrdersStock.lotNumLabel(f), off: true };
+      if (l.parentMissing) return { t: 'αρχική εκτός ανάγνωσης', off: true };
+      if (l.dupOf) return { t: 'μετρά σε άλλη γραμμή', off: true };
+      if (isVsNational(l.rec)) return { t: p, off: true };
+      if (!l.inWeek) { if (has) star.push([clientRaw(f), O.numLabel(l.rec), p, `(${weekMark(l.week)})`].filter(Boolean).join(' ')); return { t: p, off: true, wk: weekMark(l.week) }; }
+      return { t: p, dag: !has };
+    };
+    const order = l => {
+      if (!l.rec) return `<tr class="owvp-o off"><td></td><td colspan="5">#${esc(l.orderId)} εκτός εύρους</td><td colspan="4"></td></tr>`;
+      const f = l.rec.fields || {}, e = endsOf(l.rec), a = amtOf(l), iv = invCell(l.rec);
+      const route = `${e.from || '—'}${e.nFrom ? ' +' + e.nFrom : ''} → ${e.to || '—'}${e.nTo ? ' +' + e.nTo : ''}`;
+      const day = a.wk || dayShort(rowDayOf(l.own || l.rec, P.stopDates)) || '—';
+      // ☐ only where the accountant still has to act: an order counted here, not invoiced
+      const box = a.off || iv.done ? '' : '☐';
+      return `<tr class="owvp-o${a.off ? ' off' : ''}"><td></td><td class="nw">${esc(day)}</td><td class="g nw">${esc(O.numLabel(l.rec))}</td>`
+        + `<td>${esc(clientRaw(f) || '—')}</td><td>${esc(route)}</td>`
+        + `<td class="${iv.cls}">${iv.cls === 'bad' ? '<i class="owvp-dot">•</i> ' : ''}${esc(iv.text)}</td>`
+        + `<td class="n nw">${esc(a.t)}</td><td class="mk">${a.dag ? '†' : ''}</td><td></td><td class="n box">${box}</td></tr>`;
+    };
+    const note = (text) => `<tr class="owvp-o off"><td></td><td colspan="9">${esc(text)}</td></tr>`;
+    const sumText = (recs, mk) => { const s = rowSum(recs); return (s > 0 ? O.eur(s) : '—') + (mk.s ? ' *' : '') + (mk.g ? ' †' : ''); };
+    // The Weekly numbers (a groupage has several: «4 · 5 · 6 · 14») span the day column too, never wrapped.
+    const trip = (no, who, tag, sum) => `<tr class="owvp-trip"><td colspan="2" class="nw">${esc(no)}</td><td colspan="6">${esc(who)}${tag ? ` <span class="g">· ${esc(tag)}</span>` : ''}</td><td class="n nw">${esc(sum)}</td><td></td></tr>`;
+    const whoOf = v => v.kind === 'own' ? [v.plate, v.who].filter(Boolean).join(' · ')
+      : v.kind === 'partner' ? [v.plate, v.who].filter(Boolean).join(' · ') + ' (συνεργάτης)' : v.text;
+    const secHead = (label, n) => `<tr class="owvp-sec"><td colspan="10">${esc(label)} · ${n}</td></tr>`;
+    const secSum = (label, t, s, g) => `<tr class="owvp-sub"><td></td><td colspan="7">${esc(label)}</td><td class="n nw">${t.n ? esc(O.eur(t.sum) + (s ? ' *' : '') + (g ? ' †' : '')) : '—'}</td><td></td></tr>`;
+
+    const body = [];
+    if (P.showI) {
+      const rows = printSequence(P.week, P.m);
+      body.push(secHead('ΔΙΕΘΝΗ ΔΡΟΜΟΛΟΓΙΑ', rows.length));
+      for (const r of rows) {
+        const no = P.numsOk ? (r.nos && r.nos.length ? r.nos.join(' · ') : '—') : '—';
+        const tag = r.kind !== 'rt' ? 'χωρίς δρομολόγιο' : r.guest ? 'από ' + weekMark(r.homeWeek) : r.moved ? 'μεταφέρθηκε εδώ' : '';
+        body.push(trip(no, whoOf(vehicleOf(r.vehicleRec)), tag, sumText(r.counted, rowMarks(r))));
+        for (const l of [...r.exp, ...r.imp]) body.push(order(l));
+      }
+      body.push(secSum('Σύνολο διεθνών', P.tI, P.star.some(x => x.sec === 'Διεθνή'), P.tAll.unpricedRecs.some(r => r._type === 'intl')));
+    }
+    if (P.showN) {
+      body.push(secHead('ΕΘΝΙΚΑ ΔΡΟΜΟΛΟΓΙΑ', P.natRows.length));
+      for (const r of P.natRows) {
+        let who;
+        if (r.assign.kind === 'load') who = whoOf(vehicleOf(r.assign.load));
+        else if (r.assign.kind === 'v5') who = whoOf(vehicleOfV5(r.assign.state));
+        else who = r.assign.kind === 'grp' ? 'μέσω ομαδοποίησης' : r.assign.kind === 'out' ? 'εκτός φορτίου' : '—';
+        body.push(trip(dayShort(r.day) || '—', who, '', sumText(r.counted, natMarks(r))));
+        for (const s of [r.kat, r.ano]) {
+          if (!s) continue;
+          const word = s.dir === 'up' ? 'Άνοδος' : 'Κάθοδος';
+          if (s.kind === 'order') body.push(order({ rec: s.rec, inWeek: s.inWeek, week: s.week }));
+          else if (s.kind === 'vs') body.push(note(`${word} VS${s.intlRec ? ' · ' + O.numLabel(s.intlRec) : ''} — την τιμή τη φέρει η διεθνής`));
+          else if (s.kind === 'grp') body.push(note(`${word} · μέσω ομαδοποίησης`));
+          else if (s.kind === 'claimed') body.push(note(`${word} · ${O.numLabel(s.rec)} σε άλλη γραμμή`));
+          else if (s.kind === 'unread') body.push(note(`${word} · εκτός εύρους`));
+        }
+      }
+      body.push(secSum('Σύνολο εθνικών', P.tN, P.star.some(x => x.sec === 'Εθνικά'), P.tAll.unpricedRecs.some(r => r._type === 'natl')));
+    }
+    const table = `<table class="owvp-tb"><colgroup><col class="c-no"><col class="c-day"><col class="c-ord"><col class="c-cl"><col class="c-rt"><col class="c-inv"><col class="c-amt"><col class="c-mk"><col class="c-sum"><col class="c-box"></colgroup>`
+      + `<thead><tr><th>Α/Α</th><th>ΗΜΕΡΑ</th><th>ΠΑΡ.</th><th>ΠΕΛΑΤΗΣ</th><th>ΔΙΑΔΡΟΜΗ</th><th>ΤΙΜΟΛΟΓΙΟ</th><th class="n">ΚΑΘΑΡΟ €</th><th></th><th class="n">Σ ΔΡΟΜ. €</th><th class="n">☐</th></tr></thead>`
+      + `<tbody>${body.join('')}</tbody></table>`;
+
+    // «Κατάσταση εβδομάδας»: the screen's three totals, the same marks.
+    const t = P.tAll, mk = (s, g) => (s ? '*' : '') + (g ? '†' : '');
+    const money = x => x.n ? [O.eur(x.sum), O.eur(x.invSum), O.eur(x.openSum)] : ['—', '—', '—'];
+    const stRow = (label, x, marks, cls) => { const v = money(x); return `<tr${cls ? ` class="${cls}"` : ''}><th>${esc(label)}</th><td class="n">${v[0]}</td><td class="mk">${x.n ? marks : ''}</td><td class="n">${v[1]}</td><td class="n">${v[2]}</td></tr>`; };
+    const stRows = [];
+    if (P.showI) stRows.push(stRow('Διεθνείς', P.tI, mk(P.star.some(x => x.sec === 'Διεθνή'), t.unpricedRecs.some(r => r._type === 'intl'))));
+    if (P.showN) stRows.push(stRow('Εθνικές', P.tN, mk(P.star.some(x => x.sec === 'Εθνικά'), t.unpricedRecs.some(r => r._type === 'natl'))));
+    stRows.push(stRow('Σύνολο εβδομάδας', t, mk(P.star.length > 0, t.unpriced > 0), 'tot'));
+    const other = t.n - t.invN - t.readyN - t.blockedN;
+    const count = !t.n ? 'Καμία παραγγελία με ημερομηνία σε αυτή την εβδομάδα.'
+      : `Παραγγελίες: ${t.invN} τιμολογημένες + ${t.readyN} προς κοπή`
+        + (t.readyNoSheets ? ` (${t.readyNoSheets === 1 ? 'η 1' : 'οι ' + t.readyNoSheets} χωρίς δελτίο παλετών)` : '')
+        + ` + ${t.blockedN} χωρίς τιμή${other > 0 ? ` + ${other} άλλες` : ''} = ${t.n}`;
+    const state = `<table class="owvp-st"><thead><tr><th>ΚΑΤΑΣΤΑΣΗ ΕΒΔΟΜΑΔΑΣ</th><th class="n">ΤΖΙΡΟΣ €</th><th></th><th class="n">ΤΙΜΟΛΟΓΗΜΕΝΑ €</th><th class="n">ΑΤΙΜΟΛΟΓΗΤΑ €</th></tr></thead><tbody>${stRows.join('')}</tbody></table>`
+      + `<p class="owvp-count">${esc(count)}</p>`;
+    const foot = [];
+    if (star.length) foot.push(`* Γκρι = παραγγελία του δρομολογίου σε άλλη εβδομάδα· μετρά στη δική της: ${star.join(' · ')}.`);
+    if (P.dag.length) foot.push(`† Χωρίς τιμή, δεν μπαίνει στα σύνολα: ${P.dag.map(r => `${clientRaw(r.fields || {}) || '—'} ${O.numLabel(r)}`).join(' · ')}. Χωρίς τιμή = «—», ποτέ 0,00.`);
+    foot.push('Α/Α = ο αριθμός της γραμμής στο Weekly. Καθαρό = η τιμή της παραγγελίας στο σύστημα· το ποσό του τιμολογίου ελέγχεται στο ERP. ☐ για τον έλεγχο με το στυλό.');
+    if (!P.numsOk && P.showI) foot.unshift('Η αρίθμηση του Weekly δεν διαβάστηκε· οι γραμμές χωρίς αριθμό.');
+    const html = `<div class="owvp">${top}${table}${state}<div class="owvp-foot">${foot.map(x => `<p>${esc(x)}</p>`).join('')}</div>`
+      + `<footer class="owvp-ft">Παραγγελίες › Εβδομάδα · εβδομάδα ${esc(O.dm(P.week))} – ${esc(O.dm(O.addDays(P.week, 6)))}/${esc(yr)}</footer></div>`;
+    return { ok: true, refused: [], html };
+  }
+
+  // «Εκτύπωση»: the paper above in a print-only layer (#owvPrint, assets/style.css
+  // body.owv-printing), then the browser's own print / PDF — nothing is fetched.
+  function _print() {
+    const P = S.print;
+    if (!P) { toast('Η εβδομάδα δεν έχει φορτώσει ακόμη — δοκίμασε ξανά σε λίγο', 'error'); return; }
+    const now = new Date(), pad = x => String(x).padStart(2, '0');
+    const who = (typeof user !== 'undefined' && user && (user.name || user.username)) || '';
+    const printed = `Εκτυπώθηκε ${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}${who ? ' · ' + who : ''}`;
+    const doc = printDoc(P, { printed });
+    if (!doc.ok) { toast('Η εκτύπωση δεν βγήκε: ' + doc.refused.join(' ') + ' Ξαναδοκίμασε.', 'error'); return; }
+    let el = document.getElementById('owvPrint');
+    if (!el) { el = document.createElement('div'); el.id = 'owvPrint'; document.body.appendChild(el); }
+    el.innerHTML = doc.html;
+    const done = () => { document.body.classList.remove('owv-printing'); el.innerHTML = ''; window.removeEventListener('afterprint', done); };
+    window.addEventListener('afterprint', done);
+    document.body.classList.add('owv-printing');
+    window.print();
+  }
+
   function _csv() {
     const m = S.model; if (!m) return;
     const O = OC(), scope = S.ctx ? S.ctx.scope : 'all';
@@ -1499,8 +1979,10 @@ const OrdersWeekView = (() => {
     });
   }
 
-  return { render, recordChanged, buildWeek, rowNumbers, legNumber, totals, rtInvoicing, verdictText, tpyOf, pctVsPrev, stripWeeks, groupRows, daySections,
-    weekStatus, pairNationals, routeSplit, ordersFormula, placeText, isVsNational, naturalDateOf, pgIdOf, dayLabel, weekTitle };
+  return { render, recordChanged, buildWeek, rowNumbers, legNumber, totals, rowMarks, natMarks, rowSum, printSequence, printDoc, rtInvoicing, verdictText, tpyOf, pctVsPrev, stripWeeks, groupRows, daySections,
+    weekStatus, pairNationals, routeSplit, ordersFormula, placeText, isVsNational, naturalDateOf, pgIdOf, dayLabel, weekTitle,
+    // the pallets weekly view (modules/pallets_week.js) reads the same week through these, never a copy
+    load, boardOf, rowDocsOf, docsInner, endsOf, vehicleOf, dayShort, dayFull, clientRaw, isSplitLeg };
 })();
 
 if (typeof window !== 'undefined') window.OrdersWeekView = OrdersWeekView;
