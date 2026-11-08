@@ -2442,6 +2442,35 @@ SCN['pe'] = async (browser, origin) => {
   }
   ok(scn, 'no page errors', !pe.length, pe);
 };
+// ✈ audit 8/11 (docs/national-v5/plane-menu-audit-2026-11-08.md, gaps 1·2·4): on the fixture week, 106 = ΑΝΟΔΟΣ only,
+// 103 = ΚΑΘΟΔΟΣ only. (1) «Φόρτωση με τοπικό» on 106 says it has no ΚΑΘΟΔΟΣ, not «does not load outside Veroia»;
+// (2) «Εκτύπωση › Άνοδος» on 103 opens no print window and says so; (4) a menu line that throws is said by a toast.
+SCN['plane-gaps'] = async (browser, origin) => {
+  const scn = 'plane-gaps';
+  // the sheet's kit (as scnSheet): the fixture week with the catalogues, so Veroia resolves and the print path is reached
+  const { page, S } = await KC.openApp(browser, origin, { clipboard: true, board: fixture() });
+  await page.context().route((u) => !u.href.startsWith(origin) && !u.href.includes(KC.HOST) && !u.href.startsWith('about:'), (route) => route.abort());
+  await bMenu(page, 106, 'local');
+  await page.waitForSelector(`${bDlg('local')} .wn5-none`, { timeout: 3000 }).catch(() => {});
+  const none = await bText(page, `${bDlg('local')} .wn5-none`);
+  ok(scn, '(1) ΑΝΟΔΟΣ-only: «δεν έχει κάθοδο», never «δεν φορτώνει έξω από τη Βέροια»', none.includes('δεν έχει κάθοδο') && !none.includes('έξω από τη Βέροια'), none);
+  await page.keyboard.press('Escape').catch(() => {});
+  await page.waitForTimeout(200);
+  const [pop] = await Promise.all([page.waitForEvent('popup', { timeout: 2500 }).catch(() => null), bMenu(page, 103, 'sheet-a')]);
+  await page.waitForTimeout(300);
+  const ev = await bEv(page);
+  ok(scn, '(2) «Άνοδος» of a ΚΑΘΟΔΟΣ-only cycle: no print window', !pop);
+  ok(scn, '(2) … and a warn toast «δεν έχει άνοδο»', ev.some((e) => e.startsWith('toast') && e.includes('δεν έχει άνοδο') && e.includes('"warn"')), ev);
+  if (pop) await pop.close().catch(() => {});
+  await page.evaluate(() => { const it = WN5.MENU_ITEMS.find((x) => x.id === 'orders'); it.__run = it.run; it.run = () => { throw new Error('rig sentinel throw'); }; });
+  await bMenu(page, 101, 'orders');
+  const ev2 = await bEv(page);
+  ok(scn, '(4) a line that throws → a danger toast with its label and the error', ev2.some((e) => e.startsWith('toast') && e.includes('Άνοιγμα παραγγελιών') && e.includes('rig sentinel throw') && e.includes('"danger"')), ev2);
+  await page.evaluate(() => { const it = WN5.MENU_ITEMS.find((x) => x.id === 'orders'); it.run = it.__run; delete it.__run; });
+  ok(scn, 'read only: no /plan write', !S.plan.some((x) => x.m !== 'GET'), S.plan.filter((x) => x.m !== 'GET').map((x) => x.m + ' ' + x.path));
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await page.context().close();
+};
 // ── scenarios end (each Task adds its own above this line) ──
 
 // ── fixture check (T4): plain node, no browser ──

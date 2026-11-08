@@ -357,6 +357,13 @@
       const ctx = await _ctx(rtId);
       if (!ctx) return false;
       const ls = lines(ctx.cycle, ctx.places, p, segmentId);
+      // ✈ audit 8/11: a part the cycle does not have (e.g. «Άνοδος» of a ΚΑΘΟΔΟΣ-only cycle) built a sheet with the head
+      // and «0» only, printed and copied without a word. No 'side' line = nothing for the driver: said, nothing printed.
+      if (!ls.some((l) => l.t === 'side')) {
+        if (typeof toast === 'function') toast(p === 'ALL' ? 'Το δρομολόγιο δεν έχει στάσεις: δεν βγαίνει φύλλο.'
+          : `Το δρομολόγιο δεν έχει ${p === 'ANODOS' ? 'άνοδο' : 'κάθοδο'}: δεν βγαίνει φύλλο.`, 'warn');
+        return false;
+      }
       _last = { rtId, part: p, segmentId, lines: ls, meta: ctx.meta };   // whatsapp(rtId, part) answers for the last sheet built
       if (typeof _printWeekShell === 'function') _printWeekShell(`Φύλλο οδηγού · ${ctx.cycle.code || 'RT-' + rtId}`, html(ls, ctx.meta, _tokens()));
       await _copy(text(ls, ctx.meta));
