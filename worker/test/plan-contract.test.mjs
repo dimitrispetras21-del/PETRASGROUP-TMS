@@ -88,6 +88,7 @@ const f098 = () => readOne(['drafts/098_plan_transfer_point.sql', '098_plan_tran
 const f099 = () => readOne(['drafts/099_plan_transfer.sql', '099_plan_transfer.sql'],
   'copy it from the SQL branch: git checkout origin/feat/transfer-099-act -- worker/migrations/drafts/099_plan_transfer.sql');
 const f102 = () => readOne(['drafts/102_plan_drafts.sql', '102_plan_drafts.sql'], 'it is on main since #238');
+const f111 = () => readOne(['drafts/111_intl_form_stops.sql', '111_intl_form_stops.sql'], 'the Worker of the new international form is built on it (PR #289)');
 // 074 may still be in review when deploy 1 goes (it runs on day L): null when no copy is on this branch
 const f074 = () => ['drafts/074_plan_cutover.sql', '074_plan_cutover.sql'].map((n) => path.join(MIG, n)).filter((f) => existsSync(f))
   .map((file) => ({ file, sql: readFileSync(file, 'utf8') }))[0] || null;
@@ -373,9 +374,17 @@ test('every 071 CHECK and UNIQUE is mapped to Greek or classified; every PLAN_CH
     assert.deepEqual(r, { type: 'PLAN_RULE', code: name, message: W.PLAN_CHECK_TEXT[name] }, name);
     assert.match(r.message, greek, `${name} text is Greek`);
   }
-  const known = new Set([...checks, ...uniques, ...LIVE_PRE_071, ...checks072b, ...checks089, ...checksRoad]);
+  // 111 (the new international form): the two hour formats of a stop, Greek, never the 500 path
+  const checks111 = uniq(/ADD CONSTRAINT (\w+) CHECK/g, f111().sql);
+  assert.deepEqual(checks111, ['order_stops_time_from_fmt', 'order_stops_time_to_fmt'], `111 CHECKs parsed: ${checks111.join(', ')}`);
+  for (const name of checks111) {
+    const r = W.stockRuleError({ pg: { code: '23514', message: `new row for relation "order_stops" violates check constraint "${name}"` } });
+    assert.deepEqual(r, { type: 'PLAN_RULE', code: name, message: W.PLAN_CHECK_TEXT[name] }, name);
+    assert.match(r.message, greek, `${name} text is Greek`);
+  }
+  const known = new Set([...checks, ...uniques, ...LIVE_PRE_071, ...checks072b, ...checks089, ...checksRoad, ...checks111]);
   const dead = Object.keys(W.PLAN_CHECK_TEXT).filter((k) => !known.has(k));
-  assert.deepEqual(dead, [], 'PLAN_CHECK_TEXT keys with no constraint in 071, 072b, 089, 098, 099, 102 or live before 071');
+  assert.deepEqual(dead, [], 'PLAN_CHECK_TEXT keys with no constraint in 071, 072b, 089, 098, 099, 102, 111 or live before 071');
   for (const k of RELAY_OWNED) assert.ok(!Object.prototype.hasOwnProperty.call(W.PLAN_CHECK_TEXT, k), `${k} stays in RELAY_CHECK_TEXT only`);
 });
 
