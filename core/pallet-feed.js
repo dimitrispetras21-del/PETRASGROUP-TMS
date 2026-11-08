@@ -72,7 +72,8 @@ function plOrderGate(rec, source, eventType) {
 // order form) when it is set; empty = every pallet of the stop, exactly as before; a set 0 = no exchange at this stop.
 // ONE rule for the loading feeder, plRecordStops and the pallets weekly view's count (pallets_week.js loadStops).
 // The base has no CHECK on the column: a value that is not a whole number 0..pallets is never trusted — the
-// stop's pallets are used and it is SAID (principle 1), so a typo never inflates a client's balance.
+// stop's pallets are used and it is SAID (principle 1), so a typo never inflates a client's balance. Said on every
+// save on purpose: it stays loud until someone fixes the stop.
 function _plLoadTaken(s) {
   const pallets = parseInt(s.fields[F.STOP_PALLETS], 10) || 0;
   const ex = s.fields[F.STOP_PALLETS_EXCHANGED];
@@ -81,7 +82,7 @@ function _plLoadTaken(s) {
   if (Number.isInteger(n) && n >= 0 && n <= pallets) return n;
   console.warn('[pallet-feed] Pallets Exchanged out of range', s.id, ex, pallets);
   if (typeof showErrorToast === 'function') showErrorToast('Παλέτες: στη φόρτωση οι παλέτες με ανταλλαγή (' + ex
-    + ') δεν ταιριάζουν με τις ' + pallets + ' της στάσης — γράφτηκαν ' + pallets + ', διόρθωσέ το στην παραγγελία', 'warn', _PL_TOAST_MS);
+    + ') δεν ταιριάζουν με τις ' + pallets + ' της στάσης — μετράνε όλες οι ' + pallets + ', διόρθωσέ το στην παραγγελία', 'warn', _PL_TOAST_MS);
   return pallets;
 }
 // A stop the form says has no exchange gets no pending loading (nothing to confirm, no sheet expected). Every
