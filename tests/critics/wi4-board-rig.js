@@ -42,6 +42,7 @@
 //   re-read) · late (relays empty / national while a popover is open) ·
 //   offline · quiet (a group member fails) · natmissing · done (executed = dimmed) ·
 //   twoday (two delivery days: row on the first, divider before the other day) · w1440 ·
+//   unassigned (owner 8/11 #10: a match on an export with no vehicle) ·
 //   vs (WP-A of the Weekly National v4 plan: one Veroia day — assignment,
 //   form, drop order by place, loud failures, Pallet Exchange)
 // Exit: 0 all green · 1 a check failed · 2 usage · 3 NOT READY (v4 inactive).
@@ -336,6 +337,9 @@ async function openBoard(browser, origin, opts = {}) {
     S.inflight++;
     try {
       if (u.pathname.startsWith('/plan/') || u.pathname === '/pallets/gate') return planAnswer(route, S, u, json);
+      // The P&L feed's calls (/costs/*), kept apart: scenario `unassigned` asserts none leave.
+      if (!mm && u.pathname.startsWith('/costs/')) (S.costs = S.costs || []).push(m + ' ' + u.pathname + u.search);
+      if (!mm && m === 'GET' && u.pathname === '/costs/rt' && S.rts) return json(route, { records: S.rts });   // a scenario's live trips
       if (!mm) return json(route, m === 'GET' ? { records: [] } : { ok: true });
       const tbl = db[tid] || (db[tid] = []);
       if (m === 'GET') {
@@ -1450,11 +1454,11 @@ async function scnUnknown(browser, origin) {
 }
 
 // Same action on v1 and v4, judged on the writes and the final table (§f, §h.4).
-async function twin(browser, origin, scn, act, extra) {
+async function twin(browser, origin, scn, act, extra, opts) {
   const res = {};
   for (const flag of ['off', 'on']) {
-    const { page, S } = await openBoard(browser, origin, { flag });
-    S.log = [];
+    const { page, S } = await openBoard(browser, origin, Object.assign({}, opts, { flag }));
+    S.log = []; S.costs = [];
     const r = await act(page, S, flag);
     await page.waitForTimeout(300); await settle(page, S, 1500);
     res[flag] = { r, w: writeSig(S), db: ordersSig(S), S, errs: S.pageErrors.slice(), exp: patches(S).filter(p => p.expect !== undefined).length,
@@ -1652,6 +1656,94 @@ async function scnTwins(browser, origin) {
     ok(scn, 'v4 writes = v1 writes (table, record, fields)', JSON.stringify(res.on.w) === JSON.stringify(res.off.w), { v1: res.off.w, v4: res.on.w });
     ok(scn, 'final ORDERS table identical', res.on.db === res.off.db);
     ok(scn, 'the table says so: E008 is matched to the new import', fld(res.on.S, 'recWiE008', 'Matched Import ID') === 'recWiNEW902', res.on.w);
+    ok(scn, 'no page errors', !res.on.errs.length && !res.off.errs.length, { v1: res.off.errs, v4: res.on.errs });
+  }
+}
+
+// Owner 8/11 #10: «να μπορούμε να κάνουμε match και χωρίς να υπάρχει ανάθεση».
+// An export with no vehicle (E003, ΠΡΟΣ ΑΝΑΘΕΣΗ) shows a match slot, takes a
+// drop as any export does, passes no vehicle on, and starts no P&L call: there
+// is no trip to attach to, and rt-feed's «lost the vehicle» branch would cancel
+// the import's waiting trip. An import with a truck of its own keeps it,
+// matched and unmatched (nothing was inherited, so nothing is cleared).
+async function scnUnassigned(browser, origin) {
+  {
+    const { page } = await openBoard(browser, origin);
+    const c = await page.evaluate(() => {
+      const r = WINTL.rows.find(x => x.type === 'export' && (x.orderIds || []).includes('recWiE003'));
+      const el = r && document.getElementById('wi-ci-' + r.id);
+      return el ? { open: !!el.querySelector('.wi4-gap-open'), act: !!el.querySelector('.wi4-gap-open .wi4-gap-act'), txt: el.textContent.trim() } : null;
+    });
+    ok('unassigned', 'E003 (ΠΡΟΣ ΑΝΑΘΕΣΗ): the import cell says «Χωρίς εισαγωγή» + «Νέα εισαγωγή»', !!c && c.open && c.act && /^Χωρίς εισαγωγή/.test(c.txt), c);
+    await shot(page, 'unassigned-slot-v4');
+    await page.context().close();
+  }
+  const toE003 = async page => `#wi-ci-${await rowOf(page, 'recWiE003')}`;
+  const onlyMatch = res => res.on.w.every(w => { const [, tid, id, f] = JSON.parse(w); return tid !== T.ORDERS || (id === 'recWiE003' && Object.keys(f || {}).join() === 'Matched Import ID'); });
+  const cases = [
+    { scn: 'unassigned.free', why: 'import without a vehicle (I004) → E003', src: '#wi-imp-recWiI004',
+      check: S => fld(S, 'recWiE003', 'Matched Import ID') === 'recWiI004' && !link(fld(S, 'recWiI004', 'Truck')) && !link(fld(S, 'recWiI004', 'Partner')) },
+    { scn: 'unassigned.own', why: 'import with its own truck (I007, T014) → E003', src: '#wi-imp-recWiI007',
+      check: S => fld(S, 'recWiE003', 'Matched Import ID') === 'recWiI007' && link(fld(S, 'recWiI007', 'Truck')) === 'recWiT014' },
+  ];
+  for (const c of cases) {
+    const res = await twin(browser, origin, c.scn, async page => htmlDrag(page, c.src, await toE003(page)));
+    ok(c.scn, `${c.why}: source and target found on both boards`, res.off.r.ok && res.on.r.ok, { v1: res.off.r, v4: res.on.r });
+    ok(c.scn, 'v4 writes = v1 writes (table, record, fields)', JSON.stringify(res.on.w) === JSON.stringify(res.off.w), { v1: res.off.w, v4: res.on.w });
+    ok(c.scn, 'final ORDERS table identical', res.on.db === res.off.db);
+    ok(c.scn, 'ORDERS: only E003\'s Matched Import ID written (no vehicle passed on)', res.on.w.length > 0 && onlyMatch(res), res.on.w);
+    ok(c.scn, 'the table says so', c.check(res.on.S), res.on.w);
+    ok(c.scn, 'no P&L call (/costs/*): no trip to attach to', !res.on.S.costs.length && !res.off.S.costs.length, { v1: res.off.S.costs, v4: res.on.S.costs });
+    ok(c.scn, 'no page errors', !res.on.errs.length && !res.off.errs.length, { v1: res.off.errs, v4: res.on.errs });
+  }
+  {
+    const scn = 'unassigned.unmatch';
+    const mutate = db => { const e = db[T.ORDERS].find(r => r.id === 'recWiE003'); e.fields['Matched Import ID'] = 'recWiI007'; };
+    const res = await twin(browser, origin, scn, async page => page.evaluate(() => {
+      const r = WINTL.rows.find(x => x.type === 'export' && (x.orderIds || []).includes('recWiE003'));
+      return r && r.importId === 'recWiI007' ? _wiRemoveImport(r.id).then(v => ({ ok: true, v })) : { ok: false, importId: r && r.importId };
+    }), null, { mutate });
+    ok(scn, 'E003 drawn matched to I007 on both boards, the unmatch reports success', res.off.r.ok && res.on.r.ok && res.off.r.v === true && res.on.r.v === true, { v1: res.off.r, v4: res.on.r });
+    ok(scn, 'v4 writes = v1 writes (table, record, fields)', JSON.stringify(res.on.w) === JSON.stringify(res.off.w), { v1: res.off.w, v4: res.on.w });
+    ok(scn, 'the table says so: match cleared, I007 keeps its own truck T014 and status', !fld(res.on.S, 'recWiE003', 'Matched Import ID') &&
+      link(fld(res.on.S, 'recWiI007', 'Truck')) === 'recWiT014' && fld(res.on.S, 'recWiI007', 'Status') === 'Assigned', res.on.w);
+    const sent = S => S.costs.filter(c => !/^GET /.test(c));
+    ok(scn, 'P&L: the export\'s trip only read (no trip → nothing sent to /costs)', !sent(res.on.S).length && !sent(res.off.S).length && res.on.S.costs.some(c => /^GET \/costs\/rt\?/.test(c)), { v1: res.off.S.costs, v4: res.on.S.costs });
+    ok(scn, 'no page errors', !res.on.errs.length && !res.off.errs.length, { v1: res.off.errs, v4: res.on.errs });
+  }
+  {
+    // E003 waits alone on a trip of its own (cleared earlier, no vehicle); the
+    // own-truck import I007 was matched after that and rides its own trip. The
+    // unmatch must leave I007's truck and trip alone (review 8/11).
+    const scn = 'unassigned.unmatchOwnTrip';
+    const mutate = db => { db[T.ORDERS].find(r => r.id === 'recWiE003').fields['Matched Import ID'] = 'recWiI007'; };
+    const rts = [{ id: 78, code: 'RT-E', status: 'open', ct_rt_legs: [{ order_id: 9103, direction: 'EXPORT' }] },
+      { id: 79, code: 'RT-I', status: 'open', ct_rt_legs: [{ order_id: 9135, direction: 'IMPORT' }] }];
+    const res = await twin(browser, origin, scn, async (page, S) => { S.rts = rts; return page.evaluate(() => {
+      const r = WINTL.rows.find(x => x.type === 'export' && (x.orderIds || []).includes('recWiE003'));
+      return r && r.importId === 'recWiI007' ? _wiRemoveImport(r.id).then(v => ({ ok: true, v })) : { ok: false, importId: r && r.importId };
+    }); }, null, { mutate });
+    ok(scn, 'the unmatch reports success on both boards', res.off.r.ok && res.on.r.ok && res.off.r.v === true && res.on.r.v === true, { v1: res.off.r, v4: res.on.r });
+    ok(scn, 'nothing sent to /costs: I007 stays on its own trip', [res.on.S, res.off.S].every(S => !S.costs.some(c => !/^GET /.test(c))), { v1: res.off.S.costs, v4: res.on.S.costs });
+    ok(scn, 'the table says so: match cleared, I007 keeps T014', !fld(res.on.S, 'recWiE003', 'Matched Import ID') && link(fld(res.on.S, 'recWiI007', 'Truck')) === 'recWiT014'
+      && JSON.stringify(res.on.w) === JSON.stringify(res.off.w), { v1: res.off.w, v4: res.on.w });
+    ok(scn, 'no page errors', !res.on.errs.length && !res.off.errs.length, { v1: res.off.errs, v4: res.on.errs });
+  }
+  {
+    // The export lost its vehicle by «Καθαρισμός ανάθεσης» of a whole trip:
+    // the trip stays with both legs, no vehicle (_wiClear). The unmatch must
+    // take the import's leg off it (today's full path), or the next assignment
+    // of E003 copies its truck onto I004 (rt_sync_from_order).
+    const scn = 'unassigned.unmatchTrip';
+    const mutate = db => { db[T.ORDERS].find(r => r.id === 'recWiE003').fields['Matched Import ID'] = 'recWiI004'; };
+    const rts = [{ id: 77, code: 'RT-TEST', status: 'open', ct_rt_legs: [{ order_id: 9103, direction: 'EXPORT' }, { order_id: 9132, direction: 'IMPORT' }] }];
+    const res = await twin(browser, origin, scn, async (page, S) => { S.rts = rts; return page.evaluate(() => {
+      const r = WINTL.rows.find(x => x.type === 'export' && (x.orderIds || []).includes('recWiE003'));
+      return r && r.importId === 'recWiI004' ? _wiRemoveImport(r.id).then(v => ({ ok: true, v })) : { ok: false, importId: r && r.importId };
+    }); }, null, { mutate });
+    ok(scn, 'E003 drawn matched to I004 on both boards, the unmatch reports success', res.off.r.ok && res.on.r.ok && res.off.r.v === true && res.on.r.v === true, { v1: res.off.r, v4: res.on.r });
+    ok(scn, 'the import\'s leg leaves the export\'s waiting trip (DELETE …/legs?order_id=9132)', [res.on.S, res.off.S].every(S => S.costs.includes('DELETE /costs/rt/77/legs?order_id=9132')), { v1: res.off.S.costs, v4: res.on.S.costs });
+    ok(scn, 'v4 writes = v1 writes; the match cleared', JSON.stringify(res.on.w) === JSON.stringify(res.off.w) && !fld(res.on.S, 'recWiE003', 'Matched Import ID'), { v1: res.off.w, v4: res.on.w });
     ok(scn, 'no page errors', !res.on.errs.length && !res.off.errs.length, { v1: res.off.errs, v4: res.on.errs });
   }
 }
@@ -4686,7 +4778,7 @@ async function scnVs(browser, origin) {
       date: scnDate, keys: scnKeys, search: scnSearch, savefail: scnSaveFail, presence: scnPresence, conflict: scnConflict, fallback: scnFallback, styles: scnStyles,
       twins: scnTwins, queue: scnQueue, unread: scnUnread,
       print: scnPrint, shift: scnShift, late: scnLate, offline: scnOffline, quiet: scnQuiet, natmissing: scnNatMissing, done: scnDone, twoday: scnTwoDay, w1440: scnW1440, parity: scnParity,
-      vs: scnVs, v5: scnV5, v5err: scnV5Err, vsnote: scnVsNote, vsform: scnVsForm, del428: scnDel428, numbers: scnNumbers, rotaweek: scnRotaWeek };
+      vs: scnVs, v5: scnV5, v5err: scnV5Err, vsnote: scnVsNote, vsform: scnVsForm, del428: scnDel428, numbers: scnNumbers, rotaweek: scnRotaWeek, unassigned: scnUnassigned };
     // A watchdog per scenario: one missing locator or one write that never
     // settles fails THAT scenario, closes its pages, and the run goes on.
     const WATCHDOG_MS = 360000;

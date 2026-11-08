@@ -10,6 +10,7 @@
 //   failure — a failed /confirm is said in the row with the step that did not happen;
 //   mark    — «Ελέγχθηκε» is not drawn while /pallets/week-checks answers 404; with it, the mark POSTs the week;
 //   docs    — a click on ΑΝΑΘΕΣΗ shows the Weekly's own print.html.
+//   route   — the order panel draws the shared route diagram (owner 8/11 #5) from that order's own stops.
 // Run from the MAIN repo root (node_modules), against a server of the tree under test:
 //   cd /Users/dimitrispetras/PETRASGROUP-TMS && PW_BASE_URL=http://127.0.0.1:8792/ node <tree>/tests/critics/pallets-week-rig.js
 const P = require('./orders-week-proof.js');
@@ -144,6 +145,15 @@ async function runMain(browser) {
   ok(await page.locator('.ow4-day').count() >= 7, 'day bands (.ow4-day) for the seven days');
   ok(await page.locator('.plw-row.trip-row').count() > 0 && await page.locator('.plw-leg.trip-part').count() > 0, 'shared trip divider classes on rows / legs');
   await page.screenshot({ path: path.join(SHOTS, 'week.png'), fullPage: true });
+
+  // route: the panel of 1241 reads its two stops and draws them as the vertical route
+  await page.evaluate(() => { const el = [...document.querySelectorAll('.plw-leg')].find(e => /#1241/.test(e.textContent)); if (el) el.click(); });
+  await page.waitForSelector('.plw-panel .rd', { timeout: 10000 }).catch(() => {});
+  const rd = await page.locator('.plw-panel .rd').count() ? await page.locator('.plw-panel .rd').innerText() : '';
+  ok(/ΔΙΑΔΡΟΜΗ/.test(await page.locator('.plw-panel').innerText().catch(() => '')), 'route: the panel has the ΔΙΑΔΡΟΜΗ section');
+  ok(/Φόρτωση/.test(rd) && /Παράδοση/.test(rd), 'route: the diagram draws the loading and the delivery stop');
+  await page.locator('.plw-panel').screenshot({ path: path.join(SHOTS, 'panel-route.png') }).catch(() => {});
+  await page.keyboard.press('Escape');
 
   // confirm: 1246's pending loading
   page._writes.length = 0;
