@@ -753,10 +753,21 @@
     for (const d of (m && m.days) || []) for (const r of d.rows || []) if (r.rtId === rtId) return r;
     return null;
   }
+  // The cycles that LOAD on a day (their ΚΑΘΟΔΟΣ day, else their ΑΝΟΔΟΣ one; one earlier / later than the week counts
+  // on its first / last day), in board order. Not the board's day section: since owner 8/11 a ΚΑΘΟΔΟΣ row stands on its
+  // DELIVERY day, and «ΚΥΚΛΟΙ ΤΗΣ ΔΕΥΤΕΡΑΣ» of «Μεταφορά σε…» would then lose the trucks loading Monday for Tuesday.
   function _dayRows(ymd) {
     const m = _state().model;
-    const d = m && (m.days || []).find((x) => x.date === ymd);
-    return d ? (d.rows || []).filter((r) => r.kind === 'cycle' && r.rtId != null) : [];
+    if (!m || !Array.isArray(m.days) || !m.days.length) return [];
+    const first = m.days[0].date, last = m.days[m.days.length - 1].date;
+    const out = [];
+    for (const d of m.days) for (const r of d.rows || []) {
+      if (r.kind !== 'cycle' || r.rtId == null) continue;
+      const k0 = (r.kath && r.kath.day) || (r.anod && r.anod.day) || null;
+      const k = !k0 || k0 < first ? first : k0 > last ? last : k0;
+      if (k === ymd) out.push(r);
+    }
+    return out;
   }
   // the hub's location id: the Veroia stop the model names, else the catalogue (PlanIds.hub)
   function _hubId() {
