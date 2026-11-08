@@ -21,7 +21,7 @@
   // table) so "διορθώσεις ανά 100 γραμμές" can be tracked per parser build,
   // not guessed from a git commit the accountant never sees. Bump on any
   // change to the line-shape or matching rules below.
-  var VERSION = '1.2.0';
+  var VERSION = '1.3.0';
 
   // ─── pdf.js text-item → line grouping ────────────────────────────
   /**
@@ -233,6 +233,11 @@
     // Filenames are stable and unambiguous ("...  _AT_E-INVOICE_...",
     // "..._E-List of passages_...") — cheaper and more reliable than
     // scanning translated page text across 19 languages.
+    // FR «E-Summary TIS PL» is DKV's informative per-operator recap of the FR
+    // invoice (its own text: «for informative purposes only»), not the
+    // statement's E-SUMMARY. Read as a summary it replaced the real one with
+    // zero rows and every document of one 15/10/2026 statement «had no summary».
+    if (/E-Summary TIS/i.test(name)) return 'tis_summary';
     if (/E-SUMMARY/i.test(name)) return 'summary';
     if (/List of passages/i.test(name)) return 'passages';
     if (/E-T4E/i.test(name)) return 't4e'; // operator invoice — covered by the STATEMENT, not counted again (spec §1)
@@ -241,6 +246,7 @@
     if (/E-INVOICE/i.test(name)) return 'invoice';
     // Fallback for an unexpected filename: sniff the extracted text.
     const text = lines.join('\n');
+    if (/E-Summary TIS/i.test(text)) return 'tis_summary';
     if (/E-SUMMARY/i.test(text)) return 'summary';
     if (/List of passages/i.test(text)) return 'passages';
     if (/Reverse Charge/i.test(text)) return 'reverse_charge';
@@ -270,8 +276,18 @@
   // page (verified: AT invoice prints both; E-SUMMARY's Austria row uses
   // the "Invoice number" one, 26/001042475/987). STATEMENT docs only ever
   // print "Document number:", which IS the one E-SUMMARY lists.
-  function extractDocNo(lines) {
+  function extractDocNo(lines, name) {
     const text = lines.join(' ');
+    // A correction statement («Reason: INCORRECT INVOICING», CZ 30/09/2026)
+    // prints only the ORIGINAL invoice's number under each line, never its
+    // own — its own is in the filename («…_26-655015688-004.pdf»), and that
+    // is the one the E-SUMMARY lists. Reading the text gave both corrections
+    // the July number, so they summed together and matched no summary row.
+    // Only a STATEMENT whose «Invoice number:» sits under a «Reason:» line is a
+    // correction: an AT/BG invoice's own number legitimately differs from its
+    // filename, so a stray «Reason:» footnote there must not switch the source.
+    const fm = /_(\d{2})-(\d+)-(\d{3})\.pdf$/i.exec(name || '');
+    if (fm && /E-STATEMENT/i.test(name) && /Reason:[^]*?Invoice number:/i.test(text)) return fm[1] + '/' + fm[2] + '/' + fm[3];
     let m = /Invoice number:\s*(\S+)/.exec(text);
     if (m) return m[1];
     m = /Document number:\s*(\S+)/.exec(text);
@@ -299,6 +315,14 @@
   // real ZIP: KOM. (HR/RS "komad"), бр./л. (BG Cyrillic "pieces"/"liters").
   // PZ = Italian «pezzi» (pieces), seen on the BG entity's IT invoices (w9 17/9).
   const UNIT_TOKENS = new Set(['ST', 'LTR', 'PC', 'KUS', 'DB', 'KOM.', 'бр.', 'л.', 'PZ']);
+  // L (litre: HR/RS fuel from the 30/09/2026 statements on) and UN (ES
+  // «unidad», 31/10/2026) are short enough to appear inside a station or
+  // product name, so they count as the unit only right after a product code
+  // and before a number — «… DIZEL 0009 L 327,870 …». Without them every HR
+  // fuel line was «unrecognized» and all six Sept–Oct statements failed the
+  // E-SUMMARY gate (8/11/2026).
+  const SHORT_UNIT_TOKENS = new Set(['L', 'UN']);
+  const PRODUCT_CODE_RE = /^[0-9A-Z]{4}$/;
   const DATE_RE = /^\d{2}\.\d{2}\.\d{4}$/;
   const TIME_RE = /^\d{2}:\d{2}$/;
   const HALFMONTH_REF_RE = /^\d{4}-[A-Z]{2,4}-\d+$/; // "2026-CZE-0000187207"
@@ -324,6 +348,9 @@
     let unitIdx = -1;
     for (let i = 1; i < tokens.length; i++) {
       if (UNIT_TOKENS.has(tokens[i])) { unitIdx = i; break; }
+      // (a reverse-charge doc puts a Currency column between code and unit — same skip as below)
+      const before = CURRENCY_CODES.has(tokens[i - 1]) ? tokens[i - 2] : tokens[i - 1];
+      if (SHORT_UNIT_TOKENS.has(tokens[i]) && PRODUCT_CODE_RE.test(before || '') && parseNum(tokens[i + 1] || '') !== null) { unitIdx = i; break; }
     }
     if (unitIdx === -1 || unitIdx + 2 > tokens.length) return null; // not a parseable transaction row
 
@@ -504,6 +531,9 @@
   // <fee>» — no date at the start, no product code, no vehicle. The «*» marks
   // «minimum fee applied». The last number is what is charged (w9 17/9).
   const REMOBIS_FEE_RE = /^Y\s+(\d{4})\s+(\d+)\s+(.+?)\s+Refund\s+([A-Z]{3})\s+([\d.,-]+)\s+\*?\s*([\d.,-]+)\s+([\d.,-]+)\s+([\d.,-]+)$/;
+  // A dateless advance take-back: «…D[ée]duction… <code> <unit> -<qty> <amounts…>»
+  // with every amount negative (see parseInvoiceLike).
+  const DEDUCTION_RE = /D[ée]duction.*\s[0-9A-Z]{4}\s+\S+\s+-\d+(?:\s+-[\d.,]+){2,}$/i;
 
   function parseInvoiceLike(lines, docType, country) {
     const currency = detectCurrency(lines);
@@ -536,8 +566,26 @@
           continue;
         }
       }
+      // FR TIS PL: the invoice takes back the advance billed on the previous
+      // statement — «TIS PL – Déduction de l´acompte sur les transactions
+      // 005G PC -1 -146,66 -146,66 -29,34 -176,00». The row has no date (it
+      // sits in the per-service recap), so it was skipped and the invoice read
+      // 193,23 instead of its 17,23: the advance (15/09, line 005G +175,99)
+      // would have been paid twice. Booked on the invoice date, negative, with
+      // NO vehicle: the advance it cancels was customer-level, and the recap
+      // follows the per-vehicle sections, so ctx.vehicle is just the last one.
+      // A dated row is left to the ordinary path below (it keeps its own date).
+      if (DEDUCTION_RE.test(line) && !DATE_RE.test(line.split(/\s+/)[0] || '')) {
+        const parsed = invoiceDate
+          ? parseTransactionLine(invoiceDate.split('-').reverse().join('.') + ' ' + line, Object.assign({}, ctx, { vehicle: null }))
+          : null;
+        if (parsed) outLines.push(parsed);
+        else errors.push({ reason: invoiceDate ? 'unrecognized-transaction-line' : 'deduction-without-invoice-date', line });
+        continue;
+      }
       if (DATE_RE.test((line.split(/\s+/)[0] || ''))) {
-        const parsed = parseTransactionLine(line, ctx);
+        // a dated take-back keeps its own date but, like the dateless one, no vehicle
+        const parsed = parseTransactionLine(line, DEDUCTION_RE.test(line) ? Object.assign({}, ctx, { vehicle: null }) : ctx);
         if (parsed) {
           outLines.push(parsed);
         } else {
@@ -911,7 +959,7 @@
     for (const { f, lines } of prepared) {
       let docType = detectDocType(f.name, lines);
       const country = detectCountry(f.name);
-      const docNo = extractDocNo(lines);
+      const docNo = extractDocNo(lines, f.name);
       // The REMOBIS VAT-refund statement shares the «E-STATEMENT OF ACCOUNT»
       // filename with the toll statements; only its text tells them apart.
       if (docType === 'statement' && /REMOBIS REFUND SERVICE/i.test(lines.join(' '))) docType = 'refund';
@@ -919,9 +967,21 @@
       result.docs.push(docEntry);
 
       if (docType === 'summary') {
-        result.summary = parseSummary(lines);
+        // One statement = one E-SUMMARY. A second file read as a summary used to
+        // replace the first silently (the FR TIS recap, 15/10/2026): keep the
+        // one that has rows and say so, never pick by file order.
+        const sm = parseSummary(lines);
+        if (result.summary) {
+          result.errors.unparsed.push({ doc: f.name, doc_no: docNo, reason: 'second-summary' });
+          if ((sm.docs || []).length > (result.summary.docs || []).length) result.summary = sm;
+        } else {
+          result.summary = sm;
+        }
         continue;
       }
+      // Informative only: its amounts are the FR invoice's own lines, which
+      // are read from the E-INVOICE. Listed in result.docs, never counted.
+      if (docType === 'tis_summary') continue;
       if (docType === 'passages') {
         const groups = parsePassages(lines, country, cardMap);
         for (const g of groups) { g.doc_no = docNo; }

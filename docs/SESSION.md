@@ -12,6 +12,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
+- dimitris · `fix/dkv-parser-new-lines` · Εισαγωγή DKV: parser 1.3.0 (L/UN, γαλλικό TIS, έκπτωση προκαταβολής, διορθωτικά) + πύλη E-SUMMARY για έγγραφο χωρίς γραμμές· Worker deploy από τον owner (`--dkv 1`, 37 σημάδια)· εκκρεμούν τα 6 ZIP 30/9–31/10 και τα 730,06 € του 15/09· ?v= / SW_VERSION 1794030000 (`docs/sessions/2026-11-08-dimitris-dkv-parser-1-3.md`)
 - dimitris · `feat/owv-week-natl` · «Παραγγελίες › Εβδομάδα»: αρίθμηση εθνικών = του Εβδομαδιαίου Εθνικών v5 από ΜΙΑ πηγή (`WN5L.boardNumbers`, και το board ζωγραφίζει από αυτήν) + ΑΝΑΘΕΣΗ εθνικής v5 = το φύλλο οδηγού του board (`WN5Sheet.sheetDoc`)· μόνο front end, ?v= / SW_VERSION 1794020000 (`docs/sessions/2026-11-08-dimitris-week-natl-numbers-docs.md`)
 - dimitris · `claude/rt-sync-v6-plan` · RT: απόλυτο sync v6, **ΠΑΡΑΔΟΘΗΚΕ ΣΤΗ VALUEDRIVEN 8/11** (owner): σχέδιο r9, τίποτα χτισμένο, τίποτα στη βάση· `docs/rt-sync-v6/HANDOVER-VALUEDRIVEN.md`· **106 ΕΚΤΕΛΕΣΜΕΝΗ 8/11 ~13:15** (owner· verify «106 in place, 0»· αρχεία εκτός drafts/)· PR #234 ready για merge (`docs/rt-sync-v6/PLAN.md`)
 - dimitris · `feat/wi4-rota-leg-own-week` · Weekly Διεθνών: σκέλος rota σε άλλη εβδομάδα από τον γονέα του, στη δική του ημέρα «↳» χωρίς αριθμό + «συνέχεια» στην εβδομάδα του γονέα (#677, owner 8/11)· πάνω στο #259· μόνο front end, ?v= / SW_VERSION 1794010000 (`docs/sessions/2026-11-08-dimitris-wi4-rota-leg-own-week.md`)

@@ -5768,7 +5768,10 @@ async function handleCosts(request, url, origin, env) {
         const detail = await insertRes.text().catch(() => "");
         if (/23505/.test(detail)) return jsonError("duplicate lines (unique index)", 409, origin, env);
         console.error("IMPORT commit insert", insertRes.status, detail.slice(0, 200));
-        return jsonError("Insert failed", 500, origin, env);
+        // The reason travels to the screen (8/11/2026): a bare «Insert failed»
+        // hid a PostgREST 400 on every commit from 21/9 to 8/11.
+        const why = (/"message"\s*:\s*"([^"]{1,160})"/.exec(detail) || [])[1] || ("HTTP " + insertRes.status);
+        return jsonError("Insert failed: " + why, 500, origin, env);
       }
       const insertedLines = await insertRes.json();
 
