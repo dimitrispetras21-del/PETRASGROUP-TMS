@@ -169,9 +169,12 @@ cd worker && CLOUDFLARE_API_TOKEN=$CF_API_TOKEN npx wrangler deploy
    - «Ελέγχθηκε» της εβδομάδας παλετών (104 `pl_week_checks` + `/pallets/week-checks`, Worker 0563b45a, ζωντανό 3/11):
      `var PLW_RPC = {`, ακριβώς μία φορά (`--wchk 1`)
    - εισαγωγή DKV: parser 1.3.0 (μονάδες L/UN, γαλλικό TIS, έκπτωση προκαταβολής, αριθμός διορθωτικού) και η πύλη
-     E-SUMMARY που κόβει γραμμή χωρίς γραμμές (8/11, Worker πάνω στον 0563b45a, deploy από τον owner): `no_lines: true`
+     E-SUMMARY που κόβει γραμμή χωρίς γραμμές (Worker 12d9914b πάνω στον 0563b45a, ζωντανό 8/11 12:44): `no_lines: true`
      και `SHORT_UNIT_TOKENS.has(`, το καθένα ακριβώς μία φορά (`--dkv 1`). Υπάρχουν **μόνο στο bundle / στη λήψη CF**
      (ο wrangler πακετάρει `worker/src/import-rules.mjs` και `core/dkv-parser.js`)· στο `src/index.js` μόνο του = STOP.
+     ⚠ 8/11 12:39 ανέβηκε κατά λάθος ο 9608bb1c από τον κύριο φάκελο, που ήταν σε παλιό branch (19 σημάδια STOP: χωρίς F5,
+     085/089/101/099/102/104, `PLAN_WRITES_OPEN = false`)· αντικαταστάθηκε σε 5 λεπτά, 0 εγγραφές στο audit. **Deploy μόνο από
+     worktree / branch του PR, και ο φρουρός στο bundle ΠΡΙΝ** (`wrangler deploy --dry-run --outdir`).
    Μία εντολή για όλα, πριν και μετά (από το deploy του DKV 1.3.0): `node worker/tools/worker-guard.mjs <bundle ή λήψη CF>
    --plan 2 --handover 1 --f3 1 --f5 1 --edit 1 --invoiced 1 --rate2 1 --self 1 --road 1 --wchk 1 --dkv 1` → `GUARD OK (37
    markers, … wchk=1, dkv=1)`. Επείγουσα επαναφορά στον προηγούμενο (`wrangler rollback
