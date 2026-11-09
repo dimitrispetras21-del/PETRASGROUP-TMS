@@ -46,7 +46,7 @@ test("F4α-T1: real Worker: dry run move passes the switch; PLAN_RULE 422 → ki
   const s = through(w);
   const r = await outcome(s, "planFetch('POST', '/plan/move', { body: { from: { piece_ids: [4001] }, target: { wait: true } }, dry: true })");
   assert.deepStrictEqual({ status: r.status, type: r.type, kind: r.kind, code: r.code, m: r.m },
-    { status: 422, type: 'PLAN_RULE', kind: 'refusal', code: 'piece_split', m: `${RULE_TEXT.piece_split} (4001)` });
+    { status: 422, type: 'PLAN_RULE', kind: 'refusal', code: 'piece_split', m: RULE_TEXT.piece_split });   // owner 8/11: the DB detail never in the text
   assert.deepStrictEqual(w.calls.map((c) => [c.fn, c.p.dry_run, c.p_role]), [['plan_move_pieces', true, 'dispatcher']]);
   assert.strictEqual(s.plan().length, 1);
 });

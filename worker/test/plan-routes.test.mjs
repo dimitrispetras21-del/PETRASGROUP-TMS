@@ -379,11 +379,19 @@ test('a non-finite number in the body or the path id → 400 bad_input <field>:f
 });
 
 // ───────────────────── refusals → the one /plan/* error shape ─────────────────────
-test('plan:<code> → 422 PLAN_RULE with the Greek text + the DB detail; nothing audited by the Worker', async () => {
+test('plan:<code> → 422 PLAN_RULE with the Greek text + the trip in words, the DB detail apart (owner 8/11); nothing audited by the Worker', async () => {
   on('POST', 'rpc/plan_put_pieces', () => planReject('truck_busy', 'RT-1280'));
-  const r = await callOpen('dispatcher', 'POST', '/plan/legs', { pieces: [{ piece_id: 4 }], target: { rt_id: 5, side: 'ANODOS' }, stops: [] });
+  let r = await callOpen('dispatcher', 'POST', '/plan/legs', { pieces: [{ piece_id: 4 }], target: { rt_id: 5, side: 'ANODOS' }, stops: [] });
   assert.equal(r.status, 422, r.text);
-  assert.deepEqual(r.json, { error: { type: 'PLAN_RULE', code: 'truck_busy', message: 'Το φορτηγό είναι ήδη σε άλλο δρομολόγιο εκείνες τις ώρες (RT-1280)' } });
+  // the trip unread (no stub): the rule's text alone, never the code
+  assert.deepEqual(r.json, { error: { type: 'PLAN_RULE', code: 'truck_busy', message: 'Το φορτηγό είναι ήδη σε άλλο δρομολόγιο εκείνες τις ώρες', detail: 'RT-1280' } });
+  // the trip read: plate · driver · day (core/plain-ref.js, the screens' own words)
+  on('GET', 'ct_round_trips', () => json([{ code: 'RT-1280', trip_type: 'OWNED', truck_id: 7, driver_id: 3, partner_id: null, date_start: '2026-11-02' }]));
+  on('GET', 'trucks', () => json([{ id: 7, license_plate: 'ΚΖΗ1234' }]));
+  on('GET', 'drivers', () => json([{ id: 3, full_name: 'Σαρίδης Γεώργιος' }]));
+  on('GET', 'partners', () => json([]));
+  r = await callOpen('dispatcher', 'POST', '/plan/legs', { pieces: [{ piece_id: 4 }], target: { rt_id: 5, side: 'ANODOS' }, stops: [] });
+  assert.deepEqual(r.json, { error: { type: 'PLAN_RULE', code: 'truck_busy', message: 'Το φορτηγό είναι ήδη σε άλλο δρομολόγιο εκείνες τις ώρες: ΚΖΗ1234 · Σαρίδης Γ. · Δευ 2/11', detail: 'RT-1280' } });
   assert.equal(auditRows().length, 0);
 });
 
@@ -391,7 +399,7 @@ test('need_token → 428 (the screen opens the list), stale_confirm → 422', as
   on('POST', 'rpc/plan_delete', (u, b) => (b.p.confirm_token ? planReject('stale_confirm', '17') : planReject('need_token', '17')));
   let r = await callOpen('owner', 'POST', '/plan/delete', { nat_order_id: 17, reason: 'x' });
   assert.equal(r.status, 428, r.text);
-  assert.deepEqual(r.json.error, { type: 'PLAN_RULE', code: 'need_token', message: 'Η πράξη θέλει επιβεβαίωση — δες πρώτα τη λίστα συνεπειών (17)' });
+  assert.deepEqual(r.json.error, { type: 'PLAN_RULE', code: 'need_token', message: 'Η πράξη θέλει επιβεβαίωση — δες πρώτα τη λίστα συνεπειών', detail: '17' });
   r = await callOpen('owner', 'POST', '/plan/delete', { nat_order_id: 17, reason: 'x', confirm_token: 'old' });
   assert.equal(r.status, 422);
   assert.equal(r.json.error.code, 'stale_confirm');
@@ -404,7 +412,7 @@ test('072b: PATCH /plan/rt/:id need_token → 428, stale_confirm → 422; the to
   const stops = [{ stop_id: 3, planned_from: '2026-10-27T14:05:00+02:00', planned_to: '2026-10-27T14:20:00+02:00' }];
   let r = await callOpen('warehouse', 'PATCH', '/plan/rt/5', { stops });
   assert.equal(r.status, 428, r.text);
-  assert.deepEqual(r.json.error, { type: 'PLAN_RULE', code: 'need_token', message: 'Η πράξη θέλει επιβεβαίωση — δες πρώτα τη λίστα συνεπειών (plan_rt_update)' });
+  assert.deepEqual(r.json.error, { type: 'PLAN_RULE', code: 'need_token', message: 'Η πράξη θέλει επιβεβαίωση — δες πρώτα τη λίστα συνεπειών', detail: 'plan_rt_update' });
   calls.length = 0;
   r = await callOpen('warehouse', 'PATCH', '/plan/rt/5', { stops, confirm_token: 'old' });
   assert.equal(r.status, 422, r.text);
@@ -625,7 +633,7 @@ test('plan_rt_update dry run: preview.conflict gets its message from PLAN_RULE_T
   let r = await call('dispatcher', 'PATCH', '/plan/rt/5', { stops: [], dry_run: true });
   assert.equal(r.status, 200, r.text);
   assert.deepEqual(r.json.preview.conflict, { code: 'leg_order', sqlstate: '23514', detail: '31',
-    message: 'Η φόρτωση γίνεται πριν από την εκφόρτωση στο ίδιο δρομολόγιο (31)' });
+    message: 'Η φόρτωση γίνεται πριν από την εκφόρτωση στο ίδιο δρομολόγιο' });
   routes.length = 0;
   on('POST', 'rpc/plan_rt_update', () => json(preview({ code: 'rt_v2_window', sqlstate: '23514', detail: null })));
   r = await call('dispatcher', 'PATCH', '/plan/rt/5', { dry_run: true });
@@ -652,7 +660,7 @@ test('072b dry runs: preview.conflict of handover, correction and removal get th
     ['POST', '/plan/segments/9/remove', { dry_run: true }]]) {
     const r = await call('dispatcher', method, p, body);
     assert.equal(r.status, 200, `${p}: ${r.text}`);
-    assert.equal(r.json.preview.conflict.message, 'Το φορτηγό είναι ήδη σε άλλο δρομολόγιο εκείνες τις ώρες (RT-1290)', p);
+    assert.equal(r.json.preview.conflict.message, 'Το φορτηγό είναι ήδη σε άλλο δρομολόγιο εκείνες τις ώρες', p);
   }
   // the reason's value is 072b's CHECK (one list): «Άλλο» without its note is a 422 in Greek, never the 500 path
   routes.length = 0;
@@ -736,7 +744,7 @@ test('schema_behind names 072b on the three handover routes and 072 elsewhere; s
   const r = await callOpen('warehouse', 'POST', '/plan/move', { from: { piece_ids: [4] }, target: { wait: true } });
   assert.equal(r.status, 422, r.text);
   assert.deepEqual(r.json.error, { type: 'PLAN_RULE', code: 'seg_outside',
-    message: 'Η πράξη θα άφηνε μια αλλαγή οχήματος έξω από τις ώρες του δρομολογίου — μετακίνησε ή αφαίρεσε πρώτα την αλλαγή (RT-1290 26/10 09:00)' });
+    message: 'Η πράξη θα άφηνε μια αλλαγή οχήματος έξω από τις ώρες του δρομολογίου — μετακίνησε ή αφαίρεσε πρώτα την αλλαγή', detail: 'RT-1290 26/10 09:00' });
 });
 
 // ───────────────────── the older paths ─────────────────────
@@ -766,7 +774,7 @@ test('facade PATCH ORDER STOPS refused by a plan: rule (bridge stop, 071) → 42
   });
   let r = await call('dispatcher', 'PATCH', `${STOPS}/recSTOP1`, { fields: { Pallets: 19 } });
   assert.equal(r.status, 422, r.text);
-  assert.deepEqual(r.json, { error: { type: 'PLAN_RULE', code: 'pieces_sum', message: 'Τα κομμάτια δεν αθροίζουν στις παλέτες της αποστολής (12:19<>20)' } });
+  assert.deepEqual(r.json, { error: { type: 'PLAN_RULE', code: 'pieces_sum', message: 'Τα κομμάτια δεν αθροίζουν στις παλέτες της αποστολής' } });
   // 111: «Via Hub» true / false / null and «Time From» / «Time To» reach the row as written (never dropped with a 200)
   for (const [fields, want] of [[{ 'Via Hub': true }, { via_hub: true }], [{ 'Via Hub': false }, { via_hub: false }],
     [{ 'Via Hub': null }, { via_hub: null }], [{ 'Time From': '08:00', 'Time To': '14:30' }, { time_from: '08:00', time_to: '14:30' }],
@@ -1213,7 +1221,8 @@ test('099 dry run: the preview is served as is (trucks, vs_day, waiting, whole_v
     assert.equal(r.status, 200, r.text);
     assert.equal(r.json.preview.conflict.code, code);
     assert.ok(r.json.preview.conflict.message.startsWith(text), `${code}: ${r.json.preview.conflict.message}`);
-    assert.ok(r.json.preview.conflict.message.endsWith(`(${detail})`), code);
+    assert.doesNotMatch(r.json.preview.conflict.message, /RT-\d|\(\d/, `${code}: no code in the text (owner 8/11)`);
+    assert.equal(r.json.preview.conflict.detail, detail, `${code}: the detail stays for machines`);
   }
   // strictly the boolean true: anything else is a save, closed until the switch opens - and refused before the DB
   for (const v of ['true', 1, 'yes']) {
@@ -1245,7 +1254,7 @@ test('every new refusal code (098 / 099 / 102) and the three widened ones → 42
         calls.length = 0;
         const r = await callOpen('warehouse', 'POST', p, body);
         assert.equal(r.status, 422, `${code}: ${r.text}`);
-        assert.deepEqual(r.json.error, { type: 'PLAN_RULE', code, message: `${TEXT[code]} (${detail})` }, code);
+        assert.deepEqual(r.json.error, { type: 'PLAN_RULE', code, message: TEXT[code], detail }, code);
         assert.match(r.json.error.message, /[α-ωΑ-Ω]/, `${code} is Greek`);
         assert.equal(rpcCalls().length, 1, `${code}: one RPC, never a retry by the Worker`);
       }

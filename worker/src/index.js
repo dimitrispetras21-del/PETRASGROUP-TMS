@@ -12,6 +12,9 @@ import { buildImportKey, findDuplicateImportKeys, applyRules, splitByPassages, m
 // an ESM `import`, so this works without a separate wrapper file — verified
 // by the guard-of-three dry-run step in the Φ2 deploy checklist, not assumed.
 import DkvParser from "../../core/dkv-parser.js";
+// owner 8/11, messages without codes: the ONE text that names a trip («ΚΖΗ-1234 · Σαρίδης Γ. · Δευ 2/11»), the same
+// file the screens load (core/plain-ref.js, UMD like dkv-parser) - so a refusal and a toast never word a trip apart.
+import PlainRef from "../../core/plain-ref.js";
 
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
@@ -3453,6 +3456,9 @@ const PLN_CONFLICT = ["already", "gone", "done"];
 // The marker of the worker guard (--pmiss): ONE object naming the 107 act.
 var PLN_RPC = { noExchange: "pl_no_exchange" };
 const PLAN_RULE_TEXT = {
+  // 095 plan_seg_problem answers a later vehicle segment without its point as seg_place_text: without a key here
+  // the refusal fell to the unknown-code line in raw English (inventory 8/11). The CHECK table reads the same text.
+  seg_place_text: "Γράψε το σημείο της αλλαγής (π.χ. «Λαμία»)",
   // 071 — deferred COMMIT rules (plan_chk) and the two direct raises
   pieces_alive: "Η αποστολή σβήστηκε αλλά έχει ακόμη ζωντανά κομμάτια — ανανέωσε τη σελίδα",
   piece_dead: "Το φορτίο ή η αποστολή του έχει σβηστεί — ανανέωσε τη σελίδα",
@@ -3633,7 +3639,7 @@ const PLAN_CHECK_TEXT = {
   seg_partner_rate_anodos: "Το κόμιστρο ΑΝΟΔΟΥ θέλει συνεργάτη και κόμιστρο ΚΑΘΟΔΟΥ· κανένα από τα δύο δεν είναι αρνητικό",
   seg_reason_list: "Άγνωστος λόγος αλλαγής οχήματος — διάλεξε από τη λίστα",
   seg_change_pair: "Η αλλαγή οχήματος θέλει σημείο και λόγο μαζί",
-  seg_place_text: "Γράψε το σημείο της αλλαγής (π.χ. «Λαμία»)",
+  seg_place_text: PLAN_RULE_TEXT.seg_place_text,
   seg_other_note: "Με λόγο «Άλλο» η σημείωση είναι υποχρεωτική",
   seg_del: "Η αφαίρεση τμήματος θέλει λόγο και χρήστη",
   // 098 / 099 CHECKs on rt_stops (the transfer stop). The reason's VALUE is 098's CHECK (one list), so an unknown
@@ -3695,10 +3701,14 @@ function stockRuleError(e) {
     const pc = hint.slice("plan:".length).trim();
     const prefix = `plan rule broken: ${pc}:`;
     const detail = message.startsWith(prefix) ? message.slice(prefix.length).trim().slice(0, 120) : "";
+    // Owner 8/11, messages without codes: the DB detail (an RT code, a piece or order id - ASCII by design, 072:97)
+    // is never in the text a person reads. It travels apart as `detail` for the machines that read it (the drafts
+    // screen names a draft from it, the log keeps it); the /plan/* handler turns an RT code into the trip in words
+    // (planDetailWords). An unknown code keeps its name - a rule, not a record - and never the raw English message.
     if (!Object.prototype.hasOwnProperty.call(PLAN_RULE_TEXT, pc)) {
-      return { type: "PLAN_RULE", code: pc, message: `Ο κανόνας ${pc || "χωρίς κωδικό"} δεν τηρήθηκε: ${message}` };
+      return { type: "PLAN_RULE", code: pc, message: `Η βάση αρνήθηκε την αλλαγή με κανόνα χωρίς κείμενο (${pc || "χωρίς κωδικό"}) — τίποτα δεν γράφτηκε· ενημέρωσε τον Δημήτρη`, detail };
     }
-    return { type: "PLAN_RULE", code: pc, message: detail ? `${PLAN_RULE_TEXT[pc]} (${detail})` : PLAN_RULE_TEXT[pc] };
+    return { type: "PLAN_RULE", code: pc, message: PLAN_RULE_TEXT[pc], detail };
   }
   // 111 not run yet (or rolled back) under this Worker: its hour columns are unknown (PGRST204 / 42703) or via_hub is
   // still NOT NULL (23502 on a «Via Hub» cleared to null). Said by name, never «Failed to update record» (principle 1).
@@ -4837,7 +4847,15 @@ async function handleCosts(request, url, origin, env) {
         let dbMsg = null;
         const braced = /\{[\s\S]*\}/.exec(e.message || "");
         if (braced) { try { dbMsg = JSON.parse(braced[0]).message || null; } catch (_) { dbMsg = null; } }
-        if (dbMsg) return jsonError(dbMsg, 409, origin, env);
+        if (dbMsg) {
+          // 046's text names the trip by its code («Ο γύρος RT-1543 δεν κλείνει…»): said in words (owner 8/11)
+          const b0 = before.rows[0];
+          if (b0 && b0.code && dbMsg.includes(b0.code)) {
+            const name = (await rtWordsOf(env, [b0]).catch(() => new Map())).get(b0);
+            if (name) dbMsg = dbMsg.replace(`Ο γύρος ${b0.code}`, `Το δρομολόγιο ${name}`).split(b0.code).join(name);
+          }
+          return jsonError(dbMsg, 409, origin, env);
+        }
         throw e;
       }
       await audit(env, { actor: caller.sub, role: caller.role, action: "update", table: "ct_round_trips", recordId: String(recId), before: before.rows[0], after: updated });
@@ -4864,7 +4882,7 @@ async function handleCosts(request, url, origin, env) {
           params.set("or", `(${ors.join(",")})`);
           const imported = (await dbSelectRaw(env, "ct_cost_lines", params)).rows.map((r) => ({ ...r, doc_id: null }));
           const hit = findManualTwins([probe], imported)[0];
-          if (hit) return jsonError(`Οι πληρωμές DKV έρχονται από την κατάσταση — υπάρχει ήδη εισαγόμενη γραμμή #${hit.manual_id} (${hit.reason === "liters" ? "ίδια λίτρα" : "ίδιο ποσό"}, ${hit.manual.line_date}) στο ίδιο δρομολόγιο`, 400, origin, env);
+          if (hit) return jsonError(`Οι πληρωμές DKV έρχονται από την κατάσταση — υπάρχει ήδη εισαγόμενη γραμμή (${hit.reason === "liters" ? "ίδια λίτρα" : "ίδιο ποσό"}, ${hit.manual.line_date}) στο ίδιο δρομολόγιο`, 400, origin, env);
         }
       }
       const body = await request.json().catch(() => null);
@@ -5881,7 +5899,7 @@ async function handleCosts(request, url, origin, env) {
       // only catches a non-existent RT, not one of another vehicle (finding 8).
       const rtIds = [...new Set(rows.map((r) => r.rt_id).filter((v) => v != null))];
       if (rtIds.length) {
-        const rtRows = (await dbSelectRaw(env, "ct_round_trips", new URLSearchParams({ select: "id,truck_id,status,model", id: `in.(${rtIds.join(",")})` }))).rows;
+        const rtRows = (await dbSelectRaw(env, "ct_round_trips", new URLSearchParams({ select: "id,truck_id,status,model,trip_type,driver_id,partner_id,date_start", id: `in.(${rtIds.join(",")})` }))).rows;
         const byId = new Map(rtRows.map((r) => [r.id, r]));
         // 073 / E10 + handover P3-3: ct_round_trips.truck_id of a v5 cycle is the copy of its FIRST segment, while the
         // preview matches the second truck's fuel after a handover to the same cycle (its segment's window). A v5
@@ -5899,15 +5917,19 @@ async function handleCosts(request, url, origin, env) {
             segRowsById.get(w.id).push(w);
           }
         }
+        // A refusal names the trip and the truck in words, never «round trip 812 / truck 14» (owner 8/11): read only
+        // on the way out, so a clean import pays nothing for it.
+        const rtName = async (rt) => { const n = (await rtWordsOf(env, [rt]).catch(() => new Map())).get(rt); return n ? `το δρομολόγιο ${n}` : "το δρομολόγιο"; };
+        const plateOf = async (id) => ((await dbSelectRaw(env, "trucks", new URLSearchParams({ select: "license_plate", id: `eq.${id}` })).catch(() => ({ rows: [] }))).rows[0] || {}).license_plate || "άγνωστο φορτηγό";
         for (let i = 0; i < rows.length; i++) {
           const r = rows[i];
           if (r.rt_id == null) continue;
           const rt = byId.get(r.rt_id);
-          if (!rt) return jsonError(`line ${i + 1}: round trip ${r.rt_id} does not exist`, 409, origin, env);
-          if (rt.status === "cancelled") return jsonError(`line ${i + 1}: round trip ${r.rt_id} is cancelled`, 409, origin, env);
+          if (!rt) return jsonError(`Γραμμή ${i + 1}: το δρομολόγιο δεν υπάρχει πια — διάλεξε άλλο`, 409, origin, env);
+          if (rt.status === "cancelled") return jsonError(`Γραμμή ${i + 1}: ${await rtName(rt)} έχει ακυρωθεί`, 409, origin, env);
           const cycleTrucks = rt.model === 2 ? segTrucks.get(rt.id) : null;
           if (cycleTrucks ? r.truck_id != null && !cycleTrucks.has(r.truck_id) : r.truck_id != null && rt.truck_id != null && rt.truck_id !== r.truck_id) {
-            return jsonError(`line ${i + 1}: round trip ${r.rt_id} belongs to another truck`, 409, origin, env);
+            return jsonError(`Γραμμή ${i + 1}: ${await rtName(rt)} είναι άλλου φορτηγού, όχι του ${await plateOf(r.truck_id)}`, 409, origin, env);
           }
           // final review 26/10 (W-9): on a v5 cycle the truck is the cycle's only on its OWN segment's days (DKV-2
           // alpha: exact days, no +-1) - truck 10's fuel of the day before the handover 9 -> 10 is not this cycle's.
@@ -5917,7 +5939,7 @@ async function handleCosts(request, url, origin, env) {
             const day = String(r.line_date).slice(0, 10);
             const onIt = (segRowsById.get(rt.id) || []).some((w) => w.truck_id === r.truck_id && w.date_start
               && day >= w.date_start && day <= (w.date_end || w.date_start));
-            if (!onIt) return jsonError(`line ${i + 1}: round trip ${r.rt_id}: truck ${r.truck_id} has no segment of it on ${day}`, 409, origin, env);
+            if (!onIt) return jsonError(`Γραμμή ${i + 1}: το φορτηγό ${await plateOf(r.truck_id)} δεν ήταν στο ${(await rtName(rt)).replace(/^το /, "")} στις ${PlainRef.day(day)}`, 409, origin, env);
           }
         }
       }
@@ -6397,8 +6419,9 @@ function planConfigAnswer(out) {
 __name(planConfigAnswer, "planConfigAnswer");
 // ONE error shape for every non-2xx of /plan/* (decision 23): the F4 client
 // (core/plan-api.js) reads error.code to react and toasts error.message.
-function planError(status, type, code, message, origin, env) {
-  return jsonOk({ error: { type, code, message } }, origin, env, status);
+function planError(status, type, code, message, origin, env, detail) {
+  // `detail` (the DB's ASCII detail of a refusal) only when there is one: for machines and the log, never the text
+  return jsonOk({ error: detail ? { type, code, message, detail } : { type, code, message } }, origin, env, status);
 }
 __name(planError, "planError");
 var PLAN_MONEY_ROLES = ["owner", "accountant"];
@@ -6442,6 +6465,35 @@ function planBadNumber(v, at, isId) {
   return null;
 }
 __name(planBadNumber, "planBadNumber");
+// The trips an RT code names, in words (owner 8/11): «ΚΖΗ-1234 · Σαρίδης Γ. · Δευ 2/11», through core/plain-ref.js.
+// rows = ct_round_trips rows {code, trip_type, truck_id, driver_id, partner_id, date_start}; one read per table.
+async function rtWordsOf(env, rows) {
+  const ids = (k) => [...new Set(rows.map((r) => r[k]).filter((v) => v != null))];
+  const read = (table, sel, list) => (list.length ? dbSelectRaw(env, table, new URLSearchParams({ select: sel, id: `in.(${list.join(",")})` })).then((x) => x.rows) : Promise.resolve([]));
+  const [trucks, drivers, partners] = await Promise.all([read("trucks", "id,license_plate", ids("truck_id")),
+    read("drivers", "id,full_name", ids("driver_id")), read("partners", "id,company_name", ids("partner_id"))]);
+  return new Map(rows.map((r) => [r, PlainRef.tripOf(r, { trucks, drivers, partners })]));
+}
+__name(rtWordsOf, "rtWordsOf");
+// A refusal's detail in words: each RT code it holds becomes its trip, and a bare time that follows it («26/10
+// 09:00», seg_outside) stays. Any other detail (an id, a field) gives no words: it is in `detail` for machines.
+// A failed read gives no words, never a failed refusal (the rule's text alone still says what happened).
+async function planDetailWords(env, detail) {
+  const codes = [...new Set(String(detail || "").match(/RT-\d+/g) || [])].slice(0, 3);
+  if (!codes.length) return "";
+  try {
+    const rows = (await dbSelectRaw(env, "ct_round_trips", new URLSearchParams({
+      select: "code,trip_type,truck_id,driver_id,partner_id,date_start", code: `in.(${codes.map((c) => `"${c}"`).join(",")})` }))).rows;
+    const words = await rtWordsOf(env, rows);
+    const names = codes.map((c) => { const r = rows.find((x) => x.code === c); return r ? words.get(r) : ""; }).filter(Boolean);
+    const rest = String(detail).replace(/RT-\d+/g, "").trim();
+    return PlainRef.list(names) + (names.length && /^[\d/: .-]+$/.test(rest) ? ` · ${rest}` : "");
+  } catch (e) {
+    console.warn("plan: the trip of a refusal not named -", e && e.message);
+    return "";
+  }
+}
+__name(planDetailWords, "planDetailWords");
 // The ONE translation of a DB refusal inside /plan/* (review of PR #90, finding 4): the catch of handlePlan and
 // plan_rt_update's dry-run preview.conflict both go through it, so a preview says what its execution would
 // say, code and text, for every family stockRuleError knows (stock 057, relay 060, plan 071/072) and for a
@@ -6461,7 +6513,7 @@ function planRefusal(e) {
   if (rule) {
     // need_token: the act needs the dry-run list first — 428, so the F4 client opens the list instead of
     // toasting a refusal.
-    return { status: rule.code === "need_token" ? 428 : 422, type: rule.type || "STOCK_RULE", code: rule.code, message: rule.message };
+    return { status: rule.code === "need_token" ? 428 : 422, type: rule.type || "STOCK_RULE", code: rule.code, message: rule.message, detail: rule.detail || "" };
   }
   const pg = e && e.pg && typeof e.pg === "object" ? e.pg : null;
   if (pg && /^23(514|505|503|P01)$/.test(String(pg.code || ""))) {
@@ -6602,13 +6654,17 @@ async function handlePlan(request, url, origin, env) {
       const c = out.preview.conflict;
       // one code and one text per rule for a screen, whichever layer refused first (planRefusal, finding 4)
       const rule = planConflictRule(c);
+      const words = await planDetailWords(env, c.detail);
       c.code = rule.code;
-      c.message = rule.message;
+      c.message = words ? `${rule.message}: ${words}` : rule.message;
     }
     return jsonOk(out, origin, env);
   } catch (e) {
     const refusal = planRefusal(e);
-    if (refusal) return planError(refusal.status, refusal.type, refusal.code, refusal.message, origin, env);
+    if (refusal) {
+      const words = refusal.type === "PLAN_RULE" ? await planDetailWords(env, refusal.detail) : "";
+      return planError(refusal.status, refusal.type, refusal.code, words ? `${refusal.message}: ${words}` : refusal.message, origin, env, refusal.detail);
+    }
     const pg = e && e.pg && typeof e.pg === "object" ? e.pg : null;
     // PostgREST 404 PGRST202 = the function is not in its schema cache: this
     // Worker is ahead of 072 (or 072 was rolled back). Named, never a 500
