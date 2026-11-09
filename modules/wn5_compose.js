@@ -443,10 +443,17 @@
       return { kind: 'stale', code, text: (label || 'Το πρόχειρο') + ' άλλαξε από άλλον' + who + ' — ξαναφόρτωσε: η σελίδα το διάβασε ξανά, τίποτα δεν γράφτηκε' };
     }
     let text = String((e && e.message) || '') || '(' + (code || 'χωρίς κωδικό') + ')';
-    // piece_in_draft «<piece>:<draft>[:same|:race]»: the draft is named in words («είναι ήδη στο Φορτίο 3»)
-    const m = code === 'piece_in_draft' && /\((\d+):(\d+)(?::same)?\)\s*$/.exec(text);
-    const other = m ? _find(Number(m[2])) : null;
-    if (other) text = 'Είναι ήδη στο ' + _label(other) + (other.side !== S.side ? ' (' + SIDE_GR[other.side] + ')' : '') + ' · ' + text;
+    // piece_in_draft «<piece>:<draft>[:same|:race]»: the draft is named in words («είναι ήδη στο Φορτίο 3»). The pair
+    // comes as error.detail from the Worker of 8/11, or - from an older Worker, e.g. after a rollback - in brackets at
+    // the end of the message; there it leaves the text: the DB's raw detail is never shown (owner 8/11, no codes).
+    if (code === 'piece_in_draft') {
+      const tail = /\s*\((\d+:(?:\d+|race)(?::same)?)\)\s*$/;
+      const old = tail.exec(text);
+      if (old) text = text.replace(tail, '');
+      const pair = /^\d+:(\d+)/.exec((e && typeof e.detail === 'string' && e.detail) || (old ? old[1] : ''));
+      const other = pair ? _find(Number(pair[1])) : null;
+      if (other) text = 'Είναι ήδη στο ' + _label(other) + (other.side !== S.side ? ' (' + SIDE_GR[other.side] + ')' : '') + ' · ' + text;
+    }
     return { kind: (e && e.kind) || 'refusal', code, text };
   }
 

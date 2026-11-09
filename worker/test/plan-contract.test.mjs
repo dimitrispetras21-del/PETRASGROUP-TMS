@@ -83,6 +83,8 @@ const f085 = () => readOne(['drafts/085_plan_invoiced_client_price.sql', '085_pl
 const f089 = () => readOne(['drafts/089_plan_partner_rate_anodos.sql', '089_plan_partner_rate_anodos.sql'],
   'copy it from the SQL branch: git checkout feat/089-partner-rate-anodos -- worker/migrations/drafts/089_plan_partner_rate_anodos.sql');
 // 098 / 099 / 102 (owner 2/11): their codes, CHECKs and RPCs travel with this Worker change
+const f095 = () => readOne(['095_plan_small_relaxed.sql', 'drafts/095_plan_small_relaxed.sql'], 'it is on main since #217');
+const f110 = () => readOne(['110_plan_rt_expect_change.sql', 'drafts/110_plan_rt_expect_change.sql'], 'it is on main since #291');
 const f098 = () => readOne(['drafts/098_plan_transfer_point.sql', '098_plan_transfer_point.sql'],
   'copy it from the SQL branch: git checkout origin/feat/transfer-098-point -- worker/migrations/drafts/098_plan_transfer_point.sql');
 const f099 = () => readOne(['drafts/099_plan_transfer.sql', '099_plan_transfer.sql'],
@@ -276,14 +278,20 @@ test('the parsed codes are exactly the plans\' 26 + 31 + 15 + 1 — none missing
   for (const r of RETIRED) assert.ok(!Object.prototype.hasOwnProperty.call(W.PLAN_RULE_TEXT, r), `retired code «${r}» has a Worker text`);
 });
 
-test('every plan: code has its own Greek text, the DB detail in brackets; every Worker code key is raised by 071/072/072b/073/074/085/098/099/102', () => {
-  const all = [...EARLIER(), ...CODES_098, ...CODES_099, ...CODES_102];
+test('every plan: code has its own Greek text, the DB detail apart (owner 8/11: never in the text); every Worker code key is raised by 071/072/072b/073/074/085/095/098/099/102', () => {
+  // 095 plan_seg_problem: a later segment without its point (it had no text until 8/11 and fell to raw English)
+  assert.match(f095().sql, /return 'seg_place_text:'/, '095 raises seg_place_text');
+  // 110 plan_rt_expect_change: another person's change since the board was read (its text came with this Worker)
+  assert.match(f110().sql, /plan_h_raise\('rt_changed'/, '110 raises rt_changed');
+  const all = [...EARLIER(), 'seg_place_text', 'rt_changed', ...CODES_098, ...CODES_099, ...CODES_102];
   for (const code of all) {
     assert.ok(Object.prototype.hasOwnProperty.call(W.PLAN_RULE_TEXT, code), `«${code}» has no Greek text in PLAN_RULE_TEXT`);
     const r = W.stockRuleError({ pg: { code: '23514', hint: 'plan:' + code, message: `plan rule broken: ${code}:RT-1280` } });
     assert.equal(r.type, 'PLAN_RULE');
     assert.equal(r.code, code);
-    assert.equal(r.message, `${W.PLAN_RULE_TEXT[code]} (RT-1280)`);
+    assert.equal(r.message, W.PLAN_RULE_TEXT[code]);
+    assert.equal(r.detail, 'RT-1280');
+    assert.doesNotMatch(r.message, /RT-\d/, `${code}: no RT code in the text`);
     assert.match(r.message, greek, `${code} text is Greek`);
   }
   const dead = Object.keys(W.PLAN_RULE_TEXT).filter((k) => !all.includes(k));
@@ -299,10 +307,11 @@ test('098 widens leg_place / split_not_at_hub / not_at_hub: their texts and the 
   for (const code of CODES_102.filter((c) => c.startsWith('draft_') || c === 'piece_in_draft')) assert.match(W.PLAN_RULE_TEXT[code], /πρόχειρ/, code);
   assert.match(W.PLAN_RULE_TEXT.draft_stale, /άλλαξε από άλλον/, 'owner 2/11: «άλλαξε από άλλον, ξαναφόρτωσε»');
   assert.match(W.PLAN_RULE_TEXT.draft_stale, /ξαναφόρτωσε/);
-  // piece_in_draft keeps its detail (the piece, the draft, :same / :race) for the screen to word the draft
+  // piece_in_draft keeps its detail (the piece, the draft, :same / :race) for the screen to word the draft - apart, as `detail`
   for (const detail of ['41:7', '41:7:same', '41:race']) {
     const r = W.stockRuleError({ pg: { code: 'P0001', hint: 'plan:piece_in_draft', message: `plan rule broken: piece_in_draft:${detail}` } });
-    assert.deepEqual(r, { type: 'PLAN_RULE', code: 'piece_in_draft', message: `${W.PLAN_RULE_TEXT.piece_in_draft} (${detail})` });
+    // the drafts screen reads the pair from error.detail (wn5_compose.js _words), never from the text
+    assert.deepEqual(r, { type: 'PLAN_RULE', code: 'piece_in_draft', message: W.PLAN_RULE_TEXT.piece_in_draft, detail });
   }
   // the one-live-draft index answers the same code as plan_h_draft_add's own catch, whichever layer refused
   assert.deepEqual(W.stockRuleError({ pg: { code: '23505', message: 'duplicate key value violates unique constraint "plan_draft_pieces_one"' } }),
@@ -422,8 +431,13 @@ test('plan: hint is the marker whatever SQLSTATE; unknown code still loud; no de
   assert.equal(unknown.code, 'brand_new');
   assert.match(unknown.message, /brand_new/);
   const long = W.stockRuleError({ pg: { code: '23514', hint: 'plan:chain', message: 'plan rule broken: chain:' + 'x'.repeat(500) } });
-  assert.ok(long.message.length <= W.PLAN_RULE_TEXT.chain.length + 3 + 120, 'detail capped at 120 chars');
-  assert.equal(W.stockRuleError({ pg: { code: '23514', hint: 'plan:toString', message: 'x' } }).message.startsWith('Ο κανόνας toString'), true, 'prototype key is not a text');
+  assert.equal(long.message, W.PLAN_RULE_TEXT.chain, 'the detail never in the text');
+  assert.ok(long.detail.length <= 120, 'detail capped at 120 chars');
+  assert.match(W.stockRuleError({ pg: { code: '23514', hint: 'plan:toString', message: 'x' } }).message, /^Η βάση αρνήθηκε την αλλαγή με κανόνα χωρίς κείμενο \(toString\)/, 'prototype key is not a text');
+  assert.doesNotMatch(unknown.message, /plan rule broken|:7/, 'the raw English message and an unknown code\'s detail never reach the text');
+  // 110 rt_changed: Greek, no code; «<role> <time>» apart for wn5_actions.js _orderErr
+  const ch = W.stockRuleError({ pg: { code: 'P0001', hint: 'plan:rt_changed', message: 'plan rule broken: rt_changed:owner 2026-11-09T10:42:00+00:00' } });
+  assert.deepEqual(ch, { type: 'PLAN_RULE', code: 'rt_changed', message: W.PLAN_RULE_TEXT.rt_changed, detail: 'owner 2026-11-09T10:42:00+00:00' });
 });
 // ─────────────── Γ3: the Worker's RPC calls and money keys ↔ 072 (review 23/10) ───────────────
 // PostgREST finds a function by its name AND its argument names: a rename on one side would pass every stub test

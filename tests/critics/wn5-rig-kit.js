@@ -303,7 +303,8 @@ async function run(opts) {
         if (c.url && !c.url.startsWith(origin) && !c.url.includes(HOST)) return `aborted external host · ${new URL(c.url).host}`;
         return null;
       }
-      if (/^\[TMS ERROR\] planFetch [A-Z]+ \/plan\/\S*: PlanError: rig sentinel /.test(c.t)) return 'planFetch log of a scripted answer (rig sentinel)';
+      // the route, then the refusal's detail when the Worker sent one (core/plan-api.js _log, owner 8/11)
+      if (/^\[TMS ERROR\] planFetch [A-Z]+ \/plan\/\S*(?: · [^\n]*?)?: PlanError: rig sentinel /.test(c.t)) return 'planFetch log of a scripted answer (rig sentinel)';
       if ((opts.designedConsole || []).some((re) => re.test(c.t))) return 'designed log line of a scenario';
       return null;
     };

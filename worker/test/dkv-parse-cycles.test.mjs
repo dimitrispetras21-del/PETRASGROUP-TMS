@@ -207,14 +207,15 @@ test('commit: the second truck of a handover is accepted for the cycle (its segm
 test('commit: a truck that drives no segment of the cycle is still refused, before any insert', async () => {
   const r = await commit([fuelLine(11, 23)]);
   assert.equal(r.status, 409, r.text);
-  assert.match(r.json.error, /round trip 23 belongs to another truck/);
+  assert.match(r.json.error, /^Γραμμή 1: το δρομολόγιο .*είναι άλλου φορτηγού, όχι του \S+$/);   // in words, never «round trip 23» (owner 8/11)
+  assert.doesNotMatch(r.json.error, /round trip|\b23\b/);
   assert.equal(calls.filter((c) => c.method === 'POST' && c.table === 'ct_cost_lines').length, 0);
 });
 
 test('commit: today\'s round trips keep the one-truck rule and read no segments', async () => {
   const bad = await commit([fuelLine(9, 5)]);
   assert.equal(bad.status, 409, bad.text);
-  assert.match(bad.json.error, /round trip 5 belongs to another truck/);
+  assert.match(bad.json.error, /^Γραμμή 1: το δρομολόγιο .*είναι άλλου φορτηγού/);
   calls = [];
   const ok = await commit([fuelLine(7, 5)]);
   assert.equal(ok.status, 201, ok.text);
@@ -225,7 +226,8 @@ test('commit (final review 26/10, W-9): a truck of the cycle is the cycle\'s onl
   // truck 13 drives cycle 23 from 02/09 to 03/09 (its segment): its fuel of 01/09 is not cycle 23's
   const r = await commit([{ ...fuelLine(13, 23), service_date: '2026-09-01' }]);
   assert.equal(r.status, 409, r.text);
-  assert.match(r.json.error, /round trip 23: truck 13 has no segment of it on 2026-09-01/);
+  assert.match(r.json.error, /^Γραμμή 1: το φορτηγό \S+ δεν ήταν στο δρομολόγιο.* στις Τρί 1\/9$/);
+  assert.doesNotMatch(r.json.error, /round trip|truck 13/);
   assert.equal(calls.filter((c) => c.method === 'POST' && c.table === 'ct_cost_lines').length, 0);
   calls = [];
   const ok = await commit([{ ...fuelLine(13, 23), service_date: '2026-09-03' }]);

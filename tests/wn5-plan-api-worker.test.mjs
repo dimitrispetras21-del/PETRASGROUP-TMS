@@ -46,9 +46,24 @@ test("F4α-T1: real Worker: dry run move passes the switch; PLAN_RULE 422 → ki
   const s = through(w);
   const r = await outcome(s, "planFetch('POST', '/plan/move', { body: { from: { piece_ids: [4001] }, target: { wait: true } }, dry: true })");
   assert.deepStrictEqual({ status: r.status, type: r.type, kind: r.kind, code: r.code, m: r.m },
-    { status: 422, type: 'PLAN_RULE', kind: 'refusal', code: 'piece_split', m: `${RULE_TEXT.piece_split} (4001)` });
+    { status: 422, type: 'PLAN_RULE', kind: 'refusal', code: 'piece_split', m: RULE_TEXT.piece_split });   // owner 8/11: the DB detail never in the text
   assert.deepStrictEqual(w.calls.map((c) => [c.fn, c.p.dry_run, c.p_role]), [['plan_move_pieces', true, 'dispatcher']]);
   assert.strictEqual(s.plan().length, 1);
+});
+
+// owner 8/11, messages without codes: the DB detail travels apart from the text; the PlanError keeps it for the
+// screen that names a record from it (wn5_compose.js), and the message never carries it
+test('real Worker: a refusal\'s DB detail is PlanError.detail, never in the message (piece_in_draft «piece:draft»)', async () => {
+  // a dry run passes the closed switch of this source; the transport is the same for every route
+  const w = makeWorker({ role: 'dispatcher', db: (fn) => (fn === 'plan_move_pieces' ? pgRule('piece_in_draft', '4801:14') : undefined) });
+  const s = through(w);
+  const r = await outcome(s, "planFetch('POST', '/plan/move', { body: { from: { piece_ids: [4801] }, target: { wait: true } }, dry: true })");
+  assert.deepStrictEqual({ status: r.status, kind: r.kind, code: r.code, m: r.m, detail: r.detail },
+    { status: 422, kind: 'refusal', code: 'piece_in_draft', m: RULE_TEXT.piece_in_draft, detail: '4801:14' });
+  // a refusal without a detail: null, never ''
+  const w2 = makeWorker({ role: 'dispatcher', db: (fn) => (fn === 'plan_move_pieces' ? pgRule('hard_delete') : undefined) });
+  const r2 = await outcome(through(w2), "planFetch('POST', '/plan/move', { body: { from: { piece_ids: [4001] }, target: { wait: true } }, dry: true })");
+  assert.strictEqual(r2.detail, null);
 });
 
 test('F4α-T1: real Worker: 428 need_token, 422 stale_confirm, 422 request_reused, 409 busy_retry, 503 slow/schema_behind, 500 plan_unknown map to the right kinds', async () => {

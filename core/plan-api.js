@@ -88,6 +88,10 @@ class PlanError extends Error {
     this.maybeSaved = f.maybeSaved;
     this.data = f.data;
     this.route = f.route;
+    // The DB's ASCII detail of a refusal (Worker of 8/11, «messages without codes»): an RT code, a piece:draft pair. For
+    // a screen that names a record from it (wn5_compose.js) and for the log; NEVER shown as it is - the message
+    // already says the thing in words. null from an older Worker (it put the detail in brackets inside the message).
+    this.detail = typeof f.detail === 'string' && f.detail ? f.detail : null;
     // logError (core/utils.js) marks an error with _kind 'offline' as informational, out of the error counts.
     if (f.kind === KIND.OFFLINE) this._kind = 'offline';
   }
@@ -104,7 +108,8 @@ function routeOf(method, path) {
 function _log(e, quiet) {
   if (isDesigned(e)) return;
   if (quiet && quiet.includes(e.code)) return;   // opts.designed: a code the CALLER expects and shows (Ε-2)
-  try { if (typeof logError === 'function') logError(e, 'planFetch ' + e.route); } catch (_) { /* reporting never cascades */ }
+  // the detail goes to the log with the route, as the message did when it carried it in brackets
+  try { if (typeof logError === 'function') logError(e, 'planFetch ' + e.route + (e.detail ? ' · ' + e.detail : '')); } catch (_) { /* reporting never cascades */ }
 }
 function _make(f, quiet) { const e = new PlanError(f); _log(e, quiet); return e; }
 function _local(code, kind, route, write) {
@@ -232,7 +237,7 @@ async function planFetch(method, path, opts) {
     const code = String(eb.code || '');
     const kind = _kindOf(res.status, code, write);
     throw _make({ status: res.status, type: String(eb.type || ''), code, message: String(eb.message || code), kind, write,
-      maybeSaved: kind === KIND.UNKNOWN || (kind === KIND.LEAK && write), data, route }, quiet);
+      maybeSaved: kind === KIND.UNKNOWN || (kind === KIND.LEAK && write), data, route, detail: eb.detail }, quiet);
   }
   // Not the /plan shape: the Origin gate's string error (403) — a configuration fault (a new domain such as
   // tms.petrasgroup.com), not a role, so NOT a designed answer: kind client, the client's own Greek words, logged.
