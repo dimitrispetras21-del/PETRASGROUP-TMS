@@ -185,6 +185,10 @@ async function openApp(browser, origin, opts = {}) {
     const re = /WN_V5:\s*(?:false|true|'(?:off|pilot|on)')/;
     if (re.test(body)) body = body.replace(re, `WN_V5: '${opts.flag || 'on'}'`);
     else S.preflight.push('FEATURES.WN_V5 not found in config.js');
+    // 110 (expect_change, live 8/11): the scenarios pin each PATCH /plan/rt body byte for byte, as the forms built them
+    // before 110; the key is judged by its own scenario (wn5-assign-rig rt_expect, which sets FEATURES.WN_EXPECT
+    // itself). opts.expect = true serves the repo's value.
+    if (!opts.expect) body = body.replace(/WN_EXPECT:\s*(?:true|false|'pilot')/, 'WN_EXPECT: false');
     await route.fulfill({ status: 200, contentType: 'text/javascript; charset=utf-8', body });
   });
   const cors = { 'access-control-allow-origin': '*' };

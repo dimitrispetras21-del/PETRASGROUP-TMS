@@ -949,14 +949,16 @@ async function sotiris_hub_after({ browser, origin, ok, scn }) {
 // 110 (Sotiris report 8/11, item 7): a vehicle change carries expect_change = the trip's last change as the board
 // showed it (087 last_change.at), only with FEATURES.WN_EXPECT on (before 110 the base refuses the key); another
 // person's change since then (409 rt_changed) is said in words that ask for «ανανέωσε», and nothing more is sent.
-async function rt_expect({ browser, origin, ok, scn }) {
+async function rt_expect({ browser, origin, ok, scn, shots }) {
+  ok(scn, 'the repo serves FEATURES.WN_EXPECT = true (110 executed 8/11)', /WN_EXPECT:\s*true/.test(require('fs').readFileSync(require('path').join(K.TREE, 'config.js'), 'utf8')));
   const AT = '2026-10-12T08:15:00.123456+00:00';
   const b = board();
   b.cycles.find((c) => c.rt_id === 101).last_change = { at: AT, role: 'dispatcher', table: 'rt_stops', action: 'update', keys: ['planned_from'] };
   let n = 0;
   const { page, S } = await K.openApp(browser, origin, { board: b, plan: { 'PATCH /plan/rt/101': async () => {
     n += 1; return n === 1 ? OK('plan_rt_update') : [409, { error: { type: 'PLAN_RULE', code: 'rt_changed', message: 'rig sentinel plan rule broken: rt_changed:accountant 2026-10-12T09:40:00.5+00:00' } }]; } } });
-  // flag off (the default until 110 runs): no key
+  // flag off (the rig kit's default; 110 ran 8/11 and the repo has it on): no key
+  await page.evaluate(() => { FEATURES.WN_EXPECT = false; });
   await page.evaluate(() => WN5Act.assign(null, { entry: 'menu', rtId: 101 }));
   await page.waitForSelector(DLG, { timeout: 4000 });
   await pickIn(page, 'dr', 'Test 02', 'Driver Test 02');
@@ -977,6 +979,7 @@ async function rt_expect({ browser, origin, ok, scn }) {
   ok(scn, '409 rt_changed: the form stays, says who and when («άλλαξε στο μεταξύ από το λογιστήριο Δευ 12/10 12:40 … ανανέωσε και ξανάνοιξε»), nothing written', /άλλαξε στο μεταξύ από το λογιστήριο Δευ 12\/10 12:40/.test(msg) && /ανανέωσε και ξανάνοιξε/.test(msg) && saves(S).length === 2, msg.slice(0, 300));
   const f = await foot(page);
   ok(scn, 'the save is locked (a retry from this form would be refused again)', f && f.off, f);
+  if (shots) await (await page.$(DLG)).screenshot({ path: shots + '/rt-changed.png' });
   await page.context().close();
 }
 

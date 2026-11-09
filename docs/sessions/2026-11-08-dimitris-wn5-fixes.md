@@ -33,4 +33,4 @@
   - Τα rigs pack2 / f52-f57 είχαν μείνει πίσω από το #271 (PR #281).
   - Η σύγκριση με screenshot βρήκε 2 διαφορές (σημεία 4 / 6), που διορθώθηκαν μαζί με το σχόλιο «#553…» που έριχνε το F4α-T5. Ήταν δικό μου· είχα γράψει λανθασμένα ότι αποτύγχανε και στο main.
   - Σουίτα node 0 αποτυχίες.
-- **110 ΠΡΟΣΧΕΔΙΟ** (PR #291): `expect_change` στο `plan_rt_update` + `FEATURES.WN_EXPECT` (false ως την εκτέλεση)· ζωντανός Worker 32e0ca75 = πηγή του main (φρουρός 41 σημάδια, CF API + dry-run bundle).
+- **110** (PR #291 merged, **ΕΚΤΕΛΕΣΜΕΝΟ 8/11** από τον owner, `WN_EXPECT` true στο `feat/wn5-expect-on`): `expect_change` στο `plan_rt_update` + `FEATURES.WN_EXPECT` (false ως την εκτέλεση)· ζωντανός Worker 32e0ca75 = πηγή του main (φρουρός 41 σημάδια, CF API + dry-run bundle).

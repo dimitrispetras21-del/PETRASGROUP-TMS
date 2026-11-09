@@ -412,8 +412,9 @@ const PERMS = {
 // for one real test each before everyone; then true. Read through featureOn(), one rule for both.
 // WN_EXPECT (110, Sotiris report 8/11 item 7): a change of a trip (vehicle, rate, day) sends expect_change, the newest
 // change by a person the board showed; another person's change since then is refused (rt_changed), never overwritten
-// in silence. Before 110 runs the base refuses an unknown key (bad_input): true only once 110 is executed.
-const FEATURES = { ORDER_SPLIT: true, GROUP_TILES: true, STOCK_LOTS: true, WI_V2: 'on', WI_PRESENCE: false, WN_V5: 'on', WN_ROAD: 'pilot', WN_COMPOSE: 'pilot', WN_EXPECT: false };
+// in silence. 110 EXECUTED 8/11 by the owner (verify md5_ok / worker_exec / takes_key): on. Back to false BEFORE a
+// 110 rollback (a base without 110 refuses the key, bad_input).
+const FEATURES = { ORDER_SPLIT: true, GROUP_TILES: true, STOCK_LOTS: true, WI_V2: 'on', WI_PRESENCE: false, WN_V5: 'on', WN_ROAD: 'pilot', WN_COMPOSE: 'pilot', WN_EXPECT: true };
 // Pilot usernames for FEATURES.WI_V2 === 'pilot' (PLAN §2.1). Empty = nobody.
 const WI_V2_USERS = [];
 // Pilot usernames for FEATURES.WN_V5 === 'pilot' (Ε-1): only a name the owner gives. Empty = nobody.
