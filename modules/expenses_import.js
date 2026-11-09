@@ -577,7 +577,9 @@ function eiReconcileBandHtml() {
     ? ('Δεν καταχωρείται με αποεπιλεγμένες γραμμές (' + exEur(unselected) + ' εκτός) — κάθε ευρώ του παραστατικού γράφεται ή τίποτα')
     : ok
       ? ('ταυτίζεται με το E-SUMMARY της DKV — ' + okCount + '/' + perDoc.length + ' έγγραφα' + payableTxt)
-      : ('Δεν συμφωνεί: ' + ([...perDoc.filter((d) => !d.ok).map((d) => (d.doc_no || '—') + ' ' + exEur(d.diff)), ...footerFails].join(', ') || 'δείτε παραστατικά'));
+      // no_lines (Worker, 8/11): the document gave no line at all — said, so
+      // nobody hunts for one wrong line in a document that was never read.
+      : ('Δεν συμφωνεί: ' + ([...perDoc.filter((d) => !d.ok).map((d) => (d.doc_no || '—') + ' ' + exEur(d.diff) + (d.no_lines ? ' (δεν διαβάστηκε)' : '')), ...footerFails].join(', ') || 'δείτε παραστατικά'));
   const vehicles = new Set(_ei.lines.map((l) => l.plate).filter(Boolean)).size;
   const sure = _ei.lines.filter((l) => l.match.status === 'sure').length;
   const suggest = _ei.lines.filter((l) => l.match.status === 'suggest').length;

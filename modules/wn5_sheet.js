@@ -312,7 +312,9 @@
     try { const u = JSON.parse(localStorage.getItem('tms_user') || '{}'); who = String(u.name || '').split(/\s+/).filter(Boolean).map((w) => w.charAt(0) + '.').join(''); } catch (_) { who = ''; }
     return `${_dlab(day)}/${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}${who ? ' · ' + who : ''}`;
   }
-  async function _ctx(rtId) {
+  // board: a board JSON the caller already read («Παραγγελίες › Εβδομάδα», which never runs the Weekly National);
+  // absent = the Weekly National's own fresh read (findAfterReuse), as the board's printers have always used.
+  async function _ctx(rtId, board) {
     const ids = await PlanIds.load();
     if (!ids.ok) {
       if (typeof toast === 'function') toast('Οι κατάλογοι δεν είναι διαθέσιμοι ακόμη — το φύλλο θέλει διευθύνσεις και τηλέφωνα', 'danger');
@@ -326,8 +328,7 @@
       _log(e, 'WN5Sheet hub');
       return null;
     }
-    let board = null;
-    try { board = await WN5.findAfterReuse((b) => b); } catch (e) { _log(e, 'WN5Sheet board'); }
+    if (!board) { try { board = await WN5.findAfterReuse((b) => b); } catch (e) { _log(e, 'WN5Sheet board'); } }
     const cycle = board && (board.cycles || []).find((c) => c.rt_id === rtId);
     if (!cycle) { if (typeof toast === 'function') toast('Ο κύκλος δεν βρέθηκε στην εβδομάδα που φαίνεται — ανανέωσε', 'warn'); return null; }
     const byId = {};
@@ -356,6 +357,13 @@
       const ctx = await _ctx(rtId);
       if (!ctx) return false;
       const ls = lines(ctx.cycle, ctx.places, p, segmentId);
+      // ✈ audit 8/11: a part the cycle does not have (e.g. «Άνοδος» of a ΚΑΘΟΔΟΣ-only cycle) built a sheet with the head
+      // and «0» only, printed and copied without a word. No 'side' line = nothing for the driver: said, nothing printed.
+      if (!ls.some((l) => l.t === 'side')) {
+        if (typeof toast === 'function') toast(p === 'ALL' ? 'Το δρομολόγιο δεν έχει στάσεις: δεν βγαίνει φύλλο.'
+          : `Το δρομολόγιο δεν έχει ${p === 'ANODOS' ? 'άνοδο' : 'κάθοδο'}: δεν βγαίνει φύλλο.`, 'warn');
+        return false;
+      }
       _last = { rtId, part: p, segmentId, lines: ls, meta: ctx.meta };   // whatsapp(rtId, part) answers for the last sheet built
       if (typeof _printWeekShell === 'function') _printWeekShell(`Φύλλο οδηγού · ${ctx.cycle.code || 'RT-' + rtId}`, html(ls, ctx.meta, _tokens()));
       await _copy(text(ls, ctx.meta));
@@ -366,11 +374,28 @@
       return false;
     }
   }
+  // The sheet of one cycle as a whole document, for a frame on another page (owner 8/11: the assignment document of a
+  // national in «Παραγγελίες › Εβδομάδα»): the SAME lines and html as print(), from the board the caller read. Nothing
+  // is copied (no WhatsApp text) and nothing is printed: the frame prints itself. null = said by a toast, as print().
+  async function sheetDoc(rtId, part, board) {
+    const p = part === 'KATHODOS' || part === 'ANODOS' ? part : 'ALL';
+    try {
+      const ctx = await _ctx(rtId, board);
+      if (!ctx) return null;
+      const body = html(lines(ctx.cycle, ctx.places, p), ctx.meta, _tokens());
+      return { title: `Φύλλο οδηγού · ${ctx.cycle.code || 'RT-' + rtId}`,
+        html: `<!doctype html><html lang="el"><head><meta charset="utf-8"><title>${_esc(ctx.cycle.code || 'RT-' + rtId)}</title></head><body>${body}</body></html>` };
+    } catch (e) {
+      _log(e, 'WN5Sheet sheetDoc');
+      if (typeof toast === 'function') toast('Το φύλλο οδηγού δεν βγήκε: ' + String(e && e.message || e), 'danger');
+      return null;
+    }
+  }
   function whatsapp(rtId, part) {
     const p = part === 'KATHODOS' || part === 'ANODOS' ? part : 'ALL';
     if (!_last || _last.rtId !== rtId || _last.part !== p) return '';
     return text(_last.lines, _last.meta);
   }
 
-  window.WN5Sheet = Object.freeze({ print, whatsapp, lines, text, html });
+  window.WN5Sheet = Object.freeze({ print, sheetDoc, whatsapp, lines, text, html });
 })();

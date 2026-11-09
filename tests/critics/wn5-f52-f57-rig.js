@@ -51,10 +51,14 @@ async function f53({ browser, origin, ok, scn }) {
   { // the next week answers
     const { page, S } = await K.openApp(browser, origin, { board: f53Week(), plan: {
       'GET /plan/board': async (e, St) => (e.q.week === NEXT ? [200, nextWeek()] : [200, St.board]) } });
+    // since #271 (owner 8/11, «15 · W45») the board reads the next week once itself, for the number of a truck of
+    // another week (_awayKick): only the reads the «+» makes are counted here
+    await page.waitForTimeout(400);
+    const pre = K.planOf(S, 'GET', '/plan/board').filter((x) => x.q.week === NEXT).length;
     await page.evaluate(() => WN5Act.plus(103, 'KATHODOS', document.querySelector('#content .wn5-row[data-rt="103"]') || document.querySelector('#content .wn5')));
     await page.waitForSelector(PLUS, { timeout: 6000 }).catch(() => {});
     await page.waitForTimeout(600);
-    const asked = K.planOf(S, 'GET', '/plan/board').filter((x) => x.q.week === NEXT);
+    const asked = K.planOf(S, 'GET', '/plan/board').filter((x) => x.q.week === NEXT).slice(pre);
     ok(scn, '«+» of RT-T103 (Fri 16/10 → Sun 18/10) reads GET /plan/board?week=2026-10-17 once — main: never', asked.length === 1, K.planOf(S, 'GET', '/plan/board').map((x) => x.q.week));
     const ls = await lines(page);
     ok(scn, 'the VS of Sun 18/10 (VS-T801, piece 4801) is in its list — main: missing', ls.includes(4801), ls);
@@ -76,10 +80,12 @@ async function f53({ browser, origin, ok, scn }) {
     ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
     // a second «+» reads the next week again (no cache across openings until the owner says so) and lists it again
     await page.keyboard.press('Escape');
+    await page.waitForTimeout(400);   // the board's own re-read after the save (and its away read, #271) lands first
+    const pre2 = K.planOf(S, 'GET', '/plan/board').filter((x) => x.q.week === NEXT).length;
     await page.evaluate(() => WN5Act.plus(103, 'KATHODOS', document.querySelector('#content .wn5-row[data-rt="103"]') || document.querySelector('#content .wn5')));
     await page.waitForTimeout(500);
     ok(scn, 'a second «+» of RT-T103 lists VS-T801 again (one more GET of 2026-10-17)', (await lines(page)).includes(4801)
-      && K.planOf(S, 'GET', '/plan/board').filter((x) => x.q.week === NEXT).length === 2, K.planOf(S, 'GET', '/plan/board').map((x) => x.q.week));
+      && K.planOf(S, 'GET', '/plan/board').filter((x) => x.q.week === NEXT).length - pre2 === 1, K.planOf(S, 'GET', '/plan/board').map((x) => x.q.week));
     // control: a trip inside the week reads no other week
     await page.keyboard.press('Escape');
     const n0 = K.planOf(S, 'GET', '/plan/board').length;

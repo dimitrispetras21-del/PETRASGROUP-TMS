@@ -269,10 +269,34 @@ function _fhNorm(s) {
 // query can hold, so a query never matches across two fields (truck+trailer).
 function fhSearchNorm(s) { return _fhNorm(s).replace(/[\s\-‐-―./]+/g, ''); }
 function fhSearchBlob(parts) { return parts.filter(Boolean).map(fhSearchNorm).join('\u0001'); }
+// Sotiris report 8/11 (item 11): a place was found only by its label's exact run of letters. «Μπάρμπα Στάθης Σίνδος»
+// missed «BARMPA STATHIS MAVEE - BARBA STATHIS S.A., Sindos» (the comma, the words between) and «Barba Stathis» missed
+// «BARMPA STATHIS» (μπ in a word is «mp» in one record, «b» in another). The places picker now asks every typed word
+// in any order, on both sides folded to one spelling of the sounds Greek names are written with in Latin (mp/b,
+// nt/d, gk/gg/ng/g, ch/kh/h, ph/f, ou/u, ei/oi/y/ee/i, double letters). Only for matching — _fhNorm and the stored
+// names stay as they are (tests/wi4-search-norm.test.js pins _fhNorm).
+function fhLocFold(s) {
+  return _fhNorm(s).replace(/[^a-z0-9\u00c0-\u024f\s]+/g, ' ')
+    .replace(/mp/g, 'b').replace(/nt/g, 'd').replace(/g[kg]|ng/g, 'g').replace(/[ck]h/g, 'h').replace(/ph/g, 'f')
+    .replace(/ou/g, 'u').replace(/ei|oi|ee|y/g, 'i').replace(/([a-z])\1+/g, '$1').replace(/\s+/g, ' ').trim();
+}
+// The query's words, read once per keystroke (not once per place): each as typed (_fhNorm) and folded (fhLocFold).
+function fhLocWords(q) {
+  return _fhNorm(String(q || '')).split(' ').filter(Boolean).map(w => ({ n: w, f: fhLocFold(w) }));
+}
+// every word of the query is in the label, as typed OR folded: as typed keeps a half-typed word («Vero» → Veroia,
+// «Ken» → Kentro, whose folds «veria» / «kedro» it does not hold yet), folded finds the other spelling. Empty = all.
+function fhLocMatch(o, q) {
+  const words = Array.isArray(q) ? q : fhLocWords(q);
+  if (!words.length) return true;
+  const n = o._n || (o._n = _fhNorm(o.label));
+  const f = o._f || (o._f = fhLocFold(o.label));
+  return words.every(w => n.includes(w.n) || (!!w.f && f.includes(w.f)) || !w.f);
+}
 function fhLocDrop(id, q) {
-  const nq = _fhNorm(q.trim());
-  const pool = nq
-    ? _fhLocationsArr.filter(o => (o._n || (o._n = _fhNorm(o.label))).includes(nq)).slice(0, 25)
+  const words = fhLocWords(q);
+  const pool = words.length
+    ? _fhLocationsArr.filter(o => fhLocMatch(o, words)).slice(0, 25)
     : _fhLocationsArr.slice(0, 25);
   fhShowDrop('ls_' + id + '_d', id, pool);
 }
@@ -289,7 +313,7 @@ function _fhTranslit(s) {
   };
   return String(s || '').split(/(\s+)/).map(w => /^\s+$/.test(w) ? w : one(w)).join('');
 }
-if (typeof window !== 'undefined') { window._fhNorm = _fhNorm; window._fhTranslit = _fhTranslit; }
+if (typeof window !== 'undefined') { window._fhNorm = _fhNorm; window._fhTranslit = _fhTranslit; window.fhLocFold = fhLocFold; window.fhLocMatch = fhLocMatch; window.fhLocWords = fhLocWords; }
 
 /**
  * Show client dropdown with async search

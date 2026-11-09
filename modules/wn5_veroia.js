@@ -225,7 +225,8 @@
     if (p && p.req && p.req.missing && !words.length) words.push('παράθυρο Βέροιας');
     const can = !!(p && p.req && !p.req.missing && !words.length && !_nf.busy && !k.closedErr());
     // Π2 (owner 2/11): the truck / driver on another trip those days, amber beside the save, which sends accept_busy
-    const busy = !later && !words.length && !(p && p.err) && p && p.busy ? p.busy.text : '';
+    // item 5 (8/11): and «χωρίς οδηγό» (p.soft holds both)
+    const busy = !later && !words.length && !(p && p.err) && p ? (p.soft || (p.busy ? p.busy.text : '')) : '';
     h += '<div class="wn5-nf-msg" data-nfmsg></div><div class="wn5-nf-ft"><span class="wn5a-miss' + (busy ? ' wn5-soft' : '') + '" data-nfwhy>' + k.esc(p && p.err ? p.err.message : words.length ? 'Λείπει: ' + words.join(', ') : busy) + '</span>'
       + '<button type="button" class="wi4-btn" onclick="WN5Hub.nfReset()">Άκυρο</button>'
       + '<button type="button" class="wi4-btn pri wn5-nf-go" data-act="nf-create"' + (can ? '' : ' disabled') + ' onclick="WN5Hub.nfCreate()">'
@@ -570,7 +571,8 @@
         let rank = null;
         try { if (typeof WN5L !== 'undefined' && st.item.deliver_from) rank = WN5L.stopRank(tr.sideStops, st.item.deliver_from); } catch (e) { k.log(e, 'WN5Hub split stopRank'); }
         return '<span class="wn5-cap' + (after > 33 ? ' over' : '') + '">' + k.esc(WN5L.palText(tr.pal, tr.unk) + ' → ' + WN5L.palText(after, tr.unk) + '/33' + (after > 33 ? ' · υπέρβαση ' + k.pal(after - 33) : '') + (rank > 0 ? ' · μπαίνει ' + rank + 'η' : '')) + '</span>'
-          + (p.stops ? (st.needs.some((n) => n.role === 'drop' && !n.hub && !(n.from && n.to) && n.day) ? ' <span class="wn5-part-u">παράδοση ' + k.esc(k.dayShort(st.needs.find((n) => n.role === 'drop').day)) + ' όλη η ημέρα</span>' : '')
+          // item 1 (8/11): a delivery whose day had passed goes on the truck's Veroia day — the day said is the sent one
+          + (p.stops ? (st.needs.some((n) => n.role === 'drop' && !n.hub && !(n.from && n.to) && n.day) ? ' <span class="wn5-part-u">παράδοση ' + k.esc(k.dayShort(p.late && p.late.length ? p.late[0].day : st.needs.find((n) => n.role === 'drop').day)) + ' όλη η ημέρα</span>' : '')
             : ' <span class="wn5-miss">λείπει ο προορισμός από τη βάση</span>')
           + (p.busy ? ' <span class="wn5-why wn5-soft" data-busy>' + k.esc(p.busy.text) + '</span>' : '');
       }
@@ -621,6 +623,7 @@
       // B1: a delivery with no window of its own (a VS bridge) goes on its day, whole day — the badge says it
       const r = tr ? k.stopsFor(st.needs, tr.cyc, 'KATHODOS', null, (n) => k.dayWin(n)) : null;
       p.stops = r && !r.missing.length ? r.stops : null;
+      p.late = r && !r.missing.length ? r.late : [];
       // Π2: the truck's other trips on those days, read once at the choice (the line shows it, the save sends it)
       p.busy = tr && p.stops ? k.reqBusy({ method: 'POST', path: '/plan/legs', body: { target: { rt_id: p.rt, side: 'KATHODOS' }, stops: p.stops } }, tr.cyc) : null;
       draw();

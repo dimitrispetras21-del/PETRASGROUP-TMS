@@ -8734,6 +8734,10 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
    (the row's menu keeps «+ Κομμάτι από απόθεμα…»). */
 @media (max-width:1600px) { .wi4 .wi4-gap .wi2-gapstk { display:none; } }
 .wi4-gap-act:hover { text-decoration:underline; }
+/* An export with no vehicle yet takes a match too (owner 8/11 #10): the same
+   slot, grey — not a flag (ΠΡΟΣ ΑΝΑΘΕΣΗ already says what is missing). */
+.wi4-gap.wi4-gap-open { color:var(--wi4-grey-2); }
+.wi4-gap.wi4-gap-open > span:first-child { font-weight:400; }
 .wi4-void { font-size:10.5px; color:var(--wi4-grey-2); }
 .wi4-noexp { height:24px; display:flex; align-items:center; gap:8px; padding:0 10px; border:1px dashed var(--wi4-slot); border-radius:5px; font-size:12px; color:var(--wi4-grey-1); }
 /* «Χωρίς εξαγωγή» Medium in ink, «· αυτή την εβδομάδα» quiet (Figma 1097:3555). */
@@ -9010,7 +9014,7 @@ body.wi4-on #wi-popover .wi-pop-save:hover { background:var(--navy-light); }
    match an element. Names are never cut (DESIGN.md #6) — the one exception, as on the Weekly International, is the
    28px queue card, whose whole line is in title (.wn5-qc-cl below). */
 :root {
-  --wn5-note-bg:   #fff7eb;   /* amber answers (warning strips); the notices strip is white since 31/10, its label keeps the ink */
+  --wn5-note-bg:   #fff7eb;   /* amber answers (warning strips) */
   --wn5-note-line: #fad199;
   --wn5-note-ink:  #b5540a;   /* 4.9:1 on --wn5-note-bg */
   --wn5-err-line:  #fecaca;   /* refusal / error strip border (Δ12) */
@@ -9149,10 +9153,9 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
    six-week November. The buttons stay at the panel's foot, the content scrolls behind them. */
 .wn5-dlg > .wi4-dlg-ft { position:sticky; bottom:0; z-index:1; background:var(--surface-card); }
 .wn5 .wn5-asg .wi4-box { flex:1 1 0; max-width:none; }
-/* «ΠΡΟΣ ΑΝΑΘΕΣΗ» (2a, coordinator 1/11, critics r1; the same words as every toast and form): a quiet grey mark, as an empty assignment on the Weekly
-   International — not the loudest thing on the page, late or not (a late load's red is its word «αργό»). */
-.wn5 .wi4-box.un { background:transparent; border:1px solid transparent; color:var(--wi4-grey-2); font-size:10.5px; font-weight:500; letter-spacing:.3px; }
-.wn5 .wi4-box.un:hover, .wn5 .wi4-box.un:focus-visible { border-color:var(--wi4-slot); border-style:dashed; color:var(--wi4-ink); }
+/* «ΠΡΟΣ ΑΝΑΘΕΣΗ» = the Weekly International's red box (.wi4-box.un, owner 8/11: «κόκκινο όπως στο διεθνών»). It
+   replaces 2a (coordinator 1/11, a quiet grey mark): the board must show at a glance what has no vehicle. The
+   words sit in a .wi4-l1 here (WI4 has bare text), so they take the box's red ink and weight. */
 .wn5 .wi4-box.un > .wi4-l1 { color:inherit; font-weight:inherit; }
 /* A tile with nothing under its name (a partner without a plate, 2i): the name on TWO lines at most, «…» after, whole
    on hover (owner 1/11: one line cut «ΛΥΚΟΥΡΓΟΣ ΚΑΤΣΑΦΟΥΡΟ…»; critics r4: never three lines of capitals in the tile).
@@ -9182,10 +9185,10 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
    the blue outlined chip. Executed rows fade with their row (the base's dim), never by another chip style. Before: a
    past ΚΑΘΟΔΟΣ day was blue outlined, a coming one plain text, and the ΑΝΟΔΟΣ grey or blue: three looks for one fact.
    The classes stay WI4's (past/today/next: wn5-dim test). */
-.wn5 :is(.wn5-kd, .wn5-ad) .wi4-dc { background:var(--wi4-chip); border-color:transparent; color:var(--wi4-grey-1); }
-.wn5 :is(.wn5-kd, .wn5-ad) .wi4-dc.today { border-color:var(--wi4-blue); color:var(--wi4-blue-ink); background:var(--surface-card); }
+.wn5 :is(.wn5-kd, .wn5-ad, .wn5-add) .wi4-dc { background:var(--wi4-chip); border-color:transparent; color:var(--wi4-grey-1); }
+.wn5 :is(.wn5-kd, .wn5-ad, .wn5-add) .wi4-dc.today { border-color:var(--wi4-blue); color:var(--wi4-blue-ink); background:var(--surface-card); }
 /* ...and a late waiting load: the same chip in red (the board's one red, «αργό» in its title) */
-.wn5 :is(.wn5-kd, .wn5-ad) .wi4-dc.red { border-color:var(--wi4-red-line); color:var(--wi4-red-ink); background:var(--wi4-red-bg); }
+.wn5 :is(.wn5-kd, .wn5-ad, .wn5-add) .wi4-dc.red { border-color:var(--wi4-red-line); color:var(--wi4-red-ink); background:var(--wi4-red-bg); }
 .wn5-dc2 { font-size:10px; line-height:12px; color:var(--wi4-grey-2); white-space:nowrap; }
 /* A waiting VS names its first reference under «Βέροια» in ΦΟΡΤΩΣΗ, «+N» for the rest of a list (2f; the list in
    title); «αργό» is under its day. */
@@ -9238,6 +9241,11 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 .wn5-row > .wn5-ato:has(> .wn5-end):has(.wn5-pt:not(.wn5-end)) { display:flex; align-items:center; gap:8px; }
 .wn5-row > .wn5-ato:has(> .wn5-end) > .wn5-pts { flex:1 1 auto; min-width:0; }
 .wn5-row > .wn5-ato:has(.wn5-pt:not(.wn5-end)) > .wn5-end { flex:none; padding-left:8px; border-left:1px solid var(--wi4-line); }
+/* ΑΝΟΔΟΣ delivery day (owner 9/11): its own box after the arrow, the loading chip's twin (the Weekly International's
+   import chip, .wi4-l-dd), then the deliveries on the same line taking what is left */
+.wn5-row > .wn5-ato:has(> .wn5-add) { display:flex; align-items:center; gap:8px; }
+.wn5-row > .wn5-ato > .wn5-add { flex:none; display:flex; align-items:center; }
+.wn5-row > .wn5-ato:has(> .wn5-add) > .wn5-pts { flex:1 1 auto; min-width:0; }
 /* ...and the points may use the cell's right 9px gutter: at 1440 the 102px content is 2px short of «1 THESSALONIKI»
    (14 + 3 + 87), which left the number alone on its line; the next column keeps its own 9px, so text never touches. */
 .wn5 .wn5-fl .wn5-pts { margin-right:-9px; }
@@ -9297,6 +9305,36 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 /* «↳ Φόρτωση με τοπικό» (Figma row 3): a 28px sub-row, text from the ΚΑΘΟΔΟΣ day column to the end. */
 .wn5-sub { min-height:28px; border-top:1px solid var(--wi4-line); }
 .wn5-sub-t { grid-column:3 / -1; font-size:11px; color:var(--wi4-grey-2); }
+/* Rota leg (owner 8/11, Figma 2607:7796): a line INSIDE its truck's row — no separator above it, indented 16px inward
+   under the side's columns (it never sticks out left of the row it belongs to), its own pallets; the ΑΝΑΘΕΣΗ cell is
+   the row's, written once. */
+.wn5-sub.wn5-rota { border-top:0; min-height:40px; cursor:pointer; }
+.wn5-sub.wn5-rota > span:not(.wn5-c-idx) { display:flex; align-items:center; min-width:0; }
+.wn5-sub.wn5-rota > :is(.wn5-kd, .wn5-ad) { flex-direction:column; align-items:flex-start; justify-content:center; padding-left:12px; padding-right:0; }
+.wn5-sub.wn5-rota > :is(.wn5-fl, .wn5-afl, .wn5-kto, .wn5-ato) { padding-left:34px; align-items:flex-start; justify-content:center; }
+.wn5-sub.wn5-rota:hover { background:var(--wi4-info-bg); }
+/* «ΤΟΠΙΚΑ» under the board (owner 8/11, Figma 2607:8131): a white card, one line per day, the local driver, his moves */
+.wn5-locals { margin:14px 0 24px; background:var(--surface-card); border:1px solid var(--wi4-line); border-radius:8px; font-size:12px; color:var(--wi4-ink); }
+.wn5-locals > summary { display:flex; align-items:baseline; gap:10px; padding:10px 16px; cursor:pointer; list-style:none; }
+.wn5-locals > summary::-webkit-details-marker { display:none; }
+.wn5-locals > summary::before { content:'∨'; font-size:11px; color:var(--wi4-grey-2); }
+.wn5-locals:not([open]) > summary::before { content:'›'; }
+.wn5-loc-h { font-size:11px; font-weight:600; letter-spacing:.5px; }
+.wn5-loc-sub { font-size:10.5px; color:var(--wi4-grey-2); }
+.wn5-loc-row { display:grid; grid-template-columns:150px 180px 1fr; align-items:center; gap:0 12px; padding:8px 16px; border-top:1px solid var(--wi4-line); }
+.wn5-loc-day { font-size:10.5px; font-weight:600; letter-spacing:.3px; color:var(--wi4-grey-2); text-transform:uppercase; }
+.wn5-loc-day.on { color:var(--wi4-blue-ink); }
+.wn5-loc-none { grid-column:2 / -1; font-size:10.5px; color:var(--wi4-grey-2); }
+.wn5-loc-who { display:flex; flex-direction:column; min-width:0; }
+.wn5-loc-who .wi4-l1 { font-weight:500; }
+.wn5-loc-who .wi4-l2 { font-size:10.5px; color:var(--wi4-grey-2); }
+.wn5-loc-moves { display:flex; flex-direction:column; gap:4px; min-width:0; }
+.wn5-loc-mv { display:flex; align-items:center; gap:8px; min-width:0; }
+.wn5-loc-n { font-weight:600; color:var(--wi4-blue-ink); }
+.wn5-loc-k { padding:1px 6px; border-radius:4px; font-size:10px; font-weight:600; background:var(--wi4-info-bg); color:var(--wi4-blue-ink); }
+.wn5-loc-k.deliver { background:#ECFAF1; color:#166534; }
+.wn5-loc-w { font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+.wn5-loc-y { font-size:10.5px; color:var(--wi4-grey-2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; flex:1; }
 .wn5-sub-t b { font-weight:500; color:inherit; }
 /* The «destination did not come» line of a waiting VS (plan T5, Ε-26) belongs to its row: no rule between them, the
    red rail runs on through it (Figma H1: one continuous bar over the waiting VS rows), 22px, small grey text. */
@@ -9371,29 +9409,7 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 /* Medium, not the shared .wi4-link 600 (2069:10418) */
 .wn5-snone > .wi4-link { flex:none; margin-left:auto; font-weight:500; }
 .wn5-snone[hidden], .wn5 .wn5-cols[hidden] { display:none; }
-/* Notices (owner 31/10, over Figma 2011:7745's amber line): quiet, as the ΒΕΡΟΙΑ strip — white, the board's line,
-   ONE line whatever comes: the label, the newest order's line, «+N ακόμη ▾», «Σημείωσα όλες ✓». The label keeps the
-   amber ink (something to read), nothing else is coloured. The other orders unfold under it, one line each; a line
-   that does not fit ends in «…», whole in its title. */
-.wn5-notes { display:flex; flex-wrap:wrap; align-items:center; gap:0 10px; min-height:34px; box-sizing:border-box; margin:0 0 8px; padding:0 12px 0 10px;
-  border:1px solid var(--wi4-line-2); border-radius:6px; background:var(--surface-card); font-size:12px; line-height:normal; color:var(--wi4-grey-1); }
-.wn5-notes-h { flex:none; font:600 11px 'Syne',sans-serif; letter-spacing:.8px; color:var(--wi4-grey-2); }   /* quiet head (critics r2) */
-.wn5-notes-l { flex:1 1 0; min-width:0; display:flex; height:32px; align-items:center; }
-.wn5-note { display:flex; align-items:baseline; gap:0; min-width:0; flex:1 1 auto; white-space:nowrap; font-size:12px; color:var(--wi4-grey-1); }
-.wn5-note-who { flex:none; padding:0; border:0; background:none; font:inherit; font-weight:600; color:var(--wi4-ink); }
-button.wn5-note-who { color:var(--wi4-blue-ink); cursor:pointer; }
-.wn5-note-t { min-width:0; overflow:hidden; text-overflow:ellipsis; }
-.wn5-note-by { flex:none; font-size:11px; color:var(--wi4-grey-2); }
-.wn5-note-ok { flex:none; margin-left:auto; padding-left:12px; font-weight:500; }
-.wn5-notes-more { flex:none; font-weight:500; }
-.wn5-notes-rest { flex:0 0 100%; display:flex; flex-direction:column; border-top:1px solid var(--wi4-line); }
-.wn5-notes-rest[hidden] { display:none; }
-.wn5-notes-rest > .wn5-note { height:30px; align-items:center; }
-.wn5-notes-rest > .wn5-note + .wn5-note { border-top:1px solid var(--wi4-line); }
-.wn5-notes > .wn5-strip { min-height:0; margin:0; padding:2px 8px; }
-.wn5-notes > #wn5-note-read { flex:none; font-weight:500; }   /* 2049:7801: Medium, not the shared .wi4-link 600 */
-.wn5-notes :is(#wn5-note-read, .wn5-note-ok):disabled { color:var(--wi4-grey-2); cursor:default; text-decoration:none; }
-/* F50 / a notice's link: the row in hand keeps a blue outline until the next paint, and flashes once */
+/* F50: the row in hand keeps a blue outline until the next paint, and flashes once */
 .wn5 .wn5-row.wn5-focus { outline:2px solid var(--wi4-blue); outline-offset:-2px; }
 .wn5 .wn5-row.wn5-flash { background:var(--wi4-sel); transition:background .2s; }
 /* ── National v5 actions (modules/wn5_actions.js, F4α T11): result strips and dialogs. Only tokens (one value, one
@@ -9553,9 +9569,14 @@ button.wn5-note-who { color:var(--wi4-blue-ink); cursor:pointer; }
    ink at rest. The «+N» chip is the quieter one now (below). */
 .wn5-plus { opacity:1; }
 .wn5-row:hover .wn5-plus, .wn5-plus:focus-visible { opacity:1; }
-/* the «+» of an empty side shows on hover only (2b), where a pointer can hover */
-@media (hover:hover) { .wn5-row:not(:hover) .wn5-gpal .wn5-plus:not(:focus-visible) { opacity:0; } }
+/* the «+» of an empty side was shown on hover only (2b); the Sotiris report 8/11 (item 12) found it only by chance with
+   the mouse. It stays at rest, quieter than a side with work (2b's calm), and full on the row's hover / focus. */
+@media (hover:hover) { .wn5-row:not(:hover) .wn5-gpal .wn5-plus:not(:focus-visible) { opacity:.55; } }
 .wn5-row:hover .wn5-plus { border-color:var(--wi4-blue); background:var(--wi4-info-bg); }
+/* Sotiris report 8/11 (item 7): while the board is re-read after a save (wn5_actions.js _afterSave) its old rows take no
+   click — the piece just assigned still shows «ΠΡΟΣ ΑΝΑΘΕΣΗ» there for 2-4 s */
+#content.wn5-reloading > .wn5 { pointer-events:none; }
+#content.wn5-reloading > .wn5 .wn5-row { opacity:.55; transition:opacity .15s; }
 /* «27 [+]» on one line (Figma 2011:10089/10140/10217/10299): every «+» of a side sits at one x, 12px in from the
    side's right edge (691 of 721), whatever the count — so the cell is right-aligned and the count abuts the «+». A count
    that started at the left padding pushed the «+» right by its own width (a gap side's «+» ended past the row edge).
@@ -9985,6 +10006,9 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 /* the footer (2011:10013): note, then «Άκυρο» and the accent «Αποθήκευση», both 36px */
 .wn5f > .wn5f-ft { flex:none; height:64px; margin:0; padding:0 22px; gap:10px; align-items:center; box-sizing:border-box; border-top:1px solid var(--wi4-line-2); }
 .wn5f-ft-note { margin-right:auto; font-size:11.5px; color:var(--wi4-grey-2); }
+.wn5f-ft-note.wn5f-ask { color:var(--danger, #B91C1C); font-weight:600; }
+/* item 8 (8/11): the board dialogs' «Δεν αποθηκεύτηκε…» line, above their foot (wn5_actions.js _dlgAsk) */
+.wn5-dlg-ask { margin:0 16px 8px; font-size:12px; font-weight:600; color:var(--danger, #B91C1C); }
 .wn5f-ft .wi4-btn { height:36px; border-radius:6px; font-size:13px; }
 .wn5f-ft .wi4-btn:not(.pri) { padding:0 14px; font-weight:500; color:var(--wi4-grey-1); }
 .wn5f-ft .wi4-btn.pri { padding:0 16px; font-weight:600; border-color:var(--accent); background:var(--accent); color:var(--surface-card); }
@@ -10049,9 +10073,16 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5 .wn5-row:hover button.wi4-dc[data-act="date"]:not(.today, .red) { border-color:var(--wi4-ctl); background:var(--surface-card); }
 .wn5 .wn5-row button.wi4-dc[data-act="date"]:not(.red):is(:hover, :focus-visible) { border-color:var(--wi4-blue); background:var(--wi4-info-bg); color:var(--wi4-blue-ink); }
 .wn5 .wn5-row > [data-leg]:hover { background:var(--wi4-info-bg); border-radius:4px; }
-/* 3d: the «συνέχεια από W44» line of a cycle that loads in an earlier week: a ↳ sub-line, its link the way there */
-.wn5 .wn5-carry > .wn5-sub-t { color:var(--wi4-grey-1); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.wn5 .wn5-carry .wn5-carry-go { font-size:11px; font-weight:500; }
+/* Owner 8/11: a truck of another week is its whole row here, marked: the number band is striped and holds its number
+   on its own week's board over that week («15» / «W45», the week a link to the row there). Nothing else of the row
+   changes — it is the same truck, the same work. */
+.wn5 .wn5-row.wn5-away > .wn5-c-idx { background:repeating-linear-gradient(135deg, var(--wi4-chip) 0 5px, var(--surface-card) 5px 10px); }
+.wn5 .wn5-awno { flex:none; display:flex; flex-direction:column; align-items:flex-start; gap:1px; line-height:13px; }
+.wn5 .wn5-awno > .wi4-no { color:var(--wi4-grey-1); }
+.wn5 .wn5-awk { padding:0 3px; border:1px solid var(--wi4-blue); border-radius:3px; background:var(--surface-card); font:600 9.5px/12px 'DM Sans',sans-serif;
+  letter-spacing:.2px; color:var(--wi4-blue-ink); cursor:pointer; }
+.wn5 .wn5-awk:is(:hover, :focus-visible) { background:var(--wi4-info-bg); }
+.wn5 span.wn5-awk { cursor:default; }
 /* 3c: a week before day L — one quiet line in the middle of the board, its button beside it */
 .wn5-prel { display:flex; align-items:center; justify-content:center; gap:12px; min-height:240px; font-size:13px; color:var(--wi4-grey-1); }
 .wn5f-vsday { display:flex; align-items:flex-end; gap:8px; }
@@ -10613,6 +10644,14 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .owv-ed-self { display:flex; align-items:center; gap:6px; margin-top:8px; cursor:pointer; }
 .owv-ed-foot { display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin-top:8px; }
 .owv-ed-undo { background:none; border:none; padding:0; color:var(--danger); text-decoration:underline; font:inherit; cursor:pointer; }
+/* «Τιμολόγηση» in the order card (owner 8/11): the same editor as under a line, as a section of the card */
+.owv-ed.owv-ed-card { margin:4px 0 0; padding:0; border:none; border-radius:0; box-shadow:none; background:none; }
+.owv-ed-card .owv-ed-h b { font-size:11.5px; color:var(--text); }
+.owv-ed-sw { margin-left:auto; display:inline-flex; border:1px solid var(--border); border-radius:6px; overflow:hidden; }
+.owv-ed-tab { height:24px; padding:0 10px; border:none; background:var(--bg-card); color:var(--text-mid); font:inherit; font-size:12px; cursor:pointer; }
+.owv-ed-tab + .owv-ed-tab { border-left:1px solid var(--border); }
+.owv-ed-tab[aria-pressed="true"] { background:var(--accent); color:#fff; font-weight:600; }
+.owv-ed-tab[disabled] { opacity:.55; cursor:default; }
 @media print { .owv-ed { display:none !important; } .ow4-ed-on { background:none; } }
 
 /* New place from an order scan (T44, modules/locations.js locScanNewHTML): an
@@ -10864,8 +10903,6 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5-lb-b:hover { background:var(--wi4-hover); color:var(--wi4-ink); }
 /* A-3 (087, Figma A-3 «W43 ①»): orders without a truck in that week, a red count on the tab */
 .wn5 .wn5-tab-n { min-width:16px; height:16px; padding:0 4px; box-sizing:border-box; border-radius:8px; background:var(--wi4-red); color:#fff; font-size:10.5px; font-weight:600; line-height:16px; text-align:center; }
-/* P-16 (087): ✎ = changed after the assignment; the title says the last change only */
-.wn5 .wn5-chg { flex:none; align-self:flex-start; font-size:12px; line-height:16px; color:var(--wi4-amber-ink); cursor:help; }
 /* P-8 (087): the last 3 partner rates of the route, under the partner's rate */
 .wn5a-hist { margin-top:4px; font:400 11px/14px 'DM Sans',sans-serif; color:var(--wi4-grey-2); }
 

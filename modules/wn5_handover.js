@@ -302,7 +302,7 @@
     const pallets = WN5L.palText(loads.reduce((b, l) => b + (Number(l.pallets) || 0), 0), loads.filter((l) => l.pallets == null).length);
     const sheets = segs.length;
     const hub = _hubOf(board);
-    const d = _open('cycle', `Κύκλος ${_esc(c.code || 'RT-' + rtId)}`,
+    const d = _open('cycle', `Αλλαγή οχήματος · ${_esc(_who(c))}`,
       `· ${_whenD(c.start_at)} → ${_whenD(c.end_at)} · ${segs.length} ${segs.length === 1 ? 'τμήμα' : 'τμήματα'} · ${pallets}π`,
       `<div class="wn5h-acts"><button type="button" class="wi4-btn wn5h-pri" data-act="change">Αλλαγή οχήματος</button>`
       + `<button type="button" class="wi4-btn wn5h-out" data-act="sheets">${SEND_ICON}Φύλλα οδηγών (${sheets})</button>`
@@ -559,14 +559,18 @@
       : `<label class="wn5f-f wn5h-partner"><span>Συνεργάτης *</span><select class="form-input" id="wn5h-partner" data-fh-search>${_opts('partner', sel.partner_id, '', sel.partner)}</select></label>`
         + `<label class="wn5f-f wn5h-rate"><span>Κόμιστρο €</span><input class="form-input" id="wn5h-rate" inputmode="decimal" value="${sel.partner_rate == null ? '' : _esc(sel.partner_rate)}"></label>`;
   }
-  async function change(rtId) {
+  // pre (owner 8/11, ✈ «Παράδοση με τοπικό ›», Figma 2607:8131): the same change, opened with «Πότε / Πού / Σημείωση»
+  // filled from the delivery the local driver takes over — still editable, nothing is sent until «Αλλαγή οχήματος».
+  // The local is then the vehicle from that point, paid as a trip (owner 8/11), and the national truck is free.
+  async function change(rtId, pre) {
     const board = await _board();
     const c = board && (board.cycles || []).find((x) => x.rt_id === rtId);
     if (!c) { if (typeof toast === 'function') toast('Ο κύκλος δεν βρέθηκε στην εβδομάδα που φαίνεται — ανανέωσε', 'warn'); return false; }
     const ids = await PlanIds.load();
     const segs = WN5L.segmentsOf(c).segments;
     const now = segs[segs.length - 1] || {};
-    const html = _whenRowHTML({ day: '', hm: '' }, '', '', '')
+    const p0 = pre || {};
+    const html = _whenRowHTML({ day: p0.day || '', hm: p0.hm || '' }, p0.place || '', '', p0.note || '')
       + `<div class="wn5f-sec" data-from>ΝΕΟ ΟΧΗΜΑ</div><div class="wn5h-tog" role="radiogroup">`
       + `<button type="button" class="on" role="radio" aria-checked="true" data-vmode="own">Δικό μας</button><button type="button" role="radio" aria-checked="false" data-vmode="partner">Συνεργάτης</button></div>`
       + `<div class="wn5h-vrow" data-own>${_vehFields(true, {})}`
@@ -576,7 +580,7 @@
       + `<div data-strip></div><div data-preview></div>`;
     // head: the current vehicle (truck only, or the partner) · driver · the cycle window (Figma 2122:7739)
     const cur = now.trip_type === 'PARTNER' ? (now.partner || 'Συνεργάτης') : (now.truck || 'χωρίς φορτηγό');
-    const d = _open('handover', 'Αλλαγή οχήματος', `${[cur, now.driver].filter(Boolean).map(_esc).join(' · ')} · ${_days(c)}`,
+    const d = _open('handover', p0.title || 'Αλλαγή οχήματος', `${[cur, now.driver].filter(Boolean).map(_esc).join(' · ')} · ${_days(c)}`,
       html, '', 'Αλλαγή οχήματος');
     d.rtId = rtId;
     d.cycle = c;
@@ -623,7 +627,7 @@
     const html = (first ? '' : _whenRowHTML(p, g.place_note || '', g.reason, g.reason_note || ''))
       + `<div class="wn5h-vrow${g.trip_type === 'PARTNER' ? ' wn5h-prow' : ''}">${_vehFields(g.trip_type !== 'PARTNER', g)}${pv ? _prevRateHTML() : ''}</div>`
       + `<div class="wn5h-busy" data-busy hidden></div><div data-strip></div><div data-preview></div>`;
-    const d = _open('fix', `Διόρθωση τμήματος ${SEG_GR[g.label] || ''} · ${_esc(c.code || 'RT-' + c.rt_id)}`, `· ${_when(g.from_at)} → ${_when(g.to_at)}`, html, '', 'Αποθήκευση');
+    const d = _open('fix', `Διόρθωση τμήματος ${SEG_GR[g.label] || ''} · ${_esc(_who(c))}`, `· ${_when(g.from_at)} → ${_when(g.to_at)}`, html, '', 'Αποθήκευση');
     d.cycle = c;
     d.board = board;
     d.hub = _hubOf(board);
@@ -735,7 +739,7 @@
     for (const x of (board && board.cycles) || []) { const s = WN5L.segmentsOf(x).segments; const k = s.findIndex((y) => y.segment_id === segmentId); if (k >= 0) { c = x; g = s[k]; i = k; segs = s; break; } }
     if (!g) { if (typeof toast === 'function') toast('Το τμήμα δεν βρέθηκε στην εβδομάδα που φαίνεται — ανανέωσε', 'warn'); return null; }
     const path = `/plan/segments/${segmentId}/remove`;
-    const title = `Αφαίρεση αλλαγής · ${c.code || 'RT-' + c.rt_id} · ${g.place_note || '—'} ${_when(g.from_at)};`;
+    const title = `Αφαίρεση αλλαγής · ${_who(c)} · ${g.place_note || '—'} ${_when(g.from_at)};`;
     // A refusal before any list (a failed dry run, a preview conflict) has nothing to confirm: the H4 shell (600 wide,
     // Figma 2125:7738) with one «Κλείσιμο» where H4 has Άκυρο — the frame has no «×» (style.css hides it); Esc too.
     // Without this listener the shell had no working exit but Esc (whole-frame pass, T26 ledger line).
@@ -762,7 +766,7 @@
     const ans = await WN5Act.twoStep({ method: 'POST', path, body: {}, kind: 'remove', title, verb: 'Αφαίρεση', danger: true, note: true,
       what: (list) => _removeWhat(g, prev, list) });
     if (ans) {
-      if (typeof toast === 'function') toast(`Η αλλαγή οχήματος αφαιρέθηκε · ${c.code || 'RT-' + c.rt_id}${ans.replayed ? ' · το πρώτο πάτημα είχε ήδη αποθηκευτεί' : ''}`, 'success');
+      if (typeof toast === 'function') toast(`Η αλλαγή οχήματος αφαιρέθηκε · ${_who(c)}${ans.replayed ? ' · το πρώτο πάτημα είχε ήδη αποθηκευτεί' : ''}`, 'success');
       Promise.resolve(WN5.reload('segment-removed')).then((fresh) => { if (fresh && typeof WN5.focusRow === 'function') WN5.focusRow('rt:' + c.rt_id); });   // F50
     }
     return ans;

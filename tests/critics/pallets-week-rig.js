@@ -10,6 +10,9 @@
 //   failure — a failed /confirm is said in the row with the step that did not happen;
 //   mark    — «Ελέγχθηκε» is not drawn while /pallets/week-checks answers 404; with it, the mark POSTs the week;
 //   docs    — a click on ΑΝΑΘΕΣΗ shows the Weekly's own print.html.
+//   route   — the order panel draws the shared route diagram (owner 8/11 #5) from that order's own stops.
+//             From 1600px wide it is a 400px column beside the panel (core/route-diagram-column.js); PW_COL_DIR =
+//             where pallets-col.png goes.
 // Run from the MAIN repo root (node_modules), against a server of the tree under test:
 //   cd /Users/dimitrispetras/PETRASGROUP-TMS && PW_BASE_URL=http://127.0.0.1:8792/ node <tree>/tests/critics/pallets-week-rig.js
 const P = require('./orders-week-proof.js');
@@ -114,7 +117,7 @@ async function newPage(browser, role, opts = {}) {
 }
 async function openTab(page) {
   await gotoPage(page, 'pallet_ledger', BASE_URL);
-  await page.waitForSelector('.plv-tab', { timeout: 30000 });
+  await page.waitForSelector('.plv-nav', { timeout: 30000 });   // the page's bar (Υ3 redesign; .plv-tab before)
   await page.evaluate(() => plvTab('week'));
   // the view opens on this week; the mocked orders are in the last complete one (orders-week-proof's W0)
   try { await page.waitForSelector('.plw-strip', { timeout: 30000 }); }
@@ -144,6 +147,54 @@ async function runMain(browser) {
   ok(await page.locator('.ow4-day').count() >= 7, 'day bands (.ow4-day) for the seven days');
   ok(await page.locator('.plw-row.trip-row').count() > 0 && await page.locator('.plw-leg.trip-part').count() > 0, 'shared trip divider classes on rows / legs');
   await page.screenshot({ path: path.join(SHOTS, 'week.png'), fullPage: true });
+
+  // route: the panel of 1241 reads its two stops and draws them as the vertical route
+  await page.evaluate(() => { const el = [...document.querySelectorAll('.plw-leg')].find(e => /#1241/.test(e.textContent)); if (el) el.click(); });
+  await page.waitForSelector('.plw-panel .rd', { timeout: 10000 }).catch(() => {});
+  const rd = await page.locator('.plw-panel .rd').count() ? await page.locator('.plw-panel .rd').innerText() : '';
+  ok(/ΔΙΑΔΡΟΜΗ/.test(await page.locator('.plw-panel').innerText().catch(() => '')), 'route: the panel has the ΔΙΑΔΡΟΜΗ section');
+  ok(/Φόρτωση/.test(rd) && /Παράδοση/.test(rd), 'route: the diagram draws the loading and the delivery stop');
+  await page.locator('.plw-panel').screenshot({ path: path.join(SHOTS, 'panel-route.png') }).catch(() => {});
+  ok(await page.locator('.rdc').count() === 0, 'route: below 1600px wide no column, the diagram stays in the panel');
+  await page.keyboard.press('Escape');
+
+  // route column (owner 8/11 «Ναι, φτιάξτο»): from 1600px the panel's ΔΙΑΔΡΟΜΗ is a 400px column at the right edge
+  // and the panel sits next to it; the column's × puts it back in the panel; Esc closes both
+  const geo = () => page.evaluate(() => {
+    const p = document.querySelector('.plw-panel'), col = document.querySelector('.rdc');
+    const r = el => { const b = el.getBoundingClientRect(); return { l: Math.round(b.left), r: Math.round(b.right), w: Math.round(b.width), h: Math.round(b.height) }; };
+    return { panel: p ? r(p) : null, col: col ? r(col) : null, head: col ? col.querySelector('.rdc-h').textContent.replace(/\s+/g, ' ').trim() : '',
+      colRd: col ? col.querySelector('.rd') ? col.querySelector('.rd').innerText : '' : '', panelRoute: p ? /ΔΙΑΔΡΟΜΗ/.test(p.innerText) : false, panelRd: p ? p.querySelectorAll('.rd').length : 0 };
+  });
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.evaluate(() => { const el = [...document.querySelectorAll('.plw-leg')].find(e => /#1241/.test(e.textContent)); if (el) el.click(); });
+  await page.waitForSelector('.rdc .rd', { timeout: 10000 }).catch(() => {});
+  let g = await geo();
+  ok(!!g.col && g.col.r === 1920 && g.col.w === 400 && g.col.h === 1080, 'column: 400px, full height, at the right edge ' + JSON.stringify(g.col));
+  ok(!!g.panel && g.panel.r === 1520, 'column: the panel sits right next to it ' + JSON.stringify(g.panel));
+  ok(/Φόρτωση/.test(g.colRd) && /Παράδοση/.test(g.colRd), 'column: draws the order\'s loading and delivery');
+  ok(!g.panelRoute && g.panelRd === 0, 'column: no ΔΙΑΔΡΟΜΗ left in the panel (no duplicate)');
+  ok(/^Διαδρομή/.test(g.head) && !/RT-/.test(g.head), 'column head: «' + g.head.replace('×', '').trim() + '»');
+  const colShot = process.env.PW_COL_DIR;
+  if (colShot) { require('fs').mkdirSync(colShot, { recursive: true }); await page.screenshot({ path: path.join(colShot, 'pallets-col.png') }); }
+  await page.locator('.rdc .rdc-x').click();
+  await page.waitForTimeout(200);
+  g = await geo();
+  ok(!g.col && !!g.panel && g.panel.r === 1920 && g.panelRoute && g.panelRd === 1, 'column ×: only the column closes, ΔΙΑΔΡΟΜΗ back in the panel at the edge');
+  await page.evaluate(() => { const el = [...document.querySelectorAll('.plw-leg')].find(e => /#1243/.test(e.textContent)); if (el) el.click(); });
+  await page.waitForSelector('.rdc .rd', { timeout: 10000 }).catch(() => {});
+  ok(!!(await geo()).col, 'column: another order\'s panel opens with its column');
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.waitForTimeout(300);
+  g = await geo();
+  ok(!g.col && g.panelRoute && g.panel.r === 1440, 'column: resized to 1440, the diagram is back in the panel');
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.waitForTimeout(300);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(200);
+  g = await geo();
+  ok(!g.panel && !g.col, 'column: Esc closes the panel and the column');
+  await page.setViewportSize({ width: 1440, height: 960 });
 
   // confirm: 1246's pending loading
   page._writes.length = 0;

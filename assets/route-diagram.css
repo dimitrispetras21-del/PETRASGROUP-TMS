@@ -1,0 +1,113 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   ROUTE DIAGRAM (core/route-diagram.js) — the vertical «Διαδρομή» of an order or an RT
+   Values: Figma KO7l2AfucR3HJEDIg1Yptr, tab «Διαδρομή» 2283:10009 (body 2283:10025, page 2281:7735) and the
+   panel-style cards 2310:7917–2310:7926 (page 2306:7735). docs/route-diagram/DESIGN.md §3 lists each value.
+   Colours that exist as tokens in assets/style.css are read from them (fallback = the same Figma value, so the
+   preview page renders without style.css); the others are the Figma values, named once here.
+   ═══════════════════════════════════════════════════════════════════════ */
+.rd {
+  --rd-ink:        var(--text, #0F172A);
+  --rd-ink-done:   #334155;              /* name of a marked stop, 2283:9915 */
+  --rd-head:       #64748B;              /* section title, stop label, aside */
+  --rd-meta:       #5B6B7F;              /* day, grey line, kv key */
+  --rd-mid:        var(--text-mid, #475569);
+  --rd-rule:       var(--border, #E2E8F0);
+  --rd-navy:       var(--surface-dark, #0B1929);
+  --rd-partner:    #0F4A2E;              /* «Διεθνών · συνεργάτης» bar, page 2281:7735 */
+  --rd-accent:     var(--accent, #0284C7);
+  --rd-today:      #027BBD;              /* today's day text and the Cross-dock word, 2283:9954 / 9958 */
+  --rd-red:        var(--danger, #B91C1C);
+  --rd-amber:      #D97706;              /* node dot (hub not today, warehouse, customs), cards Δ15 / Δ19 */
+  --rd-amber-ink:  var(--warn, #92400E); /* node notes, card Δ15 */
+  --rd-orange:     #B45309;              /* overlapping days, «δεν γράφτηκε», cards RT10 / Δ5 */
+  --rd-done:       #98A2B3;
+  display: flex; flex-direction: column; gap: 14px;
+  font-family: 'DM Sans', sans-serif; color: var(--rd-ink);
+}
+.rd-sec { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+
+/* section heading: «ΕΞΑΓΩΓΗ #558 … παραδόθηκε» (2283:9907) */
+.rd-sh { display: flex; align-items: center; gap: 6px; height: 18px; white-space: nowrap; }
+.rd-st { font-size: 10.5px; font-weight: 600; line-height: 14px; color: var(--rd-head); }
+.rd-chip { font-family: 'DM Mono', monospace; font-size: 10.5px; font-weight: 500; line-height: 14px; color: #fff;
+  background: var(--rd-navy); border-radius: 4px; padding: 2px 6px; }
+.rd-aside { margin-left: auto; font-size: 11px; font-weight: 500; line-height: 14px; color: var(--rd-head);
+  overflow: hidden; text-overflow: ellipsis; }
+.rd-aside[data-tone="red"] { color: var(--rd-red); }
+
+/* one point: 53px, 63px when a line runs down to the next point (2283:9910 / 9918) */
+.rd-row { position: relative; padding-left: 22px; padding-bottom: 2px; min-width: 0; }
+.rd-row[data-line] { padding-bottom: 12px; }
+.rd-dot { position: absolute; left: 1px; top: 3px; width: 10px; height: 10px; border-radius: 50%; box-sizing: border-box; }
+.rd-line { position: absolute; left: 5px; top: 14px; bottom: -2px; width: 2px; background: var(--rd-rule); }
+.rd-hand { position: absolute; left: 0; top: -1px; width: 12px; text-align: center; font-size: 12px; font-weight: 600;
+  line-height: 16px; color: var(--rd-mid); }
+.rd-row[data-dot="done"] .rd-dot       { background: var(--rd-done); opacity: .6; }
+.rd-row[data-dot="today"] .rd-dot      { background: var(--rd-accent); }
+.rd-row[data-dot="future"] .rd-dot     { background: #fff; border: 1.5px solid var(--rd-navy); }
+.rd-row[data-dot="missed"] .rd-dot     { background: #fff; border: 1.5px solid var(--rd-red); }
+.rd-row[data-dot="unassigned"] .rd-dot { background: #fff; border: 1.5px dashed var(--rd-red); }
+.rd-row[data-dot="node"] .rd-dot       { background: var(--rd-amber); }
+
+.rd-hd { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; height: 17px; }
+.rd-hl { display: flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; overflow: hidden; }
+.rd-lab { font-size: 11px; font-weight: 600; line-height: 14px; color: var(--rd-head); }
+.rd-row[data-kind="crossdock"] .rd-lab { color: var(--rd-today); }
+.rd-vs { font-family: 'DM Mono', monospace; font-size: 9.5px; font-weight: 500; line-height: 12px; color: #fff;
+  background: var(--rd-accent); border-radius: 4px; padding: 2px 6px; }
+.rd-tag { font-size: 10px; font-weight: 600; line-height: 13px; letter-spacing: .5px; color: var(--rd-mid); }
+.rd-tag[data-seg="initial"]      { color: var(--rd-head); }
+.rd-tag[data-seg="intermediate"] { color: var(--rd-amber); }   /* not drawn in Figma (F2 pending): F4α --wn5-seg-intermediate */
+.rd-tag[data-seg="final"]        { color: var(--rd-accent); }
+.rd-flag { font-size: 11px; font-weight: 500; line-height: 14px; color: var(--rd-red); }
+.rd-day { flex: none; font-size: 12px; font-weight: 500; line-height: 16px; color: var(--rd-meta); white-space: nowrap; }
+.rd-day[data-tone="today"]   { color: var(--rd-today); }
+.rd-day[data-tone="overlap"] { color: var(--rd-orange); }
+.rd-name { font-size: 13px; font-weight: 600; line-height: 17px; margin-bottom: 1px; color: var(--rd-ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rd-name[data-tone="done"] { color: var(--rd-ink-done); }
+.rd-meta { font-size: 12px; line-height: 16px; color: var(--rd-meta); }
+.rd-meta [data-tone="red"] { color: var(--rd-red); font-weight: 500; }
+.rd-note { font-size: 12px; line-height: 16px; margin-top: 2px; color: var(--rd-meta); }
+.rd-note[data-tone="amber"] { color: var(--rd-amber-ink); }
+.rd-note[data-tone="red"]   { color: var(--rd-red); font-weight: 500; }
+
+/* executor bar «dispatcher · who» (2283:9925 / 9961 / 9992, page 2281:7735) */
+.rd-ex { display: flex; align-items: center; height: 20px; box-sizing: border-box; padding-left: 8px; border-radius: 3px;
+  font-size: 11px; font-weight: 500; line-height: 14px; color: #fff; background: var(--rd-navy); white-space: nowrap; overflow: hidden; }
+.rd-ex[data-who="partner"] { background: var(--rd-partner); }
+.rd-ex[data-who="none"]    { background: #fff; color: var(--rd-red); border: 1px dashed var(--rd-red); }
+/* «όχημα πελάτη» (Δ20) has no bar in Figma: a quiet outline, not ours and not a partner's — owner to confirm */
+.rd-ex[data-who="client"]  { background: #fff; color: var(--rd-mid); border: 1px solid var(--text-dim, #94A3B8); }
+.rd-ex[data-done]          { opacity: .45; }
+
+.rd-empty { font-size: 12px; line-height: 16px; color: var(--rd-meta); }
+
+/* key / value lines under the route (2283:10008) */
+.rd-kv { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--rd-rule); padding-top: 8px; }
+.rd-kvr { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; line-height: 16px; min-height: 18px; }
+.rd-kvr span { color: var(--rd-meta); }
+.rd-kvr b { font-weight: 500; color: var(--rd-ink); text-align: right; }
+.rd-kvr b[data-tone="orange"] { color: var(--rd-orange); }
+.rd-kvr b[data-tone="red"]    { color: var(--rd-red); }
+
+/* Weekly National v5 ✈ «Διαδρομή» (modules/weekly_natl_v5.js routeOpen, owner 8/11): the diagram of one row in a light
+   panel on the right, the frame of the Orders week card (480px, .owv-cards .owv-card) and its navy head (.owv-docs-h).
+   Below the v5 windows (--z-top) so a window opened from the board stands over it; above the board's sticky bars.
+   .rdc = the same panel as the 400px column beside the order card of «Παραγγελίες › Εβδομάδα» / the order panel of
+   «Παλέτες › Εβδομάδα» (core/route-diagram-column.js, owner 8/11): one look for the three screens. Its z-index is
+   its card's, set by the host. */
+.wn5-rdp, .rdc { position: fixed; top: 0; right: 0; height: 100vh; width: 480px; max-width: 100vw; z-index: var(--z-overlay, 9000);
+  display: flex; flex-direction: column; background: var(--bg-card, #fff); border-left: 1px solid var(--border, #E2E8F0);
+  box-shadow: -8px 0 24px rgba(11,25,41,.12); }
+.rdc { width: 400px; box-sizing: border-box; }
+.wn5-rdp-h, .rdc-h { display: flex; align-items: baseline; gap: 12px; padding: 14px 20px; flex-shrink: 0;
+  background: var(--surface-dark, #0B1929); color: var(--text-on-dark, #fff); }
+.wn5-rdp-h b, .rdc-h b { font-family: 'Syne', sans-serif; font-size: 16px; letter-spacing: .5px; }
+.wn5-rdp-h span, .rdc-h span { opacity: .8; font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Owner 8/11: in the 400px column a long driver name cut the days («29/1…»). The head text wraps instead of being
+   cut — the days are the part that says when; a second line costs less than a lost date. */
+.rdc-h span { white-space: normal; overflow: visible; flex: 1 1 0; }
+.wn5-rdp-x, .rdc-x { margin-left: auto; background: none; border: none; color: inherit; font-size: 22px; line-height: 1; cursor: pointer; }
+.wn5-rdp-b, .rdc-b { flex: 1; overflow-y: auto; padding: 16px 20px 24px; }
+@media print { .wn5-rdp, .rdc { display: none; } }

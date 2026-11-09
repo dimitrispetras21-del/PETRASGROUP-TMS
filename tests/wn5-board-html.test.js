@@ -44,7 +44,7 @@ test('F4α-T5: every row loading at Veroia has .wn5-vtime inside .wn5-fl', () =>
   const c = load();
   const m = c.WN5L.model(FIX, { today: '2026-10-13' });
   const want = m.days.flatMap((d) => d.rows).filter((r) => r.kath && r.kath.veroia);
-  assert.deepStrictEqual(Array.from(want, (r) => r.key), ['rt:101', 'rt:102', 'rt:103', 'rt:104', 'wait:4101', 'wait:4103', 'rt:105', 'rt:108', 'wait:4104']);
+  assert.deepStrictEqual(Array.from(want, (r) => r.key), ['rt:101', 'wait:4101', 'wait:4103', 'rt:103', 'rt:102', 'rt:104', 'rt:105', 'wait:4104', 'rt:108']);
   const byKey = new Map(rows(c.WN5._html(m)).map((r) => [keyOf(r), r]));
   for (const r of want) {
     const fl = cell(byKey.get(r.key), 'wn5-fl');
@@ -84,7 +84,7 @@ test('F4α-T5: one-segment cycle has no label and no slanted edge', () => {
   }
 });
 
-test('F4α-T5: «Χωρίς κάθοδο», «Κενό γύρισμα», «Μόνο κάθοδος · συνεργάτης», partner tile (step 2i: no «—»), «ως Δευ 22:00», ↳ τοπικός; no hub[] waiting line (F5 FE-2)', () => {
+test('F4α-T5: «Χωρίς κάθοδο», «Κενό γύρισμα», «Μόνο κάθοδος · συνεργάτης», partner tile (step 2i: no «—»), «Δευ 12/10» box + «ως 22:00», ↳ τοπικός; no hub[] waiting line (F5 FE-2)', () => {
   const by = new Map(rows(html()).map((r) => [keyOf(r), r]));
   assert.ok(/Χωρίς κάθοδο/.test(by.get('rt:106')), 'rt:106');
   // step 2h: the free day and hour, no repeat of the delivery place
@@ -98,7 +98,9 @@ test('F4α-T5: «Χωρίς κάθοδο», «Κενό γύρισμα», «Μό�
   // FE-2 (owner 28/10): the «… δεν ήρθαν (Worker)» line is gone — an absent key is the error strip (tests/wn5-logic.test.js)
   assert.ok(!/wn5-miss|δεν ήρθαν με τον πίνακα/.test(by.get('wait:4101')), 'wait:4101 still carries the waiting line');
   assert.ok(!/null/.test(by.get('wait:4101')), 'wait:4101 prints no «null»');
-  assert.ok(/Βέροια<\/span><span class="wi4-l2">ως Δευ 22:00/.test(by.get('rt:101')), 'rt:101 end');
+  // owner 9/11: the ΑΝΟΔΟΣ delivery day is its own box after the arrow; under «Βέροια» the hour alone (same day)
+  assert.ok(/<span class="wn5-add"><span class="wi4-dc [^"]*" title="Ημέρα παράδοσης">Δευ 12\/10<\/span><\/span>/.test(by.get('rt:101')), 'rt:101 delivery-day box');
+  assert.ok(/Βέροια<\/span><span class="wi4-l2">ως 22:00</.test(by.get('rt:101')), 'rt:101 end: the hour alone');
   // whole-frame r4: «↳» in the index column (as the ⇄ sub-row's .wn5-hand-ar), the text from the ΚΑΘΟΔΟΣ chip column
   // 095 (owner 2/11): the fixture's loading is the evening before its stop (Mon 12/10, stop Tue 13/10) — amber, allowed
   assert.ok(/<span class="wn5-c-idx"><span class="wn5-hand-ar">↳<\/span><\/span> <span class="wn5-sub-t"><b>Φόρτωση με τοπικό<\/b> · Driver Test 11 · <span class="wn5-oday" title="Άλλη ημέρα από τη στάση">Δευ 12\/10<\/span> 11:00–12:00 · για Oinofyta Test \(στάση 2\)/.test(by.get('rt:103')), 'rt:103 local');

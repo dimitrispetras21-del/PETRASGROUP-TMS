@@ -57,12 +57,15 @@
     st.week = b.week || null;
     // the form snapshots (two presses, the same bytes); forChoice is re-read at each redraw and copies nothing
     st.cycles = ctx.live ? k.cycles() : k.copy(k.cycles());
+    // 109 (item 4): the international trips of the same board, held with its cycles (null = a base before 109)
+    st.intl = Array.isArray(b.intl_trips) ? (ctx.live ? b.intl_trips : k.copy(b.intl_trips)) : null;
     if (vehicle) {
       const c = st.cycles.find((x) => x.rt_id === st.rtId);
       if (!c) { st.err = k.clientErr('rt_missing', 'Δεν είναι στον πίνακα που φορτώθηκε — ανανέωσε'); return st; }
       st.cur = c;
+      st.expect = k.expectOf(c);   // 110 (item 7): the change this form saw, held from the open, never refreshed under it
       const r = k.row(c.rt_id);
-      st.day = st.day || (r && r.dayKey) || c.date_start;
+      st.day = st.day || WN5L.loadDayOf(r) || c.date_start;
       if (c.trip_type === 'PARTNER' && c.partner_id != null) { st.who = 'partner'; st.partner = c.partner_id; st.rateTxt = c.partner_rate == null ? '' : String(c.partner_rate); }
       else if (c.truck_id != null) { st.who = 'own'; st.truck = c.truck_id; st.trailer = c.trailer_id || null; st.driver = c.driver_id || null; }
       _splitOf(st, c);
@@ -235,6 +238,16 @@
   // ═══ «Ημέρα και παράθυρο»: one row per stop of the request (decision 6: one stop per place per side) ═══
   // fixed = a window that already exists (the target cycle's stop at that place, the order's own window, the Veroia
   // board's Veroia stop); else the row is the user's: «όλη η ημέρα» by default, «ώρες…» to type them.
+  // item 1 (Sotiris report 8/11): a delivery with no window of its own never goes before its pickup — the form says
+  // the day the request sends (wn5_actions _stopsFor raises it the same way), never the international's passed day
+  function _dropDay(st, n, cyc, hd) {
+    const k = K();
+    if (!n || n.hub || n.role !== 'drop' || (n.from && n.to) || !n.day) return n ? n.day : null;
+    const pk = st.needs.find((m) => m.role === 'load' && m.loc != null && m.loc === n.pickLoc);
+    const pex = pk && cyc ? (cyc.stops || []).find((s) => s.side === st.side && s.location_id === pk.loc) : null;
+    const pd = !pk ? null : pex ? k.stopDay(pex) : pk.hub ? (st.hub ? st.hub.day : hd) : (pk.from && pk.to ? k.ymdOf(pk.from) : pk.day);
+    return pd && pd > n.day ? pd : n.day;
+  }
   function _rows(st, cyc) {
     const k = K();
     const hubLoc = st.needs.some((n) => n.hub) ? k.hubId() : null;
@@ -244,21 +257,26 @@
       const key = n.hub ? 'hub' : n.key;
       if (seen.has(key)) continue;
       seen.add(key);
-      const day = n.hub ? (st.hub ? st.hub.day : hd) : n.day;
+      const day = n.hub ? (st.hub ? st.hub.day : hd) : _dropDay(st, n, cyc, hd);
       const verb = n.role === 'load' ? 'Φόρτωση' : (n.hub ? 'Άφιξη' : 'Παράδοση');
       const ex = n.loc != null && cyc ? (cyc.stops || []).find((s) => s.side === st.side && s.location_id === n.loc) : null;
       const pl = n.hub ? 'Βέροια' : _place(n.loc);
       const row = { key, n, verb, place: pl, day: ex ? k.stopDay(ex) : day, fixed: null, missing: n.loc == null || !day,
         est: !ex && !st.hub && n.hub && !!n.hubEst && !st.needs.some((m) => m.hub && m.hubDay === day && !m.hubEst) };
+      // screenshots 8/11 (owner rule «screenshot and compare»): a whole-day window on the day a new load follows the
+      // previous trip is sent from that trip's end (req, item 6), so the row says «από 22:00», never «όλη η ημέρα»
+      const after = !ex && !cyc ? (_target(st) || {}).after : null;
+      const fromAfter = (allDay, d) => (allDay && after && after.day === d && after.hm < '23:59' ? 'από ' + after.hm : null);
       if (ex) row.fixed = k.hmw(ex.planned_from, ex.planned_to);
       else if (n.hub && st.hub) {
         // the Veroia board's window is the one sent (req): a half-typed one is red here and named, never this form's own
         const f = k.hhmm(st.hub.from), t = k.hhmm(st.hub.to);
-        row.fixed = f && t ? (f === '00:00' && t === '23:59' ? 'όλη η ημέρα' : f + '–' + t) : '—';
+        const all = f === '00:00' && t === '23:59';
+        row.fixed = f && t ? (fromAfter(all, st.hub.day) || (all ? 'όλη η ημέρα' : f + '–' + t)) : '—';
         row.hubBad = !(f && t);
       }
       else if (n.hub && n.own && n.from && n.to) row.fixed = k.hmw(n.from, n.to);
-      else if (!n.hub && n.from && n.to) row.fixed = k.hmw(n.from, n.to);
+      else if (!n.hub && n.from && n.to) row.fixed = fromAfter(WN5L.allDay(n.from, n.to), k.ymdOf(n.from)) || k.hmw(n.from, n.to);
       // two Veroia days have no right one (decision 6) — unless the Veroia board fixed the day (st.hub)
       if (n.hub && !st.hub && hubLoc != null && k.hubDays(st.needs).length > 1) row.twoDays = k.hubDays(st.needs);
       out.push(row);
@@ -289,15 +307,15 @@
         // only what the user chose: a key sent as null would EMPTY it (vehicle_clear_use_clear, 072)
         if (st.trailer) set.trailer_id = st.trailer;
         if (st.driver) set.driver_id = st.driver;
-        return { method: 'PATCH', path: '/plan/rt/' + st.rtId, body: { set } };
+        return { method: 'PATCH', path: '/plan/rt/' + st.rtId, body: k.withExpect({ set }, st.expect) };
       }
       if (st.who === 'partner' && st.partner && st.split) {
         const s = _split(st);
-        return s.ok ? { method: 'PATCH', path: '/plan/rt/' + st.rtId, body: { set: Object.assign({ trip_type: 'PARTNER', partner_id: st.partner }, s.keys) } } : null;
+        return s.ok ? { method: 'PATCH', path: '/plan/rt/' + st.rtId, body: k.withExpect({ set: Object.assign({ trip_type: 'PARTNER', partner_id: st.partner }, s.keys) }, st.expect) } : null;
       }
       if (st.who === 'partner' && st.partner) {
         const r = k.rate(st.rateTxt);
-        return r.ok ? { method: 'PATCH', path: '/plan/rt/' + st.rtId, body: { set: { trip_type: 'PARTNER', partner_id: st.partner, partner_rate: r.v } } } : null;
+        return r.ok ? { method: 'PATCH', path: '/plan/rt/' + st.rtId, body: k.withExpect({ set: { trip_type: 'PARTNER', partner_id: st.partner, partner_rate: r.v } }, st.expect) } : null;
       }
       return null;
     }
@@ -317,6 +335,20 @@
     const hubWin = st.hub ? (k.hhmm(st.hub.from) && k.hhmm(st.hub.to) ? k.win(st.hub.day, k.hhmm(st.hub.from), k.hhmm(st.hub.to)) : null) : _winOf(st, 'hub', hd, tg.after);
     const r = k.stopsFor(st.needs, tg.cyc, st.side, hubWin, (n) => _winOf(st, n.key, n.day, tg.after));
     if (r.missing.length) return { missing: r.missing, lack: r.lack };
+    // Sotiris report 8/11 (item 6): «νέο φορτίο μετά την …» of a truck that arrives at 12:00 was written from 00:00 of
+    // that day, over its previous trip — _winOf moved only the rows of this form; the Veroia board's window (st.hub),
+    // the saved drafts' and an order's own whole-day window came in as 00:00–23:59, and the base starts a cycle at its
+    // earliest stop (072 plan_rt_create). Every whole-day stop of that day now starts at the previous trip's end.
+    // Typed hours stay as typed: an overlap the user chose is the base's busy rule to judge and say.
+    if (!tg.cyc && tg.after && tg.after.iso) {
+      const endT = Date.parse(tg.after.iso);
+      for (const s of r.stops) {
+        if (!s.planned_from || !s.planned_to || !WN5L.allDay(s.planned_from, s.planned_to)) continue;
+        if (k.ymdOf(s.planned_from) !== tg.after.day) continue;
+        const a = Date.parse(s.planned_from), b = Date.parse(s.planned_to);
+        if (Number.isFinite(endT) && a < endT && endT < b) s.planned_from = new Date(endT).toISOString();
+      }
+    }
     const sel = _sel(st);
     const body = st.only || !st.group
       ? { pieces: st.only ? sel.map((it) => ({ piece_id: it.piece_id })) : st.pieces, target, stops: r.stops }
@@ -366,7 +398,7 @@
     const sp = _span(st);
     if (!sp) return null;
     if (_blind(st)) return { txt: '—', cls: '' };
-    const bz = k.busyOf({ [f.kind + 's']: [id], days: days || _busyDays(st), self: [st.rtId], cycles: st.cycles, week: st.week, accept: false });
+    const bz = k.busyOf({ [f.kind + 's']: [id], days: days || _busyDays(st), self: [st.rtId], cycles: st.cycles, intl: st.intl, week: st.week, accept: false });
     if (bz) {
       const c = bz.trips[0].c;
       const hubLoc = k.hubId();
@@ -404,8 +436,26 @@
   function _overlaps(st, r, saves) {
     if (st.who !== 'own' || !r || r.missing || !r.body) return null;
     return K().busyOf({ trucks: [st.truck], trailers: [st.trailer], drivers: [st.driver], days: _busyDays(st, r), self: [st.rtId, r.body.target && r.body.target.rt_id],
-      cycles: st.cycles, week: st.week, accept: !!saves || st.mode !== 'pick' });
+      cycles: st.cycles, intl: st.intl, week: st.week, accept: !!saves || st.mode !== 'pick' });
   }
+  // Sotiris report 8/11 (item 5): an own truck saved with no driver went through without a word. Relaxed rules (owner
+  // 31/10): allowed, said in amber beside the save. A vehicle change keeps the cycle's driver when none is picked
+  // (req: no driver_id key), so there it is said only when the cycle has none either.
+  const NO_DRIVER = 'χωρίς οδηγό · ο οδηγός μπαίνει αργότερα';
+  function _noDriver(st) {
+    if (st.who !== 'own' || st.truck == null || st.driver) return false;
+    if (st.mode !== 'vehicle') return true;
+    const c = (st.cycles || []).find((x) => x.rt_id === st.rtId);
+    return !(c && c.driver_id != null);
+  }
+  // the amber line beside the save: the busy vehicle (Π2) and the missing driver, one line
+  // the busy text is kept whole: the Veroia board / compose send accept_busy only when the footer holds it as is
+  // (_busySend: shown.includes(text)); after its closing «.» the driver line starts a sentence, never «. ·»
+  const _softText = (st, ov) => {
+    const nd = _noDriver(st) ? NO_DRIVER : null;
+    if (!ov || !nd) return ov || nd || '';
+    return /\.\s*$/.test(ov) ? ov + ' ' + nd.charAt(0).toUpperCase() + nd.slice(1) : ov + ' · ' + nd;
+  };
   // the request the save sends: with accept_busy when the form already said the overlap (Π2)
   const _sendReq = (st, r) => { const o = _overlaps(st, r); return (o && o.accept && WN5Act.withAccept(r, { code: 'truck_busy' })) || r; };
   // the last rate of a partner on the loaded week (the history of the line needs a Worker read: follow-up)
@@ -473,7 +523,12 @@
       const hs = st.needs.some((n) => n.hub) && (tg.cyc.stops || []).find((s) => s.side === st.side && s.location_id === k.hubId());
       if (hs && k.stopDay(hs) !== D) other = 'Βέροια ' + k.dayShort(k.stopDay(hs));
     } else if (tg.after) txt = lbl + ' · νέο φορτίο μετά την ' + tg.after.place + ' · ελεύθερο από ' + (tg.after.day === D ? '' : k.dayShort(tg.after.day) + ' ') + tg.after.hm;
-    else txt = lbl + ' · ' + (_blind(st) ? '—' : 'ελεύθερο');
+    else {
+      // screenshots 8/11: the field said «άλλο δρομολόγιο · διεθνές» while this line said «ελεύθερο» (item 4) — one word
+      // for both, from avail (the board's trips and its intl_trips)
+      const a = st.who === 'own' && !_blind(st) ? avail(st, 'tk', id) : null;
+      txt = lbl + ' · ' + (_blind(st) ? '—' : a && a.cls === 'busy' ? a.txt : 'ελεύθερο');
+    }
     const unk = tg.cyc ? (st.sidePal[tg.cyc.rt_id] || { unk: 0 }).unk : 0;
     const ld = _load(st, tg, req(st));
     // the options of a vehicle that already runs that day (F51 / F61): «στο ίδιο φορτίο» per cycle, then «νέο φορτίο»
@@ -579,7 +634,8 @@
       return k.dayShort(st.day) + ' · ' + now;
     }
     const load = st.needs.find((n) => n.role === 'load'), drop = st.needs.find((n) => n.role === 'drop');
-    const end = (n) => (n ? (n.hub ? 'Βέροια' : _place(n.loc)) + ' ' + (n.hub ? k.dayShort(st.hub ? st.hub.day : _hd(st) || n.day) : k.dayShort(n.day)) : '—');
+    const tg = _target(st);
+    const end = (n) => (n ? (n.hub ? 'Βέροια' : _place(n.loc)) + ' ' + (n.hub ? k.dayShort(st.hub ? st.hub.day : _hd(st) || n.day) : k.dayShort(_dropDay(st, n, tg && tg.cyc, _hd(st)))) : '—');
     const more = _sel(st).length > 1 ? ' +' + (_sel(st).length - 1) : '';
     return st.ref + ' · ' + end(load) + ' → ' + end(drop) + more + ' · ' + WN5L.palText(st.pallets, st.palUnk) + 'π';
   }
@@ -641,7 +697,7 @@
       miss.textContent = pb.words.length ? 'Λείπει: ' + pb.words.join(', ') : '';
       // owner 3/11: the one warning, the busy driver / truck / trailer of the same day (amber, the save stays on); the
       // order of the stops is no longer said before the press (Π1 is gone: the base refuses only an impossible order)
-      const ov = pb.words.length ? null : (_overlaps(st, r) || {}).text;
+      const ov = pb.words.length ? null : _softText(st, (_overlaps(st, r) || {}).text);
       if (ov) miss.textContent = ov;
       miss.classList.toggle('wn5-soft', !!ov);
       const b = d.dlg.querySelector('[data-act="save"]');
@@ -854,7 +910,8 @@
     if (st.err) return { err: st.err };
     const r = req(st);
     // busy: what the Veroia board says beside its «Δημιουργία φορτίου» and sends with it (Π2: it is the one that saves)
-    return { req: r, busy: _overlaps(st, r, true), line: line(st), problems: problems(st), label: st.who ? _label(st.who === 'own' ? 'tk' : 'pt', st.who === 'own' ? st.truck : st.partner) : '',
+    const busy = _overlaps(st, r, true);
+    return { req: r, busy, soft: _softText(st, busy && busy.text), line: line(st), problems: problems(st), label: st.who ? _label(st.who === 'own' ? 'tk' : 'pt', st.who === 'own' ? st.truck : st.partner) : '',
       sub: st.who === 'own' ? [_label('tl', st.trailer), _label('dr', st.driver)].filter(Boolean).join(' · ') : '' };
   }
 

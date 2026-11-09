@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="el">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Route diagram · preview</title>
+<!-- Every case of tests/fixtures/route-diagram-cases.js through the real core/route-diagram*.js and assets/route-diagram.css,
+     for the Playwright screenshots against Figma (docs/route-diagram/DESIGN.md §5). Synthetic data only. Open as file://. -->
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../assets/route-diagram.css">
+<style>
+  body { margin: 0; background: #F4F6F9; font-family: 'DM Sans', sans-serif; color: #0F172A; }
+  h1 { font-size: 16px; margin: 24px 24px 4px; }
+  .sub { font-size: 12px; color: #5B6B7F; margin: 0 24px 16px; }
+  .grid { display: flex; flex-wrap: wrap; gap: 24px; padding: 0 24px 40px; align-items: flex-start; }
+  .case { display: flex; flex-direction: column; gap: 6px; }
+  .case-t { font-size: 13px; font-weight: 600; }
+  .case-t small { font-weight: 400; color: #5B6B7F; margin-left: 6px; }
+  .row { display: flex; gap: 12px; align-items: flex-start; }
+  /* the 480 panel of Figma 2283:10009: body 440 with 20px sides, white, hairline border */
+  .panel { width: 480px; box-sizing: border-box; padding: 18px 20px; background: #fff; border: 1px solid #EAECF0; }
+  #fid { position: absolute; left: 0; top: 0; z-index: 10; width: 440px; background: #fff; }
+  .err { color: #B91C1C; font-size: 12px; }
+</style>
+</head>
+<body>
+<div id="fid" hidden></div>
+<h1>Διάγραμμα διαδρομής · όλες οι περιπτώσεις</h1>
+<div class="sub" id="sub"></div>
+<div class="grid" id="grid"></div>
+<script src="../../core/wn5-logic.js"></script>
+<script src="../../core/wn5-labels.js"></script>
+<script src="../../core/route-diagram.js"></script>
+<script src="../../core/route-diagram-adapters.js"></script>
+<script src="../fixtures/route-diagram-cases.js"></script>
+<script>
+(function () {
+  'use strict';
+  const RD = window.RouteDiagram, A = window.RouteDiagramAdapters, C = window.RD_CASES;
+  const esc = RD.esc;
+  const grid = document.getElementById('grid');
+  document.getElementById('sub').textContent = 'σήμερα ' + C.TODAY + ' · ' + C.cases.length + ' περιπτώσεις · συνθετικά δεδομένα';
+  let errors = 0;
+  for (const c of C.cases) {
+    let body;
+    try {
+      body = [].concat(c.build(A)).map((input) => '<div class="panel">' + RD.render(input) + '</div>').join('');
+    } catch (e) { errors++; body = '<div class="err">' + esc(e.message) + '</div>'; }
+    const el = document.createElement('div');
+    el.className = 'case';
+    el.id = 'case-' + c.id;
+    el.innerHTML = '<div class="case-t">' + esc(c.id + ' · ' + c.title) + (c.figma ? '<small>Figma ' + esc(c.figma) + '</small>' : '') + '</div><div class="row">' + body + '</div>';
+    grid.appendChild(el);
+  }
+  // ?fid=RT1 draws one case alone at 440 (the Figma body 2283:10025) for the fidelity screenshot
+  const fid = new URLSearchParams(location.search).get('fid');
+  if (fid) {
+    const c = C.cases.find((x) => x.id === fid);
+    const f = document.getElementById('fid');
+    f.hidden = false;
+    f.innerHTML = RD.render([].concat(c.build(A))[0]);
+  }
+  document.body.dataset.errors = String(errors);
+  document.body.dataset.ready = '1';
+})();
+</script>
+</body>
+</html>

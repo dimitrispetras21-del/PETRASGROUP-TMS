@@ -231,7 +231,11 @@ async function day({ browser, origin, ok, scn, shots }) {
   const PV = [200, { ok: true, op: 'plan_rt_update', dry_run: true, preview: { before: {}, after: {}, next_rt: null, conflict: null, vs_day: [], warnings: [] } }];
   const plan = { 'PATCH /plan/rt/101': (e) => (e.body.dry_run === true ? PV : [200, { ok: true, op: 'plan_rt_update', dry_run: false, ids: {}, warnings: [], notice_ids: [] }]) };
   const { page, S } = await K.openApp(browser, origin, { board: week2(), plan, viewport: { width: 1440, height: 900 } });
-  await page.dragAndDrop(PT(101, 1002), '#content .wn5-day[data-date="2026-10-15"]').catch((e) => S.pageErrors.push('drag: ' + e.message));
+  // onto the day's HEAD (wn5_edit _target: a day's head, or an empty day). Since #271 (rows by their delivery day, owner
+  // 8/11) Thu 15/10 holds rows, so the day's centre is a row, not the day — the rig aimed at the centre.
+  const head = await K.count(page, '#content .wn5-day[data-date="2026-10-15"] .wn5-dayh');
+  ok(scn, 'Thu 15/10 has its day head to drop on', head === 1, head);
+  await page.dragAndDrop(PT(101, 1002), '#content .wn5-day[data-date="2026-10-15"] .wn5-dayh').catch((e) => S.pageErrors.push('drag: ' + e.message));
   await page.waitForSelector(dlg('date'), { timeout: 6000 }).catch(() => {});
   await page.waitForTimeout(500);
   ok(scn, 'drop on Thu 15/10 → the day panel of THAT stop (data-stop=1002) — main: nothing happens', await K.count(page, `${dlg('date')}[data-stop="1002"]`) === 1);
@@ -414,8 +418,13 @@ async function f63({ browser, origin, ok, scn, shots }) {
   ok(scn, 'the truck\'s row (rt:101) is marked, flashes and is in view', JSON.stringify(fl.keys) === '["rt:101"]' && fl.flash && fl.inView, fl);
   const ts = await toasts(page);
   ok(scn, 'a toast says it was added', ts.some((x) => /^Προστέθηκε/.test(x)), ts);
-  const pts = await page.$$eval('#content .wn5-row[data-rt="101"] .wn5-pt[data-stop]', (xs) => xs.map((x) => x.dataset.stop)).catch(() => []);
-  ok(scn, 'the board shows the new points (stop 1006 or 1007) without «Ανανέωση»', pts.includes('1006') || pts.includes('1007'), pts);
+  // since #286 (owner 8/11, rota = a real leg): this load is picked up Wed AFTER the truck's Tue deliveries, so it is a
+  // rota leg — drawn as its own line inside the truck's row (.wn5-sub.wn5-rota[data-rt]), not among the side's points.
+  // Either place proves the board was read again and drew it without «Ανανέωση».
+  const pts = await page.$$eval('#content :is(.wn5-row, .wn5-sub.wn5-rota)[data-rt="101"] .wn5-pt[data-stop]', (xs) => xs.map((x) => x.dataset.stop)).catch(() => []);
+  ok(scn, 'the board shows the new points (stop 1006 or 1007) without «Ανανέωση» — in the row or its rota line', pts.includes('1006') || pts.includes('1007'), pts);
+  const rota = await page.$$eval('#content .wn5-sub.wn5-rota[data-rt="101"]', (xs) => xs.length).catch(() => 0);
+  ok(scn, 'a pickup after the truck\'s deliveries is its rota line (#286)', rota === 1, rota);
   ok(scn, 'the popover closed', await K.count(page, dlg('plus')) === 0);
   await shot(page, shots, 'pack2-f63-after-add-1440');
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);

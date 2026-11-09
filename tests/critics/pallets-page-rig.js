@@ -1,0 +1,485 @@
+// Rig — «Παλέτες» redesign Υ3 (owner-approved Figma 28/10, frames N01–N18). Invented data only (the repo is
+// public): the orders of tests/critics/orders-week-proof.js for the enrichment, a mocked /pallets/* that keeps its
+// movements in memory and records every write. Judged on the DOM and on the requests that left (the write
+// bodies are what reaches pl_movements through the Worker):
+//   action   — N01: «Θέλουν δράση» counts, groups, red bar > 14 days, stop pallets, place, scheduled, «ακόμη»;
+//   confirm  — N12: Enter on a row, «Μετά την επιβεβαίωση», PATCH {taken,given,sheet_source} + POST /confirm,
+//              the wizard moves on; a failed confirm and a «no longer pending» stay in the modal (N16 Ζ);
+//   noreturn — N03 rows and the grand total; moves — N04/N05 groups, period, multi-word search;
+//   balances — N07 + the card N09 (running balance) and its print button;
+//   panel    — N11h/N14b: history fallback while /history is 404 (N18 Δ), records (N11h), failure (N18 Γ);
+//              reverse needs a reason; the delivery correction N14a posts reverse + replacement + confirm;
+//   new      — N15: type tiles, the double-entry warning, POST body;
+//   roles    — management: no write button anywhere (N16 Ε); the «Εβδομάδα» tab still draws.
+// Run from the MAIN repo root (node_modules), against a server of the tree under test:
+//   cd /Users/dimitrispetras/PETRASGROUP-TMS && PW_BASE_URL=http://127.0.0.1:8788/.claude/worktrees/<wt>/ node <tree>/tests/critics/pallets-page-rig.js
+const P = require('./orders-week-proof.js');
+const path = require('path');
+const MAIN_REPO = '/Users/dimitrispetras/PETRASGROUP-TMS';
+const { chromium } = require(path.join(MAIN_REPO, 'node_modules', 'playwright'));
+const { gotoPage } = require(path.join(MAIN_REPO, 'tests', 'critics', 'auth.js'));
+const BASE_URL = process.env.PW_BASE_URL || 'http://127.0.0.1:8792/';
+const SHOTS = process.env.PW_SHOT_DIR || path.join(require('os').tmpdir(), 'pallets-page-rig');
+require('fs').mkdirSync(SHOTS, { recursive: true });
+
+let passed = 0, failed = 0;
+const ok = (cond, msg) => { if (cond) { passed++; console.log('  ✓ ' + msg); } else { failed++; console.log('  ✗ ' + msg); } };
+
+// Local dates relative to today, as the page computes them (localToday).
+const iso = off => { const d = new Date(); d.setDate(d.getDate() + off); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+const sgn = n => n > 0 ? '+' + n : n < 0 ? '−' + Math.abs(n) : '0';
+const NAMES = { 10: 'Berger Obst KG', 11: 'Nordfrisch GmbH', 12: 'Delta Logistics', 13: 'Gamma Foods', 14: 'Kappa Fruits' };
+const OBST = { name: 'Obst Hof GmbH', city: 'Stubenberg', country: 'AT' }, KAUF = { name: 'Kaufland', city: 'Plovdiv', country: 'BG' };
+let MOVES, nextId;
+function seed() {
+  nextId = 900;
+  const mv = (id, o) => Object.assign({ id, code: 'PM-' + id, counterparty_type: 'CLIENT', taken: 0, given: 0, status: 'pending', event_type: 'LOADING',
+    created_by: 'demo_dispatcher', created_at: iso(-25) + 'T08:00:00Z' }, o);
+  const C = (cid, o) => mv(o.id, Object.assign({ client_id: cid, clients: { company_name: NAMES[cid] } }, o));
+  MOVES = [
+    C(10, { id: 1, order_id: 1241, movement_date: iso(-20), taken: 11, location_id: 607, locations: OBST, order_stop_id: 501, order_stops: { pallets: 11, pallets_exchanged: 11 } }),
+    C(10, { id: 2, order_id: 1246, movement_date: iso(-7), taken: 29, location_id: 607, locations: OBST, order_stop_id: 502, order_stops: { pallets: 30, pallets_exchanged: null } }),
+    C(10, { id: 3, order_id: 1243, movement_date: iso(3), taken: 8, location_id: 607, locations: OBST, order_stop_id: 503 }),
+    C(11, { id: 4, order_id: 1244, movement_date: iso(-2), taken: 10, location_id: 700, locations: { name: 'Zeeland Coldstore', city: 'Vlissingen', country: 'NL' }, order_stop_id: 504 }),
+    mv(5, { counterparty_type: 'PARTNER', partner_id: 20, partners: { company_name: 'Trans Nord ΕΠΕ' }, event_type: 'PARTNER_DROPOFF', movement_date: iso(-6), given: 33 }),
+    C(12, { id: 6, order_id: 1248, movement_date: iso(-30), taken: 5, order_stop_id: 506 }),
+    C(13, { id: 7, movement_date: iso(-31), taken: 6 }),
+    C(14, { id: 8, movement_date: iso(-32), taken: 7 }),
+    C(10, { id: 9, order_id: 1241, event_type: 'DELIVERY', status: 'confirmed', movement_date: iso(-10), taken: 0, given: 10, location_id: 800, locations: KAUF, order_stop_id: 509, confirmed_at: iso(-9) + 'T09:00:00Z', confirmed_by: 'demo_accountant' }),
+    C(10, { id: 10, order_id: 1246, event_type: 'DELIVERY', status: 'confirmed', movement_date: iso(-5), taken: 13, given: 13, location_id: 800, locations: KAUF, order_stop_id: 510, confirmed_at: iso(-5) + 'T10:00:00Z' }),
+    C(11, { id: 11, order_id: 1244, status: 'confirmed', movement_date: iso(-40), taken: 24, given: 0, sheet_source: 'MANUAL', confirmed_at: '2026-09-11T08:17:00Z', confirmed_by: 'demo_accountant' }),
+    C(10, { id: 12, status: 'reversed', movement_date: iso(-12), taken: 3 }),
+    C(10, { id: 13, order_id: 1248, status: 'confirmed', movement_date: iso(-3), taken: 22, given: 5, location_id: 607, locations: OBST, order_stop_id: 513 })
+  ];
+}
+const balOf = (k, id) => MOVES.filter(m => m[k] === id && m.status === 'confirmed').reduce((s, m) => s + m.given - m.taken, 0);
+const pendOf = (k, id) => MOVES.filter(m => m[k] === id && m.status === 'pending').length;
+const balances = type => type === 'clients'
+  ? Object.keys(NAMES).map(Number).map(c => ({ client_id: c, client_name: NAMES[c], balance: balOf('client_id', c), pending_count: pendOf('client_id', c) }))
+  : [{ partner_id: 20, partner_name: 'Trans Nord ΕΠΕ', balance: balOf('partner_id', 20), pending_count: pendOf('partner_id', 20) }];
+
+async function newPage(browser, role, opts = {}) {
+  const page = await P.newPage(browser, role);
+  page._bad = [];
+  page.on('response', r => { if (r.status() >= 400 && !/\/history$|week-checks/.test(r.url()) && !opts.expectFail) page._bad.push(r.status() + ' ' + r.url()); });
+  const writes = [];
+  page._writes = writes;
+  const json = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
+  page.route('**/pallets/**', async route => {
+    const req = route.request(), u = new URL(req.url()), p = u.pathname.replace(/^.*\/pallets\//, ''), m = req.method();
+    const body = req.postData() ? JSON.parse(req.postData()) : null;
+    if (m !== 'GET') writes.push({ m, p, body });
+    if (p === 'gate') return json(route, { records: P.ORDERS.map(o => ({ order_rec: o.id, order_id: o.fields['Order No'], sheets_ok: true })) });
+    if (p === 'lookups/search') {
+      const t = u.searchParams.get('type');
+      return json(route, { records: t === 'locations' ? [{ id: 607, name: 'Obst Hof GmbH', kind: 'L' }] : [{ id: 10, name: 'Berger Obst KG', kind: 'C' }] });
+    }
+    if (p === 'lookups') return json(route, { clients: [], partners: [], locations: [] });
+    if (p === 'balances/clients/10') return json(route, { records: [{ location_name: 'Kaufland', balance: 10 }, { location_name: 'Obst Hof GmbH', balance: -17 }] });
+    if (p.startsWith('balances')) return json(route, { records: balances(u.searchParams.get('type')) });
+    if (p.startsWith('week-checks')) return json(route, { error: 'Not found' }, 404);
+    // Υ4: the 107 list (opts.missing: rows | 404) and «Χωρίς ανταλλαγή»; a write takes the stop off the list, as the view would
+    if (p === 'missing') return opts.missing === 404 ? json(route, { error: 'Not found' }, 404) : json(route, { records: opts.missing || [], truncated: false, cap: 2000 });
+    if (p === 'no-exchange' && m === 'POST') {
+      if (opts.noexRefuse) return json(route, { error: 'Η παραγγελία έχει πολλές στάσεις παράδοσης: η ανταλλαγή αλλάζει από τον δρομολογητή στην παραγγελία.', code: 'multi' }, 422);
+      const del = MOVES.filter(x => x.order_id === body.order_id && x.status === 'pending').map(x => x.id);
+      MOVES = MOVES.filter(x => !del.includes(x.id));
+      opts.missing = (opts.missing || []).filter(x => x.order_id !== body.order_id);
+      return json(route, { record: { order_id: body.order_id, deleted: del, confirmed_kept: [] } });
+    }
+    const hm = p.match(/^movements\/(\d+)\/history$/);
+    if (hm) {
+      if (opts.history === 'fail') return json(route, { error: 'boom' }, 500);
+      if (!opts.history) return json(route, { error: 'Not found' }, 404);
+      return json(route, { records: opts.history });
+    }
+    if (p === 'movements' && m === 'GET') {
+      const c = u.searchParams.get('client_id'), pa = u.searchParams.get('partner_id');
+      const rows = MOVES.filter(x => (!c || x.client_id === +c) && (!pa || x.partner_id === +pa));
+      return json(route, { records: rows.slice().sort((a, b) => (a.movement_date < b.movement_date ? 1 : a.movement_date > b.movement_date ? -1 : b.id - a.id)), truncated: false, cap: 9990 });
+    }
+    if (p === 'movements' && m === 'POST') {
+      const rec = Object.assign({ id: nextId++, code: 'PM-' + nextId, status: body.confirm ? 'confirmed' : 'pending' }, body);
+      MOVES.push(rec);
+      if (Array.isArray(opts.missing)) opts.missing = opts.missing.filter(x => x.order_stop_id !== body.order_stop_id);
+      return json(route, { record: rec });
+    }
+    const mm = p.match(/^movements\/(\d+)(?:\/(confirm|reverse))?$/);
+    if (mm) {
+      const mv = MOVES.find(x => x.id === +mm[1]);
+      if (!mv) return json(route, { error: 'Not found' }, 404);
+      if (!mm[2] && m === 'PATCH') { Object.assign(mv, body); return json(route, { record: mv }); }
+      if (!mm[2] && m === 'DELETE') { MOVES.splice(MOVES.indexOf(mv), 1); return json(route, { deleted: true }); }
+      if (mm[2] === 'confirm') {
+        if (opts.failConfirm) return json(route, { error: 'Η επιβεβαίωση απορρίφθηκε (δοκιμή)' }, 400);
+        if (opts.goneConfirm) return json(route, { error: 'Only pending movements can be confirmed' }, 409);
+        mv.status = 'confirmed'; return json(route, { record: mv });
+      }
+      if (mm[2] === 'reverse') {
+        mv.status = 'reversed';
+        const r = body.replacement ? Object.assign({ id: nextId++, status: 'pending' }, body.replacement) : null;
+        if (r) MOVES.push(r);
+        return json(route, { reversed: mv, replacement: r });
+      }
+    }
+    return json(route, { records: [] });
+  });
+  return page;
+}
+async function open(page) {
+  await gotoPage(page, 'pallet_ledger', BASE_URL);
+  try { await page.waitForSelector('.plv-nav', { timeout: 30000 }); await page.waitForSelector('#plvBody .plv-r', { timeout: 30000 }); }
+  catch (e) { console.log('    page: ' + (await page.locator('#content').innerText()).slice(0, 400) + ' | errors: ' + page._errors.join(' | ')); throw e; }
+}
+const body = page => page.locator('#plvBody').innerText();
+const row = (page, id) => page.locator(`#plvBody tr[data-id="${id}"]`);
+const shot = (page, n) => page.screenshot({ path: path.join(SHOTS, n + '.png') });
+
+async function runAction(browser) {
+  console.log('\n— accountant: Προς ενέργεια (N01) + confirm (N12)');
+  seed();
+  const page = await newPage(browser, 'accountant');
+  await open(page);
+  await shot(page, 'n01');
+  const need = await page.locator('.plv-need').innerText();
+  ok(/Εκκρεμείς\s*7/.test(need), '«Θέλουν δράση»: 7 due pending (the scheduled one does not count) — ' + need.replace(/\s+/g, ' '));
+  ok(/Χωρίς πλήρη επιστροφή\s*1/.test(need), '«Χωρίς πλήρη επιστροφή 1» (PM-9: given 10 > taken 0)');
+  const bals = Object.keys(NAMES).map(c => balOf('client_id', +c));
+  const owed = bals.filter(b => b > 0).reduce((s, b) => s + b, 0), owe = -bals.filter(b => b < 0).reduce((s, b) => s + b, 0);
+  ok(need.includes(`μας οφείλουν ${owed}`) && need.includes(`οφείλουμε ${owe}`), `right side: owed ${owed} · owe ${owe} (from the balance view)`);
+  const b = await body(page);
+  const heads = await page.locator('#plvBody .plv-gn').allInnerTexts();
+  ok(heads.slice(0, 3).join('|').toUpperCase() === 'NORDFRISCH GMBH|BERGER OBST KG|ΣΥΝΕΡΓΑΤΕΣ', 'groups: latest client first, partners after the first two — ' + heads.join(' | '));
+  ok(/3 ακόμη πελάτες · 3 εκκρεμείς/.test(b), '«3 ακόμη πελάτες · 3 εκκρεμείς» behind «Εμφάνιση όλων»');
+  ok(await row(page, 1).evaluate(e => e.classList.contains('plv-late')), 'PM-1 (20 days) carries the red bar');
+  ok(!(await row(page, 2).evaluate(e => e.classList.contains('plv-late'))), 'PM-2 (7 days) does not');
+  ok(/11 παλ\.\s*11 με ανταλλαγή/.test(await row(page, 1).innerText()), 'stop pallets: «11 παλ. · 11 με ανταλλαγή» (embed)');
+  ok(/Stubenberg, AT/.test(await row(page, 1).innerText()), 'place under the point: «Stubenberg, AT»');
+  ok(/20 ημέρες/.test(await row(page, 1).innerText()), 'Αναμονή: «20 ημέρες»');
+  ok(/Προγραμματισμένες · 1 φόρτωση μετά από σήμερα/.test(b), 'scheduled line: 1 loading after today');
+  ok(b.includes('υπόλοιπο ' + sgn(balOf('client_id', 10))), 'Berger group head: «υπόλοιπο ' + sgn(balOf('client_id', 10)) + '»');
+  await page.locator('.plv-more', { hasText: 'ακόμη' }).click();
+  ok((await page.locator('#plvBody .plv-gn').count()) === 6, '«Εμφάνιση όλων»: 6 groups');
+  await page.fill('#plvQ', '#1241');
+  await page.waitForTimeout(150);
+  ok((await page.locator('#plvBody tr.plv-r').count()) === 1 && (await row(page, 1).count()) === 1, '«#1241» → PM-1 only');
+  await page.fill('#plvQ', 'zzzz');
+  await page.waitForTimeout(150);
+  ok(/Καμία κίνηση για «zzzz»/.test(await body(page)), 'empty search: «Καμία κίνηση για «zzzz»» (N16 Α)');
+  await page.locator('#plvBody .plv-a', { hasText: 'Καθαρισμός' }).click();
+  page._writes.length = 0;
+  await row(page, 2).focus();
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.plv-shell', { timeout: 5000 });
+  const mt = await page.locator('.plv-shell').textContent();   // the title is upper-cased by the shell's CSS
+  ok(/Επιβεβαίωση φόρτωσης/.test(mt) && /\d+ από 7/.test(mt), 'Enter → «Επιβεβαίωση φόρτωσης», counter «N από 7»');
+  ok(/Παλέτες στάσης\s*30/.test(mt), 'info: «Παλέτες στάσης 30»');
+  ok(await page.locator('#plvModal .plv-scrim').count() === 1, 'a form keeps a scrim: a row behind cannot replace it');
+  await page.fill('#plvGiven', '5');
+  const bal10 = balOf('client_id', 10);
+  const after = await page.locator('#plvAfter').innerText();
+  ok(after.includes(`${sgn(bal10)} → ${sgn(bal10 + 5 - 29)}`), `«Μετά την επιβεβαίωση: ${sgn(bal10)} → ${sgn(bal10 - 24)}» — ${after.replace(/\s+/g, ' ')}`);
+  await shot(page, 'n12');
+  await page.locator('#plvConfirmGo').click();
+  await page.waitForTimeout(800);
+  const pw = page._writes.find(w => w.m === 'PATCH' && w.p === 'movements/2'), cw = page._writes.find(w => w.p === 'movements/2/confirm');
+  ok(pw && pw.body.taken === 29 && pw.body.given === 5 && pw.body.sheet_source === 'MANUAL', 'PATCH movements/2 {taken:29, given:5, sheet_source:MANUAL} — ' + JSON.stringify(pw && pw.body));
+  ok(!!cw && MOVES.find(m => m.id === 2).status === 'confirmed', 'POST movements/2/confirm → table (mock): confirmed');
+  ok(await page.locator('.plv-shell').count() === 1 && /από/.test(await page.locator('.plv-mcnt').innerText().catch(() => '')), 'the wizard moved on to the next pending');
+  await page.keyboard.press('Escape');
+  const errs = page._errors.filter(e => !/status of 404/.test(e));
+  ok(errs.length === 0 && page._bad.length === 0, 'no console / page errors' + (errs.length || page._bad.length ? ': ' + [...errs, ...page._bad].join(' | ') : ''));
+  await page.close();
+}
+
+async function runConfirmFail(browser) {
+  console.log('\n— a failed confirm and a movement that is no longer pending stay in the modal (N16 Ζ)');
+  for (const [opt, re, label] of [['failConfirm', /γράφτηκαν \(πήραμε 29 · δώσαμε 0\), η επιβεβαίωση όχι/, 'values written, confirm not'], ['goneConfirm', /δεν είναι πια εκκρεμής/, 'no longer pending']]) {
+    seed();
+    const page = await newPage(browser, 'accountant', { [opt]: true, expectFail: true });
+    await open(page);
+    await row(page, 2).hover();   // the row's button shows on hover / focus (N01)
+    await page.locator('#plvBody tr[data-id="2"] .plv-go').click();
+    await page.waitForSelector('.plv-shell');
+    await page.locator('#plvConfirmGo').click();
+    await page.waitForSelector('.plv-err', { timeout: 5000 });
+    const t = await page.locator('.plv-err').innerText();
+    ok(re.test(t), label + ': ' + t.replace(/\s+/g, ' '));
+    ok(MOVES.find(m => m.id === 2).status === 'pending', 'table (mock): still pending');
+    await page.close();
+  }
+}
+
+async function runSched(browser) {
+  console.log('\n— confirming a scheduled movement does not jump into the wizard (review 8/11)');
+  seed();
+  const page = await newPage(browser, 'accountant');
+  await open(page);
+  await page.locator('.plv-more', { hasText: 'Προγραμματισμένες' }).click();
+  await row(page, 3).focus();
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.plv-shell');
+  ok(await page.locator('.plv-mcnt').count() === 0, 'no «N από M» counter for a movement outside the queue');
+  await page.locator('#plvConfirmGo').click();
+  await page.waitForTimeout(800);
+  ok(MOVES.find(m => m.id === 3).status === 'confirmed' && await page.locator('.plv-shell').count() === 0, 'PM-3 confirmed, the modal closed (no unrelated next row)');
+  await page.close();
+}
+
+async function runViews(browser) {
+  console.log('\n— Χωρίς πλήρη επιστροφή (N03), Κινήσεις (N04/N05), Υπόλοιπα (N07), καρτέλα (N09)');
+  seed();
+  const page = await newPage(browser, 'accountant');
+  await open(page);
+  await page.evaluate(() => plvAct('noreturn'));
+  await page.waitForTimeout(200);
+  ok((await row(page, 9).count()) === 1 && /\+10/.test(await row(page, 9).innerText()), 'N03: PM-9 «Δεν γύρισαν +10»');
+  ok(/Γενικό σύνολο/.test(await body(page)), 'N03: «Γενικό σύνολο»');
+  await shot(page, 'n03');
+  await page.evaluate(() => plvTab('moves'));
+  await page.waitForTimeout(200);
+  const live = MOVES.filter(m => m.status !== 'reversed').length;
+  ok((await page.locator('.plv-sub').innerText()) === `${live} από ${live} κινήσεις`, `subtitle «${live} από ${live} κινήσεις» (reversed out)`);
+  ok((await row(page, 12).count()) === 0, 'a reversed movement is not listed');
+  ok(/υπόλοιπο πελάτη/.test(await body(page)), 'N04: group head «υπόλοιπο πελάτη»');
+  await shot(page, 'n04');
+  await page.evaluate(() => plvGroupBy('location'));
+  await page.waitForTimeout(150);
+  const lh = await page.locator('#plvBody .plv-gn').allInnerTexts();
+  ok(lh.some(h => /OBST HOF GMBH · STUBENBERG, AT/i.test(h)), 'N05: by point «OBST HOF GMBH · STUBENBERG, AT» — ' + lh.join(' | '));
+  await page.fill('#plvQ', 'Kaufland Berger');
+  await page.waitForTimeout(150);
+  ok((await page.locator('#plvBody tr.plv-r').count()) === 2, '«Kaufland Berger» (AND) → the 2 Kaufland deliveries of Berger');
+  await page.fill('#plvQ', '');
+  await page.waitForTimeout(100);
+  const mo = iso(0).slice(0, 7);
+  await page.selectOption('.plv-per select', mo);
+  await page.waitForTimeout(150);
+  const inMonth = MOVES.filter(m => m.status !== 'reversed' && m.movement_date.startsWith(mo)).length;
+  ok((await page.locator('#plvBody tr.plv-r').count()) === inMonth, `period «${mo}»: ${inMonth} movements`);
+  await page.evaluate(() => plvTab('bal'));
+  await page.waitForTimeout(200);
+  const bt = await body(page);
+  ok(/Καθαρό/.test(bt) && /Μας οφείλουν/.test(bt) && /Εκκρεμείς εκτός υπολοίπου/.test(bt), 'N07: summary (Καθαρό / Μας οφείλουν / Οφείλουμε / Εκκρεμείς εκτός υπολοίπου)');
+  ok(/με μηδενικό υπόλοιπο/.test(bt), 'N07: «… με μηδενικό υπόλοιπο» row');
+  await shot(page, 'n07');
+  await page.locator('#plvBody tr.plv-r', { hasText: 'Berger Obst KG' }).click();
+  await page.waitForSelector('.plv-ch h2', { timeout: 5000 });
+  const ct = await page.locator('.plv-in').innerText();
+  const b10 = balOf('client_id', 10);
+  ok(/Berger Obst KG/.test(await page.locator('.plv-ch h2').innerText()), 'N09: card «Berger Obst KG»');
+  ok(ct.includes(b10 < 0 ? 'Οφείλουμε' : 'Μας οφείλει') && ct.includes(String(Math.abs(b10))), `N09: header balance ${b10}`);
+  const runs = await page.locator('.plv-box tr.plv-r td:nth-last-child(3)').allInnerTexts();
+  ok(runs.filter(x => x !== '—').pop() === sgn(b10), 'N09: the last running balance = the view balance (' + runs.join(',') + ')');
+  ok(await page.locator('button', { hasText: 'Εκτύπωση' }).count() === 1, 'N09: «Εκτύπωση» button');
+  ok(/Υπόλοιπο ανά σημείο · 2 σημεία/.test(ct), 'the balance per point is kept, folded');
+  await shot(page, 'n09');
+  await page.locator('.plv-back').click();
+  await page.waitForSelector('#plvBody');
+  ok(await page.locator('.plv-nav button.on').innerText() === 'Υπόλοιπα', 'back → Υπόλοιπα');
+  await page.close();
+}
+
+async function runPanel(browser) {
+  console.log('\n— panel (N11h / N14b / N18) and the delivery correction (N14a)');
+  seed();
+  let page = await newPage(browser, 'accountant');
+  await open(page);
+  await page.evaluate(() => plvTab('moves'));
+  await row(page, 11).click();
+  await page.waitForSelector('.plv-shell');
+  await page.waitForFunction(() => !/Φόρτωση ιστορικού/.test(document.getElementById('plvHist').innerText));
+  const h = await page.locator('#plvHist').innerText();
+  ok(await page.locator('.plv-shell.entity-detail-panel.oi-ro-float .oi-card-head .oi-card-title').count() === 1
+    && Math.round((await page.locator('.plv-shell').boundingBox()).width) === 480, 'the panel is the TMS shell (oi-card-head on .oi-ro-float, 480px)');
+  ok(/Από τα στοιχεία της κίνησης/.test(h) && /Επιβεβαίωση/.test(h) && /D\. Accountant/.test(h), '/history 404 → who/when from the movement (N18 Δ): ' + h.replace(/\s+/g, ' ').slice(0, 140));
+  page._writes.length = 0;
+  await page.locator('.plv-shell .oi-link', { hasText: 'Αντιλογισμός' }).click();
+  await page.waitForTimeout(200);
+  ok(page._writes.length === 0, 'reverse without a reason writes nothing');
+  await page.fill('#plvRevReason', 'λάθος πελάτης');
+  await page.locator('.plv-shell .oi-link', { hasText: 'Αντιλογισμός' }).click();
+  await page.waitForTimeout(600);
+  const rv = page._writes.find(w => w.p === 'movements/11/reverse');
+  ok(rv && rv.body.reason === 'λάθος πελάτης' && !rv.body.replacement && MOVES.find(m => m.id === 11).status === 'reversed', 'POST movements/11/reverse {reason} → table (mock): reversed');
+  await page.evaluate(() => plvTab('moves'));
+  await row(page, 10).click();
+  await page.waitForSelector('.plv-shell');
+  await page.locator('.plv-shell .oi-link', { hasText: 'Διόρθωση ανταλλαγής' }).click();
+  await page.waitForSelector('#plvRealTaken');
+  await page.fill('#plvRealTaken', '6');
+  await page.fill('#plvFixNote', 'δεν είχαν άδειες');
+  ok(/Μετά τη διόρθωση/.test(await page.locator('.plv-shell').innerText()), 'N14a: «Μετά τη διόρθωση» shows');
+  await shot(page, 'n14a');
+  page._writes.length = 0;
+  await page.locator('.plv-shell button', { hasText: 'Καταχώρηση διόρθωσης' }).click();
+  await page.waitForTimeout(800);
+  const fx = page._writes.find(w => w.p === 'movements/10/reverse');
+  const r = fx && fx.body.replacement;
+  ok(r && r.event_type === 'DELIVERY' && r.taken === 6 && r.given === 13 && r.client_id === 10 && /δεν είχαν άδειες/.test(fx.body.reason), 'reverse {replacement: DELIVERY taken 6 given 13} — ' + JSON.stringify(r));
+  ok(page._writes.some(w => /^movements\/\d+\/confirm$/.test(w.p)), 'the replacement is confirmed');
+  await page.close();
+  seed();
+  page = await newPage(browser, 'accountant', { history: [
+    { action: 'create', changed_by: 'demo_dispatcher', changed_at: '2026-10-16T09:05:00Z', before: null, after: { taken: 28, given: 0, status: 'pending' } },
+    { action: 'update', changed_by: 'demo_dispatcher', changed_at: '2026-10-20T14:40:00Z', before: { taken: 28, given: 0 }, after: { taken: 30, given: 0 } },
+    { action: 'update', changed_by: 'demo_accountant', changed_at: '2026-10-24T07:12:00Z', before: { taken: 30, given: 0 }, after: { taken: 22, given: 5 } }] });
+  await open(page);
+  await row(page, 2).click();
+  await page.waitForSelector('.plv-shell');
+  await page.waitForFunction(() => !/Φόρτωση ιστορικού/.test(document.getElementById('plvHist').innerText));
+  const h2 = await page.locator('#plvHist').innerText();
+  ok(/Πήραμε 30 → 22 · Δώσαμε 0 → 5/.test(h2) && /από την παραγγελία #1246/.test(h2) && /Οι τρέχουσες τιμές \(Πήραμε 29 · Δώσαμε 0\)/.test(h2),
+    'N11h lines + «από την παραγγελία #1246» + N18 ΣΤ (current values without a line): ' + h2.replace(/\s+/g, ' ').slice(0, 160));
+  ok(/Μετά την επιβεβαίωση/.test(await page.locator('.plv-shell').innerText()), 'pending panel: «Μετά την επιβεβαίωση»');
+  await shot(page, 'n11h');
+  await page.close();
+  seed();
+  page = await newPage(browser, 'accountant', { history: 'fail', expectFail: true });
+  await open(page);
+  await row(page, 2).click();
+  await page.waitForSelector('.plv-hfail', { timeout: 5000 });
+  ok(/Το ιστορικό δεν φορτώθηκε/.test(await page.locator('.plv-hfail').innerText()), 'N18 Γ: «Το ιστορικό δεν φορτώθηκε» + retry');
+  await page.close();
+}
+
+async function runNew(browser) {
+  console.log('\n— Νέα κίνηση (N15)');
+  seed();
+  const page = await newPage(browser, 'accountant');
+  await open(page);
+  await page.locator('.plv-hact button', { hasText: 'Νέα κίνηση' }).click();
+  await page.waitForSelector('#plvNmTypes');
+  ok(await page.locator('#plvNmTypes button').count() === 4 && /μόνο ο ιδιοκτήτης/.test(await page.locator('.plv-shell').innerText()), '4 types + the owner-only lock line (accountant)');
+  await page.fill('#plvAcQ_plvNmParty', 'Berger');
+  await page.waitForSelector('#plvAcList_plvNmParty div');
+  await page.locator('#plvAcList_plvNmParty div').first().dispatchEvent('mousedown');
+  await page.fill('#plvAcQ_plvNmLoc', 'Obst');
+  await page.waitForSelector('#plvAcList_plvNmLoc div');
+  await page.locator('#plvAcList_plvNmLoc div').first().dispatchEvent('mousedown');
+  await page.fill('#plvNmGiven', '5');
+  const dup = await page.locator('#plvNmDup').innerText();
+  ok(/υπάρχει ήδη «δώσαμε 5»/.test(dup), 'double-entry warning: ' + dup.replace(/\s+/g, ' '));
+  ok(/Μετά την επιβεβαίωση/.test(await page.locator('#plvNmAfter').innerText()), 'footer: «Μετά την επιβεβαίωση»');
+  await shot(page, 'n15');
+  page._writes.length = 0;
+  await page.locator('.plv-shell button.plv-btn-p', { hasText: 'Καταχώρηση' }).click();
+  await page.waitForTimeout(700);
+  const w = page._writes.find(x => x.m === 'POST' && x.p === 'movements');
+  ok(w && w.body.event_type === 'RETURN_OUT' && w.body.client_id === 10 && w.body.location_id === 607 && w.body.given === 5 && w.body.taken === 0 && w.body.confirm === false && w.body.sheet_source === 'MANUAL',
+    'POST movements {RETURN_OUT, client 10, location 607, given 5, confirm:false} — ' + JSON.stringify(w && w.body));
+  await page.close();
+}
+
+async function runRoles(browser) {
+  console.log('\n— management reads only (N16 Ε); the week tab still draws');
+  seed();
+  const page = await newPage(browser, 'management');
+  await open(page);
+  ok(await page.locator('.plv-hact button', { hasText: 'Νέα κίνηση' }).count() === 0, 'no «Νέα κίνηση»');
+  ok(await page.locator('.plv-go').count() === 0, 'no «Επιβεβαίωση» on the rows');
+  ok(/Μόνο ανάγνωση για τον ρόλο σου/.test(await page.locator('.plv-ro').innerText()), 'the read-only line');
+  await row(page, 2).focus();
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.plv-shell');
+  ok(await page.locator('.plv-shell .plv-acts-sect').count() === 0, 'Enter opens the panel, with no action');
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => plvTab('week'));
+  await page.waitForTimeout(500);
+  ok(await page.locator('#plwRoot').count() === 1 && (await page.locator('.plv-nav button.on').innerText()) === 'Εβδομάδα', '«Εβδομάδα» draws into #plwRoot under the new bar');
+  await page.close();
+}
+
+const MISS = () => [
+  { order_stop_id: 901, order_id: 1243, client_id: 10, client_name: 'Berger Obst KG', location_id: 800, location_name: 'Kaufland', location_city: 'Plovdiv', location_country: 'BG', pallets: 16, delivered_on: iso(-9), unloading_stops: 1, has_nat_leg: false },
+  { order_stop_id: 902, order_id: 1244, client_id: 11, client_name: 'Nordfrisch GmbH', location_id: 700, location_name: 'Zeeland Coldstore', location_city: 'Vlissingen', location_country: 'NL', pallets: 5, delivered_on: iso(-4), unloading_stops: 2, has_nat_leg: false },
+  { order_stop_id: 903, order_id: 1244, client_id: 11, client_name: 'Nordfrisch GmbH', location_id: 701, location_name: 'Lidl', location_city: 'Graz', location_country: 'AT', pallets: 4, delivered_on: iso(-4), unloading_stops: 2, has_nat_leg: false }];
+async function runMissing(browser) {
+  console.log('\n— Υ4: «Λείπει παράδοση» (N02), «Συμπλήρωση» (N13), «Χωρίς ανταλλαγή» (N13c), ρόλοι (N02m)');
+  seed();
+  let opts = { missing: MISS() };
+  let page = await newPage(browser, 'accountant', opts);
+  await open(page);
+  ok(/Λείπει παράδοση\s*3/.test(await page.locator('.plv-need').innerText()), '«Θέλουν δράση»: «Λείπει παράδοση 3»');
+  await page.evaluate(() => plvAct('missing'));
+  await page.waitForTimeout(150);
+  ok(/3 στάσεις σε 2 παραγγελίες/.test(await page.locator('#plvCount').innerText()), 'counter «3 στάσεις σε 2 παραγγελίες»');
+  const b = await body(page);
+  ok(/έχει 2 στάσεις παράδοσης/.test(b) && (b.match(/έχει 2 στάσεις παράδοσης/g) || []).length === 1, 'the reason line, once per order (N02)');
+  ok(await page.locator('tr[data-stop="902"] button', { hasText: 'Χωρίς ανταλλαγή' }).isDisabled(), '«Χωρίς ανταλλαγή» disabled with 2 delivery stops');
+  ok(!(await page.locator('tr[data-stop="901"] button', { hasText: 'Χωρίς ανταλλαγή' }).isDisabled()), '… enabled with one');
+  await shot(page, 'n02');
+  page._writes.length = 0;
+  await page.locator('tr[data-stop="901"] button', { hasText: 'Συμπλήρωση' }).click();
+  await page.waitForSelector('.plv-shell #plvMfTaken');
+  ok(await page.locator('#plvMfGo').isDisabled(), 'Καταχώρηση locked while the numbers are empty (none filled for her)');
+  await page.fill('#plvMfTaken', '6');
+  await page.fill('#plvMfGiven', '16');
+  ok(!(await page.locator('#plvMfGo').isDisabled()) && /Μετά την καταχώρηση/.test(await page.locator('.plv-shell').innerText()), 'both typed → enabled, «Μετά την καταχώρηση»');
+  await shot(page, 'n13');
+  await page.locator('#plvMfGo').click();
+  await page.waitForTimeout(800);
+  const w = page._writes.find(x => x.m === 'POST' && x.p === 'movements');
+  ok(w && w.body.event_type === 'DELIVERY' && w.body.taken === 6 && w.body.given === 16 && w.body.order_stop_id === 901 && w.body.order_id === 1243
+    && w.body.client_id === 10 && w.body.location_id === 800 && w.body.confirm === true && w.body.movement_date === iso(-9), 'POST movements {DELIVERY 6/16, stop 901, order 1243, confirm} — ' + JSON.stringify(w && w.body));
+  ok(/Λείπει παράδοση\s*2/.test(await page.locator('.plv-need').innerText()), 'the stop left the list (2)');
+  await page.close();
+  // «Χωρίς ανταλλαγή»: what goes (the pending loading PM-3 of #1243), the gate line, reason required, the act
+  seed(); opts = { missing: MISS() };
+  page = await newPage(browser, 'accountant', opts);
+  await open(page);
+  await page.evaluate(() => plvAct('missing'));
+  await page.locator('tr[data-stop="901"] button', { hasText: 'Χωρίς ανταλλαγή' }).click();
+  await page.waitForSelector('.plv-shell #plvNxReason');
+  const nx = await page.locator('.plv-shell').innerText();
+  ok(/Φόρτωση · .* · πήραμε 8/.test(nx) && /ανοίγει για τιμολόγηση χωρίς δελτίο παλετών/.test(nx), 'N13c: the pending loading that goes + «ανοίγει για τιμολόγηση»');
+  ok(await page.locator('#plvNxGo').isDisabled(), 'locked until a reason');
+  await page.fill('#plvNxReason', 'ο πελάτης δεν κάνει ανταλλαγή');
+  await shot(page, 'n13c');
+  page._writes.length = 0;
+  await page.locator('#plvNxGo').click();
+  await page.waitForTimeout(800);
+  const nw = page._writes.find(x => x.p === 'no-exchange');
+  ok(nw && nw.body.order_id === 1243 && nw.body.order_stop_id === 901 && nw.body.reason === 'ο πελάτης δεν κάνει ανταλλαγή' && Object.keys(nw.body).length === 3, 'POST no-exchange {order_id, order_stop_id, reason} — ' + JSON.stringify(nw && nw.body));
+  ok(!MOVES.some(m => m.id === 3) && /Λείπει παράδοση\s*2/.test(await page.locator('.plv-need').innerText()), 'table (mock): the pending loading gone, the stop off the list');
+  await page.close();
+  seed();
+  page = await newPage(browser, 'owner', { missing: MISS(), noexRefuse: true, expectFail: true });
+  await open(page);
+  await page.evaluate(() => plvAct('missing'));
+  await page.locator('tr[data-stop="901"] button', { hasText: 'Χωρίς ανταλλαγή' }).click();
+  await page.fill('#plvNxReason', 'δοκιμή άρνησης');
+  await page.locator('#plvNxGo').click();
+  await page.waitForSelector('.plv-shell .plv-err', { timeout: 5000 });
+  ok(/δεν γράφτηκε: Η παραγγελία έχει πολλές στάσεις παράδοσης/.test(await page.locator('.plv-shell .plv-err').innerText()), 'a refusal is said in the panel, in Greek');
+  await page.close();
+  // roles: management reads without buttons (N02m); a dispatcher does not see the list; 404 hides it
+  seed();
+  page = await newPage(browser, 'management', { missing: MISS() });
+  await open(page);
+  await page.evaluate(() => plvAct('missing'));
+  await page.waitForTimeout(150);
+  ok(await page.locator('#plvBody tr[data-stop]').count() === 3 && await page.locator('#plvBody .plv-go').count() === 0 && /Μόνο ανάγνωση για τον ρόλο σου/.test(await body(page)), 'management: the list, no buttons (N02m)');
+  await page.close();
+  seed();
+  page = await newPage(browser, 'dispatcher', { missing: MISS() });
+  await open(page);
+  ok(!/Λείπει παράδοση/.test(await page.locator('.plv-need').innerText()), 'dispatcher: no «Λείπει παράδοση» and no counter');
+  ok(!page._writes.length, 'nothing written by opening the page');
+  await page.close();
+  seed();
+  page = await newPage(browser, 'accountant', { missing: 404, expectFail: true });
+  await open(page);
+  ok(!/Λείπει παράδοση/.test(await page.locator('.plv-need').innerText()), 'route not live (404): no entry at all, never a dead one');
+  await page.close();
+}
+
+(async () => {
+  console.log('Στόχος: ' + BASE_URL);
+  const browser = await chromium.launch();
+  try { await runAction(browser); await runConfirmFail(browser); await runSched(browser); await runViews(browser); await runPanel(browser); await runNew(browser); await runRoles(browser); await runMissing(browser); }
+  catch (e) { failed++; console.log('  ✗ ΚΑΤΑΡΡΕΥΣΗ: ' + (e && e.stack || e)); }
+  finally { await browser.close(); }
+  console.log(`\n${passed}/${passed + failed} assertions · screenshots → ${SHOTS}`);
+  process.exit(failed ? 1 : 0);
+})();

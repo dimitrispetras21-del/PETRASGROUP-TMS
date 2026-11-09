@@ -44,6 +44,13 @@ async function main() {
   } = mod;
   const DkvParser = require('../../core/dkv-parser.js');
 
+  // ── toCostLineRow: every row has the SAME keys (one PostgREST batch insert, 8/11) ──
+  {
+    const plain = toCostLineRow({ doc_no: 'D1', seq: 0, category: 'fuel', service_date: '2026-10-01', net: 10, vat: 2, gross: 12, currency: 'EUR' }).row;
+    const agg = toCostLineRow({ doc_no: 'D1', seq: 1, category: 'tolls', service_date: '2026-10-01', net: 5, vat: 1, gross: 6, currency: 'EUR', details: [{ d: 1 }] }).row;
+    assertEqual(Object.keys(plain).sort().join(','), Object.keys(agg).sort().join(','), 'toCostLineRow: a plain row and an aggregated row carry the same keys (PostgREST batch)');
+    assertEqual(plain.details, null, 'toCostLineRow: details is null, not absent, without members');
+  }
   // ── toCostLineRow: Cyrillic litre unit «л.» (BG invoice) → liters (owner 14/9) ──
   {
     const base = { doc_no: 'D9', net: 10, vat: 2, currency: 'EUR', service_date: '2026-08-22', plate: 'XX1234', country: 'BG' };
@@ -251,9 +258,17 @@ async function main() {
   const rec6 = reconcile([{ doc_no: 'D1', gross: 2500, currency: 'CZK', gross_eur: 100 }], [{ doc_no: 'D1', total_eur: 100 }]);
   assertEqual(rec6.ok, true, 'reconcile: uses gross_eur (not native gross) for non-EUR lines');
 
-  // passages are simply never passed in — caller only sends invoice/statement/reverse_charge lines
-  const rec7 = reconcile([{ doc_no: 'D1', gross: 10 }], [{ doc_no: 'D1', total_eur: 10 }, { doc_no: 'D_PASSAGES', total_eur: 500 }]);
-  assertEqual(rec7.per_doc.length, 1, 'reconcile: a summary doc with no matching lines (e.g. a passages doc) is never gated — only doc_nos present in `lines` are checked');
+  // An E-SUMMARY row lists only Invoice / Statement / Reverse Charge documents
+  // (never a passages list), so a row whose document produced no lines is an
+  // unread document — 8/11/2026: the 15/09 statement lost 730,06 € this way.
+  const rec7 = reconcile([{ doc_no: 'D1', gross: 10 }], [{ doc_no: 'D1', total_eur: 10 }, { doc_no: 'D_UNREAD', total_eur: 699.56 }]);
+  assertEqual(rec7.ok, false, 'reconcile: a summary row whose document gave no lines fails the gate');
+  const rec7row = rec7.per_doc.find((d) => d.doc_no === 'D_UNREAD');
+  assertEqual(!!rec7row && rec7row.no_lines === true && rec7row.diff === -699.56 && rec7row.ok === false, true, 'reconcile: the unread document is listed with no_lines and its whole amount as the difference');
+  const rec7z = reconcile([{ doc_no: 'D1', gross: 10 }], [{ doc_no: 'D1', total_eur: 10 }, { doc_no: 'D_ZERO', total_eur: 0 }]);
+  assertEqual(rec7z.ok, true, 'reconcile: a 0,00 summary row with no lines is fine (nothing to book)');
+  const rec7d = reconcile([{ doc_no: 'D1', gross: 10 }], [{ doc_no: 'D1', total_eur: 10 }, { doc_no: 'D_UNREAD', total_eur: 5 }, { doc_no: 'D_UNREAD', total_eur: 5 }]);
+  assertEqual(rec7d.per_doc.filter((d) => d.doc_no === 'D_UNREAD').length, 1, 'reconcile: an unread doc_no repeated in the E-SUMMARY is listed once');
 
   // ── sumGrossEur ───────────────────────────────────────────────────────
   assertEqual(sumGrossEur([{ gross: 10 }, { gross: 5.5 }]), 15.5, 'sumGrossEur: plain sum');

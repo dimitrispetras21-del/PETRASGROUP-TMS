@@ -370,19 +370,156 @@ async function scnDocs(browser) {
   await page.context().close();
 }
 
-// «invoice» (owner 3/11, Eirini's main table): ΤΠΥ, «Αυτοπαράδοση», price entry, price correction, ΤΠΥ
-// correction and undo from the week's ΤΠΥ / ΠΟΣΟ cells. The proof is the PATCH BODY (the same fields as
-// «Προς τιμολόγηση»), then the line the week repaints from the record the mock Worker returned.
-async function scnInvoice(browser) {
-  console.log('\n[invoice] ΤΠΥ / αυτοπαράδοση / τιμή / αναίρεση from the week (owner 3/11)');
-  const page = await P.newPage(browser, 'accountant');
-  const cap = { patches: [], fail: null, guarded: [] };
+// «natv5» (owner 8/11/2026): after day L the national rows carry the Weekly National v5's number of their truck
+// (the number the board paints for that rt_id), «—» with the reason otherwise, and a click on their ΑΝΑΘΕΣΗ shows
+// the board's driver sheet of that truck and side in a frame — nothing printed, nothing copied, no second app.
+// The board is tests/fixtures/wn5-week.json (rows numbered in board order — by delivery day since owner 8/11, RT-T108 is next week's) served for the
+// asked week; /plan/nat-state names the trucks by RT code, as 074a does.
+async function scnNatV5(browser) {
+  console.log('\n[natv5] Εθνικά v5: αριθμός του Εβδομαδιαίου Εθνικών + φύλλο οδηγού στην ΑΝΑΘΕΣΗ');
+  const page = await P.newPage(browser, 'owner');
+  await boardReads(page);
+  // the fixture's days moved to the rig's week (its week is 10/10): every ISO day + the same number of days
+  const raw = require('fs').readFileSync(path.join(__dirname, '..', 'fixtures', 'wn5-week.json'), 'utf8');
+  const shift = Math.round((Date.parse(P.WEEK_FROM + 'T00:00:00Z') - Date.parse(JSON.parse(raw).week + 'T00:00:00Z')) / 864e5);
+  const fix = JSON.parse(raw.replace(/\b(20\d\d-\d\d-\d\d)/g, (d) => new Date(Date.parse(d + 'T00:00:00Z') + shift * 864e5).toISOString().slice(0, 10)));
+  const json = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
+  const asked = [];
+  await page.route('**/plan/config', route => json(route, { cutover_day: '2026-08-01', opened_at: '2026-08-01T05:00:00Z', writes_open: true }));
+  const car = (kind, code, side, truck) => ({ kind, truck: truck || null, trailer: null, driver: kind === 'owned' ? 'Driver Test' : null, partner: kind === 'partner' ? 'Partner Test' : null, code, side, day: null });
+  const ST = {
+    427: [car('owned', 'RT-T106', 'KATHODOS', 'TST-2108')],
+    430: [car('owned', 'RT-T102', 'KATHODOS', 'TST-2106'), car('partner', 'RT-T104', 'ANODOS')],   // split at Veroia
+    429: [],                                                                                        // waits for a vehicle
+  };
+  await page.route(/\/plan\/nat-state/, route => {
+    const ids = (new URL(route.request().url()).searchParams.get('nat_order_ids') || '').split(',').filter(Boolean);
+    const out = {};
+    for (const id of ids) out[id] = ST[id] ? { n_pieces: 1, n_executed: 0, executed: false, planned: ST[id].length > 0, late: false, hub_side: 'KATHODOS', carriers: ST[id] } : 'missing';
+    return json(route, out);
+  });
+  await page.route(/\/plan\/board\?/, route => {
+    const wk = new URL(route.request().url()).searchParams.get('week');
+    asked.push(wk);
+    return json(route, Object.assign({}, fix, { week: wk }));
+  });
+  await page.route(/\/plan\/lookups/, route => json(route, { locations: [1, 2, 3, 4, 5, 6, 7, 8].map(k => ({ id: k, legacy_id: k === 1 ? 'recJucKOhC1zh4IP3' : 'recDEF' + k,
+    name: k === 1 ? 'ΒΕΡΟΙΑ TEST' : 'Place Test ' + k, address: 'Street ' + k, city: null, phone: '2100000000', is_hub: k === 1 })), clients: [], trucks: [], trailers: [], drivers: [], partners: [] }));
+  await page.addInitScript(() => {
+    window.__copied = 0; window.__printed = 0;
+    try { Object.defineProperty(navigator, 'clipboard', { value: { writeText: () => { window.__copied++; return Promise.resolve(); } } }); } catch (_) {}
+  });
+  await P.openWeek(page);
+  await page.waitForSelector('.ow4-row.ow4-nat', { timeout: 15000 });
+  // + the next week's board, once: RT-T108 loads Friday and delivers Saturday, so it is a truck of the next week
+  // (owner 8/11, rows by delivery day) and its number «n · W» comes from that board
+  const nextWk = new Date(Date.parse(P.WEEK_FROM + 'T00:00:00Z') + 7 * 864e5).toISOString().slice(0, 10);
+  ok(asked.includes(P.WEEK_FROM) && asked.every(w => w === P.WEEK_FROM || w === nextWk) && asked.filter(w => w === nextWk).length === 1,
+    `the week's v5 board is read for the week on screen, and the next week's once for its away truck (${JSON.stringify(asked)})`);
+  const natNo = async (client) => page.evaluate((cl) => {
+    const row = [...document.querySelectorAll('.ow4-row.ow4-nat')].find(r => r.textContent.includes(cl));
+    const no = row && row.querySelector('.ow4-no');
+    return row ? { no: no ? no.textContent.trim() : null, title: no ? no.getAttribute('title') : null, doc: !!row.querySelector('[data-owvnatdoc]') } : null;
+  }, client);
+  const a = await natNo('Ορεινά Γαλακτοκομικά'), b = await natNo('4500131302'), w = await natNo('Ελαιώνας Μεσογείου'), old = await natNo('Αρκαδικά Κηπευτικά');
+  ok(a && a.no === '5' && /Εθνικών/.test(a.title) && a.doc, `#427 on RT-T106 = row 5 of the board (owner 8/11: rows by delivery day) (${JSON.stringify(a)})`);
+  ok(b && b.no === '3 · 4' && b.doc, `#430 split on RT-T102 + RT-T104 = «3 · 4» (${JSON.stringify(b)})`);
+  ok(w && w.no === '—' && /περιμένει όχημα/.test(w.title) && !w.doc, `#429 waiting = «—», «περιμένει όχημα», no document (${JSON.stringify(w)})`);
+  ok(old && old.no === '—' && /παλιού μοντέλου/.test(old.title), `#431 (old model) = «—» with its reason (${JSON.stringify(old)})`);
+  // the numbered rows of a day come in number order
+  const order = await page.evaluate(() => [...document.querySelectorAll('.ow4-row.ow4-nat .ow4-no')].map(n => n.textContent.trim()).filter(t => t !== '—'));
+  ok(order.length >= 2, 'national numbers on screen: ' + order.join(', '));
+
+  // ΑΝΑΘΕΣΗ of #430 → two sheets (Κάθοδος RT-T102, Άνοδος RT-T104), each a frame of the board's sheet
+  const row = page.locator('.ow4-row.ow4-nat', { hasText: '4500131302' }).first();
+  await row.locator('.ow4-asg').click();
+  await page.waitForFunction(() => document.querySelectorAll('#owvDocs:not(.hidden) iframe').length === 2, null, { timeout: 10000 });
+  await page.waitForTimeout(500);
+  const st = await page.evaluate(() => ({
+    titles: [...document.querySelectorAll('#owvDocs .owv-doc-t')].map(t => t.textContent.trim()),
+    srcs: [...document.querySelectorAll('#owvDocs iframe')].map(f => f.getAttribute('src')),
+    head: (document.querySelector('#owvDocs .owv-docs-h span') || {}).textContent,
+    card: !document.getElementById('natlDetail') || !document.getElementById('natlDetail').classList.contains('hidden'),
+    copied: window.__copied,
+  }));
+  ok(/Κάθοδος — Φύλλο Οδηγού · RT-T102/.test(st.titles[0]) && /Άνοδος — Φύλλο Οδηγού · RT-T104/.test(st.titles[1]), 'titles: ' + st.titles.join(' | '));
+  ok(st.srcs.every(s => s === null), 'the frames are the sheet itself (srcdoc), never print.html or a second app');
+  ok(st.head === 'RT-T102 · RT-T104', 'header names both trucks: ' + st.head);
+  ok(st.copied === 0, 'nothing copied (the board\'s ⎙ copies the WhatsApp text; here it is read-only)');
+  const fr = page.frames().filter(f => f !== page.mainFrame());
+  const txt = await Promise.all(fr.map(f => f.locator('body').innerText().catch(() => '')));
+  ok(txt.length === 2 && /TST-2106/.test(txt[0]) && /ΚΑΘΟΔΟΣ|Κάθοδος/i.test(txt[0]), 'frame 1 = the driver sheet of RT-T102 ΚΑΘΟΔΟΣ (' + (txt[0] || '').replace(/\s+/g, ' ').slice(0, 90) + '…)');
+  ok(/ΣΥΝΕΡΓΑΤΗΣ/.test(txt[1] || ''), 'frame 2 = the partner\'s sheet of RT-T104 (' + (txt[1] || '').replace(/\s+/g, ' ').slice(0, 90) + '…)');
+  await page.screenshot({ path: path.join(SHOTS, 'natv5-docs.png') });
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(200);
+  ok(await page.locator('#owvDocs.hidden').count() === 1, 'Esc closes the documents');
+  // Enter on the ΑΝΑΘΕΣΗ of #427 opens its one sheet
+  await page.locator('.ow4-row.ow4-nat', { hasText: 'Ορεινά Γαλακτοκομικά' }).first().locator('[data-owvnatdoc]').focus();
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.querySelectorAll('#owvDocs:not(.hidden) iframe').length === 1, null, { timeout: 10000 });
+  ok(/RT-T106/.test(await page.locator('#owvDocs .owv-doc-t').first().textContent()), 'Enter opens #427\'s sheet (RT-T106)');
+  await page.click('#owvDocs [data-owvdocs="close"]');
+  await page.screenshot({ path: path.join(SHOTS, 'natv5-week.png'), fullPage: true });
+  ok(P.realErrors(page).length === 0, 'natv5: 0 page/console errors ' + JSON.stringify(P.realErrors(page)).slice(0, 300));
+  await page.context().close();
+}
+
+// «natv5carry» (owner 8/11/2026: «12 · W44»): every truck of the week's board started the week before (the fixture's
+// days sit in the previous week), so on this week's board each is a continuation without a number. The previous
+// week's board numbers them: #427 on RT-T106 reads «6 · W<prev>», and the sheet still opens from this week's board.
+async function scnNatV5Carry(browser) {
+  console.log('\n[natv5carry] Εθνικά v5: συνέχεια = ο αριθμός της εβδομάδας του φορτηγού');
+  const page = await P.newPage(browser, 'owner');
+  await boardReads(page);
+  const raw = require('fs').readFileSync(path.join(__dirname, '..', 'fixtures', 'wn5-week.json'), 'utf8');
+  const day = (iso, d) => new Date(Date.parse(iso + 'T00:00:00Z') + d * 864e5).toISOString().slice(0, 10);
+  const prev = day(P.WEEK_FROM, -7);
+  const shift = Math.round((Date.parse(prev + 'T00:00:00Z') - Date.parse(JSON.parse(raw).week + 'T00:00:00Z')) / 864e5);
+  const fixPrev = JSON.parse(raw.replace(/\b(20\d\d-\d\d-\d\d)/g, (d) => day(d, shift)));
+  const json = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
+  const asked = [];
+  await page.route('**/plan/config', route => json(route, { cutover_day: '2026-08-01', opened_at: '2026-08-01T05:00:00Z', writes_open: true }));
+  await page.route(/\/plan\/nat-state/, route => {
+    const ids = (new URL(route.request().url()).searchParams.get('nat_order_ids') || '').split(',').filter(Boolean);
+    const out = {};
+    for (const id of ids) out[id] = id === '427' ? { n_pieces: 1, n_executed: 0, executed: false, planned: true, late: false, hub_side: 'KATHODOS',
+      carriers: [{ kind: 'owned', truck: 'TST-2108', trailer: null, driver: 'Driver Test', partner: null, code: 'RT-T106', side: 'ANODOS', day: null }] } : 'missing';
+    return json(route, out);
+  });
+  // the week on screen: the same cycles (days of the previous week) → all continuations; the previous week: its own
+  await page.route(/\/plan\/board\?/, route => {
+    const wk = new URL(route.request().url()).searchParams.get('week');
+    asked.push(wk);
+    return json(route, Object.assign({}, fixPrev, { week: wk }));
+  });
+  await page.route(/\/plan\/lookups/, route => json(route, { locations: [1, 2, 3, 4, 5, 6, 7, 8].map(k => ({ id: k, legacy_id: k === 1 ? 'recJucKOhC1zh4IP3' : 'recDEF' + k,
+    name: k === 1 ? 'ΒΕΡΟΙΑ TEST' : 'Place Test ' + k, address: 'Street ' + k, city: null, phone: '2100000000', is_hub: k === 1 })), clients: [], trucks: [], trailers: [], drivers: [], partners: [] }));
+  await P.openWeek(page);
+  await page.waitForSelector('.ow4-row.ow4-nat', { timeout: 15000 });
+  ok(asked.includes(P.WEEK_FROM) && asked.includes(prev), `both boards read: this week and the continuations' week (${JSON.stringify(asked)})`);
+  const wPrev = await page.evaluate(w => TmsWeek.numOf(new Date(w + 'T12:00:00')), prev);
+  const a = await page.evaluate(() => {
+    const row = [...document.querySelectorAll('.ow4-row.ow4-nat')].find(r => r.textContent.includes('Ορεινά Γαλακτοκομικά'));
+    const no = row && row.querySelector('.ow4-no');
+    return row ? { no: no ? no.textContent.trim() : null, title: no ? no.getAttribute('title') : null, doc: !!row.querySelector('[data-owvnatdoc]') } : null;
+  });
+  ok(a && a.no === `5 · W${wPrev}` && /γραμμή άλλης εβδομάδας/.test(a.title) && a.doc, `#427 (RT-T106, a truck of W${wPrev}) = «5 · W${wPrev}», its sheet opens (${JSON.stringify(a)})`);
+  ok(P.realErrors(page).length === 0, 'natv5carry: 0 page/console errors ' + JSON.stringify(P.realErrors(page)).slice(0, 300));
+  await page.context().close();
+}
+
+// The Worker's PATCH on ORDERS / NATIONAL ORDERS, as «invoice» and «cardinv» need it: recorded, answered with the
+// record (null = column emptied), behind the base's invoice_mark_guard (043 / 101). cap.fail = the next PATCH's 422.
+async function invoiceMocks(page) {
+  const cap = { patches: [], fail: null, guarded: [], slow: 0 };
   const H = { 'access-control-allow-origin': '*' };
   for (const [tbl, list, name] of [[P.T.ORDERS, P.ORDERS, 'orders'], [P.T.NAT_ORDERS, P.NAT, 'national_orders']]) {
     // Registered after installMocks: a PATCH is recorded and answered as the Worker does (null = column emptied).
-    await page.route(`**/${tbl}/rec**`, route => {
+    await page.route(`**/${tbl}/rec**`, async route => {
       const req = route.request();
       if (req.method() !== 'PATCH') return route.fallback();
+      if (cap.slow) { const ms = cap.slow; cap.slow = 0; await new Promise(r => setTimeout(r, ms)); }   // a write still in flight
       const rid = req.url().split('/').pop().split('?')[0];
       const body = req.postDataJSON();
       cap.patches.push({ table: name, id: rid, fields: body.fields });
@@ -407,6 +544,16 @@ async function scnInvoice(browser) {
       return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ id: rid, fields: rec ? rec.fields : body.fields }) });
     });
   }
+  return cap;
+}
+
+// «invoice» (owner 3/11, Eirini's main table): ΤΠΥ, «Αυτοπαράδοση», price entry, price correction, ΤΠΥ
+// correction and undo from the week's ΤΠΥ / ΠΟΣΟ cells. The proof is the PATCH BODY (the same fields as
+// «Προς τιμολόγηση»), then the line the week repaints from the record the mock Worker returned.
+async function scnInvoice(browser) {
+  console.log('\n[invoice] ΤΠΥ / αυτοπαράδοση / τιμή / αναίρεση from the week (owner 3/11)');
+  const page = await P.newPage(browser, 'accountant');
+  const cap = await invoiceMocks(page);
   await P.openWeek(page);
   const today = await page.evaluate(() => OrdersCommon.today());
   const sub = id => `.ow4-sub[data-owvopen="${id.startsWith('recN') ? 'natl' : 'intl'}:${id}"]`;
@@ -433,7 +580,7 @@ async function scnInvoice(browser) {
   ok(await page.locator('#owvEd [data-owvedin="date"]').inputValue() === today, 'date = today, as in «Προς τιμολόγηση»');
   await page.keyboard.type('0461');
   await page.waitForTimeout(150);
-  ok(/0461 υπάρχει ήδη στην .+ άλλου πελάτη/.test(await page.locator('#owvEdHint').textContent()), 'live line under the box: «υπάρχει ήδη … άλλου πελάτη»');
+  ok(/0461 υπάρχει ήδη σε παραγγελία άλλου πελάτη: /.test(await page.locator('#owvEdHint').textContent()), 'live line under the box: «υπάρχει ήδη … άλλου πελάτη»');
   await page.screenshot({ path: path.join(SHOTS, 'invoice-tpy-dup.png') });
   await page.keyboard.press('Enter');
   await page.waitForSelector('#_cfaCancel', { state: 'visible' });
@@ -506,7 +653,7 @@ async function scnInvoice(browser) {
   await page.keyboard.press('Enter');
   await page.waitForSelector('#_cfaCancel', { state: 'visible' });
   const q5 = await page.locator('#modalOverlay').textContent();
-  ok(/Αλλαγή τιμής της #1244 \(ΤΠΥ 0463\)/.test(q5) && /Το τιμολόγιο στο ERP ΔΕΝ αλλάζει από εδώ/.test(q5), 'Enter → asked first, in the undo\'s words: «' + q5.replace(/\s+/g, ' ').trim().slice(0, 140) + '»');
+  ok(/Αλλαγή τιμής της παραγγελίας [^#(]+ \(ΤΠΥ 0463\)/.test(q5) && /Το τιμολόγιο στο ERP ΔΕΝ αλλάζει από εδώ/.test(q5), 'Enter → asked first, in the undo\'s words: «' + q5.replace(/\s+/g, ' ').trim().slice(0, 140) + '»');
   await page.click('#_cfaCancel'); await page.waitForTimeout(200);
   ok(cap.patches.length === n5 && await page.locator('#owvEd').count() === 1, 'cancel → no PATCH, the editor stays');
   const st0 = await page.locator('.ow4-st').textContent();
@@ -542,7 +689,7 @@ async function scnInvoice(browser) {
   await page.keyboard.press('Enter');
   await page.waitForSelector('#_cfaOk', { state: 'visible' });
   const q5b = await page.locator('#modalOverlay').textContent();
-  ok(/Αλλαγή τιμής της #1255 \(αυτοπαράδοση\)/.test(q5b) && !/ERP ΔΕΝ αλλάζει/.test(q5b), 'asked, without the ERP sentence (there is no ERP invoice)');
+  ok(/Αλλαγή τιμής της παραγγελίας [^#(]+ \(αυτοπαράδοση\)/.test(q5b) && !/ERP ΔΕΝ αλλάζει/.test(q5b), 'asked, without the ERP sentence (there is no ERP invoice)');
   await page.click('#_cfaOk');
   await edGone();
   ok(last().id === 'recO1255' && body(last()) === JSON.stringify({ Price: 3000 }), 'self delivery price → PATCH {Price: 3000}: ' + body(last()));
@@ -586,7 +733,7 @@ async function scnInvoice(browser) {
   await page.waitForSelector('#owvEd');
   await page.locator(`${sub('recO1248')} .ow4-c`).nth(1).click();
   await page.waitForSelector('.owv-cards #intlDetail:not(.hidden)', { timeout: 10000 });
-  ok(await page.locator('#owvEd').count() === 0, 'a click on the client opens the order card, the editor closes');
+  ok(await page.locator('.ow4-card #owvEd').count() === 0 && await page.locator('.owv-cards #intlDetail #owvEd').count() === 1, 'a click on the client opens the order card: the line\'s editor closes, the card carries «Τιμολόγηση» (8/11)');
   await page.keyboard.press('Escape');
   // an editor left open never comes back from another view (code review high: stale / stuck editor)
   await cell('recO1248', 'tpy').click();
@@ -614,16 +761,326 @@ async function scnInvoice(browser) {
   await mg.context().close();
 }
 
+// «cardinv» (owner 8/11, change 12: «ΠΑΝΕΛ … να σημειώνεται ΤΠΥ, τιμή και αυτοπαράδοση»; «Και στο πλαϊνό
+// πάνελ»): the order card opened in the week carries «Τιμολόγηση» — the cells' own editor, mounted in the card.
+// The proof is again the PATCH BODY (same fields as the cells / «Προς τιμολόγηση»), then the line AND the card,
+// repainted from the record the mock Worker returned. Orders untouched by «invoice» (it runs before, same fixture).
+async function scnCardInv(browser) {
+  console.log('\n[cardinv] «Τιμολόγηση» in the order card over the week (owner 8/11)');
+  const page = await P.newPage(browser, 'accountant');
+  const cap = await invoiceMocks(page);
+  await P.openWeek(page);
+  const today = await page.evaluate(() => OrdersCommon.today());
+  const sub = id => `.ow4-sub[data-owvopen="${id.startsWith('recN') ? 'natl' : 'intl'}:${id}"]`;
+  const panelSel = id => (id.startsWith('recN') ? '.owv-cards #natlDetail' : '.owv-cards #intlDetail');
+  const sec = id => `${panelSel(id)} .owv-card-inv`;
+  const txt = async (id, m) => ((await page.locator(`${sub(id)} [data-owved="${m}"]`).first().textContent()) || '').trim();
+  const cardTxt = async id => ((await page.locator(panelSel(id)).textContent()) || '').replace(/\s+/g, ' ');
+  const last = () => cap.patches[cap.patches.length - 1];
+  const body = p => JSON.stringify(p && p.fields);
+  const open = async id => {
+    // a cell of the line that is not ΤΠΥ / ΠΟΣΟ (the client) opens the card, as a click does — the ΑΝΟΔΟΣ side
+    // draws its columns mirrored, so never by position
+    await page.locator(`${sub(id)} .ow4-c:not(.ow4-edc)`).first().click();
+    await page.waitForSelector(`${sec(id)} #owvEd`, { timeout: 10000 });
+  };
+  const confirmOk = async re => {
+    await page.waitForSelector('#_cfaOk', { state: 'visible', timeout: 10000 });
+    const q = await page.locator('#modalOverlay').textContent();
+    ok(re.test(q), 'the confirm says ' + re + ' — «' + q.replace(/\s+/g, ' ').trim().slice(0, 110) + '»');
+    await page.click('#_cfaOk');
+  };
+  const n0 = cap.patches.length;
+
+  // 1 · an unpriced order: price first, then the ΤΠΥ box in the same section (owner 21/10)
+  await open('recO1249');
+  ok(await page.evaluate(() => { const s = document.querySelector('.owv-cards #intlDetail .owv-card-inv'); const p = s && s.previousElementSibling; return !!p && /Στοιχεία/.test(p.textContent); }), 'the section «Τιμολόγηση» sits right under «Στοιχεία» (Τιμή · Τιμολογήθηκε)');
+  ok(/Χωρίς τιμή · πρώτα η τιμή/i.test(await page.locator(sec('recO1249')).textContent()), '#1249 (no price): «Χωρίς τιμή · πρώτα η τιμή»');
+  ok(await page.locator(`${sec('recO1249')} .owv-ed-sw`).count() === 0, 'no «Τιμολόγιο / Τιμή» switch before the price');
+  ok(await page.evaluate(() => !(document.activeElement && document.activeElement.closest && document.activeElement.closest('#owvEd'))), 'opening the card to read it: the caret is not moved into a box');
+  ok(await page.locator('.ow4-card #owvEd').count() === 0, 'no editor under the line at the same time');
+  await page.screenshot({ path: path.join(SHOTS, 'cardinv-price-first.png') });
+  await page.fill('#owvEd [data-owvedin="price"]', '1.500,00');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector(`${sec('recO1249')} [data-owvedin="num"]`, { timeout: 10000 });
+  ok(last().table === 'orders' && last().id === 'recO1249' && body(last()) === JSON.stringify({ Price: 1500 }), 'price → ONE PATCH orders/recO1249 {Price: 1500}: ' + body(last()));
+  ok(/1\.500,00/.test(await txt('recO1249', 'amt')), 'the line repaints 1.500,00');
+  ok(/1\.500/.test(await cardTxt('recO1249')), 'the card\'s «Τιμή» says the new price');
+  ok(await page.evaluate(() => (document.activeElement || {}).dataset && document.activeElement.dataset.owvedin === 'num'), 'the ΤΠΥ box opens in the card with the focus');
+
+  // 2 · ΤΠΥ from the card
+  await page.fill('#owvEd [data-owvedin="num"]', 'C-501');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => /C-501/.test((document.querySelector('.owv-cards #intlDetail') || {}).textContent || ''), null, { timeout: 10000 });
+  ok(last().id === 'recO1249' && body(last()) === JSON.stringify({ Invoiced: true, 'Invoice Number': 'C-501', 'Invoice Date': today }), 'ΤΠΥ → PATCH {Invoiced, Invoice Number, Invoice Date}: ' + body(last()));
+  ok(/✓ C-501/.test(await txt('recO1249', 'tpy')), 'the line: «✓ C-501»');
+  ok(/Τιμολογήθηκε\s*Ναι · ΤΠΥ C-501/.test(await cardTxt('recO1249')), 'the card: «Τιμολογήθηκε Ναι · ΤΠΥ C-501»');
+  ok(/διόρθωση/i.test(await page.locator(sec('recO1249')).textContent()) && await page.locator(`${sec('recO1249')} [data-owvedact="undo"]`).count() === 1, 'the section is now the ΤΠΥ correction, with «Αναίρεση τιμολόγησης»');
+  await page.screenshot({ path: path.join(SHOTS, 'cardinv-invoiced.png') });
+
+  // 3 · «Τιμή» tab: an invoiced order's price, asked first (owner 3/11)
+  await page.click(`${sec('recO1249')} [data-owvedact="mode:amt"]`);
+  await page.waitForSelector(`${sec('recO1249')} [data-owvedin="price"]`);
+  ok(await page.locator('#owvEd [data-owvedin="price"]').inputValue() === '1.500,00', '«Τιμή» tab → the price box holds 1.500,00');
+  await page.fill('#owvEd [data-owvedin="price"]', '1600');
+  await page.keyboard.press('Enter');
+  await confirmOk(/ERP ΔΕΝ αλλάζει/);
+  await page.waitForFunction(() => /1\.600/.test((document.querySelector('.ow4-sub[data-owvopen="intl:recO1249"] [data-owved="amt"]') || {}).textContent || ''), null, { timeout: 10000 });
+  ok(last().id === 'recO1249' && body(last()) === JSON.stringify({ Price: 1600 }), 'invoiced price → PATCH {Price: 1600}: ' + body(last()));
+  ok(cap.guarded[cap.guarded.length - 1].refused === null, 'the base guard 043 lets it through (ΤΠΥ + price > 0)');
+
+  // 4 · undo from the card
+  await page.click(`${sec('recO1249')} [data-owvedact="mode:tpy"]`);
+  await page.click(`${sec('recO1249')} [data-owvedact="undo"]`);
+  await confirmOk(/ΤΠΥ C-501/);
+  await page.waitForFunction(() => /προς κοπή/.test((document.querySelector('.ow4-sub[data-owvopen="intl:recO1249"] [data-owved="tpy"]') || {}).textContent || ''), null, { timeout: 10000 });
+  ok(last().id === 'recO1249' && body(last()) === JSON.stringify({ Invoiced: false, 'Invoice Number': null, 'Invoice Date': null }), 'undo → PATCH {Invoiced: false, Invoice Number: null, Invoice Date: null}: ' + body(last()));
+  ok(/Τιμολογήθηκε\s*Όχι/.test(await cardTxt('recO1249')) && await page.locator(`${sec('recO1249')} [data-owvedin="num"]`).count() === 1, 'the card: «Τιμολογήθηκε Όχι», the section offers the ΤΠΥ again');
+
+  // 5 · «Αυτοπαράδοση» from the card (another order: the section follows the card)
+  await open('recO1257');
+  ok(await page.locator('.owv-card-inv').count() === 1, 'one section, in the card now open');
+  await page.click(`${sec('recO1257')} [data-owvedact="self"]`);
+  await page.waitForFunction(() => /αυτοπαράδοση/.test((document.querySelector('.owv-cards #intlDetail') || {}).textContent || ''), null, { timeout: 10000 });
+  ok(last().id === 'recO1257' && body(last()) === JSON.stringify({ Invoiced: true, 'Self Delivery': true, 'Invoice Number': null, 'Invoice Date': today }), 'tick → PATCH {Invoiced, Self Delivery, Invoice Number: null, Invoice Date}: ' + body(last()));
+  ok(/αυτοπαράδοση/.test(await txt('recO1257', 'tpy')) && /Τιμολογήθηκε\s*Ναι · αυτοπαράδοση/.test(await cardTxt('recO1257')), 'the line «✓ αυτοπαράδοση», the card «Τιμολογήθηκε Ναι · αυτοπαράδοση»');
+
+  // 6 · what she types survives the card repainting itself (its stops arriving re-draw the whole panel)
+  await open('recO1243');
+  await page.click('#owvEd [data-owvedin="num"]');
+  await page.keyboard.type('KEEP-1');
+  await page.evaluate(() => selectIntlOrder('recO1243'));
+  await page.waitForSelector(`${sec('recO1243')} [data-owvedin="num"]`);
+  ok(await page.locator('#owvEd [data-owvedin="num"]').inputValue() === 'KEEP-1', 'the card repaints: the section is back and «KEEP-1» is still typed');
+  await page.locator(`${sub('recO1243')} .ow4-c:not(.ow4-edc)`).first().click();
+  await page.waitForTimeout(300);
+  ok(await page.locator('#owvEd [data-owvedin="num"]').inputValue() === 'KEEP-1', 'a click on the line of the card already open: «KEEP-1» still typed');
+
+  // 7 · a refusal stays in the card, the typed number kept
+  cap.fail = 'Δεν σημαίνεται τιμολογημένη χωρίς τιμή';
+  await page.press('#owvEd [data-owvedin="num"]', 'Enter');
+  await page.waitForSelector(`${sec('recO1243')} .owv-ed-err`, { timeout: 10000 });
+  const errT = await page.locator('#owvEd .owv-ed-err').textContent();
+  ok(last().id === 'recO1243' && /Δεν γράφτηκε/.test(errT), '422 → «Δεν γράφτηκε: …» in the card: «' + errT.trim() + '»');
+  ok(/προς κοπή/.test(await txt('recO1243', 'tpy')) && await page.locator('#owvEd [data-owvedin="num"]').inputValue() === 'KEEP-1', 'the line stays «προς κοπή», «KEEP-1» still typed');
+  await page.screenshot({ path: path.join(SHOTS, 'cardinv-refused.png') });
+  // closed and opened again by a click: the old refusal is not shown as current (code review high 8/11)
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(200);
+  await open('recO1243');
+  ok(await page.locator(`${sec('recO1243')} .owv-ed-err`).count() === 0 && await page.locator('#owvEd [data-owvedin="num"]').inputValue() === '', 'Esc, then the card again: no old «Δεν γράφτηκε», an empty ΤΠΥ box');
+
+  // 7b · a refusal arriving after the card was closed is said (toast), never into the hidden card
+  cap.fail = 'Δεν σημαίνεται τιμολογημένη χωρίς τιμή'; cap.slow = 900;
+  await page.fill('#owvEd [data-owvedin="num"]', 'LATE-1');
+  await page.press('#owvEd [data-owvedin="num"]', 'Enter');
+  await page.waitForTimeout(150);
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => /Δεν γράφτηκε/.test((document.getElementById('toast') || {}).textContent || ''), null, { timeout: 10000 });
+  ok(last().id === 'recO1243' && await page.locator('.owv-cards #intlDetail.hidden').count() === 1, 'card closed mid-write → the 422 is said in a toast «Δεν γράφτηκε: …»');
+  await open('recO1243');
+  ok(await page.locator(`${sec('recO1243')} .owv-ed-err`).count() === 0 && await page.locator(`${sec('recO1243')} .owv-ed-save[disabled]`).count() === 0, 'opened again: not stuck «Αποθήκευση…», no stale refusal');
+
+  // 8 · Esc is the card's: card and section close together; a ΤΠΥ cell still opens the line's editor
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(200);
+  ok(await page.locator('.owv-cards #intlDetail.hidden').count() === 1, 'Esc closes the card (one press, no section left to close first)');
+  await page.locator(`${sub('recO1243')} [data-owved="tpy"]`).first().click();
+  await page.waitForSelector('.ow4-card #owvEd [data-owvedin="num"]');
+  ok(await page.locator('#owvEd').count() === 1, 'a ΤΠΥ cell opens the editor under the line, as before (one editor)');
+  await page.keyboard.press('Escape');
+
+  // 9 · a national order's card: its own table
+  await open('recN434');
+  await page.fill('#owvEd [data-owvedin="num"]', 'N-88');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => /✓ N-88/.test((document.querySelector('.ow4-sub[data-owvopen="natl:recN434"] [data-owved="tpy"]') || {}).textContent || ''), null, { timeout: 10000 });
+  ok(last().table === 'national_orders' && last().id === 'recN434' && body(last()) === JSON.stringify({ Invoiced: true, 'Invoice Number': 'N-88', 'Invoice Date': today }), 'national card #434 → PATCH national_orders/recN434: ' + body(last()));
+  await page.screenshot({ path: path.join(SHOTS, 'cardinv-natl.png') });
+  await page.keyboard.press('Escape');
+
+  // 10 · where the line has no editor, neither has the card: the old VS national
+  await page.locator(`${sub('recN440')} .ow4-c:not(.ow4-edc)`).first().click();
+  await page.waitForSelector('.owv-cards #natlDetail:not(.hidden)', { timeout: 10000 });
+  await page.waitForTimeout(400);
+  ok(await page.locator('.owv-card-inv').count() === 0, 'old VS national #440: no «Τιμολόγηση» in its card (the international order carries the price)');
+  const n = cap.patches.length - n0;
+  // price, ΤΠΥ, invoiced price, undo, self delivery, the two refused ones (422), the national ΤΠΥ
+  ok(n === 8, `${n} PATCHes from the card — one per write, none from opening, switching, repainting or Esc`);
+  ok(cap.guarded.filter(x => x.refused).length === 0, 'the base guard refused none of the card\'s writes (the 422 was the scenario\'s own)');
+  ok(P.realErrors(page, /422|Δεν σημαίνεται/).length === 0, 'cardinv: 0 page/console errors but the deliberate 422 ' + JSON.stringify(P.realErrors(page, /422|Δεν σημαίνεται/)).slice(0, 300));
+  await page.context().close();
+
+  // 11 · who may not invoice: the card as before, no section
+  const mg = await P.newPage(browser, 'management');
+  await P.openWeek(mg);
+  await mg.locator(`${sub('recO1248')} .ow4-c:not(.ow4-edc)`).first().click();
+  await mg.waitForSelector('.owv-cards #intlDetail:not(.hidden)', { timeout: 10000 });
+  ok(await mg.locator('.owv-card-inv').count() === 0, 'management: the card has no «Τιμολόγηση» (it cannot invoice today either)');
+  await mg.context().close();
+}
+
+// [route] the route diagram (owner 8/11: «μέσα στην κάρτα της κάθε παραγγελίας ξεχωριστά και στο RT όταν είναι
+// στο εβδομάδα»): the card's «Διαδρομή» is the diagram of the order's own stops, and a card opened from an RT of two
+// or more orders adds «Δρομολόγιο RT-…» with every order of the RT, in RT order. Invented stops for RT-1201
+// (#1241 export, #1246 import); ORDER STOPS answered by id, as the Worker filters them.
+// From 1600px wide (owner 8/11, «Ναι, φτιάξτο») the diagram is a 400px column at the right edge beside the card
+// (core/route-diagram-column.js): the RT's when opened from an RT of two or more orders, never twice. PW_COL_DIR =
+// where the column screenshots go (orders-col.png, orders-narrow.png).
+async function scnRoute(browser) {
+  console.log('\n[route] the route diagram in the order card and for its RT');
+  const page = await P.newPage(browser, 'owner');
+  const SID = { recO1241: ['recS1', 'recS2'], recO1246: ['recS3', 'recS4'] };
+  const loc = n => ['recL' + n];   // the proof's LOCS: 0 Naoussa · 1 München · 2 Verona · 3 Veroia
+  const stop = (id, parent, no, type, k, locN, pal) => ({ id, fields: { 'Parent Order': [parent], 'Stop Number': no, 'Stop Type': type,
+    DateTime: P.day(k), Location: loc(locN), Pallets: pal } });
+  const STOPS = [stop('recS1', 'recO1241', 1, 'Loading', -2, 0, 33), stop('recS2', 'recO1241', 2, 'Unloading', 2, 1, 33),
+    stop('recS3', 'recO1246', 1, 'Loading', 3, 2, 26), stop('recS4', 'recO1246', 2, 'Unloading', 5, 3, 26)];
+  const reads = [];
+  for (const [rid, ids] of Object.entries(SID)) P.ORDERS.find(r => r.id === rid).fields['ORDER STOPS'] = ids;
+  await page.route('**/tblaeY5QOHAS1gyE8**', route => {
+    const u = decodeURIComponent(route.request().url());
+    const ids = [...u.matchAll(/RECORD_ID\(\)="(rec[A-Za-z0-9]+)"/g)].map(m => m[1]);
+    reads.push(u);
+    return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' },
+      body: JSON.stringify({ records: STOPS.filter(x => ids.includes(x.id)) }) });
+  });
+  try {
+    await P.openWeek(page);
+    const row = code => page.locator('.ow4-row', { has: page.locator('.ow4-c-rt .ow4-l1', { hasText: code }) });
+    await row('RT-1201').locator('.ow4-c-rt').click();
+    await page.waitForSelector('.owv-cards #intlDetail [data-oi-sect="route"] .rd .rd-sec', { timeout: 10000 });
+    await page.waitForSelector('.owv-cards #intlDetail .owv-card-rt .rd .rd-sec', { timeout: 10000 });
+    await page.waitForTimeout(600);
+    const st = await page.evaluate(() => {
+      const p = document.getElementById('intlDetail');
+      const sec = el => [...el.querySelectorAll('.rd-sec')].map(s => s.querySelector('.rd-sh').textContent.replace(/\s+/g, ' ').trim());
+      const own = p.querySelector('[data-oi-sect="route"]'), rt = p.querySelector('.owv-card-rt');
+      return { own: sec(own), ownRows: own.querySelectorAll('.rd-row').length, rtTitle: rt.querySelector('.oi-sect-t').textContent,
+        rt: sec(rt), rtRows: rt.querySelectorAll('.rd-row').length, after: own.nextElementSibling === rt,
+        red: [...p.querySelectorAll('.rd-note[data-tone="red"]')].map(x => x.textContent) };
+    });
+    ok(st.own.length === 1 && /ΕΞΑΓΩΓΗ/.test(st.own[0]) && /#1241/.test(st.own[0]) && st.ownRows >= 2,
+      'the card\'s «Διαδρομή» is the diagram of #1241: ' + JSON.stringify(st.own) + ', ' + st.ownRows + ' rows');
+    ok(/Δρομολόγιο RT-1201/.test(st.rtTitle) && st.after, '«Δρομολόγιο RT-1201» right under «Διαδρομή»');
+    ok(st.rt.length === 2 && /ΕΞΑΓΩΓΗ.*#1241/.test(st.rt[0]) && /ΕΙΣΑΓΩΓΗ.*#1246/.test(st.rt[1]) && st.rtRows >= 4,
+      'the RT diagram draws #1241 then #1246, in RT order: ' + JSON.stringify(st.rt) + ', ' + st.rtRows + ' rows');
+    ok(!st.red.length, 'no red failure line: ' + JSON.stringify(st.red));
+    const rtReads = reads.filter(u => /Completed At/.test(u) && /recS3/.test(u) && /recS1/.test(u));
+    ok(rtReads.length === 1, `the RT's stops read ONCE, both orders together (${rtReads.length})`);
+    await page.evaluate(() => document.querySelector('#intlDetail [data-oi-sect="route"]').scrollIntoView({ block: 'start' }));
+    await page.screenshot({ path: path.join(SHOTS, 'route-card-order.png') });
+    await page.evaluate(() => document.querySelector('#intlDetail .owv-card-rt').scrollIntoView({ block: 'start' }));
+    await page.screenshot({ path: path.join(SHOTS, 'route-card-rt.png') });
+    // a repaint of the week keeps the RT section, without reading its stops again
+    await page.evaluate(() => document.querySelector('[data-owvmode="vehicle"]').click());
+    await page.waitForTimeout(300);
+    ok(await page.locator('#intlDetail .owv-card-rt .rd-sec').count() === 2
+      && reads.filter(u => /Completed At/.test(u) && /recS3/.test(u)).length === 1, 'a repaint keeps «Δρομολόγιο RT-1201», no second read');
+    await page.evaluate(() => document.querySelector('[data-owvmode="day"]').click());
+    await page.waitForTimeout(300);
+    // a one-order RT: its order's diagram IS the RT's, no second section
+    await page.keyboard.press('Escape');
+    await row('RT-1204').locator('.ow4-c-rt').click();
+    await page.waitForSelector('.owv-cards #intlDetail:not(.hidden) [data-oi-sect="route"]', { timeout: 10000 });
+    await page.waitForTimeout(300);
+    ok(await page.locator('#intlDetail .owv-card-rt').count() === 0, 'RT-1204 (one order): no «Δρομολόγιο» section');
+    ok(await page.locator('.rdc').count() === 0, 'below 1600px wide: no route column, the diagram stays in the card');
+    await page.keyboard.press('Escape');
+
+    // ── the column (owner 8/11 «Ναι, φτιάξτο»): from 1600px the diagram leaves the card for a 400px column at the
+    // right edge, the card sits next to it (right 400), and the card draws neither «Διαδρομή» nor the RT section
+    const geo = () => page.evaluate(() => {
+      const p = document.getElementById('intlDetail'), col = document.querySelector('.owv-cards > .rdc');
+      const vis = el => !!el && el.getClientRects().length > 0;
+      const r = el => { const b = el.getBoundingClientRect(); return { l: Math.round(b.left), r: Math.round(b.right), w: Math.round(b.width), t: Math.round(b.top), h: Math.round(b.height) }; };
+      const sec = el => [...el.querySelectorAll('.rd-sec')].map(x => x.querySelector('.rd-sh').textContent.replace(/\s+/g, ' ').trim());
+      return { open: vis(p), card: vis(p) ? r(p) : null, col: vis(col) ? r(col) : null, head: col ? col.querySelector('.rdc-h').textContent.replace(/\s+/g, ' ').trim() : '',
+        colSecs: col ? sec(col) : [], colRows: col ? col.querySelectorAll('.rd-row').length : 0,
+        cardRd: [...p.querySelectorAll('.rd')].filter(vis).length, routeSect: vis(p.querySelector('[data-oi-sect="route"]')), rtSect: !!p.querySelector('.owv-card-rt'),
+        red: col ? [...col.querySelectorAll('.rd-note[data-tone="red"]')].map(x => x.textContent) : [] };
+    });
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await row('RT-1201').locator('.ow4-c-rt').click();
+    await page.waitForSelector('.owv-cards > .rdc .rd .rd-sec', { timeout: 10000 });
+    await page.waitForTimeout(500);
+    let g = await geo();
+    ok(!!g.col && g.col.r === 1920 && g.col.w === 400 && g.col.t === 0 && g.col.h === 1080, 'the column: 400px, full height, at the right edge ' + JSON.stringify(g.col));
+    ok(!!g.card && g.card.r === 1520 && g.card.w === 480, 'the card sits right next to it (its right edge at 1920 − 400) ' + JSON.stringify(g.card));
+    ok(g.colSecs.length === 2 && /ΕΞΑΓΩΓΗ.*#1241/.test(g.colSecs[0]) && /ΕΙΣΑΓΩΓΗ.*#1246/.test(g.colSecs[1]) && g.colRows >= 4,
+      'opened from RT-1201 (two orders): the column draws the whole RT, #1241 then #1246 ' + JSON.stringify(g.colSecs));
+    ok(g.cardRd === 0 && !g.routeSect && !g.rtSect, 'no duplicate: the card shows neither «Διαδρομή» nor «Δρομολόγιο RT-…» ' + JSON.stringify({ rd: g.cardRd, route: g.routeSect, rt: g.rtSect }));
+    ok(/^Διαδρομή/.test(g.head) && !/RT-/.test(g.head) && /\d+\/\d+/.test(g.head), 'the head: «Διαδρομή · …» with the days, no bare RT code: «' + g.head.replace('×', '').trim() + '»');
+    ok(!g.red.length, 'no red failure line in the column: ' + JSON.stringify(g.red));
+    ok(reads.filter(u => /Completed At/.test(u) && /recS3/.test(u)).length === 1, 'no new read for the column (the RT\'s stops still read once)');
+    const colShot = process.env.PW_COL_DIR;
+    if (colShot) { require('fs').mkdirSync(colShot, { recursive: true }); await page.screenshot({ path: path.join(colShot, 'orders-col.png') }); }
+    // the column's own × closes only the column: the diagram goes back inside the card, the card back to the edge
+    await page.locator('.owv-cards > .rdc .rdc-x').click();
+    await page.waitForTimeout(300);
+    g = await geo();
+    ok(!g.col && g.open && g.card.r === 1920 && g.routeSect && g.rtSect, 'column × → only the column closes; «Διαδρομή» and «Δρομολόγιο RT-1201» back in the card at the edge ' + JSON.stringify(g.card));
+    // Esc closes the card AND its column
+    await row('RT-1201').locator('.ow4-c-rt').click();
+    await page.waitForSelector('.owv-cards > .rdc .rd .rd-sec', { timeout: 10000 });
+    ok(!!(await geo()).col, 'a new click on the row opens the card with its column again');
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
+    g = await geo();
+    ok(!g.open && !g.col, 'Esc closes the card and the column with it');
+    // a one-order RT at 1920: the column draws that order's own diagram; the card has none
+    // (its order has no ORDER STOPS in the mock: the card's «Διαδρομή» is its legacy summary, moved as it is)
+    await row('RT-1204').locator('.ow4-c-rt').click();
+    await page.waitForSelector('.owv-cards > .rdc', { timeout: 10000 });
+    await page.waitForTimeout(500);
+    g = await geo();
+    const body1204 = (await page.locator('.owv-cards > .rdc .rdc-b').textContent()).replace(/\s+/g, ' ').trim();
+    ok(!!g.col && /Φόρτωση/.test(body1204) && !g.routeSect && !g.rtSect && g.cardRd === 0, 'RT-1204 (one order): the column shows its order\'s «Διαδρομή», the card none: «' + body1204.slice(0, 80) + '»');
+    // the card's × closes both
+    await page.locator('#intlDetail .oi-close').click();
+    await page.waitForTimeout(300);
+    g = await geo();
+    ok(!g.open && !g.col, 'the card\'s × closes the card and the column');
+    // narrower than 1600 with the card open: re-evaluated on resize, the diagram back inside
+    await row('RT-1201').locator('.ow4-c-rt').click();
+    await page.waitForSelector('.owv-cards > .rdc .rd .rd-sec', { timeout: 10000 });
+    await page.setViewportSize({ width: 1440, height: 1080 });
+    await page.waitForTimeout(400);
+    g = await geo();
+    ok(!g.col && g.open && g.card.r === 1440 && g.routeSect && g.rtSect && g.cardRd === 2, 'resized to 1440: no column, both sections back inside the card at the edge ' + JSON.stringify({ card: g.card, rd: g.cardRd }));
+    if (colShot) await page.screenshot({ path: path.join(colShot, 'orders-narrow.png') });
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.waitForTimeout(400);
+    ok(!!(await geo()).col, 'resized back to 1920: the column comes back');
+    await page.keyboard.press('Escape');
+    // «Κατάλογος»: its card is not the week's — no column, its «Διαδρομή» stays inside
+    await page.evaluate(() => OrdersHub.openOrder('intl', 'recO1241'));
+    await page.waitForSelector('#intlDetail:not(.hidden) [data-oi-sect="route"]', { timeout: 15000 }).catch(() => {});
+    await page.waitForTimeout(600);
+    ok(await page.locator('.rdc').count() === 0 && await page.locator('#intlDetail [data-oi-sect="route"]').isVisible().catch(() => false),
+      '«Κατάλογος» card at 1920: no column, «Διαδρομή» inside as before');
+    const errs = P.realErrors ? P.realErrors(page) : page._errors;
+    ok(!errs.length, 'no page / console errors: ' + JSON.stringify(errs).slice(0, 300));
+  } finally {
+    for (const rid of Object.keys(SID)) delete P.ORDERS.find(r => r.id === rid).fields['ORDER STOPS'];
+    await page.context().close();
+  }
+}
+
 (async () => {
   console.log('Στόχος: ' + BASE_URL + ' · εβδομάδα ' + P.WEEK_FROM + ' – ' + P.WEEK_TO);
   const browser = await chromium.launch();
   try {
     await scnDocs(browser);
+    await scnNatV5(browser);
+    await scnNatV5Carry(browser);
     await scnAlign(browser);
     await scnOrder(browser);
     await scnCard(browser);
     // last: it writes into the shared fixture (P.ORDERS / P.NAT)
     await scnInvoice(browser);
+    await scnCardInv(browser);
+    await scnRoute(browser);
   } catch (e) {
     failed++;
     console.log('  ✗ ΚΑΤΑΡΡΕΥΣΗ: ' + (e && e.stack || e));

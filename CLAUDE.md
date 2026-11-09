@@ -168,8 +168,20 @@ cd worker && CLOUDFLARE_API_TOKEN=$CF_API_TOKEN npx wrangler deploy
      b329ff91, ζωντανό 2/11: `rpc: "plan_transfer"` και `rpc: "plan_draft_realize"` (`--road 1`)
    - «Ελέγχθηκε» της εβδομάδας παλετών (104 `pl_week_checks` + `/pallets/week-checks`, Worker 0563b45a, ζωντανό 3/11):
      `var PLW_RPC = {`, ακριβώς μία φορά (`--wchk 1`)
-   Μία εντολή για όλα, πριν και μετά (από 3/11 βράδυ): `node worker/tools/worker-guard.mjs <bundle ή λήψη CF> --plan 2
-   --handover 1 --f3 1 --f5 1 --edit 1 --invoiced 1 --rate2 1 --self 1 --road 1 --wchk 1` → `GUARD OK (35 markers, plan=2,
+   - εισαγωγή DKV: parser 1.3.0 (μονάδες L/UN, γαλλικό TIS, έκπτωση προκαταβολής, αριθμός διορθωτικού) και η πύλη
+     E-SUMMARY που κόβει γραμμή χωρίς γραμμές, και η «Καταχώρηση» που ξαναδουλεύει (Worker 24d38435 πάνω στον 0563b45a, ζωντανό
+     8/11 13:06· ο 12d9914b της 12:44 είχε ακόμη το σφάλμα του commit): `no_lines: true`
+     και `SHORT_UNIT_TOKENS.has(`, το καθένα ακριβώς μία φορά (`--dkv 1`). Υπάρχουν **μόνο στο bundle / στη λήψη CF**
+     (ο wrangler πακετάρει `worker/src/import-rules.mjs` και `core/dkv-parser.js`)· στο `src/index.js` μόνο του = STOP.
+     ⚠ 8/11 12:39 ανέβηκε κατά λάθος ο 9608bb1c από τον κύριο φάκελο, που ήταν σε παλιό branch (19 σημάδια STOP: χωρίς F5,
+     085/089/101/099/102/104, `PLAN_WRITES_OPEN = false`)· αντικαταστάθηκε σε 5 λεπτά, 0 εγγραφές στο audit. **Deploy μόνο από
+     worktree / branch του PR, και ο φρουρός στο bundle ΠΡΙΝ** (`wrangler deploy --dry-run --outdir`).
+   Μία εντολή για όλα, πριν και μετά (από το deploy του DKV 1.3.0): `node worker/tools/worker-guard.mjs <bundle ή λήψη CF>
+   --plan 2 --handover 1 --f3 1 --f5 1 --edit 1 --invoiced 1 --rate2 1 --self 1 --road 1 --wchk 1 --dkv 1` → `GUARD OK (37
+   markers, … wchk=1, dkv=1)`. Επείγουσα επαναφορά στον προηγούμενο (`wrangler rollback
+   0563b45a-0eb0-4331-9658-671372e17f0f`, 3/11, ο parser 1.2.0): `--dkv 0` → `GUARD OK (37 markers … dkv=0)`· τίποτα στη
+   βάση ή στο front end δεν χρειάζεται revert (ένα ZIP με γραμμές L/UN απλώς ξαναβγαίνει «Δεν συμφωνεί» και η
+   «Καταχώρηση» κλειδώνει). Ως εκείνο το deploy (από 3/11 βράδυ): `… --road 1 --wchk 1` → `GUARD OK (35 markers, plan=2,
    handover=1, f3=1, f5=1, edit=1, invoiced=1, rate2=1, self=1, road=1, wchk=1)`. Επείγουσα επαναφορά στον προηγούμενο
    (`wrangler rollback b329ff91-5453-4262-a521-3e9ecd6eb09c`, 2/11, χωρίς `/pallets/week-checks`): `--wchk 0` → `GUARD OK (35
    markers … wchk=0)`. Η 104 στη βάση μένει (ο b329ff91 δεν την καλεί)· η διαδρομή απαντά 404 και η καρτέλα «Εβδομάδα» κρύβει
@@ -375,6 +387,33 @@ Folder: `/ (root)` → Save, και 1-3 λεπτά rebuild.
   Εξαιρέσεις: τα **GROUPAGE LINES** κρατούν `Unassigned/Assigned` (κανόνας
   never-delete)· η **RAMP** κρατά το δικό της μικρό (`Planned/Done`) γιατί δεν
   είναι μεταφορά. Το «Invoiced» **δεν είναι status** — μόνο checkbox.
+
+---
+
+## ΜΗΝΥΜΑΤΑ ΧΩΡΙΣ ΚΩΔΙΚΟΥΣ (owner 8/11/2026, κανόνας για όλους)
+
+Κάθε κείμενο που διαβάζει άνθρωπος (toast, λωρίδα, banner, ειδοποίηση, άρνηση
+422 από Worker ή βάση, ερώτηση επιβεβαίωσης, tooltip, φύλλο, WhatsApp / email)
+**δεν ονομάζει εγγραφή με κωδικό**: όχι «RT-1543», «#1229», «recAbC…», «GI-…»,
+«Κ/Α». Λέει τι είναι, με **μία** μορφή για όλη την εφαρμογή:
+
+- **Παραγγελία** = «πελάτης, φόρτωση → παράδοση · ημέρα»: «ΦΑΓΕ, Βέροια → Μόναχο · Δευ 2/11».
+- **Δρομολόγιο / φορτηγό** = «πινακίδα · οδηγός · ημέρα»: «ΚΖΗ-1234 · Σαρίδης Γ. · Δευ 2/11»· συνεργάτης με το όνομά του.
+- Ο κωδικός μένει **μόνο** σε `title=""` ή σε δευτερεύουσα θέση για αναζήτηση, ποτέ ως υποκείμενο της πρότασης.
+  Στήλες που είναι το αναγνωριστικό (π.χ. «Αρ.», «Αρ. Εντολής») δεν αλλάζουν.
+
+**Πώς:** το κείμενο το φτιάχνει **μόνο** το `core/plain-ref.js` (`PlainRef.orderOf(rec)`,
+`PlainRef.tripOf(rt, lookups)`, `PlainRef.order({...})`, `PlainRef.trip({...})`,
+`PlainRef.list([...])`). Καμία οθόνη δεν γράφει δική της περιγραφή (αρχή 3). Στα
+Εθνικά v5 τα μηνύματα των κωδικών του Worker ονομάζουν δρομολόγιο μέσω
+`WN5Lab.setNamer` (#278). Μηνύματα του Worker ή της βάσης: η παρένθεση με τον
+κωδικό φεύγει στον Worker (`stockRuleError`)· το detail της βάσης μένει ASCII,
+γιατί το διαβάζουν μηχανές.
+
+**Γιατί:** «RT νούμερο 543» δεν λέει τίποτα σε όποιον δουλεύει με φορτηγά και
+πελάτες· έπρεπε να ψάξει τον κωδικό για να καταλάβει τι έγινε (owner 31/10 και
+8/11). Απογραφή και πριν → μετά: `docs/plain-messages/`. Ισχύει για κάθε νέα
+αλλαγή, δική μας ή της ValueDriven· κάθε brief σε agent το γράφει.
 
 ---
 

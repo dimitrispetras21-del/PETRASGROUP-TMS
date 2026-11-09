@@ -1799,17 +1799,21 @@ var TABLES = {
       // external/other) — READ-ONLY, see readOnly below.
       "Delay Responsibility": "delay_responsibility",
       // 071 (F1 Interfaces, decision 27): «through Veroia» on an INTERNATIONAL
-      // stop — default false, CHECK order_stops_via_hub_intl; 074 fills it on
-      // day L. Mapped now so the column is never written-and-dropped (trap 1);
-      // 072's rollback does not count it as a v5 row.
-      "Via Hub": "via_hub"
+      // stop, CHECK order_stops_via_hub_intl. Since 111 (owner 8/11, the new
+      // international form, F4b) it is the desk's choice per stop and an
+      // input: NULL = follows the VS (every national-side stop), true =
+      // through Veroia, false = direct; the bridge (074 plan_h_bridge_wanted)
+      // reads it and never writes it. Deploy this Worker ONLY AFTER 111 ran:
+      // before it the column is NOT NULL and the bridge overwrites the choice
+      // (a write meeting a base without 111 is answered 422 111_missing).
+      "Via Hub": "via_hub",
+      // 111 (owner 8/11: «μη υποχρεωτικό»): an optional window per stop, text
+      // HH:MM (CHECK order_stops_time_*_fmt, as local_moves 060); empty = all
+      // day, from > to = a night window. Without 111 the columns do not exist:
+      // a write naming them is refused 422 111_missing, never a silent drop.
+      "Time From": "time_from",
+      "Time To": "time_to"
     },
-    // Born closed (review of PR #90, finding 8; αρχή 5), and closed for good since F5 (owner 28/10, Q-6): «Via
-    // Hub» is read by every path, but only the DB writes it (074 plan_bridge_sync: true on the national side of
-    // a VS in v5, false elsewhere). A facade write naming it is refused (400 db_only, named, no DB call) before
-    // AND after day L — the /plan/* switch does not open it. It becomes an input only with the per-stop box of
-    // the International panel (F4b), in its own change. No screen writes it today (grep 26/10: none).
-    dbOnly: ["Via Hub"],
     // Labels the base computes. Mapped in `fields` so every read path (select,
     // filter, sort, the PATCH answer the screen reads back) carries them with
     // no extra request; `fields` is also the write allow-list, so a write
@@ -2735,16 +2739,6 @@ __name(authorizeWrite, "authorizeWrite");
 // is refused as a whole, before any database call, naming the label — the
 // caller fixes its request instead of reading «saved» over a half-applied one.
 function refuseReadOnly(cfg, fieldsList, origin, env) {
-  if (cfg.dbOnly) {
-    const shut = [];
-    for (const f of fieldsList) {
-      if (!f || typeof f !== "object") continue;
-      for (const label of cfg.dbOnly) if (Object.prototype.hasOwnProperty.call(f, label) && !shut.includes(label)) shut.push(label);
-    }
-    if (shut.length) {
-      return jsonOk({ error: { type: "BAD_REQUEST", code: "db_only", message: `${shut.map((l) => `«${l}»`).join(", ")}: το γράφει μόνο η βάση (γέφυρα VS του Εβδομαδιαίου Εθνικών) — δεν αλλάζει από οθόνη` } }, origin, env, 400);
-    }
-  }
   if (!cfg.readOnly) return null;
   const hit = [];
   for (const f of fieldsList) {
@@ -3439,6 +3433,25 @@ const PLW_RULE_TEXT = {
 const PLW_CONFLICT = ["already", "gone"];
 // The marker of the worker guard (--wchk): ONE object naming the three 104 acts.
 var PLW_RPC = { check: "pl_week_check", uncheck: "pl_week_uncheck", changes: "pl_week_check_changes" };
+// 107 refusals (pln_h_raise, the «Χωρίς ανταλλαγή» act of the pallets missing-delivery list, owner 28/10). already /
+// gone answer 409 (someone acted first), the rest 422. Texts only: what is allowed lives in pl_no_exchange.
+const PLN_RULE_TEXT = {
+  role: "Μόνο το λογιστήριο και ο owner γράφουν «Χωρίς ανταλλαγή».",
+  reason: "Γράψε αιτιολογία: καταγράφεται με το όνομά σου και ο δρομολογητής τη βλέπει στην παραγγελία.",
+  bad_ids: "Λείπει η παραγγελία ή η στάση — ανανέωσε τη σελίδα.",
+  gone: "Η παραγγελία δεν υπάρχει πια — ανανέωσε τη σελίδα.",
+  not_delivered: "Η παραγγελία δεν είναι παραδομένη: την ανταλλαγή την αλλάζει ο δρομολογητής στην παραγγελία.",
+  already: "Η παραγγελία είναι ήδη χωρίς ανταλλαγή — ανανέωσε τη σελίδα.",
+  split_leg: "Σκέλος σπασμένης παραγγελίας: η ανταλλαγή αλλάζει στην αρχική παραγγελία.",
+  lot: "Παρτίδα αποθήκης: δεν έχει παράδοση σε πελάτη.",
+  stop: "Η στάση δεν είναι στάση παράδοσης αυτής της παραγγελίας — ανανέωσε τη σελίδα.",
+  done: "Η στάση έχει ήδη κίνηση παράδοσης (γράφτηκε στο μεταξύ) — ανανέωσε τη σελίδα.",
+  multi: "Η παραγγελία έχει πολλές στάσεις παράδοσης: η ανταλλαγή αλλάζει από τον δρομολογητή στην παραγγελία.",
+  nat_leg: "Η παραγγελία έχει εθνικό σκέλος: η ανταλλαγή αλλάζει μόνο από την παραγγελία (απόφαση owner εκκρεμεί)."
+};
+const PLN_CONFLICT = ["already", "gone", "done"];
+// The marker of the worker guard (--pmiss): ONE object naming the 107 act.
+var PLN_RPC = { noExchange: "pl_no_exchange" };
 const PLAN_RULE_TEXT = {
   // 071 — deferred COMMIT rules (plan_chk) and the two direct raises
   pieces_alive: "Η αποστολή σβήστηκε αλλά έχει ακόμη ζωντανά κομμάτια — ανανέωσε τη σελίδα",
@@ -3600,6 +3613,9 @@ const PLAN_CHECK_TEXT = {
   plan_notices_read_pair: "Το «διαβάστηκε» γράφει ώρα και χρήστη μαζί",
   // order_stops / local_moves (071 additions on live tables)
   order_stops_via_hub_intl: "Το «μέσω Βέροιας» υπάρχει μόνο σε στάση διεθνούς παραγγελίας",
+  // 111: the optional window of a stop
+  order_stops_time_from_fmt: "Ώρα σε μορφή ΩΩ:ΛΛ (π.χ. 07:00)",
+  order_stops_time_to_fmt: "Ώρα σε μορφή ΩΩ:ΛΛ (π.χ. 07:00)",
   local_moves_nat_loading: "Η τοπική φόρτωση εθνικών θέλει στάση και οδηγό, και είναι μόνο «ανατέθηκε» ή «ακυρώθηκε»",
   // 071 unique indexes (23505); local_moves_nat_loading_once answers local_exists instead
   piece_legs_live_no: "Το φορτίο έχει ήδη ζωντανή κίνηση με αυτόν τον αριθμό — ανανέωσε τη σελίδα",
@@ -3667,6 +3683,11 @@ function stockRuleError(e) {
     const wc = hint.slice("plw:".length).trim();
     return { type: "PALLET_WEEK_RULE", code: wc, message: Object.prototype.hasOwnProperty.call(PLW_RULE_TEXT, wc) ? PLW_RULE_TEXT[wc] : `Το σημάδι της εβδομάδας δεν γράφτηκε (${wc || "χωρίς κωδικό"}): ${message}` };
   }
+  // 'pln:' (107, «Χωρίς ανταλλαγή» of the pallets missing-delivery list): the hint is the marker, as for 'plw:'.
+  if (hint.startsWith("pln:")) {
+    const nc = hint.slice("pln:".length).trim();
+    return { type: "PALLET_NOEX_RULE", code: nc, message: Object.prototype.hasOwnProperty.call(PLN_RULE_TEXT, nc) ? PLN_RULE_TEXT[nc] : `Το «Χωρίς ανταλλαγή» δεν γράφτηκε (${nc || "χωρίς κωδικό"}): ${message}` };
+  }
   // 'plan:' (071/072): same rule — the hint is the marker, whatever SQLSTATE.
   // It must come BEFORE the 23514 branch: plan_chk raises with 23514 and a
   // message without «check constraint», which that branch would answer null.
@@ -3678,6 +3699,12 @@ function stockRuleError(e) {
       return { type: "PLAN_RULE", code: pc, message: `Ο κανόνας ${pc || "χωρίς κωδικό"} δεν τηρήθηκε: ${message}` };
     }
     return { type: "PLAN_RULE", code: pc, message: detail ? `${PLAN_RULE_TEXT[pc]} (${detail})` : PLAN_RULE_TEXT[pc] };
+  }
+  // 111 not run yet (or rolled back) under this Worker: its hour columns are unknown (PGRST204 / 42703) or via_hub is
+  // still NOT NULL (23502 on a «Via Hub» cleared to null). Said by name, never «Failed to update record» (principle 1).
+  // Tied to order_stops by name: LOCAL MOVES has time_from / time_to too, and its errors are not 111's.
+  if (/order_stops/.test(message) && ((/^(PGRST204|42703)$/.test(code) && /time_from|time_to/.test(message)) || (code === "23502" && /"via_hub"/.test(message)))) {
+    return { type: "SCHEMA_BEHIND", code: "111_missing", message: "Η βάση δεν έχει ακόμη το migration 111 (ώρες και «μέσω Βέροιας» ανά στάση) — ο Worker μπήκε πριν από το SQL· τίποτα δεν γράφτηκε, ενημέρωσε τον Δημήτρη (111_missing)" };
   }
   if (code === "23514") {
     // 'stock:' (057) only under 23514, as 057's stock_raise sends it — a
@@ -4414,7 +4441,9 @@ var COSTS_PERMS = {
   // PATCH (contract round 2, owner 4/10/2026) writes the lot's «Χρέωση
   // αποθήκης» — money that feeds that same allocation, so the same owner-only
   // row. Opening it to the accountant later is this one line, nothing else.
-  owner: { settings: ["GET", "PATCH"], rt: ["GET", "POST", "PATCH", "DELETE"], lines: ["GET", "POST", "PATCH", "DELETE"], pnl: ["GET"], "pallet-gate": ["GET"], lookups: ["GET"], ledger: ["GET", "POST", "PATCH"], import: ["GET", "POST"], "stock-lots": ["GET", "PATCH"] },
+  // pnl-paper (owner 3/11/2026, answer 1: «μόνο εγώ»): the P&L papers read the
+  // same money as pnl — owner only, no other role gets the row.
+  owner: { settings: ["GET", "PATCH"], rt: ["GET", "POST", "PATCH", "DELETE"], lines: ["GET", "POST", "PATCH", "DELETE"], pnl: ["GET"], "pnl-paper": ["GET"], "pallet-gate": ["GET"], lookups: ["GET"], ledger: ["GET", "POST", "PATCH"], import: ["GET", "POST"], "stock-lots": ["GET", "PATCH"] },
   // lines PATCH/DELETE (owner 7/9/2026, spec docs/superpowers/specs/2026-09-07-trip-expenses-design.md):
   // the accountant screen «Έξοδα Δρομολογίων» lets her fix her own typo and
   // route a parked («Χωρίς δρομολόγιο») receipt to the right trip — both go
@@ -5296,6 +5325,93 @@ async function handleCosts(request, url, origin, env) {
       if (truncated) console.error(`[costs/pnl] read ${rows.length} of ${total} RTs in ${pages} page(s)`);
       return jsonOk({ records: rows, truncated, total }, origin, env);
     }
+    // ---- GET /costs/pnl-paper?rt=<id> | ?from=<date>&to=<date>  (P&L PAPERS — OWNER ONLY) ----
+    // The two approved P&L prints (owner 3/11/2026, Figma 2542:7735 one trip, 2537:7735 a week;
+    // docs/design/prints-pnl-week-2026-11-03.md). The 105 views as they are, raw: the paper adds
+    // nothing of its own, it lays the rows out and proves its totals against ct_v_rt_pnl (a total
+    // that does not match = no paper, said on the page). A failed read is a 500, never an empty
+    // paper: «nothing to print» and «could not read» must not look alike (principle 1).
+    // ct_v_rt_revenue_legs is read for ONE trip only: it costs seconds of planning (105 header).
+    if (resource === "pnl-paper" && method === "GET") {
+      const q = url.searchParams;
+      const rt = q.get("rt"), from = q.get("from"), to = q.get("to");
+      // a real calendar day: V8's Date.parse rolls 2026-02-30 into March, so the day must round-trip
+      const isDate = (s) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(Date.parse(s))
+        && new Date(s + "T00:00:00Z").toISOString().slice(0, 10) === s;
+      const single = rt !== null;
+      if (single ? !/^\d{1,12}$/.test(rt) : !(isDate(from) && isDate(to) && from <= to)) {
+        return jsonError("Μη έγκυρο δρομολόγιο ή εβδομάδα", 400, origin, env);
+      }
+      // a week paper is a week: more than 31 days is a mistake in the link, not a longer paper
+      if (!single && (Date.parse(to) - Date.parse(from)) / 864e5 > 31) {
+        return jsonError("Μη έγκυρο δρομολόγιο ή εβδομάδα", 400, origin, env);
+      }
+      const P = (o) => new URLSearchParams(o);
+      const inIds = (ids) => `in.(${ids.join(",")})`;
+      // PostgREST stops a read at db-max-rows (1000 on Supabase) without saying so: a list that long may be
+      // cut, and a cut list would make the paper refuse for the wrong reason (or worse) — a failed read instead
+      const lists = (all) => all.map((r) => {
+        if (!r || !Array.isArray(r.rows)) throw new Error("pnl-paper: a read is not a list");
+        if (r.rows.length >= 1000) throw new Error("pnl-paper: a read reached the row cap");
+        return r.rows;
+      });
+      const none = Promise.resolve({ rows: [] });
+      const PNL_PAPER_LIMIT = 120;
+      try {
+        const pnlParams = single ? P({ select: "*", id: `eq.${rt}` })
+          : P({ select: "*", order: "date_start.asc,id.asc", limit: String(PNL_PAPER_LIMIT + 1) });
+        if (!single) { pnlParams.append("date_start", `gte.${from}`); pnlParams.append("date_start", `lte.${to}`); }
+        const [pnlRows] = lists([await dbSelectRaw(env, "ct_v_rt_pnl", pnlParams)]);
+        if (single && pnlRows.length !== 1) return jsonError("Το δρομολόγιο δεν βρέθηκε", 404, origin, env);
+        // more trips than the paper reads = said, never a shorter paper that looks whole
+        const truncated = pnlRows.length > PNL_PAPER_LIMIT;
+        const trips = pnlRows.slice(0, PNL_PAPER_LIMIT);
+        if (!trips.length) {
+          return jsonOk({ trips, complete: [], cost_cat: [], costs: [], rts: [], partner_cost: [], legs: [], revenue_legs: [], v5_lines: [],
+            orders: [], nat_loads: [], nat_orders: [], clients: [], locations: [], truncated }, origin, env);
+        }
+        const ids = inIds(trips.map((t) => Number(t.id)));
+        // v5 trips (model 2) have no ct_rt_legs: their loads are the v5 revenue lines (light; the week paper's
+        // «from → to» of a national trip comes from them, the trip paper reads them inside revenue_legs)
+        const [complete, costCat, costs, rts, partnerCost, legs, revenueLegs, v5Lines] = lists(await Promise.all([
+          dbSelectRaw(env, "ct_v_rt_complete", P({ select: "*", rt_id: ids })),
+          dbSelectRaw(env, "ct_v_rt_cost_cat", P({ select: "*", rt_id: ids, order: "rt_id.asc,category.asc,toll_country.asc.nullslast" })),
+          dbSelectRaw(env, "ct_v_rt_costs", P({ select: "rt_id,lines_net,vat,wear,dl_trip_value,dl_expenses,partner_planned,partner_invoiced", rt_id: ids })),
+          dbSelectRaw(env, "ct_round_trips", P({ select: "id,model", id: ids })),
+          dbSelectRaw(env, "ct_v_rt_partner_cost", P({ select: "rt_id,cost", rt_id: ids })),
+          dbSelectRaw(env, "ct_rt_legs", P({ select: "id,rt_id,seq,direction,order_id,nat_load_id", rt_id: ids, order: "rt_id.asc,seq.asc.nullslast,id.asc" })),
+          single ? dbSelectRaw(env, "ct_v_rt_revenue_legs", P({ select: "*", rt_id: ids, order: "source.asc,leg_id.asc.nullslast,v5_leg_id.asc.nullslast" })) : none,
+          single ? none : dbSelectRaw(env, "ct_v_v5_revenue", P({ select: "rt_id,nat_order_id,leg_id", rt_id: ids, order: "rt_id.asc,leg_id.asc.nullslast" }))
+        ]));
+        // What the loads are (client, from → to, pallets, days): only the rows the legs name
+        const uniq = (vals) => [...new Set(vals.filter((v) => v != null))];
+        const orderIds = uniq([...legs.map((l) => l.order_id), ...revenueLegs.map((l) => l.order_id)]);
+        const natLoadIds = uniq(legs.map((l) => l.nat_load_id));
+        const natOrderIds = uniq([...revenueLegs, ...v5Lines].map((l) => l.nat_order_id));
+        const ORDER_COLS = "id,reference,direction,client_id,parent_order_id,leg_no,loading_datetime,delivery_datetime,loading_location_1_id,unloading_location_1_id,"
+          + Array.from({ length: 10 }, (_, i) => `loading_pallets_${i + 1}`).join(",");
+        const [orders, natLoads, natOrders] = lists(await Promise.all([
+          orderIds.length ? dbSelectRaw(env, "orders", P({ select: ORDER_COLS, id: inIds(orderIds) })) : none,
+          natLoadIds.length ? dbSelectRaw(env, "national_loads", P({ select: "id,direction,client,total_pallets,loading_datetime,delivery_datetime,pickup_location_1_id,delivery_location_1_id", id: inIds(natLoadIds) })) : none,
+          natOrderIds.length ? dbSelectRaw(env, "national_orders", P({ select: "id,direction,client_id,pallets,loading_datetime,delivery_datetime,pickup_location_1_id,delivery_location_1_id", id: inIds(natOrderIds) })) : none
+        ]));
+        const clientIds = uniq([...orders, ...natOrders].map((o) => o.client_id));
+        const locIds = uniq([
+          ...orders.flatMap((o) => [o.loading_location_1_id, o.unloading_location_1_id]),
+          ...natLoads.flatMap((n) => [n.pickup_location_1_id, n.delivery_location_1_id]),
+          ...natOrders.flatMap((n) => [n.pickup_location_1_id, n.delivery_location_1_id])
+        ]);
+        const [clients, locations] = lists(await Promise.all([
+          clientIds.length ? dbSelectRaw(env, "clients", P({ select: "id,company_name", id: inIds(clientIds) })) : none,
+          locIds.length ? dbSelectRaw(env, "locations", P({ select: "id,name,city,country", id: inIds(locIds) })) : none
+        ]));
+        return jsonOk({ trips, complete, cost_cat: costCat, costs, rts, partner_cost: partnerCost, legs, revenue_legs: revenueLegs,
+          v5_lines: v5Lines, orders, nat_loads: natLoads, nat_orders: natOrders, clients, locations, truncated }, origin, env);
+      } catch (e) {
+        console.error("COSTS pnl-paper read", e.message);
+        return jsonError("Τα στοιχεία του χαρτιού δεν διαβάστηκαν", 500, origin, env);
+      }
+    }
     // ---- GET /costs/pallet-gate — ποιες διαδρομές partner περιμένουν δελτίο ----
     // Το PnL τους είναι ελλιπές όσο λείπει: οι χαμένες παλέτες είναι κόστος.
     if (resource === "pallet-gate" && method === "GET") {
@@ -5814,7 +5930,10 @@ async function handleCosts(request, url, origin, env) {
         const detail = await insertRes.text().catch(() => "");
         if (/23505/.test(detail)) return jsonError("duplicate lines (unique index)", 409, origin, env);
         console.error("IMPORT commit insert", insertRes.status, detail.slice(0, 200));
-        return jsonError("Insert failed", 500, origin, env);
+        // The reason travels to the screen (8/11/2026): a bare «Insert failed»
+        // hid a PostgREST 400 on every commit from 21/9 to 8/11.
+        const why = (/"message"\s*:\s*"([^"]{1,160})"/.exec(detail) || [])[1] || ("HTTP " + insertRes.status);
+        return jsonError("Insert failed: " + why, 500, origin, env);
       }
       const insertedLines = await insertRes.json();
 
@@ -6914,14 +7033,17 @@ var PL_EVENT_TYPES = ["LOADING", "DELIVERY", "PARTNER_PICKUP", "PARTNER_DROPOFF"
 var PL_PERMS = {
   // "week-checks" (104, the «Ελέγχθηκε» mark of the week, owner 2/11): owner + accountant mark / undo, every other
   // pallets role reads it. No DELETE for anyone: an undo is a PATCH and the table refuses a hard delete.
-  owner:      { movements: ["GET", "POST", "PATCH", "DELETE"], confirm: ["POST"], reverse: ["POST"], sheets: ["GET", "POST"], balances: ["GET"], lookups: ["GET"], "week-checks": ["GET", "POST", "PATCH"] },
+  // "missing" + "no-exchange" (107, owner 28/10 E5.2): the missing-delivery list is read by owner, accountant and
+  // management (management without buttons); «Χωρίς ανταλλαγή» only by owner and accountant (also in pl_no_exchange).
+  // dispatcher and warehouse: neither (the FE hides the list and its counter for them — the same rule, said twice).
+  owner:      { movements: ["GET", "POST", "PATCH", "DELETE"], confirm: ["POST"], reverse: ["POST"], sheets: ["GET", "POST"], balances: ["GET"], lookups: ["GET"], "week-checks": ["GET", "POST", "PATCH"], missing: ["GET"], "no-exchange": ["POST"] },
   dispatcher: { movements: ["GET", "POST", "PATCH", "DELETE"], confirm: ["POST"], reverse: ["POST"], sheets: ["GET", "POST"], balances: ["GET"], lookups: ["GET"], "week-checks": ["GET"] },
   warehouse:  { movements: ["GET", "POST", "PATCH"], confirm: ["POST"], sheets: ["GET", "POST"], balances: ["GET"], lookups: ["GET"], "week-checks": ["GET"] },
   // accountant DELETE (7/9/2026, Alexia go-live audit): she owns the pallet
   // ledger and the panel shows «Διαγραφή εκκρεμούς» on every pending movement;
   // without DELETE that button is a 403. Safe to grant: the handler below
   // refuses anything but pending (409), confirmed movements are only reversed.
-  accountant: { movements: ["GET", "POST", "PATCH", "DELETE"], confirm: ["POST"], reverse: ["POST"], sheets: ["GET", "POST"], balances: ["GET"], lookups: ["GET"], "week-checks": ["GET", "POST", "PATCH"] },
+  accountant: { movements: ["GET", "POST", "PATCH", "DELETE"], confirm: ["POST"], reverse: ["POST"], sheets: ["GET", "POST"], balances: ["GET"], lookups: ["GET"], "week-checks": ["GET", "POST", "PATCH"], missing: ["GET"], "no-exchange": ["POST"] },
   // MARKED CHANGE (owner 24/8/2026) — the ONLY deviation from the parked
   // source: management also reads the movements ledger (read-only).
   // Parked had balances+gate only.
@@ -6931,7 +7053,7 @@ var PL_PERMS = {
   // Promise.all([movements, lookups]) ένα 403 στο δεύτερο έριχνε ΟΛΗ τη
   // σελίδα Ισοζυγίου σε «Σφάλμα φόρτωσης» — ενώ τα άλλα τρία αιτήματα είχαν
   // απαντήσει κανονικά. Μόνο GET: το management δεν γράφει κινήσεις.
-  management: { movements: ["GET"], balances: ["GET"], gate: ["GET"], lookups: ["GET"], "week-checks": ["GET"] }
+  management: { movements: ["GET"], balances: ["GET"], gate: ["GET"], lookups: ["GET"], "week-checks": ["GET"], missing: ["GET"] }
 };
 // Το gate είναι read-only «λείπει δελτίο;» — το χρειάζεται όποιος βλέπει
 // τιμολόγηση, γι' αυτό δίνεται σε όλους τους ρόλους παρακάτω.
@@ -7085,7 +7207,9 @@ async function handlePallets(request, url, origin, env) {
       // εμφανίζονταν ως «Πελάτης #1314» (12/8). Με το embedding το όνομα έρχεται
       // μαζί με την κίνηση και η λίστα παύει να εξαρτάται από το όριο.
       // Μονή FK ανά πίνακα (003_pallets_schema) → κανένα ambiguous embed.
-      params.set("select", "*,clients(company_name),partners(company_name),locations(name)");
+      // + the point's city / country and the stop's pallets / exchanged (Υ3 redesign N01/N11h/N12: «Stubenberg, AT»,
+      // «30 παλ. · 22 με ανταλλαγή»). One FK each (pl_movements_location_id_fkey, pl_movements_order_stop_id_fkey).
+      params.set("select", "*,clients(company_name),partners(company_name),locations(name,city,country),order_stops(pallets,pallets_exchanged)");
       params.set("order", "movement_date.desc,id.desc");
       if (q.get("status")) params.append("status", `eq.${q.get("status")}`);
       if (q.get("counterparty_type")) params.append("counterparty_type", `eq.${q.get("counterparty_type")}`);
@@ -7159,6 +7283,54 @@ async function handlePallets(request, url, origin, env) {
         }
       }
       return jsonOk({ records: rows, truncated, cap: PL_MOV_MAX }, origin, env);
+    }
+    // ---- GET /pallets/movements/:id/history — who changed what (Υ3 panel N11h / N18, owner 28/10 E5.3) ----
+    // The audit_log rows of ONE movement, oldest first, as {action, changed_by, role, changed_at, before, after}.
+    // Same roles as the page (the movements GET right), not AUDIT_READERS: the accountant reads her own trail.
+    // audit() stores JSON.stringify(...) in the jsonb columns (a jsonb string), plan_h_audit an object: both read.
+    if (resource === "movements" && method === "GET" && recId && action === "history") {
+      if (!/^\d+$/.test(recId)) return jsonError("Invalid id", 400, origin, env);
+      const p = new URLSearchParams();
+      p.set("select", "actor,role,action,before_data,after_data,created_at");
+      p.set("table_name", "eq.pl_movements");
+      p.set("record_id", `eq.${recId}`);
+      p.set("order", "created_at.asc,id.asc");
+      p.set("limit", "500");
+      const { rows } = await dbSelectRaw(env, "audit_log", p);
+      const j = (x) => { if (typeof x !== "string") return x ?? null; try { return JSON.parse(x); } catch (_) { return null; } };
+      return jsonOk({ records: rows.map((r) => ({ action: r.action, changed_by: r.actor, role: r.role, changed_at: r.created_at,
+        before: j(r.before_data), after: j(r.after_data) })), truncated: rows.length >= 500 }, origin, env);
+    }
+    // ---- GET /pallets/missing — «Λείπει παράδοση» (107 pl_v_missing_delivery, the ONE definition) ----
+    // Newest delivery first. A list cut at the cap says so (truncated), never shown as complete (principle 1).
+    if (resource === "missing" && method === "GET" && !recId) {
+      const PL_MISS_CAP = 2000;
+      const p = new URLSearchParams();
+      p.set("select", "*");
+      p.set("order", "delivered_on.desc.nullslast,order_id.desc,order_stop_id.asc");
+      p.set("limit", String(PL_MISS_CAP));
+      const { rows } = await dbSelectRaw(env, "pl_v_missing_delivery", p);
+      return jsonOk({ records: rows, truncated: rows.length >= PL_MISS_CAP, cap: PL_MISS_CAP }, origin, env);
+    }
+    // ---- POST /pallets/no-exchange {order_id, order_stop_id, reason} — «Χωρίς ανταλλαγή» (107, owner 28/10) ----
+    // ONE act in the base: pending movements deleted, orders.pallet_exchange = false (the invoicing gate opens for
+    // that order), audit rows written in the same transaction (a failed trace fails the act). The actor and role are
+    // the JWT's, never the body. A narrow route: the accountant never gets a general PATCH on orders.
+    if (resource === "no-exchange" && method === "POST" && !recId) {
+      const body = await request.json().catch(() => null);
+      if (!body || typeof body !== "object") return jsonError("Invalid JSON", 400, origin, env);
+      const p = { order_id: body.order_id, order_stop_id: body.order_stop_id, reason: typeof body.reason === "string" ? body.reason : "" };
+      try {
+        const out = await dbRpc(env, PLN_RPC.noExchange, { p, p_actor: caller.sub, p_role: caller.role });
+        return jsonOk({ record: out }, origin, env);
+      } catch (e) {
+        const rule = stockRuleError(e);
+        if (rule && rule.type === "PALLET_NOEX_RULE") {
+          // the Greek text as «error» (core/pallet-feed.js plFetch reads it as the message), the code beside it
+          return jsonOk({ error: rule.message, code: rule.code }, origin, env, PLN_CONFLICT.includes(rule.code) ? 409 : 422);
+        }
+        throw e;
+      }
     }
     // ---- POST /pallets/movements (χειροκίνητη κίνηση ή feeder Φ2) ----
     // Default: pending. Με body.confirm===true γράφεται κατευθείαν confirmed

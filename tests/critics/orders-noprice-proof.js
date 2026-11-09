@@ -284,7 +284,9 @@ async function runOwner(browser) {
   assert(p.length === 1 && p[0].table === 'orders' && p[0].id === 'recX1' && p[0].url.includes(T.ORDERS), 'one PATCH to ORDERS (' + T.ORDERS + ')/recX1');
   assert(p[0] && JSON.stringify(p[0].body.fields) === '{"Price":950}', 'PATCH fields exactly {"Price":950}: ' + JSON.stringify(p[0] && p[0].body));
   const tt = await toastText(page);
-  assert(/Η τιμή καταχωρήθηκε — η #1209 πέρασε στα Προς τιμολόγηση/.test(tt), 'toast «Η τιμή καταχωρήθηκε — η #1209 πέρασε στα Προς τιμολόγηση»: ' + tt);
+  // In words, never «#1209» (owner 8/11, core/plain-ref.js): client, route, load day
+  assert(/^Η τιμή καταχωρήθηκε — η παραγγελία Thracia Foods EOOD, Thracia Foods Warehouse → Veroia Cross-Dock · Τετ 21\/10 πέρασε στα Προς τιμολόγηση$/.test(tt) && !/#\d/.test(tt),
+    'toast «Η τιμή καταχωρήθηκε — η παραγγελία Thracia Foods EOOD, … · Τετ 21/10 πέρασε στα Προς τιμολόγηση»: ' + tt);
   const filled2 = await page.locator('#npFilled tr').allInnerTexts();
   assert(filled2.length === 3 && /#1209/.test(filled2[0]) && /950,00 €/.test(filled2[0]), 'row moved to «Συμπληρώθηκαν σήμερα» (top): ' + JSON.stringify(filled2).slice(0, 400));
   assert(await kpiVal(page, 'Εκκρεμούν') === '2' && await kpiVal(page, 'Συμπληρώθηκαν σήμερα') === '3', 'KPIs: Εκκρεμούν 2, Συμπληρώθηκαν σήμερα 3');

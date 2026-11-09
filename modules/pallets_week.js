@@ -20,7 +20,7 @@ const PalletsWeek = (() => {
   const REASONS = ['δεν είχαν άδειες', 'τις άφησε σε άλλο σημείο', 'γύρισαν με το φορτηγό', 'άλλο'];
   const S = { week: null, data: null, built: null, board: null, nums: null, rows: [], stops: null, stopsFailed: false,
     filter: null, all: false, q: '', ed: null, panel: null, checks: null, checksLive: false, changes: null,
-    showChanges: false, busy: false, loadErr: null, root: null };
+    showChanges: false, busy: false, loadErr: null, root: null, route: new Map(), v5: null, colOff: null };
   const canWrite = () => typeof can !== 'function' || can('costs') === 'full' || can('orders') === 'full';
   const canCheck = () => typeof ROLE !== 'undefined' && (ROLE === 'owner' || ROLE === 'accountant');
 
@@ -70,13 +70,15 @@ const PalletsWeek = (() => {
     const out = new Map(), batches = [];
     for (let i = 0; i < ids.length; i += 90) {
       const f = `OR(${ids.slice(i, i + 90).map(id => `RECORD_ID()="${id}"`).join(',')})`;
-      batches.push(atGetAll(TABLES.ORDER_STOPS, { filterByFormula: f, fields: [F.STOP_PARENT_ORDER, F.STOP_TYPE, F.STOP_PALLETS] }, false));
+      batches.push(atGetAll(TABLES.ORDER_STOPS, { filterByFormula: f, fields: [F.STOP_PARENT_ORDER, F.STOP_TYPE, F.STOP_PALLETS, F.STOP_PALLETS_EXCHANGED] }, false));
     }
-    // The count follows what the feeders write (plOrderGate's stops): every loading stop, every delivery stop with pallets.
+    // The count follows what the feeders write (plOrderGate's stops): every loading stop except one whose
+    // «Pallets Exchanged» is a set 0 (_plNoExchangeStop, core/pallet-feed.js — the same rule, never a copy),
+    // every delivery stop with pallets.
     (await Promise.all(batches)).flat().forEach(s => {
       const p = s.fields[F.STOP_PARENT_ORDER], pid = Array.isArray(p) ? p[0] : p; if (!pid) return;
       const e = out.get(pid) || { L: 0, D: 0 };
-      if (s.fields[F.STOP_TYPE] === 'Loading') e.L++;
+      if (s.fields[F.STOP_TYPE] === 'Loading' && !_plNoExchangeStop(s)) e.L++;
       if (s.fields[F.STOP_TYPE] === 'Unloading' && (parseInt(s.fields[F.STOP_PALLETS], 10) || 0) > 0) e.D++;
       out.set(pid, e);
     });
@@ -145,7 +147,7 @@ const PalletsWeek = (() => {
     let stops = null, stopsFailed = false;
     try { stops = await loadStops(pe); } catch (e) { console.error('pallets week: stops', e); stopsFailed = true; }
     if (week !== S.week) return false;
-    Object.assign(S, { loadErr: null, data: d, built, board, nums, stops, stopsFailed });
+    Object.assign(S, { loadErr: null, data: d, built, board, nums, stops, stopsFailed, route: new Map(), v5: null });
     await loadChecks();
     return week === S.week;
   }
@@ -531,9 +533,14 @@ const PalletsWeek = (() => {
     if (S.loadErr) { root.innerHTML = `<div class="plv-fail"><b>Η εβδομάδα δεν φορτώθηκε</b> Δεν σημαίνει ότι δεν υπάρχουν κινήσεις. Αιτία: ${esc(S.loadErr)} <div style="margin-top:12px"><button class="plv-btn-ghost" data-plwgo="retry">Ξαναδοκίμασε</button></div></div>`; return; }
     if (!S.data || S.data.week !== S.week) { root.innerHTML = '<div class="plv-empty">Φόρτωση εβδομάδας…</div>'; return; }
     const t = weekStats(S.week);
+    if (!S.panel) S.colOff = null;   // the column's × lasts for the panel it closed
+    // the column lives in root and the line below rebuilds root: keep where it was scrolled (a confirm or an edit
+    // in the panel must not throw a long route back to its top)
+    const rdBody = root.querySelector(':scope > .rdc [data-rdc-body]'), rdTop = rdBody ? rdBody.scrollTop : 0;
     root.innerHTML = `${_PLW_STYLE}<div class="plw">${stripHtml()}${summaryHtml(t)}${changesHtml()}${tableHtml()}${othersHtml()}${statementHtml()}${driversHtml()}
       <div class="plw-foot">Π = πήραμε · Δ = δώσαμε · ◦ γκρι = εκκρεμής, δεν μετρά · 0 αχνό = γνωστό μηδέν · +◦N κάτω από τιμή = το εκκρεμές μέρος · −N κάτω από το Π = δεν γύρισαν N · ✓ = ανταλλαγή ολοκληρώθηκε · + στα υπόλοιπα = μας χρωστά · Τέλος εβδ. = όπως φαίνεται σήμερα</div>
       </div><div class="owv-docs hidden" id="plwDocs" role="dialog" aria-label="Έγγραφα ανάθεσης"></div>${panelHtml()}`;
+    placeColumn(rdTop);
     OC().whenDocs(() => { if (S.root && S.root.isConnected) draw(); });
     // Enter → the next pending of the week (design N27): the first pending cell in the order the week shows them.
     if (S._next) {
@@ -541,6 +548,76 @@ const PalletsWeek = (() => {
       const nx = root.querySelector('.plw-row [data-plwact^="conf:"]');
       if (nx) openEd(nx.getAttribute('data-plwact'));
     }
+  }
+
+  // ── the route diagram of the panel's order (owner 8/11 #5, core/route-diagram.js — one component for the
+  // three week screens). Read when the panel opens, once per order per load: loadStops reads only the counting
+  // fields, and only of delivered PE orders, so it cannot feed the diagram.
+  // A VS order's national leg comes from the v5 boards of this week and its two neighbours (the leg can be planned
+  // in the week before or after the order's week, as orders_week_view's v5Earlier knows). No board readable = null,
+  // and the diagram then says «εκτελεστής: δεν διαβάστηκε» (never «χωρίς ανάθεση», principle 1).
+  function weekBoards() {
+    const week = S.week;
+    if (!S.v5 || S.v5.week !== week) {
+      const at = n => { const x = new Date(week + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+      const one = w => planFetch('GET', '/plan/board?week=' + w, { designed: ['no_route'] }).then(b => (b && b.week === w ? b : null)).catch(() => null);
+      S.v5 = { week, p: Promise.all([at(-7), week, at(7)].map(one)).then(bs => bs.filter(Boolean)) };
+    }
+    return S.v5.p;
+  }
+  async function loadRoute(rec) {
+    S.route.set(rec.id, { loading: true });
+    const ids = (rec.fields || {})['ORDER STOPS'] || [], route = S.route;
+    let st;
+    try {
+      const stops = ids.length ? await atGetAll(TABLES.ORDER_STOPS, { filterByFormula: `OR(${ids.map(id => `RECORD_ID()="${id}"`).join(',')})`,
+        fields: [F.STOP_NUMBER, F.STOP_TYPE, F.STOP_LOCATION, F.STOP_DATETIME, F.STOP_PALLETS, 'Completed At'] }, false) : [];
+      let natLeg = null, natLegNote = null;
+      if ((rec.fields || {})['Veroia Switch']) {
+        const bs = await weekBoards();
+        natLeg = bs.length ? RouteDiagramAdapters.natLegFromBoard(bs, pgOf(rec)) : null;
+        // all three boards read and the leg on none of them (before day L its leg lives in national_loads): not a
+        // read failure. One board unread = the leg may be on it, so the red «δεν διαβάστηκε» stays.
+        if (bs.length === 3 && !natLeg) natLegNote = 'εκτελεστής: εκτός Εβδομαδιαίου v5';
+      }
+      st = { stops, natLeg, natLegNote };
+    } catch (e) { console.error('pallets week: route', e); st = { err: true }; }
+    if (route !== S.route) return;   // a reload or another week started meanwhile
+    route.set(rec.id, st);
+    const l = S.panel && legByRef(S.panel);
+    if (l && l.rec && l.rec.id === rec.id) draw();
+  }
+  function routeHtml(rec) {
+    const st = S.route.get(rec.id);
+    if (!st) { loadRoute(rec); return '<div class="plw-g">φόρτωση διαδρομής…</div>'; }
+    if (st.loading) return '<div class="plw-g">φόρτωση διαδρομής…</div>';
+    if (st.err) return '<div class="plw-red">Η διαδρομή δεν διαβάστηκε.</div>';
+    // a shape the diagram refuses (InputError) costs the diagram only, never the panel or the page
+    try {
+      return RouteDiagram.render(RouteDiagramAdapters.facadeOrder(rec, st.stops, {
+        today: RouteDiagramAdapters.athensDay(new Date().toISOString()), locMeta: id => OC()._locMeta(id), natLeg: st.natLeg, natLegNote: st.natLegNote }));
+    } catch (e) { console.error('pallets week: route diagram', e); return '<div class="plw-red">Η διαδρομή δεν σχεδιάστηκε.</div>'; }
+  }
+
+  // The diagram in its own column beside the panel (owner 8/11/2026, «Ναι, φτιάξτο» on the mock over the live app;
+  // core/route-diagram-column.js, the same column as «Παραγγελίες › Εβδομάδα»): from 1600px wide the panel's
+  // ΔΙΑΔΡΟΜΗ leaves the panel for a 400px column at the right edge and the panel sits next to it. Narrower, or after
+  // the column's own ×, the section stays in the panel as before. Same read and same failure lines (routeHtml).
+  const RC = () => (typeof RouteDiagramColumn !== 'undefined' ? RouteDiagramColumn : null);
+  function colOn() { const rc = RC(); return !!(rc && S.panel && S.colOff !== S.panel && rc.wide()); }
+  function placeColumn(top) {
+    const rc = RC(), root = S.root;
+    if (!rc || !root) return;
+    rc.onWideChange('pallets-week', () => { if (S.root && S.root.isConnected && S.panel) draw(); });
+    const l = S.panel && legByRef(S.panel), panel = root.querySelector('.plw-panel');
+    if (!colOn() || !l || !l.rec || !panel) { rc.close(root); return; }
+    const rec = l.rec, row = S.rows[+S.panel.split('.')[0]], st = S.route.get(rec.id);
+    // the head: the week row's vehicle (as the row shows it), else the order's own fields
+    const v = OWV().vehicleOf((row && row.vehicleRec) || rec);
+    const col = rc.open(root, { anchor: panel, z: 50, body: routeHtml(rec), sub: rc.sub(v.kind === 'none' ? [] : [v.plate, v.who], (st && st.stops) || []),
+      onClose: () => { S.colOff = S.panel; draw(); } });
+    const b = col && col.querySelector('[data-rdc-body]');
+    if (b && top) b.scrollTop = top;
   }
 
   // ── the order panel (design N28): the order's movements with the same quick entry ──
@@ -563,6 +640,7 @@ const PalletsWeek = (() => {
     const hasDoc = S.board && row && OWV().rowDocsOf(S.board, row).length;
     return `<div class="plw-panel" role="dialog" aria-label="Παλέτες παραγγελίας"><div class="plw-ph"><b>${esc(OC().numLabel(rec))} · ${esc(OWV().clientRaw(rec.fields) || '')}</b> ${OC().docClip(rec, 'intl')}<button class="plw-x" data-plwpanel="close" title="Κλείσιμο (Esc)">×</button></div>
       <div class="plw-pb"><div class="plw-ptitle">ΚΙΝΗΣΕΙΣ</div>${rowsH}${miss ? `<div class="plw-pmiss">${miss}</div>${recEd}` : ''}
+      ${colOn() ? '' : `<div class="plw-ptitle">ΔΙΑΔΡΟΜΗ</div>${routeHtml(rec)}`}
       <div class="plw-ptitle">ΕΝΕΡΓΕΙΕΣ</div><div class="plw-pacts"><button class="plw-link" data-plwpanel="card">Καρτέλα παραγγελίας</button>${hasDoc ? ' · <button class="plw-link" data-plwpanel="doc">Έγγραφο ανάθεσης</button>' : ''}</div></div></div>`;
   }
 

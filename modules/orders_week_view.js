@@ -548,6 +548,95 @@ const OrdersWeekView = (() => {
     return { dayKey: r.day, kind: veh ? 'cycle' : 'waiting', sortAt: f['Loading DateTime'] || '', key: veh + '|' + ((r.openRec && r.openRec.id) || '') };
   }
 
+  // The Weekly National v5's numbers on this page's national rows (owner 8/11/2026, after the internationals: «ο
+  // αριθμός του φορτηγού από το board v5, «—» για όσα περιμένουν όχημα»). The number is the board's own
+  // (WN5L.boardNumbers on WN5.modelOf of the week's board), found through the order's carrier: /plan/nat-state names
+  // a cycle by its RT code, the board by rt_id and code. A split at Veroia (two trucks) has two numbers. Never a
+  // guess: no line on this week's board is «—» with the reason. Each carrier on the board is also a driver sheet the
+  // ΑΝΑΘΕΣΗ opens (r.sheets). Pure: rows (pairNationals) and nb →
+  //   nb = null (no v5 board: before L) | 'failed' (not read) | { nums: Map rt_id → n, byCode: Map code → cycle,
+  //   carried: Set rt_id, away: Map rt_id → { n, w } | { failed, w } (a continuation's number on its own week's board) }.
+  // Sets on each row: nos (this week's numbers ascending | 'failed'), away (['12 · W44'], continuations), noWhy (the
+  // reason of «—», or what an away number means), sheets [{ rtId, side, code }].
+  function numberNationals(rows, nb) {
+    for (const r of rows) {
+      r.nos = []; r.noWhy = null; r.sheets = []; r.away = [];
+      if (r.assign.kind !== 'v5') { r.noWhy = 'Χωρίς αριθμό: εθνική του παλιού μοντέλου — δεν είναι γραμμή του Εβδομαδιαίου Εθνικών v5'; continue; }
+      if (nb === 'failed' || !nb) { r.nos = 'failed'; continue; }
+      const cs = (r.assign.state.carriers || []).filter(c => c.kind !== 'none');
+      if (!cs.length) { r.noWhy = 'Χωρίς αριθμό: περιμένει όχημα'; continue; }
+      let carried = false, awayFailed = null;
+      const seen = new Set();
+      for (const c of cs) {
+        const cy = c.code ? nb.byCode.get(c.code) : null;
+        if (!cy) continue;
+        const k = cy.rt_id + '|' + c.side;
+        if (!seen.has(k)) { seen.add(k); r.sheets.push({ rtId: cy.rt_id, side: c.side, code: c.code }); }
+        const n = nb.nums.get(cy.rt_id);
+        if (n != null) { r.nos.push(n); continue; }
+        if (!nb.carried.has(cy.rt_id)) continue;
+        // a truck of another week (earlier or later, WN5L away): the number of its own week's board, with that week
+        // (owner 8/11/2026: «12 · W44», «15 · W45»)
+        const a = nb.away && nb.away.get(cy.rt_id);
+        if (a && !a.failed) { const t = a.n + (a.w ? ' · W' + a.w : ''); if (!r.away.includes(t)) r.away.push(t); }
+        else if (a && a.failed) awayFailed = a.w;
+        else carried = true;
+      }
+      r.nos = [...new Set(r.nos)].sort((a, b) => a - b);
+      if (!r.nos.length && r.away.length) r.noWhy = 'Το φορτηγό είναι γραμμή άλλης εβδομάδας: ο αριθμός του στο Εβδομαδιαίο Εθνικών εκείνης';
+      else if (!r.nos.length) r.noWhy = awayFailed != null ? `Χωρίς αριθμό εδώ: το φορτηγό είναι γραμμή της W${awayFailed} και το Εβδομαδιαίο εκείνης δεν διαβάστηκε`
+        : carried ? 'Χωρίς αριθμό εδώ: το φορτηγό είναι γραμμή άλλης εβδομάδας — ο αριθμός του είναι στο Εβδομαδιαίο εκείνης'
+        : 'Χωρίς αριθμό: το φορτηγό δεν είναι γραμμή του Εβδομαδιαίου Εθνικών αυτής της εβδομάδας';
+    }
+    return rows;
+  }
+  // The number text of a national row (screen and print): this week's numbers, else the continuations' «12 · W44».
+  // null = «—» (noWhy says why) · 'failed'.
+  function natNoText(r) {
+    if (r.nos === 'failed') return 'failed';
+    const parts = [...(r.nos && r.nos.length ? [r.nos.join(' · ')] : []), ...(r.away || [])];
+    return parts.length ? parts.join(', ') : null;
+  }
+  // Inside a day, the numbered rows first by their number — the board's own order of its trucks — then the rest in
+  // the order they had (WN5L.rowOrder through natOrderKey): the two lists are compared row by row, as the
+  // internationals (rowOrder above). Stable: equal keys keep their order.
+  function natNumberOrder(rows) {
+    const first = r => (Array.isArray(r.nos) && r.nos.length ? r.nos[0] : Infinity);
+    return rows.map((r, i) => [r, i]).sort((a, b) => String(a[0].day || '').localeCompare(String(b[0].day || ''))
+      || (first(a[0]) === first(b[0]) ? 0 : first(a[0]) < first(b[0]) ? -1 : 1) || a[1] - b[1]).map(x => x[0]);
+  }
+  // Once per load (the board is the load's; a repaint after a save reuses it).
+  function _natBoardOnce(d) { if (!('_natNb' in d)) d._natNb = _natBoard(d); return d._natNb; }
+  // The board's numbers for numberNationals, from the week's v5 board read by load(). null before L.
+  function _natBoard(d) {
+    if (d.v5BoardFailed) return 'failed';
+    if (!d.v5Board) return null;
+    try {
+      if (typeof WN5 === 'undefined' || typeof WN5.modelOf !== 'function') throw new Error('WN5.modelOf missing (modules/weekly_natl_v5.js)');
+      const vm = WN5.modelOf(d.v5Board);
+      const carried = new Set(), carriedWeek = new Map();
+      // a truck of another week (WN5L away: its week is the board's own rule, WN5L.weekOf)
+      for (const day of vm.days) for (const r of day.rows) if (r.away) { carried.add(r.rtId); carriedWeek.set(r.rtId, r.away.week); }
+      // its number on its own week's board (owner 8/11: «12 · W44»); away: rt_id → { n, w } | { failed, w }
+      const away = new Map(), ev = d.v5Away || { boards: [], failed: [] };
+      const wNo = w => (typeof TmsWeek !== 'undefined' ? TmsWeek.numOf(new Date(w + 'T12:00:00')) : null);
+      const models = new Map();
+      for (const { week, board } of ev.boards) {
+        // another week's board that cannot be drawn costs only its rows' numbers, never this week's
+        try { models.set(week, WN5.modelOf(board)); }
+        catch (e) { if (typeof logError === 'function') logError(e, 'orders week: away board numbers'); ev.failed.push(week); }
+      }
+      // WN5L.awayNumbers: the rule the board's own «15 · W45» reads (one source)
+      for (const [rt, a] of WN5L.awayNumbers(vm, models)) away.set(rt, { n: a.n, w: wNo(a.week) });
+      for (const rt of carried) if (!away.has(rt) && ev.failed.includes(carriedWeek.get(rt))) away.set(rt, { failed: true, w: wNo(carriedWeek.get(rt)) });
+      return { nums: WN5L.boardNumbers(vm), byCode: new Map((d.v5Board.cycles || []).filter(c => c.code).map(c => [c.code, c])), carried, away };
+    } catch (e) {
+      console.error('orders week: Weekly National numbers', e);
+      if (typeof logError === 'function') logError(e, 'orders week: Weekly National numbers');
+      return 'failed';
+    }
+  }
+
   // §12 #06 truncation, word-safe: the route is cut first and only after the
   // destination's FIRST word — «Rotterdam NL → Amsterdam…», never «→ A…».
   // head never shrinks, tail takes the ellipsis.
@@ -732,16 +821,62 @@ const OrdersWeekView = (() => {
     // flags decide (OrdersData.sheetsOk fallback) and a strip says so.
     const set = setRes.ok ? setRes.r : { gate: {}, gateFailed: true, intl: [], natl: [] };
     // F5 Ε3/Ε5: the v5 state of the window's national orders, beside their loads (before L: no request).
-    const [loadsRes, v5Res] = await Promise.all([
+    const [loadsRes, v5Res, boardRes] = await Promise.all([
       natlRes.ok && wantNatl ? _natLoads(natl.filter(r => O.weekStartOf(r) === week)) : Promise.resolve({ ok: true, loads: [] }),
       natlRes.ok && wantNatl ? OrdersCommon.natV5Attach(natl) : Promise.resolve({ failed: false }),
+      natlRes.ok && wantNatl ? _v5Board(week) : Promise.resolve({ ok: true, board: null }),
     ]);
+    const away = boardRes.board ? await _v5Away(boardRes.board) : { boards: [], failed: [] };
     return {
       week, strip, intl, cancelled, natl, natlFailed: !natlRes.ok, rts: rtRes.ok ? (rtRes.r.records || []) : null,
       rtCapped: rtRes.ok && (rtRes.r.records || []).length >= 500,
       set, setFailed: !setRes.ok, gateFailed: !!set.gateFailed, parentsFailed, refFailed: !refRes.ok, stopDates, stopsFailed,
       natLoads: loadsRes.ok ? loadsRes.loads : null, v5Failed: v5Res.failed,
+      v5Board: boardRes.board, v5BoardFailed: !boardRes.ok, v5Away: away,
     };
+  }
+
+  // The Weekly National v5 board of the week (GET /plan/board, the board's own read), for the numbers of the national
+  // rows and their assignment documents (owner 8/11). Before L there is no v5 board: no request. The catalogue
+  // (PlanIds) is loaded beside it: its hub is the board's own model option, and the driver sheet needs it.
+  // → { ok, board } — board null = no v5 board (before L / route not deployed); ok false = the read failed.
+  async function _v5Board(week) {
+    try {
+      if (await OrdersCommon._planState() === 'before') return { ok: true, board: null };
+      const [b] = await Promise.all([
+        planFetch('GET', '/plan/board?week=' + week, { designed: ['no_route'] }),
+        typeof PlanIds !== 'undefined' ? PlanIds.load().catch(() => null) : null,
+      ]);
+      if (!b || typeof b !== 'object' || b.week !== week) throw new Error('board: answer for week ' + String(b && b.week) + ', not ' + week);
+      return { ok: true, board: b };
+    } catch (e) {
+      if (e && e.code === 'no_route') return { ok: true, board: null };
+      // planFetch logs its own errors and a lost session once (core/api.js); only a fault of this reader is logged here
+      if (!(e && (e.name === 'PlanError' || e._sessionGone)) && typeof logError === 'function') logError(e, 'orders week: v5 board');
+      return { ok: false, board: null };
+    }
+  }
+
+  // The boards of the other weeks where this week's away trucks belong (owner 8/11/2026: «12 · W44», «15 · W45»): a
+  // truck whose day is in another week (earlier or later) is numbered on THAT week's board. One read per such week
+  // (usually one), only when the week has such trucks. → { boards: [{ week, board }], failed: [week] }.
+  async function _v5Away(board) {
+    const out = { boards: [], failed: [] };
+    let weeks;
+    try {
+      weeks = WN5L.awayWeeks(WN5.modelOf(board));
+    } catch (e) { return out; }   // the week's own numbers say «failed» through _natBoard: no second report
+    for (const w of weeks) {
+      try {
+        const b = await planFetch('GET', '/plan/board?week=' + w);
+        if (!b || typeof b !== 'object' || b.week !== w) throw new Error('board: answer for week ' + String(b && b.week) + ', not ' + w);
+        out.boards.push({ week: w, board: b });
+      } catch (e) {
+        if (!(e && (e.name === 'PlanError' || e._sessionGone)) && typeof logError === 'function') logError(e, 'orders week: away v5 board');
+        out.failed.push(w);
+      }
+    }
+    return out;
   }
 
   // NATIONAL LOADS of the week's national orders + the loads paired with them
@@ -807,6 +942,7 @@ const OrdersWeekView = (() => {
       if (!ctx.isCurrent()) return;
     }
     S.data = data;
+    S.rtRoute = new Map();   // the RT routes of the cards (_rtLoad): read once per load of the week
     _paint(ctx);
     OC().whenDocs(() => { if (ctx.isCurrent()) _paint(ctx); });
   }
@@ -845,6 +981,8 @@ const OrdersWeekView = (() => {
     if (scope !== 'natl' && m.rtFailed) add('Δεν διαβάστηκαν τα δρομολόγια (RT).', 'Κάθε διεθνής φαίνεται στο «ΧΩΡΙΣ RT» με το ποσό της· τα σύνολα μένουν σωστά.');
     if (scope !== 'intl' && d.natlFailed) add('Δεν διαβάστηκαν οι εθνικές.', 'Η ενότητα Εθνικές γράφει «—», όχι 0· ο τζίρος δείχνει μόνο τα διεθνή, με σήμανση «χωρίς εθνικά».');
     if (scope !== 'intl' && !d.natlFailed && d.v5Failed) add('Δεν διαβάστηκε η κατάσταση των εθνικών v5.', 'Η ανάθεση εθνικών χωρίς φορτίο γράφει «—», όχι «εκτός φορτίου»· το «παραδόθηκε» τους ακολουθεί την ημερομηνία παράδοσης.');
+    // no board (failed, or a Worker without /plan/board) while the week has v5 nationals: said here, never only in a tooltip
+    if (scope !== 'intl' && !d.natlFailed && (d.v5BoardFailed || (!d.v5Board && d.natl.some(r => r._v5 && typeof r._v5 === 'object')))) add('Δεν διαβάστηκε το Εβδομαδιαίο Εθνικών.', 'Οι εθνικές v5 γράφουν «—» στον αριθμό και το έγγραφο ανάθεσής τους δεν ανοίγει από εδώ.');
     if (scope !== 'intl' && !d.natlFailed && d.natLoads == null) add('Δεν διαβάστηκαν τα φορτία εθνικών.', 'Η ανάθεση εθνικών γράφει «—», όχι «εκτός φορτίου»· το ζευγάρι κάθοδος–άνοδος δεν σχεδιάζεται.');
     if (d.setFailed || d.gateFailed) add('Δεν απάντησε ο έλεγχος δελτίων.', 'Ισχύουν οι σημάνσεις δελτίων της ίδιας της παραγγελίας.');
     if (scope !== 'natl' && d.stopsFailed) add('Δεν διαβάστηκαν οι ημερομηνίες των στάσεων.', 'Η αρίθμηση ακολουθεί την 1η στάση· σε φορτία με στάσεις σε πολλές ημέρες μπορεί να διαφέρει από το Weekly.');
@@ -878,7 +1016,8 @@ const OrdersWeekView = (() => {
       for (const l of r.legs) l.no = nums ? legNumber(l, nums) : 'failed';
     }
     const natRows = scope !== 'intl' && !d.natlFailed
-      ? pairNationals({ week: S.week, natl: d.natl, loads: d.natLoads, intl: d.intl }) : [];
+      ? natNumberOrder(numberNationals(pairNationals({ week: S.week, natl: d.natl, loads: d.natLoads, intl: d.intl }), _natBoardOnce(d))) : [];
+    natRows.forEach((r, i) => { r.docI = i; });
     S.model = m; S.natRows = natRows;
     const inScope = r => scope === 'all' || r._type === scope;
     const showI = scope !== 'natl', showN = scope !== 'intl';
@@ -1013,7 +1152,8 @@ const OrdersWeekView = (() => {
       <div class="ow4-strip"><button type="button" class="ow4-arr" data-owvshift="-1" aria-label="Προηγούμενη εβδομάδα">‹</button>${strip}<button type="button" class="ow4-arr" data-owvshift="1" aria-label="Επόμενη εβδομάδα">›</button></div>
       ${sumLine}${intlHtml}${natlHtml}${stHtml}</div>${CARDS_HTML}${DOCS_HTML}`;
     ctx.body.onclick = _onClick;
-    ctx.body.oninput = e => { if (e.target.closest && e.target.closest('#owvEd')) _edHint(); };
+    // What she types is kept as she types: the card repaints its whole panel when its stops arrive.
+    ctx.body.oninput = e => { if (e.target.closest && e.target.closest('#owvEd')) { _edKeep(); _edHint(); } };
     // ΑΝΑΘΕΣΗ, ΤΠΥ and ΠΟΣΟ are buttons for the keyboard too (role=button, tabindex 0); Enter in the editor saves
     ctx.body.onkeydown = e => {
       if (!e.target.closest) return;
@@ -1023,12 +1163,14 @@ const OrdersWeekView = (() => {
       if (c) { e.preventDefault(); return _edOpen(c); }
       const d = e.target.closest('[data-owvdoc]');
       if (d) { e.preventDefault(); _installDocsEsc(); _openDocs(Number(d.dataset.owvdoc)); }
+      const nd = e.target.closest('[data-owvnatdoc]');
+      if (nd) { e.preventDefault(); _installDocsEsc(); _openNatDocs(Number(nd.dataset.owvnatdoc)); }
     };
     if (wasOpen) {
       // A repaint, not an opening: no slide-in (oi-slide), and she stays where she had scrolled.
       const p = document.getElementById(wasOpen.type === 'intl' ? 'intlDetail' : 'natlDetail');
       if (p) p.style.animation = 'none';
-      _openCard(wasOpen.type, wasOpen.id, true);
+      _openCard(wasOpen.type, wasOpen.id, true, wasOpen.rt);
       if (p) p.scrollTop = wasOpen.top;
     }
     _fitAll(ctx.body);
@@ -1217,7 +1359,7 @@ const OrdersWeekView = (() => {
         : `${esc(dayShort(e.load) || '—')} <span class="ow4-ar">→</span> ${esc(dayShort(e.del) || '—')}`;
       // data-tail: the words after the destination's first one — _fitRow shows
       // as many WHOLE words of it as fit, never a partial word or code.
-      cells.route = `<div class="ow4-l1 ow4-route" title="${esc(full)}" data-tail="${esc(split.tail.trim())}">${l.no === undefined ? '' : _noHtml(l.no)}<span class="ow4-rh">${fromHtml}${headRest.replace('→', '<span class="ow4-ar">→</span>')}</span><span class="ow4-rt">${esc(split.tail.trim())}</span>${nBox(e.nTo)}</div><div class="ow4-l2 ow4-ell">${dates}</div>`;
+      cells.route = `<div class="ow4-l1 ow4-route" title="${esc(full)}" data-tail="${esc(split.tail.trim())}">${l.no === undefined ? '' : _noHtml(l.no, l.noWhy, l.natNo)}<span class="ow4-rh">${fromHtml}${headRest.replace('→', '<span class="ow4-ar">→</span>')}</span><span class="ow4-rt">${esc(split.tail.trim())}</span>${nBox(e.nTo)}</div><div class="ow4-l2 ow4-ell">${dates}</div>`;
       const cl = clientRaw(f) || '—';
       const refs = [O.numLabel(l.rec), f['Reference'], f['Veroia Switch'] ? 'VS' : ''].filter(Boolean).join(' · ');
       cells.client = `<div class="ow4-l1 ow4-ell ow4-cl1" title="${esc(cl)}">${esc(cl)}</div><div class="ow4-l2 ow4-ell ow4-cl2" title="${esc(refs)}">${O.docClip(l.rec, l.rec && l.rec._type)}${esc(refs)}</div>`;
@@ -1242,13 +1384,14 @@ const OrdersWeekView = (() => {
   }
   const _emptySide = text => `<div class="ow4-sub trip-part ow4-none"><div class="ow4-c">${text}</div></div>`;
 
-  function _assignHtml(v, verdict, sumHtml, extra, docI) {
+  function _assignHtml(v, verdict, sumHtml, extra, docI, docAttr) {
     let top;
     if (v.kind === 'own' || (v.kind === 'partner' && v.plate)) top = `<span class="ow4-plate">${esc(v.plate)}</span> <span class="ow4-who ow4-ell" title="${esc(v.who)}">${esc(v.who)}</span>`;
     else if (v.kind === 'partner') top = `<span class="ow4-who ow4-ell" title="${esc(v.who)}">${esc(v.who)}</span>`;
     else top = `<span class="${v.text === '—' ? 'ow4-d' : 'ow4-asg-pa'}">${esc(v.text)}</span>`;
     // A click on ΑΝΑΘΕΣΗ shows the load's assignment document (_openDocs); the order card stays on the order.
-    const doc = docI != null ? ` data-owvdoc="${docI}" role="button" tabindex="0" title="Έγγραφο ανάθεσης"` : '';
+    // docAttr: owvdoc (an international row, print.html) | owvnatdoc (a v5 national row, the driver sheet)
+    const doc = docI != null ? ` data-${docAttr || 'owvdoc'}="${docI}" role="button" tabindex="0" title="Έγγραφο ανάθεσης"` : '';
     return `<div class="ow4-asg${doc ? ' ow4-asg-doc' : ''}"${doc}><div class="ow4-l1 ow4-veh">${extra || top}</div>
       <div class="ow4-asg-b"><span class="ow4-vd" title="${esc(verdict)}" data-full="${esc(verdict)}">${esc(verdict)}</span><span class="ow4-sig">${sumHtml}</span></div></div>`;
   }
@@ -1286,7 +1429,8 @@ const OrdersWeekView = (() => {
       : r.exp.length > 1 || r.imp.length > 1 ? 'groupage' : '';
     const blk = verdict.kind === 'blocked';   // the price: the one block since B0
     // trip-row / trip-part: the heavier rule between two round trips (assets/style.css, owner 3/11)
-    return `<div class="ow4-row trip-row${blk ? ' ow4-blk' : ''}" data-owvopen="intl:${esc(r.openRec.id)}">
+    // data-owvrt: the card opened from this row shows the whole RT's route under the order's (_rtMountCard)
+    return `<div class="ow4-row trip-row${blk ? ' ow4-blk' : ''}" data-owvopen="intl:${esc(r.openRec.id)}"${isRt ? ` data-owvrt="${esc(r.code)}"` : ''}>
       <div class="ow4-c-rt"><div class="ow4-l1">${isRt ? esc(r.code) : '<span class="ow4-d">—</span>'}</div>${tag ? `<div class="ow4-l2">${esc(tag)}</div>` : ''}</div>
       <div class="ow4-side ow4-l">${exp}</div>
       ${_assignHtml(v, verdictText(verdict, n), _sumHtml(r.counted, mk), '', _rowDocs(r).length ? r.docI : null)}
@@ -1303,7 +1447,9 @@ const OrdersWeekView = (() => {
       if (s.kind === 'grp') return _emptySide(`<span class="ow4-g">${word} · μέσω ομαδοποίησης</span>`);
       if (s.kind === 'claimed') return _emptySide(`<span class="ow4-g">${word} · ${esc(O.numLabel(s.rec))} σε άλλη γραμμή</span>`);
       if (s.kind === 'unread') return _emptySide(`<span class="ow4-d" title="Το ζευγάρι υπάρχει αλλά η παραγγελία του δεν διαβάστηκε">${word} · εκτός εύρους</span>`);
-      const leg = { rec: s.rec, inWeek: s.inWeek, week: s.week, piece: false, dupOf: null, parentMissing: false };
+      // the row's number on its order lines, as the internationals' (numberNationals: the Weekly National's)
+      const no = natNoText(r);
+      const leg = { rec: s.rec, inWeek: s.inWeek, week: s.week, piece: false, dupOf: null, parentMissing: false, no, noWhy: r.noWhy, natNo: true };
       return _legCells(leg, which, stateOf, which === 'l' && s.inWeek);
     };
     let v, extra = '';
@@ -1322,7 +1468,7 @@ const OrdersWeekView = (() => {
     return `<div class="ow4-row trip-row ow4-nat${blk ? ' ow4-blk' : ''}" data-owvopen="natl:${esc(r.openRec.id)}">
       <div class="ow4-c-rt"><div class="ow4-l1">${esc(dayShort(r.day) || '—')}</div>${v.kind === 'partner' ? '<div class="ow4-l2">συνεργάτης</div>' : ''}</div>
       <div class="ow4-side ow4-l">${side(r.kat, 'l')}</div>
-      ${_assignHtml(v, verdictText(verdict, n), _sumHtml(r.counted, mk), extra)}
+      ${_assignHtml(v, verdictText(verdict, n), _sumHtml(r.counted, mk), extra, r.sheets && r.sheets.length ? r.docI : null, 'owvnatdoc')}
       <div class="ow4-side ow4-r">${side(r.ano, 'r')}</div></div>`;
   }
 
@@ -1330,7 +1476,8 @@ const OrdersWeekView = (() => {
     if (e.target.closest('#owvEd')) { const a = e.target.closest('[data-owvedact]'); if (a) _edAct(a); return; }
     const edc = e.target.closest('[data-owved]');
     if (edc) return _edOpen(edc);
-    if (S.ed && !S.ed.busy) _edClose();
+    // The card's «Τιμολόγηση» lives as long as its card (× / Esc / another order), never closed by a click elsewhere.
+    if (S.ed && !S.ed.busy && S.ed.where !== 'card') _edClose();
     const shift = e.target.closest('[data-owvshift]');
     if (shift) { S.week = OC().addDays(S.week, 7 * Number(shift.dataset.owvshift)); return _rerender(); }
     const wk = e.target.closest('[data-owvweek]');
@@ -1343,10 +1490,15 @@ const OrdersWeekView = (() => {
     if (e.target.closest('[data-owvdocs="close"]')) return _closeDocs();
     const doc = e.target.closest('[data-owvdoc]');
     if (doc) { _installDocsEsc(); return _openDocs(Number(doc.dataset.owvdoc)); }
+    const natDoc = e.target.closest('[data-owvnatdoc]');
+    if (natDoc) { _installDocsEsc(); return _openNatDocs(Number(natDoc.dataset.owvnatdoc)); }
+    const prt = e.target.closest('[data-owvdocprint]');
+    if (prt) { const f = prt.closest('.owv-doc') && prt.closest('.owv-doc').querySelector('iframe'); if (f && f.contentWindow) f.contentWindow.print(); return; }
     const open = e.target.closest('[data-owvopen]');
     if (open) {
       const [type, id] = open.dataset.owvopen.split(':');
-      _openCard(type, id);
+      const rtEl = open.closest('[data-owvrt]');
+      _openCard(type, id, false, rtEl ? rtEl.dataset.owvrt : null);
     }
   }
 
@@ -1399,7 +1551,17 @@ const OrdersWeekView = (() => {
     const dis = e.busy ? ' disabled' : '';
     const val = (k, dflt) => esc(dr[k] != null ? dr[k] : dflt);
     const who = [it.num, it.client !== '—' ? it.client : ''].filter(Boolean).join(' · ');
-    const head = t => `<div class="owv-ed-h"><b>${esc(t)}</b><span title="${esc(who)}">${esc(who)}</span><button type="button" class="owv-ed-x" data-owvedact="close" title="Κλείσιμο (Esc)" aria-label="Κλείσιμο">×</button></div>`;
+    // In the card the order is already the card's title, and the card's × / Esc close both: no «who», no ×.
+    // The cells choose ΤΠΥ or ΠΟΣΟ by where she clicked; the card has one place, so it offers both — except
+    // before the price, when only the price can be written (owner 21/10: the price, then the ΤΠΥ).
+    const modeSw = () => {
+      if (it.state === 'blocked') return '';
+      const cur = e.mode === 'amt' ? 'amt' : 'tpy';
+      const b = (m, t) => `<button type="button" class="owv-ed-tab" data-owvedact="mode:${m}" aria-pressed="${cur === m}"${dis}>${t}</button>`;
+      return `<span class="owv-ed-sw" role="group" aria-label="Τι διορθώνεις">${b('tpy', 'Τιμολόγιο')}${b('amt', 'Τιμή')}</span>`;
+    };
+    const head = t => e.where === 'card' ? `<div class="owv-ed-h"><b>${esc(t)}</b>${modeSw()}</div>`
+      : `<div class="owv-ed-h"><b>${esc(t)}</b><span title="${esc(who)}">${esc(who)}</span><button type="button" class="owv-ed-x" data-owvedact="close" title="Κλείσιμο (Esc)" aria-label="Κλείσιμο">×</button></div>`;
     const err = e.err ? `<div class="owv-ed-err" role="alert">${esc(e.err)}</div>` : '';
     const save = t => `<button type="button" class="owv-ed-save" data-owvedact="save"${dis}>${e.busy ? 'Αποθήκευση…' : esc(t)} <kbd>Enter</kbd></button>`;
     const undo = `<button type="button" class="owv-ed-undo" data-owvedact="undo"${dis}>Αναίρεση τιμολόγησης</button>`;
@@ -1445,6 +1607,11 @@ const OrdersWeekView = (() => {
     hint.innerHTML = io.tpyHints(n, dc, dup).map(h => `<span class="owv-ed-${h.kind}">${esc(h.text)}</span>`).join('<br>');
   }
   function _edVal(k) { const i = document.querySelector(`#owvEd [data-owvedin="${k}"]`); return i ? i.value : ''; }
+  // On screen = mounted and not inside a closed card (× / Esc only hide the card): a refusal said in a hidden
+  // box would be silence.
+  function _edShown() { const b = document.getElementById('owvEd'); return !!(b && !b.closest('.hidden')); }
+  // The box goes with its card section when it lives in the card (an empty «Τιμολόγηση» is never left behind).
+  function _edBoxOut() { const b = document.getElementById('owvEd'); if (b) (b.closest('.owv-card-inv') || b).remove(); }
   // What is typed survives a repaint (the clips arriving, a refusal) — she never retypes.
   function _edKeep() {
     const e = S.ed, box = document.getElementById('owvEd');
@@ -1468,7 +1635,14 @@ const OrdersWeekView = (() => {
   }
   function _edMount() {
     const e = S.ed, body = S.ctx && S.ctx.body;
-    const old = document.getElementById('owvEd'); if (old) old.remove();
+    if (e && e.where === 'card') {
+      // A repaint reopens the card (and cardPainted mounts it); a card closed meanwhile takes its section along.
+      const c = _openCardNow();
+      if (!c || c.type !== e.type || c.id !== e.id) _edClose();
+      else if (!document.getElementById('owvEd')) _edMountCard(document.getElementById(e.type === 'intl' ? 'intlDetail' : 'natlDetail'));
+      return;
+    }
+    _edBoxOut();
     if (!e || !body) return;
     const subs = [...body.querySelectorAll(_edSel(e.type, e.id))];
     const sub = subs[e.k] || subs[0];
@@ -1498,7 +1672,7 @@ const OrdersWeekView = (() => {
   function _edClose() {
     if (!S.ed) return false;
     S.ed = null;
-    const b = document.getElementById('owvEd'); if (b) b.remove();
+    _edBoxOut();
     document.querySelectorAll('.ow4-ed-on').forEach(x => x.classList.remove('ow4-ed-on'));
     return true;
   }
@@ -1509,7 +1683,8 @@ const OrdersWeekView = (() => {
   function _installEdEsc() {
     if (_edEscOn) return; _edEscOn = true;
     document.addEventListener('keydown', ev => {
-      if (ev.key !== 'Escape' || !S.ed || !document.getElementById('owvEd') || _modalOpen()) return;
+      // In the card, Esc is the card's own (it closes the card, and the section with it).
+      if (ev.key !== 'Escape' || !S.ed || S.ed.where === 'card' || !document.getElementById('owvEd') || _modalOpen()) return;
       ev.preventDefault(); ev.stopImmediatePropagation();
       if (!S.ed.busy) _edClose();
     }, true);
@@ -1525,7 +1700,7 @@ const OrdersWeekView = (() => {
     catch (err) {
       const msg = 'Δεν γράφτηκε: ' + ((err && err.message) || 'άγνωστο σφάλμα');
       OrdersData.invalidate();
-      if (S.ed === e && document.getElementById('owvEd')) { e.busy = false; e.err = msg; _edRender(); _edFocus(); return null; }
+      if (S.ed === e && _edShown()) { e.busy = false; e.err = msg; _edRender(); _edFocus(); return null; }
       // The editor is gone (another view, another week): said here, and it never comes back disabled.
       if (S.ed === e) S.ed = null;
       if (typeof toast === 'function') toast(msg, 'error');
@@ -1540,7 +1715,7 @@ const OrdersWeekView = (() => {
   // After a write: the line repaints from the record (the editor stays open in `next` mode, or closes).
   // The old box goes first: what was typed in it is written, never carried into the next form.
   function _edDone(next) {
-    if (S.ed && next) { S.ed.mode = next; const b = document.getElementById('owvEd'); if (b) b.remove(); } else _edClose();
+    if (S.ed && next) { S.ed.mode = next; S.ed.focus = true; _edBoxOut(); } else _edClose();
     if (S.ctx && S.ctx.isCurrent()) _paint(S.ctx);
   }
 
@@ -1609,6 +1784,46 @@ const OrdersWeekView = (() => {
     if (act === 'save') return _edSave();
     if (act === 'undo') return _edUndo();
     if (act === 'self') return _edSelf(a);
+    if (act.startsWith('mode:') && S.ed && !S.ed.busy) {
+      // Another form: what was typed in this one is not carried over (as after a write, _edDone).
+      Object.assign(S.ed, { mode: act.slice(5), draft: null, err: '' });
+      _edRender(); _edFocus();
+    }
+  }
+
+  // ── «Τιμολόγηση» in the order card (owner 8/11/2026, change 12: «ΠΑΝΕΛ σε εβδομαδιαία Παραγγελιών … να
+  // σημειώνεται ΤΠΥ, τιμή και αυτοπαράδοση»; asked with pictures: «Και στο πλαϊνό πάνελ», the cells stay).
+  // The SAME editor as the cells — S.ed with where:'card', _edHtml, _edSave / _edPrice / _edSelf / _edUndo,
+  // InvoiceOps — mounted as a section of the card instead of under a line: no second form, no second rule.
+  // Offered exactly where the week's line offers its ΤΠΥ / ΠΟΣΟ cells (data-owved, _editable): same roles, same
+  // orders. The card repaints itself (its stops arrive, «Διόρθωση», the week's repaint) and each repaint calls
+  // cardPainted (orders_intl.js / orders_natl.js), so the section is never lost under her.
+  function _edMountCard(panel) {
+    const e = S.ed;
+    if (!panel || !e) return;
+    _edBoxOut();
+    const intl = panel.id === 'intlDetail';
+    const anchor = panel.querySelector(intl ? '.oi-sect' : '.on-sec');   // after «Στοιχεία» (Τιμή · Τιμολογήθηκε)
+    if (!anchor || !_edRec(e)) { _edClose(); return; }
+    anchor.insertAdjacentHTML('afterend', `<div class="${intl ? 'oi-sect' : 'on-sec'} owv-card-inv"><div class="${intl ? 'oi-sect-t' : 'on-sec-title'}">Τιμολόγηση</div>`
+      + `<div class="owv-ed owv-ed-card" id="owvEd" role="group" aria-label="Τιμολόγηση παραγγελίας">${_edHtml()}</div></div>`);
+    _edHint();
+    // Opening a card to read it never moves the caret into a box; after the price, the ΤΠΥ box takes it (21/10).
+    if (e.focus && !e.busy) { e.focus = false; _edFocus(); }
+  }
+  function cardPainted(panel) {
+    const ctx = S.ctx, c = S.card;
+    if (!panel || !panel.closest('.owv-cards') || !ctx || !ctx.isCurrent() || !c) return;
+    if ((panel.id === 'natlDetail' ? 'natl' : 'intl') !== c.type) return;
+    if (c.type === 'intl') _routePlace(panel);
+    const e = S.ed;
+    if (e && e.busy && !(e.where === 'card' && e.type === c.type && e.id === c.id)) return;   // a line's write in flight
+    if (!ctx.body.querySelector(`${_edSel(c.type, c.id)} [data-owved]`)) { if (e && e.where === 'card' && !e.busy) _edClose(); return; }
+    if (!(e && e.where === 'card' && e.type === c.type && e.id === c.id)) {
+      _edClose();   // a line's editor gives way: one thing open at a time
+      S.ed = { type: c.type, id: c.id, k: 0, mode: null, where: 'card', draft: null, err: '', busy: false, items: null };
+    }
+    _edMountCard(panel);
   }
 
   // The order card of «Κατάλογος», opened HERE (owner 2/11/2026: «να μη φεύγει
@@ -1625,9 +1840,9 @@ const OrdersWeekView = (() => {
     const c = S.card; if (!c) return null;
     const p = document.getElementById(c.type === 'intl' ? 'intlDetail' : 'natlDetail');
     if (!p || p.classList.contains('hidden') || !p.closest('.owv-cards')) return null;
-    return { type: c.type, id: c.id, top: p.scrollTop };
+    return { type: c.type, id: c.id, rt: c.rt || null, top: p.scrollTop };
   }
-  function _openCard(type, id, quiet) {
+  function _openCard(type, id, quiet, rt) {
     const d = S.data; if (!d) return;
     const rec = type === 'natl' ? d.natl.find(r => r.id === id) : [...d.intl, ...(d.cancelled || [])].find(r => r.id === id);
     if (!rec || (type === 'natl' ? typeof openNatlCardWith !== 'function' : typeof openIntlCardWith !== 'function')) {
@@ -1638,7 +1853,13 @@ const OrdersWeekView = (() => {
       return OrdersHub.openOrder(type, id);
     }
     if (typeof OrdersCatalog !== 'undefined' && OrdersCatalog.installEsc) OrdersCatalog.installEsc();
-    S.card = { type, id };
+    // A click opens a card afresh: a section left from a card closed earlier (its refusal, its draft) never comes
+    // back as if it were current. A repaint (quiet), or a click on the line of the card already open, keeps it.
+    const shown = _openCardNow();
+    if (!quiet && S.ed && S.ed.where === 'card' && !S.ed.busy && !(shown && shown.type === type && shown.id === id)) _edClose();
+    // the route column's × lasts for the card it closed: a click opens the next card with its column (a repaint keeps it)
+    if (!quiet) S.colOff = false;
+    S.card = { type, id, rt: rt || null };
     if (type === 'intl') {
       if (typeof closeNatlDetail === 'function') closeNatlDetail();
       openIntlCardWith(rec);
@@ -1654,6 +1875,139 @@ const OrdersWeekView = (() => {
     const load = loads ? loads.find(l => link(l.fields['Source National Order']) === rec.id) || null : null;
     const known = loads != null && (!!load || OC().weekStartOf(rec) === S.week);
     openNatlCardWith(rec, { load, loadsFailed: !known });
+  }
+
+  // ── The route diagram in the card (owner 8/11/2026: «μέσα στην κάρτα της κάθε παραγγελίας ξεχωριστά και στο RT
+  // όταν είναι στο εβδομάδα»; core/route-diagram.js, the one component of the three week screens).
+  // The order's own «Διαδρομή» is the card's (orders_intl.js _oiRouteDiagram); this page adds two things only it has:
+  //  · natLegFor: a VS order's national leg from the v5 boards this load already holds (the week's board and the
+  //    away weeks' boards, _v5Away). No board (before L, scope «Διεθνή», a failed read) = null, and the diagram
+  //    says «εκτελεστής: δεν διαβάστηκε», never «χωρίς ανάθεση» (principle 1). No new read for it.
+  //  · «Δρομολόγιο RT-…»: a section under «Διαδρομή» when the card was opened from an RT row of two or more orders
+  //    (one order: its own diagram IS the RT's). Its stops are read once per RT per load (S.rtRoute): load()'s
+  //    stop read carries only the four date fields, and only for the window's orders.
+  function _weekBoards(d) {
+    return [d && d.v5Board, ...((d && d.v5Away && d.v5Away.boards) || []).map(x => x.board)].filter(Boolean);
+  }
+  // → null when the card is not this page's (the caller then says where the leg lives); else { leg, note }:
+  // leg found; or the week's board read and the leg on none of the boards (before day L it lives in national_loads)
+  // = a grey note; or the board not read = leg null, no note → the diagram's red «δεν διαβάστηκε».
+  function _natLegOf(d, rec) {
+    const boards = _weekBoards(d);
+    const leg = boards.length ? RouteDiagramAdapters.natLegFromBoard(boards, pgIdOf(rec)) : null;
+    if (leg) return { leg, note: null };
+    // an away week's board that failed may hold the leg: then no note, the red «δεν διαβάστηκε» stays
+    const allRead = !!d.v5Board && !d.v5BoardFailed && !((d.v5Away && d.v5Away.failed) || []).length;
+    return { leg: null, note: allRead ? 'εκτελεστής: εκτός Εβδομαδιαίου v5' : null };
+  }
+  function natLegFor(rec) {
+    const ctx = S.ctx, d = S.data, c = S.card;
+    if (!rec || !ctx || !ctx.isCurrent() || !d || !c || c.type !== 'intl' || c.id !== rec.id) return null;
+    const p = document.getElementById('intlDetail');
+    if (!p || !p.closest('.owv-cards') || typeof RouteDiagramAdapters === 'undefined') return null;
+    return _natLegOf(d, rec);
+  }
+  const RT_STOP_FIELDS = () => [F.STOP_PARENT_ORDER, F.STOP_NUMBER, F.STOP_TYPE, F.STOP_LOCATION, F.STOP_DATETIME, F.STOP_PALLETS, 'Completed At'];
+  // The orders the RT's truck carries, in RT order (/costs/rt legs[].seq): a split leg as itself (its own stops),
+  // never a cancelled order; one record once.
+  function _rtRecs(r) {
+    const seen = new Set();
+    return r.legs.filter(l => l.rec && !l.cancelled).map(l => l.own || l.rec).filter(x => !seen.has(x.id) && seen.add(x.id));
+  }
+  async function _rtLoad(code, recs) {
+    const cache = S.rtRoute;
+    cache.set(code, { loading: true });
+    let st;
+    try {
+      const ids = [...new Set(recs.flatMap(x => x.fields['ORDER STOPS'] || []))];
+      const batches = [];
+      for (let i = 0; i < ids.length; i += 90) {
+        batches.push(atGetAll(TABLES.ORDER_STOPS, { filterByFormula: `OR(${ids.slice(i, i + 90).map(id => `RECORD_ID()="${id}"`).join(',')})`, fields: RT_STOP_FIELDS() }, false));
+      }
+      const by = new Map();
+      (await Promise.all(batches)).flat().forEach(sr => {
+        const p = sr.fields[F.STOP_PARENT_ORDER], pid = Array.isArray(p) ? p[0] : p;
+        if (!by.has(pid)) by.set(pid, []);
+        by.get(pid).push(sr);
+      });
+      st = { by };
+    } catch (e) { console.error('orders week: RT route', e); st = { err: true }; }
+    if (cache !== S.rtRoute) return;   // another week or a reload started meanwhile
+    cache.set(code, st);
+    const c = _openCardNow();
+    if (c && c.type === 'intl' && c.rt === code) _routePlace(document.getElementById('intlDetail'));
+  }
+  const _rtMsg = (txt, red) => `<div class="rd">${red ? '<div class="rd-note" data-tone="red">' : '<div class="rd-empty">'}${esc(txt)}</div></div>`;
+  function _rtRouteHtml(r) {
+    const recs = _rtRecs(r);
+    if (!S.rtRoute) S.rtRoute = new Map();
+    const st = S.rtRoute.get(r.code);
+    if (!st) { _rtLoad(r.code, recs); return _rtMsg('Φόρτωση διαδρομής…'); }
+    if (st.loading) return _rtMsg('Φόρτωση διαδρομής…');
+    if (st.err) return _rtMsg('Η διαδρομή του δρομολογίου δεν διαβάστηκε.', true);
+    // an order of the RT outside this page's read is not drawn: said, never a shorter route that looks whole
+    const unread = r.legs.filter(l => !l.rec).length;
+    let html;
+    try {
+      const A = RouteDiagramAdapters;
+      const items = recs.map(x => { const nl = x.fields['Veroia Switch'] ? _natLegOf(S.data, x) : { leg: null, note: null };
+        return { rec: x, stops: st.by.get(x.id) || [], ctx: { natLeg: nl.leg, natLegNote: nl.note } }; });
+      html = RouteDiagram.render(A.facadeRt(items, { today: A.athensDay(new Date().toISOString()), locMeta: id => OC()._locMeta(id) }));
+    } catch (e) { console.error('orders week: RT route diagram', e); html = _rtMsg('Η διαδρομή του δρομολογίου δεν σχεδιάστηκε.', true); }
+    return html + (unread ? _rtMsg(`${unread === 1 ? '1 παραγγελία' : unread + ' παραγγελίες'} του δρομολογίου εκτός ανάγνωσης: δεν σχεδιάζ${unread === 1 ? 'εται' : 'ονται'}.`, true) : '');
+  }
+  function _rtMountCard(panel) {
+    if (!panel) return;
+    const old = panel.querySelector('.owv-card-rt');
+    if (old) old.remove();
+    const c = S.card;
+    const r = c && c.type === 'intl' && c.rt ? (S.rowsAll || []).find(x => x.kind === 'rt' && x.code === c.rt) : null;
+    if (!r || r.legs.length < 2) return;
+    const anchor = panel.querySelector('[data-oi-sect="route"]');
+    if (!anchor) return;
+    anchor.insertAdjacentHTML('afterend', `<div class="oi-sect owv-card-rt"><div class="oi-sect-t">Δρομολόγιο ${esc(r.code)}</div>${_rtRouteHtml(r)}</div>`);
+  }
+  // The diagram in its own column (owner 8/11/2026, on the mock over the live app: «Ναι, φτιάξτο»), at the right edge
+  // with the card next to it (core/route-diagram-column.js, shared with «Παλέτες › Εβδομάδα»). The column holds the
+  // whole RT when the card was opened from an RT of two or more orders, else the order's own «Διαδρομή» — and the
+  // card then shows neither, so the route is never drawn twice. Below 1600px, or after the column's own ×, the card
+  // keeps both sections as before (_rtMountCard). The card draws its own «Διαδρομή» (orders_intl.js, shared with
+  // «Κατάλογος»): here it is only hidden and copied, so «Κατάλογος» and the card's code stay as they are.
+  // No new read: the card's stops (_oiLoadCardStops) and the RT's (S.rtRoute) — a failure is said in the column.
+  function _routePlace(panel) {
+    const RC = typeof RouteDiagramColumn !== 'undefined' ? RouteDiagramColumn : null;
+    const box = panel && panel.closest('.owv-cards');
+    if (!panel || !box) return;
+    const sect = panel.querySelector('[data-oi-sect="route"]');
+    if (RC) RC.onWideChange('orders-week', () => { const c = _openCardNow(); if (c && c.type === 'intl') _routePlace(document.getElementById('intlDetail')); });
+    if (!RC || !sect || S.colOff || !RC.wide()) {
+      if (RC) RC.close(box);
+      if (sect) sect.style.display = '';
+      return _rtMountCard(panel);
+    }
+    const old = panel.querySelector('.owv-card-rt');
+    if (old) old.remove();
+    const c = S.card, d = S.data;
+    const r = c && c.type === 'intl' && c.rt ? (S.rowsAll || []).find(x => x.kind === 'rt' && x.code === c.rt) : null;
+    const rt = r && r.legs.length >= 2 ? r : null;
+    const rec = c && d ? [...d.intl, ...(d.cancelled || [])].find(x => x.id === c.id) : null;
+    let body, stops;
+    if (rt) {
+      body = _rtRouteHtml(rt);
+      const st = S.rtRoute && S.rtRoute.get(rt.code);
+      stops = st && st.by ? _rtRecs(rt).flatMap(x => st.by.get(x.id) || []) : [];
+    } else {
+      const cp = sect.cloneNode(true);
+      const t = cp.querySelector('.oi-sect-t');
+      if (t) t.remove();
+      body = cp.innerHTML;
+      stops = (rec && window._intlStopsByOrder && window._intlStopsByOrder[rec.id]) || [];
+    }
+    // the head: the RT row's vehicle (the one the week shows), else the order's own fields
+    const v = vehicleOf(r ? r.vehicleRec : rec);
+    sect.style.display = 'none';
+    RC.open(box, { anchor: panel, z: 1200, body, sub: RC.sub(v.kind === 'none' ? [] : [v.plate, v.who], stops),
+      onClose: () => { S.colOff = true; _routePlace(panel); } });
   }
 
   // The board's numbers of this read; an error is said on the row («—» with why), never a 0.
@@ -1745,6 +2099,34 @@ const OrdersWeekView = (() => {
       <div class="owv-docs-b">${away}${docs.map(d => `<section class="owv-doc"><div class="owv-doc-t">${esc(d.title)}</div>
         <iframe class="owv-doc-f" title="${esc(d.title)}" src="print.html?${esc(d.query)}&noprint=1"></iframe></section>`).join('')}</div>`;
   }
+  // ΑΝΑΘΕΣΗ of a v5 national row (owner 8/11/2026): the driver sheet the Weekly National prints for that truck and
+  // side (WN5Sheet.sheetDoc: the board's ⎙ lines and html), one frame per carrier (a split at Veroia = two), from the
+  // week's board this page read — the Weekly National is never run. Read-only; the frame prints itself from its
+  // «Εκτύπωση». A sheet that cannot be built says why (WN5Sheet's toast) and its frame says «δεν βγήκε».
+  let _natDocsSeq = 0;
+  async function _openNatDocs(i) {
+    const r = (S.natRows || [])[i], box = document.getElementById('owvDocs');
+    if (!r || !box || !r.sheets || !r.sheets.length || !S.data || !S.data.v5Board) return;
+    if (S.ed && S.ed.busy) return;
+    _edClose();
+    if (typeof _oiCloseCard === 'function') _oiCloseCard();
+    if (typeof closeNatlDetail === 'function') closeNatlDetail();
+    const seq = ++_natDocsSeq, board = S.data.v5Board;
+    const word = sd => (sd === 'ANODOS' ? 'Άνοδος' : 'Κάθοδος');
+    const head = `<div class="owv-docs-h"><b>Έγγραφα ανάθεσης</b><span>${esc(r.sheets.map(x => x.code).filter((c, k, a) => a.indexOf(c) === k).join(' · '))}</span>
+      <button type="button" class="owv-docs-x" data-owvdocs="close" title="Κλείσιμο (Esc)" aria-label="Κλείσιμο">×</button></div>`;
+    box.innerHTML = head + '<div class="owv-docs-b"><div class="owv-doc-t">…</div></div>';
+    box.classList.remove('hidden');
+    const docs = await Promise.all(r.sheets.map(x => (typeof WN5Sheet !== 'undefined' && typeof WN5Sheet.sheetDoc === 'function'
+      ? WN5Sheet.sheetDoc(x.rtId, x.side, board) : Promise.resolve(null))));
+    if (seq !== _natDocsSeq || box.classList.contains('hidden')) return;   // closed, or another row opened meanwhile
+    box.innerHTML = head + `<div class="owv-docs-b">${r.sheets.map((x, k) => {
+      const dd = docs[k], t = `${word(x.side)} — Φύλλο Οδηγού · ${x.code}`;
+      if (!dd) return `<section class="owv-doc"><div class="owv-doc-t">${esc(t)} · δεν βγήκε</div></section>`;
+      return `<section class="owv-doc"><div class="owv-doc-t">${esc(t)} · <button type="button" class="wi4-link" data-owvdocprint="1">Εκτύπωση</button></div>
+        <iframe class="owv-doc-f" title="${esc(t)}" srcdoc="${esc(dd.html)}"></iframe></section>`;
+    }).join('')}</div>`;
+  }
   function _closeDocs() {
     const box = document.getElementById('owvDocs');
     if (box && !box.classList.contains('hidden')) { box.classList.add('hidden'); box.innerHTML = ''; return true; }
@@ -1756,11 +2138,13 @@ const OrdersWeekView = (() => {
     if (_docsEsc) return; _docsEsc = true;
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && _closeDocs()) e.stopImmediatePropagation(); }, true);
   }
-  // undefined = a national line (not numbered yet) · 'failed' · null = no line there · n
-  function _noHtml(no) {
-    if (no === 'failed') return '<span class="ow4-no ow4-d" title="Η αρίθμηση του Εβδομαδιαίου Διεθνών δεν υπολογίστηκε">—</span>';
-    if (no == null) return '<span class="ow4-no ow4-d" title="Χωρίς αριθμό: δεν είναι γραμμή του Εβδομαδιαίου Διεθνών αυτής της εβδομάδας">—</span>';
-    return `<span class="ow4-no" title="Αριθμός γραμμής στο Εβδομαδιαίο Διεθνών">${esc(no)}</span>`;
+  // undefined = no number box · 'failed' · null = no line there (why: the reason) · n
+  // natl: the number is the Weekly National v5's (numberNationals), else the Weekly International's
+  function _noHtml(no, why, natl) {
+    const board = natl ? 'Εθνικών' : 'Διεθνών';
+    if (no === 'failed') return `<span class="ow4-no ow4-d" title="Η αρίθμηση του Εβδομαδιαίου ${board} δεν υπολογίστηκε">—</span>`;
+    if (no == null) return `<span class="ow4-no ow4-d" title="${esc(why || `Χωρίς αριθμό: δεν είναι γραμμή του Εβδομαδιαίου ${board} αυτής της εβδομάδας`)}">—</span>`;
+    return `<span class="ow4-no" title="${esc(why || `Αριθμός γραμμής στο Εβδομαδιαίο ${board}`)}">${esc(no)}</span>`;
   }
 
   // A card opened here saved ONE order in place («Διόρθωση», pallet sheets —
@@ -1885,7 +2269,8 @@ const OrdersWeekView = (() => {
         if (r.assign.kind === 'load') who = whoOf(vehicleOf(r.assign.load));
         else if (r.assign.kind === 'v5') who = whoOf(vehicleOfV5(r.assign.state));
         else who = r.assign.kind === 'grp' ? 'μέσω ομαδοποίησης' : r.assign.kind === 'out' ? 'εκτός φορτίου' : '—';
-        body.push(trip(dayShort(r.day) || '—', who, '', sumText(r.counted, natMarks(r))));
+        const nt = natNoText(r), no = nt && nt !== 'failed' ? nt + ' · ' : '';
+        body.push(trip(no + (dayShort(r.day) || '—'), who, '', sumText(r.counted, natMarks(r))));
         for (const s of [r.kat, r.ano]) {
           if (!s) continue;
           const word = s.dir === 'up' ? 'Άνοδος' : 'Κάθοδος';
@@ -1979,8 +2364,8 @@ const OrdersWeekView = (() => {
     });
   }
 
-  return { render, recordChanged, buildWeek, rowNumbers, legNumber, totals, rowMarks, natMarks, rowSum, printSequence, printDoc, rtInvoicing, verdictText, tpyOf, pctVsPrev, stripWeeks, groupRows, daySections,
-    weekStatus, pairNationals, routeSplit, ordersFormula, placeText, isVsNational, naturalDateOf, pgIdOf, dayLabel, weekTitle,
+  return { render, recordChanged, cardPainted, natLegFor, buildWeek, rowNumbers, legNumber, totals, rowMarks, natMarks, rowSum, printSequence, printDoc, rtInvoicing, verdictText, tpyOf, pctVsPrev, stripWeeks, groupRows, daySections,
+    weekStatus, pairNationals, numberNationals, natNumberOrder, natNoText, routeSplit, ordersFormula, placeText, isVsNational, naturalDateOf, pgIdOf, dayLabel, weekTitle,
     // the pallets weekly view (modules/pallets_week.js) reads the same week through these, never a copy
     load, boardOf, rowDocsOf, docsInner, endsOf, vehicleOf, dayShort, dayFull, clientRaw, isSplitLeg };
 })();
