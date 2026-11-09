@@ -164,7 +164,9 @@ div.oi-locked{display:flex;align-items:center;font-size:13px}
 /* ── The new international form (owner 8/11, Figma 2590:7735 Φ1–Φ6): the language of the Weekly «Ανάθεση» form
    (wn5f: 34px controls, DM Sans labels 12px, section heads 10.5px spaced, one summary line on the sunken surface).
    Tokens only (no hex): the wi4 palette of :root. ── */
-.modal.modal--oi2{width:880px;max-width:96vw}
+/* owner 8/11 (round 2): «λίγο μεγαλύτερη, με λίγο μεγαλύτερα τα πεδία» — 24000 kg, -18 °C, 12500 €, 33 παλέτες,
+   06:00–14:30 whole at 1280 and 1440 */
+.modal.modal--oi2{width:960px;max-width:96vw}
 .oi2{display:flex;flex-direction:column;gap:12px;font-size:13px;color:var(--wi4-ink)}
 .oi2-sec{display:flex;align-items:center;gap:14px;margin-top:6px;font:600 10.5px 'DM Sans',sans-serif;letter-spacing:1.2px;text-transform:uppercase;color:var(--wi4-grey-3)}
 .oi2-sec .oi-lot-ck{font:400 12.5px 'DM Sans',sans-serif;letter-spacing:0;text-transform:none;color:var(--wi4-grey-1)}
@@ -172,8 +174,8 @@ div.oi-locked{display:flex;align-items:center;font-size:13px}
 .oi2 .form-input{height:34px;padding:0 10px;box-sizing:border-box;border:1px solid var(--wi4-ctl);border-radius:6px;background:var(--surface-card);font-size:13px;color:var(--wi4-ink)}
 .oi2 .form-input:disabled{background:var(--wi4-chip);color:var(--wi4-grey-1)}
 .oi2 .oi2-num{text-align:right;font-variant-numeric:tabular-nums}
-.oi2-r3{display:grid;grid-template-columns:minmax(0,300px) minmax(0,240px) 150px;gap:12px;align-items:start}
-.oi2-cargo{display:grid;grid-template-columns:minmax(110px,1fr) 72px 72px max-content max-content max-content;gap:10px;align-items:start}
+.oi2-r3{display:grid;grid-template-columns:minmax(0,340px) minmax(0,260px) 160px;gap:12px;align-items:start}
+.oi2-cargo{display:grid;grid-template-columns:minmax(120px,1fr) 96px 84px max-content max-content max-content;gap:10px;align-items:start}
 .oi2-seg{display:inline-flex;align-items:stretch;height:34px;padding:3px;gap:2px;box-sizing:border-box;border-radius:7px;background:var(--wi4-chip);width:max-content}
 .oi2-seg button,.oi2-seg label{display:inline-flex;align-items:center;padding:0 9px;border:none;border-radius:5px;background:none;font:500 12.5px 'DM Sans',sans-serif;color:var(--wi4-grey-1);cursor:pointer}
 .oi2-seg label input{position:absolute;opacity:0;pointer-events:none;width:0;height:0}
@@ -194,7 +196,7 @@ div.oi-locked{display:flex;align-items:center;font-size:13px}
 .oi2-link{border:none;background:none;padding:0;font:500 12.5px 'DM Sans',sans-serif;color:var(--accent);cursor:pointer}
 .oi2-pts{display:flex;flex-direction:column;gap:8px}
 .oi2-rows{display:flex;flex-direction:column;gap:8px}
-.oi2-th,.oi2-stop{display:grid;grid-template-columns:minmax(0,1fr) 128px 150px 60px 64px 40px 22px;gap:8px;align-items:center}
+.oi2-th,.oi2-stop{display:grid;grid-template-columns:minmax(0,1fr) 136px 164px 72px 64px 40px 22px;gap:8px;align-items:center}
 .oi2-th{font-size:11px;color:var(--wi4-grey-2)}
 .oi2-th .r{text-align:right}
 .oi2-c-loc{position:relative;min-width:0}
@@ -1120,7 +1122,7 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill, _piece) 
     <button class="btn btn-ghost" onclick="closeModal()">Άκυρο</button>
     <button class="btn oi2-save" id="btnSubmit" onclick="submitIntlOrder('${recId || ''}')">Αποθήκευση</button>`;
 
-  // 880px (Figma 878): a class, removed when the overlay closes (as the national form's modal--wide), so the next
+  // 960px (owner 8/11: a little wider than Figma 878, real values whole): a class, removed when the overlay closes (as the national form's modal--wide), so the next
   // modal of any module opens at its own width. The inline max-width another form left (the scan: 520px) is cleared.
   const _modalEl = document.getElementById('modal');
   _modalEl.style.maxWidth = '';
