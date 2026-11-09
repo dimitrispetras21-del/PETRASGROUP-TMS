@@ -9,13 +9,14 @@ Branch `feat/plain-messages-worker` πάνω στο head του #263 (`332beb36`
 - **Front end (συντονιστής 9/11):** το `core/plan-api.js` κρατά το `error.detail` (και το γράφει στο log) και η «Σύνθεση
   φορτίων» ονομάζει το άλλο πρόχειρο από αυτό, ή από την αγκύλη ενός παλιού Worker (rollback)· το ζεύγος «4801:14» δεν
   φαίνεται πια. Rig `wn5-compose-rig` με `WN5_RIG_REFUSAL=detail|bracket|none` GO και στα τρία, NO-GO στο `main`.
-  ?v= / SW_VERSION 1794540000. Μένει μία εξαίρεση: το `rt_changed` (110) κρατά «ρόλος ώρα» στο κείμενο, γιατί το
-  `wn5_actions.js _orderErr` το διαβάζει από εκεί (τρίτο αρχείο, μόνο με έγκριση).
+  ?v= / SW_VERSION 1794540000. Και το `rt_changed` (110) έχει πια ελληνικό κείμενο: «ρόλος ώρα» στο `error.detail`, το
+  `wn5_actions.js _orderErr` το διαβάζει από εκεί ή από την παλιά μορφή (rig `wn5-assign-rig rt_expect`, και τα δύο
+  σχήματα GO). Καμία εξαίρεση δεν μένει: κανένας κωδικός στο κείμενο των αρνήσεων.
 - **`seg_place_text`** έχει πια ελληνικό κείμενο (ως τώρα έβγαινε στα αγγλικά). `/costs/lines`: τα μηνύματα «line 3: round
   trip 812 …» στα ελληνικά με δρομολόγιο και πινακίδα. Κλείσιμο RT (046): «Το δρομολόγιο ΚΖΗ… δεν κλείνει». DKV: χωρίς «#id».
 - **Απόδειξη:** Worker 517 tests / 0 αποτυχίες, front end 1383 / 0· φρουρός στο dry-run bundle `GUARD OK (45 markers, …,
   pnl=1, plain=1)`· `/code-review xhigh` τρεις φορές (8 ευρήματα: 3 διορθώθηκαν, 5 αφέθηκαν με λόγο· μετά 3: 2 διορθώθηκαν·
   μετά 0).
 - **Μένουν:** σειρά owner: merge (front end), μετά deploy του Worker με το script (ζωντανός πριν = c8a2541f του #263)·
-  η γραμμή φρουρού στο `CLAUDE.md` μετά το deploy· `_orderErr` από `error.detail` (rt_changed)· τα υπόλοιπα κύματα
+  η γραμμή φρουρού στο `CLAUDE.md` μετά το deploy· τα υπόλοιπα κύματα
   (Παλέτες, χαρτιά, `costs.js`, Εθνικά v5, βάση).
