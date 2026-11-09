@@ -339,7 +339,7 @@ async function run() {
     && sf.temp === '2' && sf.reefer === 'Continuous' && sf.pt === 'EUR' && sf.notes === 'slot 07:00', 'scan → form: direction, client, reference, price, goods, weight, °C, reefer, pallet type, notes — ' + JSON.stringify(sf));
   ok(sf.l1 === 'recLA' && sf.l2 === 'recLB' && sf.u1 === 'recG3' && sf.p1 === '20' && sf.p2 === '13' && sf.pu === '33' && sf.dl === addDays(TODAY, 1) && sf.du === addDays(TODAY, 3),
     'scan → form: points, pallets (the one delivery = the loading sum), days');
-  ok(sf.open1 && sf.tf1 === '07:00' && sf.tt1 === '11:30' && sf.tf2 === '' && sf.tt2 === '15:30' && sf.tfu === '06:00' && sf.ttu === '', 'scan → form: the stop time goes to the hours («07:00-11:30» → 07:00–11:30, «bis 1530» → until 15:30, «6.00» → from 06:00)');
+  ok(sf.open1 && sf.tf1 === '07:00' && sf.tt1 === '11:30' && sf.tf2 === '' && sf.tt2 === '15:30' && sf.tfu === '06:00' && sf.ttu === '06:00', 'scan → form: the stop time goes to the hours («07:00-11:30» → 07:00–11:30, «bis 1530» → until 15:30, «6.00» → 06:00–06:00, an appointment)');
   ok(!sf.prefill && (cap.lastReads || 0) === readsBefore, 'a scan never runs the last-order prefill');
   await page.screenshot({ path: shot('scan'), clip: await modalClip(page) });
   await page.click('#f_PalletExch label:has(input[value="yes"])');   // the scan does not answer the exchange: the form asks (as before)
@@ -352,7 +352,7 @@ async function run() {
   ok(sl1.Pallets === 20 && sl1['Time From'] === '07:00' && sl1['Time To'] === '11:30' && sl1.DateTime === addDays(TODAY, 1) && sl1['Stop Type'] === 'Loading' && sl1['Stop Number'] === 1,
     'scan → ORDER STOPS: loading 1 with 07:00–11:30 — ' + JSON.stringify(sl1));
   ok(sl2.Pallets === 13 && !('Time From' in sl2) && sl2['Time To'] === '15:30' && !('Via Hub' in sl2) && !('Pallets Exchanged' in sl2), 'scan → ORDER STOPS: loading 2 until 15:30, nothing else new');
-  ok(su.Pallets === 33 && su['Time From'] === '06:00' && !('Time To' in su) && su.DateTime === addDays(TODAY, 3), 'scan → ORDER STOPS: the delivery 33 pallets, from 06:00');
+  ok(su.Pallets === 33 && su['Time From'] === '06:00' && su['Time To'] === '06:00' && su.DateTime === addDays(TODAY, 3), 'scan → ORDER STOPS: the delivery 33 pallets, appointment 06:00–06:00');
   ok(!(await page.evaluate(() => document.body.innerText.includes('ΔΕΝ κρατήθηκαν'))), 'the scanned hours read back');
 
   console.log('\n«σε απόθεμα»');
