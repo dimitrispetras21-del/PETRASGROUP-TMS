@@ -191,6 +191,16 @@ async function dbSelectRaw(env, table, params, extraHeaders) {
   return { rows: await res.json(), contentRange: res.headers.get("content-range") };
 }
 __name(dbSelectRaw, "dbSelectRaw");
+// The exact row count of a read made with Prefer: count=exact («0-998/2500», «*/0»). No count is an error, never a
+// guessed «complete» (principle 1): /pallets/movements and /costs/pnl decide «cut» from it, so one rule for both.
+function dbExactCount(contentRange, table) {
+  // digits only after the slash: Number("") is 0, so a «0-999/» would otherwise read as an exact count of 0
+  const m = /\/(\d+)$/.exec(String(contentRange || ""));
+  const total = m ? Number(m[1]) : NaN;
+  if (!Number.isSafeInteger(total)) throw new Error(`${table}: no exact count in «${contentRange}»`);
+  return total;
+}
+__name(dbExactCount, "dbExactCount");
 
 // src/routes/audit.js
 var AUDIT_READERS = ["owner", "management"];
@@ -5267,17 +5277,54 @@ async function handleCosts(request, url, origin, env) {
     }
     // ---- GET /costs/pnl  (ΑΠΟΤΕΛΕΣΜΑΤΑ — ΜΟΝΟ OWNER, spec §10.2.11) ----
     if (resource === "pnl" && method === "GET") {
+      // It was one read of «limit 300» with nothing said (8/11: 248 RTs, 18 in 7 days, so it would have cut around
+      // 22-29/11, from the list AND the totals). Owner 8/11: no cap, every RT reachable («θέλω να έχω πρόσβαση σε όλα»).
+      // So the view is read in keyset pages (id.desc, id < last) until the exact count is reached; the count comes from
+      // ct_round_trips with the view's own WHERE (status <> cancelled) and the same filters - an index read, never
+      // count=exact on the view (it ran past the statement timeout on 28/10).
+      // PNL_PAGE = PostgREST's db-max-rows (1000), so one read until 1000 RTs - as before. Each later page recomputes
+      // the view (the filter is not pushed into its aggregates): measured 8/11 a whole read of the view took ~0.25 s
+      // for 248 RTs, so pages cost ~that much each past 1000. A page shorter than asked is the end only once the count
+      // is reached (a lower db-max-rows shortens every page); an empty page always ends. The count read also takes the
+      // highest id (ct_round_trips.id is GENERATED ALWAYS AS IDENTITY, in creation order): rows above it were created
+      // after the count and are left for the next load, so a new RT can never make the rows reach the count before
+      // the oldest RT is read. Left open: identity ids are handed out in order but committed in any order, so an RT
+      // whose transaction commits just after the count lands inside the bound; with db-max-rows below PNL_PAGE (every
+      // page short) that could end the read one row early. db-max-rows is 1000 = PNL_PAGE, so a short page is the
+      // real end; lowering it needs this rule revisited. Fewer rows than the count (an RT the view's joins drop, an RT cancelled between the
+      // reads, PNL_MAX_PAGES) is truncated: said on the banner and logged, never a silent short list (principle 1).
+      // 1e3, not 1000: esbuild (wrangler) rewrites 1000 as 1e3, and the guard marker must read the same in the
+      // source, the dry-run bundle and the CF download
+      const PNL_PAGE = 1e3;
+      const PNL_MAX_PAGES = 50;
       const q = url.searchParams;
-      const params = new URLSearchParams();
-      params.set("select", "*");
-      params.set("order", "margin_worst_pct.asc.nullsfirst");
-      params.set("limit", "300");
-      if (q.get("from")) params.append("date_start", `gte.${q.get("from")}`);
-      if (q.get("to")) params.append("date_start", `lte.${q.get("to")}`);
-      if (q.get("scope")) params.append("scope", `eq.${q.get("scope")}`);
-      if (q.get("truck_id")) params.append("truck_id", `eq.${q.get("truck_id")}`);
-      const { rows } = await dbSelectRaw(env, "ct_v_rt_pnl", params);
-      return jsonOk({ records: rows }, origin, env);
+      const filters = [];
+      if (q.get("from")) filters.push(["date_start", `gte.${q.get("from")}`]);
+      if (q.get("to")) filters.push(["date_start", `lte.${q.get("to")}`]);
+      if (q.get("scope")) filters.push(["scope", `eq.${q.get("scope")}`]);
+      if (q.get("truck_id")) filters.push(["truck_id", `eq.${q.get("truck_id")}`]);
+      const page = (last) => new URLSearchParams([["select", "*"], ["order", "id.desc"], ["limit", String(PNL_PAGE)],
+        ...filters, ...(last == null ? [] : [["id", `lt.${last}`]])]);
+      const countParams = new URLSearchParams([["select", "id"], ["status", "neq.cancelled"], ["order", "id.desc"],
+        ["limit", "1"], ...filters]);
+      // The count first, then the pages - never both at once (code review xhigh 9/11): with the page read before the
+      // count, an RT created between them is in the count and under maxId but not in the rows, a false «truncated».
+      // Count first, that RT's id is above maxId and waits for the next load.
+      const counted = await dbSelectRaw(env, "ct_round_trips", countParams, { Prefer: "count=exact" });
+      const first = await dbSelectRaw(env, "ct_v_rt_pnl", page(null));
+      const total = dbExactCount(counted.contentRange, "ct_round_trips");
+      const maxId = total > 0 ? Number(counted.rows[0] && counted.rows[0].id) : -Infinity;
+      if (Number.isNaN(maxId)) throw new Error(`ct_round_trips: count ${total} without its highest id`);
+      const rows = first.rows.filter((r) => r.id <= maxId);
+      let got = first.rows.length, last = got ? first.rows[got - 1].id : null, pages = 1;
+      while (got > 0 && !(got < PNL_PAGE && rows.length >= total) && pages < PNL_MAX_PAGES) {
+        const { rows: next } = await dbSelectRaw(env, "ct_v_rt_pnl", page(last));
+        rows.push(...next.filter((r) => r.id <= maxId));
+        got = next.length; last = got ? next[got - 1].id : last; pages++;
+      }
+      const truncated = rows.length < total;
+      if (truncated) console.error(`[costs/pnl] read ${rows.length} of ${total} RTs in ${pages} page(s)`);
+      return jsonOk({ records: rows, truncated, total }, origin, env);
     }
     // ---- GET /costs/pnl-paper?rt=<id> | ?from=<date>&to=<date>  (P&L PAPERS — OWNER ONLY) ----
     // The two approved P&L prints (owner 3/11/2026, Figma 2542:7735 one trip, 2537:7735 a week;
@@ -7202,10 +7249,7 @@ async function handlePallets(request, url, origin, env) {
         page.set("limit", String(asked));
         if (last) page.append("or", `(movement_date.lt.${last.movement_date},and(movement_date.eq.${last.movement_date},id.lt.${last.id}))`);
         const { rows: got, contentRange } = await dbSelectRaw(env, "pl_movements", page, last ? undefined : { Prefer: "count=exact" });
-        if (!last) {
-          total = Number(String(contentRange || "").split("/")[1]);
-          if (!Number.isSafeInteger(total)) throw new Error(`pl_movements: no exact count in «${contentRange}»`);
-        }
+        if (!last) total = dbExactCount(contentRange, "pl_movements");
         rows.push(...got);
         // the end is a short page AND the count reached; a short page alone may be db-max-rows, the count alone may
         // include a row written below the window while the pages were read

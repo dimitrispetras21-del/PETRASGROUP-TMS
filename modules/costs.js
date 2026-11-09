@@ -327,7 +327,7 @@ async function ctReload() {
   // Reset ΟΛΩΝ των σημαιών αποτυχίας ανά φόρτωση — μια παλιά αποτυχία δεν
   // πρέπει να στοιχειώνει την επόμενη επιτυχία (εύρημα review 24/8).
   _ct.palletGateFailed = false; _ct.linesFailed = false;
-  _ct.linesCapped = false; _ct.rtsCapped = false;
+  _ct.linesCapped = false; _ct.rtsCapped = false; _ct.pnlCut = null;
   _ct.loadFailed = false; _ct.loadError = '';
   try {
     // Φ4: pallet-gate failure must NOT take down the whole PnL page — a
@@ -349,6 +349,9 @@ async function ctReload() {
       ctFetch('/costs/lines?limit=' + CT_LINES_PAGE).catch(e => { console.warn('[costs] lines failed', e.message); _ct.linesFailed = true; return { records: [] }; })
     ]);
     _ct.pnl = pnl.records || [];
+    _ct.pnlCut = ctPnlCut(pnl);
+    // An empty list the count says is not empty is a failed read, never the «waiting for the first RT» onboarding.
+    if (!_ct.pnl.length && _ct.pnlCut) throw new Error(`το P&L ήρθε κενό ενώ υπάρχουν ${_ct.pnlCut.total} δρομολόγια`);
     _ct.splitMissing = _ct.pnl.some(t => !ctHasSplit(t));
     _ct.rts = {}; (rts.records || []).forEach(r => { _ct.rts[r.id] = r; });
     if (!lookups.cached) _ct.lookups = lookups;
@@ -357,7 +360,9 @@ async function ctReload() {
     // Ανίχνευση σιωπηλού κοψίματος του Worker (review 24/8): 300 γραμμές /
     // 200 rts είναι τα server-side όρια — αν τα πιάσαμε, παλαιότερα RT θα
     // εμφανίζονταν ψευδώς «χωρίς κόστη»/«χωρίς σκέλη». Λέγεται φωναχτά.
-    _ct.rtsCapped = (rts.records || []).length >= 200;
+    // The live /costs/rt reads up to 999 and says «truncated» (code review 9/11: «>= 200» showed «only the 200 newest»
+    // on every load past 200 RTs, and missed a real cut); the 200 test stays only for a Worker that does not say it.
+    _ct.rtsCapped = rts.truncated === undefined ? (rts.records || []).length >= 200 : rts.truncated === true;
     // Feature-detected, not assumed: the paging Worker deploys only after
     // 057+060, and a rollback brings the old one back — the page must read
     // correctly from either, whichever is live at the moment it loads.
@@ -390,6 +395,24 @@ async function ctReload() {
     const rc = document.getElementById('ctRecon'); if (rc) rc.innerHTML = '';
     const tb = document.getElementById('ctToolbar2'); if (tb) tb.style.display = 'none';
   }
+}
+// The P&L reads every RT (owner 8/11: no cap, «θέλω να έχω πρόσβαση σε όλα»): the Worker pages the view to the exact
+// count and answers truncated + total. «truncated» is a failed read, not a limit: the RTs it missed are missing from
+// the totals too, so the note sits on the banner. The old Worker stops at 300 RTs and does not say it, so 300 without
+// «truncated» is read as cut: drop that branch once every answer carries «truncated» (and no rollback is near).
+function ctPnlCut(res) {
+  const n = (res.records || []).length;
+  if (res.truncated === undefined) return n >= 300 ? { n, total: null } : null;
+  return res.truncated ? { n, total: res.total } : null;
+}
+function ctPnlCutNote(cut) {
+  if (!cut) return '';
+  // The old Worker's cut (no total) is a fixed limit a reload cannot clear: say that, not «try again».
+  const txt = cut.total != null
+    ? `Η ανάγνωση δεν ολοκληρώθηκε: φορτώθηκαν ${cut.n} από ${cut.total} δρομολόγια. Τα υπόλοιπα λείπουν από τη λίστα ΚΑΙ από τα σύνολα (έσοδα, κόστη, καθαρό). Δοκίμασε «Ανανέωση».`
+    // «ίσως»: 300 is also what exactly 300 RTs look like, the old Worker cannot tell them apart
+    : `Φορτώθηκαν μόνο ${cut.n} δρομολόγια: ο Worker που τρέχει κόβει στα 300, οπότε ίσως λείπουν δρομολόγια από τη λίστα ΚΑΙ από τα σύνολα (έσοδα, κόστη, καθαρό).`;
+  return `<div class="ct-note ct-nwarn" id="ctPnlCut">${icon('warning', 13)} ${txt}</div>`;
 }
 function ctErrorCard() {
   return `<div class="ct-empty ct-fail">Τα /costs/* δεν απάντησαν: <b>${ctEsc(_ct.loadError)}</b><br>
@@ -642,7 +665,7 @@ function ctRenderSummary() {
     netVal = `<b class="nv ct-mono${p < 0 ? ' neg' : p > 0 ? ' pos' : ''}">${ctEurP(p)}</b>`;
     foot = `Περιθώριο ${rev ? (p / rev * 100).toFixed(1) + '%' : '—'} με ΦΠΑ · ${rev ? ((rev - net) / rev * 100).toFixed(1) + '%' : '—'} χωρίς. Τα δρομολόγια ταξινομούνται κατά έσοδα φθίνοντα.`;
   }
-  lede.innerHTML = `<div class="ct-stake">
+  lede.innerHTML = ctPnlCutNote(_ct.pnlCut) + `<div class="ct-stake">
     <div class="ct-stop"><span class="t">${title}</span>${stake}</div>
     <div class="ct-eq">
       <span class="ct-eqi"><span class="l">Έσοδα</span><b class="nv ct-mono">${ctEur(rev)}</b></span>
@@ -730,7 +753,7 @@ function ctRenderList() {
   const warnNotes =
     (_ct.linesFailed ? `<div class="ct-note ct-nwarn">${w} Οι γραμμές κόστους ΔΕΝ φόρτωσαν — η πληρότητα κοστών είναι <b>άγνωστη</b>, όχι μηδενική. Ό,τι δείχνει «κόστη;» παρακάτω μπορεί να έχει κανονικά κόστη. <button class="ct-btn" style="height:24px;padding:0 8px" onclick="ctReload()">Ανανέωση</button></div>` : '') +
     (_ct.linesCapped ? `<div class="ct-note ct-nwarn">${w} Οι γραμμές κόστους έφτασαν το όριο των 300 του Worker — κάποια δρομολόγια ίσως δείχνουν ψευδώς «χωρίς κόστη». Χρειάζεται σελιδοποίηση στο /costs (ουρά Worker).</div>` : '') +
-    (_ct.rtsCapped ? `<div class="ct-note ct-nwarn">${w} Φορτώθηκαν μόνο τα 200 νεότερα δρομολόγια (όριο Worker) — παλαιότερες κάρτες ίσως εμφανίζονται χωρίς σκέλη.</div>` : '');
+    (_ct.rtsCapped ? `<div class="ct-note ct-nwarn">${w} Φορτώθηκαν μόνο τα ${Object.keys(_ct.rts).length} νεότερα δρομολόγια (όριο Worker) — παλαιότερες κάρτες ίσως εμφανίζονται χωρίς σκέλη.</div>` : '');
   const notice = warnNotes + ctPalletGateNotice(V);
   // Η ένδειξη ταξινόμησης ισχύει μόνο για τη λίστα καρτών — οι ομαδοποιήσεις
   // ταξινομούνται κατά margin και η ένδειξη «Έσοδα ↓» εκεί θα ήταν ψέμα.
