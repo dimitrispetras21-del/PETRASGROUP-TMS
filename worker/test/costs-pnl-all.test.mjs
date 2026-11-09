@@ -234,3 +234,22 @@ test('owner only, as before (COSTS_PERMS pnl)', async () => {
   }
   assert.equal(calls.length, 0, 'no read for a refused role');
 });
+
+test('the count is read BEFORE the first page, never at once (code review xhigh 9/11: a false «truncated»)', async () => {
+  // Read at once, an RT created between the page and the count is in the count and under maxId but not in the rows.
+  // Count first, it is above maxId and waits for the next load. The fake answers only once the count has resolved.
+  rts = mk(248);
+  const inner = globalThis.fetch;
+  let countResolved = false;
+  globalThis.fetch = async (url, init) => {
+    const name = new URL(url).pathname.replace(/^\/rest\/v1\//, '');
+    if (name === 'ct_v_rt_pnl') assert.equal(countResolved, true, 'a page read started before the count came back');
+    const res = await inner(url, init);
+    if (name === 'ct_round_trips') countResolved = true;
+    return res;
+  };
+  const r = await get();
+  assert.equal(r.status, 200);
+  assert.equal(calls[0].name, 'ct_round_trips');
+  assert.equal(r.json.truncated, false);
+});

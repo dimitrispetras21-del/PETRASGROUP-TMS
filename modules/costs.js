@@ -360,7 +360,9 @@ async function ctReload() {
     // Ανίχνευση σιωπηλού κοψίματος του Worker (review 24/8): 300 γραμμές /
     // 200 rts είναι τα server-side όρια — αν τα πιάσαμε, παλαιότερα RT θα
     // εμφανίζονταν ψευδώς «χωρίς κόστη»/«χωρίς σκέλη». Λέγεται φωναχτά.
-    _ct.rtsCapped = (rts.records || []).length >= 200;
+    // The live /costs/rt reads up to 999 and says «truncated» (code review 9/11: «>= 200» showed «only the 200 newest»
+    // on every load past 200 RTs, and missed a real cut); the 200 test stays only for a Worker that does not say it.
+    _ct.rtsCapped = rts.truncated === undefined ? (rts.records || []).length >= 200 : rts.truncated === true;
     // Feature-detected, not assumed: the paging Worker deploys only after
     // 057+060, and a rollback brings the old one back — the page must read
     // correctly from either, whichever is live at the moment it loads.
@@ -751,7 +753,7 @@ function ctRenderList() {
   const warnNotes =
     (_ct.linesFailed ? `<div class="ct-note ct-nwarn">${w} Οι γραμμές κόστους ΔΕΝ φόρτωσαν — η πληρότητα κοστών είναι <b>άγνωστη</b>, όχι μηδενική. Ό,τι δείχνει «κόστη;» παρακάτω μπορεί να έχει κανονικά κόστη. <button class="ct-btn" style="height:24px;padding:0 8px" onclick="ctReload()">Ανανέωση</button></div>` : '') +
     (_ct.linesCapped ? `<div class="ct-note ct-nwarn">${w} Οι γραμμές κόστους έφτασαν το όριο των 300 του Worker — κάποια δρομολόγια ίσως δείχνουν ψευδώς «χωρίς κόστη». Χρειάζεται σελιδοποίηση στο /costs (ουρά Worker).</div>` : '') +
-    (_ct.rtsCapped ? `<div class="ct-note ct-nwarn">${w} Φορτώθηκαν μόνο τα 200 νεότερα δρομολόγια (όριο Worker) — παλαιότερες κάρτες ίσως εμφανίζονται χωρίς σκέλη.</div>` : '');
+    (_ct.rtsCapped ? `<div class="ct-note ct-nwarn">${w} Φορτώθηκαν μόνο τα ${Object.keys(_ct.rts).length} νεότερα δρομολόγια (όριο Worker) — παλαιότερες κάρτες ίσως εμφανίζονται χωρίς σκέλη.</div>` : '');
   const notice = warnNotes + ctPalletGateNotice(V);
   // Η ένδειξη ταξινόμησης ισχύει μόνο για τη λίστα καρτών — οι ομαδοποιήσεις
   // ταξινομούνται κατά margin και η ένδειξη «Έσοδα ↓» εκεί θα ήταν ψέμα.

@@ -5307,10 +5307,11 @@ async function handleCosts(request, url, origin, env) {
         ...filters, ...(last == null ? [] : [["id", `lt.${last}`]])]);
       const countParams = new URLSearchParams([["select", "id"], ["status", "neq.cancelled"], ["order", "id.desc"],
         ["limit", "1"], ...filters]);
-      const [first, counted] = await Promise.all([
-        dbSelectRaw(env, "ct_v_rt_pnl", page(null)),
-        dbSelectRaw(env, "ct_round_trips", countParams, { Prefer: "count=exact" })
-      ]);
+      // The count first, then the pages - never both at once (code review xhigh 9/11): with the page read before the
+      // count, an RT created between them is in the count and under maxId but not in the rows, a false «truncated».
+      // Count first, that RT's id is above maxId and waits for the next load.
+      const counted = await dbSelectRaw(env, "ct_round_trips", countParams, { Prefer: "count=exact" });
+      const first = await dbSelectRaw(env, "ct_v_rt_pnl", page(null));
       const total = dbExactCount(counted.contentRange, "ct_round_trips");
       const maxId = total > 0 ? Number(counted.rows[0] && counted.rows[0].id) : -Infinity;
       if (Number.isNaN(maxId)) throw new Error(`ct_round_trips: count ${total} without its highest id`);

@@ -68,3 +68,9 @@ test('really empty (total 0): no error, the onboarding stays possible', async ()
   assert.strictEqual(ctx._ct.loadFailed, false);
   assert.strictEqual(ctx._ct.pnlCut, null);
 });
+
+test('/costs/rt cut: «truncated» from the Worker decides, the 200 test only for a Worker that does not say it (review 9/11)', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'costs.js'), 'utf8');
+  assert.match(src, /_ct\.rtsCapped = rts\.truncated === undefined \? \(rts\.records \|\| \[\]\)\.length >= 200 : rts\.truncated === true;/);
+  assert.doesNotMatch(src, /Φορτώθηκαν μόνο τα 200 νεότερα/, 'the banner says how many were loaded, not a fixed 200');
+});
