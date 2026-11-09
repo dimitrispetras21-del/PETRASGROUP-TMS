@@ -4034,13 +4034,15 @@ async function _scanOpen(matched, data) {
   const ds = matched.delStops || [];
   // The new form's hours (111, owner 8/11): scan v2 reads each stop's «time» («08:00», «08:00-12:00», «0700-1100»).
   // Two times = from–to; one = an appointment, from and to the same («08:00» → 08:00–08:00, owner 9/11: a lone time on
-  // an order is a slot, not «from»), or «to» alone when the word says a deadline («bis», «until», «έως», «latest», «by»);
+  // an order is a slot), «to» alone when the word says a deadline («bis», «until», «έως», «latest», «by»), «from» alone
+  // when the word says so («ab», «from», «από», «nach»: the text is explicit, never an appointment);
   // anything else stays out (the slot is still in the notes the scan writes). The field holds only the time.
   const hrs = s => {
     const txt = String((s && s.time) || '');
     const m = (txt.match(/\b\d{1,2}[:.]?\d{2}\b/g) || []).map(_oiHm).filter(v => _OI_HM_RE.test(v));
     const until = m.length === 1 && /\b(bis|until|till|by|latest|sp[aä]testens|before)\b|έως|μέχρι|<|≤/i.test(txt);
-    return { [F.STOP_TIME_FROM]: until ? null : (m[0] || null), [F.STOP_TIME_TO]: until ? m[0] : (m[1] || m[0] || null) };
+    const from = m.length === 1 && !until && /\b(ab|from|after|nach|since|frühestens)\b|από|>|≥/i.test(txt);
+    return { [F.STOP_TIME_FROM]: until ? null : (m[0] || null), [F.STOP_TIME_TO]: until ? m[0] : from ? null : (m[1] || m[0] || null) };
   };
   const loadStops = ls.map((s, i) => ({
     fields: Object.assign({
