@@ -84,6 +84,7 @@ const f089 = () => readOne(['drafts/089_plan_partner_rate_anodos.sql', '089_plan
   'copy it from the SQL branch: git checkout feat/089-partner-rate-anodos -- worker/migrations/drafts/089_plan_partner_rate_anodos.sql');
 // 098 / 099 / 102 (owner 2/11): their codes, CHECKs and RPCs travel with this Worker change
 const f095 = () => readOne(['095_plan_small_relaxed.sql', 'drafts/095_plan_small_relaxed.sql'], 'it is on main since #217');
+const f110 = () => readOne(['110_plan_rt_expect_change.sql', 'drafts/110_plan_rt_expect_change.sql'], 'it is on main since #291');
 const f098 = () => readOne(['drafts/098_plan_transfer_point.sql', '098_plan_transfer_point.sql'],
   'copy it from the SQL branch: git checkout origin/feat/transfer-098-point -- worker/migrations/drafts/098_plan_transfer_point.sql');
 const f099 = () => readOne(['drafts/099_plan_transfer.sql', '099_plan_transfer.sql'],
@@ -280,7 +281,9 @@ test('the parsed codes are exactly the plans\' 26 + 31 + 15 + 1 — none missing
 test('every plan: code has its own Greek text, the DB detail apart (owner 8/11: never in the text); every Worker code key is raised by 071/072/072b/073/074/085/095/098/099/102', () => {
   // 095 plan_seg_problem: a later segment without its point (it had no text until 8/11 and fell to raw English)
   assert.match(f095().sql, /return 'seg_place_text:'/, '095 raises seg_place_text');
-  const all = [...EARLIER(), 'seg_place_text', ...CODES_098, ...CODES_099, ...CODES_102];
+  // 110 plan_rt_expect_change: another person's change since the board was read (its text came with this Worker)
+  assert.match(f110().sql, /plan_h_raise\('rt_changed'/, '110 raises rt_changed');
+  const all = [...EARLIER(), 'seg_place_text', 'rt_changed', ...CODES_098, ...CODES_099, ...CODES_102];
   for (const code of all) {
     assert.ok(Object.prototype.hasOwnProperty.call(W.PLAN_RULE_TEXT, code), `«${code}» has no Greek text in PLAN_RULE_TEXT`);
     const r = W.stockRuleError({ pg: { code: '23514', hint: 'plan:' + code, message: `plan rule broken: ${code}:RT-1280` } });
@@ -432,9 +435,9 @@ test('plan: hint is the marker whatever SQLSTATE; unknown code still loud; no de
   assert.ok(long.detail.length <= 120, 'detail capped at 120 chars');
   assert.match(W.stockRuleError({ pg: { code: '23514', hint: 'plan:toString', message: 'x' } }).message, /^Η βάση αρνήθηκε την αλλαγή με κανόνα χωρίς κείμενο \(toString\)/, 'prototype key is not a text');
   assert.doesNotMatch(unknown.message, /plan rule broken|:7/, 'the raw English message and an unknown code\'s detail never reach the text');
-  // 110 rt_changed has no text yet: «rt_changed:<role> <time>» stays readable for wn5_actions.js _orderErr
+  // 110 rt_changed: Greek, no code; «<role> <time>» apart for wn5_actions.js _orderErr
   const ch = W.stockRuleError({ pg: { code: 'P0001', hint: 'plan:rt_changed', message: 'plan rule broken: rt_changed:owner 2026-11-09T10:42:00+00:00' } });
-  assert.match(ch.message, /rt_changed:\s*([a-z]*)\s+(\d{4}-\d{2}-\d{2}T[0-9:.]+(?:Z|[+-]\d{2}:?\d{2}))/, 'the screen regex of _orderErr finds role and time');
+  assert.deepEqual(ch, { type: 'PLAN_RULE', code: 'rt_changed', message: W.PLAN_RULE_TEXT.rt_changed, detail: 'owner 2026-11-09T10:42:00+00:00' });
 });
 // ─────────────── Γ3: the Worker's RPC calls and money keys ↔ 072 (review 23/10) ───────────────
 // PostgREST finds a function by its name AND its argument names: a rename on one side would pass every stub test

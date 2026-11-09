@@ -956,7 +956,11 @@ async function rt_expect({ browser, origin, ok, scn, shots }) {
   b.cycles.find((c) => c.rt_id === 101).last_change = { at: AT, role: 'dispatcher', table: 'rt_stops', action: 'update', keys: ['planned_from'] };
   let n = 0;
   const { page, S } = await K.openApp(browser, origin, { board: b, plan: { 'PATCH /plan/rt/101': async () => {
-    n += 1; return n === 1 ? OK('plan_rt_update') : [409, { error: { type: 'PLAN_RULE', code: 'rt_changed', message: 'rig sentinel plan rule broken: rt_changed:accountant 2026-10-12T09:40:00.5+00:00' } }]; } } });
+    // WN5_RIG_REFUSAL=detail (default: the Worker of 8/11, «<role> <time>» in error.detail, Greek text) | bracket (an
+    // older Worker, e.g. after a rollback: «rt_changed:<role> <time>» inside its message) - the same words on screen
+    n += 1; return n === 1 ? OK('plan_rt_update') : [409, { error: (process.env.WN5_RIG_REFUSAL || 'detail') === 'bracket'
+      ? { type: 'PLAN_RULE', code: 'rt_changed', message: 'rig sentinel plan rule broken: rt_changed:accountant 2026-10-12T09:40:00.5+00:00' }
+      : { type: 'PLAN_RULE', code: 'rt_changed', message: 'rig sentinel rt_changed', detail: 'accountant 2026-10-12T09:40:00.5+00:00' } }]; } } });
   // flag off (the rig kit's default; 110 ran 8/11 and the repo has it on): no key
   await page.evaluate(() => { FEATURES.WN_EXPECT = false; });
   await page.evaluate(() => WN5Act.assign(null, { entry: 'menu', rtId: 101 }));

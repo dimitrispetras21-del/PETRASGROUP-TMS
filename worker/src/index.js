@@ -3459,6 +3459,10 @@ const PLAN_RULE_TEXT = {
   // 095 plan_seg_problem answers a later vehicle segment without its point as seg_place_text: without a key here
   // the refusal fell to the unknown-code line in raw English (inventory 8/11). The CHECK table reads the same text.
   seg_place_text: "Γράψε το σημείο της αλλαγής (π.χ. «Λαμία»)",
+  // 110 (expect_change): another person changed the trip since the board was read. Its detail «<role> <time>» goes
+  // apart (error.detail); wn5_actions.js _orderErr says who and when from it (110's note: the text comes with the next
+  // Worker of the chain - this one).
+  rt_changed: "Το δρομολόγιο άλλαξε στο μεταξύ από άλλον — κλείσε, ανανέωσε και ξανάνοιξε· δεν γράφτηκε τίποτα",
   // 071 — deferred COMMIT rules (plan_chk) and the two direct raises
   pieces_alive: "Η αποστολή σβήστηκε αλλά έχει ακόμη ζωντανά κομμάτια — ανανέωσε τη σελίδα",
   piece_dead: "Το φορτίο ή η αποστολή του έχει σβηστεί — ανανέωσε τη σελίδα",
@@ -3705,14 +3709,11 @@ function stockRuleError(e) {
     // is never in the text a person reads. It travels apart as `detail` for the machines that read it (the drafts
     // screen names a draft from it, the log keeps it); the /plan/* handler turns an RT code into the trip in words
     // (planDetailWords). An unknown code keeps its name - a rule, not a record - and never the raw English message.
-    // One screen still reads its detail out of the TEXT: the strip says who and when from 110's «rt_changed:<role>
-    // <time>» (wn5_actions.js _orderErr rewrites that line whole; rt_changed has no text yet, so it is an unknown code
-    // here) - kept until _orderErr reads error.detail. Any other unknown code keeps only its name: its detail may be
-    // an RT code. piece_in_draft's «(piece:draft)» left the text: the drafts screen reads error.detail (core/plan-api.js
-    // keeps it, wn5_compose.js _words; the bracket of an older Worker is still read there, for a rollback).
+    // The screens that name a record from a detail read error.detail (core/plan-api.js keeps it): the drafts screen
+    // for piece_in_draft (wn5_compose.js _words), the strip for rt_changed's «<role> <time>» (wn5_actions.js
+    // _orderErr); both still read an older Worker's text, for a rollback. An unknown code keeps only its name.
     if (!Object.prototype.hasOwnProperty.call(PLAN_RULE_TEXT, pc)) {
-      const keep = pc === "rt_changed" && detail ? `:${detail}` : "";
-      return { type: "PLAN_RULE", code: pc, message: `Η βάση αρνήθηκε την αλλαγή με κανόνα χωρίς κείμενο (${pc || "χωρίς κωδικό"}${keep}) — τίποτα δεν γράφτηκε· ενημέρωσε τον Δημήτρη`, detail };
+      return { type: "PLAN_RULE", code: pc, message: `Η βάση αρνήθηκε την αλλαγή με κανόνα χωρίς κείμενο (${pc || "χωρίς κωδικό"}) — τίποτα δεν γράφτηκε· ενημέρωσε τον Δημήτρη`, detail };
     }
     return { type: "PLAN_RULE", code: pc, message: PLAN_RULE_TEXT[pc], detail };
   }
