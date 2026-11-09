@@ -431,7 +431,7 @@ test('plan: hint is the marker whatever SQLSTATE; unknown code still loud; no de
   assert.equal(long.message, W.PLAN_RULE_TEXT.chain, 'the detail never in the text');
   assert.ok(long.detail.length <= 120, 'detail capped at 120 chars');
   assert.match(W.stockRuleError({ pg: { code: '23514', hint: 'plan:toString', message: 'x' } }).message, /^Η βάση αρνήθηκε την αλλαγή με κανόνα χωρίς κείμενο \(toString\)/, 'prototype key is not a text');
-  assert.doesNotMatch(unknown.message, /plan rule broken/, 'the raw English message never reaches the text');
+  assert.doesNotMatch(unknown.message, /plan rule broken|:7/, 'the raw English message and an unknown code\'s detail never reach the text');
   // 110 rt_changed has no text yet: «rt_changed:<role> <time>» stays readable for wn5_actions.js _orderErr
   const ch = W.stockRuleError({ pg: { code: 'P0001', hint: 'plan:rt_changed', message: 'plan rule broken: rt_changed:owner 2026-11-09T10:42:00+00:00' } });
   assert.match(ch.message, /rt_changed:\s*([a-z]*)\s+(\d{4}-\d{2}-\d{2}T[0-9:.]+(?:Z|[+-]\d{2}:?\d{2}))/, 'the screen regex of _orderErr finds role and time');

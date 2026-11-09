@@ -3708,10 +3708,13 @@ function stockRuleError(e) {
     // Two screens still read the detail out of the TEXT (core/plan-api.js does not keep error.detail yet): the drafts
     // screen names the other draft from piece_in_draft's «(piece:draft)» (wn5_compose.js _words), and the strip says
     // who and when from 110's «rt_changed:<role> <time>» (wn5_actions.js _orderErr; rt_changed has no text yet, so it
-    // is an unknown code here). Those keep the machine part until the screen reads error.detail (review xhigh 9/11);
-    // neither is a record code shown as such: the screen rewrites both lines.
+    // is an unknown code here). Those two keep the machine part until the screen reads error.detail (review xhigh
+    // 9/11): _orderErr rewrites the rt_changed line whole; the drafts screen only PREFIXES the draft's name, so
+    // «(piece:draft)» is still seen there - a known leftover, closed by that screen change. Any other unknown code
+    // keeps only its name: its detail may be an RT code.
     if (!Object.prototype.hasOwnProperty.call(PLAN_RULE_TEXT, pc)) {
-      return { type: "PLAN_RULE", code: pc, message: `Η βάση αρνήθηκε την αλλαγή με κανόνα χωρίς κείμενο (${pc || "χωρίς κωδικό"}${detail ? `:${detail}` : ""}) — τίποτα δεν γράφτηκε· ενημέρωσε τον Δημήτρη`, detail };
+      const keep = pc === "rt_changed" && detail ? `:${detail}` : "";
+      return { type: "PLAN_RULE", code: pc, message: `Η βάση αρνήθηκε την αλλαγή με κανόνα χωρίς κείμενο (${pc || "χωρίς κωδικό"}${keep}) — τίποτα δεν γράφτηκε· ενημέρωσε τον Δημήτρη`, detail };
     }
     if (pc === "piece_in_draft" && /^\d+:(?:\d+|race)/.test(detail)) return { type: "PLAN_RULE", code: pc, message: `${PLAN_RULE_TEXT[pc]} (${detail})`, detail };
     return { type: "PLAN_RULE", code: pc, message: PLAN_RULE_TEXT[pc], detail };
