@@ -1075,20 +1075,32 @@ function _anodHTML(r, m, ok) {
   // 2d: the day and date when the end is the day's end (the default «23:59»: «Δευ 2/11»), «ως Τετ 12:00» only for an
   // hour someone set
   const endT = r.end ? L().athensTime(r.end.by) : '';
-  const endBy = r.end ? (endT && endT !== '23:59' ? `ως ${_dow(L().athensDay(r.end.by))} ${endT}` : _dl(L().athensDay(r.end.by))) : '';
-  const end = r.end ? `<span class="wn5-end${_dc(ok && r.end.dim)}"${_segAttr(r.end.segLabel)} title="${_esc(`Βέροια · ${endBy}`)}"><span class="wi4-l1">Βέροια</span><span class="wi4-l2">${_esc(endBy)}</span>${_vsDayMark(r.end.stopId)}</span>` : '';
+  const endDay = r.end ? L().athensDay(r.end.by) : '';
+  const endHour = endT && endT !== '23:59';
+  const endBy = r.end ? (endHour ? `ως ${_dow(endDay)} ${endT}` : _dl(endDay)) : '';
+  // the delivery-day box (dd, below) names the day: under «Βέροια» only its hour then, «ως 06:00», or nothing — the
+  // same day twice in one cell read as two facts. Another day than the box keeps its day (the title has it all).
+  const endL2 = r.end && s.toDay === endDay ? (endHour ? `ως ${endT}` : '') : endBy;
+  const end = r.end ? `<span class="wn5-end${_dc(ok && r.end.dim)}"${_segAttr(r.end.segLabel)} title="${_esc(`Βέροια · ${endBy}`)}"><span class="wi4-l1">Βέροια</span>${endL2 ? `<span class="wi4-l2">${_esc(endL2)}</span>` : ''}${_vsDayMark(r.end.stopId)}</span>` : '';
   // ΠΡΟΣ that delivers somewhere AND ends at Veroia (1e, coordinator 1/11): the end stands after the stops as the last
   // stop in its own look, on the same line (CSS: a flex row, the stop names one line with «…»), never under them.
   // a waiting load of the ΑΝΟΔΟΣ only: its late mark is this day chip (the ΚΑΘΟΔΟΣ chip carries it otherwise)
   const lateA = r.kind === 'unassigned' && r.late && !r.kath;
-  // its delivery day under the loading chip (owner 8/11, «όπως το διεθνών, … η ημέρα παράδοσης των ΑΝΟΔΩΝ»), as the
-  // ΚΑΘΟΔΟΣ «→» — only when it is another day
-  const toDay = s.toDay && s.toDay !== s.day ? `<span class="wn5-dc2${hd}">→ ${_esc(_dl(s.toDay))}</span>` : '';
-  return `<div class="wn5-ad">${_prtHTML(r, 'ANODOS')}${lateA ? `<span class="wi4-dc red" title="αργό">${_esc(_dl(s.day))}</span>` : _chipHTML(r, 'ANODOS', `wi4-dc ${_chipCls(s.day, m.today)}${hd}`, _dl(s.day))}${toDay}</div>`
+  // Its delivery day is a box of its own, the loading chip's twin, after the arrow and before the deliveries (owner 9/11,
+  // «πλαίσιο ημέρα παράδοσης στο ΑΝΟΔΟΣ»; 8/11 «όπως το διεθνών»: the Weekly International's import chip, wi4-l-dd).
+  // Always shown, the same day too, as there. Inside the ΠΡΟΣ cell, not a 13th grid column: the header, rows, rota
+  // lines and spans share one 12-column grid. A side that only ends at Veroia has it too (WN5L toDay = the end's day):
+  // the arrival at Veroia is that ΑΝΟΔΟΣ's delivery, as the international VS import's box is its Veroia day.
+  // It fades with its deliveries (or the end), not with the loading (a loaded ΑΝΟΔΟΣ still has its delivery to do).
+  const ddDim = s.to.length ? s.to.every((p) => p.dim && !p.late) : !!(r.end && r.end.dim);
+  const dd = s.toDay
+    ? `<span class="wn5-add"><span class="wi4-dc ${_chipCls(s.toDay, m.today)}${_dc(ok && ddDim)}" title="Ημέρα παράδοσης">${_esc(_dl(s.toDay))}</span></span>`
+    : '';
+  return `<div class="wn5-ad">${_prtHTML(r, 'ANODOS')}${lateA ? `<span class="wi4-dc red" title="αργό">${_esc(_dl(s.day))}</span>` : _chipHTML(r, 'ANODOS', `wi4-dc ${_chipCls(s.day, m.today)}${hd}`, _dl(s.day))}</div>`
     // ΑΝΟΔΟΣ: one point whole, the rest «+N» (owner 1/11): two points shared 55% / 45% of the side and both were cut
     // («EFTHIMIOS PAN. – KORI…», «13π · +…»); the «+N» names them all in its title, a late one never folded first
     + `<div class="wn5-afl"${_legAttr(r, 'ANODOS')}>${_ptsHTML(s.from, ok, null, false, 1, s.day)}</div>`
-    + `<div class="wn5-ato${_hx(r, s, r.end)}"${_legAttr(r, 'ANODOS')}>${_hxHTML(r, s, r.end)}${_ptsHTML(s.to, ok, null, false, 1, s.toDay || s.day)}${end}</div>`
+    + `<div class="wn5-ato${_hx(r, s, r.end)}"${_legAttr(r, 'ANODOS')}>${_hxHTML(r, s, r.end)}${dd}${_ptsHTML(s.to, ok, null, false, 1, s.toDay || s.day)}${end}</div>`
     + `<div class="wn5-apal"${_legAttr(r, 'ANODOS')}>${_palHTML(s)}${_plusHTML(r, 'ANODOS')}</div>`;
 }
 // ΦΟΡΤΩΣΗ of ΚΑΘΟΔΟΣ: «Βέροια» and its window stay together (owner 25/10); a loading the cycle makes BEFORE Veroia
