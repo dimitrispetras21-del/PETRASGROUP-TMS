@@ -307,8 +307,8 @@ test('098 widens leg_place / split_not_at_hub / not_at_hub: their texts and the 
   // piece_in_draft keeps its detail (the piece, the draft, :same / :race) for the screen to word the draft - apart, as `detail`
   for (const detail of ['41:7', '41:7:same', '41:race']) {
     const r = W.stockRuleError({ pg: { code: 'P0001', hint: 'plan:piece_in_draft', message: `plan rule broken: piece_in_draft:${detail}` } });
-    // the drafts screen still reads «(piece:draft)» from the text (wn5_compose.js _words): kept for this code only
-    assert.deepEqual(r, { type: 'PLAN_RULE', code: 'piece_in_draft', message: `${W.PLAN_RULE_TEXT.piece_in_draft} (${detail})`, detail });
+    // the drafts screen reads the pair from error.detail (wn5_compose.js _words), never from the text
+    assert.deepEqual(r, { type: 'PLAN_RULE', code: 'piece_in_draft', message: W.PLAN_RULE_TEXT.piece_in_draft, detail });
   }
   // the one-live-draft index answers the same code as plan_h_draft_add's own catch, whichever layer refused
   assert.deepEqual(W.stockRuleError({ pg: { code: '23505', message: 'duplicate key value violates unique constraint "plan_draft_pieces_one"' } }),

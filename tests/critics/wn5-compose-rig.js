@@ -10,6 +10,9 @@
 // blocked and one refused piece_busy) · anod (Ε2 direct, a draft beyond the week, «παλιό») · two (two users:
 // draft_stale and piece_in_draft).
 // Usage: node tests/critics/wn5-compose-rig.js [off drafts anod two] [--shots <dir>]
+//   WN5_RIG_REFUSAL=detail (default: the Worker of 8/11, the DB detail apart in error.detail) | bracket (an older
+//   Worker, e.g. after a rollback: the detail in brackets at the end of the message) | none (neither): the screen names
+//   the other draft from either shape, never shows the raw pair, and with none says the rule alone (owner 8/11).
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -91,7 +94,10 @@ function json(S, d) {
   for (const k of ['draft_id', 'side', 'point_location_id', 'day', 'win_from', 'win_to', 'truck_id', 'trailer_id', 'driver_id', 'partner_id', 'version', 'created_by', 'created_at', 'updated_by', 'updated_at']) o[k] = d[k];
   return Object.assign(o, { old: d.day < TODAY, ready: ps.length > 0 && !ps.some((p) => p.blocking), pieces: ps });
 }
-const rule = (code, detail) => [422, { error: { type: 'PLAN_RULE', code, message: detail ? `${TEXT[code]} (${detail})` : TEXT[code] } }];
+const SHAPE = process.env.WN5_RIG_REFUSAL || 'detail';
+if (!['detail', 'bracket', 'none'].includes(SHAPE)) throw new Error('WN5_RIG_REFUSAL = detail | bracket | none');
+const rule = (code, detail) => [422, { error: SHAPE === 'detail' && detail ? { type: 'PLAN_RULE', code, message: TEXT[code], detail }
+  : { type: 'PLAN_RULE', code, message: SHAPE === 'bracket' && detail ? `${TEXT[code]} (${detail})` : TEXT[code] } }];
 const ok200 = (op, ids) => [200, { ok: true, op, dry_run: false, ids, warnings: [], notice_ids: [] }];
 class Refuse extends Error { constructor(code, detail) { super(code); this.r = rule(code, detail); } }
 const keys = (o, allowed) => { for (const k of Object.keys(o || {})) if (!allowed.includes(k)) throw new Refuse('bad_input', 'unknown key ' + k); };
@@ -490,8 +496,13 @@ async function two({ browser, origin, ok, scn, shots }) {
   const aw = writes(A.S).filter((x) => x.at >= t2);
   const m2 = await txt(A.page, `${card(11)} .wn5-cmp-msg`);
   const n14 = await txt(A.page, `${card(14)} .wn5-cd-n`);
-  ok(scn, `A: the add → 422 piece_in_draft; the screen names the draft in words («Είναι ήδη στο ${n14}»), with #239's text and the code`, aw.length === 1 && aw[0].status === 422
-    && (m2 || '').startsWith('Είναι ήδη στο ' + n14 + ' · ') && (m2 || '').includes(TEXT.piece_in_draft + ' (4801:14)') && /piece_in_draft$/.test(m2 || ''), { m2, w: aw.map((x) => [x.raw, x.status]) });
+  if (shots) { await A.page.evaluate(() => document.getElementById('wn5-hub').scrollIntoView({ block: 'start' })); await A.page.screenshot({ path: `${shots}/two-2-piece-in-draft-${SHAPE}.png` }); }
+  // owner 8/11: the pair «4801:14» is never on screen, whichever shape the Worker sends; with neither, the rule alone
+  ok(scn, SHAPE === 'none' ? 'A: the add → 422 piece_in_draft; no pair anywhere: the rule\'s text alone, with the code, no error'
+    : `A: the add → 422 piece_in_draft (${SHAPE}); the screen names the draft in words («Είναι ήδη στο ${n14}»), #239's text, never the pair`,
+  aw.length === 1 && aw[0].status === 422 && !(m2 || '').includes('4801:14')
+    && (SHAPE === 'none' ? (m2 || '').startsWith(TEXT.piece_in_draft) : (m2 || '').startsWith('Είναι ήδη στο ' + n14 + ' · ' + TEXT.piece_in_draft))
+    && /piece_in_draft$/.test(m2 || ''), { m2, w: aw.map((x) => [x.raw, x.status]) });
   ok(scn, 'no page errors (A, B)', !A.S.pageErrors.length && !B.S.pageErrors.length, [A.S.pageErrors, B.S.pageErrors]);
   await A.page.context().close();
   await B.page.context().close();

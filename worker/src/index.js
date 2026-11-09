@@ -3705,18 +3705,15 @@ function stockRuleError(e) {
     // is never in the text a person reads. It travels apart as `detail` for the machines that read it (the drafts
     // screen names a draft from it, the log keeps it); the /plan/* handler turns an RT code into the trip in words
     // (planDetailWords). An unknown code keeps its name - a rule, not a record - and never the raw English message.
-    // Two screens still read the detail out of the TEXT (core/plan-api.js does not keep error.detail yet): the drafts
-    // screen names the other draft from piece_in_draft's «(piece:draft)» (wn5_compose.js _words), and the strip says
-    // who and when from 110's «rt_changed:<role> <time>» (wn5_actions.js _orderErr; rt_changed has no text yet, so it
-    // is an unknown code here). Those two keep the machine part until the screen reads error.detail (review xhigh
-    // 9/11): _orderErr rewrites the rt_changed line whole; the drafts screen only PREFIXES the draft's name, so
-    // «(piece:draft)» is still seen there - a known leftover, closed by that screen change. Any other unknown code
-    // keeps only its name: its detail may be an RT code.
+    // One screen still reads its detail out of the TEXT: the strip says who and when from 110's «rt_changed:<role>
+    // <time>» (wn5_actions.js _orderErr rewrites that line whole; rt_changed has no text yet, so it is an unknown code
+    // here) - kept until _orderErr reads error.detail. Any other unknown code keeps only its name: its detail may be
+    // an RT code. piece_in_draft's «(piece:draft)» left the text: the drafts screen reads error.detail (core/plan-api.js
+    // keeps it, wn5_compose.js _words; the bracket of an older Worker is still read there, for a rollback).
     if (!Object.prototype.hasOwnProperty.call(PLAN_RULE_TEXT, pc)) {
       const keep = pc === "rt_changed" && detail ? `:${detail}` : "";
       return { type: "PLAN_RULE", code: pc, message: `Η βάση αρνήθηκε την αλλαγή με κανόνα χωρίς κείμενο (${pc || "χωρίς κωδικό"}${keep}) — τίποτα δεν γράφτηκε· ενημέρωσε τον Δημήτρη`, detail };
     }
-    if (pc === "piece_in_draft" && /^\d+:(?:\d+|race)/.test(detail)) return { type: "PLAN_RULE", code: pc, message: `${PLAN_RULE_TEXT[pc]} (${detail})`, detail };
     return { type: "PLAN_RULE", code: pc, message: PLAN_RULE_TEXT[pc], detail };
   }
   // 111 not run yet (or rolled back) under this Worker: its hour columns are unknown (PGRST204 / 42703) or via_hub is

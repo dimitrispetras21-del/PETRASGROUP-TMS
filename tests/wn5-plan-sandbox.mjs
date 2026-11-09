@@ -69,5 +69,5 @@ export async function outcome(s, call) {
     (x) => JSON.stringify({ ok: true, x }),
     (e) => JSON.stringify({ ok: false, name: e && e.name, kind: (e && e.kind) || null, code: (e && e.code) || null,
       status: e && e.status, type: (e && e.type) || null, m: e && e.message, maybeSaved: !!(e && e.maybeSaved), write: !!(e && e.write),
-      route: (e && e.route) || null, gone: !!(e && e._sessionGone) }))`));
+      route: (e && e.route) || null, gone: !!(e && e._sessionGone), detail: (e && e.detail) || null }))`));
 }
