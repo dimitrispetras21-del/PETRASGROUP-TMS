@@ -307,7 +307,8 @@ test('098 widens leg_place / split_not_at_hub / not_at_hub: their texts and the 
   // piece_in_draft keeps its detail (the piece, the draft, :same / :race) for the screen to word the draft - apart, as `detail`
   for (const detail of ['41:7', '41:7:same', '41:race']) {
     const r = W.stockRuleError({ pg: { code: 'P0001', hint: 'plan:piece_in_draft', message: `plan rule broken: piece_in_draft:${detail}` } });
-    assert.deepEqual(r, { type: 'PLAN_RULE', code: 'piece_in_draft', message: W.PLAN_RULE_TEXT.piece_in_draft, detail });
+    // the drafts screen still reads «(piece:draft)» from the text (wn5_compose.js _words): kept for this code only
+    assert.deepEqual(r, { type: 'PLAN_RULE', code: 'piece_in_draft', message: `${W.PLAN_RULE_TEXT.piece_in_draft} (${detail})`, detail });
   }
   // the one-live-draft index answers the same code as plan_h_draft_add's own catch, whichever layer refused
   assert.deepEqual(W.stockRuleError({ pg: { code: '23505', message: 'duplicate key value violates unique constraint "plan_draft_pieces_one"' } }),
@@ -430,7 +431,10 @@ test('plan: hint is the marker whatever SQLSTATE; unknown code still loud; no de
   assert.equal(long.message, W.PLAN_RULE_TEXT.chain, 'the detail never in the text');
   assert.ok(long.detail.length <= 120, 'detail capped at 120 chars');
   assert.match(W.stockRuleError({ pg: { code: '23514', hint: 'plan:toString', message: 'x' } }).message, /^Η βάση αρνήθηκε την αλλαγή με κανόνα χωρίς κείμενο \(toString\)/, 'prototype key is not a text');
-  assert.doesNotMatch(unknown.message, /plan rule broken|:7/, 'the raw English message and its detail never reach the text');
+  assert.doesNotMatch(unknown.message, /plan rule broken/, 'the raw English message never reaches the text');
+  // 110 rt_changed has no text yet: «rt_changed:<role> <time>» stays readable for wn5_actions.js _orderErr
+  const ch = W.stockRuleError({ pg: { code: 'P0001', hint: 'plan:rt_changed', message: 'plan rule broken: rt_changed:owner 2026-11-09T10:42:00+00:00' } });
+  assert.match(ch.message, /rt_changed:\s*([a-z]*)\s+(\d{4}-\d{2}-\d{2}T[0-9:.]+(?:Z|[+-]\d{2}:?\d{2}))/, 'the screen regex of _orderErr finds role and time');
 });
 // ─────────────── Γ3: the Worker's RPC calls and money keys ↔ 072 (review 23/10) ───────────────
 // PostgREST finds a function by its name AND its argument names: a rename on one side would pass every stub test

@@ -3705,9 +3705,15 @@ function stockRuleError(e) {
     // is never in the text a person reads. It travels apart as `detail` for the machines that read it (the drafts
     // screen names a draft from it, the log keeps it); the /plan/* handler turns an RT code into the trip in words
     // (planDetailWords). An unknown code keeps its name - a rule, not a record - and never the raw English message.
+    // Two screens still read the detail out of the TEXT (core/plan-api.js does not keep error.detail yet): the drafts
+    // screen names the other draft from piece_in_draft's «(piece:draft)» (wn5_compose.js _words), and the strip says
+    // who and when from 110's «rt_changed:<role> <time>» (wn5_actions.js _orderErr; rt_changed has no text yet, so it
+    // is an unknown code here). Those keep the machine part until the screen reads error.detail (review xhigh 9/11);
+    // neither is a record code shown as such: the screen rewrites both lines.
     if (!Object.prototype.hasOwnProperty.call(PLAN_RULE_TEXT, pc)) {
-      return { type: "PLAN_RULE", code: pc, message: `Η βάση αρνήθηκε την αλλαγή με κανόνα χωρίς κείμενο (${pc || "χωρίς κωδικό"}) — τίποτα δεν γράφτηκε· ενημέρωσε τον Δημήτρη`, detail };
+      return { type: "PLAN_RULE", code: pc, message: `Η βάση αρνήθηκε την αλλαγή με κανόνα χωρίς κείμενο (${pc || "χωρίς κωδικό"}${detail ? `:${detail}` : ""}) — τίποτα δεν γράφτηκε· ενημέρωσε τον Δημήτρη`, detail };
     }
+    if (pc === "piece_in_draft" && /^\d+:(?:\d+|race)/.test(detail)) return { type: "PLAN_RULE", code: pc, message: `${PLAN_RULE_TEXT[pc]} (${detail})`, detail };
     return { type: "PLAN_RULE", code: pc, message: PLAN_RULE_TEXT[pc], detail };
   }
   // 111 not run yet (or rolled back) under this Worker: its hour columns are unknown (PGRST204 / 42703) or via_hub is
@@ -5925,7 +5931,7 @@ async function handleCosts(request, url, origin, env) {
           const r = rows[i];
           if (r.rt_id == null) continue;
           const rt = byId.get(r.rt_id);
-          if (!rt) return jsonError(`Γραμμή ${i + 1}: το δρομολόγιο δεν υπάρχει πια — διάλεξε άλλο`, 409, origin, env);
+          if (!rt) return jsonError(`Γραμμή ${i + 1}: το δρομολόγιο δεν βρέθηκε — διάλεξε άλλο`, 409, origin, env);
           if (rt.status === "cancelled") return jsonError(`Γραμμή ${i + 1}: ${await rtName(rt)} έχει ακυρωθεί`, 409, origin, env);
           const cycleTrucks = rt.model === 2 ? segTrucks.get(rt.id) : null;
           if (cycleTrucks ? r.truck_id != null && !cycleTrucks.has(r.truck_id) : r.truck_id != null && rt.truck_id != null && rt.truck_id !== r.truck_id) {

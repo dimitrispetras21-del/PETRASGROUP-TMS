@@ -1254,7 +1254,7 @@ test('every new refusal code (098 / 099 / 102) and the three widened ones → 42
         calls.length = 0;
         const r = await callOpen('warehouse', 'POST', p, body);
         assert.equal(r.status, 422, `${code}: ${r.text}`);
-        assert.deepEqual(r.json.error, { type: 'PLAN_RULE', code, message: TEXT[code], detail }, code);
+        assert.deepEqual(r.json.error, { type: 'PLAN_RULE', code, message: code === 'piece_in_draft' ? `${TEXT[code]} (${detail})` : TEXT[code], detail }, code);
         assert.match(r.json.error.message, /[α-ωΑ-Ω]/, `${code} is Greek`);
         assert.equal(rpcCalls().length, 1, `${code}: one RPC, never a retry by the Worker`);
       }
