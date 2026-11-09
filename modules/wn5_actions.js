@@ -107,10 +107,10 @@
       // text), else - an older Worker, e.g. after a rollback - «rt_changed:<role> <time>» inside its message
       const ISO = '(\\d{4}-\\d{2}-\\d{2}T[0-9:.]+(?:Z|[+-]\\d{2}:?\\d{2}))';
       const m = typeof e.detail === 'string' && e.detail
-        ? new RegExp('^\\s*([a-z]*)\\s*' + ISO).exec(e.detail)   // a detail without a role is the time alone
+        ? new RegExp('^\\s*([a-z]*)\\s*' + ISO + '?').exec(e.detail)   // either half may be missing (no role / no time)
         : new RegExp('rt_changed:\\s*([a-z]*)\\s+' + ISO).exec(String(e.message || ''));
       const role = m && ROLE_GR[m[1]] ? ROLE_GR[m[1]] : 'άλλον χρήστη';
-      const when = m ? ' ' + _dayShort(_ymdOf(m[2])) + ' ' + _hm(m[2]) : '';
+      const when = m && m[2] ? ' ' + _dayShort(_ymdOf(m[2])) + ' ' + _hm(m[2]) : '';
       // the form keeps what it saw when it opened, so a retry here would be refused again: close it, then reopen
       return Object.assign({}, e, { message: 'Το δρομολόγιο άλλαξε στο μεταξύ από ' + role + when + '. Κλείσε, ανανέωσε και ξανάνοιξε· δεν γράφτηκε τίποτα', _said: true });
     }
