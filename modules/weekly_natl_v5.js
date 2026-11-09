@@ -1093,8 +1093,10 @@ function _anodHTML(r, m, ok) {
   // the arrival at Veroia is that ΑΝΟΔΟΣ's delivery, as the international VS import's box is its Veroia day.
   // It fades with its deliveries (or the end), not with the loading (a loaded ΑΝΟΔΟΣ still has its delivery to do).
   const ddDim = s.to.length ? s.to.every((p) => p.dim && !p.late) : !!(r.end && r.end.dim);
+  // a late delivery turns the box red, the board's one red (as the late loading chip), «αργό» in its title
+  const ddLate = s.to.some((p) => p.late);
   const dd = s.toDay
-    ? `<span class="wn5-add"><span class="wi4-dc ${_chipCls(s.toDay, m.today)}${_dc(ok && ddDim)}" title="Ημέρα παράδοσης">${_esc(_dl(s.toDay))}</span></span>`
+    ? `<span class="wn5-add"><span class="wi4-dc ${ddLate ? 'red' : _chipCls(s.toDay, m.today)}${ddLate ? '' : _dc(ok && ddDim)}" title="${ddLate ? 'Ημέρα παράδοσης · αργό' : 'Ημέρα παράδοσης'}">${_esc(_dl(s.toDay))}</span></span>`
     : '';
   return `<div class="wn5-ad">${_prtHTML(r, 'ANODOS')}${lateA ? `<span class="wi4-dc red" title="αργό">${_esc(_dl(s.day))}</span>` : _chipHTML(r, 'ANODOS', `wi4-dc ${_chipCls(s.day, m.today)}${hd}`, _dl(s.day))}</div>`
     // ΑΝΟΔΟΣ: one point whole, the rest «+N» (owner 1/11): two points shared 55% / 45% of the side and both were cut
