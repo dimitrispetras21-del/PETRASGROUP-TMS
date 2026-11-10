@@ -3885,8 +3885,11 @@ async function scnPaper(browser, origin) {
       trs: cnt(/<tr class="(?!day)/g), nRows: rows.length, days: cnt(/<tr class="day/g), nDays: p.days.filter((d) => d.rows.length).length,
       gaps: [(tbody.match(/>Κενό γύρισμα</g) || []).length, strip('κεν')], noTruck: [(tbody.match(/class="tk x"/g) || []).length, strip('χωρίς φορτηγό')],
       dn: [rows.filter((x) => x.dn && x.dn.state === 'none').length, strip('κάθοδο')], up: [rows.filter((x) => x.up && x.up.state === 'none').length, strip('άνοδο')],
-      vsBoxes: [(tbody.match(/class="vs/g) || []).length, rows.filter((x) => x.up).length + rows.filter((x) => x.dn).length],
-      bad: (h.replace(/<style>[\s\S]*?<\/style>/, '').match(/RT-\d+|κύκλ|σκέλ|κομμάτι|undefined|NaN|\[object/gi) || []), today: cnt(/<tr class="day today"/g), html: h };
+      vsBoxes: [(tbody.match(/class="vs/g) || []).length, rows.reduce((n, x) => n + (x.up ? x.up.points.length : 0) + (x.dn ? x.dn.points.length : 0), 0)],
+      // owner + Pantelis 10/11: each national end carries its day, each own truck with a trailer on the board prints it
+      vsDays: rows.filter((x) => x.up || x.dn).map((x) => [x.up && x.up.date, x.dn && x.dn.date]),
+      trailers: [rows.filter((x) => x.truck.kind === 'own' && x.truck.trailer).length, (tbody.match(/<span class="tr">· /g) || []).length],
+      bad: (h.replace(/<style>[\s\S]*?<\/style>/, '').replace(/<span class="tr">[^<]*<\/span>/g, '').match(/RT-\d+|κύκλ|σκέλ|κομμάτι|undefined|NaN|\[object/gi) || []), today: cnt(/<tr class="day today"/g), html: h };
   });
   ok(scn, 'one print window, titled by the week', r.calls === 1 && /^Εβδομάδα \d+ · Διεθνή$/.test(r.title || ''), [r.calls, r.title]);
   const split = (r.skipped && r.skipped.split) || 0;
@@ -3895,7 +3898,9 @@ async function scnPaper(browser, origin) {
   ok(scn, 'rows and day headers drawn = rows and days of the model', r.trs === r.nRows && r.days === r.nDays && r.nRows > 10, [r.trs, r.nRows, r.days, r.nDays]);
   ok(scn, 'strip counts = marks drawn (empty returns, no truck, descents, ascents)', r.gaps[0] === r.gaps[1] && r.noTruck[0] === r.noTruck[1] && r.dn[0] === r.dn[1] && r.up[0] === r.up[1],
     { gaps: r.gaps, noTruck: r.noTruck, dn: r.dn, up: r.up });
-  ok(scn, 'one blue box per Veroia Switch end, and the week holds both kinds', r.vsBoxes[0] === r.vsBoxes[1] && r.vsBoxes[0] >= 2, r.vsBoxes);
+  ok(scn, 'one blue box per POINT of every Veroia Switch end (none behind «+N»), and the week holds both kinds', r.vsBoxes[0] === r.vsBoxes[1] && r.vsBoxes[0] >= 2, r.vsBoxes);
+  ok(scn, 'every Veroia Switch end prints its own day beside its points', r.vsDays.length >= 2 && r.vsDays.every((d) => d.every((x) => x == null || /^≈?\S+ \d+$/.test(x))), r.vsDays);
+  ok(scn, 'every own truck that has a trailer prints its plate', r.trailers[0] === r.trailers[1] && r.trailers[0] >= 1, r.trailers);
   ok(scn, 'no code, no jargon, no broken value on the sheet', !r.bad.length, r.bad);
   ok(scn, 'each export row says what its board row drew: empty return, matched load, truck / partner / none', !r.drift.length && r.compared >= 15, { compared: r.compared, drift: r.drift });
   ok(scn, 'a VS export prints the board\'s Veroia day and its blue box', !r.vsBad.length && r.vsSeen >= 1, { seen: r.vsSeen, bad: r.vsBad });
