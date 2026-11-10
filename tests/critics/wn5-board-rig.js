@@ -478,6 +478,67 @@ SCN.paint = async (browser, origin) => {
 // bell and avatar — the board's bar moves into the app's top bar (the Weekly International v4 mechanism), the app's
 // title and Sign out give way, the queue starts at y 70 (Content y 60 + 10). «Παλιά προβολή» and a page change give
 // the app its own top bar back; the flag-off board never touches it (wn5-identity-rig).
+// The printed week (owner 10/11, plates «Ναι, με πινακίδα»): the sheet is the board on A4. Judged against the board
+// the page drew and against what reached the fake Worker: one read of the international trips for the VS orders of
+// the week, its plate inside the blue box; when that read fails the sheet still prints, says «διεθνές ;» and the
+// screen says why. With --shots the sheet's HTML is saved (natl-paper.html).
+SCN.paper = async (browser, origin) => {
+  const scn = 'paper';
+  const { page } = await openBoard(browser, origin, { board: fixture() });
+  const costs = [];
+  let fail = false;
+  await page.route(`**/${HOST}/costs/**`, async (route) => {
+    const u = new URL(route.request().url());
+    costs.push(u.pathname + u.search);
+    const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
+    if (fail) return json({ error: 'rig sentinel down' }, 500);
+    if (u.pathname === '/costs/lookups') return json({ trucks: [{ id: 901, license_plate: 'INT-9001' }], trailers: [], drivers: [], partners: [{ id: 77, company_name: 'Partner Intl' }] });
+    const ids = (u.searchParams.get('order_ids') || '').split(',').map(Number);
+    // order 2101 rides an own international truck, 2102 a partner's, a cancelled trip never names a plate
+    return json({ records: [
+      { id: 1, status: 'open', truck_id: 901, partner_id: null, ct_rt_legs: [{ order_id: 2101 }] },
+      { id: 2, status: 'cancelled', truck_id: 901, partner_id: null, ct_rt_legs: [{ order_id: 2103 }] },
+      { id: 3, status: 'open', truck_id: null, partner_id: 77, ct_rt_legs: [{ order_id: 2102 }] },
+    ].filter((r) => r.ct_rt_legs.some((l) => ids.includes(l.order_id))), truncated: false });
+  });
+  const run = () => page.evaluate(async () => {
+    const got = [], toasts = []; window._printWeekShell = (t, h) => got.push({ t, h });
+    const t0 = window.toast; window.toast = (m, k) => toasts.push([String(m), k]);
+    await WN5.printWeek();
+    window.toast = t0;
+    const h = (got[0] || {}).h || '', st = WN5.state();
+    const boardRows = st.model.days.reduce((a, d) => a + d.rows.length + d.rows.reduce((b, r) => b + (r.rota || []).length, 0), 0);
+    return { calls: got.length, title: (got[0] || {}).t, toasts, boardRows, dom: document.querySelectorAll('#content .wn5 .wn5-row').length,
+      trs: (h.match(/<tr class="(?!day)[^"]*"><td class="i">/g) || []).length, btn: !!document.querySelector('[data-act="print-week"]'),
+      nums: [...h.matchAll(/<td class="i">(\d+)<\/td>/g)].map((x) => +x[1]), boardNums: [...WN5L.boardNumbers(st.model).values()],
+      plates: [...new Set([...h.matchAll(/<span class="mono">([^<]+)<\/span>/g)].map((x) => x[1]))], unread: (h.match(/διεθνές ;/g) || []).length,
+      bad: (h.replace(/<style>[\s\S]*?<\/style>/, '').match(/RT-\S*|κύκλ\S*|σκέλ\S*|κομμάτι|undefined|NaN|\[object/gi) || []), html: h };
+  });
+  const r = await run();
+  ok(scn, 'the bar has «Εκτύπωση» and it opens one print window, titled by the week', r.btn && r.calls === 1 && /^Εβδομάδα \d+ · Εθνικά$/.test(r.title || ''), [r.btn, r.calls, r.title]);
+  ok(scn, 'every row of the board is on the sheet, with the board\'s numbers', r.trs === r.boardRows && r.trs > 5 && JSON.stringify(r.nums) === JSON.stringify(r.boardNums), { trs: r.trs, board: r.boardRows, nums: r.nums, boardNums: r.boardNums });
+  ok(scn, 'one read of the trips for the week\'s VS orders (and the lookups), nothing else', costs.filter((c) => c.startsWith('/costs/rt?order_ids=')).length === 1 && costs.every((c) => c === '/costs/lookups' || /^\/costs\/rt\?order_ids=[\d,]+$/.test(c)), costs);
+  ok(scn, 'the blue box holds the plate of the international truck (own plate, partner by name; a cancelled trip names none)',
+    r.plates.includes('INT-9001') && r.plates.some((x) => x.includes('ΣΥΝ Partner Intl')) && r.unread === 0 && !r.toasts.length, { plates: r.plates, unread: r.unread, toasts: r.toasts });
+  ok(scn, 'no code, no jargon, no broken value on the sheet', !r.bad.length, r.bad);
+  if (OUT) fs.writeFileSync(path.join(OUT, 'natl-paper.html'), `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${r.title}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+    <style>*{font-family:'DM Sans',sans-serif;color:#0F172A}@media print{@page{margin:10mm}}</style></head><body style="padding:20px">${r.html}</body></html>`);
+  // a second press on the same board reads nothing again: the window then opens at once (a browser may refuse one
+  // that opens long after the click)
+  const nRt = costs.filter((c) => c.startsWith('/costs/rt')).length;
+  const again = await run();
+  ok(scn, 'a second press on the same board: the same sheet, no second read of the trips', again.calls === 1 && again.html === r.html && costs.filter((c) => c.startsWith('/costs/rt')).length === nRt, [again.calls, costs.length]);
+  // the plates' read fails on a board read anew: the sheet still prints, without a plate and saying so, and the screen says why
+  fail = true;
+  await page.evaluate(() => WN5.reload('user'));
+  await page.waitForFunction(() => { const x = document.querySelector('#content .wn5'); return x && x.dataset.state !== 'loading'; }, null, { timeout: 20000 });
+  const f = await run();
+  ok(scn, 'a failed plates read: the sheet prints, «διεθνές ;» in the boxes, no plate, one warning on the screen',
+    f.calls === 1 && f.trs === f.boardRows && f.unread > 0 && !f.plates.some((x) => /INT-|Partner Intl/.test(x)) && f.toasts.length === 1 && f.toasts[0][1] === 'warn' && /πινακίδες/.test(f.toasts[0][0]), { unread: f.unread, plates: f.plates, toasts: f.toasts });
+  await page.context().close();
+};
+
 SCN.topbar = async (browser, origin) => {
   const scn = 'topbar';
   const { page, S } = await openBoard(browser, origin, { board: fixture(), viewport: { width: 1440, height: 900 } });
