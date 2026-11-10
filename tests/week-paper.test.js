@@ -257,5 +257,5 @@ test('live week 46 (10/11): long names take lines, and the page arithmetic count
   assert.ok(rh(WP.intlHTML(mk(long))) < rh(WP.intlHTML(mk(short))));
   // the cells that hold words may wrap; pallets and days never do
   const h = WP.intlHTML(mk(long));
-  assert.ok(h.includes('<td class="wr">') && h.includes('<td class="p">33</td>') === false && /<td class="p">20<\/td>/.test(h));
+  assert.ok(h.includes('<td class="wr">') && /<td class="p">20<\/td>/.test(h) && !/<td class="(p|dt)[^"]*wr/.test(h));
 });

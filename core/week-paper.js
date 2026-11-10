@@ -249,7 +249,7 @@ function intlHTML(p) {
   const days = (p.days || []).filter((d) => d.rows && d.rows.length);
   const all = days.reduce((a, d) => a.concat(d.rows), []);
   // Rows grow when their words take more lines: the page arithmetic counts them — one line per national point,
-  // and the letters of a load or a truck against what one line of its column takes (measured on the live week
+  // and the letters of a load against what one line of its column takes; the truck never adds a line (measured on the live week
   // 46, 10/11). An estimate, on the generous side: a sheet that leaves room is better than one row alone on a
   // second page. A line more costs .9 of a row, and single rows may be 4mm here (the type stays 7.6pt).
   const extra = all.reduce((n, r) => n + (rowLines(r) - 1) * 0.9, 0);
