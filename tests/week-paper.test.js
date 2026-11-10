@@ -10,16 +10,16 @@ const WP = require('../core/week-paper.js');
 
 const own = (n) => ({ kind: 'own', plate: 'TST-' + n, name: 'Driver ' + n });
 const ex = (o) => Object.assign({ date: 'Δευ 5', client: 'ΠΕΛΑΤΗΣ Α', dest: 'Beta Market DE', more: 0, pallets: 20, done: false }, o);
-const im = (o) => Object.assign({ dates: 'Τετ 7 → Παρ 9', client: 'ΠΕΛΑΤΗΣ Β', dest: 'Delta Cash', more: 0, pallets: 10, done: false, pre: false }, o);
+const im = (o) => Object.assign({ load: 'Τετ 7', del: 'Παρ 9', client: 'ΠΕΛΑΤΗΣ Β', dest: 'Delta Cash', more: 0, pallets: 10, done: false, pre: false }, o);
 const WEEK = { week: 41, range: '3–9 Οκτωβρίου', stamp: 'Τρί 6/10 09:40', days: [
   { head: 'ΔΕΥΤΕΡΑ 5/10', today: false, rows: [
-    { no: 1, up: { name: 'Irinoupoli Sud (ΟΤ 12), Aspropyrgos', more: 2, state: 'done' }, ex: ex({ done: true }), truck: own(1), im: im({ dest: 'Βέροια' }), dn: { name: 'Lidl Trikala', more: 0, state: 'none' } },
-    { no: 2, up: { name: 'Knosos', more: 0, state: 'none' }, ex: ex({ pallets: null }), truck: own(2), gap: true },
+    { no: 1, up: { points: ['Irinoupoli Sud (ΟΤ 12), Aspropyrgos', 'Beta Farm', 'Gamma Coop'], date: 'Σάβ 3', state: 'done' }, ex: ex({ done: true }), truck: own(1), im: im({ dest: 'Βέροια' }), dn: { points: ['Lidl Trikala'], date: 'Πέμ 8', state: 'none' } },
+    { no: 2, up: { points: ['Knosos'], date: 'Σάβ 3', state: 'none' }, ex: ex({ pallets: null }), truck: own(2), gap: true },
   ] },
   { head: 'ΤΡΙΤΗ 6/10', today: true, rows: [
     { no: 3, ex: ex({ more: 3 }), truck: { kind: 'par', name: 'Partner <One>' } },
     { no: 4, truck: { kind: 'none' }, im: im({ pre: true, pallets: null }) },
-    { no: '↳', truck: own(5), im: im({}), dn: { name: 'Doukato', more: 1, state: 'unknown' } },
+    { no: '↳', truck: own(5), im: im({}), dn: { points: ['Doukato', 'Epsilon'], date: 'Παρ 9', state: 'unknown' } },
   ] },
   { head: 'ΤΕΤΑΡΤΗ 7/10', today: false, rows: [] },
 ] };
@@ -44,8 +44,8 @@ test('rows: a day without rows is not printed, today is the one blue day, unknow
   assert.ok(!h.includes('ΤΕΤΑΡΤΗ 7/10'));
   assert.ok(h.includes('<td class="p">—</td>'), 'unknown export pallets are «—»');
   assert.ok(h.includes('20 π. +;'), 'a day sum with an unknown says so');
-  assert.ok(h.includes('class="vs q">Doukato +1'), 'a national read that has not answered is its own state');
-  assert.ok(h.includes('class="vs ok">✓ Irinoupoli Sud +2'), 'the point, not the town; done = ✓');
+  assert.ok(h.includes('<span class="vs q">Doukato</span><span class="vs q">Epsilon</span>'), 'a national read that has not answered is its own state');
+  assert.ok(h.includes('<span class="vs ok">✓ Irinoupoli Sud</span><span class="vs ok">Beta Farm</span>'), 'the point, not the town; done = ✓');
   assert.ok(h.includes('Partner &lt;One&gt;') && !h.includes('<One>'), 'names are escaped');
   assert.ok(h.includes('1 εισαγωγή') === false && h.includes('1 εξαγωγή · 20 π.'), 'the day header counts its own rows');
 });
@@ -101,7 +101,7 @@ test('owner + Pantelis 10/11: every national point with its day, the import days
   const h = WP.intlHTML({ week: 46, range: 'r', stamp: 's', days: [{ head: 'ΔΕΥΤΕΡΑ 9/11', rows: [
     { no: 1, up: { points: ['Alpha Depot, Athens', 'Beta Farm', 'Gamma Coop'], date: 'Σάβ 7', state: 'plan' },
       ex: ex({}), truck: { kind: 'own', plate: 'TST-1', trailer: 'TRL-9', name: 'Driver 1' },
-      im: im({ dates: undefined, load: 'Τρί 10', del: '≈Τετ 11', dest: 'Βέροια' }), dn: { points: ['Delta Cash', 'Epsilon Market'], date: 'Πέμ 12', state: 'none' } },
+      im: im({ load: 'Τρί 10', del: '≈Τετ 11', dest: 'Βέροια' }), dn: { points: ['Delta Cash', 'Epsilon Market'], date: 'Πέμ 12', state: 'none' } },
     { no: 2, ex: ex({}), truck: { kind: 'par', name: 'Partner One', plates: 'PRT-1 / PRT-2' } }] }] });
   // all three loading points, none hidden behind «+2», the day first
   assert.ok(h.includes('<div class="vw"><span class="vd">Σάβ 7</span><div class="vp"><span class="vs">Alpha Depot</span><span class="vs">Beta Farm</span><span class="vs">Gamma Coop</span></div></div>'));

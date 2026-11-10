@@ -3887,7 +3887,7 @@ async function scnPaper(browser, origin) {
       dn: [rows.filter((x) => x.dn && x.dn.state === 'none').length, strip('κάθοδο')], up: [rows.filter((x) => x.up && x.up.state === 'none').length, strip('άνοδο')],
       vsBoxes: [(tbody.match(/class="vs/g) || []).length, rows.reduce((n, x) => n + (x.up ? x.up.points.length : 0) + (x.dn ? x.dn.points.length : 0), 0)],
       // owner + Pantelis 10/11: each national end carries its day, each own truck with a trailer on the board prints it
-      vsDays: rows.filter((x) => x.up || x.dn).map((x) => [x.up && x.up.date, x.dn && x.dn.date]), vsMulti: rows.some((x) => [x.up, x.dn].some((v) => v && v.points.length > 1)),
+      vsDays: rows.filter((x) => x.up || x.dn).map((x) => [x.up && x.up.date, x.dn && x.dn.date]),
       trailers: [rows.filter((x) => x.truck.kind === 'own' && x.truck.trailer).length, (tbody.match(/<span class="tr">· /g) || []).length],
       bad: (h.replace(/<style>[\s\S]*?<\/style>/, '').replace(/<span class="tr">[^<]*<\/span>/g, '').match(/RT-\d+|κύκλ|σκέλ|κομμάτι|undefined|NaN|\[object/gi) || []), today: cnt(/<tr class="day today"/g), html: h };
   });

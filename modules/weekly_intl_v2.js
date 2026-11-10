@@ -3023,7 +3023,8 @@ const _paperDay = (d) => (DAY_RE.test(d || '') ? DOW_SHORT[_dow(d)] + ' ' + (+d.
 // One reading per VS order (natBySrc, the board's own): done · a national truck has it · none · not read yet.
 // A VS order with no point to name is still a VS order: its box takes the fallback name (the board's own, the client).
 function _paperVs(oid, stops, fallback, day) {
-  const points = stops.map((x) => _splitName(x.n).title).filter(Boolean);
+  // two stops at the same point (two lots of one supplier) are one box
+  const points = [...new Set(stops.map((x) => _splitName(x.n).title).filter(Boolean))];
   let state = 'unknown';
   if (_natState() === 'ok') { const n = (_D().data.natBySrc || {})[oid]; state = !n ? 'none' : (n.done === true ? 'done' : (n.carrier ? 'plan' : 'none')); }
   return { points: points.length ? points : [fallback || '—'], date: _paperDay(day), state };

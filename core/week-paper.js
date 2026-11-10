@@ -95,15 +95,16 @@ body { padding: 0 !important; margin: 0; }
 .wp .b td.tkc { padding: 0 .35em; }
 .wp .tk { display: flex; align-items: center; gap: .55em; background: var(--tk); border-radius: 2pt; height: calc(var(--rh) - 1.1mm); line-height: 1;
   padding: 0 .6em; overflow: hidden; }
-.wp .tk .pl { font: 500 .97em 'DM Mono', monospace; color: var(--navy); }
-.wp .tk .pl { flex: none; }
+.wp .tk .pl { flex: none; font: 500 .97em 'DM Mono', monospace; color: var(--navy); }
 /* the trailer's plate (Pantelis 10/11, «είναι σημαντικό»): a load is found in the yard by its trailer */
 .wp .tk .tr { flex: none; font: 500 .9em 'DM Mono', monospace; color: var(--body); margin-left: -.3em; }
 .wp .tk .dr { color: var(--body); font-size: .93em; overflow: hidden; text-overflow: ellipsis; }
 .wp .tk.p { background: #DCFCE7; }
 .wp .tk.p .pl { font: 700 .8em 'DM Sans', sans-serif; letter-spacing: .08em; color: var(--green); }
 .wp .tk.p .dr { color: var(--green); font-weight: 500; }
-.wp .tk.p .tr { color: var(--green); }
+/* a partner's plates are free text of any length: they give way before the name does */
+.wp .tk.p .dr { flex: 0 1 auto; min-width: 5em; }
+.wp .tk.p .tr { flex: 0 10 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; margin-left: 0; color: var(--green); }
 .wp .tk.x { background: none; border: .9pt dashed var(--red); color: var(--red); font-weight: 700; }
 .wp .gap { display: inline-block; border: .9pt dashed var(--red); color: var(--red); font-weight: 700; border-radius: 2pt; padding: 0 .55em; line-height: 1.32; vertical-align: middle; }
 .wp .gap.am { border-color: var(--amber); color: var(--amber); margin-left: .35em; }
@@ -118,7 +119,7 @@ body { padding: 0 !important; margin: 0; }
    boxes on one line were one letter each). The day never shrinks. */
 .wp .vw { display: flex; align-items: center; gap: .3em; min-width: 0; }
 .wp .vw .vp { flex: 1 1 0; min-width: 0; display: flex; flex-wrap: wrap; gap: .12em .3em; padding: .1em 0; }
-.wp .vw .vs { flex: 0 1 auto; min-width: 0; max-width: calc(50% - .15em); }
+.wp .vw .vs { flex: 0 1 auto; min-width: 0; max-width: calc(50% - .25em); }   /* .25em: two never fill the line to the last sub-pixel, so rounding cannot wrap the second */
 .wp .vw .vp.one .vs { max-width: 100%; }
 .wp .vw .vp:not(.one) .vs { padding: 0 .3em; }
 .wp .vw .vd { flex: none; color: var(--body); font-size: .93em; font-variant-numeric: tabular-nums; }
@@ -150,13 +151,11 @@ body { padding: 0 !important; margin: 0; }
 // 'unknown' (the national read has not answered: never drawn as «no truck», unknown ≠ empty)
 // v = { points: [names], date, state }: every point is drawn (owner 10/11); `side` 'up' = the day first (the
 // supplier's loading day), 'dn' = the day last (the delivery day), each beside the points it belongs to.
-// The old shape { name, more } still draws one box with «+N».
 function vsHTML(v, side) {
   if (!v) return '';
   const cls = { done: ' ok', none: ' x', unknown: ' q' }[v.state] || '';
-  const pts = v.points && v.points.length ? v.points : [v.name];
-  const more = !(v.points && v.points.length) && v.more ? ' +' + v.more : '';
-  const boxes = pts.map((n, i) => `<span class="vs${cls}">${v.state === 'done' && i === 0 ? '✓ ' : ''}${_esc(pointName(n))}${more}</span>`).join('');
+  const pts = v.points && v.points.length ? v.points : ['—'];
+  const boxes = pts.map((n, i) => `<span class="vs${cls}">${v.state === 'done' && i === 0 ? '✓ ' : ''}${_esc(pointName(n))}</span>`).join('');
   const day = v.date ? `<span class="vd">${_esc(v.date)}</span>` : '';
   const pack = `<div class="vp${pts.length === 1 ? ' one' : ''}">${boxes}</div>`;
   return `<div class="vw${side === 'dn' ? ' r' : ''}${v.state === 'done' ? ' dn' : ''}">${side === 'dn' ? pack + day : day + pack}</div>`;
@@ -190,15 +189,14 @@ function rowHTML(r, cls) {
   } else c.push('<td></td><td></td><td></td>');
   c.push(truckHTML(r.truck));
   // The import's two days stand each beside its own point (Pantelis 10/11): loading before the client, delivery
-  // after the destination. `dates` («Τρί 6 → Τετ 7») is the old shape, read as the two.
+  // after the destination.
   if (r.gap) c.push('<td></td>', '<td><span class="gap">Κενό γύρισμα</span></td>', '<td></td>', '<td></td>');
   else if (im && im.unread) c.push('<td></td>', '<td><span class="gap am" style="margin-left:0">Εισαγωγή εκτός προβολής</span></td>', '<td></td>', '<td></td>');
   else if (im) {
     const g = im.done ? ' dn' : '';
     const txt = im.pre ? `<span class="cl">${_esc(im.client || '—')}</span> <span class="gap am">Pre-order</span>` : sideHTML(im);
-    const two = im.load != null || im.del != null ? [im.load, im.del] : String(im.dates || '').split(' → ');
-    c.push(`<td class="dt${g}">${im.done ? '<span class="tick">✓</span>' : ''}${_esc(two[0] || '—')}</td>`,
-      `<td class="${g.trim()}">${txt}</td>`, `<td class="dt${g}">${_esc(two[1] || '')}</td>`, `<td class="p${g}">${im.pre && !(+im.pallets > 0) ? '' : _pal(im)}</td>`);   // a pre-order's 0 is nobody's count
+    c.push(`<td class="dt${g}">${im.done ? '<span class="tick">✓</span>' : ''}${_esc(im.load || '—')}</td>`,
+      `<td class="${g.trim()}">${txt}</td>`, `<td class="dt${g}">${_esc(im.del || '')}</td>`, `<td class="p${g}">${im.pre && !(+im.pallets > 0) ? '' : _pal(im)}</td>`);   // a pre-order's 0 is nobody's count
   } else c.push('<td></td><td></td><td></td><td></td>');
   c.push(`<td>${vsHTML(r.dn, 'dn')}</td>`);
   return `<tr class="${cls.join(' ')}">${c.join('')}</tr>`;
@@ -241,7 +239,7 @@ function intlHTML(p) {
   const days = (p.days || []).filter((d) => d.rows && d.rows.length);
   const all = days.reduce((a, d) => a.concat(d.rows), []);
   // a national end with more than two points takes a second line (two boxes a line): the page arithmetic counts it
-  const lines = (v) => (v && v.points ? Math.ceil(v.points.length / 2) : 1);
+  const lines = (v) => (v && v.points ? Math.max(1, Math.ceil(v.points.length / 2)) : 1);
   const extra = all.reduce((n, r) => n + Math.max(lines(r.up), lines(r.dn)) - 1, 0);
   const sz = size(all.length + extra * 0.9, days.length), T = tally(all);
   const body = [];
