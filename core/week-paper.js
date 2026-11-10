@@ -18,12 +18,12 @@ const FONTS = 'https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700
 // masthead + strip + column header + legend take 33mm of the first page's 191mm; a later page loses only the
 // repeated column header. A day header costs 1.3 rows.
 const PAGE = Object.freeze({ first: 158, firstNatl: 137, next: 185, minRow: 4.4, maxRow: 6.6, dayUnits: 1.3 });
-function size(nRows, nDays, first) {
-  const F = first || PAGE.first;   // the national sheet has two tables: its fixed part is taller
+function size(nRows, nDays, first, minRow) {
+  const F = first || PAGE.first, MIN = minRow || PAGE.minRow;   // the national sheet has two tables: its fixed part is taller
   const units = Math.max(1, nRows + PAGE.dayUnits * nDays);
   let pages = 1, rh = F / units;
   // .975: a row never breaks in two, so each page boundary wastes up to a part of a row
-  while (rh < PAGE.minRow && pages < 12) { pages++; rh = (F + (pages - 1) * PAGE.next) * 0.975 / units; }
+  while (rh < MIN && pages < 12) { pages++; rh = (F + (pages - 1) * PAGE.next) * 0.975 / units; }
   rh = Math.min(rh, PAGE.maxRow);
   return { pages, rh: +rh.toFixed(2), fs: +Math.max(7.6, Math.min(8.5, rh * 1.7)).toFixed(2) };
 }
@@ -85,7 +85,10 @@ body { padding: 0 !important; margin: 0; }
 .wp .b tr.day.today td { color: var(--blue); }
 .wp .b td.i { color: var(--mut); font-size: .78em; text-align: right; padding: 0 .5em 0 0; font-variant-numeric: tabular-nums; }
 .wp .b td.dt { color: var(--body); font-size: .93em; font-variant-numeric: tabular-nums; }
-.wp .b td.p { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.wp .b td.p { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; padding: 0 .3em 0 0; overflow: visible; }
+/* Real names are long (live week 46, 10/11: «3…» for 33 pallets, destinations cut off whole). The words of a
+   load, of the truck and of the national points take a second line before they are cut: the row grows. */
+.wp .b td.wr { white-space: normal; line-height: 1.16; padding-top: .12em; padding-bottom: .12em; }
 .wp .cl { font-weight: 700; }
 .wp .ar { color: var(--mut); margin: 0 .25em; }
 .wp .more { color: var(--body); font-size: .88em; font-weight: 500; }
@@ -93,18 +96,20 @@ body { padding: 0 !important; margin: 0; }
 .wp .b td.dn, .wp .b td.dn .cl, .wp .b td.dn .ar, .wp .b td.dn .more { color: var(--done); font-weight: 400; }
 .wp .tick { margin-right: .25em; }
 .wp .b td.tkc { padding: 0 .35em; }
-.wp .tk { display: flex; align-items: center; gap: .55em; background: var(--tk); border-radius: 2pt; height: calc(var(--rh) - 1.1mm); line-height: 1;
-  padding: 0 .6em; overflow: hidden; }
+.wp .tk { display: flex; align-items: center; gap: .1em .55em; background: var(--tk); border-radius: 2pt; min-height: calc(var(--rh) - 1.1mm); line-height: 1.1;
+  padding: .12em .6em; overflow: hidden; }
+/* in a row that is already tall (its load or its points take lines) the driver goes under the plates, whole;
+   in a one-line row he stays beside them and is cut: the truck alone never makes a row taller */
+.wp .tk.w { flex-wrap: wrap; }
 .wp .tk .pl { flex: none; font: 500 .97em 'DM Mono', monospace; color: var(--navy); }
 /* the trailer's plate (Pantelis 10/11, «είναι σημαντικό»): a load is found in the yard by its trailer */
 .wp .tk .tr { flex: none; font: 500 .9em 'DM Mono', monospace; color: var(--body); margin-left: -.3em; }
-.wp .tk .dr { color: var(--body); font-size: .93em; overflow: hidden; text-overflow: ellipsis; }
+.wp .tk .dr { color: var(--body); font-size: .93em; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wp .tk.p { background: #DCFCE7; }
 .wp .tk.p .pl { font: 700 .8em 'DM Sans', sans-serif; letter-spacing: .08em; color: var(--green); }
 .wp .tk.p .dr { color: var(--green); font-weight: 500; }
-/* a partner's plates are free text of any length: they give way before the name does */
-.wp .tk.p .dr { flex: 0 1 auto; min-width: 5em; }
-.wp .tk.p .tr { flex: 0 10 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; margin-left: 0; color: var(--green); }
+/* a partner's plates are free text of any length: they go to a line of their own before the name is cut */
+.wp .tk.p .tr { flex: 0 1 auto; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-left: 0; color: var(--green); }
 .wp .tk.x { background: none; border: .9pt dashed var(--red); color: var(--red); font-weight: 700; }
 .wp .gap { display: inline-block; border: .9pt dashed var(--red); color: var(--red); font-weight: 700; border-radius: 2pt; padding: 0 .55em; line-height: 1.32; vertical-align: middle; }
 .wp .gap.am { border-color: var(--amber); color: var(--amber); margin-left: .35em; }
@@ -113,16 +118,13 @@ body { padding: 0 !important; margin: 0; }
 .wp .vs.ok { background: #EEF2F7; border-color: #EEF2F7; color: var(--done); font-weight: 500; }
 .wp .vs.x { border: .9pt dashed var(--red); }
 .wp .vs.q { background: none; border: .9pt dashed var(--mut); color: var(--body); }
-/* The national end of a row (owner 10/11): EVERY point in its own box and the day beside them, so the national
-   dispatcher reads from this sheet what he has to bring and to take. Two boxes share a line and are cut
-   («Irinoupo…») before one is left out; a third starts a second line and the row grows (measured 10/11: four
-   boxes on one line were one letter each). The day never shrinks. */
-.wp .vw { display: flex; align-items: center; gap: .3em; min-width: 0; }
-.wp .vw .vp { flex: 1 1 0; min-width: 0; display: flex; flex-wrap: wrap; gap: .12em .3em; padding: .1em 0; }
-.wp .vw .vs { flex: 0 1 auto; min-width: 0; max-width: calc(50% - .25em); }   /* .25em: two never fill the line to the last sub-pixel, so rounding cannot wrap the second */
-.wp .vw .vp.one .vs { max-width: 100%; }
-.wp .vw .vp:not(.one) .vs { padding: 0 .3em; }
-.wp .vw .vd { flex: none; color: var(--body); font-size: .93em; font-variant-numeric: tabular-nums; }
+/* The national end of a row (owner 10/11): EVERY point and the day beside them, so the national dispatcher reads
+   from this sheet what he has to bring and to take. One blue box, one point a line, cut only at the box's edge:
+   as separate boxes on one line each was four letters on the live week (10/11). The day never shrinks. */
+.wp .vw { display: flex; align-items: center; gap: .35em; min-width: 0; }
+.wp .vw .vs { flex: 0 1 auto; min-width: 0; font-size: .9em; line-height: 1.16; padding: .08em .45em; }
+.wp .vw .vs .pt { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wp .vw .vd { flex: none; color: var(--body); font-size: .93em; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .wp .vw.r .vd { margin-left: auto; padding-left: .2em; }
 .wp .vw.dn .vd { color: var(--done); }
 /* national sheet: section titles, the Veroia ledger (one line per day, numbers only, names where a truck is missing) */
@@ -155,10 +157,9 @@ function vsHTML(v, side) {
   if (!v) return '';
   const cls = { done: ' ok', none: ' x', unknown: ' q' }[v.state] || '';
   const pts = v.points && v.points.length ? v.points : ['—'];
-  const boxes = pts.map((n, i) => `<span class="vs${cls}">${v.state === 'done' && i === 0 ? '✓ ' : ''}${_esc(pointName(n))}</span>`).join('');
+  const box = `<span class="vs${cls}">${pts.map((n, i) => `<span class="pt">${v.state === 'done' && i === 0 ? '✓ ' : ''}${_esc(pointName(n))}</span>`).join('')}</span>`;
   const day = v.date ? `<span class="vd">${_esc(v.date)}</span>` : '';
-  const pack = `<div class="vp${pts.length === 1 ? ' one' : ''}">${boxes}</div>`;
-  return `<div class="vw${side === 'dn' ? ' r' : ''}${v.state === 'done' ? ' dn' : ''}">${side === 'dn' ? pack + day : day + pack}</div>`;
+  return `<div class="vw${side === 'dn' ? ' r' : ''}${v.state === 'done' ? ' dn' : ''}">${side === 'dn' ? box + day : day + box}</div>`;
 }
 // x = an export or import side: {client, dest, more, piece, lot, pre}. An import pre-order has no place yet and
 // is drawn by rowHTML (client + tag); an export pre-order keeps its route and gets the tag after it. «ΑΠ» = a piece taken from stock; a lot goes
@@ -168,11 +169,12 @@ function sideHTML(x) {
   return `${x.piece ? '<span class="more">ΑΠ</span> ' : ''}<span class="cl">${_esc(x.client || '—')}</span><span class="ar">→</span>${_esc(x.dest || '—')}${m}` +
     (x.lot ? ' <span class="more">→ ΑΠΟΘΗΚΗ</span>' : '') + (x.pre ? ' <span class="gap am">Pre-order</span>' : '');
 }
-function truckHTML(t) {
+function truckHTML(t, tall) {
+  const w = tall ? ' w' : '';
   if (!t || t.kind === 'none') return '<td class="tkc"><div class="tk x">Χωρίς φορτηγό</div></td>';
   // a partner's plates are free text («ΕΚΑ1234 / Ρ5678»): after the name, which is what the office knows him by
-  if (t.kind === 'par') return `<td class="tkc"><div class="tk p"><span class="pl">ΣΥΝ</span><span class="dr">${_esc(t.name || '—')}</span>${t.plates ? `<span class="tr">${_esc(t.plates)}</span>` : ''}</div></td>`;
-  return `<td class="tkc"><div class="tk"><span class="pl">${_esc(t.plate || '—')}</span>${t.trailer ? `<span class="tr">· ${_esc(t.trailer)}</span>` : ''}<span class="dr">${_esc(t.name || '')}</span></div></td>`;
+  if (t.kind === 'par') return `<td class="tkc"><div class="tk p${w}"><span class="pl">ΣΥΝ</span><span class="dr">${_esc(t.name || '—')}</span>${t.plates ? `<span class="tr">${_esc(t.plates)}</span>` : ''}</div></td>`;
+  return `<td class="tkc"><div class="tk${w}"><span class="pl">${_esc(t.plate || '—')}</span>${t.trailer ? `<span class="tr">· ${_esc(t.trailer)}</span>` : ''}<span class="dr">${_esc(t.name || '')}</span></div></td>`;
 }
 // unknown pallets are «—», never 0; a group with a member off the record says «22+;» (the board's «22 +?»)
 const _unk = (x) => x.pallets == null || x.pallets === '';
@@ -181,13 +183,13 @@ const _arrow = (s) => _esc(s).replace(/ → /g, '<span class="ar">→</span>');
 
 function rowHTML(r, cls) {
   const ex = r.ex, im = r.im;
-  const c = [`<td class="i">${_esc(r.no == null ? '' : r.no)}</td>`, `<td>${vsHTML(r.up, 'up')}</td>`];
+  const c = [`<td class="i">${_esc(r.no == null ? '' : r.no)}</td>`, `<td class="wr">${vsHTML(r.up, 'up')}</td>`];
   if (ex) {
     const g = ex.done ? ' dn' : '';
     c.push(`<td class="dt${g}">${ex.done ? '<span class="tick">✓</span>' : ''}${_esc(ex.date || '—')}</td>`,
-      `<td class="${g.trim()}">${sideHTML(ex)}</td>`, `<td class="p${g}">${_pal(ex)}</td>`);
+      `<td class="wr${g}">${sideHTML(ex)}</td>`, `<td class="p${g}">${_pal(ex)}</td>`);
   } else c.push('<td></td><td></td><td></td>');
-  c.push(truckHTML(r.truck));
+  c.push(truckHTML(r.truck, rowLines(r) > 1));
   // The import's two days stand each beside its own point (Pantelis 10/11): loading before the client, delivery
   // after the destination.
   if (r.gap) c.push('<td></td>', '<td><span class="gap">Κενό γύρισμα</span></td>', '<td></td>', '<td></td>');
@@ -196,9 +198,9 @@ function rowHTML(r, cls) {
     const g = im.done ? ' dn' : '';
     const txt = im.pre ? `<span class="cl">${_esc(im.client || '—')}</span> <span class="gap am">Pre-order</span>` : sideHTML(im);
     c.push(`<td class="dt${g}">${im.done ? '<span class="tick">✓</span>' : ''}${_esc(im.load || '—')}</td>`,
-      `<td class="${g.trim()}">${txt}</td>`, `<td class="dt${g}">${_esc(im.del || '')}</td>`, `<td class="p${g}">${im.pre && !(+im.pallets > 0) ? '' : _pal(im)}</td>`);   // a pre-order's 0 is nobody's count
+      `<td class="wr${g}">${txt}</td>`, `<td class="dt${g}">${_esc(im.del || '')}</td>`, `<td class="p${g}">${im.pre && !(+im.pallets > 0) ? '' : _pal(im)}</td>`);   // a pre-order's 0 is nobody's count
   } else c.push('<td></td><td></td><td></td><td></td>');
-  c.push(`<td>${vsHTML(r.dn, 'dn')}</td>`);
+  c.push(`<td class="wr">${vsHTML(r.dn, 'dn')}</td>`);
   return `<tr class="${cls.join(' ')}">${c.join('')}</tr>`;
 }
 
@@ -231,6 +233,14 @@ function workWords(t) {
   ].filter(Boolean);
 }
 
+// Letters one line of a column takes, at the sheet's own type (CAP), and the lines a row needs (1–4).
+const CAP = Object.freeze({ ex: 30, im: 26 });
+function rowLines(r) {
+  const len = (x) => (x ? String(x.client || '').length + String(x.dest || '').length + 3 + (x.more ? 3 : 0) + (x.pre ? 10 : 0) + (x.lot ? 10 : 0) : 0);
+  const vs = (v) => (v && v.points ? v.points.length : 0);
+  return Math.min(4, Math.max(1, vs(r.up), vs(r.dn), Math.ceil(len(r.ex) / CAP.ex), Math.ceil(len(r.im) / CAP.im)));
+}
+
 /** p = { week, range, stamp, days: [{ head, today, rows: [row] }] }; row = { no, up, ex, truck, im, gap, dn };
  *  up / dn = { points, date, state }; truck = { kind, plate, trailer, name } | { kind:'par', name, plates }; im = { load, del, … }
  *  (see rowHTML / vsHTML / sideHTML for the fields; a side's pallets: null = unknown, palMiss = partly known;
@@ -238,10 +248,12 @@ function workWords(t) {
 function intlHTML(p) {
   const days = (p.days || []).filter((d) => d.rows && d.rows.length);
   const all = days.reduce((a, d) => a.concat(d.rows), []);
-  // a national end with more than two points takes a second line (two boxes a line): the page arithmetic counts it
-  const lines = (v) => (v && v.points ? Math.max(1, Math.ceil(v.points.length / 2)) : 1);
-  const extra = all.reduce((n, r) => n + Math.max(lines(r.up), lines(r.dn)) - 1, 0);
-  const sz = size(all.length + extra * 0.9, days.length), T = tally(all);
+  // Rows grow when their words take more lines: the page arithmetic counts them — one line per national point,
+  // and the letters of a load or a truck against what one line of its column takes (measured on the live week
+  // 46, 10/11). An estimate, on the generous side: a sheet that leaves room is better than one row alone on a
+  // second page. A line more costs .9 of a row, and single rows may be 4mm here (the type stays 7.6pt).
+  const extra = all.reduce((n, r) => n + (rowLines(r) - 1) * 0.9, 0);
+  const sz = size(all.length + extra, days.length, PAGE.first, 4), T = tally(all);
   const body = [];
   for (const d of days) {
     const t = tally(d.rows);
@@ -268,7 +280,7 @@ function intlHTML(p) {
   return `<link rel="stylesheet" href="${FONTS}" media="none" onload="this.media='all'"><style>${CSS}
 @page { @bottom-left { content: "Petras Group TMS · ${title} · στοιχεία ${_esc(p.stamp)}"; font: 7pt 'DM Sans', sans-serif; color: #94A3B8; } }
 .wp { --fs:${sz.fs}pt; --rh:${sz.rh}mm; }
-.wp col.k-i{width:1.6%} .wp col.k-up{width:14.2%} .wp col.k-ed{width:4.9%} .wp col.k-ex{width:17.6%} .wp col.k-p{width:2.5%} .wp col.k-tk{width:18.2%} .wp col.k-id{width:4.3%} .wp col.k-im{width:15%} .wp col.k-dl{width:4.6%} .wp col.k-dn{width:14.6%}
+.wp col.k-i{width:1.6%} .wp col.k-up{width:14.2%} .wp col.k-ed{width:4.9%} .wp col.k-ex{width:17.6%} .wp col.k-p{width:2.8%} .wp col.k-tk{width:17.6%} .wp col.k-id{width:4.3%} .wp col.k-im{width:15%} .wp col.k-dl{width:4.6%} .wp col.k-dn{width:14.6%}
 </style><div class="wp">
 <header class="mast"><div><h1>Εβδομάδα ${_esc(p.week)} · <em>Διεθνή</em></h1><div class="sub">${_esc(p.range)} <i>· στοιχεία ${_esc(p.stamp)}</i></div></div>
 <div class="kpi"><span class="big"><b>${T.exports}</b><span>${T.exports === 1 ? 'εξαγωγή' : 'εξαγωγές'}</span></span><span class="mid"><b>${T.pallets}</b><span>π.${T.palUnknown ? ' +;' : ''}</span></span></div></header>

@@ -44,8 +44,8 @@ test('rows: a day without rows is not printed, today is the one blue day, unknow
   assert.ok(!h.includes('ΤΕΤΑΡΤΗ 7/10'));
   assert.ok(h.includes('<td class="p">—</td>'), 'unknown export pallets are «—»');
   assert.ok(h.includes('20 π. +;'), 'a day sum with an unknown says so');
-  assert.ok(h.includes('<span class="vs q">Doukato</span><span class="vs q">Epsilon</span>'), 'a national read that has not answered is its own state');
-  assert.ok(h.includes('<span class="vs ok">✓ Irinoupoli Sud</span><span class="vs ok">Beta Farm</span>'), 'the point, not the town; done = ✓');
+  assert.ok(h.includes('<span class="vs q"><span class="pt">Doukato</span><span class="pt">Epsilon</span></span>'), 'a national read that has not answered is its own state');
+  assert.ok(h.includes('<span class="vs ok"><span class="pt">✓ Irinoupoli Sud</span><span class="pt">Beta Farm</span>'), 'the point, not the town; done = ✓');
   assert.ok(h.includes('Partner &lt;One&gt;') && !h.includes('<One>'), 'names are escaped');
   assert.ok(h.includes('1 εισαγωγή') === false && h.includes('1 εξαγωγή · 20 π.'), 'the day header counts its own rows');
 });
@@ -65,7 +65,7 @@ test('stock marks and partly known pallets are said, and the legend explains onl
   assert.strictEqual((preEx.slice(preEx.indexOf('<tbody>'), preEx.indexOf('</tbody>')).match(/>Pre-order</g) || []).length, 2, 'an export pre-order is tagged too, each once');
   assert.ok(preEx.includes('<b>2</b>pre-order'));
   const pre0 = one({ no: 1, truck: { kind: 'none' }, im: im({ pre: true, pallets: 0 }) });
-  assert.ok(pre0.includes('<td class="p"></td><td></td></tr>'), 'no «0» for a pre-order');
+  assert.ok(pre0.includes('<td class="p"></td><td class="wr"></td></tr>'), 'no «0» for a pre-order');
 });
 
 test('a day of imports only says «εισαγωγές», never «0 εξαγωγές»', () => {
@@ -104,11 +104,11 @@ test('owner + Pantelis 10/11: every national point with its day, the import days
       im: im({ load: 'Τρί 10', del: '≈Τετ 11', dest: 'Βέροια' }), dn: { points: ['Delta Cash', 'Epsilon Market'], date: 'Πέμ 12', state: 'none' } },
     { no: 2, ex: ex({}), truck: { kind: 'par', name: 'Partner One', plates: 'PRT-1 / PRT-2' } }] }] });
   // all three loading points, none hidden behind «+2», the day first
-  assert.ok(h.includes('<div class="vw"><span class="vd">Σάβ 7</span><div class="vp"><span class="vs">Alpha Depot</span><span class="vs">Beta Farm</span><span class="vs">Gamma Coop</span></div></div>'));
+  assert.ok(h.includes('<div class="vw"><span class="vd">Σάβ 7</span><span class="vs"><span class="pt">Alpha Depot</span><span class="pt">Beta Farm</span><span class="pt">Gamma Coop</span></span></div>'));
   // both delivery points, red dashed (no national truck), the day last
-  assert.ok(h.includes('<div class="vw r"><div class="vp"><span class="vs x">Delta Cash</span><span class="vs x">Epsilon Market</span></div><span class="vd">Πέμ 12</span></div>'));
+  assert.ok(h.includes('<div class="vw r"><span class="vs x"><span class="pt">Delta Cash</span><span class="pt">Epsilon Market</span></span><span class="vd">Πέμ 12</span></div>'));
   // the import: loading day before it, delivery day after it, in cells of their own
-  assert.ok(/<td class="dt">Τρί 10<\/td><td class="">.*?Βέροια<\/td><td class="dt">≈Τετ 11<\/td>/.test(h));
+  assert.ok(/<td class="dt">Τρί 10<\/td><td class="wr">.*?Βέροια<\/td><td class="dt">≈Τετ 11<\/td>/.test(h));
   assert.ok(h.includes('<span class="pl">TST-1</span><span class="tr">· TRL-9</span><span class="dr">Driver 1</span>'));
   assert.ok(h.includes('<span class="dr">Partner One</span><span class="tr">PRT-1 / PRT-2</span>'));
   // every row has the eleven cells of the header
@@ -246,4 +246,16 @@ test('national ledger: an overdue trip without a truck stays («Εκκρεμή»
   const p2 = WP.natlModel(b, m2, { numbers: WN5L.boardNumbers(m2), platesOf: () => [], dayOf: () => null });
   assert.strictEqual(p2.noDay, 1);
   assert.ok(WP.natlHTML(p2).includes('1 στάση Βέροιας χωρίς ημέρα δεν μετρήθηκε'));
+});
+
+test('live week 46 (10/11): long names take lines, and the page arithmetic counts them', () => {
+  const long = { no: 1, up: { points: ['A', 'B', 'C'], date: 'Τετ 4', state: 'plan' }, ex: ex({ client: 'A CLIENT WITH A LONG NAME GmbH', dest: 'A Destination With A Long Name AT' }), truck: own(1) };
+  const short = { no: 2, ex: ex({}), truck: own(2) };
+  const mk = (r) => ({ week: 1, range: 'r', stamp: 's', days: [{ head: 'D', rows: Array.from({ length: 24 }, () => r) }] });
+  const rh = (h) => +h.match(/--rh:([\d.]+)mm/)[1];
+  // the same number of rows needs more room when each takes three lines: shorter rows, or a page more
+  assert.ok(rh(WP.intlHTML(mk(long))) < rh(WP.intlHTML(mk(short))));
+  // the cells that hold words may wrap; pallets and days never do
+  const h = WP.intlHTML(mk(long));
+  assert.ok(h.includes('<td class="wr">') && h.includes('<td class="p">33</td>') === false && /<td class="p">20<\/td>/.test(h));
 });
