@@ -387,6 +387,9 @@ const WIV2 = {
   focusRow(orderId) { return false; },
   /** Focus the search box (the / key). */
   searchFocus() {},
+  /** The printed week (owner 10/11): the board's own model on A4, through WeekPaper (core/week-paper.js)
+   *  and the shared print shell. A failure is logged and said by a toast. */
+  printWeek() {},
 };
 
 // ─── WI4Actions (WP5) — modules/wi4_actions.js ─────────────────────────
