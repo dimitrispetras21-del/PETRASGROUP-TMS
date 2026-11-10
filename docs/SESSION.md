@@ -12,6 +12,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
+- dimitris · `fix/week-print-fit` · Χαρτί Διεθνών: χωρά τα πραγματικά ονόματα (έλεγχος ζωντανής W46 μετά το #309): ένα σημείο εθνικού ανά σειρά, λέξεις σε δεύτερη σειρά, παλέτες ποτέ κομμένες· μόνο front end, SW_VERSION 1794590000 (`docs/sessions/2026-11-10-dimitris-week-print-points.md`)
 - dimitris · `feat/week-print-points` · Χαρτί εβδομάδας Διεθνών μετά την πρώτη εκτύπωση (Παντελής + owner 10/11): ημέρες δίπλα σε κάθε σημείο, όλα τα σημεία εθνικού, θάλαμος· Εθνικά: κουμπί εκτύπωσης με πλαίσιο· μόνο front end, ?v= / SW_VERSION 1794580000 (`docs/sessions/2026-11-10-dimitris-week-print-points.md`)
 - dimitris · `feat/week-print-natl` · Εθνικά v5: χαρτί εβδομάδας A4 (πίνακας Βέροιας + δρομολόγια, πινακίδα διεθνούς στο μπλε κουτί, owner 10/11 «Ναι, με πινακίδα»)· `WN5.printWeek`, ανάγνωση `/costs/rt?order_ids=` στην εκτύπωση· μόνο front end, **πάνω στο #306**, ?v= / SW_VERSION 1794570000 (`docs/sessions/2026-11-10-dimitris-week-print-natl.md`)
 - dimitris · `feat/week-print-papers` · Weekly Διεθνών: νέο χαρτί εβδομάδας A4 (σχέδιο owner 10/11, «οκ το προχωράμε»): ο πίνακας v4 σε χαρτί, φορτηγό στη μέση, Veroia Switch σε μπλε κουτί, «Θέλουν δράση»· `core/week-paper.js` + `WIV2.printWeek`· μόνο front end, ?v= / SW_VERSION 1794560000· μένει το χαρτί των Εθνικών v5 (δικό του PR, θέλει απόφαση owner για την πινακίδα διεθνούς) (`docs/sessions/2026-11-10-dimitris-week-print-intl.md`)
