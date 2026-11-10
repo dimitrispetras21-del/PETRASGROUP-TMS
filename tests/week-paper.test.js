@@ -96,3 +96,134 @@ test('the board prints through the paper, and the paper never recomputes the boa
   const src = fs.readFileSync(path.join(__dirname, '../core/week-paper.js'), 'utf8');
   assert.ok(!/WINTL|WI_INTERNAL|document\.|atGet|fetch\(/.test(src), 'pure: no board, no DOM, no network');
 });
+
+// ─── The national sheet ───────────────────────────────────────────────────────────────────────────────────────
+const WN5L = require('../core/wn5-logic.js');
+const BOARD = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/wn5-week.json'), 'utf8'));
+function natl(platesOf, today) {
+  const m = WN5L.model(BOARD, { today: today || '2026-10-12', place: (id) => ({ name: 'Τόπος ' + id }) });
+  const p = WP.natlModel(BOARD, m, { numbers: WN5L.boardNumbers(m), platesOf, weekNoOf: () => 43, weekNo: 42, range: '10–16 Οκτωβρίου', stamp: 'Δευ 12/10 09:00' });
+  return { m, p, h: WP.natlHTML(p) };
+}
+
+test('national: every row of the board is on the sheet, with the board\'s own numbers', () => {
+  const { m, p, h } = natl(() => []);
+  const boardRows = m.days.reduce((a, d) => a + d.rows.length + d.rows.reduce((b, r) => b + (r.rota || []).length, 0), 0);
+  const rows = p.days.reduce((a, d) => a.concat(d.rows), []);
+  assert.strictEqual(rows.length, boardRows);
+  assert.strictEqual((h.match(/<tr class="(?!day)[^"]*"><td class="i">/g) || []).length, boardRows);
+  const nums = WN5L.boardNumbers(m);
+  assert.deepStrictEqual(rows.filter((r) => r.kind === 'cycle' && r.no !== '').map((r) => r.no), [...nums.values()]);
+  assert.strictEqual(WP.natlTally(p).trips, BOARD.cycles.length);
+});
+
+test('national: the strip and the day headers count the marks drawn', () => {
+  const { p, h } = natl(() => []);
+  const T = WP.natlTally(p);
+  const body = h.slice(h.lastIndexOf('<tbody>'));
+  assert.strictEqual((body.match(/class="tk x"/g) || []).length, T.dnNone + T.upNone);
+  assert.strictEqual((body.match(/>Χωρίς άνοδο</g) || []).length, T.noUp);
+  assert.ok(T.dnNone > 0 && T.noUp > 0, 'the fixture holds both');
+  const strip = h.slice(h.indexOf('class="act"'), h.indexOf('class="h"'));
+  assert.ok(strip.includes(`<b>${T.dnNone}</b>κάθοδοι χωρίς φορτηγό`) && strip.includes(`<b>${T.noUp}</b>δρομολόγιο χωρίς άνοδο`), strip);
+});
+
+test('national ledger: international pallets per day at Veroia, with a truck from the stops, without from the waiting rows', () => {
+  const { m, p } = natl(() => []);
+  // with a truck = every vs_import leg loaded at a Veroia stop of a cycle THAT HAS A VEHICLE; a trip still without
+  // one is work: its pallets are «χωρίς φορτηγό», with a name
+  let want = 0, bare = 0, bareTrips = 0;
+  for (const c of BOARD.cycles) for (const s of c.stops) if (Number(s.location_id) === m.hubId) {
+    const pal = s.legs.filter((l) => l.kind === 'vs_import' && l.act === 'load').reduce((a, l) => a + l.pallets, 0);
+    if (!pal) continue;
+    if (s.has_vehicle === true) want += pal; else { bare += pal; bareTrips++; }
+  }
+  assert.strictEqual(p.ledger.reduce((a, l) => a + l.dn.w, 0), want);
+  assert.ok(want > 0 && bare > 0, 'the fixture holds a VS trip with a truck and one without');
+  // without = the pallets of the VS rows no truck has taken + those trips
+  const rows = m.days.reduce((a, d) => a.concat(d.rows), []).filter((r) => r.kind === 'unassigned' && r.vs);
+  assert.strictEqual(p.ledger.reduce((a, l) => a + l.dn.x + l.up.x, 0), rows.reduce((a, r) => a + (r.kath || r.anod).pallets, 0) + bare);
+  assert.strictEqual(p.ledger.reduce((a, l) => a + l.dn.items.length + l.up.items.length, 0), rows.length + bareTrips);
+  assert.strictEqual(p.ledger.filter((l) => !l.tone).length >= 7, true, 'the seven days are always listed');
+});
+
+test('national plates: read = the plate in the blue box; not read = said, never an empty or wrong box', () => {
+  const some = natl((id) => (id === 2101 ? ['TST-9001', 'TST-9002'] : []));
+  assert.ok(some.h.includes('<span class="mono">TST-9001 · TST-9002</span>'));
+  assert.strictEqual(some.p.platesUnread, false);
+  assert.ok(!some.h.includes('διεθνές ;'));
+  const none = natl(() => undefined);
+  assert.strictEqual(none.p.platesUnread, true);
+  assert.ok(none.h.includes('διεθνές ;') && none.h.includes('η πινακίδα δεν διαβάστηκε'));
+  assert.ok(!/TST-900\d/.test(none.h));
+});
+
+test('national words and days: no code, no jargon; empty days are one line; a done side is grey with a tick', () => {
+  const { h, p } = natl(() => []);
+  const text = h.replace(/<style>[\s\S]*?<\/style>/, '');
+  assert.ok(!/RT-|κύκλ|σκέλ|κομμάτι|undefined|NaN|\[object/i.test(text), (text.match(/RT-\S*|κύκλ\S*|σκέλ\S*|κομμάτι|undefined|NaN/i) || [])[0]);
+  assert.ok(/ΣΑΒΒΑΤΟ 10 – ΚΥΡΙΑΚΗ 11\/10<span class="mu">κανένα δρομολόγιο/.test(h), 'a run of empty days before today is one quiet line');
+  assert.ok(h.includes('<span class="tick">✓</span>'));
+  assert.strictEqual((h.match(/<tr class="day today"/g) || []).length, 1);
+  assert.ok(p.days.every((d) => d.rows.every((r) => r.kind !== 'cycle' || r.truck.kind !== undefined)));
+});
+
+test('the national screen prints through the paper', () => {
+  const v5 = fs.readFileSync(path.join(__dirname, '../modules/weekly_natl_v5.js'), 'utf8');
+  assert.ok(v5.includes('data-act="print-week" title="Εκτύπωση εβδομάδας"') && v5.includes('onclick="WN5.printWeek()"') && /printWeek, _intlPlates,/.test(v5));
+});
+
+test('national: what is over is not work — a done descent has no «Χωρίς άνοδο», an empty day behind today is quiet', () => {
+  const late = natl(() => [], '2026-10-16');   // Friday: Tuesday's descents are done by then? only if the base says so (side_dim)
+  const rows = late.p.days.reduce((a, d) => a.concat(d.rows), []);
+  for (const r of rows.filter((x) => x.noUp)) assert.strictEqual(r.dn.done, false, 'a done descent is never counted as work');
+  const b = JSON.parse(JSON.stringify(BOARD));
+  // the base marks a whole own descent done: its trip leaves the strip
+  const m0 = WN5L.model(BOARD, { today: '2026-10-12' });
+  const open = m0.days.reduce((a, d) => a.concat(d.rows), []).find((r) => r.kind === 'cycle' && r.kath && r.anod && r.anod.gap && r.tiles[0].type === 'own');
+  assert.ok(open, 'the fixture holds an own trip with no ascent');
+  for (const c of b.cycles) if (c.rt_id === open.rtId) for (const st of c.stops) { st.executed = true; st.dim = true; st.side_dim = true; }
+  const m1 = WN5L.model(b, { today: '2026-10-16' });
+  const p1 = WP.natlModel(b, m1, { numbers: WN5L.boardNumbers(m1), platesOf: () => [] });
+  assert.strictEqual(WP.natlTally(p1).noUp, WP.natlTally(natl(() => []).p).noUp - 1);
+  assert.ok(/<span class="mu">κανένα δρομολόγιο/.test(late.h) && !/<span class="w">κανένα δρομολόγιο/.test(late.h), 'every empty day is behind Friday');
+  const noToday = WN5L.model(BOARD, {});
+  const pn = WP.natlModel(BOARD, noToday, { numbers: WN5L.boardNumbers(noToday), platesOf: () => [] });
+  assert.ok(!/<span class="w">κανένα δρομολόγιο/.test(WP.natlHTML(pn)), 'today unknown: an empty day is never painted as work');
+});
+
+test('national: a missing driver comes from the base\'s field, a rota line never counts a second missing truck', () => {
+  const b = JSON.parse(JSON.stringify(BOARD));
+  const c = b.cycles.find((x) => x.trip_type === 'OWNED' && x.driver);
+  c.driver = null; c.driver_id = null;
+  const m = WN5L.model(b, { today: '2026-10-12' });
+  const p = WP.natlModel(b, m, { numbers: WN5L.boardNumbers(m), platesOf: () => [] });
+  assert.strictEqual(WP.natlTally(p).noDriver, 1);
+  assert.ok(WP.natlHTML(p).includes('<span class="gap">χωρίς οδηγό</span>'));
+  const fake = { week: 1, range: '', stamp: '', ledger: [], days: [{ date: '2026-10-12', head: 'ΔΕΥΤΕΡΑ 12/10', today: false, ahead: false, rows: [
+    { no: 1, kind: 'cycle', truck: { kind: 'none' }, dn: { dates: 'Δευ 12', from: { name: 'Α', more: 0 }, to: { name: 'Β', more: 0 }, pallets: 5, done: false }, up: null, noUp: false },
+    { no: '↳', kind: 'rota', truck: { kind: 'none' }, dn: { dates: 'Δευ 12', from: { name: 'Γ', more: 0 }, to: { name: 'Δ', more: 0 }, pallets: 2, done: false }, up: null, noUp: false }] }] };
+  assert.strictEqual(WP.natlTally(fake).dnNone, 1);
+  assert.ok(WP.natlHTML(fake).includes('<span class="w">1 χωρίς φορτηγό</span>'));
+});
+
+test('national ledger: an overdue trip without a truck stays («Εκκρεμή»), one with a truck belongs to its own week, a stop with no day is said', () => {
+  const b = JSON.parse(JSON.stringify(BOARD));
+  const hub = WN5L.model(BOARD, {}).hubId;
+  const stops = b.cycles.flatMap((c) => c.stops).filter((s) => Number(s.location_id) === hub && s.legs.some((l) => l.kind === 'vs_import' && l.act === 'load'));
+  const withV = stops.find((s) => s.has_vehicle === true), bare = stops.find((s) => s.has_vehicle !== true);
+  assert.ok(withV && bare);
+  const palOf = (s) => s.legs.filter((l) => l.kind === 'vs_import' && l.act === 'load').reduce((a, l) => a + l.pallets, 0);
+  const base = natl(() => []).p, sumW = (p) => p.ledger.reduce((a, l) => a + l.dn.w, 0);
+  withV.stop_day = '2026-10-09'; bare.stop_day = '2026-10-08';
+  const m = WN5L.model(b, { today: '2026-10-12' });
+  const p = WP.natlModel(b, m, { numbers: WN5L.boardNumbers(m), platesOf: () => [] });
+  assert.strictEqual(sumW(p), sumW(base) - palOf(withV), 'a truck that loaded before the week is the earlier sheet\'s');
+  const old = p.ledger.find((l) => l.tone === 'am');
+  assert.ok(old && old.dn.x >= palOf(bare) && old.dn.w === 0 && old.note === 'από 8/10', JSON.stringify(old));
+  bare.stop_day = null; bare.planned_to = null;
+  const m2 = WN5L.model(b, { today: '2026-10-12' });
+  const p2 = WP.natlModel(b, m2, { numbers: WN5L.boardNumbers(m2), platesOf: () => [], dayOf: () => null });
+  assert.strictEqual(p2.noDay, 1);
+  assert.ok(WP.natlHTML(p2).includes('1 στάση Βέροιας χωρίς ημέρα δεν μετρήθηκε'));
+});

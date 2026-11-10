@@ -860,7 +860,12 @@ function _colsHTML() {
   // Owner 31/10: the column names only — no «N κύκλοι» counts, no «ανά ημέρα φόρτωσης Βέροιας» note (a professional
   // board does not count «cycles»; the rows are what is counted).
   return '<div class="wn5-cols" role="row">'
-    + '<span class="wn5-c-idx"></span><span class="wn5-c-kd">ΚΑΘΟΔΟΣ</span><span class="wn5-c-kfl">ΦΟΡΤΩΣΗ</span>'
+    // The printed week (owner 10/11) starts here, in the empty head of the number column: the top bar has no room
+    // for one more button at 1440 (its right side takes its full width, so each pixel there is taken from the title
+    // and the range: the rig's bar-fit check failed with a word and with an icon). The header shows only on a board
+    // that was read, so there is never a sheet of a week that did not load.
+    + `<span class="wn5-c-idx"><button type="button" data-act="print-week" title="Εκτύπωση εβδομάδας" aria-label="Εκτύπωση εβδομάδας" onclick="WN5.printWeek()" style="all:unset;cursor:pointer;display:inline-flex;vertical-align:middle;color:var(--wi4-grey-2)">${typeof icon === 'function' ? icon('printer', 13, '', 2) : '⎙'}</button></span>`
+    + '<span class="wn5-c-kd">ΚΑΘΟΔΟΣ</span><span class="wn5-c-kfl">ΦΟΡΤΩΣΗ</span>'
     + '<span class="wn5-c-kto">ΠΑΡΑΔΟΣΗ</span>'
     + '<span class="wn5-c-kpal">ΠΑΛ.</span><span class="wn5-c-asg wn5-h-asg">ΑΝΑΘΕΣΗ</span>'
     + '<span class="wn5-c-ad">ΑΝΟΔΟΣ</span><span class="wn5-c-afl">ΦΟΡΤΩΣΗ</span>'
@@ -1979,6 +1984,72 @@ function focusRow(key) {
   return true;
 }
 // ═══ Exports ═══
+// ═══ The printed week (owner 10/11, «οκ το προχωράμε»; plates: «Ναι, με πινακίδα») ═══════════════════
+// The national sheet is drawn by WeekPaper (core/week-paper.js) from the board JSON and the model this screen
+// painted: nothing is recomputed here. The one extra read is the plate of the international truck of each Veroia
+// Switch order: the board names an order by its id only, and its trip is in /costs/rt?order_ids= (the read
+// core/rt-feed.js uses, open to the roles of this screen), 50 ids a call. A failed read is said and the sheet
+// prints without plates («διεθνές ;»), never with a wrong or silently empty one.
+async function _intlPlates(orderIds) {
+  const ids = [...new Set(orderIds.map(Number).filter((n) => Number.isSafeInteger(n) && n > 0))];
+  const out = new Map(ids.map((id) => [id, []]));
+  if (!ids.length) return out;
+  if (typeof plFetch !== 'function') throw new Error('week paper: core/pallet-feed.js is not loaded');
+  // the cached catalogue of core/rt-feed.js where it is loaded (one reader of /costs/lookups)
+  const lk = typeof _rtLookups === 'function' ? await _rtLookups() : await plFetch('/costs/lookups');
+  const plateOf = (rt) => {
+    const t = rt.truck_id != null ? ((lk && lk.trucks) || []).find((x) => x.id === rt.truck_id) : null;
+    if (t && t.license_plate) return String(t.license_plate);
+    const p = rt.partner_id != null ? ((lk && lk.partners) || []).find((x) => x.id === rt.partner_id) : null;
+    return p && p.company_name ? 'ΣΥΝ ' + String(p.company_name) : null;
+  };
+  for (let i = 0; i < ids.length; i += 50) {
+    const part = ids.slice(i, i + 50);
+    const r = await plFetch('/costs/rt?order_ids=' + part.join(','));
+    for (const rt of (r && r.records) || []) {
+      // an international trip only: a national one that holds the order must never lend its plate to the blue box
+      if (rt.status === 'cancelled' || rt.scope === 'NATL' || rt.model === 2) continue;
+      const pl = plateOf(rt); if (!pl) continue;
+      for (const l of rt.ct_rt_legs || []) { const a = out.get(Number(l.order_id)); if (a && !a.includes(pl)) a.push(pl); }
+    }
+  }
+  return out;
+}
+const _paperPlates = new WeakMap();   // board JSON → { at, plates: Map order id → plates }
+function _paperOrders() {
+  const ids = [];
+  for (const c of (_board && _board.cycles) || []) for (const s of c.stops || []) for (const l of s.legs || []) if (String(l.kind || '').startsWith('vs_') && l.order_id != null) ids.push(l.order_id);
+  for (const d of (_m && _m.days) || []) for (const r of d.rows || []) if (r.kind === 'unassigned' && r.vs && r.group && r.group.order_id != null) ids.push(r.group.order_id);
+  return ids;
+}
+async function printWeek() {
+  try {
+    if (!_board || !_m || typeof WeekPaper === 'undefined' || typeof _printWeekShell !== 'function') throw new Error('week paper: the board or WeekPaper is missing');
+    const board = _board, m = _m, sat = _sat, at = _okAt;   // the week on screen when the button was pressed
+    // Read once per board: the print window opens after this read, and a browser may refuse a window that opens long
+    // after the click. The second press then finds the plates here and opens at once. A failed read is not kept.
+    // Kept two minutes only: long enough for that second press, short enough that a truck assigned on the
+    // international board since is on the next sheet.
+    const kept = _paperPlates.get(board);
+    let plates = kept && Date.now() - kept.at < 120000 ? kept.plates : null;
+    try { if (!plates) { plates = await _intlPlates(_paperOrders()); _paperPlates.set(board, { at: Date.now(), plates }); } }
+    catch (e) {
+      _logErr(e, 'weekly natl v5: week paper, plates of the international trucks');
+      if (typeof toast === 'function') toast('Οι πινακίδες των διεθνών φορτηγών δεν διαβάστηκαν: το χαρτί τυπώνεται χωρίς αυτές', 'warn');
+    }
+    const wkNo = (d) => (typeof TmsWeek !== 'undefined' && DAY_RE.test(String(d || '')) ? TmsWeek.numOf(new Date(d + 'T12:00:00')) : '');
+    const p = WeekPaper.natlModel(board, m, {
+      numbers: L().boardNumbers(m), platesOf: plates ? (id) => plates.get(Number(id)) || [] : () => undefined,
+      weekNoOf: wkNo, weekNo: wkNo(sat), range: _rangeText(sat), dayOf: (iso) => L().athensDay(iso),
+      stamp: at ? `${WeekPaper.dayShort(L().athensDay(at.toISOString()))}/${at.getMonth() + 1} ${_hhmm(at)}` : '—',
+    });
+    _printWeekShell(`Εβδομάδα ${p.week} · Εθνικά`, WeekPaper.natlHTML(p));
+  } catch (err) {
+    _logErr(err, 'weekly natl v5: week paper');
+    if (typeof toast === 'function') toast('Η εκτύπωση της εβδομάδας δεν έγινε', 'danger');
+  }
+}
+
 const WN5 = {
   _broken: false,
   active,
@@ -2056,6 +2127,8 @@ const WN5 = {
   _html: (m) => _boardHTML(m, true),
   _menuItems,
   vsDayOf,
+  // the printed week (core/week-paper.js): the bar's button, and the plates read for tests and rigs
+  printWeek, _intlPlates,
   vsDayRead,
   vsDaysSettled,
   _dayTog,

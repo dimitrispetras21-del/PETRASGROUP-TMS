@@ -17,12 +17,13 @@ const FONTS = 'https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700
 // tall rows and ~8.5pt, a 52-truck week 4.7mm rows on two pages. Measured on the approved mock (9/11): the
 // masthead + strip + column header + legend take 33mm of the first page's 191mm; a later page loses only the
 // repeated column header. A day header costs 1.3 rows.
-const PAGE = Object.freeze({ first: 158, next: 185, minRow: 4.4, maxRow: 6.6, dayUnits: 1.3 });
-function size(nRows, nDays) {
+const PAGE = Object.freeze({ first: 158, firstNatl: 137, next: 185, minRow: 4.4, maxRow: 6.6, dayUnits: 1.3 });
+function size(nRows, nDays, first) {
+  const F = first || PAGE.first;   // the national sheet has two tables: its fixed part is taller
   const units = Math.max(1, nRows + PAGE.dayUnits * nDays);
-  let pages = 1, rh = PAGE.first / units;
+  let pages = 1, rh = F / units;
   // .975: a row never breaks in two, so each page boundary wastes up to a part of a row
-  while (rh < PAGE.minRow && pages < 12) { pages++; rh = (PAGE.first + (pages - 1) * PAGE.next) * 0.975 / units; }
+  while (rh < PAGE.minRow && pages < 12) { pages++; rh = (F + (pages - 1) * PAGE.next) * 0.975 / units; }
   rh = Math.min(rh, PAGE.maxRow);
   return { pages, rh: +rh.toFixed(2), fs: +Math.max(7.6, Math.min(8.5, rh * 1.7)).toFixed(2) };
 }
@@ -107,7 +108,25 @@ body { padding: 0 !important; margin: 0; }
 .wp .vs.ok { background: #EEF2F7; border-color: #EEF2F7; color: var(--done); font-weight: 500; }
 .wp .vs.x { border: .9pt dashed var(--red); }
 .wp .vs.q { background: none; border: .9pt dashed var(--mut); color: var(--body); }
-.wp .legend { margin-top: 5pt; font-size: 7.2pt; color: var(--body); display: flex; gap: 14pt; align-items: center; white-space: nowrap; }
+/* national sheet: section titles, the Veroia ledger (one line per day, numbers only, names where a truck is missing) */
+.wp .h { display: flex; align-items: baseline; gap: 8pt; margin-top: 7pt; font: 700 .98em 'DM Sans', sans-serif; letter-spacing: .07em; color: var(--navy); }
+.wp .h span { font-weight: 500; letter-spacing: 0; color: var(--mut); font-size: .9em; }
+.wp .b th.g { padding-left: 1.6em; padding-bottom: 1pt; }
+.wp .b th.q, .wp .b td.q { text-align: right; padding-right: 1.1em; }
+.wp .b td.q { font-weight: 700; font-variant-numeric: tabular-nums; }
+.wp .b td.q.no { color: var(--red); } .wp .b td.q.am { color: var(--amber); } .wp .b td.q.ok { color: var(--done); font-weight: 500; }
+.wp .b td.dd { font-weight: 700; color: var(--navy); } .wp .b td.dd.now { color: var(--blue); }
+.wp .b td.dd small { font-weight: 500; color: var(--body); font-size: .9em; margin-left: .4em; }
+.wp .b td.sp { border-left: .8pt solid var(--edge); padding-left: 1em; } .wp .b th.sp { padding-left: 1em; }
+.wp .it { margin-right: 1em; } .wp .it b { font-size: .93em; margin-left: .2em; }
+.wp .it .mono, .wp .vs .mono { font-family: 'DM Mono', monospace; font-weight: 500; }
+.wp .it > .mono { color: var(--body); font-size: .93em; margin-left: .35em; }
+.wp .none { color: #CBD5E1; }
+.wp .b td.dn .vs { background: #EEF2F7; border-color: #EEF2F7; color: var(--done); font-weight: 500; }
+.wp .b tr.day td span.mu { color: var(--mut); }
+/* wraps, never overflows: a legend wider than the page would shrink the whole sheet (see .mast) */
+.wp .legend { margin-top: 5pt; font-size: 7.2pt; color: var(--body); display: flex; flex-wrap: wrap; gap: 2pt 14pt; align-items: center; }
+.wp .legend > span { white-space: nowrap; }
 .wp .legend .vs, .wp .legend .gap { font-size: 7pt; margin: 0 3pt 0 0; }
 `;
 
@@ -232,6 +251,250 @@ function intlHTML(p) {
 </div>`;
 }
 
-const WeekPaper = Object.freeze({ intlHTML, size, tally, pointName, PAGE });
+// ═══ The national week ═══════════════════════════════════════════════════
+// Two tables on one sheet (design approved 10/11): the Veroia ledger — per day at Veroia, the pallets of the
+// international loads that go down from it and come up to it, with a national truck and without, naming only
+// what has no truck — and the week's trips, the truck in the middle, descent left and ascent right.
+// The blue box here holds the PLATE of the international truck (owner 10/11, «Ναι, με πινακίδα»): the box on the
+// international sheet names the national point, so the two sheets read into each other.
+const DOW = ['Κυρ', 'Δευ', 'Τρί', 'Τετ', 'Πέμ', 'Παρ', 'Σάβ'];
+const DOW_HEAD = ['ΚΥΡΙΑΚΗ', 'ΔΕΥΤΕΡΑ', 'ΤΡΙΤΗ', 'ΤΕΤΑΡΤΗ', 'ΠΕΜΠΤΗ', 'ΠΑΡΑΣΚΕΥΗ', 'ΣΑΒΒΑΤΟ'];
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const _utc = (d) => new Date(Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10)));
+const _add = (d, n) => { const t = _utc(d); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
+const _isDay = (d) => DAY_RE.test(String(d || ''));
+const dayShort = (d) => (_isDay(d) ? DOW[_utc(d).getUTCDay()] + ' ' + (+d.slice(8, 10)) : '');
+const dayDm = (d) => (_isDay(d) ? DOW[_utc(d).getUTCDay()] + ' ' + (+d.slice(8, 10)) + '/' + (+d.slice(5, 7)) : '');
+const dayHead = (d) => (_isDay(d) ? DOW_HEAD[_utc(d).getUTCDay()] + ' ' + (+d.slice(8, 10)) + '/' + (+d.slice(5, 7)) : '');
+const _num = (x) => (x == null || x === '' || !isFinite(+x) ? 0 : +x);
+const _r1 = (n) => Math.round(n * 10) / 10;
+// the point with the most pallets names the end, the others are «+N»
+function _best(points) {
+  if (!points || !points.length) return null;
+  let b = points[0];
+  points.forEach((p) => { if (_num(p.pallets) > _num(b.pallets)) b = p; });
+  return { name: b.name || '—', more: points.length - 1 };
+}
+
+/** Plain data of the national sheet from the board JSON and the model the screen drew (WN5L.model). Pure.
+ *  o = { numbers: Map rtId → n (WN5L.boardNumbers), platesOf(orderId) → [plates] | undefined (undefined = the
+ *  international trucks were not read), weekNoOf(saturday) → week number, dayOf(iso) → 'YYYY-MM-DD' (Athens), weekNo, range, stamp }. Every row of model.days is on the sheet. */
+function natlModel(board, m, o) {
+  const hubId = m.hubId, week = m.week, last = _add(week, 6), today = m.today;
+  const platesOf = o.platesOf || (() => undefined);
+  const isHub = (s) => hubId != null && Number(s.location_id) === Number(hubId);
+  const cycleOf = new Map((board.cycles || []).map((c) => [c.rt_id, c]));
+  // the international orders loaded (descent) or unloaded (ascent) at a Veroia stop of a cycle
+  const vsAt = (c, stopId, act) => {
+    const s = c && (c.stops || []).find((x) => x.stop_id === stopId);
+    return s ? [...new Set((s.legs || []).filter((l) => l.act === act && String(l.kind || '').startsWith('vs_') && l.order_id != null).map((l) => l.order_id))] : [];
+  };
+  const vsEnd = (orders, more) => {
+    let plates = [], unread = false;
+    orders.forEach((id) => { const p = platesOf(id); if (p === undefined) unread = true; else p.forEach((x) => { if (!plates.includes(x)) plates.push(x); }); });
+    return { vs: true, plates, unread, more: more || 0 };
+  };
+  const lab = (a, b) => [dayShort(a), dayShort(b)].filter(Boolean).filter((x, i, l) => i === 0 || x !== l[0]).join(' → ');
+  const side = (sd, c, r, kind) => {
+    if (!sd || sd.gap) return null;
+    let from, to;
+    if (kind === 'dn') {
+      const orders = c && sd.veroia ? vsAt(c, sd.veroia.stopId, 'load') : (r.kind === 'unassigned' && r.vs && sd.veroia && r.group && r.group.order_id != null ? [r.group.order_id] : []);
+      from = sd.veroia ? (orders.length ? vsEnd(orders, sd.from.length) : { name: 'Βέροια', more: sd.from.length }) : _best(sd.from);
+      to = _best(sd.to);
+    } else {
+      from = _best(sd.from);
+      const hubTo = r.kind === 'unassigned' ? sd.to.filter((p) => p.hub).length : (r.end ? 1 : 0);
+      const others = r.kind === 'unassigned' ? sd.to.filter((p) => !p.hub) : sd.to;
+      const orders = c && r.end ? vsAt(c, r.end.stopId, 'unload') : (r.kind === 'unassigned' && r.vs && hubTo && r.group && r.group.order_id != null ? [r.group.order_id] : []);
+      to = hubTo ? (orders.length ? vsEnd(orders, others.length) : { name: 'Βέροια', more: others.length }) : _best(others);
+    }
+    return { dates: lab(sd.day, sd.toDay), from: from || { name: '—', more: 0 }, to: to || { name: '—', more: 0 },
+      pallets: sd.palUnknown && !sd.pallets ? null : sd.pallets, palMiss: !!(sd.palUnknown && sd.pallets), done: sd.sideDim === true };
+  };
+  // c = the raw cycle: the missing driver is read from the base's own field, never from the tile's words
+  const truck = (r, c) => {
+    const t = (r.tiles || [])[0] || { type: 'un' };
+    const more = Math.max(0, (r.tiles || []).length - 1);
+    if (t.type === 'par') return { kind: 'par', name: t.line1 || '—', more };
+    if (t.type === 'own') { const nd = c ? !c.driver : false; return { kind: 'own', plate: String(t.line1 || '—').split(' · ')[0], name: nd ? '' : String(t.line2 || ''), noDriver: nd, more }; }   // the name stays the tile's: a segment's own driver
+    return { kind: 'none' };
+  };
+  const days = [];
+  for (const d of m.days || []) {
+    const rows = [];
+    for (const r of d.rows || []) {
+      const c = r.kind === 'cycle' ? cycleOf.get(r.rtId) : null;
+      const own = (r.tiles || []).some((t) => t.type === 'own');
+      const dn = side(r.kath, c, r, 'dn'), up = side(r.anod, c, r, 'up');
+      rows.push({ no: r.kind === 'cycle' ? (r.carried ? '' : (o.numbers && o.numbers.get(r.rtId)) || '') : '',
+        // a trip of another week stands whole on this board, marked with that week's number (owner 8/11)
+        away: r.away ? (o.weekNoOf ? o.weekNoOf(r.away.week) : r.away.week) : null,
+        kind: r.kind, truck: truck(r, c), dn, up,
+        // an own truck that goes down and has nothing to bring up; a partner's «μόνο κάθοδος» is a fact, not work
+        // and only while it can still be given one: a descent already done is history, not work
+        noUp: r.kind === 'cycle' && !!r.kath && !up && own && r.kath.sideDim !== true });
+      // a load the same truck takes on the way (a rota): its own line, as on the board
+      for (const x of r.rota || []) {
+        const leg = { dates: lab(x.day, x.toDay), from: { name: (x.from && x.from.name) || '—', more: 0 }, to: { name: (x.to && x.to.name) || '—', more: 0 }, pallets: x.pallets == null ? null : x.pallets, palMiss: false,
+          done: !!(x.to && x.to.dim === true) };
+        rows.push({ no: '↳', kind: 'rota', truck: truck(r, c), dn: x.side === 'KATHODOS' ? leg : null, up: x.side === 'ANODOS' ? leg : null, noUp: false });
+      }
+    }
+    // ahead = today or later, known only when the model knows today: an empty day that is over is not work
+    days.push({ date: d.date, head: dayHead(d.date), today: d.date === today, ahead: today != null && d.date >= today, rows });
+  }
+  // The ledger: international pallets per day AT VEROIA. With a truck = the legs a cycle loads / unloads at its
+  // Veroia stop (the base's own stops); without = the board's waiting VS rows, on the day they stand at Veroia
+  // (descent: its loading day there) or are due there (ascent).
+  const L = new Map();
+  const cell = (day) => { if (!L.has(day)) L.set(day, { dn: { w: 0, done: true, n: 0, x: 0, items: [] }, up: { w: 0, done: true, n: 0, x: 0, items: [] } }); return L.get(day); };
+  const rowOf = new Map();
+  let noDay = 0;
+  for (const d of m.days || []) for (const r of d.rows || []) if (r.kind === 'cycle') rowOf.set(r.rtId, r);
+  for (const c of board.cycles || []) for (const s of c.stops || []) {
+    if (!isHub(s)) continue;
+    // the stop's day as the board has it: stop_day, else the day of its window (o.dayOf = WN5L.athensDay)
+    const day = _isDay(s.stop_day) ? s.stop_day : (o.dayOf ? o.dayOf(s.planned_to) : null);
+    const vs = (s.legs || []).some((l) => (l.kind === 'vs_import' && l.act === 'load') || (l.kind === 'vs_export' && l.act === 'unload'));
+    // never dropped in silence: a Veroia stop with no day is counted and said under the ledger's title
+    if (!_isDay(day)) { if (vs) noDay++; continue; }
+    // a stop before the week that HAS a vehicle belongs to the earlier week's sheet (its trip stands on this board
+    // whole, marked «W45»); one still without a vehicle is this week's overdue work and stays («Εκκρεμή»)
+    if (day < week && s.has_vehicle === true) continue;
+    for (const k of ['dn', 'up']) {
+      const legs = (s.legs || []).filter((l) => (k === 'dn' ? l.kind === 'vs_import' && l.act === 'load' : l.kind === 'vs_export' && l.act === 'unload'));
+      if (!legs.length) continue;
+      const e = cell(day)[k], pal = _r1(legs.reduce((a, l) => a + _num(l.pallets), 0));
+      // «με φορτηγό» only when the trip HAS a vehicle (the base's has_vehicle): a trip drawn «Χωρίς φορτηγό» is work
+      if (s.has_vehicle === true) { e.w += pal; e.n++; if (s.executed !== true) e.done = false; continue; }
+      const r = rowOf.get(c.rt_id), sd = r && (k === 'dn' ? r.kath : r.anod);
+      const b = (sd && !sd.gap && _best(k === 'dn' ? sd.to : sd.from)) || { name: '—', more: 0 };
+      const end = vsEnd([...new Set(legs.map((l) => l.order_id).filter((x) => x != null))]);
+      e.x += pal; e.items.push({ name: b.name, more: b.more, pallets: pal, plates: end.plates, unread: end.unread });
+    }
+  }
+  for (const d of m.days || []) for (const r of d.rows || []) {
+    if (r.kind !== 'unassigned' || !r.vs) continue;
+    const k = r.kath ? 'dn' : 'up', sd = r.kath || r.anod;
+    const day = k === 'dn' ? (sd.day || sd.toDay) : (sd.toDay || sd.day);
+    const e = cell(_isDay(day) ? day : '')[k];
+    const b = _best(k === 'dn' ? sd.to : sd.from) || { name: '—', more: 0 };
+    const p = r.group && r.group.order_id != null ? platesOf(r.group.order_id) : [];
+    e.x += _num(sd.pallets);
+    e.items.push({ name: b.name, more: b.more, pallets: sd.pallets, plates: p || [], unread: p === undefined });
+  }
+  const ledger = [];
+  const old = [...L.keys()].filter((d) => d < week).sort();
+  const sum = (ds, k, f) => _r1(ds.reduce((a, d) => a + L.get(d)[k][f], 0));
+  const line = (label, note, ds, tone, isToday) => ({ label, note, today: !!isToday, tone,
+    dn: { w: sum(ds, 'dn', 'w'), done: ds.some((d) => L.get(d).dn.n) && ds.every((d) => L.get(d).dn.done), x: sum(ds, 'dn', 'x'), items: ds.reduce((a, d) => a.concat(L.get(d).dn.items), []) },
+    up: { w: sum(ds, 'up', 'w'), done: ds.some((d) => L.get(d).up.n) && ds.every((d) => L.get(d).up.done), x: sum(ds, 'up', 'x'), items: ds.reduce((a, d) => a.concat(L.get(d).up.items), []) } });
+  const since = old.find(_isDay);
+  if (old.length) ledger.push(line('Εκκρεμή', since ? 'από ' + (+since.slice(8, 10)) + '/' + (+since.slice(5, 7)) : '', old, 'am', false));
+  for (let i = 0; i < 7; i++) { const d = _add(week, i); ledger.push(line(dayDm(d), d === today ? 'σήμερα' : '', L.has(d) ? [d] : [], '', d === today)); }
+  [...L.keys()].filter((d) => d > last).sort().forEach((d) => ledger.push(line(dayDm(d), '', [d], '', false)));
+  return { week: o.weekNo, range: o.range, stamp: o.stamp, ledger, days, noDay, platesUnread: ledger.some((l) => l.dn.items.concat(l.up.items).some((i) => i.unread)) || days.some((d) => d.rows.some((r) => [r.dn, r.up].some((x) => x && [x.from, x.to].some((e) => e.unread)))) };
+}
+
+function natlTally(p) {
+  const rows = p.days.reduce((a, d) => a.concat(d.rows), []);
+  return { trips: rows.filter((r) => r.kind === 'cycle').length,
+    // counted by the red box drawn (a load no truck has taken, or a trip whose truck is still to be assigned)
+    // a rota line shares its trip's truck: the missing truck is counted once, on the trip's own line
+    dnNone: rows.filter((r) => r.kind !== 'rota' && r.truck.kind === 'none' && r.dn).length, upNone: rows.filter((r) => r.kind !== 'rota' && r.truck.kind === 'none' && r.up && !r.dn).length,
+    noUp: rows.filter((r) => r.noUp).length, noDriver: rows.filter((r) => r.kind === 'cycle' && r.truck.noDriver).length,
+    old: _r1(p.ledger.filter((l) => l.tone === 'am').reduce((a, l) => a + l.dn.x + l.up.x, 0)) };
+}
+function _endHTML(e, bold) {
+  const more = e.more ? ` <span class="more">+${e.more}</span>` : '';
+  // the plate(s) of the international truck; not read = said («διεθνές ;»); an order no truck has yet = «Βέροια»
+  if (e.vs) return `<span class="vs">${e.plates.length ? `<span class="mono">${_esc(e.plates.join(' · '))}</span>` : (e.unread ? 'διεθνές ;' : 'Βέροια')}</span>${more}`;
+  return (bold ? `<span class="cl">${_esc(e.name)}</span>` : _esc(e.name)) + more;
+}
+// Descent: the delivery point is the bold one; ascent: the loading point.
+function _legHTML(l, kind) {
+  if (!l) return '<td></td><td></td><td></td>';
+  const g = l.done ? ' dn' : '';
+  return `<td class="dt${g}">${l.done ? '<span class="tick">✓</span>' : ''}${_arrow(l.dates || '—')}</td>` +
+    `<td class="${g.trim()}">${_endHTML(l.from, kind === 'up')}<span class="ar">→</span>${_endHTML(l.to, kind === 'dn')}</td><td class="p${g}">${_pal(l)}</td>`;
+}
+function _natTruckHTML(t) {
+  if (!t || t.kind === 'none') return '<td class="tkc"><div class="tk x">Χωρίς φορτηγό</div></td>';
+  const more = t.more ? `<span class="more">+${t.more}</span>` : '';
+  if (t.kind === 'par') return `<td class="tkc"><div class="tk p"><span class="pl">ΣΥΝ</span><span class="dr">${_esc(t.name)}</span>${more}</div></td>`;
+  return `<td class="tkc"><div class="tk"><span class="pl">${_esc(t.plate)}</span>${t.noDriver ? '<span class="gap">χωρίς οδηγό</span>' : `<span class="dr">${_esc(t.name)}</span>`}${more}</div></td>`;
+}
+function natlHTML(p) {
+  const T = natlTally(p);
+  const nRows = p.days.reduce((a, d) => a + d.rows.length, 0);
+  // days with no trip print as ONE line per run («ΔΕΥΤΕΡΑ 9 – ΠΑΡΑΣΚΕΥΗ 13/11 · κανένα δρομολόγιο»), red from today on
+  const groups = [];
+  p.days.forEach((d) => { const g = groups[groups.length - 1]; if (!d.rows.length && g && g.empty) { g.to = d; g.today = g.today || d.today; g.ahead = g.ahead || d.ahead; } else groups.push({ empty: !d.rows.length, from: d, to: d, today: d.today, ahead: d.ahead, d }); });
+  const sz = size(nRows + p.ledger.length, groups.length, PAGE.firstNatl);
+  const body = [];
+  for (const g of groups) {
+    if (g.empty) {
+      const head = g.from === g.to ? g.from.head : `${g.from.head.replace(/\/\d+$/, '')} – ${g.to.head}`;
+      body.push(`<tr class="day${g.today ? ' today' : ''}"><td colspan="8">${_esc(head)}${g.today ? '<span class="t">από σήμερα</span>' : ''}<span class="${g.ahead ? 'w' : 'mu'}">κανένα δρομολόγιο</span></td></tr>`);
+      continue;
+    }
+    const d = g.d, rows = d.rows;
+    const n = rows.filter((r) => r.kind === 'cycle').length, x = rows.filter((r) => r.kind !== 'rota' && r.truck.kind === 'none').length;
+    const w = [x && `${x} χωρίς φορτηγό`, rows.filter((r) => r.noUp).length && `${rows.filter((r) => r.noUp).length} χωρίς άνοδο`,
+      rows.filter((r) => r.kind === 'cycle' && r.truck.noDriver).length && `${rows.filter((r) => r.kind === 'cycle' && r.truck.noDriver).length} χωρίς οδηγό`].filter(Boolean).map((s) => `<span class="w">${s}</span>`).join('');
+    body.push(`<tr class="day${d.today ? ' today' : ''}"><td colspan="8">${_esc(d.head)}${d.today ? '<span class="t">σήμερα</span>' : ''}<span>${plural(n, 'δρομολόγιο', 'δρομολόγια')}</span>${w}</td></tr>`);
+    rows.forEach((r, j) => {
+      const cls = [j === 0 ? 'f' : '', j === rows.length - 1 ? 'l' : '', d.today ? 'td' : ''].filter(Boolean).join(' ');
+      const no = r.away != null ? `<span class="more">W${_esc(r.away)}</span>` : _esc(r.no);
+      const up = r.noUp ? '<td></td><td><span class="gap">Χωρίς άνοδο</span></td><td></td>' : _legHTML(r.up, 'up');
+      body.push(`<tr class="${cls}"><td class="i">${no}</td>${_legHTML(r.dn, 'dn')}${_natTruckHTML(r.truck)}${up}</tr>`);
+    });
+  }
+  const q = (v, cls) => (v ? `<td class="q ${cls || ''}">${v}</td>` : '<td class="q"><span class="none">—</span></td>');
+  const items = (its) => its.map((i) => `<span class="it"><span class="vs x">${_esc(pointName(i.name))}${i.more ? ' +' + i.more : ''}</span>` +
+    (its.length > 1 && i.pallets != null ? `<b>${_esc(i.pallets)} π.</b>` : '') + (i.plates.length ? `<span class="mono">${_esc(i.plates.join(' · '))}</span>` : i.unread ? '<span class="more"> διεθνές ;</span>' : '') + '</span>').join('');
+  const led = p.ledger.map((l, j) => {
+    const cls = [j === 0 ? 'f' : '', j === p.ledger.length - 1 ? 'l' : ''].filter(Boolean).join(' ');
+    const wth = (e) => (e.w ? `<td class="q${e.done ? ' ok' : ''}">${e.done ? '✓ ' : ''}${e.w}</td>` : '<td class="q"><span class="none">—</span></td>');
+    return `<tr class="${cls}"><td class="dd${l.today ? ' now' : ''}">${_esc(l.label)}<small>${_esc(l.note || '')}</small></td>${wth(l.dn)}${q(l.dn.x, l.tone || 'no')}<td>${items(l.dn.items)}</td>` +
+      `${wth(l.up).replace('class="q', 'class="q sp')}${q(l.up.x, l.tone || 'no')}<td>${items(l.up.items)}</td></tr>`;
+  }).join('');
+  const act = [T.dnNone && [T.dnNone, T.dnNone === 1 ? 'κάθοδος χωρίς φορτηγό' : 'κάθοδοι χωρίς φορτηγό'], T.upNone && [T.upNone, T.upNone === 1 ? 'άνοδος χωρίς φορτηγό' : 'άνοδοι χωρίς φορτηγό'],
+    T.noUp && [T.noUp, T.noUp === 1 ? 'δρομολόγιο χωρίς άνοδο' : 'δρομολόγια χωρίς άνοδο'], T.noDriver && [T.noDriver, 'χωρίς οδηγό']].filter(Boolean)
+    .map(([n, s]) => `<span><b>${n}</b>${s}</span>`).join('') + (T.old ? `<span class="am"><b>${T.old} π.</b>εκκρεμή</span>` : '');
+  const all = p.days.reduce((a, d) => a.concat(d.rows), []);
+  const hasVs = all.some((r) => [r.dn, r.up].some((x) => x && (x.from.vs || x.to.vs)));
+  const hasX = p.ledger.some((l) => l.dn.items.length || l.up.items.length);
+  const legend = [hasVs && '<span><span class="vs"><span class="mono">IAZ8302</span></span>Veroia Switch · το διεθνές φορτηγό</span>',
+    hasX && '<span><span class="vs x">Lidl Trikala</span>χωρίς εθνικό φορτηγό</span>',
+    p.platesUnread && '<span>διεθνές ; = η πινακίδα δεν διαβάστηκε</span>',
+    all.some((r) => r.truck.kind === 'par') && '<span><span class="tk p" style="display:inline-flex;height:auto;padding:1pt 4pt;margin-right:3pt"><span class="pl">ΣΥΝ</span></span>συνεργάτης</span>',
+    all.some((r) => r.away != null) && `<span>W${_esc(all.find((r) => r.away != null).away)} δρομολόγιο άλλης εβδομάδας</span>`,
+    '<span>✓ έγινε</span>', '<span>+1 ακόμη ένα σημείο ή φορτηγό</span>'].filter(Boolean);
+  const title = `Εβδομάδα ${_esc(p.week)} · Εθνικά`;
+  return `<link rel="stylesheet" href="${FONTS}" media="none" onload="this.media='all'"><style>${CSS}
+@page { @bottom-left { content: "Petras Group TMS · ${title} · στοιχεία ${_esc(p.stamp)}"; font: 7pt 'DM Sans', sans-serif; color: #94A3B8; } }
+.wp { --fs:${sz.fs}pt; --rh:${sz.rh}mm; }
+.wp col.l-d{width:11.5%} .wp col.l-q{width:8.2%} .wp col.l-t{width:27.5%} .wp col.l-u{width:28.2%}
+.wp col.k-i{width:2.8%} .wp col.k-dt{width:10.6%} .wp col.k-dn{width:25.5%} .wp col.k-p{width:3.2%} .wp col.k-tk{width:16.6%} .wp col.k-up{width:27.5%}
+</style><div class="wp">
+<header class="mast"><div><h1>Εβδομάδα ${_esc(p.week)} · <em>Εθνικά</em></h1><div class="sub">${_esc(p.range)} <i>· στοιχεία ${_esc(p.stamp)}</i></div></div>
+<div class="kpi"><span class="big"><b>${T.trips}</b><span>${T.trips === 1 ? 'δρομολόγιο' : 'δρομολόγια'}</span></span></div></header>
+<div class="act">${act ? '<label>ΘΕΛΟΥΝ ΔΡΑΣΗ</label>' + act : ''}</div>
+<div class="h">ΒΕΡΟΙΑ · VEROIA SWITCH <span>παλέτες διεθνών ανά ημέρα στη Βέροια</span>${p.noDay ? `<span style="color:var(--red);font-weight:700">${p.noDay} ${p.noDay === 1 ? 'στάση Βέροιας χωρίς ημέρα δεν μετρήθηκε' : 'στάσεις Βέροιας χωρίς ημέρα δεν μετρήθηκαν'}</span>` : ''}</div>
+<table class="b"><colgroup><col class="l-d"><col class="l-q"><col class="l-q"><col class="l-t"><col class="l-q"><col class="l-q"><col class="l-u"></colgroup>
+<thead><tr><th></th><th class="vh g" colspan="3">ΚΑΘΟΔΟΣ · ΑΠΟ ΒΕΡΟΙΑ</th><th class="vh g sp" colspan="3">ΑΝΟΔΟΣ · ΠΡΟΣ ΒΕΡΟΙΑ</th></tr>
+<tr><th></th><th class="q">ΜΕ ΦΟΡΤΗΓΟ</th><th class="q">ΧΩΡΙΣ ΦΟΡΤΗΓΟ</th><th>ΠΡΟΣ · ΔΙΕΘΝΕΣ ΦΟΡΤΗΓΟ</th><th class="q sp">ΜΕ ΦΟΡΤΗΓΟ</th><th class="q">ΧΩΡΙΣ ΦΟΡΤΗΓΟ</th><th>ΑΠΟ · ΔΙΕΘΝΕΣ ΦΟΡΤΗΓΟ</th></tr></thead>
+<tbody>${led}</tbody></table>
+<div class="h">ΔΡΟΜΟΛΟΓΙΑ <span>ανά ημέρα, όπως στον πίνακα</span></div>
+<table class="b"><colgroup><col class="k-i"><col class="k-dt"><col class="k-dn"><col class="k-p"><col class="k-tk"><col class="k-dt"><col class="k-up"><col class="k-p"></colgroup>
+<thead><tr><th></th><th>ΦΟΡΤ. → ΠΑΡ.</th><th>ΚΑΘΟΔΟΣ</th><th class="r">Π.</th><th>ΦΟΡΤΗΓΟ</th><th>ΦΟΡΤ. → ΠΑΡ.</th><th>ΑΝΟΔΟΣ</th><th class="r">Π.</th></tr></thead>
+<tbody>${body.join('')}</tbody></table>
+<div class="legend">${legend.join('')}</div>
+</div>`;
+}
+
+const WeekPaper = Object.freeze({ intlHTML, natlHTML, natlModel, natlTally, size, tally, pointName, dayShort, PAGE });
 if (typeof module !== 'undefined') module.exports = WeekPaper; else window.WeekPaper = WeekPaper;
 })();
