@@ -3017,22 +3017,16 @@ function _qAct(i) {
 // is (the board's ghost line), never the optimistic link.
 const _PAPER_SKIP = Object.freeze(['split', 'cont', 'relay']);
 const _paperDay = (d) => (DAY_RE.test(d || '') ? DOW_SHORT[_dow(d)] + ' ' + (+d.slice(8, 10)) : '');
-// The point with the most pallets names the box, the others are «+N» (owner 9/11). Stops without their own
-// pallets (a single-point order) leave the first one.
-function _paperPoint(stops) {
-  if (!stops.length) return null;
-  const pal = (x) => (x.pal != null && x.pal !== '' && isFinite(+x.pal) ? +x.pal : -1);
-  let best = stops[0];
-  stops.forEach((x) => { if (pal(x) > pal(best)) best = x; });
-  return { name: _splitName(best.n).title, more: stops.length - 1 };
-}
+// Every point of the national end, in the order of its stops, and the day beside them (owner 10/11: the national
+// dispatcher reads from this sheet what he has to bring and to take). The day is the order's own: the supplier's
+// loading day for an ascent, the final delivery day for a descent.
 // One reading per VS order (natBySrc, the board's own): done · a national truck has it · none · not read yet.
 // A VS order with no point to name is still a VS order: its box takes the fallback name (the board's own, the client).
-function _paperVs(oid, stops, fallback) {
-  const pt = _paperPoint(stops) || { name: fallback || '—', more: 0 };
+function _paperVs(oid, stops, fallback, day) {
+  const points = stops.map((x) => _splitName(x.n).title).filter(Boolean);
   let state = 'unknown';
   if (_natState() === 'ok') { const n = (_D().data.natBySrc || {})[oid]; state = !n ? 'none' : (n.done === true ? 'done' : (n.carrier ? 'plan' : 'none')); }
-  return Object.assign(pt, { state });
+  return { points: points.length ? points : [fallback || '—'], date: _paperDay(day), state };
 }
 function _paperDest(recs) {
   const stops = [];
@@ -3051,8 +3045,10 @@ function _paperTruck(row) {
   if (!row || !row.saved) return { kind: 'none' };
   const D = _D().data, lab = (list, id) => ((list || []).find((x) => x.id === id) || {}).label;
   const partner = row.partnerLabel || lab(D.partners, row.partnerId) || (row.partnerId ? '—' : '');
-  if (partner) return { kind: 'par', name: partner };
-  return { kind: 'own', plate: row.truckLabel || lab(D.trucks, row.truckId) || '—', name: row.driverLabel || lab(D.drivers, row.driverId) || '' };
+  if (partner) return { kind: 'par', name: partner, plates: row.partnerPlates || '' };
+  // the trailer by _asgHTML's own chain: «—» when it is set but outside the active list, never nothing
+  return { kind: 'own', plate: row.truckLabel || lab(D.trucks, row.truckId) || '—', trailer: row.trailerLabel || lab(D.trailers, row.trailerId) || (row.trailerId ? '—' : ''),
+    name: row.driverLabel || lab(D.drivers, row.driverId) || '' };
 }
 function _paperImp(imp) {
   const I = W(), { members } = _impMembers(imp);
@@ -3063,9 +3059,9 @@ function _paperImp(imp) {
   const del = vs ? (v.iso ? (v.est ? '≈' : '') + _paperDay(v.iso) : '') : _paperDay(_day(f['Delivery DateTime']));
   const d = vs ? { dest: 'Βέροια', more: 0 } : _paperDest(members);
   return {
-    im: Object.assign({ dates: [load, del].filter(Boolean).join(' → '), client: I.clientName(f) || _firstTitle(f, 'load'), dest: d.dest, more: d.more,
+    im: Object.assign({ load, del, client: I.clientName(f) || _firstTitle(f, 'load'), dest: d.dest, more: d.more,
       done: !!st.delivered, pre: _isPre(f) }, _paperPal(members), _paperStock(members)),
-    dn: vs ? _paperVs(imp.id, _stopsOf(f, 'del'), I.clientName(f)) : null,
+    dn: vs ? _paperVs(imp.id, _stopsOf(f, 'del'), I.clientName(f), _day(f['Delivery DateTime'])) : null,
   };
 }
 function _paperRow(e) {
@@ -3087,7 +3083,7 @@ function _paperRow(e) {
   const d = _paperDest(exps);
   // A VS export loads at Veroia: its day is the Veroia day (the board's own chip), never the supplier's.
   const v = vs ? (I.vsCd(pf, 'exp') || {}) : null;
-  base.up = vs ? _paperVs(exps[0].id, _stopsOf(pf, 'load'), I.clientName(pf)) : null;
+  base.up = vs ? _paperVs(exps[0].id, _stopsOf(pf, 'load'), I.clientName(pf), _day(pf['Loading DateTime'])) : null;
   base.ex = Object.assign({ date: vs ? (v.iso ? (v.est ? '≈' : '') + _paperDay(v.iso) : '') : _paperDay(_day(pf['Loading DateTime'])),
     client: I.clientName(pf) || _firstTitle(pf, 'load'), dest: d.dest, more: d.more, done: !!st.delivered,
     pre: !isGroup && _isPre(pf) }, _paperPal(exps), _paperStock(exps));   // a pre-order export is said, as the board's «PRE»

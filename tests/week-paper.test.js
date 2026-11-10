@@ -76,7 +76,7 @@ test('a day of imports only says «εισαγωγές», never «0 εξαγωγ�
 test('words: no code, no jargon, column headers written in capitals without tonos', () => {
   const h = WP.intlHTML(WEEK).replace(/<style>[\s\S]*?<\/style>/, '');
   assert.ok(!/RT-\d|κύκλ|σκέλ|κομμάτι|undefined|NaN|\[object/i.test(h));
-  assert.ok(h.includes('>ΦΟΡΤΩΣΗ<') && h.includes('ΚΑΘΟΔΟΣ · ΠΡΟΣ'));
+  assert.ok(h.includes('>ΦΟΡΤΩΣΗ<') && h.includes('ΚΑΘΟΔΟΣ · ΠΑΡΑΔΟΣΗ ΣΕ') && h.includes('ΦΟΡΤΗΓΟ · ΘΑΛΑΜΟΣ'));
   assert.ok(!/text-transform:\s*uppercase/.test(WP.intlHTML(WEEK)), 'CSS upper-casing keeps the Greek tonos');
 });
 
@@ -96,6 +96,26 @@ test('the board prints through the paper, and the paper never recomputes the boa
   const src = fs.readFileSync(path.join(__dirname, '../core/week-paper.js'), 'utf8');
   assert.ok(!/WINTL|WI_INTERNAL|document\.|atGet|fetch\(/.test(src), 'pure: no board, no DOM, no network');
 });
+
+test('owner + Pantelis 10/11: every national point with its day, the import days beside their points, the trailer plate', () => {
+  const h = WP.intlHTML({ week: 46, range: 'r', stamp: 's', days: [{ head: 'ΔΕΥΤΕΡΑ 9/11', rows: [
+    { no: 1, up: { points: ['Alpha Depot, Athens', 'Beta Farm', 'Gamma Coop'], date: 'Σάβ 7', state: 'plan' },
+      ex: ex({}), truck: { kind: 'own', plate: 'TST-1', trailer: 'TRL-9', name: 'Driver 1' },
+      im: im({ dates: undefined, load: 'Τρί 10', del: '≈Τετ 11', dest: 'Βέροια' }), dn: { points: ['Delta Cash', 'Epsilon Market'], date: 'Πέμ 12', state: 'none' } },
+    { no: 2, ex: ex({}), truck: { kind: 'par', name: 'Partner One', plates: 'PRT-1 / PRT-2' } }] }] });
+  // all three loading points, none hidden behind «+2», the day first
+  assert.ok(h.includes('<div class="vw"><span class="vd">Σάβ 7</span><div class="vp"><span class="vs">Alpha Depot</span><span class="vs">Beta Farm</span><span class="vs">Gamma Coop</span></div></div>'));
+  // both delivery points, red dashed (no national truck), the day last
+  assert.ok(h.includes('<div class="vw r"><div class="vp"><span class="vs x">Delta Cash</span><span class="vs x">Epsilon Market</span></div><span class="vd">Πέμ 12</span></div>'));
+  // the import: loading day before it, delivery day after it, in cells of their own
+  assert.ok(/<td class="dt">Τρί 10<\/td><td class="">.*?Βέροια<\/td><td class="dt">≈Τετ 11<\/td>/.test(h));
+  assert.ok(h.includes('<span class="pl">TST-1</span><span class="tr">· TRL-9</span><span class="dr">Driver 1</span>'));
+  assert.ok(h.includes('<span class="dr">Partner One</span><span class="tr">PRT-1 / PRT-2</span>'));
+  // every row has the eleven cells of the header
+  const cells = (h.match(/<tr class="f[^"]*">(.*?)<\/tr>/) || [])[1].match(/<td/g).length;
+  assert.strictEqual(cells, 11);
+});
+
 
 // ─── The national sheet ───────────────────────────────────────────────────────────────────────────────────────
 const WN5L = require('../core/wn5-logic.js');

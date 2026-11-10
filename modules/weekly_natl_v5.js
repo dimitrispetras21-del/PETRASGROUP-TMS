@@ -860,11 +860,12 @@ function _colsHTML() {
   // Owner 31/10: the column names only — no «N κύκλοι» counts, no «ανά ημέρα φόρτωσης Βέροιας» note (a professional
   // board does not count «cycles»; the rows are what is counted).
   return '<div class="wn5-cols" role="row">'
-    // The printed week (owner 10/11) starts here, in the empty head of the number column: the top bar has no room
-    // for one more button at 1440 (its right side takes its full width, so each pixel there is taken from the title
-    // and the range: the rig's bar-fit check failed with a word and with an icon). The header shows only on a board
-    // that was read, so there is never a sheet of a week that did not load.
-    + `<span class="wn5-c-idx"><button type="button" data-act="print-week" title="Εκτύπωση εβδομάδας" aria-label="Εκτύπωση εβδομάδας" onclick="WN5.printWeek()" style="all:unset;cursor:pointer;display:inline-flex;vertical-align:middle;color:var(--wi4-grey-2)">${typeof icon === 'function' ? icon('printer', 13, '', 2) : '⎙'}</button></span>`
+    // The printed week (owner 10/11) starts here, in the head of the number column: the top bar has no room for one
+    // more button at 1440 (its right side takes its full width, so each pixel there is taken from the title and the
+    // range: the rig's bar-fit check failed with a word and with an icon). It is a real button, bordered like the
+    // board's other controls: as a bare grey icon the owner did not find it («δεν υπάρχει κουμπί εκτύπωσης», 10/11).
+    // The header shows only on a board that was read, so there is never a sheet of a week that did not load.
+    + `<span class="wn5-c-idx"><button type="button" class="wn5-print" data-act="print-week" title="Εκτύπωση εβδομάδας" aria-label="Εκτύπωση εβδομάδας" onclick="WN5.printWeek()">${typeof icon === 'function' ? icon('printer', 15, '', 2) : '⎙'}</button></span>`
     + '<span class="wn5-c-kd">ΚΑΘΟΔΟΣ</span><span class="wn5-c-kfl">ΦΟΡΤΩΣΗ</span>'
     + '<span class="wn5-c-kto">ΠΑΡΑΔΟΣΗ</span>'
     + '<span class="wn5-c-kpal">ΠΑΛ.</span><span class="wn5-c-asg wn5-h-asg">ΑΝΑΘΕΣΗ</span>'
