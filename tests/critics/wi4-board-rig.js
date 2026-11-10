@@ -40,7 +40,7 @@
 //   queue (card buttons after a row-id shift, Q, Print / WhatsApp) ·
 //   fix round 3: print (view role, share menu) · shift (a save fails across a
 //   re-read) · late (relays empty / national while a popover is open) ·
-//   offline · quiet (a group member fails) · natmissing · done (executed = dimmed) ·
+//   offline · quiet (a group member fails) · natmissing · paper (the printed week, owner 10/11) · done (executed = dimmed) ·
 //   twoday (two delivery days: row on the first, divider before the other day) · w1440 ·
 //   unassigned (owner 8/11 #10: a match on an export with no vehicle) ·
 //   vs (WP-A of the Weekly National v4 plan: one Veroia day — assignment,
@@ -3830,6 +3830,85 @@ async function scnQuiet(browser, origin) {
 // it is no reason: no data-r, never red, no queue item. The same week also
 // takes E014's national carrier away: its ΠΡΟΣ leg loaded 5/10 (yesterday),
 // which the old rule drew as a RED «ΠΡΟΣ ΑΝΑΘΕΣΗ» with a red NAT_NO_CARRIER.
+// The printed week (owner 10/11): the paper is the board on A4. Judged by what the paper SAYS against what the
+// board holds: every numbered board row is on it once, each header count equals the marks drawn under it, and
+// no code or jargon reaches the sheet. With --shots the sheet's HTML is saved (paper.html) to be rendered.
+async function scnPaper(browser, origin) {
+  const scn = 'paper';
+  const { page } = await openBoard(browser, origin);
+  const r = await page.evaluate(() => {
+    const got = []; window._printWeekShell = (t, h) => got.push({ t, h });
+    WIV2.printWeek();
+    const p = WIV2._paperModel(), h = (got[0] || {}).h || '';
+    const rows = p.days.reduce((a, d) => a.concat(d.rows), []);
+    const cnt = (re) => (h.match(re) || []).length;
+    const strip = (word) => { const m = new RegExp('<b>(\\d+)</b>' + word).exec(h); return m ? +m[1] : 0; };
+    const tbody = h.slice(h.indexOf('<tbody>'), h.indexOf('</tbody>'));
+    // Drift detector: the paper's import cell and truck cell against the cells the BOARD drew, row by row.
+    const drift = [];
+    rows.forEach((x) => {
+      const cell = document.getElementById('wi-ci-' + x.rid); if (!cell || !x.ex) return;
+      const gapB = !!cell.querySelector('.wi4-gap:not(.wi4-gap-open)'), loadB = !!cell.querySelector('.wi4-leg');
+      const box = cell.parentElement.querySelector('.wi4-c-asg .wi4-box');
+      const kindB = box ? (box.classList.contains('par') ? 'par' : box.classList.contains('own') ? 'own' : box.classList.contains('un') ? 'none' : '?') : '?';
+      if (gapB !== !!x.gap || loadB !== !!(x.im && !x.im.unread) || (kindB !== '?' && kindB !== x.truck.kind)) drift.push({ no: x.no, board: [gapB, loadB, kindB], paper: [!!x.gap, !!(x.im && !x.im.unread), x.truck.kind] });
+    });
+    const compared = rows.filter((x) => x.ex && document.getElementById('wi-ci-' + x.rid)).length;
+    // A VS export's day is the board's Veroia day (vsCd), a VS box exists for every VS order printed.
+    const I = WI_INTERNAL, D = I.WINTL, dayOf = (iso) => (iso ? +String(iso).slice(8, 10) : null);
+    const vsBad = []; let vsSeen = 0;
+    D.rows.filter((w) => w.type === 'export' && (w.orderIds || []).length === 1).forEach((w) => {
+      const rec = D.data.exports.find((q) => q.id === w.orderIds[0]), f = (rec && rec.fields) || {}, x = rows.find((y) => y.rid === w.id && y.ex);
+      if (!f['Veroia Switch'] || !x) return;
+      vsSeen++;
+      const v = I.vsCd(f, 'exp') || {};
+      if (!x.up || dayOf(v.iso) !== +String(x.ex.date).replace(/\D+/g, '')) vsBad.push([x.no, x.ex.date, v.iso, !!x.up]);
+    });
+    // A failed UNMATCH, simulated on the model (no repaint): the row lost its import, the table still holds it.
+    // The paper must keep printing the table: the import under the export, no empty return.
+    let unc = null;
+    const mr = D.rows.find((w) => w.type === 'export' && w.importId && !w.hasSplitLegs && D.data.imports.some((q) => q.id === w.importId) &&
+      (D.data.exports.find((q) => q.id === w.orderIds[0]) || { fields: {} }).fields['Matched Import ID'] === w.importId);
+    if (mr) {
+      const pid = mr.orderIds[0], keepImp = mr.importId, keepLog = (D._syncLog || {})[pid];
+      D._syncLog = D._syncLog || {}; D._syncLog[pid] = { state: 'err' }; mr.importId = null;
+      const x = WIV2._paperModel().days.reduce((a, d) => a.concat(d.rows), []).find((y) => y.rid === mr.id && y.ex);
+      unc = { im: !!(x && x.im && !x.im.unread), gap: !!(x && x.gap) };
+      mr.importId = keepImp; if (keepLog === undefined) delete D._syncLog[pid]; else D._syncLog[pid] = keepLog;
+    }
+    // counted per SIDE, as the marks are drawn; the fixture holds a lot and no stock load («ΑΠ» is covered by the unit test)
+    const sides = rows.reduce((a, x) => a.concat([x.ex, x.im].filter(Boolean)), []);
+    const lots = sides.filter((x) => x.lot).length, pieces = sides.filter((x) => x.piece).length;
+    return { calls: got.length, title: (got[0] || {}).t, skipped: p.skipped, drift, compared, stamp: p.stamp, vsBad, vsSeen, unc, lots, pieces,
+      marks: [(tbody.match(/>→ ΑΠΟΘΗΚΗ</g) || []).length, (tbody.match(/>ΑΠ<\/span>/g) || []).length],
+      boardNos: Object.values(WI_INTERNAL.WINTL._rowNo || {}).map(String).sort(), paperNos: rows.map((x) => String(x.no)).filter((x) => /^\d+$/.test(x)).sort(),
+      trs: cnt(/<tr class="(?!day)/g), nRows: rows.length, days: cnt(/<tr class="day/g), nDays: p.days.filter((d) => d.rows.length).length,
+      gaps: [(tbody.match(/>Κενό γύρισμα</g) || []).length, strip('κεν')], noTruck: [(tbody.match(/class="tk x"/g) || []).length, strip('χωρίς φορτηγό')],
+      dn: [rows.filter((x) => x.dn && x.dn.state === 'none').length, strip('κάθοδο')], up: [rows.filter((x) => x.up && x.up.state === 'none').length, strip('άνοδο')],
+      vsBoxes: [(tbody.match(/class="vs/g) || []).length, rows.filter((x) => x.up).length + rows.filter((x) => x.dn).length],
+      bad: (h.replace(/<style>[\s\S]*?<\/style>/, '').match(/RT-\d+|κύκλ|σκέλ|κομμάτι|undefined|NaN|\[object/gi) || []), today: cnt(/<tr class="day today"/g), html: h };
+  });
+  ok(scn, 'one print window, titled by the week', r.calls === 1 && /^Εβδομάδα \d+ · Διεθνή$/.test(r.title || ''), [r.calls, r.title]);
+  const split = (r.skipped && r.skipped.split) || 0;
+  ok(scn, 'every numbered board row is on the paper once (a split parent stands as its legs)', r.paperNos.length === new Set(r.paperNos).size &&
+    r.paperNos.every((n) => r.boardNos.includes(n)) && r.boardNos.length - r.paperNos.length === split && !(r.skipped && r.skipped.unread), { board: r.boardNos, paper: r.paperNos, skipped: r.skipped });
+  ok(scn, 'rows and day headers drawn = rows and days of the model', r.trs === r.nRows && r.days === r.nDays && r.nRows > 10, [r.trs, r.nRows, r.days, r.nDays]);
+  ok(scn, 'strip counts = marks drawn (empty returns, no truck, descents, ascents)', r.gaps[0] === r.gaps[1] && r.noTruck[0] === r.noTruck[1] && r.dn[0] === r.dn[1] && r.up[0] === r.up[1],
+    { gaps: r.gaps, noTruck: r.noTruck, dn: r.dn, up: r.up });
+  ok(scn, 'one blue box per Veroia Switch end, and the week holds both kinds', r.vsBoxes[0] === r.vsBoxes[1] && r.vsBoxes[0] >= 2, r.vsBoxes);
+  ok(scn, 'no code, no jargon, no broken value on the sheet', !r.bad.length, r.bad);
+  ok(scn, 'each export row says what its board row drew: empty return, matched load, truck / partner / none', !r.drift.length && r.compared >= 15, { compared: r.compared, drift: r.drift });
+  ok(scn, 'a VS export prints the board\'s Veroia day and its blue box', !r.vsBad.length && r.vsSeen >= 1, { seen: r.vsSeen, bad: r.vsBad });
+  ok(scn, 'after a failed unmatch the paper still prints the table: the import under its export, no empty return', !!r.unc && r.unc.im && !r.unc.gap, r.unc);
+  ok(scn, 'stock marks drawn = lots and stock loads of the model, and the week holds a lot', r.marks[0] === r.lots && r.marks[1] === r.pieces && r.lots >= 1, { marks: r.marks, lots: r.lots, pieces: r.pieces });
+  ok(scn, 'the stamp is the board\'s read time, a day and an hour', /^\S+ \d+\/\d+ \d\d:\d\d$/.test(r.stamp), r.stamp);
+  ok(scn, 'today is one blue day', r.today === 1, r.today);
+  if (OUT) fs.writeFileSync(path.join(OUT, 'paper.html'), `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${r.title}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+    <style>*{font-family:'DM Sans',sans-serif;color:#0F172A}@media print{@page{margin:10mm}}</style></head><body style="padding:20px">${r.html}</body></html>`);
+  await page.context().close();
+}
+
 async function scnNatMissing(browser, origin) {
   const scn = 'natmissing';
   const { page, S } = await openBoard(browser, origin, { mutate: db => {
@@ -4777,7 +4856,7 @@ async function scnVs(browser, origin) {
     const S = { paint: scnPaint, invariants: scnInvariants, relay: scnRelay, scans: scnScans, unknown: scnUnknown, drops: scnDrops, join: scnJoin, menu: scnMenu,
       date: scnDate, keys: scnKeys, search: scnSearch, savefail: scnSaveFail, presence: scnPresence, conflict: scnConflict, fallback: scnFallback, styles: scnStyles,
       twins: scnTwins, queue: scnQueue, unread: scnUnread,
-      print: scnPrint, shift: scnShift, late: scnLate, offline: scnOffline, quiet: scnQuiet, natmissing: scnNatMissing, done: scnDone, twoday: scnTwoDay, w1440: scnW1440, parity: scnParity,
+      print: scnPrint, shift: scnShift, late: scnLate, offline: scnOffline, quiet: scnQuiet, natmissing: scnNatMissing, paper: scnPaper, done: scnDone, twoday: scnTwoDay, w1440: scnW1440, parity: scnParity,
       vs: scnVs, v5: scnV5, v5err: scnV5Err, vsnote: scnVsNote, vsform: scnVsForm, del428: scnDel428, numbers: scnNumbers, rotaweek: scnRotaWeek, unassigned: scnUnassigned };
     // A watchdog per scenario: one missing locator or one write that never
     // settles fails THAT scenario, closes its pages, and the run goes on.

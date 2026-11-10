@@ -1739,7 +1739,7 @@ function _tabsHTML(m) {
 function _viewMenuHTML() {
   const D = _D(), fs = D.filterStatus || '';
   const fl = _ls('tms_wk3_fl') !== '0', fr = _ls('tms_wk3_fr') !== '0';
-  let h = '<button type="button" role="menuitem" onclick="WI_INTERNAL.printWeek()">Εκτύπωση εβδομάδας</button>' +
+  let h = '<button type="button" role="menuitem" onclick="WIV2.printWeek()">Εκτύπωση εβδομάδας</button>' +
     '<button type="button" role="menuitem" onclick="WI_INTERNAL.exportCSV()">CSV</button>' +
     '<button type="button" role="menuitem" onclick="WI_INTERNAL.renderWeeklyIntl()">Ανανέωση</button>' +
     '<button type="button" role="menuitem" onclick="WI_INTERNAL.fullscreen()" title="Μόνο ο πίνακας · Esc για έξοδο">Πλήρης οθόνη</button>' +
@@ -3005,6 +3005,142 @@ function _qAct(i) {
   const a = A(); if (a && typeof a._queueAct === 'function') a._queueAct(it);
 }
 
+// ═══ The printed week (owner 10/11, «οκ το προχωράμε») ═══════════════════
+// The paper is the board on A4: it walks the SAME model the screen drew (_m.days, their entries, their
+// numbers) and hands plain data to WeekPaper (core/week-paper.js), which draws and counts. A row the board
+// does not hold is not on the paper, and one it holds is never dropped silently: the kinds the paper does
+// not draw are listed in _PAPER_SKIP and counted in the result.
+// Not drawn, on purpose: a split parent (its two legs are rows of their own), «συνέχεια» (the legs stand in
+// their own week) and a local relay line (a local driver, not a truck of the week).
+// Like the board's cells, the paper draws what the TABLE holds: after a match that failed to save, the
+// export shows the table's import (or its empty return) and the import stands as the free import it still
+// is (the board's ghost line), never the optimistic link.
+const _PAPER_SKIP = Object.freeze(['split', 'cont', 'relay']);
+const _paperDay = (d) => (DAY_RE.test(d || '') ? DOW_SHORT[_dow(d)] + ' ' + (+d.slice(8, 10)) : '');
+// The point with the most pallets names the box, the others are «+N» (owner 9/11). Stops without their own
+// pallets (a single-point order) leave the first one.
+function _paperPoint(stops) {
+  if (!stops.length) return null;
+  const pal = (x) => (x.pal != null && x.pal !== '' && isFinite(+x.pal) ? +x.pal : -1);
+  let best = stops[0];
+  stops.forEach((x) => { if (pal(x) > pal(best)) best = x; });
+  return { name: _splitName(best.n).title, more: stops.length - 1 };
+}
+// One reading per VS order (natBySrc, the board's own): done · a national truck has it · none · not read yet.
+// A VS order with no point to name is still a VS order: its box takes the fallback name (the board's own, the client).
+function _paperVs(oid, stops, fallback) {
+  const pt = _paperPoint(stops) || { name: fallback || '—', more: 0 };
+  let state = 'unknown';
+  if (_natState() === 'ok') { const n = (_D().data.natBySrc || {})[oid]; state = !n ? 'none' : (n.done === true ? 'done' : (n.carrier ? 'plan' : 'none')); }
+  return Object.assign(pt, { state });
+}
+function _paperDest(recs) {
+  const stops = [];
+  recs.forEach((r) => _stopsOf(r.fields || {}, 'del').forEach((x) => stops.push(x)));
+  if (!stops.length) return { dest: '—', more: 0 };
+  const o = _splitName(stops[0].n);
+  return { dest: [o.title.split(/[,(]/)[0].trim(), o.cc && o.cc !== 'GR' ? o.cc : ''].filter(Boolean).join(' '), more: stops.length - 1 };
+}
+// Known pallets and whether a member has none on record (the board's «22 +?»): unknown is never 0.
+function _paperPal(recs) { const p = _pals(recs.map((r) => r.fields || {})); return { pallets: p.known ? p.n : null, palMiss: !!(p.known && p.miss) }; }
+// The stock marks of the old week sheet: «ΑΠ» = a piece taken from stock, a lot goes to the warehouse.
+function _paperStock(recs) { const I = W(); return { piece: recs.some((r) => I.isPiece(r.fields || {})), lot: recs.some((r) => I.isLot(r.fields || {})) }; }
+// The assignment cell by _asgHTML's own order: nothing counts before the save; a partner; an own truck, whose
+// plate may come from the catalogue and is «—» (never «no truck») when it is outside the active list.
+function _paperTruck(row) {
+  if (!row || !row.saved) return { kind: 'none' };
+  const D = _D().data, lab = (list, id) => ((list || []).find((x) => x.id === id) || {}).label;
+  const partner = row.partnerLabel || lab(D.partners, row.partnerId) || (row.partnerId ? '—' : '');
+  if (partner) return { kind: 'par', name: partner };
+  return { kind: 'own', plate: row.truckLabel || lab(D.trucks, row.truckId) || '—', name: row.driverLabel || lab(D.drivers, row.driverId) || '' };
+}
+function _paperImp(imp) {
+  const I = W(), { members } = _impMembers(imp);
+  const f = (members[0] || imp).fields || {}, st = I.stFlags(f), vs = !!f['Veroia Switch'] && members.length === 1;
+  const load = _paperDay(_day(f['Loading DateTime']));
+  // A VS import unloads at Veroia: its second day is the Veroia day (the board's own chip, «≈» = estimate)
+  const v = vs ? (I.vsCd(f, 'imp') || {}) : null;
+  const del = vs ? (v.iso ? (v.est ? '≈' : '') + _paperDay(v.iso) : '') : _paperDay(_day(f['Delivery DateTime']));
+  const d = vs ? { dest: 'Βέροια', more: 0 } : _paperDest(members);
+  return {
+    im: Object.assign({ dates: [load, del].filter(Boolean).join(' → '), client: I.clientName(f) || _firstTitle(f, 'load'), dest: d.dest, more: d.more,
+      done: !!st.delivered, pre: _isPre(f) }, _paperPal(members), _paperStock(members)),
+    dn: vs ? _paperVs(imp.id, _stopsOf(f, 'del'), I.clientName(f)) : null,
+  };
+}
+function _paperRow(e) {
+  const I = W(), D = _D(), row = e.row;
+  const oid = (row.orderIds || [])[0] || row.orderId;
+  const leg = e.t === 'leg';
+  const no = leg || e.split ? '↳' : (e.no == null ? '' : e.no);
+  // A rota leg shares its truck (the board says «ίδιο φορτηγό»): the parent's, where the parent is on this board.
+  const truck = _paperTruck(leg && e.parent ? e.parent : row);
+  // rid = the board row's id: not printed, it lets the rig compare each paper row with the row the board drew
+  const base = { no, rid: row.id, truck, up: null, ex: null, im: null, dn: null, gap: false };
+  const imported = leg ? (_f(oid)['Direction'] === 'Import') : (row.type === 'import');
+  if (imported) {
+    const imp = D.data.imports.find((r) => r.id === oid) || _rec(oid);
+    return imp ? Object.assign(base, _paperImp(imp)) : null;
+  }
+  const exps = _memberRecs(row); if (!exps.length) return null;
+  const pf = exps[0].fields || {}, st = I.stFlags(pf), isGroup = exps.length > 1, vs = !!pf['Veroia Switch'] && !isGroup;
+  const d = _paperDest(exps);
+  // A VS export loads at Veroia: its day is the Veroia day (the board's own chip), never the supplier's.
+  const v = vs ? (I.vsCd(pf, 'exp') || {}) : null;
+  base.up = vs ? _paperVs(exps[0].id, _stopsOf(pf, 'load'), I.clientName(pf)) : null;
+  base.ex = Object.assign({ date: vs ? (v.iso ? (v.est ? '≈' : '') + _paperDay(v.iso) : '') : _paperDay(_day(pf['Loading DateTime'])),
+    client: I.clientName(pf) || _firstTitle(pf, 'load'), dest: d.dest, more: d.more, done: !!st.delivered,
+    pre: !isGroup && _isPre(pf) }, _paperPal(exps), _paperStock(exps));   // a pre-order export is said, as the board's «PRE»
+  if (leg) return base;   // a leg draws its own load only
+  // The import cell in _expRowHTML's order, on the TABLE's match (mid): the load · a match this week's read
+  // does not hold · an own truck with nothing to bring back (the empty return) · a partner or no truck: nothing.
+  // The rig's `paper` scenario compares this with the cell the board drew, row by row: a new cell state on
+  // the board that this chain does not know fails there.
+  const mid = _unconfirmed(row) ? _srvMatch(row) : row.importId;
+  const imp = mid ? D.data.imports.find((r) => r.id === mid) : null;
+  if (imp) Object.assign(base, _paperImp(imp));
+  else if (mid) base.im = { unread: true };
+  else if (row.saved && !(row.partnerId || row.partnerLabel)) base.gap = true;
+  return base;
+}
+function _paperModel() {
+  const D = _D(), today = _today();
+  // «στοιχεία» = when the board last READ the table, not when the sheet is printed
+  const at = D._loadedAt instanceof Date ? D._loadedAt : null, p2 = (n) => String(n).padStart(2, '0');
+  const atDay = at ? _day(at.toISOString()) : '';
+  const skipped = {};
+  const src = (_m && _m.days) || [];
+  // An import the TABLE still holds under an export whose re-match failed is printed there (_paperRow, mid);
+  // the optimistic rows may hold it as a free import too: it is printed once, where the table has it.
+  const held = new Set();
+  src.forEach((day) => (day.entries || []).forEach((e) => { const r = e.row; if (r && r.type === 'export' && _unconfirmed(r)) { const m = _srvMatch(r); if (m) held.add(m); } }));
+  const days = src.map((day) => ({
+    head: (DAY_RE.test(day.date || '') ? DOW_HEAD[_dow(day.date)] + ' ' + _dm(day.date) : String(day.date || '')),
+    today: day.date === today,
+    rows: (day.entries || []).map((e) => {
+      if (_PAPER_SKIP.includes(e.t)) { skipped[e.t] = (skipped[e.t] || 0) + 1; return null; }
+      // a group row is the same load whichever member the export names
+      if (e.t === 'imp' && !e.split && (e.row.orderIds && e.row.orderIds.length ? e.row.orderIds : [e.row.orderId]).some((id) => held.has(id))) { skipped.heldByTable = (skipped.heldByTable || 0) + 1; return null; }
+      const r = _paperRow(e);
+      if (!r) skipped.unread = (skipped.unread || 0) + 1;
+      return r;
+    }).filter(Boolean),
+  }));
+  return { week: D.week, range: _range(D.week), stamp: at ? `${_paperDay(atDay)}/${+atDay.slice(5, 7)} ${p2(at.getHours())}:${p2(at.getMinutes())}` : '—', days, skipped };
+}
+function printWeek() {
+  try {
+    if (!_m || typeof WeekPaper === 'undefined' || typeof _printWeekShell !== 'function') throw new Error('week paper: board model or WeekPaper missing');
+    const p = _paperModel();
+    // a row the paper could not read is said, never left out in silence (the sheet stands for the board)
+    if (p.skipped.unread && typeof toast === 'function') toast(`${p.skipped.unread} γραμμές δεν διαβάστηκαν και λείπουν από το χαρτί`, 'danger');
+    _printWeekShell(`Εβδομάδα ${p.week} · Διεθνή`, WeekPaper.intlHTML(p));
+  } catch (err) {
+    if (typeof logError === 'function') logError(err, 'WIV2 printWeek');
+    if (typeof toast === 'function') toast('Η εκτύπωση της εβδομάδας δεν έγινε', 'danger');
+  }
+}
+
 const WIV2 = {
   _broken: false,
   active, paint, repaintRow, shelfPaint, onSync, feedTog, conflict, switchHTML,
@@ -3019,6 +3155,8 @@ const WIV2 = {
   // save's attempt, for the failure line. The menu's pallet figure (_pals).
   _lateLanded, _noteAttempt, _pals,
   _vsNote,
+  // The printed week: the menu's entry, and its plain data for tests and rigs.
+  printWeek, _paperModel,
 };
 window.WIV2 = WIV2;
 })();

@@ -7,7 +7,7 @@
 //   - Offline banner via postMessage to all clients
 // ═══════════════════════════════════════════════════════════
 
-const SW_VERSION = '1794540000';
+const SW_VERSION = '1794560000';
 
 // Το vendor/leaflet/* ΔΕΝ μπαίνει στο APP_SHELL επίτηδες: το pre-cache στο
 // install θα κατέβαζε 228 KB σε κάθε χρήστη, ακυρώνοντας το lazy loading της
@@ -48,6 +48,7 @@ const APP_SHELL = [
   // every page. A WRONG path here fails cache.addAll and with it the whole SW
   // update, so tests/sw-app-shell.test.js checks every entry exists on disk.
   '/PETRASGROUP-TMS/core/wi4-logic.js',
+  '/PETRASGROUP-TMS/core/week-paper.js',
   '/PETRASGROUP-TMS/core/wi4-presence.js',
   '/PETRASGROUP-TMS/core/wn5-logic.js',
   '/PETRASGROUP-TMS/core/wn5-labels.js',
