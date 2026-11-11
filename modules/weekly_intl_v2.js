@@ -430,7 +430,10 @@ function _compute() {
   // the order inside a day and the row numbers: all WI4.boardNumbers
   // (core/wi4-logic.js), the ONE source «Παραγγελίες › Εβδομάδα» numbers its
   // rows from too (owner 2/11/2026, «Α: μία κοινή πηγή»).
-  const nb = lg.boardNumbers(rows, { ws: D._range ? D._range.ws : null, dayOf: _day, fOf, shelved: (r) => I.shelved(r) });
+  // fsOf: every order of a group, so a group sits on its members' earliest day (owner 11/11/2026)
+  const recById = (id) => D.data.exports.find((x) => x.id === id) || D.data.imports.find((x) => x.id === id);
+  const fsOf = (r) => (r.orderIds || [r.orderId]).map((id) => (recById(id) || {}).fields).filter(Boolean);
+  const nb = lg.boardNumbers(rows, { ws: D._range ? D._range.ws : null, dayOf: _day, fOf, fsOf, shelved: (r) => I.shelved(r) });
 
   const days = [];
   const entries = [];

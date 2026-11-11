@@ -678,3 +678,40 @@ test('boardNumbers / weekBoard: a load with stops on two days sits on the earlie
   const no = WI4.numberOf(b.built, b.no);
   assert.ok(no.get('rec2') < no.get('rec1'));
 });
+
+test('boardNumbers: a group sits on the EARLIEST day of ANY of its orders, whatever its lead (owner 11/11)', () => {
+  // W47 shape: two grouped exports, one delivers Sun 15/11, the other Tue 17/11. The lead is the first
+  // of the read (an order patched in place moves it), so the row went to Tuesday on a stale read.
+  const dayOf = (v) => String(v || '').slice(0, 10);
+  const F = {
+    a: { Direction: 'Export', 'Loading DateTime': '2026-11-14', 'Delivery DateTime': '2026-11-17' },
+    b: { Direction: 'Export', 'Loading DateTime': '2026-11-13', 'Delivery DateTime': '2026-11-15' },
+    i1: { Direction: 'Import', 'Loading DateTime': '2026-11-18', _stopsL: [{ dt: '2026-11-18' }] },
+    i2: { Direction: 'Import', 'Loading DateTime': '2026-11-19', _stopsL: [{ dt: '2026-11-19' }, { dt: '2026-11-16' }] },
+  };
+  const rows = [
+    { type: 'export', orderId: 'a', orderIds: ['a', 'b'] },        // lead delivers Tuesday
+    { type: 'import', orderId: 'i1', orderIds: ['i1', 'i2'] },     // lead (stop order) loads Wednesday
+  ];
+  const fOf = (r) => F[r.orderIds[0]];
+  const fsOf = (r) => r.orderIds.map((id) => F[id]);
+  const nb = WI4.boardNumbers(rows, { ws: '2026-11-14', dayOf, fOf, fsOf });
+  const dayOfRow = (oid) => nb.days.find((d) => d.exps.concat(d.imps).some((r) => r.orderId === oid)).date;
+  assert.strictEqual(dayOfRow('a'), '2026-11-15', 'the member delivering Sunday files the group');
+  assert.strictEqual(dayOfRow('i1'), '2026-11-16', 'an import group: its members\' earliest loading stop');
+  // without fsOf: the lead alone, as before
+  const nb0 = WI4.boardNumbers(rows, { ws: '2026-11-14', dayOf, fOf });
+  assert.strictEqual(nb0.days.find((d) => d.exps.length).date, '2026-11-17');
+});
+
+test('boardNumbers: inside a day a group is ordered by its earliest member too', () => {
+  const dayOf = (v) => String(v || '').slice(0, 10);
+  const F = {
+    g1: { Direction: 'Export', 'Delivery DateTime': '2026-11-15T14:00:00Z' },
+    g2: { Direction: 'Export', 'Delivery DateTime': '2026-11-15T06:00:00Z' },
+    s: { Direction: 'Export', 'Delivery DateTime': '2026-11-15T10:00:00Z' },
+  };
+  const rows = [{ type: 'export', orderId: 's', orderIds: ['s'] }, { type: 'export', orderId: 'g1', orderIds: ['g1', 'g2'] }];
+  const nb = WI4.boardNumbers(rows, { ws: '2026-11-14', dayOf, fOf: (r) => F[r.orderIds[0]], fsOf: (r) => r.orderIds.map((id) => F[id]) });
+  assert.deepStrictEqual(nb.days.find((d) => d.exps.length).exps.map((r) => r.orderId), ['g1', 's']);
+});
