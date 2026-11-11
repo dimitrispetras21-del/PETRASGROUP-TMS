@@ -260,6 +260,20 @@ function shelvedRow(row, fieldsOf, isLoose) {
   return !!f && !!isLoose(f);
 }
 
+// The earliest of some datetimes by local day (a tie of days: the earlier text), '' when none. With ws, a member
+// of another week is left out while one of THIS week exists: a group whose member loads in the previous week (the
+// imports are read ±8 days) stays on this week's day, never on a day section outside Σαβ–Παρ (code review 11/11).
+function _minInWeek(dts, dayOf, ws) {
+  let c = (dts || []).filter(Boolean);
+  if (ws) { const we = _addDay(ws, 6), inW = c.filter((v) => { const d = dayOf(v); return d >= ws && d <= we; }); if (inW.length) c = inW; }
+  return c.reduce((m, v) => (!m || dayOf(v) < dayOf(m) || (dayOf(v) === dayOf(m) && String(v) < String(m)) ? v : m), '');
+}
+// The day a group is filed by (owner 11/11/2026): the earliest rowDt of its orders' fields (fs), this week's first.
+// The board's day sections (boardNumbers) and its date ticks (weekly_intl_v2 _rowDayOf) read the same rule.
+function groupDt(fs, type, dayOf, ws) {
+  return _minInWeek((fs || []).filter(Boolean).map((f) => rowDt(f, type, dayOf)), dayOf, ws);
+}
+
 // The board's days and its numbers (§e numbering): exports by DELIVERY day (loading day without
 // one), import-only rows by LOADING day; the week's seven days first (seeded from ws), then the
 // «μεταφέρθηκε» days (outOfWindow) after Friday; inside a day the exports, then the import-only
@@ -267,25 +281,34 @@ function shelvedRow(row, fieldsOf, isLoose) {
 // over the whole week in that order. Left out, as on the board: rota and split legs (they hang
 // under their row), imports of another week (adj), imports drawn inside their export (matchedTo),
 // shelved imports; a leg of another week's parent (crossLeg) stands in its own day, in `legs`,
-// without a number. o = { ws, dayOf, fOf(row) → the row's first order's fields, shelved(row) }.
+// without a number. o = { ws, dayOf, fOf(row) → the row's first order's fields, fsOf(row) → every order's fields
+// (a group's day = groupDt, its members' earliest; left out, the lead's), shelved(row) }.
 // → { days: [{ date, extra, exps, imps, legs }], no: Map(row → n) }
 function boardNumbers(rows, o) {
   const opt = o || {}, fOf = opt.fOf, dayOf = opt.dayOf, shelved = opt.shelved || (() => false);
+  // A group (orderIds > 1) is filed by the EARLIEST of its orders, not by its lead's (owner 11/11/2026, W47: two
+  // grouped exports delivering Sun and Tue sat on Tuesday): groupDt. opt.fsOf(row) → the fields of every order of
+  // the row; left out, the lead alone, as before. The lead's Veroia Switch still orders the day.
+  // A «μεταφέρθηκε» row (outOfWindow, decided by the lead in boardRows) keeps its lead's real day: an in-week member
+  // would open a second section dated inside the week after Friday (code review 11/11).
+  const fsOf = (r) => (r.outOfWindow || !opt.fsOf ? [fOf(r)] : opt.fsOf(r));
+  const minOf = (r, pick) => _minInWeek((fsOf(r) || []).filter(Boolean).map(pick), dayOf, opt.ws);
+  const fileDt = (r, type) => groupDt(fsOf(r), type, dayOf, opt.ws);
   const expRows = (rows || []).filter((r) => r.type === 'export' && !r.legOf && !r.splitLegOf && !r.crossLeg);
   const impRows = (rows || []).filter((r) => r.type === 'import' && !r.legOf && !r.adj && !r.splitLegOf && !r.crossLeg && !shelved(r));
   const legRows = (rows || []).filter((r) => r.crossLeg && !r.adj);   // a leg of another week's parent: its own day, no number
   const groups = {}, extra = {};
   const slot = (b, k) => (b[k] = b[k] || { date: k, exps: [], imps: [], legs: [] });
   if (opt.ws) { let d = opt.ws; for (let i = 0; i < 7; i++) { slot(groups, d); d = _addDay(d, 1); } }
-  expRows.forEach((r) => { const k = dayOf(rowDt(fOf(r), 'export', dayOf)); slot(r.outOfWindow ? extra : groups, k).exps.push(r); });
-  impRows.forEach((r) => { const k = dayOf(rowDt(fOf(r), 'import', dayOf)); slot(r.outOfWindow ? extra : groups, k).imps.push(r); });
+  expRows.forEach((r) => { const k = dayOf(fileDt(r, 'export')); slot(r.outOfWindow ? extra : groups, k).exps.push(r); });
+  impRows.forEach((r) => { const k = dayOf(fileDt(r, 'import')); slot(r.outOfWindow ? extra : groups, k).imps.push(r); });
   legRows.forEach((r) => { const k = dayOf(rowDt(fOf(r), r.type, dayOf)); slot(r.outOfWindow ? extra : groups, k).legs.push(r); });
   const byDate = (a, b) => (a.date || '~').localeCompare(b.date || '~');
   // Inside a day, by the earliest stop of the field's end in place of the field (no loading fallback:
   // an export without a delivery keeps its old place), keyed once per row.
   const keys = new Map();
   const keyed = (r, field) => {
-    if (!keys.has(r)) { const f = fOf(r); keys.set(r, { 'Veroia Switch': f['Veroia Switch'], [field]: _earliestDt(f, field === 'Delivery DateTime' ? 'export' : 'import', dayOf) }); }
+    if (!keys.has(r)) { const f = fOf(r), t = field === 'Delivery DateTime' ? 'export' : 'import'; keys.set(r, { 'Veroia Switch': f['Veroia Switch'], [field]: minOf(r, (x) => _earliestDt(x, t, dayOf)) }); }
     return keys.get(r);
   };
   const byText = (field) => (a, b) => String(keyed(a, field)[field] || '').localeCompare(String(keyed(b, field)[field] || ''));
@@ -338,7 +361,8 @@ function weekBoard(o) {
   const built = boardRows(exps, imps, { ws, we, dayOf, split: !!o.split });
   const byId = new Map([...exps, ...imps].map((r) => [r.id, r]));
   const fOf = (row) => f(byId.get((row.orderIds && row.orderIds[0]) || row.orderId) || {});
-  const nb = boardNumbers(built.rows, { ws, dayOf, fOf,
+  const fsOf = (row) => (row.orderIds || [row.orderId]).map((id) => f(byId.get(id) || {}));
+  const nb = boardNumbers(built.rows, { ws, dayOf, fOf, fsOf,
     shelved: (row) => !!o.shelf && shelvedRow(row, (r) => (byId.get(r.orderId) || {}).fields, o.isLoose) });
   return { built, no: nb.no, byId };
 }
@@ -991,7 +1015,7 @@ const WI4 = freeze({
   // §e.9
   menuSection, MENU_ICON,
   // shared helpers
-  dayDiff, dayLabel, dayRowOrder, rowDt,
+  dayDiff, dayLabel, dayRowOrder, rowDt, groupDt,
   // board rows and numbers (one source with «Παραγγελίες › Εβδομάδα», owner 2/11)
   readWindow, weekExports, giSortRecs, boardRows, shelvedRow, boardNumbers, numberOf, unseenOrders, weekNumbers, weekBoard,
 });

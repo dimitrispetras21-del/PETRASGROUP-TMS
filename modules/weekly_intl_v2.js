@@ -424,13 +424,17 @@ function _rowFacts(row, oid) {
 function _compute() {
   const I = W(), D = _D(), lg = L(), today = _today();
   const rows = D.rows || [];
-  const fOf = (r) => ((D.data.exports.find((x) => x.id === (r.orderIds || [])[0]) || D.data.imports.find((x) => x.id === r.orderId)) || {}).fields || {};
+  // One id → record map for the row's lead (fOf) and all its orders (fsOf: a group sits on its members'
+  // earliest day, owner 11/11/2026); built once per compute instead of a find per order.
+  const recById = new Map(D.data.imports.concat(D.data.exports).map((x) => [x.id, x]));
+  const fOf = (r) => (recById.get((r.orderIds || [])[0]) || recById.get(r.orderId) || {}).fields || {};
+  const fsOf = (r) => (r.orderIds || [r.orderId]).map((id) => (recById.get(id) || {}).fields).filter(Boolean);
   // Grouping = today's _wiAllRowsHTML rules: exports by DELIVERY day, imports
   // by LOADING day, Σαβ–Παρ seeded, «μεταφέρθηκε» sections after Friday — and
   // the order inside a day and the row numbers: all WI4.boardNumbers
   // (core/wi4-logic.js), the ONE source «Παραγγελίες › Εβδομάδα» numbers its
   // rows from too (owner 2/11/2026, «Α: μία κοινή πηγή»).
-  const nb = lg.boardNumbers(rows, { ws: D._range ? D._range.ws : null, dayOf: _day, fOf, shelved: (r) => I.shelved(r) });
+  const nb = lg.boardNumbers(rows, { ws: D._range ? D._range.ws : null, dayOf: _day, fOf, fsOf, shelved: (r) => I.shelved(r) });
 
   const days = [];
   const entries = [];
@@ -445,7 +449,8 @@ function _compute() {
   rows.filter((r) => r.type === 'export' && r.importId && !r.hasSplitLegs && _unconfirmed(r)).forEach((r) => {
     const ir = rows.find((x) => x.type === 'import' && (x.orderIds || [x.orderId]).includes(r.importId));
     if (!ir || ir.adj || I.shelved(ir)) return;
-    const k = _day(lg.rowDt(fOf(ir), 'import', _day));
+    // the day the free row would sit on: a group's earliest member (groupDt), as boardNumbers files it
+    const k = _day(lg.groupDt(fsOf(ir), 'import', _day, D._range ? D._range.ws : null));
     (ghosts[k] = ghosts[k] || []).push(ir);
   });
   const rotaOf = (row, parent, day) => {
@@ -774,13 +779,15 @@ function _ptsFit(d) {
 // delivery (else its loading), an import by its earliest loading (owner 3/11).
 // Only for the end that dates the row, and for an import's deliveries the day
 // of their own chip (Delivery DateTime, owner 3/11), so another day is divided.
-// A groupage is filed by its PRIMARY order (_compute fOf = orderIds[0]), not by
-// the first of _memberRecs, which grpOrder sorts by date: callers pass
-// opt.primary to _sideOf (code review 2/11).
-function _rowDayOf(f, kind) {
+// A groupage is filed by the earliest of ALL its orders (WI4.groupDt, the rule
+// _compute's boardNumbers files it by, owner 11/11/2026): `fs` = every
+// member's fields. Its direction and an import's delivery chip are the
+// PRIMARY order's (callers pass opt.primary to _sideOf, code review 2/11).
+function _rowDayOf(f, kind, fs) {
   const exp = f['Direction'] === 'Export';
   if (kind === 'del' && !exp) return _day(f['Delivery DateTime']) || '';
   if ((kind === 'load') === exp) return '';
+  if (fs && fs.length > 1) { const D = _D(); return _day(L().groupDt(fs, exp ? 'export' : 'import', _day, D && D._range ? D._range.ws : null)) || ''; }
   return _day(L().rowDt(f, exp ? 'export' : 'import', _day)) || '';
 }
 // «+N» (Nick 14/10): the tooltip said «Όλα τα σημεία» but listed only the
@@ -916,7 +923,7 @@ function _sideOf(recs, kind, opt) {
     if (byDate) pts.sort((a, b) => String(a.dt || '9').slice(0, 10).localeCompare(String(b.dt || '9').slice(0, 10)) || a.mi - b.mi || a.si - b.si);
     const stops = pts.map((s, i) => ({ n: i + 1, label: s.label, place: s.place, pallets: s.pallets, done: s.done, cx: s.cx, oid: s.oid, drag: s.drag, dt: s.dt }));
     const arr = pts.map((s) => ({ n: s.label, dt: s.dt }));
-    return { stops, dateTick: kind === 'load', showPal: true, days: _rowDayOf(((o.primary && recs.find((r) => r && r.id === o.primary)) || recs[0] || {}).fields || {}, kind), xfold: I.moreStops(arr.map((x) => x.n).join(', '), arr, kind) };
+    return { stops, dateTick: kind === 'load', showPal: true, days: _rowDayOf(((o.primary && recs.find((r) => r && r.id === o.primary)) || recs[0] || {}).fields || {}, kind, recs.map((r) => r && r.fields).filter(Boolean)), xfold: I.moreStops(arr.map((x) => x.n).join(', '), arr, kind) };
   }
   const r = recs[0], f = (r && r.fields) || {};
   const st = I.stFlags(f);
