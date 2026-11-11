@@ -715,3 +715,32 @@ test('boardNumbers: inside a day a group is ordered by its earliest member too',
   const nb = WI4.boardNumbers(rows, { ws: '2026-11-14', dayOf, fOf: (r) => F[r.orderIds[0]], fsOf: (r) => r.orderIds.map((id) => F[id]) });
   assert.deepStrictEqual(nb.days.find((d) => d.exps.length).exps.map((r) => r.orderId), ['g1', 's']);
 });
+
+test('boardNumbers / groupDt: a member of another week never moves the group out of Σαβ–Παρ (code review 11/11)', () => {
+  const dayOf = (v) => String(v || '').slice(0, 10);
+  const F = {
+    i1: { Direction: 'Import', 'Loading DateTime': '2026-11-16' },
+    i2: { Direction: 'Import', 'Loading DateTime': '2026-11-12' },   // the previous week (imports read ±8 days)
+  };
+  const rows = [{ type: 'import', orderId: 'i1', orderIds: ['i1', 'i2'] }];
+  const nb = WI4.boardNumbers(rows, { ws: '2026-11-14', dayOf, fOf: (r) => F[r.orderIds[0]], fsOf: (r) => r.orderIds.map((id) => F[id]) });
+  assert.strictEqual(nb.days.find((d) => d.imps.length).date, '2026-11-16');
+  assert.ok(!nb.days.some((d) => d.date < '2026-11-14'), 'no day section before Saturday');
+  assert.strictEqual(WI4.groupDt([F.i1, F.i2], 'import', dayOf, '2026-11-14'), '2026-11-16');
+  assert.strictEqual(WI4.groupDt([F.i1, F.i2], 'import', dayOf), '2026-11-12', 'without ws: the earliest of all');
+  assert.strictEqual(WI4.groupDt([], 'import', dayOf, '2026-11-14'), '');
+});
+
+test('weekBoard: an import group whose stop-order lead loads later sits on its earliest member\'s day (Εβδομάδα = board)', () => {
+  const dayOf = (v) => (v instanceof Date ? `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, '0')}-${String(v.getDate()).padStart(2, '0')}` : String(v || '').slice(0, 10));
+  const rec = (id, f) => ({ id, fields: Object.assign({ Type: 'International', Direction: 'Import', 'Order ID': id.slice(3) }, f) });
+  // the Group ID's stop order names rec1 (Tuesday) first → the lead; rec2 loads Sunday
+  const recs = [
+    rec('rec1', { 'Group ID': 'GI-x|rec1,rec2', 'Loading DateTime': '2026-11-17' }),
+    rec('rec2', { 'Group ID': 'GI-x|rec1,rec2', 'Loading DateTime': '2026-11-15' }),
+    rec('rec3', { 'Loading DateTime': '2026-11-16' }),
+  ];
+  const b = WI4.weekBoard({ recs, wsDate: new Date(2026, 10, 14), dayOf });
+  const no = WI4.numberOf(b.built, b.no);
+  assert.ok(no.get('rec1') < no.get('rec3') && no.get('rec2') < no.get('rec3'), 'the group (Sunday) is numbered before Monday\'s import');
+});
