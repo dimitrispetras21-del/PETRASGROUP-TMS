@@ -1027,7 +1027,8 @@ function _dpWriteArgs(st) {
 
 function _dpGroupDay(f) {
   const isImp = String(f['Direction'] || '') === 'Import';
-  // The day the row sits on: WI4.rowDt, its earliest stop (owner 3/11), as _compute files it.
+  // The ORDER's own day: WI4.rowDt, its earliest stop (owner 3/11). A grouped order's row sits on the
+  // group's earliest member (WI4.groupDt, 11/11), which this single record cannot know: the note names the order's day.
   const lg = L();
   const v = typeof lg.rowDt === 'function' ? lg.rowDt(f, isImp ? 'import' : 'export') : (isImp ? f['Loading DateTime'] : f['Delivery DateTime']);
   return _dayOf('Loading DateTime', v) || '';

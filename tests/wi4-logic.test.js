@@ -744,3 +744,12 @@ test('weekBoard: an import group whose stop-order lead loads later sits on its e
   const no = WI4.numberOf(b.built, b.no);
   assert.ok(no.get('rec1') < no.get('rec3') && no.get('rec2') < no.get('rec3'), 'the group (Sunday) is numbered before Monday\'s import');
 });
+
+test('boardNumbers: a «μεταφέρθηκε» group (outOfWindow) keeps its lead\'s real day, never an in-week member\'s', () => {
+  const dayOf = (v) => String(v || '').slice(0, 10);
+  const F = { a: { Direction: 'Export', 'Delivery DateTime': '2026-11-23' }, b: { Direction: 'Export', 'Delivery DateTime': '2026-11-15' } };
+  const rows = [{ type: 'export', orderId: 'a', orderIds: ['a', 'b'], outOfWindow: true }];
+  const nb = WI4.boardNumbers(rows, { ws: '2026-11-14', dayOf, fOf: (r) => F[r.orderIds[0]], fsOf: (r) => r.orderIds.map((id) => F[id]) });
+  const d = nb.days.find((x) => x.exps.length);
+  assert.strictEqual(d.date, '2026-11-23'); assert.strictEqual(d.extra, true);
+});

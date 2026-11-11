@@ -449,7 +449,8 @@ function _compute() {
   rows.filter((r) => r.type === 'export' && r.importId && !r.hasSplitLegs && _unconfirmed(r)).forEach((r) => {
     const ir = rows.find((x) => x.type === 'import' && (x.orderIds || [x.orderId]).includes(r.importId));
     if (!ir || ir.adj || I.shelved(ir)) return;
-    const k = _day(lg.rowDt(fOf(ir), 'import', _day));
+    // the day the free row would sit on: a group's earliest member (groupDt), as boardNumbers files it
+    const k = _day(lg.groupDt(fsOf(ir), 'import', _day, D._range ? D._range.ws : null));
     (ghosts[k] = ghosts[k] || []).push(ir);
   });
   const rotaOf = (row, parent, day) => {

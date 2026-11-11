@@ -281,14 +281,17 @@ function groupDt(fs, type, dayOf, ws) {
 // over the whole week in that order. Left out, as on the board: rota and split legs (they hang
 // under their row), imports of another week (adj), imports drawn inside their export (matchedTo),
 // shelved imports; a leg of another week's parent (crossLeg) stands in its own day, in `legs`,
-// without a number. o = { ws, dayOf, fOf(row) → the row's first order's fields, shelved(row) }.
+// without a number. o = { ws, dayOf, fOf(row) → the row's first order's fields, fsOf(row) → every order's fields
+// (a group's day = groupDt, its members' earliest; left out, the lead's), shelved(row) }.
 // → { days: [{ date, extra, exps, imps, legs }], no: Map(row → n) }
 function boardNumbers(rows, o) {
   const opt = o || {}, fOf = opt.fOf, dayOf = opt.dayOf, shelved = opt.shelved || (() => false);
   // A group (orderIds > 1) is filed by the EARLIEST of its orders, not by its lead's (owner 11/11/2026, W47: two
   // grouped exports delivering Sun and Tue sat on Tuesday): groupDt. opt.fsOf(row) → the fields of every order of
   // the row; left out, the lead alone, as before. The lead's Veroia Switch still orders the day.
-  const fsOf = opt.fsOf || ((r) => [fOf(r)]);
+  // A «μεταφέρθηκε» row (outOfWindow, decided by the lead in boardRows) keeps its lead's real day: an in-week member
+  // would open a second section dated inside the week after Friday (code review 11/11).
+  const fsOf = (r) => (r.outOfWindow || !opt.fsOf ? [fOf(r)] : opt.fsOf(r));
   const minOf = (r, pick) => _minInWeek((fsOf(r) || []).filter(Boolean).map(pick), dayOf, opt.ws);
   const fileDt = (r, type) => groupDt(fsOf(r), type, dayOf, opt.ws);
   const expRows = (rows || []).filter((r) => r.type === 'export' && !r.legOf && !r.splitLegOf && !r.crossLeg);
