@@ -15,6 +15,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 const { execFileSync } = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..');
@@ -60,7 +61,7 @@ test('guards: PART 0 = PART 6 (unchanged functions); five hooks chain from the l
   const p6 = pairsOf(part(src, '===== PART 6', 'END $do$;'));
   assert.strictEqual(p0.length, 7);
   assert.deepStrictEqual(p6, p0, 'every guarded pair proved again, same order');
-  const { hooks, finalMd5 } = await import(BUILDER);
+  const { hooks, finalMd5 } = await import(pathToFileURL(BUILDER).href);
   const h = hooks(src);
   assert.deepStrictEqual(h.map((x) => x.k), [1, 2, 3, 4, 5]);
   // the live texts, from the production capture (one source with the fixture the PGlite test checks)
@@ -105,7 +106,7 @@ test('born closed: revoke all, EXECUTE on the Worker five + day L, RLS + ONE aud
   assert.match(src, /REVOKE ALL ON public\.plan_config FROM PUBLIC, anon, authenticated, service_role;/);
   assert.match(src, /GRANT SELECT ON public\.plan_config TO service_role, tms_reader, tms_check_runner;/);
   assert.deepStrictEqual(strip(src).match(/CREATE POLICY[^;]*;/g), ['CREATE POLICY monitor_read ON public.plan_config FOR SELECT TO tms_check_runner, tms_reader USING (true);']);
-  const { CREATED } = await import(BUILDER);
+  const { CREATED } = await import(pathToFileURL(BUILDER).href);
   assert.deepStrictEqual(CREATED.map((s) => s.split('(')[0]).sort(), created.slice().sort(), 'the rollback drops exactly these');
   const rb = read('074a_plan_reads_rollback.sql');
   for (const s of CREATED) assert.ok(rb.includes(`'${s}'`));

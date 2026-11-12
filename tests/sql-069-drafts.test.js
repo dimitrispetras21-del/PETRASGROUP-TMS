@@ -16,6 +16,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 const crypto = require('node:crypto');
 
 const ROOT = path.join(__dirname, '..');
@@ -56,7 +57,7 @@ test('each writing file is ONE DO block; the verify files write nothing', () => 
   }
 });
 test('the dry runs are regenerated from their sources (node worker/migrations/drafts/tools/build-069-dryruns.mjs)', async () => {
-  const { PAIRS, buildDryRun } = await import(path.join(DRAFTS, 'tools/build-069-dryruns.mjs'));
+  const { PAIRS, buildDryRun } = await import(pathToFileURL(path.join(DRAFTS, 'tools/build-069-dryruns.mjs')).href);
   assert.strictEqual(PAIRS.length, 2);
   for (const p of PAIRS) assert.strictEqual(read(p.target), buildDryRun(read(p.source), p), p.target + ' drifted');
 });
