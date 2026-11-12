@@ -7,8 +7,9 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const HERE = path.dirname(new URL(import.meta.url).pathname);
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = process.env.TMS_ROOT ? path.resolve(process.env.TMS_ROOT) : path.resolve(HERE, '..');
 const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
 const WRITE = /\bat(?:Create|CreateBatch|Patch|PatchBatch|SafePatch|Delete|SoftDelete)\(\s*TABLES\.(NAT_LOADS|GL_LINES|CONS_LOADS|NAT_ORDERS)\b/;

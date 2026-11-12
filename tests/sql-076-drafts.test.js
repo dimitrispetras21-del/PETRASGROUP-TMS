@@ -11,6 +11,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 const { execFileSync } = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..');
@@ -40,13 +41,13 @@ test('076 writes no row, adds no trigger, function or table change; plan_board i
   assert.match(read(SRC), /v_board := md5\(\(SELECT prosrc FROM pg_proc WHERE oid = 'public\.plan_board\(date,text\)'::regprocedure\)\);/);
   assert.match(read(SRC), /RAISE EXCEPTION '076 proof: plan_board changed'/);
   assert.match(read(SRC), /m_board CONSTANT text := '670f72f60edcf09f955fb1f6a74143b9';/, 'guarded at 075\'s plan_board');
-  const { view071, constants } = await import(BUILDER);
+  const { view071, constants } = await import(pathToFileURL(BUILDER).href);
   assert.ok(read('076_plan_board_speed_rollback.sql').includes(view071()), 'the rollback holds 071\'s text verbatim');
   assert.strictEqual(constants(read(SRC)).old, 'f758827112c0a1a34f3feebb8cd36c44');
 });
 
 test('the new view keeps 071\'s rule and columns: late at an end stop, the same names in the same order', async () => {
-  const { view071 } = await import(BUILDER);
+  const { view071 } = await import(pathToFileURL(BUILDER).href);
   const cols = (s) => [...strip(s).matchAll(/ AS (\w+)/g)].map((m) => m[1]).filter((c) => !['late', 'st', 'MATERIALIZED'].includes(c));
   const neu = /CREATE OR REPLACE VIEW public\.v_rt_stop_state[\s\S]*?\n  FROM st;/.exec(read(SRC))[0];
   assert.deepStrictEqual(cols(neu), cols(view071()), 'every column of 071, in order');
