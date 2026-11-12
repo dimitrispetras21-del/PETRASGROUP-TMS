@@ -9,8 +9,9 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const HERE = path.dirname(new URL(import.meta.url).pathname);
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = process.env.TMS_ROOT ? path.resolve(process.env.TMS_ROOT) : path.resolve(HERE, '..');
 
 function sandbox(stops, opts = {}) {
