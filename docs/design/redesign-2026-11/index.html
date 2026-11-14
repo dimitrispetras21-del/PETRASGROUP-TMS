@@ -292,8 +292,8 @@ table.spec td b{color:var(--ink);font-weight:600}
 .pay li{display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--line)}.pay li:first-child{border-top:0}.pay b{color:var(--ink);font-weight:600}
 
 /* note sign: a small circle with "!"; the words appear only when you point at it */
-.nb{position:relative;display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;background:var(--red);color:#fff;font-size:12px;font-weight:700;line-height:1;cursor:help;flex:none;font-style:normal}
-.nb.a{background:var(--amber)}
+.nb{position:relative;display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;background:#fff;border:1.5px solid var(--red);color:var(--red);font-size:11px;font-weight:700;line-height:1;cursor:help;flex:none;font-style:normal}
+.nb.a{border-color:var(--amber);color:var(--amber)}
 .nb::after{content:attr(data-t);position:absolute;bottom:calc(100% + 8px);right:-10px;background:var(--ink);color:#fff;font-weight:500;font-size:12.5px;line-height:1.4;padding:8px 11px;border-radius:10px;width:max-content;max-width:250px;white-space:normal;text-align:left;opacity:0;transform:translateY(4px);pointer-events:none;transition:opacity var(--t-fast),transform var(--t-fast);z-index:6}
 .nb:hover::after,.nb.show::after{opacity:1;transform:none}
 .nb.dn::after{bottom:auto;top:calc(100% + 8px)}
@@ -428,7 +428,7 @@ table.spec td b{color:var(--ink);font-weight:600}
         <tr><td><span class="ico"><i data-lucide="clock"></i>20:00</span> &nbsp; <span class="ico r"><i data-lucide="clock-alert"></i>Κυρ 15</span></td><td><b>Προθεσμία.</b> Γκρι ρολόι: ισχύει. Κόκκινο: πέρασε.</td></tr>
         <tr><td><span class="ico"><i data-lucide="thermometer"></i>+3°</span> &nbsp; <span class="ico" style="color:var(--link)"><i data-lucide="snowflake"></i>−25°</span></td><td><b>Θερμοκρασία.</b> Θερμόμετρο για συντήρηση, χιονονιφάδα για κατάψυξη.</td></tr>
         <tr><td><span class="tpy num">10433</span> &nbsp; <span class="tpw">εκκρεμεί</span></td><td><b>ΤΠΥ.</b> Σκέτος έντονος πράσινος αριθμός στη δική του στήλη. Παραδόθηκε χωρίς ΤΠΥ: «εκκρεμεί».</td></tr>
-        <tr><td><i class="nb">!</i> &nbsp; <i class="nb a">!</i></td><td><b>Σημείωση.</b> Κυκλάκι με θαυμαστικό: κόκκινο όταν κάτι λείπει, πορτοκαλί όταν θέλει ματιά. Το μήνυμα βγαίνει μόνο όταν σταθείς πάνω του.</td></tr>
+        <tr><td><i class="nb">!</i> &nbsp; <i class="nb a">!</i></td><td><b>Σημείωση.</b> Λευκό κυκλάκι με θαυμαστικό: κόκκινο όταν κάτι λείπει, πορτοκαλί όταν θέλει ματιά. Το μήνυμα βγαίνει μόνο όταν σταθείς πάνω του.</td></tr>
         <tr><td><span style="color:var(--red);font-weight:600;font-size:13px">λείπουν</span> &nbsp; <span style="color:#C9CDD4">–</span></td><td><b>Κενό.</b> «λείπουν» όταν έπρεπε να υπάρχει. Παύλα όταν σωστά δεν υπάρχει. Ποτέ μηδέν για το άγνωστο.</td></tr>
       </tbody></table>
     </div>
