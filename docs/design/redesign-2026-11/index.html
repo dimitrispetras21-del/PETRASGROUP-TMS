@@ -428,6 +428,14 @@ table.spec td b{color:var(--ink);font-weight:600}
 .mw5 u{position:absolute;left:0;bottom:0;width:22px;height:2px;border-radius:2px;background:var(--accent);transition:transform var(--t-move) var(--ease)}
 .mp5{display:grid;gap:8px}.mp5 section{background:#fff;border-radius:12px;padding:9px 12px}
 .mp5 h5{margin:0 0 4px;font-size:12.5px;font-weight:600;color:var(--ink)}.mp5 p{margin:0;font-size:12.5px;color:var(--help);line-height:1.6}
+.open .rt.anim:not(.show) div::after{transform:scaleY(0)}
+.oc .rt.anim{border-top:1px solid var(--line);padding-top:14px}.oc .rt.show .pos{transform:translateY(34px)}
+.wk a,.wk>svg{cursor:pointer}
+.br.tg,.br.bad{border-radius:10px}.br.tg{background:var(--accent-bg)}.br.bad{background:#FDF1F1}
+.sheet.land{animation:none;transform:translateY(-90px) scale(.92,.1);opacity:0;pointer-events:none;transition:transform 260ms var(--ease-exit),opacity 200ms ease 60ms}
+.veil.land{animation:none;opacity:0;pointer-events:none;transition:opacity var(--t-enter) ease}
+.sheet,.veil{transition:transform var(--t-enter) var(--ease),opacity var(--t-enter) var(--ease)}
+.tr.landed::after{animation:fl 1500ms ease-out 200ms both}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;transition-delay:0ms!important}
   .oc,.toast{transform:none}}
 @media print{.toc,.doc>header p{display:none}body{background:#fff}}
@@ -537,7 +545,7 @@ table.spec td b{color:var(--ink);font-weight:600}
       <span class="nobtn"></span>
       <p class="note">Γκρι σχήματα στη θέση των γραμμών. Η μόνη κίνηση που επαναλαμβάνεται, και μόνο όσο φορτώνει.</p></div>
   </div>
-  <div class="cap"><h3>Οι πέντε μεγάλες κινήσεις</h3><span>πρόταση 15/11 · για τις στιγμές που αξίζουν: άνοιγμα παραγγελίας, σύρσιμο, αποθήκευση, αλλαγή εβδομάδας</span></div>
+  <div class="cap"><h3>Οι πέντε μεγάλες κινήσεις</h3><span>ίδιες και μέσα στις οθόνες παρακάτω: πάτα γραμμή στις Παραγγελίες, σύρε το κόκκινο φορτίο στο Εβδομαδιαίο, άλλαξε εβδομάδα, πάτα «Αποθήκευση» στη φόρμα</span></div>
   <div class="g5m">
     <div class="panel lab"><h3>1 · Η διαδρομή ζωγραφίζεται</h3>
       <div class="stage big" style="padding:18px 22px"><div class="rt anim show" id="g1">
@@ -745,7 +753,7 @@ function ocFill(o){const i=O.indexOf(o),un=o[7]==='e',out=o[7]==='o',pre=o[9]===
  const tpy=o[11]==='s'?'<span class="tpy">Αυτοπαράδοση</span>':o[11]?`<span class="tpy" title="13/11/2026">${o[11]}</span>`:'<span class="tpn">–</span>';
  return `<div class="h"><div style="min-width:0;flex:1"><b style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${o[0]} <span class="num" style="font-weight:400;font-size:13px;color:var(--help)">${NO(o)}</span></b></div>${stt(o[9])}<button class="cl" onclick="ocClose()" aria-label="Κλείσιμο">${ic('x')}</button><div style="flex:0 0 100%;margin-top:2px"><small>${o[2]}${nat?'':' EUR'}${pe?` ·&nbsp;ανταλλαγή${vs?' <i class="nb a dn" style="vertical-align:1px" data-t="Δελτίο 2, της Βέροιας, εκκρεμεί.">!</i>':''}`:''}</small><small>${GD[i]}</small></div></div>
   <dl class="kv">${un||out||o[7]==='x'?'':`<div><dt class="lbl">Ανάθεση</dt><dd title="Άνοιγμα στο Εβδομαδιαίο">${o[8].replace('|','<br><span style="color:var(--help);font-weight:400">')}</span></dd></div>`}<div><dt class="lbl">Αναφορά πελάτη</dt><dd class="num">${pre?'<span class="tpn">–</span>':6100118259+i*137}</dd></div><div><dt class="lbl">Τιμή</dt><dd class="num">${o[10]==='np'?'<span class="np">χωρίς τιμή</span>':o[10]==='—'?'<span class="tpn">–</span>':o[10]}</dd></div><div><dt class="lbl">ΤΠΥ</dt><dd class="num">${tpy}</dd></div></dl>
-  ${pre?'':`<div class="rt"><div><span class="lbl">Φόρτωση · ${d1}</span><b>${o[3]}</b>${many?`<span>${o[4].split(' +')[0]} · ${n-2*k} παλ.</span><span>Naoussa Agro, Νάουσα · ${k} παλ.</span><span>Pella Peach Coop, Σκύδρα · ${k} παλ.</span>`:`<span>${o[4].split(' ·')[0]}</span>`}</div>
+  ${pre?'':`<div class="rt anim"><div>${o[9]==='run'?'<i class="pos" title="Εδώ βρίσκεται τώρα"></i>':''}<span class="lbl">Φόρτωση · ${d1}</span><b>${o[3]}</b>${many?`<span>${o[4].split(' +')[0]} · ${n-2*k} παλ.</span><span>Naoussa Agro, Νάουσα · ${k} παλ.</span><span>Pella Peach Coop, Σκύδρα · ${k} παλ.</span>`:`<span>${o[4].split(' ·')[0]}</span>`}</div>
    ${vs?`<div><span class="lbl">Βέροια · ${dv}</span><b>Cross-dock</b><span>${un?'εθνικό σκέλος χωρίς φορτηγό':'εθνικό σκέλος: ΚΗΙ 2140 · Νίκος Ρήγας'}</span></div>`:''}
    <div><span class="lbl">Παράδοση · ${d2}</span><b>${o[5]}</b><span>${o[6].split(' ·')[0]}</span></div></div>`}
   ${i===1?'<p class="memo"><span class="lbl">Σημειώσεις</span><br>Παράδοση μόνο πρωί, ράμπα 4.</p>':''}
@@ -753,9 +761,17 @@ function ocFill(o){const i=O.indexOf(o),un=o[7]==='e',out=o[7]==='o',pre=o[9]===
   ${out?`<div class="dark"><p class="lbl"><i class="r"></i>Εκτός Εβδομαδιαίου</p><p>Δεν έχει εθνικό φορτίο, άρα δεν φαίνεται στον πίνακα.</p><button class="pill b">Στείλε στο Εβδομαδιαίο</button></div>`:''}
   ${pre?`<div class="dark"><p class="lbl"><i class="a"></i>Pre-order</p><p>Λείπουν τόπος φόρτωσης και τόπος παράδοσης.</p><button class="pill b">Μετατροπή σε παραγγελία</button></div>`:''}
   <div class="acts"><button class="tbtn" title="${nat?'Διαγραφή':'Διπλασιασμός, Επισύναψη εγγράφου, Διαγραφή'}">${ic('ellipsis')}</button>${nat?'':`<button class="tbtn">Έγγραφα${i%3===2?' <span class="num">2</span>':''}</button>`}<span class="sp"></span><button class="pill" style="margin-right:8px">${pre?'Επεξεργασία pre-order':'Επεξεργασία'}</button></div>`}
-function oc(i,el){const f=$('f1'),inn=$('ocIn'),was=f.classList.contains('open');f.querySelectorAll('.tr.sel').forEach(x=>x.classList.remove('sel'));el.classList.add('sel');
+const SC=f=>f.getBoundingClientRect().width/f.offsetWidth;
+function oc(i,el){const f=$('f1'),inn=$('ocIn'),was=f.classList.contains('open'),nm=el.querySelector('.el'),a=nm.getBoundingClientRect();f.querySelectorAll('.tr.sel').forEach(x=>x.classList.remove('sel'));el.classList.add('sel');
  if(was)inn.classList.add('swap');
- inn.innerHTML=ocFill(O[i]);lucide.createIcons();void f.offsetWidth;f.classList.add('open');requestAnimationFrame(()=>inn.classList.remove('swap'))}
+ inn.innerHTML=ocFill(O[i]);lucide.createIcons();void f.offsetWidth;f.classList.add('open');
+ requestAnimationFrame(()=>{inn.classList.remove('swap');const rt=inn.querySelector('.rt');if(rt){void rt.offsetWidth;rt.classList.add('show')}
+  // the customer's name travels from the row to the card: same thing, not another screen
+  const tt=inn.querySelector('.h b');if(!tt||matchMedia('(prefers-reduced-motion:reduce)').matches)return;
+  const sc=SC(f),fr=f.getBoundingClientRect(),b=tt.getBoundingClientRect(),g=document.createElement('b');g.textContent=nm.textContent;
+  g.style.cssText=`position:absolute;z-index:9;left:${(a.left-fr.left)/sc}px;top:${(a.top-fr.top)/sc}px;font-size:${getComputedStyle(nm).fontSize};font-weight:600;color:var(--ink);white-space:nowrap;transform-origin:0 0;pointer-events:none`;
+  f.appendChild(g);tt.style.opacity=0;const k=17/parseFloat(getComputedStyle(nm).fontSize);
+  g.animate([{transform:'none'},{transform:`translate(${(b.left-a.left)/sc-(was?0:24)}px,${(b.top-a.top)/sc}px) scale(${k})`}],{duration:280,easing:'cubic-bezier(.2,.8,.2,1)'}).finished.then(()=>{g.remove();tt.style.opacity=''})})}
 function ocClose(){const f=$('f1');f.classList.remove('open');f.querySelectorAll('.tr.sel').forEach(x=>x.classList.remove('sel'))}
 
 /* ---------- screen 2: weekly national (week 47, Saturday 14/11 to Friday 20/11, today Monday 16/11) ---------- */
@@ -832,7 +848,7 @@ $('f3').innerHTML=ordersHTML(0)+`<div class="veil"></div><div class="sheet">
    <dt>Φορτηγό</dt><dd class="num">32 / 33</dd></dl>
   <ul class="chk"><li><i class="nb a" style="margin-top:1px">!</i>Τιμή</li></ul>
   <p style="font-size:13px;color:var(--help);line-height:1.6">→ Εβδομαδιαίο Διεθνών, 14 – 20/11<br>→ Εβδομαδιαίο Εθνικών, 2 φορτώσεις</p>
-  <div><button class="pill b" style="width:100%;height:40px;justify-content:center">Αποθήκευση</button><p class="hint" style="text-align:center;margin-top:8px">Ctrl + Enter · <a>Αποθήκευση και νέα</a></p></div>
+  <div><button class="pill b" style="width:100%;height:40px;justify-content:center" onclick="fSave()">Αποθήκευση</button><p class="hint" style="text-align:center;margin-top:8px">Ctrl + Enter · <a>Αποθήκευση και νέα</a></p></div>
  </div></div></div>`;
 
 /* ---------- screen 4: expenses (week 44, 24 to 30/10) ---------- */
@@ -926,7 +942,8 @@ function mMove(){const el=$('mv'),a=el.getBoundingClientRect(),to=el.parentEleme
 /* five signature motions */
 const RED=()=>matchMedia('(prefers-reduced-motion:reduce)').matches,slp=ms=>new Promise(r=>setTimeout(r,RED()?0:ms));
 function g1(){const e=$('g1');e.classList.remove('show');void e.offsetWidth;e.classList.add('show')}
-function g2pal(row,n){const p=row.querySelector('.pal');p.querySelector('b').textContent=n;p.querySelector('.m i').style.setProperty('--f',Math.min(1,n/33).toFixed(2));p.classList.toggle('over',n>33);
+function g2pal(row,n){g2palEl(row.querySelector('.pal'),n)}
+function g2palEl(p,n){p.querySelector('b').textContent=n;p.querySelector('.m i').style.setProperty('--f',Math.min(1,n/33).toFixed(2));p.classList.toggle('over',n>33);
  let s=p.querySelector('sup');if(n>33){if(!s){s=document.createElement('sup');p.appendChild(s)}s.textContent='+'+(n-33)}else if(s)s.remove()}
 let g2busy=0;async function g2(){if(g2busy)return;g2busy=1;const c=$('g2c'),a=$('g2a'),b=$('g2b'),over=r=>{const x=r.getBoundingClientRect(),y=c.getBoundingClientRect(),m=new DOMMatrix(getComputedStyle(c).transform);return `translate(${x.left-y.left+m.e+x.width*.36}px,${x.top-y.top+m.f+8}px) scale(1.03)`};
  c.style.transition='none';c.classList.remove('gone','up');c.style.transform='';void c.offsetWidth;c.style.transition='';g2pal(a,22);g2pal(b,18);[a,b].forEach(r=>r.classList.remove('tg','bad','flash'));
@@ -947,6 +964,29 @@ let g5busy=0;async function g5(d){const n=w5+d;if(!d||!W5[n]||g5busy)return;g5bu
  if(!RED())await p.animate([{transform:'none',opacity:1},{transform:`translateX(${-dir*36}px)`,opacity:0}],{duration:160,easing:'cubic-bezier(.4,0,1,1)'}).finished;
  p.innerHTML=w5h(n);if(!RED())p.animate([{transform:`translateX(${dir*36}px)`,opacity:0},{transform:'none',opacity:1}],{duration:280,easing:e});g5busy=0}
 $('g5p').innerHTML=w5h(w5);
+
+/* the same motions inside the screens */
+// week turn: board and expenses
+document.addEventListener('click',async e=>{const wk=e.target.closest('.frame .wk');if(!wk)return;const tabs=[...wk.querySelectorAll('a')],cur=tabs.findIndex(a=>a.classList.contains('on'));let to=tabs.indexOf(e.target.closest('a'));
+ if(to<0){const sv=e.target.closest('svg');if(!sv||sv.parentElement!==wk)return;to=cur+(sv===wk.firstElementChild?-1:1)}
+ if(to===cur||!tabs[to]||wk._b)return;wk._b=1;const dir=Math.sign(to-cur),fr=wk.closest('.frame'),els=fr.id==='f2'?[...fr.querySelectorAll('.day')]:[...wk.parentElement.children].filter(x=>x!==wk);
+ tabs[cur].classList.remove('on');tabs[to].classList.add('on');
+ if(!RED()){await Promise.all(els.map(x=>x.animate([{transform:'none',opacity:1},{transform:`translateX(${-dir*48}px)`,opacity:0}],{duration:160,easing:'cubic-bezier(.4,0,1,1)',fill:'forwards'}).finished));
+  els.forEach(x=>{x.getAnimations().forEach(a=>a.cancel());x.animate([{transform:`translateX(${dir*48}px)`,opacity:0},{transform:'none',opacity:1}],{duration:280,easing:'cubic-bezier(.2,.8,.2,1)'})})}
+ wk._b=0});
+// board: drag the load without a truck onto a truck; its pallets fill while you hold it over, red above 33, never refused
+(function(){const f=$('f2'),src=f.querySelector('.br.need');if(!src)return;src.style.cursor='grab';src.title='Σύρε το φορτίο σε φορτηγό';const N=8;let g,cur;
+ const palOf=r=>{const p=r.querySelectorAll('.pal');return p[p.length-1]},clr=()=>{if(cur){g2palEl(palOf(cur),+palOf(cur).dataset.n);cur.classList.remove('tg','bad');cur=null}};
+ src.addEventListener('pointerdown',e=>{if(e.button)return;e.preventDefault();g=document.createElement('div');g.className='dgc up';g.style.cssText='position:fixed;left:0;top:0;pointer-events:none;z-index:99;transition:box-shadow .2s';g.innerHTML=`Lakonia Valley <b class="num">${N}π</b>`;document.body.appendChild(g);src.style.opacity=.35;
+  const mv=ev=>{g.style.transform=`translate(${ev.clientX+10}px,${ev.clientY-16}px) scale(1.03)`;const h=document.elementFromPoint(ev.clientX,ev.clientY),r=h&&h.closest('#f2 .br');
+   if(r!==cur){clr();if(r&&r!==src&&!r.querySelector('.slot.a')){const p=palOf(r),t=p.querySelector('b').textContent,n=parseInt(t);if(!/[;+]/.test(t)&&!isNaN(n)){p.dataset.n=n;cur=r;g2palEl(p,n+N);r.classList.add(n+N>33?'bad':'tg')}}}};
+  const up=()=>{removeEventListener('pointermove',mv);removeEventListener('pointerup',up);g.remove();
+   if(cur){cur.classList.remove('tg','bad','flash');void cur.offsetWidth;cur.classList.add('flash');cur=null;src.style.display='none';const c=f.querySelector('.nx .chip'),k=f.querySelector('.nx .lbl b');if(c)c.remove();if(k)k.textContent=2}else src.style.opacity=''};
+  mv(e);addEventListener('pointermove',mv);addEventListener('pointerup',up)})})();
+// form: save lands in the list behind it, then the mock-up returns to the form
+function fSave(){const f=$('f3'),sh=f.querySelector('.sheet'),v=f.querySelector('.veil'),row=f.querySelectorAll('.tr')[2];if(f._s)return;f._s=1;
+ sh.classList.add('land');v.classList.add('land');row.classList.remove('landed');void row.offsetWidth;row.classList.add('landed');
+ setTimeout(()=>{sh.classList.remove('land');v.classList.remove('land');f._s=0},2600)}
 
 function setAcc(a){document.body.dataset.accent=a;document.querySelectorAll('#acc b').forEach(b=>b.classList.toggle('on',b.dataset.a===a))}
 document.querySelectorAll('#acc b').forEach(b=>b.onclick=()=>setAcc(b.dataset.a));
