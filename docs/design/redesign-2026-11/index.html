@@ -207,7 +207,7 @@ table.spec td b{color:var(--ink);font-weight:600}
 /* weekly board */
 .wk{display:flex;gap:22px;align-items:center;padding:0 22px}
 .wk a{padding:13px 0 10px;color:var(--help);font-weight:500;border-bottom:2px solid transparent;display:flex;gap:6px}
-.wk a.on{color:var(--link);border-bottom-color:var(--accent)}.wk a i{font-style:normal;font-size:12px;font-weight:600;color:var(--red)}
+.wk a.on{color:var(--link);border-bottom-color:var(--accent)}.wk a i{font-style:normal;font-size:12px;font-weight:600;color:var(--red)}.wk a i.g{color:var(--help);font-weight:500}
 .wk>svg.lucide{color:var(--help)}
 .nx{display:flex;gap:10px;align-items:center;padding:9px 22px;font-size:13px;border-top:1px solid var(--line)}
 .wk .q{height:32px}
@@ -304,7 +304,7 @@ table.spec td b{color:var(--ink);font-weight:600}
 .lt th{text-align:left;padding:0 10px 8px 0;font-size:11px;font-weight:500;letter-spacing:.07em;text-transform:uppercase;color:var(--label)}
 .lt td{padding:7px 10px 7px 0;border-top:1px solid var(--line);color:var(--ink)}
 .lt td:last-child,.lt th:last-child{text-align:right;padding-right:0}.lt td small{color:var(--help)}
-.src{font-size:11px;font-weight:600;border:1px solid var(--line);border-radius:999px;padding:0 7px;line-height:16px;color:var(--body);background:#fff;display:inline-block}
+.src{font-size:11px;font-weight:600;border:1px solid var(--line);border-radius:999px;padding:0 7px;line-height:16px;color:var(--body);background:#fff;display:inline-flex;align-items:center;gap:4px;white-space:nowrap}.src svg.lucide{width:10px;height:10px;color:var(--help)}
 .qe{display:grid;grid-template-columns:1.3fr 110px 1fr 110px auto;gap:8px;margin-top:10px;align-items:center}
 .qe .inp{height:36px;border-color:transparent}.qe .inp.focus{border-color:var(--accent)}
 .pay li{display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--line)}.pay li:first-child{border-top:0}.pay b{color:var(--ink);font-weight:600}
@@ -336,12 +336,12 @@ table.spec td b{color:var(--ink);font-weight:600}
 .tc{position:absolute;z-index:4;top:110px;right:32px;width:400px;background:#fff;border-radius:var(--r-page);box-shadow:var(--shadow-float);padding:22px 24px 0;display:flex;flex-direction:column}
 .tc .h{display:flex;align-items:flex-start;gap:12px;padding-bottom:14px;border-bottom:1px solid var(--line)}
 .tc .h b{font-size:17px;font-weight:600;color:var(--ink);display:block}.tc .h small{display:block;color:var(--help);font-size:13px}
-.cat{display:grid;grid-template-columns:minmax(0,1fr) auto 86px 18px;gap:0 10px;align-items:center;height:40px;border-top:1px solid var(--line-2);color:var(--ink)}
+.cat{display:grid;grid-template-columns:minmax(0,1fr) auto 80px 18px;gap:0 10px;align-items:center;height:38px;border-top:1px solid var(--line-2);color:var(--ink)}
 .cat b{font-weight:500}.cat small{color:var(--help);font-size:12.5px;margin-left:8px;font-weight:400}
 .cat .am{text-align:right;font-weight:600}.cat svg.lucide{width:14px;height:14px;color:var(--faint)}
-.cat.sub{height:30px;border-top:0;color:var(--body);font-size:13px;padding-left:14px}.cat.sub .am{font-weight:400}
+.cat.sub{height:28px;border-top:0;color:var(--body);font-size:13px;padding-left:14px}.cat.sub .am{font-weight:400}
 .cat.w b{color:var(--ink)}
-.cat .ed{display:inline-flex;gap:10px;color:var(--help)}.cat .ed svg.lucide{width:14px;height:14px;color:var(--help)}.cat.hovl{background:var(--bg);border-radius:8px;margin:0 0 6px;padding:0 0 0 14px}
+.cat .ed{display:inline-flex;gap:10px;align-items:center;color:var(--help)}.cat .ed svg.lucide{width:14px;height:14px;color:var(--help)}.cat.hovl{background:var(--bg);border-radius:8px;margin:0 0 6px;padding:0 0 0 14px}
 .tsum{margin:16px -24px 0;padding:14px 24px 16px;border-top:1px solid var(--line);display:flex;align-items:center;gap:14px}
 .tsum b{font-size:20px;font-weight:600;color:var(--ink)}
 /* A4 portrait: a designed document, not a grid. Four numbers per trip, notes as numbered footnotes, categories once at the end. */
@@ -360,7 +360,7 @@ table.spec td b{color:var(--ink);font-weight:600}
 .a4 .r,.a4 .hr{display:grid;grid-template-columns:minmax(0,1fr) 62px 58px 54px 74px;gap:0 10px;align-items:baseline}
 .a4 .hr{font-size:7.5px;letter-spacing:.08em;text-transform:uppercase;color:#444;padding:10px 0 6px;border-bottom:.5px solid #111}
 .a4 .hr>span:nth-child(n+2),.a4 .r>span:nth-child(n+2){text-align:right}
-.a4 .r{padding:4px 0;border-top:.5px solid #CFCFCF;font-variant-numeric:tabular-nums}
+.a4 .r{padding:3.5px 0;border-top:.5px solid #CFCFCF;font-variant-numeric:tabular-nums}
 .a4 .r b{font-weight:700}.a4 .r small{font-size:8.5px;color:#555}.a4 .r i{font-style:normal;color:#555;margin-left:8px;font-size:8.5px}
 .a4 .r .tot{font-weight:700;position:relative}.a4 .r .tot sup{position:absolute;left:100%;top:1px;margin-left:5px}
 .a4 .box{border:.5px solid #777;padding:0 4px;font-weight:600;font-size:8px;border-radius:2px}
@@ -482,7 +482,7 @@ table.spec td b{color:var(--ink);font-weight:600}
       <button class="pill sm" onclick="mToast()">Γράψε ΤΠΥ</button>
       <p class="note">Σκούρα ειδοποίηση από κάτω, λέει τι γράφτηκε. Μένει όσο ισχύει η αναίρεση.</p></div>
     <div class="panel lab"><h3>Σύνολο</h3>
-      <div class="stage"><div style="text-align:center"><b class="num" id="m3" style="font-size:24px;font-weight:600;color:var(--ink);border-radius:8px;padding:2px 6px">21.701,00 €</b><div class="delta num" id="m3d">+120,00 €</div></div></div>
+      <div class="stage"><div style="text-align:center"><b class="num" id="m3" style="font-size:24px;font-weight:600;color:var(--ink);border-radius:8px;padding:2px 6px">22.101,00 €</b><div class="delta num" id="m3d">+120,00 €</div></div></div>
       <button class="pill sm" onclick="mCount()">Πρόσθεσε έξοδο 120 €</button>
       <p class="note">Το νούμερο μετρά ως τη νέα τιμή και δίπλα φαίνεται η διαφορά.</p></div>
     <div class="panel lab"><h3>Αλλαγή ημέρας</h3>
@@ -537,6 +537,22 @@ table.spec td b{color:var(--ink);font-weight:600}
   <h2>Έξοδα δρομολογίων, από την αρχή</h2>
   <p class="lead">Η Αλεξία, κάθε εβδομάδα. Όχι πια φύλλο με εννέα στήλες: η λίστα της δουλειάς, και δίπλα ένα δρομολόγιο ανοιχτό. Το κυκλάκι με το θαυμαστικό λέει τι λείπει όταν σταθείς πάνω του (εδώ ανοιχτό σε μία γραμμή). Οι εννέα κατηγορίες φαίνονται μόνο ως σύνολα, μέσα στο ανοιχτό δρομολόγιο και στο τέλος του χαρτιού.</p>
   <div class="fit"><div class="frame" id="f4"></div></div>
+  <div class="cap"><h3>Ό,τι ανοίγει από ένα δρομολόγιο</h3><span>διόρθωση με λόγο · γραμμή DKV κλειδωμένη · ταίριασμα γραμμών χωρίς δρομολόγιο</span></div>
+  <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start">
+    <div class="pop" style="width:330px;padding:16px;animation:none"><p class="lbl">Διόρθωση · Διαμονή 28/10</p>
+      <div class="row" style="grid-template-columns:1fr 1fr;margin-top:10px"><label class="fld"><span>Ποσό</span><div class="inp focus num">140,00</div></label><label class="fld"><span>Πληρωμή</span><div class="inp">Πίστωση<span class="sp"></span><i data-lucide="chevron-down"></i></div></label></div>
+      <label class="fld" style="margin-top:12px"><span>Λόγος <i class="nb" data-t="Χωρίς λόγο η διόρθωση δεν γράφεται.">!</i></span><div class="inp ph">Γιατί αλλάζει</div></label>
+      <div class="fbar" style="margin-top:16px"><button class="tbtn r" style="margin-left:-8px">Σβήσιμο</button><span class="sp"></span><button class="pill">Άκυρο</button><button class="pill b off">Αποθήκευση</button></div></div>
+    <div class="pop" style="width:330px;padding:16px;animation:none"><p class="lbl">Γραμμή DKV · Καύσιμα 26/10</p>
+      <dl class="chkv" style="margin-top:10px"><dt>Ποσό</dt><dd class="num"><i data-lucide="lock" style="width:13px;height:13px;color:var(--help)"></i>760,00</dd><dt>Λίτρα</dt><dd class="num"><i data-lucide="lock" style="width:13px;height:13px;color:var(--help)"></i>450 L</dd></dl>
+      <div class="row" style="grid-template-columns:1fr 1fr;margin-top:12px"><label class="fld"><span>Κατηγορία</span><div class="inp">Καύσιμα φορτηγού<span class="sp"></span><i data-lucide="chevron-down"></i></div></label><label class="fld"><span>Χώρα</span><div class="inp">AT<span class="sp"></span><i data-lucide="chevron-down"></i></div></label></div>
+      <label class="fld" style="margin-top:12px"><span>Δρομολόγιο</span><div class="inp"><b style="font-weight:600" class="num">ΚΗΙ 4162</b>&nbsp;· Α. Κοσκοσίδης<span class="sp"></span><i data-lucide="chevron-down"></i></div></label></div>
+    <div class="pop" style="width:420px;padding:16px;animation:none"><p class="lbl">Χωρίς δρομολόγιο · 8 γραμμές DKV</p>
+      <div class="cat" style="border-top:0;grid-template-columns:minmax(0,1fr) auto 70px;margin-top:6px;height:48px"><span><b class="num">ΚΗΙ 4162</b><small style="display:block;margin:0">Διόδια · AT · 28/10</small></span><button class="pill sm">Α. Κοσκοσίδης · 24–29/10</button><span class="am num">62,00</span></div>
+      <div class="cat" style="grid-template-columns:minmax(0,1fr) auto 70px;height:48px"><span><b class="num">ΚΗΙ 8302</b><small style="display:block;margin:0">Διόδια · AT · 29/10</small></span><button class="pill sm">Δ. Αντζιμάνοφ · 25/10–3/11</button><span class="am num">48,00</span></div>
+      <div class="cat" style="grid-template-columns:minmax(0,1fr) auto 70px;height:48px"><span><b class="num">ΚΗΙ 9917</b><small style="display:block;margin:0">Διόδια · DE · 30/10</small></span><span class="tpw" style="font-size:13px">κανένα δρομολόγιο</span><span class="am num">55,00</span></div>
+      <p class="lbl" style="margin-top:10px">και 5 ακόμη</p></div>
+  </div>
   <div class="cap"><h3>Το χαρτί της εβδομάδας, Α4</h3><span>ένα έγγραφο, όχι πίνακας: τέσσερα νούμερα ανά δρομολόγιο, οι σημειώσεις ως αριθμημένες υποσημειώσεις</span></div>
   <div style="display:flex;gap:28px;align-items:flex-start;flex-wrap:wrap">
     <div class="a4" id="a4"></div>
@@ -710,7 +726,6 @@ const EG=[
   ['ΚΗΙ 2109 · Ρ 4406','Δ. Στογιάννου · 28–30/10','Ammos › Ebreichsdorf','Τελείωσε και δεν έχει καύσιμα','r',['m','740,00','','24,00','','','','',''],'764,00'],
   ['ΚΗΙ 0138 · Ρ 5302','Ι. Αντωνιάδης · 25–27/10','Βέροια › Ασπρόπυργος › Άνω Λιόσια › Καλοχώρι','Τελείωσε και δεν έχει κανένα έξοδο','r',['m','m','','','','','','',''],''],
   ['ΚΗΙ 7244 · Ρ 9487','Ι. Πάππης · 26–29/10','Κοζάνη › Αχαρνές › Ασπρόπυργος › Σίνδος','Τελείωσε και δεν έχει καύσιμα','r',['m','130,00','','','','','','',''],'130,00'],
-  ['ΚΗΙ 4162 · Ρ 9498','Α. Κοσκοσίδης · 24–29/10','Ασπρόπυργος › Laakirchen › Aschbach › Κουφάλια','Ίσως διπλό: Spedition 100 € με το χέρι και από DKV','',['2.200,00|1.300 L','340,00','','3,00','200,00','45,00','','','160,00'],'2.948,00','hov'],
   ['ΚΗΙ 1286 · Ε 3002','Ε. Σαρίδης · 25–27/10','Βέροια › Μέγαρα › Ασπρόπυργος › Κοπανός','Τελείωσε και δεν έχει διόδια','r',['310,00|150 L','m','56,00','','','','','',''],'366,00'],
  ]],
  ['Σε εξέλιξη','',[
@@ -718,11 +733,12 @@ const EG=[
   ['ΚΗΙ 1006 · Ρ 5071','Σ. Γαβρίλοφ · 29/10–5/11','Κοζάνη › Wien › Linz › Σίνδος','στον δρόμο','n',['2.430,00|1.440 L','300,00','','3,00','75,00','30,00','','','28,00'],'2.866,00'],
  ]],
  ['Πλήρη','',[
+  ['ΚΗΙ 4162 · Ρ 9498','Α. Κοσκοσίδης · 24–29/10','Ασπρόπυργος › Laakirchen › Aschbach › Κουφάλια','Ίσως διπλό: Spedition 100 € με το χέρι και από DKV','',['2.200,00|1.300 L','340,00','','3,00','200,00','45,00','','','160,00'],'2.948,00','hov'],
   ['ΚΗΙ 4612 · Ρ 2998','Ε. Μπάμπαλος · 24–30/10','Βέροια › Poeldijk › Apeldoorn › Δρυμός','','n',['4.900,00|2.600 L','980,00','','36,00','','53,00','','130,00',''],'6.099,00'],
   ['ΚΗΙ 4445 · Ρ 3001','Ι. Καρκάλης · 24–30/10','Μυρτόφυτο › Großebersdorf › Stubenberg','','n',['3.050,00|1.700 L','1.060,00','','23,00','','50,00','','','10,00'],'4.193,00'],
   ['ΚΗΙ 4166 · Ρ 6471','Κ. Βαϊνάλης · 27–30/10','Βέροια › Verona › Garching › Μενεμένη','','n',['800,00|425 L','540,00','28,00','','','13,00','','','30,00'],'1.411,00'],
  ]]];
-const TOT=['15.690,00|8.815 L','4.800,00','84,00','111,00','387,00','251,00','','130,00','248,00'];
+const TOT=['15.690,00|8.815 L','5.200,00','84,00','111,00','387,00','251,00','','130,00','248,00'];
 const n2=x=>parseFloat((x||'0').split('|')[0].replace('.','').replace(',','.'))||0;
 function xrow(e,sel){const v=e[5],f=n2(v[0]==='m'?'':v[0]),t=n2(v[1]==='m'?'':v[1]),o=v.slice(2).reduce((a,x)=>a+n2(x),0),max=6099,w=x=>Math.max(x?3:0,x/max*76);
  const miss=v[0]==='m';
@@ -732,32 +748,35 @@ function xrow(e,sel){const v=e[5],f=n2(v[0]==='m'?'':v[0]),t=n2(v[1]==='m'?'':v[
 $('f4').innerHTML=`<div class="app">${side('e')}<main class="main">
  <div class="hd"><div><h1>Έξοδα δρομολογίων</h1><p>Εβδομάδα 44 · 24 – 30 Οκτωβρίου</p></div><span class="sp"></span><span class="seg"><b class="on">Εβδομάδα</b><b>Όχημα</b></span><button class="pill">${ic('printer')}Εκτύπωση</button><button class="pill b">${ic('upload')}Εισαγωγή DKV</button></div>
  <div class="card" style="flex:1;min-height:0;margin-right:424px;border-radius:24px 24px 0 0;overflow:hidden">
-  <div class="wk" style="border-bottom:1px solid var(--line)">${ic('chevron-left')}<a>41</a><a>42 <i>1</i></a><a>43 <i>2</i></a><a class="on">44 <i>5</i></a><a>45</a>${ic('chevron-right')}<span class="sp"></span><div class="q" style="margin:6px 0">${ic('search')}Αναζήτηση</div></div>
-  <div class="xtop"><b class="num">21.701,00 €</b><span class="stack"><i class="f" style="flex:15690"></i><i class="t" style="flex:4800"></i><i class="o" style="flex:1211"></i></span>
-   <span class="lg2"><span><i style="background:var(--ink)"></i>Καύσιμα <b class="num">15.690</b> · 8.815 L</span><span><i style="background:#666873"></i>Διόδια <b class="num">4.800</b></span><span><i style="background:#C4C7CE"></i>Υπόλοιπα <b class="num">1.211</b>${ic('chevron-down')}</span></span></div>
-  <div class="grp">Θέλουν ματιά<small>5 δρομολόγια</small></div>
+  <div class="wk" style="border-bottom:1px solid var(--line)">${ic('chevron-left')}<a>41 <i class="g">12</i></a><a>42 <i class="g">9</i></a><a>43 <i class="g">11</i></a><a class="on">44 <i class="g">10</i></a><a>45 <i class="g">3</i></a>${ic('chevron-right')}<span class="sp"></span><div class="q" style="margin:6px 0">${ic('search')}Αναζήτηση</div></div>
+  <div class="xtop"><b class="num">22.101,00 €</b><span class="stack"><i class="f" style="flex:15690"></i><i class="t" style="flex:5200"></i><i class="o" style="flex:1211"></i></span>
+   <span class="lg2"><span><i style="background:var(--ink)"></i>Καύσιμα <b class="num">15.690</b> · 8.815 L</span><span><i style="background:#666873"></i>Διόδια <b class="num">5.200</b></span><span><i style="background:#C4C7CE"></i>Υπόλοιπα <b class="num">1.211</b>${ic('chevron-down')}</span></span></div>
+  <div class="grp">Θέλουν ματιά<small>4 δρομολόγια</small></div>
   ${EG[0][2].map(e=>xrow(e,e[7]==='hov')).join('')}
   <div class="grp">Σε εξέλιξη<small>2 δρομολόγια</small></div>
   ${EG[1][2].map(e=>xrow(e)).join('')}
-  <div class="grp">Πλήρη<small>3 δρομολόγια</small></div>
+  <div class="grp">Πλήρη<small>4 δρομολόγια</small></div>
   ${EG[2][2].map(e=>xrow(e)).join('')}
   <div class="grp">Χωρίς δρομολόγιο</div>
   <div class="xr" style="grid-template-columns:minmax(0,1fr) auto 96px"><div class="two"><b>8 γραμμές DKV</b><span>24 – 30/10</span></div><a style="font-weight:500">Ταίριασμα</a><span class="tot num">400,00</span></div>
  </div></main></div>
  <div class="tc"><div class="h"><span class="tile" style="margin-top:2px">${ic('truck')}</span><div style="flex:1;min-width:0"><b class="num">ΚΗΙ 4162 · Ρ 9498</b><small>Α. Κοσκοσίδης · 24 – 29/10</small><small style="text-wrap:balance">Ασπρόπυργος&nbsp;→ Laakirchen&nbsp;→ Aschbach&nbsp;→ Κουφάλια</small></div><button class="cl" aria-label="Κλείσιμο">${ic('x')}</button></div>
-  <div style="margin-top:14px">
-   <div class="cat" style="border-top:0"><span><b>Καύσιμα</b><small>1.300 L · 3 γεμίσματα</small></span><span class="src">DKV</span><span class="am num">2.200,00</span>${ic('chevron-up')}</div>
-   <div class="cat sub"><span>24/10 · Ελλάδα · 470 L</span><span></span><span class="am num">800,00</span><span></span></div>
-   <div class="cat sub"><span>26/10 · Αυστρία · 450 L</span><span></span><span class="am num">760,00</span><span></span></div>
-   <div class="cat sub" style="margin-bottom:6px"><span>28/10 · Αυστρία · 380 L</span><span></span><span class="am num">640,00</span><span></span></div>
-   <div class="cat"><span><b>Διόδια</b><small>5 χώρες</small></span><span class="src">DKV</span><span class="am num">340,00</span>${ic('chevron-down')}</div>
-   <div class="cat"><span><b>Τέλη DKV</b></span><span class="src">DKV</span><span class="am num">3,00</span><span></span></div>
-   <div class="cat w"><span style="display:flex;align-items:center;gap:8px"><b>Spedition</b><i class="nb a dn" data-t="Δύο φορές στις 28/10: μία με το χέρι, μία από DKV. Άνοιξε για να κρατήσεις τη μία.">!</i></span><span class="src">DKV + χέρι</span><span class="am num">200,00</span>${ic('chevron-down')}</div>
-   <div class="cat"><span><b>Μετρητά</b></span><span class="src">μετρητά</span><span class="am num">45,00</span><span></span></div>
-   <div class="cat"><span><b>Λοιπά</b></span><span class="src">πίστωση</span><span class="am num">160,00</span>${ic('chevron-up')}</div>
-   <div class="cat sub hovl"><span>28/10 · Αυστρία</span><span class="ed">${ic('pencil')}${ic('trash-2')}</span><span class="am num">160,00</span><span></span></div>
+  <div style="margin-top:8px">
+   <div class="cat" style="border-top:0"><span><b>Καύσιμα</b><small>1.300 L</small></span><span></span><span class="am num">2.200,00</span>${ic('chevron-up')}</div>
+   <div class="cat sub"><span>24/10 · GR · φορτηγό · 470 L</span><span class="src">${ic('lock')}DKV</span><span class="am num">800,00</span><span></span></div>
+   <div class="cat sub"><span>26/10 · AT · φορτηγό · 450 L</span><span class="src">${ic('lock')}DKV</span><span class="am num">760,00</span><span></span></div>
+   <div class="cat sub" style="margin-bottom:6px"><span>28/10 · AT · θάλαμος · 380 L</span><span class="src">${ic('lock')}DKV</span><span class="am num">640,00</span><span></span></div>
+   <div class="cat"><span><b>Διόδια</b><small>5 χώρες</small></span><span class="src">${ic('lock')}DKV</span><span class="am num">340,00</span>${ic('chevron-down')}</div>
+   <div class="cat"><span><b>Τέλη DKV</b></span><span class="src">${ic('lock')}DKV</span><span class="am num">3,00</span><span></span></div>
+   <div class="cat w"><span style="display:flex;align-items:center;gap:8px"><b>Spedition</b><small style="margin:0">2 γραμμές</small><i class="nb a dn" data-t="Δύο φορές στις 28/10, 100,00 η καθεμία: μία από DKV, μία με πίστωση.">!</i></span><span></span><span class="am num">200,00</span>${ic('chevron-down')}</div>
+   <div class="cat"><span><b>Μετρητά οδηγού</b></span><span class="src" title="Έρχεται από τη Μισθοδοσία">${ic('lock')}Μισθοδοσία</span><span class="am num">45,00</span><span></span></div>
+   <div class="cat"><span><b>Λοιπά</b></span><span></span><span class="am num">160,00</span>${ic('chevron-up')}</div>
+   <div class="cat sub hovl"><span>28/10 · AT · Διαμονή</span><span class="ed">${ic('pencil')}${ic('trash-2')}<span class="src">Πίστωση</span></span><span class="am num">160,00</span><span></span></div>
   </div>
-  <div style="margin-top:12px;background:var(--bg);border-radius:12px;padding:8px;display:grid;gap:8px"><div class="qe" style="margin:0;grid-template-columns:1fr 1fr"><div class="inp focus">Διόδια<span class="sp"></span>${ic('chevron-down')}</div><div class="inp">Μετρητά<span class="sp"></span>${ic('chevron-down')}</div></div><div class="qe" style="margin:0;grid-template-columns:52px 76px minmax(0,1fr) 36px"><div class="inp" title="Χώρα">AT</div><div class="inp">28/10</div><div class="inp ph" style="justify-content:flex-end">ποσό</div><button class="pill" style="width:36px;height:36px;padding:0;justify-content:center" title="Πρόσθεσε">${ic('plus')}</button></div></div>
+  <div style="margin-top:10px;background:var(--bg);border-radius:12px;padding:8px;display:grid;gap:8px">
+   <div class="qe" style="margin:0;grid-template-columns:1.25fr 1fr"><div class="inp focus">Καύσιμα φορτηγού<span class="sp"></span>${ic('chevron-down')}</div><div class="inp">DKV<span class="sp"></span>${ic('chevron-down')}</div></div>
+   <div class="qe" style="margin:0;grid-template-columns:1fr 1fr 1fr 1fr"><div class="inp">AT<span class="sp"></span>${ic('chevron-down')}</div><div class="inp">28/10</div><div class="inp ph">λίτρα</div><div class="inp ph">χλμ</div></div>
+   <div class="qe" style="margin:0;grid-template-columns:minmax(0,1fr) 92px 36px"><div class="inp ph">Πρατήριο, παραστατικό</div><div class="inp ph" style="justify-content:flex-end">ποσό</div><button class="pill" style="width:36px;height:36px;padding:0;justify-content:center" title="Πρόσθεσε">${ic('plus')}</button></div></div>
   <div class="tsum"><div><span class="lbl">Σύνολο δρομολογίου</span><br><b class="num">2.948,00 €</b></div><span class="sp"></span><button class="pill">Επόμενο ${ic('arrow-down')}</button></div>
  </div>`;
 
@@ -767,12 +786,13 @@ const prow=e=>{const v=e[5],o=v.slice(2).reduce((a,x)=>a+n2(x),0),mk=x=>x==='m'?
  return `<div class="r"><span><b>${e[0]}</b><i>${e[1]}</i><br><small>${e[2].replace(/ › /g,' → ')}</small></span><span>${mk(v[0])}${v[0].includes('|')?`<br><small>${v[0].split('|')[1]}</small>`:''}</span><span>${mk(v[1])}</span><span>${eu(o)}</span><span class="tot">${e[6]||'–'}${e[3]&&e[4]!=='n'?fn(e[3]):''}</span></div>`};
 const pbody=EG.map(([t,c,rows])=>`<p class="psec">${t}<em>${rows.length} δρομολόγια</em></p>${rows.map(prow).join('')}`).join('');
 $('a4').innerHTML=`<div class="top"><span class="logo full" role="img" aria-label="Petras Group"></span><span class="wk2">Εβδομάδα 44<br>24 – 30 Οκτωβρίου 2026</span></div>
-<div class="hero"><div><h2>Έξοδα δρομολογίων</h2><b class="t num">21.701,00 €</b></div>
- <div><div class="mix"><i class="f" style="flex:15690"></i><i class="t" style="flex:4800"></i><i class="o" style="flex:1211"></i></div><div class="kv3 num"><span><i style="background:#111"></i>Καύσιμα · 8.815 L</span><span>15.690,00</span><span><i style="background:#777"></i>Διόδια</span><span>4.800,00</span><span><i style="background:#C8C8C8"></i>Υπόλοιπα</span><span>1.211,00</span></div></div></div>
+<div class="hero"><div><h2>Έξοδα δρομολογίων</h2><b class="t num">22.101,00 €</b></div>
+ <div><div class="mix"><i class="f" style="flex:15690"></i><i class="t" style="flex:5200"></i><i class="o" style="flex:1211"></i></div><div class="kv3 num"><span><i style="background:#111"></i>Καύσιμα · 8.815 L</span><span>15.690,00</span><span><i style="background:#777"></i>Διόδια</span><span>5.200,00</span><span><i style="background:#C8C8C8"></i>Υπόλοιπα</span><span>1.211,00</span></div></div></div>
 <div class="hr"><span>Φορτηγό · οδηγός · διαδρομή</span><span>Καύσιμα</span><span>Διόδια</span><span>Υπόλοιπα</span><span>Σύνολο €</span></div>
 ${pbody}
-<div class="r psum"><span>Σύνολο<i>10 δρομολόγια · 8.815 L</i></span><span>15.690,00</span><span>4.800,00</span><span>1.211,00</span><span class="tot">21.701,00</span></div>
-<div class="fn">${FN.map((t,i)=>`<span><sup>${i+1}</sup>${t}</span>`).join('')}<span style="grid-column:1/-1;margin-top:4px;color:#555">Χωρίς δρομολόγιο: 8 γραμμές DKV, 400,00 €, δεν μετρούν στο σύνολο.</span></div>
+<p class="psec">Χωρίς δρομολόγιο</p><div class="r"><span><b>8 γραμμές DKV</b><i>24 – 30/10</i></span><span>–</span><span>400,00</span><span>–</span><span class="tot">400,00</span></div>
+<div class="r psum"><span>Σύνολο<i>10 δρομολόγια · 8.815 L</i></span><span>15.690,00</span><span>5.200,00</span><span>1.211,00</span><span class="tot">22.101,00</span></div>
+<div class="fn">${FN.map((t,i)=>`<span><sup>${i+1}</sup>${t}</span>`).join('')}</div>
 <div class="cats">${CATS.map((c,i)=>`<span>${c}<b>${TOT[i]?TOT[i].split('|')[0]:'–'}</b></span>`).join('')}</div>
 <div class="foot"><span>Δημήτρης Π. · 31/10/2026 13:10</span><span>1 / 1</span></div>`;
 
