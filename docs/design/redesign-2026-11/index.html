@@ -87,7 +87,7 @@ table.spec td b{color:var(--ink);font-weight:600}
 .tile{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;flex:none;color:#fff;background:var(--ink);border:1.5px solid var(--ink);transition:background var(--t-state) ease-out,border-color var(--t-state) ease-out,color var(--t-state) ease-out}
 .tile.p{background:var(--accent);border-color:var(--accent)}
 .tile.e{background:none;border:1.5px dashed #C9CDD4;color:var(--help)}
-.tile.need{background:none;border:1.5px dashed var(--red);color:var(--red)}
+.tile.need{background:none;border-color:transparent;outline:1.5px dashed var(--red);outline-offset:-1.5px;color:var(--red)}
 .tile.soft{background:var(--bg);border-color:var(--bg);color:var(--body)}
 .tile svg.lucide{width:15px;height:15px}
 .card{background:#fff;border-radius:var(--r-page)}
@@ -100,7 +100,7 @@ table.spec td b{color:var(--ink);font-weight:600}
 .fld{display:block;min-width:0}.fld>span{display:flex;align-items:center;gap:6px;height:17px;font-size:12px;font-weight:600;color:var(--body);margin-bottom:6px}
 .inp{height:40px;width:100%;border:1px solid #D9DBE0;border-radius:var(--r-ctl);padding:0 12px;font:inherit;color:var(--ink);background:#fff;display:flex;align-items:center;gap:8px;white-space:nowrap;overflow:hidden;transition:border-color var(--t-fast),box-shadow var(--t-fast)}
 .inp.focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg)}
-.inp.miss{border-color:var(--amber-line);background:#FFFBF2}
+.inp.miss{border-color:var(--amber-line);background:#FFFBF2}.inp.miss.focus{border-color:var(--accent)}
 .inp.ph{color:var(--ph)}
 .inp svg.lucide{width:15px;height:15px;color:var(--help)}
 .hint{font-size:12px;color:var(--help);margin-top:5px}.hint.w{color:var(--amber)}.hint.r{color:var(--red)}
@@ -108,7 +108,8 @@ table.spec td b{color:var(--ink);font-weight:600}
 .hd .seg{background:#E6E8EC}
 .seg b{height:34px;padding:0 16px;white-space:nowrap;border-radius:999px;display:inline-flex;align-items:center;font-weight:500;color:var(--help)}
 .seg b.on{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
-.seg.req{box-shadow:0 0 0 1.5px var(--red)}
+.seg.tight b{padding:0 12px}
+.seg.req{box-shadow:0 0 0 1px var(--red)}
 .cb{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:500;white-space:nowrap}
 .cb i{width:18px;height:18px;border-radius:5px;border:1.5px solid #C9CDD4;display:grid;place-items:center;color:#fff;background:#fff}
 .cb.on i{background:var(--accent);border-color:var(--accent)}.cb svg.lucide{width:12px;height:12px;stroke-width:3}
@@ -210,7 +211,7 @@ table.spec td b{color:var(--ink);font-weight:600}
 .wk>svg.lucide{color:var(--help)}
 .nx{display:flex;gap:10px;align-items:center;padding:9px 22px;font-size:13px;border-top:1px solid var(--line)}
 .wk .q{height:32px}
-.bh,.br{display:grid;grid-template-columns:34px minmax(0,1.15fr) minmax(0,1.25fr) 96px 196px minmax(0,1.25fr) minmax(0,1.05fr) 96px 26px;gap:0 14px;align-items:center;padding:0 20px 0 14px}
+.bh,.br{display:grid;grid-template-columns:34px minmax(0,1.1fr) minmax(0,1.4fr) 76px 176px minmax(0,1.4fr) minmax(0,1fr) 76px 26px;gap:0 14px;align-items:center;padding:0 20px 0 14px}
 .bh{height:34px;margin-top:6px}
 .day{background:#fff;border-radius:var(--r-card);margin-top:10px;padding:8px 0 4px;position:relative}
 .day.today{box-shadow:inset 0 0 0 1.5px var(--accent)}
@@ -411,6 +412,7 @@ table.spec td b{color:var(--ink);font-weight:600}
         <div class="sw"><i style="background:var(--green)"></i><div><b>Πράσινο</b><span>έγινε: παραδόθηκε, ΤΠΥ</span></div></div>
         <div class="sw"><i style="background:var(--red)"></i><div><b>Κόκκινο</b><span>λείπει, άργησε</span></div></div>
         <div class="sw"><i style="background:var(--amber)"></i><div><b>Πορτοκαλί</b><span>θέλει ματιά, δεν εμποδίζει</span></div></div>
+        <div class="sw"><i style="background:var(--signal)"></i><div><b>Διαδρομή</b><span>η γραμμή των σημείων</span></div></div>
         <div class="sw"><i style="background:var(--bg)"></i><div><b>Φόντο</b><span>λευκές κάρτες χωρίς σκιά</span></div></div>
       </div>
     </div>
@@ -445,6 +447,7 @@ table.spec td b{color:var(--ink);font-weight:600}
     </div>
     <div class="panel"><h3>Εκτυπώσεις</h3>
       <p>Το χαρτί είναι η ίδια πληροφορία σε ασπρόμαυρο: το λογότυπο, μαύρο μελάνι, λεπτές γραμμές, καμία γεμάτη επιφάνεια. Ό,τι στην οθόνη είναι χρώμα γίνεται πλαίσιο ή λέξη. Κάτω γράφει ποιος τύπωσε, πότε, και τι μένει εκτός συνόλου.</p></div>
+    </div>
     <div style="display:flex;flex-direction:column;gap:16px"><div class="panel"><h3>Σημάδια αντί για λόγια</h3>
       <table class="spec"><tbody>
         <tr><td style="width:150px"><span class="as"><span class="tile"><i data-lucide="truck"></i></span><span class="tile p"><i data-lucide="users"></i></span><span class="tile need"><i data-lucide="truck"></i></span></span></td><td><b>Ποιος το πάει.</b> Μαύρο: δικό μας φορτηγό. Μπλε: συνεργάτης. Κόκκινο διακεκομμένο: κανείς ακόμη.</td></tr>
@@ -476,7 +479,7 @@ table.spec td b{color:var(--ink);font-weight:600}
       <button class="pill sm" onclick="mCount()">Πρόσθεσε έξοδο 120 €</button>
       <p class="note">Το νούμερο μετρά ως τη νέα τιμή και δίπλα φαίνεται η διαφορά.</p></div>
     <div class="panel lab"><h3>Αλλαγή ημέρας</h3>
-      <div class="stage"><div class="mini"><section id="d1"><h5>Δευτέρα</h5><div class="it">Alfa Zymi</div><div class="it mv" id="mv">Olympos Fresh</div></section><section id="d2"><h5>Τρίτη</h5><div class="it">Fage Athina</div></section></div></div>
+      <div class="stage"><div class="mini"><section id="d1"><h5>Δευτέρα</h5><div class="it">Doukas</div><div class="it mv" id="mv">Olympos</div></section><section id="d2"><h5>Τρίτη</h5><div class="it">Fage</div></section></div></div>
       <button class="pill sm" onclick="mMove()">Μετάφερε το φορτίο</button>
       <p class="note">Η γραμμή γλιστρά στη νέα ημέρα (0,32 δ), δεν εξαφανίζεται και ξαναβγαίνει.</p></div>
     <div class="panel lab"><h3>Φόρτωση</h3>
@@ -545,9 +548,9 @@ table.spec td b{color:var(--ink);font-weight:600}
     <div class="panel"><p class="lbl">Δεν διαβάστηκε (δεν είναι άδεια)</p><div style="padding:14px 0 4px"><div class="tile soft" style="width:36px;height:36px;border-radius:10px;margin:0 0 12px"><i data-lucide="cloud-off"></i></div><h3>Η εβδομάδα δεν διαβάστηκε</h3><p style="color:var(--help)">Δεν σημαίνει ότι είναι άδεια. Τίποτα δεν χάθηκε.</p><button class="pill sm" style="margin-top:12px"><i data-lucide="rotate-cw"></i>Ξαναδιάβασε</button></div></div>
     <div class="panel"><p class="lbl">Κανένα αποτέλεσμα</p><div style="padding:14px 0 4px"><div class="tile soft" style="width:36px;height:36px;border-radius:10px;margin:0 0 12px"><i data-lucide="search-x"></i></div><h3>Τίποτα για «tirol» σε αυτή την εβδομάδα</h3><p style="color:var(--help)">3 παραγγελίες ταιριάζουν σε άλλες εβδομάδες.</p><button class="pill sm" style="margin-top:12px">Δείξε τες</button></div></div>
     <div class="panel"><p class="lbl">Φόρτωση</p><div style="padding-top:18px"><div style="display:flex;gap:12px;align-items:center;height:60px"><div class="sk" style="width:28px;height:28px;border-radius:8px"></div><div style="flex:1"><div class="sk" style="height:12px;width:55%"></div><div class="sk" style="height:10px;width:35%;margin-top:8px"></div></div></div><div style="display:flex;gap:12px;align-items:center;height:60px"><div class="sk" style="width:28px;height:28px;border-radius:8px"></div><div style="flex:1"><div class="sk" style="height:12px;width:55%"></div><div class="sk" style="height:10px;width:35%;margin-top:8px"></div></div></div><div style="display:flex;gap:12px;align-items:center;height:60px"><div class="sk" style="width:28px;height:28px;border-radius:8px"></div><div style="flex:1"><div class="sk" style="height:12px;width:55%"></div><div class="sk" style="height:10px;width:35%;margin-top:8px"></div></div></div></div></div>
-    <div class="panel"><p class="lbl">Δεν αποθηκεύτηκε</p><div class="dark" style="margin-top:12px"><p class="lbl"><i class="r"></i>Δεν αποθηκεύτηκε</p><p>Η τιμή της Tirol Obst, Βέροια → Innsbruck δεν γράφτηκε: δεν υπάρχει σύνδεση. Ό,τι έγραψες μένει στη φόρμα.</p><div style="display:flex;gap:8px"><button class="pill b sm">Ξαναδοκίμασε</button></div></div></div>
-    <div class="panel"><p class="lbl">Προειδοποιεί, δεν εμποδίζει</p><div class="strip" style="margin-top:12px;align-items:flex-start"><i data-lucide="triangle-alert" style="margin-top:2px"></i><div>Ο Κ. Τσορλίνης έχει κι άλλο δρομολόγιο τη Δευτέρα 16/11: Karamolegkos Fresh, Κορωπί → Σίνδος.<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="pill sm b">Ανάθεση</button><button class="pill sm">Άλλος οδηγός</button></div></div></div></div>
-    <div class="panel"><p class="lbl">Το άλλαξε κάποιος άλλος</p><div class="strip n" style="margin-top:12px;align-items:flex-start"><i data-lucide="users" style="margin-top:2px"></i><div>Κάποιος άλλος άλλαξε το φορτηγό της Tirol Obst, Βέροια → Innsbruck όσο δούλευες. Η δική σου αλλαγή δεν γράφτηκε.<div style="margin-top:10px"><button class="pill sm">Δες τη νέα εικόνα</button></div></div></div></div>
+    <div class="panel"><p class="lbl">Δεν αποθηκεύτηκε</p><div class="dark" style="margin-top:12px"><p class="lbl"><i class="r"></i>Δεν αποθηκεύτηκε</p><p>Η τιμή της Tirol Obst, Βέροια →&nbsp;Innsbruck δεν γράφτηκε: δεν υπάρχει σύνδεση. Ό,τι έγραψες μένει στη φόρμα.</p><div style="display:flex;gap:8px"><button class="pill b sm">Ξαναδοκίμασε</button></div></div></div>
+    <div class="panel"><p class="lbl">Προειδοποιεί, δεν εμποδίζει</p><div class="strip" style="margin-top:12px;align-items:flex-start"><i data-lucide="triangle-alert" style="margin-top:2px"></i><div>Ο Κ. Τσορλίνης έχει κι άλλο δρομολόγιο τη Δευτέρα 16/11: Karamolegkos Fresh, Κορωπί →&nbsp;Σίνδος.<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="pill sm b">Ανάθεση</button><button class="pill sm">Άλλος οδηγός</button></div></div></div></div>
+    <div class="panel"><p class="lbl">Το άλλαξε κάποιος άλλος</p><div class="strip n" style="margin-top:12px;align-items:flex-start"><i data-lucide="users" style="margin-top:2px"></i><div>Κάποιος άλλος άλλαξε το φορτηγό της Tirol Obst, Βέροια →&nbsp;Innsbruck όσο δούλευες. Η δική σου αλλαγή δεν γράφτηκε.<div style="margin-top:10px"><button class="pill sm">Δες τη νέα εικόνα</button></div></div></div></div>
     <div class="panel"><p class="lbl">Μόνο ανάγνωση</p><div class="strip n" style="margin-top:12px"><i data-lucide="eye"></i>Βλέπεις τα έξοδα χωρίς να τα αλλάζεις.</div><p class="lbl" style="margin-top:28px">Χωρίς πρόσβαση</p><div style="padding:12px 0 0"><div class="tile soft" style="width:36px;height:36px;border-radius:10px;margin:0 0 10px"><i data-lucide="lock"></i></div><h3 style="margin-bottom:4px">Αυτή τη σελίδα τη βλέπει ο owner</h3><p style="color:var(--help)">Αν τη χρειάζεσαι, πες το στον Δημήτρη.</p></div></div>
   </div>
 </section>
@@ -572,17 +575,17 @@ const tags=t=>t.split(' ').filter(Boolean).map(x=>`<span class="tag">${x}</span>
 const O=[
  ['Γαλακτοκομική Ηπείρου','','Κάθοδος · 18 παλέτες','Veroia Cross-Dock','Βέροια · Τρί 17/11','Epirus Dairy Plant','Δωδώνη · Τετ 18/11','e','','todo','500,00 €','','Βέροια → Δωδώνη · Τρί 17/11'],
  ['Tirol Obst GmbH','VS PE','Εξαγωγή · 32 παλέτες','Veria Fruit Pack','Βέροια +2 · Δευ 16/11','Tirol Obst Lager','Innsbruck · Παρ 20/11','e','','todo','3.800,00 €','','Βέροια → Innsbruck · Δευ 16/11'],
- ['Αγροτικός Συν. Νάουσας','','Εισαγωγή · 19 παλέτες','Alpina Fresh S.r.l.','Modena · Δευ 16/11','Frutopia Packhouse','Νάουσα · Πέμ 19/11','t','ΚΗΙ 7310 · Ρ 81455|Δ. Μάνος','asg','3.000,00 €','','Modena → Νάουσα · Δευ 16/11'],
+ ['Αγροτικός Συν. Νάουσας','','Εισαγωγή · 19 παλέτες','Alpina Fresh S.r.l.','Modena · Δευ 16/11','Frutopia Packhouse','Νάουσα · Πέμ 19/11','t','ΚΗΙ 7310 · Ρ 8145|Δ. Μάνος','asg','3.000,00 €','','Modena → Νάουσα · Δευ 16/11'],
  ['Nordfrisch GmbH','VS PE','Εξαγωγή · 33 παλέτες','Messinia Olive Coop','Μεσσήνη · Δευ 16/11','Nordfrisch Lager','Hamburg · Δευ 23/11','e','','todo','np','','Μεσσήνη → Hamburg · Δευ 16/11'],
- ['Φρουτοπία Νάουσας','GRP','Άνοδος · 26 παλέτες','Thessaly Citrus Coop','Λάρισα +2 · Κυρ 15/11','Veroia Cross-Dock','Βέροια · Δευ 16/11','t','ΚΗΙ 5102 · Ρ 59483|Σ. Κάππος','run','400,00 €','','Λάρισα → Βέροια · Κυρ 15/11'],
- ['Baltic Cold Foods','PE','Εισαγωγή · 30 παλέτες','Baltic Cold Foods DC','Poznań · Σάβ 14/11','Attica Cold Hub','Ασπρόπυργος · Τετ 18/11','t','ΚΗΙ 2208 · Ρ 42596|Π. Ράπτης','run','2.600,00 €','','Poznań → Ασπρόπυργος · Σάβ 14/11'],
+ ['Φρουτοπία Νάουσας','GRP','Άνοδος · 26 παλέτες','Thessaly Citrus Coop','Λάρισα +2 · Κυρ 15/11','Veroia Cross-Dock','Βέροια · Δευ 16/11','t','ΚΗΙ 5102 · Ρ 5948|Σ. Κάππος','run','400,00 €','','Λάρισα → Βέροια · Κυρ 15/11'],
+ ['Baltic Cold Foods','PE','Εισαγωγή · 30 παλέτες','Baltic Cold Foods DC','Poznań · Σάβ 14/11','Attica Cold Hub','Ασπρόπυργος · Τετ 18/11','t','ΚΗΙ 2208 · Ρ 4259|Π. Ράπτης','run','2.600,00 €','','Poznań → Ασπρόπυργος · Σάβ 14/11'],
  ['Nordfrisch GmbH','PE','Εισαγωγή · 26 παλέτες','Nordfrisch Lager','Hamburg · Παρ 13/11','Attica Cold Hub','Ασπρόπυργος · Τρί 17/11','p','Transfrigo Kft.|συνεργάτης','run','2.800,00 €','','Hamburg → Ασπρόπυργος · Παρ 13/11'],
  ['Danubia Market Kft.','PE','Εξαγωγή · 33 παλέτες','Veria Fruit Pack','Βέροια · Πέμ 12/11','Wiener Frische','Wien · Σάβ 14/11','p','Transfrigo Kft.|συνεργάτης','done','2.700,00 €','10433','Βέροια → Wien · Πέμ 12/11'],
- ['Ανδρέου Logistics','','Άνοδος · 24 παλέτες','Andreou Warehouse','Τρίπολη · Πέμ 12/11','Veroia Cross-Dock','Βέροια · Παρ 13/11','t','ΚΗΙ 4521 · Ρ 66542|Γ. Αλεξίου','done','450,00 €','w','Τρίπολη → Βέροια · Πέμ 12/11'],
- ['Tirol Obst GmbH','VS PE','Εξαγωγή · 32 παλέτες','Veria Fruit Pack','Βέροια +2 · Τετ 11/11','Tirol Obst Lager','Innsbruck · Σάβ 14/11','t','ΚΗΙ 3310 · Ρ 71204|Θ. Μέλλιος','done','3.800,00 €','10431','Βέροια → Innsbruck · Τετ 11/11'],
- ['Alpen Frucht AG','PE','Εξαγωγή · 33 παλέτες','Pella Peach Coop','Σκύδρα · Τετ 11/11','Alpen Frucht Zentrale','Zürich · Σάβ 14/11','t','ΚΗΙ 6012 · Ρ 50933|Α. Ντίνος','done','4.100,00 €','10428','Σκύδρα → Zürich · Τετ 11/11'],
+ ['Ανδρέου Logistics','','Άνοδος · 24 παλέτες','Andreou Warehouse','Τρίπολη · Πέμ 12/11','Veroia Cross-Dock','Βέροια · Παρ 13/11','t','ΚΗΙ 4521 · Ρ 6654|Γ. Αλεξίου','done','450,00 €','w','Τρίπολη → Βέροια · Πέμ 12/11'],
+ ['Tirol Obst GmbH','VS PE','Εξαγωγή · 32 παλέτες','Veria Fruit Pack','Βέροια +2 · Τετ 11/11','Tirol Obst Lager','Innsbruck · Σάβ 14/11','t','ΚΗΙ 3310 · Ρ 7120|Θ. Μέλλιος','done','3.800,00 €','10431','Βέροια → Innsbruck · Τετ 11/11'],
+ ['Alpen Frucht AG','PE','Εξαγωγή · 33 παλέτες','Pella Peach Coop','Σκύδρα · Τετ 11/11','Alpen Frucht Zentrale','Zürich · Σάβ 14/11','t','ΚΗΙ 6012 · Ρ 5093|Α. Ντίνος','done','4.100,00 €','10428','Σκύδρα → Zürich · Τετ 11/11'],
 ];
-const GD=['Γιαούρτι · +4° · 9 t','Ροδάκινα · +2° · 18 t','Μήλα · +3° · 11 t','Ελιές · +6° · 20 t','Πορτοκάλια · +5° · 14 t','Κατεψυγμένα · −20° · 17 t','Κατεψυγμένα · −20° · 15 t','Ροδάκινα · +2° · 19 t','Λάδι · +12° · 13 t','Ροδάκινα · +2° · 18 t','Ροδάκινα · +2° · 19 t'];
+const GD=['Γάλα · +4° · 9 t','Ακτινίδια · +2° · 18 t','Μήλα · +3° · 11 t','Ελιές · +6° · 20 t','Πορτοκάλια · +5° · 14 t','Κατεψυγμένα · −20° · 17 t','Κατεψυγμένα · −20° · 15 t','Ακτινίδια · +2° · 19 t','Λάδι · +12° · 13 t','Ακτινίδια · +2° · 18 t','Ακτινίδια · +2° · 19 t'];
 const flip=x=>x.split(' · ').reverse().join(' · ');
 const ST={todo:'Σε αναμονή',asg:'Ανατέθηκε',run:'Σε μεταφορά',done:'Παραδόθηκε'};
 const stt=(s,box)=>`<span class="st ${s} ${box?'box':''}">${s==='done'?ic('check'):''}${ST[s]}</span>`;
@@ -602,7 +605,7 @@ function ordersHTML(id){return `<div class="app">${side('o')}<main class="main">
  </div></main></div>`}
 $('f1').innerHTML=ordersHTML(1)+`<div class="oc"><div class="in" id="ocIn"></div></div>`;
 function ocFill(o){const un=o[7]==='e',vs=o[1].includes('VS'),d1=o[4].split('· ').pop(),d2=o[6].split('· ').pop(),DN=['Σάβ','Κυρ','Δευ','Τρί','Τετ','Πέμ','Παρ'],[dn,dd]=d1.split(' '),dv=DN[(DN.indexOf(dn)+1)%7]+' '+(parseInt(dd)+1)+'/11';
- return `<div class="h"><div style="min-width:0;flex:1"><b>${o[0]}</b><small>${o[2]} EUR</small><small>${GD[O.indexOf(o)]}</small></div>${stt(o[9])}<button class="cl" onclick="ocClose()" aria-label="Κλείσιμο">${ic('x')}</button></div>
+ return `<div class="h"><div style="min-width:0;flex:1"><b>${o[0]}</b><small>${o[2]} EUR${o[1].includes('PE')?' · ανταλλαγή':''}</small><small>${GD[O.indexOf(o)]}</small></div>${stt(o[9])}<button class="cl" onclick="ocClose()" aria-label="Κλείσιμο">${ic('x')}</button></div>
   <dl class="kv"><div><dt class="lbl">Ανάθεση</dt><dd>${un?'<span class="tpn">–</span>':o[8].replace('|','<br><span style="color:var(--help);font-weight:400">')+'</span>'}</dd></div><div><dt class="lbl">Αναφορά πελάτη</dt><dd class="num">${6100118259+O.indexOf(o)*137}</dd></div><div><dt class="lbl">Τιμή</dt><dd class="num">${o[10]==='np'?'<span class="np">χωρίς τιμή</span>':o[10]}</dd></div><div><dt class="lbl">ΤΠΥ</dt><dd class="num">${o[11]==='w'?'<span class="tpw">εκκρεμεί</span>':o[11]?`<span class="tpy">${o[11]}</span>`:'<span class="tpn">–</span>'}</dd></div></dl>
   <div class="rt"><div><span class="lbl">Φόρτωση · ${d1}</span><b>${o[3]}</b><span>${o[4].includes('+2')?'και 2 ακόμη σημεία φόρτωσης':o[4].split(' ·')[0]}</span></div>
    ${vs?`<div><span class="lbl">Βέροια · ${dv}</span><b>Αλλαγή φορτηγού</b></div>`:''}
@@ -625,19 +628,19 @@ const slotA=t=>`<div class="slot a">${ic('undo-2')}${t}<span class="plus" style=
 const c2=(a,t,b)=>`<div class="two"><b><span class="el">${a}</span>${tags(t)}</b><span>${b}</span></div>`;
 const D=[
  ['Σάββατο 14/11','past',`<span class="sg">${ic('truck')}3</span><span class="sg r">${ic('truck')}1</span>`,[
-  [1,c2('Alfa Zymi','',`${d('Παρ 13')} · 14:00–23:59 · Κοζάνη`),c2('AB Market DC','',`${d('Σάβ 14')} · Οινόφυτα`),30,trk('ΚΗΙ 2103 · Ρ 67301','Π. Ιωάννου'),c2('Minoa Packing','+1',`${d('Σάβ 14')} · Οινόφυτα 23 · Τανάγρα 10`),c2('Βέροια','',d('Κυρ 15')),33],
+  [1,c2('Alfa Zymi','',`${d('Παρ 13')} · 14:00–23:59 · Κοζάνη`),c2('AB Market DC','',`${d('Σάβ 14')} · Οινόφυτα`),30,trk('ΚΗΙ 2103 · Ρ 6730','Π. Ιωάννου'),c2('Minoa Packing','+1',`${d('Σάβ 14')} · Οινόφυτα 23 · Τανάγρα 10`),c2('Βέροια','',d('Κυρ 15')),33],
   [2,c2('Βέροια','',`${d('Παρ 13')} · 14:00–23:59`),c2('Kyriakos Frouta','',`${d('Σάβ 14')} · Σάγεικα`),26,trk('ΚΗΙ 2140 · Ε 9019','Ν. Ρήγας'),c2('Lakonia Valley','PE',`${d('Σάβ 14')} · Σπάρτη <span class="ico">${ic('thermometer')}+3°</span>`),c2('Βέροια','',`${d('Δευ 16')} <span class="ico">${ic('clock')}Τρί 17</span>`),33],
   [3,c2('Makedonia Patates','',`${d('Παρ 13')} · Μουρίκι`),c2('Kalamata Trofima','',`${d('Σάβ 14')} · Καλαμάτα`),22,trk('Μεταφορική Ζήση','συνεργάτης','p'),c2('Kalamata Trofima','',`${d('Σάβ 14')} · Καλαμάτα`),c2('Βέροια','',d('Κυρ 15')),30],
   ['need','','',0,need,c2('Lakonia Valley','PE VS',`${d('Σάβ 14')} · Σπάρτη`),c2('Βέροια','',`<span class="ico r">${ic('clock-alert')}Κυρ 15</span>`),8],
  ]],
  ['Κυριακή 15/11','past',`<span class="sg">${ic('truck')}2</span>`,[
-  [4,c2('Βέροια','',d('Σάβ 14')),c2('Skla Market','+1',`${d('Κυρ 15')} · Άγ. Θωμάς 12 · Ρέντης 10`),22,trk('ΚΗΙ 4445 · Ρ 40069','Μ. Χρυσουλίδης'),c2('Lakonia Valley','PE',`${d('Δευ 16')} · Σπάρτη`),c2('Βέροια','',d('Τρί 17')),30],
+  [4,c2('Βέροια','',d('Σάβ 14')),c2('Skla Market','+1',`${d('Κυρ 15')} · Άγ. Θωμάς 12 · Ρέντης 10`),22,trk('ΚΗΙ 4445 · Ρ 4006','Μ. Χρυσουλίδης'),c2('Lakonia Valley','PE',`${d('Δευ 16')} · Σπάρτη`),c2('Βέροια','',d('Τρί 17')),30],
   [5,'slotD','',0,trk('ΚΗΙ 7245 · Ε 5811','Ν. Καγκελίδης'),c2('Irini Sud','+1 PE',`${d('Κυρ 15')} · Ασπρόπυργος 14 · Ρέντης 13`),c2('Βέροια','',d('Δευ 16')),27],
  ]],
  ['Δευτέρα 16/11 · σήμερα','today',`<span class="sg">${ic('truck')}4</span><span class="sg a">${ic('undo-2')}1</span><span class="sg r">${ic('triangle-alert')}1</span>`,[
-  [6,c2('Βέροια','',d('Κυρ 15')),c2('Doukas Trans','',`${d('Δευ 16')} · Ασπρόπυργος`),30,`<div class="as"><span class="tile">${ic('shuffle')}</span><div class="two"><b class="num">ΚΗΙ 0138 → 5561</b><span>Σ. Κάππος · Λαμία</span></div></div>`,c2('Attiki Praktoreio','',`${d('Δευ 16')} · Άνω Λιόσια`),c2('Chalkidona Logistic','',`${d('Τρί 17')} · Καλοχώρι`),30],
-  [7,c2('Kentriki Agora','',`${d('Κυρ 15')} · Θεσσαλονίκη`),c2('Market Plus DC','',`${d('Δευ 16')} · Ασπρόπυργος`),30,trk('ΚΗΙ 2102 · Ρ 31880','Κ. Τσορλίνης'),c2('Karamolegkos Fresh','',`${d('Δευ 16')} · Κορωπί`),c2('Karamolegkos Fresh','',`${d('Τρί 17')} · 05:30–06:30 · Σίνδος`),30,'hov'],
-  [8,c2('Olympos Fresh','',`${d('Δευ 16')} · Κοπανός`),c2('Chipita Lamia','',`${d('Δευ 16')} · Λαμία`),33,trk('ΚΗΙ 8600 · Ρ 50711','Λ. Δήμου'),c2('Knosos Packing','+1 PE',`${d('Δευ 16')} · Ασπρόπυργος 20 · Κόρινθος 20`),c2('Βέροια','',`${d('Τρί 17')} <span class="ico">${ic('clock')}20:00</span>`),40],
+  [6,c2('Βέροια','',d('Κυρ 15')),c2('Doukas Trans','',`${d('Δευ 16')} · Ασπρόπυργος`),30,`<div class="as"><span class="tile">${ic('shuffle')}</span><div class="two"><b class="num">ΚΗΙ 0138 → 5561</b><span>Θ. Ράλλης · Λαμία</span></div></div>`,c2('Attiki Praktoreio','',`${d('Δευ 16')} · Άνω Λιόσια`),c2('Chalkidona Logistic','',`${d('Τρί 17')} · Καλοχώρι`),30],
+  [7,c2('Kentriki Agora','',`${d('Κυρ 15')} · Θεσσαλονίκη`),c2('Market Plus DC','',`${d('Δευ 16')} · Ασπρόπυργος`),30,trk('ΚΗΙ 2102 · Ρ 3188','Κ. Τσορλίνης'),c2('Karamolegkos Fresh','',`${d('Δευ 16')} · Κορωπί`),c2('Karamolegkos Fresh','',`${d('Τρί 17')} · 05:30–06:30 · Σίνδος`),30,'hov'],
+  [8,c2('Olympos Fresh','',`${d('Δευ 16')} · Κοπανός`),c2('Chipita Lamia','',`${d('Δευ 16')} · Λαμία`),33,trk('ΚΗΙ 8600 · Ρ 5071','Λ. Δήμου'),c2('Knosos Packing','+1 PE',`${d('Δευ 16')} · Ασπρόπυργος 20 · Κόρινθος 20`),c2('Βέροια','',`${d('Τρί 17')} <span class="ico">${ic('clock')}20:00</span>`),40],
   [9,c2('Βέροια','',`${d('Κυρ 15')} · 14:00–23:59`),c2('PM Road','+1',`${d('Δευ 16')} · Ασπρόπυργος 6 · Ρέντης 26`),32,trk('ΚΗΙ 1286 · Ε 3002','Ε. Σαρίδης'),'slotA','',0,'ret'],
  ]],
  ['Τρίτη 17/11','',`<span class="sg">${ic('truck')}1</span>`,[
@@ -653,7 +656,7 @@ $('f2').innerHTML=`<div class="app rail">${side('wn')}<main class="main">
  <div class="hd" style="align-items:baseline;gap:14px"><h1>Εβδομαδιαίο Εθνικών</h1><p style="margin:0">14 – 20 Νοεμβρίου · <a style="color:inherit" title="Ανανέωση">${ic('rotate-cw')} 07:42</a></p><span class="sp"></span><span style="display:flex;gap:10px;align-self:center"><button class="pill">Σήμερα</button><button class="pill">${ic('printer')}Εκτύπωση</button><button class="pill b">${ic('plus')}Νέα παραγγελία</button></span></div>
  <div class="card" style="border-radius:16px"><div class="wk">${ic('chevron-left')}<a>45</a><a>46</a><a class="on">47 <i>3</i></a><a>48 <i>15</i></a><a>49 <i>9</i></a><a>50</a>${ic('chevron-right')}<span class="sp"></span><span class="chip">${ic('layers')}<b>Σύνθεση φορτίων</b> ${ic('arrow-down')}3 ${ic('arrow-up')}4</span><div class="q" style="margin:6px 0 6px 10px">${ic('search')}Αναζήτηση</div></div>
   <div class="nx"><span class="lbl">Επόμενα <b style="color:var(--red)">3</b></span>
-   <span class="chip">${ic('arrow-up')}<span style="color:var(--red);font-weight:600">Σάβ 14</span> <b>Lakonia Valley</b> 8π</span><span class="chip">${ic('arrow-up')}Τετ 18 <b>Alfa Vita</b> 5π</span><span class="chip">${ic('arrow-down')}Τετ 18 <b>Viokip</b> 11π</span></div></div>
+   <span class="chip">${ic('arrow-up')}<span style="color:var(--red);font-weight:600">Σάβ 14</span> <b>Lakonia Valley</b> 8π</span><span class="chip">${ic('arrow-up')}Δευ 16 <b>Nordfrisch</b> 33π</span><span class="chip">${ic('arrow-up')}Δευ 16 <b>Tirol Obst</b> 32π</span><span class="sp"></span><span class="chip">${ic('warehouse')}<b>Βέροια</b> 3 για μοίρασμα · 46π</span></div></div>
  <div class="bh lbl"><span></span><span style="padding-left:2px">Κάθοδος · φόρτωση</span><span style="padding-left:2px">Παράδοση</span><span style="text-align:right;padding-right:28px">Παλ.</span><span>Φορτηγό</span><span>Άνοδος · φόρτωση</span><span>Παράδοση</span><span style="text-align:right;padding-right:28px">Παλ.</span><span></span></div>
  <div style="flex:1;min-height:0;overflow:hidden;margin-top:-10px;padding:0 2px">${D.map(([t,c,sg,rows])=>`<section class="day ${c}"><h3>${t}${sg}</h3>${rows.map(brow).join('')}</section>`).join('')}</div></main></div>`;
 
@@ -661,13 +664,13 @@ $('f2').innerHTML=`<div class="app rail">${side('wn')}<main class="main">
 const fld=(l,v,cls='',h='')=>`<label class="fld"><span>${l}</span><div class="inp ${cls}">${v}</div>${h}</label>`;
 const stop=(kind,name,sub,day,hrs,pal,vs,last)=>`<div class="stop ${last?'last':''}"><b>${kind}</b><div class="inp">${ic('map-pin')}<span style="min-width:0;overflow:hidden;text-overflow:ellipsis"><b style="font-weight:600">${name}</b> <span style="color:var(--help)">· ${sub}</span></span></div><div class="inp num">${day}</div><div class="inp ${hrs?'':'ph'}">${hrs||'ώρες'}</div><div class="inp num">${pal}</div>${vs?`<span class="cb on" title="Μέσω Βέροιας"><i>${ic('check')}</i>Βέροια</span>`:'<span></span>'}</div>`;
 $('f3').innerHTML=ordersHTML(0)+`<div class="veil"></div><div class="sheet">
- <div class="hd"><h1>Νέα διεθνής παραγγελία</h1><span class="sp"></span><button class="pill">${ic('scan-line')}Σάρωση εντολής πελάτη</button><button class="cl" style="width:40px;height:40px" aria-label="Κλείσιμο">${ic('x')}</button></div>
+ <div class="hd"><h1>Νέα διεθνής παραγγελία</h1><span class="sp"></span><button class="pill">${ic('scan-line')}Σάρωση εντολής πελάτη<span title="Η εντολή μένει συνημμένη" style="display:flex;color:var(--help)">${ic('paperclip')}</span></button><button class="cl" style="width:40px;height:40px" aria-label="Κλείσιμο">${ic('x')}</button></div>
  <div class="fgrid"><div class="card" style="align-self:start;border-radius:16px">
   <div class="fsec"><h3>Ποιος και τι</h3>
    <div class="row" style="grid-template-columns:auto minmax(0,1fr) calc((100% - 154px)/3 + 42px)"><div><label class="fld"><span>Κατεύθυνση</span><div class="seg"><b class="on">Εξαγωγή</b><b>Εισαγωγή</b></div></label></div><div>${fld('Πελάτης',`${ic('building-2')}<b style="font-weight:600">Tirol Obst GmbH</b><span class="sp"></span><span title="Συμπληρώθηκε από την τελευταία παραγγελία του πελάτη. Πάτησε για αναίρεση." style="display:flex">${ic('history')}</span>`)}</div><div>${fld('Αναφορά πελάτη','6100120417')}</div></div>
-   <div class="row g12"><div style="grid-column:span 4">${fld('Εμπόρευμα','Ροδάκινα')}</div><div style="grid-column:span 2">${fld('Θερμοκρασία',`${ic('thermometer')}+2°`)}</div><div style="grid-column:span 2">${fld('Βάρος','18.400 kg')}</div><div style="grid-column:span 4"><label class="fld"><span>Τιμή <i class="nb a" data-t="Λείπει. Αποθηκεύεται και χωρίς τιμή· θα φανεί στο «Χωρίς τιμή».">!</i></span><div class="inp miss focus"></div></label></div></div>
-   <div class="row g12"><label class="fld" style="grid-column:span 4"><span>Παλέτα</span><div class="seg"><b class="on">EUR</b><b>CHEP</b><b>Industrial</b></div></label><label class="fld" style="grid-column:span 3"><span>Ανταλλαγή παλετών <i class="nb" data-t="Διάλεξε Ναι ή Όχι για να αποθηκευτεί.">!</i></span><div class="seg"><b>Ναι</b><b>Όχι</b></div></label><label class="fld" style="grid-column:span 5"><span>Ψυκτικό</span><div class="seg"><b class="on">Συνεχής</b><b>Start-Stop</b><b>Χωρίς</b></div></label></div>
-   <div style="display:flex;gap:24px;margin-top:14px;align-items:center"><span class="cb"><i></i>Θερμοκρασία στο CMR</span><span class="cb"><i></i>Υψηλό ρίσκο</span><span class="cb"><i></i>Σε απόθεμα</span></div></div>
+   <div class="row g12"><div style="grid-column:span 4">${fld('Εμπόρευμα','Ακτινίδια')}</div><div style="grid-column:span 2">${fld('Θερμοκρασία',`${ic('thermometer')}+2°`)}</div><div style="grid-column:span 2">${fld('Βάρος','18.400 kg')}</div><div style="grid-column:span 4"><label class="fld"><span>Τιμή <i class="nb a" data-t="Λείπει. Αποθηκεύεται και χωρίς τιμή· θα φανεί στο «Χωρίς τιμή».">!</i></span><div class="inp miss focus"></div></label></div></div>
+   <div class="row g12"><label class="fld" style="grid-column:span 4"><span>Παλέτα</span><div class="seg"><b class="on">EUR</b><b>CHEP</b><b>Industrial</b></div></label><label class="fld" style="grid-column:5 / span 4"><span>Ανταλλαγή παλετών <i class="nb" data-t="Διάλεξε Ναι ή Όχι για να αποθηκευτεί.">!</i></span><div class="seg req"><b>Ναι</b><b>Όχι</b></div></label><label class="fld" style="grid-column:9 / span 4"><span>Ψυκτικό</span><div class="seg tight"><b class="on">Συνεχής</b><b>Start-Stop</b><b>Χωρίς</b></div></label></div>
+   <div class="row g12"><span class="cb" style="grid-column:span 4"><i></i>Θερμοκρασία στο CMR</span><span class="cb" style="grid-column:span 4"><i></i>Υψηλό ρίσκο</span><span class="cb" style="grid-column:span 4"><i></i>Σε απόθεμα</span></div></div>
   <div class="fsec"><h3>Διαδρομή <span class="lbl">3 σημεία · 32 παλέτες</span></h3><div class="stops"><div class="lbl" style="display:grid;grid-template-columns:76px minmax(0,1fr) 88px 104px 56px 78px;gap:0 10px;padding:0 12px 6px"><span></span><span>Σημείο</span><span>Ημέρα</span><span>Ώρες</span><span>Παλ.</span><span>Μέσω</span></div>
    ${stop('Φόρτωση 1','Naoussa Fruit Pack','Νάουσα','Τρί 17/11','08:00–12:00','20',1)}
    ${stop('Φόρτωση 2','Pella Peach Coop','Σκύδρα','Τρί 17/11','','12',1)}
@@ -735,7 +738,7 @@ $('f4').innerHTML=`<div class="app">${side('e')}<main class="main">
    <div class="cat w"><span style="display:flex;align-items:center;gap:8px"><b>Spedition</b><i class="nb a dn" data-t="Δύο φορές στις 28/10: μία με το χέρι, μία από DKV. Άνοιξε για να κρατήσεις τη μία.">!</i></span><span class="src">DKV + χέρι</span><span class="am num">200,00</span>${ic('chevron-down')}</div>
    <div class="cat"><span><b>Μετρητά</b></span><span class="src">μετρητά</span><span class="am num">45,00</span><span></span></div>
    <div class="cat"><span><b>Λοιπά</b></span><span class="src">πίστωση</span><span class="am num">160,00</span>${ic('chevron-down')}</div>
-   <div class="cat sub hovl"><span>28/10 · Γερμανία</span><span class="ed">${ic('pencil')}${ic('trash-2')}</span><span class="am num">160,00</span><span></span></div>
+   <div class="cat sub hovl"><span>28/10 · Αυστρία</span><span class="ed">${ic('pencil')}${ic('trash-2')}</span><span class="am num">160,00</span><span></span></div>
   </div>
   <div style="margin-top:12px;background:var(--bg);border-radius:12px;padding:8px;display:grid;gap:8px"><div class="qe" style="margin:0;grid-template-columns:1fr 1fr"><div class="inp focus">Διόδια<span class="sp"></span>${ic('chevron-down')}</div><div class="inp">Μετρητά<span class="sp"></span>${ic('chevron-down')}</div></div><div class="qe" style="margin:0;grid-template-columns:52px 76px minmax(0,1fr) 36px"><div class="inp" title="Χώρα">AT</div><div class="inp">28/10</div><div class="inp ph" style="justify-content:flex-end">ποσό</div><button class="pill" style="width:36px;height:36px;padding:0;justify-content:center" title="Πρόσθεσε">${ic('plus')}</button></div></div>
   <div class="tsum"><div><span class="lbl">Σύνολο δρομολογίου</span><br><b class="num">2.948,00 €</b></div><span class="sp"></span><button class="pill">Επόμενο ${ic('arrow-down')}</button></div>
@@ -758,7 +761,7 @@ ${pbody}
 
 /* ---------- motion lab ---------- */
 let asgOn=0;function mAssign(){asgOn=!asgOn;const m=$('m1'),t=m.querySelector('.tile'),w=m.querySelector('.two');t.classList.toggle('need',!asgOn);
- w.innerHTML=asgOn?`<b class="num fadeup">ΚΗΙ 4521 · Ρ 66542</b><span class="fadeup">Γ. Αλεξίου · Ανατέθηκε</span>`:`<b style="color:var(--red)">Ανάθεση</b><span>κανένα φορτηγό</span>`}
+ w.innerHTML=asgOn?`<b class="num fadeup">ΚΗΙ 4521 · Ρ 6654</b><span class="fadeup">Γ. Αλεξίου · Ανατέθηκε</span>`:`<b style="color:var(--red)">Ανάθεση</b><span>κανένα φορτηγό</span>`}
 function mToast(){const m=$('m2');m.classList.add('show');clearTimeout(window._t);window._t=setTimeout(()=>m.classList.remove('show'),5000)}
 let tot=21701;function mCount(){const el=$('m3'),dl=$('m3d'),from=tot,to=tot+=120,t0=performance.now(),red=matchMedia('(prefers-reduced-motion:reduce)').matches;
  el.classList.remove('flash');void el.offsetWidth;el.classList.add('flash');dl.classList.add('show');clearTimeout(window._d);window._d=setTimeout(()=>dl.classList.remove('show'),1600);
