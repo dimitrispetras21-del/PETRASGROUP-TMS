@@ -254,22 +254,28 @@ table.spec td b{color:var(--ink);font-weight:600}
 
 /* order form (a sheet over the page it was opened from) */
 .veil{animation:veilIn var(--t-enter) ease both;position:absolute;z-index:5;inset:0;background:rgba(0,0,16,.5);backdrop-filter:blur(6px)}
-.sheet{position:absolute;z-index:6;top:26px;max-height:calc(100% - 52px);left:50%;width:1180px;margin-left:-590px;background:var(--bg);border-radius:var(--r-page);box-shadow:var(--shadow-float);display:flex;flex-direction:column;overflow:hidden;animation:sheetIn var(--t-enter) var(--ease) both}
+.sheet{position:absolute;z-index:6;top:26px;max-height:calc(100% - 52px);left:50%;width:1240px;margin-left:-620px;background:var(--bg);border-radius:var(--r-page);box-shadow:var(--shadow-float);display:flex;flex-direction:column;overflow:hidden;animation:sheetIn var(--t-enter) var(--ease) both}
 @keyframes veilIn{from{opacity:0}to{opacity:1}}
 @keyframes sheetIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 .sheet.out{animation:sheetOut var(--t-exit) var(--ease-exit) both}@keyframes sheetOut{to{opacity:0;transform:translateY(12px)}}
 .sheet .hd{padding:0 28px;height:76px;margin:0;background:#fff;border-bottom:1px solid var(--line)}
 .sheet .hd h1{font-size:24px}
-.fgrid{display:grid;grid-template-columns:minmax(0,1fr) 304px;gap:18px;padding:18px 24px 24px;flex:1;min-height:0;overflow:auto}
+.fgrid{display:grid;grid-template-columns:minmax(0,1fr) 290px;gap:18px;padding:18px 24px 24px;flex:1;min-height:0;overflow:auto}
 .fsec{padding:20px 24px}
 .fsec+.fsec{border-top:1px solid var(--line)}
 .fsec>h3{font-size:16px;font-weight:600;color:var(--ink);margin-bottom:14px;display:flex;align-items:baseline;gap:10px}
 .row{display:grid;gap:14px}.row+.row{margin-top:14px}.row.g12{grid-template-columns:repeat(12,minmax(0,1fr))}
 .stops{position:relative;padding-left:30px}
-.stop{position:relative;background:var(--bg);border-radius:14px;padding:10px 12px;margin-bottom:8px;display:grid;grid-template-columns:76px minmax(0,1fr) 88px 104px 56px 78px;gap:0 10px;align-items:center}
-.stop>b{color:var(--ink);font-weight:600}.stop .inp{height:38px}
+.stop,.shead{display:grid;grid-template-columns:22px minmax(0,1fr) 88px 106px 50px 86px 44px 22px;gap:0 10px;align-items:center}
+.shead{position:relative;padding:0 12px 6px}
+.stop{position:relative;background:var(--bg);border-radius:14px;padding:8px 12px;margin-bottom:8px}
+.stop>b{color:var(--help);font-weight:600;text-align:center}.stop .inp{height:38px}
+.exc{display:flex;align-items:center;gap:6px}.exc .inp{height:38px;padding:0 8px;justify-content:flex-end}.exc:not(.on) .inp{background:none}
+.stop .rm{color:var(--help);display:grid;place-items:center}.stop .rm svg.lucide{width:14px;height:14px}
+.stop>.cb{justify-self:center}
+.chkv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:0}.chkv dt{color:var(--help)}.chkv dd{margin:0;text-align:right;color:var(--ink);font-weight:500;display:flex;gap:8px;justify-content:flex-end;align-items:center}
 .stop .inp{border-color:transparent}.stop .inp:hover{border-color:#D9DBE0}
-.stop::before{content:'';position:absolute;left:-26px;top:23px;width:12px;height:12px;border-radius:50%;background:#fff;border:3px solid var(--signal);z-index:1}
+.stop::before{content:'';position:absolute;left:-26px;top:21px;width:12px;height:12px;border-radius:50%;background:#fff;border:3px solid var(--signal);z-index:1}
 .stop:not(.last)::after{content:'';position:absolute;left:-21px;top:36px;bottom:-30px;width:2px;background:var(--signal)}
 .stop .k{grid-column:1/-1;display:flex;align-items:center;gap:12px}.stop .k>b{width:82px;flex:none;color:var(--ink);font-weight:600}.stop .k .inp{flex:1;width:auto}
 .add{display:inline-flex;align-items:center;gap:8px;color:var(--link);font-weight:500;height:32px}
@@ -523,7 +529,7 @@ table.spec td b{color:var(--ink);font-weight:600}
 
 <section class="sec" id="s3">
   <h2>Νέα διεθνής παραγγελία</h2>
-  <p class="lead">Όποιος καταχωρεί, πολλές φορές την ημέρα. Ανοίγει πάνω από τη σελίδα που δούλευες. Κόκκινο ό,τι εμποδίζει την αποθήκευση, πορτοκαλί ό,τι απλώς λείπει.</p>
+  <p class="lead">Όποιος καταχωρεί, πολλές φορές την ημέρα. Έχει κάθε πεδίο της σημερινής φόρμας. Η ανταλλαγή παλετών ορίζεται για όλη την παραγγελία και ακολουθεί κάθε σημείο φόρτωσης και παράδοσης, με δικό της αριθμό όπου διαφέρει.</p>
   <div class="fit"><div class="frame tall" id="f3"></div></div>
 </section>
 
@@ -661,29 +667,39 @@ $('f2').innerHTML=`<div class="app rail">${side('wn')}<main class="main">
  <div class="bh lbl"><span></span><span style="padding-left:2px">Κάθοδος · φόρτωση</span><span style="padding-left:2px">Παράδοση</span><span style="text-align:right;padding-right:28px">Παλ.</span><span>Φορτηγό</span><span>Άνοδος · φόρτωση</span><span>Παράδοση</span><span style="text-align:right;padding-right:28px">Παλ.</span><span></span></div>
  <div style="flex:1;min-height:0;overflow:hidden;margin-top:-10px;padding:0 2px">${D.map(([t,c,sg,rows])=>`<section class="day ${c}"><h3>${t}${sg}</h3>${rows.map(brow).join('')}</section>`).join('')}</div></main></div>`;
 
-/* ---------- screen 3: order form, a sheet over the page ---------- */
+/* ---------- screen 3: order form, a sheet over the page. Every control of today's form (orders_intl.js) has a place here. ---------- */
 const fld=(l,v,cls='',h='')=>`<label class="fld"><span>${l}</span><div class="inp ${cls}">${v}</div>${h}</label>`;
-const stop=(kind,name,sub,day,hrs,pal,vs,last)=>`<div class="stop ${last?'last':''}"><b>${kind}</b><div class="inp">${ic('map-pin')}<span style="min-width:0;overflow:hidden;text-overflow:ellipsis"><b style="font-weight:600">${name}</b> <span style="color:var(--help)">· ${sub}</span></span></div><div class="inp num">${day}</div><div class="inp ${hrs?'':'ph'}">${hrs||'ώρες'}</div><div class="inp num">${pal}</div>${vs?`<span class="cb on" title="Μέσω Βέροιας"><i>${ic('check')}</i>Βέροια</span>`:'<span></span>'}</div>`;
+// one point: place, day, hours, pallets, pallet exchange at this point (tick + how many), via Veroia (national side only), remove (never on point 1)
+const stop=(kind,name,sub,day,hrs,pal,ex,vs,rm,last)=>`<div class="stop ${last?'last':''}"><b>${kind}</b><div class="inp">${ic('map-pin')}<span style="min-width:0;overflow:hidden;text-overflow:ellipsis"><b style="font-weight:600">${name}</b> <span style="color:var(--help)">· ${sub}</span></span></div><div class="inp num">${day}</div><div class="inp ${hrs?'':'ph'}">${hrs||'όλη η ημέρα'}</div><div class="inp num">${pal}</div>
+ <div class="exc ${ex===0?'':'on'}"><span class="cb ${ex===0?'':'on'}"><i>${ex===0?'':ic('check')}</i></span><div class="inp num ${ex===0?'ph':''}">${ex===0?'–':ex}</div></div>
+ ${vs===null?'<span></span>':`<span class="cb ${vs?'on':''}" title="Μέσω Βέροιας"><i>${vs?ic('check'):''}</i></span>`}${rm?`<button class="rm" title="Αφαίρεση σημείου">${ic('x')}</button>`:'<span></span>'}</div>`;
+const shead=(t,vs,extra='')=>`<div class="shead lbl"><span style="grid-column:span 2;color:var(--ink);font-weight:600;letter-spacing:0;text-transform:none;font-size:13px">${t}</span><span>Ημέρα</span><span>Ώρες</span><span>Παλ.</span><span>Ανταλλαγή</span><span>${vs?'Βέροια':''}</span><span></span>${extra}</div>`;
 $('f3').innerHTML=ordersHTML(0)+`<div class="veil"></div><div class="sheet">
  <div class="hd"><h1>Νέα διεθνής παραγγελία</h1><span class="sp"></span><button class="pill">${ic('scan-line')}Σάρωση εντολής πελάτη</button><button class="cl" style="width:40px;height:40px" title="Επισύναψη εντολής πελάτη">${ic('paperclip')}</button><button class="cl" style="width:40px;height:40px" aria-label="Κλείσιμο">${ic('x')}</button></div>
  <div class="fgrid"><div class="card" style="align-self:start;border-radius:16px">
   <div class="fsec"><h3>Ποιος και τι</h3>
    <div class="row g12"><div style="grid-column:span 4"><label class="fld"><span>Κατεύθυνση</span><div class="seg"><b class="on">Εξαγωγή</b><b>Εισαγωγή</b></div></label></div><div style="grid-column:span 4">${fld('Πελάτης',`${ic('building-2')}<b style="font-weight:600">Tirol Obst GmbH</b><span class="sp"></span><span title="Συμπληρώθηκε από την τελευταία παραγγελία του πελάτη. Πάτησε για αναίρεση." style="display:flex">${ic('history')}</span>`)}</div><div style="grid-column:span 4">${fld('Αναφορά πελάτη','6100120417')}</div></div>
-   <div class="row g12"><div style="grid-column:span 4">${fld('Εμπόρευμα','Ακτινίδια')}</div><div style="grid-column:span 2">${fld('Θερμοκρασία',`${ic('thermometer')}+2°`)}</div><div style="grid-column:span 2">${fld('Βάρος','18.400 kg')}</div><div style="grid-column:span 4"><label class="fld"><span>Τιμή <i class="nb a" data-t="Λείπει. Αποθηκεύεται και χωρίς τιμή· θα φανεί στο «Χωρίς τιμή».">!</i></span><div class="inp miss focus"></div></label></div></div>
-   <div class="row g12"><label class="fld" style="grid-column:span 4"><span>Παλέτα</span><div class="seg"><b class="on">EUR</b><b>CHEP</b><b>Industrial</b></div></label><label class="fld" style="grid-column:5 / span 4"><span>Ανταλλαγή παλετών <i class="nb" data-t="Διάλεξε Ναι ή Όχι για να αποθηκευτεί.">!</i></span><div class="seg req"><b>Ναι</b><b>Όχι</b></div></label><label class="fld" style="grid-column:9 / span 4"><span>Ψυκτικό</span><div class="seg tight"><b class="on">Συνεχής</b><b>Start-Stop</b><b>Χωρίς</b></div></label></div>
-   <div class="row g12"><span class="cb" style="grid-column:span 4"><i></i>Θερμοκρασία στο CMR</span><span class="cb" style="grid-column:span 4"><i></i>Υψηλό ρίσκο</span><span class="cb" style="grid-column:span 4"><i></i>Σε απόθεμα</span></div></div>
-  <div class="fsec"><h3>Διαδρομή <span class="lbl">3 σημεία · 32 παλέτες</span></h3><div class="stops"><div class="lbl" style="display:grid;grid-template-columns:76px minmax(0,1fr) 88px 104px 56px 78px;gap:0 10px;padding:0 12px 6px"><span></span><span>Σημείο</span><span>Ημέρα</span><span>Ώρες</span><span>Παλ.</span><span>Μέσω</span></div>
-   ${stop('Φόρτωση 1','Naoussa Fruit Pack','Νάουσα','Τρί 17/11','08:00–12:00','20',1)}
-   ${stop('Φόρτωση 2','Pella Peach Coop','Σκύδρα','Τρί 17/11','','12',1)}
-   ${stop('Παράδοση','Tirol Obst Lager','Innsbruck','Παρ 20/11','06:00–10:00','32',0,1)}
-   <div style="display:flex;gap:18px"><button class="add">${ic('plus')}Σημείο φόρτωσης</button><button class="add">${ic('plus')}Σημείο παράδοσης</button></div></div></div>
-  <div class="fsec"><h3>Σημειώσεις</h3><div class="inp ph" style="height:52px;align-items:flex-start;padding-top:10px">Ό,τι πρέπει να ξέρει ο οδηγός ή η ράμπα</div></div>
+   <div class="row g12"><div style="grid-column:span 4">${fld('Εμπόρευμα','Ακτινίδια')}</div><div style="grid-column:span 2">${fld('Θερμοκρασία',`${ic('thermometer')}+2°<span class="sp"></span><span class="cb" title="Η θερμοκρασία όπως στο CMR" style="font-size:12px;gap:5px"><i></i>CMR</span>`)}</div><div style="grid-column:span 2">${fld('Βάρος','18.400 kg')}</div><div style="grid-column:span 4"><label class="fld"><span>Τιμή, καθαρή <i class="nb a" data-t="Λείπει. Αποθηκεύεται και χωρίς τιμή· θα φανεί στο «Χωρίς τιμή».">!</i></span><div class="inp miss focus"></div></label></div></div>
+   <div class="row g12"><label class="fld" style="grid-column:span 4"><span>Παλέτα</span><div class="seg"><b class="on">EUR</b><b>CHEP</b><b>Industrial</b></div></label><label class="fld" style="grid-column:5 / span 4"><span>Ανταλλαγή παλετών <i class="nb a" data-t="Με CHEP ή Industrial η ανταλλαγή κλειδώνει στο Όχι.">!</i></span><div class="seg"><b class="on">Ναι</b><b>Όχι</b></div></label><label class="fld" style="grid-column:9 / span 4"><span>Ψυκτικό</span><div class="seg tight"><b class="on">Συνεχής</b><b>Start-Stop</b><b>Χωρίς</b></div></label></div></div>
+  <div class="fsec"><h3>Διαδρομή</h3><div class="stops">
+   ${shead('Φόρτωση',1)}
+   ${stop('1','Naoussa Fruit Pack','Νάουσα','Τρί 17/11','08:00–12:00','20',20,true,0)}
+   ${stop('2','Pella Peach Coop','Σκύδρα','Τρί 17/11','','12',12,true,1)}
+   <button class="add" style="margin:0 0 14px">${ic('plus')}Σημείο φόρτωσης</button>
+   ${shead('Παράδοση',0,`<span class="cb" style="position:absolute;right:0;top:-2px;letter-spacing:0;text-transform:none"><i></i>Σε απόθεμα</span>`)}
+   ${stop('1','Tirol Obst Lager','Innsbruck','Παρ 20/11','06:00–10:00','20',20,null,0)}
+   ${stop('2','Alpen Frische Hall','Hall in Tirol','Παρ 20/11','','12',0,null,1,1)}
+   <button class="add">${ic('plus')}Σημείο παράδοσης</button></div></div>
+  <div class="fsec"><h3>Σημειώσεις</h3><div class="inp ph" style="height:44px">Ό,τι πρέπει να ξέρει ο οδηγός ή η ράμπα</div><div style="margin-top:12px"><span class="cb"><i></i>Υψηλό ρίσκο</span></div></div>
  </div>
- <div class="card sum" style="border-radius:16px"><div><p style="font-size:17px;font-weight:600;color:var(--ink)">Tirol Obst GmbH</p><p style="color:var(--help)">Νάουσα → Innsbruck · 32 παλέτες · +2°</p></div>
-  <p style="line-height:1.6"><span class="lbl">Τρί 17/11</span> &nbsp;Φόρτωση σε 2 σημεία<br><span class="lbl">Τετ 18/11</span> &nbsp;Βέροια, αλλαγή φορτηγού<br><span class="lbl">Παρ 20/11</span> &nbsp;Παράδοση, Innsbruck</p>
-  <ul class="chk"><li><i class="nb" style="margin-top:1px">!</i>Ανταλλαγή παλετών</li><li><i class="nb a" style="margin-top:1px">!</i>Τιμή</li></ul>
+ <div class="card sum" style="border-radius:16px"><div><p style="font-size:17px;font-weight:600;color:var(--ink)">Tirol Obst GmbH</p><p style="color:var(--help)">Νάουσα → Innsbruck · +2°</p></div>
+  <dl class="chkv"><dt>Παλέτες</dt><dd class="num">32 → 32</dd>
+   <dt>Ανταλλαγή</dt><dd class="num">32 → 20 <i class="nb a" data-t="12 παλέτες χωρίς ανταλλαγή στην παράδοση 2.">!</i></dd>
+   <dt>Βέροια</dt><dd class="num">Τετ 18/11 · 32</dd>
+   <dt>Φορτηγό</dt><dd class="num">32 / 33</dd></dl>
+  <ul class="chk"><li><i class="nb a" style="margin-top:1px">!</i>Τιμή</li></ul>
   <p style="font-size:13px;color:var(--help);line-height:1.6">→ Εβδομαδιαίο Διεθνών, 14 – 20/11<br>→ Εβδομαδιαίο Εθνικών, 2 φορτώσεις</p>
-  <div><button class="pill b off" style="width:100%;height:40px;justify-content:center">Αποθήκευση</button><p class="hint" style="text-align:center;margin-top:8px">Ctrl + Enter · <a>Αποθήκευση και νέα</a></p></div>
+  <div><button class="pill b" style="width:100%;height:40px;justify-content:center">Αποθήκευση</button><p class="hint" style="text-align:center;margin-top:8px">Ctrl + Enter · <a>Αποθήκευση και νέα</a></p></div>
  </div></div></div>`;
 
 /* ---------- screen 4: expenses (week 44, 24 to 30/10) ---------- */
