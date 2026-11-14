@@ -75,7 +75,7 @@ table.spec td b{color:var(--ink);font-weight:600}
 .chip.hide{border-color:transparent;background:none;padding:0 6px;color:var(--help)}
 .tag{display:inline-block;font-size:11px;font-weight:500;border:1px solid var(--line);border-radius:999px;padding:0 7px;line-height:16px;color:var(--help);margin-left:6px;flex:none}
 /* status: one geometry everywhere, a 7px mark and a word */
-.st{display:inline-flex;align-items:center;gap:8px;line-height:1;font-size:13.5px;font-weight:500;white-space:nowrap;color:var(--body);transition:color var(--t-state)}
+.st{display:inline-flex;vertical-align:middle;align-items:center;gap:8px;line-height:1;font-size:13.5px;font-weight:500;white-space:nowrap;color:var(--body);transition:color var(--t-state)}
 .st::before{content:'';width:7px;height:7px;border-radius:50%;flex:none;transition:background var(--t-state),box-shadow var(--t-state)}
 .st.todo::before{box-shadow:inset 0 0 0 1.5px #A9ABB3}
 .st.asg::before{background:var(--ink)}
@@ -97,7 +97,7 @@ table.spec td b{color:var(--ink);font-weight:600}
 .dark p.lbl{font-size:11px;font-weight:600;margin:0}.dark .lbl i.a{background:#FFB547}.dark .lbl i.r{background:#FF6B70}
 .dark .pill{height:32px;font-size:13px}
 .dark .pill.b{background:var(--on-dark-btn);border-color:var(--on-dark-btn);color:var(--on-dark-btn-ink)}
-.fld{display:block;min-width:0}.fld>span{display:block;font-size:12px;font-weight:600;color:var(--body);margin-bottom:6px}
+.fld{display:block;min-width:0}.fld>span{display:flex;align-items:center;gap:6px;height:17px;font-size:12px;font-weight:600;color:var(--body);margin-bottom:6px}
 .inp{height:40px;width:100%;border:1px solid #D9DBE0;border-radius:var(--r-ctl);padding:0 12px;font:inherit;color:var(--ink);background:#fff;display:flex;align-items:center;gap:8px;white-space:nowrap;overflow:hidden;transition:border-color var(--t-fast),box-shadow var(--t-fast)}
 .inp.focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg)}
 .inp.miss{border-color:var(--amber-line);background:#FFFBF2}
@@ -164,7 +164,7 @@ table.spec td b{color:var(--ink);font-weight:600}
 .as{display:flex;align-items:center;gap:10px;min-width:0}.as.x b{color:var(--help);font-weight:400}
 
 /* orders list */
-.th,.tr{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1.15fr) minmax(0,1.15fr) 176px 124px 100px 76px;gap:0 20px;align-items:center;padding:0 28px}
+.th,.tr{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1.1fr) minmax(0,1.1fr) 168px 112px 100px 72px;gap:0 20px;align-items:center;padding:0 28px}
 .th{height:42px;border-bottom:1px solid var(--line)}
 .th .n,.tr .n{text-align:right}
 .tr{height:60px;position:relative;cursor:pointer;transition:background var(--t-fast)}
@@ -227,6 +227,7 @@ table.spec td b{color:var(--ink);font-weight:600}
 .br .pl b{font-weight:400;color:var(--body)}
 .dt{border-bottom:1px dotted transparent;cursor:pointer}.br:hover .dt,.br.hov .dt{border-color:#8A8D96}.dt:hover{color:var(--link);border-color:var(--link)}
 .pw{display:flex;gap:6px;justify-content:flex-end;align-items:center}
+.pal{position:relative}.pw sup{position:absolute;left:100%;top:-4px;margin-left:2px}.pw{position:relative}
 .pal b{font-weight:600;color:var(--ink);font-size:15px;display:block;text-align:right}.pal.over b{color:var(--red)}.pw sup,sup.ov{color:var(--red);font-weight:700;font-size:11px}
 .pal .m{display:block;width:28px;height:2px;border-radius:2px;background:var(--line);position:relative;margin:3px 0 0 auto}
 .pal .m i{position:absolute;inset:0;background:#A9ABB3;border-radius:2px;transform-origin:left;transform:scaleX(var(--f,1));transition:transform var(--t-move) var(--ease)}.pal.over .m i{background:var(--red)}
@@ -239,10 +240,11 @@ table.spec td b{color:var(--ink);font-weight:600}
 .slot.a{border:1px solid var(--amber-line);background:#FFFBF2;color:var(--amber);font-weight:500;justify-self:start;width:auto;padding-right:6px}
 .slot>svg.lucide{width:14px;height:14px;color:var(--faint)}.slot.a>svg.lucide{color:var(--amber)}
 .day.past .br:not(.need)>.as{opacity:.7}.day.past .br:not(.need) .tile:not(.p){background:var(--bg);border-color:var(--bg);color:var(--body)}
-.day.past .br:not(.need)>.two,.day.past .br:not(.need)>.pw,.day.past .br:not(.need)>.no{opacity:.55}
+.day.past .br:not(.need)>.two{opacity:.7}.day.past .br:not(.need)>.pw,.day.past .br:not(.need)>.no{opacity:.55}
 .send{color:var(--accent);opacity:0;transition:opacity var(--t-fast)}.br:hover .send,.br.hov .send{opacity:1}
 .ico{display:inline-flex;align-items:center;gap:3px;vertical-align:-2px}.ico svg.lucide{width:13px;height:13px}.ico.r{color:var(--red);font-weight:600}
 .pop{background:#fff;border-radius:16px;box-shadow:var(--shadow-float);padding:6px;width:340px;transform-origin:top left;animation:popIn var(--t-enter) var(--ease) both}
+@keyframes popOut{to{opacity:0;transform:scale(.98) translateY(-2px)}}.pop.out{animation:popOut var(--t-exit) var(--ease-exit) both}
 @keyframes popIn{from{opacity:0;transform:scale(.97) translateY(-4px)}to{opacity:1;transform:none}}
 .pop a{display:flex;align-items:center;gap:10px;height:34px;padding:0 10px;border-radius:10px;color:var(--ink);font-weight:500;font-size:13.5px}
 .pop a:hover,.pop a.h{background:var(--bg)}.pop a svg.lucide{width:15px;height:15px;color:var(--help)}.pop a.r,.pop a.r svg.lucide{color:var(--red)}
@@ -363,16 +365,16 @@ table.spec td b{color:var(--ink);font-weight:600}
 .a4 .foot{margin-top:12px;display:flex;justify-content:space-between;font-size:8px;color:#666}
 
 /* motion lab */
-.lab{display:flex;flex-direction:column;gap:12px}
+.lab{display:flex;flex-direction:column;gap:12px}.lab .pill{align-self:flex-start;margin-top:auto}.lab .note{margin-top:0}
 .lab .stage{height:140px;border-radius:12px;background:var(--bg);display:grid;place-items:center;padding:14px;position:relative;overflow:hidden}
-.toast{background:var(--ink);color:#fff;border-radius:12px;padding:10px 14px;display:flex;gap:10px;align-items:center;font-weight:500;font-size:13px;transform:translateY(60px);opacity:0;transition:transform var(--t-exit) var(--ease-exit),opacity var(--t-exit) var(--ease-exit)}
+.toast{background:var(--ink);color:#fff;border-radius:12px;padding:10px 12px;display:flex;gap:8px;align-items:center;font-weight:500;font-size:12.5px;white-space:nowrap;transform:translateY(60px);opacity:0;transition:transform var(--t-exit) var(--ease-exit),opacity var(--t-exit) var(--ease-exit)}
 .toast.show{transform:none;opacity:1;transition:transform var(--t-enter) var(--ease),opacity var(--t-enter) var(--ease)}
 .toast u{color:#9DC4FF;text-decoration:none;font-weight:600;margin-left:6px}
 .fadeup{animation:fu 160ms var(--ease) 60ms both}@keyframes fu{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
 .delta{font-size:13px;font-weight:600;color:var(--link);opacity:0;transition:opacity 200ms}.delta.show{opacity:1;transition-duration:160ms}
 .flash{animation:fl 400ms ease-out}@keyframes fl{from{background:var(--accent-bg)}to{background:transparent}}
 .mini{width:100%;display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.mini section{background:#fff;border-radius:10px;padding:8px;min-height:92px}.mini h5{margin:0 0 6px;font-size:12px;font-weight:600;color:var(--ink)}
+.mini section{background:#fff;border-radius:10px;padding:8px;min-height:92px;min-width:0}.mini h5{margin:0 0 6px;font-size:12px;font-weight:600;color:var(--ink)}
 .mini .it{height:26px;border-radius:7px;background:var(--bg);display:flex;align-items:center;padding:0 8px;font-size:12px;font-weight:500;color:var(--ink);margin-top:4px;white-space:nowrap;overflow:hidden}
 .mini .it.mv{background:var(--accent-bg);color:var(--link)}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;transition-delay:0ms!important}
@@ -401,7 +403,7 @@ table.spec td b{color:var(--ink);font-weight:600}
 <section class="sec" id="system">
   <h2>Σύστημα σχεδίασης</h2>
   <p class="lead">Λίγα πράγματα, ίδια παντού. Το λογότυπο της Petras είναι μαύρο, άρα το κύριο κουμπί είναι μαύρο. Ένα ψυχρό μπλε δείχνει μόνο ό,τι πατιέται ή κινείται. Το πράσινο, το κόκκινο και το πορτοκαλί σημαίνουν πάντα κάτι, δεν διακοσμούν ποτέ.</p>
-  <div class="grid g3">
+  <div class="grid g3" style="align-items:stretch">
     <div class="panel"><h3>Χρώμα</h3>
       <div class="grid g2" style="gap:12px">
         <div class="sw"><i style="background:var(--primary)"></i><div><b>Κύριο κουμπί</b><span>μία κύρια πράξη ανά οθόνη</span></div></div>
@@ -426,8 +428,8 @@ table.spec td b{color:var(--ink);font-weight:600}
     </div>
   </div>
 
-  <div class="grid g2" style="margin-top:16px;align-items:stretch">
-    <div class="panel"><h3>Κουμπιά, φίλτρα, κατάσταση</h3>
+  <div class="grid g2" style="margin-top:16px">
+    <div style="display:flex;flex-direction:column;gap:16px"><div class="panel"><h3>Κουμπιά, φίλτρα, κατάσταση</h3>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <button class="pill b"><i data-lucide="plus"></i>Νέα παραγγελία</button><button class="pill">Εκτύπωση</button><button class="tbtn">Αντίγραφο</button><button class="tbtn r">Διαγραφή</button>
       </div>
@@ -438,7 +440,11 @@ table.spec td b{color:var(--ink);font-weight:600}
         <span class="st todo">Σε αναμονή</span><span class="st asg">Ανατέθηκε</span><span class="st run">Σε μεταφορά</span><span class="st done"><i data-lucide="check"></i>Παραδόθηκε</span><span class="st late">Άργησε</span><span class="st off">Ακυρώθηκε</span>
       </div>
     </div>
-    <div class="panel"><h3>Σημάδια αντί για λόγια</h3>
+    <div class="panel"><h3>Πλοήγηση: μία μπάρα, δύο πλάτη</h3>
+      <p>Λευκή μπάρα με λέξεις στις λίστες, όπως στις «Παραγγελίες» που σου άρεσαν. Στους πίνακες εβδομάδας και στα οικονομικά φύλλα η ίδια μπάρα στενεύει σε εικονίδια, για να πάρει το πλάτος η δουλειά. Ο χρήστης την ανοίγει και την κλείνει όποτε θέλει.</p>
+      <p>Οι φόρμες ανοίγουν πάνω από τη σελίδα από την οποία τις κάλεσες, και όταν αποθηκεύσεις η σελίδα από κάτω έχει ήδη τη νέα γραμμή.</p>
+    </div></div>
+    <div style="display:flex;flex-direction:column;gap:16px"><div class="panel"><h3>Σημάδια αντί για λόγια</h3>
       <table class="spec"><tbody>
         <tr><td style="width:150px"><span class="as"><span class="tile"><i data-lucide="truck"></i></span><span class="tile p"><i data-lucide="users"></i></span><span class="tile need"><i data-lucide="truck"></i></span></span></td><td><b>Ποιος το πάει.</b> Μαύρο: δικό μας φορτηγό. Μπλε: συνεργάτης. Κόκκινο διακεκομμένο: κανείς ακόμη.</td></tr>
         <tr><td><span style="display:flex;gap:18px;align-items:flex-start"><span class="pal"><b class="num">30</b><span class="m"><i style="--f:.91"></i></span></span><span class="pal over"><b class="num">40</b><span class="m"><i></i></span></span><sup class="ov">+7</sup></span></td><td><b>Παλέτες από 33.</b> Η γραμμή δείχνει το γέμισμα. Πάνω από 33 γίνεται κόκκινη, με το πόσες περισσεύουν.</td></tr>
@@ -449,29 +455,22 @@ table.spec td b{color:var(--ink);font-weight:600}
         <tr><td><span style="color:var(--red);font-weight:600;font-size:13px">λείπουν</span> &nbsp; <span style="color:#C9CDD4">–</span></td><td><b>Κενό.</b> «λείπουν» όταν έπρεπε να υπάρχει. Παύλα όταν σωστά δεν υπάρχει. Ποτέ μηδέν για το άγνωστο.</td></tr>
       </tbody></table>
     </div>
-  </div>
-
-  <div class="grid g2" style="margin-top:16px;align-items:stretch">
-    <div class="panel"><h3>Πλοήγηση: μία μπάρα, δύο πλάτη</h3>
-      <p>Λευκή μπάρα με λέξεις στις λίστες, όπως στις «Παραγγελίες» που σου άρεσαν. Στους πίνακες εβδομάδας και στα οικονομικά φύλλα η ίδια μπάρα στενεύει σε εικονίδια, για να πάρει το πλάτος η δουλειά. Ο χρήστης την ανοίγει και την κλείνει όποτε θέλει.</p>
-      <p>Οι φόρμες ανοίγουν πάνω από τη σελίδα από την οποία τις κάλεσες, και όταν αποθηκεύσεις η σελίδα από κάτω έχει ήδη τη νέα γραμμή.</p>
-    </div>
     <div class="panel"><h3>Εκτυπώσεις</h3>
       <p>Το χαρτί είναι η ίδια πληροφορία σε ασπρόμαυρο: το λογότυπο, μαύρο μελάνι, λεπτές γραμμές, καμία γεμάτη επιφάνεια. Ό,τι στην οθόνη είναι χρώμα γίνεται πλαίσιο ή λέξη. Κάτω γράφει ποιος τύπωσε, πότε, και τι μένει εκτός συνόλου.</p>
-    </div>
+    </div></div>
   </div>
 </section>
 
 <section class="sec" id="motion">
   <h2>Κίνηση</h2>
   <p class="lead">Η κίνηση δείχνει τι άλλαξε και από πού ήρθε. Δεν στολίζει και δεν καθυστερεί κανέναν: τίποτα δεν κρατά πάνω από 0,4 του δευτερολέπτου. Πάτησε τα κουμπιά.</p>
-  <div class="grid g5">
+  <div class="grid g5" style="align-items:stretch">
     <div class="panel lab"><h3>Ανάθεση</h3>
       <div class="stage"><div class="as" id="m1"><span class="tile need"><i data-lucide="truck"></i></span><div class="two"><b style="color:var(--red)">Ανάθεση</b><span>κανένα φορτηγό</span></div></div></div>
       <button class="pill sm" onclick="mAssign()">Ανάθεσε φορτηγό</button>
       <p class="note">Το ίδιο πλακίδιο γεμίζει (0,2 δ) και η λέξη ακολουθεί αμέσως μετά.</p></div>
     <div class="panel lab"><h3>ΤΠΥ</h3>
-      <div class="stage"><div class="toast show" id="m2"><i data-lucide="check"></i><span>ΤΠΥ 10433 · Danubia Market</span><u>Αναίρεση</u></div></div>
+      <div class="stage"><div class="toast show" id="m2"><i data-lucide="check"></i><span>ΤΠΥ 10433</span><u>Αναίρεση</u></div></div>
       <button class="pill sm" onclick="mToast()">Γράψε ΤΠΥ</button>
       <p class="note">Σκούρα ειδοποίηση από κάτω, λέει τι γράφτηκε. Μένει όσο ισχύει η αναίρεση.</p></div>
     <div class="panel lab"><h3>Σύνολο</h3>
@@ -542,15 +541,15 @@ table.spec td b{color:var(--ink);font-weight:600}
 <section class="sec" id="states">
   <h2>Οι κακές στιγμές</h2>
   <p class="lead">Ίδιες σε κάθε σελίδα. Κάθε μήνυμα λέει τι έγινε, γιατί, και τι να κάνεις, με πελάτη και διαδρομή, ποτέ με κωδικό.</p>
-  <div class="grid g4">
+  <div class="grid g4" style="align-items:stretch">
     <div class="panel"><p class="lbl">Άδεια</p><div style="padding:14px 0 4px"><div class="tile soft" style="width:36px;height:36px;border-radius:10px;margin:0 0 12px"><i data-lucide="inbox"></i></div><h3>Καμία παραγγελία αυτή την εβδομάδα</h3><button class="pill b sm" style="margin-top:12px"><i data-lucide="plus"></i>Νέα παραγγελία</button></div></div>
     <div class="panel"><p class="lbl">Δεν διαβάστηκε (δεν είναι άδεια)</p><div style="padding:14px 0 4px"><div class="tile soft" style="width:36px;height:36px;border-radius:10px;margin:0 0 12px"><i data-lucide="cloud-off"></i></div><h3>Η εβδομάδα δεν διαβάστηκε</h3><p style="color:var(--help)">Δεν σημαίνει ότι είναι άδεια. Τίποτα δεν χάθηκε.</p><button class="pill sm" style="margin-top:12px"><i data-lucide="rotate-cw"></i>Ξαναδιάβασε</button></div></div>
     <div class="panel"><p class="lbl">Κανένα αποτέλεσμα</p><div style="padding:14px 0 4px"><div class="tile soft" style="width:36px;height:36px;border-radius:10px;margin:0 0 12px"><i data-lucide="search-x"></i></div><h3>Τίποτα για «tirol» σε αυτή την εβδομάδα</h3><p style="color:var(--help)">3 παραγγελίες ταιριάζουν σε άλλες εβδομάδες.</p><button class="pill sm" style="margin-top:12px">Δείξε τες</button></div></div>
-    <div class="panel"><p class="lbl">Φόρτωση</p><div style="padding-top:18px"><div style="display:flex;gap:12px;align-items:center;height:60px"><div class="sk" style="width:28px;height:28px;border-radius:8px"></div><div style="flex:1"><div class="sk" style="height:12px;width:55%"></div><div class="sk" style="height:10px;width:35%;margin-top:8px"></div></div></div><div style="display:flex;gap:12px;align-items:center;height:60px"><div class="sk" style="width:28px;height:28px;border-radius:8px"></div><div style="flex:1"><div class="sk" style="height:12px;width:55%"></div><div class="sk" style="height:10px;width:35%;margin-top:8px"></div></div></div><div style="display:flex;gap:12px;align-items:center;height:60px"><div class="sk" style="width:28px;height:28px;border-radius:8px"></div><div style="flex:1"><div class="sk" style="height:12px;width:55%"></div><div class="sk" style="height:10px;width:35%;margin-top:8px"></div></div></div></div></div></div>
+    <div class="panel"><p class="lbl">Φόρτωση</p><div style="padding-top:18px"><div style="display:flex;gap:12px;align-items:center;height:60px"><div class="sk" style="width:28px;height:28px;border-radius:8px"></div><div style="flex:1"><div class="sk" style="height:12px;width:55%"></div><div class="sk" style="height:10px;width:35%;margin-top:8px"></div></div></div><div style="display:flex;gap:12px;align-items:center;height:60px"><div class="sk" style="width:28px;height:28px;border-radius:8px"></div><div style="flex:1"><div class="sk" style="height:12px;width:55%"></div><div class="sk" style="height:10px;width:35%;margin-top:8px"></div></div></div><div style="display:flex;gap:12px;align-items:center;height:60px"><div class="sk" style="width:28px;height:28px;border-radius:8px"></div><div style="flex:1"><div class="sk" style="height:12px;width:55%"></div><div class="sk" style="height:10px;width:35%;margin-top:8px"></div></div></div></div></div>
     <div class="panel"><p class="lbl">Δεν αποθηκεύτηκε</p><div class="dark" style="margin-top:12px"><p class="lbl"><i class="r"></i>Δεν αποθηκεύτηκε</p><p>Η τιμή της Tirol Obst, Βέροια → Innsbruck δεν γράφτηκε: δεν υπάρχει σύνδεση. Ό,τι έγραψες μένει στη φόρμα.</p><div style="display:flex;gap:8px"><button class="pill b sm">Ξαναδοκίμασε</button></div></div></div>
     <div class="panel"><p class="lbl">Προειδοποιεί, δεν εμποδίζει</p><div class="strip" style="margin-top:12px;align-items:flex-start"><i data-lucide="triangle-alert" style="margin-top:2px"></i><div>Ο Κ. Τσορλίνης έχει κι άλλο δρομολόγιο τη Δευτέρα 16/11: Karamolegkos Fresh, Κορωπί → Σίνδος.<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="pill sm b">Ανάθεση</button><button class="pill sm">Άλλος οδηγός</button></div></div></div></div>
     <div class="panel"><p class="lbl">Το άλλαξε κάποιος άλλος</p><div class="strip n" style="margin-top:12px;align-items:flex-start"><i data-lucide="users" style="margin-top:2px"></i><div>Κάποιος άλλος άλλαξε το φορτηγό της Tirol Obst, Βέροια → Innsbruck όσο δούλευες. Η δική σου αλλαγή δεν γράφτηκε.<div style="margin-top:10px"><button class="pill sm">Δες τη νέα εικόνα</button></div></div></div></div>
-    <div class="panel"><p class="lbl">Μόνο ανάγνωση · χωρίς πρόσβαση</p><div class="strip n" style="margin-top:12px"><i data-lucide="eye"></i>Βλέπεις τα έξοδα χωρίς να τα αλλάζεις.</div><div style="padding:28px 0 0"><div class="tile soft" style="width:36px;height:36px;border-radius:10px;margin:0 0 10px"><i data-lucide="lock"></i></div><h3 style="margin-bottom:4px">Αυτή τη σελίδα τη βλέπει ο owner</h3><p style="color:var(--help)">Αν τη χρειάζεσαι, πες το στον Δημήτρη.</p></div></div>
+    <div class="panel"><p class="lbl">Μόνο ανάγνωση</p><div class="strip n" style="margin-top:12px"><i data-lucide="eye"></i>Βλέπεις τα έξοδα χωρίς να τα αλλάζεις.</div><p class="lbl" style="margin-top:28px">Χωρίς πρόσβαση</p><div style="padding:12px 0 0"><div class="tile soft" style="width:36px;height:36px;border-radius:10px;margin:0 0 10px"><i data-lucide="lock"></i></div><h3 style="margin-bottom:4px">Αυτή τη σελίδα τη βλέπει ο owner</h3><p style="color:var(--help)">Αν τη χρειάζεσαι, πες το στον Δημήτρη.</p></div></div>
   </div>
 </section>
 </div>
@@ -637,7 +636,7 @@ const D=[
   [5,'slotD','',0,trk('ΚΗΙ 7245 · Ε 5811','Ν. Καγκελίδης'),c2('Irini Sud','+1 PE',`${d('Κυρ 15')} · Ασπρόπυργος 14 · Ρέντης 13`),c2('Βέροια','',d('Δευ 16')),27],
  ]],
  ['Δευτέρα 16/11 · σήμερα','today',`<span class="sg">${ic('truck')}4</span><span class="sg a">${ic('undo-2')}1</span><span class="sg r">${ic('triangle-alert')}1</span>`,[
-  [6,c2('Βέροια','',d('Κυρ 15')),c2('Doukas Trans','',`${d('Δευ 16')} · Ασπρόπυργος`),30,`<div class="as"><span class="tile">${ic('shuffle')}</span><div class="two"><b class="num">ΚΗΙ 0138 → 5561</b><span>Σ. Κάππος · Λαμία, Κυρ 22:00</span></div></div>`,c2('Attiki Praktoreio','',`${d('Δευ 16')} · Άνω Λιόσια`),c2('Chalkidona Logistic','',`${d('Τρί 17')} · Καλοχώρι`),30],
+  [6,c2('Βέροια','',d('Κυρ 15')),c2('Doukas Trans','',`${d('Δευ 16')} · Ασπρόπυργος`),30,`<div class="as"><span class="tile">${ic('shuffle')}</span><div class="two"><b class="num">ΚΗΙ 0138 → 5561</b><span>Σ. Κάππος · Λαμία</span></div></div>`,c2('Attiki Praktoreio','',`${d('Δευ 16')} · Άνω Λιόσια`),c2('Chalkidona Logistic','',`${d('Τρί 17')} · Καλοχώρι`),30],
   [7,c2('Kentriki Agora','',`${d('Κυρ 15')} · Θεσσαλονίκη`),c2('Market Plus DC','',`${d('Δευ 16')} · Ασπρόπυργος`),30,trk('ΚΗΙ 2102 · Ρ 31880','Κ. Τσορλίνης'),c2('Karamolegkos Fresh','',`${d('Δευ 16')} · Κορωπί`),c2('Karamolegkos Fresh','',`${d('Τρί 17')} · 05:30–06:30 · Σίνδος`),30,'hov'],
   [8,c2('Olympos Fresh','',`${d('Δευ 16')} · Κοπανός`),c2('Chipita Lamia','',`${d('Δευ 16')} · Λαμία`),33,trk('ΚΗΙ 8600 · Ρ 50711','Λ. Δήμου'),c2('Knosos Packing','+1 PE',`${d('Δευ 16')} · Ασπρόπυργος 20 · Κόρινθος 20`),c2('Βέροια','',`${d('Τρί 17')} <span class="ico">${ic('clock')}20:00</span>`),40],
   [9,c2('Βέροια','',`${d('Κυρ 15')} · 14:00–23:59`),c2('PM Road','+1',`${d('Δευ 16')} · Ασπρόπυργος 6 · Ρέντης 26`),32,trk('ΚΗΙ 1286 · Ε 3002','Ε. Σαρίδης'),'slotA','',0,'ret'],
@@ -667,8 +666,8 @@ $('f3').innerHTML=ordersHTML(0)+`<div class="veil"></div><div class="sheet">
  <div class="fgrid"><div class="card" style="align-self:start;border-radius:16px">
   <div class="fsec"><h3>Ποιος και τι</h3>
    <div class="row" style="grid-template-columns:auto minmax(0,1fr) calc((100% - 154px)/3 + 42px)"><div><label class="fld"><span>Κατεύθυνση</span><div class="seg"><b class="on">Εξαγωγή</b><b>Εισαγωγή</b></div></label></div><div>${fld('Πελάτης',`${ic('building-2')}<b style="font-weight:600">Tirol Obst GmbH</b><span class="sp"></span><span title="Συμπληρώθηκε από την τελευταία παραγγελία του πελάτη. Πάτησε για αναίρεση." style="display:flex">${ic('history')}</span>`)}</div><div>${fld('Αναφορά πελάτη','6100120417')}</div></div>
-   <div class="row g12"><div style="grid-column:span 4">${fld('Εμπόρευμα','Ροδάκινα')}</div><div style="grid-column:span 2">${fld('Θερμοκρασία',`${ic('thermometer')}+2°`)}</div><div style="grid-column:span 2">${fld('Βάρος','18.400 kg')}</div><div style="grid-column:span 4"><label class="fld"><span>Τιμή <i class="nb a" style="vertical-align:-3px" data-t="Λείπει. Αποθηκεύεται και χωρίς τιμή· θα φανεί στο «Χωρίς τιμή».">!</i></span><div class="inp miss focus"></div></label></div></div>
-   <div class="row" style="grid-template-columns:auto auto auto 1fr;align-items:start;gap:20px"><label class="fld" style="min-width:max-content"><span>Παλέτα</span><div class="seg"><b class="on">EUR</b><b>CHEP</b><b>Industrial</b></div></label><label class="fld" style="min-width:max-content"><span>Ανταλλαγή παλετών <i class="nb" style="vertical-align:-3px" data-t="Διάλεξε Ναι ή Όχι για να αποθηκευτεί.">!</i></span><div class="seg"><b>Ναι</b><b>Όχι</b></div></label><label class="fld" style="min-width:max-content"><span>Ψυκτικό</span><div class="seg"><b class="on">Συνεχής</b><b>Start-Stop</b><b>Χωρίς</b></div></label></div>
+   <div class="row g12"><div style="grid-column:span 4">${fld('Εμπόρευμα','Ροδάκινα')}</div><div style="grid-column:span 2">${fld('Θερμοκρασία',`${ic('thermometer')}+2°`)}</div><div style="grid-column:span 2">${fld('Βάρος','18.400 kg')}</div><div style="grid-column:span 4"><label class="fld"><span>Τιμή <i class="nb a" data-t="Λείπει. Αποθηκεύεται και χωρίς τιμή· θα φανεί στο «Χωρίς τιμή».">!</i></span><div class="inp miss focus"></div></label></div></div>
+   <div class="row" style="grid-template-columns:auto auto auto 1fr;align-items:start;gap:20px"><label class="fld" style="min-width:max-content"><span>Παλέτα</span><div class="seg"><b class="on">EUR</b><b>CHEP</b><b>Industrial</b></div></label><label class="fld" style="min-width:max-content"><span>Ανταλλαγή παλετών <i class="nb" data-t="Διάλεξε Ναι ή Όχι για να αποθηκευτεί.">!</i></span><div class="seg"><b>Ναι</b><b>Όχι</b></div></label><label class="fld" style="min-width:max-content"><span>Ψυκτικό</span><div class="seg"><b class="on">Συνεχής</b><b>Start-Stop</b><b>Χωρίς</b></div></label></div>
    <div style="display:flex;gap:24px;margin-top:14px;align-items:center"><span class="cb"><i></i>Θερμοκρασία στο CMR</span><span class="cb"><i></i>Υψηλό ρίσκο</span><span class="cb"><i></i>Σε απόθεμα</span></div></div>
   <div class="fsec"><h3>Διαδρομή <span class="lbl">3 σημεία · 32 παλέτες</span></h3><div class="stops"><div class="lbl" style="display:grid;grid-template-columns:76px minmax(0,1fr) 88px 104px 56px 78px;gap:0 10px;padding:0 12px 6px"><span></span><span>Σημείο</span><span>Ημέρα</span><span>Ώρες</span><span>Παλ.</span><span>Μέσω</span></div>
    ${stop('Φόρτωση 1','Naoussa Fruit Pack','Νάουσα','Τρί 17/11','08:00–12:00','20',1)}
@@ -726,7 +725,7 @@ $('f4').innerHTML=`<div class="app">${side('e')}<main class="main">
   <div class="grp">Χωρίς δρομολόγιο</div>
   <div class="xr" style="grid-template-columns:minmax(0,1fr) auto 96px"><div class="two"><b>8 γραμμές DKV</b><span>24 – 30/10</span></div><a style="font-weight:500">Ταίριασμα</a><span class="tot num">400,00</span></div>
  </div></main></div>
- <div class="tc"><div class="h"><span class="tile soft" style="margin-top:2px">${ic('truck')}</span><div style="flex:1;min-width:0"><b class="num">ΚΗΙ 4162 · Ρ 9498</b><small>Α. Κοσκοσίδης · 24 – 29/10</small><small style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Ασπρόπυργος → Laakirchen → Aschbach → Κουφάλια</small></div><button class="cl" aria-label="Κλείσιμο">${ic('x')}</button></div>
+ <div class="tc"><div class="h"><span class="tile soft" style="margin-top:2px">${ic('truck')}</span><div style="flex:1;min-width:0"><b class="num">ΚΗΙ 4162 · Ρ 9498</b><small>Α. Κοσκοσίδης · 24 – 29/10</small><small>Ασπρόπυργος → Laakirchen → Aschbach → Κουφάλια</small></div><button class="cl" aria-label="Κλείσιμο">${ic('x')}</button></div>
   <div style="margin-top:14px">
    <div class="cat" style="border-top:0"><span><b>Καύσιμα</b><small>1.300 L · 3 γεμίσματα</small></span><span class="src">DKV</span><span class="am num">2.200,00</span>${ic('chevron-up')}</div>
    <div class="cat sub"><span>24/10 · Ελλάδα · 470 L</span><span></span><span class="am num">800,00</span><span></span></div>
