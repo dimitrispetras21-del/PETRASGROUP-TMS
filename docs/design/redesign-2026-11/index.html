@@ -1,0 +1,608 @@
+<!doctype html>
+<html lang="el">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Petras TMS · Νέα σχεδίαση (σχέδιο)</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* DESIGN MOCKUP ONLY. Not application code. Invented names, plates and round amounts.
+   Nothing here reads or writes the TMS. Petras TMS redesign, round 0 (system + 4 screens). */
+:root{
+  --ink:#000010; --body:#333340; --help:#6E6F7A; --faint:#A9ABB3;
+  --line:#E9EAEB; --line-2:#F1F2F4; --bg:#F5F6F7; --card:#fff;
+  --indigo:#3643F5; --link:#2834D4; --indigo-bg:#ECEEFC;
+  --signal:#04CF82; --green:#078A4F; --green-bg:#DDF7EA;
+  --red:#C92A31; --red-bg:#FCEBEC; --amber:#A8520A; --amber-bg:#FFF3DC; --amber-line:#E8B45A;
+  --r-page:24px; --r-card:16px; --r-ctl:10px; --r-pill:999px;
+  --t-fast:120ms; --t-state:200ms; --t-enter:280ms; --t-exit:160ms; --t-move:400ms;
+  --ease:cubic-bezier(.2,.8,.2,1);
+  --shadow-float:0 24px 60px -20px rgba(10,18,32,.35),0 0 0 1px rgba(10,18,32,.05);
+}
+*{box-sizing:border-box}html,body{margin:0}
+body{font:400 14px/1.4 'Manrope',system-ui,sans-serif;color:var(--body);background:#E9EAEE;-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4,p,ol,ul,dl,dd,figure{margin:0;padding:0}ol,ul{list-style:none}
+button{font:inherit;color:inherit;cursor:pointer;background:none;border:0;padding:0}
+a{color:var(--link);text-decoration:none}
+svg.lucide{width:18px;height:18px;stroke-width:1.6;flex:none}
+.num{font-variant-numeric:tabular-nums}
+:focus-visible{outline:2px solid var(--indigo);outline-offset:2px;border-radius:6px}
+
+/* ---------- document chrome (the page that presents the designs) ---------- */
+.doc{max-width:1500px;margin:0 auto;padding:40px 28px 120px}
+.doc>header h1{font-size:40px;font-weight:500;letter-spacing:-1px;color:var(--ink);line-height:1.1}
+.doc>header p{max-width:78ch;margin-top:12px;font-size:16px;line-height:1.55}
+.toc{display:flex;gap:8px;flex-wrap:wrap;margin:22px 0 0;position:sticky;top:0;z-index:50;padding:12px 0;background:#E9EAEE}
+.sec{margin-top:56px}
+.sec>h2{font-size:26px;font-weight:500;letter-spacing:-.4px;color:var(--ink)}
+.sec>p.lead{max-width:82ch;margin:8px 0 22px;font-size:15px;line-height:1.55}
+.eyebrow{font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--help)}
+.grid{display:grid;gap:16px}.g2{grid-template-columns:repeat(2,minmax(0,1fr))}.g3{grid-template-columns:repeat(3,minmax(0,1fr))}.g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media(max-width:900px){.g2,.g3,.g4{grid-template-columns:1fr}}
+.panel{background:var(--card);border-radius:var(--r-card);padding:22px 24px}
+.panel h3{font-size:16px;font-weight:600;color:var(--ink);margin-bottom:12px}
+.panel p{line-height:1.55}.panel p+p{margin-top:8px}
+.note{font-size:13px;color:var(--help);margin-top:10px;line-height:1.5}
+table.spec{width:100%;border-collapse:collapse;font-size:13.5px}
+table.spec th{text-align:left;font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--help);padding:8px 10px 8px 0;border-bottom:1px solid var(--line)}
+table.spec td{padding:9px 10px 9px 0;border-bottom:1px solid var(--line-2);vertical-align:top}
+table.spec td b{color:var(--ink);font-weight:600}
+.sw{display:flex;align-items:center;gap:10px;font-size:13px}.sw i{width:34px;height:34px;border-radius:10px;border:1px solid rgba(0,0,0,.06);flex:none}
+.sw b{display:block;color:var(--ink);font-weight:600}.sw span{color:var(--help);font-size:12px}
+.fit{width:100%;overflow:hidden;border-radius:18px;box-shadow:0 1px 0 rgba(0,0,0,.04),0 30px 60px -40px rgba(10,18,32,.35)}
+.frame{width:1440px;height:900px;position:relative;overflow:hidden;background:var(--bg);transform-origin:0 0}
+.frame.tall{height:1010px}
+.cap{display:flex;justify-content:space-between;gap:16px;align-items:baseline;margin:26px 0 10px}
+.cap h3{font-size:18px;font-weight:600;color:var(--ink)}.cap span{color:var(--help);font-size:13px}
+
+/* ---------- system components ---------- */
+.pill{height:36px;padding:0 16px;border-radius:var(--r-pill);border:1px solid var(--line);background:#fff;font-weight:500;color:var(--body);display:inline-flex;align-items:center;gap:8px;white-space:nowrap;transition:background var(--t-fast),border-color var(--t-fast),transform var(--t-fast)}
+.pill:hover{border-color:#CfD2D8}.pill:active{transform:scale(.98)}
+.pill.k{background:var(--ink);border-color:var(--ink);color:#fff}
+.pill.b{background:var(--indigo);border-color:var(--indigo);color:#fff}.pill.b:hover{background:var(--link);border-color:var(--link)}
+.pill.sm{height:30px;padding:0 12px;font-size:13px}
+.pill.ghost{background:none;border-color:rgba(255,255,255,.25);color:#fff}
+.pill.danger{color:var(--red);border-color:#F1C7C9}
+.chip{height:30px;padding:0 12px;border-radius:var(--r-pill);border:1px solid var(--line);font-size:13px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;background:#fff}
+.chip b{font-weight:600;color:var(--ink)}.chip.on{border-color:var(--ink);color:var(--ink);font-weight:600}.chip.r b{color:var(--red)}
+.chip svg.lucide{width:14px;height:14px;color:var(--help)}
+.tag{display:inline-block;font-size:11px;font-weight:600;border:1px solid var(--line);border-radius:999px;padding:0 7px;line-height:17px;color:var(--body);margin-left:6px;flex:none}
+.st{display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 12px;border-radius:999px;font-size:13px;font-weight:500;white-space:nowrap;transition:background var(--t-state),color var(--t-state),border-color var(--t-state)}
+.st.todo{border:1px solid var(--line)}
+.st.asg{border:1px solid var(--line)}.st.asg::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--ink)}
+.st.run{color:var(--link);padding:0}.st.run::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--indigo)}
+.st.done{background:var(--green-bg);color:var(--green)}
+.st.late{color:var(--red);padding:0}.st.late::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--red)}
+.st.off{color:var(--help);padding:0;text-decoration:line-through}
+.tile{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;flex:none;color:#fff;background:var(--ink);transition:background var(--t-state),border-color var(--t-state),color var(--t-state)}
+.tile.p{background:var(--indigo)}
+.tile.e{background:none;border:1.5px dashed #C9CDD4;color:var(--help)}
+.tile.need{background:none;border:1.5px dashed var(--red);color:var(--red)}
+.tile svg.lucide{width:15px;height:15px}
+.lbl{font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--help)}
+.card{background:#fff;border-radius:var(--r-page)}
+.dark{background:var(--ink);color:#fff;border-radius:var(--r-card);padding:18px 20px}
+.dark .lbl{color:#D7D9FD;display:flex;align-items:center;gap:8px}.dark .lbl i{width:7px;height:7px;border-radius:50%;background:var(--signal)}
+.dark p{font-size:15px;line-height:1.5;margin:8px 0 14px}
+.fld{display:block}.fld>span{display:block;font-size:12px;font-weight:600;color:var(--body);margin-bottom:6px}
+.inp{height:40px;width:100%;white-space:nowrap;overflow:hidden;border:1px solid #D9DBE0;border-radius:var(--r-ctl);padding:0 12px;font:inherit;color:var(--ink);background:#fff;display:flex;align-items:center;gap:8px;transition:border-color var(--t-fast),box-shadow var(--t-fast)}
+.inp.focus{border-color:var(--indigo);box-shadow:0 0 0 3px var(--indigo-bg)}
+.inp.miss{border-color:var(--amber-line);background:#FFFBF2}
+.inp.ph{color:var(--faint)}
+.inp svg.lucide{width:15px;height:15px;color:var(--help)}
+.hint{font-size:12px;color:var(--help);margin-top:5px}.hint.w{color:var(--amber)}
+.sk{border-radius:6px;background:linear-gradient(90deg,#EEF0F2 25%,#F7F8F9 37%,#EEF0F2 63%);background-size:400% 100%;animation:sk 1.4s ease infinite}
+@keyframes sk{0%{background-position:100% 0}100%{background-position:0 0}}
+
+/* ---------- app shell ---------- */
+.app{position:absolute;inset:0;display:grid;grid-template-columns:232px minmax(0,1fr)}
+.app.rail{grid-template-columns:68px minmax(0,1fr)}
+.side{background:#fff;border-right:1px solid var(--line);padding:22px 14px 16px;display:flex;flex-direction:column;min-height:0}
+.side .lg{font-weight:700;letter-spacing:.14em;color:var(--ink);font-size:13px;padding:2px 12px 14px}
+.side h4{font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--help);margin:14px 12px 4px}
+.side a{display:flex;align-items:center;gap:12px;height:36px;padding:0 12px;border-radius:10px;color:var(--body);font-weight:500;transition:background var(--t-fast)}
+.side a:hover{background:var(--bg)}
+.side a.on{background:var(--indigo-bg);color:var(--link)}
+.side a em{margin-left:auto;font-style:normal;font-size:12px;font-weight:600;color:var(--red)}
+.side .me{margin-top:auto;display:flex;gap:10px;align-items:center;padding:12px 10px 0;color:var(--ink);font-weight:600}
+.side .me small{display:block;color:var(--help);font-weight:400;font-size:12px}
+.av{width:36px;height:36px;border-radius:50%;background:var(--ink);color:#fff;display:grid;place-items:center;font-size:13px;font-weight:600;flex:none}
+.rail .side{padding:18px 10px;align-items:center}
+.rail .side .lg{padding:0 0 14px;letter-spacing:0}.rail .side .lg span,.rail .side h4,.rail .side a span,.rail .side a em,.rail .side .me div{display:none}
+.rail .side .lg::before{content:'P';display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:var(--ink);color:#fff;font-size:15px}
+.rail .side a{width:44px;height:40px;padding:0;justify-content:center}
+.rail .side hr{width:28px;border:0;border-top:1px solid var(--line);margin:8px 0}
+.side hr{display:none}.rail .side hr{display:block}
+.rail .side .me{padding:0}
+.main{padding:28px 32px 0;min-width:0;display:flex;flex-direction:column;min-height:0}
+.hd{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+.hd h1{font-size:28px;font-weight:500;letter-spacing:-.5px;color:var(--ink);line-height:1.15}
+.hd p{color:var(--help);margin-top:3px;white-space:nowrap}
+.sp{flex:1}
+.tabs{display:flex;gap:28px;padding:0 28px;border-bottom:1px solid var(--line);align-items:center}
+.tabs a{padding:18px 0 15px;color:var(--help);font-weight:500;border-bottom:2px solid transparent;display:flex;gap:8px;align-items:center}
+.tabs a.on{color:var(--link);border-bottom-color:var(--indigo)}
+.tabs a i{font-style:normal;font-size:12px;font-weight:600}.tabs a i.r{color:var(--red)}
+.q{display:flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:999px;background:var(--bg);color:var(--help);width:260px}
+.fl{display:flex;gap:8px;align-items:center;padding:14px 28px 6px}
+
+/* orders list */
+.th,.tr{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr) minmax(0,1fr) 190px 150px 100px 80px;gap:0 20px;align-items:center;padding:0 28px}
+.th{height:42px;border-bottom:1px solid var(--line)}
+.th .n,.tr .n{text-align:right}
+.tr{height:54px;position:relative;cursor:pointer;transition:background var(--t-fast)}
+.tr:hover{background:#FAFBFC}
+.tr+.tr::before{content:'';position:absolute;left:28px;right:28px;top:0;border-top:1px solid var(--line-2)}
+.tr.sel{background:var(--indigo-bg)}
+.two{min-width:0}
+.two b{display:block;font-weight:500;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.two.t b{font-size:15px;display:flex;align-items:center}
+.two span{display:block;font-size:13px;color:var(--help);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.two b .tag{display:inline-block;vertical-align:1px}
+.as{display:flex;align-items:center;gap:10px;min-width:0}.as.x b{color:var(--help)}
+.bar{display:inline-block;width:56px;height:3px;border-radius:2px;background:var(--indigo-bg);margin-left:10px;vertical-align:middle;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--indigo);border-radius:2px}
+.pr{font-weight:600;color:var(--ink)}.np{color:var(--red);font-weight:600;font-size:13px}
+.tpy{color:var(--green);font-weight:700;font-size:15px}.tpw{color:var(--amber);font-size:13px;font-weight:500}.tpn{color:#C9CDD4}
+
+/* floating order card + scrim: the main piece of motion */
+.scrim{position:absolute;inset:0 0 0 232px;background:rgba(10,18,32,.18);opacity:0;pointer-events:none;transition:opacity var(--t-exit) ease}
+.oc{position:absolute;top:104px;right:24px;width:424px;padding:24px 26px 22px;box-shadow:var(--shadow-float);border-radius:var(--r-page);background:#fff;opacity:0;transform:translateX(24px) scale(.985);pointer-events:none;transition:opacity var(--t-exit) ease,transform var(--t-exit) ease}
+.open .scrim{opacity:1;pointer-events:auto;transition-duration:var(--t-enter)}
+.open .oc{opacity:1;transform:none;pointer-events:auto;transition:opacity var(--t-enter) var(--ease),transform var(--t-enter) var(--ease)}
+.oc .h{display:flex;align-items:center;gap:10px;padding-bottom:16px;border-bottom:1px solid var(--line)}
+.oc .h b{font-size:17px;font-weight:600;color:var(--ink)}.oc .h small{display:block;color:var(--help);font-size:13px}
+.cl{width:32px;height:32px;border-radius:50%;background:var(--bg);display:grid;place-items:center;color:var(--body)}
+.kv{display:grid;grid-template-columns:1fr 1fr;gap:16px 20px;padding:16px 0}
+.kv dt{margin-bottom:3px}.kv dd{color:var(--ink);font-weight:500}
+.rt{position:relative;padding:16px 0 2px 26px;border-top:1px solid var(--line)}
+.rt::before{content:'';position:absolute;left:6px;top:28px;bottom:50px;width:2px;background:var(--signal);transform-origin:top;transform:scaleY(0);transition:transform var(--t-move) var(--ease) 120ms}
+.open .rt::before,.rt.show::before{transform:none}
+.rt div{position:relative;padding-bottom:13px}
+.rt div::before{content:'';position:absolute;left:-25px;top:5px;width:12px;height:12px;border-radius:50%;background:#fff;border:3px solid var(--signal)}
+.rt b{font-weight:500;color:var(--ink);display:block}.rt span{display:block;font-size:13px;color:var(--help)}
+.rt span.lbl{font-size:11px}
+.acts{display:flex;gap:8px;justify-content:flex-end;padding-top:16px}
+
+/* weekly board */
+.wk{display:flex;gap:24px;align-items:center;padding:0 22px;border-bottom:1px solid var(--line)}
+.wk a{padding:14px 0 11px;color:var(--help);font-weight:500;border-bottom:2px solid transparent;display:flex;gap:6px}
+.wk a.on{color:var(--link);border-bottom-color:var(--indigo)}.wk a i{font-style:normal;font-size:12px;font-weight:600;color:var(--red)}
+.nx{display:flex;gap:10px;align-items:center;padding:9px 22px;font-size:13px}
+.nx .chip{height:32px}
+.bh,.br{display:grid;grid-template-columns:30px minmax(0,1.15fr) minmax(0,1.25fr) 78px 196px minmax(0,1.15fr) minmax(0,1.1fr) 44px 78px 30px;gap:0 14px;align-items:center;padding:0 20px}
+.bh{height:34px;margin-top:6px}
+.day{background:#fff;border-radius:var(--r-card);margin-top:10px;padding:8px 0 4px;position:relative}
+.day.today{box-shadow:0 0 0 2px var(--indigo)}
+.day>h3{display:flex;align-items:center;gap:14px;font-size:16px;font-weight:600;color:var(--ink);padding:6px 20px 4px}
+.day.today>h3{color:var(--link)}
+.sg{display:inline-flex;align-items:center;gap:4px;font-size:13px;font-weight:600;color:var(--body)}
+.sg svg.lucide{width:15px;height:15px}.sg.r{color:var(--red)}.sg.a{color:var(--amber)}
+.br{min-height:44px;position:relative;font-size:13.5px}
+.br+.br::before{content:'';position:absolute;left:20px;right:20px;top:0;border-top:1px solid var(--line-2)}
+.br .no{color:var(--help);text-align:right;font-size:13px}
+.br .two b{font-size:14px}.br .two span{font-size:12.5px}
+.pal{display:flex;align-items:center;gap:6px;justify-content:flex-end}
+.pal b{font-weight:600;color:var(--ink);font-size:15px;display:block;text-align:right}.pal.over b{color:var(--red)}.pal sup{color:var(--red);font-weight:700;font-size:11px}
+.pal .m{display:block;width:44px;height:3px;border-radius:2px;background:var(--line);position:relative;margin-top:2px}
+.pal .m i{position:absolute;inset:0 auto 0 0;background:var(--ink);border-radius:2px}.pal.over .m i{background:var(--red)}
+.plus{width:22px;height:22px;border-radius:50%;border:1px solid #D5D8DD;display:grid;place-items:center;color:var(--help);flex:none}
+.plus svg.lucide{width:12px;height:12px}
+.slot{grid-column:span 3;height:30px;border:1.5px dashed #C9CDD4;border-radius:999px;display:flex;align-items:center;gap:10px;padding:0 12px;color:var(--help)}
+.slot.a{grid-column:span 4;border-color:var(--amber-line);background:#FFFBF2;color:var(--amber);font-weight:500}
+.br.need::after{content:'';position:absolute;left:8px;top:8px;bottom:8px;width:3px;border-radius:2px;background:var(--red)}
+.br.ret::after{content:'';position:absolute;left:8px;top:8px;bottom:8px;width:3px;border-radius:2px;background:var(--amber-line)}
+.send{color:var(--indigo)}.send.no{color:#C9CDD4}
+.mk{font-size:11px;font-weight:600;color:var(--help);text-align:right}
+.ico{display:inline-flex;align-items:center;gap:3px;vertical-align:-2px}.ico svg.lucide{width:13px;height:13px}.ico.r{color:var(--red);font-weight:600}
+.two span .ico{display:inline-flex}
+
+/* order form */
+.fgrid{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:20px;min-height:0;flex:1}
+.fsec{padding:22px 26px}
+.fsec+.fsec{border-top:1px solid var(--line)}
+.fsec>h3{font-size:16px;font-weight:600;color:var(--ink);margin-bottom:14px;display:flex;align-items:center;gap:10px}
+.row{display:grid;gap:14px}.c4{grid-template-columns:repeat(4,minmax(0,1fr))}.c3{grid-template-columns:1.4fr 1fr 1fr}
+.seg{display:inline-flex;background:var(--bg);border-radius:999px;padding:3px}
+.card .seg{background:var(--bg)}.hd .seg{background:#E6E8EC}
+.seg b{height:34px;padding:0 16px;border-radius:999px;display:inline-flex;align-items:center;font-weight:500;color:var(--help)}
+.seg b.on{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.stops{position:relative;padding-left:30px}
+.stops::before{content:'';position:absolute;left:9px;top:28px;bottom:150px;width:2px;background:var(--signal)}
+.stop{position:relative;border:1px solid var(--line);border-radius:var(--r-card);padding:14px 16px;margin-bottom:10px;display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1.2fr) 96px 120px;gap:12px;align-items:end}
+.stop::before{content:'';position:absolute;left:-27px;top:26px;width:14px;height:14px;border-radius:50%;background:#fff;border:3px solid var(--signal)}
+.stop.d::before{border-color:var(--indigo)}
+.stop .k{grid-column:1/-1;display:flex;align-items:center;gap:12px}.stop .k>b{width:84px;flex:none}.stop .k .inp{flex:1;width:auto}
+.stop .k b{color:var(--ink);font-weight:600}
+.cb{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:500}
+.cb i{width:18px;height:18px;border-radius:5px;border:1.5px solid #C9CDD4;display:grid;place-items:center;color:#fff}
+.cb.on i{background:var(--indigo);border-color:var(--indigo)}.cb svg.lucide{width:12px;height:12px;stroke-width:3}
+.add{display:inline-flex;align-items:center;gap:8px;color:var(--link);font-weight:500;height:32px}
+.sum{padding:22px 24px;display:flex;flex-direction:column;gap:16px;align-self:start}
+.chk li{display:flex;gap:10px;align-items:center;padding:7px 0;font-weight:500;color:var(--ink)}
+.chk li svg.lucide{width:16px;height:16px}.chk li.ok svg{color:var(--green)}.chk li.w{color:var(--amber)}.chk li small{margin-left:auto;color:var(--help);font-weight:400}
+.fbar{display:flex;gap:10px;align-items:center}
+
+/* expenses sheet */
+.eh,.er{display:grid;grid-template-columns:210px minmax(0,1fr) repeat(7,80px) 96px 26px;gap:0 12px;align-items:center;padding:0 22px}
+.eh{height:40px;border-bottom:1px solid var(--line)}.eh span{text-align:right}.eh span:nth-child(-n+2){text-align:left}
+.er{min-height:46px;position:relative}
+.er+.er::before{content:'';position:absolute;left:22px;right:22px;top:0;border-top:1px solid var(--line-2)}
+.er .a{text-align:right;color:var(--ink);font-weight:500}.er .a small{display:block;color:var(--help);font-weight:400;font-size:11.5px}
+.er .a.z{color:#C9CDD4}.er .a.m{color:var(--red);font-weight:600;font-size:13px}
+.er .tot{text-align:right;font-weight:700;color:var(--ink)}
+.er .why{color:var(--amber)}.er .why.r{color:var(--red)}
+.grp{display:flex;align-items:center;gap:10px;padding:12px 22px 6px;font-weight:600;color:var(--ink)}
+.grp small{font-weight:400;color:var(--help)}
+.totrow{border-top:1px solid var(--line);background:#FAFBFC}
+
+/* A4 print sheet */
+.a4{width:560px;height:792px;background:#fff;box-shadow:0 20px 50px -24px rgba(10,18,32,.4);padding:36px 38px;font-size:10.5px;color:#111;line-height:1.35;display:flex;flex-direction:column}
+.a4 h2{font-size:17px;font-weight:700;letter-spacing:-.2px}
+.a4 .top{display:flex;justify-content:space-between;border-bottom:1.5px solid #111;padding-bottom:10px;margin-bottom:10px}
+.a4 table{width:100%;border-collapse:collapse;table-layout:fixed}.a4 th:nth-child(1){width:112px}.a4 th:nth-child(n+3){width:64px}.a4 th:nth-child(6){width:72px}.a4 td:first-child b{white-space:nowrap}
+.a4 th{font-size:8px;letter-spacing:.1em;text-transform:uppercase;text-align:right;padding:5px 0;border-bottom:1px solid #111;font-weight:700}
+.a4 th:nth-child(-n+2),.a4 td:nth-child(-n+2){text-align:left}
+.a4 td{padding:5px 0;border-bottom:.5px solid #BBB;text-align:right;font-variant-numeric:tabular-nums;vertical-align:top}
+.a4 td b{font-weight:700}.a4 tr.s td{border-bottom:0;border-top:1.5px solid #111;font-weight:700}
+.a4 .box{border:1px solid #111;padding:1px 5px;font-weight:700;font-size:9px}
+.a4 .foot{margin-top:auto;display:flex;justify-content:space-between;font-size:8.5px;color:#444;border-top:.5px solid #BBB;padding-top:6px}
+
+/* motion lab */
+.lab{display:flex;flex-direction:column;gap:12px;min-height:150px}
+.lab .stage{flex:1;border-radius:12px;background:var(--bg);display:grid;place-items:center;padding:16px;position:relative;overflow:hidden;min-height:96px}
+.toast{background:var(--ink);color:#fff;border-radius:12px;padding:10px 14px;display:flex;gap:12px;align-items:center;font-weight:500;font-size:13px;transform:translateY(60px);opacity:0;transition:transform var(--t-exit) ease,opacity var(--t-exit) ease}
+.toast.show{transform:none;opacity:1;transition:transform var(--t-enter) var(--ease),opacity var(--t-enter) var(--ease)}
+.toast u{color:#B9BEFF;text-decoration:none;font-weight:600}
+.pop{animation:pop var(--t-enter) var(--ease)}@keyframes pop{0%{transform:scale(.6);opacity:0}100%{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+  .oc{transform:none}.toast{transform:none}}
+@media print{.toc,.doc>header p{display:none}body{background:#fff}}
+</style>
+</head>
+<body>
+<div class="doc">
+<header>
+  <p class="eyebrow">Petras Group TMS · επανασχεδίαση · γύρος 0 · 14/11/2026 · μόνο σχέδιο, επινοημένα στοιχεία</p>
+  <h1>Ένα σύστημα σχεδίασης,<br>τέσσερις οθόνες για έγκριση</h1>
+  <p>Πριν απλωθεί σε όλη την εφαρμογή, το νέο ύφος φαίνεται εδώ σε τέσσερις οθόνες που καλύπτουν τα τέσσερα είδη σελίδας του TMS: λίστα, πίνακας εβδομάδας, φόρμα, οικονομικό φύλλο με την εκτύπωσή του. Οι δύο πρώτες ξεκινούν από τις εκδοχές που ήδη είπες ότι σου άρεσαν. Οι δύο τελευταίες είναι καινούριες.</p>
+  <nav class="toc">
+    <a class="pill sm" href="#system">Σύστημα σχεδίασης</a>
+    <a class="pill sm" href="#motion">Κίνηση</a>
+    <a class="pill sm" href="#s1">1 · Παραγγελίες</a>
+    <a class="pill sm" href="#s2">2 · Εβδομαδιαίο Εθνικών</a>
+    <a class="pill sm" href="#s3">3 · Νέα παραγγελία</a>
+    <a class="pill sm" href="#s4">4 · Έξοδα και εκτύπωση</a>
+    <a class="pill sm" href="#states">Κακές στιγμές</a>
+  </nav>
+</header>
+
+<!-- ================= SYSTEM ================= -->
+<section class="sec" id="system">
+  <h2>Σύστημα σχεδίασης</h2>
+  <p class="lead">Λίγα πράγματα, ίδια παντού. Το λουλακί είναι το μόνο χρώμα έμφασης. Το πράσινο, το κόκκινο και το πορτοκαλί σημαίνουν πάντα κάτι, δεν διακοσμούν ποτέ.</p>
+  <div class="grid g3">
+    <div class="panel"><h3>Χρώμα</h3>
+      <div class="grid g2" style="gap:12px">
+        <div class="sw"><i style="background:#3643F5"></i><div><b>Λουλακί</b><span>ενέργεια, επιλογή, «σε μεταφορά»</span></div></div>
+        <div class="sw"><i style="background:#000010"></i><div><b>Μελάνι</b><span>τίτλοι, δικό μας φορτηγό, ειδοποίηση</span></div></div>
+        <div class="sw"><i style="background:#078A4F"></i><div><b>Πράσινο</b><span>έγινε: παραδόθηκε, ΤΠΥ</span></div></div>
+        <div class="sw"><i style="background:#C92A31"></i><div><b>Κόκκινο</b><span>λείπει και εμποδίζει, άργησε</span></div></div>
+        <div class="sw"><i style="background:#A8520A"></i><div><b>Πορτοκαλί</b><span>θέλει ματιά, δεν εμποδίζει</span></div></div>
+        <div class="sw"><i style="background:#F5F6F7"></i><div><b>Φόντο</b><span>λευκές κάρτες χωρίς σκιά</span></div></div>
+      </div>
+      <p class="note">Τα γκρι γράμματα είναι πιο σκούρα από του FreightSuite (#6E6F7A αντί για #8A8A93), για να διαβάζονται όλη μέρα σε οθόνη γραφείου.</p>
+    </div>
+    <div class="panel"><h3>Γράμματα</h3>
+      <p style="font-size:28px;font-weight:500;letter-spacing:-.5px;color:var(--ink);line-height:1.15">Παραγγελίες</p>
+      <p style="font-size:17px;font-weight:600;color:var(--ink);margin-top:10px">Tirol Obst GmbH · Βέροια → Innsbruck</p>
+      <p style="font-size:15px;font-weight:500;color:var(--ink)">Πρώτη σειρά: αυτό που διαβάζεις</p>
+      <p style="font-size:13px;color:var(--help)">Δεύτερη σειρά: τόπος · ημέρα · παλέτες</p>
+      <p class="lbl" style="margin-top:8px">Ετικέτα στήλης</p>
+      <p class="num" style="font-size:15px;font-weight:600;color:var(--ink);margin-top:6px">3.800,00 € &nbsp; 33 π &nbsp; 14:00–23:59</p>
+      <p class="note">Manrope, μία οικογένεια με ελληνικά και λατινικά. Τέσσερα βάρη. Τα νούμερα πάντα σε ίσο πλάτος, στοιχισμένα δεξιά.</p>
+    </div>
+    <div class="panel"><h3>Σχήματα</h3>
+      <div style="display:flex;gap:12px;align-items:flex-end;margin-bottom:14px">
+        <i style="width:84px;height:64px;border-radius:24px;background:var(--bg);display:block"></i>
+        <i style="width:64px;height:52px;border-radius:16px;background:var(--bg);display:block"></i>
+        <i style="width:48px;height:40px;border-radius:10px;background:var(--bg);display:block"></i>
+        <i style="width:64px;height:30px;border-radius:999px;background:var(--bg);display:block"></i>
+      </div>
+      <p>24 η σελίδα-κάρτα · 16 η μέσα κάρτα · 10 τα πεδία και τα πλακίδια · στρογγυλά τα κουμπιά.</p>
+      <p class="note">Κάρτες επίπεδες, χωρίς σκιά και χωρίς περίγραμμα. Σκιά έχει μόνο ό,τι αιωρείται πάνω από τη σελίδα.</p>
+    </div>
+  </div>
+
+  <div class="grid g2" style="margin-top:16px">
+    <div class="panel"><h3>Κουμπιά, φίλτρα, κατάσταση</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button class="pill b"><i data-lucide="plus"></i>Νέα παραγγελία</button><button class="pill k">Όλες</button><button class="pill">Εκτύπωση</button><button class="pill danger">Διαγραφή</button>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px">
+        <span class="chip on">Όλες <b>380</b></span><span class="chip">Προς ανάθεση <b>12</b></span><span class="chip r">Χωρίς τιμή <b>10</b></span><span class="chip">Εβδομάδα <i data-lucide="chevron-down"></i></span>
+      </div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:14px">
+        <span class="st todo">Σε αναμονή</span><span class="st asg">Ανατέθηκε</span><span class="st run">Σε μεταφορά</span><span class="st done">Παραδόθηκε</span><span class="st late">Άργησε</span><span class="st off">Ακυρώθηκε</span>
+      </div>
+      <p class="note">Ένα γεμάτο λουλακί κουμπί ανά οθόνη: η κύρια πράξη. Η κατάσταση είναι το ενιαίο λεξιλόγιο που ισχύει ήδη (Σε αναμονή → Ανατέθηκε → Σε μεταφορά → Παραδόθηκε, και Ακυρώθηκε). Το «τιμολογήθηκε» δεν είναι κατάσταση: φαίνεται ως αριθμός ΤΠΥ.</p>
+    </div>
+    <div class="panel"><h3>Σημάδια αντί για λόγια</h3>
+      <table class="spec"><tbody>
+        <tr><td style="width:150px"><span class="as"><span class="tile"><i data-lucide="truck"></i></span><span class="tile p"><i data-lucide="users"></i></span><span class="tile need"><i data-lucide="truck"></i></span></span></td><td><b>Ποιος το πάει.</b> Μαύρο: δικό μας φορτηγό. Λουλακί: συνεργάτης. Κόκκινο διακεκομμένο: κανείς ακόμη.</td></tr>
+        <tr><td><span style="display:flex;gap:18px"><span class="pal"><span><b class="num">30</b><span class="m"><i style="width:91%"></i></span></span></span><span class="pal over"><span><b class="num">40</b><span class="m"><i style="width:100%"></i></span></span><sup>+7</sup></span></span></td><td><b>Παλέτες από 33.</b> Η μπάρα δείχνει το γέμισμα. Πάνω από 33 γίνεται κόκκινη, με το πόσες περισσεύουν.</td></tr>
+        <tr><td><span class="ico"><i data-lucide="clock"></i>20:00</span> &nbsp; <span class="ico r"><i data-lucide="clock-alert"></i>Κυρ 1</span></td><td><b>Προθεσμία.</b> Γκρι ρολόι: ισχύει. Κόκκινο: πέρασε.</td></tr>
+        <tr><td><span class="ico"><i data-lucide="thermometer"></i>+3°</span> &nbsp; <span class="ico" style="color:var(--link)"><i data-lucide="snowflake"></i>−25°</span></td><td><b>Θερμοκρασία.</b> Θερμόμετρο για συντήρηση, χιονονιφάδα για κατάψυξη.</td></tr>
+        <tr><td><span class="tpy num">10433</span> &nbsp; <span class="tpw">εκκρεμεί</span></td><td><b>ΤΠΥ.</b> Σκέτος έντονος πράσινος αριθμός στη δική του στήλη. Παραδόθηκε χωρίς ΤΠΥ: «εκκρεμεί».</td></tr>
+      </tbody></table>
+      <p class="note">Κάθε σημάδι έχει μία μόνο σημασία σε όλη την εφαρμογή, και εξήγηση όταν σταθεί το ποντίκι πάνω του.</p>
+    </div>
+  </div>
+
+  <div class="grid g2" style="margin-top:16px">
+    <div class="panel"><h3>Πλοήγηση: μία μπάρα, δύο πλάτη</h3>
+      <p>Λευκή μπάρα με λέξεις στις λίστες και στις φόρμες, όπως στις «Παραγγελίες» που σου άρεσαν. Στους πίνακες εβδομάδας και στα οικονομικά φύλλα, που θέλουν όλο το πλάτος, η ίδια μπάρα στενεύει σε εικονίδια. Ο χρήστης την ανοίγει και την κλείνει όποτε θέλει, και η εφαρμογή θυμάται την επιλογή του ανά σελίδα.</p>
+      <p>Οι ομάδες λένε τη δουλειά: Σχεδιασμός, Δουλειά, Οικονομικά, Στόλος, Στοιχεία. Κάθε ρόλος βλέπει μόνο όσα βλέπει και σήμερα.</p>
+    </div>
+    <div class="panel"><h3>Εκτυπώσεις</h3>
+      <p>Το χαρτί είναι η ίδια πληροφορία σε ασπρόμαυρο: μαύρο μελάνι, λεπτές γραμμές, καμία γεμάτη επιφάνεια, νούμερα στοιχισμένα δεξιά. Ό,τι στην οθόνη είναι χρώμα, στο χαρτί γίνεται σχήμα ή λέξη (π.χ. πλαίσιο γύρω από το «λείπουν»). Κάθε φύλλο γράφει κάτω ποιος το τύπωσε και πότε.</p>
+      <p class="note">Τα χαρτιά εβδομάδας Διεθνών και Εθνικών που εγκρίθηκαν 10/11 δεν αλλάζουν σχήμα· παίρνουν μόνο τη γραμματοσειρά.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= MOTION ================= -->
+<section class="sec" id="motion">
+  <h2>Κίνηση</h2>
+  <p class="lead">Η κίνηση δείχνει τι άλλαξε και από πού ήρθε. Δεν στολίζει και δεν καθυστερεί κανέναν: τίποτα δεν κρατά πάνω από 0,4 του δευτερολέπτου, και τίποτα δεν κινείται μόνο του σε επανάληψη. Πάτησε τα κουμπιά για να τη δεις.</p>
+  <div class="grid g4">
+    <div class="panel lab"><h3>Ανάθεση</h3>
+      <div class="stage"><div class="as" id="m1"><span class="tile need"><i data-lucide="truck"></i></span><div class="two"><b style="color:var(--red)">Ανάθεση</b><span>κανένα φορτηγό</span></div></div></div>
+      <button class="pill sm" onclick="mAssign()">Ανάθεσε φορτηγό</button>
+      <p class="note">Το πλακίδιο γεμίζει και η κατάσταση αλλάζει στη θέση της. 0,2 δ.</p></div>
+    <div class="panel lab"><h3>Αποθήκευση</h3>
+      <div class="stage"><div class="toast" id="m2"><i data-lucide="check"></i><span>Αποθηκεύτηκε · Tirol Obst, Βέροια → Innsbruck</span><u>Αναίρεση</u></div></div>
+      <button class="pill sm" onclick="mToast()">Αποθήκευσε</button>
+      <p class="note">Σκούρα ειδοποίηση από κάτω, λέει τι αποθηκεύτηκε σε λέξεις. 0,28 δ μέσα, 0,16 δ έξω.</p></div>
+    <div class="panel lab"><h3>Σύνολο που αλλάζει</h3>
+      <div class="stage"><b class="num" id="m3" style="font-size:26px;font-weight:600;color:var(--ink)">21.601,00 €</b></div>
+      <button class="pill sm" onclick="mCount()">Πρόσθεσε έξοδο 120 €</button>
+      <p class="note">Το νούμερο μετρά ως τη νέα τιμή, για να φανεί ότι άλλαξε. 0,4 δ.</p></div>
+    <div class="panel lab"><h3>Φόρτωση</h3>
+      <div class="stage" style="display:block"><div class="sk" style="height:12px;width:60%"></div><div class="sk" style="height:10px;width:40%;margin-top:8px"></div><div class="sk" style="height:12px;width:70%;margin-top:16px"></div><div class="sk" style="height:10px;width:35%;margin-top:8px"></div></div>
+      <p class="note">Γκρι σχήματα στη θέση των γραμμών, ποτέ περιστρεφόμενος κύκλος σε άδεια σελίδα.</p></div>
+  </div>
+  <div class="panel" style="margin-top:16px">
+    <table class="spec"><thead><tr><th>Τι κινείται</th><th>Πόσο</th><th>Γιατί</th></tr></thead><tbody>
+      <tr><td><b>Πέρασμα ποντικιού, πάτημα</b></td><td>0,12 δ</td><td>Να φαίνεται ότι το στοιχείο πατιέται.</td></tr>
+      <tr><td><b>Αλλαγή κατάστασης</b> (ανάθεση, παραδόθηκε, κουτάκι)</td><td>0,2 δ</td><td>Η αλλαγή γίνεται πάνω στη γραμμή, για να μη χάνεται το μάτι.</td></tr>
+      <tr><td><b>Κάρτα που ανοίγει</b> (παραγγελία, φορτηγό, κίνηση)</td><td>0,28 δ μέσα · 0,16 δ έξω</td><td>Έρχεται από τα δεξιά· η λίστα μένει πίσω της και η γραμμή που πατήθηκε μένει σημαδεμένη.</td></tr>
+      <tr><td><b>Γραμμή διαδρομής, μπάρα παλετών, σύνολα</b></td><td>έως 0,4 δ</td><td>Ζωγραφίζονται μία φορά όταν εμφανιστούν ή όταν αλλάξει η τιμή.</td></tr>
+      <tr><td><b>Γραμμή που αλλάζει θέση</b> (π.χ. φορτίο σε άλλη ημέρα)</td><td>0,4 δ</td><td>Γλιστρά στη νέα θέση, δεν εξαφανίζεται και ξαναβγαίνει.</td></tr>
+      <tr><td><b>Τίποτα</b></td><td>—</td><td>Όχι κίνηση σε επανάληψη, όχι εφέ στην είσοδο σελίδας, όχι μπάρες προόδου χωρίς πραγματικό νόημα.</td></tr>
+    </tbody></table>
+    <p class="note">Όποιος έχει ζητήσει από τον υπολογιστή του λιγότερη κίνηση βλέπει τις ίδιες αλλαγές ακαριαία. Κινούνται μόνο θέση και διαφάνεια, για να μη βαραίνει ο πίνακας εβδομάδας.</p>
+  </div>
+</section>
+
+<!-- ================= SCREEN 1 ================= -->
+<section class="sec" id="s1">
+  <h2>1 · Παραγγελίες</h2>
+  <p class="lead"><b>Ποιος:</b> όλοι οι ρόλοι· κυρίως όποιος γράφει και ψάχνει παραγγελίες, και το λογιστήριο για το ΤΠΥ. <b>Τι κάνει:</b> βρίσκει μια παραγγελία, βλέπει αν έχει φορτηγό, τιμή και ΤΠΥ, την ανοίγει. Είναι η εκδοχή που σου άρεσε στις 12/11, χωρίς αλλαγές στη λογική. Πάτησε μια γραμμή για να ανοίξει η κάρτα.</p>
+  <div class="fit"><div class="frame" id="f1"></div></div>
+</section>
+
+<!-- ================= SCREEN 2 ================= -->
+<section class="sec" id="s2">
+  <h2>2 · Εβδομαδιαίο Εθνικών</h2>
+  <p class="lead"><b>Ποιος:</b> ο dispatcher των εθνικών, όλη μέρα. <b>Τι κάνει:</b> βλέπει κάθε φορτηγό με την κάθοδο και την άνοδό του, δίνει φορτηγό σε ό,τι δεν έχει, γεμίζει τα άδεια γυρίσματα. Κάθε ημέρα είναι δική της κάρτα και τα σημάδια αντικαθιστούν τις περιγραφές, όπως καταλήξαμε στις 12/11. Η μπάρα είναι στενή για να χωρούν τα δύο σκέλη.</p>
+  <div class="fit"><div class="frame" id="f2"></div></div>
+</section>
+
+<!-- ================= SCREEN 3 ================= -->
+<section class="sec" id="s3">
+  <h2>3 · Νέα διεθνής παραγγελία</h2>
+  <p class="lead"><b>Ποιος:</b> όποιος καταχωρεί παραγγελίες, πολλές φορές την ημέρα. <b>Τι κάνει:</b> σαρώνει την εντολή του πελάτη ή γράφει με το χέρι πελάτη, σημεία, ημέρες, παλέτες, τιμή. Καινούριο σχέδιο πάνω στα πεδία της φόρμας που εγκρίθηκε 8/11: η διαδρομή γράφεται από πάνω προς τα κάτω όπως θα γίνει, και δεξιά η φόρμα λέει μόνη της τι λείπει. Τίποτα από όσα λείπουν δεν εμποδίζει την αποθήκευση.</p>
+  <div class="fit"><div class="frame tall" id="f3"></div></div>
+</section>
+
+<!-- ================= SCREEN 4 ================= -->
+<section class="sec" id="s4">
+  <h2>4 · Έξοδα δρομολογίων και η εκτύπωσή τους</h2>
+  <p class="lead"><b>Ποιος:</b> το λογιστήριο και ο owner, κάθε εβδομάδα. <b>Τι κάνει:</b> ελέγχει ότι κάθε δρομολόγιο έχει τα έξοδά του, βλέπει πρώτα ό,τι λείπει ή είναι ασυνήθιστο, συμπληρώνει. Ίδιο φύλλο «δρομολόγιο × κατηγορία» με σήμερα· όσα θέλουν ματιά πάνω, τα πλήρη κάτω, το σύνολο πάντα ορατό.</p>
+  <div class="fit"><div class="frame" id="f4"></div></div>
+  <div class="cap"><h3>Το ίδιο φύλλο σε χαρτί Α4</h3><span>ασπρόμαυρο, ό,τι ήταν χρώμα γίνεται πλαίσιο ή λέξη</span></div>
+  <div style="display:flex;gap:28px;align-items:flex-start;flex-wrap:wrap">
+    <div class="a4" id="a4"></div>
+    <div class="panel" style="flex:1;min-width:280px"><h3>Κανόνες χαρτιού</h3>
+      <p>Τίτλος, εβδομάδα και ημερομηνίες πάνω αριστερά· η εταιρεία πάνω δεξιά.</p>
+      <p>Πρώτα τα δρομολόγια που θέλουν ματιά, με τον λόγο γραμμένο σε λέξεις κάτω από τη διαδρομή.</p>
+      <p>Ό,τι λείπει μπαίνει σε πλαίσιο, για να φαίνεται και σε φωτοτυπία.</p>
+      <p>Σύνολο με έντονη γραμμή. Κάτω: ποιος τύπωσε, πότε, σελίδα.</p>
+      <p class="note">Ποσά και ονόματα είναι επινοημένα.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= STATES ================= -->
+<section class="sec" id="states">
+  <h2>Οι κακές στιγμές</h2>
+  <p class="lead">Ίδιες σε κάθε σελίδα. Κάθε μήνυμα λέει τι έγινε, γιατί, και τι να κάνεις. Ποτέ σκέτο «σφάλμα», ποτέ σκέτος κωδικός.</p>
+  <div class="grid g4">
+    <div class="panel" style="text-align:center;padding:34px 24px"><div class="tile" style="width:44px;height:44px;border-radius:14px;margin:0 auto 14px"><i data-lucide="inbox"></i></div><h3>Καμία παραγγελία αυτή την εβδομάδα</h3><p style="color:var(--help)">Όταν γράψεις την πρώτη, θα φανεί εδώ.</p><button class="pill b sm" style="margin-top:14px"><i data-lucide="plus"></i>Νέα παραγγελία</button><p class="note">Άδεια</p></div>
+    <div class="panel"><div class="sk" style="height:14px;width:55%"></div><div class="sk" style="height:11px;width:38%;margin-top:8px"></div><div class="sk" style="height:14px;width:68%;margin-top:20px"></div><div class="sk" style="height:11px;width:30%;margin-top:8px"></div><div class="sk" style="height:14px;width:48%;margin-top:20px"></div><div class="sk" style="height:11px;width:42%;margin-top:8px"></div><p class="note" style="margin-top:22px">Φόρτωση: τα σχήματα των γραμμών, στη θέση τους</p></div>
+    <div class="panel"><div class="dark"><p class="lbl"><i style="background:#FF6B70"></i>Δεν αποθηκεύτηκε</p><p>Η τιμή της Tirol Obst, Βέροια → Innsbruck δεν γράφτηκε: δεν υπάρχει σύνδεση. Ό,τι έγραψες κρατήθηκε.</p><div style="display:flex;gap:8px"><button class="pill b sm">Ξαναδοκίμασε</button><button class="pill ghost sm">Αργότερα</button></div></div><p class="note">Αποτυχία: γεγονός, αιτία, επόμενη κίνηση. Ποτέ πράσινο μήνυμα αν δεν γράφτηκε.</p></div>
+    <div class="panel" style="text-align:center;padding:34px 24px"><div class="tile e" style="width:44px;height:44px;border-radius:14px;margin:0 auto 14px"><i data-lucide="lock"></i></div><h3>Αυτή τη σελίδα τη βλέπει το λογιστήριο</h3><p style="color:var(--help)">Αν τη χρειάζεσαι για τη δουλειά σου, πες το στον Δημήτρη.</p><p class="note">Χωρίς δικαίωμα: λέει ποιος τη βλέπει, δεν δείχνει μισή σελίδα</p></div>
+  </div>
+</section>
+</div>
+
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script>
+const ic=n=>`<i data-lucide="${n}"></i>`;
+const NAV=[['ΣΧΕΔΙΑΣΜΟΣ',[['globe','Εβδομαδιαίο Διεθνών','wi'],['map','Εβδομαδιαίο Εθνικών','wn'],['calendar-days','Ημερήσιο','d'],['warehouse','Ράμπα','r']]],
+ ['ΔΟΥΛΕΙΑ',[['file-text','Παραγγελίες','o'],['package','Παλέτες','p','4']]],
+ ['ΟΙΚΟΝΟΜΙΚΑ',[['receipt','Έξοδα δρομολογίων','e'],['coins','Μισθοδοσία','m']]],
+ ['ΣΤΟΛΟΣ',[['truck','Οχήματα','t'],['wrench','Συντήρηση','s','2']]],
+ ['ΣΤΟΙΧΕΙΑ',[['users','Πελάτες','c'],['briefcase','Συνεργάτες','pa'],['map-pin','Τοποθεσίες','l']]]];
+function side(on){return `<aside class="side"><div class="lg"><span>PETRAS GROUP</span></div>`+
+ NAV.map(([g,it],i)=>`${i?'<hr>':''}<h4>${g}</h4>`+it.map(([icn,l,id,n])=>`<a class="${id===on?'on':''}" title="${l}">${ic(icn)}<span>${l}</span>${n?`<em>${n}</em>`:''}</a>`).join('')).join('')+
+ `<div class="me"><span class="av">ΔΠ</span><div>Δημήτρης Π.<small>Owner</small></div></div></aside>`}
+
+/* ---------- screen 1: orders ---------- */
+const O=[
+ ['Tirol Obst GmbH','VS PE','Εξαγωγή · 32 παλέτες','Veria Fruit Pack','Βέροια +2 · Δευ 16/11','Tirol Obst Lager','Innsbruck · Παρ 20/11','e','','todo','3.800,00 €',''],
+ ['Αγροτικός Συν. Νάουσας','','Εισαγωγή · 19 παλέτες','Alpina Fresh S.r.l.','Modena · Δευ 16/11','Frutopia Packhouse','Νάουσα · Πέμ 19/11','t','ΚΗΙ 4521 · Ρ 66542|Γ. Αλεξίου','asg','3.000,00 €',''],
+ ['Nordfrisch GmbH','VS PE','Εξαγωγή · 33 παλέτες','Messinia Olive Coop','Μεσσήνη · Δευ 16/11','Nordfrisch Lager','Hamburg · Πέμ 19/11','e','','todo','np',''],
+ ['Φρουτοπία Νάουσας','GRP','Άνοδος · 26 παλέτες','Thessaly Citrus Coop','Λάρισα +2 · Κυρ 15/11','Veroia Cross-Dock','Βέροια · Δευ 16/11','t','ΚΗΙ 5102 · Ρ 59483|Σ. Κάππος','run62','400,00 €',''],
+ ['Baltic Cold Foods','PE','Εισαγωγή · 30 παλέτες','Baltic Cold Foods DC','Poznań · Σάβ 14/11','Attica Cold Hub','Ασπρόπυργος · Τετ 18/11','t','ΚΗΙ 2208 · Ρ 42596|Π. Ράπτης','run40','2.600,00 €',''],
+ ['Γαλακτοκομική Ηπείρου','','Κάθοδος · 18 παλέτες','Veroia Cross-Dock','Βέροια · Σάβ 14/11','Epirus Dairy Plant','Δωδώνη · Κυρ 15/11','e','','todo','500,00 €',''],
+ ['Nordfrisch GmbH','PE','Εισαγωγή · 26 παλέτες','Nordfrisch Lager','Hamburg · Παρ 13/11','Attica Cold Hub','Ασπρόπυργος · Τρί 17/11','p','Transfrigo Kft.|συνεργάτης','asg','2.800,00 €',''],
+ ['Danubia Market Kft.','PE','Εξαγωγή · 33 παλέτες','Veria Fruit Pack','Βέροια · Πέμ 12/11','Wiener Frische','Wien · Δευ 16/11','p','Transfrigo Kft.|συνεργάτης','done','2.700,00 €','10433'],
+ ['Ανδρέου Logistics','','Άνοδος · 24 παλέτες','Andreou Warehouse','Τρίπολη · Πέμ 12/11','Veroia Cross-Dock','Βέροια · Παρ 13/11','t','ΚΗΙ 4521 · Ρ 66542|Γ. Αλεξίου','done','np','w'],
+ ['Tirol Obst GmbH','VS PE','Εξαγωγή · 32 παλέτες','Veria Fruit Pack','Βέροια +2 · Τετ 11/11','Tirol Obst Lager','Innsbruck · Κυρ 15/11','t','ΚΗΙ 5102 · Ρ 59483|Σ. Κάππος','done','3.800,00 €','10431'],
+ ['Alpen Frucht AG','PE','Εξαγωγή · 33 παλέτες','Pella Peach Coop','Σκύδρα · Τετ 11/11','Alpen Frucht Zentrale','Zürich · Δευ 16/11','t','ΚΗΙ 2208 · Ρ 42596|Π. Ράπτης','done','4.100,00 €','10428'],
+];
+const stt=s=>s==='todo'?'<span class="st todo">Σε αναμονή</span>':s==='asg'?'<span class="st asg">Ανατέθηκε</span>':s==='done'?'<span class="st done">Παραδόθηκε</span>':`<span class="st run">Σε μεταφορά</span><span class="bar"><i style="width:${s.slice(3)}%"></i></span>`;
+function asg(k,t){ if(k==='e')return `<div class="as x"><span class="tile e">${ic('plus')}</span><div class="two"><b>Προς ανάθεση</b></div></div>`;
+ const [a,b]=t.split('|');return `<div class="as"><span class="tile ${k==='p'?'p':''}">${ic(k==='p'?'users':'truck')}</span><div class="two"><b class="num">${a}</b><span>${b}</span></div></div>`}
+document.getElementById('f1').innerHTML=`<div class="app">${side('o')}<main class="main">
+ <div class="hd"><div><h1>Παραγγελίες</h1><p>60 ημέρες · 380 παραγγελίες · 12 θέλουν φορτηγό · 10 χωρίς τιμή</p></div><span class="sp"></span>
+  <span class="seg"><b class="on">Όλες</b><b>Διεθνείς</b><b>Εθνικές</b></span>
+  <button class="pill">${ic('scan-line')}Σάρωση</button><button class="pill">${ic('printer')}Εκτύπωση</button><button class="pill b">${ic('plus')}Νέα παραγγελία</button></div>
+ <div class="card" style="flex:1;min-height:0;display:flex;flex-direction:column;border-radius:24px 24px 0 0">
+  <div class="tabs"><a class="on">Κατάλογος</a><a>Προς τιμολόγηση <i>39</i></a><a>Εβδομάδα</a><a>Χωρίς τιμή <i class="r">10</i></a><span class="sp"></span><div class="q">${ic('search')}Πελάτης, τόπος, πινακίδα</div></div>
+  <div class="fl"><span class="chip on">Όλες <b>380</b></span><span class="chip">Προς ανάθεση <b>12</b></span><span class="chip r">Εκτός Εβδομαδιαίου <b>3</b></span><span class="sp"></span><span class="chip">Κατεύθυνση ${ic('chevron-down')}</span><span class="chip">Κατάσταση ${ic('chevron-down')}</span><span class="chip">Εβδομάδα ${ic('chevron-down')}</span></div>
+  <div class="th lbl"><span>Παραγγελία</span><span>Φόρτωση</span><span>Παράδοση</span><span>Ανάθεση</span><span>Κατάσταση</span><span class="n">Τιμή</span><span class="n">ΤΠΥ</span></div>
+  ${O.map((o,i)=>`<div class="tr" onclick="oc(${i},this)"><div class="two t"><b>${o[0]}${o[1].split(' ').filter(Boolean).map(t=>`<span class="tag">${t}</span>`).join('')}</b><span>${o[2]}</span></div>
+   <div class="two"><b>${o[3]}</b><span>${o[4]}</span></div><div class="two"><b>${o[5]}</b><span>${o[6]}</span></div>${asg(o[7],o[8])}<div>${stt(o[9])}</div>
+   <div class="n num">${o[10]==='np'?'<span class="np">χωρίς τιμή</span>':`<span class="pr">${o[10]}</span>`}</div><div class="n num">${o[11]==='w'?'<span class="tpw">εκκρεμεί</span>':o[11]?`<span class="tpy">${o[11]}</span>`:'<span class="tpn">—</span>'}</div></div>`).join('')}
+ </div></main></div>
+ <div class="scrim" onclick="ocClose()"></div>
+ <div class="oc"><div class="h"><div><b id="ocT"></b><small id="ocS"></small></div><span class="sp"></span><span id="ocSt"></span><button class="cl" onclick="ocClose()" aria-label="Κλείσιμο">${ic('x')}</button></div>
+  <dl class="kv"><div><dt class="lbl">Αναφορά πελάτη</dt><dd class="num">6100118259</dd></div><div><dt class="lbl">Φορτίο</dt><dd id="ocC"></dd></div><div><dt class="lbl">Ανάθεση</dt><dd id="ocA"></dd></div><div><dt class="lbl">Τιμή</dt><dd class="num" id="ocP"></dd></div></dl>
+  <div class="rt"><div><span class="lbl">Φόρτωση · <i id="ocD1" style="font-style:normal"></i></span><b id="ocL"></b><span id="ocM"></span></div>
+   <div id="ocV"><span class="lbl">Βέροια · αλλαγή φορτηγού</span><b>Veroia Cross-Dock</b><span>την επόμενη ημέρα</span></div>
+   <div><span class="lbl">Παράδοση · <i id="ocD2" style="font-style:normal"></i></span><b id="ocR"></b></div></div>
+  <div class="dark" id="ocN"><p class="lbl"><i></i>Εβδομαδιαίο</p><p>Φορτώνει σε 2 ημέρες και δεν έχει φορτηγό. Τη Δευτέρα δύο φορτηγά είναι ελεύθερα.</p><div style="display:flex;gap:8px"><button class="pill b sm">Στο Εβδομαδιαίο</button><button class="pill ghost sm">Όχι τώρα</button></div></div>
+  <div class="acts"><button class="pill">Αντίγραφο</button><button class="pill">Δελτία παλετών</button><button class="pill b">Επεξεργασία</button></div></div>`;
+function oc(i,el){const o=O[i],f=document.getElementById('f1'),$=id=>document.getElementById(id);f.querySelectorAll('.tr.sel').forEach(x=>x.classList.remove('sel'));el.classList.add('sel');
+ $('ocT').textContent=o[0];$('ocS').textContent=o[2];$('ocSt').innerHTML=stt(o[9]).split('<span class="bar"')[0];$('ocA').innerHTML=o[7]==='e'?'<span style="color:var(--red)">Κανένα φορτηγό</span>':o[8].replace('|','<br><span style="color:var(--help);font-weight:400">')+'</span>';
+ $('ocP').innerHTML=o[10]==='np'?'<span class="np">χωρίς τιμή</span>':o[10];$('ocL').textContent=o[3];$('ocR').textContent=o[5];$('ocD1').textContent=o[4].split('· ').pop();$('ocD2').textContent=o[6].split('· ').pop();
+ $('ocC').textContent=o[2].split('· ')[1]+' · +2°';$('ocM').textContent=o[4].includes('+2')?'και 2 ακόμη σημεία φόρτωσης':o[4].split(' ·')[0];$('ocV').style.display=o[1].includes('VS')?'':'none';$('ocN').style.display=o[7]==='e'?'':'none';f.classList.remove('open');void f.offsetWidth;f.classList.add('open')}
+function ocClose(){const f=document.getElementById('f1');f.classList.remove('open');f.querySelectorAll('.tr.sel').forEach(x=>x.classList.remove('sel'))}
+
+/* ---------- screen 2: weekly national ---------- */
+const P=n=>{const ov=n>33;return `<div class="pal ${ov?'over':''}"><span><b class="num">${n}</b><span class="m"><i style="width:${Math.min(100,n/33*100)}%"></i></span></span>${ov?`<sup>+${n-33}</sup>`:''}</div>`};
+const two=(a,b)=>`<div class="two"><b>${a}</b><span>${b}</span></div>`;
+const trk=(a,b,k)=>`<div class="as"><span class="tile ${k||''}">${ic(k==='p'?'users':'truck')}</span><div class="two"><b class="num">${a}</b><span>${b}</span></div></div>`;
+const need=`<div class="as"><span class="tile need">${ic('truck')}</span><div class="two"><b style="color:var(--red)">Ανάθεση</b></div></div>`;
+const slotD=`<div class="slot">${ic('arrow-down')}<span class="plus">${ic('plus')}</span></div>`;
+const slotA=t=>`<div class="slot a">${ic('undo-2')}${t}<span class="plus" style="border-color:var(--amber-line);color:var(--amber)">${ic('plus')}</span></div>`;
+const D=[
+ ['Σάββατο 14/11','',`<span class="sg">${ic('truck')}3</span><span class="sg r">${ic('truck')}1</span>`,[
+  [1,two('Alfa Zymi','Πέμ 12 · 14:00–23:59 · Κοζάνη'),two('AB Market DC','Παρ 13 · Οινόφυτα'),P(30),trk('ΚΗΙ 2103 · Ρ 67301','Π. Ιωάννου'),two('Minoa Packing <span class="tag">+1</span>','Παρ 13 · Οινόφυτα 23π · Τανάγρα 10π'),two('Βέροια','Σάβ 14'),'',P(33),1],
+  [2,two('Βέροια','Παρ 13 · 14:00–23:59'),two('Kyriakos Frouta','Σάβ 14 · Σάγεικα'),P(26),trk('ΚΗΙ 2140 · Ε 9019','Ν. Ρήγας'),two('Lakonia Valley',`Σάβ 14 · Σπάρτη <span class="ico">${ic('thermometer')}+3°</span>`),two('Βέροια',`Δευ 16 <span class="ico">${ic('clock')}Κυρ 15</span>`),'PE',P(33),1],
+  [3,two('Makedonia Patates','Παρ 13 · Μουρίκι'),two('Kalamata Trofima','Σάβ 14 · Καλαμάτα'),P(22),trk('Transfrigo Kft.','συνεργάτης','p'),two('Kalamata Trofima','Σάβ 14 · Καλαμάτα'),two('Patra Metaforiki','Σάβ 14 · Οβρυά'),'',P(30),1],
+  ['need','','','',need,two('Lakonia Valley','Σάβ 14 · Σπάρτη'),two('Βέροια',`<span class="ico r">${ic('clock-alert')}Κυρ 15</span>`),'PE · VS',P(8),0],
+ ]],
+ ['Κυριακή 15/11','',`<span class="sg">${ic('truck')}2</span>`,[
+  [4,two('Βέροια','Σάβ 14'),two('Skla Market <span class="tag">+2</span>','Κυρ 15 · Άγ. Θωμάς 12π · Ρέντης 7π'),P(22),trk('ΚΗΙ 4445 · Ρ 40069','Μ. Χρυσουλίδης'),two('Lakonia Valley','Δευ 16 · Σπάρτη'),two('Βέροια','Τρί 17'),'PE',P(30),1],
+  [5,'slotD','','',trk('ΚΗΙ 7245 · Ε 5811','Ν. Καγκελίδης'),two('Irini Sud <span class="tag">+1</span>','Κυρ 15 · Ασπρόπυργος 14π · Ρέντης 13π'),two('Βέροια','Δευ 16'),'PE',P(27),1],
+ ]],
+ ['Δευτέρα 16/11','today',`<span class="sg">${ic('truck')}4</span><span class="sg a">${ic('undo-2')}1</span><span class="sg r">${ic('triangle-alert')}1</span>`,[
+  [6,two('Βέροια','Κυρ 15'),two('Doukas Trans','Δευ 16 · Ασπρόπυργος'),P(30),`<div class="as"><span class="tile">${ic('shuffle')}</span><div class="two"><b class="num">ΚΗΙ 0138 → 5561</b><span>Λαμία · Κυρ 22:00</span></div></div>`,two('Attiki Praktoreio','Δευ 16 · Άνω Λιόσια'),two('Chalkidona Logistic','Τρί 17 · Καλοχώρι'),'',P(30),1],
+  [7,two('Kentriki Agora','Κυρ 15 · Θεσσαλονίκη'),two('Market Plus DC','Δευ 16 · Ασπρόπυργος'),P(30),trk('ΚΗΙ 2102','Κ. Τσορλίνης'),two('Karamolegkos Fresh','Δευ 16 · Κορωπί'),two('Karamolegkos Fresh','Τρί 17 · 05:30–06:30 · Σίνδος'),'',P(30),1],
+  [8,two('Olympos Fresh','Δευ 16 · Κοπανός'),two('Chipita Lamia','Δευ 16 · Λαμία'),P(33),trk('ΚΗΙ 8600 · Ρ 50711','Π. Ιωάννου'),two('Knosos Packing <span class="tag">+1</span>','Δευ 16 · Ασπρόπυργος 20π · Κόρινθος 20π'),two('Βέροια',`Τρί 17 <span class="ico">${ic('clock')}20:00</span>`),'PE',P(40),0],
+  ['ret',two('Βέροια','Κυρ 15 · 14:00–23:59'),two('PM Road <span class="tag">+1</span>','Δευ 16 · Ασπρόπυργος 6π · Ρέντης 26π'),P(32),trk('ΚΗΙ 1286 · Ε 3002','Ε. Σαρίδης'),'slotA','','','',1],
+ ]],
+ ['Τρίτη 17/11','',`<span class="sg">${ic('truck')}1</span>`,[
+  [10,'slotD','','',trk('ΚΗΙ 8425 · Ε 3002','Σ. Γαβρίλοφ'),two('Fage Athina',`Τρί 17 · 08:00–09:00 · Αθήνα <span class="ico">${ic('thermometer')}+4°</span>`),two('Βέροια','Τετ 18'),'',P(33),1],
+ ]],
+];
+function brow(r){const [n,a,b,p,t,c,d,mk,p2,s]=r;const cls=n==='need'?'need':n==='ret'?'ret':'';
+ const L=a==='slotD'?slotD:(n==='need'?`<span></span><span></span><span></span>`:`${a}${b}<div style="display:flex;gap:6px;justify-content:flex-end;align-items:center">${p}<span class="plus">${ic('plus')}</span></div>`);
+ const R=c==='slotA'?slotA('Ασπρόπυργος · Δευ 16'):`${c}${d}<span class="mk">${mk}</span>${p2}`;
+ return `<div class="br ${cls}"><span class="no num">${typeof n==='number'?n:n==='ret'?9:ic('arrow-up')}</span>${L}${t}${R}<span class="send ${s?'':'no'}">${ic('send')}</span></div>`}
+document.getElementById('f2').innerHTML=`<div class="app rail">${side('wn')}<main class="main" style="padding:20px 24px 0">
+ <div class="hd" style="margin-bottom:14px"><h1>Εβδομαδιαίο Εθνικών</h1><p style="margin:8px 0 0 6px">14 – 20 Νοεμβρίου</p><span class="sp"></span><button class="pill">Σήμερα</button><button class="pill">${ic('printer')}Εκτύπωση</button><button class="pill b">${ic('plus')}Νέα παραγγελία</button></div>
+ <div class="card" style="border-radius:16px"><div class="wk">${ic('chevron-left')}<a>45</a><a class="on">46</a><a>47 <i>15</i></a><a>48 <i>9</i></a><a>49</a>${ic('chevron-right')}<span class="sp"></span><div class="q" style="margin:8px 0">${ic('search')}Πελάτης, τόπος, πινακίδα</div></div>
+  <div class="nx"><span class="lbl">Επόμενα <b style="color:var(--red)">3</b></span>
+   <span class="chip">${ic('arrow-up')}Σάβ 14 <b>Lakonia Valley</b> 8π <a>Ανάθεση</a></span><span class="chip">${ic('arrow-up')}Τετ 18 <b>Alfa Vita</b> 5π <a>Ανάθεση</a></span><span class="chip">${ic('arrow-down')}Τετ 18 <b>Viokip</b> 11π <a>Ανάθεση</a></span>
+   <span class="sp"></span><span class="chip">${ic('layers')}<b>Σύνθεση φορτίων</b> ${ic('arrow-down')}3 ${ic('arrow-up')}4</span></div></div>
+ <div class="bh lbl"><span></span><span>Κάθοδος · φόρτωση</span><span>Παράδοση</span><span style="text-align:right">Παλ.</span><span>Ανάθεση</span><span>Άνοδος · φόρτωση</span><span>Παράδοση</span><span></span><span style="text-align:right">Παλ.</span><span></span></div>
+ <div style="flex:1;min-height:0;overflow:hidden;margin-top:-10px">${D.map(([t,c,sg,rows])=>`<section class="day ${c}"><h3>${t}${sg}</h3>${rows.map(brow).join('')}</section>`).join('')}</div></main></div>`;
+
+/* ---------- screen 3: order form ---------- */
+const fld=(l,v,cls='',h='')=>`<label class="fld"><span>${l}</span><div class="inp ${cls}">${v}</div>${h}</label>`;
+const stop=(k,kind,name,sub,day,hrs,pal,extra)=>`<div class="stop ${k}"><div class="k"><b>${kind}</b><div class="inp">${ic('map-pin')}<span><b style="font-weight:600">${name}</b> <span style="color:var(--help)">· ${sub}</span></span></div>${extra||''}</div>${fld('Ημέρα',`${ic('calendar')}${day}`)}${fld('Ώρες',hrs||'προαιρετικό',hrs?'':'ph')}${fld('Παλέτες',pal)}${fld('Ανταλλαγή',`<span class="cb on"><i>${ic('check')}</i>όλες</span>`)}</div>`;
+document.getElementById('f3').innerHTML=`<div class="app">${side('o')}<main class="main">
+ <div class="hd"><div><p style="margin:0 0 4px"><a>Παραγγελίες</a> / Νέα</p><h1>Νέα διεθνής παραγγελία</h1></div><span class="sp"></span><button class="pill">${ic('scan-line')}Σάρωση εντολής πελάτη</button><button class="pill">${ic('paperclip')}Εντολή πελάτη</button><button class="pill">Ακύρωση</button></div>
+ <div class="fgrid"><div class="card" style="align-self:start">
+  <div class="fsec"><h3>Ποιος και τι</h3><div class="row c3">${fld('Πελάτης',`${ic('building-2')}<b style="font-weight:600">Tirol Obst GmbH</b>`)}${fld('Αναφορά πελάτη','6100118259')}<label class="fld"><span>Κατεύθυνση</span><div class="seg"><b class="on">Εξαγωγή</b><b>Εισαγωγή</b></div></label></div>
+   <div class="row c4" style="margin-top:14px">${fld('Εμπόρευμα','Ροδάκινα')}${fld('Θερμοκρασία',`${ic('thermometer')}+2°`)}${fld('Τιμή','','miss focus','<p class="hint w">Λείπει. Αποθηκεύεται και χωρίς τιμή.</p>')}<label class="fld"><span>&nbsp;</span><div style="height:40px;display:flex;align-items:center"><span class="cb"><i></i>Σε απόθεμα</span></div></label></div></div>
+  <div class="fsec"><h3>Διαδρομή <span class="lbl">3 σημεία · 32 παλέτες</span></h3><div class="stops">
+   ${stop('','Φόρτωση 1','Veria Fruit Pack','Βέροια, GR','Κυρ 15/11','08:00–12:00','20',`<span class="cb on"><i>${ic('check')}</i>Μέσω Βέροιας</span>`)}
+   ${stop('','Φόρτωση 2','Pella Peach Coop','Σκύδρα, GR','Κυρ 15/11','','12',`<span class="cb on"><i>${ic('check')}</i>Μέσω Βέροιας</span>`)}
+   ${stop('d','Παράδοση','Tirol Obst Lager','Innsbruck, AT','Πέμ 19/11','06:00–10:00','32','')}
+   <div style="display:flex;gap:18px"><button class="add">${ic('plus')}Σημείο φόρτωσης</button><button class="add">${ic('plus')}Σημείο παράδοσης</button></div></div></div>
+  <div class="fsec"><h3>Σημειώσεις</h3><div class="inp ph" style="height:64px;align-items:flex-start;padding-top:10px">Ό,τι πρέπει να ξέρει ο οδηγός ή η ράμπα</div></div>
+ </div>
+ <div class="card sum"><div><p class="lbl">Σύνοψη</p><p style="font-size:17px;font-weight:600;color:var(--ink);margin-top:4px">Tirol Obst GmbH</p><p style="color:var(--help)">Βέροια → Innsbruck · Κυρ 15/11 → Πέμ 19/11</p></div>
+  <div class="rt show" style="border-top:0;padding-top:0"><div><span class="lbl">Κυρ 15/11 · φόρτωση</span><b>Veria Fruit Pack, Pella Peach Coop</b><span>32 παλέτες · +2°</span></div><div><span class="lbl">Δευ 16/11 · Βέροια</span><b>Αλλαγή φορτηγού</b><span>μπαίνει μόνη της, μία ημέρα μετά τη φόρτωση</span></div><div><span class="lbl">Πέμ 19/11 · παράδοση</span><b>Tirol Obst Lager</b></div></div>
+  <ul class="chk"><li class="ok">${ic('circle-check')}Πελάτης και σημεία</li><li class="ok">${ic('circle-check')}Ημέρες φόρτωσης και παράδοσης</li><li class="ok">${ic('circle-check')}Παλέτες: 20 + 12 = 32</li><li class="w">${ic('circle-alert')}Τιμή<small>θα φανεί στο «Χωρίς τιμή»</small></li></ul>
+  <div class="dark"><p class="lbl"><i></i>Τι θα γίνει</p><p style="margin-bottom:0">Μπαίνει στο Εβδομαδιαίο Διεθνών της εβδομάδας 47 χωρίς φορτηγό, και στο Εβδομαδιαίο Εθνικών ως δύο φορτώσεις για Βέροια.</p></div>
+  <div class="fbar"><span class="sp"></span><button class="pill">Αποθήκευση και νέα</button><button class="pill b">Αποθήκευση</button></div>
+ </div></div></main></div>`;
+
+/* ---------- screen 4: expenses ---------- */
+const E=[
+ ['ΚΗΙ 2109 · Ρ 4406','Δ. Στογιάννου','Ammos › Ebreichsdorf','Διόδια σε 3 χώρες, καμία γραμμή καυσίμων','r','28–30/10',['m','740,00','','24,00','','',''],'764,00'],
+ ['ΚΗΙ 4162 · Ρ 9498','Α. Κοσκοσίδης','Ασπρόπυργος › Laakirchen › Aschbach › Κουφάλια','Ίσως διπλό: ναύλος 100 € με το χέρι και από κάρτα','','27/10–4/11',['2.200,00|1.300 L','340,00','','3,00','100,00','45,00','160,00'],'2.848,00'],
+ ['ΚΗΙ 1286 · Ε 3002','Ε. Σαρίδης','Βέροια › Μέγαρα › Ασπρόπυργος › Κοπανός','Καύσιμα 16 % πάνω από τον μέσο της χώρας','','25–27/10',['310,00|150 L ↑','','56,00','','','',''],'366,00'],
+ ['ΚΗΙ 0138 · Ρ 5302','Ι. Αντωνιάδης','Βέροια › Ασπρόπυργος › Άνω Λιόσια › Καλοχώρι','Τελείωσε 27/10 και δεν έχει κανένα έξοδο','r','25–27/10',['','','','','','',''],''],
+];
+const E2=[
+ ['ΚΗΙ 4612 · Ρ 2998','Ε. Μπάμπαλος','Βέροια › Poeldijk › Apeldoorn › Δρυμός','NL','n','24/10–2/11',['4.900,00|2.600 L','980,00','','36,00','','53,00','130,00'],'6.099,00'],
+ ['ΚΗΙ 4445 · Ρ 3001','Ι. Καρκάλης','Μυρτόφυτο › Großebersdorf › Stubenberg','AT · BG','n','24–30/10',['3.050,00|1.700 L','1.060,00','','23,00','','50,00','10,00'],'4.193,00'],
+ ['ΚΗΙ 8302 · Ρ 1983','Δ. Αντζιμάνοφ','Βέροια › Novi Sad › Voitsberg › Ν. Μαγνησία','RS · AT','n','25/10–3/11',['2.000,00|1.200 L','710,00','','22,00','112,00','60,00','20,00'],'2.924,00'],
+ ['ΚΗΙ 7244 · Ρ 9487','Ι. Πάππης','Κοζάνη › Αχαρνές › Ασπρόπυργος › Σίνδος','Ελλάδα','n','26–29/10',['','130,00','','','','',''],'130,00'],
+ ['ΚΗΙ 4166 · Ρ 6471','Κ. Βαϊνάλης','Βέροια › Verona › Garching › Μενεμένη','IT · DE','n','27/10–2/11',['800,00|425 L','540,00','28,00','','','13,00','30,00'],'1.411,00'],
+ ['ΚΗΙ 1006 · Ρ 5071','Σ. Γαβρίλοφ','Κοζάνη › Wien › Linz › Σίνδος','AT','n','29/10–5/11',['2.430,00|1.440 L','300,00','','3,00','75,00','30,00','28,00'],'2.866,00'],
+];
+const cell=v=>v==='m'?'<span class="a m">λείπουν</span>':v?`<span class="a num">${v.split('|')[0]}${v.includes('|')?`<small>${v.split('|')[1]}</small>`:''}</span>`:'<span class="a z">–</span>';
+const erow=e=>`<div class="er"><div class="two"><b class="num">${e[0]}</b><span>${e[1]} · ${e[5]}</span></div><div class="two"><b>${e[2]}</b><span class="${e[4]==='n'?'':'why '+e[4]}">${e[3]}</span></div>${e[6].map(cell).join('')}<span class="tot num">${e[7]||'<span style="color:#C9CDD4;font-weight:400">–</span>'}</span><span class="plus">${ic('plus')}</span></div>`;
+document.getElementById('f4').innerHTML=`<div class="app rail">${side('e')}<main class="main" style="padding:20px 24px 0">
+ <div class="hd" style="margin-bottom:14px"><h1>Έξοδα δρομολογίων</h1><span class="seg" style="margin-left:10px"><b class="on">Εβδομάδα</b><b>Όχημα</b></span><span class="sp"></span>
+  <span class="chip">${ic('chevron-left')}Εβδ. 43</span><span class="chip on">Εβδ. 44 · 24–30/10</span><span class="chip">Εβδ. 45 ${ic('chevron-right')}</span><button class="pill">${ic('printer')}Εκτύπωση</button><button class="pill k">${ic('upload')}Εισαγωγή κάρτας καυσίμων</button></div>
+ <div style="display:flex;align-items:baseline;gap:14px;margin-bottom:14px"><b class="num" style="font-size:30px;font-weight:600;color:var(--ink);letter-spacing:-.5px">21.601,00 €</b><span style="color:var(--help)">προσωρινό · 10 δρομολόγια</span><span style="width:8px"></span>
+  <span class="chip on">Όλα <b>10</b></span><span class="chip r">Θέλουν ματιά <b>4</b></span><span class="chip">Πλήρη <b>6</b></span><span class="sp"></span><span class="ico" style="color:var(--green);font-weight:500">${ic('check')}Κάρτα καυσίμων περασμένη ως 5/11</span><a style="font-weight:500">8 γραμμές χωρίς δρομολόγιο · 400 €</a></div>
+ <div class="card" style="flex:1;min-height:0;display:flex;flex-direction:column;border-radius:24px 24px 0 0;overflow:hidden">
+  <div class="eh lbl"><span>Φορτηγό · οδηγός · ημέρες</span><span>Διαδρομή</span><span>Καύσιμα</span><span>Διόδια</span><span>AdBlue</span><span>Τέλη</span><span>Ναύλοι</span><span>Μετρητά</span><span>Λοιπά</span><span>Σύνολο €</span><span></span></div>
+  <div class="grp">${ic('triangle-alert')}<span style="color:var(--red)">Θέλουν ματιά</span><small>4 δρομολόγια</small></div>${E.map(erow).join('')}
+  <div class="grp">Πλήρη<small>6 δρομολόγια</small></div>${E2.map(erow).join('')}
+  <span class="sp"></span>
+  <div class="er totrow" style="min-height:52px"><div class="two"><b>Σύνολο εβδομάδας 44</b><span>10 δρομολόγια</span></div><span></span>${['15.690,00|8.815 L','4.800,00','84,00','111,00','287,00','251,00','378,00'].map(cell).join('')}<span class="tot num">21.601,00</span><span></span></div>
+ </div></main></div>`;
+
+/* A4 */
+const all=[...E,...E2];
+document.getElementById('a4').innerHTML=`<div class="top"><div><h2>Έξοδα δρομολογίων</h2><div>Εβδομάδα 44 · 24–30 Οκτωβρίου 2026 · 10 δρομολόγια</div></div><div style="text-align:right"><b style="letter-spacing:.12em">PETRAS GROUP</b><br>προσωρινό</div></div>
+<table><thead><tr><th>Φορτηγό · οδηγός</th><th>Διαδρομή</th><th>Καύσιμα</th><th>Διόδια</th><th>Λοιπά</th><th>Σύνολο €</th></tr></thead><tbody>
+${all.map((e,i)=>{const v=e[6],n=x=>parseFloat((x||'0').split('|')[0].replace('.','').replace(',','.'))||0;const oth=v.slice(2).reduce((s,x)=>s+n(x),0);
+ return `<tr><td><b>${e[0]}</b><br>${e[1]}</td><td>${e[2].replace(/ › /g,' – ')}${i<4?`<br><i>${e[3]}</i>`:''}</td><td>${v[0]==='m'?'<span class="box">ΛΕΙΠΟΥΝ</span>':v[0]?v[0].split('|')[0]:'–'}</td><td>${v[1]||'–'}</td><td>${oth?oth.toLocaleString('el-GR',{minimumFractionDigits:2}):'–'}</td><td><b>${e[7]||'–'}</b></td></tr>`}).join('')}
+<tr class="s"><td>Σύνολο</td><td></td><td>15.690,00</td><td>4.800,00</td><td>1.111,00</td><td>21.601,00</td></tr></tbody></table>
+<div class="foot"><span>Τύπωσε: Αλεξία · 14/11/2026 21:40</span><span>Τα 4 πρώτα δρομολόγια θέλουν ματιά</span><span>Σελίδα 1 από 1</span></div>`;
+
+/* ---------- motion lab ---------- */
+let asgOn=0;function mAssign(){asgOn=!asgOn;document.getElementById('m1').innerHTML=asgOn?`<span class="tile pop">${ic('truck')}</span><div class="two"><b class="num">ΚΗΙ 4521 · Ρ 66542</b><span>Γ. Αλεξίου</span></div><span class="st asg pop" style="margin-left:10px">Ανατέθηκε</span>`:`<span class="tile need">${ic('truck')}</span><div class="two"><b style="color:var(--red)">Ανάθεση</b><span>κανένα φορτηγό</span></div>`;lucide.createIcons()}
+function mToast(){const m=document.getElementById('m2');m.classList.add('show');clearTimeout(window._t);window._t=setTimeout(()=>m.classList.remove('show'),2600)}
+let tot=21601;function mCount(){const el=document.getElementById('m3'),from=tot,to=tot+=120,t0=performance.now(),red=matchMedia('(prefers-reduced-motion:reduce)').matches;
+ (function f(t){const k=red?1:Math.min(1,(t-t0)/400),v=from+(to-from)*(1-Math.pow(1-k,3));el.textContent=v.toLocaleString('el-GR',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';if(k<1)requestAnimationFrame(f)})(t0)}
+
+lucide.createIcons();
+function fit(){document.querySelectorAll('.fit').forEach(w=>{const f=w.firstElementChild,s=Math.min(1,w.clientWidth/1440);f.style.transform=`scale(${s})`;w.style.height=f.offsetHeight*s+'px'})}
+addEventListener('resize',fit);fit();
+</script>
+</body>
+</html>
