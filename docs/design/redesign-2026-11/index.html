@@ -385,6 +385,49 @@ table.spec td b{color:var(--ink);font-weight:600}
 .mini section{background:#fff;border-radius:10px;padding:8px;min-height:92px;min-width:0}.mini h5{margin:0 0 6px;font-size:12px;font-weight:600;color:var(--ink)}
 .mini .it{height:26px;border-radius:7px;background:var(--bg);display:flex;align-items:center;padding:0 8px;font-size:12px;font-weight:500;color:var(--ink);margin-top:4px;white-space:nowrap;overflow:hidden}
 .mini .it.mv{background:var(--accent-bg);color:var(--link)}
+/* ---- five signature motions (motion lab) ---- */
+.g5m{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:16px}
+.lab .stage.big{height:230px;display:block;place-items:normal;padding:14px}
+.rt.anim{border:0;padding-top:4px}
+.rt.anim div>*:not(.pos){opacity:0;transform:translateY(3px)}
+.rt.anim div::before{transform:scale(0)}
+.rt.anim.show div>*:not(.pos){opacity:1;transform:none;transition:opacity 200ms var(--ease),transform 200ms var(--ease)}
+.rt.anim.show div::before{transform:none;transition:transform 220ms var(--ease)}
+.rt.anim.show div:nth-child(2)>*:not(.pos),.rt.anim.show div:nth-child(2)::before{transition-delay:300ms}
+.rt.anim.show div:nth-child(3)>*:not(.pos),.rt.anim.show div:nth-child(3)::before{transition-delay:600ms}
+.rt.anim div:not(:last-child)::after{transition:transform 260ms var(--ease) 100ms}
+.rt.anim div:nth-child(2)::after{transition-delay:400ms}
+.rt .pos{position:absolute;left:-23px;top:8px;width:8px;height:8px;border-radius:50%;background:var(--ink);box-shadow:0 0 0 4px rgba(11,99,206,.2);opacity:0;z-index:1}
+.rt.show .pos{opacity:1;transform:translateY(26px);transition:opacity 160ms ease 700ms,transform 520ms var(--ease) 700ms}
+.dg{position:relative;display:grid;gap:8px;padding-top:50px}
+.dgc{position:absolute;top:4px;left:0;z-index:2;height:32px;padding:0 12px;border-radius:999px;border:1px solid var(--line);background:#fff;display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--ink);font-weight:500;transition:transform var(--t-move) var(--ease),box-shadow var(--t-state),opacity var(--t-exit)}
+.dgc svg.lucide{width:14px;height:14px;color:var(--help)}.dgc b{font-weight:600}
+.dgc.up{box-shadow:var(--shadow-float)}.dgc.gone{opacity:0}
+.dgr{display:flex;align-items:center;gap:10px;height:48px;padding:0 34px 0 12px;border-radius:12px;background:#fff;box-shadow:inset 0 0 0 1.5px transparent;transition:box-shadow var(--t-fast),background var(--t-fast)}
+.dgr.tg{box-shadow:inset 0 0 0 1.5px var(--accent);background:var(--accent-bg)}.dgr.bad{box-shadow:inset 0 0 0 1.5px var(--red);background:#FDF1F1}
+.dgr>b{font-weight:600;color:var(--ink);font-size:13.5px;white-space:nowrap}.dgr small{color:var(--help);font-size:12.5px;white-space:nowrap}
+.ml3{display:grid;align-content:start;gap:4px;max-width:calc(100% - 178px)}
+.mr3{background:#fff;border-radius:10px;padding:7px 10px;cursor:pointer;transition:background var(--t-fast),transform var(--t-move) var(--ease),opacity var(--t-state)}
+.mr3 b{display:block;font-size:13px;color:var(--ink);font-weight:600;white-space:nowrap}.mr3 span{display:block;font-size:12px;color:var(--help);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mr3.sel{background:var(--accent-bg)}
+.mc3{position:absolute;right:14px;top:14px;bottom:14px;width:166px;background:#fff;border-radius:14px;box-shadow:var(--shadow-float);padding:38px 12px 12px;opacity:0;transform:translateX(16px);transition:opacity var(--t-exit) var(--ease-exit),transform var(--t-exit) var(--ease-exit)}
+.on>.mc3{opacity:1;transform:none;transition:opacity var(--t-enter) var(--ease),transform var(--t-enter) var(--ease)}
+.mc3 span{display:block;font-size:12px;color:var(--help);line-height:1.5}.mc3 hr{border:0;border-top:1px solid var(--line);margin:8px 0}
+.mt3{position:absolute;right:14px;top:26px;width:142px;margin-right:12px;z-index:3;font-size:14px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transform-origin:left top;pointer-events:none;opacity:0}
+.on>.mt3{opacity:1}
+#g4 .ml3{max-width:none}
+#g4 .mr3:not(.new){transform:translateY(-48px)}#g4 .mr3.new{opacity:0}
+#g4.saved .mr3:not(.new){transform:none}#g4.saved .mr3.new{opacity:1;animation:flw 900ms ease-out 200ms both}@keyframes flw{from{background:var(--accent-bg)}to{background:#fff}}
+.mv4{position:absolute;inset:0;background:rgba(0,0,16,.4);transition:opacity var(--t-enter) ease}
+.ms4{position:absolute;left:50%;top:18px;width:230px;margin-left:-115px;background:#fff;border-radius:14px;box-shadow:var(--shadow-float);padding:14px;transform-origin:50% 0;transition:transform var(--t-enter) var(--ease),opacity var(--t-enter) var(--ease)}
+.ms4 b{display:block;font-size:13px;font-weight:600;color:var(--ink);margin-bottom:10px}.ms4 i{display:block;height:9px;border-radius:5px;background:var(--bg);margin-bottom:8px}
+#g4.saved .mv4{opacity:0;pointer-events:none}#g4.saved .ms4{transform:translateY(-22px) scale(.86,.2);opacity:0;pointer-events:none;transition:transform 240ms var(--ease-exit),opacity 200ms ease 40ms}
+.mw5{display:flex;align-items:center;gap:2px;position:relative;height:34px;margin-bottom:10px}
+.mw5 a,.mw5 button{width:38px;height:30px;display:grid;place-items:center;border-radius:8px;color:var(--help);font-weight:500;font-size:13.5px;cursor:pointer}
+.mw5 a.on{color:var(--link);font-weight:600}.mw5 button svg.lucide{width:16px;height:16px}
+.mw5 u{position:absolute;left:0;bottom:0;width:22px;height:2px;border-radius:2px;background:var(--accent);transition:transform var(--t-move) var(--ease)}
+.mp5{display:grid;gap:8px}.mp5 section{background:#fff;border-radius:12px;padding:9px 12px}
+.mp5 h5{margin:0 0 4px;font-size:12.5px;font-weight:600;color:var(--ink)}.mp5 p{margin:0;font-size:12.5px;color:var(--help);line-height:1.6}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;transition-delay:0ms!important}
   .oc,.toast{transform:none}}
 @media print{.toc,.doc>header p{display:none}body{background:#fff}}
@@ -471,7 +514,7 @@ table.spec td b{color:var(--ink);font-weight:600}
 
 <section class="sec" id="motion">
   <h2>Κίνηση</h2>
-  <p class="lead">Η κίνηση δείχνει τι άλλαξε και από πού ήρθε. Δεν στολίζει και δεν καθυστερεί κανέναν: τίποτα δεν κρατά πάνω από 0,4 του δευτερολέπτου. Πάτησε τα κουμπιά.</p>
+  <p class="lead">Η κίνηση δείχνει τι άλλαξε και από πού ήρθε. Δεν στολίζει και δεν καθυστερεί κανέναν: ό,τι γίνεται πολλές φορές την ημέρα κρατά ως 0,3 του δευτερολέπτου. Πάτησε τα κουμπιά.</p>
   <div class="grid g5" style="align-items:stretch">
     <div class="panel lab"><h3>Ανάθεση</h3>
       <div class="stage"><div class="as" id="m1"><span class="tile need"><i data-lucide="truck"></i></span><div class="two"><b style="color:var(--red)">Ανάθεση</b><span>κανένα φορτηγό</span></div></div></div>
@@ -494,6 +537,42 @@ table.spec td b{color:var(--ink);font-weight:600}
       <span class="nobtn"></span>
       <p class="note">Γκρι σχήματα στη θέση των γραμμών. Η μόνη κίνηση που επαναλαμβάνεται, και μόνο όσο φορτώνει.</p></div>
   </div>
+  <div class="cap"><h3>Οι πέντε μεγάλες κινήσεις</h3><span>πρόταση 15/11 · για τις στιγμές που αξίζουν: άνοιγμα παραγγελίας, σύρσιμο, αποθήκευση, αλλαγή εβδομάδας</span></div>
+  <div class="g5m">
+    <div class="panel lab"><h3>1 · Η διαδρομή ζωγραφίζεται</h3>
+      <div class="stage big" style="padding:18px 22px"><div class="rt anim show" id="g1">
+        <div><span class="lbl">Φόρτωση · Δευ 16/11</span><b>Veria Fruit Pack</b></div>
+        <div><span class="lbl">Βέροια · Τρί 17/11</span><b>Cross-dock</b><i class="pos" title="Εδώ βρίσκεται τώρα"></i></div>
+        <div><span class="lbl">Παράδοση · Παρ 20/11</span><b>Tirol Obst Lager</b></div></div></div>
+      <button class="pill sm" onclick="g1()">Άνοιξε την παραγγελία</button></div>
+    <div class="panel lab"><h3>2 · Σύρσιμο φορτίου</h3>
+      <div class="stage big" id="g2"><div class="dg">
+        <div class="dgc" id="g2c"><i data-lucide="arrow-up"></i>Lakonia Valley <b class="num">14π</b></div>
+        <div class="dgr" id="g2a"><span class="tile"><i data-lucide="truck"></i></span><b class="num">ΚΗΙ 2140</b><small>Ν. Ρήγας</small><span class="sp"></span><span class="pal"><b class="num">22</b><span class="m"><i style="--f:.67"></i></span></span></div>
+        <div class="dgr" id="g2b"><span class="tile"><i data-lucide="truck"></i></span><b class="num">ΚΗΙ 4445</b><small>Μ. Χρυσουλίδης</small><span class="sp"></span><span class="pal"><b class="num">18</b><span class="m"><i style="--f:.55"></i></span></span></div>
+      </div></div>
+      <button class="pill sm" onclick="g2()">Σύρε το φορτίο</button></div>
+    <div class="panel lab"><h3>3 · Η γραμμή γίνεται κάρτα</h3>
+      <div class="stage big" id="g3"><div class="ml3">
+        <div class="mr3" onclick="g3(this)"><b>Tirol Obst GmbH</b><span>Βέροια → Innsbruck · Δευ 16/11</span></div>
+        <div class="mr3" onclick="g3(this)"><b>Baltic Cold Foods</b><span>Poznań → Ασπρόπυργος · Σάβ 14/11</span></div>
+        <div class="mr3" onclick="g3(this)"><b>Φρουτοπία Νάουσας</b><span>Λάρισα → Βέροια · Κυρ 15/11</span></div>
+        <div class="mr3" onclick="g3(this)"><b>Danubia Market Kft.</b><span>Βέροια → Wien · Πέμ 12/11</span></div></div>
+        <div class="mc3"><span id="g3s"></span><hr><span>32 παλέτες · 3.800,00 €</span></div><b class="mt3" id="g3t"></b></div>
+      <button class="pill sm" onclick="g3()">Πάτησε την επόμενη γραμμή</button></div>
+    <div class="panel lab"><h3>4 · Η αποθήκευση προσγειώνεται</h3>
+      <div class="stage big" id="g4"><div class="ml3">
+        <div class="mr3 new"><b>Hellas Kiwi Coop</b><span>Βέροια → München · Τετ 18/11</span></div>
+        <div class="mr3"><b>Γαλακτοκομική Ηπείρου</b><span>Βέροια → Δωδώνη · Τρί 17/11</span></div>
+        <div class="mr3"><b>Tirol Obst GmbH</b><span>Βέροια → Innsbruck · Δευ 16/11</span></div>
+        <div class="mr3"><b>Nordfrisch GmbH</b><span>Μεσσήνη → Hamburg · Δευ 16/11</span></div></div>
+        <div class="mv4"></div><div class="ms4"><b>Νέα διεθνής παραγγελία</b><i style="width:80%"></i><i style="width:60%"></i><i style="width:70%"></i></div></div>
+      <button class="pill sm b" onclick="g4(this)">Αποθήκευση</button></div>
+    <div class="panel lab"><h3>5 · Η εβδομάδα γυρίζει</h3>
+      <div class="stage big" id="g5"><div class="mw5"><button onclick="g5(-1)" aria-label="Προηγούμενη"><i data-lucide="chevron-left"></i></button><span id="g5w" style="display:flex"></span><button onclick="g5(1)" aria-label="Επόμενη"><i data-lucide="chevron-right"></i></button><u id="g5u"></u></div>
+        <div style="overflow:hidden;margin:0 -4px;padding:0 4px"><div class="mp5" id="g5p"></div></div></div>
+      <button class="pill sm" onclick="g5(1)">Επόμενη εβδομάδα</button></div>
+  </div>
   <div class="panel" style="margin-top:16px">
     <table class="spec"><thead><tr><th>Τι κινείται</th><th>Πόσο</th><th>Τι εξηγεί</th></tr></thead><tbody>
       <tr><td><b>Πέρασμα ποντικιού, πάτημα</b></td><td>0,12 δ</td><td>Ότι το στοιχείο πατιέται. Τα «+» και το βελάκι του οδηγού φαίνονται μόνο στη γραμμή που δείχνεις.</td></tr>
@@ -503,6 +582,10 @@ table.spec td b{color:var(--ink);font-weight:600}
       <tr><td><b>Γραμμή διαδρομής</b></td><td>0,38 δ</td><td>Ζωγραφίζεται από τη φόρτωση προς την παράδοση: η σειρά των σημείων.</td></tr>
       <tr><td><b>Παλέτες, σύνολα</b></td><td>0,32 έως 0,4 δ</td><td>Η γραμμή γεμίσματος και το σύνολο κινούνται μόνο όταν αλλάξει η τιμή, με τη διαφορά δίπλα.</td></tr>
       <tr><td><b>Γραμμή που αλλάζει ημέρα</b></td><td>0,32 δ</td><td>Πού πήγε το φορτίο.</td></tr>
+      <tr><td><b>Σύρσιμο φορτίου</b></td><td>0,12 δ ο στόχος · 0,32 δ η μπάρα</td><td>Ποιο φορτηγό θα το πάρει και αν χωράει, πριν το αφήσεις. Κόκκινο πάνω από 33, χωρίς να εμποδίζει.</td></tr>
+      <tr><td><b>Γραμμή που γίνεται κάρτα</b></td><td>0,28 δ</td><td>Το όνομα ταξιδεύει από τη γραμμή στην κάρτα: είναι το ίδιο πράγμα, όχι άλλη οθόνη.</td></tr>
+      <tr><td><b>Αποθήκευση</b></td><td>0,24 δ η φόρμα · 0,32 δ η λίστα</td><td>Η φόρμα μαζεύεται προς τη λίστα και η νέα γραμμή ανάβει στη θέση της: πού πήγε αυτό που έγραψες.</td></tr>
+      <tr><td><b>Αλλαγή εβδομάδας</b></td><td>0,16 δ έξω · 0,28 δ μέσα</td><td>Προς τα πού πήγες: η επόμενη έρχεται από δεξιά, η προηγούμενη από αριστερά.</td></tr>
       <tr><td><b>Τίποτα</b></td><td>—</td><td>Κανένα εφέ στην είσοδο σελίδας, καμία μπάρα προόδου χωρίς πραγματικό νόημα, καμία κίνηση που επαναλαμβάνεται εκτός από τη φόρτωση.</td></tr>
     </tbody></table>
     <p class="note">Όποιος έχει ζητήσει από τον υπολογιστή του λιγότερη κίνηση βλέπει τις ίδιες αλλαγές ακαριαία.</p>
@@ -840,12 +923,37 @@ let tot=21701;function mCount(){const el=$('m3'),dl=$('m3d'),from=tot,to=tot+=12
 function mMove(){const el=$('mv'),a=el.getBoundingClientRect(),to=el.parentElement.id==='d1'?$('d2'):$('d1');to.appendChild(el);const b=el.getBoundingClientRect();
  el.style.transition='none';el.style.transform=`translate(${a.left-b.left}px,${a.top-b.top}px)`;void el.offsetWidth;el.style.transition='transform var(--t-move) var(--ease)';el.style.transform=''}
 
+/* five signature motions */
+const RED=()=>matchMedia('(prefers-reduced-motion:reduce)').matches,slp=ms=>new Promise(r=>setTimeout(r,RED()?0:ms));
+function g1(){const e=$('g1');e.classList.remove('show');void e.offsetWidth;e.classList.add('show')}
+function g2pal(row,n){const p=row.querySelector('.pal');p.querySelector('b').textContent=n;p.querySelector('.m i').style.setProperty('--f',Math.min(1,n/33).toFixed(2));p.classList.toggle('over',n>33);
+ let s=p.querySelector('sup');if(n>33){if(!s){s=document.createElement('sup');p.appendChild(s)}s.textContent='+'+(n-33)}else if(s)s.remove()}
+let g2busy=0;async function g2(){if(g2busy)return;g2busy=1;const c=$('g2c'),a=$('g2a'),b=$('g2b'),over=r=>{const x=r.getBoundingClientRect(),y=c.getBoundingClientRect(),m=new DOMMatrix(getComputedStyle(c).transform);return `translate(${x.left-y.left+m.e+x.width*.36}px,${x.top-y.top+m.f+8}px) scale(1.03)`};
+ c.style.transition='none';c.classList.remove('gone','up');c.style.transform='';void c.offsetWidth;c.style.transition='';g2pal(a,22);g2pal(b,18);[a,b].forEach(r=>r.classList.remove('tg','bad','flash'));
+ await slp(250);c.classList.add('up');c.style.transform='scale(1.03)';await slp(220);
+ c.style.transform=over(a);await slp(200);a.classList.add('bad');g2pal(a,36);await slp(900);
+ a.classList.remove('bad');g2pal(a,22);c.style.transform=over(b);await slp(200);b.classList.add('tg');g2pal(b,32);await slp(800);
+ c.classList.add('gone');c.classList.remove('up');b.classList.remove('tg');b.classList.add('flash');g2busy=0}
+let g3i=-1;function g3(row){const st=$('g3'),rows=[...st.querySelectorAll('.mr3')];if(!row){g3i=(g3i+1)%rows.length;row=rows[g3i]}else g3i=rows.indexOf(row);
+ const t=$('g3t'),nm=row.querySelector('b'),sub=$('g3s');rows.forEach(r=>r.classList.toggle('sel',r===row));st.classList.add('on');
+ t.textContent=nm.textContent;sub.textContent=row.querySelector('span').textContent;sub.classList.remove('fadeup');void sub.offsetWidth;sub.classList.add('fadeup');
+ const a=nm.getBoundingClientRect();t.style.transition='none';t.style.transform='';const b=t.getBoundingClientRect();
+ t.style.transform=`translate(${a.left-b.left}px,${a.top-b.top}px) scale(${13/14})`;void t.offsetWidth;t.style.transition='transform var(--t-enter) var(--ease)';t.style.transform=''}
+function g4(btn){const on=$('g4').classList.toggle('saved');btn.textContent=on?'Ξανά από την αρχή':'Αποθήκευση';btn.classList.toggle('b',!on)}
+const W5={45:[['Δευτέρα 2/11','Doukas Trans · Market Plus DC'],['Τρίτη 3/11','Fage Athina']],46:[['Δευτέρα 9/11','Alfa Zymi · Kyriakos Frouta · PM Road'],['Τετάρτη 11/11','Skla Market']],47:[['Δευτέρα 16/11 · σήμερα','Doukas Trans · Market Plus DC · Chipita Lamia'],['Τρίτη 17/11','Fage Athina']],48:[['Δευτέρα 23/11','Kalamata Trofima · AB Market DC'],['Πέμπτη 26/11','Minoa Packing']],49:[['Τρίτη 1/12','Irini Sud'],['Τετάρτη 2/12','Knosos Packing · Lakonia Valley']]};
+let w5=47;const w5h=w=>W5[w].map(([d,r])=>`<section><h5>${d}</h5><p>${r}</p></section>`).join('');
+function w5tabs(){$('g5w').innerHTML=Object.keys(W5).map(w=>`<a class="${+w===w5?'on':''}" onclick="g5(${w}-w5)">${w}</a>`).join('');const on=$('g5w').querySelector('.on');$('g5u').style.transform=`translateX(${on.offsetLeft+(on.offsetWidth-22)/2}px)`}
+let g5busy=0;async function g5(d){const n=w5+d;if(!d||!W5[n]||g5busy)return;g5busy=1;const p=$('g5p'),dir=Math.sign(d),e='cubic-bezier(.2,.8,.2,1)';w5=n;w5tabs();
+ if(!RED())await p.animate([{transform:'none',opacity:1},{transform:`translateX(${-dir*36}px)`,opacity:0}],{duration:160,easing:'cubic-bezier(.4,0,1,1)'}).finished;
+ p.innerHTML=w5h(n);if(!RED())p.animate([{transform:`translateX(${dir*36}px)`,opacity:0},{transform:'none',opacity:1}],{duration:280,easing:e});g5busy=0}
+$('g5p').innerHTML=w5h(w5);
+
 function setAcc(a){document.body.dataset.accent=a;document.querySelectorAll('#acc b').forEach(b=>b.classList.toggle('on',b.dataset.a===a))}
 document.querySelectorAll('#acc b').forEach(b=>b.onclick=()=>setAcc(b.dataset.a));
 setAcc(new URLSearchParams(location.search).get('accent')||'ink');
 lucide.createIcons();
 function fit(){document.querySelectorAll('.fit').forEach(w=>{const f=w.firstElementChild,s=Math.min(1,w.clientWidth/1440);f.style.transform=`scale(${s})`;w.style.height=f.offsetHeight*s+'px'})}
-addEventListener('resize',fit);fit();
+addEventListener('resize',fit);fit();w5tabs();g3();
 </script>
 </body>
 </html>
