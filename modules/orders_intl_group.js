@@ -230,7 +230,7 @@ function ensureStyles() {
   .igx .oi2-seg button:disabled{opacity:.45;cursor:not-allowed}
   .igx .oi2-pts{gap:8px}
   .igx .oi2-rows{gap:8px}
-  .igx .oi2-th,.igx .oi2-stop,.igx #oi2sec_l .oi2-th,.igx #oi2sec_l .oi2-stop{grid-template-columns:34px minmax(0,1fr) 112px 128px 52px 118px 54px 50px 22px;gap:0 10px}
+  .igx .oi2-th,.igx .oi2-stop,.igx #oi2sec_l .oi2-th,.igx #oi2sec_l .oi2-stop{grid-template-columns:34px minmax(0,1fr) 104px 100px 46px 108px 50px 46px 22px;gap:0 10px}
   .igx .oi2-th{padding:0 12px 0;font-size:11px;font-weight:500;letter-spacing:.07em;text-transform:uppercase;color:var(--help)}
   .igx .oi2-th>span:first-child{grid-column:1 / span 2;text-transform:none;letter-spacing:0;font-size:13px;font-weight:600;color:var(--ink)}
   .igx .oi2-stop{position:relative;background:var(--bg);border-radius:14px;padding:8px 12px}
@@ -259,6 +259,13 @@ function ensureStyles() {
   .igx .oi2 .oi2-exn,.igx .oi2.ex-fix #oi2sec_l .oi2-exn{display:none}
   .igx .oi2.ex-fix #oi2sec_l .oi2-c-ex input[type=checkbox]{display:inline-block}
   .igx .oi2-rm{color:var(--help);font-size:15px}
+  .igx .oi2-stop input[type=date]{padding:0 8px;font-size:13.5px;cursor:pointer}
+  .igx .oi2-stop input[type=date]::-webkit-calendar-picker-indicator{display:none}
+  .igx .oi2-stop .oi2-hrs-all,.igx .oi2-stop .oi2-hm{padding:0 8px}
+  .igx .oi2-cargo>.oi2-f:nth-child(3){position:relative}
+  .igx .oi2 .oi-temp-head .oi-cmr-tick{position:absolute;right:12px;bottom:11px;display:inline-flex;align-items:center;gap:5px;font:500 12px 'Manrope',sans-serif;color:var(--body);z-index:1}
+  .igx .oi2 .oi-cmr-tick input{width:16px;height:16px;accent-color:var(--accent)}
+  .igx .oi2 #f_Price.igx-miss{border-color:var(--amber-line);background:#FFFBF2}
   .igx .igx-tools{display:flex;gap:10px;align-items:center;margin-top:2px}
   .igx .igx-tools .sp{flex:1}
   .igx .igx-tools .oi2-add{display:inline-flex;align-items:center;gap:8px;height:32px;font:500 14px 'Manrope',sans-serif;color:var(--link)}
@@ -725,6 +732,20 @@ function dressRows(m) {
     });
   }
   const oi2 = m.node.querySelector('.oi2'); if (oi2) oi2.classList.toggle('igx-ex', peOf(m) === true);
+  // a missing price: the field in amber and a «!» beside its label (design s3), never a refusal
+  const pr = q(m, 'f_Price'), lab = pr && pr.closest('.oi2-f')?.querySelector('span');
+  if (pr && pr.tagName === 'INPUT' && lab) {
+    const miss = !String(pr.value || '').trim();
+    pr.classList.toggle('igx-miss', miss);
+    const has = lab.querySelector('.igx-note');
+    if (miss && !has) lab.insertAdjacentHTML('beforeend', note('Λείπει. Αποθηκεύεται και χωρίς τιμή· θα φανεί στο «Χωρίς τιμή».'));
+    if (!miss && has) has.remove();
+  }
+  if (!m.node._igxDate) {
+    m.node._igxDate = true;
+    // the calendar icon is hidden (design: the day as text); a click on the day opens the browser's own picker
+    m.node.addEventListener('click', e => { const d = e.target; if (d && d.type === 'date' && typeof d.showPicker === 'function') { try { d.showPicker(); } catch (_) {} } });
+  }
 }
 function _dlv(btn) {
   const lot = document.querySelector('#igx #f_StockLot'); if (!lot || btn.disabled) return;
