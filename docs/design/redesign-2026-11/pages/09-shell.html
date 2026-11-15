@@ -151,7 +151,7 @@ const B1=[['Baltic Cold Foods','Βέροια → Poznań · 30 παλέτες','
 const B3=[['Ρ 2998','με το ΚΗΙ 4612 · Βέροια → Poeldijk · φεύγει Δευ 23/11','ΚΤΕΟ έληξε 5/11','r']];
 const br2=r=>`<div class="br2"><div class="two"><b><span class="el">${r[0]}</span></b><span>${r[1]}</span></div><span class="w num ${r[3]}">${r[2]}</span><span class="acts"><button class="ib2" title="Αργότερα: 1 ώρα · ως αύριο · ώσπου να λυθεί" onclick="bdone(this)">${ic('clock')}</button><button class="ib2" title="Άνοιγμα">${ic('arrow-up-right')}</button></span></div>`;
 const bg=(l,rows)=>`<div class="gh lbl">${l}<b class="num">${rows.length}</b></div>${rows.map(br2).join('')}`;
-$('fB').innerHTML=`<div class="app">${sd(DSP,'wi','ΠΚ','Παντελής Κ.','Dispatcher','6',1)}<main class="main"><div class="hd"><div><h1>Εβδομαδιαίο Διεθνών</h1><p>Εβδομάδα 14–20/11</p></div></div>${ghost([70,45,60,30,55,40,65,50])}</main></div>
+$('fB').innerHTML=`<div class="app">${sd(DSP,'wi','ΠΚ','Παντελής Κ.','Dispatcher','6',1)}<main class="main"><div class="hd"><div><h1>Εβδομαδιαίο Διεθνών</h1><p>Εβδομάδα 47</p></div></div>${ghost([70,45,60,30,55,40,65,50])}</main></div>
  <div class="bp open" id="bp"><div id="bpl">${bg('Σήμερα χωρίς φορτηγό',B0).replace('class="br2"','class="br2 hv"')}${bg('Από προηγούμενες ημέρες',B2)}${bg('Προς ανάθεση',B1)}${bg('Όχημα',B3)}</div>
   <div style="display:flex;align-items:center;gap:8px;padding:10px 20px 0;margin-top:6px;border-top:1px solid var(--line)"><span style="color:var(--help);font-size:12.5px" class="num">07:42</span>${nb('Τα διπλώματα των οδηγών δεν ελέγχθηκαν.',1)}<a style="color:var(--help);font-weight:500;font-size:13px;margin-left:8px" title="Όσα έβαλες αργότερα">Αργότερα 2</a><span class="sp"></span><a style="color:var(--link);font-weight:600;font-size:13.5px">Όλα στο «Σήμερα» →</a></div></div>`;
 /* The bell opens and closes the panel; a snoozed row leaves and every counter follows at once. */
@@ -165,7 +165,7 @@ function bdone(btn){const r=btn.closest('.br2');if(r._g)return;r._g=1;let g=r.pr
  requestAnimationFrame(()=>{r.classList.add('go');r.style.height='0px';if(last){g.style.height='0px';g.style.opacity=0;g.style.padding='0 20px'}});setTimeout(fin,ms('--t-move')+10)}
 
 /* ---------- assistant and history ---------- */
-$('fA').innerHTML=`<div class="app">${sd(ALL,'o','ΔΠ','Δημήτρης Π.','Owner','62')}<main class="main"><div class="hd"><div><h1>Παραγγελίες</h1><p>Εβδομάδα 14–20/11</p></div></div>
+$('fA').innerHTML=`<div class="app">${sd(ALL,'o','ΔΠ','Δημήτρης Π.','Owner','62')}<main class="main"><div class="hd"><div><h1>Παραγγελίες</h1><p>Εβδομάδα 47</p></div></div>
  <div style="display:grid;grid-template-columns:minmax(0,1fr) 520px 404px;gap:16px;flex:1;min-height:0">${ghost([70,45,60,30,55,40])}
   <div class="card" style="border-radius:24px 24px 0 0;padding:20px 24px"><b style="font-size:17px;font-weight:600;color:var(--ink);display:block">Tirol Obst GmbH</b><small style="color:var(--help);font-size:13px">Βέροια → Innsbruck · Δευ 16 – Παρ 20/11</small>
    <div class="tabs" style="padding:0;margin:8px 0 0;gap:22px"><a>Στοιχεία</a><a>Στάσεις</a><a class="on">Ιστορικό</a></div>

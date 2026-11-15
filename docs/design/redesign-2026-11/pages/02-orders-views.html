@@ -121,7 +121,7 @@ const eu=x=>x.toLocaleString('el-GR',{minimumFractionDigits:2});
 const fld=(l,vv,cls='')=>`<label class="fld"><span>${l}</span><div class="inp ${cls}">${vv}</div></label>`;
 const cur='<span style="width:1.5px;height:18px;background:var(--accent);margin-left:-6px"></span>';
 /* [range, open count, mark] mark: 'o' = holds the oldest open order, 'e' = no orders */
-const WKS=[['24–30/10',8,'o','6.400'],['31/10–6/11',15,'','31.900'],['7–13/11',5,'','24.500'],['14–20/11',10,'','24.950'],['21–27/11',1,'','2.900']];
+const WKS=[['Εβδ. 44',8,'o','6.400'],['Εβδ. 45',15,'','31.900'],['Εβδ. 46',5,'','24.500'],['Εβδ. 47',10,'','24.950'],['Εβδ. 48',1,'','2.900']];
 const wks=(on,all)=>`<div class="wk" style="border-bottom:1px solid var(--line);min-height:46px;gap:18px">${ic('chevron-left')}${WKS.map(([w,n,m,e],i)=>`<a class="${i===on?'on':''}" title="${e} € · ${n?n+' προς κοπή':'όλα τιμολογημένα'}">${w} ${n?`<small class="${m==='o'?'':'g'}">${n}</small>`:`<span style="color:var(--green);display:inline-grid">${ic('check')}</span>`}</a>`).join('')}${ic('chevron-right')}${all?`<a style="margin-left:6px" title="Όλες οι ανοιχτές εβδομάδες">Όλες <small class="g">39</small></a>`:''}</div>`;
 const hub=(v,sub,acts)=>`<div class="hd"><div><h1>Παραγγελίες</h1><p>${sub}</p></div><span class="sp"></span><span class="seg"><b class="on">Όλες</b><b>Διεθνείς</b><b>Εθνικές</b></span>${acts}</div>`;
 const q=`<div class="q">${ic('search')}Αναζήτηση</div>`;
@@ -137,7 +137,7 @@ const IG=[
  ['Ανδρέου Logistics','EL000000005 · 30 ημέρες',[['Τρίπολη → Βέροια','Δευ 16/11 · 24 παλέτες · Άνοδος','',450],['Καλαμάτα → Βέροια','Τρί 17/11 · 26 παλέτες · Άνοδος','',500]]]];
 const irow=([r,s,ref,p,c=''])=>`<div class="ir ${c}">${two(r,s)}<span class="rf">${ref||'–'}</span><span class="n num">${eu(p)}</span><span class="st0" title="Προς κοπή"><i class="dot"></i></span></div>`;
 $('fI').innerHTML=`<div class="app">${side('o')}<main class="main">
- ${hub('i','Εβδομάδα 14 – 20 Νοεμβρίου',btn('file-spreadsheet','Φύλλο ERP')+btn('printer','Εκτύπωση'))}
+ ${hub('i','Εβδομάδα 47',btn('file-spreadsheet','Φύλλο ERP')+btn('printer','Εκτύπωση'))}
  <div class="card" style="flex:1;min-height:0;margin-right:424px;border-radius:24px 24px 0 0;overflow:hidden">
   ${tabs('i',`<div class="q" style="width:36px;padding:0;justify-content:center" title="Αναζήτηση">${ic('search')}</div>`).replace(/<a class/g,'<a style="white-space:nowrap" class')}
   ${wks(3,1)}
@@ -187,9 +187,9 @@ const WD=[['Σάββατο 7/11',[
   [3,['Βέροια → Wien','Danubia Market Kft. · DM-110 · Παρ 6 – Δευ 9/11','c',2700],['Transfrigo Kft.','RKA 512 · XTR 088','p'],'2.700',[0,'Κενό γύρισμα']]]],
  ['Τετάρτη 11/11',[
   [4,['Βέροια → Innsbruck'+vs,'Tirol Obst GmbH · TO-4466 · Σάβ 7 – Τετ 11/11','c',3800],['ΚΗΙ 7310','Δ. Μάνος'],'3.800',[0,'Χωρίς εισαγωγή'],'ed'],
-  [5,['Νάουσα → Wien','Danubia Market Kft. · DM-112 · Δευ 9 – Τετ 11/11','10440',2900],['ΚΗΙ 4521','Γ. Αλεξίου'],'2.900 <i class="nb a" data-t="Η εισαγωγή του μετρά στην εβδομάδα 21 – 27/11.">!</i>',['München → Βέροια','Φρουτοπία Νάουσας · Σάβ 21 – Τρί 24/11','c',2900,'21 – 27/11']]]],
+  [5,['Νάουσα → Wien','Danubia Market Kft. · DM-112 · Δευ 9 – Τετ 11/11','10440',2900],['ΚΗΙ 4521','Γ. Αλεξίου'],'2.900 <i class="nb a" data-t="Η εισαγωγή του μετρά στην εβδομάδα 48.">!</i>',['München → Βέροια','Φρουτοπία Νάουσας · Σάβ 21 – Τρί 24/11','c',2900,'Εβδ. 48']]]],
  ['Παρασκευή 13/11',[
-  [6,['Μεσσήνη → Hamburg','Nordfrisch GmbH · NF-70 · Δευ 9 – Παρ 13/11','n',0],['ΚΗΙ 5102','Σ. Κάππος'],'– <i class="nb" data-t="Η εξαγωγή του δεν έχει τιμή· το σύνολο δεν βγαίνει.">!</i>',['Hamburg → Ασπρόπυργος','Nordfrisch GmbH · NF-77 · Σάβ 14 – Τρί 17/11','c',2800,'14 – 20/11'],'pe']]]];
+  [6,['Μεσσήνη → Hamburg','Nordfrisch GmbH · NF-70 · Δευ 9 – Παρ 13/11','n',0],['ΚΗΙ 5102','Σ. Κάππος'],'– <i class="nb" data-t="Η εξαγωγή του δεν έχει τιμή· το σύνολο δεν βγαίνει.">!</i>',['Hamburg → Ασπρόπυργος','Nordfrisch GmbH · NF-77 · Σάβ 14 – Τρί 17/11','c',2800,'Εβδ. 47'],'pe']]]];
 const WN=[['Δευτέρα 9/11',[[1,['Βέροια → Ασπρόπυργος','Doukas Trans','10438',450],['ΚΗΙ 0138','Θ. Ράλλης'],'900',['Τρίπολη → Βέροια','Ανδρέου Logistics','c',450]]]],
  ['Τρίτη 10/11',[[2,['Βέροια → Λαμία','Olympos Fresh','10439',400],['ΚΗΙ 8600','Λ. Δήμου'],'900',['Σπάρτη → Βέροια','Lakonia Valley','c',500]]]]];
 const whead=(a,b)=>`<div class="wh lbl"><span></span><span>${a}</span><span class="n">ΤΠΥ</span><span class="n">Ποσό €</span><span>Όχημα · σύνολο</span><span>${b}</span><span class="n">ΤΠΥ</span><span class="n">Ποσό €</span></div>`;
@@ -198,7 +198,7 @@ const edP=`<div class="wr" style="min-height:0"><span></span><div class="wed"><s
 const wday=([d,rows])=>`<div class="day"><h3>${d}</h3>${rows.map(r=>wrow(r)+(r[5]==='ed'?edT:r[5]==='pe'?edP:'')).join('')}</div>`;
 const hh=(t,s)=>`<div style="display:flex;align-items:baseline;gap:10px;margin:22px 4px 0;flex:none"><h3 style="font-size:17px;font-weight:600;color:var(--ink)">${t}</h3><span style="color:var(--help);font-size:13px">${s}</span></div>`;
 $('fW').innerHTML=`<div class="app">${side('o')}<main class="main">
- ${hub('w','Εβδομάδα 7 – 13 Νοεμβρίου',btn('file-spreadsheet','CSV')+btn('printer','Εκτύπωση'))}
+ ${hub('w','Εβδομάδα 46',btn('file-spreadsheet','CSV')+btn('printer','Εκτύπωση'))}
  <div class="card" style="border-radius:24px;flex:none">${tabs('w','<span class="seg sm" style="margin:10px 0"><b class="on">Ανά ημέρα</b><b>Ανά όχημα</b></span>')}
   ${wks(2,0).replace('border-bottom:1px solid var(--line);','')}
   <div class="xtop" style="border-top:1px solid var(--line);border-bottom:0"><b class="num">24.500,00 €</b>
@@ -207,7 +207,7 @@ $('fW').innerHTML=`<div class="app">${side('o')}<main class="main">
  ${hh('Διεθνείς','6 δρομολόγια')}${whead('Εξαγωγή','Εισαγωγή')}${WD.map(wday).join('')}
  ${hh('Εθνικές','2 φορτηγά')}${whead('Κάθοδος','Άνοδος')}${WN.map(wday).join('')}
  <div class="card" style="border-radius:var(--r-card);padding:18px 22px;margin-top:14px;flex:none"><table class="stt num"><tr><th>Κατάσταση εβδομάδας</th><th>Τζίρος €</th><th>Τιμολογημένα €</th><th>Ατιμολόγητα €</th></tr>
-  <tr><td>Διεθνή</td><td>22.700,00</td><td>13.200,00</td><td>9.500,00</td></tr><tr><td>Εθνικά</td><td>1.800,00</td><td>850,00</td><td>950,00</td></tr><tr class="s"><td>Σύνολο <span style="font-weight:400;color:var(--help);margin-left:10px;letter-spacing:0">+6% από 31/10 – 6/11</span></td><td>24.500,00</td><td>14.050,00</td><td>10.450,00</td></tr></table></div>
+  <tr><td>Διεθνή</td><td>22.700,00</td><td>13.200,00</td><td>9.500,00</td></tr><tr><td>Εθνικά</td><td>1.800,00</td><td>850,00</td><td>950,00</td></tr><tr class="s"><td>Σύνολο <span style="font-weight:400;color:var(--help);margin-left:10px;letter-spacing:0">+6% από εβδομάδα 45</span></td><td>24.500,00</td><td>14.050,00</td><td>10.450,00</td></tr></table></div>
  <div style="height:24px;flex:none"></div></main></div>`;
 
 /* ---------- Χωρίς τιμή ---------- */
@@ -256,7 +256,7 @@ $('bad').innerHTML=[
 const ptop=(a,b)=>`<div class="top"><span class="logo full" role="img" aria-label="Petras Group"></span><span class="wk2">${a}<br>${b}</span></div>`;
 const foot=(w)=>`<div class="foot" style="margin-top:auto"><span>${w}</span><span>1 / 1</span></div>`;
 const l2=(a,b)=>`<span><b style="font-weight:500">${a}</b><br><small>${b}</small></span>`;
-$('a4i').innerHTML=`${ptop('Εβδομάδα 14 – 20 Νοεμβρίου 2026','10 παραγγελίες · 5 πελάτες')}
+$('a4i').innerHTML=`${ptop('Εβδομάδα 47 · 2026','10 παραγγελίες · 5 πελάτες')}
 <div class="hero" style="grid-template-columns:1fr"><div><h2>Προς τιμολόγηση</h2><b class="t num">24.950,00 €</b></div></div>
 <div class="hr"><span>Διαδρομή · ημέρες · παλέτες</span><span>Αναφορά πελάτη</span><span>Ποσό €</span><span>ΤΠΥ</span></div>
 ${IG.map(([c,m,rows])=>`<div class="gt r" style="border:0"><span>${c}<small>${m}</small></span><span></span><span class="num">${eu(rows.reduce((a,x)=>a+x[3],0))}</span><span></span></div>${rows.map(([r,s,ref,p])=>`<div class="r">${l2(r,s)}<span>${ref||'–'}</span><span>${eu(p)}</span><span><i class="bx"></i></span></div>`).join('')}`).join('')}
@@ -264,7 +264,7 @@ ${IG.map(([c,m,rows])=>`<div class="gt r" style="border:0"><span>${c}<small>${m}
 ${foot('Ειρήνη · 16/11/2026 07:42')}`;
 const wl=(e)=>e[0]?`<span>${e[0].replace(vs,' · VS')}<br><small>${e[1].split(' · ').slice(0,2).join(' · ')}</small></span><span class="n">${e[2]==='c'?'<i class="lt">κοπή</i>':e[2]==='n'?'':e[2]}</span><span class="n">${e[2]==='n'?'<i class="lt">χωρίς τιμή</i>':eu(e[3])+(e[4]?'*':'')}</span>`:`<span style="color:#777">${e[1]}</span><span></span><span></span>`;
 const wpr=([n,e,veh,sum,i])=>`<div class="r"><span>${n}</span>${wl(e)}<span>${veh[0].replace(ok,'')}<br><small>${veh[1]} · <b>${String(sum).replace(/<i.*$/,'').trim()}${/<i/.test(sum)?'*':''}</b></small></span>${wl(i)}</div>`;
-$('a4w').innerHTML=`${ptop('7 – 13 Νοεμβρίου 2026','Διεθνείς και εθνικές')}
+$('a4w').innerHTML=`${ptop('Εβδομάδα 46 · 2026','Διεθνείς και εθνικές')}
 <div class="hero"><div><h2>Εβδομάδα τιμολόγησης</h2><b class="t num">24.500,00 €</b></div>
  <div><div class="mix"><i class="f" style="flex:14050"></i><i class="o" style="flex:10450"></i></div><div class="kv3 num"><span><i style="background:#111"></i>Τιμολογημένα</span><span>14.050,00</span><span><i style="background:#C8C8C8"></i>Προς κοπή · 5</span><span>10.450,00</span><span><i style="border:.5px solid #111;box-sizing:border-box"></i>Χωρίς τιμή · 1</span><span>–</span></div></div></div>
 <p class="psec">Διεθνείς<em>6 δρομολόγια</em></p>

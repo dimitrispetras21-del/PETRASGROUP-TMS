@@ -152,7 +152,7 @@ const PL=[['ΚΗΙ 4162 · Ρ 9498','Α. Κοσκοσίδης · 24 – 29/10',6
  ['ΚΗΙ 8302 · Ρ 1983','Δ. Αντζιμάνοφ · 25/10 – 3/11',7200,null,'Σε εξέλιξη.','run'],['Transfrigo Kft.','συνεργάτης · 27 – 30/10',2700,null,'Λείπει το κόμιστρο του συνεργάτη.','p']];
 const prow=([a,b,r,c,m,cls=''])=>`<div class="pl ${cls==='sel'?'sel':''}"><div class="two"><b class="num">${a}</b><span>${b}</span></div><span class="n num hx">${eu(r)}</span><span class="n num hx ${c?'':'g'}">${c?eu(c):'–'}</span>${m?`<i class="nb ${cls==='run'?'a':''}" data-t="${m}">!</i>`:'<span></span>'}<span class="net num ${c?'':'u'}">${c?eu(r-c):'—'}</span><span class="pc num hx">${c?((r-c)/r*100).toFixed(0)+'%':''}</span></div>`;
 $('fP').innerHTML=`<div class="app">${side('e')}<main class="main">
- ${hd('Αποτέλεσμα δρομολογίων','Εβδομάδα 44 · 24 – 30 Οκτωβρίου',`<button class="pill" style="width:40px;padding:0;justify-content:center" title="Ρυθμίσεις">${ic('settings-2')}</button><button class="pill">${ic('printer')}Εκτύπωση</button><button class="pill b">${ic('plus')}Νέο δρομολόγιο</button>`)}
+ ${hd('Αποτέλεσμα δρομολογίων','Εβδομάδα 44',`<button class="pill" style="width:40px;padding:0;justify-content:center" title="Ρυθμίσεις">${ic('settings-2')}</button><button class="pill">${ic('printer')}Εκτύπωση</button><button class="pill b">${ic('plus')}Νέο δρομολόγιο</button>`)}
  <div class="card open4" style="flex:1;min-height:0;margin-right:424px;border-radius:24px 24px 0 0;overflow:hidden">
   <div class="wk" style="border-bottom:1px solid var(--line);min-height:46px">${ic('chevron-left')}<a>41</a><a>42</a><a>43</a><a class="on">44</a><a>45</a>${ic('chevron-right')}<span class="sp"></span><span class="seg sm" style="margin:8px 0"><b class="on">Δρομολόγια</b><b>Φορτηγό</b><b>Οδηγός</b></span></div>
   <div class="kpb"><b class="num">8.108,00 € <small>καθαρό</small></b><span title="Μόνο τα πλήρη δρομολόγια"><b>4</b> από 10 πλήρη</span><span class="sp"></span><span>έσοδα <b class="num">26.600,00</b></span><span>κόστη <b class="num">18.492,00</b></span><span><b class="num">30%</b></span></div>
@@ -224,7 +224,7 @@ ${[['Καύσιμα','1.300 L',1774.19,425.81,2200],['Διόδια','GR 60 · HU
 <div class="r psum"><span>Σύνολο κοστών</span><span>3.483,19</span><span>425,81</span><span class="tot">3.909,00</span></div>
 <div class="r psum" style="margin-top:14px;border-top-width:1.5px"><span>Καθαρό</span><span></span><span></span><span class="tot" style="font-size:13px">2.891,00</span></div>
 ${foot}`;
-$('a4w').innerHTML=`${ptop('Αποτέλεσμα δρομολογίων','Εβδομάδα 44 · 24 – 30 Οκτωβρίου 2026')}
+$('a4w').innerHTML=`${ptop('Αποτέλεσμα δρομολογίων','Εβδομάδα 44 · 2026')}
 <div class="hero"><div><h2>Αποτέλεσμα εβδομάδας</h2><b class="t num">8.108,00 €</b></div><div><div class="kv3 num"><span>Έσοδα πλήρων</span><span>26.600,00</span><span>Κόστη πλήρων</span><span>18.492,00</span><span>Πλήρη δρομολόγια</span><span>4 από 10</span></div></div></div>
 <p class="psec">Πλήρη<em>4 δρομολόγια</em></p><div class="hr"><span>Φορτηγό · οδηγός · ημέρες</span><span>Έσοδα</span><span>Κόστη</span><span>Καθαρό</span><span>%</span></div>
 ${PL.slice(0,4).map(([a,b,r,c])=>`<div class="r"><span><b>${a}</b><i>${b}</i></span><span>${eu(r)}</span><span>${eu(c)}</span><span class="tot">${eu(r-c)}</span><span>${((r-c)/r*100).toFixed(0)}%</span></div>`).join('')}
