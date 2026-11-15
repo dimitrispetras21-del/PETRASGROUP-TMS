@@ -490,7 +490,7 @@ table.spec td b{color:var(--ink);font-weight:600}
 .pn{position:relative}.pn sup{position:absolute;left:100%;top:-3px;margin-left:1px}
 .vpop h5{margin-top:0}
 .lc .asb{background:none;padding:0}.lc .asb.need{padding:4px 12px}
-#f5>.app{zoom:.88;inset:0 auto auto 0;width:1636px;height:1023px}
+#f5>.app{zoom:.75;inset:0 auto auto 0;width:1920px;height:1200px}
 /* Weekly International, structure B (owner's choice 15/11): each side is one route (leaf per day, its points beside it, arrow, deliveries). Assignment as on yesterday's national board (icon tile + text). Today is ink, not blue. */
 .lf.s:not(.t) b{font-size:12.5px;font-weight:600;color:var(--body)}
 .w9h,.w9row{display:grid;gap:0 14px;align-items:center;padding:0 20px 0 14px}.w9h{height:34px;margin-top:6px}
@@ -512,6 +512,17 @@ table.spec td b{color:var(--ink);font-weight:600}
 .w9pal.o b,.w9pal.o sup{color:var(--red)}.w9pal.o .m i{background:var(--red)}.w9pal sup{position:absolute;left:100%;top:-2px;font-size:10px;font-weight:700;margin-left:1px}
 .w9l2{font-size:12.5px;line-height:16px;color:var(--help);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-left:40px}.w9l2 b{font-weight:600;color:var(--body)}.w9l2 svg.lucide{width:13px;height:13px;vertical-align:-2px;margin-right:6px;color:#A9ABB3}
 .w9vh{display:inline-flex;align-items:center;gap:3px;cursor:pointer;color:inherit}.w9vh svg.lucide{width:14px;height:14px}.w9vm{width:24px;height:24px;border-radius:7px;display:grid;place-items:center;color:#8A8D96;box-shadow:inset 0 0 0 1px #DADDE3;cursor:pointer}.w9vm svg.lucide{width:13px;height:13px}.w9vm.r{box-shadow:none;outline:1.5px dashed var(--red);outline-offset:-1.5px;color:var(--red);background:#FEF6F6}
+/* same density as today's board (owner 15/11): 1920-wide screen, rows about 36px, text about 12px */
+#f5 .w9row{min-height:38px;font-size:12px}#f5 .w9h{height:28px;margin-top:4px}#f5 .w9row.sub{margin-top:-5px;padding-bottom:5px}
+#f5 .w9p b,#f5 .w9as b,#f5 .w9v b{font-size:12.5px;line-height:16px}#f5 .w9p span,#f5 .w9as .tx span,#f5 .w9v>span,#f5 .w9l2{font-size:11px;line-height:14px}
+#f5 .lf{width:28px;height:28px;border-radius:6px}#f5 .lf i{font-size:7.5px}#f5 .lf b,#f5 .lf.s:not(.t) b{font-size:12px;margin-top:2px}#f5 .lf.dn{background:#EAF6EF}#f5 .lf.dn b{color:var(--green)}
+#f5 .w9ic{width:26px;height:26px;border-radius:7px}#f5 .w9ic svg.lucide{width:13px;height:13px}#f5 .w9pal b{font-size:13px}#f5 .w9pal .m{width:26px}
+#f5 .w9gap{height:28px;border-radius:8px;font-size:12px}#f5 .w9gap a,.w9tx a{margin-left:auto;display:inline-flex;align-items:center;gap:4px;color:var(--link);font-weight:500;cursor:pointer}#f5 .w9gap a.alt{margin-left:10px;color:var(--help);font-weight:400}#f5 .w9gap a svg.lucide,.w9tx a svg.lucide{width:12px;height:12px}
+#f5 .day{margin-top:8px;padding:4px 0 2px;border-radius:12px}#f5 .day>h3{font-size:13.5px;padding:4px 18px 2px}#f5 .day.none{padding:0}#f5 .day.none>h3{font-size:12.5px}
+#f5 .w9no{font-size:12px}#f5 .w9d,#f5 .w9r{gap:6px}#f5 .w9ps{gap:10px}#f5 .w9m{font-size:11px;padding:1px 5px}#f5 .w9vm{width:20px;height:20px;border-radius:6px}#f5 .w9vm svg.lucide{width:11px;height:11px}
+.w9pc{display:flex;align-items:center;justify-content:flex-end;gap:6px;min-width:0}.w9pc .tag{margin:0;font-size:10px;line-height:14px;padding:0 5px}.w9clip{color:var(--help);display:grid;cursor:pointer}.w9clip svg.lucide{width:13px;height:13px}
+.w9n{font-style:normal;flex:none;width:14px;height:14px;border-radius:4px;background:var(--ink);color:#fff;font-size:9.5px;font-weight:700;display:grid;place-items:center;margin-right:5px}
+.w9tx{display:flex;align-items:center;gap:8px;color:var(--help);font-size:12px;min-width:0;white-space:nowrap}
 #f5 .day.today{box-shadow:inset 0 0 0 1.5px var(--primary)}#f5 .day.today>h3{color:var(--primary)}#f5 .lf.t{background:var(--primary)}
 #f5 .day.past .w9row>*:not(.w9no):not(.n){opacity:.62}#f5 .day.past .w9ic{background:#EEF0F4;color:#7C7E88}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;transition-delay:0ms!important}
@@ -1065,30 +1076,32 @@ const lfMany=a=>a.length>1?`<div class="lns">${a.map(x=>lfLn(x[1],'',x[0],x[2],x
    Each side is one route: a leaf per day with that day's points beside it, an arrow, then the deliveries. At most three points are
    drawn per side; the rest show as +N and open on hover. */
 (function(){
- const TODAY='Δευ 16',P=(n,c,d,p,t)=>({n,c,d,p,t});
- const leaf=d=>{const [w,n]=d.split(' ');return `<span class="lf s ${d===TODAY?'t':''}"><i>${lfUp(w)}</i><b>${n}</b></span>`};
+ const TODAY=window.WK_TODAY||'Δευ 16',P=(n,c,d,p,t)=>({n,c,d,p,t});
+ const leaf=(d,done)=>{const [w,n]=d.split(' ');return `<span class="lf s ${d===TODAY?'t':''} ${done?'dn':''}" title="${done?'Ολοκληρώθηκε · ':''}κλικ: αλλαγή ημέρας"><i>${lfUp(w)}</i><b>${n}</b></span>`};
  const byDay=a=>{const g=[];a.forEach(x=>{const l=g[g.length-1];l&&l[0]===x.d?l[1].push(x):g.push([x.d,[x]])});return g};
  const pal=n=>n==null?'<span></span>':`<div class="w9pal ${n>33?'o':''}"><b class="num">${n}</b>${n>33?`<sup>+${n-33}</sup>`:''}<span class="m"><i style="--f:${Math.min(1,n/33)}"></i></span></div>`;
  const asg=([k,a,b])=>{const I={o:'truck',p:'users',x:'shuffle',n:'truck',am:'truck'}[k];
   return `<div class="w9as ${k==='o'||k==='x'?'':k}"><span class="w9ic">${ic(I)}</span><div class="tx"><b class="num">${k==='n'||k==='am'?'Ανάθεση':a}</b>${b?`<span>${b}</span>`:''}</div></div>`};
- const vcell=v=>{if(!v)return '<span></span>';const tr=[...new Set(v.map(x=>x.t).filter(Boolean))],miss=v.filter(x=>!x.t).length;
+ const vcell=(v,nat)=>{if(!v)return nat&&!OPEN?`<span class="w9vm" title="Εθνικό σκέλος">${ic('warehouse')}</span>`:'<span></span>';const tr=[...new Set(v.map(x=>x.t).filter(Boolean))],miss=v.filter(x=>!x.t).length;
   if(!OPEN)return `<span class="w9vm ${miss?'r':''}" title="${v.map(x=>x.n+' · '+(x.t||'χωρίς φορτηγό')).join(' | ')}">${ic('warehouse')}</span>`;
   return v.length===1?`<div class="w9v"><b><span class="el">${v[0].n}</span></b><span>${v[0].d} · ${v[0].t||'<em>χωρίς φορτηγό</em>'}</span></div>`
    :`<div class="w9v"><b><span class="el">${v.map(x=>x.n).join(' · ')}</span></b><span>+${v.length-1} · ${tr[0].split(' · ')[0]}${tr.length>1?` +${tr.length-1}`:''}${miss?` · <em>λείπει ${miss}</em>`:''}</span></div>`};
  const grp=a=>{const g=byDay(a);let cap=Math.max(3,g.length)-g.length;const sh=g.map(([d,p])=>{const k=Math.min(p.length-1,cap);cap-=k;return 1+k});
-  return g.map(([d,p],i)=>`<div class="w9d" style="flex:${sh[i]} 1 0">${d?leaf(d):'<span style="width:32px;flex:none"></span>'}<div class="w9ps">${p.slice(0,sh[i]).map(q=>`<div class="w9p"><b><span class="el">${q.n}</span>${tags(q.t||'')}</b><span>${q.c}${q.p?` · ${q.p}π`:''}</span></div>`).join('')}${p.length>sh[i]?`<span class="w9m">+${p.length-sh[i]}</span>`:''}</div></div>`).join('')};
- const side=x=>`<div class="w9r">${grp(x.L)}<i class="w9a">→</i>${grp(x.D)}</div>${pal(x.pal)}`,E2='<span></span><span></span>';
+  return g.map(([d,p],i)=>`<div class="w9d" style="flex:${sh[i]} 1 0">${d?leaf(d,p.every(q=>q.done)):'<span style="width:28px;flex:none"></span>'}<div class="w9ps">${p.slice(0,sh[i]).map(q=>`<div class="w9p"><b>${a.length>1?`<em class="w9n">${a.indexOf(q)+1}</em>`:''}<span class="el">${q.n}</span>${tags(q.t||'')}</b><span>${q.c}${q.p?` · ${q.p}π`:''}</span></div>`).join('')}${p.length>sh[i]?`<span class="w9m">+${p.length-sh[i]}</span>`:''}</div></div>`).join('')};
+ const palc=x=>`<div class="w9pc">${x.pe?'<span class="tag" title="Ανταλλαγή παλετών">PE</span>':''}${x.doc?`<span class="w9clip" title="Έγγραφα παραγγελίας">${ic('paperclip')}</span>`:''}${pal(x.pal)}</div>`;
+ const side=x=>`<div class="w9r">${grp(x.L)}<i class="w9a">→</i>${grp(x.D)}</div>${palc(x)}`,E2='<span></span><span></span>';
+ const txt=(t,l)=>`<div class="w9tx" style="grid-column:span 2">${t}${l?`<a>${ic('plus')}${l}</a>`:''}</div>`;
  /* the two Veroia columns are side panels: closed by default (owner 15/11), a small mark stays on the rows that go through Veroia */
  let OPEN=false,G='';
- const grid=()=>{const v=OPEN?'176px':'30px';G=`28px ${v} minmax(0,1fr) 44px 184px minmax(0,1fr) 44px ${v} 22px`};
+ const grid=()=>{const v=OPEN?'176px':'26px';G=`26px ${v} minmax(0,1fr) 92px 176px minmax(0,1fr) 92px ${v} 20px`};
  const sub=(l,r)=>`<div class="w9row sub" style="grid-template-columns:${G}"><span></span><span></span><div class="w9l2">${l||''}</div><span></span><span></span><div class="w9l2">${r||''}</div><span></span><span></span><span></span></div>`;
- const row=r=>`<div class="w9row" style="grid-template-columns:${G}"><span class="w9no num">${r.no}</span>${vcell(r.vTo)}${r.ex?side(r.ex):E2}${asg(r.as)}${r.im?side(r.im):r.gap?`<div class="w9gap" style="grid-column:span 2">${ic('undo-2')}Κενό γύρισμα · ${r.gap}</div>`:E2}${vcell(r.vFrom)}<span></span></div>`
+ const row=r=>`<div class="w9row" style="grid-template-columns:${G}"><span class="w9no num">${r.no}</span>${vcell(r.vTo,r.nat&&r.ex)}${r.ex?side(r.ex):r.exTxt?txt(r.exTxt):E2}${asg(r.as)}${r.im?side(r.im):r.gap?`<div class="w9gap" style="grid-column:span 2">${ic('undo-2')}Κενό γύρισμα · ${r.gap}<a>${ic('plus')}Νέα εισαγωγή</a><a class="alt">ή κομμάτι από απόθεμα</a></div>`:r.imTxt?txt(r.imTxt,r.imAdd):E2}${vcell(r.vFrom,r.nat&&!r.ex)}<span></span></div>`
   +(r.note?sub(r.note[0]&&ic('corner-down-right')+r.note[0],r.note[1]&&ic('corner-down-right')+r.note[1]):'');
  const NV={n:'Naoussa Peach Union',c:'Νάουσα'};
  const WK=[
   ['Σάββατο 14/11','past',[
    {ex:{L:[P('Pella Peach Coop','Σκύδρα','Τετ 11',0,'PE')],D:[P('Wiener Frische','Wien','Σάβ 14')],pal:33},as:['p','Transfrigo Kft.','RKA 512 · XTR 088']},
-   {vTo:[{...NV,d:'Δευ 9',t:'ΚΗΙ 2140 · Ρήγας'}],ex:{L:[P('Veria Fruit Pack','Βέροια','Τρί 10',0,'PE')],D:[P('Tirol Obst Lager','Innsbruck','Σάβ 14')],pal:32},as:['o','ΚΗΙ 3310 · Ρ 7120','Θανάσης Μέλλιος'],
+   {vTo:[{...NV,d:'Δευ 9',t:'ΚΗΙ 2140 · Ρήγας'}],ex:{L:[P('Veria Fruit Pack','Βέροια','Τρί 10',0,'PE')],D:[P('Tirol Obst Lager','Innsbruck','Σάβ 14')],pal:32,pe:1,doc:1},as:['o','ΚΗΙ 3310 · Ρ 7120','Θανάσης Μέλλιος'],
     im:{L:[P('Alpina Fresh S.r.l.','Modena','Δευ 16')],D:[P('Frutopia Packhouse','Νάουσα','Πέμ 19')],pal:19},note:['','Παράδοση με τοπικό οδηγό · Frutopia Packhouse · <i>χωρίς οδηγό</i>']},
    {ex:{L:[P('Imathia Kiwi Growers','Αλεξάνδρεια','Τετ 11',14),P('Meliki Agro','Μελίκη','Τετ 11',9),P('Skydra Fresh','Σκύδρα','Τετ 11',10)],D:[P('Lidl DC Graz','Graz','Σάβ 14')],pal:33},as:['o','ΚΗΙ 5127 · Ρ 6604','Στέλιος Καρράς'],
     im:{L:[P('Steirer Apfel GmbH','Gleisdorf','Δευ 16',0,'PE')],D:[P('Macedonia Fresh Market','Θεσσαλονίκη','Τετ 18')],pal:28}}]],
@@ -1115,7 +1128,7 @@ const lfMany=a=>a.length>1?`<div class="lns">${a.map(x=>lfLn(x[1],'',x[0],x[2],x
  const head=()=>`<div class="w9h lbl" style="grid-template-columns:${G}">${['',OPEN?`<a class="w9vh" title="Κλείσιμο">${ic('chevron-right')}Προς Βέροια</a>`:`<a class="w9vh" title="Προς Βέροια">${ic('chevron-left')}</a>`,'Εξαγωγή · φόρτωση → παράδοση','Παλ.','Ανάθεση','Εισαγωγή · φόρτωση → παράδοση','Παλ.',OPEN?`<a class="w9vh" title="Κλείσιμο">Από Βέροια${ic('chevron-left')}</a>`:`<a class="w9vh" title="Από Βέροια">${ic('chevron-right')}</a>`,''].map(c=>`<span ${c==='Παλ.'?'style="text-align:right"':''}>${c}</span>`).join('')}</div>`;
  const bh=$('f5').querySelector('.bh'),old=bh.nextElementSibling,box=document.createElement('div');
  box.style.cssText='flex:1;min-height:0;overflow:hidden;padding:0 2px';
- const draw=()=>{let no=0;grid();box.innerHTML=head()+`<div style="margin-top:-10px">${WK.map(([t,c,rows])=>`<section class="day ${c}"><h3>${t}</h3>${rows.map(r=>row({...r,no:++no})).join('')}</section>`).join('')}</div>`;if(window.lucide)lucide.createIcons()};
+ const draw=()=>{let no=0;grid();box.innerHTML=head()+`<div style="margin-top:-8px">${(window.WK_REAL||WK).map(([t,c,rows])=>`<section class="day ${c}"><h3>${t}</h3>${rows.map(r=>row({...r,no:++no})).join('')}</section>`).join('')}</div>`;if(window.lucide)lucide.createIcons()};
  box.addEventListener('click',e=>{if(e.target.closest('.w9vh')){OPEN=!OPEN;draw()}});draw();
  old.remove();bh.replaceWith(box);
 })();
