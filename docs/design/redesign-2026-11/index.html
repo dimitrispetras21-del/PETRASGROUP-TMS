@@ -543,6 +543,14 @@ table.spec td b{color:var(--ink);font-weight:600}
 .w9v,.w9vm{position:relative}.w9vp{display:none;left:0;top:calc(100% + 3px);width:440px;text-align:left;font-weight:400}.w9v:hover .w9vp,.w9vm:hover .w9vp{display:block}.vpop.w9vp .vpr{grid-template-columns:minmax(0,1.5fr) 56px minmax(0,1fr)}
 /* the name of a place is ink, the town under it is grey (owner 15/11); the rule for the grey second line was also catching the name's inner span */
 #f5 .w9p b .el,#f5 .w9as b .el,#f5 .w9v b .el,.w9p b .el,.w9as b .el,.w9v b .el{color:inherit;font-size:inherit;font-weight:inherit;line-height:inherit}
+/* V2: proposals for the owner (15/11) — a deep navy instead of pure black, title and weeks on one line, a soft band behind the
+   assignment column, fewer small boxes, a dash for 'export only' */
+#f5.v2{--primary:#0B1929;--primary-hover:#16293F}
+#f5.v2 .hd h1{font-weight:600;font-size:22px;letter-spacing:-.3px}#f5.v2 .hd p{display:none}
+.w9wk{display:flex;align-items:center;gap:2px;margin-left:18px;color:var(--help)}.w9wk a{padding:4px 9px;border-radius:7px;font-size:13px;color:var(--body);font-variant-numeric:tabular-nums}.w9wk a.on{background:#fff;color:var(--ink);font-weight:600}.w9wk svg.lucide{width:15px;height:15px}
+#f5.v2 .w9as{align-self:stretch;background:#F4F6F9;margin:0 -7px;padding:0 7px}#f5.v2 .w9as.n,#f5.v2 .w9as.am{background:#F4F6F9}
+#f5.v2 .w9vm{box-shadow:none}#f5.v2 .w9pc .tag{border:0;padding:0;background:none;color:var(--help);font-weight:600}
+#f5.v2 .w9cp,#f5.v2 .w9snd{opacity:0}#f5.v2 .w9row:hover .w9cp,#f5.v2 .w9row:hover .w9snd{opacity:1}
 /* cycle 3 of critics (15/11) */
 .w9hf{position:relative}.w9hf:hover>.w9pp{display:block}.w9pp{width:420px}
 #f5 .w9gap a.alt{display:none;opacity:1}#f5 .w9row:hover .w9gap a.alt{display:inline-flex}
@@ -1112,6 +1120,8 @@ const lfMany=a=>a.length>1?`<div class="lns">${a.map(x=>lfLn(x[1],'',x[0],x[2],x
    Each side is one route: a leaf per day with that day's points beside it, an arrow, then the deliveries. At most three points are
    drawn per side; the rest show as +N and open on hover. */
 (function(){
+ /* V2 = five visual proposals shown to the owner beside the current look (15/11); off unless window.WK_ALT.v2 is set */
+ const V2=!!(window.WK_ALT&&window.WK_ALT.v2);
  const TODAY=window.WK_TODAY||'Δευ 16',P=(n,c,d,p,t)=>({n,c,d,p,t});
  const dn=d=>+d.split(' ')[1];
  const leaf=(d,done,load)=>{const [w,n]=d.split(' '),late=load&&!done&&d!==TODAY&&dn(d)<dn(TODAY);return `<span class="lf s ${d===TODAY?'t':''} ${done?'dn':''} ${late?'lt':''}" title="${done?'Ολοκληρώθηκε · ':late?'Η ημέρα φόρτωσης πέρασε · ':''}κλικ: αλλαγή ημέρας"><i>${lfUp(w)}</i><b>${n}</b></span>`};
@@ -1140,7 +1150,7 @@ const lfMany=a=>a.length>1?`<div class="lns">${a.map(x=>lfLn(x[1],'',x[0],x[2],x
  const grid=()=>{const v=OPEN?'176px':'26px';G=`26px ${v} minmax(0,1fr) 92px 200px minmax(0,1fr) 92px ${v} 20px`};
  const sub=(l,r)=>`<div class="w9row sub" style="grid-template-columns:${G}"><span></span><span></span><div class="w9l2">${l||''}</div><span></span><span></span><div class="w9l2">${r||''}</div><span></span><span></span><span></span></div>`;
  const late=r=>r.ex&&r.ex.L.some(q=>q.d&&!q.done&&q.d!==TODAY&&dn(q.d)<dn(TODAY));
- const row=r=>`<div class="w9row ${late(r)?'late':''}" style="grid-template-columns:${G}"><span class="w9no num">${r.no}</span>${vcell(r.vTo,r.nat&&r.ex)}${r.ex?side(r.ex,r.sec):r.exTxt?txt(r.exTxt):E2}${asg(r.as)}${r.im?side(r.im):r.gap?`<div class="w9gap ${r.gapNow?'':'z'}" style="grid-column:span 2">${ic('undo-2')}<span class="el">Κενό γύρισμα · ${r.gap}</span><a>${ic('plus')}Νέα εισαγωγή</a><a class="alt">ή κομμάτι από απόθεμα</a></div>`:r.imTxt?txt(r.imTxt,r.imAdd,r.imAdd):E2}${vcell(r.vFrom,r.nat&&!r.ex)}${r.as[0]==='n'||r.as[0]==='am'?'<span></span>':`<span class="w9snd" title="Αποστολή στοιχείων στον οδηγό">${ic('send')}</span>`}</div>`
+ const row=r=>`<div class="w9row ${late(r)?'late':''}" style="grid-template-columns:${G}"><span class="w9no num">${r.no}</span>${vcell(r.vTo,r.nat&&r.ex)}${r.ex?side(r.ex,r.sec):r.exTxt?txt(r.exTxt):E2}${asg(r.as)}${r.im?side(r.im):r.gap?`<div class="w9gap ${r.gapNow?'':'z'}" style="grid-column:span 2">${ic('undo-2')}<span class="el">Κενό γύρισμα · ${r.gap}</span><a>${ic('plus')}Νέα εισαγωγή</a><a class="alt">ή κομμάτι από απόθεμα</a></div>`:r.imTxt?(V2&&!r.imAdd?`<div class="w9tx" style="grid-column:span 2" title="${r.imTxt}">—</div>`:txt(r.imTxt,r.imAdd,r.imAdd)):E2}${vcell(r.vFrom,r.nat&&!r.ex)}${r.as[0]==='n'||r.as[0]==='am'?'<span></span>':`<span class="w9snd" title="Αποστολή στοιχείων στον οδηγό">${ic('send')}</span>`}</div>`
   +(r.note?sub(r.note[0]&&ic('corner-down-right')+r.note[0],r.note[1]&&ic('corner-down-right')+r.note[1]):'');
  const NV={n:'Naoussa Peach Union',c:'Νάουσα'};
  const WK=[
@@ -1181,6 +1191,9 @@ const lfMany=a=>a.length>1?`<div class="lns">${a.map(x=>lfLn(x[1],'',x[0],x[2],x
  const DATA=window.WK_REAL||WK,ALL=DATA.flatMap(d=>d[2]),CNT={ex:ALL.filter(r=>r.ex).length,im:ALL.filter(r=>r.im).length,need:ALL.filter(r=>r.as[0]==='n').length,gap:ALL.filter(r=>r.gapNow).length,late:0};
  const draw=()=>{let no=0;grid();CNT.late=ALL.filter(late).length;st.innerHTML=strip();box.innerHTML=head()+`<div style="margin-top:-8px">${DATA.map(([t,c,rows])=>`<section class="day ${c}"><h3>${t}</h3>${rows.map(r=>row({...r,no:++no,sec:+(t.match(/ (\d+)\//)||[0,0])[1]})).join('')}</section>`).join('')}</div>`;if(window.lucide)lucide.createIcons()};
  box.addEventListener('click',e=>{if(e.target.closest('.w9vh')){OPEN=!OPEN;draw()}});draw();
+ if(V2){const f=$('f5'),hd=f.querySelector('.hd'),wk=f.querySelector('.wk'),tabs=document.createElement('span');f.classList.add('v2');tabs.className='w9wk';
+  [...wk.children].forEach(c=>{if(!c.classList.contains('sp')&&!c.classList.contains('q'))tabs.appendChild(c)});hd.insertBefore(tabs,hd.querySelector('.sp'));
+  const q=wk.querySelector('.q');if(q){q.style.margin='0 6px 0 0';hd.insertBefore(q,hd.querySelector('.sp').nextSibling)}wk.remove()}
  old.remove();bh.replaceWith(box);box.before(st);if(window.lucide)lucide.createIcons();
 })();
 
