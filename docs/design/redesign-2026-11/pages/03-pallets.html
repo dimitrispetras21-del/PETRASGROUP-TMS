@@ -9,7 +9,7 @@
 <style>
 /* DESIGN MOCKUP ONLY. Invented names and round quantities. Page-specific rules for Παλέτες. */
 .who{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
-.kpb{display:flex;align-items:baseline;gap:22px;padding:16px 28px;border-bottom:1px solid var(--line);white-space:nowrap}
+.kpb{display:flex;align-items:baseline;gap:18px;padding:16px 28px;border-bottom:1px solid var(--line);white-space:nowrap}
 .kpb>b{font-size:26px;font-weight:500;color:var(--ink);letter-spacing:-.4px}.kpb>b small{font-size:14px;color:var(--help);font-weight:400;letter-spacing:0}
 .kpb span{color:var(--body);font-size:13px}.kpb span b{color:var(--ink);font-weight:600}
 .gh{display:flex;align-items:baseline;gap:10px;padding:16px 28px 4px}
@@ -31,7 +31,7 @@
 .kv2{display:grid;grid-template-columns:96px minmax(0,1fr);gap:0 10px;align-items:center;min-height:32px;border-top:1px solid var(--line-2);font-size:13.5px}.kv2:first-of-type{border-top:0}.kv2 dt{color:var(--help);font-size:12.5px}.kv2 dd{margin:0;color:var(--ink);font-weight:500}
 /* week */
 .wh,.wr{display:grid;grid-template-columns:26px minmax(0,1fr) 66px 66px 184px minmax(0,1fr) 66px 66px;gap:0 12px;align-items:center;padding:0 20px 0 12px}
-.wh{height:34px;margin-top:6px}.wh .n{text-align:right}
+.wh{height:34px;margin-top:6px}.wh .n{text-align:right;white-space:nowrap}
 .wr{min-height:50px;position:relative;font-size:13.5px}
 .wr+.wr::before{content:'';position:absolute;left:20px;right:20px;top:0;border-top:1px solid var(--line-2)}
 .wr .no{color:var(--help);text-align:center;font-size:13px}
@@ -208,9 +208,9 @@ $('fW').innerHTML=`<div class="app">${side('p')}<main class="main">
  ${hub('Εβδομάδα 7 – 13 Νοεμβρίου')}
  <div class="card" style="border-radius:24px;flex:none">${tabs('w','<span class="seg sm" style="margin:10px 12px 10px 0"><b class="on">Με ανταλλαγή 6</b><b>Όλες 6</b></span>'+q)}
   <div class="wk" style="min-height:46px;gap:18px">${ic('chevron-left')}${WKS.map(([w,n,ok],i)=>`<a class="${i===2?'on':''}" style="white-space:nowrap">${w}${n?` <i>${n}</i>`:''}${ok?` <span style="color:var(--green);display:inline-grid" title="Ελέγχθηκε">${ic('check')}</span>`:''}</a>`).join('')}${ic('chevron-right')}</div>
-  <div class="kpb" style="border-top:1px solid var(--line);border-bottom:0"><b class="num">+13 <small>δώσαμε περισσότερες</small></b><span>πήραμε <b class="num">326</b></span><span>δώσαμε <b class="num">339</b></span><span><b>8</b> παραγγελίες με ανταλλαγή</span><span class="sp"></span>
-   <span class="chip a"><b>3</b> εκκρεμείς</span><span class="chip a"><b>1</b> χωρίς πλήρη επιστροφή</span><span class="chip r"><b>1</b> λείπει</span><button class="chk" id="ck" onclick="ck()">${ic('check')}Ελέγχθηκε</button></div></div>
- <div class="wh lbl"><span></span><span>Εξαγωγή</span><span class="n">Φόρτ. Π·Δ</span><span class="n">Παράδ. Π·Δ</span><span>Όχημα</span><span>Εισαγωγή</span><span class="n">Φόρτ. Π·Δ</span><span class="n">Παράδ. Π·Δ</span></div>
+  <div class="kpb" style="border-top:1px solid var(--line);border-bottom:0"><b class="num" title="Δώσαμε 13 περισσότερες από όσες πήραμε">+13</b><span>πήραμε <b class="num">326</b></span><span>δώσαμε <b class="num">339</b></span><span><b>8</b> με ανταλλαγή</span><span class="sp"></span>
+   <span class="chip a"><b>3</b> εκκρεμείς</span><span class="chip a" title="Χωρίς πλήρη επιστροφή"><b>1</b> δεν γύρισαν</span><span class="chip r"><b>1</b> λείπει</span><button class="chk" id="ck" onclick="ck()">${ic('check')}Ελέγχθηκε</button></div></div>
+ <div class="wh lbl"><span></span><span>Εξαγωγή</span><span class="n" title="Φόρτωση: πήραμε · δώσαμε">Φόρτωση</span><span class="n" title="Παράδοση: πήραμε · δώσαμε">Παράδοση</span><span>Όχημα</span><span>Εισαγωγή</span><span class="n" title="Φόρτωση: πήραμε · δώσαμε">Φόρτωση</span><span class="n" title="Παράδοση: πήραμε · δώσαμε">Παράδοση</span></div>
  ${WD.map(([d,rows])=>`<div class="day"><h3>${d}</h3>${rows.map(wrow).join('')}</div>`).join('')}
  <div style="display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:14px;margin-top:14px;flex:none">
   <div class="card" style="border-radius:var(--r-card);padding:18px 22px"><table class="stt num"><tr><th>Κατάσταση εβδομάδας</th><th>Παραγγ.</th><th>Πήραμε</th><th>Δώσαμε</th><th>Διαφορά</th><th>Εκκρεμείς</th><th>Υπόλοιπο</th></tr>
