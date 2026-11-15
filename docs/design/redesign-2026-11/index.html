@@ -460,6 +460,12 @@ table.spec td b{color:var(--ink);font-weight:600}
 .sq:first-child{border-top:0}.sq svg.lucide{width:14px;height:14px;color:#A9ABB3}.sq b{display:block;font-weight:600;color:var(--ink);font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sq small{display:block;color:var(--help);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sq>.num{text-align:right;font-weight:500;color:var(--ink);font-size:13.5px}.sq .onum{background:var(--bg);color:var(--ink)}
 .sq.drag{box-shadow:var(--shadow-float);border-radius:10px;border-top-color:transparent;position:relative;z-index:2;cursor:grabbing;padding:0 8px;margin:0 -8px}.sq.drag+.sq{border-top-color:transparent}
+.asb{border-radius:10px;padding:4px 10px;min-height:38px;background:#ECEDF1;align-self:center}
+.br>.slot,.br>.slot.a{justify-self:stretch;width:auto;height:38px;border-radius:10px;margin-right:34px}.br>.slot .plus{margin-left:auto}
+.asb.p{background:var(--accent-bg)}.asb.p .two b{color:var(--link)}
+.asb.need{background:none;outline:1.5px dashed var(--red);outline-offset:-1.5px}.asb.am{background:none;outline:1.5px dashed var(--amber-line);outline-offset:-1.5px}
+.asb .two b svg.lucide{width:14px;height:14px;margin-right:5px;color:var(--help)}
+.day.past .br:not(.need)>.asb{background:#F3F4F6}.day.past .br:not(.need)>.asb.p{background:#F0F5FD}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;transition-delay:0ms!important}
   .oc,.toast{transform:none}}
 @media print{.toc,.doc>header p{display:none}body{background:#fff}}
@@ -900,8 +906,8 @@ function ocClose(){const f=$('f1');f.classList.remove('open');f.querySelectorAll
 /* ---------- screen 2: weekly national (week 47, Saturday 14/11 to Friday 20/11, today Monday 16/11) ---------- */
 const P=n=>{if(typeof n==='string')return `<span class="pal" title="Σε ένα σημείο οι παλέτες δεν είναι γνωστές"><b class="num">${n}</b><span class="m" style="background:none;height:0;border-top:2px dotted #A9ABB3"></span></span>`;const ov=n>33;return `<span class="pal ${ov?'over':''}"><b class="num">${n}</b><span class="m"><i style="--f:${Math.min(1,n/33).toFixed(2)}"></i></span>${ov?`<sup>+${n-33}</sup>`:''}</span>`};
 const d=t=>`<span class="dt">${t}</span>`;
-const trk=(a,b,k)=>`<div class="as"><span class="tile ${k||''}">${ic(k==='p'?'users':'truck')}</span><div class="two"><b class="num">${a}</b><span>${b}</span></div></div>`;
-const need=`<div class="as"><span class="tile need">${ic('truck')}</span><div class="two"><b style="color:var(--red)">Ανάθεση</b></div></div>`;
+const trk=(a,b,k)=>`<div class="as asb ${k||''}" title="${k==='p'?'Συνεργάτης':'Δικό μας'}"><div class="two"><b class="num">${a}</b><span>${b}</span></div></div>`;
+const need=`<div class="as asb need"><div class="two"><b style="color:var(--red)">Ανάθεση</b></div></div>`;
 const slotD=`<div class="slot">${ic('arrow-down')}<span class="plus">${ic('plus')}</span></div>`;
 const slotA=t=>`<div class="slot a">${ic('undo-2')}${t}<span class="plus" style="border-color:var(--amber-line);color:var(--amber);background:none">${ic('plus')}</span></div>`;
 const c2=(a,t,b)=>`<div class="two"><b><span class="el">${a}</span>${tags(t)}</b><span>${b}</span></div>`;
@@ -917,7 +923,7 @@ const D=[
   [5,'slotD','',0,trk('ΚΗΙ 7245 · Ε 5811','<span style="color:var(--amber);font-weight:600">χωρίς οδηγό</span>'),c2('Irini Sud','+1 PE',`${d('Κυρ 15')} · Ασπρόπυργος 14 · Ρέντης 13`),c2('Βέροια','',d('Δευ 16')),'14+;'],
  ]],
  ['Δευτέρα 16/11 · σήμερα','today',`<span class="sg">${ic('truck')}4</span><span class="sg a">${ic('undo-2')}1</span><span class="sg r">${ic('triangle-alert')}1</span>`,[
-  [6,c2('Βέροια','',d('Κυρ 15')),c2('Doukas Trans','',`${d('Δευ 16')} · Ασπρόπυργος`),30,`<div class="as"><span class="tile">${ic('shuffle')}</span><div class="two"><b class="num">ΚΗΙ 0138 → 5561</b><span>Θ. Ράλλης · Λαμία</span></div></div>`,c2('Attiki Praktoreio','',`${d('Δευ 16')} · Άνω Λιόσια`),c2('Chalkidona Logistic','',`${d('Τρί 17')} · Καλοχώρι`),30],
+  [6,c2('Βέροια','',d('Κυρ 15')),c2('Doukas Trans','',`${d('Δευ 16')} · Ασπρόπυργος`),30,`<div class="as asb"><div class="two"><b class="num">${ic('shuffle')}ΚΗΙ 0138 → 5561</b><span>Θ. Ράλλης · Λαμία</span></div></div>`,c2('Attiki Praktoreio','',`${d('Δευ 16')} · Άνω Λιόσια`),c2('Chalkidona Logistic','',`${d('Τρί 17')} · Καλοχώρι`),30],
   [7,c2('Kentriki Agora','',`${d('Κυρ 15')} · Θεσσαλονίκη`),c2('Market Plus DC','',`${d('Δευ 16')} · Ασπρόπυργος`),30,trk('ΚΗΙ 2102 · Ρ 3188','Κ. Τσορλίνης'),c2('Karamolegkos Fresh','',`${d('Δευ 16')} · Κορωπί`),c2('Karamolegkos Fresh','',`${d('Τρί 17')} · 05:30–06:30 · Σίνδος`),30,'hov'],
   [8,c2('Olympos Fresh','',`${d('Δευ 16')} · Κοπανός <span class="ico" title="Φορτώνει τοπικός: Β. Νάκος, Δευ 16 07:30">${ic('user-round')}τοπικός</span>`),c2('Chipita Lamia','',`${d('Δευ 16')} · Λαμία`),33,trk('ΚΗΙ 8600 · Ρ 5071','Λ. Δήμου'),c2('Knosos Packing','+1 PE',`${d('Δευ 16')} · Ασπρόπυργος 20 · Κόρινθος 20`),c2('Βέροια','',`${d('Τρί 17')} <span class="ico">${ic('clock')}20:00</span>`),40],
   [9,c2('Βέροια','',`${d('Κυρ 15')} · 14:00–23:59`),c2('PM Road','+1',`${d('Δευ 16')} · Ασπρόπυργος 6 · Ρέντης 26`),32,trk('ΚΗΙ 1286 · Ε 3002','Ε. Σαρίδης'),'slotA','',0,'ret'],
@@ -958,16 +964,16 @@ const WI=[
   [3,sd(`<div class="two"><b><span class="el">Veria Fruit Pack</span><span class="tag" title="Groupage, 3 παραγγελίες" style="display:inline-flex;align-items:center;gap:3px">${ic('layers')}3</span></b><span>${d('Πέμ 12')} · Βέροια +2</span></div>`,c2('Frischemarkt München','',`${d('Δευ 16')} · München +2`),33),trk('ΚΗΙ 6012 · Ρ 5093','Αντώνης Ντίνος'),`<div class="slot a">${ic('undo-2')}Κενό γύρισμα · Ulm · Τρί 17<span class="plus" style="border-color:var(--amber-line);color:var(--amber);background:none" title="Νέα εισαγωγή">${ic('plus')}</span></div>`,'hov'],
  ]],
  ['Τρίτη 17/11','',[
-  [4,'',`<div class="as" title="Σύρε την εισαγωγή πάνω σε φορτηγό" style="cursor:grab"><span class="tile need">${ic('truck')}</span><div class="two"><b style="color:var(--red)">Ανάθεση</b></div></div>`,sd(c2('Nordfrisch Lager','PE',`${d('Τρί 17')} · Hamburg`),c2('Attica Cold Hub','',`${d('Παρ 20')} · Ασπρόπυργος`),26),'need'],
+  [4,'',`<div class="as asb need" title="Σύρε την εισαγωγή πάνω σε φορτηγό" style="cursor:grab"><div class="two"><b style="color:var(--red)">Ανάθεση</b></div></div>`,sd(c2('Nordfrisch Lager','PE',`${d('Τρί 17')} · Hamburg`),c2('Attica Cold Hub','',`${d('Παρ 20')} · Ασπρόπυργος`),26),'need'],
  ]],
  ['Τετάρτη 18/11','',[
   [5,sd(cv('Veria Fruit Pack','PE',`${d('Δευ 16')} · Βέροια +2`,vch('2 από 3',1,'Μέσω Βέροιας: ένα σημείο φόρτωσης χωρίς φορτηγό')),c2('Rotterdam Fresh Hub','',`${d('Τετ 18')} · Rotterdam`),32),trk('ΚΗΙ 2208 · Ρ 4259','Παύλος Ράπτης'),sd(c2('Baltic Cold Foods DC','PE',`${d('Παρ 20')} · Poznań`),cv('Thessaly Citrus Coop','',`${d('Τρί 24')} · Λάρισα`,vch('ΚΗΙ 4445')),30)],
   ['sub','L',`Σκέλος προώθησης · Rotterdam → Antwerpen · ${d('Πέμ 19')} · 8 παλ. · <span class="num">ΚΗΙ 2208</span>`],
-  [6,`<div class="two"><b><span class="el">Hellas Kiwi Coop</span><span class="tag" style="color:var(--amber);border-color:var(--amber-line);font-weight:600" title="Pre-order: λείπουν τόποι και παλέτες">PRE</span></b><span>${d('Τετ 18')} · εξαγωγή</span></div>${c2('Γερμανία','','&nbsp;')}<span></span>`,`<div class="as" title="Κράτησε φορτηγό για το pre-order"><span class="tile am">${ic('truck')}</span><div class="two"><b style="color:var(--amber);font-weight:500">Ανάθεση</b></div></div>`,''],
+  [6,`<div class="two"><b><span class="el">Hellas Kiwi Coop</span><span class="tag" style="color:var(--amber);border-color:var(--amber-line);font-weight:600" title="Pre-order: λείπουν τόποι και παλέτες">PRE</span></b><span>${d('Τετ 18')} · εξαγωγή</span></div>${c2('Γερμανία','','&nbsp;')}<span></span>`,`<div class="as asb am" title="Κράτησε φορτηγό για το pre-order"><div class="two"><b style="color:var(--amber);font-weight:500">Ανάθεση</b></div></div>`,''],
  ]],
  ['Πέμπτη 19/11','',[
   [7,sd(c2('Messinia Olive Coop','PE·HR',`${d('Τρί 17')} · Μεσσήνη`),c2('Nordfrisch Lager','',`${d('Πέμ 19')} · Hamburg`),36),need,'','need'],
-  [8,sd(c2('Pella Peach Coop','2 σκέλη',`${d('Τρί 17')} · Σκύδρα`),c2('Nordic Fresh Hub','',`${d('Πέμ 19')} · København`),30),`<div class="as" title="Σπασμένη σε 2 σκέλη: αλλάζει φορτηγό στο Wien"><span class="tile">${ic('shuffle')}</span><div class="two"><b class="num">ΚΗΙ 4521</b><span>→ Transfrigo · Wien</span></div></div>`,''],
+  [8,sd(c2('Pella Peach Coop','2 σκέλη',`${d('Τρί 17')} · Σκύδρα`),c2('Nordic Fresh Hub','',`${d('Πέμ 19')} · København`),30),`<div class="as asb" title="Σπασμένη σε 2 σκέλη: αλλάζει φορτηγό στο Wien"><div class="two"><b class="num">${ic('shuffle')}ΚΗΙ 4521</b><span>→ Transfrigo · Wien</span></div></div>`,''],
  ]],
  ['Παρασκευή 20/11','none',[]],
 ];
