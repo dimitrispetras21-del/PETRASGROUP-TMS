@@ -9,13 +9,6 @@
 <style>
 /* DESIGN MOCKUP ONLY. Invented names. Page-specific rules for the shell. */
 .who{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
-/* login */
-.lgn{position:absolute;inset:0;display:grid;place-items:center;background:var(--bg)}.lgn .cd{width:420px;background:#fff;border-radius:var(--r-page);padding:36px 36px 32px;display:grid;gap:16px}.lgn .cd .logo{margin:0 0 12px -6px}.lgn .inp{height:44px}.lgn .dt{position:absolute;left:0;right:0;bottom:28px;text-align:center;color:var(--help);font-size:13px}
-.lgn .br{background:var(--ink);color:#fff;padding:56px 64px;display:flex;flex-direction:column;justify-content:flex-end}
-.lgn .br b{font-size:34px;font-weight:400;letter-spacing:-.8px;line-height:1.15}.lgn .br small{color:rgba(255,255,255,.6);font-size:14px;margin-top:10px}
-.lgn .fm{padding:0 88px;display:flex;flex-direction:column;justify-content:center;gap:16px}
-.lgn h2{font-size:24px;font-weight:400;color:var(--ink);letter-spacing:-.4px;margin:18px 0 6px}
-.lgn .pill{height:44px;justify-content:center;width:100%}
 /* menus per job */
 .mn{position:absolute;inset:0;padding:24px;display:grid;grid-template-columns:repeat(5,232px);gap:16px;justify-content:center;align-items:start}
 .mn .side{border:0;border-radius:var(--r-card);min-height:0;padding-bottom:16px}.mn .side .bsep{margin-top:18px}
@@ -71,8 +64,8 @@
 </section>
 
 <section class="sec"><h2>Είσοδος</h2>
-  <div class="cap"><h3>Στα ελληνικά</h3><span>Δεξιά: η σύνδεση έληξε πάνω σε ανοιχτή φόρμα</span></div>
-  <div class="grid" style="grid-template-columns:1fr 1fr"><div class="fit"><div class="frame" id="fG" style="height:760px"></div></div><div class="fit"><div class="frame" id="fX" style="height:760px"></div></div></div>
+  <p class="lead">Η οθόνη σύνδεσης μένει όπως είναι σήμερα (απόφαση owner 15/11/2026). Δεν σχεδιάζεται νέα. Κάτω: μόνο η στιγμή που η σύνδεση λήγει πάνω σε ανοιχτή φόρμα.</p>
+  <div class="fit"><div class="frame" id="fX" style="height:760px"></div></div>
 </section>
 <section class="sec"><h2>Το μενού ανά δουλειά</h2>
   <div class="cap"><h3>Έξι ομάδες, και μόνο ό,τι αφορά τον καθένα</h3><span>Ποιος βλέπει τι το αποφασίζει ο Δημήτρης· εδώ είναι πρόταση.</span></div>
@@ -119,7 +112,6 @@ const DSP=[pick('h',['h']),pick('s'),pick('w'),pick('f',['t']),pick('d')];
 const ghost=a=>`<div class="ghost">${a.map(w=>`<i style="width:${w}%"></i>`).join('')}</div>`;
 
 /* ---------- login ---------- */
-$('fG').innerHTML=`<div class="lgn"><div class="cd"><span class="logo full" role="img" aria-label="Petras Group"></span>${fld('Όνομα χρήστη','pkostas')}${fld('Κωδικός','••••••••'+cur,'focus')}<button class="pill b" style="margin-top:6px">Είσοδος</button></div><span class="dt">Δευτέρα 16 Νοεμβρίου 2026</span></div>`;
 $('fX').innerHTML=`<div class="app">${sd(DSP,'o','ΠΚ','Παντελής Κ.','Dispatcher','6')}<main class="main"><div class="hd"><div><h1>Νέα παραγγελία</h1><p>Pella Peach Coop · Σκύδρα → Wien</p></div></div><div class="ghost" style="grid-template-columns:1fr 1fr;gap:16px 20px">${fld('Πελάτης','Pella Peach Coop')}${fld('Παλέτες','32')}${fld('Φόρτωση','Pella Peach Coop · Τρί 17/11')}${fld('Παράδοση','Wiener Frische · Παρ 20/11')}${fld('Τιμή','2.400,00')}${fld('Σημείωση','','ph')}</div></main></div>
  <div class="veil" style="animation:none;background:rgba(0,0,16,.28);backdrop-filter:none"></div>
  <div class="pn" style="position:absolute;z-index:6;left:50%;top:210px;width:400px;margin-left:-200px"><h3 style="display:flex;gap:8px;align-items:center">Η σύνδεση έληξε ${nb('Η παραγγελία που γράφεις μένει ανοιχτή.',1,'dn')}</h3>
