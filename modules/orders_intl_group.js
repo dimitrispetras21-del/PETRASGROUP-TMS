@@ -880,5 +880,5 @@ function orderByFirstPoint(members, list) {
 window.IntlGroup = { on, openFrom, changed, reeferPicked, setMode, setDir, toggle, addNew, fromFile, pickExisting, pickPiece,
   remove, save, _filter, _addExisting, _addPiece,
   // pure helpers (tests/intl-group.test.js)
-  _assignmentOf: assignmentOf, _seqUsable: seqUsable, _moveBefore: moveBefore, _orderByFirstPoint: orderByFirstPoint, _state: () => IG.s };
+  _assignmentOf: assignmentOf, _seqUsable: seqUsable, _stopPosFor: stopPosFor, _setState: (st) => { IG.s = st; }, _moveBefore: moveBefore, _orderByFirstPoint: orderByFirstPoint, _state: () => IG.s };
 })();

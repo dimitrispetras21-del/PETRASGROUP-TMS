@@ -79,6 +79,18 @@ test('stored places are used only when complete and distinct (113 rule)', () => 
   assert.strictEqual(IG._seqUsable([]), false);
 });
 
+test('panel place per point: a groupage writes it, a single load clears only a place left from a groupage', () => {
+  const node = { querySelector: sel => ({ '#sid_l_1': { value: 'recA' }, '#sid_l_2': { value: 'recB' } })[sel] || null };
+  const m = { key: 'm1', node };
+  IG._setState({ mode: 'group', lo: ['m1:l:2', 'm1:l:1'], dl: [] });
+  assert.deepStrictEqual(plain(IG._stopPosFor(m)('l', 1)), { num: 2, seq: 2 });
+  IG._setState({ mode: 'single', lo: ['m1:l:2', 'm1:l:1'], dl: [], seqBySid: { recA: 4 } });
+  const p1 = IG._stopPosFor(m)('l', 1), p2 = IG._stopPosFor(m)('l', 2);
+  assert.strictEqual(p1.num, 2); assert.strictEqual(p1.seq, null, 'a stored place is cleared');
+  assert.strictEqual(p2.num, 1); assert.strictEqual(p2.seq, undefined, 'no stored place: the column is not named');
+  IG._setState(null);
+});
+
 test('config: the label the groupage writes, and the flag', () => {
   const cfg = fs.readFileSync(path.join(root, 'config.js'), 'utf8');
   assert.match(cfg, /STOP_LOAD_SEQ:\s*'Load Seq'/);
