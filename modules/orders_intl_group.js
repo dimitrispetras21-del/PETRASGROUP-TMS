@@ -100,14 +100,14 @@ function syncOrder() {
   return pts;
 }
 
-// (t, i) → { num, seq } for submitIntlOrder: the point's number inside its order = its rank among the order's own
-// points in the panel; in a groupage also its place in the load (113 «Load Seq»). A single load writes no Load Seq.
 // «Παραγγελία 2 · κομμάτι από απόθεμα · IFCO» — how a stopping message names the order in a groupage (no codes).
 function memberLabel(m) {
   const s = IG.s; if (!s || s.mode !== 'group') return '';
   const k = s.members.indexOf(m) + 1, c = val(m, 'ls_client');
   return `Παραγγελία ${k}${m.piece || isPieceRec(m.f) ? ' · κομμάτι από απόθεμα' : ''}${c ? ' · ' + c : ''}`;
 }
+// (t, i) → { num, seq } for submitIntlOrder: the point's number inside its order = its rank among the order's own
+// points in the panel; in a groupage also its place in the load (113 «Load Seq»).
 function stopPosFor(m) {
   const s = IG.s;
   return (t, i) => {
@@ -316,9 +316,6 @@ function needsVehicle(m) {
   return same ? null : a.fields;
 }
 
-// The panel's first order for a load saved before 113 (or by the old Weekly): what each point holds as «Load Seq»
-// when every point has one; otherwise the old rule — the Group ID order list (export: deliveries, import: loadings),
-// then the stop number; the other side by day, then the order list (impact check G, «empty = the old rule»).
 // Pure: the stored places of one side of a load are used only when every point has one and no two share it (the rule
 // written in DECISION_LOG with 113); anything else falls back to the old rule, with a sign — never a guessed order.
 function seqUsable(vals) {
@@ -335,6 +332,9 @@ async function loadSeqs() {
   }));
   return seqBySid;
 }
+// The panel's first order for a load saved before 113 (or by the old Weekly): what each point holds as «Load Seq»
+// when it is usable (seqUsable); otherwise the old rule — the Group ID order list (export: deliveries, import:
+// loadings), then the stop number; the other side by day, then the order list (impact check G, «empty = the old rule»).
 async function initialOrder() {
   const s = IG.s;
   const seqBySid = await loadSeqs();
@@ -745,12 +745,16 @@ async function remove(key) {
     // A stock piece on a truck or a partner cannot be deleted by the base (057 piece_on_truck: «Επιστροφή στο απόθεμα»
     // first). The bin does both, in that order, so its pallets go back to the lot (owner 15/11: «να επιστρέψουν ξανά
     // αποθήκη»). A piece already moving or delivered stays refused by the base, with its own words.
+    let undo = null;
     if (m.piece || isPieceRec(m.f)) {
-      const back = await pieceBackToStock(savedId);
-      if (!back) return;
+      undo = await pieceBackToStock(savedId);
+      if (!undo) return;
     }
     await deleteIntlOrder(savedId, { rerender: async () => { gone = true; } });
-    if (!gone) return;   // cancelled or refused: deleteIntlOrder already said why
+    if (!gone) {   // cancelled or refused: deleteIntlOrder already said why; the piece goes back on its truck
+      if (undo && undo.patch) await pieceUndoBack(savedId, undo.patch);
+      return;
+    }
     s.removed.push(savedId);
   } else if (!confirm('Να φύγει αυτή η παραγγελία από τη φόρμα;')) return;
   if (!IG.s) return;
@@ -762,22 +766,41 @@ async function remove(key) {
   paint();
 }
 
+// → false (said why, nothing changed) or { patch }: what the piece had, to put it back if the delete does not happen.
 async function pieceBackToStock(id) {
   try {
     const cur = await atGetOne(TABLES.ORDERS, id);
     const f = (cur && cur.fields) || {};
+    // a piece already loaded or delivered is not taken off its vehicle (the base refuses its delete anyway)
+    if (f['Status'] === 'In Transit' || f['Status'] === 'Delivered') {
+      showErrorToast('Το κομμάτι έχει ήδη φορτωθεί ή παραδοθεί — δεν γυρίζει στο απόθεμα και δεν σβήνεται', 'warn', 10000);
+      return false;
+    }
     const onVeh = getLinkedId(f['Truck']) || getLinkedId(f['Partner']) || getLinkedId(f['Trailer']) || getLinkedId(f['Driver']);
-    if (!onVeh && !String(f['Group ID'] || '').trim()) return true;
+    if (!onVeh && !String(f['Group ID'] || '').trim()) return { patch: null };
+    if (!confirm('Το κομμάτι φεύγει από το groupage και οι παλέτες του γυρίζουν στην παρτίδα. Συνέχεια;')) return false;
+    const was = {};
+    for (const k of ['Truck', 'Trailer', 'Driver', 'Partner']) { const v = getLinkedId(f[k]); was[k] = v ? [v] : []; }
+    was['Group ID'] = f['Group ID'] || null; was['Status'] = f['Status'] || 'Pending';
     const patch = { 'Truck': [], 'Trailer': [], 'Driver': [], 'Partner': [], 'Group ID': null, 'Status': 'Pending' };
     const res = await atSafePatch(TABLES.ORDERS, id, patch);
     if (res && (res.error || res.conflict)) throw new Error(res.conflict ? 'άλλαξε από άλλον χρήστη' : (res.error.message || res.error.type));
     const again = await atGetOne(TABLES.ORDERS, id);
     const g = (again && again.fields) || {};
     if (getLinkedId(g['Truck']) || getLinkedId(g['Partner']) || String(g['Group ID'] || '').trim()) throw new Error('η ανάγνωση πίσω δείχνει ακόμη φορτηγό ή groupage');
-    return true;
+    return { patch: was };
   } catch (e) {
     showErrorToast('Το κομμάτι δεν γύρισε στο απόθεμα — δεν σβήστηκε τίποτα: ' + (e && e.message || e), 'warn', 12000);
     return false;
+  }
+}
+async function pieceUndoBack(id, was) {
+  try {
+    const res = await atSafePatch(TABLES.ORDERS, id, was);
+    if (res && (res.error || res.conflict)) throw new Error(res.conflict ? 'άλλαξε από άλλον χρήστη' : (res.error.message || res.error.type));
+  } catch (e) {
+    showErrorToast('Το κομμάτι δεν σβήστηκε, αλλά έμεινε εκτός φορτηγού — βάλ\' το ξανά από το Εβδομαδιαίο: ' + (e && e.message || e), 'error', 15000);
+    if (typeof logError === 'function') logError(e instanceof Error ? e : new Error(String(e)), 'orders_intl_group piece undo');
   }
 }
 
