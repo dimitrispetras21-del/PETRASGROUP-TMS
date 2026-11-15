@@ -6047,12 +6047,12 @@ async function _wiJoinReadLoad(seedId){
 }
 // The joiner's points go LAST in the load's order (owner 15/11, «οκ»): its loadings after the load's highest loading
 // place, its deliveries after the highest delivery place (113 «Load Seq», the form's own label). Each side only when
-// every point of the load already has a place and no two share one (IntlGroup.seqUsable, the form's rule): else no
+// every point of the load already has a place and no two share one (IntlGroup._seqUsable, the form's rule): else no
 // place is written and the form shows the old order with its «!». A place the server did not keep is said
 // (principle 2). Cross-dock stops have no place, as in the form. `loadRecs` = the load before the join, `joinRecs` =
 // the orders that joined, in their order. Never throws: the join itself is already done and read back.
 async function _wiJoinLoadSeq(loadRecs,joinRecs){
-  const usable=typeof IntlGroup!=='undefined'&&typeof IntlGroup.seqUsable==='function'?IntlGroup.seqUsable:null;
+  const usable=typeof IntlGroup!=='undefined'&&typeof IntlGroup._seqUsable==='function'?IntlGroup._seqUsable:null;
   if(!usable||!joinRecs.length) return;
   // stopsLoad answers [] when its read fails: an order always has points, so an empty list is a failed read here —
   // counted without that member, the joiner could take a place it already holds.

@@ -932,8 +932,7 @@ function orderByFirstPoint(members, list) {
   return [...members].sort((a, b) => at(a) - at(b));
 }
 
-window.IntlGroup = { on, openFrom, seqUsable,   // seqUsable: also the Weekly's import join (one rule for a usable order)
-  changed, reeferPicked, setMode, setDir, toggle, addNew, fromFile, pickExisting, pickPiece,
+window.IntlGroup = { on, openFrom, changed, reeferPicked, setMode, setDir, toggle, addNew, fromFile, pickExisting, pickPiece,
   remove, save, _filter, _addExisting, _addPiece,
   // pure helpers (tests/intl-group.test.js)
   _assignmentOf: assignmentOf, _seqUsable: seqUsable, _stopPosFor: stopPosFor, _setState: (st) => { IG.s = st; }, _moveBefore: moveBefore, _orderByFirstPoint: orderByFirstPoint, _state: () => IG.s };

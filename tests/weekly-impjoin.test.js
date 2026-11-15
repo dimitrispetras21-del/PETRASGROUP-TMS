@@ -233,7 +233,7 @@ function seqWorld(stops, opts = {}) {
   const seqUsable = (0, eval)('(' + IG.match(/function seqUsable\(vals\) \{[\s\S]*?\n\}/)[0] + ')');
   const db = JSON.parse(JSON.stringify(stops)), patches = [], toasts = [], logged = [];
   const ctx = load([F('_wiJoinLoadSeq', asyncMany)], { ctx: {
-    IntlGroup: { seqUsable }, F: { STOP_PARENT_ORDER: 'Order', STOP_TYPE: 'Stop Type', STOP_NUMBER: 'Stop Number', STOP_LOAD_SEQ: 'Load Seq' },
+    IntlGroup: { _seqUsable: seqUsable }, F: { STOP_PARENT_ORDER: 'Order', STOP_TYPE: 'Stop Type', STOP_NUMBER: 'Stop Number', STOP_LOAD_SEQ: 'Load Seq' },
     TABLES: { ORDER_STOPS: 'tblS' }, _wiQuietOpt: () => ({ quiet: true }),
     stopsLoad: async (oid) => { if (opts.readFails) throw new Error('down'); return db.filter(x => x.oid === oid).map(x => ({ id: x.id, fields: x.fields })); },
     atPatch: async (t, id, f) => { patches.push([id, f['Load Seq']]); if (!opts.dropSeq) db.find(x => x.id === id).fields['Load Seq'] = f['Load Seq']; return { id, fields: f }; },
