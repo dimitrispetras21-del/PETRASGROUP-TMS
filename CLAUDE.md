@@ -176,7 +176,17 @@ cd worker && CLOUDFLARE_API_TOKEN=$CF_API_TOKEN npx wrangler deploy
      ⚠ 8/11 12:39 ανέβηκε κατά λάθος ο 9608bb1c από τον κύριο φάκελο, που ήταν σε παλιό branch (19 σημάδια STOP: χωρίς F5,
      085/089/101/099/102/104, `PLAN_WRITES_OPEN = false`)· αντικαταστάθηκε σε 5 λεπτά, 0 εγγραφές στο audit. **Deploy μόνο από
      worktree / branch του PR, και ο φρουρός στο bundle ΠΡΙΝ** (`wrangler deploy --dry-run --outdir`).
-   Μία εντολή για όλα, πριν και μετά (από το deploy του DKV 1.3.0): `node worker/tools/worker-guard.mjs <bundle ή λήψη CF>
+   - σειρά σημείων στο groupage, ανά σημείο (113 `order_stops.load_seq` + Worker 67dbb31e-9dce-4154-998f-d8492d3eb837, ζωντανό 15/11 ~19:40, από
+     3771f035): `"Load Seq": "load_seq"`, ακριβώς μία φορά **και** μέσα στο ORDER STOPS (`--seq 1`). **Σήμερα** η εντολή
+     είναι: `node worker/tools/worker-guard.mjs <bundle ή λήψη CF> --plan 2 --handover 1 --f3 1 --f5 1 --edit 1 --invoiced 1
+     --rate2 1 --self 1 --road 1 --wchk 1 --dkv 1 --pnlp 1 --pmiss 1 --ifs 1 --pnl 1 --plain 1 --seq 1` → `GUARD OK (47
+     markers, …, plain=1, seq=1)`. Επείγουσα επαναφορά: **πρώτα** η φόρμα κλείνει (`FEATURES.INTL_GROUP_FORM = false`, με
+     bump ?v= / SW_VERSION), γιατί με τον παλιό Worker το «Load Seq» πετιέται με 200 (η φόρμα το διαβάζει πίσω και λέει ότι η
+     σειρά δεν κρατήθηκε, αλλά κάθε groupage θα έμενε χωρίς σειρά)· **μετά** `wrangler rollback 3423cec5-b7c6-460d-bcc6-67d4f7b8f166` (ο Worker του κύματος 2 των μηνυμάτων) → φρουρός με `--seq 0` →
+     `GUARD OK (47 markers, … seq=0)`. Η 113 στη βάση μένει (ο 3423cec5 δεν τη διαβάζει)· το `113_stop_load_seq_rollback.sql`
+     μόνο αν χρειαστεί, και αρνείται όσο υπάρχει γραμμένη θέση.
+   Οι εντολές που ακολουθούν είναι **παλαιότερες μορφές** (για επαναφορά σε εκείνες τις εκδόσεις)· η σημερινή είναι η
+   γραμμή της 113 παραπάνω (47 σημάδια). Μία εντολή για όλα, πριν και μετά (από το deploy του DKV 1.3.0): `node worker/tools/worker-guard.mjs <bundle ή λήψη CF>
    --plan 2 --handover 1 --f3 1 --f5 1 --edit 1 --invoiced 1 --rate2 1 --self 1 --road 1 --wchk 1 --dkv 1` → `GUARD OK (37
    markers, … wchk=1, dkv=1)`. Επείγουσα επαναφορά στον προηγούμενο (`wrangler rollback
    0563b45a-0eb0-4331-9658-671372e17f0f`, 3/11, ο parser 1.2.0): `--dkv 0` → `GUARD OK (37 markers … dkv=0)`· τίποτα στη

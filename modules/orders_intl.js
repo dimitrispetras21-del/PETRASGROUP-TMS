@@ -2943,7 +2943,7 @@ async function submitIntlOrder(recId, G) {
         const p = G.stopPos(s.stopType === 'Loading' ? 'l' : 'u', s._row);
         if (!p) continue;
         if (p.num) s.stopNumber = p.num;
-        if (p.seq != null) s.loadSeq = p.seq;
+        if (p.seq !== undefined) s.loadSeq = p.seq;   // a number in a groupage; null clears a place left from one
       }
       const _tk = s => (s.stopType === 'Loading' ? 0 : 1);
       _formStops.sort((a, b) => _tk(a) - _tk(b) || a.stopNumber - b.stopNumber);
@@ -3001,12 +3001,12 @@ async function submitIntlOrder(recId, G) {
 
     // Validate required fields
     const _vErrors = [];
-    if (!fields['Direction'])            _vErrors.push('Direction is required');
-    if (!clientId)                       _vErrors.push('Client is required');
-    if (!_firstLoad?.locationId)         _vErrors.push('Loading Location 1 is required');
-    if (!_firstUnload?.locationId)       _vErrors.push('Delivery Location 1 is required');
-    if (!fields['Loading DateTime'])     _vErrors.push('Loading Date (Stop 1) is required');
-    if (!fields['Delivery DateTime'])    _vErrors.push('Delivery Date (Stop 1) is required');
+    if (!fields['Direction'])            _vErrors.push('Λείπει η κατεύθυνση (εξαγωγή ή εισαγωγή)');
+    if (!clientId)                       _vErrors.push('Λείπει ο πελάτης');
+    if (!_firstLoad?.locationId)         _vErrors.push('Λείπει ο τόπος φόρτωσης');
+    if (!_firstUnload?.locationId)       _vErrors.push('Λείπει ο τόπος παράδοσης');
+    if (!fields['Loading DateTime'])     _vErrors.push('Λείπει η ημέρα φόρτωσης');
+    if (!fields['Delivery DateTime'])    _vErrors.push('Λείπει η ημέρα παράδοσης');
     // A piece never asks PE (Ε5: counted once, at the lot's loading) — pieceFields sends false.
     if (_pe === null && !recId && _SK.mode !== 'pieceNew') _vErrors.push(peMarkMissing('f'));
     if (_lotWanted) {
@@ -3030,20 +3030,23 @@ async function submitIntlOrder(recId, G) {
     // Date cross-validation
     if (fields['Loading DateTime'] && fields['Delivery DateTime']) {
       if (new Date(fields['Delivery DateTime']) < new Date(fields['Loading DateTime'])) {
-        _vErrors.push('Delivery date cannot be before loading date');
+        _vErrors.push('Η ημέρα παράδοσης είναι πριν από την ημέρα φόρτωσης');
       }
     }
     // Crash-test fix: reject negative pallet counts on any stop
     for (let i = 1; i <= 10; i++) {
       const lPal = parseFloat(document.getElementById('pal_l_'+i)?.value);
       const uPal = parseFloat(document.getElementById('pal_u_'+i)?.value);
-      if (Number.isFinite(lPal) && lPal < 0) { _vErrors.push(`Loading ${i}: pallets cannot be negative`); break; }
-      if (Number.isFinite(uPal) && uPal < 0) { _vErrors.push(`Delivery ${i}: pallets cannot be negative`); break; }
+      if (Number.isFinite(lPal) && lPal < 0) { _vErrors.push(`Φόρτωση ${i}: οι παλέτες δεν μπορεί να είναι αρνητικές`); break; }
+      if (Number.isFinite(uPal) && uPal < 0) { _vErrors.push(`Παράδοση ${i}: οι παλέτες δεν μπορεί να είναι αρνητικές`); break; }
     }
 
     _vErrors.push(..._exBad);
     if (_vErrors.length) {
-      showErrorToast(_vErrors.join(' | '), 'warn', 8000);
+      // In a groupage the order that stops the save is named first (owner 15/11: «δεν αποθηκεύτηκε» with no word of which
+      // order — a stock piece opened with its delivery still empty). The words are the dispatcher's, never a code.
+      const _who = G && G.label ? G.label + ': ' : '';
+      showErrorToast(_who + _vErrors.join(' · ') + (_who ? ' — δεν αποθηκεύτηκε τίποτα' : ''), 'warn', 10000);
       throw new Error('validation');
     }
 
