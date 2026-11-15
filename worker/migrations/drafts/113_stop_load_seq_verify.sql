@@ -11,7 +11,9 @@ SELECT CASE
            THEN '113 NOT in place (column has the wrong shape)'
          WHEN NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.order_stops'::regclass AND conname = 'order_stops_load_seq_pos'
                           AND contype = 'c' AND convalidated
-                          AND pg_get_constraintdef(oid) = 'CHECK (((load_seq IS NULL) OR ((load_seq > 0) AND (order_id IS NOT NULL))))')
+                          -- the body without spaces and parentheses (how a server prints them may differ by version):
+                          -- OR / AND and every term must be exactly these
+                          AND regexp_replace(pg_get_constraintdef(oid), '[()[:space:]]', '', 'g') = 'CHECKload_seqISNULLORload_seq>0ANDorder_idISNOTNULL')
            THEN '113 NOT in place (CHECK order_stops_load_seq_pos missing or with another body)'
          ELSE '113 in place' END AS result,
        -- read through to_jsonb so the same file answers after a rollback too (the column named directly would fail the

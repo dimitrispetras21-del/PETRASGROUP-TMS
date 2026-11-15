@@ -82,24 +82,27 @@ BEGIN
   IF v_upd > 0 AND v_os IS DISTINCT FROM format('ins=0 upd=%s del=0', v_upd) THEN
     RAISE EXCEPTION '113 DRY RUN FAILED: order_stops % for % position writes', coalesce(v_os, 'not counted'), v_upd;
   END IF;
-  BEGIN
-    UPDATE public.order_stops SET load_seq = 0 WHERE id = (SELECT min(id) FROM public.order_stops WHERE order_id IS NOT NULL);
-  EXCEPTION WHEN check_violation THEN
-    v_refused := true;
-  END;
-  IF NOT v_refused THEN
-    RAISE EXCEPTION '113 DRY RUN FAILED: a position 0 was accepted';
+  -- each probe only where a live row to try exists: an UPDATE of 0 rows proves nothing and must not read as a failure
+  IF EXISTS (SELECT 1 FROM public.order_stops WHERE order_id IS NOT NULL AND deleted_at IS NULL) THEN
+    BEGIN
+      UPDATE public.order_stops SET load_seq = 0 WHERE id = (SELECT min(id) FROM public.order_stops WHERE order_id IS NOT NULL AND deleted_at IS NULL);
+    EXCEPTION WHEN check_violation THEN
+      v_refused := true;
+    END;
+    IF NOT v_refused THEN
+      RAISE EXCEPTION '113 DRY RUN FAILED: a position 0 was accepted';
+    END IF;
   END IF;
   -- the other half of the CHECK, on the real rows: a national stop (no international order) takes no position
-  IF EXISTS (SELECT 1 FROM public.order_stops WHERE order_id IS NULL) THEN
+  IF EXISTS (SELECT 1 FROM public.order_stops WHERE order_id IS NULL AND deleted_at IS NULL) THEN
     BEGIN
-      UPDATE public.order_stops SET load_seq = 1 WHERE id = (SELECT min(id) FROM public.order_stops WHERE order_id IS NULL);
+      UPDATE public.order_stops SET load_seq = 1 WHERE id = (SELECT min(id) FROM public.order_stops WHERE order_id IS NULL AND deleted_at IS NULL);
       RAISE EXCEPTION '113 DRY RUN FAILED: a position on a national stop was accepted';
     EXCEPTION WHEN check_violation THEN
       v_nat := 'yes';
     END;
   END IF;
-  RAISE EXCEPTION 'DRY RUN 113 finished: % rows, % live stops given a position, no other table touched; refused 0: yes, on a national stop: %; triggers on order_stops %, on any UPDATE: %; % ms - nothing kept (deliberate error)',
-    v_rows, v_upd, v_nat, v_trg, coalesce(v_any, 'none'), round(extract(epoch FROM clock_timestamp() - v_t0) * 1000);
+  RAISE EXCEPTION 'DRY RUN 113 finished: % rows, % live stops given a position, no other table touched; refused 0: %, on a national stop: %; triggers on order_stops %, on any UPDATE: %; % ms - nothing kept (deliberate error)',
+    v_rows, v_upd, CASE WHEN v_refused THEN 'yes' ELSE 'no live international stop to try' END, v_nat, v_trg, coalesce(v_any, 'none'), round(extract(epoch FROM clock_timestamp() - v_t0) * 1000);
 END
 $do$;

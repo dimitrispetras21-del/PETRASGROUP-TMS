@@ -22,7 +22,8 @@ test('the dry run is the apply block plus proofs, and ends in a deliberate error
   const apply = read('113_stop_load_seq.sql');
   const dry = read('113_stop_load_seq_dryrun.sql');
   const part = (s, a, b) => s.slice(s.indexOf(a), s.indexOf(b));
-  assert.equal(part(dry, '-- ===== PART 0', '-- ===== DRY RUN ONLY').trimEnd(), part(apply, '-- ===== PART 0', 'END\n$do$;').trimEnd());
+  assert.equal(part(dry, '\nBEGIN\n', '-- ===== DRY RUN ONLY').trimEnd(), part(apply, '\nBEGIN\n', 'END\n$do$;').trimEnd(),
+    'the same session setup, guards and change');
   assert.match(dry, /RAISE EXCEPTION 'DRY RUN 113 finished: [^']*nothing kept \(deliberate error\)'/);
   assert.match(apply, /CHECK \(\s*load_seq IS NULL OR \(load_seq > 0 AND order_id IS NOT NULL\)\)/);
 });
