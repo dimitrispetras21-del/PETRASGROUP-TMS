@@ -102,6 +102,12 @@ function syncOrder() {
 
 // (t, i) → { num, seq } for submitIntlOrder: the point's number inside its order = its rank among the order's own
 // points in the panel; in a groupage also its place in the load (113 «Load Seq»). A single load writes no Load Seq.
+// «Παραγγελία 2 · κομμάτι από απόθεμα · IFCO» — how a stopping message names the order in a groupage (no codes).
+function memberLabel(m) {
+  const s = IG.s; if (!s || s.mode !== 'group') return '';
+  const k = s.members.indexOf(m) + 1, c = val(m, 'ls_client');
+  return `Παραγγελία ${k}${m.piece || isPieceRec(m.f) ? ' · κομμάτι από απόθεμα' : ''}${c ? ' · ' + c : ''}`;
+}
 function stopPosFor(m) {
   const s = IG.s;
   return (t, i) => {
@@ -736,6 +742,13 @@ async function remove(key) {
   const savedId = (m.orig || m.saved) ? m.recId : (created || null);
   if (savedId) {
     let gone = false;
+    // A stock piece on a truck or a partner cannot be deleted by the base (057 piece_on_truck: «Επιστροφή στο απόθεμα»
+    // first). The bin does both, in that order, so its pallets go back to the lot (owner 15/11: «να επιστρέψουν ξανά
+    // αποθήκη»). A piece already moving or delivered stays refused by the base, with its own words.
+    if (m.piece || isPieceRec(m.f)) {
+      const back = await pieceBackToStock(savedId);
+      if (!back) return;
+    }
     await deleteIntlOrder(savedId, { rerender: async () => { gone = true; } });
     if (!gone) return;   // cancelled or refused: deleteIntlOrder already said why
     s.removed.push(savedId);
@@ -747,6 +760,25 @@ async function remove(key) {
   s.members = s.members.filter(x => x !== m);
   if (!s.open && s.members.length) expand(s.members[s.members.length - 1]);
   paint();
+}
+
+async function pieceBackToStock(id) {
+  try {
+    const cur = await atGetOne(TABLES.ORDERS, id);
+    const f = (cur && cur.fields) || {};
+    const onVeh = getLinkedId(f['Truck']) || getLinkedId(f['Partner']) || getLinkedId(f['Trailer']) || getLinkedId(f['Driver']);
+    if (!onVeh && !String(f['Group ID'] || '').trim()) return true;
+    const patch = { 'Truck': [], 'Trailer': [], 'Driver': [], 'Partner': [], 'Group ID': null, 'Status': 'Pending' };
+    const res = await atSafePatch(TABLES.ORDERS, id, patch);
+    if (res && (res.error || res.conflict)) throw new Error(res.conflict ? 'άλλαξε από άλλον χρήστη' : (res.error.message || res.error.type));
+    const again = await atGetOne(TABLES.ORDERS, id);
+    const g = (again && again.fields) || {};
+    if (getLinkedId(g['Truck']) || getLinkedId(g['Partner']) || String(g['Group ID'] || '').trim()) throw new Error('η ανάγνωση πίσω δείχνει ακόμη φορτηγό ή groupage');
+    return true;
+  } catch (e) {
+    showErrorToast('Το κομμάτι δεν γύρισε στο απόθεμα — δεν σβήστηκε τίποτα: ' + (e && e.message || e), 'warn', 12000);
+    return false;
+  }
 }
 
 // ── Save ───────────────────────────────────────────────────────────────────────
@@ -795,7 +827,7 @@ async function saveGroup() {
     for (const m of s.members) {
       if (gone()) return stop(closedMsg());
       expand(m); paintList();
-      await submitIntlOrder(m.recId || '', { dryRun: true, gid: '', dupAsked: !!m.dupAsked, stopPos: stopPosFor(m) });
+      await submitIntlOrder(m.recId || '', { dryRun: true, gid: '', dupAsked: !!m.dupAsked, stopPos: stopPosFor(m), label: memberLabel(m) });
       const r = ST()._lastSave;
       if (!r || !r.ok) return stop(null);   // the reason is on screen, the order stays open; nothing was written
       m.dupAsked = true;
