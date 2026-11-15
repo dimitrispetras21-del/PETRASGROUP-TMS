@@ -2893,6 +2893,9 @@ function _wiSdF(uid,q){
   const px=uid.split('_')[0];
   const norm=(px==='tk'||px==='tl')&&typeof _fhPlateNorm==='function'?_fhPlateNorm:(s=>String(s).toLowerCase());
   const ql=norm(q);
+  // C1.1 (15/11): emptying a popover box removes that pick — the hidden id used
+  // to stay, so a trailer or a driver could not be taken off by emptying it.
+  if(uid.includes('_p_')&&!String(q).trim()){ const v=document.getElementById('wsd-v-'+uid); if(v) v.value=''; }
   lst.querySelectorAll('.wi-sdo').forEach(el=>{
     el.style.display=norm(el.dataset.lbl||el.textContent).includes(ql)?'':'none';
   });
@@ -2904,18 +2907,49 @@ function _wiSdP(uid,recId,label){
   const parts=uid.split('_'),px=parts[0],rowId=parseInt(parts[parts.length-1]);
   const fm={tk:'truckId',   tl:'trailerId',   dr:'driverId',   pt:'partnerId'};
   const lm={tk:'truckLabel',tl:'trailerLabel',dr:'driverLabel',pt:'partnerLabel'};
+  // The assignment popover (uid «tk_p_7»): a pick stays IN the popover until
+  // «Αποθήκευση» (C1.2, 15/11). It used to write the row at once, so closing
+  // with ✕ left the board showing a truck the table never got, and a match
+  // dropped afterwards copied that unsaved truck onto the import.
+  // Own fleet and partner are two sides of one choice (the save sends the
+  // other side empty): a pick on one side empties the other (C1.1), else a
+  // truck picked on a partner row was saved as the partner again.
+  if(parts[1]==='p'&&!isNaN(rowId)){
+    const clear=px==='pt'?['tk','tl','dr']:['pt'];
+    if(fm[px]) clear.forEach(c=>{
+      const u=`${c}_p_${rowId}`;
+      const hv=document.getElementById('wsd-v-'+u); if(hv) hv.value='';
+      const hi=document.querySelector(`#wsd-${u} .wi-sdi`); if(hi) hi.value='';
+    });
+    if(px==='tk'||px==='dr'||px==='pt') _wi2PopWarn(rowId);
+    return;
+  }
   if(fm[px]&&!isNaN(rowId)){
     _wiField(rowId,fm[px],recId);
     _wiField(rowId,lm[px],label);
     if(px==='tk'||px==='dr') _wi2PopWarn(rowId);
   }
 }
+// The popover's current picks (hidden id + shown label) over the saved row:
+// the same-day warning and the save read the popover, never a half-edited row.
+function _wiPopPicks(rowId){
+  const out={};
+  [['tk','truckId','truckLabel'],['tl','trailerId','trailerLabel'],['dr','driverId','driverLabel'],['pt','partnerId','partnerLabel']].forEach(([p,f,l])=>{
+    const uid=`${p}_p_${rowId}`;
+    const hv=document.getElementById(`wsd-v-${uid}`);
+    if(!hv) return;   // no such box on screen: the row's value stands
+    out[f]=hv.value||null;
+    out[l]=hv.value?(document.querySelector(`#wsd-${uid} .wi-sdi`)?.value||''):'';
+  });
+  return out;
+}
 // Inline same-day warning (frame 189:811): shown the moment a truck/driver is
 // picked — the save still asks for the T1 confirm; this only removes the surprise.
 function _wi2PopWarn(rowId){
-  const row=WINTL.rows.find(r=>r.id===rowId);
-  const el=document.getElementById('wi2-pop-warn-'+rowId); if(!row||!el) return;
-  const c=(row.truckId||row.driverId)?_wiSameDayConflict(row):null;
+  const row0=WINTL.rows.find(r=>r.id===rowId);
+  const el=document.getElementById('wi2-pop-warn-'+rowId); if(!row0||!el) return;
+  const row={...row0,..._wiPopPicks(rowId)};
+  const c=(!row.partnerId&&(row.truckId||row.driverId))?_wiSameDayConflict(row):null;
   el.classList.toggle('on',!!c);
   el.querySelector('span').textContent=c?c+' — η αποθήκευση θα ζητήσει επιβεβαίωση.':'';
 }
@@ -3779,7 +3813,19 @@ function _wiClosePopover(){
   document.removeEventListener('click',_wiPopoverOutside,{capture:true});
 }
 
+// The save copies the popover's picks into the row, then checks them (fee,
+// piece on a partner, same-day and executed-order confirms). A refusal or a
+// «Άκυρο» there writes nothing, so the row goes back to what the table holds
+// (C1.2, 15/11): before, it kept the picks and drew an assignment never saved.
 async function _wiSaveFromPopover(rowId){
+  const row=WINTL.rows.find(r=>r.id===rowId);
+  const keys=['truckId','truckLabel','trailerId','trailerLabel','driverId','driverLabel','partnerId','partnerLabel','partnerPlates','partnerRate','partnerRateImp'];
+  const prev=row?Object.fromEntries(keys.map(k=>[k,row[k]])):null;
+  const st={writing:false};
+  try{ return await _wiSaveFromPopoverRun(rowId,st); }
+  finally{ if(row&&!st.writing) Object.assign(row,prev); }
+}
+async function _wiSaveFromPopoverRun(rowId,st){
   if(_wiBlockReadOnly()) return; // defense in depth — the popover itself no longer opens for a view-only role
   const row=WINTL.rows.find(r=>r.id===rowId);
   if(!row){return;}
@@ -3789,7 +3835,10 @@ async function _wiSaveFromPopover(rowId){
     const val=document.getElementById(`wsd-v-${uid}`)?.value||'';
     const lbl=document.querySelector(`#wsd-${uid} .wi-sdi`)?.value||'';
     _tmsLog('syncPop',uid,'val=',val,'lbl=',lbl);
-    if(val){row[f]=val;row[l]=lbl;}
+    // An empty box is a choice too (C1.1): only a box that is not on screen
+    // leaves the row's value as it is.
+    if(!document.getElementById(`wsd-v-${uid}`)) return;
+    row[f]=val||null; row[l]=val?lbl:'';
   };
   syncPop('tk','truckId','truckLabel');
   syncPop('tl','trailerId','trailerLabel');
@@ -3859,6 +3908,7 @@ async function _wiSaveFromPopover(rowId){
   const btn=document.getElementById(`wi-pop-btn-${rowId}`);
   const spin=document.getElementById(`wi-pop-spin-${rowId}`);
   if(btn){btn.disabled=true;if(spin)spin.style.display='block';}
+  st.writing=true;   // from here the row says what is being written (T3 line)
   _wiSync('wi-sync-'+rowId,'pend','Αποθήκευση ανάθεσης…',oid0); // T3
   // Stamp Assigned At only on first assignment (preserve for accurate assignment-speed metric)
   const isFirstAssignment = !row.saved;
