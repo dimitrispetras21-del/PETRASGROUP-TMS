@@ -576,6 +576,7 @@ table.spec td b{color:var(--ink);font-weight:600}
 #f5 .day.today{box-shadow:inset 0 0 0 1px var(--primary)}#f5 .day.today>h3{color:var(--primary)}#f5 .lf.t{background:var(--primary)}
 #f5 .dout .day{background:none;box-shadow:none;padding:0;margin-top:10px}#f5 .dout .day>h3{padding:0 6px 5px;font-size:13px}#f5 .dout .w9dc{background:#fff;border-radius:12px;padding:2px 0}#f5 .dout .day.today{box-shadow:none}#f5 .dout .day>h3{font-weight:600}
 /* today as on the live weekly board (owner 15/11): light blue card, blue outline, blue day name */
+#f5 .dout .day>h3{font-size:12px;letter-spacing:.05em}#f5 .dout .day>h3 small{font-size:12px;font-weight:500;letter-spacing:0;margin-left:-8px}#f5 .lf.t{background:#0284C7}
 #f5 .dout .day.today .w9dc{background:#E9F4FB;box-shadow:inset 0 0 0 1px #0284C7}#f5 .dout .day.today>h3{color:#0284C7}#f5.v2 .dout .day.today .w9as{background:rgba(255,255,255,.55)}#f5 .dout .day.today .w9row+.w9row:not(.sub){border-top-color:#CFE4F2}#f5 .dout .day.none .w9dc{display:none}#f5 .dout .day.none{margin-top:6px}
 #f5 .day.past .w9row>*:not(.w9no):not(.n){opacity:.62}#f5 .day.past .w9ic{background:#EEF0F4;color:#7C7E88}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;transition-delay:0ms!important}
@@ -1201,7 +1202,9 @@ const lfMany=a=>a.length>1?`<div class="lns">${a.map(x=>lfLn(x[1],'',x[0],x[2],x
  const strip=()=>`<span class="lbl">Απόθεμα · ${STOCK.length}</span>${STOCK.map(x=>`<span class="w9lot">${ic('package')}<b>${x[0]}</b>${x[1]} · ${x[2]} <b class="num">${x[3]}</b></span>`).join('')}<span style="flex:1"></span>${CNT.need?`<a class="w9f r"><b>${CNT.need}</b>χωρίς φορτηγό</a>`:''}${CNT.gap?`<a class="w9f a"><b>${CNT.gap}</b>κενά γυρίσματα τώρα</a>`:''}${CNT.late?`<a class="w9f r"><b>${CNT.late}</b>εκπρόθεσμο</a>`:''}`;
  const DATA=window.WK_REAL||WK,ALL=DATA.flatMap(d=>d[2]),CNT={ex:ALL.filter(r=>r.ex).length,im:ALL.filter(r=>r.im).length,need:ALL.filter(r=>r.as[0]==='n').length,gap:ALL.filter(r=>r.gapNow).length,late:0};
  ALL.forEach(r=>{if(r.ex&&(r.vTo||[]).some(x=>x.t===''))r.ex.L[0].nm=1});
- const draw=()=>{let no=0;grid();CNT.late=ALL.filter(late).length;st.innerHTML=strip();box.innerHTML=head()+`<div style="margin-top:-8px">${DATA.map(([t,c,rows])=>`<section class="day ${c}"><h3>${t}</h3><div class="w9dc">${rows.map(r=>row({...r,no:++no,sec:+(t.match(/ (\d+)\//)||[0,0])[1]})).join('')}</div></section>`).join('')}</div>`;if(window.lucide)lucide.createIcons()};
+ /* day names in capitals, without accents, as on the live board; the word 'σήμερα' stays small (owner 15/11) */
+ const dayName=t=>{const [a,b]=t.split(' · ');return a.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase()+(b?` <small>· ${b}</small>`:'')};
+ const draw=()=>{let no=0;grid();CNT.late=ALL.filter(late).length;st.innerHTML=strip();box.innerHTML=head()+`<div style="margin-top:-8px">${DATA.map(([t,c,rows])=>`<section class="day ${c}"><h3>${dayName(t)}</h3><div class="w9dc">${rows.map(r=>row({...r,no:++no,sec:+(t.match(/ (\d+)\//)||[0,0])[1]})).join('')}</div></section>`).join('')}</div>`;if(window.lucide)lucide.createIcons()};
  box.addEventListener('click',e=>{if(e.target.closest('.w9vh')){OPEN=!OPEN;draw()}});draw();
  /* title, weeks and search on one line (owner 15/11) */
  {const f=$('f5'),hd=f.querySelector('.hd'),wk=f.querySelector('.wk'),tabs=document.createElement('span');f.classList.add('v2');tabs.className='w9wk';
