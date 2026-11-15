@@ -260,6 +260,7 @@ function ensureStyles() {
   .igx .oi2.ex-fix #oi2sec_l .oi2-c-ex input[type=checkbox]{display:inline-block}
   .igx .oi2-rm{color:var(--help);font-size:15px}
   .igx .oi2-stop input[type=date]{padding:0 8px;font-size:13.5px;cursor:pointer}
+  .igx .oi2-stop [id^="pal_"]{padding:0 4px;text-align:center}
   .igx .oi2-stop input[type=date]::-webkit-calendar-picker-indicator{display:none}
   .igx .oi2-stop .oi2-hrs-all,.igx .oi2-stop .oi2-hm{padding:0 8px}
   .igx .oi2-cargo>.oi2-f:nth-child(3){position:relative}
