@@ -32,6 +32,10 @@
 
 const WINTL = {
   week:      _wiCurrentWeek(),
+  // The week-year WINTL.week counts in (C26, 15/11): without it the board read
+  // «W53» of whatever year today was, so after New Year a page left open showed
+  // December of the NEW year, and ±1 could not cross 53 → 2.
+  year:      TmsWeek.yearOf(new Date()),
   shelf:     [], // kept for compat, not used for display
   data:      { exports:[], imports:[], trucks:[], trailers:[], drivers:[], partners:[] },
   rows:      [],
@@ -109,8 +113,17 @@ function _wi2Quick(qk) { WINTL.quick = (WINTL.quick === qk) ? '' : qk; _wiApplyF
 // (_wiWeekNumOf, the old formula's only other user, is gone with it.)
 function _wiCurrentWeek(){ return TmsWeek.current(); }
 // Week start για εβδομάδα w — ΣΑΒΒΑΤΟ
-function _wiWeekStart(w){ return TmsWeek.start(w); }
-function _wiWeekRange(w){ return TmsWeek.rangeLabel(w); }
+function _wiWeekStart(w){ return TmsWeek.start(w, WINTL.year); }
+function _wiWeekRange(w){ return TmsWeek.rangeLabel(w, WINTL.year); }
+// A tab or a step may hold W54 / W0 for a moment (w counted in WINTL.year):
+// the number shown is the real one, and «today» is found by its days, never by
+// its number alone (W2 of 2027 is 54 counted in 2026).
+function _wiWeekLabel(w){ return TmsWeek.norm(w, WINTL.year).week; }
+function _wiTodayIdx(){ return TmsWeek.indexIn(new Date(), WINTL.year); }
+// Every week change (tabs, ‹ ›, ← →, a queue item) only sets a plain number;
+// the render turns it into the real week + year here, once, so every
+// comparison with TmsWeek.numOf(<date>) below keeps meaning what it did.
+function _wiNormWeek(){ const n=TmsWeek.norm(WINTL.week, WINTL.year); WINTL.week=n.week; WINTL.year=n.year; }
 const _WI_WD=['Κυρ','Δευ','Τρί','Τετ','Πέμ','Παρ','Σάβ'];
 function _wiFmt(s){
   if(!s) return '—';
@@ -620,6 +633,7 @@ function _wiLoadErrorHTML(why){
 }
 const WI_LOAD_WATCHDOG_MS=25000;
 async function renderWeeklyIntl(){
+  _wiNormWeek();
   WINTL._seq = 0;
   const loadId = ++_wiLoadId;
   if(can('planning')==='none'){document.getElementById('content').innerHTML=showAccessDenied();return;}
@@ -936,17 +950,16 @@ function _wiRerenderOnClose() {
 function _wiPreorder() { if(_wiBlockReadOnly()) return; openPreorder(); }
 
 function _wk3Tabs(currentWeek) {
-  const today = _wiCurrentWeek();
+  const today = _wiTodayIdx();
   const step = d => `<button type="button" class="wk3-step" onclick="WINTL.week=${currentWeek+d};renderWeeklyIntl()" title="${d<0?'Προηγούμενη':'Επόμενη'} εβδομάδα">${d<0?'‹':'›'}</button>`;
-  const jump = d => `<button type="button" class="wk3-step" onclick="WINTL.week=${Math.min(53,Math.max(1,currentWeek+d))};renderWeeklyIntl()" title="${d<0?'−4 εβδομάδες':'+4 εβδομάδες'}">${d<0?'«':'»'}</button>`;
+  const jump = d => `<button type="button" class="wk3-step" onclick="WINTL.week=${currentWeek+d};renderWeeklyIntl()" title="${d<0?'−4 εβδομάδες':'+4 εβδομάδες'}">${d<0?'«':'»'}</button>`;
   let html = jump(-4)+step(-1);
   for (let w = currentWeek - 3; w <= currentWeek + 3; w++) {
-    if (w < 1 || w > 53) continue;
     const wS=_wiWeekStart(w), wE=new Date(wS); wE.setDate(wS.getDate()+6);
     const fmt=d=>String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1);
     // «far» = the two outermost weeks, first to fold when the one-row header
     // runs out of width (_WI2_CSS @container, owner 3/10).
-    html += `<button type="button" class="wk3-tab${w===currentWeek?' on':''}${Math.abs(w-currentWeek)===3?' far':''}" onclick="WINTL.week=${w};renderWeeklyIntl()" title="${fmt(wS)}–${fmt(wE)}">W${w}${w===today?' (Τρέχουσα)':''}</button>`;
+    html += `<button type="button" class="wk3-tab${w===currentWeek?' on':''}${Math.abs(w-currentWeek)===3?' far':''}" onclick="WINTL.week=${w};renderWeeklyIntl()" title="${fmt(wS)}–${fmt(wE)}">W${_wiWeekLabel(w)}${w===today?' (Τρέχουσα)':''}</button>`;
   }
   html += step(1)+jump(4);
   if (currentWeek !== today)
@@ -6014,7 +6027,7 @@ function _wiPanelWeekShift(rowId){
   const row=WINTL.rows.find(r=>r.id===rowId); if(!row) return;
   const imp=WINTL.data.imports.find(r=>r.id===row.orderId); if(!imp) return;
   const natWeek=_wiWeekOf(imp.fields['Loading DateTime']);
-  const wPrev=WINTL.week-1, wNext=WINTL.week+1;
+  const wPrev=_wiWeekLabel(WINTL.week-1), wNext=_wiWeekLabel(WINTL.week+1);
   const loadTxt=imp.fields['Loading DateTime']?_wk3D(_wiFmt(imp.fields['Loading DateTime'])):'—';
   const body=`
     <div class="wi-panel-note">Πραγματική ημ. φόρτωσης: <b>${loadTxt}</b>${natWeek?` (φυσική εβδομάδα W${natWeek})`:''}</div>
@@ -8420,6 +8433,7 @@ window.WI_INTERNAL = Object.freeze({
   moreStops: _wk3MoreStops, css: _WI2_CSS,
   // Reading helpers (logic, no v1 markup)
   currentWeek: _wiCurrentWeek, weekStart: _wiWeekStart, weekRange: _wiWeekRange,
+  weekLabel: _wiWeekLabel, todayIdx: _wiTodayIdx,
   fmt: _wiFmt, raw: _wiRaw, clean: _wiClean, stFlags: _wk3StFlags, vsCd: _wk3VsCd,
   arr: _wk3Arr, locs: _wk3Locs, split: _wi2Split, flatLocName: _wiFlatLocName,
   placeStr: _wiPlaceStr, clientName: _wiClientName, grpOrder: _wiGrpOrder,

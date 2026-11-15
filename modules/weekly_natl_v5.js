@@ -239,7 +239,9 @@ function weekParam(week, year) {
   return TmsWeek.startOfDate(TmsWeek.start(Number(week), year));
 }
 function _week(n, home) {
-  const v = Math.max(1, Number(n));   // never a week 0 (‹ on W1); no upper cap: › past the last week walks into January as before
+  // No cap either way (C26, 15/11): W53 + 1 and W2 − 1 cross the year. The number is counted in today's week-year
+  // (TmsWeek.start's default) and may be 54 or 0; the tabs show the real number through _wkNo.
+  const v = Number(n);
   if (!Number.isInteger(v) || !window.WNATL) return;
   if (home === true) _tabFrom = null;   // «Σήμερα»: the strip goes back to its own place around the current week
   window.WNATL.week = v;
@@ -257,7 +259,7 @@ function _restoreWeek() {
   try {
     const n = Number(sessionStorage.getItem(WEEK_KEY));
     const cur = typeof TmsWeek !== 'undefined' ? TmsWeek.current() : null;
-    if (Number.isInteger(n) && n >= 1 && window.WNATL && window.WNATL.week === cur && n !== cur) window.WNATL.week = n;
+    if (Number.isInteger(n) && window.WNATL && window.WNATL.week === cur && n !== cur) window.WNATL.week = n;
   } catch (_) { /* no storage: today's week, as before */ }
 }
 // No reportPageMetrics under v5 (F4α T10): the metrics audit (modules/metrics_audit.js) compares the OLD board's
@@ -670,9 +672,10 @@ function _tabsFrom(w, cur) {
   if (!Number.isInteger(_tabFrom)) _tabFrom = (Number.isInteger(cur) ? cur : w) - 2;
   if (w < _tabFrom) _tabFrom = w;
   else if (w > _tabFrom + 6) _tabFrom = w - 6;
-  _tabFrom = Math.max(1, _tabFrom);   // no W0 / W-1 tabs at the start of the year
   return _tabFrom;
 }
+// The real number of week n (n counted in today's week-year, may be 54 or 0): «W2», never «W54».
+function _wkNo(n) { return typeof TmsWeek !== 'undefined' ? TmsWeek.norm(n).week : n; }
 function _tabsHTML(w) {
   if (!Number.isInteger(w)) return '';
   const cur = typeof TmsWeek !== 'undefined' ? TmsWeek.current() : null;
@@ -680,7 +683,7 @@ function _tabsHTML(w) {
   let h = `<button type="button" class="wi4-tab" aria-label="Προηγούμενη εβδομάδα" onclick="WN5._week(${w - 1})">‹</button>`;
   for (let n = from; n <= from + 6; n++) {
     const q = _waitOf(n - w);
-    h += `<button type="button" class="wi4-tab${n === w ? ' on' : ''}" data-w="${n}" onclick="WN5._week(${n})"${q ? ` title="${q} ${q === 1 ? 'παραγγελία' : 'παραγγελίες'} χωρίς φορτηγό"` : ''}>W${n}${n === cur ? '<span class="wi4-tab-cur" aria-hidden="true"></span>' : ''}${q ? `<span class="wn5-tab-n">${q}</span>` : ''}</button>`;
+    h += `<button type="button" class="wi4-tab${n === w ? ' on' : ''}" data-w="${n}" onclick="WN5._week(${n})"${q ? ` title="${q} ${q === 1 ? 'παραγγελία' : 'παραγγελίες'} χωρίς φορτηγό"` : ''}>W${_wkNo(n)}${n === cur ? '<span class="wi4-tab-cur" aria-hidden="true"></span>' : ''}${q ? `<span class="wn5-tab-n">${q}</span>` : ''}</button>`;
   }
   h += `<button type="button" class="wi4-tab" aria-label="Επόμενη εβδομάδα" onclick="WN5._week(${w + 1})">›</button>`;
   if (Number.isInteger(cur)) h += `<button type="button" class="wi4-tab wn5-tab-today" data-today="1"${cur === w ? ' disabled aria-disabled="true"' : ''} onclick="WN5._week(${cur}, true)">Σήμερα</button>`;
@@ -1451,7 +1454,7 @@ function _awayNoHTML(r) {
   // the January the strip walks into — never W1 of this year; code review high 8/11)
   const step = _m && DAY_RE.test(String(_m.week)) ? Math.round((Date.parse(r.away.week + 'T12:00:00Z') - Date.parse(_m.week + 'T12:00:00Z')) / 6048e5) : null;
   const to = step != null && window.WNATL && Number.isInteger(window.WNATL.week) ? window.WNATL.week + step : null;
-  const go = w && to != null && to >= 1 ? `<button type="button" class="wn5-awk" title="${_esc(t + ' — άνοιγμα της ' + wl)}" onclick="WN5._goRow(${to}, '${_esc(r.key)}')">${_esc(wl)}</button>`
+  const go = w && to != null ? `<button type="button" class="wn5-awk" title="${_esc(t + ' — άνοιγμα της ' + wl)}" onclick="WN5._goRow(${to}, '${_esc(r.key)}')">${_esc(wl)}</button>`
     : `<span class="wn5-awk">${_esc(wl)}</span>`;
   return `<span class="wn5-awno" title="${_esc(t)}"><span class="wi4-no">${_esc(n)}</span>${go}</span>`;
 }
@@ -1936,7 +1939,7 @@ function _applySearch(scroll) {
   if (none) {
     none.hidden = !empty;
     none.innerHTML = empty
-      ? `<b>ΑΝΑΖΗΤΗΣΗ</b><span class="wn5-snone-t"> · Κανένα αποτέλεσμα για «${_esc(_qRaw)}» στη W${_esc(String(window.WNATL && window.WNATL.week))}</span> <button type="button" class="wi4-link" onclick="WN5.search('')">Καθάρισμα ×</button>`
+      ? `<b>ΑΝΑΖΗΤΗΣΗ</b><span class="wn5-snone-t"> · Κανένα αποτέλεσμα για «${_esc(_qRaw)}» στη W${_esc(String(window.WNATL && _wkNo(window.WNATL.week)))}</span> <button type="button" class="wi4-link" onclick="WN5.search('')">Καθάρισμα ×</button>`
       : '';
   }
   if (scroll && hits[_sIdx]) hits[_sIdx].scrollIntoView({ block: 'center' });

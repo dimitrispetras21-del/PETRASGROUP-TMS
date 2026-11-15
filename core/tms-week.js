@@ -81,6 +81,30 @@ var TmsWeek = {
     return new Date(year, 0, 1 - jan1.getDay() + (w - 1) * 7 - 1);
   },
 
+  // Week-year of d: the year of its week's Sunday, the year numOf counts in.
+  yearOf(d) {
+    const s = TmsWeek._sat(d);
+    return s ? new Date(s.getFullYear(), s.getMonth(), s.getDate() + 1).getFullYear() : null;
+  },
+
+  // The boards step through weeks with ±1 on a plain number, so for a moment
+  // they hold «W54» or «W0». norm() turns such a number, counted in `year`,
+  // into the real week and its week-year: W53+1 of 2026 is W2 of 2027 (2027
+  // has no W1: its Saturday-start first week is W53 of 2026). Without this the
+  // boards stopped at 53 / 1 and «W1» of 2027 was the same days as W53 (C26).
+  norm(w, year) {
+    const s = TmsWeek.start(w, year);
+    return { week: TmsWeek.numOf(s), year: TmsWeek.yearOf(s) };
+  },
+
+  // The number, counted in `year`, of the week that holds d (may be < 1 or
+  // > 53): what a board numbered in `year` must be set to to show d's week.
+  indexIn(d, year) {
+    const s = TmsWeek._sat(d);
+    if (!s) return null;
+    return 1 + Math.round((s - TmsWeek.start(1, year)) / 6048e5);
+  },
+
   // «19 Σεπ – 25 Σεπ» — same format as the former _wiWeekRange.
   rangeLabel(w, year) {
     const ws = TmsWeek.start(w, year);
