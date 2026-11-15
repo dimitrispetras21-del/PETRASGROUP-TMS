@@ -769,6 +769,12 @@ async function formSettled() {
   };
 }
 
+// The one form's groupage (modules/orders_intl_group.js, owner 15/11) holds several orders, each with its own
+// «Εντολή πελάτη»: the shell keeps each order's state and gives it back when that order is opened again, so a file
+// picked for order 2 never goes up with order 3.
+function formState() { return _odF; }
+function formUse(F) { if (!F) return; _odF = F; _odFormPaint(F); }
+
 // ── Post-save hooks ──
 
 /**
@@ -814,7 +820,7 @@ window.OrderDocs = {
   preloadIndex, hasDocs, invalidateIndex, isIndexed,
   badge, badgeAny, docIdsOf, sectionHtml, openViewer, openViewerMany, attachToOrder,
   handleOrderSaved, handleNatlOrderSaved,
-  formFieldHtml, formMount, formOrderCreated, formSettled,
+  formFieldHtml, formMount, formOrderCreated, formSettled, formState, formUse,
   _openInline, _openNewWindow, _download, _formPick, _formRemove,
 };
 })();

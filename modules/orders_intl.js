@@ -765,7 +765,7 @@ function _oiSegPick(id, btn) {
   seg.parentElement?.querySelector('.oi-req-msg')?.remove();
   if (id === 'f_PalletType') { peSyncPalletType('f', inp.value); _oiPeSeg(); _oiExAll(); }
   if (id === 'f_Direction') { _oiCols(); _oiVsSync(); }
-  if (id === 'f_ReeferMode') _oiBalanceUpdate();
+  if (id === 'f_ReeferMode') { _oiBalanceUpdate(); if (typeof IntlGroup !== 'undefined') IntlGroup.reeferPicked(inp.value); }
 }
 // PE as two buttons over the shared radios (core/form-helpers.js): the radios stay the source peRead reads.
 function _oiPeHtml(f, isEdit) {
@@ -941,7 +941,11 @@ async function duplicateIntlOrder(recId) {
   }
 }
 
-async function _openModal(recId, f, _clientLabelOverride, _scanPrefill, _piece) {
+async function _openModal(recId, f, _clientLabelOverride, _scanPrefill, _piece, _mount) {
+  // The one form for a single load and a groupage (owner 15/11, modules/orders_intl_group.js): every way into the
+  // form (new, edit, scan, piece, duplicate, pre-order) goes through the shell, which calls back here with _mount =
+  // the element of one order. Without the shell (flag off) the form opens alone, as before.
+  if (!_mount && typeof IntlGroup !== 'undefined' && IntlGroup.on()) return IntlGroup.openFrom(recId, f, _clientLabelOverride, _scanPrefill, _piece);
   INTL_ORDERS._createdId = null; // a fresh modal never inherits a previous attempt's order
   INTL_ORDERS._markPending = null; // nor a lot mark that failed in another one
   INTL_ORDERS._whPool = null;      // nor the warehouse list of another form
@@ -1056,7 +1060,7 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill, _piece) 
   let body = `
   <div class="oi2" id="oi2">
     <div class="oi2-sec">Πελάτης</div>
-    <div class="oi2-f">
+    <div class="oi2-f oi2-dirrow">
       <span>Κατεύθυνση</span>
       ${_oiSegHtml('f_Direction', [['Export', 'ΕΞΑΓΩΓΗ'], ['Import', 'ΕΙΣΑΓΩΓΗ']], f['Direction'] || '', _isPiece, _isPiece ? 'Κομμάτι από απόθεμα = εισαγωγή από την αποθήκη' : '')}
     </div>
@@ -1150,11 +1154,11 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill, _piece) 
     : SK.mode === 'pieceEdit' ? 'Επεξεργασία κομματιού από απόθεμα'
     : INTL_ORDERS._preConvert ? 'Μετατροπή pre-order σε παραγγελία'
     : isEdit ? (f['Order No'] ? 'Παραγγελία #' + f['Order No'] : 'Επεξεργασία παραγγελίας') : 'Νέα παραγγελία';
-  openModal(_title, body, footer);
+  if (_mount) _mount.innerHTML = body; else openModal(_title, body, footer);
   // The head line (Φ1 / Φ2 / Φ6): a grey «where → where · day» on an order, the lot chip on a piece, «Από PDF» on a
   // new order. Children of #modalTitle, so the next openModal (textContent) removes them — nothing leaks into
   // another form.
-  const _hdr = document.getElementById('modalTitle');
+  const _hdr = _mount ? null : document.getElementById('modalTitle');
   if (_hdr) {
     const sub = SK.mode === 'pieceNew' ? _oiPieceTitle(SK).replace(/^Κομμάτι από απόθεμα · /, '')
       : isEdit ? await _oiRouteLine(_loadStops, _unloadStops) : '';
@@ -1379,6 +1383,7 @@ function _addStop(type) {
   if (next >= 10) document.getElementById('btn_add'+(type==='l'?'L':'U')).style.display='none';
   _oiCols();
   _oiVsSync();
+  if (typeof IntlGroup !== 'undefined') IntlGroup.changed();
 }
 
 // Owner 12/8: «αν κατά λάθος προσθέσω ένα έξτρα, δεν υπάρχει επιλογή να το
@@ -1391,6 +1396,7 @@ function _removeStop(type, i) {
   if (btn) btn.style.display = '';
   _oiCols();
   _oiVsSync();
+  if (typeof IntlGroup !== 'undefined') IntlGroup.changed();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2708,7 +2714,20 @@ async function _syncGroupageLines(orderId, noId, orderFields, natFields) {
 }
 
 
-async function submitIntlOrder(recId) {
+// G (optional, from the one form's shell, modules/orders_intl_group.js — owner 15/11):
+//   dryRun    run every check of the save and stop before the first write (a groupage checks all its orders before
+//             it writes any, so a refusal on order 3 cannot leave orders 1–2 saved and 3–5 missing)
+//   dupAsked  the duplicate-reference questions were already answered in the dry run (asked once, not twice)
+//   stopPos   (t, i) → { num, seq }: the point's number inside its order and, in a groupage, its place in the load
+//             (113 «Load Seq»), both from the side panel's drag
+//   gid       the Group ID every order of the groupage carries while it is written (the shell writes the full one,
+//             with the order list the old Weekly reads, once all are saved)
+//   inherit   the load's truck / partner / match for an order joining a load that already has one (owner 15/11, 5)
+//   noFinish  the shell closes and repaints once, after the last order
+// The outcome is left on INTL_ORDERS._lastSave ({ ok, id }) for the shell; a plain call works exactly as before.
+async function submitIntlOrder(recId, G) {
+  G = G || null;
+  INTL_ORDERS._lastSave = null;
   const btn = document.getElementById('btnSubmit');
   if (btn) { btn.textContent = 'Αποθήκευση…'; btn.disabled = true; }
   // 14/9: the ORDER row is written before its stops. When the stops failed, the
@@ -2727,7 +2746,7 @@ async function submitIntlOrder(recId) {
   // fails the order is NOT saved, so the line stays on screen to be read.
   // The re-read after a refusal repaints the field with the base's value, so
   // «still changed?» would read false — the save's own answer decides.
-  if (_oiChargeChanged() && !(await _oiChargeSave())) {
+  if (!(G && G.dryRun) && _oiChargeChanged() && !(await _oiChargeSave())) {
     if (btn) { btn.textContent = 'Αποθήκευση'; btn.disabled = false; }
     // The reason is in the band at the top; Save is a sticky footer (review P3).
     document.getElementById('oiLotCharge')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
@@ -2739,7 +2758,7 @@ async function submitIntlOrder(recId) {
     // retries ONLY the mark; saving the order again would re-run every cascade.
     // Unticked meanwhile → no mark: this press is an ordinary save again.
     if (INTL_ORDERS._markPending && !document.getElementById('f_StockLot')?.checked) INTL_ORDERS._markPending = null;
-    if (recId && INTL_ORDERS._markPending === recId) {
+    if (recId && INTL_ORDERS._markPending === recId && !(G && G.dryRun)) {
       const _ctx = INTL_ORDERS._markPendingCtx || { recId, savedOrderId: recId, fields: {}, wasPre: false };
       if (!(await _oiMarkLot(recId, _ctx))) return;
       await _oiFinishSave(_ctx);
@@ -2768,7 +2787,14 @@ async function submitIntlOrder(recId) {
     // Those cascades re-run on every order save; with the tick they used to
     // untick VS (deleting the executed Veroia leg) and rewrite the stops. Other
     // edits of the form are saved first, by an ordinary save without the tick.
-    if (recId && _lotWanted && _oiMarkExisting(_SK)) {
+    // Inside a groupage a lot is refused by the base today (057 lot_grouped); the owner said yes to it (15/11, 2), which
+    // needs a base change first. Said before anything is written, never a half-saved groupage.
+    if (G && G.gid != null && _lotWanted) {
+      showErrorToast('«Σε απόθεμα» μέσα σε groupage δεν γίνεται ακόμη (θέλει αλλαγή στη βάση) — δεν αποθηκεύτηκε τίποτα', 'warn', 10000);
+      if (btn) { btn.textContent = 'Αποθήκευση'; btn.disabled = false; }
+      return;
+    }
+    if (recId && _lotWanted && _oiMarkExisting(_SK) && !(G && G.dryRun)) {
       const _stop = msg => { showErrorToast(msg, 'warn', 10000); if (btn) { btn.textContent = 'Αποθήκευση'; btn.disabled = false; } };
       if (_SK.markWhy) return _stop('Δεν γίνεται παρτίδα: ' + _SK.markWhy + ' — δεν αποθηκεύτηκε τίποτα');
       if (_oiFormSnap() !== INTL_ORDERS._formSnap) return _stop('Πρώτα αποθήκευσε τις άλλες αλλαγές χωρίς «Παρτίδα», μετά τσέκαρε «Παρτίδα» — δεν αποθηκεύτηκε τίποτα');
@@ -2898,7 +2924,7 @@ async function submitIntlOrder(recId) {
       // a stored point left with no REF at all (its own erased, the order has none) is cleared, never left holding
       // the old one: _stopObjToFields drops an empty ref, so it is named through refClear (the base gets null)
       const lRef = ownRef || _stopRef || null;
-      if (locId) _formStops.push({ recordId: sid, stopNumber: ++_seqL, stopType: 'Loading', locationId: locId, pallets: parseFloat(pal) || 0, dateTime: dt || null, clientId: clientId || null, ref: lRef, ...(sid && !lRef ? { refClear: null } : {}), goods: _stopGoods || null, temp: _stopTemp ? parseFloat(_stopTemp) : null, ..._stopExtras('l', i, sid, parseFloat(pal) || 0) });
+      if (locId) _formStops.push({ _row: i, recordId: sid, stopNumber: ++_seqL, stopType: 'Loading', locationId: locId, pallets: parseFloat(pal) || 0, dateTime: dt || null, clientId: clientId || null, ref: lRef, ...(sid && !lRef ? { refClear: null } : {}), goods: _stopGoods || null, temp: _stopTemp ? parseFloat(_stopTemp) : null, ..._stopExtras('l', i, sid, parseFloat(pal) || 0) });
     }
     let _seqU = 0;
     for (let i = 1; i <= 10; i++) {
@@ -2906,7 +2932,21 @@ async function submitIntlOrder(recId) {
       const pal   = document.getElementById('pal_u_'+i)?.value;
       const dt    = document.getElementById('dt_u_'+i)?.value;
       const sid   = document.getElementById('sid_u_'+i)?.value || null;
-      if (locId) _formStops.push({ recordId: sid, stopNumber: ++_seqU, stopType: 'Unloading', locationId: locId, pallets: parseFloat(pal) || 0, dateTime: dt || null, clientId: clientId || null, ref: _stopRef || null, goods: _stopGoods || null, temp: _stopTemp ? parseFloat(_stopTemp) : null, ..._stopExtras('u', i, sid, parseFloat(pal) || 0) });
+      if (locId) _formStops.push({ _row: i, recordId: sid, stopNumber: ++_seqU, stopType: 'Unloading', locationId: locId, pallets: parseFloat(pal) || 0, dateTime: dt || null, clientId: clientId || null, ref: _stopRef || null, goods: _stopGoods || null, temp: _stopTemp ? parseFloat(_stopTemp) : null, ..._stopExtras('u', i, sid, parseFloat(pal) || 0) });
+    }
+
+    // The side panel's order (owner 15/11): the point's number inside its order follows the drag, and in a groupage
+    // its place in the whole load goes to «Load Seq» (113). The stop keeps its record (stopsSave matches by id), so a
+    // reorder only renumbers — pallet movements and the national shipment stay tied to the same stop.
+    if (G && typeof G.stopPos === 'function') {
+      for (const s of _formStops) {
+        const p = G.stopPos(s.stopType === 'Loading' ? 'l' : 'u', s._row);
+        if (!p) continue;
+        if (p.num) s.stopNumber = p.num;
+        if (p.seq != null) s.loadSeq = p.seq;
+      }
+      const _tk = s => (s.stopType === 'Loading' ? 0 : 1);
+      _formStops.sort((a, b) => _tk(a) - _tk(b) || a.stopNumber - b.stopNumber);
     }
 
     // Auto-create Cross-dock stop for Veroia Switch orders
@@ -2955,6 +2995,9 @@ async function submitIntlOrder(recId) {
       fields[`Unloading Location ${i+1}`] = us?.locationId ? [us.locationId] : [];
       fields[`Unloading Pallets ${i+1}`]  = us?.pallets || null;
     }
+
+    if (G && G.gid != null) fields['Group ID'] = G.gid;
+    if (G && G.inherit) Object.assign(fields, G.inherit);
 
     // Validate required fields
     const _vErrors = [];
@@ -3024,7 +3067,7 @@ async function submitIntlOrder(recId) {
     // ── Pre-save check: auto-restore CL if GL lines are Assigned ───
     // Not after day L (F5): the GL/CL/NL are history then, and releasing a truck would delete a historical CL
     // and NL; the VS side of the order is the base's bridge (_syncVeroiaSwitch → _vsAfterCutover).
-    if (recId && fields['National Groupage'] && fields['Veroia Switch']
+    if (!(G && G.dryRun) && recId && fields['National Groupage'] && fields['Veroia Switch']
         && !(typeof PlanConfig !== 'undefined' && (await PlanConfig.load({ fresh: true })).state === 'after')) {
       try {
         // Find GL lines linked to this intl order via Linked International Order (JS filter)
@@ -3068,7 +3111,7 @@ async function submitIntlOrder(recId) {
 
     // Duplicate guard — only on CREATE (not edit) AND only if Reference is set.
     // Asks the user to confirm before saving a duplicate.
-    if (!recId && fields['Reference'] && typeof findDuplicateOrders === 'function') {
+    if (!(G && G.dupAsked) && !recId && fields['Reference'] && typeof findDuplicateOrders === 'function') {
       const dupes = await findDuplicateOrders(fields['Reference'], TABLES.ORDERS);
       if (dupes.length) {
         const list = dupes.map(d => {
@@ -3092,7 +3135,7 @@ async function submitIntlOrder(recId) {
 
     // Φύλακας #5 (owner 10/8): νέο order με Reference που υπάρχει ήδη →
     // soft confirm, όχι σιωπηλό διπλό. Μόνο σε δημιουργία, όχι σε edit.
-    if (!recId && fields['Reference']) {
+    if (!(G && G.dupAsked) && !recId && fields['Reference']) {
       try {
         const esc = String(fields['Reference']).replace(/'/g, "\\'");
         const dups = await atGetAll(TABLES.ORDERS, { filterByFormula: `{Reference}='${esc}'` }, false);
@@ -3108,6 +3151,11 @@ async function submitIntlOrder(recId) {
     // Πρώτη κατάσταση του λεξιλογίου (DESIGN.md ΜΕΡΟΣ Ε) στη δημιουργία ΜΟΝΟ:
     // στην επεξεργασία το Status ανήκει στο popover ανάθεσης, δεν το ξαναγράφει
     // η φόρμα.
+    if (G && G.dryRun) {
+      INTL_ORDERS._lastSave = { ok: true, dry: true };
+      if (btn) { btn.textContent = 'Αποθήκευση'; btn.disabled = false; }
+      return;
+    }
     if (!recId && !fields['Status']) fields['Status'] = 'Pending';
     // Pre-order conversion: the six required fields passed above, so the row
     // stops being provisional here — same id, no new order. The country goes
@@ -3295,6 +3343,8 @@ async function submitIntlOrder(recId) {
       try { await window._wiOnPieceSaved(savedOrderId, fields, _SK.presets.context); }
       catch (e) { reportError('Το κομμάτι αποθηκεύτηκε, αλλά η ένταξή του στο φορτηγό δεν ολοκληρώθηκε — δες το Weekly', e); }
     }
+    INTL_ORDERS._lastSave = { ok: true, id: savedOrderId, fields };
+    if (G && G.noFinish) return;
     await _oiFinishSave(_finish);
 
   } catch(e) {
@@ -4027,7 +4077,9 @@ async function _scanOpenStored() {
   if (r) await _scanOpen(r.matched, r.data);
 }
 
-async function _scanOpen(matched, data) {
+// What a scan puts into the form: the order's fields, the client's label and the points. Shared by the scan of one
+// order (_scanOpen) and by «Από αρχείο» inside a groupage (modules/orders_intl_group.js), so both fill a form alike.
+function _scanFormArgs(matched, data) {
   const f = {};
   if (matched.clientId) f['Client'] = [matched.clientId];
   if (data.reference)   f['Reference'] = String(data.reference);
@@ -4096,10 +4148,14 @@ async function _scanOpen(matched, data) {
   // Register matched locations + client in maps so autocomplete shows the label
   [...ls, ...ds].forEach(s => { if (s._locId && s._locLabel) _fhLocationsMap[s._locId] = s._locLabel; });
   if (matched.clientId && matched.clientLabel) _fhClientsMap[matched.clientId] = matched.clientLabel;
+  return { f, label: matched.clientLabel, prefill: { loadStops, unloadStops } };
+}
 
+async function _scanOpen(matched, data) {
+  const a = _scanFormArgs(matched, data);
   closeModal();
   // Pass scan-derived stops via 4th arg so _openModal can render them
-  await _openModal(null, f, matched.clientLabel, { loadStops, unloadStops });
+  await _openModal(null, a.f, a.label, a.prefill);
 
   // Owner 28/9: the side-by-side review UI (round 3) is gone — the scan opens
   // the plain form, same as before round 3. Only the ORIGINAL file survives,

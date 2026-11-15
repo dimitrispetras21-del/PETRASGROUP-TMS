@@ -282,6 +282,10 @@ const F = {
   STOP_TIME_FROM:       'Time From',
   STOP_TIME_TO:         'Time To',
   STOP_VIA_HUB:         'Via Hub',
+  // 113 (owner 15/11, «ανά σημείο»): the point's place inside its groupage, counted among the load's loading points
+  // and among its delivery points; empty = the old rule (Group ID order list, then Stop Number). Written only by the
+  // one form's groupage. Deploy order: 113 → Worker → screens.
+  STOP_LOAD_SEQ:        'Load Seq',
 
   // ── PARTNER_ASSIGN ───────────────────────────────────────────────
   PA_PARTNER:       'Partner',
@@ -414,7 +418,9 @@ const PERMS = {
 // change by a person the board showed; another person's change since then is refused (rt_changed), never overwritten
 // in silence. 110 EXECUTED 8/11 by the owner (verify md5_ok / worker_exec / takes_key): on. Back to false BEFORE a
 // 110 rollback (a base without 110 refuses the key, bad_input).
-const FEATURES = { ORDER_SPLIT: true, GROUP_TILES: true, STOCK_LOTS: true, WI_V2: 'on', WI_PRESENCE: false, WN_V5: 'on', WN_ROAD: 'pilot', WN_COMPOSE: 'pilot', WN_EXPECT: true };
+// INTL_GROUP_FORM (owner 15/11): the one international form for a single load and a groupage, with the side panel of
+// loading / delivery order (modules/orders_intl_group.js). false = the form of 8/11 alone, as before (rollback).
+const FEATURES = { INTL_GROUP_FORM: true, ORDER_SPLIT: true, GROUP_TILES: true, STOCK_LOTS: true, WI_V2: 'on', WI_PRESENCE: false, WN_V5: 'on', WN_ROAD: 'pilot', WN_COMPOSE: 'pilot', WN_EXPECT: true };
 // Pilot usernames for FEATURES.WI_V2 === 'pilot' (PLAN §2.1). Empty = nobody.
 const WI_V2_USERS = [];
 // Pilot usernames for FEATURES.WN_V5 === 'pilot' (Ε-1): only a name the owner gives. Empty = nobody.
