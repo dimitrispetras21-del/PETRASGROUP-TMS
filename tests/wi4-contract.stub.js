@@ -73,6 +73,7 @@ const WI_INTERNAL_ORIGIN = Object.freeze({
   moreStops: '_wk3MoreStops', css: '_WI2_CSS',
   // Reading helpers
   currentWeek: '_wiCurrentWeek', weekStart: '_wiWeekStart', weekRange: '_wiWeekRange',
+  weekLabel: '_wiWeekLabel', todayIdx: '_wiTodayIdx',
   fmt: '_wiFmt', raw: '_wiRaw', clean: '_wiClean', stFlags: '_wk3StFlags', vsCd: '_wk3VsCd',
   arr: '_wk3Arr', locs: '_wk3Locs', split: '_wi2Split', flatLocName: '_wiFlatLocName',
   placeStr: '_wiPlaceStr', clientName: '_wiClientName', grpOrder: '_wiGrpOrder',
@@ -155,6 +156,8 @@ const WI_INTERNAL = {
   currentWeek() { return 0; },
   weekStart(w) { return null; },
   weekRange(w) { return ''; },
+  weekLabel(w) { return 0; },
+  todayIdx() { return 0; },
   fmt(s) { return ''; },
   raw(s) { return ''; },
   clean(s) { return ''; },
