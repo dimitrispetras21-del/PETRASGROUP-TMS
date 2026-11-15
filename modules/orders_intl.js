@@ -197,6 +197,7 @@ div.oi-locked{display:flex;align-items:center;font-size:13px}
 .oi2-pts{display:flex;flex-direction:column;gap:8px}
 .oi2-rows{display:flex;flex-direction:column;gap:8px}
 .oi2-th,.oi2-stop{display:grid;grid-template-columns:minmax(0,1fr) 136px 164px 72px 64px 40px 22px;gap:8px;align-items:center}
+#oi2sec_l .oi2-th,#oi2sec_l .oi2-stop{grid-template-columns:minmax(0,1fr) 128px 136px 164px 72px 64px 40px 22px}
 .oi2-th{font-size:11px;color:var(--wi4-grey-2)}
 .oi2-th .r{text-align:right}
 .oi2-c-loc{position:relative;min-width:0}
@@ -633,7 +634,10 @@ function _clientSelect(id, currentId, currentLabel) { return fhClientSelect(id, 
 //   vh_      «μέσω Βέροιας» on a national-side point (111 via_hub: the desk's choice per point).
 // data-o* hold what the stop had when the form opened: the save sends a new-label value only when it changed, so an
 // unchanged order never names a column a Worker or a base without 111 does not know.
-// extra = { tf, tt, ex, vh } of a stored stop (all optional).
+//   ref_     a loading point's own reference (owner 15/11): a client order can carry one REF per loading place
+//            (e.g. three Berglandmilch plants, three REFs). Empty = the order's Reference (placeholder «= παραγγελία»);
+//            the save writes the order's Reference to that stop, as every stop got before.
+// extra = { tf, tt, ex, vh, ref } of a stored stop (all optional).
 function _stopRow(type, i, locId, palVal, dtVal, stopId, extra) {
   const x = extra || {};
   const esc = v => escapeHtml(v == null ? '' : String(v));
@@ -651,6 +655,7 @@ function _stopRow(type, i, locId, palVal, dtVal, stopId, extra) {
   const vhStored = x.vh === true ? 'true' : x.vh === false ? 'false' : '';
   return `<div class="oi2-stop" id="stoprow_${type}_${i}" data-oex="${exStored == null ? '' : exStored}" data-ovh="${vhStored}">
     <div class="oi2-c-loc">${_locSelect(type + '_' + i, locId)}</div>
+    ${type === 'l' ? `<input class="form-input" type="text" id="ref_l_${i}" value="${esc(x.ref)}" placeholder="= παραγγελία" title="Κενό = το Reference της παραγγελίας" aria-label="Reference σημείου">` : ''}
     <input class="form-input" type="date" id="dt_${type}_${i}" value="${dtVal || ''}" aria-label="Ημέρα">
     <div class="oi2-hrs${hasHrs ? ' open' : ''}" id="hrs_${type}_${i}">
       <button type="button" class="oi2-hrs-all" onclick="_oiHrsOpen('${type}',${i})"><span>όλη η ημέρα</span><span class="oi2-link">ώρες…</span></button>
@@ -1008,8 +1013,11 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill, _piece) 
         const locArr = sf[F.STOP_LOCATION];
         const locId = Array.isArray(locArr) ? locArr[0] : '';
         const dt = sf[F.STOP_DATETIME] ? toLocalDate(sf[F.STOP_DATETIME]) : '';
+        // a stop holding the order's own Reference shows empty: it follows the order (a later change of the
+        // order's Reference carries to it); only a REF of its own is shown in the cell
+        const sRef = sf[F.STOP_REF] && sf[F.STOP_REF] !== f['Reference'] ? sf[F.STOP_REF] : '';
         html += _stopRow(type, i + 1, locId, sf[F.STOP_PALLETS], dt, stopsOfType[i].id,
-          { tf: sf[F.STOP_TIME_FROM], tt: sf[F.STOP_TIME_TO], ex: sf[F.STOP_PALLETS_EXCHANGED], vh: sf[F.STOP_VIA_HUB] });
+          { tf: sf[F.STOP_TIME_FROM], tt: sf[F.STOP_TIME_TO], ex: sf[F.STOP_PALLETS_EXCHANGED], vh: sf[F.STOP_VIA_HUB], ref: sRef });
       }
     } else {
       // New order or no stops — single empty row
@@ -1036,7 +1044,7 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill, _piece) 
   const _pe = _isPiece
     ? `<div class="form-input oi-locked" title="Η ανταλλαγή παλετών μετρά μία φορά, στη φόρτωση της παρτίδας από τον πελάτη">Όχι · στην παρτίδα</div>`
     : _oiPeHtml(f, isEdit);
-  const _th = (t) => `<div class="oi2-th"><span>${t === 'u' && SK.wasLot ? 'Αποθήκη' : 'Σημείο'}</span><span>Ημέρα</span><span>Ώρα</span><span class="r">Παλέτες</span>
+  const _th = (t) => `<div class="oi2-th"><span>${t === 'u' && SK.wasLot ? 'Αποθήκη' : 'Σημείο'}</span>${t === 'l' ? '<span>Reference</span>' : ''}<span>Ημέρα</span><span>Ώρα</span><span class="r">Παλέτες</span>
       <span class="oi2-c-ex">ανταλλαγή</span><span class="oi2-c-vs" id="oi2vsh_${t}"></span><span></span></div>`;
 
   // Two things of the body below, said here (not as HTML comments inside the template):
@@ -2886,7 +2894,8 @@ async function submitIntlOrder(recId) {
       const pal   = document.getElementById('pal_l_'+i)?.value;
       const dt    = document.getElementById('dt_l_'+i)?.value;
       const sid   = document.getElementById('sid_l_'+i)?.value || null;
-      if (locId) _formStops.push({ recordId: sid, stopNumber: ++_seqL, stopType: 'Loading', locationId: locId, pallets: parseFloat(pal) || 0, dateTime: dt || null, clientId: clientId || null, ref: _stopRef || null, goods: _stopGoods || null, temp: _stopTemp ? parseFloat(_stopTemp) : null, ..._stopExtras('l', i, sid, parseFloat(pal) || 0) });
+      const ownRef = (document.getElementById('ref_l_'+i)?.value || '').trim();
+      if (locId) _formStops.push({ recordId: sid, stopNumber: ++_seqL, stopType: 'Loading', locationId: locId, pallets: parseFloat(pal) || 0, dateTime: dt || null, clientId: clientId || null, ref: ownRef || _stopRef || null, goods: _stopGoods || null, temp: _stopTemp ? parseFloat(_stopTemp) : null, ..._stopExtras('l', i, sid, parseFloat(pal) || 0) });
     }
     let _seqU = 0;
     for (let i = 1; i <= 10; i++) {
@@ -3766,7 +3775,8 @@ Output schema:
     "city_gr": "city in Greek if Greek",
     "country": "country",
     "date": "YYYY-MM-DD",
-    "pallets": number
+    "pallets": number,
+    "ref": "this loading place's own reference if printed next to it (e.g. 'REF : 2184'), as printed, else null"
   }],
   "delivery_stops": [{
     "location_name": "consignee name",
@@ -4032,6 +4042,14 @@ async function _scanOpen(matched, data) {
   // picks them up via the new _scanPrefill path in _openModal.
   const ls = matched.loadStops || [];
   const ds = matched.delStops || [];
+  // One REF per loading place (owner 15/11, a DPS confirmation: three Berglandmilch plants, three REFs). v2 reads
+  // each stop's «ref»; before, it was dropped here and only one number reached the order. With two or more
+  // different REFs the order's Reference lists them all (the card, the list search and the duplicate check read
+  // the order's), unless the document printed an order number of its own; each stop keeps its own in its cell.
+  const stopRef = s => String((s && (s.ref || s.reference)) || '').trim();
+  const lRefs = [...new Set(ls.map(stopRef).filter(Boolean))];
+  if (lRefs.length > 1 && (!f['Reference'] || lRefs.includes(f['Reference']))) f['Reference'] = lRefs.join(', ');
+  else if (!f['Reference'] && lRefs.length === 1) f['Reference'] = lRefs[0];
   // The new form's hours (111, owner 8/11): scan v2 reads each stop's «time» («08:00», «08:00-12:00», «0700-1100»).
   // Two times = from–to; one = an appointment, from and to the same («08:00» → 08:00–08:00, owner 9/11: a lone time on
   // an order is a slot), «to» alone when the word says a deadline («bis», «until», «έως», «latest», «by»), «from» alone
@@ -4051,6 +4069,7 @@ async function _scanOpen(matched, data) {
       [F.STOP_LOCATION]: s._locId ? [s._locId] : null,
       [F.STOP_PALLETS]:  s.pallets != null ? s.pallets : 0,
       [F.STOP_DATETIME]: s.date || data.loading_date || '',
+      [F.STOP_REF]:      stopRef(s) || null,
     }, hrs(s)),
   }));
   const unloadStops = ds.map((s, i) => {
