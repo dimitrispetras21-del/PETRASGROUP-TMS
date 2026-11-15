@@ -23,7 +23,7 @@
 .dr .pl b{font-weight:400;color:var(--body)}
 .dr .n{text-align:right;color:var(--ink);font-weight:500}
 .dr .v{justify-self:end;color:var(--ink);font-weight:500;border-bottom:1px dotted #8A8D96;cursor:pointer}.dr .v.e{border:0;width:28px;height:18px}.dr:hover .v.e{border-bottom:1px dotted #C9CDD4}
-.dr.done>.two,.dr.done>.as,.dr.done>.n,.dr.done>.no{opacity:.72}
+.dr.done>.two,.dr.done>.n,.dr.done>.no{opacity:.72}.dr.done>.asb{background:#F3F4F6}.dr.done>.asb.p{background:#F0F5FD}.dr.done>.asb .two{opacity:.72}.asb{justify-self:stretch}
 .dr.mem{min-height:44px}.dr.mem::before{left:74px}.dr.sub{min-height:40px;font-size:13px}
 .dr.mem::after{content:"";position:absolute;left:66px;top:0;bottom:0;border-left:1px solid var(--line)}
 .mc{display:flex;align-items:center;gap:10px;min-width:0;padding-left:20px}.mc .onum{background:var(--bg);color:var(--ink)}.mc .two{flex:1}
@@ -57,7 +57,7 @@ function closeParent(pill,word,kid){const pr=pill.closest('.dr');pr.querySelecto
 .io{display:grid}.io svg.lucide{width:18px;height:18px;color:var(--ink)}.rr.done .io svg.lucide{color:var(--help)}
 .rr .two b{font-size:14px;font-weight:600}.rr .two>span{font-size:12.5px}.rr .pl b{font-weight:400;color:var(--body)}
 .rr .n{text-align:right;font-weight:600;color:var(--ink);font-size:15px}
-.rr.done>*:not(.ax){opacity:.6}
+.rr.done>*:not(.ax):not(.asb){opacity:.6}.rr.done>.asb{background:#F3F4F6}.rr.done>.asb .two{opacity:.6}
 .now{display:flex;align-items:center;gap:8px;padding:0 20px;height:14px;margin:8px 0;color:var(--link);font-size:11px;font-weight:600}.now::after{content:'';flex:1;border-top:1.5px solid var(--accent)}
 .sdc{position:absolute;top:96px;right:24px;width:320px;display:flex;flex-direction:column;gap:12px}
 .sdc .card{border-radius:var(--r-card);padding:16px 18px}
@@ -129,7 +129,7 @@ const act=(k,n=0)=>({L:pb('Φορτώθηκε','Φορτώθηκε','L')+bL+bC,D
  W:pb('Παραλαβή','Στην αποθήκη','W')+`<button class="ib" title="Παραλαβή με καθυστέρηση">${ic('clock-alert')}</button>`+bC,pre:`<button class="pill sm">Μετατροπή</button>`+E+E,
  done:E+E+bU,P:pb('Παραδόθηκε','Παραδόθηκε','D')+bL+E,open:E+E+E}[k])+more+clip(n);
 const v=(t)=>t?`<span class="v num">${t}</span>`:`<span class="v e"></span>`;
-const rel=(a,b,loc,red,p)=>`<div class="as" title="${b}"><span class="tile ${p?'p':''}">${ic(p?'users':'truck')}</span><div class="two"><b class="num">${a}</b><span><span class="loc" style="cursor:pointer;${red?'color:var(--red);font-weight:600':''}" title="Τοπικός οδηγός: άνοιγμα">${ic('user-round')}${loc}</span></span></div></div>`;
+const rel=(a,b,loc,red,p)=>`<div class="as asb ${p?'p':''}" title="${b}"><div class="two"><b class="num">${a}</b><span><span class="loc" style="cursor:pointer;${red?'color:var(--red);font-weight:600':''}" title="Τοπικός οδηγός: άνοιγμα">${ic('user-round')}${loc}</span></span></div></div>`;
 const cu=(a,t,b)=>{const g=t.split(' ').filter(Boolean),x=g.slice(0,2).join(' ');return `<div class="two cu"><b><span class="el">${a}</span>${tags(x)}${g.length>2?`<span class="tag" title="${g.slice(2).map(y=>TG[y]).join(' · ')}">+${g.length-2}</span>`:''}</b><span>${b}</span></div>`};
 /* row: [no, client, tags, sub, place, placeSub, assign, pallets, mid, status, action, cls] */
 const drow=r=>`<div class="dr ${r[11]||''}"><span class="no num">${r[0]}</span>${cu(r[1],r[2],r[3])}${two(r[4],r[5],'pl')}${r[6]}<span class="n num">${r[7]}</span>${r[8]}${r[9]}<div class="ax">${r[10]}</div></div>`;
@@ -148,7 +148,7 @@ const XLM=[
  [3,'Danubia Market Kft.','','Wien · AT','Veria Fruit Pack','Βέροια','',11,v(''),sto('done','Φορτώθηκε','Παντελής · 07:05'),act('done',1),'done'],
  [4,'Alpen Frucht AG','PE','Zürich · CH','Frutopia Packhouse','Νάουσα','',12,v('200'),pend(),act('L',0),'g'],
  [5,'Wiener Frische','','Wien · AT','Pella Peach Coop','Σκύδρα','',8,v(''),pend(),act('L',0),'g']];
-const XLP=[6,'Hellas Kiwi Coop','','33 παλέτες','–','',`<div class="as x"><span class="tile e" style="border-color:transparent"></span><div class="two"><b>–</b></div></div>`,33,E,`<div class="stw"><span class="tag" style="margin:0;color:var(--amber);border-color:var(--amber-line);font-weight:600" title="Λείπουν: τόπος φόρτωσης, τόπος παράδοσης. Σημείωση: περιμένουμε τον πελάτη.">PRE</span></div>`,act('pre'),''];
+const XLP=[6,'Hellas Kiwi Coop','','33 παλέτες','–','',`<div class="as asb am" title="Pre-order: χωρίς ανάθεση"><div class="two"><b style="color:var(--amber)">Pre-order</b></div></div>`,33,E,`<div class="stw"><span class="tag" style="margin:0;color:var(--amber);border-color:var(--amber-line);font-weight:600" title="Λείπουν: τόπος φόρτωσης, τόπος παράδοσης. Σημείωση: περιμένουμε τον πελάτη.">PRE</span></div>`,act('pre'),''];
 const XD=[
  [1,'Danubia Market Kft.','PE','Wien · AT','Wiener Frische','Wien',par('Transfrigo Kft.','RKA 512 · XTR 088'),33,v('10:30'),pend(),act('D',2)],
  [2,'Alpen Frucht AG','PE','Zürich · CH','Alpen Frucht Zentrale','Zürich',own('ΚΗΙ 2208 · Ρ 4259','Π. Ράπτης'),33,v('07:00'),sto('done','Παραδόθηκε','Παντελής · 07:15'),act('done',3),'done'],
@@ -211,7 +211,7 @@ $('fP').innerHTML=`<div style="position:absolute;inset:0;display:flex;gap:24px;a
  <div style="display:grid;gap:20px;width:330px">
   <div class="pop" style="animation:none;width:auto"><a>${ic('user-round')}Τοπικός οδηγός<small>Κ. Ράλλης 11:30</small></a><a>${ic('copy')}Αντιγραφή πινακίδων</a><a>${ic('paperclip')}Έγγραφα<small>2</small></a><a>${ic('file-text')}Άνοιγμα παραγγελίας</a></div>
   <div class="pn" style="padding:16px 18px"><p class="lbl">Κομμάτι αποθέματος, χωρίς φορτηγό</p><div style="display:flex;align-items:center;gap:10px;margin-top:10px"><span class="tile e">${ic('package')}</span><div class="two"><b>Alfa Zymi · 6 παλέτες</b><span>παρτίδα 12/11 · <a>Εβδομαδιαίο →</a></span></div></div></div>
-  <div class="pn" style="padding:16px 18px"><p class="lbl">Τοπικός χωρίς όνομα · διεθνές χωρίς φορτηγό</p><div style="margin-top:10px;display:grid;gap:10px">${rel('ΚΗΙ 5102 · Ρ 5948','Σ. Κάππος','τοπικός: ανάθεση',1)}<div class="as"><span class="tile need">${ic('truck')}</span><div class="two"><b style="color:var(--red)">Ανάθεση</b><span><span class="loc" title="Τοπικός οδηγός: άνοιγμα" style="cursor:pointer">${ic('user-round')}Κ. Ράλλης 11:30</span></span></div></div></div></div>
+  <div class="pn" style="padding:16px 18px"><p class="lbl">Τοπικός χωρίς όνομα · διεθνές χωρίς φορτηγό</p><div style="margin-top:10px;display:grid;gap:10px">${rel('ΚΗΙ 5102 · Ρ 5948','Σ. Κάππος','τοπικός: ανάθεση',1)}<div class="as asb need"><div class="two"><b style="color:var(--red)">Ανάθεση</b><span><span class="loc" title="Τοπικός οδηγός: άνοιγμα" style="cursor:pointer">${ic('user-round')}Κ. Ράλλης 11:30</span></span></div></div></div></div>
   <div class="pn" style="padding:16px 18px"><p class="lbl">Δηλώθηκε από τοπικό · άλλη ημέρα</p><div style="margin-top:10px">${sto('done','Παραδόθηκε','Κ. Ράλλης, τοπικός · Σάβ 14/11 18:10')}</div></div>
  </div></div>`;
 
@@ -234,7 +234,7 @@ const RM=[
  ['11:00','out','Market Plus DC','','Γιαούρτι · +4°','Ασπρόπυργος','','','v5','14+','v5need'],
  ['13:00','out','Nordfrisch GmbH','VS','Ελιές · +6°','Hamburg','','','need',33,'']];
 const rrow=r=>{if(r[0]==='now')return `<div class="now num">07:42</div>`;const[t,k,c,tg,g,pl,tr,dr,kind,p,stt,xt]=r,ro=kind==='v5';
- const veh=kind==='need'?need:(stt==='v5need'?`<div class="as x"><span class="tile e">${ic('truck')}</span><div class="two"><b>Προς ανάθεση</b></div></div>`:trk(tr,dr,kind==='p'?'p':''));
+ const veh=kind==='need'?need:(stt==='v5need'?need:trk(tr,dr,kind==='p'?'p':''));
  const a=stt==='done'?ract(k,1):stt==='v5done'?`<span class="st done" style="justify-self:end">${ic('check')}Εκτελέστηκε</span>${E}${E}`:ro?v5:ract(k);
  return `<div class="rr ${stt.includes('done')?'done':''}">${hrs(t,ro)}<span class="io" title="${k==='in'?'Μπαίνει':'Βγαίνει'}">${io(k)}</span><div class="two"><b><span class="el">${c}</span>${tags(tg)}${xt?`<span class="tag" style="color:var(--amber);border-color:var(--amber-line)" title="Αναβλήθηκε από εκείνη την ημέρα">${xt}</span>`:''}</b><span>${g}</span></div><div class="two pl"><b><span class="el">${pl}</span></b></div>${veh}<span class="n num">${typeof p==='string'?`<span title="Σε ένα σημείο οι παλέτες δεν είναι γνωστές" style="border-bottom:2px dotted #A9ABB3">${p}</span>`:p}</span><div class="ax r">${a}</div></div>`};
 const unk=`<i class="nb a dn" data-t="Market Plus DC: σε ένα σημείο οι παλέτες δεν είναι γνωστές.">!</i>`;

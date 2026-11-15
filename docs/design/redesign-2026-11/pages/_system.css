@@ -452,6 +452,13 @@ table.spec td b{color:var(--ink);font-weight:600}
 .sq:first-child{border-top:0}.sq svg.lucide{width:14px;height:14px;color:#A9ABB3}.sq b{display:block;font-weight:600;color:var(--ink);font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sq small{display:block;color:var(--help);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sq>.num{text-align:right;font-weight:500;color:var(--ink);font-size:13.5px}.sq .onum{background:var(--bg);color:var(--ink)}
 .sq.drag{box-shadow:var(--shadow-float);border-radius:10px;border-top-color:transparent;position:relative;z-index:2;cursor:grabbing;padding:0 8px;margin:0 -8px}.sq.drag+.sq{border-top-color:transparent}
+/* --- added 15/11: the two weekly boards are the same (owner). Copied unchanged from index.html on branch docs/redesign-new-items (PR 316): the assignment box has a colour and no truck icon; an empty return takes the whole width of its side. --- */
+.asb{border-radius:10px;padding:4px 10px;min-height:38px;background:#ECEDF1;align-self:center}
+.br>.slot,.br>.slot.a{justify-self:stretch;width:auto;height:38px;border-radius:10px;margin-right:34px}.br>.slot .plus{margin-left:auto}
+.asb.p{background:var(--accent-bg)}.asb.p .two b{color:var(--link)}
+.asb.need{background:none;outline:1.5px dashed var(--red);outline-offset:-1.5px}.asb.am{background:none;outline:1.5px dashed var(--amber-line);outline-offset:-1.5px}
+.asb .two b svg.lucide{width:14px;height:14px;margin-right:5px;color:var(--help)}
+.day.past .br:not(.need)>.asb{background:#F3F4F6}.day.past .br:not(.need)>.asb.p{background:#F0F5FD}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;transition-delay:0ms!important}
   .oc,.toast{transform:none}}
 @media print{.toc,.doc>header p{display:none}body{background:#fff}}

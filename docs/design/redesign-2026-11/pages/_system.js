@@ -1,4 +1,4 @@
-/* Shared helpers copied unchanged from ../index.html (script, lines 821-831, 855-858, 901-907, 1192). DESIGN MOCKUP ONLY. */
+/* Shared helpers copied unchanged from ../index.html (script, lines 821-831, 855-858, 901-907, 1192). trk and need follow index.html of PR 316 (assignment box without icon, 15/11). DESIGN MOCKUP ONLY. */
 const ic=n=>`<i data-lucide="${n}"></i>`,$=id=>document.getElementById(id);
 const NAV=[['ΣΧΕΔΙΑΣΜΟΣ',[['globe','Εβδομαδιαίο Διεθνών','wi'],['map','Εβδομαδιαίο Εθνικών','wn'],['calendar-days','Ημερήσιο','d'],['warehouse','Ράμπα','r']]],
  ['ΔΟΥΛΕΙΑ',[['file-text','Παραγγελίες','o','10'],['package','Παλέτες','p','4']]],
@@ -18,8 +18,8 @@ function asg(k,t){ if(k==='x')return `<div class="as x"><span class="tile e" sty
  const [a,b]=t.split('|');return `<div class="as" title="${a} · ${b}"><span class="tile ${k==='p'?'p':''}">${ic(k==='p'?'users':'truck')}</span><div class="two"><b class="num">${a}</b><span>${b}</span></div></div>`}
 const P=n=>{if(typeof n==='string')return `<span class="pal" title="Σε ένα σημείο οι παλέτες δεν είναι γνωστές"><b class="num">${n}</b><span class="m" style="background:none;height:0;border-top:2px dotted #A9ABB3"></span></span>`;const ov=n>33;return `<span class="pal ${ov?'over':''}"><b class="num">${n}</b><span class="m"><i style="--f:${Math.min(1,n/33).toFixed(2)}"></i></span>${ov?`<sup>+${n-33}</sup>`:''}</span>`};
 const d=t=>`<span class="dt">${t}</span>`;
-const trk=(a,b,k)=>`<div class="as"><span class="tile ${k||''}">${ic(k==='p'?'users':'truck')}</span><div class="two"><b class="num">${a}</b><span>${b}</span></div></div>`;
-const need=`<div class="as"><span class="tile need">${ic('truck')}</span><div class="two"><b style="color:var(--red)">Ανάθεση</b></div></div>`;
+const trk=(a,b,k)=>`<div class="as asb ${k||''}" title="${k==='p'?'Συνεργάτης':'Δικό μας'}"><div class="two"><b class="num">${a}</b><span>${b}</span></div></div>`;
+const need=`<div class="as asb need"><div class="two"><b style="color:var(--red)">Ανάθεση</b></div></div>`;
 const slotD=`<div class="slot">${ic('arrow-down')}<span class="plus">${ic('plus')}</span></div>`;
 const slotA=t=>`<div class="slot a">${ic('undo-2')}${t}<span class="plus" style="border-color:var(--amber-line);color:var(--amber);background:none">${ic('plus')}</span></div>`;
 const c2=(a,t,b)=>`<div class="two"><b><span class="el">${a}</span>${tags(t)}</b><span>${b}</span></div>`;
