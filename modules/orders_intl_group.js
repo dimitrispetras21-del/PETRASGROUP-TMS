@@ -632,9 +632,11 @@ async function pickExisting() {
   const days = allPoints().map(p => p.date).filter(Boolean).sort();
   const c = days[0] ? new Date(days[0] + 'T12:00:00') : new Date();
   const from = new Date(c.getTime() - 14 * 864e5).toISOString().slice(0, 10), to = new Date(c.getTime() + 21 * 864e5).toISOString().slice(0, 10);
+  // Both directions are read on purpose: an order entered with the wrong direction must stay findable to be
+  // corrected after the fact (owner 15/11); it is listed last, with a sign.
   let recs = [];
   try {
-    recs = await atGetAll(TABLES.ORDERS, { filterByFormula: `AND(IS_AFTER({Loading DateTime},'${from}'),IS_BEFORE({Loading DateTime},'${to}')${s.dir ? `,{Direction}='${s.dir}'` : ''})` }, false) || [];
+    recs = await atGetAll(TABLES.ORDERS, { filterByFormula: `AND(IS_AFTER({Loading DateTime},'${from}'),IS_BEFORE({Loading DateTime},'${to}'))` }, false) || [];
   } catch (e) { box.innerHTML = `<div class="igx-busy">Οι παραγγελίες δεν διαβάστηκαν — ${esc(e && e.message || 'σφάλμα')}</div>`; return; }
   if (!IG.s) return;
   const inForm = new Set(s.members.map(m => m.recId).filter(Boolean));
