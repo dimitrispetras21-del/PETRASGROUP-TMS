@@ -49,7 +49,7 @@ test('PGlite: dry run keeps nothing; apply; 0 refused; apply again stops; rollba
   await db.exec(SCHEMA);
   const col = async () => (await db.query(`SELECT count(*)::int AS n FROM information_schema.columns WHERE table_name = 'order_stops' AND column_name = 'load_seq'`)).rows[0].n;
   await assert.rejects(db.exec(read('113_stop_load_seq_dryrun.sql')),
-    /DRY RUN 113 finished: 5 rows, 2 live stops given a position, no other table touched; refused 0: yes; triggers on order_stops 2, on any UPDATE: none/);
+    /DRY RUN 113 finished: 5 rows, 2 live stops given a position, no other table touched; refused 0: yes, on a national stop: yes; triggers on order_stops 2, on any UPDATE: none/);
   assert.equal(await col(), 0, 'the dry run kept nothing');
   await db.exec(read('113_stop_load_seq.sql'));
   assert.equal(await col(), 1);
@@ -65,6 +65,9 @@ test('PGlite: dry run keeps nothing; apply; 0 refused; apply again stops; rollba
   await db.exec('UPDATE order_stops SET load_seq = 1 WHERE id = 4');
   await db.exec("UPDATE order_stops SET stop_type = 'Unloading' WHERE id = 4");
   await db.exec('UPDATE order_stops SET load_seq = NULL WHERE id = 4');
+  await db.exec("INSERT INTO order_stops VALUES (6, 10, null, 3, '2026-11-16', null, null, null)");
+  await db.exec('UPDATE order_stops SET load_seq = 4 WHERE id = 6');
+  await db.exec('UPDATE order_stops SET load_seq = NULL WHERE id = 6');
   await assert.rejects(db.exec('UPDATE order_stops SET load_seq = 1 WHERE id = 5'), /order_stops_load_seq_pos/, 'a national stop (no order) has no place');
   await assert.rejects(db.exec(read('113_stop_load_seq.sql')), /already exists - 113 has run/);
   await assert.rejects(db.exec(read('113_stop_load_seq_rollback.sql')), /refused: 1 stops carry a position/);

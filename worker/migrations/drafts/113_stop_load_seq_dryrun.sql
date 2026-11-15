@@ -10,7 +10,7 @@
 DO $do$
 DECLARE
   v_trg int; v_any text; v_rows bigint;
-  v_upd bigint; v_touched text; v_os text; v_s0 jsonb; v_refused boolean := false;
+  v_upd bigint; v_touched text; v_os text; v_s0 jsonb; v_refused boolean := false; v_nat text := 'no national stop to try';
   v_t0 timestamptz := clock_timestamp();
 BEGIN
   PERFORM set_config('lock_timeout', '5s', true);
@@ -59,6 +59,9 @@ BEGIN
   -- new column. The session's own row counters (pg_stat_xact_user_tables) are read just before and just after it and
   -- compared: they cannot be flushed in the middle of this one statement, so the difference is exactly what this
   -- UPDATE and every trigger it woke did. order_stops must differ by these updates only, every other table not at all.
+  -- deferred constraint triggers (e.g. 071's plan_chk_bridge_stop) would fire only at COMMIT, which a dry run never
+  -- reaches: made immediate here so they fire inside the measured window, or raise here
+  SET CONSTRAINTS ALL IMMEDIATE;
   SELECT coalesce(jsonb_object_agg(relid::regclass::text, jsonb_build_array(n_tup_ins, n_tup_upd, n_tup_del)), '{}'::jsonb)
     INTO v_s0 FROM pg_stat_xact_user_tables;
   UPDATE public.order_stops SET load_seq = greatest(coalesce(stop_number, 1), 1)
@@ -87,7 +90,16 @@ BEGIN
   IF NOT v_refused THEN
     RAISE EXCEPTION '113 DRY RUN FAILED: a position 0 was accepted';
   END IF;
-  RAISE EXCEPTION 'DRY RUN 113 finished: % rows, % live stops given a position, no other table touched; refused 0: yes; triggers on order_stops %, on any UPDATE: %; % ms - nothing kept (deliberate error)',
-    v_rows, v_upd, v_trg, coalesce(v_any, 'none'), round(extract(epoch FROM clock_timestamp() - v_t0) * 1000);
+  -- the other half of the CHECK, on the real rows: a national stop (no international order) takes no position
+  IF EXISTS (SELECT 1 FROM public.order_stops WHERE order_id IS NULL) THEN
+    BEGIN
+      UPDATE public.order_stops SET load_seq = 1 WHERE id = (SELECT min(id) FROM public.order_stops WHERE order_id IS NULL);
+      RAISE EXCEPTION '113 DRY RUN FAILED: a position on a national stop was accepted';
+    EXCEPTION WHEN check_violation THEN
+      v_nat := 'yes';
+    END;
+  END IF;
+  RAISE EXCEPTION 'DRY RUN 113 finished: % rows, % live stops given a position, no other table touched; refused 0: yes, on a national stop: %; triggers on order_stops %, on any UPDATE: %; % ms - nothing kept (deliberate error)',
+    v_rows, v_upd, v_nat, v_trg, coalesce(v_any, 'none'), round(extract(epoch FROM clock_timestamp() - v_t0) * 1000);
 END
 $do$;

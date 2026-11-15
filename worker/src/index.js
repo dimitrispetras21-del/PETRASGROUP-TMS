@@ -3741,7 +3741,7 @@ function stockRuleError(e) {
   // statement); in a batch PATCH the rows before it may have been (handleFacadeBatchUpdate sends one request per row),
   // and the rows after it are never sent: the text says the stops were not saved, «perhaps only the ones before it».
   if (/order_stops/.test(message) && /^(PGRST204|42703)$/.test(code) && /load_seq/.test(message)) {
-    return { type: "SCHEMA_BEHIND", code: "113_missing", message: "Η βάση δεν βλέπει ακόμη τη σειρά σημείων στο groupage (migration 113 χωρίς εκτέλεση, ή χωρίς ανανέωση σχήματος μετά από αυτό)· οι στάσεις δεν αποθηκεύτηκαν (σε αποθήκευση πολλών μαζί, ίσως μόνο όσες προηγήθηκαν)· ενημέρωσε τον Δημήτρη (113_missing)" };
+    return { type: "SCHEMA_BEHIND", code: "113_missing", message: "Η βάση δεν βλέπει ακόμη τη σειρά σημείων στο groupage (migration 113 χωρίς εκτέλεση, ή χωρίς ανανέωση σχήματος μετά από αυτό)· η αποθήκευση των στάσεων σταμάτησε εδώ (η παραγγελία μπορεί να έχει ήδη αποθηκευτεί, και σε πολλές στάσεις μαζί οι πρώτες ίσως γράφτηκαν)· ενημέρωσε τον Δημήτρη πριν το ξαναπατήσεις (113_missing)" };
   }
   if (code === "23514") {
     // 'stock:' (057) only under 23514, as 057's stock_raise sends it — a
