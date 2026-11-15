@@ -2919,7 +2919,7 @@ function _wiSdP(uid,recId,label){
   // Own fleet and partner are two sides of one choice (the save sends the
   // other side empty): a pick on one side empties the other (C1.1), else a
   // truck picked on a partner row was saved as the partner again.
-  if(parts[1]==='p'&&!isNaN(rowId)){
+  if(uid.includes('_p_')&&!isNaN(rowId)){
     const clear=px==='pt'?['tk','tl','dr']:['pt'];
     if(fm[px]) clear.forEach(c=>{
       const u=`${c}_p_${rowId}`;
@@ -3943,7 +3943,9 @@ async function _wiSaveFromPopoverRun(rowId,st){
       const pp=await _wiPlanPatch(orderId,expFields);
       const opt=orderId===row.orderIds[0]?_wiExpectOpt(orderId,['Truck','Trailer','Driver','Partner','Partner Truck Plates','Is Partner Trip']):undefined;
       const res=await atSafePatch(TABLES.ORDERS,orderId,pp,opt||_wiQuietOpt());
-      if(res?.conflict){ if(_wiV2Active()) return WIV2.conflict(res,{slot:'wi-sync-'+rowId,slotOid:oid0,orderId,kind:'assign',mine:expFields}); toast('Η εγγραφή άλλαξε από άλλον χρήστη — ανανέωση…','warn'); await renderWeeklyIntl(); return; }
+      // A 409 answers before anything is written (only the first order carries
+      // _expect): the row goes back to what the table holds (C1.2).
+      if(res?.conflict){ if(orderId===row.orderIds[0]) st.writing=false; if(_wiV2Active()) return WIV2.conflict(res,{slot:'wi-sync-'+rowId,slotOid:oid0,orderId,kind:'assign',mine:expFields}); toast('Η εγγραφή άλλαξε από άλλον χρήστη — ανανέωση…','warn'); await renderWeeklyIntl(); return; }
       if(res?.error) throw new Error(res.error.message||res.error.type||JSON.stringify(res.error));
       if(res?._offline&&_wiV2Active()){ asgOffline=true; continue; }
       if(opt){ expSent=true; expChecked=res?._expectChecked; }
@@ -3966,6 +3968,7 @@ async function _wiSaveFromPopoverRun(rowId,st){
   // (review 11/10: the words came from the screen's assumption).
   const attempt=()=>({ids:asgIds,truck:isPartner?'':(row.truckId||''),partner:isPartner?(row.partnerId||''):'',failed:errors.length,offline:asgOffline});
   if(errors.length){
+    if(errors.length>=asgIds.length) st.writing=false;   // nothing landed: the row shows the table again (C1.2)
     if(btn){btn.disabled=false;if(spin)spin.style.display='none';}
     _wiSync('wi-sync-'+rowId,'err',_wiV2Active()?`Η ανάθεση ΔΕΝ γράφτηκε σε ${errors.length} από ${asgIds.length}`:'Η ανάθεση ΔΕΝ γράφτηκε στη βάση — ξαναπροσπάθησε',oid0); // T3: stays visible
     // v4 says it on the row (the line under it + the title-bar counter): no

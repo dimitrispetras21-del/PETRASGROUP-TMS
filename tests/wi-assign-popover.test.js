@@ -110,3 +110,19 @@ test('Β2: a refused save (partner without fee) writes nothing and leaves the ro
   assert.strictEqual(row.partnerId, null, 'a refused save must not leave the partner on the row');
   assert.strictEqual(row.truckId, 'recTA');
 });
+
+test('Β2: a 409 on the first order writes nothing, so the row goes back to what the table holds', async () => {
+  const w = world(ownRow());
+  w.ctx.atSafePatch = async () => ({ conflict: true });
+  w.pick('tk', 'recTB', 'ΚΗΙ 2222');
+  await w.ctx._wiSaveFromPopover(8);
+  assert.strictEqual(w.ctx.WINTL.rows[0].truckId, 'recTA');
+});
+
+test('Β2: a save whose every write failed leaves the row as the table holds it', async () => {
+  const w = world(ownRow());
+  w.ctx.atSafePatch = async () => ({ error: { message: 'boom' } });
+  w.pick('tk', 'recTB', 'ΚΗΙ 2222');
+  await w.ctx._wiSaveFromPopover(8);
+  assert.strictEqual(w.ctx.WINTL.rows[0].truckId, 'recTA');
+});
