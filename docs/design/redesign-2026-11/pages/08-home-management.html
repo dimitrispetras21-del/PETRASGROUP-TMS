@@ -16,7 +16,7 @@
 /* one row of work: who, what, when, the one action */
 .wr{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:0 14px;align-items:center;height:60px;padding:0 28px;position:relative;overflow:hidden;transition:height var(--t-move) var(--ease),opacity var(--t-exit) var(--ease-exit)}
 .wr+.wr::before{content:'';position:absolute;left:28px;right:28px;top:0;border-top:1px solid var(--line-2)}
-.wr .wn{font-size:13px;color:var(--body);white-space:nowrap}.wr .wn.r{color:var(--red);font-weight:600}.wr .wn.a{color:var(--amber);font-weight:600}
+.wr .wn{font-size:13px;color:var(--body);white-space:nowrap}.wr .wn.r{color:var(--red);font-weight:600}.wr .wn.a{color:var(--amber);font-weight:600}.wr .wn.k{color:var(--ink);font-weight:600}
 .wr.go{height:0;opacity:0}
 .wr .pill{min-width:112px;justify-content:center}
 /* today, compact */
@@ -95,8 +95,8 @@ const nb=(t,a)=>`<i class="nb ${a?'a':''}" data-t="${t}">!</i>`;
 /* ---------- dispatcher landing ---------- */
 /* [customer, route, when, cls of when, button, primary] */
 const W0=[['Nordfrisch GmbH','Μεσσήνη → Hamburg · 33 παλέτες','φορτώνει σήμερα','r','Ανάθεση',1]];
-const W2=[['Olympos Export','Λάρισα → München · Μεταφορική Ζήση','παράδοση Παρ 13/11','r','Παραδόθηκε'],['Chalkidiki Olives','Πολύγυρος → Hamburg · ΚΗΙ 4445 · Μ. Χρυσουλίδης','παράδοση Σάβ 14/11','r','Παραδόθηκε'],['Hellas Citrus','Άργος → Wien · 26 παλέτες · χωρίς φορτηγό','φόρτωση Σάβ 14/11','r','Ανάθεση']];
-const W1=[['Olympos Export','Λάρισα → München · 33 παλέτες','φόρτωση Τετ 18/11','','Ανάθεση']];
+const W2=[['Olympos Export','Λάρισα → München · Μεταφορική Ζήση','παράδοση Παρ 13/11','k','Παραδόθηκε'],['Chalkidiki Olives','Πολύγυρος → Hamburg · ΚΗΙ 4445','παράδοση Σάβ 14/11','k','Παραδόθηκε'],['Hellas Citrus','Άργος → Wien · χωρίς φορτηγό','φόρτωση Σάβ 14/11','k','Ανάθεση']];
+const W1=[['Baltic Cold Foods','Βέροια → Poznań · 30 παλέτες','φόρτωση Τετ 18/11','','Ανάθεση']];
 const W3=[['Ρ 2998','με το ΚΗΙ 4612 · Βέροια → Poeldijk · φεύγει Δευ 23/11','ΚΤΕΟ έληξε 5/11','r','Άλλη ρυμούλκα']];
 const wr=r=>`<div class="wr"><div class="two"><b><span class="el">${r[0]}</span></b><span>${r[1]}</span></div><span class="wn num ${r[3]}">${r[2]}</span><button class="pill sm ${r[5]?'b':''}" onclick="did(this)">${r[4]}</button></div>`;
 const grp=(l,n,rows)=>`<div class="gh lbl">${l}<b class="num">${n}</b></div>${rows.map(wr).join('')}`;
@@ -131,7 +131,7 @@ function did(btn){const r=btn.closest('.wr');if(r._g)return;r._g=1;
 const rw=(a,b,n,c='')=>`<div class="rw ${n==='0'?'z':''}"><div><b>${a}</b><small>${b}</small></div><span class="n num ${c}">${n}</span>${ic('chevron-right')}</div>`;
 const rc=(av,nm,ro,rows)=>`<div class="card"><div class="pp"><span class="av">${av}</span><div><b>${nm}</b><small>${ro}</small></div></div>${rows}</div>`;
 $('fR').innerHTML=`<div class="rl">
- ${rc('ΑΛ','Αλεξία','Λογιστήριο',rw('Προς τιμολόγηση','παλαιότερη εβδομάδα 24–30/10','39','r')+rw('Χωρίς τιμή','5 πελάτες','10')+rw('Δελτία παλετών','9 προς επιβεβαίωση','14')+rw('Κάρτα καυσίμων','τελευταία εισαγωγή 31/10','16 ημ.'))}
+ ${rc('ΑΛ','Αλεξία','Λογιστήριο',rw('Προς τιμολόγηση','παλαιότερη εβδομάδα 24–30/10','39')+rw('Χωρίς τιμή','5 πελάτες','10')+rw('Δελτία παλετών','9 προς επιβεβαίωση','14')+rw('Κάρτα καυσίμων','τελευταία εισαγωγή 31/10','16 ημ.'))}
  ${rc('ΘΔ','Θοδωρής','Στόλος',rw('Ληγμένα έγγραφα','ΚΗΙ 4445 · Ρ 2998','2','r')+rw('Λήγουν σε 30 ημέρες','πρώτο: ΚΗΙ 4612, ΚΤΕΟ 28/11','3')+rw('Χωρίς ημερομηνία','ΚΗΙ 4166, ταχογράφος','1')+rw('Ανοιχτές εργασίες','3 οχήματα σε σέρβις','6')+rw('Περιμένουν τιμολόγιο','1 εργασία','1'))}
  ${rc('ΣΤ','Σωτήρης','Εθνικά',rw('Προς ανάθεση','πρώτο: Λάρισα → Βέροια, αύριο','2','r')+rw('Groupage χωρίς φορτηγό','4 γραμμές · 21 παλέτες','4')+rw('Από προηγούμενες ημέρες','1 παράδοση χωρίς επιβεβαίωση','1','r'))}
  ${rc('ΔΠ','Δημήτρης','Owner',rw('Προς ανάθεση','διεθνή 3 · εθνικά 2','5','r')+rw('Ληγμένα έγγραφα','ΚΗΙ 4445 · Ρ 2998','2','r')+rw('Προς τιμολόγηση','παλαιότερη εβδομάδα 24–30/10','39')+rw('Χωρίς τιμή','5 πελάτες','10')+rw('Ανοιχτές εργασίες στόλου','3 οχήματα σε σέρβις','6'))}
