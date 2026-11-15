@@ -466,34 +466,25 @@ table.spec td b{color:var(--ink);font-weight:600}
 .asb .two b svg.lucide{width:14px;height:14px;margin-right:5px;color:var(--help)}
 .day.past .br:not(.need)>.asb{background:#F3F4F6}.day.past .br:not(.need)>.asb.p{background:#F0F5FD}
 /* dense weekly study (owner 15/11: 30-50 loads a week; assignment box redrawn; Veroia shows its loading places; hard cases) */
-.cx{background:var(--bg);border-radius:16px;padding:0}#agopts.cx{background:#fff;padding:14px 16px}
+.cx{background:var(--bg);border-radius:16px;padding:0}
 .cx .bh,.cx .br,#f5 .cx .bh,#f5 .cx .br{grid-template-columns:28px 100px minmax(0,1.3fr) minmax(0,1.2fr) 32px 168px minmax(0,1.3fr) minmax(0,1.2fr) 32px 100px 22px;gap:0 12px;padding:0 18px 0 12px}
 .cx .bh{height:34px;margin-top:6px}
 .cx .day{margin-top:10px}
 
-.cx .br{min-height:48px;font-size:13.5px}.cx .br+.br::before{left:14px;right:14px;border-top-color:#E6E7EB}
+.cx .br{min-height:44px;font-size:13.5px}.cx .br+.br::before{left:14px;right:14px;border-top-color:#E6E7EB}
 .cx .br .two b{font-size:13.5px;line-height:17px}.cx .br .two>span{font-size:12px;line-height:16px}
 
-.dx{font-style:normal;display:inline-block;font-size:11px;font-weight:600;color:var(--ink);background:#E3E5EA;border-radius:4px;padding:0 5px;line-height:15px;margin-right:6px;vertical-align:1px}
-.dx.t{background:var(--accent);color:#fff}
-.stk{display:flex;flex-direction:column;gap:6px;padding:6px 0;min-width:0}
-.stk .ln{display:block;font-size:12.5px;line-height:17px;color:var(--help);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.stk .ln b{font-weight:600;color:var(--ink)}.stk .ln em,.vz em{font-style:normal;color:var(--red);font-weight:600}
 .pn{font-weight:600;color:var(--ink);font-size:14px;text-align:right;display:block;white-space:nowrap}.pn.o{color:var(--red)}.pn sup{font-size:10px;font-weight:700}
 .cx .slot.a{grid-column:span 3;height:28px;border-radius:6px;justify-self:stretch;width:auto;font-size:12.5px;margin-right:0}
 .cx .br.subr{min-height:28px;margin-top:-6px}
 .ag{display:flex;flex-direction:column;justify-content:center;min-width:0;border-radius:6px;padding:2px 9px;min-height:34px}
 .ag b{display:block;font-size:13.5px;font-weight:600;line-height:17px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ag b svg.lucide{width:13px;height:13px;margin-right:5px;vertical-align:-2px}
 .ag span{display:block;font-size:12px;line-height:15px;color:var(--help);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ga .ag{background:var(--ink)}.ga .ag b{color:#fff}.ga .ag span{color:#B4B7C4}.ga .ag.p{background:var(--accent)}.ga .ag.p span{color:#D3E4FA}
-.gb .ag{box-shadow:inset 0 0 0 1px #D5D8DE,inset 4px 0 0 var(--ink)}.gb .ag{padding-left:12px}.gb .ag.p{box-shadow:inset 0 0 0 1px #D5D8DE,inset 4px 0 0 var(--accent)}.gb .ag.p b{color:var(--link)}
-.gc .ag{border-radius:0;padding-left:10px;box-shadow:inset 2px 0 0 var(--ink)}.gc .ag.p{box-shadow:inset 2px 0 0 var(--accent)}.gc .ag.p b{color:var(--link)}
-.ga .ag.need,.gb .ag.need,.gc .ag.need,.ga .ag.am,.gb .ag.am,.gc .ag.am{background:none;box-shadow:none;border-radius:6px;padding-left:9px;outline:1.5px dashed var(--red);outline-offset:-1.5px}
 .ag.need b{color:var(--red)!important}.ga .ag.am,.gb .ag.am,.gc .ag.am{outline-color:var(--amber-line)}.ag.am b{color:var(--amber)!important;font-weight:500}
 .cx .day.past .br:not(.need)>.ag,.cx .day.past .br:not(.need)>.two,.cx .day.past .br:not(.need)>.stk,.cx .day.past .br:not(.need)>.pn{opacity:.55}
-.agp{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:28px}.agp h4{font-size:14px;font-weight:600;color:var(--ink);margin-bottom:2px}.agp p{font-size:12.5px;color:var(--help);margin:0 0 10px}
-.agp .r{display:grid;grid-template-columns:170px 1fr;gap:12px;align-items:center;margin-bottom:6px;font-size:12.5px;color:var(--help)}
-/* trial sheets (owner 15/11): assignment box, day, Veroia tile */
-.lab{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-bottom:18px}.lab.d3{grid-template-columns:repeat(3,minmax(0,1fr))}.lab.one{grid-template-columns:minmax(0,1fr)}
+.av{width:36px;height:36px;border-radius:50%;background:var(--bg);color:var(--ink);display:grid;place-items:center;font-size:13px;font-weight:600;flex:none}
+/* trial sheets (owner 15/11): Veroia tile and its hover table */
+.lab{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-bottom:18px}.lab.one{grid-template-columns:minmax(0,1fr)}
 .lc{background:#fff;border-radius:16px;padding:12px 16px 8px}.lc h4{font-size:13.5px;font-weight:600;color:var(--ink);margin-bottom:6px;display:flex;gap:8px;align-items:baseline}.lc h4 small{font-weight:400;color:var(--help);font-size:12px}
 .lc .two b{font-size:13.5px;line-height:17px}.lc .two>span{font-size:12px;line-height:16px}
 .qa{display:flex;align-items:center;gap:8px;min-width:0;min-height:34px}
@@ -508,20 +499,19 @@ table.spec td b{color:var(--ink);font-weight:600}
 .vpop .vpr{display:grid;grid-template-columns:minmax(0,1.5fr) 36px 56px minmax(0,1.2fr);gap:0 12px;height:26px;align-items:center;font-size:12.5px;color:var(--body);border-top:1px solid #EEF0F2;white-space:nowrap}.vpop .vpr b{font-weight:600;color:var(--ink)}.vpop .vpr em{font-style:normal;color:var(--red);font-weight:600}.vpop .vpr>*{overflow:hidden;text-overflow:ellipsis}.vpop .vpr.vh{border:0;height:20px;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--label)}
 .vt2.r{box-shadow:inset 0 0 0 1px #DADDE3}.vt2 i{font-size:11.5px;font-weight:400}
 .vpop{box-shadow:0 8px 24px rgba(15,23,42,.10),0 0 0 1px #E2E5EA}.vpop.b{left:auto;right:330px;width:400px}.vpop .vpr.tot{color:var(--ink);font-weight:600}.vpop.b .vpr{grid-template-columns:minmax(0,1fr) 36px 56px}
-.lns{display:flex;flex-direction:column;gap:3px;padding:3px 0;min-width:0}.qa.pt .tx b{display:flex;align-items:center}.qa.pt .tx b .el{overflow:hidden;text-overflow:ellipsis}.qa.pt .tx b .tag{flex:none}.lf{width:32px}
+.lns{display:flex;gap:10px;min-width:0}.lns>.qa{flex:1 1 0;min-width:0}.qa.pt .tx b{display:flex;align-items:center}.qa.pt .tx b .el{overflow:hidden;text-overflow:ellipsis}.qa.pt .tx b .tag{flex:none}.lf{width:32px}
 .cx .qa,.lc .qa.pt{min-height:32px}.cx .br .qa .tx b{font-size:14px;font-weight:500}.lc .qa.pt .tx b{font-weight:500}
 .cx .qa.pt .tx b{color:var(--ink)}.cx .qa.pt .tx span{font-size:12.5px}.lf.s:not(.t) b{font-size:12.5px;font-weight:600;color:var(--body)}
 .cx .slot.a{height:36px;border:1px solid var(--amber-line);background:#FFFBF2;border-radius:10px;font-size:13.5px}
 .vt2.r{box-shadow:none;outline:1.5px dashed var(--red);outline-offset:-1.5px;background:#FEF6F6;color:var(--ink)}.vt2 em{font-style:normal;color:var(--red);font-weight:600}
 .pn{position:relative}.pn sup{position:absolute;left:100%;top:-3px;margin-left:1px}
 .vpop h5{margin-top:0}
-.gz .ag{background:#ECEDF1;border-radius:10px;padding:3px 10px;min-height:36px}.gz .ag.p{background:var(--accent-bg)}.gz .ag.p b{color:var(--link)}
-.gz .ag.need,.gz .ag.am{background:none;outline:1.5px dashed var(--red);outline-offset:-1.5px}.gz .ag.am{outline-color:var(--amber-line)}
 .cx .day.past .br:not(.need)>.qa,.cx .day.past .br:not(.need)>.lns{opacity:.6}
-.gz .ag{background:none;padding:0;border-radius:10px}.gz .ag.p{background:none}.gz .ag b{font-size:14px}.gz .ag span{font-size:12.5px}
-.gz .ag.need,.gz .ag.am{padding:4px 12px;min-height:38px}
+.gz .ag{padding:0;border-radius:10px;min-height:36px}.gz .ag.p b{color:var(--link)}.gz .ag b{font-size:14px}.gz .ag span{font-size:12.5px}
+.gz .ag.need,.gz .ag.am{padding:4px 12px;min-height:38px;outline:1.5px dashed var(--red);outline-offset:-1.5px}.gz .ag.am{outline-color:var(--amber-line)}
 .lc .asb{background:none;padding:0}.lc .asb.need{padding:4px 12px}
 .cx .vt2{padding:0 7px}.cx .qa{gap:7px}.cx .lf{width:30px}
+#f5>.app{zoom:.88;inset:0 auto auto 0;width:1636px;height:1023px}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;transition-delay:0ms!important}
   .oc,.toast{transform:none}}
 @media print{.toc,.doc>header p{display:none}body{background:#fff}}
@@ -1052,7 +1042,6 @@ const lfMany=a=>a.length>1?`<div class="lns">${a.map(x=>lfLn(x[1],'',x[0],x[2],x
 /* dense weekly study: same 14 loads drawn twice, once with the day as text and once in a small box before the place.
    Rows 5 and 9 are open (every point on its own line); the rest are closed and show "+N" and the span of days. */
 (function(){
- let DM='txt';
  const NM={'Λάρισα':'Larissa Fruit Hub','Λαμία':'Lamia Cold Store','Τρίκαλα':'Trikala Agro','Verona':'Verona Mercato','Leipzig':'Leipzig Frischelager'};
  const pt=(n,tg,day,pl,k)=>{const td=d=>k==='t'&&/ 16$/.test(d);if(!/–/.test(day))return lfLn(n,tg,day,pl,td(day));
   const [d1,d2]=day.split(' – '),ps=pl.split(', '),h=Math.ceil(ps.length/2),a=ps.slice(0,h),b=ps.slice(h),mo=x=>x.length>1?` +${x.length-1}`:'';
@@ -1060,9 +1049,9 @@ const lfMany=a=>a.length>1?`<div class="lns">${a.map(x=>lfLn(x[1],'',x[0],x[2],x
  const stk=a=>{const g={};a.forEach(x=>(g[x[1]]=g[x[1]]||[]).push(x));return lfMany(Object.keys(g).map(d=>[d,g[d][0][0]+(g[d].length>1?` +${g[d].length-1}`:''),[...new Set(g[d].map(x=>x[2]))].join(', '),g[d].some(x=>x[4])&&/ 16$/.test(d)]))};
  const pn=n=>n>33?`<b class="pn num o">${n}<sup>+${n-33}</sup></b>`:`<b class="pn num">${n}</b>`;
  const ag=(a,b,k,i)=>`<div class="ag ${k||''}"><b class="num">${i?ic(i):''}${a}</b>${b?`<span>${b}</span>`:''}</div>`;
- const tile=(t,n,r,tt)=>`<span class="vt2 num ${r?'r':''}" title="${tt}">${t}</span>`;
- const vz=(a,b,r)=>tile(r?'<em>λείπει 1</em>':a,b.split(' · ').length,r,b.replace(/<[^>]+>/g,''));
- const vzs=a=>{const tr=[...new Set(a.map(x=>x[1]).filter(Boolean))],miss=a.filter(x=>!x[1]).length;return tile(miss?`<em>λείπει ${miss}</em>`:tr[0]+(tr.length>1?` +${tr.length-1}`:''),a.length,miss,a.map(x=>x[0]).join(' · '))};
+ const tile=(t,r,tt)=>`<span class="vt2 num ${r?'r':''}" title="${tt}">${t}</span>`;
+ const vz=(a,b,r)=>tile(r?'<em>λείπει 1</em>':a,r,b.replace(/<[^>]+>/g,''));
+ const vzs=a=>{const tr=[...new Set(a.map(x=>x[1]).filter(Boolean))],miss=a.filter(x=>!x[1]).length;return tile(miss?`<em>λείπει ${miss}</em>`:tr[0]+(tr.length>1?` +${tr.length-1}`:''),miss,a.map(x=>x[0]).join(' · '))};
  const gap=t=>`<div class="slot a">${ic('undo-2')}Κενό γύρισμα · ${t}<span class="plus" style="border-color:var(--amber-line);color:var(--amber);background:none">${ic('plus')}</span></div>`;
  const E='<span></span>',E3=E+E+E;
  const row=([n,vl,L,as,R,vr,cls=''])=>`<div class="br ${cls}"><button class="no num">${n}</button>${vl||E}${L||E3}${as}${R||E3}${vr||E}<span class="send">${ic('send')}</span></div>`;
@@ -1098,9 +1087,9 @@ const lfMany=a=>a.length>1?`<div class="lns">${a.map(x=>lfLn(x[1],'',x[0],x[2],x
   ['Παρασκευή 20/11','none',[]],
  ];
  const head=`<div class="bh lbl"><span></span><span>Προς Βέροια</span><span>Εξαγωγή · φόρτωση</span><span>Παράδοση</span><span style="text-align:right">Παλ.</span><span>Ανάθεση</span><span>Εισαγωγή · φόρτωση</span><span>Παράδοση</span><span style="text-align:right">Παλ.</span><span>Από Βέροια</span><span></span></div>`;
- const board=m=>{DM=m;return head+days().map(([t,c,r])=>`<section class="day ${c}"><h3>${t}</h3>${r.join('')}</section>`).join('')};
+ const board=()=>head+days().map(([t,c,r])=>`<section class="day ${c}"><h3>${t}</h3>${r.join('')}</section>`).join('');
  /* the Weekly International screen itself now carries this board: what the owner has settled so far */
- {const bh=$('f5').querySelector('.bh'),old=bh.nextElementSibling,box=document.createElement('div');box.className='cx gz';box.style.cssText='flex:1;min-height:0;overflow:hidden;background:none;margin-top:-10px;padding:0 2px';box.innerHTML=board('num');old.remove();bh.replaceWith(box)}
+ {const bh=$('f5').querySelector('.bh'),old=bh.nextElementSibling,box=document.createElement('div');box.className='cx gz';box.style.cssText='flex:1;min-height:0;overflow:hidden;background:none;margin-top:-10px;padding:0 2px';box.innerHTML=board();old.remove();bh.replaceWith(box)}
 })();
 /* trial sheets: the same rows drawn with each candidate, to be judged side by side */
 (function(){
