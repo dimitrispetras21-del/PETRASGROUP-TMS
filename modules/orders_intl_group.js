@@ -37,7 +37,8 @@ const MAX_PAL = 33;   // the truck the scan preview and the form already measure
 
 function on() { return typeof FEATURES !== 'undefined' && FEATURES.INTL_GROUP_FORM === true; }
 const esc = v => (typeof escapeHtml === 'function' ? escapeHtml(v == null ? '' : String(v)) : String(v == null ? '' : v));
-const note = (msg) => `<span class="igx-note" title="${esc(msg)}" aria-label="${esc(msg)}">!</span>`;
+// The note sign of the design (owner 14/11): a small «!», its words only when pointed at.
+const note = (msg) => `<i class="igx-note" data-t="${esc(msg)}" aria-label="${esc(msg)}">!</i>`;
 const dayOf = d => (typeof PlainRef !== 'undefined' && d ? PlainRef.day(d) : (d || ''));
 
 // ── The per-form state of orders_intl.js, kept per order ─────────────────────
@@ -114,73 +115,179 @@ function stopPosFor(m) {
 }
 
 // ── Shell ─────────────────────────────────────────────────────────────────────
+// The look of the redesign (owner 15/11: «ακριβώς το σχέδιο»): docs/design/redesign-2026-11/index.html, screens s3 / #f6
+// — Manrope, ink #000010, accent #0B63CE, sheet #F5F6F7 with white cards. Scoped to this form (#modal.modal--igx): the
+// other screens keep the current look until the redesign reaches them. The form of 8/11 inside keeps its markup and
+// ids (its save reads them); it is dressed here by CSS and by a few moves of its own nodes (dress()).
 function ensureStyles() {
+  if (!document.getElementById('igxFont')) {
+    const l = document.createElement('link');
+    l.id = 'igxFont'; l.rel = 'stylesheet';
+    l.href = 'https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap';
+    document.head.appendChild(l);
+  }
   if (document.getElementById('igxStyles')) return;
   const st = document.createElement('style');
   st.id = 'igxStyles';
   st.textContent = `
-  #modal.modal--igx{max-width:1240px;width:96vw}
-  .igx-top{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
-  .igx-seg{display:inline-flex;background:var(--surface-sunken,#EEF1F5);border-radius:10px;padding:3px;gap:2px}
-  .igx-seg button{border:0;background:transparent;padding:7px 14px;border-radius:8px;font:inherit;font-size:13px;color:var(--text-mid);cursor:pointer}
-  .igx-seg button.on{background:var(--surface-card,#fff);color:var(--text);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08)}
-  .igx-seg button:disabled{opacity:.5;cursor:not-allowed}
-  .igx-top .igx-scan{margin-left:auto}
-  .igx-grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;align-items:start}
-  @media (max-width:900px){.igx-grid{grid-template-columns:1fr}}
-  .igx-h{font-family:Syne,sans-serif;font-weight:700;font-size:15px;margin:0 0 10px}
-  .igx-h small{font-weight:500;color:var(--text-dim);margin-left:6px}
-  .igx-m{border:1px solid transparent;border-radius:10px;margin-bottom:8px}
-  .igx.group .igx-m.open{border-color:var(--accent,#0284C7)}
-  .igx.group .igx-m:not(.open) .igx-mh{background:var(--surface-sunken,#F4F6F9)}
-  .igx-mh{display:none;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;cursor:pointer;font-size:13px}
-  .igx.group .igx-mh{display:flex}
-  .igx-mh .n{width:22px;height:22px;border-radius:6px;background:#0B1929;color:#fff;font-size:12px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex:none}
-  .igx-mh .c{font-weight:600;min-width:150px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .igx-mh .r{flex:1;color:var(--text-mid);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .igx-mh .d,.igx-mh .p{color:var(--text-mid);white-space:nowrap}
-  .igx-mh .v{min-width:86px;text-align:right;white-space:nowrap}
-  .igx-mh .v.miss{color:var(--danger,#B91C1C)}
-  .igx-mh .ap{font-size:10px;font-weight:700;border-radius:4px;padding:1px 5px;background:#E0F2FE;color:#0369A1}
-  .igx-mh button{border:0;background:transparent;cursor:pointer;color:var(--text-dim);font-size:15px;padding:2px 4px}
-  .igx-mh button:hover{color:var(--danger,#B91C1C)}
-  .igx.group .igx-m.open .igx-mb{padding:0 12px 12px}
+  #modal.modal--igx{--ink:#000010;--body:#333340;--help:#666873;--ph:#7C7E88;--line:#E9EAEB;--bg:#F5F6F7;--accent:#0B63CE;--link:#0A54B0;--accent-bg:#E6F0FC;--amber:#A8520A;--amber-line:#E8B45A;--red:#C92A31;--ctl:#D9DBE0;
+    width:1240px;max-width:96vw;max-height:94vh;padding:0;border:0;border-radius:24px;background:var(--bg);box-shadow:0 24px 60px -24px rgba(10,18,32,.32),0 0 0 1px rgba(10,18,32,.06);
+    font:400 14px/1.4 'Manrope',system-ui,sans-serif;color:var(--body);-webkit-font-smoothing:antialiased}
+  #modal.modal--igx .modal-header,#modal.modal--igx .modal-footer{display:none}
+  #modal.modal--igx .modal-body{padding:0}
+  .igx .num{font-variant-numeric:tabular-nums}
+  .igx-top{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:10px;height:76px;padding:0 28px;background:#fff;border-bottom:1px solid var(--line)}
+  .igx-top h1{margin:0 8px 0 0;font:400 24px/1.15 'Manrope',sans-serif;letter-spacing:-.6px;color:var(--ink);white-space:nowrap}
+  .igx-top .sp{flex:1}
+  .igx-seg{display:inline-flex;background:#E6E8EC;border-radius:999px;padding:3px}
+  .igx-seg button{height:34px;padding:0 16px;border:0;border-radius:999px;background:none;font:500 14px 'Manrope',sans-serif;color:var(--help);white-space:nowrap;cursor:pointer}
+  .igx-seg button.on{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+  .igx-seg button:disabled{opacity:.45;cursor:not-allowed}
+  .igx-pill{height:40px;padding:0 16px;border-radius:999px;border:1px solid var(--line);background:#fff;font:500 14px 'Manrope',sans-serif;color:var(--body);display:inline-flex;align-items:center;gap:8px;white-space:nowrap;cursor:pointer}
+  .igx-pill:hover{border-color:#CFD2D8}
+  .igx-pill.b{width:100%;justify-content:center;background:var(--ink);border-color:var(--ink);color:#fff}
+  .igx-pill.b:hover{background:#24242F}
+  .igx-pill.b:disabled{background:#E6E8EC;border-color:#E6E8EC;color:var(--ph);cursor:default}
+  .igx-cl{width:40px;height:40px;border:0;border-radius:50%;background:var(--bg);display:grid;place-items:center;color:var(--body);cursor:pointer;flex:none}
+  .igx svg.ic{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .igx-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:18px;padding:18px 24px 24px;align-items:start}
+  @media (max-width:980px){.igx-grid{grid-template-columns:1fr}}
+  .igx-card{background:#fff;border-radius:16px}
+  .igx-main{padding:20px 24px}
+  .igx-h{display:flex;align-items:baseline;gap:10px;margin:0 0 14px;font:600 16px 'Manrope',sans-serif;color:var(--ink)}
+  .igx-h small{font-weight:500;font-size:14px;color:var(--help)}
+  .igx-m{margin-bottom:8px}
+  .igx.group .igx-m.open{border-radius:16px;box-shadow:inset 0 0 0 1.5px var(--accent);padding:0 14px 14px}
+  .igx-mh{display:none;grid-template-columns:22px minmax(0,1.15fr) minmax(0,1.3fr) 70px 56px 86px 18px 18px;gap:0 12px;align-items:center;height:48px;border-radius:14px;background:var(--bg);padding:0 12px;cursor:pointer}
+  .igx.group .igx-mh{display:grid}
+  .igx.group .igx-m.open>.igx-mh{background:none;padding:0;height:52px}
+  .igx-mh b{font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .igx-mh>span{color:var(--body);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13.5px}
+  .igx-mh .n{text-align:right}
+  .igx-mh .np{color:var(--red);font-weight:600;font-size:13px}
+  .igx-mh .ap{font-size:10px;font-weight:700;border-radius:4px;padding:1px 5px;background:var(--accent-bg);color:var(--link);margin-left:6px}
+  .igx-mh button{border:0;background:none;padding:0;display:flex;color:var(--help);cursor:pointer}
+  .igx-mh button:hover{color:var(--red)}
+  .igx-mh svg.ic{width:15px;height:15px;color:var(--help)}
+  .igx-onum{width:22px;height:22px;border-radius:7px;background:var(--ink);color:#fff;font-size:12px;font-weight:600;display:grid;place-items:center;font-style:normal;flex:none}
   .igx-add{display:none;gap:18px;flex-wrap:wrap;margin-top:6px}
   .igx.group .igx-add{display:flex}
-  .igx-add button{border:0;background:transparent;color:var(--accent,#0284C7);font:inherit;font-size:13px;font-weight:600;cursor:pointer;padding:4px 0}
-  .igx-add button:disabled{color:var(--text-dim);cursor:not-allowed}
-  .igx-side{background:var(--surface-card,#fff);border:1px solid var(--border);border-radius:12px;padding:14px;position:sticky;top:0}
-  .igx-sh{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-dim);font-weight:700;margin:4px 0 6px}
-  .igx-ol{margin-bottom:12px;min-height:8px}
-  .igx-pt{display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid var(--border);font-size:13px;background:var(--surface-card,#fff)}
-  .igx-pt[draggable=true]{cursor:grab}
-  .igx-pt.drag{opacity:.4}
-  .igx-pt.over{box-shadow:inset 0 2px 0 var(--accent,#0284C7)}
-  .igx-pt .g{color:var(--text-dim);letter-spacing:-2px}
-  .igx-pt .k{width:20px;height:20px;border:1px solid var(--border);border-radius:5px;font-size:11px;display:inline-flex;align-items:center;justify-content:center;flex:none}
-  .igx-pt .t{flex:1;min-width:0}
-  .igx-pt .t b{display:block;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .igx-pt .t b i{font-style:normal;font-weight:400;color:var(--text-dim)}
-  .igx-pt .t span{display:block;color:var(--text-dim);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .igx-pt .pl{font-weight:600}
-  .igx-empty{font-size:12px;color:var(--text-dim);padding:6px 4px}
-  .igx-sum{border-top:1px solid var(--border);padding-top:10px;font-size:13px}
-  .igx-sum div{display:flex;justify-content:space-between;gap:8px;padding:3px 0}
-  .igx-sum div span:first-child{color:var(--text-mid)}
-  .igx-sum .warn{color:var(--danger,#B91C1C)}
-  .igx-note{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;border:1.5px solid #C2410C;color:#C2410C;font-size:10px;font-weight:800;margin-left:4px;cursor:help;vertical-align:middle}
-  .igx .oi2-dirrow{display:none}
-  .igx-pick{border:1px solid var(--border);border-radius:10px;padding:10px;margin-top:8px;background:var(--surface-card,#fff);max-height:340px;overflow:auto}
+  .igx-lnk{display:inline-flex;align-items:center;gap:8px;height:32px;border:0;background:none;padding:0;font:500 14px 'Manrope',sans-serif;color:var(--link);cursor:pointer}
+  .igx-lnk:disabled{color:var(--help);cursor:not-allowed}
+  .igx-side{padding:20px 22px;position:sticky;top:94px}
+  .igx-lbl{margin:0;font-size:11px;font-weight:500;letter-spacing:.07em;text-transform:uppercase;color:var(--help)}
+  .igx-ol{margin:6px 0 16px}
+  .igx-pt{display:grid;grid-template-columns:14px 22px minmax(0,1fr) 30px;gap:0 9px;align-items:center;height:46px;border-top:1px solid var(--line);background:#fff;cursor:grab;user-select:none}
+  .igx-pt:first-child{border-top:0}
+  .igx-pt svg.ic{width:14px;height:14px;color:#A9ABB3}
+  .igx-pt .igx-onum{background:var(--bg);color:var(--ink)}
+  .igx-pt b{display:block;font-weight:600;color:var(--ink);font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .igx-pt b i{font-style:normal;font-weight:400;color:var(--help)}
+  .igx-pt small{display:block;color:var(--help);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .igx-pt>.num{text-align:right;font-weight:500;color:var(--ink);font-size:13.5px}
+  .igx-pt.drag{opacity:.45}
+  .igx-pt.over{box-shadow:inset 0 2px 0 var(--accent)}
+  .igx-empty{font-size:12px;color:var(--help);padding:6px 0}
+  .igx-sum{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:0 0 16px}
+  .igx-sum dt{color:var(--help)}
+  .igx-sum dd{margin:0;text-align:right;color:var(--ink);font-weight:500;display:flex;gap:8px;justify-content:flex-end;align-items:center}
+  .igx-sum .warn{color:var(--red)}
+  .igx-extra{display:flex;justify-content:center;gap:14px;margin-top:8px;font-size:12px;color:var(--help)}
+  .igx-extra button{border:0;background:none;padding:0;font:inherit;color:var(--link);cursor:pointer}
+  .igx-note{position:relative;display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;background:#fff;border:1.5px solid var(--amber);color:var(--amber);font-size:11px;font-weight:700;line-height:1;cursor:help;flex:none;font-style:normal;margin-left:4px}
+  .igx-note::after{content:attr(data-t);position:absolute;bottom:calc(100% + 8px);right:-10px;background:var(--ink);color:#fff;font-weight:500;font-size:12.5px;line-height:1.4;padding:8px 11px;border-radius:10px;width:max-content;max-width:250px;white-space:normal;text-align:left;opacity:0;transform:translateY(4px);pointer-events:none;transition:opacity 120ms,transform 120ms;z-index:30}
+  .igx-note:hover::after{opacity:1;transform:none;transition-delay:.18s}
+  .igx-pick{border:1px solid var(--line);border-radius:14px;padding:10px;margin-top:8px;background:#fff;max-height:340px;overflow:auto}
   .igx-pick input[type=search]{width:100%;margin-bottom:8px}
-  .igx-pick .row{display:flex;gap:8px;align-items:center;padding:6px 4px;border-bottom:1px solid var(--border);font-size:13px;cursor:pointer}
-  .igx-pick .row:hover{background:var(--surface-sunken,#F4F6F9)}
-  .igx-pick .row.dim{color:var(--text-mid)}
+  .igx-pick .row{display:flex;gap:8px;align-items:center;padding:8px 6px;border-bottom:1px solid var(--line);font-size:13.5px;cursor:pointer}
+  .igx-pick .row:hover{background:var(--bg)}
+  .igx-pick .row.dim{color:var(--help)}
   .igx-pick .row .x{flex:1}
   .igx-pick .row input[type=number]{width:70px}
-  .igx-busy{font-size:12px;color:var(--text-mid);padding:4px 0}
+  .igx-busy{font-size:12px;color:var(--help);padding:4px 0}
+  /* the form of one order (orders_intl.js), dressed as the design */
+  .igx .oi2{gap:14px;font:400 14px/1.4 'Manrope',sans-serif;color:var(--body)}
+  .igx .oi2-sec,.igx .oi2-dirrow,.igx .oi2-sum,.igx .oi-lot-ck{display:none}
+  .igx .oi2-f{gap:6px;font-size:12px;color:var(--body)}
+  .igx .oi2-f>span:first-child,.igx .oi2 .oi-temp-head{display:flex;align-items:center;gap:6px;height:17px;font:600 12px 'Manrope',sans-serif;color:var(--body)}
+  .igx .oi2 .form-input{height:40px;padding:0 12px;border:1px solid var(--ctl);border-radius:10px;background:#fff;font:400 14px 'Manrope',sans-serif;color:var(--ink)}
+  .igx .oi2 .form-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg);outline:none}
+  .igx .oi2 .oi2-num{text-align:left}
+  .igx .oi2 textarea.oi2-ta{min-height:40px;padding:10px 12px}
+  .igx .oi2-r3,.igx .oi2-cargo{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:14px;align-items:start}
+  .igx .oi2-r3>*{grid-column:span 4}
+  .igx .oi2-cargo>*:nth-child(1){grid-column:span 3;order:1}
+  .igx .oi2-cargo>*:nth-child(3){grid-column:span 3;order:2}
+  .igx .oi2-cargo>*:nth-child(4){grid-column:span 4;order:3}
+  .igx .oi2-cargo>*:nth-child(2){grid-column:span 2;order:4}
+  .igx .oi2-cargo>*:nth-child(5){grid-column:span 4;order:5}
+  .igx .oi2-cargo>*:nth-child(6){grid-column:span 4;order:6}
+  .igx .oi2-cargo>.igx-dlv{grid-column:span 4;order:7}
+  .igx .oi2-seg{height:auto;padding:3px;gap:0;border-radius:999px;background:var(--bg)}
+  .igx .oi2-seg button,.igx .oi2-seg label{height:34px;padding:0 16px;border-radius:999px;font:500 14px 'Manrope',sans-serif;color:var(--help)}
+  .igx #f_ReeferModeSeg button{padding:0 12px}
+  .igx .oi2-seg button.on,.igx .oi2-seg label.on{background:#fff;color:var(--ink);font-weight:500;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+  .igx .oi2-seg button:disabled{opacity:.45;cursor:not-allowed}
+  .igx .oi2-pts{gap:8px}
+  .igx .oi2-rows{gap:8px}
+  .igx .oi2-th,.igx .oi2-stop,.igx #oi2sec_l .oi2-th,.igx #oi2sec_l .oi2-stop{grid-template-columns:34px minmax(0,1fr) 112px 128px 52px 118px 54px 50px 22px;gap:0 10px}
+  .igx .oi2-th{padding:0 12px 0;font-size:11px;font-weight:500;letter-spacing:.07em;text-transform:uppercase;color:var(--help)}
+  .igx .oi2-th>span:first-child{grid-column:1 / span 2;text-transform:none;letter-spacing:0;font-size:13px;font-weight:600;color:var(--ink)}
+  .igx .oi2-stop{position:relative;background:var(--bg);border-radius:14px;padding:8px 12px}
+  .igx .oi2-stop .form-input,.igx .oi2-stop .oi2-hrs-all{height:38px;border-color:transparent;background:#fff}
+  .igx .oi2-stop .form-input:hover,.igx .oi2-stop .oi2-hrs-all:hover{border-color:var(--ctl)}
+  .igx .oi2-stop .oi2-hrs-all{border-radius:10px;font:400 14px 'Manrope',sans-serif;color:var(--ph)}
+  .igx .oi2-stop .oi2-hrs-all .oi2-link{display:none}
+  .igx .igx-gr{grid-column:1;display:flex;align-items:center;justify-content:flex-end;gap:2px;color:var(--help);font-weight:600;cursor:grab}
+  .igx .igx-gr svg.ic{width:13px;height:13px;color:#A9ABB3}
+  .igx .oi2-stop>.oi2-c-loc,.igx .oi2-th>span:first-child{grid-column:2}
+  .igx .oi2-th>span:first-child{grid-column:1 / span 2}
+  .igx .oi2-stop>[id^="dt_"],.igx .oi2-th>.c-dt{grid-column:3}
+  .igx .oi2-stop>.oi2-hrs,.igx .oi2-th>.c-hrs{grid-column:4}
+  .igx .oi2-stop>[id^="pal_"],.igx .oi2-th>.c-pal{grid-column:5}
+  .igx .oi2-stop>[id^="ref_"],.igx .oi2-th>.c-ref{grid-column:6}
+  .igx .oi2-stop>.oi2-c-ex,.igx .oi2-th>.oi2-c-ex{grid-column:7;text-align:center}
+  .igx .oi2-stop>.oi2-c-vs,.igx .oi2-th>.oi2-c-vs{grid-column:8;text-align:center}
+  .igx .oi2-stop>.oi2-rm,.igx .oi2-stop>span:empty,.igx .oi2-th>span:last-child{grid-column:9}
+  .igx .oi2-stop,.igx .oi2-th{grid-auto-flow:dense}
+  .igx .oi2-c-ex input[type=checkbox],.igx .oi2-c-vs input[type=checkbox],.igx .oi2-vshead input{width:18px;height:18px;accent-color:var(--accent)}
+  .igx .oi2-vshead{font-size:0;gap:0}
+  .igx .oi2-vshead::after{content:'Βέροια';font-size:11px}
+  .igx .oi2-vshead input{display:none}
+  .igx .oi2-c-ex{visibility:hidden}
+  .igx .oi2.ex-col .oi2-c-ex,.igx .oi2.igx-ex .oi2-c-ex{visibility:visible}
+  .igx .oi2 .oi2-exn,.igx .oi2.ex-fix #oi2sec_l .oi2-exn{display:none}
+  .igx .oi2.ex-fix #oi2sec_l .oi2-c-ex input[type=checkbox]{display:inline-block}
+  .igx .oi2-rm{color:var(--help);font-size:15px}
+  .igx .igx-tools{display:flex;gap:10px;align-items:center;margin-top:2px}
+  .igx .igx-tools .sp{flex:1}
+  .igx .igx-tools .oi2-add{display:inline-flex;align-items:center;gap:8px;height:32px;font:500 14px 'Manrope',sans-serif;color:var(--link)}
+  .igx .igx-tools .oi2-ck{font:500 13px 'Manrope',sans-serif;color:var(--body);height:32px}
+  .igx .igx-tools .oi2-ck input{width:18px;height:18px;accent-color:var(--accent)}
+  .igx .igx-tools .oi2-docs .od-form-pick{font:500 14px 'Manrope',sans-serif;color:var(--body)}
+  .igx .igx-tools .oi2-docs .od-form-hint{display:none}
+  .igx .oi2-notes{display:block}
+  .igx .oi-req-bad{border-color:var(--amber-line)!important;background:#FFFBF2!important}
+  .igx .oi-req-msg{display:none}
   `;
   document.head.appendChild(st);
 }
+
+// Lucide-style line icons (the design's set), inline: the app loads no icon font.
+const IC = {
+  grip: '<circle cx="9" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="19" r="1"/>',
+  trash: '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+  down: '<path d="m6 9 6 6 6-6"/>', up: '<path d="m18 15-6-6-6 6"/>',
+  plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
+  file: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M12 12v6"/><path d="m15 15-3-3-3 3"/>',
+  list: '<path d="M11 12H3"/><path d="M16 6H3"/><path d="M16 18H3"/><path d="M18 9v6"/><path d="M21 12h-6"/>',
+  pkg: '<path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>',
+  scan: '<path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/>',
+  clip: '<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>',
+  x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  link: '<path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 1 1 0 10h-2"/><line x1="8" x2="16" y1="12" y2="12"/>',
+};
+const ic = k => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${IC[k]}</svg>`;
 
 function segHtml(id, opts, value) {
   const fn = id === 'igxMode' ? 'setMode' : 'setDir';
@@ -189,11 +296,13 @@ function segHtml(id, opts, value) {
 }
 
 function isPieceRec(f) { return typeof OrdersStock !== 'undefined' && !!f && OrdersStock.isPiece(f); }
-function footerHtml(recId, f, scanQueue) {
-  return `${recId && !isPieceRec(f) ? `<button class="btn btn-ghost oi2-dup" title="Νέα παραγγελία με ίδια στοιχεία — αλλάζεις μόνο ημερομηνίες" onclick="duplicateIntlOrder('${esc(recId)}')">Διπλασιασμός</button>` : ''}
-    ${scanQueue ? `<button class="btn btn-ghost" title="Προσπέρασε αυτό το σκαν χωρίς αποθήκευση" onclick="closeModal();_scanQueueNext()">Παράλειψη → (${window._scanQueue.length} ακόμη)</button>` : ''}
-    <button class="btn btn-ghost" onclick="closeModal()">Άκυρο</button>
-    <button class="btn oi2-save" id="btnSubmit" onclick="IntlGroup.save()">Αποθήκευση</button>`;
+// The design has no footer: the save sits under the side panel. What the footer of 8/11 also offered stays, small,
+// under it (duplicate an order, skip a scan of the queue).
+function extrasHtml(recId, f, scanQueue) {
+  const x = [];
+  if (recId && !isPieceRec(f)) x.push(`<button type="button" title="Νέα παραγγελία με ίδια στοιχεία — αλλάζεις μόνο ημερομηνίες" onclick="duplicateIntlOrder('${esc(recId)}')">Διπλασιασμός</button>`);
+  if (scanQueue) x.push(`<button type="button" title="Προσπέρασε αυτό το σκαν χωρίς αποθήκευση" onclick="closeModal();_scanQueueNext()">Παράλειψη → (${window._scanQueue.length} ακόμη)</button>`);
+  return x.length ? `<div class="igx-extra">${x.join('<span>·</span>')}</div>` : '';
 }
 
 let _obs = null;
@@ -215,35 +324,40 @@ async function openFrom(recId, f, label, prefill, piece) {
   ensureStyles();
   const gid = String(f['Group ID'] || '').trim();
   const isNew = !recId;
-  IG.s = { mode: 'single', dir: f['Direction'] || (piece ? 'Import' : ''), members: [], open: null, lo: [], dl: [],
+  const s0 = IG.s = { mode: 'single', dir: f['Direction'] || (piece ? 'Import' : ''), members: [], open: null, lo: [], dl: [],
     base: gid ? gid.split('|')[0] : '', key: 0, saving: false, assign: null, isNew, removed: [] };
   const title = piece ? 'Κομμάτι από απόθεμα'
     : isNew ? 'Νέα διεθνής παραγγελία'
     : (typeof isPreorder === 'function' && isPreorder(f)) ? 'Μετατροπή pre-order σε παραγγελία'
     : gid ? 'Groupage' : (f['Order No'] ? 'Παραγγελία #' + f['Order No'] : 'Επεξεργασία παραγγελίας');
   const scanQueue = !!(isNew && !piece && window._scanQueue && window._scanQueue.length);
+  s0.title = title;
   const body = `<div class="igx" id="igx">
     <div class="igx-top" id="igxTop"></div>
     <div class="igx-grid">
-      <div class="igx-main">
+      <div class="igx-card igx-main">
         <div class="igx-h" id="igxHead"></div>
         <div id="igxList" oninput="IntlGroup.changed()" onchange="IntlGroup.changed()" onfocusout="IntlGroup.changed()"></div>
         <div class="igx-add" id="igxAdd"></div>
         <div id="igxPick"></div>
       </div>
-      <aside class="igx-side">
-        <div class="igx-sh">Σειρά φόρτωσης</div><div class="igx-ol" id="igxLo"></div>
-        <div class="igx-sh">Σειρά παράδοσης</div><div class="igx-ol" id="igxDl"></div>
-        <div class="igx-sum" id="igxSum"></div>
+      <aside class="igx-card igx-side">
+        <p class="igx-lbl">Σειρά φόρτωσης</p><div class="igx-ol" id="igxLo"></div>
+        <p class="igx-lbl">Σειρά παράδοσης</p><div class="igx-ol" id="igxDl"></div>
+        <dl class="igx-sum num" id="igxSum"></dl>
+        <button type="button" class="igx-pill b" id="btnSubmit" onclick="IntlGroup.save()">Αποθήκευση</button>
+        ${extrasHtml(recId, f, scanQueue)}
       </aside>
     </div>
     <div id="scanStatus" hidden></div>
   </div>`;
   const modal = document.getElementById('modal');
   modal.style.maxWidth = '';
-  openModal(title, body, footerHtml(recId, f, scanQueue));
+  openModal(title, body, '');
   modal.classList.add('modal--igx');
   watchClose();
+  // Ctrl + Enter saves, as the design says under the button
+  document.getElementById('igx')?.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save(); } });
   const s = IG.s;
   if (recId && gid) {
     // A member of a groupage opens the whole load (owner 15/11). Members = the identical Group ID text (the board
@@ -343,6 +457,8 @@ async function addMember(src, opts) {
   document.getElementById('igm_' + m.key).classList.add('open');
   await OI().open(m.recId, m.f, src.label || null, src.prefill || null, src.piece || null, m.node);
   document.getElementById('modal')?.classList.remove('modal--oi2');
+  dress(m);
+  wireRowDrag(m);
   if (src.scanDoc) window._scanPendingDoc = src.scanDoc;
   if (src.scanRes) window._scanResult = src.scanRes;
   // A new order of a groupage takes the load's direction and its one reefer setting (owner 15/11: «Μία φορά»).
@@ -426,12 +542,14 @@ function paintTop() {
   const s = IG.s, el = document.getElementById('igxTop'); if (!el) return;
   const pre = preorderIn(), piece = hasPiece();
   const scanBtn = s.mode === 'group'
-    ? `<button type="button" class="btn btn-ghost btn-sm igx-scan" onclick="IntlGroup.fromFile()">Σάρωση εντολής πελάτη</button>`
-    : (s.isNew && !piece && !pre && OI().fromPdf ? `<button type="button" class="btn btn-ghost btn-sm igx-scan" onclick="window._OI.fromPdf()">Σάρωση εντολής πελάτη</button>` : '');
-  el.innerHTML = segHtml('igxMode', [['single', 'Απλό φορτίο', s.members.length > 1, 'Πρώτα διέγραψε τις άλλες παραγγελίες'],
+    ? `<button type="button" class="igx-pill" onclick="IntlGroup.fromFile()">${ic('scan')}Σάρωση εντολής πελάτη</button>`
+    : (s.isNew && !piece && !pre && OI().fromPdf ? `<button type="button" class="igx-pill" onclick="window._OI.fromPdf()">${ic('scan')}Σάρωση εντολής πελάτη</button>` : '');
+  el.innerHTML = `<h1>${esc(s.title || '')}</h1>` + segHtml('igxMode', [['single', 'Απλό φορτίο', s.members.length > 1, 'Πρώτα διέγραψε τις άλλες παραγγελίες'],
       ['group', 'Groupage', pre, 'Το pre-order γίνεται πρώτα παραγγελία']], s.mode)
     + segHtml('igxDir', [['Export', 'Εξαγωγή', piece, 'Κομμάτι από απόθεμα = εισαγωγή'], ['Import', 'Εισαγωγή']], s.dir)
-    + scanBtn;
+    + '<span class="sp"></span>' + scanBtn
+    + `<button type="button" class="igx-cl" title="Εντολή πελάτη" aria-label="Εντολή πελάτη" onclick="document.querySelector('#igx #odFormPick')?.click()">${ic('clip')}</button>`
+    + `<button type="button" class="igx-cl" aria-label="Κλείσιμο" onclick="closeModal()">${ic('x')}</button>`;
 }
 
 // ── The order lines ───────────────────────────────────────────────────────────
@@ -443,31 +561,31 @@ function lineHtml(m, n) {
   const pal = L.reduce((a, p) => a + p.pal, 0);
   const piece = m.piece || isPieceRec(m.f);
   const price = val(m, 'f_Price');
-  const v = piece ? '<span class="v">στην παρτίδα</span>'
-    : price ? `<span class="v">${esc(Number(price).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}</span>`
-    : '<span class="v miss">χωρίς τιμή</span>';
+  const v = piece ? '<span class="n">στην παρτίδα</span>'
+    : price ? `<span class="n num">${esc(Number(price).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}</span>`
+    : '<span class="n"><span class="np">χωρίς τιμή</span></span>';
   const signs = [m.file ? note('Από το αρχείο «' + m.file + '»') : '',
     needsVehicle(m) ? note('Θα πάρει το φορτηγό του groupage με την αποθήκευση') : '',
     val(m, 'f_Direction') && IG.s.dir && val(m, 'f_Direction') !== IG.s.dir ? note('Άλλη κατεύθυνση από του groupage') : ''].join('');
-  return `<span class="n">${n}</span><span class="c">${esc(val(m, 'ls_client') || 'Νέα παραγγελία')}${piece ? ' <span class="ap">ΑΠ</span>' : ''}${signs}</span>
-    <span class="r">${esc(route || '—')}</span><span class="d">${esc(L[0] && L[0].date ? dayOf(L[0].date) : '')}</span>
-    <span class="p">${pal ? pal + ' παλ.' : ''}</span>${v}<span aria-hidden="true">${IG.s.open === m.key ? '▴' : '▾'}</span>
-    <button type="button" title="Διαγραφή παραγγελίας" aria-label="Διαγραφή παραγγελίας" onclick="event.stopPropagation();IntlGroup.remove('${m.key}')">🗑</button>`;
+  return `<i class="igx-onum">${n}</i><b>${esc(val(m, 'ls_client') || 'Νέα παραγγελία')}${piece ? '<span class="ap">ΑΠ</span>' : ''}${signs}</b>
+    <span>${esc(route || '—')}</span><span class="num">${esc(L[0] && L[0].date ? dayOf(L[0].date) : '')}</span>
+    <span class="n num">${pal ? pal + ' παλ.' : ''}</span>${v}${ic(IG.s.open === m.key ? 'up' : 'down')}
+    <button type="button" title="Διαγραφή παραγγελίας" aria-label="Διαγραφή παραγγελίας" onclick="event.stopPropagation();IntlGroup.remove('${m.key}')">${ic('trash')}</button>`;
 }
 
 function paintList() {
   const s = IG.s;
   s.members.forEach((m, k) => { const h = document.querySelector(`#igm_${m.key} .igx-mh`); if (h) h.innerHTML = lineHtml(m, k + 1); });
   const head = document.getElementById('igxHead');
-  if (head) head.innerHTML = s.mode === 'group' ? `Παραγγελίες<small>${s.members.length}</small>` : 'Παραγγελία';
+  if (head) head.innerHTML = s.mode === 'group' ? `Παραγγελίες<small class="num">${s.members.length}</small>` : 'Παραγγελία';
   const add = document.getElementById('igxAdd');
   if (add) {
     const imp = s.dir === 'Import';
     const stockOn = typeof OrdersStock !== 'undefined' && OrdersStock.on() && OrdersStock.canWrite();
-    add.innerHTML = `<button type="button" onclick="IntlGroup.addNew()">+ Παραγγελία</button>
-      <button type="button" onclick="IntlGroup.fromFile()">Από αρχείο</button>
-      <button type="button" onclick="IntlGroup.pickExisting()">Υπάρχουσα</button>
-      ${stockOn ? `<button type="button" onclick="IntlGroup.pickPiece()"${imp ? '' : ' disabled title="Κομμάτι από απόθεμα μπαίνει μόνο σε groupage εισαγωγής"'}>Κομμάτι από απόθεμα</button>` : ''}`;
+    add.innerHTML = `<button type="button" class="igx-lnk" onclick="IntlGroup.addNew()">${ic('plus')}Παραγγελία</button>
+      <button type="button" class="igx-lnk" title="PDF ή εικόνα· γίνεται νέα παραγγελία του groupage" onclick="IntlGroup.fromFile()">${ic('file')}Από αρχείο</button>
+      <button type="button" class="igx-lnk" title="Παραγγελία που έχει ήδη καταχωρηθεί" onclick="IntlGroup.pickExisting()">${ic('list')}Υπάρχουσα</button>
+      ${stockOn ? `<button type="button" class="igx-lnk" onclick="IntlGroup.pickPiece()"${imp ? ' title="Κομμάτι από παρτίδα που είναι στην αποθήκη"' : ' disabled title="Κομμάτι από απόθεμα μπαίνει μόνο σε groupage εισαγωγής"'}>${ic('pkg')}Κομμάτι από απόθεμα</button>` : ''}`;
   }
   document.getElementById('igx')?.classList.toggle('group', s.mode === 'group');
 }
@@ -477,10 +595,10 @@ function ptHtml(p, n, group) {
   const hrs = p.tf || p.tt ? `${p.tf || ''}–${p.tt || ''}` : '';
   const sub = [group ? p.client : '', p.date ? dayOf(p.date) : '', hrs].filter(Boolean).join(' · ');
   // A loading point through Veroia is written as its supplier, «(Veroia Cross Dock)» beside it (owner 15/11, 1).
-  return `<div class="igx-pt" draggable="true" data-pk="${esc(p.pk)}">
-    <span class="g" aria-hidden="true">⋮⋮</span><span class="k">${n}</span>
-    <span class="t"><b>${esc(p.name || '—')}${p.vs ? ' <i>(Veroia Cross Dock)</i>' : ''}</b><span>${esc(sub)}</span></span>
-    <span class="pl">${p.pal || ''}</span></div>`;
+  return `<div class="igx-pt" draggable="true" data-pk="${esc(p.pk)}" title="Σύρε για αλλαγή σειράς">
+    ${ic('grip')}<i class="igx-onum">${n}</i>
+    <span><b>${esc(p.name || '—')}${p.vs ? ' <i>(Veroia Cross Dock)</i>' : ''}</b><small>${esc(sub)}</small></span>
+    <span class="num">${p.pal || ''}</span></div>`;
 }
 function paintPanel(pts) {
   const s = IG.s, byPk = Object.fromEntries(pts.map(p => [p.pk, p]));
@@ -515,12 +633,105 @@ function paintSum(pts) {
     const dlDays = s.dl.map(pk => (U.find(p => p.pk === pk) || {}).date).filter(Boolean);
     if (dlDays.some((d, k) => k && d < dlDays[k - 1])) rows.push(['Σειρά', `<span class="warn">παράδοση πριν από προηγούμενη ημέρα</span>${note('Η σειρά παράδοσης δεν συμφωνεί με τις ημέρες')}`]);
     if (s.assign && s.assign.mixed) rows.push(['Φορτηγό', `διαφορετικά${note('Οι παραγγελίες του groupage έχουν διαφορετικό φορτηγό — η ανάθεση γίνεται στο Εβδομαδιαίο')}`]);
-  } else if (missing) {
-    rows.push(['Τιμή', note('Χωρίς τιμή')]);
+  } else {
+    const m = s.members[0];
+    if (m && peOf(m) === true) {
+      const ticks = pts.map(p => !!q(m, `ex_${p.t}_${p.i}`)?.checked), on = ticks.filter(Boolean).length;
+      rows.push(['Ανταλλαγή', `${on} από ${ticks.length} σημεία${on < ticks.length ? note(ticks.length - on === 1 ? 'Ένα σημείο χωρίς ανταλλαγή' : (ticks.length - on) + ' σημεία χωρίς ανταλλαγή') : ''}`]);
+    } else if (m && peOf(m) === false) rows.push(['Ανταλλαγή', 'όχι']);
+    // the Veroia day and pallets: the same words the form of 8/11 computes (its summary strip, hidden here)
+    const vs = m && m.node.querySelector('#oiBalance .oi2-vschip');
+    if (vs) rows.push(['Βέροια', esc(vs.textContent.replace(/^Βέροια\s*/, '').replace(/\s*παλέτες$/, ''))]);
+    if (missing) rows.push(['Τιμή', note('Λείπει η τιμή — αποθηκεύεται και χωρίς')]);
   }
-  el.innerHTML = rows.map(([a, b]) => `<div><span>${a}</span><span>${b}</span></div>`).join('');
+  el.innerHTML = rows.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('');
   const btn = document.getElementById('btnSubmit');
   if (btn && !s.saving) btn.textContent = s.mode === 'group' ? `Αποθήκευση · ${s.members.length} παραγγελίες` : 'Αποθήκευση';
+}
+function peOf(m) {
+  const r = m.node.querySelector('input[name=f_PalletExch]:checked');
+  return r ? r.value === 'yes' : null;
+}
+
+// ── Dressing the form of one order as the design (no field, id or rule changes) ──
+// Labels in the design's words; the points' header in the design's columns; a grip and a number on each point; the
+// «Σε πελάτη | Σε απόθεμα» switch drives the form's own «σε απόθεμα» tick (its rules stay in orders_intl.js); the
+// add-point links, «Υψηλό ρίσκο» and «Εντολή πελάτη» on one line above the notes. Run once per order, and the rows
+// again after every change (new points).
+function dress(m) {
+  const n = m.node;
+  const relabel = (sel, txt) => { const e = n.querySelector(sel); if (e) e.textContent = txt; };
+  const r3 = n.querySelectorAll('.oi2-r3 > .oi2-f > span:first-child');
+  if (r3[1]) r3[1].textContent = 'Αναφορά πελάτη';
+  if (r3[2]) r3[2].textContent = 'Τιμή, καθαρή';
+  const cargo = n.querySelectorAll('.oi2-cargo > .oi2-f > span:first-child');
+  ['Εμπόρευμα', 'Βάρος', null, 'Ψυκτικό', 'Παλέτα', 'Ανταλλαγή παλετών'].forEach((t, k) => { if (t && cargo[k] && !cargo[k].classList.contains('oi-temp-head')) cargo[k].textContent = t; });
+  relabel('#f_TempLbl', 'Θερμοκρασία');
+  const w = n.querySelector('#f_GrossWeight'); if (w) w.placeholder = 'kg';
+  const rf = cargo[3];
+  if (rf && IG.s.mode === 'group' && !rf.querySelector('.ic')) rf.insertAdjacentHTML('beforeend', `<span title="Ίδιο για όλο το groupage" style="display:flex;color:var(--help)">${ic('link')}</span>`);
+  for (const t of ['l', 'u']) {
+    const th = n.querySelector(`#oi2sec_${t} .oi2-th`); if (!th || th.dataset.igx) continue;
+    th.dataset.igx = '1';
+    const sp = [...th.children];
+    sp[0].textContent = t === 'l' ? 'Φόρτωση' : 'Παράδοση';
+    const cls = t === 'l' ? ['c-ref', 'c-dt', 'c-hrs', 'c-pal'] : ['c-dt', 'c-hrs', 'c-pal'];
+    const txt = t === 'l' ? ['Αναφορά', 'Ημέρα', 'Ώρες', 'Παλ.'] : ['Ημέρα', 'Ώρες', 'Παλ.'];
+    cls.forEach((c, k) => { if (sp[k + 1]) { sp[k + 1].className = c; sp[k + 1].textContent = txt[k]; } });
+    const ex = th.querySelector('.oi2-c-ex'); if (ex) ex.textContent = 'Ανταλλ.';
+  }
+  // «Σε πελάτη | Σε απόθεμα»: a switch over the form's own tick
+  const lot = n.querySelector('#f_StockLot'), cg = n.querySelector('.oi2-cargo');
+  if (lot && cg && !cg.querySelector('.igx-dlv')) {
+    const inGroup = IG.s.mode === 'group';
+    const why = lot.disabled ? (lot.closest('label')?.title || '') : inGroup ? 'Μέσα σε groupage θέλει πρώτα αλλαγή στη βάση' : '';
+    cg.insertAdjacentHTML('beforeend', `<div class="oi2-f igx-dlv"><span>Παράδοση</span><span class="oi2-seg" id="igxDlvSeg">
+      <button type="button" data-v="0" class="${lot.checked ? '' : 'on'}" onclick="IntlGroup._dlv(this)">Σε πελάτη</button>
+      <button type="button" data-v="1" class="${lot.checked ? 'on' : ''}"${why && !lot.checked ? ` disabled title="${esc(why)}"` : ''} onclick="IntlGroup._dlv(this)">Σε απόθεμα</button></span></div>`);
+  }
+  // one line under the points: add a point, high risk, the client's order; then the notes
+  const notes = n.querySelector('.oi2-notes');
+  if (notes && !n.querySelector('.igx-tools')) {
+    const tools = document.createElement('div');
+    tools.className = 'igx-tools';
+    for (const id of ['btn_addL', 'btn_addU']) {
+      const b = n.querySelector('#' + id); if (!b) continue;
+      b.innerHTML = ic('plus') + (id === 'btn_addL' ? 'Σημείο φόρτωσης' : 'Σημείο παράδοσης');
+      tools.appendChild(b);
+    }
+    tools.insertAdjacentHTML('beforeend', '<span class="sp"></span>');
+    const hr = notes.querySelector('.oi2-ck'); if (hr) { hr.lastChild.textContent = ' Υψηλό ρίσκο'; tools.appendChild(hr); }
+    const docs = notes.querySelector('.oi2-docs'); if (docs) tools.appendChild(docs);
+    notes.before(tools);
+    const ta = n.querySelector('#f_Notes'); if (ta) ta.placeholder = 'Για τον οδηγό ή τη ράμπα';
+  }
+  const oi2 = n.querySelector('.oi2'); if (oi2) oi2.classList.toggle('igx-ex', peOf(m) === true);
+  dressRows(m);
+}
+// A grip and the point's number on every row, in the order of the side panel (the panel's drag moves the rows too,
+// so the number in the form and in the panel are the same). Moving a row keeps its node: ids and values stay.
+function dressRows(m) {
+  const s = IG.s;
+  for (const t of ['l', 'u']) {
+    const box = m.node.querySelector(`#stops_${t}`); if (!box) continue;
+    const list = t === 'l' ? s.lo : s.dl;
+    const rows = [...box.querySelectorAll('.oi2-stop')];
+    const rank = r => { const at = list.indexOf(`${m.key}:${t}:${String(r.id).split('_').pop()}`); return at < 0 ? 1e6 + rows.indexOf(r) : at; };
+    rows.slice().sort((a, b) => rank(a) - rank(b)).forEach(r => box.appendChild(r));
+    [...box.querySelectorAll('.oi2-stop')].forEach((r, k) => {
+      let g = r.querySelector('.igx-gr');
+      if (!g) { r.insertAdjacentHTML('afterbegin', `<b class="igx-gr" draggable="true" title="Σύρε για αλλαγή σειράς"></b>`); g = r.querySelector('.igx-gr'); }
+      g.innerHTML = ic('grip') + (k + 1);
+    });
+  }
+  const oi2 = m.node.querySelector('.oi2'); if (oi2) oi2.classList.toggle('igx-ex', peOf(m) === true);
+}
+function _dlv(btn) {
+  const lot = document.querySelector('#igx #f_StockLot'); if (!lot || btn.disabled) return;
+  const want = btn.dataset.v === '1';
+  btn.parentElement.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === btn));
+  if (lot.checked !== want) { lot.checked = want; lot.dispatchEvent(new Event('change', { bubbles: true })); }
+  changed();
 }
 
 let _dragPk = null;
@@ -547,6 +758,33 @@ function wireDrag() {
     });
   }
 }
+// The grip on a point in the form drags it too (design: «Σύρε για αλλαγή σειράς»), inside its own list of the load:
+// the same move as the side panel, so both always show one order.
+function wireRowDrag(m) {
+  if (m.node._igxDrag) return;
+  m.node._igxDrag = true;
+  const pkOf = r => { const id = String(r.id); const t = id.split('_')[1]; return `${m.key}:${t}:${id.split('_').pop()}`; };
+  m.node.addEventListener('dragstart', e => {
+    const g = e.target.closest && e.target.closest('.igx-gr'); if (!g) return;
+    _dragPk = pkOf(g.closest('.oi2-stop'));
+    try { e.dataTransfer.setData('text/plain', _dragPk); e.dataTransfer.effectAllowed = 'move'; } catch (_) {}
+  });
+  m.node.addEventListener('dragover', e => {
+    const r = e.target.closest && e.target.closest('.oi2-stop'); if (!r || !_dragPk) return;
+    if (pkOf(r).split(':')[1] !== _dragPk.split(':')[1]) return;
+    e.preventDefault();
+  });
+  m.node.addEventListener('drop', e => {
+    const r = e.target.closest && e.target.closest('.oi2-stop'); const s = IG.s; if (!r || !_dragPk || !s) return;
+    const k = _dragPk.split(':')[1] === 'l' ? 'lo' : 'dl';
+    if (!s[k].includes(_dragPk)) return;
+    e.preventDefault();
+    s[k] = moveBefore(s[k], _dragPk, pkOf(r));
+    _dragPk = null;
+    paint();
+  });
+  m.node.addEventListener('dragend', () => { _dragPk = null; });
+}
 // Pure: pk moved to the place of `before` (null = the end).
 function moveBefore(list, pk, before) {
   if (!list.includes(pk) || before === pk) return list.slice();
@@ -561,6 +799,7 @@ function paint() {
   paintTop();
   paintList();
   const pts = syncOrder();
+  s.members.forEach(dressRows);
   paintPanel(pts);
   wireDrag();
 }
@@ -857,7 +1096,7 @@ function orderByFirstPoint(members, list) {
 }
 
 window.IntlGroup = { on, openFrom, changed, reeferPicked, setMode, setDir, toggle, addNew, fromFile, pickExisting, pickPiece,
-  remove, save, _filter, _addExisting, _addPiece,
+  remove, save, _filter, _addExisting, _addPiece, _dlv,
   // pure helpers (tests/intl-group.test.js)
   _assignmentOf: assignmentOf, _moveBefore: moveBefore, _orderByFirstPoint: orderByFirstPoint, _state: () => IG.s };
 })();
