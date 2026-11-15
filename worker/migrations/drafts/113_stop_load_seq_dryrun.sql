@@ -1,14 +1,15 @@
 -- 113 DRY RUN - the whole of 113_stop_load_seq.sql, then proofs on the real rows, then a deliberate error:
 -- NOTHING is kept. Run it first; read the error text (it is the result), then run 113_stop_load_seq.sql.
--- Extra proofs here only: every live stop gets a position (all side tables keep their row counts: no trigger woke
--- and wrote), a 0 is refused by the CHECK, and back to NULL.
+-- Extra proofs here only: every live international loading / delivery stop gets a position (every side table keeps
+-- its rows and their content, md5 of each row: no trigger woke and wrote), a 0 is refused by the CHECK, and back to
+-- NULL. The side-table check reads whole tables once (a few seconds at most at today's sizes).
 -- EXPECTED: ERROR "DRY RUN 113 finished: ..." with side tables unchanged and "refused 0: yes".
 -- ASCII only.
 
 DO $do$
 DECLARE
   v_trg0 int; v_trg1 int; v_any text; v_rows bigint; v_set bigint;
-  v_t text; v_n bigint; v_before text := ''; v_after text := ''; v_upd bigint; v_refused boolean := false;
+  v_t text; v_c text; v_before text := ''; v_after text := ''; v_upd bigint; v_refused boolean := false;
   v_t0 timestamptz := clock_timestamp();
 BEGIN
   PERFORM set_config('lock_timeout', '5s', true);
@@ -37,7 +38,10 @@ BEGIN
 
   -- ===== PART 1: THE COLUMN =====
   ALTER TABLE public.order_stops ADD COLUMN load_seq integer NULL;
-  ALTER TABLE public.order_stops ADD CONSTRAINT order_stops_load_seq_pos CHECK (load_seq IS NULL OR load_seq > 0);
+  -- only on a Loading / Unloading point of an INTERNATIONAL order (order_id): a cross-dock stop (069) and a
+  -- national stop have no place in a load's two lists, so a position there is refused, never kept meaningless
+  ALTER TABLE public.order_stops ADD CONSTRAINT order_stops_load_seq_pos CHECK (
+    load_seq IS NULL OR (load_seq > 0 AND order_id IS NOT NULL AND stop_type IN ('Loading', 'Unloading')));
   COMMENT ON COLUMN public.order_stops.load_seq IS
     '113 (owner 15/11/2026): position of this point inside its load (Group ID base), counted apart among loading and among delivery points; NULL = the old rule (Group ID order list, then stop_number, then date)';
 
@@ -57,20 +61,25 @@ BEGIN
 
   -- ===== DRY RUN ONLY: the column is quiet =====
   FOREACH v_t IN ARRAY ARRAY['pl_movements', 'shipments', 'shipment_pieces', 'piece_legs', 'national_loads', 'local_moves',
-                             'ramp', 'orders', 'plan_notices', 'notices', 'ct_round_trips', 'ct_rt_legs'] LOOP
+                             'ramp', 'orders', 'plan_notices', 'notices', 'ct_round_trips', 'ct_rt_legs', 'groupage_lines',
+                             'consolidated_loads', 'rt_stops', 'stock_lots', 'audit_log'] LOOP
     IF to_regclass('public.' || v_t) IS NOT NULL THEN
-      EXECUTE format('SELECT count(*) FROM public.%I', v_t) INTO v_n;
-      v_before := v_before || v_t || '=' || v_n || ' ';
+      EXECUTE format('SELECT count(*) || '':'' || md5(coalesce(string_agg(t::text, ''|'' ORDER BY t::text), '''')) FROM public.%I t', v_t) INTO v_c;
+      v_before := v_before || v_t || '=' || v_c || ' ';
     END IF;
   END LOOP;
-  -- every live stop gets a position (its stop_number, or 1): the busiest possible write of the new column
-  UPDATE public.order_stops SET load_seq = greatest(coalesce(stop_number, 1), 1) WHERE deleted_at IS NULL;
+  -- every live stop that may carry one gets a position (its stop_number, or 1): the busiest possible write of the new
+  -- column; each side table is compared by row count AND content (md5 of every row), so a trigger that rewrote a row
+  -- would show here, not only one that added a row
+  UPDATE public.order_stops SET load_seq = greatest(coalesce(stop_number, 1), 1)
+   WHERE deleted_at IS NULL AND order_id IS NOT NULL AND stop_type IN ('Loading', 'Unloading');
   GET DIAGNOSTICS v_upd = ROW_COUNT;
   FOREACH v_t IN ARRAY ARRAY['pl_movements', 'shipments', 'shipment_pieces', 'piece_legs', 'national_loads', 'local_moves',
-                             'ramp', 'orders', 'plan_notices', 'notices', 'ct_round_trips', 'ct_rt_legs'] LOOP
+                             'ramp', 'orders', 'plan_notices', 'notices', 'ct_round_trips', 'ct_rt_legs', 'groupage_lines',
+                             'consolidated_loads', 'rt_stops', 'stock_lots', 'audit_log'] LOOP
     IF to_regclass('public.' || v_t) IS NOT NULL THEN
-      EXECUTE format('SELECT count(*) FROM public.%I', v_t) INTO v_n;
-      v_after := v_after || v_t || '=' || v_n || ' ';
+      EXECUTE format('SELECT count(*) || '':'' || md5(coalesce(string_agg(t::text, ''|'' ORDER BY t::text), '''')) FROM public.%I t', v_t) INTO v_c;
+      v_after := v_after || v_t || '=' || v_c || ' ';
     END IF;
   END LOOP;
   IF v_after <> v_before THEN
@@ -85,7 +94,7 @@ BEGIN
     RAISE EXCEPTION '113 DRY RUN FAILED: a position 0 was accepted';
   END IF;
   UPDATE public.order_stops SET load_seq = NULL WHERE load_seq IS NOT NULL;
-  RAISE EXCEPTION 'DRY RUN 113 finished: % rows, % live stops given a position, side tables unchanged [%]; refused 0: yes; triggers % (unchanged), on any UPDATE: %; % ms - nothing kept (deliberate error)',
-    v_rows, v_upd, v_after, v_trg1, coalesce(v_any, 'none'), round(extract(epoch FROM clock_timestamp() - v_t0) * 1000);
+  RAISE EXCEPTION 'DRY RUN 113 finished: % rows, % live stops given a position, side tables unchanged (rows and content); refused 0: yes; triggers % (unchanged), on any UPDATE: %; % ms - nothing kept (deliberate error)',
+    v_rows, v_upd, v_trg1, coalesce(v_any, 'none'), round(extract(epoch FROM clock_timestamp() - v_t0) * 1000);
 END
 $do$;

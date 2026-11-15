@@ -11,10 +11,11 @@
 -- ASCII only. ONE DO block = ONE statement: an error anywhere undoes all of it.
 --
 -- WHAT IT CHANGES
---   order_stops.load_seq: integer, NULL allowed, CHECK order_stops_load_seq_pos (NULL or > 0). It is the point's
+--   order_stops.load_seq: integer, NULL allowed, CHECK order_stops_load_seq_pos (see below). It is the point's
 --   position inside its LOAD (every order that shares one Group ID base, the text before '|'), counted apart among
---   the load's loading points and among its delivery points (a stop is one or the other, so one column serves both
---   lists). NULL = today's rule, unchanged: the order list in Group ID, then Stop Number, then the date. Nothing is
+--   the load's loading points and among its delivery points (one column serves both lists: a point is a Loading or
+--   an Unloading). The CHECK allows a position only on a Loading / Unloading stop of an international order
+--   (order_id set): a cross-dock stop (069) or a national stop is in neither list. NULL = today's rule, unchanged: the order list in Group ID, then Stop Number, then the date. Nothing is
 --   back-filled: today 1862 rows (1535 not deleted, counted 15/11 by SELECT), every one NULL after it, so every
 --   screen of today (Weekly, driver sheet, Daily Ops, pallets) reads exactly what it reads now.
 --   No trigger, function, view or grant changes. The triggers on order_stops today fire on INSERT or on an UPDATE OF
@@ -56,7 +57,10 @@ BEGIN
 
   -- ===== PART 1: THE COLUMN =====
   ALTER TABLE public.order_stops ADD COLUMN load_seq integer NULL;
-  ALTER TABLE public.order_stops ADD CONSTRAINT order_stops_load_seq_pos CHECK (load_seq IS NULL OR load_seq > 0);
+  -- only on a Loading / Unloading point of an INTERNATIONAL order (order_id): a cross-dock stop (069) and a
+  -- national stop have no place in a load's two lists, so a position there is refused, never kept meaningless
+  ALTER TABLE public.order_stops ADD CONSTRAINT order_stops_load_seq_pos CHECK (
+    load_seq IS NULL OR (load_seq > 0 AND order_id IS NOT NULL AND stop_type IN ('Loading', 'Unloading')));
   COMMENT ON COLUMN public.order_stops.load_seq IS
     '113 (owner 15/11/2026): position of this point inside its load (Group ID base), counted apart among loading and among delivery points; NULL = the old rule (Group ID order list, then stop_number, then date)';
 

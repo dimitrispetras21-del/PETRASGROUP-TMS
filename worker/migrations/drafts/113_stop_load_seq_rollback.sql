@@ -1,7 +1,9 @@
 -- 113 ROLLBACK - drops order_stops.load_seq and its CHECK, ONLY while every row is NULL (a position written by the
--- form is the dispatcher's work: it is never thrown away blind). Roll the Worker back FIRST (to the one without
--- "Load Seq", guard --seq 0), then this: a Worker that maps the label over a base without the column answers every
--- write naming it 422 113_missing.
+-- form is the dispatcher's work: it is never thrown away blind). The order, strictly:
+--   1. revert the FRONT END that writes "Load Seq" first: with the old Worker the label is dropped with a 200
+--      (facade trap 1), so a form still writing it would show success and keep nothing;
+--   2. roll the Worker back (to the one without "Load Seq", guard --seq 0);
+--   3. then this file.
 -- If rows carry a position, this stops and says how many; copy them first, e.g.
 --   SELECT id, order_id, stop_type, load_seq FROM order_stops WHERE load_seq IS NOT NULL ORDER BY order_id, id;
 -- then, only with the owner's yes, set them to NULL and run this again.

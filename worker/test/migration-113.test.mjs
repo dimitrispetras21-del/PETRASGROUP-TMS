@@ -9,9 +9,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const D = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../migrations/drafts');
+// drafts/ until it runs, then worker/migrations/ (CLAUDE.md, rule 5): either place
+const M = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../migrations');
 const FILES = ['113_stop_load_seq.sql', '113_stop_load_seq_dryrun.sql', '113_stop_load_seq_rollback.sql', '113_stop_load_seq_verify.sql'];
-const read = (f) => fs.readFileSync(path.join(D, f), 'utf8');
+const read = (f) => fs.readFileSync([path.join(M, 'drafts', f), path.join(M, f)].find((p) => fs.existsSync(p)) || path.join(M, f), 'utf8');
 
 test('113 files are ASCII', () => {
   for (const f of FILES) assert.ok(!/[^\x00-\x7F]/.test(read(f)), f);
@@ -23,7 +24,7 @@ test('the dry run is the apply block plus proofs, and ends in a deliberate error
   const part = (s, a, b) => s.slice(s.indexOf(a), s.indexOf(b));
   assert.equal(part(dry, '-- ===== PART 0', '-- ===== DRY RUN ONLY').trimEnd(), part(apply, '-- ===== PART 0', 'END\n$do$;').trimEnd());
   assert.match(dry, /RAISE EXCEPTION 'DRY RUN 113 finished: [^']*nothing kept \(deliberate error\)'/);
-  assert.match(apply, /ADD CONSTRAINT order_stops_load_seq_pos CHECK \(load_seq IS NULL OR load_seq > 0\)/);
+  assert.match(apply, /CHECK \(\s*load_seq IS NULL OR \(load_seq > 0 AND order_id IS NOT NULL AND stop_type IN \('Loading', 'Unloading'\)\)\)/);
 });
 
 const SCHEMA = `
@@ -38,7 +39,8 @@ const SCHEMA = `
   CREATE FUNCTION pl_ins() RETURNS trigger LANGUAGE plpgsql AS $f$ begin insert into pl_movements (order_stop_id) values (new.id); return new; end $f$;
   CREATE TRIGGER pl_delivery_from_stop AFTER INSERT ON order_stops FOR EACH ROW EXECUTE FUNCTION pl_ins();
   INSERT INTO order_stops VALUES (1, 10, 'Loading', 1, '2026-11-16', null, null, null), (2, 10, 'Unloading', 1, '2026-11-17', null, null, null),
-    (3, 11, 'Unloading', null, '2026-11-17', '2026-11-01', null, null);
+    (3, 11, 'Unloading', null, '2026-11-17', '2026-11-01', null, null), (4, 10, 'Cross-dock', 2, '2026-11-16', null, null, null),
+    (5, null, 'Loading', 1, '2026-11-15', null, null, null);
 `;
 
 test('PGlite: dry run keeps nothing; apply; 0 refused; apply again stops; rollback guarded; apply again', { skip: !process.env.PGLITE && 'set PGLITE to run' }, async () => {
@@ -47,7 +49,7 @@ test('PGlite: dry run keeps nothing; apply; 0 refused; apply again stops; rollba
   await db.exec(SCHEMA);
   const col = async () => (await db.query(`SELECT count(*)::int AS n FROM information_schema.columns WHERE table_name = 'order_stops' AND column_name = 'load_seq'`)).rows[0].n;
   await assert.rejects(db.exec(read('113_stop_load_seq_dryrun.sql')),
-    /DRY RUN 113 finished: 3 rows, 2 live stops given a position, side tables unchanged .*refused 0: yes; triggers 2 \(unchanged\), on any UPDATE: none/);
+    /DRY RUN 113 finished: 5 rows, 2 live stops given a position, side tables unchanged \(rows and content\); refused 0: yes; triggers 2 \(unchanged\), on any UPDATE: none/);
   assert.equal(await col(), 0, 'the dry run kept nothing');
   await db.exec(read('113_stop_load_seq.sql'));
   assert.equal(await col(), 1);
@@ -58,6 +60,8 @@ test('PGlite: dry run keeps nothing; apply; 0 refused; apply again stops; rollba
   await db.exec('UPDATE order_stops SET load_seq = 2 WHERE id = 2');
   assert.equal((await db.query('SELECT count(*)::int AS n FROM ramp')).rows[0].n, 0, 'a position write wakes no column-list trigger');
   await assert.rejects(db.exec('UPDATE order_stops SET load_seq = 0 WHERE id = 1'), /order_stops_load_seq_pos/);
+  await assert.rejects(db.exec('UPDATE order_stops SET load_seq = 1 WHERE id = 4'), /order_stops_load_seq_pos/, 'a cross-dock stop has no place');
+  await assert.rejects(db.exec('UPDATE order_stops SET load_seq = 1 WHERE id = 5'), /order_stops_load_seq_pos/, 'a national stop (no order) has no place');
   await assert.rejects(db.exec(read('113_stop_load_seq.sql')), /already exists - 113 has run/);
   await assert.rejects(db.exec(read('113_stop_load_seq_rollback.sql')), /refused: 1 stops carry a position/);
   assert.equal(await col(), 1, 'nothing dropped while a position exists');

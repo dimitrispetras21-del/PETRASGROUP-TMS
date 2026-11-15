@@ -270,7 +270,11 @@ if (plain !== null) {
 const seq = sqFlag === undefined ? null : Number(sqArg);
 if (seq !== null) {
   // 113 (owner 15/11): a groupage keeps the order of its points per point; the ORDER STOPS label, exactly once
+  // counted in the WHOLE bundle (exactly once, so never a second copy anywhere) AND inside the ORDER STOPS block (so a
+  // merge that drops it into LOCAL MOVES, which shares the 111 hours beside it, is a STOP, never «OK» with a 200 drop)
+  const os = (text.match(/\n {2}tblaeY5QOHAS1gyE8: \{\n[\s\S]*?\n {2}\},?\n/) || [''])[0];
   rows.push(['"Load Seq": "load_seq" (σειρά σημείου στο groupage, 113)', count('"Load Seq": "load_seq"'), (n) => (seq === 1 ? n === 1 : n === 0)]);
+  rows.push(['ORDER STOPS "Load Seq": "load_seq" (113, μέσα στο ORDER STOPS)', os.split('"Load Seq": "load_seq"').length - 1, (n) => (seq === 1 ? n === 1 : n === 0)]);
 }
 let ok = true;
 for (const [name, n, good] of rows) {

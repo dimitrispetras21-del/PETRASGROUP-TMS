@@ -3634,7 +3634,7 @@ const PLAN_CHECK_TEXT = {
   // order_stops / local_moves (071 additions on live tables)
   order_stops_via_hub_intl: "Το «μέσω Βέροιας» υπάρχει μόνο σε στάση διεθνούς παραγγελίας",
   // 113: a point's position in its groupage
-  order_stops_load_seq_pos: "Η σειρά σημείου στο groupage ξεκινά από 1",
+  order_stops_load_seq_pos: "Η σειρά σημείου στο groupage ξεκινά από 1 και μπαίνει μόνο σε φόρτωση ή παράδοση διεθνούς παραγγελίας",
   // 111: the optional window of a stop
   order_stops_time_from_fmt: "Ώρα σε μορφή ΩΩ:ΛΛ (π.χ. 07:00)",
   order_stops_time_to_fmt: "Ώρα σε μορφή ΩΩ:ΛΛ (π.χ. 07:00)",
@@ -3735,10 +3735,12 @@ function stockRuleError(e) {
   if (/order_stops/.test(message) && ((/^(PGRST204|42703)$/.test(code) && /time_from|time_to/.test(message)) || (code === "23502" && /"via_hub"/.test(message)))) {
     return { type: "SCHEMA_BEHIND", code: "111_missing", message: "Η βάση δεν έχει ακόμη το migration 111 (ώρες και «μέσω Βέροιας» ανά στάση) — ο Worker μπήκε πριν από το SQL· τίποτα δεν γράφτηκε, ενημέρωσε τον Δημήτρη (111_missing)" };
   }
-  // 113 not run yet (or rolled back) under this Worker: order_stops.load_seq is unknown (PGRST204 / 42703). Said by
-  // name, never a bare 500 (principle 1); nothing was written (one insert / one PATCH = one statement).
+  // 113 not run yet (or rolled back, or PostgREST's schema cache not yet reloaded after it) under this Worker:
+  // order_stops.load_seq is unknown (PGRST204 / 42703). Said by name, never a bare 500 (principle 1). The row that
+  // named it was not written (one insert / one PATCH = one statement); in a batch PATCH the rows before it may have
+  // been (handleFacadeBatchUpdate sends one request per row), so the text claims only the refused row.
   if (/order_stops/.test(message) && /^(PGRST204|42703)$/.test(code) && /load_seq/.test(message)) {
-    return { type: "SCHEMA_BEHIND", code: "113_missing", message: "Η βάση δεν έχει ακόμη το migration 113 (σειρά σημείων στο groupage) — ο Worker μπήκε πριν από το SQL· τίποτα δεν γράφτηκε, ενημέρωσε τον Δημήτρη (113_missing)" };
+    return { type: "SCHEMA_BEHIND", code: "113_missing", message: "Η βάση δεν βλέπει ακόμη τη σειρά σημείων στο groupage (migration 113 χωρίς εκτέλεση, ή χωρίς ανανέωση σχήματος μετά από αυτό)· η αποθήκευση αυτής της στάσης δεν έγινε, ενημέρωσε τον Δημήτρη (113_missing)" };
   }
   if (code === "23514") {
     // 'stock:' (057) only under 23514, as 057's stock_raise sends it — a
