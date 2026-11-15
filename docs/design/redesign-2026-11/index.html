@@ -718,7 +718,6 @@ table.spec td b{color:var(--ink);font-weight:600}
       <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13.5px;font-weight:500;color:var(--ink)"><span class="cb on"><i><i data-lucide="check"></i></i></span>Και η άνοδος +1</label>
       <div class="strip" style="margin-top:12px;padding:10px 12px;font-size:13px"><i data-lucide="triangle-alert"></i>Ο Κ. Τσορλίνης έχει άλλο φορτίο την Τρίτη.</div>
       <div class="fbar" style="margin-top:16px"><span class="sp"></span><button class="pill">Άκυρο</button><button class="pill b">Αποθήκευση</button></div></div>
-    <div class="panel" style="flex:1;min-width:260px"><h3>Τι λέει κάθε σημάδι της ημέρας</h3><p><span class="sg"><i data-lucide="truck"></i>4</span> φορτηγά · <span class="sg r"><i data-lucide="truck"></i>1</span> φορτίο χωρίς φορτηγό · <span class="sg a"><i data-lucide="undo-2"></i>1</span> γυρίζει άδειο · <span class="sg r"><i data-lucide="triangle-alert"></i>1</span> πάνω από 33</p></div>
   </div>
 </section>
 
@@ -933,11 +932,11 @@ function brow(r){const [n,a,b,p,t,c,e,p2,cls='']=r;const k=n==='need'?'need':cls
  return `<div class="br ${k}"><button class="no num" title="Μενού γραμμής">${cls==='hov'?ic('ellipsis'):typeof n==='number'?n:ic('arrow-up')}</button>${L}${t}${R}<span class="send" title="Φύλλο οδηγού">${ic('send')}</span></div>`}
 $('f2').innerHTML=`<div class="app rail">${side('wn')}<main class="main">
  <div class="hd" style="align-items:baseline;gap:14px"><h1>Εβδομαδιαίο Εθνικών</h1><p style="margin:0">14 – 20 Νοεμβρίου · <a style="color:inherit" title="Ανανέωση">${ic('rotate-cw')} 07:42</a></p><span class="sp"></span><span style="display:flex;gap:10px;align-self:center"><button class="pill">Σήμερα</button><button class="pill">${ic('printer')}Εκτύπωση</button><button class="pill b">${ic('plus')}Νέα παραγγελία</button></span></div>
- <div class="card" style="border-radius:16px"><div class="wk">${ic('chevron-left')}<a>45</a><a>46</a><a class="on">47 <i>3</i></a><a>48 <i>15</i></a><a>49 <i>9</i></a><a>50</a><a>51</a>${ic('chevron-right')}<span class="sp"></span><span class="chip">${ic('layers')}<b>Σύνθεση φορτίων</b> ${ic('arrow-down')}3 ${ic('arrow-up')}4</span><div class="q" style="margin:6px 0 6px 10px" title="Φορτηγό, οδηγός, συνεργάτης, πελάτης, τόπος · / για αναζήτηση, Enter για το επόμενο">${ic('search')}Αναζήτηση</div></div>
+ <div class="card" style="border-radius:16px"><div class="wk">${ic('chevron-left')}<a>45</a><a>46</a><a class="on">47 <i>3</i></a><a>48 <i>15</i></a><a>49 <i>9</i></a><a>50</a><a>51</a>${ic('chevron-right')}<span class="sp"></span><div class="q" style="margin:6px 0 6px 10px" title="Φορτηγό, οδηγός, συνεργάτης, πελάτης, τόπος · / για αναζήτηση, Enter για το επόμενο">${ic('search')}Αναζήτηση</div></div>
   <div class="nx"><span class="lbl">Επόμενα <b style="color:var(--red)">3</b></span>
    <span class="chip">${ic('arrow-up')}<span style="color:var(--red);font-weight:600">Σάβ 14</span> <b>Lakonia Valley</b> 8π</span><span class="chip">${ic('arrow-up')}Τετ 18 <b>Messinia Olive Coop</b> 33π</span><span class="chip">${ic('arrow-down')}Πέμ 19 <b>Attica Cold Hub</b> 32π</span><span class="sp"></span><span class="chip">${ic('warehouse')}<b>Βέροια</b> 3 για μοίρασμα · 46π · απόθεμα 12π</span></div></div>
  <div class="bh lbl"><span></span><span style="padding-left:2px">Κάθοδος · φόρτωση</span><span style="padding-left:2px">Παράδοση</span><span style="text-align:right;padding-right:28px">Παλ.</span><span>Φορτηγό</span><span>Άνοδος · φόρτωση</span><span>Παράδοση</span><span style="text-align:right;padding-right:28px">Παλ.</span><span></span></div>
- <div style="flex:1;min-height:0;overflow:hidden;margin-top:-10px;padding:0 2px">${D.map(([t,c,sg,rows])=>`<section class="day ${c}"><h3>${t}${sg}</h3>${rows.map(brow).join('')}</section>`).join('')}</div></main></div>`;
+ <div style="flex:1;min-height:0;overflow:hidden;margin-top:-10px;padding:0 2px">${D.map(([t,c,sg,rows])=>`<section class="day ${c}"><h3>${t}</h3>${rows.map(brow).join('')}</section>`).join('')}</div></main></div>`;
 
 /* ---------- screen 5: weekly international (week 47). A row is one truck's work: export, who carries it, the import it returns with. Exports sit on their first delivery day, import-only rows on their loading day. ---------- */
 const E3='<span></span><span></span><span></span>',sd=(a,b,p)=>`${a}${b}<div class="pw">${P(p)}<span class="plus" style="visibility:hidden">${ic('plus')}</span></div>`;
@@ -946,7 +945,7 @@ const irow=([n,L,t,R,cls=''])=>`<div class="br ${cls}"><button class="no num" ti
 const subr=(t,side)=>`<div class="br subr"><span></span>${side==='R'?E3+'<span></span>':''}<div class="sub2">${ic('corner-down-right')}${t}</div>${side==='R'?'':'<span></span>'+E3}<span></span></div>`;
 // order inside a day as today: loads through Veroia last; a pre-order has no delivery day, so it sits on its loading day
 const WI=[
- ['Σάββατο 14/11','',[
+ ['Σάββατο 14/11','past',[
   [1,sd(`<div class="two"><b><span class="el">Pella Peach Coop</span>${tags('PE')}<span class="ico" style="margin-left:6px;color:var(--help)" title="Έγγραφα">${ic('paperclip')}</span></b><span>${d('Τετ 11')} · Σκύδρα</span></div>`,c2('Wiener Frische','',`${d('Σάβ 14')} · Wien`),33),trk('Transfrigo Kft.','RKA 512 · XTR 088','p'),''],
   [2,sd(c2('Veria Fruit Pack','VS·PE',`${d('Τρί 10')} · Βέροια +2`),c2('Tirol Obst Lager','',`${d('Σάβ 14')} · Innsbruck`),32),trk('ΚΗΙ 3310 · Ρ 7120','Θανάσης Μέλλιος'),sd(c2('Alpina Fresh S.r.l.','',`${d('Δευ 16')} · Modena`),c2('Frutopia Packhouse','',`${d('Πέμ 19')} · Νάουσα`),19)],
   ['sub','R',`Παράδοση με τοπικό οδηγό · Frutopia Packhouse · <b style="color:var(--amber);font-weight:600">χωρίς οδηγό</b>`],
