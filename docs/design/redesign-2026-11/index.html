@@ -1008,7 +1008,7 @@ $('f3').innerHTML=ordersHTML(0)+`<div class="veil"></div><div class="sheet">
  </div></div></div>`;
 
 /* ---------- screen 3b: a group load entered from the same form (owner 15/11). As on the national form: one order under the other, saved as separate orders, no joining step. New here: the loading order and the delivery order are two lists that can be dragged, because they are often different. ---------- */
-const ol=(n,c,r,d,p,pr,open)=>`<div class="ol"><i class="onum">${n}</i><b>${c}</b><span>${r}</span><span class="num">${d}</span><span class="n num">${p} παλ.</span><span class="n num">${pr}</span>${ic(open?'chevron-up':'chevron-down')}${ic('x')}</div>`;
+const ol=(n,c,r,d,p,pr,open)=>`<div class="ol"><i class="onum">${n}</i><b>${c}</b><span>${r}</span><span class="num">${d}</span><span class="n num">${p} παλ.</span><span class="n num">${pr}</span>${ic(open?'chevron-up':'chevron-down')}<span title="Διαγραφή παραγγελίας" style="display:flex">${ic('trash-2')}</span></div>`;
 $('f6').innerHTML=ordersHTML(0)+`<div class="veil"></div><div class="sheet">
  <div class="hd"><h1>Νέα διεθνής παραγγελία</h1><span class="seg" style="margin-left:18px"><b>Απλό φορτίο</b><b class="on">Groupage</b></span><span class="seg" style="margin-left:10px"><b class="on">Εξαγωγή</b><b>Εισαγωγή</b></span><span class="sp"></span><button class="pill">${ic('scan-line')}Σάρωση εντολής πελάτη</button><button class="cl" style="width:40px;height:40px" title="Επισύναψη εντολής πελάτη">${ic('paperclip')}</button><button class="cl" style="width:40px;height:40px" aria-label="Κλείσιμο">${ic('x')}</button></div>
  <div class="fgrid wide"><div class="card" style="align-self:start;border-radius:16px">
