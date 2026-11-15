@@ -557,6 +557,13 @@ table.spec td b{color:var(--ink);font-weight:600}
 #f5 .w9hf:first-child{flex:0 0 230px}#f5 .w9hf:last-child{flex:1 1 0}
 /* the pallet bar turns amber under 80% of a full trailer */
 .w9pal.lo .m i{background:var(--amber-line)}
+/* motion on the weekly board (owner 15/11): short, under a third of a second, off with 'reduce motion' */
+@keyframes w9in{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}@keyframes w9tile{from{background:var(--red-bg)}}@keyframes w9bump{40%{transform:scale(1.12)}}
+@keyframes w9pop{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}@keyframes w9sl{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:none}}
+.w9in{animation:w9in var(--t-enter) var(--ease) both}.w9in .w9ic{animation:w9tile .5s var(--ease) both}.w9bump{animation:w9bump .32s var(--ease)}
+.w9v:hover .w9vp,.w9hf:hover>.w9pp{animation:w9pop .16s .18s both}#f5 .dout .w9v{animation:w9sl .24s var(--ease) both}
+.w9row{transition:background var(--t-fast)}.w9row:hover{background:rgba(11,25,41,.025)}.w9as.n,.w9gap a{cursor:pointer}.w9cp.ok{color:var(--green);opacity:1!important}
+#f5.v2 .day.past .w9row:not(:hover)>.w9snd{opacity:0}
 /* cycle 3 of critics (15/11) */
 .w9hf{position:relative}.w9hf:hover>.w9pp{display:block}.w9pp{width:420px}
 #f5 .w9gap a.alt{display:none;opacity:1}#f5 .w9row:hover .w9gap a.alt{display:inline-flex}
@@ -1160,7 +1167,7 @@ const lfMany=a=>a.length>1?`<div class="lns">${a.map(x=>lfLn(x[1],'',x[0],x[2],x
  /* one rail at the left edge for every row that needs action (owner 15/11): red = loading late or the national leg has no truck,
     amber = an empty return to fill now */
  const natMiss=r=>[...(r.vTo||[]),...(r.vFrom||[])].some(x=>x.t==='');
- const row=r=>`<div class="w9row ${late(r)||natMiss(r)?'late':''} ${r.gapNow?'act':''}" style="grid-template-columns:${G}"><span class="w9no num">${r.no}</span>${vcell(r.vTo)}${r.ex?side(r.ex,r.sec):r.exTxt?txt(r.exTxt):E2}${asg(r.as)}${r.im?side(r.im):r.gap?`<div class="w9gap ${r.gapNow?'':'z'}" style="grid-column:span 2">${ic('undo-2')}<span class="el">Κενό γύρισμα · ${r.gap}</span><a>${ic('plus')}Νέα εισαγωγή</a><a class="alt">ή κομμάτι από απόθεμα</a></div>`:r.imTxt?(!r.imAdd?`<div class="w9tx" style="grid-column:span 2" title="${r.imTxt}">—</div>`:txt(r.imTxt,r.imAdd,r.imAdd)):E2}${vcell(r.vFrom)}${r.as[0]==='n'||r.as[0]==='am'?'<span></span>':`<span class="w9snd" title="Αποστολή στοιχείων στον οδηγό">${ic('send')}</span>`}</div>`
+ const row=r=>`<div class="w9row ${late(r)||natMiss(r)?'late':''} ${r.gapNow?'act':''}" data-no="${r.no}" style="grid-template-columns:${G}"><span class="w9no num">${r.no}</span>${vcell(r.vTo)}${r.ex?side(r.ex,r.sec):r.exTxt?txt(r.exTxt):E2}${asg(r.as)}${r.im?side(r.im):r.gap?`<div class="w9gap ${r.gapNow?'':'z'}" style="grid-column:span 2">${ic('undo-2')}<span class="el">Κενό γύρισμα · ${r.gap}</span><a>${ic('plus')}Νέα εισαγωγή</a><a class="alt">ή κομμάτι από απόθεμα</a></div>`:r.imTxt?(!r.imAdd?`<div class="w9tx" style="grid-column:span 2" title="${r.imTxt}">—</div>`:txt(r.imTxt,r.imAdd,r.imAdd)):E2}${vcell(r.vFrom)}${r.as[0]==='n'||r.as[0]==='am'?'<span></span>':`<span class="w9snd" title="Αποστολή στοιχείων στον οδηγό">${ic('send')}</span>`}</div>`
   +(r.note?sub(r.note[0]&&ic('corner-down-right')+r.note[0],r.note[1]&&ic('corner-down-right')+r.note[1]):'');
  const NV={n:'Naoussa Peach Union',c:'Νάουσα'};
  const WK=[
@@ -1205,7 +1212,18 @@ const lfMany=a=>a.length>1?`<div class="lns">${a.map(x=>lfLn(x[1],'',x[0],x[2],x
  /* day names in capitals, without accents, as on the live board; the word 'σήμερα' stays small (owner 15/11) */
  const dayName=t=>{const [a,b]=t.split(' · ');return a.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase()+(b?` <small>· ${b}</small>`:'')};
  const draw=()=>{let no=0;grid();CNT.late=ALL.filter(late).length;st.innerHTML=strip();box.innerHTML=head()+`<div style="margin-top:-8px">${DATA.map(([t,c,rows])=>`<section class="day ${c}"><h3>${dayName(t)}</h3><div class="w9dc">${rows.map(r=>row({...r,no:++no,sec:+(t.match(/ (\d+)\//)||[0,0])[1]})).join('')}</div></section>`).join('')}</div>`;if(window.lucide)lucide.createIcons()};
- box.addEventListener('click',e=>{if(e.target.closest('.w9vh')){OPEN=!OPEN;draw()}});draw();
+ box.addEventListener('click',e=>{if(e.target.closest('.w9vh')){OPEN=!OPEN;draw()}});
+ /* motion (owner 15/11): the three most common actions answer on the spot. Click 'Ανάθεση', 'Νέα εισαγωγή' or the copy icon. */
+ const bump=sel=>{st.innerHTML=strip();lucide.createIcons();const c=st.querySelector(sel);if(c)c.classList.add('w9bump')};
+ box.addEventListener('click',e=>{const rowEl=e.target.closest('.w9row');if(!rowEl)return;const r=ALL[+rowEl.dataset.no-1];
+  const need=e.target.closest('.w9as.n');
+  if(need&&r){r.as=['o','ΚΗΙ 5127 · Ρ 6604','Στέλιος Καρράς'];CNT.need=ALL.filter(x=>x.as[0]==='n').length;need.outerHTML=asg(r.as).replace('class="w9as ','class="w9as w9in ');
+   if(!rowEl.querySelector('.w9snd'))rowEl.lastElementChild.outerHTML=`<span class="w9snd" title="Αποστολή στοιχείων στον οδηγό">${ic('send')}</span>`;bump('.w9f.r');return}
+  const add=e.target.closest('.w9gap a:not(.alt)');
+  if(add&&r){const g=add.closest('.w9gap');r.im={L:[P('Alpina Fresh S.r.l.','Modena','Τρί 17')],D:[P('Macedonia Cold Store','Θεσσαλονίκη','Παρ 20')],pal:30};delete r.gap;delete r.gapNow;CNT.gap=ALL.filter(x=>x.gapNow).length;
+   g.insertAdjacentHTML('beforebegin',side(r.im,0));g.previousElementSibling.classList.add('w9in');g.previousElementSibling.previousElementSibling.classList.add('w9in');g.remove();rowEl.classList.remove('act');bump('.w9f.a');return}
+  const cp=e.target.closest('.w9cp');
+  if(cp){cp.innerHTML=ic('check');cp.classList.add('ok');lucide.createIcons();setTimeout(()=>{cp.innerHTML=ic('copy');cp.classList.remove('ok');lucide.createIcons()},1200)}});draw();
  /* title, weeks and search on one line (owner 15/11) */
  {const f=$('f5'),hd=f.querySelector('.hd'),wk=f.querySelector('.wk'),tabs=document.createElement('span');f.classList.add('v2');tabs.className='w9wk';
   [...wk.children].forEach(c=>{if(!c.classList.contains('sp')&&!c.classList.contains('q'))tabs.appendChild(c)});hd.insertBefore(tabs,hd.querySelector('.sp'));
