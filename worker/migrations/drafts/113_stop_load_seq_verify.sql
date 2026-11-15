@@ -10,7 +10,8 @@ SELECT CASE
            OR (SELECT is_nullable FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'order_stops' AND column_name = 'load_seq') <> 'YES'
            THEN '113 NOT in place (column has the wrong shape)'
          WHEN NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.order_stops'::regclass AND conname = 'order_stops_load_seq_pos'
-                          AND contype = 'c' AND convalidated)
+                          AND contype = 'c' AND convalidated
+                          AND replace(pg_get_constraintdef(oid), ' ', '') LIKE '%load_seqISNULL%load_seq>0%order_idISNOTNULL%')
            THEN '113 NOT in place (CHECK order_stops_load_seq_pos missing)'
          ELSE '113 in place' END AS result,
        -- read through to_jsonb so the same file answers after a rollback too (the column named directly would fail the

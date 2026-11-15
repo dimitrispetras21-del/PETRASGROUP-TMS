@@ -3739,9 +3739,9 @@ function stockRuleError(e) {
   // order_stops.load_seq is unknown (PGRST204 / 42703). Said by name, never a bare 500 (principle 1). The row that
   // named it was not written (one insert = one statement: a batch create of stops lands none of them; one PATCH = one
   // statement); in a batch PATCH the rows before it may have been (handleFacadeBatchUpdate sends one request per row),
-  // so the text claims only that the stops carrying a position were not saved.
+  // and the rows after it are never sent: the text says the stops were not saved, «perhaps only the ones before it».
   if (/order_stops/.test(message) && /^(PGRST204|42703)$/.test(code) && /load_seq/.test(message)) {
-    return { type: "SCHEMA_BEHIND", code: "113_missing", message: "Η βάση δεν βλέπει ακόμη τη σειρά σημείων στο groupage (migration 113 χωρίς εκτέλεση, ή χωρίς ανανέωση σχήματος μετά από αυτό)· οι στάσεις με σειρά σημείου δεν αποθηκεύτηκαν, ενημέρωσε τον Δημήτρη (113_missing)" };
+    return { type: "SCHEMA_BEHIND", code: "113_missing", message: "Η βάση δεν βλέπει ακόμη τη σειρά σημείων στο groupage (migration 113 χωρίς εκτέλεση, ή χωρίς ανανέωση σχήματος μετά από αυτό)· οι στάσεις δεν αποθηκεύτηκαν (σε αποθήκευση πολλών μαζί, ίσως μόνο όσες προηγήθηκαν)· ενημέρωσε τον Δημήτρη (113_missing)" };
   }
   if (code === "23514") {
     // 'stock:' (057) only under 23514, as 057's stock_raise sends it — a

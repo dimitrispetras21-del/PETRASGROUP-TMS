@@ -22,18 +22,17 @@
 --   named columns that do not include load_seq; the dry run lists them all and says which, if any, wakes on an UPDATE
 --   of any column.
 -- RUNTIME: one ALTER TABLE ADD COLUMN (nullable, no default: catalogue only, no rewrite) and one ADD CONSTRAINT (one
--- scan of ~1.9k rows), a short lock on order_stops, lock_timeout 5s (statement_timeout is set for the statements
--- inside the block only; the block itself is bounded by its few statements).
+-- scan of ~1.9k rows), a short lock on order_stops, lock_timeout 5s. (statement_timeout set inside a DO block bounds
+-- nothing: the block is one top-level statement; it is bounded by its few statements, milliseconds.)
 -- REVERSE: 113_stop_load_seq_rollback.sql (drops the column and its CHECK, only while every row is NULL).
 -- EXPECTED: NOTICE "113 OK: ..." ; then verify: result = '113 in place'.
 
 DO $do$
 DECLARE
-  v_trg0 int; v_trg1 int; v_any text; v_rows bigint; v_set bigint;
+  v_trg int; v_any text; v_rows bigint;
   v_t0 timestamptz := clock_timestamp();
 BEGIN
   PERFORM set_config('lock_timeout', '5s', true);
-  PERFORM set_config('statement_timeout', '60s', true);
   PERFORM set_config('search_path', 'public', true);
 
   -- ===== PART 0: GUARDS (nothing written before them) =====
@@ -50,7 +49,7 @@ BEGIN
   IF (SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'order_stops' AND column_name IN ('time_from', 'time_to')) <> 2 THEN
     RAISE EXCEPTION '113: 111 is not in place (order_stops.time_from / time_to missing) - run 111 first';
   END IF;
-  SELECT count(*) INTO v_trg0 FROM pg_trigger WHERE tgrelid = 'public.order_stops'::regclass AND NOT tgisinternal;
+  SELECT count(*) INTO v_trg FROM pg_trigger WHERE tgrelid = 'public.order_stops'::regclass AND NOT tgisinternal;
   -- a trigger with UPDATE (tgtype bit 16) and no column list (tgattr empty) fires on an UPDATE of ANY column,
   -- load_seq included: named here, never assumed away
   SELECT string_agg(tgname, ', ' ORDER BY tgname) INTO v_any FROM pg_trigger
@@ -67,18 +66,11 @@ BEGIN
   COMMENT ON COLUMN public.order_stops.load_seq IS
     '113 (owner 15/11/2026): position of this point inside its load (Group ID base), counted apart among loading and among delivery points; NULL = the old rule (Group ID order list, then stop_number, then date)';
 
-  -- ===== PART 2: PROOFS =====
-  SELECT count(*) INTO v_trg1 FROM pg_trigger WHERE tgrelid = 'public.order_stops'::regclass AND NOT tgisinternal;
-  IF v_trg1 <> v_trg0 THEN
-    RAISE EXCEPTION '113: triggers on order_stops % -> % - nothing kept', v_trg0, v_trg1;
-  END IF;
-  SELECT count(*), count(load_seq) INTO v_rows, v_set FROM public.order_stops;
-  IF v_set <> 0 THEN
-    RAISE EXCEPTION '113: % rows have a load_seq right after the ALTER - nothing kept', v_set;
-  END IF;
+  -- ===== PART 2: REPORT =====
+  SELECT count(*) INTO v_rows FROM public.order_stops;
   -- PostgREST (the Worker's door) learns the new column at commit, not at its next restart
   PERFORM pg_notify('pgrst', 'reload schema');
-  RAISE NOTICE '113 OK: order_stops.load_seq added, % rows all NULL; triggers % (unchanged), on any UPDATE: %; % ms',
-    v_rows, v_trg1, coalesce(v_any, 'none'), round(extract(epoch FROM clock_timestamp() - v_t0) * 1000);
+  RAISE NOTICE '113 OK: order_stops.load_seq added, % rows all NULL; triggers on order_stops %, on any UPDATE: %; % ms',
+    v_rows, v_trg, coalesce(v_any, 'none'), round(extract(epoch FROM clock_timestamp() - v_t0) * 1000);
 END
 $do$;

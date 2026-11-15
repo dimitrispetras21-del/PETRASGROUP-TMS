@@ -15,11 +15,12 @@ DECLARE
   v_set bigint;
 BEGIN
   PERFORM set_config('lock_timeout', '5s', true);
-  PERFORM set_config('statement_timeout', '60s', true);
   PERFORM set_config('search_path', 'public', true);
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'order_stops' AND column_name = 'load_seq') THEN
     RAISE EXCEPTION '113 ROLLBACK: order_stops.load_seq does not exist - nothing to do';
   END IF;
+  -- the lock first, then the count: no position can be committed between the count and the DROP
+  LOCK TABLE public.order_stops IN ACCESS EXCLUSIVE MODE;
   SELECT count(*) INTO v_set FROM public.order_stops WHERE load_seq IS NOT NULL;
   IF v_set > 0 THEN
     RAISE EXCEPTION '113 ROLLBACK refused: % stops carry a position (load_seq) - copy them first (see the header), nothing dropped', v_set;

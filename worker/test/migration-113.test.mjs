@@ -49,7 +49,7 @@ test('PGlite: dry run keeps nothing; apply; 0 refused; apply again stops; rollba
   await db.exec(SCHEMA);
   const col = async () => (await db.query(`SELECT count(*)::int AS n FROM information_schema.columns WHERE table_name = 'order_stops' AND column_name = 'load_seq'`)).rows[0].n;
   await assert.rejects(db.exec(read('113_stop_load_seq_dryrun.sql')),
-    /DRY RUN 113 finished: 5 rows, 2 live stops given a position, 0 rows written in the other 3 tables; refused 0: yes; triggers 2 \(unchanged\), on any UPDATE: none/);
+    /DRY RUN 113 finished: 5 rows, 2 live stops given a position, no other table touched; refused 0: yes; triggers on order_stops 2, on any UPDATE: none/);
   assert.equal(await col(), 0, 'the dry run kept nothing');
   await db.exec(read('113_stop_load_seq.sql'));
   assert.equal(await col(), 1);
@@ -85,11 +85,17 @@ test('PGlite: without 111 (no hours) 113 stops before writing', { skip: !process
   await assert.rejects(db.exec(read('113_stop_load_seq.sql')), /111 is not in place/);
 });
 
-test('PGlite: a trigger that fires on ANY update and writes elsewhere makes the dry run fail, by name', { skip: !process.env.PGLITE && 'set PGLITE to run' }, async () => {
-  const { PGlite } = await import(process.env.PGLITE);
-  const db = new PGlite();
-  await db.exec(SCHEMA);
-  await db.exec(`CREATE FUNCTION any_upd() RETURNS trigger LANGUAGE plpgsql AS $f$ begin insert into ramp (stop_id) values (new.id); return new; end $f$;
-    CREATE TRIGGER noisy AFTER UPDATE ON order_stops FOR EACH ROW EXECUTE FUNCTION any_upd();`);
-  await assert.rejects(db.exec(read('113_stop_load_seq_dryrun.sql')), /113 DRY RUN FAILED: writing load_seq on 2 stops wrote rows elsewhere: public\.ramp=2/);
-});
+for (const [what, body, want] of [
+  ['inserts', 'insert into ramp (stop_id) values (new.id);', /touched other tables: (?:public\.)?ramp ins=2 upd=0 del=0/],
+  ['removes', 'delete from ramp;', /touched other tables: (?:public\.)?ramp ins=0 upd=0 del=1/],
+  ['inserts inside its own BEGIN…EXCEPTION', 'begin insert into ramp (stop_id) values (new.id); exception when others then null; end;', /touched other tables: (?:public\.)?ramp ins=2/]]) {
+  test(`PGlite: a trigger that fires on ANY update and ${what} elsewhere makes the dry run fail, by name`, { skip: !process.env.PGLITE && 'set PGLITE to run' }, async () => {
+    const { PGlite } = await import(process.env.PGLITE);
+    const db = new PGlite();
+    await db.exec(SCHEMA);
+    await db.exec(`INSERT INTO ramp (stop_id) VALUES (99);
+      CREATE FUNCTION any_upd() RETURNS trigger LANGUAGE plpgsql AS $f$ begin ${body} return new; end $f$;
+      CREATE TRIGGER noisy AFTER UPDATE ON order_stops FOR EACH ROW EXECUTE FUNCTION any_upd();`);
+    await assert.rejects(db.exec(read('113_stop_load_seq_dryrun.sql')), want);
+  });
+}
