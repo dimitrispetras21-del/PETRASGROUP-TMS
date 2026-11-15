@@ -7,7 +7,7 @@
 //   - Offline banner via postMessage to all clients
 // ═══════════════════════════════════════════════════════════
 
-const SW_VERSION = '1794680000';
+const SW_VERSION = '1794700000';
 
 // Το vendor/leaflet/* ΔΕΝ μπαίνει στο APP_SHELL επίτηδες: το pre-cache στο
 // install θα κατέβαζε 228 KB σε κάθε χρήστη, ακυρώνοντας το lazy loading της
@@ -73,6 +73,7 @@ const APP_SHELL = [
   '/PETRASGROUP-TMS/modules/daily_ramp.js',
   '/PETRASGROUP-TMS/modules/daily_ops.js',
   '/PETRASGROUP-TMS/modules/orders_intl.js',
+  '/PETRASGROUP-TMS/modules/orders_intl_group.js',
   '/PETRASGROUP-TMS/modules/orders_natl.js',
   // One «Παραγγελίες» page since 28/9/2026: the two modules above no longer
   // draw a list — without these the dispatchers' main screen fails offline.
