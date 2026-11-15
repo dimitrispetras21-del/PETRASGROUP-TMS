@@ -633,7 +633,7 @@ table.spec td b{color:var(--ink);font-weight:600}
   <h2>Εβδομαδιαίο Διεθνών</h2>
   <p class="lead">Ο διεθνής dispatcher, όλη τη βάρδια. Κάθε γραμμή είναι η δουλειά ενός φορτηγού: αριστερά η εξαγωγή, στη μέση ποιος την πάει, δεξιά η εισαγωγή με την οποία γυρίζει. Οι ημέρες μένουν πάντα ανοιχτές.</p>
   <div class="fit"><div class="frame" id="f5"></div></div>
-  <div class="cap"><h3>Ό,τι ανοίγει από μια γραμμή</h3><span>ομαδικό φορτίο · μέσω Βέροιας · μενού · ανάθεση · ημέρες · όλα τα επόμενα</span></div>
+  <div class="cap"><h3>Ό,τι ανοίγει από μια γραμμή</h3><span>ομαδικό φορτίο · μέσω Βέροιας · μενού · ανάθεση · ημέρες · όλα τα επόμενα · σύνθεση ομαδικού φορτίου</span></div>
   <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start">
     <div class="pop" style="width:540px;padding:18px;animation:none"><div style="display:flex;align-items:center;gap:10px"><b style="font-size:16px;font-weight:600;color:var(--ink)">Ομαδικό φορτίο</b><span class="tag" style="margin:0">3 παραγγελίες</span><span class="sp" style="flex:1"></span><span class="num" style="font-weight:600;color:var(--ink)">33 / 33 παλ.</span></div>
       <p style="margin:4px 0 12px;color:var(--help);font-size:13px"><span class="num">ΚΗΙ 6012 · Ρ 5093</span> · Αντώνης Ντίνος · παράδοση Δευ 16/11</p>
@@ -663,22 +663,29 @@ table.spec td b{color:var(--ink);font-weight:600}
       <div class="fbar" style="margin-top:14px"><button class="tbtn r" style="margin-left:-8px">Καθαρισμός</button><span class="sp"></span><button class="pill b">Αποθήκευση</button></div></div>
     </div>
     <div class="pop" style="width:310px;padding:16px;animation:none"><p class="lbl">Ημέρες και ώρες · Βέροια → Rotterdam</p>
-      <span class="seg sm" style="margin-top:10px;display:flex"><b style="flex:1;justify-content:center">Φόρτωση</b><b class="on" style="flex:1;justify-content:center">Βέροια</b><b style="flex:1;justify-content:center">Παράδοση</b></span>
-      <div class="row" style="grid-template-columns:1.3fr 1fr;margin-top:12px"><label class="fld"><span>Ημέρα</span><div class="inp focus"><i data-lucide="calendar"></i>Τετ 18/11</div></label><label class="fld"><span>Ώρα</span><div class="inp num">06:00</div></label></div>
-      <p class="lbl" style="margin-top:14px">Τι αλλάζει · +1 ημέρα</p><dl class="chkv" style="margin-top:6px"><dt>Βέροια</dt><dd class="num">Τρί 17 → Τετ 18</dd><dt>Rotterdam</dt><dd class="num">Τετ 18 → Πέμ 19</dd></dl>
-      <div class="strip" style="margin-top:12px;padding:10px 12px;font-size:13px"><i data-lucide="triangle-alert"></i>Η εισαγωγή του γυρίσματος φορτώνει Παρ 20.</div>
+      <span class="seg sm" style="margin-top:10px;display:flex"><b style="flex:1;justify-content:center">Φόρτωση</b><b style="flex:1;justify-content:center">Βέροια</b><b class="on" style="flex:1;justify-content:center">Παράδοση</b></span>
+      <div class="row" style="grid-template-columns:1.3fr 1fr;margin-top:12px"><label class="fld"><span>Ημέρα</span><div class="inp focus"><i data-lucide="calendar"></i>Πέμ 19/11</div></label><label class="fld"><span>Ώρα</span><div class="inp num">06:00</div></label></div>
+      <p class="lbl" style="margin-top:14px">Τι αλλάζει · +1 ημέρα</p><dl class="chkv" style="margin-top:6px"><dt>Rotterdam</dt><dd class="num">Τετ 18 → Πέμ 19</dd><dt>Antwerpen</dt><dd class="num">Πέμ 19 → Παρ 20</dd></dl>
+      <div class="strip" style="margin-top:12px;padding:10px 12px;font-size:13px"><i data-lucide="triangle-alert"></i>Η εισαγωγή του γυρίσματος φορτώνει Παρ 20, την ίδια ημέρα.</div>
       <div class="fbar" style="margin-top:16px"><span class="sp"></span><button class="pill">Άκυρο</button><button class="pill b">Αποθήκευση</button></div></div>
     <div class="pop" style="width:400px;padding:16px;animation:none"><div style="display:flex;align-items:baseline"><p class="lbl">Όλα τα επόμενα</p><span class="sp" style="flex:1"></span><span class="num" style="font-size:13px"><b style="color:var(--red)">2</b> · <b style="color:var(--amber)">5</b></span></div>
-      <p class="lbl" style="margin-top:12px;color:var(--red)">Σταματούν τη δουλειά</p>
+      <p class="lbl" style="margin-top:12px;color:var(--red)">Τώρα</p>
       <div class="qi"><span><b>Μεσσήνη → Hamburg</b><small><span style="color:var(--red);font-weight:600">Τρί 17</span> · χωρίς φορτηγό</small></span><button class="pill sm">Ανάθεση</button></div>
       <div class="qi"><span><b>Hamburg → Ασπρόπυργος</b><small><span style="color:var(--red);font-weight:600">Τρί 17</span> · χωρίς φορτηγό</small></span><button class="pill sm">Ανάθεση</button></div>
+      <p class="lbl" style="margin-top:12px;color:var(--amber)">Προσοχή</p>
       <div class="qi"><span><b>Hellas Kiwi Coop</b><small>Τετ 18 · χωρίς φορτηγό</small></span><button class="pill sm">Ανάθεση</button></div>
       <div class="qi"><span><b>Frutopia Packhouse</b><small>Πέμ 19 · τοπικός χωρίς οδηγό</small></span><button class="pill sm">Τοπικός οδηγός</button></div>
-      <p class="lbl" style="margin-top:12px;color:var(--amber)">Κοστίζουν</p>
       <div class="qi"><span><b class="num">ΚΗΙ 6012 · Αντώνης Ντίνος</b><small>Τρί 17 · κενό γύρισμα από Ulm</small></span><button class="pill sm">Νέα εισαγωγή</button></div>
-      <p class="lbl" style="margin-top:12px">Για μια ματιά</p>
       <div class="qi"><span><b>Μεσσήνη → Hamburg</b><small>36 παλέτες, 3 πάνω από 33</small></span><button class="pill sm">Άνοιγμα</button></div>
       <div class="qi"><span><b>Hellas Kiwi Coop</b><small>Τετ 18 · pre-order, λείπουν τόποι</small></span><button class="pill sm">Μετατροπή</button></div></div>
+    <div class="pop" style="width:540px;padding:18px;animation:none"><div style="display:flex;align-items:center;gap:10px"><b style="font-size:16px;font-weight:600;color:var(--ink)">Ομαδικό φορτίο με άλλες εξαγωγές</b><span class="sp" style="flex:1"></span><span class="num" style="font-weight:600;color:var(--ink)">22 + 11 = 33 / 33 παλ.</span></div>
+      <p style="margin:4px 0 12px;color:var(--help);font-size:13px">Bayern Frucht GmbH · Βέροια → München · παράδοση Δευ 16/11 · 22 παλ.</p>
+      <div class="gov lbl" style="grid-template-columns:20px minmax(0,1.15fr) minmax(0,1.25fr) 62px 36px"><span></span><span>Εξαγωγές που ταιριάζουν</span><span>Διαδρομή</span><span>Ημέρα</span><span class="n">Παλ.</span></div>
+      <div class="gov" style="grid-template-columns:20px minmax(0,1.15fr) minmax(0,1.25fr) 62px 36px"><span class="cb on"><i><i data-lucide="check"></i></i></span><b>Schwaben Obst</b><span>Νάουσα → Augsburg</span><span class="num">Δευ 16</span><span class="n num">11</span></div>
+      <div class="gov" style="grid-template-columns:20px minmax(0,1.15fr) minmax(0,1.25fr) 62px 36px"><span class="cb"><i></i></span><b>Donau Markt</b><span>Σκύδρα → Ulm</span><span class="num">Τρί 17</span><span class="n num">10</span></div>
+      <div class="gov" style="grid-template-columns:20px minmax(0,1.15fr) minmax(0,1.25fr) 62px 36px"><span class="cb"><i></i></span><b>Alpen Frucht AG</b><span>Σκύδρα → Zürich</span><span class="num">Δευ 16</span><span class="n num" style="color:var(--amber);font-weight:600" title="Μαζί γίνονται 41, 8 πάνω από 33">19</span></div>
+      <p style="margin:12px 0 0;font-size:13px;color:var(--help);display:flex;align-items:center;gap:8px">Δεν ταιριάζουν 6 <i class="nb a" style="width:15px;height:15px;font-size:10px" data-t="2 παραδίδουν πάνω από μία ημέρα μακριά · 2 έχουν ήδη φορτηγό · 1 pre-order · 1 σκέλος σπασμένης παραγγελίας">!</i><span class="sp" style="flex:1"></span><a style="color:var(--link);font-weight:600">Δείξε τες</a></p>
+      <div class="fbar" style="margin-top:14px"><span class="sp"></span><button class="pill">Άκυρο</button><button class="pill b">Ένωση σε ένα φορτίο</button></div></div>
     <div class="pop" style="width:270px;animation:none"><p class="lbl" style="padding:8px 10px 4px">Προβολή</p><a><i data-lucide="printer"></i>Εκτύπωση εβδομάδας</a><a><i data-lucide="download"></i>CSV</a><a><i data-lucide="maximize"></i>Πλήρης οθόνη</a><a><i data-lucide="keyboard"></i>Συντομεύσεις<small>?</small></a><hr><a class="h"><i data-lucide="check"></i>Όλα τα φορτία</a><a><span style="width:15px"></span>Χωρίς ανάθεση</a><a><span style="width:15px"></span>Ανατεθειμένα</a><a><span style="width:15px"></span>Εισαγωγές χωρίς ταίριασμα</a></div>
   </div>
 </section>
@@ -891,7 +898,7 @@ const subr=(t,side)=>`<div class="br subr"><span></span>${side==='R'?E3+'<span><
 const WI=[
  ['Σάββατο 14/11','',[
   [1,sd(`<div class="two"><b><span class="el">Pella Peach Coop</span>${tags('PE')}<span class="ico" style="margin-left:6px;color:var(--help)" title="Έγγραφα">${ic('paperclip')}</span></b><span>${d('Τετ 11')} · Σκύδρα</span></div>`,c2('Wiener Frische','',`${d('Σάβ 14')} · Wien`),33),trk('Transfrigo Kft.','RKA 512 · XTR 088','p'),''],
-  [2,sd(c2('Veria Fruit Pack','VS·PE',`${d('Τρί 10')} · Βέροια +2`),c2('Tirol Obst Lager','',`${d('Σάβ 14')} · Innsbruck`),32),trk('ΚΗΙ 3310 · Ρ 7120','Θανάσης Μέλλιος'),sd(c2('Alpina Fresh S.r.l.','',`${d('Δευ 16')} · Modena`),c2('Frutopia Packhouse','VS',`${d('Πέμ 19')} · Νάουσα`),19)],
+  [2,sd(c2('Veria Fruit Pack','VS·PE',`${d('Τρί 10')} · Βέροια +2`),c2('Tirol Obst Lager','',`${d('Σάβ 14')} · Innsbruck`),32),trk('ΚΗΙ 3310 · Ρ 7120','Θανάσης Μέλλιος'),sd(c2('Alpina Fresh S.r.l.','',`${d('Δευ 16')} · Modena`),c2('Frutopia Packhouse','',`${d('Πέμ 19')} · Νάουσα`),19)],
   ['sub','R',`Παράδοση με τοπικό οδηγό · Frutopia Packhouse · <b style="color:var(--amber);font-weight:600">χωρίς οδηγό</b>`],
  ]],
  ['Κυριακή 15/11','none',[]],
@@ -904,7 +911,7 @@ const WI=[
  ['Τετάρτη 18/11','',[
   [5,sd(c2('Veria Fruit Pack','VS·PE',`${d('Δευ 16')} · Βέροια +2 <i class="nb a" style="width:15px;height:15px;font-size:10px;vertical-align:-2px" data-t="Μέσω Βέροιας: ένα σημείο φόρτωσης δεν έχει φορτηγό.">!</i>`),c2('Rotterdam Fresh Hub','',`${d('Τετ 18')} · Rotterdam`),32),trk('ΚΗΙ 2208 · Ρ 4259','Παύλος Ράπτης'),sd(c2('Baltic Cold Foods DC','PE',`${d('Παρ 20')} · Poznań`),c2('Attica Cold Hub','',`${d('Τρί 24')} · Ασπρόπυργος`),30)],
   ['sub','L',`Σκέλος προώθησης · Rotterdam → Antwerpen · ${d('Πέμ 19')} · 8 παλ. · <span class="num">ΚΗΙ 2208</span>`],
-  [6,`<div class="two"><b><span class="el">Hellas Kiwi Coop</span><span class="tag" style="color:var(--amber);border-color:var(--amber-line);font-weight:600" title="Pre-order: λείπουν τόποι και παλέτες">PRE</span></b><span>${d('Τετ 18')} · εξαγωγή</span></div>${c2('Γερμανία','','&nbsp;')}<span></span>`,`<div class="as"><span class="tile am">${ic('file-pen-line')}</span><div class="two"><b style="color:var(--amber);font-weight:500">Μετατροπή</b></div></div>`,''],
+  [6,`<div class="two"><b><span class="el">Hellas Kiwi Coop</span><span class="tag" style="color:var(--amber);border-color:var(--amber-line);font-weight:600" title="Pre-order: λείπουν τόποι και παλέτες">PRE</span></b><span>${d('Τετ 18')} · εξαγωγή</span></div>${c2('Γερμανία','','&nbsp;')}<span></span>`,`<div class="as" title="Κράτησε φορτηγό για το pre-order"><span class="tile am">${ic('truck')}</span><div class="two"><b style="color:var(--amber);font-weight:500">Ανάθεση</b></div></div>`,''],
  ]],
  ['Πέμπτη 19/11','',[
   [7,sd(c2('Messinia Olive Coop','PE·HR',`${d('Τρί 17')} · Μεσσήνη`),c2('Nordfrisch Lager','',`${d('Πέμ 19')} · Hamburg`),36),need,'','need'],
