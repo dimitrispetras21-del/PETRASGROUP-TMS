@@ -70,6 +70,15 @@ test('a stop with a place in the load sends «Load Seq»; one without sends noth
   assert.ok(!('Load Seq' in one), 'a single load never names the 113 column');
 });
 
+test('stored places are used only when complete and distinct (113 rule)', () => {
+  assert.strictEqual(IG._seqUsable([1, 2, 3]), true);
+  assert.strictEqual(IG._seqUsable(['2', '1']), true);
+  assert.strictEqual(IG._seqUsable([1, 1, 2]), false, 'two points with the same place');
+  assert.strictEqual(IG._seqUsable([1, null, 2]), false, 'a point without a place');
+  assert.strictEqual(IG._seqUsable([0, 1]), false);
+  assert.strictEqual(IG._seqUsable([]), false);
+});
+
 test('config: the label the groupage writes, and the flag', () => {
   const cfg = fs.readFileSync(path.join(root, 'config.js'), 'utf8');
   assert.match(cfg, /STOP_LOAD_SEQ:\s*'Load Seq'/);

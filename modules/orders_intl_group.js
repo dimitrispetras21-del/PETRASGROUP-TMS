@@ -109,7 +109,11 @@ function stopPosFor(m) {
     const at = list.indexOf(pk);
     if (at < 0) return null;
     const own = list.filter(x => x.startsWith(`${m.key}:${t}:`));
-    return { num: own.indexOf(pk) + 1, seq: s.mode === 'group' ? at + 1 : null };
+    if (s.mode === 'group') return { num: own.indexOf(pk) + 1, seq: at + 1 };
+    // A single load has no place in a load: a place left from a groupage it was in is cleared (null), and a point
+    // that never had one names nothing (undefined), so an untouched order never names the 113 column.
+    const sid = val(m, `sid_${t}_${i}`), old = sid && s.seqBySid ? s.seqBySid[sid] : null;
+    return { num: own.indexOf(pk) + 1, seq: old != null && old !== '' ? null : undefined };
   };
 }
 
@@ -264,6 +268,7 @@ async function openFrom(recId, f, label, prefill, piece) {
   } else {
     await addMember({ recId: recId || null, f, label, prefill, piece, orig: !!recId }, { quiet: true });
     recomputeAssign();
+    if (recId) await loadSeqs();
     syncOrder();
   }
   // the form of one order sets its own width class (960px, orders_intl.js); the shell is wider
@@ -308,18 +313,33 @@ function needsVehicle(m) {
 // The panel's first order for a load saved before 113 (or by the old Weekly): what each point holds as «Load Seq»
 // when every point has one; otherwise the old rule — the Group ID order list (export: deliveries, import: loadings),
 // then the stop number; the other side by day, then the order list (impact check G, «empty = the old rule»).
-async function initialOrder() {
-  const s = IG.s;
-  const seqBySid = {};
+// Pure: the stored places of one side of a load are used only when every point has one and no two share it (the rule
+// written in DECISION_LOG with 113); anything else falls back to the old rule, with a sign — never a guessed order.
+function seqUsable(vals) {
+  if (!vals.length) return false;
+  const n = vals.map(v => (v == null || v === '' ? NaN : Number(v)));
+  return n.every(x => Number.isInteger(x) && x > 0) && new Set(n).size === n.length;
+}
+// The places stored on the points of the saved orders in the form, by stop record (113 «Load Seq»).
+async function loadSeqs() {
+  const s = IG.s, seqBySid = s.seqBySid || (s.seqBySid = {});
   await Promise.all(s.members.filter(m => m.recId).map(async m => {
     try { (await stopsLoad(m.recId, F.STOP_PARENT_ORDER)).forEach(st => { seqBySid[st.id] = st.fields[F.STOP_LOAD_SEQ]; }); }
     catch (e) { console.warn('igx: stops of', m.recId, e); }
   }));
+  return seqBySid;
+}
+async function initialOrder() {
+  const s = IG.s;
+  const seqBySid = await loadSeqs();
+  s.seqFallback = false;
   const pts = allPoints();
   const rankM = m => s.members.indexOf(m);
   for (const t of ['l', 'u']) {
     const mine = pts.filter(p => p.t === t);
-    const allSeq = mine.length && mine.every(p => p.sid && seqBySid[p.sid] != null && seqBySid[p.sid] !== '');
+    const vals = mine.map(p => (p.sid ? seqBySid[p.sid] : null));
+    const allSeq = seqUsable(vals);
+    if (!allSeq && vals.some(v => v != null && v !== '')) s.seqFallback = true;
     const listSide = (s.dir === 'Import' ? 'l' : 'u') === t;
     mine.sort(allSeq ? (a, b) => Number(seqBySid[a.sid]) - Number(seqBySid[b.sid])
       : listSide ? (a, b) => rankM(a.m) - rankM(b.m) || a.i - b.i
@@ -514,6 +534,7 @@ function paintSum(pts) {
     // The delivery order against the days (owner 15/11): a later day before an earlier one is shown, never refused.
     const dlDays = s.dl.map(pk => (U.find(p => p.pk === pk) || {}).date).filter(Boolean);
     if (dlDays.some((d, k) => k && d < dlDays[k - 1])) rows.push(['Σειρά', `<span class="warn">παράδοση πριν από προηγούμενη ημέρα</span>${note('Η σειρά παράδοσης δεν συμφωνεί με τις ημέρες')}`]);
+    if (s.seqFallback) rows.push(['Σειρά', `παλιός τρόπος${note('Η σειρά ανά σημείο που είχε γραφτεί δεν ήταν πλήρης ή είχε διπλές θέσεις — δείχνεται η σειρά παραγγελιών· σύρε και αποθήκευσε για να γραφτεί ξανά')}`]);
     if (s.assign && s.assign.mixed) rows.push(['Φορτηγό', `διαφορετικά${note('Οι παραγγελίες του groupage έχουν διαφορετικό φορτηγό — η ανάθεση γίνεται στο Εβδομαδιαίο')}`]);
   } else if (missing) {
     rows.push(['Τιμή', note('Χωρίς τιμή')]);
@@ -859,5 +880,5 @@ function orderByFirstPoint(members, list) {
 window.IntlGroup = { on, openFrom, changed, reeferPicked, setMode, setDir, toggle, addNew, fromFile, pickExisting, pickPiece,
   remove, save, _filter, _addExisting, _addPiece,
   // pure helpers (tests/intl-group.test.js)
-  _assignmentOf: assignmentOf, _moveBefore: moveBefore, _orderByFirstPoint: orderByFirstPoint, _state: () => IG.s };
+  _assignmentOf: assignmentOf, _seqUsable: seqUsable, _moveBefore: moveBefore, _orderByFirstPoint: orderByFirstPoint, _state: () => IG.s };
 })();

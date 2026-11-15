@@ -2943,7 +2943,7 @@ async function submitIntlOrder(recId, G) {
         const p = G.stopPos(s.stopType === 'Loading' ? 'l' : 'u', s._row);
         if (!p) continue;
         if (p.num) s.stopNumber = p.num;
-        if (p.seq != null) s.loadSeq = p.seq;
+        if (p.seq !== undefined) s.loadSeq = p.seq;   // a number in a groupage; null clears a place left from one
       }
       const _tk = s => (s.stopType === 'Loading' ? 0 : 1);
       _formStops.sort((a, b) => _tk(a) - _tk(b) || a.stopNumber - b.stopNumber);
