@@ -92,3 +92,18 @@ test('F5-FE1: a stop delete that fails THROWS (all deletes tried; the error as a
   assert.deepStrictEqual(r, { threw: true, m: 'rig 403', nr: true, left: ['recS2'] });
   assert.deepStrictEqual(s.log.filter((x) => x.k === 'delete').map((x) => x.id).sort(), ['recS2', 'recS3'], 'the other delete still ran');
 });
+
+// A REF per loading point (owner 15/11): each stop saves its own Reference; a stored point left with no REF at
+// all (own erased, the order has none) is cleared with null, never left holding the old one.
+test('stop REF: own REF per point saved, refClear sends null, an absent ref names no column', async () => {
+  const s = sandbox(THREE);
+  await s.run(`stopsSave('recORD1', ${form([
+    { recordId: 'recS1', stopNumber: 1, stopType: 'Loading', locationId: 'recL1', ref: '2074' },
+    { recordId: 'recS2', stopNumber: 2, stopType: 'Loading', locationId: 'recL2', ref: null, refClear: null },
+    { recordId: 'recS3', stopNumber: 3, stopType: 'Loading', locationId: 'recL3', ref: null },
+    { recordId: 'recS4', stopNumber: 1, stopType: 'Unloading', locationId: 'recL9' }])}, 'Parent Order')`);
+  const byId = Object.fromEntries(s.log.find((x) => x.k === 'patch').recs.map((r) => [r.id, r.fields]));
+  assert.strictEqual(byId.recS1.Reference, '2074');
+  assert.ok('Reference' in byId.recS2 && byId.recS2.Reference === null);
+  assert.ok(!('Reference' in byId.recS3));
+});

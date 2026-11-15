@@ -142,7 +142,8 @@ function _stopObjToFields(s, orderId, parentField) {
   // stop - the caller decides what changed - and then as given, null included: an empty value must clear the
   // column, and dropping it here (as the lines above do for an empty value) would leave the old one standing.
   // Every other caller (national forms, scan) never sets them, so nothing changes for them.
-  for (const [k, label] of [['timeFrom', F.STOP_TIME_FROM], ['timeTo', F.STOP_TIME_TO], ['viaHub', F.STOP_VIA_HUB], ['palletsExchanged', F.STOP_PALLETS_EXCHANGED]]) {
+  // refClear (international form, owner 15/11): a stored loading point left with no REF at all is cleared here.
+  for (const [k, label] of [['timeFrom', F.STOP_TIME_FROM], ['timeTo', F.STOP_TIME_TO], ['viaHub', F.STOP_VIA_HUB], ['palletsExchanged', F.STOP_PALLETS_EXCHANGED], ['refClear', F.STOP_REF]]) {
     if (Object.prototype.hasOwnProperty.call(s, k)) fields[label] = s[k];
   }
   return fields;
