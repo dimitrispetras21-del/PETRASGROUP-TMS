@@ -574,6 +574,7 @@ table.spec td b{color:var(--ink);font-weight:600}
 .w9h em{font-style:normal;color:var(--red)}.w9h i{font-style:normal;color:var(--amber)}
 .w9as.p .w9ic{background:#CFE3FB}#f5 .day.past .w9row>*:not(.w9no):not(.n){opacity:.75}
 #f5 .day.today{box-shadow:inset 0 0 0 1px var(--primary)}#f5 .day.today>h3{color:var(--primary)}#f5 .lf.t{background:var(--primary)}
+#f5 .dout .day{background:none;box-shadow:none;padding:0;margin-top:10px}#f5 .dout .day>h3{padding:0 6px 5px;font-size:13px}#f5 .dout .w9dc{background:#fff;border-radius:12px;padding:2px 0}#f5 .dout .day.today{box-shadow:none}#f5 .dout .day.today .w9dc{box-shadow:inset 0 0 0 1px var(--primary)}#f5 .dout .day.none .w9dc{display:none}#f5 .dout .day.none{margin-top:6px}
 #f5 .day.past .w9row>*:not(.w9no):not(.n){opacity:.62}#f5 .day.past .w9ic{background:#EEF0F4;color:#7C7E88}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;transition-delay:0ms!important}
   .oc,.toast{transform:none}}
@@ -1191,12 +1192,14 @@ const lfMany=a=>a.length>1?`<div class="lns">${a.map(x=>lfLn(x[1],'',x[0],x[2],x
  const head=()=>`<div class="w9h lbl" style="grid-template-columns:${G}">${[OPEN?'':`<a class="w9vh" title="Άνοιγμα: Προς Βέροια · Από Βέροια">${ic('panel-left-open')}</a>`,...(OPEN?[`<a class="w9vh" title="Κλείσιμο">${ic('chevron-right')}Προς Βέροια</a>`]:[]),`Εξαγωγή · ${CNT.ex} φορτία · φόρτωση → παράδοση`,'Παλ.','Ανάθεση',`Εισαγωγή · ${CNT.im} φορτία · φόρτωση → παράδοση`,'Παλ.',...(OPEN?[`<a class="w9vh" title="Κλείσιμο">Από Βέροια${ic('chevron-left')}</a>`]:[]),''].map(c=>`<span ${c==='Παλ.'?'style="text-align:right"':''}>${c}</span>`).join('')}</div>`;
  const bh=$('f5').querySelector('.bh'),old=bh.nextElementSibling,box=document.createElement('div');
  box.style.cssText='flex:1;min-height:0;overflow:hidden;padding:0 2px';
+ /* example for the owner (15/11): the day's name outside the white card; off unless window.WK_ALT.dayOut is set */
+ if(window.WK_ALT&&window.WK_ALT.dayOut)box.classList.add('dout');
  const st=document.createElement('div');st.className='w9st';
  const STOCK=window.WK_STOCK||[['Budapest Cold Hub, HU','Alpina Fresh S.r.l.','Αναφ. 4471','19/33π'],['Budapest Cold Hub, HU','Alpina Fresh S.r.l.','Αναφ. 4490','28/28π']];
  const strip=()=>`<span class="lbl">Απόθεμα · ${STOCK.length}</span>${STOCK.map(x=>`<span class="w9lot">${ic('package')}<b>${x[0]}</b>${x[1]} · ${x[2]} <b class="num">${x[3]}</b></span>`).join('')}<span style="flex:1"></span>${CNT.need?`<a class="w9f r"><b>${CNT.need}</b>χωρίς φορτηγό</a>`:''}${CNT.gap?`<a class="w9f a"><b>${CNT.gap}</b>κενά γυρίσματα τώρα</a>`:''}${CNT.late?`<a class="w9f r"><b>${CNT.late}</b>εκπρόθεσμο</a>`:''}`;
  const DATA=window.WK_REAL||WK,ALL=DATA.flatMap(d=>d[2]),CNT={ex:ALL.filter(r=>r.ex).length,im:ALL.filter(r=>r.im).length,need:ALL.filter(r=>r.as[0]==='n').length,gap:ALL.filter(r=>r.gapNow).length,late:0};
  ALL.forEach(r=>{if(r.ex&&(r.vTo||[]).some(x=>x.t===''))r.ex.L[0].nm=1});
- const draw=()=>{let no=0;grid();CNT.late=ALL.filter(late).length;st.innerHTML=strip();box.innerHTML=head()+`<div style="margin-top:-8px">${DATA.map(([t,c,rows])=>`<section class="day ${c}"><h3>${t}</h3>${rows.map(r=>row({...r,no:++no,sec:+(t.match(/ (\d+)\//)||[0,0])[1]})).join('')}</section>`).join('')}</div>`;if(window.lucide)lucide.createIcons()};
+ const draw=()=>{let no=0;grid();CNT.late=ALL.filter(late).length;st.innerHTML=strip();box.innerHTML=head()+`<div style="margin-top:-8px">${DATA.map(([t,c,rows])=>`<section class="day ${c}"><h3>${t}</h3><div class="w9dc">${rows.map(r=>row({...r,no:++no,sec:+(t.match(/ (\d+)\//)||[0,0])[1]})).join('')}</div></section>`).join('')}</div>`;if(window.lucide)lucide.createIcons()};
  box.addEventListener('click',e=>{if(e.target.closest('.w9vh')){OPEN=!OPEN;draw()}});draw();
  /* title, weeks and search on one line (owner 15/11) */
  {const f=$('f5'),hd=f.querySelector('.hd'),wk=f.querySelector('.wk'),tabs=document.createElement('span');f.classList.add('v2');tabs.className='w9wk';
