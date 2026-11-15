@@ -24,7 +24,7 @@ test('the dry run is the apply block plus proofs, and ends in a deliberate error
   const part = (s, a, b) => s.slice(s.indexOf(a), s.indexOf(b));
   assert.equal(part(dry, '-- ===== PART 0', '-- ===== DRY RUN ONLY').trimEnd(), part(apply, '-- ===== PART 0', 'END\n$do$;').trimEnd());
   assert.match(dry, /RAISE EXCEPTION 'DRY RUN 113 finished: [^']*nothing kept \(deliberate error\)'/);
-  assert.match(apply, /CHECK \(\s*load_seq IS NULL OR \(load_seq > 0 AND order_id IS NOT NULL AND stop_type IN \('Loading', 'Unloading'\)\)\)/);
+  assert.match(apply, /CHECK \(\s*load_seq IS NULL OR \(load_seq > 0 AND order_id IS NOT NULL\)\)/);
 });
 
 const SCHEMA = `
@@ -49,7 +49,7 @@ test('PGlite: dry run keeps nothing; apply; 0 refused; apply again stops; rollba
   await db.exec(SCHEMA);
   const col = async () => (await db.query(`SELECT count(*)::int AS n FROM information_schema.columns WHERE table_name = 'order_stops' AND column_name = 'load_seq'`)).rows[0].n;
   await assert.rejects(db.exec(read('113_stop_load_seq_dryrun.sql')),
-    /DRY RUN 113 finished: 5 rows, 2 live stops given a position, side tables unchanged \(rows and content\); refused 0: yes; triggers 2 \(unchanged\), on any UPDATE: none/);
+    /DRY RUN 113 finished: 5 rows, 2 live stops given a position, 0 rows written in the other 3 tables; refused 0: yes; triggers 2 \(unchanged\), on any UPDATE: none/);
   assert.equal(await col(), 0, 'the dry run kept nothing');
   await db.exec(read('113_stop_load_seq.sql'));
   assert.equal(await col(), 1);
@@ -60,7 +60,11 @@ test('PGlite: dry run keeps nothing; apply; 0 refused; apply again stops; rollba
   await db.exec('UPDATE order_stops SET load_seq = 2 WHERE id = 2');
   assert.equal((await db.query('SELECT count(*)::int AS n FROM ramp')).rows[0].n, 0, 'a position write wakes no column-list trigger');
   await assert.rejects(db.exec('UPDATE order_stops SET load_seq = 0 WHERE id = 1'), /order_stops_load_seq_pos/);
-  await assert.rejects(db.exec('UPDATE order_stops SET load_seq = 1 WHERE id = 4'), /order_stops_load_seq_pos/, 'a cross-dock stop has no place');
+  // a cross-dock stop is not refused (its type may change later; readers skip it), a NULL type neither: only the
+  // national stop (no order) is
+  await db.exec('UPDATE order_stops SET load_seq = 1 WHERE id = 4');
+  await db.exec("UPDATE order_stops SET stop_type = 'Unloading' WHERE id = 4");
+  await db.exec('UPDATE order_stops SET load_seq = NULL WHERE id = 4');
   await assert.rejects(db.exec('UPDATE order_stops SET load_seq = 1 WHERE id = 5'), /order_stops_load_seq_pos/, 'a national stop (no order) has no place');
   await assert.rejects(db.exec(read('113_stop_load_seq.sql')), /already exists - 113 has run/);
   await assert.rejects(db.exec(read('113_stop_load_seq_rollback.sql')), /refused: 1 stops carry a position/);
@@ -79,4 +83,13 @@ test('PGlite: without 111 (no hours) 113 stops before writing', { skip: !process
   const db = new PGlite();
   await db.exec('CREATE TABLE order_stops (id bigint PRIMARY KEY, stop_number numeric, deleted_at timestamptz)');
   await assert.rejects(db.exec(read('113_stop_load_seq.sql')), /111 is not in place/);
+});
+
+test('PGlite: a trigger that fires on ANY update and writes elsewhere makes the dry run fail, by name', { skip: !process.env.PGLITE && 'set PGLITE to run' }, async () => {
+  const { PGlite } = await import(process.env.PGLITE);
+  const db = new PGlite();
+  await db.exec(SCHEMA);
+  await db.exec(`CREATE FUNCTION any_upd() RETURNS trigger LANGUAGE plpgsql AS $f$ begin insert into ramp (stop_id) values (new.id); return new; end $f$;
+    CREATE TRIGGER noisy AFTER UPDATE ON order_stops FOR EACH ROW EXECUTE FUNCTION any_upd();`);
+  await assert.rejects(db.exec(read('113_stop_load_seq_dryrun.sql')), /113 DRY RUN FAILED: writing load_seq on 2 stops wrote rows elsewhere: public\.ramp=2/);
 });

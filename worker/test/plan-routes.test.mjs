@@ -836,7 +836,7 @@ test('113: «Load Seq» reaches order_stops.load_seq as written and is read back
   assert.equal(r.json.fields['Load Seq'], 2, 'read back on a plain GET');
   r = await call('dispatcher', 'PATCH', `${STOPS}/recSTOP1`, { fields: { 'Load Seq': 0 } });
   assert.equal(r.status, 422, r.text);
-  assert.equal(r.json.error.message, 'Η σειρά σημείου στο groupage ξεκινά από 1 και μπαίνει μόνο σε φόρτωση ή παράδοση διεθνούς παραγγελίας');
+  assert.equal(r.json.error.message, 'Η σειρά σημείου στο groupage ξεκινά από 1 και μπαίνει μόνο σε σημείο διεθνούς παραγγελίας');
   // a Worker on a base without 113
   routes.length = 0;
   on('GET', 'order_stops', (u) => (u.searchParams.get('select') === '*' ? json([{ id: 31, legacy_id: 'recSTOP1', pallets: 20 }]) : null));

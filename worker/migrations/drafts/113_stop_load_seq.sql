@@ -14,15 +14,16 @@
 --   order_stops.load_seq: integer, NULL allowed, CHECK order_stops_load_seq_pos (see below). It is the point's
 --   position inside its LOAD (every order that shares one Group ID base, the text before '|'), counted apart among
 --   the load's loading points and among its delivery points (one column serves both lists: a point is a Loading or
---   an Unloading). The CHECK allows a position only on a Loading / Unloading stop of an international order
---   (order_id set): a cross-dock stop (069) or a national stop is in neither list. NULL = today's rule, unchanged: the order list in Group ID, then Stop Number, then the date. Nothing is
+--   an Unloading; a cross-dock stop (069) is in neither list and readers skip it). The CHECK allows a position only
+--   on a stop of an international order (order_id set): a national stop has no place in a load. NULL = today's rule, unchanged: the order list in Group ID, then Stop Number, then the date. Nothing is
 --   back-filled: today 1862 rows (1535 not deleted, counted 15/11 by SELECT), every one NULL after it, so every
 --   screen of today (Weekly, driver sheet, Daily Ops, pallets) reads exactly what it reads now.
 --   No trigger, function, view or grant changes. The triggers on order_stops today fire on INSERT or on an UPDATE OF
 --   named columns that do not include load_seq; the dry run lists them all and says which, if any, wakes on an UPDATE
 --   of any column.
 -- RUNTIME: one ALTER TABLE ADD COLUMN (nullable, no default: catalogue only, no rewrite) and one ADD CONSTRAINT (one
--- scan of ~1.9k rows), a short lock on order_stops, lock_timeout 5s, statement_timeout 60s.
+-- scan of ~1.9k rows), a short lock on order_stops, lock_timeout 5s (statement_timeout is set for the statements
+-- inside the block only; the block itself is bounded by its few statements).
 -- REVERSE: 113_stop_load_seq_rollback.sql (drops the column and its CHECK, only while every row is NULL).
 -- EXPECTED: NOTICE "113 OK: ..." ; then verify: result = '113 in place'.
 
@@ -57,10 +58,12 @@ BEGIN
 
   -- ===== PART 1: THE COLUMN =====
   ALTER TABLE public.order_stops ADD COLUMN load_seq integer NULL;
-  -- only on a Loading / Unloading point of an INTERNATIONAL order (order_id): a cross-dock stop (069) and a
-  -- national stop have no place in a load's two lists, so a position there is refused, never kept meaningless
+  -- only on a stop of an INTERNATIONAL order (order_id): a national stop has no place in a load. The stop type is
+  -- NOT in the CHECK on purpose (code review 15/11): a position there would refuse a later change of the stop's type
+  -- with a message about positions the dispatcher never touched; readers count only Loading / Unloading points, and
+  -- the form rewrites every position of the load on each save
   ALTER TABLE public.order_stops ADD CONSTRAINT order_stops_load_seq_pos CHECK (
-    load_seq IS NULL OR (load_seq > 0 AND order_id IS NOT NULL AND stop_type IN ('Loading', 'Unloading')));
+    load_seq IS NULL OR (load_seq > 0 AND order_id IS NOT NULL));
   COMMENT ON COLUMN public.order_stops.load_seq IS
     '113 (owner 15/11/2026): position of this point inside its load (Group ID base), counted apart among loading and among delivery points; NULL = the old rule (Group ID order list, then stop_number, then date)';
 
