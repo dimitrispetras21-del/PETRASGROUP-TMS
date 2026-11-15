@@ -120,7 +120,7 @@ const ghost=a=>`<div class="ghost">${a.map(w=>`<i style="width:${w}%"></i>`).joi
 
 /* ---------- login ---------- */
 $('fG').innerHTML=`<div class="lgn"><div class="cd"><span class="logo full" role="img" aria-label="Petras Group"></span>${fld('Όνομα χρήστη','pkostas')}${fld('Κωδικός','••••••••'+cur,'focus')}<button class="pill b" style="margin-top:6px">Είσοδος</button></div><span class="dt">Δευτέρα 16 Νοεμβρίου 2026</span></div>`;
-$('fX').innerHTML=`<div class="app">${sd(DSP,'o','ΠΚ','Παντελής Κ.','Dispatcher','6')}<main class="main"><div class="hd"><div><h1>Νέα παραγγελία</h1><p>Tirol Obst GmbH · Βέροια → Innsbruck</p></div></div><div class="ghost" style="grid-template-columns:1fr 1fr;gap:16px 20px">${fld('Πελάτης','Tirol Obst GmbH')}${fld('Παλέτες','32')}${fld('Φόρτωση','Veria Fruit Pack · Δευ 16/11')}${fld('Παράδοση','Tirol Obst Lager · Παρ 20/11')}${fld('Τιμή','3.800,00')}${fld('Σημείωση','','ph')}</div></main></div>
+$('fX').innerHTML=`<div class="app">${sd(DSP,'o','ΠΚ','Παντελής Κ.','Dispatcher','6')}<main class="main"><div class="hd"><div><h1>Νέα παραγγελία</h1><p>Pella Peach Coop · Σκύδρα → Wien</p></div></div><div class="ghost" style="grid-template-columns:1fr 1fr;gap:16px 20px">${fld('Πελάτης','Pella Peach Coop')}${fld('Παλέτες','32')}${fld('Φόρτωση','Pella Peach Coop · Τρί 17/11')}${fld('Παράδοση','Wiener Frische · Παρ 20/11')}${fld('Τιμή','2.400,00')}${fld('Σημείωση','','ph')}</div></main></div>
  <div class="veil" style="animation:none;background:rgba(0,0,16,.28);backdrop-filter:none"></div>
  <div class="pn" style="position:absolute;z-index:6;left:50%;top:210px;width:400px;margin-left:-200px"><h3 style="display:flex;gap:8px;align-items:center">Η σύνδεση έληξε ${nb('Η παραγγελία που γράφεις μένει ανοιχτή.',1,'dn')}</h3>
   <div style="display:grid;gap:14px;margin-top:16px">${fld('Όνομα χρήστη','pkostas','ph')}${fld('Κωδικός',cur,'focus')}</div>
@@ -128,10 +128,10 @@ $('fX').innerHTML=`<div class="app">${sd(DSP,'o','ΠΚ','Παντελής Κ.','
 
 /* ---------- menu per job ---------- */
 $('fN').innerHTML=`<div class="mn">
- ${sd(ALL,'h','ΔΠ','Δημήτρης Π.','Ιδιοκτήτης','62')}
+ ${sd(ALL,'h','ΔΠ','Δημήτρης Π.','Owner','62')}
  ${sd(DSP,'h','ΠΚ','Παντελής Κ.','Dispatcher','6')}
  ${sd([pick('h',['h']),pick('s'),pick('w'),pick('m'),pick('f'),pick('d')],'h','ΘΔ','Θοδωρής Δ.','Στόλος','13')}
- ${sd([pick('h',['h']),pick('w'),pick('m'),pick('d',['c'])],'h','ΑΛ','Αλεξία Λ.','Λογιστήριο','64')}
+ ${sd([pick('h',['h']),pick('w'),pick('m'),pick('d',['c'])],'h','ΑΛ','Αλεξία Λ.','Λογιστήριο','63')}
  ${sd([pick('s',['r']),pick('w',['p'])],'r','ΑΠ','Αποθήκη','Αποθήκη',0)}
 </div>`;
 
@@ -142,7 +142,7 @@ $('fK').innerHTML=`<div class="app">${sd(DSP,'d','ΠΚ','Παντελής Κ.','
  <div class="kp2"><div class="ki">${ic('search')}<span>nordfr</span>${cur}</div>
   <div class="kg lbl">Φορτία</div>
   ${kr('file-text','Μεσσήνη → Hamburg · σήμερα','Nordfrisch GmbH · χωρίς φορτηγό',sst('todo','Σε αναμονή'),1)}
-  ${kr('file-text','Poznań → Ασπρόπυργος · σήμερα','Nordfrisch GmbH · Balkan Frigo',sst('run','Σε μεταφορά'))}
+  ${kr('file-text','Hamburg → Ασπρόπυργος · σήμερα','Nordfrisch GmbH · Balkan Frigo',sst('run','Σε μεταφορά'))}
   ${kr('file-text','Μεσσήνη → Hamburg · Πέμ 12/11','Nordfrisch GmbH · ΚΗΙ 6021',sst('done','Παραδόθηκε'))}
   <div class="kg lbl">Άνθρωποι και τόποι</div>
   ${kr('building-2','Nordfrisch GmbH','Πελάτης · Hamburg · +49 40 000 0003','')}
@@ -173,7 +173,7 @@ function bdone(btn){const r=btn.closest('.br2');if(r._g)return;r._g=1;let g=r.pr
  requestAnimationFrame(()=>{r.classList.add('go');r.style.height='0px';if(last){g.style.height='0px';g.style.opacity=0;g.style.padding='0 20px'}});setTimeout(fin,ms('--t-move')+10)}
 
 /* ---------- assistant and history ---------- */
-$('fA').innerHTML=`<div class="app">${sd(ALL,'o','ΔΠ','Δημήτρης Π.','Ιδιοκτήτης','62')}<main class="main"><div class="hd"><div><h1>Παραγγελίες</h1><p>Εβδομάδα 14–20/11</p></div></div>
+$('fA').innerHTML=`<div class="app">${sd(ALL,'o','ΔΠ','Δημήτρης Π.','Owner','62')}<main class="main"><div class="hd"><div><h1>Παραγγελίες</h1><p>Εβδομάδα 14–20/11</p></div></div>
  <div style="display:grid;grid-template-columns:minmax(0,1fr) 520px 404px;gap:16px;flex:1;min-height:0">${ghost([70,45,60,30,55,40])}
   <div class="card" style="border-radius:24px 24px 0 0;padding:20px 24px"><b style="font-size:17px;font-weight:600;color:var(--ink);display:block">Tirol Obst GmbH</b><small style="color:var(--help);font-size:13px">Βέροια → Innsbruck · Δευ 16 – Παρ 20/11</small>
    <div class="tabs" style="padding:0;margin:8px 0 0;gap:22px"><a>Στοιχεία</a><a>Στάσεις</a><a class="on">Ιστορικό</a></div>
@@ -198,7 +198,7 @@ $('fP').innerHTML=`<div style="position:absolute;inset:0;padding:28px;display:gr
 </div>`;
 /* The undo runs out once: the bar empties, then the toast leaves. Undo stops it and says what came back. */
 const UT='Hellas Kiwi Coop, Άργος → Wien';let ut0;
-function run(){const t=$('ut');t.classList.remove('gone','run','back');t.querySelector('span').textContent='Διαγράφηκε · '+UT;t.querySelector('.pill').style.display='';void t.offsetWidth;if(!RED())t.classList.add('run');clearTimeout(ut0);ut0=setTimeout(()=>t.classList.add('gone'),RED()?6000:ms('--u')||6000)}
+function run(){const t=$('ut');t.classList.remove('gone','run','back');t.querySelector('span').textContent='Διαγράφηκε · '+UT;t.querySelector('.pill').style.display='';void t.offsetWidth;if(!RED())t.classList.add('run');clearTimeout(ut0);ut0=setTimeout(()=>t.classList.add('gone'),parseFloat(getComputedStyle(t).getPropertyValue('--u'))||6000)}
 function undo(){const t=$('ut');clearTimeout(ut0);t.classList.add('back');t.querySelector('span').textContent='Γύρισε πίσω · '+UT;t.querySelector('.pill').style.display='none';ut0=setTimeout(()=>t.classList.add('gone'),2000)}
 
 /* ---------- bad moments ---------- */

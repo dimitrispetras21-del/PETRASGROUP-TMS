@@ -21,7 +21,7 @@
 .wr .pill{min-width:112px;justify-content:center}
 /* today, compact */
 .tb{padding:4px 28px 12px}.tb+.tb{border-top:1px solid var(--line)}
-.th{display:flex;align-items:baseline;gap:8px;padding:14px 0 8px}.th .lbl b{color:var(--ink);font-size:13px;letter-spacing:0;margin-left:6px}.th .lbl small{font-size:12px;letter-spacing:0}.th b{font-size:22px;font-weight:500;color:var(--ink)}.th small{color:var(--help);font-size:13px}.th .m{flex:1;height:4px;border-radius:2px;background:var(--line);margin-left:10px;align-self:center;overflow:hidden}.th .m i{display:block;height:100%;background:var(--ink);width:calc(var(--f)*100%);transition:width var(--t-move) var(--ease)}
+.th{display:flex;align-items:baseline;gap:8px;padding:14px 0 8px}.th .lbl b{color:var(--ink);font-size:13px;letter-spacing:0;margin-left:6px}.th .lbl small{font-size:12px;letter-spacing:0}.th b{font-size:22px;font-weight:500;color:var(--ink)}.th small{color:var(--help);font-size:13px}
 .tr2{display:grid;grid-template-columns:minmax(0,1fr) 96px 18px;gap:0 12px;align-items:center;height:42px;border-top:1px solid var(--line-2);font-size:13.5px}
 .tr2 b{font-weight:500;color:var(--ink)}.tr2 span{color:var(--help);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tr2 .pl{color:var(--ink);font-weight:500;font-size:13px}.tr2 .pl.p{color:var(--link)}
 .tr2 svg.lucide{width:15px;height:15px;color:var(--green);stroke-width:2.4}.tr2 svg.lucide-chevron-right{color:var(--faint);stroke-width:2}.tr2.dn b,.tr2.dn .pl{color:var(--help);font-weight:400}
@@ -40,9 +40,7 @@
 .mgr .v{text-align:right;font-size:17px;font-weight:500;color:var(--ink);white-space:nowrap}.mgr .v small{font-size:12.5px;color:var(--help);font-weight:400}.mgr .v.r{color:var(--red)}
 .mgr .o{text-align:right;color:var(--body);font-size:13.5px;white-space:nowrap}.mgr .o.e{color:var(--faint)}
 .mgr .nm{white-space:nowrap;display:flex;align-items:center;gap:8px;color:var(--ink);font-weight:500}.mgr svg.lucide{width:15px;height:15px;color:var(--faint)}
-.mgg{padding:16px 28px 2px;display:flex}.mgg+.mgr::before{display:none}.nb.nbr::after{right:auto!important;left:-10px!important}.cu2{display:grid;grid-template-columns:minmax(0,1fr) 90px 44px;gap:0 12px;align-items:center;height:44px;border-top:1px solid var(--line-2);font-size:13.5px}.cu2 b{font-weight:500;color:var(--ink)}.cu2 span{text-align:right;color:var(--ink)}.cu2 span+span{color:var(--help)}.cu2.t{border-top:1.5px solid var(--ink)}.cu2.t b,.cu2.t span{font-weight:600;color:var(--ink)}.wr.go+.gh{}.gh{overflow:hidden;transition:height var(--t-move) var(--ease),opacity var(--t-exit) var(--ease-exit),padding var(--t-move) var(--ease)}.spk{display:flex;align-items:flex-end;gap:3px;height:26px}.spk i{flex:1;background:#D5D8DE;border-radius:1.5px;height:calc(var(--h)*1%)}.spk i:last-child{background:var(--ink)}
-.cu{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;padding:10px 0;border-top:1px solid var(--line-2);font-size:13.5px}.cu:first-of-type{border-top:0}.cu b{font-weight:500;color:var(--ink)}.cu span{color:var(--ink);font-weight:500}.cu .m{grid-column:1/-1;height:4px;border-radius:2px;background:var(--line-2);overflow:hidden}.cu .m i{display:block;height:100%;background:var(--ink);width:calc(var(--f)*100%)}
-.pn{background:#fff;border-radius:var(--r-page);box-shadow:var(--shadow-float);padding:20px 22px 16px}
+.mgg{padding:16px 28px 2px;display:flex}.mgg+.mgr::before{display:none}.nb.nbr::after{right:auto!important;left:-10px!important}.cu2{display:grid;grid-template-columns:minmax(0,1fr) 90px 44px;gap:0 12px;align-items:center;height:44px;border-top:1px solid var(--line-2);font-size:13.5px}.cu2 b{font-weight:500;color:var(--ink)}.cu2 span{text-align:right;color:var(--ink)}.cu2 span+span{color:var(--help)}.cu2.t{border-top:1.5px solid var(--ink)}.cu2.t b,.cu2.t span{font-weight:600;color:var(--ink)}.gh{overflow:hidden;transition:height var(--t-move) var(--ease),opacity var(--t-exit) var(--ease-exit),padding var(--t-move) var(--ease)}.pn{background:#fff;border-radius:var(--r-page);box-shadow:var(--shadow-float);padding:20px 22px 16px}
 .pn h3{font-size:17px;font-weight:600;color:var(--ink)}.pn h3+small{display:block;color:var(--help);font-size:13px;margin-top:2px}
 .a4.mg .hr,.a4.mg .r{display:grid;grid-template-columns:minmax(0,1fr) 92px 92px 92px;gap:0 10px}.a4.mg .hr span:nth-child(n+2),.a4.mg .r span:nth-child(n+2){text-align:right}
 .a4.mg .r2{display:grid;grid-template-columns:minmax(0,1fr) 80px 50px;gap:0 10px}.a4.mg .r2 span:nth-child(n+2){text-align:right}
@@ -102,7 +100,7 @@ const wr=r=>`<div class="wr"><div class="two"><b><span class="el">${r[0]}</span>
 const grp=(l,n,rows)=>`<div class="gh lbl">${l}<b class="num">${n}</b></div>${rows.map(wr).join('')}`;
 const L=[['Tirol Obst GmbH','Βέροια → Innsbruck','ΚΗΙ 3310',1],['Danubia Market Kft.','Βέροια → Wien','ΚΗΙ 4521',1],['Αγροτικός Συν. Νάουσας','Modena → Νάουσα','ΚΗΙ 7310',1],['Alpen Frucht AG','Νάουσα → Zürich','ΚΗΙ 4521'],['Wiener Frische','Σκύδρα → Wien','ΚΗΙ 4521'],['Baltic Cold Foods','Poznań → Ασπρόπυργος','ΚΗΙ 8600'],['Nordfrisch GmbH','Μεσσήνη → Hamburg','',0,'n']];
 const D=[['Alpen Frucht AG','Zürich','ΚΗΙ 2208',1],['Danubia Market Kft.','Wien','Transfrigo Kft.'],['Tirol Obst GmbH','Innsbruck · 1 από 3 σημεία','ΚΗΙ 5102'],['Nordfrisch GmbH','Ασπρόπυργος','Balkan Frigo']];
-const tr2=r=>`<div class="tr2 ${r[3]?'dn':''}"><span><b>${r[0]}</b> · ${r[1]}</span><span class="pl num" ${r[4]==='n'?'style="color:var(--red)"':''}>${r[4]==='n'?'χωρίς φορτηγό':r[2]}</span>${r[3]?ic('check'):'<span></span>'}</div>`;
+const tr2=r=>`<div class="tr2 ${r[3]?'dn':''}"><span><b>${r[0]}</b> · ${r[1]}</span><span class="pl num" ${r[4]==='n'?'id="nf" style="color:var(--red);transition:color var(--t-state)"':''}>${r[4]==='n'?'χωρίς φορτηγό':r[2]}</span>${r[3]?ic('check'):'<span></span>'}</div>`;
 const tb=(l,a,n,rows)=>`<div class="tb"><div class="th"><span class="lbl">${l}<b class="num">${a}</b><small class="num"> / ${n}</small></span></div>${rows.map(tr2).join('')}</div>`;
 $('fH').innerHTML=`<div class="app">${side('h')}<main class="main">
  ${hd('Σήμερα','Δευτέρα 16 Νοεμβρίου · 07:42',`<button class="pill">${ic('calendar-days')}Ημερήσιο</button><button class="pill b">${ic('plus')}Νέα παραγγελία</button>`)}
@@ -111,7 +109,7 @@ $('fH').innerHTML=`<div class="app">${side('h')}<main class="main">
    <div id="wl">${grp('Σήμερα χωρίς φορτηγό',1,W0)}${grp('Από προηγούμενες ημέρες',3,W2)}${grp('Προς ανάθεση',1,W1)}${grp('Όχημα',1,W3)}</div></div>
   <div class="card"><div class="ch"><h2>Η μέρα</h2></div>
    ${tb('Φορτώσεις',3,7,L)}${tb('Παραδόσεις',1,4,D)}
-   <div class="tb"><div class="tr2" style="border-top:0;height:48px"><span><b>Ελεύθερα</b> · ΚΗΙ 2109 · ΚΗΙ 6021</span><span></span><span></span></div><div class="tr2" style="height:48px;cursor:pointer"><span><b>Αύριο</b> · 5 φορτώσεις · 3 παραδόσεις</span><span></span>${ic('chevron-right')}</div></div></div>
+   <div class="tb"><div class="tr2" style="border-top:0;height:48px"><span><b>Ελεύθερα</b> · <span id="fr">ΚΗΙ 2109 · ΚΗΙ 6021</span></span><span></span><span></span></div><div class="tr2" style="height:48px;cursor:pointer"><span><b>Αύριο</b> · 5 φορτώσεις · 3 παραδόσεις</span><span></span>${ic('chevron-right')}</div></div></div>
  </div></main></div>`;
 $('fH').querySelector('.me').innerHTML='<span class="av">ΠΚ</span><div>Παντελής Κ.<small>Dispatcher</small></div>';
 /* A finished item leaves the list, the rows below close the gap, the counters follow. */
@@ -121,6 +119,7 @@ function did(btn){const r=btn.closest('.wr');if(r._g)return;r._g=1;
  const gb=g.querySelector('b'),c=$('wc'),e=document.querySelector('#fH .side a.on em');
  gb.textContent=+gb.textContent-1;c.textContent=+c.textContent-1;if(e)e.textContent=c.textContent;
  const last=gb.textContent==='0',none=c.textContent==='0';
+ if(r.querySelector('.el').textContent==='Nordfrisch GmbH'&&$('nf')){const f=$('nf');f.textContent='ΚΗΙ 6021';f.style.color='var(--ink)';f.removeAttribute('id');$('fr').textContent='ΚΗΙ 2109'}
  const fin=()=>{r.remove();if(last)g.remove();const nx=$('wl').querySelector('.wr .pill');if(nx)nx.classList.add('b');
   if(none){c.remove();if(e)e.remove();$('wl').innerHTML=`<div class="fadeup" style="display:grid;place-items:center;height:240px;color:var(--help)">Τίποτα δεν σε περιμένει</div>`}};
  if(RED()){fin();return}
