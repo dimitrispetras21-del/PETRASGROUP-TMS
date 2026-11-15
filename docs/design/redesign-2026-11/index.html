@@ -467,10 +467,10 @@ table.spec td b{color:var(--ink);font-weight:600}
 .asb .two b svg.lucide{width:14px;height:14px;margin-right:5px;color:var(--help)}
 .day.past .br:not(.need)>.asb{background:#F3F4F6}.day.past .br:not(.need)>.asb.p{background:#F0F5FD}
 /* dense weekly study (owner 15/11: 30-50 loads a week; assignment box redrawn; Veroia shows its loading places; hard cases) */
-.cx{background:#fff;border-radius:16px;padding:14px 16px}
-.cx .bh,.cx .br{grid-template-columns:30px 150px minmax(0,1.25fr) minmax(0,1.15fr) 40px 170px minmax(0,1.25fr) minmax(0,1.15fr) 40px 136px 22px;gap:0 10px;padding:0 14px 0 8px}
+.cx{background:var(--bg);border-radius:16px;padding:0}#agopts.cx{background:#fff;padding:14px 16px}
+.cx .bh,.cx .br{grid-template-columns:30px 132px minmax(0,1.25fr) minmax(0,1.15fr) 40px 176px minmax(0,1.25fr) minmax(0,1.15fr) 40px 132px 22px;gap:0 10px;padding:0 14px 0 8px}
 .cx .bh{height:26px;margin-top:0}
-.cx .day{background:var(--bg);margin-top:6px;padding:1px 0 2px;border-radius:12px}.cx .day.today{background:#fff}
+.cx .day{background:#fff;margin-top:6px;padding:1px 0 2px;border-radius:12px}
 .cx .day>h3{font-size:13.5px;padding:5px 16px 2px;gap:10px}.cx .day.none>h3{font-size:13px;padding:3px 16px}
 .cx .br{min-height:38px;font-size:13px}.cx .br+.br::before{left:14px;right:14px;border-top-color:#E6E7EB}
 .cx .br .two b{font-size:13.5px;line-height:17px}.cx .br .two>span{font-size:12px;line-height:16px}
@@ -493,6 +493,57 @@ table.spec td b{color:var(--ink);font-weight:600}
 .cx .day.past .br:not(.need)>.ag,.cx .day.past .br:not(.need)>.two,.cx .day.past .br:not(.need)>.stk,.cx .day.past .br:not(.need)>.pn{opacity:.55}
 .agp{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:28px}.agp h4{font-size:14px;font-weight:600;color:var(--ink);margin-bottom:2px}.agp p{font-size:12.5px;color:var(--help);margin:0 0 10px}
 .agp .r{display:grid;grid-template-columns:170px 1fr;gap:12px;align-items:center;margin-bottom:6px;font-size:12.5px;color:var(--help)}
+/* trial sheets (owner 15/11): assignment box, day, Veroia tile */
+.lab{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-bottom:18px}.lab.d3{grid-template-columns:repeat(3,minmax(0,1fr))}.lab.one{grid-template-columns:minmax(0,1fr)}
+.lc{background:#fff;border-radius:16px;padding:12px 16px 8px}.lc h4{font-size:13.5px;font-weight:600;color:var(--ink);margin-bottom:6px;display:flex;gap:8px;align-items:baseline}.lc h4 small{font-weight:400;color:var(--help);font-size:12px}
+.lr{display:grid;grid-template-columns:minmax(0,1fr) 176px minmax(0,1fr);gap:0 14px;align-items:center;min-height:42px;border-top:1px solid #EEF0F2}
+.lc .two b{font-size:13.5px;line-height:17px}.lc .two>span{font-size:12px;line-height:16px}
+.qa{display:flex;align-items:center;gap:8px;min-width:0;min-height:34px}
+.qa .tx{min-width:0;flex:1}.qa .tx b{display:block;font-size:13.5px;font-weight:600;line-height:17px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.qa .tx b svg.lucide{width:13px;height:13px;margin-right:5px;vertical-align:-2px}
+.qa .tx span{display:block;font-size:12px;line-height:15px;color:var(--help);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qa.n .tx b{color:var(--red)}.qa svg.lucide{width:13px;height:13px}
+.plt{font-style:normal;display:inline-block;height:18px;line-height:16px;padding:0 5px 0 10px;border:1px solid #B9BDC7;border-radius:4px;font-size:12px;font-weight:700;letter-spacing:.02em;color:var(--ink);background:linear-gradient(90deg,#2447B8 0 5px,#fff 5px);margin-right:4px;font-variant-numeric:tabular-nums;white-space:nowrap;vertical-align:top}
+.plt.t{background:#fff;padding-left:5px;font-weight:600;color:var(--body)}.plt.x{background:#fff;padding-left:5px;border-color:#D5D8DE;color:var(--body);font-weight:500}.plt.e{background:none;border:1.5px dashed var(--red);color:var(--red);padding:0 8px;line-height:15px}
+.qa.o1 .tx b{line-height:19px}.qa.o1 .tx span{margin-top:1px}
+.av{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:10.5px;font-weight:700;flex:none;background:var(--ink);color:#fff}.av.p{border-radius:7px;background:#fff;box-shadow:inset 0 0 0 1.5px var(--accent);color:var(--accent)}.av.n{background:none;outline:1.5px dashed var(--red);outline-offset:-1.5px;color:var(--red)}
+.qa.o3{border-radius:9px;padding:2px 10px;box-shadow:inset 0 0 0 1px #C9CCD3}.qa.o3.p{box-shadow:inset 0 0 0 1px #8FB8EE}.qa.o3.p .tx b{color:var(--link)}.qa.o3.n{box-shadow:none;outline:1.5px dashed var(--red);outline-offset:-1.5px}
+.qa.o4{position:relative;flex-direction:column;align-items:center;gap:0;min-height:0}.qa.o4::before{content:'';position:absolute;left:-14px;right:-14px;top:11px;border-top:1.5px solid var(--ink)}
+.qa.o4 b{position:relative;background:#fff;padding:0 9px;font-size:13.5px;font-weight:600;line-height:22px;color:var(--ink);white-space:nowrap}.qa.o4 span{font-size:12px;line-height:15px;color:var(--help);white-space:nowrap}
+.qa.o4.p::before{border-color:var(--accent)}.qa.o4.p b{color:var(--link)}.qa.o4.n::before{border-top:1.5px dashed var(--red)}.qa.o4.n b{color:var(--red)}
+.qa.o5{border-radius:8px;padding:2px 10px;background:#E8EDF5}.qa.o5 .tx b{color:#0B1F3F}.qa.o5 .tx span{color:#51607A}.qa.o5.p{background:#E2F3EC}.qa.o5.p .tx b{color:#0B5C45}.qa.o5.p .tx span{color:#4B7A68}.qa.o5.n{background:var(--red-bg)}.qa.o5.n .tx b{color:var(--red)}
+.dot{width:8px;height:8px;border-radius:2px;background:var(--ink);flex:none}.dot.p{border-radius:50%;background:none;box-shadow:inset 0 0 0 2px var(--accent)}.dot.n{background:var(--red);border-radius:50%}
+.qa.o7{border-radius:8px;padding:2px 10px;background:#fff;box-shadow:0 0 0 1px rgba(0,0,16,.07),0 1px 2px rgba(0,0,16,.12)}.qa.o7.n{box-shadow:none;outline:1.5px dashed var(--red);outline-offset:-1.5px}
+.ktg{font-style:normal;font-size:9.5px;font-weight:700;letter-spacing:.08em;color:var(--accent);flex:none}
+.mk{width:18px;height:18px;border-radius:5px;display:grid;place-items:center;font-size:11px;font-weight:700;background:var(--ink);color:#fff;flex:none}.mk.p{background:#fff;color:var(--accent);box-shadow:inset 0 0 0 1.5px var(--accent)}.mk.n{background:none;color:var(--red);outline:1.5px dashed var(--red);outline-offset:-1.5px}
+.qa.o8{min-height:26px}.qa.o8 .tx{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13.5px}.qa.o8 .tx b{display:inline}.qa.o8 .tx span{display:inline;font-size:12.5px;margin-left:6px}
+.lf{width:30px;height:32px;border-radius:7px;box-shadow:inset 0 0 0 1px #DADDE3;display:flex;flex-direction:column;align-items:center;justify-content:center;flex:none;line-height:1}.lf i{font-style:normal;font-size:8.5px;font-weight:600;letter-spacing:.05em;color:var(--help)}.lf b{font-size:13.5px;font-weight:700;color:var(--ink);margin-top:3px;font-variant-numeric:tabular-nums}
+.lf.t{box-shadow:none;background:var(--accent)}.lf.t i,.lf.t b{color:#fff}.lf.s{box-shadow:none;background:var(--bg)}.lf.s.t{background:var(--accent)}
+.vrow{display:grid;grid-template-columns:26px 124px minmax(0,1fr) minmax(0,1fr) 34px 176px;gap:0 12px;align-items:center;min-height:42px;border-top:1px solid #EEF0F2;position:relative;font-size:13px}.vrow>.n{color:var(--help);text-align:center;font-size:12.5px}
+.vt2{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 8px;border-radius:7px;box-shadow:inset 0 0 0 1px #DADDE3;font-size:12.5px;font-weight:600;color:var(--ink);white-space:nowrap;justify-self:start;cursor:default}.vt2 i{font-style:normal;font-weight:500;color:var(--help);font-size:11.5px}.vt2.h{box-shadow:inset 0 0 0 1.5px var(--ink)}.vt2.r{color:var(--red);box-shadow:inset 0 0 0 1px #EDB9BC}
+.vpop{position:absolute;left:38px;top:calc(100% + 4px);z-index:5;background:#fff;border-radius:12px;box-shadow:var(--shadow-float);padding:10px 14px 8px;width:520px}.vpop h5{font-size:12.5px;font-weight:600;color:var(--ink);margin-bottom:4px;display:flex;justify-content:space-between}.vpop h5 span{font-weight:400;color:var(--help)}
+.vpop .vpr{display:grid;grid-template-columns:minmax(0,1.5fr) 36px 56px minmax(0,1.2fr);gap:0 12px;height:26px;align-items:center;font-size:12.5px;color:var(--body);border-top:1px solid #EEF0F2;white-space:nowrap}.vpop .vpr b{font-weight:600;color:var(--ink)}.vpop .vpr em{font-style:normal;color:var(--red);font-weight:600}.vpop .vpr>*{overflow:hidden;text-overflow:ellipsis}.vpop .vpr.vh{border:0;height:20px;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--label)}
+.gm .ag{position:relative;padding:2px 8px 2px 26px;background:none;border-radius:8px;cursor:pointer}.gm .ag:hover{box-shadow:inset 0 0 0 1px #C9CCD3}
+.gm .ag::before{content:'';position:absolute;left:8px;top:6px;width:10px;height:10px;border-radius:2px;background:var(--ink)}
+.gm .ag.p::before{border-radius:50%;background:none;box-shadow:inset 0 0 0 1.5px var(--accent)}
+.gm .ag:has(b svg)::before{box-shadow:0 0 0 1.5px #fff,0 0 0 3px var(--accent)}.gm .ag b svg.lucide{display:none}
+.gm .ag.need,.gm .ag.am{padding-left:10px;outline:1.5px dashed var(--red);outline-offset:-1.5px;background:#FEF6F6}.gm .ag.need::before,.gm .ag.am::before{display:none}.gm .ag.am{outline-color:var(--amber-line);background:#FFFCF5}
+.qa.nd{border-radius:8px;padding:2px 10px;outline:1.5px dashed var(--red);outline-offset:-1.5px;background:#FEF6F6}.qa.nd .tx b{color:var(--red);font-weight:500}
+.lab.d3 .lr{grid-template-columns:minmax(0,1fr) 196px}
+.dot{width:10px;height:10px;margin:0 3px}.dot.p{box-shadow:inset 0 0 0 1.5px var(--accent)}.dot.x{box-shadow:0 0 0 1.5px #fff,0 0 0 3px var(--accent)}
+.qa.o3.p{box-shadow:inset 0 0 0 1.5px var(--accent)}.qa.o3.x .tx span{color:var(--link)}
+.mk{width:14px;height:14px;border-radius:4px}.qa.o8 .tx b{font-weight:600}
+.vt2.r{box-shadow:inset 0 0 0 1px #DADDE3}.vt2 i{font-size:11.5px;font-weight:400}
+.vpop{box-shadow:0 8px 24px rgba(15,23,42,.10),0 0 0 1px #E2E5EA}.vpop.b{left:auto;right:330px;width:400px}.vpop .vpr.tot{color:var(--ink);font-weight:600}.vpop.b .vpr{grid-template-columns:minmax(0,1fr) 36px 56px}
+.lns{display:flex;flex-direction:column;gap:3px;padding:3px 0;min-width:0}.qa.pt .tx b{display:flex;align-items:center}.qa.pt .tx b .el{overflow:hidden;text-overflow:ellipsis}.qa.pt .tx b .tag{flex:none}.lf{width:32px}
+.cx .qa,.lc .qa.pt{min-height:32px}.cx .br .qa .tx b{font-size:13.5px;font-weight:500}.lc .qa.pt .tx b{font-weight:500}
+.cx .qa.pt .tx b{color:var(--ink)}.cx .qa.pt .tx span{font-size:12px}.lf.s:not(.t) b{font-size:12.5px;font-weight:600;color:var(--body)}
+.gm .ag.need,.gm .ag.am{min-height:28px;padding-left:26px}.gm .ag.p b{color:var(--link)}.gm .ag.p::before{box-shadow:inset 0 0 0 2px var(--accent)}
+.gm .ag:has(b svg)::before{box-shadow:none;background:linear-gradient(135deg,var(--ink) 50%,var(--accent) 50%)}
+.dot.p{box-shadow:inset 0 0 0 2px var(--accent)}.dot.x{box-shadow:none;background:linear-gradient(135deg,var(--ink) 50%,var(--accent) 50%)}.qa.nd{padding-left:26px;min-height:28px}
+.cx .slot.a{height:26px;border:0;background:#FFF8E6}
+.vt2.r{box-shadow:none;outline:1.5px dashed var(--red);outline-offset:-1.5px;background:#FEF6F6;color:var(--ink)}.vt2 em{font-style:normal;color:var(--red);font-weight:600}
+.pn{position:relative}.pn sup{position:absolute;left:100%;top:-3px;margin-left:1px}
+.vpop h5{margin-top:0}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;transition-delay:0ms!important}
   .oc,.toast{transform:none}}
 @media print{.toc,.doc>header p{display:none}body{background:#fff}}
@@ -678,12 +729,12 @@ table.spec td b{color:var(--ink);font-weight:600}
   <h2>Εβδομαδιαίο Διεθνών</h2>
   <p class="lead">Ο διεθνής dispatcher, όλη τη βάρδια. Κάθε γραμμή είναι η δουλειά ενός φορτηγού: αριστερά η εξαγωγή, στη μέση ποιος την πάει, δεξιά η εισαγωγή με την οποία γυρίζει. Οι ημέρες μένουν πάντα ανοιχτές.</p>
   <div class="fit"><div class="frame" id="f5"></div></div>
-  <div class="cap"><h3>Το πλαίσιο ανάθεσης, τρεις τρόποι</h3><span>το γκρι και το γαλάζιο δεν άρεσαν (owner 15/11)· ο πίνακας παρακάτω είναι ζωγραφισμένος με τον Α</span></div>
-  <div class="cx" id="agopts" style="margin-bottom:18px"></div>
-  <div class="cap"><h3>Πυκνός πίνακας, ημέρα μέσα στο κείμενο</h3><span id="cxn1"></span></div>
-  <div class="cx ga" id="cx1" style="margin-bottom:18px"></div>
-  <div class="cap"><h3>Πυκνός πίνακας, ημέρα σε κουτάκι μπροστά από τον τόπο</h3><span id="cxn2"></span></div>
-  <div class="cx ga" id="cx2" style="margin-bottom:18px"></div>
+  <div class="cap"><h3>Ανάθεση: οι τρεις που έμειναν</h3><span>από οκτώ δοκιμές και δύο γύρους κριτών (owner 15/11)</span></div>
+  <div class="lab d3" id="labA"></div>
+  <div class="cap"><h3>Βέροια και πολλά σημεία: πλακίδιο και πινακάκι</h3><span>η γραμμή δεν ψηλώνει ποτέ· το πινακάκι ανοίγει με το ποντίκι</span></div>
+  <div class="lab one" id="labV"></div>
+  <div class="cap"><h3>Πυκνός πίνακας με την πρόταση</h3><span id="cxn1"></span></div>
+  <div class="cx gm" id="cx1" style="margin-bottom:18px"></div>
   <div class="cap"><h3>Ό,τι ανοίγει από μια γραμμή</h3><span>groupage · μέσω Βέροιας · μενού (ίδιο για απλό φορτίο και groupage) · ανάθεση · ημέρες · όλα τα επόμενα · αλλαγή στον δρόμο</span></div>
   <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start">
     <div class="pop" style="width:540px;padding:18px;animation:none"><div style="display:flex;align-items:center;gap:10px"><b style="font-size:16px;font-weight:600;color:var(--ink)">Groupage</b><span class="tag" style="margin:0">3 παραγγελίες</span><span class="sp" style="flex:1"></span><span class="num" style="font-weight:600;color:var(--ink)">33 / 33 παλ.</span></div>
@@ -1019,17 +1070,25 @@ $('f5').innerHTML=`<div class="app rail">${side('wi')}<main class="main">
  <div class="bh lbl"><span></span><span style="padding-left:2px">Εξαγωγή · φόρτωση</span><span style="padding-left:2px">Παράδοση</span><span style="text-align:right;padding-right:28px">Παλ.</span><span>Ανάθεση</span><span>Εισαγωγή · φόρτωση</span><span>Παράδοση</span><span style="text-align:right;padding-right:28px">Παλ.</span><span></span></div>
  <div style="flex:1;min-height:0;overflow:hidden;margin-top:-10px;padding:0 2px">${WI.map(([t,c,rows])=>`<section class="day ${c}"><h3>${t}</h3>${rows.map(irows).join('')}</section>`).join('')}</div></main></div>`;
 
+/* a point of a load: the day as a small calendar leaf before the name (owner's choice 15/11).
+   A load whose points fall on different days gets one line per day, each day beside its own point. */
+const lfUp=w=>w.toUpperCase().replace('Ί','Ι').replace('Ά','Α').replace('Έ','Ε');
+const lfLn=(n,tg,day,pl,today)=>{const [w,d]=(day||'').split(' ');return `<div class="qa pt">${day?`<span class="lf s ${today?'t':''}"><i>${lfUp(w)}</i><b>${d}</b></span>`:'<span style="width:32px;flex:none"></span>'}<div class="tx"><b><span class="el">${n}</span>${tags(tg||'')}</b><span>${pl}</span></div></div>`};
+const lfMany=a=>a.length>1?`<div class="lns">${a.map(x=>lfLn(x[1],'',x[0],x[2],x[3])).join('')}</div>`:lfLn(a[0][1],'',a[0][0],a[0][2],a[0][3]);
 /* dense weekly study: same 14 loads drawn twice, once with the day as text and once in a small box before the place.
    Rows 5 and 9 are open (every point on its own line); the rest are closed and show "+N" and the span of days. */
 (function(){
  let DM='txt';
- const dy=(t,k)=>!t?'':DM==='box'?`<i class="dx ${k||''}">${t}</i>`:`<span ${k==='t'?'style="color:var(--link);font-weight:600"':''}>${t}</span> · `;
- const pt=(n,tg,day,pl,k)=>`<div class="two"><b><span class="el">${n}</span>${tags(tg)}</b><span>${dy(day,k)}${pl}</span></div>`;
- const stk=a=>`<div class="stk">${a.map(([n,day,pl,pal,k])=>`<div class="two"><b><span class="el">${n}</span></b><span>${dy(day,k)}${pl} · <span class="num">${pal}π</span></span></div>`).join('')}</div>`;
+ const NM={'Λάρισα':'Larissa Fruit Hub','Λαμία':'Lamia Cold Store','Τρίκαλα':'Trikala Agro','Verona':'Verona Mercato','Leipzig':'Leipzig Frischelager'};
+ const pt=(n,tg,day,pl,k)=>{const td=d=>k==='t'&&/ 16$/.test(d);if(!/–/.test(day))return lfLn(n,tg,day,pl,td(day));
+  const [d1,d2]=day.split(' – '),ps=pl.split(', '),h=Math.ceil(ps.length/2),a=ps.slice(0,h),b=ps.slice(h),mo=x=>x.length>1?` +${x.length-1}`:'';
+  return `<div class="lns">${lfLn(n.replace(/ \+\d+$/,'')+mo(a),tg,d1,a.join(', '),td(d1))}${lfLn((NM[b[0]]||b[0])+mo(b),'',d2,b.join(', '),td(d2))}</div>`};
+ const stk=a=>{const g={};a.forEach(x=>(g[x[1]]=g[x[1]]||[]).push(x));return lfMany(Object.keys(g).map(d=>[d,g[d][0][0]+(g[d].length>1?` +${g[d].length-1}`:''),[...new Set(g[d].map(x=>x[2]))].join(', '),g[d].some(x=>x[4])&&/ 16$/.test(d)]))};
  const pn=n=>n>33?`<b class="pn num o">${n}<sup>+${n-33}</sup></b>`:`<b class="pn num">${n}</b>`;
  const ag=(a,b,k,i)=>`<div class="ag ${k||''}"><b class="num">${i?ic(i):''}${a}</b>${b?`<span>${b}</span>`:''}</div>`;
- const vz=(a,b,r)=>`<div class="two vz"><b class="num" ${r?'style="color:var(--red)"':''}>${a}</b><span>${b}</span></div>`;
- const vzs=a=>`<div class="stk">${a.map(([pl,tr])=>`<span class="ln">${pl} · ${tr?`<b class="num">${tr}</b>`:'<em>χωρίς φορτηγό</em>'}</span>`).join('')}</div>`;
+ const tile=(t,n,r,tt)=>`<span class="vt2 num ${r?'r':''}" title="${tt}">${t}${r?'':`<i>${n} σημ.</i>`}</span>`;
+ const vz=(a,b,r)=>tile(r?'<em>λείπει 1</em>':a,b.split(' · ').length,r,b.replace(/<[^>]+>/g,''));
+ const vzs=a=>{const tr=[...new Set(a.map(x=>x[1]).filter(Boolean))],miss=a.filter(x=>!x[1]).length;return tile((tr[0]||'')+(tr.length>1?` +${tr.length-1}`:'')+(miss?`${tr.length?' · ':''}<em>λείπει ${miss}</em>`:''),a.length,miss,a.map(x=>x[0]).join(' · '))};
  const gap=t=>`<div class="slot a">${ic('undo-2')}Κενό γύρισμα · ${t}<span class="plus" style="border-color:var(--amber-line);color:var(--amber);background:none">${ic('plus')}</span></div>`;
  const E='<span></span>',E3=E+E+E;
  const row=([n,vl,L,as,R,vr,cls=''])=>`<div class="br ${cls}"><button class="no num">${n}</button>${vl||E}${L||E3}${as}${R||E3}${vr||E}<span class="send">${ic('send')}</span></div>`;
@@ -1044,7 +1103,7 @@ $('f5').innerHTML=`<div class="app rail">${side('wi')}<main class="main">
   ['Κυριακή 15/11','none',[]],
   ['Δευτέρα 16/11 · σήμερα','today',[
    row([4,'',pt('Kavala Grapes Coop','PE','Πέμ 12','Καβάλα')+pt('Edeka Frischezentrum +3','','Δευ 16 – Τετ 18','München, Nürnberg, Leipzig, Berlin','t')+pn(33),ag('ΚΗΙ 7733 · Ρ 4410','Γιώργος Ζήσης'),gap('Berlin · Τετ 18'),'']),
-   row([5,vzs([['Νάουσα','ΚΗΙ 2140'],['Κοπανός','ΚΗΙ 2140'],['Μελίκη','ΚΗΙ 9056']]),stk([['Naoussa Peach Union','Πέμ 12','Βέροια','12'],['Kopanos Fruit','Πέμ 12','Βέροια','9'],['Meliki Agro','Παρ 13','Βέροια','12']])+stk([['Frischemarkt München','Δευ 16','München','15','t'],['Obsthof Augsburg','Δευ 16','Augsburg','6','t'],['Stuttgart Großmarkt','Τρί 17','Stuttgart','12']])+pn(33),ag('ΚΗΙ 6012 · Ρ 5093','Αντώνης Ντίνος'),gap('Ulm · Τρί 17'),'']),
+   row([5,vzs([['Νάουσα','ΚΗΙ 2140'],['Κοπανός','ΚΗΙ 2140'],['Μελίκη','ΚΗΙ 9056']]),stk([['Naoussa Peach Union','Πέμ 12','Νάουσα','12'],['Kopanos Fruit','Πέμ 12','Κοπανός','9'],['Meliki Agro','Παρ 13','Μελίκη','12']])+stk([['Frischemarkt München','Δευ 16','München','15','t'],['Obsthof Augsburg','Δευ 16','Augsburg','6','t'],['Stuttgart Großmarkt','Τρί 17','Stuttgart','12']])+pn(33),ag('ΚΗΙ 6012 · Ρ 5093','Αντώνης Ντίνος'),gap('Ulm · Τρί 17'),'']),
    row([6,'',pt('Pieria Kiwi Pack','','Παρ 13','Κατερίνη')+pt('Bratislava Fresh','','Δευ 16','Bratislava','t')+pn(30),ag('Balkan Frigo d.o.o.','BG 418 · AA 2207','p'),'','']),
   ]],
   ['Τρίτη 17/11','',[
@@ -1066,11 +1125,39 @@ $('f5').innerHTML=`<div class="app rail">${side('wi')}<main class="main">
  ];
  const head=`<div class="bh lbl"><span></span><span>Προς Βέροια</span><span>Εξαγωγή · φόρτωση</span><span>Παράδοση</span><span style="text-align:right">Παλ.</span><span>Ανάθεση</span><span>Εισαγωγή · φόρτωση</span><span>Παράδοση</span><span style="text-align:right">Παλ.</span><span>Από Βέροια</span><span></span></div>`;
  const board=m=>{DM=m;return head+days().map(([t,c,r])=>`<section class="day ${c}"><h3>${t}</h3>${r.join('')}</section>`).join('')};
- $('cx1').innerHTML=board('txt');$('cx2').innerHTML=board('box');
- const V=[['ga','Α · Σκούρο, όπως το σημερινό Εβδομαδιαίο','μαύρο το δικό μας, μπλε ο συνεργάτης· φαίνεται από μακριά'],['gb','Β · Λευκό με γραμμή στην άκρη','λεπτό περίγραμμα· το χρώμα της άκρης λέει δικό μας ή συνεργάτης'],['gc','Γ · Χωρίς πλαίσιο','μόνο μια γραμμή αριστερά· το πιο ήσυχο']];
- const S=[[ag('ΚΗΙ 3310 · Ρ 7120','Θανάσης Μέλλιος'),'δικό μας'],[ag('Transfrigo Kft.','RKA 512 · XTR 088','p'),'συνεργάτης'],[ag('ΚΗΙ 4521','→ Transfrigo · από Wien','','shuffle'),'αλλάζει φορτηγό στον δρόμο'],[ag('Ανάθεση','','need'),'χωρίς φορτηγό'],[ag('Ανάθεση','','am'),'pre-order']];
- $('agopts').innerHTML=`<div class="agp">${V.map(([c,t,p])=>`<div class="${c}"><h4>${t}</h4><p>${p}</p>${S.map(([a,l])=>`<div class="r">${a}<span>${l}</span></div>`).join('')}</div>`).join('')}</div>`;
- requestAnimationFrame(()=>{for(const [id,cap] of [['cx1','cxn1'],['cx2','cxn2']]){const h=Math.round($(id).getBoundingClientRect().height/($(id).getBoundingClientRect().width/$(id).offsetWidth||1));$(cap).textContent=`14 φορτία, δύο ανοιχτά με όλα τα σημεία · ${h}px ύψος`}});
+ $('cx1').innerHTML=board('num');
+ requestAnimationFrame(()=>{for(const [id,cap] of [['cx1','cxn1']]){const h=Math.round($(id).getBoundingClientRect().height/($(id).getBoundingClientRect().width/$(id).offsetWidth||1));$(cap).textContent=`14 φορτία · μια γραμμή ψηλώνει μόνο όταν το φορτίο έχει σημεία σε δύο ημέρες · ${h}px ύψος`}});
+})();
+/* trial sheets: the same rows drawn with each candidate, to be judged side by side */
+(function(){
+ const K={o:['ΚΗΙ 3310 · Ρ 7120','Θανάσης Μέλλιος','ΘΜ'],p:['Transfrigo Kft.','RKA 512 · XTR 088'],x:['ΚΗΙ 4521','→ Transfrigo · από Wien','ΠΡ'],n:['Ανάθεση','']};
+ const tx=(a,b,i)=>`<div class="tx"><b class="num">${i?ic(i):''}${a}</b>${b?`<span>${b}</span>`:''}</div>`;
+ const kc=k=>k==='p'?'p':k==='n'?'n':'';
+ const A=(v,k)=>{const [a,b]=K[k];
+  if(k==='n')return `<div class="qa nd"><div class="tx"><b>Ανάθεση</b></div></div>`;
+  if(v===6)return `<div class="qa"><span class="dot ${k==='p'?'p':k==='x'?'x':''}"></span>${tx(a,b)}</div>`;
+  if(v===3)return `<div class="qa o3 ${k==='p'?'p':k==='x'?'x':''}">${tx(a,b,k==='x'?'shuffle':'')}</div>`;
+  return `<div class="qa o8"><span class="mk ${k==='p'?'p':''}" ${k==='x'?'style="box-shadow:0 0 0 1.5px #fff,0 0 0 3px var(--accent)"':''}></span><div class="tx"><b class="num">${a}</b><span>${k==='o'?'Μέλλιος':k==='p'?'RKA 512':'→ Transfrigo'}</span></div></div>`};
+ const two=(a,b)=>{const x=b.match(/^(\S+ \d+) · (.*)$/);return x?lfLn(a,'',x[1],x[2]):`<div class="two"><b><span class="el">${a}</span></b><span>${b}</span></div>`};
+ const LR=[['o',two('Veria Fruit Pack','Τρί 10 · Βέροια'),two('Alpina Fresh S.r.l.','Δευ 16 · Modena')],['p',two('Pieria Kiwi Pack','Παρ 13 · Κατερίνη'),two('Emilia Formaggi','Δευ 23 · Parma')],['x',two('Pella Peach Coop','Τρί 17 · Σκύδρα'),'<span></span>'],['n',two('Messinia Olive Coop','Τρί 17 · Μεσσήνη'),'<span></span>']];
+ const AT=[[6,'Α · Σήμα','τετράγωνο = δικό μας, κύκλος = συνεργάτης· κανένα πλαίσιο'],[3,'Β · Λεπτό περίγραμμα','γκρι γραμμή δικό μας, μπλε γραμμή συνεργάτης'],[8,'Γ · Μία σειρά','η πιο χαμηλή· οδηγός μόνο με επώνυμο']];
+ $('labA').innerHTML=AT.map(([v,t,n])=>`<div class="lc"><h4>${t}<small>${n}</small></h4>${LR.map(([k,l])=>`<div class="lr">${l}${A(v,k)}</div>`).join('')}</div>`).join('');
+ const vr=(n,tile,l,d,pal,as,pop)=>`<div class="vrow"><span class="n num">${n}</span>${tile}${l}${d}<b class="pn num">${pal}</b>${as}${pop||''}</div>`;
+ const pop=`<div class="vpop"><h5>Προς Βέροια · 3 σημεία<span>33 παλέτες</span></h5><div class="vpr vh"><span>Σημείο</span><span style="text-align:right">Παλ.</span><span>Ημέρα</span><span>Φορτηγό</span></div>
+  <div class="vpr"><span><b>Naoussa Peach Union</b> · Νάουσα</span><span class="num" style="text-align:right">12</span><span>Πέμ 12</span><span class="num">ΚΗΙ 2140 · Ρήγας</span></div>
+  <div class="vpr"><span><b>Kopanos Fruit</b> · Κοπανός</span><span class="num" style="text-align:right">9</span><span>Πέμ 12</span><span class="num">ΚΗΙ 2140 · Ρήγας</span></div>
+  <div class="vpr"><span><b>Meliki Agro</b> · Μελίκη</span><span class="num" style="text-align:right">12</span><span>Παρ 13</span><span><em>χωρίς φορτηγό</em></span></div>
+  <div class="vpr tot"><span>Σύνολο</span><span class="num" style="text-align:right">33</span><span></span><span></span></div></div>
+  <div class="vpop b"><h5>Παράδοση · 3 σημεία<span>33 παλέτες</span></h5><div class="vpr vh"><span>Σημείο</span><span style="text-align:right">Παλ.</span><span>Ημέρα</span></div>
+  <div class="vpr"><span><b>Frischemarkt München</b> · München</span><span class="num" style="text-align:right">15</span><span>Δευ 16</span></div>
+  <div class="vpr"><span><b>Obsthof Augsburg</b> · Augsburg</span><span class="num" style="text-align:right">6</span><span>Δευ 16</span></div>
+  <div class="vpr"><span><b>Stuttgart Großmarkt</b> · Stuttgart</span><span class="num" style="text-align:right">12</span><span>Τρί 17</span></div>
+  <div class="vpr tot"><span>Σύνολο</span><span class="num" style="text-align:right">33</span><span></span></div></div>`;
+ $('labV').innerHTML=`<div class="lc" style="padding-bottom:235px"><h4>Πλακίδιο στη στήλη «Προς Βέροια»<small>ένα φορτηγό · δύο φορτηγά (+1) · λείπει φορτηγό · το ίδιο πινακάκι ανοίγει και από το «+1» των σημείων</small></h4>
+  ${vr(4,'<span class="vt2 num">ΚΗΙ 2140<i>2 σημ.</i></span>',two('Veria Fruit Pack','Τρί 10 · Βέροια'),two('Tirol Obst Lager','Σάβ 14 · Innsbruck'),32,A(6,'o'))}
+  ${vr(6,'<span></span>',two('Pieria Kiwi Pack','Παρ 13 · Κατερίνη'),two('Bratislava Fresh','Δευ 16 · Bratislava'),30,A(6,'p'))}
+  ${vr(7,'<span class="vt2 num">ΚΗΙ 2140 +1<i>4 σημ.</i></span>',two('Imathia Kiwi Growers +1','Τρί 17 · Βέροια'),two('Wien Großgrünmarkt','Τετ 18 · Wien'),33,A(6,'n'))}
+  ${vr(5,'<span class="vt2 r h num">ΚΗΙ 2140 · <em>λείπει 1</em></span>',lfMany([['Πέμ 12','Naoussa Peach Union +1','Νάουσα, Κοπανός'],['Παρ 13','Meliki Agro','Μελίκη']]),lfMany([['Δευ 16','Frischemarkt München +1','München, Augsburg',1],['Τρί 17','Stuttgart Großmarkt','Stuttgart']]),33,A(6,'o'),pop)}</div>`;
 })();
 
 /* ---------- screen 3: order form, a sheet over the page. Every control of today's form (orders_intl.js) has a place here. ---------- */
