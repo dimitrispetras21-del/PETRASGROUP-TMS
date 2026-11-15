@@ -462,3 +462,19 @@ table.spec td b{color:var(--ink);font-weight:600}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;transition-delay:0ms!important}
   .oc,.toast{transform:none}}
 @media print{.toc,.doc>header p{display:none}body{background:#fff}}
+
+/* Prints carry the colour of the system (owner 15/11): accent rule and section labels, red for what needs action, amber for notes, green for done. */
+.a4{border-top:6px solid var(--accent);color:#1B1D29}
+.a4 .hero{border-bottom-color:var(--accent)}
+.a4 .psec{color:var(--accent)}
+.a4 .psec em{color:#666}
+.a4 .hr{border-bottom-color:var(--accent);color:var(--accent)}
+.a4 .psum{border-top-color:var(--accent)}
+.a4 .mix .f{background:var(--accent)}
+.a4 .mix .t{background:#7FB0EA}
+.a4 .mix .o{background:#C9DBF3}
+.a4 sup{border-color:var(--amber);color:var(--amber)}
+.a4 .box{border-color:var(--accent);color:var(--accent)}
+.a4 .pr{color:var(--red)!important;font-weight:600}
+.a4 .pg{color:var(--green)!important;font-weight:600}
+.a4 .pa{color:var(--amber)!important;font-weight:600}

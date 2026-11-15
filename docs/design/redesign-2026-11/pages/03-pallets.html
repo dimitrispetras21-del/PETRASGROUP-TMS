@@ -216,7 +216,7 @@ $('fAP').innerHTML=`<div style="position:absolute;inset:0;display:flex;gap:24px;
  </div></div>`;
 
 /* ---------- Εβδομάδα ---------- */
-const WKS=[['Εβδ. 44','1|0',1],['Εβδ. 45','0|1',1],['Εβδ. 46','3|1',0],['Εβδ. 47','5|0',0],['Εβδ. 48','',0]];
+const WKS=[['W44','1|0',1],['W45','0|1',1],['W46','3|1',0],['W47','5|0',0],['W48','',0]];
 const pd=x=>!x?'<span></span>':x==='x'?'<span class="pd x">–</span>':x==='m'?`<span class="pd"><i class="nb" data-t="Παραδόθηκε και δεν έχει κίνηση παράδοσης.">!</i></span>`:`<span class="pd num ${x[2]||''}" title="${x[2]==='p'?'Εκκρεμεί':'Επιβεβαιωμένη'}">${x[0]} · ${x[1]}${x[3]?`<em title="Δεν γύρισαν">+${x[3]}</em>`:''}</span>`;
 const leg=(r,c,a,b)=>r?`${two(r,c)}${pd(a)}${pd(b)}`:`<span class="none slot" style="grid-column:span 3">${c}</span>`;
 const wrow=([n,e,veh,i,cls=''])=>`<div class="wr"><span class="no num">${n}</span>${leg(...e)}<div class="as asb ${veh[2]||''}"><div class="two"><b class="num">${veh[0]}</b><span>${veh[1]}</span></div></div>${leg(...i)}</div>${cls==='ed'?`<div class="wr" style="min-height:0"><span></span><div class="wed"><span class="sp"></span><span class="lbl">Παράδοση</span><div class="inp focus num">30${cur.replace('-6px','2px')}</div><div class="inp num">32</div><span class="ibt" title="Δελτίο παλετών">${ic('paperclip')}</span><button class="pill sm b">Επιβεβαίωση</button></div></div>`:''}`;
@@ -231,7 +231,7 @@ const WD=[['Σάββατο 7/11',[
  ['Παρασκευή 13/11',[
   [6,['Μεσσήνη → Hamburg','Nordfrisch GmbH',[33,33],[20,33,'',13]],['ΚΗΙ 5102','Σ. Κάππος'],[0,'Χωρίς εισαγωγή']]]]];
 $('fW').innerHTML=`<div class="app">${side('p')}<main class="main">
- ${hub('Εβδομάδα 46')}
+ ${hub('W46')}
  <div class="card" style="border-radius:24px;flex:none">${tabs('w','<span class="seg sm" style="margin:10px 12px 10px 0"><b class="on">Με ανταλλαγή 7</b><b>Όλες 9</b></span>'+q)}
   <div class="wk" style="min-height:46px;gap:18px">${ic('chevron-left')}${WKS.map(([w,n,ok],i)=>`<a class="${i===2?'on':''}" style="white-space:nowrap">${w}${n?` ${+n.split('|')[0]?`<i style="color:var(--amber)" title="Εκκρεμείς">${n.split('|')[0]}</i>`:''}${+n.split('|')[1]?`<i title="Λείπει παράδοση">${n.split('|')[1]}</i>`:''}`:''}${ok?` <span style="color:var(--green);display:inline-grid" title="Ελέγχθηκε">${ic('check')}</span>`:''}</a>`).join('')}${ic('chevron-right')}</div>
   <div class="kpb" style="border-top:1px solid var(--line);border-bottom:0"><b class="num" title="Δώσαμε 13 περισσότερες από όσες πήραμε">+13</b><span>πήραμε <b class="num">274</b></span><span>δώσαμε <b class="num">287</b></span><span><b>7</b> με ανταλλαγή</span><span class="sp"></span>

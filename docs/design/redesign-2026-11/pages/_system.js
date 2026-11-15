@@ -25,4 +25,7 @@ const slotA=t=>`<div class="slot a">${ic('undo-2')}${t}<span class="plus" style=
 const c2=(a,t,b)=>`<div class="two"><b><span class="el">${a}</span>${tags(t)}</b><span>${b}</span></div>`;
 const RED=()=>matchMedia('(prefers-reduced-motion:reduce)').matches;
 function fit(){document.querySelectorAll('.fit').forEach(w=>{const f=w.firstElementChild,s=Math.min(1,w.clientWidth/1440);f.style.transform=`scale(${s})`;w.style.height=f.offsetHeight*s+'px'})}
-function boot(){lucide.createIcons();addEventListener('resize',fit);fit()}
+/* Prints: mark what needs action in red, notes in amber, done in green, by what the cell says (owner 15/11: the prints had no colour). */
+function tint(){const R=/έληξε|ληγμέν|χωρίς τιμή|χωρίς φορτηγό|χωρίς ανάθεση|άργησε|\+\d+ ημέρ|καθυστέρ|λείπει|δεν διαβάστηκ|ανεπίδοτ|οφείλ|SOS|^[−-]\s?\d/i,A=/^κοπή$|προς κοπή|^χωρίς |σε εξέλιξη|λήγει|εκτίμηση|pre-order|μετατέθηκε|εκκρεμεί|περιμένει|μισή|χωρίς ημερομηνία/i,G=/^\+ ?\d|παραδόθηκε|φορτώθηκε|τιμολογήθηκε|πληρώθηκε|εξοφλ|ελέγχθηκε|σε ισχύ/i;
+ document.querySelectorAll('.a4 *').forEach(e=>{if(e.children.length||e.closest('h2,.psec,.hr,.foot,.fn,.top,.hero'))return;const t=e.textContent.trim();if(!t||t.length>60)return;e.classList.add(R.test(t)?'pr':A.test(t)?'pa':G.test(t)?'pg':'_')})}
+function boot(){tint();lucide.createIcons();addEventListener('resize',fit);fit()}
