@@ -680,7 +680,12 @@ async function renderWeeklyIntl(){
     // Cross-week (feedback dispatcher 19/5): φόρτωσε imports ±1 εβδομάδα ώστε
     // export της W να ταιριάζει με import της W±1 — τα γειτονικά αδιάθετα
     // εμφανίζονται σε δική τους ενότητα στο τέλος, ΔΕΝ μετράνε στο tally.
-    const impFilter=`AND({Type}='International',{Direction}='Import',IS_AFTER({Loading DateTime},'${win.from}'),IS_BEFORE({Loading DateTime},'${win.to}'))`;
+    // C6 (15/11): an import moved here with «Μεταφορά εβδομάδας» (Plan Week
+    // Start = a Saturday in the window) is read whatever its loading day, the
+    // same clause «Παραγγελίες › Εβδομάδα» reads (ordersFormula). Moved twice,
+    // it used to sit outside every board's read while the toast said
+    // «Θα εμφανίζεται στην W…».
+    const impFilter=`AND({Type}='International',{Direction}='Import',OR(AND(IS_AFTER({Loading DateTime},'${win.from}'),IS_BEFORE({Loading DateTime},'${win.to}')),AND(IS_AFTER({Plan Week Start},'${win.from}'),IS_BEFORE({Plan Week Start},'${win.to}'))))`;
 
     let [,expOrders,impOrders] = await Promise.all([
       preloadReferenceData(),
@@ -6103,9 +6108,11 @@ async function _wiImpShift(rowId,days){
   const oid0=(row.orderIds&&row.orderIds[0])||row.orderId;   // the slot's order, at the start (P1, _wiSync)
   const imp=WINTL.data.imports.find(r=>r.id===row.orderId);if(!imp) return;
   const w=WINTL.week+(days>0?1:-1);
-  const natWeek=_wiWeekOf(imp.fields['Loading DateTime']);
-  const clearing=natWeek===w;
-  const targetPws=clearing?null:toLocalDate(_wiWeekStart(w));
+  // By the Saturday, not the number: across New Year w is 54 while the
+  // import's own week is W2 (C26) — moving it back to its own week clears.
+  const targetSat=toLocalDate(_wiWeekStart(w));
+  const clearing=TmsWeek.startOfDate(imp.fields['Loading DateTime'])===targetSat;
+  const targetPws=clearing?null:targetSat;
   _wiSync('wi-sync-'+rowId,'pend','Μεταφορά εβδομάδας…',oid0);
   try{
     const res=await atPatch(TABLES.ORDERS,imp.id,{'Plan Week Start':targetPws});
@@ -6121,7 +6128,7 @@ async function _wiImpShift(rowId,days){
       }
     }
     _wiSync('wi-sync-'+rowId,'ok','Η μεταφορά αποθηκεύτηκε',oid0);
-    toast(`Θα εμφανίζεται στην W${w} ✓`);
+    toast(`Θα εμφανίζεται στην W${_wiWeekLabel(w)} ✓`);
     renderWeeklyIntl();
   }catch(e){ _wiSync('wi-sync-'+rowId,'err','Η μεταφορά ΔΕΝ γράφτηκε στη βάση',oid0); reportError('Η μεταφορά απέτυχε',e); }
 }
