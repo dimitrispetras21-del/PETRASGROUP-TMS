@@ -638,7 +638,7 @@ async function pickExisting() {
   try {
     recs = await atGetAll(TABLES.ORDERS, { filterByFormula: `AND(IS_AFTER({Loading DateTime},'${from}'),IS_BEFORE({Loading DateTime},'${to}'))` }, false) || [];
   } catch (e) { box.innerHTML = `<div class="igx-busy">Οι παραγγελίες δεν διαβάστηκαν — ${esc(e && e.message || 'σφάλμα')}</div>`; return; }
-  if (!IG.s) return;
+  if (IG.s !== s) return;   // the form was closed (or another opened) while the list loaded
   const inForm = new Set(s.members.map(m => m.recId).filter(Boolean));
   const a = s.assign && !s.assign.mixed ? s.assign : null;
   const rows = recs.filter(r => !inForm.has(r.id) && !(typeof isPreorder === 'function' && isPreorder(r.fields || {}))).map(r => {
