@@ -538,6 +538,16 @@ table.spec td b{color:var(--ink);font-weight:600}
 .w9go{height:22px;padding:0 8px;margin-left:8px;border-radius:6px;border:1px solid var(--line);background:#fff;font-size:11.5px;font-weight:600;color:var(--ink)}
 #f5 .hd{height:46px;margin-bottom:10px}#f5 .hd h1{font-size:23px}#f5 .hd .pill{height:32px;font-size:13px}
 #f5 .day{margin-top:5px}.w9tx{padding-left:34px}.w9tx.w{color:var(--amber)}
+/* cycle 2 of critics (15/11) */
+.w9as b .el{color:inherit;font-weight:inherit}
+.w9hf:first-child{flex:2 1 0}.w9hf:last-child{flex:3 1 0}
+.w9as .tx{flex:1 1 0}.w9as b .el,.w9v b .el{overflow:hidden;text-overflow:ellipsis;min-width:0}
+#f5 .w9gap{height:24px;padding:0 7px;gap:13px;background:none;border-color:rgba(232,180,90,.55)}#f5 .w9gap.z{padding-left:7px}
+#f5 .w9gap a.alt{opacity:0}#f5 .w9row:hover .w9gap a.alt{opacity:1}#f5 .w9gap.z a{opacity:.75}#f5 .w9gap.z a.alt{opacity:0}
+.w9tx.w{color:var(--body)}#f5 .lf i{font-size:9px}.w9cp{color:#9CA3AF;opacity:1}
+.w9row.late::before{content:'';position:absolute;left:0;top:6px;bottom:6px;width:2px;border-radius:2px;background:var(--red)}
+.w9h em{font-style:normal;color:var(--red)}.w9h i{font-style:normal;color:var(--amber)}
+.w9as.p .w9ic{background:#CFE3FB}#f5 .day.past .w9row>*:not(.w9no):not(.n){opacity:.75}
 #f5 .day.today{box-shadow:inset 0 0 0 1px var(--primary)}#f5 .day.today>h3{color:var(--primary)}#f5 .lf.t{background:var(--primary)}
 #f5 .day.past .w9row>*:not(.w9no):not(.n){opacity:.62}#f5 .day.past .w9ic{background:#EEF0F4;color:#7C7E88}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;transition-delay:0ms!important}
@@ -1097,10 +1107,10 @@ const lfMany=a=>a.length>1?`<div class="lns">${a.map(x=>lfLn(x[1],'',x[0],x[2],x
  const byDay=a=>{const g=[];a.forEach(x=>{const l=g[g.length-1];l&&l[0]===x.d?l[1].push(x):g.push([x.d,[x]])});return g};
  const pal=n=>n==null?'<span></span>':`<div class="w9pal ${n>33?'o':''}"><b class="num">${n}</b>${n>33?`<sup>+${n-33}</sup>`:''}<span class="m"><i style="--f:${Math.min(1,n/33)}"></i></span></div>`;
  const asg=([k,a,b])=>{const I={o:'truck',p:'users',x:'shuffle',n:'truck',am:'truck'}[k];
-  return `<div class="w9as ${k==='o'||k==='x'?'':k}"><span class="w9ic">${ic(I)}</span><div class="tx"><b class="num">${k==='n'||k==='am'?'Ανάθεση':a}</b>${b?`<span>${b}</span>`:''}</div>${k==='n'||k==='am'?'':`<span class="w9cp" title="Αντιγραφή πινακίδων">${ic('copy')}</span>`}</div>`};
- const vcell=(v,nat)=>{if(!v)return nat&&!OPEN?`<span class="w9vm" title="Εθνικό σκέλος">${ic('warehouse')}</span>`:'<span></span>';const tr=[...new Set(v.map(x=>x.t).filter(Boolean))],miss=v.filter(x=>!x.t).length;
+  return `<div class="w9as ${k==='o'||k==='x'?'':k}"><span class="w9ic">${ic(I)}</span><div class="tx"><b class="num"><span class="el">${k==='n'||k==='am'?'Ανάθεση':a}</span></b>${b?`<span>${b}</span>`:''}</div>${k==='n'||k==='am'?'':`<span class="w9cp" title="Αντιγραφή πινακίδων">${ic('copy')}</span>`}</div>`};
+ const vcell=(v,nat)=>{if(!v)return nat&&!OPEN?`<span class="w9vm" title="Εθνικό σκέλος">${ic('warehouse')}</span>`:'<span></span>';const tr=[...new Set(v.map(x=>x.t).filter(Boolean))],miss=v.filter(x=>x.t==='').length;
   if(!OPEN)return `<span class="w9vm ${miss?'r':''}" title="${v.map(x=>x.n+' · '+(x.t||'χωρίς φορτηγό')).join(' | ')}">${ic('warehouse')}</span>`;
-  const car=x=>x.t?`<span class="w9ct ${x.pk==='p'?'p':''}">${x.t}</span>`:'<em>χωρίς φορτηγό</em>',nt=v.some(x=>x.note)?`<i class="w9nt" title="Σημείωση από το γραφείο εθνικών">${ic('pencil')}</i>`:'';
+  const car=x=>x.t===null?'':x.t?`<span class="w9ct ${x.pk==='p'?'p':''}">${x.t}</span>`:'<em>χωρίς φορτηγό</em>',nt=v.some(x=>x.note)?`<i class="w9nt" title="Σημείωση από το γραφείο εθνικών">${ic('pencil')}</i>`:'';
   return v.length===1?`<div class="w9v"><b><span class="el">${v[0].n}</span><small>${v[0].d}</small>${nt}</b><span>${car(v[0])}</span></div>`
    :`<div class="w9v"><b><span class="el">${v.map(x=>x.n).join(' · ')}</span><small>+${v.length-1}</small>${nt}</b><span>${car(v.find(x=>x.t)||v[0])}${tr.length>1?` +${tr.length-1}`:''}${miss?` · <em>λείπει ${miss}</em>`:''}</span></div>`};
  const grp=(a,load)=>{const g=byDay(a);let cap=Math.max(3,g.length)-g.length;const sh=g.map(([d,p])=>{const k=Math.min(p.length-1,cap);cap-=k;return 1+k});
@@ -1111,9 +1121,10 @@ const lfMany=a=>a.length>1?`<div class="lns">${a.map(x=>lfLn(x[1],'',x[0],x[2],x
  const txt=(t,l,w)=>`<div class="w9tx ${w?'w':''}" style="grid-column:span 2">${t}${l?`<a>${ic('plus')}${l}</a>`:''}</div>`;
  /* the two Veroia columns are side panels: closed by default (owner 15/11), a small mark stays on the rows that go through Veroia */
  let OPEN=false,G='';
- const grid=()=>{const v=OPEN?'176px':'26px';G=`26px ${v} minmax(0,1fr) 92px 176px minmax(0,1fr) 92px ${v} 20px`};
+ const grid=()=>{const v=OPEN?'176px':'26px';G=`26px ${v} minmax(0,1fr) 92px 200px minmax(0,1fr) 92px ${v} 20px`};
  const sub=(l,r)=>`<div class="w9row sub" style="grid-template-columns:${G}"><span></span><span></span><div class="w9l2">${l||''}</div><span></span><span></span><div class="w9l2">${r||''}</div><span></span><span></span><span></span></div>`;
- const row=r=>`<div class="w9row" style="grid-template-columns:${G}"><span class="w9no num">${r.no}</span>${vcell(r.vTo,r.nat&&r.ex)}${r.ex?side(r.ex):r.exTxt?txt(r.exTxt):E2}${asg(r.as)}${r.im?side(r.im):r.gap?`<div class="w9gap ${r.gapNow?'':'z'}" style="grid-column:span 2">${ic('undo-2')}<span class="el">Κενό γύρισμα · ${r.gap}</span><a>${ic('plus')}Νέα εισαγωγή</a><a class="alt">ή κομμάτι από απόθεμα</a></div>`:r.imTxt?txt(r.imTxt,r.imAdd,r.imAdd):E2}${vcell(r.vFrom,r.nat&&!r.ex)}${r.as[0]==='n'||r.as[0]==='am'?'<span></span>':`<span class="w9snd" title="Αποστολή στοιχείων στον οδηγό">${ic('send')}</span>`}</div>`
+ const late=r=>r.ex&&r.ex.L.some(q=>q.d&&!q.done&&q.d!==TODAY&&dn(q.d)<dn(TODAY));
+ const row=r=>`<div class="w9row ${late(r)?'late':''}" style="grid-template-columns:${G}"><span class="w9no num">${r.no}</span>${vcell(r.vTo,r.nat&&r.ex)}${r.ex?side(r.ex):r.exTxt?txt(r.exTxt):E2}${asg(r.as)}${r.im?side(r.im):r.gap?`<div class="w9gap ${r.gapNow?'':'z'}" style="grid-column:span 2">${ic('undo-2')}<span class="el">Κενό γύρισμα · ${r.gap}</span><a>${ic('plus')}Νέα εισαγωγή</a><a class="alt">ή κομμάτι από απόθεμα</a></div>`:r.imTxt?txt(r.imTxt,r.imAdd,r.imAdd):E2}${vcell(r.vFrom,r.nat&&!r.ex)}${r.as[0]==='n'||r.as[0]==='am'?'<span></span>':`<span class="w9snd" title="Αποστολή στοιχείων στον οδηγό">${ic('send')}</span>`}</div>`
   +(r.note?sub(r.note[0]&&ic('corner-down-right')+r.note[0],r.note[1]&&ic('corner-down-right')+r.note[1]):'');
  const NV={n:'Naoussa Peach Union',c:'Νάουσα'};
  const WK=[
@@ -1143,11 +1154,11 @@ const lfMany=a=>a.length>1?`<div class="lns">${a.map(x=>lfLn(x[1],'',x[0],x[2],x
    {ex:{L:[P('Pella Peach Coop','Σκύδρα','Τρί 17')],D:[P('Nordic Fresh Hub','København','Πέμ 19')],pal:30},as:['x','ΚΗΙ 4521','→ Transfrigo · από Wien']}]],
   ['Παρασκευή 20/11','none',[]],
  ];
- const head=()=>`<div class="w9h lbl" style="grid-template-columns:${G}">${['',OPEN?`<a class="w9vh" title="Κλείσιμο">${ic('chevron-right')}Προς Βέροια</a>`:`<a class="w9vh" title="Προς Βέροια">${ic('chevron-left')}</a>`,`Εξαγωγή · ${CNT.ex} φορτία · φόρτωση → παράδοση`,'Παλ.','Ανάθεση',`Εισαγωγή · ${CNT.im} φορτία · φόρτωση → παράδοση`,'Παλ.',OPEN?`<a class="w9vh" title="Κλείσιμο">Από Βέροια${ic('chevron-left')}</a>`:`<a class="w9vh" title="Από Βέροια">${ic('chevron-right')}</a>`,''].map(c=>`<span ${c==='Παλ.'?'style="text-align:right"':''}>${c}</span>`).join('')}</div>`;
+ const head=()=>`<div class="w9h lbl" style="grid-template-columns:${G}">${['',OPEN?`<a class="w9vh" title="Κλείσιμο">${ic('chevron-right')}Προς Βέροια</a>`:`<a class="w9vh" title="Προς Βέροια">${ic('chevron-left')}</a>`,`Εξαγωγή · ${CNT.ex} φορτία · φόρτωση → παράδοση`,'Παλ.',`Ανάθεση${CNT.need?` · <em>${CNT.need} χωρίς φορτηγό</em>`:''}`,`Εισαγωγή · ${CNT.im} φορτία${CNT.gap?` · <i>${CNT.gap} κενά γυρίσματα τώρα</i>`:''}${CNT.late?` · <em>${CNT.late} εκπρόθεσμο</em>`:''}`,'Παλ.',OPEN?`<a class="w9vh" title="Κλείσιμο">Από Βέροια${ic('chevron-left')}</a>`:`<a class="w9vh" title="Από Βέροια">${ic('chevron-right')}</a>`,''].map(c=>`<span ${c==='Παλ.'?'style="text-align:right"':''}>${c}</span>`).join('')}</div>`;
  const bh=$('f5').querySelector('.bh'),old=bh.nextElementSibling,box=document.createElement('div');
  box.style.cssText='flex:1;min-height:0;overflow:hidden;padding:0 2px';
- const DATA=window.WK_REAL||WK,ALL=DATA.flatMap(d=>d[2]),CNT={ex:ALL.filter(r=>r.ex).length,im:ALL.filter(r=>r.im).length};
- const draw=()=>{let no=0;grid();box.innerHTML=head()+`<div style="margin-top:-8px">${DATA.map(([t,c,rows])=>`<section class="day ${c}"><h3>${t}</h3>${rows.map(r=>row({...r,no:++no})).join('')}</section>`).join('')}</div>`;if(window.lucide)lucide.createIcons()};
+ const DATA=window.WK_REAL||WK,ALL=DATA.flatMap(d=>d[2]),CNT={ex:ALL.filter(r=>r.ex).length,im:ALL.filter(r=>r.im).length,need:ALL.filter(r=>r.as[0]==='n').length,gap:ALL.filter(r=>r.gapNow).length,late:0};
+ const draw=()=>{let no=0;grid();CNT.late=ALL.filter(late).length;box.innerHTML=head()+`<div style="margin-top:-8px">${DATA.map(([t,c,rows])=>`<section class="day ${c}"><h3>${t}</h3>${rows.map(r=>row({...r,no:++no})).join('')}</section>`).join('')}</div>`;if(window.lucide)lucide.createIcons()};
  box.addEventListener('click',e=>{if(e.target.closest('.w9vh')){OPEN=!OPEN;draw()}});draw();
  old.remove();bh.replaceWith(box);
 })();
