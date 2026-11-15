@@ -126,12 +126,12 @@ const irow=([d,w,c,l,n,sg,k])=>`<div class="il ${k==='s'?'sg':''}"><span class="
 /* accept a suggestion: the row leaves, what is below closes the gap, the two counts follow once */
 const SC=f=>f.getBoundingClientRect().width/f.offsetWidth;
 const bump=(el,v)=>{el.textContent=v;el.classList.remove('fadeup');void el.offsetWidth;el.classList.add('fadeup')};
-function leave(rows,done){const lc=rows[0].parentElement;rows.forEach((r,i)=>setTimeout(()=>r.classList.add('out'),RED()?0:i*40));
+function leave(rows,done){rows=rows.filter(r=>!r._g);if(!rows.length)return;rows.forEach(r=>r._g=1);const lc=rows[0].parentElement;rows.forEach((r,i)=>setTimeout(()=>r.classList.add('out'),RED()?0:i*40));
  setTimeout(()=>{const last=rows[rows.length-1],after=[...lc.children].slice([...lc.children].indexOf(last)+1),tops=after.map(e=>e.getBoundingClientRect().top),sc=SC($('fI'));
   rows.forEach(r=>{const g=r.previousElementSibling,nx=r.nextElementSibling;r.remove();if(g&&g.classList.contains('ig')&&(!nx||!nx.classList.contains('il')))g.remove()});
   after.forEach((e,k)=>{if(!e.isConnected)return;const dy=(tops[k]-e.getBoundingClientRect().top)/sc;if(!dy)return;e.classList.remove('mvup');e.style.transform=`translateY(${dy}px)`;void e.offsetWidth;e.classList.add('mvup');e.style.transform=''});done()},RED()?0:160+(rows.length-1)*40)}
 function cnt(n){bump($('cd'),+$('cd').textContent-n);bump($('cs'),+$('cs').textContent-n);bump($('cok'),+$('cok').textContent+n)}
-function yes(btn){const r=btn.closest('.il');if(r._b)return;r._b=1;leave([r],()=>cnt(1))}
+function yes(btn){leave([btn.closest('.il')],()=>cnt(1))}
 function yesAll(a){const g=a.closest('.ig'),rows=[];let e=g.nextElementSibling;while(e&&e.classList.contains('il')){if(e.classList.contains('sg'))rows.push(e);e=e.nextElementSibling}if(rows.length)leave(rows,()=>cnt(rows.length))}
 $('fI').innerHTML=`<div class="app">${side('e')}<main class="main">
  ${hd('Εισαγωγή κάρτας καυσίμων','DKV · 1 – 15 Νοεμβρίου 2026',`<button class="pill">Άκυρο</button><button class="pill b" id="ib">Καταχώρηση 214 γραμμών</button>`)}
@@ -155,7 +155,7 @@ $('fP').innerHTML=`<div class="app">${side('e')}<main class="main">
  ${hd('Αποτέλεσμα δρομολογίων','Εβδομάδα 44 · 24 – 30 Οκτωβρίου',`<button class="pill" style="width:40px;padding:0;justify-content:center" title="Ρυθμίσεις">${ic('settings-2')}</button><button class="pill">${ic('printer')}Εκτύπωση</button><button class="pill b">${ic('plus')}Νέο δρομολόγιο</button>`)}
  <div class="card open4" style="flex:1;min-height:0;margin-right:424px;border-radius:24px 24px 0 0;overflow:hidden">
   <div class="wk" style="border-bottom:1px solid var(--line);min-height:46px">${ic('chevron-left')}<a>41</a><a>42</a><a>43</a><a class="on">44</a><a>45</a>${ic('chevron-right')}<span class="sp"></span><span class="seg sm" style="margin:8px 0"><b class="on">Δρομολόγια</b><b>Φορτηγό</b><b>Οδηγός</b></span></div>
-  <div class="kpb"><b class="num">8.108,00 € <small>καθαρό</small></b><span title="Μόνο τα πλήρη δρομολόγια"><b>4</b> από 10 πλήρη</span><span class="sp"></span><span>έσοδα <b class="num">26.600,00</b></span><span>κόστη <b class="num">18.492,00</b></span><span><b class="num">31%</b></span></div>
+  <div class="kpb"><b class="num">8.108,00 € <small>καθαρό</small></b><span title="Μόνο τα πλήρη δρομολόγια"><b>4</b> από 10 πλήρη</span><span class="sp"></span><span>έσοδα <b class="num">26.600,00</b></span><span>κόστη <b class="num">18.492,00</b></span><span><b class="num">30%</b></span></div>
   <div class="fl" style="padding-bottom:6px"><span class="chip on">Όλα <b>10</b></span><span class="chip">Διεθνή <b>9</b></span><span class="chip">Εθνικά <b>1</b></span><span class="chip" style="color:var(--faint)">Μικτά <b style="color:var(--faint)">0</b></span><span class="sp"></span><span class="chip hide" title="Όλος ο στόλος · ένα φορτηγό · Συνεργάτες">Όλος ο στόλος ${ic('chevron-down')}</span></div>
   <div class="plh lbl"><span>Δρομολόγιο</span><span class="hx">Έσοδα</span><span class="hx">Κόστη</span><span></span><span>Καθαρό</span><span class="hx"></span></div>
   <div class="grp" style="padding:18px 28px 4px">Πλήρη<small>4 δρομολόγια</small></div>${PL.slice(0,4).map(prow).join('')}
@@ -228,7 +228,7 @@ $('a4w').innerHTML=`${ptop('Αποτέλεσμα δρομολογίων','Εβδ
 <div class="hero"><div><h2>Αποτέλεσμα εβδομάδας</h2><b class="t num">8.108,00 €</b></div><div><div class="kv3 num"><span>Έσοδα πλήρων</span><span>26.600,00</span><span>Κόστη πλήρων</span><span>18.492,00</span><span>Πλήρη δρομολόγια</span><span>4 από 10</span></div></div></div>
 <p class="psec">Πλήρη<em>4 δρομολόγια</em></p><div class="hr"><span>Φορτηγό · οδηγός · ημέρες</span><span>Έσοδα</span><span>Κόστη</span><span>Καθαρό</span><span>%</span></div>
 ${PL.slice(0,4).map(([a,b,r,c])=>`<div class="r"><span><b>${a}</b><i>${b}</i></span><span>${eu(r)}</span><span>${eu(c)}</span><span class="tot">${eu(r-c)}</span><span>${((r-c)/r*100).toFixed(0)}%</span></div>`).join('')}
-<div class="r psum"><span>Σύνολο πλήρων</span><span>26.600,00</span><span>18.492,00</span><span class="tot">8.108,00</span><span>31%</span></div>
+<div class="r psum"><span>Σύνολο πλήρων</span><span>26.600,00</span><span>18.492,00</span><span class="tot">8.108,00</span><span>30%</span></div>
 <p class="psec" style="margin-top:8px">Λείπουν κόστη<em>6 δρομολόγια · δεν μετρούν στο καθαρό</em></p><div class="hr"><span>Φορτηγό · οδηγός · ημέρες</span><span>Έσοδα</span><span style="grid-column:span 3;text-align:left">Τι λείπει</span></div>
 ${PL.slice(4).map(([a,b,r,c,m])=>`<div class="r"><span><b>${a}</b><i>${b}</i></span><span>${eu(r)}</span><span style="grid-column:span 3;text-align:left"><span style="color:#444">${m.replace('Τελείωσε και δεν έχει','χωρίς').replace('Λείπει ','χωρίς ').replace('Σε εξέλιξη','σε εξέλιξη').replace('η αξία','αξία').replace('το κόμιστρο','κόμιστρο').replace('.','')}</span></span></div>`).join('')}
 <div class="r psum"><span>Έσοδα χωρίς πλήρη κόστη</span><span>21.600,00</span><span></span><span></span><span></span></div>
