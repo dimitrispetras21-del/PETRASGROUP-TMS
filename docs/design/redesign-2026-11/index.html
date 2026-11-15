@@ -538,6 +538,9 @@ table.spec td b{color:var(--ink);font-weight:600}
 .w9go{height:22px;padding:0 8px;margin-left:8px;border-radius:6px;border:1px solid var(--line);background:#fff;font-size:11.5px;font-weight:600;color:var(--ink)}
 #f5 .hd{height:46px;margin-bottom:10px}#f5 .hd h1{font-size:23px}#f5 .hd .pill{height:32px;font-size:13px}
 #f5 .day{margin-top:5px}.w9tx{padding-left:34px}.w9tx.w{color:var(--amber)}
+/* the national panel's hover table */
+.w9vp .vpr span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px;line-height:16px;color:var(--body)}.w9vp .vpr b{display:inline;font-size:12px;font-weight:600}.w9vp h5{font-size:12.5px}
+.w9v,.w9vm{position:relative}.w9vp{display:none;left:0;top:calc(100% + 3px);width:440px;text-align:left;font-weight:400}.w9v:hover .w9vp,.w9vm:hover .w9vp{display:block}.vpop.w9vp .vpr{grid-template-columns:minmax(0,1.5fr) 56px minmax(0,1fr)}
 /* cycle 2 of critics (15/11) */
 .w9as b .el{color:inherit;font-weight:inherit}
 .w9hf:first-child{flex:2 1 0}.w9hf:last-child{flex:3 1 0}
@@ -1109,10 +1112,11 @@ const lfMany=a=>a.length>1?`<div class="lns">${a.map(x=>lfLn(x[1],'',x[0],x[2],x
  const asg=([k,a,b])=>{const I={o:'truck',p:'users',x:'shuffle',n:'truck',am:'truck'}[k];
   return `<div class="w9as ${k==='o'||k==='x'?'':k}"><span class="w9ic">${ic(I)}</span><div class="tx"><b class="num"><span class="el">${k==='n'||k==='am'?'Ανάθεση':a}</span></b>${b?`<span>${b}</span>`:''}</div>${k==='n'||k==='am'?'':`<span class="w9cp" title="Αντιγραφή πινακίδων">${ic('copy')}</span>`}</div>`};
  const vcell=(v,nat)=>{if(!v)return nat&&!OPEN?`<span class="w9vm" title="Εθνικό σκέλος">${ic('warehouse')}</span>`:'<span></span>';const tr=[...new Set(v.map(x=>x.t).filter(Boolean))],miss=v.filter(x=>x.t==='').length;
-  if(!OPEN)return `<span class="w9vm ${miss?'r':''}" title="${v.map(x=>x.n+' · '+(x.t||'χωρίς φορτηγό')).join(' | ')}">${ic('warehouse')}</span>`;
+  const vp=`<div class="vpop w9vp"><h5>Εθνικό σκέλος · ${v.length} ${v.length>1?'σημεία':'σημείο'}</h5><div class="vpr vh"><span>Σημείο</span><span>Ημέρα</span><span>Μεταφορέας</span></div>${v.map(x=>`<div class="vpr"><span><b>${x.n}</b>${x.c?' · '+x.c:''}</span><span>${x.d||''}</span><span>${x.t===null?'':x.t?x.t:'<em>χωρίς φορτηγό</em>'}</span></div>`).join('')}</div>`;
+  if(!OPEN)return `<span class="w9vm ${miss?'r':''}">${ic('warehouse')}${vp}</span>`;
   const car=x=>x.t===null?'':x.t?`<span class="w9ct ${x.pk==='p'?'p':''}">${x.t}</span>`:'<em>χωρίς φορτηγό</em>',nt=v.some(x=>x.note)?`<i class="w9nt" title="Σημείωση από το γραφείο εθνικών">${ic('pencil')}</i>`:'';
-  return v.length===1?`<div class="w9v"><b><span class="el">${v[0].n}</span><small>${v[0].d}</small>${nt}</b><span>${car(v[0])}</span></div>`
-   :`<div class="w9v"><b><span class="el">${v.map(x=>x.n).join(' · ')}</span><small>+${v.length-1}</small>${nt}</b><span>${car(v.find(x=>x.t)||v[0])}${tr.length>1?` +${tr.length-1}`:''}${miss?` · <em>λείπει ${miss}</em>`:''}</span></div>`};
+  return v.length===1?`<div class="w9v"><b><span class="el">${v[0].n}</span><small>${v[0].d}</small>${nt}</b><span>${car(v[0])}</span>${vp}</div>`
+   :`<div class="w9v"><b><span class="el">${v.map(x=>x.n).join(' · ')}</span><small>+${v.length-1}</small>${nt}</b><span>${car(v.find(x=>x.t)||v[0])}${tr.length>1?` +${tr.length-1}`:''}${miss?` · <em>λείπει ${miss}</em>`:''}</span>${vp}</div>`};
  const grp=(a,load)=>{const g=byDay(a);let cap=Math.max(3,g.length)-g.length;const sh=g.map(([d,p])=>{const k=Math.min(p.length-1,cap);cap-=k;return 1+k});
   return g.map(([d,p],i)=>`<div class="w9d" style="flex:${sh[i]} 1 0">${d?leaf(d,p.every(q=>q.done),load):'<span style="width:28px;flex:none"></span>'}<div class="w9ps">${p.slice(0,sh[i]).map(q=>`<div class="w9p"><b>${a.length>1?`<em class="w9n">${a.indexOf(q)+1}</em>`:''}<span class="el">${q.n}</span>${tags(q.t||'')}</b><span>${q.c}${q.ref?`<u class="w9ref">${q.ref}</u>`:''}${q.p?` · ${q.p}π`:''}</span></div>`).join('')}${p.length>sh[i]?`<span class="w9m">+${p.length-sh[i]}</span>`:''}</div></div>`).join('')};
  const palc=x=>`<div class="w9pc">${x.pe?'<span class="tag" title="Ανταλλαγή παλετών">PE</span>':'<span></span>'}${x.doc?`<span class="w9clip" title="Έγγραφα παραγγελίας">${ic('paperclip')}</span>`:'<span></span>'}${pal(x.pal)}</div>`;
@@ -1130,7 +1134,7 @@ const lfMany=a=>a.length>1?`<div class="lns">${a.map(x=>lfLn(x[1],'',x[0],x[2],x
  const WK=[
   ['Σάββατο 14/11','past',[
    {ex:{L:[P('Pella Peach Coop','Σκύδρα','Τετ 11',0,'PE')],D:[P('Wiener Frische','Wien','Σάβ 14')],pal:33},as:['p','Transfrigo Kft.','RKA 512 · XTR 088']},
-   {vTo:[{...NV,d:'Δευ 9',t:'ΚΗΙ 2140 · Ρήγας'}],ex:{L:[P('Veria Fruit Pack','Βέροια','Τρί 10',0,'PE')],D:[P('Tirol Obst Lager','Innsbruck','Σάβ 14')],pal:32,pe:1,doc:1},as:['o','ΚΗΙ 3310 · Ρ 7120','Θανάσης Μέλλιος'],
+   {vTo:[{...NV,d:'Δευ 9',t:'ΚΗΙ 2140 · Ρήγας'}],ex:{L:[P('Βέροια','από Naoussa Peach Union, Νάουσα','Τρί 10',0,'PE')],D:[P('Tirol Obst Lager','Innsbruck','Σάβ 14')],pal:32,pe:1,doc:1},as:['o','ΚΗΙ 3310 · Ρ 7120','Θανάσης Μέλλιος'],
     im:{L:[P('Alpina Fresh S.r.l.','Modena','Δευ 16')],D:[P('Frutopia Packhouse','Νάουσα','Πέμ 19')],pal:19},note:['','Παράδοση με τοπικό οδηγό · Frutopia Packhouse · <i>χωρίς οδηγό</i>']},
    {ex:{L:[P('Imathia Kiwi Growers','Αλεξάνδρεια','Τετ 11',14),P('Meliki Agro','Μελίκη','Τετ 11',9),P('Skydra Fresh','Σκύδρα','Τετ 11',10)],D:[P('Lidl DC Graz','Graz','Σάβ 14')],pal:33},as:['o','ΚΗΙ 5127 · Ρ 6604','Στέλιος Καρράς'],
     im:{L:[P('Steirer Apfel GmbH','Gleisdorf','Δευ 16',0,'PE')],D:[P('Macedonia Fresh Market','Θεσσαλονίκη','Τετ 18')],pal:28}}]],
@@ -1143,10 +1147,10 @@ const lfMany=a=>a.length>1?`<div class="lns">${a.map(x=>lfLn(x[1],'',x[0],x[2],x
   ['Τρίτη 17/11','',[
    {im:{L:[P('Nordfrisch Lager','Hamburg','Τρί 17',0,'PE')],D:[P('Attica Cold Hub','Ασπρόπυργος','Παρ 20')],pal:26},as:['n']},
    {vTo:[{...NV,d:'Πέμ 12',t:'ΚΗΙ 2140 · Ρήγας'},{n:'Kopanos Fruit',c:'Κοπανός',d:'Πέμ 12',t:'ΚΗΙ 2140 · Ρήγας'},{n:'Meliki Agro',c:'Μελίκη',d:'Παρ 13',t:''}],
-    ex:{L:[P('Naoussa Peach Union','Βέροια','Παρ 13',12),P('Kopanos Fruit','Βέροια','Παρ 13',9),P('Meliki Agro','Βέροια','Παρ 13',12)],D:[P('Frischemarkt München','München','Τρί 17',21),P('Obsthof Augsburg','Augsburg','Τρί 17',12)],pal:33},as:['n']}]],
+    ex:{L:[P('Βέροια','από Naoussa Peach Union +2','Παρ 13')],D:[P('Frischemarkt München','München','Τρί 17',21),P('Obsthof Augsburg','Augsburg','Τρί 17',12)],pal:33},as:['n']}]],
   ['Τετάρτη 18/11','',[
-   {vTo:[{...NV,d:'Παρ 13',t:'ΚΗΙ 9056 · Ιωάννου'}],ex:{L:[P('Veria Fruit Pack','Βέροια','Δευ 16',0,'PE')],D:[P('Rotterdam Fresh Hub','Rotterdam','Τετ 18')],pal:32},as:['o','ΚΗΙ 2208 · Ρ 4259','Παύλος Ράπτης'],
-    im:{L:[P('Baltic Cold Foods DC','Poznań','Παρ 20',0,'PE')],D:[P('Thessaly Citrus Coop','Βέροια','Τρί 24')],pal:30},vFrom:[{n:'Thessaly Citrus Coop',c:'Λάρισα',d:'Τετ 25',t:'ΚΗΙ 4445 · Χρυσουλίδης'}],note:['Σκέλος προώθησης · Rotterdam → Antwerpen · Πέμ 19 · 8 παλ. · ΚΗΙ 2208','']},
+   {vTo:[{...NV,d:'Παρ 13',t:'ΚΗΙ 9056 · Ιωάννου'}],ex:{L:[P('Βέροια','από Naoussa Peach Union, Νάουσα','Δευ 16',0,'PE')],D:[P('Rotterdam Fresh Hub','Rotterdam','Τετ 18')],pal:32},as:['o','ΚΗΙ 2208 · Ρ 4259','Παύλος Ράπτης'],
+    im:{L:[P('Baltic Cold Foods DC','Poznań','Παρ 20',0,'PE')],D:[P('Βέροια','μετά εθνικό: Thessaly Citrus Coop','Τρί 24')],pal:30},vFrom:[{n:'Thessaly Citrus Coop',c:'Λάρισα',d:'Τετ 25',t:'ΚΗΙ 4445 · Χρυσουλίδης'}],note:['Σκέλος προώθησης · Rotterdam → Antwerpen · Πέμ 19 · 8 παλ. · ΚΗΙ 2208','']},
    {ex:{L:[P('Hellas Kiwi Coop','εξαγωγή · pre-order','Τετ 18')],D:[P('Γερμανία','&nbsp;','')]},as:['am']},
    {ex:{L:[P('Imathia Kiwi Growers','Αλεξάνδρεια','Τρί 17')],D:[P('Wien Großgrünmarkt','Wien','Τετ 18')],pal:33},as:['o','ΚΗΙ 3310 · Ρ 7120','Θανάσης Μέλλιος'],gap:'Wien · Τετ 18'}]],
   ['Πέμπτη 19/11','',[
@@ -1154,6 +1158,8 @@ const lfMany=a=>a.length>1?`<div class="lns">${a.map(x=>lfLn(x[1],'',x[0],x[2],x
    {ex:{L:[P('Pella Peach Coop','Σκύδρα','Τρί 17')],D:[P('Nordic Fresh Hub','København','Πέμ 19')],pal:30},as:['x','ΚΗΙ 4521','→ Transfrigo · από Wien']}]],
   ['Παρασκευή 20/11','none',[]],
  ];
+ /* the invented week: loadings before today are done, except one left late on purpose so the late state is visible */
+ WK.forEach(d=>d[2].forEach(r=>r.ex&&r.ex.L.forEach(q=>{if(q.d&&dn(q.d)<dn(TODAY))q.done=1})));WK[2][2][2].ex.L[0].done=0;
  const head=()=>`<div class="w9h lbl" style="grid-template-columns:${G}">${['',OPEN?`<a class="w9vh" title="Κλείσιμο">${ic('chevron-right')}Προς Βέροια</a>`:`<a class="w9vh" title="Προς Βέροια">${ic('chevron-left')}</a>`,`Εξαγωγή · ${CNT.ex} φορτία · φόρτωση → παράδοση`,'Παλ.',`Ανάθεση${CNT.need?` · <em>${CNT.need} χωρίς φορτηγό</em>`:''}`,`Εισαγωγή · ${CNT.im} φορτία${CNT.gap?` · <i>${CNT.gap} κενά γυρίσματα τώρα</i>`:''}${CNT.late?` · <em>${CNT.late} εκπρόθεσμο</em>`:''}`,'Παλ.',OPEN?`<a class="w9vh" title="Κλείσιμο">Από Βέροια${ic('chevron-left')}</a>`:`<a class="w9vh" title="Από Βέροια">${ic('chevron-right')}</a>`,''].map(c=>`<span ${c==='Παλ.'?'style="text-align:right"':''}>${c}</span>`).join('')}</div>`;
  const bh=$('f5').querySelector('.bh'),old=bh.nextElementSibling,box=document.createElement('div');
  box.style.cssText='flex:1;min-height:0;overflow:hidden;padding:0 2px';
