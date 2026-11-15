@@ -266,6 +266,8 @@ async function openFrom(recId, f, label, prefill, piece) {
     if (recId) s.assign = assignmentOf([{ id: recId, fields: f }]);
     syncOrder();
   }
+  // the form of one order sets its own width class (960px, orders_intl.js); the shell is wider
+  modal.classList.remove('modal--oi2');
   paint();
 }
 
@@ -334,6 +336,7 @@ async function addMember(src, opts) {
   s.open = m.key;
   document.getElementById('igm_' + m.key).classList.add('open');
   await OI().open(m.recId, m.f, src.label || null, src.prefill || null, src.piece || null, m.node);
+  document.getElementById('modal')?.classList.remove('modal--oi2');
   if (src.scanDoc) window._scanPendingDoc = src.scanDoc;
   if (src.scanRes) window._scanResult = src.scanRes;
   // A new order of a groupage takes the load's direction and its one reefer setting (owner 15/11: «Μία φορά»).
@@ -421,7 +424,7 @@ function paintTop() {
 function lineHtml(m, n) {
   const pts = points(m);
   const L = pts.filter(p => p.t === 'l'), U = pts.filter(p => p.t === 'u');
-  const short = p => String(p.name || '').split(' · ')[0];
+  const short = p => String(p.name || '').split(/ · |,/)[0].trim();
   const route = [L[0] ? short(L[0]) : '', U[0] ? short(U[0]) + (U.length > 1 ? ` +${U.length - 1}` : '') : ''].filter(Boolean).join(' → ');
   const pal = L.reduce((a, p) => a + p.pal, 0);
   const piece = m.piece || isPieceRec(m.f);
