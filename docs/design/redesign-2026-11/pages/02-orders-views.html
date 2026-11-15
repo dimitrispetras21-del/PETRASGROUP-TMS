@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="el">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Petras TMS · Παραγγελίες: Προς τιμολόγηση, Εβδομάδα, Χωρίς τιμή (σχέδιο)</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_system.css">
+<style>
+/* DESIGN MOCKUP ONLY. Invented names, tax numbers and round amounts. Page-specific rules for the three money views of Παραγγελίες. */
+.wk a{white-space:nowrap}.wk a small{font-size:12px;font-weight:600;color:var(--amber)}.wk a small.g{color:var(--help);font-weight:500}
+.kpb{display:flex;align-items:baseline;gap:22px;padding:16px 28px;border-bottom:1px solid var(--line);white-space:nowrap}
+.kpb>b{font-size:26px;font-weight:500;color:var(--ink);letter-spacing:-.4px}
+.kpb span{color:var(--body);font-size:13px}.kpb span b{color:var(--ink);font-weight:600}
+.kpb svg.lucide{width:13px;height:13px;vertical-align:-2px}
+.gh{display:flex;align-items:baseline;gap:10px;padding:20px 28px 6px}
+.gh b{font-size:15px;font-weight:600;color:var(--ink)}.gh small{color:var(--help);font-size:12.5px}.gh .t{margin-left:auto;font-weight:600;color:var(--ink)}
+.ir{display:grid;grid-template-columns:minmax(0,1fr) 84px 92px 118px;gap:0 16px;align-items:center;height:52px;padding:0 28px;position:relative;cursor:pointer}
+.ir::after{content:'';position:absolute;inset:3px 12px;border-radius:12px;z-index:0;transition:background var(--t-fast)}.ir>*{position:relative;z-index:1}
+.ir:hover::after{background:#F7F8F9}.ir.sel::after{background:var(--accent-bg)}
+.ir+.ir::before{content:'';position:absolute;left:28px;right:28px;top:0;border-top:1px solid var(--line-2)}.ir.sel::before,.ir.sel+.ir::before{display:none}
+.ir .n{text-align:right;color:var(--ink);font-weight:500}.ir .rf{color:var(--body);font-size:13px}
+.ir .two b{font-weight:500}
+.rdy{display:inline-flex;align-items:center;gap:8px;font-size:13.5px;font-weight:500;color:var(--amber)}.rdy::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--amber)}
+.erp{display:grid;grid-template-columns:96px minmax(0,1fr) 16px;gap:0 10px;align-items:center;min-height:32px;border-top:1px solid var(--line-2);font-size:13.5px}
+.erp:first-of-type{border-top:0}.erp dt{color:var(--help);font-size:12.5px}.erp dd{color:var(--ink);font-weight:500;margin:0}.erp svg.lucide{width:14px;height:14px;color:var(--faint)}
+.ck{display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:500;color:var(--body);margin-right:14px}.ck svg.lucide{width:14px;height:14px;color:var(--green);stroke-width:2.4}.ck.x{color:var(--red)}.ck.x svg.lucide{color:var(--red)}
+.sech{display:flex;align-items:center;gap:8px;margin:16px 0 6px}
+.ibt{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:var(--help)}.ibt:hover{background:var(--bg);color:var(--ink)}.ibt svg.lucide{width:15px;height:15px}
+.act{margin:16px -24px 0;padding:16px 24px 18px;border-top:1px solid var(--line);background:#FAFBFC;border-radius:0 0 24px 24px}
+.ubar{position:absolute;left:50%;bottom:22px;margin-left:-190px;z-index:8}
+/* week */
+.wh,.wr{display:grid;grid-template-columns:26px minmax(0,1fr) 60px 82px 196px minmax(0,1fr) 60px 82px;gap:0 12px;align-items:center;padding:0 20px 0 12px}
+.wh{height:34px;margin-top:6px}.wh .n{text-align:right}
+.wr{min-height:50px;position:relative;font-size:13.5px}
+.wr+.wr::before{content:'';position:absolute;left:20px;right:20px;top:0;border-top:1px solid var(--line-2)}
+.wr .no{color:var(--help);text-align:center;font-size:13px}
+.wr .two b{font-size:14px;font-weight:500}.wr .two>span{font-size:12.5px}
+.wr .n{text-align:right;color:var(--ink);font-weight:500}.wr .n.g{color:var(--help);font-weight:400}
+.wr .t{text-align:right;cursor:pointer}
+.wr .none{grid-column:span 3;color:var(--faint);font-size:13px}
+.wr .as .two>span{display:flex;gap:6px}
+.wed{grid-column:2/5;display:flex;gap:8px;align-items:center;padding:0 0 10px;animation:fu 160ms var(--ease) both}.wed .inp{height:34px;font-size:13.5px}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--amber)}
+sup.fx{color:var(--help);font-weight:600;font-size:11px;margin-left:2px}
+.stt{width:100%;border-collapse:collapse;font-size:14px}
+.stt th{font-size:11px;font-weight:500;letter-spacing:.07em;text-transform:uppercase;color:var(--label);text-align:right;padding:0 0 8px}
+.stt th:first-child,.stt td:first-child{text-align:left}
+.stt td{padding:9px 0;border-top:1px solid var(--line-2);text-align:right;color:var(--ink)}
+.stt tr.s td{border-top:1.5px solid var(--ink);font-weight:600}
+/* no price */
+.nh,.nr{display:grid;grid-template-columns:minmax(0,1.4fr) 150px 196px 44px 76px 96px 120px 26px;gap:0 16px;align-items:center;padding:0 28px}
+.nh{height:40px;border-bottom:1px solid var(--line)}.nh .n{text-align:right}
+.nr{height:54px;position:relative}
+.nr+.nr::before{content:'';position:absolute;left:28px;right:28px;top:0;border-top:1px solid var(--line-2)}
+.nr .n{text-align:right;color:var(--ink);font-weight:500}.nr .n.g{color:var(--help);font-weight:400}.nr .n.r{color:var(--red);font-weight:600}
+.nr .two b{font-weight:500}.nr .inp{height:36px;justify-content:flex-end}
+.nr.ok>*:not(.pp){opacity:.6}
+/* prints */
+.a4.ip .r,.a4.ip .hr{grid-template-columns:minmax(0,1.5fr) minmax(0,1fr) 64px 70px}
+.a4.np .r,.a4.np .hr{grid-template-columns:minmax(0,1.5fr) minmax(0,1.1fr) 30px 34px 54px 70px}
+.a4.wp .r,.a4.wp .hr{grid-template-columns:12px minmax(0,1fr) 40px 50px minmax(0,.7fr) minmax(0,1fr) 40px 50px;gap:0 7px}
+.a4.ip .r>span:nth-child(2),.a4.ip .hr>span:nth-child(2),.a4.np .r>span:nth-child(2),.a4.np .hr>span:nth-child(2),.a4.wp .r>span:nth-child(-n+2),.a4.wp .hr>span:nth-child(-n+2),.a4.wp .r>span:nth-child(5),.a4.wp .r>span:nth-child(6),.a4.wp .hr>span:nth-child(5),.a4.wp .hr>span:nth-child(6){text-align:left}
+.a4 .bx{display:inline-block;width:64px;height:15px;border:.8px solid #111;vertical-align:middle}
+.a4 .gt{display:flex;justify-content:space-between;font-weight:700;padding:10px 0 3px;font-size:10px}.a4 .gt small{font-weight:400;color:#555;font-size:8.5px;margin-left:8px}
+.a4.wp .r>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.who{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.pn{background:#fff;border-radius:var(--r-page);box-shadow:var(--shadow-float);padding:20px 22px 16px}
+.pn h3{font-size:17px;font-weight:600;color:var(--ink)}.pn h3+small{display:block;color:var(--help);font-size:13px;margin-top:2px}
+.pf{display:flex;gap:8px;align-items:center;margin-top:14px}
+</style>
+</head>
+<body>
+<div class="doc">
+<header>
+  <p class="lbl">Petras Group TMS · επανασχεδίαση · σελίδα 2 από 9 · μόνο σχέδιο, επινοημένα στοιχεία</p>
+  <h1>Παραγγελίες: οι τρεις όψεις του χρήματος</h1>
+  <p>«Προς τιμολόγηση», «Εβδομάδα» και «Χωρίς τιμή» μέσα στην ίδια σελίδα με τον Κατάλογο. Το TMS δεν εκδίδει τιμολόγια: γράφει τον αριθμό ΤΠΥ που έβγαλε το ERP, ώστε να μη μείνει τίποτα ατιμολόγητο.</p>
+</header>
+
+<section class="sec">
+  <div class="who">
+    <div class="panel"><h3>Ποιος και για τι</h3><table class="spec"><tr><td><b>Ειρήνη</b></td><td>Μπαίνει στο «Προς τιμολόγηση»: παίρνει τα στοιχεία για το ERP, γράφει το ΤΠΥ, πάει στην επόμενη. Η «Εβδομάδα» είναι ο πίνακας ελέγχου της.</td></tr><tr><td><b>Δημήτρης, Αλεξία</b></td><td>«Χωρίς τιμή»: συμπληρώνουν την τιμή ώστε να μπορεί να κοπεί.</td></tr><tr><td><b>Θοδωρής</b></td><td>Διαβάζει.</td></tr></table></div>
+    <div class="panel"><h3>Τι κρατήθηκε</h3><table class="spec"><tr><td>Εβδομάδα Σάββατο με Παρασκευή, ίδια με το Εβδομαδιαίο · κάθε παραγγελία «προς κοπή» από την καταχώρηση · μόνο η τιμή εμποδίζει · το ΤΠΥ γράφεται κάθε φορά με το χέρι, ποτέ μαζικά · ημερομηνία έως σήμερα · ίδιος αριθμός σε άλλον πελάτη ρωτά πρώτα · αναίρεση 10 δευτερολέπτων · μηδέν ευρώ σημαίνει χωρίς τιμή.</td></tr></table></div>
+    <div class="panel"><h3>Τι αλλάζει</h3><table class="spec"><tr><td>Μία λωρίδα εβδομάδων και στις τρεις όψεις· η επιλογή μένει όταν αλλάζεις όψη · μία λέξη, «χωρίς τιμή», αντί για τέσσερις · η κάρτα δίπλα στη λίστα όπως στον Κατάλογο · οι έλεγχοι γίνονται σημάδια.</td></tr></table></div>
+  </div>
+</section>
+
+<section class="sec"><h2>Προς τιμολόγηση</h2>
+  <div class="cap"><h3>Ανά πελάτη, με την κάρτα ανοιχτή</h3><span>Enter γράφει το ΤΠΥ και ανοίγει την επόμενη.</span></div>
+  <div class="fit"><div class="frame" id="fI" style="height:1010px"></div></div>
+  <div class="cap"><h3>Οι άλλες καταστάσεις της κάρτας</h3><span>Τιμολογημένη · χωρίς τιμή · παρτίδα αποθήκης · ίδιος αριθμός σε άλλον πελάτη</span></div>
+  <div class="fit"><div class="frame" id="fIP" style="height:420px"></div></div>
+</section>
+
+<section class="sec"><h2>Εβδομάδα</h2>
+  <div class="cap"><h3>Κάθε δρομολόγιο σε μία γραμμή: εξαγωγή, όχημα, εισαγωγή</h3><span>Πάτημα σε ΤΠΥ ή ποσό ανοίγει τη γραμμή για καταχώριση.</span></div>
+  <div class="fit"><div class="frame" id="fW" style="height:1400px"></div></div>
+</section>
+
+<section class="sec"><h2>Χωρίς τιμή</h2>
+  <div class="cap"><h3>Τιμή, Enter, επόμενη</h3><span></span></div>
+  <div class="fit"><div class="frame" id="fN" style="height:900px"></div></div>
+</section>
+
+<section class="sec"><h2>Οι κακές στιγμές</h2>
+  <div class="grid g4" style="align-items:stretch" id="bad"></div>
+</section>
+
+<section class="sec"><h2>Τα χαρτιά</h2>
+  <p class="lead">Τρία έγγραφα Α4 όρθια: φύλλο για το ERP, εβδομάδα τιμολόγησης, φύλλο τιμών προς συμπλήρωση.</p>
+  <div style="display:flex;gap:28px;flex-wrap:wrap;justify-content:center"><div class="a4 ip" id="a4i"></div><div class="a4 wp" id="a4w"></div><div class="a4 np" id="a4n"></div></div>
+</section>
+</div>
+
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script src="_system.js"></script>
+<script>
+const TG={VS:'Μέσω Βέροιας',PE:'Ανταλλαγή παλετών',GRP:'Groupage',HR:'Υψηλό ρίσκο'};
+const eu=x=>x.toLocaleString('el-GR',{minimumFractionDigits:2});
+const fld=(l,vv,cls='')=>`<label class="fld"><span>${l}</span><div class="inp ${cls}">${vv}</div></label>`;
+const WKS=[['24–30/10',8],['31/10–6/11',15],['7–13/11',6],['14–20/11',10],['21–27/11',0]];
+const wks=(on,all,q=1)=>`<div class="wk" style="border-bottom:1px solid var(--line);min-height:46px;gap:18px">${ic('chevron-left')}${WKS.map(([w,n],i)=>`<a class="${i===on?'on':''}">${w}${n?` <small>${n}</small>`:''}</a>`).join('')}${ic('chevron-right')}${all?`<a style="margin-left:6px" title="Όλες οι ανοιχτές εβδομάδες">Όλες <small>39</small></a>`:''}<span class="sp"></span>${q?`<div class="q" style="margin:6px 0">${ic('search')}Αναζήτηση</div>`:''}</div>`;
+const hub=(v,sub,acts)=>`<div class="hd"><div><h1>Παραγγελίες</h1><p>${sub}</p></div><span class="sp"></span><span class="seg"><b class="on">Όλες</b><b>Διεθνείς</b><b>Εθνικές</b></span>${acts}</div>`;
+const tabs=(v,x='')=>`<div class="tabs"><a class="${v==='c'?'on':''}">Κατάλογος</a><a class="${v==='i'?'on':''}">Προς τιμολόγηση <i>39</i></a><a class="${v==='w'?'on':''}">Εβδομάδα</a><a class="${v==='n'?'on':''}">Χωρίς τιμή <i class="r">10</i></a><span class="sp"></span>${x}</div>`;
+const btn=(i,t,b)=>`<button class="pill ${b?'b':''}">${ic(i)}${t}</button>`;
+
+/* ---------- Προς τιμολόγηση ---------- */
+const IG=[
+ ['Tirol Obst GmbH','ATU00000001 · 30 ημέρες',[['Βέροια → Innsbruck','Δευ 16 – Παρ 20/11 · 32 παλέτες','TO-4471',3800,'sel'],['Βέροια → Innsbruck','Τρί 17 – Παρ 20/11 · 32 παλέτες','TO-4472',3800],['Νάουσα → Hall','Τετ 18 – Παρ 20/11 · 16 παλέτες','TO-4480',1900]]],
+ ['Danubia Market Kft.','HU00000002 · 45 ημέρες',[['Βέροια → Wien','Δευ 16 – Τετ 18/11 · 33 παλέτες','DM-118',2700],['Σκύδρα → Wien','Τετ 18 – Παρ 20/11 · 33 παλέτες','DM-121',2900]]],
+ ['Nordfrisch GmbH','DE000000003 · 30 ημέρες',[['Hamburg → Ασπρόπυργος','Σάβ 14 – Τρί 17/11 · 26 παλέτες','NF-77',2800],['Μεσσήνη → Hamburg','Δευ 16 – Παρ 20/11 · 33 παλέτες','NF-80',3100]]],
+ ['Αγροτικός Συν. Νάουσας','EL000000004 · 60 ημέρες',[['Modena → Νάουσα','Δευ 16 – Πέμ 19/11 · 19 παλέτες','',3000]]],
+ ['Ανδρέου Logistics','EL000000005 · 30 ημέρες',[['Τρίπολη → Βέροια','Δευ 16/11 · 24 παλέτες · Άνοδος','',450],['Καλαμάτα → Βέροια','Τρί 17/11 · 26 παλέτες · Άνοδος','',500]]]];
+const irow=([r,s,ref,p,c=''])=>`<div class="ir ${c}">${two(r,s)}<span class="rf">${ref||'–'}</span><span class="n num">${eu(p)}</span><span class="rdy">Προς κοπή</span></div>`;
+$('fI').innerHTML=`<div class="app">${side('o')}<main class="main">
+ ${hub('i','Εβδομάδα 14 – 20 Νοεμβρίου',btn('file-spreadsheet','Φύλλο ERP')+btn('printer','Εκτύπωση'))}
+ <div class="card" style="flex:1;min-height:0;margin-right:424px;border-radius:24px 24px 0 0;overflow:hidden">
+  ${tabs('i')}
+  ${wks(3,1,0)}
+  <div class="kpb"><b class="num">24.950,00 €</b><span><b>10</b> προς κοπή</span><span><b>8</b> διεθνείς · <b>2</b> εθνικές</span><span class="sp"></span><span>${ic('clock')} παλαιότερη <b>2 ημέρες</b></span></div>
+  <div class="fl" style="padding-bottom:0"><span class="chip on">Προς κοπή <b>10</b></span><span class="chip r">Χωρίς τιμή <b>2</b></span><span class="chip">Τιμολογημένες <b>14</b></span><span class="chip">Όλες <b>26</b></span><span class="sp"></span><div class="q" style="width:170px">${ic('search')}Αναζήτηση</div></div>
+  ${IG.map(([c,m,rows])=>`<div class="gh"><b>${c}</b><small>${m}</small><span class="t num">${rows.length>1?`<small style="font-weight:400;margin-right:8px">${rows.length}</small>`:''}${eu(rows.reduce((a,x)=>a+x[3],0))}</span></div>${rows.map(irow).join('')}`).join('')}
+ </div></main></div>
+ <div class="tc"><div class="h"><div style="flex:1;min-width:0"><b>Tirol Obst GmbH</b><small>Βέροια&nbsp;→ Innsbruck · Δευ 16 – Παρ 20/11</small><small>ΚΗΙ 3310 · Θ. Μέλλιος</small></div><button class="ibt" title="Άνοιγμα παραγγελίας">${ic('external-link')}</button><button class="cl" aria-label="Κλείσιμο">${ic('x')}</button></div>
+  <div class="sech"><span class="lbl">Για το ERP</span><span class="sp"></span><button class="pill sm" id="cpy" onclick="cp()">${ic('copy')}Αντιγραφή όλων</button></div>
+  <dl style="margin:0">${[['Επωνυμία','Tirol Obst GmbH'],['ΑΦΜ','ATU00000001'],['Περιγραφή','Μεταφορά Βέροια → Innsbruck, 32 παλέτες'],['Αναφορά','TO-4471'],['Ποσό','3.800,00 €'],['Όροι','30 ημέρες']].map(([a,b])=>`<div class="erp"><dt>${a}</dt><dd class="num">${b}</dd>${ic('copy')}</div>`).join('')}</dl>
+  <div style="margin-top:14px;display:flex;align-items:center"><span class="ck">${ic('check')}Τιμή</span><span class="ck">${ic('check')}Φορτώθηκε</span><span class="ck x">${ic('x')}Δελτίο παλετών</span><i class="nb dn" data-t="Λείπει το δελτίο παλετών της φόρτωσης. Δεν εμποδίζει την καταχώριση.">!</i></div>
+  <div class="act"><div class="row g12"><div style="grid-column:span 7">${fld('Αριθμός ΤΠΥ','10447<span style="width:1.5px;height:18px;background:var(--accent);margin-left:-6px"></span>','focus')}</div><div style="grid-column:span 5">${fld('Ημερομηνία','16/11/2026')}</div></div>
+   <div style="display:flex;align-items:center;gap:10px;margin-top:14px"><span class="cb"><i></i>Αυτοπαράδοση</span><span class="sp"></span><button class="pill" style="width:36px;padding:0;justify-content:center" title="Επόμενη χωρίς καταχώριση">${ic('arrow-down')}</button><button class="pill b" onclick="sv()">Καταχώριση ${ic('corner-down-left')}</button></div></div>
+ </div>
+ <div class="toast ubar" id="ub">${ic('check')}ΤΠΥ 10447 · Tirol Obst GmbH, Βέροια → Innsbruck<u>Αναίρεση 10</u></div>`;
+function cp(){const b=$('cpy');b.innerHTML=ic('check')+'Αντιγράφηκαν';lucide.createIcons();setTimeout(()=>{b.innerHTML=ic('copy')+'Αντιγραφή όλων';lucide.createIcons()},1600)}
+function sv(){const r=document.querySelector('#fI .ir.sel');if(r){r.querySelector('.rdy').outerHTML='<span class="tpy num fadeup">10447</span>';r.classList.remove('sel');const nx=r.nextElementSibling;if(nx&&nx.classList.contains('ir'))nx.classList.add('sel')}
+ const t=$('ub');t.classList.add('show');let n=10;clearInterval(window._u);window._u=setInterval(()=>{n--;const u=t.querySelector('u');if(n<=0){clearInterval(window._u);t.classList.remove('show')}else u.textContent='Αναίρεση '+n},1000)}
+
+$('fIP').innerHTML=`<div style="position:absolute;inset:0;display:flex;gap:24px;align-items:flex-start;padding:32px;background:#DFE1E6">
+ <div class="pn" style="width:320px"><p class="lbl">Τιμολογημένη</p><div style="display:flex;align-items:baseline;gap:10px;margin-top:10px"><b class="tpy num" style="font-size:20px">10431</b><span style="color:var(--help);font-size:13px">Σάβ 14/11 · Ειρήνη</span></div>
+  <div style="display:grid;gap:2px;margin:12px -8px 0"><a class="tbtn">${ic('pencil')}Διόρθωση ΤΠΥ</a><a class="tbtn">${ic('euro')}Διόρθωση τιμής</a><a class="tbtn r">${ic('undo-2')}Αναίρεση τιμολόγησης <i class="nb a dn" style="margin-left:auto" data-t="Το τιμολόγιο στο ERP δεν ακυρώνεται από εδώ.">!</i></a></div></div>
+ <div class="pn" style="width:330px"><p class="lbl">Χωρίς τιμή</p><div style="margin-top:12px">${fld('Τιμή €','<span class="sp"></span><span style="color:var(--ph)">0,00</span>','focus')}</div><p class="hint num">Τελευταία: 3.100,00 · Μεσσήνη → Hamburg · 2/11</p>
+  <div class="pf"><span class="cb"><i></i>Αυτοπαράδοση</span><span class="sp"></span><button class="pill b">Καταχώριση</button></div></div>
+ <div class="pn" style="width:340px"><p class="lbl">Παρτίδα αποθήκης · 18 παλέτες</p><div style="margin-top:8px">${[['Τρί 10/11','ΚΗΙ 1286','8'],['Πέμ 12/11','ΚΗΙ 4445','6'],['υπόλοιπο','','4']].map(([a,b,c],i)=>`<div class="erp" style="grid-template-columns:86px minmax(0,1fr) 40px"><dt>${a}</dt><dd class="num" style="${i===2?'color:var(--amber)':''}">${b||'στην αποθήκη'}</dd><dd class="num" style="text-align:right">${c}</dd></div>`).join('')}</div>
+  <div class="pf"><span class="sp"></span><button class="pill sm">Κλείσιμο υπολοίπου</button></div></div>
+ <div class="pn" style="width:330px"><h3>Ίδιο ΤΠΥ σε άλλον πελάτη</h3><small>Το 10447 είναι ήδη στη Danubia Market Kft., Βέροια → Wien.</small><div class="pf"><span class="sp"></span><button class="pill">Άκυρο</button><button class="pill b">Γράψε το</button></div></div>
+</div>`;
+
+/* ---------- Εβδομάδα ---------- */
+const tp=x=>x==='c'?`<span class="t" title="Προς κοπή"><i class="dot"></i></span>`:`<span class="t tpy num">${x}</span>`;
+const leg=(r,c,t,a,x='')=>r?`${two(r,c)}${t==='n'?'<span></span>':tp(t)}${t==='n'?`<span class="t np" style="font-size:12.5px;white-space:nowrap">χωρίς τιμή<sup class="fx">†</sup></span>`:`<span class="n num ${x==='g'?'g':''}">${eu(a)}${x==='g'?'<sup class="fx">*</sup>':''}</span>`}`:`<span class="none">${c}</span>`;
+const wrow=([n,e,veh,sum,i,cls=''])=>`<div class="wr ${cls}"><span class="no num">${n}</span>${leg(...e)}<div class="as"><span class="tile ${veh[2]||''}">${ic(veh[2]==='p'?'users':'truck')}</span><div class="two"><b class="num">${veh[0]}</b><span><span>${veh[1]}</span><span class="sp"></span><span class="num" style="color:var(--ink);font-weight:600">${sum}</span></span></div></div>${leg(...i)}</div>`;
+const WD=[['Σάββατο 7/11',[
+  [1,['Βέροια → Innsbruck','Tirol Obst GmbH · TO-4460','10431',3800],['ΚΗΙ 3310','Θ. Μέλλιος'],'6.800',['Modena → Νάουσα','Αγροτικός Συν. Νάουσας','c',3000]],
+  [2,['Σκύδρα → Zürich','Alpen Frucht AG · AF-52','10433',3900],['ΚΗΙ 2208','Π. Ράπτης'],'6.500',['Poznań → Ασπρόπυργος','Baltic Cold Foods · BC-9','10436',2600]]]],
+ ['Δευτέρα 9/11',[
+  [3,['Βέροια → Wien','Danubia Market Kft. · DM-110','c',2700],['Transfrigo Kft.','RKA 512','p'],'2.700',[0,'Κενό γύρισμα']],
+  [4,['Μεσσήνη → Hamburg','Nordfrisch GmbH · NF-70','n',0],['ΚΗΙ 5102','Σ. Κάππος'],'2.800<sup class="fx">†</sup>',['Hamburg → Ασπρόπυργος','Nordfrisch GmbH · NF-71','c',2800]]]],
+ ['Τετάρτη 11/11',[
+  [5,['Βέροια → Innsbruck','Tirol Obst GmbH · TO-4466','c',3800],['ΚΗΙ 7310','Δ. Μάνος'],'3.800',[0,'Χωρίς εισαγωγή'],'ed'],
+  [6,['Νάουσα → Wien','Danubia Market Kft. · DM-112','10440',2900],['ΚΗΙ 4521','Γ. Αλεξίου'],'2.900<sup class="fx">*</sup>',['München → Βέροια','Φρουτοπία Νάουσας · εβδ. 14/11','c',2900,'g']]]]];
+const WN=[['Δευτέρα 9/11',[[1,['Βέροια → Ασπρόπυργος','Doukas Trans','10438',450],['ΚΗΙ 0138','Θ. Ράλλης'],'900',['Τρίπολη → Βέροια','Ανδρέου Logistics','c',450]]]],
+ ['Τρίτη 10/11',[[2,['Βέροια → Λαμία','Olympos Fresh','10439',400],['ΚΗΙ 8600','Λ. Δήμου'],'900',['Σπάρτη → Βέροια','Lakonia Valley','c',500]]]]];
+const whead=(a,b)=>`<div class="wh lbl"><span></span><span>${a}</span><span class="n">ΤΠΥ</span><span class="n">Ποσό €</span><span>Όχημα · σύνολο</span><span>${b}</span><span class="n">ΤΠΥ</span><span class="n">Ποσό €</span></div>`;
+const wday=([d,rows])=>`<div class="day"><h3>${d}</h3>${rows.map(r=>wrow(r)+(r[5]==='ed'?`<div class="wr" style="min-height:0"><span></span><div class="wed"><div class="inp focus" style="width:120px"><span style="color:var(--ph)">ΤΠΥ</span></div><div class="inp" style="width:104px">16/11/2026</div><span class="cb" style="margin:0 6px"><i></i>Αυτοπαράδοση</span><button class="pill sm b">Καταχώριση</button></div></div>`:'')).join('')}</div>`;
+$('fW').innerHTML=`<div class="app">${side('o')}<main class="main">
+ ${hub('w','Εβδομάδα 7 – 13 Νοεμβρίου',btn('file-spreadsheet','CSV')+btn('printer','Εκτύπωση'))}
+ <div class="card" style="border-radius:24px;flex:none">${tabs('w','<span class="seg sm" style="margin:10px 0"><b class="on">Ανά ημέρα</b><b>Ανά όχημα</b></span>')}
+  ${wks(2,0,0).replace('border-bottom:1px solid var(--line);','')}
+  <div class="xtop" style="border-top:1px solid var(--line);border-bottom:0"><b class="num">27.300,00 €</b>
+   <span class="lg2"><span><i style="background:var(--ink)"></i>Τιμολογημένα <b class="num">14.050</b></span><span><i style="background:#C4C7CE"></i>Προς κοπή <b class="num">13.250</b> · 6</span><span><i style="box-shadow:inset 0 0 0 1px var(--red)"></i>Χωρίς τιμή <b>1</b></span><span>${ic('clock')}παλαιότερη <b>9 ημέρες</b></span></span>
+   <span class="stack"><i class="f" style="flex:14050"></i><i class="o" style="flex:13250"></i><i class="x" style="flex:1400"></i></span></div></div>
+ <div style="display:flex;align-items:baseline;gap:10px;margin:22px 4px 0;flex:none"><h3 style="font-size:17px;font-weight:600;color:var(--ink)">Διεθνείς</h3><span style="color:var(--help);font-size:13px">6 δρομολόγια</span></div>
+ ${whead('Εξαγωγή','Εισαγωγή')}${WD.map(wday).join('')}
+ <div style="display:flex;align-items:baseline;gap:10px;margin:22px 4px 0;flex:none"><h3 style="font-size:17px;font-weight:600;color:var(--ink)">Εθνικές</h3><span style="color:var(--help);font-size:13px">2 φορτηγά</span></div>
+ ${whead('Κάθοδος','Άνοδος')}${WN.map(wday).join('')}
+ <div class="card" style="border-radius:var(--r-card);padding:18px 22px;margin-top:14px;flex:none"><table class="stt num"><tr><th>Κατάσταση εβδομάδας</th><th>Τζίρος €</th><th>Τιμολογημένα €</th><th>Ατιμολόγητα €</th></tr>
+  <tr><td>Διεθνή</td><td>25.500,00</td><td>13.200,00</td><td>12.300,00</td></tr><tr><td>Εθνικά</td><td>1.800,00</td><td>850,00</td><td>950,00</td></tr><tr class="s"><td>Σύνολο <span style="font-weight:400;color:var(--help);margin-left:10px">+6% από 31/10 – 6/11</span></td><td>27.300,00</td><td>14.050,00</td><td>13.250,00</td></tr></table>
+  <p class="note" style="display:flex;gap:18px"><span><sup class="fx">*</sup> μετρά σε άλλη εβδομάδα</span><span><sup class="fx">†</sup> χωρίς τιμή, δεν αθροίζεται</span></p></div>
+ <div style="height:24px;flex:none"></div></main></div>`;
+
+/* ---------- Χωρίς τιμή ---------- */
+const NG=[
+ ['Nordfrisch GmbH','DE000000003 · 30 ημέρες',[['Μεσσήνη → Hamburg','Δευ 9 – Παρ 13/11','ΚΗΙ 5102|Σ. Κάππος',33,'7','3.100,00',''],['Μεσσήνη → Hamburg','Δευ 2 – Παρ 6/11','ΚΗΙ 5102|Σ. Κάππος',33,'14','3.100,00','','r'],['Hamburg → Ασπρόπυργος','Τετ 11 – Σάβ 14/11','ΚΗΙ 2208|Π. Ράπτης',26,'5','2.800,00','']]],
+ ['Hellas Citrus','EL000000006 · 30 ημέρες',[['Άργος → Wien','Σάβ 14 – Τρί 17/11','',26,'2','–',''],['Άργος → München','Πέμ 12 – Δευ 16/11','ΚΗΙ 7310|Δ. Μάνος',33,'4','–','2.950,00','ok']]],
+ ['Kalamata Trofima','EL000000007 · 45 ημέρες',[['Καλαμάτα → Βέροια','Σάβ 14/11 · Άνοδος','Μεταφορική Ζήση|συνεργάτης|p',30,'2','480,00','']]]];
+const nrow=([r,s,veh,p,d,last,val,c=''])=>{const[a,b,k]=veh.split('|');return `<div class="nr ${c==='ok'?'ok':''}">${two(r,s)}<span></span>${veh?trk(a,b,k):need}<span class="n num">${p}</span><span class="n num ${c==='r'?'r':''}">${d} ημ.</span><span class="n num g">${last}</span><div class="inp num pp ${val?'':'ph'} ${d==='7'?'focus':''}">${val||'τιμή'}</div>${c==='ok'?`<span class="pp" style="color:var(--green);display:grid">${ic('check')}</span>`:`<button class="ibt" title="Άνοιγμα παραγγελίας">${ic('external-link')}</button>`}</div>`};
+$('fN').innerHTML=`<div class="app">${side('o')}<main class="main">
+ ${hub('n','Όλες οι εβδομάδες',btn('file-spreadsheet','CSV')+btn('printer','Εκτύπωση'))}
+ <div class="card" style="flex:1;min-height:0;border-radius:24px 24px 0 0;overflow:hidden">
+  ${tabs('n',`<div class="q">${ic('search')}Αναζήτηση</div>`)}
+  <div class="kpb"><b class="num">10</b><span>χωρίς τιμή · <b>5</b> πελάτες</span><span class="sp"></span><span>${ic('clock')} παλαιότερη <b style="color:var(--red)">14 ημέρες</b></span><span>${ic('check')} σήμερα <b>3</b></span></div>
+  <div class="nh lbl"><span>Παραγγελία</span><span></span><span>Ανάθεση</span><span class="n">Παλ.</span><span class="n">Περιμένει</span><span class="n">Τελευταία</span><span class="n">Τιμή €</span><span></span></div>
+  ${NG.map(([c,m,rows])=>`<div class="gh"><b>${c}</b><small>${m}</small></div>${rows.map(nrow).join('')}`).join('')}
+  <div class="gh" style="padding-top:26px"><b>Συμπληρώθηκαν σήμερα</b><small>3</small></div>
+  ${[['Olympos Export','Λάρισα → München · Παρ 13/11','3.400,00','Δημήτρης · 07:10'],['Olympos Export','Λάρισα → Wien · Τετ 11/11','3.000,00','Δημήτρης · 07:11'],['Baltic Cold Foods','Poznań → Ασπρόπυργος · Σάβ 14/11','2.600,00','Αλεξία · 07:30']].map(([c,r,p,w])=>`<div class="nr ok" style="height:46px;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) 120px 26px"><div class="two"><b>${c} <span style="font-weight:400;color:var(--help);margin-left:8px">${r}</span></b></div><span style="color:var(--help);font-size:13px">${w}</span><span class="n num pp">${p}</span><span class="pp" style="color:var(--green);display:grid">${ic('check')}</span></div>`).join('')}
+ </div></main></div>`;
+
+/* ---------- bad moments ---------- */
+const bp=(l,body)=>`<div class="panel"><p class="lbl">${l}</p>${body}</div>`;
+const em=(i,h,p='',b='')=>`<div style="padding:14px 0 4px"><div class="tile soft" style="width:36px;height:36px;border-radius:10px;margin:0 0 12px">${ic(i)}</div><h3>${h}</h3>${p?`<p style="color:var(--help)">${p}</p>`:''}${b}</div>`;
+const strip=(i,t,b,n)=>`<div class="strip ${n?'n':''}" style="margin-top:12px;align-items:flex-start">${ic(i)}<div>${t}${b?`<div style="display:flex;gap:8px;margin-top:10px">${b}</div>`:''}</div></div>`;
+const dk=(k,l,t,b)=>`<div class="dark" style="margin-top:12px"><p class="lbl"><i class="${k}"></i>${l}</p><p>${t}</p><div style="display:flex;gap:8px">${b}</div></div>`;
+$('bad').innerHTML=[
+ bp('Τίποτα προς κοπή',em('circle-check-big','Όλα τιμολογημένα αυτή την εβδομάδα','',`<button class="pill sm" style="margin-top:12px">Όλες οι ανοιχτές · 29</button>`)),
+ bp('Καμία χωρίς τιμή',em('circle-check-big','Καμία παραγγελία χωρίς τιμή')),
+ bp('Η εβδομάδα δεν διαβάστηκε',em('cloud-off','Η εβδομάδα δεν διαβάστηκε','',`<button class="pill sm" style="margin-top:12px">${ic('rotate-cw')}Ξαναδιάβασε</button>`)),
+ bp('Διαβάστηκε το μισό',strip('cloud-off','Οι εθνικές δεν διαβάστηκαν. Τα ποσά τους δείχνουν «–». Η εκτύπωση περιμένει.',`<button class="pill sm">${ic('rotate-cw')}Ξαναδιάβασε</button>`,1)),
+ bp('Ονόματα που φορτώνουν ακόμη',`<div style="margin-top:14px;display:grid;gap:10px"><div class="two"><b>…</b><span>Βέροια → Wien · Δευ 16/11</span></div><div class="two"><b>Tirol Obst GmbH</b><span>Βέροια → Innsbruck · Δευ 16/11</span></div></div>`),
+ bp('Δεν καταχωρήθηκε',dk('r','Δεν καταχωρήθηκε','Το ΤΠΥ 10447 της Tirol Obst GmbH, Βέροια → Innsbruck δεν γράφτηκε. Ο αριθμός μένει στο πεδίο.','<button class="pill b sm">Ξαναδοκίμασε</button>')),
+ bp('Ημερομηνία μετά από σήμερα',`<div style="margin-top:14px">${fld('Ημερομηνία <i class="nb show" data-t="Έως σήμερα, Δευτέρα 16/11.">!</i>','18/11/2026','miss')}</div><button class="pill b off" style="margin-top:14px">Καταχώριση</button>`),
+ bp('Η τιμή δεν γράφτηκε',dk('r','Η τιμή δεν γράφτηκε','Nordfrisch GmbH, Μεσσήνη → Hamburg, 3.100,00 €. Μένει χωρίς τιμή.','<button class="pill b sm">Ξαναδοκίμασε</button>')),
+ bp('Το άλλαξε κάποιος άλλος',strip('users','Η Tirol Obst GmbH, Βέροια → Innsbruck τιμολογήθηκε από άλλον: ΤΠΥ 10446.','<button class="pill sm">Επόμενη</button>',1)),
+ bp('Πολλά δρομολόγια',strip('triangle-alert','Βλέπεις τα πρώτα 500 δρομολόγια της εβδομάδας. Τα σύνολα δεν είναι πλήρη.','')),
+ bp('Χωρίς ημερομηνία',strip('calendar-off','3 παραγγελίες δεν έχουν ημέρα και δεν ανήκουν σε εβδομάδα.','<button class="pill sm">Δείξε τες</button>',1)),
+ bp('Μόνο ανάγνωση',`<div style="margin-top:12px"><span class="tag" style="margin:0;display:inline-flex;gap:5px;align-items:center;height:22px">${ic('eye')}Μόνο ανάγνωση</span></div><div class="ir" style="padding:0;margin-top:10px;grid-template-columns:minmax(0,1fr) 80px 104px">${two('Βέροια → Innsbruck','Δευ 16 – Παρ 20/11')}<span class="n num">3.800,00</span><span class="rdy">Προς κοπή</span></div>`)
+].join('');
+
+/* ---------- A4 ---------- */
+const ptop=(a,b)=>`<div class="top"><span class="logo full" role="img" aria-label="Petras Group"></span><span class="wk2">${a}<br>${b}</span></div>`;
+const foot=(w)=>`<div class="foot" style="margin-top:auto"><span>${w}</span><span>1 / 1</span></div>`;
+$('a4i').innerHTML=`${ptop('Εβδομάδα 14 – 20 Νοεμβρίου 2026','10 παραγγελίες · 5 πελάτες')}
+<div class="hero" style="grid-template-columns:1fr"><div><h2>Προς τιμολόγηση</h2><b class="t num">24.950,00 €</b></div></div>
+<div class="hr"><span>Διαδρομή · ημέρες · παλέτες</span><span>Αναφορά πελάτη</span><span>Ποσό €</span><span>ΤΠΥ</span></div>
+${IG.map(([c,m,rows])=>`<div class="gt"><span>${c}<small>${m}</small></span><span class="num">${eu(rows.reduce((a,x)=>a+x[3],0))}</span></div>${rows.map(([r,s,ref,p])=>`<div class="r"><span><b style="font-weight:500">${r}</b><i>${s}</i></span><span>${ref||'–'}</span><span>${eu(p)}</span><span><i class="bx" style="margin:0"></i></span></div>`).join('')}`).join('')}
+<div class="r psum" style="margin-top:8px"><span>Σύνολο<i>10 παραγγελίες</i></span><span></span><span>24.950,00</span><span></span></div>
+${foot('Ειρήνη · 16/11/2026 07:42')}`;
+const wl=(e)=>e[0]?`<span>${e[0]} <small>${e[1].split(' · ')[0]}</small></span><span class="n">${e[2]==='c'?'<span class="box">κοπή</span>':e[2]==='n'?'':e[2]}</span><span class="n">${e[2]==='n'?'<span class="box">τιμή</span>':eu(e[3])+(e[4]==='g'?'*':'')}</span>`:`<span style="color:#777">${e[1]}</span><span></span><span></span>`;
+const wpr=([n,e,veh,sum,i])=>`<div class="r"><span>${n}</span>${wl(e)}<span>${veh[0]}</span>${wl(i)}</div>`;
+$('a4w').innerHTML=`${ptop('7 – 13 Νοεμβρίου 2026','Διεθνείς και εθνικές')}
+<div class="hero"><div><h2>Εβδομάδα τιμολόγησης</h2><b class="t num">27.300,00 €</b></div>
+ <div><div class="mix"><i class="f" style="flex:14050"></i><i class="o" style="flex:13250"></i></div><div class="kv3 num"><span><i style="background:#111"></i>Τιμολογημένα</span><span>14.050,00</span><span><i style="background:#C8C8C8"></i>Προς κοπή · 6</span><span>13.250,00</span><span><i style="border:.5px solid #111;box-sizing:border-box"></i>Χωρίς τιμή</span><span>1</span></div></div></div>
+<p class="psec">Διεθνείς<em>6 δρομολόγια</em></p>
+<div class="hr"><span></span><span>Εξαγωγή</span><span>ΤΠΥ</span><span>Ποσό</span><span>Όχημα</span><span>Εισαγωγή</span><span>ΤΠΥ</span><span>Ποσό</span></div>
+${WD.map(([d,rows])=>`<div class="gt" style="font-size:9px;padding-top:7px">${d}</div>${rows.map(wpr).join('')}`).join('')}
+<p class="psec">Εθνικές<em>2 φορτηγά</em></p>
+<div class="hr"><span></span><span>Κάθοδος</span><span>ΤΠΥ</span><span>Ποσό</span><span>Όχημα</span><span>Άνοδος</span><span>ΤΠΥ</span><span>Ποσό</span></div>
+${WN.map(([d,rows])=>`<div class="gt" style="font-size:9px;padding-top:7px">${d}</div>${rows.map(wpr).join('')}`).join('')}
+<div style="margin-top:16px;display:grid;grid-template-columns:1fr repeat(3,84px);gap:3px 10px;font-variant-numeric:tabular-nums;text-align:right;border-top:1.5px solid #111;padding-top:8px">
+ <span></span><span style="font-size:7.5px;letter-spacing:.08em;text-transform:uppercase;color:#444">Τζίρος</span><span style="font-size:7.5px;letter-spacing:.08em;text-transform:uppercase;color:#444">Τιμολογημένα</span><span style="font-size:7.5px;letter-spacing:.08em;text-transform:uppercase;color:#444">Ατιμολόγητα</span>
+ <span style="text-align:left">Διεθνή</span><span>25.500,00</span><span>13.200,00</span><span>12.300,00</span><span style="text-align:left">Εθνικά</span><span>1.800,00</span><span>850,00</span><span>950,00</span>
+ <b style="text-align:left">Σύνολο</b><b>27.300,00</b><b>14.050,00</b><b>13.250,00</b></div>
+<div class="fn"><span>* μετρά σε άλλη εβδομάδα</span><span>Κουτί «τιμή»: χωρίς τιμή, δεν αθροίζεται</span></div>
+${foot('Ειρήνη · 16/11/2026 07:42')}`;
+$('a4n').innerHTML=`${ptop('16 Νοεμβρίου 2026','10 παραγγελίες · 5 πελάτες')}
+<div class="hero" style="grid-template-columns:1fr"><div><h2>Τιμές προς συμπλήρωση</h2></div></div>
+<div class="hr"><span>Διαδρομή · ημέρες</span><span>Όχημα</span><span>Παλ.</span><span>Ημ.</span><span>Τελευταία</span><span>Τιμή €</span></div>
+${NG.concat([['Olympos Export','EL000000008 · 30 ημέρες',[['Λάρισα → München','Παρ 13/11','Μεταφορική Ζήση',33,'3','3.400,00'],['Λάρισα → Wien','Τετ 11/11','ΚΗΙ 4445',30,'5','3.000,00']]],['Baltic Cold Foods','PL0000000009 · 30 ημέρες',[['Poznań → Ασπρόπυργος','Σάβ 14/11','ΚΗΙ 2208',30,'2','2.600,00']]]]).map(([c,m,rows])=>`<div class="gt"><span>${c}<small>${m}</small></span></div>${rows.map(([r,s,veh,p,d,last])=>`<div class="r"><span><b style="font-weight:500">${r}</b><i>${s}</i></span><span>${(veh||'').split('|')[0]||'–'}</span><span>${p}</span><span>${d}</span><span>${last}</span><span><i class="bx" style="margin:0"></i></span></div>`).join('')}`).join('')}
+<div style="margin-top:28px;display:grid;grid-template-columns:1fr 1fr;gap:40px;font-size:8.5px;color:#444"><span style="border-top:.8px solid #111;padding-top:4px">Συμπλήρωσε</span><span style="border-top:.8px solid #111;padding-top:4px">Ημερομηνία</span></div>
+${foot('Αλεξία · 16/11/2026 07:42')}`;
+boot();
+</script>
+</body>
+</html>
