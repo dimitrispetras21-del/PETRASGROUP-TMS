@@ -1006,7 +1006,7 @@ $('f3').innerHTML=ordersHTML(0)+`<div class="veil"></div><div class="sheet">
     <div style="display:flex;gap:10px;align-items:center"><button class="add" style="margin:0">${ic('plus')}Σημείο φόρτωσης</button><button class="add" style="margin:0">${ic('plus')}Σημείο παράδοσης</button><span class="sp" style="flex:1"></span><span class="cb"><i></i>Υψηλό ρίσκο</span><button class="tbtn" title="Εντολή του πελάτη για αυτή την παραγγελία">${ic('paperclip')}Εντολή πελάτη</button></div><div class="row" style="margin-top:14px">${fld('Σημειώσεις','<span style="color:var(--help)">Για τον οδηγό ή τη ράμπα</span>')}</div></div></div>
  </div>
  <div class="card sum" style="border-radius:16px;gap:0"><p class="lbl">Σειρά φόρτωσης</p>
-  <div class="sql">${sq(1,'Naoussa Fruit Pack','Τρί 17/11 · 08:00–12:00',20)}${sq(2,'Pella Peach Coop','Τρί 17/11',12)}</div>
+  <div class="sql">${sq(1,'Naoussa Fruit Pack <span style="font-weight:400;color:var(--help)">(Veroia Cross Dock)</span>','Τρί 17/11 · 08:00–12:00',20)}${sq(2,'Pella Peach Coop <span style="font-weight:400;color:var(--help)">(Veroia Cross Dock)</span>','Τρί 17/11',12)}</div>
   <p class="lbl">Σειρά παράδοσης</p>
   <div class="sql">${sq(1,'Tirol Obst Lager, Innsbruck','Παρ 20/11 · 06:00–10:00',20)}${sq(2,'Alpen Frische Hall','Παρ 20/11',12)}</div>
   <dl class="chkv" style="margin-bottom:16px"><dt>Παλέτες</dt><dd class="num">32 / 33</dd>
@@ -1023,7 +1023,7 @@ $('f6').innerHTML=ordersHTML(0)+`<div class="veil"></div><div class="sheet">
  <div class="fgrid wide"><div class="card" style="align-self:start;border-radius:16px">
   <div class="fsec"><h3>Παραγγελίες <span class="num" style="font-weight:500;color:var(--help);font-size:14px">3</span></h3>
    ${ol(1,'Bayern Frucht GmbH','Βέροια → München +1','Δευ 16/11',12,'2.500,00')}
-   ${ol(2,'Schwaben Obst','Νάουσα → Augsburg','Δευ 16/11',11,'2.300,00')}
+   ${ol(2,'Schwaben Obst <span style="font-weight:400;color:var(--help)">· +6°</span>','Νάουσα → Augsburg','Δευ 16/11',11,'2.300,00')}
    <div class="oe">${ol(3,'Donau Markt','Σκύδρα → Ulm','Τρί 17/11',10,'<span class="np">χωρίς τιμή</span>',1)}
     <div class="row g12"><div style="grid-column:span 4">${fld('Πελάτης',`${ic('building-2')}<b style="font-weight:600">Donau Markt</b>`)}</div><div style="grid-column:span 4">${fld('Αναφορά πελάτη','DM-48211')}</div><div style="grid-column:span 4"><label class="fld"><span>Τιμή, καθαρή <i class="nb a" data-t="Λείπει. Αποθηκεύεται και χωρίς τιμή· θα φανεί στο «Χωρίς τιμή».">!</i></span><div class="inp miss focus"></div></label></div></div>
     <div class="row g12"><div style="grid-column:span 3">${fld('Εμπόρευμα','Ροδάκινα')}</div><div style="grid-column:span 3">${fld('Θερμοκρασία',`${ic('thermometer')}+2°<span class="sp"></span><span class="cb" title="Η θερμοκρασία όπως στο CMR" style="font-size:12px;gap:5px"><i></i>CMR</span>`)}</div><label class="fld" style="grid-column:span 4"><span>Ψυκτικό <span title="Ίδιο για όλο το groupage" style="display:flex;color:var(--help)">${ic('link-2')}</span></span><div class="seg tight"><b class="on">Συνεχής</b><b>Start-Stop</b><b>Χωρίς</b></div></label><div style="grid-column:span 2">${fld('Βάρος','6.200 kg')}</div></div>
@@ -1039,7 +1039,7 @@ $('f6').innerHTML=ordersHTML(0)+`<div class="veil"></div><div class="sheet">
   <div class="sql">${sq(1,'Veria Fruit Pack','Bayern Frucht · Πέμ 12/11',12)}${sq(2,'Naoussa Agro','Schwaben Obst · Πέμ 12/11',11)}${sq(3,'Pella Peach Coop','Donau Markt · Πέμ 12/11',10)}</div>
   <p class="lbl">Σειρά παράδοσης</p>
   <div class="sql">${sq(1,'Bayern Frucht, München','Δευ 16/11 · 06:00–10:00',8)}${sq(2,'Schwaben Obst, Augsburg','Δευ 16/11',11)}${sq(3,'Bayern Frucht, Rosenheim','Δευ 16/11 · ως 18:00',4)}${sq(4,'Donau Markt Lager, Ulm','Τρί 17/11 · 07:00–11:00',10)}</div>
-  <dl class="chkv" style="margin-bottom:16px"><dt>Παλέτες</dt><dd class="num">33 / 33</dd><dt>Στον κατάλογο</dt><dd class="num">3 παραγγελίες</dd><dt>Αξία</dt><dd class="num">4.800,00 € <i class="nb a" data-t="Μία παραγγελία χωρίς τιμή δεν μετρά.">!</i></dd><dt>Παράδοση</dt><dd class="num">Δευ 16 – Τρί 17</dd><dt>Σημεία</dt><dd class="num">3 φόρτωσης · 4 παράδοσης</dd></dl>
+  <dl class="chkv" style="margin-bottom:16px"><dt>Παλέτες</dt><dd class="num">33 / 33</dd><dt>Στον κατάλογο</dt><dd class="num">3 παραγγελίες</dd><dt>Αξία</dt><dd class="num">4.800,00 € <i class="nb a" data-t="Μία παραγγελία χωρίς τιμή δεν μετρά.">!</i></dd><dt>Παράδοση</dt><dd class="num">Δευ 16 – Τρί 17</dd><dt>Σημεία</dt><dd class="num">3 φόρτωσης · 4 παράδοσης</dd><dt>Θερμοκρασία</dt><dd class="num">+2° · +6° <i class="nb a" data-t="Δύο θερμοκρασίες: χώρισμα μέσα στον θάλαμο.">!</i></dd></dl>
   <div><button class="pill b" style="width:100%;height:40px;justify-content:center">Αποθήκευση · 3 παραγγελίες</button></div>
  </div></div></div>`;
 // the two order lists can be dragged; numbers follow
