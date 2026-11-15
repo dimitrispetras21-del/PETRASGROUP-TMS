@@ -491,13 +491,13 @@ table.spec td b{color:var(--ink);font-weight:600}
 .vpop h5{margin-top:0}
 .lc .asb{background:none;padding:0}.lc .asb.need{padding:4px 12px}
 #f5>.app{zoom:.88;inset:0 auto auto 0;width:1636px;height:1023px}
-/* Weekly International, structure B (owner's choice 15/11): fixed columns; a load with many points gets one thin second line
-   with its whole route per day. Assignment as on yesterday's national board (icon tile + text). Today is ink, not blue. */
+/* Weekly International, structure B (owner's choice 15/11): each side is one route (leaf per day, its points beside it, arrow, deliveries). Assignment as on yesterday's national board (icon tile + text). Today is ink, not blue. */
 .lf.s:not(.t) b{font-size:12.5px;font-weight:600;color:var(--body)}
 .w9h,.w9row{display:grid;gap:0 14px;align-items:center;padding:0 20px 0 14px}.w9h{height:34px;margin-top:6px}
 .w9row{min-height:50px;position:relative;font-size:13.5px}.w9row+.w9row:not(.sub){border-top:1px solid #EEF0F2}.w9row.sub{min-height:0;margin-top:-8px;padding-bottom:8px}
 .w9no{color:var(--help);font-size:13px;text-align:center}
-.w9d{display:flex;align-items:center;gap:8px;min-width:0}.w9p{flex:1 1 0;min-width:0}
+.w9r,.w9d{display:flex;align-items:center;gap:8px;min-width:0}.w9ps{display:flex;gap:12px;min-width:0;flex:1}.w9p{flex:1 1 0;min-width:0}
+.w9m{flex:none;align-self:center;font-size:12px;font-weight:600;color:var(--body);background:var(--bg);border-radius:6px;padding:2px 6px}.w9a{flex:none;font-style:normal;color:#B5B8C0;font-size:15px}
 .w9p b,.w9as b,.w9v b{display:flex;align-items:center;font-size:14px;line-height:18px;color:var(--ink);white-space:nowrap;overflow:hidden}.w9p b,.w9v b{font-weight:500}.w9as b{font-weight:600}
 .w9p b .el,.w9v b .el{overflow:hidden;text-overflow:ellipsis}.w9p b .tag{flex:none}.w9p b .mo{flex:none;margin-left:5px;color:var(--help);font-weight:600;font-size:12.5px}
 .w9p span,.w9as .tx span,.w9v>span{display:block;font-size:12.5px;line-height:16px;color:var(--help);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -1061,7 +1061,9 @@ const lfMany=a=>a.length>1?`<div class="lns">${a.map(x=>lfLn(x[1],'',x[0],x[2],x
   ${vr(7,'<span class="vt2 num">ΚΗΙ 2140 +1<i>4 σημ.</i></span>',two('Imathia Kiwi Growers +1','Τρί 17 · Βέροια'),two('Wien Großgrünmarkt','Τετ 18 · Wien'),33,need)}
   ${vr(5,'<span class="vt2 r h num">ΚΗΙ 2140 · <em>λείπει 1</em></span>',lfMany([['Πέμ 12','Naoussa Peach Union +1','Νάουσα, Κοπανός'],['Παρ 13','Meliki Agro','Μελίκη']]),lfMany([['Δευ 16','Frischemarkt München +1','München, Augsburg',1],['Τρί 17','Stuttgart Großmarkt','Stuttgart']]),33,trk('ΚΗΙ 3310 · Ρ 7120','Θανάσης Μέλλιος'),pop)}</div>`;
 })();
-/* Weekly International, structure B, mounted in the weekly screen (#f5). One row = one truck trip. */
+/* Weekly International, the 'route' structure the owner chose (15/11), mounted in the weekly screen (#f5). One row = one truck trip.
+   Each side is one route: a leaf per day with that day's points beside it, an arrow, then the deliveries. At most three points are
+   drawn per side; the rest show as +N and open on hover. */
 (function(){
  const TODAY='Δευ 16',P=(n,c,d,p,t)=>({n,c,d,p,t});
  const leaf=d=>{const [w,n]=d.split(' ');return `<span class="lf s ${d===TODAY?'t':''}"><i>${lfUp(w)}</i><b>${n}</b></span>`};
@@ -1073,15 +1075,15 @@ const lfMany=a=>a.length>1?`<div class="lns">${a.map(x=>lfLn(x[1],'',x[0],x[2],x
   if(!OPEN)return `<span class="w9vm ${miss?'r':''}" title="${v.map(x=>x.n+' · '+(x.t||'χωρίς φορτηγό')).join(' | ')}">${ic('warehouse')}</span>`;
   return v.length===1?`<div class="w9v"><b><span class="el">${v[0].n}</span></b><span>${v[0].d} · ${v[0].t||'<em>χωρίς φορτηγό</em>'}</span></div>`
    :`<div class="w9v"><b><span class="el">${v.map(x=>x.n).join(' · ')}</span></b><span>+${v.length-1} · ${tr[0].split(' · ')[0]}${tr.length>1?` +${tr.length-1}`:''}${miss?` · <em>λείπει ${miss}</em>`:''}</span></div>`};
- const cell=a=>`<div class="w9d">${a[0].d?leaf(a[0].d):'<span style="width:32px;flex:none"></span>'}<div class="w9p"><b><span class="el">${a[0].n}</span>${a.length>1?`<span class="mo">+${a.length-1}</span>`:''}${tags(a[0].t||'')}</b><span>${a[0].c}</span></div></div>`;
- const route=x=>{const f=a=>byDay(a).map(([d,p])=>`<b>${d}</b> ${p.map(q=>q.c).filter((c,i,z)=>z.indexOf(c)===i).join(' · ')}`).join(' &nbsp; ');return `${f(x.L)} &nbsp;→&nbsp; ${f(x.D)}`};
- const multi=x=>x&&(x.L.length>1||x.D.length>1),E3='<span></span><span></span><span></span>';
+ const grp=a=>{const g=byDay(a);let cap=Math.max(3,g.length)-g.length;const sh=g.map(([d,p])=>{const k=Math.min(p.length-1,cap);cap-=k;return 1+k});
+  return g.map(([d,p],i)=>`<div class="w9d" style="flex:${sh[i]} 1 0">${d?leaf(d):'<span style="width:32px;flex:none"></span>'}<div class="w9ps">${p.slice(0,sh[i]).map(q=>`<div class="w9p"><b><span class="el">${q.n}</span>${tags(q.t||'')}</b><span>${q.c}${q.p?` · ${q.p}π`:''}</span></div>`).join('')}${p.length>sh[i]?`<span class="w9m">+${p.length-sh[i]}</span>`:''}</div></div>`).join('')};
+ const side=x=>`<div class="w9r">${grp(x.L)}<i class="w9a">→</i>${grp(x.D)}</div>${pal(x.pal)}`,E2='<span></span><span></span>';
  /* the two Veroia columns are side panels: closed by default (owner 15/11), a small mark stays on the rows that go through Veroia */
  let OPEN=false,G='';
- const grid=()=>{const v=OPEN?'176px':'30px';G=`28px ${v} minmax(0,1.1fr) minmax(0,1fr) 44px 184px minmax(0,1.1fr) minmax(0,1fr) 44px ${v} 22px`};
- const sub=(l,r)=>`<div class="w9row sub" style="grid-template-columns:${G}"><span></span><span></span><div class="w9l2" style="grid-column:span 2">${l||''}</div><span></span><span></span><div class="w9l2" style="grid-column:span 2">${r||''}</div><span></span><span></span><span></span></div>`;
- const row=r=>`<div class="w9row" style="grid-template-columns:${G}"><span class="w9no num">${r.no}</span>${vcell(r.vTo)}${r.ex?cell(r.ex.L)+cell(r.ex.D)+pal(r.ex.pal):E3}${asg(r.as)}${r.im?cell(r.im.L)+cell(r.im.D)+pal(r.im.pal):r.gap?`<div class="w9gap" style="grid-column:span 3">${ic('undo-2')}Κενό γύρισμα · ${r.gap}</div>`:E3}${vcell(r.vFrom)}<span></span></div>`
-  +(multi(r.ex)||multi(r.im)?sub(multi(r.ex)?route(r.ex):'',multi(r.im)?route(r.im):''):'')+(r.note?sub(r.note[0]&&ic('corner-down-right')+r.note[0],r.note[1]&&ic('corner-down-right')+r.note[1]):'');
+ const grid=()=>{const v=OPEN?'176px':'30px';G=`28px ${v} minmax(0,1fr) 44px 184px minmax(0,1fr) 44px ${v} 22px`};
+ const sub=(l,r)=>`<div class="w9row sub" style="grid-template-columns:${G}"><span></span><span></span><div class="w9l2">${l||''}</div><span></span><span></span><div class="w9l2">${r||''}</div><span></span><span></span><span></span></div>`;
+ const row=r=>`<div class="w9row" style="grid-template-columns:${G}"><span class="w9no num">${r.no}</span>${vcell(r.vTo)}${r.ex?side(r.ex):E2}${asg(r.as)}${r.im?side(r.im):r.gap?`<div class="w9gap" style="grid-column:span 2">${ic('undo-2')}Κενό γύρισμα · ${r.gap}</div>`:E2}${vcell(r.vFrom)}<span></span></div>`
+  +(r.note?sub(r.note[0]&&ic('corner-down-right')+r.note[0],r.note[1]&&ic('corner-down-right')+r.note[1]):'');
  const NV={n:'Naoussa Peach Union',c:'Νάουσα'};
  const WK=[
   ['Σάββατο 14/11','past',[
@@ -1110,7 +1112,7 @@ const lfMany=a=>a.length>1?`<div class="lns">${a.map(x=>lfLn(x[1],'',x[0],x[2],x
    {ex:{L:[P('Pella Peach Coop','Σκύδρα','Τρί 17')],D:[P('Nordic Fresh Hub','København','Πέμ 19')],pal:30},as:['x','ΚΗΙ 4521','→ Transfrigo · από Wien']}]],
   ['Παρασκευή 20/11','none',[]],
  ];
- const head=()=>`<div class="w9h lbl" style="grid-template-columns:${G}">${['',OPEN?`<a class="w9vh" title="Κλείσιμο">${ic('chevron-right')}Προς Βέροια</a>`:`<a class="w9vh" title="Προς Βέροια">${ic('chevron-left')}</a>`,'Εξαγωγή · φόρτωση','Παράδοση','Παλ.','Ανάθεση','Εισαγωγή · φόρτωση','Παράδοση','Παλ.',OPEN?`<a class="w9vh" title="Κλείσιμο">Από Βέροια${ic('chevron-left')}</a>`:`<a class="w9vh" title="Από Βέροια">${ic('chevron-right')}</a>`,''].map(c=>`<span ${c==='Παλ.'?'style="text-align:right"':''}>${c}</span>`).join('')}</div>`;
+ const head=()=>`<div class="w9h lbl" style="grid-template-columns:${G}">${['',OPEN?`<a class="w9vh" title="Κλείσιμο">${ic('chevron-right')}Προς Βέροια</a>`:`<a class="w9vh" title="Προς Βέροια">${ic('chevron-left')}</a>`,'Εξαγωγή · φόρτωση → παράδοση','Παλ.','Ανάθεση','Εισαγωγή · φόρτωση → παράδοση','Παλ.',OPEN?`<a class="w9vh" title="Κλείσιμο">Από Βέροια${ic('chevron-left')}</a>`:`<a class="w9vh" title="Από Βέροια">${ic('chevron-right')}</a>`,''].map(c=>`<span ${c==='Παλ.'?'style="text-align:right"':''}>${c}</span>`).join('')}</div>`;
  const bh=$('f5').querySelector('.bh'),old=bh.nextElementSibling,box=document.createElement('div');
  box.style.cssText='flex:1;min-height:0;overflow:hidden;padding:0 2px';
  const draw=()=>{let no=0;grid();box.innerHTML=head()+`<div style="margin-top:-10px">${WK.map(([t,c,rows])=>`<section class="day ${c}"><h3>${t}</h3>${rows.map(r=>row({...r,no:++no})).join('')}</section>`).join('')}</div>`;if(window.lucide)lucide.createIcons()};
