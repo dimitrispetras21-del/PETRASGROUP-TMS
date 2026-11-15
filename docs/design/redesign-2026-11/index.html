@@ -448,6 +448,17 @@ table.spec td b{color:var(--ink);font-weight:600}
 .qi{display:flex;align-items:center;gap:12px;padding:7px 0;border-top:1px solid var(--line)}.qi>span{flex:1;min-width:0}.qi b{display:block;font-weight:600;color:var(--ink);font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.qi small{display:block;color:var(--help);font-size:12.5px}
 .day.none{padding:1px 0}.day.none>h3{color:var(--help);font-weight:500;font-size:14px}
 .stop>b.gr{display:flex;align-items:center;justify-content:flex-end;gap:2px;cursor:grab}.stop>b.gr svg.lucide{width:13px;height:13px;color:#A9ABB3}
+.fgrid.wide{grid-template-columns:minmax(0,1fr) 340px}
+.oe .stop::before,.oe .stop::after{display:none}
+.onum{width:22px;height:22px;border-radius:7px;background:var(--ink);color:#fff;font-size:12px;font-weight:600;display:grid;place-items:center;font-style:normal;flex:none}
+.ol{display:grid;grid-template-columns:22px minmax(0,1.15fr) minmax(0,1.3fr) 70px 56px 86px 18px 18px;gap:0 12px;align-items:center;height:48px;border-radius:14px;background:var(--bg);padding:0 12px;margin-bottom:8px;cursor:pointer}
+.ol b{font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ol>span{color:var(--body);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13.5px}.ol .n{text-align:right}.ol svg.lucide{width:15px;height:15px;color:var(--help)}
+.oe{border-radius:16px;box-shadow:inset 0 0 0 1.5px var(--accent);padding:0 14px 14px;margin-bottom:8px}.oe>.ol{background:none;padding:0;margin:0;height:52px}
+.oe .row{margin-top:12px}.oe .row:first-of-type{margin-top:2px}.oe .shead{margin-top:14px}
+.sql{margin:6px 0 16px}.sq{display:grid;grid-template-columns:14px 22px minmax(0,1fr) 30px;gap:0 9px;align-items:center;height:46px;border-top:1px solid var(--line);background:#fff;cursor:grab;touch-action:none;user-select:none}
+.sq:first-child{border-top:0}.sq svg.lucide{width:14px;height:14px;color:#A9ABB3}.sq b{display:block;font-weight:600;color:var(--ink);font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sq small{display:block;color:var(--help);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sq>.num{text-align:right;font-weight:500;color:var(--ink);font-size:13.5px}.sq .onum{background:var(--bg);color:var(--ink)}
+.sq.drag{box-shadow:var(--shadow-float);border-radius:10px;border-top-color:transparent;position:relative;z-index:2;cursor:grabbing;padding:0 8px;margin:0 -8px}.sq.drag+.sq{border-top-color:transparent}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;transition-delay:0ms!important}
   .oc,.toast{transform:none}}
 @media print{.toc,.doc>header p{display:none}body{background:#fff}}
@@ -714,6 +725,8 @@ table.spec td b{color:var(--ink);font-weight:600}
   <h2>Νέα διεθνής παραγγελία</h2>
   <p class="lead">Όποιος καταχωρεί, πολλές φορές την ημέρα. Έχει κάθε πεδίο της σημερινής φόρμας. Η ανταλλαγή παλετών ορίζεται για όλη την παραγγελία και ακολουθεί κάθε σημείο φόρτωσης και παράδοσης, με δικό της αριθμό όπου διαφέρει.</p>
   <div class="fit"><div class="frame tall" id="f3"></div></div>
+  <div class="cap"><h3>Ομαδικό φορτίο από την ίδια φόρμα</h3><span>πρόταση 15/11 · όπως στο Εθνικών: οι παραγγελίες γράφονται η μία κάτω από την άλλη και αποθηκεύονται χωριστά · δεξιά, η σειρά φόρτωσης και η σειρά παράδοσης σέρνονται</span></div>
+  <div class="fit"><div class="frame long" id="f6"></div></div>
 </section>
 
 <section class="sec" id="s4">
@@ -936,7 +949,7 @@ const stop=(kind,name,sub,day,hrs,pal,ex,vs,rm,last)=>`<div class="stop ${last?'
  ${vs===null?'<span></span>':`<span class="cb ${vs?'on':''}" title="Μέσω Βέροιας"><i>${vs?ic('check'):''}</i></span>`}${rm?`<button class="rm" title="Αφαίρεση σημείου">${ic('x')}</button>`:'<span></span>'}</div>`;
 const shead=(t,vs,extra='')=>`<div class="shead lbl"><span style="grid-column:span 2;color:var(--ink);font-weight:600;letter-spacing:0;text-transform:none;font-size:13px">${t}</span><span>Ημέρα</span><span>Ώρες</span><span>Παλ.</span><span>Ανταλλαγή</span><span>${vs?'Βέροια':''}</span><span></span>${extra}</div>`;
 $('f3').innerHTML=ordersHTML(0)+`<div class="veil"></div><div class="sheet">
- <div class="hd"><h1>Νέα διεθνής παραγγελία</h1><span class="sp"></span><button class="pill">${ic('scan-line')}Σάρωση εντολής πελάτη</button><button class="cl" style="width:40px;height:40px" title="Επισύναψη εντολής πελάτη">${ic('paperclip')}</button><button class="cl" style="width:40px;height:40px" aria-label="Κλείσιμο">${ic('x')}</button></div>
+ <div class="hd"><h1>Νέα διεθνής παραγγελία</h1><span class="seg" style="margin-left:18px"><b class="on">Απλό φορτίο</b><b>Ομαδικό φορτίο</b></span><span class="sp"></span><button class="pill">${ic('scan-line')}Σάρωση εντολής πελάτη</button><button class="cl" style="width:40px;height:40px" title="Επισύναψη εντολής πελάτη">${ic('paperclip')}</button><button class="cl" style="width:40px;height:40px" aria-label="Κλείσιμο">${ic('x')}</button></div>
  <div class="fgrid"><div class="card" style="align-self:start;border-radius:16px">
   <div class="fsec"><h3>Ποιος και τι</h3>
    <div class="row g12"><div style="grid-column:span 4"><label class="fld"><span>Κατεύθυνση</span><div class="seg"><b class="on">Εξαγωγή</b><b>Εισαγωγή</b></div></label></div><div style="grid-column:span 4">${fld('Πελάτης',`${ic('building-2')}<b style="font-weight:600">Tirol Obst GmbH</b><span class="sp"></span><span title="Συμπληρώθηκε από την τελευταία παραγγελία του πελάτη. Πάτησε για αναίρεση." style="display:flex">${ic('history')}</span>`)}</div><div style="grid-column:span 4">${fld('Αναφορά πελάτη','6100120417')}</div></div>
@@ -962,6 +975,40 @@ $('f3').innerHTML=ordersHTML(0)+`<div class="veil"></div><div class="sheet">
   <p style="font-size:13px;color:var(--help);line-height:1.6">→ Εβδομαδιαίο Διεθνών, 14 – 20/11<br>→ Εβδομαδιαίο Εθνικών, 2 φορτώσεις</p>
   <div><button class="pill b" style="width:100%;height:40px;justify-content:center" onclick="fSave()">Αποθήκευση</button><p class="hint" style="text-align:center;margin-top:8px">Ctrl + Enter · <a>Αποθήκευση και νέα</a></p></div>
  </div></div></div>`;
+
+/* ---------- screen 3b: a group load entered from the same form (owner 15/11). As on the national form: one order under the other, saved as separate orders, no joining step. New here: the loading order and the delivery order are two lists that can be dragged, because they are often different. ---------- */
+const ol=(n,c,r,d,p,pr,open)=>`<div class="ol"><i class="onum">${n}</i><b>${c}</b><span>${r}</span><span class="num">${d}</span><span class="n num">${p} παλ.</span><span class="n num">${pr}</span>${ic(open?'chevron-up':'chevron-down')}${ic('x')}</div>`;
+const sq=(n,pl,sub,p)=>`<div class="sq">${ic('grip-vertical')}<i class="onum">${n}</i><span><b>${pl}</b><small>${sub}</small></span><span class="num">${p}</span></div>`;
+$('f6').innerHTML=ordersHTML(0)+`<div class="veil"></div><div class="sheet">
+ <div class="hd"><h1>Νέα διεθνής παραγγελία</h1><span class="seg" style="margin-left:18px"><b>Απλό φορτίο</b><b class="on">Ομαδικό φορτίο</b></span><span class="sp"></span><button class="pill">${ic('scan-line')}Σάρωση εντολής πελάτη</button><button class="cl" style="width:40px;height:40px" title="Επισύναψη εντολής πελάτη">${ic('paperclip')}</button><button class="cl" style="width:40px;height:40px" aria-label="Κλείσιμο">${ic('x')}</button></div>
+ <div class="fgrid wide"><div class="card" style="align-self:start;border-radius:16px">
+  <div class="fsec"><h3>Το φορτίο</h3>
+   <div class="row g12"><div style="grid-column:span 4"><label class="fld"><span>Κατεύθυνση</span><div class="seg"><b class="on">Εξαγωγή</b><b>Εισαγωγή</b></div></label></div><label class="fld" style="grid-column:span 4"><span>Ψυκτικό</span><div class="seg tight"><b class="on">Συνεχής</b><b>Start-Stop</b><b>Χωρίς</b></div></label><div style="grid-column:span 4">${fld('Φορτηγό',`<span style="color:var(--help)">Προς ανάθεση</span><span class="sp"></span>${ic('chevron-down')}`)}</div></div></div>
+  <div class="fsec"><h3>Παραγγελίες <span class="num" style="font-weight:500;color:var(--help);font-size:14px">3</span></h3>
+   ${ol(1,'Bayern Frucht GmbH','Βέροια → München','Δευ 16/11',12,'2.500,00')}
+   ${ol(2,'Schwaben Obst','Νάουσα → Augsburg','Δευ 16/11',11,'2.300,00')}
+   <div class="oe">${ol(3,'Donau Markt','Σκύδρα → Ulm','Τρί 17/11',10,'<span class="np">χωρίς τιμή</span>',1)}
+    <div class="row g12"><div style="grid-column:span 4">${fld('Πελάτης',`${ic('building-2')}<b style="font-weight:600">Donau Markt</b>`)}</div><div style="grid-column:span 4">${fld('Αναφορά πελάτη','DM-48211')}</div><div style="grid-column:span 4"><label class="fld"><span>Τιμή, καθαρή <i class="nb a" data-t="Λείπει. Αποθηκεύεται και χωρίς τιμή· θα φανεί στο «Χωρίς τιμή».">!</i></span><div class="inp miss focus"></div></label></div></div>
+    <div class="row g12"><div style="grid-column:span 4">${fld('Εμπόρευμα','Ροδάκινα')}</div><div style="grid-column:span 2">${fld('Θερμοκρασία',`${ic('thermometer')}+2°`)}</div><div style="grid-column:span 2">${fld('Βάρος','6.200 kg')}</div><label class="fld" style="grid-column:span 4"><span>Ανταλλαγή παλετών</span><div class="seg"><b class="on">Ναι</b><b>Όχι</b></div></label></div>
+    ${shead('Φόρτωση',1)}
+    ${stop('1','Pella Peach Coop','Σκύδρα','Πέμ 12/11','','10',10,false,0,1)}
+    ${shead('Παράδοση',0)}
+    ${stop('1','Donau Markt Lager','Ulm','Τρί 17/11','07:00–11:00','10',10,null,0,1)}
+    <div style="display:flex;gap:10px"><button class="add" style="margin:0">${ic('plus')}Σημείο φόρτωσης</button><button class="add" style="margin:0">${ic('plus')}Σημείο παράδοσης</button></div></div>
+   <button class="add" style="margin-top:6px">${ic('plus')}Παραγγελία</button></div>
+ </div>
+ <div class="card sum" style="border-radius:16px;gap:0"><p class="lbl">Σειρά φόρτωσης</p>
+  <div class="sql">${sq(1,'Veria Fruit Pack','Bayern Frucht · Πέμ 12/11',12)}${sq(2,'Naoussa Agro','Schwaben Obst · Πέμ 12/11',11)}${sq(3,'Pella Peach Coop','Donau Markt · Πέμ 12/11',10)}</div>
+  <p class="lbl">Σειρά παράδοσης</p>
+  <div class="sql">${sq(1,'Bayern Frucht, München','Δευ 16/11 · 06:00–10:00',12)}${sq(2,'Donau Markt Lager, Ulm','Τρί 17/11 · 07:00–11:00',10)}${sq(3,'Schwaben Obst, Augsburg','Δευ 16/11',11)}</div>
+  <dl class="chkv" style="margin-bottom:16px"><dt>Παλέτες</dt><dd class="num">33 / 33</dd><dt>Στον κατάλογο</dt><dd class="num">3 παραγγελίες</dd><dt>Αξία</dt><dd class="num">4.800,00 € <i class="nb a" data-t="Μία παραγγελία χωρίς τιμή δεν μετρά.">!</i></dd><dt>Παράδοση</dt><dd class="num">Δευ 16 – Τρί 17 <i class="nb a" data-t="Η σειρά παράδοσης βάζει το Ulm της Τρίτης πριν από το Augsburg της Δευτέρας.">!</i></dd></dl>
+  <div><button class="pill b" style="width:100%;height:40px;justify-content:center">Αποθήκευση · 3 παραγγελίες</button></div>
+ </div></div></div>`;
+// the two order lists can be dragged; numbers follow
+document.querySelectorAll('#f6 .sql').forEach(list=>{list.addEventListener('pointerdown',e=>{const it=e.target.closest('.sq');if(!it||e.button)return;e.preventDefault();it.classList.add('drag');
+ const ren=()=>list.querySelectorAll('.sq').forEach((x,i)=>x.querySelector('.onum').textContent=i+1);
+ const mv=ev=>{const sib=[...list.querySelectorAll('.sq:not(.drag)')].find(x=>{const r=x.getBoundingClientRect();return ev.clientY<r.top+r.height/2});if(sib!==it.nextElementSibling){list.insertBefore(it,sib||null);ren()}};
+ const up=()=>{it.classList.remove('drag');removeEventListener('pointermove',mv);removeEventListener('pointerup',up)};addEventListener('pointermove',mv);addEventListener('pointerup',up)})});
 
 /* ---------- screen 4: expenses (week 44, 24 to 30/10) ---------- */
 // categories: fuel, tolls, AdBlue, card fees, spedition, cash, fines, ferries, other
