@@ -2895,7 +2895,10 @@ async function submitIntlOrder(recId) {
       const dt    = document.getElementById('dt_l_'+i)?.value;
       const sid   = document.getElementById('sid_l_'+i)?.value || null;
       const ownRef = (document.getElementById('ref_l_'+i)?.value || '').trim();
-      if (locId) _formStops.push({ recordId: sid, stopNumber: ++_seqL, stopType: 'Loading', locationId: locId, pallets: parseFloat(pal) || 0, dateTime: dt || null, clientId: clientId || null, ref: ownRef || _stopRef || null, goods: _stopGoods || null, temp: _stopTemp ? parseFloat(_stopTemp) : null, ..._stopExtras('l', i, sid, parseFloat(pal) || 0) });
+      // a stored point left with no REF at all (its own erased, the order has none) is cleared, never left holding
+      // the old one: _stopObjToFields drops an empty ref, so it is named through refClear (the base gets null)
+      const lRef = ownRef || _stopRef || null;
+      if (locId) _formStops.push({ recordId: sid, stopNumber: ++_seqL, stopType: 'Loading', locationId: locId, pallets: parseFloat(pal) || 0, dateTime: dt || null, clientId: clientId || null, ref: lRef, ...(sid && !lRef ? { refClear: null } : {}), goods: _stopGoods || null, temp: _stopTemp ? parseFloat(_stopTemp) : null, ..._stopExtras('l', i, sid, parseFloat(pal) || 0) });
     }
     let _seqU = 0;
     for (let i = 1; i <= 10; i++) {
@@ -3212,7 +3215,7 @@ async function submitIntlOrder(recId) {
           loading_stops: (r.data?.loading_stops || []).map(s => ({
             location_name: s.location_name || s._locLabel || '',
             location_id: s._locId || s.location_id || null,
-            city: s.city, country: s.country, date: s.date, pallets: s.pallets,
+            city: s.city, country: s.country, date: s.date, pallets: s.pallets, ref: s.ref || s.reference || null,
           })),
           delivery_stops: (r.data?.delivery_stops || []).map(s => ({
             location_name: s.location_name || s._locLabel || '',
