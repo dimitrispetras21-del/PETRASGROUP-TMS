@@ -278,11 +278,23 @@ test('LSQ: a place the server did not keep is said, and logged; a failed read wr
   const r = seqWorld([st('s1', 'recL1', 'Loading', 1, 1), st('x1', 'recX1', 'Loading', 1, null)], { readFails: true });
   await r.ctx._wiJoinLoadSeq([rec('recL1')], [rec('recX1')]);
   assert.deepStrictEqual(r.patches, []);
-  assert.match(r.toasts[0], /τα σημεία του δεν διαβάστηκαν/);
+  assert.match(r.toasts[0], /τα σημεία της δεν διαβάστηκαν/);
   const n = seqWorld([st('s1', 'recL1', 'Loading', 1, 1), st('x1', 'recX1', 'Loading', 1, null)]);
   delete n.ctx.IntlGroup;
   await n.ctx._wiJoinLoadSeq([rec('recL1')], [rec('recX1')]);
   assert.deepStrictEqual(n.patches, [], 'without the form (flag off) nothing is written');
+});
+
+test('LSQ: a load member whose points come back empty (a failed read) stops the write; a joiner groupage keeps its own order', async () => {
+  const w = seqWorld([st('s1', 'recL1', 'Loading', 1, 2), st('x1', 'recX1', 'Loading', 1, null)]);   // recL2: no stops read
+  await w.ctx._wiJoinLoadSeq(LOADRECS, [rec('recX1')]);
+  assert.deepStrictEqual(w.patches, [], 'never a place counted without a member');
+  assert.match(w.toasts[0], /τα σημεία της δεν διαβάστηκαν/);
+  const g = seqWorld([st('s1', 'recL1', 'Loading', 1, 1), st('s2', 'recL1', 'Unloading', 1, 1),
+    st('a1', 'recX1', 'Loading', 1, 1), st('a2', 'recX1', 'Loading', 2, 3), st('b1', 'recX2', 'Loading', 1, 2),
+    st('a3', 'recX1', 'Unloading', 1, null), st('b2', 'recX2', 'Unloading', 1, null)]);
+  await g.ctx._wiJoinLoadSeq([rec('recL1')], JOIN);
+  assert.deepStrictEqual(plain(g.patches), [['a1', 2], ['b1', 3], ['a2', 4], ['a3', 2], ['b2', 3]], 'A1, B1, A2 kept; deliveries without places by member');
 });
 
 test('LSQ: the join writes the places after its own read-back, before the ✓', () => {

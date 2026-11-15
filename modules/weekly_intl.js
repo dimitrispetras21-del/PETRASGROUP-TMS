@@ -6054,11 +6054,13 @@ async function _wiJoinReadLoad(seedId){
 async function _wiJoinLoadSeq(loadRecs,joinRecs){
   const usable=typeof IntlGroup!=='undefined'&&typeof IntlGroup.seqUsable==='function'?IntlGroup.seqUsable:null;
   if(!usable||!joinRecs.length) return;
-  const stopsOf=async recs=>{ const out=[]; for(const r of recs) out.push(...(await stopsLoad(r.id,F.STOP_PARENT_ORDER)).map(st=>({st,oid:r.id}))); return out; };
+  // stopsLoad answers [] when its read fails: an order always has points, so an empty list is a failed read here —
+  // counted without that member, the joiner could take a place it already holds.
+  const stopsOf=async recs=>{ const out=[]; for(const r of recs){ const st=await stopsLoad(r.id,F.STOP_PARENT_ORDER); if(!st.length) throw new Error('no stops read for '+r.id); out.push(...st.map(x=>({st:x,oid:r.id}))); } return out; };
   let have, mine;
   try{ have=await stopsOf(loadRecs); mine=await stopsOf(joinRecs); }
   catch(e){
-    showErrorToast('Η εισαγωγή μπήκε στο φορτίο, αλλά τα σημεία του δεν διαβάστηκαν — η θέση της στη σειρά δεν γράφτηκε· άνοιξε το groupage στη φόρμα','warn',12000);
+    showErrorToast('Η εισαγωγή μπήκε στο φορτίο, αλλά τα σημεία της δεν διαβάστηκαν — η θέση της στη σειρά δεν γράφτηκε· άνοιξε το groupage στη φόρμα','warn',12000);
     if(typeof logError==='function') logError(e,'weekly intl: join load seq read');
     return;
   }
@@ -6068,8 +6070,11 @@ async function _wiJoinLoadSeq(loadRecs,joinRecs){
     const vals=have.filter(x=>x.st.fields[F.STOP_TYPE]===type).map(x=>x.st.fields[F.STOP_LOAD_SEQ]);
     if(!usable(vals)) continue;
     let next=Math.max(...vals.map(Number));
-    const add=mine.filter(x=>x.st.fields[F.STOP_TYPE]===type)
-      .sort((a,b)=>rank(a.oid)-rank(b.oid)||(Number(a.st.fields[F.STOP_NUMBER])||0)-(Number(b.st.fields[F.STOP_NUMBER])||0));
+    // A joiner that is a groupage with usable places keeps its own order; else member order, then stop number.
+    const add=mine.filter(x=>x.st.fields[F.STOP_TYPE]===type);
+    const own=usable(add.map(x=>x.st.fields[F.STOP_LOAD_SEQ]));
+    add.sort(own?(a,b)=>Number(a.st.fields[F.STOP_LOAD_SEQ])-Number(b.st.fields[F.STOP_LOAD_SEQ])
+      :(a,b)=>rank(a.oid)-rank(b.oid)||(Number(a.st.fields[F.STOP_NUMBER])||0)-(Number(b.st.fields[F.STOP_NUMBER])||0));
     for(const x of add){
       const want=++next;
       try{
