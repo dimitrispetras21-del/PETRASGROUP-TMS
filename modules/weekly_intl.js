@@ -32,6 +32,10 @@
 
 const WINTL = {
   week:      _wiCurrentWeek(),
+  // The week-year WINTL.week counts in (C26, 15/11): without it the board read
+  // «W53» of whatever year today was, so after New Year a page left open showed
+  // December of the NEW year, and ±1 could not cross 53 → 2.
+  year:      TmsWeek.yearOf(new Date()),
   shelf:     [], // kept for compat, not used for display
   data:      { exports:[], imports:[], trucks:[], trailers:[], drivers:[], partners:[] },
   rows:      [],
@@ -109,8 +113,17 @@ function _wi2Quick(qk) { WINTL.quick = (WINTL.quick === qk) ? '' : qk; _wiApplyF
 // (_wiWeekNumOf, the old formula's only other user, is gone with it.)
 function _wiCurrentWeek(){ return TmsWeek.current(); }
 // Week start για εβδομάδα w — ΣΑΒΒΑΤΟ
-function _wiWeekStart(w){ return TmsWeek.start(w); }
-function _wiWeekRange(w){ return TmsWeek.rangeLabel(w); }
+function _wiWeekStart(w){ return TmsWeek.start(w, WINTL.year); }
+function _wiWeekRange(w){ return TmsWeek.rangeLabel(w, WINTL.year); }
+// A tab or a step may hold W54 / W0 for a moment (w counted in WINTL.year):
+// the number shown is the real one, and «today» is found by its days, never by
+// its number alone (W2 of 2027 is 54 counted in 2026).
+function _wiWeekLabel(w){ return TmsWeek.norm(w, WINTL.year).week; }
+function _wiTodayIdx(){ return TmsWeek.indexIn(new Date(), WINTL.year); }
+// Every week change (tabs, ‹ ›, ← →, a queue item) only sets a plain number;
+// the render turns it into the real week + year here, once, so every
+// comparison with TmsWeek.numOf(<date>) below keeps meaning what it did.
+function _wiNormWeek(){ const n=TmsWeek.norm(WINTL.week, WINTL.year); WINTL.week=n.week; WINTL.year=n.year; }
 const _WI_WD=['Κυρ','Δευ','Τρί','Τετ','Πέμ','Παρ','Σάβ'];
 function _wiFmt(s){
   if(!s) return '—';
@@ -620,6 +633,7 @@ function _wiLoadErrorHTML(why){
 }
 const WI_LOAD_WATCHDOG_MS=25000;
 async function renderWeeklyIntl(){
+  _wiNormWeek();
   WINTL._seq = 0;
   const loadId = ++_wiLoadId;
   if(can('planning')==='none'){document.getElementById('content').innerHTML=showAccessDenied();return;}
@@ -666,7 +680,12 @@ async function renderWeeklyIntl(){
     // Cross-week (feedback dispatcher 19/5): φόρτωσε imports ±1 εβδομάδα ώστε
     // export της W να ταιριάζει με import της W±1 — τα γειτονικά αδιάθετα
     // εμφανίζονται σε δική τους ενότητα στο τέλος, ΔΕΝ μετράνε στο tally.
-    const impFilter=`AND({Type}='International',{Direction}='Import',IS_AFTER({Loading DateTime},'${win.from}'),IS_BEFORE({Loading DateTime},'${win.to}'))`;
+    // C6 (15/11): an import moved here with «Μεταφορά εβδομάδας» (Plan Week
+    // Start = a Saturday in the window) is read whatever its loading day, the
+    // same clause «Παραγγελίες › Εβδομάδα» reads (ordersFormula). Moved twice,
+    // it used to sit outside every board's read while the toast said
+    // «Θα εμφανίζεται στην W…».
+    const impFilter=`AND({Type}='International',{Direction}='Import',OR(AND(IS_AFTER({Loading DateTime},'${win.from}'),IS_BEFORE({Loading DateTime},'${win.to}')),AND(IS_AFTER({Plan Week Start},'${win.from}'),IS_BEFORE({Plan Week Start},'${win.to}'))))`;
 
     let [,expOrders,impOrders] = await Promise.all([
       preloadReferenceData(),
@@ -936,17 +955,16 @@ function _wiRerenderOnClose() {
 function _wiPreorder() { if(_wiBlockReadOnly()) return; openPreorder(); }
 
 function _wk3Tabs(currentWeek) {
-  const today = _wiCurrentWeek();
+  const today = _wiTodayIdx();
   const step = d => `<button type="button" class="wk3-step" onclick="WINTL.week=${currentWeek+d};renderWeeklyIntl()" title="${d<0?'Προηγούμενη':'Επόμενη'} εβδομάδα">${d<0?'‹':'›'}</button>`;
-  const jump = d => `<button type="button" class="wk3-step" onclick="WINTL.week=${Math.min(53,Math.max(1,currentWeek+d))};renderWeeklyIntl()" title="${d<0?'−4 εβδομάδες':'+4 εβδομάδες'}">${d<0?'«':'»'}</button>`;
+  const jump = d => `<button type="button" class="wk3-step" onclick="WINTL.week=${currentWeek+d};renderWeeklyIntl()" title="${d<0?'−4 εβδομάδες':'+4 εβδομάδες'}">${d<0?'«':'»'}</button>`;
   let html = jump(-4)+step(-1);
   for (let w = currentWeek - 3; w <= currentWeek + 3; w++) {
-    if (w < 1 || w > 53) continue;
     const wS=_wiWeekStart(w), wE=new Date(wS); wE.setDate(wS.getDate()+6);
     const fmt=d=>String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1);
     // «far» = the two outermost weeks, first to fold when the one-row header
     // runs out of width (_WI2_CSS @container, owner 3/10).
-    html += `<button type="button" class="wk3-tab${w===currentWeek?' on':''}${Math.abs(w-currentWeek)===3?' far':''}" onclick="WINTL.week=${w};renderWeeklyIntl()" title="${fmt(wS)}–${fmt(wE)}">W${w}${w===today?' (Τρέχουσα)':''}</button>`;
+    html += `<button type="button" class="wk3-tab${w===currentWeek?' on':''}${Math.abs(w-currentWeek)===3?' far':''}" onclick="WINTL.week=${w};renderWeeklyIntl()" title="${fmt(wS)}–${fmt(wE)}">W${_wiWeekLabel(w)}${w===today?' (Τρέχουσα)':''}</button>`;
   }
   html += step(1)+jump(4);
   if (currentWeek !== today)
@@ -2880,6 +2898,9 @@ function _wiSdF(uid,q){
   const px=uid.split('_')[0];
   const norm=(px==='tk'||px==='tl')&&typeof _fhPlateNorm==='function'?_fhPlateNorm:(s=>String(s).toLowerCase());
   const ql=norm(q);
+  // C1.1 (15/11): emptying a popover box removes that pick — the hidden id used
+  // to stay, so a trailer or a driver could not be taken off by emptying it.
+  if(uid.includes('_p_')&&!String(q).trim()){ const v=document.getElementById('wsd-v-'+uid); if(v) v.value=''; }
   lst.querySelectorAll('.wi-sdo').forEach(el=>{
     el.style.display=norm(el.dataset.lbl||el.textContent).includes(ql)?'':'none';
   });
@@ -2891,18 +2912,49 @@ function _wiSdP(uid,recId,label){
   const parts=uid.split('_'),px=parts[0],rowId=parseInt(parts[parts.length-1]);
   const fm={tk:'truckId',   tl:'trailerId',   dr:'driverId',   pt:'partnerId'};
   const lm={tk:'truckLabel',tl:'trailerLabel',dr:'driverLabel',pt:'partnerLabel'};
+  // The assignment popover (uid «tk_p_7»): a pick stays IN the popover until
+  // «Αποθήκευση» (C1.2, 15/11). It used to write the row at once, so closing
+  // with ✕ left the board showing a truck the table never got, and a match
+  // dropped afterwards copied that unsaved truck onto the import.
+  // Own fleet and partner are two sides of one choice (the save sends the
+  // other side empty): a pick on one side empties the other (C1.1), else a
+  // truck picked on a partner row was saved as the partner again.
+  if(uid.includes('_p_')&&!isNaN(rowId)){
+    const clear=px==='pt'?['tk','tl','dr']:['pt'];
+    if(fm[px]) clear.forEach(c=>{
+      const u=`${c}_p_${rowId}`;
+      const hv=document.getElementById('wsd-v-'+u); if(hv) hv.value='';
+      const hi=document.querySelector(`#wsd-${u} .wi-sdi`); if(hi) hi.value='';
+    });
+    if(px==='tk'||px==='dr'||px==='pt') _wi2PopWarn(rowId);
+    return;
+  }
   if(fm[px]&&!isNaN(rowId)){
     _wiField(rowId,fm[px],recId);
     _wiField(rowId,lm[px],label);
     if(px==='tk'||px==='dr') _wi2PopWarn(rowId);
   }
 }
+// The popover's current picks (hidden id + shown label) over the saved row:
+// the same-day warning and the save read the popover, never a half-edited row.
+function _wiPopPicks(rowId){
+  const out={};
+  [['tk','truckId','truckLabel'],['tl','trailerId','trailerLabel'],['dr','driverId','driverLabel'],['pt','partnerId','partnerLabel']].forEach(([p,f,l])=>{
+    const uid=`${p}_p_${rowId}`;
+    const hv=document.getElementById(`wsd-v-${uid}`);
+    if(!hv) return;   // no such box on screen: the row's value stands
+    out[f]=hv.value||null;
+    out[l]=hv.value?(document.querySelector(`#wsd-${uid} .wi-sdi`)?.value||''):'';
+  });
+  return out;
+}
 // Inline same-day warning (frame 189:811): shown the moment a truck/driver is
 // picked — the save still asks for the T1 confirm; this only removes the surprise.
 function _wi2PopWarn(rowId){
-  const row=WINTL.rows.find(r=>r.id===rowId);
-  const el=document.getElementById('wi2-pop-warn-'+rowId); if(!row||!el) return;
-  const c=(row.truckId||row.driverId)?_wiSameDayConflict(row):null;
+  const row0=WINTL.rows.find(r=>r.id===rowId);
+  const el=document.getElementById('wi2-pop-warn-'+rowId); if(!row0||!el) return;
+  const row={...row0,..._wiPopPicks(rowId)};
+  const c=(!row.partnerId&&(row.truckId||row.driverId))?_wiSameDayConflict(row):null;
   el.classList.toggle('on',!!c);
   el.querySelector('span').textContent=c?c+' — η αποθήκευση θα ζητήσει επιβεβαίωση.':'';
 }
@@ -3766,7 +3818,19 @@ function _wiClosePopover(){
   document.removeEventListener('click',_wiPopoverOutside,{capture:true});
 }
 
+// The save copies the popover's picks into the row, then checks them (fee,
+// piece on a partner, same-day and executed-order confirms). A refusal or a
+// «Άκυρο» there writes nothing, so the row goes back to what the table holds
+// (C1.2, 15/11): before, it kept the picks and drew an assignment never saved.
 async function _wiSaveFromPopover(rowId){
+  const row=WINTL.rows.find(r=>r.id===rowId);
+  const keys=['truckId','truckLabel','trailerId','trailerLabel','driverId','driverLabel','partnerId','partnerLabel','partnerPlates','partnerRate','partnerRateImp'];
+  const prev=row?Object.fromEntries(keys.map(k=>[k,row[k]])):null;
+  const st={writing:false};
+  try{ return await _wiSaveFromPopoverRun(rowId,st); }
+  finally{ if(row&&!st.writing) Object.assign(row,prev); }
+}
+async function _wiSaveFromPopoverRun(rowId,st){
   if(_wiBlockReadOnly()) return; // defense in depth — the popover itself no longer opens for a view-only role
   const row=WINTL.rows.find(r=>r.id===rowId);
   if(!row){return;}
@@ -3776,7 +3840,10 @@ async function _wiSaveFromPopover(rowId){
     const val=document.getElementById(`wsd-v-${uid}`)?.value||'';
     const lbl=document.querySelector(`#wsd-${uid} .wi-sdi`)?.value||'';
     _tmsLog('syncPop',uid,'val=',val,'lbl=',lbl);
-    if(val){row[f]=val;row[l]=lbl;}
+    // An empty box is a choice too (C1.1): only a box that is not on screen
+    // leaves the row's value as it is.
+    if(!document.getElementById(`wsd-v-${uid}`)) return;
+    row[f]=val||null; row[l]=val?lbl:'';
   };
   syncPop('tk','truckId','truckLabel');
   syncPop('tl','trailerId','trailerLabel');
@@ -3846,6 +3913,7 @@ async function _wiSaveFromPopover(rowId){
   const btn=document.getElementById(`wi-pop-btn-${rowId}`);
   const spin=document.getElementById(`wi-pop-spin-${rowId}`);
   if(btn){btn.disabled=true;if(spin)spin.style.display='block';}
+  st.writing=true;   // from here the row says what is being written (T3 line)
   _wiSync('wi-sync-'+rowId,'pend','Αποθήκευση ανάθεσης…',oid0); // T3
   // Stamp Assigned At only on first assignment (preserve for accurate assignment-speed metric)
   const isFirstAssignment = !row.saved;
@@ -3875,7 +3943,9 @@ async function _wiSaveFromPopover(rowId){
       const pp=await _wiPlanPatch(orderId,expFields);
       const opt=orderId===row.orderIds[0]?_wiExpectOpt(orderId,['Truck','Trailer','Driver','Partner','Partner Truck Plates','Is Partner Trip']):undefined;
       const res=await atSafePatch(TABLES.ORDERS,orderId,pp,opt||_wiQuietOpt());
-      if(res?.conflict){ if(_wiV2Active()) return WIV2.conflict(res,{slot:'wi-sync-'+rowId,slotOid:oid0,orderId,kind:'assign',mine:expFields}); toast('Η εγγραφή άλλαξε από άλλον χρήστη — ανανέωση…','warn'); await renderWeeklyIntl(); return; }
+      // A 409 answers before anything is written (only the first order carries
+      // _expect): the row goes back to what the table holds (C1.2).
+      if(res?.conflict){ if(orderId===row.orderIds[0]) st.writing=false; if(_wiV2Active()) return WIV2.conflict(res,{slot:'wi-sync-'+rowId,slotOid:oid0,orderId,kind:'assign',mine:expFields}); toast('Η εγγραφή άλλαξε από άλλον χρήστη — ανανέωση…','warn'); await renderWeeklyIntl(); return; }
       if(res?.error) throw new Error(res.error.message||res.error.type||JSON.stringify(res.error));
       if(res?._offline&&_wiV2Active()){ asgOffline=true; continue; }
       if(opt){ expSent=true; expChecked=res?._expectChecked; }
@@ -3898,6 +3968,7 @@ async function _wiSaveFromPopover(rowId){
   // (review 11/10: the words came from the screen's assumption).
   const attempt=()=>({ids:asgIds,truck:isPartner?'':(row.truckId||''),partner:isPartner?(row.partnerId||''):'',failed:errors.length,offline:asgOffline});
   if(errors.length){
+    if(errors.length>=asgIds.length) st.writing=false;   // nothing landed: the row shows the table again (C1.2)
     if(btn){btn.disabled=false;if(spin)spin.style.display='none';}
     _wiSync('wi-sync-'+rowId,'err',_wiV2Active()?`Η ανάθεση ΔΕΝ γράφτηκε σε ${errors.length} από ${asgIds.length}`:'Η ανάθεση ΔΕΝ γράφτηκε στη βάση — ξαναπροσπάθησε',oid0); // T3: stays visible
     // v4 says it on the row (the line under it + the title-bar counter): no
@@ -6014,7 +6085,7 @@ function _wiPanelWeekShift(rowId){
   const row=WINTL.rows.find(r=>r.id===rowId); if(!row) return;
   const imp=WINTL.data.imports.find(r=>r.id===row.orderId); if(!imp) return;
   const natWeek=_wiWeekOf(imp.fields['Loading DateTime']);
-  const wPrev=WINTL.week-1, wNext=WINTL.week+1;
+  const wPrev=_wiWeekLabel(WINTL.week-1), wNext=_wiWeekLabel(WINTL.week+1);
   const loadTxt=imp.fields['Loading DateTime']?_wk3D(_wiFmt(imp.fields['Loading DateTime'])):'—';
   const body=`
     <div class="wi-panel-note">Πραγματική ημ. φόρτωσης: <b>${loadTxt}</b>${natWeek?` (φυσική εβδομάδα W${natWeek})`:''}</div>
@@ -6040,9 +6111,11 @@ async function _wiImpShift(rowId,days){
   const oid0=(row.orderIds&&row.orderIds[0])||row.orderId;   // the slot's order, at the start (P1, _wiSync)
   const imp=WINTL.data.imports.find(r=>r.id===row.orderId);if(!imp) return;
   const w=WINTL.week+(days>0?1:-1);
-  const natWeek=_wiWeekOf(imp.fields['Loading DateTime']);
-  const clearing=natWeek===w;
-  const targetPws=clearing?null:toLocalDate(_wiWeekStart(w));
+  // By the Saturday, not the number: across New Year w is 54 while the
+  // import's own week is W2 (C26) — moving it back to its own week clears.
+  const targetSat=toLocalDate(_wiWeekStart(w));
+  const clearing=TmsWeek.startOfDate(imp.fields['Loading DateTime'])===targetSat;
+  const targetPws=clearing?null:targetSat;
   _wiSync('wi-sync-'+rowId,'pend','Μεταφορά εβδομάδας…',oid0);
   try{
     const res=await atPatch(TABLES.ORDERS,imp.id,{'Plan Week Start':targetPws});
@@ -6058,7 +6131,7 @@ async function _wiImpShift(rowId,days){
       }
     }
     _wiSync('wi-sync-'+rowId,'ok','Η μεταφορά αποθηκεύτηκε',oid0);
-    toast(`Θα εμφανίζεται στην W${w} ✓`);
+    toast(`Θα εμφανίζεται στην W${_wiWeekLabel(w)} ✓`);
     renderWeeklyIntl();
   }catch(e){ _wiSync('wi-sync-'+rowId,'err','Η μεταφορά ΔΕΝ γράφτηκε στη βάση',oid0); reportError('Η μεταφορά απέτυχε',e); }
 }
@@ -8420,6 +8493,7 @@ window.WI_INTERNAL = Object.freeze({
   moreStops: _wk3MoreStops, css: _WI2_CSS,
   // Reading helpers (logic, no v1 markup)
   currentWeek: _wiCurrentWeek, weekStart: _wiWeekStart, weekRange: _wiWeekRange,
+  weekLabel: _wiWeekLabel, todayIdx: _wiTodayIdx,
   fmt: _wiFmt, raw: _wiRaw, clean: _wiClean, stFlags: _wk3StFlags, vsCd: _wk3VsCd,
   arr: _wk3Arr, locs: _wk3Locs, split: _wi2Split, flatLocName: _wiFlatLocName,
   placeStr: _wiPlaceStr, clientName: _wiClientName, grpOrder: _wiGrpOrder,

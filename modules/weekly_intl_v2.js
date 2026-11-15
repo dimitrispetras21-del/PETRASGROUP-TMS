@@ -1717,26 +1717,28 @@ function _updHTML() {
   return `<span class="wi4-upd" id="wi4-upd" title="Ενημερώθηκε στις ${_esc(hm)}">${_ico('refresh', 13)}<span class="wi4-upd-l">Ενημερώθηκε</span><span>${ago}</span></span>`;
 }
 function _tabsHTML(m) {
-  const I = W(), D = _D(), wk = D.week, cur = I.currentWeek();
-  const go = (w) => `WI_INTERNAL.WINTL.week=${Math.min(53, Math.max(1, w))};WI_INTERNAL.renderWeeklyIntl()`;
+  // cur = today's week counted in the board's year, so W53 → W2 of the next
+  // year is one step and December stays reachable in January (C26, 15/11): the
+  // number set here may be 54 or 0, the render turns it into the real week.
+  const I = W(), D = _D(), wk = D.week, cur = I.todayIdx();
+  const go = (w) => `WI_INTERNAL.WINTL.week=${w};WI_INTERNAL.renderWeeklyIntl()`;
   // Steppers as Figma 1097:2288/2307 draws them: 15px chevron icons (the ‹ ›
   // glyphs read as two faint specks, review 11/10).
   let h = `<button type="button" class="wi4-tab" onclick="${go(wk - 1)}" title="Προηγούμενη εβδομάδα" aria-label="Προηγούμενη εβδομάδα">${_ico('chevron_left', 15)}</button>`;
   for (let w = wk - 3; w <= wk + 3; w++) {
-    if (w < 1 || w > 53) continue;
     let badge = '';
     // W+1 badge = the queue's next-week items, the SAME number (§e #1).
     if (w === wk + 1 && wk === cur && _xw) {
       if (_xw.state === 'err') badge = '<span class="wi4-tab-b" title="Οι φορτώσεις της W+1 δεν φορτώθηκαν — δεν σημαίνει ότι δεν υπάρχουν">—</span>';
       // In flight: «…», never no badge — no badge read as zero (review 11/10).
       else if (_xw.state === 'loading') badge = '<span class="wi4-tab-b ld" title="Οι φορτώσεις της W+1 φορτώνουν">…</span>';
-      else if (_xw.state === 'ok' && m.xwCount) badge = `<span class="wi4-tab-b" title="${m.xwCount} φορτία της W${w} φορτώνουν ως αύριο">${m.xwCount}</span>`;
+      else if (_xw.state === 'ok' && m.xwCount) badge = `<span class="wi4-tab-b" title="${m.xwCount} φορτία της W${I.weekLabel(w)} φορτώνουν ως αύριο">${m.xwCount}</span>`;
     }
     // data-d: the distance from the week on screen — a narrow bar (1440) drops
     // W−3 and W+3 (‹ › still step), so the actions never cover the tabs.
     // The current week: a 5px blue disc 5px after «W41» (Figma 1097:2298) —
     // the «•» glyph drew a ~3px speck (r2/topbar-current-week-dot).
-    h += `<button type="button" class="wi4-tab${w === wk ? ' on' : ''}" data-d="${w - wk}" onclick="${go(w)}" title="${_esc(I.weekRange(w) || '')}">W${w}${w === cur ? '<span class="wi4-tab-cur" role="img" aria-label="τρέχουσα"></span>' : ''}${badge}</button>`;
+    h += `<button type="button" class="wi4-tab${w === wk ? ' on' : ''}" data-d="${w - wk}" onclick="${go(w)}" title="${_esc(I.weekRange(w) || '')}">W${I.weekLabel(w)}${w === cur ? '<span class="wi4-tab-cur" role="img" aria-label="τρέχουσα"></span>' : ''}${badge}</button>`;
   }
   h += `<button type="button" class="wi4-tab" onclick="${go(wk + 1)}" title="Επόμενη εβδομάδα" aria-label="Επόμενη εβδομάδα">${_ico('chevron_right', 15)}</button>`;
   // «Σήμερα» is not on the Figma tabs; kept because it is today's button.
