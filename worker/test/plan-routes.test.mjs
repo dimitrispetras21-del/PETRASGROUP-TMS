@@ -815,6 +815,39 @@ test('facade PATCH ORDER STOPS refused by a plan: rule (bridge stop, 071) → 42
   assert.ok(!('Via Hub' in r.json.fields), 'NULL is not a field');
 });
 
+test('113: «Load Seq» reaches order_stops.load_seq as written and is read back; a base without 113 is said by name (113_missing)', async () => {
+  const STOPS = '/v0/appTEST/tblaeY5QOHAS1gyE8';
+  on('GET', 'order_stops', (u) => (u.searchParams.get('select') === '*' ? json([{ id: 31, legacy_id: 'recSTOP1', pallets: 20, load_seq: 2 }]) : null));
+  on('PATCH', 'order_stops', (u, b) => {
+    if (b.load_seq === 0) return pgError(400, { code: '23514', hint: null, details: null, message: 'new row for relation "order_stops" violates check constraint "order_stops_load_seq_pos"' });
+    return json([{ id: 31, legacy_id: 'recSTOP1', pallets: 20, ...b }]);
+  });
+  for (const v of [3, null]) {
+    calls.length = 0;
+    const r = await call('dispatcher', 'PATCH', `${STOPS}/recSTOP1`, { fields: { 'Load Seq': v } });
+    assert.equal(r.status, 200, r.text);
+    const w = calls.find((c) => c.method === 'PATCH');
+    assert.ok(w, 'a PATCH reached the base');
+    assert.equal(w.body.load_seq, v, 'load_seq written as sent, never dropped with a 200');
+    if (v !== null) assert.equal(r.json.fields['Load Seq'], v, 'the answer carries it back');
+  }
+  let r = await call('dispatcher', 'GET', `${STOPS}/recSTOP1`);
+  assert.equal(r.status, 200, r.text);
+  assert.equal(r.json.fields['Load Seq'], 2, 'read back on a plain GET');
+  r = await call('dispatcher', 'PATCH', `${STOPS}/recSTOP1`, { fields: { 'Load Seq': 0 } });
+  assert.equal(r.status, 422, r.text);
+  assert.equal(r.json.error.message, 'Η σειρά σημείου στο groupage ξεκινά από 1');
+  // a Worker on a base without 113
+  routes.length = 0;
+  on('GET', 'order_stops', (u) => (u.searchParams.get('select') === '*' ? json([{ id: 31, legacy_id: 'recSTOP1', pallets: 20 }]) : null));
+  on('PATCH', 'order_stops', () => pgError(400, { code: 'PGRST204', hint: null, details: null, message: "Could not find the 'load_seq' column of 'order_stops' in the schema cache" }));
+  r = await call('dispatcher', 'PATCH', `${STOPS}/recSTOP1`, { fields: { 'Load Seq': 1 } });
+  assert.equal(r.status, 422, r.text);
+  assert.equal(r.json.error.code, '113_missing');
+  assert.match(r.json.error.message, /migration 113/);
+  assert.doesNotMatch(r.json.error.message, /rec[A-Za-z0-9]{5,}|RT-\d/);
+});
+
 // ───────────────────── K1 review r1: what a write's failure says ─────────────────────
 test('a write the DB answered with an unmapped SQLSTATE rolled back → 500 plan_failed «δεν ολοκληρώθηκε», never plan_unknown', async () => {
   // 22P02 / 23502 moved to the 422 bad_input test below (finding 5); a class-22 fault of 072 itself stays here (r2 finding 2);

@@ -1810,6 +1810,16 @@ var TABLES = {
       // before it the column is NOT NULL and the bridge overwrites the choice
       // (a write meeting a base without 111 is answered 422 111_missing).
       "Via Hub": "via_hub",
+      // 113 (owner 15/11/2026, the groupage entered from the order form: the order is kept «ανά σημείο», per point,
+      // not per order): the point's position inside its LOAD (all orders sharing one Group ID base), counted apart
+      // among the load's loading points and among its delivery points. NULL = today's rule (the Group ID order list,
+      // then Stop Number, then the date), so every old stop and every old screen keeps working unchanged.
+      // Deploy this Worker ONLY AFTER 113 ran. Before it nothing that exists today breaks (a read without fields[]
+      // selects *; no screen names the label yet), but a write naming «Load Seq» meets no column -> 422 113_missing,
+      // and a read asking for it by fields[] fails the whole read - so the front end that writes it ships last.
+      // Kept above the 111 hours: worker-guard-ifs.test.mjs rebuilds the 32e0ca75 shape from the text that closes
+      // this map.
+      "Load Seq": "load_seq",
       // 111 (owner 8/11: «μη υποχρεωτικό»): an optional window per stop, text
       // HH:MM (CHECK order_stops_time_*_fmt, as local_moves 060); empty = all
       // day, from > to = a night window. Without 111 the columns do not exist:
@@ -3623,6 +3633,8 @@ const PLAN_CHECK_TEXT = {
   plan_notices_read_pair: "Το «διαβάστηκε» γράφει ώρα και χρήστη μαζί",
   // order_stops / local_moves (071 additions on live tables)
   order_stops_via_hub_intl: "Το «μέσω Βέροιας» υπάρχει μόνο σε στάση διεθνούς παραγγελίας",
+  // 113: a point's position in its groupage
+  order_stops_load_seq_pos: "Η σειρά σημείου στο groupage ξεκινά από 1",
   // 111: the optional window of a stop
   order_stops_time_from_fmt: "Ώρα σε μορφή ΩΩ:ΛΛ (π.χ. 07:00)",
   order_stops_time_to_fmt: "Ώρα σε μορφή ΩΩ:ΛΛ (π.χ. 07:00)",
@@ -3722,6 +3734,11 @@ function stockRuleError(e) {
   // Tied to order_stops by name: LOCAL MOVES has time_from / time_to too, and its errors are not 111's.
   if (/order_stops/.test(message) && ((/^(PGRST204|42703)$/.test(code) && /time_from|time_to/.test(message)) || (code === "23502" && /"via_hub"/.test(message)))) {
     return { type: "SCHEMA_BEHIND", code: "111_missing", message: "Η βάση δεν έχει ακόμη το migration 111 (ώρες και «μέσω Βέροιας» ανά στάση) — ο Worker μπήκε πριν από το SQL· τίποτα δεν γράφτηκε, ενημέρωσε τον Δημήτρη (111_missing)" };
+  }
+  // 113 not run yet (or rolled back) under this Worker: order_stops.load_seq is unknown (PGRST204 / 42703). Said by
+  // name, never a bare 500 (principle 1); nothing was written (one insert / one PATCH = one statement).
+  if (/order_stops/.test(message) && /^(PGRST204|42703)$/.test(code) && /load_seq/.test(message)) {
+    return { type: "SCHEMA_BEHIND", code: "113_missing", message: "Η βάση δεν έχει ακόμη το migration 113 (σειρά σημείων στο groupage) — ο Worker μπήκε πριν από το SQL· τίποτα δεν γράφτηκε, ενημέρωσε τον Δημήτρη (113_missing)" };
   }
   if (code === "23514") {
     // 'stock:' (057) only under 23514, as 057's stock_raise sends it — a

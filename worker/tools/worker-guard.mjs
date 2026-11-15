@@ -5,7 +5,7 @@
 // the source, and the CF API returns the live script as multipart with a
 // random boundary per request — two downloads of the same version «differ».
 //
-// Usage:  node worker/tools/worker-guard.mjs <file> --plan 0|1|2 --handover 0|1 [--f3 0|1 [--f5 0|1 [--edit 0|1 [--invoiced 0|1 [--rate2 0|1 [--self 0|1 [--road 0|1 [--wchk 0|1 [--dkv 0|1 [--pnlp 0|1 [--pmiss 0|1 [--ifs 0|1 [--pnl 0|1 [--plain 0|1]]]]]]]]]]]]]]
+// Usage:  node worker/tools/worker-guard.mjs <file> --plan 0|1|2 --handover 0|1 [--f3 0|1 [--f5 0|1 [--edit 0|1 [--invoiced 0|1 [--rate2 0|1 [--self 0|1 [--road 0|1 [--wchk 0|1 [--dkv 0|1 [--pnlp 0|1 [--pmiss 0|1 [--ifs 0|1 [--pnl 0|1 [--plain 0|1 [--seq 0|1]]]]]]]]]]]]]]]
 //   <file>   worker/src/index.js, a `wrangler deploy --dry-run --outdir` bundle,
 //            or the raw CF API download (multipart is unwrapped here)
 //   --plan   the national v5 marker and its writes switch: 0 = before F2 is
@@ -81,16 +81,20 @@
 //            words and sends the DB detail apart - `async function planDetailWords(`, exactly once (the bracket
 //            «(${detail})» left the text with it). 0 = before that deploy, 1 = after it; 1 needs --pnl 1 (built on the
 //            #263 Worker, one chain). Without it: as before.
+//   --seq    optional, only after --plain (113, owner 15/11/2026: the order of points in a groupage is kept PER POINT):
+//            ORDER STOPS maps `"Load Seq": "load_seq"` - exactly once. 0 = before that deploy (3423cec5 and every
+//            Worker before it: the label is dropped with a 200), 1 = after it; 1 needs --plain 1 (built on 3423cec5,
+//            one chain). Deploy it ONLY after 113 ran. Without it: as before.
 // Prints one line per marker and exits 1 on the first STOP condition — no
 // partial «OK» (αρχή 1).
 import { readFileSync } from 'node:fs';
 
 const args = process.argv.slice(2);
-const [file, flag, planArg, hflag, handoverArg, f3Flag, f3Arg, f5Flag, f5Arg, editFlag, editArg, invFlag, invArg, r2Flag, r2Arg, sdFlag, sdArg, rdFlag, rdArg, wcFlag, wcArg, dkFlag, dkArg, ppFlag, ppArg, pmFlag, pmArg, ifFlag, ifArg, pnFlag, pnArg, plFlag, plArg] = args;
-// exactly these five, seven with --f3, nine with --f3 and --f5, eleven with --edit after them, thirteen with --invoiced, fifteen with --rate2, seventeen with --self, nineteen with --road, twenty-one with --wchk, twenty-three with --dkv, twenty-five with --pnlp, twenty-seven with --pmiss, twenty-nine with --ifs, thirty-one with --pnl, thirty-three with --plain: an extra flag (e.g. a later phase's before its guard
+const [file, flag, planArg, hflag, handoverArg, f3Flag, f3Arg, f5Flag, f5Arg, editFlag, editArg, invFlag, invArg, r2Flag, r2Arg, sdFlag, sdArg, rdFlag, rdArg, wcFlag, wcArg, dkFlag, dkArg, ppFlag, ppArg, pmFlag, pmArg, ifFlag, ifArg, pnFlag, pnArg, plFlag, plArg, sqFlag, sqArg] = args;
+// exactly these five, seven with --f3, nine with --f3 and --f5, eleven with --edit after them, thirteen with --invoiced, fifteen with --rate2, seventeen with --self, nineteen with --road, twenty-one with --wchk, twenty-three with --dkv, twenty-five with --pnlp, twenty-seven with --pmiss, twenty-nine with --ifs, thirty-one with --pnl, thirty-three with --plain, thirty-five with --seq: an extra flag (e.g. a later phase's before its guard
 // knows it) would be ignored and the tool would print OK without checking it - a usage error instead (code review
 // xhigh 26/10, principle 1)
-if (![5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33].includes(args.length) || !file || flag !== '--plan' || !['0', '1', '2'].includes(planArg) || hflag !== '--handover'
+if (![5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35].includes(args.length) || !file || flag !== '--plan' || !['0', '1', '2'].includes(planArg) || hflag !== '--handover'
     || !['0', '1'].includes(handoverArg) || (planArg === '0' && handoverArg === '1')
     || (args.length >= 7 && (f3Flag !== '--f3' || !['0', '1'].includes(f3Arg) || (f3Arg === '1' && handoverArg !== '1')))
     || (args.length >= 9 && (f5Flag !== '--f5' || !['0', '1'].includes(f5Arg) || (f5Arg === '1' && f3Arg !== '1')))
@@ -105,9 +109,10 @@ if (![5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33].includes(args.len
     || (args.length >= 27 && (pmFlag !== '--pmiss' || !['0', '1'].includes(pmArg) || (pmArg === '1' && ppArg !== '1')))
     || (args.length >= 29 && (ifFlag !== '--ifs' || !['0', '1'].includes(ifArg) || (ifArg === '1' && pmArg !== '1')))
     || (args.length >= 31 && (pnFlag !== '--pnl' || !['0', '1'].includes(pnArg) || (pnArg === '1' && ifArg !== '1')))
-    || (args.length === 33 && (plFlag !== '--plain' || !['0', '1'].includes(plArg) || (plArg === '1' && pnArg !== '1')))
+    || (args.length >= 33 && (plFlag !== '--plain' || !['0', '1'].includes(plArg) || (plArg === '1' && pnArg !== '1')))
+    || (args.length === 35 && (sqFlag !== '--seq' || !['0', '1'].includes(sqArg) || (sqArg === '1' && plArg !== '1')))
     || (planArg === '2' && (args.length < 9 || handoverArg !== '1' || f3Arg !== '1' || f5Arg !== '1'))) {
-  console.error('usage: node worker/tools/worker-guard.mjs <file> --plan 0|1|2 --handover 0|1 [--f3 0|1 [--f5 0|1 [--edit 0|1 [--invoiced 0|1 [--rate2 0|1 [--self 0|1 [--road 0|1 [--wchk 0|1 [--dkv 0|1 [--pnlp 0|1 [--pmiss 0|1 [--ifs 0|1 [--pnl 0|1 [--plain 0|1]]]]]]]]]]]]]] (handover 1 needs plan 1 or 2, f3 1 needs handover 1, f5 1 needs f3 1, edit 1 needs f5 1, invoiced 1 needs edit 1, rate2 1 needs invoiced 1, self 1 needs rate2 1, road 1 needs self 1, wchk 1 needs road 1, dkv 1 needs wchk 1, pnlp 1 needs dkv 1, pmiss 1 needs pnlp 1, ifs 1 needs pmiss 1, pnl 1 needs ifs 1, plain 1 needs pnl 1, plan 2 needs handover 1 f3 1 f5 1)');
+  console.error('usage: node worker/tools/worker-guard.mjs <file> --plan 0|1|2 --handover 0|1 [--f3 0|1 [--f5 0|1 [--edit 0|1 [--invoiced 0|1 [--rate2 0|1 [--self 0|1 [--road 0|1 [--wchk 0|1 [--dkv 0|1 [--pnlp 0|1 [--pmiss 0|1 [--ifs 0|1 [--pnl 0|1 [--plain 0|1 [--seq 0|1]]]]]]]]]]]]]]] (handover 1 needs plan 1 or 2, f3 1 needs handover 1, f5 1 needs f3 1, edit 1 needs f5 1, invoiced 1 needs edit 1, rate2 1 needs invoiced 1, self 1 needs rate2 1, road 1 needs self 1, wchk 1 needs road 1, dkv 1 needs wchk 1, pnlp 1 needs dkv 1, pmiss 1 needs pnlp 1, ifs 1 needs pmiss 1, pnl 1 needs ifs 1, plain 1 needs pnl 1, seq 1 needs plain 1, plan 2 needs handover 1 f3 1 f5 1)');
   process.exit(2);
 }
 const plan = Number(planArg);
@@ -262,11 +267,16 @@ if (plain !== null) {
   // messages without codes (owner 8/11): the refusal's RT code becomes the trip in words, the detail travels apart
   rows.push(['async function planDetailWords( (αρνήσεις χωρίς κωδικούς, owner 8/11)', count('async function planDetailWords('), (n) => (plain === 1 ? n === 1 : n === 0)]);
 }
+const seq = sqFlag === undefined ? null : Number(sqArg);
+if (seq !== null) {
+  // 113 (owner 15/11): a groupage keeps the order of its points per point; the ORDER STOPS label, exactly once
+  rows.push(['"Load Seq": "load_seq" (σειρά σημείου στο groupage, 113)', count('"Load Seq": "load_seq"'), (n) => (seq === 1 ? n === 1 : n === 0)]);
+}
 let ok = true;
 for (const [name, n, good] of rows) {
   const pass = good(n);
   ok = ok && pass;
   console.log(`${pass ? 'OK  ' : 'STOP'}  ${name} = ${n}`);
 }
-console.log(ok ? `GUARD OK (${rows.length} markers, plan=${plan}, handover=${handover}${f3 !== null ? `, f3=${f3}` : ''}${f5 !== null ? `, f5=${f5}` : ''}${edit !== null ? `, edit=${edit}` : ''}${invoiced !== null ? `, invoiced=${invoiced}` : ''}${rate2 !== null ? `, rate2=${rate2}` : ''}${self !== null ? `, self=${self}` : ''}${road !== null ? `, road=${road}` : ''}${wchk !== null ? `, wchk=${wchk}` : ''}${dkv !== null ? `, dkv=${dkv}` : ''}${pnlp !== null ? `, pnlp=${pnlp}` : ''}${pmiss !== null ? `, pmiss=${pmiss}` : ''}${ifs !== null ? `, ifs=${ifs}` : ''}${pnl !== null ? `, pnl=${pnl}` : ''}${plain !== null ? `, plain=${plain}` : ''}) ${file}` : `GUARD STOP — do not deploy / roll back (${file})`);
+console.log(ok ? `GUARD OK (${rows.length} markers, plan=${plan}, handover=${handover}${f3 !== null ? `, f3=${f3}` : ''}${f5 !== null ? `, f5=${f5}` : ''}${edit !== null ? `, edit=${edit}` : ''}${invoiced !== null ? `, invoiced=${invoiced}` : ''}${rate2 !== null ? `, rate2=${rate2}` : ''}${self !== null ? `, self=${self}` : ''}${road !== null ? `, road=${road}` : ''}${wchk !== null ? `, wchk=${wchk}` : ''}${dkv !== null ? `, dkv=${dkv}` : ''}${pnlp !== null ? `, pnlp=${pnlp}` : ''}${pmiss !== null ? `, pmiss=${pmiss}` : ''}${ifs !== null ? `, ifs=${ifs}` : ''}${pnl !== null ? `, pnl=${pnl}` : ''}${plain !== null ? `, plain=${plain}` : ''}${seq !== null ? `, seq=${seq}` : ''}) ${file}` : `GUARD STOP — do not deploy / roll back (${file})`);
 process.exit(ok ? 0 : 1);

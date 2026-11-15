@@ -91,6 +91,7 @@ const f099 = () => readOne(['drafts/099_plan_transfer.sql', '099_plan_transfer.s
   'copy it from the SQL branch: git checkout origin/feat/transfer-099-act -- worker/migrations/drafts/099_plan_transfer.sql');
 const f102 = () => readOne(['drafts/102_plan_drafts.sql', '102_plan_drafts.sql'], 'it is on main since #238');
 const f111 = () => readOne(['111_intl_form_stops.sql', 'drafts/111_intl_form_stops.sql'], 'it ran 8/11 and is on main');
+const f113 = () => readOne(['drafts/113_stop_load_seq.sql', '113_stop_load_seq.sql'], 'it travels with this Worker change (owner 15/11)');
 // 074 may still be in review when deploy 1 goes (it runs on day L): null when no copy is on this branch
 const f074 = () => ['drafts/074_plan_cutover.sql', '074_plan_cutover.sql'].map((n) => path.join(MIG, n)).filter((f) => existsSync(f))
   .map((file) => ({ file, sql: readFileSync(file, 'utf8') }))[0] || null;
@@ -401,9 +402,21 @@ test('every 071 CHECK and UNIQUE is mapped to Greek or classified; every PLAN_CH
     { code: '23502', message: 'null value in column "pallets" of relation "order_stops" violates not-null constraint' }]) {
     assert.equal(W.stockRuleError({ pg }), null, pg.message);
   }
-  const known = new Set([...checks, ...uniques, ...LIVE_PRE_071, ...checks072b, ...checks089, ...checksRoad, ...checks111]);
+  // 113 (owner 15/11, a point's position in its groupage): its one CHECK Greek; a base without 113 named for order_stops
+  const checks113 = uniq(/ADD CONSTRAINT (\w+) CHECK/g, f113().sql);
+  assert.deepEqual(checks113, ['order_stops_load_seq_pos'], `113 CHECKs parsed: ${checks113.join(', ')}`);
+  for (const name of checks113) {
+    const r = W.stockRuleError({ pg: { code: '23514', message: `new row for relation "order_stops" violates check constraint "${name}"` } });
+    assert.deepEqual(r, { type: 'PLAN_RULE', code: name, message: W.PLAN_CHECK_TEXT[name] }, name);
+    assert.match(r.message, greek, `${name} text is Greek`);
+  }
+  for (const pg of [{ code: 'PGRST204', message: "Could not find the 'load_seq' column of 'order_stops' in the schema cache" },
+    { code: '42703', message: 'column "load_seq" of relation "order_stops" does not exist' }]) {
+    assert.equal(W.stockRuleError({ pg }).code, '113_missing', pg.message);
+  }
+  const known = new Set([...checks, ...uniques, ...LIVE_PRE_071, ...checks072b, ...checks089, ...checksRoad, ...checks111, ...checks113]);
   const dead = Object.keys(W.PLAN_CHECK_TEXT).filter((k) => !known.has(k));
-  assert.deepEqual(dead, [], 'PLAN_CHECK_TEXT keys with no constraint in 071, 072b, 089, 098, 099, 102, 111 or live before 071');
+  assert.deepEqual(dead, [], 'PLAN_CHECK_TEXT keys with no constraint in 071, 072b, 089, 098, 099, 102, 111, 113 or live before 071');
   for (const k of RELAY_OWNED) assert.ok(!Object.prototype.hasOwnProperty.call(W.PLAN_CHECK_TEXT, k), `${k} stays in RELAY_CHECK_TEXT only`);
 });
 
