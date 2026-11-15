@@ -4511,13 +4511,16 @@ function _wiCopyPlates(rowId){ copyPlates(_wiPlatesOf(WINTL.rows.find(r=>r.id===
 function _wiGroupFormItem(row,isImp){
   if(!row) return '';
   const isGroup=(row.orderIds||[]).length>1;
+  // A lot (warehouse batch) is never part of a load until the DB rule changes (decision 2, owner 15/11).
+  if(!isGroup&&_wiLotHeld(row)) return '';
   const label=isGroup?'Άνοιγμα στη φόρμα':'Κάν\' το groupage';
   if(typeof IntlGroup==='undefined'||!IntlGroup.on()) return _wiCtxBtnDisabled(label,'Η φόρμα groupage είναι κλειστή');
   const oid=isImp?row.orderId:row.orderIds[0];
   return _wiCtxBtn(label,isGroup?`_wiGroupOpen(${row.id})`:`_wiGroupForm('${oid}',${isImp?'true':'false'},true)`);
 }
 async function _wiGroupForm(oid,isImp,makeGroup){
-  const rec=_wiRecOf(oid);
+  // Also the window's other-week orders, as _wk3Edit (a rota leg's «συνέχεια», owner 8/11).
+  const rec=_wiRecOf(oid)||(WINTL.data.away||[]).find(r=>r.id===oid);
   if(!rec||typeof openIntlEditWith!=='function'){ reportError('Η φόρμα παραγγελίας δεν άνοιξε — ανανέωσε τη σελίδα',null,'warn'); return; }
   await openIntlEditWith(oid,rec.fields);
   // The form opens a single load as «Απλό φορτίο»; the switch is the form's own (a pre-order is refused

@@ -681,8 +681,9 @@ if (MAIN) (async () => {
     const seg = await page.evaluate(async () => {
       const find = () => WINTL.rows.find(r => r.type === 'import' && (r.orderIds || []).includes('recRIGI2000000002'));
       const row = find();
-      window._wiSegDrag = { rowId: row.id, orderId: 'recRIGI3000000003' };
-      await _wiSegDrop({ preventDefault() {} }, row.id, 'recRIGI2000000002');
+      // The order is set in the form since 15/11 (no tile drag): write what the form writes.
+      const gid = String(_wiRecOf('recRIGI2000000002').fields['Group ID']).split('|')[0] + '|recRIGI3000000003,recRIGI2000000002';
+      for (const id of row.orderIds) await atSafePatch(TABLES.ORDERS, id, { 'Group ID': gid });
       await renderWeeklyIntl();
       const g = find(), e = WINTL.rows.find(r => r.type === 'export' && r.orderIds.includes('recRIGE2000000002'));
       return { rowId: g.id, lead: g.orderId, ptr: e.importId, ids: g.orderIds };
@@ -1003,16 +1004,11 @@ if (MAIN) (async () => {
     const own = r => r.writes === 0 && r.toasts.some(t => /Κομμάτι αποθέματος μόνο σε δικό μας φορτηγό/.test(t) && !/Φ1/.test(t));
     ok('b05_no_piece_on_partner', own(popE4) && own(popI7) && own(dropLoose) && own(dropGroup), { popE4, popI7, dropLoose, dropGroup });
 
-    // B-09: a row holding a piece offers no «Groupage εισαγωγών», no
-    // candidate list offers one, and _wiImpGroup refuses one.
-    const rI7 = await rowOf('recRIGI7000000007'), rI5 = await rowOf('recRIGI5000000005');
+    // B-09: the board's group windows went 15/11 (a groupage is built in the form, which owns the piece
+    // rules now); the menu of a row holding a piece has no old window.
+    const rI7 = await rowOf('recRIGI7000000007');
     const mI7 = await ctxMenu(page, `_wiImpCtx(${fakeEv},${rI7})`);
-    const cand = await page.evaluate(r => { _wiPanelGroupBuild(r, true); const v = [...document.querySelectorAll('.wiGrpPick')].map(b => +b.value);
-      _wiPanelClose(); return v.map(id => (WINTL.rows.find(x => x.id === id) || {}).orderIds || []); }, rI5);
-    let n6 = F.writes.length;
-    const grpT = await page.evaluate(async ([a, b]) => { const n = window.__rig.toasts.length; await _wiImpGroup(a, b); return window.__rig.toasts.slice(n); }, [rI5, rI7]);
-    ok('b09_no_import_groupage_with_piece', !/Groupage εισαγωγών/.test(mI7) && !cand.flat().some(id => /recRIGP/.test(id)) && cand.length > 0
-      && writesSince(F, n6).length === 0 && grpT.some(t => /«\+ Κομμάτι από απόθεμα…»/.test(t)), { mI7, cand, grpT });
+    ok('b09_no_import_groupage_with_piece', !/Groupage εισαγωγών/.test(mI7), { mI7 });
 
     // B-28: no «Σπάσιμο σκέλους» on a piece's row or a lot's row; a plain export keeps it.
     const mP4 = await ctxMenu(page, `_wiImpCtx(${fakeEv},${await rowOf('recRIGP4000000004')})`);
@@ -1068,16 +1064,15 @@ if (MAIN) (async () => {
     const { ctx, page } = await openBoard(browser, 'dispatcher', F, { switchOff: true });
     const off = await page.evaluate(() => ({ sw: FEATURES.STOCK_LOTS, shelf: !!document.getElementById('wi-shelf'), p3Row: !!document.getElementById('wi-imp-recRIGP3000000003') }));
     ok('g42_switch_off_board', off.sw === false && !off.shelf && off.p3Row, off);   // no shelf = no home: the loose piece keeps its row
-    // (1) row pallets = Σ group members: I2 (10p) + I3 (8p) = 18p.
-    const grpRow = await rowIdOf(page, 'recRIGI3000000003');
-    const pals = await page.evaluate(r => { _wiPanelGroupBuild(r, true); const t = document.getElementById('wi-panel').innerText; _wiPanelClose(); return t.replace(/\s+/g, ' '); }, grpRow);
-    ok('g42_off_row_pallets_sum', /\b18p( \/ 33p|\))/.test(pals), pals.slice(0, 300));
+    // (1) row pallets = Σ group members: checked through the group window until 15/11; the window went
+    //     (a groupage is built in the form), the sum is the board's own (_wiRowPals).
     // (2) the export finds its group by ANY member: after a reorder the lead is
     //     I3 while E2 still points at I2 — E2's row still draws both tiles.
     const seg = await page.evaluate(async () => {
       const find = () => WINTL.rows.find(r => r.type === 'import' && (r.orderIds || []).includes('recRIGI2000000002'));
-      window._wiSegDrag = { rowId: find().id, orderId: 'recRIGI3000000003' };
-      await _wiSegDrop({ preventDefault() {} }, find().id, 'recRIGI2000000002');
+      // The order is set in the form since 15/11 (no tile drag): write what the form writes.
+      const gid = String(_wiRecOf('recRIGI2000000002').fields['Group ID']).split('|')[0] + '|recRIGI3000000003,recRIGI2000000002';
+      for (const id of ['recRIGI2000000002', 'recRIGI3000000003']) await atSafePatch(TABLES.ORDERS, id, { 'Group ID': gid });
       await renderWeeklyIntl();
       const g = find(), e = WINTL.rows.find(r => r.type === 'export' && r.orderIds.includes('recRIGE2000000002'));
       const tiles = [...document.querySelectorAll(`#wi-row-${e.id} .wk3-seg[data-order-id]`)].map(x => x.dataset.orderId);
