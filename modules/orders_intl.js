@@ -3170,6 +3170,9 @@ async function submitIntlOrder(recId, G) {
 
     // 057: a new piece = the form + the lot's locks (never Price, never PE).
     if (_SK.mode === 'pieceNew') fields = OrdersStock.pieceFields(_SK.lot, _SK.presets, fields);
+    // A piece joining a groupage that already has a vehicle keeps the load's status (pieceFields sets «Pending»
+    // unless its presets say otherwise; the truck it inherited stays).
+    if (_SK.mode === 'pieceNew' && G && G.inherit && G.inherit['Status']) fields['Status'] = G.inherit['Status'];
     // Unticked on a lot: the lot goes BEFORE the order save — while it is a
     // lot the base refuses a destination that is not a warehouse. Native
     // confirm on purpose: confirmAction draws in this same #modal and would

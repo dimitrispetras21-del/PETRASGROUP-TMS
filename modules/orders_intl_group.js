@@ -263,7 +263,7 @@ async function openFrom(recId, f, label, prefill, piece) {
     expand(s.members.find(m => m.recId === recId) || s.members[0]);
   } else {
     await addMember({ recId: recId || null, f, label, prefill, piece, orig: !!recId }, { quiet: true });
-    if (recId) s.assign = assignmentOf([{ id: recId, fields: f }]);
+    recomputeAssign();
     syncOrder();
   }
   // the form of one order sets its own width class (960px, orders_intl.js); the shell is wider
@@ -290,6 +290,12 @@ function assignmentOf(recs) {
     else if (v != null && v !== '') out[l] = v;
   }
   return { fields: out, truck: lid(f0['Truck']), partner: lid(f0['Partner']) };
+}
+// Recomputed whenever an order already in the catalogue joins («Υπάρχουσα»): an order on a truck that joins a load
+// without one makes that truck the load's (code review 15/11).
+function recomputeAssign() {
+  const s = IG.s;
+  s.assign = assignmentOf(s.members.filter(m => m.recId).map(m => ({ id: m.recId, fields: m.f || {} })));
 }
 function needsVehicle(m) {
   const a = IG.s.assign;
@@ -384,6 +390,14 @@ function toggle(key) {
 
 // ── Head: single / groupage, export / import ─────────────────────────────────
 function preorderIn() { const s = IG.s; return s.members.some(m => (m.key === s.open ? ST()._preConvert : m.g && m.g._preConvert)); }
+// Every «add» goes through here: a pre-order never becomes part of a groupage (owner 15/11, decision 13).
+function toGroup() {
+  const s = IG.s;
+  if (s.mode === 'group') return true;
+  if (preorderIn()) { toast('Το pre-order γίνεται πρώτα παραγγελία, μετά μπαίνει σε groupage', 'warn'); return false; }
+  s.mode = 'group';
+  return true;
+}
 function hasPiece() { return IG.s.members.some(m => m.piece || isPieceRec(m.f)); }
 function setMode(v) {
   const s = IG.s; if (!s || s.saving || v === s.mode) return;
@@ -559,8 +573,7 @@ function changed() {
 
 // ── Adding orders ──────────────────────────────────────────────────────────────
 async function addNew() {
-  const s = IG.s; if (!s || s.saving) return;
-  if (s.mode !== 'group') s.mode = 'group';
+  const s = IG.s; if (!s || s.saving || !toGroup()) return;
   await addMember({});
 }
 
@@ -569,8 +582,8 @@ async function addNew() {
 // stays with ITS order (one scan slot per order). Decision 17 (one file with many orders) needs the scan to return
 // more than one order — today it returns one; parked, said in the PR.
 async function fromFile() {
-  const s = IG.s; if (!s || s.saving) return;
-  if (s.mode !== 'group') { s.mode = 'group'; paint(); }
+  const s = IG.s; if (!s || s.saving || !toGroup()) return;
+  paint();
   const inp = document.createElement('input');
   inp.type = 'file'; inp.multiple = true; inp.accept = 'image/*,application/pdf'; inp.style.display = 'none';
   document.body.appendChild(inp);
@@ -621,7 +634,7 @@ async function pickExisting() {
   const from = new Date(c.getTime() - 14 * 864e5).toISOString().slice(0, 10), to = new Date(c.getTime() + 21 * 864e5).toISOString().slice(0, 10);
   let recs = [];
   try {
-    recs = await atGetAll(TABLES.ORDERS, { filterByFormula: `AND(IS_AFTER({Loading DateTime},'${from}'),IS_BEFORE({Loading DateTime},'${to}'))` }, false) || [];
+    recs = await atGetAll(TABLES.ORDERS, { filterByFormula: `AND(IS_AFTER({Loading DateTime},'${from}'),IS_BEFORE({Loading DateTime},'${to}')${s.dir ? `,{Direction}='${s.dir}'` : ''})` }, false) || [];
   } catch (e) { box.innerHTML = `<div class="igx-busy">Οι παραγγελίες δεν διαβάστηκαν — ${esc(e && e.message || 'σφάλμα')}</div>`; return; }
   if (!IG.s) return;
   const inForm = new Set(s.members.map(m => m.recId).filter(Boolean));
@@ -650,8 +663,10 @@ function _filter(v) {
 async function _addExisting(k) {
   const x = IG._pick && IG._pick[k]; if (!x || !IG.s) return;
   document.getElementById('igxPick').innerHTML = '';
-  if (IG.s.mode !== 'group') IG.s.mode = 'group';
+  if (!toGroup()) return;
   await addMember({ recId: x.r.id, f: x.r.fields || {} });
+  recomputeAssign();
+  paint();
 }
 
 // «Κομμάτι από απόθεμα» (owner 15/11, decisions 8–11): import groupage only; lots with pallets left (their warehouses
@@ -682,7 +697,7 @@ async function _addPiece(k) {
   const n = parseFloat(document.getElementById('igxLotN_' + k)?.value);
   if (!(n > 0)) { toast('Γράψε πόσες παλέτες παίρνεις', 'warn'); return; }
   document.getElementById('igxPick').innerHTML = '';
-  if (IG.s.mode !== 'group') IG.s.mode = 'group';
+  if (!toGroup()) return;
   await addMember({ piece: { lot, presets: {} }, pal: n });
 }
 
@@ -739,13 +754,25 @@ async function saveGroup() {
   if (preorderIn()) { toast('Το pre-order γίνεται πρώτα παραγγελία, μετά μπαίνει σε groupage — δεν γράφτηκε τίποτα', 'warn'); return; }
   s.saving = true;
   const n = s.members.length;
-  const stop = (msg) => { s.saving = false; if (msg) showErrorToast(msg, 'warn', 15000); paint(); };
+  // Escape / the footer cannot close the form under a running save (modalSetBusy); if it closes anyway, the save
+  // stops at the next step and says how far it got — never a TypeError half-way (code review 15/11).
+  if (typeof modalSetBusy === 'function') modalSetBusy(true);
+  let done = 0;
+  const gone = () => IG.s !== s;
+  const stop = (msg) => {
+    s.saving = false;
+    if (typeof modalSetBusy === 'function') modalSetBusy(false);
+    if (msg) showErrorToast(msg, 'warn', 15000);
+    if (!gone()) paint();
+  };
+  const closedMsg = () => `Η φόρμα έκλεισε στη μέση της αποθήκευσης — αποθηκεύτηκαν ${done} από ${n} παραγγελίες· άνοιξε το groupage και πάτα ξανά Αποθήκευση`;
   try {
     syncOrder();
     // 1. Every order checked before any is written.
     for (const m of s.members) {
+      if (gone()) return stop(closedMsg());
       expand(m); paintList();
-      await submitIntlOrder(m.recId || '', { dryRun: true, gid: '', stopPos: stopPosFor(m) });
+      await submitIntlOrder(m.recId || '', { dryRun: true, gid: '', dupAsked: !!m.dupAsked, stopPos: stopPosFor(m) });
       const r = ST()._lastSave;
       if (!r || !r.ok) return stop(null);   // the reason is on screen, the order stays open; nothing was written
       m.dupAsked = true;
@@ -754,8 +781,8 @@ async function saveGroup() {
     // 2. The orders, one after the other, with the base Group ID and the places of their points.
     const base = s.base || ((s.dir === 'Import' ? 'GI-' : 'GRP-') + Date.now().toString(36).toUpperCase());
     s.base = base;
-    let done = 0;
     for (const m of s.members) {
+      if (gone()) return stop(closedMsg());
       expand(m); paintList();
       saveBtn(`Αποθήκευση ${done + 1}/${n}…`, true);
       const recId = m.recId || ST()._createdId || '';
@@ -808,6 +835,7 @@ async function saveGroup() {
     if (typeof logError === 'function' && (bad.length || seqLost)) logError(new Error(`groupage save: group id not written ${bad.length}, load seq lost ${seqLost}`), 'orders_intl_group save');
     const docs = typeof OrderDocs !== 'undefined' ? await OrderDocs.formSettled() : null;
     s.saving = false;
+    if (typeof modalSetBusy === 'function') modalSetBusy(false);
     closeModal();
     if (bad.length) showErrorToast('Οι παραγγελίες αποθηκεύτηκαν, αλλά δεν ενώθηκαν όλες στο groupage — ' + bad.join(' · ') + '. Άνοιξε το groupage και πάτα ξανά Αποθήκευση.', 'error', 20000);
     else if (seqLost) showErrorToast(`Το groupage αποθηκεύτηκε, αλλά η σειρά ανά σημείο ΔΕΝ κρατήθηκε από τον διακομιστή (${seqLost} σημεία) — ισχύει η σειρά παραγγελιών· ενημέρωσε τον Δημήτρη (113)`, 'warn', 15000);
