@@ -958,10 +958,10 @@ function beatDelay({ visible, lastInputAgoMs, failures, lastStatus, retryAfterMs
 
 // ─── §e.9 Per-load menu: sections and icons ───────────────────────────
 const TRUCK_FNS = freeze(['_wiPanelAssign', '_wiClear', '_wiStockPanel']);
-const IMPORT_FNS = freeze(['_wiUnmatchRow', '_wiUnmatch', '_wiPanelJoinLoad', '_wiStockReturnLone', '_wiPanelWeekShift']);
+const IMPORT_FNS = freeze(['_wiUnmatchRow', '_wiUnmatch', '_wiStockReturnLone', '_wiPanelWeekShift']);
 // Handlers shared by both builders that tell the side by their 2nd argument
-// (`…(rowId,true)` = import), e.g. _wiMenuPrint(12,true), _wiPanelGroupBuild(12,true).
-const SIDE_ARG_FNS = freeze(['_wiMenuPrint', '_wiPanelGroupBuild']);
+// (`…(x,true)` = import), e.g. _wiMenuPrint(12,true), _wiGroupForm('recX',true,false).
+const SIDE_ARG_FNS = freeze(['_wiMenuPrint', '_wiGroupForm']);
 
 /**
  * fn = a handler name or a full onclick string («_wiMenuPrint(12,true);_wiCtxClose()»).
@@ -987,8 +987,8 @@ function menuSection(fn, from) {
 const MENU_ICON = freeze({
   _wiPanelAssign: 'truck', _wiClear: 'x', _wiStockPanel: 'plus',
   _wk3Edit: 'package', _wiMenuPrint: 'printer', _wiPrintSplitAll: 'printer',
-  _wiUnmatchRow: 'link', _wiUnmatch: 'link', _wiPanelJoinLoad: 'plus',
-  _wiPanelGroupBuild: 'package', _wiSplit: 'x', _wiCancelGroupMember: 'x',
+  _wiUnmatchRow: 'link', _wiUnmatch: 'link',
+  _wiGroupForm: 'package', _wiGroupOpen: 'package', _wiSplit: 'x', _wiCancelGroupMember: 'x',
   _wiPanelRota: 'corner_down_right', _wiPanelConfirmUnlink: 'x', _wiPanelSplit: 'split',
   _wiRejoinLegs: 'route', _wiPanelHandover: 'map_pin', _wiPanelWeekShift: 'clock',
   _wiRelayOpen: 'users', _wiRelayGrpToggle: 'users', _wiRelayConfirmDel: 'trash',

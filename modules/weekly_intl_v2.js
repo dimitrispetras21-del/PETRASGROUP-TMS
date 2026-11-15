@@ -752,9 +752,9 @@ function _chipHTML(c, today) {
 // the points nodes once the column width is measured (never per stop reflow).
 function _ptsHTML(side) {
   const k = 'p' + (++_pk);
-  // A groupage side (its points are member tiles, drag sources and targets)
-  // draws its own «+N» fold with the SAME tiles: a member hidden behind «+N»
-  // must stay draggable, so its rows reuse the points' _ptEvents.
+  // A groupage side (its points are member tiles, drop targets) draws its
+  // own «+N» fold with the SAME tiles: a member hidden behind «+N» must stay
+  // a target, so its rows reuse the points' _ptEvents.
   const group = (side.stops || []).some((s) => s && s.drag);
   // pre/late: the leg's PREORDER / LATE reason. They ride on the first /
   // last SHOWN point, so a point folded behind «+N» never hides the word.
@@ -795,19 +795,21 @@ function _rowDayOf(f, kind, fs) {
 // WHOLE route of that end, numbered as on the row, with each point's place and
 // (groupage) pallets, so one click shows the route at once (no hover: one
 // trigger, one result). A single order opens the same table.
-// A point's click (open its order) and, for a groupage member, its drag tile:
-// one source, so a row of the «+N» table behaves exactly like the point on the row.
+// A point's click (open its order) and, for a groupage member, its drop target (an import
+// dropped on it joins the load, _wiSegDrop): one source, so a row of the «+N» table behaves
+// exactly like the point on the row. Points are not dragged to reorder (owner 15/11: the order
+// of a groupage is set in the form, which also writes the place of each point, 113).
 function _ptEvents(s) {
   const oid = _q(s.oid);
   const click = oid ? ` onclick="event.stopPropagation();WI_INTERNAL.edit('${oid}')"` : '';
   const rid = s.drag && Number.isInteger(s.drag.rowId) ? s.drag.rowId : null;
-  const drag = rid != null && oid ? ` data-order-id="${oid}" draggable="true" ondragstart="event.stopPropagation();_wiSegDragStart(event,${rid},'${oid}')" ondragover="event.preventDefault();event.stopPropagation();_wiSegDragOver(event,${rid},'${oid}')" ondragleave="event.stopPropagation();this.classList.remove('dragover')" ondrop="event.stopPropagation();_wiSegDrop(event,${rid},'${oid}')" ondragend="event.stopPropagation();_wiSegDragEnd(event)"` : '';
+  const drag = rid != null && oid ? ` data-order-id="${oid}" ondragover="event.preventDefault();event.stopPropagation()" ondrop="event.stopPropagation();_wiSegDrop(event,${rid},'${oid}')"` : '';
   return { click, drag };
 }
 // «+N» on click (Nick 14/10): the whole route of that end as a table, number box
 // | name | place | pallets (groupage) | day (only when the stops' days differ,
 // which the old list marked), 8px row padding with a line between rows. A
-// groupage's rows stay its members' drag tiles. Number class per kind, as his
+// groupage's rows stay its members' drop tiles. Number class per kind, as his
 // rig reads them: .wi4-pt-n in a groupage fold, .wk3-stopn in a plain cell's.
 function _routeTable(d) {
   const st = d.stops || [];
@@ -877,7 +879,7 @@ function _ptHTML(s, d) {
     ? `<span class="wi4-l1 wi4-l1f">${pre}<span class="wi4-ell" title="${_esc(s.label)}">${tickL1 ? tick : ''}${_esc(s.label)}</span>${delay}${late}${lot}</span>`
     : `<span class="wi4-l1" title="${_esc(s.label)}">${tickL1 ? tick : ''}${_esc(s.label)}</span>`;
   const { click, drag } = _ptEvents(s);
-  // Group member tiles: today's drag strings verbatim (§f), rowId = the
+  // Group member tiles: drop targets (§f), rowId = the
   // GROUP's own row id. Without preventDefault in ondragover the drop never
   // fires. No `wk3-seg` class: it is a global layout rule (§a.7).
   // A point done on its own (its stop stamped by the Ημερήσιο, or its side by
@@ -894,7 +896,7 @@ function _ptHTML(s, d) {
 // stop on this end takes its total), in the order the paper and the WhatsApp
 // text use (print.html groupRoute): an export's loadings and an import's
 // deliveries by date, the other end in member order, ties by member then stop.
-// Every point stays its member's drag tile; past the row's room the fold «+N»
+// Every point stays its member's drop tile; past the row's room the fold «+N»
 // keeps them (his 11/10 rule, _ptsHTML). Display only: no stop is written.
 function _sideOf(recs, kind, opt) {
   const o = opt || {};
@@ -1282,7 +1284,7 @@ function _expRowHTML(e, today) {
     (impShown ? impLeg.xd === 'done' : (!row.importId && hasPartner)) &&
     (!vs || isGroup || natDone(pid)) && (!impShown || !(imp.fields || {})['Veroia Switch'] || natDone(imp.id)));
   const leg = _legHTML({ chip, ref, from, to, rs: rsE, xd: xdE, pal: _palHTML(exps.map((r) => r.fields || {}), isGroup ? null : pid, isGroup ? exps : null),
-    click: isGroup ? `WI_INTERNAL.rota(${row.id})` : (_q(pid) ? `WI_INTERNAL.edit('${_q(pid)}')` : '') }, today);
+    click: isGroup ? `WI_INTERNAL.groupOpen(${row.id})` : (_q(pid) ? `WI_INTERNAL.edit('${_q(pid)}')` : '') }, today);
 
   // A match (or an unmatch) that FAILED (_unconfirmed): the row keeps its
   // optimistic state (§e.14: never rebuilt), but this cell draws what the
@@ -2268,9 +2270,9 @@ function _install() {
   };
   document.addEventListener('dragend', clear, true);
   document.addEventListener('drop', clear, true);
-  // Edge auto-scroll while an import or a tile is dragged.
+  // Edge auto-scroll while an import is dragged.
   document.addEventListener('dragover', (ev) => {
-    if (!_live() || !(window._wiDragging || window._wiSegDrag)) return;
+    if (!_live() || !window._wiDragging) return;
     const sc = _scroller();
     if (!sc) return;
     const top = sc === document.scrollingElement ? 0 : sc.getBoundingClientRect().top;

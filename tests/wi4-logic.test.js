@@ -612,11 +612,11 @@ test('menuSection: truck / import / export by handler name', () => {
   assert.strictEqual(WI4.menuSection('_wiStockPanel(3)'), 'truck', 'stock piece → truck');
   assert.strictEqual(WI4.menuSection('_wiUnmatchRow(3)'), 'import');
   assert.strictEqual(WI4.menuSection('_wiUnmatch'), 'import');
-  assert.strictEqual(WI4.menuSection('_wiPanelJoinLoad(4)'), 'import');
   assert.strictEqual(WI4.menuSection('_wiMenuPrint(12,true);_wiCtxClose()'), 'import');
   assert.strictEqual(WI4.menuSection('_wiMenuPrint(12,false);_wiCtxClose()'), 'export');
-  assert.strictEqual(WI4.menuSection('_wiPanelGroupBuild(12,true)'), 'import');
-  assert.strictEqual(WI4.menuSection('_wiPanelGroupBuild(12,false)'), 'export');
+  // «Άνοιγμα στη φόρμα» / «Κάν' το groupage» (owner 15/11): the side is the 2nd argument
+  assert.strictEqual(WI4.menuSection("_wiGroupForm('recA1234567',true,false)"), 'import');
+  assert.strictEqual(WI4.menuSection("_wiGroupForm('recA1234567',false,true)"), 'export');
   assert.strictEqual(WI4.menuSection('_wiPanelRota(5)'), 'export');
   assert.strictEqual(WI4.menuSection('_wiPanelRota(5)', 'imp'), 'import', 'from _wiImpCtxItems');
   assert.strictEqual(WI4.menuSection('_wk3Edit(\'recA1234567\')'), 'export');

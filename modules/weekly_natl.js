@@ -1472,7 +1472,7 @@ function _wnSegPillWrap(row, loadId, stops, extraChipsHTML) {
 }
 
 // ── Σύρσιμο σειράς στάσεων («drag a segment left/right = reorder») ──────
-// Reuse-first στη ΜΟΡΦΗ (ίδιο drag/drop lifecycle με το intl _wiSegDrag*),
+// Reuse-first στη ΜΟΡΦΗ (ίδιο drag/drop lifecycle με το intl group tiles before 15/11),
 // όχι στη γραφή: εκεί γράφεται ένα «Group ID» σε παραγγελίες· εδώ δεν
 // υπάρχει τέτοιο πεδίο — γράφουμε το Stop Number ΚΑΘΕ στάσης ΚΑΙ τα Delivery
 // Location 1..N του ΦΟΡΤΙΟΥ (ίδια σειρά), ώστε εκτυπώσεις/ράμπα που διαβάζουν

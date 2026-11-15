@@ -78,6 +78,7 @@ function world(opts = {}) {
     console: { log() {}, info() {}, warn() {}, error() {}, debug() {} },
     ROLE: 'dispatcher', currentPage: 'weekly_intl',
     FEATURES: { ORDER_SPLIT: true, GROUP_TILES: true, STOCK_LOTS: true, WI_V2: 'off', WI_PRESENCE: false },
+    IntlGroup: { on: () => true, setMode() {} },   // the one international form (owner 15/11)
     TABLES: { ORDERS: 'tblO', STOCK_LOTS: 'tblStockLots', LOCAL_MOVES: 'local_moves' },
     can: () => opts.planning || 'full', toast: (m, t) => calls.push(['toast', m, t]), logError() {}, reportError() {},
     addEventListener() {}, removeEventListener() {},
@@ -213,7 +214,9 @@ test('menu model, matched own pair: truck once on top, Άνοιγμα first, unm
   assert.strictEqual(imp.items[0].fn, "_wk3Edit('recI01')");
   assert.ok(fns(imp.items).some((f) => /^_wiUnmatchRow\(/.test(f)), 'Αφαίρεση ταιριάσματος under ΕΙΣΑΓΩΓΗ');
   assert.ok(!fns(exp.items).some((f) => /^_wiUnmatchRow\(/.test(f)));
-  assert.ok(imp.items.some((i) => i.label === 'Groupage εισαγωγών · σε αυτό το φορτίο…'), 'join relabelled');
+  // owner 15/11: no join window — the import of the pair opens in the form, switched to «Groupage»
+  assert.ok(imp.items.some((i) => i.label === 'Κάν\' το groupage' && i.fn === "_wiGroupForm('recI01',true,true)"), 'import → groupage in the form');
+  assert.ok(!m.sections.some((s) => s.items.some((i) => /Groupage εξαγωγών|Groupage εισαγωγών/.test(i.label))), 'no old group window');
   assert.ok(exp.items.some((i) => i.label === 'Εκτύπωση / WhatsApp…'), 'print relabelled');
   assert.ok(exp.items.some((i) => i.label === 'Σκέλος προώθησης (ρότα)…'), '⤷ replaced by the icon');
   assert.strictEqual(m.header.l1, 'TST-101 · Driver 1');
@@ -228,7 +231,8 @@ test('menu model, groupage: group items in the section, one «▸» per load, no
   assert.strictEqual(exp.group, true);
   assert.ok(!exp.items.some((i) => i.v4only), 'no Άνοιγμα on the group section: each member has its own');
   assert.ok(exp.items.some((i) => i.label === 'Εκτύπωση / WhatsApp όλων…'), 'group-level print says «όλων»');
-  assert.ok(exp.items.some((i) => /^Groupage εξαγωγών… \(πρόσθεση\)$/.test(i.label)), 'group build on a group row = «(πρόσθεση)»');
+  assert.ok(exp.items.some((i) => i.label === 'Άνοιγμα στη φόρμα' && i.fn === '_wiGroupOpen(4)'), 'a groupage opens in the form, from its own section');
+  assert.ok(!exp.items.some((i) => /^_wiPanel(GroupBuild|JoinLoad)\(/.test(i.fn)), 'no old group window');
   assert.strictEqual(exp.subs.length, 2);
   for (const sub of exp.subs) {
     assert.strictEqual(sub.items[0].label, 'Άνοιγμα παραγγελίας');
@@ -331,6 +335,4 @@ test('the relabel map keys still exist in today\'s code (a rename fails here)', 
   const { A } = world();
   const src = read('modules/weekly_intl.js');
   for (const k of Object.keys(A._RELABEL.menu)) assert.ok(src.includes(k), 'menu string gone: ' + k);
-  for (const k of Object.keys(A._RELABEL.panelTitle)) assert.ok(src.includes("'" + k + "'"), 'panel title gone: ' + k);
-  for (const k of Object.keys(A._RELABEL.panelButton)) assert.ok(src.includes('>' + k + '<'), 'panel button gone: ' + k);
 });

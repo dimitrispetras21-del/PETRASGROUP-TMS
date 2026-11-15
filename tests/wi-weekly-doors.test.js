@@ -29,7 +29,7 @@ const fn = (name, optional) => fnIn(WI, name, optional);
 // _wiDateWrite: the date chip's write moved there (WI v4, TECH_DESIGN §a.5)
 // so the v4 date panel calls the same write; the chip calls it unchanged.
 const NAMES = ['_wiBlockReadOnly', '_wk3PickDate', '_wiDateWrite', '_wk3IsoOnDay', '_wiUnmatch', '_wiUnmatchRow',
-  '_wiRotUnlink', '_wiRota', '_wiRotaSave', '_wiRotaSplit', '_wiNewImport',
+  '_wiRotUnlink', '_wiGroupOpen', '_wiGroupForm', '_wiNewImport',
   '_wk3Edit', '_wiStockOpenLotOrder', '_wiStockOpenPiece', '_wiStockPieceLine'];
 const NEW = ['_wiFirstPendingExp', '_wiPendingExps', '_wiJumpFirstPendingExp']
   .filter(n => fn(n, true));   // absent in one «before» copy or the other
@@ -66,14 +66,10 @@ function world(role) {
     _wiRemoveImport: async rowId => { log.removed.push(rowId); return true; },
     // _wiRotUnlink (rtFindForOrder left undefined: straight to the Rotation ID PATCH)
     _wiRtLegDelete: async () => ({ ok: true, status: 200 }),
-    // _wiRota / _wiRotaSave / _wiRotaSplit
-    _wiGrpOrder: recs => recs,
-    _wiRotaRender: () => log.opened.push('rota card'),
-    _wiRotaClose: () => { ctx._wiRotaState = null; },
-    _wiRepaintRow: () => {},
-    _wiSplit: async rid => { log.calls.push('split ' + rid); },
+    // _wiGroupOpen / _wiGroupForm: a groupage opens in the one international form (owner 15/11)
+    IntlGroup: { on: () => true, setMode: m => log.calls.push('mode ' + m) },
     // _wiNewImport
-    openIntlEditWith: (id, f) => log.opened.push('import form ' + (f && f.Direction)),
+    openIntlEditWith: async (id, f) => log.opened.push(id ? 'form ' + id : 'import form ' + (f && f.Direction)),
     // gap box
     _ccJump: id => log.jumps.push(id),
     _dom: {},   // the rows drawn on the board, by element id
@@ -127,23 +123,20 @@ test('«⨯ αποσύνδεση»: full role still asks, then writes', async ()
   assert.deepStrictEqual(JSON.parse(JSON.stringify(log.patches)), [{ id: 'recL1', f: { 'Rotation ID': '' } }]);
 });
 
-// 4. Καρτέλα Ρότας
-test('Καρτέλα Ρότας: full role still opens the card', () => {
+// 4. A group row's click (owner 15/11: the order card «Καρτέλα Ρότας» went — the groupage opens in the form)
+test('group row: full role opens the whole groupage in the form, as it is', async () => {
   const { ctx, log } = world('full');
-  ctx._wiRota(1);
-  assert.deepStrictEqual(log.opened, ['rota card']);
-  assert.deepStrictEqual([...ctx._wiRotaState.ids], ['recE1', 'recE2']);
+  ctx._wiGroupOpen(1);
+  await new Promise(r => setImmediate(r));
+  assert.deepStrictEqual(log.opened, ['form recE1']);
+  assert.deepStrictEqual(log.calls, [], 'no switch: it is a groupage already');
 });
-test('«Αποθήκευση σειράς»: full role still writes the order on every member', async () => {
-  const { ctx, log } = world('full'); ctx._wiRotaState = { rowId: 1, ids: ['recE2', 'recE1'] };
-  await ctx._wiRotaSave();
-  assert.deepStrictEqual(log.patches.map(p => [p.id, p.f['Group ID']]), [['recE2', 'GRP-1|recE2,recE1'], ['recE1', 'GRP-1|recE2,recE1']]);
-});
-test('«Διάλυση ομάδας»: full role still confirms, then dissolves', async () => {
-  const { ctx, log } = world('full'); ctx._confirmAnswer = true; ctx._wiRotaState = { rowId: 1, ids: ['recE1', 'recE2'] };
-  await ctx._wiRotaSplit();
-  assert.strictEqual(log.confirms.length, 1);
-  assert.deepStrictEqual(log.calls, ['split 1']);
+test('«Κάν\' το groupage»: the form opens on this order, then switches to «Groupage»', async () => {
+  const { ctx, log } = world('full');
+  await ctx._wiGroupForm('recI1', true, true);
+  assert.deepStrictEqual(log.opened, ['form recI1']);
+  assert.deepStrictEqual(log.calls, ['mode group']);
+  assert.deepStrictEqual(log.patches, [], 'the board writes nothing: the form saves');
 });
 
 // 5. softer paths
@@ -283,8 +276,8 @@ test('«ΚΕΝΟ EXPORT» with none visible: «hidden by the filter» and «not 
 
 // Owner 10/10 «αναίρεση. δεν το θέλω αυτό»: no role gate on these doors. A
 // gate coming back here is the owner's decision, not a refactor.
-test('owner 10/10: no role gate on the date chip, «×», «⨯ αποσύνδεση», Καρτέλα Ρότας, empty import box or the order-form doors', () => {
-  for (const n of ['_wk3PickDate', '_wiUnmatchRow', '_wiNewImport', '_wiRotUnlink', '_wiRota', '_wiRotaSave', '_wiRotaSplit',
+test('owner 10/10: no role gate on the date chip, «×», «⨯ αποσύνδεση», the group row, empty import box or the order-form doors', () => {
+  for (const n of ['_wk3PickDate', '_wiUnmatchRow', '_wiNewImport', '_wiRotUnlink', '_wiGroupOpen', '_wiGroupForm',
     '_wk3Edit', '_wiStockOpenLotOrder', '_wiStockOpenPiece'])
     assert.doesNotMatch(fn(n), /_wiBlockReadOnly\(\)|_wiReadOnlyOrder\(/, n + ' carries a role gate');
   assert.doesNotMatch(WI, /function _wiReadOnlyOrder|function _wiDoorTip/);

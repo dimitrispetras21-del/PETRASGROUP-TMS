@@ -288,7 +288,7 @@ function _rtLegSeq(legsInfo, byId) {
   // Imports follow, in the SAME relative order as their matched export — no
   // suffix of their own to read, so they ride on their export's position.
   // Item 4 (owner 8/9, groupage-tiles GI- drag reorder): an import GROUPAGE
-  // (Group ID prefix 'GI-', modules/weekly_intl.js _wiImpGroup/_wiSaveSegOrder)
+  // (Group ID prefix 'GI-', modules/weekly_intl.js and the groupage form, modules/orders_intl_group.js)
   // carries its OWN suffix once dragged, independent of any matched export's
   // position — checked FIRST so a reordered GI- group always wins over the
   // export-position fallback below, still landing after every export leg

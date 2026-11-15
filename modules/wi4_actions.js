@@ -80,27 +80,19 @@ const _actLabel = (it) => (!it ? '' : it.act === 'week' ? 'W' + (it.week || '+1'
 
 // ─── Relabels (§e.9, decision 10/10: one name per thing) ───────────────
 // Keys are today's exact strings; tests/wi4-menu-parity.test.js checks that
-// each one still occurs in a builder or a panel, so a rename in old code
-// fails loudly instead of silently skipping a relabel. v1 is never touched:
-// the map runs only on v4-built menus and on #wi-panel while v4 is active.
+// each one still occurs in a builder, so a rename in old code fails loudly
+// instead of silently skipping a relabel. v1 is never touched: the map runs
+// only on v4-built menus. The two group windows («Groupage εξαγωγών…»,
+// «Groupage εισαγωγών · σε αυτό το φορτίο…») and their panel relabels went
+// 15/11: a groupage is built in the form (owner, weekly_intl.js _wiGroupForm).
 const RELABEL = Object.freeze({
   menu: Object.freeze({
-    'Ομαδοποίηση…': 'Groupage εξαγωγών…',
-    '+ Εισαγωγή στο φορτίο…': 'Groupage εισαγωγών · σε αυτό το φορτίο…',
     'Εκτύπωση…': 'Εκτύπωση / WhatsApp…',
     'Εκτύπωση όλων': 'Εκτύπωση / WhatsApp όλων…',
     'Ακύρωση groupage': 'Βγάλε από το groupage',
     // «⤷» is replaced by the submenu icon (§e.9 Visuals).
     '⤷ Σκέλος προώθησης (ρότα)…': 'Σκέλος προώθησης (ρότα)…',
   }),
-  panelTitle: Object.freeze({
-    'Ομαδοποίηση': 'Groupage εξαγωγών',
-    '+ Εισαγωγή στο φορτίο': 'Groupage εισαγωγών · σε αυτό το φορτίο',
-  }),
-  // The group panel's primary button reads «Ομαδοποίηση» for exports AND for
-  // imports (weekly_intl.js _wiPanelGroupBuild): its v4 name follows the
-  // panel's (already v4) title, so an import panel never says «εξαγωγών».
-  panelButton: Object.freeze({ 'Ομαδοποίηση': true }),
 });
 
 // ─── Small DOM/format helpers ──────────────────────────────────────────
@@ -340,9 +332,6 @@ function _gather(orderId) {
   const label = (it, ctx, own) => {
     let t = RELABEL.menu[it.label] || it.label;
     if (it.name === '_wiMenuPrint' && ctx && ctx.group) t = RELABEL.menu['Εκτύπωση όλων'];
-    // Same handler on a row that is already a group: «(πρόσθεση)» is derived
-    // from row state, not a new action (§e.9 relabel table).
-    if (it.name === '_wiPanelGroupBuild' && /,\s*false\s*\)$/.test(it.fn) && ctx && ctx.group) t = 'Groupage εξαγωγών… (πρόσθεση)';
     if (own) t = t.replace(new RegExp(' — ' + own + '(?: .*?)?(…?)$'), '$1');
     it.label = t;
     const act = it.name === '_wiPanelAssign' ? 'assign' : it.name === '_wiMenuPrint' ? 'print' : it.v4only ? 'open' : null;
@@ -1844,21 +1833,6 @@ function _khint(root) {
   if (bar.childNodes.length) root.appendChild(bar);
 }
 
-// ═══ #wi-panel relabel (§e.9) ═══════════════════════════════════════════
-// Panels opened from a relabelled item keep one name per thing: «Groupage
-// εξαγωγών…» never opens a panel titled «Ομαδοποίηση». Idempotent (it only
-// writes when a text differs), so its own writes cannot loop the observer.
-function _relabelPanel(panel) {
-  if (!panel || !_live() || !document.body.classList.contains('wi4-on')) return;
-  const t = panel.querySelector('.wi-panel-title');
-  if (t && RELABEL.panelTitle[t.textContent]) t.textContent = RELABEL.panelTitle[t.textContent];
-  const btn = panel.querySelector('.wi-panel-ft .btn-primary');
-  if (btn && RELABEL.panelButton[btn.textContent]) {
-    const imp = t && /εισαγωγών/.test(t.textContent);
-    const want = imp ? 'Groupage εισαγωγών' : 'Groupage εξαγωγών';
-    if (btn.textContent !== want) btn.textContent = want;
-  }
-}
 // The reused assignment popover places itself for a 380px form (old code,
 // §c.3); its real form is taller, so a row low on the screen put its
 // «Αποθήκευση» below the window (review 11/10). v4 lifts it back inside —
@@ -1871,7 +1845,7 @@ function _fitPopover(pop) {
   const top = Math.max(12, Math.round(max - r.height)) + 'px';
   if (pop.style.top !== top) pop.style.top = top;
 }
-let _panelObs = null, _popObs = null;
+let _popObs = null;
 let _attached = false;
 function attach() {
   if (!_attached) {
@@ -1880,20 +1854,14 @@ function attach() {
     document.addEventListener('keydown', _onKey);
     document.addEventListener('mousedown', _onMouse, true);
   }
-  // #wi-panel and #wi-popover are re-created by every full paint (they live
-  // in #content), so their observers are re-attached on each call.
+  // #wi-popover is re-created by every full paint (it lives in #content),
+  // so its observer is re-attached on each call.
   if (_popObs) _popObs.disconnect();
   const pop = document.getElementById('wi-popover');
   if (pop) {
     _popObs = new MutationObserver(() => _fitPopover(pop));
     _popObs.observe(pop, { attributes: true, attributeFilter: ['style'], childList: true, subtree: true });
   }
-  if (_panelObs) _panelObs.disconnect();
-  const panel = document.getElementById('wi-panel');
-  if (!panel) return;
-  _panelObs = new MutationObserver(() => _relabelPanel(panel));
-  _panelObs.observe(panel, { childList: true, subtree: true, characterData: true });
-  _relabelPanel(panel);
 }
 
 function isOpen() { return !!(_dp || _qp || _dlg || _help); }
