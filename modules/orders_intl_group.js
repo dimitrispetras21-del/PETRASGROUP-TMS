@@ -681,7 +681,7 @@ async function pickPiece() {
   const box = document.getElementById('igxPick'); if (!box) return;
   box.innerHTML = '<div class="igx-busy">Φόρτωση παρτίδων…</div>';
   const r = await OrdersStock.loadOpen();
-  if (!IG.s) return;
+  if (IG.s !== s) return;   // the form was closed (or another opened) while the lots loaded
   if (!r.ok) { box.innerHTML = `<div class="igx-busy">Οι παρτίδες δεν διαβάστηκαν — ${esc(r.error || 'σφάλμα')}</div>`; return; }
   const lots = (r.lots || []).filter(l => Number((l.fields || {})['Remaining Pallets']) > 0);
   IG._lots = lots;
