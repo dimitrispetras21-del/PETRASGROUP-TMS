@@ -6045,6 +6045,46 @@ async function _wiJoinReadLoad(seedId){
   if(!Array.isArray(sibs)||!sibs.length) return {err:'— η ομάδα του δεν διαβάστηκε'};
   return {recs:_wiGiSortRecs(sibs),gid0};
 }
+// The joiner's points go LAST in the load's order (owner 15/11, «οκ»): its loadings after the load's highest loading
+// place, its deliveries after the highest delivery place (113 «Load Seq», the form's own label). Each side only when
+// every point of the load already has a place and no two share one (IntlGroup.seqUsable, the form's rule): else no
+// place is written and the form shows the old order with its «!». A place the server did not keep is said
+// (principle 2). Cross-dock stops have no place, as in the form. `loadRecs` = the load before the join, `joinRecs` =
+// the orders that joined, in their order. Never throws: the join itself is already done and read back.
+async function _wiJoinLoadSeq(loadRecs,joinRecs){
+  const usable=typeof IntlGroup!=='undefined'&&typeof IntlGroup.seqUsable==='function'?IntlGroup.seqUsable:null;
+  if(!usable||!joinRecs.length) return;
+  const stopsOf=async recs=>{ const out=[]; for(const r of recs) out.push(...(await stopsLoad(r.id,F.STOP_PARENT_ORDER)).map(st=>({st,oid:r.id}))); return out; };
+  let have, mine;
+  try{ have=await stopsOf(loadRecs); mine=await stopsOf(joinRecs); }
+  catch(e){
+    showErrorToast('Η εισαγωγή μπήκε στο φορτίο, αλλά τα σημεία του δεν διαβάστηκαν — η θέση της στη σειρά δεν γράφτηκε· άνοιξε το groupage στη φόρμα','warn',12000);
+    if(typeof logError==='function') logError(e,'weekly intl: join load seq read');
+    return;
+  }
+  const rank=id=>joinRecs.findIndex(r=>r.id===id);
+  const lost=[];
+  for(const type of ['Loading','Unloading']){
+    const vals=have.filter(x=>x.st.fields[F.STOP_TYPE]===type).map(x=>x.st.fields[F.STOP_LOAD_SEQ]);
+    if(!usable(vals)) continue;
+    let next=Math.max(...vals.map(Number));
+    const add=mine.filter(x=>x.st.fields[F.STOP_TYPE]===type)
+      .sort((a,b)=>rank(a.oid)-rank(b.oid)||(Number(a.st.fields[F.STOP_NUMBER])||0)-(Number(b.st.fields[F.STOP_NUMBER])||0));
+    for(const x of add){
+      const want=++next;
+      try{
+        const res=await atPatch(TABLES.ORDER_STOPS,x.st.id,{[F.STOP_LOAD_SEQ]:want},_wiQuietOpt());
+        if(res&&res.error) throw new Error(res.error.message||res.error.type);
+        const back=await atGetOne(TABLES.ORDER_STOPS,x.st.id);
+        if(Number((back&&back.fields||{})[F.STOP_LOAD_SEQ])!==want) throw new Error('δεν κρατήθηκε στην ανάγνωση');
+      }catch(e){ lost.push(x.oid+': '+((e&&e.message)||e)); }
+    }
+  }
+  if(lost.length){
+    showErrorToast(`Η εισαγωγή μπήκε στο φορτίο, αλλά η θέση ${lost.length===1?'ενός σημείου':lost.length+' σημείων'} της στη σειρά ΔΕΝ γράφτηκε — άνοιξε το groupage στη φόρμα και πάτα Αποθήκευση`,'warn',15000);
+    if(typeof logError==='function') logError(new Error('join load seq not kept: '+lost.join(' | ')),'weekly intl: join load seq');
+  }
+}
 // Add the import row that carries `xOid` (lone or a group: every member) to
 // the import load that carries `loadOid`; `expOid` = the export whose truck
 // carries that load (null for a load of an import row of its own).
@@ -6205,6 +6245,8 @@ async function _wiImpJoin(loadOid,expOid,xOid,palOk){
       await renderWeeklyIntl();   // what landed and what did not: the server's word
       return false;
     }
+    // 5. Its points last in the load's order (113), before the board says ✓.
+    await _wiJoinLoadSeq(L.recs,X.recs);
     _wiSync(slot,null,undefined,oid0);
     invalidateCache(TABLES.ORDERS);
     if(typeof rtOnOrderSaved==='function') rtOnOrderSaved(expRow?expRow.orderIds[0]:L.recs[0].id).catch(e=>console.warn('[wi join] rt sync:',e&&e.message));

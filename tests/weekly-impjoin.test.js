@@ -225,6 +225,72 @@ test('P33: no 33 decides anything outside the shared rule — candidates, sums, 
   assert.match(asyncMany('_wiImpJoin'), /pal=palOk\?'over':await _wiPalConfirm\(lr0,\[xr0\]\)/);
 });
 
+// LSQ (owner 15/11 «οκ»): an import dropped on a truck's load goes LAST in the load's order (113 «Load Seq»),
+// loadings after the highest loading place, deliveries after the highest delivery place — each side only when the
+// load's places are usable (the form's seqUsable: all set, none twice); else nothing is written. Read back.
+function seqWorld(stops, opts = {}) {
+  const IG = fs.readFileSync(path.join(ROOT, 'modules/orders_intl_group.js'), 'utf8');
+  const seqUsable = (0, eval)('(' + IG.match(/function seqUsable\(vals\) \{[\s\S]*?\n\}/)[0] + ')');
+  const db = JSON.parse(JSON.stringify(stops)), patches = [], toasts = [], logged = [];
+  const ctx = load([F('_wiJoinLoadSeq', asyncMany)], { ctx: {
+    IntlGroup: { seqUsable }, F: { STOP_PARENT_ORDER: 'Order', STOP_TYPE: 'Stop Type', STOP_NUMBER: 'Stop Number', STOP_LOAD_SEQ: 'Load Seq' },
+    TABLES: { ORDER_STOPS: 'tblS' }, _wiQuietOpt: () => ({ quiet: true }),
+    stopsLoad: async (oid) => { if (opts.readFails) throw new Error('down'); return db.filter(x => x.oid === oid).map(x => ({ id: x.id, fields: x.fields })); },
+    atPatch: async (t, id, f) => { patches.push([id, f['Load Seq']]); if (!opts.dropSeq) db.find(x => x.id === id).fields['Load Seq'] = f['Load Seq']; return { id, fields: f }; },
+    atGetOne: async (t, id) => ({ id, fields: db.find(x => x.id === id).fields }),
+    showErrorToast: (m) => toasts.push(m), logError: (e) => logged.push(String(e && e.message || e)) } });
+  return { ctx, patches, toasts, logged, db };
+}
+const st = (id, oid, type, no, seq) => ({ id, oid, fields: { 'Stop Type': type, 'Stop Number': no, ...(seq == null ? {} : { 'Load Seq': seq }) } });
+const LOADRECS = [rec('recL1'), rec('recL2')], JOIN = [rec('recX1'), rec('recX2')];
+
+test('LSQ: the joiner goes last — its loadings after the highest loading place, its deliveries after the highest delivery place', async () => {
+  const w = seqWorld([
+    st('s1', 'recL1', 'Loading', 1, 2), st('s2', 'recL2', 'Loading', 1, 1), st('s3', 'recL1', 'Unloading', 1, 1), st('s4', 'recL2', 'Unloading', 1, 2),
+    st('s5', 'recL1', 'Cross-dock', 1, null),                                    // no place in the form: never counted
+    st('x1', 'recX1', 'Loading', 2, null), st('x2', 'recX1', 'Loading', 1, null), st('x3', 'recX2', 'Loading', 1, 7), // a place from another group is replaced
+    st('x4', 'recX1', 'Unloading', 1, null), st('x5', 'recX1', 'Cross-dock', 1, null)]);
+  await w.ctx._wiJoinLoadSeq(LOADRECS, JOIN);
+  assert.deepStrictEqual(plain(w.patches), [['x2', 3], ['x1', 4], ['x3', 5], ['x4', 3]], 'by joiner order, then stop number; no cross-dock');
+  assert.deepStrictEqual(w.toasts, []);
+});
+
+test('LSQ: a side whose places are missing or repeated gets nothing — the form shows the old order with «!»', async () => {
+  const w = seqWorld([
+    st('s1', 'recL1', 'Loading', 1, 1), st('s2', 'recL2', 'Loading', 1, null),   // one loading without a place
+    st('s3', 'recL1', 'Unloading', 1, 1), st('s4', 'recL2', 'Unloading', 1, 1),  // two deliveries share place 1
+    st('x1', 'recX1', 'Loading', 1, null), st('x2', 'recX1', 'Unloading', 1, null)]);
+  await w.ctx._wiJoinLoadSeq(LOADRECS, [rec('recX1')]);
+  assert.deepStrictEqual(w.patches, [], 'nothing written');
+  assert.deepStrictEqual(w.toasts, [], 'nothing to say: the form says it');
+  const u = seqWorld([st('s1', 'recL1', 'Loading', 1, 1), st('s3', 'recL1', 'Unloading', 1, 1), st('x1', 'recX1', 'Loading', 1, null), st('x2', 'recX1', 'Unloading', 1, null)]);
+  await u.ctx._wiJoinLoadSeq([rec('recL1')], [rec('recX1')]);
+  assert.deepStrictEqual(plain(u.patches), [['x1', 2], ['x2', 2]], 'a load of one order with places: the sides are counted apart');
+});
+
+test('LSQ: a place the server did not keep is said, and logged; a failed read writes nothing and says so', async () => {
+  const w = seqWorld([st('s1', 'recL1', 'Loading', 1, 1), st('s3', 'recL1', 'Unloading', 1, 1), st('x1', 'recX1', 'Loading', 1, null)], { dropSeq: true });
+  await w.ctx._wiJoinLoadSeq([rec('recL1')], [rec('recX1')]);
+  assert.strictEqual(w.toasts.length, 1);
+  assert.match(w.toasts[0], /η θέση ενός σημείου της στη σειρά ΔΕΝ γράφτηκε/);
+  assert.doesNotMatch(w.toasts[0], /rec[A-Za-z0-9]/, 'no record code in the message (owner 8/11)');
+  assert.strictEqual(w.logged.length, 1);
+  const r = seqWorld([st('s1', 'recL1', 'Loading', 1, 1), st('x1', 'recX1', 'Loading', 1, null)], { readFails: true });
+  await r.ctx._wiJoinLoadSeq([rec('recL1')], [rec('recX1')]);
+  assert.deepStrictEqual(r.patches, []);
+  assert.match(r.toasts[0], /τα σημεία του δεν διαβάστηκαν/);
+  const n = seqWorld([st('s1', 'recL1', 'Loading', 1, 1), st('x1', 'recX1', 'Loading', 1, null)]);
+  delete n.ctx.IntlGroup;
+  await n.ctx._wiJoinLoadSeq([rec('recL1')], [rec('recX1')]);
+  assert.deepStrictEqual(n.patches, [], 'without the form (flag off) nothing is written');
+});
+
+test('LSQ: the join writes the places after its own read-back, before the ✓', () => {
+  const j = asyncMany('_wiImpJoin');
+  assert.ok(j.indexOf('await _wiJoinLoadSeq(L.recs,X.recs)') > j.indexOf('if(errs.length)'), 'only once every member landed');
+  assert.ok(j.indexOf('await _wiJoinLoadSeq(L.recs,X.recs)') < j.lastIndexOf('toast(escapeHtml('), 'before the success toast');
+});
+
 test('DOCS: a stalled index read is dropped after 25 s; the next call asks again; a failed transport is not cached', async () => {
   mock.timers.enable({ apis: ['setTimeout'] });
   try {
