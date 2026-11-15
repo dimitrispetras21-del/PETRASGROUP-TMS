@@ -30,6 +30,9 @@
 'use strict';
 
 const IG = { s: null };
+// orders_intl.js is an IIFE: its state and steps come through window._OI only (named there).
+const OI = () => window._OI;
+const ST = () => window._OI.st();
 const MAX_PAL = 33;   // the truck the scan preview and the form already measure against
 
 function on() { return typeof FEATURES !== 'undefined' && FEATURES.INTL_GROUP_FORM === true; }
@@ -42,20 +45,20 @@ const OI_KEYS = ['_createdId', '_markPending', '_markPendingCtx', '_whPool', '_l
   '_preConvertCountry', '_stock', '_stopsFail', '_prefill', '_formSnap'];
 function capture() {
   const g = {};
-  OI_KEYS.forEach(k => { g[k] = INTL_ORDERS[k]; });
+  OI_KEYS.forEach(k => { g[k] = ST()[k]; });
   g.sCntL = window._sCntL; g.sCntU = window._sCntU;
   g.scanDoc = window._scanPendingDoc || null; g.scanRes = window._scanResult || null;
-  g.reqAck = typeof _oiReqAck !== 'undefined' ? _oiReqAck : '';
+  g.reqAck = OI().getAck();
   g.docs = typeof OrderDocs !== 'undefined' && OrderDocs.formState ? OrderDocs.formState() : null;
   return g;
 }
 function restore(g) {
   if (!g) return;
-  OI_KEYS.forEach(k => { INTL_ORDERS[k] = g[k]; });
+  OI_KEYS.forEach(k => { ST()[k] = g[k]; });
   window._sCntL = g.sCntL; window._sCntU = g.sCntU;
   if (g.scanDoc) window._scanPendingDoc = g.scanDoc; else delete window._scanPendingDoc;
   window._scanResult = g.scanRes || null;
-  if (typeof _oiReqAck !== 'undefined') _oiReqAck = g.reqAck || '';   // eslint-disable-line no-global-assign
+  OI().setAck(g.reqAck);
   if (g.docs && typeof OrderDocs !== 'undefined' && OrderDocs.formUse) OrderDocs.formUse(g.docs);
 }
 
@@ -330,7 +333,7 @@ async function addMember(src, opts) {
   document.getElementById('igmb_' + m.key).appendChild(m.node);
   s.open = m.key;
   document.getElementById('igm_' + m.key).classList.add('open');
-  await _openModal(m.recId, m.f, src.label || null, src.prefill || null, src.piece || null, m.node);
+  await OI().open(m.recId, m.f, src.label || null, src.prefill || null, src.piece || null, m.node);
   if (src.scanDoc) window._scanPendingDoc = src.scanDoc;
   if (src.scanRes) window._scanResult = src.scanRes;
   // A new order of a groupage takes the load's direction and its one reefer setting (owner 15/11: «Μία φορά»).
@@ -341,7 +344,7 @@ async function addMember(src, opts) {
   }
   if (!s.dir) s.dir = val(m, 'f_Direction');
   if (src.pal != null) { const p = q(m, 'pal_l_1'); if (p) p.value = String(src.pal); }
-  if (typeof _oiCols === 'function') { _oiCols(); _oiVsSync(); _oiBalanceUpdate(); }
+  OI().cols();
   if (!opts || !opts.quiet) { syncOrder(); paint(); }
   return m;
 }
@@ -367,7 +370,7 @@ function expand(m) {
   document.getElementById('igmb_' + m.key)?.appendChild(m.node);
   document.getElementById('igm_' + m.key)?.classList.add('open');
   s.open = m.key;
-  if (typeof _oiCols === 'function') { _oiCols(); _oiVsSync(); _oiBalanceUpdate(); }
+  OI().cols();
 }
 function toggle(key) {
   const s = IG.s; if (!s || s.saving) return;
@@ -377,7 +380,7 @@ function toggle(key) {
 }
 
 // ── Head: single / groupage, export / import ─────────────────────────────────
-function preorderIn() { const s = IG.s; return s.members.some(m => (m.key === s.open ? INTL_ORDERS._preConvert : m.g && m.g._preConvert)); }
+function preorderIn() { const s = IG.s; return s.members.some(m => (m.key === s.open ? ST()._preConvert : m.g && m.g._preConvert)); }
 function hasPiece() { return IG.s.members.some(m => m.piece || isPieceRec(m.f)); }
 function setMode(v) {
   const s = IG.s; if (!s || s.saving || v === s.mode) return;
@@ -391,7 +394,7 @@ function setDir(v) {
   if (v === 'Export' && hasPiece()) { toast('Κομμάτι από απόθεμα υπάρχει μόνο σε εισαγωγή', 'warn'); return; }
   s.dir = v;
   for (const m of s.members) setSeg(m, 'f_Direction', v);
-  if (typeof _oiCols === 'function' && s.open) { _oiCols(); _oiVsSync(); _oiBalanceUpdate(); }
+  if (s.open) OI().cols();
   paint();
 }
 // The reefer is one for the whole truck (owner 15/11), also with a partition: a pick in one order is written in all.
@@ -407,7 +410,7 @@ function paintTop() {
   const pre = preorderIn(), piece = hasPiece();
   const scanBtn = s.mode === 'group'
     ? `<button type="button" class="btn btn-ghost btn-sm igx-scan" onclick="IntlGroup.fromFile()">Σάρωση εντολής πελάτη</button>`
-    : (s.isNew && !piece && !pre && typeof _oiFromPdf === 'function' ? `<button type="button" class="btn btn-ghost btn-sm igx-scan" onclick="_oiFromPdf()">Σάρωση εντολής πελάτη</button>` : '');
+    : (s.isNew && !piece && !pre && OI().fromPdf ? `<button type="button" class="btn btn-ghost btn-sm igx-scan" onclick="window._OI.fromPdf()">Σάρωση εντολής πελάτη</button>` : '');
   el.innerHTML = segHtml('igxMode', [['single', 'Απλό φορτίο', s.members.length > 1, 'Πρώτα διέγραψε τις άλλες παραγγελίες'],
       ['group', 'Groupage', pre, 'Το pre-order γίνεται πρώτα παραγγελία']], s.mode)
     + segHtml('igxDir', [['Export', 'Εξαγωγή', piece, 'Κομμάτι από απόθεμα = εισαγωγή'], ['Import', 'Εισαγωγή']], s.dir)
@@ -581,10 +584,10 @@ async function fromFile() {
       const keepFooter = footer ? footer.innerHTML : '';
       try {
         window._scanResult = null;
-        const parsed = file.size > 10 * 1024 * 1024 ? null : await _scanExtractCore(file);
-        if (parsed) { parsed._scanFile = file; await _scanPreview(parsed); }
+        const parsed = file.size > 10 * 1024 * 1024 ? null : await OI().scanExtract(file);
+        if (parsed) { parsed._scanFile = file; await OI().scanPreview(parsed); }
         res = window._scanResult;
-        if (res) args = _scanFormArgs(res.matched, res.data);
+        if (res) args = OI().scanArgs(res.matched, res.data);
       } catch (e) { console.warn('igx: scan', file.name, e); }
       if (footer) footer.innerHTML = keepFooter;   // the scan preview writes its own footer
       const st = document.getElementById('scanStatus'); if (st) st.innerHTML = '';
@@ -688,7 +691,7 @@ async function remove(key) {
   const s = IG.s; if (!s || s.saving) return;
   const m = s.members.find(x => x.key === key); if (!m) return;
   if (s.members.length === 1) { toast('Η μόνη παραγγελία της φόρμας δεν σβήνεται από εδώ — Άκυρο για να κλείσεις', 'warn'); return; }
-  const created = m.key === s.open ? INTL_ORDERS._createdId : m.g && m.g._createdId;
+  const created = m.key === s.open ? ST()._createdId : m.g && m.g._createdId;
   const savedId = (m.orig || m.saved) ? m.recId : (created || null);
   if (savedId) {
     let gone = false;
@@ -740,7 +743,7 @@ async function saveGroup() {
     for (const m of s.members) {
       expand(m); paintList();
       await submitIntlOrder(m.recId || '', { dryRun: true, gid: '', stopPos: stopPosFor(m) });
-      const r = INTL_ORDERS._lastSave;
+      const r = ST()._lastSave;
       if (!r || !r.ok) return stop(null);   // the reason is on screen, the order stays open; nothing was written
       m.dupAsked = true;
       saveBtn('Έλεγχος…', true);
@@ -752,10 +755,10 @@ async function saveGroup() {
     for (const m of s.members) {
       expand(m); paintList();
       saveBtn(`Αποθήκευση ${done + 1}/${n}…`, true);
-      const recId = m.recId || INTL_ORDERS._createdId || '';
+      const recId = m.recId || ST()._createdId || '';
       const veh = needsVehicle(m);
       await submitIntlOrder(recId, { gid: base, dupAsked: !!m.dupAsked, stopPos: stopPosFor(m), inherit: veh, noFinish: true });
-      const r = INTL_ORDERS._lastSave;
+      const r = ST()._lastSave;
       if (!r || !r.ok || !r.id) {
         return stop(done
           ? `Αποθηκεύτηκαν ${done} από ${n} παραγγελίες — η επόμενη δεν αποθηκεύτηκε (ο λόγος είναι στο προηγούμενο μήνυμα). Διόρθωσε και πάτα ξανά Αποθήκευση: όσες γράφτηκαν δεν ξαναδημιουργούνται.`

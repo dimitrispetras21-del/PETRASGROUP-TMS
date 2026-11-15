@@ -4632,4 +4632,18 @@ window._pickLinked = fhPickLinked;
 // followed by no NAT_LOADS request at all). Only the order form, which calls
 // it directly, ever synced.
 window._syncVeroiaSwitch = _syncVeroiaSwitch;
+// The one form's shell (modules/orders_intl_group.js, owner 15/11) mounts this form once per order of a groupage.
+// This module is an IIFE: the shell reaches only what is named here — the form's own state (INTL_ORDERS, the
+// soft-required acknowledgement) and the steps it reuses — never the module's other internals.
+window._OI = {
+  open: _openModal,
+  st: () => INTL_ORDERS,
+  getAck: () => _oiReqAck,
+  setAck: (v) => { _oiReqAck = v || ''; },
+  cols: () => { _oiCols(); _oiVsSync(); _oiBalanceUpdate(); },
+  scanExtract: _scanExtractCore,
+  scanPreview: _scanPreview,
+  scanArgs: _scanFormArgs,
+  fromPdf: _oiFromPdf,
+};
 })();
