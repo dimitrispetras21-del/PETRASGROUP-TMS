@@ -1023,8 +1023,8 @@ async function scnPaint(browser, origin) {
   const fold = await page.evaluate(js => { const r = eval(js)('recWiE011'); const to = r && r.querySelector('.wi4-c-exp .wi4-l-to'); const more = to && to.querySelector('.wi4-more');
     if (!more) return { more: false, w: to && to.clientWidth };
     more.click(); const f = to.querySelector('.wi4-fold.open');
-    return { more: true, open: !!f, tiles: f ? [...f.querySelectorAll('[ondragstart*="_wiSegDragStart"]')].map(t => t.getAttribute('data-order-id')) : [] }; }, ROW_JS);
-  ok(scn, 'at 1440 the hidden groupage members sit in the «+N» fold as draggable tiles', fold.more && fold.open && fold.tiles.length >= 1, fold);
+    return { more: true, open: !!f, tiles: f ? [...f.querySelectorAll('[ondrop*="_wiSegDrop"]')].map(t => t.getAttribute('data-order-id')) : [] }; }, ROW_JS);
+  ok(scn, 'at 1440 the hidden groupage members sit in the «+N» fold as drop tiles', fold.more && fold.open && fold.tiles.length >= 1, fold);
   await page.evaluate(() => document.querySelectorAll('#content .wi4 .wk3-xfold.open').forEach(f => f.classList.remove('open')));
   await page.setViewportSize({ width: 1920, height: 1080 }); await page.waitForTimeout(500);
   const toggles = page.locator('#content .wi4 .wi4-cols .wi4-ftog');
@@ -1478,12 +1478,8 @@ async function scnDrops(browser, origin) {
       check: (S) => fld(S, 'recWiI004', 'Group ID') === fld(S, 'recWiI002', 'Group ID') && link(fld(S, 'recWiI004', 'Truck')) === 'recWiT017', wantWrites: true },
     { scn: 'drops.J2', why: 'free import → a tile of the matched GI load = join', src: '#wi-imp-recWiI004', dst: async () => `[ondrop*="_wiSegDrop"][ondrop*="'recWiI003'"]`,
       check: (S) => fld(S, 'recWiI004', 'Group ID') === fld(S, 'recWiI002', 'Group ID'), wantWrites: true },
-    { scn: 'drops.reorder', why: 'export group tile onto another tile = reorder', src: `[ondragstart*="_wiSegDragStart"][ondragstart*="'recWiE013'"]`, dst: async () => `[ondrop*="_wiSegDrop"][ondrop*="'recWiE011'"]`,
-      check: (S) => /\|recWiE013,/.test(String(fld(S, 'recWiE011', 'Group ID'))), wantWrites: true },
     { scn: 'drops.grip', why: 'matched group grip → another empty-return cell', src: `[ondragstart*="_wiImpDragStart"][ondragstart*="'recWiI002',true"]`, dst: cell('recWiE007'),
       check: () => true, wantWrites: null },
-    { scn: 'drops.J9', why: 'stale drag id: a tile drag onto an empty cell writes nothing', pre: page => page.evaluate(() => { window._wiDragging = 'recWiI004'; }),
-      src: `[ondragstart*="_wiSegDragStart"][ondragstart*="'recWiI014'"]`, dst: cell('recWiE006'), check: (S) => !fld(S, 'recWiE006', 'Matched Import ID'), wantWrites: false },
     { scn: 'drops.J16', why: 'import dropped on an EXPORT group tile is ignored', src: '#wi-imp-recWiI004', dst: async () => `[ondrop*="_wiSegDrop"][ondrop*="'recWiE012'"]`,
       check: (S) => !fld(S, 'recWiE012', 'Matched Import ID') && !fld(S, 'recWiI004', 'Truck'), wantWrites: false },
   ];
@@ -3510,8 +3506,8 @@ async function scnStyles(browser, origin) {
     C.menu = await menuStyles(page);
     C.danger = await page.evaluate(([tok]) => eval(tok)('--danger'), [TOKEN_JS]);
     await page.evaluate(() => _wiCtxClose());
-    const r23 = await rowOf(page, 'recWiE023'), r24 = await rowOf(page, 'recWiE024'), r14 = await rowOf(page, 'recWiI014');
-    for (const h of [`_wiPanelGroupBuild(${r7},false)`, `_wiPanelGroupBuild(${r14},true)`, `_wiPanelRota(${r23})`, `_wiPanelJoinLoad(${r24})`]) {
+    const r23 = await rowOf(page, 'recWiE023');
+    for (const h of [`_wiPanelRota(${r23})`]) {   // the group windows went 15/11
       await page.evaluate(x => { try { (0, eval)(x); } catch (e) { /* the twin decides */ } }, h); await page.waitForTimeout(350);
       C['panel ' + h] = await cap(page, '#wi-panel');
       await page.evaluate(() => { if (typeof _wiPanelClose === 'function') _wiPanelClose(); }); await page.waitForTimeout(150);

@@ -775,26 +775,10 @@ async function checkJoin470(scn, page, S, E) {
     await page.evaluate(() => _wiImpJoin('recI461', 'recE27', 'recILG'));
     await page.waitForTimeout(500); S.armed = false;
     await checkRefused(scn + '.join', page, S, text);
-    S.log = []; S.armed = true; await page.evaluate(() => window.__mark());
-    await page.evaluate(() => { const a = WINTL.rows.find(x => x.type === 'import' && x.orderId === 'recI470'), b = WINTL.rows.find(x => x.type === 'import' && x.orderId === 'recILG'); return _wiImpGroup(a.id, b.id); });
-    await page.waitForTimeout(500); S.armed = false;
-    await checkRefused(scn + '.group', page, S, text);
     await done(page);
   }
 
-  if (on('J20')) {  // no silent cap: «Groupage εισαγωγών…» lists EVERY free import, with its count
-    const scn = 'J20';
-    const { page } = await newPage(browser, { many: true });
-    await page.locator('#wi-imp-recI470 .wk3-num').click({ button: 'right' }); await page.waitForTimeout(300);
-    await page.locator('#wi-ctx button:has-text("Groupage εισαγωγών")').click(); await page.waitForTimeout(300);
-    const n = await page.locator('#wiGrpList .wiGrpPick').count();
-    const panel = (await page.locator('#wi-panel').innerText()).replace(/\n/g, ' | ');
-    ok(scn, 'more than 6 free imports listed', n > 6, n);
-    ok(scn, 'the count on screen = the boxes listed', panel.includes(`Ελεύθερες εισαγωγές (${n}) — κύλισε`), panel);
-    ok(scn, 'all eight small imports listed (the cut at 6 hid some)', [1, 2, 3, 4, 5, 6, 7, 8].every(k => panel.includes('Load M' + k + ' (1p)')), panel);
-    await shot(page, 'J20-free-list');
-    await done(page);
-  }
+  // J20 (the free-import list of «Groupage εισαγωγών…») went with the window, 15/11: a groupage is built in the form.
 
   // ── The joiner's OWN round trip (fix/own-rt-join-rota) ──
   // 470's own trip, as «Καθαρισμός ανάθεσης» leaves it on a solo trip: no

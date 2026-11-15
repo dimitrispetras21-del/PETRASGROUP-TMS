@@ -91,12 +91,11 @@ const WI_INTERNAL_ORIGIN = Object.freeze({
   dateWrite: '_wiDateWrite', pickDate: '_wk3PickDate',
   // Drag and drop
   dropOnRow: '_wiDropOnRow', dropImport: '_wiDropImport', impDragStart: '_wiImpDragStart',
-  impDragEnd: '_wiImpDragEnd', dragImpId: '_wiDragImpId', segDragStart: '_wiSegDragStart',
-  segDragOver: '_wiSegDragOver', segDrop: '_wiSegDrop', segDragEnd: '_wiSegDragEnd',
+  impDragEnd: '_wiImpDragEnd', dragImpId: '_wiDragImpId', segDrop: '_wiSegDrop',
   // Matching and groups
   saveImportMatch: '_wiSaveImportMatch', unmatch: '_wiUnmatch', unmatchRow: '_wiUnmatchRow',
   newImport: '_wiNewImport', impJoin: '_wiImpJoin', cancelGroupMember: '_wiCancelGroupMember',
-  toggleGroup: '_wiToggleGroup', rota: '_wiRota', rotUnlink: '_wiRotUnlink',
+  toggleGroup: '_wiToggleGroup', groupOpen: '_wiGroupOpen', rotUnlink: '_wiRotUnlink',
   // Order form
   edit: '_wk3Edit',
   // Print and export
@@ -226,10 +225,7 @@ const WI_INTERNAL = {
   impDragEnd() {},
   /** @returns {string} the import id carried in dataTransfer, or '' */
   dragImpId(e) { return ''; },
-  segDragStart(e, rowId, orderId) {},
-  segDragOver(e, rowId, orderId) {},
   segDrop(e, rowId, orderId) { return resolved(undefined); },
-  segDragEnd(e) {},
 
   // ── Matching and groups ──
   saveImportMatch(rowId, impId) { return resolved(undefined); },
@@ -239,7 +235,7 @@ const WI_INTERNAL = {
   impJoin(loadOid, expOid, xOid, palOk) { return resolved(undefined); },
   cancelGroupMember(rowId, orderId, isImportSide, ask) { return resolved(undefined); },
   toggleGroup(rowId) {},
-  rota(rowId) {},
+  groupOpen(rowId) {},
   rotUnlink(e, legOid, skipConfirm) { return resolved(undefined); },
 
   // ── Order form ──

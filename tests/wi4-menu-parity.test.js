@@ -51,6 +51,7 @@ function world() {
     console: { log() {}, info() {}, warn() {}, error() {}, debug() {} },
     ROLE: 'dispatcher', currentPage: 'weekly_intl',
     FEATURES: { ORDER_SPLIT: true, GROUP_TILES: true, STOCK_LOTS: true, WI_V2: 'off', WI_PRESENCE: false },
+    IntlGroup: { on: () => true, setMode() {} },   // the one international form (owner 15/11)
     TABLES: { ORDERS: 'tblO', STOCK_LOTS: 'tblStockLots', LOCAL_MOVES: 'local_moves' },
     can: () => 'full', toast() {}, logError() {}, reportError() {},
     addEventListener() {}, removeEventListener() {},
@@ -192,10 +193,9 @@ test('builders are pure: calling one twice gives the same HTML and never touches
 // weekly_intl.js, not a copy of the v4 map: the map's own keys are checked
 // against them in part 3 once WP5 exposes it.
 const OLD_STRINGS = [
-  { s: 'Ομαδοποίηση…', where: 'menu' }, { s: '+ Εισαγωγή στο φορτίο…', where: 'menu' },
   { s: 'Εκτύπωση…', where: 'menu' }, { s: 'Ακύρωση groupage', where: 'menu' }, { s: 'Εκτύπωση όλων', where: 'menu' },
-  { s: 'Groupage εισαγωγών…', where: 'menu' },
-  { s: "'Ομαδοποίηση'", where: 'panel' }, { s: '>Ομαδοποίηση<', where: 'panel' }, { s: "'+ Εισαγωγή στο φορτίο'", where: 'panel' },
+  // owner 15/11: the group windows went; a groupage opens in the form
+  { s: 'Άνοιγμα στη φόρμα', where: 'menu' }, { s: 'Κάν\' το groupage', where: 'menu' },
 ];
 test('the old strings the v4 relabel map keys on still exist (a rename in old code fails here)', () => {
   const { W } = world(); fill(W);
@@ -331,5 +331,4 @@ test('v4 per-load menu (WP5) meets the parity rules on every fixture load', () =
   assert.ok(loads >= 10, `only ${loads} loads checked — the fixture lost coverage`);
   // The relabel map's keys exist in some builder output or panel string.
   for (const k of Object.keys(A._RELABEL.menu)) assert.ok(WI_SRC.includes(k), 'relabel key gone from weekly_intl.js: ' + k);
-  for (const k of Object.keys(A._RELABEL.panelTitle)) assert.ok(WI_SRC.includes("'" + k + "'"), 'panel title gone: ' + k);
 });
