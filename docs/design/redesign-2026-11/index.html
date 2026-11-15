@@ -476,7 +476,7 @@ table.spec td b{color:var(--ink);font-weight:600}
 .cx .br .two b{font-size:13.5px;line-height:17px}.cx .br .two>span{font-size:12px;line-height:16px}
 .cx .br .no{height:22px;font-size:12.5px}
 .dx{font-style:normal;display:inline-block;font-size:11px;font-weight:600;color:var(--ink);background:#E3E5EA;border-radius:4px;padding:0 5px;line-height:15px;margin-right:6px;vertical-align:1px}
-.dx.t{background:var(--accent);color:#fff}.dx.l{background:var(--red);color:#fff}
+.dx.t{background:var(--accent);color:#fff}
 .stk{display:flex;flex-direction:column;gap:6px;padding:6px 0;min-width:0}
 .stk .ln{display:block;font-size:12.5px;line-height:17px;color:var(--help);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.stk .ln b{font-weight:600;color:var(--ink)}.stk .ln em,.vz em{font-style:normal;color:var(--red);font-weight:600}
 .pn{font-weight:600;color:var(--ink);font-size:14px;text-align:right;display:block;white-space:nowrap}.pn.o{color:var(--red)}.pn sup{font-size:10px;font-weight:700}
@@ -1032,7 +1032,7 @@ $('f5').innerHTML=`<div class="app rail">${side('wi')}<main class="main">
    Rows 5 and 9 are open (every point on its own line); the rest are closed and show "+N" and the span of days. */
 (function(){
  let DM='txt';
- const dy=(t,k)=>DM==='box'?`<i class="dx ${k||''}">${t}</i>`:`<span ${k==='t'?'style="color:var(--link);font-weight:600"':k==='l'?'style="color:var(--red);font-weight:600"':''}>${t}</span> · `;
+ const dy=(t,k)=>!t?'':DM==='box'?`<i class="dx ${k||''}">${t}</i>`:`<span ${k==='t'?'style="color:var(--link);font-weight:600"':''}>${t}</span> · `;
  const pt=(n,tg,day,pl,k)=>`<div class="two"><b><span class="el">${n}</span>${tags(tg)}</b><span>${dy(day,k)}${pl}</span></div>`;
  const stk=a=>`<div class="stk">${a.map(([n,day,pl,pal,k])=>`<div class="two"><b><span class="el">${n}</span></b><span>${dy(day,k)}${pl} · <span class="num">${pal}π</span></span></div>`).join('')}</div>`;
  const pn=n=>n>33?`<b class="pn num o">${n}<sup>+${n-33}</sup></b>`:`<b class="pn num">${n}</b>`;
