@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="el">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Petras TMS · Κέλυφος: είσοδος, μενού, αναζήτηση, ειδοποιήσεις, βοηθός (σχέδιο)</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_system.css">
+<style>
+/* DESIGN MOCKUP ONLY. Invented names. Page-specific rules for the shell. */
+.who{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+/* menus per job */
+.mn{position:absolute;inset:0;padding:24px;display:grid;grid-template-columns:repeat(5,232px);gap:16px;justify-content:center;align-items:start}
+.mn .side{border:0;border-radius:var(--r-card);min-height:0;padding-bottom:16px}.mn .side .bsep{margin-top:18px}
+/* shell pieces over a page */
+.ghost{flex:1;min-height:0;border-radius:24px 24px 0 0;background:#fff;padding:24px 28px;display:grid;gap:18px;align-content:start}
+.ghost i{display:block;height:12px;border-radius:6px;background:var(--bg)}
+.kp2{position:absolute;z-index:6;top:96px;left:50%;width:640px;margin-left:-320px;background:#fff;border-radius:20px;box-shadow:var(--shadow-float);overflow:hidden;animation:popIn var(--t-enter) var(--ease) both;transform-origin:top center}
+.kp2 .ki{display:flex;align-items:center;gap:12px;height:60px;padding:0 20px;border-bottom:1px solid var(--line);font-size:17px;color:var(--ink)}.kp2 .ki svg.lucide{color:var(--help);width:18px;height:18px}
+.kg{padding:12px 20px 4px}
+.kr{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:0 12px;align-items:center;height:52px;padding:0 12px;margin:0 8px;border-radius:12px;font-size:13.5px}
+.kr.h{background:var(--accent-bg)}.kr .ty{width:28px;height:28px;border-radius:8px;background:var(--bg);display:grid;place-items:center;color:var(--body)}.kr.h .ty{background:#fff}.kr .ty svg.lucide{width:15px;height:15px}
+.kr b{font-weight:500;color:var(--ink);display:block}.kr small{display:block;color:var(--help);font-size:12.5px}.kr>span:last-child{color:var(--help);font-size:12.5px;white-space:nowrap}.kr .st{font-size:12.5px}
+.kft{display:flex;gap:16px;padding:10px 20px;border-top:1px solid var(--line);margin-top:8px;color:var(--help);font-size:12px}.kft kbd{font:inherit;border:1px solid var(--line);border-radius:5px;padding:0 5px;margin-right:4px;color:var(--body)}
+/* the bell: one list, the same as the landing page */
+.bell{display:flex;align-items:center;gap:12px;height:36px;padding:0 12px;border-radius:10px;color:var(--body);font-weight:500;cursor:pointer;margin-top:auto;transition:background var(--t-fast)}.bell:hover,.bell.on{background:var(--bg)}.bsep{margin-top:auto;border-top:1px solid var(--line);margin-bottom:8px}.side .bell{margin-top:0}
+.bell em{margin-left:auto;font-style:normal;font-size:12px;font-weight:600;color:var(--red)}.side .bell+.me{margin-top:6px}
+.bp{position:absolute;z-index:6;left:256px;top:132px;width:500px;background:#fff;border-radius:20px;box-shadow:var(--shadow-float);padding:8px 0 10px;opacity:0;transform:translateX(-10px);pointer-events:none;transition:opacity var(--t-exit) var(--ease-exit),transform var(--t-exit) var(--ease-exit)}
+.bp.open{opacity:1;transform:none;pointer-events:auto;transition:opacity var(--t-enter) var(--ease),transform var(--t-enter) var(--ease)}
+.bp .gh{display:flex;gap:8px;align-items:center;padding:12px 20px 2px}.bp .gh b{font-weight:600;color:var(--ink);font-size:11px}
+.br2{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:0 8px;align-items:center;height:58px;padding:0 20px;overflow:hidden;transition:height var(--t-move) var(--ease),opacity var(--t-exit) var(--ease-exit),transform var(--t-move) var(--ease)}
+.br2.go{height:0;opacity:0;transform:translateX(-12px)}.br2 .acts{display:flex;opacity:0;transition:opacity var(--t-fast)}.br2:hover .acts,.br2.hv .acts{opacity:1}.bp .gh{overflow:hidden;transition:height var(--t-move) var(--ease),opacity var(--t-exit) var(--ease-exit),padding var(--t-move) var(--ease)}.br2 .two b{font-size:13.5px}.br2 .w{font-size:12.5px;color:var(--body);white-space:nowrap}.br2 .w.r{color:var(--red);font-weight:600}.br2 .w.k{color:var(--ink);font-weight:600}
+.ib2{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:var(--help);transition:background var(--t-fast)}.ib2:hover{background:var(--bg);color:var(--ink)}.ib2 svg.lucide{width:15px;height:15px}
+/* assistant */
+.as2{position:absolute;z-index:6;right:20px;top:20px;bottom:20px;width:400px;background:#fff;border-radius:20px;box-shadow:var(--shadow-float);display:flex;flex-direction:column;padding:20px 22px 16px}
+.as2 .q2{align-self:flex-end;background:var(--bg);border-radius:14px 14px 4px 14px;padding:9px 13px;color:var(--ink);font-weight:500;max-width:80%;margin-top:16px}
+.as2 .a2{margin-top:12px;color:var(--ink);line-height:1.5}
+.pc{border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-top:10px}.pc dl{display:grid;grid-template-columns:96px minmax(0,1fr);gap:6px 10px;margin:8px 0 12px;font-size:13.5px}.pc dt{color:var(--help);font-size:12.5px}.pc dd{margin:0;color:var(--ink);font-weight:500}
+/* history on the record */
+.hr2 span span{white-space:nowrap}.hr2{display:grid;grid-template-columns:104px minmax(0,1fr) 18px;gap:0 12px;align-items:start;padding:11px 0;border-top:1px solid var(--line-2);font-size:13.5px}.hr2:first-of-type{border-top:0}
+.hr2 time{color:var(--help);font-size:12.5px;line-height:20px}.hr2 b{font-weight:500;color:var(--ink)}.hr2 span{color:var(--body)}.hr2 s{color:var(--help)}
+.pn{background:#fff;border-radius:var(--r-page);box-shadow:var(--shadow-float);padding:20px 22px 16px}.pn h3{font-size:17px;font-weight:600;color:var(--ink)}.pn h3+small{display:block;color:var(--help);font-size:13px;margin-top:2px}
+/* undo toast with a countdown that runs once */
+.ut{--u:6000ms;position:relative;overflow:hidden;transform:none;opacity:1;padding:10px 10px 12px 14px;gap:12px;transition:opacity var(--t-enter) var(--ease),transform var(--t-enter) var(--ease)}
+.ut .bar{position:absolute;left:0;bottom:0;height:2px;width:100%;background:rgba(255,255,255,.45);transform-origin:left;transition:opacity var(--t-exit)}.ut.run .bar{transform:scaleX(0);transition:transform var(--u) linear}.ut.back .bar{opacity:0}
+.ut .pill{height:28px;font-size:12.5px;background:var(--on-dark-btn);border-color:var(--on-dark-btn);color:var(--on-dark-btn-ink)}
+.ut.gone{pointer-events:none;opacity:0;transform:translateY(8px);transition:opacity var(--t-exit) var(--ease-exit),transform var(--t-exit) var(--ease-exit)}
+</style>
+</head>
+<body>
+<div class="doc">
+<header>
+  <p class="lbl">Petras Group TMS · επανασχεδίαση · σελίδα 9 από 9 · μόνο σχέδιο, επινοημένα στοιχεία</p>
+  <h1>Κέλυφος: είσοδος, μενού, αναζήτηση, ειδοποιήσεις, βοηθός</h1>
+  <p>Πρόταση: μία λίστα «σε περιμένουν» παντού (αρχική, καμπανάκι, βοηθός), αναζήτηση που βρίσκει φορτία και ανθρώπους και όχι μόνο σελίδες, αναίρεση πάνω στην ενέργεια, ιστορικό πάνω στην εγγραφή.</p>
+</header>
+
+<section class="sec">
+  <div class="who">
+    <div class="panel"><h3>Ποιος και για τι</h3><table class="spec"><tr><td><b>Όλοι</b></td><td>Είσοδος μία φορά το πρωί, μενού όλη μέρα, το καμπανάκι πολλές φορές.</td></tr><tr><td><b>Δημήτρης, Θοδωρής</b></td><td>«Ποιος άλλαξε τι» και επαναφορά διαγραμμένων, πού και πού.</td></tr></table></div>
+    <div class="panel"><h3>Τι κρατήθηκε</h3><table class="spec"><tr><td>Ό,τι δεν διαβάστηκε δεν φαίνεται ποτέ ως «όλα εντάξει» · η σύνδεση που έληξε δεν χάνει την ανοιχτή φόρμα · οι θέσεις του μενού είναι σύνδεσμοι που ανοίγουν και σε νέα καρτέλα · κάθε ρόλος βλέπει τις δικές του ειδοποιήσεις · καμία εγγραφή δεν λέγεται με κωδικό.</td></tr></table></div>
+    <div class="panel"><h3>Τι αλλάζει</h3><table class="spec"><tr><td>Τριάντα μία θέσεις σε δέκα ομάδες γίνονται δεκαπέντε σε έξι · το καμπανάκι, η σελίδα ειδοποιήσεων και η αρχική δείχνουν την ίδια λίστα · η αναζήτηση βρίσκει φορτία, οχήματα, ανθρώπους · ο βοηθός προτείνει και ανοίγει τη φόρμα, δεν γράφει · ο «Κάδος» και το γενικό κουμπί αναίρεσης φεύγουν.</td></tr></table></div>
+  </div>
+</section>
+
+<section class="sec"><h2>Είσοδος</h2>
+  <p class="lead">Η οθόνη σύνδεσης μένει όπως είναι σήμερα (απόφαση owner 15/11/2026). Δεν σχεδιάζεται νέα. Κάτω: μόνο η στιγμή που η σύνδεση λήγει πάνω σε ανοιχτή φόρμα.</p>
+  <div class="fit"><div class="frame" id="fX" style="height:760px"></div></div>
+</section>
+<section class="sec"><h2>Το μενού ανά δουλειά</h2>
+  <div class="cap"><h3>Έξι ομάδες, και μόνο ό,τι αφορά τον καθένα</h3><span>Ποιος βλέπει τι το αποφασίζει ο Δημήτρης· εδώ είναι πρόταση.</span></div>
+  <div class="fit"><div class="frame" id="fN" style="height:980px"></div></div>
+</section>
+<section class="sec"><h2>Αναζήτηση</h2>
+  <div class="cap"><h3>Φορτία, οχήματα, άνθρωποι, σελίδες</h3><span>Ctrl K ή ⌘ K από παντού</span></div>
+  <div class="fit"><div class="frame" id="fK" style="height:760px"></div></div>
+</section>
+<section class="sec"><h2>Το καμπανάκι</h2>
+  <div class="cap"><h3>Η ίδια λίστα με την αρχική, από κάθε σελίδα</h3><span>Πάτησε το καμπανάκι· πάτησε το ρολόι σε μια γραμμή.</span></div>
+  <div class="fit"><div class="frame" id="fB" style="height:820px"></div></div>
+</section>
+<section class="sec"><h2>Βοηθός και ιστορικό</h2>
+  <div class="cap"><h3>Ο βοηθός προτείνει, η φόρμα γράφει</h3><span>Στη μέση: το ιστορικό πάνω στην εγγραφή, με απλά λόγια</span></div>
+  <div class="fit"><div class="frame" id="fA" style="height:780px"></div></div>
+  <div class="cap"><h3>Ό,τι ανοίγει</h3><span>Αναίρεση πάνω στην ενέργεια (εδώ τρέχει σε 6 δευτερόλεπτα, στην εφαρμογή 60) · ο χρήστης · διαγραμμένα ως φίλτρο · νέα έκδοση</span></div>
+  <div class="fit"><div class="frame" id="fP" style="height:300px"></div></div>
+</section>
+<section class="sec"><h2>Οι κακές στιγμές</h2><div class="grid g4" style="align-items:stretch" id="bad"></div></section>
+<section class="sec"><h2>Χαρτιά</h2><p class="lead">Το κέλυφος δεν τυπώνει. Το ιστορικό σήμερα δεν εξάγεται· η εξαγωγή του είναι ερώτηση προς τον Δημήτρη.</p></section>
+</div>
+
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script src="_system.js"></script>
+<script>
+const fld=(l,vv,cls='')=>`<label class="fld"><span>${l}</span><div class="inp ${cls}">${vv}</div></label>`;
+const cur='<span style="width:1.5px;height:18px;background:var(--accent)"></span>';
+const nb=(t,a,x='')=>`<i class="nb ${a?'a':''} ${x}" data-t="${t}">!</i>`;
+const ms=v=>parseFloat(getComputedStyle(document.documentElement).getPropertyValue(v))||0;
+/* the proposed menu: six groups, fifteen places */
+const M={h:['ΑΡΧΗ',[['house','Σήμερα','h'],['chart-no-axes-column','Διοίκηση','x']]],
+ s:['ΣΧΕΔΙΑΣΜΟΣ',[['globe','Εβδομαδιαίο Διεθνών','wi'],['map','Εβδομαδιαίο Εθνικών','wn'],['calendar-days','Ημερήσιο','d'],['warehouse','Ράμπα','r']]],
+ w:['ΔΟΥΛΕΙΑ',[['file-text','Παραγγελίες','o'],['package','Παλέτες','p']]],
+ m:['ΟΙΚΟΝΟΜΙΚΑ',[['receipt','Έξοδα δρομολογίων','e'],['coins','Μισθοδοσία','m']]],
+ f:['ΣΤΟΛΟΣ',[['truck','Στόλος','t'],['wrench','Εργασίες','j'],['store','Συνεργεία','ws']]],
+ d:['ΣΤΟΙΧΕΙΑ',[['book-user','Κατάλογος','c'],['map-pin','Τοποθεσίες','l']]]};
+const pick=(g,ids)=>[M[g][0],M[g][1].filter(x=>!ids||ids.includes(x[2]))];
+function sd(groups,on,av,nm,ro,n,bellOn){return `<aside class="side"><div class="lg"><span class="logo full" role="img" aria-label="Petras Group"></span></div>`+
+ groups.map(([g,it],i)=>`${i?'<hr>':''}<h4>${g}</h4>`+it.map(([icn,l,id])=>`<a class="${id===on?'on':''}" title="${l}">${ic(icn)}<span>${l}</span></a>`).join('')).join('')+
+ `<div class="bsep"></div><a class="bell ${bellOn?'on':''}" role="button" tabindex="0" aria-expanded="${bellOn?'true':'false'}" ${bellOn?'id="bl" onclick="bell()" onkeydown="if(event.key===\'Enter\')bell()"':''}>${ic('bell')}<span>Σε περιμένουν</span>${n?`<em>${n}</em>`:n===0?`<span style="margin-left:auto;color:var(--green);display:grid">${ic('check')}</span>`:''}</a><div class="me"><span class="av">${av}</span><div>${nm}<small>${ro}</small></div></div></aside>`}
+const ALL=[pick('h'),pick('s'),pick('w'),pick('m'),pick('f'),pick('d')];
+const DSP=[pick('h',['h']),pick('s'),pick('w'),pick('f',['t']),pick('d')];
+const ghost=a=>`<div class="ghost">${a.map(w=>`<i style="width:${w}%"></i>`).join('')}</div>`;
+
+/* ---------- login ---------- */
+$('fX').innerHTML=`<div class="app">${sd(DSP,'o','ΠΚ','Παντελής Κ.','Dispatcher','6')}<main class="main"><div class="hd"><div><h1>Νέα παραγγελία</h1><p>Pella Peach Coop · Σκύδρα → Wien</p></div></div><div class="ghost" style="grid-template-columns:1fr 1fr;gap:16px 20px">${fld('Πελάτης','Pella Peach Coop')}${fld('Παλέτες','32')}${fld('Φόρτωση','Pella Peach Coop · Τρί 17/11')}${fld('Παράδοση','Wiener Frische · Παρ 20/11')}${fld('Τιμή','2.400,00')}${fld('Σημείωση','','ph')}</div></main></div>
+ <div class="veil" style="animation:none;background:rgba(0,0,16,.28);backdrop-filter:none"></div>
+ <div class="pn" style="position:absolute;z-index:6;left:50%;top:210px;width:400px;margin-left:-200px"><h3 style="display:flex;gap:8px;align-items:center">Η σύνδεση έληξε ${nb('Η παραγγελία που γράφεις μένει ανοιχτή.',1,'dn')}</h3>
+  <div style="display:grid;gap:14px;margin-top:16px">${fld('Όνομα χρήστη','pkostas','ph')}${fld('Κωδικός',cur,'focus')}</div>
+  <div style="display:flex;gap:8px;align-items:center;margin-top:16px"><a style="color:var(--help);font-weight:500;font-size:13.5px">Έξοδος</a><span class="sp"></span><button class="pill b">Συνέχεια</button></div></div>`;
+
+/* ---------- menu per job ---------- */
+$('fN').innerHTML=`<div class="mn">
+ ${sd(ALL,'h','ΔΠ','Δημήτρης Π.','Owner','62')}
+ ${sd(DSP,'h','ΠΚ','Παντελής Κ.','Dispatcher','6')}
+ ${sd([pick('h',['h']),pick('s'),pick('w'),pick('m'),pick('f'),pick('d')],'h','ΘΔ','Θοδωρής Δ.','Στόλος','13')}
+ ${sd([pick('h',['h']),pick('w'),pick('m'),pick('d',['c'])],'h','ΑΛ','Αλεξία Λ.','Λογιστήριο','63')}
+ ${sd([pick('s',['r']),pick('w',['p'])],'r','ΑΠ','Αποθήκη','Αποθήκη',0)}
+</div>`;
+
+/* ---------- search ---------- */
+const sst=(k,t)=>`<span class="st ${k}">${k==='done'?ic('check'):''}${t}</span>`;const kr=(i,a,b,c,h)=>`<div class="kr ${h?'h':''}"><span class="ty">${ic(i)}</span><span><b>${a}</b><small>${b}</small></span><span>${c}</span></div>`;
+$('fK').innerHTML=`<div class="app">${sd(DSP,'d','ΠΚ','Παντελής Κ.','Dispatcher','6')}<main class="main"><div class="hd"><div><h1>Ημερήσιο</h1><p>Δευτέρα 16 Νοεμβρίου</p></div></div>${ghost([70,45,60,30,55,40,65])}</main></div>
+ <div class="veil" style="animation:none;background:rgba(0,0,16,.28);backdrop-filter:none"></div>
+ <div class="kp2"><div class="ki">${ic('search')}<span>nordfr</span>${cur}</div>
+  <div class="kg lbl">Φορτία</div>
+  ${kr('file-text','Μεσσήνη → Hamburg · σήμερα','Nordfrisch GmbH · χωρίς φορτηγό',sst('todo','Σε αναμονή'),1)}
+  ${kr('file-text','Hamburg → Ασπρόπυργος · σήμερα','Nordfrisch GmbH · Balkan Frigo',sst('run','Σε μεταφορά'))}
+  ${kr('file-text','Μεσσήνη → Hamburg · Πέμ 12/11','Nordfrisch GmbH · ΚΗΙ 6021',sst('done','Παραδόθηκε'))}
+  <div class="kg lbl">Άνθρωποι και τόποι</div>
+  ${kr('building-2','Nordfrisch GmbH','Πελάτης · Hamburg · +49 40 000 0003','')}
+  ${kr('map-pin','Nordfrisch Lager','Hamburg · DE · παράδοση 12×','')}
+  <div class="kg lbl">Ενέργειες</div>
+  ${kr('plus','Νέα παραγγελία για Nordfrisch GmbH','','')}
+  <div class="kft"><span><kbd>↑</kbd><kbd>↓</kbd>επιλογή</span><span><kbd>↵</kbd>άνοιγμα</span><span><kbd>Esc</kbd>κλείσιμο</span></div></div>`;
+
+/* ---------- the bell ---------- */
+/* [name, what, when, red] */
+const B0=[['Nordfrisch GmbH','Μεσσήνη → Hamburg · 33 παλέτες','φορτώνει σήμερα','r']];
+const B2=[['Olympos Export','Λάρισα → München · Μεταφορική Ζήση','παράδοση Παρ 13/11','k'],['Chalkidiki Olives','Πολύγυρος → Hamburg · ΚΗΙ 4445','παράδοση Σάβ 14/11','k'],['Hellas Citrus','Άργος → Wien · χωρίς φορτηγό','φόρτωση Σάβ 14/11','k']];
+const B1=[['Baltic Cold Foods','Βέροια → Poznań · 30 παλέτες','φόρτωση Τετ 18/11','']];
+const B3=[['Ρ 2998','με το ΚΗΙ 4612 · Βέροια → Poeldijk · φεύγει Δευ 23/11','ΚΤΕΟ έληξε 5/11','r']];
+const br2=r=>`<div class="br2"><div class="two"><b><span class="el">${r[0]}</span></b><span>${r[1]}</span></div><span class="w num ${r[3]}">${r[2]}</span><span class="acts"><button class="ib2" title="Αργότερα: 1 ώρα · ως αύριο · ώσπου να λυθεί" onclick="bdone(this)">${ic('clock')}</button><button class="ib2" title="Άνοιγμα">${ic('arrow-up-right')}</button></span></div>`;
+const bg=(l,rows)=>`<div class="gh lbl">${l}<b class="num">${rows.length}</b></div>${rows.map(br2).join('')}`;
+$('fB').innerHTML=`<div class="app">${sd(DSP,'wi','ΠΚ','Παντελής Κ.','Dispatcher','6',1)}<main class="main"><div class="hd"><div><h1>Εβδομαδιαίο Διεθνών</h1><p>W47</p></div></div>${ghost([70,45,60,30,55,40,65,50])}</main></div>
+ <div class="bp open" id="bp"><div id="bpl">${bg('Σήμερα χωρίς φορτηγό',B0).replace('class="br2"','class="br2 hv"')}${bg('Από προηγούμενες ημέρες',B2)}${bg('Προς ανάθεση',B1)}${bg('Όχημα',B3)}</div>
+  <div style="display:flex;align-items:center;gap:8px;padding:10px 20px 0;margin-top:6px;border-top:1px solid var(--line)"><span style="color:var(--help);font-size:12.5px" class="num">07:42</span>${nb('Τα διπλώματα των οδηγών δεν ελέγχθηκαν.',1)}<a style="color:var(--help);font-weight:500;font-size:13px;margin-left:8px" title="Όσα έβαλες αργότερα">Αργότερα 2</a><span class="sp"></span><a style="color:var(--link);font-weight:600;font-size:13.5px">Όλα στο «Σήμερα» →</a></div></div>`;
+/* The bell opens and closes the panel; a snoozed row leaves and every counter follows at once. */
+function bell(open){const p=$('bp'),b=$('bl'),o=open===undefined?!p.classList.contains('open'):open;p.classList.toggle('open',o);b.classList.toggle('on',o);b.setAttribute('aria-expanded',o)}
+addEventListener('keydown',e=>{if(e.key==='Escape')bell(false)});
+addEventListener('click',e=>{if(!e.target.closest('#bp,#bl')&&e.target.closest('#fB'))bell(false)});
+function bdone(btn){const r=btn.closest('.br2');if(r._g)return;r._g=1;let g=r.previousElementSibling;while(g&&!g.classList.contains('gh'))g=g.previousElementSibling;
+ const gb=g.querySelector('b');gb.textContent=+gb.textContent-1;document.querySelectorAll('#fB .side em').forEach(e=>{e.textContent=+e.textContent-1;if(e.textContent==='0')e.remove()});
+ const last=gb.textContent==='0',fin=()=>{r.remove();if(last)g.remove();if(!$('bpl').querySelector('.br2'))$('bpl').innerHTML='<div class="fadeup" style="display:grid;place-items:center;height:120px;color:var(--help)">Τίποτα δεν σε περιμένει</div>'};
+ if(RED()){fin();return}r.style.height=r.offsetHeight+'px';if(last)g.style.height=g.offsetHeight+'px';
+ requestAnimationFrame(()=>{r.classList.add('go');r.style.height='0px';if(last){g.style.height='0px';g.style.opacity=0;g.style.padding='0 20px'}});setTimeout(fin,ms('--t-move')+10)}
+
+/* ---------- assistant and history ---------- */
+$('fA').innerHTML=`<div class="app">${sd(ALL,'o','ΔΠ','Δημήτρης Π.','Owner','62')}<main class="main"><div class="hd"><div><h1>Παραγγελίες</h1><p>W47</p></div></div>
+ <div style="display:grid;grid-template-columns:minmax(0,1fr) 520px 404px;gap:16px;flex:1;min-height:0">${ghost([70,45,60,30,55,40])}
+  <div class="card" style="border-radius:24px 24px 0 0;padding:20px 24px"><b style="font-size:17px;font-weight:600;color:var(--ink);display:block">Tirol Obst GmbH</b><small style="color:var(--help);font-size:13px">Βέροια → Innsbruck · Δευ 16 – Παρ 20/11</small>
+   <div class="tabs" style="padding:0;margin:8px 0 0;gap:22px"><a>Στοιχεία</a><a>Στάσεις</a><a class="on">Ιστορικό</a></div>
+   ${[['σήμερα 06:40','Παντελής','φορτώθηκε στη Βέροια',''],['Παρ 13/11 12:05','Παντελής','ανάθεση: <span><s>χωρίς φορτηγό</s> → ΚΗΙ 3310</span> · Θ. Μέλλιος',''],['Πέμ 12/11 10:20','Ειρήνη','τιμή: <s>3.600,00</s> → 3.800,00',''],['Πέμ 12/11 09:02','Ειρήνη','παράδοση: <span><s>Πέμ 19/11</s> → Παρ 20/11</span>','Η παλιά ημέρα δεν είχε γραφτεί· συμπεραίνεται.'],['Τετ 11/11 15:48','Ειρήνη','γράφτηκε η παραγγελία','']].map(r=>`<div class="hr2"><time class="num">${r[0]}</time><span><b>${r[1]}</b> · ${r[2]}</span>${r[3]?nb(r[3],1):'<span></span>'}</div>`).join('')}</div>
+  <div></div></div></main></div>
+ <div class="as2"><div style="display:flex;align-items:center;gap:10px"><span class="tile soft" style="width:32px;height:32px;border-radius:10px">${ic('sparkles')}</span><b style="flex:1;color:var(--ink);font-weight:600;font-size:15px">Βοηθός</b><button class="ib2" aria-label="Κλείσιμο">${ic('x')}</button></div>
+  <div class="q2">Βάλε τη Nordfrisch για Hamburg στο 6021 με τον Δήμου</div>
+  <div class="a2">Το ετοίμασα.</div>
+  <div class="pc"><b style="color:var(--ink);font-weight:600">Nordfrisch GmbH</b><dl><dt>Διαδρομή</dt><dd>Μεσσήνη → Hamburg</dd><dt>Φόρτωση</dt><dd>σήμερα, Δευ 16/11</dd><dt>Φορτηγό</dt><dd class="num">ΚΗΙ 6021</dd><dt>Οδηγός</dt><dd style="display:flex;gap:8px;align-items:center">Λ. Δήμου${nb('Σήμερα φορτώνει στο Poznań με το ΚΗΙ 8600.',1)}</dd></dl><button class="pill b sm">Άνοιξε τη φόρμα</button></div>
+  <span class="sp"></span>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px"><a style="color:var(--link);font-weight:600;font-size:13px">Σε περιμένουν</a><span style="color:var(--faint)">·</span><a style="color:var(--link);font-weight:600;font-size:13px">Σήμερα</a><span style="color:var(--faint)">·</span><a style="color:var(--link);font-weight:600;font-size:13px">Στόλος</a></div>
+  <div class="inp ph" style="height:44px">Ρώτα ή ζήτα κάτι<span class="sp"></span>${ic('paperclip')}${ic('arrow-up')}</div></div>`;
+
+/* ---------- what opens ---------- */
+$('fP').innerHTML=`<div style="position:absolute;inset:0;padding:28px;display:grid;grid-template-columns:auto 230px minmax(380px,1fr) 310px;gap:24px;align-items:start;background:#DFE1E6">
+ <div><p class="lbl" style="margin-bottom:10px">Αναίρεση πάνω στην ενέργεια</p><div class="toast ut" id="ut">${ic('trash-2')}<span>Διαγράφηκε · Hellas Kiwi Coop, Άργος → Wien</span><button class="pill sm" onclick="undo()">Αναίρεση</button><i class="bar"></i></div>
+  <p style="margin-top:14px"><button class="pill sm" onclick="run()">${ic('rotate-cw')}Ξανά</button></p></div>
+ <div><p class="lbl" style="margin-bottom:10px">Ο χρήστης</p><div class="pop" style="width:250px;animation:none"><a>${ic('history')}Ιστορικό ενεργειών</a><a>${ic('bell')}Οι ειδοποιήσεις μου</a><a>${ic('sparkles')}Ο βοηθός μου</a><a>${ic('info')}Τι άλλαξε<small>15/11</small></a><hr><a>${ic('log-out')}Έξοδος</a></div></div>
+ <div><p class="lbl" style="margin-bottom:10px">Διαγραμμένα ως φίλτρο της λίστας</p><div class="card" style="border-radius:var(--r-card);padding:14px 18px"><div style="display:flex;gap:8px;margin-bottom:6px"><span class="chip">Όλες <b>28</b></span><span class="chip on">Διαγραμμένες <b>2</b></span></div>
+  ${[['Hellas Kiwi Coop','Άργος → Wien · Πέμ 19/11','Παντελής · σήμερα 07:40'],['Pella Peach Coop','Σκύδρα → Wien · Τρί 17/11','Ειρήνη · Παρ 13/11']].map(r=>`<div class="br2" style="padding:0;border-top:1px solid var(--line-2);grid-template-columns:minmax(0,1fr) auto"><div class="two"><b><span class="el">${r[0]} · ${r[1]}</span></b><span>${r[2]}</span></div><button class="pill sm">Επαναφορά</button></div>`).join('')}</div></div>
+ <div><p class="lbl" style="margin-bottom:10px">Νέα έκδοση</p><div class="strip n" style="background:#fff">${ic('refresh-cw')}<span style="white-space:nowrap">Νέα έκδοση</span><span class="sp"></span>${nb('Η φόρμα που γράφεις δεν χάνεται.',1,'dn')}<button class="pill sm">Ανανέωση</button></div></div>
+</div>`;
+/* The undo runs out once: the bar empties, then the toast leaves. Undo stops it and says what came back. */
+const UT='Hellas Kiwi Coop, Άργος → Wien';let ut0;
+function run(){const t=$('ut');t.classList.remove('gone','run','back');t.querySelector('span').textContent='Διαγράφηκε · '+UT;t.querySelector('.pill').style.display='';void t.offsetWidth;if(!RED())t.classList.add('run');clearTimeout(ut0);ut0=setTimeout(()=>t.classList.add('gone'),parseFloat(getComputedStyle(t).getPropertyValue('--u'))||6000)}
+function undo(){const t=$('ut');clearTimeout(ut0);t.classList.add('back');t.querySelector('span').textContent='Γύρισε πίσω · '+UT;t.querySelector('.pill').style.display='none';ut0=setTimeout(()=>t.classList.add('gone'),2000)}
+
+/* ---------- bad moments ---------- */
+const bp=(l,body)=>`<div class="panel"><p class="lbl">${l}</p>${body}</div>`;
+const em=(i,h,b='')=>`<div style="display:grid;justify-items:start;align-content:start;min-height:110px;gap:10px;margin-top:14px"><div class="tile soft" style="width:36px;height:36px;border-radius:10px">${ic(i)}</div><h3 style="margin:0;font-weight:500;color:var(--body);font-size:15px">${h}</h3>${b}</div>`;
+const bl=(n,x)=>`<a class="bell" style="margin-top:14px;background:var(--bg)">${ic('bell')}<span>Σε περιμένουν</span>${x||`<em>${n}</em>`}</a>`;
+$('bad').innerHTML=[
+ bp('Λάθος κωδικός',`<div style="margin-top:12px">${fld('Κωδικός <i class="nb show" data-t="Δεν ταιριάζει.">!</i>','••••••')}</div>`),
+ bp('Η είσοδος δεν απαντά',em('cloud-off','Η είσοδος δεν απαντά','<button class="pill sm">Ξανά</button>')),
+ bp('Δεν ελέγχθηκε',bl('','<i class="nb a dn" style="margin-left:auto" data-t="Οι παραγγελίες δεν διαβάστηκαν.">!</i>')),
+ bp('Ελέγχθηκε μισό',bl('4')+`<div style="margin-top:10px;display:flex;gap:8px;align-items:center;color:var(--body);font-size:13.5px">Οχήματα ${nb('Τα έγγραφα των οχημάτων δεν διαβάστηκαν.',1)}</div>`),
+ bp('Τίποτα δεν περιμένει',bl('','<span style="margin-left:auto;color:var(--green);display:grid">'+ic('check')+'</span>')),
+ bp('Χωρίς σύνδεση',`<div class="strip" style="margin-top:12px">${ic('wifi-off')}<span>Χωρίς σύνδεση</span><span class="sp"></span>${nb('Ό,τι γράφεις τώρα δεν αποθηκεύεται.',1,'dn')}</div><div style="height:30px"></div>`),
+ bp('Αναζήτηση χωρίς αποτέλεσμα',em('search-x','Τίποτα για «nordfrx»',`<button class="pill sm">${ic('plus')}Νέα παραγγελία</button>`)),
+ bp('Η αναζήτηση διάβασε μισά',`<div class="kg lbl" style="padding:14px 0 4px">Φορτία</div>${kr('file-text','Nordfrisch GmbH','Μεσσήνη → Hamburg · σήμερα','').replace('class="kr "','class="kr" style="margin:0;padding:0"')}<div style="display:flex;gap:8px;align-items:center;color:var(--body);font-size:13.5px;margin-top:8px">Άνθρωποι και τόποι ${nb('Δεν διαβάστηκαν.',1)}</div>`),
+ bp('Η αναίρεση δεν έγινε',`<div class="toast ut" style="margin-top:14px">${ic('circle-alert')}<span>Δεν γύρισε πίσω</span><span class="sp"></span><button class="pill sm">Ξανά</button></div>`),
+ bp('Ο βοηθός δεν απαντά',em('sparkles','Ο βοηθός δεν απαντά','<button class="pill sm">Ξανά</button>')),
+ bp('Σελίδα που δεν υπάρχει',em('compass','Αυτή η σελίδα δεν υπάρχει πια','<button class="pill sm">Στο «Σήμερα»</button>')),
+ bp('Χωρίς πρόσβαση',em('lock','Η σελίδα δεν είναι για τον ρόλο σου','<button class="pill sm">Στο «Σήμερα»</button>'))
+].join('');
+boot();run();
+</script>
+</body>
+</html>

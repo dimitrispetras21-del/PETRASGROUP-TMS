@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="el">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Petras TMS · Στοιχεία: πελάτες, συνεργάτες, οδηγοί, τοποθεσίες (σχέδιο)</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_system.css">
+<style>
+/* DESIGN MOCKUP ONLY. Invented names, phones and tax numbers. Page-specific rules for Στοιχεία. */
+.who{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.dr2,.drh{display:grid;grid-template-columns:28px minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr) 130px 18px;gap:0 16px;align-items:center;padding:0 28px}
+.drh{height:40px;border-bottom:1px solid var(--line)}
+.dr2{height:60px;position:relative;cursor:pointer}
+.dr2::after{content:'';position:absolute;inset:3px 12px;border-radius:12px;z-index:0;transition:background var(--t-fast)}.dr2>*{position:relative;z-index:1}.dr2:hover::after{background:#F7F8F9}.dr2.sel::after{background:var(--accent-bg)}
+.dr2+.dr2::before{content:'';position:absolute;left:28px;right:28px;top:0;border-top:1px solid var(--line-2)}.dr2.sel::before,.dr2.sel+.dr2::before{display:none}
+.dr2 .two b{font-weight:600}.dr2>span{color:var(--body);font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.dr2 .ph{color:var(--ink);font-weight:500}
+.dr2 .ty{width:28px;height:28px;border-radius:8px;background:var(--bg);display:grid;place-items:center;color:var(--body)}.dr2 .ty svg.lucide{width:15px;height:15px}
+.dr2.off .two b,.dr2.off>span{color:var(--help)}
+.open7 .dr2,.open7 .drh{grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) 130px 18px}.open7 .hx2,.open7 .ty,.open7 .ty0{display:none}.mix .dr2{grid-template-columns:28px minmax(0,1.3fr) minmax(0,1.6fr) 130px 18px}.mix .hx2{display:none}.drv .dr2,.drv .drh{grid-template-columns:minmax(0,1.3fr) 150px 150px 170px 18px}
+.fe{display:grid;grid-template-columns:104px minmax(0,1fr) 18px;gap:0 10px;align-items:center;min-height:36px;border-top:1px solid var(--line-2);font-size:13.5px}.fe:first-of-type{border-top:0}
+.fe dt{color:var(--help);font-size:12.5px}.fe dd{margin:0;color:var(--ink);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:8px;padding:5px 8px;margin-left:-8px;cursor:text;transition:background var(--t-fast)}
+.fe dd:hover{background:var(--bg)}.fe dd.e{color:var(--faint);font-weight:400}.fe svg.lucide{width:14px;height:14px;color:var(--green);stroke-width:2.4}
+.fe .inp{height:28px;font:inherit;font-size:13.5px;font-weight:500;margin-left:-8px;width:calc(100% + 8px);padding:0 8px;border-radius:8px}.fe dd.sv{background:var(--accent-bg)}.fe dd{transition:background var(--t-move) var(--ease)}.fe .okc{display:grid;transition:opacity var(--t-exit) var(--ease-exit)}.fe .okc.out{opacity:0}.ring{position:absolute;width:230px;height:230px;border-radius:50%;border:1px solid var(--accent);background:rgba(11,99,206,.07);transform:translate(-50%,-50%)}.mnm{position:absolute;font-size:11px;letter-spacing:.08em;color:#A9ABB3;font-weight:600;transform:translate(-50%,-50%)}.mzo{position:absolute;right:392px;bottom:16px;display:grid;background:#fff;border-radius:10px;overflow:hidden}.mzo b{width:32px;height:32px;display:grid;place-items:center;color:var(--ink);font-weight:500}.mzo b+b{border-top:1px solid var(--line)}.msc{position:absolute;left:16px;bottom:62px;font-size:11px;color:var(--help);border-bottom:2px solid var(--ink);width:80px;padding-bottom:2px}
+.sech{display:flex;align-items:center;gap:8px;margin:16px 0 4px}
+.ibt{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:var(--help)}.ibt svg.lucide{width:15px;height:15px}
+.ns{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:0 12px;align-items:center;min-height:42px;border-top:1px solid var(--line-2);font-size:13.5px}.ns:first-of-type{border-top:0}.ns b{font-weight:500;color:var(--ink);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ns small{display:block;color:var(--help);font-size:12.5px}
+.kf{display:grid;grid-template-columns:repeat(3,1fr);gap:0 12px;margin-top:4px}.kf span{font-size:12px;color:var(--help)}.kf b{display:block;font-size:17px;font-weight:500;color:var(--ink);margin-top:2px}
+/* map: a stand-in drawing, not a real map */
+.map{position:absolute;inset:0;background:#EEF1F4;overflow:hidden}
+.map svg{position:absolute;inset:0;width:100%;height:100%}
+.pin{position:absolute;width:14px;height:14px;border-radius:50%;background:var(--ink);border:2.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,16,.3);transform:translate(-50%,-50%)}
+.pin.c{width:auto;min-width:28px;height:28px;padding:0 8px;border-radius:999px;display:grid;place-items:center;color:#fff;font-size:12px;font-weight:600}
+.pin.s{background:var(--accent);width:18px;height:18px;box-shadow:0 0 0 6px rgba(11,99,206,.18),0 1px 3px rgba(0,0,16,.3)}
+.pin.w{background:#fff;border-color:var(--ink)}.pin.g{background:#8E9099}
+.mleg{position:absolute;left:16px;bottom:16px;background:#fff;border-radius:12px;padding:8px 12px;display:flex;gap:14px;font-size:12.5px;color:var(--body)}.mleg span{display:inline-flex;align-items:center;gap:6px}.mleg i{width:9px;height:9px;border-radius:50%;background:var(--ink)}
+.pn{background:#fff;border-radius:var(--r-page);box-shadow:var(--shadow-float);padding:20px 22px 16px}
+.pn h3{font-size:17px;font-weight:600;color:var(--ink)}.pn h3+small{display:block;color:var(--help);font-size:13px;margin-top:2px}.pf{display:flex;gap:8px;align-items:center;margin-top:14px}
+</style>
+</head>
+<body>
+<div class="doc">
+<header>
+  <p class="lbl">Petras Group TMS · επανασχεδίαση · σελίδα 7 από 9 · μόνο σχέδιο, επινοημένα στοιχεία</p>
+  <h1>Στοιχεία: πελάτες, συνεργάτες, οδηγοί, τοποθεσίες</h1>
+  <p>Πρόταση: ένας κατάλογος με μία αναζήτηση για όλα, διόρθωση πάνω στην κάρτα πεδίο προς πεδίο, και λίστα με χάρτη ως μία εικόνα των τοποθεσιών.</p>
+</header>
+
+<section class="sec">
+  <div class="who">
+    <div class="panel"><h3>Ποιος και για τι</h3><table class="spec"><tr><td><b>Dispatchers</b></td><td>Πολλές φορές τη μέρα: ένα τηλέφωνο, μια επαφή, μια νέα τοποθεσία όσο γράφουν παραγγελία, «τι έχει κοντά» στον χάρτη.</td></tr><tr><td><b>Λογιστήριο</b></td><td>Κάθε εβδομάδα συμπληρώνει ΑΦΜ, διεύθυνση, όρους πληρωμής.</td></tr><tr><td><b>Θοδωρής</b></td><td>Οδηγοί: τύπος, λήξη διπλώματος.</td></tr></table></div>
+    <div class="panel"><h3>Τι κρατήθηκε</h3><table class="spec"><tr><td>Τίποτα δεν σβήνεται, απενεργοποιείται (οι τοποθεσίες σβήνονται, εκτός από τη Βέροια) · ονόματα τόπων με λατινικά, χωρίς άρνηση · τόπος που μοιάζει με άλλον προειδοποιεί, δεν εμποδίζει · «στην ώρα» είναι ό,τι δήλωσε ο dispatcher, μαζί με το πόσες κρίθηκαν · το άγνωστο δεν δείχνεται ως μηδέν · η καρφίτσα επιβεβαιώνεται από άνθρωπο.</td></tr></table></div>
+    <div class="panel"><h3>Τι αλλάζει</h3><table class="spec"><tr><td>Μία αναζήτηση βρίσκει πελάτη, συνεργάτη, οδηγό ή τόπο από όνομα, τηλέφωνο ή ΑΦΜ · αλλάζεις ένα πεδίο και γράφεται μόνο αυτό · η λίστα και ο χάρτης έχουν τα ίδια φίλτρα και την ίδια κάρτα · οι μετρήσεις πάνω από τη λίστα είναι φίλτρα.</td></tr></table></div>
+  </div>
+</section>
+
+<section class="sec"><h2>Πελάτες, με την κάρτα ανοιχτή</h2>
+  <div class="cap"><h3>Διόρθωση πάνω στην κάρτα</h3><span>Πάτησε ένα πεδίο, γράψε, Enter. Γράφεται μόνο αυτό.</span></div>
+  <div class="fit"><div class="frame" id="fC" style="height:940px"></div></div>
+</section>
+<section class="sec"><h2>Μία αναζήτηση για όλα</h2>
+  <div class="fit"><div class="frame" id="fS" style="height:760px"></div></div>
+</section>
+<section class="sec"><h2>Οδηγοί</h2>
+  <div class="cap"><h3>Το δίπλωμα πάνω στη γραμμή</h3><span>Οι συνεργάτες έχουν την ίδια λίστα με τους πελάτες, με στήλη email. Δεν σχεδιάστηκε χωριστά.</span></div>
+  <div class="fit"><div class="frame" id="fD" style="height:700px"></div></div>
+</section>
+<section class="sec"><h2>Τοποθεσίες: λίστα και χάρτης μαζί</h2>
+  <div class="cap"><h3>Ίδια φίλτρα, ίδια κάρτα</h3><span>Ο χάρτης εδώ είναι σκίτσο, όχι πραγματικός χάρτης.</span></div>
+  <div class="fit"><div class="frame" id="fL" style="height:860px"></div></div>
+  <div class="cap"><h3>Ό,τι ανοίγει</h3><span>Νέα τοποθεσία · οδηγός · απενεργοποίηση · συγχώνευση</span></div>
+  <div class="fit"><div class="frame" id="fP" style="height:600px"></div></div>
+</section>
+<section class="sec"><h2>Οι κακές στιγμές</h2><div class="grid g4" style="align-items:stretch" id="bad"></div></section>
+<section class="sec"><h2>Χαρτιά</h2><p class="lead">Σήμερα καμία από αυτές τις σελίδες δεν τυπώνει ούτε εξάγει. Δεν σχεδίασα χαρτί· η εξαγωγή για το ERP είναι ερώτηση προς τον Δημήτρη.</p></section>
+</div>
+
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script src="_system.js"></script>
+<script>
+const fld=(l,vv,cls='')=>`<label class="fld"><span>${l}</span><div class="inp ${cls}">${vv}</div></label>`;
+const cur='<span style="width:1.5px;height:18px;background:var(--accent);margin-left:-6px"></span>';
+NAV[4]=['ΣΤΟΙΧΕΙΑ',[['book-user','Κατάλογος','c'],['map-pin','Τοποθεσίες','l']]];
+const hd=(t,sub,x)=>`<div class="hd"><div><h1>${t}</h1><p>${sub}</p></div><span class="sp"></span>${x}</div>`;
+const TY={c:'building-2',p:'handshake',d:'user-round',l:'map-pin'},TN={c:'Πελάτης',p:'Συνεργάτης',d:'Οδηγός',l:'Τοποθεσία'};
+const tabs=(on,q='')=>`<div class="tabs"><a class="${on==='a'?'on':''}">Όλα</a><a class="${on==='c'?'on':''}">Πελάτες <i>142</i></a><a class="${on==='p'?'on':''}">Συνεργάτες <i>36</i></a><a class="${on==='d'?'on':''}">Οδηγοί <i>19</i></a><span class="sp"></span><div class="q ${q?'':''}" style="width:240px;${q?'color:var(--ink);box-shadow:0 0 0 1.5px var(--accent);background:#fff':''}">${ic('search')}${q||'Όνομα, τηλέφωνο, ΑΦΜ, πόλη'}</div></div>`;
+/* [type, name, sub, col2, col3, phone, warn, cls] */
+const CL=[['c','Tirol Obst GmbH','Innsbruck · AT','Markus Hofer','ATU00000001','+43 512 000 001','','sel'],['c','Danubia Market Kft.','Budapest · HU','Ágnes Varga','HU00000002','+36 1 000 0002',''],['c','Nordfrisch GmbH','Hamburg · DE','Jan Petersen','DE000000003','+49 40 000 0003',''],['c','Αγροτικός Συν. Νάουσας','Νάουσα · GR','Γ. Παπαδόπουλος','EL000000004','23320 00004',''],['c','Baltic Cold Foods','Poznań · PL','','PL0000000009','','a|Λείπουν επαφή και τηλέφωνο.'],['c','Alpen Frucht AG','Zürich · CH','Reto Keller','','+41 44 000 0006','a|Λείπει το ΑΦΜ.'],['c','Hellas Citrus','Άργος · GR','Μ. Δήμου','EL000000006','27510 00006',''],['c','Olympos Export','Λάρισα · GR','Κ. Ζήσης','EL000000008','2410 000008',''],['c','Pella Peach Coop','Σκύδρα · GR','Α. Νικολάου','EL000000011','23810 00011',''],['c','Veria Fruit Pack','Βέροια · GR','Σ. Μάρκου','EL000000012','23310 00012',''],['c','Wiener Frische','Wien · AT','Lukas Gruber','ATU00000010','+43 1 000 0010','']];
+const row=([t,n,s,a,b,ph,w,cls=''])=>`<div class="dr2 ${cls}"><span class="ty" title="${TN[t]}">${ic(TY[t])}</span><div class="two"><b>${n}</b><span>${s}</span></div><span class="hx">${a||'<span style="color:var(--faint)">–</span>'}</span><span class="hx hx2 num">${b||'<span style="color:var(--faint)">–</span>'}</span><span class="ph num">${ph||'<span style="color:var(--faint);font-weight:400">–</span>'}</span>${w?`<i class="nb a" data-t="${w.slice(2)}">!</i>`:'<span></span>'}</div>`;
+const fe=(l,v,st)=>`<div class="fe"><dt>${l}</dt>${st==='ed'?`<div class="inp focus num">${v}${cur.replace('-6px','0')}<span style="color:var(--help);font-weight:400;margin-left:6px">ημέρες</span></div>`:`<dd class="${v?'':'e'} num" title="Πάτησε για διόρθωση" onclick="edf(this)">${v||'–'}</dd>`}${st==='ok'?`<span title="Γράφτηκε 07:41" class="okc">${ic('check')}</span>`:'<span></span>'}</div>`;
+/* Click a value, type, Enter: only that field is written. The value flashes once and a tick shows for two seconds. Escape puts the old value back. */
+function edf(dd){if(dd._e)return;dd._e=1;const old=dd.textContent,inp=document.createElement('input');inp.className='inp focus num';inp.value=dd.classList.contains('e')?'':old;dd.replaceWith(inp);inp.focus();inp.select();
+ const done=save=>{if(!dd._e)return;dd._e=0;const v=inp.value.trim();inp.replaceWith(dd);if(!save||v===old||(!v&&dd.classList.contains('e')))return;
+  dd.textContent=v||'–';dd.classList.toggle('e',!v);const slot=dd.nextElementSibling;slot.outerHTML=`<span title="Γράφτηκε τώρα" class="okc fadeup">${ic('check')}</span>`;lucide.createIcons();
+  if(!RED()){dd.classList.add('sv');setTimeout(()=>dd.classList.remove('sv'),320)}
+  const ok=dd.nextElementSibling;setTimeout(()=>{ok.classList.add('out');setTimeout(()=>{if(ok.isConnected)ok.outerHTML='<span></span>'},160)},2000)};
+ inp.onkeydown=e=>{if(e.key==='Enter')done(1);else if(e.key==='Escape')done(0)};inp.onblur=()=>done(1)}
+$('fC').innerHTML=`<div class="app">${side('c')}<main class="main">
+ ${hd('Κατάλογος','148 πελάτες · 142 ενεργοί',`<button class="pill b">${ic('plus')}Νέος πελάτης${ic('chevron-down')}</button>`)}
+ <div class="card open7" style="flex:1;min-height:0;margin-right:424px;border-radius:24px 24px 0 0;overflow:hidden">
+  ${tabs('c')}
+  <div class="fl" style="padding-bottom:6px"><span class="chip on">Ενεργοί <b>142</b></span><span class="chip a">Χωρίς τηλέφωνο <b>9</b></span><span class="chip a">Χωρίς ΑΦΜ <b>14</b></span><span class="chip">Ανενεργοί <b>6</b></span><span class="sp"></span><span class="chip hide">Χώρα ${ic('chevron-down')}</span></div>
+  <div class="drh lbl"><span class="ty0"></span><span>Εταιρεία</span><span class="hx">Επαφή</span><span class="hx hx2">ΑΦΜ</span><span>Τηλέφωνο</span><span></span></div>
+  ${CL.map(row).join('')}
+ </div></main></div>
+ <div class="tc" style="padding-bottom:18px"><div class="h"><div style="flex:1;min-width:0"><b>Tirol Obst GmbH</b><small>Πελάτης · Innsbruck · AT</small></div><button class="ibt" title="Περισσότερα: απενεργοποίηση, συγχώνευση">${ic('ellipsis')}</button><button class="cl" aria-label="Κλείσιμο">${ic('x')}</button></div>
+  <dl style="margin:8px 0 0" id="fes">${fe('Επαφή','Markus Hofer')}${fe('Τηλέφωνο','+43 512 000 001','ok')}${fe('Email','dispo@tirol-obst.example')}${fe('Διεύθυνση','Obstweg 0, 6020 Innsbruck')}${fe('ΑΦΜ','ATU00000001')}${fe('Όροι πληρωμής','30','ed')}</dl>
+  <div class="sech"><span class="lbl">Δραστηριότητα</span><span class="sp"></span><a style="font-weight:500;font-size:13px">Παραγγελίες · 64</a></div>
+  <div class="kf"><span>Μέσος μήνα<b class="num">5</b></span><span>Στην ώρα<b class="num">41 από 44</b></span><span>Τελευταία<b class="num">11/11</b></span></div>
+  <div class="sech"><span class="lbl">Τόποι του</span></div>
+  <div class="ns"><span><b>Tirol Obst Lager</b><small>Innsbruck · παράδοση 38×</small></span><button class="ibt" title="Στον χάρτη">${ic('map-pin')}</button></div>
+  <div class="ns"><span><b>Hall Frischmarkt</b><small>Hall · παράδοση 9×</small></span><button class="ibt" title="Στον χάρτη">${ic('map-pin')}</button></div>
+  <div class="sech"><span class="lbl">Πρόσφατες</span></div>
+  <div class="ns"><span><b>Βέροια → Innsbruck</b><small>Δευ 16 – Παρ 20/11 · 32 παλέτες</small></span><span class="st todo">Σε αναμονή</span></div>
+  <div class="ns"><span><b>Βέροια → Innsbruck</b><small>Σάβ 7 – Τετ 11/11 · 32 παλέτες</small></span><span class="st done">${ic('check')}Παραδόθηκε</span></div>
+ </div>`;
+
+/* ---------- one search ---------- */
+const SR=[['c','Wiener Frische','Wien · AT','Lukas Gruber · ATU00000010','','+43 1 000 0010',''],['c','Wiener Frische GmbH','Wien · AT','','','+43 1 000 0010','a|Ίδιο τηλέφωνο με τη Wiener Frische.'],['l','Wiener Frische','Wien · AT · παράδοση 21×','08:00 – 14:00','','',''],['l','Zollamt Wien','Wien · AT · τελωνείο','06:00 – 22:00','','',''],['p','Wien Kühltrans GmbH','Wien · AT','Peter Mayer · ATU00000011','','+43 1 000 0011',''],['d','Γ. Αλεξίου','Οδηγός · εσωτερικός','σήμερα Νάουσα → Wien','','697 000 0012','']];
+$('fS').innerHTML=`<div class="app">${side('c')}<main class="main">
+ ${hd('Κατάλογος','6 για «wien» <i class="nb a dn" style="vertical-align:-3px;margin-left:4px" data-t="Βρέθηκε και ως «Βιέννη».">!</i>',`<button class="pill b">${ic('plus')}Νέα εγγραφή${ic('chevron-down')}</button>`)}
+ <div class="card mix" style="flex:1;min-height:0;border-radius:24px 24px 0 0;overflow:hidden">
+  ${tabs('a','wien').replace('Όλα','Όλα <i>6</i>').replace('<i>142</i>','<i>2</i>').replace('<i>36</i>','<i>1</i>').replace('<i>19</i>','<i>1</i>').replace('<span class="sp">','<a>Τοποθεσίες <i>2</i></a><span class="sp">')}
+  <div style="height:8px"></div>
+  ${SR.map(row).join('')}
+ </div></main></div>`;
+
+/* ---------- drivers ---------- */
+/* [name, type, phone, licence no, licence until, cls, note] */
+const DRV=[['Ι. Καρκάλης','Εσωτερικός','697 000 0001','000000001','έληξε 2/11/2026','r','Φεύγει αύριο για Wien.'],['Ε. Μπάμπαλος','Εσωτερικός','697 000 0002','000000002','έως 9/12/2026','a',''],['Ν. Τζήκας','Εσωτερικός','697 000 0003','000000003','','e','Δεν έχει γραφτεί λήξη διπλώματος.'],['Γ. Αλεξίου','Εσωτερικός','697 000 0012','000000012','έως 14/3/2028','',''],['Γ. Σαρίδης','Εσωτερικός','697 000 0004','000000004','έως 20/6/2029','',''],['Ι. Πάππης','Εσωτερικός','697 000 0005','000000005','έως 3/9/2027','',''],['Κ. Δούκας','Εξωτερικός','697 000 0006','','έως 11/1/2030','','']];
+$('fD').innerHTML=`<div class="app">${side('c')}<main class="main">
+ ${hd('Κατάλογος','19 οδηγοί · 17 ενεργοί',`<button class="pill b">${ic('plus')}Νέος οδηγός${ic('chevron-down')}</button>`)}
+ <div class="card drv" style="flex:1;min-height:0;border-radius:24px 24px 0 0;overflow:hidden">
+  ${tabs('d').replace('<i>19</i>','<i>17</i>')}
+  <div class="fl" style="padding-bottom:6px"><span class="chip on">Ενεργοί <b>17</b></span><span class="chip r">Ληγμένο δίπλωμα <b>1</b></span><span class="chip a">Λήγει σε 30 ημέρες <b>1</b></span><span class="chip a">Χωρίς ημερομηνία <b>1</b></span><span class="chip">Ανενεργοί <b>2</b></span><span class="sp"></span><span class="chip hide">Τύπος ${ic('chevron-down')}</span></div>
+  <div class="drh lbl"><span>Οδηγός</span><span>Τηλέφωνο</span><span>Αρ. διπλώματος</span><span>Δίπλωμα</span><span></span></div>
+  ${DRV.map(r=>`<div class="dr2"><div class="two"><b>${r[0]}</b><span>${r[1]}</span></div><span class="ph num">${r[2]}</span><span class="num">${r[3]||'<span style="color:var(--faint)">–</span>'}</span><span class="num" style="${r[5]==='r'?'color:var(--red);font-weight:600':r[5]==='a'?'color:var(--amber);font-weight:600':r[5]==='e'?'color:var(--faint)':''}">${r[4]||'χωρίς ημερομηνία'}</span>${r[6]?`<i class="nb ${r[5]==='r'?'':'a'}" data-t="${r[6]}">!</i>`:'<span></span>'}</div>`).join('')}
+  <div class="dr2" style="grid-template-columns:minmax(0,1fr);cursor:pointer"><a style="color:var(--link);font-weight:600">10 ακόμη, όλα σε ισχύ</a></div>
+ </div></main></div>`;
+
+/* ---------- places ---------- */
+const PLC=[['Veria Fruit Pack','Veria · GR','φόρτωση 112×','',''],['Tirol Obst Lager','Innsbruck · AT','παράδοση 38×','','sel'],['Wiener Frische','Wien · AT','παράδοση 21×','',''],['Attica Cold Hub','Aspropyrgos · GR','παράδοση 44×','',''],['Messinia Olive Coop','Messini · GR','φόρτωση 17×','a|Δεν έχει καρφίτσα.',''],['Nordfrisch Lager','Hamburg · DE','παράδοση 12×','',''],['Veroia Cross-Dock','Veria · GR','αποθήκη','',''],['Pella Peach Coop','Skydra · GR','φόρτωση 9×','a|Ωράριο και τηλέφωνο λείπουν.','']];
+const pins=[[50,76,'c','14'],[22,40,'s',''],[40,30,'',''],[56,88,'c','9'],[12,24,'',''],[47,82,'w',''],[27,35,'g',''],[19,47,'g',''],[44,58,'',''],[33,18,'','']];
+$('fL').innerHTML=`<div class="app">${side('l')}<main class="main">
+ ${hd('Τοποθεσίες','412 τόποι · 23 χωρίς καρφίτσα',`<span class="seg"><b>Λίστα</b><b class="on">Λίστα και χάρτης</b><b>Χάρτης</b></span><button class="pill b">${ic('plus')}Νέα τοποθεσία</button>`)}
+ <div style="flex:1;min-height:0;display:grid;grid-template-columns:400px minmax(0,1fr);gap:14px;padding-bottom:0">
+  <div class="card" style="border-radius:24px 24px 0 0;overflow:hidden">
+   <div style="padding:14px 20px 0"><div class="q" style="width:auto">${ic('search')}Όνομα, πόλη, πελάτης</div></div>
+   <div class="fl" style="padding:12px 20px 6px;flex-wrap:wrap"><span class="chip on">Όλοι <b>412</b></span><span class="chip">Φόρτωση</span><span class="chip">Παράδοση</span><span class="chip a">Χωρίς καρφίτσα <b>23</b></span><span class="chip hide">Χώρα ${ic('chevron-down')}</span><span class="chip hide">Είδος ${ic('chevron-down')}</span></div>
+   ${PLC.map(([n,s,m,w,c])=>`<div class="dr2 ${c}" style="grid-template-columns:minmax(0,1fr) 18px;padding:0 20px"><div class="two"><b>${n}</b><span>${s} · ${m}</span></div>${w?`<i class="nb a" data-t="${w.slice(2)}">!</i>`:'<span></span>'}</div>`).join('')}
+  </div>
+  <div style="position:relative;border-radius:24px 24px 0 0;overflow:hidden">
+   <div class="map"><svg viewBox="0 0 100 100" preserveAspectRatio="none"><rect width="100" height="100" fill="#F1F3F5"/><path d="M0 62 C8 58 14 66 22 62 S30 70 36 78 S40 92 44 100 H0Z" fill="#E4EAF1"/><path d="M62 100 C60 92 66 88 64 82 S72 76 78 80 S92 74 100 78 V100Z" fill="#E4EAF1"/>
+<g fill="none" stroke="#DDE1E6" stroke-width="1.1"><path d="M12 24 C18 32 20 36 22 40 S34 50 44 58 S48 70 50 76 S54 84 56 88"/><path d="M33 18 C36 24 38 27 40 30 S43 46 44 58"/><path d="M22 40 C28 36 34 32 40 30"/></g>
+<g fill="none" stroke="#fff" stroke-width=".7"><path d="M12 24 C18 32 20 36 22 40 S34 50 44 58 S48 70 50 76 S54 84 56 88"/><path d="M33 18 C36 24 38 27 40 30 S43 46 44 58"/><path d="M22 40 C28 36 34 32 40 30"/></g></svg>
+    <span class="ring" style="left:22%;top:40%"></span><span class="mnm" style="left:33%;top:13%">MÜNCHEN</span><span class="mnm" style="left:44%;top:26%">WIEN</span><span class="mnm" style="left:41%;top:79%">VERIA</span><span class="msc">25 km</span><span class="mzo"><b>+</b><b>−</b></span>
+    ${pins.map(([x,y,k,t])=>`<span class="pin ${k}" style="left:${x}%;top:${y}%">${t}</span>`).join('')}
+    <span style="position:absolute;left:22%;top:40%;transform:translate(16px,-50%);background:var(--ink);color:#fff;border-radius:10px;padding:6px 10px;font-size:12.5px;font-weight:500;white-space:nowrap">Tirol Obst Lager</span>
+    <div class="mleg"><span><i></i>Τόπος</span><span><i style="background:#fff;box-shadow:inset 0 0 0 2px var(--ink)"></i>Αποθήκη</span><span><i style="background:#8E9099"></i>Κοντά</span></div>
+   </div>
+   <div class="tc" style="top:16px;right:16px;width:360px;padding-bottom:18px"><div class="h"><div style="flex:1;min-width:0"><b>Tirol Obst Lager</b><small>Innsbruck · AT · Obstweg 0</small></div><button class="ibt" title="Άνοιγμα σε χάρτη πλοήγησης">${ic('external-link')}</button><button class="ibt" title="Περισσότερα: διαγραφή">${ic('ellipsis')}</button><button class="cl" aria-label="Κλείσιμο">${ic('x')}</button></div>
+    <dl style="margin:8px 0 0">${fe('Ωράριο','06:00 – 14:00')}${fe('Ημέρες','Δευ – Παρ')}${fe('Τηλέφωνο','+43 512 000 020')}${fe('Είδος','Πελάτη')}${fe('Σημειώσεις','Ράμπα 3, ζύγιση')}${fe('Καρφίτσα','47.2654, 11.3927')}</dl>
+    <div class="sech"><span class="lbl">Τι έχει κοντά</span><span class="sp"></span><span class="seg sm"><b class="on">50</b><b>100</b><b>200</b><b>400 km</b></span></div>
+    <div class="ns"><span><b>Tankstelle Inntal</b><small>καύσιμα</small></span><span class="num" style="color:var(--body);font-size:13px">4 km</span></div><div class="ns"><span><b>LKW Service Hall</b><small>συνεργείο · +43 5223 000 021</small></span><span class="num" style="color:var(--body);font-size:13px">11 km</span></div>
+    <div class="sech"><span class="lbl">Ιστορικό</span><span class="sp"></span><a style="font-weight:500;font-size:13px">38 κινήσεις</a></div>
+    <div class="ns"><span><b>Tirol Obst GmbH · παράδοση</b><small>Τετ 11/11 · 32 παλέτες · ΚΗΙ 7310</small></span><span></span></div>
+   </div>
+  </div></div></main></div>`;
+
+/* ---------- panels ---------- */
+$('fP').innerHTML=`<div style="position:absolute;inset:0;display:flex;gap:24px;align-items:flex-start;padding:32px;background:#DFE1E6">
+ <div class="pn" style="width:440px"><div style="display:flex;align-items:center"><h3>Νέα τοποθεσία</h3><span class="sp"></span><button class="cl" aria-label="Κλείσιμο">${ic('x')}</button></div>
+  <div style="margin-top:16px">${fld('Όνομα <i class="nb a show dn" data-t="Γράφτηκε με ελληνικά· αποθηκεύεται «Frutopia Packhouse».">!</i>','Frutopia Packhouse')}</div>
+  <div class="row g12"><div style="grid-column:span 7">${fld('Διεύθυνση','Agrotiki Odos 0')}</div><div style="grid-column:span 5">${fld('Πόλη · χώρα','Naousa · GR')}</div></div>
+  <div class="strip" style="margin-top:14px;align-items:center">${ic('copy')}<span style="flex:1">Μοιάζει με «Frutopia Packhouse», Naousa.</span><button class="pill sm">Άνοιξε την</button></div>
+  <div style="position:relative;height:110px;border-radius:12px;overflow:hidden;margin-top:14px"><div class="map"><span class="pin s" style="left:52%;top:48%"></span></div><span style="position:absolute;right:10px;bottom:10px;display:flex;gap:6px"><button class="pill sm" style="background:#fff">Είναι εδώ</button></span></div>
+  <div class="row g12"><div style="grid-column:span 4">${fld('Ωράριο','06:00 – 14:00','ph')}</div><div style="grid-column:span 4">${fld('Ημέρες','Δευ – Παρ','ph')}</div><div style="grid-column:span 4">${fld('Είδος','Πελάτη')}</div></div>
+  <div class="pf"><span class="sp"></span><button class="pill">Άκυρο</button><button class="pill b">Αποθήκευση</button></div></div>
+ <div class="pn" style="width:340px"><div class="h" style="display:flex;gap:12px;align-items:center"><span class="av">ΓΑ</span><div style="flex:1"><h3>Γ. Αλεξίου</h3><small style="color:var(--help);font-size:13px">Οδηγός · 697 000 0012</small></div></div>
+  <dl style="margin:10px 0 0">${fe('Δίπλωμα','έως 14/3/2028')}${fe('Αρ. διπλώματος','000000012')}${fe('Τύπος','Εσωτερικός')}</dl>
+  <div class="sech"><span class="lbl">Δρομολόγια</span><span class="sp"></span><a style="font-weight:500;font-size:13px">Μισθοδοσία →</a></div>
+  <div class="ns"><span><b>Νάουσα → Wien</b><small>Δευ 16/11 · ΚΗΙ 4521</small></span><span class="st run">Σε μεταφορά</span></div><div class="ns"><span><b>Νάουσα → Wien → Βέροια</b><small>9 – 12/11 · ΚΗΙ 4521</small></span><span class="st done">${ic('check')}Έκλεισε</span></div>
+  <div class="sech"><span class="lbl">Με ποια φορτηγά · 2026</span></div>
+  <div class="ns"><span><b class="num">ΚΗΙ 4521</b><small>27 δρομολόγια</small></span><span class="num">87%</span></div><div class="ns"><span><b class="num">ΚΗΙ 4162</b><small>4 δρομολόγια</small></span><span class="num">13%</span></div></div>
+ <div style="display:grid;gap:20px;width:330px">
+  <div class="pn"><h3>Απενεργοποίηση;</h3><small>Baltic Cold Foods</small><div class="strip" style="margin-top:12px">${ic('triangle-alert')}<span>Έχει 2 παραγγελίες σε εξέλιξη.</span></div><div class="pf"><span class="sp"></span><button class="pill">Άκυρο</button><button class="pill b">Απενεργοποίηση</button></div></div>
+  <div class="pn"><h3>Συγχώνευση</h3><small>«Wiener Frische GmbH» μέσα στο «Wiener Frische»</small><div class="ns" style="margin-top:8px"><span><b>Παραγγελίες που περνούν</b></span><span class="num" style="font-weight:600;color:var(--ink)">6</span></div><div class="ns"><span><b>Τόποι που περνούν</b></span><span class="num" style="font-weight:600;color:var(--ink)">1</span></div><div class="pf"><span class="sp"></span><button class="pill">Άκυρο</button><button class="pill b">Συγχώνευση</button></div></div>
+ </div>
+ <div style="display:grid;gap:20px;width:260px">
+  <div class="pop" style="animation:none;width:auto"><a>${ic('building-2')}Πελάτης</a><a>${ic('handshake')}Συνεργάτης</a><a>${ic('user-round')}Οδηγός</a><a>${ic('map-pin')}Τοποθεσία</a></div>
+  <div class="pop" style="animation:none;width:auto"><a>${ic('git-merge')}Συγχώνευση με άλλον</a><a>${ic('history')}Ποιος άλλαξε τι</a><hr><a class="r">${ic('power')}Απενεργοποίηση</a></div>
+ </div></div>`;
+
+/* ---------- bad moments ---------- */
+const bp=(l,body)=>`<div class="panel"><p class="lbl">${l}</p>${body}</div>`;
+const em=(i,h,b='')=>`<div style="display:grid;justify-items:start;align-content:center;min-height:120px;gap:10px"><div class="tile soft" style="width:36px;height:36px;border-radius:10px">${ic(i)}</div><h3 style="margin:0;font-weight:500;color:var(--body);font-size:15px">${h}</h3>${b}</div>`;
+const strip=(i,t,b,n)=>`<div class="strip ${n?'n':''}" style="margin-top:12px;align-items:flex-start">${ic(i)}<div style="max-width:36ch">${t}${b?`<div style="display:flex;gap:8px;margin-top:10px">${b}</div>`:''}</div></div>`;
+const dk=(l,t,b)=>`<div class="dark" style="margin-top:12px"><p class="lbl"><i class="r"></i>${l}</p><p style="max-width:36ch">${t}</p><div style="display:flex;gap:8px">${b}</div></div>`;
+const rd=`<button class="pill sm">${ic('rotate-cw')}Ξαναδιάβασε</button>`,rt='<button class="pill b sm">Ξαναδοκίμασε</button>';
+$('bad').innerHTML=[
+ bp('Κανένα αποτέλεσμα',em('search-x','Τίποτα για «frutopja»',`<button class="pill sm">${ic('plus')}Νέα τοποθεσία «frutopja»</button>`)),
+ bp('Καμία εγγραφή ακόμη',em('inbox','Κανένας συνεργάτης ακόμη',`<button class="pill b sm">${ic('plus')}Νέος συνεργάτης</button>`)),
+ bp('Δεν διαβάστηκαν',em('cloud-off','Οι πελάτες δεν διαβάστηκαν',rd)),
+ bp('Η κάρτα διαβάστηκε μισή',`<div class="sech"><span class="lbl">Δραστηριότητα</span></div>`+strip('cloud-off','Οι παραγγελίες του πελάτη δεν διαβάστηκαν.',rd,1)),
+ bp('Το πεδίο δεν γράφτηκε',`<dl style="margin:12px 0 0"><div class="fe"><dt>Τηλέφωνο</dt><div class="inp num" style="border-color:var(--red)">+43 512 000 099</div><i class="nb show dn" data-t="Δεν γράφτηκε. Η τιμή μένει εδώ.">!</i></div></dl><button class="pill sm" style="margin-top:52px">${ic('rotate-cw')}Ξανά</button>`),
+ bp('Το άλλαξε κάποιος άλλος',strip('users','Το τηλέφωνο της Tirol Obst GmbH άλλαξε από την Ειρήνη στις 07:38.','<button class="pill sm">Το δικό της</button><button class="pill sm">Το δικό μου</button>',1)),
+ bp('Καρφίτσα που δεν βρέθηκε',strip('map-pin-off','Η διεύθυνση δεν βρέθηκε.','<button class="pill sm">Στον χάρτη</button>',1)+strip('cloud-off','Η αναζήτηση διεύθυνσης δεν έτρεξε.',rt.replace(' b ',' '),1)),
+ bp('Η λίστα συνεχίζει',strip('list','300 από 412 τόπους','<button class="pill sm">Όλοι</button>',1)),
+ bp('Δίπλωμα',`<dl style="margin:12px 0 0"><div class="fe"><dt>Δίπλωμα</dt><dd class="num" style="color:var(--red);font-weight:600">έληξε 2/11/2026</dd><span></span></div><div class="fe"><dt>Δίπλωμα</dt><dd class="num" style="color:var(--amber);font-weight:600">έως 9/12/2026</dd><span></span></div><div class="fe"><dt>Δίπλωμα</dt><dd class="e">χωρίς ημερομηνία</dd><i class="nb a" data-t="Δεν έχει γραφτεί λήξη διπλώματος.">!</i></div></dl>`),
+ bp('Ο χάρτης δεν φόρτωσε',em('map','Ο χάρτης δεν φόρτωσε',`<button class="pill sm">Λίστα</button>`)),
+ bp('Φόρτωση',[0,1,2].map(()=>`<div style="display:grid;grid-template-columns:28px minmax(0,1fr) 90px;gap:14px;align-items:center;height:54px"><div class="sk" style="width:28px;height:28px;border-radius:8px"></div><div><div class="sk" style="height:12px;width:50%"></div><div class="sk" style="height:10px;width:30%;margin-top:8px"></div></div><div class="sk" style="height:12px"></div></div>`).join('')),
+ bp('Μόνο ανάγνωση',`<div style="margin-top:12px"><span class="tag" style="margin:0;display:inline-flex;gap:5px;align-items:center;height:22px">${ic('eye')}Μόνο ανάγνωση</span></div><dl style="margin:8px 0 0"><div class="fe"><dt>Τηλέφωνο</dt><dd class="num" style="cursor:default">+43 512 000 001</dd><span></span></div></dl>`)
+].join('');
+boot();
+</script>
+</body>
+</html>
