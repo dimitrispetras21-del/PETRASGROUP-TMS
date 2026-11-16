@@ -3976,6 +3976,9 @@ async function _wiSaveFromPopover(rowId){
         const sibErrors=[];
         for(const sib of siblings){
           if(written.includes(sib.id)) continue; // already written above
+          // a cancelled member is not on the truck (by base it can come back with an old text, 16/11): never
+          // given the truck and «Assigned» again
+          if((sib.fields||{})['Status']==='Cancelled') continue;
           try{
             const res=await atSafePatch(TABLES.ORDERS,sib.id,await _wiPlanPatch(sib.id,groupFields),_wiQuietOpt());
             if(res?.error) throw new Error(res.error.message||res.error.type);
@@ -7636,6 +7639,7 @@ async function _wiStockJoinA(row,seedId,pick){
   }
   const pc=pick.piece, pf=pc.fields||{};
   ctx.lotRec=OrdersStock.lotRecOfPiece(pf);
+  ctx.prevGid=String(pf['Group ID']||'').trim();   // the groupage it leaves, if any (its places go, _wiStockApply)
   const day=toLocalDate(loadIso||''), dday=toLocalDate(delIso||'');
   const oid0=(row.orderIds&&row.orderIds[0])||row.orderId;   // v4 slot by ORDER (_wiSync)
   if(!day){ _wiSync('wi-sync-'+row.id,'err','Η εισαγωγή του φορτηγού δεν έχει ημέρα φόρτωσης — το κομμάτι δεν μπήκε',oid0); return; }
@@ -7745,9 +7749,9 @@ async function _wiStockApply(row,pieceId,patch,ctx){
     return;
   }
   _wiSync('wi-sync-'+row.id,'ok','Το κομμάτι μπήκε στο φορτηγό',oid0);
-  // a piece that was in another groupage left it: its places there go (16/11); the load it joins has none for it,
+  // a piece that was in ANOTHER groupage left it: its places there go (16/11); the load it joins has none for it,
   // so its order falls back to the old rule with its «!» in the form — never an old place read as a new one
-  await _wiClearSeqOf([pieceId]);
+  if(ctx.prevGid&&!LoadGroup.sameLoad(ctx.prevGid,ctx.groupId)) await _wiClearSeqOf([pieceId]);
   invalidateCache(TABLES.ORDERS);
   if(typeof syncOrderDownstream==='function') syncOrderDownstream(pieceId,{source:'intl'})
     .catch(e=>{ if(typeof logError==='function') logError(e,'weekly intl: stock piece sync'); });

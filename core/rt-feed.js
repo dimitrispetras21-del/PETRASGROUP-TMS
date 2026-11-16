@@ -342,7 +342,12 @@ async function _rtGatherOrders(rec) {
       // by base (LoadGroup.membersFormula asks «contains», sameLoad keeps the load's own members); no base = no read
       // (a null formula would read the whole table)
       const b = LoadGroup.base(gid), f = b && !searched.has(b) ? LoadGroup.membersFormula(gid) : null;
-      if (f) { searched.add(b); for (const cand of await filterIn(f)) { if (!byId[cand.id] && LoadGroup.sameLoad(cand.fields['Group ID'], gid)) { byId[cand.id] = cand; grew = true; } } }
+      if (f) {
+        const got = await filterIn(f);
+        // a read that worked returns at least this order itself; [] = filterIn swallowed a failure → asked again next round
+        if (got.length) searched.add(b);
+        for (const cand of got) { if (!byId[cand.id] && LoadGroup.sameLoad(cand.fields['Group ID'], gid)) { byId[cand.id] = cand; grew = true; } }
+      }
       const mid = o.fields['Matched Import ID'];
       if (mid && !byId[mid]) { const imp = await atGetOne(TABLES.ORDERS, mid); if (imp) { byId[imp.id] = imp; grew = true; } }
     }
