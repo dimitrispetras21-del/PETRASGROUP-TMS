@@ -295,8 +295,7 @@ function _rtLegSeq(legsInfo, byId) {
   // position — checked FIRST so a reordered GI- group always wins over the
   // export-position fallback below, still landing after every export leg
   // (imports never move ahead of exports here, same as before this change).
-  const giRec = importLegs.map(l => byId[l.orderId]).find(o => o && o.fields && String(o.fields['Group ID'] || '').indexOf('GI-') === 0 && String(o.fields['Group ID'] || '').split('|')[1]);
-  const giOrder = giRec ? String(giRec.fields['Group ID'] || '').split('|')[1].split(',').filter(Boolean) : [];
+  const giOrder = LoadGroup.orderList(importLegs.map(l => byId[l.orderId]).filter(o => o && o.fields && String(o.fields['Group ID'] || '').indexOf('GI-') === 0));
   const orderedImports = giOrder.length
     ? [...importLegs].sort((a, b) => { const pos = id => { const k = giOrder.indexOf(id); return k < 0 ? 99 : k; }; return pos(a.orderId) - pos(b.orderId); })
     : (order.length
@@ -345,7 +344,8 @@ async function _rtGatherOrders(rec) {
       const b = LoadGroup.base(gid), f = b && !searched.has(b) ? LoadGroup.membersFormula(gid) : null;
       if (f) {
         const got = await filterIn(f);
-        // a read that worked returns at least this order itself; [] = filterIn swallowed a failure → asked again next round
+        // a read that worked returns at least this order itself; [] = filterIn swallowed a failure (console.warn): the
+        // base is asked again only if another round runs — a loop that grows nothing else ends without it
         if (got.length) searched.add(b);
         for (const cand of LoadGroup.membersOf(got, gid, true)) { if (!byId[cand.id]) { byId[cand.id] = cand; grew = true; } }
       }

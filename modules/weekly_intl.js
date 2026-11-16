@@ -7431,7 +7431,10 @@ async function _wiStockJoin(rowId,pick){
     const rec=await _wiStockLooseCheck(pick.piece.id); if(!rec) return;
     const pf=rec.fields||{};
     // Never silently (16/11): the join writes this truck's group (or none) over the groupage the piece was put in.
-    if(String(pf['Group ID']||'').trim()&&!confirm('Το κομμάτι είναι σε groupage χωρίς φορτηγό. Αν μπει σε αυτό το φορτηγό, βγαίνει από εκείνο το groupage. Συνέχεια;')) return;
+    // (only when it is ANOTHER load than this truck's: a piece already in this load does not leave anything)
+    const tgtGid=seedId?(_wiRecOf(seedId)?.fields?.['Group ID']||''):'';
+    if(String(pf['Group ID']||'').trim()&&!LoadGroup.sameLoad(pf['Group ID'],tgtGid)
+      &&!confirm('Το κομμάτι είναι σε groupage χωρίς φορτηγό. Αν μπει σε αυτό το φορτηγό, βγαίνει από εκείνο το groupage. Συνέχεια;')) return;
     const dayIso=seedId?(_wiRecOf(seedId)?.fields?.['Loading DateTime']||''):(_wiRecOf(row.orderIds[0])?.fields?.['Delivery DateTime']||'');
     const day=toLocalDate(dayIso||'');
     if(!day){ toast(seedId?'Η εισαγωγή του φορτηγού δεν έχει ημέρα φόρτωσης':'Η εξαγωγή δεν έχει ημέρα παράδοσης','warn'); return; }
