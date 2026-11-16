@@ -3217,9 +3217,11 @@ function _wiRateMemberId(row){
   if((row.orderIds||[]).length<2) return (row.orderIds||[])[0];
   const cache=row.type==='import'?WINTL.data.imports:WINTL.data.exports;
   const ids=_wiLoadOrderIds(row.type,row.orderIds);
-  return ids.find(id=>cache.find(r=>r.id===id)?.fields?.['Partner Rate'])||ids[0]||row.orderIds[0];
+  // a cancelled member is not on the truck: never the one that carries its fee
+  const live=ids.filter(id=>cache.find(r=>r.id===id)?.fields?.['Status']!=='Cancelled');
+  return live.find(id=>cache.find(r=>r.id===id)?.fields?.['Partner Rate'])||live[0]||ids[0]||row.orderIds[0];
 }
-async function _wiGiGroup(impId, knownRec){
+async function _wiGiGroup(impId, knownRec, withCancelled){
   let gid='';
   try{
     const rec = knownRec || await atGetOne(TABLES.ORDERS, impId);
@@ -3229,7 +3231,7 @@ async function _wiGiGroup(impId, knownRec){
   try{
     // by the BASE of the Group ID (core/load-group.js, 16/11): a groupage save that stopped half-way leaves some
     // members with the base only, and they are the same load
-    const sibs = await LoadGroup.readMembers(gid, true);
+    const sibs = await LoadGroup.readMembers(gid, true, !!withCancelled);
     if(!sibs.length) return { lead: impId, members: [impId] };
     const sorted=_wiGiSortRecs(sibs);
     return { lead: sorted[0].id, members: sorted.map(s=>s.id) };
@@ -3977,9 +3979,6 @@ async function _wiSaveFromPopover(rowId){
         const sibErrors=[];
         for(const sib of siblings){
           if(written.includes(sib.id)) continue; // already written above
-          // a cancelled member is not on the truck (by base it can come back with an old text, 16/11): never
-          // given the truck and «Assigned» again
-          if((sib.fields||{})['Status']==='Cancelled') continue;
           try{
             const res=await atSafePatch(TABLES.ORDERS,sib.id,await _wiPlanPatch(sib.id,groupFields),_wiQuietOpt());
             if(res?.error) throw new Error(res.error.message||res.error.type);
@@ -4133,7 +4132,7 @@ async function _wiClear(rowId){
       sibs.forEach(s=>add(s.id));
     }
     const giFrom=row.type==='import'?row.orderId:row.importId;
-    if(giFrom) (await _wiGiGroup(giFrom)).members.forEach(add);
+    if(giFrom) (await _wiGiGroup(giFrom,undefined,true)).members.forEach(add);   // a cancelled member is cleared too
   }catch(e){ reportError('Δεν διαβάστηκαν τα μέλη της ομάδας — ο καθαρισμός ΔΕΝ έγινε',e); return; }
 
   // RT legs first (see the header): find each order's live RT (_wiRtOf —
@@ -5917,6 +5916,7 @@ async function _wiImpShift(rowId,days){
       renderWeeklyIntl();
       return;
     }
+    _wiNoUndo();   // B-13: one move of the load, not one revertible PATCH per member
     _wiSync('wi-sync-'+rowId,'ok','Η μεταφορά αποθηκεύτηκε',oid0);
     toast(`Θα εμφανίζεται στην W${w} ✓`);
     renderWeeklyIntl();
@@ -6093,7 +6093,8 @@ async function _wiJoinReadLoad(seedId){
   if(!gid0) return {recs:[seed],gid0:''};
   if(gid0.indexOf('GI-')!==0) return {err:'έχει ομάδα σε άγνωστη μορφή',hard:true};
   let sibs=null;
-  try{ sibs=await LoadGroup.readMembers(gid0,false); }catch(e){ sibs=null; }   // by base (16/11)
+  // by base (16/11); cancelled members too, so the join's own «ακυρώθηκε στο μεταξύ» still sees them
+  try{ sibs=await LoadGroup.readMembers(gid0,false,true); }catch(e){ sibs=null; }
   if(!Array.isArray(sibs)||!sibs.length) return {err:'— η ομάδα του δεν διαβάστηκε'};
   return {recs:_wiGiSortRecs(sibs),gid0:_wiAgreedGid(sibs,gid0)};
 }
@@ -6321,6 +6322,19 @@ async function _wiImpJoin(loadOid,expOid,xOid,palOk){
   }finally{ if(wrote) _wiNoUndo(); }   // B-13: one join, not one revertible PATCH
 }
 
+// No group = no place in a load (113 «Load Seq», 16/11): a place left on the points would be read as the order of the
+// next load the order joins (LoadGroup.seqUsable). Every path that takes an order out of its group calls this after
+// its own write landed. Read back; → the orders whose places stayed, in words ([] = all clear). Never throws: the
+// leave itself already happened.
+async function _wiClearSeqOf(ids){
+  const bad=[];
+  for(const oid of ids||[]){
+    try{ const c=await stopsClearLoadSeq(oid); if(c.lost) bad.push(_wiOrdTxt(_wiRecOf(oid)||{id:oid,fields:{}})+': '+c.lost+(c.lost===1?' σημείο':' σημεία')); }
+    catch(e){ bad.push(_wiOrdTxt(_wiRecOf(oid)||{id:oid,fields:{}})+': δεν διαβάστηκε'); }
+  }
+  if(bad.length) reportError('Η σειρά φόρτωσης δεν σβήστηκε σε όλες τις παραγγελίες που βγήκαν από groupage — '+bad.join(' · '),bad);
+  return bad;
+}
 /* ── GROUPAGE ──────────────────────────────────────────────────────── */
 // Π1 (Wave 3, owner choice Α): the group persists via a shared text
 // `Group ID` on ORDERS (same pattern as NAT_LOADS `Groupage ID`), rebuilt in
@@ -6337,19 +6351,6 @@ async function _wiImpJoin(loadOid,expOid,xOid,palOk){
 // screen. Reads stay truthy-checks, so null (absent in the facade response)
 // and a legacy '' display the same. A DB guard (057, blank→NULL) is drafted
 // separately; this keeps new '' from being written meanwhile.
-// No group = no place in a load (113 «Load Seq», 16/11): a place left on the points would be read as the order of the
-// next load the order joins (LoadGroup.seqUsable). Every path that takes an order out of its group calls this after
-// its own write landed. Read back; → the orders whose places stayed, in words ([] = all clear). Never throws: the
-// leave itself already happened.
-async function _wiClearSeqOf(ids){
-  const bad=[];
-  for(const oid of ids||[]){
-    try{ const c=await stopsClearLoadSeq(oid); if(c.lost) bad.push(_wiOrdTxt(_wiRecOf(oid)||{id:oid,fields:{}})+': '+c.lost+(c.lost===1?' σημείο':' σημεία')); }
-    catch(e){ bad.push(_wiOrdTxt(_wiRecOf(oid)||{id:oid,fields:{}})+': δεν διαβάστηκε'); }
-  }
-  if(bad.length) reportError('Η σειρά φόρτωσης δεν σβήστηκε σε όλες τις παραγγελίες που βγήκαν από groupage — '+bad.join(' · '),bad);
-  return bad;
-}
 async function _wiGroupPatch(orderIds, gid, rowId){
   gid=gid||null; // a dissolve must never send '' (see above)
   _wiSync('wi-sync-'+rowId,'pend', gid?'Αποθήκευση ομάδας…':'Διάλυση ομάδας…',orderIds[0]);
@@ -6391,7 +6392,7 @@ async function _wiSplit(rowId){
   // the member that keeps the truck is the one that holds the load's fee (_wiRateMemberId, 16/11): the fee stays
   // with the truck still running
   const keep=_wiRateMemberId(row);
-  const [first,...rest]=[keep,...row.orderIds.filter(id=>id!==keep)];row.orderIds=[first];
+  const [first,...rest]=[keep,...row.orderIds.filter(id=>id!==keep)];row.orderIds=[first];row.orderId=first;
   rest.forEach(expId=>{
     const exp=WINTL.data.exports.find(r=>r.id===expId);
     WINTL.rows.push({
@@ -6502,7 +6503,7 @@ async function _wiRewriteGroupSuffix(recs,isImp){
   // the last member by having no position (pos 99 in _wiGiSortRecs,
   // _wiGrpOrder and rt-feed's _rtLegSeq), the rule of the join (§6.5). The
   // residue of a member leaving pinned it in the middle. Every member still
-  // carries the SAME string (rows collapse by Group ID equality). Only pieces
+  // carries the SAME string (the round-trip triggers compare it whole; the board joins by base since 16/11). Only pieces
   // left = the lead keeps the suffix, so it is never empty.
   const pinned=recs.filter(r=>!_wiIsPiece(r.fields));
   const gid=base+'|'+(pinned.length?pinned:recs.slice(0,1)).map(r=>r.id).join(',');
