@@ -5892,10 +5892,10 @@ async function _wiImpShift(rowId,days){
   // a cancelled member is not on the truck: it stays where it is
   const recOf=id=>members.find(r=>r.id===id)||WINTL.data.imports.find(r=>r.id===id);
   const ids=[...new Set([...row.orderIds,...members.map(r=>r.id)])].filter(id=>(recOf(id)?.fields||{})['Status']!=='Cancelled');
-  // back to the week the load shows by its own dates (its earliest loading, WI4.groupDt #311) = cleared, so it keeps
-  // following its dates; any other week is written on every member, which keeps them together
-  const lds=ids.map(id=>String(recOf(id)?.fields?.['Loading DateTime']||'')).filter(Boolean).sort();
-  const clearing=!!lds.length&&_wiWeekOf(lds[0])===w;
+  // cleared only when the target is EVERY member's own week (the board files an import by its own loading, before the
+  // collapse): then each one shows there by its dates. Any other week is written on every member, which keeps the
+  // load together — never a ✓ for a week the load would not show in.
+  const clearing=ids.every(id=>_wiWeekOf(recOf(id)?.fields?.['Loading DateTime'])===w);
   const targetPws=clearing?null:toLocalDate(_wiWeekStart(w));
   _wiSync('wi-sync-'+rowId,'pend','Μεταφορά εβδομάδας…',oid0);
   try{
