@@ -5911,13 +5911,13 @@ async function _wiImpShift(rowId,days){
       }catch(e){ bad.push(_wiOrdTxt(recOf(id)||{id,fields:{}})+': '+(e&&e.message||e)); }
     }
     if(bad.length){
-      _wiNoUndo();   // B-13: an undo of the members that moved would split the load further
+      if(ids.length>1) _wiNoUndo();   // B-13: an undo of the members that moved would split the load further
       _wiSync('wi-sync-'+rowId,'err',`Η μεταφορά ΔΕΝ γράφτηκε σε ${bad.length} από ${ids.length} παραγγελίες του φορτίου`,oid0);
       reportError('Η μεταφορά εβδομάδας δεν γράφτηκε σε όλο το φορτίο — '+bad.join(' · '),bad);
       renderWeeklyIntl();
       return;
     }
-    _wiNoUndo();   // B-13: one move of the load, not one revertible PATCH per member
+    if(ids.length>1) _wiNoUndo();   // B-13: one move of the load, not one revertible PATCH per member (one order keeps its undo)
     _wiSync('wi-sync-'+rowId,'ok','Η μεταφορά αποθηκεύτηκε',oid0);
     toast(`Θα εμφανίζεται στην W${w} ✓`);
     renderWeeklyIntl();

@@ -291,6 +291,9 @@ const ASSIGN_LABELS = ['Truck', 'Trailer', 'Driver', 'Partner', 'Is Partner Trip
 // value every member that has one agrees on; → { fields, plan: true } or null.
 const PLAN_LABELS = ['Matched Import ID', 'Plan Week Start'];
 function planOf(recs) {
+  // the load's plan comes from the members it was opened with: an order joining it («Υπάρχουσα») brings no plan of its
+  // own to the others (orig false, recomputeAssign)
+  recs = recs.filter(r => r.orig !== false);
   const out = {};
   for (const l of PLAN_LABELS) {
     const vals = new Set(recs.filter(r => l !== 'Matched Import ID' || (r.fields || {})['Direction'] === 'Export')
@@ -319,7 +322,7 @@ function assignmentOf(recs) {
 // without one makes that truck the load's (code review 15/11).
 function recomputeAssign() {
   const s = IG.s;
-  s.assign = assignmentOf(s.members.filter(m => m.recId).map(m => ({ id: m.recId, fields: m.f || {} })));
+  s.assign = assignmentOf(s.members.filter(m => m.recId).map(m => ({ id: m.recId, fields: m.f || {}, orig: !!m.orig })));
 }
 function needsVehicle(m) {
   const a = IG.s.assign;
