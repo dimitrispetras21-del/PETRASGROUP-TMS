@@ -40,12 +40,13 @@ function membersFormula(gid) {
 }
 // Every LIVE member of the load of `gid`, read from the server. Throws when the read fails: «the group could not be
 // read» is never the same as «the group has one member». A cancelled order is not on the truck: by base it can come
-// back with an older text, and given the truck again it would be «Assigned» again (code review 16/11).
-async function readMembers(gid, useCache) {
+// back with an older text, and given the truck again it would be «Assigned» again (code review 16/11). withCancelled:
+// a clear, which must also take the truck off a cancelled member that still holds it.
+async function readMembers(gid, useCache, withCancelled) {
   const f = membersFormula(gid);
   if (!f) { if (base(gid)) throw new Error('Group ID με χαρακτήρες που δεν αναζητούνται'); return []; }
   const recs = await atGetAll(TABLES.ORDERS, { filterByFormula: f }, !!useCache);
-  return (recs || []).filter(r => sameLoad(((r && r.fields) || {})['Group ID'], gid) && ((r && r.fields) || {})['Status'] !== 'Cancelled');
+  return (recs || []).filter(r => sameLoad(((r && r.fields) || {})['Group ID'], gid) && (withCancelled || ((r && r.fields) || {})['Status'] !== 'Cancelled'));
 }
 
 // The stored places of one side of a load are used only when every point has one and no two share it (the rule

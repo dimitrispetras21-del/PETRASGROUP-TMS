@@ -61,6 +61,8 @@ function world({ exports = [], imports = [], rows = [], executing = {} } = {}) {
     _wiDissolveClearMember: async () => undefined,
     // 16/11: a dissolve clears the members' places in the load (113); none here
     stopsClearLoadSeq: async () => ({ cleared: 0, lost: 0, was: [] }), _wiOrdTxt: r => r.id, _wiRecOf: () => null,
+    // 16/11: a dissolve keeps the truck on the member with the load's fee; here the first
+    _wiRateMemberId: row => row.orderIds[0],
     _wiSync() {}, toast() {}, _wiPaint() {}, reportError() {},
     renderWeeklyIntl: async () => {},
   };

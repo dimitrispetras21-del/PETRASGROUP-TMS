@@ -3214,6 +3214,7 @@ function _wiLoadOrderIds(type,ids){
 // The member that already holds a fee keeps it (code review 16/11): a reorder must not move the fee to a second
 // member while the first keeps its own. The row shows that same member's fee (_wiBuildRows).
 function _wiRateMemberId(row){
+  if((row.orderIds||[]).length<2) return (row.orderIds||[])[0];
   const cache=row.type==='import'?WINTL.data.imports:WINTL.data.exports;
   const ids=_wiLoadOrderIds(row.type,row.orderIds);
   return ids.find(id=>cache.find(r=>r.id===id)?.fields?.['Partner Rate'])||ids[0]||row.orderIds[0];
@@ -4128,7 +4129,7 @@ async function _wiClear(rowId){
     const expGid=row.type==='export'
       ? String(WINTL.data.exports.find(x=>x.id===row.orderIds[0])?.fields?.['Group ID']||'') : '';
     if(expGid){
-      const sibs=await LoadGroup.readMembers(expGid,false);   // by base (16/11)
+      const sibs=await LoadGroup.readMembers(expGid,false,true);   // by base (16/11); a cancelled member is cleared too
       sibs.forEach(s=>add(s.id));
     }
     const giFrom=row.type==='import'?row.orderId:row.importId;
@@ -5890,8 +5891,8 @@ async function _wiImpShift(rowId,days){
   try{ members=imp.fields['Group ID']?await LoadGroup.readMembers(imp.fields['Group ID'],false):[imp]; }
   catch(e){ _wiSync('wi-sync-'+rowId,'err','Τα μέλη του φορτίου δεν διαβάστηκαν — η μεταφορά δεν έγινε',oid0); reportError('Τα μέλη του φορτίου δεν διαβάστηκαν — η μεταφορά δεν έγινε',e); return; }
   // a cancelled member is not on the truck: it stays where it is
-  const ids=[...new Set([...row.orderIds,...members.filter(r=>(r.fields||{})['Status']!=='Cancelled').map(r=>r.id)])];
   const recOf=id=>members.find(r=>r.id===id)||WINTL.data.imports.find(r=>r.id===id);
+  const ids=[...new Set([...row.orderIds,...members.map(r=>r.id)])].filter(id=>(recOf(id)?.fields||{})['Status']!=='Cancelled');
   // back to the week the load shows by its own dates (its earliest loading, WI4.groupDt #311) = cleared, so it keeps
   // following its dates; any other week is written on every member, which keeps them together
   const lds=ids.map(id=>String(recOf(id)?.fields?.['Loading DateTime']||'')).filter(Boolean).sort();
@@ -6387,7 +6388,10 @@ async function _wiDissolveClearMember(oid){
 async function _wiSplit(rowId){
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row||row.orderIds.length<=1) return;
   const allIds=[...row.orderIds];
-  const [first,...rest]=row.orderIds;row.orderIds=[first];
+  // the member that keeps the truck is the one that holds the load's fee (_wiRateMemberId, 16/11): the fee stays
+  // with the truck still running
+  const keep=_wiRateMemberId(row);
+  const [first,...rest]=[keep,...row.orderIds.filter(id=>id!==keep)];row.orderIds=[first];
   rest.forEach(expId=>{
     const exp=WINTL.data.exports.find(r=>r.id===expId);
     WINTL.rows.push({
