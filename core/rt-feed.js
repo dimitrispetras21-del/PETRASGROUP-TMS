@@ -249,7 +249,10 @@ function rtLegsForOrder(order, allOrders) {
     const o = byId[queue.pop()];
     const f = o.fields || {};
     const gid = f['Group ID'];
-    if (gid) Object.values(byId).forEach(cand => { if ((cand.fields || {})['Group ID'] === gid) visit(cand.id); });
+    // one load = one BASE of the Group ID (core/load-group.js, 16/11): a groupage save that stopped half-way leaves
+    // some members with the base only — they ride the same truck
+    // (LoadGroup.membersOf: a cancelled order only with the load's identical text, as before 16/11)
+    if (gid) LoadGroup.membersOf(Object.values(byId), gid, true).forEach(cand => visit(cand.id));
     visit(f['Matched Import ID']); // export → its import
     Object.values(byId).forEach(cand => { if ((cand.fields || {})['Matched Import ID'] === o.id) visit(cand.id); }); // import ← its export
     visit(f['Rotation ID']); // rotation leg → its parent
@@ -279,9 +282,8 @@ function _rtLegSeq(legsInfo, byId) {
   // Every export of the SAME round trip carries the SAME Group ID (siblings),
   // so the first one found with a suffix is enough to order all of them —
   // exactly what _wiGrpOrder does for the Weekly International row.
-  const gidRec = exportLegs.map(l => byId[l.orderId]).find(o => o && o.fields && o.fields['Group ID']);
-  const suffix = (gidRec ? String(gidRec.fields['Group ID'] || '') : '').split('|')[1] || '';
-  const order = suffix.split(',').filter(Boolean);
+  // (the list of the member that has one — a member left with the base only has none, 16/11)
+  const order = LoadGroup.orderList(exportLegs.map(l => byId[l.orderId]).filter(Boolean));
   const orderedExports = order.length
     ? [...exportLegs].sort((a, b) => { const pos = id => { const k = order.indexOf(id); return k < 0 ? 99 : k; }; return pos(a.orderId) - pos(b.orderId); })
     : [...exportLegs].sort(cmp);
@@ -293,8 +295,7 @@ function _rtLegSeq(legsInfo, byId) {
   // position — checked FIRST so a reordered GI- group always wins over the
   // export-position fallback below, still landing after every export leg
   // (imports never move ahead of exports here, same as before this change).
-  const giRec = importLegs.map(l => byId[l.orderId]).find(o => o && o.fields && String(o.fields['Group ID'] || '').indexOf('GI-') === 0 && String(o.fields['Group ID'] || '').split('|')[1]);
-  const giOrder = giRec ? String(giRec.fields['Group ID'] || '').split('|')[1].split(',').filter(Boolean) : [];
+  const giOrder = LoadGroup.orderList(importLegs.map(l => byId[l.orderId]).filter(o => o && o.fields && String(o.fields['Group ID'] || '').indexOf('GI-') === 0));
   const orderedImports = giOrder.length
     ? [...importLegs].sort((a, b) => { const pos = id => { const k = giOrder.indexOf(id); return k < 0 ? 99 : k; }; return pos(a.orderId) - pos(b.orderId); })
     : (order.length
@@ -333,11 +334,21 @@ async function _rtGatherOrders(rec) {
   // this converges in at most a handful of rounds for the group sizes this
   // app actually has (owner: 2-4 members).
   let grew = true;
+  const searched = new Set();   // one «contains» read per load base (16/11): a member's siblings share it
   while (grew && Object.keys(byId).length <= 20) {
     grew = false;
     for (const o of Object.values(byId)) {
       const gid = o.fields['Group ID'];
-      if (gid) { for (const cand of await filterIn(`{Group ID}='${gid}'`)) { if (!byId[cand.id]) { byId[cand.id] = cand; grew = true; } } }
+      // by base (LoadGroup.membersFormula asks «contains», sameLoad keeps the load's own members); no base = no read
+      // (a null formula would read the whole table)
+      const b = LoadGroup.base(gid), f = b && !searched.has(b) ? LoadGroup.membersFormula(gid) : null;
+      if (f) {
+        const got = await filterIn(f);
+        // a read that worked returns at least this order itself; [] = filterIn swallowed a failure (console.warn): the
+        // base is asked again only if another round runs — a loop that grows nothing else ends without it
+        if (got.length) searched.add(b);
+        for (const cand of LoadGroup.membersOf(got, gid, true)) { if (!byId[cand.id]) { byId[cand.id] = cand; grew = true; } }
+      }
       const mid = o.fields['Matched Import ID'];
       if (mid && !byId[mid]) { const imp = await atGetOne(TABLES.ORDERS, mid); if (imp) { byId[imp.id] = imp; grew = true; } }
     }

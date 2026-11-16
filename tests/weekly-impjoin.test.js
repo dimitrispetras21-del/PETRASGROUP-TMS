@@ -44,6 +44,7 @@ const { OrdersStock, OrdersCommon } = require(path.join(ROOT, 'core/orders-commo
 const PLAIN = [one('_wiOrdTxt'), one('_wiCliTxt'), one('_wiErrList'), many('_wiJoinVeh')].join('\n');
 function load(parts, extra) {
   const ctx = Object.assign({ console, OrdersStock, OrdersCommon, getLinkedId, orderClientName, PlainRef: require(path.join(ROOT, 'core/plain-ref.js')), _fhLocationsMap: {},
+    LoadGroup: require(path.join(ROOT, 'core/load-group.js')),   // the load rules (16/11)
     WINTL: { rows: [], data: { exports: [], imports: [], trucks: [], partners: [], stock: null } } }, (extra && extra.ctx) || {});
   vm.createContext(ctx);
   const names = parts.map(p => p.name).filter(Boolean);
@@ -229,8 +230,8 @@ test('P33: no 33 decides anything outside the shared rule — candidates, sums, 
 // loadings after the highest loading place, deliveries after the highest delivery place — each side only when the
 // load's places are usable (the form's seqUsable: all set, none twice); else nothing is written. Read back.
 function seqWorld(stops, opts = {}) {
-  const IG = fs.readFileSync(path.join(ROOT, 'modules/orders_intl_group.js'), 'utf8');
-  const seqUsable = (0, eval)('(' + IG.match(/function seqUsable\(vals\) \{[\s\S]*?\n\}/)[0] + ')');
+  // the form's rule lives in core/load-group.js since 16/11 (one source with the driver sheet and the week's route)
+  const seqUsable = require('../core/load-group.js').seqUsable;
   const db = JSON.parse(JSON.stringify(stops)), patches = [], toasts = [], logged = [];
   const ctx = load([F('_wiJoinLoadSeq', asyncMany)], { ctx: {
     IntlGroup: { _seqUsable: seqUsable }, F: { STOP_PARENT_ORDER: 'Order', STOP_TYPE: 'Stop Type', STOP_NUMBER: 'Stop Number', STOP_LOAD_SEQ: 'Load Seq' },

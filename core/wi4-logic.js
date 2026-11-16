@@ -22,6 +22,9 @@
 
 const freeze = Object.freeze;
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+// The load rules (core/load-group.js): a browser global in the app, a module under node --test. Read when called,
+// so loading this file still only defines WI4 (§b step 6).
+const LG = () => (typeof LoadGroup !== 'undefined' ? LoadGroup : require('./load-group.js'));
 
 // Whole days from `a` to `b` (b − a), or null when either is not a day.
 // Date.UTC on both sides: no DST hour can turn 1 day into 0.96.
@@ -115,8 +118,8 @@ function weekExports(recs, ws, we, dayOf) {
 // An import group's order (A1, owner 6/9): the Group ID suffix (stop order), then Loading
 // DateTime, then id — never the read order, which flipped the group's lead between renders.
 function giSortRecs(recs) {
-  const gid = String((recs.find((r) => r && r.fields && r.fields['Group ID']) || {}).fields?.['Group ID'] || '');
-  const seq = (gid.split('|')[1] || '').split(',').filter(Boolean);
+  // the list of the member that has one: a member left with the base only by a save that stopped has none (16/11)
+  const seq = LG().orderList(recs);
   const pos = (id) => { const k = seq.indexOf(id); return k < 0 ? 99 : k; };
   return [...recs].sort((a, b) => pos(a.id) - pos(b.id)
     || String(a.fields?.['Loading DateTime'] || '').localeCompare(String(b.fields?.['Loading DateTime'] || ''))
@@ -142,11 +145,20 @@ function boardRows(exports, imports, o) {
     const outOfWindow = !!(pws && ws && pws === ws && eff && (eff < ws || eff > we));
     rows.push({ id: ++seq, type: 'export', orderId: exp.id, orderIds: [exp.id], importId: f['Matched Import ID'] || null, outOfWindow });
   }
+  // The row key of a grouped order (16/11): its BASE — a save that stopped half-way leaves some members with the base
+  // only, and the load showed as two rows. A cancelled order keeps its own text as key unless a live order has the
+  // same text (LoadGroup.membersOf, the one rule): with an older text it is no longer on the truck.
+  const rowKey = (recs) => {
+    const t = (r) => String((r && r.fields && r.fields['Group ID']) || '').trim();
+    const live = new Set((recs || []).filter((r) => r.fields && r.fields['Status'] !== 'Cancelled').map(t));
+    return (rec) => { const g = t(rec); if (!g) return ''; return (rec.fields || {})['Status'] !== 'Cancelled' || live.has(g) ? LG().base(g) : 'cancelled:' + g; };
+  };
   {
     const byGid = {};
+    const key = rowKey(exports);
     rows.forEach((r) => {
       if (r.type !== 'export') return;
-      const gid = ((exports || []).find((e) => e.id === r.orderId) || {}).fields?.['Group ID'];
+      const gid = key((exports || []).find((e) => e.id === r.orderId) || {});
       if (gid) (byGid[gid] = byGid[gid] || []).push(r);
     });
     // Π1 (Wave 3): export rows sharing a Group ID collapse back into one row after every reload.
@@ -176,9 +188,10 @@ function boardRows(exports, imports, o) {
   }
   {
     const byGid = {};
+    const key = rowKey(imports);
     rows.forEach((r) => {
       if (r.type !== 'import') return;
-      const gid = impById[r.orderId]?.fields?.['Group ID'];
+      const gid = key(impById[r.orderId] || {});   // by base, as the exports above
       if (gid) (byGid[gid] = byGid[gid] || []).push(r);
     });
     // A1 (owner 6/9): import groups collapse too — a second grouped import row once stayed alone and a truck

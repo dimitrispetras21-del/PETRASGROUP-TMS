@@ -69,6 +69,7 @@ async function world({ parentVeh = null, leg = {}, rts = [], role = 'owner', rtL
   const T = (id, label) => ({ id, label });
 
   const ctx = {
+    LoadGroup: require('../core/load-group.js'),   // the load rules (16/11): the board, rt-feed and the form read them
     console: { log() {}, info() {}, warn() {}, error() {} }, JSON, Math, Date, Promise, Array, Object, Set, Map, Error, Number, String,
     setTimeout: () => 0, clearTimeout() {},
     localStorage: { getItem: () => null, setItem() {}, removeItem() {} },

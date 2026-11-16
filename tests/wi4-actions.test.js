@@ -75,6 +75,7 @@ function world(opts = {}) {
   const calls = [];
   const root = el();
   const ctx = {
+    LoadGroup: require('../core/load-group.js'),   // the load rules (16/11): the board, rt-feed and the form read them
     console: { log() {}, info() {}, warn() {}, error() {}, debug() {} },
     ROLE: 'dispatcher', currentPage: 'weekly_intl',
     FEATURES: { ORDER_SPLIT: true, GROUP_TILES: true, STOCK_LOTS: true, WI_V2: 'off', WI_PRESENCE: false },

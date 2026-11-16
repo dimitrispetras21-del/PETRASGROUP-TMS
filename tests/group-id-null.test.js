@@ -21,6 +21,8 @@ const WI = src('modules/weekly_intl.js');
 const wiSrc = [
   fn(WI, /function _wiGrpOrder\(exps,fallbackField\)\{[\s\S]*?\n\}\n/, '_wiGrpOrder'),
   fn(WI, /async function _wiGroupPatch\(orderIds, gid, rowId\)\{[\s\S]*?\n\}\n/, '_wiGroupPatch'),
+  // 16/11: every path out of a group clears the order's places in the load (113)
+  fn(WI, /async function _wiClearSeqOf\(ids\)\{[\s\S]*?\n\}\n/, '_wiClearSeqOf'),
   fn(WI, /async function _wiSplit\(rowId\)\{[\s\S]*?\n\}\n/, '_wiSplit'),
   fn(WI, /async function _wiRewriteGroupSuffix\(recs,isImp\)\{[\s\S]*?\n\}\n/, '_wiRewriteGroupSuffix'),
   fn(WI, /async function _wiSyncGroupResidue\(row\)\{[\s\S]*?\n\}\n/, '_wiSyncGroupResidue'),
@@ -57,6 +59,10 @@ function world({ exports = [], imports = [], rows = [], executing = {} } = {}) {
     _wiLiveOrders: async ids => ids.map(id => ({ id, st: executing[id] ? 'Delivered' : 'Assigned', f: {} })),
     _wiExecConfirmText: () => 'executing',
     _wiDissolveClearMember: async () => undefined,
+    // 16/11: a dissolve clears the members' places in the load (113); none here
+    stopsClearLoadSeq: async () => ({ cleared: 0, lost: 0, was: [] }), _wiOrdTxt: r => r.id, _wiRecOf: () => null,
+    // 16/11: a dissolve keeps the truck on the member with the load's fee; here the first
+    _wiRateMemberId: row => row.orderIds[0],
     _wiSync() {}, toast() {}, _wiPaint() {}, reportError() {},
     renderWeeklyIntl: async () => {},
   };

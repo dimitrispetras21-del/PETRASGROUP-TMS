@@ -2963,8 +2963,12 @@ async function submitIntlOrder(recId, G) {
       // cross-dock by the same Δ, once (069_hub_day_once). The Cross-dock stop
       // then goes without DateTime (_stopObjToFields leaves an empty one out),
       // so stopsSave keeps the day the base gave it.
-      const _ld = _formStops.find(s => s.stopType === 'Loading' && s.dateTime);
-      const _ud = _formStops.find(s => s.stopType === 'Unloading' && s.dateTime);
+      // A groupage member (G.gid) reads the earliest point, the day its own «Loading/Delivery DateTime» get below, so
+      // «export = loading + 1» holds between the two fields after a drag (16/11). A single load reads its first point,
+      // as before the side panel.
+      const _gEarly = t => { const d = G && G.gid != null ? LoadGroup.earliest(_formStops.filter(s => s.stopType === t).map(s => s.dateTime)) : null; return d ? { dateTime: d } : null; };
+      const _ld = _gEarly('Loading') || _formStops.find(s => s.stopType === 'Loading' && s.dateTime);
+      const _ud = _gEarly('Unloading') || _formStops.find(s => s.stopType === 'Unloading' && s.dateTime);
       const _cdRule = VsDates.vsCdOnSave(recId ? INTL_ORDERS._loadedFields : null,
         { vs: true, dir: fields['Direction'], loading: _ld && _ld.dateTime, delivery: _ud && _ud.dateTime });
       const _cdDt = _cdRule.send && _cdRule.cd ? _cdRule.cd + 'T12:00:00.000Z' : null;
@@ -2977,8 +2981,13 @@ async function submitIntlOrder(recId, G) {
     // Derive order-level summary fields from stops (needed for filters, sorting, weekly views)
     const _firstLoad = _formStops.find(s => s.stopType === 'Loading');
     const _firstUnload = _formStops.find(s => s.stopType === 'Unloading');
-    if (_firstLoad?.dateTime) fields['Loading DateTime'] = _firstLoad.dateTime;
-    if (_firstUnload?.dateTime) fields['Delivery DateTime'] = _firstUnload.dateTime;
+    // The order's day = the EARLIEST day of its points (16/11): after a drag in the side panel point #1 can be a later
+    // day, and the week board, the lists and the «delivery before loading» check below read these two fields.
+    // The Veroia day above reads the same in a groupage; a single load keeps its first point (_ld/_ud).
+    const _earliestDt = t => LoadGroup.earliest(_formStops.filter(s => s.stopType === t).map(s => s.dateTime));
+    const _ldEarly = _earliestDt('Loading'), _udEarly = _earliestDt('Unloading');
+    if (_ldEarly) fields['Loading DateTime'] = _ldEarly;
+    if (_udEarly) fields['Delivery DateTime'] = _udEarly;
     // Total Pallets is a computed field in Airtable — do not write to it
 
     // Write flat Location fields so Airtable formulas (Loading Summary, Order Number) work

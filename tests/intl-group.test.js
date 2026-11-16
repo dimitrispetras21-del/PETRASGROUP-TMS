@@ -9,7 +9,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const root = path.join(__dirname, '..');
-const ctx = { window: {}, FEATURES: { INTL_GROUP_FORM: true }, console,
+const ctx = { window: {}, FEATURES: { INTL_GROUP_FORM: true }, console, LoadGroup: require('../core/load-group.js'),
   getLinkedId: v => (Array.isArray(v) ? v[0] : v) || '' };
 vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(path.join(root, 'modules', 'orders_intl_group.js'), 'utf8'), ctx);
@@ -54,6 +54,22 @@ test('the load vehicle: one truck = copied without the partner fee; trucks that 
   // an import's match lives on its export: not copied
   const imp = IG._assignmentOf([{ id: 'o1', fields: { Direction: 'Import', Truck: ['t1'], 'Matched Import ID': 'x' } }]);
   assert.ok(!('Matched Import ID' in imp.fields));
+});
+
+test('a load with no truck yet still gives its match and its moved week to a new member (16/11)', () => {
+  const a = IG._assignmentOf([
+    { id: 'o1', fields: { Direction: 'Export', 'Matched Import ID': 'i1', 'Plan Week Start': '2026-11-21' } },
+    { id: 'o2', fields: { Direction: 'Export' } },
+  ]);
+  assert.strictEqual(a.plan, true);
+  assert.deepStrictEqual(plain(a.fields), { 'Matched Import ID': 'i1', 'Plan Week Start': '2026-11-21' });
+  // members that disagree give no source
+  assert.strictEqual(IG._assignmentOf([{ id: 'o1', fields: { Direction: 'Export', 'Matched Import ID': 'i1' } }, { id: 'o2', fields: { Direction: 'Export', 'Matched Import ID': 'i2' } }]), null);
+  // an import's match lives on its export: not a source
+  assert.strictEqual(IG._assignmentOf([{ id: 'o1', fields: { Direction: 'Import', 'Matched Import ID': 'x' } }]), null);
+  // with a truck the moved week rides with it
+  const v = IG._assignmentOf([{ id: 'o1', fields: { Direction: 'Export', Truck: ['t1'], 'Plan Week Start': '2026-11-21' } }]);
+  assert.strictEqual(v.fields['Plan Week Start'], '2026-11-21');
 });
 
 test('a stop with a place in the load sends «Load Seq»; one without sends nothing', () => {

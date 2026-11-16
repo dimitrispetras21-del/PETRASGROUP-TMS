@@ -246,6 +246,7 @@ body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 
 <script src="core/share-helpers.js?v=1787730518"></script>
 <script src="core/countries.js"></script>
+<script src="core/load-group.js?v=1794740000"></script>
 <script>
 // Airtable token REMOVED (S-1 remediation, 2026-07-13). This page now reads
 // through the Cloudflare Worker with the logged-in user's JWT, same as core/api.js.
@@ -843,6 +844,10 @@ function dtKey(s){
 // e = the routeStops entry, oi = the order's index in items, si = its stop index.
 // The ONLY ordering of a group: the WhatsApp text and the paper cover both read
 // it, so the phone and the paper can never disagree on the sequence.
+// 16/11 (113 «Load Seq»): the order the form sets per point comes FIRST, per
+// side, when every point of that side has a place and no two share it
+// (LoadGroup.seqUsable, the one rule the form and the board use). A Veroia /
+// summary / flat entry has no place, so that side keeps the rule above as it was.
 function groupRoute(items,isPartner,isExport){
   var loads=[],dels=[];
   items.forEach(function(it,oi){
@@ -857,7 +862,13 @@ function groupRoute(items,isPartner,isExport){
       return ka<kb?-1:ka>kb?1:(a.oi-b.oi)||(a.si-b.si);
     });
   }
-  return isExport?{loads:byDate(loads),dels:dels}:{loads:loads,dels:byDate(dels)};
+  function seqOf(x){return x.e.sf?x.e.sf['Load Seq']:null;}
+  // core/load-group.js not loaded = the old order, logged (a driver still gets a sheet)
+  var LG=typeof LoadGroup!=='undefined'?LoadGroup:null;
+  if(!LG&&typeof printLogError==='function')printLogError(new Error('LoadGroup not loaded'),'print: groupRoute');
+  var ls=LG?LG.sortBySeq(loads,seqOf):null;
+  var ds=LG?LG.sortBySeq(dels,seqOf):null;
+  return {loads:ls||(isExport?byDate(loads):loads),dels:ds||(isExport?dels:byDate(dels))};
 }
 
 var WA_EMO=['1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟'];
