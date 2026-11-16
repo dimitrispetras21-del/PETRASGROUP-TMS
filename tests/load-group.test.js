@@ -31,7 +31,8 @@ test('order list: from the member that has one, never from a member left with th
 test('the facade filter asks «contains» the base; a quote falls back to the identical text', () => {
   assert.strictEqual(LG.membersFormula('GRP-AB12|recA,recB'), 'SEARCH(LOWER("GRP-AB12"), LOWER({Group ID}))');
   assert.strictEqual(LG.membersFormula(''), null);
-  assert.strictEqual(LG.membersFormula("GI-O'X|recA"), "{Group ID}='GI-O\\'X|recA'");
+  assert.strictEqual(LG.membersFormula("GI-O'X|recA"), '{Group ID}="GI-O\'X|recA"');
+  assert.strictEqual(LG.membersFormula('GI-O"X|recA'), "{Group ID}='GI-O\"X|recA'");
   // the Worker's own translation of the term (formula-translate.js) accepts this shape
   const W = fs.readFileSync(path.join(__dirname, '..', 'worker', 'src', 'index.js'), 'utf8');
   const re = W.match(/m = t\.match\((\/\^SEARCH[^\n]*?\/i)\);/);
@@ -86,7 +87,7 @@ test('the week\'s route: a groupage\'s orders follow the load\'s places, in the 
 test('the order\'s day: the earliest of its points, not the first in the panel', () => {
   assert.strictEqual(LG.earliest(['2026-11-18', '2026-11-16', '']), '2026-11-16');
   assert.strictEqual(LG.earliest(['2026-11-18T08:00:00.000Z', '2026-11-17']), '2026-11-17');
-  assert.strictEqual(LG.earliest(['2026-11-16', '2026-11-16T09:00']), '2026-11-16', 'the same day: the first one stays');
+  assert.strictEqual(LG.earliest(['2026-11-17T18:00', '2026-11-17T06:00']), '2026-11-17T06:00', 'one day: the earlier time');
   assert.strictEqual(LG.earliest([null, '']), null);
   // the form writes it so (orders_intl.js): never «the first Loading point»
   const OI = fs.readFileSync(path.join(__dirname, '..', 'modules', 'orders_intl.js'), 'utf8');
@@ -156,7 +157,7 @@ test('Weekly: one partner fee per load — the rate and the partner row on the f
     fn(/function _wiGrpOrder\(exps,fallbackField\)\{[\s\S]*?\n\}\n/, '_wiGrpOrder'),
     fn(/function _wiGiSortRecs\(recs\)\{[\s\S]*?\n\}\n/, '_wiGiSortRecs'),
     fn(/function _wiLoadOrderIds\(type,ids\)\{[\s\S]*?\n\}\n/, '_wiLoadOrderIds'),
-    fn(/function _wiRateMemberId\(row\)\{[^\n]*\}\n/, '_wiRateMemberId'),
+    fn(/function _wiRateMemberId\(row\)\{[\s\S]*?\n\}\n/, '_wiRateMemberId'),
     fn(/async function _wiCreatePartnerAssignments\(row\)\{[\s\S]*?\n\}\n/, '_wiCreatePartnerAssignments'),
   ].join('\n');
   const ups = [];
@@ -172,6 +173,9 @@ test('Weekly: one partner fee per load — the rate and the partner row on the f
   assert.strictEqual(ctx._wiRateMemberId(row), 'recB');
   await ctx._wiCreatePartnerAssignments(row);
   assert.deepStrictEqual(plain(ups), [['recB', '1200'], ['recI', '900']]);
+  // a member that already holds the fee keeps it, whatever the order says now (no second fee after a reorder)
+  ctx.WINTL.data.exports[0].fields['Partner Rate'] = 1100;
+  assert.strictEqual(ctx._wiRateMemberId(row), 'recA');
   // the assignment save writes the fee on that member only
   assert.match(WI, /const pp=await _wiPlanPatch\(orderId,orderId===rateId\?expFields:\{\.\.\.fields\}\);/);
 });

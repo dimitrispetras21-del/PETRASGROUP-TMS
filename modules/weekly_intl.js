@@ -876,9 +876,8 @@ function _wiBuildRows(){
       partnerLabel:label(WINTL.data.partners,partnerId),
       partnerPlates:f['Partner Truck Plates']||'',
       // the load's one fee (decision 4, 16/11): the first member in the load's order that carries one
-      partnerRate:  (()=>{ const byId=r.type==='export'?expById:impById;
-        const fr=_wiLoadOrderIds(r.type,r.orderIds).map(id=>byId[id]).find(x=>x&&x.fields['Partner Rate']);
-        return fr?String(fr.fields['Partner Rate']):''; })(),
+      partnerRate:  (()=>{ const x=(r.type==='export'?expById:impById)[_wiRateMemberId(r)];
+        return x&&x.fields['Partner Rate']?String(x.fields['Partner Rate']):''; })(),
       // Read back from the matched import (owner 22/10, order 585): the save
       // writes it there, but the row started empty, so the field showed blank
       // after every reload and the next save demanded it again.
@@ -3212,7 +3211,13 @@ function _wiLoadOrderIds(type,ids){
 // One partner fee per truck (owner 15/11, decision 4): the fee and its partner row go on ONE member of a load, the
 // first in its order. On every member, ct_v_rt_costs (one partner row per order) counted the truck's fee once per
 // order. The others get the partner without a fee, as the order form does for a new member.
-function _wiRateMemberId(row){ return _wiLoadOrderIds(row.type,row.orderIds)[0]||row.orderIds[0]; }
+// The member that already holds a fee keeps it (code review 16/11): a reorder must not move the fee to a second
+// member while the first keeps its own. The row shows that same member's fee (_wiBuildRows).
+function _wiRateMemberId(row){
+  const cache=row.type==='import'?WINTL.data.imports:WINTL.data.exports;
+  const ids=_wiLoadOrderIds(row.type,row.orderIds);
+  return ids.find(id=>cache.find(r=>r.id===id)?.fields?.['Partner Rate'])||ids[0]||row.orderIds[0];
+}
 async function _wiGiGroup(impId, knownRec){
   let gid='';
   try{
@@ -5881,7 +5886,8 @@ async function _wiImpShift(rowId,days){
   let members;
   try{ members=imp.fields['Group ID']?await LoadGroup.readMembers(imp.fields['Group ID'],false):[imp]; }
   catch(e){ _wiSync('wi-sync-'+rowId,'err','Τα μέλη του φορτίου δεν διαβάστηκαν — η μεταφορά δεν έγινε',oid0); reportError('Τα μέλη του φορτίου δεν διαβάστηκαν — η μεταφορά δεν έγινε',e); return; }
-  const ids=[...new Set([...row.orderIds,...members.map(r=>r.id)])];
+  // a cancelled member is not on the truck: it stays where it is
+  const ids=[...new Set([...row.orderIds,...members.filter(r=>(r.fields||{})['Status']!=='Cancelled').map(r=>r.id)])];
   const recOf=id=>members.find(r=>r.id===id)||WINTL.data.imports.find(r=>r.id===id);
   // back to the natural week only when it is every member's natural week; else one written week keeps them together
   const clearing=ids.every(id=>_wiWeekOf(recOf(id)?.fields?.['Loading DateTime'])===w);
@@ -7690,6 +7696,7 @@ async function _wiStockJoinB(row,pick){
       const fresh=await atGetOne(TABLES.ORDERS,pc.id);
       if(toLocalDate(fresh?.fields?.['Loading DateTime']||'')!==day) throw new Error('η ανάγνωση πίσω δεν δείχνει τη νέα ημέρα');
       if(String(fresh?.fields?.['Group ID']||'').trim()) throw new Error('η ανάγνωση πίσω δείχνει ακόμη την παλιά ομάδα');
+      if(staleGid) await _wiClearSeqOf([pc.id]);   // no group = no place in a load (16/11)
     }catch(e){
       // D2: a DB refusal is already on screen (core/api.js) — here only what
       // did not happen.
@@ -7738,6 +7745,9 @@ async function _wiStockApply(row,pieceId,patch,ctx){
     return;
   }
   _wiSync('wi-sync-'+row.id,'ok','Το κομμάτι μπήκε στο φορτηγό',oid0);
+  // a piece that was in another groupage left it: its places there go (16/11); the load it joins has none for it,
+  // so its order falls back to the old rule with its «!» in the form — never an old place read as a new one
+  await _wiClearSeqOf([pieceId]);
   invalidateCache(TABLES.ORDERS);
   if(typeof syncOrderDownstream==='function') syncOrderDownstream(pieceId,{source:'intl'})
     .catch(e=>{ if(typeof logError==='function') logError(e,'weekly intl: stock piece sync'); });
@@ -7895,6 +7905,7 @@ async function _wiStockReturnLoneRun(pid,expOid,expRowId){
     if(res?.error) throw new Error(res.error.message||res.error.type);
     const again=await atGetOne(TABLES.ORDERS,pid);
     if(veh(again?.fields||{})||String(again?.fields?.['Group ID']||'').trim()) throw new Error('η ανάγνωση πίσω δείχνει ακόμη όχημα ή ομάδα');
+    if(hasGid) await _wiClearSeqOf([pid]);   // no group = no place in a load (16/11)
   }catch(e){
     // D2: a DB refusal's own sentence is already on screen — only the context here.
     reportError('Το ταίριασμα αφαιρέθηκε αλλά το κομμάτι ΔΕΝ επέστρεψε πλήρως στο απόθεμα'+(_wiShown(e)?'':': '+String((e&&e.message)||e))+' — έλεγξε χειροκίνητα',e);
