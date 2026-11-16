@@ -1,0 +1,105 @@
+// ═══════════════════════════════════════════════════════════════════════════
+// ONE LOAD, MANY ORDERS — the pure rules every screen uses to put a groupage together (owner 15–16/11/2026).
+//
+// Why one file: the board, the round-trip feed, the order form, the driver sheet (print.html, which loads no module)
+// and «Παραγγελίες › Εβδομάδα» each assembled a load on their own. When one of them changed, the others did not
+// (principle 3). Plain functions, no DOM, no fetch except readMembers (which calls the page's atGetAll).
+//
+// What a member carries (modules/orders_intl_group.js):
+//   - Group ID «base|id1,id2,…»: while a save is running every member has the base only; when it ends, the full
+//     text with the order list. A save that stops half-way leaves members with different texts, so a load is
+//     always joined by its BASE, never by the identical text.
+//   - each stop: its place in the load, «Load Seq» (113), counted separately for loadings and for deliveries.
+// ═══════════════════════════════════════════════════════════════════════════
+(function () {
+'use strict';
+
+// «GRP-X|a,b» → «GRP-X». Empty for no group.
+function base(gid) { return String(gid == null ? '' : gid).split('|')[0].trim(); }
+function sameLoad(a, b) { const x = base(a); return !!x && x === base(b); }
+// The order list of a load, from the first member that carries one (a member saved before the save stopped has none).
+function orderList(recs) {
+  for (const r of recs || []) {
+    const l = (String(((r && r.fields) || {})['Group ID'] || '').split('|')[1] || '').split(',').filter(Boolean);
+    if (l.length) return l;
+  }
+  return [];
+}
+// The facade filter that finds every member by base. The facade has no «starts with» (formula-translate.js), so
+// this asks for «contains» and the caller keeps only sameLoad — a base that is part of another base is dropped there.
+// A base with a quote cannot go inside the formula; then the identical text is asked, as before 16/11.
+function membersFormula(gid) {
+  const b = base(gid);
+  if (!b) return null;
+  if (/["'\\]/.test(b)) return `{Group ID}='${String(gid).replace(/'/g, "\\'")}'`;
+  return `SEARCH(LOWER("${b}"), LOWER({Group ID}))`;
+}
+// Every member of the load of `gid`, read from the server. Throws when the read fails: «the group could not be read»
+// is never the same as «the group has one member».
+async function readMembers(gid, useCache) {
+  const f = membersFormula(gid);
+  if (!f) return [];
+  const recs = await atGetAll(TABLES.ORDERS, { filterByFormula: f }, !!useCache);
+  return (recs || []).filter(r => sameLoad(((r && r.fields) || {})['Group ID'], gid));
+}
+
+// The stored places of one side of a load are used only when every point has one and no two share it (the rule
+// written in DECISION_LOG with 113); anything else falls back to the old rule — never a guessed order.
+function seqUsable(vals) {
+  if (!vals || !vals.length) return false;
+  const n = vals.map(v => (v == null || v === '' ? NaN : Number(v)));
+  return n.every(x => Number.isInteger(x) && x > 0) && new Set(n).size === n.length;
+}
+// The list sorted by its places, or null when the places are not usable (the caller then keeps its own rule).
+function sortBySeq(list, seqOf) {
+  const vals = (list || []).map(seqOf);
+  if (!seqUsable(vals)) return null;
+  return list.slice().sort((a, b) => Number(seqOf(a)) - Number(seqOf(b)));
+}
+
+// The orders of one round trip in the order of their load (113): items = [{ rec, stops }] in the trip's order.
+// The members of one load keep the slots they hold in the list and are put in the order of their first point on the
+// side the load's order is set for (export: deliveries, import: loadings — the same side as the Group ID list), when
+// the places of that side are usable across the load. Otherwise, and for every order outside a groupage, the list
+// stays exactly as it came.
+function orderByLoad(items) {
+  const out = (items || []).slice();
+  const groups = {};
+  out.forEach((it, k) => {
+    const b = base(((it && it.rec && it.rec.fields) || {})['Group ID']);
+    if (b) (groups[b] = groups[b] || []).push(k);
+  });
+  for (const slots of Object.values(groups)) {
+    if (slots.length < 2) continue;
+    const members = slots.map(k => out[k]);
+    const dirs = new Set(members.map(it => (it.rec.fields || {})['Direction']));
+    if (dirs.size !== 1) continue;
+    const type = dirs.has('Import') ? 'Loading' : 'Unloading';
+    const pts = [];
+    members.forEach((it, m) => (it.stops || []).forEach(s => {
+      if (((s && s.fields) || {})['Stop Type'] === type) pts.push({ m, seq: s.fields['Load Seq'] });
+    }));
+    const sorted = sortBySeq(pts, p => p.seq);
+    if (!sorted) continue;
+    const first = members.map((_, m) => { const k = sorted.findIndex(p => p.m === m); return k < 0 ? 1e6 : k; });
+    const order = members.map((_, m) => m).sort((a, b) => first[a] - first[b] || a - b);
+    slots.forEach((k, j) => { out[k] = members[order[j]]; });
+  }
+  return out;
+}
+
+// The day an order writes as «Loading DateTime» / «Delivery DateTime»: the earliest day among its points of that
+// type, not the first point in the panel (a drag can put a later day first). Dates are compared as text
+// ('YYYY-MM-DD…'); a point without one does not count. null when no point has a day.
+function earliest(dates) {
+  const d = (dates || []).filter(x => x != null && String(x).trim() !== '').map(String);
+  if (!d.length) return null;
+  return d.reduce((a, b) => (b.slice(0, 10) < a.slice(0, 10) ? b : a));
+}
+
+const LoadGroup = Object.freeze({ base, sameLoad, orderList, membersFormula, readMembers, seqUsable, sortBySeq, orderByLoad, earliest });
+// node: a module; anywhere else a global of the realm that loads it (the page, print.html, a test's vm context —
+// readMembers then calls that realm's atGetAll)
+if (typeof module !== 'undefined' && module.exports) module.exports = LoadGroup;
+else globalThis.LoadGroup = LoadGroup;
+})();

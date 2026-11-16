@@ -2977,8 +2977,13 @@ async function submitIntlOrder(recId, G) {
     // Derive order-level summary fields from stops (needed for filters, sorting, weekly views)
     const _firstLoad = _formStops.find(s => s.stopType === 'Loading');
     const _firstUnload = _formStops.find(s => s.stopType === 'Unloading');
-    if (_firstLoad?.dateTime) fields['Loading DateTime'] = _firstLoad.dateTime;
-    if (_firstUnload?.dateTime) fields['Delivery DateTime'] = _firstUnload.dateTime;
+    // The order's day = the EARLIEST day of its points (16/11): after a drag in the side panel point #1 can be a later
+    // day, and the week board, the lists and the «delivery before loading» check below read these two fields.
+    // The Veroia day above keeps reading the first point (_ld/_ud), as it did before the panel existed.
+    const _earliestDt = t => LoadGroup.earliest(_formStops.filter(s => s.stopType === t).map(s => s.dateTime));
+    const _ldEarly = _earliestDt('Loading'), _udEarly = _earliestDt('Unloading');
+    if (_ldEarly) fields['Loading DateTime'] = _ldEarly;
+    if (_udEarly) fields['Delivery DateTime'] = _udEarly;
     // Total Pallets is a computed field in Airtable — do not write to it
 
     // Write flat Location fields so Airtable formulas (Loading Summary, Order Number) work

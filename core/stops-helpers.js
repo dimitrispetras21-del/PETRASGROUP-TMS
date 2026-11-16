@@ -190,3 +190,25 @@ function stopsValidate(stopsArr) {
 }
 
 // stopsToFlatFields and stopsFromFlatFields removed in Phase 3 — ORDER_STOPS is sole source of truth
+
+// An international order that leaves its groupage keeps no place in a load (113 «Load Seq», owner 16/11): a stale
+// place would be read as the order of the next load it joins (LoadGroup.seqUsable). Unlike stopsLoad, a failed read
+// THROWS here — «could not read» must never look like «nothing to clear» (principle 1).
+// → { cleared, lost, was: [{ id, seq }] } — lost = places the read-back still shows; was = what was there, so a
+// caller that puts the order back in its load can put the places back too.
+async function stopsClearLoadSeq(orderId) {
+  const has = r => r.fields[F.STOP_LOAD_SEQ] != null && r.fields[F.STOP_LOAD_SEQ] !== '';
+  const byIds = ids => atGetAll(TABLES.ORDER_STOPS, { filterByFormula: `OR(${ids.map(id => `RECORD_ID()="${id}"`).join(',')})` }, false);
+  const parent = await atGetOne(TABLES.ORDERS, orderId);
+  const ids = (parent && parent.fields && parent.fields['ORDER STOPS']) || [];
+  if (!ids.length) return { cleared: 0, lost: 0, was: [] };
+  const todo = (await byIds(ids) || []).filter(has);
+  if (!todo.length) return { cleared: 0, lost: 0, was: [] };
+  const was = todo.map(r => ({ id: r.id, seq: r.fields[F.STOP_LOAD_SEQ] }));
+  for (const r of todo) {
+    try { await atSafePatch(TABLES.ORDER_STOPS, r.id, { [F.STOP_LOAD_SEQ]: null }); }
+    catch (e) { console.warn('stopsClearLoadSeq: patch', r.id, e); }   // the read-back below counts it
+  }
+  const lost = (await byIds(todo.map(r => r.id)) || []).filter(has).length;
+  return { cleared: todo.length - lost, lost, was };
+}

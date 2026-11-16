@@ -82,6 +82,7 @@ async function world({ listOmits = [], postFails = null } = {}) {
   const resp = (status, body) => ({ ok: status < 400, status, json: async () => body });
 
   const ctx = {
+    LoadGroup: require('../core/load-group.js'),   // the load rules (16/11): the board, rt-feed and the form read them
     console: { log() {}, info() {}, warn() {}, error() {} }, JSON, Math, Date, Promise, Array, Object, Set, Map, Error, Number, String,
     setTimeout: (fn, ms) => { timers.push(ms); return 0; }, clearTimeout() {},
     localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
@@ -94,6 +95,9 @@ async function world({ listOmits = [], postFails = null } = {}) {
     atGetOne: async (_t, id) => (orders[id] ? { id, fields: { ...orders[id] } } : null),
     atGetAll: async (_t, { filterByFormula }) => {
       const m = /^\{([^}]+)\}='(.*)'$/.exec(filterByFormula);
+      // LoadGroup.membersFormula (16/11): SEARCH(LOWER("x"), LOWER({F})) = «F contains x», as formula-translate.js
+      const sr = /^SEARCH\(LOWER\("(.*)"\), LOWER\(\{([^}]+)\}\)\)$/.exec(filterByFormula);
+      if (sr) return Object.keys(orders).filter(id => String(orders[id][sr[2]] || '').toLowerCase().includes(sr[1].toLowerCase())).map(id => ({ id, fields: { ...orders[id] } }));
       return Object.keys(orders).filter(id => m && orders[id][m[1]] === m[2]).map(id => ({ id, fields: { ...orders[id] } }));
     },
     atSafePatch: async (_t, id, f) => { patches.push({ id, f }); Object.assign(orders[id], f); return { id, fields: { ...orders[id] } }; },

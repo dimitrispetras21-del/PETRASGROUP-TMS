@@ -1907,7 +1907,7 @@ const OrdersWeekView = (() => {
     if (!p || !p.closest('.owv-cards') || typeof RouteDiagramAdapters === 'undefined') return null;
     return _natLegOf(d, rec);
   }
-  const RT_STOP_FIELDS = () => [F.STOP_PARENT_ORDER, F.STOP_NUMBER, F.STOP_TYPE, F.STOP_LOCATION, F.STOP_DATETIME, F.STOP_PALLETS, 'Completed At'];
+  const RT_STOP_FIELDS = () => [F.STOP_PARENT_ORDER, F.STOP_NUMBER, F.STOP_TYPE, F.STOP_LOCATION, F.STOP_DATETIME, F.STOP_PALLETS, 'Completed At', F.STOP_LOAD_SEQ];
   // The orders the RT's truck carries, in RT order (/costs/rt legs[].seq): a split leg as itself (its own stops),
   // never a cancelled order; one record once.
   function _rtRecs(r) {
@@ -1950,8 +1950,10 @@ const OrdersWeekView = (() => {
     let html;
     try {
       const A = RouteDiagramAdapters;
-      const items = recs.map(x => { const nl = x.fields['Veroia Switch'] ? _natLegOf(S.data, x) : { leg: null, note: null };
-        return { rec: x, stops: st.by.get(x.id) || [], ctx: { natLeg: nl.leg, natLegNote: nl.note } }; });
+      // a groupage's orders in the order of their load (113 «Load Seq», 16/11), as the driver sheet prints them;
+      // without usable places the RT's own order stays (LoadGroup.orderByLoad)
+      const items = LoadGroup.orderByLoad(recs.map(x => { const nl = x.fields['Veroia Switch'] ? _natLegOf(S.data, x) : { leg: null, note: null };
+        return { rec: x, stops: st.by.get(x.id) || [], ctx: { natLeg: nl.leg, natLegNote: nl.note } }; }));
       html = RouteDiagram.render(A.facadeRt(items, { today: A.athensDay(new Date().toISOString()), locMeta: id => OC()._locMeta(id) }));
     } catch (e) { console.error('orders week: RT route diagram', e); html = _rtMsg('Η διαδρομή του δρομολογίου δεν σχεδιάστηκε.', true); }
     return html + (unread ? _rtMsg(`${unread === 1 ? '1 παραγγελία' : unread + ' παραγγελίες'} του δρομολογίου εκτός ανάγνωσης: δεν σχεδιάζ${unread === 1 ? 'εται' : 'ονται'}.`, true) : '');

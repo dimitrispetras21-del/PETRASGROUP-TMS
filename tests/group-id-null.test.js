@@ -57,6 +57,8 @@ function world({ exports = [], imports = [], rows = [], executing = {} } = {}) {
     _wiLiveOrders: async ids => ids.map(id => ({ id, st: executing[id] ? 'Delivered' : 'Assigned', f: {} })),
     _wiExecConfirmText: () => 'executing',
     _wiDissolveClearMember: async () => undefined,
+    // 16/11: a dissolve clears the members' places in the load (113); none here
+    stopsClearLoadSeq: async () => ({ cleared: 0, lost: 0, was: [] }), _wiOrdTxt: r => r.id, _wiRecOf: () => null,
     _wiSync() {}, toast() {}, _wiPaint() {}, reportError() {},
     renderWeeklyIntl: async () => {},
   };

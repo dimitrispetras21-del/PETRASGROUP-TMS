@@ -89,6 +89,9 @@ function world({ rts = [], role = 'owner', lines = {}, rtListFails = false, legD
     atGetOne: async (_t, id) => copy(id),
     atGetAll: async (_t, { filterByFormula }) => {
       const m = /^\{([^}]+)\}='(.*)'$/.exec(filterByFormula);
+      // LoadGroup.membersFormula (16/11): SEARCH(LOWER("x"), LOWER({F})) = «F contains x», as formula-translate.js
+      const sr = /^SEARCH\(LOWER\("(.*)"\), LOWER\(\{([^}]+)\}\)\)$/.exec(filterByFormula);
+      if (sr) return Object.keys(orders).filter(id => String(orders[id][sr[2]] || '').toLowerCase().includes(sr[1].toLowerCase())).map(id => ({ id, fields: { ...orders[id] } }));
       return Object.keys(orders).filter(id => m && orders[id][m[1]] === m[2]).map(copy);
     },
     atSafePatch: async (_t, id, f) => {
@@ -148,6 +151,8 @@ function world({ rts = [], role = 'owner', lines = {}, rtListFails = false, legD
   ctx.window = ctx;
   vm.createContext(ctx);
   vm.runInContext(PL_SRC, ctx, { filename: 'core/pallet-feed.js' });
+  // the load rules (16/11) in this world's realm: readMembers calls this world's atGetAll
+  vm.runInContext(fs.readFileSync(path.join(ROOT, 'core/load-group.js'), 'utf8'), ctx, { filename: 'core/load-group.js' });
   vm.runInContext(WI_PARTS + '\nwindow._wiImpJoin=_wiImpJoin;', ctx, { filename: 'modules/weekly_intl.js#join' });
   const writes = () => calls.filter(c => !c.startsWith('GET '));
   return { ctx, orders, rts, calls, writes, errToasts, toasts, logged, reports, syncs, rtSaved };

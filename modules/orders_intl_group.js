@@ -256,15 +256,14 @@ async function openFrom(recId, f, label, prefill, piece) {
   watchClose();
   const s = IG.s;
   if (recId && gid) {
-    // A member of a groupage opens the whole load (owner 15/11). Members = the identical Group ID text (the board
-    // collapses by it and the form writes it so); an old group with another text on some members is opened by what
-    // matches — never joined by guess.
+    // A member of a groupage opens the whole load (owner 15/11). Members = the same BASE of the Group ID
+    // (LoadGroup): a save that stopped half-way leaves some members with the base only, and they are the same load.
     s.mode = 'group';
     let recs = [];
-    try { recs = await atGetAll(TABLES.ORDERS, { filterByFormula: `{Group ID}='${gid.replace(/'/g, "\\'")}'` }, false) || []; }
+    try { recs = await LoadGroup.readMembers(gid, false); }
     catch (e) { showErrorToast('Δεν διαβάστηκαν οι παραγγελίες του groupage — ανοίγει μόνο αυτή', 'warn', 12000); }
     if (!recs.some(r => r.id === recId)) recs.unshift({ id: recId, fields: f });
-    const list = (gid.split('|')[1] || '').split(',').filter(Boolean);
+    const list = LoadGroup.orderList([{ fields: f }].concat(recs));
     const pos = id => { const k = list.indexOf(id); return k < 0 ? 99 : k; };
     recs.sort((a, b) => pos(a.id) - pos(b.id) || String((a.fields || {})['Loading DateTime'] || '').localeCompare(String((b.fields || {})['Loading DateTime'] || '')));
     s.assign = assignmentOf(recs);
@@ -283,13 +282,27 @@ async function openFrom(recId, f, label, prefill, piece) {
 }
 
 // The load's vehicle (owner 15/11, decision 5): an order added to a load that already has a truck / partner takes the
-// same truck, driver, matched import and status at once. Read from the members as stored; members that disagree
-// give no source (a sign is shown, nothing is copied). The partner fee is NOT copied: one fee per truck (decision 4).
-const ASSIGN_LABELS = ['Truck', 'Trailer', 'Driver', 'Partner', 'Is Partner Trip', 'Partner Truck Plates', 'Status', 'Matched Import ID'];
+// same truck, driver, matched import, status and moved week at once. Read from the members as stored; members that
+// disagree give no source (a sign is shown, nothing is copied). The partner fee is NOT copied: one fee per truck
+// (decision 4). «Plan Week Start»: the Weekly moves a load's week on every member (16/11), so a new member follows it,
+// or it would show alone in the load's natural week.
+const ASSIGN_LABELS = ['Truck', 'Trailer', 'Driver', 'Partner', 'Is Partner Trip', 'Partner Truck Plates', 'Status', 'Matched Import ID', 'Plan Week Start'];
+// What a load without a truck yet still has: its matched import (export) and its moved week (16/11, audit 6). Only a
+// value every member that has one agrees on; → { fields, plan: true } or null.
+const PLAN_LABELS = ['Matched Import ID', 'Plan Week Start'];
+function planOf(recs) {
+  const out = {};
+  for (const l of PLAN_LABELS) {
+    const vals = new Set(recs.filter(r => l !== 'Matched Import ID' || (r.fields || {})['Direction'] === 'Export')
+      .map(r => (r.fields || {})[l]).filter(v => v != null && v !== ''));
+    if (vals.size === 1) out[l] = [...vals][0];
+  }
+  return Object.keys(out).length ? { fields: out, truck: '', partner: '', plan: true } : null;
+}
 function assignmentOf(recs) {
   const lid = v => (typeof getLinkedId === 'function' ? getLinkedId(v) : (Array.isArray(v) ? v[0] : v)) || '';
   const withVeh = recs.filter(r => lid((r.fields || {})['Truck']) || lid((r.fields || {})['Partner']));
-  if (!withVeh.length) return null;
+  if (!withVeh.length) return planOf(recs);
   const key = r => lid(r.fields['Truck']) + '|' + lid(r.fields['Partner']);
   const k0 = key(withVeh[0]);
   if (withVeh.some(r => key(r) !== k0)) return { mixed: true };
@@ -312,17 +325,23 @@ function needsVehicle(m) {
   const a = IG.s.assign;
   if (!a || a.mixed || IG.s.mode !== 'group') return null;
   const f = m.f || {};
+  if (a.plan) {
+    // no truck: only what the member does not have yet — a value it already holds is its own decision, kept
+    const out = {};
+    for (const [k, v] of Object.entries(a.fields)) {
+      if (k === 'Matched Import ID' && IG.s.dir !== 'Export') continue;
+      if (f[k] == null || f[k] === '') out[k] = v;
+    }
+    return Object.keys(out).length ? out : null;
+  }
   const same = (getLinkedId(f['Truck']) || '') === a.truck && (getLinkedId(f['Partner']) || '') === a.partner;
   return same ? null : a.fields;
 }
 
 // Pure: the stored places of one side of a load are used only when every point has one and no two share it (the rule
 // written in DECISION_LOG with 113); anything else falls back to the old rule, with a sign — never a guessed order.
-function seqUsable(vals) {
-  if (!vals.length) return false;
-  const n = vals.map(v => (v == null || v === '' ? NaN : Number(v)));
-  return n.every(x => Number.isInteger(x) && x > 0) && new Set(n).size === n.length;
-}
+// The rule lives in core/load-group.js: the driver sheet (print.html) and the week's route read it too (16/11).
+function seqUsable(vals) { return LoadGroup.seqUsable(vals); }
 // The places stored on the points of the saved orders in the form, by stop record (113 «Load Seq»).
 async function loadSeqs() {
   const s = IG.s, seqBySid = s.seqBySid || (s.seqBySid = {});
@@ -473,7 +492,7 @@ function lineHtml(m, n) {
     : price ? `<span class="v">${esc(Number(price).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}</span>`
     : '<span class="v miss">χωρίς τιμή</span>';
   const signs = [m.file ? note('Από το αρχείο «' + m.file + '»') : '',
-    needsVehicle(m) ? note('Θα πάρει το φορτηγό του groupage με την αποθήκευση') : '',
+    needsVehicle(m) ? note(IG.s.assign.plan ? 'Θα πάρει το ταίριασμα / την εβδομάδα του groupage με την αποθήκευση' : 'Θα πάρει το φορτηγό του groupage με την αποθήκευση') : '',
     val(m, 'f_Direction') && IG.s.dir && val(m, 'f_Direction') !== IG.s.dir ? note('Άλλη κατεύθυνση από του groupage') : ''].join('');
   return `<span class="n">${n}</span><span class="c">${esc(val(m, 'ls_client') || 'Νέα παραγγελία')}${piece ? ' <span class="ap">ΑΠ</span>' : ''}${signs}</span>
     <span class="r">${esc(route || '—')}</span><span class="d">${esc(L[0] && L[0].date ? dayOf(L[0].date) : '')}</span>
@@ -752,7 +771,7 @@ async function remove(key) {
     }
     await deleteIntlOrder(savedId, { rerender: async () => { gone = true; } });
     if (!gone) {   // cancelled or refused: deleteIntlOrder already said why; the piece goes back on its truck
-      if (undo && undo.patch) await pieceUndoBack(savedId, undo.patch);
+      if (undo && undo.patch) await pieceUndoBack(savedId, undo.patch, undo.seqWas);
       return;
     }
     s.removed.push(savedId);
@@ -788,16 +807,36 @@ async function pieceBackToStock(id) {
     const again = await atGetOne(TABLES.ORDERS, id);
     const g = (again && again.fields) || {};
     if (getLinkedId(g['Truck']) || getLinkedId(g['Partner']) || String(g['Group ID'] || '').trim()) throw new Error('η ανάγνωση πίσω δείχνει ακόμη φορτηγό ή groupage');
-    return { patch: was };
+    // Out of the groupage = out of its order too (113 «Load Seq», 16/11): a place left on its points would be read as
+    // the order of the next load the piece joins. The piece is already back in stock; a lost clear is said, not undone.
+    let seqWas = [];
+    try {
+      const c = await stopsClearLoadSeq(id);
+      seqWas = c.was;
+      if (c.lost) showErrorToast(`Το κομμάτι γύρισε στο απόθεμα, αλλά η θέση του στη σειρά του groupage δεν σβήστηκε (${c.lost} ${c.lost === 1 ? 'σημείο' : 'σημεία'}) — ενημέρωσε τον Δημήτρη`, 'warn', 12000);
+    } catch (e) {
+      showErrorToast('Το κομμάτι γύρισε στο απόθεμα, αλλά η θέση του στη σειρά του groupage δεν διαβάστηκε για να σβηστεί — ενημέρωσε τον Δημήτρη', 'warn', 12000);
+      if (typeof logError === 'function') logError(e instanceof Error ? e : new Error(String(e)), 'orders_intl_group piece load seq clear');
+    }
+    return { patch: was, seqWas };
   } catch (e) {
     showErrorToast('Το κομμάτι δεν γύρισε στο απόθεμα — δεν σβήστηκε τίποτα: ' + (e && e.message || e), 'warn', 12000);
     return false;
   }
 }
-async function pieceUndoBack(id, was) {
+async function pieceUndoBack(id, was, seqWas) {
   try {
     const res = await atSafePatch(TABLES.ORDERS, id, was);
     if (res && (res.error || res.conflict)) throw new Error(res.conflict ? 'άλλαξε από άλλον χρήστη' : (res.error.message || res.error.type));
+    // back in its load = back in its place in the load (the places cleared by pieceBackToStock)
+    let seqBad = 0;
+    for (const x of seqWas || []) {
+      try {
+        const r = await atSafePatch(TABLES.ORDER_STOPS, x.id, { [F.STOP_LOAD_SEQ]: x.seq });
+        if (r && (r.error || r.conflict)) seqBad++;
+      } catch (e) { seqBad++; }
+    }
+    if (seqBad) showErrorToast('Το κομμάτι γύρισε στο groupage, αλλά η σειρά του δεν ξαναγράφτηκε — άνοιξε το groupage, σύρε και αποθήκευσε', 'warn', 12000);
   } catch (e) {
     showErrorToast('Το κομμάτι δεν σβήστηκε, αλλά έμεινε εκτός φορτηγού — βάλ\' το ξανά από το Εβδομαδιαίο: ' + (e && e.message || e), 'error', 15000);
     if (typeof logError === 'function') logError(e instanceof Error ? e : new Error(String(e)), 'orders_intl_group piece undo');
@@ -904,7 +943,7 @@ async function saveGroup() {
     }
     // 5. Once for the whole load.
     invalidateCache(TABLES.ORDERS);
-    if (typeof rtOnOrderSaved === 'function' && s.assign && !s.assign.mixed) {
+    if (typeof rtOnOrderSaved === 'function' && s.assign && !s.assign.mixed && !s.assign.plan) {
       try { await rtOnOrderSaved(ordered[0].recId); } catch (e) { console.warn('igx: rt', e); }
     }
     if (s.isNew && s.dir === 'Import' && typeof window._wiConsumePendingMatch === 'function') {
