@@ -5892,8 +5892,10 @@ async function _wiImpShift(rowId,days){
   // a cancelled member is not on the truck: it stays where it is
   const ids=[...new Set([...row.orderIds,...members.filter(r=>(r.fields||{})['Status']!=='Cancelled').map(r=>r.id)])];
   const recOf=id=>members.find(r=>r.id===id)||WINTL.data.imports.find(r=>r.id===id);
-  // back to the natural week only when it is every member's natural week; else one written week keeps them together
-  const clearing=ids.every(id=>_wiWeekOf(recOf(id)?.fields?.['Loading DateTime'])===w);
+  // back to the week the load shows by its own dates (its earliest loading, WI4.groupDt #311) = cleared, so it keeps
+  // following its dates; any other week is written on every member, which keeps them together
+  const lds=ids.map(id=>String(recOf(id)?.fields?.['Loading DateTime']||'')).filter(Boolean).sort();
+  const clearing=!!lds.length&&_wiWeekOf(lds[0])===w;
   const targetPws=clearing?null:toLocalDate(_wiWeekStart(w));
   _wiSync('wi-sync-'+rowId,'pend','Μεταφορά εβδομάδας…',oid0);
   try{

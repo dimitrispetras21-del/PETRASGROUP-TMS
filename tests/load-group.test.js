@@ -40,10 +40,10 @@ test('the facade filter asks «contains» the base; a quote falls back to the id
   assert.ok((0, eval)(re[1]).test(LG.membersFormula('GRP-AB12|recA')), 'the Worker translates the members filter');
 });
 
-test('readMembers keeps only the load\'s own members (base part of another base is dropped) and throws on a failed read', async () => {
+test('readMembers keeps only the load\'s own live members (base part of another base, cancelled: dropped) and throws on a failed read', async () => {
   const ctx = { console, TABLES: { ORDERS: 'O' }, calls: [] };
   ctx.atGetAll = async (_t, o) => { ctx.calls.push(o.filterByFormula); if (ctx.fail) throw new Error('down');
-    return [rec('a', { 'Group ID': 'GI-X' }), rec('b', { 'Group ID': 'GI-X|b,a' }), rec('c', { 'Group ID': 'GI-XY|c' })]; };
+    return [rec('a', { 'Group ID': 'GI-X' }), rec('b', { 'Group ID': 'GI-X|b,a' }), rec('c', { 'Group ID': 'GI-XY|c' }), rec('d', { 'Group ID': 'GI-X|a,b,d', Status: 'Cancelled' })]; };
   vm.createContext(ctx);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'core', 'load-group.js'), 'utf8'), ctx);
   const got = await ctx.LoadGroup.readMembers('GI-X|b,a');
