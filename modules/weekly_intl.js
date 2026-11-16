@@ -3018,6 +3018,7 @@ async function _wiUnmatchRow(rowId){
         left.push(pid);
       }catch(e){ kept.push(pid+': '+((e&&e.message)||e)); }
     }
+    if(left.length) await _wiClearSeqOf(left);   // no group = no place in a load (16/11)
     if(grp&&left.length){
       grp.orderIds=(grp.orderIds||[grp.orderId]).filter(id=>!left.includes(id));
       if(left.includes(grp.orderId)) grp.orderId=grp.orderIds[0];
@@ -6059,6 +6060,14 @@ function _wiJoinCheck(loadRow,xRow,vehRow){
   if(xa) return _wiAssignedText(xa);
   return '';
 }
+// The load's Group ID text when every member holds the same one; else its BASE (no «|»), so the caller takes the
+// path of a load with no order pinned and writes ONE text on every member (_wiRewriteGroupSuffix, read back). A form
+// save that stopped half-way leaves some members with the base only (16/11): the database's round-trip triggers
+// still compare the exact text, so a join must repair it, never copy one of the two texts to the newcomer.
+function _wiAgreedGid(recs,gid0){
+  const texts=new Set((recs||[]).map(r=>String((r.fields||{})['Group ID']||'').trim()));
+  return texts.size===1?[...texts][0]:LoadGroup.base(gid0);
+}
 // The members of the import load that carries `seedId`, as the SERVER has
 // them now: {recs (_wiGiSortRecs order), gid0} or {err, hard}. Not
 // _wiGiGroup: its lookup failure degrades to «the seed alone», and a join
@@ -6074,10 +6083,7 @@ async function _wiJoinReadLoad(seedId){
   let sibs=null;
   try{ sibs=await LoadGroup.readMembers(gid0,false); }catch(e){ sibs=null; }   // by base (16/11)
   if(!Array.isArray(sibs)||!sibs.length) return {err:'— η ομάδα του δεν διαβάστηκε'};
-  // the load's full text when a member has it: a seed left with the base only (a stopped save) must not make the
-  // join rewrite the order of a load that already has one
-  const full=sibs.map(r=>String(r.fields['Group ID']||'').trim()).find(g=>g.includes('|'));
-  return {recs:_wiGiSortRecs(sibs),gid0:full||gid0};
+  return {recs:_wiGiSortRecs(sibs),gid0:_wiAgreedGid(sibs,gid0)};
 }
 // The joiner's points go LAST in the load's order (owner 15/11, «οκ»): its loadings after the load's highest loading
 // place, its deliveries after the highest delivery place (113 «Load Seq», the form's own label). Each side only when
@@ -6319,6 +6325,19 @@ async function _wiImpJoin(loadOid,expOid,xOid,palOk){
 // screen. Reads stay truthy-checks, so null (absent in the facade response)
 // and a legacy '' display the same. A DB guard (057, blank→NULL) is drafted
 // separately; this keeps new '' from being written meanwhile.
+// No group = no place in a load (113 «Load Seq», 16/11): a place left on the points would be read as the order of the
+// next load the order joins (LoadGroup.seqUsable). Every path that takes an order out of its group calls this after
+// its own write landed. Read back; → the orders whose places stayed, in words ([] = all clear). Never throws: the
+// leave itself already happened.
+async function _wiClearSeqOf(ids){
+  const bad=[];
+  for(const oid of ids||[]){
+    try{ const c=await stopsClearLoadSeq(oid); if(c.lost) bad.push(_wiOrdTxt(_wiRecOf(oid)||{id:oid,fields:{}})+': '+c.lost+(c.lost===1?' σημείο':' σημεία')); }
+    catch(e){ bad.push(_wiOrdTxt(_wiRecOf(oid)||{id:oid,fields:{}})+': δεν διαβάστηκε'); }
+  }
+  if(bad.length) reportError('Η σειρά φόρτωσης δεν σβήστηκε σε όλες τις παραγγελίες που βγήκαν από groupage — '+bad.join(' · '),bad);
+  return bad;
+}
 async function _wiGroupPatch(orderIds, gid, rowId){
   gid=gid||null; // a dissolve must never send '' (see above)
   _wiSync('wi-sync-'+rowId,'pend', gid?'Αποθήκευση ομάδας…':'Διάλυση ομάδας…',orderIds[0]);
@@ -6380,14 +6399,7 @@ async function _wiSplit(rowId){
     await renderWeeklyIntl();
     return;
   }
-  // No group = no place in a load (113 «Load Seq», 16/11): a place left on the points would be read as the order of
-  // the next load the order joins. Read back; a place that stayed is said, the dissolve itself stands.
-  const seqBad=[];
-  for(const oid of allIds){
-    try{ const c=await stopsClearLoadSeq(oid); if(c.lost) seqBad.push(_wiOrdTxt(_wiRecOf(oid)||{id:oid,fields:{}})+': '+c.lost+(c.lost===1?' σημείο':' σημεία')); }
-    catch(e){ seqBad.push(_wiOrdTxt(_wiRecOf(oid)||{id:oid,fields:{}})+': δεν διαβάστηκε'); }
-  }
-  if(seqBad.length) reportError('Η ομάδα διαλύθηκε, αλλά η σειρά φόρτωσης δεν σβήστηκε σε όλες τις παραγγελίες — '+seqBad.join(' · '),seqBad);
+  await _wiClearSeqOf(allIds);   // no group = no place in a load (16/11)
   // Keep the FIRST member as it is (design doc: the first member keeps the
   // group's own assignment/round trip) — only the members split OUT get their
   // own assignment/RT cleared in the database.
@@ -6507,6 +6519,7 @@ async function _wiSyncGroupResidue(row){
       if(res?.error) throw new Error(res.error.message||res.error.type);
       if(String(res.fields?.['Group ID']||'')) throw new Error('Δεν καθαρίστηκε στην ανάγνωση');
       const rec=cache.find(r=>r.id===oid); if(rec) rec.fields['Group ID']=null;
+      await _wiClearSeqOf([oid]);   // no group = no place in a load (16/11); a place that stayed is said there
       return true;
     }catch(err){ console.warn('[wi group residue] lone survivor clear:',err.message); return false; }
   }
@@ -6570,6 +6583,7 @@ async function _wiCancelGroupMember(rowId,orderId,isImportSide,ask){
     if(String(res.fields?.['Group ID']||'')||getLinkedId(res.fields?.['Truck'])||getLinkedId(res.fields?.['Partner']))
       throw new Error('Η αφαίρεση δεν επιβεβαιώθηκε στην ανάγνωση');
   }catch(e){ reportError('Η αφαίρεση από το groupage απέτυχε',e); return; }
+  await _wiClearSeqOf([orderId]);   // no group = no place in a load (16/11)
   const cache=isImportSide?WINTL.data.imports:WINTL.data.exports;
   const rec=cache.find(r=>r.id===orderId);
   if(rec) Object.assign(rec.fields,{'Group ID':null,'Truck':[],'Trailer':[],'Driver':[],'Partner':[],'Is Partner Trip':false,'Partner Truck Plates':'',...(toPending?{'Status':'Pending'}:{})});
@@ -7467,8 +7481,7 @@ async function _wiStockLockLead(row,seedId){
     try{ sibs=await LoadGroup.readMembers(gid0,false); }catch(e){ sibs=null; }   // by base (16/11)
     if(!Array.isArray(sibs)||!sibs.length) return stop('Η ομάδα εισαγωγών του φορτηγού δεν διαβάστηκε — δεν γράφτηκε τίποτα');
     recs=sibs;
-    // the load's full text when a member has it (see _wiJoinReadLoad)
-    gid0=sibs.map(r=>String(r.fields['Group ID']||'').trim()).find(g=>g.includes('|'))||gid0;
+    gid0=_wiAgreedGid(sibs,gid0);
   }
   recs=_wiGiSortRecs(recs);
   if(!gid0.includes('|')){

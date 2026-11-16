@@ -45,7 +45,7 @@ const WI_PARTS = [
   one('_wiOrdTxt'), one('_wiCliTxt'), one('_wiErrList'), line(/async function _wiRtTxt\(rt\)\{[^\n]*\n/, '_wiRtTxt'), many('_wiJoinVeh'),
   many('_wiJoinPalText'), many('_wiAssignLbl'), many('_wiAssignedText'), many('_wiVehLbl'), many('_wiJoinLoadLbl'), many('_wiJoinWho'),
   many('_wiJoinCheck'), many('_wiInhOf'), many('_wiRefuse'),
-  asyncMany('_wiJoinReadLoad'), asyncMany('_wiJoinLoadSeq'), asyncMany('_wiImpJoin'),
+  many('_wiAgreedGid'), asyncMany('_wiJoinReadLoad'), asyncMany('_wiJoinLoadSeq'), asyncMany('_wiImpJoin'),
   asyncMany('_wiOwnRtFree', true), asyncMany('_wiRtOf'), asyncMany('_wiRtLeave'), asyncMany('_wiRtLegDelete'),
 ].join('\n');
 

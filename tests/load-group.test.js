@@ -175,3 +175,15 @@ test('Weekly: one partner fee per load — the rate and the partner row on the f
   // the assignment save writes the fee on that member only
   assert.match(WI, /const pp=await _wiPlanPatch\(orderId,orderId===rateId\?expFields:\{\.\.\.fields\}\);/);
 });
+
+test('Weekly join on a half-saved load: members that disagree on the text get one text again (never copied to the newcomer)', () => {
+  const WI = fs.readFileSync(path.join(__dirname, '..', 'modules', 'weekly_intl.js'), 'utf8');
+  const m = WI.match(/function _wiAgreedGid\(recs,gid0\)\{[\s\S]*?\n\}\n/);
+  assert.ok(m, '_wiAgreedGid');
+  const ctx = { LoadGroup: LG };
+  vm.createContext(ctx);
+  vm.runInContext(m[0] + '\nthis._wiAgreedGid=_wiAgreedGid;', ctx);
+  assert.strictEqual(ctx._wiAgreedGid([rec('a', { 'Group ID': 'GI-X|a,b' }), rec('b', { 'Group ID': 'GI-X|a,b' })], 'GI-X|a,b'), 'GI-X|a,b');
+  assert.strictEqual(ctx._wiAgreedGid([rec('a', { 'Group ID': 'GI-X|a,b' }), rec('b', { 'Group ID': 'GI-X' })], 'GI-X|a,b'), 'GI-X', 'split → base → the rewrite path');
+  assert.strictEqual(ctx._wiAgreedGid([rec('a', { 'Group ID': 'GI-X' })], 'GI-X'), 'GI-X');
+});

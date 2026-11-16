@@ -21,6 +21,8 @@ const WI = src('modules/weekly_intl.js');
 const wiSrc = [
   fn(WI, /function _wiGrpOrder\(exps,fallbackField\)\{[\s\S]*?\n\}\n/, '_wiGrpOrder'),
   fn(WI, /async function _wiGroupPatch\(orderIds, gid, rowId\)\{[\s\S]*?\n\}\n/, '_wiGroupPatch'),
+  // 16/11: every path out of a group clears the order's places in the load (113)
+  fn(WI, /async function _wiClearSeqOf\(ids\)\{[\s\S]*?\n\}\n/, '_wiClearSeqOf'),
   fn(WI, /async function _wiSplit\(rowId\)\{[\s\S]*?\n\}\n/, '_wiSplit'),
   fn(WI, /async function _wiRewriteGroupSuffix\(recs,isImp\)\{[\s\S]*?\n\}\n/, '_wiRewriteGroupSuffix'),
   fn(WI, /async function _wiSyncGroupResidue\(row\)\{[\s\S]*?\n\}\n/, '_wiSyncGroupResidue'),

@@ -334,12 +334,15 @@ async function _rtGatherOrders(rec) {
   // this converges in at most a handful of rounds for the group sizes this
   // app actually has (owner: 2-4 members).
   let grew = true;
+  const searched = new Set();   // one «contains» read per load base (16/11): a member's siblings share it
   while (grew && Object.keys(byId).length <= 20) {
     grew = false;
     for (const o of Object.values(byId)) {
       const gid = o.fields['Group ID'];
-      // by base (LoadGroup.membersFormula asks «contains», sameLoad keeps the load's own members)
-      if (gid) { for (const cand of await filterIn(LoadGroup.membersFormula(gid))) { if (!byId[cand.id] && LoadGroup.sameLoad(cand.fields['Group ID'], gid)) { byId[cand.id] = cand; grew = true; } } }
+      // by base (LoadGroup.membersFormula asks «contains», sameLoad keeps the load's own members); no base = no read
+      // (a null formula would read the whole table)
+      const b = LoadGroup.base(gid), f = b && !searched.has(b) ? LoadGroup.membersFormula(gid) : null;
+      if (f) { searched.add(b); for (const cand of await filterIn(f)) { if (!byId[cand.id] && LoadGroup.sameLoad(cand.fields['Group ID'], gid)) { byId[cand.id] = cand; grew = true; } } }
       const mid = o.fields['Matched Import ID'];
       if (mid && !byId[mid]) { const imp = await atGetOne(TABLES.ORDERS, mid); if (imp) { byId[imp.id] = imp; grew = true; } }
     }
