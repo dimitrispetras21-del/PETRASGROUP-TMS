@@ -49,6 +49,9 @@ test('readMembers keeps only the load\'s own live members (base part of another 
   const got = await ctx.LoadGroup.readMembers('GI-X|b,a');
   assert.deepStrictEqual(got.map(r => r.id), ['a', 'b']);
   assert.deepStrictEqual(ctx.calls, ['SEARCH(LOWER("GI-X"), LOWER({Group ID}))']);
+  // a clear also reaches a cancelled member with the load's identical text, never one with an older text
+  assert.deepStrictEqual((await ctx.LoadGroup.readMembers('GI-X|b,a', false, true)).map(r => r.id), ['a', 'b']);
+  assert.deepStrictEqual((await ctx.LoadGroup.readMembers('GI-X|a,b,d', false, true)).map(r => r.id), ['a', 'b', 'd']);
   ctx.fail = true;
   await assert.rejects(ctx.LoadGroup.readMembers('GI-X'), /down/);
 });
@@ -190,4 +193,17 @@ test('Weekly join on a half-saved load: members that disagree on the text get on
   assert.strictEqual(ctx._wiAgreedGid([rec('a', { 'Group ID': 'GI-X|a,b' }), rec('b', { 'Group ID': 'GI-X|a,b' })], 'GI-X|a,b'), 'GI-X|a,b');
   assert.strictEqual(ctx._wiAgreedGid([rec('a', { 'Group ID': 'GI-X|a,b' }), rec('b', { 'Group ID': 'GI-X' })], 'GI-X|a,b'), 'GI-X', 'split → base → the rewrite path');
   assert.strictEqual(ctx._wiAgreedGid([rec('a', { 'Group ID': 'GI-X' })], 'GI-X'), 'GI-X');
+});
+
+test('board rows: a half-saved load is ONE row; a cancelled order with an older text is not pulled into it', () => {
+  const WI4 = require('../core/wi4-logic.js');
+  const dayOf = v => String(v || '').slice(0, 10);
+  const exp = (id, gid, extra) => rec(id, Object.assign({ Direction: 'Export', 'Group ID': gid, 'Delivery DateTime': '2026-11-18', 'Loading DateTime': '2026-11-16' }, extra || {}));
+  const rows = WI4.boardRows([exp('a', 'GRP-X|a,b'), exp('b', 'GRP-X'), exp('c', 'GRP-X|a,b,c', { Status: 'Cancelled' })], [],
+    { ws: '2026-11-14', we: '2026-11-20', dayOf }).rows;
+  const ex = rows.filter(r => r.type === 'export').map(r => plain(r.orderIds).sort());
+  assert.deepStrictEqual(ex, [['a', 'b'], ['c']]);
+  // a cancelled order with the live members' identical text stays in the row, as before 16/11
+  const same = WI4.boardRows([exp('a', 'GRP-X|a,c'), exp('c', 'GRP-X|a,c', { Status: 'Cancelled' })], [], { ws: '2026-11-14', we: '2026-11-20', dayOf }).rows;
+  assert.deepStrictEqual(same.filter(r => r.type === 'export').map(r => plain(r.orderIds).sort()), [['a', 'c']]);
 });

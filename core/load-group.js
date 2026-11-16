@@ -17,6 +17,18 @@
 // «GRP-X|a,b» → «GRP-X». Empty for no group.
 function base(gid) { return String(gid == null ? '' : gid).split('|')[0].trim(); }
 function sameLoad(a, b) { const x = base(a); return !!x && x === base(b); }
+// The one membership rule (code review 16/11). A live order is in the load of its base. A CANCELLED order is not on
+// the truck: it counts only with a text identical to the one asked or to a live member's (as before 16/11, when only
+// the identical text joined) — by base alone, a cancelled order with an older text would come back into the load.
+// recs = every order read for that base; → the members, in the order given.
+function membersOf(recs, gid, withCancelled) {
+  const t = r => String(((r && r.fields) || {})['Group ID'] || '').trim();
+  const dead = r => ((r && r.fields) || {})['Status'] === 'Cancelled';
+  const mine = (recs || []).filter(r => sameLoad(t(r), gid));
+  if (!withCancelled) return mine.filter(r => !dead(r));
+  const texts = new Set(mine.filter(r => !dead(r)).map(t).concat([String(gid == null ? '' : gid).trim()]));
+  return mine.filter(r => !dead(r) || texts.has(t(r)));
+}
 // The order list of a load, from the first member that carries one (a member saved before the save stopped has none).
 function orderList(recs) {
   for (const r of recs || []) {
@@ -41,12 +53,12 @@ function membersFormula(gid) {
 // Every LIVE member of the load of `gid`, read from the server. Throws when the read fails: «the group could not be
 // read» is never the same as «the group has one member». A cancelled order is not on the truck: by base it can come
 // back with an older text, and given the truck again it would be «Assigned» again (code review 16/11). withCancelled:
-// a clear, which must also take the truck off a cancelled member that still holds it.
+// also the cancelled members with the load's identical text (membersOf) — a clear must take the truck off them too.
 async function readMembers(gid, useCache, withCancelled) {
   const f = membersFormula(gid);
   if (!f) { if (base(gid)) throw new Error('Group ID με χαρακτήρες που δεν αναζητούνται'); return []; }
   const recs = await atGetAll(TABLES.ORDERS, { filterByFormula: f }, !!useCache);
-  return (recs || []).filter(r => sameLoad(((r && r.fields) || {})['Group ID'], gid) && (withCancelled || ((r && r.fields) || {})['Status'] !== 'Cancelled'));
+  return membersOf(recs, gid, withCancelled);
 }
 
 // The stored places of one side of a load are used only when every point has one and no two share it (the rule
@@ -104,7 +116,7 @@ function earliest(dates) {
   return d.reduce((a, b) => (b < a ? b : a));
 }
 
-const LoadGroup = Object.freeze({ base, sameLoad, orderList, membersFormula, readMembers, seqUsable, sortBySeq, orderByLoad, earliest });
+const LoadGroup = Object.freeze({ base, sameLoad, membersOf, orderList, membersFormula, readMembers, seqUsable, sortBySeq, orderByLoad, earliest });
 // node: a module; anywhere else a global of the realm that loads it (the page, print.html, a test's vm context —
 // readMembers then calls that realm's atGetAll)
 if (typeof module !== 'undefined' && module.exports) module.exports = LoadGroup;

@@ -145,13 +145,20 @@ function boardRows(exports, imports, o) {
     const outOfWindow = !!(pws && ws && pws === ws && eff && (eff < ws || eff > we));
     rows.push({ id: ++seq, type: 'export', orderId: exp.id, orderIds: [exp.id], importId: f['Matched Import ID'] || null, outOfWindow });
   }
+  // The row key of a grouped order (16/11): its BASE — a save that stopped half-way leaves some members with the base
+  // only, and the load showed as two rows. A cancelled order keeps its own text as key unless a live order has the
+  // same text (LoadGroup.membersOf, the one rule): with an older text it is no longer on the truck.
+  const rowKey = (recs) => {
+    const t = (r) => String((r && r.fields && r.fields['Group ID']) || '').trim();
+    const live = new Set((recs || []).filter((r) => r.fields && r.fields['Status'] !== 'Cancelled').map(t));
+    return (rec) => { const g = t(rec); if (!g) return ''; return (rec.fields || {})['Status'] !== 'Cancelled' || live.has(g) ? LG().base(g) : 'cancelled:' + g; };
+  };
   {
     const byGid = {};
+    const key = rowKey(exports);
     rows.forEach((r) => {
       if (r.type !== 'export') return;
-      // by the BASE of the Group ID (16/11): a save that stopped half-way leaves some members with the base only,
-      // and the load showed as two rows
-      const gid = LG().base(((exports || []).find((e) => e.id === r.orderId) || {}).fields?.['Group ID']);
+      const gid = key((exports || []).find((e) => e.id === r.orderId) || {});
       if (gid) (byGid[gid] = byGid[gid] || []).push(r);
     });
     // Π1 (Wave 3): export rows sharing a Group ID collapse back into one row after every reload.
@@ -181,9 +188,10 @@ function boardRows(exports, imports, o) {
   }
   {
     const byGid = {};
+    const key = rowKey(imports);
     rows.forEach((r) => {
       if (r.type !== 'import') return;
-      const gid = LG().base(impById[r.orderId]?.fields?.['Group ID']);   // by base, as the exports above
+      const gid = key(impById[r.orderId] || {});   // by base, as the exports above
       if (gid) (byGid[gid] = byGid[gid] || []).push(r);
     });
     // A1 (owner 6/9): import groups collapse too — a second grouped import row once stayed alone and a truck
