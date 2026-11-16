@@ -326,7 +326,9 @@ function needsVehicle(m) {
   if (!a || a.mixed || IG.s.mode !== 'group') return null;
   const f = m.f || {};
   if (a.plan) {
-    // no truck: only what the member does not have yet — a value it already holds is its own decision, kept
+    // no truck: only an order JOINING the load (new or «Υπάρχουσα»), never a member opened with it — a save of the
+    // load must not rewrite what its members already hold; and only what it does not have yet
+    if (m.orig) return null;
     const out = {};
     for (const [k, v] of Object.entries(a.fields)) {
       if (k === 'Matched Import ID' && IG.s.dir !== 'Export') continue;

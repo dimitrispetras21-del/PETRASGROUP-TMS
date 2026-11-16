@@ -6390,9 +6390,10 @@ async function _wiDissolveClearMember(oid){
 async function _wiSplit(rowId){
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row||row.orderIds.length<=1) return;
   const allIds=[...row.orderIds];
-  // the member that keeps the truck is the one that holds the load's fee (_wiRateMemberId, 16/11): the fee stays
-  // with the truck still running
-  const keep=_wiRateMemberId(row);
+  // the member that keeps the truck is the one that holds the load's fee (_wiRateMemberId, 16/11), so the fee stays
+  // with the truck still running; with no fee on the load, the row's lead as before
+  const rm=_wiRateMemberId(row), rmRec=(row.type==='import'?WINTL.data.imports:WINTL.data.exports).find(r=>r.id===rm);
+  const keep=rmRec&&rmRec.fields['Partner Rate']?rm:row.orderIds[0];
   const [first,...rest]=[keep,...row.orderIds.filter(id=>id!==keep)];row.orderIds=[first];row.orderId=first;
   rest.forEach(expId=>{
     const exp=WINTL.data.exports.find(r=>r.id===expId);
