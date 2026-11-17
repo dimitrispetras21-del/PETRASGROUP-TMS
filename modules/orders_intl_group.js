@@ -691,7 +691,8 @@ function paintSum(pts) {
   const cnt = { eur: 0, ind: 0 };
   L.forEach(p => { cnt[LoadPlan.isInd(val(p.m, 'f_PalletType')) ? 'ind' : 'eur'] += p.pal; });
   // the number only: the drawing below is laid out by delivery (rampHtml), so no layout is needed here
-  const capN = LoadPlan.capacity(cnt), eurN = Math.ceil(cnt.eur), indN = Math.ceil(cnt.ind);
+  // a part pallet takes a place; a negative typed count is no pallets (as LoadPlan counts them)
+  const capN = LoadPlan.capacity(cnt), eurN = Math.max(0, Math.ceil(cnt.eur)), indN = Math.max(0, Math.ceil(cnt.ind));
   const lp = { cap: capN, over: Math.max(0, eurN + indN - capN), eur: eurN, ind: indN };
   const rows = [];
   rows.push(['Παλέτες', `<span class="${lp.over ? 'warn' : ''}">${pal} από ${lp.cap}</span>${lp.over ? note(lp.over === 1 ? 'Μία παλέτα δεν χωράει στο φορτηγό' : lp.over + ' παλέτες δεν χωρούν στο φορτηγό') : ''}`]);
