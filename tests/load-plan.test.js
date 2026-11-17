@@ -78,10 +78,18 @@ test('mixed loads: industrials at the front by the cab, the free room at the bac
   assert.strictEqual(shape(p), 'IIDSDSDSDSDSDSD');
   assert.strictEqual(pallets(p), 24);
   assert.ok(p.used < LP.BOX, 'room left at the back');
-  assert.ok(shape(LP.plan({ eur: 20, ind: 4 }, { indAt: 'back' })).endsWith('II'));
-  // the flat euro beside an odd industrial touches the euro behind it: its 0.2 m gap faces the industrials
-  const svg = LP.svg(LP.plan({ eur: 6, ind: 3 }), { scale: 1 });
-  assert.ok(svg.includes('class="lp-e" x="12.0" y="26.0" width="7.0"'), 'flat euro at 1.2 m in the X row (10–20 dm)');
+});
+
+test('after the «δόντι» the euro go as staggered doubles, no gap between rows (owner 17/11)', () => {
+  const p = LP.plan({ eur: 6, ind: 3 });
+  assert.strictEqual(shape(p), 'IXDDS');
+  assert.ok(p.rows.filter(r => r.k === 'D').every(r => r.stag === 2));
+  assert.ok(p.rows[4].wall, 'the odd euro left closes the load at the wall');
+  const svg = LP.svg(p, { scale: 1 });
+  // X row 10–20 dm: flat euro flush at 10; the next double's euro side starts at 18 (= 10 + 8), the other side at 20
+  assert.ok(svg.includes('class="lp-e" x="10.0" y="26.0"'), 'flat euro flush to the row in front');
+  assert.ok(svg.includes('class="lp-e" x="20.0" y="14.0"') && svg.includes('class="lp-e" x="18.0" y="26.0"'), 'staggered double');
+  assert.ok(!/K|DS|SD/.test(shape(LP.plan({ eur: 28, ind: 1 })).slice(1, -1)), 'no knife or single inside the staggered part');
 });
 
 test('over capacity: a warning count, the box drawn full', () => {
