@@ -167,3 +167,19 @@ test('forklift sheet: names are escaped, an over-full load says so, the tint fol
   const [a] = ctx.LoadPlan.paint(1, 'blue'), [b] = ctx.LoadPlan.paint(2, 'blue');
   assert.notStrictEqual(a, b, 'neighbouring deliveries get the two tints');
 });
+
+test('forklift sheet: a delivery\'s temperature only when the load has more than one; a «loaded» box per delivery', () => {
+  const vm = require('node:vm'), fs = require('node:fs'), path = require('node:path');
+  const ctx = { window: {}, console, FEATURES: {}, escapeHtml: v => String(v) };
+  ctx.globalThis = ctx; vm.createContext(ctx);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'core', 'load-plan.js'), 'utf8'), ctx);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'modules', 'orders_intl_group.js'), 'utf8'), ctx);
+  const parts = [{ no: 2, n: 8, place: 'A', temp: '+2°' }, { no: 1, n: 4, place: 'B', temp: '+8°' }];
+  const lay = ctx.LoadPlan.layout(parts.map(x => ({ n: x.n })));
+  const one = ctx.window.IntlGroup._rampSheet({ tone: 'slate', pal: 12, cap: 33, lay, parts, temp: '+4°' });
+  assert.ok(!one.includes('class="tp"'), 'one temperature: only in the header');
+  assert.ok(one.includes('>+4°<'));
+  const two = ctx.window.IntlGroup._rampSheet({ tone: 'slate', pal: 12, cap: 33, lay, parts, split: true });
+  assert.ok(two.includes('class="tp">+8°') && two.includes('ΧΩΡΙΣΜΑ'), 'two temperatures: per delivery, and the header says «χώρισμα»');
+  assert.strictEqual((one.match(/class="ck"/g) || []).length, 2, 'a «loaded» box per delivery');
+});
