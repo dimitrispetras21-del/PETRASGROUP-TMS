@@ -175,7 +175,7 @@ function ensureStyles() {
   .igx-empty{font-size:12px;color:var(--text-dim);padding:6px 4px}
   .igx-sum{border-top:1px solid var(--border);padding-top:10px;font-size:13px}
   .igx-sum div{display:flex;justify-content:space-between;gap:8px;padding:3px 0}
-  .igx-sum div span:first-child{color:var(--text-mid)}
+  .igx-sum div > span:first-child{color:var(--text-mid)}   /* the label only: a descendant selector also greyed the red .warn value */
   .igx-sum .warn{color:var(--danger,#B91C1C)}
   .igx-sum .igx-lp{display:block;padding-top:10px}
   .igx-lp svg{display:block;margin-top:2px}
