@@ -151,3 +151,19 @@ test('only the first euro run takes singles; an odd industrial before euro makes
   assert.ok(t.rows.some(r => r.k === 'X'), 'odd industrial in the middle shares its row with the next euro');
   assert.strictEqual(t.placed, 19);
 });
+
+test('forklift sheet: names are escaped, an over-full load says so, the tint follows the delivery', () => {
+  const vm = require('node:vm'), fs = require('node:fs'), path = require('node:path');
+  const ctx = { window: {}, console, FEATURES: {}, escapeHtml: v => String(v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])) };
+  ctx.globalThis = ctx; vm.createContext(ctx);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'core', 'load-plan.js'), 'utf8'), ctx);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'modules', 'orders_intl_group.js'), 'utf8'), ctx);
+  const parts = [{ no: 2, n: 30, place: 'A<b>', client: 'C', from: 'F' }, { no: 1, n: 4, ind: true, place: 'B', client: 'D', from: 'G' }];
+  const lay = ctx.LoadPlan.layout(parts.map(x => ({ n: x.n, ind: x.ind })));
+  const html = ctx.window.IntlGroup._rampSheet({ tone: 'blue', pal: 34, cap: 32, lay, parts, date: 'x', printed: 'y' });
+  assert.ok(html.includes('A&lt;b&gt;') && !html.includes('A<b>'), 'a place name is escaped');
+  assert.ok(html.includes('class="big bad"') && html.includes('πάνω από 32'), 'over the capacity in red, in words');
+  assert.ok(lay.dropped > 0 && html.includes(lay.dropped + ' δεν χωρούν'));
+  const [a] = ctx.LoadPlan.paint(1, 'blue'), [b] = ctx.LoadPlan.paint(2, 'blue');
+  assert.notStrictEqual(a, b, 'neighbouring deliveries get the two tints');
+});

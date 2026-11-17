@@ -576,7 +576,7 @@ const short = (t, n) => { t = String(t || ''); return t.length > n ? t.slice(0, 
 const placeName = p => String(p.name || '—').split(/[,(]/)[0].trim();
 function partLabels(parts, len) {
   return parts.map(x => ({
-    key: x.no || 0,   // the colour of a delivery = its number, the same on the drawing and on the sheet's cards
+    key: x.no || 0,   // the tint of a delivery follows its number, the same on the drawing and on the sheet
     tag: x.no ? String(x.no) : '·',
     label: short((x.no ? x.no + '. ' : '') + (x.p ? placeName(x.p) : 'χωρίς παράδοση'), len),
     sub: short(`${x.n} ${x.ind ? 'βιομ.' : 'EUR'}${val(x.m, 'ls_client') ? ' · ' + val(x.m, 'ls_client') : ''}`, len + 4),
@@ -593,8 +593,8 @@ function rampHtml(pts, pal) {
     LoadPlan.svg(lay, { scale: 2.3, parts: partLabels(parts, 26), width: 176, numbers: true, tone: PLAN_TONE }) + `<div class="w">${esc(LoadPlan.words(lay))}</div></div>`;
 }
 // The sheet the forklifts load from (owner 17/11, «εκτύπωση για τα κλαρκ»): read from the seat of a forklift, so the
-// box is drawn as big as the page allows, every pallet carries its delivery number, and each delivery is one card
-// in its colour with where its pallets come from. Printed from the open form (nothing is saved).
+// box is drawn as big as the page allows, every pallet carries its delivery number, and each delivery is one line
+// with its number and where its pallets come from. Printed from the open form (nothing is saved).
 function printRamp() {
   const s = IG.s; if (!s) return;
   const pts = syncOrder(), parts = loadParts(pts), lay = LoadPlan.layout(parts);
@@ -621,7 +621,8 @@ function printRamp() {
 }
 // The sheet itself, in the paper language of the redesign (owner 17/11, «τσέκαρε τη νέα μας σκέψη»: the A4 papers
 // of docs/design/redesign-2026-11 — logo, blue top rule, light title, blue section caps, thin rules, «who · when»
-// and «1 / 1» at the foot) and in colour, one colour per delivery (owner 15/11: A4 papers in colour).
+// and «1 / 1» at the foot), in the plan's tone: the redesign blue in two tints (owner 17/11 «α»; A4 papers are not
+// black and white, owner 15/11).
 // Plain data in, HTML out (vehicle and printed are already escaped). Kept apart so it can be previewed and tested
 // without an open form. parts: cab → doors.
 function rampSheet(d) {
