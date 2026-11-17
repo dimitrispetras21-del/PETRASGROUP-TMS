@@ -197,7 +197,7 @@ function plan(counts) {
 //   parts = [{ label, sub, tag, key }] by part index: each part gets the colour of its key (the delivery number, so
 //     a card on the sheet and its pallets match), a bracket with its label, and its tag written in every pallet
 //   numbers = write the tags in the pallets (on by default from scale 3)
-//   tone = 'blue' | 'grey' (two tints of one colour) or none (one colour per delivery)
+//   tone = 'cool' | 'earth' (muted palettes), 'blue' | 'grey' (two tints of one colour), none (bright, one per delivery)
 //   family = the font of the texts (a paper of the redesign: Manrope)
 // Without parts: euro blue, industrial amber.
 const TAG = { K: 'Μ', D: 'Δ', S: 'Ο', I: 'Β', X: 'Β+Π' };
@@ -206,13 +206,16 @@ const INK = ['#0369A1', '#B45309', '#15803D', '#BE185D', '#6D28D9', '#C2410C', '
 // Quieter tones (owner 17/11, «πολύ χρωματιστά»): one hue in two tints, alternating by delivery, so neighbours in the
 // box differ while the number in the pallet says which delivery it is. 'colour' keeps one colour per delivery.
 const TONES = {
-  blue: { fill: ['#E7EFFA', '#C3D7F2'], ink: '#0B3F80' },
-  grey: { fill: ['#FFFFFF', '#E3E5E8'], ink: '#1B1D29' },
+  blue: { fill: ['#E7EFFA', '#C3D7F2'], ink: ['#0B3F80'] },
+  grey: { fill: ['#FFFFFF', '#E3E5E8'], ink: ['#1B1D29'] },
+  // muted palettes, every colour at about the same lightness so none shouts (owner 17/11 «μια παλέτα χρωμάτων»)
+  cool: { fill: ['#DCE7F5', '#D5ECE8', '#E3EAD6', '#F2E8D5', '#E8E0EF', '#E1E5EA'], ink: ['#1F4E8C', '#1D675F', '#4A672C', '#87611E', '#664782', '#47525F'] },
+  earth: { fill: ['#E9E3D7', '#DCE5E0', '#EEDDD8', '#DDE2EB', '#EDE6CF', '#E4E1E6'], ink: ['#5E5340', '#3E5E50', '#8A4B3C', '#3F5272', '#7A6526', '#5A5262'] },
 };
 // [fill, ink] of a delivery key in a tone
 function paint(k, tone) {
   const t = TONES[tone];
-  return t ? [t.fill[k % 2], t.ink] : [PAL[k % PAL.length], INK[k % INK.length]];
+  return t ? [t.fill[k % t.fill.length], t.ink[k % t.ink.length]] : [PAL[k % PAL.length], INK[k % INK.length]];
 }
 let _svgN = 0;   // one hatch pattern id per drawing: two drawings on one page must not share it
 function svg(p, opts) {
