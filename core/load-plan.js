@@ -214,7 +214,7 @@ const TONES = {
   // two neighbouring deliveries never share a shade; the number in the pallet does the rest
   // Odd deliveries light, even ones clearly darker (≥ 25% apart), so two neighbours stay apart on a black-and-white
   // printer too; the even ones also get a heavier outline (independent critic 17/11).
-  slate: { fill: ['#B4BDC9', '#FFFFFF', '#9DB8DE', '#E8EBEF', '#8FA9CC', '#EEF4FB'], ink: ['#0B2A55', '#1B1D29', '#0B2A55', '#1B1D29', '#0B2A55', '#1B1D29'], heavy: true },
+  slate: { fill: ['#B4BDC9', '#FFFFFF', '#A9C3E6', '#E8EBEF', '#7E97BA', '#EEF4FB'], ink: ['#0B2A55', '#1B1D29', '#0B2A55', '#1B1D29', '#0B2A55', '#1B1D29'], heavy: true },
   cool: { fill: ['#DCE7F5', '#D5ECE8', '#E3EAD6', '#F2E8D5', '#E8E0EF', '#E1E5EA'], ink: ['#1F4E8C', '#1D675F', '#4A672C', '#87611E', '#664782', '#47525F'] },
   earth: { fill: ['#E9E3D7', '#DCE5E0', '#EEDDD8', '#DDE2EB', '#EDE6CF', '#E4E1E6'], ink: ['#5E5340', '#3E5E50', '#8A4B3C', '#3F5272', '#7A6526', '#5A5262'] },
 };
@@ -264,17 +264,17 @@ function svg(p, opts) {
       const pt = parts[i] || {};
       const ty = Math.max(next, (y1 + y2) / 2 - (pt.sub ? 9 : 4) * f);
       out.push(`<text class="lp-l" x="${bx + 9}" y="${(ty + 8 * f).toFixed(1)}" style="fill:${ink}">${esc(pt.label || '')}</text>`);
-      if (pt.sub) out.push(`<text class="lp-s" x="${bx + 9}" y="${(ty + 19 * f).toFixed(1)}">${esc(pt.sub)}</text>`);
-      next = ty + (pt.sub ? 25 : 14) * f;
+      if (pt.sub) out.push(`<text class="lp-s" x="${bx + 9}" y="${(ty + 20 * f).toFixed(1)}">${esc(pt.sub)}</text>`);
+      next = ty + (pt.sub ? 27 : 14) * f;
     });
   }
   const free = BOX - p.used, cx = tagW + boxW / 2;
   // opts.guide: the rule written on the drawing itself, by the cab and by the doors (critic 17/11)
   if (o.guide) {
     const gx = tagW + boxW + 14;
-    out.push(`<text class="lp-g" x="${gx}" y="${(top + 6 * sc).toFixed(1)}">◀ ΞΕΚΙΝΑ ΕΔΩ</text><text class="lp-gs" x="${gx}" y="${(top + 6 * sc + 13 * f).toFixed(1)}">μπαίνει πρώτο</text>`);
+    out.push(`<text class="lp-g" x="${gx}" y="${(top + 6 * sc).toFixed(1)}">◀ ΞΕΚΙΝΑ ΕΔΩ</text><text class="lp-gs" x="${gx}" y="${(top + 6 * sc + 17 * f).toFixed(1)}">μπαίνει πρώτο</text>`);
     const end = top + Math.min(p.used, BOX) * sc;
-    out.push(`<text class="lp-g" x="${gx}" y="${(end - 13 * f).toFixed(1)}">◀ ΠΡΩΤΟ ΕΞΩ</text><text class="lp-gs" x="${gx}" y="${end.toFixed(1)}">παράδοση 1</text>`);
+    out.push(`<text class="lp-g" x="${gx}" y="${(end - 17 * f).toFixed(1)}">◀ ΠΡΩΤΟ ΕΞΩ</text><text class="lp-gs" x="${gx}" y="${end.toFixed(1)}">παράδοση 1</text>`);
   }
   // the bars at the back: the room left behind the load is where they go (owner 17/11)
   const bars = free >= 2
@@ -283,8 +283,8 @@ function svg(p, opts) {
     : '';
   return `<svg class="lp" viewBox="0 0 ${W.toFixed(0)} ${H.toFixed(0)}" width="${W.toFixed(0)}" role="img" aria-label="${esc(aria(p))}">` +
     `<defs><pattern id="${hid}" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="currentColor" stroke-width="1.2" opacity=".35"/></pattern></defs>` +
-    `<style>.lp text{font-family:${o.family || "'DM Sans',sans-serif"}}.lp-t{font-size:${8 * f}px;font-weight:700;fill:#334155}` +
-    `.lp-l{font-size:${9.5 * f}px;font-weight:700}.lp-s{font-size:${8 * f}px;fill:#475569}.lp-c{font-size:${Math.min(7.5 * f, boxW / 6.2)}px;font-weight:700;fill:#fff;letter-spacing:.04em}.lp-g{font-size:${10 * f}px;font-weight:800;fill:#0B63CE}.lp-gs{font-size:${7.5 * f}px;fill:#475569}</style>` +
+    `<style>.lp text{font-family:${o.family || "'DM Sans',sans-serif"}}.lp-t{font-size:${10 * f}px;font-weight:700;fill:#1F2937}` +
+    `.lp-l{font-size:${9.5 * f}px;font-weight:700}.lp-s{font-size:${10 * f}px;fill:#334155}.lp-c{font-size:${Math.min(7.5 * f, boxW / 6.2)}px;font-weight:700;fill:#fff;letter-spacing:.04em}.lp-g{font-size:${14 * f}px;font-weight:800;fill:#0B63CE}.lp-gs{font-size:${10 * f}px;font-weight:600;fill:#334155}</style>` +
     // the cab: a navy cap on the front wall
     `<rect x="${tagW}" y="0" width="${boxW}" height="${cab}" rx="${cab / 2}" fill="#0B1929"/>` +
     `<text class="lp-c" x="${cx}" y="${(cab / 2 + 2.6 * f).toFixed(1)}" text-anchor="middle">ΚΑΜΠΙΝΑ</text>` +

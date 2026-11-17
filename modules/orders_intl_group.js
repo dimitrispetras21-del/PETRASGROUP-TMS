@@ -579,12 +579,15 @@ const placeName = p => String(p.name || '—').split(/[,(]/)[0].trim();
 function tempOf(m) { return q(m, 'f_TempCmr')?.checked ? 'CMR' : val(m, 'f_Temp'); }
 const fmtT = t => (t === 'CMR' ? 'κατά CMR' : (Number(t) > 0 ? '+' : '') + t + '°');
 function partLabels(parts, len) {
+  // a delivery's temperature is written only when the load has more than one (critic 17/11: five equal «+4°» hide the
+  // one that differs); the box's own is in the summary above
+  const split = new Set(parts.map(x => tempOf(x.m)).filter(Boolean)).size > 1;
   return parts.map(x => ({
     key: x.no || 0,   // the tint of a delivery follows its number, the same on the drawing and on the sheet
     tag: x.no ? String(x.no) : '·',
     label: short((x.no ? x.no + '. ' : '') + (x.p ? placeName(x.p) : 'χωρίς παράδοση'), len),
     // «παλ.», never «EUR»: in a form with prices «8 EUR» reads as money (critic 17/11)
-    sub: short(`${x.n} παλ.${x.ind ? ' βιομ.' : ''}${val(x.m, 'ls_client') ? ' · ' + val(x.m, 'ls_client') : ''}`, len + 4),
+    sub: short(`${x.n} παλ.${x.ind ? ' βιομ.' : ''}${split && tempOf(x.m) ? ' · ' + fmtT(tempOf(x.m)) : ''}${val(x.m, 'ls_client') ? ' · ' + val(x.m, 'ls_client') : ''}`, len + 4),
   }));
 }
 function rampHtml(pts, pal) {
@@ -595,7 +598,7 @@ function rampHtml(pts, pal) {
   if (lay.dropped) notes.push(note(lay.dropped === 1 ? 'Μία παλέτα δεν χωράει με αυτή τη σειρά παράδοσης' : lay.dropped + ' παλέτες δεν χωρούν με αυτή τη σειρά παράδοσης'));
   if (Math.ceil(onU) !== Math.ceil(pal)) notes.push(note(`Οι παλέτες των παραδόσεων (${onU}) δεν είναι όσες της φόρτωσης (${pal}) — το σχέδιο δείχνει των παραδόσεων`));
   return `<div class="igx-lp"><div class="igx-sh"><span>Φόρτωση${notes.join('')}</span><button type="button" onclick="IntlGroup.printRamp()">Φύλλο για κλαρκ</button></div>` +
-    LoadPlan.svg(lay, { scale: 2.6, parts: partLabels(parts, 24), width: 168, numbers: true, tone: PLAN_TONE }) + `<div class="w">${esc(LoadPlan.words(lay))}</div></div>`;
+    LoadPlan.svg(lay, { scale: 2.6, parts: partLabels(parts, 22), width: 168, numbers: true, tone: PLAN_TONE }) + `<div class="w">${esc(LoadPlan.words(lay))}</div></div>`;
 }
 // The sheet the forklifts load from (owner 17/11, «εκτύπωση για τα κλαρκ»): read from the seat of a forklift, so the
 // box is drawn as big as the page allows, every pallet carries its delivery number, and each delivery is one line
@@ -643,7 +646,8 @@ function rampSheet(d) {
     const [bg, ink] = LoadPlan.paint(x.no || 0, d.tone);
     return `<div class="dl"><div class="no" style="background:${bg};color:${ink};border-color:${ink}">${x.no || '·'}</div>` +
       `<div class="tx"><b>${esc(x.place || 'χωρίς παράδοση')}</b><span>${esc(x.client)}</span><span class="fr">από ${esc(x.from) || '—'}</span></div>` +
-      `<div class="tp">${esc(x.temp || '—')}</div><div class="np">${x.n}<small>${x.ind ? 'παλ. βιομ.' : 'παλέτες'}</small></div></div>`;
+      (d.split ? `<div class="tp">${esc(x.temp || '—')}</div>` : '') +
+      `<div class="np">${x.n}<small>${x.ind ? 'παλ. βιομ.' : 'παλέτες'}</small></div><div class="ck" title="φορτώθηκε"></div></div>`;
   }).join('');
   const over = [lay.dropped ? `${lay.dropped} δεν χωρούν` : '', pal > cap ? `πάνω από ${cap}` : ''].filter(Boolean).join(' · ');
   const n = parts.filter(x => x.no).length;
@@ -658,11 +662,13 @@ function rampSheet(d) {
 .a4 .hr{display:flex;gap:28px;align-items:flex-end}.a4 .big.tmp{color:#0B63CE}.a4 .big.bad{color:#C92A31}.a4 .big.bad small{color:#C92A31}
 .a4 .body{display:flex;gap:16px;align-items:flex-start;margin-top:12px}.a4 .list{flex:1;min-width:0}
 .a4 .psec{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#0B63CE;margin:4px 0 6px}
-.a4 .dl{display:grid;grid-template-columns:54px minmax(0,1fr) auto auto;gap:12px;align-items:center;padding:14px 0;border-top:.5px solid #CFCFCF}
+.a4 .dl{display:grid;grid-template-columns:54px minmax(0,1fr) ${d.split ? 'auto ' : ''}auto 30px;gap:12px;align-items:center;padding:14px 0;border-top:.5px solid #CFCFCF}
 .a4 .dl:first-of-type{border-top:1.5px solid #1B1D29}
 .a4 .no{width:50px;height:50px;border:2.5px solid;border-radius:50%;display:grid;place-items:center;font-size:28px;font-weight:800}
 .a4 .tx b{display:block;font-size:18px;font-weight:700;line-height:1.2}.a4 .tx span{display:block;font-size:13px;color:#444}.a4 .tx .fr{color:#666}
-.a4 .tp{font-size:20px;font-weight:800;color:#0B63CE;white-space:nowrap;text-align:right}.a4 .np{font-size:32px;font-weight:700;text-align:right;line-height:1;font-variant-numeric:tabular-nums}.a4 .np small{display:block;font-size:10px;font-weight:600;color:#666}
+.a4 .tp{font-size:20px;font-weight:800;color:#fff;background:#0B63CE;border-radius:6px;padding:4px 8px;white-space:nowrap;text-align:right}
+.a4 .ck{width:26px;height:26px;border:2px solid #1B1D29;border-radius:4px}.a4 .ckh{display:flex;justify-content:flex-end;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#666;margin:-2px 0 2px}
+.a4 .sig{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:22px}.a4 .sig div{border-top:1.5px solid #1B1D29;padding-top:5px;font-size:11px;font-weight:600;color:#333;height:46px}.a4 .np{font-size:32px;font-weight:700;text-align:right;line-height:1;font-variant-numeric:tabular-nums}.a4 .np small{display:block;font-size:10px;font-weight:600;color:#666}
 .a4 .fn{margin-top:auto;padding-top:10px;border-top:.5px solid #CFCFCF;font-size:10px;color:#333;line-height:1.5}
 .a4 .foot{margin-top:8px;display:flex;justify-content:space-between;font-size:9px;color:#666}</style>
 <div class="a4"><div class="top">${d.logo ? `<span class="logo" role="img" aria-label="Petras Group" style="background-image:url('${esc(d.logo)}')"></span>` : '<b>PETRAS GROUP</b>'}<span>${esc(d.date || '')}<br>${n} ${n === 1 ? 'παράδοση' : 'παραδόσεις'} · ${pal} παλέτες</span></div>
@@ -670,7 +676,8 @@ function rampSheet(d) {
 <div class="hr"><div class="big tmp${d.split ? ' bad' : ''}">${d.split ? 'ΧΩΡΙΣΜΑ' : esc(d.temp || '—')}<small>${d.split ? 'διαφορετικές θερμοκρασίες' : 'θερμοκρασία'}${d.reefer ? ' · ' + esc(d.reefer) : ''}</small></div>
 <div class="big${over ? ' bad' : ''}">${pal} / ${cap}<small>${over ? esc(over) : 'παλέτες · χωρητικότητα'}</small></div></div></div>
 <div class="body"><div>${LoadPlan.svg(lay, { scale: 6.3, parts: parts.map(x => ({ key: x.no || 0, tag: x.no ? String(x.no) : '·' })), width: 150, font: 1.5, numbers: true, family: F, tone: d.tone, guide: true })}</div>
-<div class="list"><p class="psec">Σειρά φόρτωσης · από την καμπίνα</p>${rows}</div></div>
+<div class="list"><p class="psec">Σειρά φόρτωσης · από την καμπίνα</p><div class="ckh">φορτώθηκε</div>${rows}
+<div class="sig"><div>Οδηγός · υπογραφή</div><div>Κλαρκ · υπογραφή</div></div></div></div>
 <div class="fn">Ο αριθμός σε κάθε παλέτα = η παράδοση · Μ μαχαίρι (3) · Δ διπλή (2) · Ο μονή (1) · Β βιομηχανική (με γραμμές) · πίσω χώρος για μπάρες</div>
 <div class="foot"><span>${d.printed || ''}</span><span>1 / 1</span></div></div>`;
 }
