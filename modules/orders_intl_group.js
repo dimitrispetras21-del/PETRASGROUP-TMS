@@ -33,7 +33,6 @@ const IG = { s: null };
 // orders_intl.js is an IIFE: its state and steps come through window._OI only (named there).
 const OI = () => window._OI;
 const ST = () => window._OI.st();
-const MAX_PAL = 33;   // the truck the scan preview and the form already measure against
 
 function on() { return typeof FEATURES !== 'undefined' && FEATURES.INTL_GROUP_FORM === true; }
 const esc = v => (typeof escapeHtml === 'function' ? escapeHtml(v == null ? '' : String(v)) : String(v == null ? '' : v));
@@ -178,6 +177,10 @@ function ensureStyles() {
   .igx-sum div{display:flex;justify-content:space-between;gap:8px;padding:3px 0}
   .igx-sum div span:first-child{color:var(--text-mid)}
   .igx-sum .warn{color:var(--danger,#B91C1C)}
+  .igx-sum .igx-lp{display:block;padding-top:10px}
+  .igx-lp svg{display:block;margin-top:2px}
+  .igx-lp .w,.igx-lp .igx-sh{display:block}
+  .igx-lp .w{font-size:12px;color:var(--text-dim);margin-top:2px}
   .igx-note{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;border:1.5px solid #C2410C;color:#C2410C;font-size:10px;font-weight:800;margin-left:4px;cursor:help;vertical-align:middle}
   .igx .oi2-dirrow{display:none}
   .igx-pick{border:1px solid var(--border);border-radius:10px;padding:10px;margin-top:8px;background:var(--surface-card,#fff);max-height:340px;overflow:auto}
@@ -551,8 +554,14 @@ function paintSum(pts) {
   const s = IG.s, el = document.getElementById('igxSum'); if (!el) return;
   const L = pts.filter(p => p.t === 'l'), U = pts.filter(p => p.t === 'u');
   const pal = L.reduce((a, p) => a + p.pal, 0);
+  // The truck's capacity follows the pallet type of each order (owner 17/11, core/load-plan.js): industrial pallets
+  // take more room than euro / CHEP, so a mixed load fits fewer than 33. Over it is a warning, never a refusal.
+  const cnt = { eur: 0, ind: 0 };
+  L.forEach(p => { cnt[LoadPlan.isInd(val(p.m, 'f_PalletType')) ? 'ind' : 'eur'] += p.pal; });
+  const lp = LoadPlan.plan(cnt);
   const rows = [];
-  rows.push(['Παλέτες', `<span class="${pal > MAX_PAL ? 'warn' : ''}">${pal} / ${MAX_PAL}</span>${pal > MAX_PAL ? note('Πάνω από ' + MAX_PAL + ' παλέτες στο φορτηγό') : ''}`]);
+  rows.push(['Παλέτες', `<span class="${lp.over ? 'warn' : ''}">${pal} από ${lp.cap}</span>${lp.over ? note(lp.over === 1 ? 'Μία παλέτα δεν χωράει στο φορτηγό' : lp.over + ' παλέτες δεν χωρούν στο φορτηγό') : ''}`]);
+  if (cnt.eur && cnt.ind) rows.push(['Τύπος', `${cnt.eur} EUR · ${cnt.ind} βιομηχανικές`]);
   const free = m => m.piece || isPieceRec(m.f);
   const prices = s.members.map(m => (free(m) ? 0 : parseFloat(val(m, 'f_Price'))));
   const missing = s.members.filter((m, k) => !free(m) && !Number.isFinite(prices[k])).length;
@@ -575,7 +584,9 @@ function paintSum(pts) {
   } else if (missing) {
     rows.push(['Τιμή', note('Χωρίς τιμή')]);
   }
-  el.innerHTML = rows.map(([a, b]) => `<div><span>${a}</span><span>${b}</span></div>`).join('');
+  el.innerHTML = rows.map(([a, b]) => `<div><span>${a}</span><span>${b}</span></div>`).join('') +
+    // the box seen from above: which rows are knife / double / single and where the industrials go
+    (lp.total ? `<div class="igx-lp"><div class="igx-sh">Φόρτωση</div>${LoadPlan.svg(lp)}<div class="w">${esc(LoadPlan.words(lp))}${lp.odd ? note('Για μία ευρωπαλέτα δεν έχει οριστεί κανόνας φόρτωσης — δείχνεται στη μέση') : ''}</div></div>` : '');
   const btn = document.getElementById('btnSubmit');
   if (btn && !s.saving) btn.textContent = s.mode === 'group' ? `Αποθήκευση · ${s.members.length} παραγγελίες` : 'Αποθήκευση';
 }
