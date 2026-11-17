@@ -8,6 +8,18 @@ const LP = require('../core/load-plan.js');
 const shape = p => p.rows.map(r => r.k).join('');
 const pallets = p => p.rows.reduce((a, r) => a + r.n, 0);
 
+// Front-back gaps on each side (0–12, 12–24 dm). The one allowed: behind the first single after the «δόντι»
+// (owner 17/11 «Μονές, και ας μείνει 0,1 μ»).
+function gaps(p) {
+  const out = [];
+  for (const side of [[0, 12], [12, 24]]) {
+    const e = p.rows.flatMap((r, k) => r.cells.filter(x => x.y < side[1] && x.y + x.h > side[0])
+      .map(x => ({ a: r.at + x.x, b: r.at + x.x + x.w, ok: r.k === 'S' && k > 0 && !!p.rows[k - 1].stag }))).sort((x, y) => x.a - y.a);
+    for (let j = 1; j < e.length; j++) if (e[j].a > e[j - 1].b && !e[j].ok) out.push(`${side[0]}:${e[j - 1].b}–${e[j].a}`);
+  }
+  return out;
+}
+
 test('capacity: euro only 33, industrial only 26, the owner\'s 20 EUR + 4 Industrial → 32', () => {
   assert.strictEqual(LP.capacity({ eur: 33 }), 33);
   assert.strictEqual(LP.capacity({ ind: 26 }), 26);
@@ -78,18 +90,15 @@ test('mixed loads: industrials at the front by the cab, the free room at the bac
   assert.ok(p.used < LP.BOX, 'room left at the back');
 });
 
-test('after the «δόντι» the euro go as staggered doubles, no gap between rows (owner 17/11)', () => {
+test('after the «δόντι»: first euro run takes singles (small gap behind the first, owner 17/11); a later run goes staggered with no gap', () => {
   const p = LP.plan({ eur: 6, ind: 3 });
-  assert.strictEqual(shape(p), 'IXDDS');
-  assert.ok(p.rows.filter(r => r.k === 'D').every(r => r.stag === 2));
-  assert.ok(p.rows[4].wall, 'the odd euro left closes the load at the wall');
-  // X row 10–20 dm: flat euro flush at 10; the next double's euro side starts at 18 (= 10 + 8), the other side at 20
-  const ends = side => p.rows.flatMap(r => r.cells.filter(c => c.y === side).map(c => [r.at + c.x, r.at + c.x + c.w]));
-  for (const side of [0, 12]) {
-    const e = ends(side);
-    for (let j = 1; j < e.length; j++) assert.strictEqual(e[j][0], e[j - 1][1], `side ${side}: no gap between rows (${JSON.stringify(e)})`);
-  }
-  assert.ok(!/K|DS|SD/.test(shape(LP.plan({ eur: 28, ind: 1 })).slice(1, -1)), 'no knife or single inside the staggered part');
+  assert.strictEqual(shape(p), 'IXDSD');
+  assert.strictEqual(p.rows[2].stag, 2, 'the double right after the «δόντι» is staggered');
+  assert.strictEqual(p.rows[3].cells[0].y, 6, 'the single in the middle');
+  assert.ok(!p.rows[4].stag, 'from the single on, both sides level');
+  const q = LP.layout([{ n: 2, ind: true }, { n: 4 }, { n: 3, ind: true }, { n: 7 }, { n: 4, ind: true }]);
+  assert.ok(!/S/.test(shape(q).slice(4)), 'a second euro run takes no singles');
+  assert.deepStrictEqual(gaps(q), []);
 });
 
 test('over capacity: a warning count, the box drawn full', () => {
@@ -185,40 +194,30 @@ test('forklift sheet: a delivery\'s temperature only when the load has more than
 });
 
 test('a lone euro that would leave a front-back gap goes to the doors, at the wall (owner 17/11)', () => {
-  // 3 industrial (delivery 3) → 8 euro (delivery 2) → 4 industrial (delivery 1): 1 flat + 7 → 3 doubles + 1 left
-  const p = LP.layout([{ n: 3, ind: true }, { n: 8 }, { n: 4, ind: true }]);
-  assert.strictEqual(p.placed, 15);
+  // the second euro run (8, after the «δόντι») goes staggered: 1 flat + 3 doubles + 1 left → to the doors
+  const p = LP.layout([{ n: 2, ind: true }, { n: 4 }, { n: 3, ind: true }, { n: 8 }, { n: 4, ind: true }]);
+  assert.strictEqual(p.placed, 21);
   const last = p.rows[p.rows.length - 1];
-  assert.deepStrictEqual([last.k, last.wall, last.cells[0].y, last.cells[0].part], ['S', true, 0, 1]);
-  // no lone euro left between the staggered doubles and the industrials
-  const i = p.rows.findIndex(r => r.k === 'I' && r.at > 10);
-  assert.ok(!p.rows.slice(0, i).some(r => r.k === 'S'));
-  // the same lone pallet as the very last thing in the box stays on the euro side, as before
-  assert.strictEqual(LP.layout([{ n: 3, ind: true }, { n: 8 }]).rows.slice(-1)[0].stag, 2);
+  assert.deepStrictEqual([last.k, last.wall, last.cells[0].y, last.cells[0].part], ['S', true, 0, 3]);
+  assert.deepStrictEqual(gaps(p), []);
+  // with singles in the first euro run, an odd one left also goes to the doors
+  const q = LP.layout([{ n: 3, ind: true }, { n: 7 }, { n: 4, ind: true }]);
+  assert.deepStrictEqual(shape(q), 'IXDSDIIS');
+  assert.ok(q.rows[q.rows.length - 1].wall);
 });
 
 test('after staggered euro the industrials go on staggered, laid as usual: the 0.2 m stays at the last row (owner 17/11)', () => {
-  // 3 industrial (3) → 7 euro (2) → 4 industrial (1)
-  const p = LP.layout([{ n: 3, ind: true }, { n: 7 }, { n: 4, ind: true }]);
-  assert.strictEqual(p.placed, 14);
-  const ind = p.rows.filter(r => r.k === 'I' && r.at > 20);
+  const p = LP.layout([{ n: 2, ind: true }, { n: 4 }, { n: 3, ind: true }, { n: 7 }, { n: 4, ind: true }]);
+  const ind = p.rows.filter(r => r.k === 'I' && r.at > 40);
   assert.ok(ind.length === 2 && ind.every(r => r.stag === 2 && r.cells.every(c => c.w === 10 && c.h === 12)), 'not turned, staggered');
-  // each side: no gap between consecutive pallets along the box
-  for (const side of [[0, 12], [12, 24]]) {
-    const ends = p.rows.flatMap(r => r.cells.filter(c => c.y < side[1] && c.y + c.h > side[0]).map(c => [r.at + c.x, r.at + c.x + c.w])).sort((x, y) => x[0] - y[0]);
-    for (let j = 1; j < ends.length; j++) assert.ok(ends[j][0] <= ends[j - 1][1], `side ${side}: gap at ${ends[j - 1][1]}–${ends[j][0]}`);
-  }
+  assert.deepStrictEqual(gaps(p), []);
 });
 
-test('no front-back gap on either side in mixed sequences of industrial and euro (owner 17/11)', () => {
-  const cases = [[[3, 1], [7, 0], [4, 1]], [[3, 1], [7, 0], [3, 1], [6, 0]], [[3, 1], [8, 0], [4, 1]], [[1, 1], [10, 0], [2, 1], [5, 0]], [[5, 1], [12, 0], [6, 1]], [[2, 1], [9, 0], [3, 1], [4, 0]]];
+test('no front-back gap on either side in mixed sequences of industrial and euro, except behind the first single after the «δόντι» (owner 17/11)', () => {
+  const cases = [[[3, 1], [7, 0], [4, 1]], [[3, 1], [7, 0], [3, 1], [6, 0]], [[3, 1], [8, 0], [4, 1]], [[1, 1], [10, 0], [2, 1], [5, 0]], [[5, 1], [12, 0], [6, 1]], [[2, 1], [9, 0], [3, 1], [4, 0]], [[2, 1], [4, 0], [3, 1], [8, 0], [4, 1]]];
   for (const c of cases) {
     const p = LP.layout(c.map(([n, i]) => ({ n, ind: !!i })));
-    const total = c.reduce((a, [n]) => a + n, 0);
-    assert.strictEqual(p.placed + p.dropped, total, JSON.stringify(c));
-    for (const side of [[0, 12], [12, 24]]) {
-      const e = p.rows.flatMap(r => r.cells.filter(x => x.y < side[1] && x.y + x.h > side[0]).map(x => [r.at + x.x, r.at + x.x + x.w])).sort((a, b) => a[0] - b[0]);
-      for (let j = 1; j < e.length; j++) assert.ok(e[j][0] <= e[j - 1][1], `${JSON.stringify(c)} side ${side[0]}: gap ${e[j - 1][1]}–${e[j][0]}`);
-    }
+    assert.strictEqual(p.placed + p.dropped, c.reduce((a, [n]) => a + n, 0), JSON.stringify(c));
+    assert.deepStrictEqual(gaps(p), [], JSON.stringify(c));
   }
 });

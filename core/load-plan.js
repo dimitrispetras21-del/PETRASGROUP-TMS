@@ -151,7 +151,34 @@ function layout(parts) {
       dropped += r.q.length; r.q.length = 0;
       continue;
     }
-    if (stag) {
+    // Singles after the «δόντι» too, against a front-heavy load (owner 17/11: «Μονές, και ας μείνει 0,1 μ»). A single
+    // stands in the middle across both sides, so behind the first one the side that was 0.2 m ahead keeps a small
+    // gap; from the single on both sides are level and the rest go as usual (D S D … D, then knife).
+    let sN = 0;
+    if (stag && firstEuro && r.q.length < NO_SINGLE_FROM) {
+      const later = runs.slice(ri + 1).reduce((a, x) => a + minLen(x), 0);
+      const room = BOX - at - later - SAFE;
+      for (let s = Math.floor((r.q.length - 2) / 3); s >= 1; s--) {
+        const rest = r.q.length - (3 * s + 2);
+        if (8 + 16 * s + (rest === 1 ? 8 : 4 * rest) <= room) { sN = s; break; }
+      }
+    }
+    if (sN) {
+      push('D', [cell(take(), 0, 0, 8, 12), cell(take(), -stag, 12, 8, 12)], 8, { stag });
+      for (let j = 0; j < sN; j++) {
+        push('S', [cell(take(), 0, 6, 8, 12)], 8);
+        push('D', [cell(take(), 0, 0, 8, 12), cell(take(), 0, 12, 8, 12)], 8);
+      }
+      stag = 0;
+      // one left over never closes the euro in the middle of the box: it goes to the doors with the others (above)
+      if (r.q.length % 2 && ri < runs.length - 1) deferred.push(r.q.pop());
+      const e = Math.min(r.q.length, euroFill(BOX - at));
+      for (const k of (euroRows(e, BOX - at, true) || (e ? ['S'] : []))) {
+        if (k === 'K') push('K', [cell(take(), 0, 0, 12, 8), cell(take(), 0, 8, 12, 8), cell(take(), 0, 16, 12, 8)], 12);
+        else if (k === 'D') push('D', [cell(take(), 0, 0, 8, 12), cell(take(), 0, 12, 8, 12)], 8);
+        else push('S', [cell(take(), 0, 6, 8, 12)], 8);
+      }
+    } else if (stag) {
       // after the «δόντι»: one pallet a side every 0.8 m, the euro side (lower) 0.2 m ahead
       const top = Math.floor((BOX - at) / 8);   // the euro side holds this many or one more
       for (let j = 0; j < top && r.q.length >= 2; j++) push('D', [cell(take(), 0, 0, 8, 12), cell(take(), -stag, 12, 8, 12)], 8, { stag });
