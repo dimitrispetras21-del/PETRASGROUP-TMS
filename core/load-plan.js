@@ -12,10 +12,13 @@
 //   - industrial 1.0 × 1.2, only two across: a row is 1.0 m with 2 pallets; an odd one stands alone in its 1.0 m row.
 //   - singles only at the front, alternating and starting AND ending with a double: D S D S … D. Then knife. Knife is
 //     preferred over double; extra doubles only to make the count work. Never end with a single.
-//   - why singles exist: the load spreads over the whole length and is not front-heavy. «Σαν να βάλαμε 2 έξτρα
-//     παλέτες με 2 μονές»: a single holds 1 pallet in the room of 2, so euro + singles ≤ 32.
-//     As many singles as fit up to 12.8 m (never to the doors, for safety): euro + singles ≤ 32. 32 pallets go
-//     without singles (front-heavy is acceptable there); 31 and below take them.
+//   - why singles exist: the load spreads along the box and is not front-heavy. «Σαν να βάλαμε 2 έξτρα παλέτες με 2
+//     μονές»: a single holds 1 pallet in the room of 2. As many singles as fit up to 12.8 m, never to the doors (the
+//     room at the back is for the bars): euro + singles ≤ 32. 32 pallets go without singles (front-heavy is
+//     acceptable there); 31 and below take them.
+//   - industrials at the front by the cab; an odd one shares its row with a flat euro («δόντι»), staggered doubles
+//     after it. A lone pallet in the last row stands at a wall; earlier, a euro single stays in the middle.
+//     Details at plan().
 // Knife (3 per 12 dm) and double (2 per 8 dm) both take 4 dm a pallet, which is why the 33 holds and why a single
 // costs exactly one pallet of room.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -41,7 +44,7 @@ const I_MAX = Math.floor(BOX / ROW.I);   // 13 industrial rows
 function indRowsFit(ind) { return Math.min(Math.ceil(n0(ind) / 2), I_MAX); }
 
 // The euro rows for e pallets in len dm, front to back, or null for e = 1 (one pallet makes no double; plan() puts
-// it alone in the middle).
+// it alone as a single, at the wall since it is the last row).
 // Most singles first (spread), then most knife; extra doubles right after the D S … D block.
 // From 32 up no singles (owner 17/11: «32 παλ είναι οκ το μπροστοβαρο. 31 και κάτω θέλει μονή»).
 const NO_SINGLE_FROM = 32;
@@ -69,13 +72,14 @@ function euroRows(e, len) {
 }
 
 // Industrials only (owner 17/11): «μόνο αν το φορτίο είναι μόνο βιομηχανικές και είναι λίγες αναγκαστικά βάζουμε
-// μονές στην αρχή». Same shape as the euro singles: 2-1-2-1-…-2 at the front, then pairs, as many singles as the
-// 13 rows allow; an odd one left over closes the load. A lone industrial always stands against a side wall, never in
+// μονές στην αρχή». Same shape as the euro singles: 2-1-2-1-…-2 at the front, then pairs, as many singles as 12 rows
+// allow (never to the doors); an odd one left over closes the load. A lone industrial always stands against a side wall, never in
 // the middle (it could fall). → pallets per row, front to back.
 function indOnly(i) {
   for (let s = Math.max(0, Math.floor((i - 2) / 3)); s >= 0; s--) {
     const rest = s ? i - (3 * s + 2) : i;
-    if ((s ? 2 * s + 1 : 0) + Math.ceil(rest / 2) > I_MAX) continue;
+    // with singles, at most 12 rows (12.0 m): the room at the back stays for the bars, as with the euro
+    if ((s ? 2 * s + 1 : 0) + Math.ceil(rest / 2) > (s ? I_MAX - 1 : I_MAX)) continue;
     const rows = [];
     for (let j = 0; j < s; j++) rows.push(2, 1);
     if (s) rows.push(2);
@@ -117,7 +121,8 @@ function plan(counts) {
   if (odd && eFit) {
     eRows = [];
     for (let j = 0; j < Math.floor((eFit - 1) / 2); j++) eRows.push({ k: 'D', n: 2, stag: 2 });
-    if ((eFit - 1) % 2) eRows.push({ k: 'S', n: 1 });
+    // the odd one left goes on the euro side, which is 0.2 m ahead: the other side may already be full (room 6 mod 8)
+    if ((eFit - 1) % 2) eRows.push({ k: 'S', n: 1, stag: 2 });
   } else {
     // Over capacity: a full box of what fits, no singles (euroRows of the max has none, the length is used up).
     // One euro pallet makes no double: it goes alone, as a single.
@@ -136,6 +141,8 @@ function plan(counts) {
   // box evenly weighted left / right; the last one has nothing behind it but the bars, so it leans on a wall.
   const last = rows[rows.length - 1];
   if (last && last.k === 'S') last.wall = true;
+  // the euro side of a staggered load ends stag dm earlier
+  if (last && last.stag) at = Math.max(at - last.stag, rows.length > 1 ? rows[rows.length - 2].at + rows[rows.length - 2].len : 0);
   return { rows, eur, ind, total: eur + ind, cap, over, used: at };
 }
 // Capacity for this mix = the industrials + the euro that fit in the length they leave (+ the one beside an odd
@@ -154,7 +161,8 @@ function svg(p, opts) {
     if (r.k === 'K') for (let j = 0; j < 3; j++) rect(r.at, j * 8, 12, 8, 'lp-e');
     // a staggered double: the side behind the flat euro (lower half) sits stag dm ahead, flush against it
     else if (r.k === 'D') for (let j = 0; j < 2; j++) rect(r.at - (j ? r.stag || 0 : 0), j * 12, 8, 12, 'lp-e');
-    else if (r.k === 'S') rect(r.at, r.wall ? 0 : 6, 8, 12, 'lp-e lp-s');
+    // a last single at a wall; after the «δόντι» on the euro side (lower half), flush against the pallet in front
+    else if (r.k === 'S') rect(r.at - (r.stag || 0), r.stag ? 12 : r.wall ? 0 : 6, 8, 12, 'lp-e lp-s');
     else if (r.k === 'X') { rect(r.at, 0, 10, 12, 'lp-i'); rect(r.at, 12, 8, 12, 'lp-e'); }   // flat euro flush to the front
     else for (let j = 0; j < r.n; j++) rect(r.at, j * 12, 10, 12, 'lp-i');   // a lone industrial against the wall, never in the middle (owner 17/11)
     out.push(`<text class="lp-t" x="${((r.at + r.len / 2) * sc).toFixed(1)}" y="${top + H + lab - 2}" text-anchor="middle">${TAG[r.k]}</text>`);

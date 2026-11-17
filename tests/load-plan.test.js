@@ -105,3 +105,20 @@ test('pallet type: Industrial is industrial; EUR, CHEP and empty are euro', () =
   assert.ok(LP.isInd('Industrial'));
   assert.ok(!LP.isInd('EUR') && !LP.isInd('CHEP') && !LP.isInd(''));
 });
+
+test('code review: an odd euro after the «δόντι» stays inside the box, on the euro side', () => {
+  for (let i = 1; i <= 25; i += 2) for (let e = 1; e <= 33; e++) {
+    const p = LP.plan({ eur: e, ind: i });
+    assert.ok(p.used <= LP.BOX, `${e} EUR + ${i} IND: used ${p.used}`);
+    assert.strictEqual(pallets(p), Math.min(p.total, p.cap), `${e} EUR + ${i} IND: every fitting pallet drawn`);
+  }
+  assert.ok(LP.svg(LP.plan({ eur: 26, ind: 5 }), { scale: 1 }).includes('class="lp-e lp-s" x="124.0" y="26.0"'));
+});
+
+test('code review: industrials only never spread to the doors with singles', () => {
+  for (let i = 1; i <= 26; i++) {
+    const p = LP.plan({ ind: i });
+    assert.strictEqual(pallets(p), i);
+    if (p.rows.some(r => r.n === 1) && i < 25) assert.ok(p.used <= 120, `${i}: ${p.used}`);
+  }
+});

@@ -561,7 +561,7 @@ function paintSum(pts) {
   const lp = LoadPlan.plan(cnt);
   const rows = [];
   rows.push(['Παλέτες', `<span class="${lp.over ? 'warn' : ''}">${pal} από ${lp.cap}</span>${lp.over ? note(lp.over === 1 ? 'Μία παλέτα δεν χωράει στο φορτηγό' : lp.over + ' παλέτες δεν χωρούν στο φορτηγό') : ''}`]);
-  if (cnt.eur && cnt.ind) rows.push(['Τύπος', `${cnt.eur} EUR · ${cnt.ind} βιομηχανικές`]);
+  if (lp.eur && lp.ind) rows.push(['Τύπος', `${lp.eur} EUR · ${lp.ind} βιομηχανικές`]);   // the counts the drawing uses
   const free = m => m.piece || isPieceRec(m.f);
   const prices = s.members.map(m => (free(m) ? 0 : parseFloat(val(m, 'f_Price'))));
   const missing = s.members.filter((m, k) => !free(m) && !Number.isFinite(prices[k])).length;
