@@ -570,8 +570,9 @@ function loadParts(pts) {
   }
   return parts.reverse();
 }
-// The loading plan in the redesign blue, two tints alternating by delivery (owner 17/11: «πολύ χρωματιστά» → «α»).
-const PLAN_TONE = 'blue';
+// The loading plan in blues, greys and white, one shade per delivery (owner 17/11: «πολύ χρωματιστά», then
+// «αποχρώσεις του μπλε, γκρι, άσπρο»).
+const PLAN_TONE = 'slate';
 const short = (t, n) => { t = String(t || ''); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
 const placeName = p => String(p.name || '—').split(/[,(]/)[0].trim();
 function partLabels(parts, len) {
@@ -621,8 +622,8 @@ function printRamp() {
 }
 // The sheet itself, in the paper language of the redesign (owner 17/11, «τσέκαρε τη νέα μας σκέψη»: the A4 papers
 // of docs/design/redesign-2026-11 — logo, blue top rule, light title, blue section caps, thin rules, «who · when»
-// and «1 / 1» at the foot), in the plan's tone: the redesign blue in two tints (owner 17/11 «α»; A4 papers are not
-// black and white, owner 15/11).
+// and «1 / 1» at the foot), in the plan's tone: blues, greys and white (owner 17/11; A4 papers are not plain black
+// and white, owner 15/11).
 // Plain data in, HTML out (vehicle and printed are already escaped). Kept apart so it can be previewed and tested
 // without an open form. parts: cab → doors.
 function rampSheet(d) {

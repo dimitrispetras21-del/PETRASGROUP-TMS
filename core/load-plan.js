@@ -197,7 +197,7 @@ function plan(counts) {
 //   parts = [{ label, sub, tag, key }] by part index: each part gets the colour of its key (the delivery number, so
 //     a card on the sheet and its pallets match), a bracket with its label, and its tag written in every pallet
 //   numbers = write the tags in the pallets (on by default from scale 3)
-//   tone = 'cool' | 'earth' (muted palettes), 'blue' | 'grey' (two tints of one colour), none (bright, one per delivery)
+//   tone = 'slate' (blues, greys, white — the one the screens use), 'cool' | 'earth' (muted palettes), 'blue' | 'grey' (two tints of one colour), none (bright, one per delivery)
 //   family = the font of the texts (a paper of the redesign: Manrope)
 // Without parts: euro blue, industrial amber.
 const TAG = { K: 'Μ', D: 'Δ', S: 'Ο', I: 'Β', X: 'Β+Π' };
@@ -209,6 +209,9 @@ const TONES = {
   blue: { fill: ['#E7EFFA', '#C3D7F2'], ink: ['#0B3F80'] },
   grey: { fill: ['#FFFFFF', '#E3E5E8'], ink: ['#1B1D29'] },
   // muted palettes, every colour at about the same lightness so none shouts (owner 17/11 «μια παλέτα χρωμάτων»)
+  // blues, greys and white only (owner 17/11 «αποχρώσεις του μπλε, γκρι, άσπρο»): light and darker alternate, so
+  // two neighbouring deliveries never share a shade; the number in the pallet does the rest
+  slate: { fill: ['#D6E4F5', '#FFFFFF', '#A9C2E3', '#E4E7EC', '#EEF4FB', '#C6CDD7'], ink: ['#0B3F80', '#1B1D29', '#0B3F80', '#374151', '#0B63CE', '#1F2937'] },
   cool: { fill: ['#DCE7F5', '#D5ECE8', '#E3EAD6', '#F2E8D5', '#E8E0EF', '#E1E5EA'], ink: ['#1F4E8C', '#1D675F', '#4A672C', '#87611E', '#664782', '#47525F'] },
   earth: { fill: ['#E9E3D7', '#DCE5E0', '#EEDDD8', '#DDE2EB', '#EDE6CF', '#E4E1E6'], ink: ['#5E5340', '#3E5E50', '#8A4B3C', '#3F5272', '#7A6526', '#5A5262'] },
 };
