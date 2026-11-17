@@ -45,15 +45,16 @@ function indRowsFit(ind) { return Math.min(Math.ceil(n0(ind) / 2), I_MAX); }
 
 // The euro rows for e pallets in len dm, front to back, or null for e = 1 (one pallet makes no double; plan() puts
 // it alone as a single, at the wall since it is the last row).
-// Most singles first (spread), then most knife; extra doubles right after the D S … D block.
+// Most singles first (spread), then most knife; extra doubles right after the D S … D block. noSingles: a euro run
+// that is not the first one in the box (singles go only at the front of the euro).
 // From 32 up no singles (owner 17/11: «32 παλ είναι οκ το μπροστοβαρο. 31 και κάτω θέλει μονή»).
 const NO_SINGLE_FROM = 32;
 // Singles spread the load to 12.8 m (the room of 32), never to the doors: «ο στόχος είναι να φτάσουμε τις 32, άρα τα
 // 12,8 μέτρα. Όχι έως πίσω για ασφάλεια» (owner 17/11). So 29 EUR → 3 singles.
 const SAFE = 4;   // dm left free at the back when singles are used
-function euroRows(e, len) {
+function euroRows(e, len, noSingles) {
   if (e === 0) return [];
-  for (let s = e >= NO_SINGLE_FROM ? 0 : Math.max(0, Math.floor((e - 2) / 3)); s >= 0; s--) {
+  for (let s = noSingles || e >= NO_SINGLE_FROM ? 0 : Math.max(0, Math.floor((e - 2) / 3)); s >= 0; s--) {
     const rest = s ? e - (3 * s + 2) : e;
     const front = s ? 16 * s + 8 : 0;
     for (let k = Math.floor(rest / 3); k >= 0; k--) {
@@ -92,92 +93,147 @@ function indOnly(i) {
   return [];
 }
 
-// The layout of one load. counts = { eur, ind } in pallets.
-// Industrials at the front by the cab, euro behind, the free room always at the back for the bars that hold the load
-// still (owner 17/11, sketch + «Ναι, μπροστά»).
-// An odd number of industrials with euro on board (owner 17/11): the last industrial shares its 1.0 m row with one
+// The layout of one load, as a sequence of parts from the cab to the doors.
+// The order of the parts is the order of DELIVERY, read backwards: «φορτώνουμε με τον τρόπο που πρέπει να αδειάσει,
+// last in, first out» (owner 17/11). The first delivery stands at the doors, the last one at the cab. A form with no
+// order of its own (plan() below) puts the industrials first, by the cab (owner 17/11 «Ναι, μπροστά»).
+// Consecutive parts of the same kind form one run; the row rules apply to a run, and a row may hold pallets of two
+// parts (a knife row: 2 of one delivery, 1 of the next).
+// An odd number of industrials with euro after them (owner 17/11): the last industrial shares its 1.0 m row with one
 // euro pallet laid flat beside it (1.2 + 1.2 = 2.4 m across). The euro is 0.8 long, so that side of the box is 0.2 m
 // ahead of the other («δόντι»). A gap between rows lets the first pallet tip forward and the rest follow like
 // dominoes (owner 17/11), so after that row the euro go as doubles, staggered: each side flush against the pallet in
-// front of it, the 0.2 m coming out at the back with the room for the bars. No knife or single there: «η πλάκα θα
-// ήταν πιο εύκολη και στην αντίληψη του χώρου» (owner 17/11).
-// → { rows: [{ k: 'K'|'D'|'S'|'I'|'X', n, at, len, stag?, wall? }], eur, ind, total, cap, over, used }
-//   n = pallets in the row (X: 2, one of each); at = dm from the front of the box; stag = dm the euro side of a row
-//   sits ahead of the other; over = pallets that do not fit (shown as a warning, never a refusal).
-function plan(counts) {
-  const eur = n0(counts && counts.eur), ind = n0(counts && counts.ind);
-  const ir = indRowsFit(ind);
-  const iFit = Math.min(ind, 2 * ir);
-  const room = BOX - ir * ROW.I;
-  const odd = iFit % 2;
-  // Beside an odd industrial: the flat euro + one pallet a side every 0.8 m (the euro side starts 0.2 m earlier).
-  // That place counts in the capacity even while no euro is on board yet.
-  const eMax = odd ? 1 + Math.floor(room / 8) + Math.floor((room + 2) / 8) : euroFill(room);
-  const cap = iFit + eMax;
-  const over = (ind - iFit) + Math.max(0, eur - eMax);
-  const eFit = Math.min(eur, eMax);
-  let iRows = [];
-  if (!eur && iFit) iRows = indOnly(iFit).map(n => ({ k: 'I', n }));
-  else for (let j = 0; j < ir; j++) iRows.push(j === ir - 1 && odd ? { k: 'X', n: 2 } : { k: 'I', n: 2 });
-  let eRows;
-  if (odd && eFit) {
-    eRows = [];
-    for (let j = 0; j < Math.floor((eFit - 1) / 2); j++) eRows.push({ k: 'D', n: 2, stag: 2 });
-    // the odd one left goes on the euro side, which is 0.2 m ahead: the other side may already be full (room 6 mod 8)
-    if ((eFit - 1) % 2) eRows.push({ k: 'S', n: 1, stag: 2 });
-  } else {
-    // Over capacity: a full box of what fits, no singles (euroRows of the max has none, the length is used up).
-    // One euro pallet makes no double: it goes alone, as a single.
-    eRows = (euroRows(eFit, room) || ['S']).map(k => ({ k, n: PER[k] }));
+// front of it. No knife or single there: «η πλάκα θα ήταν πιο εύκολη και στην αντίληψη του χώρου» (owner 17/11).
+// A lone pallet in the last row stands against a side wall (nothing behind it but the bars); a lone industrial
+// always does, never in the middle (it could fall).
+// parts: [{ n, ind }] cab → doors. → { rows: [{ k: 'K'|'D'|'S'|'I'|'X', n, at, len, stag?, wall?, cells }], used,
+//   placed, dropped }. cells: [{ part, ind?, x, y, w, h }] in dm, x along the box from the row's start (a staggered cell
+//   is at −2), y across (0 = one side wall, 24 = the other). dropped = pallets that do not fit after the last row.
+function minLen(run) { return run.ind ? Math.ceil(run.n / 2) * ROW.I : run.n === 1 ? 8 : 4 * run.n; }
+function layout(parts) {
+  const P = (parts || []).map((x, i) => ({ i, n: n0(x && x.n), ind: !!(x && x.ind) })).filter(x => x.n);
+  const runs = [];
+  for (const x of P) {
+    const r = runs[runs.length - 1];
+    if (r && r.ind === x.ind) { r.n += x.n; for (let j = 0; j < x.n; j++) r.q.push(x.i); }
+    else runs.push({ ind: x.ind, n: x.n, q: Array(x.n).fill(x.i) });
   }
-  let at = 0;
-  const rows = iRows.concat(eRows).map(r => {
-    const len = r.k === 'X' ? ROW.I : ROW[r.k];
-    const o = Object.assign({}, r, { at, len });
-    at += len;
-    return o;
-  });
+  const onlyInd = runs.length === 1 && runs[0].ind;
+  const rows = [];
+  let at = 0, stag = 0, firstEuro = true, dropped = 0;
+  const push = (k, cells, len, extra) => { rows.push(Object.assign({ k, n: cells.length, at, len, cells }, extra)); at += len; };
+  const cell = (part, x, y, w, h, ind) => Object.assign({ part, x, y, w, h }, ind ? { ind: true } : {});
+  for (let ri = 0; ri < runs.length; ri++) {
+    const r = runs[ri], take = () => r.q.shift();
+    if (r.ind) {
+      stag = 0;
+      // what fits: whole rows up to the doors
+      const fitRows = Math.floor((BOX - at) / ROW.I);
+      const pat = (onlyInd ? indOnly(Math.min(r.q.length, 2 * I_MAX)) : Array(Math.floor(r.q.length / 2)).fill(2).concat(r.q.length % 2 ? [1] : [])).slice(0, fitRows);
+      for (const m of pat) {
+        if (m === 2) { push('I', [cell(take(), 0, 0, 10, 12, 1), cell(take(), 0, 12, 10, 12, 1)], ROW.I); continue; }
+        const nx = runs[ri + 1];
+        if (!onlyInd && nx && !nx.ind && nx.q.length) {
+          push('X', [cell(take(), 0, 0, 10, 12, 1), cell(nx.q.shift(), 0, 12, 8, 12)], ROW.I);
+          stag = 2;
+        } else push('I', [cell(take(), 0, 0, 10, 12, 1)], ROW.I);   // lone: at the wall
+      }
+      dropped += r.q.length; r.q.length = 0;
+      continue;
+    }
+    if (stag) {
+      // after the «δόντι»: one pallet a side every 0.8 m, the euro side (lower) 0.2 m ahead
+      const top = Math.floor((BOX - at) / 8);   // the euro side holds this many or one more
+      for (let j = 0; j < top && r.q.length >= 2; j++) push('D', [cell(take(), 0, 0, 8, 12), cell(take(), -stag, 12, 8, 12)], 8, { stag });
+      // the odd one left goes on the euro side, which is 0.2 m ahead: the other side may already be full
+      if (r.q.length && at - stag + 8 <= BOX) push('S', [cell(take(), -stag, 12, 8, 12)], 8, { stag });
+    } else {
+      const later = runs.slice(ri + 1).reduce((a, x) => a + minLen(x), 0);
+      const len = Math.max(0, BOX - at - later);
+      const e = Math.min(r.q.length, euroFill(BOX - at));
+      // a later part that will not fit anyway does not take singles away from this one
+      const kinds = euroRows(e, Math.max(len, Math.min(BOX - at, 4 * e)), !firstEuro) || ['S'];
+      for (const k of kinds) {
+        if (k === 'K') push('K', [cell(take(), 0, 0, 12, 8), cell(take(), 0, 8, 12, 8), cell(take(), 0, 16, 12, 8)], 12);
+        else if (k === 'D') push('D', [cell(take(), 0, 0, 8, 12), cell(take(), 0, 12, 8, 12)], 8);
+        else push('S', [cell(take(), 0, 6, 8, 12)], 8);
+      }
+    }
+    firstEuro = false;
+    stag = 0;
+    dropped += r.q.length; r.q.length = 0;
+  }
   // A single in the last row stands against the side wall: nothing behind it holds it (owner 17/11 «αν είναι
   // τελευταία, πάντα τοίχο· αν είναι πιο νωρίς, όπου δεν μπορούμε να βάλουμε μπάρες, μπαίνει μέσα»).
   // Why: a single earlier in the box is held by the rows around it, and in the middle it sways less and keeps the
   // box evenly weighted left / right; the last one has nothing behind it but the bars, so it leans on a wall.
   const last = rows[rows.length - 1];
-  if (last && last.k === 'S') last.wall = true;
-  // the euro side of a staggered load ends stag dm earlier
-  if (last && last.stag) at = Math.max(at - last.stag, rows.length > 1 ? rows[rows.length - 2].at + rows[rows.length - 2].len : 0);
-  return { rows, eur, ind, total: eur + ind, cap, over, used: at };
+  if (last && last.k === 'S') { last.wall = true; if (!last.stag) last.cells[0].y = 0; }
+  const used = rows.reduce((a, r) => Math.max(a, ...r.cells.map(c => r.at + c.x + c.w)), 0);
+  return { rows, used, placed: rows.reduce((a, r) => a + r.n, 0), dropped };
 }
-// Capacity for this mix = the industrials + the euro that fit in the length they leave (+ the one beside an odd
-// industrial). 33 euro only, 26 industrial only, 32 for 20 euro + 4 industrial (the owner's example).
-function capacity(counts) { return plan(counts).cap; }
 
-// The box seen from above as an SVG string (no DOM, so the panel and a print page draw the same picture).
-// Front (cab) on the left. A knife pallet lies 1.2 along × 0.8 across; double / single 0.8 along × 1.2 across;
-// industrial 1.0 along × 1.2 across. Each row carries its letter underneath: Μ(αχαίρι) Δ(ιπλή) Ο(=μονή) Β(ιομηχανική).
+// Capacity for this mix = the industrials + the euro that fit in the length they leave (+ the one beside an odd
+// industrial: one euro a side every 0.8 m after it). 33 euro only, 26 industrial only, 32 for 20 euro + 4 industrial
+// (the owner's example). Independent of the order of the parts: the number a form shows does not move when a
+// delivery is dragged.
+function capacity(counts) {
+  const ind = n0(counts && counts.ind);
+  const ir = indRowsFit(ind), iFit = Math.min(ind, 2 * ir), room = BOX - ir * ROW.I;
+  return iFit + (iFit % 2 ? 1 + Math.floor(room / 8) + Math.floor((room + 2) / 8) : euroFill(room));
+}
+// One load without an order of parts: industrials by the cab, then euro. → layout + { eur, ind, total, cap, over }.
+// over = pallets above the capacity (shown as a warning, never a refusal).
+function plan(counts) {
+  const eur = n0(counts && counts.eur), ind = n0(counts && counts.ind);
+  const cap = capacity({ ind });
+  return Object.assign(layout([{ n: ind, ind: true }, { n: eur }]), { eur, ind, total: eur + ind, cap, over: Math.max(0, eur + ind - cap) });
+}
+
+// The box seen from above as an SVG string (no DOM, so the panel and the ramp sheet draw the same picture).
+// Upright: the cab at the top, the doors at the bottom, as the ramp walks into the box (owner 17/11, «κάθετα»).
+// opts.scale = px per dm; opts.parts = [{ label, sub }] by part index: each part gets a colour and, on the right, a
+// bracket over the rows it fills; opts.width = px for the labels. Without parts: euro blue, industrial amber.
 const TAG = { K: 'Μ', D: 'Δ', S: 'Ο', I: 'Β', X: 'Β+Π' };
+const PAL = ['#BAE6FD', '#FDE68A', '#BBF7D0', '#FBCFE8', '#DDD6FE', '#FED7AA', '#A5F3FC', '#E5E7EB'];
+const INK = ['#0369A1', '#B45309', '#15803D', '#BE185D', '#6D28D9', '#C2410C', '#0E7490', '#4B5563'];
 function svg(p, opts) {
-  const sc = (opts && opts.scale) || 2.2, W = BOX * sc, H = 24 * sc, top = 14, lab = 12;
+  const o = opts || {}, sc = o.scale || 2.4, parts = o.parts || null;
+  const tagW = 14, boxW = 24 * sc, top = 14, boxH = BOX * sc, lw = parts ? (o.width || 150) : 0;
+  const W = tagW + boxW + (parts ? 10 + lw : 0), H = top + boxH + 14;
   const out = [];
-  const rect = (x, y, w, h, cls) => out.push(`<rect class="${cls}" x="${(x * sc).toFixed(1)}" y="${(top + y * sc).toFixed(1)}" width="${(w * sc - 1).toFixed(1)}" height="${(h * sc - 1).toFixed(1)}" rx="1.5"/>`);
+  const fillOf = c => parts ? `fill:${PAL[c.part % PAL.length]};stroke:${INK[c.part % INK.length]}` : c.ind ? 'fill:#FDE68A;stroke:#B45309' : 'fill:#BAE6FD;stroke:#0369A1';
+  const span = {};
   for (const r of p.rows) {
-    if (r.k === 'K') for (let j = 0; j < 3; j++) rect(r.at, j * 8, 12, 8, 'lp-e');
-    // a staggered double: the side behind the flat euro (lower half) sits stag dm ahead, flush against it
-    else if (r.k === 'D') for (let j = 0; j < 2; j++) rect(r.at - (j ? r.stag || 0 : 0), j * 12, 8, 12, 'lp-e');
-    // a last single at a wall; after the «δόντι» on the euro side (lower half), flush against the pallet in front
-    else if (r.k === 'S') rect(r.at - (r.stag || 0), r.stag ? 12 : r.wall ? 0 : 6, 8, 12, 'lp-e lp-s');
-    else if (r.k === 'X') { rect(r.at, 0, 10, 12, 'lp-i'); rect(r.at, 12, 8, 12, 'lp-e'); }   // flat euro flush to the front
-    else for (let j = 0; j < r.n; j++) rect(r.at, j * 12, 10, 12, 'lp-i');   // a lone industrial against the wall, never in the middle (owner 17/11)
-    out.push(`<text class="lp-t" x="${((r.at + r.len / 2) * sc).toFixed(1)}" y="${top + H + lab - 2}" text-anchor="middle">${TAG[r.k]}</text>`);
+    for (const c of r.cells) {
+      const y0 = r.at + c.x;
+      out.push(`<rect x="${(tagW + c.y * sc).toFixed(1)}" y="${(top + y0 * sc).toFixed(1)}" width="${(c.h * sc - 1).toFixed(1)}" height="${(c.w * sc - 1).toFixed(1)}" rx="1.5" style="${fillOf(c)};stroke-width:.8${r.k === 'S' ? ';stroke-dasharray:2 1.5' : ''}"/>`);
+      const sp = span[c.part] || (span[c.part] = [y0, y0 + c.w]);
+      sp[0] = Math.min(sp[0], y0); sp[1] = Math.max(sp[1], y0 + c.w);
+    }
+    out.push(`<text class="lp-t" x="${tagW - 3}" y="${(top + (r.at + r.len / 2) * sc + 3).toFixed(1)}" text-anchor="end">${TAG[r.k]}</text>`);
+  }
+  if (parts) {
+    // one bracket per part, in box order; labels that would overlap are pushed down
+    let next = 0;
+    Object.keys(span).map(Number).sort((a, b) => span[a][0] - span[b][0]).forEach(i => {
+      const [a, b] = span[i], x = tagW + boxW + 4, y1 = top + a * sc + 1, y2 = top + b * sc - 1;
+      out.push(`<path d="M${x} ${y1}h4V${y2}h-4" fill="none" stroke="${INK[i % INK.length]}" stroke-width="1.2"/>`);
+      const ty = Math.max(next, (y1 + y2) / 2 - 4);
+      const pt = parts[i] || {};
+      out.push(`<text class="lp-l" x="${x + 9}" y="${(ty + 4).toFixed(1)}">${esc(pt.label || '')}</text>`);
+      if (pt.sub) out.push(`<text class="lp-s" x="${x + 9}" y="${(ty + 14).toFixed(1)}">${esc(pt.sub)}</text>`);
+      next = ty + (pt.sub ? 24 : 13);
+    });
   }
   const free = BOX - p.used;
-  return `<svg class="lp" viewBox="-1 0 ${W + 2} ${top + H + lab}" width="100%" role="img" aria-label="${esc(aria(p))}">` +
-    `<style>.lp-box{fill:none;stroke:#0B1929;stroke-width:1.5}.lp-cab{fill:#0B1929}.lp-e{fill:#BAE6FD;stroke:#0369A1;stroke-width:.8}` +
-    `.lp-s{fill:#E0F2FE;stroke-dasharray:2 1.5}.lp-i{fill:#FDE68A;stroke:#B45309;stroke-width:.8}` +
-    `.lp-t{font:600 8px 'DM Sans',sans-serif;fill:#64748B}.lp-h{font:700 8px 'DM Sans',sans-serif;fill:#475569}</style>` +
-    `<text class="lp-h" x="0" y="9">◀ ΚΑΜΠΙΝΑ</text><text class="lp-h" x="${W}" y="9" text-anchor="end">ΠΟΡΤΕΣ</text>` +
-    `<rect class="lp-box" x="0" y="${top - 0.5}" width="${W}" height="${H}" rx="2"/>` + out.join('') +
-    (free >= 28 ? `<text class="lp-t" x="${((p.used + free / 2) * sc).toFixed(1)}" y="${top + H / 2 + 3}" text-anchor="middle">${(free / 10).toFixed(1).replace('.', ',')} μ ελεύθερα</text>` : '') +
-    `</svg>`;
+  return `<svg class="lp" viewBox="0 0 ${W.toFixed(0)} ${(Math.max(H, 0)).toFixed(0)}" width="${W.toFixed(0)}" role="img" aria-label="${esc(aria(p))}">` +
+    `<style>.lp text{font-family:'DM Sans',sans-serif}.lp-t{font-size:8px;font-weight:600;fill:#64748B}.lp-h{font-size:8px;font-weight:700;fill:#475569}` +
+    `.lp-l{font-size:9px;font-weight:700;fill:#0B1929}.lp-s{font-size:8px;fill:#475569}</style>` +
+    `<text class="lp-h" x="${tagW + boxW / 2}" y="9" text-anchor="middle">▲ ΚΑΜΠΙΝΑ</text>` +
+    `<rect x="${tagW}" y="${top - 0.5}" width="${boxW}" height="${boxH}" rx="2" fill="none" stroke="#0B1929" stroke-width="1.5"/>` + out.join('') +
+    (free >= 20 ? `<text class="lp-t" x="${tagW + boxW / 2}" y="${(top + (p.used + free / 2) * sc + 3).toFixed(1)}" text-anchor="middle">${(free / 10).toFixed(1).replace('.', ',')} μ</text>` : '') +
+    `<text class="lp-h" x="${tagW + boxW / 2}" y="${H - 3}" text-anchor="middle">ΠΟΡΤΕΣ ▼</text></svg>`;
 }
 function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 // «5 μαχαίρι · 5 διπλές · 4 μονές» — the words for the row counts (and the drawing's label for a screen reader).
@@ -188,7 +244,7 @@ function aria(p) {
     c.I ? c.I + (c.I === 1 ? ' σειρά βιομηχανικές' : ' σειρές βιομηχανικές') : '', c.X ? '1 βιομηχανική + πλάκα' : ''].filter(Boolean).join(' · ');
 }
 
-const LoadPlan = Object.freeze({ BOX, ROW, isInd, euroFill, capacity, euroRows, plan, svg, words: aria });
+const LoadPlan = Object.freeze({ BOX, ROW, isInd, euroFill, capacity, euroRows, layout, plan, svg, words: aria, colour: i => PAL[i % PAL.length] });
 if (typeof module !== 'undefined' && module.exports) module.exports = LoadPlan;
 else globalThis.LoadPlan = LoadPlan;
 })();

@@ -54,23 +54,21 @@ test('every euro count 2–33: all pallets placed, fits the box, singles only in
 
 test('a single in the last row stands at the wall; one earlier stays in the middle (owner 17/11)', () => {
   assert.strictEqual(shape(LP.plan({ eur: 1 })), 'S');
-  assert.ok(LP.svg(LP.plan({ eur: 1 }), { scale: 1 }).includes('class="lp-e lp-s" x="0.0" y="14.0"'), 'last single at the wall');
+  assert.strictEqual(LP.plan({ eur: 1 }).rows[0].cells[0].y, 0, 'last single at the wall');
   const mixed = LP.plan({ eur: 1, ind: 4 });
   assert.strictEqual(shape(mixed), 'IIS');
   assert.ok(mixed.rows[2].wall);
   const p = LP.plan({ eur: 11 });
   assert.ok(p.rows.filter(r => r.k === 'S').every(r => !r.wall), 'singles of the D S … D block stay in the middle');
-  assert.ok(LP.svg(p, { scale: 1 }).includes('class="lp-e lp-s" x="8.0" y="20.0"'));
+  assert.ok(p.rows.filter(r => r.k === 'S').every(r => r.cells[0].y === 6), 'centred across the 2.4 m (6 + 12 + 6 dm)');
 });
 
 test('industrials only: pairs, singles at the front when few, a lone one against the wall', () => {
   assert.deepStrictEqual(LP.plan({ ind: 26 }).rows.map(r => r.n), Array(13).fill(2));
   assert.deepStrictEqual(LP.plan({ ind: 8 }).rows.map(r => r.n), [2, 1, 2, 1, 2]);
   assert.strictEqual(pallets(LP.plan({ ind: 25 })), 25);
-  // the drawing puts a lone industrial at the wall (its rect starts at the top edge), never centred across the box
-  const svg = LP.svg(LP.plan({ ind: 3 }), { scale: 1 });
-  const ys = [...svg.matchAll(/class="lp-i" x="[\d.]+" y="([\d.]+)"/g)].map(m => Number(m[1]));
-  assert.deepStrictEqual(ys, [14, 26, 14]);
+  // a lone industrial stands at the wall, never centred across the box
+  assert.deepStrictEqual(LP.plan({ ind: 3 }).rows.map(r => r.cells.map(c => c.y)), [[0, 12], [0]]);
 });
 
 test('mixed loads: industrials at the front by the cab, the free room at the back (owner 17/11)', () => {
@@ -85,10 +83,12 @@ test('after the «δόντι» the euro go as staggered doubles, no gap between 
   assert.strictEqual(shape(p), 'IXDDS');
   assert.ok(p.rows.filter(r => r.k === 'D').every(r => r.stag === 2));
   assert.ok(p.rows[4].wall, 'the odd euro left closes the load at the wall');
-  const svg = LP.svg(p, { scale: 1 });
   // X row 10–20 dm: flat euro flush at 10; the next double's euro side starts at 18 (= 10 + 8), the other side at 20
-  assert.ok(svg.includes('class="lp-e" x="10.0" y="26.0"'), 'flat euro flush to the row in front');
-  assert.ok(svg.includes('class="lp-e" x="20.0" y="14.0"') && svg.includes('class="lp-e" x="18.0" y="26.0"'), 'staggered double');
+  const ends = side => p.rows.flatMap(r => r.cells.filter(c => c.y === side).map(c => [r.at + c.x, r.at + c.x + c.w]));
+  for (const side of [0, 12]) {
+    const e = ends(side);
+    for (let j = 1; j < e.length; j++) assert.strictEqual(e[j][0], e[j - 1][1], `side ${side}: no gap between rows (${JSON.stringify(e)})`);
+  }
   assert.ok(!/K|DS|SD/.test(shape(LP.plan({ eur: 28, ind: 1 })).slice(1, -1)), 'no knife or single inside the staggered part');
 });
 
@@ -112,7 +112,8 @@ test('code review: an odd euro after the «δόντι» stays inside the box, on
     assert.ok(p.used <= LP.BOX, `${e} EUR + ${i} IND: used ${p.used}`);
     assert.strictEqual(pallets(p), Math.min(p.total, p.cap), `${e} EUR + ${i} IND: every fitting pallet drawn`);
   }
-  assert.ok(LP.svg(LP.plan({ eur: 26, ind: 5 }), { scale: 1 }).includes('class="lp-e lp-s" x="124.0" y="26.0"'));
+  const last = LP.plan({ eur: 26, ind: 5 }).rows.slice(-1)[0];
+  assert.deepStrictEqual([last.k, last.at + last.cells[0].x, last.cells[0].y], ['S', 124, 12]);
 });
 
 test('code review: industrials only never spread to the doors with singles', () => {
@@ -127,4 +128,26 @@ test('industrials only: singles up to 20, pairs only from 21 (owner 17/11)', () 
   assert.ok(LP.plan({ ind: 20 }).rows.some(r => r.n === 1));
   assert.deepStrictEqual(LP.plan({ ind: 21 }).rows.map(r => r.n), [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1]);
   assert.deepStrictEqual(LP.plan({ ind: 24 }).rows.map(r => r.n), Array(12).fill(2));
+});
+
+test('a load in delivery order: the last delivery by the cab, the first at the doors (owner 17/11, case Μπάμπαλος)', () => {
+  // KHI 4612, 17–18/11: cab → doors = MTG 2, Eastwest 8, Strobl 7, Widmann 8 (EUR), Budapest 4 (Industrial)
+  const p = LP.layout([{ n: 2 }, { n: 8 }, { n: 7 }, { n: 8 }, { n: 4, ind: true }]);
+  assert.strictEqual(p.placed, 29);
+  assert.strictEqual(p.dropped, 0);
+  assert.ok(p.used <= 128, 'room for the bars');
+  const order = p.rows.flatMap(r => r.cells.map(c => c.part));
+  assert.deepStrictEqual(order, order.slice().sort((a, b) => a - b), 'parts follow each other from the cab to the doors');
+  assert.deepStrictEqual(p.rows.slice(-2).map(r => r.k), ['I', 'I'], 'the industrials for Budapest at the doors');
+  assert.ok(p.rows[0].k === 'D' && p.rows[1].k === 'S', 'singles at the front of the euro');
+});
+
+test('only the first euro run takes singles; an odd industrial before euro makes the «δόντι»', () => {
+  const p = LP.layout([{ n: 8 }, { n: 4, ind: true }, { n: 11 }]);
+  const second = p.rows.slice(p.rows.findIndex(r => r.k === 'I') + 2);
+  assert.ok(!second.some(r => r.k === 'S' && !r.wall), 'no singles in the second euro run');
+  assert.ok(p.rows.slice(0, 3).some(r => r.k === 'S'), 'the first euro run has them');
+  const t = LP.layout([{ n: 10 }, { n: 3, ind: true }, { n: 6 }]);
+  assert.ok(t.rows.some(r => r.k === 'X'), 'odd industrial in the middle shares its row with the next euro');
+  assert.strictEqual(t.placed, 19);
 });

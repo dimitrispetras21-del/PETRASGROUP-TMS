@@ -181,6 +181,8 @@ function ensureStyles() {
   .igx-lp svg{display:block;margin-top:2px}
   .igx-lp .w,.igx-lp .igx-sh{display:block}
   .igx-lp .w{font-size:12px;color:var(--text-dim);margin-top:2px}
+  .igx-lp .igx-sh{display:flex;justify-content:space-between;align-items:center}
+  .igx-lp .igx-sh button{border:1px solid var(--accent,#0284C7);background:transparent;color:var(--accent,#0284C7);border-radius:6px;font:inherit;font-size:11px;font-weight:600;text-transform:none;letter-spacing:0;padding:2px 8px;cursor:pointer}
   .igx-note{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;border:1.5px solid #C2410C;color:#C2410C;font-size:10px;font-weight:800;margin-left:4px;cursor:help;vertical-align:middle}
   .igx .oi2-dirrow{display:none}
   .igx-pick{border:1px solid var(--border);border-radius:10px;padding:10px;margin-top:8px;background:var(--surface-card,#fff);max-height:340px;overflow:auto}
@@ -550,6 +552,72 @@ function paintPanel(pts) {
   }
   paintSum(pts);
 }
+// ── The loading plan, by delivery (owner 17/11) ───────────────────────────────
+// «Φορτώνουμε με τον τρόπο που πρέπει να αδειάσει, last in, first out»: the parts of the box are the delivery points,
+// read backwards — the last delivery by the cab, the first at the doors. The rows follow core/load-plan.js.
+// → [{ n, ind, no, p, m }] cab → doors; no = the delivery's number (1 = first), p = the delivery point (null: an
+// order with no delivery point, kept by the cab).
+function loadParts(pts) {
+  const s = IG.s, U = pts.filter(p => p.t === 'u'), byPk = Object.fromEntries(U.map(p => [p.pk, p]));
+  const typeOf = m => (LoadPlan.isInd(val(m, 'f_PalletType')) ? 'ind' : 'eur');
+  const parts = s.dl.map(pk => byPk[pk]).filter(Boolean).map((p, k) => ({ n: p.pal, ind: typeOf(p.m) === 'ind', no: k + 1, p, m: p.m }));
+  const loaded = m => pts.filter(p => p.m === m && p.t === 'l').reduce((a, p) => a + p.pal, 0);
+  for (const m of s.members) {
+    const mine = parts.filter(x => x.m === m);
+    // delivery points without pallets: the order's loading pallets go to its first delivery
+    if (mine.length && mine.every(x => !x.n)) mine[0].n = loaded(m);
+    if (!mine.length && loaded(m)) parts.push({ n: loaded(m), ind: typeOf(m) === 'ind', no: 0, p: null, m });
+  }
+  return parts.reverse();
+}
+const short = (t, n) => { t = String(t || ''); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
+const placeName = p => String(p.name || '—').split(/[,(]/)[0].trim();
+function partLabels(parts, len) {
+  return parts.map(x => ({
+    label: short((x.no ? x.no + '. ' : '') + (x.p ? placeName(x.p) : 'χωρίς παράδοση'), len),
+    sub: short(`${x.n} ${x.ind ? 'βιομ.' : 'EUR'}${val(x.m, 'ls_client') ? ' · ' + val(x.m, 'ls_client') : ''}`, len + 4),
+  }));
+}
+function rampHtml(pts, pal) {
+  const parts = loadParts(pts), lay = LoadPlan.layout(parts);
+  if (!lay.placed && !lay.dropped) return '';
+  const onU = parts.reduce((a, x) => a + x.n, 0);
+  const notes = [];
+  if (lay.dropped) notes.push(note(lay.dropped === 1 ? 'Μία παλέτα δεν χωράει με αυτή τη σειρά παράδοσης' : lay.dropped + ' παλέτες δεν χωρούν με αυτή τη σειρά παράδοσης'));
+  if (Math.ceil(onU) !== Math.ceil(pal)) notes.push(note(`Οι παλέτες των παραδόσεων (${onU}) δεν είναι όσες της φόρτωσης (${pal}) — το σχέδιο δείχνει των παραδόσεων`));
+  return `<div class="igx-lp"><div class="igx-sh"><span>Φόρτωση${notes.join('')}</span><button type="button" onclick="IntlGroup.printRamp()">Φύλλο ράμπας</button></div>` +
+    LoadPlan.svg(lay, { scale: 2.3, parts: partLabels(parts, 26), width: 180 }) + `<div class="w">${esc(LoadPlan.words(lay))}</div></div>`;
+}
+// The sheet the ramp loads from: the box upright with the deliveries beside it, and the list of deliveries with
+// where each one is loaded. Printed from the open form (nothing is saved); the same drawing as the panel.
+function printRamp() {
+  const s = IG.s; if (!s) return;
+  const pts = syncOrder(), parts = loadParts(pts), lay = LoadPlan.layout(parts);
+  const L = pts.filter(p => p.t === 'l'), pal = L.reduce((a, p) => a + p.pal, 0);
+  const cnt = { eur: 0, ind: 0 };
+  L.forEach(p => { cnt[LoadPlan.isInd(val(p.m, 'f_PalletType')) ? 'ind' : 'eur'] += p.pal; });
+  const cap = LoadPlan.capacity(cnt);
+  const days = L.map(p => p.date).filter(Boolean).sort();
+  const a = s.assign && !s.assign.mixed ? s.assign : null;
+  // getTruckPlate / getDriverName return escaped text already
+  const plate = a && a.truck && typeof getTruckPlate === 'function' ? getTruckPlate(a.truck) : '';
+  const drv = a && a.fields && (a.fields.Driver || [])[0] && typeof getDriverName === 'function' ? getDriverName(a.fields.Driver[0]) : '';
+  const head = [days[0] ? esc(dayOf(days[0])) : '', plate, drv].filter(Boolean).join(' · ');
+  const fromOf = m => [...new Set(pts.filter(p => p.m === m && p.t === 'l').map(placeName))].join(', ');
+  const rows = parts.slice().reverse().map(x => `<tr><td class="n">${x.no || '—'}</td><td><b>${esc(x.p ? placeName(x.p) : 'χωρίς παράδοση')}</b><br><span>${esc(val(x.m, 'ls_client'))}</span></td>` +
+    `<td class="n">${x.n} ${x.ind ? 'βιομ.' : 'EUR'}</td><td>${esc(fromOf(x.m))}</td></tr>`).join('');
+  const html = `<style>@page{size:A4 portrait;margin:10mm}html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .rs{display:flex;gap:22px;align-items:flex-start}.rs h1{font:700 18px Syne,sans-serif;margin:0 0 2px}.rs .hd{color:#475569;font-size:12px;margin-bottom:12px}
+    .rs table{border-collapse:collapse;font-size:11px;width:100%}.rs th{text-align:left;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:#64748B;border-bottom:1px solid #CBD5E1;padding:4px}
+    .rs td{border-bottom:1px solid #E2E8F0;padding:5px 4px;vertical-align:top}.rs td span{color:#64748B}.rs td.n{white-space:nowrap;font-weight:700}
+    .rs .lf{font-size:10.5px;color:#475569;margin-top:10px}</style>
+    <div class="rs"><div>${LoadPlan.svg(lay, { scale: 4.4, parts: partLabels(parts, 34), width: 230 })}</div>
+    <div style="flex:1;min-width:0"><h1>Φόρτωση θαλάμου</h1><div class="hd">${head ? head + ' · ' : ''}${pal} παλέτες από ${cap}</div>
+    <table><thead><tr><th>Παράδοση</th><th>Σημείο</th><th>Παλέτες</th><th>Φορτώνεται από</th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="lf">Από την καμπίνα προς τις πόρτες: πρώτα η τελευταία παράδοση, στις πόρτες η πρώτη. ${esc(LoadPlan.words(lay))}.</div></div></div>`;
+  _printWeekShell('Φόρτωση θαλάμου', html);
+}
+
 function paintSum(pts) {
   const s = IG.s, el = document.getElementById('igxSum'); if (!el) return;
   const L = pts.filter(p => p.t === 'l'), U = pts.filter(p => p.t === 'u');
@@ -585,8 +653,7 @@ function paintSum(pts) {
     rows.push(['Τιμή', note('Χωρίς τιμή')]);
   }
   el.innerHTML = rows.map(([a, b]) => `<div><span>${a}</span><span>${b}</span></div>`).join('') +
-    // the box seen from above: which rows are knife / double / single and where the industrials go
-    (lp.total ? `<div class="igx-lp"><div class="igx-sh">Φόρτωση</div>${LoadPlan.svg(lp)}<div class="w">${esc(LoadPlan.words(lp))}</div></div>` : '');
+    rampHtml(pts, pal);
   const btn = document.getElementById('btnSubmit');
   if (btn && !s.saving) btn.textContent = s.mode === 'group' ? `Αποθήκευση · ${s.members.length} παραγγελίες` : 'Αποθήκευση';
 }
@@ -993,7 +1060,7 @@ function orderByFirstPoint(members, list) {
   return [...members].sort((a, b) => at(a) - at(b));
 }
 
-window.IntlGroup = { on, openFrom, changed, reeferPicked, setMode, setDir, toggle, addNew, fromFile, pickExisting, pickPiece,
+window.IntlGroup = { on, openFrom, printRamp, changed, reeferPicked, setMode, setDir, toggle, addNew, fromFile, pickExisting, pickPiece,
   remove, save, _filter, _addExisting, _addPiece,
   // pure helpers (tests/intl-group.test.js)
   _assignmentOf: assignmentOf, _seqUsable: seqUsable, _stopPosFor: stopPosFor, _setState: (st) => { IG.s = st; }, _moveBefore: moveBefore, _orderByFirstPoint: orderByFirstPoint, _state: () => IG.s };
