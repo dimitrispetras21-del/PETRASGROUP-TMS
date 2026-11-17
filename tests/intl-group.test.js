@@ -112,3 +112,22 @@ test('config: the label the groupage writes, and the flag', () => {
   assert.match(cfg, /STOP_LOAD_SEQ:\s*'Load Seq'/);
   assert.match(cfg, /INTL_GROUP_FORM: true/);
 });
+
+test('new stops go to the base in batches of the same field names (PGRST102)', async () => {
+  const calls = [];
+  const sctx = { TABLES: { ORDER_STOPS: 'tS', ORDERS: 'tO' }, F: { STOP_NUMBER: 'Stop Number', STOP_TYPE: 'Stop Type', STOP_LABEL: 'Stop Label',
+    STOP_LOCATION: 'Location', STOP_DATETIME: 'DateTime', STOP_PALLETS: 'Pallets', STOP_CLIENT: 'Client at Stop', STOP_TEMP: 'Temperature',
+    STOP_REF: 'Reference', STOP_GOODS: 'Goods', STOP_NOTES: 'Notes', STOP_TIME_FROM: 'Time From', STOP_TIME_TO: 'Time To', STOP_VIA_HUB: 'Via Hub',
+    STOP_PALLETS_EXCHANGED: 'Pallets Exchanged', STOP_LOAD_SEQ: 'Load Seq', STOP_PARENT_ORDER: 'Parent Order' } };
+  vm.createContext(sctx);
+  vm.runInContext(fs.readFileSync(path.join(root, 'core', 'stops-helpers.js'), 'utf8')
+    + '\nthis.stopsLoad = async () => []; this.atCreateBatch = async (t, rows) => { this.__calls.push(rows.map(r => Object.keys(r.fields).sort().join("|"))); return rows.map((r, k) => ({ id: "s" + k })); };'
+    + '\nthis.__run = (a) => stopsSave("o1", a, "Parent Order");', Object.assign(sctx, { __calls: calls }));
+  await sctx.__run([
+    { stopNumber: 1, stopType: 'Loading', locationId: 'l1', pallets: 10, timeFrom: '07:00' },
+    { stopNumber: 2, stopType: 'Loading', locationId: 'l2', pallets: 5 },
+    { stopNumber: 1, stopType: 'Unloading', locationId: 'l3', pallets: 15 },
+  ]);
+  assert.strictEqual(calls.length, 2, 'two different field sets → two batches');
+  for (const batch of calls) assert.strictEqual(new Set(batch).size, 1, 'one field set per batch');
+});

@@ -96,9 +96,20 @@ async function stopsSave(orderId, stopsArr, parentField) {
 
   const results = [];
 
+  // One batch per set of field names: the base's bulk insert refuses rows whose keys differ («All object keys must
+  // match», PGRST102 — 12 times 4–16/11, e.g. a new point with hours beside one without). Each stop keeps exactly the
+  // fields it sends; nothing is filled in for it.
   if (toCreate.length) {
-    const created = await atCreateBatch(TABLES.ORDER_STOPS, toCreate);
-    results.push(...created.map(r => r.id));
+    const bySig = new Map();
+    for (const r of toCreate) {
+      const sig = Object.keys(r.fields).sort().join('|');
+      if (!bySig.has(sig)) bySig.set(sig, []);
+      bySig.get(sig).push(r);
+    }
+    for (const part of bySig.values()) {
+      const created = await atCreateBatch(TABLES.ORDER_STOPS, part);
+      results.push(...created.map(r => r.id));
+    }
   }
   if (toUpdate.length) {
     await atPatchBatch(TABLES.ORDER_STOPS, toUpdate);

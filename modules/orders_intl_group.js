@@ -211,12 +211,18 @@ function watchClose() {
   if (_obs) return;
   const overlay = document.getElementById('modalOverlay'), modal = document.getElementById('modal');
   if (!overlay || !modal) return;
+  // The form's state lives as long as the form's own element (#igx) is in the window — not as long as the overlay
+  // has its «open» class. Tying it to the class lost the state while a groupage was still loading its orders (log
+  // 16–17/11: «Cannot read properties of null (reading 'key' / 'seqBySid')», the old groupage did not open for
+  // editing): the class can flick while the form stays. A form replaced by another window (openModal rewrites the
+  // body) leaves nothing behind for the next one.
   _obs = new MutationObserver(() => {
-    if (overlay.classList.contains('open')) return;
-    modal.classList.remove('modal--igx');
-    IG.s = null;   // a closed form leaves nothing behind for the next one
+    if (!overlay.classList.contains('open')) modal.classList.remove('modal--igx');
+    if (IG.s && !document.getElementById('igx')) IG.s = null;
   });
   _obs.observe(overlay, { attributes: true, attributeFilter: ['class'] });
+  const body = document.getElementById('modalBody');
+  if (body) _obs.observe(body, { childList: true });
 }
 
 // Every way into the international form arrives here (orders_intl.js _openModal without a mount).
