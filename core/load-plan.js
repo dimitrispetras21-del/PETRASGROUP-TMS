@@ -190,50 +190,77 @@ function plan(counts) {
   return Object.assign(layout([{ n: ind, ind: true }, { n: eur }]), { eur, ind, total: eur + ind, cap, over: Math.max(0, eur + ind - cap) });
 }
 
-// The box seen from above as an SVG string (no DOM, so the panel and the ramp sheet draw the same picture).
-// Upright: the cab at the top, the doors at the bottom, as the ramp walks into the box (owner 17/11, «κάθετα»).
-// opts.scale = px per dm; opts.parts = [{ label, sub }] by part index: each part gets a colour and, on the right, a
-// bracket over the rows it fills; opts.width = px for the labels. Without parts: euro blue, industrial amber.
+// The box seen from above as an SVG string (no DOM, so the panel and the printed sheets draw the same picture).
+// Upright: the cab at the top, the doors at the bottom, as the ramp and the forklift see the box (owner 17/11,
+// «κάθετα»). opts:
+//   scale = px per dm · font = text size factor (paper) · width = px for the labels on the right
+//   parts = [{ label, sub, tag, key }] by part index: each part gets the colour of its key (the delivery number, so
+//     a card on the sheet and its pallets match), a bracket with its label, and its tag written in every pallet
+//   numbers = write the tags in the pallets (on by default from scale 3)
+// Without parts: euro blue, industrial amber.
 const TAG = { K: 'Μ', D: 'Δ', S: 'Ο', I: 'Β', X: 'Β+Π' };
 const PAL = ['#BAE6FD', '#FDE68A', '#BBF7D0', '#FBCFE8', '#DDD6FE', '#FED7AA', '#A5F3FC', '#E5E7EB'];
 const INK = ['#0369A1', '#B45309', '#15803D', '#BE185D', '#6D28D9', '#C2410C', '#0E7490', '#4B5563'];
+let _svgN = 0;   // one hatch pattern id per drawing: two drawings on one page must not share it
 function svg(p, opts) {
-  const o = opts || {}, sc = o.scale || 2.4, parts = o.parts || null, f = o.font || 1;   // font: text size factor (the paper)
-  const tagW = 14 * f, boxW = 24 * sc, top = 14 * f, boxH = BOX * sc, lw = parts ? (o.width || 150) : 0;
-  const W = tagW + boxW + (parts ? 10 + lw : 0), H = top + boxH + 14 * f;
+  const o = opts || {}, sc = o.scale || 2.4, parts = o.parts || null, f = o.font || 1;
+  const numbers = o.numbers != null ? o.numbers : sc >= 3;
+  const key = i => { const pt = parts && parts[i]; return pt && pt.key != null ? pt.key : i; };
+  const tagW = 16 * f, boxW = 24 * sc, cab = 13 * f, top = cab + 3, boxH = BOX * sc, lw = parts ? (o.width != null ? o.width : 150) : 0;
+  const W = tagW + boxW + (parts ? 12 + lw : 4), H = top + boxH + 16 * f;
+  const hid = 'lph' + (++_svgN);
   const out = [];
-  const fillOf = c => parts ? `fill:${PAL[c.part % PAL.length]};stroke:${INK[c.part % INK.length]}` : c.ind ? 'fill:#FDE68A;stroke:#B45309' : 'fill:#BAE6FD;stroke:#0369A1';
+  const colour = c => parts ? [PAL[key(c.part) % PAL.length], INK[key(c.part) % INK.length]] : c.ind ? ['#FDE68A', '#B45309'] : ['#BAE6FD', '#0369A1'];
   const span = {};
   for (const r of p.rows) {
     for (const c of r.cells) {
-      const y0 = r.at + c.x;
-      out.push(`<rect x="${(tagW + c.y * sc).toFixed(1)}" y="${(top + y0 * sc).toFixed(1)}" width="${(c.h * sc - 1).toFixed(1)}" height="${(c.w * sc - 1).toFixed(1)}" rx="1.5" style="${fillOf(c)};stroke-width:.8${r.k === 'S' ? ';stroke-dasharray:2 1.5' : ''}"/>`);
+      const y0 = r.at + c.x, [fill, ink] = colour(c);
+      const x = tagW + c.y * sc + 0.75, y = top + y0 * sc + 0.75, w = c.h * sc - 1.5, h = c.w * sc - 1.5;
+      out.push(`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="${(1.4 * Math.min(sc, 4)).toFixed(1)}" fill="${fill}" stroke="${ink}" stroke-width="${r.k === 'S' ? 1.1 : 0.9}"${r.k === 'S' ? ' stroke-dasharray="3 2"' : ''}/>`);
+      // an industrial is the bigger pallet: hatched, so it reads apart from a euro of the same delivery
+      if (c.ind) out.push(`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="${(1.4 * Math.min(sc, 4)).toFixed(1)}" fill="url(#${hid})" style="color:${ink}"/>`);
+      const tag = parts && parts[c.part] && parts[c.part].tag;
+      if (numbers && tag != null && tag !== '') {
+        const fs = Math.max(7, Math.min(w, h) * 0.5);
+        out.push(`<text x="${(x + w / 2).toFixed(1)}" y="${(y + h / 2 + fs * 0.36).toFixed(1)}" text-anchor="middle" style="font-size:${fs.toFixed(1)}px;font-weight:700;fill:${ink}">${esc(tag)}</text>`);
+      }
       const sp = span[c.part] || (span[c.part] = [y0, y0 + c.w]);
       sp[0] = Math.min(sp[0], y0); sp[1] = Math.max(sp[1], y0 + c.w);
     }
-    out.push(`<text class="lp-t" x="${tagW - 3}" y="${(top + (r.at + r.len / 2) * sc + 3 * f).toFixed(1)}" text-anchor="end">${TAG[r.k]}</text>`);
+    out.push(`<text class="lp-t" x="${tagW - 4}" y="${(top + (r.at + r.len / 2) * sc + 3 * f).toFixed(1)}" text-anchor="end">${TAG[r.k]}</text>`);
   }
   if (parts) {
     // one bracket per part, in box order; labels that would overlap are pushed down
     let next = 0;
+    const bx = tagW + boxW + 5;
     Object.keys(span).map(Number).sort((a, b) => span[a][0] - span[b][0]).forEach(i => {
-      const [a, b] = span[i], x = tagW + boxW + 4, y1 = top + a * sc + 1, y2 = top + b * sc - 1;
-      out.push(`<path d="M${x} ${y1}h4V${y2}h-4" fill="none" stroke="${INK[i % INK.length]}" stroke-width="1.2"/>`);
-      const ty = Math.max(next, (y1 + y2) / 2 - 4 * f);
+      const [a, b] = span[i], y1 = top + a * sc + 1, y2 = top + b * sc - 1, ink = INK[key(i) % INK.length];
+      out.push(`<path d="M${bx} ${y1.toFixed(1)}h4V${y2.toFixed(1)}h-4" fill="none" stroke="${ink}" stroke-width="${1.4 * f}"/>`);
       const pt = parts[i] || {};
-      out.push(`<text class="lp-l" x="${x + 9}" y="${(ty + 4 * f).toFixed(1)}">${esc(pt.label || '')}</text>`);
-      if (pt.sub) out.push(`<text class="lp-s" x="${x + 9}" y="${(ty + 14 * f).toFixed(1)}">${esc(pt.sub)}</text>`);
-      next = ty + (pt.sub ? 24 : 13) * f;
+      const ty = Math.max(next, (y1 + y2) / 2 - (pt.sub ? 9 : 4) * f);
+      out.push(`<text class="lp-l" x="${bx + 9}" y="${(ty + 8 * f).toFixed(1)}" style="fill:${ink}">${esc(pt.label || '')}</text>`);
+      if (pt.sub) out.push(`<text class="lp-s" x="${bx + 9}" y="${(ty + 19 * f).toFixed(1)}">${esc(pt.sub)}</text>`);
+      next = ty + (pt.sub ? 25 : 14) * f;
     });
   }
-  const free = BOX - p.used;
-  return `<svg class="lp" viewBox="0 0 ${W.toFixed(0)} ${(Math.max(H, 0)).toFixed(0)}" width="${W.toFixed(0)}" role="img" aria-label="${esc(aria(p))}">` +
-    `<style>.lp text{font-family:'DM Sans',sans-serif}.lp-t{font-size:${8 * f}px;font-weight:600;fill:#64748B}.lp-h{font-size:${8 * f}px;font-weight:700;fill:#475569}` +
-    `.lp-l{font-size:${9 * f}px;font-weight:700;fill:#0B1929}.lp-s{font-size:${8 * f}px;fill:#475569}</style>` +
-    `<text class="lp-h" x="${tagW + boxW / 2}" y="${9 * f}" text-anchor="middle">▲ ΚΑΜΠΙΝΑ</text>` +
-    `<rect x="${tagW}" y="${top - 0.5}" width="${boxW}" height="${boxH}" rx="2" fill="none" stroke="#0B1929" stroke-width="1.5"/>` + out.join('') +
-    (free >= 20 ? `<text class="lp-t" x="${tagW + boxW / 2}" y="${(top + (p.used + free / 2) * sc + 3).toFixed(1)}" text-anchor="middle">${(free / 10).toFixed(1).replace('.', ',')} μ</text>` : '') +
-    `<text class="lp-h" x="${tagW + boxW / 2}" y="${H - 3}" text-anchor="middle">ΠΟΡΤΕΣ ▼</text></svg>`;
+  const free = BOX - p.used, cx = tagW + boxW / 2;
+  // the bars at the back: the room left behind the load is where they go (owner 17/11)
+  const bars = free >= 2
+    ? `<line x1="${tagW + 3}" x2="${tagW + boxW - 3}" y1="${(top + (p.used + 1) * sc).toFixed(1)}" y2="${(top + (p.used + 1) * sc).toFixed(1)}" stroke="#0B1929" stroke-width="${2.2 * f}" stroke-linecap="round"/>` +
+      (free >= 10 ? `<text class="lp-t" x="${cx}" y="${(top + (p.used + 1) * sc + 10 * f).toFixed(1)}" text-anchor="middle">μπάρες · ${(free / 10).toFixed(1).replace('.', ',')} μ</text>` : '')
+    : '';
+  return `<svg class="lp" viewBox="0 0 ${W.toFixed(0)} ${H.toFixed(0)}" width="${W.toFixed(0)}" role="img" aria-label="${esc(aria(p))}">` +
+    `<defs><pattern id="${hid}" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="currentColor" stroke-width="1.2" opacity=".35"/></pattern></defs>` +
+    `<style>.lp text{font-family:'DM Sans',sans-serif}.lp-t{font-size:${7.5 * f}px;font-weight:600;fill:#64748B}` +
+    `.lp-l{font-size:${9.5 * f}px;font-weight:700}.lp-s{font-size:${8 * f}px;fill:#475569}.lp-c{font-size:${7.5 * f}px;font-weight:700;fill:#fff;letter-spacing:.08em}</style>` +
+    // the cab: a navy cap on the front wall
+    `<rect x="${tagW + boxW * 0.12}" y="0" width="${boxW * 0.76}" height="${cab}" rx="${cab / 2}" fill="#0B1929"/>` +
+    `<text class="lp-c" x="${cx}" y="${(cab / 2 + 2.6 * f).toFixed(1)}" text-anchor="middle">ΚΑΜΠΙΝΑ</text>` +
+    `<rect x="${tagW}" y="${top}" width="${boxW}" height="${boxH}" rx="3" fill="#F8FAFC" stroke="#0B1929" stroke-width="${1.6 * f}"/>` +
+    out.join('') + bars +
+    // the doors: the back wall drawn as two open leaves
+    `<path d="M${tagW} ${top + boxH}l${-6 * f} ${8 * f}M${tagW + boxW} ${top + boxH}l${6 * f} ${8 * f}" stroke="#0B1929" stroke-width="${1.4 * f}" fill="none"/>` +
+    `<text class="lp-t" x="${cx}" y="${(H - 3).toFixed(1)}" text-anchor="middle" style="font-weight:700;fill:#0B1929">ΠΟΡΤΕΣ</text></svg>`;
 }
 function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 // «5 μαχαίρι · 5 διπλές · 4 μονές» — the words for the row counts (and the drawing's label for a screen reader).
@@ -244,7 +271,7 @@ function aria(p) {
     c.I ? c.I + (c.I === 1 ? ' σειρά βιομηχανικές' : ' σειρές βιομηχανικές') : '', c.X ? '1 βιομηχανική + πλάκα' : ''].filter(Boolean).join(' · ');
 }
 
-const LoadPlan = Object.freeze({ BOX, ROW, isInd, euroFill, capacity, euroRows, layout, plan, svg, words: aria, colour: i => PAL[i % PAL.length] });
+const LoadPlan = Object.freeze({ BOX, ROW, isInd, euroFill, capacity, euroRows, layout, plan, svg, words: aria, colour: i => PAL[i % PAL.length], ink: i => INK[i % INK.length] });
 if (typeof module !== 'undefined' && module.exports) module.exports = LoadPlan;
 else globalThis.LoadPlan = LoadPlan;
 })();

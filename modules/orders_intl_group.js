@@ -574,6 +574,8 @@ const short = (t, n) => { t = String(t || ''); return t.length > n ? t.slice(0, 
 const placeName = p => String(p.name || '—').split(/[,(]/)[0].trim();
 function partLabels(parts, len) {
   return parts.map(x => ({
+    key: x.no || 0,   // the colour of a delivery = its number, the same on the drawing and on the sheet's cards
+    tag: x.no ? String(x.no) : '·',
     label: short((x.no ? x.no + '. ' : '') + (x.p ? placeName(x.p) : 'χωρίς παράδοση'), len),
     sub: short(`${x.n} ${x.ind ? 'βιομ.' : 'EUR'}${val(x.m, 'ls_client') ? ' · ' + val(x.m, 'ls_client') : ''}`, len + 4),
   }));
@@ -585,11 +587,12 @@ function rampHtml(pts, pal) {
   const notes = [];
   if (lay.dropped) notes.push(note(lay.dropped === 1 ? 'Μία παλέτα δεν χωράει με αυτή τη σειρά παράδοσης' : lay.dropped + ' παλέτες δεν χωρούν με αυτή τη σειρά παράδοσης'));
   if (Math.ceil(onU) !== Math.ceil(pal)) notes.push(note(`Οι παλέτες των παραδόσεων (${onU}) δεν είναι όσες της φόρτωσης (${pal}) — το σχέδιο δείχνει των παραδόσεων`));
-  return `<div class="igx-lp"><div class="igx-sh"><span>Φόρτωση${notes.join('')}</span><button type="button" onclick="IntlGroup.printRamp()">Φύλλο ράμπας</button></div>` +
-    LoadPlan.svg(lay, { scale: 2.3, parts: partLabels(parts, 26), width: 180 }) + `<div class="w">${esc(LoadPlan.words(lay))}</div></div>`;
+  return `<div class="igx-lp"><div class="igx-sh"><span>Φόρτωση${notes.join('')}</span><button type="button" onclick="IntlGroup.printRamp()">Φύλλο για κλαρκ</button></div>` +
+    LoadPlan.svg(lay, { scale: 2.3, parts: partLabels(parts, 26), width: 176, numbers: true }) + `<div class="w">${esc(LoadPlan.words(lay))}</div></div>`;
 }
-// The sheet the ramp loads from: the box upright with the deliveries beside it, and the list of deliveries with
-// where each one is loaded. Printed from the open form (nothing is saved); the same drawing as the panel.
+// The sheet the forklifts load from (owner 17/11, «εκτύπωση για τα κλαρκ»): read from the seat of a forklift, so the
+// box is drawn as big as the page allows, every pallet carries its delivery number, and each delivery is one card
+// in its colour with where its pallets come from. Printed from the open form (nothing is saved).
 function printRamp() {
   const s = IG.s; if (!s) return;
   const pts = syncOrder(), parts = loadParts(pts), lay = LoadPlan.layout(parts);
@@ -602,20 +605,43 @@ function printRamp() {
   // getTruckPlate / getDriverName return escaped text already
   const plate = a && a.truck && typeof getTruckPlate === 'function' ? getTruckPlate(a.truck) : '';
   const drv = a && a.fields && (a.fields.Driver || [])[0] && typeof getDriverName === 'function' ? getDriverName(a.fields.Driver[0]) : '';
-  const head = [days[0] ? esc(dayOf(days[0])) : '', plate, drv].filter(Boolean).join(' · ');
-  const fromOf = m => [...new Set(pts.filter(p => p.m === m && p.t === 'l').map(placeName))].join(', ');
-  const rows = parts.slice().reverse().map(x => `<tr><td class="n">${x.no || '—'}</td><td><b>${esc(x.p ? placeName(x.p) : 'χωρίς παράδοση')}</b><br><span>${esc(val(x.m, 'ls_client'))}</span></td>` +
-    `<td class="n">${x.n} ${x.ind ? 'βιομ.' : 'EUR'}</td><td>${esc(fromOf(x.m))}</td></tr>`).join('');
-  const html = `<style>@page{size:A4 portrait;margin:10mm}html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
-    .rs{display:flex;gap:22px;align-items:flex-start}.rs h1{font:700 18px Syne,sans-serif;margin:0 0 2px}.rs .hd{color:#475569;font-size:12px;margin-bottom:12px}
-    .rs table{border-collapse:collapse;font-size:11px;width:100%}.rs th{text-align:left;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:#64748B;border-bottom:1px solid #CBD5E1;padding:4px}
-    .rs td{border-bottom:1px solid #E2E8F0;padding:5px 4px;vertical-align:top}.rs td span{color:#64748B}.rs td.n{white-space:nowrap;font-weight:700}
-    .rs .lf{font-size:10.5px;color:#475569;margin-top:10px}</style>
-    <div class="rs"><div>${LoadPlan.svg(lay, { scale: 4.4, parts: partLabels(parts, 30), width: 250, font: 1.45 })}</div>
-    <div style="flex:1;min-width:0"><h1>Φόρτωση θαλάμου</h1><div class="hd">${head ? head + ' · ' : ''}${pal} παλέτες από ${cap}</div>
-    <table><thead><tr><th>Παράδοση</th><th>Σημείο</th><th>Παλέτες</th><th>Φορτώνεται από</th></tr></thead><tbody>${rows}</tbody></table>
-    <div class="lf">Από την καμπίνα προς τις πόρτες: πρώτα η τελευταία παράδοση, στις πόρτες η πρώτη. ${esc(LoadPlan.words(lay))}.</div></div></div>`;
-  _printWeekShell('Φόρτωση θαλάμου', html);
+  const fromOf = m => [...new Set(pts.filter(p => p.m === m && p.t === 'l').map(placeName))].join(' · ');
+  _printWeekShell('Φόρτωση θαλάμου', rampSheet({
+    head: [days[0] ? esc(dayOf(days[0])) : '', plate, drv].filter(Boolean).join(' · '), pal, cap, lay,
+    parts: parts.map(x => ({ no: x.no, n: x.n, ind: x.ind, place: x.p ? placeName(x.p) : '', client: val(x.m, 'ls_client'), from: fromOf(x.m) })),
+  }));
+}
+// The sheet itself: plain data in, HTML out (head is already escaped). Kept apart so it can be previewed and tested
+// without an open form. parts: cab → doors.
+function rampSheet(d) {
+  const { lay, pal, cap } = d, parts = d.parts;
+  // cards: the order the forklift loads them — the cab first (last delivery), the doors last (first delivery)
+  const cards = parts.map(x => {
+    const k = x.no || 0, bg = LoadPlan.colour(k), ink = LoadPlan.ink(k);
+    return `<div class="cd" style="border-color:${ink}"><div class="no" style="background:${bg};color:${ink};border-color:${ink}">${x.no || '·'}</div>` +
+      `<div class="tx"><div class="pl">${esc(x.place || 'χωρίς παράδοση')}</div><div class="cl">${esc(x.client)}</div>` +
+      `<div class="fr">από <b>${esc(x.from) || '—'}</b></div></div><div class="np">${x.n}<span>${x.ind ? 'βιομ.' : 'EUR'}</span></div></div>`;
+  }).join('<div class="ar">▼</div>');
+  const warn = [lay.dropped ? `${lay.dropped} παλέτες δεν χωρούν` : '', pal > cap ? `πάνω από ${cap}` : ''].filter(Boolean).join(' · ');
+  return `<style>@page{size:A4 portrait;margin:9mm}html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    body{padding:0!important}.fk{font-family:'DM Sans',sans-serif;color:#0B1929}
+    .fk .top{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #0B1929;padding-bottom:8px;margin-bottom:12px}
+    .fk h1{font:700 30px Syne,sans-serif;margin:0;letter-spacing:.02em}.fk .hd{font-size:17px;font-weight:500;color:#334155;margin-top:2px}
+    .fk .big{text-align:right;font:700 34px Syne,sans-serif;line-height:1}.fk .big small{display:block;font:500 13px 'DM Sans',sans-serif;color:#64748B}
+    .fk .big.bad{color:#B91C1C}.fk .body{display:flex;gap:18px;align-items:flex-start}
+    .fk .cards{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+    .fk .lbl{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#64748B;font-weight:700;margin-bottom:4px}
+    .fk .cd{display:flex;align-items:center;gap:12px;border:2px solid;border-radius:10px;padding:9px 12px;break-inside:avoid}
+    .fk .no{width:46px;height:46px;flex:none;border:2px solid;border-radius:50%;display:flex;align-items:center;justify-content:center;font:700 26px Syne,sans-serif}
+    .fk .tx{flex:1;min-width:0}.fk .pl{font-size:17px;font-weight:700;line-height:1.2}.fk .cl{font-size:13px;color:#334155}.fk .fr{font-size:13px;color:#475569;margin-top:2px}
+    .fk .np{font:700 30px Syne,sans-serif;text-align:right;line-height:1}.fk .np span{display:block;font:600 12px 'DM Sans',sans-serif;color:#475569}
+    .fk .ar{text-align:center;color:#94A3B8;font-size:12px;line-height:1}
+    .fk .ft{margin-top:12px;font-size:13px;color:#334155;border-top:1px solid #CBD5E1;padding-top:8px}</style>
+    <div class="fk"><div class="top"><div><h1>ΦΟΡΤΩΣΗ ΘΑΛΑΜΟΥ</h1><div class="hd">${d.head || ''}</div></div>
+    <div class="big${warn ? ' bad' : ''}">${pal} / ${cap}<small>${warn ? esc(warn) : 'παλέτες'}</small></div></div>
+    <div class="body"><div>${LoadPlan.svg(lay, { scale: 6, parts: parts.map(x => ({ key: x.no || 0, tag: x.no ? String(x.no) : '·' })), width: 0, font: 1.6, numbers: true })}</div>
+    <div class="cards"><div class="lbl">Σειρά φόρτωσης · από την καμπίνα</div>${cards}</div></div>
+    <div class="ft">Ο αριθμός σε κάθε παλέτα = η παράδοση. Φορτώνουμε από την καμπίνα με τη σειρά των καρτών: στις πόρτες μπαίνει η παράδοση 1, που ξεφορτώνει πρώτη. ${esc(LoadPlan.words(lay))}.</div></div>`;
 }
 
 function paintSum(pts) {
@@ -1060,7 +1086,7 @@ function orderByFirstPoint(members, list) {
   return [...members].sort((a, b) => at(a) - at(b));
 }
 
-window.IntlGroup = { on, openFrom, printRamp, changed, reeferPicked, setMode, setDir, toggle, addNew, fromFile, pickExisting, pickPiece,
+window.IntlGroup = { on, openFrom, printRamp, _rampSheet: rampSheet, changed, reeferPicked, setMode, setDir, toggle, addNew, fromFile, pickExisting, pickPiece,
   remove, save, _filter, _addExisting, _addPiece,
   // pure helpers (tests/intl-group.test.js)
   _assignmentOf: assignmentOf, _seqUsable: seqUsable, _stopPosFor: stopPosFor, _setState: (st) => { IG.s = st; }, _moveBefore: moveBefore, _orderByFirstPoint: orderByFirstPoint, _state: () => IG.s };
