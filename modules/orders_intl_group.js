@@ -690,7 +690,9 @@ function paintSum(pts) {
   // take more room than euro / CHEP, so a mixed load fits fewer than 33. Over it is a warning, never a refusal.
   const cnt = { eur: 0, ind: 0 };
   L.forEach(p => { cnt[LoadPlan.isInd(val(p.m, 'f_PalletType')) ? 'ind' : 'eur'] += p.pal; });
-  const lp = LoadPlan.plan(cnt);
+  // the number only: the drawing below is laid out by delivery (rampHtml), so no layout is needed here
+  const capN = LoadPlan.capacity(cnt), eurN = Math.ceil(cnt.eur), indN = Math.ceil(cnt.ind);
+  const lp = { cap: capN, over: Math.max(0, eurN + indN - capN), eur: eurN, ind: indN };
   const rows = [];
   rows.push(['Παλέτες', `<span class="${lp.over ? 'warn' : ''}">${pal} από ${lp.cap}</span>${lp.over ? note(lp.over === 1 ? 'Μία παλέτα δεν χωράει στο φορτηγό' : lp.over + ' παλέτες δεν χωρούν στο φορτηγό') : ''}`]);
   if (lp.eur && lp.ind) rows.push(['Τύπος', `${lp.eur} EUR · ${lp.ind} βιομηχανικές`]);   // the counts the drawing uses
