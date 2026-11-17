@@ -611,7 +611,7 @@ function printRamp() {
     .rs table{border-collapse:collapse;font-size:11px;width:100%}.rs th{text-align:left;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:#64748B;border-bottom:1px solid #CBD5E1;padding:4px}
     .rs td{border-bottom:1px solid #E2E8F0;padding:5px 4px;vertical-align:top}.rs td span{color:#64748B}.rs td.n{white-space:nowrap;font-weight:700}
     .rs .lf{font-size:10.5px;color:#475569;margin-top:10px}</style>
-    <div class="rs"><div>${LoadPlan.svg(lay, { scale: 4.4, parts: partLabels(parts, 34), width: 230 })}</div>
+    <div class="rs"><div>${LoadPlan.svg(lay, { scale: 4.4, parts: partLabels(parts, 30), width: 250, font: 1.45 })}</div>
     <div style="flex:1;min-width:0"><h1>Φόρτωση θαλάμου</h1><div class="hd">${head ? head + ' · ' : ''}${pal} παλέτες από ${cap}</div>
     <table><thead><tr><th>Παράδοση</th><th>Σημείο</th><th>Παλέτες</th><th>Φορτώνεται από</th></tr></thead><tbody>${rows}</tbody></table>
     <div class="lf">Από την καμπίνα προς τις πόρτες: πρώτα η τελευταία παράδοση, στις πόρτες η πρώτη. ${esc(LoadPlan.words(lay))}.</div></div></div>`;

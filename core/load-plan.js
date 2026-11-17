@@ -198,9 +198,9 @@ const TAG = { K: 'Μ', D: 'Δ', S: 'Ο', I: 'Β', X: 'Β+Π' };
 const PAL = ['#BAE6FD', '#FDE68A', '#BBF7D0', '#FBCFE8', '#DDD6FE', '#FED7AA', '#A5F3FC', '#E5E7EB'];
 const INK = ['#0369A1', '#B45309', '#15803D', '#BE185D', '#6D28D9', '#C2410C', '#0E7490', '#4B5563'];
 function svg(p, opts) {
-  const o = opts || {}, sc = o.scale || 2.4, parts = o.parts || null;
-  const tagW = 14, boxW = 24 * sc, top = 14, boxH = BOX * sc, lw = parts ? (o.width || 150) : 0;
-  const W = tagW + boxW + (parts ? 10 + lw : 0), H = top + boxH + 14;
+  const o = opts || {}, sc = o.scale || 2.4, parts = o.parts || null, f = o.font || 1;   // font: text size factor (the paper)
+  const tagW = 14 * f, boxW = 24 * sc, top = 14 * f, boxH = BOX * sc, lw = parts ? (o.width || 150) : 0;
+  const W = tagW + boxW + (parts ? 10 + lw : 0), H = top + boxH + 14 * f;
   const out = [];
   const fillOf = c => parts ? `fill:${PAL[c.part % PAL.length]};stroke:${INK[c.part % INK.length]}` : c.ind ? 'fill:#FDE68A;stroke:#B45309' : 'fill:#BAE6FD;stroke:#0369A1';
   const span = {};
@@ -211,7 +211,7 @@ function svg(p, opts) {
       const sp = span[c.part] || (span[c.part] = [y0, y0 + c.w]);
       sp[0] = Math.min(sp[0], y0); sp[1] = Math.max(sp[1], y0 + c.w);
     }
-    out.push(`<text class="lp-t" x="${tagW - 3}" y="${(top + (r.at + r.len / 2) * sc + 3).toFixed(1)}" text-anchor="end">${TAG[r.k]}</text>`);
+    out.push(`<text class="lp-t" x="${tagW - 3}" y="${(top + (r.at + r.len / 2) * sc + 3 * f).toFixed(1)}" text-anchor="end">${TAG[r.k]}</text>`);
   }
   if (parts) {
     // one bracket per part, in box order; labels that would overlap are pushed down
@@ -219,18 +219,18 @@ function svg(p, opts) {
     Object.keys(span).map(Number).sort((a, b) => span[a][0] - span[b][0]).forEach(i => {
       const [a, b] = span[i], x = tagW + boxW + 4, y1 = top + a * sc + 1, y2 = top + b * sc - 1;
       out.push(`<path d="M${x} ${y1}h4V${y2}h-4" fill="none" stroke="${INK[i % INK.length]}" stroke-width="1.2"/>`);
-      const ty = Math.max(next, (y1 + y2) / 2 - 4);
+      const ty = Math.max(next, (y1 + y2) / 2 - 4 * f);
       const pt = parts[i] || {};
-      out.push(`<text class="lp-l" x="${x + 9}" y="${(ty + 4).toFixed(1)}">${esc(pt.label || '')}</text>`);
-      if (pt.sub) out.push(`<text class="lp-s" x="${x + 9}" y="${(ty + 14).toFixed(1)}">${esc(pt.sub)}</text>`);
-      next = ty + (pt.sub ? 24 : 13);
+      out.push(`<text class="lp-l" x="${x + 9}" y="${(ty + 4 * f).toFixed(1)}">${esc(pt.label || '')}</text>`);
+      if (pt.sub) out.push(`<text class="lp-s" x="${x + 9}" y="${(ty + 14 * f).toFixed(1)}">${esc(pt.sub)}</text>`);
+      next = ty + (pt.sub ? 24 : 13) * f;
     });
   }
   const free = BOX - p.used;
   return `<svg class="lp" viewBox="0 0 ${W.toFixed(0)} ${(Math.max(H, 0)).toFixed(0)}" width="${W.toFixed(0)}" role="img" aria-label="${esc(aria(p))}">` +
-    `<style>.lp text{font-family:'DM Sans',sans-serif}.lp-t{font-size:8px;font-weight:600;fill:#64748B}.lp-h{font-size:8px;font-weight:700;fill:#475569}` +
-    `.lp-l{font-size:9px;font-weight:700;fill:#0B1929}.lp-s{font-size:8px;fill:#475569}</style>` +
-    `<text class="lp-h" x="${tagW + boxW / 2}" y="9" text-anchor="middle">▲ ΚΑΜΠΙΝΑ</text>` +
+    `<style>.lp text{font-family:'DM Sans',sans-serif}.lp-t{font-size:${8 * f}px;font-weight:600;fill:#64748B}.lp-h{font-size:${8 * f}px;font-weight:700;fill:#475569}` +
+    `.lp-l{font-size:${9 * f}px;font-weight:700;fill:#0B1929}.lp-s{font-size:${8 * f}px;fill:#475569}</style>` +
+    `<text class="lp-h" x="${tagW + boxW / 2}" y="${9 * f}" text-anchor="middle">▲ ΚΑΜΠΙΝΑ</text>` +
     `<rect x="${tagW}" y="${top - 0.5}" width="${boxW}" height="${boxH}" rx="2" fill="none" stroke="#0B1929" stroke-width="1.5"/>` + out.join('') +
     (free >= 20 ? `<text class="lp-t" x="${tagW + boxW / 2}" y="${(top + (p.used + free / 2) * sc + 3).toFixed(1)}" text-anchor="middle">${(free / 10).toFixed(1).replace('.', ',')} μ</text>` : '') +
     `<text class="lp-h" x="${tagW + boxW / 2}" y="${H - 3}" text-anchor="middle">ΠΟΡΤΕΣ ▼</text></svg>`;
