@@ -197,11 +197,23 @@ function plan(counts) {
 //   parts = [{ label, sub, tag, key }] by part index: each part gets the colour of its key (the delivery number, so
 //     a card on the sheet and its pallets match), a bracket with its label, and its tag written in every pallet
 //   numbers = write the tags in the pallets (on by default from scale 3)
+//   tone = 'blue' | 'grey' (two tints of one colour) or none (one colour per delivery)
 //   family = the font of the texts (a paper of the redesign: Manrope)
 // Without parts: euro blue, industrial amber.
 const TAG = { K: 'Μ', D: 'Δ', S: 'Ο', I: 'Β', X: 'Β+Π' };
 const PAL = ['#BAE6FD', '#FDE68A', '#BBF7D0', '#FBCFE8', '#DDD6FE', '#FED7AA', '#A5F3FC', '#E5E7EB'];
 const INK = ['#0369A1', '#B45309', '#15803D', '#BE185D', '#6D28D9', '#C2410C', '#0E7490', '#4B5563'];
+// Quieter tones (owner 17/11, «πολύ χρωματιστά»): one hue in two tints, alternating by delivery, so neighbours in the
+// box differ while the number in the pallet says which delivery it is. 'colour' keeps one colour per delivery.
+const TONES = {
+  blue: { fill: ['#E7EFFA', '#C3D7F2'], ink: '#0B3F80' },
+  grey: { fill: ['#FFFFFF', '#E3E5E8'], ink: '#1B1D29' },
+};
+// [fill, ink] of a delivery key in a tone
+function paint(k, tone) {
+  const t = TONES[tone];
+  return t ? [t.fill[k % 2], t.ink] : [PAL[k % PAL.length], INK[k % INK.length]];
+}
 let _svgN = 0;   // one hatch pattern id per drawing: two drawings on one page must not share it
 function svg(p, opts) {
   const o = opts || {}, sc = o.scale || 2.4, parts = o.parts || null, f = o.font || 1;
@@ -211,7 +223,7 @@ function svg(p, opts) {
   const W = tagW + boxW + (parts ? 12 + lw : 4), H = top + boxH + 16 * f;
   const hid = 'lph' + (++_svgN);
   const out = [];
-  const colour = c => parts ? [PAL[key(c.part) % PAL.length], INK[key(c.part) % INK.length]] : c.ind ? ['#FDE68A', '#B45309'] : ['#BAE6FD', '#0369A1'];
+  const colour = c => parts ? paint(key(c.part), o.tone) : c.ind ? ['#FDE68A', '#B45309'] : ['#BAE6FD', '#0369A1'];
   const span = {};
   for (const r of p.rows) {
     for (const c of r.cells) {
@@ -235,7 +247,7 @@ function svg(p, opts) {
     let next = 0;
     const bx = tagW + boxW + 5;
     Object.keys(span).map(Number).sort((a, b) => span[a][0] - span[b][0]).forEach(i => {
-      const [a, b] = span[i], y1 = top + a * sc + 1, y2 = top + b * sc - 1, ink = INK[key(i) % INK.length];
+      const [a, b] = span[i], y1 = top + a * sc + 1, y2 = top + b * sc - 1, ink = paint(key(i), o.tone)[1];
       out.push(`<path d="M${bx} ${y1.toFixed(1)}h4V${y2.toFixed(1)}h-4" fill="none" stroke="${ink}" stroke-width="${1.4 * f}"/>`);
       const pt = parts[i] || {};
       const ty = Math.max(next, (y1 + y2) / 2 - (pt.sub ? 9 : 4) * f);
@@ -272,7 +284,7 @@ function aria(p) {
     c.I ? c.I + (c.I === 1 ? ' σειρά βιομηχανικές' : ' σειρές βιομηχανικές') : '', c.X ? '1 βιομηχανική + πλάκα' : ''].filter(Boolean).join(' · ');
 }
 
-const LoadPlan = Object.freeze({ BOX, ROW, isInd, euroFill, capacity, euroRows, layout, plan, svg, words: aria, colour: i => PAL[i % PAL.length], ink: i => INK[i % INK.length] });
+const LoadPlan = Object.freeze({ BOX, ROW, isInd, euroFill, capacity, euroRows, layout, plan, svg, words: aria, paint });
 if (typeof module !== 'undefined' && module.exports) module.exports = LoadPlan;
 else globalThis.LoadPlan = LoadPlan;
 })();

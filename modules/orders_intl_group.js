@@ -570,6 +570,8 @@ function loadParts(pts) {
   }
   return parts.reverse();
 }
+// The loading plan in the redesign blue, two tints alternating by delivery (owner 17/11: «πολύ χρωματιστά» → «α»).
+const PLAN_TONE = 'blue';
 const short = (t, n) => { t = String(t || ''); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
 const placeName = p => String(p.name || '—').split(/[,(]/)[0].trim();
 function partLabels(parts, len) {
@@ -588,7 +590,7 @@ function rampHtml(pts, pal) {
   if (lay.dropped) notes.push(note(lay.dropped === 1 ? 'Μία παλέτα δεν χωράει με αυτή τη σειρά παράδοσης' : lay.dropped + ' παλέτες δεν χωρούν με αυτή τη σειρά παράδοσης'));
   if (Math.ceil(onU) !== Math.ceil(pal)) notes.push(note(`Οι παλέτες των παραδόσεων (${onU}) δεν είναι όσες της φόρτωσης (${pal}) — το σχέδιο δείχνει των παραδόσεων`));
   return `<div class="igx-lp"><div class="igx-sh"><span>Φόρτωση${notes.join('')}</span><button type="button" onclick="IntlGroup.printRamp()">Φύλλο για κλαρκ</button></div>` +
-    LoadPlan.svg(lay, { scale: 2.3, parts: partLabels(parts, 26), width: 176, numbers: true }) + `<div class="w">${esc(LoadPlan.words(lay))}</div></div>`;
+    LoadPlan.svg(lay, { scale: 2.3, parts: partLabels(parts, 26), width: 176, numbers: true, tone: PLAN_TONE }) + `<div class="w">${esc(LoadPlan.words(lay))}</div></div>`;
 }
 // The sheet the forklifts load from (owner 17/11, «εκτύπωση για τα κλαρκ»): read from the seat of a forklift, so the
 // box is drawn as big as the page allows, every pallet carries its delivery number, and each delivery is one card
@@ -611,7 +613,7 @@ function printRamp() {
   const who = typeof user !== 'undefined' && user ? (user.name || user.username || '') : '';
   _printWeekShell('Φόρτωση θαλάμου', rampSheet({
     date: d0 && !isNaN(d0) ? d0.toLocaleDateString('el-GR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : '',
-    vehicle: [plate, drv].filter(Boolean).join(' · '), pal, cap, lay,
+    vehicle: [plate, drv].filter(Boolean).join(' · '), pal, cap, lay, tone: PLAN_TONE,
     logo: new URL('logo.png', location.href).href,
     printed: `${esc(who)}${who ? ' · ' : ''}${two(now.getDate())}/${two(now.getMonth() + 1)}/${now.getFullYear()} ${two(now.getHours())}:${two(now.getMinutes())}`,
     parts: parts.map(x => ({ no: x.no, n: x.n, ind: x.ind, place: x.p ? placeName(x.p) : '', client: val(x.m, 'ls_client'), from: fromOf(x.m) })),
@@ -626,7 +628,7 @@ function rampSheet(d) {
   const { lay, pal, cap } = d, parts = d.parts;
   const F = "Manrope,'DM Sans',sans-serif";
   const rows = parts.map(x => {
-    const k = x.no || 0, bg = LoadPlan.colour(k), ink = LoadPlan.ink(k);
+    const [bg, ink] = LoadPlan.paint(x.no || 0, d.tone);
     return `<div class="dl"><div class="no" style="background:${bg};color:${ink};border-color:${ink}">${x.no || '·'}</div>` +
       `<div class="tx"><b>${esc(x.place || 'χωρίς παράδοση')}</b><span>${esc(x.client)}</span><span class="fr">από ${esc(x.from) || '—'}</span></div>` +
       `<div class="np">${x.n}<small>${x.ind ? 'βιομ.' : 'EUR'}</small></div></div>`;
@@ -654,7 +656,7 @@ function rampSheet(d) {
 <div class="a4"><div class="top">${d.logo ? `<span class="logo" role="img" aria-label="Petras Group" style="background-image:url('${esc(d.logo)}')"></span>` : '<b>PETRAS GROUP</b>'}<span>${esc(d.date || '')}<br>${n} ${n === 1 ? 'παράδοση' : 'παραδόσεις'} · ${pal} παλέτες</span></div>
 <div class="hero"><div><h2>Φόρτωση θαλάμου</h2>${d.vehicle ? `<div class="veh">${d.vehicle}</div>` : ''}</div>
 <div class="big${over ? ' bad' : ''}">${pal} / ${cap}<small>${over ? esc(over) : 'παλέτες · χωρητικότητα'}</small></div></div>
-<div class="body"><div>${LoadPlan.svg(lay, { scale: 5.4, parts: parts.map(x => ({ key: x.no || 0, tag: x.no ? String(x.no) : '·' })), width: 0, font: 1.5, numbers: true, family: F })}</div>
+<div class="body"><div>${LoadPlan.svg(lay, { scale: 5.4, parts: parts.map(x => ({ key: x.no || 0, tag: x.no ? String(x.no) : '·' })), width: 0, font: 1.5, numbers: true, family: F, tone: d.tone })}</div>
 <div class="list"><p class="psec">Σειρά φόρτωσης · από την καμπίνα</p>${rows}</div></div>
 <div class="fn">Ο αριθμός σε κάθε παλέτα είναι η παράδοση. Φορτώνουμε από την καμπίνα, με τη σειρά της λίστας· στις πόρτες μπαίνει η 1, που ξεφορτώνει πρώτη. Πίσω μένει χώρος για τις μπάρες.<br>Μ μαχαίρι (3 στο πλάτος) · Δ διπλή (2) · Ο μονή (1, στη μέση· η τελευταία στον τοίχο) · Β βιομηχανική (με γραμμές) — ${esc(LoadPlan.words(lay))}</div>
 <div class="foot"><span>${d.printed || ''}</span><span>1 / 1</span></div></div>`;
