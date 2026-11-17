@@ -75,8 +75,10 @@ function euroRows(e, len) {
 // μονές στην αρχή». Same shape as the euro singles: 2-1-2-1-…-2 at the front, then pairs, as many singles as 12 rows
 // allow (never to the doors); an odd one left over closes the load. A lone industrial always stands against a side wall, never in
 // the middle (it could fall). → pallets per row, front to back.
+// «Λίγες» = up to 20 (owner 17/11 «Πάνω από 20»): from 21 industrials no singles, pairs only.
+const IND_SINGLES_UP_TO = 20;
 function indOnly(i) {
-  for (let s = Math.max(0, Math.floor((i - 2) / 3)); s >= 0; s--) {
+  for (let s = i > IND_SINGLES_UP_TO ? 0 : Math.max(0, Math.floor((i - 2) / 3)); s >= 0; s--) {
     const rest = s ? i - (3 * s + 2) : i;
     // with singles, at most 12 rows (12.0 m): the room at the back stays for the bars, as with the euro
     if ((s ? 2 * s + 1 : 0) + Math.ceil(rest / 2) > (s ? I_MAX - 1 : I_MAX)) continue;

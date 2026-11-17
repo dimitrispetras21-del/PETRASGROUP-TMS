@@ -122,3 +122,9 @@ test('code review: industrials only never spread to the doors with singles', () 
     if (p.rows.some(r => r.n === 1) && i < 25) assert.ok(p.used <= 120, `${i}: ${p.used}`);
   }
 });
+
+test('industrials only: singles up to 20, pairs only from 21 (owner 17/11)', () => {
+  assert.ok(LP.plan({ ind: 20 }).rows.some(r => r.n === 1));
+  assert.deepStrictEqual(LP.plan({ ind: 21 }).rows.map(r => r.n), [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1]);
+  assert.deepStrictEqual(LP.plan({ ind: 24 }).rows.map(r => r.n), Array(12).fill(2));
+});
