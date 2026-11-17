@@ -575,12 +575,16 @@ function loadParts(pts) {
 const PLAN_TONE = 'slate';
 const short = (t, n) => { t = String(t || ''); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
 const placeName = p => String(p.name || '—').split(/[,(]/)[0].trim();
+// An order's temperature as the form holds it: 'CMR' (per CMR) or the number typed; '' when not given.
+function tempOf(m) { return q(m, 'f_TempCmr')?.checked ? 'CMR' : val(m, 'f_Temp'); }
+const fmtT = t => (t === 'CMR' ? 'κατά CMR' : (Number(t) > 0 ? '+' : '') + t + '°');
 function partLabels(parts, len) {
   return parts.map(x => ({
     key: x.no || 0,   // the tint of a delivery follows its number, the same on the drawing and on the sheet
     tag: x.no ? String(x.no) : '·',
     label: short((x.no ? x.no + '. ' : '') + (x.p ? placeName(x.p) : 'χωρίς παράδοση'), len),
-    sub: short(`${x.n} ${x.ind ? 'βιομ.' : 'EUR'}${val(x.m, 'ls_client') ? ' · ' + val(x.m, 'ls_client') : ''}`, len + 4),
+    // «παλ.», never «EUR»: in a form with prices «8 EUR» reads as money (critic 17/11)
+    sub: short(`${x.n} παλ.${x.ind ? ' βιομ.' : ''}${val(x.m, 'ls_client') ? ' · ' + val(x.m, 'ls_client') : ''}`, len + 4),
   }));
 }
 function rampHtml(pts, pal) {
@@ -591,7 +595,7 @@ function rampHtml(pts, pal) {
   if (lay.dropped) notes.push(note(lay.dropped === 1 ? 'Μία παλέτα δεν χωράει με αυτή τη σειρά παράδοσης' : lay.dropped + ' παλέτες δεν χωρούν με αυτή τη σειρά παράδοσης'));
   if (Math.ceil(onU) !== Math.ceil(pal)) notes.push(note(`Οι παλέτες των παραδόσεων (${onU}) δεν είναι όσες της φόρτωσης (${pal}) — το σχέδιο δείχνει των παραδόσεων`));
   return `<div class="igx-lp"><div class="igx-sh"><span>Φόρτωση${notes.join('')}</span><button type="button" onclick="IntlGroup.printRamp()">Φύλλο για κλαρκ</button></div>` +
-    LoadPlan.svg(lay, { scale: 2.3, parts: partLabels(parts, 26), width: 176, numbers: true, tone: PLAN_TONE }) + `<div class="w">${esc(LoadPlan.words(lay))}</div></div>`;
+    LoadPlan.svg(lay, { scale: 2.6, parts: partLabels(parts, 24), width: 168, numbers: true, tone: PLAN_TONE }) + `<div class="w">${esc(LoadPlan.words(lay))}</div></div>`;
 }
 // The sheet the forklifts load from (owner 17/11, «εκτύπωση για τα κλαρκ»): read from the seat of a forklift, so the
 // box is drawn as big as the page allows, every pallet carries its delivery number, and each delivery is one line
@@ -612,12 +616,18 @@ function printRamp() {
   const d0 = days[0] ? new Date(String(days[0]).slice(0, 10) + 'T12:00:00') : null;
   const now = new Date(), two = n => String(n).padStart(2, '0');
   const who = typeof user !== 'undefined' && user ? (user.name || user.username || '') : '';
+  // the driver and the forklift take this sheet: the temperature each delivery goes in (owner 17/11)
+  const temps = [...new Set(s.members.map(tempOf).filter(Boolean))];
+  const reefers = [...new Set(s.members.map(m => val(m, 'f_ReeferMode')).filter(Boolean))];
   _printWeekShell('Φόρτωση θαλάμου', rampSheet({
+    temp: temps.length === 1 ? fmtT(temps[0]) : '', split: temps.length > 1,
+    // the words the form shows for the reefer mode (orders_intl.js f_ReeferMode)
+    reefer: reefers.length === 1 ? ({ Continuous: 'συνεχής ψύξη', 'Start-Stop': 'Start-Stop', 'No temp': 'χωρίς ψύξη' }[reefers[0]] || reefers[0]) : '',
     date: d0 && !isNaN(d0) ? d0.toLocaleDateString('el-GR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : '',
     vehicle: [plate, drv].filter(Boolean).join(' · '), pal, cap, lay, tone: PLAN_TONE,
     logo: new URL('logo.png', location.href).href,
     printed: `${esc(who)}${who ? ' · ' : ''}${two(now.getDate())}/${two(now.getMonth() + 1)}/${now.getFullYear()} ${two(now.getHours())}:${two(now.getMinutes())}`,
-    parts: parts.map(x => ({ no: x.no, n: x.n, ind: x.ind, place: x.p ? placeName(x.p) : '', client: val(x.m, 'ls_client'), from: fromOf(x.m) })),
+    parts: parts.map(x => ({ no: x.no, n: x.n, ind: x.ind, place: x.p ? placeName(x.p) : '', client: val(x.m, 'ls_client'), from: fromOf(x.m), temp: tempOf(x.m) ? fmtT(tempOf(x.m)) : '' })),
   }));
 }
 // The sheet itself, in the paper language of the redesign (owner 17/11, «τσέκαρε τη νέα μας σκέψη»: the A4 papers
@@ -633,7 +643,7 @@ function rampSheet(d) {
     const [bg, ink] = LoadPlan.paint(x.no || 0, d.tone);
     return `<div class="dl"><div class="no" style="background:${bg};color:${ink};border-color:${ink}">${x.no || '·'}</div>` +
       `<div class="tx"><b>${esc(x.place || 'χωρίς παράδοση')}</b><span>${esc(x.client)}</span><span class="fr">από ${esc(x.from) || '—'}</span></div>` +
-      `<div class="np">${x.n}<small>${x.ind ? 'βιομ.' : 'EUR'}</small></div></div>`;
+      `<div class="tp">${esc(x.temp || '—')}</div><div class="np">${x.n}<small>${x.ind ? 'παλ. βιομ.' : 'παλέτες'}</small></div></div>`;
   }).join('');
   const over = [lay.dropped ? `${lay.dropped} δεν χωρούν` : '', pal > cap ? `πάνω από ${cap}` : ''].filter(Boolean).join(' · ');
   const n = parts.filter(x => x.no).length;
@@ -645,22 +655,23 @@ function rampSheet(d) {
 .a4 .hero{display:flex;justify-content:space-between;align-items:flex-end;padding-bottom:12px;border-bottom:1.5px solid #0B63CE}
 .a4 h2{font-size:30px;font-weight:400;letter-spacing:-.6px;line-height:1.05;margin:0}.a4 .veh{font-size:15px;font-weight:600;margin-top:6px}
 .a4 .big{text-align:right;font-size:36px;font-weight:700;letter-spacing:-1px;line-height:1}.a4 .big small{display:block;font-size:11px;font-weight:500;color:#666;letter-spacing:0;margin-top:3px}
-.a4 .big.bad{color:#C92A31}.a4 .big.bad small{color:#C92A31}
+.a4 .hr{display:flex;gap:28px;align-items:flex-end}.a4 .big.tmp{color:#0B63CE}.a4 .big.bad{color:#C92A31}.a4 .big.bad small{color:#C92A31}
 .a4 .body{display:flex;gap:16px;align-items:flex-start;margin-top:12px}.a4 .list{flex:1;min-width:0}
 .a4 .psec{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#0B63CE;margin:4px 0 6px}
-.a4 .dl{display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 0;border-top:.5px solid #CFCFCF}
+.a4 .dl{display:grid;grid-template-columns:54px minmax(0,1fr) auto auto;gap:12px;align-items:center;padding:14px 0;border-top:.5px solid #CFCFCF}
 .a4 .dl:first-of-type{border-top:1.5px solid #1B1D29}
-.a4 .no{width:40px;height:40px;border:2px solid;border-radius:50%;display:grid;place-items:center;font-size:22px;font-weight:800}
-.a4 .tx b{display:block;font-size:15px;font-weight:700;line-height:1.2}.a4 .tx span{display:block;font-size:11.5px;color:#444}.a4 .tx .fr{color:#666}
-.a4 .np{font-size:26px;font-weight:700;text-align:right;line-height:1;font-variant-numeric:tabular-nums}.a4 .np small{display:block;font-size:10px;font-weight:600;color:#666}
+.a4 .no{width:50px;height:50px;border:2.5px solid;border-radius:50%;display:grid;place-items:center;font-size:28px;font-weight:800}
+.a4 .tx b{display:block;font-size:18px;font-weight:700;line-height:1.2}.a4 .tx span{display:block;font-size:13px;color:#444}.a4 .tx .fr{color:#666}
+.a4 .tp{font-size:20px;font-weight:800;color:#0B63CE;white-space:nowrap;text-align:right}.a4 .np{font-size:32px;font-weight:700;text-align:right;line-height:1;font-variant-numeric:tabular-nums}.a4 .np small{display:block;font-size:10px;font-weight:600;color:#666}
 .a4 .fn{margin-top:auto;padding-top:10px;border-top:.5px solid #CFCFCF;font-size:10px;color:#333;line-height:1.5}
 .a4 .foot{margin-top:8px;display:flex;justify-content:space-between;font-size:9px;color:#666}</style>
 <div class="a4"><div class="top">${d.logo ? `<span class="logo" role="img" aria-label="Petras Group" style="background-image:url('${esc(d.logo)}')"></span>` : '<b>PETRAS GROUP</b>'}<span>${esc(d.date || '')}<br>${n} ${n === 1 ? 'παράδοση' : 'παραδόσεις'} · ${pal} παλέτες</span></div>
 <div class="hero"><div><h2>Φόρτωση θαλάμου</h2>${d.vehicle ? `<div class="veh">${d.vehicle}</div>` : ''}</div>
-<div class="big${over ? ' bad' : ''}">${pal} / ${cap}<small>${over ? esc(over) : 'παλέτες · χωρητικότητα'}</small></div></div>
-<div class="body"><div>${LoadPlan.svg(lay, { scale: 5.4, parts: parts.map(x => ({ key: x.no || 0, tag: x.no ? String(x.no) : '·' })), width: 0, font: 1.5, numbers: true, family: F, tone: d.tone })}</div>
+<div class="hr"><div class="big tmp${d.split ? ' bad' : ''}">${d.split ? 'ΧΩΡΙΣΜΑ' : esc(d.temp || '—')}<small>${d.split ? 'διαφορετικές θερμοκρασίες' : 'θερμοκρασία'}${d.reefer ? ' · ' + esc(d.reefer) : ''}</small></div>
+<div class="big${over ? ' bad' : ''}">${pal} / ${cap}<small>${over ? esc(over) : 'παλέτες · χωρητικότητα'}</small></div></div></div>
+<div class="body"><div>${LoadPlan.svg(lay, { scale: 6.3, parts: parts.map(x => ({ key: x.no || 0, tag: x.no ? String(x.no) : '·' })), width: 150, font: 1.5, numbers: true, family: F, tone: d.tone, guide: true })}</div>
 <div class="list"><p class="psec">Σειρά φόρτωσης · από την καμπίνα</p>${rows}</div></div>
-<div class="fn">Ο αριθμός σε κάθε παλέτα είναι η παράδοση. Φορτώνουμε από την καμπίνα, με τη σειρά της λίστας· στις πόρτες μπαίνει η 1, που ξεφορτώνει πρώτη. Πίσω μένει χώρος για τις μπάρες.<br>Μ μαχαίρι (3 στο πλάτος) · Δ διπλή (2) · Ο μονή (1, στη μέση· η τελευταία στον τοίχο) · Β βιομηχανική (με γραμμές) — ${esc(LoadPlan.words(lay))}</div>
+<div class="fn">Ο αριθμός σε κάθε παλέτα = η παράδοση · Μ μαχαίρι (3) · Δ διπλή (2) · Ο μονή (1) · Β βιομηχανική (με γραμμές) · πίσω χώρος για μπάρες</div>
 <div class="foot"><span>${d.printed || ''}</span><span>1 / 1</span></div></div>`;
 }
 
@@ -686,9 +697,8 @@ function paintSum(pts) {
     const days = U.map(p => p.date).filter(Boolean).sort();
     if (days.length) rows.push(['Παράδοση', days[0] === days[days.length - 1] ? dayOf(days[0]) : `${dayOf(days[0])} – ${dayOf(days[days.length - 1])}`]);
     rows.push(['Σημεία', `${L.length} φόρτωσης · ${U.length} παράδοσης`]);
-    const temps = [...new Set(s.members.map(m => (q(m, 'f_TempCmr')?.checked ? 'CMR' : val(m, 'f_Temp'))).filter(Boolean))];
+    const temps = [...new Set(s.members.map(tempOf).filter(Boolean))];
     const reefers = [...new Set(s.members.map(m => val(m, 'f_ReeferMode')).filter(Boolean))];
-    const fmtT = t => (t === 'CMR' ? 'κατά CMR' : (Number(t) > 0 ? '+' : '') + t + '°');
     rows.push(['Θερμοκρασία', `${temps.map(fmtT).join(' · ') || '—'}${temps.length > 1 ? note('Χώρισμα μέσα στον θάλαμο') : ''}${reefers.length > 1 ? note('Οι παραγγελίες γράφουν άλλη λειτουργία ψυκτικού — διάλεξε μία') : ''}`]);
     // The delivery order against the days (owner 15/11): a later day before an earlier one is shown, never refused.
     const dlDays = s.dl.map(pk => (U.find(p => p.pk === pk) || {}).date).filter(Boolean);

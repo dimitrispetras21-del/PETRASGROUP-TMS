@@ -198,6 +198,7 @@ function plan(counts) {
 //     a card on the sheet and its pallets match), a bracket with its label, and its tag written in every pallet
 //   numbers = write the tags in the pallets (on by default from scale 3)
 //   tone = 'slate' (blues, greys, white — the one the screens use), 'cool' | 'earth' (muted palettes), 'blue' | 'grey' (two tints of one colour), none (bright, one per delivery)
+//   guide = write «start here» by the cab and «first out» by the doors (the forklift sheet)
 //   family = the font of the texts (a paper of the redesign: Manrope)
 // Without parts: euro blue, industrial amber.
 const TAG = { K: 'Μ', D: 'Δ', S: 'Ο', I: 'Β', X: 'Β+Π' };
@@ -211,7 +212,9 @@ const TONES = {
   // muted palettes, every colour at about the same lightness so none shouts (owner 17/11 «μια παλέτα χρωμάτων»)
   // blues, greys and white only (owner 17/11 «αποχρώσεις του μπλε, γκρι, άσπρο»): light and darker alternate, so
   // two neighbouring deliveries never share a shade; the number in the pallet does the rest
-  slate: { fill: ['#D6E4F5', '#FFFFFF', '#A9C2E3', '#E4E7EC', '#EEF4FB', '#C6CDD7'], ink: ['#0B3F80', '#1B1D29', '#0B3F80', '#374151', '#0B63CE', '#1F2937'] },
+  // Odd deliveries light, even ones clearly darker (≥ 25% apart), so two neighbours stay apart on a black-and-white
+  // printer too; the even ones also get a heavier outline (independent critic 17/11).
+  slate: { fill: ['#B4BDC9', '#FFFFFF', '#9DB8DE', '#E8EBEF', '#8FA9CC', '#EEF4FB'], ink: ['#0B2A55', '#1B1D29', '#0B2A55', '#1B1D29', '#0B2A55', '#1B1D29'], heavy: true },
   cool: { fill: ['#DCE7F5', '#D5ECE8', '#E3EAD6', '#F2E8D5', '#E8E0EF', '#E1E5EA'], ink: ['#1F4E8C', '#1D675F', '#4A672C', '#87611E', '#664782', '#47525F'] },
   earth: { fill: ['#E9E3D7', '#DCE5E0', '#EEDDD8', '#DDE2EB', '#EDE6CF', '#E4E1E6'], ink: ['#5E5340', '#3E5E50', '#8A4B3C', '#3F5272', '#7A6526', '#5A5262'] },
 };
@@ -235,12 +238,15 @@ function svg(p, opts) {
     for (const c of r.cells) {
       const y0 = r.at + c.x, [fill, ink] = colour(c);
       const x = tagW + c.y * sc + 0.75, y = top + y0 * sc + 0.75, w = c.h * sc - 1.5, h = c.w * sc - 1.5;
-      out.push(`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="${(1.4 * Math.min(sc, 4)).toFixed(1)}" fill="${fill}" stroke="${ink}" stroke-width="${r.k === 'S' ? 1.1 : 0.9}"${r.k === 'S' ? ' stroke-dasharray="3 2"' : ''}/>`);
+      // a single is a pallet like any other: solid outline, told apart only by its place (critic 17/11: a dashed one
+      // read as an empty or optional place)
+      const sw = (TONES[o.tone] && TONES[o.tone].heavy && parts && key(c.part) % 2 === 0 ? 1.8 : 0.9) * Math.max(1, sc / 4);
+      out.push(`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="${(1.4 * Math.min(sc, 4)).toFixed(1)}" fill="${fill}" stroke="${ink}" stroke-width="${sw.toFixed(2)}"/>`);
       // an industrial is the bigger pallet: hatched, so it reads apart from a euro of the same delivery
       if (c.ind) out.push(`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="${(1.4 * Math.min(sc, 4)).toFixed(1)}" fill="url(#${hid})" style="color:${ink}"/>`);
       const tag = parts && parts[c.part] && parts[c.part].tag;
       if (numbers && tag != null && tag !== '') {
-        const fs = Math.max(7, Math.min(w, h) * 0.5);
+        const fs = Math.max(8, Math.min(w, h) * 0.66);
         out.push(`<text x="${(x + w / 2).toFixed(1)}" y="${(y + h / 2 + fs * 0.36).toFixed(1)}" text-anchor="middle" style="font-size:${fs.toFixed(1)}px;font-weight:700;fill:${ink}">${esc(tag)}</text>`);
       }
       const sp = span[c.part] || (span[c.part] = [y0, y0 + c.w]);
@@ -263,6 +269,13 @@ function svg(p, opts) {
     });
   }
   const free = BOX - p.used, cx = tagW + boxW / 2;
+  // opts.guide: the rule written on the drawing itself, by the cab and by the doors (critic 17/11)
+  if (o.guide) {
+    const gx = tagW + boxW + 14;
+    out.push(`<text class="lp-g" x="${gx}" y="${(top + 6 * sc).toFixed(1)}">◀ ΞΕΚΙΝΑ ΕΔΩ</text><text class="lp-gs" x="${gx}" y="${(top + 6 * sc + 13 * f).toFixed(1)}">μπαίνει πρώτο</text>`);
+    const end = top + Math.min(p.used, BOX) * sc;
+    out.push(`<text class="lp-g" x="${gx}" y="${(end - 13 * f).toFixed(1)}">◀ ΠΡΩΤΟ ΕΞΩ</text><text class="lp-gs" x="${gx}" y="${end.toFixed(1)}">παράδοση 1</text>`);
+  }
   // the bars at the back: the room left behind the load is where they go (owner 17/11)
   const bars = free >= 2
     ? `<line x1="${tagW + 3}" x2="${tagW + boxW - 3}" y1="${(top + (p.used + 1) * sc).toFixed(1)}" y2="${(top + (p.used + 1) * sc).toFixed(1)}" stroke="#0B1929" stroke-width="${2.2 * f}" stroke-linecap="round"/>` +
@@ -270,10 +283,10 @@ function svg(p, opts) {
     : '';
   return `<svg class="lp" viewBox="0 0 ${W.toFixed(0)} ${H.toFixed(0)}" width="${W.toFixed(0)}" role="img" aria-label="${esc(aria(p))}">` +
     `<defs><pattern id="${hid}" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="currentColor" stroke-width="1.2" opacity=".35"/></pattern></defs>` +
-    `<style>.lp text{font-family:${o.family || "'DM Sans',sans-serif"}}.lp-t{font-size:${7.5 * f}px;font-weight:600;fill:#64748B}` +
-    `.lp-l{font-size:${9.5 * f}px;font-weight:700}.lp-s{font-size:${8 * f}px;fill:#475569}.lp-c{font-size:${7.5 * f}px;font-weight:700;fill:#fff;letter-spacing:.08em}</style>` +
+    `<style>.lp text{font-family:${o.family || "'DM Sans',sans-serif"}}.lp-t{font-size:${8 * f}px;font-weight:700;fill:#334155}` +
+    `.lp-l{font-size:${9.5 * f}px;font-weight:700}.lp-s{font-size:${8 * f}px;fill:#475569}.lp-c{font-size:${Math.min(7.5 * f, boxW / 6.2)}px;font-weight:700;fill:#fff;letter-spacing:.04em}.lp-g{font-size:${10 * f}px;font-weight:800;fill:#0B63CE}.lp-gs{font-size:${7.5 * f}px;fill:#475569}</style>` +
     // the cab: a navy cap on the front wall
-    `<rect x="${tagW + boxW * 0.12}" y="0" width="${boxW * 0.76}" height="${cab}" rx="${cab / 2}" fill="#0B1929"/>` +
+    `<rect x="${tagW}" y="0" width="${boxW}" height="${cab}" rx="${cab / 2}" fill="#0B1929"/>` +
     `<text class="lp-c" x="${cx}" y="${(cab / 2 + 2.6 * f).toFixed(1)}" text-anchor="middle">ΚΑΜΠΙΝΑ</text>` +
     `<rect x="${tagW}" y="${top}" width="${boxW}" height="${boxH}" rx="3" fill="#F8FAFC" stroke="#0B1929" stroke-width="${1.6 * f}"/>` +
     out.join('') + bars +
