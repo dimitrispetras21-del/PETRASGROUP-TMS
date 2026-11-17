@@ -52,9 +52,15 @@ test('every euro count 2–33: all pallets placed, fits the box, singles only in
   }
 });
 
-test('1 euro pallet goes alone in the middle, as a single (owner 17/11)', () => {
+test('a single in the last row stands at the wall; one earlier stays in the middle (owner 17/11)', () => {
   assert.strictEqual(shape(LP.plan({ eur: 1 })), 'S');
-  assert.ok(LP.svg(LP.plan({ eur: 1 }), { scale: 1 }).includes('class="lp-e lp-s" x="0.0" y="20.0"'), 'centred across the box');
+  assert.ok(LP.svg(LP.plan({ eur: 1 }), { scale: 1 }).includes('class="lp-e lp-s" x="0.0" y="14.0"'), 'last single at the wall');
+  const mixed = LP.plan({ eur: 1, ind: 4 });
+  assert.strictEqual(shape(mixed), 'IIS');
+  assert.ok(mixed.rows[2].wall);
+  const p = LP.plan({ eur: 11 });
+  assert.ok(p.rows.filter(r => r.k === 'S').every(r => !r.wall), 'singles of the D S … D block stay in the middle');
+  assert.ok(LP.svg(p, { scale: 1 }).includes('class="lp-e lp-s" x="8.0" y="20.0"'));
 });
 
 test('industrials only: pairs, singles at the front when few, a lone one against the wall', () => {

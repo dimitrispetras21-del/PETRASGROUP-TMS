@@ -91,7 +91,7 @@ function indOnly(i) {
 // An odd number of industrials with euro on board (owner 17/11): the last industrial shares its 1.0 m row with one
 // euro pallet laid flat beside it (1.2 + 1.2 = 2.4 m across); the euro is 0.8 long, so it leaves a 0.2 m «δόντι».
 // That row (k 'X') sits between the industrials and the euro.
-// → { rows: [{ k: 'K'|'D'|'S'|'I'|'X', n, at, len }], eur, ind, total, cap, over, used, indAt }
+// → { rows: [{ k: 'K'|'D'|'S'|'I'|'X', n, at, len, wall? }], eur, ind, total, cap, over, used, indAt }
 //   n = pallets in the row (X: 2, one of each); at = dm from the front of the box; over = pallets that do not fit
 //   (shown as a warning, never a refusal).
 function plan(counts, opts) {
@@ -108,7 +108,7 @@ function plan(counts, opts) {
   const cap = iFit + eMax;
   const over = (ind - iFit) + Math.max(0, eur - eMax);
   // Over capacity: a full box of what fits, no singles (euroRows of the max has none, the length is used up).
-  // One euro pallet makes no double: it goes alone in the middle, as a single (owner 17/11 «Στη μέση»).
+  // One euro pallet makes no double: it goes alone, as a single.
   const er = euroRows(Math.min(eur, eMax) - tooth, room) || ['S'];
   let iRows = [];
   if (!eur && iFit) iRows = indOnly(iFit).map(n => ({ k: 'I', n }));
@@ -118,6 +118,10 @@ function plan(counts, opts) {
   const seq = indAt === 'front' || !eur ? iRows.concat(eRows) : eRows.concat(iRows.reverse());
   let at = 0;
   const rows = seq.map(r => { const len = r.k === 'X' ? ROW.I : ROW[r.k]; const o = { k: r.k, n: r.n, at, len }; at += len; return o; });
+  // A single in the last row stands against the side wall: nothing behind it holds it (owner 17/11 «αν είναι
+  // τελευταία, πάντα τοίχο· αν είναι πιο νωρίς, όπου δεν μπορούμε να βάλουμε μπάρες, μπαίνει μέσα»).
+  const last = rows[rows.length - 1];
+  if (last && last.k === 'S') last.wall = true;
   return { rows, eur, ind, total: eur + ind, cap, over, used: at, indAt };
 }
 // Capacity for this mix = the industrials + the euro that fit in the length they leave (+ the one beside an odd
@@ -137,7 +141,7 @@ function svg(p, opts) {
   for (const r of p.rows) {
     if (r.k === 'K') for (let j = 0; j < 3; j++) rect(r.at, j * 8, 12, 8, 'lp-e');
     else if (r.k === 'D') for (let j = 0; j < 2; j++) rect(r.at, j * 12, 8, 12, 'lp-e');
-    else if (r.k === 'S') rect(r.at, 6, 8, 12, 'lp-e lp-s');
+    else if (r.k === 'S') rect(r.at, r.wall ? 0 : 6, 8, 12, 'lp-e lp-s');
     else if (r.k === 'X') { rect(r.at, 0, 10, 12, 'lp-i'); rect(indAtBack(p) ? r.at : r.at + 2, 12, 8, 12, 'lp-e'); }
     else for (let j = 0; j < r.n; j++) rect(r.at, j * 12, 10, 12, 'lp-i');   // a lone industrial against the wall, never in the middle (owner 17/11)
     out.push(`<text class="lp-t" x="${((r.at + r.len / 2) * sc).toFixed(1)}" y="${top + H + lab - 2}" text-anchor="middle">${TAG[r.k]}</text>`);
