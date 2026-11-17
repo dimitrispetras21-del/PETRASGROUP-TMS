@@ -129,24 +129,25 @@ function layout(parts) {
     if (r.ind) {
       stag = 0;
       // After staggered euro the two sides end 0.2 m apart. A front-back gap there is a sure fall (owner 17/11), so
-      // the first industrial on the short side is turned (1.2 m along, 1.0 m across): both sides end level. It goes
-      // flush against the industrial beside it, «ώστε να μη μείνει χώρος ανάμεσα στις παλέτες»; the 0.2 m stays at
-      // the wall, to the side (owner 17/11).
-      if (tailStag && !onlyInd && r.q.length >= 2 && BOX - at >= ROW.I) {
-        push('I', [cell(take(), 0, 0, 10, 12, 1), cell(take(), -tailStag, 12, ROW.I + tailStag, 10, 1)], ROW.I, { turned: true });
-      }
+      // the industrials go on staggered too, each side flush against the pallet in front of it, laid as usual
+      // (not turned): «γύρισέ την οριζόντια και απλά θα μείνει δόντι στην τελευταία» — the 0.2 m comes out at the
+      // last row, by the doors, with the room for the bars.
+      const off = tailStag;
       tailStag = 0;
       // what fits: whole rows up to the doors
       const fitRows = Math.floor((BOX - at) / ROW.I);
       const pat = (onlyInd ? indOnly(Math.min(r.q.length, 2 * I_MAX)) : Array(Math.floor(r.q.length / 2)).fill(2).concat(r.q.length % 2 ? [1] : [])).slice(0, fitRows);
       for (const m of pat) {
-        if (m === 2) { push('I', [cell(take(), 0, 0, 10, 12, 1), cell(take(), 0, 12, 10, 12, 1)], ROW.I); continue; }
+        if (m === 2) { push('I', [cell(take(), 0, 0, 10, 12, 1), cell(take(), -off, 12, 10, 12, 1)], ROW.I, off ? { stag: off } : undefined); continue; }
         const nx = runs[ri + 1];
         if (!onlyInd && nx && !nx.ind && nx.q.length) {
-          push('X', [cell(take(), 0, 0, 10, 12, 1), cell(nx.q.shift(), 0, 12, 8, 12)], ROW.I);
-          stag = 2;
+          // the flat euro sits flush against the pallet in front on its side (off m earlier when already staggered)
+          push('X', [cell(take(), 0, 0, 10, 12, 1), cell(nx.q.shift(), -off, 12, 8, 12)], ROW.I);
+          stag = off + 2;
         } else push('I', [cell(take(), 0, 0, 10, 12, 1)], ROW.I);   // lone: at the wall
       }
+      // the euro that follows keeps the stagger, so its side stays flush
+      if (off && !stag) stag = off;
       dropped += r.q.length; r.q.length = 0;
       continue;
     }
@@ -160,6 +161,8 @@ function layout(parts) {
       // is harmless (owner 17/11). So it goes to the doors, against the wall, behind the bars.
       if (r.q.length) {
         if (ri < runs.length - 1) deferred.push(take());
+        // a lone one kept back from earlier pairs with this one: one more staggered double, no lone pallet
+        else if (deferred.length && at + 8 <= BOX) push('D', [cell(deferred.pop(), 0, 0, 8, 12), cell(take(), -stag, 12, 8, 12)], 8, { stag });
         else if (at - stag + 8 <= BOX) push('S', [cell(take(), -stag, 12, 8, 12)], 8, { stag });
       }
     } else {
