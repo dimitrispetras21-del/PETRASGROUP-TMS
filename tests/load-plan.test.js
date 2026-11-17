@@ -183,3 +183,16 @@ test('forklift sheet: a delivery\'s temperature only when the load has more than
   assert.ok(two.includes('class="tp">+8°') && two.includes('ΧΩΡΙΣΜΑ'), 'two temperatures: per delivery, and the header says «χώρισμα»');
   assert.strictEqual((one.match(/class="ck"/g) || []).length, 2, 'a «loaded» box per delivery');
 });
+
+test('a lone euro that would leave a front-back gap goes to the doors, at the wall (owner 17/11)', () => {
+  // 3 industrial (delivery 3) → 8 euro (delivery 2) → 4 industrial (delivery 1): 1 flat + 7 → 3 doubles + 1 left
+  const p = LP.layout([{ n: 3, ind: true }, { n: 8 }, { n: 4, ind: true }]);
+  assert.strictEqual(p.placed, 15);
+  const last = p.rows[p.rows.length - 1];
+  assert.deepStrictEqual([last.k, last.wall, last.cells[0].y, last.cells[0].part], ['S', true, 0, 1]);
+  // no lone euro left between the staggered doubles and the industrials
+  const i = p.rows.findIndex(r => r.k === 'I' && r.at > 10);
+  assert.ok(!p.rows.slice(0, i).some(r => r.k === 'S'));
+  // the same lone pallet as the very last thing in the box stays on the euro side, as before
+  assert.strictEqual(LP.layout([{ n: 3, ind: true }, { n: 8 }]).rows.slice(-1)[0].stag, 2);
+});

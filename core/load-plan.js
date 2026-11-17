@@ -121,6 +121,7 @@ function layout(parts) {
   const onlyInd = runs.length === 1 && runs[0].ind;
   const rows = [];
   let at = 0, stag = 0, firstEuro = true, dropped = 0;
+  const deferred = [];   // lone euro pallets that would leave a front-back gap: they go to the doors (below)
   const push = (k, cells, len, extra) => { rows.push(Object.assign({ k, n: cells.length, at, len, cells }, extra)); at += len; };
   const cell = (part, x, y, w, h, ind) => Object.assign({ part, x, y, w, h }, ind ? { ind: true } : {});
   for (let ri = 0; ri < runs.length; ri++) {
@@ -145,8 +146,14 @@ function layout(parts) {
       // after the «δόντι»: one pallet a side every 0.8 m, the euro side (lower) 0.2 m ahead
       const top = Math.floor((BOX - at) / 8);   // the euro side holds this many or one more
       for (let j = 0; j < top && r.q.length >= 2; j++) push('D', [cell(take(), 0, 0, 8, 12), cell(take(), -stag, 12, 8, 12)], 8, { stag });
-      // the odd one left goes on the euro side, which is 0.2 m ahead: the other side may already be full
-      if (r.q.length && at - stag + 8 <= BOX) push('S', [cell(take(), -stag, 12, 8, 12)], 8, { stag });
+      // The odd one left. Last in the box: on the euro side, which is 0.2 m ahead (the other side may be full).
+      // With more rows after it, a lone pallet there leaves a gap front-to-back on the other side, and «λόγω των
+      // φρεναρισμάτων και του γκαζιού θα έχει συνεχώς ταλάντωση … είναι σίγουρο ότι θα πέσει»; a gap to the side
+      // is harmless (owner 17/11). So it goes to the doors, against the wall, behind the bars.
+      if (r.q.length) {
+        if (ri < runs.length - 1) deferred.push(take());
+        else if (at - stag + 8 <= BOX) push('S', [cell(take(), -stag, 12, 8, 12)], 8, { stag });
+      }
     } else {
       const later = runs.slice(ri + 1).reduce((a, x) => a + minLen(x), 0);
       const len = Math.max(0, BOX - at - later);
@@ -162,6 +169,10 @@ function layout(parts) {
     firstEuro = false;
     stag = 0;
     dropped += r.q.length; r.q.length = 0;
+  }
+  for (const part of deferred) {
+    if (at + 8 <= BOX) push('S', [cell(part, 0, 6, 8, 12)], 8);
+    else dropped++;
   }
   // A single in the last row stands against the side wall: nothing behind it holds it (owner 17/11 «αν είναι
   // τελευταία, πάντα τοίχο· αν είναι πιο νωρίς, όπου δεν μπορούμε να βάλουμε μπάρες, μπαίνει μέσα»).
