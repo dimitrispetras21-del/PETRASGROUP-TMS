@@ -586,7 +586,7 @@ function paintSum(pts) {
   }
   el.innerHTML = rows.map(([a, b]) => `<div><span>${a}</span><span>${b}</span></div>`).join('') +
     // the box seen from above: which rows are knife / double / single and where the industrials go
-    (lp.total ? `<div class="igx-lp"><div class="igx-sh">Φόρτωση</div>${LoadPlan.svg(lp)}<div class="w">${esc(LoadPlan.words(lp))}${lp.odd ? note('Για μία ευρωπαλέτα δεν έχει οριστεί κανόνας φόρτωσης — δείχνεται στη μέση') : ''}</div></div>` : '');
+    (lp.total ? `<div class="igx-lp"><div class="igx-sh">Φόρτωση</div>${LoadPlan.svg(lp)}<div class="w">${esc(LoadPlan.words(lp))}</div></div>` : '');
   const btn = document.getElementById('btnSubmit');
   if (btn && !s.saving) btn.textContent = s.mode === 'group' ? `Αποθήκευση · ${s.members.length} παραγγελίες` : 'Αποθήκευση';
 }

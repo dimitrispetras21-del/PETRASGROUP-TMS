@@ -19,7 +19,7 @@ test('an odd industrial takes a flat euro beside it («δόντι»): 28 EUR + 1
   const p = LP.plan({ eur: 28, ind: 1 });
   assert.strictEqual(p.cap, 32);
   assert.strictEqual(p.over, 0);
-  assert.ok(shape(p).endsWith('X'), 'the shared row closes the euro block, industrials at the back');
+  assert.strictEqual(shape(p)[0], 'X', 'the shared row opens the load, industrials at the front');
   assert.strictEqual(pallets(p), 29);
 });
 
@@ -41,7 +41,7 @@ test('every euro count 2–33: all pallets placed, fits the box, singles only in
     const s = shape(p);
     assert.strictEqual(pallets(p), e, `${e}: every pallet placed`);
     assert.ok(p.used <= LP.BOX, `${e}: within 13.2 m`);
-    assert.ok(!p.odd && p.over === 0, `${e}: covered`);
+    assert.strictEqual(p.over, 0, `${e}: fits`);
     assert.ok(!s.endsWith('S'), `${e}: never ends with a single`);
     if (s.includes('S')) {
       assert.match(s, /^(DS)+D[DK]*$/, `${e}: ${s}`);
@@ -52,8 +52,9 @@ test('every euro count 2–33: all pallets placed, fits the box, singles only in
   }
 });
 
-test('1 euro pallet is marked as not covered by the rules (asked of the owner)', () => {
-  assert.strictEqual(LP.plan({ eur: 1 }).odd, true);
+test('1 euro pallet goes alone in the middle, as a single (owner 17/11)', () => {
+  assert.strictEqual(shape(LP.plan({ eur: 1 })), 'S');
+  assert.ok(LP.svg(LP.plan({ eur: 1 }), { scale: 1 }).includes('class="lp-e lp-s" x="0.0" y="20.0"'), 'centred across the box');
 });
 
 test('industrials only: pairs, singles at the front when few, a lone one against the wall', () => {
@@ -66,12 +67,15 @@ test('industrials only: pairs, singles at the front when few, a lone one against
   assert.deepStrictEqual(ys, [14, 26, 14]);
 });
 
-test('mixed loads: industrials at the back by default, at the front when asked', () => {
-  const back = LP.plan({ eur: 20, ind: 4 });
-  assert.strictEqual(shape(back), 'DSDSDSDSDSDSDII');
-  assert.strictEqual(pallets(back), 24);
-  const front = LP.plan({ eur: 20, ind: 4 }, { indAt: 'front' });
-  assert.ok(shape(front).startsWith('II'));
+test('mixed loads: industrials at the front by the cab, the free room at the back (owner 17/11)', () => {
+  const p = LP.plan({ eur: 20, ind: 4 });
+  assert.strictEqual(shape(p), 'IIDSDSDSDSDSDSD');
+  assert.strictEqual(pallets(p), 24);
+  assert.ok(p.used < LP.BOX, 'room left at the back');
+  assert.ok(shape(LP.plan({ eur: 20, ind: 4 }, { indAt: 'back' })).endsWith('II'));
+  // the flat euro beside an odd industrial touches the euro behind it: its 0.2 m gap faces the industrials
+  const svg = LP.svg(LP.plan({ eur: 6, ind: 3 }), { scale: 1 });
+  assert.ok(svg.includes('class="lp-e" x="12.0" y="26.0" width="7.0"'), 'flat euro at 1.2 m in the X row (10–20 dm)');
 });
 
 test('over capacity: a warning count, the box drawn full', () => {

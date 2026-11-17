@@ -40,8 +40,8 @@ function euroFill(len) {
 const I_MAX = Math.floor(BOX / ROW.I);   // 13 industrial rows
 function indRowsFit(ind) { return Math.min(Math.ceil(n0(ind) / 2), I_MAX); }
 
-// The euro rows for e pallets in len dm, front to back, or null when e cannot be laid out with these rows (e = 1:
-// one pallet makes no double, and a load never ends with a single).
+// The euro rows for e pallets in len dm, front to back, or null for e = 1 (one pallet makes no double; plan() puts
+// it alone in the middle).
 // Most singles first (spread), then most knife; extra doubles right after the D S … D block.
 // From 32 up no singles (owner 17/11: «32 παλ είναι οκ το μπροστοβαρο. 31 και κάτω θέλει μονή»).
 const NO_SINGLE_FROM = 32;
@@ -87,17 +87,18 @@ function indOnly(i) {
 }
 
 // The layout of one load. counts = { eur, ind } in pallets.
-// opts.indAt = 'front' | 'back': where the industrial rows go in a mixed load (asked of the owner 17/11).
+// opts.indAt = 'front' (default, owner 17/11) | 'back': where the industrial rows go in a mixed load.
 // An odd number of industrials with euro on board (owner 17/11): the last industrial shares its 1.0 m row with one
 // euro pallet laid flat beside it (1.2 + 1.2 = 2.4 m across); the euro is 0.8 long, so it leaves a 0.2 m «δόντι».
 // That row (k 'X') sits between the industrials and the euro.
-// → { rows: [{ k: 'K'|'D'|'S'|'I'|'X', n, at, len }], eur, ind, total, cap, over, used, odd, indAt }
+// → { rows: [{ k: 'K'|'D'|'S'|'I'|'X', n, at, len }], eur, ind, total, cap, over, used, indAt }
 //   n = pallets in the row (X: 2, one of each); at = dm from the front of the box; over = pallets that do not fit
-//   (shown as a warning, never a refusal); odd = a count the rules do not cover (1 euro pallet left over): drawn as
-//   one single, and the screen says so.
+//   (shown as a warning, never a refusal).
 function plan(counts, opts) {
   const eur = n0(counts && counts.eur), ind = n0(counts && counts.ind);
-  const indAt = (opts && opts.indAt) === 'front' ? 'front' : 'back';
+  // Industrials at the front by the cab, euro behind, the free room always at the back for the bars that hold the
+  // load still (owner 17/11, sketch + «Ναι, μπροστά»). 'back' is kept only for a screen that wants to compare.
+  const indAt = (opts && opts.indAt) === 'back' ? 'back' : 'front';
   const ir = indRowsFit(ind);
   const iFit = Math.min(ind, 2 * ir);
   const room = BOX - ir * ROW.I;
@@ -106,10 +107,9 @@ function plan(counts, opts) {
   const tooth = iFit % 2 && eur > 0 ? 1 : 0;
   const cap = iFit + eMax;
   const over = (ind - iFit) + Math.max(0, eur - eMax);
-  let odd = false;
   // Over capacity: a full box of what fits, no singles (euroRows of the max has none, the length is used up).
-  let er = euroRows(Math.min(eur, eMax) - tooth, room);
-  if (!er) { odd = true; er = ['S']; }
+  // One euro pallet makes no double: it goes alone in the middle, as a single (owner 17/11 «Στη μέση»).
+  const er = euroRows(Math.min(eur, eMax) - tooth, room) || ['S'];
   let iRows = [];
   if (!eur && iFit) iRows = indOnly(iFit).map(n => ({ k: 'I', n }));
   else for (let j = 0; j < ir; j++) iRows.push(j === ir - 1 && iFit % 2 ? (tooth ? { k: 'X', n: 2 } : { k: 'I', n: 1 }) : { k: 'I', n: 2 });
@@ -118,7 +118,7 @@ function plan(counts, opts) {
   const seq = indAt === 'front' || !eur ? iRows.concat(eRows) : eRows.concat(iRows.reverse());
   let at = 0;
   const rows = seq.map(r => { const len = r.k === 'X' ? ROW.I : ROW[r.k]; const o = { k: r.k, n: r.n, at, len }; at += len; return o; });
-  return { rows, eur, ind, total: eur + ind, cap, over, used: at, odd, indAt };
+  return { rows, eur, ind, total: eur + ind, cap, over, used: at, indAt };
 }
 // Capacity for this mix = the industrials + the euro that fit in the length they leave (+ the one beside an odd
 // industrial). 33 euro only, 26 industrial only, 32 for 20 euro + 4 industrial (the owner's example).
@@ -138,7 +138,7 @@ function svg(p, opts) {
     if (r.k === 'K') for (let j = 0; j < 3; j++) rect(r.at, j * 8, 12, 8, 'lp-e');
     else if (r.k === 'D') for (let j = 0; j < 2; j++) rect(r.at, j * 12, 8, 12, 'lp-e');
     else if (r.k === 'S') rect(r.at, 6, 8, 12, 'lp-e lp-s');
-    else if (r.k === 'X') { rect(r.at, 0, 10, 12, 'lp-i'); rect(indAtBack(p) ? r.at + 2 : r.at, 12, 8, 12, 'lp-e'); }
+    else if (r.k === 'X') { rect(r.at, 0, 10, 12, 'lp-i'); rect(indAtBack(p) ? r.at : r.at + 2, 12, 8, 12, 'lp-e'); }
     else for (let j = 0; j < r.n; j++) rect(r.at, j * 12, 10, 12, 'lp-i');   // a lone industrial against the wall, never in the middle (owner 17/11)
     out.push(`<text class="lp-t" x="${((r.at + r.len / 2) * sc).toFixed(1)}" y="${top + H + lab - 2}" text-anchor="middle">${TAG[r.k]}</text>`);
   }
