@@ -196,3 +196,20 @@ test('a lone euro that would leave a front-back gap goes to the doors, at the wa
   // the same lone pallet as the very last thing in the box stays on the euro side, as before
   assert.strictEqual(LP.layout([{ n: 3, ind: true }, { n: 8 }]).rows.slice(-1)[0].stag, 2);
 });
+
+test('after staggered euro the next industrials start with one turned on the short side: no front-back gap (owner 17/11)', () => {
+  // 3 industrial (3) → 7 euro (2) → 4 industrial (1): the doubles end 0.2 m apart; the first industrial row levels them
+  const p = LP.layout([{ n: 3, ind: true }, { n: 7 }, { n: 4, ind: true }]);
+  assert.strictEqual(p.placed, 14);
+  const row = p.rows.find(r => r.turned);
+  assert.ok(row, 'a row with a turned industrial');
+  const [a, b] = row.cells;
+  assert.strictEqual(row.at + a.x + a.w, row.at + b.x + b.w, 'both sides end level');
+  assert.strictEqual(b.y, 12, 'flush against the industrial beside it (no space between the pallets)');
+  assert.strictEqual(b.y + b.h, 22, 'the 0.2 m left over is at the wall');
+  // each side: no gap between consecutive pallets along the box
+  for (const side of [[0, 12], [12, 24]]) {
+    const ends = p.rows.flatMap(r => r.cells.filter(c => c.y < side[1] && c.y + c.h > side[0]).map(c => [r.at + c.x, r.at + c.x + c.w])).sort((x, y) => x[0] - y[0]);
+    for (let j = 1; j < ends.length; j++) assert.ok(ends[j][0] <= ends[j - 1][1], `side ${side}: gap at ${ends[j - 1][1]}–${ends[j][0]}`);
+  }
+});

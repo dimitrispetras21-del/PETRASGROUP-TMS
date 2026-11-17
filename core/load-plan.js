@@ -120,7 +120,7 @@ function layout(parts) {
   }
   const onlyInd = runs.length === 1 && runs[0].ind;
   const rows = [];
-  let at = 0, stag = 0, firstEuro = true, dropped = 0;
+  let at = 0, stag = 0, firstEuro = true, dropped = 0, tailStag = 0;   // tailStag: the euro run before ended staggered
   const deferred = [];   // lone euro pallets that would leave a front-back gap: they go to the doors (below)
   const push = (k, cells, len, extra) => { rows.push(Object.assign({ k, n: cells.length, at, len, cells }, extra)); at += len; };
   const cell = (part, x, y, w, h, ind) => Object.assign({ part, x, y, w, h }, ind ? { ind: true } : {});
@@ -128,6 +128,14 @@ function layout(parts) {
     const r = runs[ri], take = () => r.q.shift();
     if (r.ind) {
       stag = 0;
+      // After staggered euro the two sides end 0.2 m apart. A front-back gap there is a sure fall (owner 17/11), so
+      // the first industrial on the short side is turned (1.2 m along, 1.0 m across): both sides end level. It goes
+      // flush against the industrial beside it, «ώστε να μη μείνει χώρος ανάμεσα στις παλέτες»; the 0.2 m stays at
+      // the wall, to the side (owner 17/11).
+      if (tailStag && !onlyInd && r.q.length >= 2 && BOX - at >= ROW.I) {
+        push('I', [cell(take(), 0, 0, 10, 12, 1), cell(take(), -tailStag, 12, ROW.I + tailStag, 10, 1)], ROW.I, { turned: true });
+      }
+      tailStag = 0;
       // what fits: whole rows up to the doors
       const fitRows = Math.floor((BOX - at) / ROW.I);
       const pat = (onlyInd ? indOnly(Math.min(r.q.length, 2 * I_MAX)) : Array(Math.floor(r.q.length / 2)).fill(2).concat(r.q.length % 2 ? [1] : [])).slice(0, fitRows);
@@ -167,6 +175,7 @@ function layout(parts) {
       }
     }
     firstEuro = false;
+    tailStag = stag;
     stag = 0;
     dropped += r.q.length; r.q.length = 0;
   }
