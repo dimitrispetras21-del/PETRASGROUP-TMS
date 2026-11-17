@@ -606,42 +606,58 @@ function printRamp() {
   const plate = a && a.truck && typeof getTruckPlate === 'function' ? getTruckPlate(a.truck) : '';
   const drv = a && a.fields && (a.fields.Driver || [])[0] && typeof getDriverName === 'function' ? getDriverName(a.fields.Driver[0]) : '';
   const fromOf = m => [...new Set(pts.filter(p => p.m === m && p.t === 'l').map(placeName))].join(' · ');
+  const d0 = days[0] ? new Date(String(days[0]).slice(0, 10) + 'T12:00:00') : null;
+  const now = new Date(), two = n => String(n).padStart(2, '0');
+  const who = typeof user !== 'undefined' && user ? (user.name || user.username || '') : '';
   _printWeekShell('Φόρτωση θαλάμου', rampSheet({
-    head: [days[0] ? esc(dayOf(days[0])) : '', plate, drv].filter(Boolean).join(' · '), pal, cap, lay,
+    date: d0 && !isNaN(d0) ? d0.toLocaleDateString('el-GR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : '',
+    vehicle: [plate, drv].filter(Boolean).join(' · '), pal, cap, lay,
+    logo: new URL('logo.png', location.href).href,
+    printed: `${esc(who)}${who ? ' · ' : ''}${two(now.getDate())}/${two(now.getMonth() + 1)}/${now.getFullYear()} ${two(now.getHours())}:${two(now.getMinutes())}`,
     parts: parts.map(x => ({ no: x.no, n: x.n, ind: x.ind, place: x.p ? placeName(x.p) : '', client: val(x.m, 'ls_client'), from: fromOf(x.m) })),
   }));
 }
-// The sheet itself: plain data in, HTML out (head is already escaped). Kept apart so it can be previewed and tested
+// The sheet itself, in the paper language of the redesign (owner 17/11, «τσέκαρε τη νέα μας σκέψη»: the A4 papers
+// of docs/design/redesign-2026-11 — logo, blue top rule, light title, blue section caps, thin rules, «who · when»
+// and «1 / 1» at the foot) and in colour, one colour per delivery (owner 15/11: A4 papers in colour).
+// Plain data in, HTML out (vehicle and printed are already escaped). Kept apart so it can be previewed and tested
 // without an open form. parts: cab → doors.
 function rampSheet(d) {
   const { lay, pal, cap } = d, parts = d.parts;
-  // cards: the order the forklift loads them — the cab first (last delivery), the doors last (first delivery)
-  const cards = parts.map(x => {
+  const F = "Manrope,'DM Sans',sans-serif";
+  const rows = parts.map(x => {
     const k = x.no || 0, bg = LoadPlan.colour(k), ink = LoadPlan.ink(k);
-    return `<div class="cd" style="border-color:${ink}"><div class="no" style="background:${bg};color:${ink};border-color:${ink}">${x.no || '·'}</div>` +
-      `<div class="tx"><div class="pl">${esc(x.place || 'χωρίς παράδοση')}</div><div class="cl">${esc(x.client)}</div>` +
-      `<div class="fr">από <b>${esc(x.from) || '—'}</b></div></div><div class="np">${x.n}<span>${x.ind ? 'βιομ.' : 'EUR'}</span></div></div>`;
-  }).join('<div class="ar">▼</div>');
-  const warn = [lay.dropped ? `${lay.dropped} παλέτες δεν χωρούν` : '', pal > cap ? `πάνω από ${cap}` : ''].filter(Boolean).join(' · ');
-  return `<style>@page{size:A4 portrait;margin:9mm}html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
-    body{padding:0!important}.fk{font-family:'DM Sans',sans-serif;color:#0B1929}
-    .fk .top{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #0B1929;padding-bottom:8px;margin-bottom:12px}
-    .fk h1{font:700 30px Syne,sans-serif;margin:0;letter-spacing:.02em}.fk .hd{font-size:17px;font-weight:500;color:#334155;margin-top:2px}
-    .fk .big{text-align:right;font:700 34px Syne,sans-serif;line-height:1}.fk .big small{display:block;font:500 13px 'DM Sans',sans-serif;color:#64748B}
-    .fk .big.bad{color:#B91C1C}.fk .body{display:flex;gap:18px;align-items:flex-start}
-    .fk .cards{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
-    .fk .lbl{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#64748B;font-weight:700;margin-bottom:4px}
-    .fk .cd{display:flex;align-items:center;gap:12px;border:2px solid;border-radius:10px;padding:9px 12px;break-inside:avoid}
-    .fk .no{width:46px;height:46px;flex:none;border:2px solid;border-radius:50%;display:flex;align-items:center;justify-content:center;font:700 26px Syne,sans-serif}
-    .fk .tx{flex:1;min-width:0}.fk .pl{font-size:17px;font-weight:700;line-height:1.2}.fk .cl{font-size:13px;color:#334155}.fk .fr{font-size:13px;color:#475569;margin-top:2px}
-    .fk .np{font:700 30px Syne,sans-serif;text-align:right;line-height:1}.fk .np span{display:block;font:600 12px 'DM Sans',sans-serif;color:#475569}
-    .fk .ar{text-align:center;color:#94A3B8;font-size:12px;line-height:1}
-    .fk .ft{margin-top:12px;font-size:13px;color:#334155;border-top:1px solid #CBD5E1;padding-top:8px}</style>
-    <div class="fk"><div class="top"><div><h1>ΦΟΡΤΩΣΗ ΘΑΛΑΜΟΥ</h1><div class="hd">${d.head || ''}</div></div>
-    <div class="big${warn ? ' bad' : ''}">${pal} / ${cap}<small>${warn ? esc(warn) : 'παλέτες'}</small></div></div>
-    <div class="body"><div>${LoadPlan.svg(lay, { scale: 6, parts: parts.map(x => ({ key: x.no || 0, tag: x.no ? String(x.no) : '·' })), width: 0, font: 1.6, numbers: true })}</div>
-    <div class="cards"><div class="lbl">Σειρά φόρτωσης · από την καμπίνα</div>${cards}</div></div>
-    <div class="ft">Ο αριθμός σε κάθε παλέτα = η παράδοση. Φορτώνουμε από την καμπίνα με τη σειρά των καρτών: στις πόρτες μπαίνει η παράδοση 1, που ξεφορτώνει πρώτη. ${esc(LoadPlan.words(lay))}.</div></div>`;
+    return `<div class="dl"><div class="no" style="background:${bg};color:${ink};border-color:${ink}">${x.no || '·'}</div>` +
+      `<div class="tx"><b>${esc(x.place || 'χωρίς παράδοση')}</b><span>${esc(x.client)}</span><span class="fr">από ${esc(x.from) || '—'}</span></div>` +
+      `<div class="np">${x.n}<small>${x.ind ? 'βιομ.' : 'EUR'}</small></div></div>`;
+  }).join('');
+  const over = [lay.dropped ? `${lay.dropped} δεν χωρούν` : '', pal > cap ? `πάνω από ${cap}` : ''].filter(Boolean).join(' · ');
+  const n = parts.filter(x => x.no).length;
+  return `<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>@page{size:A4 portrait;margin:0}html{-webkit-print-color-adjust:exact;print-color-adjust:exact}body{padding:0!important;margin:0}
+.a4{box-sizing:border-box;width:210mm;min-height:296mm;padding:13mm 14mm 9mm;border-top:6px solid #0B63CE;font-family:${F};color:#1B1D29;display:flex;flex-direction:column}
+.a4 *{font-family:${F}}.a4 .top{display:flex;justify-content:space-between;align-items:center;padding-bottom:16px}
+.a4 .logo{display:block;width:165px;height:34px;background-repeat:no-repeat;background-size:241px auto;background-position:-37px -33px}.a4 .top span{text-align:right;color:#555;font-size:11px;line-height:1.5}
+.a4 .hero{display:flex;justify-content:space-between;align-items:flex-end;padding-bottom:12px;border-bottom:1.5px solid #0B63CE}
+.a4 h2{font-size:30px;font-weight:400;letter-spacing:-.6px;line-height:1.05;margin:0}.a4 .veh{font-size:15px;font-weight:600;margin-top:6px}
+.a4 .big{text-align:right;font-size:36px;font-weight:700;letter-spacing:-1px;line-height:1}.a4 .big small{display:block;font-size:11px;font-weight:500;color:#666;letter-spacing:0;margin-top:3px}
+.a4 .big.bad{color:#C92A31}.a4 .big.bad small{color:#C92A31}
+.a4 .body{display:flex;gap:16px;align-items:flex-start;margin-top:12px}.a4 .list{flex:1;min-width:0}
+.a4 .psec{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#0B63CE;margin:4px 0 6px}
+.a4 .dl{display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 0;border-top:.5px solid #CFCFCF}
+.a4 .dl:first-of-type{border-top:1.5px solid #1B1D29}
+.a4 .no{width:40px;height:40px;border:2px solid;border-radius:50%;display:grid;place-items:center;font-size:22px;font-weight:800}
+.a4 .tx b{display:block;font-size:15px;font-weight:700;line-height:1.2}.a4 .tx span{display:block;font-size:11.5px;color:#444}.a4 .tx .fr{color:#666}
+.a4 .np{font-size:26px;font-weight:700;text-align:right;line-height:1;font-variant-numeric:tabular-nums}.a4 .np small{display:block;font-size:10px;font-weight:600;color:#666}
+.a4 .fn{margin-top:auto;padding-top:10px;border-top:.5px solid #CFCFCF;font-size:10px;color:#333;line-height:1.5}
+.a4 .foot{margin-top:8px;display:flex;justify-content:space-between;font-size:9px;color:#666}</style>
+<div class="a4"><div class="top">${d.logo ? `<span class="logo" role="img" aria-label="Petras Group" style="background-image:url('${esc(d.logo)}')"></span>` : '<b>PETRAS GROUP</b>'}<span>${esc(d.date || '')}<br>${n} ${n === 1 ? 'παράδοση' : 'παραδόσεις'} · ${pal} παλέτες</span></div>
+<div class="hero"><div><h2>Φόρτωση θαλάμου</h2>${d.vehicle ? `<div class="veh">${d.vehicle}</div>` : ''}</div>
+<div class="big${over ? ' bad' : ''}">${pal} / ${cap}<small>${over ? esc(over) : 'παλέτες · χωρητικότητα'}</small></div></div>
+<div class="body"><div>${LoadPlan.svg(lay, { scale: 5.4, parts: parts.map(x => ({ key: x.no || 0, tag: x.no ? String(x.no) : '·' })), width: 0, font: 1.5, numbers: true, family: F })}</div>
+<div class="list"><p class="psec">Σειρά φόρτωσης · από την καμπίνα</p>${rows}</div></div>
+<div class="fn">Ο αριθμός σε κάθε παλέτα είναι η παράδοση. Φορτώνουμε από την καμπίνα, με τη σειρά της λίστας· στις πόρτες μπαίνει η 1, που ξεφορτώνει πρώτη. Πίσω μένει χώρος για τις μπάρες.<br>Μ μαχαίρι (3 στο πλάτος) · Δ διπλή (2) · Ο μονή (1, στη μέση· η τελευταία στον τοίχο) · Β βιομηχανική (με γραμμές) — ${esc(LoadPlan.words(lay))}</div>
+<div class="foot"><span>${d.printed || ''}</span><span>1 / 1</span></div></div>`;
 }
 
 function paintSum(pts) {

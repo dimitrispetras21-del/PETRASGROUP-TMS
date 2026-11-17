@@ -197,6 +197,7 @@ function plan(counts) {
 //   parts = [{ label, sub, tag, key }] by part index: each part gets the colour of its key (the delivery number, so
 //     a card on the sheet and its pallets match), a bracket with its label, and its tag written in every pallet
 //   numbers = write the tags in the pallets (on by default from scale 3)
+//   family = the font of the texts (a paper of the redesign: Manrope)
 // Without parts: euro blue, industrial amber.
 const TAG = { K: 'Μ', D: 'Δ', S: 'Ο', I: 'Β', X: 'Β+Π' };
 const PAL = ['#BAE6FD', '#FDE68A', '#BBF7D0', '#FBCFE8', '#DDD6FE', '#FED7AA', '#A5F3FC', '#E5E7EB'];
@@ -251,7 +252,7 @@ function svg(p, opts) {
     : '';
   return `<svg class="lp" viewBox="0 0 ${W.toFixed(0)} ${H.toFixed(0)}" width="${W.toFixed(0)}" role="img" aria-label="${esc(aria(p))}">` +
     `<defs><pattern id="${hid}" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="currentColor" stroke-width="1.2" opacity=".35"/></pattern></defs>` +
-    `<style>.lp text{font-family:'DM Sans',sans-serif}.lp-t{font-size:${7.5 * f}px;font-weight:600;fill:#64748B}` +
+    `<style>.lp text{font-family:${o.family || "'DM Sans',sans-serif"}}.lp-t{font-size:${7.5 * f}px;font-weight:600;fill:#64748B}` +
     `.lp-l{font-size:${9.5 * f}px;font-weight:700}.lp-s{font-size:${8 * f}px;fill:#475569}.lp-c{font-size:${7.5 * f}px;font-weight:700;fill:#fff;letter-spacing:.08em}</style>` +
     // the cab: a navy cap on the front wall
     `<rect x="${tagW + boxW * 0.12}" y="0" width="${boxW * 0.76}" height="${cab}" rx="${cab / 2}" fill="#0B1929"/>` +
