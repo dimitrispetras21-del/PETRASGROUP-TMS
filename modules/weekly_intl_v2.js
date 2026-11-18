@@ -98,7 +98,7 @@ const _actLabel = (it) => { const a = A(); return a && typeof a._actLabel === 'f
 // code is a reason here any more (owner 11/10 21:20, WI4.TEXT).
 const EXTRA_WORDS = Object.freeze({
   // a day's loads may differ in capacity (pallet types, core/load-plan.js): the marker says the fact, each row its number
-  OVER_33: 'πάνω από χωρητικότητα', SAME_DAY: 'ίδια μέρα',
+  OVER_33: 'πάνω από τη χωρητικότητα', SAME_DAY: 'ίδια μέρα',
   LATE: 'καθυστέρηση', PREORDER: 'pre-order χωρίς μετατροπή', SAVE_FAILED: 'δεν αποθηκεύτηκε',
   RELAY_NO_DRIVER: 'τοπική χωρίς οδηγό', MATCH_UNREAD: 'εισαγωγή εκτός προβολής',
   PALLETS_UNKNOWN: 'παλέτες χωρίς καταγραφή',

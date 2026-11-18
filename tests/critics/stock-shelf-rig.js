@@ -1065,7 +1065,7 @@ if (MAIN) (async () => {
     const off = await page.evaluate(() => ({ sw: FEATURES.STOCK_LOTS, shelf: !!document.getElementById('wi-shelf'), p3Row: !!document.getElementById('wi-imp-recRIGP3000000003') }));
     ok('g42_switch_off_board', off.sw === false && !off.shelf && off.p3Row, off);   // no shelf = no home: the loose piece keeps its row
     // (1) row pallets = Σ group members: checked through the group window until 15/11; the window went
-    //     (a groupage is built in the form), the sum is the board's own (_wiRowPals).
+    //     (a groupage is built in the form), the sum is the board's own (_wiRowRecs + _wiRecsPals).
     // (2) the export finds its group by ANY member: after a reorder the lead is
     //     I3 while E2 still points at I2 — E2's row still draws both tiles.
     const seg = await page.evaluate(async () => {

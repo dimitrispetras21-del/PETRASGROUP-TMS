@@ -631,7 +631,7 @@ function flags(facts, today) {
   // it). `pallets` sums the members that HAVE a figure, so a load over with one
   // member unwritten is still OVER_33; within 5 of it with a gap it is a look,
   // never «fine».
-  const cap = Number.isFinite(Number(f.palCap)) && f.palCap != null ? Number(f.palCap) : LP().capacity({});
+  const cap = typeof f.palCap === 'number' && Number.isFinite(f.palCap) ? f.palCap : LP().capacity({});
   if (Number(f.pallets) > cap) out.push(reason('OVER_33', 'amber', TEXT.OVER_33 + ' ' + cap + 'π', f.loadDate));
   else if (Number(f.palletsUnknown) > 0 && Number(f.pallets) >= cap - 5) out.push(reason('PALLETS_UNKNOWN', 'amber', TEXT.PALLETS_UNKNOWN, f.loadDate));
   if (f.matchUnread) out.push(reason('MATCH_UNREAD', 'amber', TEXT.MATCH_UNREAD, f.loadDate));

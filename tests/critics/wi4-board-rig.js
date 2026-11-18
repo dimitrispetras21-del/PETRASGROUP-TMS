@@ -1151,7 +1151,7 @@ async function scnInvariants(browser, origin) {
   // carries an empty return and a late load (its VS date mismatch is no
   // reason any more, owner 11/10 21:20).
   const RX = { NO_TRUCK: /χωρίς φορτηγό/, EMPTY_RETURN: /κεν(?:ό γύρισμα|ά γυρίσματα)/,
-    OVER_33: /πάνω από χωρητικότητα/, SAME_DAY: /ίδια μέρα/, LATE: /καθυστέρησ/, PREORDER: /pre-order/, RELAY_NO_DRIVER: /χωρίς οδηγό/, MATCH_UNREAD: /εκτός προβολής/,
+    OVER_33: /πάνω από τη χωρητικότητα/, SAME_DAY: /ίδια μέρα/, LATE: /καθυστέρησ/, PREORDER: /pre-order/, RELAY_NO_DRIVER: /χωρίς οδηγό/, MATCH_UNREAD: /εκτός προβολής/,
     PALLETS_UNKNOWN: /παλέτες χωρίς καταγραφή/, SAVE_FAILED: /δεν αποθηκεύτηκ/ };
   const mon = () => page.evaluate(() => { const day = document.querySelector('#content .wi4 .wi4-day[data-day="2026-10-05"]'); const dot = day && day.querySelector('[data-dc] .wi4-dayh-dot');
     const b = dot && dot.getBoundingClientRect();

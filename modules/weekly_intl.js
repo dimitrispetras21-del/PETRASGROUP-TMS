@@ -2227,13 +2227,12 @@ function _wi2Date(oid,field,iso,txt,cls,title){
 // disappears from fields) renders «—», never «0p». Fill colour x/cap, cap =
 // the truck's capacity for the pallet types (core/load-plan.js, owner 17/11:
 // 33 euro, 26 industrial): normal · orange from cap−3 · red over cap.
-function _wi2PalCap(fl){ return LoadPlan.tally(fl.map(f=>({n:f['Total Pallets'],type:f['Pallet Type']}))).cap; }
 function _wi2PalCls(n,cap){ return n>cap?' over':n>=cap-3?' hi':''; }
 function _wi2PalTip(n,cap){ return n>cap?`Πάνω από τη χωρητικότητα (${cap})`:n>=cap-3?`Κοντά στη χωρητικότητα (${cap})`:'Παλέτες'; }
 function _wi2Pal(f){
   if(!f||!('Total Pallets' in f)||f['Total Pallets']===''||f['Total Pallets']==null)
     return `<span class="wi2-pal na" title="Οι παλέτες δεν έχουν καταγραφεί">—</span>`;
-  const n=+f['Total Pallets'], cap=_wi2PalCap([f]);
+  const n=+f['Total Pallets'], cap=_wiPalCap([{fields:f}]);
   return `<span class="wi2-pal${_wi2PalCls(n,cap)}" title="${_wi2PalTip(n,cap)} · ${n}/${cap}">${n} p</span>`;
 }
 // Group: partial sums are declared («2 στάσεις χωρίς παλέτες»), not hidden.
@@ -2241,7 +2240,7 @@ function _wi2PalGroup(exps){
   const known=exps.filter(e=>('Total Pallets' in e.fields)&&e.fields['Total Pallets']!==''&&e.fields['Total Pallets']!=null);
   const miss=exps.length-known.length;
   if(!known.length) return `<span class="wi2-pal na" title="Οι παλέτες δεν έχουν καταγραφεί σε κανένα μέλος">—</span>`;
-  const n=known.reduce((s,e)=>s+(+e.fields['Total Pallets']),0), cap=_wi2PalCap(known.map(e=>e.fields));
+  const n=known.reduce((s,e)=>s+(+e.fields['Total Pallets']),0), cap=_wiPalCap(known);
   return `<span class="wi2-pal${_wi2PalCls(n,cap)}" title="Σύνολο ομάδας · ${n}/${cap}${miss?` · ${miss} ${miss===1?'στάση':'στάσεις'} χωρίς παλέτες`:''}">${n} p${miss?'<span class="na">+?</span>':''}</span>`;
 }
 // «ΕΠΕΙΓΟΝ» gap (frame: «2 με παράδοση εντός 48h»): own round trip without
@@ -2264,7 +2263,7 @@ function _wi2LegendHTML(){
     <span><b>Εισαγωγή:</b> ΚΕΝΟ ΓΥΡΙΣΜΑ = δικός γύρος χωρίς φορτίο επιστροφής (κόκκινο = επείγον, παράδοση εντός 48h) · navy κελί = συνεργάτης, δεν αναμένεται σκέλος · ανοιχτό κελί = σύρε εισαγωγή εδώ</span>
     <span><b>Σήματα:</b> VS = Veroia Switch · PE = ανταλλαγή παλετών · ! = υψηλό ρίσκο / καθυστέρηση · ①② = σειρά στάσεων · ↤/↦ = φόρτωση σε άλλη εβδομάδα · ⚠ φόρτωση χωρίς ανάθεση (μόνο τρέχουσα)</span>
     <span><b>Sync:</b> ⟳ γράφεται · ✓ γράφτηκε · ⚠ ΔΕΝ γράφτηκε (μένει ορατό)</span>
-    <span><b>Παλέτες:</b> — = δεν καταγράφηκαν · πορτοκαλί = 3 ή λιγότερες ελεύθερες · κόκκινο = πάνω από τη χωρητικότητα (${LoadPlan.capacity({})} EUR, ${LoadPlan.capacity({ind:LoadPlan.BOX})} βιομηχανικές, λιγότερες σε μείξη)</span>
+    <span><b>Παλέτες:</b> — = δεν καταγράφηκαν · πορτοκαλί = 3 ή λιγότερες ελεύθερες · κόκκινο = πάνω από τη χωρητικότητα (${LoadPlan.capacity({})} EUR, ${LoadPlan.capacity({ind:Infinity})} βιομηχανικές, λιγότερες σε μείξη)</span>
     <span><b>Σκέλη Βέροιας:</b> — = δεν υπάρχει εθνικό σκέλος · κάρτα = Veroia Switch (ο μεταφορέας συμπληρώνεται στο Weekly National)</span>
     <span><b>Οδηγοί:</b> επιστροφή Χ → επόμενη αναχώρηση Χ+2 (⚡Χ+1 μόνο κατ' εξαίρεση)</span>${_wiStockOn()?`
     <span><b>Απόθεμα:</b> ΑΠ = κομμάτι από απόθεμα · → ΑΠΟΘΗΚΗ = παρτίδα · λωρίδα ΑΠΟΘΕΜΑ = υπόλοιπο/σύνολο παλέτες ανά αποθήκη (πορτοκαλί &gt;21η ή «κλείσιμο;» · κόκκινο = κομμάτια κινούνται χωρίς παραλαβή στην αποθήκη)</span>`:''}
