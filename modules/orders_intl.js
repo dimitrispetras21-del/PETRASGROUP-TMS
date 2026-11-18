@@ -1303,7 +1303,8 @@ function _oiPrefillUndo() {
 
 // The one summary line (Φ1–Φ6, Φ4 β2 / γ): pallets loaded → delivered, the exchange, the Veroia day and its pallets,
 // the truck fill. Display only — it blocks nothing and writes nothing (owner 31/10: warnings, not refusals).
-// 33 = the truck capacity the scan preview already checks against.
+// The truck fill is against the capacity for the order's Pallet Type (core/load-plan.js, owner 17/11: 33 euro, 26
+// industrial), the same number the scan preview checks against.
 function _oiBalanceUpdate() {
   const el = document.getElementById('oiBalance'); if (!el) return;
   const rows = t => _oiRows(t).map(r => ({ r, pal: parseFloat(r.querySelector('[id^="pal_"]')?.value) || 0 }));
@@ -1348,7 +1349,8 @@ function _oiBalanceUpdate() {
     const day = _oiVsDay();
     parts.push(`<span class="oi2-vschip">Βέροια${day ? ' ' + escapeHtml(day) : ''} · ${vsPal} παλέτες</span>`);
   }
-  if (sL > 33) parts.push(`<span class="warn">γέμισμα φορτηγού ${sL}/33</span>`);
+  const cap = LoadPlan.tally([{ n: sL, type: document.getElementById('f_PalletType')?.value }]).cap;
+  if (sL > cap) parts.push(`<span class="warn">γέμισμα φορτηγού ${sL}/${cap}</span>`);
   el.innerHTML = parts.join('<span class="oi2-dot">·</span>');
 }
 // The day shown in the Veroia chip: the estimate the save would send (Export = loading + 1, Import = delivery − 1,
@@ -4012,7 +4014,9 @@ async function _scanPreview(data) {
     const _ld = data.loading_date ? new Date(data.loading_date) : null;
     const _dd = data.delivery_date ? new Date(data.delivery_date) : null;
     if (_ld && _dd && !isNaN(_ld) && !isNaN(_dd) && _dd < _ld) warns.push('Η παράδοση είναι ΠΡΙΝ τη φόρτωση — έλεγξε τις ημερομηνίες');
-    if (data.pallets && data.pallets > 33) warns.push(`Παλέτες ${data.pallets} > 33 (χωρητικότητα φορτηγού)`);
+    // the capacity for the scanned pallet type (only v2 reads it; none = euro), as the form counts (core/load-plan.js)
+    const palCap = LoadPlan.tally([{ n: data.pallets, type: data.pallet_type }]).cap;
+    if (data.pallets && data.pallets > palCap) warns.push(`Παλέτες ${data.pallets} > ${palCap} (χωρητικότητα φορτηγού)`);
     if (data.temperature_c != null && (data.temperature_c < -30 || data.temperature_c > 30)) warns.push(`Θερμοκρασία ${data.temperature_c}°C εκτός λογικού εύρους`);
     // v2 stop dates live on the stops (the top-level dates above are v1-only).
     if (data._engine === 'v2') {

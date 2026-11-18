@@ -57,6 +57,8 @@ function loadV5() {
   ctx.window = ctx;
   vm.createContext(ctx);
   vm.runInContext(read('config.js'), ctx, { filename: 'config.js' });
+  // core/load-plan.js loads before the v5 files in app.html (WN5L.CAP = LoadPlan.capacity, 17/11)
+  vm.runInContext(read('core/load-plan.js'), ctx, { filename: 'core/load-plan.js' });
   const added = {};
   for (const f of V5) {
     const before = new Set(Object.keys(ctx));

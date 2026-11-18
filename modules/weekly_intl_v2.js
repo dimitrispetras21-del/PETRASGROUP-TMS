@@ -97,7 +97,8 @@ const _actLabel = (it) => { const a = A(); return a && typeof a._actLabel === 'f
 // said in its marker, so marker = queue = rails (§d.3 invariant). No national
 // code is a reason here any more (owner 11/10 21:20, WI4.TEXT).
 const EXTRA_WORDS = Object.freeze({
-  OVER_33: 'πάνω από 33π', SAME_DAY: 'ίδια μέρα',
+  // a day's loads may differ in capacity (pallet types, core/load-plan.js): the marker says the fact, each row its number
+  OVER_33: 'πάνω από χωρητικότητα', SAME_DAY: 'ίδια μέρα',
   LATE: 'καθυστέρηση', PREORDER: 'pre-order χωρίς μετατροπή', SAVE_FAILED: 'δεν αποθηκεύτηκε',
   RELAY_NO_DRIVER: 'τοπική χωρίς οδηγό', MATCH_UNREAD: 'εισαγωγή εκτός προβολής',
   PALLETS_UNKNOWN: 'παλέτες χωρίς καταγραφή',
@@ -106,7 +107,8 @@ const EXTRA_WORDS = Object.freeze({
 const EXTRA_PLURAL = Object.freeze({ RELAY_NO_DRIVER: 'relayNoDriver' });
 // Words of a failed match's GHOST line (_ghostHTML): a reason in the short
 // form the rows use; any other reason says its WI4.flags text.
-const GHOST_WORDS = Object.freeze({ NO_TRUCK: 'χωρίς φορτηγό', OVER_33: 'πάνω από 33π', LATE: 'καθυστέρηση' });
+// OVER_33 says its WI4.flags text: the number is that load's capacity («πάνω από 26π»).
+const GHOST_WORDS = Object.freeze({ NO_TRUCK: 'χωρίς φορτηγό', LATE: 'καθυστέρηση' });
 // Words of the stock strip's flags: the queue's STOCK_LOT items AND this
 // board's chips (SHELF_OPT.flagText → _wiShelfInner), so the queue and the
 // strip say one thing. «να κλείσει;» (Figma 1115:2763 / 1117:2799) names the
@@ -179,12 +181,18 @@ function _relayState() { return _vw.relay; }
 function _root() { return document.querySelector('#content .wi4'); }
 function _live() { return WIV2.active() && !!_root(); }
 function _gtOn() { return typeof FEATURES !== 'undefined' && !!FEATURES.GROUP_TILES; }
+// cap: the truck's capacity for the members' pallet types (core/load-plan.js, owner 17/11), over the members that
+// have a figure — the same members as n, so the cell, the flag and its title read one number.
 function _pals(fieldsList) {
   let n = 0, known = 0;
+  const items = [];
   for (const f of fieldsList) {
-    if (f && 'Total Pallets' in f && f['Total Pallets'] !== '' && f['Total Pallets'] != null) { n += +f['Total Pallets'] || 0; known++; }
+    if (f && 'Total Pallets' in f && f['Total Pallets'] !== '' && f['Total Pallets'] != null) {
+      n += +f['Total Pallets'] || 0; known++;
+      items.push({ n: f['Total Pallets'], type: f['Pallet Type'] });
+    }
   }
-  return { n, known, miss: fieldsList.length - known };
+  return { n, known, miss: fieldsList.length - known, cap: LoadPlan.tally(items).cap };
 }
 // One end of an order as points: [{n, dt}] from the stops the board injected
 // (_wiInjectStopSummaries), else the summary/first location — the old board's
@@ -385,8 +393,9 @@ function factsOf(row) {
     returnDate: delDate, returnPlace: ret.placeC || ret.title || '', hasReturn,
     stockState: (D.data.stock && D.data.stock.status) || null,
     pallets: p.known ? p.n : null,
-    // Members without a pallet figure: the cell says «N+?» and, near 33, the
-    // flag says so (WI4.flags PALLETS_UNKNOWN) — never «fine» on a gap.
+    palCap: p.cap,
+    // Members without a pallet figure: the cell says «N+?» and, near the
+    // capacity, the flag says so (WI4.flags PALLETS_UNKNOWN) — never «fine» on a gap.
     palletsUnknown: p.known ? p.miss : 0,
     sameDayClash: (row.truckId || row.driverId) ? I.sameDayConflict(row) : null,
     late: !!st.late,
@@ -962,13 +971,14 @@ function _palHTML(fieldsList, oid, docIds) {
   if (!p.known) h += '<span class="wi4-pal wi4-t-g2" title="Οι παλέτες δεν έχουν καταγραφεί">—</span>';
   else {
     // The SAME thresholds as WI4.flags OVER_33 / PALLETS_UNKNOWN (one source of
-    // the numbers: _pals over the same members as factsOf).
-    const r = p.n > 33 ? ' data-r="OVER_33"' : p.miss && p.n >= 28 ? ' data-r="PALLETS_UNKNOWN"' : '';
-    // Over 33: an amber «!» before the number (Figma «ⓘ34»), so the warning is
+    // the numbers: _pals over the same members as factsOf, its cap by pallet type).
+    const over = p.n > p.cap, unk = !over && p.miss && p.n >= p.cap - 5;
+    const r = over ? ' data-r="OVER_33"' : unk ? ' data-r="PALLETS_UNKNOWN"' : '';
+    // Over the capacity: an amber «!» before the number (Figma «ⓘ34»), so the warning is
     // a shape AND a colour — red/amber read 1.2:1 for red-green colour-blind
     // readers (§c.2), and colour alone was the only signal (review 11/10).
-    const ic = p.n > 33 ? `<span class="wi4-pal-ic" aria-hidden="true">${_ico('alert_circle', 11)}</span>` : '';
-    h += `<span class="wi4-pal${p.n > 33 ? ' over' : p.miss && p.n >= 28 ? ' unk' : ''}"${r} title="${_esc((p.n > 33 ? 'Πάνω από τη χωρητικότητα (33) · ' : 'Παλέτες · ') + p.n + '/33' + (p.miss ? ' · ' + p.miss + ' χωρίς παλέτες' : ''))}">${ic}${p.n}${p.miss ? '+?' : ''}</span>`;
+    const ic = over ? `<span class="wi4-pal-ic" aria-hidden="true">${_ico('alert_circle', 11)}</span>` : '';
+    h += `<span class="wi4-pal${over ? ' over' : unk ? ' unk' : ''}"${r} title="${_esc((over ? 'Πάνω από τη χωρητικότητα (' + p.cap + ') · ' : 'Παλέτες · ') + p.n + '/' + p.cap + (p.miss ? ' · ' + p.miss + ' χωρίς παλέτες' : ''))}">${ic}${p.n}${p.miss ? '+?' : ''}</span>`;
   }
   return h;
 }

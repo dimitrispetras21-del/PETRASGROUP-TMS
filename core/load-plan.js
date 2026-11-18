@@ -215,6 +215,15 @@ function capacity(counts) {
   const ir = indRowsFit(ind), iFit = Math.min(ind, 2 * ir), room = BOX - ir * ROW.I;
   return iFit + (iFit % 2 ? 1 + Math.floor(room / 8) + Math.floor((room + 2) / 8) : euroFill(room));
 }
+// One load counted from its orders, for the screens that know only each order's pallets and Pallet Type (Weekly,
+// scan, Εθνικά): items [{ n, type }] → { eur, ind, total, cap, over }. total = the raw sum the screens print; over
+// counts a part pallet as a place, as the form does. Every screen asks this, so none keeps its own 33 (principle 3).
+function tally(items) {
+  let eur = 0, ind = 0;
+  for (const x of items || []) { const v = Number(x && x.n) || 0; if (isInd(x && x.type)) ind += v; else eur += v; }
+  const cap = capacity({ ind });
+  return { eur, ind, total: eur + ind, cap, over: Math.max(0, n0(eur) + n0(ind) - cap) };
+}
 // One load without an order of parts: industrials by the cab, then euro. → layout + { eur, ind, total, cap, over }.
 // over = pallets above the capacity (shown as a warning, never a refusal).
 function plan(counts) {
@@ -338,7 +347,7 @@ function aria(p) {
     c.I ? c.I + (c.I === 1 ? ' σειρά βιομηχανικές' : ' σειρές βιομηχανικές') : '', c.X ? '1 βιομηχανική + πλάκα' : ''].filter(Boolean).join(' · ');
 }
 
-const LoadPlan = Object.freeze({ BOX, ROW, isInd, euroFill, capacity, euroRows, layout, plan, svg, words: aria, paint });
+const LoadPlan = Object.freeze({ BOX, ROW, isInd, euroFill, capacity, tally, euroRows, layout, plan, svg, words: aria, paint });
 if (typeof module !== 'undefined' && module.exports) module.exports = LoadPlan;
 else globalThis.LoadPlan = LoadPlan;
 })();

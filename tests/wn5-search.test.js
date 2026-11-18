@@ -25,7 +25,7 @@ test('F4α-T7: Greek finds the Latin names; «τστ 2104» finds the two cycles
   const ctx = { console: { log() {}, warn() {}, error() {} } };
   ctx.window = ctx;
   vm.createContext(ctx);
-  for (const f of ['core/form-helpers.js', 'core/wi4-logic.js', 'core/wn5-logic.js']) vm.runInContext(read(f), ctx, { filename: f });
+  for (const f of ['core/form-helpers.js', 'core/load-plan.js', 'core/wi4-logic.js', 'core/wn5-logic.js']) vm.runInContext(read(f), ctx, { filename: f });
   const m = ctx.WN5L.model(FIX, { today: '2026-10-13' });
   const rows = m.days.flatMap((d) => d.rows);
   const find = (q) => Array.from(rows.filter((r) => ctx.fhSearchBlob(ctx.WN5L.searchParts(r)).includes(ctx.fhSearchNorm(q))), (r) => r.key);

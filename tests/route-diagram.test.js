@@ -16,7 +16,7 @@ const ROOT = process.env.TMS_ROOT ? path.resolve(process.env.TMS_ROOT) : path.jo
 const sb = { console };
 sb.window = sb;
 vm.createContext(sb);
-for (const f of ['core/wn5-logic.js', 'core/wn5-labels.js', 'core/route-diagram.js', 'core/route-diagram-adapters.js', 'tests/fixtures/route-diagram-cases.js']) {
+for (const f of ['core/load-plan.js', 'core/wn5-logic.js', 'core/wn5-labels.js', 'core/route-diagram.js', 'core/route-diagram-adapters.js', 'tests/fixtures/route-diagram-cases.js']) {
   vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), sb, { filename: f });
 }
 const { RouteDiagram: RD, RouteDiagramAdapters: A, RD_CASES } = sb;

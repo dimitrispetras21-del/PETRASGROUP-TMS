@@ -25,6 +25,8 @@ const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 // The load rules (core/load-group.js): a browser global in the app, a module under node --test. Read when called,
 // so loading this file still only defines WI4 (§b step 6).
 const LG = () => (typeof LoadGroup !== 'undefined' ? LoadGroup : require('./load-group.js'));
+// The truck's capacity by pallet type (core/load-plan.js, owner 17/11): read when called, as LG.
+const LP = () => (typeof LoadPlan !== 'undefined' ? LoadPlan : require('./load-plan.js'));
 
 // Whole days from `a` to `b` (b − a), or null when either is not a day.
 // Date.UTC on both sides: no DST hour can turn 1 day into 0.96.
@@ -548,7 +550,8 @@ function points(stops, widthPx, opts) {
 const TEXT = freeze({
   NO_TRUCK: 'χωρίς φορτηγό',
   EMPTY_RETURN: 'κενό γύρισμα',
-  OVER_33: 'πάνω από 33π',
+  // «πάνω από» + the load's own capacity («πάνω από 26π»), written by flags().
+  OVER_33: 'πάνω από',
   LATE: 'καθυστέρηση',
   PREORDER: 'pre-order χωρίς μετατροπή',
   SAVE_FAILED: 'δεν αποθηκεύτηκε',
@@ -583,7 +586,7 @@ const nearLevel = (d, today) => { const k = dayDiff(today, d); return k === null
  * facts (built impurely by WIV2.factsOf):
  *   {kind:'export'|'import'|'leg'|'split'|'relay', saved, partner, loadDate,
  *    delDate, returnDate, returnPlace?, hasReturn,
- *    stockState, pallets, palletsUnknown?,
+ *    stockState, pallets, palletsUnknown?, palCap? (LoadPlan.tally of the members),
  *    sameDayClash:string|null, late, preorder:{level}|null, syncErr, executing,
  *    matchUnread?}
  * → {level:'red'|'amber'|null, reasons:[{code, level, text, act, date}]}
@@ -621,11 +624,16 @@ function flags(facts, today) {
     }
   }
 
-  // 33 pallets is allowed (decision 9/10); only more is a flag. `pallets`
-  // sums the members that HAVE a figure, so a load over 33 with one member
-  // unwritten is still OVER_33; near 33 with a gap it is a look, never «fine».
-  if (Number(f.pallets) > 33) out.push(reason('OVER_33', 'amber', TEXT.OVER_33, f.loadDate));
-  else if (Number(f.palletsUnknown) > 0 && Number(f.pallets) >= 28) out.push(reason('PALLETS_UNKNOWN', 'amber', TEXT.PALLETS_UNKNOWN, f.loadDate));
+  // A full truck is allowed (decision 9/10); only more is a flag. The capacity
+  // follows the members' pallet types (palCap = LoadPlan.tally, owner 17/11:
+  // 33 euro, 26 industrial, fewer for a mix); without it, the euro capacity.
+  // The code keeps its name OVER_33 (the queue, the rails and the markers read
+  // it). `pallets` sums the members that HAVE a figure, so a load over with one
+  // member unwritten is still OVER_33; within 5 of it with a gap it is a look,
+  // never «fine».
+  const cap = Number.isFinite(Number(f.palCap)) && f.palCap != null ? Number(f.palCap) : LP().capacity({});
+  if (Number(f.pallets) > cap) out.push(reason('OVER_33', 'amber', TEXT.OVER_33 + ' ' + cap + 'π', f.loadDate));
+  else if (Number(f.palletsUnknown) > 0 && Number(f.pallets) >= cap - 5) out.push(reason('PALLETS_UNKNOWN', 'amber', TEXT.PALLETS_UNKNOWN, f.loadDate));
   if (f.matchUnread) out.push(reason('MATCH_UNREAD', 'amber', TEXT.MATCH_UNREAD, f.loadDate));
   if (f.sameDayClash) out.push(reason('SAME_DAY', 'amber', String(f.sameDayClash), f.loadDate));
   if (f.late) out.push(reason('LATE', 'amber', TEXT.LATE, f.delDate));
