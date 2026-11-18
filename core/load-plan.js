@@ -81,8 +81,9 @@ const IND_SINGLES_UP_TO = 20;
 function indOnly(i) {
   for (let s = i > IND_SINGLES_UP_TO ? 0 : Math.max(0, Math.floor((i - 2) / 3)); s >= 0; s--) {
     const rest = s ? i - (3 * s + 2) : i;
-    // with singles, at most 12 rows (12.0 m): the room at the back stays for the bars, as with the euro
-    if ((s ? 2 * s + 1 : 0) + Math.ceil(rest / 2) > (s ? I_MAX - 1 : I_MAX)) continue;
+    // with singles, at most 11 rows: industrials + singles ≤ 22, so 20 industrials take 2 singles (owner 18/11
+    // «με 20 βιομηχανικές χρειαζόμαστε 2 μονές»); the room at the back stays for the bars, as with the euro
+    if ((s ? 2 * s + 1 : 0) + Math.ceil(rest / 2) > (s ? I_MAX - 2 : I_MAX)) continue;
     const rows = [];
     for (let j = 0; j < s; j++) rows.push(2, 1);
     if (s) rows.push(2);
@@ -152,7 +153,8 @@ function layout(parts) {
           // the flat euro sits flush against the pallet in front on its side (off m earlier when already staggered)
           push('X', [cell(take(), 0, 0, 10, 12, 1), cell(nx.q.shift(), -off, 12, 8, 12)], ROW.I);
           stag = off + 2;
-        } else push('I', [cell(take(), 0, 0, 10, 12, 1)], ROW.I);   // lone: at the wall
+        } else if (onlyInd && r.q.length > 1) push('I', [cell(take(), 0, 6, 10, 12, 1)], ROW.I);   // a single between pairs: in the middle (owner 18/11)
+        else push('I', [cell(take(), 0, 0, 10, 12, 1)], ROW.I);   // the last lone one: at the wall
       }
       // the euro that follows keeps the stagger, so its side stays flush
       if (off && !stag) stag = off;
