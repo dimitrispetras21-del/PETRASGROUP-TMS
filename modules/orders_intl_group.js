@@ -653,7 +653,7 @@ function rampSheet(d) {
   const n = parts.filter(x => x.no).length;
   return `<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>@page{size:A4 portrait;margin:0}html{-webkit-print-color-adjust:exact;print-color-adjust:exact}body{padding:0!important;margin:0}
-.a4{box-sizing:border-box;width:210mm;min-height:296mm;padding:13mm 14mm 9mm;border-top:6px solid #0B63CE;font-family:${F};color:#1B1D29;display:flex;flex-direction:column}
+.a4{box-sizing:border-box;width:210mm;min-height:285mm;padding:13mm 14mm 9mm;border-top:6px solid #0B63CE;font-family:${F};color:#1B1D29;display:flex;flex-direction:column}
 .a4 *{font-family:${F}}.a4 .top{display:flex;justify-content:space-between;align-items:center;padding-bottom:16px}
 .a4 .logo{display:block;width:165px;height:34px;background-repeat:no-repeat;background-size:241px auto;background-position:-37px -33px}.a4 .top span{text-align:right;color:#555;font-size:11px;line-height:1.5}
 .a4 .hero{display:flex;justify-content:space-between;align-items:flex-end;padding-bottom:12px;border-bottom:1.5px solid #0B63CE}
@@ -676,7 +676,7 @@ function rampSheet(d) {
 <div class="hero"><div><h2>Φόρτωση θαλάμου</h2>${d.vehicle ? `<div class="veh">${d.vehicle}</div>` : ''}</div>
 <div class="hr"><div class="big tmp${d.split ? ' bad' : ''}">${d.split ? 'ΧΩΡΙΣΜΑ' : esc(d.temp || '—')}<small>${d.split ? 'διαφορετικές θερμοκρασίες' : 'θερμοκρασία'}${d.reefer ? ' · ' + esc(d.reefer) : ''}</small></div>
 <div class="big${over ? ' bad' : ''}">${pal} / ${cap}<small>${over ? esc(over) : 'παλέτες · χωρητικότητα'}</small></div></div></div>
-<div class="body"><div>${LoadPlan.svg(lay, { scale: 6.3, parts: parts.map(x => ({ key: x.no || 0, tag: x.no ? String(x.no) : '·' })), width: 150, font: 1.5, numbers: true, family: F, tone: d.tone, guide: true })}</div>
+<div class="body"><div>${LoadPlan.svg(lay, { scale: 5.7, parts: parts.map(x => ({ key: x.no || 0, tag: x.no ? String(x.no) : '·' })), width: 150, font: 1.5, numbers: true, family: F, tone: d.tone, guide: true })}</div>
 <div class="list"><p class="psec">Σειρά φόρτωσης · από την καμπίνα</p><div class="ckh">φορτώθηκε</div>${rows}
 <div class="chk"><b>Έλεγχος πριν την αναχώρηση</b><span>Το σχέδιο είναι πρόταση του συστήματος. Ο φορτωτής και ο οδηγός ελέγχουν μαζί τη φόρτωση πριν φύγει το φορτηγό.</span>
 <i>Καμία παλέτα χωρίς στήριξη μπρος-πίσω</i><i>Μπάρες στη θέση τους</i><i>Θερμοκρασία θαλάμου όπως στο φύλλο</i><i>Παλέτες ανά παράδοση όπως στη λίστα</i><i>Φορτώθηκε αλλιώς; Πώς: ____________________</i></div>
