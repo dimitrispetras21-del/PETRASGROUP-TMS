@@ -263,3 +263,17 @@ test('tally: the capacity of a load from its orders\' pallets and types', () => 
   // the order of the parts never moves the number
   assert.strictEqual(LP.tally([{ n: 4, type: 'Industrial' }, { n: 20 }]).cap, LP.tally([{ n: 20 }, { n: 4, type: 'Industrial' }]).cap);
 });
+
+// One source (owner 17/11, principle 3): the screens that used a fixed 33 ask core/load-plan.js. Comments may tell the
+// history; code may not hold the number.
+test('no fixed 33 in the capacity checks of the screens (Weekly, v4, form fill, scan, Εθνικά CAP / compose)', () => {
+  const fs = require('node:fs'), path = require('node:path');
+  const code = f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8').split('\n')
+    .filter(l => !/^\s*(\/\/|\/?\*)/.test(l)).map(l => l.replace(/\s\/\/.*$/, '')).join('\n');
+  for (const f of ['core/wi4-logic.js', 'core/wn5-logic.js', 'modules/wn5_compose.js', 'modules/weekly_intl_v2.js'])
+    assert.doesNotMatch(code(f), /\b33\b/, f);
+  const oi = code('modules/orders_intl.js');
+  assert.doesNotMatch(oi, /[<>]=?\s*33\b|\/33\b|> 33 \(/, 'orders_intl: form fill and scan');
+  assert.strictEqual((oi.match(/LoadPlan\.tally\(/g) || []).length, 2, 'orders_intl: the fill line and the scan ask LoadPlan');
+  assert.doesNotMatch(code('modules/weekly_intl.js'), /WI_PAL_CAP|[<>]=?\s*33\b|\/33\b/, 'weekly_intl');
+});
