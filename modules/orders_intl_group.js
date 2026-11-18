@@ -668,6 +668,7 @@ function rampSheet(d) {
 .a4 .tx b{display:block;font-size:18px;font-weight:700;line-height:1.2}.a4 .tx span{display:block;font-size:13px;color:#444}.a4 .tx .fr{color:#666}
 .a4 .tp{font-size:20px;font-weight:800;color:#fff;background:#0B63CE;border-radius:6px;padding:4px 8px;white-space:nowrap;text-align:right}
 .a4 .ck{width:26px;height:26px;border:2px solid #1B1D29;border-radius:4px}.a4 .ckh{display:flex;justify-content:flex-end;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#666;margin:-2px 0 2px}
+.a4 .chk{margin-top:16px;border:1.5px solid #1B1D29;border-radius:8px;padding:10px 12px;font-size:11.5px;color:#1B1D29}.a4 .chk b{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:3px}.a4 .chk span{display:block;color:#333;margin-bottom:6px}.a4 .chk i{display:flex;align-items:center;gap:8px;font-style:normal;padding:2px 0}.a4 .chk i::before{content:'';width:13px;height:13px;border:1.5px solid #1B1D29;border-radius:2px;flex:none}
 .a4 .sig{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:22px}.a4 .sig div{border-top:1.5px solid #1B1D29;padding-top:5px;font-size:11px;font-weight:600;color:#333;height:46px}.a4 .np{font-size:32px;font-weight:700;text-align:right;line-height:1;font-variant-numeric:tabular-nums}.a4 .np small{display:block;font-size:10px;font-weight:600;color:#666}
 .a4 .fn{margin-top:auto;padding-top:10px;border-top:.5px solid #CFCFCF;font-size:10px;color:#333;line-height:1.5}
 .a4 .foot{margin-top:8px;display:flex;justify-content:space-between;font-size:9px;color:#666}</style>
@@ -677,7 +678,9 @@ function rampSheet(d) {
 <div class="big${over ? ' bad' : ''}">${pal} / ${cap}<small>${over ? esc(over) : 'παλέτες · χωρητικότητα'}</small></div></div></div>
 <div class="body"><div>${LoadPlan.svg(lay, { scale: 6.3, parts: parts.map(x => ({ key: x.no || 0, tag: x.no ? String(x.no) : '·' })), width: 150, font: 1.5, numbers: true, family: F, tone: d.tone, guide: true })}</div>
 <div class="list"><p class="psec">Σειρά φόρτωσης · από την καμπίνα</p><div class="ckh">φορτώθηκε</div>${rows}
-<div class="sig"><div>Οδηγός · υπογραφή</div><div>Κλαρκ · υπογραφή</div></div></div></div>
+<div class="chk"><b>Έλεγχος πριν την αναχώρηση</b><span>Το σχέδιο είναι πρόταση του συστήματος. Ο φορτωτής και ο οδηγός ελέγχουν μαζί τη φόρτωση πριν φύγει το φορτηγό.</span>
+<i>Καμία παλέτα χωρίς στήριξη μπρος-πίσω</i><i>Μπάρες στη θέση τους</i><i>Θερμοκρασία θαλάμου όπως στο φύλλο</i><i>Παλέτες ανά παράδοση όπως στη λίστα</i><i>Φορτώθηκε αλλιώς; Πώς: ____________________</i></div>
+<div class="sig"><div>Φορτωτής · υπογραφή</div><div>Οδηγός · υπογραφή</div></div></div></div>
 <div class="fn">Ο αριθμός σε κάθε παλέτα = η παράδοση · Μ μαχαίρι (3) · Δ διπλή (2) · Ο μονή (1) · Β βιομηχανική (με γραμμές) · πίσω χώρος για μπάρες</div>
 <div class="foot"><span>${d.printed || ''}</span><span>1 / 1</span></div></div>`;
 }

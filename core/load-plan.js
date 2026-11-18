@@ -140,6 +140,14 @@ function layout(parts) {
       for (const m of pat) {
         if (m === 2) { push('I', [cell(take(), 0, 0, 10, 12, 1), cell(take(), -off, 12, 10, 12, 1)], ROW.I, off ? { stag: off } : undefined); continue; }
         const nx = runs[ri + 1];
+        // Against a front-heavy load, one euro single goes in the middle between the last industrial pair and the
+        // «δόντι»: «2 βιομηχανικές, μονή ευρωπαλ, βιομηχανική-ευρωπαλ μαζί, και μετά συνέχεια» (owner 18/11). Only
+        // with a pair in front of it (a single never opens the box) and only for the first euro of the load.
+        if (!onlyInd && nx && !nx.ind && firstEuro && !off && nx.q.length >= 3 && nx.q.length < NO_SINGLE_FROM
+            && rows.length && rows[rows.length - 1].k === 'I' && rows[rows.length - 1].n === 2) {
+          const later = runs.slice(ri + 2).reduce((a, x) => a + minLen(x), 0);
+          if (at + 8 + ROW.I + 4 * (nx.q.length - 2) + later <= BOX - SAFE) push('S', [cell(nx.q.shift(), 0, 6, 8, 12)], 8);
+        }
         if (!onlyInd && nx && !nx.ind && nx.q.length) {
           // the flat euro sits flush against the pallet in front on its side (off m earlier when already staggered)
           push('X', [cell(take(), 0, 0, 10, 12, 1), cell(nx.q.shift(), -off, 12, 8, 12)], ROW.I);
@@ -151,34 +159,7 @@ function layout(parts) {
       dropped += r.q.length; r.q.length = 0;
       continue;
     }
-    // Singles after the «δόντι» too, against a front-heavy load (owner 17/11: «Μονές, και ας μείνει 0,1 μ»). A single
-    // stands in the middle across both sides, so behind the first one the side that was 0.2 m ahead keeps a small
-    // gap; from the single on both sides are level and the rest go as usual (D S D … D, then knife).
-    let sN = 0;
-    if (stag && firstEuro && r.q.length < NO_SINGLE_FROM) {
-      const later = runs.slice(ri + 1).reduce((a, x) => a + minLen(x), 0);
-      const room = BOX - at - later - SAFE;
-      for (let s = Math.floor((r.q.length - 2) / 3); s >= 1; s--) {
-        const rest = r.q.length - (3 * s + 2);
-        if (8 + 16 * s + (rest === 1 ? 8 : 4 * rest) <= room) { sN = s; break; }
-      }
-    }
-    if (sN) {
-      push('D', [cell(take(), 0, 0, 8, 12), cell(take(), -stag, 12, 8, 12)], 8, { stag });
-      for (let j = 0; j < sN; j++) {
-        push('S', [cell(take(), 0, 6, 8, 12)], 8);
-        push('D', [cell(take(), 0, 0, 8, 12), cell(take(), 0, 12, 8, 12)], 8);
-      }
-      stag = 0;
-      // one left over never closes the euro in the middle of the box: it goes to the doors with the others (above)
-      if (r.q.length % 2 && ri < runs.length - 1) deferred.push(r.q.pop());
-      const e = Math.min(r.q.length, euroFill(BOX - at));
-      for (const k of (euroRows(e, BOX - at, true) || (e ? ['S'] : []))) {
-        if (k === 'K') push('K', [cell(take(), 0, 0, 12, 8), cell(take(), 0, 8, 12, 8), cell(take(), 0, 16, 12, 8)], 12);
-        else if (k === 'D') push('D', [cell(take(), 0, 0, 8, 12), cell(take(), 0, 12, 8, 12)], 8);
-        else push('S', [cell(take(), 0, 6, 8, 12)], 8);
-      }
-    } else if (stag) {
+    if (stag) {
       // after the «δόντι»: one pallet a side every 0.8 m, the euro side (lower) 0.2 m ahead
       const top = Math.floor((BOX - at) / 8);   // the euro side holds this many or one more
       for (let j = 0; j < top && r.q.length >= 2; j++) push('D', [cell(take(), 0, 0, 8, 12), cell(take(), -stag, 12, 8, 12)], 8, { stag });
@@ -324,7 +305,9 @@ function svg(p, opts) {
     const gx = tagW + boxW + 14;
     out.push(`<text class="lp-g" x="${gx}" y="${(top + 6 * sc).toFixed(1)}">◀ ΞΕΚΙΝΑ ΕΔΩ</text><text class="lp-gs" x="${gx}" y="${(top + 6 * sc + 17 * f).toFixed(1)}">μπαίνει πρώτο</text>`);
     const end = top + Math.min(p.used, BOX) * sc;
-    out.push(`<text class="lp-g" x="${gx}" y="${(end - 17 * f).toFixed(1)}">◀ ΠΡΩΤΟ ΕΞΩ</text><text class="lp-gs" x="${gx}" y="${end.toFixed(1)}">παράδοση 1</text>`);
+    // the delivery of the pallet that really stands last (a lone euro sent to the doors may not be delivery 1)
+    const lastRow = p.rows[p.rows.length - 1], lastTag = lastRow && parts && parts[lastRow.cells[lastRow.cells.length - 1].part] && parts[lastRow.cells[lastRow.cells.length - 1].part].tag;
+    out.push(`<text class="lp-g" x="${gx}" y="${(end - 17 * f).toFixed(1)}">◀ ΠΡΩΤΟ ΕΞΩ</text><text class="lp-gs" x="${gx}" y="${end.toFixed(1)}">${lastTag ? 'παράδοση ' + esc(lastTag) : 'πόρτες'}</text>`);
   }
   // the bars at the back: the room left behind the load is where they go (owner 17/11)
   const bars = free >= 2

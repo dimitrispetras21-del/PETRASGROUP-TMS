@@ -90,12 +90,14 @@ test('mixed loads: industrials at the front by the cab, the free room at the bac
   assert.ok(p.used < LP.BOX, 'room left at the back');
 });
 
-test('after the «δόντι»: first euro run takes singles (small gap behind the first, owner 17/11); a later run goes staggered with no gap', () => {
+test('a single goes before the «δόντι»: 2 industrial, single euro, industrial + euro, then on (owner 18/11)', () => {
   const p = LP.plan({ eur: 6, ind: 3 });
-  assert.strictEqual(shape(p), 'IXDSD');
-  assert.strictEqual(p.rows[2].stag, 2, 'the double right after the «δόντι» is staggered');
-  assert.strictEqual(p.rows[3].cells[0].y, 6, 'the single in the middle');
-  assert.ok(!p.rows[4].stag, 'from the single on, both sides level');
+  assert.strictEqual(shape(p), 'ISXDD');
+  assert.strictEqual(p.rows[1].cells[0].y, 6, 'the single in the middle, behind the industrial pair');
+  assert.ok(p.rows.slice(3).every(r => r.stag === 2), 'after the «δόντι» staggered doubles');
+  assert.deepStrictEqual(gaps(p), []);
+  // a single never opens the box: one industrial alone → no single before the «δόντι»
+  assert.ok(!/S/.test(shape(LP.layout([{ n: 1, ind: true }, { n: 10 }])).slice(0, -1)));
   const q = LP.layout([{ n: 2, ind: true }, { n: 4 }, { n: 3, ind: true }, { n: 7 }, { n: 4, ind: true }]);
   assert.ok(!/S/.test(shape(q).slice(4)), 'a second euro run takes no singles');
   assert.deepStrictEqual(gaps(q), []);
@@ -202,7 +204,7 @@ test('a lone euro that would leave a front-back gap goes to the doors, at the wa
   assert.deepStrictEqual(gaps(p), []);
   // with singles in the first euro run, an odd one left also goes to the doors
   const q = LP.layout([{ n: 3, ind: true }, { n: 7 }, { n: 4, ind: true }]);
-  assert.deepStrictEqual(shape(q), 'IXDSDIIS');
+  assert.deepStrictEqual(shape(q), 'ISXDDIIS');
   assert.ok(q.rows[q.rows.length - 1].wall);
 });
 
@@ -220,4 +222,16 @@ test('no front-back gap on either side in mixed sequences of industrial and euro
     assert.strictEqual(p.placed + p.dropped, c.reduce((a, [n]) => a + n, 0), JSON.stringify(c));
     assert.deepStrictEqual(gaps(p), [], JSON.stringify(c));
   }
+});
+
+test('forklift sheet: a check box for the loader and the driver (owner 18/11)', () => {
+  const vm = require('node:vm'), fs = require('node:fs'), path = require('node:path');
+  const ctx = { window: {}, console, FEATURES: {}, escapeHtml: v => String(v) };
+  ctx.globalThis = ctx; vm.createContext(ctx);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'core', 'load-plan.js'), 'utf8'), ctx);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'modules', 'orders_intl_group.js'), 'utf8'), ctx);
+  const parts = [{ no: 1, n: 10, place: 'A' }];
+  const html = ctx.window.IntlGroup._rampSheet({ tone: 'slate', pal: 10, cap: 33, lay: ctx.LoadPlan.layout([{ n: 10 }]), parts });
+  assert.ok(html.includes('Έλεγχος πριν την αναχώρηση') && html.includes('ο οδηγός ελέγχουν'));
+  assert.ok(html.includes('Φορτωτής · υπογραφή') && html.includes('Οδηγός · υπογραφή'));
 });
