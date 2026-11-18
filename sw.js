@@ -7,7 +7,7 @@
 //   - Offline banner via postMessage to all clients
 // ═══════════════════════════════════════════════════════════
 
-const SW_VERSION = '1794750000';
+const SW_VERSION = '1794760000';
 
 // Το vendor/leaflet/* ΔΕΝ μπαίνει στο APP_SHELL επίτηδες: το pre-cache στο
 // install θα κατέβαζε 228 KB σε κάθε χρήστη, ακυρώνοντας το lazy loading της
@@ -49,6 +49,7 @@ const APP_SHELL = [
   // update, so tests/sw-app-shell.test.js checks every entry exists on disk.
   // The load rules (16/11): wi4-logic.js and the board read them on every page — offline without it the board breaks.
   '/PETRASGROUP-TMS/core/load-group.js',
+  '/PETRASGROUP-TMS/core/load-plan.js',
   '/PETRASGROUP-TMS/core/wi4-logic.js',
   '/PETRASGROUP-TMS/core/week-paper.js',
   '/PETRASGROUP-TMS/core/wi4-presence.js',
