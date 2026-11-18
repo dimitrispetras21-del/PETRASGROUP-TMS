@@ -45,6 +45,7 @@ const PLAIN = [one('_wiOrdTxt'), one('_wiCliTxt'), one('_wiErrList'), many('_wiJ
 function load(parts, extra) {
   const ctx = Object.assign({ console, OrdersStock, OrdersCommon, getLinkedId, orderClientName, PlainRef: require(path.join(ROOT, 'core/plain-ref.js')), _fhLocationsMap: {},
     LoadGroup: require(path.join(ROOT, 'core/load-group.js')),   // the load rules (16/11)
+    LoadPlan: require(path.join(ROOT, 'core/load-plan.js')),     // the truck's capacity by pallet type (17/11)
     WINTL: { rows: [], data: { exports: [], imports: [], trucks: [], partners: [], stock: null } } }, (extra && extra.ctx) || {});
   vm.createContext(ctx);
   const names = parts.map(p => p.name).filter(Boolean);
@@ -56,7 +57,7 @@ const F = (name, kind) => ({ name, src: (kind || many)(name) });
 const rec = (id, f) => ({ id, fields: Object.assign({ Type: 'International', Direction: 'Import', Status: 'Pending' }, f && f.Reference ? { 'Client Name': 'K' + f.Reference } : {}, f) });
 const impRow = (id, ids, extra) => Object.assign({ id, type: 'import', orderId: ids[0], orderIds: ids, matchedTo: null, truckId: '', partnerId: '' }, extra || {});
 
-const PAL33 = () => [{ src: line(/const WI_PAL_CAP=\d+;\n/, 'WI_PAL_CAP') }, F('_wiPalOver', one), F('_wiRecsPals', one)];
+const PAL33 = () => [F('_wiPalCap', one), F('_wiPalOver', one), F('_wiRecsPals', one)];
 
 test('PAL: the sum the dispatcher reads — load, joiner, total against 33', () => {
   const c = load([...PAL33(), F('_wiJoinPalText')]);
@@ -180,15 +181,22 @@ test('CHK: an import that fits joins; every refusal says why, with the numbers',
   assert.match(c._wiJoinCheck(R(8), R(3), R(8)), /κομμάτι αποθέματος μόνο του — δεν γίνεται επικεφαλής ομάδας/);
 });
 
-test('P33: one constant, one question with the numbers, the toast tail', async () => {
+test('P33: one rule, one question with the numbers, the toast tail', async () => {
   const asked = [];
   let answer = false;
   const c = load([...PAL33(), F('_wiJoinPalText'), F('_wiPalNote', one), F('_wiPalConfirm', asyncMany)],
     { ctx: { escapeHtml: s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'),
       confirmAction: async (msg, opts) => { asked.push([msg, plain(opts)]); return answer; } } });
-  assert.strictEqual(c._wiPalOver(33), false); assert.strictEqual(c._wiPalOver(34), true); assert.strictEqual(c._wiPalOver(undefined), false);
-  assert.strictEqual(c._wiPalNote(33), '');
-  assert.strictEqual(c._wiPalNote(35), ' (35 π. — πάνω από 33)');
+  const P = (n, t) => [rec('recP', Object.assign({ 'Total Pallets': n }, t ? { 'Pallet Type': t } : {}))];
+  assert.strictEqual(c._wiPalOver(P(33)), false); assert.strictEqual(c._wiPalOver(P(34)), true); assert.strictEqual(c._wiPalOver(undefined), false);
+  assert.strictEqual(c._wiPalNote(P(33)), '');
+  assert.strictEqual(c._wiPalNote(P(35)), ' (35 π. — πάνω από 33)');
+  // the capacity follows the pallet type (core/load-plan.js, owner 17/11): 26 industrial, 32 for 20 EUR + 4 industrial
+  assert.strictEqual(c._wiPalCap(P(26, 'Industrial')), 26);
+  assert.strictEqual(c._wiPalOver(P(27, 'Industrial')), true, '27 industrial is over (was «≤ 33»)');
+  assert.strictEqual(c._wiPalNote(P(27, 'Industrial')), ' (27 π. — πάνω από 26)');
+  assert.strictEqual(c._wiPalCap([...P(20, 'EUR'), ...P(4, 'Industrial')]), 32);
+  assert.strictEqual(c._wiPalOver([...P(29, 'EUR'), ...P(4, 'Industrial')]), true, '33 with 4 industrial is over 32');
   const L = [rec('recI461', { Reference: '461', 'Total Pallets': 12 }), rec('recI463', { Reference: '463', 'Total Pallets': 12 })];
   const X = [rec('recI471', { Reference: '471', 'Total Pallets': 11 })], S = [rec('recI470', { Reference: '470', 'Total Pallets': 8 })];
   // within 33: nothing asked
@@ -206,12 +214,17 @@ test('P33: one constant, one question with the numbers, the toast tail', async (
   asked.length = 0;
   await c._wiPalConfirm(L, [S, [rec('recI472', { Reference: '472', 'Total Pallets': 4 })]]);
   assert.match(asked[0][0], /^Σύνολο 24 \+ 8 \+ 4 = 36 παλέτες — πάνω από 33\. Να μπει;/);
+  // a mixed load asks against ITS capacity: 24 EUR + 9 industrial = 33 > 30
+  asked.length = 0;
+  await c._wiPalConfirm(L, [[rec('recI473', { Reference: '473', 'Total Pallets': 9, 'Pallet Type': 'Industrial' })]]);
+  assert.strictEqual(asked[0][0], 'Σύνολο 24 + 9 = 33 παλέτες — πάνω από 30. Να μπει;\n\nK461, K463 = 24 π. + K473 = 9 π. = 33 > 30');
+  assert.deepStrictEqual(asked[0][1], { title: 'Πάνω από 30 παλέτες', confirmLabel: 'Να μπει' });
   // the app's modal, never the browser's
   assert.doesNotMatch(asyncMany('_wiPalConfirm'), /window\.confirm|[^A-Za-z_.]confirm\(/);
 });
 
 test('P33: no 33 decides anything outside the shared rule — candidates, sums, joins', () => {
-  // Every decision about 33 goes through WI_PAL_CAP / _wiPalOver (αρχή 3).
+  // Every decision about the capacity goes through _wiPalCap / _wiPalOver (αρχή 3), and they ask core/load-plan.js.
   // Display colours (_wi2PalCls) and comments are not decisions.
   const code = WI.split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
   assert.doesNotMatch(code, /<=\s*33\b/, 'no «≤ 33» filter left');
@@ -220,8 +233,10 @@ test('P33: no 33 decides anything outside the shared rule — candidates, sums, 
   for (const fn of ['_wiImpJoin'])
     assert.doesNotMatch(asyncMany(fn).split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n'), /\b33\b/, fn + ' has no 33 of its own');
   assert.doesNotMatch(code, /όριο 33 παλέτες/, 'no «όριο 33» refusal text left');
-  // the stock panel keeps its warning, on the same constant
-  assert.match(many('_wiStockPanel'), /free=X==null\?null:WI_PAL_CAP-X;/);
+  // the stock panel keeps its warning, on the same rule; no 33 of the file's own is left
+  assert.match(many('_wiStockPanel'), /cap=IR==null\?null:_wiPalCap\(IR\), free=X==null\?null:cap-X;/);
+  assert.doesNotMatch(code, /WI_PAL_CAP|[<>]=?\s*33\b|\b33\s*-/, 'no fixed 33 left in the code');
+  assert.match(one('_wiPalCap'), /LoadPlan\.tally\(/);
   // the one question is asked by every write path that can pass 33
   assert.match(asyncMany('_wiImpJoin'), /pal=palOk\?'over':await _wiPalConfirm\(lr0,\[xr0\]\)/);
 });

@@ -26,6 +26,7 @@ function forms() {
   vm.createContext(ctx);
   vm.runInContext(src('core/wi4-logic.js'), ctx, { filename: 'core/wi4-logic.js' });
   ctx.WI4 = win.WI4;
+  vm.runInContext(src('core/load-plan.js'), ctx);   // CAP = LoadPlan.capacity (17/11), loads before wn5-logic in app.html
   vm.runInContext(src('core/wn5-logic.js'), ctx, { filename: 'core/wn5-logic.js' });
   ctx.WN5L = win.WN5L;
   vm.runInContext(src('modules/wn5_forms.js'), ctx, { filename: 'modules/wn5_forms.js' });
@@ -132,7 +133,7 @@ function board() {
     document: { querySelector: () => null, querySelectorAll: () => [], getElementById: () => null } };
   ctx.window = ctx;
   vm.createContext(ctx);
-  for (const f of ['core/wi4-logic.js', 'core/wn5-logic.js', 'modules/weekly_natl_v5.js']) vm.runInContext(src(f), ctx, { filename: f });
+  for (const f of ['core/load-plan.js', 'core/wi4-logic.js', 'core/wn5-logic.js', 'modules/weekly_natl_v5.js']) vm.runInContext(src(f), ctx, { filename: f });
   return ctx;
 }
 test('F1: the board names a whole-day point «όλη η ημέρα» (row and title), an hour stays an hour', () => {
@@ -155,6 +156,7 @@ test('F1: the driver sheet reads «όλη η ημέρα» for a whole-day stop',
     document: { addEventListener() {}, createElement() {}, querySelector() {}, body: { appendChild() {} } } };
   vm.createContext(ctx);
   vm.runInContext(src('core/wi4-logic.js'), ctx); ctx.WI4 = win.WI4;
+  vm.runInContext(src('core/load-plan.js'), ctx);   // CAP = LoadPlan.capacity (17/11), loads before wn5-logic in app.html
   vm.runInContext(src('core/wn5-logic.js'), ctx); ctx.WN5L = win.WN5L;
   vm.runInContext(src('modules/wn5_forms.js'), ctx); ctx.WN5Form = win.WN5Form;
   vm.runInContext(src('core/wn5-labels.js'), ctx); ctx.WN5Lab = win.WN5Lab;

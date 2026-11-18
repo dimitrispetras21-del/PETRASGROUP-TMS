@@ -247,7 +247,7 @@ test('F4α-T4: the module never calls Date.now() / new Date() without an argumen
   const src = fs.readFileSync(path.join(ROOT, 'core/wn5-logic.js'), 'utf8').replace(/\/\/[^\n]*/g, '');
   assert.ok(!/Date\.now\s*\(/.test(src), 'Date.now() in core/wn5-logic.js');
   assert.ok(!/new Date\(\s*\)/.test(src), 'new Date() without an argument in core/wn5-logic.js');
-  const ctx = {}; ctx.window = ctx;
+  const ctx = { LoadPlan: require('../core/load-plan.js') }; ctx.window = ctx;   // loads before it in app.html (17/11)
   const before = new Set(Object.keys(ctx));
   vm.runInNewContext(fs.readFileSync(path.join(ROOT, 'core/wn5-logic.js'), 'utf8'), ctx);
   assert.deepStrictEqual(Object.keys(ctx).filter((k) => !before.has(k)), ['WN5L']);

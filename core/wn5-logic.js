@@ -19,7 +19,9 @@
 
 const freeze = Object.freeze;
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
-const CAP = 33;   // pallets of one trailer — the same number as the base's over_33 warning (Ε-17); display only
+// Pallets of one trailer: the capacity of core/load-plan.js (owner 17/11), never a 33 of its own. The board (plan_board)
+// sends no pallet type, so every load counts as euro: 33, the base's over_33 warning (Ε-17). Display only.
+const CAP = (typeof LoadPlan !== 'undefined' ? LoadPlan : require('./load-plan.js')).capacity({});
 // Upper case is TYPED (the tonos trap of CSS text-transform).
 const DOW_HEAD = freeze(['ΚΥΡΙΑΚΗ', 'ΔΕΥΤΕΡΑ', 'ΤΡΙΤΗ', 'ΤΕΤΑΡΤΗ', 'ΠΕΜΠΤΗ', 'ΠΑΡΑΣΚΕΥΗ', 'ΣΑΒΒΑΤΟ']);
 const LISTS = freeze(['cycles', 'waiting', 'hub', 'notices']);

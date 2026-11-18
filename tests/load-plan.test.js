@@ -245,3 +245,35 @@ test('industrials only: 20 take 2 singles, in the middle; the last lone one at t
   const odd = LP.plan({ ind: 21 }), last = odd.rows[odd.rows.length - 1];
   assert.deepStrictEqual([last.n, last.cells[0].y], [1, 0], 'the last lone one at the wall');
 });
+
+// tally (18/11): the screens that know only each order's pallets and Pallet Type (Weekly, scan, Εθνικά) ask this, so
+// none keeps its own 33.
+test('tally: the capacity of a load from its orders\' pallets and types', () => {
+  assert.deepStrictEqual(LP.tally([{ n: 24, type: 'EUR' }]), { eur: 24, ind: 0, total: 24, cap: 33, over: 0 });
+  assert.deepStrictEqual(LP.tally([{ n: 27, type: 'Industrial' }]), { eur: 0, ind: 27, total: 27, cap: 26, over: 1 });
+  // the owner's example: 20 EUR + 4 industrial → 32; CHEP and no type count as euro
+  assert.strictEqual(LP.tally([{ n: 20, type: 'CHEP' }, { n: 4, type: 'Industrial' }]).cap, 32);
+  assert.strictEqual(LP.tally([{ n: 20 }, { n: '4', type: 'industrial' }]).cap, 32);
+  // nothing / unknown figures: the euro capacity, no NaN
+  assert.deepStrictEqual(LP.tally([]), { eur: 0, ind: 0, total: 0, cap: 33, over: 0 });
+  assert.deepStrictEqual(LP.tally([{ n: null }, { n: '' }, null]), { eur: 0, ind: 0, total: 0, cap: 33, over: 0 });
+  // a part pallet takes a place (as the form counts): 32.5 EUR → 33 places, not over; 33.5 → over by 1
+  assert.strictEqual(LP.tally([{ n: 32.5 }]).over, 0);
+  assert.strictEqual(LP.tally([{ n: 33.5 }]).over, 1);
+  // the order of the parts never moves the number
+  assert.strictEqual(LP.tally([{ n: 4, type: 'Industrial' }, { n: 20 }]).cap, LP.tally([{ n: 20 }, { n: 4, type: 'Industrial' }]).cap);
+});
+
+// One source (owner 17/11, principle 3): the screens that used a fixed 33 ask core/load-plan.js. Comments may tell the
+// history; code may not hold the number.
+test('no fixed 33 in the capacity checks of the screens (Weekly, v4, form fill, scan, Εθνικά CAP / compose)', () => {
+  const fs = require('node:fs'), path = require('node:path');
+  const code = f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8').split('\n')
+    .filter(l => !/^\s*(\/\/|\/?\*)/.test(l)).map(l => l.replace(/\s\/\/.*$/, '')).join('\n');
+  for (const f of ['core/wi4-logic.js', 'core/wn5-logic.js', 'modules/wn5_compose.js', 'modules/weekly_intl_v2.js'])
+    assert.doesNotMatch(code(f), /\b33\b/, f);
+  const oi = code('modules/orders_intl.js');
+  assert.doesNotMatch(oi, /[<>]=?\s*33\b|\/33\b|> 33 \(/, 'orders_intl: form fill and scan');
+  assert.strictEqual((oi.match(/LoadPlan\.tally\(/g) || []).length, 2, 'orders_intl: the fill line and the scan ask LoadPlan');
+  assert.doesNotMatch(code('modules/weekly_intl.js'), /WI_PAL_CAP|[<>]=?\s*33\b|\/33\b/, 'weekly_intl');
+});

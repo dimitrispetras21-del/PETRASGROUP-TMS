@@ -38,7 +38,7 @@ vm.runInThisContext(fs.readFileSync(path.join(ROOT, 'core/data-helpers.js'), 'ut
 const { OrdersStock, OrdersCommon } = require(path.join(ROOT, 'core/orders-common.js'));
 
 const WI_PARTS = [
-  line(/const WI_EXECUTING=\[[^\]]*\];\n/, 'WI_EXECUTING'), line(/const WI_PAL_CAP=\d+;\n/, 'WI_PAL_CAP'),
+  line(/const WI_EXECUTING=\[[^\]]*\];\n/, 'WI_EXECUTING'), one('_wiPalCap'),
   one('_wiPalOver'), one('_wiRecsPals'), one('_wiPalNote'), one('_wiIsPiece'), one('_wiIsLot'), one('_wiRecOf'), one('_wiVehOfF'),
   many('_wiLotHeld'), many('_wiImpGroupRowOf'), many('_wiPieceIn'), many('_wiGrpOrder'), many('_wiGiSortRecs'), many('_wiLoadRecs'),
   // owner 8/11 (core/plain-ref.js): the messages name orders and trips in words, through these.
@@ -109,6 +109,7 @@ function world({ rts = [], role = 'owner', lines = {}, rtListFails = false, legD
     rtOnOrderSaved: async id => { rtSaved.push(id); },
     _wiBlockReadOnly: () => false,
     _wiPalConfirm: async () => true,
+    LoadPlan: require(path.join(ROOT, 'core/load-plan.js')),   // the truck's capacity by pallet type (17/11)
     _wiSync: (slot, st, msg) => syncs.push([slot, st, msg]),
     _wiPlanPatch: async (_oid, f) => f,
     // v4 seam: quiet follow-up PATCHes — undefined while v4 is inactive (this world).

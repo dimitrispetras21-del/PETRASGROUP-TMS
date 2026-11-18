@@ -283,6 +283,18 @@ test('PALLETS_UNKNOWN: near 33 with an unwritten member is a look; over 33 stays
   assert.ok(!codes(WI4.flags(exp({ pallets: null, palletsUnknown: 2 }), T)).includes('PALLETS_UNKNOWN'), 'all unknown: «—» in the cell, no number to judge');
 });
 
+test('OVER_33 / PALLETS_UNKNOWN follow the load\'s capacity by pallet type (palCap, core/load-plan.js, owner 17/11)', () => {
+  // 26 industrial: 27 is over, said with ITS number; 26 is full, not over
+  assert.strictEqual(reasonOf(WI4.flags(exp({ pallets: 27, palCap: 26 }), T), 'OVER_33').text, 'πάνω από 26π');
+  assert.ok(!codes(WI4.flags(exp({ pallets: 26, palCap: 26 }), T)).includes('OVER_33'));
+  // near the capacity with a gap: within 5 of it
+  assert.ok(codes(WI4.flags(exp({ pallets: 21, palletsUnknown: 1, palCap: 26 }), T)).includes('PALLETS_UNKNOWN'));
+  assert.ok(!codes(WI4.flags(exp({ pallets: 20, palletsUnknown: 1, palCap: 26 }), T)).includes('PALLETS_UNKNOWN'));
+  // no palCap = the euro capacity of LoadPlan (33), never a number of this file's own
+  assert.strictEqual(reasonOf(WI4.flags(exp({ pallets: 34 }), T), 'OVER_33').text, 'πάνω από ' + require('../core/load-plan.js').capacity({}) + 'π');
+  assert.doesNotMatch(fs.readFileSync(path.join(__dirname, '../core/wi4-logic.js'), 'utf8').split('\n').filter((l) => !/^\s*(\/\/|\*)/.test(l)).join('\n'), /\b33\b/, 'no 33 in the code');
+});
+
 test('MATCH_UNREAD: a matched import outside the week is an amber look, never an open slot', () => {
   const r = reasonOf(WI4.flags({ kind: 'import', saved: true, matchUnread: true, loadDate: add(T, 1) }, T), 'MATCH_UNREAD');
   assert.ok(r && r.level === 'amber' && r.act === 'open' && r.text === 'εισαγωγή εκτός προβολής', JSON.stringify(r));

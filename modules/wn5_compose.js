@@ -20,7 +20,8 @@
   'use strict';
   const K = () => WN5Act._kit;
   const _live = () => typeof WN5 !== 'undefined' && WN5.active();
-  const CAP = 33;
+  // the board sends no pallet type: one trailer = the euro capacity of core/load-plan.js, through WN5L (one number)
+  const CAP = WN5L.CAP;
   const SIDE_GR = { KATHODOS: 'ΚΑΘΟΔΟΣ', ANODOS: 'ΑΝΟΔΟΣ' };
   // 102 v_plan_draft_piece_state: the four states that block «Δημιουργία» until the part is taken out
   const BLOCK_GR = { dead: 'σβήστηκε', split: 'σπάστηκε', assigned: 'ανατέθηκε αλλού', moved: 'άλλαξε θέση' };
@@ -317,10 +318,10 @@
     if (sel.length) h += '<button type="button" class="wi4-link wn5-cd-add" data-cd="add" onclick="WN5Compose.addTo(' + id + ')">' + k.esc('+ ' + sel.length + ' τσεκαρισμένα εδώ') + '</button>';
     const st = okp ? _stops(p.req, d) : [];
     if (st.length) h += '<ol class="wn5-cb-stops">' + st.map((s) => '<li><b>' + k.esc(s.name) + '</b><span>' + k.esc(s.act + ' · ' + s.day + (s.win ? ' ' + s.win : '')) + '</span></li>').join('') + '</ol>';
-    // pallets against 33: a bar, amber over (a warning, never a refusal: 072 over_33); °C only when mixed
+    // pallets against CAP: a bar, amber over (a warning, never a refusal: 072 over_33); °C only when mixed
     const pct = Math.max(0, Math.min(100, Math.round((pal / CAP) * 100))), tp = _temps(d);
     if (ps.length) {
-      h += '<div class="wn5-cb-cap' + (pal > CAP ? ' over' : '') + '"><span class="wn5-cb-bar"><i style="width:' + pct + '%"></i></span><b>' + k.esc(WN5L.palText(pal, unk) + '/33') + '</b>'
+      h += '<div class="wn5-cb-cap' + (pal > CAP ? ' over' : '') + '"><span class="wn5-cb-bar"><i style="width:' + pct + '%"></i></span><b>' + k.esc(WN5L.palText(pal, unk) + '/' + CAP) + '</b>'
         + '<span>' + k.esc(pal <= CAP ? k.pal(CAP - pal) + ' ελεύθερες' : 'υπέρβαση ' + k.pal(pal - CAP)) + '</span>'
         + (tp && tp.mixed ? '<span class="wn5-cb-mix">' + k.esc(tp.txt + ' μικτές') + '</span>' : '') + '</div>';
     }

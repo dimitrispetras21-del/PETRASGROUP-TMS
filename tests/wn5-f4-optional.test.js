@@ -28,7 +28,7 @@ function pageCtx(files) {
   }
   return ctx;
 }
-const F = pageCtx(['core/wi4-logic.js', 'core/wn5-logic.js', 'modules/wn5_forms.js']).WN5Form;
+const F = pageCtx(['core/load-plan.js', 'core/wi4-logic.js', 'core/wn5-logic.js', 'modules/wn5_forms.js']).WN5Form;
 const row = (location_id, day, from, to, pallets, extra) => Object.assign({ location_id, day, from, to, pallets }, extra || {});
 const order = (o) => Object.assign({ client_id: 41, price: 310, temperature_c: 4, pallet_exchange: false, reference: '', goods: '', notes: '',
   loads: [row(3, '2026-10-14', '08:00', '10:00', 6)], drops: [row(2, '2026-10-15', '08:00', '10:00', 6)] }, o || {});
@@ -73,7 +73,7 @@ test('F1/F4: a written price or pallets is still checked — 0, negative, two de
 // ── the board: model and HTML ────────────────────────────────────────────────────────────────────────────────
 const FIX = () => JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/wn5-week.json'), 'utf8'));
 test('F1: the board model keeps unknown pallets null and counts them; palText says «;» / «12+;»', () => {
-  const c = pageCtx(['core/wi4-logic.js', 'core/wn5-logic.js', 'modules/weekly_natl_v5.js']);
+  const c = pageCtx(['core/load-plan.js', 'core/wi4-logic.js', 'core/wn5-logic.js', 'modules/weekly_natl_v5.js']);
   const L = c.WN5L;
   assert.strictEqual(L.palText(null, 0), ';');
   assert.strictEqual(L.palText(12, 1), '12+;');
@@ -106,7 +106,7 @@ test('F1: the board model keeps unknown pallets null and counts them; palText sa
 });
 
 test('F1: the driver sheet reads «;» for a stop of unknown pallets', () => {
-  const c = pageCtx(['core/wi4-logic.js', 'core/wn5-logic.js', 'modules/wn5_forms.js', 'core/wn5-labels.js', 'modules/wn5_sheet.js']);
+  const c = pageCtx(['core/load-plan.js', 'core/wi4-logic.js', 'core/wn5-logic.js', 'modules/wn5_forms.js', 'core/wn5-labels.js', 'modules/wn5_sheet.js']);
   const L = (leg_id, piece_id, act, pallets) => ({ leg_id, piece_id, act, pallets, kind: 'national', order_id: null, nat_order_id: 1, reference: 'N-T1', client_id: 41, client: 'ΠΕΛΑΤΗΣ Α', temperature_c: 2 });
   const ST = (stop_id, seq, loc, f, t, legs) => ({ stop_id, seq, side: 'KATHODOS', location_id: loc, location: 'LOC ' + loc, planned_from: f, planned_to: t, stop_day: f.slice(0, 10), legs });
   const CYC = { rt_id: 101, code: 'RT-T101', trip_type: 'OWNED', truck: 'TST-2104', trailer: null, driver: 'Driver Test 01', partner: null,
