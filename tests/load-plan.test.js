@@ -235,3 +235,13 @@ test('forklift sheet: a check box for the loader and the driver (owner 18/11)', 
   assert.ok(html.includes('Έλεγχος πριν την αναχώρηση') && html.includes('ο οδηγός ελέγχουν'));
   assert.ok(html.includes('Φορτωτής · υπογραφή') && html.includes('Οδηγός · υπογραφή'));
 });
+
+test('industrials only: 20 take 2 singles, in the middle; the last lone one at the wall (owner 18/11)', () => {
+  const p = LP.plan({ ind: 20 });
+  const singles = p.rows.filter(r => r.n === 1);
+  assert.strictEqual(singles.length, 2);
+  assert.ok(singles.every(r => r.cells[0].y === 6), 'singles in the middle');
+  assert.deepStrictEqual(gaps(p), []);
+  const odd = LP.plan({ ind: 21 }), last = odd.rows[odd.rows.length - 1];
+  assert.deepStrictEqual([last.n, last.cells[0].y], [1, 0], 'the last lone one at the wall');
+});
