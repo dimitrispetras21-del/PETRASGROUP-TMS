@@ -10,9 +10,10 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { webcrypto } from 'node:crypto';
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 function sandbox(pages) {
   const errors = []; const warns = []; const store = new Map();

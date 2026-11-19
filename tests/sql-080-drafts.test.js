@@ -13,6 +13,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 
@@ -76,7 +77,7 @@ test('080: the money views it starts from are 073\'s text, comments stripped', (
 });
 
 test('080: B-100 is the text of its check file (md5), and the catalog file passes the lint', async () => {
-  const { loadChecks } = await import(path.join(ROOT, 'tms-auditor/checks/load.mjs'));
+  const { loadChecks } = await import(pathToFileURL(path.join(ROOT, 'tms-auditor/checks/load.mjs')).href);
   const { checks, errors } = loadChecks();
   assert.deepStrictEqual(errors.filter((e) => /B-100/.test(e)), []);
   const c = checks.find((x) => x.id === 'B-100');
