@@ -58,7 +58,6 @@ const OrdersWeekView = (() => {
   const DAY_UP = ['ΚΥΡΙΑΚΗ', 'ΔΕΥΤΕΡΑ', 'ΤΡΙΤΗ', 'ΤΕΤΑΡΤΗ', 'ΠΕΜΠΤΗ', 'ΠΑΡΑΣΚΕΥΗ', 'ΣΑΒΒΑΤΟ'];
   const DAY_FULL = ['Κυριακή', 'Δευτέρα', 'Τρίτη', 'Τετάρτη', 'Πέμπτη', 'Παρασκευή', 'Σάββατο'];
   const DOW_SHORT = ['Κυρ', 'Δευ', 'Τρί', 'Τετ', 'Πέμ', 'Παρ', 'Σάβ'];
-  const MONTHS_GEN = ['Ιανουαρίου', 'Φεβρουαρίου', 'Μαρτίου', 'Απριλίου', 'Μαΐου', 'Ιουνίου', 'Ιουλίου', 'Αυγούστου', 'Σεπτεμβρίου', 'Οκτωβρίου', 'Νοεμβρίου', 'Δεκεμβρίου'];
   const STRIP_BACK = 3, STRIP_FWD = 1;   // Figma: three weeks back, one ahead
   // §06: who unblocks — the verdict under the assignment and the summary line.
   // The price is the ONE block OrdersData.stateOf returns: the pallet slip has
@@ -247,8 +246,8 @@ const OrdersWeekView = (() => {
       default: return { cls: 'bad', text: REASON_TPY[state.reason] || state.reason, title: REASON[state.reason] || '' };   // 'blocked'
     }
   }
-  // «εβδ. 26/9»: the Saturday of the week where an amount is counted.
-  const weekMark = w => w ? 'εβδ. ' + OC().dm(w) : '';
+  // «W39»: the week where an amount is counted (weeks by number, owner 15/11).
+  const weekMark = w => w ? OC().weekLabel(w) : '';
 
   // The week's model. intl/natl = every fetched, non-cancelled record of the
   // window (tagged _type); rts = /costs/rt records, or null when that read failed.
@@ -667,11 +666,9 @@ const OrdersWeekView = (() => {
     const d = new Date(ymd + 'T12:00:00');
     return DOW_SHORT[d.getDay()] + ' ' + OC().dm(ymd);
   };
-  // «3 – 9 Οκτωβρίου» · «26 Σεπτεμβρίου – 2 Οκτωβρίου» (page subtitle).
+  // «Εβδομάδα W41» (page subtitle): the week by number, never a date range (owner 15/11, 20/11).
   function weekTitle(w) {
-    const e = OC().addDays(w, 6);
-    const d1 = +w.slice(8, 10), m1 = +w.slice(5, 7), d2 = +e.slice(8, 10), m2 = +e.slice(5, 7);
-    return m1 === m2 ? `${d1} – ${d2} ${MONTHS_GEN[m2 - 1]}` : `${d1} ${MONTHS_GEN[m1 - 1]} – ${d2} ${MONTHS_GEN[m2 - 1]}`;
+    return 'Εβδομάδα ' + OC().weekLabel(w);
   }
 
   // ══ Browser side ═══════════════════════════════════════════════════════════
@@ -1119,7 +1116,7 @@ const OrdersWeekView = (() => {
     // ── Κατάσταση εβδομάδας ──
     for (const r of tAll.unpricedRecs) dag.push(r);
     const pct = O.addDays(S.week, 6) < today && !(showN && d.natlFailed) ? pctVsPrev(tAll.sum, prevT.sum) : null;
-    const sub = [`${dayShort(S.week)} – ${dayShort(O.addDays(S.week, 6))}`,
+    const sub = [O.weekLabel(S.week),
       pct == null ? '' : `τζίρος ${pct >= 0 ? '+' : '−'}${Math.abs(pct)}% σε σχέση με ${O.weekLabel(O.addDays(S.week, -7))}`,
       tAll.n ? `τιμολογημένες ${tAll.invN} από ${tAll.n}` : '',
       'καθαρά ποσά, χωρίς ΦΠΑ'].filter(Boolean).join(' · ');
@@ -2202,7 +2199,7 @@ const OrdersWeekView = (() => {
     const yr = String(P.week).slice(0, 4);
     const top = `<header class="owvp-hd"><div><b class="owvp-brand">PETRAS GROUP</b><span>Λογιστήριο · Παραγγελίες › Εβδομάδα</span></div>`
       + `<div class="owvp-tag"><b>Εσωτερικό έγγραφο</b><span>${esc(meta.printed || '')}</span></div></header>`
-      + `<h1 class="owvp-t">Εβδομάδα τιμολόγησης <span>${esc(dayShort(P.week))} – ${esc(dayShort(O.addDays(P.week, 6)))}/${esc(yr)} · καθαρά ποσά, χωρίς ΦΠΑ</span></h1>`;
+      + `<h1 class="owvp-t">Εβδομάδα τιμολόγησης <span>${esc(O.weekLabel(P.week))} · ${esc(yr)} · καθαρά ποσά, χωρίς ΦΠΑ</span></h1>`;
     if (P.fails && P.fails.length) return { ok: false, refused: P.fails.map(x => x.head), html: '' };
 
     const star = [];
@@ -2310,7 +2307,7 @@ const OrdersWeekView = (() => {
     foot.push('Α/Α = ο αριθμός της γραμμής στο Weekly. Καθαρό = η τιμή της παραγγελίας στο σύστημα· το ποσό του τιμολογίου ελέγχεται στο ERP. ☐ για τον έλεγχο με το στυλό.');
     if (!P.numsOk && P.showI) foot.unshift('Η αρίθμηση του Weekly δεν διαβάστηκε· οι γραμμές χωρίς αριθμό.');
     const html = `<div class="owvp">${top}${table}${state}<div class="owvp-foot">${foot.map(x => `<p>${esc(x)}</p>`).join('')}</div>`
-      + `<footer class="owvp-ft">Παραγγελίες › Εβδομάδα · εβδομάδα ${esc(O.dm(P.week))} – ${esc(O.dm(O.addDays(P.week, 6)))}/${esc(yr)}</footer></div>`;
+      + `<footer class="owvp-ft">Παραγγελίες › Εβδομάδα · ${esc(O.weekLabel(P.week))} · ${esc(yr)}</footer></div>`;
     return { ok: true, refused: [], html };
   }
 
