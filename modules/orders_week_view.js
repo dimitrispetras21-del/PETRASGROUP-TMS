@@ -2196,7 +2196,8 @@ const OrdersWeekView = (() => {
   function printDoc(P, meta) {
     const O = OC();
     meta = meta || {};
-    const yr = String(P.week).slice(0, 4);
+    // The week-year of TmsWeek = the year of the week's Sunday (Sat 31/12 starts W1 of the next year).
+    const yr = String(O.addDays(P.week, 1)).slice(0, 4);
     const top = `<header class="owvp-hd"><div><b class="owvp-brand">PETRAS GROUP</b><span>Λογιστήριο · Παραγγελίες › Εβδομάδα</span></div>`
       + `<div class="owvp-tag"><b>Εσωτερικό έγγραφο</b><span>${esc(meta.printed || '')}</span></div></header>`
       + `<h1 class="owvp-t">Εβδομάδα τιμολόγησης <span>${esc(O.weekLabel(P.week))} · ${esc(yr)} · καθαρά ποσά, χωρίς ΦΠΑ</span></h1>`;

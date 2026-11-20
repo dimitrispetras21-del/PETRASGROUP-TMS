@@ -409,7 +409,7 @@ const OrdersNoPrice = (() => {
 
     const filledHtml = filled.length ? filled.map(({ x, rec, st }) => {
       const next = st.key === 'ready'
-        ? `→ Προς τιμολόγηση · εβδ. ${OrdersCommon.weekLabel(OrdersCommon.weekStartOf(rec))}`
+        ? `→ Προς τιμολόγηση · ${OrdersCommon.weekLabel(OrdersCommon.weekStartOf(rec))}`
         : st.key === 'invoiced' ? '→ τιμολογήθηκε'
         : '';
       return `<tr>
