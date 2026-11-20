@@ -345,7 +345,7 @@ const PalletsWeek = (() => {
   }
   async function uncheck() {
     const mk = liveMark(S.week); if (!mk || S.busy) return;
-    if (!confirm(`Αναίρεση ελέγχου ${OC().dm(S.week)} – ${OC().dm(OC().addDays(S.week, 6))}; Το σημάδι φεύγει· μένει στο ιστορικό.`)) return;
+    if (!confirm(`Αναίρεση ελέγχου ${OC().weekLabel(S.week)}; Το σημάδι φεύγει· μένει στο ιστορικό.`)) return;
     S.busy = true;
     try { await plFetch(`/pallets/week-checks/${mk.id}`, { method: 'PATCH', body: {} }); await loadChecks(); }
     catch (e) { toast('Η αναίρεση δεν έγινε: ' + _plvErrMsg(e), 'error'); await loadChecks(); }
@@ -415,7 +415,7 @@ const PalletsWeek = (() => {
     }).sort((a, b) => a.name.localeCompare(b.name, 'el'));
     if (!rows.length) return '';
     const tot = rows.reduce((t, r) => ({ o: t.o + r.orders.size, t: t.t + r.taken, g: t.g + r.given, p: t.p + r.pending }), { o: 0, t: 0, g: 0, p: 0 });
-    return `<div class="plw-sec"><div class="plw-sech"><b>Κατάσταση εβδομάδας</b> <span class="plw-g">${esc(OWV().dayShort(w))} – ${esc(OWV().dayShort(OC().addDays(w, 6)))} · ανά αντισυμβαλλόμενο · οριστικές</span></div>
+    return `<div class="plw-sec"><div class="plw-sech"><b>Κατάσταση εβδομάδας</b> <span class="plw-g">${esc(OC().weekLabel(w))} · ανά αντισυμβαλλόμενο · οριστικές</span></div>
       <table class="plw-tbl plw-num"><thead><tr><th>ΑΝΤΙΣΥΜΒΑΛΛΟΜΕΝΟΣ</th><th>ΠΑΡΑΓΓΕΛΙΕΣ</th><th>ΠΗΡΑΜΕ</th><th>ΔΩΣΑΜΕ</th><th>ΜΕΤΑΒΟΛΗ</th><th>ΕΚΚΡΕΜΕΙΣ</th><th title="όπως φαίνεται σήμερα: υπόλοιπο σήμερα − μεταβολές επόμενων εβδομάδων">ΤΕΛΟΣ ΕΒΔ.</th><th>ΥΠΟΛΟΙΠΟ ΣΗΜΕΡΑ</th></tr></thead><tbody>
       ${rows.map(r => `<tr><td>${esc(r.name)}</td><td>${r.orders.size}</td><td>${r.taken}</td><td>${r.given}</td><td>${sgn(r.delta)}</td><td>${r.pending}</td>
         <td>${sgn(r.end)}${r.nw ? ` <span class="plw-g" title="${r.nw} κινήσεις χωρίς εβδομάδα: η παραγγελία τους δεν διαβάστηκε">+${r.nw} χωρίς εβδομάδα</span>` : ''}</td><td>${sgn(r.today)}</td></tr>`).join('')}
@@ -467,14 +467,14 @@ const PalletsWeek = (() => {
         const changed = m && w === sel ? nChanged(S.changes) : 0;
         const mark = m ? (changed ? ` <span class="plw-ok">✓</span> <span class="plw-amber">${changed} άλλαξαν</span>` : ' <span class="plw-ok">✓ ελέγχθηκε</span>') : '';
         const l2 = t.orders ? `${sgn(t.delta)} · ${t.pending} ${t.pending === 1 ? 'εκκρεμής' : 'εκκρεμείς'}${t.missing ? ` <span class="plw-miss">● ${t.missing} λείπει καταγραφή</span>` : ''}` : 'καμία παραγγελία με ανταλλαγή';
-        return `<button class="plw-wk${w === sel ? ' on' : ''}" data-plwweek="${w}"><span class="plw-wl1">${esc(OC().dm(w))} – ${esc(OC().dm(OC().addDays(w, 6)))}${mark}</span><span class="plw-wl2">${l2}</span></button>`;
+        return `<button class="plw-wk${w === sel ? ' on' : ''}" data-plwweek="${w}"><span class="plw-wl1">${esc(OC().weekLabel(w))}${mark}</span><span class="plw-wl2">${l2}</span></button>`;
       }).join('')}
       <button class="plw-nav" data-plwweek="${OC().addDays(sel, 7)}" title="Επόμενη εβδομάδα">›</button></div>`;
   }
   function summaryHtml(t) {
     const f = S.filter;
     const chip = (k, n, txt, red) => n ? `<button class="plw-link${f === k ? ' on' : ''}${red ? ' plw-red' : ''}" data-plwfilter="${k}">${n} ${txt} →</button>` : `<span class="plw-g">0 ${txt}</span>`;
-    return `<div class="plw-sum"><b>${esc(OC().dm(S.week))} – ${esc(OC().dm(OC().addDays(S.week, 6)))}</b>
+    return `<div class="plw-sum"><b>${esc(OC().weekLabel(S.week))}</b>
       <span>${t.orders} παραγγελίες με ανταλλαγή</span><span class="plw-g">·</span><span class="plw-g">πήραμε</span><b>${t.taken}</b><span class="plw-g">·</span><span class="plw-g">δώσαμε</span><b>${t.given}</b><span class="plw-g">·</span><span class="plw-g">μεταβολή</span><b>${sgn(t.delta)}</b>
       ${chip('pending', t.pending, t.pending === 1 ? 'εκκρεμής' : 'εκκρεμείς')}<span class="plw-g">·</span>${chip('short', t.short, 'χωρίς πλήρη επιστροφή')}<span class="plw-g">·</span>${chip('missing', t.missing, 'λείπει καταγραφή', true)}
       ${t.unknownStops ? '<span class="plw-g" title="Οι στάσεις δεν διαβάστηκαν: το «λείπει καταγραφή» δεν μετρήθηκε">⚠ στάσεις μη διαθέσιμες</span>' : ''}

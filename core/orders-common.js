@@ -50,14 +50,12 @@ const OrdersCommon = {
     return OrdersCommon.ymd(f['Delivery DateTime'] || f['Loading DateTime']);
   },
   weekStartOf(rec) { return OrdersCommon.weekStartOfYmd(OrdersCommon.weekDateOf(rec)); },
-  // «19 – 25/9» · «26/9 – 2/10» — date ranges, never W-numbers (the team
-  // counts weeks by dates; three week-number conventions live in the app).
+  // «W47» — the week by its number, never a date range (owner 15/11 and 20/11/2026:
+  // «δουλεύουμε πάντα σε μορφή εβδομάδας»). The number is TmsWeek's, the ONE
+  // week of the app — the same W the Weekly International shows on its bar.
   weekLabel(startYmd) {
-    if (!startYmd) return '—';
-    const end = OrdersCommon.addDays(startYmd, 6);
-    const d1 = +startYmd.slice(8, 10), m1 = +startYmd.slice(5, 7);
-    const d2 = +end.slice(8, 10), m2 = +end.slice(5, 7);
-    return m1 === m2 ? `${d1} – ${d2}/${m2}` : `${d1}/${m1} – ${d2}/${m2}`;
+    const n = startYmd ? TmsWeek.numOf(startYmd) : null;
+    return n ? 'W' + n : '—';
   },
 
   // ── Money ────────────────────────────────────────────────────────────────

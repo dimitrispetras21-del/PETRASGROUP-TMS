@@ -386,9 +386,13 @@ test('national pairs: a VS partner is text only; no pair; no load; groupage; loa
   assert.strictEqual(failed.length, NO.filter(r => OrdersCommon.weekStartOf(r) === NWEEK).length, 'every order of the week still listed');
 });
 
-test('page subtitle: the week in words', () => {
-  assert.strictEqual(W.weekTitle('2026-10-03'), '3 – 9 Οκτωβρίου');
-  assert.strictEqual(W.weekTitle('2026-09-26'), '26 Σεπτεμβρίου – 2 Οκτωβρίου');
+test('page subtitle: the week by number, never a date range (owner 15/11, 20/11)', () => {
+  assert.strictEqual(W.weekTitle('2026-10-03'), 'Εβδομάδα W41');
+  assert.strictEqual(W.weekTitle('2026-09-26'), 'Εβδομάδα W40');
+  assert.strictEqual(OrdersCommon.weekLabel('2026-11-14'), 'W47');
+  assert.strictEqual(OrdersCommon.weekLabel(''), '—');
+  // same number as the Weekly International's bar (TmsWeek, the one week)
+  assert.strictEqual(OrdersCommon.weekLabel('2026-09-19'), 'W' + TmsWeek.numOf('2026-09-19'));
 });
 
 // ══ Fix round 1 (critics 13/10) ═════════════════════════════════════════════
