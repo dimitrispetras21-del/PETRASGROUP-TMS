@@ -1295,7 +1295,7 @@ const lfMany=a=>a.length>1?`<div class="lns">${a.map(x=>lfLn(x[1],'',x[0],x[2],x
  /* own trucks with nothing planned: a shelf under the table, the same shape as the stock shelf above it */
  const home=()=>{const h=HOME.filter(t=>!t.used);if(!ALT.idle||!h.length||(LENS!=='need'&&LENS!=='idle'))return '';const chip=t=>`<span class="w9lot w9tk ${PR()&&ALL.some(r=>!r.gone&&r.ptrk===t)?'pr':''}" data-h="${HOME.indexOf(t)}">${ic('truck')}<b class="num">${t[0]}</b>${t[1]} · <b class="num">${since(t)}</b></span>`,a=h.filter(t=>dn(t[2])<=dn(TODAY)),b=h.filter(t=>dn(t[2])>dn(TODAY));
   return `<div class="w9st w9hm"><span class="lbl">Στην Ελλάδα, χωρίς φορτίο · ${a.length}</span>${a.map(chip).join('')}${b.length?`<span class="lbl" style="margin-left:10px">Γυρίζουν · ${b.length}</span>${b.map(chip).join('')}`:''}</div>`};
- const find=()=>{const q=FIND.trim().toLowerCase();if(!q)return;let n=0;const real=el=>{let t=el.textContent;el.querySelectorAll('.w9pl,.vpop').forEach(x=>t=t.replace(x.textContent,''));return t.toLowerCase()};
+ const find=()=>{const q=FIND.trim().toLowerCase(),cn=$('f5').querySelector('.w9fn');if(cn)cn.textContent='';if(!q)return;let n=0;const real=el=>{let t=el.textContent;el.querySelectorAll('.w9pl,.vpop').forEach(x=>t=t.replace(x.textContent,''));return t.toLowerCase()};
   box.querySelectorAll('.w9row').forEach(el=>{const hit=real(el).includes(q);el.classList.toggle('dim',!hit);if(!hit)return;n++;
    el.querySelectorAll('.w9ref,.el').forEach(x=>{const t=x.textContent,i=t.toLowerCase().indexOf(q);if(!x.children.length&&!x.closest('.w9pl,.vpop')&&i>=0)x.innerHTML=t.slice(0,i)+'<mark class="w9hit">'+t.slice(i,i+q.length)+'</mark>'+t.slice(i+q.length)})});
   const c=$('f5').querySelector('.w9fn');if(c)c.textContent=n};
