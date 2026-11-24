@@ -478,3 +478,25 @@ table.spec td b{color:var(--ink);font-weight:600}
 .a4 .pr{color:var(--red)!important;font-weight:600}
 .a4 .pg{color:var(--green)!important;font-weight:600}
 .a4 .pa{color:var(--amber)!important;font-weight:600}
+
+/* --- 25/11/2026: advice of ValueDriven (17/11) kept by the owner for every page. (1) the accent is the app's cold blue;
+   (2) the menu stays dark as in the live app, the active place has a blue line at its left; (4) the button that closes
+   the menu sits at the top beside the logo. Link text uses the darker blue so small text keeps 4.5:1 on white. --- */
+body,body[data-accent=ink]{--accent:#0284C7;--link:#0369A1;--accent-bg:#E0F2FE;--primary:#0284C7;--primary-hover:#0369A1;--on-dark-btn:#0284C7;--on-dark-btn-ink:#fff}
+.side{background:#0B1929;border-right:0;color:#C7D2DD}
+.side .logo{filter:brightness(0) invert(1);opacity:.94}
+.side .lg{display:flex;align-items:center;justify-content:space-between;padding:0 0 8px 8px}
+.side h4{color:#6F8296}
+.side a{color:#C7D2DD;position:relative}
+.side a:hover{background:rgba(255,255,255,.06)}
+.side a.on{background:rgba(56,189,248,.13);color:#fff}
+.side a.on::before{content:'';position:absolute;left:-14px;top:6px;bottom:6px;width:3px;border-radius:0 3px 3px 0;background:#38BDF8}
+.rail .side a.on::before{left:-10px}
+.side a em{color:#FCA5A5}
+.side .me{color:#EEF2F7}.side .me small{color:#8FA0B2}
+.rail .side hr{border-top-color:rgba(255,255,255,.14)}
+.side .tg{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;color:#C7D2DD;flex:none;transition:background var(--t-fast),transform var(--t-fast)}
+.side .tg:active{transform:scale(.95)}.side .tg:focus-visible{outline:2px solid #38BDF8;outline-offset:1px}
+@media (hover:hover){.side .tg:hover{background:rgba(255,255,255,.09);color:#fff}}
+.side .tg .o,.rail .side .tg .c{display:none}.rail .side .tg .o{display:grid}
+.rail .side .lg{flex-direction:column;gap:10px;padding:0 0 10px}

@@ -1,11 +1,14 @@
 /* Shared helpers copied unchanged from ../index.html (script, lines 821-831, 855-858, 901-907, 1192). trk and need follow index.html of PR 316 (assignment box without icon, 15/11). DESIGN MOCKUP ONLY. */
 const ic=n=>`<i data-lucide="${n}"></i>`,$=id=>document.getElementById(id);
-const NAV=[['ΣΧΕΔΙΑΣΜΟΣ',[['globe','Εβδομαδιαίο Διεθνών','wi'],['map','Εβδομαδιαίο Εθνικών','wn'],['calendar-days','Ημερήσιο','d'],['warehouse','Ράμπα','r']]],
+/* 25/11/2026: one menu for every page, the six groups of the shell page (09). The close button sits at the top beside the logo and works: it turns the menu into the narrow rail and back, with no animation (it changes the layout). */
+const NAV=[['ΑΡΧΗ',[['house','Σήμερα','h'],['chart-no-axes-column','Διοίκηση','x']]],
+ ['ΣΧΕΔΙΑΣΜΟΣ',[['globe','Εβδομαδιαίο Διεθνών','wi'],['map','Εβδομαδιαίο Εθνικών','wn'],['calendar-days','Ημερήσιο','d'],['warehouse','Ράμπα','r']]],
  ['ΔΟΥΛΕΙΑ',[['file-text','Παραγγελίες','o','10'],['package','Παλέτες','p','4']]],
  ['ΟΙΚΟΝΟΜΙΚΑ',[['receipt','Έξοδα δρομολογίων','e'],['coins','Μισθοδοσία','m']]],
- ['ΣΤΟΛΟΣ',[['truck','Οχήματα','t'],['wrench','Συντήρηση','s','2']]],
- ['ΣΤΟΙΧΕΙΑ',[['users','Πελάτες','c'],['briefcase','Συνεργάτες','pa'],['map-pin','Τοποθεσίες','l']]]];
-function side(on){return `<aside class="side"><div class="lg"><span class="logo full" role="img" aria-label="Petras Group"></span><span class="logo mark"></span></div>`+
+ ['ΣΤΟΛΟΣ',[['truck','Στόλος','t'],['wrench','Εργασίες','s','2'],['store','Συνεργεία','ws']]],
+ ['ΣΤΟΙΧΕΙΑ',[['book-user','Κατάλογος','c'],['map-pin','Τοποθεσίες','l']]]];
+const MENU_TG=`<button class="tg" title="Κλείσιμο / άνοιγμα μενού" aria-label="Κλείσιμο ή άνοιγμα μενού" onclick="this.closest('.app').classList.toggle('rail');lucide.createIcons()"><span class="c">${ic('panel-left-close')}</span><span class="o">${ic('panel-left-open')}</span></button>`;
+function side(on){return `<aside class="side"><div class="lg"><span class="logo full" role="img" aria-label="Petras Group"></span><span class="logo mark"></span>${MENU_TG}</div>`+
  NAV.map(([g,it],i)=>`${i?'<hr>':''}<h4>${g}</h4>`+it.map(([icn,l,id,n])=>`<a class="${id===on?'on':''}" title="${l}">${ic(icn)}<span>${l}</span>${n?`<em>${n}</em>`:''}</a>`).join('')).join('')+
  `<div class="me"><span class="av">ΔΠ</span><div>Δημήτρης Π.<small>Owner</small></div></div></aside>`}
 const two=(a,b,c='')=>`<div class="two ${c}"><b><span class="el">${a}</span></b><span>${b}</span></div>`;
