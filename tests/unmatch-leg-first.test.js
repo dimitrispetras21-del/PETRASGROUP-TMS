@@ -32,9 +32,6 @@ const wiSrc = [
   grab(/function _wiExecConfirmText\(execs,what,closedOk\)\{[\s\S]*?\n\}\n/, '_wiExecConfirmText', true),
   // _wiRemoveImport clears the import GROUP's row through it (review 8/11/2026)
   grab(/function _wiImpGroupRowOf\(oid\)\{[\s\S]*?\n\}\n/, '_wiImpGroupRowOf', true),
-  // owner 8/11 #10: decides whether the export group passed anything on (absent in older copies)
-  grab(/function _wiRecOf\(id\)\{[^\n]*\n/, '_wiRecOf', true),
-  grab(/async function _wiExpPassedOn\(expIds,impIds\)\{[\s\S]*?\n\}\n/, '_wiExpPassedOn', true),
   grab(/async function _wiRemoveImport\(rowId\)\{[\s\S]*?\n\}\n/, '_wiRemoveImport'),
   grab(/async function _wiDissolveClearMember\(oid\)\{[\s\S]*?\n\}\n/, '_wiDissolveClearMember'),
   grab(/async function _wiCancelGroupMember\(rowId,orderId,isImportSide(?:,ask)?\)\{[\s\S]*?\n\}\n/, '_wiCancelGroupMember'),
@@ -128,14 +125,14 @@ test('«×» unmatch of a lone import: the export keeps its truck and the driver
   assert.ok(!w.legs.has('I'), 'import leg still on the round trip');
 });
 
-test('«×» unmatch, export with no vehicle and on no trip (owner 8/11 #10): the import keeps its own truck and trip', async () => {
+test('«×» unmatch, export with no vehicle and on no trip (owner 24/11, «πάντα»; replaces 8/11 #10): the import loses its own truck too, leg first', async () => {
   const w = world({ exportTruck: null, exportOnTrip: false });
   const ok = await w.ctx._wiRemoveImport(1);
   await new Promise(r => setTimeout(r, 10));
   assert.strictEqual(ok, true);
-  assert.strictEqual(w.orders.I.truck, 'T1', 'the import\'s own truck was wiped');
-  assert.ok(w.legs.has('I'), 'the import left its own trip');
-  assert.ok(!w.log.some(x => x.id === 'I'), 'something was written on the import');
+  assert.strictEqual(w.orders.I.truck, null, 'the import kept its truck');
+  assert.ok(!w.legs.has('I'), 'the import\'s leg stayed on its trip');
+  assert.strictEqual(w.orders.E.truck, null, 'the export was given a vehicle');
 });
 
 test('«×» unmatch, export with no vehicle still on a trip holding the import: the leg leaves, then the vehicle (today\'s path)', async () => {
