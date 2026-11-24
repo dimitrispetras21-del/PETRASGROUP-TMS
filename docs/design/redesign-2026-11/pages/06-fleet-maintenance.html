@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="el">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Petras TMS · Στόλος και Συντήρηση (σχέδιο)</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_system.css">
+<style>
+/* DESIGN MOCKUP ONLY. Invented plates, names and round amounts (pages/CAST.md). Page-specific rules for Στόλος and Εργασίες. */
+:root{--t-step:60ms} /* gap between the things that change after one save (date, list line, counters) */
+.who{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.lc{flex:1;min-height:0;border-radius:24px 24px 0 0;overflow:hidden}
+.cardopen .lc{margin-right:404px}
+.tc{width:380px}
+/* the card of the open line: enters from the right, leaves faster than it enters (tokens of the system) */
+.tc{padding-bottom:18px;opacity:0;transform:translateX(24px);pointer-events:none;transition:opacity var(--t-exit) var(--ease-exit),transform var(--t-exit) var(--ease-exit)}
+.cardopen .tc{opacity:1;transform:none;pointer-events:auto;transition:opacity var(--t-enter) var(--ease),transform var(--t-enter) var(--ease)}
+.tc .in{transition:opacity 140ms var(--ease),transform 140ms var(--ease)}.tc .in.swap{opacity:0;transform:translateY(4px);transition:none}
+.lc{--dw:108px}.cardopen .lc{--dw:82px}.cardopen .fl2,.cardopen .flh{gap:0 10px}.dd .sy{margin-left:0}.cardopen .hx,.cardopen .fl .hide{display:none}
+.fl2,.flh{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) repeat(var(--n),var(--dw)) 92px;gap:0 12px;align-items:center;padding:0 28px}
+.flh{height:40px;border-bottom:1px solid var(--line);white-space:nowrap;letter-spacing:.04em}.flh .r{justify-self:end}
+.fl2 .dd:not(.x):not(.w):not(.u){color:var(--help)}
+.fl2 .end{display:flex;justify-content:flex-end;align-items:center;gap:8px}.fl2 .pr2 b{font-weight:500}.fl2 .tag{margin-left:6px}
+.fl2{height:54px;position:relative;cursor:pointer}
+.fl2::after,.jb::after{content:'';position:absolute;inset:3px 12px;border-radius:12px;z-index:0;transition:background var(--t-fast)}.fl2>*,.jb>*{position:relative;z-index:1}
+@media (hover:hover){.fl2:hover::after,.jb:hover::after{background:#F7F8F9}.dv:hover{color:var(--link);border-color:var(--link)}}
+.fl2.sel::after,.jb.sel::after{background:var(--accent-bg)}
+.fl2+.fl2::before,.jb+.jb::before{content:'';position:absolute;left:28px;right:28px;top:0;border-top:1px solid var(--line-2)}.fl2.sel::before,.fl2.sel+.fl2::before,.jb.sel::before,.jb.sel+.jb::before{display:none}
+.fl2:focus-visible,.jb:focus-visible{outline-offset:-5px;border-radius:14px}
+.fl2 .two b,.jb .two b{font-weight:600}
+.more{padding:14px 28px;color:var(--help);font-size:13px}
+.dd{text-align:right;color:var(--body);font-size:13.5px;white-space:nowrap}.dd.x{color:var(--red);font-weight:600}.dd.w,.dd.u{color:var(--amber);font-weight:600}
+.doc2{display:flex;gap:12px;align-items:center;height:42px;border-top:1px solid var(--line-2);font-size:13.5px}.doc2:first-of-type{border-top:0}
+.doc2 b{font-weight:500;color:var(--ink);flex:1;min-width:0}.doc2 .inp{width:104px;height:32px;font-size:13px;text-align:right}
+.dv{border-bottom:1px dotted #A9ABB3;line-height:1.5;transition:color var(--t-fast),border-color var(--t-fast)}
+.kvr{display:grid;grid-template-columns:104px minmax(0,1fr);gap:0 12px;align-items:center;min-height:38px;border-top:1px solid var(--line-2);font-size:13.5px}.kvr:first-child{border-top:0}.kvr span{color:var(--help);font-size:12.5px}.kvr b{font-weight:500;color:var(--ink)}
+.sech{display:flex;align-items:center;gap:8px;margin:16px 0 4px}
+.ibt{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:var(--help);transition:transform var(--t-fast),background var(--t-fast)}.ibt svg.lucide{width:15px;height:15px}
+.ibt:active,.cl:active,.chip:active{transform:scale(.97)}.cl,.chip{transition:transform var(--t-fast),border-color var(--t-fast),background var(--t-fast)}
+button.chip{cursor:pointer}
+.jb,.jbh{display:grid;grid-template-columns:minmax(0,1fr) 196px 84px;gap:0 16px;align-items:center;padding:0 28px}
+.jbh{height:38px;border-bottom:1px solid var(--line)}.jbh .n{text-align:right}
+.jb{height:56px;position:relative;cursor:pointer}
+.jb .n{text-align:right;color:var(--ink);font-weight:500}.jb .n.g{color:var(--help);font-weight:400}
+.jb.dc{grid-template-columns:minmax(0,1fr) auto;cursor:default;height:48px}.jb.dc::after{display:none}.strip.rd{background:var(--red-bg)}.strip.rd svg.lucide{color:var(--red)}.xtra{display:none}.xo .xtra{display:block}.xo [data-x] svg{transform:rotate(180deg)}
+.cardopen .jb:not(.dc),.cardopen .jbh{grid-template-columns:minmax(0,1fr) 196px}
+.gh{display:flex;align-items:baseline;gap:10px;padding:18px 28px 4px;font-weight:600;color:var(--ink)}.gh small{font-weight:400;color:var(--help)}.gh.r{color:var(--red)}
+.stg{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:500;color:var(--body);white-space:nowrap}.stg i{display:inline-flex;gap:3px}.stg i u{width:20px;height:4px;border-radius:2px;background:var(--line);text-decoration:none}.stg i u.on{background:var(--ink)}
+.stg.dn{color:var(--green)}.stg.dn i u.on{background:var(--green)}
+.steps{display:grid;grid-template-columns:1.1fr 1.3fr .75fr 1.15fr;gap:6px;margin-top:14px}.steps span{font-size:11px;white-space:nowrap;min-width:0;color:var(--help);padding-top:8px;border-top:3px solid var(--line);font-weight:500;transition:border-color var(--t-state) var(--ease),color var(--t-state) var(--ease)}.steps span.on{border-color:var(--ink);color:var(--ink)}.steps span small{display:block;font-weight:400;color:var(--help);font-size:11px;margin-top:2px;min-height:16px}
+.act{margin:16px -24px -18px;padding:16px 24px 18px;border-top:1px solid var(--line);background:#FAFBFC;border-radius:0 0 24px 24px}
+input.inp{outline:0}input.inp:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg)}input.inp::placeholder{color:var(--ph)}
+.pn{background:#fff;border-radius:var(--r-page);box-shadow:var(--shadow-float);padding:20px 22px 16px}
+.pn h3{font-size:17px;font-weight:600;color:var(--ink)}.pn h3+small{display:block;color:var(--help);font-size:13px;margin-top:2px}.pf{display:flex;gap:8px;align-items:center;margin-top:14px}
+.ns{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:0 12px;align-items:center;min-height:44px;border-top:1px solid var(--line-2);font-size:13.5px}.ns:first-of-type{border-top:0}.ns b{font-weight:600;color:var(--ink);display:block}.ns small{display:block;color:var(--help);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ns>.num{color:var(--ink);font-weight:500}
+.frame .toast{position:absolute;left:50%;bottom:24px;z-index:7;margin-left:-180px}.frame .toast u{cursor:pointer}
+@media (prefers-reduced-motion:reduce){.tc,.tc .in.swap{transform:none}}
+/* prints */
+.a4.wo{font-size:10px}.a4.wo .ln{border-bottom:.5px solid #999;height:28px}
+.a4.ex .r,.a4.ex .hr{grid-template-columns:58px minmax(0,1fr) 96px 172px;gap:0 10px}.a4.ex .r{font-size:9.5px}.a4.ex .r>span,.a4.ex .hr>span{text-align:left;white-space:nowrap}.a4.ex{font-size:10px}.a4.ex .r{padding:7px 0}.a4.ex .psec+.r{border-top:0}
+</style>
+</head>
+<body>
+<div class="doc">
+<header>
+  <p class="lbl">Petras Group TMS · επανασχεδίαση · σελίδα 6 από 9 · μόνο σχέδιο, επινοημένα στοιχεία</p>
+  <h1>Στόλος και Συντήρηση</h1>
+  <p>Πρόταση αναθεώρησης: οκτώ θέσεις του σημερινού μενού γίνονται τρεις. «Στόλος» (το όχημα με τα έγγραφα και την ιστορία του), «Εργασίες» (η εντολή και το τιμολόγιό της ως ένα πράγμα), «Συνεργεία». Η λογική μένει· η απόφαση για τη συγχώνευση είναι του Δημήτρη.</p>
+</header>
+
+<section class="sec">
+  <div class="who">
+    <div class="panel"><h3>Ποιος και για τι</h3><table class="spec"><tr><td><b>Θοδωρής</b></td><td>Κάθε μέρα: ανοίγει και κλείνει εργασίες, τις στέλνει σε συνεργείο, τυπώνει εντολή, γράφει νέες ημερομηνίες εγγράφων, περνά τιμολόγια.</td></tr><tr><td><b>Dispatchers</b></td><td>«Μπορώ να στείλω αυτό το όχημα;» Διαβάζουν.</td></tr><tr><td><b>Λογιστήριο, Δημήτρης</b></td><td>Κόστος ανά όχημα και συνεργείο· συμμόρφωση.</td></tr></table></div>
+    <div class="panel"><h3>Τι κρατήθηκε</h3><table class="spec"><tr><td>Μετρούν μόνο ενεργά οχήματα· όχημα απενεργοποιείται, δεν σβήνεται · προειδοποίηση 30 ημέρες πριν (60 για ΚΤΕΟ βουλγαρικής πινακίδας) · ληγμένο ΚΤΕΟ, ασφάλεια ή ταχογράφος πάνω από κάθε άλλη εργασία · οι προειδοποιήσεις στην ανάθεση δεν εμποδίζουν · άγνωστο κόστος δεν είναι μηδέν · προτεραιότητα SOS, άμεσα, κανονικό · εργασία σε εξέλιξη σημαίνει «σε σέρβις».</td></tr></table></div>
+    <div class="panel"><h3>Τι αλλάζει</h3><table class="spec"><tr><td>Τα έγγραφα ανανεώνονται εκεί που τα βλέπεις, με νέα ημερομηνία · «χωρίς ημερομηνία» είναι τρίτη κατάσταση, δεν περνά για έγκυρο · η εντολή εργασίας και η εγγραφή service γίνονται μία εργασία με τέσσερα στάδια · οι αριθμοί κάθονται πάνω από τις γραμμές που μετρούν.</td></tr></table></div>
+  </div>
+</section>
+
+<section class="sec"><h2>Στόλος</h2>
+  <div class="cap"><h3>Φορτηγά, με ένα όχημα ανοιχτό</h3><span>Γραμμή: ανοίγει · ημερομηνία: αλλάζει επί τόπου · ετικέτες: φιλτράρουν</span></div>
+  <div class="fit"><div class="frame" id="fF" style="height:900px"></div></div>
+</section>
+<section class="sec"><h2>Ρυμούλκες</h2>
+  <div class="cap"><h3>Η ίδια γραμμή και η ίδια κάρτα</h3><span>ΚΤΕΟ · ATP · ασφάλεια</span></div>
+  <div class="fit"><div class="frame" id="fT" style="height:900px"></div></div>
+</section>
+<section class="sec"><h2>Εργασίες</h2>
+  <div class="cap"><h3>Από την αναφορά ως το τιμολόγιο, σε μία γραμμή</h3><span>Το κουμπί της κάρτας πάει την εργασία στο επόμενο στάδιο</span></div>
+  <div class="fit"><div class="frame" id="fJ" style="height:960px"></div></div>
+  <div class="cap"><h3>Ό,τι ανοίγει</h3><span>Νέα εργασία · ανανέωση από τη λίστα · συνεργείο · πριν την ανάθεση</span></div>
+  <div class="fit"><div class="frame" id="fP" style="height:660px"></div></div>
+</section>
+<section class="sec"><h2>Οι κακές στιγμές</h2><div class="grid g4" style="align-items:stretch" id="bad"></div></section>
+<section class="sec"><h2>Τα χαρτιά</h2>
+    <div style="display:flex;gap:28px;flex-wrap:wrap;justify-content:center"><div class="a4 wo" id="a4o"></div><div class="a4 ex" id="a4e"></div></div>
+</section>
+</div>
+
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script src="_system.js"></script>
+<script>
+/* One set of invented vehicles and jobs feeds every screen of this page, so a number can never disagree with its lines. */
+const TODAY=new Date(2026,10,16),DN=['Κυρ','Δευ','Τρί','Τετ','Πέμ','Παρ','Σάβ'];
+const fld=(l,vv,cls='')=>`<label class="fld"><span>${l}</span><div class="inp ${cls}">${vv}</div></label>`;
+const fin=(l,k,v='',ph='',cls='')=>`<label class="fld"><span>${l}</span><input class="inp ${cls}" data-f="${k}" value="${v}" placeholder="${ph}"></label>`;
+const cur='<span style="width:1.5px;height:18px;background:var(--accent);margin-left:-6px"></span>';
+const hd=(t,sub,x)=>`<div class="hd"><div><h1>${t}</h1><p>${sub}</p></div><span class="sp"></span>${x}</div>`;
+const TOK=n=>parseFloat(getComputedStyle(document.documentElement).getPropertyValue(n))||0;
+const pd=s=>{const m=/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/.exec((s||'').trim());return m?new Date(2000+ +m[3],m[2]-1,+m[1]):null};
+const dleft=s=>Math.round((pd(s)-TODAY)/864e5);
+/* a document date is: n = not needed, u = no date written, x = expired, w = due within 30 days, '' = in force */
+const dst=(s,lim=30)=>s==='-'?'n':!pd(s)?'u':dleft(s)<0?'x':dleft(s)<=lim?'w':'';
+const sg=(n,w)=>`<span class="stg ${n===4?'dn':''}"><i>${[1,2,3,4].map(i=>`<u class="${i<=n?'on':''}"></u>`).join('')}</i><span data-k="${w}">${w}</span></span>`;
+const STG=['Αναφέρθηκε','Στο συνεργείο','Έγινε','Τιμολογήθηκε'];
+
+const JOBS=[
+ {pri:'SOS',v:'ΚΗΙ 9056',s:'φρένα, διαρροή αέρα',d:'Διαρροή αέρα στα φρένα',w:'Συνεργείο Βερμίου',n:2,est:'350,00',note:'Χάνει στο πίσω δεξί κύκλωμα.',t:['Κυρ 15/11','Δευ 16/11'],by:'Τ. Ιορδάνου',kind:'Φρένα',draft:'420,00'},
+ {pri:'Άμεσα',v:'Ρ 5071',s:'ψυκτικό',d:'Το ψυκτικό δεν κατεβάζει θερμοκρασία',w:'Frigo Service Βέροιας',n:2,est:'',t:['Παρ 13/11','Δευ 16/11'],by:'Λ. Δήμου',kind:'Ψύξη'},
+ {pri:'Κανονικά',v:'ΚΗΙ 8600',s:'ελαστικά εμπρός',d:'Αλλαγή ελαστικών εμπρός',w:'Ελαστικά Ημαθίας',n:2,est:'680,00',t:['Πέμ 12/11','Δευ 16/11'],by:'Λ. Δήμου',kind:'Ελαστικά'},
+ {pri:'Κανονικά',v:'Ρ 4259',d:'Φώτα όγκου δεξιά',w:'',n:1,est:'',t:['Σάβ 14/11'],by:'Π. Ράπτης',kind:'Ηλεκτρικά'},
+ {pri:'Κανονικά',v:'ΚΗΙ 2140',d:'Καθρέφτης συνοδηγού',w:'',n:1,est:'120,00',t:['Παρ 13/11'],by:'Ν. Ρούσσος',kind:'Λοιπά'},
+ {pri:'Κανονικά',v:'ΚΗΙ 5127',d:'Σέρβις 60.000 km',w:'MAN Θεσσαλονίκης',n:3,est:'850,00',cost:'890,00',t:['Δευ 9/11','Τετ 11/11','Πέμ 12/11'],by:'Σ. Καρράς',kind:'Σέρβις'}];
+const inSvc=p=>JOBS.some(j=>j.v===p&&j.n===2);
+
+/* ---------- fleet ---------- */
+/* One row grammar for trucks and trailers: vehicle, its pair and driver, one fixed cell per document, state. Only what needs action has colour. */
+const F={truck:{tab:'Φορτηγά',col:'Φορτηγό',pair:'Ρυμούλκα · οδηγός',docs:['ΚΤΕΟ','ΚΕΚ','Ασφάλεια','Ταχογράφος'],more:3,side:['Χώρα'],rows:[
+  {p:'ΚΗΙ 4445',q:'Ρ 4006',dr:'Μ. Χρυσάφης',m:'Scania R 450 · 2020',d:['18/2/27','4/3/27','9/11/26','22/5/27']},
+  {p:'ΚΗΙ 1680',q:'Ρ 3250',dr:'Η. Σαράφης',m:'DAF XF 480 · 2018',d:['7/1/27','19/4/27','30/9/27','']},
+  {p:'ΚΗΙ 2208',q:'Ρ 4259',dr:'Π. Ράπτης',m:'Volvo FH 500 · 2019',d:['28/11/26','15/6/27','1/8/27','3/10/27']},
+  {p:'ΚΗΙ 5102',q:'Ρ 5948',dr:'Σ. Κάππος',m:'MAN TGX 470 · 2020',d:['11/5/27','2/12/26','20/7/27','8/8/27']},
+  {p:'ΚΗΙ 9056',q:'',dr:'Τ. Ιορδάνου',m:'Mercedes Actros · 2021',d:['3/4/27','9/9/27','14/6/27','27/2/27']},
+  {p:'ΚΗΙ 7310',q:'Ρ 8145',dr:'Δ. Μάνος',m:'Iveco S-Way · 2022',d:['6/6/27','21/8/27','12/4/27','30/10/27']},
+  {p:'ΚΗΙ 5127',q:'Ρ 6604',dr:'Σ. Καρράς',m:'MAN TGX 510 · 2021',d:['12/3/27','20/2/27','30/6/27','14/9/27']},
+  {p:'ΚΗΙ 3310',q:'Ρ 7120',dr:'Θ. Μέλλιος',m:'Volvo FH 460 · 2017',d:['25/1/27','6/7/27','18/10/27','2/3/27']},
+  {p:'ΚΗΙ 8600',q:'Ρ 5071',dr:'Λ. Δήμου',m:'Scania S 500 · 2022',d:['9/8/27','9/8/27','1/5/27','21/11/27']},
+  {p:'ΚΗΙ 6012',q:'Ρ 5093',dr:'Α. Ντίνος',m:'DAF XG 530 · 2023',d:['14/10/27','14/10/27','3/3/27','5/12/27']}]},
+ trailer:{tab:'Ρυμούλκες',col:'Ρυμούλκα',pair:'Φορτηγό · οδηγός',docs:['ΚΤΕΟ','ATP','Ασφάλεια'],more:0,side:['Χώρα','Τύπος'],rows:[
+  {p:'Ρ 5948',q:'ΚΗΙ 5102',dr:'Σ. Κάππος',bg:1,m:'Schmitz ψυγείο · 2018',d:['5/11/26','14/4/27','2/6/27']},
+  {p:'Ρ 6604',q:'ΚΗΙ 5127',dr:'Σ. Καρράς',m:'Krone ψυγείο · 2020',d:['20/5/27','10/12/26','8/9/27']},
+  {p:'Ρ 5071',q:'ΚΗΙ 8600',dr:'Λ. Δήμου',m:'Schmitz ψυγείο · 2019',d:['3/3/27','17/7/27','11/10/27']},
+  {p:'Ρ 3250',q:'ΚΗΙ 1680',dr:'Η. Σαράφης',m:'Kögel κουρτίνα · 2017',d:['9/2/27','-','30/4/27']},
+  {p:'Ρ 4259',q:'ΚΗΙ 2208',dr:'Π. Ράπτης',m:'Lamberet ψυγείο · 2021',d:['1/7/27','22/8/27','14/9/27']},
+  {p:'Ρ 7120',q:'ΚΗΙ 3310',dr:'Θ. Μέλλιος',m:'Schmitz ψυγείο · 2020',d:['12/6/27','3/8/27','25/9/27']},
+  {p:'Ρ 4410',q:'ΚΗΙ 7733',dr:'Γ. Ζήσης',m:'Krone ψυγείο · 2019',d:['27/3/27','9/5/27','16/7/27']},
+  {p:'Ρ 5093',q:'ΚΗΙ 6012',dr:'Α. Ντίνος',m:'Lamberet ψυγείο · 2022',d:['4/9/27','4/9/27','20/8/27']},
+  {p:'Ρ 4006',q:'ΚΗΙ 4445',dr:'Μ. Χρυσάφης',m:'Schmitz ψυγείο · 2020',d:['15/4/27','28/6/27','7/10/27']},
+  {p:'Ρ 6654',q:'ΚΗΙ 4521',dr:'Γ. Αλεξίου',m:'Krone ψυγείο · 2021',d:['22/2/27','11/3/27','5/11/27']},
+  {p:'Ρ 8145',q:'ΚΗΙ 7310',dr:'Δ. Μάνος',bg:1,m:'Schmitz ψυγείο · 2023',d:['19/7/27','19/7/27','2/12/27']}]}};
+/* what only the open card knows about a vehicle */
+const X={'ΚΗΙ 4445':{more:'Euro 6 · 412.300 km',svc:'σέρβις στα 420.000 km',n:14,past:[['Αλλαγή τακακιών πίσω άξονα','Συνεργείο Βερμίου · Δευ 19/10','640,00'],['Σέρβις 400.000 km','Scania Βορείου Ελλάδος · Πέμ 3/9','1.180,00']],
+  trips:[['Hamburg → Βέροια','φτάνει Τετ 18/11','Κενό γύρισμα. Είναι στον δρόμο με ληγμένη ασφάλεια.']]},
+ 'ΚΗΙ 2208':{trips:[['Βέροια → Rotterdam','φόρτωση Τετ 18/11','']]},
+ 'Ρ 5948':{n:9,past:[['Αλλαγή ελαστικών, 2ος άξονας','Ελαστικά Ημαθίας · Τρί 20/10','520,00']]}};
+const allRows=()=>[...F.truck.rows.map(r=>[r,F.truck]),...F.trailer.rows.map(r=>[r,F.trailer])];
+/* ΚΤΕΟ of a Bulgarian plate warns 60 days before, everything else 30 (rule kept from today's app) */
+const ds=(r,i)=>dst(r.d[i],r.bg&&i===0?60:30);
+const sts=r=>r.d.map((_,i)=>ds(r,i));
+const bad=r=>sts(r).some(k=>k==='x'||k==='u');
+const worstI=r=>{const k=sts(r);for(const z of 'xuw'){const i=k.indexOf(z);if(i>=0)return i}return -1};
+const dsy=(r,i,x='')=>{const k=ds(r,i),n=dleft(r.d[i]);return k==='x'?sy('late',`Έληξε πριν από ${-n} ημέρες`,x):k==='w'?sy('late',`Λήγει σε ${n} ημέρες`,x):k==='u'?sy('miss','Δεν έχει γραφτεί ημερομηνία',x):''};
+const dcell=(r,i,K)=>{const k=ds(r,i);return k==='n'?`<span class="dd" style="color:var(--faint)" title="Δεν χρειάζεται">–</span>`:`<span class="dd num ${k}">${dsy(r,i)}<span data-k="c${r.p}${i}" style="margin-left:4px">${k==='u'?'χωρίς':r.d[i]}</span></span>`};
+/* what needs action comes first: expired, no date, due soon, in service. A save does not reorder: no line jumps while you look at it. */
+const sev=r=>{const k=sts(r);return k.includes('x')?0:k.includes('u')?1:k.includes('w')?2:inSvc(r.p)?3:4};
+const FL=[['all','Όλα',()=>1,''],['x','Ληγμένο',r=>sts(r).includes('x'),'r'],['w','Λήγει σύντομα',r=>sts(r).includes('w'),'a'],['u','Χωρίς ημερομηνία',r=>sts(r).includes('u'),'a'],['s','Σε σέρβις',r=>inSvc(r.p),'']];
+const FS={fF:{kind:'truck',sel:'ΚΗΙ 4445',f:'all',edit:null},fT:{kind:'trailer',sel:'Ρ 5948',f:'all',edit:null}};
+const snap=fr=>Object.fromEntries([...fr.querySelectorAll('[data-k]')].map(e=>[e.dataset.k,e.textContent]));
+/* after a save, only what changed moves, one after the other: the date in the card, the cell of the list, the counters */
+const stagger=(fr,was)=>{let i=0;fr.querySelectorAll('[data-k]').forEach(e=>{if(e.dataset.k in was&&was[e.dataset.k]!==e.textContent){e.classList.add('fadeup');e.style.animationDelay=(i++*(RED()?0:TOK('--t-step')))+'ms'}})};
+
+function vcard(r,K,S){const x=X[r.p]||{},jobs=JOBS.filter(j=>j.v===r.p&&j.n<4);
+ const docs=K.docs.map((n,i)=>{const s=r.d[i],k=ds(r,i);if(k==='n')return '';
+  if(S.edit===i)return `<div class="doc2" data-doc="${i}"><b>${n}</b><input class="inp num" data-inp value="${pd(s)?s.replace(/\d+$/,y=>+y+1):''}" placeholder="ηη/μμ/εε" aria-label="Νέα λήξη, ${n}"><button class="pill sm b" data-save style="width:36px;padding:0;justify-content:center" aria-label="Αποθήκευση">${ic('check')}</button></div>`;
+  return `<div class="doc2" data-doc="${i}"><b>${n}</b>${dsy(r,i)}<button class="dv dd num ${k}" data-renew="${i}" data-k="d${i}" title="Νέα ημερομηνία">${k==='u'?'χωρίς':s}</button>${k==='x'||k==='u'?`<button class="pill sm b" data-renew="${i}">${k==='u'?'Ημερομηνία':'Ανανέωση'}</button>`:''}</div>`}).join('');
+ return `<div class="h"><div style="flex:1;min-width:0"><b class="num">${r.p}</b><small>${r.m}${x.more?' · '+x.more:''}${r.bg?' · Βουλγαρία':''}</small><small class="num">${r.q?r.q+' · ':''}${r.dr}</small></div><button class="ibt" title="Διόρθωση στοιχείων · απενεργοποίηση" aria-label="Περισσότερα">${ic('ellipsis')}</button><button class="cl" data-close aria-label="Κλείσιμο">${ic('x')}</button></div>
+  <div class="sech"><span class="lbl">Έγγραφα</span><span class="sp"></span>${x.svc?`<span style="font-size:12.5px;color:var(--help)">${x.svc}</span>`:''}</div>${docs}
+  ${jobs.length||x.past?`<div class="sech"><span class="lbl">Εργασίες</span><span class="sp"></span>${x.n?`<a style="font-weight:500;font-size:13px">Όλες · ${x.n}</a>`:''}</div>`:''}
+  ${jobs.map(j=>`<div class="ns"><span><b>${j.d}</b><small>${j.w||'χωρίς συνεργείο'}</small></span>${sg(j.n,STG[j.n-1])}</div>`).join('')}
+  ${(x.past||[]).map(([a,b,c])=>`<div class="ns"><span><b>${a}</b><small>${b}</small></span><span class="num">${c}</span></div>`).join('')}
+  ${x.trips?`<div class="sech"><span class="lbl">Δρομολόγια</span></div>`+x.trips.map(([a,b,w])=>`<div class="ns"><span><b>${a}</b><small style="overflow:visible">${b}${w?sy('late',w):''}</small></span><span></span></div>`).join(''):''}
+  <div style="display:flex;gap:2px;margin:10px -8px 0"><button class="tbtn" style="color:var(--help)">${ic('plus')}Εργασία</button></div>`}
+
+function paintF(id,o={}){const S=FS[id],K=F[S.kind],fr=$(id),flt=FL.find(x=>x[0]===S.f),ord=(o.anim&&S.ord)||(S.ord=[...K.rows].sort((a,b)=>sev(a)-sev(b)).map(r=>r.p)),rows=K.rows.filter(flt[2]).sort((a,b)=>ord.indexOf(a.p)-ord.indexOf(b.p)),sel=K.rows.find(r=>r.p===S.sel);
+ if(!fr.firstChild)fr.innerHTML=`<div class="app">${side('t')}<main class="main"></main></div><div class="tc"><div class="in"></div></div>`;
+ const was=o.anim?snap(fr):null,A=allRows(),tot=A.length+F.truck.more+F.trailer.more,ok=tot-A.filter(([r])=>bad(r)).length;
+ fr.classList.toggle('cardopen',!!sel);
+ fr.querySelector('.main').innerHTML=`${hd('Στόλος',`${tot} οχήματα · <span data-k="ok">${ok}</span> με όλα τα έγγραφα σε ισχύ`,`<button class="pill">${ic('printer')}Εκτύπωση · CSV${ic('chevron-down')}</button><button class="pill b">${ic('plus')}Νέο όχημα</button>`)}
+ <div class="card lc" style="--n:${K.docs.length}">
+  <div class="tabs" role="tablist">${Object.entries(F).map(([k,v])=>`<a role="tab" tabindex="0" data-tab="${k}" class="${k===S.kind?'on':''}">${v.tab} <i>${v.rows.length+v.more}</i></a>`).join('')}<span class="sp"></span><div class="q" style="width:180px">${ic('search')}Αναζήτηση</div></div>
+  <div class="fl" style="padding-bottom:6px">${FL.map(([k,l,fn,c])=>{const n=k==='all'?K.rows.length+K.more:K.rows.filter(fn).length;return `<button class="chip ${c} ${k===S.f?'on':''}" data-chip="${k}" aria-pressed="${k===S.f}" ${k==='w'?'title="30 ημέρες· ΚΤΕΟ βουλγαρικής πινακίδας 60"':''}>${l} <b data-k="c${k}" ${n?'':'style="color:var(--help)"'}>${n}</b></button>`}).join('')}<span class="sp"></span>${[...K.side,'Ενεργά'].map(t=>`<span class="chip hide">${t} ${ic('chevron-down')}</span>`).join('')}</div>
+  <div class="flh lbl"><span>${K.col}</span><span>${K.pair}</span>${K.docs.map(n=>`<span class="r">${n}</span>`).join('')}<span></span></div>
+  ${rows.map(r=>`<div class="fl2 ${r===sel?'sel':''}" data-row="${r.p}" tabindex="0" role="button"><div class="two"><b class="num">${r.p}${r.bg?'<span class="tag" title="Βουλγαρική πινακίδα">BG</span>':''}</b><span>${r.m.split(' · ')[0]}</span></div><div class="two pr2"><b class="num">${r.q||'–'}</b><span>${r.dr}</span></div>${r.d.map((_,i)=>dcell(r,i,K)).join('')}<span class="end">${inSvc(r.p)?`<span class="st run">Σε σέρβις</span>`:''}</span></div>`).join('')}
+  ${rows.length?'':`<p class="more">Κανένα</p>`}${S.f==='all'&&K.more?`<p class="more"><a style="font-weight:500">${K.more} ακόμη</a></p>`:''}
+ </div>`;
+ if(sel){const inn=fr.querySelector('.tc .in');inn.innerHTML=vcard(sel,K,S);if(o.swap){inn.classList.add('swap');inn.offsetWidth;inn.classList.remove('swap')}}
+ lucide.createIcons();if(was)stagger(fr,was)}
+function saveDoc(id){const S=FS[id],fr=$(id),inp=fr.querySelector('[data-inp]'),v=inp.value.trim();if(!pd(v)){inp.classList.add('miss');if(!fr.querySelector('.doc2 .nb'))inp.insertAdjacentHTML('beforebegin','<i class="nb a dn" data-t="Γράψε την ημερομηνία ως ηη/μμ/εε. Δεν γράφτηκε τίποτα.">!</i>');return}
+ const i=S.edit;F[S.kind].rows.find(r=>r.p===S.sel).d[i]=v;S.edit=null;paintF(id,{anim:1});fr.querySelector(`.doc2[data-doc="${i}"]`).classList.add('flash')}
+function wireF(id){const fr=$(id),S=FS[id];paintF(id);
+ fr.addEventListener('click',e=>{const t=q=>e.target.closest(q);let el;
+  if(t('[data-save]'))return saveDoc(id);
+  if(el=t('[data-renew]')){S.edit=+el.dataset.renew;paintF(id);const i=fr.querySelector('[data-inp]');i.focus();i.select();return}
+  if(t('[data-close]')){S.sel=S.edit=null;return paintF(id)}
+  if(el=t('[data-tab]')){S.kind=el.dataset.tab;S.sel=S.edit=null;S.f='all';return paintF(id)}
+  if(el=t('[data-chip]')){S.f=el.dataset.chip;return paintF(id)}
+  if(el=t('[data-row]')){const was=S.sel;S.sel=el.dataset.row;S.edit=null;paintF(id,{swap:was&&was!==S.sel})}});
+ /* keyboard: no motion on the way in, the result is the feedback */
+ fr.addEventListener('keydown',e=>{if(e.target.matches('[data-inp]')){if(e.key==='Enter')saveDoc(id);if(e.key==='Escape'){S.edit=null;paintF(id)}return}
+  if((e.key==='Enter'||e.key===' ')&&e.target.matches('[data-row],[data-tab]')){e.preventDefault();e.target.click()}
+  if(e.key==='Escape'&&S.sel){S.sel=null;paintF(id)}})}
+wireF('fF');wireF('fT');
+
+/* ---------- jobs ---------- */
+const JS={sel:0};
+const docJobs=()=>allRows().flatMap(([r,K])=>r.d.map((s,i)=>{const k=ds(r,i),n=dleft(s);if(!(k==='x'||k==='u'||(k==='w'&&n<=14)))return null;const day=pd(s)&&`${DN[pd(s).getDay()]} ${s.replace(/\/\d+$/,'')}`;
+ return [r.p,k==='x'?`${K.docs[i]} έληξε ${day}`:k==='u'?`${K.docs[i]} χωρίς ημερομηνία`:`${K.docs[i]} λήγει ${day}`,k==='x'?`πριν από ${-n} ημέρες`:k==='w'?`σε ${n} ημέρες`:'',k]}).filter(Boolean)).sort((a,b)=>'xuw'.indexOf(a[3])-'xuw'.indexOf(b[3]));
+function jcard(j){const fi=j.focus||'';
+ const A=j.n===1?['',`<div class="row g12"><div style="grid-column:span 7">${fin('Συνεργείο','w',j.w)}</div><div style="grid-column:span 5">${fin('Εκτίμηση €','est',j.est,'','num')}</div></div>`,'Στάλθηκε',`<span class="cb"><i></i>Εκτύπωση εντολής</span>`]
+  :j.n===2?['',`<div class="row g12"><div style="grid-column:span 4">${fin('Κόστος €','cost',j.draft||'','','num '+(j.draft?'focus':''))}</div><div style="grid-column:span 4">${fin('Τιμολόγιο','inv')}</div><div style="grid-column:span 4">${fin('Χιλιόμετρα','km','','','num')}</div></div>
+   <div style="margin:8px 0 -6px -8px"><button class="tbtn" data-x style="color:var(--help);font-size:13px" aria-expanded="false">Είδος · ανταλλακτικά · επόμενο σέρβις${ic('chevron-down')}</button></div>
+   <div class="xtra fadeup"><div class="row g12" style="margin-top:14px"><div style="grid-column:span 5">${fld('Είδος',(j.kind||'')+'<span class="sp"></span>'+ic('chevron-down'))}</div><div style="grid-column:span 7">${fin('Ανταλλακτικά','parts')}</div></div>
+   <div class="row g12"><div style="grid-column:span 6">${fin('Επόμενο σέρβις, ημερομηνία','nx','','ηη/μμ/εε','num')}</div><div style="grid-column:span 6">${fin('Επόμενο σέρβις, km','nk','','','num')}</div></div></div>`,'Έγινε','']
+  :['',`<div class="row g12"><div style="grid-column:span 6">${fin('Τιμολόγιο','inv')}</div><div style="grid-column:span 6">${fin('Κόστος €','cost',j.cost||'','','num')}</div></div>`,'Τιμολογήθηκε',''];
+ const kv=[['Συνεργείο',j.w],['Εκτίμηση',j.est&&j.est+' €<span data-over style="color:var(--amber);font-weight:600;margin-left:10px"></span>'],['Κόστος',j.cost?j.cost+' €':j.nocost&&'<span style="color:var(--amber);font-weight:600;margin-right:8px">χωρίς</span>'+sy('who','Έκλεισε χωρίς κόστος · Θοδωρής, Δευ 16/11')],['Σημείωση',j.note]].filter(x=>x[1]);
+ return `<div class="h"><div style="flex:1;min-width:0"><b class="num">${j.v}</b><small style="color:var(--ink);font-weight:500;font-size:14px">${j.d}</small><small>${j.pri==='Κανονικά'?'':`<span style="font-weight:600;color:var(--${j.pri==='SOS'?'red':'amber'})">${j.pri}</span> · `}${j.by}</small></div><button class="ibt" title="Εκτύπωση εντολής" aria-label="Εκτύπωση εντολής">${ic('printer')}</button><button class="cl" data-close aria-label="Κλείσιμο">${ic('x')}</button></div>
+  <div class="steps">${STG.map((s,i)=>`<span class="${i<(j.from||j.n)?'on':''}" data-st="${i}">${s}<small>${j.t[i]||''}</small></span>`).join('')}</div>
+  ${kv.length?`<div style="margin-top:14px">${kv.map(([a,b])=>`<div class="kvr"><span>${a}</span><b class="${/€/.test(b)?'num':''}">${b}</b></div>`).join('')}</div>`:''}
+  <div class="act">${A[1]}<div style="display:flex;align-items:center;gap:10px;margin-top:14px">${A[3]}<span class="sp"></span><button class="pill b" data-go>${A[2]} ${ic('corner-down-left')}</button></div></div>`}
+function paintJ(o={}){const fr=$('fJ'),open=JOBS.filter(j=>j.n<4),sel=JOBS[JS.sel],DJ=docJobs();
+ if(!fr.firstChild)fr.innerHTML=`<div class="app">${side('s')}<main class="main"></main></div><div class="tc"><div class="in"></div></div><div class="toast"></div>`;
+ fr.classList.toggle('cardopen',!!sel&&sel.n<4);
+ const G=[['SOS',j=>j.n<3&&j.pri==='SOS'],['Άμεσα',j=>j.n<3&&j.pri==='Άμεσα'],['Κανονικά',j=>j.n<3&&j.pri==='Κανονικά'],['Περιμένουν τιμολόγιο',j=>j.n===3]];
+ const row=j=>{const i=JOBS.indexOf(j),c=j.cost||j.est;return `<div class="jb ${j===sel?'sel':''} ${o.moved===i?'fadeup':''}" data-job="${i}" tabindex="0" role="button"><div class="two"><b><span class="num">${j.v}</span><span style="font-weight:500;margin-left:10px" class="el">${j.d}</span></b><span>${j.w||'χωρίς συνεργείο'}</span></div><span style="display:flex;align-items:center;gap:8px">${sg(j.n,STG[j.n-1])}${j.nocost?sy('miss','Έκλεισε χωρίς κόστος · Θοδωρής, Δευ 16/11. Μετρά στα «χωρίς κόστος».','r'):''}</span><span class="n num hx ${j.cost?'':'g'}" ${j.cost||!c?'':'title="Εκτίμηση"'}>${c||'–'}</span></div>`};
+ const wi=open.filter(j=>j.n===3).length,so=open.filter(G[0][1]).length;
+ fr.querySelector('.main').innerHTML=`${hd('Εργασίες',`${open.length} ανοιχτές${so?` · ${so} SOS`:''}${wi?` · ${wi} ${wi>1?'περιμένουν':'περιμένει'} τιμολόγιο`:''}`,`<button class="pill">${ic('scan-line')}Σάρωση τιμολογίου</button><button class="pill">${ic('printer')}Εκτύπωση${ic('chevron-down')}</button><button class="pill b">${ic('plus')}Νέα εργασία</button>`)}
+ <div class="card lc">
+  <div class="tabs"><a class="on">Ανοιχτές <i>${open.length}</i></a><a>Κλειστές</a><a>Ανά όχημα</a><a>Ανά συνεργείο</a><span class="sp"></span><div class="q" style="width:170px">${ic('search')}Αναζήτηση</div></div>
+  <div class="jbh lbl"><span>Όχημα · εργασία</span><span>Στάδιο</span><span class="n hx">Κόστος €</span></div>
+  ${G.map(([g,fn])=>{const r=open.filter(fn);return r.length?`<div class="gh ${g==='SOS'?'r':''}">${g}<small>${r.length}</small></div>${r.map(row).join('')}`:''}).join('')}
+  ${open.length?'':`<p class="more">Καμία ανοιχτή εργασία</p>`}
+  <div class="gh">Από έγγραφα<small>${DJ.length}</small></div>
+  ${DJ.map(([v,d,n,k])=>`<div class="jb dc"><div class="two" style="overflow:visible"><b style="overflow:visible"><span class="num">${v}</span><span style="font-weight:500;margin-left:10px">${d}</span><span style="margin-left:8px;font-weight:400;color:var(--help);font-size:13px;display:inline-flex;align-items:center;gap:6px">${k==='u'?sy('miss','Δεν έχει γραφτεί ημερομηνία'):sy('late',k==='x'?'Έληξε '+n:'Λήγει '+n)}${n.replace('πριν από ','').replace('ημέρες','ημ.')}</span></b></div><span style="display:flex;gap:6px;align-items:center"><button class="pill sm">Ανανέωση</button><button class="ibt" title="Εργασία" aria-label="Νέα εργασία για το ${v}">${ic('plus')}</button></span></div>`).join('')}
+ </div>`;
+ if(sel&&sel.n<4){const inn=fr.querySelector('.tc .in');inn.innerHTML=jcard(sel);if(o.swap){inn.classList.add('swap');inn.offsetWidth;inn.classList.remove('swap')}
+  if(sel.from){inn.offsetWidth;inn.querySelectorAll('.steps span').forEach((s,i)=>s.classList.toggle('on',i<sel.n));delete sel.from}}
+ lucide.createIcons();over()}
+/* the real cost beside the estimate: the difference shows in amber as it is typed */
+const gn=t=>parseFloat((t||'').replace(/\./g,'').replace(',','.'));
+function over(){const fr=$('fJ'),j=JOBS[JS.sel],o=fr.querySelector('[data-over]'),c=fr.querySelector('.tc [data-f="cost"]');if(!o||!c||!j)return;const d=gn(c.value)-gn(j.est);o.textContent=d>0?'+'+d.toLocaleString('el-GR',{minimumFractionDigits:2}):''}
+function goJob(){const fr=$('fJ'),j=JOBS[JS.sel],v=k=>((fr.querySelector(`.tc [data-f="${k}"]`)||{}).value||'').trim(),old=JSON.stringify(j),i=JS.sel;j.from=j.n;delete j.draft;
+ if(j.n===1){j.w=v('w')||j.w;j.est=v('est')||j.est;j.t[1]='Δευ 16/11';j.n=2}
+ else if(j.n===2){j.cost=v('cost');j.nocost=!j.cost;j.t[2]='Δευ 16/11';j.n=v('inv')?4:3}
+ else{j.cost=v('cost')||j.cost;j.nocost=!j.cost;j.n=4}
+ /* a closed job leaves the list; the dark line at the bottom says so and takes it back */
+ if(j.n===4){const t=fr.querySelector('.toast');t.innerHTML=`${ic('check')}${j.v} · ${j.d} · τιμολογήθηκε<u data-undo>Αναίρεση</u>`;t.classList.add('show');clearTimeout(JS.tm);JS.tm=setTimeout(()=>t.classList.remove('show'),4000);JS.undo=[i,old];fr.classList.remove('cardopen');delete j.from;JS.sel=-1;return paintJ()}
+ paintJ({moved:i})}
+paintJ();
+$('fJ').addEventListener('click',e=>{const t=q=>e.target.closest(q);let el;
+ if(t('[data-undo]')){const[i,o]=JS.undo;JOBS[i]=JSON.parse(o);JS.sel=i;$('fJ').querySelector('.toast').classList.remove('show');return paintJ({moved:i})}
+ if(t('[data-go]'))return goJob();
+ if(el=t('[data-x]')){const a=el.closest('.act');a.classList.toggle('xo');el.setAttribute('aria-expanded',a.classList.contains('xo'));return}
+ if(t('[data-close]')){JS.sel=-1;return paintJ()}
+ if(el=t('[data-job]')){const was=JS.sel;JS.sel=+el.dataset.job;paintJ({swap:was>=0&&was!==JS.sel})}});
+$('fJ').addEventListener('input',over);
+$('fJ').addEventListener('keydown',e=>{if(e.target.matches('.tc input')&&e.key==='Enter')return goJob();
+ if((e.key==='Enter'||e.key===' ')&&e.target.matches('[data-job]')){e.preventDefault();e.target.click()}
+ if(e.key==='Escape'&&JS.sel>=0){JS.sel=-1;paintJ()}});
+
+/* ---------- one list for the pop-up of the dispatchers and for their paper ---------- */
+const TRIP={'ΚΗΙ 4445':['Hamburg → Βέροια','φτάνει Τετ 18/11','στον δρόμο'],'ΚΗΙ 2208':['Βέροια → Rotterdam','φεύγει Τετ 18/11','']};
+const pairOf=v=>((F.trailer.rows.find(r=>r.p===v)||{}).q)||'';
+function attention(){const A=allRows(),day=s=>`${DN[pd(s).getDay()]} ${s.replace(/\/\d+$/,'')}`,doc=(z,f)=>A.flatMap(([r,K])=>r.d.map((x,i)=>ds(r,i)===z?{v:r.p,why:f(K.docs[i],x)}:null).filter(Boolean));
+ const cap=t=>t[0].toUpperCase()+t.slice(1);
+ return [['Ληγμένα','r',doc('x',(n,x)=>`${n} έληξε ${day(x)}`)],
+  ['Στο συνεργείο','',JOBS.filter(j=>j.n===2).map(j=>({v:j.v,why:j.pri==='Κανονικά'?cap(j.s):`${j.pri} · ${j.s}`,c:j.pri==='SOS'?'r':j.pri==='Άμεσα'?'a':'',where:j.w}))],
+  ['Χωρίς ημερομηνία','a',doc('u',n=>`${n} χωρίς ημερομηνία`)],
+  ['Λήγουν σε 30 ημέρες','a',doc('w',(n,x)=>`${n} λήγει ${day(x)}`)]]
+  .map(([g,c,it])=>[g,it.map(x=>({c,...x,trip:TRIP[x.v]?`${TRIP[x.v][1]} · ${TRIP[x.v][0]}`:'',where:x.where||(TRIP[x.v]||[])[2]||'Βέροια'}))])}
+
+/* ---------- panels ---------- */
+$('fP').innerHTML=`<div style="position:absolute;inset:0;display:grid;grid-template-columns:410px 300px 310px minmax(0,1fr);gap:24px;align-items:start;padding:32px;background:#DFE1E6">
+ <div class="pn"><div style="display:flex;align-items:center;gap:12px"><h3>Νέα εργασία</h3><span class="sp"></span><button class="cl" aria-label="Κλείσιμο">${ic('x')}</button></div>
+  <div style="margin-top:12px"><span class="seg sm"><b>SOS</b><b class="on">Άμεσα</b><b>Κανονικό</b></span></div>
+  <div class="row g12" style="margin-top:14px"><div style="grid-column:span 5">${fld('Όχημα','Ρ 5071','num')}</div><div style="grid-column:span 7">${fld('Συνεργείο','Frigo Service Βέροιας')}</div></div>
+  <div style="margin-top:14px">${fld('Τι έχει','Το ψυκτικό δεν κατεβάζει θερμοκρασία'+cur,'focus')}</div>
+  <div class="row g12" style="margin-top:14px"><div style="grid-column:span 4">${fld('Αναφέρθηκε','13/11/26','num')}</div><div style="grid-column:span 3">${fld('Εκτίμηση €','')}</div><div style="grid-column:span 5">${fld('Από','Λ. Δήμου')}</div></div>
+  <div class="pf"><span class="cb"><i></i>Εκτύπωση εντολής</span><span class="sp"></span><button class="pill">Άκυρο</button><button class="pill b">Αποθήκευση</button></div></div>
+ <div class="pn"><h3>Ανανέωση ΚΤΕΟ</h3><small>ΚΗΙ 2208 · λήγει Σάβ 28/11</small>
+   <div class="row g12" style="margin-top:12px"><div style="grid-column:span 6">${fld('Νέα λήξη','28/11/27'+cur,'focus num')}</div><div style="grid-column:span 6">${fld('Έγινε','16/11/26','num')}</div></div>
+   <div class="pf"><span class="sp"></span><button class="pill">Άκυρο</button><button class="pill b">Ανανέωση</button></div></div>
+ <div class="pn"><div style="display:flex;align-items:center"><h3>Frigo Service Βέροιας</h3><span class="sp"></span><button class="ibt" title="Διόρθωση" aria-label="Διόρθωση">${ic('pencil')}</button></div><small>Ψύξη · Βέροια · 23310 00000</small>
+  <div class="ns" style="margin-top:10px"><span><b>2026</b><small>14 εργασίες</small></span><span class="num" style="font-weight:600">7.900,00</span></div>
+  <div class="ns"><span><b class="num">Ρ 5071</b><small>Ψυκτικό · στο συνεργείο</small></span>${sg(2,'')}</div><div class="ns"><span><b class="num">Ρ 5071</b><small>Ιμάντας συμπιεστή · Τρί 3/11</small></span><span class="num">310,00</span></div><div class="ns"><span><b class="num">Ρ 6604</b><small>Ψυκτικό υγρό · Δευ 12/10</small></span><span class="num">180,00</span></div></div>
+ <div class="pn" style="padding-bottom:10px"><h3>Πριν την ανάθεση</h3>
+  ${attention().map(([g,it])=>`<p class="lbl" style="margin:12px 0 2px">${g}</p>`+it.map((x,i)=>`<div class="ns" style="min-height:38px;${i?'':'border-top:0'}"><span><b class="num">${x.v}</b><small style="overflow:visible;${x.c?`color:var(--${x.c==='r'?'red':'amber'});font-weight:500`:''}">${x.why}${g==='Στο συνεργείο'?'':g==='Χωρίς ημερομηνία'?sy('miss','Δεν έχει γραφτεί ημερομηνία'):sy('late',g==='Ληγμένα'?'Έχει λήξει':'Λήγει σε 30 ημέρες')}</small>${x.trip?`<small class="num" style="padding-bottom:4px">${x.trip}</small>`:''}</span><span></span></div>`).join('')).join('')}</div>
+</div>`;
+/* ---------- bad moments ---------- */
+const bp=(l,body)=>`<div class="panel"><p class="lbl">${l}</p>${body}</div>`;
+const em=(i,h,b='')=>`<div style="display:grid;justify-items:start;align-content:start;margin-top:12px;gap:10px"><div class="tile soft" style="width:36px;height:36px;border-radius:10px">${ic(i)}</div><h3 style="margin:0;font-weight:500;color:var(--body);font-size:15px">${h}</h3>${b}</div>`;
+const strip=(i,t,b,n)=>`<div class="strip ${n?'n':''}" style="margin-top:12px;align-items:flex-start">${ic(i)}<div style="max-width:36ch">${t}${b?`<div style="display:flex;gap:8px;margin-top:10px">${b}</div>`:''}</div></div>`;
+const dk=(l,t,b)=>`<div class="dark" style="margin-top:12px"><p class="lbl"><i class="r"></i>${l}</p><p style="max-width:36ch">${t}</p><div style="display:flex;gap:8px">${b}</div></div>`;
+const rd=`<button class="pill sm">${ic('rotate-cw')}Ξαναδιάβασε</button>`,rt='<button class="pill b sm">Ξαναδοκίμασε</button>';
+$('bad').innerHTML=[
+ bp('Φόρτωση',[0,1,2].map(()=>`<div style="display:grid;grid-template-columns:minmax(0,1fr) 70px;gap:14px;align-items:center;height:48px"><div><div class="sk" style="height:12px;width:40%"></div><div class="sk" style="height:10px;width:55%;margin-top:8px"></div></div><div class="sk" style="height:12px"></div></div>`).join('')),
+ bp('Καμία ανοιχτή εργασία',em('circle-check-big','Καμία ανοιχτή εργασία',`<button class="pill b sm">${ic('plus')}Νέα εργασία</button>`)),
+ bp('Κανένα αποτέλεσμα',em('search-x','Κανένα φορτηγό για «DAF»',`<button class="pill sm">Και τα ανενεργά · 2</button>`)),
+ bp('Μόνο ανάγνωση',`<div style="margin-top:12px"><span class="tag" style="margin:0;display:inline-flex;gap:5px;align-items:center;height:22px">${ic('eye')}Μόνο ανάγνωση</span></div><div class="doc2" style="margin-top:8px"><b>Ασφάλεια</b>${sy('late','Έληξε πριν από 7 ημέρες')}<span class="dd num x">9/11/26</span></div><div class="doc2"><b>ΚΤΕΟ</b><span class="dd num">18/2/27</span></div>`),
+ bp('Δεν διαβάστηκε',em('cloud-off','Ο στόλος δεν διαβάστηκε',rd)),
+ bp('Διαβάστηκε το μισό',`<div class="doc2" style="margin-top:12px"><b>Δρομολόγια 7 ημερών</b>${sy('fail','Τα δρομολόγια των επόμενων 7 ημερών δεν διαβάστηκαν.','r')}<span class="dd x">δεν διαβάστηκαν</span></div><div style="margin-top:10px">${rd}</div>`),
+ bp('Η εικόνα είναι παλιά',`<div class="doc2" style="margin-top:12px"><b>Παλιά εικόνα <span class="num">07:10</span>${sy('late','Διαβάστηκε στις 07:10. Από τότε άλλαξαν εργασίες.')}</b><span class="dd" style="color:var(--help)">άλλαξαν εργασίες</span></div><div style="margin-top:10px">${rd}</div>`),
+ bp('Η ανανέωση δεν γράφτηκε',`<div class="doc2" style="margin-top:12px"><b>ΚΤΕΟ <span class="num" style="color:var(--help);font-weight:400;margin-left:6px">28/11/27</span></b>${sy('fail','Η νέα λήξη 28/11/27 δεν γράφτηκε. Ισχύει ακόμη η 28/11/26.','r')}<span class="dd x">δεν γράφτηκε</span></div><div style="margin-top:10px">${rt}</div>`),
+ bp('Χωρίς ημερομηνία',`<div class="doc2" style="margin-top:12px"><b>Ταχογράφος</b>${sy('miss','Δεν έχει γραφτεί ημερομηνία')}<span class="dd u dv">χωρίς</span><button class="pill sm b">Ημερομηνία</button></div>`),
+ bp('Κλείσιμο χωρίς κόστος',`<div style="margin-top:14px">${fld('Κόστος € <i class="nb a" data-t="Χωρίς κόστος η εργασία κλείνει και μετρά στα «χωρίς κόστος».">!</i>','','miss')}</div><button class="pill b" style="margin-top:14px">Έγινε</button>`),
+ bp('Η πινακίδα υπάρχει ήδη',`<div class="doc2" style="margin-top:12px"><b class="num">ΚΗΙ 4445</b><span class="dd w">υπάρχει ήδη</span></div><div style="display:flex;gap:8px;margin-top:10px"><button class="pill sm">Άνοιξέ το</button><button class="pill sm">Είναι άλλο</button></div>`),
+ bp('Το συνεργείο δεν είναι πια ενεργό',`<div class="doc2" style="margin-top:12px"><b>Συνεργείο Βερμίου</b><span class="dd" style="color:var(--help)">ανενεργό · μένει στην εργασία</span></div>`)
+].join('');
+
+/* ---------- A4 ---------- */
+const ptop=(a,b)=>`<div class="top"><span class="logo full" role="img" aria-label="Petras Group"></span><span class="wk2">${a}<br>${b}</span></div>`;
+$('a4o').innerHTML=`${ptop('Εντολή εργασίας','Δευτέρα 16 Νοεμβρίου 2026')}
+<div class="hero" style="grid-template-columns:1fr 220px"><div><h2>ΚΗΙ 9056</h2><p style="margin-top:6px;color:#444">Mercedes Actros · 2021 · 388.900 km</p><p style="color:#444">Χωρίς ρυμούλκα · οδηγός Τ. Ιορδάνου</p></div><div style="text-align:right"><span class="box" style="font-size:11px;padding:2px 8px;border-color:var(--red);color:var(--red)">SOS</span><p style="margin-top:8px;color:#444">Συνεργείο Βερμίου, Βέροια</p><p style="color:#444">23310 00000</p></div></div>
+<p class="psec">Τι έχει</p><p style="font-size:12px;line-height:1.5">Διαρροή αέρα στα φρένα. Χάνει στο πίσω δεξί κύκλωμα.</p><p style="color:#555;margin-top:4px">Αναφέρθηκε Κυριακή 15/11 από τον οδηγό.</p>
+<p class="psec" style="margin-top:12px">Τι έγινε</p>${'<div class="ln"></div>'.repeat(4)}
+<p class="psec" style="margin-top:12px">Ανταλλακτικά</p><div class="hr" style="grid-template-columns:minmax(0,1fr) 60px 90px;padding-top:2px"><span>Είδος</span><span>Τεμάχια</span><span>Αξία</span></div>${'<div class="ln" style="height:24px"></div>'.repeat(4)}
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:18px"><span>Χιλιόμετρα<div class="ln"></div></span><span>Κόστος χωρίς ΦΠΑ<div class="ln"></div></span><span>Τιμολόγιο<div class="ln"></div></span><span>Ημερομηνία<div class="ln"></div></span></div>
+<p style="margin-top:14px;color:#444">Συμφωνημένο ποσό 350,00 €</p>
+<div style="margin-top:auto;display:grid;grid-template-columns:repeat(3,1fr);gap:28px;font-size:8.5px;color:#444"><span style="border-top:.5px solid #111;padding-top:4px">Για την Petras Group</span><span style="border-top:.5px solid #111;padding-top:4px">Συνεργείο</span><span style="border-top:.5px solid #111;padding-top:4px">Οδηγός που παρέλαβε</span></div>
+<div class="foot" style="margin-top:14px"><span>Θοδωρής · 16/11/2026 07:42</span><span>1 / 1</span></div>`;
+const ATT=attention(),CL={r:'var(--red)',a:'var(--amber)','':'#1B1D29'};
+$('a4e').innerHTML=`${ptop('Για τους dispatchers','Δευτέρα 16 Νοεμβρίου 2026 · W47')}
+<div class="hero" style="grid-template-columns:1fr"><div><h2>Πριν την ανάθεση</h2><div style="display:flex;gap:26px;margin-top:14px">${ATT.map(([g,it])=>`<span style="font-size:9.5px;color:#444"><b style="display:block;font-size:20px;font-weight:600;letter-spacing:-.4px;color:${CL[g==='Στο συνεργείο'?'':it[0]?it[0].c:'']}">${it.length}</b>${g}</span>`).join('')}</div></div></div>
+<div class="hr"><span>Όχημα</span><span>Τι</span><span>Πού είναι</span><span>Δρομολόγιο σε 7 ημέρες</span></div>
+${ATT.map(([g,it])=>`<p class="psec" style="padding-top:14px">${g}<em>${it.length}</em></p>`+it.map(x=>`<div class="r"><span><b>${x.v}</b>${pairOf(x.v)?`<small style="display:block">με ${pairOf(x.v)}</small>`:''}</span><span>${x.why}</span><span>${x.where}</span><span>${x.trip}</span></div>`).join('')).join('')}
+<div class="foot" style="margin-top:auto"><span>Θοδωρής · 16/11/2026 07:42</span><span>1 / 1</span></div>`;
+boot();
+</script>
+</body>
+</html>

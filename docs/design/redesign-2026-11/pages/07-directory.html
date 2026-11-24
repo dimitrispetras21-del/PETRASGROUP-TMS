@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="el">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Petras TMS · Στοιχεία: πελάτες, συνεργάτες, οδηγοί, τοποθεσίες (σχέδιο)</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_system.css">
+<style>
+/* DESIGN MOCKUP ONLY. Invented names, phones and tax numbers. Page-specific rules for Στοιχεία. */
+.doc{--eo:cubic-bezier(.23,1,.32,1);--eio:cubic-bezier(.77,0,.175,1)}
+.who{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+/* rows as dense as the Weekly: a name in ink with a grey second line, 46px */
+.dr2,.drh{display:grid;gap:0 16px;align-items:center;padding:0 28px}
+.drh{height:36px;border-bottom:1px solid var(--line)}
+.dr2{height:46px;position:relative;cursor:pointer}
+.dr2::after{content:'';position:absolute;inset:2px 12px;border-radius:10px;z-index:0;transition:background var(--t-fast)}.dr2>*{position:relative;z-index:1}.dr2.sel::after{background:var(--accent-bg)}
+@media (hover:hover) and (pointer:fine){.dr2:not(.sel):hover::after{background:#F7F8F9}.fe dd[role=button]:hover{background:var(--bg);text-decoration-color:var(--ink)}.ibt:hover{background:var(--bg);color:var(--ink)}.chip[data-f]:hover{border-color:#CFD2D8}}
+.dr2:focus-visible{outline-offset:-3px;border-radius:12px}
+.dr2+.dr2::before{content:'';position:absolute;left:28px;right:28px;top:0;border-top:1px solid var(--line-2)}.dr2.sel::before,.dr2.sel+.dr2::before{display:none}
+.dr2 .two b{font-weight:600;font-size:13.5px;line-height:17px;display:block;text-overflow:ellipsis}.dr2 .two>span{font-size:12px;line-height:15px}
+.dr2>span{color:var(--body);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.dr2 .ph{color:var(--ink);font-weight:500}
+.dr2 .n,.drh .n{text-align:right}
+.dr2 .ty{width:26px;height:26px;border-radius:8px;background:var(--bg);display:grid;place-items:center;color:var(--body)}.dr2 .ty svg.lucide{width:14px;height:14px}
+.dr2.off .two b,.dr2.off>span{color:var(--help)}
+/* what is missing is written in the cell where it is missing, in amber words */
+.lk{color:var(--amber);font-weight:500}
+/* customers: with the card open the terms and the last movement fold away; name, contact, tax number, phone and orders stay */
+.cu7 .dr2,.cu7 .drh{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) 116px 132px 52px 86px 64px}
+.cu7.open7 .dr2,.cu7.open7 .drh{grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) 106px 124px 58px;gap:0 12px}.open7 .cx{display:none}
+.mix .dr2,.mix .drh{grid-template-columns:26px minmax(0,1.2fr) minmax(0,1.3fr) 128px 104px}
+.drv .dr2,.drv .drh{grid-template-columns:minmax(0,1fr) minmax(0,1.1fr) 140px 130px 170px}
+/* a licence that needs action marks the start of its row, as the Weekly marks a late load */
+.dr2 .mk{position:absolute;left:14px;top:9px;bottom:9px;width:3px;border-radius:2px;background:var(--red)}.dr2 .mk.a{background:var(--amber-line)}
+.sr7{padding:14px 28px 8px;gap:8px}.sr7 .q.live{flex:1;min-width:150px;max-width:300px;width:auto;height:36px}
+.pl7 .dr2{grid-template-columns:minmax(0,1fr) auto;padding:0 20px}.pl7 .dr2+.dr2::before{left:20px;right:20px}
+.gh7{padding:14px 28px 4px}
+.more7{height:44px;display:flex;align-items:center;padding:0 28px;border-top:1px solid var(--line-2);color:var(--link);font-weight:600;font-size:13px}
+.none7{padding:28px;color:var(--help)}
+.chip[data-f]{cursor:pointer;transition:border-color var(--t-fast),transform 120ms var(--eo)}.chip[data-f]:active,.ibt:active,.cl:active{transform:scale(.97)}
+.fe{display:grid;grid-template-columns:104px minmax(0,1fr) auto;gap:0 10px;align-items:center;min-height:36px;border-top:1px solid var(--line-2);font-size:13.5px}.fe:first-of-type{border-top:0}
+.fe dt{color:var(--help);font-size:12.5px}.fe dd{margin:0;color:var(--ink);font-weight:500;overflow-wrap:anywhere;line-height:1.35;border-radius:8px;padding:5px 8px;margin-left:-8px;transition:background var(--t-move) var(--ease)}
+/* a value you can correct carries a dotted line, as the dates of the Weekly do */
+.fe dd[role=button]{cursor:text;text-decoration:underline dotted #B9BDC6;text-underline-offset:5px}
+.fe dd.e{color:var(--help);font-weight:400}
+.fe .inp{height:28px;font:inherit;font-size:13.5px;font-weight:500;margin-left:-8px;width:calc(100% + 8px);padding:0 8px;border-radius:8px;outline:0}
+/* left without Enter: nothing is written, and the row says so in words, with the two ways out */
+.fe .inp.pend{border-color:var(--amber);background:#FFFBF2;box-shadow:0 0 0 3px var(--amber-bg)}
+.pendl{grid-column:1/-1;justify-content:flex-end;white-space:nowrap;display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--amber);font-weight:600;padding:5px 0 9px}.pendl span{flex:1;text-align:right;padding-right:4px}.pendl .sy{margin:0}.pendl svg.lucide{color:inherit}.pendl .pill{height:26px;padding:0 10px;font-size:12.5px}
+.fe dd.sv{background:var(--accent-bg)}.fe .okc{display:inline-flex;align-items:center;gap:6px;min-width:18px;justify-content:flex-end;transition:opacity var(--t-exit) var(--eo)}.fe .okc.out{opacity:0}.fe .okc .sy{margin:0}
+/* after a write: a quiet tick and a way back for a few seconds */
+.un7{font-size:12.5px;font-weight:600;color:var(--link);padding:2px 4px;border-radius:6px}.un7:active{transform:scale(.97)}
+.st7{font-size:12.5px;font-weight:600;white-space:nowrap}.st7.r{color:var(--red)}.st7.a{color:var(--amber)}
+.bl7{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;font-weight:500;color:var(--ink)}.bl7 .sy{margin:0}
+.sech{display:flex;align-items:center;gap:8px;margin:16px 0 4px}
+.ibt{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:var(--help);transition:background var(--t-fast),transform 120ms var(--eo)}.ibt svg.lucide{width:15px;height:15px}.cl{transition:background var(--t-fast),transform 120ms var(--eo)}
+.ns{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:0 12px;align-items:center;min-height:42px;border-top:1px solid var(--line-2);font-size:13.5px}.ns:first-of-type{border-top:0}.ns b{font-weight:500;color:var(--ink);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ns small{display:block;color:var(--help);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ns>span:first-child{min-width:0}
+.kf{display:grid;grid-template-columns:repeat(3,auto);justify-content:space-between;gap:0 12px;margin-top:4px}.kf span{font-size:12px;color:var(--help)}.kf b{display:block;font-size:17px;font-weight:500;color:var(--ink);margin-top:2px}.kf small{display:block;font-size:12px;color:var(--help)}
+/* the card: slides in from its side (280ms), leaves faster (160ms); from row to row only the content changes (140ms, 4px) */
+.tc.live{transition:opacity var(--t-enter) var(--eo),transform var(--t-enter) var(--eo)}
+.tc.live.shut{opacity:0;transform:translateX(24px);pointer-events:none;transition:opacity var(--t-exit) var(--eo),transform var(--t-exit) var(--eo)}
+.in{transition:opacity 140ms var(--eo),transform 140ms var(--eo)}.in.swap{opacity:0;transform:translateY(4px);transition:none}
+.hh{display:flex;align-items:flex-start;gap:10px;padding-bottom:14px;border-bottom:1px solid var(--line)}.hh b{font-size:17px;font-weight:600;color:var(--ink);display:block}.hh small{display:block;color:var(--help);font-size:13px}
+/* menus open from the button that called them: 150ms in, 100ms out */
+.pop.live{position:absolute;z-index:8;width:230px;transform-origin:top right;animation:popIn 150ms var(--eo) both}.pop.out{animation:popOut 100ms var(--eo) both}.pop a{cursor:pointer}
+.pill.d{background:var(--red);border-color:var(--red);color:#fff}
+/* one search: a real box */
+.q.live{cursor:text;width:320px;transition:box-shadow var(--t-fast),background var(--t-fast)}.q.live:focus-within{box-shadow:0 0 0 1.5px var(--accent);background:#fff}
+.q.live input{all:unset;flex:1;min-width:0;color:var(--ink);font-weight:500}.q.live input::placeholder{color:var(--help);font-weight:400}
+.tabs a[data-t]{cursor:pointer}
+/* map: a drawing with true relative positions (longitude, latitude), not a real map */
+.map{position:absolute;inset:0;background:#F6F7F8;overflow:hidden}
+.map svg{position:absolute;inset:0;width:100%;height:100%}
+.map svg *{vector-effect:non-scaling-stroke}
+.pin{position:absolute;width:13px;height:13px;border-radius:50%;background:var(--ink);border:2.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,16,.3);transform:translate(-50%,-50%);transition:opacity var(--t-state)}
+.pin.c{width:auto;min-width:26px;height:26px;padding:0 7px;border-radius:999px;display:grid;place-items:center;color:#fff;font-size:12px;font-weight:600}
+.pin.s{background:var(--accent);width:18px;height:18px;left:0;top:0;box-shadow:0 0 0 6px rgba(2,132,199,.2),0 1px 3px rgba(0,0,16,.3)}
+.pin.g{background:#8E9099;width:11px;height:11px}.pin.hid{opacity:0}
+/* the chosen place: pin, radius and name travel together across the map (on-screen movement: ease-in-out) */
+#selm{position:absolute;left:0;top:0;width:0;height:0;transition:opacity var(--t-exit)}#selm.mv{transition:transform var(--t-move) var(--eio),opacity var(--t-exit)}
+.ring{position:absolute;left:0;top:0;width:320px;height:320px;border-radius:50%;border:calc(1.2px / var(--k,.25)) solid var(--accent);background:rgba(2,132,199,.07);transform:translate(-50%,-50%) scale(var(--k,.25));transition:transform 240ms var(--eo),opacity var(--t-exit)}
+.mlb{position:absolute;left:0;top:0;transform:translate(18px,-50%);background:var(--ink);color:#fff;border-radius:10px;padding:6px 10px;font-size:12.5px;font-weight:500;white-space:nowrap}.mlb.lf{transform:translate(calc(-100% - 18px),-50%)}
+.mnm{position:absolute;font-size:11.5px;color:#5B5E69;font-weight:500;transform:translate(11px,-50%);white-space:nowrap}.mnm.c{transform:translate(19px,-50%)}.mnm.l{transform:translate(calc(-100% - 11px),-50%)}.mnm.c.l{transform:translate(calc(-100% - 19px),-50%)}
+.mcc{position:absolute;font-size:11px;letter-spacing:.16em;color:#B4BAC4;font-weight:600;transform:translate(-50%,-50%)}
+.mzo{position:absolute;right:14px;bottom:14px;display:grid;background:#fff;border-radius:10px;overflow:hidden}.mzo b{width:32px;height:32px;display:grid;place-items:center;color:var(--ink);font-weight:500}.mzo b+b{border-top:1px solid var(--line)}.msc{position:absolute;left:16px;bottom:16px;font-size:11px;color:var(--help);border-bottom:2px solid var(--ink);padding-bottom:2px}
+.seg.sm b{cursor:pointer}
+.mleg{position:absolute;left:14px;bottom:14px;background:#fff;border-radius:12px;padding:8px 12px;display:flex;gap:14px;font-size:12.5px;color:var(--body)}.mleg span{display:inline-flex;align-items:center;gap:6px}.mleg i{width:9px;height:9px;border-radius:50%;background:var(--ink)}
+/* places: list, map and the card side by side; the card never covers the map */
+.g7{flex:1;min-height:0;display:grid;grid-template-columns:330px minmax(0,1fr) 322px;gap:14px}.g7.nc{grid-template-columns:330px minmax(0,1fr)}#tcL .fe{grid-template-columns:88px minmax(0,1fr) auto}.pl7 .chip.hide{padding:0 2px}.mnm.hid{opacity:0}.mnm.t{transform:translate(-50%,-20px)}.g7.nc #tcL{display:none}
+.g7>.card{border-radius:24px 24px 0 0;overflow:hidden}
+/* what opens */
+.pn{background:#fff;border-radius:var(--r-page);box-shadow:var(--shadow-float);padding:22px 24px 18px}
+.pn h3{font-size:17px;font-weight:600;color:var(--ink)}.pn h3+small{display:block;color:var(--help);font-size:13px;margin-top:2px}.pf{display:flex;gap:8px;align-items:center;margin-top:20px}
+.fs7>*+*{margin-top:16px}.fs7 .hint{margin-top:6px}.fs7 .strip{margin-top:10px;font-size:13px}
+.mg{display:grid;grid-template-columns:92px minmax(0,1fr) minmax(0,1fr);gap:0 12px;align-items:center;min-height:36px;border-top:1px solid var(--line-2);font-size:13.5px}
+.mg.h{border-top:0;min-height:54px;align-items:start}.mg dt,.mg>span:first-child{color:var(--help);font-size:12.5px}.mg b{font-weight:500;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mg .go{color:var(--help);font-weight:400}.mg.t{border-top:1.5px solid var(--ink)}.mg.t b{font-weight:600}
+.mg.h b{font-weight:600;font-size:14px;display:block;white-space:normal}.mg.t b{grid-column:2/-1}.mg.h small{display:block;font-size:12px;font-weight:600;color:var(--green)}.mg.h .go+small,.mg.h small.go{color:var(--help)}
+</style>
+</head>
+<body>
+<div class="doc">
+<header>
+  <p class="lbl">Petras Group TMS · επανασχεδίαση · σελίδα 7 από 9 · μόνο σχέδιο, επινοημένα στοιχεία</p>
+  <h1>Στοιχεία: πελάτες, συνεργάτες, οδηγοί, τοποθεσίες</h1>
+  <p>Πρόταση: ένας κατάλογος με μία αναζήτηση για όλα, διόρθωση πάνω στην κάρτα πεδίο προς πεδίο, και λίστα με χάρτη ως μία εικόνα των τοποθεσιών.</p>
+</header>
+
+<section class="sec">
+  <div class="who">
+    <div class="panel"><h3>Ποιος και για τι</h3><table class="spec"><tr><td><b>Dispatchers</b></td><td>Πολλές φορές τη μέρα: ένα τηλέφωνο, μια επαφή, μια νέα τοποθεσία όσο γράφουν παραγγελία, «τι έχει κοντά» στον χάρτη.</td></tr><tr><td><b>Λογιστήριο</b></td><td>Κάθε εβδομάδα συμπληρώνει ΑΦΜ, διεύθυνση, όρους πληρωμής.</td></tr><tr><td><b>Θοδωρής</b></td><td>Οδηγοί: τύπος, λήξη διπλώματος.</td></tr></table></div>
+    <div class="panel"><h3>Τι κρατήθηκε</h3><table class="spec"><tr><td>Τίποτα δεν σβήνεται, απενεργοποιείται (οι τοποθεσίες σβήνονται, εκτός από τη Βέροια) · ονόματα τόπων με λατινικά, χωρίς άρνηση · τόπος που μοιάζει με άλλον προειδοποιεί, δεν εμποδίζει · «στην ώρα» είναι ό,τι δήλωσε ο dispatcher, μαζί με το πόσες κρίθηκαν · το άγνωστο δεν δείχνεται ως μηδέν · η καρφίτσα επιβεβαιώνεται από άνθρωπο.</td></tr></table></div>
+    <div class="panel"><h3>Τι αλλάζει</h3><table class="spec"><tr><td>Μία αναζήτηση βρίσκει πελάτη, συνεργάτη, οδηγό ή τόπο από όνομα, τηλέφωνο ή ΑΦΜ · αλλάζεις ένα πεδίο και γράφεται μόνο αυτό · η λίστα και ο χάρτης έχουν τα ίδια φίλτρα και την ίδια κάρτα · οι μετρήσεις πάνω από τη λίστα είναι φίλτρα.</td></tr></table></div>
+  </div>
+</section>
+
+<section class="sec"><h2>Πελάτες, με την κάρτα ανοιχτή</h2>
+  <div class="cap"><h3>Διόρθωση πάνω στην κάρτα</h3><span>Δουλεύει: γραμμή, πεδίο, Enter, Esc, φίλτρα, «Νέος πελάτης», «…»</span></div>
+  <div class="fit"><div class="frame" id="fC" style="height:1010px"></div></div>
+</section>
+<section class="sec"><h2>Μία αναζήτηση για όλα</h2>
+  <div class="cap"><h3>Όνομα, τηλέφωνο, ΑΦΜ, πινακίδα, ελληνικά ή λατινικά</h3><span>Δουλεύει: γράψε στο κουτί, βέλη πάνω και κάτω</span></div>
+  <div class="fit"><div class="frame" id="fS" style="height:900px"></div></div>
+</section>
+<section class="sec"><h2>Οδηγοί</h2>
+  <div class="cap"><h3>Το δίπλωμα πάνω στη γραμμή</h3><span>Οι συνεργάτες έχουν την ίδια λίστα με τους πελάτες, με στήλη email. Δεν σχεδιάστηκε χωριστά.</span></div>
+  <div class="fit"><div class="frame" id="fD" style="height:1040px"></div></div>
+</section>
+<section class="sec"><h2>Τοποθεσίες: λίστα και χάρτης μαζί</h2>
+  <div class="cap"><h3>Ίδια φίλτρα, ίδια κάρτα</h3><span>Ο χάρτης είναι σκίτσο. Δουλεύει: γραμμή, φίλτρα, ακτίνα «τι έχει κοντά»</span></div>
+  <div class="fit"><div class="frame" id="fL" style="height:960px"></div></div>
+  <div class="cap"><h3>Ό,τι ανοίγει</h3><span>Νέα τοποθεσία · συγχώνευση · απενεργοποίηση · οδηγός · μενού</span></div>
+  <div class="fit"><div class="frame" id="fP" style="height:870px"></div></div>
+</section>
+<section class="sec"><h2>Οι κακές στιγμές</h2><div class="grid g4" style="align-items:stretch" id="bad"></div></section>
+<section class="sec"><h2>Χαρτιά</h2><p class="lead">Σήμερα καμία από αυτές τις σελίδες δεν τυπώνει ούτε εξάγει. Δεν σχεδίασα χαρτί· η εξαγωγή για το ERP είναι ερώτηση προς τον Δημήτρη.</p></section>
+</div>
+
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script src="_system.js"></script>
+<script>
+const fld=(l,vv,cls='')=>`<label class="fld"><span>${l}</span><div class="inp ${cls}">${vv}</div></label>`;
+const hd=(t,sub,x)=>`<div class="hd"><div><h1>${t}</h1><p>${sub}</p></div><span class="sp"></span>${x}</div>`;
+const TY={c:'building-2',p:'handshake',d:'user-round',l:'map-pin'},TN={c:'Πελάτης',p:'Συνεργάτης',d:'Οδηγός',l:'Τοποθεσία'},TG7={c:'Πελάτες',p:'Συνεργάτες',d:'Οδηγοί',l:'Τοποθεσίες'};
+const dash='<span style="color:var(--faint);font-weight:400">–</span>',lk='<span class="lk">λείπει</span>';
+const esc=t=>t.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const nrm=t=>t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/ς/g,'σ');
+const em=(i,h,b='')=>`<div style="display:grid;justify-items:start;align-content:center;min-height:120px;gap:10px"><div class="tile soft" style="width:36px;height:36px;border-radius:10px">${ic(i)}</div><h3 style="margin:0;font-weight:500;color:var(--body);font-size:15px">${h}</h3>${b}</div>`;
+/* one set of tabs on every screen of the catalogue; each count is the whole of its kind, the same number as the title line */
+const TOT={c:148,p:36,d:16,l:412};
+const tabs=on=>`<div class="tabs"><a class="${on==='a'?'on':''}">Όλα</a>${['c','p','d','l'].map(t=>`<a class="${on===t?'on':''}">${TG7[t]} <i>${TOT[t]}</i></a>`).join('')}</div>`;
+/* the search box sits in the same place on every screen: under the tabs, at the left; the chips follow it */
+const sbox=(id,ph)=>`<label class="q live">${ic('search')}<input placeholder="${ph}" aria-label="Αναζήτηση" autocomplete="off" spellcheck="false" oninput="LS.${id}.q=nrm(this.value.trim());LS.${id}.draw()"></label>`;
+const chip=(id,i,t,n,c='')=>`<button class="chip ${c} ${i?'':'on'}" data-f="${i}" aria-pressed="${!i}" onclick="flt(this,'${id}')">${t}${n?` <b>${n}</b>`:''}</button>`;
+/* the chips above a list are its filters; nothing animates here, it is used all day */
+const LS={};
+function flt(b,id){b.parentNode.querySelectorAll('.chip[data-f]').forEach(c=>{c.classList.toggle('on',c===b);c.setAttribute('aria-pressed',c===b)});LS[id].f=+b.dataset.f;LS[id].draw()}
+
+/* ---------- one field at a time ---------- */
+const fe=(l,v,o={})=>`<div class="fe"><dt>${l}</dt><dd class="${v?'':'e'} num" tabindex="0" role="button" aria-label="${l}"${o.k!=null?` data-k="${o.k}"`:''}${o.v?` data-v="${o.v}"`:''} onclick="edf(this)" onkeydown="if(event.key==='Enter'){event.preventDefault();edf(this)}">${v||'–'}</dd>${o.st==='ok'?`<span class="okc">${sy('done','Γράφτηκε 07:41 · Ειρήνη','r')}</span>`:'<span></span>'}</div>`;
+/* A value that looks wrong is written all the same and carries a sign: checks warn, they never refuse. */
+const CHK={tel:v=>/[^\d +()\/-]/.test(v)&&'Έχει και γράμματα.',mail:v=>!/^\S+@\S+\.\S+$/.test(v)&&'Δεν μοιάζει με email.',num:v=>!/^\d+$/.test(v)&&'Δεν είναι ακέραιος αριθμός.'};
+const slot=(el,h)=>{el.nextElementSibling.outerHTML=h;lucide.createIcons()};
+/* Click a value (or Enter on it), type, then Enter or simply leave the box: only that field is written. The value flashes once,
+   a quiet tick shows and «αναίρεση» stays for six seconds. Escape puts the old value back. A question is asked only when the
+   write itself fails (bad moments). */
+function edf(dd,quiet){if(dd._e)return;dd._e=1;const old=dd.classList.contains('e')?'':dd.textContent,inp=document.createElement('input');
+ inp.className='inp focus num';inp.value=old;inp.setAttribute('aria-label',dd.getAttribute('aria-label'));dd.replaceWith(inp);if(!quiet){inp.focus({preventScroll:true});inp.select()}
+ const put=(v,undo)=>{dd.textContent=v||'–';dd.classList.toggle('e',!v);const w=v&&CHK[dd.dataset.v]&&CHK[dd.dataset.v](v);
+  slot(dd,`<span class="okc fadeup">${undo?`<button class="un7">αναίρεση</button>`:''}${w?`<span class="st7 a">γράφτηκε</span><i class="nb a" data-t="Γράφτηκε. ${w}">!</i>`:sy('done',undo?'Γράφτηκε τώρα':'Γύρισε στο προηγούμενο','r')}</span>`);
+  const ok=dd.nextElementSibling,u=ok.querySelector('.un7');if(u)u.onclick=()=>put(old);
+  if(!RED()){dd.classList.add('sv');setTimeout(()=>dd.classList.remove('sv'),320)}
+  setTimeout(()=>{if(!ok.isConnected)return;if(w){u?.remove();return}ok.classList.add('out');setTimeout(()=>{if(ok.isConnected)ok.outerHTML='<span></span>'},160)},undo?6000:2000);
+  const ci=dd.closest('[data-ci]');if(dd.dataset.k&&ci)wrote(+dd.dataset.k,v,+ci.dataset.ci)};
+ const close=(save,key)=>{if(!dd._e)return;dd._e=0;const v=inp.value.trim();inp.replaceWith(dd);if(key)dd.focus({preventScroll:true});if(save&&v!==old)put(v,1)};
+ inp.onkeydown=e=>{if(e.isComposing)return;if(e.key==='Enter')close(1,1);else if(e.key==='Escape')close(0,1)};
+ inp.onblur=()=>close(1)}
+/* ---------- menus that open from their button ---------- */
+const NEW=`<a>${ic('building-2')}Πελάτης</a><a>${ic('handshake')}Συνεργάτης</a><a>${ic('user-round')}Οδηγός</a><a>${ic('map-pin')}Τοποθεσία</a>`;
+const MORE=`<a>${ic('git-merge')}Συγχώνευση με άλλον</a><a>${ic('history')}Ποιος άλλαξε τι</a><hr><a class="r">${ic('power')}Απενεργοποίηση</a>`;
+const MOREL=`<a>${ic('history')}Ποιος άλλαξε τι</a><hr><a class="r">${ic('trash-2')}Διαγραφή</a>`;
+let POP=null;
+function shutPop(){const p=POP;if(!p)return;POP=null;p._b.setAttribute('aria-expanded','false');p.classList.remove('live');p.classList.add('out');setTimeout(()=>p.remove(),110)}
+function menu(btn,html){const same=POP&&POP._b===btn;shutPop();if(same)return;const f=btn.closest('.frame'),o=f.getBoundingClientRect(),r=btn.getBoundingClientRect(),k=o.width/1440,p=document.createElement('div');
+ p.className='pop live';p.setAttribute('role','menu');p.innerHTML=html;p._b=btn;p.style.top=(r.bottom-o.top)/k+6+'px';p.style.right=(o.right-r.right)/k+'px';p.onclick=shutPop;
+ f.appendChild(p);btn.setAttribute('aria-expanded','true');lucide.createIcons();POP=p}
+addEventListener('pointerdown',e=>{if(POP&&!POP.contains(e.target)&&!POP._b.contains(e.target))shutPop()});
+addEventListener('keydown',e=>{if(e.key==='Escape')shutPop()});
+
+/* ---------- customers ---------- */
+/* [type, name, city, contact, tax no, phone, cls, [email, address, payment days, orders, on time, judged, last, places, recent]] */
+const CL=[
+ ['c','Tirol Obst GmbH','Innsbruck · AT','Markus Hofer','ATU00000001','+43 512 555 0101','',['dispo@tirol-obst.example','Kühlapfelweg 14, 6020 Innsbruck','30',47,41,44,'16/11',[['Tirol Obst Lager','Innsbruck · παράδοση 38×'],['Hall Frischmarkt','Hall · παράδοση 9×']],[['Βέροια → Innsbruck','Δευ 16 – Παρ 20/11 · 32 παλέτες · ΚΗΙ 3310','run'],['Βέροια → Innsbruck','Τετ 11 – Σάβ 14/11 · 32 παλέτες','done']]]],
+ ['c','Danubia Market Kft.','Budapest · HU','Ágnes Varga','HU00000002','+36 1 555 0102','',['iroda@danubia-market.example','Hűtőalma utca 27, 1097 Budapest','45',31,27,29,'13/11',[['Danubia Market Raktár','Budapest · παράδοση 31×']],[]]],
+ ['c','Nordfrisch GmbH','Hamburg · DE','Jan Petersen','DE000000003','+49 40 555 0103','',['dispo@nordfrisch.example','Frischkai 8, 20539 Hamburg','30',22,19,20,'12/11',[['Nordfrisch Lager','Hamburg · παράδοση 22×']],[]]],
+ ['c','Αγροτικός Συν. Νάουσας','Νάουσα · GR','Γ. Παπαδόπουλος','EL000000004','23320 55 504','',['info@as-naousas.example','Οδός Ροδακινώνων 3, Νάουσα','60',18,16,17,'13/11',[['Frutopia Packhouse','Naousa · φόρτωση 18×']],[]]],
+ ['c','Ανδρέου Logistics','Θεσσαλονίκη · GR','Α. Ανδρέου','EL000000005','2310 555 105','',['office@andreou-logistics.example','Οδός Ψυγείων 41, Θεσσαλονίκη','30',26,24,24,'14/11',[['Attica Cold Hub','Aspropyrgos · παράδοση 26×']],[]]],
+ ['c','Baltic Cold Foods','Poznań · PL','','PL0000000009','','',['','','',2,0,0,'',[['Baltic Cold Foods DC','Poznań · παράδοση 2×']],[]]],
+ ['c','Alpen Frucht AG','Zürich · CH','Reto Keller','','+41 44 555 0106','',['einkauf@alpen-frucht.example','Fruchtgasse 19, 8005 Zürich','30',9,8,9,'6/11',[['Alpen Frucht Lager','Zürich · παράδοση 9×']],[]]],
+ ['c','Hellas Citrus','Άργος · GR','Μ. Γαλάνη','EL000000006','27510 55 506','',['info@hellas-citrus.example','','30',12,11,12,'10/11',[['Hellas Citrus','Argos · φόρτωση 12×']],[]]],
+ ['c','Hellas Kiwi Coop','Κατερίνη · GR','Α. Νικολάου','EL000000011','23510 55 511','',['info@hellas-kiwi.example','','30',15,14,15,'12/11',[['Hellas Kiwi Coop','Katerini · φόρτωση 15×']],[]]],
+ ['c','Olympos Export','Λάρισα · GR','Κ. Λιάπης','EL000000008','2410 555 108','',['export@olympos.example','','30',7,7,7,'4/11',[['Olympos Export','Larisa · φόρτωση 7×']],[]]],
+ ['c','Wiener Frische','Wien · AT','Lukas Gruber','ATU00000010','+43 1 555 0110','',['einkauf@wiener-frische.example','Marktfrische Gasse 6, 1230 Wien','30',21,20,21,'13/11',[['Wiener Frische','Wien · παράδοση 21×']],[]]],
+ ['c','Alpina Fresh S.r.l.','Modena · IT','Giulia Ferri','IT00000000013','+39 059 555 0113','',['logistica@alpina-fresh.example','Via Frescomela 22, 41122 Modena','60',14,13,14,'9/11',[['Alpina Fresh','Modena · φόρτωση 14×']],[]]],
+ ['c','Steirer Apfel GmbH','Gleisdorf · AT','Anna Leitner','ATU00000014','+43 3112 555 0114','',['versand@steirer-apfel.example','Apfelhang 5, 8200 Gleisdorf','30',11,10,11,'7/11',[['Steirer Apfel','Gleisdorf · φόρτωση 11×']],[]]],
+ ['c','Bohemia Dairy a.s.','Brno · CZ','Tomáš Dvořák','CZ00000015','+420 5 555 0115','',['expedice@bohemia-dairy.example','Mléčná stezka 9, 602 00 Brno','45',8,8,8,'5/11',[['Bohemia Dairy','Brno · φόρτωση 8×']],[]]],
+ ['c','Chalkidiki Olives','Πολύγυρος · GR','Σ. Μάρκου','EL000000012','23710 55 512','off',['','','30',0,0,0,'',[],[]]]];
+let cur=0,first=1;
+const crow=(r,i)=>{const x=r[7];return `<div class="dr2 ${i===cur?'sel':''} ${r[6]}" data-i="${i}" tabindex="0" onclick="pick(${i})" onkeydown="if(event.key==='Enter')pick(${i})"><div class="two"><b>${r[1]}</b><span>${r[2]}${r[6]==='off'?' · ανενεργός':''}</span></div><span>${r[3]||lk}</span><span class="num">${r[4]||lk}</span><span class="ph num">${r[5]||lk}</span><span class="num n cx">${x[2]||dash}</span><span class="num n">${x[3]||dash}</span><span class="num n cx">${x[6]||dash}</span></div>`};
+const card7=(i,shut='shut7()')=>{const r=CL[i],x=r[7];return `<div data-ci="${i}"><div class="hh"><div style="flex:1;min-width:0"><b>${r[1]}</b><small>Πελάτης · ${r[2]}${r[6]==='off'?' · ανενεργός':''}</small></div><button class="ibt" aria-label="Περισσότερα" aria-haspopup="menu" onclick="menu(this,MORE)">${ic('ellipsis')}</button><button class="cl" aria-label="Κλείσιμο" onclick="${shut}">${ic('x')}</button></div>
+  <dl style="margin:8px 0 0">${fe('Επαφή',r[3],{k:3})}${fe('Τηλέφωνο',r[5],{k:5,v:'tel',st:first&&!i?'ok':''})}${fe('Email',x[0],{k:10,v:'mail'})}${fe('Διεύθυνση',x[1],{k:11})}${fe('ΑΦΜ',r[4],{k:4})}${fe('Όροι, ημέρες',x[2],{k:12,v:'num'})}</dl>
+  <div class="sech"><span class="lbl">Παραγγελίες</span><span class="sp"></span>${x[3]?`<a style="font-weight:500;font-size:13px">Όλες →</a>`:''}</div>
+  ${x[3]?`<div class="kf"><span>Σύνολο<b class="num">${x[3]}</b></span><span>Στην ώρα<b class="num">${x[5]?x[4]+' από '+x[5]:'–'}${x[5]&&x[3]-x[5]?` <span class="st7 a" style="margin-left:6px">${x[3]-x[5]}</span>`+sy('miss',`Σε ${x[3]-x[5]} από τις ${x[3]} κανείς δεν δήλωσε αν παραδόθηκαν στην ώρα.`):''}</b></span><span>Τελευταία<b class="num">${x[6]||'–'}</b></span></div>`:'<p style="color:var(--help);font-size:13.5px">Καμία</p>'}
+  ${x[7].length?`<div class="sech"><span class="lbl">Τόποι του</span></div>`+x[7].map(p=>`<div class="ns"><span><b>${p[0]}</b><small>${p[1]}</small></span><button class="ibt" title="Στον χάρτη" aria-label="Στον χάρτη">${ic('map-pin')}</button></div>`).join(''):''}
+  ${x[8].length?`<div class="sech"><span class="lbl">Πρόσφατες</span></div>`+x[8].map(o=>`<div class="ns"><span><b>${o[0]}</b><small>${o[1]}</small></span>${stt(o[2])}</div>`).join(''):''}</div>`};
+$('fC').innerHTML=`<div class="app">${side('c')}<main class="main">
+ ${hd('Κατάλογος','148 πελάτες · 6 ανενεργοί',`<button class="pill b" aria-haspopup="menu" onclick="menu(this,NEW)">${ic('plus')}Νέος πελάτης${ic('chevron-down')}</button>`)}
+ <div class="card cu7 open7" id="cl7" style="flex:1;min-height:0;margin-right:468px;border-radius:24px 24px 0 0;overflow:hidden">
+  ${tabs('c')}
+  <div class="fl sr7">${sbox('c','Αναζήτηση')}${chip('c',0,'Όλοι',148)}${chip('c',1,'Χωρίς τηλέφωνο',9,'a')}${chip('c',2,'Χωρίς ΑΦΜ',14,'a')}${chip('c',3,'Ανενεργοί',6)}</div>
+  <div class="drh lbl"><span>Εταιρεία</span><span>Επαφή</span><span>ΑΦΜ</span><span>Τηλέφωνο</span><span class="n cx" title="Όροι πληρωμής, ημέρες">Όροι</span><span class="n">Παραγγ.</span><span class="n cx">Τελευταία</span></div>
+  <div id="rows7"></div>
+ </div></main></div>
+ <div class="tc live" id="tc7" style="width:440px;padding-bottom:18px"><div class="in" id="in7"></div></div>`;
+const FC=[()=>1,r=>!r[5],r=>!r[4],r=>r[6]==='off'];
+LS.c={f:0,q:'',draw(){const h=CL.map((r,i)=>FC[this.f](r)&&(!this.q||nrm(r.slice(1,6).join(' ')).includes(this.q))?crow(r,i):'').join('');$('rows7').innerHTML=h?h+(this.f||this.q?'':'<a class="more7">133 ακόμη</a>'):'<p class="none7">Κανένας</p>'}};
+function pick(i){if(i===cur)return shut7();const was=cur,inn=$('in7');cur=i;document.querySelectorAll('#rows7 .dr2').forEach(e=>e.classList.toggle('sel',+e.dataset.i===i));
+ $('cl7').classList.add('open7');$('cl7').style.marginRight='468px';
+ if(was>=0)inn.classList.add('swap');inn.innerHTML=card7(i);lucide.createIcons();inn.offsetWidth;inn.classList.remove('swap');$('tc7').classList.remove('shut')}
+function shut7(){cur=-1;shutPop();$('tc7').classList.add('shut');$('cl7').classList.remove('open7');$('cl7').style.marginRight='0';document.querySelectorAll('#rows7 .sel').forEach(e=>e.classList.remove('sel'))}
+/* what was written on the card shows on the row at once, and the amber "missing" goes with it */
+function wrote(k,v,i){if(!CL[i])return;if(k<8)CL[i][k]=v;else CL[i][7][k-10]=v;LS.c.draw()}
+LS.c.draw();$('in7').innerHTML=card7(0);first=0;
+
+/* ---------- drivers ---------- */
+/* [name, truck, phone, licence no, licence until, state, today] */
+const DRV=[['Δήμος Μάνος','ΚΗΙ 7310 · Ρ 8145','697 555 0109','071 448 215','έληξε 2/11/2026','r',''],['Σάκης Κάππος','ΚΗΙ 5102 · Ρ 5948','697 555 0108','068 302 947','έως 9/12/2026','a',''],['Τάσος Ιορδάνου','ΚΗΙ 9056','697 555 0113','074 915 630','','e','Βέροια → Ασπρόπυργος'],
+ ['Γιάννης Αλεξίου','ΚΗΙ 4521 · Ρ 6654','697 555 0112','069 227 408','έως 14/3/2028','','Νάουσα → Wien'],['Θανάσης Μέλλιος','ΚΗΙ 3310 · Ρ 7120','697 555 0101','065 780 132','έως 20/6/2029','','Βέροια → Innsbruck'],['Στέλιος Καρράς','ΚΗΙ 5127 · Ρ 6604','697 555 0102','072 164 859','έως 3/9/2027','','Αλεξάνδρεια → Graz'],
+ ['Γιώργος Ζήσης','ΚΗΙ 7733 · Ρ 4410','697 555 0103','066 593 071','έως 11/1/2030','','Καβάλα → München'],['Αντώνης Ντίνος','ΚΗΙ 6012 · Ρ 5093','697 555 0104','070 846 293','έως 5/5/2028','','Τύρναβος → Innsbruck'],['Παύλος Ράπτης','ΚΗΙ 2208 · Ρ 4259','697 555 0105','067 319 584','έως 22/8/2027',''],
+ ['Μάριος Χρυσάφης','ΚΗΙ 4445 · Ρ 4006','697 555 0106','073 052 716','έως 17/10/2028',''],['Λάμπρος Δήμου','ΚΗΙ 8600 · Ρ 5071','697 555 0107','064 678 340','έως 2/4/2029',''],['Ηλίας Σαράφης','ΚΗΙ 1680 · Ρ 3250','697 555 0110','075 431 902','έως 28/2/2030',''],
+ ['Νίκος Ρούσσος','ΚΗΙ 2140','697 555 0111','068 905 127','έως 6/7/2027','','Θεσσαλονίκη → Βέροια'],['Κώστας Ράλλης','τοπικός · Ασπρόπυργος','697 555 0114','071 263 548','έως 19/11/2028','','Ασπρόπυργος, τοπικά'],['Νίκος Κοσμίδης','χωρίς φορτηγό','697 555 0115','069 740 316','έως 30/1/2029',''],
+ ['Κώστας Τσολάκης','ανενεργός','697 555 0116','066 128 475','έως 8/8/2027','off']];
+const LC={r:'color:var(--red);font-weight:600',a:'color:var(--amber);font-weight:600',e:'color:var(--amber);font-weight:500'};
+const LS7={r:sy('late','Το δίπλωμα έληξε πριν από 14 ημέρες, Δευ 2/11/2026.','r'),a:' <i class="nb a" style="vertical-align:-4px;margin-left:4px" data-t="Το δίπλωμα λήγει σε 23 ημέρες.">!</i>'};
+const drow=r=>`<div class="dr2 ${r[5]==='off'?'off':''}" tabindex="0"><div class="two"><b>${r[0]}</b><span class="num">${r[1]}</span></div><span style="${r[6]?'color:var(--ink)':'color:var(--help)'}">${r[6]||(r[5]==='off'?'–':'ελεύθερος')}</span><span class="ph num">${r[2]}</span><span class="num">${r[3]||lk}</span><span class="num" style="overflow:visible;${LC[r[5]]||''}">${r[4]||'χωρίς ημερομηνία'}${LS7[r[5]]||''}</span></div>`;
+$('fD').innerHTML=`<div class="app">${side('c')}<main class="main">
+ ${hd('Κατάλογος','16 οδηγοί · 1 ανενεργός',`<button class="pill b" aria-haspopup="menu" onclick="menu(this,NEW)">${ic('plus')}Νέος οδηγός${ic('chevron-down')}</button>`)}
+ <div class="card drv" style="flex:1;min-height:0;border-radius:24px 24px 0 0;overflow:hidden">
+  ${tabs('d')}
+  <div class="fl sr7">${sbox('d','Όνομα, τηλέφωνο, πινακίδα')}${chip('d',0,'Όλοι',16)}${chip('d',1,'Ληγμένο δίπλωμα',1,'r')}${chip('d',2,'Λήγει σε 30 ημέρες',1,'a')}${chip('d',3,'Χωρίς ημερομηνία',1,'a')}${chip('d',4,'Ανενεργοί',1)}</div>
+  <div class="drh lbl"><span>Οδηγός</span><span>Σήμερα</span><span>Τηλέφωνο</span><span>Αρ. διπλώματος</span><span>Δίπλωμα</span></div>
+  <div id="rowsD"></div>
+ </div></main></div>`;
+LS.d={f:0,q:'',draw(){const k=['','r','a','e','off'][this.f];$('rowsD').innerHTML=DRV.filter(r=>(!this.f||r[5]===k)&&(!this.q||nrm(r.slice(0,3).join(' ')+(r[6]||'')).includes(this.q))).map(drow).join('')||'<p class="none7">Κανένας</p>'}};LS.d.draw();
+
+/* ---------- places ---------- */
+/* The drawing places every point by its longitude and latitude (window 10.5–24.6 E, 36.5–49 N), so München is north of Innsbruck,
+   Wien east of both, Budapest east of Wien and Veria far to the south-east. It is still a drawing, not a map service. */
+const PX=lo=>(lo-9.6)/15*100,PY=la=>(51.2-la)/17.2*100,pth=a=>'M'+a.map(([lo,la])=>PX(lo).toFixed(2)+' '+PY(la).toFixed(2)).join(' L');
+const SEA=[pth([[9.6,44.35],[9.85,44.05],[10.3,43.55],[10.55,42.95],[11.1,42.4],[11.75,42.1],[12.25,41.75],[12.65,41.45],[13.05,41.25],[13.6,41.25],[14.05,40.85],[14.45,40.6],[14.95,40.25],[15.65,40.05],[15.8,39.5],[16.1,38.95],[15.85,38.65],[15.65,38.0],[16.1,37.95],[16.55,38.4],[16.6,38.8],[17.15,39.0],[16.55,39.65],[16.6,40.1],[16.9,40.45],[17.3,40.3],[18.0,39.95],[18.35,39.8],[18.5,40.15],[18.0,40.65],[17.0,41.1],[16.0,41.45],[16.15,41.9],[15.3,41.9],[14.75,42.1],[14.2,42.5],[13.9,42.95],[13.55,43.6],[12.9,43.95],[12.4,44.25],[12.25,44.9],[12.5,45.1],[12.3,45.4],[13.1,45.65],[13.75,45.65],[13.5,45.45],[13.6,44.95],[13.9,44.8],[14.2,45.25],[14.5,45.3],[14.9,45.0],[14.9,44.6],[15.2,44.2],[15.9,43.7],[16.45,43.5],[17.1,43.05],[17.65,42.85],[18.1,42.65],[18.55,42.4],[19.1,42.0],[19.4,41.75],[19.45,41.3],[19.3,40.65],[19.45,40.4],[19.3,40.3],[19.9,39.9],[20.15,39.6],[20.45,39.25],[20.75,38.95],[21.05,38.6],[21.1,38.35],[21.75,38.3],[21.3,38.1],[21.1,37.85],[21.6,37.4],[21.7,36.85],[21.95,36.8],[22.15,37.0],[22.4,36.45],[22.6,36.8],[23.0,36.5],[23.2,36.45],[23.05,36.8],[22.85,37.2],[22.8,37.55],[23.15,37.3],[23.5,37.4],[23.15,37.6],[23.0,37.9],[23.4,38.0],[23.75,37.9],[24.05,37.65],[24.0,38.2],[23.6,38.45],[23.1,38.65],[22.85,38.85],[23.2,39.15],[22.95,39.55],[22.75,39.85],[22.6,40.1],[22.6,40.45],[22.9,40.63],[23.0,40.3],[23.35,40.2],[23.6,39.95],[23.7,40.25],[23.9,40.0],[23.95,40.3],[24.3,40.15],[24.0,40.4],[23.75,40.65],[23.9,40.75],[24.3,40.7],[24.6,40.85],[24.6,34.0],[9.6,34.0]])+'Z'];
+const ISL=[[[23.2,38.95],[23.6,38.75],[24.1,38.6],[24.55,38.15],[24.5,37.98],[24.05,38.3],[23.6,38.5],[23.2,38.8]],[[23.55,35.6],[24.1,35.6],[24.6,35.42],[24.6,35.0],[23.6,35.25]],[[19.65,39.75],[19.95,39.75],[20.1,39.45],[19.9,39.4]],[[20.45,38.3],[20.75,38.3],[20.8,38.05],[20.5,38.1]]];
+const BRD=[[[9.6,47.55],[10.45,47.55],[10.9,47.45],[11.6,47.6],[12.2,47.7],[12.75,47.65],[13.05,47.5],[12.95,47.95],[12.75,48.15],[13.4,48.4],[13.85,48.75]],[[15.0,51.05],[14.3,51.0],[13.0,50.5],[12.1,50.3],[12.6,49.3],[13.85,48.75],[14.7,48.6],[15.5,48.95],[16.4,48.75],[16.95,48.6],[17.15,48.0],[16.45,47.0],[16.1,46.85]],[[15.0,51.05],[16.3,50.6],[17.0,50.3],[18.6,49.9],[18.85,49.5],[17.9,48.95],[16.95,48.6]],[[18.85,49.5],[20.1,49.2],[22.6,49.1],[22.1,48.4],[22.9,48.0]],[[17.15,48.0],[18.0,47.75],[18.8,47.8],[19.6,48.2],[20.5,48.5],[22.1,48.4]],[[9.6,46.85],[10.45,46.85],[11.15,46.95],[12.2,47.0],[12.4,46.7],[13.7,46.5],[14.55,46.4],[15.65,46.7],[16.1,46.85],[16.3,46.5]],[[13.7,46.5],[13.6,45.9],[13.75,45.65]],[[13.6,45.5],[14.6,45.6],[15.3,45.45],[15.7,46.2],[16.3,46.5],[17.2,45.95],[18.8,45.9],[19.5,46.15],[20.25,46.15],[21.2,46.4],[21.6,47.0],[22.2,47.7],[22.9,48.0]],[[18.8,45.9],[19.0,45.2],[19.1,44.9],[19.35,44.3],[19.6,43.95],[19.25,43.5],[20.05,42.75],[20.3,42.35],[20.55,41.9],[20.5,41.2],[20.7,40.9],[21.0,40.85]],[[15.75,45.2],[15.75,44.8],[16.2,44.2],[17.0,43.5],[17.65,43.05],[18.45,42.55]],[[15.75,45.2],[16.9,45.25],[18.0,45.1],[19.0,45.2]],[[19.25,43.5],[18.95,43.3],[18.45,42.55]],[[19.4,41.85],[19.8,42.5],[20.05,42.75]],[[20.0,39.67],[20.3,40.0],[20.65,40.1],[21.0,40.85],[21.8,41.1],[22.75,41.3],[23.65,41.4],[24.6,41.55]],[[20.55,41.9],[21.3,42.2],[22.35,42.3],[23.0,41.75],[22.95,41.35]],[[22.35,42.3],[22.55,43.2],[22.4,44.0],[22.65,44.2],[22.9,43.85],[24.6,43.7]],[[20.25,46.15],[21.35,44.85],[22.2,44.5],[22.65,44.2]]];
+const ROAD=[[[22.2,40.52],[22.5,41.2],[21.43,42.0],[21.9,43.3],[20.45,44.8],[19.8,46.2],[19.04,47.5],[17.6,47.7],[16.37,48.21],[14.3,48.3],[13.0,47.8],[11.58,48.14]],[[16.37,48.21],[15.44,47.07],[13.85,46.6],[12.7,46.8],[11.4,47.27]],[[11.4,47.27],[12.1,47.6],[11.58,48.14]],[[22.2,40.52],[22.42,39.64],[22.9,38.9],[23.59,38.06]]];
+/* [name, city, moves, lon, lat (null: no pin), hours, days, phone, kind, notes, pin, near, last move, in a group on the map] */
+const PLC=[['Veria Fruit Pack','Veria · GR','φόρτωση 112×',22.2,40.52,'07:00 – 15:00','Δευ – Σάβ','23310 55 512','Προμηθευτής','','40.5240, 22.2030',0,0,1],
+ ['Tirol Obst Lager','Innsbruck · AT','παράδοση 38×',11.4,47.27,'06:00 – 14:00','Δευ – Παρ','+43 512 555 0120','Πελάτης','Ράμπα 3, ζύγιση','47.2654, 11.3927',[['Tankstelle Inntal','καύσιμα',38,35],['LKW Service Hall','συνεργείο · +43 5223 555 021',62,205],['Autohof Wörgl','στάθμευση',86,-30]],['Tirol Obst GmbH · παράδοση','Σάβ 14/11 · 32 παλέτες · ΚΗΙ 2208']],
+ ['Wiener Frische','Wien · AT','παράδοση 21×',16.37,48.21,'08:00 – 14:00','Δευ – Παρ','+43 1 555 0110','Πελάτης','','48.1470, 16.3410'],
+ ['Attica Cold Hub','Aspropyrgos · GR','παράδοση 44×',23.59,38.06,'00:00 – 24:00','Δευ – Κυρ','210 555 0144','Πελάτης','','38.0610, 23.5890',0,0,1],
+ ['Messinia Olive Coop','Messini · GR','φόρτωση 17×',null,null,'06:00 – 13:00','Δευ – Παρ','27220 55 517','Προμηθευτής','',''],
+ ['Danubia Market Raktár','Budapest · HU','παράδοση 31×',19.04,47.5,'06:00 – 16:00','Δευ – Παρ','+36 1 555 0102','Πελάτης','','47.4500, 19.0900'],
+ ['Veria Cross-Dock','Veria · GR','αποθήκη',22.21,40.5,'05:30 – 14:30','Δευ – Σάβ','23310 55 501','Αποθήκη','','40.5190, 22.2100',0,0,1],
+ ['Pella Peach Coop','Skydra · GR','φόρτωση 9×',22.15,40.77,'','','','Προμηθευτής','','40.7660, 22.1530',0,0,1],
+ ['Frutopia Packhouse','Naousa · GR','φόρτωση 18×',22.07,40.63,'06:00 – 14:00','Δευ – Παρ','23320 55 518','Προμηθευτής','','40.6294, 22.0681',0,0,1],
+ ['Macedonia Fresh Market','Thessaloniki · GR','παράδοση 16×',22.94,40.64,'04:00 – 12:00','Δευ – Σάβ','2310 555 116','Πελάτης','','40.6401, 22.9444'],
+ ['Hall Frischmarkt','Hall · AT','παράδοση 9×',11.51,47.28,'07:00 – 13:00','Δευ – Παρ','+43 5223 555 0122','Πελάτης','','47.2810, 11.5080',0,0,1],
+ ['Steirer Apfel','Gleisdorf · AT','φόρτωση 11×',15.71,47.1,'06:00 – 15:00','Δευ – Παρ','+43 3112 555 0114','Προμηθευτής','','47.1040, 15.7080'],
+ ['Bohemia Dairy','Brno · CZ','φόρτωση 8×',16.61,49.2,'06:00 – 14:00','Δευ – Παρ','+420 5 555 0115','Προμηθευτής','','49.1950, 16.6070'],
+ ['Alpina Fresh','Modena · IT','φόρτωση 14×',10.93,44.65,'07:00 – 16:00','Δευ – Παρ','+39 059 555 0113','Προμηθευτής','','44.6470, 10.9250']];
+const missL=p=>p[3]==null?['χωρίς καρφίτσα','']:!p[5]&&!p[7]?['λείπουν 2','Λείπουν το ωράριο και το τηλέφωνο.']:0;
+let curL=1,KM=100;
+const prow=(p,i)=>`<div class="dr2 ${i===curL?'sel':''}" data-i="${i}" tabindex="0" onclick="pickL(${i})" onkeydown="if(event.key==='Enter')pickL(${i})"><div class="two"><b>${p[0]}</b><span>${p[1]} · ${p[2]}</span></div>${missL(p)?`<span class="lk" style="overflow:visible;font-size:12.5px">${missL(p)[0]}${missL(p)[1]?sy('miss',missL(p)[1],'r'):''}</span>`:'<span></span>'}</div>`;
+const near=p=>p[11].filter(n=>n[2]<=KM).map(n=>`<div class="ns"><span><b>${n[0]}</b><small>${n[1]}</small></span><span class="num" style="color:var(--body);font-size:13px">${n[2]} km</span></div>`).join('')||'<p style="color:var(--help);font-size:13.5px;padding:8px 0">Τίποτα</p>';
+const cardL=i=>{const p=PLC[i],n=(p[2].match(/\d+/)||[])[0];return `<div class="hh"><div style="flex:1;min-width:0"><b>${p[0]}</b><small>${p[1]}</small></div><button class="ibt" title="Άνοιγμα σε χάρτη πλοήγησης" aria-label="Άνοιγμα σε χάρτη πλοήγησης">${ic('external-link')}</button><button class="ibt" aria-label="Περισσότερα" aria-haspopup="menu" onclick="menu(this,MOREL)">${ic('ellipsis')}</button><button class="cl" aria-label="Κλείσιμο" onclick="shutL()">${ic('x')}</button></div>
+  <dl style="margin:8px 0 0">${fe('Ωράριο',p[5])}${fe('Ημέρες',p[6])}${fe('Τηλέφωνο',p[7],{v:'tel'})}${fe('Είδος',p[8])}${fe('Σημειώσεις',p[9])}${fe('Καρφίτσα',p[10])}</dl>
+  ${p[11]?`<div class="sech"><span class="lbl">Κοντά</span><span class="sp"></span><span class="seg sm">${[50,100,200,400].map(k=>`<b class="${k===KM?'on':''}" tabindex="0" role="button" onclick="km(${k})" onkeydown="if(event.key==='Enter')km(${k})">${k}${k===400?' km':''}</b>`).join('')}</span></div><div id="nearL">${near(p)}</div>`:''}
+  ${n?`<div class="sech"><span class="lbl">Ιστορικό</span><span class="sp"></span><a style="font-weight:500;font-size:13px">${n} κινήσεις</a></div>`:''}${p[12]?`<div class="ns"><span><b>${p[12][0]}</b><small>${p[12][1]}</small></span><span></span></div>`:''}`};
+const at=(lo,la)=>`left:${PX(lo).toFixed(2)}%;top:${PY(la).toFixed(2)}%`;
+$('fL').innerHTML=`<div class="app">${side('l')}<main class="main">
+ ${hd('Τοποθεσίες','412 τόποι · 23 χωρίς καρφίτσα',`<span class="seg"><b>Λίστα</b><b class="on">Λίστα και χάρτης</b><b>Χάρτης</b></span><button class="pill b">${ic('plus')}Νέα τοποθεσία</button>`)}
+ <div class="g7" id="g7">
+  <div class="card pl7">
+   <div style="padding:14px 20px 0"><div class="q" style="width:auto">${ic('search')}Όνομα, πόλη, πελάτης</div></div>
+   <div class="fl" style="padding:12px 20px 8px;flex-wrap:wrap">${chip('l',0,'Όλοι',412)}${chip('l',1,'Φόρτωση')}${chip('l',2,'Παράδοση')}${chip('l',3,'Χωρίς καρφίτσα',23,'a')}<span class="chip hide">Χώρα ${ic('chevron-down')}</span><span class="chip hide">Είδος ${ic('chevron-down')}</span></div>
+   <div id="rowsL"></div><a class="more7" style="padding:0 20px">398 ακόμη</a>
+  </div>
+  <div style="position:relative;border-radius:24px 24px 0 0;overflow:hidden">
+   <div class="map" id="mapL"><svg viewBox="0 0 100 100" preserveAspectRatio="none">${SEA.map(d=>`<path d="${d}" fill="#E4EDF6" stroke="#C3D2E3" stroke-width="1" stroke-linejoin="round"/>`).join('')}${ISL.map(b=>`<path d="${pth(b)}Z" fill="#F6F7F8" stroke="#C3D2E3" stroke-width="1" stroke-linejoin="round"/>`).join('')}
+<g fill="none" stroke="#DCDFE4" stroke-width="1" stroke-linejoin="round">${BRD.map(b=>`<path d="${pth(b)}"/>`).join('')}</g>
+<g fill="none" stroke="#B8BDC6" stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round">${ROAD.map(b=>`<path d="${pth(b)}"/>`).join('')}</g></svg>
+    ${[['DE',10.9,49.4],['CZ',15.2,49.8],['SK',19.4,48.75],['AT',14.3,47.5],['HU',20.4,47.1],['IT',12.1,43.2],['HR',16.6,45.65],['BA',17.8,44.2],['RS',20.6,43.75],['RO',23.0,45.8],['BG',23.9,42.8],['GR',21.3,39.0]].map(c=>`<span class="mcc" style="${at(c[1],c[2])}">${c[0]}</span>`).join('')}
+    ${[['München',11.58,48.14,'t'],['Innsbruck',11.4,47.27,''],['Wien',16.37,48.21,''],['Budapest',19.04,47.5,''],['Beograd',20.45,44.8,''],['Veria',22.2,40.6,'c l'],['Larisa',22.42,39.64,'l'],['Aspropyrgos',23.59,38.06,'c l']].map(c=>`<span class="mnm ${c[3]}" data-lo="${c[1]}" data-la="${c[2]}" style="${at(c[1],c[2])}">${c[0]}</span>`).join('')}
+    <span class="pin" style="${at(11.58,48.14)}"></span><span class="pin" style="${at(20.45,44.8)}"></span><span class="pin" style="${at(22.42,39.64)}"></span><span class="pin c" tabindex="0" title="16 τόποι γύρω από τη Βέροια" aria-label="16 τόποι γύρω από τη Βέροια" style="${at(22.2,40.6)};cursor:help">16</span><span class="pin c" tabindex="0" title="9 τόποι στην Αττική" aria-label="9 τόποι στην Αττική" style="${at(23.59,38.06)};cursor:help">9</span>
+    ${PLC.map((p,i)=>p[3]==null||p[13]?'':`<span class="pin" data-i="${i}" style="${at(p[3],p[4])}"></span>`).join('')}
+    <div id="selm"><span class="ring"></span><span id="nrp"></span><span class="pin s"></span><span class="mlb" id="sell"></span></div>
+    <span class="msc" id="mscL">200 km</span><span class="mzo"><b>+</b><b>−</b></span>
+   </div>
+  </div>
+  <div class="card" id="tcL" style="padding:22px 20px 18px;align-self:start;border-radius:var(--r-page);box-shadow:var(--shadow-float);margin:0 2px 0 0"><div class="in" id="inL"></div></div>
+ </div></main></div>`;
+const FL=[()=>1,p=>/φόρτωση/.test(p[2]),p=>/παράδοση/.test(p[2]),p=>p[3]==null];
+/* the map answers the same question as the list: a pin that the filter leaves out fades */
+LS.l={f:0,draw(){$('rowsL').innerHTML=PLC.map((p,i)=>FL[this.f](p)?prow(p,i):'').join('')||'<p class="none7">Κανένας τόπος</p>';document.querySelectorAll('#mapL .pin[data-i]').forEach(e=>e.classList.toggle('hid',!FL[this.f](PLC[+e.dataset.i])))}};
+/* one kilometre is the same number of pixels for the radius, the near pins and the scale bar */
+function mark(){const p=PLC[curL]||[],m=$('mapL'),s=$('selm'),kpp=17.2*111/m.offsetHeight;$('mscL').style.width=200/kpp+'px';
+ if(p[3]==null){s.style.opacity=0}else{s.style.transform=`translate(${m.offsetWidth*PX(p[3])/100}px,${m.offsetHeight*PY(p[4])/100}px)`;s.style.opacity=1;$('sell').textContent=p[0];$('sell').classList.toggle('lf',PX(p[3])>55)}
+ m.querySelectorAll('.mnm[data-lo]').forEach(e=>e.classList.toggle('hid',p[3]!=null&&Math.abs(e.dataset.lo-p[3])<.3&&Math.abs(e.dataset.la-p[4])<.3));const r=s.querySelector('.ring');r.style.setProperty('--k',2*KM/kpp/320);r.style.opacity=p[11]?1:0;
+ $('nrp').innerHTML=(p[11]||[]).map(n=>`<span class="pin g ${n[2]>KM?'hid':''}" style="left:${Math.cos(n[3]*Math.PI/180)*n[2]/kpp}px;top:${-Math.sin(n[3]*Math.PI/180)*n[2]/kpp}px"></span>`).join('')}
+function pickL(i){if(i===curL)return shutL();const was=curL,inn=$('inL');curL=i;document.querySelectorAll('#rowsL .dr2').forEach(e=>e.classList.toggle('sel',+e.dataset.i===i));
+ $('g7').classList.remove('nc');if(was>=0)inn.classList.add('swap');inn.innerHTML=cardL(i);lucide.createIcons();inn.offsetWidth;inn.classList.remove('swap');mark()}
+/* closing the card gives its column back to the map; a change of layout does not animate */
+function shutL(){curL=-1;shutPop();$('g7').classList.add('nc');document.querySelectorAll('#rowsL .sel').forEach(e=>e.classList.remove('sel'));$('selm').classList.remove('mv');mark();requestAnimationFrame(()=>$('selm').classList.add('mv'))}
+/* the radius grows from the pin and the list under it follows */
+function km(k){KM=k;document.querySelectorAll('#inL .seg b').forEach(b=>b.classList.toggle('on',parseInt(b.textContent)===k));$('nearL').innerHTML=near(PLC[curL]);mark()}
+LS.l.draw();$('inL').innerHTML=cardL(1);mark();requestAnimationFrame(()=>$('selm').classList.add('mv'));
+
+/* ---------- one search ---------- */
+/* every record of the four kinds as {t, n, s, m, ph, w, f: fields of the answer card, x: one more line} */
+const CORP=()=>[...CL.map((r,i)=>({ci:i,off:r[6]==='off',t:'c',n:r[1],s:r[2]+(r[6]==='off'?' · ανενεργός':''),m:[r[3],r[4]].filter(Boolean).join(' · '),ph:r[5],f:[['Επαφή',r[3]],['Τηλέφωνο',r[5]],['ΑΦΜ',r[4]],['Όροι, ημέρες',r[7][2]]],x:0})),
+ {t:'c',n:'Wiener Frische GmbH',s:'Wien · AT',m:'',ph:'+43 1 555 0110',w:'ίδιο τηλέφωνο',wl:'Ίδιο τηλέφωνο με τη Wiener Frische: ίσως είναι η ίδια εταιρεία γραμμένη δύο φορές.',f:[['Επαφή',''],['Τηλέφωνο','+43 1 555 0110'],['ΑΦΜ',''],['Όροι, ημέρες','']],x:['6 παραγγελίες','τελευταία 3/11']},
+ {t:'p',n:'Transfrigo Kft.',s:'Συνεργάτης',m:'RKA 512 · XTR 088',ph:'+36 1 555 0120',f:[['Φορτηγά','RKA 512 · XTR 088'],['Τηλέφωνο','+36 1 555 0120']]},{t:'p',n:'Balkan Frigo d.o.o.',s:'Συνεργάτης',m:'BG 418 · AA 2207',ph:'+381 11 555 0121',f:[['Φορτηγά','BG 418 · AA 2207'],['Τηλέφωνο','+381 11 555 0121']]},{t:'p',n:'Μεταφορική Ζήση',s:'Συνεργάτης',m:'ΝΙΚ 4410',ph:'2310 555 122',f:[['Φορτηγά','ΝΙΚ 4410'],['Τηλέφωνο','2310 555 122']]},
+ ...PLC.map(p=>({t:'l',n:p[0],s:p[1]+' · '+p[2],m:p[5],ph:p[7],f:[['Ωράριο',p[5]],['Ημέρες',p[6]],['Τηλέφωνο',p[7]],['Είδος',p[8]]]})),{t:'l',n:'Zollamt Wien',s:'Wien · AT · τελωνείο',m:'06:00 – 22:00',ph:'',f:[['Ωράριο','06:00 – 22:00'],['Ημέρες','Δευ – Σάβ'],['Τηλέφωνο',''],['Είδος','Τελωνείο']]},
+ ...DRV.map(r=>({t:'d',n:r[0],s:r[1],m:r[6]?'σήμερα '+r[6]:'',ph:r[2],f:[['Φορτηγό',r[1]],['Τηλέφωνο',r[2]],['Δίπλωμα',r[4]||'χωρίς ημερομηνία'],['Σήμερα',r[6]||'ελεύθερος']]}))];
+const AL={'βιεννη':'wien','βεροια':'veria','ναουσα':'naousa','μοναχο':'munchen','βουδαπεστη':'budapest'};
+let TS='a',SI=0,SH=[];
+const srow=(r,i)=>`<div class="dr2 ${i===SI?'sel':''}" data-i="${i}" tabindex="0" onclick="SI=${i};sdraw()" onkeydown="if(event.key==='Enter'){SI=${i};sdraw()}"><span class="ty" title="${TN[r.t]}">${ic(TY[r.t])}</span><div class="two"><b>${r.n}</b><span>${r.s}</span></div><span style="${r.w?'overflow:visible':''}">${r.w?`<span class="lk">${r.w}</span> <i class="nb a" style="vertical-align:-4px;margin-left:4px" data-t="${r.wl}">!</i>`:r.m||dash}</span><span class="ph num">${r.ph||dash}</span>${r.w?`<button class="pill sm" style="height:28px" onclick="event.stopPropagation()">Συγχώνευση</button>`:'<span></span>'}</div>`;
+/* the answer card: what you were looking for, without opening anything */
+const cardS=r=>r.ci!=null?card7(r.ci,'shutS()'):`<div class="hh"><div style="flex:1;min-width:0"><b>${r.n}</b><small>${TN[r.t]}${r.t==='p'?'':' · '+r.s}</small></div><button class="ibt" aria-label="Περισσότερα" aria-haspopup="menu" onclick="menu(this,${r.t==='l'?'MOREL':'MORE'})">${ic('ellipsis')}</button><button class="cl" aria-label="Κλείσιμο" onclick="shutS()">${ic('x')}</button></div>
+ ${r.w?`<div class="bl7" style="margin-top:14px"><span class="st7 a">${r.w}</span><i class="nb a" data-t="${r.wl}">!</i><span class="sp"></span><button class="pill sm">Συγχώνευση</button></div>`:''}
+ <dl style="margin:8px 0 0">${r.f.map(f=>fe(f[0],f[1])).join('')}</dl>
+ ${r.x?`<div class="sech"><span class="lbl">Παραγγελίες</span></div><div class="ns"><span><b>${r.x[0]}</b><small>${r.x[1]}</small></span><span></span></div>`:''}`;
+function shutS(){SI=-1;shutPop();sdraw()}
+$('fS').innerHTML=`<div class="app">${side('c')}<main class="main">
+ <div class="hd"><div><h1>Κατάλογος</h1><p id="subS"></p></div><span class="sp"></span><button class="pill b" aria-haspopup="menu" onclick="menu(this,NEW)">${ic('plus')}Νέα εγγραφή${ic('chevron-down')}</button></div>
+ <div class="card mix" id="clS" style="flex:1;min-height:0;margin-right:468px;border-radius:24px 24px 0 0;overflow:hidden">
+  <div class="tabs"><span id="tbS" style="display:contents"></span></div>
+  <div class="fl sr7"><label class="q live" style="flex:1;max-width:none">${ic('search')}<input id="qS" value="βιέννη" placeholder="Όνομα, τηλέφωνο, ΑΦΜ, πινακίδα, πόλη" aria-label="Αναζήτηση στον κατάλογο" autocomplete="off" spellcheck="false" oninput="SI=0;srch()" onkeydown="skey(event)"></label></div>
+  <div id="rowsS"></div>
+ </div></main></div>
+ <div class="tc live" id="tcS" style="width:440px;padding-bottom:18px"><div class="in" id="inS"></div></div>`;
+/* Results follow the typing with no animation, and the arrows move the choice with none: this box is used tens of times a day. */
+function skey(e){if(e.key!=='ArrowDown'&&e.key!=='ArrowUp')return;e.preventDefault();if(!SH.length)return;SI=Math.max(0,Math.min(SH.length-1,SI+(e.key==='ArrowDown'?1:-1)));sdraw()}
+function sdraw(){const g=TS==='a';let h='',last='';SH.forEach((r,i)=>{if(g&&r.t!==last){h+=`<p class="lbl gh7">${TG7[r.t]}</p>`;last=r.t}h+=srow(r,i)});
+ const q=$('qS').value.trim();
+ $('rowsS').innerHTML=SH.length?`<div class="drh lbl" style="height:30px;border:0"><span></span><span>Όνομα</span><span>Στοιχεία</span><span>Τηλέφωνο</span><span></span></div>`+h:`<div style="padding:8px 28px">${em('search-x',q?`Τίποτα για «${esc(q)}»`:'Τίποτα εδώ',q?`<button class="pill sm" aria-haspopup="menu" onclick="menu(this,NEW)">${ic('plus')}Νέα εγγραφή «${esc(q)}»</button>`:'')}</div>`;
+ const on=SH.length&&SI>=0;$('tcS').classList.toggle('shut',!on);$('clS').style.marginRight=on?'468px':'0';if(on)$('inS').innerHTML=cardS(SH[SI]);lucide.createIcons()}
+function srch(){const q=$('qS').value.trim(),nq=nrm(q),qs=[nq,AL[nq]].filter(Boolean),dg=q.replace(/\D/g,'');
+ const all=CORP().filter(r=>!nq||qs.some(x=>nrm([r.n,r.s,r.m,r.ph].join(' ')).includes(x))||(dg.length>3&&r.ph.replace(/\D/g,'').includes(dg)));
+ const n=t=>all.filter(r=>r.t===t).length,tb=(t,l)=>`<a class="${TS===t?'on':''}" data-t="${t}" tabindex="0" role="button" onclick="TS='${t}';SI=0;srch()" onkeydown="if(event.key==='Enter'){TS='${t}';SI=0;srch()}">${l} <i>${nq?(t==='a'?all.length:n(t)):(TOT[t]||'')}</i></a>`;
+ SH=all.filter(r=>TS==='a'||r.t===TS).slice(0,11);
+ $('tbS').innerHTML=tb('a','Όλα')+['c','p','d','l'].map(t=>tb(t,TG7[t])).join('');
+ $('subS').textContent=nq?`${all.length} για «${q}»`:'148 πελάτες · 36 συνεργάτες · 16 οδηγοί · 412 τόποι';sdraw()}
+srch();
+
+/* ---------- what opens ---------- */
+const mg=(l,a,b,c='')=>`<div class="mg ${c}"><span>${l}</span><b class="num">${a||'–'}</b><b class="num go">${b||'–'}</b></div>`;
+$('fP').innerHTML=`<div style="position:absolute;inset:0;display:grid;grid-template-columns:600px 400px 330px;gap:24px;align-items:start;align-content:start;padding:32px;background:#DFE1E6">
+ <div class="pn"><div style="display:flex;align-items:center"><h3>Νέα τοποθεσία</h3><span class="sp"></span><button class="cl" aria-label="Κλείσιμο">${ic('x')}</button></div>
+  <div style="display:grid;grid-template-columns:minmax(0,1fr) 250px;gap:22px;margin-top:18px">
+   <div class="fs7">${fld('Όνομα <i class="nb a" data-t="Γράφτηκε με ελληνικά· αποθηκεύεται με λατινικά.">!</i>','Frutopia Packhouse','focus')}
+    <div class="strip"><span style="flex:1">Υπάρχει «Frutopia Packhouse», Naousa</span><button class="pill sm">Άνοιγμα</button></div>
+    ${fld('Διεύθυνση','Odos Rodakinonon 3')}${fld('Πόλη · χώρα','Naousa · GR')}
+    <div class="row g12" style="margin-top:16px"><div style="grid-column:span 7">${fld('Ωράριο','06:00 – 14:00','ph')}</div><div style="grid-column:span 5">${fld('Ημέρες','Δευ – Παρ','ph')}</div></div>
+    ${fld('Είδος',`Προμηθευτής<span class="sp"></span>${ic('chevron-down')}`)}</div>
+   <div style="display:flex;flex-direction:column"><div class="fld"><span>Καρφίτσα</span></div>
+    <div style="position:relative;flex:1;min-height:300px;border-radius:14px;overflow:hidden"><div class="map"><svg viewBox="0 0 100 100" preserveAspectRatio="none"><g fill="none" stroke="#fff" stroke-width="5"><path d="M-5 70 C30 60 50 50 62 20 S80 -5 80 -5"/><path d="M40 105 C44 80 50 60 54 46"/></g></svg>
+     <span class="pin g" style="left:66%;top:34%"></span><span class="mnm l" style="left:66%;top:34%">FRUTOPIA PACKHOUSE</span><span class="pin s" style="left:52%;top:52%"></span></div>
+     <span style="position:absolute;left:10px;right:10px;bottom:10px;display:flex;gap:6px"><span class="num" style="flex:1;align-self:center;font-size:12px;color:var(--body)">40.6294, 22.0681</span><button class="pill sm" style="background:#fff">Είναι εδώ</button></span></div></div>
+  </div>
+  <div class="pf"><span class="sp"></span><button class="pill">Άκυρο</button><button class="pill b">Αποθήκευση</button></div></div>
+ <div style="display:grid;gap:24px">
+  <div class="pn"><div style="display:flex;align-items:center"><h3>Συγχώνευση</h3><span class="sp"></span><button class="ibt" title="Να μείνει η άλλη" aria-label="Να μείνει η άλλη">${ic('arrow-left-right')}</button><button class="cl" aria-label="Κλείσιμο">${ic('x')}</button></div>
+   <div style="margin-top:12px"><div class="mg h"><span></span><span><b>Wiener Frische</b><small>μένει</small></span><span><b class="go">Wiener Frische GmbH</b><small class="go">φεύγει</small></span></div>
+   ${mg('Τηλέφωνο','+43 1 555 0110','+43 1 555 0110')}${mg('ΑΦΜ','ATU00000010','')}${mg('Επαφή','Lukas Gruber','')}${mg('Παραγγελίες','21','6')}${mg('Τόποι','1','1')}
+   <div class="mg t"><span>Μετά</span><b class="num">27 παραγγελίες · 2 τόποι</b></div></div>
+   <div class="pf"><span class="sp"></span><button class="pill">Άκυρο</button><button class="pill b">Συγχώνευση</button></div></div>
+  <div class="pn"><h3>Απενεργοποίηση;</h3><small>Baltic Cold Foods</small>
+   <div class="strip" style="margin-top:14px;font-size:13px">${ic('triangle-alert')}<span>2 παραγγελίες σε εξέλιξη</span></div>
+   <div class="ns" style="border-top:0;margin-top:6px"><span><b>Κατερίνη → Poznań</b><small>Τετ 18 – Παρ 20/11 · 33 παλέτες</small></span>${stt('asg')}</div><div class="ns"><span><b>Poznań → Βέροια</b><small>Παρ 20 – Τρί 24/11 · 30 παλέτες</small></span>${stt('todo')}</div>
+   <div class="pf"><span class="sp"></span><button class="pill">Άκυρο</button><button class="pill d">Απενεργοποίηση</button></div></div>
+ </div>
+ <div style="display:grid;gap:24px">
+  <div class="pn"><div class="hh" style="align-items:center;gap:12px"><span class="av">ΓΑ</span><div style="flex:1"><b>Γιάννης Αλεξίου</b><small>Οδηγός · ΚΗΙ 4521 · Ρ 6654</small></div><button class="cl" aria-label="Κλείσιμο">${ic('x')}</button></div>
+   <dl style="margin:8px 0 0">${fe('Τηλέφωνο','697 555 0112')}${fe('Δίπλωμα','έως 14/3/2028')}${fe('Αρ. διπλώματος','069 227 408')}${fe('Τύπος','Εσωτερικός')}</dl>
+   <div class="sech"><span class="lbl">Δρομολόγια</span><span class="sp"></span><a style="font-weight:500;font-size:13px">Μισθοδοσία →</a></div>
+   <div class="ns"><span><b>Νάουσα → Wien</b><small>Δευ 16/11 · ΚΗΙ 4521</small></span><span class="st run">Σε μεταφορά</span></div><div class="ns"><span><b>Νάουσα → Wien → Βέροια</b><small>Δευ 9 – Πέμ 12/11 · ΚΗΙ 4521</small></span><span class="st done">${ic('check')}Έκλεισε</span></div>
+   <div class="sech"><span class="lbl">Με ποια φορτηγά · 2026</span></div>
+   <div class="ns"><span><b class="num">ΚΗΙ 4521</b><small>27 δρομολόγια</small></span><span class="num">87%</span></div><div class="ns"><span><b class="num">ΚΗΙ 6012</b><small>4 δρομολόγια</small></span><span class="num">13%</span></div></div>
+  <div class="pop" style="animation:none;width:240px">${NEW}</div><div class="pop" style="animation:none;width:240px">${MORE}</div>
+ </div></div>`;
+
+/* ---------- bad moments ---------- */
+const bp=(l,body)=>`<div class="panel"><p class="lbl">${l}</p>${body}</div>`;
+const strip=(i,t,b,n)=>`<div class="strip ${n?'n':''}" style="margin-top:12px;align-items:flex-start">${ic(i)}<div style="max-width:36ch">${t}${b?`<div style="display:flex;gap:8px;margin-top:10px">${b}</div>`:''}</div></div>`;
+const rd=`<button class="pill sm">${ic('rotate-cw')}Ξαναδιάβασε</button>`,rt='<button class="pill sm">Ξαναδοκίμασε</button>';
+$('bad').innerHTML=[
+ bp('Κανένα αποτέλεσμα',em('search-x','Τίποτα για «frutopja»',`<button class="pill sm">${ic('plus')}Νέα εγγραφή «frutopja»</button>`)),
+ bp('Καμία εγγραφή ακόμη',em('inbox','Κανένας συνεργάτης',`<button class="pill b sm">${ic('plus')}Νέος συνεργάτης</button>`)),
+ bp('Δεν διαβάστηκαν',`<div class="bl7">${sy('fail','Οι πελάτες δεν διαβάστηκαν από τον διακομιστή. Ό,τι βλέπεις μπορεί να είναι παλιό.')}<span class="st7 r">δεν διαβάστηκαν</span></div><div style="margin-top:12px">${rd}</div>`),
+ bp('Η κάρτα διαβάστηκε μισή',`<div class="sech"><span class="lbl">Παραγγελίες</span>${sy('fail','Οι παραγγελίες του πελάτη δεν διαβάστηκαν. Τα στοιχεία του από πάνω είναι σωστά.')}<span class="st7 r">δεν διαβάστηκαν</span></div><div style="margin-top:8px">${rd}</div>`),
+ bp('Το πεδίο δεν γράφτηκε',`<dl style="margin:12px 0 0"><div class="fe"><dt>Τηλέφωνο</dt><div class="inp num" style="border-color:var(--red)">+43 512 555 0199</div><span></span><div class="pendl" style="color:var(--red)">${sy('fail','Η εγγραφή απέτυχε. Η τιμή μένει στο κουτί· στον κατάλογο ισχύει ακόμη η παλιά.','show dn')}<span style="flex:none;padding:0">δεν γράφτηκε</span><span></span><button class="pill">Άφησέ το</button><button class="pill b">Γράψε</button></div></div></dl>`),
+ bp('Γράφτηκε, με αναίρεση',`<dl style="margin:12px 0 0"><div class="fe"><dt>Τηλέφωνο</dt><dd class="num">+43 512 555 0199</dd><span class="okc"><button class="un7">αναίρεση</button>${sy('done','Γράφτηκε τώρα','r')}</span></div></dl>`),
+ bp('Τιμή που δεν μοιάζει σωστή',`<dl style="margin:12px 0 0"><div class="fe"><dt>Τηλέφωνο</dt><dd class="num">+43 512 ooo o99</dd><span></span><div class="pendl"><span class="st7 a" style="flex:none;padding:0">γράφτηκε · έχει γράμματα</span><i class="nb a" data-t="Γράφτηκε όπως το έγραψες. Ένα τηλέφωνο συνήθως δεν έχει γράμματα.">!</i></div></div></dl>`),
+ bp('Το άλλαξε κάποιος άλλος',`<div class="bl7">Τηλέφωνο<span class="sp"></span><span class="st7" style="color:var(--body)">Ειρήνη · 07:38</span></div><div style="display:flex;gap:8px;margin-top:12px"><button class="pill sm">Το δικό της</button><button class="pill sm">Το δικό μου</button></div>`),
+ bp('Καρφίτσα που δεν βρέθηκε',`<div class="bl7">${sy('miss','Η διεύθυνση δεν βρέθηκε στον χάρτη. Βάλε την καρφίτσα με το χέρι.')}<span class="st7 a">δεν βρέθηκε</span><span class="sp"></span><button class="pill sm">Στον χάρτη</button></div><div class="bl7">${sy('fail','Η αναζήτηση διεύθυνσης δεν έτρεξε. Η τοποθεσία γράφτηκε χωρίς καρφίτσα.')}<span class="st7 r">δεν έτρεξε</span><span class="sp"></span>${rt}</div>`),
+ bp('Η λίστα συνεχίζει',`<div class="bl7"><span class="num">300 από 412</span><span class="sp"></span><button class="pill sm">Όλοι</button></div>`),
+ bp('Δίπλωμα',`<dl style="margin:12px 0 0"><div class="fe"><dt>Δήμος Μάνος</dt><dd class="num" style="color:var(--red);font-weight:600">έληξε 2/11/2026</dd><span class="okc">${sy('late','Το δίπλωμα έληξε πριν από 14 ημέρες.','r')}</span></div><div class="fe"><dt>Σάκης Κάππος</dt><dd class="num" style="color:var(--amber);font-weight:600">έως 9/12/2026</dd><span class="okc"><i class="nb a" data-t="Το δίπλωμα λήγει σε 23 ημέρες.">!</i></span></div><div class="fe"><dt>Τάσος Ιορδάνου</dt><dd style="color:var(--amber)">χωρίς ημερομηνία</dd><span></span></div></dl>`),
+ bp('Ο χάρτης δεν φόρτωσε',`<div class="bl7">${sy('fail','Ο χάρτης δεν φόρτωσε. Η λίστα και οι κάρτες δουλεύουν κανονικά.')}<span class="st7 r">δεν φόρτωσε</span><span class="sp"></span><button class="pill sm">Λίστα</button></div>`),
+ bp('Φόρτωση',[0,1,2].map(()=>`<div style="display:grid;grid-template-columns:minmax(0,1fr) 90px;gap:14px;align-items:center;height:46px"><div><div class="sk" style="height:12px;width:50%"></div><div class="sk" style="height:10px;width:30%;margin-top:7px"></div></div><div class="sk" style="height:12px"></div></div>`).join('')),
+ bp('Μόνο ανάγνωση',`<div style="margin-top:12px"><span class="tag" style="margin:0;display:inline-flex;gap:5px;align-items:center;height:22px">${ic('eye')}Μόνο ανάγνωση</span></div><dl style="margin:8px 0 0"><div class="fe"><dt>Τηλέφωνο</dt><dd class="num">+43 512 555 0101</dd><span></span></div></dl>`)
+].join('');
+boot();
+/* the picture of the page shows one field open, as a real box: it takes typing, Enter and Escape like the others */
+edf(document.querySelector('#in7 dd[data-k="12"]'),1);
+</script>
+</body>
+</html>
