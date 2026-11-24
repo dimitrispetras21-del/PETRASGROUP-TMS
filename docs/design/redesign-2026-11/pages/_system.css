@@ -500,3 +500,35 @@ body,body[data-accent=ink]{--accent:#0284C7;--link:#0369A1;--accent-bg:#E0F2FE;-
 @media (hover:hover){.side .tg:hover{background:rgba(255,255,255,.09);color:#fff}}
 .side .tg .o,.rail .side .tg .c{display:none}.rail .side .tg .o{display:grid}
 .rail .side .lg{flex-direction:column;gap:10px;padding:0 0 10px}
+.side .logo.full{width:150px;height:31px;background-size:219px auto;background-position:-34px -30px}
+
+/* 25/11: the way in to search and to the assistant sits at the top of the menu on every page (mirrors pages/09-shell.html) */
+/* way in to search and the assistant, at the top of the menu and of the rail */
+.side .qk{display:flex;gap:6px;margin:2px 0 4px}
+.side .qk a{height:34px;background:rgba(255,255,255,.07);cursor:pointer}
+.side .qk .sr{flex:1;min-width:0;gap:9px;padding:0 10px;color:#9FB0C2;font-weight:400}
+.side .qk .sr span{white-space:nowrap}.side .qk kbd{margin-left:auto;white-space:nowrap;flex:none;font:inherit;font-size:11px;color:#8FA0B2;border:1px solid rgba(255,255,255,.16);border-radius:5px;padding:0 5px;line-height:17px}
+.side .qk .ai{width:34px;padding:0;justify-content:center;color:#C7D2DD}
+.side .qk a.act{background:rgba(255,255,255,.16);color:#fff}
+.side .qk a:active{transform:scale(.97)}.side .qk a:focus-visible{outline:2px solid #38BDF8;outline-offset:1px}
+@media (hover:hover){.side .qk a:hover{background:rgba(255,255,255,.12);color:#fff}}
+.rail .side .qk{flex-direction:column;gap:2px;margin:0 0 4px}.rail .side .qk a,.rail .side .qk .ai{width:44px;height:40px;padding:0;justify-content:center;background:none}.rail .side .qk a.act{background:rgba(255,255,255,.16)}.rail .side .qk kbd{display:none}
+.side a{flex:none}
+.side .tg{background:rgba(255,255,255,.08);color:#fff}
+/* the menu fits a 900px frame with the search row on top */
+.side h4{margin:10px 12px 3px}.side a{height:34px}.rail .side a{height:38px}
+/* the chosen chip is blue, like every other "this one is chosen" on the pages */
+.chip.on{border-color:var(--accent);color:var(--link)}
+
+/* --- 25/11/2026, owner: "too many written notes; I would prefer symbols". One small dictionary of symbols for every page.
+   A symbol replaces a sentence that explains what happened or why; the sentence moves to the pointer (and to keyboard focus).
+   Never colour alone: each meaning has its own shape. A short word that says what is missing ("χωρίς φορτηγό") may stay.
+   A4 papers keep their words: there is no pointer on paper. --- */
+.sy{position:relative;display:inline-grid;place-items:center;width:18px;height:18px;flex:none;border-radius:5px;cursor:help;vertical-align:-4px;font-style:normal}
+.sy svg.lucide{width:14px;height:14px;stroke-width:2}
+.sy.fail,.sy.late{color:var(--red)}.sy.miss{color:var(--amber)}.sy.done{color:var(--green)}.sy.wait,.sy.note,.sy.chg,.sy.who{color:#6B7280}
+.sy::after{content:attr(data-t);position:absolute;bottom:calc(100% + 8px);left:-10px;background:#0B1929;color:#fff;font-weight:500;font-size:12.5px;line-height:1.4;padding:8px 11px;border-radius:10px;width:max-content;max-width:260px;white-space:normal;text-align:left;opacity:0;transform:translateY(4px);pointer-events:none;transition:opacity var(--t-fast),transform var(--t-fast);z-index:9;letter-spacing:0;text-transform:none}
+.sy.r::after{left:auto;right:-10px}.sy.dn::after{bottom:auto;top:calc(100% + 8px)}
+.sy:focus-visible::after,.sy.show::after{opacity:1;transform:none}.sy:focus-visible{outline:2px solid #0284C7;outline-offset:2px}
+@media (hover:hover){.sy:hover::after{opacity:1;transform:none;transition-delay:.18s}}
+@media (prefers-reduced-motion:reduce){.sy::after{transform:none}}

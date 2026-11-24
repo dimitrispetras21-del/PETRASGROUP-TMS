@@ -5,12 +5,12 @@ const NAV=[['ΑΡΧΗ',[['house','Σήμερα','h'],['chart-no-axes-column','Δ
  ['ΣΧΕΔΙΑΣΜΟΣ',[['globe','Εβδομαδιαίο Διεθνών','wi'],['map','Εβδομαδιαίο Εθνικών','wn'],['calendar-days','Ημερήσιο','d'],['warehouse','Ράμπα','r']]],
  ['ΔΟΥΛΕΙΑ',[['file-text','Παραγγελίες','o','10'],['package','Παλέτες','p','4']]],
  ['ΟΙΚΟΝΟΜΙΚΑ',[['receipt','Έξοδα δρομολογίων','e'],['coins','Μισθοδοσία','m']]],
- ['ΣΤΟΛΟΣ',[['truck','Στόλος','t'],['wrench','Εργασίες','s','2'],['store','Συνεργεία','ws']]],
+ ['ΣΤΟΛΟΣ',[['truck','Στόλος','t','3'],['wrench','Εργασίες','s','6'],['store','Συνεργεία','ws']]],
  ['ΣΤΟΙΧΕΙΑ',[['book-user','Κατάλογος','c'],['map-pin','Τοποθεσίες','l']]]];
 const MENU_TG=`<button class="tg" title="Κλείσιμο / άνοιγμα μενού" aria-label="Κλείσιμο ή άνοιγμα μενού" onclick="this.closest('.app').classList.toggle('rail');lucide.createIcons()"><span class="c">${ic('panel-left-close')}</span><span class="o">${ic('panel-left-open')}</span></button>`;
-function side(on){return `<aside class="side"><div class="lg"><span class="logo full" role="img" aria-label="Petras Group"></span><span class="logo mark"></span>${MENU_TG}</div>`+
+function side(on){return `<aside class="side"><div class="lg"><span class="logo full" role="img" aria-label="Petras Group"></span><span class="logo mark"></span>${MENU_TG}</div><div class="qk"><a class="sr" role="button" tabindex="0" title="Αναζήτηση · Ctrl K">${ic('search')}<span>Αναζήτηση</span><kbd>Ctrl K</kbd></a><a class="ai" role="button" tabindex="0" title="Βοηθός" aria-label="Βοηθός">${ic('sparkles')}</a></div>`+
  NAV.map(([g,it],i)=>`${i?'<hr>':''}<h4>${g}</h4>`+it.map(([icn,l,id,n])=>`<a class="${id===on?'on':''}" title="${l}">${ic(icn)}<span>${l}</span>${n?`<em>${n}</em>`:''}</a>`).join('')).join('')+
- `<div class="me"><span class="av">ΔΠ</span><div>Δημήτρης Π.<small>Owner</small></div></div></aside>`}
+ `<div class="me"><span class="av">ΔΠ</span><div>Δημήτρης Π.<small>Ιδιοκτήτης</small></div></div></aside>`}
 const two=(a,b,c='')=>`<div class="two ${c}"><b><span class="el">${a}</span></b><span>${b}</span></div>`;
 const tags=t=>t.split(' ').filter(Boolean).map(x=>`<span class="tag" title="${(typeof TG!=='undefined'&&TG[x])||''}">${x}</span>`).join('');
 const ST={todo:'Σε αναμονή',asg:'Ανατέθηκε',run:'Σε μεταφορά',done:'Παραδόθηκε',can:'Ακυρώθηκε',pre:'Pre-order'};
@@ -32,3 +32,8 @@ function fit(){document.querySelectorAll('.fit').forEach(w=>{const f=w.firstElem
 function tint(){const R=/έληξε|ληγμέν|χωρίς τιμή|χωρίς φορτηγό|χωρίς ανάθεση|άργησε|\+\d+ ημέρ|καθυστέρ|λείπει|δεν διαβάστηκ|ανεπίδοτ|οφείλ|SOS|^[−-]\s?\d/i,A=/^κοπή$|προς κοπή|^χωρίς |σε εξέλιξη|λήγει|εκτίμηση|pre-order|μετατέθηκε|εκκρεμεί|περιμένει|μισή|χωρίς ημερομηνία/i,G=/^\+ ?\d|παραδόθηκε|φορτώθηκε|τιμολογήθηκε|πληρώθηκε|εξοφλ|ελέγχθηκε|σε ισχύ/i;
  document.querySelectorAll('.a4 *').forEach(e=>{if(e.children.length||e.closest('h2,.psec,.hr,.foot,.fn,.top,.hero'))return;const t=e.textContent.trim();if(!t||t.length>60)return;e.classList.add(R.test(t)?'pr':A.test(t)?'pa':G.test(t)?'pg':'_')})}
 function boot(){tint();lucide.createIcons();addEventListener('resize',fit);fit()}
+/* 25/11/2026: the dictionary of symbols (owner: symbols in the place of written notes). sy('fail','Δεν γράφτηκε: χωρίς φορτηγό')
+   draws the symbol; the sentence shows on hover and on keyboard focus and is read by screen readers. Add 'r' or 'dn' as a third
+   argument when the note must open to the left or downwards. Use ONLY these eight; do not invent a ninth in a page. */
+const SY={fail:['triangle-alert','Δεν γράφτηκε'],late:['clock-alert','Καθυστέρηση'],miss:['circle-dashed','Λείπει'],wait:['circle','Εκκρεμεί'],done:['check','Έγινε'],chg:['calendar-clock','Άλλαξε ημέρα'],who:['user-round','Ποιος και πότε'],note:['message-square','Σημείωση']};
+const sy=(k,t,x='')=>`<i class="sy ${k} ${x}" tabindex="0" role="img" aria-label="${SY[k][1]}: ${t}" data-t="${t}">${ic(SY[k][0])}</i>`;

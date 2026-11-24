@@ -7,50 +7,79 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="_system.css">
 <style>
-/* DESIGN MOCKUP ONLY. Invented names and round amounts. Page-specific rules for Μισθοδοσία οδηγών. */
+/* DESIGN MOCKUP ONLY. Invented names and round amounts (pages/CAST.md). Page-specific rules for Μισθοδοσία οδηγών. */
 .who{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
-.kpb{display:flex;align-items:baseline;gap:20px;padding:16px 28px;border-bottom:1px solid var(--line);white-space:nowrap}
-.kpb>b{font-size:26px;font-weight:500;color:var(--ink);letter-spacing:-.4px}.kpb>b small{font-size:14px;color:var(--help);font-weight:400;letter-spacing:0}
-.kpb>span{color:var(--body);font-size:13px}.kpb.yr>span{color:var(--help)}.kpb.yr{gap:24px}.kpb>span b{color:var(--ink);font-weight:600}.kpb svg.lucide{width:13px;height:13px;vertical-align:-2px}
-.dl,.dlh{display:grid;grid-template-columns:36px minmax(0,1fr) 56px 92px 92px 18px 104px;gap:0 16px;align-items:center;padding:0 28px}
-.dlh{height:40px;border-bottom:1px solid var(--line)}.dlh span{text-align:right}.dlh span:nth-child(2){text-align:left}
-.dl{height:56px;position:relative;cursor:pointer}
+.hd h1{font-size:24px;letter-spacing:-.4px}
+.kpb{display:flex;align-items:baseline;gap:20px;padding:14px 28px;border-bottom:1px solid var(--line);white-space:nowrap}
+.kpb>b{font-size:22px;font-weight:600;color:var(--ink);letter-spacing:-.3px}.kpb>b small{font-size:13px;color:var(--help);font-weight:400;letter-spacing:0;margin-left:4px}
+.kpb>span{color:var(--help);font-size:13px}.kpb>span b{color:var(--ink);font-weight:600}
+/* the month list (redesigned in round 2): one full-width accountant's table with the columns of the A4 statement; the chosen
+   driver opens in place under his row (how the balance is made, what needs work, the payment). No floating card. */
+.dl,.dlh{display:grid;grid-template-columns:200px minmax(0,1fr) 48px 84px 84px 96px 96px 44px 100px 18px;gap:0 16px;align-items:center;padding:0 28px}
+.dlh{height:36px;border-bottom:1px solid var(--ink)}.dlh span{text-align:right}.dlh span:nth-child(-n+2){text-align:left}
+.dl{height:46px;position:relative;cursor:pointer;font-size:13.5px}
 .dl::after{content:'';position:absolute;inset:3px 12px;border-radius:12px;z-index:0;transition:background var(--t-fast)}.dl>*{position:relative;z-index:1}
-.dl:hover::after{background:#F7F8F9}.dl.sel::after{background:var(--accent-bg);transition:opacity 400ms ease-out}.dl.sel.paid::after{opacity:.35}
-.dl+.dl::before{content:'';position:absolute;left:28px;right:28px;top:0;border-top:1px solid var(--line-2)}.dl.sel::before,.dl.sel+.dl::before{display:none}
-.dl .n{text-align:right;color:var(--ink);font-weight:500}.dl .n.g{color:var(--help);font-weight:400}
-.dl .bal{text-align:right;font-weight:600;color:var(--ink);font-size:15px}.dl .bal.neg{color:var(--amber)}.dl .bal.u{color:var(--faint);font-weight:400}
-.dl .two b{font-weight:600;overflow:visible}
-.open3 .dl,.open3 .dlh{grid-template-columns:36px minmax(0,1fr) 18px 104px}.open3 .hx{display:none}
-.ibt{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:var(--help)}.ibt:hover{background:var(--bg);color:var(--ink)}.ibt svg.lucide{width:15px;height:15px}
-.act{margin:16px -24px 0;padding:16px 24px 18px;border-top:1px solid var(--line);background:#FAFBFC;border-radius:0 0 24px 24px}
+.dl.sel::after{background:var(--accent-bg)}
+@media (hover:hover) and (pointer:fine){.dl:not(.sel):not(.stc):hover::after{background:#F7F8F9}.ibt:hover{background:var(--bg);color:var(--ink)}}
+.dl:focus-visible{outline:2px solid var(--accent);outline-offset:-4px;border-radius:14px}
+.dl+.dl::before{content:'';position:absolute;left:28px;right:28px;top:0;border-top:1px solid var(--line-2)}.dl.sel::before{display:none}
+.dl.stc{cursor:default}
+.nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.nm b{font-weight:600;color:var(--ink);font-size:14px}.nm i{font-style:normal;color:var(--help);font-size:12.5px;margin-left:10px}
+.dl .lp{color:var(--help);font-size:13px;white-space:nowrap}
+.dl .n{text-align:right;color:var(--body)}.dl .n.g{color:var(--faint)}
+.dl .bal{text-align:right;font-weight:600;color:var(--ink);font-size:14px}.dl .bal.u{color:var(--help);font-weight:400}
+.sgn{display:flex;gap:6px;justify-content:flex-end}
+/* second sign: a square "?" = a line that wants checking; the round "!" stays for a trip without value */
+.nb.ck{border-radius:5px}
+.chip .nb{width:16px;height:16px;font-size:10px;cursor:default}
+.dl .cv{display:grid;color:var(--help)}.dl .cv svg.lucide{width:15px;height:15px}.dl.sel .cv{transform:rotate(180deg);color:var(--link)}
+.dl.tot{height:50px;margin-top:12px;border-top:1.5px solid var(--ink);font-weight:600;color:var(--ink)}.dl.tot::before,.dl.tot::after{display:none}.dl.tot .bal{font-size:15px}.dl.tot .n{color:var(--ink)}.dl.tot i{font-style:normal;font-weight:400;color:var(--help);font-size:12.5px;margin-left:10px}
+.gh{padding:22px 28px 6px;font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink)}.gh small{font-weight:500;color:var(--help);margin-left:6px;font-size:12px}
+.ex{display:grid;grid-template-columns:300px minmax(0,1fr) 400px;gap:0 44px;align-items:start;padding:4px 28px 20px;border-bottom:1px solid var(--line)}.ex[hidden]{display:none}
+.ex.sw{animation:sw 120ms ease-out}@keyframes sw{from{opacity:.35}}
+.ex .kv2{min-height:28px}
+input.inp{outline:0;text-align:left}.nb[hidden]{display:none}
+.ex .td{display:flex;align-items:center;gap:8px;min-height:32px;font-size:13px;color:var(--amber);font-weight:500}
+.ex .act{margin:6px 0 0;padding:14px 16px 16px;border:0;background:#F7F8F9;border-radius:14px}
+.ibt{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:var(--body);transition:opacity var(--t-fast),transform var(--t-fast)}.ibt:active{transform:scale(.95)}.ibt svg.lucide{width:15px;height:15px}
+.act{margin:14px -24px 0;padding:16px 24px 18px;border-top:1px solid var(--line);background:#FAFBFC;border-radius:0 0 24px 24px}
 .kv2{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:0 10px;align-items:center;min-height:32px;border-top:1px solid var(--line-2);font-size:13.5px}.kv2:first-of-type{border-top:0}.kv2 dt{color:var(--body)}.kv2 dd{margin:0;color:var(--ink);font-weight:500}
-/* ledger: formal, accountant style */
-.lg,.lgh{display:grid;grid-template-columns:86px minmax(0,1fr) 84px 84px 84px 92px 100px 28px;gap:0 14px;align-items:center;padding:0 28px}
-.lgh{height:40px;border-bottom:1px solid var(--ink)}.lgh span{text-align:right}.lgh span:nth-child(-n+2){text-align:left}
-.lg{min-height:46px;position:relative;font-size:14px;color:var(--ink)}
-.lg+.lg::before{content:'';position:absolute;left:28px;right:28px;top:0;border-top:1px solid var(--line-2)}
-.lg>span{text-align:right}.lg>span:first-child{text-align:left;color:var(--help);white-space:nowrap}.lg .z{color:#C9CDD4}
-.lg .two b{font-weight:500;font-size:14px}.lg .two>span{font-size:12.5px}
-.lg .run{font-weight:600}.lg .ch{color:var(--body)}.lg .ch.m{color:var(--body)}
-.lg.can>span,.lg.can .two b{color:var(--help)}.lg.can .two b .el,.lg.can .ch,.lg.can>span:first-child{text-decoration:line-through}.lg.can .z{visibility:hidden}.lg.can>span.num{text-decoration:line-through}
-.lg.tot{border-top:1.5px solid var(--ink);font-weight:600;min-height:48px}.lg.tot::before{display:none}
-.lg.qe{background:#FAFBFC;border-bottom:1px solid var(--line)}.lg.qe .inp{height:34px;font-size:13.5px;justify-content:flex-end;padding:0 8px}
-.lg svg.lucide{width:14px;height:14px}
+.toast button{color:#9DC4FF;font-weight:600;margin-left:6px;border-radius:6px;padding:2px 4px}
+/* ledger: formal, accountant style. (Class lr, not lg: the shared menu uses .lg for its logo row.) */
+.lr,.lrh{display:grid;grid-template-columns:86px minmax(0,1fr) 78px 84px 78px 78px 92px 100px 28px;gap:0 14px;align-items:center;padding:0 28px}
+.lrh{height:36px;border-bottom:1px solid var(--ink)}.lrh span{text-align:right}.lrh span:nth-child(-n+2){text-align:left}
+.lr{min-height:46px;position:relative;font-size:13.5px;color:var(--ink)}
+.lr+.lr::before{content:'';position:absolute;left:28px;right:28px;top:0;border-top:1px solid var(--line-2)}
+.lr>span{text-align:right}.lr>span:first-child{text-align:left;color:var(--help);white-space:nowrap}.lr .z{color:#C9CDD4}
+.lr .two b{font-weight:500;font-size:13.5px}.lr .two>span{font-size:12.5px}
+.lr .run{font-weight:600}.lr .ch{color:var(--body)}
+.lr.can>span,.lr.can .two b{color:var(--help)}.lr.can .two b .el,.lr.can .ch,.lr.can>span:first-child{text-decoration:line-through}.lr.can .z{visibility:hidden}.lr.can>span.num{text-decoration:line-through}
+.lr.tot{border-top:1.5px solid var(--ink);font-weight:600;min-height:48px}.lr.tot::before{display:none}
+.lr.qin{background:#FAFBFC;border-bottom:1px solid var(--line);padding-top:10px;padding-bottom:12px;align-items:end}.lr.qin .inp{height:34px;font-size:13.5px;justify-content:flex-end;padding:0 8px}.lr.qin .fld>span{font-size:11px;font-weight:500;color:var(--help);margin-bottom:4px;height:14px}.lr.qin .fld.r>span{justify-content:flex-end}.lr.qin>span:first-child{color:var(--ink)}
+.lr svg.lucide{width:14px;height:14px}
+.lr .ibt{opacity:.8}.lr:hover .ibt,.lr .ibt:focus-visible{opacity:1}
 .pv{color:var(--amber);font-weight:500;font-size:13px}
 /* bulk */
 .bk,.bkh{display:grid;grid-template-columns:minmax(0,1fr) 96px 96px 110px 96px 26px;gap:0 14px;align-items:center}
 .bkh{height:34px;border-bottom:1px solid var(--ink)}.bkh span{text-align:right}.bkh span:first-child{text-align:left}
-.bk{height:44px;border-top:1px solid var(--line-2);font-size:14px}.bk:first-of-type{border-top:0}.bk span{text-align:right;color:var(--ink)}.bk b{font-weight:500;color:var(--ink);white-space:nowrap}.bk .g{color:var(--help)}
+.bk{height:44px;border-top:1px solid var(--line-2);font-size:13.5px}.bk:first-of-type{border-top:0}.bk span{text-align:right;color:var(--ink)}.bk b{font-weight:500;color:var(--ink);white-space:nowrap}.bk .g{color:var(--help)}
+.bk .nw{color:var(--red);font-weight:500;font-size:12.5px;white-space:nowrap}
 .bk .inp{height:34px;justify-content:flex-end;font-size:13.5px}.bk svg.lucide{width:15px;height:15px}
 .pn{background:#fff;border-radius:var(--r-page);box-shadow:var(--shadow-float);padding:20px 22px 16px}
-.pn h3{font-size:17px;font-weight:600;color:var(--ink)}.pn h3+small{display:block;color:var(--help);font-size:13px;margin-top:2px}
+.pn h3{font-size:16px;font-weight:600;color:var(--ink)}.pn h3+small{display:block;color:var(--help);font-size:13px;margin-top:2px}
 .pf{display:flex;gap:8px;align-items:center;margin-top:14px}
 /* prints */
-.a4.cd .r,.a4.cd .hr{grid-template-columns:36px minmax(0,1fr) 50px 50px 50px 54px 58px}
-.a4.db .r,.a4.db .hr{grid-template-columns:minmax(0,1fr) 34px 60px 60px 62px 16px 84px;gap:0 8px}.a4.db .r{align-items:end;min-height:30px}.a4.db .r>span{white-space:nowrap}
+.a4.cd .r,.a4.cd .hr{grid-template-columns:36px minmax(0,1fr) 42px 52px 42px 46px 52px 54px;gap:0 8px}
+.a4.db .r,.a4.db .hr{grid-template-columns:minmax(0,1fr) 26px 46px 46px 54px 54px 54px 12px 62px;gap:0 7px}.a4.db .r>span:first-child i{display:block;margin-left:0}.a4.db .r{align-items:end;min-height:30px}.a4.db .r>span{white-space:nowrap}
 .a4.cd .r>span:nth-child(-n+2),.a4.cd .hr>span:nth-child(-n+2),.a4.db .r>span:first-child,.a4.db .hr>span:first-child{text-align:left}
-.a4.cd,.a4.db{font-size:10px}.a4.cd .r,.a4.db .r{padding:5px 0}
+.a4.cd,.a4.db{font-size:10px}.a4.cd .r,.a4.db .r{padding:5px 0}.a4.db .r{padding:3px 0;min-height:0!important}.a4.db .fn{margin-top:12px}
+/* the driver's card is a statement of account: a payment is not "needs action", so its figures stay in ink */
+.a4.cd .pr,.a4.cd .pg,.a4.db .pr,.a4.db .pg{color:inherit!important;font-weight:inherit}
+#bad .nb.dn::after{top:calc(100% + 20px)}
+/* the bad moments speak as the Weekly does: no coloured box, a line at the left (red = money not written, amber = warning, grey = information) */
+#bad .strip{background:none;border-radius:0;padding:2px 0 2px 14px;border-left:3px solid var(--amber)}#bad .strip>svg.lucide{display:none}
+#bad .strip.rd{border-left-color:var(--red)}#bad .strip.n{border-left-color:#C9CDD4}
+.a4.cd .r small{display:block;margin-top:1px}.a4.cd .r{align-items:start}
 .a4 .r i.sg2{border-bottom:.5px solid #111;height:20px;display:block;margin:0}
 </style>
 </head>
@@ -71,19 +100,18 @@
 </section>
 
 <section class="sec"><h2>Οδηγοί του μήνα</h2>
-  <div class="cap"><h3>Λίστα και κάρτα πληρωμής</h3><span>Enter γράφει την πληρωμή.</span></div>
-  <div class="fit"><div class="frame" id="fH" style="height:1160px"></div></div>
+  <div class="cap"><h3>Λίστα και κάρτα πληρωμής</h3></div>
+  <div class="fit"><div class="frame" id="fH" style="height:1540px"></div></div>
 </section>
 <section class="sec"><h2>Καρτέλα οδηγού</h2>
-  <div class="cap"><h3>Λογιστικό φύλλο, με το νεότερο πάνω</h3><span>Η πρώτη γραμμή είναι για γρήγορη καταχώριση.</span></div>
-  <div class="fit"><div class="frame" id="fL" style="height:980px"></div></div>
+  <div class="cap"><h3>Λογιστικό φύλλο, με το νεότερο πάνω</h3></div>
+  <div class="fit"><div class="frame" id="fL" style="height:860px"></div></div>
 </section>
 <section class="sec"><h2>Μαζική πληρωμή και ό,τι ανοίγει</h2>
-  <div class="fit"><div class="frame" id="fB" style="height:700px"></div></div>
+  <div class="fit"><div class="frame" id="fB" style="height:840px"></div></div>
 </section>
 <section class="sec"><h2>Οι κακές στιγμές</h2><div class="grid g4" style="align-items:stretch" id="bad"></div></section>
 <section class="sec"><h2>Τα χαρτιά</h2>
-  <p class="lead">Καρτέλα οδηγού για υπογραφή, και κατάσταση οφειλών.</p>
   <div style="display:flex;gap:28px;flex-wrap:wrap;justify-content:center"><div class="a4 cd" id="a4c"></div><div class="a4 db" id="a4d"></div></div>
 </section>
 </div>
@@ -96,78 +124,117 @@ const bal=x=>x<0?`(${eu(-x)})`:eu(x);
 const fld=(l,vv,cls='')=>`<label class="fld"><span>${l}</span><div class="inp ${cls}">${vv}</div></label>`;
 const cur='<span style="width:1.5px;height:18px;background:var(--accent);margin-left:-6px"></span>';
 const hub=(sub,acts)=>`<div class="hd"><div><h1>Μισθοδοσία</h1><p>${sub}</p></div><span class="sp"></span>${acts}</div>`;
-const mon=`<div class="wk" style="border-bottom:1px solid var(--line);min-height:46px">${ic('chevron-left')}<a>Σεπ</a><a>Οκτ</a><a class="on">Νοέμβριος 2026</a>${ic('chevron-right')}<span class="sp"></span><span class="chip hide">Πρώτα όσα θέλουν δουλειά ${ic('chevron-down')}</span><div class="q" style="margin:6px 0;width:180px">${ic('search')}Αναζήτηση</div></div>`;
-/* [initials, name, type, trips, value, payments, pending count, balance (null = «—»)] */
-const DR=[['ΠΡ','Π. Ράπτης','Διεθνής',4,1160,900,2,240],['ΓΑ','Γ. Αλεξίου','Διεθνής',3,640,500,1,380,'sel'],['ΕΣ','Ε. Σαρίδης','Εθνικός',2,0,0,2,null],['ΘΜ','Θ. Μέλλιος','Διεθνής',3,980,500,0,610],['ΔΜ','Δ. Μάνος','Διεθνής',3,900,500,0,450],['ΜΧ','Μ. Χρυσουλίδης','Διεθνής',2,620,300,0,320],['ΛΔ','Λ. Δήμου','Εθνικός',3,380,200,0,180],['ΣΚ','Σ. Κάππος','Διεθνής',1,280,0,0,-120]];
-const drow=([i,n,t,tr,v,p,pe,b,c=''])=>`<div class="dl ${c}"><span class="av" style="width:32px;height:32px;font-size:12px">${i}</span><div class="two"><b>${n}${pe?`<i class="nb a" style="margin-left:8px" data-t="${pe} ${pe>1?'δρομολόγια':'δρομολόγιο'} χωρίς αξία.">!</i>`:''}</b><span>${t}</span></div><span class="n num hx">${tr}</span><span class="n num hx ${v?'':'g'}">${v?eu(v):'–'}</span><span class="n num hx ${p?'':'g'}">${p?eu(p):'–'}</span><span></span><span class="bal num ${b===null?'u':b<0?'neg':''}">${b===null?'—':bal(b)}</span></div>`;
+const mbar=`<div class="wk" style="border-bottom:1px solid var(--line);min-height:46px">${ic('chevron-left')}<a>Σεπ</a><a>Οκτ</a><a class="on">Νοέμβριος 2026</a>${ic('chevron-right')}<span class="sp"></span><span class="chip hide">Σειρά ${ic('chevron-down')}</span><div class="q" style="margin:6px 0;width:180px">${ic('search')}Αναζήτηση</div></div>`;
+/* [name, type, trips, value, payments, trips without value, balance (null = «—»), balance on 1/11, expenses the driver paid].
+   Every row reconciles: previous + month − payments = balance, where month = value − advances + expenses ± adjustments. */
+const DR=[['Π. Ράπτης','Διεθνής',4,1160,900,2,240,200,180],['Γ. Αλεξίου','Διεθνής',3,640,500,1,380,420,270],['Ν. Ρούσσος','Εθνικός',2,0,0,2,null,0,0],['Θ. Μέλλιος','Διεθνής',3,980,500,0,610,300,130],['Δ. Μάνος','Διεθνής',3,900,500,0,450,250,100],['Μ. Χρυσάφης','Διεθνής',2,620,300,0,320,120,80],['Α. Ντίνος','Διεθνής',3,860,600,0,260,160,140],['Τ. Ιορδάνου','Εθνικός',3,380,200,0,180,60,40],['Η. Σαράφης','Διεθνής',2,540,400,0,140,100,100],['Σ. Καρράς','Διεθνής',3,900,900,0,0,150,150],['Γ. Ζήσης','Διεθνής',2,600,600,0,0,80,120],['Λ. Δήμου','Διεθνής',2,560,560,0,0,100,100],['Σ. Κάππος','Διεθνής',1,280,0,0,-120,-220,20]];
+const OFF=[['Κ. Τσολάκης','Ανενεργός · τελευταία κίνηση Αύγουστος',150],['Ν. Κοσμίδης','Χωρίς καμία κίνηση',null]];
+const XL={1:[['Αξία δρομολογίων · 2',600],['Τοπικές ημέρες · 1',40],['Προκαταβολές',-400],['Έξοδα',270],['Προσαρμογή',-50]]};
+const mon=i=>{const d=DR[i];return d[6]===null?null:d[6]-d[7]+d[4]},MON=DR.reduce((s,d,i)=>s+(mon(i)||0),0),NET=DR.reduce((s,d)=>s+(d[6]||0),0),LIST=DR.reduce((s,d)=>s+(d[6]>0?d[6]:0),0);
+const sum=k=>DR.reduce((s,d)=>s+(d[k]||0),0),DUE0=DR.concat(OFF.map(o=>[0,0,0,0,0,0,o[2]])).reduce((s,d)=>s+(d[6]>0?d[6]:0),0);
+const PAID={},NOTE={};let SEL=1,BUSY=0,LAST=null;
+const num=t=>parseFloat(String(t).replace(/\./g,'').replace(',','.'))||0;
+/* owner's rule: a check warns, it never refuses. Only an empty field stops the button (there is nothing to write). */
+const why=(i,v)=>{const b=DR[i][6];return b===null?'Το υπόλοιπο δεν είναι γνωστό. Γράφεται ως προκαταβολή.':v>b?'Πάνω από την οφειλή: ο οδηγός θα οφείλει στην εταιρεία.':''};
+function typed(){const v=num($('pin').value),i=SEL,b=DR[i][6],w=$('pw'),t=v>0?why(i,v):'';$('pb').classList.toggle('off',!(v>0));w.hidden=!t;w.dataset.t=t;$('plf').textContent=b===null?'—':bal(b-v)}
+const sg=x=>(x<0?'− ':'+ ')+eu(Math.abs(x));
+const nowBal=i=>{const d=DR[i];return d[6]===null?null:d[6]-(PAID[i]||0)};
+const showBal=i=>{const b=nowBal(i);return b===null||(PAID[i]&&DR[i][5])?'—':bal(b)};
+const owed=()=>DR.reduce((s,d,i)=>s+Math.max(0,(d[6]||0)-(PAID[i]||0)),0);
+const NB=(k,t,c='')=>`<i class="nb a ${k==='?'?'ck':''} ${c}" data-t="${t}">${k}</i>`;
+const tw=pe=>`${pe} ${pe>1?'δρομολόγια':'δρομολόγιο'} χωρίς αξία`;
+const lastPay=i=>{const d=DR[i];return PAID[i]?'Δευ 16/11':d[4]?(d[6]===0?'Σάβ 14/11':'Σάβ 7/11'):'–'};
+const balc=i=>{const s=showBal(i);return 'bal num '+(s==='—'||s==='0,00'?'u':'')};
+const drow=(d,i)=>{const [n,t,tr,v,p,pe]=d;return `<div class="dl ${i===SEL?'sel':''}" data-i="${i}" tabindex="0" role="button" aria-expanded="${i===SEL}"><div class="nm"><b>${n}</b><i>${t}</i></div><span class="lp num">${lastPay(i)}</span><span class="n num">${tr}</span><span class="n num g">${v?eu(v):'–'}</span><span class="n num">${bal(d[7])}</span><span class="n num">${mon(i)===null?'—':sg(mon(i))}</span><span class="n num pp ${p?'':'g'}">${p?'− '+eu(p):'–'}</span><span class="sgn">${i===1?NB('?','1 γραμμή θέλει έλεγχο.'):''}${pe?NB('!',tw(pe)+'.'):''}</span><span class="${balc(i)}">${showBal(i)}</span><span class="cv">${ic('chevron-down')}</span></div>`};
+/* what opens under the chosen driver: how the balance is made (a column of figures with its rule), what needs work, the payment */
+function exH(i){const [n,t,tr,v,p,pe,b,o,e]=DR[i],pd=PAID[i]||0,now=showBal(i),due=b===null?null:b-pd,can=due>0&&!pd,x=XL[i]||(b===null?[['Αξία δρομολογίων · 0',null]]:[['Αξία δρομολογίων · '+tr,v],['Προκαταβολές',-(v+e-mon(i))],['Έξοδα',e]]);
+ const kv=(a,c)=>`<div class="kv2"><dt>${a}</dt><dd class="num">${c}</dd></div>`;
+ return `<dl>${kv('Προηγούμενο · 1/11',bal(o))}${x.map(([a,c])=>kv(a,c===null?'—':sg(c))).join('')}${kv('Πληρωμές',p+pd?'− '+eu(p+pd):'–')}
+   <div class="kv2" style="border-top:1.5px solid var(--ink);min-height:40px"><dt style="color:var(--ink);font-weight:600">Οφείλεται σήμερα</dt><dd class="num" style="font-size:16px;font-weight:600" id="cdue">${now}${now==='—'?'':' €'}</dd></div></dl>
+  <div>${pe?`<div class="td">${NB('!',i===1?'Βέροια → Zürich, Σάβ 14/11. Δεν μετρά στο υπόλοιπο.':'Δεν μετρούν στο υπόλοιπο.','dn')}${tw(pe)}</div>`:''}${i===1?`<div class="td">${NB('?','Βέροια → Wien → Νάουσα, Δευ 2/11: τα έξοδα διαφέρουν από τα μετρητά του δρομολογίου.','dn')}1 γραμμή θέλει έλεγχο</div>`:''}${NOTE[i]?`<div class="td">${NB('!',NOTE[i],'dn')}Γράφτηκε με σημείωση · Αλεξία, Δευ 16/11</div>`:''}<div class="td"><a style="font-weight:500;color:var(--link)">Καρτέλα →</a></div></div>
+  <div class="act"><div class="row g12"><div style="grid-column:span 4"><label class="fld"><span>Πληρωμή €</span><input class="inp focus num" id="pin" inputmode="decimal" autocomplete="off" value="${can?eu(due):''}" ${pd?'disabled':''} oninput="typed()" onkeydown="if(event.key==='Enter')pay()"></label></div><div style="grid-column:span 4">${fld('Ημέρα','16/11/2026')}</div><div style="grid-column:span 4">${fld('Με','Τράπεζα<span class="sp"></span>'+ic('chevron-down'))}</div></div>
+   <div style="display:flex;align-items:center;gap:10px;margin-top:14px"><span class="num" style="color:var(--help);font-size:13px">μένουν <b style="color:var(--ink)" id="plf">${due===null?'—':pd?bal(due):can?'0,00':bal(due)}</b></span><span class="sp"></span><i class="nb a" id="pw" hidden data-t="">!</i><button class="pill b ${can?'':'off'}" id="pb" onclick="pay()">${pd?ic('check')+'Γράφτηκε':'Καταχώριση '+ic('corner-down-left')}</button></div></div>`}
+const NDUE=DR.filter(d=>d[6]>0).length+OFF.filter(o=>o[2]>0).length;
 $('fH').innerHTML=`<div class="app">${side('m')}<main class="main">
- ${hub('8 οδηγοί · Νοέμβριος 2026',`<button class="pill">${ic('printer')}Εκτύπωση${ic('chevron-down')}</button><button class="pill">${ic('route')}Δρομολόγιο</button><button class="pill b">${ic('banknote')}Μαζική πληρωμή</button>`)}
- <div class="card open3" style="flex:1;min-height:0;margin-right:424px;border-radius:24px 24px 0 0;overflow:hidden">
-  ${mon.replace('Πρώτα όσα θέλουν δουλειά','Σειρά')}
-  <div class="kpb"><b class="num"><span id="tdue">2.330,00</span> € <small>οφειλή σήμερα</small></b><span class="sp"></span><span><b class="num">21</b> δρομολόγια</span><span>πληρωμές <b class="num" id="tpay">2.900,00</b></span></div>
-  <div class="fl" style="padding-bottom:6px"><span class="chip on">Όλοι <b>8</b></span><span class="chip a" title="3 οδηγοί, 5 δρομολόγια">Χωρίς αξία <b>3</b></span><span class="chip a">Θέλουν έλεγχο <b>1</b></span><span class="chip">Με οφειλή <b>6</b></span><span class="chip" title="Ανενεργοί οδηγοί με υπόλοιπο, και οδηγοί χωρίς καμία κίνηση">Εκτός λίστας <b>3</b></span></div>
-  <div class="dlh lbl"><span></span><span>Οδηγός</span><span class="hx">Δρομ.</span><span class="hx">Αξία</span><span class="hx">Πληρωμές</span><span></span><span>Υπόλοιπο</span></div>
-  ${DR.map(drow).join('')}
-  <div class="gh" style="display:flex;align-items:baseline;gap:10px;padding:18px 28px 4px"><b style="font-size:15px;font-weight:600;color:var(--ink)">Δρομολόγια χωρίς γραμμή</b><small style="color:var(--help);font-size:12.5px">2</small></div>
-  ${[['Γ. Αλεξίου','Βέροια → Wien · Τετ 28/10 · ΚΗΙ 4521'],['Λ. Δήμου','Βέροια → Λαμία · Τρί 10/11 · ΚΗΙ 8600']].map(([n,t])=>`<div class="dl" style="height:50px;grid-template-columns:36px minmax(0,1fr) auto"><span style="display:grid;justify-items:center"><i class="nb a" data-t="Είναι στο πρόγραμμα και δεν έχει γραμμή μισθοδοσίας.">!</i></span><div class="two"><b style="font-weight:500">${n}</b><span>${t}</span></div><button class="pill sm">Σύνδεση</button></div>`).join('')}
-  <div class="gh" style="display:flex;align-items:baseline;gap:10px;padding:18px 28px 4px"><b style="font-size:15px;font-weight:600;color:var(--ink)">Εκτός λίστας</b><small style="color:var(--help);font-size:12.5px">3</small></div>
-  ${[['ΝΡ','Ν. Ρήγας','Ανενεργός · τελευταία κίνηση Αύγουστος',150],['ΚΤ','Κ. Τσορλίνης','Χωρίς καμία κίνηση',null],['ΣΓ','Σ. Γαβρίλοφ','Χωρίς καμία κίνηση',null]].map(([i,n,t,b])=>`<div class="dl" style="height:50px"><span class="av" style="width:32px;height:32px;font-size:12px;opacity:.6">${i}</span><div class="two"><b style="font-weight:500">${n}</b><span>${t}</span></div><span class="hx"></span><span class="hx"></span><span class="hx"></span><span></span><span class="bal num ${b===null?'u':''}">${b===null?'–':bal(b)}</span></div>`).join('')}
+ ${hub(`οφείλονται <b class="num" id="tdue0" style="color:var(--ink);font-weight:600">${eu(DUE0)} €</b> σε ${NDUE} οδηγούς`,`<button class="pill">${ic('printer')}Εκτύπωση${ic('chevron-down')}</button><button class="pill">${ic('route')}Δρομολόγιο</button><button class="pill b">${ic('banknote')}Μαζική πληρωμή</button>`)}
+ <div class="card" style="flex:1;min-height:0;border-radius:24px 24px 0 0;overflow:hidden">
+  ${mbar}
+  <div class="fl" style="padding:12px 28px"><span class="chip on">Όλοι <b>${DR.length}</b></span><span class="chip a">${NB('!','Δρομολόγιο χωρίς αξία')}Χωρίς αξία <b>3</b></span><span class="chip a">${NB('?','Γραμμή που θέλει έλεγχο')}Θέλουν έλεγχο <b>1</b></span><span class="chip">Με οφειλή <b>${NDUE}</b></span><span class="chip">Εκτός λίστας <b>${OFF.length}</b></span></div>
+  <div class="dlh lbl"><span>Οδηγός</span><span>Τελ. πληρωμή</span><span>Δρομ.</span><span>Αξία</span><span>Προηγ.</span><span>Μήνας</span><span>Πληρωμές</span><span></span><span>Υπόλοιπο</span><span></span></div>
+  <div id="dls">${DR.map((d,i)=>drow(d,i)+(i===SEL?`<div class="ex" id="tcin">${exH(i)}</div>`:'')).join('')}</div>
+  <div class="dl tot stc" style="margin-top:0"><span class="nm">Σύνολο<i>${DR.length} οδηγοί</i></span><span></span><span class="n num">${sum(2)}</span><span class="n num">${eu(sum(3))}</span><span class="n num">${eu(sum(7))}</span><span class="n num">${sg(MON)}</span><span class="n num" id="tpay">− ${eu(sum(4))}</span><span></span><span class="bal num" id="tnet">${bal(NET)}</span><span></span></div>
+  <div class="gh">Δρομολόγια χωρίς γραμμή<small>2</small></div>
+  ${[['Γ. Αλεξίου','Βέροια → Wien · Τετ 28/10 · ΚΗΙ 4521'],['Τ. Ιορδάνου','Βέροια → Λαμία · Τρί 10/11 · ΚΗΙ 9056']].map(([n,t])=>`<div class="dl stc" style="grid-template-columns:minmax(0,1fr) auto"><div class="nm"><b style="font-weight:500">${n}</b><i>${t}</i></div><button class="pill sm">Σύνδεση</button></div>`).join('')}
+  <div class="gh">Εκτός λίστας<small>${OFF.length}</small></div>
+  ${OFF.map(([n,t,b])=>`<div class="dl" tabindex="0" role="button" style="grid-template-columns:minmax(0,1fr) 100px 18px"><div class="nm"><b style="font-weight:500">${n}</b><i>${t}</i></div><span class="bal num ${b===null?'u':''}">${b===null?'–':bal(b)}</span><span class="cv">${ic('chevron-down')}</span></div>`).join('')}
+  <div class="dl tot stc" style="grid-template-columns:minmax(0,1fr) auto 100px 18px"><span class="nm">Οφείλονται<i>${NDUE} με οφειλή</i></span><span class="lp num"><span id="tlist">${eu(LIST)}</span> + ${eu(DUE0-LIST)} εκτός λίστας</span><span class="bal num" id="tdue">${eu(DUE0)}</span><span></span></div>
  </div></main></div>
- <div class="tc"><div class="h"><span class="av">ΓΑ</span><div style="flex:1;min-width:0"><b>Γ. Αλεξίου</b><small title="Τελευταία πληρωμή 500,00, τράπεζα">Διεθνής · πληρώθηκε Σάβ 7/11</small></div><button class="cl" aria-label="Κλείσιμο">${ic('x')}</button></div>
-  <dl style="margin:10px 0 0"><div class="kv2"><dt>Υπόλοιπο 1/11</dt><dd class="num">420,00</dd></div><div class="kv2"><dt>Δρομολόγια · 2</dt><dd class="num">+ 470,00</dd></div><div class="kv2"><dt>Τοπικές ημέρες · 1</dt><dd class="num">+ 40,00</dd></div><div class="kv2"><dt>Πληρωμές</dt><dd class="num">− 500,00</dd></div><div class="kv2"><dt>Προσαρμογή</dt><dd class="num">− 50,00</dd></div>
-   <div class="kv2" style="border-top:1.5px solid var(--ink);min-height:44px"><dt style="color:var(--ink);font-weight:600">Οφείλεται σήμερα</dt><dd class="num" style="font-size:18px;font-weight:600" id="cdue">380,00 €</dd></div></dl>
-  <div style="display:flex;align-items:center;gap:8px;margin-top:6px;font-size:13px;color:var(--amber);font-weight:500"><i class="nb a dn" data-t="Βέροια → Zürich, Σάβ 14/11: δεν έχει αξία και δεν μετρά στο υπόλοιπο.">!</i>1 δρομολόγιο χωρίς αξία<a class="sp" style="text-align:right;font-weight:500;color:var(--link)">Καρτέλα →</a></div>
-  <div class="act"><div class="row g12"><div style="grid-column:span 4">${fld('Πληρωμή €','380,00'+cur,'focus')}</div><div style="grid-column:span 4">${fld('Ημέρα','16/11/2026')}</div><div style="grid-column:span 4">${fld('Με','Τράπεζα<span class="sp"></span>'+ic('chevron-down'))}</div></div>
-   <div style="display:flex;align-items:center;gap:10px;margin-top:14px"><span class="num" style="color:var(--help);font-size:13px">μένουν <b style="color:var(--ink)" id="lf">0,00</b></span><span class="sp"></span><button class="pill b" onclick="pay()">Καταχώριση ${ic('corner-down-left')}</button></div></div>
- </div><div class="toast" id="tH" style="position:absolute;left:50%;bottom:22px;margin-left:-200px;z-index:8">${ic('check')}Πληρωμή 380,00 · Γ. Αλεξίου · τράπεζα<u>Αναίρεση</u></div>`;
-const swp=(el,v)=>{el.textContent=v;el.classList.remove('fadeup');void el.offsetWidth;el.classList.add('fadeup')};
-function pay(){const row=document.querySelector('#fH .dl.sel'),r=row.querySelector('.bal');if(r._d)return;r._d=1;
- swp(r,'—');r.classList.add('u');r.title='Πληρώθηκαν 380,00· μένει δρομολόγιο χωρίς αξία';swp($('cdue'),'—');swp($('tdue'),'1.950,00');swp($('tpay'),'3.280,00');row.classList.add('paid');
- const t=$('tH');t.classList.add('show');setTimeout(()=>t.classList.remove('show'),5000)}
-/* bulk: rows turn to done in order, 60 ms apart; a row that failed keeps its field and its sign */
-function bulk(){const rows=[...document.querySelectorAll('#fB .bk.todo')];rows.forEach((r,i)=>setTimeout(()=>{const inp=r.querySelector('.inp');const v=inp.textContent;inp.outerHTML=`<span class="num fadeup">${v}</span>`;r.querySelectorAll('.g').forEach(g=>g.classList.remove('g'));r.lastElementChild.outerHTML=`<span class="fadeup" style="color:var(--green);display:grid">${ic('check')}</span>`;lucide.createIcons();r.classList.remove('todo');
-  swp($('bw'),String(4+i));swp($('bs'),['1.760,00','2.000,00','2.180,00'][i]);if(i===rows.length-1){const b=$('bb');b.textContent='Γράφτηκαν και οι 6';b.classList.add('off')}},RED()?0:i*60+120))}
+ <div class="toast" id="tH" role="status" style="position:absolute;left:50%;bottom:22px;margin-left:-200px;z-index:8">${ic('check')}<span id="tHt"></span><button onclick="undo()">Αναίρεση</button></div>`;
+let OPEN=1;
+const swp=(el,v)=>{if(el.textContent===v)return;el.textContent=v;el.classList.remove('fadeup');void el.offsetWidth;el.classList.add('fadeup')};
+const rowOf=i=>document.querySelector(`#dls .dl[data-i="${i}"]`);
+/* one painter after every write or undo: the row, the totals row and the open part say the same thing */
+function paint(i){const r=rowOf(i),b=r.querySelector('.bal'),pd=Object.values(PAID).reduce((s,x)=>s+x,0),pp=r.querySelector('.pp'),p=DR[i][4]+(PAID[i]||0);b.className=balc(i);swp(b,showBal(i));
+ swp(pp,p?'− '+eu(p):'–');pp.classList.toggle('g',!p);swp(r.querySelector('.lp'),lastPay(i));swp($('tdue'),eu(owed()+DUE0-LIST));swp($('tdue0'),eu(owed()+DUE0-LIST)+' €');swp($('tpay'),'− '+eu(sum(4)+pd));swp($('tnet'),bal(NET-pd));swp($('tlist'),eu(owed()));
+ if(i===SEL){$('tcin').innerHTML=exH(i);lucide.createIcons();$('cdue').classList.add('fadeup')}}
+/* choosing a driver: his row opens in place, at once (no height animation: the list is used tens of times a day);
+   the opened part fades in only when chosen with the mouse. Choosing the open row again closes it. */
+function sel(i,mouse){if(BUSY)return;const c=$('tcin');if(i===SEL){if(!mouse)return;OPEN=!OPEN;c.hidden=!OPEN;rowOf(i).classList.toggle('sel',!!OPEN);rowOf(i).setAttribute('aria-expanded',!!OPEN);return}
+ const o=rowOf(SEL);o.classList.remove('sel');o.setAttribute('aria-expanded',false);SEL=i;OPEN=1;const r=rowOf(i);r.classList.add('sel');r.setAttribute('aria-expanded',true);r.after(c);c.hidden=false;c.innerHTML=exH(i);lucide.createIcons();c.classList.remove('sw');if(mouse){void c.offsetWidth;c.classList.add('sw')}}
+$('dls').addEventListener('click',e=>{const r=e.target.closest('.dl[data-i]');if(r)sel(+r.dataset.i,1)});
+$('dls').addEventListener('keydown',e=>{const r=e.target.closest('.dl[data-i]');if(!r)return;const i=+r.dataset.i,k=e.key;
+ if(k==='ArrowDown'||k==='ArrowUp'){const n=rowOf(i+(k==='ArrowDown'?1:-1));if(n){e.preventDefault();n.focus();sel(+n.dataset.i,0)}}
+ else if(k==='Enter'&&i===SEL&&OPEN){e.preventDefault();pay()}else if(k==='Enter'||k===' '){e.preventDefault();sel(i,0)}});
+/* the button waits while the payment is being written, so a second press cannot write it twice */
+function pay(){const i=SEL,v=num($('pin').value);if(BUSY||!OPEN||PAID[i]||!(v>0))return;BUSY=1;const bt=$('pb'),n=why(i,v);bt.classList.add('off');bt.textContent='Γράφεται…';
+ setTimeout(()=>{BUSY=0;PAID[i]=v;if(n)NOTE[i]=n;LAST=i;paint(i);$('tHt').textContent=`Πληρωμή ${eu(v)} · ${DR[i][0]} · τράπεζα${n?' · με σημείωση':''}`;const t=$('tH');t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('show'),6000)},RED()?0:260)}
+function undo(){if(LAST===null)return;const i=LAST;LAST=null;delete PAID[i];delete NOTE[i];paint(i);$('tH').classList.remove('show')}
+/* bulk: rows turn to done in order, 40 ms apart; a row that failed keeps its field and its words until it is written */
+function bulk(){const rows=[...document.querySelectorAll('#fB .bk.todo')],S=[1760,2020,2260,2440,2580];rows.forEach((r,i)=>setTimeout(()=>{const inp=r.querySelector('.inp');const v=inp.textContent;inp.outerHTML=`<span class="num fadeup">${v}</span>`;r.querySelectorAll('.g').forEach(g=>g.classList.remove('g'));const lf=r.children[4];lf.className='num';lf.textContent=r.dataset.pe?'—':'0,00';r.lastElementChild.outerHTML=`<span class="fadeup" style="color:var(--green);display:grid">${ic('check')}</span>`;lucide.createIcons();r.classList.remove('todo');
+  swp($('bw'),String(4+i));swp($('bs'),eu(S[i]));if(i===rows.length-1){const b=$('bb');b.textContent='Γράφτηκαν και οι 8';b.classList.add('off')}},RED()?0:i*40+120))}
 
 /* ---------- driver ledger ---------- */
-/* [day, title, sub, value, got, expenses, change, running, cls, mark] */
-const LG=[['Κυρ 15/11','Προσαρμογή','Πρόστιμο στάθμευσης, Wien · Δημήτρης','',50,'',-50,380,'',''],
- ['Σάβ 14/11','Βέροια → Zürich','ΚΗΙ 4521 · 14 – 18/11','p','','',null,430,'','p'],
- ['Παρ 13/11','Τοπική κίνηση','Βέροια · παράδοση για Κ. Ράλλη',40,'','',40,430,'','rel'],
- ['Δευ 9/11','Νάουσα → Wien → Βέροια','ΚΗΙ 4521 · 9 – 12/11',300,200,120,220,390,'','cash'],
- ['Σάβ 7/11','Πληρωμή · τράπεζα','Αλεξία','',500,'',-500,170,'',''],
- ['Πέμ 5/11','Πληρωμή · τράπεζα','Ακυρώθηκε: λάθος ποσό · Αλεξία 6/11','',450,'',-450,'','can',''],
- ['Δευ 2/11','Βέροια → Wien → Νάουσα','ΚΗΙ 4521 · 2 – 6/11',300,200,150,250,670,'','chk']];
+/* [day, title, sub, value, advance on the trip, expenses, payroll payment, change, running, cls, mark]. One vocabulary with the list and the paper. */
+const LG=[['Κυρ 15/11','Προσαρμογή','Πρόστιμο στάθμευσης, Wien · Δημήτρης','','','','',-50,380,'',''],
+ ['Σάβ 14/11','Βέροια → Zürich','ΚΗΙ 4521 · 14 – 18/11','p','','','',null,430,'','p'],
+ ['Παρ 13/11','Τοπική ημέρα','Βέροια · παράδοση για Σ. Κάππο',40,'','','',40,430,'',''],
+ ['Δευ 9/11','Νάουσα → Wien → Βέροια','ΚΗΙ 4521 · 9 – 12/11',300,200,120,'',220,390,'','cash'],
+ ['Σάβ 7/11','Πληρωμή · τράπεζα','Αλεξία','','','',500,-500,170,'',''],
+ ['Πέμ 5/11','Πληρωμή · τράπεζα','Ακυρώθηκε: λάθος ποσό · Αλεξία 6/11','','','',450,-450,'','can',''],
+ ['Δευ 2/11','Βέροια → Wien → Νάουσα','ΚΗΙ 4521 · 2 – 6/11',300,200,150,'',250,670,'','chk']];
 const m=(x,z)=>x===''?'<span class="z">–</span>':`<span class="num ${z||''}">${typeof x==='number'?eu(x):x}</span>`;
-const lrow=([d,t,s,v,g,e,c,r,cls,mk])=>`<div class="lg ${cls}"><span class="num">${d}</span><div class="two"><b><span class="el">${t}</span>${mk==='rel'?'<span class="tag" title="Τοπικός οδηγός">τοπική</span>':''}${mk==='chk'?`<i class="nb a" style="margin-left:8px" data-t="Θέλει έλεγχο: τα έξοδα διαφέρουν από τα μετρητά του δρομολογίου.">!</i>`:''}</b><span>${s}</span></div>${v==='p'?'<span class="pv">χωρίς αξία</span>':m(v)}${m(g)}${mk==='cash'?`<span class="num" style="position:relative" title="Από τα μετρητά του δρομολογίου· δεν αλλάζει από εδώ">${eu(e)}<span style="color:var(--help);position:absolute;left:100%;top:2px;margin-left:3px;display:grid">${ic('lock')}</span></span>`:m(e)}${c===null?'<span class="z">—</span>':`<span class="num ch">${c<0?'− '+eu(-c):'+ '+eu(c)}</span>`}<span class="num run">${r===''?'':bal(r)}</span><button class="ibt" title="Ελέγχθηκε · Διόρθωση · Ακύρωση">${ic('ellipsis')}</button></div>`;
+const lrow=([d,t,s,v,g,e,p,c,r,cls,mk])=>`<div class="lr ${cls}"><span class="num">${d}</span><div class="two"><b><span class="el">${t}</span>${mk==='chk'?`<i class="nb a ck" style="margin-left:8px" data-t="Θέλει έλεγχο: τα έξοδα διαφέρουν από τα μετρητά του δρομολογίου.">?</i>`:''}</b><span>${s}</span></div>${v==='p'?'<span class="pv">χωρίς αξία</span>':m(v)}${m(g)}${mk==='cash'?`<span class="num" style="position:relative" title="Από τα μετρητά του δρομολογίου· δεν αλλάζει από εδώ">${eu(e)}<span style="color:var(--help);position:absolute;left:100%;top:2px;margin-left:3px;display:grid">${ic('lock')}</span></span>`:m(e)}${m(p)}${c===null?'<span class="z">—</span>':`<span class="num ch">${c<0?'− '+eu(-c):'+ '+eu(c)}</span>`}<span class="num run">${r===''?'':bal(r)}</span><button class="ibt" title="Ελέγχθηκε · Διόρθωση · Ακύρωση">${ic('ellipsis')}</button></div>`;
 $('fL').innerHTML=`<div class="app">${side('m')}<main class="main">
- <div class="hd"><button class="pill" style="width:40px;padding:0;justify-content:center" title="Μισθοδοσία">${ic('arrow-left')}</button><span class="av" style="margin-left:6px">ΓΑ</span><div><h1 style="font-size:26px">Γ. Αλεξίου</h1><p>Διεθνής οδηγός</p></div><span class="sp"></span><button class="pill">${ic('printer')}Καρτέλα${ic('chevron-down')}</button><button class="pill">Προσαρμογή</button><button class="pill">${ic('route')}Δρομολόγιο</button><button class="pill b">${ic('banknote')}Πληρωμή</button></div>
+ <div class="hd"><button class="pill" style="width:40px;padding:0;justify-content:center" title="Μισθοδοσία">${ic('arrow-left')}</button><div style="margin-left:6px"><h1>Γ. Αλεξίου</h1><p>Διεθνής οδηγός</p></div><span class="chip" style="margin-left:14px;height:36px;font-weight:600;color:var(--ink)">2026 ${ic('chevron-down')}</span><span class="sp"></span><button class="pill">${ic('printer')}Καρτέλα${ic('chevron-down')}</button><button class="pill">Προσαρμογή</button><button class="pill">${ic('route')}Δρομολόγιο</button><button class="pill b">${ic('banknote')}Πληρωμή</button></div>
  <div class="card" style="flex:1;min-height:0;border-radius:24px 24px 0 0;overflow:hidden">
-  <div class="wk" style="border-bottom:1px solid var(--line);min-height:46px"><a>2024</a><a>2025</a><a class="on">2026</a><a>Όλα</a><span style="width:1px;height:18px;background:var(--line)"></span><a>Όλο το έτος</a><a>Οκτ</a><a class="on">Νοέμβριος</a><span class="sp"></span></div>
-  <div class="kpb yr"><b class="num">380,00 € <small>οφείλεται σήμερα</small></b><i class="nb a dn" style="align-self:center" data-t="1 δρομολόγιο χωρίς αξία: Βέροια → Zürich, Σάβ 14/11.">!</i><span class="sp"></span><span title="Όλο το 2026">2026 · <b class="num">31</b> δρομολόγια · <b class="num">4</b> τοπικές ημέρες</span><span>αξία <b class="num">9.240,00</b></span><span>έξοδα <b class="num">3.980,00</b></span><span>πληρωμές <b class="num">12.800,00</b></span></div>
-  <div class="lgh lbl"><span>Ημέρα</span><span>Κίνηση</span><span>Αξία</span><span>Έλαβε</span><span>Έξοδα</span><span>Μεταβολή</span><span>Υπόλοιπο</span><span></span></div>
-  <div class="lg qe"><span></span><div class="inp" style="justify-content:flex-start">Βέροια → Zürich · Σάβ 14/11<span class="sp"></span>${ic('chevron-down')}</div><div class="inp focus num">320${cur.replace('-6px','0')}</div><div class="inp num">200,00</div><div class="inp num ph"></div><span class="num ch" style="text-align:right">+ 120,00</span><span class="num run" style="text-align:right;color:var(--help)">500,00</span><button class="pill sm b" style="width:28px;height:28px;padding:0;justify-content:center" title="Καταχώριση">${ic('check')}</button></div>
+  <div class="wk" style="border-bottom:1px solid var(--line);min-height:46px"><a>Όλο το έτος</a><span style="width:1px;height:18px;background:var(--line)"></span>${ic('chevron-left')}<a>Σεπ</a><a>Οκτ</a><a class="on">Νοέμβριος</a>${ic('chevron-right')}<span class="sp"></span></div>
+  <div class="kpb yr"><b class="num">380,00 €<small>οφείλεται σήμερα</small></b><i class="nb a dn" style="align-self:center" data-t="1 δρομολόγιο χωρίς αξία: Βέροια → Zürich, Σάβ 14/11.">!</i><span class="sp"></span><span>Νοέμβριος · <b class="num">3</b> δρομολόγια · <b class="num">1</b> τοπική ημέρα</span></div>
+  <div class="dl stc" style="height:46px;grid-template-columns:minmax(0,1fr) auto;border-bottom:1px solid var(--line)"><span style="display:flex;align-items:center;gap:14px"><span class="lbl" style="color:var(--amber);font-weight:600">Χωρίς γραμμή · 1</span><span style="color:var(--ink);font-weight:500">Βέροια → Wien · Τετ 28/10 · ΚΗΙ 4521</span></span><button class="pill sm">Σύνδεση</button></div>
+  <div class="lrh lbl"><span>Ημέρα</span><span>Κίνηση</span><span>Αξία</span><span>Προκαταβολή</span><span>Έξοδα</span><span>Πληρωμή</span><span>Μεταβολή</span><span>Υπόλοιπο</span><span></span></div>
+  <div class="lr qin" style="grid-template-columns:86px minmax(0,1fr) 78px 84px 78px 340px">${fld('Ημέρα','14/11').replace('class="fld"','class="fld" style="text-align:left"').replace('class="inp "','class="inp " style="justify-content:flex-start"')}${fld('Δρομολόγιο χωρίς αξία','Βέροια → Zürich · Σάβ 14/11<span class="sp"></span>'+ic('chevron-down')).replace('class="inp "','class="inp " style="justify-content:flex-start"')}${fld('Αξία','320'+cur.replace('-6px','0'),'focus num').replace('class="fld"','class="fld r"')}${fld('Προκαταβολή','200,00','num').replace('class="fld"','class="fld r"')}${fld('Έξοδα','','num').replace('class="fld"','class="fld r"')}<div style="display:flex;align-items:center;justify-content:flex-end;gap:14px;height:34px"><span class="num" style="color:var(--help);white-space:nowrap">+ 120,00 → <b style="color:var(--ink);font-weight:600">500,00</b></span><button class="pill sm b">Καταχώριση ${ic('corner-down-left')}</button></div></div>
   ${LG.map(lrow).join('')}
-  <div class="lg"><span class="num">1/11</span><div class="two"><b style="color:var(--body)">Από μεταφορά</b></div><span></span><span></span><span></span><span></span><span class="num run">420,00</span><span></span></div>
-  <div class="lg tot"><span></span><span style="text-align:left">Νοέμβριος</span><span class="num">640,00</span><span class="num">950,00</span><span class="num">270,00</span><span class="num">− 40,00</span><span class="num" style="font-size:15px">380,00</span><span></span></div>
-  <div class="dl" style="cursor:default;height:48px;grid-template-columns:minmax(0,1fr) auto;margin-top:14px;border-top:1px solid var(--line)"><span style="display:flex;align-items:center;gap:8px;color:var(--amber);font-weight:500"><i class="nb a" data-t="Έχει δρομολόγιο στο πρόγραμμα και δεν έχει γραμμή εδώ.">!</i>Βέροια → Wien · Τετ 28/10 · ΚΗΙ 4521</span><button class="pill sm">Σύνδεση</button></div>
-  <div class="dl" style="cursor:default;height:44px;grid-template-columns:minmax(0,1fr) auto"><span style="color:var(--link);font-weight:500;display:inline-flex;gap:6px;align-items:center">${ic('chevron-right')}Τοπικές κινήσεις · 1</span></div>
+  <div class="lr"><span class="num">1/11</span><div class="two"><b style="color:var(--body)">Από μεταφορά</b></div><span></span><span></span><span></span><span></span><span></span><span class="num run">420,00</span><span></span></div>
+  <div class="lr tot"><span></span><span style="text-align:left">Νοέμβριος<span style="font-weight:400;color:var(--help);font-size:12.5px;margin-left:10px">προσαρμογές − 50,00</span></span><span class="num">640,00</span><span class="num">400,00</span><span class="num">270,00</span><span class="num">500,00</span><span class="num">− 40,00</span><span class="num" style="font-size:15px">380,00</span><span></span></div>
  </div></main></div>`;
 
 /* ---------- bulk and panels ---------- */
-const BK=[['Θ. Μέλλιος',610,600,'ok'],['Δ. Μάνος',450,400,'ok'],['Γ. Αλεξίου',380,450,'ok',1],['Μ. Χρυσουλίδης',320,300,'bad'],['Π. Ράπτης',240,700,'',2],['Λ. Δήμου',180,250,'']];
+const BK=[['Θ. Μέλλιος',610,600,'ok'],['Δ. Μάνος',450,400,'ok'],['Γ. Αλεξίου',380,450,'ok',1],['Μ. Χρυσάφης',320,300,'bad'],['Α. Ντίνος',260,500,''],['Π. Ράπτης',240,700,'',2],['Τ. Ιορδάνου',180,250,''],['Η. Σαράφης',140,350,'']];
 $('fB').innerHTML=`<div style="position:absolute;inset:0;display:flex;gap:24px;align-items:flex-start;padding:32px;background:#DFE1E6">
- <div class="pn" style="width:640px"><div style="display:flex;align-items:center;gap:12px"><h3>Μαζική πληρωμή</h3><span class="sp"></span><div class="inp" style="width:120px;height:34px">16/11/2026</div><span class="seg sm"><b class="on">Τράπεζα</b><b>Μετρητά</b></span></div>
+ <div class="pn" style="width:700px"><div style="display:flex;align-items:center;gap:12px"><h3>Μαζική πληρωμή</h3><span class="sp"></span><div class="inp" style="width:120px;height:34px">16/11/2026</div><span class="seg sm"><b class="on">Τράπεζα</b><b>Μετρητά</b></span></div>
   <div style="display:flex;gap:6px;margin:14px 0 10px"><span class="chip on">Όλη η οφειλή</span><span class="chip">Όπως τον Οκτώβριο</span><span class="chip">Ίδιο ποσό σε όλους</span><div class="inp ph num" style="width:84px;height:32px;justify-content:flex-end" title="Ποσό για το «Ίδιο ποσό σε όλους»">ποσό</div></div>
   <div class="bkh lbl"><span>Οδηγός</span><span>Οφειλή</span><span>Οκτώβριος</span><span>Πληρωμή €</span><span>Μένουν</span><span></span></div>
-  ${BK.map(([n,d,p,st,pe])=>`<div class="bk ${st==='ok'?'':'todo'}"><b>${n}${pe?`<i class="nb a" style="margin-left:8px;vertical-align:-3px" data-t="${pe} ${pe>1?'δρομολόγια':'δρομολόγιο'} χωρίς αξία· η οφειλή δεν είναι τελική.">!</i>`:''}</b><span class="num">${eu(d)}</span><span class="num g">${eu(p)}</span>${st==='ok'?`<span class="num">${eu(d)}</span>`:`<div class="inp num ${st==='bad'?'err':''}" style="${st==='bad'?'border-color:var(--red)':''}">${eu(d)}</div>`}<span class="num ${st==='ok'?'':'g'}">${pe?'—':'0,00'}</span>${st==='ok'?`<span style="color:var(--green);display:grid" title="Γράφτηκε">${ic('check')}</span>`:st==='bad'?`<i class="nb show" data-t="Δεν γράφτηκε: δεν υπάρχει σύνδεση.">!</i>`:'<span></span>'}</div>`).join('')}
-  <div class="bk" style="border-top:1.5px solid var(--ink);font-weight:600"><b style="font-weight:600">6 οδηγοί</b><span class="num">2.180,00</span><span></span><span class="num">2.180,00</span><span class="num">0,00</span><span></span></div>
-  <div class="pf"><span style="font-size:13px;color:var(--body)"><b style="color:var(--ink)" id="bw">3</b> γράφτηκαν · <b style="color:var(--ink)" id="bs">1.440,00</b></span><span class="sp"></span><button class="pill">Κλείσιμο</button><button class="pill b" id="bb" onclick="bulk()">Καταχώριση των 3 που έμειναν · 740,00</button></div></div>
+  ${BK.map(([n,d,p,st,pe])=>`<div class="bk ${st==='ok'?'':'todo'}" ${pe?'data-pe="1"':''}><b>${n}${pe?`<i class="nb a" style="margin-left:8px;vertical-align:-3px" data-t="${pe} ${pe>1?'δρομολόγια':'δρομολόγιο'} χωρίς αξία· η οφειλή δεν είναι τελική.">!</i>`:''}</b><span class="num">${eu(d)}</span><span class="num g">${eu(p)}</span>${st==='ok'?`<span class="num">${eu(d)}</span>`:`<div class="inp num ${st==='bad'?'err':''}" style="${st==='bad'?'border-color:var(--red)':''}">${eu(d)}</div>`}${st==='bad'?'<span class="nw">δεν γράφτηκε</span>':`<span class="num ${st==='ok'?'':'g'}">${pe?'—':'0,00'}</span>`}${st==='ok'?`<span style="color:var(--green);display:grid" title="Γράφτηκε">${ic('check')}</span>`:st==='bad'?`<i class="nb" data-t="Δεν υπάρχει σύνδεση.">!</i>`:'<span></span>'}</div>`).join('')}
+  <div class="bk"><b>Ν. Ρούσσος<i class="nb a" style="margin-left:8px;vertical-align:-3px" data-t="2 δρομολόγια χωρίς αξία· το υπόλοιπο δεν είναι γνωστό. Ό,τι γράψεις μπαίνει ως προκαταβολή.">!</i></b><span class="num">—</span><span class="num g">300,00</span><div class="inp num ph"></div><span class="num">—</span><span></span></div>
+  <div class="bk"><b>Κ. Τσολάκης<i style="font-style:normal;font-weight:400;color:var(--help);font-size:12.5px;margin-left:8px">ανενεργός</i></b><span class="num">150,00</span><span class="num g">–</span><div class="inp num ph"></div><span class="num">150,00</span><span></span></div>
+  <div class="bk" style="border-top:1.5px solid var(--ink);font-weight:600"><b style="font-weight:600">10 οδηγοί</b><span class="num">2.730,00</span><span></span><span class="num">2.580,00</span><span class="num">150,00</span><span></span></div>
+  <div style="margin-top:10px"><a style="font-size:13px;font-weight:500;color:var(--link);display:inline-flex;align-items:center;gap:6px">${ic('chevron-right')}4 χωρίς οφειλή</a></div>
+  <div class="pf"><span style="font-size:13px;color:var(--body)"><b style="color:var(--ink)" id="bw">3</b> γράφτηκαν · <b style="color:var(--ink)" id="bs">1.440,00</b></span><span class="sp"></span><button class="pill">Κλείσιμο</button><button class="pill b" id="bb" onclick="bulk()">Καταχώριση των 5 που έμειναν · 1.140,00</button></div></div>
  <div style="display:grid;gap:20px;width:330px">
   <div class="pn"><h3>Προσαρμογή</h3><small>Γ. Αλεξίου · υπόλοιπο 430,00</small>
    <div style="margin-top:12px"><span class="seg sm"><b>Υπέρ του οδηγού +</b><b class="on">Υπέρ της εταιρείας −</b></span></div>
    <div class="row g12" style="margin-top:12px"><div style="grid-column:span 6">${fld('Ποσό €','50,00')}</div><div style="grid-column:span 6">${fld('Ημέρα','15/11/2026')}</div></div>
    <div class="aft" style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13.5px"><span class="lbl">Υπόλοιπο</span><span class="sp"></span><b class="num" style="color:var(--ink)">430,00</b>${ic('arrow-right')}<b class="num" style="color:var(--ink)">380,00</b></div>
-   <div style="margin-top:14px">${fld('Αιτία <i class="nb show" data-t="Η προσαρμογή θέλει αιτία.">!</i>','','miss').replace('class="inp miss"','class="inp miss" style="background:#fff"')}</div>
+   <div style="margin-top:14px">${fld('Αιτία <i class="nb a" data-t="Η προσαρμογή θέλει αιτία.">!</i>','','miss').replace('class="inp miss"','class="inp miss" style="background:#fff"')}</div>
    <div class="pf"><span class="sp"></span><button class="pill">Άκυρο</button><button class="pill b off">Καταχώριση</button></div></div>
   <div class="pn"><h3>Διόρθωση ποσού</h3><small>Νάουσα → Wien → Βέροια · Δευ 9/11</small><div class="num" style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13.5px"><span class="lbl">Αξία</span><span class="sp"></span><b style="color:var(--ink)">300,00</b>${ic('arrow-right')}<b style="color:var(--ink)">320,00</b></div>
    <div style="margin-top:12px">${fld('Αιτία','Συμφωνήθηκε επιπλέον στάση'+cur,'focus')}</div>
@@ -176,32 +243,33 @@ $('fB').innerHTML=`<div style="position:absolute;inset:0;display:flex;gap:24px;a
  <div style="display:grid;gap:20px;width:300px">
   <div class="pop" style="animation:none;width:auto"><a>${ic('check-check')}Ελέγχθηκε</a><a>${ic('pencil')}Διόρθωση</a><hr><a class="r">${ic('ban')}Ακύρωση</a></div>
   <div class="pop" style="animation:none;width:auto"><a>${ic('rotate-ccw')}Επαναφορά<small>ακυρωμένη γραμμή</small></a></div>
-  <div class="pn"><h3>Μαζική πληρωμή 6 οδηγών;</h3><small>2.180,00 € · τράπεζα · Δευ 16/11</small><div class="pf"><span class="sp"></span><button class="pill">Άκυρο</button><button class="pill b">Καταχώριση</button></div></div>
+  <div class="pn"><h3>Μαζική πληρωμή 8 οδηγών;</h3><small>2.580,00 € · τράπεζα · Δευ 16/11</small><div class="pf"><span class="sp"></span><button class="pill">Άκυρο</button><button class="pill b">Καταχώριση</button></div></div>
   <div class="pop" style="animation:none;width:auto"><a>${ic('file-text')}Κατάσταση οφειλών οδηγών</a><a>${ic('file-spreadsheet')}CSV</a></div>
  </div></div>`;
 
 /* ---------- bad moments ---------- */
 const bp=(l,body)=>`<div class="panel"><p class="lbl">${l}</p>${body}</div>`;
-const em=(i,h,b='')=>`<div style="display:grid;justify-items:start;align-content:center;min-height:120px;gap:10px"><div class="tile soft" style="width:36px;height:36px;border-radius:10px">${ic(i)}</div><h3 style="margin:0;font-weight:500;color:var(--body);font-size:15px">${h}</h3>${b}</div>`;
-const strip=(i,t,b,n)=>`<div class="strip ${n?'n':''}" style="margin-top:12px;align-items:flex-start">${ic(i)}<div style="max-width:36ch">${t}${b?`<div style="display:flex;gap:8px;margin-top:10px">${b}</div>`:''}</div></div>`;
+const em=(i,h,b='')=>`<div style="display:grid;justify-items:start;gap:12px;margin-top:14px"><p style="color:var(--help);font-size:13.5px">${h}</p>${b}</div>`;
+const strip=(i,t,b,n)=>`<div class="strip ${n===2?'rd':n?'n':''}" style="margin-top:12px;align-items:flex-start">${ic(i)}<div style="max-width:36ch">${t}${b?`<div style="display:flex;gap:8px;margin-top:10px">${b}</div>`:''}</div></div>`;
 const dk=(l,t,b)=>`<div class="dark" style="margin-top:12px"><p class="lbl"><i class="r"></i>${l}</p><p style="max-width:36ch">${t}</p><div style="display:flex;gap:8px">${b}</div></div>`;
 const rd=`<button class="pill sm">${ic('rotate-cw')}Ξαναδιάβασε</button>`,rt='<button class="pill b sm">Ξαναδοκίμασε</button>';
 $('bad').innerHTML=[
  bp('Κανένας οδηγός με κίνηση',em('inbox','Καμία κίνηση τον Νοέμβριο')),
  bp('Καμία κίνηση στην περίοδο',em('inbox','Καμία κίνηση τον Αύγουστο',`<button class="pill sm">Όλο το έτος</button>`)),
  bp('Δεν διαβάστηκαν',em('cloud-off','Οι καρτέλες δεν διαβάστηκαν',rd)),
- bp('Διαβάστηκε το μισό',strip('cloud-off','Τα σύνολα του μήνα δεν διαβάστηκαν. Τα υπόλοιπα ισχύουν.',rd,1)+`<div class="dl" style="padding:0;margin-top:8px;grid-template-columns:minmax(0,1fr) 70px 80px">${two('Θ. Μέλλιος','Διεθνής')}<span class="n g">–</span><span class="bal num">610,00</span></div>`+strip('cloud-off','Οι τοπικές κινήσεις δεν διαβάστηκαν.',rd,1)),
- bp('Η πληρωμή δεν γράφτηκε',dk('Δεν γράφτηκε','Πληρωμή 380,00 στον Γ. Αλεξίου, τράπεζα, Δευ 16/11.',rt)),
- bp('Μαζική πληρωμή που έμεινε στη μέση',strip('triangle-alert','Γράφτηκαν 3 από 6 πληρωμές, 1.440,00. Οι άλλες 3 δεν γράφτηκαν.','<button class="pill sm">Δες ποιες</button>')),
- bp('Δρομολόγιο χωρίς αξία',`<div class="dl" style="padding:0;margin-top:12px;grid-template-columns:minmax(0,1fr) 18px 70px">${two('Ε. Σαρίδης','Εθνικός')}<i class="nb a show" data-t="1 δρομολόγιο χωρίς αξία. Το υπόλοιπο δεν βγαίνει.">!</i><span class="bal num u">—</span></div>`),
- bp('Γραμμή σε διόρθωση',`<div style="display:grid;grid-template-columns:minmax(0,1fr) 70px 70px 70px;gap:8px;align-items:center;margin-top:14px"><div class="two"><b>Νάουσα → Wien</b><span>Δευ 9/11</span></div><div class="inp focus num" style="height:34px;justify-content:flex-end;padding:0 8px">320</div><div class="inp num" style="height:34px;justify-content:flex-end;padding:0 8px">200</div><div class="inp num" style="height:34px;justify-content:flex-end;padding:0 8px;background:var(--bg);color:var(--help)" title="Από τα μετρητά του δρομολογίου">120</div></div>`),
- bp('Αρνητικό υπόλοιπο',`<div class="dl" style="padding:0;margin-top:12px;grid-template-columns:minmax(0,1fr) 90px">${two('Σ. Κάππος','Διεθνής')}<span class="bal num neg" title="Ο οδηγός οφείλει στην εταιρεία">(120,00)</span></div>`),
+ bp('Διαβάστηκε το μισό',strip('cloud-off','Τα σύνολα του μήνα δεν διαβάστηκαν. Τα υπόλοιπα ισχύουν.',rd,1)+`<div class="dl stc" style="padding:0;margin-top:8px;grid-template-columns:minmax(0,1fr) 70px 80px">${two('Θ. Μέλλιος','Διεθνής')}<span class="n g">–</span><span class="bal num">610,00</span></div>`+strip('cloud-off','Οι τοπικές κινήσεις δεν διαβάστηκαν.',rd,1)),
+ bp('Η πληρωμή δεν γράφτηκε',strip('circle-alert','Δεν γράφτηκε: πληρωμή 380,00 στον Γ. Αλεξίου, τράπεζα, Δευ 16/11.',rt,2)),
+ bp('Μαζική πληρωμή που έμεινε στη μέση',strip('triangle-alert','Γράφτηκαν 3 από 8 πληρωμές, 1.440,00. Οι άλλες 5 δεν γράφτηκαν.','<button class="pill sm">Δες ποιες</button>',2)),
+ bp('Δρομολόγιο χωρίς αξία',`<div class="dl stc" style="padding:0;margin-top:12px;grid-template-columns:minmax(0,1fr) 18px 70px">${two('Ν. Ρούσσος','Εθνικός')}<i class="nb a show dn" data-t="1 δρομολόγιο χωρίς αξία. Το υπόλοιπο δεν βγαίνει.">!</i><span class="bal num u">—</span></div>`),
+ bp('Γραμμή σε διόρθωση',`<div class="two" style="margin-top:12px"><b>Νάουσα → Wien → Βέροια</b><span>Δευ 9/11 · ΚΗΙ 4521</span></div><div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px">${fld('Αξία','320','focus num')}${fld('Προκαταβολή','200,00','num')}${fld('Έξοδα <span title="Από τα μετρητά του δρομολογίου" style="display:grid;color:var(--help)">'+ic('lock')+'</span>','120,00','num').replace('class="inp num"','class="inp num" style="background:var(--bg);color:var(--help)"')}</div>`),
+ bp('Αρνητικό υπόλοιπο',`<div class="dl stc" style="padding:0;margin-top:12px;grid-template-columns:minmax(0,1fr) 90px">${two('Σ. Κάππος','Διεθνής')}<span class="bal num neg" title="Ο οδηγός οφείλει στην εταιρεία">(120,00)</span></div>`),
  bp('Το άλλαξε κάποιος άλλος',strip('users','Η αξία του Νάουσα → Wien, Δευ 9/11 άλλαξε από άλλον σε 320,00.','<button class="pill sm">Ανανέωση</button>',1)),
  bp('Γραμμένα που δεν αποθηκεύτηκαν',`<div class="pn" style="box-shadow:none;padding:14px 0 0"><h3 style="font-size:15px">Να χαθεί η αξία 320,00 που έγραψες;</h3><small>Βέροια → Zürich · Σάβ 14/11</small><div class="pf"><button class="pill sm">Χάσε την</button><button class="pill sm b">Καταχώριση</button></div></div>`),
  bp('«Ελέγχθηκε» που δεν κρατήθηκε',strip('triangle-alert','Το «Ελέγχθηκε» για Βέροια → Wien, Δευ 2/11 δεν γράφτηκε.','<button class="pill sm">Ξαναδοκίμασε</button>')),
  bp('Πληρωμή που ίσως γράφτηκε',strip('circle-help','Η απάντηση άργησε. Η πληρωμή 380,00 στον Γ. Αλεξίου μπορεί να γράφτηκε.','<button class="pill sm">Δες αν γράφτηκε</button>')),
- bp('Φόρτωση',[0,1,2].map(()=>`<div style="display:grid;grid-template-columns:32px minmax(0,1fr) 70px;gap:14px;align-items:center;height:56px"><div class="sk" style="width:32px;height:32px;border-radius:50%"></div><div><div class="sk" style="height:12px;width:50%"></div><div class="sk" style="height:10px;width:30%;margin-top:8px"></div></div><div class="sk" style="height:12px"></div></div>`).join('')),
- bp('Μόνο ανάγνωση',`<div style="margin-top:12px"><span class="tag" style="margin:0;display:inline-flex;gap:5px;align-items:center;height:22px">${ic('eye')}Μόνο ανάγνωση</span></div><div class="dl" style="padding:0;margin-top:8px;grid-template-columns:minmax(0,1fr) 90px">${two('Γ. Αλεξίου','Διεθνής')}<span class="bal num">380,00</span></div>`)
+ bp('Φόρτωση',[62,48,56].map(w=>`<div style="display:grid;grid-template-columns:minmax(0,1fr) 64px;gap:14px;align-items:center;height:46px;border-top:1px solid var(--line-2)"><div class="sk" style="height:11px;width:${w}%"></div><div class="sk" style="height:11px"></div></div>`).join('')),
+ bp('Πληρωμή πάνω από την οφειλή',`<div class="dl stc" style="padding:0;margin-top:12px;grid-template-columns:minmax(0,1fr) 90px">${two('Σ. Κάππος','Διεθνής')}<span class="bal num">(120,00)</span></div><div style="display:flex;align-items:center;gap:8px;margin-top:6px"><div class="inp num" style="height:34px;width:90px;justify-content:flex-end">100,00</div><span class="sp"></span><i class="nb a show dn" data-t="Πάνω από την οφειλή: ο οδηγός θα οφείλει στην εταιρεία.">!</i><button class="pill sm b">Καταχώριση</button></div><p style="margin-top:64px;font-size:12.5px;color:var(--help)">Γράφτηκε με σημείωση · Αλεξία, Δευ 16/11</p>`),
+ bp('Μόνο ανάγνωση',`<div style="margin-top:12px"><span class="tag" style="margin:0;display:inline-flex;gap:5px;align-items:center;height:22px">${ic('eye')}Μόνο ανάγνωση</span></div><div class="dl stc" style="padding:0;margin-top:8px;grid-template-columns:minmax(0,1fr) 90px">${two('Γ. Αλεξίου','Διεθνής')}<span class="bal num">380,00</span></div>`)
 ].join('');
 
 /* ---------- A4 ---------- */
@@ -209,19 +277,21 @@ const ptop=(a,b)=>`<div class="top"><span class="logo full" role="img" aria-labe
 const pm=x=>x===''||x==='p'?'':typeof x==='number'?eu(x):x;
 $('a4c').innerHTML=`${ptop('Καρτέλα οδηγού','Νοέμβριος 2026')}
 <div class="hero" style="grid-template-columns:1fr 190px"><div><h2>Γ. Αλεξίου</h2><p style="margin-top:6px;color:#444">Διεθνής οδηγός</p></div><div style="text-align:right"><span style="font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:#444">Οφείλεται στις 16/11/2026</span><b class="t num" style="margin-top:4px">380,00 €</b></div></div>
-<div class="hr"><span>Ημέρα</span><span>Κίνηση</span><span>Αξία</span><span>Έλαβε</span><span>Έξοδα</span><span>Μεταβολή</span><span>Υπόλοιπο</span></div>
-<div class="r"><span>1/11</span><span>Από μεταφορά</span><span></span><span></span><span></span><span></span><span class="tot">420,00</span></div>
-${LG.filter(r=>r[8]!=='can').slice().reverse().map(([d,t,s,v,g,e,c,r])=>`<div class="r"><span>${d.split(' ')[1]}</span><span>${t}${v==='p'?' <span class="box">χωρίς αξία</span>':''}</span><span>${pm(v)}</span><span>${pm(g)}</span><span>${pm(e)}</span><span>${c===null?'—':(c<0?'− '+eu(-c):'+ '+eu(c))}</span><span class="tot">${bal(r)}</span></div>`).join('')}
-<div class="r psum"><span></span><span>Νοέμβριος</span><span>640,00</span><span>950,00</span><span>270,00</span><span>− 40,00</span><span class="tot">380,00</span></div>
+<div class="hr"><span>Ημέρα</span><span>Κίνηση</span><span>Αξία</span><span>Προκαταβ.</span><span>Έξοδα</span><span>Πληρωμή</span><span>Μεταβολή</span><span>Υπόλοιπο</span></div>
+<div class="r"><span>1/11</span><span>Από μεταφορά</span><span></span><span></span><span></span><span></span><span></span><span class="tot">420,00</span></div>
+${LG.filter(r=>r[9]!=='can').slice().reverse().map(([d,t,s,v,g,e,p,c,r])=>`<div class="r"><span>${d.split(' ')[1]}</span><span>${t}${/ΚΗΙ|Πρόστιμο|παράδοση/.test(s)?`<small>${s.replace(' · Δημήτρης','')}${v==='p'?' <span class="box" style="border-color:var(--amber);color:var(--amber);margin-left:6px;white-space:nowrap">χωρίς αξία</span>':''}</small>`:''}</span><span>${pm(v)}</span><span>${pm(g)}</span><span>${pm(e)}</span><span>${pm(p)}</span><span>${c===null?'—':(c<0?'− '+eu(-c):'+ '+eu(c))}</span><span class="tot">${bal(r)}</span></div>`).join('')}
+<div class="r psum"><span></span><span>Νοέμβριος<small style="font-weight:400">προσαρμογές − 50,00</small></span><span>640,00</span><span>400,00</span><span>270,00</span><span>500,00</span><span>− 40,00</span><span class="tot">380,00</span></div>
 <div class="fn" style="grid-template-columns:1fr;font-size:9.5px;margin-top:20px"><span>Το δρομολόγιο Βέροια → Zürich της 14/11 δεν έχει ακόμη αξία και δεν μετρά στο υπόλοιπο.</span></div>
-<div style="margin-top:56px;display:grid;grid-template-columns:1fr 1fr;gap:60px;font-size:8.5px;color:#444"><span style="border-top:.5px solid #111;padding-top:4px">Για την Petras Group</span><span style="border-top:.5px solid #111;padding-top:4px">Ο οδηγός · ημερομηνία, υπογραφή</span></div>
-<div class="foot" style="margin-top:auto"><span>Αλεξία · 16/11/2026 07:42</span><span>1 / 1</span></div>`;
+<div style="margin-top:auto;display:grid;grid-template-columns:1fr 1fr;gap:60px;font-size:8.5px;color:#444"><span style="border-top:.5px solid #111;padding-top:4px">Για την Petras Group</span><span style="border-top:.5px solid #111;padding-top:4px">Ο οδηγός · ημερομηνία, υπογραφή</span></div>
+<div class="foot" style="margin-top:36px"><span>Αλεξία · 16/11/2026 07:42</span><span>1 / 1</span></div>`;
 $('a4d').innerHTML=`${ptop('Μισθοδοσία οδηγών','16 Νοεμβρίου 2026')}
-<div class="hero" style="grid-template-columns:1fr"><div><h2>Κατάσταση οφειλών οδηγών</h2><b class="t num">2.330,00 €</b></div></div>
-<div class="hr"><span>Οδηγός</span><span>Δρομ.</span><span>Αξία μήνα</span><span>Πληρωμές</span><span>Υπόλοιπο</span><span></span><span>Υπογραφή</span></div>
-${DR.concat([['ΝΡ','Ν. Ρήγας','Ανενεργός',0,0,0,0,150]]).sort((a,b)=>(b[7]??-1e9)-(a[7]??-1e9)).map(([i,n,t,tr,v,p,pe,b])=>`<div class="r"><span><b>${n}</b><i>${t}</i></span><span>${tr||'–'}</span><span>${v?eu(v):'–'}</span><span>${p?eu(p):'–'}</span><span class="tot">${b===null?'—':bal(b)}</span><span>${pe?'<sup style="margin:0">1</sup>':''}</span><span><i class="sg2"></i></span></div>`).join('')}
-<div class="r psum"><span>Σύνολο οφειλής<i>7 με οφειλή</i></span><span>21</span><span>4.960,00</span><span>2.900,00</span><span class="tot">2.330,00</span><span></span><span></span></div>
-<div class="fn" style="grid-template-columns:1fr"><span><sup>1</sup>Έχει δρομολόγιο χωρίς αξία· το υπόλοιπο δεν είναι τελικό.</span><span>Ποσό σε παρένθεση: ο οδηγός οφείλει στην εταιρεία. Δεν μετρά στο σύνολο.</span></div>
+<div class="hero" style="grid-template-columns:1fr"><div><h2>Κατάσταση οφειλών οδηγών</h2><b class="t num">${eu(DUE0)} €</b></div></div>
+<div class="hr"><span>Οδηγός</span><span>Δρ.</span><span>Αξία</span><span>Προηγ.</span><span>Μήνας</span><span>Πληρωμές</span><span>Υπόλοιπο</span><span></span><span>Υπογραφή</span></div>
+${DR.map((d,i)=>[d,i]).sort((a,b)=>(b[0][6]??-1e9)-(a[0][6]??-1e9)).map(([[n,t,tr,v,p,pe,b,o],i])=>`<div class="r"><span><b>${n}</b><i>${t}</i></span><span>${tr}</span><span>${v?eu(v):'–'}</span><span>${bal(o)}</span><span>${mon(i)===null?'—':sg(mon(i))}</span><span>${p?'− '+eu(p):'–'}</span><span class="tot">${b===null?'—':bal(b)}</span><span>${pe?'<sup style="margin:0">1</sup>':''}</span><span><i class="sg2"></i></span></div>`).join('')}
+<div class="r psum"><span>Σύνολο<i>${DR.length} οδηγοί</i></span><span>${sum(2)}</span><span>${eu(sum(3))}</span><span>${eu(sum(7))}</span><span>${sg(MON)}</span><span>− ${eu(sum(4))}</span><span class="tot">${bal(NET)}</span><span></span><span></span></div>
+${OFF.filter(o=>o[2]).map(o=>`<div class="r" style="border-top:0"><span><b>${o[0]}</b><i>Ανενεργός, εκτός λίστας</i></span><span>–</span><span>–</span><span>${eu(o[2])}</span><span>–</span><span>–</span><span class="tot">${eu(o[2])}</span><span></span><span><i class="sg2"></i></span></div>`).join('')}
+<div class="r psum"><span>Οφείλονται<i>${NDUE} με οφειλή</i></span><span></span><span></span><span></span><span></span><span></span><span class="tot">${eu(DUE0)}</span><span></span><span></span></div>
+<div class="fn" style="grid-template-columns:1fr"><span><sup>1</sup>Έχει δρομολόγιο χωρίς αξία· το υπόλοιπο δεν είναι τελικό.</span><span>Ποσό σε παρένθεση: ο οδηγός οφείλει στην εταιρεία. Δεν μετρά στα οφειλόμενα.</span></div>
 <div class="foot" style="margin-top:auto"><span>Αλεξία · 16/11/2026 07:42</span><span>1 / 1</span></div>`;
 boot();
 </script>

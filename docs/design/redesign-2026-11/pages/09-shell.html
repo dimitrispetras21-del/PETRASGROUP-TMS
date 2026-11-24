@@ -10,8 +10,10 @@
 /* DESIGN MOCKUP ONLY. Invented names. Page-specific rules for the shell. */
 .who{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
 /* menus per job */
-.mn{position:absolute;inset:0;padding:24px;display:grid;grid-template-columns:repeat(5,232px);gap:16px;justify-content:center;align-items:start}
-.mn .side{border:0;border-radius:var(--r-card);min-height:0;padding-bottom:16px}.mn .side .bsep{margin-top:18px}
+.mn{position:absolute;inset:0;padding:24px;display:grid;grid-template-columns:repeat(5,232px) 68px;gap:16px;justify-content:center;align-items:start}
+/* each menu is its own small .app so the shared close button at the top works on it too */
+.mn .app{position:relative;inset:auto;display:block}.mn .app.rail{width:68px}
+.mn .side{border-radius:var(--r-card);min-height:0;padding-bottom:16px}.mn .side .bsep{margin-top:18px}
 /* shell pieces over a page */
 .ghost{flex:1;min-height:0;border-radius:24px 24px 0 0;background:#fff;padding:24px 28px;display:grid;gap:18px;align-content:start}
 .ghost i{display:block;height:12px;border-radius:6px;background:var(--bg)}
@@ -23,16 +25,43 @@
 .kr b{font-weight:500;color:var(--ink);display:block}.kr small{display:block;color:var(--help);font-size:12.5px}.kr>span:last-child{color:var(--help);font-size:12.5px;white-space:nowrap}.kr .st{font-size:12.5px}
 .kft{display:flex;gap:16px;padding:10px 20px;border-top:1px solid var(--line);margin-top:8px;color:var(--help);font-size:12px}.kft kbd{font:inherit;border:1px solid var(--line);border-radius:5px;padding:0 5px;margin-right:4px;color:var(--body)}
 /* the bell: one list, the same as the landing page */
-.bell{display:flex;align-items:center;gap:12px;height:36px;padding:0 12px;border-radius:10px;color:var(--body);font-weight:500;cursor:pointer;margin-top:auto;transition:background var(--t-fast)}.bell:hover,.bell.on{background:var(--bg)}.bsep{margin-top:auto;border-top:1px solid var(--line);margin-bottom:8px}.side .bell{margin-top:0}
-.bell em{margin-left:auto;font-style:normal;font-size:12px;font-weight:600;color:var(--red)}.side .bell+.me{margin-top:6px}
-.bp{position:absolute;z-index:6;left:256px;top:132px;width:500px;background:#fff;border-radius:20px;box-shadow:var(--shadow-float);padding:8px 0 10px;opacity:0;transform:translateX(-10px);pointer-events:none;transition:opacity var(--t-exit) var(--ease-exit),transform var(--t-exit) var(--ease-exit)}
+.bell{display:flex;align-items:center;gap:12px;height:36px;padding:0 12px;border-radius:10px;color:var(--body);font-weight:500;cursor:pointer;margin-top:auto;transition:background var(--t-fast)}.bsep{margin-top:auto;border-top:1px solid rgba(255,255,255,.12);margin-bottom:8px}.side .bell{margin-top:0}
+/* the menu is dark navy (shared): an open bell is "pressed", not "the place you are in", so it gets no blue line */
+.side .bell.on{background:rgba(255,255,255,.09);color:#fff}.side .bell.on::before{display:none}
+.bell em{margin-left:auto;font-style:normal;font-size:12px;font-weight:600}.side .bell+.me{margin-top:6px}
+.bell .ok{margin-left:auto;display:grid;color:#4ADE80;text-decoration:none}.bell .ok svg.lucide{width:16px;height:16px}
+/* narrow rail: the count stays on the bell as a small badge, never lost with the label */
+.rail .side .bsep{width:28px}
+/* one look for the count, wide or narrow: a small red badge */
+.side .bell em{display:grid;place-items:center;min-width:20px;height:18px;padding:0 5px;border-radius:9px;background:#DC2626;color:#fff;font-size:11px;font-variant-numeric:tabular-nums}
+.rail .side .bell em{display:grid;position:absolute;top:1px;right:1px;min-width:17px;height:17px;padding:0 4px;font-size:10.5px;margin:0;box-shadow:0 0 0 2px #0B1929}
+.rail .side .bell .ok{position:absolute;top:3px;right:4px}.rail .side .bell .ok svg.lucide{width:12px;height:12px}
+
+.bp{position:absolute;z-index:6;left:244px;bottom:20px;width:548px;background:#fff;border-radius:20px;box-shadow:var(--shadow-float);padding:8px 0 10px;opacity:0;transform:translateX(-8px) scale(.98);transform-origin:0 100%;pointer-events:none;transition:opacity var(--t-exit) var(--ease-exit),transform var(--t-exit) var(--ease-exit)}
+.app.rail~.bp{left:80px}
 .bp.open{opacity:1;transform:none;pointer-events:auto;transition:opacity var(--t-enter) var(--ease),transform var(--t-enter) var(--ease)}
 .bp .gh{display:flex;gap:8px;align-items:center;padding:12px 20px 2px}.bp .gh b{font-weight:600;color:var(--ink);font-size:11px}
-.br2{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:0 8px;align-items:center;height:58px;padding:0 20px;overflow:hidden;transition:height var(--t-move) var(--ease),opacity var(--t-exit) var(--ease-exit),transform var(--t-move) var(--ease)}
-.br2.go{height:0;opacity:0;transform:translateX(-12px)}.br2 .acts{display:flex;opacity:0;transition:opacity var(--t-fast)}.br2:hover .acts,.br2.hv .acts{opacity:1}.bp .gh{overflow:hidden;transition:height var(--t-move) var(--ease),opacity var(--t-exit) var(--ease-exit),padding var(--t-move) var(--ease)}.br2 .two b{font-size:13.5px}.br2 .w{font-size:12.5px;color:var(--body);white-space:nowrap}.br2 .w.r{color:var(--red);font-weight:600}.br2 .w.k{color:var(--ink);font-weight:600}
+.br2{display:grid;grid-template-columns:92px minmax(0,1fr) auto;gap:0 12px;align-items:center;height:50px;padding:0 12px 0 20px;overflow:hidden;transition:height var(--t-move) var(--ease),opacity var(--t-exit) var(--ease-exit),transform var(--t-move) var(--ease)}
+.br2.go{height:0;opacity:0;transform:translateX(-12px)}.br2{cursor:pointer}.br2 .acts{display:flex;align-items:center;gap:6px}.br2 .acts>svg.lucide{width:15px;height:15px;color:#A9ABB3}.br2 .lt{height:28px;padding:0 10px;font-size:12.5px;gap:5px}.br2 .lt svg.lucide{width:13px;height:13px}
+@media (hover:hover){.br2:hover{background:var(--bg)}}
+#fP .chip.on{border-color:var(--accent);color:var(--link)}#fP .chip.on b{color:var(--link)}.bp .gh{overflow:hidden;transition:height var(--t-move) var(--ease),opacity var(--t-exit) var(--ease-exit),padding var(--t-move) var(--ease)}.br2 .two b{font-size:13.5px}.br2 .w{display:block;line-height:1.3;white-space:nowrap}.br2 .w b{display:block;font-size:13px;font-weight:500;color:var(--ink)}.br2 .w small{display:block;font-size:12px;color:var(--help)}.br2 .w.r b{color:var(--red);font-weight:600}
+.del{display:grid;grid-template-columns:78px minmax(0,1fr) auto;gap:0 12px;align-items:center;height:52px;border-top:1px solid var(--line-2)}.del>.num{font-size:13px;font-weight:500;color:var(--ink);white-space:nowrap}
+.ut,.toast.ut{background:#0B1929}
+/* bad moments: each drawn on the piece of the real screen where it happens */
+.bad9{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:28px 24px;align-items:start;padding:28px;border-radius:24px;background:#E4E6EB}.scn>.lbl{margin-bottom:10px}
+.scn .pn{box-shadow:var(--shadow-card,0 1px 2px rgba(0,0,16,.06));border-radius:20px}
+.scn .kp2{position:static;margin:0;width:auto;animation:none;box-shadow:none}
+.scn .as2{position:static;width:auto;box-shadow:none;height:232px}
+.foot{background:#0B1929;border-radius:16px;padding:10px 14px 14px;min-height:0}.foot .bsep{margin-top:0}
+.foot .fo{display:flex;align-items:center;gap:8px;height:30px;padding:0 12px;color:#C7D2DD;font-size:12.5px}
+.mpg{display:grid;grid-template-columns:48px minmax(0,1fr);height:232px;border-radius:20px;overflow:hidden;background:var(--bg)}
+.mpg>i{background:#0B1929;display:grid;align-content:start;justify-items:center;gap:14px;padding-top:16px;color:#6F8296}.mpg>i svg.lucide{width:16px;height:16px}
+.mpg>div{padding:16px 20px;display:grid;align-content:start;gap:12px;background:#EEF0F3}.mpg h1{font-size:20px;font-weight:400;color:var(--ink);letter-spacing:-.3px}
+.mpg .bx{background:#fff;border-radius:14px;padding:16px;display:grid;justify-items:start;gap:10px;align-content:center;flex:1;min-height:120px}.mpg .bx b{font-weight:500;color:var(--ink);font-size:14.5px}
 .ib2{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:var(--help);transition:background var(--t-fast)}.ib2:hover{background:var(--bg);color:var(--ink)}.ib2 svg.lucide{width:15px;height:15px}
 /* assistant */
-.as2{position:absolute;z-index:6;right:20px;top:20px;bottom:20px;width:400px;background:#fff;border-radius:20px;box-shadow:var(--shadow-float);display:flex;flex-direction:column;padding:20px 22px 16px}
+.as2{position:absolute;z-index:6;left:244px;top:110px;width:400px;background:#fff;border-radius:20px;box-shadow:var(--shadow-float);display:flex;flex-direction:column;padding:18px 20px 16px;transform-origin:0 0}
+.app.rail~.as2{left:80px}
 .as2 .q2{align-self:flex-end;background:var(--bg);border-radius:14px 14px 4px 14px;padding:9px 13px;color:var(--ink);font-weight:500;max-width:80%;margin-top:16px}
 .as2 .a2{margin-top:12px;color:var(--ink);line-height:1.5}
 .pc{border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-top:10px}.pc dl{display:grid;grid-template-columns:96px minmax(0,1fr);gap:6px 10px;margin:8px 0 12px;font-size:13.5px}.pc dt{color:var(--help);font-size:12.5px}.pc dd{margin:0;color:var(--ink);font-weight:500}
@@ -68,24 +97,24 @@
   <div class="fit"><div class="frame" id="fX" style="height:760px"></div></div>
 </section>
 <section class="sec"><h2>Το μενού ανά δουλειά</h2>
-  <div class="cap"><h3>Έξι ομάδες, και μόνο ό,τι αφορά τον καθένα</h3><span>Ποιος βλέπει τι το αποφασίζει ο Δημήτρης· εδώ είναι πρόταση.</span></div>
-  <div class="fit"><div class="frame" id="fN" style="height:980px"></div></div>
+  <div class="cap"><h3>Έξι ομάδες, και μόνο ό,τι αφορά τον καθένα</h3><span>Ποιος βλέπει τι το αποφασίζει ο Δημήτρης· εδώ είναι πρόταση. Δεξιά: το μενού κλειστό.</span></div>
+  <div class="fit"><div class="frame" id="fN" style="height:1020px"></div></div>
 </section>
 <section class="sec"><h2>Αναζήτηση</h2>
   <div class="cap"><h3>Φορτία, οχήματα, άνθρωποι, σελίδες</h3><span>Ctrl K ή ⌘ K από παντού</span></div>
   <div class="fit"><div class="frame" id="fK" style="height:760px"></div></div>
 </section>
 <section class="sec"><h2>Το καμπανάκι</h2>
-  <div class="cap"><h3>Η ίδια λίστα με την αρχική, από κάθε σελίδα</h3><span>Πάτησε το καμπανάκι· πάτησε το ρολόι σε μια γραμμή.</span></div>
+  <div class="cap"><h3>Η ίδια λίστα με την αρχική, από κάθε σελίδα</h3><span>Πάτησε το καμπανάκι· πάτησε το ρολόι σε μια γραμμή. Κόκκινη ημέρα: άργησε ή είναι για σήμερα.</span></div>
   <div class="fit"><div class="frame" id="fB" style="height:820px"></div></div>
 </section>
 <section class="sec"><h2>Βοηθός και ιστορικό</h2>
   <div class="cap"><h3>Ο βοηθός προτείνει, η φόρμα γράφει</h3><span>Στη μέση: το ιστορικό πάνω στην εγγραφή, με απλά λόγια</span></div>
-  <div class="fit"><div class="frame" id="fA" style="height:780px"></div></div>
-  <div class="cap"><h3>Ό,τι ανοίγει</h3><span>Αναίρεση πάνω στην ενέργεια (εδώ τρέχει σε 6 δευτερόλεπτα, στην εφαρμογή 60) · ο χρήστης · διαγραμμένα ως φίλτρο · νέα έκδοση</span></div>
-  <div class="fit"><div class="frame" id="fP" style="height:300px"></div></div>
+  <div class="fit"><div class="frame" id="fA" style="height:1010px"></div></div>
+  <div class="cap"><h3>Ό,τι ανοίγει, εκεί που ανοίγει</h3><span>Η αναίρεση εδώ τρέχει σε 6 δευτερόλεπτα και ξαναρχίζει μόνη της· στην εφαρμογή 60.</span></div>
+  <div class="fit"><div class="frame" id="fP" style="height:780px"></div></div>
 </section>
-<section class="sec"><h2>Οι κακές στιγμές</h2><div class="grid g4" style="align-items:stretch" id="bad"></div></section>
+<section class="sec"><h2>Οι κακές στιγμές</h2><div class="bad9" id="bad"></div></section>
 <section class="sec"><h2>Χαρτιά</h2><p class="lead">Το κέλυφος δεν τυπώνει. Το ιστορικό σήμερα δεν εξάγεται· η εξαγωγή του είναι ερώτηση προς τον Δημήτρη.</p></section>
 </div>
 
@@ -104,38 +133,40 @@ const M={h:['ΑΡΧΗ',[['house','Σήμερα','h'],['chart-no-axes-column','Δ
  f:['ΣΤΟΛΟΣ',[['truck','Στόλος','t'],['wrench','Εργασίες','j'],['store','Συνεργεία','ws']]],
  d:['ΣΤΟΙΧΕΙΑ',[['book-user','Κατάλογος','c'],['map-pin','Τοποθεσίες','l']]]};
 const pick=(g,ids)=>[M[g][0],M[g][1].filter(x=>!ids||ids.includes(x[2]))];
-function sd(groups,on,av,nm,ro,n,bellOn){return `<aside class="side"><div class="lg"><span class="logo full" role="img" aria-label="Petras Group"></span></div>`+
+function sd(groups,on,av,nm,ro,n,bellOn,act){return `<aside class="side"><div class="lg"><span class="logo full" role="img" aria-label="Petras Group"></span><span class="logo mark"></span>${MENU_TG}</div><div class="qk"><a class="sr ${act==='s'?'act':''}" role="button" tabindex="0" title="Αναζήτηση · Ctrl K">${ic('search')}<span>Αναζήτηση</span><kbd>Ctrl K</kbd></a><a class="ai ${act==='a'?'act':''}" role="button" tabindex="0" title="Βοηθός" aria-label="Βοηθός">${ic('sparkles')}</a></div>`+
  groups.map(([g,it],i)=>`${i?'<hr>':''}<h4>${g}</h4>`+it.map(([icn,l,id])=>`<a class="${id===on?'on':''}" title="${l}">${ic(icn)}<span>${l}</span></a>`).join('')).join('')+
- `<div class="bsep"></div><a class="bell ${bellOn?'on':''}" role="button" tabindex="0" aria-expanded="${bellOn?'true':'false'}" ${bellOn?'id="bl" onclick="bell()" onkeydown="if(event.key===\'Enter\')bell()"':''}>${ic('bell')}<span>Σε περιμένουν</span>${n?`<em>${n}</em>`:n===0?`<span style="margin-left:auto;color:var(--green);display:grid">${ic('check')}</span>`:''}</a><div class="me"><span class="av">${av}</span><div>${nm}<small>${ro}</small></div></div></aside>`}
+ `<div class="bsep"></div><a class="bell ${bellOn?'on':''}" role="button" tabindex="0" aria-expanded="${bellOn?'true':'false'}" ${bellOn?'id="bl" onclick="bell()" onkeydown="if(event.key===\'Enter\')bell()"':''} title="Σε περιμένουν${n?' · '+n:''}">${ic('bell')}<span>Σε περιμένουν</span>${n?`<em>${n}</em>`:n===0?`<u class="ok">${ic('check')}</u>`:''}</a><div class="me" title="${nm} · ${ro}"><span class="av">${av}</span><div>${nm}<small>${ro}</small></div></div></aside>`}
 const ALL=[pick('h'),pick('s'),pick('w'),pick('m'),pick('f'),pick('d')];
 const DSP=[pick('h',['h']),pick('s'),pick('w'),pick('f',['t']),pick('d')];
 const ghost=a=>`<div class="ghost">${a.map(w=>`<i style="width:${w}%"></i>`).join('')}</div>`;
 
 /* ---------- login ---------- */
-$('fX').innerHTML=`<div class="app">${sd(DSP,'o','ΠΚ','Παντελής Κ.','Dispatcher','6')}<main class="main"><div class="hd"><div><h1>Νέα παραγγελία</h1><p>Pella Peach Coop · Σκύδρα → Wien</p></div></div><div class="ghost" style="grid-template-columns:1fr 1fr;gap:16px 20px">${fld('Πελάτης','Pella Peach Coop')}${fld('Παλέτες','32')}${fld('Φόρτωση','Pella Peach Coop · Τρί 17/11')}${fld('Παράδοση','Wiener Frische · Παρ 20/11')}${fld('Τιμή','2.400,00')}${fld('Σημείωση','','ph')}</div></main></div>
- <div class="veil" style="animation:none;background:rgba(0,0,16,.28);backdrop-filter:none"></div>
+$('fX').innerHTML=`<div class="app">${sd(DSP,'o','Π','Παντελής','Διεθνή','6')}<main class="main"><div class="hd"><div><h1>Νέα παραγγελία</h1><p>Alpen Frucht AG · Σκύδρα → Zürich</p></div></div><div class="ghost" style="grid-template-columns:1fr 1fr;gap:16px 20px">${fld('Πελάτης','Alpen Frucht AG')}${fld('Παλέτες','32')}${fld('Φόρτωση','Σκύδρα · Τρί 17/11')}${fld('Παράδοση','Alpen Frucht Zentrale · Παρ 20/11')}${fld('Τιμή','2.400,00')}${fld('Σημείωση','','ph')}</div></main></div>
+ <div class="veil" style="animation:none;background:rgba(0,0,16,.46);backdrop-filter:none"></div>
  <div class="pn" style="position:absolute;z-index:6;left:50%;top:210px;width:400px;margin-left:-200px"><h3 style="display:flex;gap:8px;align-items:center">Η σύνδεση έληξε ${nb('Η παραγγελία που γράφεις μένει ανοιχτή.',1,'dn')}</h3>
-  <div style="display:grid;gap:14px;margin-top:16px">${fld('Όνομα χρήστη','pkostas','ph')}${fld('Κωδικός',cur,'focus')}</div>
-  <div style="display:flex;gap:8px;align-items:center;margin-top:16px"><a style="color:var(--help);font-weight:500;font-size:13.5px">Έξοδος</a><span class="sp"></span><button class="pill b">Συνέχεια</button></div></div>`;
+  <div style="display:grid;gap:14px;margin-top:16px">${fld('Όνομα χρήστη','pantelis')}${fld('Κωδικός',cur,'focus')}</div>
+  <div style="display:flex;gap:8px;align-items:center;margin-top:16px"><button class="pill">Έξοδος</button><span class="sp"></span><button class="pill b">Συνέχεια</button></div></div>`;
 
 /* ---------- menu per job ---------- */
+const ap=(m,r)=>`<div class="app ${r||''}">${m}</div>`;
 $('fN').innerHTML=`<div class="mn">
- ${sd(ALL,'h','ΔΠ','Δημήτρης Π.','Owner','62')}
- ${sd(DSP,'h','ΠΚ','Παντελής Κ.','Dispatcher','6')}
- ${sd([pick('h',['h']),pick('s'),pick('w'),pick('m'),pick('f'),pick('d')],'h','ΘΔ','Θοδωρής Δ.','Στόλος','13')}
- ${sd([pick('h',['h']),pick('w'),pick('m'),pick('d',['c'])],'h','ΑΛ','Αλεξία Λ.','Λογιστήριο','63')}
- ${sd([pick('s',['r']),pick('w',['p'])],'r','ΑΠ','Αποθήκη','Αποθήκη',0)}
+ ${ap(sd(ALL,'h','ΔΠ','Δημήτρης Π.','Ιδιοκτήτης','82'))}
+ ${ap(sd(DSP,'h','Π','Παντελής','Διεθνή','6'))}
+ ${ap(sd([pick('h',['h']),pick('s'),pick('w'),pick('m'),pick('f'),pick('d')],'h','Θ','Θοδωρής','Διοίκηση','13'))}
+ ${ap(sd([pick('h',['h']),pick('w'),pick('m'),pick('d',['c'])],'h','Α','Αλεξία','Λογιστήριο','63'))}
+ ${ap(sd([pick('s',['r']),pick('w',['p'])],'r','ΑΒ','Αποθήκη','Βέροια',0))}
+ ${ap(sd(DSP,'h','Π','Παντελής','Διεθνή','6'),'rail')}
 </div>`;
 
 /* ---------- search ---------- */
 const sst=(k,t)=>`<span class="st ${k}">${k==='done'?ic('check'):''}${t}</span>`;const kr=(i,a,b,c,h)=>`<div class="kr ${h?'h':''}"><span class="ty">${ic(i)}</span><span><b>${a}</b><small>${b}</small></span><span>${c}</span></div>`;
-$('fK').innerHTML=`<div class="app">${sd(DSP,'d','ΠΚ','Παντελής Κ.','Dispatcher','6')}<main class="main"><div class="hd"><div><h1>Ημερήσιο</h1><p>Δευτέρα 16 Νοεμβρίου</p></div></div>${ghost([70,45,60,30,55,40,65])}</main></div>
+$('fK').innerHTML=`<div class="app">${sd(DSP,'d','Π','Παντελής','Διεθνή','6',0,'s')}<main class="main"><div class="hd"><div><h1>Ημερήσιο</h1><p>Δευτέρα 16 Νοεμβρίου</p></div></div>${ghost([70,45,60,30,55,40,65])}</main></div>
  <div class="veil" style="animation:none;background:rgba(0,0,16,.28);backdrop-filter:none"></div>
  <div class="kp2"><div class="ki">${ic('search')}<span>nordfr</span>${cur}</div>
   <div class="kg lbl">Φορτία</div>
   ${kr('file-text','Μεσσήνη → Hamburg · σήμερα','Nordfrisch GmbH · χωρίς φορτηγό',sst('todo','Σε αναμονή'),1)}
   ${kr('file-text','Hamburg → Ασπρόπυργος · σήμερα','Nordfrisch GmbH · Balkan Frigo',sst('run','Σε μεταφορά'))}
-  ${kr('file-text','Μεσσήνη → Hamburg · Πέμ 12/11','Nordfrisch GmbH · ΚΗΙ 6021',sst('done','Παραδόθηκε'))}
+  ${kr('file-text','Μεσσήνη → Hamburg · Πέμ 12/11','Nordfrisch GmbH · ΚΗΙ 7733',sst('done','Παραδόθηκε'))}
   <div class="kg lbl">Άνθρωποι και τόποι</div>
   ${kr('building-2','Nordfrisch GmbH','Πελάτης · Hamburg · +49 40 000 0003','')}
   ${kr('map-pin','Nordfrisch Lager','Hamburg · DE · παράδοση 12×','')}
@@ -145,71 +176,73 @@ $('fK').innerHTML=`<div class="app">${sd(DSP,'d','ΠΚ','Παντελής Κ.','
 
 /* ---------- the bell ---------- */
 /* [name, what, when, red] */
-const B0=[['Nordfrisch GmbH','Μεσσήνη → Hamburg · 33 παλέτες','φορτώνει σήμερα','r']];
-const B2=[['Olympos Export','Λάρισα → München · Μεταφορική Ζήση','παράδοση Παρ 13/11','k'],['Chalkidiki Olives','Πολύγυρος → Hamburg · ΚΗΙ 4445','παράδοση Σάβ 14/11','k'],['Hellas Citrus','Άργος → Wien · χωρίς φορτηγό','φόρτωση Σάβ 14/11','k']];
-const B1=[['Baltic Cold Foods','Βέροια → Poznań · 30 παλέτες','φόρτωση Τετ 18/11','']];
-const B3=[['Ρ 2998','με το ΚΗΙ 4612 · Βέροια → Poeldijk · φεύγει Δευ 23/11','ΚΤΕΟ έληξε 5/11','r']];
-const br2=r=>`<div class="br2"><div class="two"><b><span class="el">${r[0]}</span></b><span>${r[1]}</span></div><span class="w num ${r[3]}">${r[2]}</span><span class="acts"><button class="ib2" title="Αργότερα: 1 ώρα · ως αύριο · ώσπου να λυθεί" onclick="bdone(this)">${ic('clock')}</button><button class="ib2" title="Άνοιγμα">${ic('arrow-up-right')}</button></span></div>`;
+const B0=[['Nordfrisch GmbH','Μεσσήνη → Hamburg · 33 παλέτες','σήμερα','φόρτωση','r']];
+const B2=[['Olympos Export','Λάρισα → München · Μεταφορική Ζήση','Παρ 13/11','παράδοση','r'],['Chalkidiki Olives','Πολύγυρος → Hamburg · ΚΗΙ 4445','Σάβ 14/11','παράδοση','r'],['Hellas Citrus','Άργος → Wien · χωρίς φορτηγό','Σάβ 14/11','φόρτωση','r']];
+const B1=[['Baltic Cold Foods','Βέροια → Poznań · 30 παλέτες','Τετ 18/11','φόρτωση','']];
+const B3=[['Ρ 5093 · ΚΤΕΟ','με το ΚΗΙ 6012 · φεύγει Δευ 23/11','Πέμ 5/11','έληξε','r']];
+const br2=r=>`<div class="br2"><span class="w ${r[4]}"><b class="num">${r[2]}</b><small>${r[3]}</small></span><div class="two"><b><span class="el">${r[0]}</span></b><span>${r[1]}</span></div><span class="acts"><button class="pill sm lt" title="1 ώρα · ως αύριο · ώσπου να λυθεί" onclick="event.stopPropagation();bdone(this)">${ic('clock')}Αργότερα</button>${ic('chevron-right')}</span></div>`;
 const bg=(l,rows)=>`<div class="gh lbl">${l}<b class="num">${rows.length}</b></div>${rows.map(br2).join('')}`;
-$('fB').innerHTML=`<div class="app">${sd(DSP,'wi','ΠΚ','Παντελής Κ.','Dispatcher','6',1)}<main class="main"><div class="hd"><div><h1>Εβδομαδιαίο Διεθνών</h1><p>W47</p></div></div>${ghost([70,45,60,30,55,40,65,50])}</main></div>
- <div class="bp open" id="bp"><div id="bpl">${bg('Σήμερα χωρίς φορτηγό',B0).replace('class="br2"','class="br2 hv"')}${bg('Από προηγούμενες ημέρες',B2)}${bg('Προς ανάθεση',B1)}${bg('Όχημα',B3)}</div>
-  <div style="display:flex;align-items:center;gap:8px;padding:10px 20px 0;margin-top:6px;border-top:1px solid var(--line)"><span style="color:var(--help);font-size:12.5px" class="num">07:42</span>${nb('Τα διπλώματα των οδηγών δεν ελέγχθηκαν.',1)}<a style="color:var(--help);font-weight:500;font-size:13px;margin-left:8px" title="Όσα έβαλες αργότερα">Αργότερα 2</a><span class="sp"></span><a style="color:var(--link);font-weight:600;font-size:13.5px">Όλα στο «Σήμερα» →</a></div></div>`;
+$('fB').innerHTML=`<div class="app">${sd(DSP,'wi','Π','Παντελής','Διεθνή','6',1)}<main class="main"><div class="hd"><div><h1>Εβδομαδιαίο Διεθνών</h1><p>W47</p></div></div>${ghost([70,45,60,30,55,40,65,50])}</main></div>
+ <div class="bp open" id="bp"><div id="bpl">${bg('Σήμερα χωρίς φορτηγό',B0)}${bg('Από προηγούμενες ημέρες',B2)}${bg('Προς ανάθεση',B1)}${bg('Όχημα',B3)}</div>
+  <div style="display:flex;align-items:center;gap:8px;padding:10px 20px 0;margin-top:6px;border-top:1px solid var(--line)"><a style="color:var(--link);font-weight:600;font-size:13.5px" title="Όσα έβαλες αργότερα">Αργότερα <span class="num" id="lat">2</span></a><span class="sp"></span><span style="color:var(--help);font-size:12.5px" class="num">Ελέγχθηκε 07:42</span>${nb('Τα διπλώματα των οδηγών δεν ελέγχθηκαν.',1)}<span style="width:8px"></span><a style="color:var(--link);font-weight:600;font-size:13.5px">Όλα στο «Σήμερα» →</a></div></div>`;
 /* The bell opens and closes the panel; a snoozed row leaves and every counter follows at once. */
 function bell(open){const p=$('bp'),b=$('bl'),o=open===undefined?!p.classList.contains('open'):open;p.classList.toggle('open',o);b.classList.toggle('on',o);b.setAttribute('aria-expanded',o)}
 addEventListener('keydown',e=>{if(e.key==='Escape')bell(false)});
 addEventListener('click',e=>{if(!e.target.closest('#bp,#bl')&&e.target.closest('#fB'))bell(false)});
 function bdone(btn){const r=btn.closest('.br2');if(r._g)return;r._g=1;let g=r.previousElementSibling;while(g&&!g.classList.contains('gh'))g=g.previousElementSibling;
- const gb=g.querySelector('b');gb.textContent=+gb.textContent-1;document.querySelectorAll('#fB .side em').forEach(e=>{e.textContent=+e.textContent-1;if(e.textContent==='0')e.remove()});
+ const L=$('bpl');L.style.pointerEvents='none';setTimeout(()=>L.style.pointerEvents='',ms('--t-move')+260);
+ const gb=g.querySelector('b');gb.textContent=+gb.textContent-1;document.querySelectorAll('#fB .side em').forEach(e=>{e.textContent=+e.textContent-1;if(e.textContent==='0'){e.outerHTML='<u class="ok">'+ic('check')+'</u>';lucide.createIcons()}});$('lat').textContent=+$('lat').textContent+1;
  const last=gb.textContent==='0',fin=()=>{r.remove();if(last)g.remove();if(!$('bpl').querySelector('.br2'))$('bpl').innerHTML='<div class="fadeup" style="display:grid;place-items:center;height:120px;color:var(--help)">Τίποτα δεν σε περιμένει</div>'};
  if(RED()){fin();return}r.style.height=r.offsetHeight+'px';if(last)g.style.height=g.offsetHeight+'px';
  requestAnimationFrame(()=>{r.classList.add('go');r.style.height='0px';if(last){g.style.height='0px';g.style.opacity=0;g.style.padding='0 20px'}});setTimeout(fin,ms('--t-move')+10)}
 
 /* ---------- assistant and history ---------- */
-$('fA').innerHTML=`<div class="app">${sd(ALL,'o','ΔΠ','Δημήτρης Π.','Owner','62')}<main class="main"><div class="hd"><div><h1>Παραγγελίες</h1><p>W47</p></div></div>
- <div style="display:grid;grid-template-columns:minmax(0,1fr) 520px 404px;gap:16px;flex:1;min-height:0">${ghost([70,45,60,30,55,40])}
+$('fA').innerHTML=`<div class="app">${sd(ALL,'o','ΔΠ','Δημήτρης Π.','Ιδιοκτήτης','82',0,'a')}<main class="main"><div class="hd"><div><h1>Παραγγελίες</h1><p>W47</p></div></div>
+ <div style="display:grid;grid-template-columns:404px minmax(0,1fr);gap:16px;flex:1;min-height:0"><div></div>
   <div class="card" style="border-radius:24px 24px 0 0;padding:20px 24px"><b style="font-size:17px;font-weight:600;color:var(--ink);display:block">Tirol Obst GmbH</b><small style="color:var(--help);font-size:13px">Βέροια → Innsbruck · Δευ 16 – Παρ 20/11</small>
    <div class="tabs" style="padding:0;margin:8px 0 0;gap:22px"><a>Στοιχεία</a><a>Στάσεις</a><a class="on">Ιστορικό</a></div>
    ${[['σήμερα 06:40','Παντελής','φορτώθηκε στη Βέροια',''],['Παρ 13/11 12:05','Παντελής','ανάθεση: <span><s>χωρίς φορτηγό</s> → ΚΗΙ 3310</span> · Θ. Μέλλιος',''],['Πέμ 12/11 10:20','Ειρήνη','τιμή: <s>3.600,00</s> → 3.800,00',''],['Πέμ 12/11 09:02','Ειρήνη','παράδοση: <span><s>Πέμ 19/11</s> → Παρ 20/11</span>','Η παλιά ημέρα δεν είχε γραφτεί· συμπεραίνεται.'],['Τετ 11/11 15:48','Ειρήνη','γράφτηκε η παραγγελία','']].map(r=>`<div class="hr2"><time class="num">${r[0]}</time><span><b>${r[1]}</b> · ${r[2]}</span>${r[3]?nb(r[3],1):'<span></span>'}</div>`).join('')}</div>
-  <div></div></div></main></div>
+  </div></main></div>
  <div class="as2"><div style="display:flex;align-items:center;gap:10px"><span class="tile soft" style="width:32px;height:32px;border-radius:10px">${ic('sparkles')}</span><b style="flex:1;color:var(--ink);font-weight:600;font-size:15px">Βοηθός</b><button class="ib2" aria-label="Κλείσιμο">${ic('x')}</button></div>
-  <div class="q2">Βάλε τη Nordfrisch για Hamburg στο 6021 με τον Δήμου</div>
+  <div class="q2">Βάλε τη Nordfrisch για Hamburg στο 7310</div>
   <div class="a2">Το ετοίμασα.</div>
-  <div class="pc"><b style="color:var(--ink);font-weight:600">Nordfrisch GmbH</b><dl><dt>Διαδρομή</dt><dd>Μεσσήνη → Hamburg</dd><dt>Φόρτωση</dt><dd>σήμερα, Δευ 16/11</dd><dt>Φορτηγό</dt><dd class="num">ΚΗΙ 6021</dd><dt>Οδηγός</dt><dd style="display:flex;gap:8px;align-items:center">Λ. Δήμου${nb('Σήμερα φορτώνει στο Poznań με το ΚΗΙ 8600.',1)}</dd></dl><button class="pill b sm">Άνοιξε τη φόρμα</button></div>
-  <span class="sp"></span>
-  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px"><a style="color:var(--link);font-weight:600;font-size:13px">Σε περιμένουν</a><span style="color:var(--faint)">·</span><a style="color:var(--link);font-weight:600;font-size:13px">Σήμερα</a><span style="color:var(--faint)">·</span><a style="color:var(--link);font-weight:600;font-size:13px">Στόλος</a></div>
+  <div class="pc"><b style="color:var(--ink);font-weight:600">Nordfrisch GmbH</b><dl><dt>Διαδρομή</dt><dd>Μεσσήνη → Hamburg</dd><dt>Φόρτωση</dt><dd>σήμερα, Δευ 16/11</dd><dt>Φορτηγό</dt><dd class="num">ΚΗΙ 7310 · Ρ 8145</dd><dt>Οδηγός</dt><dd>Δ. Μάνος</dd></dl><button class="pill b sm">Άνοιξε τη φόρμα</button></div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin:18px 0 10px"><a style="color:var(--link);font-weight:600;font-size:13px">Σε περιμένουν</a><span style="color:var(--faint)">·</span><a style="color:var(--link);font-weight:600;font-size:13px">Σήμερα</a><span style="color:var(--faint)">·</span><a style="color:var(--link);font-weight:600;font-size:13px">Στόλος</a></div>
   <div class="inp ph" style="height:44px">Ρώτα ή ζήτα κάτι<span class="sp"></span>${ic('paperclip')}${ic('arrow-up')}</div></div>`;
 
 /* ---------- what opens ---------- */
-$('fP').innerHTML=`<div style="position:absolute;inset:0;padding:28px;display:grid;grid-template-columns:auto 230px minmax(380px,1fr) 310px;gap:24px;align-items:start;background:#DFE1E6">
- <div><p class="lbl" style="margin-bottom:10px">Αναίρεση πάνω στην ενέργεια</p><div class="toast ut" id="ut">${ic('trash-2')}<span>Διαγράφηκε · Hellas Kiwi Coop, Άργος → Wien</span><button class="pill sm" onclick="undo()">Αναίρεση</button><i class="bar"></i></div>
-  <p style="margin-top:14px"><button class="pill sm" onclick="run()">${ic('rotate-cw')}Ξανά</button></p></div>
- <div><p class="lbl" style="margin-bottom:10px">Ο χρήστης</p><div class="pop" style="width:250px;animation:none"><a>${ic('history')}Ιστορικό ενεργειών</a><a>${ic('bell')}Οι ειδοποιήσεις μου</a><a>${ic('sparkles')}Ο βοηθός μου</a><a>${ic('info')}Τι άλλαξε<small>15/11</small></a><hr><a>${ic('log-out')}Έξοδος</a></div></div>
- <div><p class="lbl" style="margin-bottom:10px">Διαγραμμένα ως φίλτρο της λίστας</p><div class="card" style="border-radius:var(--r-card);padding:14px 18px"><div style="display:flex;gap:8px;margin-bottom:6px"><span class="chip">Όλες <b>28</b></span><span class="chip on">Διαγραμμένες <b>2</b></span></div>
-  ${[['Hellas Kiwi Coop','Άργος → Wien · Πέμ 19/11','Παντελής · σήμερα 07:40'],['Pella Peach Coop','Σκύδρα → Wien · Τρί 17/11','Ειρήνη · Παρ 13/11']].map(r=>`<div class="br2" style="padding:0;border-top:1px solid var(--line-2);grid-template-columns:minmax(0,1fr) auto"><div class="two"><b><span class="el">${r[0]} · ${r[1]}</span></b><span>${r[2]}</span></div><button class="pill sm">Επαναφορά</button></div>`).join('')}</div></div>
- <div><p class="lbl" style="margin-bottom:10px">Νέα έκδοση</p><div class="strip n" style="background:#fff">${ic('refresh-cw')}<span style="white-space:nowrap">Νέα έκδοση</span><span class="sp"></span>${nb('Η φόρμα που γράφεις δεν χάνεται.',1,'dn')}<button class="pill sm">Ανανέωση</button></div></div>
-</div>`;
+$('fP').innerHTML=`<div class="app">${sd(DSP,'o','Π','Παντελής','Διεθνή','6')}<main class="main">
+ <div class="strip n" style="background:#fff;margin-bottom:14px;flex:none">${ic('refresh-cw')}<span style="white-space:nowrap">Νέα έκδοση</span><span class="sp"></span>${nb('Η φόρμα που γράφεις δεν χάνεται.',1,'dn')}<button class="pill sm">Ανανέωση</button></div>
+ <div class="hd"><div><h1>Παραγγελίες</h1><p>W47</p></div></div>
+ <div class="card" style="border-radius:24px 24px 0 0;padding:16px 24px;flex:1;min-height:0"><div style="display:flex;gap:8px;margin-bottom:8px"><span class="chip">Όλες <b>28</b></span><span class="chip on">Διαγραμμένες <b>2</b></span></div>
+  ${[['Πέμ 19/11','Hellas Kiwi Coop','Άρτα → Zürich','Παντελής · σήμερα 07:40'],['Τρί 17/11','Danubia Market Kft.','Βέροια → Wien','Ειρήνη · Παρ 13/11']].map(r=>`<div class="del"><span class="num">${r[0]}</span><div class="two"><b><span class="el">${r[1]}</span></b><span>${r[2]}</span></div><span style="display:flex;gap:16px;align-items:center"><small style="color:var(--help);font-size:12.5px;white-space:nowrap">${r[3]}</small><button class="pill sm">Επαναφορά</button></span></div>`).join('')}</div></main></div>
+ <div class="pop" style="position:absolute;z-index:6;left:244px;bottom:16px;width:236px;animation:none;transform-origin:bottom left"><a>${ic('history')}Ιστορικό ενεργειών</a><a>${ic('bell')}Οι ειδοποιήσεις μου</a><a>${ic('sparkles')}Ο βοηθός μου</a><a>${ic('info')}Τι άλλαξε<small>15/11</small></a><hr><a>${ic('log-out')}Έξοδος</a></div>
+ <div style="position:absolute;z-index:6;left:calc(50% + 116px);bottom:24px;transform:translateX(-50%)"><div class="toast ut" id="ut">${ic('trash-2')}<span>Διαγράφηκε · Hellas Kiwi Coop, Άρτα → Zürich</span><button class="pill sm" onclick="undo()">Αναίρεση</button><i class="bar"></i></div></div>`;
 /* The undo runs out once: the bar empties, then the toast leaves. Undo stops it and says what came back. */
-const UT='Hellas Kiwi Coop, Άργος → Wien';let ut0;
-function run(){const t=$('ut');t.classList.remove('gone','run','back');t.querySelector('span').textContent='Διαγράφηκε · '+UT;t.querySelector('.pill').style.display='';void t.offsetWidth;if(!RED())t.classList.add('run');clearTimeout(ut0);ut0=setTimeout(()=>t.classList.add('gone'),parseFloat(getComputedStyle(t).getPropertyValue('--u'))||6000)}
-function undo(){const t=$('ut');clearTimeout(ut0);t.classList.add('back');t.querySelector('span').textContent='Γύρισε πίσω · '+UT;t.querySelector('.pill').style.display='none';ut0=setTimeout(()=>t.classList.add('gone'),2000)}
+const UT='Hellas Kiwi Coop, Άρτα → Zürich';let ut0;
+function run(){const t=$('ut');t.classList.remove('gone','run','back');t.querySelector('span').textContent='Διαγράφηκε · '+UT;t.querySelector('.pill').style.display='';void t.offsetWidth;if(!RED())t.classList.add('run');clearTimeout(ut0);ut0=setTimeout(()=>{t.classList.add('gone');ut0=setTimeout(run,2600)},parseFloat(getComputedStyle(t).getPropertyValue('--u'))||6000)}
+function undo(){const t=$('ut');clearTimeout(ut0);t.classList.add('back');t.querySelector('span').textContent='Γύρισε πίσω · '+UT;t.querySelector('.pill').style.display='none';ut0=setTimeout(()=>{t.classList.add('gone');ut0=setTimeout(run,2600)},2000)}
 
-/* ---------- bad moments ---------- */
-const bp=(l,body)=>`<div class="panel"><p class="lbl">${l}</p>${body}</div>`;
-const em=(i,h,b='')=>`<div style="display:grid;justify-items:start;align-content:start;min-height:110px;gap:10px;margin-top:14px"><div class="tile soft" style="width:36px;height:36px;border-radius:10px">${ic(i)}</div><h3 style="margin:0;font-weight:500;color:var(--body);font-size:15px">${h}</h3>${b}</div>`;
-const bl=(n,x)=>`<a class="bell" style="margin-top:14px;background:var(--bg)">${ic('bell')}<span>Σε περιμένουν</span>${x||`<em>${n}</em>`}</a>`;
+/* ---------- bad moments: each on the piece of the screen where it happens ---------- */
+const sc=(n,l,body)=>`<div class="scn" style="grid-column:span ${n}"><p class="lbl">${l}</p>${body}</div>`;
+const dlg=(pw,foot)=>`<div class="pn"><h3>Η σύνδεση έληξε</h3><div style="display:grid;gap:12px;margin-top:14px">${fld('Όνομα χρήστη','pantelis')}${pw}</div><div style="display:flex;gap:8px;align-items:center;margin-top:14px">${foot}</div></div>`;
+const foot=(bell,extra='')=>`<div class="side foot">${extra}<div class="bsep"></div><a class="bell">${ic('bell')}<span>Σε περιμένουν</span>${bell}</a><div class="me"><span class="av">Π</span><div>Παντελής<small>Διεθνή</small></div></div></div>`;
+const pal=(q,body)=>`<div class="kp2"><div class="ki">${ic('search')}<span>${q}</span>${cur}</div>${body}<div style="height:10px"></div></div>`;
+const mpg=(h,body)=>`<div class="mpg"><i>${ic('house')}${ic('globe')}${ic('file-text')}${ic('truck')}</i><div><h1>${h}</h1>${body}</div></div>`;
+const bx=(i,t,b)=>`<div class="bx"><span class="tile soft" style="width:32px;height:32px;border-radius:10px">${ic(i)}</span><b>${t}</b>${b}</div>`;
 $('bad').innerHTML=[
- bp('Λάθος κωδικός',`<div style="margin-top:12px">${fld('Κωδικός <i class="nb show" data-t="Δεν ταιριάζει.">!</i>','••••••')}</div>`),
- bp('Η είσοδος δεν απαντά',em('cloud-off','Η είσοδος δεν απαντά','<button class="pill sm">Ξανά</button>')),
- bp('Δεν ελέγχθηκε',bl('','<i class="nb a dn" style="margin-left:auto" data-t="Οι παραγγελίες δεν διαβάστηκαν.">!</i>')),
- bp('Ελέγχθηκε μισό',bl('4')+`<div style="margin-top:10px;display:flex;gap:8px;align-items:center;color:var(--body);font-size:13.5px">Οχήματα ${nb('Τα έγγραφα των οχημάτων δεν διαβάστηκαν.',1)}</div>`),
- bp('Τίποτα δεν περιμένει',bl('','<span style="margin-left:auto;color:var(--green);display:grid">'+ic('check')+'</span>')),
- bp('Χωρίς σύνδεση',`<div class="strip" style="margin-top:12px">${ic('wifi-off')}<span>Χωρίς σύνδεση</span><span class="sp"></span>${nb('Ό,τι γράφεις τώρα δεν αποθηκεύεται.',1,'dn')}</div><div style="height:30px"></div>`),
- bp('Αναζήτηση χωρίς αποτέλεσμα',em('search-x','Τίποτα για «nordfrx»',`<button class="pill sm">${ic('plus')}Νέα παραγγελία</button>`)),
- bp('Η αναζήτηση διάβασε μισά',`<div class="kg lbl" style="padding:14px 0 4px">Φορτία</div>${kr('file-text','Nordfrisch GmbH','Μεσσήνη → Hamburg · σήμερα','').replace('class="kr "','class="kr" style="margin:0;padding:0"')}<div style="display:flex;gap:8px;align-items:center;color:var(--body);font-size:13.5px;margin-top:8px">Άνθρωποι και τόποι ${nb('Δεν διαβάστηκαν.',1)}</div>`),
- bp('Η αναίρεση δεν έγινε',`<div class="toast ut" style="margin-top:14px">${ic('circle-alert')}<span>Δεν γύρισε πίσω</span><span class="sp"></span><button class="pill sm">Ξανά</button></div>`),
- bp('Ο βοηθός δεν απαντά',em('sparkles','Ο βοηθός δεν απαντά','<button class="pill sm">Ξανά</button>')),
- bp('Σελίδα που δεν υπάρχει',em('compass','Αυτή η σελίδα δεν υπάρχει πια','<button class="pill sm">Στο «Σήμερα»</button>')),
- bp('Χωρίς πρόσβαση',em('lock','Η σελίδα δεν είναι για τον ρόλο σου','<button class="pill sm">Στο «Σήμερα»</button>'))
+ sc(4,'Λάθος κωδικός',dlg(fld('Κωδικός','••••••','focus').replace('<div class="inp','<div style="border-color:var(--red);box-shadow:none" class="inp')+'<small style="color:var(--red);font-weight:500;font-size:12.5px;margin-top:-6px">Δεν ταιριάζει</small>',`<button class="pill">Έξοδος</button><span class="sp"></span><button class="pill b">Συνέχεια</button>`)),
+ sc(4,'Η είσοδος δεν απαντά',dlg(fld('Κωδικός','••••••')+'<small style="visibility:hidden;font-size:12.5px;margin-top:-6px">.</small>',`<button class="pill">Έξοδος</button><span style="display:flex;gap:6px;align-items:center;color:var(--red);font-weight:500;font-size:13.5px">${ic('cloud-off')}Δεν απαντά</span><span class="sp"></span><button class="pill b">Ξανά</button>`)),
+ sc(4,'Χωρίς σύνδεση',mpg('Νέα παραγγελία',`<div class="strip">${ic('wifi-off')}<span>Χωρίς σύνδεση</span><span class="sp"></span>${nb('Ό,τι γράφεις τώρα δεν αποθηκεύεται.',1,'dn')}</div><div class="bx" style="gap:12px"><i style="display:block;width:70%;height:10px;border-radius:5px;background:var(--bg)"></i><i style="display:block;width:45%;height:10px;border-radius:5px;background:var(--bg)"></i></div>`)),
+ sc(3,'Δεν ελέγχθηκε',foot('<i class="nb dn" style="margin-left:auto" data-t="Οι παραγγελίες δεν διαβάστηκαν.">!</i>')),
+ sc(3,'Ελέγχθηκε μισό',foot('<em>4</em><i class="nb a dn" style="margin-left:8px" data-t="Τα έγγραφα των οχημάτων δεν διαβάστηκαν.">!</i>')),
+ sc(3,'Τίποτα δεν περιμένει',foot('<u class="ok">'+ic('check')+'</u>')),
+ sc(3,'Η αναίρεση δεν έγινε',`<div class="toast ut" style="display:flex">${ic('circle-alert')}<span style="min-width:0;overflow:hidden;text-overflow:ellipsis">Δεν γύρισε · Hellas Kiwi Coop</span><span class="sp"></span><button class="pill sm">Ξανά</button></div>`),
+ sc(6,'Αναζήτηση χωρίς αποτέλεσμα',pal('nordfrx',`<div style="padding:18px 20px 6px;color:var(--help);font-size:13.5px">Τίποτα για «nordfrx»</div>${kr('plus','Νέα παραγγελία','','',1)}`)),
+ sc(6,'Η αναζήτηση διάβασε μισά',pal('nordfr',`<div class="kg lbl">Φορτία</div>${kr('file-text','Μεσσήνη → Hamburg · σήμερα','Nordfrisch GmbH · χωρίς φορτηγό',sst('todo','Σε αναμονή'),1)}<div class="kg lbl" style="display:flex;gap:8px;align-items:center;overflow:visible">Άνθρωποι και τόποι ${nb('Δεν διαβάστηκαν.',1)}</div>`)),
+ sc(4,'Ο βοηθός δεν απαντά',`<div class="as2"><div style="display:flex;align-items:center;gap:10px"><span class="tile soft" style="width:32px;height:32px;border-radius:10px">${ic('sparkles')}</span><b style="flex:1;color:var(--ink);font-weight:600;font-size:15px">Βοηθός</b></div><div class="q2">Ποια φορτία φεύγουν αύριο;</div><div class="a2" style="display:flex;gap:10px;align-items:center;color:var(--red);font-weight:500">Δεν απαντά<button class="pill sm">Ξανά</button></div></div>`),
+ sc(4,'Σελίδα που δεν υπάρχει',mpg('&nbsp;',bx('compass','Αυτή η σελίδα δεν υπάρχει πια','<button class="pill sm">Στο «Σήμερα»</button>'))),
+ sc(4,'Χωρίς πρόσβαση',mpg('Μισθοδοσία',bx('lock','Δεν είναι για τον ρόλο σου','<button class="pill sm">Στο «Σήμερα»</button>')))
 ].join('');
 boot();run();
 </script>

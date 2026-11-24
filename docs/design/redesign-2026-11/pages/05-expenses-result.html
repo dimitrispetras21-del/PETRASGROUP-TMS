@@ -15,32 +15,48 @@
 .fg{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;border-bottom:1px solid var(--line)}
 .fg>div{padding:16px 28px;border-left:1px solid var(--line-2)}.fg>div:first-child{border-left:0}
 .fg b{display:block;font-size:20px;font-weight:500;color:var(--ink);letter-spacing:-.3px;margin-top:4px}.fg small{display:block;color:var(--help);font-size:12.5px;margin-top:2px}
-.tr2,.th2{display:grid;grid-template-columns:minmax(0,1.5fr) 92px 84px 84px 84px 18px 96px;gap:0 14px;align-items:center;padding:0 28px}
+.tr2,.th2{display:grid;grid-template-columns:minmax(0,1fr) 78px 48px 76px 40px 64px 72px 80px 88px 78px 48px;gap:0 12px;align-items:center;padding:0 28px}
+.th2.th3{height:26px;border-bottom:0;margin-bottom:-8px}.th2.th3 .sp2{grid-column:span 2;text-align:right;border-bottom:1px solid var(--line);padding-bottom:5px}
 .th2{height:38px;border-bottom:1px solid var(--line)}.th2 span{text-align:right}.th2 span:first-child{text-align:left}
 .tr2{height:54px;position:relative;cursor:pointer}
 .tr2+.tr2::before{content:'';position:absolute;left:28px;right:28px;top:0;border-top:1px solid var(--line-2)}
 .tr2 .n{text-align:right;color:var(--ink);font-weight:500}.tr2 .n.g{color:var(--help);font-weight:400}.tr2 .tot{text-align:right;font-weight:600;color:var(--ink)}
-.tr2 .two b{font-weight:500}.tr2.totr::before{display:none}
+.tr2 .two b{font-weight:500}.tr2 .dv{color:var(--body);font-weight:400}.tr2 .dv.g{color:var(--help)}
+.tr2.sm1{cursor:default;height:44px}.tr2.sm1>b{font-weight:600;color:var(--ink)}.tr2.sm1>b small{font-weight:400;color:var(--help);font-size:12.5px;margin-left:10px}.tr2.sm1 .n,.tr2.sm1 .dv{font-weight:600;color:var(--ink)}.tr2.sm1 .n.g{font-weight:400;color:var(--help)}
+.tr2.sm1::before{border-top:1.5px solid var(--ink)!important}.tr2.sm2::before{border-top:1px solid var(--line)!important}
+@media(hover:hover) and (pointer:fine){.tr2:not(.sm1):not([style]):hover{background:#F7F8F9}}
 .cmp{width:100%;border-collapse:collapse;font-size:13.5px}.cmp th{font-size:11px;font-weight:500;letter-spacing:.07em;text-transform:uppercase;color:var(--label);text-align:right;padding:0 0 8px}
-.cmp th:first-child,.cmp td:first-child{text-align:left}.cmp td{padding:8px 0;border-top:1px solid var(--line-2);text-align:right;color:var(--ink)}.cmp td.a{color:var(--amber);font-weight:600}.cmp tr.me td{font-weight:600}
+.cmp th:first-child,.cmp td:first-child{text-align:left}.cmp td{padding:8px 0;border-top:1px solid var(--line-2);text-align:right;color:var(--ink)}.cmp td.a{color:var(--amber);font-weight:600}.cmp tr.me td{font-weight:600}.cmp td small{color:var(--help);font-weight:400;font-size:12.5px;margin-left:10px}.cmp th:nth-child(n+2),.cmp td:nth-child(n+2){width:120px}.cmp tr.fl2 td{border-top:1.5px solid var(--ink);color:var(--body)}.cmp td .nb{margin-left:4px;vertical-align:1px}
 /* import */
 .ig{display:flex;align-items:baseline;gap:10px;padding:18px 28px 4px}.ig b{font-size:15px;font-weight:600;color:var(--ink)}.ig small{color:var(--help);font-size:12.5px}
-.il{display:grid;grid-template-columns:64px minmax(0,1.2fr) 92px 70px 84px minmax(0,1.3fr) 118px;gap:0 14px;align-items:center;padding:0 28px;min-height:48px;position:relative;font-size:13.5px}
+.il{display:grid;grid-template-columns:82px 150px 110px 84px minmax(0,1fr) 32px;gap:0 14px;align-items:center;padding:0 28px;min-height:48px;position:relative;font-size:13.5px}
 .il+.il::before{content:'';position:absolute;left:28px;right:28px;top:0;border-top:1px solid var(--line-2)}
 .il b{font-weight:500;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.il .n{text-align:right;color:var(--ink);font-weight:500}.il>span{color:var(--body);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.il .sug{color:var(--link);font-weight:500}.il .ax{display:grid;grid-template-columns:28px 86px;gap:4px;justify-content:end;align-items:center}.il .ax .pill{width:86px;padding:0;justify-content:center}
+.il .dz{padding-left:18px;overflow:visible}
+.pk{height:30px;padding:0 8px 0 12px;border-radius:999px;border:1px solid var(--line);background:#fff;display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:var(--link);white-space:nowrap;cursor:pointer;transition:border-color var(--t-fast)}
+.pk svg.lucide{width:14px;height:14px;color:var(--help)}.pk.n{color:var(--red)}.pk.d{color:var(--amber)}
+.ok{width:30px;height:30px;border-radius:50%;border:1px solid var(--line);background:#fff;display:grid;place-items:center;color:var(--link);cursor:pointer;transition:transform 140ms cubic-bezier(.23,1,.32,1),background var(--t-fast),color var(--t-fast),border-color var(--t-fast)}
+.ok svg.lucide{width:15px;height:15px;stroke-width:2.4}.ok:active{transform:scale(.97)}.pk:focus-visible,.ok:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media(hover:hover) and (pointer:fine){.ok:hover{background:var(--accent);border-color:var(--accent);color:#fff}.pk:hover{border-color:var(--accent)}}
+.il.tw{min-height:34px;font-size:12.5px}.il.tw::before{display:none}.il.tw>*,.il.tw b{color:var(--help);font-weight:400}.il.tw .dz{padding-left:30px}
+.bulk{font-weight:500;font-size:13px;cursor:pointer}
 .il.out{opacity:0;transform:translateY(-8px);transition:opacity var(--t-exit) var(--ease-exit),transform var(--t-exit) var(--ease-exit)}.mvup{transition:transform var(--t-state) var(--ease)}.il.ilh{font-size:11px}
-.ilh{height:38px;min-height:0;border-bottom:1px solid var(--line)}.ilh span{color:var(--label)}
+.ilh{height:38px;min-height:0;border-bottom:1px solid var(--line)}.ilh span{color:var(--label)}.ilh span:nth-child(5){padding-left:30px}
+.er{display:block;margin-top:12px;border-left:3px solid var(--red);padding:2px 0 2px 14px}.er>*{display:block}.er>div{display:flex!important}.er .lbl{display:flex;align-items:center;gap:8px;color:var(--red)}.er .lbl i{width:7px;height:7px;border-radius:50%;background:var(--red)}.er p.t{font-size:14px;font-weight:500;color:var(--ink);line-height:1.5;margin:8px 0 12px;max-width:34ch}
+.arow{display:grid;grid-template-columns:82px minmax(0,1fr) 40px 80px;gap:0 12px;align-items:center;height:40px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin-top:12px;font-size:13.5px}.arow b{font-weight:500;color:var(--ink)}.arow span{color:var(--body)}.arow .n{text-align:right;color:var(--ink);font-weight:500}
+.pl .two b small{font-weight:400;color:var(--help);font-size:12.5px;margin-left:8px}.pl .mw{text-align:right;font-weight:600;font-size:13px;color:var(--amber)}.pl .mw.rd{color:var(--red)}.pl .pc{text-align:right;color:var(--help);font-size:13px}
 .rec{display:flex;align-items:center;gap:8px;color:var(--green);font-weight:600;font-size:13.5px}.rec svg.lucide{width:15px;height:15px;stroke-width:2.4}
 /* result */
-.pl,.plh{display:grid;grid-template-columns:minmax(0,1.5fr) 100px 100px 18px 100px 60px;gap:0 14px;align-items:center;padding:0 28px}
+.pl,.plh{display:grid;grid-template-columns:minmax(0,1fr) 78px 78px 84px 36px;gap:0 12px;align-items:center;padding:0 28px}
 .plh{height:38px;border-bottom:1px solid var(--line)}.plh span{text-align:right}.plh span:first-child{text-align:left}
 .pl{height:54px;position:relative;cursor:pointer}
-.pl::after{content:'';position:absolute;inset:3px 12px;border-radius:12px;z-index:0}.pl>*{position:relative;z-index:1}.pl:hover::after{background:#F7F8F9}.pl.sel::after{background:var(--accent-bg)}
+.pl::after{content:'';position:absolute;inset:3px 12px;border-radius:12px;z-index:0}.pl>*{position:relative;z-index:1}.pl.sel::after{background:var(--accent-bg)}.pl:focus{outline:0}.pl:focus-visible::after{box-shadow:0 0 0 2px var(--accent)}
+@media(hover:hover) and (pointer:fine){.pl[role]:not(.sel):hover::after{background:#F7F8F9}}
 .pl+.pl::before{content:'';position:absolute;left:28px;right:28px;top:0;border-top:1px solid var(--line-2)}.pl.sel::before,.pl.sel+.pl::before{display:none}
 .pl .n{text-align:right;color:var(--ink);font-weight:500}.pl .n.g{color:var(--faint);font-weight:400}.pl .net{text-align:right;font-weight:600;color:var(--ink);font-size:15px}.pl .net.u{color:var(--faint);font-weight:400}
-.pl .pc{text-align:right;color:var(--help);font-size:13px}
-.open4 .pl,.open4 .plh{grid-template-columns:minmax(0,1fr) 18px 88px}.open4 .hx{display:none}
+.pl.pls{cursor:default;height:44px}.pl.pls>b{font-weight:600;color:var(--ink)}.pl.pls>b small{font-weight:400;color:var(--help);font-size:12.5px;margin-left:10px}.pl.pls .n{font-weight:600}.pl.pls .n.g{font-weight:400}.pl.pls::before{border-top:1px solid var(--line)}.pl.pls.gt{margin-top:14px}.pl.pls.gt::before{border-top:1.5px solid var(--ink)}
+.eq dd.u{color:var(--faint);font-weight:400}.eq dt small.ms{color:var(--amber);font-weight:600}.eq dt small.ms.rd{color:var(--red)}.pl .u{color:var(--faint)}.eq.hh dt small{font-weight:400}
+.und{display:inline-flex;align-items:center;gap:8px;color:var(--body);font-size:13px;white-space:nowrap;margin-right:6px}.und b{color:var(--ink);font-weight:600}
 .eq{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:0 10px;align-items:center;min-height:32px;border-top:1px solid var(--line-2);font-size:13.5px}.eq:first-of-type{border-top:0}.eq dt{color:var(--body)}.eq dt small{color:var(--help);margin-left:8px}.eq dd{margin:0;color:var(--ink);font-weight:500}
 .eq.hh dt{color:var(--ink);font-weight:600}.eq.hh dd{font-weight:600}.eq.t{border-top:1.5px solid var(--ink);min-height:44px}.eq.t dt{color:var(--ink);font-weight:600}.eq.t dd{font-size:18px;font-weight:600}
 .eq.sub dt{padding-left:14px}.eq.sub{min-height:28px;border-top:0;font-size:13px}
@@ -49,8 +65,8 @@
 .pn h3{font-size:17px;font-weight:600;color:var(--ink)}.pn h3+small{display:block;color:var(--help);font-size:13px;margin-top:2px}.pf{display:flex;gap:8px;align-items:center;margin-top:14px}
 /* prints */
 .a4.tp .r,.a4.tp .hr{grid-template-columns:minmax(0,1fr) 70px 70px 80px}
-.a4.wp2 .r,.a4.wp2 .hr{grid-template-columns:minmax(0,1.4fr) 62px 62px 62px 44px}
-.a4.tp,.a4.wp2{font-size:10px}.a4.tp .r,.a4.wp2 .r{padding:4.5px 0}.a4 .r i.lt{font-style:italic;color:#444;margin:0;font-size:9px}
+.a4.wp2 .r,.a4.wp2 .hr{grid-template-columns:minmax(0,1.4fr) 62px 62px 62px 36px}.a4.wp2 .r>span:first-child{display:block}.a4.wp2 .r>span:first-child i{white-space:nowrap}.a4.wp2 .r>span:first-child i.rte{display:block;margin:0}
+.a4.tp,.a4.wp2{font-size:10px}.a4.tp .r{padding:4.5px 0}.a4.wp2 .r{padding:3.5px 0}.a4 .r i.lt{font-style:italic;color:#444;margin:0;font-size:9px}
 </style>
 </head>
 <body>
@@ -65,23 +81,23 @@
   <div class="who">
     <div class="panel"><h3>Ποιος και για τι</h3><table class="spec"><tr><td><b>Αλεξία</b></td><td>Περνά αποδείξεις ανά δρομολόγιο και ανεβάζει την κατάσταση της κάρτας καυσίμων δύο φορές τον μήνα.</td></tr><tr><td><b>Δημήτρης</b></td><td>Κοιτά ένα φορτηγό σε βάθος εβδομάδων· διαβάζει το αποτέλεσμα ανά δρομολόγιο και τυπώνει. Το αποτέλεσμα το βλέπει μόνο αυτός.</td></tr><tr><td><b>Θοδωρής</b></td><td>Διαβάζει τα έξοδα.</td></tr></table></div>
     <div class="panel"><h3>Τι κρατήθηκε</h3><table class="spec"><tr><td>Μόνο δικά μας φορτηγά στα έξοδα· οι συνεργάτες ζουν στο αποτέλεσμα · κάθε διόρθωση, διαγραφή ή ανάθεση με αιτία · η εισαγωγή της κάρτας είναι όλη ή καθόλου και πρέπει να συμφωνεί με τη σύνοψή της · το ίδιο αρχείο δεν ξαναμπαίνει · ποτέ μηδέν για κάτι άγνωστο · χαρτί που δεν συμφωνεί με την οθόνη δεν τυπώνεται.</td></tr></table></div>
-    <div class="panel"><h3>Τι αλλάζει</h3><table class="spec"><tr><td>Το «Όχημα» γίνεται αναφορά περιόδου με κατανάλωση και κόστος ανά χιλιόμετρο · η εισαγωγή δείχνει μόνο ό,τι θέλει απόφαση · το αποτέλεσμα μετρά μόνο πλήρη δρομολόγια και λέει πόσα είναι · ένα φύλλο δρομολογίου αντί για τρεις εκδοχές του.</td></tr></table></div>
+    <div class="panel"><h3>Τι αλλάζει</h3><table class="spec"><tr><td>Το «Όχημα» γίνεται αναφορά περιόδου με κατανάλωση και κόστος ανά χιλιόμετρο, μόνο από δρομολόγια που έχουν χιλιόμετρα · η εισαγωγή δείχνει μόνο ό,τι θέλει απόφαση · το αποτέλεσμα μετρά μόνο πλήρη δρομολόγια και λέει πόσα είναι · ένα φύλλο δρομολογίου αντί για τρεις εκδοχές του.</td></tr></table></div>
   </div>
 </section>
 
 <section class="sec"><h2>Έξοδα · Όχημα</h2>
-  <div class="cap"><h3>Ένα φορτηγό, οκτώ εβδομάδες</h3><span>Καύσιμα φορτηγού και θαλάμου χωριστά· ό,τι δεν έχει δρομολόγιο φαίνεται και μετρά.</span></div>
+  <div class="cap"><h3>Ένα φορτηγό, οκτώ εβδομάδες</h3><span>Λίτρα και ποσά ανά χιλιόμετρο διαιρούνται μόνο με τα δρομολόγια που έχουν χιλιόμετρα.</span></div>
   <div class="fit"><div class="frame" id="fV" style="height:1040px"></div></div>
 </section>
 <section class="sec"><h2>Εισαγωγή κάρτας καυσίμων</h2>
-  <div class="cap"><h3>Μόνο ό,τι θέλει απόφαση</h3><span>Οι 188 σίγουρες γραμμές δεν ζητούν τίποτα.</span></div>
-  <div class="fit"><div class="frame" id="fI" style="height:960px"></div></div>
+  <div class="cap"><h3>Μόνο ό,τι θέλει απόφαση</h3><span>Κάθε γραμμή έχει την απάντησή της και ένα τικ.</span></div>
+  <div class="fit"><div class="frame" id="fI" style="height:1000px"></div></div>
 </section>
 <section class="sec"><h2>Αποτέλεσμα δρομολογίων</h2>
-  <div class="cap"><h3>Έσοδα − κόστη = καθαρό, μόνο όπου τα κόστη είναι πλήρη</h3><span>Μόνο για τον Δημήτρη.</span></div>
-  <div class="fit"><div class="frame" id="fP" style="height:1090px"></div></div>
+  <div class="cap"><h3>Έσοδα − κόστη = καθαρό, μόνο όπου τα κόστη είναι πλήρη</h3><span>Μόνο για τον Δημήτρη. Η W46 είναι η τελευταία που έκλεισε: 24.500,00 σε 12 παραγγελίες, όπως στις Παραγγελίες. Η W47 είναι σε εξέλιξη.</span></div>
+  <div class="fit"><div class="frame" id="fP" style="height:1040px"></div></div>
   <div class="cap"><h3>Ό,τι ανοίγει</h3><span>Νέο δρομολόγιο · ρυθμίσεις · ανάθεση γραμμής χωρίς δρομολόγιο</span></div>
-  <div class="fit"><div class="frame" id="fPP" style="height:500px"></div></div>
+  <div class="fit"><div class="frame" id="fPP" style="height:450px"></div></div>
 </section>
 <section class="sec"><h2>Οι κακές στιγμές</h2><div class="grid g4" style="align-items:stretch" id="bad"></div></section>
 <section class="sec"><h2>Τα χαρτιά</h2>
@@ -93,99 +109,130 @@
 <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script src="_system.js"></script>
 <script>
-const eu=x=>x.toLocaleString('el-GR',{minimumFractionDigits:2});
+const eu=x=>x.toLocaleString('el-GR',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fld=(l,vv,cls='')=>`<label class="fld"><span>${l}</span><div class="inp ${cls}">${vv}</div></label>`;
 const cur='<span style="width:1.5px;height:18px;background:var(--accent);margin-left:-6px"></span>';
 const hd=(t,sub,x)=>`<div class="hd"><div><h1>${t}</h1><p>${sub}</p></div><span class="sp"></span>${x}</div>`;
 
 /* ---------- vehicle ---------- */
-const VT=[['Ασπρόπυργος → Laakirchen → Aschbach → Κουφάλια','Α. Κοσκοσίδης · 24 – 29/10',2200,340,408,'',2948],['Βέροια → Wien → Linz → Σίνδος','Α. Κοσκοσίδης · 15 – 21/10',1980,420,360,'',2760],['Βέροια → Novi Sad → Voitsberg → Ν. Μαγνησία','Α. Κοσκοσίδης · 6 – 12/10',1790,480,270,'',2540],['Κοζάνη → Wien → Linz → Σίνδος','Σ. Γαβρίλοφ · 26/9 – 2/10',2100,440,350,'a|Τελείωσε και δεν έχει χιλιόμετρα· η κατανάλωση βγαίνει από τα άλλα τέσσερα.',2890],['Βέροια → Poeldijk → Βέροια','Α. Κοσκοσίδης · 12 – 20/9',1630,420,252,'',2302]];
+/* Every figure on this page is computed from the rows below, and chk() throws when a printed total does not equal its rows. */
+const nf=x=>x.toLocaleString('el-GR'),d1=x=>x.toFixed(1).replace('.',','),d2=x=>x.toFixed(2).replace('.',','),r2=x=>Math.round(x*100)/100;
+const sum=(a,f)=>a.reduce((t,x)=>t+f(x),0),chk=(a,b,w)=>{if(Math.abs(a-b)>.005)throw new Error('does not add up: '+w+' '+a+' vs '+b)};
+const SW=on=>`<span class="seg"><b class="${on==='e'?'on':''}">Έξοδα</b><b class="${on==='p'?'on':''}">Αποτέλεσμα</b></span>`;
+/* ΚΗΙ 3310, W39 – W46 (today is Mon 16/11, W47). [route, days, km or null, truck litres, truck fuel €, reefer litres, reefer fuel €, tolls €, other €] */
+const VT=[['Βέροια → Innsbruck → Modena → Νάουσα','Τρί 3 – Τρί 10/11',3650,1150,1620,160,210,420,140],['Βέροια → Wien → Linz → Σίνδος','Δευ 19 – Κυρ 25/10',2900,930,1310,120,160,380,110],['Κοζάνη → Hamburg → Ασπρόπυργος','Δευ 5 – Τρί 13/10',null,1480,2090,190,250,520,180],['Βέροια → Zürich → Βέροια','Δευ 28/9 – Σάβ 3/10',3400,1070,1510,140,180,400,130],['Βέροια → Innsbruck → Βέροια','Δευ 21 – Παρ 25/9',3300,1020,1440,130,170,340,125]];
+const vtot=r=>r[4]+r[6]+r[7]+r[8],VK=VT.filter(r=>r[2]),NOTRIP=200,cols=[3,4,5,6,7,8];
+const VA=cols.map(c=>sum(VT,r=>r[c])),VB=cols.map(c=>sum(VK,r=>r[c]));VA[4]+=NOTRIP;
+const V={km:sum(VK,r=>r[2]),all:sum(VT,vtot)+NOTRIP,allk:sum(VK,vtot)};chk(V.all,11885,'period');chk(V.all,VA[1]+VA[3]+VA[4]+VA[5],'period columns');
+const cells=(a,b)=>`<span class="n num">${nf(a[0])}</span><span class="n num">${eu(a[1])}</span><span class="n num">${nf(a[2])}</span><span class="n num">${eu(a[3])}</span><span class="n num">${eu(a[4])}</span><span class="n num">${eu(a[5])}</span>`;
+const vrow=r=>{const km=r[2],t=vtot(r);return `<div class="tr2">${two(r[0],r[1])}<span class="n num ${km?'':'g'}">${km?nf(km):`<i class="nb a" data-t="Τελείωσε και δεν έχει χιλιόμετρα.">!</i>`}</span>${cells(r.slice(3))}<span class="tot num">${eu(t)}</span><span class="n num dv ${km?'':'g'}">${km?d1(r[3]/km*100):'–'}</span><span class="n num dv ${km?'':'g'}">${km?d2(t/km):'–'}</span></div>`};
 $('fV').innerHTML=`<div class="app">${side('e')}<main class="main">
- ${hd('Έξοδα δρομολογίων','ΚΗΙ 4162 · Ρ 9498 · 5 Σεπτεμβρίου – 30 Οκτωβρίου',`<span class="seg"><b>Εβδομάδα</b><b class="on">Όχημα</b></span><button class="pill">${ic('printer')}Εκτύπωση${ic('chevron-down')}</button><button class="pill b">${ic('upload')}Εισαγωγή DKV</button>`)}
+ ${hd('Έξοδα δρομολογίων','ΚΗΙ 3310 · Ρ 7120 · Θ. Μέλλιος · W39 – W46',`${SW('e')}<button class="pill">${ic('printer')}Εκτύπωση${ic('chevron-down')}</button><button class="pill b">${ic('upload')}Εισαγωγή DKV</button>`)}
  <div class="card" style="flex:1;min-height:0;border-radius:24px 24px 0 0;overflow:hidden">
-  <div class="wk" style="border-bottom:1px solid var(--line);min-height:46px;gap:14px"><div class="inp" style="width:240px;height:34px;margin-right:8px"><b class="num" style="font-weight:600">ΚΗΙ 4162 · Ρ 9498</b><span class="sp"></span>${ic('chevron-down')}</div><a>4 εβδομάδες</a><a class="on">8 εβδομάδες</a><a>12 εβδομάδες</a><span class="sp"></span><div class="q" style="margin:6px 0;width:180px">${ic('search')}Αναζήτηση</div></div>
-  <div class="xtop"><b class="num">13.640,00 €</b><span class="lg2"><span><i style="background:var(--ink)"></i>Καύσιμα φορτηγού <b class="num">8.300</b> · 5.200 L</span><span><i style="background:#666873"></i>Θάλαμος <b class="num">1.400</b> · 820 L</span><span><i style="background:#A9ABB3"></i>Διόδια <b class="num">2.300</b></span><span><i style="background:#D9DBE0"></i>Υπόλοιπα <b class="num">1.640</b></span></span>
-   <span class="stack"><i class="f" style="flex:8300"></i><i class="t" style="flex:1400"></i><i style="flex:2300;background:#A9ABB3"></i><i style="flex:1640;background:#D9DBE0"></i></span></div>
-  <div class="fg"><div><span class="lbl">Χιλιόμετρα</span><b class="num">16.250</b><small>από 4 δρομολόγια</small></div><div><span class="lbl">Κατανάλωση</span><b class="num">32,0 <span style="font-size:14px;color:var(--help);font-weight:400">L / 100 km</span></b><small>στόλος 32,4</small></div><div><span class="lbl">Κόστος ανά χιλιόμετρο</span><b class="num">0,84 €</b><small>στόλος 0,87</small></div><div><span class="lbl">Διόδια</span><b class="num">2.300</b><small class="num">AT 900 · GR 500 · HU 500 · DE 400</small></div></div>
-  <div class="fl" style="padding:12px 28px 4px"><span class="chip on">Όλα <b>5</b></span><span class="chip">Πλήρη <b>4</b></span><span class="chip a">Με ελλείψεις <b>1</b></span><span class="chip" style="color:var(--faint)">Σε εξέλιξη <b style="color:var(--faint)">0</b></span></div>
-  <div class="th2 lbl"><span>Δρομολόγιο</span><span>Καύσιμα</span><span>Διόδια</span><span>Υπόλοιπα</span><span class="hx"></span><span></span><span>Σύνολο</span></div>
-  ${VT.map(([r,s,f,t,o,w,tot])=>`<div class="tr2">${two(r,s)}<span class="n num">${eu(f)}</span><span class="n num">${eu(t)}</span><span class="n num">${eu(o)}</span><span></span>${w?`<i class="nb a" data-t="${w.split('|')[1]}">!</i>`:'<span></span>'}<span class="tot num">${eu(tot)}</span></div>`).join('')}
-  <div class="tr2" style="cursor:default"><div class="two"><b>Χωρίς δρομολόγιο</b><span>2 γραμμές κάρτας · 3/10 και 20/10</span></div><span class="n g">–</span><span class="n num">200,00</span><span class="n g">–</span><span style="grid-column:span 2;justify-self:end"><a style="font-weight:500;font-size:13px">Ανάθεση</a></span><span class="tot num">200,00</span></div>
-  <div class="tr2 totr" style="border-top:1.5px solid var(--ink);margin:6px 28px 0;padding:0;cursor:default;height:48px"><b style="font-weight:600;color:var(--ink)">Σύνολο περιόδου</b><span class="n num" style="font-weight:600">9.700,00</span><span class="n num" style="font-weight:600">2.300,00</span><span class="n num" style="font-weight:600">1.640,00</span><span></span><span></span><span class="tot num">13.640,00</span></div>
-  <div style="padding:22px 28px 0"><table class="cmp num"><tr><th>Ίδια περίοδος, άλλα φορτηγά</th><th>Χιλιόμετρα</th><th>L / 100 km</th><th>€ / km</th><th>Σύνολο €</th></tr>
-   <tr class="me"><td>ΚΗΙ 4162</td><td>16.250</td><td>32,0</td><td>0,84</td><td>13.640,00</td></tr><tr><td>ΚΗΙ 4612</td><td>18.900</td><td class="a">34,5</td><td class="a">0,93</td><td>17.580,00</td></tr><tr><td>ΚΗΙ 4445</td><td>15.400</td><td>31,2</td><td>0,85</td><td>13.090,00</td></tr><tr><td>ΚΗΙ 4166</td><td>9.800</td><td>30,8</td><td>0,86</td><td>8.430,00</td></tr></table></div>
+  <div class="wk" style="border-bottom:1px solid var(--line);min-height:46px;gap:14px"><span class="seg sm" style="margin:8px 6px 8px 0"><b>Εβδομάδα</b><b class="on">Όχημα</b></span><div class="inp" style="width:220px;height:34px;margin-right:8px"><b class="num" style="font-weight:600">ΚΗΙ 3310 · Ρ 7120</b><span class="sp"></span>${ic('chevron-down')}</div><a>4 εβδομάδες</a><a class="on">8 εβδομάδες</a><a>12 εβδομάδες</a></div>
+  <div class="xtop"><b class="num">${eu(V.all)} €</b><span class="lg2"><span><i style="background:var(--ink)"></i>Καύσιμα φορτηγού <b class="num">${nf(VA[1])}</b> · ${nf(VA[0])} L</span><span><i style="background:#666873"></i>Θάλαμος <b class="num">${nf(VA[3])}</b> · ${nf(VA[2])} L</span><span><i style="background:#A9ABB3"></i>Διόδια <b class="num">${nf(VA[4])}</b></span><span><i style="background:#D9DBE0"></i>Υπόλοιπα <b class="num">${nf(VA[5])}</b></span></span>
+   <span class="stack"><i class="f" style="flex:${VA[1]}"></i><i class="t" style="flex:${VA[3]}"></i><i style="flex:${VA[4]};background:#A9ABB3"></i><i style="flex:${VA[5]};background:#D9DBE0"></i></span></div>
+  <div class="fl" style="padding:12px 28px 4px"><span class="chip on">Όλα τα δρομολόγια <b>${VT.length}</b></span><span class="chip">Πλήρη <b>${VK.length}</b></span><span class="chip a">Με ελλείψεις <b>${VT.length-VK.length}</b></span></div>
+  <div class="th2 th3 lbl"><span></span><span></span><span class="sp2">Καύσιμα φορτηγού</span><span class="sp2">Θάλαμος</span></div>
+  <div class="th2 lbl"><span>Δρομολόγιο</span><span>Χιλιόμετρα</span><span>L</span><span>€</span><span>L</span><span>€</span><span>Διόδια €</span><span>Υπόλοιπα €</span><span>Σύνολο €</span><span>L / 100 km</span><span>€ / km</span></div>
+  ${VT.map(vrow).join('')}
+  <div class="tr2 sm1"><b>Με χιλιόμετρα<small>${VK.length} από ${VT.length} δρομολόγια</small></b><span class="n num">${nf(V.km)}</span>${cells(VB)}<span class="tot num">${eu(V.allk)}</span><span class="n num dv">${d1(VB[0]/V.km*100)}</span><span class="n num dv">${d2(V.allk/V.km)}</span></div>
+  <div class="tr2" style="cursor:default"><div class="two"><b>Χωρίς δρομολόγιο</b><span>2 γραμμές κάρτας · Τετ 14/10 · Δευ 2/11</span></div><span class="n g">–</span><span class="n g">–</span><span class="n g">–</span><span class="n g">–</span><span class="n g">–</span><span class="n num">${eu(NOTRIP)}</span><span class="n g">–</span><span class="tot num">${eu(NOTRIP)}</span><span style="grid-column:span 2;justify-self:end"><a style="font-weight:500;font-size:13px">Ανάθεση</a></span></div>
+  <div class="tr2 sm1"><b>Σύνολο περιόδου</b><span class="n g">–</span>${cells(VA)}<span class="tot num">${eu(V.all)}</span><span></span><span></span></div>
+  <div style="padding:26px 28px 0"><table class="cmp num"><tr><th>W39 – W46, δρομολόγια με χιλιόμετρα</th><th>Χιλιόμετρα</th><th>L / 100 km</th><th>€ / km</th></tr>
+   <tr class="me"><td>ΚΗΙ 3310<small>Θ. Μέλλιος</small></td><td>${nf(V.km)}</td><td>${d1(VB[0]/V.km*100)}</td><td>${d2(V.allk/V.km)}</td></tr><tr><td>ΚΗΙ 5127<small>Σ. Καρράς</small></td><td>15.900</td><td class="a">34,6 <i class="nb a" data-t="7% πάνω από τον στόλο.">!</i></td><td class="a">0,72 <i class="nb a" data-t="6% πάνω από τον στόλο.">!</i></td></tr><tr><td>ΚΗΙ 4445<small>Μ. Χρυσάφης</small></td><td>14.100</td><td>31,2</td><td>0,66</td></tr><tr><td>ΚΗΙ 7310<small>Δ. Μάνος</small></td><td>9.800</td><td>30,8</td><td>0,64</td></tr><tr><td colspan="4" style="text-align:left"><a style="font-weight:500;font-size:13px;display:inline-flex;gap:6px;align-items:center">${ic('chevron-right')}7 ακόμη φορτηγά</a></td></tr><tr class="fl2"><td>Στόλος<small>11 φορτηγά</small></td><td>148.300</td><td>32,4</td><td>0,68</td></tr></table></div>
  </div></main></div>`;
 
 /* ---------- import ---------- */
-/* [day, what, country, litres, net, suggestion, kind] kind: s = suggestion, n = no trip, d = possible duplicate */
-const IM=[['ΚΗΙ 4612 · Ρ 2998','6 γραμμές',[['4/11','Διόδια','AT','',86,'Βέροια → Poeldijk · 2 – 9/11','s'],['4/11','Καύσιμα','AT','410 L',690,'Βέροια → Poeldijk · 2 – 9/11','s'],['9/11','Διόδια','HU','',42,'Poeldijk → Βέροια · 9 – 13/11','s']]],
- ['ΚΗΙ 7244 · Ρ 9487','3 γραμμές',[['7/11','Καύσιμα','GR','380 L',640,'','n'],['7/11','AdBlue','GR','20 L',22,'','n']]],
- ['ΚΗΙ 1286 · Ε 3002','2 γραμμές',[['11/11','Spedition','AT','',100,'Υπάρχει ίδια γραμμή με το χέρι, 11/11, 100,00','d']]],
- ['Γενικά τέλη κάρτας','δεν θέλουν απόφαση',[['15/11','Τέλη DKV','DE','',36,'','g']]]];
-const irow=([d,w,c,l,n,sg,k])=>`<div class="il ${k==='s'?'sg':''}"><span class="num">${d}</span><b>${w}</b><span>${c}${l?' · '+l:''}</span><span></span><span class="n num">${eu(n)}</span>${k==='s'?`<span class="sug" title="Πρόταση: το φορτηγό έτρεχε αυτό το δρομολόγιο εκείνη την ημέρα">${sg}</span>`:k==='d'?`<span><i class="nb a" data-t="${sg}.">!</i></span>`:k==='g'?`<span style="color:var(--faint)">–</span>`:`<span><i class="nb" data-t="Το φορτηγό δεν είχε δρομολόγιο εκείνη την ημέρα.">!</i></span>`}<div class="ax">${k==='s'?`<button class="ibt" title="Άλλο δρομολόγιο">${ic('pencil')}</button><button class="pill sm" onclick="yes(this)">Ναι</button>`:k==='d'?`<button class="ibt" title="Κράτα και τις δύο γραμμές">${ic('copy-plus')}</button><button class="pill sm" title="Κράτα τη γραμμή της κάρτας και σβήσε αυτήν που γράφτηκε με το χέρι">Της κάρτας</button>`:k==='g'?'':`<span></span><button class="pill sm">Δρομολόγιο</button>`}</div></div>`;
-/* accept a suggestion: the row leaves, what is below closes the gap, the two counts follow once */
+/* One decision pattern on every line: the answer as a chip that opens the alternatives, and a tick that confirms it.
+   [day, what, country · litres, amount, kind, proposed trip, twin]  kind: s = proposed trip, n = no trip that day, d = possible duplicate */
+const IM=[['ΚΗΙ 5127 · Ρ 6604','Σ. Καρράς · 3 προτάσεις',[['Τετ 4/11','Διόδια','AT',86,'s','Βέροια → Wien · 2 – 6/11'],['Τετ 4/11','Καύσιμα','AT · 410 L',690,'s','Βέροια → Wien · 2 – 6/11'],['Δευ 9/11','Διόδια','HU',42,'s','Wien → Σίνδος · 6 – 10/11']],'<a class="bulk" onclick="yesAll(this)">Ναι σε όλες του φορτηγού</a>'],
+ ['ΚΗΙ 6012 · Ρ 5093','Α. Ντίνος · 2 χωρίς δρομολόγιο',[['Σάβ 7/11','Καύσιμα','GR · 380 L',640,'n'],['Σάβ 7/11','AdBlue','GR · 20 L',22,'n']],'<a class="bulk">Ίδιο δρομολόγιο για όλες</a>'],
+ ['ΚΗΙ 1680 · Ρ 3250','Η. Σαράφης · 1 ίσως διπλή',[['Τετ 11/11','Spedition','AT',100,'d','','με το χέρι · Αλεξία, Πέμ 12/11']],'']];
+const KA={s:'Ναι, σε αυτό το δρομολόγιο',n:'Μένει στο φορτηγό, χωρίς δρομολόγιο',d:'Σβήνει η χειρόγραφη, μένει της κάρτας'};
+const irow=([d,w,c,n,k,sg,tw])=>`<div class="il" data-k="${k}"><span class="num">${d}</span><b>${w}</b><span>${c}</span><span class="n num">${eu(n)}</span><span class="dz"><button class="pk ${k}">${k==='s'?sg:k==='n'?'Χωρίς δρομολόγιο':'Σβήνει η χειρόγραφη'}${ic('chevron-down')}</button></span><button class="ok" title="${KA[k]}" aria-label="${KA[k]}" onclick="yes(this)">${ic('check')}</button></div>`+(tw?`<div class="il tw"><span class="num">${d}</span><b>${w}</b><span>${c}</span><span class="n num">${eu(n)}</span><span class="dz">ήδη στα έξοδα · ${tw}</span><span></span></div>`:'');
+/* confirm: the line leaves, what is below closes the gap, the counts follow once */
 const SC=f=>f.getBoundingClientRect().width/f.offsetWidth;
 const bump=(el,v)=>{el.textContent=v;el.classList.remove('fadeup');void el.offsetWidth;el.classList.add('fadeup')};
 function leave(rows,done){rows=rows.filter(r=>!r._g);if(!rows.length)return;rows.forEach(r=>r._g=1);const lc=rows[0].parentElement;rows.forEach((r,i)=>setTimeout(()=>r.classList.add('out'),RED()?0:i*40));
  setTimeout(()=>{const last=rows[rows.length-1],after=[...lc.children].slice([...lc.children].indexOf(last)+1),tops=after.map(e=>e.getBoundingClientRect().top),sc=SC($('fI'));
   rows.forEach(r=>{const g=r.previousElementSibling,nx=r.nextElementSibling;r.remove();if(g&&g.classList.contains('ig')&&(!nx||!nx.classList.contains('il')))g.remove()});
   after.forEach((e,k)=>{if(!e.isConnected)return;const dy=(tops[k]-e.getBoundingClientRect().top)/sc;if(!dy)return;e.classList.remove('mvup');e.style.transform=`translateY(${dy}px)`;void e.offsetWidth;e.classList.add('mvup');e.style.transform=''});done()},RED()?0:160+(rows.length-1)*40)}
-function cnt(n){bump($('cd'),+$('cd').textContent-n);bump($('cs'),+$('cs').textContent-n);bump($('cok'),+$('cok').textContent+n)}
-function yes(btn){leave([btn.closest('.il')],()=>cnt(1))}
-function yesAll(a){const g=a.closest('.ig'),rows=[];let e=g.nextElementSibling;while(e&&e.classList.contains('il')){if(e.classList.contains('sg'))rows.push(e);e=e.nextElementSibling}if(rows.length)leave(rows,()=>cnt(rows.length))}
+const CN={s:['cs'],n:['cn','wn'],d:['cx','wx']};
+function cnt(k,n){['cd',...CN[k]].forEach(id=>bump($(id),+$(id).textContent-n));bump($('cok'),+$('cok').textContent+n)}
+function yes(btn){const r=btn.closest('.il'),t=r.nextElementSibling;leave(t&&t.classList.contains('tw')?[r,t]:[r],()=>cnt(r.dataset.k,1))}
+function yesAll(a){const g=a.closest('.ig'),rows=[];let e=g.nextElementSibling;while(e&&e.classList.contains('il')){if(e.dataset.k==='s')rows.push(e);e=e.nextElementSibling}if(rows.length)leave(rows,()=>cnt('s',rows.length))}
+const SHOWN=sum(IM,g=>g[2].length),DEC=26;
 $('fI').innerHTML=`<div class="app">${side('e')}<main class="main">
- ${hd('Εισαγωγή κάρτας καυσίμων','DKV · 1 – 15 Νοεμβρίου 2026',`<button class="pill">Άκυρο</button><button class="pill b" id="ib">Καταχώρηση 214 γραμμών</button>`)}
+ ${hd('Εισαγωγή κάρτας καυσίμων','DKV · 1 – 15 Νοεμβρίου 2026',`<span class="und"><i class="nb a" data-t="Μένουν χωρίς απόφαση. Η καταχώρηση δεν τις περιμένει.">!</i><span><b class="num" id="wx">3</b> ίσως διπλά · <b class="num" id="wn">9</b> χωρίς δρομολόγιο</span></span><button class="pill">Άκυρο</button><button class="pill b" id="ib">Καταχώρηση 214 γραμμών</button>`)}
  <div class="card" style="flex:1;min-height:0;border-radius:24px 24px 0 0;overflow:hidden">
   <div class="kpb"><b class="num">9.840,00 €</b><span class="rec">${ic('check')}Συμφωνεί με τη σύνοψη της κατάστασης</span><span class="sp"></span><span><b class="num">214</b> γραμμές</span><span><b class="num">11</b> φορτηγά</span><span><b class="num">17</b> δρομολόγια</span><span title="Επιστροφή ΦΠΑ: απαίτηση, όχι κόστος">ΦΠΑ προς επιστροφή <b class="num">1.240,00</b></span></div>
-  <div class="fl" style="padding-bottom:0"><span class="chip on">Θέλουν απόφαση <b id="cd">26</b></span><span class="chip">Προτάσεις <b id="cs">14</b></span><span class="chip r">Χωρίς δρομολόγιο <b>9</b></span><span class="chip a">Ίσως διπλά <b>3</b></span><span class="chip">Σίγουρες <b id="cok">188</b></span><span class="sp"></span><span class="chip hide">Κατηγορία ${ic('chevron-down')}</span></div>
-  <div class="il ilh lbl" style="margin-top:12px"><span>Ημέρα</span><span>Τι</span><span>Χώρα · λίτρα</span><span></span><span class="n">Ποσό €</span><span>Δρομολόγιο</span><span></span></div>
-  ${IM.map(([p,c,rows],i)=>`<div class="ig"><b class="num">${p}</b><small>${c}</small><span class="sp"></span>${i===0?`<a style="font-weight:500;font-size:13px;cursor:pointer" onclick="yesAll(this)">Ναι σε όλες του φορτηγού</a>`:i===1?`<a style="font-weight:500;font-size:13px">Ίδιο δρομολόγιο για όλες</a>`:''}</div>${rows.map(irow).join('')}`).join('')}
-  <div class="il" style="min-height:44px;margin-top:10px"><span></span><span style="grid-column:span 6;color:var(--link);font-weight:500;display:inline-flex;gap:6px;align-items:center">${ic('chevron-right')}20 ακόμη γραμμές που θέλουν απόφαση</span></div>
+  <div class="fl" style="padding-bottom:0"><span class="chip on">Θέλουν απόφαση <b id="cd">${DEC}</b></span><span class="chip">Προτάσεις <b id="cs">14</b></span><span class="chip r">Χωρίς δρομολόγιο <b id="cn">9</b></span><span class="chip a">Ίσως διπλά <b id="cx">3</b></span><span class="chip">Σίγουρες <b id="cok">188</b></span><span class="sp"></span><span class="chip hide">Κατηγορία ${ic('chevron-down')}</span></div>
+  <div class="il ilh lbl" style="margin-top:12px"><span>Ημέρα</span><span>Γραμμή κάρτας</span><span>Χώρα · λίτρα</span><span class="n">Ποσό €</span><span>Πού πάει</span><span></span></div>
+  ${IM.map(([p,c,rows,bulk])=>`<div class="ig"><b class="num">${p}</b><small>${c}</small><span class="sp"></span>${bulk}</div>${rows.map(irow).join('')}`).join('')}
+  <div class="il" style="min-height:44px;margin-top:10px"><span style="grid-column:1/-1;color:var(--link);font-weight:500;display:inline-flex;gap:6px;align-items:center">${ic('chevron-right')}${DEC-SHOWN} ακόμη γραμμές σε 6 φορτηγά</span></div>
   <div class="ig" style="padding-top:22px"><b>Προηγούμενες καταστάσεις</b></div>
-  ${[['16 – 31 Οκτωβρίου','231 γραμμές · 10.420,00','Αλεξία · Δευ 2/11','ok'],['1 – 15 Οκτωβρίου','198 γραμμές · 9.105,00','Αλεξία · Παρ 16/10','ok']].map(([a,b,c])=>`<div class="il" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr) 180px 110px"><b>${a}</b><span class="num">${b}</span><span>${c}</span><span class="st done" style="justify-self:end">${ic('check')}Καταχωρήθηκε</span></div>`).join('')}
+  ${[['16 – 31 Οκτωβρίου','231 γραμμές · 10.420,00','Αλεξία · Δευ 2/11'],['1 – 15 Οκτωβρίου','198 γραμμές · 9.105,00','Αλεξία · Παρ 16/10']].map(([a,b,c])=>`<div class="il" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr) 180px 130px"><b>${a}</b><span class="num">${b}</span><span>${c}</span><span class="st done" style="justify-self:end">${ic('check')}Καταχωρήθηκε</span></div>`).join('')}
  </div></main></div>`;
 
 /* ---------- result ---------- */
-/* [plate, sub, route, revenue, costs or null, missing words] */
-const PL=[['ΚΗΙ 4162 · Ρ 9498','Α. Κοσκοσίδης · 24 – 29/10',6800,3909,'','sel'],['ΚΗΙ 4612 · Ρ 2998','Ε. Μπάμπαλος · 24 – 30/10',9300,7409,''],['ΚΗΙ 4445 · Ρ 3001','Ι. Καρκάλης · 24 – 30/10',7400,5253,''],['ΚΗΙ 4166 · Ρ 6471','Θ. Ράλλης · 26 – 29/10',3100,1921,''],
- ['ΚΗΙ 2109 · Ρ 4406','Δ. Στογιάννου · 28 – 30/10',3400,null,'Τελείωσε και δεν έχει διόδια.'],['ΚΗΙ 0138 · Ρ 5302','Ι. Αντωνιάδης · 25 – 27/10',2900,null,'Τελείωσε και δεν έχει καύσιμα ούτε διόδια.'],['ΚΗΙ 7244 · Ρ 9487','Ι. Πάππης · 26 – 29/10',3600,null,'Τελείωσε και δεν έχει καύσιμα.'],['ΚΗΙ 1286 · Ε 3002','Ε. Σαρίδης · 25 – 27/10',1800,null,'Λείπει η αξία του οδηγού.'],
- ['ΚΗΙ 8302 · Ρ 1983','Δ. Αντζιμάνοφ · 25/10 – 3/11',7200,null,'Σε εξέλιξη.','run'],['Transfrigo Kft.','συνεργάτης · 27 – 30/10',2700,null,'Λείπει το κόμιστρο του συνεργάτη.','p']];
-const prow=([a,b,r,c,m,cls=''])=>`<div class="pl ${cls==='sel'?'sel':''}"><div class="two"><b class="num">${a}</b><span>${b}</span></div><span class="n num hx">${eu(r)}</span><span class="n num hx ${c?'':'g'}">${c?eu(c):'–'}</span>${m?`<i class="nb ${cls==='run'?'a':''}" data-t="${m}">!</i>`:'<span></span>'}<span class="net num ${c?'':'u'}">${c?eu(r-c):'—'}</span><span class="pc num hx">${c?((r-c)/r*100).toFixed(0)+'%':''}</span></div>`;
+/* W46, the last finished week (today is Mon 16/11, W47): the same 8 trips and 12 orders as page 02, 24.500,00.
+   k: o = our truck, n = national, p = partner. c = [truck fuel, reefer fuel, tolls, other, driver]; null = not written. L = [truck litres, reefer litres]. Wear = km × 0,14.
+   rv = [customer, leg, amount or null]. A revenue or a cost that is not known is never shown as zero. */
+const WEAR=.14,TR=[
+ {a:'ΚΗΙ 3310',tl:'Ρ 7120',dr:'Θ. Μέλλιος',dy:'Τρί 3 – Τρί 10/11',rt:VT[0][0],km:3650,L:[1150,160],tn:'6 χώρες',c:[1620,210,420,140,620],ab:640,k:'o',rv:[['Tirol Obst GmbH','Βέροια → Innsbruck',3800],['Αγροτικός Συν. Νάουσας','Modena → Νάουσα',3000]]},
+ {a:'ΚΗΙ 2208',tl:'Ρ 4259',dr:'Π. Ράπτης',dy:'Τετ 4 – Τετ 11/11',rt:'Σκύδρα → Zürich → Poznań → Ασπρόπυργος',km:4900,L:[1540,210],tn:'8 χώρες',c:[2140,280,560,150,700],ab:900,k:'o',rv:[['Alpen Frucht AG','Σκύδρα → Zürich',3900],['Baltic Cold Foods','Poznań → Ασπρόπυργος',2600]]},
+ {a:'Transfrigo Kft.',tl:'',dr:'RKA 512 · XTR 088',dy:'Παρ 6 – Δευ 9/11',rt:'Βέροια → Wien',fee:2300,k:'p',rv:[['Danubia Market Kft.','Βέροια → Wien',2700]]},
+ {a:'ΚΗΙ 2140',tl:'',dr:'Ν. Ρούσσος',dy:'Δευ 9/11',rt:'Βέροια → Ασπρόπυργος → Τρίπολη → Βέροια',km:1100,L:[215,24],tn:'GR',c:[300,30,70,0,80],k:'n',rv:[['Hellas Kiwi Coop','Βέροια → Ασπρόπυργος',450],['Ανδρέου Logistics','Τρίπολη → Βέροια',450]]},
+ {a:'ΚΗΙ 9056',tl:'',dr:'Τ. Ιορδάνου',dy:'Τρί 10/11',rt:'Βέροια → Λαμία → Σπάρτη → Βέροια',km:1250,L:[232,27],tn:'GR',c:[325,35,60,0,80],k:'n',rv:[['Olympos Export','Βέροια → Λαμία',400],['Ανδρέου Logistics','Σπάρτη → Βέροια',500]]},
+ {a:'ΚΗΙ 7310',tl:'Ρ 8145',dr:'Δ. Μάνος',dy:'Σάβ 7 – Τετ 11/11',rt:'Βέροια → Innsbruck',km:3300,L:[1010,135],c:[1420,180,null,95,520],k:'o',m:'Τελείωσε και δεν έχει διόδια.',mw:'διόδια',ab:600,rv:[['Tirol Obst GmbH','Βέροια → Innsbruck',3800]]},
+ {a:'ΚΗΙ 4521',tl:'Ρ 6654',dr:'Γ. Αλεξίου',dy:'Δευ 9 – Τετ 11/11',rt:'Νάουσα → Wien',km:1420,L:[405,52],tn:'4 χώρες',c:[570,70,190,40,null],k:'o',m:'Λείπει η αξία του οδηγού.',mw:'οδηγός',ab:250,rv:[['Danubia Market Kft.','Νάουσα → Wien',2900]]},
+ {a:'ΚΗΙ 5102',tl:'Ρ 5948',dr:'Σ. Κάππος',dy:'Δευ 9 – Παρ 13/11',rt:'Μεσσήνη → Hamburg',km:2900,L:[880,115],tn:'6 χώρες',c:[1230,150,240,60,400],k:'o',m:'Η παραγγελία της Nordfrisch GmbH δεν έχει τιμή.',mw:'τιμή',ab:520,red:1,rv:[['Nordfrisch GmbH','Μεσσήνη → Hamburg',null]]}];
+TR.forEach(t=>{t.w=t.km?t.km*WEAR:null;t.rev=t.rv.every(r=>r[2]!=null)?sum(t.rv,r=>r[2]):null;t.cost=t.k==='p'?t.fee:t.c.every(x=>x!=null)?sum(t.c,x=>x)+t.w:null;t.full=t.rev!=null&&t.cost!=null;t.net=t.full?t.rev-t.cost:null;const ab=t.ab||0,v=(x,r)=>x?r2(x-r2(x/r)):0;/* fuel bought in Greece carries 24%, fuel bought abroad 20% */t.vat=t.k==='p'?0:r2(v(t.c[0]-ab,1.24)+v(ab,1.2)+v(t.c[1],1.24))});
+const FU=TR.filter(t=>t.full),MI=TR.filter(t=>!t.full),W={rev:sum(TR,t=>t.rev||0),rf:sum(FU,t=>t.rev),cf:sum(FU,t=>t.cost),rm:sum(MI,t=>t.rev||0),ord:sum(TR,t=>t.rv.length),np:sum(TR,t=>t.rv.filter(r=>r[2]==null).length)};W.net=W.rf-W.cf;
+chk(W.rev,24500,'W46 revenue (CAST.md)');chk(W.ord,12,'W46 orders (CAST.md)');chk(W.rf+W.rm,W.rev,'full + missing');chk(vtot(VT[0]),sum(TR[0].c.slice(0,4),x=>x),'same trip on Έξοδα and Αποτέλεσμα');
+const pct=(n,r)=>Math.round(n/r*100)+'%',dash='<span class="u">—</span>';
+const prow=t=>{const i=TR.indexOf(t);return `<div class="pl ${i===0?'sel':''}" role="button" tabindex="0" onclick="pick(${i})" onkeydown="if(event.key==='Enter')pick(${i})">${two(`<span class="num">${t.a}</span> · ${t.dr}<small>${t.dy}</small>`,t.rt)}<span class="n num ${t.rev==null?'g':''}">${t.rev==null?'—':eu(t.rev)}</span><span class="n num ${t.cost==null?'g':''}">${t.cost==null?'—':eu(t.cost)}</span>${t.full?`<span class="net num">${eu(t.net)}</span><span class="pc num">${pct(t.net,t.rev)}</span>`:`<span class="mw ${t.red?'rd':''}" title="${t.m}">${t.mw}</span><span></span>`}</div>`};
+/* the trip sheet: one layout for a complete trip, a missing cost, a missing price and a partner's trip */
+function sheet(t){const ln=(l,sm,v,w='λείπει')=>`<div class="eq sub"><dt>${l}${v==null?`<small class="ms">${w}</small>`:sm?`<small>${sm}</small>`:''}</dt><dd class="num ${v==null?'u':''}">${v==null?'—':eu(v)}</dd></div>`;
+ const costs=t.k==='p'?ln('Κόμιστρο συνεργάτη','',t.fee):ln('Καύσιμα φορτηγού',nf(t.L[0])+' L',t.c[0])+ln('Καύσιμα θαλάμου',nf(t.L[1])+' L',t.c[1])+ln('Διόδια',t.tn,t.c[2])+ln('Υπόλοιπα έξοδα','',t.c[3])+ln('Οδηγός','από τη Μισθοδοσία',t.c[4])+ln('Φθορά',nf(t.km)+' km',t.w);
+ return `<div class="h"><div style="flex:1;min-width:0"><b class="num">${t.a}${t.tl?' · '+t.tl:''}</b><small>${t.dr} · ${t.dy}${t.km?' · '+nf(t.km)+' km':''}</small><small style="text-wrap:balance">${t.rt}</small></div><button class="ibt" title="Εκτύπωση αποτελέσματος" aria-label="Εκτύπωση αποτελέσματος">${ic('printer')}</button><button class="cl" aria-label="Κλείσιμο">${ic('x')}</button></div>
+  <dl style="margin:10px 0 0"><div class="eq hh"><dt>Έσοδα</dt><dd class="num ${t.rev==null?'u':''}">${t.rev==null?'—':eu(t.rev)}</dd></div>
+   ${t.rv.map(([c,l,v])=>ln(c,l,v,'χωρίς τιμή').replace('<small class="ms">',`<small>${l}</small><small class="ms rd">`)).join('')}
+   <div class="eq hh"><dt>Κόστη</dt><dd class="num ${t.cost==null?'u':''}">${t.cost==null?'—':eu(t.cost)}</dd></div>${costs}
+   <div class="eq t"><dt>Καθαρό${t.full?` <span class="num" style="font-weight:400;color:var(--help);margin-left:8px">${pct(t.net,t.rev)}</span>`:''}</dt><dd class="num ${t.full?'':'u'}">${t.full?eu(t.net)+' €':'—'}</dd></div>${t.full&&t.vat?`<div class="eq sub" style="min-height:26px"><dt style="padding-left:0;color:var(--help)">Χωρίς τον ΦΠΑ των εξόδων</dt><dd class="num" style="color:var(--body)">${eu(t.net+t.vat)}</dd></div>`:''}</dl>
+  <div style="display:flex;gap:2px;margin:8px -8px 0;align-items:center">${t.k==='p'?'':`<a class="tbtn" style="color:var(--link)">${ic('receipt')}Στα Έξοδα του δρομολογίου</a>`}<span class="sp"></span>${t.rev==null?`<button class="pill sm b">Τιμή</button>`:`<button class="pill sm ${t.full?'':'b'}">${ic('plus')}${t.k==='p'?'Κόμιστρο':'Κόστος'}</button>`}</div>`}
+/* reading down the list happens tens of times a day: the sheet changes at once, no animation */
+function pick(i){document.querySelectorAll('#fP .pl[role]').forEach((r,k)=>r.classList.toggle('sel',k===i));$('sh').innerHTML=sheet(TR[i]);lucide.createIcons()}
 $('fP').innerHTML=`<div class="app">${side('e')}<main class="main">
- ${hd('Αποτέλεσμα δρομολογίων','W44',`<button class="pill" style="width:40px;padding:0;justify-content:center" title="Ρυθμίσεις">${ic('settings-2')}</button><button class="pill">${ic('printer')}Εκτύπωση</button><button class="pill b">${ic('plus')}Νέο δρομολόγιο</button>`)}
- <div class="card open4" style="flex:1;min-height:0;margin-right:424px;border-radius:24px 24px 0 0;overflow:hidden">
-  <div class="wk" style="border-bottom:1px solid var(--line);min-height:46px">${ic('chevron-left')}<a>41</a><a>42</a><a>43</a><a class="on">44</a><a>45</a>${ic('chevron-right')}<span class="sp"></span><span class="seg sm" style="margin:8px 0"><b class="on">Δρομολόγια</b><b>Φορτηγό</b><b>Οδηγός</b></span></div>
-  <div class="kpb"><b class="num">8.108,00 € <small>καθαρό</small></b><span title="Μόνο τα πλήρη δρομολόγια"><b>4</b> από 10 πλήρη</span><span class="sp"></span><span>έσοδα <b class="num">26.600,00</b></span><span>κόστη <b class="num">18.492,00</b></span><span><b class="num">30%</b></span></div>
-  <div class="fl" style="padding-bottom:6px"><span class="chip on">Όλα <b>10</b></span><span class="chip">Διεθνή <b>9</b></span><span class="chip">Εθνικά <b>1</b></span><span class="chip" style="color:var(--faint)">Μικτά <b style="color:var(--faint)">0</b></span><span class="sp"></span><span class="chip hide" title="Όλος ο στόλος · ένα φορτηγό · Συνεργάτες">Όλος ο στόλος ${ic('chevron-down')}</span></div>
-  <div class="plh lbl"><span>Δρομολόγιο</span><span class="hx">Έσοδα</span><span class="hx">Κόστη</span><span></span><span>Καθαρό</span><span class="hx"></span></div>
-  <div class="grp" style="padding:18px 28px 4px">Πλήρη<small>4 δρομολόγια</small></div>${PL.slice(0,4).map(prow).join('')}
-  <div class="grp" style="padding:18px 28px 4px">Λείπουν κόστη<small>6 δρομολόγια · έσοδα 21.600,00</small></div>${PL.slice(4).map(prow).join('')}
-  <div class="pl" style="cursor:default;height:46px;grid-template-columns:minmax(0,1fr) auto"><span style="display:flex;align-items:center;gap:8px;color:var(--body)"><i class="nb a" data-t="Δύο παραγγελίες που εκτελέστηκαν δεν ανήκουν σε δρομολόγιο· τα έσοδά τους δεν φαίνονται εδώ.">!</i>2 παραγγελίες χωρίς δρομολόγιο</span><a style="font-weight:500;font-size:13px">Δείξε →</a></div>
-  <div class="pl" style="cursor:default;height:46px;grid-template-columns:minmax(0,1fr) auto"><span style="display:flex;align-items:center;gap:8px;color:var(--body)"><i class="nb a" data-t="Τρεις παραδόσεις με ανταλλαγή παλετών δεν έχουν δελτίο. Δεν εμποδίζει το αποτέλεσμα.">!</i>3 δελτία παλετών λείπουν</span><a style="font-weight:500;font-size:13px">Παλέτες →</a></div>
+ ${hd('Αποτέλεσμα δρομολογίων','W46',`${SW('p')}<button class="pill" style="width:40px;padding:0;justify-content:center" title="Ρυθμίσεις" aria-label="Ρυθμίσεις">${ic('settings-2')}</button><button class="pill">${ic('plus')}Νέο δρομολόγιο</button><button class="pill">${ic('printer')}Εκτύπωση</button>`)}
+ <div class="card" style="flex:1;min-height:0;margin-right:424px;border-radius:24px 24px 0 0;overflow:hidden">
+  <div class="wk" style="border-bottom:1px solid var(--line);min-height:46px">${ic('chevron-left')}<a>W44</a><a>W45</a><a class="on">W46</a><a>W47</a>${ic('chevron-right')}<span class="sp"></span><span class="seg sm" style="margin:8px 0"><b class="on">Ανά δρομολόγιο</b><b>Ανά φορτηγό</b><b>Ανά οδηγό</b></span></div>
+  <div class="kpb"><b class="num">${eu(W.net)} € <small>καθαρό · ${pct(W.net,W.rf)}</small></b><span class="sp"></span><span><b>${FU.length}</b> από ${TR.length} πλήρη</span></div>
+  <div class="fl" style="padding-bottom:6px"><span class="chip on">Όλα <b>${TR.length}</b></span><span class="chip">Διεθνή <b>${TR.filter(t=>t.k!=='n').length}</b></span><span class="chip">Εθνικά <b>${TR.filter(t=>t.k==='n').length}</b></span><span class="sp"></span><span class="chip hide">Όλος ο στόλος ${ic('chevron-down')}</span></div>
+  <div class="plh lbl"><span>Δρομολόγιο</span><span>Έσοδα €</span><span>Κόστη €</span><span>Καθαρό €</span><span>%</span></div>
+  <div class="grp" style="padding:16px 28px 4px">Πλήρη<small>${FU.length} δρομολόγια</small></div>${FU.map(prow).join('')}
+  <div class="pl pls"><b>Σύνολο πλήρων</b><span class="n num">${eu(W.rf)}</span><span class="n num">${eu(W.cf)}</span><span class="net num">${eu(W.net)}</span><span class="pc num">${pct(W.net,W.rf)}</span></div>
+  <div class="grp" style="padding:20px 28px 4px">Με ελλείψεις<small>${MI.length} δρομολόγια</small></div>${MI.map(prow).join('')}
+  <div class="pl pls"><b>Σύνολο με ελλείψεις<small>${W.np} παραγγελία χωρίς τιμή</small></b><span class="n num">${eu(W.rm)}</span><span class="n g">—</span><span class="net u">—</span><span></span></div>
+  <div class="pl pls gt"><b>Έσοδα W46<small>${W.ord} παραγγελίες</small></b><span class="n num">${eu(W.rev)}</span><span></span><span></span><span></span></div>
  </div></main></div>
- <div class="tc" style="padding-bottom:18px"><div class="h"><div style="flex:1;min-width:0"><b class="num">ΚΗΙ 4162 · Ρ 9498</b><small>Α. Κοσκοσίδης · 24 – 29/10 · 3.150 km</small><small style="text-wrap:balance">Ασπρόπυργος&nbsp;→ Laakirchen&nbsp;→ Aschbach&nbsp;→ Κουφάλια</small></div><button class="ibt" title="Εκτύπωση αποτελέσματος">${ic('printer')}</button><button class="cl" aria-label="Κλείσιμο">${ic('x')}</button></div>
-  <dl style="margin:10px 0 0"><div class="eq hh"><dt>Έσοδα</dt><dd class="num">6.800,00</dd></div>
-   <div class="eq sub"><dt>Tirol Obst GmbH<small>Ασπρόπυργος → Laakirchen</small></dt><dd class="num">3.800,00</dd></div><div class="eq sub"><dt>Αγροτικός Συν. Νάουσας<small>Aschbach → Κουφάλια</small></dt><dd class="num">3.000,00</dd></div>
-   <div class="eq hh"><dt>Κόστη</dt><dd class="num">3.909,00</dd></div>
-   <div class="eq sub"><dt>Καύσιμα<small>φορτηγό 1.010 L · θάλαμος 290 L</small></dt><dd class="num">2.200,00</dd></div><div class="eq sub"><dt>Διόδια<small>3 χώρες</small></dt><dd class="num">340,00</dd></div><div class="eq sub"><dt>Υπόλοιπα έξοδα</dt><dd class="num">408,00</dd></div><div class="eq sub"><dt>Οδηγός<small>από τη Μισθοδοσία</small></dt><dd class="num">520,00</dd></div><div class="eq sub"><dt>Φθορά<small>3.150 km</small></dt><dd class="num">441,00</dd></div>
-   <div class="eq t"><dt>Καθαρό <span class="num" style="font-weight:400;color:var(--help);margin-left:8px">43%</span></dt><dd class="num">2.891,00 €</dd></div><div class="eq sub" style="min-height:26px"><dt style="padding-left:0;color:var(--help)">Χωρίς τον ΦΠΑ των εξόδων</dt><dd class="num" style="color:var(--body)">3.316,81</dd></div></dl>
-  <div style="display:flex;gap:2px;margin:6px -8px 0"><a class="tbtn" style="color:var(--help)">${ic('receipt')}Έξοδα του δρομολογίου</a><span class="sp"></span><button class="pill sm">${ic('plus')}Κόστος</button></div>
- </div>`;
+ <div class="tc" id="sh" style="padding-bottom:18px">${sheet(TR[0])}</div>`;
 
 $('fPP').innerHTML=`<div style="position:absolute;inset:0;display:flex;gap:24px;align-items:flex-start;padding:32px;background:#DFE1E6">
- <div class="pn" style="width:520px"><div style="display:flex;align-items:center;gap:12px"><h3>Νέο δρομολόγιο</h3><span class="seg sm"><b class="on">Διεθνές</b><b>Εθνικό</b></span><span class="seg sm"><b class="on">Δικό μας</b><b>Συνεργάτης</b></span><span class="sp"></span><button class="cl" aria-label="Κλείσιμο">${ic('x')}</button></div>
-  <div class="row g12" style="margin-top:16px"><div style="grid-column:span 6">${fld('Φορτηγό','ΚΗΙ 4162'+cur,'focus')}</div><div style="grid-column:span 6">${fld('Ρυμούλκα','Ρ 9498')}</div></div>
-  <div class="row g12"><div style="grid-column:span 6">${fld('Οδηγός','Α. Κοσκοσίδης')}</div><div style="grid-column:span 6">${fld('Συνεργάτης','')}</div></div>
-  <div class="row g12"><div style="grid-column:span 4">${fld('Έναρξη','2/11/2026')}</div><div style="grid-column:span 4">${fld('Λήξη','')}</div><div style="grid-column:span 4">${fld('Χιλιόμετρα','')}</div></div>
+ <div class="pn" style="width:500px"><div style="display:flex;align-items:center"><h3>Νέο δρομολόγιο</h3><span class="sp"></span><button class="cl" aria-label="Κλείσιμο">${ic('x')}</button></div>
+  <div style="display:flex;gap:10px;margin-top:12px"><span class="seg sm"><b class="on">Διεθνές</b><b>Εθνικό</b></span><span class="seg sm"><b class="on">Δικό μας</b><b>Συνεργάτης</b></span></div>
+  <div class="row g12" style="margin-top:14px"><div style="grid-column:span 4">${fld('Φορτηγό','ΚΗΙ 3310'+cur,'focus')}</div><div style="grid-column:span 4">${fld('Ρυμούλκα','Ρ 7120')}</div><div style="grid-column:span 4">${fld('Οδηγός','Θ. Μέλλιος')}</div></div>
+  <div class="row g12"><div style="grid-column:span 4">${fld('Έναρξη','Δευ 16/11/2026')}</div><div style="grid-column:span 4">${fld('Λήξη','')}</div><div style="grid-column:span 4">${fld('Χιλιόμετρα','')}</div></div>
   <div class="pf"><span class="sp"></span><button class="pill">Άκυρο</button><button class="pill b">Αποθήκευση</button></div></div>
- <div class="pn" style="width:360px"><div style="display:flex;align-items:center"><h3>Ρυθμίσεις αποτελέσματος</h3><span class="sp"></span><button class="cl" aria-label="Κλείσιμο">${ic('x')}</button></div>
-  <div class="row g12" style="margin-top:14px"><div style="grid-column:span 6">${fld('Φθορά € / km, όταν λείπει','0,14')}</div><div style="grid-column:span 6">${fld('ΦΠΑ %','24')}</div></div>
-  <div class="row g12"><div style="grid-column:span 6">${fld('Μέσω Βέροιας, εξαγωγή €','150,00')}</div><div style="grid-column:span 6">${fld('Μέσω Βέροιας, εισαγωγή €','150,00')}</div></div>
-  <div class="row g12"><div style="grid-column:span 6">${fld('Αξία παλέτας €','12,00')}</div><div style="grid-column:span 6">${fld('Παλέτες πλήρους φορτίου','33')}</div></div>
+ <div class="pn" style="width:380px"><div style="display:flex;align-items:center"><h3>Ρυθμίσεις αποτελέσματος</h3><span class="sp"></span><button class="cl" aria-label="Κλείσιμο">${ic('x')}</button></div>
+  <div class="row g12" style="margin-top:14px"><div style="grid-column:span 6">${fld('Φθορά € / km','0,14')}</div><div style="grid-column:span 6">${fld('ΦΠΑ %','24')}</div></div>
+  <div class="row g12"><div style="grid-column:span 6">${fld('Βέροια, εξαγωγή €','150,00')}</div><div style="grid-column:span 6">${fld('Βέροια, εισαγωγή €','150,00')}</div></div>
+  <div class="row g12"><div style="grid-column:span 6">${fld('Αξία παλέτας €','12,00')}</div><div style="grid-column:span 6">${fld('Πλήρες φορτίο, παλέτες','33')}</div></div>
   <div class="pf"><span class="sp"></span><button class="pill">Άκυρο</button><button class="pill b">Αποθήκευση</button></div></div>
- <div class="pn" style="width:400px"><div style="display:flex;align-items:center"><h3>Ανάθεση σε δρομολόγιο</h3><span class="sp"></span><button class="cl" aria-label="Κλείσιμο">${ic('x')}</button></div><small>ΚΗΙ 4162 · διόδια AT · 20/10 · 120,00</small>
-  <div style="margin-top:12px"><p class="lbl">Έτρεχε εκείνη την ημέρα</p><div class="qi" style="border-top:0"><span><b>Βέροια → Wien → Linz → Σίνδος</b><small>Α. Κοσκοσίδης · 15 – 21/10</small></span><span class="cb on"><i>${ic('check')}</i></span></div>
-   <p class="lbl" style="margin-top:10px">Άλλα του φορτηγού</p><div class="qi" style="border-top:0"><span><b>Ασπρόπυργος → Laakirchen → Κουφάλια</b><small>24 – 29/10</small></span><i class="nb a" data-t="Η ημέρα της γραμμής είναι έξω από το δρομολόγιο.">!</i></div></div>
+ <div class="pn" style="width:440px"><div style="display:flex;align-items:center"><h3>Ανάθεση σε δρομολόγιο</h3><span class="sp"></span><button class="cl" aria-label="Κλείσιμο">${ic('x')}</button></div><small>ΚΗΙ 3310 · Ρ 7120 · Θ. Μέλλιος</small><div class="arow"><span class="num">Τετ 14/10</span><b>Διόδια</b><span>AT</span><span class="n num">120,00</span></div>
+  <div style="margin-top:12px"><p class="lbl">Δρομολόγια του φορτηγού, κοντά στην ημέρα</p><div class="qi" style="border-top:0"><span><b>${VT[2][0]}</b><small>${VT[2][1]} · τελείωσε 1 ημέρα πριν</small></span><span class="cb on" style="flex:none"><i>${ic('check')}</i></span></div>
+   <div class="qi"><span><b>${VT[1][0]}</b><small>${VT[1][1]} · άρχισε 5 ημέρες μετά</small></span><span class="cb" style="flex:none"><i></i></span></div></div>
   <div style="margin-top:10px">${fld('Αιτία','Ήρθε από την κάρτα χωρίς δρομολόγιο')}</div>
   <div class="pf"><span class="sp"></span><button class="pill">Άκυρο</button><button class="pill b">Ανάθεση</button></div></div>
 </div>`;
@@ -194,44 +241,49 @@ $('fPP').innerHTML=`<div style="position:absolute;inset:0;display:flex;gap:24px;
 const bp=(l,body)=>`<div class="panel"><p class="lbl">${l}</p>${body}</div>`;
 const em=(i,h,b='')=>`<div style="display:grid;justify-items:start;align-content:center;min-height:120px;gap:10px"><div class="tile soft" style="width:36px;height:36px;border-radius:10px">${ic(i)}</div><h3 style="margin:0;font-weight:500;color:var(--body);font-size:15px">${h}</h3>${b}</div>`;
 const strip=(i,t,b,n)=>`<div class="strip ${n?'n':''}" style="margin-top:12px;align-items:flex-start">${ic(i)}<div style="max-width:36ch">${t}${b?`<div style="display:flex;gap:8px;margin-top:10px">${b}</div>`:''}</div></div>`;
-const dk=(l,t,b)=>`<div class="dark" style="margin-top:12px"><p class="lbl"><i class="r"></i>${l}</p><p style="max-width:36ch">${t}</p><div style="display:flex;gap:8px">${b}</div></div>`;
+const dk=(l,t,b)=>`<div class="er"><p class="lbl"><i></i>${l}</p><p class="t">${t}</p><div style="display:flex;gap:8px">${b}</div></div>`;
 const rd=`<button class="pill sm">${ic('rotate-cw')}Ξαναδιάβασε</button>`,rt='<button class="pill b sm">Ξαναδοκίμασε</button>';
 $('bad').innerHTML=[
  bp('Φορτηγό χωρίς δρομολόγια στην περίοδο',em('inbox','Κανένα δρομολόγιο σε 8 εβδομάδες',`<button class="pill sm">12 εβδομάδες</button>`)),
- bp('Η κατάσταση δεν συμφωνεί',`<div class="kpb" style="padding:14px 0 0;border:0;flex-wrap:wrap;gap:8px 14px"><b class="num">9.840,00 €</b><span style="color:var(--red);font-weight:600">${ic('x')} σύνοψη 9.876,00 · διαφορά 36,00</span></div><button class="pill b off" style="margin-top:14px">Καταχώρηση</button>`),
+ bp('Η κατάσταση δεν συμφωνεί',`<div class="kpb" style="padding:14px 0 0;border:0;flex-wrap:wrap;gap:8px 14px"><b class="num">9.840,00 €</b><span style="color:var(--red);font-weight:600">${ic('x')} σύνοψη 9.876,00 · διαφορά 36,00</span></div><div style="display:flex;gap:8px;align-items:center;margin-top:14px"><button class="pill b off">Καταχώρηση</button><i class="nb" data-t="Λείπουν 36,00 από τη σύνοψη: ένα έγγραφο της κατάστασης δεν διαβάστηκε.">!</i><span class="sp" style="flex:1"></span><button class="pill sm">Κράτα πρόχειρο</button></div>`),
  bp('Το ίδιο αρχείο ξανά',strip('copy','Η κατάσταση 1 – 15 Νοεμβρίου καταχωρήθηκε ήδη από την Αλεξία, Δευ 16/11 07:40.','',1)),
  bp('Η εισαγωγή δεν γράφτηκε',dk('Δεν καταχωρήθηκε καμία γραμμή','Κατάσταση 1 – 15 Νοεμβρίου, 214 γραμμές. Οι αποφάσεις σου κρατήθηκαν.',rt)),
  bp('Δεν διαβάστηκαν',em('cloud-off','Τα δρομολόγια δεν διαβάστηκαν',rd)),
  bp('Διαβάστηκε το μισό',strip('cloud-off','Τα έσοδα των εθνικών δεν διαβάστηκαν. Το καθαρό τους δείχνει «—».',rd,1)+strip('cloud-off','Η αξία των οδηγών δεν διαβάστηκε.',rd,1)),
- bp('Κανένα πλήρες δρομολόγιο',`<div class="kpb" style="padding:14px 0 0;border:0"><b class="num" style="color:var(--faint)">—</b><span><b>0</b> από 10 πλήρη</span></div>`),
- bp('Χιλιόμετρα που λείπουν',`<div class="fg" style="grid-template-columns:1fr;border:0;margin-top:6px"><div style="padding:8px 0"><span class="lbl">Κατανάλωση</span><b style="color:var(--faint)">— <i class="nb a show" style="vertical-align:3px" data-t="Σε 2 από 5 δρομολόγια δεν έχουν γραφτεί χιλιόμετρα.">!</i></b></div></div>`),
- bp('Χαρτί που δεν συμφωνεί',strip('printer','Το χαρτί της W44 δεν τυπώνεται: το άθροισμά του διαφέρει από την οθόνη κατά 120,00.','<button class="pill sm">Ανανέωση</button>',1)),
- bp('Το έξοδο δεν γράφτηκε',dk('Δεν γράφτηκε','Διόδια AT 120,00, ΚΗΙ 4162, Α. Κοσκοσίδης, Βέροια → Wien → Σίνδος, 15 – 21/10.',rt)),
+ bp('Εβδομάδα σε εξέλιξη · κανένα πλήρες',`<div class="kpb" style="padding:14px 0 0;border:0"><b class="num" style="color:var(--faint)">— <small>καθαρό W47</small></b><span class="sp"></span><span><b>0</b> από 10 πλήρη</span></div><p class="num" style="margin-top:10px;color:var(--body);font-size:13px">έσοδα <b style="color:var(--ink);font-weight:600">24.950,00</b> · 10 παραγγελίες</p>`),
+ bp('Κανένα δρομολόγιο με χιλιόμετρα',`<div class="fg" style="grid-template-columns:1fr;border:0;margin-top:6px"><div style="padding:8px 0"><span class="lbl">Κατανάλωση</span><b style="color:var(--faint)">—</b><small><b style="display:inline;font-size:inherit;color:var(--amber);font-weight:600;margin:0">0 από 5</b> δρομολόγια με χιλιόμετρα</small></div></div>`),
+ bp('Χαρτί που δεν συμφωνεί',strip('printer','Το χαρτί της W46 δεν τυπώνεται: το άθροισμά του διαφέρει από την οθόνη κατά 120,00.','<button class="pill sm">Ανανέωση</button>',1)),
+ bp('Το έξοδο δεν γράφτηκε',dk('Δεν γράφτηκε','Η ανάθεση δεν έγινε: διόδια AT 120,00, ΚΗΙ 3310, Θ. Μέλλιος, Τετ 14/10.',rt)),
  bp('Φόρτωση',[0,1,2].map(()=>`<div style="display:grid;grid-template-columns:minmax(0,1fr) 70px;gap:14px;align-items:center;height:54px"><div><div class="sk" style="height:12px;width:55%"></div><div class="sk" style="height:10px;width:35%;margin-top:8px"></div></div><div class="sk" style="height:12px"></div></div>`).join('')),
- bp('Μόνο ανάγνωση · χωρίς πρόσβαση',`<div style="margin-top:12px"><span class="tag" style="margin:0;display:inline-flex;gap:5px;align-items:center;height:22px">${ic('eye')}Μόνο ανάγνωση</span></div>`+em('lock','Το αποτέλεσμα το βλέπει ο Δημήτρης'))
+ bp('Μόνο ανάγνωση · χωρίς πρόσβαση',`<div style="margin-top:12px"><span class="tag" style="margin:0;display:inline-flex;gap:5px;align-items:center;height:22px">${ic('eye')}Μόνο ανάγνωση</span></div>`+em('lock','Το αποτέλεσμα το βλέπει μόνο ο Δημήτρης'))
 ].join('');
 
 /* ---------- A4 ---------- */
 const ptop=(a,b)=>`<div class="top"><span class="logo full" role="img" aria-label="Petras Group"></span><span class="wk2">${a}<br>${b}</span></div>`;
-const foot=`<div class="foot" style="margin-top:auto"><span>Δημήτρης Π. · 31/10/2026 13:10</span><span>1 / 1</span></div>`;
-$('a4t').innerHTML=`${ptop('Αποτέλεσμα δρομολογίου','24 – 29 Οκτωβρίου 2026')}
-<div class="hero" style="grid-template-columns:1fr 190px"><div><h2>ΚΗΙ 4162 · Ρ 9498</h2><p style="margin-top:6px;color:#444">Α. Κοσκοσίδης · 3.150 km<br>Ασπρόπυργος → Laakirchen → Aschbach → Κουφάλια</p></div><div style="text-align:right"><span style="font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:#444">Καθαρό</span><b class="t num" style="margin-top:4px">2.891,00 €</b><span style="color:#444">43% των εσόδων</span></div></div>
+const foot=`<div class="foot" style="margin-top:auto"><span>Δημήτρης Π. · Δευ 16/11/2026 08:10</span><span>1 / 1</span></div>`;
+const T0=TR[0],vl=(a,b,t)=>[a,b,r2(t/1.24),r2(t-r2(t/1.24)),t],vf=(a,b,t,r)=>[a,b,r2(t/r),r2(t-r2(t/r)),t],PC=[vf('Καύσιμα φορτηγού','700 L · GR · ΦΠΑ 24%',T0.c[0]-T0.ab,1.24),vf('Καύσιμα φορτηγού','450 L · AT · ΦΠΑ 20%',T0.ab,1.2),vf('Καύσιμα θαλάμου',nf(T0.L[1])+' L · GR · ΦΠΑ 24%',T0.c[1],1.24),['Διόδια','GR 60 · MK 30 · RS 60 · HU 90 · AT 120 · IT 60',420,0,420],['Τέλη DKV','',5,0,5],['Λοιπά','Διαμονή',135,0,135],['Οδηγός','από τη Μισθοδοσία',T0.c[4],0,T0.c[4]],['Φθορά',nf(T0.km)+' km × 0,14',T0.w,0,T0.w]];
+chk(sum(PC,r=>r[4]),T0.cost,'trip paper costs');chk(700+450,T0.L[0],'trip paper litres');chk(420,T0.c[2],'trip paper tolls');chk(140,T0.c[3],'trip paper other');chk(sum(PC,r=>r[3]),T0.vat,'trip paper VAT');chk(sum(PC,r=>r[2])+sum(PC,r=>r[3]),T0.cost,'trip paper net + VAT');
+$('a4t').innerHTML=`${ptop('Αποτέλεσμα δρομολογίου','W46 · '+T0.dy+'/2026')}
+<div class="hero" style="grid-template-columns:1fr 190px"><div><h2>${T0.a} · ${T0.tl}</h2><p style="margin-top:6px;color:#444">${T0.dr} · ${nf(T0.km)} km<br>${T0.rt}</p></div><div style="text-align:right"><span style="font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:#444">Καθαρό</span><b class="t num" style="margin-top:4px">${eu(T0.net)} €</b><span style="color:#444">${pct(T0.net,T0.rev)} των εσόδων</span></div></div>
 <p class="psec">Έσοδα</p><div class="hr"><span>Πελάτης · διαδρομή</span><span></span><span></span><span>Ποσό €</span></div>
-<div class="r"><span><b style="font-weight:500">Tirol Obst GmbH</b><i>Ασπρόπυργος → Laakirchen</i></span><span></span><span></span><span>3.800,00</span></div><div class="r"><span><b style="font-weight:500">Αγροτικός Συν. Νάουσας</b><i>Aschbach → Κουφάλια</i></span><span></span><span></span><span>3.000,00</span></div>
-<div class="r psum"><span>Σύνολο εσόδων</span><span></span><span></span><span class="tot">6.800,00</span></div>
+${T0.rv.map(([c,l,v])=>`<div class="r"><span><b style="font-weight:500">${c}</b><i>${l}</i></span><span></span><span></span><span>${eu(v)}</span></div>`).join('')}
+<div class="r psum"><span>Σύνολο εσόδων</span><span></span><span></span><span class="tot">${eu(T0.rev)}</span></div>
 <p class="psec" style="margin-top:8px">Κόστη</p><div class="hr"><span>Κατηγορία</span><span>Καθαρό</span><span>ΦΠΑ</span><span>Ποσό €</span></div>
-${[['Καύσιμα','1.300 L',1774.19,425.81,2200],['Διόδια','GR 60 · HU 100 · AT 180',340,0,340],['Τέλη DKV','',3,0,3],['Spedition','',200,0,200],['Μετρητά οδηγού','',45,0,45],['Λοιπά','Διαμονή',160,0,160],['Οδηγός','από τη Μισθοδοσία',520,0,520],['Φθορά','3.150 km × 0,14',441,0,441]].map(([a,b,n,v,t])=>`<div class="r"><span><b style="font-weight:500">${a}</b><i>${b}</i></span><span>${eu(n)}</span><span>${v?eu(v):'–'}</span><span>${eu(t)}</span></div>`).join('')}
-<div class="r psum"><span>Σύνολο κοστών</span><span>3.483,19</span><span>425,81</span><span class="tot">3.909,00</span></div>
-<div class="r psum" style="margin-top:14px;border-top-width:1.5px"><span>Καθαρό</span><span></span><span></span><span class="tot" style="font-size:13px">2.891,00</span></div>
+${PC.map(([a,b,n,v,t])=>`<div class="r"><span><b style="font-weight:500">${a}</b><i>${b}</i></span><span>${eu(n)}</span><span>${v?eu(v):'–'}</span><span>${eu(t)}</span></div>`).join('')}
+<div class="r psum"><span>Σύνολο κοστών</span><span>${eu(sum(PC,r=>r[2]))}</span><span>${eu(sum(PC,r=>r[3]))}</span><span class="tot">${eu(T0.cost)}</span></div>
+<div class="r psum" style="margin-top:14px;border-top-width:1.5px"><span>Καθαρό</span><span></span><span></span><span class="tot" style="font-size:13px">${eu(T0.net)}</span></div>
+<div class="r" style="border-top:0"><span style="color:#555">Καθαρό χωρίς τον ΦΠΑ των εξόδων</span><span></span><span></span><span>${eu(T0.net+T0.vat)}</span></div>
 ${foot}`;
-$('a4w').innerHTML=`${ptop('Αποτέλεσμα δρομολογίων','W44 · 2026')}
-<div class="hero"><div><h2>Αποτέλεσμα εβδομάδας</h2><b class="t num">8.108,00 €</b></div><div><div class="kv3 num"><span>Έσοδα πλήρων</span><span>26.600,00</span><span>Κόστη πλήρων</span><span>18.492,00</span><span>Πλήρη δρομολόγια</span><span>4 από 10</span></div></div></div>
-<p class="psec">Πλήρη<em>4 δρομολόγια</em></p><div class="hr"><span>Φορτηγό · οδηγός · ημέρες</span><span>Έσοδα</span><span>Κόστη</span><span>Καθαρό</span><span>%</span></div>
-${PL.slice(0,4).map(([a,b,r,c])=>`<div class="r"><span><b>${a}</b><i>${b}</i></span><span>${eu(r)}</span><span>${eu(c)}</span><span class="tot">${eu(r-c)}</span><span>${((r-c)/r*100).toFixed(0)}%</span></div>`).join('')}
-<div class="r psum"><span>Σύνολο πλήρων</span><span>26.600,00</span><span>18.492,00</span><span class="tot">8.108,00</span><span>30%</span></div>
-<p class="psec" style="margin-top:8px">Λείπουν κόστη<em>6 δρομολόγια · δεν μετρούν στο καθαρό</em></p><div class="hr"><span>Φορτηγό · οδηγός · ημέρες</span><span>Έσοδα</span><span style="grid-column:span 3;text-align:left">Τι λείπει</span></div>
-${PL.slice(4).map(([a,b,r,c,m])=>`<div class="r"><span><b>${a}</b><i>${b}</i></span><span>${eu(r)}</span><span style="grid-column:span 3;text-align:left"><span style="color:#444">${m.replace('Τελείωσε και δεν έχει','χωρίς').replace('Λείπει ','χωρίς ').replace('Σε εξέλιξη','σε εξέλιξη').replace('η αξία','αξία').replace('το κόμιστρο','κόμιστρο').replace('.','')}</span></span></div>`).join('')}
-<div class="r psum"><span>Έσοδα χωρίς πλήρη κόστη</span><span>21.600,00</span><span></span><span></span><span></span></div>
+const wl=t=>`<span><b>${t.a} · ${t.dr}</b><i>${t.dy}</i><i class="rte">${t.rt}</i></span>`;
+$('a4w').innerHTML=`${ptop('Αποτέλεσμα δρομολογίων','W46 · 2026')}
+<div class="hero"><div><h2>Αποτέλεσμα W46</h2><b class="t num">${eu(W.net)} €</b></div><div><div class="kv3 num"><span>Έσοδα πλήρων</span><span>${eu(W.rf)}</span><span>Κόστη πλήρων</span><span>${eu(W.cf)}</span><span>Πλήρη δρομολόγια</span><span>${FU.length} από ${TR.length}</span></div></div></div>
+<p class="psec">Πλήρη<em>${FU.length} δρομολόγια</em></p><div class="hr"><span>Φορτηγό · οδηγός · ημέρες · διαδρομή</span><span>Έσοδα</span><span>Κόστη</span><span>Καθαρό</span><span>%</span></div>
+${FU.map(t=>`<div class="r">${wl(t)}<span>${eu(t.rev)}</span><span>${eu(t.cost)}</span><span class="tot">${eu(t.net)}</span><span>${pct(t.net,t.rev)}</span></div>`).join('')}
+<div class="r psum"><span>Σύνολο πλήρων</span><span>${eu(W.rf)}</span><span>${eu(W.cf)}</span><span class="tot">${eu(W.net)}</span><span>${pct(W.net,W.rf)}</span></div>
+<p class="psec" style="margin-top:8px">Με ελλείψεις<em>${MI.length} δρομολόγια · δεν μετρούν στο καθαρό</em></p><div class="hr"><span>Φορτηγό · οδηγός · ημέρες · διαδρομή</span><span>Έσοδα</span><span style="grid-column:span 3;text-align:left">Τι λείπει</span></div>
+${MI.map(t=>`<div class="r">${wl(t)}<span>${t.rev==null?'—':eu(t.rev)}</span><span style="grid-column:span 3;text-align:left"><span class="${t.red?'pr':'pa'}">${t.mw}</span></span></div>`).join('')}
+<div class="r psum"><span>Σύνολο με ελλείψεις</span><span>${eu(W.rm)}</span><span></span><span></span><span></span></div>
+<div class="r psum" style="margin-top:14px;border-top-width:1.5px"><span>Έσοδα W46 · ${W.ord} παραγγελίες</span><span class="tot" style="font-size:11px">${eu(W.rev)}</span><span></span><span></span><span></span></div>
 ${foot}`;
 boot();
 </script>

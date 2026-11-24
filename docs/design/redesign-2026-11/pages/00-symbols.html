@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="el">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Petras TMS · Λεξικό συμβόλων (σχέδιο)</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_system.css">
+<style>
+/* DESIGN MOCKUP ONLY. The one dictionary of symbols used by every page (owner 25/11: symbols in the place of written notes). */
+body{background:#E9EAEE;padding:32px}
+#fS{width:1040px;height:auto;background:var(--bg);border-radius:24px;padding:28px 32px 30px}
+#fS h1{font-size:26px;font-weight:400;letter-spacing:-.4px;color:var(--ink);margin-bottom:18px}
+.syg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 16px}
+.syr{display:grid;grid-template-columns:34px 150px minmax(0,1fr);align-items:center;gap:0 12px;background:#fff;border-radius:12px;height:52px;padding:0 16px;font-size:13.5px}
+.syr b{font-weight:600;color:var(--ink)}.syr span{color:var(--help);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.syr .sy{width:26px;height:26px}.syr .sy svg.lucide{width:18px;height:18px}
+.exr{margin-top:16px;background:#fff;border-radius:12px;padding:14px 16px;display:grid;grid-template-columns:1fr 1fr;gap:18px;font-size:13px}
+.exr p{color:var(--label);font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px}
+.exr .ln{display:flex;align-items:center;gap:8px;height:34px;border-top:1px solid var(--line-2);color:var(--ink)}.exr .ln small{color:var(--help);font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="frame" id="fS" style="transform:none"></div>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script src="_system.js"></script>
+<script>
+const W={fail:'Κάτι δεν γράφτηκε. Το μήνυμα λέει τι και γιατί.',late:'Πέρασε η ημέρα ή η ώρα του. Το μήνυμα λέει από πότε.',miss:'Λείπει κάτι που θα χρειαστεί: τιμή, δελτίο, ημερομηνία, τηλέφωνο.',wait:'Περιμένει κάποιον να το κάνει.',done:'Έγινε. Το μήνυμα λέει ποιος και πότε.',chg:'Άλλαξε ημέρα. Το μήνυμα λέει από πότε σε πότε.',who:'Ποιος το έγραψε ή το άλλαξε, και πότε.',note:'Σημείωση που έγραψε άνθρωπος.'};
+document.getElementById('fS').innerHTML=`<h1>Λεξικό συμβόλων</h1><div class="syg">${Object.keys(SY).map(k=>`<div class="syr">${sy(k,W[k])}<b>${SY[k][1]}</b><span>${W[k]}</span></div>`).join('')}</div>
+<div class="exr"><div><p>Πριν: σημείωση</p><div class="ln">Tirol Obst GmbH <small>· δεν γράφτηκε, χωρίς φορτηγό</small></div><div class="ln">Nordsee Kühlhaus <small>· παράδοση Σάβ 14/11 · 2 ημέρες</small></div><div class="ln">Φορτώθηκε <small>· Παντελής · 07:20</small></div></div>
+<div><p>Μετά: σύμβολο, το κείμενο στο ποντίκι</p><div class="ln">Tirol Obst GmbH ${sy('fail','Δεν γράφτηκε: το φορτίο δεν έχει φορτηγό')}</div><div class="ln">Nordsee Kühlhaus ${sy('late','Παράδοση Σάβ 14/11, πριν από 2 ημέρες','show')}</div><div class="ln">Φορτώθηκε ${sy('who','Παντελής, 07:20')}</div></div></div>`;
+lucide.createIcons();
+</script>
+</body>
+</html>
