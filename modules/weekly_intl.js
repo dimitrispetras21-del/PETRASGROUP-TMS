@@ -3291,6 +3291,7 @@ async function _wiSaveImportMatch(rowId,impId){
 
   // Lock check: verify export doesn't already have a matched import on server
   let expMatchRead;   // the export's match as this read saw it (undefined = not read)
+  let sameGiGroup = false;   // the server's match names this same GI group (read below)
   try {
     const exportRec = await atGetOne(TABLES.ORDERS, row.orderIds[0]);
     const existingExpMatch = exportRec.fields?.['Matched Import ID'];
@@ -3308,7 +3309,6 @@ async function _wiSaveImportMatch(rowId,impId){
     // it forces the dispatcher through an explicit unmatch+rematch, which is
     // exactly the two-step sequence that stripped a live sibling's assignment
     // on 8/9 (GI-MTRB928Y/307+308, audit_log 14:10:21–31 UTC).
-    let sameGiGroup = false;
     if (existingExpMatch && existingExpMatch !== matchImpId) {
       try {
         const existingImpRec = await atGetOne(TABLES.ORDERS, existingExpMatch);
@@ -3386,9 +3386,19 @@ async function _wiSaveImportMatch(rowId,impId){
   // 8/11 #10) moves no trip, the import keeps its own. Here, after the grip's
   // unmatch: an inherited vehicle has left with its leg by then (keepOwn), and
   // what is still on a trip is the import's own.
-  let ownFreedNote='';
-  if(row.truckId||row.partnerId){
-    const mRecs=giGroup.members.map(id=>_wiRecOf(id)||(id===impId&&importRec)||{id,fields:{}});
+  // Not when the server already names this group on this export (the 8/9
+  // re-confirmation, sameGiGroup): the group then rides the export's trip,
+  // which _wiOwnRtFree would refuse as «with other orders» (review high 24/11).
+  let ownFreedNote='', ownFreed=false;
+  const sameMatch=expMatchRead===matchImpId||sameGiGroup;
+  if((row.truckId||row.partnerId)&&!sameMatch){
+    // A member off this week's board is read, so the message can name it.
+    const mRecs=[];
+    for(const id of giGroup.members){
+      let r=_wiRecOf(id)||(id===impId&&importRec)||null;
+      if(!r){ try{ r=await atGetOne(TABLES.ORDERS,id); }catch(_){ r=null; } }
+      mRecs.push(r||{id,fields:{}});
+    }
     const own=await _wiOwnRtFree(mRecs);
     if(!own.ok){
       // The grip has already taken the group off its old export: say so, and
@@ -3398,13 +3408,27 @@ async function _wiSaveImportMatch(rowId,impId){
       // own trip is usually the empty line of its own driver — «Καθαρισμός
       // ανάθεσης» on the import takes the driver off and the DB drops that
       // empty line (011 dl_sync_from_rt); a line with amounts stays for the owner.
-      const next=/μισθοδοσίας/.test(own.msg)&&!own.wrote?' · πρώτα «Καθαρισμός ανάθεσης» στην εισαγωγή και ξανά το ταίριασμα, ή ζήτα από τον owner':'';
+      // Owner only: a dispatcher's retry is refused again on the cost read
+      // (403, COSTS_PERMS) — for them the message already says «ζήτα από τον owner».
+      const isOwner=typeof ROLE!=='undefined'&&ROLE==='owner';
+      const next=isOwner&&/μισθοδοσίας/.test(own.msg)&&!own.wrote?' · πρώτα «Καθαρισμός ανάθεσης» στην εισαγωγή και ξανά το ταίριασμα, ή ζήτα από τον owner':'';
       _wiRefuse(`${own.msg} · το ταίριασμα ΔΕΝ έγινε${tail}${next}`,'match refused');
       if(own.wrote||oldExpRow) await renderWeeklyIntl();
       return;
     }
     ownFreedNote=own.freed.map(x=>' · '+x).join('');
+    ownFreed=own.freed.length>0;
   }
+  // The import left its own trip but the match did not land (409, error,
+  // queued offline): it still has its own vehicle and now rides no trip.
+  // The P&L feed gives it one back from that vehicle (as any save does),
+  // and the user is told (review high 24/11) — never a trip-less assignment
+  // in silence.
+  const ownBack=()=>{
+    if(!ownFreed) return;
+    if(typeof rtOnOrderSaved==='function') for(const id of giGroup.members) rtOnOrderSaved(id).catch(e=>console.warn('[wi match] own trip back:',e&&e.message));
+    toast(escapeHtml('Το ταίριασμα δεν ολοκληρώθηκε · η εισαγωγή κρατά το δικό της όχημα και ξαναπαίρνει δικό της δρομολόγιο'+ownFreedNote),'warn');
+  };
 
   // Optimistic UI update
   const oldImp=row.importId;
@@ -3437,7 +3461,7 @@ async function _wiSaveImportMatch(rowId,impId){
       // _expect on the FIRST export PATCH only (§g.4): a 409 there writes nothing.
       const opt=orderId===row.orderIds[0]?_wiExpectOpt(orderId,['Matched Import ID']):undefined;
       const res=await atSafePatch(TABLES.ORDERS,orderId,{'Matched Import ID':matchImpId},opt||_wiQuietOpt());
-      if(res?.conflict){ if(_wiV2Active()) return WIV2.conflict(res,{slot:'wi-sync-'+rowId,slotOid:oid0,orderId,kind:'match',mine:{'Matched Import ID':matchImpId}}); _wiRefuse('Η εγγραφή άλλαξε από άλλον χρήστη — ανανέωση…','match race'); await renderWeeklyIntl(); return; }
+      if(res?.conflict){ ownBack(); if(_wiV2Active()) return WIV2.conflict(res,{slot:'wi-sync-'+rowId,slotOid:oid0,orderId,kind:'match',mine:{'Matched Import ID':matchImpId}}); _wiRefuse('Η εγγραφή άλλαξε από άλλον χρήστη — ανανέωση…','match race'); await renderWeeklyIntl(); return; }
       if(res?.error) throw new Error(res.error.message||res.error.type);
       // v4: offline, atPatch QUEUED it and echoed the body — not a write. Every
       // member is still queued (the loop goes on); no downstream sync for a
@@ -3464,10 +3488,12 @@ async function _wiSaveImportMatch(rowId,impId){
     // v4 only (matchOffline is set only then): queued is not written — no ✓,
     // no inherited vehicle, no RT link for a match the base does not hold yet.
     _wiSync('wi-sync-'+rowId,'err','Χωρίς σύνδεση — το ταίριασμα μπήκε σε αναμονή, δεν είναι ακόμη στη βάση',oid0);
+    ownBack();
     return;
   }
   _wiSync('wi-sync-'+rowId, matchFailed?'err':'ok',
     matchFailed?'Το ταίριασμα ΔΕΝ γράφτηκε στη βάση — ξαναπροσπάθησε ή κάνε Ανανέωση'+ownFreedNote:'Αποθηκεύτηκε'+_wiExpectNote(mExpSent,mExpChecked)+ownFreedNote,oid0);
+  if(matchFailed) ownBack();
 
   // Ταίριασμα σε ΗΔΗ ανατεθειμένο export (owner 13/8): το import αναλαμβάνεται
   // από το ίδιο όχημα — κληρονομεί την ανάθεση στη βάση. Το κόμιστρο import

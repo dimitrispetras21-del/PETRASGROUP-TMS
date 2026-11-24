@@ -40,9 +40,9 @@ const wiSrc = [
 //                        its empty payroll line dropped;
 //   rtOnOrderSaved(E)  — N1: the matched import's leg is attached to E's trip
 //                        ONLY when it is on no live trip (a live leg = stop).
-function world({ ownLedger = null, costs = 'none', exportTruck = 'T1' } = {}) {
+function world({ ownLedger = null, costs = 'none', exportTruck = 'T1', role = 'owner', failExport = false, alreadyMatched = false } = {}) {
   const orders = {
-    E: { no: 1, truck: exportTruck, driver: exportTruck ? 'D1' : null, matched: null },
+    E: { no: 1, truck: exportTruck, driver: exportTruck ? 'D1' : null, matched: alreadyMatched ? 'I' : null },
     I: { no: 2, truck: 'T14', driver: 'D14', matched: null },
   };
   const trips = {
@@ -61,7 +61,7 @@ function world({ ownLedger = null, costs = 'none', exportTruck = 'T1' } = {}) {
     orders[id].truck ? { Truck: [orders[id].truck] } : {}, orders[id].matched ? { 'Matched Import ID': orders[id].matched } : {}) });
   const ctx = {
     console: { log() {}, warn() {}, error() {} },
-    TABLES: { ORDERS: 'O' },
+    TABLES: { ORDERS: 'O' }, ROLE: role,
     WINTL: { rows: [], data: { exports: [{ id: 'E', fields: {} }], imports: [{ id: 'I', fields: {} }] }, ui: {} },
     PlainRef: require(path.join(__dirname, '..', 'core/plain-ref.js')), _fhLocationsMap: {}, escapeHtml: s => String(s),
     _rtLookups: async () => null,
@@ -70,6 +70,7 @@ function world({ ownLedger = null, costs = 'none', exportTruck = 'T1' } = {}) {
     atGetOne: async (_t, id) => recOf(id),
     atSafePatch: async (_t, id, f) => {
       log.push({ patch: id, f: Object.keys(f) });
+      if (failExport && id === 'E') return { error: { message: 'rig: export write failed' } };
       const o = orders[id];
       if ('Matched Import ID' in f) o.matched = f['Matched Import ID'] || null;
       if ('Truck' in f) o.truck = (f.Truck || [])[0] || null;
@@ -145,6 +146,33 @@ test('own trip with a payroll line: refused, NOTHING written, the import keeps i
   assert.ok(r && /μισθοδοσίας/.test(r.refuse) && /ΔΕΝ έγινε/.test(r.refuse), JSON.stringify(w.log));
   assert.ok(!/RT-\d|rec[A-Za-z0-9]{3}/.test(r.refuse), 'a code in the message: ' + r.refuse);
   assert.ok(/πρώτα «Καθαρισμός ανάθεσης» στην εισαγωγή/.test(r.refuse), 'no next step for the dispatcher: ' + r.refuse);
+});
+
+test('dispatcher, own trip with a payroll line: refused, and no «Καθαρισμός ανάθεσης» advice (their retry hits the 403)', async () => {
+  const w = world({ ownLedger: { id: 5 }, role: 'dispatcher' });
+  await w.ctx._wiSaveImportMatch(1, 'I');
+  await settle();
+  assert.deepStrictEqual(w.log.filter(x => x.patch || x.del), []);
+  const r = w.log.find(x => x.refuse);
+  assert.ok(r && /ζήτα από τον owner/.test(r.refuse) && !/Καθαρισμός ανάθεσης/.test(r.refuse), r && r.refuse);
+});
+
+test('the export write fails after the import left its own trip: the import gets a trip back from its own vehicle, and it is said', async () => {
+  const w = world({ failExport: true });
+  await w.ctx._wiSaveImportMatch(1, 'I');
+  await settle();
+  assert.ok(w.log.some(x => x.del === 2), 'the leg did not leave first');
+  assert.strictEqual(w.orders.I.truck, 'T14', 'the import lost its own truck');
+  assert.ok(w.log.some(x => x.rtSaved === 'I'), 'nothing gave the import a trip back');
+  assert.ok(w.log.some(x => x.toast && /κρατά το δικό της όχημα/.test(x.toast)), 'not said');
+});
+
+test('the server already names this import on this export (re-confirmation, 8/9): no own-trip step, no refusal', async () => {
+  const w = world({ alreadyMatched: true, ownLedger: { id: 5 } });
+  await w.ctx._wiSaveImportMatch(1, 'I');
+  await settle();
+  assert.ok(!w.log.some(x => x.refuse), JSON.stringify(w.log));
+  assert.ok(!w.log.some(x => x.del), 'a leg was taken off');
 });
 
 test('own trip whose costs the role cannot read (dispatcher, 403): refused, nothing written', async () => {
