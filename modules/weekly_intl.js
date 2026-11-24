@@ -3420,14 +3420,19 @@ async function _wiSaveImportMatch(rowId,impId){
     ownFreed=own.freed.length>0;
   }
   // The import left its own trip but the match did not land (409, error,
-  // queued offline): it still has its own vehicle and now rides no trip.
-  // The P&L feed gives it one back from that vehicle (as any save does),
-  // and the user is told (review high 24/11) — never a trip-less assignment
-  // in silence.
+  // queued offline): it still has its own vehicle and now rides no trip
+  // (review high 24/11). Said every time, never in silence. Its own trip comes
+  // back from that vehicle (rtOnOrderSaved, as any save does) ONLY when no
+  // member of the match landed or was queued: a matched import given a trip
+  // of its own again is the two-trip pair this step exists to prevent; such a
+  // one stays trip-less until the export's next save attaches it (N1).
+  let mTouched=false;   // a 'Matched Import ID' PATCH landed or was queued
   const ownBack=()=>{
     if(!ownFreed) return;
-    if(typeof rtOnOrderSaved==='function') for(const id of giGroup.members) rtOnOrderSaved(id).catch(e=>console.warn('[wi match] own trip back:',e&&e.message));
-    toast(escapeHtml('Το ταίριασμα δεν ολοκληρώθηκε · η εισαγωγή κρατά το δικό της όχημα και ξαναπαίρνει δικό της δρομολόγιο'+ownFreedNote),'warn');
+    const back=!mTouched&&typeof rtOnOrderSaved==='function';
+    if(back) for(const id of giGroup.members) rtOnOrderSaved(id).catch(e=>console.warn('[wi match] own trip back:',e&&e.message));
+    toast(escapeHtml((back?'Το ταίριασμα δεν έγινε · η εισαγωγή κρατά το δικό της όχημα και ξαναπαίρνει δικό της δρομολόγιο'
+      :'Το ταίριασμα δεν ολοκληρώθηκε · η εισαγωγή είναι χωρίς δρομολόγιο ώσπου να αποθηκευτεί ξανά η εξαγωγή')+ownFreedNote),'warn');
   };
 
   // Optimistic UI update
@@ -3466,8 +3471,9 @@ async function _wiSaveImportMatch(rowId,impId){
       // v4: offline, atPatch QUEUED it and echoed the body — not a write. Every
       // member is still queued (the loop goes on); no downstream sync for a
       // change that exists only in this browser (principle 2).
-      if(res?._offline&&_wiV2Active()){ matchOffline=true; continue; }
+      if(res?._offline&&_wiV2Active()){ matchOffline=true; mTouched=true; continue; }
       if(opt){ mExpSent=true; mExpChecked=res?._expectChecked; }
+      mTouched=true;
       _wiDataSet(orderId,{'Matched Import ID':matchImpId},res);
       // Central sync — matching link can affect downstream planning
       if (typeof syncOrderDownstream === 'function') {

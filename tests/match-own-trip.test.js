@@ -167,6 +167,19 @@ test('the export write fails after the import left its own trip: the import gets
   assert.ok(w.log.some(x => x.toast && /κρατά το δικό της όχημα/.test(x.toast)), 'not said');
 });
 
+test('a two-export group whose second match PATCH fails: the import is NOT given its own trip back (it is matched), and it is said', async () => {
+  const w = world();
+  w.orders.E2 = { no: 3, truck: 'T1', driver: 'D1', matched: null }; w.trips[1].legs.add('E2');
+  w.ctx.WINTL.rows[0].orderIds = ['E', 'E2'];
+  const orig = w.ctx.atSafePatch;
+  w.ctx.atSafePatch = async (t, id, f) => (id === 'E2' ? { error: { message: 'rig: second export failed' } } : orig(t, id, f));
+  await w.ctx._wiSaveImportMatch(1, 'I');
+  await settle();
+  assert.strictEqual(w.orders.E.matched, 'I');
+  assert.ok(!w.log.some(x => x.rtSaved === 'I'), 'a matched import was given its own trip again');
+  assert.ok(w.log.some(x => x.toast && /χωρίς δρομολόγιο/.test(x.toast)), 'not said');
+});
+
 test('the server already names this import on this export (re-confirmation, 8/9): no own-trip step, no refusal', async () => {
   const w = world({ alreadyMatched: true, ownLedger: { id: 5 } });
   await w.ctx._wiSaveImportMatch(1, 'I');
