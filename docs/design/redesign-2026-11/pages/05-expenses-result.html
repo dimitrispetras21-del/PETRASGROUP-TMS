@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="_system.css">
 <style>
 /* DESIGN MOCKUP ONLY. Invented names, plates and round amounts. Page-specific rules: expenses per vehicle, fuel-card import, trip result. */
-.who{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.whogrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
 .kpb{display:flex;align-items:baseline;gap:20px;padding:16px 28px;border-bottom:1px solid var(--line);white-space:nowrap}
 .kpb>b{font-size:26px;font-weight:500;color:var(--ink);letter-spacing:-.4px}.kpb>b small{font-size:14px;color:var(--help);font-weight:400;letter-spacing:0}
 .kpb>span{color:var(--body);font-size:13px}.kpb>span b{color:var(--ink);font-weight:600}
@@ -42,9 +42,9 @@
 .bulk{font-weight:500;font-size:13px;cursor:pointer}
 .il.out{opacity:0;transform:translateY(-8px);transition:opacity var(--t-exit) var(--ease-exit),transform var(--t-exit) var(--ease-exit)}.mvup{transition:transform var(--t-state) var(--ease)}.il.ilh{font-size:11px}
 .ilh{height:38px;min-height:0;border-bottom:1px solid var(--line)}.ilh span{color:var(--label)}.ilh span:nth-child(5){padding-left:30px}
-.er{display:block;margin-top:12px;border-left:3px solid var(--red);padding:2px 0 2px 14px}.er>*{display:block}.er>div{display:flex!important}.er .lbl{display:flex;align-items:center;gap:8px;color:var(--red)}.er .lbl i{width:7px;height:7px;border-radius:50%;background:var(--red)}.er p.t{font-size:14px;font-weight:500;color:var(--ink);line-height:1.5;margin:8px 0 12px;max-width:34ch}
+.er{display:block;margin-top:12px;border-left:3px solid var(--red);padding:2px 0 2px 14px}.er>*{display:block}.er>div{display:flex!important}.er .lbl{display:flex;align-items:center;gap:8px;color:var(--red)}.er p.t{font-size:14px;font-weight:500;color:var(--ink);line-height:1.5;margin:8px 0 12px;max-width:34ch}
 .arow{display:grid;grid-template-columns:82px minmax(0,1fr) 40px 80px;gap:0 12px;align-items:center;height:40px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin-top:12px;font-size:13.5px}.arow b{font-weight:500;color:var(--ink)}.arow span{color:var(--body)}.arow .n{text-align:right;color:var(--ink);font-weight:500}
-.pl .two b small{font-weight:400;color:var(--help);font-size:12.5px;margin-left:8px}.pl .mw{text-align:right;font-weight:600;font-size:13px;color:var(--amber)}.pl .mw.rd{color:var(--red)}.pl .pc{text-align:right;color:var(--help);font-size:13px}
+.pl .two b small{font-weight:400;color:var(--help);font-size:12.5px;margin-left:8px}.pl .mw{display:inline-flex;justify-content:flex-end;align-items:center;gap:6px;font-weight:600;font-size:13px;color:var(--amber);overflow:visible}.strip .sy.fail svg.lucide{color:var(--red)}.pl .pc{text-align:right;color:var(--help);font-size:13px}
 .rec{display:flex;align-items:center;gap:8px;color:var(--green);font-weight:600;font-size:13.5px}.rec svg.lucide{width:15px;height:15px;stroke-width:2.4}
 /* result */
 .pl,.plh{display:grid;grid-template-columns:minmax(0,1fr) 78px 78px 84px 36px;gap:0 12px;align-items:center;padding:0 28px}
@@ -78,7 +78,7 @@
 </header>
 
 <section class="sec">
-  <div class="who">
+  <div class="whogrid">
     <div class="panel"><h3>Ποιος και για τι</h3><table class="spec"><tr><td><b>Αλεξία</b></td><td>Περνά αποδείξεις ανά δρομολόγιο και ανεβάζει την κατάσταση της κάρτας καυσίμων δύο φορές τον μήνα.</td></tr><tr><td><b>Δημήτρης</b></td><td>Κοιτά ένα φορτηγό σε βάθος εβδομάδων· διαβάζει το αποτέλεσμα ανά δρομολόγιο και τυπώνει. Το αποτέλεσμα το βλέπει μόνο αυτός.</td></tr><tr><td><b>Θοδωρής</b></td><td>Διαβάζει τα έξοδα.</td></tr></table></div>
     <div class="panel"><h3>Τι κρατήθηκε</h3><table class="spec"><tr><td>Μόνο δικά μας φορτηγά στα έξοδα· οι συνεργάτες ζουν στο αποτέλεσμα · κάθε διόρθωση, διαγραφή ή ανάθεση με αιτία · η εισαγωγή της κάρτας είναι όλη ή καθόλου και πρέπει να συμφωνεί με τη σύνοψή της · το ίδιο αρχείο δεν ξαναμπαίνει · ποτέ μηδέν για κάτι άγνωστο · χαρτί που δεν συμφωνεί με την οθόνη δεν τυπώνεται.</td></tr></table></div>
     <div class="panel"><h3>Τι αλλάζει</h3><table class="spec"><tr><td>Το «Όχημα» γίνεται αναφορά περιόδου με κατανάλωση και κόστος ανά χιλιόμετρο, μόνο από δρομολόγια που έχουν χιλιόμετρα · η εισαγωγή δείχνει μόνο ό,τι θέλει απόφαση · το αποτέλεσμα μετρά μόνο πλήρη δρομολόγια και λέει πόσα είναι · ένα φύλλο δρομολογίου αντί για τρεις εκδοχές του.</td></tr></table></div>
@@ -146,11 +146,11 @@ $('fV').innerHTML=`<div class="app">${side('e')}<main class="main">
 /* ---------- import ---------- */
 /* One decision pattern on every line: the answer as a chip that opens the alternatives, and a tick that confirms it.
    [day, what, country · litres, amount, kind, proposed trip, twin]  kind: s = proposed trip, n = no trip that day, d = possible duplicate */
-const IM=[['ΚΗΙ 5127 · Ρ 6604','Σ. Καρράς · 3 προτάσεις',[['Τετ 4/11','Διόδια','AT',86,'s','Βέροια → Wien · 2 – 6/11'],['Τετ 4/11','Καύσιμα','AT · 410 L',690,'s','Βέροια → Wien · 2 – 6/11'],['Δευ 9/11','Διόδια','HU',42,'s','Wien → Σίνδος · 6 – 10/11']],'<a class="bulk" onclick="yesAll(this)">Ναι σε όλες του φορτηγού</a>'],
- ['ΚΗΙ 6012 · Ρ 5093','Α. Ντίνος · 2 χωρίς δρομολόγιο',[['Σάβ 7/11','Καύσιμα','GR · 380 L',640,'n'],['Σάβ 7/11','AdBlue','GR · 20 L',22,'n']],'<a class="bulk">Ίδιο δρομολόγιο για όλες</a>'],
- ['ΚΗΙ 1680 · Ρ 3250','Η. Σαράφης · 1 ίσως διπλή',[['Τετ 11/11','Spedition','AT',100,'d','','με το χέρι · Αλεξία, Πέμ 12/11']],'']];
+const IM=[['ΚΗΙ 5127 · Ρ 6604','Σ. Καρράς',[['Τετ 4/11','Διόδια','AT',86,'s','Βέροια → Wien · 2 – 6/11'],['Τετ 4/11','Καύσιμα','AT · 410 L',690,'s','Βέροια → Wien · 2 – 6/11'],['Δευ 9/11','Διόδια','HU',42,'s','Wien → Σίνδος · 6 – 10/11']],'<a class="bulk" onclick="yesAll(this)">Ναι σε όλες του φορτηγού</a>'],
+ ['ΚΗΙ 6012 · Ρ 5093','Α. Ντίνος',[['Σάβ 7/11','Καύσιμα','GR · 380 L',640,'n'],['Σάβ 7/11','AdBlue','GR · 20 L',22,'n']],'<a class="bulk">Ίδιο δρομολόγιο για όλες</a>'],
+ ['ΚΗΙ 1680 · Ρ 3250','Η. Σαράφης',[['Τετ 11/11','Spedition','AT',100,'d','','με το χέρι: Αλεξία, Πέμ 12/11']],'']];
 const KA={s:'Ναι, σε αυτό το δρομολόγιο',n:'Μένει στο φορτηγό, χωρίς δρομολόγιο',d:'Σβήνει η χειρόγραφη, μένει της κάρτας'};
-const irow=([d,w,c,n,k,sg,tw])=>`<div class="il" data-k="${k}"><span class="num">${d}</span><b>${w}</b><span>${c}</span><span class="n num">${eu(n)}</span><span class="dz"><button class="pk ${k}">${k==='s'?sg:k==='n'?'Χωρίς δρομολόγιο':'Σβήνει η χειρόγραφη'}${ic('chevron-down')}</button></span><button class="ok" title="${KA[k]}" aria-label="${KA[k]}" onclick="yes(this)">${ic('check')}</button></div>`+(tw?`<div class="il tw"><span class="num">${d}</span><b>${w}</b><span>${c}</span><span class="n num">${eu(n)}</span><span class="dz">ήδη στα έξοδα · ${tw}</span><span></span></div>`:'');
+const irow=([d,w,c,n,k,sg,tw])=>`<div class="il" data-k="${k}"><span class="num">${d}</span><b>${w}</b><span>${c}</span><span class="n num">${eu(n)}</span><span class="dz"><button class="pk ${k}">${k==='s'?sg:k==='n'?'Χωρίς δρομολόγιο':'Σβήνει η χειρόγραφη'}${ic('chevron-down')}</button></span><button class="ok" title="${KA[k]}" aria-label="${KA[k]}" onclick="yes(this)">${ic('check')}</button></div>`+(tw?`<div class="il tw"><span class="num">${d}</span><b>${w}</b><span>${c}</span><span class="n num">${eu(n)}</span><span class="dz" style="display:inline-flex;align-items:center;gap:8px;overflow:visible">στα έξοδα${sy('who','Ήδη στα έξοδα, γραμμένη '+tw+'.','dn show')}</span><span></span></div>`:'');
 /* confirm: the line leaves, what is below closes the gap, the counts follow once */
 const SC=f=>f.getBoundingClientRect().width/f.offsetWidth;
 const bump=(el,v)=>{el.textContent=v;el.classList.remove('fadeup');void el.offsetWidth;el.classList.add('fadeup')};
@@ -158,21 +158,21 @@ function leave(rows,done){rows=rows.filter(r=>!r._g);if(!rows.length)return;rows
  setTimeout(()=>{const last=rows[rows.length-1],after=[...lc.children].slice([...lc.children].indexOf(last)+1),tops=after.map(e=>e.getBoundingClientRect().top),sc=SC($('fI'));
   rows.forEach(r=>{const g=r.previousElementSibling,nx=r.nextElementSibling;r.remove();if(g&&g.classList.contains('ig')&&(!nx||!nx.classList.contains('il')))g.remove()});
   after.forEach((e,k)=>{if(!e.isConnected)return;const dy=(tops[k]-e.getBoundingClientRect().top)/sc;if(!dy)return;e.classList.remove('mvup');e.style.transform=`translateY(${dy}px)`;void e.offsetWidth;e.classList.add('mvup');e.style.transform=''});done()},RED()?0:160+(rows.length-1)*40)}
-const CN={s:['cs'],n:['cn','wn'],d:['cx','wx']};
+const CN={s:['cs'],n:['cn'],d:['cx']};
 function cnt(k,n){['cd',...CN[k]].forEach(id=>bump($(id),+$(id).textContent-n));bump($('cok'),+$('cok').textContent+n)}
 function yes(btn){const r=btn.closest('.il'),t=r.nextElementSibling;leave(t&&t.classList.contains('tw')?[r,t]:[r],()=>cnt(r.dataset.k,1))}
 function yesAll(a){const g=a.closest('.ig'),rows=[];let e=g.nextElementSibling;while(e&&e.classList.contains('il')){if(e.dataset.k==='s')rows.push(e);e=e.nextElementSibling}if(rows.length)leave(rows,()=>cnt('s',rows.length))}
 const SHOWN=sum(IM,g=>g[2].length),DEC=26;
 $('fI').innerHTML=`<div class="app">${side('e')}<main class="main">
- ${hd('Εισαγωγή κάρτας καυσίμων','DKV · 1 – 15 Νοεμβρίου 2026',`<span class="und"><i class="nb a" data-t="Μένουν χωρίς απόφαση. Η καταχώρηση δεν τις περιμένει.">!</i><span><b class="num" id="wx">3</b> ίσως διπλά · <b class="num" id="wn">9</b> χωρίς δρομολόγιο</span></span><button class="pill">Άκυρο</button><button class="pill b" id="ib">Καταχώρηση 214 γραμμών</button>`)}
+ ${hd('Εισαγωγή κάρτας καυσίμων','DKV · 1 – 15 Νοεμβρίου 2026',`<span class="und"><i class="nb a" data-t="Όσες γραμμές μένουν χωρίς απόφαση καταχωρούνται όπως είναι. Η καταχώρηση δεν τις περιμένει.">!</i></span><button class="pill">Άκυρο</button><button class="pill b" id="ib">Καταχώρηση 214 γραμμών</button>`)}
  <div class="card" style="flex:1;min-height:0;border-radius:24px 24px 0 0;overflow:hidden">
-  <div class="kpb"><b class="num">9.840,00 €</b><span class="rec">${ic('check')}Συμφωνεί με τη σύνοψη της κατάστασης</span><span class="sp"></span><span><b class="num">214</b> γραμμές</span><span><b class="num">11</b> φορτηγά</span><span><b class="num">17</b> δρομολόγια</span><span title="Επιστροφή ΦΠΑ: απαίτηση, όχι κόστος">ΦΠΑ προς επιστροφή <b class="num">1.240,00</b></span></div>
+  <div class="kpb"><b class="num">9.840,00 €</b><span class="rec">${sy('done','Συμφωνεί με τη σύνοψη της κατάστασης: 9.840,00.','dn')}Συμφωνεί</span><span class="sp"></span><span><b class="num">214</b> γραμμές</span><span><b class="num">11</b> φορτηγά</span><span><b class="num">17</b> δρομολόγια</span><span title="Επιστροφή ΦΠΑ: απαίτηση, όχι κόστος">ΦΠΑ προς επιστροφή <b class="num">1.240,00</b></span></div>
   <div class="fl" style="padding-bottom:0"><span class="chip on">Θέλουν απόφαση <b id="cd">${DEC}</b></span><span class="chip">Προτάσεις <b id="cs">14</b></span><span class="chip r">Χωρίς δρομολόγιο <b id="cn">9</b></span><span class="chip a">Ίσως διπλά <b id="cx">3</b></span><span class="chip">Σίγουρες <b id="cok">188</b></span><span class="sp"></span><span class="chip hide">Κατηγορία ${ic('chevron-down')}</span></div>
   <div class="il ilh lbl" style="margin-top:12px"><span>Ημέρα</span><span>Γραμμή κάρτας</span><span>Χώρα · λίτρα</span><span class="n">Ποσό €</span><span>Πού πάει</span><span></span></div>
   ${IM.map(([p,c,rows,bulk])=>`<div class="ig"><b class="num">${p}</b><small>${c}</small><span class="sp"></span>${bulk}</div>${rows.map(irow).join('')}`).join('')}
   <div class="il" style="min-height:44px;margin-top:10px"><span style="grid-column:1/-1;color:var(--link);font-weight:500;display:inline-flex;gap:6px;align-items:center">${ic('chevron-right')}${DEC-SHOWN} ακόμη γραμμές σε 6 φορτηγά</span></div>
   <div class="ig" style="padding-top:22px"><b>Προηγούμενες καταστάσεις</b></div>
-  ${[['16 – 31 Οκτωβρίου','231 γραμμές · 10.420,00','Αλεξία · Δευ 2/11'],['1 – 15 Οκτωβρίου','198 γραμμές · 9.105,00','Αλεξία · Παρ 16/10']].map(([a,b,c])=>`<div class="il" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr) 180px 130px"><b>${a}</b><span class="num">${b}</span><span>${c}</span><span class="st done" style="justify-self:end">${ic('check')}Καταχωρήθηκε</span></div>`).join('')}
+  ${[['16 – 31 Οκτωβρίου','231 γραμμές · 10.420,00','Αλεξία · Δευ 2/11'],['1 – 15 Οκτωβρίου','198 γραμμές · 9.105,00','Αλεξία · Παρ 16/10']].map(([a,b,c])=>`<div class="il" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr) 170px"><b>${a}</b><span class="num">${b}</span><span style="justify-self:end;display:inline-flex;align-items:center;gap:8px;overflow:visible"><span class="st done">${ic('check')}Καταχωρήθηκε</span>${sy('who','Καταχώρηση: '+c+'.','r')}</span></div>`).join('')}
  </div></main></div>`;
 
 /* ---------- result ---------- */
@@ -192,10 +192,10 @@ TR.forEach(t=>{t.w=t.km?t.km*WEAR:null;t.rev=t.rv.every(r=>r[2]!=null)?sum(t.rv,
 const FU=TR.filter(t=>t.full),MI=TR.filter(t=>!t.full),W={rev:sum(TR,t=>t.rev||0),rf:sum(FU,t=>t.rev),cf:sum(FU,t=>t.cost),rm:sum(MI,t=>t.rev||0),ord:sum(TR,t=>t.rv.length),np:sum(TR,t=>t.rv.filter(r=>r[2]==null).length)};W.net=W.rf-W.cf;
 chk(W.rev,24500,'W46 revenue (CAST.md)');chk(W.ord,12,'W46 orders (CAST.md)');chk(W.rf+W.rm,W.rev,'full + missing');chk(vtot(VT[0]),sum(TR[0].c.slice(0,4),x=>x),'same trip on Έξοδα and Αποτέλεσμα');
 const pct=(n,r)=>Math.round(n/r*100)+'%',dash='<span class="u">—</span>';
-const prow=t=>{const i=TR.indexOf(t);return `<div class="pl ${i===0?'sel':''}" role="button" tabindex="0" onclick="pick(${i})" onkeydown="if(event.key==='Enter')pick(${i})">${two(`<span class="num">${t.a}</span> · ${t.dr}<small>${t.dy}</small>`,t.rt)}<span class="n num ${t.rev==null?'g':''}">${t.rev==null?'—':eu(t.rev)}</span><span class="n num ${t.cost==null?'g':''}">${t.cost==null?'—':eu(t.cost)}</span>${t.full?`<span class="net num">${eu(t.net)}</span><span class="pc num">${pct(t.net,t.rev)}</span>`:`<span class="mw ${t.red?'rd':''}" title="${t.m}">${t.mw}</span><span></span>`}</div>`};
+const prow=t=>{const i=TR.indexOf(t);return `<div class="pl ${i===0?'sel':''}" role="button" tabindex="0" onclick="pick(${i})" onkeydown="if(event.key==='Enter')pick(${i})">${two(`<span class="num">${t.a}</span> · ${t.dr}<small>${t.dy}</small>`,t.rt)}<span class="n num ${t.rev==null?'g':''}">${t.rev==null?'—':eu(t.rev)}</span><span class="n num ${t.cost==null?'g':''}">${t.cost==null?'—':eu(t.cost)}</span>${t.full?`<span class="net num">${eu(t.net)}</span><span class="pc num">${pct(t.net,t.rev)}</span>`:`<span class="mw">${sy('miss',t.m,'r')}${t.mw}</span><span></span>`}</div>`};
 /* the trip sheet: one layout for a complete trip, a missing cost, a missing price and a partner's trip */
 function sheet(t){const ln=(l,sm,v,w='λείπει')=>`<div class="eq sub"><dt>${l}${v==null?`<small class="ms">${w}</small>`:sm?`<small>${sm}</small>`:''}</dt><dd class="num ${v==null?'u':''}">${v==null?'—':eu(v)}</dd></div>`;
- const costs=t.k==='p'?ln('Κόμιστρο συνεργάτη','',t.fee):ln('Καύσιμα φορτηγού',nf(t.L[0])+' L',t.c[0])+ln('Καύσιμα θαλάμου',nf(t.L[1])+' L',t.c[1])+ln('Διόδια',t.tn,t.c[2])+ln('Υπόλοιπα έξοδα','',t.c[3])+ln('Οδηγός','από τη Μισθοδοσία',t.c[4])+ln('Φθορά',nf(t.km)+' km',t.w);
+ const costs=t.k==='p'?ln('Κόμιστρο συνεργάτη','',t.fee):ln('Καύσιμα φορτηγού',nf(t.L[0])+' L',t.c[0])+ln('Καύσιμα θαλάμου',nf(t.L[1])+' L',t.c[1])+ln('Διόδια',t.tn,t.c[2])+ln('Υπόλοιπα έξοδα','',t.c[3])+ln('Οδηγός','Μισθοδοσία',t.c[4])+ln('Φθορά',nf(t.km)+' km',t.w);
  return `<div class="h"><div style="flex:1;min-width:0"><b class="num">${t.a}${t.tl?' · '+t.tl:''}</b><small>${t.dr} · ${t.dy}${t.km?' · '+nf(t.km)+' km':''}</small><small style="text-wrap:balance">${t.rt}</small></div><button class="ibt" title="Εκτύπωση αποτελέσματος" aria-label="Εκτύπωση αποτελέσματος">${ic('printer')}</button><button class="cl" aria-label="Κλείσιμο">${ic('x')}</button></div>
   <dl style="margin:10px 0 0"><div class="eq hh"><dt>Έσοδα</dt><dd class="num ${t.rev==null?'u':''}">${t.rev==null?'—':eu(t.rev)}</dd></div>
    ${t.rv.map(([c,l,v])=>ln(c,l,v,'χωρίς τιμή').replace('<small class="ms">',`<small>${l}</small><small class="ms rd">`)).join('')}
@@ -214,7 +214,7 @@ $('fP').innerHTML=`<div class="app">${side('e')}<main class="main">
   <div class="grp" style="padding:16px 28px 4px">Πλήρη<small>${FU.length} δρομολόγια</small></div>${FU.map(prow).join('')}
   <div class="pl pls"><b>Σύνολο πλήρων</b><span class="n num">${eu(W.rf)}</span><span class="n num">${eu(W.cf)}</span><span class="net num">${eu(W.net)}</span><span class="pc num">${pct(W.net,W.rf)}</span></div>
   <div class="grp" style="padding:20px 28px 4px">Με ελλείψεις<small>${MI.length} δρομολόγια</small></div>${MI.map(prow).join('')}
-  <div class="pl pls"><b>Σύνολο με ελλείψεις<small>${W.np} παραγγελία χωρίς τιμή</small></b><span class="n num">${eu(W.rm)}</span><span class="n g">—</span><span class="net u">—</span><span></span></div>
+  <div class="pl pls"><b>Σύνολο με ελλείψεις</b><span class="n num">${eu(W.rm)}</span><span class="n g">—</span><span class="mw">${sy('miss',W.np+' παραγγελία χωρίς τιμή: τα έσοδά της δεν είναι μέσα στο σύνολο.','r')}τιμή</span><span></span></div>
   <div class="pl pls gt"><b>Έσοδα W46<small>${W.ord} παραγγελίες</small></b><span class="n num">${eu(W.rev)}</span><span></span><span></span><span></span></div>
  </div></main></div>
  <div class="tc" id="sh" style="padding-bottom:18px">${sheet(TR[0])}</div>`;
@@ -231,8 +231,8 @@ $('fPP').innerHTML=`<div style="position:absolute;inset:0;display:flex;gap:24px;
   <div class="row g12"><div style="grid-column:span 6">${fld('Αξία παλέτας €','12,00')}</div><div style="grid-column:span 6">${fld('Πλήρες φορτίο, παλέτες','33')}</div></div>
   <div class="pf"><span class="sp"></span><button class="pill">Άκυρο</button><button class="pill b">Αποθήκευση</button></div></div>
  <div class="pn" style="width:440px"><div style="display:flex;align-items:center"><h3>Ανάθεση σε δρομολόγιο</h3><span class="sp"></span><button class="cl" aria-label="Κλείσιμο">${ic('x')}</button></div><small>ΚΗΙ 3310 · Ρ 7120 · Θ. Μέλλιος</small><div class="arow"><span class="num">Τετ 14/10</span><b>Διόδια</b><span>AT</span><span class="n num">120,00</span></div>
-  <div style="margin-top:12px"><p class="lbl">Δρομολόγια του φορτηγού, κοντά στην ημέρα</p><div class="qi" style="border-top:0"><span><b>${VT[2][0]}</b><small>${VT[2][1]} · τελείωσε 1 ημέρα πριν</small></span><span class="cb on" style="flex:none"><i>${ic('check')}</i></span></div>
-   <div class="qi"><span><b>${VT[1][0]}</b><small>${VT[1][1]} · άρχισε 5 ημέρες μετά</small></span><span class="cb" style="flex:none"><i></i></span></div></div>
+  <div style="margin-top:12px"><p class="lbl">Δρομολόγια του φορτηγού, κοντά στην ημέρα</p><div class="qi" style="border-top:0"><span><b>${VT[2][0]}</b><small>${VT[2][1]}</small></span><span class="num" style="flex:none;color:var(--body);font-size:13px">−1 ημ.</span><span class="cb on" style="flex:none"><i>${ic('check')}</i></span></div>
+   <div class="qi"><span><b>${VT[1][0]}</b><small>${VT[1][1]}</small></span><span class="num" style="flex:none;color:var(--body);font-size:13px">+5 ημ.</span><span class="cb" style="flex:none"><i></i></span></div></div>
   <div style="margin-top:10px">${fld('Αιτία','Ήρθε από την κάρτα χωρίς δρομολόγιο')}</div>
   <div class="pf"><span class="sp"></span><button class="pill">Άκυρο</button><button class="pill b">Ανάθεση</button></div></div>
 </div>`;
@@ -241,21 +241,21 @@ $('fPP').innerHTML=`<div style="position:absolute;inset:0;display:flex;gap:24px;
 const bp=(l,body)=>`<div class="panel"><p class="lbl">${l}</p>${body}</div>`;
 const em=(i,h,b='')=>`<div style="display:grid;justify-items:start;align-content:center;min-height:120px;gap:10px"><div class="tile soft" style="width:36px;height:36px;border-radius:10px">${ic(i)}</div><h3 style="margin:0;font-weight:500;color:var(--body);font-size:15px">${h}</h3>${b}</div>`;
 const strip=(i,t,b,n)=>`<div class="strip ${n?'n':''}" style="margin-top:12px;align-items:flex-start">${ic(i)}<div style="max-width:36ch">${t}${b?`<div style="display:flex;gap:8px;margin-top:10px">${b}</div>`:''}</div></div>`;
-const dk=(l,t,b)=>`<div class="er"><p class="lbl"><i></i>${l}</p><p class="t">${t}</p><div style="display:flex;gap:8px">${b}</div></div>`;
+const dk=(l,t,b,tip)=>`<div class="er"><p class="lbl">${sy('fail',tip)}${l}</p><p class="t">${t}</p><div style="display:flex;gap:8px">${b}</div></div>`;
 const rd=`<button class="pill sm">${ic('rotate-cw')}Ξαναδιάβασε</button>`,rt='<button class="pill b sm">Ξαναδοκίμασε</button>';
 $('bad').innerHTML=[
  bp('Φορτηγό χωρίς δρομολόγια στην περίοδο',em('inbox','Κανένα δρομολόγιο σε 8 εβδομάδες',`<button class="pill sm">12 εβδομάδες</button>`)),
  bp('Η κατάσταση δεν συμφωνεί',`<div class="kpb" style="padding:14px 0 0;border:0;flex-wrap:wrap;gap:8px 14px"><b class="num">9.840,00 €</b><span style="color:var(--red);font-weight:600">${ic('x')} σύνοψη 9.876,00 · διαφορά 36,00</span></div><div style="display:flex;gap:8px;align-items:center;margin-top:14px"><button class="pill b off">Καταχώρηση</button><i class="nb" data-t="Λείπουν 36,00 από τη σύνοψη: ένα έγγραφο της κατάστασης δεν διαβάστηκε.">!</i><span class="sp" style="flex:1"></span><button class="pill sm">Κράτα πρόχειρο</button></div>`),
- bp('Το ίδιο αρχείο ξανά',strip('copy','Η κατάσταση 1 – 15 Νοεμβρίου καταχωρήθηκε ήδη από την Αλεξία, Δευ 16/11 07:40.','',1)),
- bp('Η εισαγωγή δεν γράφτηκε',dk('Δεν καταχωρήθηκε καμία γραμμή','Κατάσταση 1 – 15 Νοεμβρίου, 214 γραμμές. Οι αποφάσεις σου κρατήθηκαν.',rt)),
+ bp('Το ίδιο αρχείο ξανά',strip('copy','<span style="display:inline-flex;gap:8px;align-items:center">1 – 15 Νοεμβρίου · ήδη μέσα'+sy('who','Η κατάσταση καταχωρήθηκε ήδη: Αλεξία, Δευ 16/11 07:40. Το ίδιο αρχείο δεν ξαναμπαίνει.')+'</span>','',1)),
+ bp('Η εισαγωγή δεν γράφτηκε',dk('Δεν καταχωρήθηκε καμία γραμμή','1 – 15 Νοεμβρίου · 214 γραμμές · οι αποφάσεις κρατήθηκαν',rt,'Η εισαγωγή δεν γράφτηκε: καμία από τις 214 γραμμές. Οι αποφάσεις σου κρατήθηκαν.')),
  bp('Δεν διαβάστηκαν',em('cloud-off','Τα δρομολόγια δεν διαβάστηκαν',rd)),
- bp('Διαβάστηκε το μισό',strip('cloud-off','Τα έσοδα των εθνικών δεν διαβάστηκαν. Το καθαρό τους δείχνει «—».',rd,1)+strip('cloud-off','Η αξία των οδηγών δεν διαβάστηκε.',rd,1)),
+ bp('Διαβάστηκε το μισό',strip('cloud-off','Έσοδα εθνικών · δεν διαβάστηκαν · καθαρό «—»',rd,1)+strip('cloud-off','Αξία οδηγών · δεν διαβάστηκε',rd,1)),
  bp('Εβδομάδα σε εξέλιξη · κανένα πλήρες',`<div class="kpb" style="padding:14px 0 0;border:0"><b class="num" style="color:var(--faint)">— <small>καθαρό W47</small></b><span class="sp"></span><span><b>0</b> από 10 πλήρη</span></div><p class="num" style="margin-top:10px;color:var(--body);font-size:13px">έσοδα <b style="color:var(--ink);font-weight:600">24.950,00</b> · 10 παραγγελίες</p>`),
  bp('Κανένα δρομολόγιο με χιλιόμετρα',`<div class="fg" style="grid-template-columns:1fr;border:0;margin-top:6px"><div style="padding:8px 0"><span class="lbl">Κατανάλωση</span><b style="color:var(--faint)">—</b><small><b style="display:inline;font-size:inherit;color:var(--amber);font-weight:600;margin:0">0 από 5</b> δρομολόγια με χιλιόμετρα</small></div></div>`),
- bp('Χαρτί που δεν συμφωνεί',strip('printer','Το χαρτί της W46 δεν τυπώνεται: το άθροισμά του διαφέρει από την οθόνη κατά 120,00.','<button class="pill sm">Ανανέωση</button>',1)),
- bp('Το έξοδο δεν γράφτηκε',dk('Δεν γράφτηκε','Η ανάθεση δεν έγινε: διόδια AT 120,00, ΚΗΙ 3310, Θ. Μέλλιος, Τετ 14/10.',rt)),
+ bp('Χαρτί που δεν συμφωνεί',strip('printer','<span style="display:inline-flex;gap:8px;align-items:center">Χαρτί W46 · δεν τυπώνεται · διαφορά 120,00'+sy('fail','Το χαρτί της W46 δεν τυπώνεται: το άθροισμά του διαφέρει από την οθόνη κατά 120,00.')+'</span>','<button class="pill sm">Ανανέωση</button>',1)),
+ bp('Το έξοδο δεν γράφτηκε',dk('Δεν γράφτηκε','Διόδια AT 120,00 · Τετ 14/10 · ΚΗΙ 3310 · Θ. Μέλλιος',rt,'Η ανάθεση σε δρομολόγιο δεν έγινε.')),
  bp('Φόρτωση',[0,1,2].map(()=>`<div style="display:grid;grid-template-columns:minmax(0,1fr) 70px;gap:14px;align-items:center;height:54px"><div><div class="sk" style="height:12px;width:55%"></div><div class="sk" style="height:10px;width:35%;margin-top:8px"></div></div><div class="sk" style="height:12px"></div></div>`).join('')),
- bp('Μόνο ανάγνωση · χωρίς πρόσβαση',`<div style="margin-top:12px"><span class="tag" style="margin:0;display:inline-flex;gap:5px;align-items:center;height:22px">${ic('eye')}Μόνο ανάγνωση</span></div>`+em('lock','Το αποτέλεσμα το βλέπει μόνο ο Δημήτρης'))
+ bp('Μόνο ανάγνωση · χωρίς πρόσβαση',`<div style="margin-top:12px"><span class="tag" style="margin:0;display:inline-flex;gap:5px;align-items:center;height:22px">${ic('eye')}Μόνο ανάγνωση</span></div>`+`<div class="tile soft" tabindex="0" role="img" title="Το αποτέλεσμα το βλέπει μόνο ο Δημήτρης." aria-label="Το αποτέλεσμα το βλέπει μόνο ο Δημήτρης." style="width:36px;height:36px;border-radius:10px;margin-top:14px">${ic('lock')}</div>`)
 ].join('');
 
 /* ---------- A4 ---------- */

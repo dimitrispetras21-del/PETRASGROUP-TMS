@@ -532,3 +532,11 @@ body,body[data-accent=ink]{--accent:#0284C7;--link:#0369A1;--accent-bg:#E0F2FE;-
 .sy:focus-visible::after,.sy.show::after{opacity:1;transform:none}.sy:focus-visible{outline:2px solid #0284C7;outline-offset:2px}
 @media (hover:hover){.sy:hover::after{opacity:1;transform:none;transition-delay:.18s}}
 @media (prefers-reduced-motion:reduce){.sy::after{transform:none}}
+.sy{margin-left:4px}
+/* a state symbol sits on a small tinted disc, so it never reads as one of the row's action icons (clock = delay, calendar = change day) */
+.sy{width:20px;height:20px;border-radius:50%}.sy svg.lucide{width:12px;height:12px;stroke-width:2.2}
+.sy.fail,.sy.late{background:var(--red-bg)}.sy.miss{background:var(--amber-bg)}.sy.done{background:var(--green-bg)}.sy.wait,.sy.note,.sy.chg,.sy.who{background:#EEF0F4}
+/* on the navy menu the disc is a light veil, not a white tile */
+.side .sy{background:rgba(255,255,255,.14)}
+/* a failed write is the loudest symbol: solid red disc, white drawing */
+.sy.fail,.side .sy.fail{background:var(--red);color:#fff}

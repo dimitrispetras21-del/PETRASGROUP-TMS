@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="_system.css">
 <style>
 /* DESIGN MOCKUP ONLY. Invented names and round quantities. Page-specific rules for Παλέτες. */
-.who{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.intro3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
 .kpb{display:flex;align-items:baseline;gap:18px;padding:16px 28px;border-bottom:1px solid var(--line);white-space:nowrap}
 .kpb>b{font-size:26px;font-weight:500;color:var(--ink);letter-spacing:-.4px}.kpb>b small{font-size:14px;color:var(--help);font-weight:400;letter-spacing:0}
 .kpb>span{color:var(--body);font-size:13px}.kpb>span b{color:var(--ink);font-weight:600}
@@ -75,11 +75,12 @@
 .tc.dk{bottom:0;border-radius:24px 24px 0 0;box-shadow:none}.tc.dk .pv{display:flex;flex-direction:column;flex:1;min-height:0}.tc.dk .act{margin-top:auto;border-radius:0}.tc.dk .pv[hidden]{display:none}
 .toast{background:#0B1929}
 .chip[data-v]{cursor:pointer}
+.bm .sy,.kv2 .sy,.pd .sy,.chk+.sy{margin-left:6px}.kv2 dd.o{overflow:visible}.act .pill{flex:none}
 .pd.p{color:var(--help);font-weight:500}.pd.p::before,.mv .st.todo::before{content:'';display:inline-block;width:8px;height:8px;border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--body);margin-right:6px;vertical-align:0}.mv .st.todo::before{margin:0}.mv .st{color:var(--ink);font-size:13px}.mv .st svg.lucide{width:13px;height:13px;color:var(--body);margin:0 -2px 0 -3px}.mv .st.hand::before{display:none}
 .pd.ms{color:var(--red);font-weight:600;font-size:13px;cursor:default}.wh .n i{font-style:normal;color:var(--help);margin-left:6px;letter-spacing:0}
 .wr .two.off{opacity:.4}
 .bm{display:flex;align-items:center;gap:10px;min-height:36px;margin-top:12px;font-size:13.5px;font-weight:500;color:var(--ink);white-space:nowrap}.bm>svg.lucide{width:16px;height:16px;color:var(--help);flex:none}.bm.a>svg.lucide{color:var(--amber)}.bm.r>svg.lucide{color:var(--red)}.bm .pill{margin-left:auto;flex:none}
-.bm>span{display:grid;min-width:0;flex:1}.drop{flex:none}.act .num{white-space:nowrap;flex:none}.stt th+th,.stt td+td{padding-left:8px}.stt td{white-space:nowrap}.bm small{white-space:normal;font-size:12.5px;font-weight:400;color:var(--help)}.bm.tst small{color:rgba(255,255,255,.7)}
+.bm{white-space:normal}.bm>span{display:block;min-width:0;flex:1;line-height:1.45}.drop{flex:none}.act .num{white-space:nowrap;flex:none}.stt th+th,.stt td+td{padding-left:8px}.stt td{white-space:nowrap}.bm small{white-space:normal;font-size:12.5px;font-weight:400;color:var(--help)}.bm.tst small{color:rgba(255,255,255,.7)}
 .bm.tst{background:#0B1929;color:#fff;border-radius:12px;padding:8px 8px 8px 12px}.bm.tst>svg.lucide{color:#FF8A8E}.bm.tst .pill{border-color:rgba(255,255,255,.28);background:none;color:#fff}
 /* print */
 .a4.stm .r,.a4.stm .hr{grid-template-columns:44px minmax(0,1fr) 44px 44px 44px 54px}
@@ -96,7 +97,7 @@
 </header>
 
 <section class="sec">
-  <div class="who">
+  <div class="intro3">
     <div class="panel"><h3>Ποιος και για τι</h3><table class="spec"><tr><td><b>Αλεξία</b></td><td>Επιβεβαιώνει τις εκκρεμείς κινήσεις από τα δελτία, μία μία με Enter· κλείνει παραδόσεις χωρίς κίνηση· ελέγχει κάθε εβδομάδα και τη σημειώνει· στέλνει καρτέλα σε πελάτη.</td></tr><tr><td><b>Dispatchers</b></td><td>Διορθώνουν ποσότητες σε κινήσεις που ήρθαν από παραγγελία.</td></tr><tr><td><b>Δημήτρης</b></td><td>Μόνος του γράφει διόρθωση υπολοίπου.</td></tr></table></div>
     <div class="panel"><h3>Τι κρατήθηκε</h3><table class="spec"><tr><td>Υπόλοιπο = Δώσαμε − Πήραμε, μόνο από επιβεβαιωμένες · επιβεβαιωμένη κίνηση δεν αλλάζει ούτε σβήνεται: διόρθωση ή αντιλογισμός με αιτία · χωρίς δελτίο η κίνηση γράφεται «με το χέρι» · το δελτίο δεν έχει προθεσμία, μόνο προειδοποιεί · μηδέν και μηδέν γράφεται ως «χωρίς ανταλλαγή» · η εβδομάδα θυμάται τι είδες όταν τη σημείωσες.</td></tr></table></div>
     <div class="panel"><h3>Τι αλλάζει</h3><table class="spec"><tr><td>Το παράθυρο επιβεβαίωσης γίνεται η κάρτα δίπλα στη λίστα · οι τρεις λίστες «θέλουν δράση» σε μία σελίδα, με σειρά · τα κελιά Π · Δ της εβδομάδας δείχνουν με χρώμα αν είναι επιβεβαιωμένα, εκκρεμή ή λείπουν · η καρτέλα πελάτη ανοίγει δίπλα στα υπόλοιπα.</td></tr></table></div>
@@ -157,7 +158,7 @@ const PG=[
  ['Nordfrisch GmbH',[['Παράδοση · Attica Cold Hub, Ασπρόπυργος','Σάβ 14/11 · ΚΗΙ 2208 · Π. Ράπτης',26,26,2],['Φόρτωση · Messinia Olive Coop, Μεσσήνη','Σάβ 14/11 · ΚΗΙ 8600 · Λ. Δήμου',33,33,2]]]];
 const MISS=[['Alpen Frucht AG','Alpen Frucht Zentrale, Zürich · Δευ 9/11 · ΚΗΙ 2208 · Π. Ράπτης',33,7,'sel'],['Baltic Cold Foods','Attica Cold Hub, Ασπρόπυργος · Τρί 3/11 · ΚΗΙ 8600 · Λ. Δήμου',30,13]];
 const NR=[['Παρ 13/11',20,33,13,'sel'],['Παρ 30/10',25,33,8],['Παρ 16/10',28,33,5]];
-const late='<i class="nb" data-t="Περιμένει πάνω από 14 ημέρες.">!</i>';
+const late=sy('late','Περιμένει πάνω από 14 ημέρες.','r');
 const prow=([a,b,t,g,w,c=''])=>`<div class="pr ${c.includes('sel')?'sel':''}">${two(a,b)}<span class="n num">${t}</span><span class="n num">${g}</span><span class="n num ${c.includes('late')?'r':'g'}">${w} ημ.</span>${c.includes('late')?late:'<span></span>'}</div>`;
 const LST={
  p:`<div class="ph lbl" style="margin-top:10px"><span></span><span>Πήραμε</span><span>Δώσαμε</span><span>Περιμένει</span><span></span></div>
@@ -170,7 +171,7 @@ const LST={
   ${NR.map(([d,t,g,x,s=''])=>`<div class="pr sr ${s}">${two('Παράδοση · Nordfrisch Lager, Hamburg',d+' · ΚΗΙ 5102 · Σ. Κάππος')}<span class="n num">${t}</span><span class="n num">${g}</span><span class="n num a">+${x}</span><span></span></div>`).join('')}`};
 const LM={'Tirol Obst GmbH':[['13/11','Παράδοση · Innsbruck',32,32],['11/11','Φόρτωση · Βέροια',32,32],['7/11','Φόρτωση · Βέροια',32,32]],'Danubia Market Kft.':[['30/10','Παράδοση · Wien',33,33],['28/10','Φόρτωση · Βέροια',33,33]],'Nordfrisch GmbH':[['13/11','Παράδοση · Hamburg',20,33],['9/11','Φόρτωση · Μεσσήνη',33,33],['6/11','Παράδοση · Ασπρόπυργος',26,26]],'Alpen Frucht AG':[['7/11','Φόρτωση · Σκύδρα',33,33],['23/10','Παράδοση · Zürich',30,33],['21/10','Φόρτωση · Σκύδρα',33,33]]};
 const lastm=c=>LM[c]?`<p class="lbl" style="margin-top:18px">Τελευταίες επιβεβαιωμένες</p><div><div class="sl2 lbl" style="grid-template-columns:44px minmax(0,1fr) 58px 58px"><span></span><span></span><span>Πήραμε</span><span>Δώσαμε</span></div>${LM[c].map(([d,t,a,b])=>`<div class="sl2" style="grid-template-columns:44px minmax(0,1fr) 58px 58px"><span class="num">${d}</span><span>${t}</span><span class="num">${a}</span><span class="num">${b}</span></div>`).join('')}</div>`:'';
-const hist=l=>`<p class="lbl" style="margin-top:18px">Ιστορικό</p><div class="hs">${l.map(x=>`<span>${x}</span>`).join('')}</div>`;
+const hist=(dt,dd,t)=>`<dl style="margin:14px 0 0"><div class="kv2"><dt>${dt}</dt><dd class="o">${dd}${sy('who',t,'dn r')}</dd></div></dl>`;
 const foot=(n,b,id='')=>`<div class="act" ${id}><div style="display:flex;align-items:center;gap:10px"><span class="num" ${id?'id="pn"':''} style="color:var(--help);font-size:13px">${n}</span>${b.includes('margin-right:auto')?'':'<span class="sp"></span>'}${b}</div></div>`;
 const PNL=live=>({
  p:`<div class="in" ${live?'id="pc"':''}></div>${foot('',`<a class="tbtn" style="color:var(--help);margin-right:auto" title="Διαγραφή εκκρεμούς κίνησης">${ic('trash-2')}Διαγραφή</a><button class="pill" onclick="sk(1,event.detail===0)" title="Επόμενη (↓)" aria-label="Επόμενη" style="width:36px;padding:0;justify-content:center">${ic('arrow-down')}</button><button class="pill b" onclick="cf(event.detail===0)">Επιβεβαίωση ${ic('corner-down-left')}</button>`,live?'id="pa"':'')}`,
@@ -178,11 +179,11 @@ const PNL=live=>({
   <div class="row g12" style="margin-top:16px"><div style="grid-column:span 6">${fld('Πήραμε',cur.replace('-6px','0'),'focus num')}</div><div style="grid-column:span 6">${fld('Δώσαμε','33','num')}</div></div>
   <div class="drop">${ic('paperclip')}Δελτίο παλετών</div>
   <div class="aft"><span class="lbl">Υπόλοιπο πελάτη</span><span class="sp"></span><b class="num">30</b></div>
-  ${hist(['<b>Παντελής</b> δήλωσε «Παραδόθηκε» · Δευ 9/11 16:05'])}${lastm('Alpen Frucht AG')}
+  ${hist('Δήλωση','«Παραδόθηκε» · Δευ 9/11','Ο Παντελής δήλωσε «Παραδόθηκε», Δευ 9/11 16:05.')}${lastm('Alpen Frucht AG')}
   ${foot('1 από 2','<button class="pill">Χωρίς ανταλλαγή</button><i class="nb a" data-t="Το «Πήραμε» είναι κενό: γράφεται 0 και η κίνηση μένει εκκρεμής, με το όνομά σου και την ώρα.">!</i><button class="pill b">Καταχώρηση</button>')}`,
  r:`<div class="h"><div style="flex:1;min-width:0"><b>Nordfrisch GmbH</b><small>Παράδοση · Nordfrisch Lager, Hamburg</small><small>Παρ 13/11 · ΚΗΙ 5102 · Σ. Κάππος</small></div><button class="ibt" title="Άνοιγμα παραγγελίας">${ic('external-link')}</button><button class="cl" aria-label="Κλείσιμο">${ic('x')}</button></div>
-  <dl style="margin:12px 0 0"><div class="kv2"><dt>Πήραμε · Δώσαμε</dt><dd class="num">20 · 33 <span style="color:var(--amber);font-weight:600;margin-left:8px" title="Δεν γύρισαν">+13</span></dd></div><div class="kv2"><dt>Παραγγελία</dt><dd>Μεσσήνη → Hamburg</dd></div><div class="kv2"><dt>Δελτίο</dt><dd><a>${ic('paperclip')} delivery-slip.pdf</a></dd></div><div class="kv2"><dt>Υπόλοιπο πελάτη</dt><dd class="num">64</dd></div></dl>
-  ${hist(['<b>Αλεξία</b> επιβεβαίωσε · Σάβ 14/11 09:12','<b>Παντελής</b> δήλωσε «Παραδόθηκε» · Παρ 13/11 15:40'])}${lastm('Nordfrisch GmbH')}
+  <dl style="margin:12px 0 0"><div class="kv2"><dt>Πήραμε · Δώσαμε</dt><dd class="num">20 · 33 <span style="color:var(--amber);font-weight:600;margin-left:8px" title="Δεν γύρισαν">+13</span></dd></div><div class="kv2"><dt>Παραγγελία</dt><dd>Μεσσήνη → Hamburg</dd></div><div class="kv2"><dt>Δελτίο</dt><dd><a>${ic('paperclip')} delivery-slip.pdf</a></dd></div><div class="kv2"><dt>Υπόλοιπο πελάτη</dt><dd class="num">64</dd></div><div class="kv2"><dt>Επιβεβαίωση</dt><dd class="o">Αλεξία · Σάβ 14/11${sy('who','Η Αλεξία επιβεβαίωσε, Σάβ 14/11 09:12. Ο Παντελής δήλωσε «Παραδόθηκε», Παρ 13/11 15:40.','dn r')}</dd></div></dl>
+  ${lastm('Nordfrisch GmbH')}
   ${foot('1 από 3','<button class="pill">Διόρθωση παράδοσης</button>')}`});
 const actF=(v,live)=>{const ks=live?['p','m','r']:[v],P=PNL(live),chip=(k,c,l,n)=>`<span class="chip ${c} ${k===v?'on':''}" data-v="${k}">${l} <b ${live&&k==='p'?'id="cp"':''}>${n}</b></span>`;
  return `<div class="app">${side('p')}<main class="main">
@@ -207,7 +208,7 @@ function fillCard(r,quiet){const c=$('pc');$('pa').style.display=r?'':'none';if(
   <div class="row g12" style="margin-top:16px"><div style="grid-column:span 6">${fld('Πήραμε',t+cur,'focus num')}</div><div style="grid-column:span 6">${fld('Δώσαμε',g,'num')}</div></div>
   <div class="drop">${ic('paperclip')}Δελτίο παλετών</div>
   ${bal!=null?`<div class="aft"><span class="lbl">Υπόλοιπο πελάτη</span><span class="sp"></span><b class="num">${bal}</b>${ic('arrow-right')}<b class="num">${bal+g-t}</b></div>`:''}
-  ${hist([pt?`<b>Σωτήρης</b> έγραψε την κίνηση · ${day}`:`<b>Παντελής</b> δήλωσε ${a.startsWith('Φόρτωση')?'«Φορτώθηκε»':'«Παραδόθηκε»'} · ${day}`])}${lastm(cl)}`;
+  ${pt?hist('Γράφτηκε',day,`Ο Σωτήρης έγραψε την κίνηση, ${day}.`):hist('Δήλωση',(a.startsWith('Φόρτωση')?'«Φορτώθηκε»':'«Παραδόθηκε»')+' · '+day,`Ο Παντελής δήλωσε ${a.startsWith('Φόρτωση')?'«Φορτώθηκε»':'«Παραδόθηκε»'}, ${day}.`)}${lastm(cl)}`;
  $('pn').textContent=`${all.indexOf(r)+1} από ${all.length}`;
  lucide.createIcons();if(!quiet&&!RED()){c.classList.add('swap');void c.offsetWidth;c.classList.remove('swap')}}
 const bump=(el,v)=>{if(el.textContent==v)return;el.textContent=v;el.classList.remove('fadeup');void el.offsetWidth;el.classList.add('fadeup')};
@@ -255,7 +256,7 @@ $('fAP').innerHTML=`<div style="position:absolute;inset:0;display:flex;gap:24px;
 
 /* ---------- Εβδομάδα ---------- */
 const WKS=[['W44',1,1],['W45',1,1],['W46',6,0],['W47',3,0],['W48',0,0]];
-const pd=x=>!x?'<span></span>':x==='x'?'<span class="pd x">–</span>':x==='m'?`<span class="pd ms" title="Παραδόθηκε και δεν έχει κίνηση παράδοσης">λείπει</span>`:`<span class="pd num ${x[2]||''}" title="${x[2]==='p'?'Εκκρεμεί':'Επιβεβαιωμένη'}">${x[0]} · ${x[1]}${x[3]?`<em title="Δεν γύρισαν">+${x[3]}</em>`:''}</span>`;
+const pd=x=>!x?'<span></span>':x==='x'?'<span class="pd x">–</span>':x==='m'?`<span class="pd ms">λείπει${sy('miss','Παραδόθηκε και δεν έχει κίνηση παράδοσης.','dn r')}</span>`:`<span class="pd num ${x[2]||''}" title="${x[2]==='p'?'Εκκρεμεί':'Επιβεβαιωμένη'}">${x[0]} · ${x[1]}${x[3]?`<em title="Δεν γύρισαν">+${x[3]}</em>`:''}</span>`;
 const leg=(r,c,a,b)=>r?(a==='x'&&b==='x'?`${two(r,c,'off')}<span></span><span></span>`:`${two(r,c)}${pd(a)}${pd(b)}`):`<span class="none slot" style="grid-column:span 3">${c}</span>`;
 const wrow=([n,e,veh,i,cls=''])=>`<div class="wr"><span class="no num">${n}</span>${leg(...e)}${asg(veh[2]||'t',veh[0]+'|'+veh[1])}${leg(...i)}</div>${cls==='ed'?`<div class="wr" style="min-height:0"><span></span><div class="wed"><span class="sp"></span><span class="lbl">Παράδοση</span><div class="inp focus num">30${cur.replace('-6px','2px')}</div><div class="inp num">32</div><span class="ibt" title="Δελτίο παλετών">${ic('paperclip')}</span><button class="pill sm b">Επιβεβαίωση</button></div></div>`:''}`;
 const WD=[['Σάββατο 7/11',[
@@ -333,24 +334,24 @@ $('fM').innerHTML=`<div class="app">${side('p')}<main class="main">
 
 /* ---------- bad moments: one line, one button ---------- */
 const bp=(l,body)=>`<div class="panel"><p class="lbl">${l}</p>${body}</div>`;
-const bm=(i,t,b='',k='',sub='')=>`<div class="bm ${k}">${ic(i)}<span>${t}${sub?`<small>${sub}</small>`:''}</span>${b}</div>`;
-const bb=(t,i)=>`<button class="pill sm">${i?ic(i):''}${t}</button>`,nb=(t,k='')=>`<i class="nb ${k}" data-t="${t}">!</i>`;
+const bm=(t,b='',k='',sym='')=>`<div class="bm ${k}"><span>${t}${sym}</span>${b}</div>`;
+const bb=(t,i)=>`<button class="pill sm">${i?ic(i):''}${t}</button>`;
 $('bad').innerHTML=[
- bp('Τίποτα εκκρεμές',bm('circle-check-big','Καμία εκκρεμής')),
- bp('Κανένα υπόλοιπο',bm('circle-check-big','Κανένα ανοιχτό υπόλοιπο')),
- bp('Καμία κίνηση στην αναζήτηση',bm('search','Καμία κίνηση για «nordfr»',bb('Καθαρισμός'))),
- bp('Δεν διαβάστηκαν',bm('cloud-off','Οι κινήσεις δεν διαβάστηκαν',bb('Ξαναδιάβασε','rotate-cw'),'r')),
- bp('Διαβάστηκε το μισό',bm('cloud-off','Οι παραγγελίες δεν διαβάστηκαν',bb('Ξαναδιάβασε','rotate-cw'),'a','Αναζήτηση μόνο σε πελάτη και σημείο')),
- bp('Πολλές κινήσεις',bm('triangle-alert','Φαίνονται οι πρώτες 1.000 κινήσεις',bb('Όλες'),'a','Τα υπόλοιπα είναι πλήρη')),
- bp('Δεν επιβεβαιώθηκε',bm('circle-alert','Tirol Obst · Innsbruck: δεν επιβεβαιώθηκε',bb('Ξανά'),'tst','Οι ποσότητες 30 · 32 γράφτηκαν')),
- bp('Το δελτίο δεν ανέβηκε',bm('paperclip','delivery-slip.pdf δεν ανέβηκε',bb('Ξαναδοκίμασε'),'r','Η κίνηση γράφτηκε χωρίς δελτίο')),
- bp('Το άλλαξε κάποιος άλλος',bm('users','Tirol Obst · Innsbruck: ήδη επιβεβαιωμένη',bb('Επόμενη'),'','Παντελής · 30 · 32 · Δευ 16/11 08:02')),
- bp('Μηδέν και μηδέν',`<div style="display:flex;gap:10px;align-items:end;margin-top:8px"><div style="width:86px">${fld('Πήραμε','0','miss num')}</div><div style="width:86px">${fld('Δώσαμε','0','miss num')}</div><span class="sp"></span><i class="nb a" data-t="Μηδέν και μηδέν: γράφεται ως παράδοση χωρίς ανταλλαγή.">!</i><button class="pill b">Χωρίς ανταλλαγή</button></div><div class="bm" style="margin-top:8px;min-height:0"><span><small>Γράφεται: Αλεξία · Δευ 16/11 07:42 · χωρίς ανταλλαγή</small></span></div>`),
- bp('Το υπόλοιπο δεν συμφωνεί',bm('triangle-alert','Nordfrisch GmbH: υπόλοιπο 64, κινήσεις 62',bb('Κινήσεις'),'a','Διαφορά 2 παλέτες')),
- bp('Η κίνηση δεν γράφτηκε μόνη της',bm('triangle-alert','Danubia Market · Wien: λείπει η κίνηση',bb('Νέα κίνηση'),'a','Παραδόθηκε Τετ 11/11')),
- bp('Η εβδομάδα άλλαξε μετά τον έλεγχο',`<div style="display:flex;gap:8px;align-items:center;margin-top:12px"><button class="chk on">${ic('check')}Ελέγχθηκε · Αλεξία 14/11</button><span class="chip a"><b>2</b> άλλαξαν</span></div>`+bm('pencil','Baltic Cold Foods: 30 · 30 → 28 · 30',bb('Ελέγχθηκε ξανά'),'a','Ασπρόπυργος · Παντελής · Δευ 16/11 08:10')),
+ bp('Τίποτα εκκρεμές',bm('Καμία εκκρεμής','','',sy('done','Όλες οι κινήσεις έως σήμερα είναι επιβεβαιωμένες.','dn'))),
+ bp('Κανένα υπόλοιπο',bm('Κανένα ανοιχτό υπόλοιπο','','',sy('done','Κανένας πελάτης ή συνεργάτης δεν έχει υπόλοιπο.','dn'))),
+ bp('Καμία κίνηση στην αναζήτηση',bm('Καμία κίνηση για «nordfr»',bb('Καθαρισμός'))),
+ bp('Δεν διαβάστηκαν',bm('Οι κινήσεις δεν διαβάστηκαν',bb('Ξαναδιάβασε','rotate-cw'),'',sy('fail','Οι κινήσεις δεν διαβάστηκαν. Η λίστα δεν δείχνει τίποτα μέχρι να ξαναδιαβαστεί.','dn'))),
+ bp('Διαβάστηκε το μισό',bm('Οι παραγγελίες δεν διαβάστηκαν · αναζήτηση: πελάτης, σημείο',bb('Ξαναδιάβασε','rotate-cw'),'',sy('fail','Τα στοιχεία των παραγγελιών δεν διαβάστηκαν. Η αναζήτηση βρίσκει μόνο πελάτη και σημείο.','dn'))),
+ bp('Πολλές κινήσεις',bm('Πρώτες 1.000 κινήσεις',bb('Όλες'),'',sy('wait','Φαίνονται οι πρώτες 1.000 κινήσεις. Τα υπόλοιπα είναι πλήρη.','dn'))),
+ bp('Δεν επιβεβαιώθηκε',bm('Tirol Obst · Innsbruck: δεν επιβεβαιώθηκε · γράφτηκαν 30 · 32',bb('Ξαναδοκίμασε'),'tst',sy('fail','Οι ποσότητες 30 · 32 γράφτηκαν, η επιβεβαίωση όχι.','dn'))),
+ bp('Το δελτίο δεν ανέβηκε',bm('delivery-slip.pdf δεν ανέβηκε · η κίνηση γράφτηκε',bb('Ξαναδοκίμασε'),'',sy('fail','Το δελτίο δεν ανέβηκε. Η κίνηση γράφτηκε χωρίς δελτίο.','dn'))),
+ bp('Το άλλαξε κάποιος άλλος',bm('Tirol Obst · Innsbruck: ήδη επιβεβαιωμένη, 30 · 32',bb('Επόμενη'),'',sy('who','Την επιβεβαίωσε ο Παντελής με 30 · 32, Δευ 16/11 08:02.','dn show'))),
+ bp('Μηδέν και μηδέν',`<div style="display:flex;gap:10px;align-items:end;margin-top:8px"><div style="width:86px">${fld('Πήραμε','0','miss num')}</div><div style="width:86px">${fld('Δώσαμε','0','miss num')}</div><span class="sp"></span><i class="nb a" data-t="Μηδέν και μηδέν: γράφεται ως παράδοση χωρίς ανταλλαγή, με το όνομά σου και την ώρα (Αλεξία · Δευ 16/11 07:42).">!</i><button class="pill b">Χωρίς ανταλλαγή</button></div>`),
+ bp('Το υπόλοιπο δεν συμφωνεί',bm('Nordfrisch GmbH: υπόλοιπο 64 · κινήσεις 62 · δεν συμφωνεί',bb('Κινήσεις'),'',sy('fail','Το υπόλοιπο δεν συμφωνεί με το άθροισμα των κινήσεων. Διαφορά 2 παλέτες.','dn'))),
+ bp('Η κίνηση δεν γράφτηκε μόνη της',bm('Danubia Market · Wien · παραδόθηκε Τετ 11/11 · η κίνηση δεν γράφτηκε',bb('Νέα κίνηση'),'',sy('fail','Η κίνηση παλετών δεν γράφτηκε από την παραγγελία.','dn'))),
+ bp('Η εβδομάδα άλλαξε μετά τον έλεγχο',`<div style="display:flex;gap:8px;align-items:center;margin-top:12px"><button class="chk on">${ic('check')}Ελέγχθηκε · 14/11</button>${sy('who','Ελέγχθηκε από την Αλεξία, Σάβ 14/11.','dn')}<span class="chip a" style="margin-left:6px"><b>2</b> άλλαξαν</span></div>`+bm('Baltic Cold Foods · Ασπρόπυργος: 30 · 30 → 28 · 30',bb('Ελέγχθηκε ξανά'),'',sy('who','Το άλλαξε ο Παντελής, Δευ 16/11 08:10.','dn'))),
  bp('Φόρτωση',[0,1].map(()=>`<div style="display:grid;grid-template-columns:minmax(0,1fr) 40px 40px;gap:14px;align-items:center;height:40px;margin-top:6px"><div><div class="sk" style="height:11px;width:60%"></div><div class="sk" style="height:9px;width:40%;margin-top:7px"></div></div><div class="sk" style="height:12px"></div><div class="sk" style="height:12px"></div></div>`).join('')),
- bp('Μόνο ανάγνωση',`<div style="margin-top:12px"><span class="tag" style="margin:0;display:inline-flex;gap:5px;align-items:center;height:22px">${ic('eye')}Μόνο ανάγνωση</span></div>`+bm('','Παράδοση · Innsbruck · Δευ 9/11','<span class="num" style="flex:none">30 · 32</span>').replace('<i data-lucide=""></i>',''))
+ bp('Μόνο ανάγνωση',`<div style="margin-top:12px"><span class="tag" style="margin:0;display:inline-flex;align-items:center;height:22px">Μόνο ανάγνωση</span></div>`+bm('Παράδοση · Innsbruck · Δευ 9/11','<span class="num" style="flex:none">30 · 32</span>').replace('<span>Παράδοση','<span style="flex:1">Παράδοση'))
 ].join('');
 
 /* ---------- A4: statement ---------- */
