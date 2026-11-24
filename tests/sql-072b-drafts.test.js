@@ -23,6 +23,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 const { execFileSync } = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..');
@@ -113,7 +114,7 @@ test('born closed: every created function revoked, EXECUTE only on the three act
   const pols = strip(src).match(/CREATE POLICY[^;]*;/g) || [];
   assert.deepStrictEqual(pols, ['CREATE POLICY monitor_read ON public.rt_vehicle_segments FOR SELECT TO tms_check_runner, tms_reader USING (true);']);
   assert.match(src, /GRANT SELECT ON public\.rt_vehicle_segments, public\.v_rt_segments, public\.v_rt_vehicle_windows\n\s+TO service_role, tms_reader, tms_check_runner;/);
-  const { CREATED } = await import(BUILDER);
+  const { CREATED } = await import(pathToFileURL(BUILDER).href);
   assert.deepStrictEqual(CREATED.map((s) => s.split('(')[0]).sort(), created.slice().sort(), 'rollback drops exactly these');
   for (const s of CREATED) assert.ok(read('072b_plan_vehicle_segments_rollback.sql').includes(`'${s}'`));
 });
@@ -150,7 +151,7 @@ test('every plan: code of 072b has a case; every con: of the rules test is a CHE
 });
 
 test('the hook diff (--hooks, read by the code review of Task B4): twenty hooks, each puts a 072b line in', async () => {
-  const { hookDiffs } = await import(BUILDER);
+  const { hookDiffs } = await import(pathToFileURL(BUILDER).href);
   const h = hookDiffs(read(SRC));
   assert.deepStrictEqual(h.map((x) => x.k), Array.from({ length: 20 }, (_, i) => i + 1));
   for (const x of h) {

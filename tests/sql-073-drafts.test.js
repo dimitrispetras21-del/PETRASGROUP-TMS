@@ -22,6 +22,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 const { execFileSync } = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..');
@@ -130,7 +131,7 @@ test('073: no mirror and no write outside the plan', () => {
 // 073b (F3 Task 6): generated from the check files, so this only proves it is the generated one and holds what the
 // plan says. Its ids come from the builder (one list; never typed twice here, principle 3).
 const B073 = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e',
-  `import(${JSON.stringify(path.join(DIR, 'tools/build-073b.mjs'))}).then((m) => console.log(JSON.stringify({ f3: m.F3_IDS, all: m.IDS, files: m.FILES, fn: m.RUNNER_FN })))`],
+  `import(${JSON.stringify(pathToFileURL(path.join(DIR, 'tools/build-073b.mjs')).href)}).then((m) => console.log(JSON.stringify({ f3: m.F3_IDS, all: m.IDS, files: m.FILES, fn: m.RUNNER_FN })))`],
   { encoding: 'utf8' }));
 test('073b is the generated one, ASCII, one DO block each, and holds exactly the check files of F3 and 072b', () => {
   execFileSync(process.execPath, [path.join(DIR, 'tools/build-073b.mjs'), '--check']);

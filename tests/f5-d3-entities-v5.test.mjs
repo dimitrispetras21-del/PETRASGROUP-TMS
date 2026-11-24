@@ -9,9 +9,10 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
 // The baseline = the tip before the (d3) readers (5f55a943, pinned like tests/daily-ramp-v5.test.js): after the
 // merge origin/main IS this file, and a comparison with itself proves nothing. D3_BASE_REF overrides it.

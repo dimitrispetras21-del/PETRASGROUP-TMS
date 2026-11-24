@@ -17,6 +17,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 
 const ROOT = path.join(__dirname, '..');
 const DIR = path.join(ROOT, 'worker/migrations');   // executed 2026-10-26: out of drafts/ (CLAUDE.md rule 5)
@@ -110,7 +111,7 @@ test('each writing file is ONE DO block; verify writes nothing', () => {
 });
 
 test('the dry run is regenerated from 072 (node worker/migrations/drafts/tools/build-072-dryrun.mjs)', async () => {
-  const { PAIR, buildDryRun } = await import(path.join(ROOT, 'worker/migrations/drafts/tools/build-072-dryrun.mjs'));
+  const { PAIR, buildDryRun } = await import(pathToFileURL(path.join(ROOT, 'worker/migrations/drafts/tools/build-072-dryrun.mjs')).href);
   assert.strictEqual(read(PAIR.target), buildDryRun(read(PAIR.source)), PAIR.target + ' drifted');
 });
 
