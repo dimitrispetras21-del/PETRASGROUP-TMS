@@ -42,7 +42,7 @@
 //   re-read) · late (relays empty / national while a popover is open) ·
 //   offline · quiet (a group member fails) · natmissing · paper (the printed week, owner 10/11) · done (executed = dimmed) ·
 //   twoday (two delivery days: row on the first, divider before the other day) · w1440 ·
-//   unassigned (owner 8/11 #10: a match on an export with no vehicle) ·
+//   unassigned (owner 8/11 #10: a match on an export with no vehicle; since 24/11 the unmatch clears the import's own vehicle too) ·
 //   vs (WP-A of the Weekly National v4 plan: one Veroia day — assignment,
 //   form, drop order by place, loud failures, Pallet Exchange)
 // Exit: 0 all green · 1 a check failed · 2 usage · 3 NOT READY (v4 inactive).

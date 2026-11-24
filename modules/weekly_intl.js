@@ -3532,7 +3532,7 @@ async function _wiRemoveImport(rowId){
     ok?'Αφαιρέθηκε':'Η αφαίρεση ΔΕΝ γράφτηκε στη βάση — κάνε Ανανέωση',oid0); // T3
   if(ok){
     // Ξεταίριασμα = το import δεν ταξιδεύει πια με αυτό το όχημα (owner 13/8):
-    // καθαρίζεται η κληρονομημένη ανάθεσή του για να μην μείνει ορφανή.
+    // καθαρίζεται η ανάθεσή του, κληρονομημένη ή δική του (owner 24/11).
     //
     // GI- group fix (owner 8/9 defect item 3, GI-MTRB928Y/307+308): «η ομάδα
     // εισαγωγών ταιριάζει ως σύνολο» ισχύει και στο ξεταίριασμα — clearing
@@ -3541,7 +3541,7 @@ async function _wiRemoveImport(rowId){
     // unmatched/unassigned while Postgres still had one member Assigned).
     // The group ties or breaks TOGETHER: every live member gets cleared,
     // never a subset — read back is skipped here (same as the pre-existing
-    // single-id clear) since this is a best-effort inherit-cleanup, not the
+    // single-id clear) since this is a best-effort cleanup, not the
     // authoritative match write above.
     //
     // Always, whoever gave the import its vehicle (owner 24/11, «πάντα»): the
@@ -3555,7 +3555,7 @@ async function _wiRemoveImport(rowId){
     for(const memberId of giGroup.members){
       try{
         if(await _wiExecutingLive(memberId)){ keptExecuting.push(memberId); continue; }
-        // Leg OFF the export's round trip FIRST, vehicle second — whatever
+        // Leg OFF its round trip (the export's, or the import's own) FIRST, vehicle second — whatever
         // decides above that this member is cleared (see _wiRtLeave: the other
         // order wiped the export's truck and the driver's payroll line, 30/9).
         // A failed leg removal leaves this member's assignment untouched.
