@@ -3374,6 +3374,38 @@ async function _wiSaveImportMatch(rowId,impId){
     return;
   }
 
+  // An import on a live trip of its OWN (its own truck since 033, or a solo
+  // trip «Καθαρισμός ανάθεσης» left behind) leaves it BEFORE the export's
+  // vehicle is written below (code review high of #332, 24/11). Written as it
+  // was, rt_sync_from_order copied the export's truck onto the import's old
+  // trip and rtOnOrderSaved, finding a live leg, never attached the import to
+  // the export's trip: one pair on two live trips (GI-MUV7FNKE / B-77 class,
+  // Worker 409). Same rule and same function as the join (_wiImpJoin) and the
+  // rota (_wiRotAdd): first the leg, then the vehicle; refused = nothing written.
+  // Only when the export has a vehicle: a match before the assignment (owner
+  // 8/11 #10) moves no trip, the import keeps its own. Here, after the grip's
+  // unmatch: an inherited vehicle has left with its leg by then (keepOwn), and
+  // what is still on a trip is the import's own.
+  let ownFreedNote='';
+  if(row.truckId||row.partnerId){
+    const mRecs=giGroup.members.map(id=>_wiRecOf(id)||(id===impId&&importRec)||{id,fields:{}});
+    const own=await _wiOwnRtFree(mRecs);
+    if(!own.ok){
+      // The grip has already taken the group off its old export: say so, and
+      // reload so the board shows the group matched to nothing.
+      const tail=own.wrote?' · έλεγξε την εισαγωγή':(oldExpRow?' · το παλιό ταίριασμα αφαιρέθηκε, η εισαγωγή κρατά το δικό της όχημα':' · δεν γράφτηκε τίποτα');
+      // What to do next (coordinator 24/11): a payroll line on the import's
+      // own trip is usually the empty line of its own driver — «Καθαρισμός
+      // ανάθεσης» on the import takes the driver off and the DB drops that
+      // empty line (011 dl_sync_from_rt); a line with amounts stays for the owner.
+      const next=/μισθοδοσίας/.test(own.msg)&&!own.wrote?' · πρώτα «Καθαρισμός ανάθεσης» στην εισαγωγή και ξανά το ταίριασμα, ή ζήτα από τον owner':'';
+      _wiRefuse(`${own.msg} · το ταίριασμα ΔΕΝ έγινε${tail}${next}`,'match refused');
+      if(own.wrote||oldExpRow) await renderWeeklyIntl();
+      return;
+    }
+    ownFreedNote=own.freed.map(x=>' · '+x).join('');
+  }
+
   // Optimistic UI update
   const oldImp=row.importId;
   row.importId=matchImpId;
@@ -3435,7 +3467,7 @@ async function _wiSaveImportMatch(rowId,impId){
     return;
   }
   _wiSync('wi-sync-'+rowId, matchFailed?'err':'ok',
-    matchFailed?'Το ταίριασμα ΔΕΝ γράφτηκε στη βάση — ξαναπροσπάθησε ή κάνε Ανανέωση':'Αποθηκεύτηκε'+_wiExpectNote(mExpSent,mExpChecked),oid0);
+    matchFailed?'Το ταίριασμα ΔΕΝ γράφτηκε στη βάση — ξαναπροσπάθησε ή κάνε Ανανέωση'+ownFreedNote:'Αποθηκεύτηκε'+_wiExpectNote(mExpSent,mExpChecked)+ownFreedNote,oid0);
 
   // Ταίριασμα σε ΗΔΗ ανατεθειμένο export (owner 13/8): το import αναλαμβάνεται
   // από το ίδιο όχημα — κληρονομεί την ανάθεση στη βάση. Το κόμιστρο import
