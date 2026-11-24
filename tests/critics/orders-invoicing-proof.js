@@ -47,7 +47,7 @@ const PREV = addDays(CUR, -7);
 const PREV2 = addDays(CUR, -14);
 const at = (base, n, hh = '10:00') => addDays(base, n) + 'T' + hh + ':00';
 const dm = s => (+s.slice(8, 10)) + '/' + (+s.slice(5, 7));
-const weekLabel = s => { const e = addDays(s, 6); return +s.slice(5, 7) === +e.slice(5, 7) ? `${+s.slice(8, 10)} – ${dm(e)}` : `${dm(s)} – ${dm(e)}`; };
+const weekLabel = s => 'W' + TmsWeek.numOf(s);   // weeks by number (owner 15/11, 20/11)
 
 const CLIENTS_FIXTURE = [
   { id: 'recCA', fields: { 'Company Name': 'Alpina Fresh S.r.l.', 'VAT Number': 'IT04211730265', Adress: 'Via Emilia 12', City: '41121 Modena', Country: 'IT', 'Payment Terms Days': 30 } },
