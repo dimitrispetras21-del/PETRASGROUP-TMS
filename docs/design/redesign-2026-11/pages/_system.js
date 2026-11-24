@@ -36,4 +36,4 @@ function boot(){tint();lucide.createIcons();addEventListener('resize',fit);fit()
    draws the symbol; the sentence shows on hover and on keyboard focus and is read by screen readers. Add 'r' or 'dn' as a third
    argument when the note must open to the left or downwards. Use ONLY these eight; do not invent a ninth in a page. */
 const SY={fail:['triangle-alert','Δεν γράφτηκε'],late:['clock-alert','Καθυστέρηση'],miss:['circle-dashed','Λείπει'],wait:['hourglass','Εκκρεμεί'],done:['check','Έγινε'],chg:['calendar-clock','Άλλαξε ημέρα'],who:['user-round','Ποιος και πότε'],note:['message-square','Σημείωση']};
-const sy=(k,t,x='')=>`<i class="sy ${k} ${x}" tabindex="0" role="img" aria-label="${SY[k][1]}: ${t}" data-t="${t}">${ic(SY[k][0])}</i>`;
+const sy=(k,t,x='')=>{t=String(t).replace(/"/g,'&quot;');return `<i class="sy ${k} ${x}" tabindex="0" role="img" aria-label="${SY[k][1]}: ${t}" data-t="${t}">${ic(SY[k][0])}</i>`};
