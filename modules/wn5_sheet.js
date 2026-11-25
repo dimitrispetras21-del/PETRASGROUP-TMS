@@ -124,7 +124,9 @@
     // the segment keys only on a segment sheet: without one the head is T23's, key for key (R-59)
     // 115 (owner 25/11): the partner's plates and driver are the trip's free text; on the sheet of a partner trip they
     // stand where a truck plate and a driver stand. Keys only when typed (a sheet without them is T23's, key for key)
-    const ptx = partner && !SG ? { plates: cycle.partner_plates || null, pdriver: cycle.partner_driver || null } : {};
+    // a trip with a handover has no one partner truck (board and week paper say no plates there either)
+    const oneSeg = !Array.isArray(cycle.segments) || cycle.segments.length <= 1;
+    const ptx = partner && !SG && oneSeg ? { plates: cycle.partner_plates || null, pdriver: cycle.partner_driver || null } : {};
     const out = [Object.assign({ t: 'head', partner: partner ? _dash(veh.partner) : null, driver: partner ? null : _dash(veh.driver),
       truck: partner ? null : _dash(veh.truck), trailer: partner ? null : _dash(veh.trailer),
       veroia: vStop ? `${_dlab(vStop.stop_day)} · ${_hmWin(vStop.planned_from, vStop.planned_to)}` : '—' },

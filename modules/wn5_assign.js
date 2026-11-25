@@ -103,6 +103,7 @@
   }
   // rule 6b: the keys of plan_board after 115 — every cycle names both (null until typed); a week with no cycle cannot
   // tell, so the fields wait for one (they are given later in the trip's own «Ανάθεση»)
+  const PTX_MAX = Object.freeze({ ppl: 40, pdr: 80 });
   const _ptxOn = (cycles) => Array.isArray(cycles) && cycles.length > 0 && cycles.every((c) => c && 'partner_plates' in c && 'partner_driver' in c);
   // the base's own reading (plan_h_partner_text): spaces and line breaks folded to one, trimmed, blank = null
   const _ptxt = (v) => String(v == null ? '' : v).replace(/[\s\u0000-\u001f\u007f]+/g, ' ').trim() || null;
@@ -400,6 +401,11 @@
       // an empty ΑΝΟΔΟΥ is saved as «λείπει» (coordinator 1/11): said beside the field, never a block
       if (b.ok && b.v === null) out.soft.rate2 = 'λείπει';
     } else if (st.who === 'partner' && !k.rate(st.rateTxt).ok) { out.fields.rate = 'μόνο αριθμός'; add('κόμιστρο (αριθμός)'); }
+    // rule 6b: the base's limits (115 CHECK rt_partner_text_shape), said before the press, never cut in silence
+    if (st.who === 'partner' && st.ptx) {
+      if ((_ptxt(st.pplTxt) || '').length > PTX_MAX.ppl) { out.fields.ppl = 'έως ' + PTX_MAX.ppl; add('πινακίδες (έως ' + PTX_MAX.ppl + ')'); }
+      if ((_ptxt(st.pdrTxt) || '').length > PTX_MAX.pdr) { out.fields.pdr = 'έως ' + PTX_MAX.pdr; add('οδηγός συνεργάτη (έως ' + PTX_MAX.pdr + ')'); }
+    }
     if (st.mode === 'vehicle') return out;
     const tg = _target(st);
     for (const row of _rows(st, tg && tg.cyc)) {
@@ -664,11 +670,15 @@
   function _ptxHTML(st, joinCyc) {
     if (!st.ptx) return '';
     const dis = joinCyc ? ' disabled' : '';
-    const f = (attr, lbl, ph, max, val, mono) => '<div class="wi-pop-field wn5a-f wn5a-ptx" data-f="' + attr + '"><span class="wi-pop-lbl">' + lbl + '</span>'
-      + '<input type="text" class="wi-pop-inp' + (mono ? ' wn5a-mono' : '') + '" data-' + attr + ' maxlength="' + max + '" placeholder="' + ph + '" value="' + _e(val) + '" autocomplete="off"' + dis + ' aria-label="' + lbl + ' συνεργάτη">'
-      + '<span class="wn5a-av"></span></div>';
-    return f('ppl', 'Πινακίδες', 'Πινακίδα…', 40, joinCyc ? joinCyc.partner_plates || '' : st.pplTxt, true)
-      + f('pdr', 'Οδηγός', 'Όνομα…', 80, joinCyc ? joinCyc.partner_driver || '' : st.pdrTxt, false);
+    // no maxlength: a longer paste would be cut in silence (principle 1); the field turns red «έως N» instead
+    const f = (attr, lbl, ph, max, val, mono) => {
+      const bad = !joinCyc && (_ptxt(val) || '').length > max;
+      return '<div class="wi-pop-field wn5a-f wn5a-ptx' + (bad ? ' wn5a-bad' : '') + '" data-f="' + attr + '"><span class="wi-pop-lbl">' + lbl + '</span>'
+        + '<input type="text" class="wi-pop-inp' + (mono ? ' wn5a-mono' : '') + '" data-' + attr + ' placeholder="' + ph + '" value="' + _e(val) + '" autocomplete="off"' + dis + ' aria-label="' + lbl + ' συνεργάτη">'
+        + '<span class="wn5a-av' + (bad ? ' bad' : '') + '">' + (bad ? 'έως ' + max : '') + '</span></div>';
+    };
+    return f('ppl', 'Πινακίδες', 'Πινακίδα…', PTX_MAX.ppl, joinCyc ? joinCyc.partner_plates || '' : st.pplTxt, true)
+      + f('pdr', 'Οδηγός', 'Όνομα…', PTX_MAX.pdr, joinCyc ? joinCyc.partner_driver || '' : st.pdrTxt, false);
   }
   // the order and its way in the header (Figma: «#2041 · Βέροια Δευ 12/10 → Lambda Pack, Larisa Τρί 13/10 · 12π»)
   function _sub(st) {
@@ -841,7 +851,8 @@
       st.sugg[px] = false;
       if (px === 'tl' || px === 'dr') fromJoin = false;   // the user's own pick from here on
       // rule 6b: another company's plates and driver are not this one's
-      if (px === 'pt' && id !== prev) st.pplTxt = st.pdrTxt = '';
+      // (the trip's own company picked again after its field was emptied keeps them: code review 25/11)
+      if (px === 'pt' && id !== prev && !(st.cur && st.cur.partner_id === id)) st.pplTxt = st.pdrTxt = '';
       if (px === 'pt') { st.who = 'partner'; st.truck = st.trailer = st.driver = null; st.typed.tk = st.typed.tl = st.typed.dr = ''; st.opt = null; st.sugg = {}; }
       else {
         if (st.who !== 'own') { st.partner = null; st.typed.pt = ''; st.pplTxt = st.pdrTxt = ''; if (st.mode !== 'vehicle') st.rateTxt = ''; }
@@ -904,7 +915,15 @@
       const t = ev.target;
       if (t.matches('[data-in]')) { list && (list.hi = 0); openList(t); return; }
       // rule 6b: free text, no list and no redraw (the caret stays); the save button follows
-      if (t.matches('[data-ppl]') || t.matches('[data-pdr]')) { if (t.matches('[data-ppl]')) st.pplTxt = t.value; else st.pdrTxt = t.value; d.refresh(); return; }
+      if (t.matches('[data-ppl]') || t.matches('[data-pdr]')) {
+        const key = t.matches('[data-ppl]') ? 'ppl' : 'pdr';
+        if (key === 'ppl') st.pplTxt = t.value; else st.pdrTxt = t.value;
+        const msg = problems(st).fields[key] || '';
+        const f = t.closest('.wn5a-f'), av = f && f.querySelector('.wn5a-av');
+        if (f) f.classList.toggle('wn5a-bad', !!msg);
+        if (av) { av.textContent = msg; av.classList.toggle('bad', !!msg); }
+        d.refresh(); return;
+      }
       if (t.matches('[data-rate]') || t.matches('[data-rate2]')) {
         if (t.matches('[data-rate]')) st.rateTxt = t.value; else st.rate2Txt = t.value;
         // both fields: «γράψε ποσό» of the ΚΑΘΟΔΟΥ follows what is typed in the ΑΝΟΔΟΥ (rule 6), no redraw (the caret stays)

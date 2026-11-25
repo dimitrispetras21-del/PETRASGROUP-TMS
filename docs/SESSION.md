@@ -12,6 +12,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 ## Now (each owner edits only their own lines)
 
 **In flight** (who · branch · topic)
+- dimitris · `feat/wn5-partner-plates` · Εθνικά v5, κύμα 2 B (owner 25/11 «on the trip»): «Πινακίδες» και «Οδηγός» συνεργάτη, ελεύθερο κείμενο στο δρομολόγιο· **115 ΠΡΟΣΧΕΔΙΟ** (`drafts/`, ΜΕΤΑ την 114, μία αλυσίδα· επαναφορά 115 πριν από 114)· χωρίς Worker· ?v= / SW_VERSION 1795680000 (`docs/sessions/2026-11-26-dimitris-wn5-partner-plates.md`)
 - dimitris · `feat/pallet-capacity-everywhere` · Μετά το #326: καμία οθόνη με δικό της 33. Weekly Διεθνών / v4, φόρμα, σάρωση και Εθνικά v5 (`WN5L.CAP`, σύνθεση) διαβάζουν το `LoadPlan.tally` / `capacity`· μόνο front end, ?v= / SW_VERSION 1794770000· βάση `over_33` εκτός πεδίου (`docs/sessions/2026-11-18-dimitris-pallet-capacity-everywhere.md`)
 - dimitris · `feat/pallet-load-plan` · Φόρμα διεθνούς: χωρητικότητα ανά τύπο παλέτας («24 από 32») + σχέδιο φόρτωσης στο πάνελ, κανόνες owner 17/11 στο `core/load-plan.js`· μόνο front end, ?v= / SW_VERSION 1794760000 (`docs/sessions/2026-11-17-dimitris-pallet-load-plan.md`)
 - dimitris · `feat/impjoin-load-seq` · Εβδομαδιαίο Διεθνών: η εισαγωγή που σέρνεται σε φορτηγό γράφεται τελευταία στη σειρά (113 «Load Seq»), μόνο όταν οι θέσεις του φορτίου μπορούν να χρησιμοποιηθούν (owner 15/11 «οκ»)· μόνο front end (`docs/sessions/2026-11-15-dimitris-impjoin-load-seq.md`)

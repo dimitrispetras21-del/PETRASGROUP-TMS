@@ -32,7 +32,8 @@
 -- RUNTIME: two ADD COLUMN (catalogue only), two ADD CONSTRAINT (one scan of ct_round_trips, ~1.2k rows), one trigger,
 -- three function texts, one board read. A short lock on ct_round_trips, lock_timeout 5s.
 -- REVERSE: 115_rt_partner_plates_rollback.sql (texts back, trigger and helper gone, columns dropped; refuses while a
--- row holds a text, so nothing typed is lost in silence).
+-- row holds a text, so nothing typed is lost in silence). ONE CHAIN WITH 114: run 114 then 115; reverse 115 FIRST,
+-- then 114 (114's rollback guards on the plan_board text 114 wrote, which 115 changes).
 -- EXPECTED: NOTICE "115 OK: ..."; then verify: every column true.
 
 DO $do$
@@ -204,7 +205,8 @@ begin
   return v;
 end
 $f$;
-  REVOKE ALL ON FUNCTION public.plan_h_partner_text(jsonb, text, integer) FROM PUBLIC, anon, authenticated;
+  -- born closed (principle 5): only plan_rt_update / plan_rt_create call it, SECURITY DEFINER as postgres (25/11 SELECT)
+  REVOKE ALL ON FUNCTION public.plan_h_partner_text(jsonb, text, integer) FROM PUBLIC, anon, authenticated, service_role;
 
   -- ===== PART 4: LIVE TEXT + HUNKS =====
   -- each hunk exactly once in its live text, the generated text the one measured; CREATE OR REPLACE keeps the oid,
@@ -255,6 +257,7 @@ $f$;
     RAISE EXCEPTION '115 proof: the Worker lost EXECUTE on plan_rt_update / plan_board';
   END IF;
   IF has_function_privilege('anon', 'public.plan_h_partner_text(jsonb,text,integer)', 'EXECUTE')
+     OR has_function_privilege('service_role', 'public.plan_h_partner_text(jsonb,text,integer)', 'EXECUTE')
      OR has_function_privilege('anon', 'public.rt_partner_text_follow()', 'EXECUTE') THEN
     RAISE EXCEPTION '115 proof: anon can EXECUTE a new function of 115';
   END IF;

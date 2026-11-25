@@ -70,7 +70,7 @@ async function own_new({ browser, origin, ok, scn, shots }) {
   ok(scn, 'the form opens (Ανάθεση · ΗΜΕΡΑ ΚΑΙ ΠΑΡΑΘΥΡΟ · ΔΙΚΟΣ ΣΤΟΛΟΣ · ΣΥΝΕΡΓΑΤΗΣ), no tabs, no candidate list',
     /Ανάθεση/.test(t0) && /ΗΜΕΡΑ ΚΑΙ ΠΑΡΑΘΥΡΟ/.test(t0) && /ΔΙΚΟΣ ΣΤΟΛΟΣ/.test(t0) && /ΣΥΝΕΡΓΑΤΗΣ/.test(t0) && !(await K.count(page, `${DLG} .wn5-cand, ${DLG} .wn5-seg`)), t0);
   ok(scn, 'no «κύκλος», RT code, «σκέλος / γέφυρα / κομμάτι / τμήμα» in the form', !jargon(t0).length, jargon(t0));
-  ok(scn, 'the partner\'s «Πινακίδες» and an ΑΝΟΔΟΥ rate are not drawn (no column / needs SQL)', !/Πινακίδες/.test(t0) && !/ΑΝΟΔΟΥ/.test(t0), t0);
+  ok(scn, 'before 115 (no partner_plates on the board) and 089: the partner\'s «Πινακίδες» and an ΑΝΟΔΟΥ rate are not drawn', !/Πινακίδες/.test(t0) && !/ΑΝΟΔΟΥ/.test(t0), t0);
   let f = await foot(page);
   ok(scn, 'nothing chosen: save off, «Λείπει: φορτηγό ή συνεργάτης»', f.off && /Λείπει: φορτηγό ή συνεργάτης/.test(f.miss), f);
   ok(scn, 'pick truck TST-2106 from the list', await pickIn(page, 'tk', '2106', 'TST-2106'));
@@ -834,6 +834,16 @@ async function fit({ browser, origin, ok, scn, shots }) {
       await page.context().close();
     }
     {
+      // 115 (code review 25/11): the partner's second row (plates · driver · fee) in the two-column form of a VS
+      const { page } = await K.openApp(browser, origin, { board: withPtx(board()), viewport: vp });
+      await openWaiting(page, 4201);
+      await pickIn(page, 'pt', 'Partner', 'Partner Test 01');
+      await page.waitForTimeout(150);
+      const f = await K.fitOf(page, DLG);
+      ok(scn, tag + ' «Ανάθεση» with a partner after 115 (plates · driver · fee row): nothing scrolls in it', K.fits(f) && (await K.count(page, `${DLG} [data-ppl]`)) === 1, f);
+      await page.context().close();
+    }
+    {
       const { page } = await K.openApp(browser, origin, { board: hubBoard(), viewport: vp });
       await page.click('#wn5-hub [data-hub="open"]');
       await page.click('#wn5-hub .wn5-hub-it[data-piece="4201"] .wn5-hub-ck');
@@ -1026,6 +1036,12 @@ async function partner_text({ browser, origin, ok, scn, shots }) {
   await page.keyboard.press('Tab');
   const onRate = await page.evaluate(() => (document.activeElement && document.activeElement.hasAttribute('data-rate')) || false);
   ok(scn, 'Tab: plates → driver → fee', onRate);
+  // no silent cut (code review 25/11): 41 characters turn the field red «έως 40» and say it beside the save
+  await page.fill(`${DLG} [data-ppl]`, 'X'.repeat(41));
+  const lf = await field(page, 'ppl'), lft = await foot(page);
+  ok(scn, '41 characters: «Πινακίδες» red «έως 40», «Λείπει: πινακίδες (έως 40)», save off, nothing cut', lf.bad && lf.val.length === 41 && /έως 40/.test(lf.av) && lft.off && /πινακίδες \(έως 40\)/.test(lft.miss), { lf, lft });
+  await page.fill(`${DLG} [data-ppl]`, '  TST-P 101 ');
+  await page.focus(`${DLG} [data-rate]`);
   await page.keyboard.type('300');
   if (shots) await (await page.$(DLG)).screenshot({ path: shots + '/partner-text.png' });
   await page.click(`${DLG} [data-act="save"]`);
@@ -1049,6 +1065,12 @@ async function partner_text_board({ browser, origin, ok, scn, shots }) {
   await page.waitForSelector(DLG, { timeout: 4000 });
   const pl = await field(page, 'ppl'), pd = await field(page, 'pdr');
   ok(scn, 'prefilled from the trip: «TST-P 111», driver empty', pl && pl.val === 'TST-P 111' && pd && pd.val === '', { pl, pd });
+  // code review 25/11: the company emptied and picked again keeps the trip's plates
+  await page.fill(`${DLG} [data-in="pt"]`, '');
+  await page.focus(`${DLG} [data-in="tk"]`);
+  await page.waitForTimeout(100);
+  await pickIn(page, 'pt', 'Partner', 'Partner Test 01');
+  ok(scn, 'the same company picked again after emptying its field keeps «TST-P 111»', (await field(page, 'ppl')).val === 'TST-P 111', await field(page, 'ppl'));
   let f = await foot(page);
   ok(scn, 'unchanged: save off', f.off, f);
   await page.fill(`${DLG} [data-pdr]`, 'Driver P3');

@@ -85,3 +85,12 @@ test('115: the driver sheet of a partner trip: the plates where a truck stands, 
   const h0 = S.lines(board(false).cycles.find((x) => x.rt_id === 104), PL, 'ALL').find((l) => l.t === 'head');
   assert.ok(!('plates' in h0) && !('pdriver' in h0));
 });
+
+test('115: a trip with a handover has no one partner truck: no plates on its whole-trip sheet (as the board)', () => {
+  const S = sheet();
+  const c = board(true).cycles.find((x) => x.rt_id === 104);
+  c.segments = [{ segment_id: 1, label: 'A', trip_type: 'PARTNER', partner_id: c.partner_id, partner: c.partner, has_vehicle: true, stop_ids: [] },
+    { segment_id: 2, label: 'B', trip_type: 'PARTNER', partner_id: 999, partner: 'Partner Test 02', has_vehicle: true, stop_ids: [] }];
+  const h = S.lines(c, { hubId: 1, byId: {} }, 'ALL').find((l) => l.t === 'head');
+  assert.ok(!('plates' in h) && !('pdriver' in h));
+});

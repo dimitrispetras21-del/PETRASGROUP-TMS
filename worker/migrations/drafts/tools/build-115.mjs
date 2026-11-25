@@ -87,6 +87,7 @@ export function buildRollback(src) {
 -- B-54 back by one. It REFUSES while a trip holds plates or a partner driver: those texts are what a dispatcher typed,
 -- and a rollback never loses them in silence (copy them out first; the message says how many).
 -- The front end needs nothing: plan_board stops naming the keys and the two fields hide themselves.
+-- ONE CHAIN WITH 114: this rollback runs BEFORE 114's (plan_board goes back to the text 114 wrote).
 -- EXPECTED: NOTICE "115 ROLLED BACK: ...".
 DO $do$
 DECLARE
@@ -151,6 +152,7 @@ SELECT
   has_function_privilege('service_role', '${SIG.upd}', 'EXECUTE')
     AND has_function_privilege('service_role', '${SIG.brd}', 'EXECUTE') AS worker_exec,
   NOT has_function_privilege('anon', 'public.plan_h_partner_text(jsonb,text,integer)', 'EXECUTE')
+    AND NOT has_function_privilege('service_role', 'public.plan_h_partner_text(jsonb,text,integer)', 'EXECUTE')
     AND NOT has_function_privilege('anon', 'public.rt_partner_text_follow()', 'EXECUTE') AS anon_closed;
 `;
 }
