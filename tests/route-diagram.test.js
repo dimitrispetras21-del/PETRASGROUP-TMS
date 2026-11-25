@@ -367,3 +367,34 @@ test('boardCycle with cityOf prints «City, CC» like the international rows', (
   const m = RD.build(A.boardCycle(byIdCycle('Ν1'), { today: '2026-10-26', hubId: 360, countryOf: () => 'GR', cityOf: (id) => (id === 901 ? 'Πόλη Α' : null) }));
   eq(m.sections[0].rows.slice(0, 2).map((r) => r.meta[0].text), ['Πόλη Α, GR', 'GR']);
 });
+
+// Owner 25/11: production numbers ORDER STOPS per type, so the order of the points comes from the type first
+// (loadings, then the cross-dock, then the deliveries) and only then from the Stop Number (#814: loadings 2 and 3
+// were drawn after the delivery, and with VS left the national leg for the international section).
+test('S-per-type: stops numbered per type keep loadings → cross-dock → deliveries; VS splits them by desk', () => {
+  const names = (sec) => sec.rows.map((r) => (r.kind === 'crossdock' ? 'CD' : (r.act === 'load' ? 'L:' : 'U:') + r.name));
+  const [vsExp, plain, vsImp] = [].concat(byId('S-per-type').build(A));
+  eq(vsExp.sections.map((s) => s.title), ['ΕΘΝΙΚΟ ΣΚΕΛΟΣ', 'ΕΞΑΓΩΓΗ']);
+  eq(names(vsExp.sections[0]), ['L:Πελάτης Α', 'L:Πελάτης Β', 'L:Πελάτης Γ'], 'every loading in the national leg');
+  eq(names(vsExp.sections[1]), ['CD', 'U:Προμηθευτής AT1']);
+  eq(names(plain.sections[0]), ['L:Πελάτης Α', 'L:Πελάτης Β', 'U:Παραλήπτης DE'], 'no loading after the delivery');
+  eq(vsImp.sections.map((s) => s.title), ['ΕΙΣΑΓΩΓΗ', 'ΕΘΝΙΚΟ ΣΚΕΛΟΣ']);
+  eq(names(vsImp.sections[0]), ['L:Προμηθευτής AT1', 'L:Προμηθευτής AT2', 'CD']);
+  eq(names(vsImp.sections[1]), ['U:Πελάτης Α', 'U:Πελάτης Β', 'U:Πελάτης Γ']);
+});
+
+// The cases above number the stops across the order (1..6); the base numbers them per type. Every facade case is
+// drawn again with its stops renumbered per type and must give the same picture, so the fixtures cannot hide a sort
+// that only works on their numbering (code review 25/11: before the fix Δ2, Δ7, Δ8, Π1 and RT1 differed).
+test('every facade case draws the same with its stops numbered per type, as the base numbers them', () => {
+  const per = (stops) => { const seen = {}; return (stops || []).slice()
+    .sort((x, y) => (Number(x.fields['Stop Number']) || 0) - (Number(y.fields['Stop Number']) || 0))
+    .map((s) => { const t = s.fields['Stop Type']; seen[t] = (seen[t] || 0) + 1; return { fields: Object.assign({}, s.fields, { 'Stop Number': seen[t] }) }; }); };
+  const P = Object.assign({}, A, {
+    facadeOrder: (rec, stops, ctx) => A.facadeOrder(rec, per(stops), ctx && ctx.legs ? Object.assign({}, ctx, { legs: ctx.legs.map((l) => Object.assign({}, l, { stops: per(l.stops) })) }) : ctx),
+    facadeRt: (items, ctx) => A.facadeRt((items || []).map((it) => Object.assign({}, it, { stops: per(it.stops) })), ctx) });
+  for (const c of RD_CASES.cases) {
+    const a = [].concat(c.build(A)).map((i) => RD.build(i)), b = [].concat(c.build(P)).map((i) => RD.build(i));
+    eq(b, JSON.parse(JSON.stringify(a)), c.id);
+  }
+});

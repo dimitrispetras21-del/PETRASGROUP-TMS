@@ -288,6 +288,18 @@ const cases = [
   { id: 'S-vs-no-hub', family: 'S', title: 'VS χωρίς στάση cross-dock · εθνικό σκέλος δεν διαβάστηκε', build: (A) => [
     A.facadeOrder(ord(968, 'Import', { 'Veroia Switch': true }), [st(1, 'Loading', '2026-10-27', 'rAT1', 20), st(2, 'Unloading', '2026-10-29', 'rGR1', 20)], C()),
     A.facadeOrder(ord(969, 'Import', { 'Veroia Switch': true }), [st(1, 'Loading', '2026-10-27', 'rAT1', 20), st(2, 'Cross-dock', '2026-10-28', null, 20), st(3, 'Unloading', '2026-10-29', 'rGR1', 20)], C())] },
+  // Production numbers the stops PER TYPE (Loading 1..n, Cross-dock 1, Unloading 1..n), not across the order as the
+  // cases above do; owner 25/11: an export VS with three loadings drew loadings 2 and 3 after the delivery (#814).
+  { id: 'S-per-type', family: 'S', title: 'Αρίθμηση στάσεων ανά είδος (όπως η βάση)', build: (A) => [
+    A.facadeOrder(ord(970, 'Export', { 'Veroia Switch': true }),
+      [st(1, 'Cross-dock', '2026-10-28', null, 30), st(1, 'Loading', '2026-10-27', 'rGR1', 14), st(2, 'Loading', '2026-10-27', 'rGR2', 14),
+        st(3, 'Loading', '2026-10-27', 'rGR3', 2), st(1, 'Unloading', '2026-10-30', 'rAT1', 30)], C({ natLeg: { ref: 'NL 970', kind: 'own' } })),
+    A.facadeOrder(ord(971, 'Export'),
+      [st(1, 'Loading', '2026-10-27', 'rGR1', 20), st(1, 'Unloading', '2026-10-29', 'rDE', 20), st(2, 'Loading', '2026-10-27', 'rGR2', 13)], C()),
+    A.facadeOrder(ord(972, 'Import', { 'Veroia Switch': true }),
+      [st(1, 'Loading', '2026-10-23', 'rAT1', 23), st(2, 'Loading', '2026-10-24', 'rAT2', 9), st(1, 'Cross-dock', '2026-10-26', null, 32),
+        st(1, 'Unloading', '2026-10-27', 'rGR1', 13), st(2, 'Unloading', '2026-10-27', 'rGR2', 8), st(3, 'Unloading', '2026-10-28', 'rGR3', 11)],
+      C({ natLeg: { ref: 'NL 972', kind: 'own' } }))] },
 ];
 
 const out = { TODAY, HUB, LOC, cases };

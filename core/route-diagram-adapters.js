@@ -115,8 +115,13 @@ function _stopRow(s, ctx) {
   return { kind: 'stop', act: t === 'Loading' ? 'load' : 'unload', day, name: (m && m.name) || '—',
     city: (m && m.city) || undefined, cc: m ? (m.cc || null) : undefined, pallets, marked: !!f['Completed At'], _type: t };
 }
-const _sorted = (stops) => (stops || []).filter((s) => s && s.fields && ['Loading', 'Unloading', 'Cross-dock'].includes(s.fields['Stop Type']))
-  .slice().sort((a, b) => (Number(a.fields['Stop Number']) || 0) - (Number(b.fields['Stop Number']) || 0)
+// The type first, then the Stop Number (owner 25/11): the base numbers the stops PER TYPE (Loading 1..n, Cross-dock 1,
+// Unloading 1..n), so a Stop Number alone put loading 2 after delivery 1 (#814) and, with VS, moved the later
+// loadings out of the national leg. One order always loads, passes the cross-dock, then delivers, both directions.
+const _RANK = { Loading: 0, 'Cross-dock': 1, Unloading: 2 };
+const _sorted = (stops) => (stops || []).filter((s) => s && s.fields && Object.prototype.hasOwnProperty.call(_RANK, s.fields['Stop Type']))
+  .slice().sort((a, b) => _RANK[a.fields['Stop Type']] - _RANK[b.fields['Stop Type']]
+    || (Number(a.fields['Stop Number']) || 0) - (Number(b.fields['Stop Number']) || 0)
     || String(a.fields.DateTime || '').localeCompare(String(b.fields.DateTime || '')));
 const _exKind = (f) => (first(f.Partner) ? 'partner' : first(f.Truck) ? 'own' : 'none');
 const _no = (rec) => { const n = rec && rec.fields && (rec.fields['Order No'] != null ? rec.fields['Order No'] : null); return n != null ? '#' + n : null; };
