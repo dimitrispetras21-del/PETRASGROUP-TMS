@@ -120,6 +120,9 @@ function layout(parts) {
     else runs.push({ ind: x.ind, n: x.n, q: Array(x.n).fill(x.i) });
   }
   const onlyInd = runs.length === 1 && runs[0].ind;
+  // parts[i].no = the delivery number (the form); none = a load counted by type, one delivery as far as we know
+  const stopOf = i => (parts[i] && parts[i].no != null ? parts[i].no : null);
+  const sameStop = (a, b) => stopOf(a) == null || stopOf(b) == null || stopOf(a) === stopOf(b);
   const rows = [];
   let at = 0, stag = 0, firstEuro = true, dropped = 0, tailStag = 0;   // tailStag: the euro run before ended staggered
   const deferred = [];   // lone euro pallets that would leave a front-back gap: they go to the doors (below)
@@ -144,7 +147,11 @@ function layout(parts) {
         // Against a front-heavy load, one euro single goes in the middle between the last industrial pair and the
         // «δόντι»: «2 βιομηχανικές, μονή ευρωπαλ, βιομηχανική-ευρωπαλ μαζί, και μετά συνέχεια» (owner 18/11). Only
         // with a pair in front of it (a single never opens the box) and only for the first euro of the load.
+        // Only when the single is of the same delivery as the industrial it stands in front of (owner 25/11): a
+        // single of an earlier delivery there sits cab-side of the next delivery's industrial, so at its stop that
+        // industrial must come out first (two groupages of W45). Parts without a delivery (plan()) keep the rule.
         if (!onlyInd && nx && !nx.ind && firstEuro && !off && nx.q.length >= 3 && nx.q.length < NO_SINGLE_FROM
+            && sameStop(r.q[0], nx.q[0])
             && rows.length && rows[rows.length - 1].k === 'I' && rows[rows.length - 1].n === 2) {
           const later = runs.slice(ri + 2).reduce((a, x) => a + minLen(x), 0);
           if (at + 8 + ROW.I + 4 * (nx.q.length - 2) + later <= BOX - SAFE) push('S', [cell(nx.q.shift(), 0, 6, 8, 12)], 8);
