@@ -3375,8 +3375,9 @@ async function submitIntlOrder(recId, G) {
       showErrorToast(_written ? 'Η παραγγελία αποθηκεύτηκε, αλλά ένα επόμενο βήμα δεν έγινε — ξαναδοκίμασε την Αποθήκευση'
         : _unmarked ? _OI_UNMARKED_NOT_SAVED
         : 'Δεν αποθηκεύτηκε τίποτα — η φόρμα μένει ανοιχτή', 'warn', 8000);
-    } else if (e.message !== 'validation') {
-      reportError('Σφάλμα αποθήκευσης παραγγελίας', e);
+    } else if (!e || e.message !== 'validation') {
+      // finding 10 (25/11): a thrown null / undefined made this line throw in turn — no message, button stuck
+      reportError('Σφάλμα αποθήκευσης παραγγελίας', e || new Error('save failed without an error'));
       if (_unmarked && !_written) showErrorToast(_OI_UNMARKED_NOT_SAVED, 'warn', 12000);
     }
     if (btn) { btn.textContent = 'Αποθήκευση'; btn.disabled = false; }
