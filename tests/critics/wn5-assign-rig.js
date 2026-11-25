@@ -1071,5 +1071,34 @@ async function partner_text_board({ browser, origin, ok, scn, shots }) {
   await page.context().close();
 }
 
-K.run({ scenarios: { own_new, own_join, only_hours, partner, accept_busy, vehicle, rate2, handover, veroia_list, veroia_new, f61, f54, veroia_later, pr3b, veroia_busy, veroia_fixes, busy3, fit, sotiris_late, sotiris_warn, sotiris_esc, sotiris_hub_after, rt_expect, partner_text, partner_text_board }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],
+// the two papers of a partner trip (coordinator 25/11): the driver sheet and the week paper, drawn by the app's own
+// print paths (window.open caught, nothing printed), the plates and the driver where a truck stands. Shots in colour.
+async function partner_text_papers({ browser, origin, ok, scn, shots }) {
+  const pb = partnerBoard(null);
+  for (const c of pb.cycles) for (const g of c.segments) delete g.partner_rate_anodos;
+  withPtx(pb, { 101: { partner_plates: 'TST-P 111', partner_driver: 'Driver P1' }, 102: { partner_plates: 'TST-P 222' } });
+  const { page } = await K.openApp(browser, origin, { board: pb, viewport: VP1440 });
+  const grab = (fn) => page.evaluate(async (f) => {
+    let doc = null;
+    const real = window.open, rp = window.print;
+    window.open = () => ({ document: { write: (h) => { doc = h; }, close() {} }, print() {} });
+    try { if (f === 'sheet') await WN5Sheet.print(101, 'ALL'); else await WN5.printWeek(); } finally { window.open = real; }
+    await new Promise((r) => setTimeout(r, 700));
+    return doc;
+  }, fn);
+  for (const [fn, re] of [['sheet', /TST-P 111/], ['week', /TST-P 111 · Driver P1/]]) {
+    const doc = await grab(fn);
+    ok(scn, `the ${fn === 'sheet' ? 'driver sheet' : 'week paper'} names the plates of the partner truck`, !!doc && re.test(doc), (doc || '').slice(0, 200));
+    if (shots && doc) {
+      const p2 = await page.context().newPage();
+      await p2.setViewportSize(fn === 'sheet' ? { width: 900, height: 1270 } : { width: 1440, height: 1000 });
+      await p2.setContent(doc.replace(/<link[^>]+fonts\.googleapis[^>]+>/g, ''), { waitUntil: 'load' });
+      await p2.screenshot({ path: `${shots}/paper-${fn}.png`, fullPage: true });
+      await p2.close();
+    }
+  }
+  await page.context().close();
+}
+
+K.run({ scenarios: { own_new, own_join, only_hours, partner, accept_busy, vehicle, rate2, handover, veroia_list, veroia_new, f61, f54, veroia_later, pr3b, veroia_busy, veroia_fixes, busy3, fit, sotiris_late, sotiris_warn, sotiris_esc, sotiris_hub_after, rt_expect, partner_text, partner_text_board, partner_text_papers }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],
   go: 'the assignment form (own new / join / only / hours / F39 / partner / vehicle / F51-F61 / F54 / F56 / 089 two fees), ✈ «Αλλαγή οχήματος…» and the Veroia board v2 «Νέο φορτίο» hold' });
