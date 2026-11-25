@@ -107,7 +107,7 @@ function indOnly(i) {
 // front of it. No knife or single there: «η πλάκα θα ήταν πιο εύκολη και στην αντίληψη του χώρου» (owner 17/11).
 // A lone pallet in the last row stands against a side wall (nothing behind it but the bars); a lone industrial
 // always does, never in the middle (it could fall).
-// parts: [{ n, ind }] cab → doors. → { rows: [{ k: 'K'|'D'|'S'|'I'|'X', n, at, len, stag?, wall?, cells }], used,
+// parts: [{ n, ind, no? }] cab → doors; no = the delivery number (1 = first; 0 = none), absent = one delivery. → { rows: [{ k: 'K'|'D'|'S'|'I'|'X', n, at, len, stag?, wall?, cells }], used,
 //   placed, dropped }. cells: [{ part, ind?, x, y, w, h }] in dm, x along the box from the row's start (a staggered cell
 //   is at −2), y across (0 = one side wall, 24 = the other). dropped = pallets that do not fit after the last row.
 function minLen(run) { return run.ind ? Math.ceil(run.n / 2) * ROW.I : run.n === 1 ? 8 : 4 * run.n; }
@@ -120,9 +120,10 @@ function layout(parts) {
     else runs.push({ ind: x.ind, n: x.n, q: Array(x.n).fill(x.i) });
   }
   const onlyInd = runs.length === 1 && runs[0].ind;
-  // parts[i].no = the delivery number (the form); none = a load counted by type, one delivery as far as we know
+  // parts[i].no = the delivery number (the form); none = a load counted by type, one delivery as far as we know.
+  // 0 = an order with no delivery point (the form): its stop is unknown, so never the same as another part's.
   const stopOf = i => (parts[i] && parts[i].no != null ? parts[i].no : null);
-  const sameStop = (a, b) => stopOf(a) == null || stopOf(b) == null || stopOf(a) === stopOf(b);
+  const sameStop = (a, b) => stopOf(a) == null || stopOf(b) == null || (stopOf(a) === stopOf(b) && stopOf(a) !== 0);
   const rows = [];
   let at = 0, stag = 0, firstEuro = true, dropped = 0, tailStag = 0;   // tailStag: the euro run before ended staggered
   const deferred = [];   // lone euro pallets that would leave a front-back gap: they go to the doors (below)
