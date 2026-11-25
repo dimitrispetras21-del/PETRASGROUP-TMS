@@ -1500,7 +1500,8 @@
       // (plan_put_group would take every waiting piece of the order, the parts too)
       const parts = group ? _groupItems(group).filter((x) => x.parent_piece_id != null) : [];
       const src = it.parent_piece_id != null ? { pieces: [{ piece_id: pid }] }
-        : parts.length ? { pieces: _groupItems(group).filter((x) => x.parent_piece_id == null).map((x) => ({ piece_id: x.piece_id })) }
+        // band: the order, for the form's «μόνο αυτό το σημείο» and its heading; the body stays these pieces
+        : parts.length ? { pieces: _groupItems(group).filter((x) => x.parent_piece_id == null).map((x) => ({ piece_id: x.piece_id })), band: group }
           : group ? { group } : { pieces: [{ piece_id: pid }] };
       WN5Act.assign(src,
         // focus: the piece pressed, for «μόνο αυτές οι παλέτες» (F42); anchor: kept for the callers, the form itself is a

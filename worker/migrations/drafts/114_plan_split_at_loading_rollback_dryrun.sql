@@ -66,9 +66,33 @@ BEGIN
   SELECT count(*) INTO v_n FROM public.v_piece_pos pp JOIN public.shipments s ON s.id = pp.shipment_id AND s.deleted_at IS NULL
      WHERE pp.is_split AND pp.eff_last_leg_id IS NULL
        AND pp.position_location_id IS DISTINCT FROM (SELECT h.id FROM public.locations h WHERE h.is_hub);
-  IF v_n > 0 THEN
-    RAISE EXCEPTION '114 rollback: % load(s) split at their loading point are live - join or assign their parts first', v_n;
+  -- new splits at a loading point closed, always
+  SELECT * INTO p FROM pg_proc WHERE oid = to_regprocedure('public.plan_split_piece(jsonb,text,text)');
+  IF md5(p.prosrc) <> 'a43e5db008e7d54f7c1bf59f96c5590f' THEN
+    RAISE EXCEPTION '114 rollback: public.plan_split_piece(jsonb,text,text) is not the text 114 wrote (md5 %) - stop', md5(p.prosrc);
   END IF;
+  v_new := p.prosrc;
+  FOR v_h IN SELECT * FROM unnest(ARRAY[p_4b, p_3b, p_2b, p_1b], ARRAY[p_4a, p_3a, p_2a, p_1a]) h(b, a) LOOP
+    IF (length(v_new) - length(replace(v_new, v_h.b, ''))) <> length(v_h.b) THEN
+      RAISE EXCEPTION '114 rollback: a hunk of 114 is not in public.plan_split_piece(jsonb,text,text) exactly once - stop';
+    END IF;
+    v_new := replace(v_new, v_h.b, v_h.a);
+  END LOOP;
+  IF md5(v_new) <> 'f1993aeb0344b24e8abad84d8f92603d' THEN
+    RAISE EXCEPTION '114 rollback: public.plan_split_piece(jsonb,text,text) would not be its live text (md5 %)', md5(v_new);
+  END IF;
+  EXECUTE format('CREATE OR REPLACE FUNCTION %s(%s) RETURNS %s LANGUAGE plpgsql %s %s SET search_path = public AS %L',
+    split_part('public.plan_split_piece(jsonb,text,text)', '(', 1), pg_get_function_arguments(p.oid), pg_get_function_result(p.oid),
+    CASE p.provolatile WHEN 'i' THEN 'IMMUTABLE' WHEN 's' THEN 'STABLE' ELSE 'VOLATILE' END,
+    CASE WHEN p.prosecdef THEN 'SECURITY DEFINER' ELSE 'SECURITY INVOKER' END, v_new);
+  IF (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.plan_split_piece(jsonb,text,text)'::regprocedure) <> 'f1993aeb0344b24e8abad84d8f92603d'
+     OR (SELECT proacl::text FROM pg_proc WHERE oid = p.oid) IS DISTINCT FROM p.proacl::text THEN
+    RAISE EXCEPTION '114 rollback proof: public.plan_split_piece(jsonb,text,text) is not back to its live text with its rights';
+  END IF;
+  -- never RETURN here: the dry run runs this block nested, and a RETURN would skip its final undoing error
+  IF v_n > 0 THEN
+    RAISE NOTICE '114 ROLLBACK PARTIAL: % load(s) were split at their loading point - new such splits are closed; the rule that keeps their parts right stays', v_n;
+  ELSE
   CREATE OR REPLACE VIEW public.v_piece_state WITH (security_invoker = true) AS
   SELECT pp.piece_id, pp.shipment_id, vs.kind, vs.order_id, vs.nat_order_id, vs.order_stop_id,
          pp.parent_piece_id, pp.pallets, pp.leave_by, pp.position_location_id, pp.last_drop_stop_id,
@@ -94,28 +118,6 @@ BEGIN
   WHERE NOT pp.is_split;
   IF md5(pg_get_viewdef('public.v_piece_state'::regclass, true)) <> '598fd9472beaef97adaf49b1ff431504' THEN
     RAISE EXCEPTION '114 rollback proof: v_piece_state is not 071''s view again (md5 %)', md5(pg_get_viewdef('public.v_piece_state'::regclass, true));
-  END IF;
-  SELECT * INTO p FROM pg_proc WHERE oid = to_regprocedure('public.plan_split_piece(jsonb,text,text)');
-  IF md5(p.prosrc) <> 'a43e5db008e7d54f7c1bf59f96c5590f' THEN
-    RAISE EXCEPTION '114 rollback: public.plan_split_piece(jsonb,text,text) is not the text 114 wrote (md5 %) - stop', md5(p.prosrc);
-  END IF;
-  v_new := p.prosrc;
-  FOR v_h IN SELECT * FROM unnest(ARRAY[p_4b, p_3b, p_2b, p_1b], ARRAY[p_4a, p_3a, p_2a, p_1a]) h(b, a) LOOP
-    IF (length(v_new) - length(replace(v_new, v_h.b, ''))) <> length(v_h.b) THEN
-      RAISE EXCEPTION '114 rollback: a hunk of 114 is not in public.plan_split_piece(jsonb,text,text) exactly once - stop';
-    END IF;
-    v_new := replace(v_new, v_h.b, v_h.a);
-  END LOOP;
-  IF md5(v_new) <> 'f1993aeb0344b24e8abad84d8f92603d' THEN
-    RAISE EXCEPTION '114 rollback: public.plan_split_piece(jsonb,text,text) would not be its live text (md5 %)', md5(v_new);
-  END IF;
-  EXECUTE format('CREATE OR REPLACE FUNCTION %s(%s) RETURNS %s LANGUAGE plpgsql %s %s SET search_path = public AS %L',
-    split_part('public.plan_split_piece(jsonb,text,text)', '(', 1), pg_get_function_arguments(p.oid), pg_get_function_result(p.oid),
-    CASE p.provolatile WHEN 'i' THEN 'IMMUTABLE' WHEN 's' THEN 'STABLE' ELSE 'VOLATILE' END,
-    CASE WHEN p.prosecdef THEN 'SECURITY DEFINER' ELSE 'SECURITY INVOKER' END, v_new);
-  IF (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.plan_split_piece(jsonb,text,text)'::regprocedure) <> 'f1993aeb0344b24e8abad84d8f92603d'
-     OR (SELECT proacl::text FROM pg_proc WHERE oid = p.oid) IS DISTINCT FROM p.proacl::text THEN
-    RAISE EXCEPTION '114 rollback proof: public.plan_split_piece(jsonb,text,text) is not back to its live text with its rights';
   END IF;
   SELECT * INTO p FROM pg_proc WHERE oid = to_regprocedure('public.plan_shipment_problem(bigint)');
   IF md5(p.prosrc) <> '9f2a79bd4fd6bb5fabbea083c36ede04' THEN
@@ -161,8 +163,9 @@ BEGIN
      OR (SELECT proacl::text FROM pg_proc WHERE oid = p.oid) IS DISTINCT FROM p.proacl::text THEN
     RAISE EXCEPTION '114 rollback proof: public.plan_board(date,text) is not back to its live text with its rights';
   END IF;
-  PERFORM pg_notify('pgrst', 'reload schema');
   RAISE NOTICE '114 ROLLBACK OK';
+  END IF;
+  PERFORM pg_notify('pgrst', 'reload schema');
 END;
   -- ===== what it did =====
   res := format('rollback ran: split %s, problem %s, board %s, view %s', (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.plan_split_piece(jsonb,text,text)'::regprocedure),

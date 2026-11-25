@@ -33,8 +33,9 @@
 -- forward the body and the answer as they are. The Worker's word for not_at_hub ("only at Veroia") stays true for
 -- a load that already rides; the screen offers the split only where 114 allows it.
 -- ORDER: after 112 (executed 8/11). RUN: 114_plan_split_at_loading_dryrun.sql, then this file, then
--- 114_plan_split_at_loading_verify.sql. REVERSE: 114_plan_split_at_loading_rollback.sql (the texts and the view
--- back; refused while a live piece split at its loading point exists).
+-- 114_plan_split_at_loading_verify.sql. REVERSE: 114_plan_split_at_loading_rollback.sql (everything back while no load
+-- was split at its loading point; once one was, only new such splits are closed - its parent stays split for good,
+-- and the rule that keeps its parts right stays).
 DO $do$
 DECLARE
   -- the hunks: (anchor in the live text, replacement); each anchor is in the live text exactly once

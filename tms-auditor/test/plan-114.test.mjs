@@ -198,12 +198,23 @@ test('114 on the production-shaped copy: before, dry run, GO, the split on rows,
     });
   });
 
-  await t.test('rollback: refused while a load split at its loading point is live; then back to 25/11 byte for byte', async () => {
+  await t.test('rollback with a load split at its loading point: PARTIAL - new splits closed, the parts stay right and assignable', async () => {
     await scenario(db, async () => {
-      const k = await national(db, south, hub, 16);
-      assert.strictEqual((await split(db, k, [{ pallets: 3 }, { pallets: 13 }])).err, null);
-      assert.match(await errorIn(db, read(`${P}_rollback.sql`)) ?? '', /1 load\(s\) split at their loading point are live/);
+      const k = await national(db, south, south2, 16);
+      const kids = (await split(db, k, [{ pallets: 3 }, { pallets: 13 }])).r.ids.piece_ids.map(N);
+      assert.strictEqual(await errorIn(db, read(`${P}_rollback.sql`)), null);
+      const m = await md5s();
+      assert.deepStrictEqual([m.p, m.v, m.s, m.b], [before.p, F.viewNew, F.gen[1].m, F.gen[2].m], 'only plan_split_piece went back');
+      assert.strictEqual((await verify(db)).applied, '114 partly rolled back: new splits at a loading point closed');
+      const k2 = await national(db, south, south2, 10);
+      assert.match((await split(db, k2, [{ pallets: 4 }, { pallets: 6 }])).err ?? '', /not_at_hub/, 'a new split at the loading point is closed');
+      assert.strictEqual((await state(db, kids[0])).is_stock, false, 'the parts stay waiting loads');
+      assert.strictEqual(await problem(db, k), null, 'their shipment is still judged right');
+      assert.strictEqual((await put(db, kids[0], await truck(db))).err, null, 'a part is still assigned alone');
     });
+  });
+
+  await t.test('rollback with no such load: back to 25/11 byte for byte', async () => {
     const dry = await errorOf(db, read(`${P}_rollback_dryrun.sql`));
     assert.ok((dry ?? '').includes(`DRY RUN 114 ROLLBACK finished - EVERYTHING UNDONE, nothing kept. The block ran to its end  ||  rollback ran: split ${before.p}, problem ${before.s}, board ${before.b}, view ${before.v}`), dry);
     assert.strictEqual((await verify(db)).applied, '114 in place');

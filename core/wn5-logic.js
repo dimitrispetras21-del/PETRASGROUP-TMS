@@ -501,8 +501,11 @@ function _waitRow(list, hubId, errors, nameOf) {
     pieceIds: ws.map((w) => w.piece_id),
     // 114 (owner 8/11, 25/11): «Σπάσε…» on the row of ONE load waiting at its own loading point with known pallets. The
     // board says parent_piece_id only from 114 on: a board without the key is a base that would refuse (not_at_hub),
-    // so the row offers nothing there. A Veroia load splits on the Veroia board, as before.
-    canSplit: ws.length === 1 && !hubWs.length && w0.is_stock !== true && w0.pallets != null
+    // so the row offers nothing there. A Veroia load splits on the Veroia board, as before. At its loading point only
+    // (code review xhigh): a load waiting at a transfer stop is in waiting[] too, and its parts would become stock that
+    // no screen shows.
+    canSplit: ws.length === 1 && !hubWs.length && w0.is_stock !== true && Number(w0.pallets) > 0
+      && w0.position_location_id != null && Number(w0.position_location_id) === Number(w0.nat_from_location_id)
       && Object.prototype.hasOwnProperty.call(w0, 'parent_piece_id'),
     // P-11 (owner 28/10, answer 1): the pieces of this row that stand at Veroia — what «→ Βέροια» sends to the panel
     hubPieceIds: ws.filter((w) => w._atHub === true).map((w) => w.piece_id),

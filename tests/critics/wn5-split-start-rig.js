@@ -41,6 +41,15 @@ async function scnGate({ browser, origin, ok, scn }) {
   ok(scn, 'board without parent_piece_id (base before 114): no «⋯» on the waiting row', await K.count(page, `${ROW(4101)} .wn5-wmore`) === 0
     && await K.count(page, ROW(4101)) === 1);
   await done(page, S, ok, scn);
+  // code review xhigh: a load waiting at a TRANSFER stop is in waiting[] too; split there, its parts would be stock
+  // that no screen shows - only the loading point offers «⋯»; and a load of 0 pallets has nothing to split
+  const away = board114(); away.waiting[0].position_location_id = 4;
+  const zero = board114(); zero.waiting[0].pallets = 0;
+  for (const [b, what] of [[away, 'waiting at a transfer stop (position ≠ its loading point)'], [zero, 'of 0 pallets']]) {
+    const x = await K.openApp(browser, origin, { board: b });
+    ok(scn, `a load ${what}: no «⋯»`, await K.count(x.page, `${ROW(4101)} .wn5-wmore`) === 0 && await K.count(x.page, ROW(4101)) === 1);
+    await done(x.page, x.S, ok, scn);
+  }
 }
 async function scnStart({ browser, origin, ok, scn, shots }) {
   const { page, S } = await K.openApp(browser, origin, { board: board114(), viewport: { width: 1440, height: 900 },
@@ -92,8 +101,8 @@ async function scnRefused({ browser, origin, ok, scn }) {
   await fill(page, '3', '5');
   await page.click(`${DLG} [data-act="save"]`);
   await page.waitForTimeout(1000);
-  ok(scn, 'refused not_at_hub → «Δεν σπάει: το φορτίο μπήκε ήδη σε φορτηγό — ανανέωσε», the window open, one POST',
-    /Δεν σπάει: το φορτίο μπήκε ήδη σε φορτηγό — ανανέωσε/.test(await K.text(page, `${DLG} .wn5-dlg-msg`)) && await K.count(page, DLG) === 1 && splitOf(S).length === 1,
+  ok(scn, 'refused not_at_hub → «Δεν σπάει εδώ: μπήκε σε φορτηγό ή το σπάσιμο στη φόρτωση έκλεισε — ανανέωσε», the window open, one POST',
+    /Δεν σπάει εδώ: μπήκε σε φορτηγό ή το σπάσιμο στη φόρτωση έκλεισε — ανανέωσε/.test(await K.text(page, `${DLG} .wn5-dlg-msg`)) && await K.count(page, DLG) === 1 && splitOf(S).length === 1,
     await K.text(page, `${DLG} .wn5-dlg-msg`));
   await done(page, S, ok, scn);
 }

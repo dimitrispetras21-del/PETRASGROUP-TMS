@@ -541,7 +541,9 @@
     const start = !!(opts && opts.start);
     const pid = k.id(pieceId);
     const it = pid ? k.item(pid) : null;
-    if (start ? (!it || it.at_hub || it.is_stock === true) : (!it || !it.at_hub)) {
+    // start: at its loading point only (WN5L canSplit's rule), never a load waiting at a transfer stop
+    const atStart = (x) => !x.at_hub && x.is_stock !== true && x.position_location_id != null && Number(x.position_location_id) === Number(x.nat_from_location_id);
+    if (start ? (!it || !atStart(it)) : (!it || !it.at_hub)) {
       WN5Act.strip(k.boardHost(), k.clientErr('piece_missing', start ? 'Το φορτίο δεν περιμένει πια στη φόρτωσή του — ανανέωσε' : 'Η παράδοση δεν είναι πια στη Βέροια — ανανέωσε'));
       return null;
     }
@@ -557,7 +559,9 @@
     const hubId = k.hubId();
     // the snapshot (rule 4): the piece, its needs, the day's Veroia cycles with their delivery stops; the label says
     // the day beside the hours, so «14:00–23:59» never reads as today
-    const st = { pieceId: pid, total: it.pallets, item: k.copy(it), needs: k.needs(it, false, hubId), day, start,
+    // a load in a draft of «Σύνθεση φορτίων» (its row's «σε πρόχειρο» mark): said, never refused (the draft shows it split)
+    const inDraft = !!(start && anchor && anchor.closest && anchor.closest('.wn5-asg') && anchor.closest('.wn5-asg').querySelector('.wn5-indraft:not([hidden])'));
+    const st = { pieceId: pid, total: it.pallets, item: k.copy(it), needs: k.needs(it, false, hubId), day, start, inDraft,
       trucks: start ? [] : _trucks(day).map((t) => ({ rtId: t.rtId, cyc: k.copy(t.c), label: k.cycText(t.c, t.r).l1.split(' · ')[0] + ' · Βέροια ' + k.dayShort(day) + (t.win ? ' ' + t.win : ''), pal: t.pal, unk: t.unk || 0,
         sideStops: k.copy((t.c.stops || []).filter((s) => s.side === 'KATHODOS' && s.location_id !== hubId)) })),
       parts: [{ t: '', rt: null, pal: '', stops: null }, { t: 'stay', rt: null, pal: '', stops: null }],
@@ -621,6 +625,7 @@
     const draw = () => {
       d.body.innerHTML = (st.start
         ? '<p class="wn5-split-i">' + k.esc('Άθροισμα ' + k.pal(st.total) + '· κάθε μέρος μένει «ΠΡΟΣ ΑΝΑΘΕΣΗ».') + '</p>'
+          + (st.inDraft ? '<p class="wn5-split-i wn5-miss">' + k.esc('Είναι σε πρόχειρο φορτίο· εκεί θα φανεί σπασμένο.') + '</p>' : '')
         : '<p class="wn5-split-i">Πού πάει κάθε μέρος· το άθροισμα πρέπει να είναι ' + k.esc(k.pal(st.total)) + '.</p>')
         // no truck loads at Veroia that day: said, never an empty list that reads as «not loaded yet» (principle 1)
         + (st.trucks.length || st.start ? '' : '<p class="wn5-split-i wn5-split-none">' + k.esc('Κανένα φορτηγό δεν φορτώνει στη Βέροια ' + (st.day ? k.dayShort(st.day) : '—')) + '</p>')
@@ -677,9 +682,10 @@
       else if (b.dataset.act === 'save' && _partsOk(st)) {
         k.send(d, { method: 'POST', path: '/plan/pieces/split', body: _splitBody(st), requestId: st.slot.id }, 'Αποθηκεύτηκε το σπάσιμο', {
           slot: st.slot, intl: true,
-          // 114: refused at the loading point = the load took a truck since the board was read (not_at_hub), or a base
-          // before 114 — said in words, the Worker's «στη Βέροια» would point at the wrong place
-          onFail: st.start ? (e) => { if (e && e.code === 'not_at_hub') WN5Act.strip(d.msg, k.clientErr('not_at_start', 'Δεν σπάει: το φορτίο μπήκε ήδη σε φορτηγό — ανανέωσε')); } : null,
+          // 114: refused at the loading point (not_at_hub) = the load took a truck since the board was read, or the
+          // owner closed new splits there (114's partial rollback) — said in words, the Worker's «στη Βέροια» would
+          // point at the wrong place
+          onFail: st.start ? (e) => { if (e && e.code === 'not_at_hub') WN5Act.strip(d.msg, k.clientErr('not_at_start', 'Δεν σπάει εδώ: μπήκε σε φορτηγό ή το σπάσιμο στη φόρτωση έκλεισε — ανανέωσε')); } : null,
           // request_reused: saved by the first press — the piece is no longer on the board's lists (it split)
           onReused: (b2) => (!(b2 && ((b2.hub || []).some((h) => h.piece_id === pid) || (b2.waiting || []).some((w) => w.piece_id === pid))) ? { piece_id: pid } : null),
         });
