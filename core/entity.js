@@ -322,6 +322,11 @@ const ENTITY_CONFIG = {
     // sees drivers sees it.
     cardLocalMoves: true,
     perm: 'drivers',
+    // owner 25/11: the dispatcher (drivers:'view') may CREATE a driver, nothing
+    // more — edit, active toggle and delete stay behind canEdit ('full'). Named
+    // by role, not by 'view': a future role with 'view' gains nothing. Mirrors
+    // the Worker row PERMISSIONS.dispatcher.drivers = ["GET","POST"].
+    createRoles: ['dispatcher'],
     searchFields: ['Full Name', 'License Number'],
     searchHint: 'Αναζήτηση: όνομα, αρ. διπλώματος…',
     filters: [
@@ -800,6 +805,7 @@ async function renderEntity(entityKey) {
   }
 
   const canEdit = can(cfg.perm) === 'full';
+  const canCreate = canCreateEntity(entityKey);
 
   const _i = n => (typeof icon === 'function') ? icon(n, 16) : '';
 
@@ -853,7 +859,7 @@ async function renderEntity(entityKey) {
     // Έγγραφα filter chip stays because it already exists.
     const searchHTML = `<input class="ev2-search" placeholder="${cfg.searchHint || 'Αναζήτηση…'}"
             oninput="entitySearch('${entityKey}', this.value)" id="${entityKey}_search">`;
-    const newBtnHTML = canEdit ? `
+    const newBtnHTML = canCreate ? `
           <button class="btn btn-primary btn-sm ev2-new" onclick="openEntityCreate('${entityKey}')">
             ${_i('plus')}
             Νέα εγγραφή
@@ -896,7 +902,7 @@ async function renderEntity(entityKey) {
         <div class="page-title">${cfg.label}</div>
         <div class="page-sub" id="${entityKey}_sub">${records.length} ${records.length===1?'εγγραφή':'εγγραφές'}</div>
       </div>
-      ${canEdit ? `
+      ${canCreate ? `
       <button class="btn btn-primary btn-sm" onclick="openEntityCreate('${entityKey}')">
         ${_i('plus')}
         Νέα εγγραφή
@@ -1878,11 +1884,13 @@ function buildEntityRow(entityKey, r, cols, plateField, dupPlates) {
     tabindex="0" role="button" aria-label="Άνοιγμα εγγραφής"
     onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectEntity('${entityKey}','${r.id}')}">${cells}
     <td style="width:32px">
-      <button type="button" class="btn-icon" aria-label="Επεξεργασία" onclick="event.stopPropagation();openEntityEdit('${entityKey}','${r.id}')">
+      ${/* owner 25/11: the row pencil was shown to every role and a 'view' role got 403 on save; with create open
+         to the dispatcher for drivers, edit must stay visibly closed — same gate as the card's ✎ (canEdit). */
+        can(cfg.perm) === 'full' ? `<button type="button" class="btn-icon" aria-label="Επεξεργασία" onclick="event.stopPropagation();openEntityEdit('${entityKey}','${r.id}')">
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8">
           <path d="M11 2l3 3-9 9H2v-3l9-9z"/>
         </svg>
-      </button>
+      </button>` : ''}
     </td>
   </tr>`;
 }
@@ -2930,6 +2938,29 @@ async function toggleActive(entityKey, recId, newVal) {
 }
 
 // ── Create / Edit Modal ───────────────────────────
+// One answer to «may this role create here» for every screen that offers a create
+// (the entity page, and the national «Ανάθεση» driver list): 'full' on the section,
+// or the role named in cfg.createRoles (drivers: dispatcher, owner 25/11).
+function canCreateEntity(entityKey) {
+  const cfg = ENTITY_CONFIG[entityKey];
+  if (!cfg) return false;
+  return can(cfg.perm) === 'full' || (cfg.createRoles || []).includes(ROLE);
+}
+
+// A driver created by name + type from another screen (the national «Ανάθεση», owner 25/11). The write stays
+// here, with the master-data pages: the v5 modules never write through the facade (tests/wn5-versions.test.js).
+// Same fields and same catalogue refresh as saveEntityRecord (F62): Full Name + Type, both in the Worker's DRIVERS
+// map. Returns the created record ({id: legacy id, fields}); throws on a refusal or offline (never a fake id).
+async function createDriverQuick(name, type) {
+  if (!canCreateEntity('drivers')) throw new Error('Ο ρόλος σας δεν δημιουργεί οδηγούς');
+  if (type !== 'Internal' && type !== 'External') throw new Error('Λείπει ο τύπος του οδηγού');
+  const rec = await atCreate(TABLES.DRIVERS, { 'Full Name': name, Type: type });
+  if (!rec || !rec.id || rec._offline) throw new Error('Ο οδηγός δεν γράφτηκε — δεν υπάρχει σύνδεση');
+  invalidateCache(TABLES.DRIVERS);
+  if (typeof PlanIds !== 'undefined' && typeof PlanIds.stale === 'function') PlanIds.stale();
+  return rec;
+}
+
 function openEntityCreate(entityKey) {
   buildEntityModal(entityKey, null, {});
 }

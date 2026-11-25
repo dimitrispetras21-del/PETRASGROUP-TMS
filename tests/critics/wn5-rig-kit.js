@@ -163,6 +163,7 @@ function defaultPlan(e, S) {
   return planErr(409, 'WRITES_CLOSED', 'writes_closed');   // as deployed until day L
 }
 // opts: role · flag ('on') · board · lookups · plan {'<M> <exact path>': async (entry, S) => [status, body]} · viewport · clipboard
+// · facade {'<M> <facade table id>': async (entry, S) => [status, body]} (a facade write judged by its body)
 // · sidebar ('open': the app's default 228px sidebar; else collapsed)
 async function openApp(browser, origin, opts = {}) {
   const ctx = await browser.newContext({ baseURL: origin + '/', viewport: opts.viewport || { width: 1920, height: 1080 },
@@ -215,8 +216,22 @@ async function openApp(browser, origin, opts = {}) {
       if (status >= 400) PLANNED.set(req.url(), [...new Set((PLANNED.get(req.url()) || []).concat(status))]);
       return route.fulfill({ status, contentType: 'application/json', headers: cors, body: JSON.stringify(ans) });
     }
-    S.facade.push({ m, path: u.pathname });
     const tid = (u.pathname.match(/\/v0\/[^/]+\/([A-Za-z0-9]+)/) || [])[1];
+    // opts.facade {'<M> <facade table id>': async (entry, S) => [status, body]}: a scenario that judges a facade write
+    // (owner 25/11: «+ Νέος οδηγός» in «Ανάθεση» POSTs DRIVERS) keeps its raw body in S.facade, the table of that write
+    const fhook = (opts.facade || {})[`${m} ${tid}`];
+    if (fhook) {
+      const raw = req.postData();
+      let body = null;
+      try { body = raw ? JSON.parse(raw) : null; } catch (_) { body = '<<not json>>'; }
+      const fe = { m, path: u.pathname, tid, raw, body };
+      S.facade.push(fe);
+      const [status, fans] = await fhook(fe, S);
+      fe.status = status;
+      if (status >= 400) PLANNED.set(req.url(), [...new Set((PLANNED.get(req.url()) || []).concat(status))]);
+      return route.fulfill({ status, contentType: 'application/json', headers: cors, body: JSON.stringify(fans) });
+    }
+    S.facade.push({ m, path: u.pathname });
     let ans = m === 'GET' ? { records: [] } : { ok: true };
     if (m === 'GET' && tid === 'tblxu8DRfTQOFRCzS') ans = { records: FACADE_LOCS };
     if (m === 'GET' && tid === 'tblFWKAQVUzAM8mCE') ans = { records: FACADE_CLIENTS };

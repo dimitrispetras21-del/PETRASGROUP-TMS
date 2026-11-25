@@ -987,5 +987,68 @@ async function rt_expect({ browser, origin, ok, scn, shots }) {
   await page.context().close();
 }
 
-K.run({ scenarios: { own_new, own_join, only_hours, partner, accept_busy, vehicle, rate2, handover, veroia_list, veroia_new, f61, f54, veroia_later, pr3b, veroia_busy, veroia_fixes, busy3, fit, sotiris_late, sotiris_warn, sotiris_esc, sotiris_hub_after, rt_expect }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],
+// owner 25/11 (usability test): «+ Νέος οδηγός» in the driver list. A dispatcher types a name no driver carries, picks
+// the type, the DRIVERS POST carries exactly Full Name + Type, the catalogue is read again and the new driver (found by
+// the legacy id the POST answered) is the one the assignment sends. A 403 (a Worker before the deploy) is said in the
+// form, no driver is set and nothing reaches /plan. A name that exists offers no create.
+const DRV_TID = 'tbl7UGmYhc2Y82pPs';
+async function new_driver({ browser, origin, ok, scn, shots }) {
+  const NAME = 'Driver Rig New';
+  const { page, S } = await K.openApp(browser, origin, { board: board(), plan: { 'POST /plan/legs': async () => OK('plan_put_group', { rt_id: 901 }) },
+    facade: { [`POST ${DRV_TID}`]: async (e, S2) => {
+      S2.lookups.drivers.push({ id: 99, legacy_id: 'recRigNewDrv99', full_name: e.body.fields['Full Name'], active: true });
+      return [200, { id: 'recRigNewDrv99', createdTime: '2026-11-25T10:00:00.000Z', fields: e.body.fields }];
+    } } });
+  await openWaiting(page, 4101);
+  ok(scn, 'pick truck TST-2106', await pickIn(page, 'tk', '2106', 'TST-2106'));
+  // an existing name: no create row
+  await page.click(`${DLG} [data-in="dr"]`, { clickCount: 3 });
+  await page.keyboard.type('Driver Test 01');
+  await page.waitForTimeout(80);
+  ok(scn, 'an existing driver name offers no «+ Νέος οδηγός»', !(await K.count(page, '.wn5a-list .wn5a-new')));
+  // a new name: the row with two type buttons, no default
+  await page.click(`${DLG} [data-in="dr"]`, { clickCount: 3 });
+  await page.keyboard.type(NAME);
+  await page.waitForSelector('.wn5a-list .wn5a-new', { timeout: 3000 }).catch(() => {});
+  const row = await page.evaluate(() => { const r = document.querySelector('.wn5a-list .wn5a-new'); return r ? { t: r.textContent, b: [...r.querySelectorAll('[data-newdr]')].map((x) => x.dataset.newdr) } : null; });
+  ok(scn, 'a new name: «+ Νέος οδηγός «…»» with Εσωτερικός / Εξωτερικός', row && row.t.includes('+ Νέος οδηγός «' + NAME + '»') && JSON.stringify(row.b) === '["Internal","External"]', row);
+  if (shots) await page.screenshot({ path: shots + '/new-driver-row.png' });
+  const lk0 = K.planOf(S, 'GET', '/plan/lookups').length;
+  await page.dispatchEvent('.wn5a-list [data-newdr="Internal"]', 'mousedown');
+  await page.waitForTimeout(400);
+  const posts = S.facade.filter((x) => x.m === 'POST' && x.tid === DRV_TID);
+  ok(scn, 'exactly one DRIVERS POST, body fields = {Full Name, Type: Internal}', posts.length === 1
+    && JSON.stringify(posts[0].body.fields) === JSON.stringify({ 'Full Name': NAME, Type: 'Internal' }), posts.map((x) => x.body));
+  ok(scn, 'the catalogue was read again after the create', K.planOf(S, 'GET', '/plan/lookups').length === lk0 + 1, K.planOf(S, 'GET', '/plan/lookups').length - lk0);
+  const dr = await field(page, 'dr');
+  ok(scn, 'the driver field holds the new driver, not red', dr && dr.val === NAME && !dr.bad, dr);
+  ok(scn, 'nothing reached /plan yet (the create is not an assignment)', !saves(S).length, saves(S).map((x) => x.path));
+  if (shots) await page.screenshot({ path: shots + '/new-driver-picked.png' });
+  await page.click(`${DLG} [data-act="save"]`);
+  await page.waitForTimeout(500);
+  const w = saves(S);
+  ok(scn, 'the assignment sends the new driver: new_rt driver_id 99', w.length === 1 && w[0].body && w[0].body.target.new_rt.driver_id === 99, w.map((x) => x.body && x.body.target));
+  await page.context().close();
+
+  // the same, the Worker refuses (403, before the deploy): said in words, no driver set, nothing to /plan, no green toast
+  const r2 = await K.openApp(browser, origin, { board: board(), facade: { [`POST ${DRV_TID}`]: async () => [403, { error: { type: 'FORBIDDEN', message: 'Forbidden' } }] } });
+  await openWaiting(r2.page, 4101);
+  await pickIn(r2.page, 'tk', '2106', 'TST-2106');
+  await r2.page.click(`${DLG} [data-in="dr"]`, { clickCount: 3 });
+  await r2.page.keyboard.type(NAME);
+  await r2.page.waitForSelector('.wn5a-list .wn5a-new', { timeout: 3000 }).catch(() => {});
+  await r2.page.dispatchEvent('.wn5a-list [data-newdr="External"]', 'mousedown');
+  await r2.page.waitForTimeout(600);
+  const st = await r2.page.evaluate((s) => { const d = document.querySelector(s); return d ? (d.querySelector('.wn5-strip') || {}).textContent || '' : null; }, DLG);
+  ok(scn, '403: the form says «Ο οδηγός «…» δεν προστέθηκε: Δεν έχετε δικαίωμα…»', /Ο οδηγός «Driver Rig New» δεν προστέθηκε: Δεν έχετε δικαίωμα/.test(st || ''), st);
+  const ev = await r2.page.evaluate(() => (window.__ev || []).map((x) => x.k + ':' + (x.a[0] || '')));
+  ok(scn, '403: no green toast, the red one says the refusal in Greek', !ev.some((x) => x.startsWith('toast:')) && ev.some((x) => /^errtoast:Δεν έχετε δικαίωμα/.test(x)), ev);
+  const dr2 = await field(r2.page, 'dr');
+  ok(scn, '403: no driver set (the field keeps the typed name, red), nothing reached /plan', dr2 && dr2.val !== '' && saves(r2.S).length === 0, { dr2, w: saves(r2.S).length });
+  await r2.page.context().close();
+}
+
+K.run({ scenarios: { own_new, new_driver, own_join, only_hours, partner, accept_busy, vehicle, rate2, handover, veroia_list, veroia_new, f61, f54, veroia_later, pr3b, veroia_busy, veroia_fixes, busy3, fit, sotiris_late, sotiris_warn, sotiris_esc, sotiris_hub_after, rt_expect }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],
+  // new_driver's scripted 403: _atRetry logs the refusal once (the app's own record of it, core/api.js)
+  designedConsole: [/^\[TMS ERROR\] _atRetry 403: Error: Δεν έχετε δικαίωμα για αυτή την ενέργεια — Forbidden/],
   go: 'the assignment form (own new / join / only / hours / F39 / partner / vehicle / F51-F61 / F54 / F56 / 089 two fees), ✈ «Αλλαγή οχήματος…» and the Veroia board v2 «Νέο φορτίο» hold' });
