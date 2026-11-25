@@ -1080,7 +1080,7 @@ async function new_driver({ browser, origin, ok, scn, shots }) {
   await r3.page.keyboard.type(NAME);
   await r3.page.waitForTimeout(100);
   const again = await r3.page.evaluate(() => (document.querySelector('.wn5a-list') || {}).textContent || '');
-  ok(scn, 'the same name again: «… γράφτηκε — κλείσε και ξανάνοιξε», no create row, still one POST', /γράφτηκε — κλείσε και ξανάνοιξε/.test(again)
+  ok(scn, 'the same name again: «… γράφτηκε — ανανέωσε τη σελίδα», no create row, still one POST', /γράφτηκε — ανανέωσε τη σελίδα/.test(again)
     && !(await K.count(r3.page, '.wn5a-list .wn5a-new')) && r3.S.facade.filter((x) => x.m === 'POST' && x.tid === DRV_TID).length === 1, again);
   await r3.page.context().close();
 }

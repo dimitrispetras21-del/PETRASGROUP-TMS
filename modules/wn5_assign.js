@@ -695,7 +695,7 @@
     const k = K(), nq = k.norm(name);
     const same = _list('driver').find((x) => k.norm(x.label) === nq);
     if (same) return same.active ? '' : '<div class="wn5a-none">Ο οδηγός «' + _e(same.label) + '» είναι ανενεργός — ζήτα να ενεργοποιηθεί στους Οδηγούς</div>';
-    if (_created.has(nq)) return '<div class="wn5a-none">Ο οδηγός «' + _e(name) + '» γράφτηκε — κλείσε και ξανάνοιξε τη φόρμα για να τον διαλέξεις</div>';
+    if (_created.has(nq)) return '<div class="wn5a-none">Ο οδηγός «' + _e(name) + '» γράφτηκε — ανανέωσε τη σελίδα για να τον διαλέξεις</div>';
     if (nOpts && !name.includes(' ')) return '';
     return '<div class="wn5a-new"><span>+ Νέος οδηγός «' + _e(name) + '»</span>'
       + '<button type="button" data-newdr="Internal">Εσωτερικός</button><button type="button" data-newdr="External">Εξωτερικός</button></div>';
@@ -823,9 +823,11 @@
       if (b && !b.disabled) b.focus();
     };
     // a pick from the list (or an exact name typed); own and partner exclude each other, as one executes
-    let picks = 0;   // a pick made while a driver create waits wins over the create's own pick (code review xhigh)
+    // a driver or partner picked while a driver create waits wins over the create's own pick (code review xhigh);
+    // a truck or trailer pick does not touch the driver, so it does not count
+    let picks = 0;
     const choose = (px, id, next) => {
-      picks++;
+      if (px === 'dr' || px === 'pt') picks++;
       const f = FIELDS[px];
       st[f.key] = id;
       st.typed[px] = '';
@@ -897,14 +899,15 @@
           say('driver_create', 'Ο οδηγός «' + name + '» δεν προστέθηκε: ' + (e && e.message ? e.message : 'άγνωστο σφάλμα'));
           return;
         }
-        // written from here on: a failure below is never «δεν προστέθηκε»
+        // written from here on: a failure below is never «δεν προστέθηκε». A failed catalogue re-read is kept for a
+        // minute (PlanIds _staleAfter), so the words ask for a page refresh, not a reopened form.
         _created.add(K().norm(name));
         const ids = await PlanIds.load();
         _lists = {};
         const hit = _list('driver').find((x) => x.legacy_id === rec.id);
         if (!hit) {
           _dropList();
-          say('driver_listed', 'Ο οδηγός «' + name + '» γράφτηκε, αλλά ' + (ids && ids.err ? 'οι κατάλογοι δεν ξαναδιαβάστηκαν' : 'δεν φάνηκε ακόμη στη λίστα') + ' — κλείσε και ξανάνοιξε τη φόρμα για να τον διαλέξεις');
+          say('driver_listed', 'Ο οδηγός «' + name + '» γράφτηκε, αλλά ' + (ids && ids.err ? 'οι κατάλογοι δεν ξαναδιαβάστηκαν' : 'δεν φάνηκε ακόμη στη λίστα') + ' — ανανέωσε τη σελίδα για να τον διαλέξεις');
           return;
         }
         _created.delete(K().norm(name));
